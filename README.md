@@ -5,19 +5,23 @@
 atmospheric mass loss from irradiated exoplanets.  It is a heavily extended
 fork of the ATES code (Caldiroli et al. 2021; Biassoni et al. 2024), adding:
 
-- Trace metals (C, N, O, Fe, Mg, Ca, Na) solved self-consistently inside
-  the MINPACK ionization system, with Badnell RR+DR recombination, Voronov
-  collisional ionization, and Kingdon & Ferland charge-transfer with H
-- Metal-line cooling from CHIANTI (Fe II, Mg II, Ca II, Na I, ...) and an
-  optional AIOLOS/Black two-level fine-structure channel
+- Trace metals (C, N, O, Mg, Si, Ca, Na, K, S, Fe) solved self-consistently
+  inside the coupled ionization system, with Badnell RR+DR recombination,
+  Voronov collisional ionization, and Huang et al. (2023) charge exchange
+- Metal-line cooling as **closed-form analytic formulas fitted to CHIANTI
+  v11** (C I/II, N I/II, O I/II, Mg I/II, Ca II, Na I, Fe II; 0.1–3%
+  accuracy), with density-dependent saturation of the [C II] 158 um /
+  [O I] 63 um fine-structure floors and a 2-D statistical-equilibrium
+  Fe II coefficient — see `docs/cooling_formulas.pdf`
 - He I 2³S metastable triplet state (coupled solver)
-- Ly-alpha radiative transfer via the Neufeld core-skipping escape-probability
-  method
+- Non-LTE H(n=2) and Ly-alpha radiative transfer via the Neufeld
+  escape-probability method
 - A Jacobian-free Newton-Krylov (JFNK) steady-state solver with PTC warm-up,
   SER ramp, and non-monotone (Grippo) line search
 - Roche-potential geometry (spherical or Roche-lobe domain modes)
 - **TPM** (Transmission Probability Module) post-processor: transit spectra
-  for He I 10830 Å, Ly-alpha 1215.67 Å, H-alpha 6562.8 Å, and H-beta 4861 Å
+  for He I 10830 Å, Ly-alpha, H-alpha, H-beta, and the metal resonance
+  doublets Mg II h&k, Ca II H&K, and Na I D
 
 For a complete description of the physics, solver, and all input parameters
 see **`docs/ATES_user_manual.pdf`**.
@@ -56,14 +60,15 @@ EXHALE/
 │   ├── modules/           # Fortran source modules (flux, init, radiation, …)
 │   └── utils/             # Python GUI (ATES_interface_main.py), fortdep.py
 ├── inputdata/             # opacity / SED table samples (*.atesopa, Jlya.txt, …)
-├── cooling_data/          # metal cooling tables (metal_cooling_chianti.txt, …)
+├── cooling_data/          # CHIANTI cooling-formula fit scripts + notebooks
 ├── examples/
 │   ├── inputs/            # 10 ready-made HD 189733 b input configurations
 │   ├── ates_io.py         # Python loaders for all output files
 │   ├── ATES_analysis.ipynb
-│   └── tutorial/          # minimal worked example (no metals)
+│   └── tutorial/          # minimal worked example (generic hot Jupiter)
 ├── docs/
 │   ├── ATES_user_manual.pdf   # full reference manual
+│   ├── cooling_formulas.pdf   # analytic cooling-coefficient reference
 │   ├── steady_solver_memo.pdf # Newton-Krylov design notes
 │   └── …
 ├── observational_data/    # digitized observational comparison data
@@ -106,6 +111,13 @@ and the code builds and runs.  The system preset list is stored in
 `src/utils/params_table.txt` and can be extended with the **Add planet**
 button.
 
+The GUI writes the original ATES-format `input.inp`, which runs with the
+legacy convergence behavior (single-stage marching at `du < 1e-3`, no
+Newton finish).  All EXHALE extensions are opt-in keys appended to
+`input.inp` (`du_th [PLM,WENO3]`, `Solver: Newton`, `Domain mode`, ...)
+or separate runtime files (`metals.inp`, `opacity.inp`), so to use them
+add the lines by hand or start from `examples/inputs/` (Option B).
+
 ### Option B — direct (recommended for scripted or repeated runs)
 
 1. Edit `input.inp` (copy from `examples/inputs/` as a starting point).
@@ -135,17 +147,27 @@ See `docs/steady_solver_memo.pdf` for details.
 
 ### Enabling metal chemistry
 
-Place a `metals.inp` in the run directory listing the trace-metal abundances
-(relative to solar):
+Place a `metals.inp` in the run directory listing the total elemental
+abundances n_X/n_H by number (the equilibrium solver distributes each
+element over its ionization stages):
 
 ```
-# metals.inp — example
-CI   1.0
-NI   1.0
-OI   1.0
+# metals.inp — solar abundances (Asplund+2009)
+C     2.69e-4
+N     6.76e-5
+O     4.90e-4
+Mg    3.98e-5
+Ca    2.19e-6
+Na    1.74e-6
+Fe    3.16e-5
 ```
 
-No recompile is needed.  Remove `metals.inp` to run without metals.
+Optional control keys: `pp_metals 0|1|2` (metal treatment in the advection
+post-process), `cx_full 0|1` (full Huang+2023 charge-exchange network),
+`cno_cool 0|1` (C/N/O cooling source: `1` = CHIANTI fits including
+N I/N II, the default; `0` = legacy AIOLOS fits).  No recompile is
+needed; remove `metals.inp` to run without metals.  A template with all
+ten elements is in `inputdata/metals.inp.example`.
 
 ---
 
@@ -155,10 +177,15 @@ All output is written to `output/` in the run directory.
 
 | File | Contents |
 |------|----------|
-| `Hydro_ioniz.txt` | Radius, density, velocity, pressure, temperature, heating rate, cooling rate, heating efficiency (columns vs. radius) |
-| `Ion_species.txt` | Number densities of H I, H II, He I, He II, He III and (if metals active) metal ionization states |
+| `Hydro_ioniz.txt` | Radius, number density, velocity, pressure, temperature, heating rate, cooling rate (columns vs. radius) |
+| `Ion_species.txt` | Number densities of H I, H II, He I, He II, He III, He 2³S, and the metal ionization stages (33 species; zero columns when a species is off) |
 | `Hydro_ioniz_adv.txt` | Post-processed version of `Hydro_ioniz.txt` (advection-corrected) |
 | `Ion_species_adv.txt` | Post-processed version of `Ion_species.txt` |
+| `Cooling_breakdown.txt` | Per-channel radiative cooling vs. radius |
+| `Excited_H.txt` | Non-LTE H(n=2) populations (when the Balmer/Ly-alpha physics is on) |
+
+Every file starts with a `# columns ...` schema header, so analysis tools
+adapt to the column layout automatically.
 
 When **Load IC** is enabled the previous outputs are copied to `*_IC.txt`
 and read back as initial conditions for a restart run.
@@ -192,20 +219,30 @@ python3 ATES_plots.py          # plot current output (static)
 python3 ATES_plots.py --live 4 # refresh every 4 s
 ```
 
+The plotter reads the `# columns` headers, overlays the post-processed
+`*_adv` profiles (dashed) when present, and adds a metal-ion-density
+figure automatically for a metals-on run.
+
 ---
 
 ## Transmission spectra (TPM)
 
-After a converged run, compute the transit transmission spectrum with:
+After a converged run, compute the transit transmission spectra with:
 
 ```bash
-python3 TPM.py
+MPLBACKEND=Agg python3 TPM.py
 ```
 
-TPM reads `input.inp` and the `*_adv.txt` profiles in `output/`, and produces
-PNG figures for He I 10830 Å, Ly-alpha, H-alpha, and H-beta.  Stellar
-parameters (`T_star`, `R_star`) must be set in `input.inp` for the Balmer
-lines.  Full description in `docs/Halpha_transmission.pdf`.
+TPM reads `input.inp` and the `*_adv.txt` profiles in `output/`, and
+produces spectrum figures (PNG + vector PDF; theoretical, instrument-
+convolved, and instrument+rotation-convolved curves) for **He I 10830 Å,
+Ly-alpha, H-alpha, H-beta** and the metal resonance doublets **Mg II h&k,
+Ca II H&K, Na I D** (skipped automatically for a metals-off run).  Stellar
+parameters (`R_star`, `rot_period`, `T_star` for the Balmer lines) and the
+output figure names are set in the script's header block.  A 3-D
+Roche-equipotential geometry is available via `geometry = 'triaxial'`
+(`roche_recon.py`).  Full description in `docs/Halpha_transmission.pdf`
+and the manual's TPM section.
 
 ---
 
@@ -220,7 +257,7 @@ combinations are in `examples/inputs/`:
 | `02_two_stage/` | PLM → WENO3 two-stage |
 | `03_newton/` | Two-stage + Newton finish (recommended default) |
 | `04_newton_from_state/` | Resume from saved state with Newton |
-| `05_metals/` | Metals on (C/N/O) |
+| `05_metals/` | Metals on (solar C/N/O/Mg/Ca/Na/Fe) |
 | `06_he23s/` | He I 2³S triplet included |
 | `07_balmer_lya/` | Balmer + Ly-alpha RT |
 | `08_full/` | Full physics (metals + He 2³S + Balmer/Lya) |
