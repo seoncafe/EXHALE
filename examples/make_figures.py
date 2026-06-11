@@ -19,10 +19,12 @@ os.makedirs(FIG, exist_ok=True)
 
 
 def save(fig, name):
+    # PNG (notebooks/READMEs) + vector PDF (the LaTeX docs include the PDF)
     p = os.path.join(FIG, name)
     fig.savefig(p, dpi=130, bbox_inches='tight')
+    fig.savefig(os.path.splitext(p)[0] + '.pdf', bbox_inches='tight')
     plt.close(fig)
-    print('  wrote', os.path.relpath(p, ROOT))
+    print('  wrote', os.path.relpath(p, ROOT), '(+.pdf)')
 
 
 
@@ -133,9 +135,10 @@ try:
     td = (Rp / Rstar) ** 2
     reff = lambda h: np.sqrt(td + h / 100.0)
     lines = ['Mg II (4A)', 'Ca II K', 'Na D2']
-    # Newton solution of Case A (output_caseA2058, 2026-06-11 TPM run):
+    # Newton solution of Case A (output_caseA2058, 2026-06-11 TPM run,
+    # CHIANTI C/N/O + FS-saturation default):
     # MgII 4A-band; CaII, Na line-center [% absorption]
-    model = [reff(3.138), reff(8.444), reff(1.198)]
+    model = [reff(2.674), reff(7.121), reff(1.012)]
     huangA = [0.182, 0.199, 0.152]
     huangD = [0.302, 0.278, 0.147]
     x = np.arange(len(lines)); w = 0.27
@@ -191,6 +194,7 @@ except Exception as e:
 # Include He23S? True), so the He I 10830 panel shows real absorption;
 # the Case A planet-folder run has He23S off and an empty He line.
 try:
+    import shutil
     TPMW = os.path.join(ROOT, 'regression', 'tpm_wasp')
     names = ['HeI_10830.png', 'Lya.png', 'Halpha.png', 'Hbeta.png']
     imgs = [plt.imread(os.path.join(TPMW, n)) for n in names]
@@ -199,7 +203,17 @@ try:
         a.imshow(im)
         a.axis('off')
     fig.subplots_adjust(wspace=0.02, hspace=0.02)
-    save(fig, 'tpm_spectra.png')
+    # raster montage (README/notebook use); the manual instead includes the
+    # four vector PDFs copied below in a 2x2 LaTeX block
+    p = os.path.join(FIG, 'tpm_spectra.png')
+    fig.savefig(p, dpi=130, bbox_inches='tight')
+    plt.close(fig)
+    print('  wrote', os.path.relpath(p, ROOT))
+    for n in names:
+        src = os.path.join(TPMW, n[:-4] + '.pdf')
+        dst = os.path.join(FIG, 'tpm_' + n[:-4] + '.pdf')
+        shutil.copy(src, dst)
+        print('  copied', os.path.relpath(dst, ROOT))
 except Exception as e:
     print('  [skip] tpm_spectra:', e)
 

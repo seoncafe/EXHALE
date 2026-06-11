@@ -1018,7 +1018,9 @@ print(' - Planet rot. + Inst. convolution: ', Tl_HeI3_conv_rot, '%')
 print('\n')
 
 # Save figure
-if len(fig_name_hei) > 0 : plt.savefig(fig_name_hei)
+if len(fig_name_hei) > 0 :
+	plt.savefig(fig_name_hei)
+	plt.savefig(fig_name_hei.rsplit('.',1)[0]+'.pdf')
 
 plt.show(block=False)
 
@@ -1066,7 +1068,9 @@ print('\n')
 
 # Save figure (must happen while the Lya figure is still current --
 # saving at the end of the script would capture the H-beta figure)
-if len(fig_name_lya) > 0 : plt.savefig(fig_name_lya)
+if len(fig_name_lya) > 0 :
+	plt.savefig(fig_name_lya)
+	plt.savefig(fig_name_lya.rsplit('.',1)[0]+'.pdf')
 
 
 ##### Figure H-alpha #####
@@ -1099,7 +1103,9 @@ if do_Ha:
 	print(' - Planet rot. + Inst. convolution: ', Tl_Ha_conv_rot, '%')
 	print('\n')
 
-	if len(fig_name_ha) > 0 : plt.savefig(fig_name_ha)
+	if len(fig_name_ha) > 0 :
+		plt.savefig(fig_name_ha)
+		plt.savefig(fig_name_ha.rsplit('.',1)[0]+'.pdf')
 
 ##### Figure H-beta #####
 if do_Ha:
@@ -1126,7 +1132,9 @@ if do_Ha:
 	print(' - Planet rot. + Inst. convolution: ', Tl_Hb_conv_rot, '%')
 	print('\n')
 
-	if len(fig_name_hb) > 0 : plt.savefig(fig_name_hb)
+	if len(fig_name_hb) > 0 :
+		plt.savefig(fig_name_hb)
+		plt.savefig(fig_name_hb.rsplit('.',1)[0]+'.pdf')
 
 
 print("--- Execution time: %s seconds ---" % (time.time() - start))

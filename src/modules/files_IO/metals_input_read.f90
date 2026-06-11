@@ -86,6 +86,22 @@
             cycle
          endif
 
+         ! 'cno_cool <0|1>' selects the C/N/O line-cooling source:
+         ! 1 (default) = CHIANTI v11 closed-form fits including N I/N II,
+         ! 0 = legacy AIOLOS analytic fits (no N cooling; O deviates
+         !     40-70% from CHIANTI in the wind region).
+         if (trim(tok) == 'cno_cool' .or. trim(tok) == 'CNO_COOL') then
+            cno_chianti = (ab > 0.5d0)
+            if (cno_chianti) then
+               write(*,'(a)') '   C/N/O cooling source = CHIANTI v11' &
+                              // ' fits (incl. N I/N II) [default]'
+            else
+               write(*,'(a)') '   C/N/O cooling source = legacy AIOLOS' &
+                              // ' fits (no N cooling)'
+            endif
+            cycle
+         endif
+
          ! 'pp_metals <0|1|2>' selects how metals are treated in the
          ! advection post-process (post_process_adv): 0 metal-free,
          ! 1 frozen eq metals, 2 re-solve (default). 'pp_metal_mode' is

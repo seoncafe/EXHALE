@@ -124,13 +124,10 @@
         [7.300d-8,2.577d-7,4.961d-8,9.520d-7,9.586d-7,6.849d-4,6.539d-4,0d0,0d0], &
         [5.077d2,6.007d2,2.342d3,7.269d3,2.190d4,1.483d5,1.906d5,0d0,0d0])
 
-   !--- CHIANTI collisional metal line-cooling tables (Huang 2023 Phase 2) ---!
+   !--- CHIANTI collisional metal line cooling (Huang 2023 Phase 2) ---!
    ! Effective cooling coefficient Lambda(T) per (n_e * n_ion) [erg cm^3 s^-1],
    ! optically thin / coronal limit (only the ground level significantly
    ! populated; every collisional excitation is followed by a radiative decay).
-   ! Tabulated as log10(Lambda) on a uniform log10(T) grid (3.0..5.0, dlogT=0.05)
-   ! and interpolated log-log at runtime (<1% vs the source 201-point table where
-   ! each coolant is non-negligible).
    !
    ! Source: cooling_data/chianti_cooling.py + export_cooling_tables.py
    !   (CHIANTI v11.0.2, Burgess-Tully descaled .scups; auditable bridge).
@@ -150,16 +147,26 @@
    !         EVEN-parity metastable manifold (E < 19351 cm^-1, the first odd
    !         level z7D deg). Source: cooling_data/fe1_cooling.py +
    !         fetch_fe1_nist.py (fe1_nist_lines.tsv, fe1_nist_levels.tsv).
-   ! Fe II cooling: the 1-D cool_logL_FeII above is the GROUND-LEVEL coronal
-   ! rate (Lambda propto n_e, no level saturation). It is SUPERSEDED in the
-   ! cooling assembly by the density-dependent 2-D table cool_logL_FeII_ne
-   ! (defined just below cool_logL_FeI), a multilevel statistical-equilibrium
-   ! solve over the full a6D fine-structure + metastable manifold. The coronal
-   ! rate badly overestimates cooling at the dense base (n_e ~ 1e8, far above
-   ! the n_crit ~ 1e4-1e7 of the forbidden a6D IR/metastable lines), where the
-   ! levels are collisionally saturated (LTE). The 1-D array is retained only
-   ! as the low-n_e edge of the 2-D table (they agree to <0.1% at n_e=1) and
-   ! for the scalar post-process fallback. See cool_FeII_ne / interp_cool_table_2d.
+   !
+   ! The Mg I / Mg II / Ca II / Na I / Fe II-coronal channels are evaluated by
+   ! CLOSED-FORM analytic fits to those CHIANTI tables (cool_MgI_func etc.
+   ! below; fit script cooling_data/fit_cooling_formulas.py, accurate to
+   ! 1-3% max over 1e3-1e5 K -- comparable to the table-interpolation error
+   ! they replace). Only Fe I (1-D, below) and the density-dependent Fe II
+   ! statistical-equilibrium coefficient (2-D, cool_logL_FeII_ne) remain
+   ! tabulated, interpolated log-log at runtime on a uniform log10(T) grid
+   ! (3.0..5.0, dlogT=0.05).
+   !
+   ! Fe II cooling: cool_FeII_func gives the GROUND-LEVEL coronal rate
+   ! (Lambda propto n_e, no level saturation). It is SUPERSEDED in the
+   ! cooling assembly by the density-dependent 2-D table cool_logL_FeII_ne,
+   ! a multilevel statistical-equilibrium solve over the full a6D
+   ! fine-structure + metastable manifold. The coronal rate badly
+   ! overestimates cooling at the dense base (n_e ~ 1e8, far above the
+   ! n_crit ~ 1e4-1e7 of the forbidden a6D IR/metastable lines), where the
+   ! levels are collisionally saturated (LTE). The coronal form is retained
+   ! only for the scalar post-process fallback; it matches the low-n_e edge
+   ! of the 2-D table to ~1.6%. See cool_FeII_ne / interp_cool_table_2d.
    integer, parameter :: NCOOLT = 41
    real*8,  parameter :: cool_dlogT = 0.05d0
    real*8, parameter :: cool_logT(NCOOLT) = [ &
@@ -172,56 +179,6 @@
             4.50000d0,     4.55000d0,     4.60000d0,     4.65000d0,     4.70000d0, &
             4.75000d0,     4.80000d0,     4.85000d0,     4.90000d0,     4.95000d0, &
             5.00000d0 ]
-   real*8, parameter :: cool_logL_MgI(NCOOLT) = [ &
-          -39.86861d0,   -37.50072d0,   -35.39083d0,   -33.51058d0,   -31.83463d0, &
-          -30.34028d0,   -29.00716d0,   -27.81707d0,   -26.75413d0,   -25.80437d0, &
-          -24.95552d0,   -24.19681d0,   -23.51884d0,   -22.91330d0,   -22.37233d0, &
-          -21.88875d0,   -21.45615d0,   -21.06876d0,   -20.72151d0,   -20.41000d0, &
-          -20.13041d0,   -19.87931d0,   -19.65361d0,   -19.45058d0,   -19.26782d0, &
-          -19.10324d0,   -18.95506d0,   -18.82159d0,   -18.70104d0,   -18.59183d0, &
-          -18.49278d0,   -18.40294d0,   -18.32161d0,   -18.24799d0,   -18.18064d0, &
-          -18.11855d0,   -18.06126d0,   -18.00863d0,   -17.96045d0,   -17.91611d0, &
-          -17.87537d0 ]
-   real*8, parameter :: cool_logL_MgII(NCOOLT) = [ &
-          -38.36367d0,   -36.04568d0,   -33.98230d0,   -32.14581d0,   -30.51153d0, &
-          -29.05745d0,   -27.76397d0,   -26.61359d0,   -25.59073d0,   -24.68147d0, &
-          -23.87343d0,   -23.15552d0,   -22.51787d0,   -21.95167d0,   -21.44910d0, &
-          -21.00322d0,   -20.60785d0,   -20.25752d0,   -19.94734d0,   -19.67299d0, &
-          -19.43053d0,   -19.21645d0,   -19.02759d0,   -18.86111d0,   -18.71451d0, &
-          -18.58551d0,   -18.47211d0,   -18.37250d0,   -18.28506d0,   -18.20836d0, &
-          -18.14111d0,   -18.08219d0,   -18.03060d0,   -17.98542d0,   -17.94575d0, &
-          -17.91075d0,   -17.87977d0,   -17.85226d0,   -17.82779d0,   -17.80600d0, &
-          -17.78659d0 ]
-   real*8, parameter :: cool_logL_CaII(NCOOLT) = [ &
-          -32.81989d0,   -31.12157d0,   -29.61008d0,   -28.26507d0,   -27.06841d0, &
-          -26.00391d0,   -25.05716d0,   -24.21530d0,   -23.46687d0,   -22.80163d0, &
-          -22.21048d0,   -21.68529d0,   -21.21882d0,   -20.80460d0,   -20.43688d0, &
-          -20.11052d0,   -19.82096d0,   -19.56411d0,   -19.33636d0,   -19.13446d0, &
-          -18.95554d0,   -18.79703d0,   -18.65666d0,   -18.53239d0,   -18.42242d0, &
-          -18.32515d0,   -18.23915d0,   -18.16315d0,   -18.09602d0,   -18.03676d0, &
-          -17.98449d0,   -17.93841d0,   -17.89784d0,   -17.86212d0,   -17.83069d0, &
-          -17.80303d0,   -17.77870d0,   -17.75735d0,   -17.73862d0,   -17.72227d0, &
-          -17.70804d0 ]
-   real*8, parameter :: cool_logL_NaI(NCOOLT) = [ &
-          -27.38233d0,   -26.25436d0,   -25.25177d0,   -24.36093d0,   -23.56969d0, &
-          -22.86721d0,   -22.24385d0,   -21.69099d0,   -21.20098d0,   -20.76697d0, &
-          -20.38288d0,   -20.04328d0,   -19.74332d0,   -19.47871d0,   -19.24559d0, &
-          -19.04054d0,   -18.86051d0,   -18.70277d0,   -18.56491d0,   -18.44476d0, &
-          -18.34039d0,   -18.25010d0,   -18.17234d0,   -18.10575d0,   -18.04913d0, &
-          -18.00138d0,   -17.96154d0,   -17.92876d0,   -17.90226d0,   -17.88136d0, &
-          -17.86545d0,   -17.85399d0,   -17.84649d0,   -17.84253d0,   -17.84172d0, &
-          -17.84371d0,   -17.84821d0,   -17.85494d0,   -17.86365d0,   -17.87413d0, &
-          -17.88620d0 ]
-   real*8, parameter :: cool_logL_FeII(NCOOLT) = [ &
-          -19.77975d0,   -19.74680d0,   -19.71506d0,   -19.68419d0,   -19.65357d0, &
-          -19.62229d0,   -19.58929d0,   -19.55361d0,   -19.51470d0,   -19.47265d0, &
-          -19.42820d0,   -19.38254d0,   -19.33707d0,   -19.29306d0,   -19.25139d0, &
-          -19.21233d0,   -19.17532d0,   -19.13874d0,   -19.09983d0,   -19.05497d0, &
-          -19.00044d0,   -18.93379d0,   -18.85486d0,   -18.76597d0,   -18.67102d0, &
-          -18.57420d0,   -18.47908d0,   -18.38818d0,   -18.30304d0,   -18.22445d0, &
-          -18.15269d0,   -18.08767d0,   -18.02912d0,   -17.97667d0,   -17.92989d0, &
-          -17.88834d0,   -17.85160d0,   -17.81925d0,   -17.79089d0,   -17.76617d0, &
-          -17.74475d0 ]
    ! Fe I line cooling, NIST f-values + Van Regemorter compact form
    ! (Huang 2023 Fig. 5 / Sec. 2.5). Lower levels Boltzmann-populated over the
    ! even-parity metastable manifold (17 levels below the first odd level,
@@ -781,13 +738,166 @@
    ! Schulik & Booth (2023) for context. C++ (Cpp), O++ (Opp), H3+
    ! cooling are zero in AIOLOS and are intentionally omitted here.
 
+   !--- CHIANTI C/N/O line cooling (DEFAULT; metals.inp 'cno_cool 0' ---!
+   !--- reverts to the legacy AIOLOS fits) ------------------------------!
+   ! Closed-form fits to the CHIANTI v11.0.2 optically-thin line-cooling
+   ! curves, Lambda(T) = T^-1/2 sum_i A_i exp(-T_i/T) per (n_e n_ion), with
+   ! the lower levels Boltzmann-populated over the ground-term fine
+   ! structure (C I/C II/N II/O I; the 4S ground of N I/O II is a single
+   ! level). Fit script cooling_data/fit_cno_formulas.py; max error vs
+   ! CHIANTI 0.2-2.1% over 1e3-1e5 K. Unlike the AIOLOS fits these include
+   ! N I/N II cooling; the AIOLOS O I/O II fits deviate 40-70% from
+   ! CHIANTI in the wind-launch region (see cooling_data/
+   ! cno_cooling_comparison.ipynb).
+   ! CAVEAT (as for Fe II coronal): the fine-structure floor terms
+   ! ([C II] 158um, [O I] 63um, ...; T_i < 1e3 K) have low critical
+   ! densities (n_e ~ 10-1e5 cm^-3) and saturate at the dense base; both
+   ! these fits and the AIOLOS floors overestimate that contribution
+   ! there. use_2lev_cool treats the saturation explicitly.
+
+   elemental double precision function cool_CI_chianti(T)
+   real*8, intent(in) :: T
+   cool_CI_chianti = ( 1.10625037d-20*exp(-2351.38d0/T)             &
+                     + 1.39158295d-18*exp(-15172.3d0/T)             &
+                     + 6.96187591d-18*exp(-25411.0d0/T)             &
+                     + 6.59348477d-17*exp(-72609.1d0/T)             &
+                     + 3.01715156d-16*exp(-177264.0d0/T) )/sqrt(T)
+   end function cool_CI_chianti
+
+   elemental double precision function cool_CII_chianti(T)
+   real*8, intent(in) :: T
+   cool_CII_chianti = ( 3.00421499d-20*exp(-61.3684d0/T)            &
+                      + 2.41049257d-20*exp(-7183.05d0/T)            &
+                      + 3.90434784d-17*exp(-64103.6d0/T)            &
+                      + 3.33191635d-16*exp(-124809.0d0/T)           &
+                      + 1.36009298d-15*exp(-246136.0d0/T) )/sqrt(T)
+   end function cool_CII_chianti
+
+   elemental double precision function cool_NI_chianti(T)
+   real*8, intent(in) :: T
+   cool_NI_chianti = ( 1.51401524d-18*exp(-29686.2d0/T)             &
+                     + 4.87732307d-18*exp(-34693.8d0/T)             &
+                     + 1.15970782d-17*exp(-50740.7d0/T)             &
+                     + 1.57486268d-16*exp(-139916.0d0/T)            &
+                     + 3.17477537d-16*exp(-254192.0d0/T) )/sqrt(T)
+   end function cool_NI_chianti
+
+   elemental double precision function cool_NII_chianti(T)
+   real*8, intent(in) :: T
+   cool_NII_chianti = ( 2.40595483d-20*exp(-49.914d0/T)             &
+                      + 1.24400479d-20*exp(-6521.42d0/T)            &
+                      + 8.04015794d-18*exp(-23770.8d0/T)            &
+                      + 1.54493674d-17*exp(-64487.2d0/T)            &
+                      + 2.88420949d-16*exp(-157103.0d0/T)           &
+                      + 6.94381304d-16*exp(-295894.0d0/T) )/sqrt(T)
+   end function cool_NII_chianti
+
+   elemental double precision function cool_OI_chianti(T)
+   real*8, intent(in) :: T
+   cool_OI_chianti = ( 3.23621357d-22*exp(-847.937d0/T)             &
+                     + 6.57165017d-20*exp(-19058.9d0/T)             &
+                     + 1.80264414d-18*exp(-31568.4d0/T)             &
+                     + 6.76183709d-18*exp(-70528.3d0/T)             &
+                     + 3.37196426d-17*exp(-178827.0d0/T) )/sqrt(T)
+   end function cool_OI_chianti
+
+   elemental double precision function cool_OII_chianti(T)
+   real*8, intent(in) :: T
+   cool_OII_chianti = ( 1.76816973d-17*exp(-44128.6d0/T)            &
+                      + 8.07102200d-18*exp(-59732.3d0/T)            &
+                      + 2.34447515d-16*exp(-179091.0d0/T)           &
+                      + 8.78914372d-16*exp(-325669.0d0/T) )/sqrt(T)
+   end function cool_OII_chianti
+
+   !--- Density-dependent [C II] 158um / [O I] 63um saturation ---------!
+   ! The coronal cool_CII_chianti / cool_OI_chianti above include the
+   ! ground-term fine-structure floor unsaturated; its critical density
+   ! (n_crit,e ~ 20 cm^-3 for [C II] 158um, n_crit,H ~ 4e5 cm^-3 for
+   ! [O I] 63um) lies far below the atmosphere base density, so the floor
+   ! badly overestimates base cooling. These functions replace the floor
+   ! with the EXACT two-level fine-structure solution
+   !   W_FS = f_l(T) hv A x Cdex / (A + Cdex (1+x)),  x=(g_u/g_l)e^-E/kT,
+   !   Cdex = ne k_e(T) + nHI k_H(T),  f_l = g_l/Z_term(T)
+   ! plus a multi-exp refit of the CHIANTI ground-term curve with the
+   ! (1->2) channel removed (cooling_data/fit_fs_saturation.py).
+   ! Limits: ne,nHI->0 reproduces the CHIANTI coronal curve (<=3.4%, set
+   ! by the cubic log-Upsilon fits); high density saturates at the exact
+   ! multi-level LTE value (the f_l weighting makes the two-level LTE
+   ! population equal to the full ground-term Boltzmann one).
+   ! k_e from CHIANTI .scups Upsilon; k_H de-excitation as in the legacy
+   ! use_2lev_cool branch (O I+H Draine 2011/Lique+2017, C II+H
+   ! Goldsmith+2012) -- !To Be Checked/AIOLOS tuning?
+   ! Returned per (n_e n_ion) [erg cm^3 s^-1]: W_FS/ne + Lambda_rem, so
+   ! the assembly prefactor beta_esc*ne*n_ion recovers the H-collision
+   ! part exactly (the ne cancels); ne is floored to avoid 0/0.
+   ! [O I] 146um and the C I / N II FS floors remain coronal (few-%
+   ! pieces of their respective floors).
+
+   elemental double precision function cool_CII_ne_func(T,ne,nHI)
+   real*8, intent(in) :: T, ne, nHI
+   real*8 :: xl, ups, ke, Cdex, x, f1, w
+   xl  = log10(T/1.0d4)
+   ups = 10.0d0**(0.33433316d0 + 0.11618314d0*xl                    &
+                  - 0.087925806d0*xl**2 - 0.061804561d0*xl**3)
+   ke  = 8.629d-6*ups/(4.0d0*sqrt(T))
+   Cdex = ne*ke + nHI*4.0d-11
+   x   = 2.0d0*exp(-91.213d0/T)
+   f1  = 2.0d0/(2.0d0 + 4.0d0*exp(-91.213d0/T))
+   w   = f1*kb_erg*91.213d0*2.290d-6*x*Cdex                         &
+         /(2.290d-6 + Cdex*(1.0d0 + x))
+   cool_CII_ne_func = w/max(ne, 1.0d-30)                            &
+        + ( 1.06878629d-23*exp(-294.754d0/T)                        &
+          + 3.04162479d-17*exp(-61740.4d0/T)                        &
+          + 2.30421959d-16*exp(-112006.0d0/T)                       &
+          + 1.29701808d-15*exp(-223343.0d0/T) )/sqrt(T)
+   end function cool_CII_ne_func
+
+   elemental double precision function cool_OI_ne_func(T,ne,nHI)
+   real*8, intent(in) :: T, ne, nHI
+   real*8 :: xl, ups, ke, Cdex, x, f1, w
+   xl  = log10(T/1.0d4)
+   ups = 10.0d0**(-2.0890112d0 + 0.19632883d0*xl                    &
+                  - 0.16253745d0*xl**2 + 0.041658804d0*xl**3)
+   ke  = 8.629d-6*ups/(3.0d0*sqrt(T))
+   Cdex = ne*ke + nHI*4.2d-11*(T/100.0d0)**0.67d0
+   x   = 0.6d0*exp(-227.708d0/T)
+   f1  = 5.0d0/(5.0d0 + 3.0d0*exp(-227.708d0/T) + exp(-326.567d0/T))
+   w   = f1*kb_erg*227.708d0*8.542d-5*x*Cdex                        &
+         /(8.542d-5 + Cdex*(1.0d0 + x))
+   cool_OI_ne_func = w/max(ne, 1.0d-30)                             &
+        + ( 1.29166532d-22*exp(-930.111d0/T)                        &
+          + 2.54689509d-19*exp(-22878.3d0/T)                        &
+          + 1.91904760d-18*exp(-34189.1d0/T)                        &
+          + 7.47798840d-18*exp(-75919.8d0/T)                        &
+          + 3.40871685d-17*exp(-185985.0d0/T) )/sqrt(T)
+   end function cool_OI_ne_func
+
+   ! Vectorized wrappers (grid versions for the eval_cool override).
+   subroutine cool_CII_ne(T,ne,nHI,out)
+   real*8, dimension(1-Ng:N+Ng), intent(in)  :: T, ne, nHI
+   real*8, dimension(1-Ng:N+Ng), intent(out) :: out
+   out = cool_CII_ne_func(T,ne,nHI)
+   end subroutine cool_CII_ne
+
+   subroutine cool_OI_ne(T,ne,nHI,out)
+   real*8, dimension(1-Ng:N+Ng), intent(in)  :: T, ne, nHI
+   real*8, dimension(1-Ng:N+Ng), intent(out) :: out
+   out = cool_OI_ne_func(T,ne,nHI)
+   end subroutine cool_OI_ne
+
+   !--------------!
+
    ! C I cooling rate
    subroutine cool_CI(T,coeff_cool_CI)
    real*8, dimension(1-Ng:N+Ng), intent(in) :: T
    real*8, dimension(1-Ng:N+Ng), intent(out) :: coeff_cool_CI
 
-   coeff_cool_CI = 1.0e-24 + 3.1e-20*exp(-15162.0/T)              &
-                            *(1.0 + (T/2.0e4)**1.5)
+   if (cno_chianti) then
+      coeff_cool_CI = cool_CI_chianti(T)
+   else
+      coeff_cool_CI = 1.0e-24 + 3.1e-20*exp(-15162.0/T)            &
+                               *(1.0 + (T/2.0e4)**1.5)
+   endif
 
    end subroutine cool_CI
 
@@ -798,8 +908,12 @@
    real*8, dimension(1-Ng:N+Ng), intent(in) :: T
    real*8, dimension(1-Ng:N+Ng), intent(out) :: coeff_cool_CII
 
-   coeff_cool_CII = 1.5e-23 + 3.1e-20*exp(-45162.0/T)             &
-                             *(1.0 + (T/0.75e4)**1.5)
+   if (cno_chianti) then
+      coeff_cool_CII = cool_CII_chianti(T)
+   else
+      coeff_cool_CII = 1.5e-23 + 3.1e-20*exp(-45162.0/T)           &
+                                *(1.0 + (T/0.75e4)**1.5)
+   endif
 
    end subroutine cool_CII
 
@@ -810,8 +924,12 @@
    real*8, dimension(1-Ng:N+Ng), intent(in) :: T
    real*8, dimension(1-Ng:N+Ng), intent(out) :: coeff_cool_OI
 
-   coeff_cool_OI = 5.5e-24 + 1.1e-20*exp(-30162.0/T)              &
-                            *(1.0 + (T/0.75e4)**0.5)
+   if (cno_chianti) then
+      coeff_cool_OI = cool_OI_chianti(T)
+   else
+      coeff_cool_OI = 5.5e-24 + 1.1e-20*exp(-30162.0/T)            &
+                               *(1.0 + (T/0.75e4)**0.5)
+   endif
 
    end subroutine cool_OI
 
@@ -822,30 +940,42 @@
    real*8, dimension(1-Ng:N+Ng), intent(in) :: T
    real*8, dimension(1-Ng:N+Ng), intent(out) :: coeff_cool_OII
 
-   coeff_cool_OII = 5.1e-20*exp(-35162.0/T)                       &
-                          *(1.0 + (T/0.75e4)**0.5)
+   if (cno_chianti) then
+      coeff_cool_OII = cool_OII_chianti(T)
+   else
+      coeff_cool_OII = 5.1e-20*exp(-35162.0/T)                     &
+                             *(1.0 + (T/0.75e4)**0.5)
+   endif
 
    end subroutine cool_OII
 
    !--------------!
 
    ! N I / N II line cooling.
-   ! No analytic fit is available (AIOLOS/Black provide none for N, and
-   ! ATES_extended likewise returns 0; cf. Hollenbach & McKee 1989 for a
-   ! future [N II] 122/205 um treatment). Returned as 0 so that nitrogen
-   ! participates in ionization balance but contributes no line cooling.
+   ! AIOLOS/Black provide no analytic fit for N (ATES_extended likewise
+   ! returns 0), so in the default mode nitrogen participates in the
+   ! ionization balance but contributes no line cooling. With
+   ! cno_chianti the CHIANTI fits above supply N I / N II cooling.
    subroutine cool_NI(T,coeff_cool_NI)
    real*8, dimension(1-Ng:N+Ng), intent(in)  :: T
    real*8, dimension(1-Ng:N+Ng), intent(out) :: coeff_cool_NI
-   !To Be Checked/AIOLOS tuning?
-   coeff_cool_NI = 0.0d0
+   if (cno_chianti) then
+      coeff_cool_NI = cool_NI_chianti(T)
+   else
+      !To Be Checked/AIOLOS tuning?
+      coeff_cool_NI = 0.0d0
+   endif
    end subroutine cool_NI
 
    subroutine cool_NII(T,coeff_cool_NII)
    real*8, dimension(1-Ng:N+Ng), intent(in)  :: T
    real*8, dimension(1-Ng:N+Ng), intent(out) :: coeff_cool_NII
-   !To Be Checked/AIOLOS tuning?
-   coeff_cool_NII = 0.0d0
+   if (cno_chianti) then
+      coeff_cool_NII = cool_NII_chianti(T)
+   else
+      !To Be Checked/AIOLOS tuning?
+      coeff_cool_NII = 0.0d0
+   endif
    end subroutine cool_NII
 
    !--------------!
@@ -964,43 +1094,99 @@
 
    !--------------!
 
-   ! Mg I / Mg II line cooling (CHIANTI v11; Huang 2023 Phase 2).
-   ! Mg II h&k (2796/2804 A) is the dominant metal-line coolant of the upper
-   ! thermosphere in ultrahot Jupiters (Huang+2023 Fig. 4). Lambda per (n_e n_ion).
+   ! Closed-form analytic fits to the CHIANTI v11 cooling curves
+   ! (cooling_data/fit_cooling_formulas.py; cf. metal_cooling_chianti.txt).
+   ! Resonance lines use the exact two-level skeleton
+   !    Lambda(T) = 8.629e-6/(g_l sqrt(T)) * Ups(T) * dE * exp(-dE/kT)
+   ! with the Burgess-Tully type-1 effective collision strength
+   !    Ups(T) = a + b*ln(1 + T/T0)
+   ! fitted to the CHIANTI table (dE is the .scups theoretical transition
+   ! energy recovered by the fit, not the observed-wavelength energy).
+   ! Max error vs the 201-point source table over 1e3-1e5 K:
+   !   Mg I 2.8%, Mg II 1.1%, Ca II 1.2%, Na I 0.01% (Na I is exactly
+   !   Van Regemorter with constant Ups by construction).
+
+   ! Mg I 2853 A (3s2 1S0 -> 3s3p 1P1); dE = 4.3381 eV, g_l = 1
+   elemental double precision function cool_MgI_func(T)
+   real*8, intent(in) :: T
+   real*8 :: ups
+   ups = 0.35579231d0 + 15.122288d0*log(1.0d0 + T/94126.484d0)
+   cool_MgI_func = 8.629d-6/sqrt(T)*ups*6.95044482d-12              &
+                   *exp(-50341.867d0/T)
+   end function cool_MgI_func
+
+   ! Mg II h&k 2796/2804 A (3s 2S -> 3p 2P); dE = 4.2766 eV, g_l = 2.
+   ! The dominant metal-line coolant of the upper thermosphere in
+   ! ultrahot Jupiters (Huang+2023 Fig. 4).
+   elemental double precision function cool_MgII_func(T)
+   real*8, intent(in) :: T
+   real*8 :: ups
+   ups = 16.230522d0 + 20.344762d0*log(1.0d0 + T/121896.19d0)
+   cool_MgII_func = 8.629d-6/(2.0d0*sqrt(T))*ups*6.85184290d-12     &
+                    *exp(-49627.696d0/T)
+   end function cool_MgII_func
+
+   ! Ca II H&K 3934/3969 A (4s 2S -> 4p 2P); dE = 3.1438 eV, g_l = 2
+   elemental double precision function cool_CaII_func(T)
+   real*8, intent(in) :: T
+   real*8 :: ups
+   ups = 14.741545d0 + 19.491995d0*log(1.0d0 + T/36218.324d0)
+   cool_CaII_func = 8.629d-6/(2.0d0*sqrt(T))*ups*5.03698606d-12     &
+                    *exp(-36482.742d0/T)
+   end function cool_CaII_func
+
+   ! Na I D 5890/5896 A (3s 2S -> 3p 2P); dE = 2.1037 eV, g_l = 2,
+   ! Ups = 36.07 (constant; rigorous Van Regemorter, gbar = 0.2)
+   elemental double precision function cool_NaI_func(T)
+   real*8, intent(in) :: T
+   cool_NaI_func = 8.629d-6/(2.0d0*sqrt(T))*36.074352d0             &
+                   *3.37049304d-12*exp(-24412.382d0/T)
+   end function cool_NaI_func
+
+   ! Fe II GROUND-LEVEL coronal cooling (Lambda propto n_e, no level
+   ! saturation): sum over hundreds of CHIANTI transitions, fitted by four
+   ! effective two-level groups, Lambda = T^-1/2 sum_i A_i exp(-T_i/T)
+   ! (T_i ~ a6D IR fine structure 0.12 eV, optical metastable 0.83 eV,
+   ! UV resonance 5.1 eV, high-energy tail 12 eV; max err 1.6%).
+   ! Retained for the post-process scalar fallback only; the cooling
+   ! assembly uses the density-dependent cool_FeII_ne.
+   elemental double precision function cool_FeII_func(T)
+   real*8, intent(in) :: T
+   cool_FeII_func = ( 1.98893470d-18*exp(-1350.0756d0/T)            &
+                    + 1.67934160d-17*exp(-9630.3075d0/T)            &
+                    + 6.53618984d-16*exp(-58939.313d0/T)            &
+                    + 7.46383822d-16*exp(-139593.29d0/T) )/sqrt(T)
+   end function cool_FeII_func
+
+   ! Vectorized wrappers (grid versions used by the cooling assembly).
    subroutine cool_MgI(T,coeff_cool_MgI)
    real*8, dimension(1-Ng:N+Ng), intent(in)  :: T
    real*8, dimension(1-Ng:N+Ng), intent(out) :: coeff_cool_MgI
-   call interp_cool_table(cool_logL_MgI, T, coeff_cool_MgI)
+   coeff_cool_MgI = cool_MgI_func(T)
    end subroutine cool_MgI
 
    subroutine cool_MgII(T,coeff_cool_MgII)
    real*8, dimension(1-Ng:N+Ng), intent(in)  :: T
    real*8, dimension(1-Ng:N+Ng), intent(out) :: coeff_cool_MgII
-   call interp_cool_table(cool_logL_MgII, T, coeff_cool_MgII)
+   coeff_cool_MgII = cool_MgII_func(T)
    end subroutine cool_MgII
 
-   !--------------!
-
-   ! Ca II H&K / Na I D / Fe II line cooling (CHIANTI v11; Huang 2023 Phase 2).
    subroutine cool_CaII(T,coeff_cool_CaII)
    real*8, dimension(1-Ng:N+Ng), intent(in)  :: T
    real*8, dimension(1-Ng:N+Ng), intent(out) :: coeff_cool_CaII
-   call interp_cool_table(cool_logL_CaII, T, coeff_cool_CaII)
+   coeff_cool_CaII = cool_CaII_func(T)
    end subroutine cool_CaII
 
    subroutine cool_NaI(T,coeff_cool_NaI)
    real*8, dimension(1-Ng:N+Ng), intent(in)  :: T
    real*8, dimension(1-Ng:N+Ng), intent(out) :: coeff_cool_NaI
-   call interp_cool_table(cool_logL_NaI, T, coeff_cool_NaI)
+   coeff_cool_NaI = cool_NaI_func(T)
    end subroutine cool_NaI
 
-   ! Fe II GROUND-LEVEL coronal cooling (1-D, Lambda propto n_e). Retained as
-   ! the low-density edge of the 2-D table and as the post-process scalar
-   ! fallback; the cooling assembly uses the density-dependent cool_FeII_ne.
    subroutine cool_FeII(T,coeff_cool_FeII)
    real*8, dimension(1-Ng:N+Ng), intent(in)  :: T
    real*8, dimension(1-Ng:N+Ng), intent(out) :: coeff_cool_FeII
-   call interp_cool_table(cool_logL_FeII, T, coeff_cool_FeII)
+   coeff_cool_FeII = cool_FeII_func(T)
    end subroutine cool_FeII
 
    ! Fe II density-dependent line cooling: multilevel statistical-equilibrium
@@ -1707,8 +1893,12 @@
    double precision function cool_CI_func(T)
    real*8, intent(in) :: T
 
-   cool_CI_func = 1.0e-24 + 3.1e-20*exp(-15162.0/T)               &
-                           *(1.0 + (T/2.0e4)**1.5)
+   if (cno_chianti) then
+      cool_CI_func = cool_CI_chianti(T)
+   else
+      cool_CI_func = 1.0e-24 + 3.1e-20*exp(-15162.0/T)            &
+                              *(1.0 + (T/2.0e4)**1.5)
+   endif
 
    end function cool_CI_func
 
@@ -1718,8 +1908,12 @@
    double precision function cool_CII_func(T)
    real*8, intent(in) :: T
 
-   cool_CII_func = 1.5e-23 + 3.1e-20*exp(-45162.0/T)              &
-                            *(1.0 + (T/0.75e4)**1.5)
+   if (cno_chianti) then
+      cool_CII_func = cool_CII_chianti(T)
+   else
+      cool_CII_func = 1.5e-23 + 3.1e-20*exp(-45162.0/T)           &
+                               *(1.0 + (T/0.75e4)**1.5)
+   endif
 
    end function cool_CII_func
 
@@ -1729,8 +1923,12 @@
    double precision function cool_OI_func(T)
    real*8, intent(in) :: T
 
-   cool_OI_func = 5.5e-24 + 1.1e-20*exp(-30162.0/T)               &
-                           *(1.0 + (T/0.75e4)**0.5)
+   if (cno_chianti) then
+      cool_OI_func = cool_OI_chianti(T)
+   else
+      cool_OI_func = 5.5e-24 + 1.1e-20*exp(-30162.0/T)            &
+                              *(1.0 + (T/0.75e4)**0.5)
+   endif
 
    end function cool_OI_func
 
@@ -1740,8 +1938,12 @@
    double precision function cool_OII_func(T)
    real*8, intent(in) :: T
 
-   cool_OII_func = 5.1e-20*exp(-35162.0/T)                        &
-                         *(1.0 + (T/0.75e4)**0.5)
+   if (cno_chianti) then
+      cool_OII_func = cool_OII_chianti(T)
+   else
+      cool_OII_func = 5.1e-20*exp(-35162.0/T)                     &
+                            *(1.0 + (T/0.75e4)**0.5)
+   endif
 
    end function cool_OII_func
 
@@ -1953,31 +2155,38 @@
 
    ! Scalar (single-T) metal line-cooling coefficient Lambda(T)
    ! [erg cm^3 s^-1] per (n_e n_ion), dispatched by canonical ion index.
-   ! Mirrors cool_coeff_by_ion exactly: C/N/O use the analytic Black fits
-   ! (same constants as the vectorized cool_*), Mg/Ca/Na/Fe interpolate
-   ! the CHIANTI tables. Provided so the post-process temperature solve
-   ! can include the full metal coolant set.
+   ! Mirrors cool_coeff_by_ion exactly: C/N/O use the analytic Black fits,
+   ! Mg/Ca/Na/Fe II the analytic CHIANTI fits (same elemental functions as
+   ! the vectorized cool_*); only Fe I interpolates its table. Provided so
+   ! the post-process temperature solve can include the full metal coolant
+   ! set.
    double precision function cool_coeff_by_ion_scalar(i,Ts)
    integer, intent(in) :: i
    real*8, intent(in) :: Ts
    select case (i)
-      case (im_CI);   cool_coeff_by_ion_scalar = cool_CI_func (Ts)
-      case (im_CII);  cool_coeff_by_ion_scalar = cool_CII_func(Ts)
-      case (im_OI);   cool_coeff_by_ion_scalar = cool_OI_func (Ts)
-      case (im_OII);  cool_coeff_by_ion_scalar = cool_OII_func(Ts)
-      case (im_NI, im_NII); cool_coeff_by_ion_scalar = 0.0d0
-      case (im_MgI);  cool_coeff_by_ion_scalar = &
-                        interp_cool_table_scalar(cool_logL_MgI,  Ts)
-      case (im_MgII); cool_coeff_by_ion_scalar = &
-                        interp_cool_table_scalar(cool_logL_MgII, Ts)
-      case (im_CaII); cool_coeff_by_ion_scalar = &
-                        interp_cool_table_scalar(cool_logL_CaII, Ts)
-      case (im_NaI);  cool_coeff_by_ion_scalar = &
-                        interp_cool_table_scalar(cool_logL_NaI,  Ts)
+      case (im_CI);   cool_coeff_by_ion_scalar = cool_CI_func  (Ts)
+      case (im_CII);  cool_coeff_by_ion_scalar = cool_CII_func (Ts)
+      case (im_OI);   cool_coeff_by_ion_scalar = cool_OI_func  (Ts)
+      case (im_OII);  cool_coeff_by_ion_scalar = cool_OII_func (Ts)
+      case (im_NI)
+         if (cno_chianti) then
+            cool_coeff_by_ion_scalar = cool_NI_chianti(Ts)
+         else
+            cool_coeff_by_ion_scalar = 0.0d0
+         endif
+      case (im_NII)
+         if (cno_chianti) then
+            cool_coeff_by_ion_scalar = cool_NII_chianti(Ts)
+         else
+            cool_coeff_by_ion_scalar = 0.0d0
+         endif
+      case (im_MgI);  cool_coeff_by_ion_scalar = cool_MgI_func (Ts)
+      case (im_MgII); cool_coeff_by_ion_scalar = cool_MgII_func(Ts)
+      case (im_CaII); cool_coeff_by_ion_scalar = cool_CaII_func(Ts)
+      case (im_NaI);  cool_coeff_by_ion_scalar = cool_NaI_func (Ts)
       case (im_FeI);  cool_coeff_by_ion_scalar = &
                         interp_cool_table_scalar(cool_logL_FeI,  Ts)
-      case (im_FeII); cool_coeff_by_ion_scalar = &
-                        interp_cool_table_scalar(cool_logL_FeII, Ts)
+      case (im_FeII); cool_coeff_by_ion_scalar = cool_FeII_func(Ts)
       case default;   cool_coeff_by_ion_scalar = 0.0d0
    end select
    end function cool_coeff_by_ion_scalar

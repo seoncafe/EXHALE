@@ -1,0 +1,320 @@
+%% ATES-metal (EXHALE): closed-form metal line-cooling formulas.
+%% Complete reference for the analytic cooling coefficients implemented in
+%% Cool_coeff.f90 (2026-06-11): CHIANTI-fitted resonance lines, Fe II,
+%% C/N/O (with the legacy AIOLOS fits for comparison), and the
+%% density-dependent [C II] 158um / [O I] 63um fine-structure saturation.
+%% Fit provenance: cooling_data/fit_cooling_formulas.py,
+%% fit_cno_formulas.py, fit_fs_saturation.py; figures by
+%% cooling_data/make_cooling_doc_figures.py.
+%% Author: Kwang-Il Seon
+\documentclass[english,a4paper]{kiseon_memo}
+\synctex=1
+\usepackage{booktabs}
+\usepackage{amsmath}
+\usepackage{graphicx}
+\usepackage{babel}
+\emergencystretch=3em
+
+\title{Closed-form metal line-cooling formulas in ATES-metal}
+\author{Kwang-Il Seon}
+\date{2026-06-11}
+
+\begin{document}
+\maketitle
+
+\section{Overview and conventions}
+
+All metal line-cooling coefficients in \texttt{Cool\_coeff.f90} are
+evaluated from closed-form analytic expressions fitted to the CHIANTI
+v11.0.2 database (Burgess--Tully descaled \texttt{.scups} effective
+collision strengths); only Fe\,I (1-D) and the density-dependent Fe\,II
+statistical-equilibrium coefficient (2-D) remain tabulated.  Throughout,
+$\Lambda(T)$ denotes the effective cooling coefficient \emph{per}
+$(n_e\,n_{\rm ion})$ in $\mathrm{erg\,cm^3\,s^{-1}}$, in the optically
+thin limit (every collisional excitation is followed by a radiative
+decay); the cooling assembly multiplies by
+$\beta_{\rm esc}\,n_e\,n_{\rm ion}$.  Lower levels are populated in
+Boltzmann equilibrium over the ground-term fine structure where one
+exists.  Two practical conventions matter when reproducing the numbers:
+(i) the code uses $k_B = 1.38\times10^{-16}\,\mathrm{erg\,K^{-1}}$
+(rounded, code-wide); (ii) the transition energies recovered by the fits
+are the CHIANTI \texttt{.scups} \emph{theoretical} energies, which can
+differ from the observed-wavelength energies by a few percent (e.g.\
+Mg\,II $4.277$ vs.\ $4.43$\,eV) --- using the observed value inflates
+the fit error from ${\sim}1\%$ to ${\sim}5\%$.
+
+Fit scripts (in \texttt{cooling\_data/}):
+\texttt{fit\_cooling\_formulas.py} (resonance lines, Fe\,II),
+\texttt{fit\_cno\_formulas.py} (C/N/O),
+\texttt{fit\_fs\_saturation.py} (fine-structure saturation).
+The companion notebooks \texttt{cooling\_formula\_fits.ipynb} and
+\texttt{cno\_cooling\_comparison.ipynb} reproduce every figure here.
+
+\section{Resonance lines: exact two-level skeleton}
+\label{sec:resonance}
+
+A single-channel resonance line obeys exactly
+\begin{equation}
+\Lambda(T) \;=\; \frac{8.629\times10^{-6}}{g_l\,\sqrt{T}}\;
+\Upsilon(T)\;\Delta E\;e^{-\Delta E/k_BT},
+\label{eq:twolevel}
+\end{equation}
+so the only quantity to fit is the slowly varying effective collision
+strength, for which the Burgess--Tully type-1 asymptotic form
+\begin{equation}
+\Upsilon(T) \;=\; a + b\,\ln\!\left(1 + T/T_0\right)
+\label{eq:btups}
+\end{equation}
+suffices.  Table~\ref{tab:resonance} lists the fitted constants;
+Fig.~\ref{fig:resfits} compares the formulas with the source tables.
+Na\,I D is reproduced essentially exactly because the underlying rate
+is itself a Van Regemorter expression with constant $\Upsilon$
+(calibrated to CHIANTI Mg\,II/Ca\,II with $\bar g\simeq0.2$; Na\,I has
+no CHIANTI electron-collision model).
+
+\begin{table}[htbp]
+\centering\small
+\caption{Resonance-line cooling: Eqs.~(\ref{eq:twolevel}--\ref{eq:btups}).
+$\Delta E$ is the fitted (\texttt{.scups} theoretical) transition energy.
+``Max err'' is the maximum deviation from the 201-point CHIANTI source
+table over $10^3$--$10^5$\,K.}
+\label{tab:resonance}
+\begin{tabular}{lccccccc}
+\toprule
+channel & $g_l$ & $\Delta E$ [eV] & $a$ & $b$ & $T_0$ [K] & max err \\
+\midrule
+Mg\,I $\lambda$2853 & 1 & 4.3381 & 0.355792 & 15.1223 & 94126.5 & 2.8\% \\
+Mg\,II h\&k         & 2 & 4.2766 & 16.2305  & 20.3448 & 121896  & 1.1\% \\
+Ca\,II H\&K         & 2 & 3.1438 & 14.7415  & 19.4920 & 36218.3 & 1.2\% \\
+Na\,I D             & 2 & 2.1037 & 36.0744  & 0 (const.) & ---  & 0.01\% \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.78\textwidth]{figures/cool_resonance_fits.pdf}
+\caption{CHIANTI cooling tables (solid) vs.\ the closed-form fits
+(dashed) for the four resonance channels and the two Fe\,II population
+models (Sect.~\ref{sec:feii}).  Bottom: signed residuals; the grey band
+is $\pm1\%$.}
+\label{fig:resfits}
+\end{figure}
+
+\section{Fe II: sum of effective two-level groups}
+\label{sec:feii}
+
+Fe\,II cooling sums hundreds of transitions with $\Delta E$ from
+${\sim}0.05$\,eV (a$^6$D fine structure) to several eV, so a single
+exponential cannot represent it.  Four effective two-level groups do:
+\begin{equation}
+\Lambda(T) \;=\; T^{-1/2}\sum_{i=1}^{4} A_i\,e^{-T_i/T}.
+\label{eq:multiexp}
+\end{equation}
+The fitted $T_i$ (Table~\ref{tab:feii}) map onto physically meaningful
+transition groups --- infrared fine structure, optical metastable, UV
+resonance, and a high-energy tail (Fig.~\ref{fig:feiidecomp}).
+
+\begin{table}[htbp]
+\centering\small
+\caption{Fe\,II coefficients for Eq.~(\ref{eq:multiexp}).  ``Coronal''
+populates the ground level only; ``Boltzmann'' distributes the lower
+levels over the metastable manifold ($E<4.8$\,eV, Huang 2023).}
+\label{tab:feii}
+\begin{tabular}{lcccc}
+\toprule
+ & \multicolumn{2}{c}{Fe\,II coronal (max err 1.6\%)} &
+   \multicolumn{2}{c}{Fe\,II Boltzmann (max err 1.2\%)} \\
+\cmidrule(lr){2-3}\cmidrule(lr){4-5}
+$i$ & $A_i$ & $T_i$ [K] & $A_i$ & $T_i$ [K] \\
+\midrule
+1 & $1.9889\times10^{-18}$ & 1350.1   & $1.5019\times10^{-18}$ & 1175.7 \\
+2 & $1.6793\times10^{-17}$ & 9630.3   & $9.7419\times10^{-18}$ & 8678.5 \\
+3 & $6.5362\times10^{-16}$ & 58939.3  & $5.2485\times10^{-16}$ & 57594.7 \\
+4 & $7.4638\times10^{-16}$ & 139593.3 & $4.7387\times10^{-16}$ & 140620.2 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.62\textwidth]{figures/cool_feii_decomp.pdf}
+\caption{Fe\,II coronal cooling decomposed into the four effective
+two-level groups of Eq.~(\ref{eq:multiexp}).}
+\label{fig:feiidecomp}
+\end{figure}
+
+In the cooling \emph{assembly} the coronal formula is superseded by the
+2-D statistical-equilibrium table $\Lambda_{\rm eff}(T,n_e)$
+(\texttt{cool\_logL\_FeII\_ne}): the forbidden a$^6$D lines have
+$n_{\rm crit}\sim10^4$--$10^7\,\mathrm{cm^{-3}}$ and saturate at the
+dense base.  The closed-form coronal expression is retained for the
+post-process scalar fallback and matches the low-$n_e$ edge of the 2-D
+table to ${\sim}1.6\%$.
+
+\section{C, N, O: CHIANTI fits vs.\ the legacy AIOLOS formulas}
+\label{sec:cno}
+
+The C/N/O coolants inherited from AIOLOS (\texttt{photochem.cpp}; no
+in-code citation, likely Cloudy-calibrated) are
+\begin{align}
+\Lambda_{\rm CI}^{\rm AIO}  &= 10^{-24} + 3.1\times10^{-20}\,
+   e^{-15162/T}\bigl[1+(T/2\times10^4)^{1.5}\bigr],\nonumber\\
+\Lambda_{\rm CII}^{\rm AIO} &= 1.5\times10^{-23} + 3.1\times10^{-20}\,
+   e^{-45162/T}\bigl[1+(T/7500)^{1.5}\bigr],\nonumber\\
+\Lambda_{\rm OI}^{\rm AIO}  &= 5.5\times10^{-24} + 1.1\times10^{-20}\,
+   e^{-30162/T}\bigl[1+(T/7500)^{0.5}\bigr],\nonumber\\
+\Lambda_{\rm OII}^{\rm AIO} &= 5.1\times10^{-20}\,
+   e^{-35162/T}\bigl[1+(T/7500)^{0.5}\bigr],
+\label{eq:aiolos}
+\end{align}
+with no nitrogen cooling at all.  The replacement CHIANTI fits use the
+same multi-exponential form as Fe\,II,
+Eq.~(\ref{eq:multiexp}) with 4--6 terms (Table~\ref{tab:cno}); lower
+levels are Boltzmann-populated over the ground-term fine structure
+(C\,I\,$^3$P, C\,II\,$^2$P, N\,II\,$^3$P, O\,I\,$^3$P; the $^4$S
+ground of N\,I and O\,II is a single level).
+
+Figure~\ref{fig:cno} compares the three.  The AIOLOS carbon fits track
+CHIANTI remarkably well near $10^4$\,K (C\,I to ${\sim}1\%$), which
+suggests they were calibrated against data of similar provenance; the
+oxygen fits however deviate by 40--70\% across the wind-launch region
+($1$--$3\times10^4$\,K), and nitrogen --- a non-negligible coolant
+around $2\times10^4$\,K --- was absent entirely.  The runtime key
+\texttt{cno\_cool} in \texttt{metals.inp} selects the source
+(\texttt{1} = CHIANTI fits, the default; \texttt{0} = legacy AIOLOS).
+
+\begin{table}[htbp]
+\centering\small
+\caption{C/N/O coefficients for Eq.~(\ref{eq:multiexp}) (CHIANTI
+ground-term curves; per $(n_e n_{\rm ion})$).  The notation $a(b)$
+means $a\times10^{b}$.  Max err is vs.\ the recomputed CHIANTI curve
+over $10^3$--$10^5$\,K.}
+\label{tab:cno}
+\begin{tabular}{llcccccc}
+\toprule
+ion (max err) & & $i{=}1$ & $i{=}2$ & $i{=}3$ & $i{=}4$ & $i{=}5$ & $i{=}6$ \\
+\midrule
+C\,I (1.8\%)  & $A_i$ & 1.106($-$20) & 1.392($-$18) & 6.962($-$18) & 6.593($-$17) & 3.017($-$16) & \\
+              & $T_i$ [K] & 2351 & 15172 & 25411 & 72609 & 177264 & \\
+\addlinespace[2pt]
+C\,II (0.5\%) & $A_i$ & 3.004($-$20) & 2.410($-$20) & 3.904($-$17) & 3.332($-$16) & 1.360($-$15) & \\
+              & $T_i$ [K] & 61.4 & 7183 & 64104 & 124809 & 246136 & \\
+\addlinespace[2pt]
+N\,I (0.6\%)  & $A_i$ & 1.514($-$18) & 4.877($-$18) & 1.160($-$17) & 1.575($-$16) & 3.175($-$16) & \\
+              & $T_i$ [K] & 29686 & 34694 & 50741 & 139916 & 254192 & \\
+\addlinespace[2pt]
+N\,II (0.1\%) & $A_i$ & 2.406($-$20) & 1.244($-$20) & 8.040($-$18) & 1.545($-$17) & 2.884($-$16) & 6.944($-$16) \\
+              & $T_i$ [K] & 49.9 & 6521 & 23771 & 64487 & 157103 & 295894 \\
+\addlinespace[2pt]
+O\,I (2.1\%)  & $A_i$ & 3.236($-$22) & 6.572($-$20) & 1.803($-$18) & 6.762($-$18) & 3.372($-$17) & \\
+              & $T_i$ [K] & 848 & 19059 & 31568 & 70528 & 178827 & \\
+\addlinespace[2pt]
+O\,II (0.2\%) & $A_i$ & 1.768($-$17) & 8.071($-$18) & 2.344($-$16) & 8.789($-$16) & & \\
+              & $T_i$ [K] & 44129 & 59732 & 179091 & 325669 & & \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.92\textwidth]{figures/cool_cno_compare.pdf}
+\caption{C/N/O line cooling: CHIANTI v11 (solid blue), the new
+closed-form fits (black dashed), and the legacy AIOLOS formulas (red
+dotted; absent for nitrogen).  Deviation strips show the percentage
+difference from CHIANTI; the grey band is $\pm5\%$.}
+\label{fig:cno}
+\end{figure}
+
+\section{Density-dependent fine-structure saturation}
+\label{sec:fs}
+
+The coronal C\,II and O\,I curves include the ground-term
+fine-structure floors ([C\,II] 158\,$\mu$m, [O\,I] 63\,$\mu$m)
+\emph{unsaturated}, although their critical densities
+($n_{\rm crit,e}\simeq20\,\mathrm{cm^{-3}}$ for [C\,II];
+$n_{\rm crit,H}\simeq4\times10^5\,\mathrm{cm^{-3}}$ for [O\,I]) lie far
+below the atmosphere base density.  In the CHIANTI mode the floor is
+therefore replaced by the exact two-level solution
+\begin{equation}
+W_{\rm FS}(T,n_e,n_{\rm HI}) \;=\; f_l(T)\,
+\frac{h\nu\,A_{ul}\,x\,C_{\rm dex}}{A_{ul} + C_{\rm dex}\,(1+x)},
+\qquad
+x = \frac{g_u}{g_l}\,e^{-E/k_BT},\qquad
+C_{\rm dex} = n_e k_e(T) + n_{\rm HI}\,k_{\rm H}(T),
+\label{eq:fs}
+\end{equation}
+in erg\,s$^{-1}$ per ion, plus a multi-exponential refit of the
+CHIANTI curve with the $1{\to}2$ channel removed (the ``remainder'').
+The ground-term Boltzmann weight $f_l = g_l/Z_{\rm term}(T)$ makes the
+high-density limit of Eq.~(\ref{eq:fs}) equal to the exact multi-level
+LTE population result, while the $C_{\rm dex}\to0$ limit reproduces the
+CHIANTI coronal channel by construction (verified to $\le3.4\%$, set by
+the cubic log-$\Upsilon$ fits below).  The assembly uses
+$\Lambda_{\rm eff} = W_{\rm FS}/n_e + \Lambda_{\rm rem}(T)$, so the
+$n_e$ prefactor cancels and the H-collision channel --- which the
+electron-only coronal curves lack entirely --- is recovered exactly.
+
+Atomic data: [C\,II] $E/k_B = 91.21$\,K, $A_{ul}=2.290\times10^{-6}$
+\,s$^{-1}$, $g_l{=}2$, $g_u{=}4$ (the two-level form is exact);
+[O\,I] 63\,$\mu$m $E/k_B = 227.71$\,K, $A_{ul}=8.542\times10^{-5}$
+\,s$^{-1}$, $g_l{=}5$, $g_u{=}3$, with
+$f_1 = 5/(5+3e^{-227.7/T}+e^{-326.6/T})$.  The electron de-excitation
+rate is $k_e = 8.629\times10^{-6}\,\Upsilon(T)/(g_u\sqrt T)$ with
+$\log_{10}\Upsilon$ a cubic in $x=\log_{10}(T/10^4)$ fitted to the
+CHIANTI $\Upsilon$ (max err 3.4--3.6\%); the H-atom rates follow the
+values used by the legacy \texttt{use\_2lev\_cool} branch
+($4.0\times10^{-11}$ for C\,II, Goldsmith et al.\ 2012;
+$4.2\times10^{-11}(T/100)^{0.67}$ for O\,I, Draine 2011 / Lique et al.\
+2017; both flagged approximate).  The weaker [O\,I] 146\,$\mu$m and the
+C\,I / N\,II fine-structure floors remain coronal --- each is a
+few-percent piece of its floor.
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.95\textwidth]{figures/cool_fs_saturation.pdf}
+\caption{Effective C\,II (left) and O\,I (right) cooling coefficients
+with the fine-structure floor saturated, Eq.~(\ref{eq:fs}), for
+densities from the wind to the deep base, compared with the
+electron-only coronal curve.  The [C\,II] floor is suppressed by up to
+${\sim}4\times10^3$ at base densities; for O\,I the H-collision channel
+partly offsets the saturation in mostly neutral gas.}
+\label{fig:fssat}
+\end{figure}
+
+The practical impact is large: on WASP-121b the \emph{unsaturated}
+CHIANTI floors had lowered the base temperature by ${\sim}1000$\,K and
+the mass-loss rate by 15\% ($\log\dot M$ 13.31${\to}$13.24); with
+Eq.~(\ref{eq:fs}) both effects disappear ($\log\dot M = 13.31$;
+saturated vs.\ AIOLOS profiles differ by at most 111\,K, 1.7\%).  This
+appears to indicate that the small constant floors of the AIOLOS fits,
+Eq.~(\ref{eq:aiolos}), effectively encode the saturated regime, which
+is likely why they performed well in practice.  The genuinely new
+physics of the CHIANTI mode is then the nitrogen cooling, the corrected
+O\,I/O\,II curves, and the H-collision fine-structure channel.
+
+\section{Free--free and the remaining tabulated pieces}
+
+Free--free cooling keeps the Huang (2023) Eq.~(9) form,
+$\Lambda_{\rm ff} = 1.9095\times10^{-25}\,Z^2\,(T/10^4)^{0.55}$ per
+$(n_e n_{\rm ion})$.  Two coefficients remain tabulated because they
+are not reducible to closed form: Fe\,I (NIST $f$-values + Van
+Regemorter over the even-parity metastable manifold; 1-D in $T$) and
+the Fe\,II multilevel statistical-equilibrium coefficient
+$\Lambda_{\rm eff}(T,n_e)$ (2-D).  A possible future step, analogous to
+Sect.~\ref{sec:fs}, would be a closed-form saturation treatment of the
+Fe\,II a$^6$D manifold, but the 2-D table is exact within its grid and
+carries no runtime cost concern.
+
+\paragraph{Known limitations.}
+(i) The legacy \texttt{use\_2lev\_cool} branch hard-codes the AIOLOS
+exponential parts for C\,II/O\,I and is not reached by the CHIANTI
+formulas; it is superseded by Sect.~\ref{sec:fs} and kept only for
+comparison (default off).
+(ii) The H-collision rates in Eq.~(\ref{eq:fs}) are order-of-magnitude
+literature values, not fits to a specific calculation
+(\texttt{!To Be Checked} in the source).
+(iii) All formulas are calibrated over $10^3$--$10^5$\,K; outside this
+range they extrapolate smoothly but are unvalidated.
+
+\end{document}

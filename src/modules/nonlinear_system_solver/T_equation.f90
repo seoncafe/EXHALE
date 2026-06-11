@@ -127,6 +127,12 @@
             ! density-dependent Fe II (matches eval_cool's c_metal override:
             ! the local ne selects the coronal->LTE-saturated coefficient)
             cool_M = cool_M + pp_nm_cell(im)*cool_FeII_ne_scalar(TT, ne)
+         else if (cno_chianti .and. im .eq. im_CII) then
+            ! density-dependent [C II] 158um floor (matches eval_cool)
+            cool_M = cool_M + pp_nm_cell(im)*cool_CII_ne_func(TT, ne, nhi)
+         else if (cno_chianti .and. im .eq. im_OI) then
+            ! density-dependent [O I] 63um floor (matches eval_cool)
+            cool_M = cool_M + pp_nm_cell(im)*cool_OI_ne_func(TT, ne, nhi)
          else
             cool_M = cool_M + pp_nm_cell(im)                          &
                               *cool_coeff_by_ion_scalar(im, TT)

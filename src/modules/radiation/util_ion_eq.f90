@@ -411,6 +411,21 @@
 	call cool_FeII_ne(T_K, ne, metal_col)
 	c_metal(:,im_FeII) = metal_col
 
+	! Density-dependent override for the [C II] 158um / [O I] 63um
+	! ground-term fine-structure floors (CHIANTI mode only; the legacy
+	! AIOLOS fits keep their own constant floors). Same Lambda_eff =
+	! W_FS/ne + remainder convention as Fe II above; the two-level
+	! solution saturates the floor (n_crit,e([C II]) ~ 20 cm^-3!) and
+	! adds the H-collision excitation channel the electron-only coronal
+	! curve misses. See cool_CII_ne_func / cooling_data/
+	! fit_fs_saturation.py.
+	if (cno_chianti) then
+		call cool_CII_ne(T_K, ne, nhi, metal_col)
+		c_metal(:,im_CII) = metal_col
+		call cool_OI_ne(T_K, ne, nhi, metal_col)
+		c_metal(:,im_OI) = metal_col
+	endif
+
 	! AIOLOS-style β escape probability for resonance line trapping.
 	! tau_eff = local opacity (lowest XUV band) * cell width [cm].
 	! s_*(1) are in 1e-18 cm^2, so multiply by 1e-18.

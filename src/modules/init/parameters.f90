@@ -56,6 +56,14 @@
                                           !  of the energy grid/SED below 13.6 eV
       logical :: use_2lev_cool  = .false. ! Two-level fine-structure metal
                                           !  cooling ([O I] 63um, [C II] 158um)
+      logical :: cno_chianti    = .true.  ! C/N/O line cooling source:
+                                          !  .true. (default) = CHIANTI v11
+                                          !   closed-form fits incl. N I/N II,
+                                          !  .false. = legacy AIOLOS analytic
+                                          !   fits (C I/C II/O I/O II only;
+                                          !   no N cooling; O off by 40-70%
+                                          !   vs CHIANTI in the wind region)
+                                          !   (metals.inp key 'cno_cool 0|1')
       integer :: pp_metal_mode  = 1       ! Metal treatment in the advection
                                           !  post-process (post_process_adv):
                                           !  0 = metal-free (legacy: metals
