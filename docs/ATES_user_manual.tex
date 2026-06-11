@@ -834,8 +834,12 @@ absorption depths (theoretical, instrument-convolved, and
 instrument+rotation-convolved) for \textbf{He\,10830}, \textbf{Ly$\alpha$},
 \textbf{H$\alpha$/H$\beta$} (from the non-LTE $n{=}2$ population, Christie+2013,
 pumped by the Ly$\alpha$ field of \S\ref{sec:jlya}),
-and the metal resonance lines \textbf{Mg\,II\,2796}, \textbf{Ca\,II\,K\,3934},
-\textbf{Na\,I\,D2\,5890} (line-center and 4\,\AA-band depth). It supports two
+and the metal resonance doublets \textbf{Mg\,II\,h\&k}, \textbf{Ca\,II\,H\&K},
+and \textbf{Na\,I\,D} --- the metals get the same full treatment as the H/He
+lines (both doublet components in one window, theoretical / instrument /
+$+$rotation spectra, figures via \texttt{fig\_name\_mgii/caii/nai}), plus the
+validated single-component line-center and 4\,\AA-band depth table; a
+metals-off run skips them automatically. It supports two
 geometries via \texttt{geometry = 'spherical'} (Phase~5a) or \texttt{'triaxial'}
 (Phase~5b, the 3-D Roche-equipotential reconstruction in \texttt{roche\_recon.py}).
 Set the planet/star parameters in its header (e.g.\ \texttt{R\_star},

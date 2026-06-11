@@ -870,6 +870,101 @@ for lbl, lam_, f_, A_, m_, ncol_, R_ in metal_lines:
 	print('(TPM)   %-13s   %10.3f      %10.3f' % (lbl, d_lc, d_band))
 print('')
 
+
+# --------------------------------------------------------------------- #
+# Full doublet transmission spectra for the metal resonance lines.
+# Same spherical pipeline as resonance_depth, but with BOTH doublet
+# components summed in one wavelength window, and with the instrument
+# and planet-rotation convolutions applied exactly as for the H/He
+# lines, so the metal lines are first-class TPM outputs (figures saved
+# as PNG+PDF below). The Phase 5a table above keeps the validated
+# single-component numbers. Skipped automatically for a metals-off run
+# (all-zero ion columns). NIST atomic data (Kramida 2020).
+
+fig_name_mgii = 'MgII_hk.png'   # empty = compute but do not save
+fig_name_caii = 'CaII_HK.png'
+fig_name_nai  = 'NaI_D.png'
+
+METAL_DOUBLETS = [
+	# key, label, components (lam0_A, f, A21), mass, chord density,
+	#   instrument R, window [A], nlam
+	('MgII', 'Mg II h&k',
+	 [(2796.352, 0.608, 2.60e8), (2803.531, 0.303, 2.57e8)],
+	 mMg, data_nMgII, 3.0e4, (2790.0, 2810.0), 601, fig_name_mgii),
+	('CaII', 'Ca II H&K',
+	 [(3933.663, 0.6267, 1.47e8), (3968.469, 0.3116, 1.40e8)],
+	 mCa, data_nCaII, Instr_res_Ha, (3927.0, 3975.0), 961, fig_name_caii),
+	('NaI', 'Na I D',
+	 [(5889.951, 0.641, 6.16e7), (5895.924, 0.320, 6.14e7)],
+	 mNa, data_nNaI, Instr_res_Ha, (5884.0, 5902.0), 541, fig_name_nai),
+]
+
+
+def resonance_spectrum(components, mass, n_lower, instr_res, window_A, nlam):
+	"""Disk-averaged transmission spectrum of a multi-component resonance
+	line: spherical chords, Voigt tau summed over the components,
+	instrument convolution, and planet-rotation convolution with the
+	Reff(depth) kernel of the He/Lya pipeline (vectorized in lambda)."""
+	l_onde = np.linspace(window_A[0]*1e-10, window_A[1]*1e-10, nlam)
+	nu_l   = c_light/l_onde
+	exp_tau = np.zeros((Grid_Number, nlam))
+	for p in range(Grid_Number):
+		r_temp = r_grid[p]*Rp
+		arg    = np.where(np.abs(data_r) >= r_temp)[0]
+		r_LOS  = data_r[arg]
+		x_LOS  = np.sqrt(r_LOS**2.0 - r_temp**2.0)*np.sign(r_LOS)
+		dx     = np.abs(x_LOS[1:] - x_LOS[:-1])
+		v_th   = np.sqrt(2.0*kb*data_T[arg]/mass)
+		v_x    = x_LOS*data_v[arg]/r_LOS
+		n_lo   = n_lower[arg]
+		I = np.zeros((arg.size, nlam))
+		for (lam0_A, f_osc, A21) in components:
+			nu0 = c_light/(lam0_A*1e-10)
+			Dnu = nu0*v_th/c_light
+			a_v = A21/(4.0*np.pi*Dnu)
+			X   = (nu_l[None, :] - nu0)/Dnu[:, None]
+			I  += n_lo[:, None]*f_osc*Fadd_const/Dnu[:, None] 			      * wofz(X - (v_x/v_th)[:, None] + 1j*a_v[:, None]).real
+		exp_tau[p, :] = np.exp(-np.sum(dx[:, None]/2.0
+		                               * (I[:-1, :] + I[1:, :]), axis=0))
+	prob_tot = np.array([np.trapz(x=r_grid, y=2.0*exp_tau[:, li]*r_grid)
+	                     *A_planet/(A_atm - A_planet) for li in range(nlam)])
+	avg = ((A_star - A_atm) + (A_atm - A_planet)*prob_tot)/A_star
+	avg = avg*A_star/(A_star - A_planet)
+	# instrument convolution
+	lam_ref = np.mean([co[0] for co in components])*1e-10
+	FWHM = lam_ref/instr_res
+	sig  = FWHM/(2.0*np.sqrt(2.0*np.log(2.0)))
+	vg   = np.linspace(-(l_onde[-1]-l_onde[0])*0.5,
+	                    (l_onde[-1]-l_onde[0])*0.5, nlam)
+	conv = convolve(avg, np.exp(-0.5*(vg/sig)**2.0), boundary='extend')
+	# planet-rotation convolution (Reff from the convolved depth, capped
+	# at the impact-parameter boundary Rib, as for He/Lya)
+	h = 1.0 - conv.min()
+	if h > (Rib**2.0 - 1.0)*transit_depth:
+		Reff = Rp*Rib
+	else:
+		Reff = Rp*np.sqrt((h + transit_depth)/transit_depth)
+	dl_rot  = lam_ref*(v_ang*Reff/c_light)
+	sig_rot = dl_rot/(2.0*np.sqrt(2.0*np.log(2.0)))
+	conv_rot = convolve(conv, np.exp(-0.5*(vg/sig_rot)**2.0),
+	                    boundary='extend')
+	return dict(l_plot=l_onde*1e10, avg=avg, conv=conv, conv_rot=conv_rot,
+	            Tl=(1.0 - avg.min())*100.0,
+	            Tl_conv=(1.0 - conv.min())*100.0,
+	            Tl_conv_rot=(1.0 - conv_rot.min())*100.0)
+
+
+metal_spec = {}
+for key_m, lbl_m, comps_m, m_m, ncol_m, R_m, win_m, nl_m, fnm_m 		in METAL_DOUBLETS:
+	if ncol_m.max() <= 0.0:
+		print('(TPM)   %s: ion column is zero (metals off?); skipped'
+		      % lbl_m)
+		continue
+	metal_spec[key_m] = resonance_spectrum(comps_m, m_m, ncol_m, R_m,
+	                                       win_m, nl_m)
+	metal_spec[key_m].update(label=lbl_m, comps=comps_m, fig=fnm_m)
+
+
 # ===================================================================== #
 # Phase 5b: 3-D Roche-equipotential reconstruction + velocity broadening
 # --------------------------------------------------------------------- #
@@ -1135,6 +1230,42 @@ if do_Ha:
 	if len(fig_name_hb) > 0 :
 		plt.savefig(fig_name_hb)
 		plt.savefig(fig_name_hb.rsplit('.',1)[0]+'.pdf')
+
+
+##### Figures: metal resonance doublets #####
+for key_m, sp in metal_spec.items():
+	plt.figure(figsize=(8, 7))
+	for (lam0_A, f_osc, A21) in sp['comps']:
+		plt.plot([lam0_A, lam0_A], [0.0, 1.2], '--', color=gray)
+	plt.plot(sp['l_plot'], sp['avg'], '--',
+	         label='Theoretical T$_{{\lambda}}$ = {} $\%$'.format(
+	               round(sp['Tl'], 2)))
+	plt.plot(sp['l_plot'], sp['conv'], '-.',
+	         label='Instrument conv. T$_{{\lambda}}$ = {} $\%$'.format(
+	               round(sp['Tl_conv'], 2)))
+	plt.plot(sp['l_plot'], sp['conv_rot'],
+	         label='Planet rot. + Inst. conv. T$_{{\lambda}}$ = {} $\%$'.format(
+	               round(sp['Tl_conv_rot'], 2)))
+	plt.xlabel(r"Wavelength [$\AA{}$]", fontsize=15)
+	plt.ylabel(r"T$_{\lambda}$", fontsize=15)
+	plt.xlim([sp['l_plot'][0], sp['l_plot'][-1]])
+	plt.ylim([0.95*sp['avg'].min(), 1.02*sp['avg'].max()])
+	plt.legend(loc='best', labelspacing=1)
+	plt.xticks(fontsize=14)
+	plt.yticks(fontsize=14)
+	plt.title(sp['label'].replace('&', r'\&') + r' Avg. Transm. Prob. -- '
+	          + str(sp['l_plot'].size) + ' pt in $\lambda$')
+
+	print('\n ----- Transmission probability at peak ' + sp['label']
+	      + ' ----- \n')
+	print(' - Theoretical: ', sp['Tl'], '%')
+	print(' - Instrument convolution: ', sp['Tl_conv'], '%')
+	print(' - Planet rot. + Inst. convolution: ', sp['Tl_conv_rot'], '%')
+	print('\n')
+
+	if len(sp['fig']) > 0:
+		plt.savefig(sp['fig'])
+		plt.savefig(sp['fig'].rsplit('.', 1)[0] + '.pdf')
 
 
 print("--- Execution time: %s seconds ---" % (time.time() - start))
