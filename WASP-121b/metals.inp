@@ -1,0 +1,17 @@
+# Trace metals: solar abundances (Asplund+2009 number ratios to H).
+# Each value is the TOTAL element abundance n_X/n_H (all ionization
+# stages summed); the ionization-equilibrium solver distributes it over
+# the ion stages. Bare element symbols are used to avoid the impression
+# that e.g. "MgI" means only neutral Mg.
+# ATES-metal reads this at runtime (no recompile); remove the file to
+# run metals-off.
+# C/N/O are the Phase-1 coolants; Mg/Ca/Na/Fe add the Phase-2 CHIANTI
+# line coolants (Mg I 2853, Mg II h&k, Ca II H&K, Na I D, Fe II coronal).
+C     2.69e-4
+N     6.76e-5
+O     4.90e-4
+Mg    3.98e-5
+Ca    2.19e-6
+Na    1.74e-6
+Fe    3.16e-5
+pp_metals 1

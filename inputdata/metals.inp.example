@@ -1,0 +1,10 @@
+# metals.inp -- set trace-metal abundances at runtime (no recompile).
+# Copy to ./metals.inp (next to input.inp) to activate metals.
+# One ion per line: <ION> <abundance n_X/n_H by number>.
+# '#' starts a comment. Recognized: CI->X_C, NI->X_N, OI->X_O
+# (bare C/N/O also accepted). A missing metals.inp leaves metals off.
+#
+# Solar abundances (Asplund+2009):
+CI    2.69e-4
+NI    6.76e-5
+OI    4.90e-4

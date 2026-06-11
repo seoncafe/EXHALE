@@ -1,0 +1,30 @@
+.atesopa tabulated cross-section format
+========================================
+
+Two whitespace-separated columns:
+
+    column 1: photon energy [eV]
+    column 2: photoionization cross section [1e-18 cm^2]
+
+Rows must be ordered by strictly increasing energy. Blank lines and
+comments are NOT permitted (the reader uses simple list-directed
+input). Out-of-range queries clamp to the nearest endpoint.
+
+Cross-section units match ATES's internal convention (cross_sec.f90
+returns 1e-18 cm^2 throughout). To convert from "true" cm^2 multiply
+by 1e18 before saving.
+
+Activate by adding to opacity.inp:
+
+    OPACITY_MODEL = T
+    OPA_FILE_HI   = inputdata/HI_sample.atesopa
+    OPA_FILE_HEI  = inputdata/HeI_sample.atesopa
+    ...
+
+Per-species files are independent: any species without an OPA_FILE_*
+entry falls back to the analytic curve from cross_sec.f90 even when
+OPACITY_MODEL = T.
+
+The shipped HI_sample.atesopa is generated from cross_sec.f90's
+analytic formula at 13 sample energies; using it with model 'T'
+should reproduce the analytic 'A' result to interpolation accuracy.

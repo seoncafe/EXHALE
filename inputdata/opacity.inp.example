@@ -1,0 +1,26 @@
+# opacity.inp -- override photoionization cross sections (AIOLOS port, Phase 1).
+# KEY = VALUE, one per line. '#' starts a comment. Copy to ./opacity.inp
+# next to input.inp to activate.
+
+# Model: A=analytic (default, current ATES), C=constant,
+#        P=constant + Robinson&Catling pressure broadening,
+#        T=tabulated (.atesopa file per species)
+OPACITY_MODEL    = A
+
+# Multiplicative factors for C/P models (default 1.0)
+OPA_CONST_HI     = 1.0
+OPA_CONST_HEI    = 1.0
+OPA_CONST_HEII   = 1.0
+OPA_CONST_HEITR  = 1.0
+
+# Pressure-broadening parameters for P model: f(p) = 1 + a*(p/p_pivot)^n
+# p_pivot in dyne/cm^2 (1e5 = 0.1 bar)
+OPA_PB_FACTOR    = 0.0
+OPA_PB_EXPONENT  = 1.0
+OPA_PB_PIVOT     = 1.0e5
+
+# Tabulated cross sections for T model. Empty = analytic fallback.
+# OPA_FILE_HI    = inputdata/HI_sample.atesopa
+# OPA_FILE_HEI   = inputdata/HeI.atesopa
+# OPA_FILE_HEII  = inputdata/HeII.atesopa
+# OPA_FILE_HEITR = inputdata/HeITR.atesopa

@@ -1,0 +1,32 @@
+# Jensen et al. (2012, ApJ 751, 86) -- HD 209458b H-alpha transmission.
+#
+# *** COARSE, APPROXIMATE representation -- NOT a faithful digitization. ***
+# Read by eye from Christie+2013 Fig.14 (which over-plots the Jensen+2012
+# data on their model). The REAL data is a densely-sampled, NOISY spectrum:
+# per-point error bars ~+/-0.0025 and scatter ~+/-0.005 in dF/F. The Jensen
+# HD209458b H-alpha "detection" is marginal and dominated by noise.
+#
+# These ~coarse points trace only the *gross trend*: a weak, BROAD,
+# ANTISYMMETRIC excess (emission ~+0.006 near 6560 A, absorption ~-0.008
+# near 6565 A) spanning several A. Christie+2013 note this width
+# (~150 km/s ~ a few A) is anomalous and is NOT reproduced by the narrow
+# (~1.5 A, symmetric) model line -- the unexplained discrepancy.
+# Plot these as points WITH ERROR BARS, not a smooth curve.
+# For quantitative work, digitize the original Jensen+2012 figure.
+#
+# col 1: wavelength [A]   col 2: dF/F   col 3: 1-sigma error (representative)
+  6556.0  -0.0015  0.0025
+  6557.0  -0.0010  0.0025
+  6558.0   0.0015  0.0025
+  6559.0   0.0035  0.0025
+  6560.0   0.0060  0.0025
+  6561.0   0.0040  0.0025
+  6562.0   0.0005  0.0025
+  6563.0  -0.0030  0.0025
+  6564.0  -0.0060  0.0025
+  6565.0  -0.0080  0.0025
+  6566.0  -0.0040  0.0025
+  6567.0  -0.0015  0.0025
+  6568.0  -0.0010  0.0025
+  6569.0   0.0010  0.0025
+  6570.0   0.0015  0.0025

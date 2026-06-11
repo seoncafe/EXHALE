@@ -1,0 +1,19 @@
+Solver speed comparison (WASP-121b Case B), 2026-06-07
+======================================================
+Setup: Load IC (converged Case B) + Force start (-> ~2025 steps, identical
+trajectory for both solvers), OMP_NUM_THREADS=4. Wall-clock of the full run
+(hydro + radiation + ionization). Toggle via "Newton solver: True/False".
+
+run        steps   wall (run 1 / run 2)    ms/step
+---------  -----   --------------------    -------
+Newton     2023    54.7 s / 54.3 s          26.9
+hybrd1     2027    67.8 s / 68.9 s          33.7
+
+=> the analytic-Jacobian Newton is ~25% faster per step (x1.25) than legacy
+   MINPACK hybrd1 for the ionization-equilibrium solve. Step counts match to
+   0.2% (same physical trajectory), so this is a fair per-step comparison.
+   The ioniz_eq cell loop is SERIAL, so the relative speedup grows with the
+   OpenMP thread count (the hydro/radiation parts parallelize, the solve does not).
+
+Reproduce: copy the converged output as the IC, set "Load IC? True",
+"Force start: True", append "Newton solver: True" (or False), and time ./ATES.x.

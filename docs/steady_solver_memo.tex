@@ -1,0 +1,555 @@
+%% ATES-metal: Convergence reliability and the steady-state Newton solver.
+%% Complete record of the 2026-06-10/11 work: the Stage-I extensibility
+%% refactor (summary), the convergence-criterion study (premature-dip
+%% discovery, level gate, residual diagnostic, residual-based stop), and the
+%% development of the steady-state JFNK solver up to its first converged
+%% solution. Companion design notes: steady_solver_design.md,
+%% refactor_stage1_log.md.
+%% Author: Kwang-Il Seon
+\documentclass[english,a4paper]{kiseon_memo}
+\synctex=1
+\usepackage{listings}
+\usepackage{xcolor}
+\usepackage{booktabs}
+\usepackage{amsmath}
+\usepackage{babel}
+\emergencystretch=3em
+
+\lstset{
+  basicstyle=\ttfamily\small,
+  keywordstyle=\color{blue}\bfseries,
+  commentstyle=\color{gray},
+  stringstyle=\color{olive},
+  frame=single,
+  breaklines=true,
+  language=[95]Fortran
+}
+
+\newcommand{\Rres}{\mathbf{R}}
+\newcommand{\code}[1]{\texttt{#1}}
+
+\begin{document}
+
+\title{ATES-metal: Convergence Reliability and the\\ Steady-State Newton
+(JFNK) Solver\\ \large(work log, 2026-06-10/11)}
+\author{Kwang-Il Seon}
+\date{Last updated: 2026-06-11}
+\maketitle
+
+\begin{quote}\small\itshape
+This memo is the complete record of two tightly linked developments in
+\code{ATES-metal}: (i) the discovery that the historical convergence
+criterion ($du<10^{-3}$ on the mass-flux spread) can stop runs at
+\emph{premature, non-steady} snapshots --- the WASP-121b reference used
+throughout earlier work was such a snapshot, low by $\sim$0.08~dex in
+$\dot M$ --- together with the new convergence diagnostics that fix this;
+and (ii) the construction, debugging, and first \emph{converged} run of a
+direct steady-state solver (pseudo-transient continuation + Jacobian-free
+Newton--Krylov), which reaches residual levels unattainable by time
+marching at $\sim$1/200 of the cost. Every code change is opt-in: with all
+new options at their defaults, the marching code is byte-identical to the
+pre-existing behavior (verified by the regression harness after every
+increment). Statements of physical interpretation below are tentative
+unless explicitly verified.
+\end{quote}
+
+\tableofcontents
+
+%====================================================================
+\section{Background and Stage-I refactor (context)}\label{sec:bg}
+
+The work below sits on top of the Stage-I ``extensibility'' refactor of the
+same dates (named species constants; the \code{composition} single policy
+point for $n_e$/$n_{\rm tot}$/EOS; schema-2 output headers and a
+label-mapping \code{load\_IC} that preserves the metal ionization state on
+restart; element-loop abundances; rate dispatch by ion index). Each step was
+a no-physics-change refactor gated by a deterministic regression harness
+(\code{regression/run\_check.sh}: single-threaded WASP-121b runs, golden
+outputs compared byte-wise excluding \code{\#} header lines; matrix cases
+\code{wasp\_full} = He\,$2^3$S + metals and \code{wasp\_he23off}).
+Details: \code{docs/refactor\_stage1\_log.md}. The same harness gates every
+solver-related change in this memo.
+
+%====================================================================
+\section{The convergence-criterion problem}\label{sec:conv}
+
+\subsection{What $du$ measures, and what it misses}
+
+ATES declares steady state when
+\begin{equation}
+du \;=\; \frac{\max_j |\rho v r^2|_j - \min_j |\rho v r^2|_j}
+              {\min_j |\rho v r^2|_j}\Big|_{j\in[j_{\min},N]} \;<\; du_{\rm th},
+\qquad du_{\rm th}=10^{-3},
+\end{equation}
+i.e.\ the \emph{spatial spread} of the mass flux over the wind window
+($r\ge r_{\rm esc}$). Two blind spots were demonstrated this session:
+\begin{enumerate}
+\item $du$ cannot see a \emph{uniform level drift}: the whole $\rho v r^2$
+  profile can rise or fall while staying flat.
+\item $du$ is \emph{oscillatory} on WASP-121b: it dips below $10^{-3}$
+  transiently long before the wind settles.
+\end{enumerate}
+
+\subsection{The premature-dip discovery (WASP-121b)}\label{sec:dip}
+
+The single-thread regression golden (He\,$2^3$S + metals, two-stage
+PLM$\to$WENO3, stopped by $du<10^{-3}$ at step 7{,}288) has raw
+$\log_{10} 4\pi\rho v r^2(r_{\max}) = 13.631$. Suppressing the $du$ stop and
+marching on, the flux level rises \emph{monotonically} (the windowed level
+change \code{lev\_rel} falls $0.23\to2.7\times10^{-3}$) toward
+$\log_{10}\dot M \simeq 13.71$:
+at step 35{,}085 the state reaches 13.707 and is still creeping upward,
+with $T_{\max}$ falling from 11{,}021\,K to 10{,}767\,K. Three independent
+paths agree on the deeper state (long cold marching $\to$13.707; warm
+restarts $\to$13.716; the naive local-$dt$ experiment $\to$13.716 in 1{,}702
+steps). \textbf{The old golden was a premature $du$-dip snapshot, not the
+steady state} --- approximately $0.08$~dex ($\sim$20\%) low in $\dot M$.
+
+Two earlier conclusions were corrected as a result. First, naive per-cell
+pseudo-time stepping (``\code{Time stepping: Local}'') had been judged
+``answer-shifting''; in fact it reaches the \emph{correct deeper} state
+$\sim$20$\times$ faster --- the judgment was an artifact of comparing
+against the premature golden. (The LTS state does carry larger per-cell
+hydro residuals, \S\ref{sec:resid}, so it is ``fast but needs polishing.'')
+Second, the apparent ``path-dependent quasi-steady states'' largely
+collapse to one true state plus premature snapshots along the way.
+
+\subsection{New diagnostics and stops (all opt-in)}\label{sec:diag}
+
+\paragraph{Level-stability gate (\code{Level tol:}).} A converged/stalled
+stop additionally requires the mean $|\rho v r^2|$ over $[j_{\min},N]$ to
+change by less than \code{lev\_th} (relative) across the last
+$N_{\rm stall}$ steps (ring buffer in \code{ATES\_main}; the relative level
+change is now the 4th column of the per-step stdout). This correctly
+refuses the premature dip (the cold run marches past step 7{,}288), but a
+practical tolerance cannot discriminate ultra-slow drifts; it is necessary,
+not sufficient. Default off.
+
+\paragraph{Steady-residual diagnostic (\code{ATES\_RESIDUAL=1}).}
+The finite-volume steady residual
+\begin{equation}
+\Rres_j \;=\;
+\begin{cases}
+(\nabla\!\cdot\!\mathbf{F})_j - S_j, & \text{mass, momentum},\\[2pt]
+(\nabla\!\cdot\!\mathbf{F}_E)_j - S_{E,j} - (\mathcal{H}_j-\mathcal{C}_j),
+& \text{energy},
+\end{cases}
+\label{eq:resid}
+\end{equation}
+evaluated once on a loaded state (one \code{Reconstruct}+\code{RK\_rhs}
+pass; heating/cooling from \code{ioniz\_eq}; reported as
+$\max_j|\Rres|/\max_j|u|$ per component over the window). This is
+\emph{independent} of $du$/$dtu$/stall and ranks candidate states:
+
+\begin{center}
+\begin{tabular}{lccc}
+\toprule
+state & $R_{\rm mass}$ & $R_{\rm mom}$ & $R_{\rm energy}$\\
+\midrule
+golden 13.631 ($du<10^{-3}$ stop) & $9.9\times10^{-2}$ & $4.7\times10^{-1}$
+ & $\mathbf{3.1\times10^{1}}$\\
+warm 13.716 (local-$dt$ + cont.) & 2.4 & 2.8 & $7.4\times10^{-1}$\\
+cold 13.707 (35k steps) & $\mathbf{2.1\times10^{-2}}$ &
+ $\mathbf{1.6\times10^{-2}}$ & $\mathbf{1.5\times10^{-2}}$\\
+\bottomrule
+\end{tabular}
+\end{center}
+
+The premature golden has an energy residual of $\sim$30: heating and
+cooling are grossly out of balance, which $du$ cannot detect. (The energy
+value $1.5\times10^{-2}$ for the cold state corresponds to the consistent
+ghost-handling order, \S\ref{sec:newtonres}.)
+
+\paragraph{Residual-based stop (\code{Resid tol:}).} In stage 2 the run
+converges on $\max_k \max_j|\Rres_{j,k}|/\max_j|u_k| <$ \code{resid\_th}
+(evaluated every \code{N\_resid}=500 steps; cheap), \emph{replacing} the
+$du$ test. Validation: a run with \code{resid\_th}$=10^{-2}$ reached
+$du=8.6\times10^{-4}$ (below the old stop) at step 32k and correctly kept
+marching because $R_{\max}$ was still $3.1\times10^{-2}$ and falling
+monotonically. Default off.
+
+%====================================================================
+\section{The steady-state solver}\label{sec:newton}
+
+The marching cost to a genuinely converged wind ($>$35k steps for
+WASP-121b; $>10^6$ steps for HD189733b without reaching it) motivates
+solving the steady residual directly: $F(Y)=0$.
+
+\subsection{Formulation}\label{sec:newtonres}
+
+\textbf{Unknowns} $Y\in\mathbb{R}^{3N}$: the conserved hydro variables
+$(\rho,\rho v,E)$ on the $N$ physical cells. Ghost cells are not unknowns;
+\code{Apply\_BC} fills them from the interior on every residual evaluation
+(lower boundary: pinned $\rho_{\rm bc}$, $p=1+dp_{\rm bc}$ and the one-way
+velocity valve; upper: extrapolation). \textbf{Local elimination}: given
+$Y$, the ionization equilibrium is re-solved (\code{ioniz\_eq}) and the
+resulting heating/cooling enter the energy residual --- so $F$ is a
+pure-hydro residual of size $3N$ (``method A'' of the SUNDIALS plan), and
+the non-local radiation (column densities) is inside $F$. The residual
+construction is shared with the diagnostics
+(\code{steady\_residual.f90}: \code{assemble\_residual}); the vector form
+lives in \code{steady\_newton.f90} (\code{pack\_U}/\code{unpack\_U}/
+\code{eval\_residual}), validated to reproduce the \code{ATES\_RESIDUAL}
+numbers to all digits. One ordering subtlety: \code{Apply\_BC} must run
+\emph{before} the chemistry/heating step so that $F$ depends only on the
+interior $Y$; the diagnostic hook was aligned to the same order.
+
+\subsection{Jacobian and linear algebra}
+
+\textbf{Banded approximation.} With WENO3's $\pm$2-cell stencil and 3
+coupled variables per cell, $\partial F_i/\partial Y_j$ has half-bandwidths
+$k_l=k_u=8$ in the flat ordering. A graph coloring with stride
+$k_l{+}k_u{+}1=17$ recovers all band entries of a \emph{local} residual
+from 17 finite-difference probes. The banded matrix is factored with
+LAPACK \code{dgbtrf}/\code{dgbtrs} (\code{LDLIBS=-llapack}; ATLAS LAPACK
+3.7.1 on this machine, link-tested). A unit test
+(\code{ATES\_JAC\_TEST=1}) checks $J r$ against a directional finite
+difference: relative mismatch $1.3\times10^{-4}$, i.e.\ the band layout is
+correct (an error would be $O(1)$).
+
+\textbf{JFNK.} Because the radiation makes $F$ weakly non-local, the
+banded matrix is used as a \emph{preconditioner} while the true
+Jacobian-vector product is matrix-free,
+$Jv \simeq [F(Y+\varepsilon v)-F(Y)]/\varepsilon$
+(\code{jv\_product}), inside a right-preconditioned GMRES($m$)
+(\code{pgmres}, modified Gram--Schmidt + Givens; inexact-Newton forcing
+$10^{-1}$). The outer loop is pseudo-transient continuation,
+\begin{equation}
+\Big(\tfrac{1}{\Delta\tau} I + J\Big)\,\delta Y = -F(Y),
+\qquad \Delta\tau \leftarrow \Delta\tau\,
+\max(\lambda,0.1)\,\frac{\|F\|_{\rm old}}{\|F\|_{\rm new}}
+\quad(\text{SER ramp}),
+\end{equation}
+with a backtracking line search and positivity guards ($\rho,p>0$).
+
+\subsection{The five necessary ingredients (each found by a stall)}
+\label{sec:ingredients}
+
+The path to convergence was a sequence of well-localized stalls; each fix
+was verified by its own probe (warm start from the cold-35k state,
+$\Delta\tau_0=1$ unless noted). Removing any one ingredient reproduces the
+corresponding stall.
+
+\begin{enumerate}
+\item \textbf{Smooth line-search merit.} The first driver used the
+  component-wise max-relative residual as the merit; it is non-smooth and
+  rejected every step ($\lambda\to10^{-6}$). Fix: merit $=\|F\|_2$ (later
+  $\|D^{-1}F\|_2$). After the fix the banded-PTC driver descends, but only
+  linearly ($\sim$2\%/iteration) --- and a $\Delta\tau_0=1$ probe showed a
+  textbook Newton step (residual halved in one step) before stalling,
+  proving the machinery and isolating the next blocker.
+\item \textbf{Matrix-free $Jv$ (JFNK).} The banded Jacobian omits the
+  non-local radiation response; with exact $Jv$ via GMRES the merit fell
+  $4.5\times$ in two steps (vs.\ 2\%/step), $\Delta\tau$ grew. Stall again
+  --- now localized (whole-domain worst-cell diagnostic) to the
+  \emph{base} cells $j=1$--2 (an earlier ``sonic point at $r_{\rm esc}$''
+  reading was an artifact of searching only $[j_{\min},N]$; the sonic
+  point is actually at $r=1.61$ and $r_{\rm esc}$ enters no physics).
+  Freezing base cells with anchor rows does \emph{not} help: the worst
+  cell simply follows the slab edge and the anchor interface itself
+  introduces a kink.
+\item \textbf{Diagonal scaling.} The unknowns span $\sim$7 decades (base
+  $\rho\sim1$ vs.\ wind $\sim10^{-7}$ in code units); FD steps with
+  absolute floors give wind cells 15--60\% relative perturbations and
+  corrupt exactly the columns where the residual lives after the first
+  base-scale corrections. With
+  $D_i=\max(|Y_i|,\,10^{-6}\max_j|Y^{(k)}|)$, the scaled system
+  $D^{-1}(\tfrac{1}{\Delta\tau}I+J)D$, D-relative FD steps, and merit
+  $\|D^{-1}F\|_2$: GMRES needs 2--6 vectors (was 9) and the merit falls
+  $24\times$ before stalling --- at the base again.
+\item \textbf{Smooth base valve.} The lower BC ghost velocity is
+  $\max(v_1,0)$, and the steady state hugs the kink
+  ($v_1\simeq+4.5\times10^{-3}c_s$): Newton trial steps crossing $v_1=0$
+  are non-differentiable. Opt-in replacement (\code{Valve eps:}):
+  $v_g=\tfrac12\big(v+\sqrt{v^2+\varepsilon_v^2}\big)$, smooth, $\to0$ for
+  $v\ll-\varepsilon_v$, $\to v$ for $v\gg\varepsilon_v$ (an earlier
+  variant with a $-\varepsilon_v/2$ shift leaked inflow and was fixed).
+  With $\varepsilon_v=10^{-2}$ (too large, it perturbs the state) the
+  solver descends $10\times$ \emph{through} the base --- differentiability
+  is what Newton needed --- but $\varepsilon_v=10^{-4}$ still stalled at
+  the base: the valve was not the only kink.
+\item \textbf{Frozen WENO weights + non-monotone line search.} The ESWENO3
+  smoothness factors $S_{0,1}=1+\tau^2/\beta_{0,1}$ are smooth but
+  strongly nonlinear; freezing them at the outer iterate
+  (\code{weno\_mode}: store on a mode-1 pass, reuse on mode-2 passes for
+  all Jacobian probes, $Jv$ products, and line-search trials --- the
+  standard lagged-weights remedy) removes their response from the inner
+  problem. Independently, the monotone Armijo test fails once the required
+  decrease $10^{-4}\lambda\,\|F\|$ falls below the iterative-chemistry
+  noise floor of the residual; a \emph{non-monotone} (Grippo, memory 5)
+  acceptance --- improve on the worst of the last five accepted merits ---
+  is the standard remedy.
+\end{enumerate}
+
+\subsection{Result: first converged steady solve}\label{sec:converged}
+
+With all five ingredients (warm start from the cold-35k state,
+$\Delta\tau_0=1$, $\varepsilon_v=10^{-4}$):
+
+\begin{center}
+\begin{tabular}{lcc}
+\toprule
+target & iterations & final $\|R\|$ \\
+\midrule
+\code{Resid tol} $=10^{-3}$ & \textbf{8} (all $\lambda=1$, GMRES 2--3) &
+ $9.5\times10^{-4}$\\
+\code{Resid tol} $=10^{-4}$ & 22 & $6.0\times10^{-5}$\\
+\bottomrule
+\end{tabular}
+\end{center}
+
+Each outer iteration costs $\sim$25 residual evaluations (17 for the
+banded preconditioner + GMRES + line search), so the $10^{-3}$ solve costs
+the equivalent of $\sim$200 marching steps --- versus $>$35{,}000 marching
+steps that never reached this residual level. Convergence is linear, not
+quadratic (the frozen weights are refreshed per outer iteration --- a
+Picard--Newton hybrid --- and the chemistry noise floor remains); every
+step is a full Newton step.
+
+\textbf{Physical validation} (vs.\ the marching references):
+
+\begin{center}
+\begin{tabular}{lccc}
+\toprule
+state & $\log_{10}\dot M_{\rm raw}$ & spread($r\!\ge\!1.5$) & $T_{\max}$\\
+\midrule
+\textbf{Newton (8 its)} & \textbf{13.7111} & $\mathbf{5.0\times10^{-4}}$ &
+ 10{,}747\,K\\
+cold marching (35k steps) & 13.7066 (rising) & $1.2\times10^{-3}$ &
+ 10{,}767\,K\\
+old golden (premature) & 13.6309 & $1.8\times10^{-3}$ & 11{,}021\,K\\
+\bottomrule
+\end{tabular}
+\end{center}
+
+The Newton solution sits on the marching asymptote ($\simeq$13.71), is the
+flattest state produced to date, and agrees with the deep-marching
+reference to 0.005~dex in $\dot M$ and 0.2\% in $T_{\max}$.
+
+%====================================================================
+\section{Runtime options and hooks (reference)}\label{sec:options}
+
+All defaults preserve the legacy behavior byte-identically (re-verified by
+the harness after every change in this memo).
+
+\begin{center}\small
+\begin{tabular}{llp{0.52\textwidth}}
+\toprule
+input line & default & effect\\
+\midrule
+\code{du\_th [PLM,WENO3]: a b} & single-stage & automatic two-stage
+ reconstruction: PLM until $du<a$ (or stall), then WENO3 until $du<b$\\
+\code{Stall [tol,N]: t n} & $10^{-6}$, 2000 & stall-detector override\\
+\code{Level tol: v} & off & mass-flux level-stability gate
+ (\S\ref{sec:diag})\\
+\code{Resid tol: v} & off & residual-based convergence
+ (\S\ref{sec:diag})\\
+\code{Time stepping: Local} & off & per-cell pseudo-$dt$ (steady-state
+ acceleration; reaches the deep state fast but leaves per-cell residuals)\\
+\code{Energy solver: Explicit} & semi-implicit & original forward-Euler
+ source update (isolation tests)\\
+\code{Valve eps: v} & off (hard $\max(v,0)$) & smooth base valve
+ (\S\ref{sec:ingredients})\\
+\code{CFL: v} & 0.6 & CFL override\\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\begin{center}\small
+\begin{tabular}{lp{0.53\textwidth}}
+\toprule
+environment hook & effect\\
+\midrule
+\code{ATES\_DUMP\_IC=1} & write the loaded state and stop (restart
+ round-trip test)\\
+\code{ATES\_RESIDUAL=1} & evaluate and report the steady residual of the
+ loaded state, then stop\\
+\code{ATES\_NEWTON\_TEST=1} & pack/unpack + vector-residual self-test\\
+\code{ATES\_JAC\_TEST=1} & banded-Jacobian vs.\ directional-FD unit test\\
+\code{ATES\_PTC=1} & run the steady solver from the (loaded) IC, write
+ output, stop; \code{ATES\_PTC\_JFNK=1} selects JFNK (else banded PTC);
+ \code{ATES\_PTC\_DTAU0}, \code{ATES\_PTC\_NFIX} optional\\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\noindent Working recipe for the converged WASP-121b solve:
+\begin{lstlisting}[language=bash]
+# input.inp: ... + "Valve eps: 1.0e-4" + "Resid tol: 1.0e-3"
+# output/{Hydro_ioniz,Ion_species}_IC.txt: a warm-start state
+ATES_PTC=1 ATES_PTC_JFNK=1 ATES_PTC_DTAU0=1.0 ./ATES.x
+\end{lstlisting}
+
+%====================================================================
+\section{Hardening results (2026-06-11, after first convergence)}
+\label{sec:hardening}
+
+\paragraph{HD189733b — 33 s vs.\ $>$3 h.} Warm-started from the deepest
+marching state available (1.16M steps, $du=6.6\times10^{-3}$; starting
+residual $(2.4,\,5.2,\,2.4)\times10^{-3}$), the JFNK solver converged to
+$\|R\|=9.5\times10^{-4}$ in 129 iterations / \textbf{33 seconds wall time}.
+The converged state has $\log_{10}\dot M_{\rm raw}=10.298$ vs.\ 10.218
+(marching) and 10.223 (pristine \code{ATES-Code-main}) --- both still
+drifting upward --- and is the flattest state produced
+(spread $7.6\times10^{-3}$ vs.\ $1.25\times10^{-2}$). Tentatively, the true
+HD189733b $\dot M$ is $\sim$20\% above the marching estimates, the same
+premature-snapshot pattern quantified for WASP-121b. Tightening to
+$10^{-4}$ grinds: the frozen-weight refresh jumps are large at the
+breathing base and progress floors at $\|R\|\sim3.4\times10^{-4}$ ---
+the practical floor for this planet with the current settings.
+
+\paragraph{Valve-$\varepsilon$ insensitivity.} Two full Newton solves of
+WASP-121b (tol $10^{-4}$) with $\varepsilon_v=10^{-4}$ and $10^{-5}$ give
+$\log_{10}\dot M = 13.7110$ and $T_{\max}=10750.2$\,K \emph{identically} to
+the digits quoted: the valve smoothing is a pure numerical regularization.
+
+\paragraph{\code{Solver: Newton} (production wiring) and the switch
+criterion.} The warm-up$\to$Newton hand-off was wired into the main loop.
+Two failure modes were found and fixed along the way, both reiterating the
+central lesson: (i) a $du$-based switch fails --- at $du<10^{-2}$ during the
+early transient the residual is still $\|R\|\approx4.8$, far outside
+Newton's basin; (ii) with the switch fixed, the marching's own $du<10^{-3}$
+stop fired first, returning the premature state. The final design:
+\emph{the switch and the warm-up termination are both residual-based}
+(periodic monitor; switch at $\max\|R\|<5\times10^{-2}$, $du$-stops
+suspended in this mode). End-to-end validation from a \emph{cold
+isothermal IC} (WASP-121b, single input line \code{Solver: Newton}):
+two-stage warm-up to step 27{,}000 ($\|R\|=4.85\times10^{-2}$) $\to$ JFNK
+16 iterations $\to$ $\|R\|=5.4\times10^{-4}$ $\to$ standard outputs and
+post-processing; final $\log_{10}\dot M_{\rm raw}=13.7111$, spread
+$5.1\times10^{-4}$, $T_{\max}=10{,}748$\,K --- identical to the
+warm-started reference. Wall time 16 min (4 threads), dominated by the
+warm-up.
+
+\paragraph{Transmission spectra of the Newton solutions.} \code{TPM.py}
+was run on both converged solutions (after PP-only runs generated the
+\code{*\_adv} profiles): He\,10830 / Ly$\alpha$ / H$\alpha$ / H$\beta$
+spectra for both planets plus the metal lines for WASP-121b
+(Mg\,II 2796: 3.7\%, Ca\,II K: 3.8\%, Na\,I D2: 1.7\% line-center).
+Peak line-center absorptions: WASP-121b He 3.7\%, H$\alpha$ 3.7\%;
+HD189733b He 11.9\%, Ly$\alpha$ 46\%, H$\alpha$ 1.8\% (consistent in
+magnitude with the Jensen et al.\ 2012 H$\alpha$ detection). Figures and
+numbers are collected in
+\code{regression/steady\_solver\_results.ipynb}; usage is documented in
+the updated user manual (\S\,TPM).
+
+\paragraph{Failure containment (a genuine JFNK failure, and two fixes).}
+Re-running the manual's four figure runs through the production pipeline
+exposed a real failure mode on the spherical, metals-off tutorial planet
+(a generic hot Jupiter, domain to $10\,R_p$). The solve nearly converged
+($\|R\|=6.0\times10^{-3}$ at iteration~2), but the non-monotone reference
+still held the huge \emph{initial} merit ($\|F_s\|_2\simeq10^4$), so a
+blow-up step was ``accepted''; the search then stalled at
+$\lambda\simeq10^{-6}$, accepting zero-length steps against the
+now-flat reference for $\sim$470 iterations, and --- worst of all --- the
+main loop accepted the final unconverged state ($\|R\|=0.42$) as
+converged and wrote it out. Two fixes (both in the default-off Newton
+path; legacy byte-identity re-verified): (i)~\emph{best-iterate tracking
+and fail-fast} in \code{solve\_steady\_jfnk} --- the best residual state
+is stored, and the solve aborts with \code{info=2} after 15 outer
+iterations without a new best, returning the best iterate; (ii)~in
+\code{ATES\_main}, \code{info}$\ne$0 is treated as a failure: the run
+prints \code{JFNK failed}, keeps the best iterate, disables the Newton
+mode, and \emph{resumes plain time-marching} with the $du$-based stops
+re-armed, so an unconverged Newton state can never masquerade as the
+final answer. Re-run with the fixes, the same configuration aborts after
+15 stuck iterations, returns the best iterate
+($\|R\|=5.97\times10^{-3}$), and the resumed marching stops one step
+later ($du=3.4\times10^{-4}$, already below threshold): the run ends on
+an honest, near-converged state instead of a diverged one. The three
+other figure runs converged cleanly through the pipeline (tutorial
+metals-on $\|R\|=5.6\times10^{-4}$, WASP-121b spherical Case~A
+$4.1\times10^{-4}$, Roche Case~B $5.8\times10^{-4}$, all \code{info=0}).
+
+\paragraph{Can JFNK start cold? (basin-boundary experiments,
+2026-06-11).} Three probes on WASP-121b (all with the fail-fast guard, so
+each failure is cheap and the run still finishes honestly via the
+marching fallback):
+\begin{center}\small
+\begin{tabular}{@{}llll@{}}
+\toprule
+start of JFNK & start $\|R\|$ & JFNK outcome & final answer \\
+\midrule
+cold isothermal IC      & $1.4\times10^{4}$ & 1 iter $\to$ 11, hard stall
+  at the base & --- (abort) \\
+step 6{,}500 (\code{R\_switch}=0.5) & 0.43 & $\to$ 0.245, stall &
+  fallback $du$-stop, $\dot M$ 13.34 (premature) \\
+step 12{,}500 (\code{R\_switch}=0.1) & 0.091 & first step \emph{worsens}
+  (0.148), stall & fallback $du$-stop, $\dot M$ 13.38 (premature) \\
+step 27{,}000 (default $5\times10^{-2}$) & 0.0485 & 16 iters $\to$
+  $5.4\times10^{-4}$ & $\dot M$ 13.7111 \checkmark \\
+\bottomrule
+\end{tabular}
+\end{center}
+The Newton basin boundary on this planet therefore lies between
+$\|R\|\simeq0.09$ and $0.049$ --- the default switch is calibrated
+essentially at the edge, and raising it buys nothing: every stall pins to
+the first base cells ($j=1$--$2$, momentum), where the valve/ionization
+coupling makes the frozen-weight local model invalid far from the fixed
+point. PTC's small-$\Delta\tau$ limit is just implicit time stepping at
+$\sim$20--60$\times$ the cost per unit pseudo-time of an explicit RK
+step, so a cold-start PTC could not beat the marching warm-up
+economically even where it survives. Practical caveat: when a
+\code{Solver: Newton} run prints \code{JFNK failed}, the fallback
+finishes on the $du$ stop, which can be a premature state (13.34/13.38
+vs.\ 13.71 here) --- re-check such runs with \code{ATES\_RESIDUAL=1}.
+Probes preserved in \code{regression/\{jfnk\_cold, newton\_rsw05,
+newton\_rsw01\}}.
+
+%====================================================================
+\section{Remaining open items}\label{sec:next}
+
+\begin{enumerate}
+\item \textbf{HD189733b residual floor.} Progress floors at
+  $\|R\|\sim3.4\times10^{-4}$ (frozen-weight refresh jumps at the
+  breathing base); an under-relaxed weight refresh between outer
+  iterations is the natural next step.
+\item \textbf{Non-monotone reference poisoning.} The tutorial-planet
+  failure above was \emph{contained}, not prevented: the 5-entry Grippo
+  memory can retain a huge early merit and thereby accept a blow-up step.
+  Capping the reference at a multiple of the current merit (or flushing
+  the history after a large drop) should prevent it outright.
+\item \textbf{Chemistry noise floor.} The non-monotone search works around
+  the \code{ioniz\_eq} iteration noise; tightening the inner solve (or
+  smoothing its switch points) would restore certifiable descent and
+  possibly quadratic tails.
+\item \textbf{Quasi-steady physics.} The deep states still show slow
+  residual decay rather than an exact fixed point (base breathing);
+  whether an exact steady state of the discrete scheme exists with the
+  hard valve remains open --- the smooth-valve fixed point found here is
+  the natural regularized answer.
+\end{enumerate}
+
+%====================================================================
+\section{File inventory}\label{sec:files}
+
+\begin{center}\small
+\begin{tabular}{lp{0.5\textwidth}}
+\toprule
+file & content\\
+\midrule
+\code{src/modules/time\_step/steady\_residual.f90} & shared steady-residual
+ assembly + norms (diagnostics, monitor, Newton)\\
+\code{src/modules/time\_step/steady\_newton.f90} & pack/unpack, residuals,
+ scaling, banded Jacobians (frozen/full), \code{jv\_product},
+ \code{pgmres}, \code{solve\_steady\_ptc}, \code{solve\_steady\_jfnk},
+ base-anchor option\\
+\code{src/modules/states/Reconstruction.f90} & \code{weno\_mode}
+ frozen-weights support (S0/S1 store/reuse)\\
+\code{src/modules/states/Apply\_BC.f90} & smooth base valve
+ (\code{valve\_eps})\\
+\code{src/modules/init/parameters.f90} & new option variables (defaults
+ off)\\
+\code{src/modules/files\_IO/input\_read.f90} & option parsing (keyword
+ lines after \code{Force start:})\\
+\code{ATES\_main.f90} & level/residual monitors and stops; env hooks\\
+\code{regression/} & harness, goldens, and all probe run directories
+ (\code{ptc\_warm}, \code{crit\_cold}, \code{resid\_*}, \dots)\\
+\code{docs/steady\_solver\_design.md} & incremental design notes
+ (\S\S4--11) with the raw probe logs\\
+\code{docs/refactor\_stage1\_log.md} & Stage-I extensibility change log\\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\end{document}

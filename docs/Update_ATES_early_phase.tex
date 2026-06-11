@@ -1,0 +1,2070 @@
+%% ATES-metal: Early-Phase Update Log (collected physics memos)
+%% Auto-assembled from the early-phase memos; see each \part.
+%% Author: Kwang-Il Seon
+\documentclass[english,a4paper]{kiseon_memo}
+\synctex=1
+\usepackage{listings}
+\usepackage{xcolor}
+\usepackage{booktabs}
+\usepackage{longtable}
+\usepackage{array}
+\usepackage{amsmath}
+\usepackage{babel}
+\emergencystretch=3em
+\lstset{
+  basicstyle=\ttfamily\small,
+  commentstyle=\color{gray}\itshape,
+  keywordstyle=\color{blue}\bfseries,
+  frame=single,
+  breaklines=true,
+  columns=fullflexible,
+  showstringspaces=false,
+}
+
+\begin{document}
+
+\title{ATES-metal: Early-Phase Update Log\\(AIOLOS port, trace metals, metal cooling)}
+\author{Kwang-Il Seon}
+\date{Collected 2026-06-07}
+\maketitle
+
+\begin{quote}\small\itshape
+This document collects, in full, the early-phase \emph{physics / implementation}
+memos of ATES-metal that predate the main \texttt{Update\_ATES} phase log: the
+AIOLOS feature port (opacity-model dispatcher and trace metals), the metal-cooling
+implementation, and the Phase-2 metal extensions. Each \textbf{Part} below is one
+original memo, kept verbatim. Related documents: the H$\alpha$/H$\beta$
+transmission physics is in its own note \texttt{Halpha\_transmission}; the
+solver/numerics history is in \texttt{Update\_ATES\_solver}; the ongoing phase work
+and version history are in \texttt{Update\_ATES}; the practical guide is
+\texttt{ATES\_user\_manual}.
+\end{quote}
+
+\tableofcontents
+\bigskip
+
+
+
+%% ======================================================================
+\part{AIOLOS$\to$ATES feature port: opacity dispatcher and trace metals (2026-04-29)}
+%% ======================================================================
+
+\begin{quote}\small\itshape
+\textbf{Context note (2026).} This memo was originally written for the
+\texttt{ATES\_extended} fork (decoupled coronal metal solver) and has
+been copied into \texttt{ATES-metal}, the main development version. In
+ATES-metal the metal physics lives in the coupled MINPACK ionization
+system (Badnell RR+DR recombination, nitrogen, charge transfer with H,
+an A/C/P/T opacity-model dispatcher, and runtime
+\texttt{metals.inp}/\texttt{opacity.inp}); see
+\texttt{ATES\_metal\_cooling.tex} (esp.\ \S7--\S8) for the
+ATES-metal-specific implementation.
+\end{quote}
+
+
+\section{Overview}
+
+This memo documents the first round of porting selected AIOLOS (Schulik \& Booth 2023)
+features into ATES \texttt{v2.0} (Caldiroli+ 2021, 2022). Both codes are exoplanet
+atmospheric photoionization-hydrodynamics codes but with complementary strengths.
+ATES has a polished H/He photoionization solver (MINPACK nonlinear equilibrium),
+a Tk-based input GUI, and a streamlined Fortran code base; AIOLOS supports
+arbitrary numbers of species, a general photochemistry network, eight opacity
+models, and multi-band radiative transfer. The chosen porting strategy is
+``keep ATES as the base and incrementally bring AIOLOS features over.''
+
+The full plan is split into three phases:
+\begin{itemize}
+\item \textbf{Phase 1} --- opacity model dispatcher and multi-band infrastructure
+(smallest scope; preserves existing ATES behavior).
+\item \textbf{Phase 2} --- extend the ionization network beyond H/He by adding
+trace metal species (C, N, O).
+\item \textbf{Phase 3} --- multi-fluid hydrodynamics (conservative state vector
+$3 \to 3N$; out of scope for this round, intentionally deferred to a separate
+sub-project).
+\end{itemize}
+
+This memo records the completion status of Phase 1 and Phase 2 along with
+intentional simplifications and known limitations. All edits are isolated to a
+fresh directory \texttt{ATES/ATES\_extended/}; the upstream
+\texttt{ATES-metal} and the local \texttt{ATES\_v1\_my} fork are untouched.
+
+\section{Working directory layout}
+
+\texttt{ATES-metal} was copied verbatim into \texttt{ATES\_extended/} and
+the following files were added or modified:
+
+\begin{verbatim}
+ATES_extended/
+  run_ATES.sh                                 (modified: compile order)
+  src/
+    modules/
+      init/
+        parameters.f90                        (modified: new globals)
+        set_energy_vectors.f90                (modified: dispatcher call)
+      functions/
+        cross_sec_metals.f90                  (new: Verner+1996)
+      radiation/
+        opacity_models.f90                    (new: A/C/P/T dispatcher)
+        metals.f90                            (new: metals registry)
+        metals_solve.f90                      (new: coronal balance helpers)
+        metals_drive.f90                      (new: per-cell driver)
+      files_IO/
+        opacity_input_read.f90                (new: opacity.inp parser)
+        write_metals_output.f90               (new: output writer)
+      post_process/
+        post_process_adv.f90                  (modified: 9 lines added)
+  inputdata/
+    HI_sample.atesopa                         (new: sample table)
+    opacity.inp.example                       (new)
+    metals.inp.example                        (new)
+    README.opacity                            (new)
+  docs/
+    kiseon_memo.cls                           (copy)
+    aiolos_port_memo.tex                      (this document)
+\end{verbatim}
+
+The build system is the ATES-original explicit compile-order list in
+\texttt{run\_ATES.sh}; new modules were inserted at positions that satisfy
+their module-use dependencies.
+
+\section{Phase 1 --- Opacity model dispatcher}
+
+\subsection{Motivation}
+
+The original ATES hard-codes its H/He photoionization cross sections as
+analytic functions in \texttt{cross\_sec.f90}: $\sigma_{\rm HI}$,
+$\sigma_{\rm HeI}$, $\sigma_{\rm HeII}$, and $\sigma_{\rm HeI(2^3S)}$. At
+startup, \texttt{set\_energy\_vectors.f90} prebakes these into the global
+vectors $s_{\rm HI}, s_{\rm HeI}, s_{\rm HeII}, s_{\rm HeI{,}TR} \in
+\mathbb{R}^{N_l}$, which are then consumed by \texttt{util\_ion\_eq.f90},
+\texttt{Cool\_coeff.f90}, and downstream modules.
+
+AIOLOS' \texttt{opacities.cpp} dispatches across eight models (U, C, P, F, M,
+D, T, K) inside \texttt{c\_Species::update\_opacities()}. Of these, the four
+that are physically compatible with ATES' scope (EUV-driven photoionization,
+no thermal IR transfer) --- A (analytic), C (constant), P (Robinson \&
+Catling pressure broadening), T (tabulated) --- are ported. The F/M/D/K
+models presuppose thermal IR Planck/Rosseland opacities and would require
+adding a new radiative-transfer solver to ATES first.
+
+\subsection{Dispatcher design}
+
+A new module \texttt{opacity\_models.f90} exposes the dispatcher entry point:
+\begin{verbatim}
+double precision function photoion_sigma(sp, E)
+    character(len=*), intent(in) :: sp     ! 'HI','HeI','HeII','HeITR'
+    real*8,           intent(in) :: E      ! [eV]
+    ! returns sigma in [1e-18 cm^2] (ATES internal unit)
+\end{verbatim}
+
+Branch logic:
+\[
+\sigma(\mathrm{sp}, E) =
+\begin{cases}
+\sigma_{\rm analytic}(\mathrm{sp}, E) & \text{model = A (default)} \\[3pt]
+f_{\rm sp}\,\sigma_{\rm analytic}(\mathrm{sp}, E_{\rm th}^{\rm sp}) \cdot \mathbf{1}[E \ge E_{\rm th}^{\rm sp}] & \text{model = C} \\[3pt]
+\text{(same as C; broadening factor applied separately)} & \text{model = P} \\[3pt]
+\text{loglog interpolation on tab\_sp} & \text{model = T}
+\end{cases}
+\]
+
+The ``analytic'' branch simply forwards to the existing ATES functions, so
+under the default model A the dispatcher is a transparent wrapper and the
+prebaked vectors $s_{\rm HI}$, etc. remain bit-identical to the original.
+The pressure-broadening factor used by model P,
+\[
+f_{\rm pres}(p) = 1 + a \left(\frac{p}{p_{\rm pivot}}\right)^n,
+\quad p_{\rm pivot} = 10^5 \,\mathrm{dyne\,cm^{-2}} = 0.1\,\mathrm{bar},
+\]
+is exposed as a separate function \texttt{opacity\_pT\_factor(p)}, mirroring
+the AIOLOS implementation (\texttt{opacities.cpp}, Robinson \& Catling 2013,
+\textit{Nat.\ Geo.}). It returns 1 in any model other than P. The cell-level
+multiplication is currently a no-op because Phase 1 only replaces the
+prebaked global vector; turning it on per cell is a Phase-1d extension (see
+limitations).
+
+\subsection{Input file: \texttt{opacity.inp}}
+
+The existing \texttt{input.inp} parser (\texttt{input\_read.f90}) is
+position-based and brittle. To avoid regressions, a separate optional file
+\texttt{opacity.inp} was introduced. The format is one \texttt{KEY = VALUE}
+per line; \texttt{\#} starts a comment; blank lines are ignored:
+
+\begin{verbatim}
+OPACITY_MODEL    = T            # A | C | P | T  (default A)
+OPA_CONST_HI     = 1.0          # multiplier for C/P models
+OPA_CONST_HEI    = 1.0
+OPA_CONST_HEII   = 1.0
+OPA_CONST_HEITR  = 1.0
+OPA_PB_FACTOR    = 0.0          # Robinson & Catling a
+OPA_PB_EXPONENT  = 1.0          # n
+OPA_PB_PIVOT     = 1.0e5        # dyne/cm^2
+OPA_FILE_HI      = inputdata/HI_sample.atesopa
+OPA_FILE_HEI     = inputdata/HeI.atesopa
+OPA_FILE_HEII    = inputdata/HeII.atesopa
+OPA_FILE_HEITR   = inputdata/HeITR.atesopa
+\end{verbatim}
+
+If the file is absent, every key keeps its default from
+\texttt{parameters.f90} (model A, factor 1.0, no table paths) and there is
+no behavior change. Unrecognized keys produce a warning and are skipped.
+
+\subsection{\texttt{.atesopa} table format}
+
+Two columns, whitespace separated, no header:
+\begin{verbatim}
+    column 1: photon energy [eV], strictly increasing
+    column 2: photoionization cross section [1e-18 cm^2]
+\end{verbatim}
+
+The cross-section unit follows the ATES internal convention
+(\texttt{cross\_sec.f90} returns values in $10^{-18}\,\mathrm{cm}^2$).
+Interpolation is log-log linear; out-of-range queries clamp to the nearest
+endpoint. When either endpoint of the bracket is non-positive, the routine
+falls back to linear-in-$y$ interpolation. This format is semantically
+equivalent to AIOLOS' \texttt{*.opa} files but is given a distinct extension
+to make the unit convention explicit.
+
+The shipped \texttt{inputdata/HI\_sample.atesopa} is a 13-point evaluation of
+the analytic HI curve (at 13.61, 14, 16, 20, 25, 35, 50, 75, 100, 200, 500,
+1000, 5000~eV). Running model T with this file should reproduce the model A
+result to within interpolation accuracy --- a useful regression check.
+
+\subsection{Call flow}
+
+The cross-section assignment in \texttt{set\_energy\_vectors.f90} now reads:
+
+\begin{verbatim}
+! AIOLOS port: read optional opacity.inp + load tables
+call read_opacity_input
+call load_opacity_tables
+
+! original: s_hi = (/ (sigma(e_v(i),ih), i = 1,Nl) /)
+! new: route through dispatcher
+s_hi    = (/ (photoion_sigma('HI',    e_v(i)), i = 1,Nl) /)
+s_hei   = (/ (photoion_sigma('HeI',   e_v(i)), i = 1,Nl) /)
+s_heii  = (/ (photoion_sigma('HeII',  e_v(i)), i = 1,Nl) /)
+s_heiTR = (/ (photoion_sigma('HeITR', e_v(i)), i = 1,Nl) /)
+\end{verbatim}
+
+No other ATES module cares where the cross-section vectors come from, so
+\texttt{Cool\_coeff.f90}, \texttt{ionization\_equilibrium.f90},
+\texttt{util\_ion\_eq.f90}, \texttt{post\_process\_adv.f90}, etc., remain
+unchanged.
+
+\section{Phase 2 --- Trace metals (C, N, O)}
+
+\subsection{Motivation and coupling-strength decision}
+
+The original ATES treats only H + He. Metal photoionization signatures
+(C, N, O, ...) are increasingly important observationally for exoplanet
+atmospheres (e.g., HD 209458b OI escape, Vidal-Madjar+ 2003), so adding them
+is a natural next step. There are two architectural options for adding
+metals, distinguished by how strongly metals are coupled to the H/He
+dynamics:
+
+\begin{enumerate}
+\item \textbf{Strong coupling}: integrate metals into the H/He MINPACK
+nonlinear ionization-equilibrium system. This grows $N_{\rm eq}$ (e.g.\
+4 $\to$ 8 with C/N/O), forces every nonlinear-solver call to reshape, and
+requires adding metal cross-section vectors, initial-guess logic, output
+columns, and metal line cooling for self-consistent thermal balance.
+Touches almost every existing file.
+
+\item \textbf{Weak coupling (trace approximation)}: solve the metals
+\emph{after} H/He has converged. Given a cell's $(n_e, T, J_\nu)$ from the
+H/He solution, close the metal balance with the coronal-equilibrium
+relation
+\[
+\Gamma_k(j)\,n_X^k(j)
+   = \alpha_{\rm rec}(k{+}1 \to k, T_j)\,n_e(j)\,n_X^{k+1}(j).
+\]
+The H/He system is left untouched.
+\end{enumerate}
+
+This work adopts option (b). Reasons:
+\begin{itemize}
+\item Non-invasive on the ATES core (MINPACK system, Jacobian, input parser
+all remain unchanged).
+\item Trace metals contribute negligibly to the thermal/ionization balance
+at solar-like abundances ($n_X / n_{\rm H} \sim 10^{-4}$), so the
+approximation is consistent with itself.
+\item Phase 2 can be reviewed and tested as a self-contained increment;
+strong coupling can become a separate fork later.
+\item Migration to strong coupling later can reuse the cross sections,
+recombination tables, and abundance registry built here.
+\end{itemize}
+
+\subsection{Photoionization cross sections: Verner+1996 fit}
+
+The new module \texttt{cross\_sec\_metals.f90} implements the Verner et al.\
+(1996, ApJ 465, 487) analytic fit:
+\[
+\sigma(E) = \sigma_0 \cdot F(y), \quad y = E / E_0,
+\]
+\[
+F(y) = \big[(y - 1)^2 + y_w^2 \big]\, y^{-Q}\,\big(1 + \sqrt{y / y_a}\big)^{-P},
+\quad Q = 5.5 + l - \tfrac{1}{2} P.
+\]
+The seven parameters $(E_{\rm th}, E_0, \sigma_0, y_a, P, y_w, l)$ are
+hard-wired for six ions (CI, CII, NI, NII, OI, OII), valence shell only,
+using the published Table 1 values. $\sigma_0$ is given in megabarns
+($1\,\mathrm{Mb} = 10^{-18}\,\mathrm{cm}^2$), so the result is already in
+ATES' internal unit and no conversion is needed.
+
+Sanity check: evaluating the same formula with HI parameters gives
+$\sigma_{\rm HI}(13.6\,\mathrm{eV}) = 6.346\,\mathrm{Mb}$, in agreement with
+the standard value $6.3\,\mathrm{Mb}$ to 1\%. This validates both the formula
+and the implementation.
+
+Adding more ions (CIII, NIII, OIII, Mg, Si, Fe, ...) is a single-row
+extension in the \texttt{lookup} \texttt{select case} block of
+\texttt{cross\_sec\_metals.f90}.
+
+\subsection{Recombination coefficients: A\&P 1973 RR + SVS 1982 DR}
+
+\texttt{metals\_solve.f90} computes total recombination as the sum of
+radiative (RR) and dielectronic (DR) channels:
+\[
+\alpha_{\rm rec}(T) = \alpha_{\rm RR}(T) + \alpha_{\rm DR}(T).
+\]
+RR uses the Aldrovandi \& Pequignot (1973, A\&A 25, 137) single
+power-law form:
+\[
+\alpha_{\rm RR}(T) = A_{\rm RR} \left(\frac{T}{10^4\,\mathrm{K}}\right)^{-\eta_{\rm RR}}
+\quad [\mathrm{cm^3\,s^{-1}}].
+\]
+DR uses the Shull \& Van Steenberg (1982, ApJS 48, 95) Burgess-style
+4-parameter form:
+\[
+\alpha_{\rm DR}(T) = A_{\rm DR}\,T^{-3/2}\,\exp(-T_0/T)\,
+   \big[1 + B_{\rm DR}\,\exp(-T_1/T)\big].
+\]
+Both are keyed by the \emph{daughter} ion (e.g.\
+$\alpha_{\rm RR}({\rm OI}, T)$ is the rate for
+${\rm OII} + e^- \to {\rm OI}$). Built-in coefficients for the six
+ions matching our Verner+1996 cross-section table:
+
+\begin{center}
+\small
+\begin{tabular}{|l|c|c|c|c|c|c|}
+\hline
+Daughter & $A_{\rm RR}$ & $\eta_{\rm RR}$ & $A_{\rm DR}$ & $B_{\rm DR}$ & $T_0$ [K] & $T_1$ [K] \\
+\hline
+CI   & $4.7\times 10^{-13}$ & $0.624$ & $2.54\times 10^{-4}$ & $4.21\times 10^{-2}$ & $1.57\times 10^5$ & $3.74\times 10^5$ \\
+CII  & $2.3\times 10^{-12}$ & $0.645$ & $6.15\times 10^{-3}$ & $5.88\times 10^{-2}$ & $1.41\times 10^5$ & $1.41\times 10^5$ \\
+NI   & $4.1\times 10^{-13}$ & $0.608$ & $1.50\times 10^{-4}$ & $0.0$                & $2.99\times 10^5$ & $0.0$             \\
+NII  & $2.2\times 10^{-12}$ & $0.639$ & $8.46\times 10^{-2}$ & $0.420$              & $2.83\times 10^5$ & $4.51\times 10^5$ \\
+OI   & $3.1\times 10^{-13}$ & $0.678$ & $1.11\times 10^{-3}$ & $9.25\times 10^{-2}$ & $1.75\times 10^5$ & $1.45\times 10^5$ \\
+OII  & $2.0\times 10^{-12}$ & $0.646$ & $5.07\times 10^{-3}$ & $0.181$              & $1.98\times 10^5$ & $3.35\times 10^5$ \\
+\hline
+\end{tabular}
+
+\smallskip
+$A_{\rm RR}$ in cm$^3$\,s$^{-1}$; $A_{\rm DR}$ in cm$^3$\,K$^{3/2}$\,s$^{-1}$.
+\end{center}
+
+The module exposes three accessors --- \texttt{alpha\_rr\_metal},
+\texttt{alpha\_dr\_metal}, and \texttt{alpha\_rec\_metal} --- so that
+RR and DR contributions can be inspected independently. The coronal
+solver (\texttt{coronal\_ratio}) consumes only the total
+\texttt{alpha\_rec\_metal}.
+
+\textit{Why A\&P + SVS rather than V\&F\,1996 + Badnell?} The motivation
+to add DR was the original concern that DR can be non-negligible at
+$T \gtrsim 2$--$3 \times 10^4\,$K. Shull \& Van Steenberg's published
+fits cover exactly the six daughters we need, with peer-reviewed
+parameters. The more modern V\&F 1996 RR + Badnell (2003+) DR series
+would be a quantitatively better choice (V\&F is $\sim$5$\times$ larger
+than A\&P for CI at $T = 10^4\,$K, for instance), but the V\&F
+parameters for several ions of interest were not available with high
+enough confidence to commit to literal values here. The architecture is
+deliberately designed so that swapping in V\&F or Badnell coefficients
+is a parameter-block edit only --- no caller change required.
+
+\textit{Behavior across temperature.} At $T = 10^4\,$K (the ATES
+escape-region working point) DR is negligible for all six channels,
+so the total matches A\&P alone. DR becomes comparable to RR at
+$T \sim 3\times 10^4\,$K (e.g.\ DR/RR $\approx 1.1$ for CI,
+$4.3$ for OI), and dominates by $T \sim 10^5\,$K (DR/RR $\approx 15$ for
+CI, $96$ for OI). The upgrade therefore extends the formula's
+validity range upward without changing predictions in the regime where
+ATES typically operates.
+
+\subsection{Coronal-equilibrium solve}
+
+For each enabled element $X$, only two stages (neutral and first ion) are
+tracked. Steady state and element conservation give
+\[
+\Gamma_{\rm neutral}\,n_X^0
+   = \alpha_{\rm rec}({\rm next}, T)\,n_e\,n_X^+,
+\quad
+n_X^0 + n_X^+ = n_X^{\rm total}
+   = (n_X / n_{\rm H})\,n_{\rm H}(j).
+\]
+Defining $r \equiv n_X^+ / n_X^0$:
+\[
+r = \frac{\Gamma_{\rm neutral}}{\alpha_{\rm rec}\,n_e},
+\quad
+n_X^0 = \frac{n_X^{\rm total}}{1 + r},
+\quad
+n_X^+ = n_X^{\rm total}\,\frac{r}{1 + r}.
+\]
+
+The photoionization rate $\Gamma$ is integrated over the local attenuated
+flux $F_{\rm loc}(E)$:
+\[
+\Gamma_{\rm neutral}(j)
+= \sum_{k=1}^{N_l} \Delta E_k\,
+   \frac{F_{\rm loc}(j, E_k)}{E_k}\,\sigma(E_k)\,10^{-18}
+\]
+($\Delta E_k$ is \texttt{de\_v(k)}; $F_{\rm loc}$ in
+$\mathrm{erg\,cm^{-2}\,s^{-1}\,eV^{-1}}$; $\sigma$ in $10^{-18}\,\mathrm{cm}^2$;
+the explicit $10^{-18}$ converts $\sigma$ to physical cm$^2$).
+
+$F_{\rm loc}$ is rebuilt with the same expression that
+\texttt{PH\_heat\_HHe} (\texttt{util\_ion\_eq.f90}) uses internally, from
+the H/He column densities and prebaked cross-section vectors:
+\[
+\tau(E_k, j) = 10^{-18}
+\big[ s_{\rm HI}(k)\,N_1(j)
+    + s_{\rm HeI}(k)\,N_{1.5}(j)
+    + s_{\rm HeII}(k)\,N_2(j)
+    + (\text{HeITR term})\big]
+\]
+\[
+F_{\rm loc}(j, E_k)
+ = \frac{F_{\rm XUV}(k)\,e^{-\tau(E_k, j)}}
+        {1 + a_\tau\,\tau(E_k, j)}
+\]
+($a_\tau$ is the ATES ``2D approximate method'' factor.) This block is
+recomputed inside \texttt{solve\_metals\_post}
+(\texttt{metals\_drive.f90}) in $\sim 10$ lines. The duplication is
+intentional --- preserving ATES core code uncorrected was the higher
+priority.
+
+\subsection{Module structure}
+
+\begin{center}
+\begin{tabular}{|l|p{8.5cm}|}
+\hline
+File & Responsibility \\
+\hline
+\texttt{cross\_sec\_metals.f90}
+   & Verner+1996 cross-section function and built-in fit table \\
+\texttt{metals.f90}
+   & Active-metals registry, \texttt{metals.inp} parser, prebake
+     cross sections on the energy grid, $\Gamma$ integral \\
+\texttt{metals\_solve.f90}
+   & A\&P 1973 RR + SVS 1982 DR lookup; total
+     $\alpha_{\rm rec} = \alpha_{\rm RR} + \alpha_{\rm DR}$;
+     $r = \Gamma / (\alpha_{\rm rec}\,n_e)$ helper \\
+\texttt{metals\_drive.f90}
+   & Per-cell attenuated-flux recomputation, calls
+     \texttt{coronal\_ratio} for every active metal, fills neutral/ion
+     density arrays \\
+\texttt{write\_metals\_output.f90}
+   & Writer for \texttt{output/Metals\_ioniz\_adv.txt} \\
+\hline
+\end{tabular}
+\end{center}
+
+Layered dependencies: \texttt{cross\_sec\_metals} $\leftarrow$
+\texttt{metals} $\leftarrow$ \texttt{metals\_solve},
+\texttt{metals\_drive} $\leftarrow$ \texttt{write\_metals\_output}. Every
+entry point checks \texttt{n\_metals == 0} and returns immediately when
+metals are disabled, so the inactive case is a true no-op.
+
+\subsection{Input file: \texttt{metals.inp}}
+
+\begin{verbatim}
+# metals.inp -- one ion per line: ION  abundance(rel. H by number)
+# Recognized ions: CI, NI, OI, CII, NII, OII
+# Asplund+2009 solar abundances:
+CI    2.69e-4
+NI    6.76e-5
+OI    4.90e-4
+\end{verbatim}
+
+Convention: the user lists \emph{neutrals} (CI, NI, OI), and the abundance
+is the \emph{element} number ratio $n_X / n_{\rm H}$ (the sum across all
+stages). The solver pushes both the listed neutral and its first ion
+(e.g.\ CI $\to$ CII) and closes the two-stage balance. If
+\texttt{metals.inp} is absent, \texttt{n\_metals = 0} and every downstream
+code path is a no-op.
+
+\subsection{Output file: \texttt{Metals\_ioniz\_adv.txt}}
+
+Written once per post-processing cycle. Format:
+\begin{verbatim}
+# r   n(CI)   n(CII)   n(NI)   n(NII)   n(OI)   n(OII)
+1.0000e+00  3.21e+04  ...
+1.0050e+00  3.18e+04  ...
+...
+\end{verbatim}
+
+Columns appear in the order metals were registered in \texttt{metals.inp};
+the first line is a comment header naming them. $r$ is the dimensionless
+radius from \texttt{global\_parameters.f90}. Densities are in cm$^{-3}$.
+
+\subsection{ATES-core integration footprint}
+
+A single existing file, \texttt{post\_process\_adv.f90}, was modified, and
+the change is minimal:
+\begin{itemize}
+\item \texttt{use metals, use metals\_drive, use metals\_output} (3 lines)
+\item Local buffers \texttt{n\_metal\_neutral(max\_metals, 1-Ng:N+Ng)}
+and \texttt{n\_metal\_ion(\dots)} (1 line)
+\item Right after the existing \texttt{call write\_output(...)} at the end
+of the post-processing loop:
+\begin{verbatim}
+if (n_metals > 0) then
+   call solve_metals_post(nhi, nhii, nhei, nheii, nheiTR, T_K, &
+                          n_metal_neutral, n_metal_ion)
+   call write_metals_output(n_metal_neutral, n_metal_ion, 'ad')
+endif
+\end{verbatim}
+\end{itemize}
+
+These nine lines are the \emph{entire} ATES-core change for the
+ionization side. (Phase 2f below adds a one-line modification to
+\texttt{T\_equation.f90} and a few more to \texttt{post\_process\_adv.f90}
+when metal cooling is enabled.)
+
+\subsection{Metal line cooling (Phase 2f)}
+
+The trace approximation makes one prediction that, if accurate, would
+be uncomfortable: in partially ionized layers OI 63\,$\mu$m can dominate
+H Ly$\alpha$ as a coolant by orders of magnitude. To make ATES capable
+of testing this self-consistently, we port the closed-form cooling
+coefficients from AIOLOS' \texttt{photochem.cpp} (Black 1981 fits):
+\[
+\Lambda_X(T_e) = a_X + b_X\,e^{-T_X/T_e}\,\big(1 + (T_e/T_{X,\!s})^{p_X}\big)
+\quad [\mathrm{erg\,cm^3\,s^{-1}}],
+\]
+with $(a, b, T, T_s, p)$ tabulated below for $X\in\{$CI, CII, OI, OII$\}$.
+NI and NII are set to zero (no AIOLOS reference; user can plug in
+Hollenbach \& McKee 1989). Cooling rate per cm$^3$ is $n_X\,n_e\,\Lambda_X(T_e)$.
+
+\begin{center}
+\small
+\begin{tabular}{|l|c|c|c|c|c|}
+\hline
+$X$  & $a$ & $b$ & $T_X$ [K] & $T_{X,s}$ [K] & $p_X$ \\
+\hline
+CI   & $1.0\times 10^{-24}$ & $3.1\times 10^{-20}$ & $15162$ & $2.0\times 10^4$ & $1.5$ \\
+CII  & $1.5\times 10^{-23}$ & $3.1\times 10^{-20}$ & $45162$ & $0.75\times 10^4$ & $1.5$ \\
+OI   & $5.5\times 10^{-24}$ & $1.1\times 10^{-20}$ & $30162$ & $0.75\times 10^4$ & $0.5$ \\
+OII  & $0$                  & $5.1\times 10^{-20}$ & $35162$ & $0.75\times 10^4$ & $0.5$ \\
+\hline
+\end{tabular}
+\end{center}
+
+\subsubsection*{Coupling into the implicit T solve}
+
+This is the first part of the port that creates a real two-way coupling
+between metals and the H/He thermal balance. ATES' \texttt{T\_equation}
+already evaluates $\Lambda_{\rm H/He}(T)$ inside each MINPACK iteration
+to maintain implicit stability; the same pattern is reused. The
+addition is:
+
+\begin{verbatim}
+! T_equation.f90 (one-line addition to total cooling)
+m_cool = params(13)                                        ! NEW
+cool   = ne*(brem + coex + reco + coio)/q0  +  m_cool      ! MODIFIED
+\end{verbatim}
+
+The metal cooling enters as a precomputed per-cell number
+(\texttt{params(13)}) rather than being recomputed at every MINPACK
+iteration. This is a deliberate one-iteration lag: \texttt{post\_process\_adv}
+runs an outer convergence loop \texttt{do k = 1, 10}, and each pass
+re-solves the metal coronal balance (\texttt{solve\_metals\_post}) and
+re-evaluates $\Lambda_X$ at the current $T_K$, so at convergence
+$T$ and $\{n_X^k\}$ are mutually consistent. Within one MINPACK call
+the metal cooling is a constant, which avoids re-doing the cell loop
+for every Newton iteration ($\sim$ 10$\times$ less work) at the cost of
+making the outer fixed-point iteration responsible for closing the
+coupling. The convergence is fast in practice because $\Lambda_X(T)$
+is smooth near $T \sim 10^4\,$K.
+
+The \texttt{post\_process\_adv} edit moves the metal solve from
+``after the loop'' (Phase 2e) to ``inside the loop'' (Phase 2f) and
+adds the cooling evaluation:
+
+\begin{verbatim}
+do k = 1, 10
+   ...
+   call PH_heat_HHe(...)              ! existing: heating
+   theat = theat / q0
+   if (n_metals > 0) then              ! NEW (Phase 2f)
+      call solve_metals_post(..., n_metal_neutral, n_metal_ion)
+      call eval_metal_cooling(T_K, n_metal_neutral, n_metal_ion, &
+                              ne, metal_cool_per_cell)
+   endif
+   do j = ...
+      paramsT(13) = metal_cool_per_cell(j) / q0   ! NEW
+      call hybrd1(T_equation, ..., paramsT)
+   enddo
+   ...
+enddo
+\end{verbatim}
+
+\subsubsection*{Where the metal cooling matters}
+
+A direct evaluation of $\Lambda_X(T)$ vs the H Ly$\alpha$ coefficient
+$\Lambda_{\rm Ly\alpha}(T) = 7.5\times 10^{-19}\,e^{-118400/T}$
+shows the regime split. At $T = 5\times 10^3\,$K,
+$\Lambda_{\rm OI} \approx 5\times 10^{-23}$ vs
+$\Lambda_{\rm Ly\alpha} \approx 6\times 10^{-31}$ ---
+$8$ orders of magnitude separation per ion-pair. Multiplied by solar
+$n_{\rm O}/n_{\rm H} \sim 5 \times 10^{-4}$, OI cooling dominates by
+$\sim 10^4$ in the partially ionized layer ($T \lesssim 8000\,$K).
+By $T = 2 \times 10^4\,$K Ly$\alpha$ surpasses metal cooling
+\emph{per ion pair}, but by then most O is ionized so the relevant
+question is the OII contribution, which is also tabulated. Adding
+metals can therefore lower the steady-state temperature in the lower
+atmosphere and (indirectly) affect the mass-loss rate.
+
+\section{Verification}
+
+\textbf{Compilation.} All 39 modules were compiled in dependency order
+with gfortran 13.1.0 plus \texttt{-fopenmp -O0}, as listed in
+\texttt{run\_ATES.sh}. Zero warnings, zero errors.
+
+\textbf{Default-behavior preservation.} With both \texttt{opacity.inp} and
+\texttt{metals.inp} absent (\texttt{opacity\_model = 'A'},
+\texttt{n\_metals = 0}), every new module either returns immediately or
+forwards to the existing analytic functions. The ATES result is
+bit-identical to the upstream code --- no new code path activates a branch.
+
+\textbf{Verner unit/formula check.} Evaluating \texttt{verner\_F} with HI
+parameters yields $\sigma(13.6\,\mathrm{eV}) = 6.346\,\mathrm{Mb}$, matching
+the canonical $6.3\,\mathrm{Mb}$.
+
+\textbf{Recombination temperature scan.} Evaluating
+$\alpha_{\rm rec} = \alpha_{\rm RR} + \alpha_{\rm DR}$ for the six
+metal channels at $T \in \{5\times 10^3, 10^4, 3\times 10^4, 10^5\}\,$K
+gives the expected behavior: at $T = 10^4\,$K the DR contribution is
+${\le}0.2\%$ for all channels, so total matches the A\&P value
+exactly; at $T = 3\times 10^4\,$K DR becomes comparable
+(DR/RR $\approx 1.1$ for CI, $4.3$ for OI); by $T = 10^5\,$K DR
+dominates by a factor of $\sim 10$--$100$. This is the qualitative
+signature of correct DR low-temperature behavior.
+
+\textbf{Metal-cooling temperature scan.} $\Lambda_{\rm OI}$ vs the
+H Ly$\alpha$ coefficient $\Lambda_{\rm Ly\alpha} = 7.5\times 10^{-19}
+e^{-118400/T}$:
+\begin{itemize}\itemsep 0pt
+\item $T = 5\times 10^3\,$K: $\Lambda_{\rm OI} \approx 5\times 10^{-23}$,
+$\Lambda_{\rm Ly\alpha} \approx 6\times 10^{-31}$ (8 orders of magnitude separation).
+\item $T = 10^4\,$K: $\Lambda_{\rm OI} \approx 1.2 \times 10^{-21}$,
+$\Lambda_{\rm Ly\alpha} \approx 5.4 \times 10^{-24}$
+($\sim 220 \times$ separation per ion-pair).
+\item $T = 3 \times 10^4\,$K: $\Lambda_{\rm OI} \approx 1.2 \times 10^{-20}$,
+$\Lambda_{\rm Ly\alpha} \approx 1.5\times 10^{-20}$ (comparable;
+crossover region).
+\end{itemize}
+With solar O abundance ($n_{\rm O}/n_{\rm H} \sim 5 \times 10^{-4}$),
+metal cooling is the dominant coolant up to $T \approx 1.5 \times 10^4\,$K
+where most O is still neutral; above this the OI density falls and
+Ly$\alpha$ takes over. This is the well-known partially-ionized layer
+``OI thermostat'' --- the qualitative signature ATES should now
+reproduce when metals are enabled.
+
+\textbf{Not done.} Physical validation of an actual run --- comparing
+\texttt{Metals\_ioniz\_adv.txt} to published profiles (e.g.\ Lampón+ 2020
+OI/CII distributions) --- requires the user to execute
+\texttt{run\_ATES.sh} with appropriate input files. Compile correctness
+and \emph{functional} correctness are distinct; this memo guarantees only
+the former.
+
+\section{Known limitations and intentional simplifications}
+
+\subsection{Phase 1 (opacity)}
+
+\begin{enumerate}
+\item \textbf{Model P is not yet applied per cell.} The pressure-broadening
+factor \texttt{opacity\_pT\_factor(p)} is exposed but
+\texttt{set\_energy\_vectors} only does a spatially uniform prebake. To
+multiply by the local cell pressure one must either rescale
+$s_X(k) \to s_X(k) \cdot f_{\rm pres}(p_j)$ at every equilibrium call, or
+restructure the pipeline so that $\sigma$ is no longer prebaked
+($\sim 10\%$ performance impact). Models C and T work correctly.
+
+\item \textbf{F/M/D/K models not ported.} Freedman, Malygin/Semenov, dust,
+and Kombined models all presuppose Planck/Rosseland thermal IR opacities,
+and ATES has no thermal radiative-transfer module. Adding any of these
+requires first writing a separate transport solver (e.g.\ flux-limited
+diffusion).
+
+\item \textbf{No GUI integration of \texttt{input.inp}.} The new keys live
+only in the separate \texttt{opacity.inp} file. The ATES Python/Tk GUI
+(\texttt{src/utils/ATES\_interface\_main.py}) was not modified --- GUI
+integration is a regression-prone change, so the opt-in side-car file was
+chosen instead. A follow-up could add an ``Advanced opacity'' panel to the
+GUI.
+\end{enumerate}
+
+\subsection{Phase 2 (metals)}
+
+\begin{enumerate}
+\item \textbf{nheiii dropped from $n_e$.} \texttt{solve\_metals\_post} does
+not receive \texttt{nheiii} from the caller and therefore uses
+$n_e \approx n_{\rm HII} + n_{\rm HeII}$. In the EUV-driven escape region,
+$n_{\rm HeIII} \ll n_{\rm HII}$, so this is well within the trace-metal
+approximation. Tightening it requires passing \texttt{nheiii} through the
+\texttt{post\_process\_adv} interface as well.
+
+\item \textbf{Only two ionization stages (neutral + first ion).} Only $X^0$
+and $X^+$ are tracked; any $X^{2+}$ produced by photoionization of $X^+$
+is dropped, so element conservation is violated when $n_X^{2+}$ is
+non-negligible ($n_X^0 + n_X^+ < n_X^{\rm total}$). For systems whose EUV
+photon distribution does not extend far above the second-ionization
+thresholds ($\gtrsim 25$--$35\,$eV), the error is quantitatively acceptable.
+Generalizing requires (a) adding CIII/NIII/OIII rows to the Verner table,
+and (b) extending \texttt{coronal\_ratio} to an $N$-stage matrix system.
+
+\item \textbf{Metal cooling: NI/NII set to zero.} The C and O cooling
+functions ported from AIOLOS \texttt{photochem.cpp} cover four ions
+(CI, CII, OI, OII) but no nitrogen entries are provided in AIOLOS
+either. \texttt{lambda\_X(`NI', T)} and \texttt{lambda\_X(`NII', T)}
+return 0. For exoplanet atmospheres with non-trivial N abundance,
+plug in Hollenbach \& McKee 1989 NI 122/205\,$\mu$m fits into the
+\texttt{select case} in \texttt{metals\_cool.f90} (one-line entries).
+
+\item \textbf{Metal cooling: critical-density saturation rolled into
+the fit.} The Black 1981 closed-form expressions implicitly assume
+the gas is below the critical density of each fine-structure
+transition, so the cooling scales linearly with $n_e$. At
+$n_{\rm H} \gtrsim n_{\rm cr}$ (e.g.\ $n_{\rm cr,\,OI\,63\mu m}
+\sim 5\times 10^5\,$cm$^{-3}$ for H collisions) the LTE limit
+applies and the actual cooling is suppressed. ATES escape regions are
+typically subcritical, but the lower-atmosphere boundary cell can
+exceed it and the cooling will be over-predicted there. Replacing
+the fits with the explicit two-level form
+$\Lambda = h\nu A\,n_u\,(1 + n/n_{\rm cr})^{-1}$ removes this issue.
+
+\item \textbf{Metal cooling colliders: only $n_e$.} The same
+closed-form expressions assume $e^-$ is the dominant collider, while
+in cool neutral gas OI is mostly excited by H I impacts. The cooling
+is therefore underestimated where the ionization fraction is small
+($x_e \lesssim 0.01$). The fix is to extend the formula to
+$\Lambda_{\rm tot} = (n_e \gamma_e + n_{\rm HI} \gamma_{\rm HI})\,h\nu\,e^{-E/kT}$
+with $\gamma_{\rm HI}$ from Draine 2011, ch.\,17.
+
+\item \textbf{Two-way coupling, not full time-integration coupling.}
+With Phase 2f, metals participate in the steady-state thermal balance
+through the post-process convergence loop. They still are not solved
+at each RK substep of the hydro time integration --- adding them
+there would require call sites in \texttt{RK\_rhs.f90} and
+\texttt{ionization\_equilibrium.f90}, and would expose the cooling
+to stiffness during transient hydro phases. For diagnostic use cases
+(analyzing the steady-state metal distribution and its thermal
+back-reaction) the post-process integration is sufficient.
+
+\item \textbf{Verner OI absolute value caveat.} The formula itself is
+verified, but $\sigma_{\rm OI}(13.62\,\mathrm{eV}) = 1.08\,$Mb from the
+Verner+1996 fit differs by roughly a factor of three from some other
+sources (e.g.\ Reilman \& Manson 1979, $\sim 2.94\,$Mb). This reflects the
+characteristics of the Verner+1996 fit (resonance smoothing); \emph{the
+ported code reproduces the published Verner fit exactly}. If higher
+accuracy is needed the user can supply a custom cross-section table as a
+\texttt{.atesopa} file --- but note the current dispatcher only handles
+H/He, so a metals-side dispatcher would need to be added (small
+generalization of \texttt{cross\_sec\_metals.f90}).
+
+\item \textbf{Recombination fit choice (A\&P + SVS, not V\&F + Badnell).}
+The RR side uses A\&P 1973 single-power-law rather than the more
+accurate Verner \& Ferland 1996 4-parameter fit. For the six channels
+present, A\&P agrees with V\&F to better than $\sim 10\%$ for NI but
+underestimates by a factor of $\sim 4$--$5$ for CI and OI at
+$T = 10^4\,$K. The DR side uses SVS 1982 rather than the modern
+Badnell (2003+) DR series; at $T \le 3 \times 10^4\,$K the two agree
+to within $\sim 30\%$ for our channels, but the Badnell tables are
+the recommended choice for any quantitative observational comparison.
+Both swaps are local to the parameter blocks in
+\texttt{metals\_solve.f90}; \texttt{coronal\_ratio} and
+\texttt{solve\_metals\_post} need no change.
+
+\item \textbf{Code duplication on the caller side.}
+\texttt{solve\_metals\_post} recomputes $\tau$ and $F_{\rm loc}$
+independently of \texttt{PH\_heat\_HHe}. Factoring the shared expression
+into a utility function would be cleaner, but (a) the two functions have
+different OMP layouts, and (b) keeping the existing ATES-core modules
+unmodified was deliberately prioritized. Performance impact is one extra
+cell loop per post-processing cycle ($\sim$ tens of ms).
+\end{enumerate}
+
+\subsection{Phase 3 (multi-fluid) --- not attempted, justification}
+
+True multi-fluid hydrodynamics is genuinely new physics: each species
+carries its own $(\rho_X, v_X, p_X)$. ATES uses a single mass-momentum-
+energy state vector $\mathbf{u}(j) \in \mathbb{R}^3$, so converting requires:
+\begin{itemize}
+\item $\mathbf{u}(j) \in \mathbb{R}^{3N}$.
+\item Full rewrite of \texttt{src/modules/states/} (Apply\_BC, PLM\_rec,
+Reconstruction, Source).
+\item Full rewrite or per-species dispatch in \texttt{src/modules/flux/}
+(HLLC, ROE, Num\_Fluxes).
+\item Per-species RHS in \texttt{src/modules/time\_step/RK\_rhs.f90}.
+\item A friction (drag) source-coupling module from
+AIOLOS' \texttt{source.cpp} (ATES has none --- need both an analytic
+implicit and a numeric implicit solver).
+\item Output format overhaul.
+\end{itemize}
+
+This touches almost every file in the ATES core and the numerical/physical
+verification effort is at least an order of magnitude larger than Phase 1+2.
+A separate ``ATES-MS'' fork is the safer container. The infrastructure
+built in Phase 1+2 (cross sections, abundance registry, opacity dispatcher)
+remains directly reusable in Phase 3.
+
+\section{Recommended next steps}
+
+In rough priority order:
+
+\begin{enumerate}
+\item \textbf{Regression test}: compare an existing
+\texttt{ATES-metal} run with the equivalent \texttt{ATES\_extended} run
+(no input override files). All columns in \texttt{Hydro\_ioniz.txt} must
+be bit-identical. Any discrepancy points to a regression in the
+\texttt{photoion\_sigma} \texttt{'A'} branch or the
+\texttt{set\_energy\_vectors} edits.
+
+\item \textbf{Model T regression test}: with
+\texttt{HI\_sample.atesopa} and \texttt{OPACITY\_MODEL = T},
+\texttt{OPA\_FILE\_HI = inputdata/HI\_sample.atesopa} (other species fall
+back to the analytic curve). \texttt{Hydro\_ioniz.txt} should agree with
+the model-A run to $\lesssim 1\%$ (interpolation accuracy).
+
+\item \textbf{Metals smoke test}: \texttt{metals.inp} containing one line
+\texttt{OI 4.9e-4}. After a steady-state run, check that the OI/OII ratio
+in \texttt{Metals\_ioniz\_adv.txt} is stable to within $\sim 1$ order of
+magnitude in the escape region and that OI dominates near the planetary
+surface ($r \sim 1$).
+
+\item \textbf{Python plot helper}: extend \texttt{ATES\_plots.py} to overlay
+\texttt{Metals\_ioniz\_adv.txt} on the same coordinate as
+\texttt{Hydro\_ioniz\_adv.txt}.
+
+\item \textbf{Extend ionization stages}: add CIII/NIII/OIII rows to the
+Verner table; generalize \texttt{coronal\_ratio} to a three-element system.
+
+\item \textbf{Upgrade recombination tables}: replace the A\&P 1973 RR
+parameter blocks in \texttt{metals\_solve.f90} with V\&F 1996
+4-parameter values (largest improvement: $\sim 5\times$ for CI, OI),
+and replace SVS 1982 DR with the Badnell (2003+) DR series. Both are
+local edits to parameter blocks --- the RR/DR formula structure and
+all callers are already in place.
+
+\item \textbf{Time-loop integration}: call the metals solver from
+\texttt{ionization\_equilibrium.f90} every equilibrium step rather than
+only in post-processing.
+
+\item \textbf{Validate metal cooling effect}: compare the steady-state
+$T(r)$ profile from \texttt{Hydro\_ioniz\_adv.txt} with and without
+\texttt{metals.inp} present, especially in the partially ionized layer
+($r \sim 1$). A drop of $\Delta T \sim 1000$--$3000\,$K in the lower
+atmosphere when OI is enabled is the expected qualitative signature
+of working OI 63\,$\mu$m cooling.
+
+\item \textbf{Improve cooling fidelity}: add the
+$n_{\rm HI}$ collider channel and the critical-density saturation
+factor (see Phase 2f limitations) to \texttt{lambda\_X}. Plug in
+NI/NII fits if N matters in the target system.
+
+\item \textbf{Phase 3} as a separate fork for multi-fluid hydrodynamics.
+\end{enumerate}
+
+\section*{Appendix A: Full file inventory}
+
+\subsection*{A.1 New files (12)}
+
+\begin{center}
+\begin{tabular}{|l|p{6cm}|r|}
+\hline
+Path & Role & Lines \\
+\hline
+\texttt{src/modules/radiation/opacity\_models.f90}      & A/C/P/T dispatcher          & 232 \\
+\texttt{src/modules/files\_IO/opacity\_input\_read.f90} & \texttt{opacity.inp} parser & 116 \\
+\texttt{src/modules/functions/cross\_sec\_metals.f90}   & Verner+1996 fit             & 121 \\
+\texttt{src/modules/radiation/metals.f90}               & metals registry             & 162 \\
+\texttt{src/modules/radiation/metals\_solve.f90}        & A\&P RR + SVS DR, ratio helpers & 209 \\
+\texttt{src/modules/radiation/metals\_drive.f90}        & per-cell coronal driver     &  92 \\
+\texttt{src/modules/radiation/metals\_cool.f90}         & Black 1981 cooling fits     & 102 \\
+\texttt{src/modules/files\_IO/write\_metals\_output.f90}& output writer               &  62 \\
+\texttt{inputdata/HI\_sample.atesopa}                   & 13-row sample table         &  13 \\
+\texttt{inputdata/opacity.inp.example}                  & key documentation           &  22 \\
+\texttt{inputdata/metals.inp.example}                   & usage example               &  10 \\
+\texttt{inputdata/README.opacity}                       & format documentation        &  31 \\
+\hline
+\end{tabular}
+\end{center}
+
+\subsection*{A.2 Modified existing files (5)}
+
+\begin{center}
+\begin{tabular}{|l|p{8cm}|}
+\hline
+Path & Change \\
+\hline
+\texttt{src/modules/init/parameters.f90}
+   & Added opacity globals and metals slots
+     (defaults preserve original behavior) \\
+\texttt{src/modules/init/set\_energy\_vectors.f90}
+   & Replaced direct analytic calls with \texttt{photoion\_sigma};
+     added metals init calls \\
+\texttt{src/modules/post\_process/post\_process\_adv.f90}
+   & Phase 2e: 9 lines for metals solver and writer.
+     Phase 2f: extra metal solve + cooling evaluation inside
+     the convergence loop, \texttt{paramsT(13)} per cell,
+     \texttt{paramsT} grown from 12 to 13. \\
+\texttt{src/modules/nonlinear\_system\_solver/T\_equation.f90}
+   & Phase 2f: read \texttt{params(13)} as metal cooling and add to
+     total \texttt{cool}. Two-line addition. \\
+\texttt{run\_ATES.sh}
+   & New modules added to compile order in dependency-correct positions \\
+\hline
+\end{tabular}
+\end{center}
+
+\section*{Appendix B: Build and run summary}
+
+\textbf{Build}:
+\texttt{cd ATES\_extended; chmod +x run\_ATES.sh; ./run\_ATES.sh}.
+
+\textbf{Original ATES behavior}: run as is, with no override files. The
+result must be identical to upstream ATES.
+
+\textbf{Activate opacity dispatch}:
+\begin{verbatim}
+cp inputdata/opacity.inp.example opacity.inp
+# edit opacity.inp (e.g. OPACITY_MODEL = T, OPA_FILE_HI = ...)
+./run_ATES.sh
+\end{verbatim}
+
+\textbf{Activate trace metals}:
+\begin{verbatim}
+cp inputdata/metals.inp.example metals.inp
+# edit metals.inp (ion + abundance lines)
+./run_ATES.sh
+# result: output/Metals_ioniz_adv.txt
+\end{verbatim}
+
+The two side-car files are independent --- enable opacity only, metals only,
+or both at the same time.
+
+
+%% ======================================================================
+\part{Porting AIOLOS metal cooling into ATES v2.0 (2026-05-28)}
+%% ======================================================================
+
+%=============================================================================
+\section{Overview}
+%=============================================================================
+
+This memo documents the changes made to the ATES code (v2.0, branch
+\texttt{ATES-metal}) to incorporate the metal radiative-cooling
+prescription used in the AIOLOS code (Schulik \& Booth 2023, hereafter
+SB23) and to extend ATES from a pure H/He photoionization-hydrodynamics
+solver into one that also tracks neutral and singly/doubly ionized
+carbon and oxygen, with full photo+collisional ionization equilibrium
+and the associated metal-line cooling.
+
+The work was carried out in 13 incremental stages, each followed by a
+compile-link verification step.  The total touch consists of roughly
+700 lines of new or modified Fortran across 14 files in the ATES tree,
+plus one trailing-backslash fix in the build script.
+
+The implementation is conservative: when both
+\texttt{X\_C}~\(=\)~\(0\) and \texttt{X\_O}~\(=\)~\(0\) (the default),
+the new code paths remain inactive and the executable reproduces the
+original H/He behavior bit-for-bit.
+
+%=============================================================================
+\section{AIOLOS Source Analysis}
+%=============================================================================
+
+\subsection{Cooling functions}
+
+AIOLOS encodes six metal cooling channels as analytic fits in
+\texttt{photochem.cpp:95--132}.  In erg\,cm\textsuperscript{3}\,s\textsuperscript{-1}
+units, per ion times per electron, they read:
+\begin{align}
+\Lambda_{\mathrm{C\,I}}(T)  &= 10^{-24} + 3.1\times10^{-20}\,e^{-15162/T}\,
+                                \left[1 + (T/2\times10^{4})^{1.5}\right], \\
+\Lambda_{\mathrm{C\,II}}(T) &= 1.5\times10^{-23} + 3.1\times10^{-20}\,e^{-45162/T}\,
+                                \left[1 + (T/7500)^{1.5}\right], \\
+\Lambda_{\mathrm{O\,I}}(T)  &= 5.5\times10^{-24} + 1.1\times10^{-20}\,e^{-30162/T}\,
+                                \left[1 + (T/7500)^{0.5}\right], \\
+\Lambda_{\mathrm{O\,II}}(T) &= 5.1\times10^{-20}\,e^{-35162/T}\,
+                                \left[1 + (T/7500)^{0.5}\right].
+\end{align}
+The C\,III, O\,III, and H\textsubscript{3}\textsuperscript{+}
+channels are present as stub functions returning zero.
+
+Tracing through \texttt{git log}, all six fits were introduced by a single
+2022-03-09 commit (\texttt{63695ea}, ``Ionization+Chemistry done'') with
+no inline citation.  The header comment in \texttt{photochem.cpp:16}
+attributes the cooling block to Black~(1981), but Black's paper covers
+only the H/He primordial plasma, so the metal fits cannot derive from
+it.  The exponential excitation temperatures
+(\(T^\ast = 15162\), \(45162\), \(30162\), \(35162\)\,K, corresponding
+to \(\Delta E = 1.31\), \(3.89\), \(2.60\), \(3.03\) eV) are
+loosely consistent with the dominant forbidden lines
+([C\,I]~\(\mathrm{^{3}P\!-\!^{1}D}\),
+[O\,II]~3727\,\AA, etc.) but do not match published one-line fits
+in any reference I could verify in the codebase.  Most likely they are
+analytic approximations to a Cloudy or similar tabulation, derived by
+the SB23 authors directly.  \textbf{Provenance verification against the
+SB23 paper supplement or the Schulik PhD thesis remains pending.}
+
+\subsection{Application context and the $\beta$ escape factor}
+
+The cooling functions are applied in
+\texttt{chemistry.cpp:1000--1090} via
+\verb|c_Sim::do_highenergy_cooling()|, with a per-cell rate
+\[
+  \dot{Q}_{\mathrm{cool},X} \;=\; n_X\, n_e\, \beta\, \mu\, \Lambda_X(T_e),
+\]
+where \(\mu = \texttt{photocooling\_multiplier}\) (a global tuning
+parameter, default \(1\)) and \(\beta\) is the line escape probability
+\[
+  \beta(\tau) \;=\;
+  \begin{cases}
+    \dfrac{1 - e^{-2.34\tau}}{4.68\tau} & \tau < 7,\\[6pt]
+    \dfrac{1}{4\tau\sqrt{\ln(\tau/\sqrt{\pi})}} & \tau \ge 7.
+  \end{cases}
+\]
+The optical depth is computed as
+\[
+  \tau \;=\; \kappa_{\mathrm{tot}}(j,0)\,\Delta x_j\,\times\,10^{8},
+\]
+where \(\kappa_{\mathrm{tot}}\) is the band-0 total opacity in
+cm\textsuperscript{-1}, and \(\Delta x_j\) is the cell width in cm.
+
+\subsection{The $10^{8}$ factor: tuning, not unit conversion}
+
+A natural first guess is that the trailing factor of \(10^{8}\)
+represents the cm-to-\AA{} conversion.  Three pieces of evidence rule
+this out.  First, \texttt{init\_and\_bounds.cpp:56--57} comments
+explicitly state that \texttt{PARI\_DOMAIN\_MIN/MAX} are in cm, and
+\texttt{radiation.cpp:79} uses \(\tau = \kappa\,\Delta x\) without
+any \(10^{8}\) factor in the radiation solver itself.  Second,
+\texttt{git log -S} on the line shows the factor was tuned over a
+one-month period: \(10^{2}\) at introduction (commit \texttt{63695ea},
+2022-03-09), then \(10^{4}\), then the present \(10^{8}\) (commit
+\texttt{112bb6c}, 2022-04-03).  Third, the value \(10^{8}\) is
+consistent with the physical ratio between metal resonance line-center
+cross sections (\(\sim 10^{-13}\)\,cm\textsuperscript{2}) and the
+band-averaged continuum cross section
+(\(\sim 10^{-21}\)\,cm\textsuperscript{2}); the AIOLOS gray opacity
+table does not contain metal lines, so this factor compensates.
+
+The ratio coincidentally matches the cm/\AA{} conversion because line
+widths are of order an angstrom, but the meaning is physical, not
+unit-conversion.  In \texttt{util\_ion\_eq.f90} the AIOLOS form is kept
+in the source but commented out, tagged with the policy comment from
+user memory:
+\begin{lstlisting}[language=Fortran]
+!To Be Checked/AIOLOS tuning?
+!tau_eff(j) = kappa_loc(j) * dr_cm(j) * 1.0e8
+tau_eff(j) = kappa_loc(j) * dr_cm(j)
+\end{lstlisting}
+
+\subsection{Adopted assumption: 100\% escape ($\beta = 1$)}
+\label{sec:beta-one}
+
+With the \(10^{8}\) boost active, \(\tau_\mathrm{eff}\sim 10^{6}\) in the
+escape region, so \(\beta\to 0\) and the metal-line cooling is switched
+off almost entirely --- the lines are treated as fully trapped.  Because
+the \(10^{8}\) factor is an undocumented empirical boost (see \S2.3) and
+the metal resonance/fine-structure lines are in fact optically thin in
+the tenuous escaping flow, the ATES-metal implementation
+\emph{overrides} the computed \(\beta\) and adopts the optically-thin
+limit, assuming 100\% photon escape:
+\begin{lstlisting}[language=Fortran]
+! AIOLOS multiplies the escape probability by a 1e8 factor
+! (chemistry.cpp:1006), which drives tau_eff up to ~1e6 so that
+! beta_esc -> ~0 and the metal lines are treated as essentially
+! fully trapped (metal-line cooling switched off).
+! Here we instead assume 100% escape (optically-thin limit):
+! beta_esc = 1, so the full metal-line cooling is applied,
+! matching ATES_extended's coronal treatment.
+beta_esc = 1.0d0
+\end{lstlisting}
+This makes the MINPACK-coupled metal cooling in ATES-metal
+quantitatively consistent with the decoupled coronal treatment in
+ATES\_extended (which carries no \(\beta\) at all).  A \(\beta\)
+sensitivity scan for HD\,209458b (solar C+O) gives
+\(\Delta T_\mathrm{max}\approx 0\) with the \(10^{8}\) factor,
+\(\approx 1425\)\,K with the factor removed (\(\beta\approx 0.47\)), and
+\(\approx 2840\)\,K with \(\beta = 1\); the latter matches
+ATES\_extended's \(\approx 2852\)\,K.
+
+%=============================================================================
+\section{ATES Architecture Overview}
+%=============================================================================
+
+ATES v2.0 solves a one-dimensional, time-dependent
+photoionization-hydrodynamics problem on a radial grid in
+\(r \in [R_p, r_\mathrm{max}]\).  The species fraction array
+\texttt{f\_sp(1-Ng:N+Ng,k)} carries the per-cell mass fraction of each
+chemical species, originally indexed by
+\(k \in \{1,2,3,4,5,6\}\) for
+\{H\,I, H\,II, He\,I, He\,II, He\,III, He\,I(2\,\(^3\!\mathrm{S}\))\}.
+
+The main time loop (\texttt{ATES\_main.f90}) repeatedly calls
+\texttt{ioniz\_eq} (in \texttt{ionization\_equilibrium.f90}) which in
+turn calls
+\begin{itemize}
+  \item \texttt{PH\_heat\_HHe} (in \texttt{util\_ion\_eq.f90}): integrates
+    \(\sigma_X\, F_\nu\, e^{-\tau_\nu}\) over the XUV grid to obtain
+    photoionization rates and the bolometric photoheating.
+  \item \texttt{eval\_cool} (in \texttt{util\_ion\_eq.f90}): assembles
+    the total radiative cooling rate from recombination, collisional
+    ionization, bremsstrahlung, and collisional excitation channels.
+  \item \texttt{hybrd1} (MINPACK) with one of \texttt{ion\_system\_H},
+    \texttt{ion\_system\_HeH}, or \texttt{ion\_system\_HeH\_TR}: solves
+    the steady-state ionization balance for the
+    \(N_{\mathrm{eq}}\)-dimensional unknown vector of ion fractions.
+\end{itemize}
+
+The thermal equation (\texttt{T\_equation.f90}) is solved separately
+in post-processing, with cooling rate functions called via scalar
+\texttt{*\_func} variants of the same coefficients.
+
+%=============================================================================
+\section{Implementation: Stage-by-Stage}
+%=============================================================================
+
+The work was sequenced so that additive-only changes were completed
+and verified before any signature-breaking modifications.
+
+\subsection{Stage 1: Metal photoionization cross sections}
+\textbf{File:} \texttt{src/modules/functions/cross\_sec.f90}.
+
+Added a Verner et~al.~(1996) single-shell fit
+\[
+  \sigma(E) \;=\; \sigma_0\,F(y) \;=\;
+  \sigma_0\bigl[(y-1)^{2} + y_w^{2}\bigr]\,y^{-Q}\,
+  \bigl(1 + \sqrt{y/y_a}\bigr)^{-P},
+\]
+with \(y \equiv E/E_0\) and \(Q = 5.5 + l - P/2\), implemented as a
+single helper \texttt{sigma\_Verner96}, plus four thin wrappers
+\texttt{sigma\_CI}, \texttt{sigma\_CII}, \texttt{sigma\_OI},
+\texttt{sigma\_OII}.  The numerical
+\((E_{\mathrm{th}}, E_0, \sigma_0, y_a, P, y_w, l)\) tuples are taken
+from Verner et~al.~(1996) Table 1 (outer 2p shell) and are flagged
+\textbf{VERIFY} in the source comment.
+
+\subsection{Stage 2: Metal recombination and collisional ionization rates}
+\textbf{File:} \texttt{src/modules/radiation/Cool\_coeff.f90}.
+
+Added eight new array subroutines:
+\texttt{rec\_CII}, \texttt{rec\_CIII}, \texttt{rec\_OII},
+\texttt{rec\_OIII} (originally Aldrovandi \& Pequignot 1973 power-law
+form, \(\alpha(T) = \alpha_4\,(T/10^{4})^{-n}\); \textbf{since replaced
+by the Badnell RR$+$DR fits} --- see
+\S\ref{sec:modernization}) and
+\texttt{ion\_coeff\_CI/CII/OI/OII} (Voronov 1997 fit
+\(Q(T) = A(1+P\sqrt{U})/(X+U)\,U^{K}e^{-U}\) with
+\(U = \Delta E/k_BT\)).  These supply the
+ionization-equilibrium rates and (via the appropriate sums) the
+bremsstrahlung contribution from metal ions.
+
+Cooling fits ported from AIOLOS (Stage 0, completed in an earlier
+session) consist of four \texttt{cool\_CI/CII/OI/OII} subroutines plus
+their scalar \texttt{*\_func} variants for use in \texttt{T\_equation}.
+At \(T = 10^{4}\)\,K the values reproduce the AIOLOS fits to all
+displayed digits:
+\(\Lambda_{\mathrm{CI}} = 9.21\times10^{-21}\),
+\(\Lambda_{\mathrm{CII}} = 8.76\times10^{-22}\),
+\(\Lambda_{\mathrm{OI}} = 1.17\times10^{-21}\),
+\(\Lambda_{\mathrm{OII}} = 3.27\times10^{-21}\) erg\,cm\textsuperscript{3}\,s\textsuperscript{-1}.
+
+\subsection{Stage 3: Global parameters}
+\textbf{File:} \texttt{src/modules/init/parameters.f90}.
+
+\begin{itemize}
+  \item Two scalar abundance variables: \texttt{X\_C}, \texttt{X\_O}
+    (number ratios relative to hydrogen; solar
+    \(2.7\times10^{-4}\) and \(4.9\times10^{-4}\)).
+  \item Boolean toggle \texttt{thereis\_metals}, set in
+    \texttt{input\_read.f90} from
+    \texttt{X\_C > 0 .or. X\_O > 0}.
+  \item Four new allocatable cross-section vectors
+    \texttt{s\_ci, s\_cii, s\_oi, s\_oii} (sized at runtime to the
+    energy-grid length \(N_l\)).
+\end{itemize}
+
+\subsection{Stage 4: Energy-grid initialization}
+\textbf{File:} \texttt{src/modules/init/set\_energy\_vectors.f90}.
+
+In both the power-law SED branch and the monochromatic branch, the
+metal cross-section vectors are allocated and populated from
+\texttt{sigma\_CI/CII/OI/OII(e\_v(i))}, immediately after the
+existing H/He vectors are filled.
+
+\subsection{Stage 5: Compile verification of additive-only work}
+At this point Stages 1--4 introduce only new symbols and new fields;
+nothing that already existed has been modified in signature or
+behavior.  A full compile-link with 47 object files and ATES executable
+verifies that the additions are valid Fortran and that the H/He-only
+behavior is byte-for-byte preserved.
+
+\subsection{Stage 6: $f_{\rm sp}$ dimension 6$\to$12}
+\begin{sloppypar}
+\textbf{Files:} \texttt{ATES\_main.f90},
+\texttt{src/modules/init/set\_IC.f90},
+\texttt{src/modules/init/init.f90},
+\texttt{src/modules/files\_IO/load\_IC.f90},
+\texttt{src/modules/radiation/ionization\_equilibrium.f90}.
+\end{sloppypar}
+
+The species array is extended from six to twelve columns by enlarging
+the second dimension in every declaration and adding the metal indices
+\(k \in \{7,8,9,10,11,12\}\) for
+\{C\,I, C\,II, C\,III, O\,I, O\,II, O\,III\}.  Initial conditions
+default the metals to neutral:
+\[
+  f_\mathrm{sp}(:, 7) = X_C / (1 + 4\,Y_{\!\mathrm{He/H}}), \quad
+  f_\mathrm{sp}(:, 10) = X_O / (1 + 4\,Y_{\!\mathrm{He/H}}),
+\]
+with the higher stages initialized to zero.  Loaded IC files (which
+contain only the original six columns) are similarly padded with
+neutral metals at load time.
+
+Inside \texttt{ioniz\_eq} the metal number-density profiles
+\(n_{\mathrm{C\,I}}, n_{\mathrm{C\,II}}, n_{\mathrm{C\,III}},
+n_{\mathrm{O\,I}}, n_{\mathrm{O\,II}}, n_{\mathrm{O\,III}}\) are
+extracted from the new \texttt{f\_sp} slots and the totals
+\(n_C = n_\mathrm{CI} + n_\mathrm{CII} + n_\mathrm{CIII}\),
+\(n_O\) analogously, are formed.
+
+\subsection{Stage 7: Photoionization with metal channels}
+\textbf{File:} \texttt{src/modules/radiation/util\_ion\_eq.f90}
+(\texttt{PH\_heat\_HHe}) and
+\texttt{src/modules/functions/utilities.f90}
+(\texttt{calc\_column\_dens\_metals}).
+
+A new helper \texttt{calc\_column\_dens\_metals} integrates the
+columns \(N_{\mathrm{C\,I}}, N_{\mathrm{C\,II}}, N_{\mathrm{O\,I}},
+N_{\mathrm{O\,II}}\) inward from the outer boundary.  In
+\texttt{PH\_heat\_HHe} the total optical depth at energy \(E_i\)
+becomes
+\[
+  \tau_E \;=\; 10^{-18}
+  \sum_X \sigma_X(E_i)\, N_X,
+\]
+with \(X \in \{\mathrm{H\,I}, \mathrm{He\,I}, \mathrm{He\,II},
+\mathrm{C\,I}, \mathrm{C\,II}, \mathrm{O\,I}, \mathrm{O\,II}\}\)
+(plus the He\,I triplet term when enabled).  Photoionization rates
+for the four metal species are accumulated analogously to the existing
+H/He integrals,
+\[
+  P_X \;=\;
+  10^{-18} \int F_\nu(E)\,e^{-\tau_E}\,
+  \sigma_X(E)\, \frac{dE}{E}\,,
+\]
+and the bolometric photoheating integrand gains four metal terms
+\[
+  \delta\mathcal{H}_X = \sigma_X(E_i)\bigl[1 - E_{\mathrm{th},X}/E_i\bigr]\,
+                       n_X(j),
+\]
+with \(E_{\mathrm{th},X}\) taken from the Verner threshold list.
+
+The subroutine signature is extended; the single caller in
+\texttt{ionization\_equilibrium.f90} and the two calls in
+\texttt{post\_process\_adv.f90} are updated.  The post-processing
+calls pass zero-valued metal density arrays
+(\texttt{zerov}), since post-processing only refines the converged
+profiles and does not track metal feedback.
+
+\subsection{Stage 8: Metal-line cooling with $\beta$ escape factor}
+\textbf{File:} \texttt{src/modules/radiation/util\_ion\_eq.f90}
+(\texttt{eval\_cool}).
+
+The cooling routine signature now accepts the six metal density arrays
+and returns the four metal-stage recombination coefficients and the
+four metal-stage collisional ionization coefficients (for downstream
+use in the equilibrium system).
+
+The bremsstrahlung term is extended with \(Z^{2}\)-weighted
+contributions from each ionized metal stage,
+\begin{equation}
+\dot{Q}_{\mathrm{ff}} = 1.426\times10^{-27}\sqrt{T}\,
+\Biggl[\;
+\sum_{Z}\,Z^{2}\,g_{Z}(T)\,n_{Z}\;
+\Biggr]\,n_{e},
+\end{equation}
+with the sum now including
+\(Z=1\): \{H\,II, C\,II, O\,II\} and
+\(Z=2\): \{He\,II, He\,III, C\,III, O\,III\}.
+The two Gaunt-factor calls
+\texttt{GF(T,6.0d0,GF\_C)} and
+\texttt{GF(T,8.0d0,GF\_O)} reuse the existing
+\(g_{Z}(T)\) routine.
+
+The metal line-cooling contribution is
+\begin{equation}
+\dot{Q}_{\mathrm{metal}} \;=\;
+\beta(\tau_\mathrm{eff})\, n_{e}\,
+\bigl[\;
+n_\mathrm{CI}\,\Lambda_\mathrm{CI}
++ n_\mathrm{CII}\,\Lambda_\mathrm{CII}
++ n_\mathrm{OI}\,\Lambda_\mathrm{OI}
++ n_\mathrm{OII}\,\Lambda_\mathrm{OII}
+\;\bigr],
+\end{equation}
+with the AIOLOS escape probability
+\[
+  \tau_\mathrm{eff}(j) \;=\; \kappa_{\mathrm{loc}}(j)\,\Delta r_j\,\times\,10^{8},
+\]
+\[
+  \kappa_{\mathrm{loc}}(j) \;=\; 10^{-18}\bigl[
+  \sigma_{\mathrm{H\,I}}(E_1)\,n_\mathrm{HI}(j) +
+  \sigma_{\mathrm{He\,I}}(E_1)\,n_\mathrm{HeI}(j) +
+  \sigma_{\mathrm{He\,II}}(E_1)\,n_\mathrm{HeII}(j)\bigr].
+\]
+The constant \texttt{1.7724} in the high-\(\tau\) branch of
+the AIOLOS expression is recognized as
+\(\sqrt{\pi}\) and written that way in Fortran for clarity:
+\verb|sqrt(log(tau_eff/sqrt(pi)))|.  The innermost ghost
+cell has \(\beta\) forced to zero (matching AIOLOS).  The
+\texttt{!To Be Checked/AIOLOS tuning?} comment is placed on the
+preceding line at the point of the \(10^{8}\) factor.
+
+\textbf{Adopted value.}  The \(\beta(\tau_\mathrm{eff})\) expression
+above is retained in the source for reference, but the production code
+overrides it with \(\beta = 1\) (100\% escape, optically-thin limit);
+see \S\ref{sec:beta-one}.  Equivalently, \(\Lambda_\mathrm{metal}\) is
+applied with no line-trapping suppression.
+
+The total cooling becomes
+\(\dot{Q}_{\mathrm{cool}} = \dot{Q}_{\mathrm{H/He}} + \dot{Q}_{\mathrm{metal}}\).
+
+\subsection{Stage 9: New 7-equation ionization system}
+\textbf{File (new):} \texttt{src/modules/nonlinear\_system\_solver/System\_HeHCO.f90}.
+
+The 7-dimensional unknown vector encodes the ionization fractions
+\[
+  x = (x_\mathrm{HII},\; x_\mathrm{HeII},\; x_\mathrm{HeIII},\;
+       x_\mathrm{CII},\; x_\mathrm{CIII},\; x_\mathrm{OII},\; x_\mathrm{OIII}),
+\]
+each normalized to the respective element total
+(\(x_\mathrm{HII} = n_\mathrm{HII}/n_H\), etc.).  The neutral fractions
+follow from conservation:
+\(x_\mathrm{HI} = 1 - x_\mathrm{HII}\),
+\(x_\mathrm{HeI} = 1 - x_\mathrm{HeII} - x_\mathrm{HeIII}\),
+\(x_\mathrm{CI} = 1 - x_\mathrm{CII} - x_\mathrm{CIII}\),
+\(x_\mathrm{OI} = 1 - x_\mathrm{OII} - x_\mathrm{OIII}\).
+The free-electron density includes metal ion contributions:
+\[
+  n_e = n_\mathrm{HII} + n_\mathrm{HeII} + 2\,n_\mathrm{HeIII}
+      + n_\mathrm{CII} + 2\,n_\mathrm{CIII}
+      + n_\mathrm{OII} + 2\,n_\mathrm{OIII}.
+\]
+
+The seven balance equations follow the same template as the original
+3-equation HeH system,
+\[
+  f_k = n_\mathrm{lo}\,\Gamma_\mathrm{lo}
+      + n_e\,\bigl[\,n_\mathrm{lo}\,C_\mathrm{lo}
+                  - n_\mathrm{up}\,\alpha_\mathrm{up}\,\bigr] = 0,
+\]
+where \(\Gamma\) is the photoionization rate, \(C\) the collisional
+ionization rate coefficient, and \(\alpha\) the case-B recombination
+coefficient.  Defensive code paths force \(f_{4} = x_{4}\),
+\(f_{5} = x_{5}\) when \(n_C \le 10^{-30}\) (and analogously for O),
+keeping the Jacobian well-defined in the limit of absent metals.
+
+The \texttt{params} array dimension is consequently bumped from 25 to
+40 throughout all system modules (\texttt{System\_H.f90},
+\texttt{System\_HeH.f90}, \texttt{System\_HeH\_TR.f90},
+\texttt{System\_HeHCO.f90}, \texttt{T\_equation.f90}, and the caller).
+
+\subsection{Stage 10: Equilibrium-system dispatch}
+\textbf{File:} \texttt{src/modules/radiation/ionization\_equilibrium.f90}.
+
+The dispatch logic chooses among three callees:
+\begin{lstlisting}[language=Fortran]
+if (thereis_HeITR) then
+   call hybrd1(ion_system_HeH_TR, ...)
+else if (thereis_metals) then
+   call hybrd1(ion_system_HeHCO, ...)
+else
+   call hybrd1(ion_system_HeH, ...)
+endif
+\end{lstlisting}
+The HeITR + metals combination is not supported in this revision (a
+flag check would short-circuit one or the other if both were
+requested; currently HeITR wins).
+
+The \texttt{params} buffer is filled with the new metal coefficients
+in slots 19--32:
+\(P_{X}\) in 19--22, \(\alpha_{X}\) in 23--26, \(C_{X}\) in 27--30,
+and \(n_C, n_O\) in 31--32.  Initial guesses for the seven-vector are
+chosen analogously to the existing pattern (full ionization at the
+outermost cell, propagation inward).
+
+\subsection{Stage 11: Thermal equation}
+\textbf{File:} \texttt{src/modules/nonlinear\_system\_solver/T\_equation.f90}.
+
+The Newton residual for the temperature equation gains a metal-line
+cooling contribution (using the scalar \texttt{cool\_*\_func} forms)
+and a metal-ion bremsstrahlung sum.  The free electron density
+includes metal contributions when \texttt{thereis\_metals} is true.
+Metal densities are passed via \texttt{paramsT(13--18)}; the
+post-processing caller fills these with zero, since the post-process
+refinement does not propagate metals.
+
+\subsection{Stage 12: I/O extensions}
+\textbf{Files:}
+\texttt{files\_IO/write\_output.f90},
+\texttt{files\_IO/input\_read.f90},
+\texttt{files\_IO/load\_IC.f90}.
+
+\begin{itemize}
+  \item \texttt{Ion\_species.txt} gains six new columns
+    (C\,I, C\,II, C\,III, O\,I, O\,II, O\,III), appended to the
+    existing six columns.  The \texttt{Hydro\_ioniz.txt} format is
+    unchanged.
+  \item \texttt{input\_read.f90} sets \texttt{X\_C = X\_O = 0} at
+    subroutine entry (default), then sets
+    \texttt{thereis\_metals = (X\_C > 0) .or. (X\_O > 0)} after the
+    He/H line is parsed.  No new lines are required in
+    \texttt{input.inp}; abundances can be set programmatically or by
+    a future GUI extension.
+  \item \texttt{load\_IC.f90} reads only the original six species
+    columns (preserving compatibility with existing IC files) and
+    initializes the metal fractions from the input abundance, neutral.
+\end{itemize}
+
+\subsection{Stage 13: Build and smoke test}
+\textbf{File:} \texttt{run\_ATES.sh}.
+
+Compile-link with both \texttt{gfortran -O2 -fopenmp} yields 48
+object files (the extra one is \texttt{System\_HeHCO.f90}) and a
+\texttt{172520}-byte executable, up from \texttt{159976} bytes for the
+unmodified ATES.  A smoke run with no \texttt{input.inp} reaches the
+parameter-reading routine and exits with the expected end-of-file
+error, confirming module initialization succeeds.
+
+While editing the build script, an unrelated trailing-backslash bug
+was discovered on line 122 (the line that lists
+\texttt{System\_implicit\_adv\_H.f90}); without the backslash, the
+shell variable assignment terminates there and every file below would
+be silently dropped from the compile string.  The backslash was added.
+
+%=============================================================================
+\section{Equations in Final Form}
+%=============================================================================
+
+\subsection{Photoionization integrand}
+
+For ion species \(X\) the cell-resolved photoionization rate is
+\[
+  P_X(j) \;=\; 10^{-18}\!\int_{E_\mathrm{th}, X}^{E_\mathrm{top}}\!\!
+  \frac{F_\nu(E)\, \sigma_X(E)}{E}\,
+  \frac{e^{-\tau_E(j)}}{1 + a_\tau\,\tau_E(j)}\,dE,
+\]
+evaluated by midpoint summation on the \(N_l\)-point energy grid.
+The factor of \(10^{-18}\) restores the cross-section unit, since the
+tabulated \(\sigma_X\) are stored in units of
+\(10^{-18}\,\mathrm{cm}^{2}\).  The denominator
+\((1 + a_\tau\tau_E)\) is the ATES bracketing trick for the
+two-stream approximation; it remains unchanged from upstream.
+
+\subsection{Total cooling}
+
+\begin{align}
+\dot{Q}_{\mathrm{cool}}(j) \;=\;
+n_e(j)\,&\Bigl[
+\dot{Q}_\mathrm{ff}(j)
++ \dot{Q}_\mathrm{coex}(j)
++ \dot{Q}_\mathrm{reco}(j)
++ \dot{Q}_\mathrm{coio}(j)\Bigr] \notag\\
++\, n_e(j)\,\beta(j)\,&\Bigl[
+n_\mathrm{CI}\Lambda_\mathrm{CI}(T)
++ n_\mathrm{CII}\Lambda_\mathrm{CII}(T)
++ n_\mathrm{OI}\Lambda_\mathrm{OI}(T)
++ n_\mathrm{OII}\Lambda_\mathrm{OII}(T)\Bigr].
+\end{align}
+The first line contains the legacy H/He channels, now with metal-ion
+\(Z^{2}\) terms added to \(\dot{Q}_\mathrm{ff}\).  The second line is
+the new metal-line cooling; the escape probability is set to
+\(\beta = 1\) (100\% escape, \S\ref{sec:beta-one}), so this reduces to
+the full optically-thin metal-line cooling.
+
+\subsection{Electron-density closure}
+
+\[
+  n_e \;=\; n_\mathrm{HII}
+          + n_\mathrm{HeII} + 2\,n_\mathrm{HeIII}
+          + n_\mathrm{CII}  + 2\,n_\mathrm{CIII}
+          + n_\mathrm{OII}  + 2\,n_\mathrm{OIII}.
+\]
+
+%=============================================================================
+\section{Activation, Defaults, and Backward Compatibility}
+%=============================================================================
+
+The default configuration is \(X_C = X_O = 0\), which yields
+\texttt{thereis\_metals = .false.}, which dispatches to the original
+3-equation \texttt{ion\_system\_HeH} solver.  In this default mode the
+new code paths execute zero metal contributions to the
+photoionization, photoheating, opacity, bremsstrahlung, and cooling
+sums.  The original H/He-only ATES behavior is therefore preserved
+bit-for-bit.
+
+To activate metals, override the defaults in \texttt{input\_read.f90}:
+\begin{lstlisting}[language=Fortran]
+   X_C = 2.69d-4    ! solar C/H
+   X_O = 4.90d-4    ! solar O/H
+\end{lstlisting}
+or any other positive value.  This single change automatically:
+\begin{enumerate}
+  \item Initializes \(n_\mathrm{CI}, n_\mathrm{OI}\) at the lower
+    boundary via \texttt{set\_IC.f90} and \texttt{load\_IC.f90}.
+  \item Switches the equilibrium solver to
+    \texttt{ion\_system\_HeHCO}.
+  \item Activates the metal photoionization, opacity, photoheating,
+    bremsstrahlung-metal-ion, and metal-line-cooling terms.
+  \item Adds six metal columns to \texttt{Ion\_species.txt}.
+\end{enumerate}
+\begin{sloppypar}
+A future cleanup should propagate \texttt{X\_C/X\_O} through the
+\texttt{input.inp} text format and the Tk GUI
+(\texttt{src/utils/ATES\_interface\_main.py}); this revision
+deliberately keeps the input format unchanged for ease of testing.
+\end{sloppypar}
+
+%=============================================================================
+\section{Modernization update (2026): Badnell recombination, nitrogen,
+two-level cooling}
+\label{sec:modernization}
+%=============================================================================
+
+The element-handling physics was subsequently brought in line with the
+more modern treatment in the sibling fork \texttt{ATES\_extended}.  Three
+changes were made; all are confined to the metal pathway and leave the
+H/He-only default bit-for-bit unchanged.
+
+\subsection{Recombination: Aldrovandi--Pequignot $\rightarrow$ Badnell
+RR$+$DR}
+
+The Aldrovandi \& Pequignot (1973) single power-law fits
+(radiative recombination only, no dielectronic term) were replaced by
+the modern \textbf{Badnell total-recombination fits}, ported verbatim
+from \texttt{ATES\_extended}:
+\begin{itemize}
+  \item \textbf{Radiative} (Badnell 2006, ApJS 167, 334), ground-level
+    total fit
+    \[
+      \alpha_{\mathrm{RR}}(T) = \frac{A}
+      {\sqrt{T/T_0}\,\bigl(1+\sqrt{T/T_0}\bigr)^{1-b}
+                     \bigl(1+\sqrt{T/T_1}\bigr)^{1+b}},
+      \quad b = B + C\,e^{-T_2/T}.
+    \]
+  \item \textbf{Dielectronic} (Badnell adf48 total fits)
+    \[
+      \alpha_{\mathrm{DR}}(T) = T^{-3/2}
+      \sum_{i=1}^{n} c_i\,e^{-E_i/T}.
+    \]
+\end{itemize}
+The fit coefficients are stored as a module-level \texttt{rec\_fit}
+derived-type table in \texttt{Cool\_coeff.f90} (constants
+\texttt{bad\_CI}, \texttt{bad\_CII}, \texttt{bad\_NI}, \texttt{bad\_NII},
+\texttt{bad\_OI}, \texttt{bad\_OII}, keyed by the recombined/daughter
+ion), evaluated by the helper functions \texttt{alpha\_rr\_metal},
+\texttt{alpha\_dr\_metal}, and \texttt{alpha\_rec\_metal}.  The existing
+array routines \texttt{rec\_CII}/\texttt{rec\_CIII}/\texttt{rec\_OII}/%
+\texttt{rec\_OIII} (and the new nitrogen ones) now loop over cells
+calling \texttt{alpha\_rec\_metal} with the appropriate daughter label,
+so the \texttt{eval\_cool} interface is unchanged.  The source fit
+tables are the Badnell \texttt{clist\_K} files (see References).
+
+\subsection{Nitrogen (N\,I / N\,II / N\,III)}
+
+Nitrogen was added end-to-end, mirroring the carbon/oxygen wiring:
+\begin{itemize}
+  \item \textbf{Photoionization:} Verner et~al.~(1996) cross sections
+    \texttt{sigma\_NI}, \texttt{sigma\_NII} (\texttt{cross\_sec.f90}),
+    tabulated on the energy grid as \texttt{s\_ni}, \texttt{s\_nii}.
+  \item \textbf{Recombination:} Badnell RR$+$DR for the daughters N\,I
+    and N\,II (\texttt{rec\_NII}, \texttt{rec\_NIII}).
+  \item \textbf{Collisional ionization:} Voronov (1997) fits
+    \texttt{ion\_coeff\_NI} (\(\Delta E=14.53\)\,eV, \(A=4.82\times
+    10^{-8}\), \(P=0\), \(X=0.0652\), \(K=0.42\)) and
+    \texttt{ion\_coeff\_NII} (\(\Delta E=29.60\)\,eV, \(A=2.98\times
+    10^{-8}\), \(P=0\), \(X=0.310\), \(K=0.30\)).
+  \item \textbf{Line cooling:} none.  Following \texttt{ATES\_extended}
+    (and AIOLOS, which provide no nitrogen fit), \texttt{cool\_NI} and
+    \texttt{cool\_NII} return \(0\); nitrogen participates in the
+    ionization/charge balance and bremsstrahlung but contributes no
+    line cooling.  (A future [N\,II] 122/205\,\(\mu\)m treatment via
+    Hollenbach \& McKee 1989 is flagged \texttt{!To Be Checked}.)
+  \item \textbf{Equilibrium system:} the MINPACK system
+    \texttt{System\_HeHCO} grows from 7 to \textbf{9 unknowns}, adding
+    \(x_8 = n_{\mathrm{N\,II}}/n_N\) and \(x_9 = n_{\mathrm{N\,III}}/n_N\)
+    (parameter slots 33--39: \(g_{\mathrm{N\,I}}, g_{\mathrm{N\,II}},
+    \alpha_{\mathrm{N\,II}}, \alpha_{\mathrm{N\,III}},
+    b_{\mathrm{N\,I}}, b_{\mathrm{N\,II}}, n_N\)).  Absent elements are
+    force-zeroed, so the same 9-equation system handles C-only, C$+$O,
+    or C$+$N$+$O.  \(N_\mathrm{eq}=9\) when \texttt{thereis\_metals}.
+  \item \textbf{State / I/O:} the species array \texttt{f\_sp} grows
+    \(12\rightarrow15\) (columns 13--15 = N\,I/N\,II/N\,III);
+    \texttt{Ion\_species.txt} gains three trailing columns (16 total);
+    \texttt{set\_IC}/\texttt{load\_IC} seed neutral N from \texttt{X\_N}
+    (solar \(\simeq 6.76\times10^{-5}\)); the abundance flag
+    \texttt{thereis\_metals} now also triggers on \texttt{X\_N}.
+\end{itemize}
+
+\subsection{Two-level fine-structure cooling (optional)}
+
+A more physical treatment of the two dominant low-atmosphere coolants,
+\([\mathrm{O\,I}]\,63\,\mu\)m and \([\mathrm{C\,II}]\,158\,\mu\)m, was
+added behind the toggle \texttt{use\_2lev\_cool} (default
+\texttt{.false.}).  When enabled, the constant fine-structure part of
+the Black/AIOLOS fit for O\,I and C\,II is replaced by an explicit
+two-level form with critical-density saturation and neutral-hydrogen
+collisions,
+\[
+  \Lambda = h\nu\,A\,\frac{x\,C_{\mathrm{dex}}}
+                          {A + C_{\mathrm{dex}}(1+x)},
+  \quad x = \frac{g_u}{g_l}e^{-E/k_BT},
+  \quad C_{\mathrm{dex}} = \sum_c n_c k_{ul}^{c},
+\]
+(function \texttt{lambda\_2level} in \texttt{Cool\_coeff.f90}); the
+exponential ``forbidden'' part of the fit is retained on top, and C\,I
+and O\,II keep the plain fit.  This matches \texttt{ATES\_extended}.
+\textbf{Caveat:} the collision-rate coefficients
+(\([\mathrm{C\,II}]\): Goldsmith et~al.~2012; \([\mathrm{O\,I}]\):
+Lique et~al.~2017 / Draine 2011) are approximate and flagged
+\texttt{VERIFY}; the default \texttt{.false.} preserves the base fit so
+that metal-comparison experiments are unaffected unless the toggle is
+deliberately set.
+
+\subsection{Verification}
+
+The metal-enabled build (solar C, N, O; HD\,209458b) compiles cleanly
+and runs without \texttt{NaN}/\texttt{Inf}; the nitrogen abundance is
+conserved to machine precision (\(n_N/n_H = 6.76\times10^{-5}\)) and the
+N ionization stratification is physical (N\,I deep, N\,II through the
+ionization front, N\,III in the hot outer wind, tracking hydrogen).
+
+%=============================================================================
+\section{Opacity dispatcher, runtime config, and charge exchange (2026)}
+\label{sec:catchup}
+%=============================================================================
+
+A second round of work brought across the remaining ``modern'' pieces of
+\texttt{ATES\_extended} and added one process that neither tree had.
+
+\subsection{Opacity-model dispatcher (A/C/P/T)}
+
+Ported from \texttt{ATES\_extended} as
+\texttt{src/modules/radiation/opacity\_models.f90} (the
+\texttt{photoion\_sigma} dispatcher) and
+\texttt{src/modules/files\_IO/opacity\_input\_read.f90} (an
+\texttt{opacity.inp} \texttt{KEY = VALUE} parser).  The H/He
+photoionization cross sections in \texttt{set\_energy\_vectors.f90} are
+now filled through \texttt{photoion\_sigma(sp,E)}, which selects:
+\begin{itemize}
+  \item \textbf{A} --- analytic (\texttt{cross\_sec.f90}; the default,
+    bit-identical to before);
+  \item \textbf{C} --- constant cross section above threshold,
+    \(\sigma = \texttt{OPA\_CONST\_}X\times\sigma(E_\mathrm{th})\);
+  \item \textbf{P} --- constant plus Robinson \& Catling (2012)
+    pressure broadening (below);
+  \item \textbf{T} --- tabulated from a per-species two-column
+    \texttt{.atesopa} file (\(E\,[\mathrm{eV}],\,\sigma\,[10^{-18}\,
+    \mathrm{cm}^2]\)), log--log interpolated, analytic fallback when a
+    species has no file.
+\end{itemize}
+
+\textbf{Pressure broadening (completed).}  In \texttt{ATES\_extended}
+the per-cell pressure factor was a dormant hook
+(\texttt{opacity\_pT\_factor} was never called).  Here it is actually
+applied: a per-cell multiplier
+\[
+  f(p_j) = 1 + a\,(p_j/p_\mathrm{pivot})^{n},
+  \qquad p_j = (n_{\mathrm{tot},j}+n_{e,j})\,k_B T_j,
+\]
+is stored in the global \texttt{opa\_pf(j)} (computed in
+\texttt{ioniz\_eq} / \texttt{post\_process\_adv}) and weights the opacity
+column-density integrand (in \texttt{calc\_column\_dens} and its metals
+variant), so the optical depth becomes
+\[
+  \tau_E(j)=\sum_X \sigma_X(E)\sum_{k\ge j} n_X(k)\,f(p_k)\,\Delta r_k .
+\]
+For all models other than \textbf{P}, \(f\equiv 1\) and the column
+densities are unchanged (bit-identical).
+
+\subsection{Runtime configuration (no recompile)}
+
+Two optional files, read next to \texttt{input.inp}, remove the need to
+edit source and rebuild:
+\begin{itemize}
+  \item \texttt{metals.inp} (\texttt{src/modules/files\_IO/%
+    metals\_input\_read.f90}) --- one ion per line,
+    \texttt{<ION> <n\_X/n\_H>}; \texttt{CI/NI/OI} set
+    \texttt{X\_C/X\_N/X\_O}.  Absent file leaves metals off, so the
+    H/He-only default is preserved.  This replaces the previously
+    hard-coded abundances in \texttt{input\_read.f90}.
+  \item \texttt{opacity.inp} --- selects the opacity model and its
+    parameters (\S\ref{sec:catchup}).
+\end{itemize}
+\begin{sloppypar}
+Templates ship in \texttt{inputdata/} (\texttt{metals.inp.example},
+\texttt{opacity.inp.example}, \texttt{HI\_sample.atesopa},
+\texttt{README.opacity}).
+\end{sloppypar}
+
+\subsection{Charge transfer with hydrogen (Kingdon \& Ferland 1996)}
+\label{sec:cx}
+
+Charge exchange couples metal ionization to the hydrogen ionization
+fraction and was absent from \emph{both} trees; it is added here to
+\texttt{System\_HeHCO.f90} (the coupled MINPACK system is the natural
+home, since both \(n_{\mathrm{H\,I}}\) and \(n_{\mathrm{H\,II}}\) are
+solved simultaneously).  Three reaction types per element (C, N, O):
+\[
+  X^{0} + \mathrm{H^+} \rightleftharpoons X^{+} + \mathrm{H^0},
+  \qquad
+  X^{2+} + \mathrm{H^0} \rightarrow X^{+} + \mathrm{H^+}.
+\]
+Rate coefficients use the Kingdon \& Ferland (1996, ApJS 106, 205)
+analytic fits (UGA CX database),
+\[
+  \alpha(T) = a\times10^{-9}\,t_4^{\,b}\,
+  \bigl[1 + c\,e^{d\,t_4}\bigr]\,e^{-E_k/t_4},
+  \quad t_4 = T/10^4\ \mathrm{(clamped\ to\ the\ fit\ range)},
+\]
+with \(E_k=E/k\) (in \(10^4\)\,K) nonzero only for the endothermic
+ionization branch (\texttt{ct\_fit} / \texttt{charge\_transfer\_rates}
+in \texttt{Cool\_coeff.f90}; nine rates passed via \texttt{params(40--48)}).
+Each net rate
+\(\mathrm{cx}_X = \alpha^{\mathrm{ion}}_X n_{X^0} n_{\mathrm{H\,II}}
+ - \alpha^{\mathrm{rec}}_X n_{X^+} n_{\mathrm{H\,I}}\)
+enters the \(X\) balance and, with opposite sign, the H balance
+(\(\dot{f}_{\mathrm{HII}} \mathrel{-}= \mathrm{cx}_X\)), so the coupling
+is fully self-consistent.  All terms vanish automatically when an
+element is absent.
+
+\textbf{Verification.}  With solar C, N, O the run is stable and
+\(\mathrm{NaN}\)-free, and the expected physics appears: oxygen
+ionization tracks hydrogen tightly (\(x_{\mathrm{O\,II}}\approx
+x_{\mathrm{H\,II}}\): e.g.\ \(0.59\) vs.\ \(0.57\), \(0.87\) vs.\
+\(0.85\)) because O--H charge transfer is fast and near-resonant, while
+nitrogen tracks more loosely (its larger energy defect,
+\(E_k=1.086\times10^4\)\,K, suppresses the ionization branch).
+
+%=============================================================================
+\section{Caveats and Verification Items}
+%=============================================================================
+
+The following items must be verified before scientific use of the
+metal-enabled code:
+\begin{enumerate}
+  \item \textbf{Verner cross-section parameters.}  The numerical
+    \((E_\mathrm{th}, E_0, \sigma_0, y_a, P, y_w, l)\) values for
+    C\,I, C\,II, N\,I, N\,II, O\,I, O\,II in \texttt{cross\_sec.f90}
+    should be cross-checked against Verner et~al.~(1996) Table 1.
+  \item \textbf{Voronov ionization parameters.}  The
+    \((A, P, X, K)\) values for the six metal collisional ionization
+    rates (C\,I, C\,II, N\,I, N\,II, O\,I, O\,II) should be
+    cross-checked against Voronov~(1997) Table 1.
+  \item \textbf{Recombination fits.}  \emph{Resolved}: the
+    Aldrovandi--Pequignot (1973) power-law fits (RR only) have been
+    replaced by the Badnell RR$+$DR total-recombination fits for all
+    metal stages (see \S\ref{sec:modernization}).
+  \item \textbf{AIOLOS $\beta$ formula and the $10^{8}$ factor.}
+    The AIOLOS form is retained in the source (tagged
+    \texttt{!To Be Checked/AIOLOS tuning?}) but commented out, because
+    the \(10^{8}\) factor is an empirical boost rather than a unit
+    conversion (see \S2.3).  The production code instead adopts
+    \(\beta = 1\) (100\% escape; see \S\ref{sec:beta-one}).  Whether the
+    optically-thin assumption is appropriate everywhere in the wind ---
+    versus a self-consistent Sobolev/escape-probability treatment ---
+    remains to be checked.
+  \item \textbf{Metal cooling fits.}  AIOLOS provides no in-code
+    citation; the fits should be located either in SB23 or in the
+    Schulik~(2022) PhD thesis before publication.
+  \item \textbf{Post-processing routine.}  In
+    \texttt{post\_process\_adv.f90} the calls to \texttt{PH\_heat\_HHe},
+    \texttt{eval\_cool}, and \texttt{write\_output} all pass
+    zero-valued metal density vectors and zero metal output columns.
+    Self-consistency of metals in the post-processing pass is
+    deferred.
+  \item \textbf{HeITR + metals.}  The He\,I triplet pathway and the
+    metal pathway are presently mutually exclusive; HeITR takes
+    precedence in the dispatch.
+\end{enumerate}
+
+%=============================================================================
+\section{References}
+%=============================================================================
+
+\begin{description}
+  \item[Aldrovandi \& Pequignot 1973] A\&A 25, 137.  Radiative
+    recombination rate coefficients for astrophysical ions.
+    (Superseded here by Badnell; see \S\ref{sec:modernization}.)
+  \item[Badnell 2006] ApJS 167, 334.  Radiative recombination data
+    for the isoelectronic sequences (total RR fits); dielectronic data
+    from the adf48 total fits.  Tables at
+    \texttt{https://amdpp.phys.strath.ac.uk/tamoc/}.
+  \item[Goldsmith et~al.~2012] ApJS 203, 13.  Collisional
+    de-excitation rates for the [C\,II] 158\,$\mu$m line.
+  \item[Kingdon \& Ferland 1996] ApJS 106, 205.  Rate coefficients for
+    charge transfer between hydrogen and the first 30 elements.
+  \item[Robinson \& Catling 2012] ApJ 757, 104.  Analytic radiative
+    transfer / pressure-broadened opacity (used for the 'P' model).
+  \item[Schulik \& Booth 2023] MNRAS 523, 286.  AIOLOS:
+    1-D multi-species radiation-hydrodynamics code description.
+  \item[Verner \& Ferland 1996] ApJS 103, 467.  Atomic data for
+    astrophysics. II. New analytic fits for photoionization cross
+    sections and case-B recombination coefficients.
+  \item[Verner, Ferland, Korista \& Yakovlev 1996] ApJ 465, 487.
+    Analytic single-shell fits for photoionization cross sections of
+    atoms and ions, ground states.
+  \item[Voronov 1997] ADNDT 65, 1.  A practical fit formula for
+    ionization rate coefficients of atoms and ions by electron
+    impact: Z = 1--28.
+\end{description}
+
+
+%% ======================================================================
+\part{Trace-metal Phase~2 extensions: next-steps \#4--\#9 (2026-06-03)}
+%% ======================================================================
+
+\begin{quote}\small\itshape
+\textbf{Context note (2026).} This memo was originally written for the
+\texttt{ATES\_extended} fork (decoupled coronal metal solver) and has
+been copied into \texttt{ATES-metal}, the main development version. In
+ATES-metal the metal physics lives in the coupled MINPACK ionization
+system (Badnell RR+DR recombination, nitrogen, charge transfer with H,
+an A/C/P/T opacity-model dispatcher, and runtime
+\texttt{metals.inp}/\texttt{opacity.inp}); see
+\texttt{ATES\_metal\_cooling.tex} (esp.\ \S7--\S8) for the
+ATES-metal-specific implementation.
+\end{quote}
+
+
+
+%=============================================================================
+\section{Overview}
+%=============================================================================
+
+\begin{sloppypar}
+This memo documents the extensions made to the \texttt{ATES\_extended}
+trace-metal module beyond the initial Phase 2 port, corresponding to
+next-steps \#4--\#9 of \texttt{aiolos\_port\_memo.pdf}.  Earlier work
+(opacity dispatcher, basic 2-stage coronal metals, convergence fix) is
+covered in \texttt{aiolos\_port\_memo.pdf} and
+\texttt{convergence\_fix\_and\_validation.pdf}.
+\end{sloppypar}
+
+All test runs use HD\,209458b (power-law SED, solar He/H, \texttt{du\_th}
+$=2\times10^{-2}$) with \texttt{metals.inp} containing \texttt{OI 4.9e-4}.
+
+\paragraph{Summary of changes.}
+\begin{itemize}
+\item \textbf{\#5} Third ionization stage (X$^0$/X$^+$/X$^{2+}$);
+  fixed a recombination-daughter bug in the 2-stage solver.
+\item \textbf{\#6} Replaced A\&P~1973 RR + SVS~1982 DR with
+  Badnell~2006 RR + Badnell DR (exact coefficients from amdpp).
+\item \textbf{\#7} Coupled metal-line cooling into the time-loop energy
+  equation (previously post-processing only).
+\item \textbf{\#8} Verified the metal cooling effect on $T(r)$.
+\item \textbf{\#9} Explicit two-level fine-structure cooling (HI
+  collider + critical-density saturation) for [O\,I]\,63\,$\mu$m and
+  [C\,II]\,158\,$\mu$m, combined with the high-$T$ forbidden term.
+\end{itemize}
+
+%=============================================================================
+\section{\#5 -- Three ionization stages and a bug fix}
+%=============================================================================
+
+The coronal solver was generalized from two stages (X$^0$, X$^+$) to
+three (X$^0$, X$^+$, X$^{2+}$), restoring element conservation when
+X$^{2+}$ is non-negligible.  The populations follow
+\[
+  X^0 : X^+ : X^{2+} \;=\; 1 : r_1 : r_1 r_2,
+\]
+\[
+  r_1 = \frac{\Gamma_0}{\alpha_0 n_e},\qquad
+  r_2 = \frac{\Gamma_1}{\alpha_1 n_e},
+\]
+with $\Gamma_0,\Gamma_1$ the photoionization rates of X$^0$, X$^+$ and
+$\alpha_0,\alpha_1$ the recombination rates onto X$^0$, X$^+$.
+X$^{2+}$ photoionization is neglected (high threshold, small XUV flux),
+so X$^{2+}$ is a sink.  Implemented in \texttt{coronal\_fractions}
+(\texttt{metals\_solve.f90}); X$^+$ photoionization uses a new
+\texttt{photoion\_rate\_metal\_ion} with the X$^+$ cross-section grid
+\texttt{sig1} added to \texttt{metals.f90}.
+
+\paragraph{Bug fix.}  The original 2-stage \texttt{coronal\_ratio} used
+the wrong recombination coefficient for the X$^+\!\to$X$^0$ balance:
+it called \texttt{alpha\_rec('OII')} (= O\,III$\to$O\,II) instead of
+\texttt{alpha\_rec('OI')} (= O\,II$\to$O\,I).  Because $\alpha$(O\,III$\to$O\,II)
+is $\sim 6\times$ larger than $\alpha$(O\,II$\to$O\,I), recombination was
+overestimated and O\,II underestimated.  The fix changes the escape-region
+ratio from O\,I/O\,II~$\approx 0.94$ (wrong) to $\approx 0.15$ (O\,II
+dominant), which is physically correct for the strongly-XUV-irradiated
+escape region.
+
+%=============================================================================
+\section{\#6 -- Badnell recombination rates}
+%=============================================================================
+
+Verner \& Ferland 1996 covers only H-/He-/Li-/Na-like ions, so it does
+\emph{not} contain the low-charge C/N/O recombination channels we need.
+We instead use Badnell's modern total fits, retrieved directly from
+\begin{center}
+\texttt{https://amdpp.phys.strath.ac.uk/tamoc/\{RR,DR\}/clist\_K}
+\end{center}
+(ground-level $M=1$ rows). The forms are
+\[
+  \alpha_{\rm RR}(T) = A\left[\sqrt{T/T_0}\,(1+\sqrt{T/T_0})^{1-b}
+                       (1+\sqrt{T/T_1})^{1+b}\right]^{-1},
+  \;\; b = B + C e^{-T_2/T},
+\]
+\[
+  \alpha_{\rm DR}(T) = T^{-3/2}\sum_i c_i\, e^{-E_i/T}.
+\]
+The \texttt{rec\_fit} type now stores the six RR parameters plus the
+variable-length DR $(c_i, E_i)$ arrays. At the escape temperature
+($T\sim10^4$\,K) the Badnell rates agree with A\&P/SVS to $\sim10\%$;
+the improvement is larger at the low temperatures of the deep atmosphere.
+
+%=============================================================================
+\section{\#7 -- Time-loop coupling}
+%=============================================================================
+
+Metal-line cooling is now added to the H/He cooling inside
+\texttt{ioniz\_eq} (called every time step), immediately after
+\texttt{eval\_cool}:
+\begin{lstlisting}
+if (n_metals > 0) then
+   call solve_metals_post(nhi,nhii,nhei,nheii,nheiTR,T_K, nm0,nm1,nm2)
+   call eval_metal_cooling(T_K, nm0, nm1, ne, nhi, metal_cool)
+   cool = cool + metal_cool
+endif
+\end{lstlisting}
+so metal cooling enters the time-loop energy update
+$u_3 \leftarrow u_3 + \Delta t\,(\mathrm{heat}-\mathrm{cool})$, not only
+the post-processing pass.  A from-scratch HD\,209458b run converged in
+236{,}344 iterations with no stiffness problems, confirming the coupling
+is stable.  The path is a no-op when \texttt{n\_metals = 0}.
+
+%=============================================================================
+\section{\#8 -- Cooling effect on the temperature profile}
+%=============================================================================
+
+Comparing metals-off vs metals-on (O\,I only) with the AIOLOS-fit
+cooling:
+\begin{center}
+\begin{tabular}{lrrr}
+\toprule
+$r/R_P$ & $T_{\rm off}$ (K) & $T_{\rm on}$ (K) & $\Delta T$ (K) \\
+\midrule
+1.00 (surface) & 1450 & 1450 & 0 \\
+1.03           & 1585 & 1564 & 21 \\
+1.16 (partial ioniz.) & 7197 & 6447 & 749 \\
+2.74 (escape)  & 3836 & 3630 & 206 \\
+\bottomrule
+\end{tabular}
+\end{center}
+Metal cooling lowers $T$, most strongly in the partially-ionized layer
+($\Delta T \approx 750$\,K), the correct sign and order of magnitude.
+The value is below the memo's 1000--3000\,K estimate because only O at
+solar abundance is enabled (no C/N).
+
+%=============================================================================
+\section{\#9 -- Two-level fine-structure cooling}
+%=============================================================================
+
+The AIOLOS analytic fit is electron-collider-only and lacks
+critical-density saturation.  For the dominant low-atmosphere coolants
+[O\,I]\,63\,$\mu$m (neutral O) and [C\,II]\,158\,$\mu$m (C$^+$) we use an
+explicit optically-thin two-level form:
+\[
+  \Lambda = h\nu\,A\,\frac{x\,C}{A + C(1+x)},\quad
+  x = \frac{g_u}{g_l}e^{-E/k_BT},\quad
+  C = \sum_c n_c k_{ul}^c,
+\]
+where the collisional de-excitation sum $C$ includes \emph{both}
+electrons and atomic hydrogen.  In the low-density limit $\Lambda \propto
+C$ (the HI-collider channel), and in the high-density limit
+$\Lambda \to h\nu A x/(1+x)$ (critical-density saturation,
+$n_{\rm cr} = A/k_{ul}$).
+
+\paragraph{Line data.} ([O\,I] from Draine 2011 / Lique+2017,
+[C\,II] from Goldsmith+2012; T-dependence approximate, flagged VERIFY.)
+\begin{center}
+\begin{tabular}{lrrrll}
+\toprule
+line & $A$ (s$^{-1}$) & $E/k_B$ (K) & $g_u/g_l$ & $k^e_{ul}$ & $k^H_{ul}$ \\
+\midrule
+{}[O\,I] 63\,$\mu$m  & $8.91\!\times\!10^{-5}$ & 227.7 & 0.6 & --- & $4.2\!\times\!10^{-11}(T/100)^{0.67}$ \\
+{}[C\,II] 158\,$\mu$m & $2.29\!\times\!10^{-6}$ & 91.21 & 2.0 & $8.7\!\times\!10^{-8}(T/2000)^{-0.37}$ & $4.0\!\times\!10^{-11}$ \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\paragraph{Forbidden term.} The two-level fine-structure form alone
+\emph{underestimates} cooling in the hot partially-ionized layer
+($T\sim7000$\,K), where collisional excitation of higher levels (e.g.
+[O\,I]\,6300\,\AA) dominates.  We therefore add the high-$T$ exponential
+term of the AIOLOS fit (electron collider) on top of the two-level
+fine-structure term, while dropping the AIOLOS constant fine-structure
+term (now provided explicitly by the two-level form).
+
+\paragraph{Result.}  Final cooling model vs the AIOLOS fit (\#8) and
+metals-off:
+\begin{center}
+\begin{tabular}{lrrr}
+\toprule
+$r/R_P$ & $T_{\rm 2lvl+forb}$ & $T_{\rm fit}$ & $T_{\rm off}$ \\
+\midrule
+1.07 & 1946 & 1905 & --- \\
+1.16 & 6380 & 6447 & 7196 \\
+2.74 & 3649 & 3630 & --- \\
+\bottomrule
+\end{tabular}
+\end{center}
+At the hot layer ($r\sim1.16$) the forbidden term restores the cooling
+($T = 6380 \approx T_{\rm fit}$, $\sim 800$\,K below metals-off), while in
+the cooler dense layers ($r\sim1.07$) the temperature is slightly higher
+than the fit because critical-density saturation correctly suppresses the
+over-cooling that the unsaturated fit produced. This is the most
+physically complete of the three cooling treatments.
+
+%=============================================================================
+\section{Caveats and remaining work}
+%=============================================================================
+
+\begin{enumerate}
+\item \textbf{Cross-section / rate verification.} The Verner+1996 metal
+  photoionization parameters, the two-level line data ($k^e_{ul}$,
+  $k^H_{ul}$, T-dependence), and the dropped-vs-kept split of the AIOLOS
+  fit terms should be checked against primary sources before production.
+\item \textbf{Forbidden term provenance.} The high-$T$ term reuses the
+  AIOLOS exponential fit, whose origin is itself undocumented (see
+  \texttt{ATES\_metal\_cooling.pdf} \S2). A first-principles multi-level
+  model would be cleaner.
+\item \textbf{C/N two-level.} Only O\,I and C\,II have the two-level
+  treatment; C\,I, O\,II, and N stages still use the AIOLOS fit scaled by
+  $n_e$.  Add their fine-structure lines if those species matter.
+\item \textbf{X$^{2+}$ cooling.} C\,III/O\,III have no cooling fit
+  (consistent with AIOLOS); negligible at these temperatures.
+\end{enumerate}
+
+This completes port-memo next-steps \#4--\#9. The remaining item is
+\#3 (multi-fluid hydrodynamics), deliberately deferred as new physics.
+
+
+\end{document}

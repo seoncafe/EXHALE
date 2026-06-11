@@ -1,0 +1,15 @@
+# Trace metals: solar abundances (Asplund+2009 number ratios to H),
+# Case D = Fe enhanced x4 (Huang+2023 WASP-121b enriched model).
+# Each value is the TOTAL element abundance n_X/n_H (all ionization
+# stages summed); the ionization-equilibrium solver distributes it over
+# the ion stages.
+# ATES-metal reads this at runtime (no recompile); remove the file to
+# run metals-off.
+C     2.69e-4
+N     6.76e-5
+O     4.90e-4
+Mg    3.98e-5
+Ca    2.19e-6
+Na    1.74e-6
+Fe    1.264e-4
+pp_metals 1

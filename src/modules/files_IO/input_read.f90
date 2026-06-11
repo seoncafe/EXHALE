@@ -1,0 +1,608 @@
+   module  Read_input
+   ! Read input planetary parameters adn define
+
+   use global_parameters
+   use metals_input        ! optional metals.inp abundance reader
+   use charge_exchange, only: cx_init       ! build active charge-exchange set
+   use species_table, only: n_melem, iel_C, iel_O, iel_N, iel_Mg,  &
+                            iel_Si, iel_Ca, iel_Na, iel_K, iel_S,  &
+                            iel_Fe, mion_ethr, melem_i0
+
+   implicit none
+      
+   contains
+      
+   subroutine input_read
+   ! Subroutine to read the input file and assign names and values 
+   !	to global constants
+	
+	character(len = :), allocatable :: str
+	character(len = 250) 		    :: line
+	integer                         :: ios
+	integer                         :: im
+      
+   ! ----- Read planetary parameters from input file ----- !
+
+   ! Metal abundances (default: no metals). Overridden at runtime by an
+   ! optional metals.inp file (no recompile); thereis_metals is set from
+   ! the resulting values below.
+   X_C  = 0.0d0
+   X_N  = 0.0d0
+   X_O  = 0.0d0
+   X_Mg = 0.0d0
+   X_Si = 0.0d0
+   X_Ca = 0.0d0
+   X_Na = 0.0d0
+   X_K  = 0.0d0
+   X_S  = 0.0d0
+   X_Fe = 0.0d0
+   call read_metals_input
+
+   ! Open file for reading
+	write(*,*) '(input_read.f90) Reading the input.inp file..'
+   open(unit = 11, file = inp_file)
+
+	! --- Go line by line and read
+	
+		! Planet name
+		read(11,'(A)') line
+		p_name = get_word(line, 3)
+
+     		! Log10 of n0
+      	read(11,'(A)') line
+      	str = get_word(line, 7)
+     		read(str,*) n0
+    
+	     	! Planet radius
+	     	read(11,'(A)') line
+	     	str = get_word(line, 4)
+	     	read(str,*) R0 
+	     	
+	     	! Planet mass
+	     	read(11,'(A)') line
+	     	str = get_word(line, 4)
+	     	read(str,*) Mp 
+	     	
+	     	! Equilibrium temperature
+	     	read(11,'(A)') line
+	     	str = get_word(line, 4)
+	     	read(str,*) T0 
+	     	
+	     	! Orbital distance
+	     	read(11,'(A)') line
+	     	str = get_word(line, 4)
+	     	read(str,*) a_orb 
+	     	
+	     	! Escape radius
+	     	read(11,'(A)') line
+	     	str = get_word(line, 4)
+	     	read(str,*) r_esc 
+	     	
+	     	! He/H number ratio
+	     	read(11,'(A)') line
+	     	str = get_word(line, 4)
+	     	read(str,*) HeH 
+		if (HeH .gt. 0.0e0) thereis_He = .true.
+
+	! Activate metal species if any metal abundance is set
+	thereis_metals = (X_C .gt. 0.0d0) .or. (X_N .gt. 0.0d0)        &
+	                                   .or. (X_O .gt. 0.0d0)        &
+	                                   .or. (X_Mg .gt. 0.0d0)       &
+	                                   .or. (X_Si .gt. 0.0d0)       &
+	                                   .or. (X_Ca .gt. 0.0d0)       &
+	                                   .or. (X_Na .gt. 0.0d0)       &
+	                                   .or. (X_K  .gt. 0.0d0)       &
+	                                   .or. (X_S  .gt. 0.0d0)       &
+	                                   .or. (X_Fe .gt. 0.0d0)
+
+	! Per-element abundances in canonical element order (iel_*), so the
+	! grid/solver code can index metals by element rather than by named
+	! scalar. Extend this block (and the metals.inp reader) when adding
+	! elements.
+	allocate(melem_ab(n_melem))
+	melem_ab(iel_C)  = X_C
+	melem_ab(iel_O)  = X_O
+	melem_ab(iel_N)  = X_N
+	melem_ab(iel_Mg) = X_Mg
+	melem_ab(iel_Si) = X_Si
+	melem_ab(iel_Ca) = X_Ca
+	melem_ab(iel_Na) = X_Na
+	melem_ab(iel_K)  = X_K
+	melem_ab(iel_S)  = X_S
+	melem_ab(iel_Fe) = X_Fe
+
+	! An active metal whose neutral ionization threshold lies below the
+	! 13.6 eV HI edge (e.g. Mg I at 7.646 eV) needs the below-threshold
+	! sub-grid extension in set_energy_vectors (mutually exclusive with
+	! the HeI triplet). Triggered by any such active element.
+	do im = 1, n_melem
+		if (melem_ab(im) .gt. 0.0d0 .and.                       &
+		    mion_ethr(melem_i0(im)) .lt. e_th_HI)               &
+			thereis_lowIP_metal = .true.
+	enddo
+	     	
+		! 2D approximate method
+		read(11,'(A)') line
+		appx_mth = get_word(line, 4)
+		
+		! Read alpha if selected
+		if (appx_mth .eq. 'alpha') then
+			str = get_word(line, 6)
+			read(str,*) a_tau 
+		else
+			a_tau = 0.0
+		endif
+		
+		! Correct appx_meth keywords
+		if (appx_mth .eq. 'Rate/4') appx_mth = 'Rate/4 + Mdot'
+		if (appx_mth .eq. 'Rate/2') appx_mth = 'Rate/2 + Mdot/2'
+		
+		! Parent star mass
+		read(11,'(A)') line
+		str = get_word(line, 5)
+	     	read(str,*) Mstar 
+	     	
+		! Spectrum type 
+		read(11,'(A)') line
+		sp_type = get_word(line, 3)
+
+		! Next read properties of spectrum
+		select case (sp_type)
+		
+			case ('Load')			! Load from file
+				read(11,'(A)') line
+				sed_file = get_word(line, 3)
+				do_read_sed = .true.
+			
+			case ('Power-law')
+				read(11,'(A)') line
+				str = get_word(line, 3)
+				read(str,*) PLind 
+				is_PL_sed = .true.
+	
+			case ('Monochromatic')
+			
+				! Set corresponding logical to true
+				is_monochr = .true.
+				
+				! Read photon enerrgy
+				read(11,'(A)') line
+				str = get_word(line, 4)
+				read(str,*) e_low  
+				
+				! Remove helium if monochromatic and
+				!	photon energy lower than helium ionization threshold
+				if (e_low .lt. e_th_HeI) thereis_He = .false.
+			     	
+		end select
+		
+		! Only EUV status
+		read(11,'(A)') line
+		str = get_word(line, 4)
+		if (str .eq. 'False') thereis_Xray = .true.
+		
+		! If not monochromatic, read energy bands
+		if (.not. is_monochr ) then 
+			
+			if (.not.thereis_Xray) then 
+			
+				! Read e_low
+				read(11,'(A)') line
+				str = get_word(line, 4)
+			     	read(str,*) e_low  
+			     	
+				! Read e_mid
+				str = get_word(line, 6)
+				read(str,*) e_mid 
+				
+				! Set e_top to default
+				e_top = 1.24e3 
+			     	
+			else
+				! Read e_low
+				read(11,'(A)') line
+				str = get_word(line, 4)
+			     	read(str,*) e_low  
+			     	
+				! Read e_mid
+				str = get_word(line, 6)
+			     	read(str,*) e_mid 
+				
+				! Read e_top
+				str = get_word(line, 8)
+			     	read(str,*) e_top 
+			     	
+			endif
+			
+		endif
+			
+		! Read X-ray luminosity if included
+		if (thereis_Xray) then
+			read(11,'(A)') line
+			str = get_word(line, 6)
+		     	read(str,*) LX  
+		else
+			LX = 0.0
+		endif
+		
+		! Read LEUV luminosity
+		read(11,'(A)') line
+		str = get_word(line, 6)
+		read(str,*) LEUV  
+		
+		! Read grid type
+		read(11,'(A)') line
+		grid_type = get_word(line, 3)
+		
+		! Read numerical flux
+		read(11,'(A)') line
+		flux = get_word(line, 3)
+		
+		! Read reconstruction scheme
+		read(11,'(A)') line
+		rec_method = get_word(line, 3)
+		if (rec_method.eq.'WENO3') use_weno3 = .true.
+		if (rec_method.eq.'PLM')   use_plm = .true.
+		
+		! Include He23S
+		read(11,'(A)') line
+		str = get_word(line, 3)
+		if (str .eq. 'True')  thereis_HeITR = .true.
+
+		! Remove HeITR chemistry if He is not included
+		if (.not. thereis_He) thereis_HeITR = .false.
+
+		! IC status
+		read(11,'(A)') line
+		str = get_word(line, 3)
+		if (str .eq. 'True')  do_load_IC = .true.
+		
+		! Do only post-processing
+		read(11,'(A)') line
+		str = get_word(line, 4)
+		if (str .eq. 'True')  then
+			do_only_pp  = .true.
+			force_start = .false. ! Set to false to avoid overlap
+		endif
+
+		! Force start of sim.
+		read(11,'(A)') line
+		str = get_word(line, 3)
+		if (str .eq. 'True')  then
+			force_start = .true.
+			do_only_pp  = .false. ! Set to false to avoid overlap
+		endif
+
+		! ---- Optional domain-extent option ----
+		! Appended at the end of input.inp (after "Force start:") so older
+		! files lacking these lines keep the default Roche/Hill behavior.
+		! "Domain mode: Spherical" + "Outer radius [R_p]: <value>" switches
+		! to a pure planetary potential (-b0/r) extended to <value> R_p
+		! (Huang Case A-like). Scanned by keyword (index) so blank trailing
+		! lines and line ordering do not matter.
+		! Phase 3a excited-H option (also appended after "Force start:" so
+		! older files are unaffected): "Stellar Teff [K]: <T>" + "Stellar
+		! radius [R_sun]: <R>" supply the diluted-blackbody Balmer continuum
+		! that photoionizes/heats H(n=2). The coupling is enabled iff both are
+		! given (T_star_eff>0, R_star>0). "Deexc heat: True" additionally turns
+		! on the (overlapping) collisional de-excitation heating term.
+		spherical_domain = .false.
+		r_out_user       = 0.0d0
+		T_star_eff       = 0.0d0
+		R_star           = 0.0d0
+		incl_deexc_heat  = .false.
+		jlya_mode        = 0
+		transonic_ic     = .false.
+		hot_parker_ic    = .false.
+		T_wind_ic        = 1.0d4
+		use_newton_ieq   = .true.    ! upgraded solvers are the default
+		use_brent_tsolve = .true.
+		do
+			read(11,'(A)',iostat = ios) line
+			if (ios .ne. 0) exit
+			if (len_trim(line) .eq. 0) cycle
+			if (index(line,'Domain mode') .gt. 0) then
+				str = get_word(line, 3)
+				if (str .eq. 'Spherical') spherical_domain = .true.
+			else if (index(line,'Outer radius') .gt. 0) then
+				str = get_word(line, 4)
+				read(str,*) r_out_user
+			else if (index(line,'Stellar Teff') .gt. 0) then
+				str = get_word(line, 4)
+				read(str,*) T_star_eff
+			else if (index(line,'Stellar radius') .gt. 0) then
+				str = get_word(line, 4)
+				read(str,*) R_star
+			else if (index(line,'Deexc heat') .gt. 0) then
+				str = get_word(line, 3)
+				if (str .eq. 'True') incl_deexc_heat = .true.
+			else if (index(line,'Jlya RT file') .gt. 0) then
+				jlya_rt_file = get_word(line, 4)
+				jlya_mode    = 1
+			else if (index(line,'Jlya escape-prob') .gt. 0) then
+				str = get_word(line, 3)
+				if (str .eq. 'True') jlya_mode = 2
+			else if (index(line,'Stellar Lya flux') .gt. 0) then
+				str = get_word(line, 5)
+				read(str,*) F_Lya_star
+			else if (index(line,'Lya stellar halfwidth') .gt. 0) then
+				str = get_word(line, 5)
+				read(str,*) dv_star_lya
+			else if (index(line,'Lya stellar boost') .gt. 0) then
+				str = get_word(line, 5)
+				read(str,*) lya_star_boost
+			else if (index(line,'du_th') .gt. 0) then
+				! Two convergence thresholds: "du_th [PLM,WENO3]: <du_plm> <du_final>"
+				! Run PLM until du < du_plm, then switch to WENO3 and converge at
+				! du < du_final. If du_plm <= du_final, single-stage at du_final.
+				str = get_word(line, 3);  read(str,*) du_th_plm
+				str = get_word(line, 4);  read(str,*) du_th
+			else if (index(line,'Stall') .gt. 0) then
+				! Stall-detector override: "Stall [tol,N]: <rel_tol> <N_steps>"
+				! (smaller tol and/or larger N = harder to declare a plateau)
+				str = get_word(line, 3);  read(str,*) stall_tol
+				str = get_word(line, 4);  read(str,*) N_stall
+				write(*,'(A,ES9.2,A,I0)') ' (input_read) Stall override: tol =', &
+				                          stall_tol, ', N =', N_stall
+			else if (index(line,'Energy solver') .gt. 0) then
+				! "Energy solver: Explicit" reverts to the original forward-
+				! Euler source update (solver-component isolation tests).
+				str = get_word(line, 3)
+				if (str .eq. 'Explicit') then
+					use_semi_implicit_energy = .false.
+					write(*,*) '(input_read) Energy solver: explicit forward Euler'
+				endif
+			else if (index(line,'Time stepping') .gt. 0) then
+				! "Time stepping: Local" = per-cell pseudo-time steps
+				! (steady-state convergence acceleration; not time-accurate).
+				str = get_word(line, 3)
+				if (str .eq. 'Local') then
+					use_local_dt = .true.
+					write(*,*) '(input_read) Time stepping: local (per-cell) pseudo-dt'
+				endif
+			else if (index(line,'Level tol') .gt. 0) then
+				! "Level tol: <val>" overrides the mass-flux level-stability
+				! tolerance (<= 0 disables the level gate; legacy stops).
+				str = get_word(line, 3);  read(str,*) lev_th
+				write(*,'(A,ES9.2)') ' (input_read) Level-stability tol =', lev_th
+			else if (index(line,'Solver') .gt. 0) then
+				! "Solver: Newton [R_switch]" = marching warm-up until the
+				! steady residual max||R|| < R_switch (default 5e-2), then
+				! the JFNK steady solve.
+				str = get_word(line, 2)
+				if (str .eq. 'Newton') then
+					use_newton_solver = .true.
+					str = get_word(line, 3)
+					if (len_trim(str) .gt. 0) read(str,*) newton_R_switch
+					write(*,'(A,ES9.2)') ' (input_read) Solver: Newton, '// &
+						'warm-up until ||R|| <', newton_R_switch
+				endif
+			else if (index(line,'Valve eps') .gt. 0) then
+				! "Valve eps: <v_eps>" smooths the base one-way valve
+				! (softplus; <= 0 keeps the exact legacy max(v,0)).
+				str = get_word(line, 3);  read(str,*) valve_eps
+				write(*,'(A,ES9.2)') ' (input_read) Smooth base valve, eps =', valve_eps
+			else if (index(line,'Resid tol') .gt. 0) then
+				! "Resid tol: <val>" = converge on the steady residual ||R||
+				! instead of du (<= 0 disables; legacy du-based stop).
+				str = get_word(line, 3);  read(str,*) resid_th
+				write(*,'(A,ES9.2)') ' (input_read) Residual-based convergence, tol =', resid_th
+			else if (index(line,'CFL') .gt. 0) then
+				! Override the CFL number ("CFL: <value>"); lower = smaller dt.
+				str = get_word(line, 2);  read(str,*) CFL
+			else if (index(line,'Transonic IC') .gt. 0) then
+				str = get_word(line, 3)
+				if (str .eq. 'True') transonic_ic = .true.
+			else if (index(line,'Hot Parker IC') .gt. 0) then
+				str = get_word(line, 4)
+				read(str,*) T_wind_ic
+				hot_parker_ic = .true.
+			else if (index(line,'Newton solver') .gt. 0) then
+				str = get_word(line, 3)
+				if (str .eq. 'False') use_newton_ieq = .false.
+			else if (index(line,'Brent solver') .gt. 0) then
+				str = get_word(line, 3)
+				if (str .eq. 'False') use_brent_tsolve = .false.
+			endif
+		enddo
+
+		! The transonic-wind IC already satisfies steady mass conservation
+		! (rho*v*r^2 = const), so du ~ 0 at step 0 would trip the "momentum
+		! constant" exit before the cold wind heats to its hot steady state.
+		! Force the first iterations so the heating develops first (the normal
+		! convergence test then resumes; see ATES_main.f90). Skipped in
+		! post-processing-only runs (force_start/do_only_pp are exclusive).
+		if ((transonic_ic .or. hot_parker_ic) .and. .not. do_only_pp) &
+			force_start = .true.
+
+		! Convert the stellar radius to cm (Balmer dilution R_star/a_orb) and
+		! enable the excited-H coupling only when both stellar inputs are set.
+		R_star        = R_star*Rsun
+		use_excited_H = (T_star_eff .gt. 0.0d0) .and. (R_star .gt. 0.0d0)
+
+		! Guard: the in-line Ly-alpha escape-probability RT ("Jlya escape-prob:
+		! True", jlya_mode = 2) builds J_lya = J_int + J_star, where the stellar
+		! beam J_star is proportional to F_Lya_star (set by "Stellar Lya flux
+		! [erg/cm2/s]:"). If F_Lya_star is left at its default 0, the stellar
+		! beam vanishes and the "Lya stellar halfwidth"/"Lya stellar boost"
+		! settings become silent no-ops. Refuse to run that misconfiguration
+		! rather than produce incomplete physics without warning.
+		if (jlya_mode .eq. 2 .and. F_Lya_star .le. 0.0d0) then
+			write(*,*) '(input_read.f90) ERROR: "Jlya escape-prob: True" was'
+			write(*,*) '  set but "Stellar Lya flux [erg/cm2/s]:" is missing or'
+			write(*,*) '  <= 0. The stellar Ly-alpha beam (J_star) would be zero'
+			write(*,*) '  and the halfwidth/boost settings would do nothing.'
+			write(*,*) '  Add e.g. "Stellar Lya flux [erg/cm2/s]: 1.0e5" to'
+			write(*,*) '  input.inp, or disable escape-prob mode. Aborting.'
+			stop 1
+		endif
+
+   close(unit = 1)
+	write(*,*) '(input_read.f90) Done'
+
+   !------ Definition of physical parameters ------!
+      
+   n0     = 10.0**(n0)
+   R0     = R0*RJ
+   Mp     = Mp*MJ
+   a_orb  = a_orb*AU
+   Mstar  = Mstar*Msun
+   Mrapp  = Mstar/Mp
+   atilde = a_orb/R0
+   if (spherical_domain) then
+      ! Spherical mode: outer boundary set explicitly by the user [R_p];
+      ! grid is normalized to R0 = R_p so r_max = r_out_user directly.
+      if (r_out_user .le. 1.0d0) then
+         write(*,*) '(input_read.f90) ERROR: Domain mode = Spherical '   // &
+                    'requires "Outer radius [R_p]:" > 1.0 in input.inp.'
+         stop
+      endif
+      r_max = r_out_user
+   else
+      ! Roche mode: truncate at the Hill/L1 radius.
+      r_max = (3.0*Mrapp)**(-1.0/3.0)*atilde
+   endif
+            
+	!------ Normalization constants ------!
+      
+   rho_bc = (1.0 + 4.0*HeH)/(1.0 + HeH)
+   v0     = sqrt(kb_erg*T0/mu)       
+   t_s    = R0/v0                    
+   p0     = n0*mu*v0*v0              
+   q0     = n0*mu*v0*v0*v0/R0	      
+   b0     = (Gc*Mp*mu)/(kb_erg*T0*R0)       
+   dp_bc  = 1.0e-10
+	
+   !------ Allocations ------!
+      
+   ! Allocate variables according to composition
+   if (.not.thereis_He) then
+      	N_eq = 1
+   else
+		if (thereis_HeITR) then
+			N_eq = 4
+		else
+			N_eq = 3
+		endif
+		! If metals are present, the system grows by 2*n_melem variables:
+		! HII, HeII, HeIII (+ HeITR if the triplet is on), then two fractions
+		! (X+, X++) per metal element. Absent elements are force-zeroed.
+		! HeITR + metals is solved by the merged System_HeH_TR_metals: the
+		! triplet keeps x(4) and the metals shift to x(5+2*(e-1)).
+		if (thereis_metals .and. .not.thereis_HeITR) N_eq = 3 + 2*n_melem
+		if (thereis_metals .and.      thereis_HeITR) N_eq = 4 + 2*n_melem
+	endif
+	
+   lwa  = (N_eq*(3*N_eq+13))/2
+   allocate (sys_sol(N_eq))
+   allocate (sys_x(N_eq))
+   allocate (wa(lwa))
+
+   ! Build the active charge-exchange reaction set (Huang Table 4). cx_full
+   ! was set by read_metals_input; the default is the metal-H group only.
+   if (thereis_metals) call cx_init
+
+   ! End of subroutine
+   end subroutine input_read
+      
+   ! ------------------------------------------------------- !
+      
+   function get_word(string_in,n_word)
+	! Function to read the nth_word in the current string
+	! 	"Words" are separated by spaces
+	
+	character(len = *), intent(in) :: string_in
+	integer, intent(in) :: n_word
+	
+	character(len = :), allocatable  :: string
+	character(len = 300) :: c_string	
+	character :: p_char,c_char
+	integer :: counter
+	integer :: c_word_counter
+	integer :: str_len
+	
+	character(len = :), allocatable :: get_word
+	
+	! Initialize counters and strings
+	counter        = 1
+	c_word_counter = 0
+	string   = trim(string_in)
+	str_len  = len(string)
+	p_char = ''
+	c_char = ''
+	c_string = ''
+	
+	! Loop inside the string	
+	do while (counter .ge. 0 .and. counter .le. str_len)
+
+		! Characters
+		if (counter .ge. 2) then	! Skip if its the first iteration
+			p_char = string(counter - 1:counter - 1)
+		endif
+		c_char = string(counter:counter)
+		
+		! If a character is found
+		if (c_char .ne. '') then	
+			
+			! Attach character to current string
+			c_string = trim(c_string) // c_char
+			
+			! Update counter and continue
+			counter = counter + 1 
+		
+			continue			
+		
+		else
+		
+			! If it's a first space after a character 		
+			if (p_char .ne. '') then		
+				
+				! Update word counter
+				c_word_counter = c_word_counter + 1
+				
+				! Exit from loop if word counter 
+				! is equal to n_word in input				
+				if (c_word_counter .eq. n_word) then 
+					get_word = trim(c_string)
+					return
+				endif
+			
+				! Reset current string	
+				c_string = ''
+			
+				! Update counter
+				counter = counter + 1
+				
+			else	! If multiple spaces
+				
+				counter = counter + 1
+				continue
+			endif
+				
+		endif
+		
+		! If last character, return
+		if (counter .eq. str_len) then 
+			
+			! Update string 
+			c_char = string(counter:counter)
+			c_string = trim(c_string) // c_char
+			
+			! Update word counter
+			c_word_counter = c_word_counter + 1
+				
+			! Exit from loop if word counter 
+			! is equal to n_word in input				
+			if (c_word_counter .eq. n_word) then 
+				get_word = trim(c_string)
+				return
+			endif
+		endif
+		
+	enddo	! End of while loop
+	
+	! End of get_word function
+	end function
+      
+    ! End of module
+	end module Read_input

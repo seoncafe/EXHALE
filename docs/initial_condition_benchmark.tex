@@ -1,0 +1,456 @@
+%% ATES-metal: Initial-condition benchmark (hydrostatic vs Parker-wind starts)
+%% Author: Kwang-Il Seon
+\documentclass[english,a4paper]{kiseon_memo}
+\synctex=1
+\usepackage{listings}
+\usepackage{xcolor}
+\usepackage{booktabs}
+\usepackage{amsmath}
+\usepackage{graphicx}
+\usepackage{babel}
+\emergencystretch=3em
+\lstset{basicstyle=\ttfamily\small, commentstyle=\color{gray}\itshape,
+  frame=single, breaklines=true, columns=fullflexible, showstringspaces=false}
+
+\begin{document}
+
+\title{ATES-metal: Does starting from a Parker-wind initial condition\\
+       speed up (and stabilize) convergence?}
+\author{Kwang-Il Seon}
+\date{2026-06-07}
+\maketitle
+
+\begin{quote}\small\itshape
+We test whether seeding the time integration with a transonic (Parker-type) wind
+profile --- in particular a \emph{hot} Parker wind that also carries an elevated
+temperature and ionization, as a \texttt{p-winds}-style initial guess --- reduces
+the number of iterations (and wall-clock) needed to reach the converged
+photoevaporative wind, compared with the default cold hydrostatic initial
+condition (IC). A new \texttt{Hot Parker IC} option was added to
+\texttt{set\_IC.f90}; the benchmark runs the same planet (HD\,209458b, H/He,
+spherical) from three ICs and compares convergence and the IC-vs-final profiles.
+\textbf{Bottom line:} the naive full-Parker-wind seed \emph{diverges} (its isothermal
+density is globally inconsistent with the non-isothermal equilibrium and drains onto the
+base; \S5--6); a corrected warm-seed IC that keeps the stable hydrostatic density and warms
+only the thermal/ionization/velocity overlay \emph{converges to the identical steady state}
+(\S7), but gives \emph{no speedup} for this planet, because ATES's convergence is gated by
+hydrodynamic momentum-steadiness, not the thermal relaxation the seed shortcuts. The cold
+hydrostatic IC remains the recommended default.
+\end{quote}
+
+\tableofcontents
+\bigskip
+
+% =====================================================================
+\section{Why the initial condition matters}
+% =====================================================================
+ATES integrates the 1-D radiation--hydrodynamics to a \emph{steady state}; the
+initial condition only sets where the relaxation starts, not the final answer. But
+it sets \emph{how long} the relaxation takes. The cost has two parts:
+\begin{enumerate}\itemsep2pt
+\item \textbf{Hydrodynamic relaxation} --- the velocity and density settle into the
+  transonic outflow topology (subsonic base $\to$ sonic point $\to$ supersonic
+  wind, with $\rho\,v\,r^2=$ const).
+\item \textbf{Thermal/ionization relaxation} --- the cold, nearly-neutral gas is
+  photo-heated to $\sim10^4$\,K and ionized; the temperature and ionization
+  profiles settle to radiative/advective balance. This is the \emph{stiff} part,
+  and historically the dominant cost (it motivated the semi-implicit energy solver;
+  see \texttt{Update\_ATES\_solver}).
+\end{enumerate}
+
+The current default IC (\texttt{set\_IC.f90}) is an \textbf{isothermal hydrostatic
+atmosphere}: $\rho(r)=\rho_{\rm bc}\,e^{b_{0,\rm eff}(-\phi(r)+\phi(0))}$, a near-zero
+velocity seed $v=\tfrac12(r-r_0)$, $T=T_0$ (cold base temperature), and gas that is
+\emph{mostly neutral}. The wind must therefore launch from rest \emph{and} heat/ionize
+from cold/neutral --- both relaxations run from far away.
+
+% =====================================================================
+\section{Parker / \texttt{p-winds} as an initial guess}
+% =====================================================================
+A natural idea is to start from an analytic transonic wind. The isothermal
+\textbf{Parker wind} is the algebraic solution of the steady isothermal momentum
+equation in the gravitational (or Roche) potential,
+\begin{equation}
+  \tfrac12 v^2 - c^2\ln v - 2c^2\ln r + \phi(r) = B ,
+  \label{eq:bernoulli}
+\end{equation}
+with $c^2$ the (dimensionless) isothermal sound speed$^2$ and $B$ fixed by the
+sonic point $r_c$ where $\mathrm d\phi/\mathrm dr = 2c^2/r_c$; the wind takes the
+subsonic root for $r<r_c$ and the supersonic root for $r>r_c$, and
+$\rho=\dot M/(v\,r^2)$.
+
+\texttt{p-winds} (dos Santos et al.\ 2022) is a popular open-source implementation
+of exactly this: an isothermal Parker wind plus a steady-state H/He ionization
+balance (and the He\,$2^3$S triplet). Crucially, \texttt{p-winds} \emph{prescribes}
+the temperature $T$ and mass-loss rate $\dot M$ (free parameters fit to data); it
+does \emph{not} solve the energy equation. Used as an ATES IC it would supply:
+\begin{itemize}\itemsep1pt
+\item the transonic $v(r)$, $\rho(r)$ topology (shortcuts hydrodynamic relaxation);
+\item \textbf{and the ionization structure} (shortcuts part of the ionization
+  relaxation) --- the key advantage over a bare cold Parker wind;
+\item at a \textbf{warm} temperature (right velocity scale in the heated region),
+\end{itemize}
+but it cannot supply the \emph{non-isothermal} $T(r)$ of the real wind (cold base
+$T_0\to\sim10^4$\,K plateau), and its $T,\dot M$ must be chosen.
+
+\paragraph{Design choice.} ATES already contains an isothermal Parker-wind solver
+(the \texttt{Transonic IC} option: Eq.~\ref{eq:bernoulli} at the cold $T_0$ sound
+speed). Its limitation is that it is cold (wrong velocity scale) and neutral. We
+therefore capture the \texttt{p-winds} advantage \emph{without an external
+dependency} by generalizing it to a \textbf{hot Parker IC}: the same Parker solve at
+a warm effective sound speed, plus a temperature and ionization ramp.
+
+% =====================================================================
+\section{The hot-Parker IC in ATES-metal}
+% =====================================================================
+Implemented in \texttt{src/modules/init/set\_IC.f90}, enabled by an optional
+\texttt{input.inp} line
+\begin{lstlisting}
+Hot Parker IC: 10000        # effective wind temperature T_wind [K]
+\end{lstlisting}
+(\texttt{hot\_parker\_ic}, \texttt{T\_wind\_ic} in \texttt{parameters.f90}; parsed
+in \texttt{input\_read.f90}; auto-enables \texttt{Force start}).
+
+\paragraph{Velocity / density.} The Parker solver \texttt{wind\_profile} (now taking
+$c^2$ as an argument) is called with a \emph{warm} sound speed
+\begin{equation}
+  c^2_{\rm hot} = \frac{1+\delta p_{\rm bc}}{\rho_{\rm bc}}\;\frac{T_{\rm wind}}{T_0}\;\times 2 ,
+\end{equation}
+where the factor $2$ approximates the mean-molecular-weight halving when H is
+ionized ($\mu\!\to\!\mu/2$). $v(r)$ is the transonic root of
+Eq.~\ref{eq:bernoulli} and $\rho(r)=\dot M/(v r^2)$ pinned to $\rho_{\rm bc}$ at the
+base. If the warm sonic point falls outside the domain the routine returns failure
+and \texttt{set\_IC} falls back to the hydrostatic IC.
+
+\paragraph{Temperature / ionization ramp.} With $\xi(r)=\min(v/c_{\rm hot},1)$ (0 at
+the subsonic base $\to$ 1 in the supersonic wind),
+\begin{align}
+  T(r) &= T_0\,[\,1 + (T_{\rm wind}/T_0 - 1)\,\xi\,], \\
+  x_{\rm HII}(r) &= \delta p_{\rm bc} + (1-\delta p_{\rm bc})\,\xi, \qquad
+  x_{\rm HeII}(r) = \xi ,
+\end{align}
+and the pressure is kept thermodynamically consistent,
+$p = \rho\,c^2_{\rm base}\,(T/T_0)\,(1+\xi)$, so that $p/\rho\to c^2_{\rm hot}$ in the
+supersonic wind and $\to c^2_{\rm base}$ at the cold base (matching the base BC).
+Metals are left neutral (they re-equilibrate per cell in one step). The base
+boundary condition ($T=T_0$, $\rho_{\rm bc}$) is unchanged, so a thin
+base-reconciliation layer still relaxes.
+
+\paragraph{IC dump.} \texttt{set\_IC} now writes the (dimensional) initial profile
+to \texttt{output/IC\_dump.txt} ($r$, $n$, $v$, $p$, $T$) for any IC, so the IC can
+be plotted directly against the converged result.
+
+% =====================================================================
+\section{Benchmark setup}
+% =====================================================================
+\textbf{Planet:} HD\,209458b-like hot Jupiter (the standard ATES test): $R_p=1.38\,R_J$,
+$M_p=0.69\,M_J$, $T_0=1320$\,K, $a=0.047$\,AU, $M_\star=1.13\,M_\odot$, power-law
+EUV+X-ray SED ($\log_{10}L_{\rm EUV}=29.3$), \textbf{H/He only} (no metals, for a
+clean and fast comparison), \textbf{spherical} domain to $10\,R_p$. Solvers: the
+current defaults (semi-implicit energy, Brent $T$, analytic-Jacobian Newton).
+
+\textbf{Three initial conditions} (same planet, same numerics):
+\begin{enumerate}\itemsep1pt
+\item \texttt{hydrostatic} --- the default cold hydrostatic IC.
+\item \texttt{transonic}  --- the cold ($T_0$) Parker IC (\texttt{Transonic IC: True}).
+\item \texttt{hot\_parker} --- the warm Parker IC (\texttt{Hot Parker IC: 10000}).
+\end{enumerate}
+
+\textbf{Measured:} iterations to convergence (the \texttt{count} at which $du$/$dtu$/
+stall stops the run), wall-clock (\texttt{OMP\_NUM\_THREADS=4}), and the IC-vs-final
+profiles ($T$, $v$, $\rho$ vs $r$). Files live in \texttt{ic\_start\_benchmark/}
+(one subdirectory per IC); the figures are produced by
+\texttt{ic\_start\_benchmark/ic\_compare.ipynb}.
+
+% =====================================================================
+\section{Results}
+% =====================================================================
+The three runs are summarized in Table~\ref{tab:icbench}. The headline result is
+\emph{negative and instructive}: neither Parker-wind start helped, and the warm
+(hot-Parker) start actively destabilized the integration.
+
+\begin{table}[ht]
+\centering
+\caption{Three initial conditions, same planet (HD\,209458b, H/He, spherical, $10\,R_p$),
+identical numerics (semi-implicit energy, Brent $T$, analytic-Jacobian Newton,
+\texttt{OMP\_NUM\_THREADS=4}).}
+\label{tab:icbench}
+\small
+\begin{tabular}{@{}llrrl@{}}
+\toprule
+IC requested & IC actually used & Steps & Wall [s] & Outcome \\
+\midrule
+\texttt{hydrostatic} & hydrostatic (cold) & 95\,274 & 1828.8 & converged ($du{=}2.0\mathrm{e}{-}2$, $dtu{=}6.2\mathrm{e}{-}7$) \\
+\texttt{transonic}   & hydrostatic (fallback) & 95\,274 & 1836.7 & identical to hydrostatic \\
+\texttt{hot\_parker} & warm Parker, $T_{\rm wind}{=}10^4$\,K & 30\,421$^\ast$ & 604.8$^\ast$ & \textbf{diverged} --- NaN at base \\
+\bottomrule
+\end{tabular}
+
+\smallskip
+{\footnotesize $^\ast$ The hot-Parker step count and wall-clock reflect an \emph{early
+numerical breakdown}, \emph{not} convergence: the run terminated on a NaN-corrupted
+state ($du{=}5.1\mathrm{e}{+}2$, $dtu{=}1.3\mathrm{e}{-}2$; $T{>}10^{40}$\,K at $r\!\approx\!1.0002$).
+It must not be read as a speedup.}
+\end{table}
+
+\paragraph{transonic $\equiv$ hydrostatic.} At the cold base sound speed
+$c_0^2=kT_0/\mu$, the Parker sonic point $r_c$ (where
+$\mathrm d\phi/\mathrm dr=2c_0^2/r_c$) falls \emph{outside} the computational domain
+for HD\,209458b --- there is no interior transonic root. \texttt{set\_IC} detects this
+(``Transonic IC requested but no interior sonic point; falling back to hydrostatic
+IC'') and uses the hydrostatic IC, so the two runs are byte-identical. A \emph{cold}
+Parker IC offers nothing here.
+
+\paragraph{hot\_parker diverges at the base.} The warm-Parker IC itself is smooth and
+physical (Fig.~\ref{fig:icfinal}, dashed blue): a subsonic warm base
+($v\!\approx\!0.7$\,km\,s$^{-1}$, $T\!\approx\!1840$\,K, $n\!\approx\!6\times10^{12}$)
+ramping monotonically to a supersonic $10^4$\,K wind
+($v\!\approx\!23$\,km\,s$^{-1}$ at $10\,R_p$), with no NaN in the IC dump. But during
+time integration the base \emph{cannot reconcile} the warm, outflowing interior with
+the cold fixed base boundary condition ($T=T_0=1320$\,K, $\rho=\rho_{\rm bc}$): within a
+few cells of $r=1$ the base develops an \emph{inflow} (``breathing'', final
+$v\!\approx\!-1.1\times10^5$\,cm\,s$^{-1}$), the per-cell energy solve latches onto the
+\emph{spurious hot root}, and $T$ runs away to $>10^{40}$\,K. This is the exact
+breathing-base hot-root pathology documented for the \texttt{\_adv} post-processor (the
+option-(c) guard; see \texttt{Update\_ATES\_solver}) --- but here it strikes the
+\emph{main} time integration, where no such guard exists.
+
+% =====================================================================
+\begin{figure}[ht]
+\centering
+\includegraphics[width=\linewidth]{../ic_start_benchmark/ic_vs_final.png}
+\caption{Initial condition (dashed) vs.\ converged final (solid) for each IC:
+temperature (top), velocity (middle), density (bottom). \textbf{hydrostatic} and
+\textbf{transonic} (the latter identical, having fallen back) relax from the flat cold
+IC to the peaked $\sim10^4$\,K transonic wind. \textbf{hot\_parker} starts from a sane
+warm-wind IC but its final state diverges (note the $10^{134}$\,K temperature axis and
+the ``NaN at base'' annotation; the final velocity turns negative --- base inflow).}
+\label{fig:icfinal}
+\end{figure}
+
+\begin{figure}[ht]
+\centering
+\includegraphics[width=0.92\linewidth]{../ic_start_benchmark/finals_overlay.png}
+\caption{Converged final temperature and velocity for the ICs that converged
+(hydrostatic and transonic): they coincide, confirming the IC affects only convergence
+cost, not the steady state. The diverged hot-Parker run is excluded.}
+\label{fig:finals}
+\end{figure}
+
+\begin{figure}[ht]
+\centering
+\includegraphics[width=0.92\linewidth]{../ic_start_benchmark/convergence_bars.png}
+\caption{Steps and wall-clock per IC. The hot-Parker bars (red) are an early numerical
+breakdown, \emph{not} a speedup --- the run never converged.}
+\label{fig:bars}
+\end{figure}
+
+% =====================================================================
+\section{Root-cause analysis: why the warm start diverges}
+% =====================================================================
+A time-marching code \emph{should} relax any initial condition to the same steady state,
+so a divergence is not inevitable --- it points to a specific, identifiable mechanism. We
+instrumented the base cells (an env-gated diagnostic, \texttt{ATES\_DIAG\_BASE=1}, dumping
+$r,n,v,T$, heat, cool for the lowest cells over the first 500 steps; run with 60 OpenMP
+threads) and traced the exact onset (Fig.~\ref{fig:basebreak}). The causal chain is:
+
+\begin{enumerate}\itemsep3pt
+\item \textbf{Inverted base pressure gradient (built into the IC$\,$+$\,$BC pairing).} The
+  lower boundary condition (\texttt{Apply\_BC.f90}) pins the ghost cells to the \emph{cold}
+  base state: $\rho_{\rm ghost}=\rho_{\rm bc}$, $p_{\rm ghost}=1+\delta p_{\rm bc}$ (hence
+  $T_{\rm ghost}=T_0=1320$\,K), and $v_{\rm ghost}=\max(v_1,0)$. This is exactly consistent
+  with a cold hydrostatic IC. But the warm IC places the first \emph{interior} cells at the
+  warm pressure $p\!\approx\!1.35$ ($T\!\approx\!1840$\,K, $\sim\!1.4\times$ the cold value at
+  the same density). So $p_{\rm interior}>p_{\rm ghost}$ --- an \emph{inverted} pressure
+  gradient at the base, whose force points \emph{inward} and adds to gravity.
+
+\item \textbf{The base flips to inflow within 3 steps} (Fig.~\ref{fig:basebreak}a). The base
+  velocity reverses from the IC outflow ($+0.4$\,km\,s$^{-1}$) to inflow
+  ($-0.09$\,km\,s$^{-1}$ at step 3) and then grows \emph{monotonically} more negative,
+  reaching $-2.5$\,km\,s$^{-1}$ by step 480. The BC's $v_{\rm ghost}=\max(v_1,0)$ clamp acts
+  as a \textbf{one-way valve}: it permits the inflow but supplies \emph{zero} outflow to
+  relieve it, so the base never re-establishes the wind.
+
+\item \textbf{The base compresses, it does not drain} (Fig.~\ref{fig:basebreak}b). The inflow
+  piles gas up: $n_{\rm base}$ rises from $5.4\times10^{12}$ to $9.8\times10^{12}$ over 500
+  steps. (This corrects the naive ``density-collapse'' guess --- the failure is compression,
+  not evacuation.)
+
+\item \textbf{A huge net heating with no advective escape} (Fig.~\ref{fig:basebreak}d). The
+  base is photoionization-dominated: heat$/$cool $\approx 2000$. In a \emph{converged} wind
+  this enormous net heating is carried off by the \emph{outflow} (advection $+$ $P\,\mathrm dV$
+  expansion cooling). An \emph{inflowing}, compressing base has no such escape --- $P\,\mathrm
+  dV$ now does positive (compressional) work and advection imports energy --- so the net heat
+  accumulates.
+
+\item \textbf{Slow $T$ climb, then runaway over the cooling peak} (Fig.~\ref{fig:basebreak}c).
+  $T_{\rm base}$ rises steadily ($1675\to2710$\,K over 500 steps); it has \emph{not} yet
+  reached the cooling peak at step 500 --- the full runaway comes much later
+  ($T\to10^{40}\to$ NaN near step $30\,000$). The trigger is in the energy solver: in
+  \texttt{energy\_semi\_implicit.f90} the implicit factor is
+  $\mathrm dF/\mathrm dT = 1 + c_{\rm factor}\,\max(0,\,\mathrm dC/\mathrm dT)$, which is
+  unconditionally stable \emph{only on the rising branch} of the cooling curve. Once a base
+  cell is pushed past the cooling peak ($\sim$1.5--$2\times10^4$\,K for photoionized H/He,
+  where the neutral fraction collapses and the cooling rate \emph{falls} with $T$, i.e.\
+  $\mathrm dC/\mathrm dT\le0$), the $\max(0,\cdot)$ disengages the safeguard,
+  $\mathrm dF/\mathrm dT\to1$, the update becomes \emph{fully explicit with no damping}, and
+  the temperature runs away.
+\end{enumerate}
+
+\noindent So the divergence is the product of two design assumptions, each individually
+reasonable: a base BC \emph{hard-wired to the cold state}, and an energy solver whose
+unconditional stability holds \emph{only on the rising branch} of the cooling curve. The
+cold hydrostatic IC sits in the basin of attraction of both --- it matches the cold BC (no
+inverted gradient, no base inflow) \emph{and} it approaches equilibrium from below (never
+visiting the $\mathrm dC/\mathrm dT\le0$ branch). The warm Parker IC violates both at once.
+
+\begin{figure}[ht]
+\centering
+\includegraphics[width=\linewidth]{../ic_start_benchmark/base_breakdown.png}
+\caption{Instrumented hot-Parker startup (base cell $j{=}1$, first 500 steps, 60 threads).
+(a) the base velocity flips from the IC outflow to \emph{inflow} by step 3 and grows
+monotonically more negative (the one-way-valve base BC cannot relieve it); (b) the base
+\emph{compresses} (density piles up) rather than draining; (c) $T$ climbs steadily with no
+advective escape; (d) the base carries a near-constant net photoheating heat$/$cool
+$\approx2000$. The cell has not yet crossed the cooling peak at step 500; once it does, the
+semi-implicit energy safeguard disengages and $T$ runs away to NaN ($\sim$step $30\,000$).}
+\label{fig:basebreak}
+\end{figure}
+
+% =====================================================================
+\section{Making the warm start converge (implemented fix)}
+% =====================================================================
+The root-cause analysis (\S6) named two candidate triggers --- the cold-pinned base BC and
+the energy-solver branch. Acting on them showed that the \emph{decisive} one is neither: it
+is the \textbf{IC density}.
+
+\paragraph{First attempt (insufficient): cold-base window on the full Parker IC.} Forcing the
+base layer cold and static with a spatial smoothstep window (cold below a transition radius
+$r_{\rm tr}$, warm Parker above) made the IC \emph{start} correct (base $T=T_0$, $v\!\approx\!0$,
+$p=1+\delta p_{\rm bc}$), but the run still diverged: the base inflow \emph{re-developed
+dynamically}, growing monotonically to $-2.7\times10^5$\,cm\,s$^{-1}$ over the first 500 steps.
+So the inverted IC gradient was not the sustaining cause.
+
+\paragraph{The diagnostic that settled it.} Running the \emph{cold hydrostatic} IC with the
+same base instrumentation revealed that it, too, breathes inward --- the base velocity is
+negative in 494 of the first 500 steps. Base breathing is therefore \emph{normal}. The
+difference is the dynamics: the cold-hydrostatic inflow is \textbf{self-limiting} (it peaks at
+$-2.6\times10^4$\,cm\,s$^{-1}$ near step 240 and then \emph{recedes}), whereas the warm-Parker
+inflow is \textbf{self-amplifying} ($\sim\!10\times$ larger, monotonic). The culprit is the
+\emph{isothermal-Parker density}: it is globally inconsistent with ATES's non-isothermal
+equilibrium --- the hot, low-density Parker column is not supported against gravity at the cold
+base and drains onto it, feeding the inflow.
+
+\paragraph{The fix that works: keep the hydrostatic density, warm only the overlay.} The
+working warm-seed IC (now what \texttt{Hot Parker IC} builds) keeps the \textbf{stable cold
+hydrostatic density} --- the profile the cold IC proves is balanced --- and overlays on it only
+\emph{(i)} a warm temperature $+$ H/He ionization ramp (which shortcuts the stiff
+thermal/ionization relaxation) and \emph{(ii)} the Parker \emph{velocity} as a transonic
+head-start, both anchored to the cold static base by the smoothstep window ($x_i=0$ below $r=1$,
+$\to1$ at $r\ge$\,\texttt{hp\_base\_rtr}). The Parker solve is used for the velocity only; its
+density is discarded. With this, the base inflow becomes self-limiting again (peak
+$-2.8\times10^4$, then recedes --- indistinguishable from the cold-hydrostatic base), and the
+run converges with no NaN.
+
+\paragraph{Result: it converges to the same state, but does not speed up.} A clean head-to-head
+(same planet, 60 OpenMP threads, both to convergence) gives Table~\ref{tab:warmfix}: the
+warm-seed IC converges to the \emph{identical} steady state ($\log_{10}\dot M=11.52$ for both)
+in essentially the \emph{same} cost ($93\,068$ vs $95\,274$ steps, $-2.3\%$; wall-clock
+$+0.5\%$ --- within noise). Figure~\ref{fig:warmfix}a shows why: although the warm seed's early
+transient is markedly \emph{gentler} (its $du$ peaks near $10^3$ versus $\sim\!10^6$ for the cold
+start), the two convergence histories merge after $\sim\!15\,000$ steps and the long
+slowly-decaying tail --- which sets the total step count --- is identical. ATES's stopping
+criterion is the \textbf{hydrodynamic momentum-steadiness} test ($du<2\times10^{-2}$, i.e.\
+$\rho v r^2=$const), and the warm seed accelerates the \emph{thermal} relaxation, not that
+hydrodynamic one. So for this (momentum-gated) planet the warm start is a correctness-neutral
+option, not a performance win.
+
+\begin{table}[ht]
+\centering
+\caption{Cold hydrostatic vs.\ the fixed warm-seed IC (\texttt{Hot Parker IC}), both run to
+convergence at 60 OpenMP threads. Same converged $\dot M$; no meaningful speedup.}
+\label{tab:warmfix}
+\small
+\begin{tabular}{@{}lrrll@{}}
+\toprule
+IC & Steps & Wall [s] & Converged & $\log_{10}\dot M$ \\
+\midrule
+cold hydrostatic     & 95\,274 & 1851.1 & yes ($du{=}2.0\mathrm{e}{-}2$) & 11.52 \\
+warm-seed (fixed)    & 93\,068 & 1860.9 & yes, no NaN                     & 11.52 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{figure}[ht]
+\centering
+\includegraphics[width=\linewidth]{../ic_start_benchmark/warmseed_fix.png}
+\caption{The fixed warm-seed IC. (a) $du$ convergence history: the warm seed's early transient
+is gentler (peak $\sim\!10^3$ vs $\sim\!10^6$), but the histories merge and the step-count-setting
+tail is identical --- convergence is momentum-gated. (b,c) the warm-seed IC (dashed: already
+warm/ionized, with a Parker velocity head-start) relaxes to the correct non-isothermal converged
+profile (solid).}
+\label{fig:warmfix}
+\end{figure}
+
+% =====================================================================
+\section{Discussion and recommendation}
+% =====================================================================
+\paragraph{Does a Parker-wind start speed up ATES? No --- and that is consistent with
+how ATES converges.} ATES is a \emph{time-marching} code: it relaxes any initial
+condition to the same steady state, and the IC only sets the cost of getting there. The
+two relaxation channels (\S1) respond differently to a Parker seed:
+\begin{itemize}\itemsep2pt
+\item The \textbf{hydrodynamic} channel \emph{would} benefit from a transonic seed --- but
+  only if a consistent transonic IC can be imposed at the base. For this planet the cold
+  Parker has no interior sonic point, and the warm Parker conflicts with the base BC.
+\item The \textbf{thermal/ionization} channel is the stiff, dominant cost. A warm/ionized
+  seed could shortcut it --- but only if it does not break the base. It broke the base.
+\end{itemize}
+
+\paragraph{Why the warm seed was fragile --- and what actually fixed it.} The original
+divergence (\S6) was real and proceeded exactly as traced (inverted base gradient $\to$ base
+inflow $\to$ no advective escape $\to$ slow heating $\to$ runaway past the cooling peak). But
+\S7 showed that the \emph{sustaining} cause was deeper than the inverted IC gradient: even with
+the base started cold, the inflow re-developed, because the isothermal-Parker \emph{density} is
+globally inconsistent with the non-isothermal equilibrium and drains onto the base. The
+decisive fix was therefore to discard the Parker density and keep the stable cold hydrostatic
+density, warming only the temperature/ionization/velocity overlay. That converges to the
+correct steady state (Table~\ref{tab:warmfix}).
+
+\paragraph{Recommendation.} Keep the \textbf{cold hydrostatic IC as the default}: even the
+\emph{fixed} warm seed gives no speedup for this momentum-gated planet (\S7), so there is no
+performance reason to switch. The \texttt{Hot Parker IC} keyword now builds the
+\emph{validated} warm-seed IC (stable hydrostatic density $+$ warm overlay, cold-base smoothstep
+window \texttt{hp\_base\_rtr}); it is a correct, converging option rather than an experimental
+one, and may help on a problem whose convergence is \emph{thermally} gated rather than
+momentum-gated (e.g.\ a denser, more strongly-cooled base where the thermal relaxation, not the
+wind, sets the step count). Two further, independent improvements remain available:
+\begin{enumerate}\itemsep2pt
+\item \textbf{A characteristic / pressure-gradient base BC} (instead of the hard cold-pinned
+  $\rho,p$ with $v=\max(v_1,0)$) would let the base breathe physically and widen the basin of
+  attraction for non-hydrostatic starts generally.
+\item \textbf{Make the energy solver unconditionally stable on \emph{both} branches} --- use a
+  true backward-Euler step on the full cooling (or take $|\mathrm dC/\mathrm dT|$ rather than
+  $\max(0,\mathrm dC/\mathrm dT)$ in \texttt{energy\_semi\_implicit.f90}), so a cell pushed past
+  the cooling peak during \emph{any} transient cannot run away. This is the same spirit as the
+  option-(c) breathing-base guard already in the \texttt{\_adv} post-processor, applied to the
+  main integration. (Not required for the warm-seed IC above, which no longer reaches the peak,
+  but a worthwhile robustness margin.)
+\end{enumerate}
+
+The instrumentation used here is retained (env-gated \texttt{ATES\_DIAG\_BASE=1};
+zero effect when unset) so any future base-stability work can re-trace the startup directly.
+
+\paragraph{Contrast with relaxation BVP codes.} This negative result actually highlights an
+ATES strength. Steady-state relaxation codes such as \texttt{wind-ae} (Numerical Recipes
+\texttt{solvde} two-point BVP) \emph{require} a transonic initial guess close to the target
+solution --- their own documentation warns the relaxation ``is incredibly sensitive to
+being given a good initial guess \ldots\ if the guess is too far from the goal, the
+relaxation method will not converge,'' and they ship parameter ``rampers'' to walk a known
+solution to a new one. ATES needs no such guess: it converges from a generic cold
+hydrostatic atmosphere precisely because it marches in time. The cost is that the stiff
+thermal relaxation is slow; the benefit is robustness. The Parker-start experiment shows
+that trying to buy the BVP-code's head start, without their careful base treatment, trades
+that robustness away.
+
+\end{document}

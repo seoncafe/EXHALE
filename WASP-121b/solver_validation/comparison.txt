@@ -1,0 +1,19 @@
+======================================================================
+ ATES-metal solver-upgrade validation (WASP-121b Case B, PP-only sweep)
+======================================================================
+ newton  : ioniz-eq solver: Newton 504 / 504 solves (100.00%); rest fell back to hybrd1
+ hybrd1  : ioniz-eq solver: Newton 0 / 504 solves (  0.00%); rest fell back to hybrd1
+
+ A. Newton vs hybrd1  (identical state -> pure SOLVER difference)
+      eq T          max rel diff : 3.499e-04
+      Ion_species   max rel diff : 7.186e-07   (worst: FeI)
+      => analytic Jacobian reproduces the MINPACK root.
+
+ B. Newton vs baseline (converged; includes one-step PP hydro drift)
+      eq T          max rel diff : 2.578e-03
+      Ion_species   max rel diff : 6.266e-01   (worst: CI, drift-amplified)
+
+ C. Brent _adv T vs baseline _adv (Task 1, scalar energy equation)
+      wind (v>0)    max rel diff : 6.504e-12
+      all cells     max rel diff : 3.499e-04
+======================================================================
