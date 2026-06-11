@@ -209,8 +209,13 @@ try:
     fig.savefig(p, dpi=130, bbox_inches='tight')
     plt.close(fig)
     print('  wrote', os.path.relpath(p, ROOT))
-    for n in names:
+    # vector PDFs for the LaTeX docs: the four H/He spectra (manual Fig 7
+    # block) plus the three metal resonance doublets (transmission_spectrum)
+    for n in names + ['MgII_hk.png', 'CaII_HK.png', 'NaI_D.png']:
         src = os.path.join(TPMW, n[:-4] + '.pdf')
+        if not os.path.exists(src):
+            print('  [skip] missing', os.path.relpath(src, ROOT))
+            continue
         dst = os.path.join(FIG, 'tpm_' + n[:-4] + '.pdf')
         shutil.copy(src, dst)
         print('  copied', os.path.relpath(dst, ROOT))

@@ -241,7 +241,7 @@ Ca II H&K, Na I D** (skipped automatically for a metals-off run).  Stellar
 parameters (`R_star`, `rot_period`, `T_star` for the Balmer lines) and the
 output figure names are set in the script's header block.  A 3-D
 Roche-equipotential geometry is available via `geometry = 'triaxial'`
-(`roche_recon.py`).  Full description in `docs/Halpha_transmission.pdf`
+(`roche_recon.py`).  Full description in `docs/transmission_spectrum.pdf`
 and the manual's TPM section.
 
 ---

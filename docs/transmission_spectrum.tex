@@ -25,10 +25,11 @@
 
 \begin{document}
 
-\title{H$\alpha$ Transmission Spectra in TPM.py:\\
-Ly$\alpha$ Pumping (Christie et~al.~2013) and the $n=2$ Population}
+\title{Transmission Spectra in TPM.py:\\
+H$\alpha$/H$\beta$ from the Non-LTE $n=2$ Population,\\
+and the Metal Resonance Doublets}
 \author{Kwang-Il Seon}
-\date{2026-06-03}
+\date{2026-06-12}
 \maketitle
 
 \tableofcontents
@@ -62,6 +63,11 @@ et~al.~(2017) --- see \S\ref{sec:jlya}.
 The H$\alpha$ branch always runs; only the source of $J_{\rm Ly\alpha}$
 depends on whether \texttt{Jlya\_file} is set. The existing He/Ly$\alpha$
 behavior is unchanged.
+
+This memo also documents the \textbf{metal resonance doublets}
+(Mg\,II\,h\&k, Ca\,II\,H\&K, Na\,I\,D; \S\ref{sec:metals}), which are
+computed by the same LOS pipeline and produce the same three-curve
+spectrum figures as the H/He lines.
 
 %=============================================================================
 \section{The $n=2$ hydrogen population (Christie et~al.~2013)}
@@ -301,6 +307,96 @@ Ly$\alpha$ branch in the same run saturates ($\sim100\%$ core absorption)
 and He\,I behaves as before. A worked comparison against the
 Jensen et~al.~(2012) HD\,209458b observation is provided in the notebook
 \texttt{Halpha\_compare\_HD209458b.ipynb}.
+
+%=============================================================================
+\section{Metal resonance doublets (Mg II h\&k, Ca II H\&K, Na I D)}
+\label{sec:metals}
+%=============================================================================
+
+The metal resonance lines are the key NUV/optical diagnostics of
+metal-enriched escaping atmospheres (Huang et~al.~2023). They absorb out
+of the \emph{ion ground state}, whose excited fine-structure levels are
+Boltzmann-negligible at $\sim10^4$\,K, so the lower-level density is the
+ion density itself ($n_{\rm lower}\simeq n_{\rm ion}$) --- no non-LTE
+population calculation is needed. The ion-density profiles are read from
+the metal block of \texttt{Ion\_species\_adv.txt}; a metals-off run
+(all-zero columns) skips this section automatically.
+
+\subsection{Atomic data and machinery}
+
+Each species is treated as a \textbf{doublet}, with both components
+summed in a single wavelength window
+(Table~\ref{tab:metal-lines}; NIST $f$-values and $A$-coefficients).
+The optical depth uses exactly the H/He pipeline: spherical chords
+$\sqrt{r^2-b^2}$ on the impact-parameter grid, LOS velocity
+$v_{\rm los}=v\,x/r$, Voigt profiles via the Faddeeva function
+(vectorized over wavelength), trapezoidal $\tau$, projected-area disk
+average, then the instrument convolution and the planet-rotation
+convolution with the depth-dependent effective radius
+$R_{\rm eff}=R_p\sqrt{(h+\delta)/\delta}$ (capped at the
+impact-parameter boundary), $\delta=(R_p/R_\star)^2$. Figures are saved
+(PNG $+$ vector PDF) via \texttt{fig\_name\_mgii/caii/nai}.
+
+\begin{table}[htbp]
+\centering\small
+\caption{Metal resonance doublets in \texttt{TPM.py} (NIST).}
+\label{tab:metal-lines}
+\begin{tabular}{llcccl}
+\toprule
+species & component & $\lambda_0$ [\AA{}] & $f$ & $A_{21}$ [s$^{-1}$] & window / $R_{\rm instr}$ \\
+\midrule
+Mg\,II & k & 2796.352 & 0.608 & $2.60\times10^8$ &
+  2790--2810\,\AA{} / $3\times10^4$ \\
+       & h & 2803.531 & 0.303 & $2.57\times10^8$ & \\
+Ca\,II & K & 3933.663 & 0.6267 & $1.47\times10^8$ &
+  3927--3975\,\AA{} / \texttt{Instr\_res\_Ha} \\
+       & H & 3968.469 & 0.3116 & $1.40\times10^8$ & \\
+Na\,I  & D2 & 5889.951 & 0.641 & $6.16\times10^7$ &
+  5884--5902\,\AA{} / \texttt{Instr\_res\_Ha} \\
+       & D1 & 5895.924 & 0.320 & $6.14\times10^7$ & \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Alongside the spectra, the script prints the validated
+\emph{single-component} depth table (line-center and 4\,\AA{}-band
+percentages for Mg\,II\,2796, Ca\,II\,K, Na\,I\,D2), which is the
+quantity used for the Huang et~al.~(2023) comparisons; the doublet peak
+differs from the single-component value only by the partner-line wing
+(e.g.\ 3.75 vs.\ 3.72\% for Mg\,II on WASP-121b). Two conventions
+matter when comparing with Huang: their table lists the effective
+transit radius $R_{\rm eff}/R_\star=\sqrt{(R_p/R_\star)^2+h}$, not a
+percent absorption, and Mg\,II is quoted in a 4\,\AA{} NUV bin while the
+optical lines are line-center (line-center vs.\ 4\,\AA{} differ by
+$\sim3\times$ for the optically thick Mg\,II core).
+
+For a Roche-lobe run the 3-D equipotential reconstruction
+(\texttt{geometry = 'triaxial'}, \texttt{roche\_recon.py}) replaces the
+spherical chords by the full Roche geometry with per-sector LOS velocity
+$v_{\rm sub}(r_{\rm eff})\,x/r-\Omega y$ (wind $+$ tidally locked
+rotation) and reports the same depth table.
+
+\subsection{Example spectra}
+
+Figure~\ref{fig:metalspec} shows the three doublet spectra for the
+WASP-121b worked example (\texttt{regression/tpm\_wasp/}, Roche Newton
+solution, metals on). The optically thick cores saturate, so the two
+doublet members reach similar depths despite the 2:1 oscillator-strength
+ratio; the rotation convolution mainly shallows and broadens the narrow
+Na\,I\,D cores.
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.49\textwidth]{figures/tpm_MgII_hk.pdf}\hfill
+\includegraphics[width=0.49\textwidth]{figures/tpm_CaII_HK.pdf}\\[2pt]
+\includegraphics[width=0.49\textwidth]{figures/tpm_NaI_D.pdf}
+\caption{Metal resonance doublet transmission spectra for WASP-121b
+(\texttt{regression/tpm\_wasp/}): Mg\,II\,h\&k (top left),
+Ca\,II\,H\&K (top right), and Na\,I\,D (bottom). Each panel shows the
+theoretical, instrument-convolved, and instrument$+$rotation-convolved
+transmission, as for the H/He lines.}
+\label{fig:metalspec}
+\end{figure}
 
 %=============================================================================
 \section{Caveats}

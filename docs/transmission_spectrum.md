@@ -1,8 +1,10 @@
-# H-alpha transmission in `TPM.py` (Ly-alpha pumping, Christie+2013)
+# Transmission spectra in `TPM.py`: H-alpha/H-beta and the metal resonance doublets
 
-Quick reference for the H-alpha (6562.8 Å, n=2→n=3) transmission-spectrum
-capability added to `TPM.py`. Full physics and equations are in
-`Halpha_transmission.tex` / `.pdf`.
+Quick reference for the H-alpha (6562.8 Å, n=2→n=3) and H-beta
+transmission spectra (non-LTE n=2 population, Christie+2013 Ly-alpha
+pumping) and the metal resonance doublets (Mg II h&k, Ca II H&K, Na I D)
+in `TPM.py`. Full physics and equations are in
+`transmission_spectrum.tex` / `.pdf`.
 
 ## What it does
 
@@ -130,3 +132,27 @@ center in cgs. A different convention requires rescaling the constant.
 - Jensen, A. G., et al. 2012, ApJ, 751, 86 — transit Hα spectroscopy of
   HD 209458b / HD 189733b (comparison target; see
   `HD209458b/Halpha_compare_HD209458b.ipynb`).
+
+
+## Metal resonance doublets (Mg II h&k, Ca II H&K, Na I D)
+
+The metals absorb out of the ion ground state (excited fine-structure
+levels are Boltzmann-negligible at ~1e4 K), so `n_lower = n_ion` read
+directly from the metal block of `Ion_species_adv.txt`; a metals-off run
+is skipped automatically. Both doublet components (NIST f/A values:
+Mg II 2796.352/2803.531, Ca II 3933.663/3968.469, Na I 5889.951/5895.924)
+are summed in one wavelength window and pushed through the same pipeline
+as He/Ly-alpha: spherical-chord Voigt LOS integration, disk average,
+instrument convolution, and planet-rotation convolution with the
+depth-dependent effective radius. Figures (PNG + vector PDF) are saved
+via `fig_name_mgii/caii/nai`.
+
+The validated single-component depth table (line-center and 4 Å-band %)
+is still printed for the Huang+2023 comparisons. Two conventions matter
+there: Huang's table is the effective transit radius R_eff/R_star =
+sqrt((Rp/R*)^2 + h) (not a percent), and Mg II is quoted in a 4 Å NUV
+bin while the optical lines are line-center.
+
+For Roche-lobe runs, `geometry = 'triaxial'` (with `roche_recon.py`)
+replaces the spherical chords by the 3-D equipotential reconstruction
+with wind + tidally-locked-rotation LOS velocity.
