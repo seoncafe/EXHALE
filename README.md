@@ -1,130 +1,244 @@
-# The EXHALE code
+# EXHALE
 
-UPDATE 2026/06/11
+**EXoplanetary Hydrodynamic Atmospheric Loss and Escape** (EXHALE) is a
+1-D radiation-hydrodynamics code that simulates photoionization-driven
+atmospheric mass loss from irradiated exoplanets.  It is a heavily extended
+fork of the ATES code (Caldiroli et al. 2021; Biassoni et al. 2024), adding:
 
-A new version of ATES (v2.0) is now available. The main updates to version 1.0 include:
-* The possibility to use numerical power spectra instead of power-laws;
-* The possibility to include the chemistry of HeI triplet state;
-* Improved computational speed for each timestep;
-* An updated, user friendly interface
-* A pdf manual (currently still in production)
-  
-This ATES version includes also TPM (Transmission Probability Module), a python script that can be used to calculate the expected transmission feature for the Ly-alpha and the He-10830A lines directly from ATES outputs. 
-The new features of ATES and the TPM are described in [[3]](#3).
+- Trace metals (C, N, O, Fe, Mg, Ca, Na) solved self-consistently inside
+  the MINPACK ionization system, with Badnell RR+DR recombination, Voronov
+  collisional ionization, and Kingdon & Ferland charge-transfer with H
+- Metal-line cooling from CHIANTI (Fe II, Mg II, Ca II, Na I, ...) and an
+  optional AIOLOS/Black two-level fine-structure channel
+- He I 2³S metastable triplet state (coupled solver)
+- Ly-alpha radiative transfer via the Neufeld core-skipping escape-probability
+  method
+- A Jacobian-free Newton-Krylov (JFNK) steady-state solver with PTC warm-up,
+  SER ramp, and non-monotone (Grippo) line search
+- Roche-potential geometry (spherical or Roche-lobe domain modes)
+- **TPM** (Transmission Probability Module) post-processor: transit spectra
+  for He I 10830 Å, Ly-alpha 1215.67 Å, H-alpha 6562.8 Å, and H-beta 4861 Å
 
-----------------------------------------------------------------------------
+For a complete description of the physics, solver, and all input parameters
+see **`docs/ATES_user_manual.pdf`**.
 
-The ATES code has been created to perform hydrodynamical simulations of the atmospheric mass loss from irradiated exoplanets. For a detailed description of the code, we refer to [[1]](#1) In the following we describe the code organization and how to run.
-For any question or if you notice any bug please write an email to <a.caldiroli@uninsubria.it>
+---
 
 ## Requirements
 
-The code can be compiled with both `gfortran` (tested successfully in version 9.3.0 and newer) and `ifort` (tested on the 2021.2.0 and the 2021.5.0 versions). For the compiler choice, see below.
-A basic installation of `python3` is required. The following libraries are used: `numpy,tkinter,os,shutil,matplotlib,sys,time`.
+| Component | Version |
+|-----------|---------|
+| Fortran compiler | `gfortran` >= 9.3 or `ifort`/`ifx` >= 2021 |
+| Python 3 | >= 3.8; packages: `numpy`, `scipy`, `matplotlib`, `tkinter` |
+| MINPACK | included in `src/modules/nonlinear_system_solver/` |
+
+---
 
 ## Installation
 
-The code doesn't require any special installation, and can be directly downloaded from the Github page or, in alternative, the repository can be cloned via 
+```bash
+git clone https://github.com/seoncafe/EXHALE
+cd EXHALE
+```
 
-    git clone https://github.com/AndreaCaldiroli/ATES-Code
+No additional installation step is required.
 
-The first version of ATES is still available and can be downloaded through
-    
-    git clone --branch 1.0 https://github.com/AndreaCaldiroli/ATES-Code
-    
-## Directories and files
+---
 
-The main directory (`$MAIN`) of the code consists of the following elements:
-* the main code file `$MAIN/ATES_main.f90`;
-* the bash script `$MAIN/run_ATES.sh` that takes care of the compilation and the execution of the code;
-* the `$MAIN/src` directory, where all the code modules are stored.
-* the `$MAIN/ATES_plots.py` python3 file for live plots.
-* the `$MAIN/eta_approx.py` python3 file with the approximate function of the effective efficiency from Appendix A in [[2]](#2).
+## Directory layout
 
-The `$MAIN/src` directory contains three major sudirectories:
-* the `$MAIN/src/utils` folder contains the python3 files dedicated for the creatioin of the input interface;
-* the `$MAIN/src/modules` folder contains all the `.f90` files for all the subroutines of the code;
-* the `$MAIN/src/mod` folder stores the `.mod` files.
+```
+EXHALE/
+├── ATES_main.f90          # program entry point
+├── Makefile               # incremental build (FC=gfortran default)
+├── run_ATES.sh            # optional GUI launcher (writes input.inp, calls make)
+├── src/
+│   ├── modules/           # Fortran source modules (flux, init, radiation, …)
+│   └── utils/             # Python GUI (ATES_interface_main.py), fortdep.py
+├── inputdata/             # opacity / SED table samples (*.atesopa, Jlya.txt, …)
+├── cooling_data/          # metal cooling tables (metal_cooling_chianti.txt, …)
+├── examples/
+│   ├── inputs/            # 10 ready-made HD 189733 b input configurations
+│   ├── ates_io.py         # Python loaders for all output files
+│   ├── ATES_analysis.ipynb
+│   └── tutorial/          # minimal worked example (no metals)
+├── docs/
+│   ├── ATES_user_manual.pdf   # full reference manual
+│   ├── steady_solver_memo.pdf # Newton-Krylov design notes
+│   └── …
+├── observational_data/    # digitized observational comparison data
+├── TPM.py                 # transmission spectrum post-processor
+├── ATES_plots.py          # live / static profile plotter
+├── roche_recon.py         # Roche-lobe geometry helper
+└── eta_approx.py          # analytic heating-efficiency approximation
+```
 
-In the `$MAIN/src/modules` subdirectory, the code's modules are subdivided as follows:
-* `$MAIN/src/modules/files_IO` : subroutines for the input/output management (read input parameters, load initial conditions, write the simulation output);
-* `$MAIN/src/modules/flux` : library with the implemented numerical flux functions and wavespeed estimates;
-* `$MAIN/src/modules/functions` : various useful functions;
-* `$MAIN/src/modules/init` : subroutines for the initialization of the code (allocate global vectors and variables, set initial conditions);
-* `$MAIN/src/modules/nonlinear_system_solver` : subroutines from MINPACK (https://www.netlib.org/minpack/) and definition of the photoionization equilibrium system;
-* `$MAIN/src/modules/post_process` : subroutine for the post processing;
-* `$MAIN/src/modules/radiation` : subroutines related to the radiation;
-* `$MAIN/src/modules/states`: subroutines for the hydrodynamical reconstruction step, boundary conditions and source terms;
-* `$MAIN/src/modules/time_step` : evaluation of the right hand side of the Runge-Kutta integrator.
+Build artifacts land in `build/`; `make clean` removes object/module files
+while keeping `ATES.x`.
 
+---
 
-## Using the code
+## Building
 
-Once exctracted, it is necessary to give execution permission to the `$MAIN/run_program.sh` file:
+```bash
+make                    # gfortran (default)
+make FC=ifort           # ifort
+make FC=ifx             # ifx
+make clean              # remove build/ objects and modules (keeps ATES.x)
+make distclean          # remove build/ and ATES.x
+```
 
-    chmod +x $MAIN/run_ATES.sh
-    
-In order to run the code, the bash file must be executed. By default, ATES is compiled with gfortran. In the terminal, it is sufficient to execute:
-   
-    .$MAIN/run_ATES.sh
+---
 
-To force the use of the `ifort` compiler, run the following command:
+## Running
 
-    .$MAIN/run_ATES.sh --ifort
+### Option A — GUI (writes input.inp automatically)
 
-The user is asked to insert the physical parameters of the system to be simulated. See [[1]](#1) for a detailed explanation of such parameters. If a system is not available in the precompiled archive (which is stored in `$MAIN/src/utils/params_table.txt`), it is possible to add it to the default list for later simulations by using the `Add planet` button. 
+```bash
+chmod +x run_ATES.sh
+./run_ATES.sh           # gfortran
+./run_ATES.sh --ifort   # ifort
+./run_ATES.sh --ifx     # ifx
+```
 
-The code is executed by pressing the `Done` button. In the terminal, the current iteration number and the fractional variation of the momentum over the selected domain of interest, i.e.:
-   
-$$ \dfrac{\Delta \dot{M} }{\dot{M}} := \dfrac{\max\dot{M} - \min\dot{M}}{\min\dot{M}} \quad \text{for} \quad r>r_{esc} $$
+The Tk interface opens, you fill in the planetary parameters, press **Done**,
+and the code builds and runs.  The system preset list is stored in
+`src/utils/params_table.txt` and can be extended with the **Add planet**
+button.
 
-For planetary simulations, as explained in [[1]](#1), it is suggested to use the PLM reconstruction procedure when starting the simulation from general initial conditions and stop the simulation manually when $\Delta \dot{M}/\dot{M} \lesssim 0.5-1$. Then, restart the simulation using the previous outputs as initial condition (see below) and using the WENO3 reconstruction method instead.
+### Option B — direct (recommended for scripted or repeated runs)
 
+1. Edit `input.inp` (copy from `examples/inputs/` as a starting point).
+2. If metals are required, place a `metals.inp` in the same directory.
+3. Build and run:
 
+```bash
+make
+./ATES.x
+```
+
+### Recommended convergence workflow
+
+For robust convergence on typical hot-Jupiter / sub-Neptune problems:
+
+```
+# in input.inp
+Reconstruction:           PLM
+du_th [PLM,WENO3]:        0.5 1.0e-3   # two-stage: coarse PLM then fine WENO3
+Solver:                   Newton        # JFNK finish once ||R||_inf < 0.05
+```
+
+The two-stage key `du_th [PLM,WENO3]` replaces the old single-value `du_th`.
+EXHALE switches from PLM to WENO3 automatically when du falls below the first
+threshold, then hands off to the Newton-Krylov solver near the fixed point.
+See `docs/steady_solver_memo.pdf` for details.
+
+### Enabling metal chemistry
+
+Place a `metals.inp` in the run directory listing the trace-metal abundances
+(relative to solar):
+
+```
+# metals.inp — example
+CI   1.0
+NI   1.0
+OI   1.0
+```
+
+No recompile is needed.  Remove `metals.inp` to run without metals.
+
+---
 
 ## Output files
 
-The code writes the current output of the simulations on two file saved in the `$MAIN/output` directory. The `$MAIN/output/Hydro_ioniz.txt` file stores the hydrodynamical variables, which are saved in column vectors in the following order:
-1. radial distance (in unit of the planetary radius)
-2. mass density (in unit of the proton mass)
-3. velocity (in cm/s)
-4. pressure (in CGS units)
-5. Temperature (in Kelvin)
-6. Radiative heating rate (in CGS units)
-7. Radiative cooling rate (in CGS units)
-8. Heating efficiency (adimensional)
+All output is written to `output/` in the run directory.
 
+| File | Contents |
+|------|----------|
+| `Hydro_ioniz.txt` | Radius, density, velocity, pressure, temperature, heating rate, cooling rate, heating efficiency (columns vs. radius) |
+| `Ion_species.txt` | Number densities of H I, H II, He I, He II, He III and (if metals active) metal ionization states |
+| `Hydro_ioniz_adv.txt` | Post-processed version of `Hydro_ioniz.txt` (advection-corrected) |
+| `Ion_species_adv.txt` | Post-processed version of `Ion_species.txt` |
 
-The ionization profiles are saved in the `$MAIN/output/Ion_species.txt` file. The columns of the file correspond to the number densities of HI, HII, HeI, HeII, HeIII in <img src="https://render.githubusercontent.com/render/math?math=\text{cm}^{-3}">.
+When **Load IC** is enabled the previous outputs are copied to `*_IC.txt`
+and read back as initial conditions for a restart run.
 
-The post-processed profile are written on the `$MAIN/output/Hydro_ioniz_adv.txt` and `$MAIN/output/Ion_species_adv.txt` files. The data are formatted as the `$MAIN/output/Hydro_ioniz.txt` and `$MAIN/output/Ion_species.txt` files.
+Full column definitions are in `docs/ATES_user_manual.pdf` §4.
 
-If the `Load IC` flag is active in the input window, the code automatically chooses the last saved `$MAIN/output/Hydro_ioniz.txt` and `$MAIN/output/Ion_species.txt`files in the `$MAIN/output` directory and copies them onto two new files named, by default,`$MAIN/output/Hydro_ioniz_IC.txt` and `$MAIN/output/Ion_species_IC.txt`, which are loaded by the code. For the writing/reading formats consult the `$MAIN/src/modules/file_IO/load_IC.f90` and `$MAIN/src/modules/file_IO/write_output.f90` files.
+---
 
-## Plotting results
+## Reading output in Python
 
-The `$MAIN/ATES_plots.py` file can be used to plot the current status of the simulation or to follow the evolution of the profiles with a live animation. The script can be executed with the following syntax:
+```python
+import sys
+sys.path.insert(0, 'examples/')
+import ates_io
 
-    python3 $MAIN/ATES_plots.py --live n
-    
-The `--live n` arguments are optional, and can therefore be omitted. If so, the content of the current `$MAIN/output/Hydro_ioniz.txt` and `$MAIN/output/Ion_species.txt` is plotted. If only the `--live` flag is used, the figure is updated by default every 4 seconds with the content of the current output files (which ATES, by defaults, overwrites every 1000th temporal iteration). To set the time update interval, specify the `n` argument with the desired number of seconds between the updates. Finally, a second figure with the post-processed profiles is created if the corresponding files (`$MAIN/output/Hydro_ioniz_adv.txt`and `$MAIN/output/Ion_species_adv.txt`) are found in the `$MAIN/output` directory.
+run = ates_io.Run('output/')   # load all output files
+print(run.r)        # radius [Rp]
+print(run.T)        # temperature [K]
+print(run.Mdot)     # mass-loss rate [g/s]
+```
 
-## Approximate effective efficiency function
+See `examples/ates_io.py` for the full API and `examples/ATES_analysis.ipynb`
+for a worked example.
 
-The file `$MAIN/eta_approx.py` contains the approximate expression for the effective efficiency presented in  [[2]](#2). The file can be simply run as:
+---
 
-    python3 $MAIN/eta_approx.py
+## Live plot during a run
 
-The user must provide the planetary parameters directly through the terminal window. The approximate values of the effective efficiency and the mass loss rate are printed as outputs.
+```bash
+python3 ATES_plots.py          # plot current output (static)
+python3 ATES_plots.py --live 4 # refresh every 4 s
+```
+
+---
+
+## Transmission spectra (TPM)
+
+After a converged run, compute the transit transmission spectrum with:
+
+```bash
+python3 TPM.py
+```
+
+TPM reads `input.inp` and the `*_adv.txt` profiles in `output/`, and produces
+PNG figures for He I 10830 Å, Ly-alpha, H-alpha, and H-beta.  Stellar
+parameters (`T_star`, `R_star`) must be set in `input.inp` for the Balmer
+lines.  Full description in `docs/Halpha_transmission.pdf`.
+
+---
+
+## Example configurations
+
+Ready-made `input.inp` templates for HD 189733 b covering all physics/solver
+combinations are in `examples/inputs/`:
+
+| Folder | Description |
+|--------|-------------|
+| `01_legacy_marching/` | PLM-only, single du threshold (simplest) |
+| `02_two_stage/` | PLM → WENO3 two-stage |
+| `03_newton/` | Two-stage + Newton finish (recommended default) |
+| `04_newton_from_state/` | Resume from saved state with Newton |
+| `05_metals/` | Metals on (C/N/O) |
+| `06_he23s/` | He I 2³S triplet included |
+| `07_balmer_lya/` | Balmer + Ly-alpha RT |
+| `08_full/` | Full physics (metals + He 2³S + Balmer/Lya) |
+| `09_spherical/` | Extended spherical domain |
+| `10_warm_seed_ic/` | Warm-seed initial condition |
+
+---
 
 ## References
-<a id="1">[1]</a> 
-Caldiroli, A., Haardt, F., Gallo, E., Spinelli, R., Malsky, I., Rauscher, E., 2021, "Irradiation-driven escape of primordial planetary atmospheres I. The ATES photoionization hydrodynamics code", A&A, 655, A30 (2021).
 
-<a id="2">[2]</a> 
-Caldiroli, A., Haardt, F., Gallo, E., Spinelli, R., Malsky, I., Rauscher, E., 2021, "Irradiation-driven escape of primordial planetary atmospheres II. Evaporation efficiency of sub-Neptunes through hot Jupiters", A&A, 663, A122, (2022).
+1. Caldiroli, A., Haardt, F., Gallo, E., Spinelli, R., Malsky, I., Rauscher, E.
+   (2021). *Irradiation-driven escape of primordial planetary atmospheres I.
+   The ATES photoionization hydrodynamics code.* A&A, 655, A30.
 
-<a id="3">[3]</a> Biassoni, F., Caldiroli, A., Gallo, E., Haardt, F., Spinelli, R., and Borsa, F., 2023, "Self-Consistent Modeling of Metastable Helium Exoplanet Transits", A&A, 682, A115 (2024) 
+2. Caldiroli, A., Haardt, F., Gallo, E., Spinelli, R., Malsky, I., Rauscher, E.
+   (2022). *Irradiation-driven escape of primordial planetary atmospheres II.
+   Evaporation efficiency of sub-Neptunes through hot Jupiters.* A&A, 663, A122.
 
-
-# EXHALE
+3. Biassoni, F., Caldiroli, A., Gallo, E., Haardt, F., Spinelli, R., Borsa, F.
+   (2024). *Self-Consistent Modeling of Metastable Helium Exoplanet Transits.*
+   A&A, 682, A115.
