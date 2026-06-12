@@ -4,7 +4,8 @@ Running list of known limitations and planned improvements.
 
 ## DONE 2026-06-13 — Metals in the mass/charge budget (`eos_metals`, default ON)
 
-*(Original entry 2026-06-12, implemented 2026-06-13.)*
+*(Original entry 2026-06-12, implemented 2026-06-13. Logged as
+`docs/Update_ATES` §17; the same-day `IC mode: auto` selector is §18.)*
 
 Metals used to be strictly passive trace species: they affected
 heating/cooling and the ionization equilibrium, but were excluded from the

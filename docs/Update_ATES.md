@@ -2078,3 +2078,140 @@ the smallest base cell (`eval_dt.f90`). Full working notes:
 SLOC), so the 2026-06-07 file tally of 57 becomes 58; the remaining changes are small
 edits to `charge_exchange.f90`, `input_read.f90`, `ionization_equilibrium.f90`,
 `parameters.f90`, `ATES_main.f90`, `energy_semi_implicit.f90` and `Cool_coeff.f90`.
+
+---
+
+## 17. Metals in the bulk-gas mass/charge/particle budget (`eos_metals`)
+
+*Added 2026-06-13.*
+
+**Motivation.** Until this update the trace metals were strictly *passive*
+species: they contributed to heating/cooling and were solved in the coupled
+ionization equilibrium, but they were excluded from the mass density, the base
+density `rho_bc`, and the electron/particle densities used everywhere
+*outside* the ionization solver (EOS temperature, opacities, cooling calls,
+energy update). The only self-consistent place was the charge balance *inside*
+the MINPACK residuals (`System_HeH_metals.f90`). At solar abundances the
+missing metal mass is ~1.3% of the H/He mass — small but systematic, and
+inconsistent with solving the metal ionization to high precision. Recorded in
+`TO_BE_DONE.md` on 2026-06-12; implemented 2026-06-13.
+
+**Runtime interface.** New key `eos_metals 0|1` in `metals.inp` (documented in
+`inputdata/metals.inp.example`). `1` (the new default) includes the metals in
+the bulk-gas budget; `0` restores the legacy trace approximation exactly.
+Metals-off runs (no `metals.inp`) are identical either way.
+
+### What changed (factual)
+
+- **Composition constants** (`input_read.f90`): the mass per hydrogen nucleus
+  is now `mass_per_H = 1 + 4*HeH + sum(melem_ab*melem_A)` and the base density
+  becomes `rho_bc = mass_per_H/(1 + HeH)` (in units of `m_H*n0`). Atomic
+  weights live in `species_table.f90:melem_A`. The normalization `n0` keeps
+  its H/He-nuclei meaning, so `n_H = n0/(1+HeH)` is unchanged. (Correction to
+  the original `TO_BE_DONE` entry: `v0`, `p0`, `b0` are m_H-based
+  normalizations and never contained a mean molecular weight — they were never
+  affected.)
+- **Mass density**: `calc_rho` takes an optional `nm` argument and adds
+  `melem_A(elem)*nm` over all stages; passed from `ionization_equilibrium`.
+- **Electron density**: `calc_ne` takes an optional `nm` and adds `stage*nm`;
+  passed at every site where `nm` is available — `composition` (main-loop
+  EOS), `ionization_equilibrium` (opacity/cooling), `util_ion_eq` (`eval_cool`
+  + cooling dump), `energy_semi_implicit`, `excited_hydrogen`,
+  `post_process_adv`. (The scalar `T_equation` already carried metal electrons
+  via `pp_nm_cell`.)
+- **Particle density**: `calc_ntot` likewise adds the metal nuclei, so the EOS
+  `T = p/(n_tot + n_e)` sees them.
+- **Ghost pressure / `dp_bc`**: the lower-BC ghost pressure is now
+  `ntot_bc + dp_bc` with `ntot_bc = (1 + HeH + sum(melem_ab))/(1 + HeH)` — so
+  T = T0 holds *exactly* at the base — and `dp_bc` includes the metal
+  electrons at the first cell. `set_IC`/`load_IC` use `mass_per_H`/`ntot_bc`
+  consistently. Full formulas: `ATES_BC_and_IC.tex`.
+
+### Validation (WASP-121b regression matrix)
+
+- `eos_metals 0` is **byte-identical** to the pre-change goldens for both
+  regression cases (`wasp_full` 7296 steps, `wasp_he23off` 7300) — the legacy
+  path is untouched.
+- `eos_metals 1` (new default) converges cleanly (7145/7142 steps, ~2% fewer);
+  profile shifts are at the expected ~1% mass scale: median |dn| ~ 2.4%,
+  |dp| ~ 2.3%, |dT| ~ 0.9% (max |dT| = 132 K in the breathing-base region
+  r ~ 1.09). The *number* flux n·v·r² drops 1.1% (log10 Mdot 13.31 → 13.30),
+  which offsets the +1.2% mass per particle — the *mass*-loss rate is
+  essentially unchanged.
+- Goldens re-snapshotted under the new default; a repeat run reproduces them
+  byte-identically (single-thread determinism intact).
+
+**Still open (small).** The `use_2lev_cool` legacy cooling branch remains
+AIOLOS-hard-coded (default off), and the per-cell scalar `T_equation` uses
+`pp_nm_cell` only in the post-process path (the time-marching per-cell solve
+receives n_e via the now-metal-aware `energy_semi_implicit`).
+
+---
+
+## 18. Automatic initial-condition selection (`IC mode: auto`)
+
+*Added 2026-06-13.*
+
+**Motivation.** The code now carries three IC families — cold hydrostatic
+(default), transonic isothermal wind (added for the Phase-4 deep-RLOF Case D,
+where the cold IC false-converges), and the hot-Parker warm seed (benchmarked:
+no speedup) — and the choice was manual. Kubyshkina+2018 build a per-planet IC
+automatically; the design study is `docs/auto_ic_design.md` and the literature
+comparison `docs/code_comparison.tex`.
+
+### The selector (one exact probe, no tunable threshold)
+
+`select_IC_auto` (`set_IC.f90`) evaluates the *cold* base sound speed in code
+units, `c2_cold = (ntot_bc + dp_bc)/rho_bc`, and calls the existing
+`find_sonic` bisection for a critical point `phi'(r_c) = 2c²/r_c` in the
+*actual* potential (Roche or spherical). If an interior sonic point exists,
+the cold isothermal atmosphere already wants to blow a transonic wind, so the
+transonic IC is selected; otherwise the cold hydrostatic IC is kept. One
+criterion catches both regimes that need the transonic start: deep RLOF
+(through the Roche/L1 topology) and low-gravity boil-off
+(r_c ≈ b0/(2c0²) in a point-mass potential). The Jeans parameter b0
+(Kubyshkina's Λ) is logged as a diagnostic but is *not* a decision variable;
+the hot-Parker seed is never auto-selected.
+
+**Runtime interface.** New input line
+`IC mode: <cold|transonic|hot_parker|auto>`. The named modes simply set the
+legacy flags; `auto` defers the decision to `set_IC`. The legacy keys
+(`Transonic IC:`, `Hot Parker IC:`) take precedence over `auto`, and the setup
+report (`ATES.out`) records the family actually in effect, with a
+"(chosen automatically: IC mode = auto)" tag. Touched files: `parameters.f90`
+(`ic_mode`), `input_read.f90` (key parsing), `set_IC.f90` (`select_IC_auto`),
+`write_setup_report.f90`.
+
+### Validation gates (all run 2026-06-13)
+
+| Gate | Result |
+| :-- | :-- |
+| A-1 no `IC mode` key | byte-identical regression (defaults untouched) |
+| A-2 `IC mode: cold` | byte-identical to A-1 |
+| A-3 spherical tutorial, `auto` | b0 = 83.2, no interior r_c → cold; `IC_dump` byte-identical |
+| B-1 Case D (deep RLOF), `auto` | r_c = 1.297 (just inside L1 = 1.353) → transonic, same as the manual key |
+| B-2 boil-off planet (0.0189 MJ, 0.446 RJ, 1100 K) | b0 = 8.5, r_c = 5.2 (as predicted) → transonic; wind launches (initial residual 0.19 vs 14 cold) |
+| B-3 `wasp_full` (Roche), `auto` | → transonic; du-stop in 5876 vs 7145 steps (−18%) |
+
+**Honest speed verdict.** The −18% step count is *Roche/deep-RLOF-specific*
+(the steady wind there is close to the cold isothermal transonic solution).
+For the mild spherical boil-off case B-2 the cold control *also* launched and
+converged first (log10 Mdot = 11.20), while the auto run relaxed monotonically
+toward the same flux from ~2× above — the cold-c² Parker profile
+*overestimates* the flux of a weakly heated wind. So auto is not harmful (same
+attractor) but not faster there.
+
+**Key byproduct (a trap for all Mdot work).** While adjudicating gate B-3 it
+was found that the `du < 1e-3` stopping criterion is **path-dependent at the
+~5% level**: the cold-start and transonic-start `wasp_full` runs both
+"converge" by `du` but sit 4.8% apart in mass flux, each only 1–2% flux-flat.
+Newton-finishing *both* states (`Load IC` + `Solver: Newton`) collapses them
+onto the *same* fixed point (flux ratio 0.9996, flatness 0.005%). Practical
+rule, now standing: **for quantitative Mdot always finish with
+`Solver: Newton`**; never compare bare du-stops at the percent level.
+
+**Deferred.** A Phase-C retry ladder (escalate cold → warm seed on NaN/stall)
+is designed in `auto_ic_design.md` §6 but *not* implemented — the B-2 result
+suggests failure-triggered escalation is the right shape if a real case ever
+needs it. IC formulas and the selection logic are also documented in
+`ATES_BC_and_IC.tex` §5 and the user manual.
