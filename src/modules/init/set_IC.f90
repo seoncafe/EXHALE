@@ -31,6 +31,12 @@
 
 	!--- Set initial conditions for thermodynamic variables ---!
 
+	! Automatic IC selection ("IC mode: auto"): pick the IC family from the
+	! cold sonic-point topology of the actual potential before anything is
+	! built (v2 decision tree, docs/auto_ic_design.md). Explicit legacy keys
+	! (Transonic IC / Hot Parker IC) take precedence and skip the selector.
+	if (ic_mode .eq. 3) call select_IC_auto
+
 	! Density + velocity.  Two IC families (see transonic_ic in parameters.f90):
 	!   (1) transonic isothermal-wind IC (transonic_ic=.true.): solve the steady
 	!       isothermal-wind profile from the ATES potential (Bernoulli integral)
@@ -171,6 +177,59 @@
 
 	! End of subroutine
 	end subroutine set_IC
+
+	!-------------------------------------------------------!
+
+	subroutine select_IC_auto
+	! Automatic IC-family selection ("IC mode: auto"); v2 decision tree of
+	! docs/auto_ic_design.md. A single exact probe -- does the COLD base
+	! sound speed admit an interior sonic point in the actual (Roche or
+	! spherical) potential? -- separates the regimes with no tunable
+	! threshold:
+	!   interior sonic point -> transonic IC. Catches (a) deep-RLOF bases,
+	!     where the Roche dphi/dr -> 0 toward L1 always crosses the
+	!     critical condition (e.g. WASP-121b), and (b) low-gravity
+	!     boil-off planets, where r_c ~ b0/(2 c0^2) falls inside the
+	!     domain; both launch no wind (or breathe) from a cold start.
+	!   no interior sonic point -> cold hydrostatic IC (classic EUV-heated
+	!     wind, e.g. HD 209458 b: r_c ~ 54 R_p >> r_max; launches fine).
+	! The hot-Parker warm seed is deliberately NOT auto-selected: the IC
+	! benchmark showed no speedup where the cold start works, and a warm
+	! sonic point exists for essentially every hot Jupiter. It remains a
+	! manual option. b0 (= Kubyshkina's escape parameter Lambda) is logged
+	! as the regime diagnostic.
+	real*8  :: c2_cold, rc
+	logical :: have_rc
+
+	! Explicit legacy keys take precedence over auto.
+	if (transonic_ic .or. hot_parker_ic) then
+		write(*,*) '   (select_IC_auto) explicit IC key present; ' // &
+		           'auto selection skipped'
+		return
+	endif
+
+	! Cold-base isothermal sound speed^2 (same c2 the transonic IC uses).
+	c2_cold = (ntot_bc + dp_bc)/rho_bc
+	call find_sonic(c2_cold, rc, have_rc)
+
+	if (have_rc) then
+		transonic_ic = .true.
+		write(*,'(A,F7.3,A,F7.1,A)')                                    &
+			'    (select_IC_auto) interior cold sonic point at r_c =',  &
+			rc, ' R_p (b0 =', b0, '): transonic IC'
+	else
+		write(*,'(A,F7.1,A)')                                           &
+			'    (select_IC_auto) no interior cold sonic point (b0 =',  &
+			b0, '): cold hydrostatic IC'
+	endif
+
+	! Re-evaluate force_start: the assignment in input_read.f90 ran before
+	! auto could flip the flags (mirrors that logic; read in the main loop,
+	! which starts after set_IC).
+	force_start = (transonic_ic .or. hot_parker_ic) .and. .not. do_only_pp
+
+	! End of subroutine
+	end subroutine select_IC_auto
 
 	!-------------------------------------------------------!
 

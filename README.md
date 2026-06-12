@@ -70,6 +70,7 @@ EXHALE/
 │   ├── ATES_user_manual.pdf   # full reference manual
 │   ├── cooling_formulas.pdf   # analytic cooling-coefficient reference
 │   ├── ATES_BC_and_IC.pdf     # boundary- and initial-condition reference
+│   ├── code_comparison.pdf    # BC/IC/solver vs ATES, Salz, Kubyshkina, Murray-Clay
 │   ├── steady_solver_memo.pdf # Newton-Krylov design notes
 │   └── …
 ├── observational_data/    # digitized observational comparison data

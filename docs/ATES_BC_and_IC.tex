@@ -446,7 +446,7 @@ BC itself.
 When a run does not restart from saved profiles
 (\S\ref{sec:loadic}), the initial state is built by \texttt{set\_IC}
 in \texttt{src/modules/init/}. Three IC families exist; the
-choice is made by two optional \texttt{input.inp} keys, with the cold
+choice is made by optional \texttt{input.inp} keys, with the cold
 hydrostatic atmosphere as the default:
 
 \begin{center}
@@ -458,6 +458,7 @@ Family & Key & Default \\
 Cold hydrostatic + velocity seed & (none) & yes \\
 Transonic isothermal wind & \texttt{Transonic IC: True} & off \\
 Hot-Parker warm seed & \texttt{Hot Parker IC: $T_{\rm wind}$ [K]} & off \\
+Automatic selection & \texttt{IC mode: auto} & off \\
 \bottomrule
 \end{tabular}
 \end{center}
@@ -467,6 +468,22 @@ The two non-default families force the first $1000$ iterations
 before the convergence test is allowed to fire. Whatever the family,
 the full dimensional IC is dumped to \texttt{output/IC\_dump.txt} for
 inspection before the first step.
+
+\paragraph{Automatic selection (\texttt{IC mode: auto}).}
+\texttt{select\_IC\_auto} (\texttt{set\_IC.f90}) picks the family from a
+single exact probe --- \texttt{find\_sonic} at the \emph{cold} base
+sound speed in the actual potential. An interior sonic point selects
+the transonic IC; this catches both deep-RLOF bases (the Roche
+$\phi'\to0$ topology toward L1 always crosses the critical condition;
+e.g.\ WASP-121b Case D, $r_c=1.30$) and low-gravity boil-off planets
+($r_c \simeq b_0/2c_0^2$ falls inside the domain for small $b_0$).
+Otherwise the cold hydrostatic default is kept (classic EUV-heated
+winds: HD\,209458\,b has $r_c\sim54\,R_p$, far outside the domain).
+There is no tunable threshold; $b_0$ (= the escape parameter $\Lambda$)
+is logged as a regime diagnostic, the warm seed is never auto-selected
+(the benchmark showed it buys nothing when the cold start works), and
+the explicit keys override \texttt{auto}. Design rationale and
+validation: \texttt{docs/auto\_ic\_design.md}.
 
 The guiding principle in all three cases is \emph{consistency with the
 lower boundary condition} of \S\ref{sec:lower}: every IC matches

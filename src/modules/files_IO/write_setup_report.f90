@@ -79,9 +79,22 @@
 	write(outfile,*) '- Reconstruction method: ', rec_method
 	write(outfile,*) 
 	if (.not.do_load_IC) &
-		write(outfile,*) '----- Starting a new simulation ----- ' 
+		write(outfile,*) '----- Starting a new simulation ----- '
 	if (do_load_IC) 		&
 		write(outfile,*) '----- Continuing existing simulation ----- '
+	if (.not.do_load_IC) then
+		! IC family actually in effect (this report is written after
+		! set_IC, so an "IC mode: auto" selection has already run).
+		if (hot_parker_ic) then
+			write(outfile,*) '- IC: hot-Parker warm seed'
+		else if (transonic_ic) then
+			write(outfile,*) '- IC: transonic isothermal wind'
+		else
+			write(outfile,*) '- IC: cold hydrostatic'
+		endif
+		if (ic_mode .eq. 3) &
+			write(outfile,*) '  (chosen automatically: IC mode = auto)'
+	endif
 	if (do_only_pp)		&
 		write(outfile,*) '- Evaluating post processing only'
 	if (force_start) &

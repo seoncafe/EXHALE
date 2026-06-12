@@ -516,6 +516,16 @@ defaults restore the standard behavior).}\label{tab:inp-opt}\\
 \texttt{CFL:} & real (def.\ 0.6) & CFL-number override. \\
 \texttt{Hot Parker IC:} & real (K) & Warm-seed initial condition: stable
   hydrostatic density with a warm $T$/ionization/velocity overlay. \\
+\texttt{IC mode:} & word & Initial-condition family:
+  \texttt{cold} (default), \texttt{transonic}, \texttt{hot\_parker}
+  (synonyms for the two keys above), or \texttt{auto} --- pick
+  automatically from the cold sonic-point topology of the actual
+  potential: an interior sonic point (deep-RLOF via the Roche L1
+  topology, or low-gravity boil-off, $r_c\simeq b_0/2c_0^2$ inside the
+  domain) selects the transonic IC, otherwise the cold hydrostatic IC.
+  No tunable threshold; the choice and the escape parameter $b_0$ are
+  logged. Explicit \texttt{Transonic IC}/\texttt{Hot Parker IC} keys
+  override \texttt{auto}. See \texttt{docs/auto\_ic\_design.md}. \\
 \texttt{Level tol:} & real & Mass-flux \emph{level}-stability gate: a
   converged/stalled stop additionally requires the mean $|\rho v r^2|$ over the
   wind window to change by less than this (relative) across the last

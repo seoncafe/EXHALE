@@ -1,0 +1,405 @@
+%% ATES-metal (EXHALE): comparison with reference escape codes.
+%% Boundary conditions, initial conditions, and solver design, side by
+%% side with the relevant reference atmospheric-escape codes:
+%%   - Caldiroli et al. 2021 (A&A 655, A30): the original ATES code
+%%   - Salz et al. 2016 (A&A 586, A75): PLUTO-CLOUDY interface (TPCI)
+%%   - Kubyshkina et al. 2018 (A&A 619, A151): grid code, scheme from
+%%     Erkaev et al. 2016 (MNRAS 460, 1300)
+%%   - Murray-Clay et al. 2009 (ApJ 693, 23): steady-state BVP archetype
+%% Source PDFs under ../../references/.
+%% Author: Kwang-Il Seon
+\documentclass[english,a4paper]{kiseon_memo}
+\synctex=1
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage{amsmath}
+\usepackage{babel}
+\emergencystretch=3em
+
+\newcommand{\Rp}{$R_{\rm pl}$}
+\newcommand{\Mdot}{$\dot M$}
+
+\title{Boundary conditions, initial conditions, and solver:\\
+EXHALE / ATES-metal vs.\ ATES, Salz+2016,\\
+Kubyshkina+2018, and Murray-Clay+2009}
+\author{Kwang-Il Seon}
+\date{2026-06-13}
+
+\begin{document}
+\maketitle
+
+\begin{quote}\small\itshape
+A focused comparison of the boundary conditions (BC), initial conditions
+(IC), and steady-state solver of EXHALE / ATES-metal against the
+relevant 1-D atmospheric-escape codes: its own parent code ATES
+(Caldiroli et al.\ 2021), the PLUTO--CLOUDY interface (TPCI) of Salz et
+al.\ (2016), the grid code of Kubyshkina et al.\ (2018) (numerical
+scheme from Erkaev et al.\ 2016), and the steady-state boundary-value
+archetype of Murray-Clay et al.\ (2009). The aim is to place EXHALE's
+design choices in context --- what it inherited from ATES, what it
+added, which choices are field-standard, and which capabilities the
+other codes have that EXHALE lacks. A companion design sketch
+(\texttt{auto\_ic\_design.md}) follows up on the main actionable
+finding: a Kubyshkina-style automatic IC selector. Full BC/IC details
+of EXHALE itself are in \texttt{ATES\_BC\_and\_IC.tex}.
+\end{quote}
+
+\tableofcontents
+
+\section{The three codes at a glance}
+
+\begin{table}[h]
+\centering\small
+\begin{tabular}{@{}p{0.20\textwidth}p{0.24\textwidth}p{0.24\textwidth}p{0.24\textwidth}@{}}
+\toprule
+ & \textbf{Salz+2016 (TPCI)} & \textbf{Kubyshkina+2018} & \textbf{ATES-metal} \\
+\midrule
+Hydro scheme & WENO3 + HLLC + RK3 (Godunov) & McCormack predictor--corrector (finite diff., no Riemann solver) & PLM/WENO3 + HLLC + RK (Godunov) \\
+Source term & operator-split forward Euler & in-scheme & semi-implicit energy + Brent $T$-solve \\
+Steady state & time relaxation only & time relaxation & time relaxation \emph{+} JFNK Newton finish \\
+Microphysics & CLOUDY full non-equilibrium photoionization (separate auto grid, 600--1200 cells) & H+H$_2$ network, Ly$\alpha$+H$_3^+$ cooling, $\eta=15\%$ fixed & ionization equilibrium (H/He+metals, MINPACK), CHIANTI metal cooling, He\,2$^3$S, H($n{=}2$)/Ly$\alpha$ RT \\
+Composition & H/He (metals/molecules in CLOUDY only) & pure H; \textbf{H$_2$ molecular at base} & H/He \textbf{+ 10 metals} (self-consistent EOS) \\
+Grid & stretched 500 cells, 1--12/15\,\Rp, base $\Delta r{=}2{\times}10^{-4}$\,\Rp & 1\,\Rp\ $\to$ Roche radius & 500 cells + 2 ghost, 1\,\Rp\ $\to r_{\max}$ \\
+Potential & planet+star+centrifugal (2-body) + radiation pressure + conduction & Roche (Erkaev 2007) + conduction & Roche / spherical \\
+\bottomrule
+\end{tabular}
+\caption{High-level comparison. EXHALE and Salz share the same
+Godunov-type numerics (WENO3+HLLC+RK); Kubyshkina uses a lower-order,
+more diffusive finite-difference scheme optimized for mass-producing a
+$\sim$7000-model grid.}
+\end{table}
+
+The headline structural fact is that \textbf{EXHALE and Salz are
+numerical near-twins} --- same reconstruction, same Riemann solver, same
+time integrator --- so their differences are in the BC/IC details and in
+the microphysics, not in the hydrodynamics. Kubyshkina is the outlier:
+a deliberately simpler, faster scheme whose strengths lie in robustness
+across escape regimes and in grid-production throughput. Murray-Clay is
+a different beast entirely --- a steady-state boundary-value solver
+rather than a time-relaxation code (\S\ref{sec:mc}).
+
+\section{Heritage: what EXHALE inherited from ATES (Caldiroli+2021)}
+\label{sec:heritage}
+
+EXHALE / ATES-metal is a fork of ATES, so its BC/IC/solver baseline is
+literally Caldiroli et al.\ (2021). Reading that paper makes the
+inheritance explicit and isolates what is genuinely new in EXHALE.
+
+\textbf{Inherited verbatim (or nearly so):}
+\begin{itemize}
+\item \emph{Lower BC.} Density and temperature fixed at $R_{\rm pl}$,
+  total $n=10^{14}\,\mathrm{cm^{-3}}$ (the same value Salz uses), $T$ at
+  the planet's equilibrium temperature. \emph{The base velocity valve:}
+  ``the velocity in the ghost cells at the lower boundary was obtained
+  through a zeroth-order extrapolation from the first computational cell
+  in the case of inflow characteristics, while it was set to zero
+  otherwise'' --- i.e.\ EXHALE's $\max(v_1,0)$ valve is the original
+  ATES valve. Caldiroli even states ``ATES employs the same boundary
+  conditions as TPCI at the planet radius,'' so the ATES--Salz BC
+  equivalence noted in \S\ref{sec:bc} is asserted in the ATES paper
+  itself.
+\item \emph{Upper BC.} Zero-gradient (PLM) / linear extrapolation
+  (ESWENO3) at the Roche-lobe radius --- exactly EXHALE's outer BC.
+\item \emph{IC.} ``A fully neutral, isothermal sphere of H and He
+  $\ldots$ with a linear initial velocity profile $v(t{=}0)=(r-1)/2$''
+  --- this \emph{is} EXHALE's cold-hydrostatic default IC.
+\item \emph{Solver core.} Godunov finite-volume, SSPRK3 time
+  integrator, HLLC default (+Roe, LLF), PLM and ESWENO3 reconstruction,
+  $C_{\rm CFL}=0.6$, 500-cell mixed uniform--stretched grid, and the
+  \emph{two-stage PLM\,$\to$\,ESWENO3 relaxation} with the final
+  tolerance $\Delta\dot M/\dot M<10^{-3}$. Ionization solved in
+  photoionization equilibrium via the MINPACK dogleg method; ion
+  advection only as a post-process. All of this is EXHALE's backbone.
+\end{itemize}
+
+\textbf{Added by EXHALE} (none of these are in Caldiroli+2021): the
+trace-metal network and its self-consistent EOS contribution
+(\texttt{eos\_metals}); He\,2$^3$S, H($n{=}2$) and Ly$\alpha$ RT;
+CHIANTI metal-line cooling; the \emph{JFNK Newton steady-state finish}
+(ATES has \emph{no} implicit steady-state solver --- it is
+time-relaxation only); the semi-implicit energy + Brent $T$-solve; the
+\emph{smooth valve} (\texttt{Valve eps}) and the \emph{transonic} and
+\emph{hot-Parker} IC families; the dynamic base-pressure correction
+$\delta p_{\rm bc}$. In short, EXHALE keeps ATES's hydro core and BC/IC
+skeleton and adds the metal physics, the excited-H/Ly$\alpha$ physics,
+and a genuine steady-state solver on top. Notably, Caldiroli+2021 makes
+\emph{no mention of base oscillations or ``breathing''}; that
+phenomenology and its mitigations (smooth valve, PP-adv guard) are
+EXHALE-era findings.
+
+\section{Boundary conditions}
+\label{sec:bc}
+
+\subsection{Lower boundary}
+
+\paragraph{Salz.} Two quantities fixed at the bottom --- \emph{density
+and pressure} --- and \emph{none} at the top, which the paper notes is
+``the correct choice for a subsonic inflow and a supersonic outflow.''
+The base is anchored at $n\approx10^{14}\,\mathrm{cm^{-3}}$,
+$p\approx14\,\mu$bar (set from $T_{\rm eq}$). Crucially, \emph{the
+boundary-cell velocity is copied from the first interior cell each step
+but only inflow (wind-feeding) is allowed; otherwise it is set to zero}
+--- a choice the paper explicitly introduces ``to dampen oscillations
+that appear with steep density gradients at the lower boundary.''
+
+This is \textbf{exactly EXHALE's one-way velocity valve}
+$v_{\rm gh}=\max(v_1,0)$, adopted independently for the same reason (the
+breathing base, \texttt{ATES\_BC\_and\_IC.tex}\,\S2.4). EXHALE layers
+three refinements on top that Salz does not have: (i) the dynamic
+pressure correction $\delta p_{\rm bc}$ that pins the base to $T=T_0$
+exactly through the EOS; (ii) the smooth valve (\texttt{Valve eps}) that
+makes the kink differentiable for the Newton solver; (iii) the metal
+mass/electron terms in the base density and pressure
+(\texttt{eos\_metals}, 2026-06-13).
+
+\paragraph{Kubyshkina (scheme from Erkaev+2016).} Lower boundary at the
+photospheric radius \Rp\ with \emph{temperature fixed to $T_{\rm eq}$
+and pressure set from Fossati+2017}, composition \emph{molecular H$_2$}.
+The underlying Erkaev+2016 model is explicit: \emph{five} Dirichlet
+conditions at the base ($\tilde T{=}1$, $\tilde\rho{=}1$, and the
+hydrogen speciation fixed to pure H$_2$), with the base placed at the
+\emph{homopause} (base of the thermosphere, $n_{\rm H_2}=5\times10^{12}\,
+\mathrm{cm^{-3}}$), not the photosphere; the velocity is \emph{not}
+fixed at the base. (Note the potential differs between the two papers:
+Erkaev+2016 uses a \emph{point-mass} planetary potential, while
+Kubyshkina+2018 adds the Roche term.)
+
+Versus EXHALE: EXHALE fixes $(\rho,p)$ with $p$ dynamically corrected so
+that $T=T_0$, i.e.\ \emph{effectively the same pair $(\rho,T)$}. The
+substantive difference is the \textbf{H$_2$ molecular base}: it places
+the lower boundary deeper, in a near-hydrostatic molecular layer, which
+is what lets Kubyshkina follow boil-off (low-gravity, nearly hydrostatic
+but rapidly escaping) atmospheres smoothly. EXHALE's atomic H/He base
+does not represent that layer and is correspondingly weaker there ---
+the same regime where EXHALE's breathing base is hardest to converge.
+
+\subsection{The base \emph{radius} is the real lever, not the base
+values (Murray-Clay+2009)}
+\label{sec:rmin}
+
+Murray-Clay et al.\ (2009) is the standard reference for \emph{how
+much the lower BC matters}, and their answer is sharp: within physically
+realistic ranges, the mass-loss rate is \textbf{insensitive} to the base
+density, temperature, and ionization fraction (so long as
+$\tau_{\rm base}\gg1$, $T_{\rm base}\ll10^4$\,K, $f_+\ll1$) --- they call
+the solution ``quasi-unique.'' What \Mdot\ \emph{is} strongly sensitive
+to is the base \emph{radius} $r_{\min}$: $\dot M\propto R_{\rm pl}^3$, so
+a 20\% change in $r_{\min}$ moves \Mdot\ by up to a factor of two. Salz
+independently finds the same insensitivity to the boundary
+\emph{temperature} ($<5\%$ change in \Mdot\ for a 40\% temperature
+change).
+
+This reframes the whole lower-BC discussion and applies directly to
+EXHALE: the precise values of $\rho_{\rm bc}$, $T_0$, and the new metal
+EOS terms are \emph{not} the lever (consistent with the
+\texttt{eos\_metals} mass effect being ${\sim}1\%$ in \Mdot), whereas the
+choice of base \emph{radius} $R_0$ is. This echoes EXHALE's own
+WASP-121b experience, where moving the base from the 4-mbar transit
+radius ($R_0=1.766$) to the correct 1-$\mu$bar level ($R_0=2.058$) was
+what brought Case A into agreement with Huang+2023 --- the same
+``base-radius is the lever'' effect Murray-Clay quantify. Practical
+takeaway: spend effort getting $R_0$ (and the pressure level it
+corresponds to) right; do not over-tune $\rho_{\rm bc}$ or $T_0$.
+
+\subsection{Upper boundary}
+
+All three are essentially identical: \textbf{supersonic free outflow},
+imposed as zero-gradient / linear extrapolation with no fixed condition
+(Kubyshkina: ``radial derivatives become zero'' at the Roche radius;
+Salz: ``none at the top''; EXHALE: copy / WENO3 linear extrapolation).
+The same well-posedness caveat applies to all three when the flow is not
+actually supersonic at the outer radius (deep Roche-lobe overflow);
+EXHALE documents this explicitly (\texttt{ATES\_BC\_and\_IC.tex}\,\S3).
+
+\section{Initial conditions}
+
+\begin{table}[h]
+\centering\small
+\begin{tabular}{@{}p{0.13\textwidth}p{0.26\textwidth}p{0.26\textwidth}p{0.26\textwidth}@{}}
+\toprule
+ & Salz & Kubyshkina & ATES-metal \\
+\midrule
+Method & single fixed IC (tuned to a medium-\Mdot\ atmosphere), same for all planets & \textbf{per-planet automatic selection of an initial profile} & cold hydrostatic (default) / transonic / hot-Parker \\
+Stated property & ``final steady state does not depend on the IC'' & auto-selection accelerates a 7000-model grid & same \Mdot\ regardless; convergence is momentum-($du$)-gated \\
+Transient & two shock waves cross in the first hours, then settle & --- & breathing-base limit cycle \\
+\bottomrule
+\end{tabular}
+\caption{Initial-condition strategies.}
+\end{table}
+
+Salz demonstrates IC-independence of the steady state and gets away with
+a single hand-tuned IC, at the cost of an expensive shock-laden
+relaxation. \textbf{Kubyshkina's automatic per-planet IC selection is
+the key engineering idea}: choosing an appropriate starting atmosphere
+at each grid point is what makes mass-producing 7000 models tractable
+and what lets the code launch winds across the full escape-parameter
+range, including the boil-off cases that do not launch from a cold
+static start. EXHALE already has the \emph{ingredients} for this --- the
+transonic and hot-Parker IC families exist precisely for ``won't launch
+from hydrostatic'' cases --- but the choice is currently \emph{manual}
+(input keys), whereas Kubyshkina automates it. This is the main
+actionable gap; see \texttt{auto\_ic\_design.md}.
+
+EXHALE's IC behavior is, however, the best-documented of the three: the
+benchmark
+(\texttt{initial\_\allowbreak condition\_\allowbreak benchmark.pdf})
+quantifies that a
+naive full-Parker density seed diverges (self-amplifying breathing)
+while the warm-seed converges to the same \Mdot\ with no speedup ---
+because convergence is gated by the slow momentum relaxation, not the
+thermal/ionization relaxation a warm seed shortcuts.
+
+\section{Solver: differences, strengths, weaknesses}
+
+\subsection{Versus Salz (the close comparison)}
+
+\textbf{Shared:} WENO3/HLLC/RK family, the one-way valve, IC-independent
+steady state.
+
+\textbf{EXHALE advantages:}
+\begin{itemize}
+\item \emph{JFNK Newton steady-state finish.} Salz relaxes in time only,
+  so its convergence criterion is $\Delta\dot M/\dot M<0.1$ (10\%) with
+  residual oscillations handled by time-averaging. EXHALE converges to
+  the fixed point directly ($\|R\|_\infty\to0$), a much stricter
+  standard.
+\item \emph{Metals self-consistent in the hydro EOS} (2026-06-13). Salz's
+  published runs keep metals/molecules inside CLOUDY's separate grid and
+  run H/He-only hydro.
+\item \emph{Semi-implicit energy + Brent $T$-solve} avoids the hot-root
+  trap of stiff metal cooling.
+\end{itemize}
+
+\textbf{Salz advantages:}
+\begin{itemize}
+\item \emph{CLOUDY's full non-equilibrium photoionization with
+  self-consistent radiative transfer and molecular/metal cooling} ---
+  fundamentally more accurate microphysics than EXHALE's ``ionization
+  equilibrium + prescribed cooling fits,'' especially in the
+  radiative-equilibrium base layers.
+\item Very high base resolution ($\Delta r\sim2{\times}10^{-4}$\,\Rp)
+  suppresses the pressure-gradient cancellation error that drives
+  low-\Mdot\ oscillations.
+\item Cost: TPCI is expensive and has no steady-state solver.
+\end{itemize}
+
+\subsection{Versus Kubyshkina}
+
+\textbf{EXHALE advantages:}
+\begin{itemize}
+\item \emph{HLLC Riemann + WENO3} vs.\ the McCormack predictor--corrector
+  $\Rightarrow$ much lower numerical diffusion. (Salz attributes the
+  grid-dependent \Mdot\ of older Lax--Friedrich-type schemes, e.g.\ Tian
+  et al.\ 2005, to exactly this diffusion; EXHALE/Salz are free of it,
+  Kubyshkina's scheme is comparatively diffusive.)
+\item Far richer microphysics (metals, He\,2$^3$S, Balmer/Ly$\alpha$ RT)
+  vs.\ H/H$_2$ + Ly$\alpha$ + H$_3^+$ with a fixed $\eta=15\%$.
+\end{itemize}
+
+\textbf{Kubyshkina advantages:}
+\begin{itemize}
+\item \emph{Robust across the full boil-off / blow-off range.} The
+  molecular-H$_2$ base plus per-planet automatic IC let it span escape
+  parameters $\Lambda\sim20$--$80$ and produce 7000 models --- precisely
+  the low-gravity / nearly-hydrostatic regime where EXHALE's breathing
+  base is hardest to converge (e.g.\ HD\,189733\,b).
+\item Simple and fast: ideal for the large model grids used in planetary
+  evolution calculations. EXHALE is more accurate per case but heavier
+  and breathing-limited.
+\end{itemize}
+
+The underlying scheme (Erkaev+2016) is a two-step MacCormack
+predictor--corrector, \emph{second-order} and explicitly noted as
+``suitable for smooth solutions without sharp discontinuities'' --- i.e.\
+it lacks the shock-capturing of EXHALE's HLLC. It reaches steady state by
+time relaxation (no artificial viscosity stated), and the paper validates
+it against the analytic Parker (1958) wind and against Murray-Clay+2009
+($3.33$ vs.\ $3.3\times10^{10}\,\mathrm{g\,s^{-1}}$). So the
+EXHALE-vs-Kubyshkina solver gap is concrete: a Godunov/HLLC/WENO3 scheme
+versus a smooth-flow second-order finite-difference scheme.
+
+\subsection{A different solver philosophy: steady-state BVP
+(Murray-Clay+2009)}
+\label{sec:mc}
+
+Murray-Clay+2009 is worth a dedicated note because it is the principal
+\emph{methodological alternative} to everything above: instead of
+relaxing a time-dependent code to a stationary state, it solves the
+\emph{steady-state} equations directly as a two-point boundary-value
+problem. The two points are the base and the \emph{sonic point}; six BCs
+are imposed (two Parker critical-point conditions at the sonic point,
+four at the base). The interior ($R_{\rm pl}\to r_s$) is solved by a
+Newton relaxation (\texttt{solvde}) on the finite-differenced ODEs, and
+the exterior ($r_s\to R_{\rm Roche}$) by Bulirsch--Stoer integration,
+iterated for consistency.
+
+Two lessons for EXHALE:
+\begin{itemize}
+\item \emph{The sonic point is the natural place to anchor a steady
+  solver.} Murray-Clay stress that ``for every transonic wind there are
+  an infinite number of breeze solutions,'' and codes that do not
+  enforce the critical-point conditions ``found, not surprisingly,
+  breezes instead.'' EXHALE's JFNK Newton finish is the time-domain
+  analogue of their relaxation, but it does not explicitly impose the
+  sonic-point conditions --- a possible robustness upgrade for the
+  hard-to-launch cases, and an alternative to the transonic IC.
+\item \emph{Continuation/homotopy is how they launch hard cases.} They
+  build the final solution by ``solving successively more complicated
+  problems'': start from an isothermal wind, then add photoionization,
+  heating, cooling, and tidal gravity ``one by one $\ldots$ in a diluted
+  form first and gradually strengthened to full amplitude.'' This is a
+  proven recipe for reaching a transonic solution that EXHALE does not
+  currently use; it is noted as an alternative IC/continuation strategy
+  in \texttt{auto\_ic\_design.md}.
+\end{itemize}
+
+The trade-off: a steady-state BVP solver like Murray-Clay's is elegant
+and fast for a single transonic wind, but it bakes in the transonic
+topology (it cannot represent a genuinely time-dependent or
+non-launching atmosphere) and does not naturally carry a large reaction
+network. EXHALE's time-relaxation-plus-Newton approach is more general
+at the cost of the breathing-base difficulty.
+
+\section{What EXHALE should take away}
+
+\begin{enumerate}
+\item \textbf{The valve is standard, and EXHALE's version is the most
+  complete.} Salz independently adopted the same one-way valve for the
+  same anti-oscillation reason; EXHALE's $\delta p_{\rm bc}$, smooth
+  valve, and metal EOS sit on top of it. The lower BC is not a weak
+  point.
+\item \textbf{The Newton finish is a genuine, unique strength} --- only
+  EXHALE converges to the fixed point rather than time-averaging. The
+  real limitation is not the solver but the breathing base in
+  low-\Mdot\ / low-gravity cases.
+\item \textbf{The most worthwhile idea to adopt is Kubyshkina's
+  automatic IC selection} (and, relatedly, a deeper / molecular base for
+  boil-off). EXHALE already has the transonic and hot-Parker IC families
+  and computes the escape parameter $b_0\equiv\Lambda = GM_{\rm pl}\,
+  m_{\rm H}/(k_BT_0R_{\rm pl})$; what is missing is an automatic rule
+  that picks the IC family from $b_0$ and the sonic-point location. This
+  directly targets EXHALE's weakest regime. See
+  \texttt{auto\_ic\_design.md}.
+\item \textbf{The microphysics ceiling is Salz/CLOUDY.} The known
+  limitations of EXHALE's equilibrium + fitted cooling (the
+  \texttt{use\_2lev\_cool} branch, fine-structure floors, etc.\ in
+  \texttt{TO\_BE\_DONE.md}) are exactly what a non-equilibrium RT
+  treatment like TPCI would resolve --- a long-term direction, not a
+  near-term change.
+\item \textbf{Tune the base \emph{radius}, not the base values}
+  (Murray-Clay+2009; \S\ref{sec:rmin}). \Mdot\ is quasi-insensitive to
+  $\rho_{\rm bc}$, $T_0$, and the new metal-EOS terms but
+  $\propto R_{\rm pl}^3$ in the base radius. This is reassuring for the
+  $\sim1\%$ \texttt{eos\_metals} change and is the lesson behind
+  EXHALE's own $R_0=1.766\to2.058$ correction for WASP-121b. Effort on
+  $R_0$/base-pressure calibration pays off; effort on $\rho_{\rm bc}$/$T_0$
+  does not.
+\item \textbf{Consider anchoring the steady solver at the sonic point}
+  (Murray-Clay+2009; \S\ref{sec:mc}). EXHALE's Newton finish does not
+  enforce the Parker critical-point conditions; doing so (or using
+  continuation/homotopy to reach the transonic branch) is a candidate
+  robustness upgrade for the non-launching cases, complementary to the
+  automatic IC selector.
+\end{enumerate}
+
+\end{document}

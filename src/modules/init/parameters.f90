@@ -103,6 +103,16 @@
                                           !   (-b0/r), tidal + centrifugal terms
                                           !   dropped, domain extended to
                                           !   r_out_user [R_p] (Huang Case A-like)
+      integer :: ic_mode       = 0        ! IC selection mode (input.inp
+                                          !  "IC mode: <word>"): 0 = cold
+                                          !  hydrostatic (default), 1 =
+                                          !  transonic, 2 = hot_parker,
+                                          !  3 = auto (select_IC_auto picks
+                                          !  the family from the cold
+                                          !  sonic-point topology; see
+                                          !  docs/auto_ic_design.md). The
+                                          !  explicit legacy keys below
+                                          !  take precedence over auto.
       logical :: transonic_ic  = .false.  ! IC type (set via input.inp,
                                           !  "Transonic IC: True"; default off):
                                           !  .false. = isothermal hydrostatic

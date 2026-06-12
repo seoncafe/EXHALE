@@ -397,6 +397,28 @@
 				str = get_word(line, 4)
 				read(str,*) T_wind_ic
 				hot_parker_ic = .true.
+			else if (index(line,'IC mode') .gt. 0) then
+				! "IC mode: <cold|transonic|hot_parker|auto>". The named
+				! modes are synonyms for the legacy keys; 'auto' defers the
+				! choice to select_IC_auto (set_IC.f90), which probes the
+				! cold sonic-point topology of the actual potential. The
+				! explicit legacy keys take precedence over 'auto'.
+				str = get_word(line, 3)
+				if (str .eq. 'cold') then
+					ic_mode = 0
+				else if (str .eq. 'transonic') then
+					ic_mode = 1
+					transonic_ic = .true.
+				else if (str .eq. 'hot_parker') then
+					ic_mode = 2
+					hot_parker_ic = .true.
+				else if (str .eq. 'auto') then
+					ic_mode = 3
+				else
+					write(*,*) '(input_read.f90) WARNING: unknown "IC ' // &
+					           'mode: ', str, '"; using cold hydrostatic.'
+					ic_mode = 0
+				endif
 			else if (index(line,'Newton solver') .gt. 0) then
 				str = get_word(line, 3)
 				if (str .eq. 'False') use_newton_ieq = .false.
