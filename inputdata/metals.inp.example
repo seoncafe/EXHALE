@@ -12,6 +12,12 @@
 #   cno_cool  <0|1>    C/N/O line-cooling source (default 1):
 #                      1 = CHIANTI v11 closed-form fits (incl. N I/N II)
 #                      0 = legacy AIOLOS fits (no N cooling)
+#   eos_metals <0|1>   bulk-gas metal policy (default 1):
+#                      1 = metals contribute their mass (rho_bc, calc_rho),
+#                          electrons (calc_ne, dp_bc) and nuclei (calc_ntot,
+#                          base pressure) to the gas budget (~1% in mass
+#                          at solar abundances)
+#                      0 = legacy trace approximation (H/He-only budget)
 #
 # Solar abundances (Asplund+2009):
 C     2.69e-4

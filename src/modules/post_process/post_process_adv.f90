@@ -218,8 +218,9 @@
 	nhe = nheiS + nheii + nheiii 
 	if (thereis_HeITR) nhe = nhe + nheiTR
 
-	! Free electron density (assuming overall neutrality)
-	call calc_ne(nhii,nheii,nheiii,ne)
+	! Free electron density (assuming overall neutrality; nm_w adds the
+	! metal electrons under the eos_metals policy)
+	call calc_ne(nhii,nheii,nheiii,ne,nm_w)
 
 	! Per-cell opacity pressure factor ('P' model; =1 otherwise)
 	do j = 1-Ng,N+Ng
@@ -405,11 +406,12 @@
 	nhe = nheiS + nheii + nheiii
 	if (thereis_HeITR) nhe = nhe + nheiTR
 
-   ! Total number density
-   call calc_ntot(nhi,nhii,nhei,nheii,nheiii,nheiTR,n_tot)
+   ! Total number density (incl. metal nuclei under eos_metals)
+   call calc_ntot(nhi,nhii,nhei,nheii,nheiii,nheiTR,n_tot,nm_w)
 
-   ! Free electron density (assuming overall neutrality)
-   call calc_ne(nhii,nheii,nheiii,ne)
+   ! Free electron density (assuming overall neutrality; incl. metal
+   ! electrons under eos_metals)
+   call calc_ne(nhii,nheii,nheiii,ne,nm_w)
 
 	!----------------------------------!
 

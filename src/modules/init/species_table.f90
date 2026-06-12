@@ -164,6 +164,11 @@
       ! nuclear charge (Z), used for the metal Gaunt factor
       integer, parameter :: melem_Z(n_melem)   = &
            [ 6, 8, 7, 12, 14, 20, 11, 19, 16, 26 ]
+      ! atomic weight [m_H units], used for the metal mass contribution to
+      ! the gas mass density / mean molecular weight (eos_include_metals)
+      real*8,  parameter :: melem_A(n_melem)   = &
+           [ 12.011d0, 15.999d0, 14.007d0, 24.305d0, 28.085d0,        &
+             40.078d0, 22.990d0, 39.098d0, 32.06d0,  55.845d0 ]
       ! index of the neutral ion in the mion list
       integer, parameter :: melem_i0(n_melem)  = &
            [ 1, 4, 7, 10, 13, 16, 19, 21, 23, 25 ]

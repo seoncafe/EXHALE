@@ -102,6 +102,23 @@
             cycle
          endif
 
+         ! 'eos_metals <0|1>' selects the bulk-gas metal policy:
+         ! 1 (default) = metals contribute their mass (rho_bc, calc_rho,
+         !     hence mu/v0/p0/b0), electrons (calc_ne, dp_bc) and nuclei
+         !     (calc_ntot, ghost pressure) to the gas budget;
+         ! 0 = legacy trace approximation (H/He-only budget).
+         if (trim(tok) == 'eos_metals' .or. trim(tok) == 'EOS_METALS') then
+            eos_include_metals = (ab > 0.5d0)
+            if (eos_include_metals) then
+               write(*,'(a)') '   EOS metal policy = metals in mass/'   &
+                              // 'electron/particle budget [default]'
+            else
+               write(*,'(a)') '   EOS metal policy = legacy trace'      &
+                              // ' approximation (H/He-only budget)'
+            endif
+            cycle
+         endif
+
          ! 'pp_metals <0|1|2>' selects how metals are treated in the
          ! advection post-process (post_process_adv): 0 metal-free,
          ! 1 frozen eq metals, 2 re-solve (default). 'pp_metal_mode' is

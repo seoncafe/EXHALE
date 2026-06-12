@@ -48,7 +48,10 @@
    else
       W_in(index,2) = max(W_in(1,2),0.0)
    endif
-   W_in(index,3) = 1.0 + dp_bc
+   ! ntot_bc (=1 for H/He only) + dp_bc = total particles (nuclei +
+   ! electrons) at the base in units of n0, so the EOS T = p/(n_tot+ne)
+   ! gives exactly T = T0 at the ghost cells.
+   W_in(index,3) = ntot_bc + dp_bc
 
    ! End of subroutine
    end subroutine BC_component_constrho

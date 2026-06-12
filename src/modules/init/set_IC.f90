@@ -54,7 +54,7 @@
 		! cold static base by a spatial smoothstep window (cold below r=1, warming
 		! to the wind value at r>=hp_base_rtr). The Parker velocity is obtained for
 		! the head-start only (density discarded).
-		c2 = (1.0d0 + dp_bc)/rho_bc * (T_wind_ic/T0) * 2.0d0
+		c2 = (ntot_bc + dp_bc)/rho_bc * (T_wind_ic/T0) * 2.0d0
 		call wind_profile(rho_p, v_p, c2, wind_ok)
 		if (wind_ok) then
 			write(*,'(A,F8.1,A)') '    (set_IC.f90) Using hot-Parker warm-seed IC, T_wind =', &
@@ -66,7 +66,7 @@
 		endif
 		write(*,*)
 	else if (transonic_ic) then
-		c2 = (1.0d0 + dp_bc)/rho_bc
+		c2 = (ntot_bc + dp_bc)/rho_bc
 		call wind_profile(W(:,1), W(:,2), c2, wind_ok)
 		if (wind_ok) then
 			write(*,*) '   (set_IC.f90) Using transonic isothermal-wind IC'
@@ -123,38 +123,38 @@
 			xi   = swin*swin*(3.0d0 - 2.0d0*swin)               ! smoothstep window
 			W(j,2) = v_p(j) * swin                              ! Parker velocity head-start, 0 at base
 			T(j)   = 1.0d0 + (T_wind_ic/T0 - 1.0d0)*xi
-			W(j,3) = W(j,1)*((1.0d0 + dp_bc)/rho_bc)*T(j)*(1.0d0 + xi)
-			f_sp(j,isp_HI)    = (1.0d0 - (dp_bc + (1.0d0-dp_bc)*xi))/(1.0d0 + 4.0d0*HeH)
-			f_sp(j,isp_HII)   = (dp_bc + (1.0d0-dp_bc)*xi)/(1.0d0 + 4.0d0*HeH)
-			f_sp(j,isp_HeI)   = HeH*(1.0d0 - xi)/(1.0d0 + 4.0d0*HeH)
-			f_sp(j,isp_HeII)  = HeH*xi/(1.0d0 + 4.0d0*HeH)
+			W(j,3) = W(j,1)*((ntot_bc + dp_bc)/rho_bc)*T(j)*(1.0d0 + xi)
+			f_sp(j,isp_HI)    = (1.0d0 - (dp_bc + (1.0d0-dp_bc)*xi))/mass_per_H
+			f_sp(j,isp_HII)   = (dp_bc + (1.0d0-dp_bc)*xi)/mass_per_H
+			f_sp(j,isp_HeI)   = HeH*(1.0d0 - xi)/mass_per_H
+			f_sp(j,isp_HeII)  = HeH*xi/mass_per_H
 			f_sp(j,isp_HeIII) = 0.0d0
 			f_sp(j,isp_HeTR)  = 0.0d0
 		enddo
 	else
 		! Pressure (= rho * c_iso^2, isothermal; consistent with the base BC,
-		!  where p_base = 1 + dp_bc and rho_base = rho_bc)
-		W(:,3) = (1.0 + dp_bc)*W(:,1)/rho_bc
+		!  where p_base = ntot_bc + dp_bc and rho_base = rho_bc)
+		W(:,3) = (ntot_bc + dp_bc)*W(:,1)/rho_bc
 		! Temperature
 		T = 1.0
 		! Ionized fractions (mostly neutral)
-		f_sp(:,isp_HI)    = (1.0 - dp_bc)/(1.0 + 4.0*HeH)
-		f_sp(:,isp_HII)   = dp_bc/(1.0 + 4.0*HeH)
-		f_sp(:,isp_HeI)   = HeH*(1.0 - dp_bc)/(1.0 + 4.0*HeH)
-		f_sp(:,isp_HeII)  = 1.0d-10*HeH/(1.0 + 4.0*HeH)
+		f_sp(:,isp_HI)    = (1.0 - dp_bc)/mass_per_H
+		f_sp(:,isp_HII)   = dp_bc/mass_per_H
+		f_sp(:,isp_HeI)   = HeH*(1.0 - dp_bc)/mass_per_H
+		f_sp(:,isp_HeII)  = 1.0d-10*HeH/mass_per_H
 		f_sp(:,isp_HeIII) = 0.0
 		f_sp(:,isp_HeTR)  = 0.0
 	endif
 
    ! Metals: start mostly neutral, element by element from the abundance
-   ! array (n_X/n_tot = melem_ab/(1+4*HeH); higher ion stages zero).
+   ! array (f_X = melem_ab/mass_per_H, so n_X = melem_ab*n_H; higher stages zero).
    ! Adding an element is a species_table + abundance change only.
    do e = 1, n_melem
       i0 = melem_i0(e)
       do k = 0, melem_top(e)
          c = mion_fsp(i0+k)
          if (k .eq. 0) then
-            f_sp(:,c) = melem_ab(e)/(1.0 + 4.0*HeH)
+            f_sp(:,c) = melem_ab(e)/mass_per_H
          else
             f_sp(:,c) = 0.0
          endif

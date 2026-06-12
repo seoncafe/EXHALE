@@ -2,7 +2,8 @@
 	! Evaluate the ionization structure and the heating and cooling functions for a given temperature
 
 	use global_parameters
-   use species_table, only: n_mion, mion_fsp, n_melem, melem_i0, melem_top
+   use species_table, only: n_mion, mion_fsp, n_melem, melem_i0,        &
+                            melem_top, mion_stage
    use utils
    use utils_ion_eq
    use Cooling_Coefficients      ! eval_cool, recombination/ionization rates
@@ -138,8 +139,9 @@
 	nh  = nhi  + nhii
 	nhe = nhei + nheii + nheiii
 	
-	! Free electron density (assuming overall neutrality)
-	call calc_ne(nhii,nheii,nheiii,ne)
+	! Free electron density (assuming overall neutrality; nm adds the
+	! metal electrons under the eos_metals policy)
+	call calc_ne(nhii,nheii,nheiii,ne,nm)
 
 	! Per-cell pressure-broadening factor for the opacity ('P' model).
 	! opacity_pT_factor returns 1.0 for all other models, so opa_pf=1
@@ -414,8 +416,9 @@
 	endif
 
 	
-	! Density with atomic numbers
-   call calc_rho(nhi,nhii,nhei,nheii,nheiii,nheiTR,n_out)    
+	! Density with atomic numbers (nm adds the metal mass under the
+	! eos_metals policy)
+   call calc_rho(nhi,nhii,nhei,nheii,nheiii,nheiTR,n_out,nm)
 
    ! Abundancies profiles
    f_sp_out(:,1) = nhi/n_out
@@ -436,8 +439,16 @@
    heat_out = heat/q0
    cool_out = cool/q0
       
-   ! Adjust value of pressure boundary condition
+   ! Adjust value of pressure boundary condition (the base electron
+   ! density in units of n0; with eos_metals the metal electrons are
+   ! included, consistently with calc_ne)
    dp_bc = (nhii(1-Ng) + nheii(1-Ng) + 2.0*nheiii(1-Ng))/n0
+   if (eos_include_metals .and. thereis_metals) then
+      do im = 1,n_mion
+         if (mion_stage(im) .gt. 0)                                     &
+            dp_bc = dp_bc + dble(mion_stage(im))*nm(1-Ng,im)/n0
+      enddo
+   endif
 
 	! End of subroutine 
 	end subroutine ioniz_eq

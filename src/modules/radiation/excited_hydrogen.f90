@@ -26,6 +26,7 @@
    ! ionization and the Balmer feedback together.
 
    use global_parameters
+   use species_table, only: n_mion, mion_fsp
    use utils, only: calc_ne
    use lya_rt, only: jlya_escape_prob, jint_arr, jstar_arr
 
@@ -78,9 +79,10 @@
    real*8, dimension(1-Ng:N+Ng,n_species), intent(in) :: f_sp_in
    real*8, intent(out) :: rel_change
 
-   integer :: j
+   integer :: j, im
    real*8, dimension(1-Ng:N+Ng) :: T_K, n_dim, nhi, nhii
    real*8, dimension(1-Ng:N+Ng) :: nhei, nheii, nheiii, ne
+   real*8, dimension(1-Ng:N+Ng,n_mion) :: nm
    real*8, dimension(1-Ng:N+Ng) :: heat_prev
    real*8 :: F_LyC, F_inc, xi, abs_frac, N_HI_tot, a_cm
    real*8 :: Dnu_D, Dnu_D1, n2s, n2p, n2tot, relc
@@ -100,7 +102,10 @@
    else
       nhei = 0.0d0; nheii = 0.0d0; nheiii = 0.0d0
    endif
-   call calc_ne(nhii, nheii, nheiii, ne)
+   do im = 1,n_mion
+      nm(:,im) = f_sp_in(:,mion_fsp(im))*n_dim
+   enddo
+   call calc_ne(nhii, nheii, nheiii, ne, nm)
 
    ! ----- Day-night / 2D dilution factor xi ----- !
    ! Same factor the code applies to ground-state EUV photoionization (the ATES

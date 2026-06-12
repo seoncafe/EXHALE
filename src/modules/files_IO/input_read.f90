@@ -6,7 +6,7 @@
    use charge_exchange, only: cx_init       ! build active charge-exchange set
    use species_table, only: n_melem, iel_C, iel_O, iel_N, iel_Mg,  &
                             iel_Si, iel_Ca, iel_Na, iel_K, iel_S,  &
-                            iel_Fe, mion_ethr, melem_i0
+                            iel_Fe, mion_ethr, melem_i0, melem_A
 
    implicit none
       
@@ -464,13 +464,26 @@
    endif
             
 	!------ Normalization constants ------!
-      
-   rho_bc = (1.0 + 4.0*HeH)/(1.0 + HeH)
-   v0     = sqrt(kb_erg*T0/mu)       
-   t_s    = R0/v0                    
-   p0     = n0*mu*v0*v0              
-   q0     = n0*mu*v0*v0*v0/R0	      
-   b0     = (Gc*Mp*mu)/(kb_erg*T0*R0)       
+
+   ! Composition factors. mass_per_H = gas mass per H nucleus [m_H];
+   ! ntot_bc = total nuclei density at the base in units of n0 (n0 keeps
+   ! its H/He-nuclei meaning, so n_H = n0/(1+HeH) is unchanged). With
+   ! eos_metals 1 (default) the trace metals contribute their mass and
+   ! their nuclei; with eos_metals 0 (or no metals) both reduce to the
+   ! legacy H/He-only values (mass_per_H = 1+4*HeH, ntot_bc = 1).
+   mass_per_H = 1.0 + 4.0*HeH
+   ntot_bc    = 1.0
+   if (eos_include_metals .and. thereis_metals) then
+      mass_per_H = mass_per_H + sum(melem_ab*melem_A)
+      ntot_bc    = (1.0 + HeH + sum(melem_ab))/(1.0 + HeH)
+   endif
+
+   rho_bc = mass_per_H/(1.0 + HeH)
+   v0     = sqrt(kb_erg*T0/mu)
+   t_s    = R0/v0
+   p0     = n0*mu*v0*v0
+   q0     = n0*mu*v0*v0*v0/R0
+   b0     = (Gc*Mp*mu)/(kb_erg*T0*R0)
    dp_bc  = 1.0e-10
 	
    !------ Allocations ------!

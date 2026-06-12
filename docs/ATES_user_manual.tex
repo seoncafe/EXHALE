@@ -47,8 +47,10 @@ column, with units), the analysis tools, and a set of worked examples. The
 detailed physics derivations live in the companion notes
 (\texttt{Update\_ATES\_early\_phase.tex}, \texttt{transmission\_spectrum.tex},
 \texttt{Update\_ATES.tex}, \texttt{cooling\_formulas.tex} --- the complete
-reference for every analytic cooling coefficient); this document is the
-practical user guide.
+reference for every analytic cooling coefficient ---
+and \texttt{ATES\_BC\_and\_IC.tex} --- the boundary- and
+initial-condition reference); this document is the practical user
+guide.
 \end{quote}
 
 \tableofcontents
@@ -546,16 +548,22 @@ defaults restore the standard behavior).}\label{tab:inp-opt}\\
 only). If present, it lists the total elemental abundance $n_X/n_{\rm H}$ (summed
 over ionization stages; the equilibrium solver distributes each element over its
 stages) for any of C, N, O, Mg, Si, Ca, Na, K, S, Fe. Blank lines and \texttt{\#}
-comments are ignored; any non-zero abundance turns metals on. Three control keys
+comments are ignored; any non-zero abundance turns metals on. Four control keys
 are also accepted: \texttt{pp\_metals} (metal treatment in the advection
 post-process: \texttt{0}=metal-free, \texttt{1}=frozen at the converged
 equilibrium (default), \texttt{2}=re-solve, not yet implemented),
 \texttt{cx\_full} (\texttt{1}=full Huang+2023 charge-exchange network; default
-metal--H only), and \texttt{cno\_cool} (C/N/O line-cooling source:
+metal--H only), \texttt{cno\_cool} (C/N/O line-cooling source:
 \texttt{1}=closed-form fits to CHIANTI v11, including N\,I/N\,II cooling
 (default); \texttt{0}=legacy AIOLOS analytic fits, which have no N cooling and
 deviate by 40--70\% from CHIANTI for O\,I/O\,II in the wind-launch region ---
-see \texttt{cooling\_data/cno\_cooling\_comparison.ipynb}). Solar reference
+see \texttt{cooling\_data/cno\_cooling\_comparison.ipynb}), and
+\texttt{eos\_metals} (bulk-gas metal policy: \texttt{1}=metals contribute
+their mass to the gas density and base density, their electrons to the
+free-electron density and the base pressure correction, and their nuclei to
+the total particle density --- a ${\sim}1\%$ mass effect at solar abundances,
+consistent with the charge balance inside the ionization solver (default);
+\texttt{0}=legacy trace approximation, H/He-only gas budget). Solar reference
 values (Asplund+2009):
 \begin{lstlisting}[style=cfg]
 # metals.inp -- solar n_X/n_H (Asplund+2009)

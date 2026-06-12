@@ -2,7 +2,8 @@
 	! Collection of auxiliary subroutines
 
    use global_parameters
-   use species_table, only: n_mion, n_mphot, mion_isphot, mion_iphot
+   use species_table, only: n_mion, n_mphot, mion_isphot, mion_iphot,  &
+                            mion_stage, mion_elem, melem_A
 
    implicit none
 
@@ -10,11 +11,16 @@
 
 	! ------------------------------------------------------!
 
-	subroutine calc_ne(nhii,nheii,nheiii,ne)
-	! Calculate the free electron density
-	
+	subroutine calc_ne(nhii,nheii,nheiii,ne,nm)
+	! Calculate the free electron density.
+	! The optional nm (per-ion metal densities, same units as nhii) adds
+	! the metal electrons when the eos_metals policy is on; omitting it
+	! (or eos_metals 0) reproduces the legacy H/He-only electron count.
+
+	integer :: im
 	real*8, dimension(1-Ng:N+Ng), intent(in) :: nhii
 	real*8, dimension(1-Ng:N+Ng), intent(in) :: nheii,nheiii
+	real*8, dimension(1-Ng:N+Ng,n_mion), intent(in), optional :: nm
 	real*8, dimension(1-Ng:N+Ng), intent(out) :: ne
 	
 	if (thereis_He) then
@@ -22,16 +28,27 @@
 	else
 		ne = nhii
 	endif	
+
+	if (present(nm) .and. eos_include_metals .and. thereis_metals) then
+		do im = 1,n_mion
+			if (mion_stage(im) .gt. 0)                                  &
+				ne = ne + dble(mion_stage(im))*nm(:,im)
+		enddo
+	endif
 	
 	end subroutine calc_ne
 	
 	! ------------------------------------------------------!
 
-	subroutine calc_ntot(nhi,nhii,nhei,nheii,nheiii,nheiTR,n_tot)
-	! Calculate the total atomic number density
-	
+	subroutine calc_ntot(nhi,nhii,nhei,nheii,nheiii,nheiTR,n_tot,nm)
+	! Calculate the total atomic number density.
+	! The optional nm adds the metal nuclei (all stages) when the
+	! eos_metals policy is on.
+
+	integer :: im
 	real*8, dimension(1-Ng:N+Ng), intent(in)  :: nhi,nhii
 	real*8, dimension(1-Ng:N+Ng), intent(in)  :: nhei,nheii,nheiii,nheiTR
+	real*8, dimension(1-Ng:N+Ng,n_mion), intent(in), optional :: nm
 	real*8, dimension(1-Ng:N+Ng), intent(out) :: n_tot
 	
 	if (thereis_He) then
@@ -41,15 +58,25 @@
 		n_tot = nhi + nhii 
 	endif
 
+	if (present(nm) .and. eos_include_metals .and. thereis_metals) then
+		do im = 1,n_mion
+			n_tot = n_tot + nm(:,im)
+		enddo
+	endif
+
 	end subroutine calc_ntot
 
 	! ------------------------------------------------------!
 	
-	subroutine calc_rho(nhi,nhii,nhei,nheii,nheiii,nheiTR,n_out)
-	! Calculate the total mass density (adimensional)
-	
+	subroutine calc_rho(nhi,nhii,nhei,nheii,nheiii,nheiTR,n_out,nm)
+	! Calculate the total mass density (adimensional).
+	! The optional nm adds the metal mass (melem_A per nucleus, all
+	! stages) when the eos_metals policy is on.
+
+	integer :: im
 	real*8, dimension(1-Ng:N+Ng), intent(in)  :: nhi,nhii
 	real*8, dimension(1-Ng:N+Ng), intent(in)  :: nhei,nheii,nheiii,nheiTR
+	real*8, dimension(1-Ng:N+Ng,n_mion), intent(in), optional :: nm
 	real*8, dimension(1-Ng:N+Ng), intent(out) :: n_out
 	
 	if (thereis_He) then
@@ -57,6 +84,12 @@
 		if (thereis_HeITR) n_out = n_out + 4.0*nheiTR
 	else
 		n_out = nhi + nhii 
+	endif
+
+	if (present(nm) .and. eos_include_metals .and. thereis_metals) then
+		do im = 1,n_mion
+			n_out = n_out + melem_A(mion_elem(im))*nm(:,im)
+		enddo
 	endif
 
 	end subroutine calc_rho

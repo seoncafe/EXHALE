@@ -62,7 +62,9 @@
 \DeclareSymbolFont{cmitoperators} {OT1}{cmr}{m}{it}
 \DeclareSymbolFont{operators}     {OT1}{ptm}{m}{n}
 \DeclareSymbolFont{letters}       {OML}{ptmcm}{m}{it}
-\DeclareSymbolFont{ptmletters}    {OML}{ptmcm}{m}{it}
+%% (ptmletters removed: it duplicated `letters` (same OML/ptmcm/m/it) and was
+%%  never referenced; its math group is reused by ntxlettersA below, keeping
+%%  the total group count at the pre-\varv level of 16.)
 \DeclareSymbolFont{cmletters}     {OML}{cmm}{m}{it}
 \DeclareSymbolFont{symbols}       {OMS}{cmsy}{m}{n}
 \DeclareSymbolFont{ptmsymbols}    {U}{psy}{m}{n}
@@ -74,7 +76,6 @@
 \SetSymbolFont{cmitoperators} {bold}{OT1}{cmr}{bx}{it}
 \SetSymbolFont{operators}     {bold}{OT1}{ptm}{bx}{n}
 \SetSymbolFont{letters}       {bold}{OML}{ptmCM}{b}{it}
-\SetSymbolFont{ptmletters}    {bold}{OML}{ptmCM}{b}{it}
 \SetSymbolFont{cmletters}     {bold}{OML}{cmm}{b}{it}
 \SetSymbolFont{symbols}       {bold}{OMS}{cmsy}{b}{n}
 \SetSymbolFont{largesymbols}  {bold}{OMX}{cmex}{m}{n}
@@ -86,6 +87,22 @@
 \DeclareMathAlphabet{\mathbit}{OT1}{ptm}{bx}{it}
 
 \DeclareMathSymbol{\omicron}{\mathord}{operators}{`\o}
+
+%% Round-bottomed math 'v' (velocity): the Times math italic v is easily
+%% confused with \nu, so remap the math letter v itself to the genuine
+%% round-bottomed glyph (slot 51 of the newtx ntxmia letters font),
+%% borrowed without loading all of newtxmath. Every $v$ then renders
+%% round-bottomed automatically; \varv is kept as a compatibility alias.
+%% untxmia.fd expects the newtxmath font-choice conditionals; predefine
+%% them all false so the plain Times (ntxmia) shape is selected.
+\newif\iftx@libertine \tx@libertinefalse
+\newif\iftx@minion    \tx@minionfalse
+\newif\iftx@coch      \tx@cochfalse
+\newif\iftx@ch        \tx@chfalse
+\DeclareSymbolFont{ntxlettersA}{U}{ntxmia}{m}{it}
+\SetSymbolFont{ntxlettersA}{bold}{U}{ntxmia}{b}{it}
+\DeclareMathSymbol{v}{\mathalpha}{ntxlettersA}{51}
+\DeclareMathSymbol{\varv}{\mathalpha}{ntxlettersA}{51}
 
 \thinmuskip=2mu
 \medmuskip=2.5mu plus 1mu minus 1mu

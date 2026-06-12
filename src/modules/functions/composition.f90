@@ -8,11 +8,11 @@
       ! / post_process), so that the electron-density and total-density
       ! POLICY lives in exactly one place.
       !
-      ! Phase-1 behavior is byte-for-byte identical to the legacy inline
-      ! code: ne and n_tot are still computed by the existing calc_ne /
-      ! calc_ntot (H/He electrons only). The eos_include_metals switch
-      ! (declared in global_parameters, default .false.) is the hook for the
-      ! later fully-coupled-metal EOS; while it is .false. nothing changes.
+      ! The eos_include_metals policy (global_parameters, default .true.;
+      ! runtime key 'eos_metals 0|1' in metals.inp) is applied here by
+      ! passing nm through to calc_ne / calc_ntot, which add the metal
+      ! electrons and metal nuclei. With eos_metals 0 (or metals off) the
+      ! legacy H/He-only behavior is reproduced exactly.
 
       use global_parameters
       use species_table, only: n_mion, mion_fsp,                       &
@@ -58,8 +58,8 @@
          nm(:,im) = rho*f_sp(:,mion_fsp(im))
       enddo
 
-      call calc_ne(nhii, nheii, nheiii, ne)
-      call calc_ntot(nhi, nhii, nhei, nheii, nheiii, nheiTR, n_tot)
+      call calc_ne(nhii, nheii, nheiii, ne, nm)
+      call calc_ntot(nhi, nhii, nhei, nheii, nheiii, nheiTR, n_tot, nm)
 
       end subroutine get_species_densities
 

@@ -132,7 +132,7 @@
       ! Metals, element by element: if every ion stage of the element was
       ! present in the IC file, restore the loaded state; otherwise fall
       ! back to the historical neutral-from-abundance initialization
-      ! (n_X/n_tot = X_X/(1+4*HeH), higher stages zero).
+      ! (f_X = X_X/mass_per_H, so n_X = X_X*n_H; higher stages zero).
       do e = 1, n_melem
          i0 = melem_i0(e)
          elem_ok = .true.
@@ -148,7 +148,7 @@
             do k = 0, melem_top(e)
                c = mion_fsp(i0+k)
                if (k .eq. 0) then
-                  f_sp(:,c) = melem_ab(e)/(1.0 + 4.0*HeH)
+                  f_sp(:,c) = melem_ab(e)/mass_per_H
                else
                   f_sp(:,c) = 0.0
                endif

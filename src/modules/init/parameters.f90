@@ -43,12 +43,23 @@
       logical :: thereis_Xray  = .false.  ! Include only EUV band	
       logical :: thereis_HeITR = .false.  ! Include calculations for He triplet
       logical :: thereis_metals = .false. ! Include trace-metal species
-      ! EOS electron/particle policy (composition module). .false. = legacy
-      ! behavior: ne and n_tot count H/He only (metals enter ionization but
-      ! not the bulk gas EOS). .true. = fully-coupled metal EOS (Phase 3
-      ! hook; currently unused, keep .false. for byte-identical results).
-      logical :: eos_include_metals = .false.
-                                          !  (C/N/O/Mg/Si/Ca/Na/K/S)
+                                          !  (C/N/O/Mg/Si/Ca/Na/K/S/Fe)
+      ! EOS mass/electron/particle policy. .true. (default) = metals enter
+      ! the bulk gas budget consistently: their mass in rho_bc/calc_rho
+      ! (hence mu, v0, p0, b0), their electrons in calc_ne/dp_bc, and
+      ! their nuclei in calc_ntot/the ghost pressure (ntot_bc) -- matching
+      ! the charge balance already used inside the MINPACK ionization
+      ! systems. .false. = legacy trace approximation (H/He-only budget;
+      ! metals enter ionization/cooling but not the bulk gas). Runtime
+      ! key: 'eos_metals 0|1' in metals.inp. Metals-off runs are
+      ! identical either way (all metal sums vanish).
+      logical :: eos_include_metals = .true.
+      ! Composition constants derived in input_read (legacy values when
+      ! eos_include_metals is off or metals are absent):
+      real*8 :: mass_per_H = 1.0d0  ! gas mass per H nucleus [m_H]:
+                                    !  1 + 4*HeH (+ sum melem_ab*melem_A)
+      real*8 :: ntot_bc    = 1.0d0  ! total nuclei density at base [n0]:
+                                    !  (1 + HeH + sum melem_ab)/(1 + HeH)
       logical :: thereis_lowIP_metal = .false. ! An active metal whose neutral
                                           !  ionization potential lies below the
                                           !  13.6 eV HI edge (e.g. Mg I, 7.646

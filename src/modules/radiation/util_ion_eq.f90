@@ -313,8 +313,8 @@
 	! not sum to cool_M.
 	real*8, dimension(1-Ng:N+Ng,4+n_mion),intent(out),optional :: cool_chan
 
-   ! Free electron density
-   call calc_ne(nhii,nheii,nheiii,ne)
+   ! Free electron density (incl. metal electrons under eos_metals)
+   call calc_ne(nhii,nheii,nheiii,ne,nm)
 	
 
 	!-- Recombination --!
@@ -575,7 +575,7 @@
 	do im = 1,n_mion
 		nm(:,im) = f_sp_in(:,mion_fsp(im))*n_dim
 	enddo
-	call calc_ne(nhii,nheii,nheiii,ne)
+	call calc_ne(nhii,nheii,nheiii,ne,nm)
 
 	call eval_cool(T_K,nhi,nhii,nhei,nheii,nheiii, nm,            &
 				   rchiiB,rcheiiB,rcheiiiB, rec_m,                &

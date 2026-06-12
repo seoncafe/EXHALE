@@ -74,18 +74,20 @@ contains
       enddo
 
       ! Compute adimensional total and electron densities for T calculation
-      call calc_ne(rho*f_sp(:,isp_HII), rho*f_sp(:,isp_HeII), rho*f_sp(:,isp_HeIII), ne_ad)
+      ! (nm/n0 = adimensional metal densities; adds the metal electrons and
+      ! nuclei under the eos_metals policy)
+      call calc_ne(rho*f_sp(:,isp_HII), rho*f_sp(:,isp_HeII), rho*f_sp(:,isp_HeIII), ne_ad, nm/n0)
       if (thereis_He) then
          if (thereis_HeITR) then
             call calc_ntot(rho*f_sp(:,isp_HI), rho*f_sp(:,isp_HII), rho*f_sp(:,isp_HeI), &
-                           rho*f_sp(:,isp_HeII), rho*f_sp(:,isp_HeIII), rho*f_sp(:,isp_HeTR), n_tot_ad)
+                           rho*f_sp(:,isp_HeII), rho*f_sp(:,isp_HeIII), rho*f_sp(:,isp_HeTR), n_tot_ad, nm/n0)
          else
             call calc_ntot(rho*f_sp(:,isp_HI), rho*f_sp(:,isp_HII), rho*f_sp(:,isp_HeI), &
-                           rho*f_sp(:,isp_HeII), rho*f_sp(:,isp_HeIII), zero_arr, n_tot_ad)
+                           rho*f_sp(:,isp_HeII), rho*f_sp(:,isp_HeIII), zero_arr, n_tot_ad, nm/n0)
          endif
       else
          call calc_ntot(rho*f_sp(:,isp_HI), rho*f_sp(:,isp_HII), zero_arr, &
-                        zero_arr, zero_arr, zero_arr, n_tot_ad)
+                        zero_arr, zero_arr, zero_arr, n_tot_ad, nm/n0)
       endif
 
       ! Old temperature (adimensional)
