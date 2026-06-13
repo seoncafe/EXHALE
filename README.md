@@ -95,6 +95,7 @@ make FC=ifort           # ifort
 make FC=ifx             # ifx
 make clean              # remove build/ objects and modules (keeps EXHALE.x)
 make distclean          # remove build/ and EXHALE.x
+make wind_ae_ic         # optional: standalone Wind-AE IC generator (./wind_ae_ic.x)
 ```
 
 ---
@@ -172,6 +173,53 @@ post-process), `cx_full 0|1` (full Huang+2023 charge-exchange network),
 N I/N II, the default; `0` = legacy AIOLOS fits).  No recompile is
 needed; remove `metals.inp` to run without metals.  A template with all
 ten elements is in `inputdata/metals.inp.example`.
+
+### Wind-AE warm-start initial condition (`IC mode: windae`)
+
+For a planet that is hard to launch from the default cold/auto initial
+conditions, EXHALE can build the initial condition from a bundled 1-D
+steady-state Parker-wind solver (a Fortran port of **Wind-AE**; Murray-Clay
+et al. 2009 / Broome et al. 2025, under `src/modules/wind_ae/`).  There are
+two ways to use it.
+
+**In-process (recommended)** — add one line to `input.inp`:
+
+```
+IC mode:                  windae
+Load IC?                  False
+Solver:                   Newton    # always Newton-finish for a quantitative Mdot
+```
+
+On startup EXHALE maps the planet's parameters to Wind-AE, ramps a shipped
+seed solution to the planet, solves the steady wind, writes the IC onto the
+EXHALE grid (`output/*_IC.txt`), and loads it automatically — the whole
+input → Wind-AE solve → IC → run sequence is a single `./EXHALE.x` (or
+`./run_EXHALE.sh`) invocation.  It is a *warm start*: EXHALE re-solves the
+ionization (and any metals) from the first step, so the Wind-AE IC need not
+be exactly self-consistent.  The shipped seed and spectrum live in
+`inputdata/windae_seed.csv` and `inputdata/windae_spectrum.inp`.
+
+This works best for hot Jupiters close to the shipped seed (see the working
+example `examples/12_windae_ic_hd209/`, HD 209458 b).  A strongly-bound,
+far-from-seed planet can stall the static-BC ramp — the run then prints a
+message advising `IC mode: auto` (see the deliberately non-converging
+`examples/11_windae_ic/`, HD 189733 b).
+
+**Standalone generator** — the same solver also builds an IC out of process:
+
+```bash
+make wind_ae_ic     # builds ./wind_ae_ic.x (separate from EXHALE.x)
+./wind_ae_ic.x <input.inp> <seed.csv> <spectrum.inp> \
+               <IC_dump_grid> <outdir> [rhoscale]
+```
+
+It reads an EXHALE `input.inp`, ramps from the seed, and writes
+`<outdir>/{Hydro_ioniz,Ion_species}_IC.txt` on the grid given by an
+`IC_dump.txt` from a prior EXHALE run with the same domain settings.  Then
+run EXHALE on the result with `Load IC?  True` and `Solver: Newton`.
+
+The full algorithm, continuation ramp, and boundary/initial conditions are
+documented in `docs/wind_ae_solver.pdf`.
 
 ---
 
