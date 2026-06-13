@@ -1,5 +1,5 @@
 #!/bin/bash
-# ATES-metal metal on/off comparison. Metals are solved INSIDE the
+# EXHALE metal on/off comparison. Metals are solved INSIDE the
 # MINPACK system, with Badnell RR+DR recombination and Kingdon&Ferland
 # charge exchange. Abundances are now set at RUNTIME via metals.inp, so
 # the executable is built ONCE and the two cases differ only by whether
@@ -19,7 +19,7 @@ IR=$S/files_IO/input_read.f90
 mkdir -p "$MOD"
 
 build() {
-   rm -f "$MOD"/*.mod ATES.x
+   rm -f "$MOD"/*.mod EXHALE.x
    gfortran -O3 -J"$MOD" -I"$MOD" -fopenmp -ffree-line-length-none \
       $S/init/parameters.f90 $S/files_IO/metals_input_read.f90 \
       $S/files_IO/opacity_input_read.f90 $S/files_IO/input_read.f90 \
@@ -47,11 +47,11 @@ build() {
       $S/time_step/RK_rhs.f90 $S/time_step/eval_dt.f90 $S/time_step/energy_semi_implicit.f90 \
       $S/init/define_grid.f90 $S/init/set_energy_vectors.f90 \
       $S/init/set_gravity_grid.f90 $S/init/set_IC.f90 $S/init/init.f90 \
-      ATES_main.f90 -o ATES.x
-   [ -f ATES.x ] || { echo "BUILD FAILED"; exit 1; }
+      EXHALE_main.f90 -o EXHALE.x
+   [ -f EXHALE.x ] || { echo "BUILD FAILED"; exit 1; }
 }
 
-echo "=== ATES-metal metal comparison (HD209458b) ==="
+echo "=== EXHALE metal comparison (HD209458b) ==="
 
 # Build once (abundances come from metals.inp at runtime).
 build
@@ -59,14 +59,14 @@ build
 # 1. metal ON (solar C, N, O via metals.inp)
 echo "--- [1/2] metals ON  (C=2.69e-4, N=6.76e-5, O=4.90e-4) ---"
 printf 'CI  2.69e-4\nNI  6.76e-5\nOI  4.90e-4\n' > metals.inp
-mkdir -p output; ./ATES.x
+mkdir -p output; ./EXHALE.x
 rm -rf output_metals_on; mv output output_metals_on
 echo "  -> output_metals_on/"
 
 # 2. metal OFF (no metals.inp)
 echo "--- [2/2] metals OFF (no metals.inp) ---"
 rm -f metals.inp
-mkdir -p output; ./ATES.x
+mkdir -p output; ./EXHALE.x
 rm -rf output_metals_off; mv output output_metals_off
 echo "  -> output_metals_off/"
 

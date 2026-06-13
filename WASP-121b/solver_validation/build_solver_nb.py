@@ -12,7 +12,7 @@ cells = []
 md = lambda s: cells.append(nbf.v4.new_markdown_cell(s))
 code = lambda s: cells.append(nbf.v4.new_code_cell(s))
 
-md(r"""# ATES-metal solver-upgrade comparison
+md(r"""# EXHALE solver-upgrade comparison
 
 Visualizes the validation runs in `WASP-121b/solver_validation/`:
 **Newton** (analytic-Jacobian ionization solve + Brent energy solve, the new

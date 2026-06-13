@@ -16,6 +16,7 @@
       use omp_lib
       use IC_load
       use initial_conditions
+      use wae_exhale_bridge, only: wae_generate_ic
       
       implicit none 
       
@@ -66,18 +67,30 @@
       
       !---- Initial conditions ----!
       
-      if (.not. do_load_IC) then
+      if (ic_mode .eq. 4 .and. .not. do_load_IC) then
+
+         ! In-process Wind-AE warm-start IC ("IC mode: windae"): the ported
+         ! Wind-AE solver builds an IC on the EXHALE grid and writes
+         ! output/*_IC.txt, which load_IC then ingests -- the whole
+         ! EXHALE-input -> Wind-AE solve -> IC -> run is one invocation.
+         write(*,*) '    - Generating Wind-AE warm-start IC in-process..'
+         call wae_generate_ic()
+         write(*,*) '    - Loading the generated Wind-AE IC..'
+         call load_IC(rho,v,p,T,f_sp,W)
+         count = 1
+
+      else if (.not. do_load_IC) then
 
          ! Set IC to isothermal atmosphere
          write(*,*) '    - Setting the default, isothermal IC..'
       	call set_IC(W,T,f_sp)
-      
+
       else  ! Load existing initial conditions
-            
+
          write(*,*) '    - Loading IC from file..'
 	      ! Load thermodynamic profiles
-	      call load_IC(rho,v,p,T,f_sp,W)      
-	                  
+	      call load_IC(rho,v,p,T,f_sp,W)
+
 	      ! Change starting loop counting index
 	      count = 1
     	endif

@@ -1,14 +1,14 @@
 # =====================================================================
-#  Makefile for ATES-metal  (replaces the inline gfortran call that
-#  run_ATES.sh used to perform).
+#  Makefile for EXHALE  (replaces the inline gfortran call that
+#  run_EXHALE.sh used to perform).
 #
 #  Quick start:
-#     make              # build ./ATES.x with gfortran (default)
+#     make              # build ./EXHALE.x with gfortran (default)
 #     make FC=ifort     # Intel classic        (or:  make ifort)
 #     make FC=ifx       # Intel LLVM compiler   (or:  make ifx)
 #     make -j           # parallel build
-#     make clean        # remove objects + .mod files (KEEP ATES.x)
-#     make distclean    # remove the whole build/ dir and ATES.x
+#     make clean        # remove objects + .mod files (KEEP EXHALE.x)
+#     make distclean    # remove the whole build/ dir and EXHALE.x
 #
 #  Incremental: only the sources you edit -- and the modules that depend
 #  on them -- are recompiled. The module (.o -> .o) dependency graph is
@@ -21,7 +21,7 @@
 
 OBJDIR := build
 MODDIR := $(OBJDIR)
-EXE    := ATES.x
+EXE    := EXHALE.x
 
 # ---- choose compiler -------------------------------------------------
 # Override make's built-in default (f77), but keep any value passed on
@@ -44,7 +44,7 @@ endif
 # Override with e.g.  make LDLIBS='-L/path -llapack -lblas'
 LDLIBS ?= -llapack
 
-# ---- source list (canonical build order, mirrors run_ATES.sh) -------
+# ---- source list (canonical build order, mirrors run_EXHALE.sh) -------
 SRC := \
   src/modules/init/parameters.f90 \
   src/modules/init/species_table.f90 \
@@ -106,24 +106,48 @@ SRC := \
   src/modules/init/set_gravity_grid.f90 \
   src/modules/init/set_IC.f90 \
   src/modules/init/init.f90 \
-  ATES_main.f90
+  $(wildcard src/modules/wind_ae/wae_*.f90) \
+  EXHALE_main.f90
 
 # objects (flat in $(OBJDIR)); let make find the sources in their subdirs
 OBJ     := $(addprefix $(OBJDIR)/,$(notdir $(SRC:.f90=.o)))
 DEPFILE := $(OBJDIR)/.deps.mk
 vpath %.f90 $(sort $(dir $(SRC)))
 
+# ---- Wind-AE IC generator (standalone tree; not built by `all`) ------
+# wind_ae_ic.x reads an EXHALE input.inp, solves the Murray-Clay/Broome
+# Wind-AE wind (ported to Fortran under src/modules/wind_ae/), and writes
+# EXHALE Load-IC files. The wae_* modules are self-contained (no ATES
+# module deps); inter-module order is auto-resolved by fortdep.py. Build
+# with:  make wind_ae_ic.x
+WAE_DIR := src/modules/wind_ae
+# standalone build EXCLUDES wae_exhale_bridge.f90 (it alone uses EXHALE's
+# global_parameters; it is linked only into EXHALE.x for "IC mode: windae").
+WAE_SRC := $(filter-out $(WAE_DIR)/wae_exhale_bridge.f90, \
+             $(sort $(wildcard $(WAE_DIR)/wae_*.f90))) $(WAE_DIR)/wind_ae_ic.f90
+WAE_OBJ := $(addprefix $(OBJDIR)/,$(notdir $(WAE_SRC:.f90=.o)))
+WAE_EXE := wind_ae_ic.x
+WAE_DEPFILE := $(OBJDIR)/.deps_wae.mk
+vpath %.f90 $(WAE_DIR)
+
 # Rebuild everything when the compiler changes: the stamp file name
 # encodes $(FC), so a different compiler makes the previous objects stale.
 CSTAMP  := $(OBJDIR)/.compiler-$(FC)
 
 # ---------------------------------------------------------------------
-.PHONY: all clean distclean ifort ifx
+.PHONY: all clean distclean ifort ifx wind_ae_ic
 all: $(EXE)
+wind_ae_ic: $(WAE_EXE)
 
 $(EXE): $(OBJ)
 	$(FC) $(FFLAGS) $(MODFLAG) $(OBJ) -o $@ $(LDLIBS)
 	@echo "built $@"
+
+# Wind-AE IC generator (separate executable; no LAPACK needed)
+$(WAE_EXE): $(WAE_OBJ)
+	$(FC) $(FFLAGS) $(MODFLAG) $(WAE_OBJ) -o $@
+	@echo "built $@"
+$(WAE_OBJ): $(CSTAMP)
 
 # compile each source to $(OBJDIR)/<base>.o (also writes its .mod there)
 $(OBJDIR)/%.o: %.f90 | $(OBJDIR)
@@ -138,22 +162,28 @@ $(CSTAMP): | $(OBJDIR)
 $(OBJDIR):
 	@mkdir -p $@
 
-# convenience aliases matching the run_ATES.sh flags
+# convenience aliases matching the run_EXHALE.sh flags
 ifort: ; @$(MAKE) --no-print-directory FC=ifort
 ifx:   ; @$(MAKE) --no-print-directory FC=ifx
 
 clean:
-	@rm -f $(OBJ) $(MODDIR)/*.mod
-	@echo "cleaned objects and .mod files in $(OBJDIR)/ (kept $(EXE))"
+	@rm -f $(OBJ) $(WAE_OBJ) $(MODDIR)/*.mod
+	@echo "cleaned objects and .mod files in $(OBJDIR)/ (kept $(EXE), $(WAE_EXE))"
 
 distclean:
-	@rm -rf $(OBJDIR) $(EXE)
-	@echo "removed $(OBJDIR)/ and $(EXE)"
+	@rm -rf $(OBJDIR) $(EXE) $(WAE_EXE)
+	@echo "removed $(OBJDIR)/, $(EXE) and $(WAE_EXE)"
 
 # ---- auto-generated module dependencies (skip when only cleaning) ---
 $(DEPFILE): $(SRC) src/utils/fortdep.py | $(OBJDIR)
 	@python3 src/utils/fortdep.py --objdir $(OBJDIR) $(SRC) > $@
 
+$(WAE_DEPFILE): $(WAE_SRC) src/utils/fortdep.py | $(OBJDIR)
+	@python3 src/utils/fortdep.py --objdir $(OBJDIR) $(WAE_SRC) > $@
+
 ifeq ($(filter clean distclean,$(MAKECMDGOALS)),)
 -include $(DEPFILE)
+ifneq ($(filter wind_ae_ic wind_ae_ic.x,$(MAKECMDGOALS)),)
+-include $(WAE_DEPFILE)
+endif
 endif

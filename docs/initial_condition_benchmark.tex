@@ -1,4 +1,4 @@
-%% ATES-metal: Initial-condition benchmark (hydrostatic vs Parker-wind starts)
+%% EXHALE: Initial-condition benchmark (hydrostatic vs Parker-wind starts)
 %% Author: Kwang-Il Seon
 \documentclass[english,a4paper]{kiseon_memo}
 \synctex=1
@@ -14,7 +14,7 @@
 
 \begin{document}
 
-\title{ATES-metal: Does starting from a Parker-wind initial condition\\
+\title{EXHALE: Does starting from a Parker-wind initial condition\\
        speed up (and stabilize) convergence?}
 \author{Kwang-Il Seon}
 \date{2026-06-07}
@@ -55,7 +55,7 @@ it sets \emph{how long} the relaxation takes. The cost has two parts:
   photo-heated to $\sim10^4$\,K and ionized; the temperature and ionization
   profiles settle to radiative/advective balance. This is the \emph{stiff} part,
   and historically the dominant cost (it motivated the semi-implicit energy solver;
-  see \texttt{Update\_ATES\_solver}).
+  see \texttt{Update\_EXHALE\_solver}).
 \end{enumerate}
 
 The current default IC (\texttt{set\_IC.f90}) is an \textbf{isothermal hydrostatic
@@ -101,7 +101,7 @@ dependency} by generalizing it to a \textbf{hot Parker IC}: the same Parker solv
 a warm effective sound speed, plus a temperature and ionization ramp.
 
 % =====================================================================
-\section{The hot-Parker IC in ATES-metal}
+\section{The hot-Parker IC in EXHALE}
 % =====================================================================
 Implemented in \texttt{src/modules/init/set\_IC.f90}, enabled by an optional
 \texttt{input.inp} line
@@ -212,7 +212,7 @@ few cells of $r=1$ the base develops an \emph{inflow} (``breathing'', final
 $v\!\approx\!-1.1\times10^5$\,cm\,s$^{-1}$), the per-cell energy solve latches onto the
 \emph{spurious hot root}, and $T$ runs away to $>10^{40}$\,K. This is the exact
 breathing-base hot-root pathology documented for the \texttt{\_adv} post-processor (the
-option-(c) guard; see \texttt{Update\_ATES\_solver}) --- but here it strikes the
+option-(c) guard; see \texttt{Update\_EXHALE\_solver}) --- but here it strikes the
 \emph{main} time integration, where no such guard exists.
 
 % =====================================================================

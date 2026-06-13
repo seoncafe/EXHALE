@@ -1,4 +1,4 @@
-# ATES_extended vs. ATES-metal: Metal Cooling Implementation Comparison
+# ATES_extended vs. EXHALE: Metal Cooling Implementation Comparison
 
 Two independent attempts at adding AIOLOS-style metal cooling to ATES coexist
 in this workspace. They differ in design philosophy, coupling strength,
@@ -7,14 +7,14 @@ data sources, and footprint. This document compares them side by side.
 * `ATES/ATES_extended/` — earlier work (last edit 2026-04-29), accompanied
   by `docs/aiolos_port_memo.pdf` describing Phase 1 (opacity dispatcher)
   and Phase 2 (trace metals).
-* `ATES/ATES-metal/` — recent work (this session, 2026-05-28),
-  documented in `docs/Update_ATES_early_phase` (Part II).
+* `ATES/EXHALE/` — recent work (this session, 2026-05-28),
+  documented in `docs/Update_EXHALE_early_phase` (Part II).
 
 ---
 
 ## 1. Coupling Strategy
 
-| Aspect | ATES_extended | ATES-metal |
+| Aspect | ATES_extended | EXHALE |
 |---|---|---|
 | Call site | Inside `post_process_adv` only (`solve_metals_post`) | Inside `ionization_equilibrium` every step (`ion_system_HeHCO`) |
 | Equilibrium method | **Coronal equilibrium** — each metal solved independently as `Gamma * n_X = alpha * n_e * n_(X+1)` via `coronal_ratio()` | **Full coupled 9-equation MINPACK system** — HII, HeII, HeIII, CII, CIII, OII, OIII, **NII, NIII** solved simultaneously |
@@ -25,7 +25,7 @@ data sources, and footprint. This document compares them side by side.
 
 ## 2. Data Sources
 
-| Aspect | ATES_extended | ATES-metal |
+| Aspect | ATES_extended | EXHALE |
 |---|---|---|
 | Cross sections | Verner+1996 for CI, CII, NI, NII, OI, OII | Verner+1996 for CI, CII, **NI, NII**, OI, OII |
 | Recombination | Badnell 2006 RR **+ Badnell adf48 DR** (total fits; the module docstring's mention of AP1973/SVS1982 is stale) | **Badnell 2006 RR + adf48 DR** (total fits, `rec_fit` table in `Cool_coeff.f90`); modernized from the original Aldrovandi & Pequignot 1973 power-law (RR only) |
@@ -38,7 +38,7 @@ data sources, and footprint. This document compares them side by side.
 
 ## 3. Input / Output
 
-| Aspect | ATES_extended | ATES-metal |
+| Aspect | ATES_extended | EXHALE |
 |---|---|---|
 | Input files | New `metals.inp` (ion abundances), new `opacity.inp` (opacity-model selection) | **Same runtime `metals.inp` (CI/NI/OI → X_C/X_N/X_O) and `opacity.inp`** now supported (no recompile); `input_read.f90` defaults to metals-off |
 | Output files | New `Metals_ioniz_adv.txt` (separate file) | Six metal columns appended to existing `Ion_species.txt` |
@@ -47,7 +47,7 @@ data sources, and footprint. This document compares them side by side.
 
 ## 4. Auxiliary Features
 
-| Aspect | ATES_extended | ATES-metal |
+| Aspect | ATES_extended | EXHALE |
 |---|---|---|
 | Opacity model dispatcher (Phase 1) | **Yes** — A/C/P/T models in `opacity_models.f90`, `.atesopa` table format, pressure-broadening **hook (deferred)** | **Yes** — same dispatcher ported; pressure broadening **applied per-cell** (completed) |
 | Charge transfer with H (Kingdon & Ferland 1996) | No | **Yes** — O/N/C ↔ H in `System_HeHCO.f90`, couples metal & H ionization |
@@ -58,7 +58,7 @@ data sources, and footprint. This document compares them side by side.
 
 ## 5. Code Footprint
 
-| Metric | ATES_extended | ATES-metal |
+| Metric | ATES_extended | EXHALE |
 |---|---|---|
 | New code | ~1,200 LOC across 12 new files | ~250 LOC in 1 new file (`System_HeHCO.f90`) |
 | Modified existing code | ~150 LOC across 5 files | ~450 LOC across 14 files |
@@ -79,7 +79,7 @@ data sources, and footprint. This document compares them side by side.
   limitation).
 * - Metals participate only in post-processing, not during time evolution.
 
-**ATES-metal** (aggressive, fully coupled):
+**EXHALE** (aggressive, fully coupled):
 
 * + Metals contribute self-consistently to equilibrium, energy balance,
   and opacity — faithfully reproduces AIOLOS behavior.
@@ -89,7 +89,7 @@ data sources, and footprint. This document compares them side by side.
 * - Extending `f_sp` from 6 to 15 columns touches many files; higher
   regression risk.
 * - AIOLOS analytic cooling fits have unclear provenance (see
-  `ATES-metal/docs/Update_ATES_early_phase`, Part II).
+  `EXHALE/docs/Update_EXHALE_early_phase`, Part II).
 
 ---
 
@@ -114,13 +114,13 @@ omitted):
 5. **Phase 1d** — pressure-broadening multiplier per cell. The current
    Phase-1 implementation only replaces the prebaked global vector;
    per-cell application is an explicit deferred item.
-6. **Python plot helper** — extend `ATES_plots.py` to overlay
+6. **Python plot helper** — extend `EXHALE_plots.py` to overlay
    `Metals_ioniz_adv.txt` on the same coordinates as
    `Hydro_ioniz_adv.txt`.
 
-### From ATES-metal:
+### From EXHALE:
 
-See `ATES/ATES-metal/docs/Update_ATES_early_phase`, Part II
+See `ATES/EXHALE/docs/Update_EXHALE_early_phase`, Part II
 ("Caveats and Verification Items") for the corresponding list. The most
 important verification items are:
 
@@ -142,10 +142,10 @@ important verification items are:
 The two implementations are **complementary rather than mutually
 exclusive**.
 
-* **For physical accuracy**, ATES-metal's full coupling (metals in
+* **For physical accuracy**, EXHALE's full coupling (metals in
   the MINPACK system, electron-density feedback) is closer to AIOLOS's
   actual behavior. Note that both trees now apply the metal-line cooling
-  with **100% escape** (`beta = 1`): ATES-metal overrides AIOLOS's
+  with **100% escape** (`beta = 1`): EXHALE overrides AIOLOS's
   `1e8`-boosted beta, and ATES_extended never carried one. With AIOLOS's
   `1e8` factor the metal cooling would instead be almost fully
   suppressed.
@@ -157,6 +157,6 @@ A reasonable next step is to merge the strongest elements of each into a
 single tree: keep ATES_extended's opacity dispatcher (Phase 1) and the
 Black 1981 cooling fits (which include nitrogen and have a clear
 reference), then implement next-step #7 ("time-loop integration") in the
-ATES-metal style (full coupling with the MINPACK 9-equation system).
+EXHALE style (full coupling with the MINPACK 9-equation system).
 This requires a decision on which branch to designate as the active
 trunk.

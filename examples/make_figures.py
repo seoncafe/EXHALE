@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
-"""Generate the figures used in the ATES-metal user manual (and the example
-notebook). Loads converged runs with ates_io and writes PNGs to docs/figures/.
+"""Generate the figures used in the EXHALE user manual (and the example
+notebook). Loads converged runs with exhale_io and writes PNGs to docs/figures/.
 
 Run from the examples/ directory:  python3 make_figures.py
 Each figure is wrapped in try/except so a missing run is skipped, not fatal.
@@ -10,7 +10,7 @@ import numpy as np
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
-import ates_io as aio
+import exhale_io as aio
 
 ROOT = os.path.join(os.path.dirname(__file__), '..')
 W = os.path.join(ROOT, 'WASP-121b')

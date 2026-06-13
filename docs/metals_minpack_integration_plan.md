@@ -1,4 +1,4 @@
-> **Status note (2026):** This plan has been **realized** in `ATES-metal` (the renamed `ATES-metal`): metals C/N/O are solved inside the coupled MINPACK 9-equation system, with Badnell RR+DR recombination and Kingdon&Ferland charge transfer. See `Update_ATES_early_phase`, Part II. The plan below is kept for historical reference.
+> **Status note (2026):** This plan has been **realized** in `EXHALE` (the renamed `EXHALE`): metals C/N/O are solved inside the coupled MINPACK 9-equation system, with Badnell RR+DR recombination and Kingdon&Ferland charge transfer. See `Update_EXHALE_early_phase`, Part II. The plan below is kept for historical reference.
 
 # Plan: integrating trace metals into the MINPACK ionization system
 
@@ -29,7 +29,7 @@ single nonlinear solve returns H, He, (He triplet) and all metal stages
 simultaneously, with one shared electron density.
 
 Note: the **physics already exists** in the sister tree
-`ATES-metal`, where a 7-equation `System_HeHCO` (HII, HeII, HeIII,
+`EXHALE`, where a 7-equation `System_HeHCO` (HII, HeII, HeIII,
 CII, CIII, OII, OIII) was built. This plan adapts that to
 `ATES_extended` and additionally supports the He triplet and a variable
 metal list.
@@ -88,7 +88,7 @@ initially for a like-for-like comparison).
 **New**
 - `nonlinear_system_solver/System_HeHCO_TR.f90` — the combined residual
   routine `ion_system_HeHCO_TR(N_eq, x, fvec, iflag, params)`. Generalize
-  `ATES-metal/.../System_HeHCO.f90` to (a) read the active metal list
+  `EXHALE/.../System_HeHCO.f90` to (a) read the active metal list
   and per-ion coefficients from `params`, and (b) optionally include the
   HeITR block.
 
@@ -117,8 +117,8 @@ initially for a like-for-like comparison).
   Fill `params` with the metal photoionization/recombination
   coefficients per cell; unpack `x` into `f_sp(:,7:)`.
 - `init/set_IC.f90`, `files_IO/load_IC.f90`, `files_IO/write_output.f90`,
-  `ATES_main.f90` — widen `f_sp` from 6 to `6 + 3*n_elem` and add the
-  metal columns to `Ion_species.txt` (mirrors the ATES-metal change).
+  `EXHALE_main.f90` — widen `f_sp` from 6 to `6 + 3*n_elem` and add the
+  metal columns to `Ion_species.txt` (mirrors the EXHALE change).
 - `radiation/metals_cool.f90` — unchanged; `eval_metal_cooling` now takes
   the metal densities from `f_sp`/the MINPACK solution instead of from
   `solve_metals_post`.
@@ -128,7 +128,7 @@ initially for a like-for-like comparison).
 
 ## 5. Implementation steps
 
-1. **Port the residual.** Copy `System_HeHCO.f90` from `ATES-metal`,
+1. **Port the residual.** Copy `System_HeHCO.f90` from `EXHALE`,
    rename to `System_HeHCO_TR.f90`, and (a) drive the metal block off the
    active `metal_list` so it works for any subset of C/N/O, (b) add the
    optional HeITR equation, (c) update the electron-density sum.
@@ -141,7 +141,7 @@ initially for a like-for-like comparison).
 4. **Dispatch + unpack.** Add the `ion_system_HeHCO_TR` branch; unpack
    the solution into H/He/HeITR and metal densities; keep the cooling
    call reading those densities.
-5. **Build via `run_ATES.sh`** (the compile list must gain
+5. **Build via `run_EXHALE.sh`** (the compile list must gain
    `System_HeHCO_TR.f90`).
 6. **Compare to coronal.** Run the same planet through both paths and
    confirm they agree in the trace limit (low abundance), and document
@@ -178,7 +178,7 @@ initially for a like-for-like comparison).
 
 ## 8. Effort estimate
 
-Roughly comparable to the ATES-metal metal port: ~1 new module
+Roughly comparable to the EXHALE metal port: ~1 new module
 (~150 LOC) plus edits to ~6 existing files for the `f_sp` widening and
 dispatch. The coefficient and recombination data already exist
 (`cross_sec_metals.f90`, Badnell rates in `metals_solve.f90`), so the

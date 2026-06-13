@@ -54,7 +54,7 @@ def worst_ion(a, b, rlo=1.05, rhi=2.0, floor=1e-5):
 
 
 print('=' * 70)
-print(' ATES-metal solver-upgrade validation (WASP-121b Case B, PP-only sweep)')
+print(' EXHALE solver-upgrade validation (WASP-121b Case B, PP-only sweep)')
 print('=' * 70)
 
 for d in ('newton', 'hybrd1'):

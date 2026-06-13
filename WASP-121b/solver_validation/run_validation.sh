@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Reproduce the solver-upgrade validation (Update_ATES_solver.tex Task 2 / Task 1).
+# Reproduce the solver-upgrade validation (Update_EXHALE_solver.tex Task 2 / Task 1).
 #
 # Runs a post-process-only sweep (Do only PP) over the converged Case B,
 # feeding the converged eq snapshot as the initial condition, with:
@@ -11,7 +11,7 @@
 set -e
 HERE="$(cd "$(dirname "$0")" && pwd)"
 WASP="$(cd "$HERE/.." && pwd)"
-BIN="$WASP/ATES.x"
+BIN="$WASP/EXHALE.x"
 
 run_variant () {            # $1 = label, $2 = force-hybrd1 (0/1)
   local label="$1" force="$2" d="$HERE/$1"
@@ -24,9 +24,9 @@ run_variant () {            # $1 = label, $2 = force-hybrd1 (0/1)
   cp -f "$WASP/output/Ion_species.txt" "$d/output/Ion_species_IC.txt"
   sed -i 's/^Load IC? False/Load IC? True/; s/^Do only PP: False/Do only PP: True/' "$d/input.inp"
   if [ "$force" = 1 ]; then
-    ( cd "$d" && ATES_FORCE_HYBRD1=1 ./ATES.x > run.log 2>&1 )
+    ( cd "$d" && ATES_FORCE_HYBRD1=1 ./EXHALE.x > run.log 2>&1 )
   else
-    ( cd "$d" && ./ATES.x > run.log 2>&1 )
+    ( cd "$d" && ./EXHALE.x > run.log 2>&1 )
   fi
   echo "[$label] $(grep -i 'ioniz-eq solver' "$d/run.log" || echo 'no solver report')"
 }

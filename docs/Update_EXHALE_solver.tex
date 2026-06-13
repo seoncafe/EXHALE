@@ -1,0 +1,593 @@
+%% EXHALE: Solver and Numerics Log (vs. the original ATES)
+%% Consolidates the former energy_semi_implicit_solver.tex and the solver parts
+%% of convergence_fix_and_validation.tex, plus the grid/advection guards and the
+%% 2026-06-07 nonlinear-solver work. Physics is excluded (see Update_EXHALE,
+%% Update_EXHALE_early_phase).
+%% Author: Kwang-Il Seon
+\documentclass[english,a4paper]{kiseon_memo}
+\synctex=1
+\usepackage{listings}
+\usepackage{xcolor}
+\usepackage{booktabs}
+\usepackage{amsmath}
+\usepackage{babel}
+\emergencystretch=3em   % relax lines with long unbreakable \texttt identifiers
+
+\lstset{
+  basicstyle=\ttfamily\small,
+  keywordstyle=\color{blue}\bfseries,
+  commentstyle=\color{gray},
+  stringstyle=\color{olive},
+  frame=single,
+  breaklines=true,
+  language=[95]Fortran
+}
+
+\begin{document}
+
+\title{EXHALE: Solver and Numerics Log\\(numerical-method changes vs.\ the original ATES)}
+\author{Kwang-Il Seon}
+\date{Last updated: 2026-06-11}
+\maketitle
+
+\begin{quote}\small\itshape
+This document is the single, complete record of the \textbf{solver / numerics}
+changes in \texttt{EXHALE} relative to the original ATES
+(\texttt{ATES/ATES-Code-main}): time integration of the stiff source terms, the
+convergence algorithm, the radial-grid convergence window, the advection
+post-processor's solve, and the nonlinear solvers (ionization equilibrium and the
+per-cell energy equation). It \emph{excludes} the physics changes (metals,
+cooling, opacity, charge exchange, excited hydrogen, Ly$\alpha$), which are
+documented in \texttt{Update\_EXHALE} and \texttt{Update\_EXHALE\_early\_phase}. It
+absorbs in full the former
+\texttt{energy\_semi\_implicit\_solver.tex} (\S\ref{sec:semi}) and the
+solver portion of \texttt{convergence\_fix\_and\_validation.tex}
+(\S\ref{sec:conv}); those standalone memos are superseded by this file.
+The 2026-06-10/11 steady-state Newton--Krylov overhaul is \emph{summarized}
+in \S\ref{sec:jfnk} but documented in full in its own memo,
+\texttt{steady\_solver\_memo.pdf}.
+Sections are in chronological order.
+\end{quote}
+
+\tableofcontents
+\bigskip
+
+% =====================================================================
+\section{Convergence-algorithm fix (2026-06-02)}\label{sec:conv}
+% =====================================================================
+\emph{Absorbed in full from the former \texttt{convergence\_fix\_and\_validation.tex}
+(its Phase~1/2 \emph{physics} validation --- opacity dispatcher, tabulated opacity,
+trace-metal smoke test --- is intentionally not reproduced here; see
+\texttt{Update\_EXHALE\_early\_phase} / \texttt{Update\_EXHALE}).}
+
+\subsection{Overview}
+This work fixed a non-terminating (effectively infinite) time-integration loop,
+discovered while running the first physical test case (HD\,209458b; power-law SED,
+solar He/H, default numerics).
+
+\subsection{Symptom}
+A full run never terminated. The momentum-variation diagnostic \texttt{du} settled
+on a plateau and the run continued indefinitely:
+\begin{center}
+\begin{tabular}{rl}
+\toprule
+iteration & \texttt{du} \\
+\midrule
+26{,}905  & 0.62 \\
+52{,}239  & 0.077 \\
+667{,}569 & 0.0109 (still running) \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\subsection{Diagnosis}
+The main loop in \texttt{EXHALE\_main.f90} terminated on a single criterion:
+\begin{lstlisting}
+do while( .not.is_mom_const .or. force_start)
+\end{lstlisting}
+with \verb|is_mom_const = (du < du_th)| and \verb|du_th = 1e-3|.
+
+The code also computes a steady-state criterion,
+\verb|is_zero_dt = (dtu < dtu_th)| (the infinity-norm of the time-derivative of the
+conservative state), but \textbf{this flag was never used in the loop condition} ---
+it appeared only in a commented-out diagnostic print.
+
+For this setup the momentum non-uniformity floors at \verb|du| $\approx 0.011$ (a
+transonic-wind numerical limit), which is $\sim 10\times$ above \verb|du_th|. With
+\verb|is_zero_dt| disconnected, no termination criterion could ever be satisfied.
+Measuring the time-derivative norm directly (starting from a near-converged IC)
+gave \verb|dtu| $\approx 5.5 \times 10^{-8}$, i.e.\ the solution \emph{had} reached
+steady state but the strict thresholds were physically unreachable.
+
+\subsection{Fix}
+Four changes, in \texttt{EXHALE\_main.f90} and \texttt{parameters.f90}:
+\begin{enumerate}
+\item \textbf{Restore \texttt{is\_zero\_dt} in the loop condition.} The
+  steady-state criterion is now an OR-branch of the termination test.
+\item \textbf{Loosen \texttt{du\_th}} from \verb|1e-3| to \verb|2e-2|. A momentum
+  non-uniformity of 2\% is accepted as converged, so the run stops as soon as the
+  plateau is reached rather than waiting for an unreachable threshold. (This was a
+  deliberate user choice; the value is a global parameter and affects all runs.)
+\item \textbf{Add stall detection.} If the relative change in \texttt{du} stays
+  below \verb|stall_tol = 1e-6| for \verb|N_stall = 2000| consecutive iterations,
+  the run is declared stalled at a plateau (steady state) and stops.
+  \verb|stall_tol = 1e-6| was chosen so that a slowly-\emph{decreasing} \texttt{du}
+  (relative change $\sim 3\times10^{-6}$ in the descent phase) is \emph{not}
+  mistaken for a plateau --- this prevents premature termination during convergence.
+\item \textbf{Add a hard iteration cap} \verb|count_max = 1e6| as a final backstop,
+  and print the termination reason and final \texttt{du}/\texttt{dtu}.
+\end{enumerate}
+The resulting loop condition is
+\begin{lstlisting}
+do while( ( .not.is_mom_const .and. .not.is_zero_dt .and.
+            .not.is_stalled   .and. count < count_max ) .or.
+          force_start )
+\end{lstlisting}
+
+\paragraph{Touched files.} \texttt{src/modules/init/parameters.f90} (new
+flags/parameters, \texttt{du\_th}); \texttt{EXHALE\_main.f90} (loop condition, stall
+logic, termination report). The standard-output line now prints
+\texttt{count, du, dtu} (was \texttt{count, du}) for progress monitoring.
+
+\subsection{Verification}
+\begin{itemize}
+\item \textbf{Plateau IC, loosened \texttt{du\_th}:} starting from a near-converged
+  profile, the run stops in 2 iterations via ``momentum constant''
+  (\verb|du = 0.011 < 0.02|), with no stall wait.
+\item \textbf{Stall path (\texttt{du\_th}=1e-3, before loosening):} a from-scratch
+  run that previously never ended now stopped at iteration 554{,}485 via stall
+  detection, with final \verb|du = 0.011| --- exactly the floor, confirming
+  \verb|stall_tol| does not trigger prematurely during the descent.
+\item \textbf{Physics unchanged:} the post-processed profiles from the
+  stall-terminated full run match the earlier do-only-PP run to 3 significant
+  figures, confirming the convergence change does not alter the solution.
+\end{itemize}
+
+\paragraph{Caveat.} \verb|du_th = 2e-2| is loose and global. Setups that genuinely
+converge to \verb|du < 1e-3| will now stop earlier, at 2\% momentum non-uniformity.
+Tighten \verb|du_th| (and rely on stall detection for the unreachable-threshold
+cases) if a given study needs a stricter steady state.
+
+% =====================================================================
+\section{Semi-implicit energy solver (2026-06-03)}\label{sec:semi}
+% =====================================================================
+\emph{Absorbed in full from the former \texttt{energy\_semi\_implicit\_solver.tex}.}
+By replacing the explicit forward-Euler energy update with a constant-derivative
+2-iteration Newton--Raphson scheme, the code resolves the numerical stiffness of
+radiative heating and cooling, achieving unconditional stability and a $2\times$
+speedup on the main hydro loop.
+
+\subsection{Introduction}
+\texttt{EXHALE} solves the 1D spherically symmetric Euler equations coupled
+with a detailed chemical network for H, He, and metals. In highly irradiated or
+high-mass atmospheres the timescales of radiative heating ($\mathcal{H}$) and
+cooling ($\mathcal{C}$) are orders of magnitude shorter than the hydrodynamic
+cell-crossing time (the CFL limit):
+\begin{equation}
+  \tau_{\rm cool} = \frac{p}{(\gamma - 1)\mathcal{C}} \ll \tau_{\rm CFL} = \frac{\Delta r}{|v| + c_s}.
+\end{equation}
+The original version of \texttt{ATES} integrated the energy source terms explicitly
+using a forward Euler step:
+\begin{equation}
+  u^{n+1}_3 = u^n_3 + \Delta t \left( \mathcal{H} - \mathcal{C}(T^n) \right).
+\end{equation}
+Because $\Delta t$ is determined solely by the hydrodynamic CFL condition, this
+explicit treatment is highly unstable in the stiff regime. It introduces local
+high-frequency numerical oscillations in temperature and pressure, which delays
+global convergence (requiring $>2\times 10^5$ iterations) or triggers NaN crashes
+when pressure or temperature drops below physical limits. To overcome this, we
+implemented a robust, unconditionally stable semi-implicit energy solver that
+decouples the stiff thermal integration from the hydrodynamic time step.
+
+\subsection{Mathematical formulation}
+The 1D spherically symmetric energy conservation equation is
+\begin{equation}
+  \frac{\partial E}{\partial t} + \frac{1}{r^2} \frac{\partial}{\partial r} \left[ r^2 v (E + p) \right] = \mathcal{H} - \mathcal{C},
+\end{equation}
+with $E = \frac{1}{2}\rho v^2 + \frac{p}{\gamma-1}$. Using operator splitting, the
+hydrodynamic advection is performed first, followed by the local thermochemical
+source term; since $\rho$ and $v$ are constant during the source step the kinetic
+energy is fixed and the equation reduces to one for $T$:
+\begin{equation}
+  \frac{n_{\rm all}}{\gamma - 1} \frac{\partial T}{\partial t} = \mathcal{H} - \mathcal{C}(T),
+\end{equation}
+where $n_{\rm all} = n_{\rm tot} + n_e$ is the total particle number density
+(adimensional). The backward-Euler discretization gives the implicit relation for
+$T^{n+1}$:
+\begin{equation}
+  T^{n+1} - T^n = \Delta t \frac{\gamma - 1}{n_{\rm all}} \left( \mathcal{H} - \mathcal{C}(T^{n+1}) \right).
+\end{equation}
+
+\subsection{Original explicit solver (before the update)}
+\paragraph{Formulation and time-step update.} The advection step yields the
+intermediate total energy $u_3^*$; the source integration then updates explicitly,
+\begin{equation}
+  u^{n+1}_3 = u^n_3 + \Delta t \left( \mathcal{H}(T^n) - \mathcal{C}(T^n) \right),
+\end{equation}
+after which $p^{n+1}=(\gamma-1)(u_3^{n+1}-\tfrac12\rho (v^{n+1})^2)$ and
+$T^{n+1}=p^{n+1}/(n_{\rm all}k_B)$.
+
+\paragraph{Stability constraint and thermal stiffness.} The time step is set purely
+by the hydrodynamic CFL condition,
+\begin{equation}
+  \Delta t_{\rm CFL} = C_{\rm CFL} \min \left( \frac{\Delta r}{|v| + c_s} \right),
+\end{equation}
+decoupled from the thermochemical timescales. For an explicit integration of
+$\frac{dT}{dt} = -\frac{T - T_{\rm eq}}{\tau_{\rm cool}}$ to remain stable requires
+$\Delta t \le \tau_{\rm cool} = n_{\rm all} k_B T / [(\gamma-1)\mathcal{C}(T)]$.
+In highly ionized/irradiated zones $\tau_{\rm cool}$ can be $10^{-3}$--$10^{-6}$
+of $\Delta t_{\rm CFL}$, so the explicit limit is violated, giving:
+\begin{itemize}
+  \item \textbf{Numerical oscillations:} high-frequency, unphysical $T$/$p$
+    oscillations as the explicit solver overcorrects the source terms.
+  \item \textbf{NaN crashes:} a large step with a high $\mathcal{C}(T^n)$ can
+    over-cool a cell to negative pressure $\to$ negative-$T$ exceptions $\to$ NaN.
+  \item \textbf{Stalled convergence:} continuous minor oscillations at the wind
+    base prevent the system from settling, slowing or stalling convergence.
+\end{itemize}
+
+\subsection{Numerical algorithm}
+Define the residual
+\begin{equation}
+  F(T^{n+1}) = T^{n+1} - T^n - \Delta t \frac{\gamma - 1}{n_{\rm all}} \left( \mathcal{H} - \mathcal{C}(T^{n+1}) \right) = 0,
+\end{equation}
+with derivative
+\begin{equation}
+  \frac{\partial F}{\partial T} = 1 + \Delta t \frac{\gamma - 1}{n_{\rm all}} \frac{\partial \mathcal{C}}{\partial T}.
+\end{equation}
+We solve $F=0$ with an optimized Newton--Raphson incorporating two enhancements.
+
+\paragraph{Non-negative derivative safeguard.} In some regimes
+$\partial \mathcal{C}/\partial T < 0$; under a large $\Delta t$ this could drive the
+Jacobian $\partial F/\partial T$ toward zero or negative, causing divergence or
+negative temperatures. We safeguard
+\begin{equation}
+  \frac{\partial \mathcal{C}}{\partial T} \leftarrow \max\!\left(0, \frac{\partial \mathcal{C}}{\partial T}\right),
+\end{equation}
+guaranteeing $\partial F/\partial T \ge 1$ always (unconditional stability,
+clamping any unphysical excursion).
+
+\paragraph{Constant-derivative 2-iteration scheme.} Evaluating $\mathcal{C}(T)$ is
+expensive (\texttt{eval\_cool}: Gaunt factors, recombination, collisional
+ionization, metal-line cooling over all cells). Instead of re-evaluating the
+derivative each iteration, $\partial \mathcal{C}/\partial T$ is computed \emph{once}
+at the start of the step from $T^n$ and $\delta T = \max(10^{-5}, 10^{-5} T^n)$:
+\begin{equation}
+  \frac{\partial \mathcal{C}}{\partial T} \approx \frac{\mathcal{C}(T^n + \delta T) - \mathcal{C}(T^n)}{\delta T},
+\end{equation}
+then 2 Newton iterations are taken with this fixed derivative:
+\begin{enumerate}
+  \item Initialize $T^{[0]} = T^n$.
+  \item Evaluate $\mathcal{C}(T^{[0]})$ (call 1) and $\mathcal{C}(T^{[0]}+\delta T)$
+    (call 2) for the constant derivative.
+  \item \textbf{Iteration 1:} $T^{[1]} = T^{[0]} - F(T^{[0]})/(\partial F/\partial T)$.
+  \item Evaluate $\mathcal{C}(T^{[1]})$ (call 3).
+  \item \textbf{Iteration 2:} $T^{[2]} = T^{[1]} - F(T^{[1]})/(\partial F/\partial T)$.
+  \item Set $T^{n+1}=T^{[2]}$ and apply a physical floor $T \ge 0.01$ (adimensional).
+\end{enumerate}
+This requires exactly 3 cooling evaluations per step. Compared to a standard
+5-iteration Newton (10 evaluations) it cuts the cooling overhead by 70\% and speeds
+up the whole run by $\sim2\times$.
+
+\subsection{Implementation}
+\paragraph{The \texttt{energy\_semi\_implicit} module.} Implemented in the new file
+\begin{center}\texttt{src/modules/time\_step/energy\_semi\_implicit.f90}\end{center}
+the subroutine \texttt{solve\_energy\_semi\_implicit(u, W, dt, heat, cool, f\_sp)}
+extracts local densities/temperatures, computes the adimensional $n_e$ and
+$n_{\rm all}$, runs the 2-iteration constant-derivative Newton, and updates $u_3$
+and $p$.
+
+\paragraph{Integration in \texttt{EXHALE\_main.f90}.} The explicit update
+\begin{lstlisting}
+call W_to_U(W,u)
+u(:,3) = u(:,3) + dt*(heat - cool)
+\end{lstlisting}
+was replaced with
+\begin{lstlisting}
+call W_to_U(W,u)
+call solve_energy_semi_implicit(u,W,dt,heat,cool,f_sp)
+\end{lstlisting}
+and the \texttt{Makefile} was updated to compile/link the new module with proper
+dependency ordering.
+
+\subsection{Verification and performance}
+End-to-end HD\,209458b runs (\texttt{run\_compare\_metals.sh}) vs.\ the original
+explicit code:
+\begin{itemize}
+  \item \textbf{Convergence speedup:} metals-ON converged in \textbf{71{,}993}
+    steps (vs.\ \textbf{236{,}344} explicit), completing in 14\,min\,7\,s
+    ($\sim$33\% less wall-clock).
+  \item \textbf{Physical accuracy:} $\log_{10}\dot M = 9.49061$ (vs.\ 9.49064);
+    $T_{\max}=6525.4$\,K (vs.\ 6525.6); $T_{\min}=1009.3$\,K (exact) --- the
+    semi-implicit solver converges to the same physical state.
+  \item \textbf{Robustness (metals OFF):} the explicit solver stalled at
+    $du\approx0.033$; the semi-implicit run reached the strict $du=0.02$ threshold.
+\end{itemize}
+
+% =====================================================================
+\section{Escape-radius / empty-window grid guard (Phase 4)}\label{sec:grid}
+% =====================================================================
+\emph{Context: \texttt{Update\_EXHALE} Phase 4.} In
+\texttt{src/modules/init/define\_grid.f90}, the convergence diagnostics
+(\texttt{du}, \texttt{dtu}) are computed over the radial window
+$[\,j_{\min}:N\,]$, where $j_{\min}$ is the first cell with $r\ge r_{\rm esc}$
+(the input \texttt{Escape radius}). When the escape radius lies \emph{outside} the
+(L1-truncated Roche) domain, $r_{\rm esc}>r_{\max}$ --- e.g.\ WASP-121b Case~D,
+$r_{\max}\!\sim\!1.35\,R_p < r_{\rm esc}=1.5\,R_p$ --- no cell satisfies
+$r\ge r_{\rm esc}$, the \texttt{DO} loop leaves $j=N+N_g+1$, and the window
+$[\,j_{\min}:N\,]$ is \textbf{empty}. \texttt{maxval}/\texttt{minval} over an empty
+slice return $\mp$\texttt{HUGE}, so $du=\infty$ while $dtu=-$\texttt{HUGE}$<dtu\_th$,
+triggering a \emph{spurious} ``steady state'' exit at step~0.
+
+\paragraph{Guard.} If $j_{\min}>N$, re-anchor $j_{\min}$ to the first cell with
+$r\ge 1+\tfrac12(r_{\max}-1)$ (mid-domain) and print a loud \texttt{WARNING}
+instructing the user to set a smaller \texttt{Escape radius [R\_p]:}. This converts
+a silent false-convergence into a visible, recoverable warning while still allowing
+the run to proceed on a sensible window.
+
+% =====================================================================
+\section{Breathing-base advection guard (post-process, option c)}\label{sec:breath}
+% =====================================================================
+\emph{Full account and validation: \texttt{Update\_EXHALE}, ``Post-process advection
+guard at a breathing base''.} Summary of the numerical change in
+\texttt{src/modules/post\_process/post\_process\_adv.f90}:
+
+For strongly Roche-filling planets the 1D wind is subsonic at $L_1$ and the dense
+lower atmosphere settles into a slowly recirculating (``breathing'') state with
+small \emph{negative} (inflow) velocities and a stagnation point ($v=0$) near the
+wind base. The advection post-processor re-solves the per-cell energy/ionization
+balance assuming an outflow (each cell upwinds from the next-inner cell); in the
+dense base the non-monotone metal line-cooling curve gives the energy equation a
+second, spurious \emph{hot} root that the Newton/Powell solve can land on, and the
+upwind coupling cascades it outward (a sawtooth $+$ overshoot spike in $T$).
+
+\paragraph{Guard.} Where the flow is \emph{not} a clean outflow ($v\le0$) the
+advection correction is skipped and the converged equilibrium ionization and
+temperature are kept (gated on \texttt{pp\_metal\_on}; metals-off byte-identical).
+This breaks the upwind cascade at its source. The remaining genuine 1D limitation
+(the breathing base itself) is represented there by the smooth equilibrium
+solution. \S\ref{sec:task1} makes the same per-cell energy solve robust by
+construction (Brent), removing the spurious-root failure mode entirely.
+
+% =====================================================================
+\section{Brent for the scalar energy equation (Task 1, 2026-06-07)}\label{sec:task1}
+% =====================================================================
+\texttt{T\_equation} (the per-cell post-process energy balance) is a single
+nonlinear equation in $x=T/T_0$. With metal cooling its residual is
+\emph{non-monotone} and admits a second, spurious \emph{hot} root that the general
+Newton/Powell solver (\texttt{hybrd1}) can land on --- the root cause of the
+breathing-base spike (\S\ref{sec:breath}). A bracketing solver that selects the
+lowest (physical) root removes the failure mode structurally. The scalar $T$ solve
+runs only in the (single) post-process pass, so the scan cost is negligible.
+
+\subsection{Solver}
+Added to \texttt{T\_equation.f90} (module \texttt{equation\_T}):
+\begin{itemize}
+\item \texttt{Tres(xx, params)} --- scalar residual wrapper around
+  \texttt{T\_equation} ($N=1$).
+\item \texttt{solve\_T\_brent(params, x\_guess, x\_out, ok)} --- a log-spaced
+  upward scan from a low floor ($\max(0.05\,x_{\rm guess},\,1\,{\rm K})$) to
+  $4\,x_{\rm guess}$, taking the \textbf{first sign change} (= lowest = physical
+  root) and polishing with Brent. \texttt{ok=.false.} (no bracket) $\Rightarrow$
+  the caller falls back to the eq temperature.
+\item \texttt{brent\_root(\ldots)} --- standard Brent's method on the bracket.
+\end{itemize}
+
+\subsection{Wiring}
+In \texttt{post\_process\_adv.f90}'s per-cell $T$ loop: when \texttt{pp\_metal\_on}
+(and \texttt{use\_brent\_tsolve}, \S\ref{sec:switch}) call \texttt{solve\_T\_brent}
+(fall back to eq \texttt{T\_in} if no bracket); otherwise the legacy \texttt{hybrd1}
+solve $+$ the 2$\times$-band reject is used. Metals-off keeps the original
+\texttt{hybrd1} (monotone residual, byte-identical). The option-(c) $v\le0$
+base$\to$eq guard (\S\ref{sec:breath}) is retained.
+
+\subsection{Validation}
+Rebuilt (gfortran). PP-only re-run on the converged Case~B (feed the converged eq
+as the IC; \texttt{Load IC} $+$ \texttt{Do only PP}): the wind cells ($v>0$, 244 of
+them) match the \texttt{hybrd1} baseline to \textbf{$6.5\times10^{-12}$} (machine
+precision; Brent finds the same physical root), the base $[1.02,1.10]\,R_p$ has 0
+temperature sign-changes (smooth), and $\log_{10}\dot M=13.38$ is unchanged. Brent
+reproduces the validated result to machine precision while \emph{structurally}
+selecting the physical root (the 2$\times$-band reject is no longer needed).
+
+% =====================================================================
+\section{Analytic-Jacobian Newton for the ionization equilibrium (Task 2, 2026-06-07)}\label{sec:task2}
+% =====================================================================
+All ionization systems were solved with MINPACK \texttt{hybrd1} (Powell hybrid with
+a \emph{finite-difference} Jacobian). Task~2 supplies an \emph{analytic} Jacobian
+with a self-contained damped-Newton solver, keeping \texttt{hybrd1} as a fallback
+(zero regression risk).
+
+\subsection{Newton solver module}
+New \texttt{src/modules/nonlinear\_system\_solver/newton\_solver.f90}:
+\begin{itemize}
+\item \texttt{newton\_dense(fcn, jac, n, x, params, ftol, info)} --- damped Newton
+  with a backtracking (Armijo) line search on $\lVert\mathbf f\rVert_2$; the step
+  $\mathbf J\,\delta\mathbf x=-\mathbf f$ is solved by Gaussian elimination with
+  partial pivoting (\texttt{gauss\_solve}). \texttt{info=1} on convergence (small
+  Newton step or residual), \texttt{0} otherwise (singular Jacobian, no progress,
+  NaN, or maxit).
+\item \texttt{solve\_ieq(fcn, jac, n, x, params, tol, wa, lwa, used\_newton)} ---
+  tries Newton; on \emph{any} failure restores $\mathbf x$ and calls
+  \texttt{hybrd1}. Run-wide counters \texttt{nt\_calls}/\texttt{nt\_fallback} are
+  reported once by \texttt{EXHALE\_main}.
+\end{itemize}
+
+\subsection{Analytic Jacobians}
+\texttt{jac\_system\_H} ($1\times1$) and \texttt{jac\_system\_HeH} ($3\times3$) are
+direct. \texttt{jac\_system\_HeH\_metals} is built structurally as
+\[
+J(i,k) = \big[\text{photoion} + (\partial C_i/\partial x_{\rm local})\,n_e\big]_{\rm local}
+         \;+\; C_i\,\frac{\partial n_e}{\partial x_k},
+\]
+a block-diagonal ``direct'' part plus a rank-1 $n_e$-coupling part. Charge exchange
+is added by \texttt{cx\_add\_to\_jac} (new in \texttt{charge\_exchange.f90}), the
+exact derivative mirror of \texttt{cx\_add\_to\_fvec} (each rate $R=k_c D A$ is
+bilinear in two reactant densities, both linear in the unknowns). Absent elements
+and the unused upper stage of two-stage elements are pinned to identity rows. The
+He metastable-triplet system (\texttt{System\_HeH\_TR}) is left on \texttt{hybrd1}
+(no analytic Jacobian; it is mutually exclusive with metals and unused here).
+
+\subsection{Wiring and build}
+In \texttt{ionization\_\allowbreak equilibrium.f90} the H-only, H/He, and
+H/He$+$metals \texttt{hybrd1} calls now go through the dispatcher
+\texttt{solve\_ieq} (with the per-system \texttt{jac\_*} callbacks);
+the triplet call is unchanged. \texttt{newton\_solver.f90} was added to the
+\texttt{Makefile}. Builds clean (gfortran).
+
+\subsection{Validation}
+PP-only sweep over the converged Case~B (one full \texttt{ioniz\_eq} over all 504
+cells):
+\begin{itemize}
+\item \textbf{Newton handled 504/504 solves (100\%, zero fallback)} --- the
+  analytic Jacobian (H/He $+$ 10 metals $+$ charge exchange) converges on every cell.
+\item \textbf{A/B test at an identical state} (Newton vs.\ a forced-\texttt{hybrd1}
+  run via \texttt{ATES\_FORCE\_HYBRD1=1}, so the one-step hydro drift cancels):
+  \texttt{Ion\_species} agrees to \textbf{$7.2\times10^{-7}$} over all stages, $T$
+  to $3.5\times10^{-4}$ --- the Jacobian is correct.
+\item $\log_{10}\dot M = 13.38$ unchanged.
+\item A naive Newton-vs-baseline \texttt{Ion\_species} comparison showed up to
+  $63\%$ on the trace neutral C\,I; that is the $0.26\%$ one-step $T$ drift amplified
+  in a sensitive trace stage, \emph{not} the solver (confirmed by the
+  $7.2\times10^{-7}$ A/B agreement).
+\end{itemize}
+
+% =====================================================================
+\section{Input switches (new default, legacy \texttt{hybrd1} optional)}\label{sec:switch}
+% =====================================================================
+Both upgrades are the default and can be turned off per run via optional
+\texttt{input.inp} keywords (anywhere in the optional block):
+
+\begin{center}\small
+\begin{tabular}{@{}lcl@{}}
+\toprule
+keyword & default & effect when \texttt{False} \\
+\midrule
+\texttt{Newton solver: True/False} & \texttt{True} & ionization equilibrium uses legacy MINPACK \texttt{hybrd1} \\
+\texttt{Brent solver: True/False}  & \texttt{True} & energy solve uses legacy \texttt{hybrd1} $+$ 2$\times$-band reject \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\noindent Absent keywords keep the new solvers. The flags
+(\texttt{use\_newton\_ieq} / \texttt{use\_brent\_tsolve}, in
+\texttt{global\_parameters}) are parsed in \texttt{input\_read.f90}. The
+\texttt{ATES\_FORCE\_HYBRD1=1} environment variable also forces the \texttt{hybrd1}
+ionization path for validation without editing the input.
+
+% =====================================================================
+\section{Speed}\label{sec:speed}
+% =====================================================================
+Full-run wall-clock (hydro $+$ radiation $+$ ionization) over the converged Case~B
+with \texttt{Load IC} $+$ \texttt{Force start} ($\sim$2025 steps, identical
+trajectory), \texttt{OMP\_NUM\_THREADS=4}:
+
+\begin{center}\small
+\begin{tabular}{@{}lccc@{}}
+\toprule
+solver & steps & wall (run 1 / 2) & ms/step \\
+\midrule
+Newton & 2023 & 54.7 / 54.3 s & 26.9 \\
+hybrd1 & 2027 & 67.8 / 68.9 s & 33.7 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\noindent The analytic-Jacobian Newton is \textbf{$\sim$25\% faster per step
+($\times1.25$)} than legacy \texttt{hybrd1}; the step counts match to $0.2\%$
+(fair per-step comparison). The \texttt{ioniz\_eq} cell loop is \emph{serial}, so
+the relative speedup grows with the thread count (hydro/radiation parallelize, the
+solve does not). This is on top of the $\sim$2$\times$ hydro-loop speedup from the
+semi-implicit energy solver (\S\ref{sec:semi}). Raw numbers in
+\texttt{WASP-121b/solver\_validation/timing.txt}.
+
+% =====================================================================
+\section{Validation data (persisted) and reproduction}\label{sec:valdata}
+% =====================================================================
+The Task~1/2 comparison data lives in \texttt{WASP-121b/solver\_validation/}
+(kept, not transient):
+\begin{itemize}
+\item \texttt{comparison.txt} --- the results table (sections A/B/C).
+\item \texttt{newton/}, \texttt{hybrd1/} --- the two PP-only runs (analytic-Jacobian
+  Newton vs.\ the MINPACK \texttt{hybrd1} reference) over the converged Case~B, each
+  with its full \texttt{output/} and \texttt{run.log}.
+\item \texttt{baseline/} --- a copy of the converged Case~B
+  (\texttt{WASP-121b/output/}).
+\item \texttt{run\_validation.sh}, \texttt{compare.py} --- regenerate everything
+  with \texttt{cd WASP-121b/solver\_validation \&\& bash run\_validation.sh}.
+\item \texttt{solver\_comparison.ipynb} (built by \texttt{build\_solver\_nb.py})
+  --- plots: (1) $T$, $n$, $v$ and key ion densities for baseline/hybrd1/Newton
+  overlaid (they coincide); (2) the pure solver difference Newton$-$hybrd1 vs.\
+  radius ($\sim10^{-6}$--$10^{-7}$ over the physical region $[1.05,2]\,R_p$);
+  (3) the Brent \texttt{\_adv} base temperature (smooth; machine-precision match in
+  the wind).
+\item \texttt{timing.txt} --- the speed table of \S\ref{sec:speed}.
+\end{itemize}
+Latest \texttt{comparison.txt}:
+\begin{lstlisting}
+A. Newton vs hybrd1  (identical state -> pure SOLVER difference)
+     eq T          max rel diff : 3.499e-04
+     Ion_species   max rel diff : 7.186e-07   (worst: FeI)
+B. Newton vs baseline (converged; includes one-step PP hydro drift)
+     eq T          max rel diff : 2.578e-03
+     Ion_species   max rel diff : 6.266e-01   (worst: CI, drift-amplified)
+C. Brent _adv T vs baseline _adv (Task 1, scalar energy equation)
+     wind (v>0)    max rel diff : 6.504e-12
+     all cells     max rel diff : 3.499e-04
+\end{lstlisting}
+Section~A is the meaningful solver test (identical state, so the one-step drift
+cancels); the 63\% on the trace neutral C\,I in section~B is that $0.26\%$ $T$
+drift amplified, not the solver.
+
+% =====================================================================
+\section{Steady-state Newton--Krylov solver and convergence overhaul
+(2026-06-10/11)}\label{sec:jfnk}
+
+This is the largest solver change to date; it is summarized here for
+completeness of this log and \textbf{documented in full in
+\texttt{steady\_solver\_memo.pdf}} (development record, validation, and
+hardening), with user-facing usage in the user manual \S2.4--2.5.
+
+\paragraph{Why.} The marching $du$ stop (relative spread of $\rho v r^2$)
+is provably blind to the operator-split energy imbalance: states that
+satisfy $du<10^{-3}$ can carry steady residuals $\|R\|_E\sim30$
+(``premature dip''), shifting $\dot M$ by $\sim$20\% (WASP-121b:
+$\log_{10}\dot M$ 13.631 premature vs.\ 13.711 converged). The fix is to
+measure convergence by the \emph{steady residual} $R$ of the discrete
+equations and, near the fixed point, to solve $F(Y)=0$ directly.
+
+\paragraph{What was added} (all opt-in via \texttt{input.inp} keywords;
+every legacy default is byte-identical, regression-gated):
+\begin{itemize}
+\item \emph{Automatic two-stage marching} (\texttt{du\_th [PLM,WENO3]}):
+  PLM warm-up, switch to WENO3 at the first threshold, stop at the second.
+\item \emph{Residual monitor and residual-based stop} (\texttt{Resid
+  tol}, \texttt{Level tol}): periodic $\max\|R\|_\infty$ over mass /
+  momentum / energy; criterion-independent of $du$.
+\item \emph{Preconditioned JFNK steady solver}
+  (\texttt{src/modules/time\_step/steady\_newton.f90}): matrix-free
+  Newton--Krylov with right-preconditioned GMRES, colored-FD banded
+  preconditioner (LAPACK \texttt{dgbtrf/dgbtrs}, $kl{=}ku{=}8$), PTC
+  ($I/\Delta\tau + J$) with SER ramp, and the five ingredients each found
+  via a localized stall: smooth $\|D^{-1}F\|_2$ merit, diagonal scaling,
+  smooth base valve (\texttt{Valve eps}), frozen WENO weights, and a
+  non-monotone (Grippo) line search.
+\item \emph{Production wiring} (\texttt{Solver: Newton}): marching
+  warm-up with $du$-stops suspended until the monitored $\|R\|$ falls
+  below the switch ($5\times10^{-2}$), then the JFNK finish to
+  \texttt{Resid tol} ($10^{-3}$), then standard outputs and
+  post-processing. Validated end-to-end from a cold IC (WASP-121b:
+  identical $\dot M$ to the warm-started reference; HD189733b: 33\,s
+  where marching spent $>$3\,h).
+\item \emph{Failure containment} (2026-06-11): best-iterate tracking,
+  fail-fast after 15 outer iterations without a new best residual
+  (\texttt{info=2}), and on failure \texttt{EXHALE\_main} keeps the best
+  iterate, disables the Newton mode, and resumes plain marching --- an
+  unconverged Newton state is never accepted as the final answer.
+\end{itemize}
+
+Ready-to-run configurations for every solver combination (legacy
+marching, two-stage, Newton, Newton-from-state, warm-seed IC, \ldots) are
+collected under \texttt{examples/} (user manual, Table~4).
+
+\end{document}

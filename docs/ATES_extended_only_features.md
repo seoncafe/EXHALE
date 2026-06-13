@@ -1,7 +1,7 @@
-# Features in ATES_extended but NOT in ATES-metal
+# Features in ATES_extended but NOT in EXHALE
 
 This lists everything present in `ATES/ATES_extended/` that has no
-counterpart in `ATES/ATES-metal/` (the latter being this session's
+counterpart in `ATES/EXHALE/` (the latter being this session's
 fully-coupled metal-cooling work). It is the "what would be lost if we
 discarded ATES_extended" inventory.
 
@@ -13,10 +13,10 @@ See also `ATES_versions_diff.md` for the full side-by-side comparison.
 
 > **Update (2026):** No longer extended-only. The dispatcher
 > (`opacity_models.f90`, A/C/P/T, `.atesopa` tables, `opacity.inp`) has
-> been ported to ATES-metal, and the Robinson & Catling
+> been ported to EXHALE, and the Robinson & Catling
 > pressure-broadening — a dormant hook in ATES_extended — is now
 > **actually applied per-cell** (weights the opacity column density). See
-> `Update_ATES_early_phase`, Part II. The description below is the original
+> `Update_EXHALE_early_phase`, Part II. The description below is the original
 > ATES_extended implementation.
 
 ATES_extended adds a complete pluggable opacity layer:
@@ -38,11 +38,11 @@ ATES_extended adds a complete pluggable opacity layer:
 
 ## 2. Nitrogen as a coolant/ion species
 
-> **Update (2026):** No longer extended-only. ATES-metal now also
+> **Update (2026):** No longer extended-only. EXHALE now also
 > carries nitrogen (NI/NII/NIII) inside its MINPACK 9-equation system,
 > with Verner+1996 cross sections, Badnell RR+DR recombination, and
 > Voronov collisional ionization; like ATES_extended, N contributes no
-> line cooling. See `Update_ATES_early_phase`, Part II. The description below is
+> line cooling. See `Update_EXHALE_early_phase`, Part II. The description below is
 > the original ATES_extended implementation.
 
 ATES_extended carries:
@@ -58,10 +58,10 @@ ATES_extended carries:
 
 ## 3. Dielectronic recombination (DR)
 
-> **Update (2026):** No longer extended-only. ATES-metal now uses the
+> **Update (2026):** No longer extended-only. EXHALE now uses the
 > **Badnell 2006 RR + adf48 DR** total-recombination fits for all metal
 > stages (the same `rec_fit` table, ported from ATES_extended), replacing
-> the Aldrovandi & Pequignot 1973 power-law. See `Update_ATES_early_phase`,
+> the Aldrovandi & Pequignot 1973 power-law. See `Update_EXHALE_early_phase`,
 > Part II. The description below is the original ATES_extended implementation.
 
 ATES_extended adds a second recombination channel beyond radiative RR:
@@ -74,10 +74,10 @@ ATES_extended adds a second recombination channel beyond radiative RR:
 
 ## 4. Runtime-configurable abundances (no recompile)
 
-> **Update (2026):** No longer extended-only. ATES-metal now also
+> **Update (2026):** No longer extended-only. EXHALE now also
 > reads a runtime **`metals.inp`** (`metals_input_read.f90`): `CI/NI/OI`
 > lines set `X_C/X_N/X_O` with no recompile; absent file leaves metals
-> off. See `Update_ATES_early_phase`, Part II.
+> off. See `Update_EXHALE_early_phase`, Part II.
 
 * ATES_extended reads abundances at runtime from an optional
   **`metals.inp`** file (`<ION> <abundance>` per line), parsed by
@@ -87,7 +87,7 @@ ATES_extended adds a second recombination channel beyond radiative RR:
 
 ## 5. Separate metal solver architecture (coronal balance)
 
-The whole module set below has no analog in ATES-metal, which instead
+The whole module set below has no analog in EXHALE, which instead
 folded metals into the existing MINPACK system (`System_HeHCO.f90`):
 
 * **`src/modules/radiation/metals.f90`** (~162 LOC) — abundance registry,
@@ -105,12 +105,12 @@ folded metals into the existing MINPACK system (`System_HeHCO.f90`):
 
 * **`src/modules/files_IO/write_metals_output.f90`** (~62 LOC) writes a
   separate **`Metals_ioniz_adv.txt`**.
-* ATES-metal instead appends six columns to the existing
+* EXHALE instead appends six columns to the existing
   `Ion_species.txt` (no new file, no separate writer).
 
 ## 7. Example/documentation input files
 
-In `ATES_extended/inputdata/`, none of which exist in ATES-metal:
+In `ATES_extended/inputdata/`, none of which exist in EXHALE:
 
 * `metals.inp.example` — annotated abundance template.
 * `opacity.inp.example` — annotated opacity-model key documentation.
@@ -120,17 +120,17 @@ In `ATES_extended/inputdata/`, none of which exist in ATES-metal:
 ## 8. Companion design memo
 
 * **`ATES_extended/docs/aiolos_port_memo.pdf`** (and `.tex`) — Phase 1/2/3
-  design and status document. ATES-metal's analog is
-  `ATES-metal/docs/Update_ATES_early_phase` (Part II), but the two cover
+  design and status document. EXHALE's analog is
+  `EXHALE/docs/Update_EXHALE_early_phase` (Part II), but the two cover
   different designs; the ATES_extended memo additionally discusses the
   opacity dispatcher and the explicit Phase 3 (multi-fluid) justification,
-  neither of which appears in the ATES-metal work.
+  neither of which appears in the EXHALE work.
 
 ---
 
 ## Summary table
 
-| Capability | In ATES_extended | In ATES-metal |
+| Capability | In ATES_extended | In EXHALE |
 |---|---|---|
 | Opacity model dispatcher (A/C/P/T) | Yes | **Yes** (ported) |
 | `.atesopa` tabulated cross sections | Yes | **Yes** |
@@ -146,8 +146,8 @@ In `ATES_extended/inputdata/`, none of which exist in ATES-metal:
 
 ## Caveat — these are *additive* features, not strict supersets
 
-ATES_extended is NOT a superset of ATES-metal. The fully-coupled
-physics in ATES-metal (metals feeding back on electron density,
+ATES_extended is NOT a superset of EXHALE. The fully-coupled
+physics in EXHALE (metals feeding back on electron density,
 a beta line-escape probability formula carried in-source — though
 currently overridden by `beta_esc = 1`, i.e. the same 100%-escape
 assumption ATES_extended uses — CIII/OIII third stages, metals active

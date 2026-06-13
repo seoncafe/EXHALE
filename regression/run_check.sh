@@ -33,13 +33,13 @@ case "$mode" in
     done
     ;;
   check)
-    echo "[build] rebuilding ATES.x ..."
+    echo "[build] rebuilding EXHALE.x ..."
     ( cd "$ROOT" && make >/dev/null 2>&1 ) && echo "  build OK"
     rc=0
     for c in $CASES; do
       echo "[$c] running (OMP_NUM_THREADS=1) ..."
-      cp "$ROOT/ATES.x" "$HERE/$c/ATES.x"
-      ( cd "$HERE/$c" && rm -f output/*.txt && OMP_NUM_THREADS=1 ./ATES.x > run.log 2>&1 )
+      cp "$ROOT/EXHALE.x" "$HERE/$c/EXHALE.x"
+      ( cd "$HERE/$c" && rm -f output/*.txt && OMP_NUM_THREADS=1 ./EXHALE.x > run.log 2>&1 )
       echo "       $(grep -E 'final:' "$HERE/$c/run.log" | tail -n1)"
       for f in $FILES; do
         b=$(basename "$f")

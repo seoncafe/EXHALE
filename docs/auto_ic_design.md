@@ -9,7 +9,7 @@ open by design.
 This is what lets them launch winds robustly across the full escape-
 parameter range, including the boil-off (low-gravity, nearly
 hydrostatic) cases that do **not** launch from a cold static start — the
-same regime where ATES-metal's breathing base is hardest to converge
+same regime where EXHALE's breathing base is hardest to converge
 (e.g. HD 189733 b). ATES already has the building blocks; this sketch
 automates the *choice* among them. See `code_comparison.tex` for the
 full motivation.
@@ -172,8 +172,8 @@ a different mechanism entirely.
    (or recompute it inside the selector), since auto may flip the flags
    after input parsing.
 4. **Report.** Emit the chosen branch + `b0` in `write_setup_report.f90`.
-5. **Docs.** Document `IC mode: auto` in `ATES_user_manual.tex` (§input)
-   and cross-reference from `ATES_BC_and_IC.tex` §5.
+5. **Docs.** Document `IC mode: auto` in `EXHALE_user_manual.tex` (§input)
+   and cross-reference from `EXHALE_BC_and_IC.tex` §5.
 
 No change to the physics, the BC, or the golden outputs for any planet
 that does not opt into `auto` (or that auto routes to the cold default).
@@ -239,8 +239,8 @@ available, and may still set `force_start`.
    `hot_parker_ic / transonic_ic` branch at set_IC.f90:43.
 4. `write_setup_report.f90`: report the IC family actually used (and
    `auto` provenance if `ic_mode == 3`).
-5. Doc: one paragraph in `ATES_user_manual.tex` §input-file (optional
-   keys), cross-ref in `ATES_BC_and_IC.tex` §5.
+5. Doc: one paragraph in `EXHALE_user_manual.tex` §input-file (optional
+   keys), cross-ref in `EXHALE_BC_and_IC.tex` §5.
 
 **Gate A (regression invariance):**
 - Without any new key: full regression matrix byte-identical
@@ -373,11 +373,32 @@ two other reference codes suggest complementary ideas worth recording:
   should be driven directly by the grid coordinates (`b0`, T_eq, orbital
   separation) rather than re-probed per run.
 
+- **Wind-AE warm-start IC (tested 2026-06-13).** The MC09 successor
+  Wind-AE (Broome et al. 2025; in-tree at `wind-ae-main/`, builds and
+  runs on this machine, ~14 s per solve) provides converged steady BVP
+  solutions that can be interpolated onto the EXHALE grid and loaded via
+  `Load IC` (converter: `src/utils/windae_to_exhale_ic.py`). Hands-on
+  result on
+  HD209458b (H/He, spherical, 10 Rp): the loaded state is flux-flat *by
+  construction*, so plain marching trips the `du` stop **in 3 steps — a
+  false convergence** (the most extreme instance of the du-stop trap of
+  §6.1); with `Solver: Newton` the state instead relaxes smoothly toward
+  EXHALE's own attractor (flux 10.78 → 10.68 dex, spread 2.5e-4 →
+  6.6e-2 → 2.1e-2 at 146k steps, no NaN), while the **cold control
+  NaN-crashed at the breathing base** (step 172k, du still 3.7). So the
+  Wind-AE IC is a genuine robustness tool for the hardest
+  (weakly-driven) cases, but such runs must always be Newton-finished.
+  Wind-AE also showed a steady HD189733b solution exists (its BVP
+  converges; the EXHALE limit cycle is likely numerics), and its
+  continuation stalls for the WASP-121b near-RLOF corner — it
+  complements, not replaces, the Roche machinery. Details:
+  `code_comparison.tex` §"Wind-AE ... verified in-tree".
+
 ## 8. Open questions / caveats
 
 - **Boil-off needs more than an IC.** Kubyshkina's robustness in
   boil-off also comes from the **molecular-H₂ lower boundary** (a deeper,
-  nearly-hydrostatic base), not just the IC. ATES-metal's atomic H/He
+  nearly-hydrostatic base), not just the IC. EXHALE's atomic H/He
   base may still breathe in the most extreme low-gravity cases even with
   the right IC. A warm-seed IC is necessary but possibly not sufficient;
   a deeper/molecular base is a larger, separate change.
@@ -396,7 +417,7 @@ The selector is small and low-risk: it reuses `b0` (= Λ, already
 computed) and `find_sonic` (already called) to set the existing IC flags
 automatically, defaults to the current cold-hydrostatic behavior, is
 opt-in, self-healing, and logged. The main payoff is robust launching in
-the transonic and boil-off regimes — ATES-metal's weakest area — closing
+the transonic and boil-off regimes — EXHALE's weakest area — closing
 the one clear capability gap vs. Kubyshkina+2018 identified in
 `code_comparison.tex`. The deeper boil-off fix (molecular/deeper base)
 is noted as a larger, separate follow-up.

@@ -414,6 +414,12 @@
 					hot_parker_ic = .true.
 				else if (str .eq. 'auto') then
 					ic_mode = 3
+				else if (str .eq. 'windae') then
+					! In-process Wind-AE warm-start IC: init.f90 calls the
+					! ported Wind-AE solver (src/modules/wind_ae/) to build
+					! an IC on the EXHALE grid, then loads it. No separate
+					! wind_ae_ic.x run needed. Standalone tool is unaffected.
+					ic_mode = 4
 				else
 					write(*,*) '(input_read.f90) WARNING: unknown "IC ' // &
 					           'mode: ', str, '"; using cold hydrostatic.'
@@ -432,7 +438,7 @@
 		! (rho*v*r^2 = const), so du ~ 0 at step 0 would trip the "momentum
 		! constant" exit before the cold wind heats to its hot steady state.
 		! Force the first iterations so the heating develops first (the normal
-		! convergence test then resumes; see ATES_main.f90). Skipped in
+		! convergence test then resumes; see EXHALE_main.f90). Skipped in
 		! post-processing-only runs (force_start/do_only_pp are exclusive).
 		if ((transonic_ic .or. hot_parker_ic) .and. .not. do_only_pp) &
 			force_start = .true.

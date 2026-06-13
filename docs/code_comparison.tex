@@ -1,4 +1,4 @@
-%% ATES-metal (EXHALE): comparison with reference escape codes.
+%% EXHALE (EXHALE): comparison with reference escape codes.
 %% Boundary conditions, initial conditions, and solver design, side by
 %% side with the relevant reference atmospheric-escape codes:
 %%   - Caldiroli et al. 2021 (A&A 655, A30): the original ATES code
@@ -20,7 +20,7 @@
 \newcommand{\Mdot}{$\dot M$}
 
 \title{Boundary conditions, initial conditions, and solver:\\
-EXHALE / ATES-metal vs.\ ATES, Salz+2016,\\
+EXHALE / EXHALE vs.\ ATES, Salz+2016,\\
 Kubyshkina+2018, and Murray-Clay+2009}
 \author{Kwang-Il Seon}
 \date{2026-06-13}
@@ -30,7 +30,7 @@ Kubyshkina+2018, and Murray-Clay+2009}
 
 \begin{quote}\small\itshape
 A focused comparison of the boundary conditions (BC), initial conditions
-(IC), and steady-state solver of EXHALE / ATES-metal against the
+(IC), and steady-state solver of EXHALE / EXHALE against the
 relevant 1-D atmospheric-escape codes: its own parent code ATES
 (Caldiroli et al.\ 2021), the PLUTO--CLOUDY interface (TPCI) of Salz et
 al.\ (2016), the grid code of Kubyshkina et al.\ (2018) (numerical
@@ -41,7 +41,7 @@ added, which choices are field-standard, and which capabilities the
 other codes have that EXHALE lacks. A companion design sketch
 (\texttt{auto\_ic\_design.md}) follows up on the main actionable
 finding: a Kubyshkina-style automatic IC selector. Full BC/IC details
-of EXHALE itself are in \texttt{ATES\_BC\_and\_IC.tex}.
+of EXHALE itself are in \texttt{EXHALE\_BC\_and\_IC.tex}.
 \end{quote}
 
 \tableofcontents
@@ -52,7 +52,7 @@ of EXHALE itself are in \texttt{ATES\_BC\_and\_IC.tex}.
 \centering\small
 \begin{tabular}{@{}p{0.20\textwidth}p{0.24\textwidth}p{0.24\textwidth}p{0.24\textwidth}@{}}
 \toprule
- & \textbf{Salz+2016 (TPCI)} & \textbf{Kubyshkina+2018} & \textbf{ATES-metal} \\
+ & \textbf{Salz+2016 (TPCI)} & \textbf{Kubyshkina+2018} & \textbf{EXHALE} \\
 \midrule
 Hydro scheme & WENO3 + HLLC + RK3 (Godunov) & McCormack predictor--corrector (finite diff., no Riemann solver) & PLM/WENO3 + HLLC + RK (Godunov) \\
 Source term & operator-split forward Euler & in-scheme & semi-implicit energy + Brent $T$-solve \\
@@ -81,7 +81,7 @@ rather than a time-relaxation code (\S\ref{sec:mc}).
 \section{Heritage: what EXHALE inherited from ATES (Caldiroli+2021)}
 \label{sec:heritage}
 
-EXHALE / ATES-metal is a fork of ATES, so its BC/IC/solver baseline is
+EXHALE / EXHALE is a fork of ATES, so its BC/IC/solver baseline is
 literally Caldiroli et al.\ (2021). Reading that paper makes the
 inheritance explicit and isolates what is genuinely new in EXHALE.
 
@@ -144,7 +144,7 @@ that appear with steep density gradients at the lower boundary.''
 
 This is \textbf{exactly EXHALE's one-way velocity valve}
 $v_{\rm gh}=\max(v_1,0)$, adopted independently for the same reason (the
-breathing base, \texttt{ATES\_BC\_and\_IC.tex}\,\S2.4). EXHALE layers
+breathing base, \texttt{EXHALE\_BC\_and\_IC.tex}\,\S2.4). EXHALE layers
 three refinements on top that Salz does not have: (i) the dynamic
 pressure correction $\delta p_{\rm bc}$ that pins the base to $T=T_0$
 exactly through the EOS; (ii) the smooth valve (\texttt{Valve eps}) that
@@ -209,7 +209,7 @@ imposed as zero-gradient / linear extrapolation with no fixed condition
 Salz: ``none at the top''; EXHALE: copy / WENO3 linear extrapolation).
 The same well-posedness caveat applies to all three when the flow is not
 actually supersonic at the outer radius (deep Roche-lobe overflow);
-EXHALE documents this explicitly (\texttt{ATES\_BC\_and\_IC.tex}\,\S3).
+EXHALE documents this explicitly (\texttt{EXHALE\_BC\_and\_IC.tex}\,\S3).
 
 \section{Initial conditions}
 
@@ -217,7 +217,7 @@ EXHALE documents this explicitly (\texttt{ATES\_BC\_and\_IC.tex}\,\S3).
 \centering\small
 \begin{tabular}{@{}p{0.13\textwidth}p{0.26\textwidth}p{0.26\textwidth}p{0.26\textwidth}@{}}
 \toprule
- & Salz & Kubyshkina & ATES-metal \\
+ & Salz & Kubyshkina & EXHALE \\
 \midrule
 Method & single fixed IC (tuned to a medium-\Mdot\ atmosphere), same for all planets & \textbf{per-planet automatic selection of an initial profile} & cold hydrostatic (default) / transonic / hot-Parker \\
 Stated property & ``final steady state does not depend on the IC'' & auto-selection accelerates a 7000-model grid & same \Mdot\ regardless; convergence is momentum-($du$)-gated \\
@@ -360,6 +360,95 @@ non-launching atmosphere) and does not naturally carry a large reaction
 network. EXHALE's time-relaxation-plus-Newton approach is more general
 at the cost of the breathing-base difficulty.
 
+\subsection{Wind-AE (Broome et al.\ 2025): MC09's successor, verified
+in-tree}
+\label{sec:windae}
+
+\emph{Added 2026-06-13.} The Murray-Clay code did not stay an archetype:
+its direct successor, \textbf{Wind-AE} (Broome et al.\ 2025, ApJ 995,
+198; BSD-3, PyPI \texttt{wind\_ae}), is available in this workspace
+under \texttt{wind-ae-main/}. It keeps the MC09 BVP relaxation core
+(Numerical Recipes \texttt{solvde} from the base to the sonic point,
+Bulirsch--Stoer outward) and adds atomic metals, multifrequency XUV with
+X-ray secondary/K-shell ionization, a toggleable tidal $+$ centrifugal
+potential, and --- importantly --- a Python wrapper that implements
+exactly the continuation/homotopy machinery of \S\ref{sec:mc}
+(\texttt{ramp\_to}, \texttt{ramp\_grav}, \texttt{ramp\_Ftot},
+\texttt{polish\_bcs}). Limitations relative to EXHALE: one ionization
+stage per species (no Mg\,\textsc{ii}/Fe\,\textsc{ii} line work), no
+Fe/Ca cooling, substellar-point streamline geometry, and integration
+stops near the Coriolis turning radius. A Fortran port is planned in
+\texttt{md\_backup/wind\_ae\_fortran\_port\_plan.md}; it is not
+\emph{required} for use --- the C core compiles and runs on this Linux
+machine as-is ($\sim$14\,s per solve) and the wrapper works under
+Python 3.11 --- but remains under consideration for code
+completeness/uniformity of the in-house tool set.
+
+The following was verified hands-on (2026-06-13), ramping from the
+bundled MC09 fiducial to EXHALE's own \texttt{input.inp} parameters with
+matched integrated XUV flux (caveat: Wind-AE's bundled multifrequency
+spectrum vs.\ EXHALE's power law; substellar vs.\ \texttt{Rate/2}
+heating geometry — factor-of-a-few agreement is the realistic target):
+
+\begin{itemize}
+\item \textbf{HD\,209458b} (EXHALE values $0.720\,M_J$, $1.401\,R_J$,
+  $F_{\rm XUV}=1081$\,erg\,cm$^{-2}$\,s$^{-1}$): converges in seconds;
+  $T_{\rm max}=8\,640$\,K, substellar $4\pi r^2\rho v = 10^{10.78}$
+  g\,s$^{-1}$ at the sonic point ($r_s=3.49\,R_{\rm pl}$). EXHALE's own
+  metals-off run gives a flat $4\pi r^2\rho v = 10^{10.84}$ and
+  $T_{\rm max}=8\,300$\,K --- 15\% / 4\% agreement from a completely
+  independent method.
+\item \textbf{HD\,189733b} (the planet where EXHALE's time marching
+  limit-cycles at $du\sim2$ and never converges): the BVP relaxation
+  \emph{converges cleanly} ($T_{\rm max}=11\,300$\,K,
+  $r_s=3.83\,R_{\rm pl}$, global $\dot M = 10^{10.2}$ with their 0.33
+  substellar-to-global factor). \textbf{A steady transonic solution
+  exists for this planet.} This is the missing experiment from the
+  2026-06-08 convergence study: the HD\,189733b oscillation is a
+  property of EXHALE's time-marching $+$ base-BC numerics (acoustic
+  reflection), not of the physics. The NSCBC / sonic-anchored-Newton
+  routes are therefore worth their cost for this regime.
+\item \textbf{WASP-121b} (near-RLOF, $F_{\rm XUV}\sim1.6\times10^{6}$):
+  the \texttt{ramp\_to} continuation stalls around half the target flux
+  (step size driven to $\sim$1\%); the deep-RLOF $+$ extreme-XUV corner
+  appears not (easily) reachable --- consistent with the sonic-anchored
+  formulation's difficulty when the critical point approaches L1.
+  EXHALE's Roche machinery (Phase 4) has no replacement here.
+\end{itemize}
+
+\paragraph{Wind-AE as an EXHALE initial condition (tested).} A
+$\sim$150-line converter (\texttt{src/utils/windae\_to\_exhale\_ic.py})
+interpolates a \texttt{windsoln.csv} onto the EXHALE grid
+(from \texttt{IC\_dump.txt}), blends hydrostatically down to the EXHALE
+base anchor below Wind-AE's $R_{\rm min}\simeq1.06\,R_{\rm pl}$, extends
+flux-conservingly above its $R_{\rm max}$, and writes EOS-consistent
+\texttt{Hydro\_ioniz\_IC.txt} / \texttt{Ion\_species\_IC.txt} for
+\texttt{Load IC}. Test on HD\,209458b (H/He, spherical, $10\,R_{\rm
+pl}$, two-stage PLM$\to$WENO3, $du_{\rm th}=10^{-3}$):
+\begin{itemize}
+\item \emph{Hazard first:} with plain marching the run ``converges''
+  \textbf{in 3 steps} --- a false stop. EXHALE's $du$ criterion measures
+  the spatial spread of $\rho v r^2$, which a BVP solution satisfies
+  \emph{by construction} ($du=2.5\times10^{-4}$ at load); the state is
+  still Wind-AE's solution, not EXHALE's fixed point. Any Wind-AE-seeded
+  run must use \texttt{Solver: Newton} (or an $R$-based gate; the same
+  trap as the $\sim$5\% $du$-stop spread documented in
+  \texttt{auto\_ic\_design.md} \S6.1, in its most extreme form).
+\item \emph{Genuine value second:} under Newton-mode marching (no $du$
+  stop) the loaded state evolves smoothly toward EXHALE's own attractor
+  --- flux level $10^{10.78}\to10^{10.68}$, spread
+  $2.5\times10^{-4}\to6.6\times10^{-2}$ (peak) $\to2.1\times10^{-2}$ at
+  146k steps, monotone, no NaN. The \textbf{cold-start control crashed}
+  (NaN at the breathing base, $r\simeq1.18$, step 172\,469, still at
+  $du=3.7$) in the same configuration. For this hard, weakly-driven case
+  the Wind-AE warm start survives where the cold start dies.
+\end{itemize}
+In short: Wind-AE is the working realization of both \S\ref{sec:mc}
+lessons (sonic-point anchoring \emph{and} continuation), usable today as
+an independent $\dot M$ oracle and as a warm-start IC generator for
+EXHALE's hardest convergence regime --- with the explicit caveat that
+its solution must never be accepted through the bare $du$ stop.
+
 \section{What EXHALE should take away}
 
 \begin{enumerate}
@@ -400,6 +489,13 @@ at the cost of the breathing-base difficulty.
   continuation/homotopy to reach the transonic branch) is a candidate
   robustness upgrade for the non-launching cases, complementary to the
   automatic IC selector.
+\item \textbf{Wind-AE makes items 2 and 6 actionable today}
+  (\S\ref{sec:windae}). The MC09 successor runs in-tree: it proved a
+  steady HD\,189733b solution exists (the limit cycle is numerics, not
+  physics), cross-checks $\dot M$ at the 15\% level on HD\,209458b, and
+  its solutions work as warm-start ICs that survive where the cold start
+  NaN-crashes --- provided the run is finished with
+  \texttt{Solver: Newton}, never the bare $du$ stop.
 \end{enumerate}
 
 \end{document}

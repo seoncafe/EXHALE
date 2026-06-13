@@ -16,4 +16,4 @@ hybrd1     2027    67.8 s / 68.9 s          33.7
    OpenMP thread count (the hydro/radiation parts parallelize, the solve does not).
 
 Reproduce: copy the converged output as the IC, set "Load IC? True",
-"Force start: True", append "Newton solver: True" (or False), and time ./ATES.x.
+"Force start: True", append "Newton solver: True" (or False), and time ./EXHALE.x.

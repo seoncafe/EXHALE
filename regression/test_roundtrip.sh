@@ -20,12 +20,12 @@ RT="$HERE/roundtrip"
 rm -rf "$RT"; mkdir -p "$RT/output"
 sed 's/^Load IC? False/Load IC? True/' "$SRC/input.inp" > "$RT/input.inp"
 cp "$SRC/metals.inp" "$RT/metals.inp"
-cp "$ROOT/ATES.x"    "$RT/ATES.x"
+cp "$ROOT/EXHALE.x"    "$RT/EXHALE.x"
 
 echo "[A] schema-2 (headered) IC round-trip"
 cp "$SRC/output/Hydro_ioniz.txt" "$RT/output/Hydro_ioniz_IC.txt"
 cp "$SRC/output/Ion_species.txt" "$RT/output/Ion_species_IC.txt"
-( cd "$RT" && ATES_DUMP_IC=1 OMP_NUM_THREADS=1 ./ATES.x > dump_A.log 2>&1 )
+( cd "$RT" && ATES_DUMP_IC=1 OMP_NUM_THREADS=1 ./EXHALE.x > dump_A.log 2>&1 )
 python3 "$HERE/check_roundtrip.py" "$RT/output/Ion_species_IC.txt" \
                                    "$RT/output/Ion_species.txt" schema2
 
@@ -33,7 +33,7 @@ echo "[B] legacy (headerless) IC fallback"
 grep -v '^ *#' "$SRC/output/Hydro_ioniz.txt" > "$RT/output/Hydro_ioniz_IC.txt"
 grep -v '^ *#' "$SRC/output/Ion_species.txt" | awk '{print $1,$2,$3,$4,$5,$6,$7}' \
     > "$RT/output/Ion_species_IC.txt"
-( cd "$RT" && ATES_DUMP_IC=1 OMP_NUM_THREADS=1 ./ATES.x > dump_B.log 2>&1 )
+( cd "$RT" && ATES_DUMP_IC=1 OMP_NUM_THREADS=1 ./EXHALE.x > dump_B.log 2>&1 )
 python3 "$HERE/check_roundtrip.py" "$SRC/output/Ion_species.txt" \
                                    "$RT/output/Ion_species.txt" legacy
 

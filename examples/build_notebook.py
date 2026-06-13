@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Build examples/ATES_analysis.ipynb from named cells via nbformat.
+"""Build examples/EXHALE_analysis.ipynb from named cells via nbformat.
 Run:  python3 build_notebook.py   (then optionally
-      jupyter nbconvert --to notebook --execute --inplace ATES_analysis.ipynb)
+      jupyter nbconvert --to notebook --execute --inplace EXHALE_analysis.ipynb)
 """
 import nbformat as nbf
 
@@ -10,16 +10,16 @@ cells = []
 md = lambda s: cells.append(nbf.v4.new_markdown_cell(s))
 code = lambda s: cells.append(nbf.v4.new_code_cell(s))
 
-md("""# ATES-metal: analysis examples
+md("""# EXHALE: analysis examples
 
-This notebook reads converged ATES-metal runs with the `ates_io` helper and
+This notebook reads converged EXHALE runs with the `exhale_io` helper and
 reproduces the profile and parameter-comparison figures of the user manual
-(`docs/ATES_user_manual.tex`). Run it from the `examples/` directory.
+(`docs/EXHALE_user_manual.tex`). Run it from the `examples/` directory.
 """)
 
 code("""import os, numpy as np
 import matplotlib.pyplot as plt
-import ates_io as aio
+import exhale_io as aio
 ROOT = '..'
 W = os.path.join(ROOT, 'WASP-121b')
 
@@ -30,7 +30,7 @@ def load_tut(sub):
 """)
 
 md("## 1. A converged run: the generic hot-Jupiter tutorial\n"
-   "`ates_io.load_run` returns named, cgs-unit arrays (radius in $R_p$).")
+   "`exhale_io.load_run` returns named, cgs-unit arrays (radius in $R_p$).")
 code("""t = load_tut('tutorial')
 print('Mdot = %.3f Mp/Gyr' % aio.mdot_Mp_per_Gyr(t))
 fig, ax = plt.subplots(2, 2, figsize=(9,7))
@@ -104,6 +104,6 @@ ax.legend(); ax.grid(alpha=0.3, axis='y'); plt.show()
 nb['cells'] = cells
 nb.metadata['kernelspec'] = {'name': 'python3', 'display_name': 'Python 3',
                              'language': 'python'}
-with open('ATES_analysis.ipynb', 'w') as f:
+with open('EXHALE_analysis.ipynb', 'w') as f:
     nbf.write(nb, f)
-print('wrote ATES_analysis.ipynb (%d cells)' % len(cells))
+print('wrote EXHALE_analysis.ipynb (%d cells)' % len(cells))

@@ -315,7 +315,7 @@ f.close()
 
 # Load profiles
 r,rho,v,p,T,heat,cool = np.loadtxt(Hydro_file, unpack = True)
-# Ion_species.txt: read only the first 7 columns (r + H/He). In ATES-metal
+# Ion_species.txt: read only the first 7 columns (r + H/He). In EXHALE
 # this file also carries trace-metal columns (C/N/O), so we slice rather
 # than unpack all of them.
 r,nhi,nhii,nhei,nheii,nheiii,nheiTR = \

@@ -1,0 +1,267 @@
+%% Wind-AE steady-wind solver: ported algorithm, ramp, BC/IC.
+%% Author: Kwang-Il Seon
+\documentclass[english,a4paper]{kiseon_memo}
+\synctex=1
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage{amsmath}
+\usepackage{babel}
+\emergencystretch=3em
+
+\newcommand{\Rp}{$R_{\rm pl}$}
+\newcommand{\Mdot}{$\dot M$}
+\newcommand{\code}[1]{\texttt{#1}}
+
+\title{The bundled Wind-AE steady-wind solver:\\
+algorithm, continuation, and boundary/initial conditions}
+\author{Kwang-Il Seon}
+\date{2026-06-13}
+
+\begin{document}
+\maketitle
+
+\begin{quote}\small\itshape
+EXHALE bundles a 1-D, steady-state, transonic Parker-wind solver --- a
+Fortran port of \emph{Wind-AE} (Murray-Clay et al.\ 2009; Broome et al.\
+2025) --- under \code{src/modules/wind\_ae/}. It is used to manufacture a
+warm-start initial condition for the time-dependent EXHALE run (the
+\code{IC mode: windae} key, and the standalone \code{wind\_ae\_ic.x}).
+This note documents what the solver computes, how it solves it (a
+boundary-value relaxation from the base to the sonic point, followed by
+an outward initial-value integration), how the boundary and initial
+conditions are set, and how an arbitrary planet is reached from a shipped
+seed by parameter continuation. It also records the structure of the
+Fortran port and the gates it was validated against. Practical usage is
+in the user manual (\S``Wind-AE warm-start initial conditions''); the
+EXHALE-side BC/IC reference is \code{EXHALE\_BC\_and\_IC.tex}; the
+code-by-code comparison with EXHALE and the other escape codes is
+\code{code\_comparison.tex}; the full porting log is
+\code{md\_backup/wind\_ae\_fortran\_port\_plan.md}.
+\end{quote}
+
+\tableofcontents
+\bigskip
+
+% ===================================================================== %
+\section{What the solver computes}
+% ===================================================================== %
+Wind-AE solves the \emph{steady-state}, spherically-symmetric,
+single-streamline (substellar) hydrodynamic equations for an
+XUV-irradiated H/He atmosphere, from a deep base out through the sonic
+point to a few planetary radii. The dependent variables are the velocity
+$v$, density $\rho$, temperature $T$, the neutral fraction $Y_s$ of each
+species ($s=$ H\,I, He\,I), and the photoionization column density
+$N_{\rm col}$ of each species. Unlike EXHALE --- a time-dependent
+finite-volume code relaxed \emph{to} a steady state --- Wind-AE solves
+the stationary equations \emph{directly} as a two-point boundary-value
+problem (BVP), so there is no time integration and no Courant limit; the
+cost is that it bakes in the transonic topology (it cannot represent a
+non-launching or genuinely time-dependent atmosphere).
+
+The governing relations (code units: $r$ in \Rp, $v$ in $c_{s,0}$,
+$\rho$ in $\rho_0$, $T$ in $T_0=10^4$\,K) are mass continuity, the
+transonic momentum (Parker) equation, energy balance with photoionization
+heating and line/recombination/Ly$\alpha$/bolometric cooling, and
+photoionization--recombination equilibrium for each species:
+\begin{align}
+\frac{d\rho}{dr} &= -\rho\!\left(\frac{2}{r}+\frac{1}{v}\frac{dv}{dr}\right),\\
+\frac{dv}{dr} &= \frac{v}{v^2-\gamma T/\mu}
+   \left[\frac{2\gamma T}{\mu r}-(\gamma-1)\frac{Q}{v}-\frac{d\phi}{dr}\right],
+   \label{eq:dvdr}\\
+\frac{dT}{dr} &= (\gamma-1)\!\left(\frac{Q\mu}{v}+\frac{T}{\rho}\frac{d\rho}{dr}\right)
+   +\frac{T}{\mu}\frac{d\mu}{dr},\\
+\frac{dY_s}{dr} &= \frac{\alpha_{{\rm rec},s}\,n_e\,n_{{\rm ion},s}
+   -\Gamma_s}{v\,n_{{\rm tot},s}}\frac{R_{\rm pl}}{c_{s,0}},\qquad
+\frac{dN_{{\rm col},s}}{dr} = -Y_s\,n_s\,\frac{R_{\rm pl}}{N_{\rm col,0}},
+\end{align}
+where $Q$ is the net specific heating, $\phi$ the (optionally tidal)
+potential, $\mu$ the mean molecular weight, $\gamma=5/3$,
+$\Gamma_s$ the photoionization rate (primary $+$ secondary), and
+$\alpha_{{\rm rec},s}$ the recombination coefficient. Equation
+\eqref{eq:dvdr} is singular at the sonic point ($v^2=\gamma T/\mu$); the
+solver handles it with an L'H\^opital linearization (\S\ref{sec:sonic}).
+
+% ===================================================================== %
+\section{Solution method}
+% ===================================================================== %
+
+\subsection{Relaxation on the base$\to$sonic interval (the BVP)}
+The interval from the base $R_{\min}$ to the sonic point $r_s$ is mapped
+to a fixed parameter $q\in[0,1]$ via $r=R_{\min}+q\,z$, where $z\equiv
+r_s-R_{\min}$ is itself an unknown (a relaxed variable, constant in $r$).
+On a grid of $M=1501$ points the $N_e=4+2N_{\rm spec}=8$ finite-difference
+residual equations (one per variable: $v$, $z$, $\rho$, $T$, $Y_s$,
+$N_{{\rm col},s}$) are solved by the Numerical Recipes \code{solvde}
+Newton relaxation. Each iteration assembles the block-tridiagonal
+Jacobian \code{s} by \emph{numerical} differencing of the residuals
+(\code{difeq} $+$ \code{get\_eqn\_evals}, step $\delta = x/10^{7}$),
+factorizes it (\code{pinvs}/\code{red}/\code{bksub}), and updates the
+solution; it converges quadratically (the shipped seed relaxes to
+$\|{\rm err}\|\sim10^{-11}$ in $\sim10$ iterations). The variable
+ordering is permuted by \code{indexv} so the interior boundary conditions
+come first, as Numerical Recipes requires.
+
+\subsection{Outward integration (the IVP)}
+Past the sonic point the problem is no longer a BVP: with $r_s$ and the
+state there in hand, the same ODEs \eqref{eq:dvdr} are integrated outward
+to $R_{\max}$ as an initial-value problem with an adaptive
+Bulirsch--Stoer integrator (\code{odeint}\,$+$\,\code{bsstep}, with
+\code{mmid}/\code{pzextr}); $\sim$1000 output points are stored. The
+near-sonic singularity is past, so $dv/dr$ is evaluated directly.
+
+\subsection{The sonic point and its linearization}\label{sec:sonic}
+A transonic wind must pass smoothly through $v=c_s$, where the numerator
+and denominator of \eqref{eq:dvdr} vanish together. Two boundary
+conditions are imposed at $r_s$ (the last grid point): the
+\emph{Bernoulli} (numerator) condition and the Mach-1 (denominator)
+condition $v=c_s\cdot\code{breezeparam}$ (\code{breezeparam}$=1$ for a
+true transonic wind; $<1$ gives a breeze). Approaching $r_s$, $dv/dr$ is
+computed by an error-function-weighted blend of the analytic expression
+and an L'H\^opital linearization
+($a\,(dv/dr)^2+b\,(dv/dr)+c=0$, the positive root $=$ wind), so the
+derivative stays finite and the relaxation does not stall on the $0/0$.
+
+% ===================================================================== %
+\section{Boundary conditions}
+% ===================================================================== %
+\paragraph{Base ($r=R_{\min}$, four conditions).} Density, temperature,
+and the neutral fraction of each species are pinned to base values:
+$\rho(R_{\min})=\rho_{\rm bc}$, $T(R_{\min})=T_{\rm bc}$,
+$Y_s(R_{\min})=1$ (neutral base). $R_{\min}$ itself, with $\rho_{\rm bc}$
+and $T_{\rm bc}$, follows from a deep, nearly-hydrostatic, bolometrically
+heated base: the skin/effective temperature from $F_{\rm opt}=L_\star/(4\pi
+a^2)$, a slant-path $\tau=1$ surface for $\rho$, and a microbar base
+pressure (\code{base\_bcs} in the reference wrapper).
+\paragraph{Sonic point ($r=r_s$, two conditions).} The Bernoulli and
+Mach-1 critical-point conditions of \S\ref{sec:sonic}, plus a fixed
+sonic-point column density $N_{{\rm col},s}$ per species (self-consistently
+the integral of the neutral density from $r_s$ outward).
+
+% ===================================================================== %
+\section{Initial condition (the seed) and continuation}\label{sec:ramp}
+% ===================================================================== %
+Newton relaxation needs a nearby starting guess, and the equations admit
+infinitely many breeze solutions near the transonic one; a generic guess
+relaxes to a breeze, not the wind. Wind-AE therefore \emph{bootstraps}
+from a single shipped converged solution and \emph{continues} it to the
+target planet:
+\begin{itemize}\itemsep1pt
+\item \textbf{Seed.} One converged windsoln (the Murray-Clay fiducial hot
+  Jupiter) is shipped (\code{inputdata/windae\_seed.csv}). It provides
+  both the relaxation guess and the base BCs.
+\item \textbf{Adaptive ramp (\code{ramp\_var}).} A target parameter is
+  approached in multiplicative steps $p\leftarrow p(1+\delta)$; after each
+  step the wind is re-relaxed from the current solution. On success the
+  step accepts and $\delta$ doubles; on failure the guess is restored,
+  the parameter reset, and $\delta$ halves. The run aborts a parameter
+  only after many consecutive failures.
+\item \textbf{Ramp order (\code{ramp\_to}).} $F_{\rm XUV}\to$ gravity
+  ($R_{\rm pl}$, $M_{\rm pl}$) $\to$ star ($M_\star$, $a$, $L_\star$),
+  each by \code{ramp\_var}. The converged solution of one step is the
+  guess for the next (in the port this is an in-memory hand-off; the
+  reference wrapper round-trips it through \code{guess.inp}).
+\end{itemize}
+The port currently keeps the base BCs fixed at the seed values during the
+ramp (``static BCs''). This suffices for hot Jupiters near the seed; for
+planets far from it (very different gravity/irradiation) the base BCs
+should be re-converged each step --- the self-consistent
+\code{base\_bcs}/\code{converge\_Ncol\_sp} machinery of the reference
+wrapper --- which is the main deferred item (\S\ref{sec:limits}).
+
+% ===================================================================== %
+\section{The Fortran port}
+% ===================================================================== %
+The reference Wind-AE solver core is C ($\sim$6.3k lines incl.\ Numerical
+Recipes) driven by a Python wrapper that does the continuation. EXHALE's
+port reimplements both in Fortran, self-contained under
+\code{src/modules/wind\_ae/} (the only file that touches EXHALE's globals
+is the bridge of \S\ref{sec:use}). Module map:
+
+\begin{center}\small
+\begin{tabular}{@{}lp{8.4cm}@{}}
+\toprule
+Module(s) & Role \\
+\midrule
+\code{wae\_config,\_types,\_grid,\_status} & sizes/constants, derived
+  types, the shared $q$-grid, the graceful-failure flag \\
+\code{wae\_rate\_coeffs,\_rnew,\_rrec,\_fe,\_ion\_pots,\_lc\_*} &
+  auto-generated atomic-data tables (secondary-ionization, recombination,
+  ionization potentials, line-cooling coefficients) \\
+\code{wae\_spectrum} & GLQ multifrequency spectrum + planet parameters \\
+\code{wae\_glq\_rates} & photoionization/heating rates (incl.\ the
+  column-density rate cache) \\
+\code{wae\_soe} & physics: $\mu$, $\gamma$, recombination, $Q$, all the
+  $d/dr$'s, and the sonic-point linearization \\
+\code{wae\_eqns} & residual equations $+$ the \code{eval\_eqn} dispatcher \\
+\code{wae\_difeq} & numerical-Jacobian assembly of the \code{solvde} matrix \\
+\code{wae\_nr} & the relaxation stack \code{solvde}/\code{pinvs}/\code{red}/\code{bksub} \\
+\code{wae\_intode} & outward Bulirsch--Stoer integration \\
+\code{wae\_params,\_continuation} & input reading; seed load, \code{ramp\_var}/\code{ramp\_to} \\
+\code{wae\_ic\_writer} & project the solution onto the EXHALE grid, write \code{*\_IC.txt} \\
+\code{wae\_exhale\_input} & map an EXHALE \code{input.inp} to Wind-AE parameters \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\paragraph{Validation (against the C/Python reference).} Each layer was
+gated with a trace-driver comparison:
+the photoionization/heating rates and the per-species $dY_s/dr$ are
+\emph{bit-identical}; the heating/cooling $Q$ and the residual equations
+match to machine precision except where the libm \code{erf} differs from
+gfortran's by $\sim$1 ulp (a benign $\sim10^{-10}$, washed out at the
+Newton fixed point); the \textbf{full windsoln} (relaxation $+$ outward
+integration) reproduces the C solution to relative
+$\le2\times10^{-11}$ on three planets; and the continuation ramp
+reproduces the Python wrapper's mass-loss rate to five digits. A subtle
+quirk of the reference --- the rate cache keys on column density only and
+ignores $Y_s$ changes --- had to be reproduced exactly for the numerical
+Jacobian to match.
+
+% ===================================================================== %
+\section{Using it in EXHALE}\label{sec:use}
+% ===================================================================== %
+\paragraph{In-process: \code{IC mode: windae}.} With this key in
+\code{input.inp} (and \code{Load IC?\ False}), \code{init.f90} calls
+\code{wae\_generate\_ic} (module \code{wae\_exhale\_bridge}), which maps
+the planet's EXHALE parameters to Wind-AE
+($F_{\rm XUV}=J_{\rm XUV}$, $L_\star$ from \code{Stellar Teff/radius},
+$R_{\rm pl}=R_0$, the He/H ratio, the base density $n_0$ and temperature
+$T_0$, and \code{Domain mode}$\to$tidal on/off), ramps the seed to the
+planet, solves the wind, and writes the IC onto the EXHALE grid
+(\code{output/*\_IC.txt}); \code{load\_IC} then ingests it. The whole
+input\,$\to$\,solve\,$\to$\,IC\,$\to$\,run is one \code{EXHALE.x}
+invocation. Because EXHALE re-solves the ionization (and metals) from the
+first step, the Wind-AE IC is only a \emph{warm start} --- finish with
+\code{Solver: Newton} for a quantitative \Mdot.
+\paragraph{Standalone: \code{wind\_ae\_ic.x}.} \code{make wind\_ae\_ic}
+builds a separate executable that does the same out of process, reading an
+\code{input.inp} and writing the IC files on a grid taken from an
+\code{IC\_dump.txt}; run EXHALE on the result with \code{Load IC?\ True}.
+The standalone tool shares the solver modules but not the EXHALE bridge,
+so it stays self-contained.
+
+% ===================================================================== %
+\section{Scope and limitations}\label{sec:limits}
+% ===================================================================== %
+\begin{itemize}\itemsep1pt
+\item \textbf{H/He only.} The port fixes $N_{\rm spec}=2$ (H\,I, He\,I) ---
+  one ionization stage per species. It does \emph{not} model the trace
+  metals, Fe/Ca cooling, the He triplet, or the transit spectrum; those
+  remain EXHALE's job. For an IC this is sufficient: EXHALE adds the
+  metals in equilibrium from the first step, and the IC writer rescales
+  the density to EXHALE's exact He/H.
+\item \textbf{Static-BC continuation.} The ramp keeps the seed's base
+  BCs; it reaches seed-adjacent hot Jupiters well, but strongly-bound or
+  far-from-seed planets (e.g.\ HD\,189733b) ramp slowly or fail. For
+  those, use \code{IC mode: auto}. Re-converging the base BCs during the
+  ramp (the \code{base\_bcs}/\code{ramp\_base\_bcs}/\code{converge\_Ncol\_sp}
+  machinery) is the main planned extension.
+\item \textbf{Substellar geometry, Coriolis cutoff.} Wind-AE is a single
+  substellar streamline integrated only to a few \Rp; beyond the Coriolis
+  turning radius 3-D effects dominate. The mass-loss rate carries the
+  Murray-Clay $0.33$ geometric factor when compared to a global rate.
+\item \textbf{erf $\sim$1 ulp.} The library error function differs from
+  gfortran's at the last bit; irrelevant for an IC, noted for the record.
+\end{itemize}
+
+\end{document}

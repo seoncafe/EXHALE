@@ -35,7 +35,7 @@
 
       ! Schema header ('#' comment lines; readers that predate the header
       ! can skip them, numeric content is unchanged)
-      write(2,'(A)') '# ATES-metal schema 2'
+      write(2,'(A)') '# EXHALE schema 2'
       write(2,'(A)') '# columns r[Rp] n[cm-3] v[cm/s] p[cgs] T[K] '//   &
                      'heat[erg/cm3/s] cool[erg/cm3/s]'
 
@@ -59,7 +59,7 @@
 
       ! Schema header: species labels in column order, generated from the
       ! species table so they stay correct when species are added.
-      write(3,'(A)') '# ATES-metal schema 2'
+      write(3,'(A)') '# EXHALE schema 2'
       write(3,'(A)', advance='no') '# columns r[Rp] HI HII HeI HeII '// &
                                    'HeIII HeITR'
       do i = 1,n_mion

@@ -1,4 +1,4 @@
-%% ATES-metal: Convergence reliability and the steady-state Newton solver.
+%% EXHALE: Convergence reliability and the steady-state Newton solver.
 %% Complete record of the 2026-06-10/11 work: the Stage-I extensibility
 %% refactor (summary), the convergence-criterion study (premature-dip
 %% discovery, level gate, residual diagnostic, residual-based stop), and the
@@ -30,7 +30,7 @@
 
 \begin{document}
 
-\title{ATES-metal: Convergence Reliability and the\\ Steady-State Newton
+\title{EXHALE: Convergence Reliability and the\\ Steady-State Newton
 (JFNK) Solver\\ \large(work log, 2026-06-10/11)}
 \author{Kwang-Il Seon}
 \date{Last updated: 2026-06-11}
@@ -38,7 +38,7 @@
 
 \begin{quote}\small\itshape
 This memo is the complete record of two tightly linked developments in
-\code{ATES-metal}: (i) the discovery that the historical convergence
+\code{EXHALE}: (i) the discovery that the historical convergence
 criterion ($du<10^{-3}$ on the mass-flux spread) can stop runs at
 \emph{premature, non-steady} snapshots --- the WASP-121b reference used
 throughout earlier work was such a snapshot, low by $\sim$0.08~dex in
@@ -119,7 +119,7 @@ collapse to one true state plus premature snapshots along the way.
 \paragraph{Level-stability gate (\code{Level tol:}).} A converged/stalled
 stop additionally requires the mean $|\rho v r^2|$ over $[j_{\min},N]$ to
 change by less than \code{lev\_th} (relative) across the last
-$N_{\rm stall}$ steps (ring buffer in \code{ATES\_main}; the relative level
+$N_{\rm stall}$ steps (ring buffer in \code{EXHALE\_main}; the relative level
 change is now the 4th column of the per-step stdout). This correctly
 refuses the premature dip (the cold run marches past step 7{,}288), but a
 practical tolerance cannot discriminate ultra-slow drifts; it is necessary,
@@ -377,7 +377,7 @@ environment hook & effect\\
 \begin{lstlisting}[language=bash]
 # input.inp: ... + "Valve eps: 1.0e-4" + "Resid tol: 1.0e-3"
 # output/{Hydro_ioniz,Ion_species}_IC.txt: a warm-start state
-ATES_PTC=1 ATES_PTC_JFNK=1 ATES_PTC_DTAU0=1.0 ./ATES.x
+ATES_PTC=1 ATES_PTC_JFNK=1 ATES_PTC_DTAU0=1.0 ./EXHALE.x
 \end{lstlisting}
 
 %====================================================================
@@ -448,7 +448,7 @@ path; legacy byte-identity re-verified): (i)~\emph{best-iterate tracking
 and fail-fast} in \code{solve\_steady\_jfnk} --- the best residual state
 is stored, and the solve aborts with \code{info=2} after 15 outer
 iterations without a new best, returning the best iterate; (ii)~in
-\code{ATES\_main}, \code{info}$\ne$0 is treated as a failure: the run
+\code{EXHALE\_main}, \code{info}$\ne$0 is treated as a failure: the run
 prints \code{JFNK failed}, keeps the best iterate, disables the Newton
 mode, and \emph{resumes plain time-marching} with the $du$-based stops
 re-armed, so an unconverged Newton state can never masquerade as the
@@ -542,7 +542,7 @@ file & content\\
  off)\\
 \code{src/modules/files\_IO/input\_read.f90} & option parsing (keyword
  lines after \code{Force start:})\\
-\code{ATES\_main.f90} & level/residual monitors and stops; env hooks\\
+\code{EXHALE\_main.f90} & level/residual monitors and stops; env hooks\\
 \code{regression/} & harness, goldens, and all probe run directories
  (\code{ptc\_warm}, \code{crit\_cold}, \code{resid\_*}, \dots)\\
 \code{docs/steady\_solver\_design.md} & incremental design notes

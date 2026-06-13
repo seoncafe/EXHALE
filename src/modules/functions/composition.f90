@@ -4,7 +4,7 @@
       ! densities, and converts between pressure and temperature.
       !
       ! This collapses the three near-identical extraction blocks that were
-      ! repeated in ATES_main (and the inline copies in energy_semi_implicit
+      ! repeated in EXHALE_main (and the inline copies in energy_semi_implicit
       ! / post_process), so that the electron-density and total-density
       ! POLICY lives in exactly one place.
       !
@@ -32,7 +32,7 @@
                                        nheii, nheiii, nheiTR, nm,       &
                                        ne, n_tot)
       ! (rho, f_sp) -> all number densities + ne + n_tot, reproducing the
-      ! legacy ATES_main extraction blocks exactly. The He arrays are
+      ! legacy EXHALE_main extraction blocks exactly. The He arrays are
       ! intent(inout): like the original module-scope locals they keep
       ! their previous values when helium is absent (they are then never
       ! read by calc_ne/calc_ntot, which guard on thereis_He).

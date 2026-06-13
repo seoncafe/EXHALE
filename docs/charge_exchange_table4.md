@@ -2,7 +2,7 @@
 
 This is the authoritative, image-verified transcription of Table 4 of Huang,
 Koskinen, Lavvas & Fossati (2023, ApJ 951, 123), "Charge Exchange Rates," used
-to implement charge exchange in `ATES-metal` (Phase 1d). Every coefficient and
+to implement charge exchange in `EXHALE` (Phase 1d). Every coefficient and
 `exp()` argument below was read directly from the rendered PDF (pp. 25-26) at
 high magnification, not from a lossy text extraction. Where the layout could be
 read two ways, the resolved reading is noted.

@@ -110,9 +110,13 @@
                                           !  3 = auto (select_IC_auto picks
                                           !  the family from the cold
                                           !  sonic-point topology; see
-                                          !  docs/auto_ic_design.md). The
-                                          !  explicit legacy keys below
-                                          !  take precedence over auto.
+                                          !  docs/auto_ic_design.md);
+                                          !  4 = windae (init.f90 builds an
+                                          !  in-process Wind-AE warm-start
+                                          !  IC via wae_exhale_bridge, then
+                                          !  load_IC reads it). The explicit
+                                          !  legacy keys below take
+                                          !  precedence over auto.
       logical :: transonic_ic  = .false.  ! IC type (set via input.inp,
                                           !  "Transonic IC: True"; default off):
                                           !  .false. = isothermal hydrostatic
@@ -151,7 +155,7 @@
       ! Jacobian Newton (+hybrd1 fallback) vs. legacy MINPACK hybrd1
       ! ("Newton solver: False"). use_brent_tsolve: the post-process energy
       ! equation via the bracketing Brent root-finder vs. legacy hybrd1 + the
-      ! 2x-band reject ("Brent solver: False"). See docs/Update_ATES_solver.
+      ! 2x-band reject ("Brent solver: False"). See docs/Update_EXHALE_solver.
       logical :: use_newton_ieq  = .true.
       logical :: use_brent_tsolve = .true.
 
@@ -196,7 +200,7 @@
 
 	   ! Numerical constants
       real*8 ::  CFL    = 0.6         ! CFL number; settable in input.inp via "CFL:" (lower = smaller dt, may damp a numerical limit cycle)
-      real*8 ::  du_th     = 1.0d-3   ! final (stage-2 / WENO3) escape-momentum threshold; settable in input.inp via "du_th [PLM,WENO3]:". 1e-3 is the original ATES-Code-main value (ATES-metal had loosened it to 2e-2, accepting ~2% mass-flux spread).
+      real*8 ::  du_th     = 1.0d-3   ! final (stage-2 / WENO3) escape-momentum threshold; settable in input.inp via "du_th [PLM,WENO3]:". 1e-3 is the original ATES-Code-main value (EXHALE had loosened it to 2e-2, accepting ~2% mass-flux spread).
       real*8 ::  du_th_plm = -1.0d0   ! stage-1 (PLM) threshold; if > du_th the run is two-stage: PLM until du<du_th_plm, then switch reconstruction to WENO3 and converge at du<du_th. <=0 => single-stage at du_th.
       real*8,parameter ::  dtu_th = 1.0d-8      ! Threshold variation of time deriv.
       real*8           ::  du                   ! Initial momentum variation
@@ -273,7 +277,7 @@
       integer :: N_resid  = 500
 
       ! Energy source-term integrator: .true. = semi-implicit backward-Euler
-      ! cell solve (ATES-metal default); .false. = original explicit forward
+      ! cell solve (EXHALE default); .false. = original explicit forward
       ! Euler ("Energy solver: Explicit" in input.inp). Runtime switch kept for
       ! solver-component isolation tests.
       logical :: use_semi_implicit_energy = .true.

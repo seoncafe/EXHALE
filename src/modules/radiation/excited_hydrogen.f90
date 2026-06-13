@@ -19,7 +19,7 @@
    ! the global feedback arrays stay zero, so the build reproduces Phase 2.
    !
    ! Coupling is DECOUPLED (lagged-explicit): excited_H_update is called once
-   ! per timestep from ATES_main BEFORE the ionization/energy solve, fills the
+   ! per timestep from EXHALE_main BEFORE the ionization/energy solve, fills the
    ! module-level feedback/diagnostic arrays in global_parameters from the
    ! current state, and those frozen arrays are read inside ioniz_eq -- never
    ! inside its Newton iteration. The single relaxation then converges hydro,

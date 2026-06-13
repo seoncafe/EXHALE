@@ -1,0 +1,7 @@
+#<parameter>: <value>           #<units>;     <comment>
+Mp:        1.366704000000e+30   #g;              0.72 MJ
+Ruv:       1.001602920000e+10   #cm;             1.40 RJ
+Mstar:     2.386104000000e+33   #g;              1.20 Msun
+semimajor: 7.180704000000e+11   #cm;             0.05 au
+Ftot:      1.081296645479e+03   #erg/cm^2/s; 2.32e+02 FuvEarth
+Lstar:     6.124800000000e+33   #erg/s;          1.60 Lstar

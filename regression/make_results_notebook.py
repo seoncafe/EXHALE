@@ -5,7 +5,7 @@ nb = nbf.v4.new_notebook()
 C, M = nbf.v4.new_code_cell, nbf.v4.new_markdown_cell
 cells = []
 
-cells.append(M(r"""# ATES-metal steady-state (JFNK) solver — results
+cells.append(M(r"""# EXHALE steady-state (JFNK) solver — results
 
 Companion to `docs/steady_solver_memo.pdf` and `docs/steady_solver_design.md`.
 All data are read from the run directories under `regression/` (execute this

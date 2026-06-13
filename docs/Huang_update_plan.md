@@ -1,6 +1,6 @@
-# Upgrade Plan: ATES-metal → Huang et al. (2023) WASP-121b Model
+# Upgrade Plan: EXHALE → Huang et al. (2023) WASP-121b Model
 
-This plan describes how to upgrade `ATES-metal` to reproduce the ultrahot-Jupiter
+This plan describes how to upgrade `EXHALE` to reproduce the ultrahot-Jupiter
 escape model of **Huang, Koskinen, Lavvas & Fossati (2023, ApJ 951, 123)** — the
 WASP-121b model with trace-metal chemistry, excited hydrogen H(n=2) / Lyα
 radiative transfer, Roche-lobe-overflow (RLOF) tidal dynamics, and a velocity-
@@ -10,7 +10,7 @@ refer to Huang+2023 unless noted).
 
 > [!IMPORTANT]
 > **Read this first — why the previous attempt was set aside.**
-> The earlier attempt (now in `ATES/ATES-metal_something_wrong/`) implemented
+> The earlier attempt (now in `ATES/EXHALE_something_wrong/`) implemented
 > *all* phases in one pass and verified only that the code **compiled** and the
 > LaTeX built. It was never validated against the paper's numerical results, and
 > the physics came out wrong. **The governing rule of this plan is: implement one
@@ -20,7 +20,7 @@ refer to Huang+2023 unless noted).
 
 ---
 
-## 0. What ATES-metal already has (do **not** reinvent these)
+## 0. What EXHALE already has (do **not** reinvent these)
 
 The current tree is already well past a bare ATES v2.0:
 
@@ -61,7 +61,7 @@ Asplund+2009). *(The old draft omitted **S**.)*
 Ionization states actually solved by Huang+2023:
 - **2nd ionization** (neutral, +, ²⁺): **Mg, Fe, Si, Ca** only.
 - **neutral + 1st ion** (neutral, +): H, **O, C, N, S, Na, K**.
-  *(Note: Huang treats C/N/O only to 1st ionization; ATES-metal currently
+  *(Note: Huang treats C/N/O only to 1st ionization; EXHALE currently
   carries C/N/O to 2nd. See Open Question Q1.)*
 
 Counting ratio-unknowns (Huang's choice): H(1) + He(2) + Mg/Fe/Si/Ca(2×4=8) +
@@ -96,7 +96,7 @@ solver from this table, not from a remembered number.
 > **Recombination endgame — Huang's rates *for validation*, then Badnell *for production*.**
 > The Badnell RR+DR fits (Badnell 2006; the OPEN-ADAS / Badnell tabulations) are
 > considered the more accurate recombination rates, and are already what
-> ATES-metal uses for C/N/O. **The intended final state is therefore to replace
+> EXHALE uses for C/N/O. **The intended final state is therefore to replace
 > all metal recombination rates (H excepted — keep case B) with Badnell RR+DR.**
 > Plan accordingly:
 > 1. Build the recombination code so the per-ion rate source is **swappable**
@@ -313,7 +313,7 @@ layer).
 > shifts Ṁ by +0.00 dex and T_peak by −40 K — negligible, as expected for a 4e-5
 > trace species with **no Mg line cooling yet** (`cool_MgI=cool_MgII=0`; Phase 2)
 > and **no Mg+H⁺ charge exchange** (Phase 1d). Details + notebook:
-> `Update_ATES.{md,tex}` §2, `mg_validation/Phase1_Mg_validation.ipynb`.
+> `Update_EXHALE.{md,tex}` §2, `mg_validation/Phase1_Mg_validation.ipynb`.
 
 > [!NOTE]
 > **Progress (2026-06-05) — Phase 1a done (interface/data-structure refactor).**
@@ -332,7 +332,7 @@ layer).
 > the one uninitialized-memory HeITR ghost-cell slot, line 1 col 7, unused in this
 > run). Phase 1b should now need only metadata rows + atomic/abundance data, with
 > no edits to `System_HeH_metals.f90` or `ionization_equilibrium.f90`. Charge
-> exchange stays C/N/O-only (Phase 1d). Details: `Update_ATES.{md,tex}` §3.
+> exchange stays C/N/O-only (Phase 1d). Details: `Update_EXHALE.{md,tex}` §3.
 > **Next: the Phase-1b batch (Si, Ca, Na, K, S).**
 
 > [!NOTE]
@@ -361,7 +361,7 @@ layer).
 > overlay) stays open until **Phase 2** metal line cooling. Frozen regression
 > reference for Phase 1c: `phase1b_validation/.gate_ref_cno_mg_vfky96/output/`
 > (round-off match on shared columns, since adding Fe will change the column
-> count). Details + notebook: `Update_ATES.{md,tex}` §4,
+> count). Details + notebook: `Update_EXHALE.{md,tex}` §4,
 > `phase1b_validation/Phase1b_validation.ipynb`.
 > **Next: Phase 1c — iron (Fe I/II/III).**
 
@@ -397,7 +397,7 @@ layer).
 > comparable to Huang** because Fe II is their dominant low-altitude coolant
 > (Phase 2). Frozen iron-on baseline for Phase 1d/2:
 > `phase1c_validation/.gate_ref_cno_mg_fe/`. Details + notebook:
-> `Update_ATES.{md,tex}` §5, `phase1c_validation/Phase1c_validation.ipynb`.
+> `Update_EXHALE.{md,tex}` §5, `phase1c_validation/Phase1c_validation.ipynb`.
 > **Next: Phase 1d — charge exchange with H for all metals (Table 4), incl.
 > Fe⁺+H⁺↔Fe²⁺+H.**
 
@@ -430,7 +430,7 @@ layer).
 > outflow nearly unchanged. All three runs zero NaNs. New frozen baseline for
 > **Phase 2** (the C/N/O re-sourcing shifted it off the Phase-1c snapshot):
 > `phase1d_validation/.gate_ref_cno_mg_fe_cx/`. Details + notebook:
-> `Update_ATES.{md,tex}` §6, `phase1d_validation/Phase1d_validation.ipynb`.
+> `Update_EXHALE.{md,tex}` §6, `phase1d_validation/Phase1d_validation.ipynb`.
 > **With this the ionization-network half of Phase 1 is physically complete.
 > Next: Phase 2 — metal line cooling (incl. Fe II).**
 
@@ -445,14 +445,14 @@ layer).
 > **Progress (2026-06-05) — Phase 2 done; gate closed (user-validated).**
 > The CHIANTI-based line coolants (Mg I/II, Ca II, Na I, Fe II on top of the
 > C/N/O coolants) are active in the coupled energy balance; per-species physics
-> and atomic-data provenance live in `Update_ATES_early_phase` (Parts II–III),
+> and atomic-data provenance live in `Update_EXHALE_early_phase` (Parts II–III),
 > and the integrated WASP-121b gate is written up
-> in `Update_ATES.{md,tex}` §7. The gate was closed with a new **exact
+> in `Update_EXHALE.{md,tex}` §7. The gate was closed with a new **exact
 > per-channel cooling diagnostic**: `eval_cool` gained an optional `cool_chan`
 > out-array (an exact split of the total `cool` into H/He recombination,
 > collisional ionization, collisional excitation, bremsstrahlung, and one column
 > per metal ion), and `write_cool_breakdown_eq` (utils_ion_eq, called once from
-> `ATES_main.f90`) dumps `output/Cooling_breakdown.txt`. Consistency:
+> `EXHALE_main.f90`) dumps `output/Cooling_breakdown.txt`. Consistency:
 > `max |Σchannels/cool − 1| = 3.7e-16` (machine eps). **Result (WASP-121b eq):**
 > in **1.15 ≲ r/Rp ≲ 1.4** the dominant radiative coolants are **Fe II (~30%)
 > and Mg II (~25%)**, jointly ~55%; metals are **57–85%** of radiative cooling
@@ -537,7 +537,7 @@ holds across the RK loop.
 ## 4. Open questions / decisions (with recommendations)
 
 > [!CAUTION]
-> **Q1 — C/N/O ionization depth.** ATES-metal carries C/N/O to 2nd ionization;
+> **Q1 — C/N/O ionization depth.** EXHALE carries C/N/O to 2nd ionization;
 > Huang+2023 stops at 1st. *Recommend keeping ATES's 2nd-ion C/N/O* (more
 > complete, already validated) and noting the difference, rather than reducing
 > the network to match the paper exactly.

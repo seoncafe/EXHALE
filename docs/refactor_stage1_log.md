@@ -14,7 +14,7 @@ harness; "PASS" means the gate ran green immediately after the step.
   `wasp_full` (He 2^3S on + metals on; exercises the HeITR and metal paths) and
   `wasp_he23off` (He 2^3S off + metals on; exercises the HeITR-off branches).
 - `test_roundtrip.sh` + `check_roundtrip.py` — restart loader test using the
-  `ATES_DUMP_IC=1` hook in `ATES_main.f90`, which writes the state exactly as
+  `ATES_DUMP_IC=1` hook in `EXHALE_main.f90`, which writes the state exactly as
   loaded and stops. The dump happens *before* the first ionization-equilibrium
   solve: the per-step equilibrium re-solve would otherwise re-derive the metal
   fractions and mask a loader that resets metals to neutral.
@@ -23,10 +23,10 @@ harness; "PASS" means the gate ran green immediately after the step.
 
 - `species_table.f90`: `isp_HI..isp_HeTR` named constants for the fixed
   `f_sp(:,1:6)` H/He/HeITR layout; literal column indices 1–6 eliminated
-  across `ATES_main`, `energy_semi_implicit`, `set_IC`, `load_IC`.
+  across `EXHALE_main`, `energy_semi_implicit`, `set_IC`, `load_IC`.
 - New `src/modules/functions/composition.f90`: `get_species_densities`
   (rho, f_sp → all number densities + ne + n_tot), `comp_T_from_p`,
-  `comp_p_from_T`. The three near-identical extraction blocks in `ATES_main`
+  `comp_p_from_T`. The three near-identical extraction blocks in `EXHALE_main`
   collapse into calls; the electron/total-density policy now lives in one
   place. `eos_include_metals` flag added (default `.false.`, byte-identical;
   hook for a future fully-coupled-metal EOS experiment).
@@ -36,7 +36,7 @@ harness; "PASS" means the gate ran green immediately after the step.
 - `write_output.f90`: schema-2 `#` headers on `Hydro_ioniz*.txt` and
   `Ion_species*.txt`; the species-label line is generated from
   `species_table`, so it stays correct when species are added. NumPy readers
-  (`ATES_plots.py`, `TPM.py`, `examples/ates_io.py`) are unaffected
+  (`EXHALE_plots.py`, `TPM.py`, `examples/exhale_io.py`) are unaffected
   (`np.loadtxt` skips `#` by default).
 - `load_IC.f90` rewritten: schema-2 files are read by label mapping
   (order-free), restoring **all** species including the metal ions — metal
@@ -82,7 +82,7 @@ deferred until that parallelization is actually scheduled.
 2. Rate data: a recombination/collisional-ionization/cooling routine (or
    table) per new ion, plus one `case` line in each `*_by_ion` dispatcher.
 3. An abundance entry (`metals.inp` label; `melem_ab` slot via input_read).
-4. Nothing in `ATES_main`, `set_IC`, `load_IC`, `write_output`, or the
+4. Nothing in `EXHALE_main`, `set_IC`, `load_IC`, `write_output`, or the
    composition/EOS path — those are all table-driven now.
 
 ## Appendix — convergence criterion + local-time-stepping study (2026-06-10)
@@ -128,7 +128,7 @@ Revised conclusions (superseding the first draft of this appendix):
 
 ## Steady-residual diagnostic (2026-06-10) — criterion-independent convergence
 
-`ATES_RESIDUAL=1` (env hook in ATES_main, like ATES_DUMP_IC) loads a state,
+`ATES_RESIDUAL=1` (env hook in EXHALE_main, like ATES_DUMP_IC) loads a state,
 evaluates the finite-volume steady residual R = du/dt once (reusing
 Reconstruct + RK_rhs for dF, S and ioniz_eq for heat,cool; WENO3), and stops.
 R(:,1)=dF-S (mass), R(:,2)=dF-S (mom), R(:,3)=dF_E-S_E-(heat-cool). Reported as

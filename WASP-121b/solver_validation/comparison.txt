@@ -1,5 +1,5 @@
 ======================================================================
- ATES-metal solver-upgrade validation (WASP-121b Case B, PP-only sweep)
+ EXHALE solver-upgrade validation (WASP-121b Case B, PP-only sweep)
 ======================================================================
  newton  : ioniz-eq solver: Newton 504 / 504 solves (100.00%); rest fell back to hybrd1
  hybrd1  : ioniz-eq solver: Newton 0 / 504 solves (  0.00%); rest fell back to hybrd1

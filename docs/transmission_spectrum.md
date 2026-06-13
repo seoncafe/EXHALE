@@ -116,7 +116,7 @@ center in cgs. A different convention requires rescaling the constant.
 
 - `n2_populations(T, n1s, ne, Jlya, G2s, G2p)` returns `(n2s, n2p, n2)`.
 - **Compatibility fix:** the `Ion_species.txt` reader now uses
-  `usecols=range(7)` (ATES-metal's file has 16 columns including the
+  `usecols=range(7)` (EXHALE's file has 16 columns including the
   trace metals); this is also correct for the old 13- and 7-column files.
 
 ## References

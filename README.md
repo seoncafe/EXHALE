@@ -24,7 +24,7 @@ fork of the ATES code (Caldiroli et al. 2021; Biassoni et al. 2024), adding:
   doublets Mg II h&k, Ca II H&K, and Na I D
 
 For a complete description of the physics, solver, and all input parameters
-see **`docs/ATES_user_manual.pdf`**.
+see **`docs/EXHALE_user_manual.pdf`**.
 
 ---
 
@@ -53,35 +53,37 @@ No additional installation step is required.
 
 ```
 EXHALE/
-├── ATES_main.f90          # program entry point
+├── EXHALE_main.f90          # program entry point
 ├── Makefile               # incremental build (FC=gfortran default)
-├── run_ATES.sh            # optional GUI launcher (writes input.inp, calls make)
+├── run_EXHALE.sh            # optional GUI launcher (writes input.inp, calls make)
 ├── src/
 │   ├── modules/           # Fortran source modules (flux, init, radiation, …)
-│   └── utils/             # Python GUI (ATES_interface_main.py), fortdep.py
+│   └── utils/             # Python GUI (EXHALE_interface_main.py), fortdep.py
 ├── inputdata/             # opacity / SED table samples (*.atesopa, Jlya.txt, …)
 ├── cooling_data/          # CHIANTI cooling-formula fit scripts + notebooks
 ├── examples/
-│   ├── inputs/            # 10 ready-made HD 189733 b input configurations
-│   ├── ates_io.py         # Python loaders for all output files
-│   ├── ATES_analysis.ipynb
+│   ├── 01_legacy_marching/ … 12_windae_ic_hd209/  # ready-made input configs
+│   ├── README.md          # one-line description of each config folder
+│   ├── exhale_io.py         # Python loaders for all output files
+│   ├── EXHALE_analysis.ipynb
 │   └── tutorial/          # minimal worked example (generic hot Jupiter)
 ├── docs/
-│   ├── ATES_user_manual.pdf   # full reference manual
+│   ├── EXHALE_user_manual.pdf   # full reference manual
 │   ├── cooling_formulas.pdf   # analytic cooling-coefficient reference
-│   ├── ATES_BC_and_IC.pdf     # boundary- and initial-condition reference
+│   ├── EXHALE_BC_and_IC.pdf     # boundary- and initial-condition reference
 │   ├── code_comparison.pdf    # BC/IC/solver vs ATES, Salz, Kubyshkina, Murray-Clay
 │   ├── steady_solver_memo.pdf # Newton-Krylov design notes
+│   ├── wind_ae_solver.pdf     # bundled Wind-AE solver (IC mode: windae)
 │   └── …
 ├── observational_data/    # digitized observational comparison data
 ├── TPM.py                 # transmission spectrum post-processor
-├── ATES_plots.py          # live / static profile plotter
+├── EXHALE_plots.py          # live / static profile plotter
 ├── roche_recon.py         # Roche-lobe geometry helper
 └── eta_approx.py          # analytic heating-efficiency approximation
 ```
 
 Build artifacts land in `build/`; `make clean` removes object/module files
-while keeping `ATES.x`.
+while keeping `EXHALE.x`.
 
 ---
 
@@ -91,8 +93,8 @@ while keeping `ATES.x`.
 make                    # gfortran (default)
 make FC=ifort           # ifort
 make FC=ifx             # ifx
-make clean              # remove build/ objects and modules (keeps ATES.x)
-make distclean          # remove build/ and ATES.x
+make clean              # remove build/ objects and modules (keeps EXHALE.x)
+make distclean          # remove build/ and EXHALE.x
 ```
 
 ---
@@ -102,10 +104,10 @@ make distclean          # remove build/ and ATES.x
 ### Option A — GUI (writes input.inp automatically)
 
 ```bash
-chmod +x run_ATES.sh
-./run_ATES.sh           # gfortran
-./run_ATES.sh --ifort   # ifort
-./run_ATES.sh --ifx     # ifx
+chmod +x run_EXHALE.sh
+./run_EXHALE.sh           # gfortran
+./run_EXHALE.sh --ifort   # ifort
+./run_EXHALE.sh --ifx     # ifx
 ```
 
 The Tk interface opens, you fill in the planetary parameters, press **Done**,
@@ -118,17 +120,17 @@ legacy convergence behavior (single-stage marching at `du < 1e-3`, no
 Newton finish).  All EXHALE extensions are opt-in keys appended to
 `input.inp` (`du_th [PLM,WENO3]`, `Solver: Newton`, `Domain mode`, ...)
 or separate runtime files (`metals.inp`, `opacity.inp`), so to use them
-add the lines by hand or start from `examples/inputs/` (Option B).
+add the lines by hand or start from `examples/` (Option B).
 
 ### Option B — direct (recommended for scripted or repeated runs)
 
-1. Edit `input.inp` (copy from `examples/inputs/` as a starting point).
+1. Edit `input.inp` (copy from `examples/` as a starting point).
 2. If metals are required, place a `metals.inp` in the same directory.
 3. Build and run:
 
 ```bash
 make
-./ATES.x
+./EXHALE.x
 ```
 
 ### Recommended convergence workflow
@@ -192,7 +194,7 @@ adapt to the column layout automatically.
 When **Load IC** is enabled the previous outputs are copied to `*_IC.txt`
 and read back as initial conditions for a restart run.
 
-Full column definitions are in `docs/ATES_user_manual.pdf` §4.
+Full column definitions are in `docs/EXHALE_user_manual.pdf` §4.
 
 ---
 
@@ -201,15 +203,15 @@ Full column definitions are in `docs/ATES_user_manual.pdf` §4.
 ```python
 import sys
 sys.path.insert(0, 'examples/')
-import ates_io
+import exhale_io
 
-run = ates_io.Run('output/')   # load all output files
+run = exhale_io.Run('output/')   # load all output files
 print(run.r)        # radius [Rp]
 print(run.T)        # temperature [K]
 print(run.Mdot)     # mass-loss rate [g/s]
 ```
 
-See `examples/ates_io.py` for the full API and `examples/ATES_analysis.ipynb`
+See `examples/exhale_io.py` for the full API and `examples/EXHALE_analysis.ipynb`
 for a worked example.
 
 ---
@@ -217,8 +219,8 @@ for a worked example.
 ## Live plot during a run
 
 ```bash
-python3 ATES_plots.py          # plot current output (static)
-python3 ATES_plots.py --live 4 # refresh every 4 s
+python3 EXHALE_plots.py          # plot current output (static)
+python3 EXHALE_plots.py --live 4 # refresh every 4 s
 ```
 
 The plotter reads the `# columns` headers, overlays the post-processed
@@ -250,8 +252,9 @@ and the manual's TPM section.
 
 ## Example configurations
 
-Ready-made `input.inp` templates for HD 189733 b covering all physics/solver
-combinations are in `examples/inputs/`:
+Ready-made `input.inp` templates covering all physics/solver combinations
+are in `examples/` (folders `01`–`11` are HD 189733 b; `12` is HD 209458 b).
+See `examples/README.md` for the exact lines each one adds:
 
 | Folder | Description |
 |--------|-------------|
@@ -265,6 +268,8 @@ combinations are in `examples/inputs/`:
 | `08_full/` | Full physics (metals + He 2³S + Balmer/Lya) |
 | `09_spherical/` | Extended spherical domain |
 | `10_warm_seed_ic/` | Warm-seed initial condition |
+| `11_windae_ic/` | In-process Wind-AE warm-start IC — deliberate non-converging case (HD 189733 b stalls the static-BC ramp; use `IC mode: auto`) |
+| `12_windae_ic_hd209/` | In-process Wind-AE warm-start IC that works (HD 209458 b, seed-adjacent) |
 
 ---
 

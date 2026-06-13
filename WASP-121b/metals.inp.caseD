@@ -3,7 +3,7 @@
 # Each value is the TOTAL element abundance n_X/n_H (all ionization
 # stages summed); the ionization-equilibrium solver distributes it over
 # the ion stages.
-# ATES-metal reads this at runtime (no recompile); remove the file to
+# EXHALE reads this at runtime (no recompile); remove the file to
 # run metals-off.
 C     2.69e-4
 N     6.76e-5

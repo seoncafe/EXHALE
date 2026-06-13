@@ -286,7 +286,7 @@ $R_\star,T_\star$ (see the comparison notebook).
     estimate for $J_{\rm Ly\alpha}$, with $F_{\rm LyC}$ taken as the
     absorbed stellar LyC flux (\S\ref{sec:jlya}).
   \item \textbf{Compatibility fix.} \texttt{Ion\_species.txt} in
-    ATES-metal carries trace-metal columns (16 columns total), so the
+    EXHALE carries trace-metal columns (16 columns total), so the
     reader was changed to \texttt{usecols=range(7)} to take only
     $r$ and the six H/He species. This also remains correct for the old
     13-column (C/O-only) and 7-column (H/He-only) outputs.
@@ -296,7 +296,7 @@ $R_\star,T_\star$ (see the comparison notebook).
 \section{Validation}
 %=============================================================================
 
-Run end-to-end on the converged HD\,209458b ATES-metal output
+Run end-to-end on the converged HD\,209458b EXHALE output
 (\texttt{output/*\_adv.txt}), the module is stable and \texttt{NaN}-free
 and yields clean H$\alpha$ and H$\beta$ absorption lines at $6562.8$ and
 $4861.4$\,\AA{}. With the Huang $J_{\rm Ly\alpha}$ estimate

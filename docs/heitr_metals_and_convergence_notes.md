@@ -9,7 +9,7 @@ work were later revised, so the wording below is deliberately tentative.*
 
 ## 1. Code changes (in the tree, compiled)
 
-These are concrete, verifiable changes to `ATES-metal`.
+These are concrete, verifiable changes to `EXHALE`.
 
 ### 1.1 Merged He 2$^3$S (HeITR) + metals ionization solver
 Previously the He 2$^3$S triplet and trace metals could not be solved together:
@@ -45,10 +45,10 @@ set.)
 ### 1.3 Convergence threshold and two-stage reconstruction
 - `parameters.f90`: `du_th` is now a runtime variable (was a compile-time
   `parameter`) with default `1.0e-3` — the original ATES-Code-main value.
-  (ATES-metal had it at `2.0e-2`; see §2.1.) `dtu_th = 1e-8` unchanged.
+  (EXHALE had it at `2.0e-2`; see §2.1.) `dtu_th = 1e-8` unchanged.
 - New runtime variable `du_th_plm` (default off). Input line
   `du_th [PLM,WENO3]: <du_plm> <du_final>` enables an **automatic two-stage**
-  run: `ATES_main.f90` starts in PLM and switches `rec_method` to WENO3 once
+  run: `EXHALE_main.f90` starts in PLM and switches `rec_method` to WENO3 once
   `du < du_plm` (or PLM stalls), then converges at `du < du_final`. If
   `du_plm <= du_final` (or the line is absent) the run is single-stage.
 - `CFL` is now runtime + settable via the input line `CFL: <value>`.
@@ -73,7 +73,7 @@ as established fact.*
 
 ### 2.1 The threshold had been loosened (observation)
 `du` is the relative spatial spread of the mass flux $\rho v r^2$ over the wind
-region `[j_min:N]`. ATES-metal had `du_th = 2.0e-2`, whereas the upstream
+region `[j_min:N]`. EXHALE had `du_th = 2.0e-2`, whereas the upstream
 ATES-Code-main uses `1.0e-3`. At `2e-2`, a run flagged "converged" can still show
 ~2% spread in the supersonic mass flux. We restored `1.0e-3`. This *appears* to
 explain why several earlier "converged" profiles did not look flat.
@@ -93,13 +93,13 @@ Two issues invalidated several intermediate "non-convergence" readings:
    steps while `du` was still descending. One case (HD209458b, He+metals) later
    reached `du < 2e-2` near ~50k steps.
 2. A run-script bug: a "cap" killed the backgrounding subshell rather than the
-   `ATES.x` child, so runs continued orphaned and the reported `du` was a
+   `EXHALE.x` child, so runs continued orphaned and the reported `du` was a
    premature snapshot.
 
 Because of these, the earlier framing that "metal line cooling destabilizes the
 wind / causes non-convergence" should be treated as **not established**. It is
 *possible* the metals matter, but the evidence we gathered for it was confounded.
-(Use `pkill -x ATES.x` to stop runs; the subshell kill leaks.)
+(Use `pkill -x EXHALE.x` to stop runs; the subshell kill leaks.)
 
 ### 2.4 What we currently see across planets (provisional)
 With the two-stage strict-`du_th` pipeline:

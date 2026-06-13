@@ -1,0 +1,1307 @@
+%% EXHALE: User Manual
+%% Author: Kwang-Il Seon
+\documentclass[english,a4paper]{kiseon_memo}
+\synctex=1
+\usepackage{listings}
+\usepackage{xcolor}
+\usepackage{booktabs}
+\usepackage{longtable}
+\usepackage{array}
+\usepackage{graphicx}
+\usepackage{babel}
+
+% listing style for configuration / shell snippets
+\definecolor{cfgkey}{rgb}{0.0,0.0,0.55}
+\lstdefinestyle{cfg}{
+  basicstyle=\ttfamily\small,
+  commentstyle=\color{gray}\itshape,
+  frame=single,
+  breaklines=true,
+  columns=fullflexible,
+  showstringspaces=false,
+}
+\lstdefinestyle{sh}{
+  basicstyle=\ttfamily\small,
+  keywordstyle=\color{cfgkey}\bfseries,
+  commentstyle=\color{gray}\itshape,
+  frame=single,
+  breaklines=true,
+}
+\newcommand{\rp}{$R_p$}
+\newcommand{\msun}{$M_\odot$}
+
+\begin{document}
+
+\title{EXHALE: User Manual}
+\author{Kwang-Il Seon}
+\date{Last updated: 2026-06-11}
+\maketitle
+
+\begin{quote}\small\itshape
+\textbf{Scope.} This manual describes how to set up, run, and analyze models with
+\texttt{EXHALE}, the in-house extension of the ATES (ATmospheric EScape) code
+to trace metals, metal-line cooling, a runtime opacity dispatcher, the Roche
+tidal potential, and excited-hydrogen / Ly$\alpha$ physics. It documents every
+input parameter (with a brief physical meaning), every output file (column by
+column, with units), the analysis tools, and a set of worked examples. The
+detailed physics derivations live in the companion notes
+(\texttt{Update\_EXHALE\_early\_phase.tex}, \texttt{transmission\_spectrum.tex},
+\texttt{Update\_EXHALE.tex}, \texttt{cooling\_formulas.tex} --- the complete
+reference for every analytic cooling coefficient ---
+\texttt{EXHALE\_BC\_and\_IC.tex} --- the boundary- and
+initial-condition reference --- and \texttt{wind\_ae\_solver.tex} ---
+the bundled Wind-AE steady-wind solver used by \texttt{IC mode: windae});
+this document is the practical user guide.
+\end{quote}
+
+\tableofcontents
+
+% ===================================================================== %
+\section{Introduction}
+% ===================================================================== %
+
+\subsection{What the code does}
+\texttt{EXHALE} solves the time-dependent, spherically-symmetric (1-D)
+radiation--hydrodynamics of an irradiated planetary upper atmosphere and the
+hydrodynamic wind it drives (``atmospheric escape''). It integrates the Euler
+equations for mass, momentum, and energy of a single fluid,
+\[
+\partial_t \rho + \tfrac{1}{r^2}\partial_r(r^2\rho v)=0,\quad
+\partial_t(\rho v)+\tfrac{1}{r^2}\partial_r(r^2\rho v^2)+\partial_r p
+   = -\rho\,\partial_r\Phi,
+\]
+\[
+\partial_t E + \tfrac{1}{r^2}\partial_r\!\big(r^2 v(E+p)\big)
+   = -\rho v\,\partial_r\Phi + \mathcal{H} - \mathcal{C},
+\]
+to a steady state, where $\Phi$ is the gravitational (optionally Roche) potential
+(\S\ref{sec:potential}), $\mathcal{H}$ is the XUV photoionization heating and
+$\mathcal{C}$ the radiative cooling. Coupled to the hydrodynamics, at every step it solves the
+\emph{ionization equilibrium} of H, He, and the trace metals (C, N, O, Mg, Si,
+Ca, Na, K, S, Fe) with a Newton (MINPACK) solver, including photoionization,
+collisional ionization, radiative + dielectronic recombination, and charge
+exchange. The converged run yields the radial profiles of density, velocity,
+temperature, and the ionization state, plus the steady-state \emph{mass-loss
+rate} $\dot M$. A post-processing pass adds advection to the ionization balance,
+and the Python tool \texttt{TPM.py} turns a converged model into transit
+\emph{transmission spectra} (He\,10830, Ly$\alpha$, H$\alpha$/H$\beta$, and the
+metal resonance lines Mg\,II, Ca\,II, Na\,I).
+
+\subsection{The lower boundary, radii, and normalization}
+The computational domain starts at a \textbf{lower boundary} placed at the
+$1\,\mu$bar pressure level, which defines $r=1$ and the base radius $R_p$ (the
+input \texttt{Planet radius}). The base number density $n_0$ and temperature
+$T_0$ (the equilibrium temperature) are set there. Internally the code is
+non-dimensional: lengths in $R_p$, velocities in $v_0=\sqrt{k_BT_0/\mu}$,
+densities in $n_0$, etc. \emph{All output files are written back in cgs} (see
+\S\ref{sec:outputs} for the exact normalization of each column). The key
+dimensionless number is the \emph{Jeans / escape parameter}
+$b_0 = GM_p\mu/(k_BT_0R_p)$, the depth of the gravitational well in units of the
+thermal energy; small $b_0$ means an easily-escaping (or tidally unbound)
+atmosphere.
+
+\subsection{The gravitational potential}\label{sec:potential}
+The potential $\Phi$ in the momentum and energy equations is selected by
+\texttt{Domain mode} (Table~\ref{tab:inp-opt}). The code writes it in the
+dimensionless units introduced above (lengths in $R_p$, potential in
+$v_0^2=k_BT_0/\mu$), so it is fixed by just three numbers: the Jeans parameter
+$b_0=GM_p\mu/(k_BT_0R_p)$, the stellar-to-planet mass ratio $q=M_\star/M_p$, and
+the orbital separation $\tilde a=a/R_p$.
+
+\paragraph{Spherical mode (\texttt{Domain mode: Spherical}).}
+Only the planet's own gravity is kept, so the domain can extend far past the Hill
+radius:
+\[
+\phi(r) = -\frac{b_0}{r}.
+\]
+
+\paragraph{Roche mode (default).}
+The full co-rotating Roche potential, evaluated along the star--planet
+(substellar) line $x=r$, adds the stellar tidal attraction and the centrifugal
+term of the synchronously-rotating frame:
+\[
+\phi(r) = -\frac{b_0}{r}
+          \;-\;\frac{b_0\,q}{\tilde a - r}
+          \;-\;\frac{b_0\,(1+q)}{2\,\tilde a^{3}}
+                \left(\frac{q\,\tilde a}{1+q} - r\right)^{2},
+\]
+where the second term is the star's gravity at distance $\tilde a-r$ and the
+third is the centrifugal potential about the center of mass at
+$x_{\rm cm}=q\,\tilde a/(1+q)$ with orbital frequency $\Omega^2=G(M_p+M_\star)/a^3$
+(synchronous rotation). The effective gravity used by the hydrodynamics is
+$g(r)=-\,\mathrm d\phi/\mathrm dr$, with
+\[
+\frac{\mathrm d\phi}{\mathrm dr} = \frac{b_0}{r^2}
+   - \frac{b_0\,q}{(\tilde a-r)^2}
+   + \frac{b_0\,(1+q)}{\tilde a^{3}}\left(\frac{q\,\tilde a}{1+q}-r\right).
+\]
+The inner Lagrange point $L_1$ is the root of $\mathrm d\phi/\mathrm dr=0$, where
+planetary gravity, the stellar tide, and the centrifugal force cancel; in Roche
+mode the outer boundary is placed at this $L_1$ radius, beyond which gas is no
+longer bound to the planet.
+
+\paragraph{Full 3-D form (transmission post-processing).}
+The 3-D Roche-equipotential reconstruction in \texttt{TPM.py} /
+\texttt{roche\_recon.py} (\S\ref{sec:tpm}) needs the potential off-axis as well.
+With the substellar direction $\hat x$ pointing toward the star and $(y,z)$ the
+sky plane,
+\[
+\phi(x,y,z) = -\frac{b_0}{\sqrt{x^2+y^2+z^2}}
+   - \frac{b_0\,q}{\sqrt{(\tilde a-x)^2+y^2+z^2}}
+   - \frac{b_0\,(1+q)}{2\,\tilde a^{3}}
+        \Big[\big(x_{\rm cm}-x\big)^2 + y^2\Big],
+\]
+which reduces to the substellar $\phi(r)$ above on the $+x$ axis. The centrifugal
+term involves only the rotation-plane coordinates $(x,y)$, not $z$, so surfaces of
+constant $\phi$ are triaxial (most extended toward $L_1$, least along the spin
+axis $z$).
+
+\subsection{Workflow}
+A model run consists of:
+\begin{enumerate}\itemsep2pt
+\item Prepare \texttt{input.inp} (planet/star parameters, numerics, physics
+  switches) --- by hand or via the GUI; optionally \texttt{metals.inp} (trace
+  metal abundances) and \texttt{opacity.inp} (opacity model).
+\item Build and run \texttt{./EXHALE.x}; it reads the input files from the current
+  directory and writes profiles to \texttt{output/}.
+\item Inspect with \texttt{EXHALE\_plots.py} (live profiles) and the example
+  notebook; compute transmission spectra with \texttt{TPM.py}.
+\end{enumerate}
+
+% ===================================================================== %
+\section{Installation and running}
+% ===================================================================== %
+
+\subsection{Requirements}
+A Fortran compiler (\texttt{gfortran} by default; Intel \texttt{ifort}/\texttt{ifx}
+supported), \texttt{make}, and --- for the GUI and analysis --- Python~3 with
+\texttt{tkinter}, \texttt{numpy}, \texttt{scipy}, and \texttt{matplotlib}.
+
+\subsection{Build}
+\texttt{EXHALE} uses an incremental \texttt{Makefile}; module dependencies
+are auto-generated, so only edited sources and their dependents recompile.
+\begin{lstlisting}[style=sh]
+make                 # build ./EXHALE.x with gfortran
+make FC=ifort        # Intel ifort   (or FC=ifx for the LLVM compiler)
+make clean           # remove .o/.mod (keeps EXHALE.x)
+make distclean       # wipe build/ and EXHALE.x
+\end{lstlisting}
+
+\subsection{Running}
+The driver script \texttt{run\_EXHALE.sh} (1) launches a Python/Tk GUI that writes
+\texttt{input.inp}, (2) builds, and (3) runs \texttt{./EXHALE.x}:
+\begin{lstlisting}[style=sh]
+chmod +x run_EXHALE.sh
+./run_EXHALE.sh           # gfortran (GUI -> build -> run)
+./run_EXHALE.sh --ifort   # Intel ifort   (--ifx for ifx)
+\end{lstlisting}
+You may equally skip the GUI: place a hand-written \texttt{input.inp} (and
+optional \texttt{metals.inp}/\texttt{opacity.inp}) in a run directory, ensure an
+\texttt{output/} subdirectory exists, and run \texttt{./EXHALE.x} there. Each
+modelled planet typically lives in its own subdirectory holding its
+\texttt{input.inp}, its \texttt{EXHALE.x}, and its \texttt{output*/} folders.
+Progress (iteration counter, the momentum-variation \texttt{du}, and the
+time-derivative norm \texttt{dtu}) is printed to the terminal; the run stops when
+\texttt{du} or \texttt{dtu} falls below its convergence threshold.
+
+\subsection{Convergence control}\label{sec:convctl}
+The time loop stops when \emph{any} of the following criteria is met
+(defaults in \texttt{src/modules/init/parameters.f90}; most are runtime-settable,
+Table~\ref{tab:inp-opt}):
+\begin{center}\small
+\begin{tabular}{@{}lll@{}}
+\toprule
+Parameter & Default & Stop condition \\
+\midrule
+\texttt{du\_th}    & $1\times10^{-3}$ & momentum non-uniformity $du<\texttt{du\_th}$ \\
+\texttt{dtu\_th}   & $1\times10^{-8}$ & time-derivative $\infty$-norm $dtu<\texttt{dtu\_th}$ \\
+\texttt{stall\_tol}, \texttt{N\_stall} & $10^{-6}$, 2000 & $du$ on a plateau for \texttt{N\_stall} steps \\
+\texttt{count\_max} & $10^{6}$ & hard iteration cap \\
+\bottomrule
+\end{tabular}
+\end{center}
+The stall and \texttt{count\_max} backstops guarantee termination even when the
+strict $du$/$dtu$ thresholds are physically unreachable for a given setup (e.g.\ a
+transonic wind whose $du$ floors at $\sim1\%$). Each iteration prints
+\texttt{count, du, dtu} (and the windowed flux-level change when
+\texttt{Level tol:} is set), and the run reports which criterion stopped it. The
+optional \texttt{Force start} forces the first 1000 iterations regardless (useful
+when starting near a fixed point). The rationale and history of these settings are
+in \texttt{Update\_EXHALE\_solver}.
+
+\paragraph{Caveat: $du$ can stop a run prematurely.} $du$ measures only the
+\emph{spatial spread} of $\rho v r^2$ in the wind window; it is blind to a
+uniform drift of the flux level, and on strongly irradiated planets it
+\emph{oscillates}, dipping below $10^{-3}$ transiently long before the wind
+settles. A WASP-121b reference stopped this way was low by $\sim$0.08 dex in
+$\dot M$ with the heating/cooling grossly out of balance (energy residual
+$\sim$30). For production answers use the residual-based stop
+(\texttt{Resid tol:}) or the Newton finish (\texttt{Solver: Newton},
+\S\ref{sec:newton}); details in \texttt{steady\_solver\_memo}.
+
+\subsection{The steady-state Newton solver (\texttt{Solver: Newton})}
+\label{sec:newton}
+The finite-volume steady state can be solved directly --- $F(Y)=0$ for the hydro
+state, with the ionization equilibrium eliminated locally inside the residual ---
+by a preconditioned Jacobian-free Newton--Krylov method (banded LAPACK
+preconditioner, frozen WENO weights, diagonal scaling, non-monotone line search;
+the smooth base valve \texttt{Valve eps:} is required and auto-adopted). This
+reaches residual levels unattainable by marching at a small fraction of the cost:
+WASP-121b converges in 8 Newton iterations ($\sim$200 marching-steps of cost,
+vs.\ $>$35{,}000 insufficient marching steps), HD189733b in 33\,s where marching
+spent $>$3\,h without converging.
+
+Two ways to use it:
+\begin{itemize}
+\item \textbf{Production}: add \texttt{Solver: Newton} to \texttt{input.inp}. The
+  run marches (including the automatic two-stage PLM$\to$WENO3) until the
+  monitored steady residual drops below the switch threshold (default
+  $5\times10^{-2}$; the $du$-based stops are suspended), then the Newton solve
+  finishes to \texttt{Resid tol} (default $10^{-3}$), and the standard outputs and
+  post-processing follow.
+\item \textbf{From an existing state} (recommended for re-converging old runs):
+  put the state in \texttt{output/*\_IC.txt}, set \texttt{Load IC?\ True},
+  \texttt{Valve eps:\ 1.0e-4}, \texttt{Resid tol:\ 1.0e-3}, and run with the
+  environment hook
+\begin{lstlisting}[style=sh]
+ATES_PTC=1 ATES_PTC_JFNK=1 ATES_PTC_DTAU0=1.0 ./EXHALE.x
+\end{lstlisting}
+  which solves from the loaded state, writes \texttt{output/}, and stops.
+\end{itemize}
+The warm start matters: Newton's basin requires a state with
+$\max\|R\|\lesssim5\times10^{-2}$ (a transient that merely \emph{looks} flat in
+$du$ is not enough). Do not raise the switch threshold: on WASP-121b a
+hand-off at $\|R\|=0.09$ already stalls (and a cold-IC start stalls at
+$\|R\|\sim10$), while the default $5\times10^{-2}$ converges in 16
+iterations --- the default is calibrated essentially at the basin edge
+(\texttt{steady\_solver\_memo.pdf}). Convergence is linear (frozen-weight refresh and the
+chemistry noise floor); on planets with a breathing base (HD189733b) the
+practical floor is $\|R\|\sim3\times10^{-4}$.
+The Newton finish is also \emph{safe to fail}: the solver tracks the best
+iterate seen, aborts once no new best residual has appeared for 15 outer
+iterations, and on failure the run prints \texttt{JFNK failed}, keeps the best
+iterate, and falls back to plain time-marching with the $du$-based stops
+re-armed --- an unconverged Newton state is never accepted as the final
+answer. The associated diagnostic hooks (\texttt{ATES\_RESIDUAL},
+\texttt{ATES\_JAC\_TEST}, \texttt{ATES\_NEWTON\_TEST}, \ldots) are environment
+variables, collected in \S\ref{sec:envvars} (Table~\ref{tab:env}). Full
+development record and validation: \texttt{steady\_solver\_memo.pdf}.
+Figure~\ref{fig:newton} shows the production pipeline end-to-end on WASP-121b
+(Roche): the monitored residual during the marching warm-up (left; note that the
+$du$-based stop would have fired long before the residual is actually small) and
+the JFNK finish (right).
+
+\begin{figure}[htbp]\centering
+\includegraphics[width=0.95\textwidth]{figures/newton_convergence.pdf}
+\caption{The \texttt{Solver: Newton} pipeline from a cold IC (WASP-121b, Roche).
+Left: maximum steady residual $\max\|R\|_\infty$ over the mass, momentum, and
+energy equations during the two-stage marching warm-up; the dashed line is the
+switch threshold $R_{\rm switch}=5\times10^{-2}$. Right: residual vs.\ JFNK outer
+iteration during the Newton finish, down to \texttt{Resid tol} ($10^{-3}$).}
+\label{fig:newton}
+\end{figure}
+
+\subsection{Environment-variable hooks (diagnostics and expert runs)}
+\label{sec:envvars}
+A small set of \emph{environment variables} expose diagnostic and expert
+entry points without touching \texttt{input.inp} (Table~\ref{tab:env}). They
+are read once at startup; when unset they have strictly zero effect, so normal
+runs are unaffected. All of them are diagnostics or validation aids --- the only
+one used in a production workflow is the \texttt{ATES\_PTC} family, which
+implements the ``Newton from an existing state'' recipe of \S\ref{sec:newton}
+(and \texttt{examples/04\_newton\_from\_state/}). Typical usage:
+\begin{lstlisting}[style=sh]
+ATES_RESIDUAL=1 ./EXHALE.x                      # rank a "converged" state
+ATES_PTC=1 ATES_PTC_JFNK=1 ATES_PTC_DTAU0=1.0 ./EXHALE.x   # re-converge it
+\end{lstlisting}
+
+\begin{table}[htbp]\centering\small
+\begin{tabular}{@{}lp{10.2cm}@{}}
+\toprule
+Variable & Effect \\
+\midrule
+\texttt{ATES\_DUMP\_IC=1} & After \texttt{Load IC?\ True}, dump the restored
+  state to \texttt{output/IC\_dump.txt} \emph{before} the first
+  ionization-equilibrium solve re-equilibrates the species fractions
+  (verifies a snapshot/restart round-trip). \\
+\texttt{ATES\_RESIDUAL=1} & Evaluate the steady residual $R$ of the loaded
+  state (WENO3, boundary conditions applied first), print the per-equation
+  norms (mass, momentum, energy), and stop. The criterion-independent way to
+  rank candidate ``converged'' states (a premature-dip state shows
+  $\|R\|_E\sim O(10)$ despite $du<10^{-3}$). \\
+\texttt{ATES\_NEWTON\_TEST=1} & Self-test of the Newton infrastructure
+  (\texttt{pack\_U}/\texttt{unpack\_U} round-trip and the frozen residual
+  against the \texttt{ATES\_RESIDUAL} values); prints and stops. \\
+\texttt{ATES\_JAC\_TEST=1} & Verify the colored-FD banded Jacobian against a
+  directional finite difference $J\,r\simeq[F(Y+\epsilon r)-F(Y)]/\epsilon$;
+  a correct band layout matches to $\sim10^{-6}$, a wrong one is $O(1)$ off.
+  Prints and stops. \\
+\midrule
+\texttt{ATES\_PTC=1} & Solve the \emph{loaded} state directly with the steady
+  solver (no marching), write \texttt{output/}, and stop. Requires
+  \texttt{Load IC?\ True}; set \texttt{Valve eps:\ 1.0e-4} and
+  \texttt{Resid tol:\ 1.0e-3} (\S\ref{sec:newton}). Default engine: banded
+  PTC. \\
+\texttt{ATES\_PTC\_JFNK=1} & With \texttt{ATES\_PTC=1}: use the full JFNK
+  solver (GMRES on the matrix-free $J$) instead of the banded PTC ---
+  the recommended engine. \\
+\texttt{ATES\_PTC\_DTAU0=}$\langle v\rangle$ & With \texttt{ATES\_PTC=1}:
+  override the initial pseudo-time step $\Delta\tau_0$ (default: the CFL
+  $\Delta t$ of the loaded state). A large value (e.g.\ \texttt{1.0}) probes
+  the pure-Newton regime directly. \\
+\texttt{ATES\_PTC\_NFIX=}$\langle n\rangle$ & With \texttt{ATES\_PTC=1}:
+  anchor the first $n$ physical cells (frozen-base experiment; solves the
+  wind on top of a fixed base). \\
+\midrule
+\texttt{ATES\_DIAG\_BASE=1} & Write \texttt{output/base\_diag.txt} ($r$, $n$,
+  $v$, $T$, heating, cooling of the first few cells over the first steps) to
+  trace IC-startup transients at the base. \\
+\texttt{ATES\_FORCE\_HYBRD1=1} & Force every ionization-equilibrium solve to
+  use MINPACK \texttt{hybrd1}, skipping the analytic-Jacobian Newton: lets the
+  same binary produce both solvers' outputs for an A/B validation
+  (\texttt{Update\_EXHALE\_solver.pdf} \S6). \\
+\bottomrule
+\end{tabular}
+\caption{Environment-variable hooks. All are read once at startup and have
+zero effect when unset. The four diagnostic tests (top block) and
+\texttt{ATES\_PTC} runs stop after printing/writing; they do not march.}
+\label{tab:env}
+\end{table}
+
+\subsection{Metal cooling on/off and the comparison script}
+Metal-line cooling is active \emph{iff} a \texttt{metals.inp} is present
+(\S\ref{sec:inputs}); remove or rename it for a metals-off run. To run the
+\emph{same} planet both ways automatically:
+\begin{lstlisting}[style=sh]
+./run_compare_metals.sh        # uses ./input.inp and ./metals.inp
+\end{lstlisting}
+This compiles once and runs the planet with metals on, then off, saving the two
+full results to \texttt{output\_metals\_on/} and \texttt{output\_metals\_off/}
+(each with a copy of the inputs used; the second run reuses the binary). The
+per-planet notebooks \texttt{metals\_comparison*.ipynb} read the two folders and
+plot the temperature, velocity / mass-flux, H and metal ionization, and
+heating/cooling differences (cf.\ \S\ref{sec:compare}).
+
+\subsection{Wind-AE warm-start initial conditions}\label{sec:windae}
+A 1-D steady-state Parker-wind solver (a Fortran port of \emph{Wind-AE};
+Murray-Clay et al.\ 2009 / Broome et al.\ 2025) is bundled under
+\texttt{src/modules/wind\_ae/} and can supply the initial condition for a
+hard-to-launch EXHALE run. There are two ways to use it; the underlying
+algorithm, ramp, and BC/IC are documented in \texttt{docs/wind\_ae\_solver.tex}.
+
+\paragraph{In-process (recommended): \texttt{IC mode: windae}.}
+Add the single line
+\begin{lstlisting}[style=cfg]
+IC mode: windae
+\end{lstlisting}
+to \texttt{input.inp} (with \texttt{Load IC?\ False}). On startup EXHALE
+maps the planet's parameters to Wind-AE, ramps a shipped seed solution to
+the planet, solves the steady wind, and writes the IC onto the EXHALE grid
+(\texttt{output/*\_IC.txt}), which is then loaded automatically --- the
+whole input\,$\to$\,Wind-AE solve\,$\to$\,IC\,$\to$\,run sequence is one
+\texttt{./run\_EXHALE.sh} (one \texttt{EXHALE.x}) invocation. This is a
+\emph{warm start}: EXHALE re-solves the ionization (and any metals) from
+the first step, so the Wind-AE IC need not be exactly self-consistent.
+Always finish with \texttt{Solver: Newton} for a quantitative $\dot M$
+(\S\ref{sec:newton}). It is best suited to hot Jupiters near the shipped
+seed; a far-from-seed planet may fail the ramp, in which case the run
+prints a message advising \texttt{IC mode: auto}. The shipped seed and
+spectrum live in \texttt{inputdata/windae\_seed.csv} and
+\texttt{inputdata/windae\_spectrum.inp}.
+
+\paragraph{Standalone generator: \texttt{wind\_ae\_ic.x}.}
+The same solver builds an IC out of process:
+\begin{lstlisting}[style=sh]
+make wind_ae_ic     # builds ./wind_ae_ic.x (separate from EXHALE.x)
+./wind_ae_ic.x <input.inp> <seed.csv> <spectrum.inp> \
+               <IC_dump_grid> <outdir> [rhoscale]
+\end{lstlisting}
+It reads an EXHALE \texttt{input.inp}, ramps from the seed, and writes
+\texttt{<outdir>/\{Hydro\_ioniz,Ion\_species\}\_IC.txt} on the grid given by
+an \texttt{IC\_dump.txt} from a prior EXHALE run with the same domain
+settings. Run EXHALE on the result with \texttt{Load IC?\ True}
+$+$ \texttt{Solver: Newton}. (The standalone tool is independent of the
+in-process path above; either can be used.)
+
+% ===================================================================== %
+\section{Input files}\label{sec:inputs}
+% ===================================================================== %
+
+\subsection{\texttt{input.inp} --- the main parameter file}
+\texttt{input.inp} is read \emph{line by line in a fixed order} for the core
+block (Table~\ref{tab:inp-core}), followed by an \emph{optional keyword block}
+(Table~\ref{tab:inp-opt}) whose lines are matched by keyword and may be omitted
+(older files without them keep the default behavior). A few lines are
+\emph{conditional}: the spectrum-property line depends on \texttt{Spectrum type},
+and the energy-band / X-ray-luminosity lines depend on \texttt{Use only EUV?}.
+
+\begin{longtable}{@{}p{0.40\textwidth}p{0.18\textwidth}p{0.36\textwidth}@{}}
+\caption{\texttt{input.inp} core block (fixed order). Conditional lines are
+marked $(\ast)$.}\label{tab:inp-core}\\
+\toprule
+\textbf{Label} & \textbf{Value} & \textbf{Meaning} \\
+\midrule
+\endfirsthead
+\multicolumn{3}{l}{\small\itshape Table~\ref{tab:inp-core}, continued}\\
+\toprule \textbf{Label} & \textbf{Value} & \textbf{Meaning} \\ \midrule
+\endhead
+\bottomrule
+\endfoot
+\texttt{Planet name:} & string & Label for the run (cosmetic). \\
+\texttt{Log10 lower boundary number density [cm\^{}-3]:} & real (log$_{10}$) &
+  $\log_{10} n_0$, the H number density at the $1\,\mu$bar base. \\
+\texttt{Planet radius [R\_J]:} & real ($R_J$) & Base radius $R_p$ (the $1\,\mu$bar
+  level); the grid radius $r$ is in units of this. \\
+\texttt{Planet mass [M\_J]:} & real ($M_J$) & Planet mass $M_p$ (sets gravity /
+  the Jeans parameter $b_0$). \\
+\texttt{Equilibrium temperature [K]:} & real (K) & Base temperature $T_0$. \\
+\texttt{Orbital distance [AU]:} & real (AU) & Star--planet separation $a$ (sets
+  the XUV flux $\propto a^{-2}$ and the tidal/Roche potential). \\
+\texttt{Escape radius [R\_p]:} & real (\rp) & Inner radius of the
+  constant-momentum convergence window; must lie \emph{inside} the domain
+  ($<r_{\max}$). For L1-truncated Roche runs use a value below the lobe. \\
+\texttt{He/H number ratio:} & real & Helium abundance $n_{\rm He}/n_{\rm H}$;
+  $>0$ enables He chemistry. \\
+\texttt{2D approximate method:} & see text & Day--night averaging of the XUV
+  flux and $\dot M$: \texttt{Rate/2 + Mdot/2} (dayside, $\xi=\tfrac12$),
+  \texttt{Mdot/4} (full-sphere), \texttt{Mdot}, or \texttt{alpha} (then a
+  trailing number sets the rate-correction $a_\tau$). \\
+\texttt{Parent star mass [M\_sun]:} & real (\msun) & Stellar mass $M_\star$
+  (tidal potential, Roche-lobe size). \\
+\texttt{Spectrum type:} & \texttt{Power-law} $|$ \texttt{Monochromatic} $|$
+  \texttt{Load} & Shape of the incident XUV SED. \\
+$(\ast)$ \texttt{Power-law index:} / \texttt{Photon energy [eV]:} /
+  \texttt{SED file:} & real / real / path & Property of the chosen SED:
+  power-law slope $E^{\rm PLind}$, the monochromatic energy, or a numerical SED
+  file. With metals, mind the required wavelength coverage
+  (\S\ref{sec:metalsed}). \\
+\texttt{Use only EUV? True/False:} & logical & \texttt{True}: EUV band only.
+  \texttt{False}: include X-rays (adds the band's third energy and an X-ray
+  luminosity line). \\
+$(\ast)$ \texttt{[E\_low,E\_mid,E\_high] = [\ldots]} & reals (eV) & Band edges:
+  two values (EUV only) or three (with X-rays). \\
+$(\ast)$ \texttt{Log10 of X-ray luminosity [erg/s]:} & real (log$_{10}$) & Only
+  if X-rays are included; $\log_{10}L_X$. \\
+\texttt{Log10 of EUV luminosity [erg/s]:} & real (log$_{10}$) & $\log_{10}L_{\rm
+  EUV}$ (with $a$, sets the incident XUV flux). \\
+\texttt{Grid type:} & \texttt{Uniform} $|$ \texttt{Stretched} $|$ \texttt{Mixed}
+  & Radial grid spacing. \texttt{Mixed} (fine near the base, stretched outward)
+  is the usual choice. \\
+\texttt{Numerical flux:} & \texttt{HLLC} $|$ \texttt{ROE} & Riemann solver for
+  the hydrodynamic fluxes. \\
+\texttt{Reconstruction scheme:} & \texttt{PLM} $|$ \texttt{WENO3} & Spatial
+  reconstruction order. \\
+\texttt{Include He23S?:} & logical & Include the metastable He\,$2\,^3$S triplet
+  (needed for the He\,10830 line). \\
+\texttt{Load IC?:} & logical & Restart from the previous run's
+  \texttt{output/*\_IC.txt} (warm start). \\
+\texttt{Do only PP:} & logical & Skip the time loop and only run the
+  post-processing on existing output. \\
+\texttt{Force start:} & logical & Force the first 1000 iterations regardless of
+  the convergence test (useful when the IC is close to a fixed point). \\
+\end{longtable}
+
+\begin{longtable}{@{}p{0.34\textwidth}p{0.18\textwidth}p{0.42\textwidth}@{}}
+\caption{\texttt{input.inp} optional keyword block (any line may be omitted;
+defaults restore the standard behavior).}\label{tab:inp-opt}\\
+\toprule
+\textbf{Keyword} & \textbf{Value} & \textbf{Meaning} \\
+\midrule
+\endfirsthead
+\multicolumn{3}{l}{\small\itshape Table~\ref{tab:inp-opt}, continued}\\
+\toprule \textbf{Keyword} & \textbf{Value} & \textbf{Meaning} \\ \midrule
+\endhead
+\bottomrule
+\endfoot
+\texttt{Domain mode:} & \texttt{Spherical} & If present and \texttt{Spherical}:
+  pure planetary potential $-b_0/r$, domain extended to \texttt{Outer radius}.
+  Absent (default): full Roche potential truncated at the Hill/L1 radius
+  (\S\ref{sec:potential}). \\
+\texttt{Outer radius [R\_p]:} & real $>1$ (\rp) & Outer boundary in spherical
+  mode (e.g.\ 10--15\,\rp). \\
+\texttt{Stellar Teff [K]:} & real (K) & Stellar $T_{\rm eff}$ for the
+  diluted-blackbody Balmer continuum that photoionizes/heats H($n{=}2$). Enables
+  the excited-H model when both this \emph{and} \texttt{Stellar radius} are $>0$. \\
+\texttt{Stellar radius [R\_sun]:} & real (\msun-radius) & Stellar radius (sets the
+  Balmer-continuum dilution $R_\star/a$). \\
+\texttt{Jlya RT file:} & path & Read an external $\bar J_{\rm Ly\alpha}(r)$ profile
+  to pump H($n{=}2$) (sets \texttt{jlya\_mode}=1). \\
+\texttt{Jlya escape-prob:} & \texttt{True} & Compute $\bar J_{\rm Ly\alpha}$
+  in-line each step by escape-probability RT (\texttt{jlya\_mode}=2). \\
+\texttt{Stellar Lya flux [erg/cm2/s]:} & real & Incident stellar Ly$\alpha$ flux
+  at the planet (the stellar source for \texttt{jlya\_mode}=2). \\
+\texttt{Lya stellar halfwidth [km/s]:} & real (km/s) & Stellar Ly$\alpha$ line
+  half-width; controls how deep the trapped stellar beam penetrates (default 70). \\
+\texttt{Lya stellar boost [-]:} & real & Bounded buildup cap for the trapped
+  stellar Ly$\alpha$ beam (default 5). \\
+\texttt{Deexc heat:} & \texttt{True} & Add collisional de-excitation heating of
+  H($n{=}2$) to the energy budget. \\
+\texttt{Transonic IC:} & \texttt{True} & Use a transonic isothermal-wind initial
+  condition (solved from the potential via the Bernoulli integral) instead of the
+  hydrostatic IC; needed for deep-RLOF bases that do not launch from rest.
+  Auto-enables \texttt{Force start}. \\
+\texttt{Newton solver:} & logical (def.\ \texttt{True}) & Solve the ionization
+  equilibrium with the analytic-Jacobian Newton method (with a MINPACK
+  \texttt{hybrd1} fallback); \texttt{False} reverts to the legacy \texttt{hybrd1}.
+  Default is faster ($\sim$25\%) and reproduces \texttt{hybrd1} to $\sim10^{-7}$. \\
+\texttt{Brent solver:} & logical (def.\ \texttt{True}) & Solve the post-process
+  energy equation with a bracketing (Brent) root-finder that selects the physical
+  root; \texttt{False} reverts to legacy \texttt{hybrd1} $+$ a 2$\times$-band
+  reject. \\
+\texttt{du\_th [PLM,WENO3]:} & two reals & Automatic two-stage reconstruction:
+  run PLM until $du<$ first value (or a PLM stall), then switch to WENO3 and
+  converge at $du<$ second value (e.g.\ \texttt{0.5 1.0e-3}). Replaces the manual
+  PLM $\to$ stop $\to$ \texttt{Load IC}$+$WENO3 restart of the official ATES
+  recipe. \\
+\texttt{Stall [tol,N]:} & real, int & Stall-detector override (relative $du$
+  change and window; defaults $10^{-6}$, 2000). \\
+\texttt{CFL:} & real (def.\ 0.6) & CFL-number override. \\
+\texttt{Hot Parker IC:} & real (K) & Warm-seed initial condition: stable
+  hydrostatic density with a warm $T$/ionization/velocity overlay. \\
+\texttt{IC mode:} & word & Initial-condition family:
+  \texttt{cold} (default), \texttt{transonic}, \texttt{hot\_parker}
+  (synonyms for the two keys above), \texttt{auto} --- pick
+  automatically from the cold sonic-point topology of the actual
+  potential: an interior sonic point (deep-RLOF via the Roche L1
+  topology, or low-gravity boil-off, $r_c\simeq b_0/2c_0^2$ inside the
+  domain) selects the transonic IC, otherwise the cold hydrostatic IC ---
+  or \texttt{windae} --- build the IC in-process with the ported Wind-AE
+  steady-wind solver (\S\ref{sec:windae}). No tunable threshold for
+  \texttt{auto}; the choice and the escape parameter $b_0$ are
+  logged. Explicit \texttt{Transonic IC}/\texttt{Hot Parker IC} keys
+  override \texttt{auto}. See \texttt{docs/auto\_ic\_design.md} and, for
+  \texttt{windae}, \texttt{docs/wind\_ae\_solver.tex}. \\
+\texttt{Level tol:} & real & Mass-flux \emph{level}-stability gate: a
+  converged/stalled stop additionally requires the mean $|\rho v r^2|$ over the
+  wind window to change by less than this (relative) across the last
+  \texttt{N\_stall} steps. Guards against stopping on a transient $du$ dip while
+  the flux level still drifts ($\le0$ = off, default; \S\ref{sec:newton}). \\
+\texttt{Resid tol:} & real & Residual-based convergence: stop when the steady
+  residual $\max_k\max_j |R_{j,k}|/\max_j|u_k|$ falls below the value (monitored
+  every 500 steps), \emph{replacing} the $du$ test ($\le0$ = off, default).
+  $du$ alone is blind to the energy imbalance (\S\ref{sec:newton}). \\
+\texttt{Time stepping:} & \texttt{Local} & Per-cell pseudo-time steps
+  (steady-state acceleration; not time-accurate). Reaches the deep state fast but
+  leaves per-cell residuals; pair with a Newton finish. \\
+\texttt{Energy solver:} & \texttt{Explicit} & Revert to the original
+  forward-Euler source update (solver-isolation tests). \\
+\texttt{Valve eps:} & real (code $v$) & Smooth base valve: ghost velocity
+  $\tfrac12\,(v+\sqrt{v^2+\varepsilon^2})$ instead of $\max(v,0)$.
+  Differentiable at $v=0$ (required by the Newton solver); the converged answer
+  is insensitive to $\varepsilon$ ($10^{-4}$ vs.\ $10^{-5}$ tested identical).
+  $\le0$ = exact legacy valve (default). \\
+\texttt{Solver:} & \texttt{Newton} [real] & Production steady-state solve:
+  marching warm-up until the monitored steady residual $\max\|R\|$ drops below
+  the optional value (default $5\times10^{-2}$), then the JFNK Newton finish to
+  \texttt{Resid tol} (default $10^{-3}$), then the standard final outputs and
+  post-processing. Adopts \texttt{Valve eps:} $10^{-4}$ automatically if unset.
+  See \S\ref{sec:newton}. \\
+\end{longtable}
+
+\subsection{\texttt{metals.inp} --- trace-metal abundances}
+\texttt{metals.inp} is \emph{optional}: if absent, the run is metals-off (H/He
+only). If present, it lists the total elemental abundance $n_X/n_{\rm H}$ (summed
+over ionization stages; the equilibrium solver distributes each element over its
+stages) for any of C, N, O, Mg, Si, Ca, Na, K, S, Fe. Blank lines and \texttt{\#}
+comments are ignored; any non-zero abundance turns metals on. Four control keys
+are also accepted: \texttt{pp\_metals} (metal treatment in the advection
+post-process: \texttt{0}=metal-free, \texttt{1}=frozen at the converged
+equilibrium (default), \texttt{2}=re-solve, not yet implemented),
+\texttt{cx\_full} (\texttt{1}=full Huang+2023 charge-exchange network; default
+metal--H only), \texttt{cno\_cool} (C/N/O line-cooling source:
+\texttt{1}=closed-form fits to CHIANTI v11, including N\,I/N\,II cooling
+(default); \texttt{0}=legacy AIOLOS analytic fits, which have no N cooling and
+deviate by 40--70\% from CHIANTI for O\,I/O\,II in the wind-launch region ---
+see \texttt{cooling\_data/cno\_cooling\_comparison.ipynb}), and
+\texttt{eos\_metals} (bulk-gas metal policy: \texttt{1}=metals contribute
+their mass to the gas density and base density, their electrons to the
+free-electron density and the base pressure correction, and their nuclei to
+the total particle density --- a ${\sim}1\%$ mass effect at solar abundances,
+consistent with the charge balance inside the ionization solver (default);
+\texttt{0}=legacy trace approximation, H/He-only gas budget). Solar reference
+values (Asplund+2009):
+\begin{lstlisting}[style=cfg]
+# metals.inp -- solar n_X/n_H (Asplund+2009)
+C   2.69e-4    N   6.76e-5    O   4.90e-4
+Mg  3.98e-5    Si  3.24e-5    Ca  2.19e-6
+Na  1.74e-6    K   1.07e-7    S   1.32e-5    Fe  3.16e-5
+pp_metals 1
+\end{lstlisting}
+
+\subsection{\texttt{opacity.inp} --- opacity model (optional)}
+\texttt{opacity.inp} selects the bound-free opacity model via
+\texttt{OPACITY\_MODEL = A|C|P|T}: \textbf{A} analytic (default, the standard
+ATES cross sections); \textbf{C} constant (threshold $\sigma$ times the
+per-species factors \texttt{OPA\_CONST\_HI/HEI/HEII/HEITR}); \textbf{P}
+pressure-broadened (Robinson \& Catling $f(p)=1+a\,(p/p_0)^n$ via
+\texttt{OPA\_PB\_FACTOR}=$a$, \texttt{OPA\_PB\_EXPONENT}=$n$,
+\texttt{OPA\_PB\_PIVOT}=$p_0$); \textbf{T} tabulated (per-species two-column
+\texttt{.atesopa} files, energy [eV] vs.\ $\sigma$ [$10^{-18}$\,cm$^2$], given by
+\texttt{OPA\_FILE\_HI} etc.). Missing keys keep their defaults, so an absent
+\texttt{opacity.inp} is equivalent to model A.
+
+\subsection{Excited hydrogen and the Ly$\alpha$ pumping field}
+\label{sec:jlya}
+The non-LTE H($n{=}2$) model (the metastable $2s$ + resonance $2p$ levels,
+Christie+2013) feeds two things: in \texttt{EXHALE.x} the H($n{=}2$)
+photoionization adds a Balmer proton source and photoelectric heating to the
+energy/ionization balance; in \texttt{TPM.py} the $n{=}2$ population sets the
+H$\alpha$/H$\beta$ transmission. The model is \emph{off by default}; it switches
+on only when both \texttt{Stellar Teff} and \texttt{Stellar radius} are given (they
+supply the diluted-blackbody Balmer continuum that ionizes/heats $n{=}2$), so the
+standard run is unchanged.
+
+The $2s/2p$ populations are driven by the \textbf{Ly$\alpha$ mean intensity}
+$\bar J_{\rm Ly\alpha}(r)$, which pumps $1s\!\leftrightarrow\!2p$. How
+$\bar J_{\rm Ly\alpha}$ is obtained is selected by three mutually-exclusive
+options:
+
+\begin{description}\itemsep3pt
+\item[\textmd{(mode 0) Parameterized --- the default with no external input.}]
+  If neither \texttt{Jlya RT file} nor \texttt{Jlya escape-prob} is present,
+  $\bar J_{\rm Ly\alpha}$ is the Huang et al.\ (2017, Eq.~6) estimate computed
+  internally from the run's own state,
+  \[
+  \bar J_{\rm Ly\alpha}(r) \;=\; \frac{0.1\,F_{\rm LyC}}{\Delta\nu_D(r)}
+        \;\frac{1}{1+\tau_{\rm Ly\alpha}(r)},
+  \]
+  where $\Delta\nu_D=\nu_0\sqrt{2k_BT/\mu}/c$ is the local Doppler width,
+  $\tau_{\rm Ly\alpha}(r)$ is the \emph{top-down} line-center Ly$\alpha$ optical
+  depth integrated from the outside in through the H\,I column, and
+  \[
+  F_{\rm LyC} \;=\; \xi\,\frac{10^{L_{\rm EUV}}}{4\pi a^2}\,
+        \Big(1-e^{-\sigma_{\rm LyC} N_{\rm HI}}\Big)
+  \]
+  is the deposited Lyman-continuum flux (the incident EUV flux times the dayside
+  factor $\xi$ from \texttt{2D approximate method} and the absorbed fraction set by
+  the neutral-H column $N_{\rm HI}$). This needs \emph{no} external file --- it is a
+  self-contained, approximate ``staging'' field, adequate to get the coupling and
+  signs right but not a true radiative-transfer solution.
+\item[\textmd{(mode 1) External RT file --- \texttt{Jlya RT file: <path>}.}]
+  Read a tabulated $\bar J_{\rm Ly\alpha}(r)$ profile (two columns, $r/R_p$ and
+  $\bar J$ in cgs) produced by a real Ly$\alpha$ radiative-transfer calculation
+  (e.g.\ a Monte Carlo run); it is interpolated onto the grid and used directly.
+\item[\textmd{(mode 2) In-line escape probability --- \texttt{Jlya escape-prob: True}.}]
+  Compute $\bar J_{\rm Ly\alpha}$ every step from the current state by
+  escape-probability radiative transfer (Neufeld/Harrington wing escape): a
+  trapped \emph{internal} field (recombination + collisional sources closed by the
+  escape probability $\beta$) plus a trapped \emph{stellar beam} set by
+  \texttt{Stellar Lya flux} (with the penetration controlled by \texttt{Lya stellar
+  halfwidth} and the buildup capped by \texttt{Lya stellar boost}). This is the most
+  physical of the three but still an approximation; see
+  \texttt{Update\_EXHALE.tex}\,\S12 for the full formulae.
+\end{description}
+
+\noindent
+\texttt{TPM.py} uses the \emph{same} logic for its H$\alpha$/H$\beta$ $n{=}2$
+population: if a \texttt{Jlya\_file} is set it is read (mode 1), otherwise the
+mode-0 parameterized estimate above is used (with $F_{\rm LyC}$ rebuilt from the
+run's H\,I column and the stellar EUV). So a converged run with no Ly$\alpha$ input
+still yields H$\alpha$/H$\beta$ predictions, via the default field.
+
+\subsection{Spectral coverage for metal photoionization}\label{sec:metalsed}
+Neutral metals have ionization thresholds \emph{far below} the hydrogen Lyman
+limit (13.6\,eV $\equiv$ 912\,\AA): the lowest is K\,I at 4.34\,eV (2856\,\AA),
+followed by Na\,I, Ca\,I, Mg\,I, Fe\,I, Si\,I, S\,I, and C\,I
+(Table~\ref{tab:metaledge}). To photoionize them at all, the modeled stellar
+spectrum must therefore reach these long (FUV/NUV) wavelengths --- the EUV/X-ray
+band alone ($\lambda<912$\,\AA, $E>13.6$\,eV) leaves every neutral metal
+un-ionized and artificially abundant, corrupting both the ionization balance and
+the predicted metal lines. How far the spectrum reaches depends on the SED type
+(\texttt{Spectrum type} in Table~\ref{tab:inp-core}):
+
+\begin{description}\itemsep3pt
+\item[\textmd{Power-law / monochromatic (\texttt{Power-law}).}]
+  The code builds its own energy grid. When low-IP metals are active it
+  \emph{automatically} appends a sub-13.6\,eV extension (20 log-spaced points)
+  running from the H\,I edge down to the lowest ionization threshold among the
+  active neutral metals, and evaluates the EUV power law there by
+  \emph{extrapolation} (the EUV normalization is anchored to $L_{\rm EUV}$, which
+  is defined over $[E_{\rm low},E_{\rm mid}]$, then continued below $E_{\rm low}$).
+  No extra input is needed --- but the FUV/NUV flux that ionizes the metals is
+  just the EUV slope extended downward, which real stars do \emph{not} follow
+  (their flux rises steeply into the NUV). Treat power-law metal ionization as
+  indicative; load a real SED for quantitative metal work. \emph{Caveat:} the
+  He\,$2\,^3$S-triplet sub-grid and the metal sub-grid are mutually exclusive ---
+  a single power-law run cannot carry both.
+\item[\textmd{Loaded SED (\texttt{Load}, \texttt{SED file:}).}]
+  The file's own energy/wavelength grid \emph{is} the radiative grid (read
+  verbatim, no extrapolation). The SED file must therefore \textbf{extend to at
+  least the lowest threshold of your active metals} --- e.g.\ to
+  $\approx$2860\,\AA\ if K is included, or to whichever neutral metal in
+  Table~\ref{tab:metaledge} has the lowest threshold in the active set. A SED
+  truncated at the Lyman limit (912\,\AA) delivers \emph{zero} ionizing flux to
+  Na\,I / K\,I / Ca\,I / Mg\,I / Fe\,I / Si\,I / C\,I / S\,I, so those stages stay
+  spuriously neutral.
+\end{description}
+
+\noindent Either way, the energy bands set by \texttt{[E\_low,E\_mid,E\_high]} and
+the luminosities $L_{\rm EUV}$/$L_X$ still describe the \emph{ionizing}
+(H/He-driving) part of the spectrum above 13.6\,eV; the metal extension is in
+addition to them.
+
+\begin{table}[htbp]\centering\small
+\caption{Neutral-metal photoionization thresholds (first ionization stage of
+each modeled element), as $E_{\rm th}$ and the corresponding wavelength
+$\lambda_{\rm th}=hc/E_{\rm th}$. The stellar SED must extend to at least the
+longest $\lambda_{\rm th}$ among the \emph{active} metals to ionize them. Values
+are the VFKY96/NIST thresholds used in the code (\texttt{species\_table.f90}).}
+\label{tab:metaledge}
+\begin{tabular}{@{}lccl@{}}
+\toprule
+Species & $E_{\rm th}$ [eV] & $\lambda_{\rm th}$ [\AA] & Note \\
+\midrule
+K\,I  & 4.34  & 2856 & lowest --- sets the grid floor when K is present \\
+Na\,I & 5.14  & 2413 & \\
+Ca\,I & 6.11  & 2028 & \\
+Mg\,I & 7.65  & 1622 & \\
+Fe\,I & 7.90  & 1569 & \\
+Si\,I & 8.15  & 1521 & \\
+S\,I  & 10.36 & 1197 & \\
+C\,I  & 11.26 & 1101 & \\
+\midrule
+(H\,I) & 13.60 & 912 & Lyman limit (reference) \\
+O\,I  & 13.62 & 910 & $\simeq$ Lyman limit \\
+N\,I  & 14.53 & 853 & above the limit (already in the EUV band) \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+% ===================================================================== %
+\section{Output files}\label{sec:outputs}
+% ===================================================================== %
+All profiles are written to \texttt{output/} as plain text, one row per radial
+cell, in \emph{cgs} units. Two flavors exist: the equilibrium files
+(\texttt{*.txt}, written during the run) and the advection-corrected files
+(\texttt{*\_adv.txt}, written once at the end by the post-processor, which
+re-solves the ionization balance including advection of the wind). The
+\texttt{*\_adv.txt} files are the ones the analysis tools read.
+
+\paragraph{Caveat --- the \texttt{\_adv} profile at a ``breathing'' base.}
+The advection-corrected (\texttt{*\_adv.txt}) \emph{temperature and ionization}
+would otherwise develop a spurious spike / sawtooth in the dense lower atmosphere
+(typically $r\lesssim1.1$--$1.2\,R_p$ for strongly Roche-filling planets such as
+WASP-121b). Two compounding causes, both confined to the base, are responsible:
+\begin{enumerate}\itemsep2pt
+\item \emph{A breathing, inflowing base (a 1-D limitation).} When the planet
+  nearly fills its Roche lobe the 1-D wind is subsonic / only marginally launched
+  at $L_1$, so the dense lower atmosphere does not settle into a clean monotonic
+  outflow but into a slowly recirculating state with small \emph{negative}
+  (inflow) velocities and a stagnation point ($v=0$) near the wind base. This is
+  intrinsic to the spherically-symmetric (1-D) geometry --- removing it would
+  require a 2-D/3-D model --- and is not a numerical bug.
+\item \emph{A spurious hot root in the metal-cooled post-processor.} The
+  post-processor re-solves the per-cell energy/ionization balance \emph{including}
+  advection, assuming an outflow (each cell takes the next-inner cell as its
+  upwind state). In the dense base the non-monotonic metal line-cooling curve
+  gives the energy equation a second, spurious \emph{hot} root that the Newton
+  (MINPACK) solver can land on; through the upwind coupling one bad cell then
+  cascades outward, producing the sawtooth and an overshoot spike
+  (\texttt{post\_process\_adv.f90}). A guard rejects solves that fall outside a
+  band around the converged equilibrium temperature, but mild spikes \emph{within}
+  that band can survive.
+\end{enumerate}
+The post-processor guards against cause~2 directly: wherever the flow is
+\emph{not} a clean outflow ($v\le0$, the breathing inflow base) it skips the
+advection correction and keeps the converged equilibrium ionization and
+temperature (\texttt{post\_process\_adv.f90}). This removes the spurious spike and
+sawtooth at the source --- it breaks the upwind cascade --- while preserving the
+genuine few-percent \texttt{\_adv} correction in the outflow above the stagnation
+point. Cause~1 (the breathing base itself) is intrinsic to the 1-D geometry and
+remains, but it is now represented there by the smooth, physical equilibrium
+solution. The shipped \texttt{\_adv} profiles are therefore clean, and the
+temperature panel of Figure~\ref{fig:roche} plots the \texttt{\_adv} profile
+directly. (Velocity and density are \emph{identical} in the \texttt{eq} and
+\texttt{\_adv} files --- the post-processor corrects only the ionization and
+temperature.)
+
+\subsection{\texttt{Hydro\_ioniz.txt} / \texttt{Hydro\_ioniz\_adv.txt}}
+Thermodynamic profiles (7 columns). The dimensionless code variables are
+restored to cgs with the normalizations $n_0$ (base density), $v_0=\sqrt{k_BT_0/\mu}$,
+$p_0=n_0\mu v_0^2$, $T_0$ (base temperature), $q_0=n_0\mu v_0^3/R_p$.
+
+\begin{center}\small
+\begin{tabular}{@{}clll@{}}
+\toprule
+Col & Quantity & Unit & Note \\
+\midrule
+1 & $r$ & \rp & radius (base $=1$) \\
+2 & $\rho$ (number density) & cm$^{-3}$ & total density ($=\rho_{\rm code}\,n_0$) \\
+3 & $v$ & cm\,s$^{-1}$ & radial velocity ($\times v_0$) \\
+4 & $p$ & erg\,cm$^{-3}$ & pressure ($\times p_0$) \\
+5 & $T$ & K & temperature ($\times T_0$) \\
+6 & heating & erg\,cm$^{-3}$\,s$^{-1}$ & XUV photoionization heating ($\times q_0$) \\
+7 & cooling & erg\,cm$^{-3}$\,s$^{-1}$ & radiative cooling ($\times q_0$) \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\subsection{\texttt{Ion\_species.txt} / \texttt{Ion\_species\_adv.txt}}
+Ion number densities [cm$^{-3}$] (34 columns). Column~1 is $r$; columns 2--7 are
+the H/He ions; columns 8--34 are the 27 metal-ion stages, in this order:
+\begin{center}\small
+\texttt{r ;\ HI HII HeI HeII HeIII HeI$^*$ ;\ CI CII CIII OI OII OIII NI NII NIII
+MgI MgII MgIII SiI SiII SiIII CaI CaII CaIII NaI NaII KI KII SI SII FeI FeII
+FeIII}
+\end{center}
+(HeI$^*$ is the metastable $2\,^3$S triplet.) The ionization fraction of any
+element is the stage density divided by the sum over that element's stages.
+
+\subsection{\texttt{Cooling\_breakdown.txt}}
+Per-channel radiative cooling [erg\,cm$^{-3}$\,s$^{-1}$] vs.\ radius (written for
+metals-on runs). Columns: \texttt{1}=$r$, \texttt{2}=$T$ [K], \texttt{3}=$n_e$
+[cm$^{-3}$], \texttt{4}=total cooling; \texttt{5--8}= the four H/He channels
+(recombination, collisional ionization, collisional excitation, bremsstrahlung);
+\texttt{9--35}= the 27 metal-line cooling channels (same ion order as
+\texttt{Ion\_species}). The channels sum to column~4. Useful for identifying the
+dominant coolant vs.\ altitude (cf.\ Huang+2023 Fig.~10).
+
+\subsection{\texttt{Excited\_H.txt}}
+H($n{=}2$) diagnostic (written when the excited-H model is on, i.e.\ stellar
+$T_{\rm eff}$ and radius are set). 16 columns:
+\texttt{1}~$r$, \texttt{2}~$T$, \texttt{3}~$n_{\rm HI}$, \texttt{4}~$n_e$,
+\texttt{5}~$\bar J_{\rm Ly\alpha}$, \texttt{6}~$n_{2s}$, \texttt{7}~$n_{2p}$,
+\texttt{8}~Balmer proton source $S_{\rm p}$, \texttt{9}~photoelectric heating,
+\texttt{10}~de-excitation heating, \texttt{11}~$\tau_{\rm Ly\alpha}$,
+\texttt{12--14}~ground-state HI photoionization / collisional-ionization /
+recombination rates (for the proton-budget comparison), \texttt{15--16}~the
+internal and stellar contributions to $\bar J_{\rm Ly\alpha}$.
+
+\subsection{\texttt{ATES.out} and the mass-loss rate}
+\texttt{ATES.out} is a human-readable setup report (planet/star parameters, the
+Jeans parameter, composition, numerics) plus the final result. The
+\textbf{steady-state mass-loss rate} is $\dot M = 4\pi\rho v r^2$ evaluated near
+the outer boundary, corrected by the 2-D-approximation factor from
+\texttt{2D approximate method} (\texttt{Rate/2 + Mdot/2}$\Rightarrow\times\frac12$,
+\texttt{Mdot/4}$\Rightarrow\times\frac14$). It is reported as $\log_{10}\dot M$
+[g\,s$^{-1}$]; divide by $M_p$ and multiply by 1\,Gyr to express it in
+$M_p$\,Gyr$^{-1}$. The helper \texttt{exhale\_io.mdot\_log10} / \texttt{mdot\_Mp\_per\_Gyr}
+reproduce this.
+
+% ===================================================================== %
+\section{Analysis tools}
+% ===================================================================== %
+
+\subsection{\texttt{EXHALE\_plots.py} --- live profile viewer}
+\texttt{python3 EXHALE\_plots.py [--live N]} draws an 8-panel figure from
+\texttt{output/}: density, velocity, pressure, temperature, momentum
+$\log_{10}(\rho v r^2)$, the ion densities, and the H and He ionization
+fractions. With \texttt{--live N} it refreshes every $N$ seconds (watch a run
+converge). If the \texttt{*\_adv.txt} files exist they are overplotted (dashed)
+against the equilibrium profiles (solid). It also prints $\log_{10}\dot M$.
+
+\subsection{\texttt{TPM.py} --- transmission spectra}\label{sec:tpm}
+\texttt{TPM.py} post-processes a converged run (\texttt{*\_adv.txt} +
+\texttt{input.inp}) into transit transmission spectra and reports the line-center
+absorption depths (theoretical, instrument-convolved, and
+instrument+rotation-convolved) for \textbf{He\,10830}, \textbf{Ly$\alpha$},
+\textbf{H$\alpha$/H$\beta$} (from the non-LTE $n{=}2$ population, Christie+2013,
+pumped by the Ly$\alpha$ field of \S\ref{sec:jlya}),
+and the metal resonance doublets \textbf{Mg\,II\,h\&k}, \textbf{Ca\,II\,H\&K},
+and \textbf{Na\,I\,D} --- the metals get the same full treatment as the H/He
+lines (both doublet components in one window, theoretical / instrument /
+$+$rotation spectra, figures via \texttt{fig\_name\_mgii/caii/nai}), plus the
+validated single-component line-center and 4\,\AA-band depth table; a
+metals-off run skips them automatically. It supports two
+geometries via \texttt{geometry = 'spherical'} (Phase~5a) or \texttt{'triaxial'}
+(Phase~5b, the 3-D Roche-equipotential reconstruction in \texttt{roche\_recon.py}).
+Set the planet/star parameters in its header (e.g.\ \texttt{R\_star},
+\texttt{rot\_period}, \texttt{T\_star}); these are \emph{not} read from
+\texttt{input.inp} except $R_p$, $M_p$, $a$, $L_{\rm EUV}$.
+
+\paragraph{Step-by-step usage.} \texttt{TPM.py} reads
+\texttt{output/Hydro\_ioniz\_adv.txt} and \texttt{output/Ion\_species\_adv.txt}
+from \texttt{path} (default \texttt{'.'}), so it is normally copied into the run
+directory and executed there:
+\begin{enumerate}
+\item \emph{Ensure the \texttt{*\_adv.txt} files exist.} A normal converged run
+  writes them automatically. To post-process an existing state (e.g.\ a Newton
+  solution produced by the \texttt{ATES\_PTC} hook, which writes only the
+  \texttt{eq} files): copy \texttt{Hydro\_ioniz.txt} $\to$
+  \texttt{Hydro\_ioniz\_IC.txt} and likewise for \texttt{Ion\_species}, set
+  \texttt{Load IC?\ True} and \texttt{Do only PP:\ True} in \texttt{input.inp},
+  and run \texttt{./EXHALE.x} once (seconds).
+\item \emph{Edit the header block} of the copied \texttt{TPM.py}: the stellar
+  radius \texttt{R\_star}, the rotation period \texttt{rot\_period} (use the
+  orbital period for a tidally locked planet), the stellar \texttt{T\_star}
+  (enables the Balmer-continuum $n{=}2$ photoionization; $\le0$ disables), the
+  instrument resolutions, and the output names \texttt{fig\_name\_hei/lya/ha/hb}
+  (empty $=$ do not save).
+\item \emph{Run} \texttt{MPLBACKEND=Agg python3 TPM.py} (the \texttt{Agg} backend
+  suppresses the interactive windows on headless machines). The script saves the
+  requested figures and prints the line-center absorption depths
+  (theoretical / instrument-convolved / $+$rotation) and the metal-line summary.
+\end{enumerate}
+Worked examples (the converged Newton solutions of WASP-121b and HD189733b, with
+all four H/He spectra and the metal lines): \texttt{regression/tpm\_wasp/} and
+\texttt{regression/tpm\_hd189/}, collected in the notebook
+\texttt{regression/}\allowbreak\texttt{steady\_solver\_results.ipynb}.
+Figure~\ref{fig:tpmspec} shows the four H/He spectra \texttt{TPM.py} saves for
+the WASP-121b Newton solution of \texttt{regression/tpm\_wasp/} (run with
+\texttt{Include He23S? True}, so the He\,I\,10830 line is populated).
+
+\begin{figure}[htbp]\centering
+\includegraphics[width=0.49\textwidth]{figures/tpm_HeI_10830.pdf}\hfill
+\includegraphics[width=0.49\textwidth]{figures/tpm_Lya.pdf}\\[2pt]
+\includegraphics[width=0.49\textwidth]{figures/tpm_Halpha.pdf}\hfill
+\includegraphics[width=0.49\textwidth]{figures/tpm_Hbeta.pdf}
+\caption{\texttt{TPM.py} output spectra for WASP-121b (Roche, Newton solution
+with He\,$2^3$S on; \texttt{regression/tpm\_wasp/}): He\,I\,10830 (top left),
+Ly$\alpha$ (top right), H$\alpha$ (bottom left), and H$\beta$ (bottom right).
+Each panel shows the theoretical line, the instrument-convolved line, and the
+instrument$+$rotation-convolved line as produced by the script.}
+\label{fig:tpmspec}
+\end{figure}
+
+\paragraph{Transit-depth conventions (important).} Huang et al.\ (2023) quote
+transit depths as the \emph{effective transit radius} $R_{\rm eff}/R_\star$, not a
+percent absorption; convert from the code's line absorption fraction $h$ via
+$R_{\rm eff}/R_\star=\sqrt{(R_p/R_\star)^2+h}$. The metal NUV lines (Mg\,II) are
+quoted in a 4\,\AA\ bin, while the optical lines (Ca\,II, H$\alpha$, Na) are
+line-center; line-center vs.\ 4\,\AA\ can differ by $\sim3\times$ for an
+optically-thick line, so always compare in the same definition.
+
+\subsection{\texttt{exhale\_io.py} --- named, physical-unit loaders}
+\label{sec:atesio}
+\texttt{examples/exhale\_io.py} loads every ATES output file into named arrays
+in physical units, so analysis code need not remember column orders
+(Table~\ref{tab:atesio}). The central object is the \texttt{Run} container:
+\texttt{load\_run(outdir, inputfile)} fills it with the hydro profiles
+(\texttt{r} [$R_p$], \texttt{n} [cm$^{-3}$], \texttt{v} [cm\,s$^{-1}$] with a
+\texttt{v\_kms} shortcut, \texttt{p}, \texttt{T}, \texttt{heat},
+\texttt{cool}), the full ion-density dictionary \texttt{run.ion} (the 6 H/He
+plus 27 metal stages of \S\ref{sec:outputs}), and the parsed
+\texttt{input.inp} in \texttt{run.inp}. By default the \texttt{\_adv}
+(advection-corrected) files are read; pass \texttt{adv=False} for the
+equilibrium snapshot. Typical use:
+\begin{lstlisting}[style=sh]
+import exhale_io as aio
+run = aio.load_run('output', 'input.inp')     # _adv profiles by default
+print(aio.mdot_log10(run))                    # log10 Mdot [g/s], 2D factor incl.
+print(aio.mdot_Mp_per_Gyr(run))               # same in M_p/Gyr
+xh = run.x_ion(['HI', 'HII'])                 # stage fractions of one element
+plt.plot(run.r, run.T)
+plt.plot(run.r, xh['HII'])
+cool = aio.load_cooling('output/Cooling_breakdown.txt')
+plt.semilogy(cool['r'], cool['chan']['FeII']) # one cooling channel
+\end{lstlisting}
+
+\begin{table}[htbp]\centering\small
+\begin{tabular}{@{}lp{8.6cm}@{}}
+\toprule
+Function & Returns \\
+\midrule
+\texttt{load\_run(outdir, inputfile, adv=True)} & a \texttt{Run}: hydro
+  profiles $+$ \texttt{run.ion} dict $+$ parsed input. \\
+\texttt{Run.x\_ion([stages])} & ionization fractions of one element, e.g.\
+  \texttt{x\_ion(['HI','HII'])['HII']} $= n_{\rm HII}/(n_{\rm HI}+n_{\rm HII})$. \\
+\texttt{load\_hydro(path)} & one \texttt{Hydro\_ioniz(\_adv).txt} as a dict
+  (\texttt{r,n,v,p,T,heat,cool}). \\
+\texttt{load\_ions(path)} & \texttt{(r, \{ion: density\})} from
+  \texttt{Ion\_species(\_adv).txt} (all 33 stages). \\
+\texttt{load\_cooling(path)} & \texttt{r,T,ne,cool\_total} $+$
+  \texttt{chan} dict of per-channel cooling (4 H/He channels
+  \texttt{rec/coll\_ion/coll\_exc/brems} $+$ 27 metal-line channels). \\
+\texttt{load\_excited\_H(path)} & \texttt{Excited\_H.txt} as a dict
+  (\texttt{n2s, n2p, Jlya, tau\_lya, Sproton, Hpe, \ldots}). \\
+\texttt{read\_input(path)} & \texttt{input.inp} as a dict
+  (\texttt{Rp\_RJ, Mp\_MJ, a\_AU, HeH, LX, LEUV, \ldots} $+$ raw lines). \\
+\texttt{mdot\_log10(run, j\_from\_top=20)} & $\log_{10}\dot M$ [g/s]:
+  $4\pi\rho v r^2$ near the outer boundary \emph{including} the
+  \texttt{2D approximate method} factor (mirrors \texttt{EXHALE\_main.f90};
+  see \S\ref{sec:outputs}). \\
+\texttt{mdot\_Mp\_per\_Gyr(run)} & the same in units of $M_p$\,Gyr$^{-1}$. \\
+constants & \texttt{RJ, MJ, Msun, AU, GYR} (cgs). \\
+\bottomrule
+\end{tabular}
+\caption{\texttt{examples/exhale\_io.py} public interface. Run analysis scripts
+either from \texttt{examples/} or after adding it to the Python path
+(\texttt{sys.path.insert(0, '<repo>/examples')}).}
+\label{tab:atesio}
+\end{table}
+
+The notebook \texttt{examples/}\allowbreak\texttt{EXHALE\_analysis.ipynb}
+uses these loaders to plot the profiles and the parameter-difference
+comparisons of \S\ref{sec:examples}, and
+\texttt{examples/make\_figures.py} (which generates every figure in this
+manual) is a further worked example.
+
+% ===================================================================== %
+\section{Worked examples}\label{sec:examples}
+% ===================================================================== %
+
+\subsection{A first run: a generic hot Jupiter}
+The directory \texttt{examples/tutorial/} contains a minimal, self-contained
+model of a generic HD\,209458b-like hot Jupiter: a spherical domain out to
+$10\,R_p$, solar metals, EUV+X-ray power-law SED. The full \texttt{input.inp} is:
+\begin{lstlisting}[style=cfg]
+Planet name: demoHJ
+Log10 lower boundary number density [cm^-3]: 12.70
+Planet radius [R_J]: 1.38
+Planet mass [M_J]: 0.69
+Equilibrium temperature [K]: 1320.0
+Orbital distance [AU]: 0.047
+Escape radius [R_p]: 2.00
+He/H number ratio: 0.083
+2D approximate method: Rate/2 + Mdot/2
+Parent star mass [M_sun]: 1.13
+Spectrum type: Power-law
+Power-law index: -1.0
+Use only EUV? False
+[E_low,E_mid,E_high] = [ 13.60 , 123.98 , 1.24e3 ]
+Log10 of X-ray luminosity [erg/s]: 27.0
+Log10 of EUV luminosity [erg/s]: 29.30
+Grid type: Mixed
+Numerical flux: HLLC
+Reconstruction scheme: PLM
+Include He23S? False
+Load IC? False
+Do only PP: False
+Force start: False
+Domain mode: Spherical
+Outer radius [R_p]: 10.0
+du_th [PLM,WENO3]: 0.5 1.0e-3
+Solver: Newton
+\end{lstlisting}
+The last two lines enable the automatic two-stage reconstruction and the
+steady-state Newton finish (\S\ref{sec:newton}), so the run converges to the true
+steady state without manual restarts. With \texttt{metals.inp} present (solar
+abundances, \S\ref{sec:inputs}), run
+\texttt{./EXHALE.x} in that directory. Figure~\ref{fig:tut} shows the converged
+profiles read back with \texttt{exhale\_io}: the wind heats to $\sim10^4$\,K, the
+velocity rises monotonically outward (transonic outflow), and hydrogen ionizes
+across a front near $1.2$--$1.4\,R_p$.
+
+\begin{figure}[htbp]\centering
+\includegraphics[width=0.92\textwidth]{figures/tutorial_overview.pdf}
+\caption{First-run output of the generic hot-Jupiter tutorial: density,
+velocity, temperature, and the H ionization fraction vs.\ radius.}
+\label{fig:tut}
+\end{figure}
+
+\subsection{Turning physics on and off}
+The same model is re-run with single-line changes to illustrate each option:
+\emph{metals off} by removing \texttt{metals.inp}; \emph{Roche/RLOF} by removing
+the \texttt{Domain mode}/\texttt{Outer radius} lines (the default truncates at
+L1); the \emph{He\,10830} line by setting \texttt{Include He23S? True}; the
+\emph{H$\alpha$/Balmer} physics by adding \texttt{Stellar Teff}/\texttt{Stellar
+radius}; and the \emph{transonic IC} by adding \texttt{Transonic IC: True} for a
+near-unbound (deep-RLOF) base. The comparison studies below quantify the effect
+of the first two.
+
+\subsection{Ready-made example configurations (\texttt{examples/})}
+\label{sec:exinputs}
+For every solver/physics combination there is a ready-to-run folder under
+\texttt{examples/} (paths relative to the \texttt{EXHALE} root),
+all for the \emph{same} planet (HD189733b) so that the effect of each option can
+be isolated. Each folder is self-contained: \texttt{cd} into it and run the
+repo-root binary (\texttt{../../EXHALE.x}); outputs land in the folder's own
+\texttt{output/}. Every folder differs from the baseline
+\texttt{01\_legacy\_marching/input.inp} only by the lines listed in
+Table~\ref{tab:exinputs} (so \texttt{diff} against the baseline shows exactly
+what an option adds); the ten baseline configurations have been
+smoke-tested. \texttt{11\_windae\_ic} is a \emph{deliberate
+non-converging} case (HD189733b stalls the static-BC Wind-AE ramp), and
+\texttt{12\_windae\_ic\_hd209} is the corresponding working case
+(HD209458b, seed-adjacent).
+
+\begin{table}[htbp]\centering\small
+\begin{tabular}{@{}lp{4.6cm}p{5.6cm}@{}}
+\toprule
+\texttt{examples/}\ldots & Demonstrates & Added / changed lines \\
+\midrule
+\texttt{01\_legacy\_marching} & classic ATES~v2 baseline: PLM marching,
+  H/He only, Roche domain, $du$-based stop & (none --- baseline) \\
+\texttt{02\_two\_stage} & automatic two-stage PLM$\to$WENO3 marching
+  (\S\ref{sec:convctl}) & \texttt{du\_th [PLM,WENO3]: 0.5 1.0e-3} \\
+\texttt{03\_newton} & \textbf{recommended default}: two-stage warm-up $+$
+  Newton finish (\S\ref{sec:newton}) & $+$ \texttt{Solver: Newton} \\
+\texttt{04\_newton\_from\_state} & Newton re-convergence of an existing state
+  (no marching; needs \texttt{output/*\_IC.txt}, see the folder
+  \texttt{README}) & \texttt{Load IC? True}, \texttt{Valve eps: 1.0e-4},
+  \texttt{Resid tol: 1.0e-3}; run via the \texttt{ATES\_PTC} hook \\
+\texttt{05\_metals} & trace-metal cooling, solar C/N/O/Mg/Ca/Na/Fe
+  (\S\ref{sec:inputs}) & \texttt{metals.inp} present \\
+\texttt{06\_he23s} & He~$2^3$S metastable level (He\,I~10830) &
+  \texttt{Include He23S? True} \\
+\texttt{07\_balmer\_lya} & non-LTE H($n{=}2$) $+$ Ly$\alpha$ pumping
+  (H$\alpha$/H$\beta$, \S\ref{sec:jlya}) & $+$ \texttt{Stellar
+  Teff/radius}, \texttt{Deexc heat}, \texttt{Jlya escape-prob},
+  \texttt{Stellar Lya flux/halfwidth/boost} \\
+\texttt{08\_full} & everything on ($=$ the \texttt{HD189733b/} planet folder
+  $+$ Newton); feeds \texttt{TPM.py} & \texttt{07} $+$ \texttt{metals.inp} \\
+\texttt{09\_spherical} & spherical domain instead of the default Roche/L1
+  truncation (\S\ref{sec:potential}) & \texttt{Domain mode: Spherical},
+  \texttt{Outer radius [R\_p]: 10.0} \\
+\texttt{10\_warm\_seed\_ic} & warm-seed (hot Parker overlay) initial
+  condition & \texttt{Hot Parker IC: 10000} \\
+\texttt{11\_windae\_ic} & in-process Wind-AE warm-start IC
+  (\S\ref{sec:windae}) --- \emph{deliberate non-converging case}:
+  HD189733b is strongly bound and far from the shipped seed, so the
+  static-BC ramp stalls (use \texttt{IC mode: auto} for this planet) &
+  $+$ \texttt{IC mode: windae}, \texttt{Solver: Newton}; symlinks
+  \texttt{inputdata/} for the shipped seed \\
+\texttt{12\_windae\_ic\_hd209} & in-process Wind-AE warm-start IC that
+  \emph{works}: HD\,209458b (\textbf{not} HD189733b) is close to the
+  shipped seed, so the ramp converges and EXHALE warm-starts cleanly
+  (spherical $10\,R_p$) & HD209458b params $+$ \texttt{Domain mode:
+  Spherical}, \texttt{IC mode: windae}, \texttt{Solver: Newton};
+  symlinks \texttt{inputdata/} \\
+\bottomrule
+\end{tabular}
+\caption{Ready-made example configurations under \texttt{examples/}
+(\texttt{01}--\texttt{11} are HD189733b; \texttt{12} is HD209458b, a
+seed-adjacent planet where the Wind-AE IC ramp converges, contrasted with
+the deliberately non-converging \texttt{11}). Metals on/off is a runtime
+switch: any folder becomes metals-on by copying a \texttt{metals.inp}
+into it.}
+\label{tab:exinputs}
+\end{table}
+
+% ===================================================================== %
+\section{Comparison studies}\label{sec:compare}
+% ===================================================================== %
+
+\subsection{Effect of metal-line cooling (metals on vs.\ off)}
+Trace metals add strong line cooling (and some photoionization heating and free
+electrons). Figure~\ref{fig:metals} compares the tutorial planet with and without
+\texttt{metals.inp}: metal-line cooling lowers the peak temperature by
+$\sim1800$\,K (acting as a thermostat that prevents the H/He-only over-heating),
+while the H ionization structure is barely changed. The effect is far stronger
+for hotter, more irradiated planets (e.g.\ WASP-121b, where metal cooling is
+essential to match the observed temperatures); the detailed per-channel cooling
+budget is in Figure~\ref{fig:cool}.
+
+\begin{figure}[htbp]\centering
+\includegraphics[width=0.95\textwidth]{figures/metals_on_off.pdf}
+\caption{Metals on vs.\ off for the tutorial planet: metal-line cooling lowers
+the peak temperature (left) while the H ionization fraction is nearly unchanged
+(right).}\label{fig:metals}
+\end{figure}
+
+\begin{figure}[htbp]\centering
+\includegraphics[width=0.72\textwidth]{figures/cooling_breakdown.pdf}
+\caption{Per-channel radiative cooling vs.\ radius (WASP-121b, metals on; from
+\texttt{Cooling\_breakdown.txt}). Below $\sim1.4\,R_p$ the metal lines (e.g.\
+Fe\,II, Mg\,II, C/O) compete with or dominate the H/He collisional channels.}
+\label{fig:cool}
+\end{figure}
+
+\subsection{Spherical vs.\ Roche (RLOF) and the mass-loss rate}
+Removing the \texttt{Domain mode: Spherical} line switches on the full Roche
+tidal potential, truncated at the L1 radius. Figure~\ref{fig:roche} compares a
+spherical model (Case~A) and a Roche model (Case~B) of WASP-121b: the tidal
+potential lowers the effective gravity toward the star, so the Roche wind
+accelerates far faster and the mass-loss rate rises by an order of magnitude
+($\dot M$ from $\sim0.05$ to $\sim0.34\,M_p$\,Gyr$^{-1}$ here) --- the
+``Roche-lobe overflow'' enhancement.
+
+\begin{figure}[htbp]\centering
+\includegraphics[width=0.98\textwidth]{figures/spherical_vs_roche.pdf}
+\caption{Spherical (Case~A) vs.\ Roche (Case~B) WASP-121b: temperature,
+velocity, and density. The Roche wind reaches L1 ($\approx1.6\,R_p$) and
+accelerates much faster; $\dot M$ is annotated. The temperature panel is the
+\texttt{\_adv} profile; its base is smooth because the post-processor falls back
+to the equilibrium solution where the flow is not a clean outflow (see the caveat
+in \S\ref{sec:outputs}). The Roche velocity (middle) dips slightly negative near
+the base --- the genuine, physical ``breathing'' inflow of a near-Roche-filling
+planet.}\label{fig:roche}
+\end{figure}
+
+\subsection{Transmission spectra}
+\texttt{TPM.py} turns a converged model into transit absorption. The metal
+resonance lines are the key NUV/optical diagnostics; Figure~\ref{fig:trans}
+compares the modelled effective transit radii $R_{\rm eff}/R_\star$ (spherical
+Case~A) against Huang et al.\ (2023). Recall the conventions of \S5.2: Mg\,II is a
+4\,\AA\ bin, Ca\,II/Na are line-center, and $R_{\rm eff}/R_\star=\sqrt{(R_p/R_\star)^2+h}$.
+
+\begin{figure}[htbp]\centering
+\includegraphics[width=0.66\textwidth]{figures/transmission_metals.pdf}
+\caption{Metal-line transit radii $R_{\rm eff}/R_\star$ for spherical Case~A,
+compared with Huang et al.\ (2023) Case~A and Case~D.}\label{fig:trans}
+\end{figure}
+
+% ===================================================================== %
+\section{Atomic and molecular data}\label{sec:data}
+% ===================================================================== %
+EXHALE is a \emph{purely atomic/ionic} code: the modeled species are H, He
+(including the He\,$2\,^3$S metastable triplet), and ten trace metals
+(C, N, O, Mg, Si, Ca, Na, K, S, Fe) across their first two--three ionization
+stages. There is \textbf{no molecular chemistry and no molecular opacity} --- no
+H$_2$, H$^-$, CO, or H$_2$O --- so no molecular line lists or partition functions
+enter the calculation (the only ``molecular'' quantity in the code is the mean
+\emph{molecular} weight $\mu$, i.e.\ the mean mass per particle). Table~\ref{tab:data}
+collects the provenance of every rate and cross section, grouped by physical
+process. The H/He baseline is inherited essentially unchanged from the original
+ATES (Caldiroli et al.\ 2021, 2022); the metal, excited-hydrogen, and
+charge-exchange data were added in this work.
+
+\begin{longtable}{@{}>{\raggedright\arraybackslash\hyphenpenalty=10000\exhyphenpenalty=10000}p{0.205\textwidth}p{0.30\textwidth}p{0.43\textwidth}@{}}
+\caption{Atomic data sources, by process. Source files:
+\texttt{cross\_sec.f90} (cross sections); \texttt{Cool\_coeff.f90} (collisional
+rates, recombination, cooling); \texttt{charge\_exchange.f90};
+\texttt{excited\_hydrogen.f90}; \texttt{TPM.py} (transmission line
+data).}\label{tab:data}\\
+\toprule
+\textbf{Process} & \textbf{Species} & \textbf{Source} \\
+\midrule
+\endfirsthead
+\multicolumn{3}{l}{\small\itshape Table~\ref{tab:data}, continued}\\
+\toprule \textbf{Process} & \textbf{Species} & \textbf{Source} \\ \midrule
+\endhead
+\bottomrule
+\endfoot
+\multicolumn{3}{@{}l}{\textbf{Elemental abundances}}\\[2pt]
+Solar reference & 10 metals (\texttt{metals.inp} template) & Asplund et al.\ (2009) \\
+Helium & He/H ratio & input parameter (\texttt{He/H number ratio}) \\
+\midrule
+\multicolumn{3}{@{}l}{\textbf{Photoionization cross sections}}\\[2pt]
+Bound--free $\sigma(E)$ & H\,I & hydrogenic (Kramers) analytic form (orig.\ ATES) \\
+ & He\,I & analytic fit (orig.\ ATES) \\
+ & He\,I\,$2\,^3$S (metastable) & Norcross (1971) fit \\
+ & C, N, O, Mg, Si, Na, Fe (+ ions) & Verner, Ferland, Korista \& Yakovlev (1996), single-shell fits \\
+ & K\,I & Verner \& Yakovlev (1995) \\
+Opacity model (runtime) & all (via \texttt{opacity.inp}) & A=analytic above; P=pressure-broadened (Robinson \& Catling); T=tabulated files \\
+\midrule
+\multicolumn{3}{@{}l}{\textbf{Collisional (electron-impact) ionization}}\\[2pt]
+Rate $C(T)$ & H\,I, He\,I, He\,II & analytic fits (orig.\ ATES) \\
+ & C--Fe, all stages & Voronov (1997, ADNDT 65, 1) \\
+\midrule
+\multicolumn{3}{@{}l}{\textbf{Recombination (radiative RR + dielectronic DR)}}\\[2pt]
+Case~B (RR) & H\,II, He\,II, He\,III & Hui \& Gnedin (1997) fits (DR negligible) \\
+Metastable & He\,II\,$\to2\,^3$S, $1\,^1$S & power-law fits (orig.\ ATES) \\
+RR + DR & C, N, O, Mg, Si, Na, K, S, Ca\,II (+ stages) & Badnell (2006, ApJS 167, 334) RR + Badnell adf48 DR (TAMOC clist\_K) \\
+RR only & Ca\,I (Ca\,II$+e$) & Shull \& Van Steenberg (1982); no DR \\
+RR + DR & Fe\,I, Fe\,II & Huang et al.\ (2023) analytic fit (validation; Badnell switch deferred) \\
+\midrule
+\multicolumn{3}{@{}l}{\textbf{Charge exchange (charge transfer)}}\\[2pt]
+metal\,$+$\,H/H$^+$ (default) & 23 reactions (Group~A) & Huang et al.\ (2023, ApJ 951, 123) Table~4 \\
+full network (\texttt{cx\_full}) & $+$ He$+$H, metal$+$He, metal$+$metal & Huang et al.\ (2023) Table~4 (Groups B/C/D) \\
+\midrule
+\multicolumn{3}{@{}l}{\textbf{Radiative cooling}}\\[2pt]
+recomb., coll.\ ion./exc., free--free & H, He & orig.\ ATES (Hui \& Gnedin 1997; Black 1981; Gaunt-factor bremsstrahlung) \\
+metal line cooling \mbox{(analytic)} & C\,I/II, N\,I/II, O\,I/II & closed-form fits to CHIANTI v11.0.2 (default); legacy AIOLOS fits via \texttt{cno\_cool 0} (no N cooling) \\
+metal line cooling \mbox{(analytic)} & Mg\,I/II, Ca\,II\,H\&K, Na\,I\,D, Fe\,II coronal & closed-form fits to CHIANTI v11.0.2 (Burgess--Tully descaled; 1--3\% accuracy); Na\,I\,D via effective $\bar g\!\approx\!0.2$ \\
+metal line cooling \mbox{(tabulated)} & Fe\,I; Fe\,II\,$(T,n_e)$ & NIST $f$-values $+$ Van Regemorter; CHIANTI multilevel statistical equilibrium \\
+fine-structure (opt., \texttt{use\_2lev\_cool}) & [O\,I] etc. & Lique et al.\ (2017) / Draine (2011) \\
+\midrule
+\multicolumn{3}{@{}l}{\textbf{Excited hydrogen H($n{=}2$) and Ly$\alpha$}}\\[2pt]
+$2s/2p$ rate equilibrium & H($n{=}2$) & Christie, Arras \& Li (2013) Table~2 \\
+recombination cascade to $n{=}2$ & H & Draine (2011) \\
+Ly$\alpha$ pumping field (mode~0) & H & Huang et al.\ (2017) Eq.~6 \\
+\midrule
+\multicolumn{3}{@{}l}{\textbf{Transmission line data (\texttt{TPM.py})}}\\[2pt]
+$\lambda$, $f$-value, $A_{ki}$ & He\,10830, Ly$\alpha$, H$\alpha$, H$\beta$, Mg\,II, Ca\,II\,H\&K, Na\,I\,D & NIST ASD \\
+line profile & all & Voigt (Faddeeva, \texttt{scipy.special.wofz}) \\
+\end{longtable}
+
+\noindent
+\textbf{Note on Fe.} Iron recombination currently uses the Huang et al.\ (2023)
+analytic RR+DR fit (chosen to validate against Huang's Fig.~12) while every other
+metal uses the Badnell tabulation; unifying Fe onto Badnell is a documented
+deferred item. \textbf{Note on completeness.} The metal grid carries the stages
+needed for the XUV-driven ionization balance and the observed NUV/optical lines;
+higher stages and additional elements (e.g.\ the full Fe forest, K\,I, Mg\,I)
+beyond those tabulated above are not modeled.
+
+\end{document}
