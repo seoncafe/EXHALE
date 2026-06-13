@@ -30,7 +30,13 @@
       character(len = :), allocatable :: appx_mth
       character(len = :), allocatable :: sp_type
       character(len = :), allocatable :: sed_file
-      
+      ! Wind-AE warm-start IC seed (IC mode: windae). "Wind-AE seed:" sets the
+      ! starting windsoln CSV (default inputdata/windae_seed.csv); the special
+      ! value 'grid' auto-picks the nearest solution in inputdata/windae_grid/.
+      ! "Wind-AE seed out:" optionally dumps the converged soln as a new seed.
+      character(len = :), allocatable :: windae_seed_file
+      character(len = :), allocatable :: windae_seed_out
+
       logical :: is_mom_const  = .false.  ! Is momentum constant within tolerance
       logical :: is_zero_dt    = .false.  ! Is time derivative really zero 
       logical :: force_start   = .false.  ! Force to do first 1000 iterations
@@ -262,6 +268,18 @@
       ! smooth, -> max(v,0) as eps -> 0, and = v - O(eps^2/v) for v >> eps.
       ! Default <= 0 keeps the exact legacy valve (byte-identical).
       real*8  :: valve_eps = -1.0d0
+
+      ! Momentum-consistent base pressure ("Hydrostatic base: True"). The
+      ! legacy lower BC pins the ghost pressure to ntot_bc+dp_bc (T=T0), so
+      ! dp/dr is flattened to ~0 at the base -- but steady momentum balance
+      ! needs dp/dr = -rho g. For strongly bound planets (large b0, e.g.
+      ! HD189733b) the resulting base-face momentum residual is O(10-100) and
+      ! drives the breathing limit cycle. With this flag the ghost pressure is
+      ! instead a linear extrapolation of the interior pressure gradient
+      ! (cells 1,2), so dp/dr stays CONTINUOUS through the base and can balance
+      ! gravity; rho stays anchored at rho_bc and T_base floats slightly off
+      ! T0. Default off = byte-identical legacy behavior.
+      logical :: hydrostatic_base = .false.
 
       ! Residual-based convergence ("Resid tol: <val>"). When > 0, the run
       ! converges when the finite-volume steady residual

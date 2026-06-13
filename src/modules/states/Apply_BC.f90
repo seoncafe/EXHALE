@@ -1,9 +1,9 @@
    module BC_Apply
    ! Implementation of boundary conditions
-   
+
    use global_parameters
    use Conversion
-   
+
    implicit none
    
    contains
@@ -36,7 +36,7 @@
    real*8, intent(inout)  :: W_in(1-Ng:N+Ng,3)
    integer, intent(in)    :: index
 
-   ! Save into output vector
+   ! Density: always the base anchor rho_bc (the mass reservoir).
    W_in(index,1) = rho_bc
    if (valve_eps .gt. 0.0d0) then
       ! Smooth one-way valve 0.5*(v + sqrt(v^2 + eps^2)): differentiable at
@@ -48,10 +48,18 @@
    else
       W_in(index,2) = max(W_in(1,2),0.0)
    endif
-   ! ntot_bc (=1 for H/He only) + dp_bc = total particles (nuclei +
-   ! electrons) at the base in units of n0, so the EOS T = p/(n_tot+ne)
-   ! gives exactly T = T0 at the ghost cells.
-   W_in(index,3) = ntot_bc + dp_bc
+   ! Pressure. Legacy: fixed ntot_bc + dp_bc (-> T = T0 isothermal base).
+   ! hydrostatic_base (momentum-consistent): extrapolate the interior pressure
+   ! gradient (cells 1,2) into the ghost so dp/dr is CONTINUOUS at the base
+   ! rather than flattened to 0; the base-face pressure gradient can then
+   ! balance gravity (the source of the breathing momentum residual). With
+   ! rho pinned to rho_bc, T_base floats slightly off T0.
+   if (hydrostatic_base) then
+      W_in(index,3) = W_in(1,3) + (W_in(2,3) - W_in(1,3))                 &
+                      /(r(2) - r(1))*(r(index) - r(1))
+   else
+      W_in(index,3) = ntot_bc + dp_bc
+   endif
 
    ! End of subroutine
    end subroutine BC_component_constrho

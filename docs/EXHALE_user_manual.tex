@@ -1100,10 +1100,11 @@ repo-root binary (\texttt{../../EXHALE.x}); outputs land in the folder's own
 \texttt{01\_legacy\_marching/input.inp} only by the lines listed in
 Table~\ref{tab:exinputs} (so \texttt{diff} against the baseline shows exactly
 what an option adds); the ten baseline configurations have been
-smoke-tested. \texttt{11\_windae\_ic} is a \emph{deliberate
-non-converging} case (HD189733b stalls the static-BC Wind-AE ramp), and
-\texttt{12\_windae\_ic\_hd209} is the corresponding working case
-(HD209458b, seed-adjacent).
+smoke-tested. \texttt{11\_windae\_ic} (HD189733b) exercises the
+self-consistent C-2 continuation: its Wind-AE ramp converges and writes the
+IC, though EXHALE's own time-integration of HD189733b is limited by a
+separate base-breathing instability (\S\ref{sec:windae}).
+\texttt{12\_windae\_ic\_hd209} is the seed-adjacent HD209458b case.
 
 \begin{table}[htbp]\centering\small
 \begin{tabular}{@{}lp{4.6cm}p{5.6cm}@{}}
@@ -1135,10 +1136,11 @@ non-converging} case (HD189733b stalls the static-BC Wind-AE ramp), and
   \texttt{Outer radius [R\_p]: 10.0} \\
 \texttt{10\_warm\_seed\_ic} & warm-seed (hot Parker overlay) initial
   condition & \texttt{Hot Parker IC: 10000} \\
-\texttt{11\_windae\_ic} & in-process Wind-AE warm-start IC
-  (\S\ref{sec:windae}) --- \emph{deliberate non-converging case}:
-  HD189733b is strongly bound and far from the shipped seed, so the
-  static-BC ramp stalls (use \texttt{IC mode: auto} for this planet) &
+\texttt{11\_windae\_ic} & in-process Wind-AE IC for HD189733b
+  (\S\ref{sec:windae}): far from the seed, so the C-2 continuation (base-BC
+  re-convergence $+$ molecular-layer turn-off) is exercised; the Wind-AE ramp
+  converges and writes the IC. EXHALE's own HD189733b base-breathing
+  instability (separate from the IC) then limits the warm start &
   $+$ \texttt{IC mode: windae}, \texttt{Solver: Newton}; symlinks
   \texttt{inputdata/} for the shipped seed \\
 \texttt{12\_windae\_ic\_hd209} & in-process Wind-AE warm-start IC that
@@ -1150,11 +1152,11 @@ non-converging} case (HD189733b stalls the static-BC Wind-AE ramp), and
 \bottomrule
 \end{tabular}
 \caption{Ready-made example configurations under \texttt{examples/}
-(\texttt{01}--\texttt{11} are HD189733b; \texttt{12} is HD209458b, a
-seed-adjacent planet where the Wind-AE IC ramp converges, contrasted with
-the deliberately non-converging \texttt{11}). Metals on/off is a runtime
-switch: any folder becomes metals-on by copying a \texttt{metals.inp}
-into it.}
+(\texttt{01}--\texttt{11} are HD189733b; \texttt{12} is HD209458b,
+seed-adjacent). The Wind-AE IC ramp (stage C-2) converges for both planets;
+\texttt{11} additionally exercises the molecular-layer turn-off. Metals
+on/off is a runtime switch: any folder becomes metals-on by copying a
+\texttt{metals.inp} into it.}
 \label{tab:exinputs}
 \end{table}
 

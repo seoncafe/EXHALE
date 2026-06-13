@@ -297,6 +297,9 @@
 		T_wind_ic        = 1.0d4
 		use_newton_ieq   = .true.    ! upgraded solvers are the default
 		use_brent_tsolve = .true.
+		windae_seed_file = 'inputdata/windae_seed.csv'
+		windae_seed_out  = ''
+		hydrostatic_base = .false.
 		do
 			read(11,'(A)',iostat = ios) line
 			if (ios .ne. 0) exit
@@ -316,6 +319,10 @@
 			else if (index(line,'Deexc heat') .gt. 0) then
 				str = get_word(line, 3)
 				if (str .eq. 'True') incl_deexc_heat = .true.
+			else if (index(line,'Wind-AE seed out') .gt. 0) then
+				windae_seed_out = trim(get_word(line, 4))
+			else if (index(line,'Wind-AE seed') .gt. 0) then
+				windae_seed_file = trim(get_word(line, 3))
 			else if (index(line,'Jlya RT file') .gt. 0) then
 				jlya_rt_file = get_word(line, 4)
 				jlya_mode    = 1
@@ -382,6 +389,11 @@
 				! (softplus; <= 0 keeps the exact legacy max(v,0)).
 				str = get_word(line, 3);  read(str,*) valve_eps
 				write(*,'(A,ES9.2)') ' (input_read) Smooth base valve, eps =', valve_eps
+			else if (index(line,'Hydrostatic base') .gt. 0) then
+				str = get_word(line, 3)
+				if (str .eq. 'True') hydrostatic_base = .true.
+				if (hydrostatic_base) write(*,'(A)') ' (input_read) '//   &
+				   'Hydrostatic base ghost cells enabled'
 			else if (index(line,'Resid tol') .gt. 0) then
 				! "Resid tol: <val>" = converge on the steady residual ||R||
 				! instead of du (<= 0 disables; legacy du-based stop).

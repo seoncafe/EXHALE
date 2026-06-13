@@ -1,0 +1,219 @@
+%% The Wind-AE windsoln / seed file format.
+%% Author: Kwang-Il Seon
+\documentclass[english,a4paper]{kiseon_memo}
+\synctex=1
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage{amsmath}
+\usepackage{babel}
+\emergencystretch=3em
+
+\newcommand{\code}[1]{\texttt{#1}}
+\newcommand{\Rp}{R_{\rm pl}}
+\newcommand{\Ftot}{F_{\rm tot}}
+\newcommand{\hd}[1]{\code{\##1}}      % a #key header token
+
+\title{The Wind-AE \code{windsoln} (seed) file format}
+\author{Kwang-Il Seon}
+\date{2026-06-13}
+
+\begin{document}
+\maketitle
+
+\begin{quote}\small\itshape
+A converged Wind-AE wind solution is stored as a single CSV-like file: a
+block of comment-prefixed header lines that carry every parameter,
+boundary condition, and the stellar spectrum, followed by the solution
+profile itself as a table of normalized (code-unit) columns. The same
+format is used by (i) the original Wind-AE Python wrapper (Murray-Clay et
+al.\ 2009; Broome et al.\ 2025), (ii) the bundled solution grid under
+\code{inputdata/windae\_grid/}, and (iii) EXHALE's Fortran port, whose
+\code{load\_seed} reads such a file as the starting point of a
+continuation and whose \code{dump\_seed} writes one back. This note is the
+authoritative field-by-field reference, taken from the Python reader
+(\code{wrapper/wrapper\_utils/windsoln.py}).
+\end{quote}
+
+\section{File layout}
+A windsoln file has three kinds of lines, in order:
+\begin{enumerate}\itemsep2pt
+  \item \textbf{Header lines} \code{\#key: v1,v2,\dots} --- one per key,
+        carrying scalars, parameters, BCs, flags, and spectrum metadata
+        (Table~\ref{tab:hdr}).
+  \item \textbf{Spectrum rows} \code{\#\# e,wPhi,$\sigma_1$,$\sigma_2$}
+        --- \code{npts} of them, holding the stellar spectrum sampled at
+        the Gauss--Legendre quadrature points (\S\ref{sec:spec}).
+  \item \textbf{Data rows} --- the solution profile, one grid point per
+        line, columns named by \hd{vars} and normalized by \hd{scales}
+        (\S\ref{sec:grid}).
+\end{enumerate}
+Any other line beginning with \code{\#} is a free comment and is skipped.
+A minimal excerpt:
+\begin{verbatim}
+#nspecies: 2
+#vars: r,rho,v,T,Ys_HI,Ys_HeI,Ncol_HI,Ncol_HeI,q,z
+#scales: 8.34e9,1.0e-15,9.08e5,1.0e4,1,1,1.0e17,1.0e17,1,8.34e9
+#plnt_prms: 2.348e30,8.34e9,1.870e33,4.937e11,2.42e4,3.828e33
+#phys_prms: 0.800,0.200,HI,HeI,1.673e-24,6.646e-24,2.30
+#bcs: 1.030,7.755,2.466e4,0.198,1.0,1.0,1.08e-3,2.05e-4,1.85e-5,1.50e-5
+#tech: 1.0,1.0e2,2.5,0.99
+#flags: 1,1.00000,0.00000,1
+#add_prms: 0
+#spec_prms: 59,2,2009-01-01,scaled-solar,full,5.99e-8,9.12e-6, ... ,2.18e-11,3.94e-11
+## 2.150e-9,1.771e6,4.258e-24,1.267e-22
+## ... (59 rows) ...
+1.030,2.466e4,2.232e-6,0.198,1.0,1.0,7.34e3,4.70e2,0.0,2.76
+... (one row per grid point) ...
+\end{verbatim}
+
+\section{Header reference}
+Table~\ref{tab:hdr} lists every header key. $N$ is the number of species
+(\hd{nspecies}; $N=2$ for the bundled H/He data). Planet parameters are in
+cgs; boundary conditions and the data grid are in the code units of
+Table~\ref{tab:grid}.
+
+\begin{table}[t]\centering\small
+\caption{Header lines of a windsoln file. Field order is exact;
+``$\times N$'' marks a per-species block.}
+\label{tab:hdr}
+\begin{tabular}{@{}l l p{8.4cm}@{}}
+\toprule
+Key & Fields & Meaning (and units) \\
+\midrule
+\hd{nspecies}  & $N$ & number of species ($N=2$: H\,\textsc{i}, He\,\textsc{i}). \\
+\hd{vars}      & names & data-grid column labels (Table~\ref{tab:grid}). \\
+\hd{scales}    & $N_{\rm col}$ & cgs value of one code unit for each data column. \\
+\hd{plnt\_prms}& 6 & $M_{\rm p}$[g], $\Rp$[cm], $M_\star$[g], $a$[cm],
+                     $\boldsymbol{\Ftot}$\,[erg\,cm$^{-2}$s$^{-1}$],
+                     $L_\star$[erg\,s$^{-1}$]. \emph{Field~5 is the total
+                     ionizing flux, not $T_{\rm eq}$.} \\
+\hd{phys\_prms}& $3N{+}1$ & mass fractions $X_s$ ($\times N$); species names
+                     ($\times N$); atomic masses [g] ($\times N$);
+                     then \code{molec\_adjust} (mean-molecular-weight boost
+                     of the molecular base layer, $\approx2.3$). \\
+\hd{bcs}       & $2N{+}6$ & $R_{\rm min},R_{\rm max}$ [$\Rp$];
+                     $\rho_{\rm min}$ [$\rho_0$]; $T_{\rm min}$ [$T_0$];
+                     base neutral fractions $Y_{s,\rm min}$ ($\times N$);
+                     sonic-point columns $N_{{\rm col},s}$ [$N_{\rm col,0}$]
+                     ($\times N$); \code{erf\_drop} (2: the erf-velocity
+                     molecular$\to$atomic transition). \\
+\hd{tech}      & 4 & \code{breezeparam}, \code{rapidity}, \code{erfn},
+                     \code{mach\_limit} (relaxation/solver controls). \\
+\hd{flags}     & 4 & \code{lyacool} (0/1); \textbf{\code{tidalforce}}
+                     (0 = spherical, 1 = tidal/Roche); \textbf{\code{bolo\_heat\_cool}}
+                     (0 = atomic base, 1 = molecular bolometric layer);
+                     \code{integrate\_outward} (0/1). \\
+\hd{add\_prms} & $1{+}2n$ & $n$, then $n$ $(\text{name},\text{value})$ pairs
+                     of optional extra parameters ($n=0$: none). \\
+\hd{spec\_prms}& meta & \code{npts}, $N$, date, source file
+                     (\code{scaled-solar}), kind (\code{full}),
+                     window[2], resolved[2], normalized[2] (wavelength
+                     bounds [cm]), ionization potentials $\chi_s$ [erg]
+                     ($\times N$). See \S\ref{sec:spec}. \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\section{The embedded stellar spectrum}
+\label{sec:spec}
+The stellar XUV spectrum that the solution was computed with is stored in
+the file itself, in two parts:
+\begin{itemize}\itemsep2pt
+  \item \hd{spec\_prms} --- metadata: the number of quadrature points
+        \code{npts}, the source label (here \code{scaled-solar}, a
+        solar-like SED), the spectral kind (\code{full}, i.e.\ resolved
+        rather than monochromatic), the integration window in wavelength
+        ($\approx[6,912]\,$\AA, i.e.\ X-ray to the H Lyman limit), and the
+        per-species ionization potentials $\chi_s$ (e.g.\
+        $2.18\times10^{-11}\,$erg $=13.6$\,eV for H,
+        $3.94\times10^{-11}\,$erg $=24.6$\,eV for He).
+  \item the \code{\#\#} rows --- the spectrum proper, one row per
+        quadrature point: photon energy $hc/\lambda_i$ [erg]; the
+        \emph{normalized} weight $w_i\Phi_{\lambda_i}/\Ftot$; and the
+        photoionization cross sections $\sigma_{\lambda_i,s}$ [cm$^2$] for
+        each species.
+\end{itemize}
+The crucial point is the separation of \emph{shape} and \emph{amplitude}:
+the \code{\#\#} weights are normalized by $\Ftot$, so they encode only the
+spectral \emph{shape} (which photon energies carry what fraction of the
+ionizing flux), while the absolute level is set by the single scalar
+$\Ftot$ in \hd{plnt\_prms}. This is why the bundled grid can keep one fixed
+\code{scaled-solar} shape across all $\sim$1000 solutions and vary only
+$\Ftot$ (and $M_{\rm p},\Rp$) from planet to planet. Verified: \hd{spec\_prms}
+is byte-identical across the entire grid.
+
+\medskip\noindent\textbf{Caveat (spectrum dependence).} The wind structure
+depends on the SED shape, not only on $\Ftot$. The bundled data assume a
+\code{scaled-solar} spectrum; an EXHALE run that instead assumes, say, a
+power law produces different heating/ionization profiles. A Wind-AE
+warm-start is therefore only self-consistent with an EXHALE run that uses
+the \emph{same} spectrum. Conversely, a power-law EXHALE model failing to
+converge does \emph{not} imply that no steady wind exists for that planet
+--- only that that particular spectrum/numerics combination did not settle.
+
+\section{The solution grid}
+\label{sec:grid}
+Each data row is one grid point; the columns are named by \hd{vars} and are
+stored in dimensionless code units. The physical (cgs) value is recovered
+as $\text{(physical)} = \text{(code)}\times\text{(scale)}$, with the scale
+taken from \hd{scales} (Table~\ref{tab:grid}). The independent variable is
+the relaxation coordinate $q\in[0,1]$ mapping the base to the sonic point;
+the physical radius is $r = R_{\rm min} + q\,z$, where $z$ (constant along
+the solution) is the base$\to$sonic span in $\Rp$.
+
+\begin{table}[t]\centering\small
+\caption{Data-grid columns (\hd{vars}) and their code$\to$cgs scales
+(\hd{scales}). $\rho_0{=}10^{-15}$, $c_{s,0}{=}\sqrt{k_BT_0/m_{\rm H}}
+{=}9.08\times10^{5}$, $T_0{=}10^{4}$, $N_{\rm col,0}{=}10^{17}$.}
+\label{tab:grid}
+\begin{tabular}{@{}l l l p{6.0cm}@{}}
+\toprule
+Column & Symbol & Scale & Meaning \\
+\midrule
+\code{r}        & $r$            & $\Rp$              & radius \\
+\code{rho}      & $\rho$         & $\rho_0$           & mass density [g\,cm$^{-3}$] \\
+\code{v}        & $v$            & $c_{s,0}$          & radial velocity [cm\,s$^{-1}$] \\
+\code{T}        & $T$            & $T_0$              & temperature [K] \\
+\code{Ys\_HI}   & $Y_{\rm HI}$   & 1                  & H neutral fraction \\
+\code{Ys\_HeI}  & $Y_{\rm HeI}$  & 1                  & He neutral fraction \\
+\code{Ncol\_HI} & $N_{\rm HI}$   & $N_{\rm col,0}$    & H column to the star [cm$^{-2}$] \\
+\code{Ncol\_HeI}& $N_{\rm HeI}$  & $N_{\rm col,0}$    & He column to the star [cm$^{-2}$] \\
+\code{q}        & $q$            & 1                  & relaxation coordinate $\in[0,1]$ \\
+\code{z}        & $z$            & $\Rp$              & base$\to$sonic span ($r=R_{\rm min}+qz$) \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\section{Use in the EXHALE port}
+\code{src/modules/wind\_ae/wae\_continuation.f90} reads and writes this
+format:
+\begin{itemize}\itemsep2pt
+  \item \code{load\_seed} parses \hd{plnt\_prms}, \hd{phys\_prms},
+        \hd{bcs}, \hd{tech}, \hd{flags}, and the first $m$ data rows (into
+        the relaxation arrays). It \emph{ignores} \hd{scales},
+        \hd{add\_prms}, \hd{spec\_prms}, and the \code{\#\#} rows: the
+        spectrum is loaded separately from
+        \code{inputdata/windae\_spectrum.inp}, which is the same
+        \code{scaled-solar} data in the equivalent
+        ``\code{\# KEY: \dots}'' header form.
+  \item \code{dump\_seed} is the exact inverse: it reconstructs the full
+        header (including \hd{scales}, \hd{spec\_prms}, and the
+        \code{\#\#} block from the in-memory spectrum arrays) and writes
+        the $m$ relaxation rows, so a converged solution can be banked as a
+        reusable seed.
+  \item \textbf{Seed library and picker.} \code{inputdata/windae\_grid/}
+        holds the Broome et al.\ (2025) grid ($\sim$1000 solutions spanning
+        $M_{\rm p}\!\in\![3,528]\,M_\oplus$ and
+        $\Rp\!\in\![1.9,22.6]\,R_\oplus$, all with \code{tidalforce}=1 and
+        the fixed \code{scaled-solar} spectrum), plus the eight
+        \code{starting\_solutions}. With \code{Wind-AE seed: grid} in
+        \code{input.inp}, \code{pick\_nearest\_seed} reads the grid manifest
+        (one row of \code{path}, $M_{\rm p}$, $\Rp$, $\Ftot$ per file;
+        rebuilt by \code{make\_windae\_manifest.sh}) and selects the
+        solution closest in $(\log M_{\rm p},\log\Rp)$, so the continuation
+        starts from a near neighbor rather than the single distant fiducial
+        seed. \code{Wind-AE seed out:} dumps the converged solution back
+        into this format.
+\end{itemize}
+
+\end{document}

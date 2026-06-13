@@ -199,11 +199,16 @@ ionization (and any metals) from the first step, so the Wind-AE IC need not
 be exactly self-consistent.  The shipped seed and spectrum live in
 `inputdata/windae_seed.csv` and `inputdata/windae_spectrum.inp`.
 
-This works best for hot Jupiters close to the shipped seed (see the working
-example `examples/12_windae_ic_hd209/`, HD 209458 b).  A strongly-bound,
-far-from-seed planet can stall the static-BC ramp — the run then prints a
-message advising `IC mode: auto` (see the deliberately non-converging
-`examples/11_windae_ic/`, HD 189733 b).
+This works for hot Jupiters close to the shipped seed
+(`examples/12_windae_ic_hd209/`, HD 209458 b) and, via the self-consistent
+C-2 continuation (re-converging the base boundary conditions, and turning the
+molecular layer off when the base sinks into the wind), for strongly-bound,
+far-from-seed planets too — including HD 189733 b (`examples/11_windae_ic/`),
+whose Wind-AE ramp now converges and writes a valid IC.  (If a ramp ever
+fails, the run prints a message advising `IC mode: auto`.)  Note that whether
+EXHALE then *time-integrates* a given planet cleanly is a separate question
+from the Wind-AE IC: HD 189733 b, for instance, hits an EXHALE-side
+base-breathing instability near 1.07 R_p regardless of the IC source.
 
 **Standalone generator** — the same solver also builds an IC out of process:
 
@@ -316,7 +321,7 @@ See `examples/README.md` for the exact lines each one adds:
 | `08_full/` | Full physics (metals + He 2³S + Balmer/Lya) |
 | `09_spherical/` | Extended spherical domain |
 | `10_warm_seed_ic/` | Warm-seed initial condition |
-| `11_windae_ic/` | In-process Wind-AE warm-start IC — deliberate non-converging case (HD 189733 b stalls the static-BC ramp; use `IC mode: auto`) |
+| `11_windae_ic/` | In-process Wind-AE IC for HD 189733 b — the C-2 ramp converges and writes the IC; EXHALE's own base-breathing instability (separate from the IC) then limits the warm start |
 | `12_windae_ic_hd209/` | In-process Wind-AE warm-start IC that works (HD 209458 b, seed-adjacent) |
 
 ---

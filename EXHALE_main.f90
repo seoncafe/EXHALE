@@ -167,6 +167,20 @@
          call ioniz_eq(T,rho,f_sp,rho,f_sp,heat,cool,eta)
          call assemble_residual(u, heat, cool, Rres)
          call residual_norms(Rres, u, resid_c)
+         ! per-cell residual profile (localize the momentum imbalance)
+         block
+           integer :: jj, uu
+           open(newunit=uu, file='output/residual_profile.txt',           &
+                status='replace', action='write')
+           write(uu,'(A)') '# r[Rp]  n[cm-3]  v[cm/s]  T[K]  '//           &
+                'R_mass  R_mom  R_energy'
+           do jj = 1, N
+              write(uu,'(1X,7(ES16.8,1X))') r(jj), W(jj,1)*n0, W(jj,2)*v0, &
+                   T(jj)*T0, Rres(jj,1), Rres(jj,2), Rres(jj,3)
+           end do
+           close(uu)
+           write(*,'(A)') ' (EXHALE_main) wrote output/residual_profile.txt'
+         end block
          write(*,'(A)') ' (EXHALE_main) ATES_RESIDUAL=1 steady residual ||R||:'
          write(*,'(A)') '   component   max|R|/max|u| [1/t_s]'
          do k = 1,3

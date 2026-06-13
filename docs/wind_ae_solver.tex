@@ -161,12 +161,106 @@ target planet:
   guess for the next (in the port this is an in-memory hand-off; the
   reference wrapper round-trips it through \code{guess.inp}).
 \end{itemize}
-The port currently keeps the base BCs fixed at the seed values during the
-ramp (``static BCs''). This suffices for hot Jupiters near the seed; for
-planets far from it (very different gravity/irradiation) the base BCs
-should be re-converged each step --- the self-consistent
-\code{base\_bcs}/\code{converge\_Ncol\_sp} machinery of the reference
-wrapper --- which is the main deferred item (\S\ref{sec:limits}).
+During the ramp the base boundary conditions can either be held fixed at
+the seed values (\emph{stage C-1}) or re-converged at every step
+(\emph{stage C-2}); the port implements both, selected by an optional
+\code{static\_bcs} flag on \code{ramp\_var}/\code{ramp\_to} (absent or
+\code{.true.}\ $=$ C-1; \code{.false.}\ $=$ C-2).
+
+\subsection{Self-consistent base BCs (continuation stage C-2)}\label{sec:c2}
+Stage C-1 (static BCs) suffices for hot Jupiters near the seed, but as the
+ramp moves toward a strongly-bound, highly-irradiated planet the seed's
+base density, pressure, and sonic-point column density become physically
+inconsistent with the new gravity and flux, and the relaxation stalls.
+Stage C-2 restores consistency by recomputing the lower boundary as the
+parameters move. It has three pieces, ported from the reference wrapper.
+
+\paragraph{Closed-form base state (\code{base\_bcs}).} Taking \Rp\ as the
+optical slant-path $\tau=1$ surface, with a bolometrically heated,
+near-isothermal layer below the wind, the base temperature and density
+follow in closed form from the stellar optical flux
+$F_{\rm opt}=L_\star/(4\pi a^2)$:
+\begin{align}
+T_{\rm skin} &= \left[\frac{F_{\rm opt}\,(\kappa_{\rm opt}+\kappa_{\rm IR}/4)}
+   {2\,\sigma_{\rm SB}\,\kappa_{\rm IR}}\right]^{1/4}, \qquad
+T_{\rm eff} = \left[\frac{F_{\rm opt}}{4\,\sigma_{\rm SB}}\right]^{1/4},\\
+\rho_{R_{\rm pl}} &= \frac{1}{\kappa_{\rm opt}}
+   \sqrt{\frac{\mu\,G\,M_{\rm pl}}{8\,R_{\rm pl}^3\,k_B\,T_{\rm skin}}},
+\end{align}
+with default opacities $\kappa_{\rm opt}=4\times10^{-3}$,
+$\kappa_{\rm IR}=10^{-2}\,{\rm cm^2\,g^{-1}}$. The simulation base is set at
+the vertical IR $\tau=1$ radius $R_{\rm IR}$ if that lies above \Rp,
+otherwise at the radius $R_{\rm mbar}$ where the hydrostatic pressure
+reaches a microbar reference; $\rho$ and $T$ there are returned in code
+units. The base mean molecular weight blends the molecular value below the
+wind with the atomic value inside it,
+\[
+\mu = \frac{m_H}{D}\,(1-b) + b\,\mu_{\rm mol}, \qquad
+D = \sum_s \frac{m_H}{m_s}\,X_s\,(2-Y_s), \qquad \mu_{\rm mol}=2.3\,m_H,
+\]
+where $b$ is the bolometric-transition flag ($1$ on, $0$ off) and $X_s$ the
+mass fraction. This routine is \textbf{bit-identical to the reference} on
+the seed and on HD\,209458b/HD\,189733b --- i.e.\ on both the $b=1$
+(molecular, $\mu=2.3\,m_H$) and $b=0$ (atomic, $\mu=m_H/D$) branches.
+
+\paragraph{Sonic-point column density (\code{self\_consistent\_Ncol},
+\code{converge\_Ncol\_sp}).} The column-density BC is made self-consistent
+by integrating the current solution outward and setting
+\[
+N_{{\rm col},s} = \frac{1}{N_{\rm col,0}}\int_{r_s}^{R_{\max}}
+   n_{{\rm neut},s}(r)\,dr,
+\]
+then re-relaxing; the set\,$\to$\,solve\,$\to$\,recompute loop iterates
+until the mean relative change is below $8\%$. The ported goal matches the
+reference to $\sim$4\% (within that self-consistency tolerance --- the
+small gap is the outward-integration extent, not a physics error).
+
+\paragraph{Applying and ramping (\code{ramp\_base\_bcs}).} The
+\code{base\_bcs} target is first attempted as a single jump; if the
+relaxation fails it is reached by ramping $R_{\min}$, $T_{\rm bc}$, and
+$\rho_{\rm bc}$ individually with adaptive sub-steppers (\code{ramp\_bc},
+the boundary-value analogue of \code{ramp\_var}).
+
+\paragraph{Molecular/atomic transition (\code{converge\_mol\_atomic}).} As
+the ramp moves to a strongly-bound planet the base sinks \emph{into} the
+wind. The transition finder (a port of the reference \code{erf\_velocity})
+locates the first grid point where photoionization heating exceeds the
+magnitude of PdV (adiabatic-expansion) cooling --- where the wind launches;
+$\code{heat}=\sum_s n_{{\rm neut},s}\,h_s$ (the per-species rates from
+\code{wae\_glq\_rates\_eval}) and
+$\code{cool}=(k_B T/\mu_{\rm mol}m_H)\,v\,d\rho/dr$. When that point reaches
+the base (within $\sim$10 cells), \code{turn\_off\_bolo} ramps
+\code{bolo\_heat\_cool}$:1\to0$; because the molecular smoothing erf is
+scaled by that flag, turning it off also drops $\mu$ to its atomic value
+--- i.e.\ the $b=1\to b=0$ transition the target planet requires.
+
+\paragraph{Orchestration.} With \code{static\_bcs=.false.},
+\code{ramp\_var} runs the \emph{full} lower-boundary re-convergence
+(\code{ramp\_base\_bcs}\,$+$\,\code{converge\_mol\_atomic}\,$+$\,\code{converge\_Ncol\_sp})
+\emph{reactively} --- only when a step stalls (five consecutive failures);
+and the cheap molecular/atomic check \code{converge\_mol\_atomic} alone runs
+\emph{proactively} (every ten successful steps --- it does no relaxation
+unless it actually turns the bolometric layer off, so a seed-adjacent planet
+pays almost nothing). \code{ramp\_to} does a final full pass at the end.
+This split keeps seed-adjacent planets fast (HD\,209458b ramps in
+$\sim$40\,s) while turning the molecular layer off early enough for
+far-from-seed planets (HD\,189733b in $\sim$4\,min). The reference wrapper's
+expensive success-path re-convergence (\code{converge\_bcs}) likewise
+defaults off.
+
+\paragraph{Status (2026-06-13): stage C-2 converges HD\,189733b.} On
+HD\,189733b --- far from the seed ($F_{\rm XUV}$ rises $\sim$22$\times$, the
+surface gravity roughly doubles) --- the base-BC re-convergence fires as the
+ramp proceeds, and on the $M_{\rm pl}$ ramp the transition reaches the base
+so \code{converge\_mol\_atomic} turns the bolometric layer off
+($\code{bolo\_heat\_cool}:1\to0$, matching HD\,189733b's atomic solution).
+The relaxation then tightens to $\|{\rm err}\|\sim9\times10^{-11}$ and the
+full six-parameter ramp completes with a physical wind ($v>0$ throughout);
+the in-process bridge runs the same ramp and writes a valid HD\,189733b IC.
+\emph{Caveat:} EXHALE's subsequent time-integration of HD\,189733b is
+limited by a separate, pre-existing base-breathing instability near
+$r\sim1.07\,$\Rp\ (unrelated to the Wind-AE IC), so a fully converged EXHALE
+warm start for that planet still depends on resolving that EXHALE-side issue.
 
 % ===================================================================== %
 \section{The Fortran port}
@@ -196,7 +290,10 @@ Module(s) & Role \\
 \code{wae\_difeq} & numerical-Jacobian assembly of the \code{solvde} matrix \\
 \code{wae\_nr} & the relaxation stack \code{solvde}/\code{pinvs}/\code{red}/\code{bksub} \\
 \code{wae\_intode} & outward Bulirsch--Stoer integration \\
-\code{wae\_params,\_continuation} & input reading; seed load, \code{ramp\_var}/\code{ramp\_to} \\
+\code{wae\_params,\_continuation} & input reading; seed load,
+  \code{ramp\_var}/\code{ramp\_to}, and the stage-C-2 base-BC machinery
+  (\code{base\_bcs}, \code{ramp\_base\_bcs}, \code{self\_consistent\_Ncol},
+  \code{converge\_Ncol\_sp}) \\
 \code{wae\_ic\_writer} & project the solution onto the EXHALE grid, write \code{*\_IC.txt} \\
 \code{wae\_exhale\_input} & map an EXHALE \code{input.inp} to Wind-AE parameters \\
 \bottomrule
@@ -250,12 +347,18 @@ so it stays self-contained.
   remain EXHALE's job. For an IC this is sufficient: EXHALE adds the
   metals in equilibrium from the first step, and the IC writer rescales
   the density to EXHALE's exact He/H.
-\item \textbf{Static-BC continuation.} The ramp keeps the seed's base
-  BCs; it reaches seed-adjacent hot Jupiters well, but strongly-bound or
-  far-from-seed planets (e.g.\ HD\,189733b) ramp slowly or fail. For
-  those, use \code{IC mode: auto}. Re-converging the base BCs during the
-  ramp (the \code{base\_bcs}/\code{ramp\_base\_bcs}/\code{converge\_Ncol\_sp}
-  machinery) is the main planned extension.
+\item \textbf{Continuation BCs.} The in-process ramp uses the
+  self-consistent stage C-2 (\S\ref{sec:c2}) by default
+  (\code{static\_bcs=.false.}): \code{base\_bcs} (bit-exact),
+  \code{converge\_Ncol\_sp} (within tolerance), \code{converge\_mol\_atomic}
+  (bolometric-layer turn-off), and the reactive/proactive re-convergence in
+  \code{ramp\_var}/\code{ramp\_to}. This converges seed-adjacent hot Jupiters
+  \emph{and} strongly-bound, far-from-seed planets such as HD\,189733b (which
+  stalled under the older static-BC stage C-1). The static-BC path remains
+  available as \code{static\_bcs=.true.}. Note this concerns the
+  \emph{Wind-AE} ramp only; whether EXHALE then time-integrates a given
+  planet cleanly is a separate matter (e.g.\ HD\,189733b hits an EXHALE-side
+  base-breathing instability regardless of the IC source).
 \item \textbf{Substellar geometry, Coriolis cutoff.} Wind-AE is a single
   substellar streamline integrated only to a few \Rp; beyond the Coriolis
   turning radius 3-D effects dominate. The mass-loss rate carries the

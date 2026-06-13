@@ -2,9 +2,9 @@
 
 One folder per solver/physics combination. Folders `01`–`11` are the
 same planet (HD189733b) so the effect of each option can be isolated;
-`12_windae_ic_hd209` uses HD209458b (a seed-adjacent planet) to show a
-*working* Wind-AE IC, contrasted with the deliberately non-converging
-`11`. Each folder is self-contained: `cd` into it and run the repo-root
+`12_windae_ic_hd209` uses HD209458b (a seed-adjacent planet); `11` uses
+HD189733b (far from the seed) to exercise the self-consistent C-2
+continuation. Each folder is self-contained: `cd` into it and run the repo-root
 binary,
 
 ```sh
@@ -31,15 +31,17 @@ each option does.
 | `08_full` | Everything on (= the `HD189733b/` planet folder + Newton); feeds `TPM.py` | 07 + `metals.inp` |
 | `09_spherical` | Spherical domain instead of the default Roche/L1 truncation | `Domain mode: Spherical`, `Outer radius [R_p]: 10.0` |
 | `10_warm_seed_ic` | Warm-seed (hot Parker overlay) initial condition | `Hot Parker IC: 10000` |
-| `11_windae_ic` | In-process Wind-AE warm-start IC — **deliberate non-converging case** (HD189733b is strongly bound and far from the shipped seed, so the static-BC ramp stalls; use `IC mode: auto` for this planet) | `+ IC mode: windae`, `+ Solver: Newton` |
+| `11_windae_ic` | In-process Wind-AE IC for HD189733b — far from the seed, so the **C-2 continuation** (base-BC re-convergence + molecular-layer turn-off) is exercised; the Wind-AE ramp converges and writes the IC. EXHALE's *own* HD189733b base-breathing instability (separate from the IC) then limits the warm start | `+ IC mode: windae`, `+ Solver: Newton` |
 | `12_windae_ic_hd209` | In-process Wind-AE warm-start IC that **works** — HD209458b (not HD189733b), close to the shipped seed, so the ramp converges and EXHALE warm-starts cleanly (spherical 10 Rp) | HD209458b params `+ Domain mode: Spherical`, `IC mode: windae`, `Solver: Newton` |
 
 Notes
 - Wind-AE IC (`11`/`12`, `docs/wind_ae_solver.pdf`): `IC mode: windae`
   builds the IC in-process from a shipped seed (`inputdata/windae_seed.csv`,
-  symlinked into each folder). It suits hot Jupiters near the seed
-  (`12`, HD209458b); a strongly-bound far-from-seed planet (`11`,
-  HD189733b) stalls the static-BC ramp — use `IC mode: auto` there.
+  symlinked into each folder), via the self-consistent C-2 continuation.
+  This converges seed-adjacent hot Jupiters (`12`, HD209458b) and
+  far-from-seed planets (`11`, HD189733b) alike. Whether EXHALE then
+  time-integrates the result cleanly is a separate matter: HD189733b hits an
+  EXHALE-side base-breathing instability regardless of the IC source.
 - `04_newton_from_state` needs a state to start from: copy a converged
   `Hydro_ioniz.txt` / `Ion_species.txt` (e.g. from `03_newton/output/`) to
   `output/Hydro_ioniz_IC.txt` / `output/Ion_species_IC.txt` first.

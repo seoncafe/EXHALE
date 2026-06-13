@@ -34,14 +34,30 @@
       np_interp = fp(lo) + t*(fp(hi) - fp(lo))
       end function np_interp
 
+      real*8 function phiR(r, Mrapp, atilde, tidalf)
+      ! Roche potential / b0 (dimensionless), matching grav_field.f90::phi and
+      ! wae_soe d1_phi: planetary -1/r plus the stellar-tidal + centrifugal
+      ! terms scaled by tidalf (0 => spherical, 1 => full Roche). Used to give
+      ! the sub-Rmin hydrostatic base blend the SAME gravity EXHALE integrates
+      ! with, so dp/dr is Roche-consistent there (kills the j_min momentum
+      ! residual that the legacy spherical 1/r blend left behind).
+      real*8, intent(in) :: r, Mrapp, atilde, tidalf
+      phiR = -1.0d0/r                                                     &
+             - tidalf*( Mrapp/(atilde - r)                               &
+               + (1.0d0 + Mrapp)/(2.0d0*atilde**3)                       &
+                 *(atilde*Mrapp/(1.0d0 + Mrapp) - r)**2 )
+      end function phiR
+
       subroutine wae_write_ic(rw, rhow, vw, Tw, YsHIw, YsHeIw, nw,        &
-                              rgrid, ng, lognbase, T0, Rp, HeH, outdir)
+                              rgrid, ng, lognbase, T0, Rp, HeH,           &
+                              Mrapp, atilde, tidalf, outdir)
       ! rw[cm]/rhow[g/cc]/vw[cm/s]/Tw[K]/Ys* : windsoln (length nw, r asc)
       ! rgrid : EXHALE grid radius [Rp] (length ng, incl. ghosts)
+      ! Mrapp=Mstar/Mp, atilde=a/Rp, tidalf=tidalforce: set the Roche base blend
       integer, intent(in) :: nw, ng
       real*8,  intent(in) :: rw(nw), rhow(nw), vw(nw), Tw(nw)
       real*8,  intent(in) :: YsHIw(nw), YsHeIw(nw), rgrid(ng)
-      real*8,  intent(in) :: lognbase, T0, Rp, HeH
+      real*8,  intent(in) :: lognbase, T0, Rp, HeH, Mrapp, atilde, tidalf
       character(len=*), intent(in) :: outdir
       real*8  :: rwR(nw), nnuc_w(nw), lognnuc_w(nw), fHIw(nw), fHeIw(nw)
       real*8  :: lognnuc(ng), T(ng), v(ng), fHI(ng), fHeI(ng), r(ng)
@@ -80,7 +96,11 @@
       b0_eff = (log(nnuc_w(1)) - log(nnuc_w(i1))) /                      &
                (1.0d0/rwR(1) - 1.0d0/rwR(i1))
       logw_at = np_interp(rmin_w, rwR, lognnuc_w, nw)
-      hyd_at  = lognbase + b0_eff*(1.0d0/rmin_w - 1.0d0)/ln10
+      ! Roche-consistent hydrostatic baseline: ln n = ln n_base
+      !   - (phiR(r) - phiR(1)) * b0_eff,  reducing to the legacy spherical
+      ! b0_eff*(1/r - 1) when tidalf = 0.
+      hyd_at  = lognbase - (phiR(rmin_w, Mrapp, atilde, tidalf)            &
+                - phiR(1.0d0, Mrapp, atilde, tidalf))*b0_eff/ln10
       nn_rmin = 10.0d0**np_interp(rmin_w, rwR, lognnuc_w, nw)
       v_rmin  = np_interp(rmin_w, rwR, vw, nw)
       T_rmin_w  = np_interp(rmin_w, rwR, Tw, nw)
@@ -92,7 +112,8 @@
             ! below Rmin: hydrostatic blend to EXHALE base anchor
             sblend = (1.0d0 - 1.0d0/r(i)) / (1.0d0 - 1.0d0/rmin_w)
             sblend = min(max(sblend, 0.0d0), 1.0d0)
-            lognnuc(i) = (lognbase + b0_eff*(1.0d0/r(i) - 1.0d0)/ln10)   &
+            lognnuc(i) = (lognbase - (phiR(r(i), Mrapp, atilde, tidalf)  &
+                         - phiR(1.0d0, Mrapp, atilde, tidalf))*b0_eff/ln10) &
                          + (logw_at - hyd_at)*sblend
             T(i)    = T0 + (T_rmin_w - T0)*sblend
             fHI(i)  = 1.0d0 + (fHI_rmin  - 1.0d0)*sblend

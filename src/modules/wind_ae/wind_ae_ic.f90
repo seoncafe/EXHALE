@@ -25,10 +25,10 @@
       use wae_grid,        only: wae_x
       use wae_intode,      only: wae_integrate_ode
       use wae_continuation,only: load_seed, setup_indices_scales, ramp_to, &
-                                 cy, rhoscale
+                                 ramp_tidal, cy, rhoscale, dump_seed
       use wae_ic_writer,   only: wae_write_ic
       implicit none
-      character(len=4096) :: exin, seed, specf, gridf, outdir, rhoarg, line
+      character(len=4096) :: exin, seed, specf, gridf, outdir, rhoarg, line, dumpf
       real*8  :: Ftot_t, Mp_t, Rp_t, Mstar_t, a_t, Lstar_t, Rp_cgs, CS0
       integer :: i, j, row, ntot, tp, r, u, ios, ng
       real*8, allocatable :: sr(:), srho(:), sv(:), sT(:), sq(:), sz(:)
@@ -37,7 +37,8 @@
 
       if (command_argument_count() .lt. 5) then
          write(*,*) 'usage: wind_ae_ic <EXHALE_input.inp> <seed.csv> '//  &
-                    '<spectrum.inp> <IC_dump_grid> <outdir> [rhoscale]'
+                    '<spectrum.inp> <IC_dump_grid> <outdir> '//           &
+                    '[rhoscale] [seed_out.csv]'
          stop 2
       end if
       call get_command_argument(1, exin)
@@ -45,6 +46,9 @@
       call get_command_argument(3, specf)
       call get_command_argument(4, gridf)
       call get_command_argument(5, outdir)
+      ! optional arg 7: dump the converged solution as a reusable seed CSV
+      dumpf = ''
+      if (command_argument_count() .ge. 7) call get_command_argument(7, dumpf)
 
       ! 1. EXHALE input -> target params (capture before load_seed overwrites)
       call wae_read_exhale_input(trim(exin))
@@ -59,21 +63,36 @@
 
       ! 3. seed (sets wae_par = seed params/BCs/composition + cy)
       call load_seed(trim(seed))
-      par%tidalforce = 1.0d0
-      if (exh_spherical) par%tidalforce = 0.0d0
-      rhoscale = 100.0d0
+      rhoscale = 10.0d0**floor(log10(par%rho_rmin*0.01d0))  ! from seed base rho
       if (command_argument_count() .ge. 6) then
          call get_command_argument(6, rhoarg); read(rhoarg,*) rhoscale
       end if
       call setup_indices_scales()
+      ! tidalforce: the seed has it on (=1); for a spherical EXHALE domain ramp
+      ! it smoothly to 0 (a discrete jump would disrupt the tidally-converged
+      ! seed and stall the first relaxation).
+      if (exh_spherical) r = ramp_tidal(0.0d0)
 
-      ! 4. ramp to EXHALE target params (static BCs)
-      write(*,'(A)') ' (wind_ae_ic) ramping seed -> EXHALE planet...'
+      ! 4. ramp to EXHALE target params. Stage C-1 first (static base BCs):
+      !    fast for seed-adjacent planets. If it stalls (far-from-seed /
+      !    strongly-bound), reload the seed and retry with stage C-2.
+      write(*,'(A)') ' (wind_ae_ic) ramping seed -> EXHALE planet (stage C-1)...'
       r = ramp_to(Ftot_t, Mp_t, Rp_t, Mstar_t, a_t, Lstar_t)
       if (r .ne. 0) then
-         write(*,*) ' RAMP FAILED (code', r, '). Far-from-seed planet may '// &
-                    'need C-2 BC machinery.'; stop 1
+         write(*,'(A)') ' (wind_ae_ic) C-1 stalled; retrying with stage C-2...'
+         call load_seed(trim(seed))
+         rhoscale = 10.0d0**floor(log10(par%rho_rmin*0.01d0))
+         call setup_indices_scales()
+         if (exh_spherical) r = ramp_tidal(0.0d0)
+         r = ramp_to(Ftot_t, Mp_t, Rp_t, Mstar_t, a_t, Lstar_t, static_bcs=.false.)
       end if
+      if (r .ne. 0) then
+         write(*,*) ' RAMP FAILED (code', r, '). Planet may be unreachable '// &
+                    'from the shipped seed.'; stop 1
+      end if
+
+      ! optionally bank the converged relaxation solution as a reusable seed
+      if (len_trim(dumpf) .gt. 0) call dump_seed(trim(dumpf))
 
       ! 5. relax solution is in cy; integrate outward
       tp = m + addpts
@@ -119,6 +138,8 @@
       close(u)
 
       call wae_write_ic(dr, drho, dv, dT, dHI, dHeI, ntot, rgrid, ng,    &
-                        exh_lognbase, exh_Teq, Rp_cgs, exh_HeH, trim(outdir))
+                        exh_lognbase, exh_Teq, Rp_cgs, exh_HeH,          &
+                        par%Mstar/par%Mp, par%semimajor/par%Rp,          &
+                        par%tidalforce, trim(outdir))
       write(*,'(A,A)') ' (wind_ae_ic) wrote IC files to ', trim(outdir)
       end program wind_ae_ic

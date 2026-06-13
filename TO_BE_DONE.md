@@ -2,7 +2,50 @@
 
 Running list of known limitations and planned improvements.
 
-## OPEN — Wind-AE IC continuation stage C-2 (self-consistent base BCs) — deferred, non-blocking
+## DONE 2026-06-13 — Wind-AE IC continuation stage C-2 (self-consistent base BCs) + bolo turn-off
+
+**The C-2 machinery is implemented, validated, and is now the default for
+the in-process bridge (`static_bcs=.false.`). The Wind-AE ramp converges
+HD189733b — the far-from-seed planet that stalled the old static-BC stage
+C-1.** (One residual caveat is EXHALE-side, not Wind-AE; see the end.)
+
+- **`base_bcs`** (closed-form Rmin/rho_rmin/T_rmin) — **bit-exact vs the
+  Python oracle** on the seed + HD209458b + HD189733b (both the molecular
+  `bolo=1` and atomic `bolo=0` mu branches). `wae_continuation.f90:base_bcs`.
+- **`self_consistent_Ncol` + `converge_Ncol_sp`** (sonic-point column
+  density) — goal agrees with Python to ~4%, inside the BC's 8% tolerance.
+- **`ramp_base_bcs` + `ramp_bc`** — adaptive Rmin/T/rho steppers.
+- **`erf_drop_index` + `turn_off_bolo` + `converge_mol_atomic`** (port of the
+  reference `erf_velocity`/`converge_mol_atomic_transition`): finds where
+  photoionization heating overtakes PdV cooling (the wind-launch point); when
+  that reaches the base, turns the bolometric/molecular layer off
+  (`bolo_heat_cool 1->0`, which also drops mu to atomic) — the seed→HD189733b
+  `bolo` transition.
+- **`ramp_var`/`ramp_to`** gained an optional `static_bcs` flag: with
+  `.false.` (C-2, now the bridge + `wind_ae_ic.x` default) the **full**
+  lower-boundary re-convergence (`ramp_base_bcs` + `converge_mol_atomic` +
+  `converge_Ncol_sp`) runs **reactively** (only on a 5-consecutive-fail
+  stall), while the **cheap** `converge_mol_atomic` alone runs **proactively**
+  (every 10 successful steps — no relaxation unless it turns bolo off). This
+  hybrid keeps seed-adjacent planets fast and still turns the molecular layer
+  off early for far-from-seed ones. `.true.` keeps static C-1. `EXHALE.x` and
+  `wind_ae_ic.x` build clean.
+- **HD189733b result:** the standalone C-2 ramp completes all six parameters
+  (Ftot ×22, Rp, Mp, Mstar, a, Lstar) — bolo turns off on the Mp ramp,
+  relaxation tightens to `||err|| ~ 9.4e-11`, physical wind (v>0 throughout),
+  in **~244 s**. The in-process bridge runs the same ramp and **writes a valid
+  HD189733b IC** (base T~1183 K, n~1.25e14). Seed-adjacent HD209458b ramps in
+  **~43 s** (vs >10 min before the proactive/reactive split was tuned). Validation drivers (no `wae_` prefix, excluded
+  from the build): `base_bcs_test.f90`, `ncol_test.f90`, `ramp2_test.f90`.
+- **Remaining caveat (EXHALE-side, NOT Wind-AE):** EXHALE's time-integration
+  of the HD189733b IC still hits the pre-existing base-breathing instability
+  near r~1.07 Rp (NaN; the same instability documented for cold/auto ICs,
+  CFL/valve/Riemann-BC all previously failed). So a *fully converged EXHALE
+  run* for HD189733b still depends on fixing that EXHALE-side issue, not on
+  Wind-AE. (HX composition ramp to EXHALE's exact He/H remains deferred; the
+  IC writer's density rescaling covers it for warm starts.)
+
+**Original C-2 plan / detail (for reference):**
 
 **What it is.** The in-process Wind-AE IC generator (`IC mode: windae`,
 `src/modules/wind_ae/`) currently ships continuation **stage C-1**: it ramps

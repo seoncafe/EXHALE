@@ -1,0 +1,187 @@
+%% HD189733b base-breathing / EXHALE-stage convergence: localization and fixes.
+%% Author: Kwang-Il Seon
+\documentclass[english,a4paper]{kiseon_memo}
+\synctex=1
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage{amsmath}
+\usepackage{babel}
+\emergencystretch=3em
+
+\newcommand{\code}[1]{\texttt{#1}}
+\newcommand{\Rp}{R_{\rm pl}}
+
+\title{HD189733b base breathing: localization of the residual\\
+and why base-BC / IC-blend fixes do not help}
+\author{Kwang-Il Seon}
+\date{2026-06-14}
+
+\begin{document}
+\maketitle
+
+\begin{quote}\small\itshape
+EXHALE relaxes HD209458b-like hot Jupiters to a steady wind, but HD189733b
+does not converge: the time-marching settles into a bounded limit cycle
+(the ``base breathing''), and the steady (Newton/PTC) solvers stall ---
+even when started from a converged, spectrum-matched Wind-AE warm-start
+initial condition. This memo records a per-cell localization of the steady
+residual, three targeted fixes that all turned out to be null, and the
+resulting conclusion: the obstruction is not the base boundary condition
+nor the initial-condition blend, but an intrinsic mismatch between the
+Wind-AE solution and EXHALE's discretized momentum equation, amplified by
+the residual normalization. It is recorded so the dead ends are not
+re-explored and the live options are clear.
+\end{quote}
+
+\section{Symptom}
+With a Wind-AE warm-start (\code{IC mode: windae}, \code{Solver: Newton})
+HD189733b shows \emph{no} NaN but never converges. The steady residual
+$\lVert R\rVert$ descends through a violent transient (peaks $\sim$400) to
+$\sim$0.15, then erupts back to $\sim$2.4 and repeats --- a sustained limit
+cycle that never reaches the Newton-finish threshold ($5\times10^{-2}$), so
+the JFNK/PTC hand-off never fires (or, when forced, stalls). HD209458b and
+other less strongly bound planets converge normally with the identical
+machinery.
+
+\section{Diagnostic: a per-cell residual dump}
+\code{residual\_norms} (\code{steady\_residual.f90}) reports only the
+per-component \emph{maximum} relative residual; it hides \emph{where} the
+imbalance lives. A per-cell dump was added to the \code{ATES\_RESIDUAL=1}
+path (\code{EXHALE\_main.f90}), writing
+\code{output/residual\_profile.txt} with columns
+$r,\,n,\,v,\,T,\,R_{\rm mass},\,R_{\rm mom},\,R_{\rm energy}$ for every cell
+$j=1\dots N$. This was the decisive tool.
+
+\section{Localization}
+The steady residual of the loaded (banked, spectrum-matched) HD189733b
+Wind-AE IC is \emph{purely momentum}: the reported component norms are
+$R_{\rm mass}=2.2\times10^{-3}$, $\mathbf{R_{\rm mom}=4.63}$,
+$R_{\rm energy}=5.2\times10^{-2}$. The per-cell profile
+(Table~\ref{tab:loc}) shows two distinct facts:
+
+\begin{table}[h]\centering\small
+\caption{Per-cell momentum residual of the HD189733b Wind-AE IC. The
+windsoln base radius is $R_{\rm min}\approx1.030\,\Rp$; the convergence
+metric uses only $[j_{\min}:N]$ (here $j_{\min}$ is at $r\approx1.05$).}
+\label{tab:loc}
+\begin{tabular}{@{}r r l@{}}
+\toprule
+$r\,[\Rp]$ & $R_{\rm mom}$ & in the $[j_{\min}:N]$ metric? \\
+\midrule
+1.0002 & $1.8\times10^{2}$ & no (base, $j<j_{\min}$) \\
+1.0041 & $1.3\times10^{2}$ & no \\
+1.0079 & $9.5\times10^{1}$ & no \\
+\textbf{1.0501} & $\mathbf{8.8\times10^{-2}}$ & \textbf{yes ($\approx j_{\min}$) --- the metric max} \\
+1.10   & $8.6\times10^{-3}$ & yes \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{enumerate}\itemsep2pt
+  \item \textbf{The base peak is excluded.} $R_{\rm mom}$ is largest at the
+        very base ($r\approx1.0002$, $\sim$180, set by the gravity source
+        $\rho g$ at the dense anchor $n_0=10^{14}$) and decays outward. But
+        \code{residual\_norms} takes $\max|R(j_{\min}\!:\!N)|$
+        (\code{steady\_residual.f90} L58), and $j_{\min}$ sits above the base
+        cluster. \emph{The base cells the breathing ``lives'' on are not in
+        the metric the solver minimizes.}
+  \item \textbf{The metric max is the Wind-AE region.} The reported
+        $\lVert R_{\rm mom}\rVert=4.63$ comes from $r\approx1.05$, which is
+        \emph{above} the windsoln base $R_{\rm min}\approx1.030$ --- i.e.\ in
+        the interpolated Wind-AE solution, not the base blend. There the
+        absolute residual is only $\sim$0.088, but the wind momentum
+        $\rho v\approx0.019$ is tiny, and the relative norm
+        $0.088/0.019\approx4.6$.
+\end{enumerate}
+
+\section{Root cause}
+The metric residual is therefore the \emph{interpolated Wind-AE solution
+failing to satisfy EXHALE's own discretized momentum equation} at the wind
+base ($r\sim1.05$, the densest, slowest part of the wind, where the
+normalization is most punishing). The two codes genuinely differ --- mean
+molecular weight / EOS, the gravity discretization, the HLLC flux and
+reconstruction, the 2-D \code{Rate/2 + Mdot/2} averaging. The Wind-AE IC is
+a valid Wind-AE solution but is \emph{not} EXHALE's steady state, and for
+the strongly bound HD189733b the gap is large enough (after normalization)
+that neither time-marching (limit cycle) nor the implicit solvers can close
+it. It is \emph{not} a property of the base ghost cells nor of the
+sub-$R_{\rm min}$ blend.
+
+\section{Fixes attempted --- all null}
+Each fix below left the metric byte-identical at $k{=}2=4.630339$, because
+each one acted somewhere other than $r\approx1.05$ (Table~\ref{tab:fix}).
+
+\begin{table}[h]\centering\small
+\caption{Targeted fixes for the HD189733b base breathing and why each was
+null. ``$k_2$'' is the reported momentum residual norm.}
+\label{tab:fix}
+\begin{tabular}{@{}l p{5.4cm} p{4.4cm}@{}}
+\toprule
+Attempt & What it changed & Why it was null \\
+\midrule
+(A) momentum-consistent ghost $p$ &
+  ghost pressure = linear extrapolation of the interior $dp/dr$ (vs legacy
+  fixed $p\!\to\!T_0$), so $dp/dr$ is continuous at the base &
+  base cells are excluded from $[j_{\min}:N]$; metric unchanged. \\
+(A$'$) isothermal-hydrostatic ghost &
+  ghost $\rho,p = \rho_{\rm bc}e^{-(\phi(r)-\phi_{\rm base})/c_s^2}$ (Roche
+  $\phi$), so $dp/dr=-\rho g$ exactly &
+  ghosts sit at $r\approx1.0000$ (adjacent to the base), so the factor
+  $\approx1$; and the base is excluded anyway. \\
+(\textcircled{3}) Roche IC blend &
+  the IC-writer sub-$R_{\rm min}$ density blend uses the Roche potential
+  $\phi_R$ (scaled by \code{tidalforce}) instead of the spherical
+  $b_{0,\rm eff}(1/r-1)$ &
+  the metric residual is \emph{above} $R_{\rm min}\!\approx\!1.030$; the
+  blend only touches $r<R_{\rm min}$. \\
+\midrule
+PTC / JFNK from the IC &
+  direct pseudo-transient / Jacobian-free Newton steady solve
+  (\code{ATES\_PTC=1}) &
+  stalls at $\lVert R\rVert\!\approx\!4.6$, $d\tau$ frozen, line-search
+  $\lambda\!\to\!10^{-7}$ (no descent direction). \\
+\;+ frozen base (\code{ATES\_PTC\_NFIX}) & anchor the first few base cells & same stall. \\
+\;+ smooth valve (\code{Valve eps}) & differentiable base velocity valve & same stall. \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\section{What was added (gated, working cases byte-identical)}
+\begin{itemize}\itemsep2pt
+  \item \textbf{Per-cell residual dump} --- the \code{ATES\_RESIDUAL=1} path
+        writes \code{output/residual\_profile.txt}. The diagnostic that
+        localized everything above; kept.
+  \item \textbf{\code{Hydrostatic base:} flag} (\code{hydrostatic\_base},
+        default off $\Rightarrow$ byte-identical legacy base BC). When on,
+        the ghost pressure is the momentum-consistent extrapolation of (A).
+        Null for HD189733b but harmless and physically reasonable for
+        coarser grids; kept off.
+  \item \textbf{Roche IC blend} (\code{wae\_ic\_writer.f90}: \code{phiR} +
+        the \code{wae\_write\_ic} \code{Mrapp,atilde,tidalf} arguments).
+        With \code{tidalforce}=0 it is identical to the legacy spherical
+        blend, so spherical runs (e.g.\ the HD209458b example) are
+        unaffected; for tidal runs it makes the sub-$R_{\rm min}$ base layer
+        Roche-consistent. Not the breathing lever, but a correct
+        improvement; kept.
+\end{itemize}
+
+\section{Conclusion and live options}
+The HD189733b base breathing is \emph{not} curable by the base boundary
+condition or the IC blend: the obstruction is the Wind-AE$\leftrightarrow$EXHALE
+discretization mismatch at the wind base, amplified by the small-$\rho v$
+normalization of the $[j_{\min}:N]$ residual. The remaining paths, all
+larger than a localized patch, are:
+\begin{enumerate}\itemsep2pt
+  \item \textbf{Solver / normalization.} A more robust steady solver
+        (better globalization than the current PTC/JFNK, which lose the
+        descent direction here), and/or a residual normalization that does
+        not blow up where the wind momentum $\rho v$ is tiny.
+  \item \textbf{Discretization match.} Bring EXHALE's base momentum
+        discretization (EOS, gravity, flux) closer to Wind-AE's so a
+        Wind-AE solution is genuinely near EXHALE's steady state.
+  \item \textbf{Accept known-hard.} Treat HD189733b (strongly bound) as a
+        case EXHALE does not currently relax, while HD209458b-like planets
+        converge.
+\end{enumerate}
+
+\end{document}
