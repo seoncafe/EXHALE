@@ -46,6 +46,14 @@
 	! zero in the residual to keep the Jacobian non-singular.
 	integer, allocatable, save :: met_top(:)
 
+	! These per-cell coefficients are set (set_metal_coeffs) and read inside the
+	! ionization-equilibrium cell sweep, which is now OpenMP-parallel over cells.
+	! Make each thread keep its own copy so concurrent cells do not clobber one
+	! another. The allocatables are lazily allocated per thread on first use in
+	! set_metal_coeffs (its `if (.not.allocated)` guard now runs per thread).
+	!$omp threadprivate(met_nelem, met_ntot, met_g0, met_g1, met_b0, met_b1,  &
+	!$omp                met_a1, met_a2, met_top)
+
 	contains
 
 	! Store the per-cell metal element coefficients for ion_system_HeH_metals.

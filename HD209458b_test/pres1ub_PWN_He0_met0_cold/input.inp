@@ -21,4 +21,8 @@ Include He23S? False
 Load IC? False
 Do only PP: False
 Force start: False
-t
+Shapiro filter: -1
+Base velocity: valve
+Base BC: pressure 1.0
+du_th [PLM,WENO3]: 0.5 1e-3
+Solver: Newton

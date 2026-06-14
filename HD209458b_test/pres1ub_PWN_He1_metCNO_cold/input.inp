@@ -17,8 +17,12 @@ Log10 of EUV luminosity [erg/s]: 27.830
 Grid type: Mixed
 Numerical flux: HLLC
 Reconstruction scheme: PLM
-Include He23S? False
+Include He23S? True
 Load IC? False
 Do only PP: False
 Force start: False
-t
+Shapiro filter: -1
+Base velocity: valve
+Base BC: pressure 1.0
+du_th [PLM,WENO3]: 0.5 1e-3
+Solver: Newton

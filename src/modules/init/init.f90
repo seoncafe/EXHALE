@@ -25,7 +25,8 @@
       subroutine init(W,u,f_sp)
       ! Initialize the simulation setup
 
-      integer :: n_omp_threads
+      integer :: n_omp_threads, omp_env_st
+      character(len=32) :: omp_env
       real*8, dimension(1-Ng:N+Ng)   :: rho,v,p,T
       real*8, dimension(1-Ng:N+Ng,n_species),intent(out) :: f_sp
       real*8, dimension(1-Ng:N+Ng,3),intent(out) :: W,u    
@@ -34,11 +35,23 @@
 
       !---- Global options ----!
       
-      ! Set the number of threads used 
-      n_omp_threads = omp_get_max_threads()
-      if (n_omp_threads .gt. 60) n_omp_threads = 60  ! Limits to a maximum of 60 threads
+      ! Set the number of threads used. The current OpenMP coverage is limited
+      ! (only the radiation rate loop + the ionization loop are parallel), so a
+      ! ~500-cell grid scales out by ~16 threads and beyond that the fork/join
+      ! overhead makes it SLOWER (measured: 16 thr ~ 59 steps/s, 60 thr ~ 56).
+      ! Policy: honor an explicit OMP_NUM_THREADS (any value); otherwise default
+      ! to min(cores, 16) instead of grabbing every core for ~no gain.
+      call get_environment_variable('OMP_NUM_THREADS', omp_env, status=omp_env_st)
+      if (omp_env_st .eq. 0 .and. len_trim(omp_env) .gt. 0) then
+         n_omp_threads = omp_get_max_threads()          ! user set it explicitly
+      else
+         n_omp_threads = min(omp_get_max_threads(), 16) ! sensible default
+      endif
       call omp_set_num_threads(n_omp_threads)
-      write(*,'(A12,I3,A12)') '    - Using',n_omp_threads,' OMP threads'
+      write(*,'(A12,I3,A21)') '    - Using',n_omp_threads,                   &
+                              ' OMP threads (default)'
+      if (omp_env_st .eq. 0 .and. len_trim(omp_env) .gt. 0)                  &
+         write(*,'(A)') '      (from OMP_NUM_THREADS)'
       
       ! Loop parameters
       count = 0  

@@ -130,13 +130,19 @@
       ! then metals at 4+2*(e-1)). The merged HeITR+metals system inserts the
       ! He-triplet unknown at row 4, pushing the metals to row 5; that solver
       ! sets cx_metal_base = 5 around its solve and resets to 4 afterward.
-      ! The cell loop is serial, so this module-level toggle is thread-safe.
       integer, save :: cx_metal_base = 4
 
       ! Active reaction list (row indices) and per-cell rate coefficients.
+      ! cx_act / cx_nact are built ONCE by cx_init (read-only during the sweep)
+      ! and stay shared; cx_kc and cx_metal_base are PER-CELL state, so they are
+      ! threadprivate now that the ionization cell sweep runs OpenMP-parallel.
+      ! cx_kc is lazily allocated per thread in cx_set_cell; cx_metal_base is
+      ! broadcast to each thread (copyin) at the parallel region and toggled
+      ! 4<->5 per cell within a thread.
       integer, save :: cx_nact = 0
       integer, allocatable, save :: cx_act(:)
       real*8,  allocatable, save :: cx_kc(:)
+      !$omp threadprivate(cx_kc, cx_metal_base)
 
       ! Upper clamp on any evaluated rate [cm^3 s^-1]; guards the lnT-
       ! polynomial fits (N/S/Na/K), which diverge as T -> 1 K (never reached
@@ -175,6 +181,10 @@
       real*8, intent(in) :: T
       integer :: i
       real*8  :: kc
+      ! cx_kc is threadprivate: cx_init allocated only the master thread's copy,
+      ! so each worker thread allocates its own on first use here (cx_nact is the
+      ! shared, setup-once active-reaction count).
+      if (.not. allocated(cx_kc)) allocate(cx_kc(cx_nact))
       do i = 1, cx_nact
          kc = cx_rate(cx_act(i), T)
          cx_kc(i) = min(max(kc, 0.0d0), cx_kc_max)

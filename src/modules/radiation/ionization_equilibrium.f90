@@ -208,8 +208,19 @@
 
 	if (.not.thereis_He) then ! If no helium
 
+		! Per-cell ionization solves are independent (the count>0 warm-start uses
+		! this cell's own previous-step value), so the sweep is OpenMP-parallel
+		! over cells. sys_x/wa/info are threadprivate (global_parameters); only
+		! the subroutine-local scratch is private. count==0 runs serial (the if
+		! clause) because its first-step warm-start reads the neighbour cell.
+		!$omp parallel do default(shared) schedule(dynamic,8)                  &
+		!$omp   private(params, usednt) if(count > 0)
 		do j = N+Ng,1-Ng,-1
-		
+
+			! Lazily allocate this thread's threadprivate NL scratch.
+			if (.not. allocated(sys_x)) allocate(sys_x(N_eq))
+			if (.not. allocated(wa))    allocate(wa(lwa))
+
 			! Ionization equilibrium system setup
 			params(1) = P_HI(j)
 			params(2) = rchiiB(j)
@@ -238,7 +249,8 @@
 			nhii(j)   = nh(j)*sys_x(1)
 
 		enddo
-		
+		!$omp end parallel do
+
 		nhei   = 0.0
 		nheii  = 0.0
 		nheiii = 0.0
@@ -251,7 +263,21 @@
 		mbase = 4
 		if (thereis_HeITR) mbase = 5
 
+		! OpenMP-parallel cell sweep (see the no-He branch above). The per-cell
+		! metal coefficients (met_*, System_HeH_metals) and charge-exchange rates
+		! (cx_kc, cx_metal_base) are threadprivate, so each thread keeps its own;
+		! cx_metal_base is broadcast (copyin) and toggled 4<->5 per cell. All the
+		! subroutine-local scratch is private. count==0 stays serial (neighbour
+		! warm-start).
+		!$omp parallel do default(shared) schedule(dynamic,8) copyin(cx_metal_base) &
+		!$omp   private(params, usednt, i0, top, im, meg_ntot, meg_g0, meg_g1,      &
+		!$omp           meg_b0, meg_b1, meg_a1, meg_a2, meg_top) if(count > 0)
 		do j = N+Ng,1-Ng,-1
+
+			! Lazily allocate this thread's threadprivate NL scratch.
+			if (.not. allocated(sys_x))   allocate(sys_x(N_eq))
+			if (.not. allocated(sys_sol)) allocate(sys_sol(N_eq))
+			if (.not. allocated(wa))      allocate(wa(lwa))
 
 			! System coefficients
 			params(1)  = P_HI(j)
@@ -412,7 +438,8 @@
 			endif
 
 		enddo
-	
+		!$omp end parallel do
+
 	endif
 
 	

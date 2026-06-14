@@ -300,6 +300,7 @@
 		windae_seed_file = 'inputdata/windae_seed.csv'
 		windae_seed_out  = ''
 		hydrostatic_base = .false.
+		base_bc_mode     = 0          ! density-anchored base (legacy) by default
 		do
 			read(11,'(A)',iostat = ios) line
 			if (ios .ne. 0) exit
@@ -394,6 +395,44 @@
 				if (str .eq. 'True') hydrostatic_base = .true.
 				if (hydrostatic_base) write(*,'(A)') ' (input_read) '//   &
 				   'Hydrostatic base ghost cells enabled'
+			else if (index(line,'Shapiro filter') .gt. 0) then
+				str = get_word(line, 3);  read(str,*) shapiro_eps
+				str = get_word(line, 4)
+				if (len_trim(str) .gt. 0) read(str,*) shapiro_every
+				if (shapiro_eps .gt. 0.0d0) write(*,'(A,ES9.2,A,I0,A)')  &
+				   ' (input_read) Shapiro filter eps =', shapiro_eps,    &
+				   ', every ', shapiro_every, ' steps'
+			else if (index(line,'Base BC') .gt. 0) then
+				str = get_word(line, 3)
+				if (str .eq. 'density')  base_bc_mode = 0
+				if (str .eq. 'pressure') base_bc_mode = 1
+				if (base_bc_mode .eq. 1) then
+					str = get_word(line, 4)
+					if (len_trim(str) .gt. 0) read(str,*) base_p_ubar
+					write(*,'(A,ES9.2,A)')                               &
+					   ' (input_read) Base BC: pressure-anchored, '//    &
+					   'p_base =', base_p_ubar, ' microbar (n0 derived)'
+				else
+					write(*,'(A)') ' (input_read) Base BC: density '//   &
+					   '(legacy, n0 from input)'
+				endif
+			else if (index(line,'Base velocity') .gt. 0) then
+				str = get_word(line, 3)
+				if (str .eq. 'valve')    base_v_massflux = .false.
+				if (str .eq. 'massflux') base_v_massflux = .true.
+				if (base_v_massflux) then
+					write(*,'(A)') ' (input_read) Base velocity from '//  &
+					   'mass-flux F_c (CETIMB-style)'
+				else
+					write(*,'(A)') ' (input_read) Base velocity: legacy valve'
+				endif
+			else if (index(line,'Viscosity') .gt. 0) then
+				str = get_word(line, 3);  read(str,*) visc_mu0
+				str = get_word(line, 4)
+				if (len_trim(str) .gt. 0) read(str,*) visc_s
+				if (visc_mu0 .gt. 0.0d0) write(*,'(A,ES9.2,A,F5.2,A)')  &
+				   ' (input_read) Viscosity (Phase-1) mu0 =', visc_mu0,  &
+				   ', s =', visc_s, '  [un-validated]'
 			else if (index(line,'Resid tol') .gt. 0) then
 				! "Resid tol: <val>" = converge on the steady residual ||R||
 				! instead of du (<= 0 disables; legacy du-based stop).
@@ -519,6 +558,18 @@
    endif
 
    rho_bc = mass_per_H/(1.0 + HeH)
+
+   ! Pressure-anchored base (Base BC: pressure): override n0 so that the base
+   ! pressure n0*kb*T0*ntot_bc matches the target base_p_ubar [microbar].
+   ! 1 microbar = 1 erg/cm^3. (dp_bc, the small electron term, is negligible
+   ! here and is added by the ghost BC later.) This is the CETIMB 1-microbar
+   ! lower boundary: a much less dense base, hence a weaker rho*g source.
+   if (base_bc_mode .eq. 1) then
+      n0 = base_p_ubar/(kb_erg*T0*ntot_bc)
+      write(*,'(A,ES12.4,A)') ' (input_read) Base BC pressure mode: '//   &
+         'derived n0 =', n0, ' cm^-3'
+   endif
+
    v0     = sqrt(kb_erg*T0/mu)
    t_s    = R0/v0
    p0     = n0*mu*v0*v0

@@ -49,6 +49,10 @@
       endif
 
       xsave = x
+      ! solve_ieq is called from the OpenMP-parallel ionization cell sweep; the
+      ! run-wide usage counters must be updated atomically (nt_init was already
+      ! set on the serial first step, so its lazy-init block above does not race).
+      !$omp atomic
       nt_calls = nt_calls + 1
       if (nt_force .or. .not. use_newton_ieq) then
          info = 0                      ! legacy / validation: use the hybrd1 path
@@ -62,6 +66,7 @@
          x = xsave
          call hybrd1(fcn, n, x, fvec, tol, info_m, wa, lwa, params)
          used_newton = .false.
+         !$omp atomic
          nt_fallback = nt_fallback + 1
       endif
       end subroutine solve_ieq

@@ -38,7 +38,12 @@
 
    ! Density: always the base anchor rho_bc (the mass reservoir).
    W_in(index,1) = rho_bc
-   if (valve_eps .gt. 0.0d0) then
+   ! Velocity. base_v_massflux: CETIMB-style v0 = F_c/(rho_bc r^2) with F_c the
+   ! mass-flux constant from the [j_min:N] constant-momentum region (NOT the
+   ! base, where rho*v*r^2 is not yet flat). Else the legacy one-way valve.
+   if (base_v_massflux .and. base_flux_const .gt. 0.0d0) then
+      W_in(index,2) = base_flux_const/(rho_bc*r(index)**2)
+   else if (valve_eps .gt. 0.0d0) then
       ! Smooth one-way valve 0.5*(v + sqrt(v^2 + eps^2)): differentiable at
       ! v=0, -> 0 as v -> -inf, -> v for v >> eps (bias +eps/2 only near
       ! v ~ 0). Needed by the steady-state Newton solver, whose line search
@@ -121,6 +126,55 @@
 
    ! End of subroutine
    end subroutine Rec_BC
-   
+
+   !------------------------------------------!
+
+   subroutine shapiro_filter(u)
+   ! Periodic 1-2-1 Shapiro (1970) low-pass filter on the conservative
+   ! variables, to damp the gravity-unbalanced sound waves (base breathing)
+   ! the way CETIMB (Koskinen et al. 2013a) does. No-op if shapiro_eps <= 0.
+   ! Caller must Apply_BC before (ghosts j=0, N+1 are used) and after (to reset
+   ! the ghosts to their BC values).
+   real*8, intent(inout) :: u(1-Ng:N+Ng,3)
+   real*8 :: f(1-Ng:N+Ng,3)
+   integer :: j, k
+   if (shapiro_eps .le. 0.0d0) return
+   f = u
+   do k = 1,3
+      do j = 1,N
+         u(j,k) = f(j,k) + 0.25d0*shapiro_eps                            &
+                  *(f(j-1,k) - 2.0d0*f(j,k) + f(j+1,k))
+      enddo
+   enddo
+   end subroutine shapiro_filter
+
+   !------------------------------------------!
+
+   subroutine viscous_accel(vel, Tcell, Fv)
+   ! Leading CETIMB viscous momentum acceleration (Koskinen 2022 B5, first term):
+   ! F_mu = (4/3)(1/r^2) d/dr(r^2 mu dvel/dr), with mu = visc_mu0 * Tcell^visc_s
+   ! in code units. Phase-1 FOUNDATION (un-validated): no-op if visc_mu0 <= 0;
+   ! the (dmu/dr)(dvel/dr) and -(16/3)mu vel/r^2 corrections, the viscous
+   ! dissipation q_mu + heat conduction, and a stable semi-implicit time
+   ! integration are deferred to Phase-2 (calibration + validation vs Koskinen).
+   real*8, intent(in)  :: vel(1-Ng:N+Ng), Tcell(1-Ng:N+Ng)
+   real*8, intent(out) :: Fv(1-Ng:N+Ng)
+   real*8 :: mu(1-Ng:N+Ng), rp, rm, mup, mum, fluxp, fluxm
+   integer :: j
+   Fv = 0.0d0
+   if (visc_mu0 .le. 0.0d0) return
+   do j = 1-Ng, N+Ng
+      mu(j) = visc_mu0*Tcell(j)**visc_s
+   enddo
+   do j = 1, N
+      rp = 0.5d0*(r(j) + r(j+1));  mup = 0.5d0*(mu(j) + mu(j+1))
+      rm = 0.5d0*(r(j) + r(j-1));  mum = 0.5d0*(mu(j) + mu(j-1))
+      fluxp = rp*rp*mup*(vel(j+1) - vel(j))/(r(j+1) - r(j))
+      fluxm = rm*rm*mum*(vel(j) - vel(j-1))/(r(j) - r(j-1))
+      Fv(j) = (4.0d0/3.0d0)/(r(j)*r(j))                                  &
+              *(fluxp - fluxm)/(0.5d0*(r(j+1) - r(j-1)))
+   enddo
+   end subroutine viscous_accel
+
    ! End of module
    end module BC_Apply

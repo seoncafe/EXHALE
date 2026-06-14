@@ -281,6 +281,61 @@
       ! T0. Default off = byte-identical legacy behavior.
       logical :: hydrostatic_base = .false.
 
+      ! Base boundary-condition anchor ("Base BC: density" / "pressure [<p_ubar>]").
+      !   density  (0, default, legacy): the base number density is fixed at n0
+      !            ( = 10^"Log10 lower boundary number density" ), so the ghost
+      !            pins rho = rho_bc and p = ntot_bc + dp_bc (=> T = T0).
+      !   pressure (1, CETIMB-style): the base is anchored by PRESSURE instead.
+      !            n0 is derived so the base pressure n0*kb*T0*ntot_bc equals
+      !            base_p_ubar [microbar] (1 microbar = 1 erg/cm^3). The same
+      !            isothermal ghost then pins p (= base_p_ubar) + T0 and derives
+      !            rho. Because the base is over-determined isothermal, this is a
+      !            re-parameterization of the SAME ghost: its physical effect is a
+      !            much less dense base (1 microbar ~ 20x below n0=1e14), shrinking
+      !            the dense-base gravity source rho*g that drives the breathing.
+      integer :: base_bc_mode = 0
+      real*8  :: base_p_ubar   = 1.0d0   ! target base pressure [microbar] (mode 1)
+
+      ! Periodic Shapiro (1970) low-pass filter ("Shapiro filter: <eps> [<every>]").
+      ! Damps the gravity-unbalanced sound-wave (base-breathing) instability the
+      ! same way CETIMB (Koskinen et al. 2013a) does: every shapiro_every steps a
+      ! weak 1-2-1 filter u_j += (eps/4)(u_{j-1}-2u_j+u_{j+1}) is applied to the
+      ! conservative variables. shapiro_eps in [0,1]; eps <= 0 disables it.
+      ! OFF BY DEFAULT (opt-in). It damps the HD189733b breathing TRANSIENT, but
+      ! the HD209458b cold-IC S x V sweep (docs/base_breathing_progress.md,
+      ! HD209458b_test/) showed that with the filter ON the clean cold-IC solution
+      ! is driven OFF the transonic-wind saddle into the INFALL attractor (v < 0
+      ! everywhere) regardless of the velocity BC, while filter-OFF relaxes to a
+      ! clean outflow. So it must NOT be a global default; enable per-run with
+      ! "Shapiro filter: <eps> [<every>]" only for cases that actually breathe.
+      real*8  :: shapiro_eps   = -1.0d0
+      integer :: shapiro_every = 4
+
+      ! CETIMB-style base velocity ("Base velocity: massflux" / "valve"). The
+      ! legacy lower BC valves v (max(v1,0)); CETIMB (Koskinen 2013a) instead sets
+      ! the base velocity from the steady mass-flux continuity rho0*v0*r0^2 = F_c,
+      ! with F_c the wind's flux constant. Here F_c = mean(rho*v*r^2) over
+      ! [j_min:N] (the escape / constant-momentum region, NOT the base where
+      ! rho*v*r^2 is not yet flat), updated each step, and v_ghost = F_c/(rho_bc
+      ! r^2). OFF BY DEFAULT (opt-in). It is physically benign (never causes
+      ! infall on its own) and gives the cleanest base (suppresses the +-m/s base
+      ! oscillation), but it slows convergence ~5x (554k vs 107k steps on the
+      ! HD209458b cold IC), so the fast legacy valve stays the default. Enable
+      ! with "Base velocity: massflux".
+      logical :: base_v_massflux = .false.
+      real*8  :: base_flux_const = -1.0d0   ! F_c [code units], updated each step
+
+      ! Explicit viscosity ("Viscosity: <mu0> [<s>]"), Phase-1 port of CETIMB's
+      ! viscous momentum term (Koskinen 2022 B5 leading diffusion term
+      ! (4/3)(1/r^2) d/dr(r^2 mu dv/dr)), mu = visc_mu0*T^visc_s in code units.
+      ! Adds the physical (diffusive) damping EXHALE lacks. UN-VALIDATED Phase-1
+      ! foundation -- explicit (CETIMB uses semi-implicit Crank-Nicholson for
+      ! this stiff term), leading term only (dmu/dr and -(16/3)mu v/r^2 + the
+      ! viscous dissipation q_mu / conduction deferred). Default visc_mu0=0 =
+      ! OFF; calibrate visc_mu0 and add the rest + semi-implicit in Phase-2.
+      real*8 :: visc_mu0 = 0.0d0
+      real*8 :: visc_s   = 0.7d0
+
       ! Residual-based convergence ("Resid tol: <val>"). When > 0, the run
       ! converges when the finite-volume steady residual
       !   R = dF - S        (mass, momentum)
@@ -447,10 +502,16 @@
       real*8, dimension(1-Ng:N+Ng) :: cion_HI       = 0.0d0 ! HI collisional ioniz. [cm^3 s^-1]
       real*8, dimension(1-Ng:N+Ng) :: arec_HII      = 0.0d0 ! HII recombination [cm^3 s^-1]
 
-      ! NL solver vectors
+      ! NL solver vectors. These are per-cell scratch for the ionization
+      ! equilibrium solve, which now runs OpenMP-parallel over cells, so each
+      ! thread needs its own copy (info is the per-solve status flag). In serial
+      ! regions (input_read setup, post_process_adv) they resolve to the master
+      ! thread's copy = the original behavior. The allocatables are allocated
+      ! per thread inside ioniz_eq (the master's also in input_read).
       real*8, dimension(:), allocatable :: sys_sol, sys_x
       real*8, dimension(:), allocatable :: wa
-      
+      !$omp threadprivate(sys_x, sys_sol, wa, info)
+
       contains
 
       ! End of module      

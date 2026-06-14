@@ -51,6 +51,13 @@
       real*8, allocatable :: abjac(:,:), rdir(:), Jr(:), dFD(:), F0f(:)
       real*8, dimension(1-Ng:N+Ng) :: heat0, cool0
       real*8 :: jac_eps, jac_err
+      ! --- lightweight phase profiler (gated by env ATES_PROFILE=1) ---
+      logical :: do_profile = .false.
+      real*8  :: tp_step0, tp_a, tp_ion = 0.0d0, tp_hyd = 0.0d0, tp_tot = 0.0d0
+      character(len=8) :: prof_env
+      ! Deterministic step cap (env ATES_MAXSTEPS=N): stop after N steps and write
+      ! output. Used to compare serial vs parallel runs at an identical step.
+      integer :: max_steps = 0
       
       ! Integers variables
       integer :: j,k,im
@@ -65,6 +72,7 @@
       
       ! Momentum variables
       real*8, dimension(1-Ng:N+Ng) :: mom
+      real*8, dimension(1-Ng:N+Ng) :: Fvisc   ! Phase-1 viscous acceleration
       real*8 :: mom_max,mom_min
 
       ! Convergence stall detection (ported from ATES_extended)
@@ -319,6 +327,10 @@
       ! Get starting time
       write(*,*) '(EXHALE_main.f90) Starting time integration..'
       start = omp_get_wtime()
+      call get_environment_variable('ATES_PROFILE', prof_env)
+      if (trim(prof_env) .eq. '1') do_profile = .true.
+      call get_environment_variable('ATES_MAXSTEPS', prof_env)
+      if (len_trim(prof_env) .gt. 0) read(prof_env,*) max_steps
 
       ! Phase 3a excited-H feedback is a decoupled (lagged-explicit) source:
       ! at the top of every timestep the H(n=2) Balmer proton source + photo-
@@ -385,11 +397,12 @@
             ! dt_loc = per-cell pseudo-dt ("Time stepping: Local"), or
             ! uniformly the global dt (default; bit-identical updates).
             call eval_dt(W,dt,dt_loc)
-            
+            if (do_profile) tp_step0 = omp_get_wtime()
+
             !-------------------------------------------------!
-            
+
             !--- Thermodynamic evolution ---!
-            
+
             ! Save previous step solution
             u_old = u
             
@@ -466,8 +479,10 @@
             if (use_excited_H) call excited_H_update(T,rho,f_sp,v,exc_rel)
 
             ! Evaluate ionization equilibrium
+            if (do_profile) tp_a = omp_get_wtime()
             call ioniz_eq(T,rho,f_sp,rho,f_sp,heat,cool,eta)
-            
+            if (do_profile) tp_ion = tp_ion + (omp_get_wtime() - tp_a)
+
             ! Evaluate partial densities, ne and n_tot (single policy point)
             call get_species_densities(rho,f_sp,nhi,nhii,nhei,nheii,  &
                                        nheiii,nheiTR,nm,ne,n_tot)
@@ -497,8 +512,16 @@
 
 		call Apply_BC(u,u)
 
+            ! Periodic Shapiro low-pass filter to damp the gravity-unbalanced
+            ! sound waves (base breathing), as in CETIMB (Koskinen et al. 2013a).
+            if (shapiro_eps .gt. 0.0d0 .and.                             &
+                mod(count, shapiro_every) .eq. 0) then
+               call shapiro_filter(u)
+               call Apply_BC(u,u)
+            endif
+
             !------------------------------------------------!
-            
+
             ! Convert to physical variables and extract profiles
             call U_to_W(u,W)
             rho = W(:,1)
@@ -513,6 +536,17 @@
   	      ! Temperature profile
   	      call comp_T_from_p(p,n_tot,ne,T)
 
+            ! Phase-1 viscous momentum acceleration (gated; visc_mu0=0 disables).
+            ! Adds CETIMB's physical (diffusive) damping that EXHALE's inviscid
+            ! HLLC scheme lacks. UN-VALIDATED foundation (explicit; leading term
+            ! only) -- calibrate + extend + make semi-implicit in Phase-2.
+            if (visc_mu0 .gt. 0.0d0) then
+               call viscous_accel(v, T, Fvisc)
+               u(1:N,2) = u(1:N,2) + dt_loc(1:N)*Fvisc(1:N)
+               call Apply_BC(u,u)
+               call U_to_W(u,W);  rho = W(:,1); v = W(:,2); p = W(:,3)
+            endif
+
             ! Base-cell startup diagnostic (first 500 steps): trace r, n, v, T,
             ! heat, cool for the lowest cells to expose IC-startup transients.
             if (diag_base .and. count .le. 500) then
@@ -524,6 +558,21 @@
 
 		! Evaluate momentum
 		mom = rho*v*r*r
+
+            ! CETIMB-style base velocity: update the mass-flux constant F_c from
+            ! the [j_min:N] constant-momentum (escape) region -- NOT the base,
+            ! where rho*v*r^2 is not yet flat. A slow exponential moving average
+            ! makes v0 track the STABLE flux constant rather than the per-step
+            ! transient noise (the instantaneous value feeds the breathing back
+            ! into the base velocity). Used by the next step's base BC.
+            if (base_v_massflux .and. j_min .le. N) then
+               dum = sum(mom(j_min:N))/dble(N - j_min + 1)
+               if (base_flux_const .le. 0.0d0) then
+                  base_flux_const = dum
+               else
+                  base_flux_const = 0.99d0*base_flux_const + 0.01d0*dum
+               endif
+            endif
 		
             !---------------------------------------------------!
         
@@ -728,12 +777,29 @@
 
             ! Force continue for the first 1000 loops if force_start is enabled
             if (force_start) force_start = count .le. 1000
-            
+
+            ! Deterministic step cap for serial-vs-parallel verification.
+            if (max_steps .gt. 0 .and. count .ge. max_steps) exit
+
+            if (do_profile) then
+               tp_tot = tp_tot + (omp_get_wtime() - tp_step0)
+               if (mod(count, 500) .eq. 0 .and. tp_tot .gt. 0.0d0)          &
+                  write(*,'(A,I7,A,F6.1,A)') ' (profile) count=', count,     &
+                     '  ioniz_eq fraction=', 100.0d0*tp_ion/tp_tot, ' %'
+            endif
+
       !---------------------------------------------------!
-            
+
       ! End of temporal while loop
       enddo
       write(*,*) '(EXHALE_main.f90) Time integration done.'
+      if (do_profile) then
+         write(*,'(A)')          ' (profile) phase breakdown over the run:'
+         write(*,'(A,F10.3,A)')  '   ioniz_eq total :', tp_ion, ' s'
+         write(*,'(A,F10.3,A)')  '   full step total:', tp_tot, ' s'
+         if (tp_tot .gt. 0.0d0) write(*,'(A,F6.1,A)')                        &
+            '   ioniz_eq fraction:', 100.0d0*tp_ion/tp_tot, ' %'
+      endif
 
       ! Report which criterion stopped the loop
       if (is_mom_const) then
