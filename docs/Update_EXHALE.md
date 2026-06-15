@@ -2215,3 +2215,74 @@ is designed in `auto_ic_design.md` §6 but *not* implemented — the B-2 result
 suggests failure-triggered escalation is the right shape if a real case ever
 needs it. IC formulas and the selection logic are also documented in
 `EXHALE_BC_and_IC.tex` §5 and the user manual.
+
+## 19. Base boundary conditions and the flux-based convergence decision (2026-06-15)
+
+**Context.** A systematic study of how the lower boundary and the stabilizers
+interact with convergence on HD 209458b is collected in
+`docs/EXHALE_BC_and_IC.tex` (test matrix, two stabilizer tables, and a
+convergence-criterion history). This entry records the resulting default changes
+to the code; the companion document holds the full evidence.
+
+**Shapiro filter: off by default.** The optional Shapiro spatial filter damps the
+transient "breathing" of the base cell, but on a clean cold-start it also drives
+the wind into a slow infall and prevents convergence. Isolated in a 2×2
+(filter × base-valve) sweep, the filter — not the valve — was the cause. It is
+therefore *off* by default (`shapiro_eps < 0`) and opt-in only via
+`Shapiro filter: <eps> [every]`.
+
+**Base boundary condition: density vs pressure.** The base can now be anchored
+either on density (the legacy fixed n₀) or on a fixed base pressure, selected by
+`Base BC: density|pressure [p_ubar]` (default density; `pressure` fixes p_base in
+μbar and derives n₀). In practice the converged wind is nearly insensitive to
+which anchor is used — the real lever on Mdot is the base *density* itself, not
+the BC form.
+
+**The flux-based convergence decision (history).** EXHALE measures two distinct
+quantities at the base: the flux metric `du` (the radial spread of ρvr², which is
+exactly the constant-mass-flux criterion of ATES, ΔMdot/Mdot < 1e-3, and of
+CETIMB, F_c = ρvr² altitude-flat), and the steady residual ‖R‖ = ‖∂_t u‖ over
+mass/momentum/energy, a *stricter* EXHALE-specific check. The convergence rule
+evolved: before the Newton finish it was purely flux-based; the Newton work then
+added the stronger ‖R‖ criterion; but the reference codes converge on flux alone.
+The standing decision, adopted here, is therefore **flux-based** — `du < du_th` is
+the acceptance test, and ‖R‖ is computed and reported *for reference only* (it
+gates the stop only if `Resid tol:` is set).
+
+**Volume-weighted residual norm.** When ‖R‖ *is* reported, the default is now a
+cell-volume-weighted relative norm, Σⱼ|Rⱼ|·rⱼ²Δrⱼ / Σⱼ|uⱼ|·rⱼ²Δrⱼ (`resid_vol`,
+settable `Resid norm: vol|Linf`), rather than the bare L∞ maximum. On the
+non-uniform radial grid the L∞ max is dominated by the few tiny near-base cells
+and overstates the residual; the volume weighting gives a physically
+representative number. The infall diagnostic used in the test matrix was likewise
+switched to a *radius-weighted* negative-velocity fraction (weighted by Δr over
+the linear radius range), so that sub-10 m/s near-base noise is not counted as
+bulk infall.
+
+**du-keyed Newton/JFNK hand-off.** The production Newton finish (`Solver: Newton`)
+now hands off from the marching warm-up to the JFNK steady solve when the *flux*
+metric drops below `newton_du_switch` (default 1e-2), consistent with the
+flux-based decision and adjustable via an optional third token,
+`Solver: Newton [du_switch]`. This replaces the earlier residual-keyed hand-off
+(‖R‖ < 5e-2, variable `newton_R_switch`, now removed); the two are equivalent in
+practice, but keying on `du` avoids tying the hand-off to the stricter residual.
+The JFNK solve still *targets* ‖R‖ < `resid_th` (1e-3); on failure it keeps its
+best iterate and falls back to marching with the du-based stops re-armed.
+
+**The full-physics residual floor (base j=1).** With He 2³S + metals, the
+du-keyed hand-off plus the volume-weighted norm drove the JFNK residual from
+~0.17 down to ~2e-3 — about two orders of magnitude better — but it then *stalls*
+(`info ≠ 0`) on a localized momentum imbalance at the base cell j=1 (the
+"breathing base"), short of 1e-3. The wind is nonetheless flux-converged (e.g.
+HD 209458b full physics: log10 Mdot steady, ρvr² spread < 1%), which is a
+converged run by the reference standard. Closing the last factor of ~2 in ‖R‖
+requires physically damping the base momentum — the explicit-viscosity task at
+the top of `TO_BE_DONE.md`.
+
+**Touched files.** `parameters.f90` (`shapiro_eps`, `base_bc_mode`/`base_p_ubar`,
+`base_v_massflux`, `resid_vol`, `newton_du_switch`; `newton_R_switch` removed);
+`input_read.f90` (`Base BC:`, `Resid norm:`, `Solver: Newton [du_switch]`
+parsing); `steady_residual.f90` (`residual_norms_vol`); `steady_newton.f90`
+(`resid_relnorm` vol/L∞ branch); `EXHALE_main.f90` (du-keyed JFNK trigger,
+always-on flux/residual diagnostic). Full detail and the test matrix:
+`docs/EXHALE_BC_and_IC.{tex,pdf}`.

@@ -2665,4 +2665,84 @@ implemented --- the B-2 result suggests failure-triggered escalation is the
 right shape if a real case ever needs it. IC formulas and the selection logic
 are also documented in \texttt{EXHALE\_BC\_and\_IC.tex} \S5 and the user manual.
 
+% ===================================================================== %
+\section{Base boundary conditions and the flux-based convergence decision (2026-06-15)}
+% ===================================================================== %
+
+\paragraph{Context.} A systematic study of how the lower boundary and the
+stabilizers interact with convergence on HD\,209458b is collected in
+\texttt{docs/EXHALE\_BC\_and\_IC.tex} (test matrix, two stabilizer tables, and a
+convergence-criterion history). This entry records the resulting default changes
+to the code; the companion document holds the full evidence.
+
+\paragraph{Shapiro filter: off by default.} The optional Shapiro spatial filter
+damps the transient ``breathing'' of the base cell, but on a clean cold-start it
+also drives the wind into a slow infall and prevents convergence. Isolated in a
+$2\times2$ (filter\,$\times$\,base-valve) sweep, the filter --- not the valve ---
+was the cause. It is therefore \emph{off} by default (\texttt{shapiro\_eps} $< 0$)
+and opt-in only via \texttt{Shapiro filter: <eps> [every]}.
+
+\paragraph{Base boundary condition: density vs.\ pressure.} The base can now be
+anchored either on density (the legacy fixed $n_0$) or on a fixed base pressure,
+selected by \texttt{Base BC: density|pressure [p\_ubar]} (default density;
+\texttt{pressure} fixes $p_{\rm base}$ in $\mu$bar and derives $n_0$). In
+practice the converged wind is nearly insensitive to which anchor is used --- the
+real lever on $\dot M$ is the base \emph{density} itself, not the BC form.
+
+\paragraph{The flux-based convergence decision (history).} EXHALE measures two
+distinct quantities at the base: the flux metric $du$ (the radial spread of
+$\rho v r^2$, which is exactly the constant-mass-flux criterion of ATES,
+$\Delta\dot M/\dot M < 10^{-3}$, and of CETIMB, $F_c = \rho v r^2$ altitude-flat),
+and the steady residual $\|R\| = \|\partial_t u\|$ over mass/momentum/energy, a
+\emph{stricter} EXHALE-specific check. The convergence rule evolved: before the
+Newton finish it was purely flux-based; the Newton work then added the stronger
+$\|R\|$ criterion; but the reference codes converge on flux alone. The standing
+decision, adopted here, is therefore \textbf{flux-based} --- $du < $\,\texttt{du\_th}
+is the acceptance test, and $\|R\|$ is computed and reported \emph{for reference
+only} (it gates the stop only if \texttt{Resid tol:} is set).
+
+\paragraph{Volume-weighted residual norm.} When $\|R\|$ \emph{is} reported, the
+default is now a cell-volume-weighted relative norm,
+$\sum_j |R_j|\, r_j^2 \Delta r_j \,/\, \sum_j |u_j|\, r_j^2 \Delta r_j$
+(\texttt{resid\_vol}, settable \texttt{Resid norm: vol|Linf}), rather than the bare
+$L_\infty$ maximum. On the non-uniform radial grid the $L_\infty$ max is dominated
+by the few tiny near-base cells and overstates the residual; the volume weighting
+gives a physically representative number. The infall diagnostic used in the test
+matrix was likewise switched to a \emph{radius-weighted} negative-velocity
+fraction (weighted by $\Delta r$ over the linear radius range), so that
+sub-10\,m\,s$^{-1}$ near-base noise is not counted as bulk infall.
+
+\paragraph{$du$-keyed Newton/JFNK hand-off.} The production Newton finish
+(\texttt{Solver: Newton}) now hands off from the marching warm-up to the JFNK
+steady solve when the \emph{flux} metric drops below \texttt{newton\_du\_switch}
+(default $10^{-2}$), consistent with the flux-based decision and adjustable via an
+optional third token, \texttt{Solver: Newton [du\_switch]}. This replaces the
+earlier residual-keyed hand-off ($\|R\| < 5\times10^{-2}$, variable
+\texttt{newton\_R\_switch}, now removed); the two are equivalent in practice, but
+keying on $du$ avoids tying the hand-off to the stricter residual. The JFNK solve
+still \emph{targets} $\|R\| < $\,\texttt{resid\_th} ($10^{-3}$); on failure it
+keeps its best iterate and falls back to marching with the $du$-based stops
+re-armed.
+
+\paragraph{The full-physics residual floor (base $j=1$).} With He\,$2^3$S
+$+$ metals, the $du$-keyed hand-off plus the volume-weighted norm drove the JFNK
+residual from $\sim$0.17 down to $\sim$2$\times10^{-3}$ --- about two orders of
+magnitude better --- but it then \emph{stalls} (\texttt{info}\,$\neq$\,0) on a
+localized momentum imbalance at the base cell $j=1$ (the ``breathing base''),
+short of $10^{-3}$. The wind is nonetheless flux-converged (e.g.\ HD\,209458b
+full physics: $\log_{10}\dot M$ steady, $\rho v r^2$ spread $<$1\%), which is a
+converged run by the reference standard. Closing the last factor of $\sim$2 in
+$\|R\|$ requires physically damping the base momentum --- the explicit-viscosity
+task at the top of \texttt{TO\_BE\_DONE.md}.
+
+\paragraph{Touched files.} \texttt{parameters.f90} (\texttt{shapiro\_eps},
+\texttt{base\_bc\_mode}/\texttt{base\_p\_ubar}, \texttt{base\_v\_massflux},
+\texttt{resid\_vol}, \texttt{newton\_du\_switch}; \texttt{newton\_R\_switch}
+removed); \texttt{input\_read.f90} (\texttt{Base BC:}, \texttt{Resid norm:},
+\texttt{Solver: Newton [du\_switch]} parsing); \texttt{steady\_residual.f90}
+(\texttt{residual\_norms\_vol}); \texttt{steady\_newton.f90}
+(\texttt{resid\_relnorm} vol/$L_\infty$ branch); \texttt{EXHALE\_main.f90}
+($du$-keyed JFNK trigger, always-on flux/residual diagnostic). Full detail and the
+test matrix: \texttt{docs/EXHALE\_BC\_and\_IC.\{tex,pdf\}}.
+
 \end{document}
