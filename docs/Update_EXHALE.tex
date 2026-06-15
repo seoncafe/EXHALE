@@ -2675,12 +2675,15 @@ stabilizers interact with convergence on HD\,209458b is collected in
 convergence-criterion history). This entry records the resulting default changes
 to the code; the companion document holds the full evidence.
 
-\paragraph{Shapiro filter: off by default.} The optional Shapiro spatial filter
-damps the transient ``breathing'' of the base cell, but on a clean cold-start it
-also drives the wind into a slow infall and prevents convergence. Isolated in a
-$2\times2$ (filter\,$\times$\,base-valve) sweep, the filter --- not the valve ---
-was the cause. It is therefore \emph{off} by default (\texttt{shapiro\_eps} $< 0$)
-and opt-in only via \texttt{Shapiro filter: <eps> [every]}.
+\paragraph{Shapiro filter: off by default.} The optional Shapiro (1970) spatial
+filter --- ported from CETIMB (Koskinen et al.\ 2013a), whose use of it was found
+through Huang et al.\ (2023), to damp the same gravity-unbalanced base
+sound-wave instability --- damps the transient ``breathing'' of the base cell,
+but on a clean cold-start it also drives the wind into a slow infall and prevents
+convergence. Isolated in a $2\times2$ (filter\,$\times$\,base-valve) sweep, the
+filter --- not the valve --- was the cause. It is therefore \emph{off} by default
+(\texttt{shapiro\_eps} $< 0$) and opt-in only via
+\texttt{Shapiro filter: <eps> [every]}.
 
 \paragraph{Base boundary condition: density vs.\ pressure.} The base can now be
 anchored either on density (the legacy fixed $n_0$) or on a fixed base pressure,

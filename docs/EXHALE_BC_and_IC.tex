@@ -349,8 +349,11 @@ parts of the code, each of which carries a dedicated counter-measure:
 \label{sec:stabilizers}
 
 EXHALE adds three opt-in lower-boundary controls, ported while studying the
-breathing/infall behavior against CETIMB (Koskinen et al.\ 2013a; Huang et
-al.\ 2023). All three are \emph{off by default}, so the legacy behavior is
+breathing/infall behavior against CETIMB (Koskinen et al.\ 2013a). The Shapiro
+filter in particular was adopted after Huang et al.\ (2023) --- whose escape
+model is built on CETIMB --- pointed to CETIMB's use of exactly this low-pass to
+damp the gravity-unbalanced base sound waves; that reference is what suggested
+trying it here. All three are \emph{off by default}, so the legacy behavior is
 unchanged unless requested. Their measured effects are tabulated in
 \S\ref{sec:bc-matrix}.
 
@@ -1096,5 +1099,35 @@ or (ii)~ramp the imported base onto EXHALE's $(\rho_{\rm bc}, T_0)$ boundary
 before releasing the hydrodynamics. Either could keep the transonic-seed
 advantage Wind-AE offers for the RLOF cases while avoiding the infall/breathing
 seen here.
+
+% ===================================================================== %
+\section*{References}
+\addcontentsline{toc}{section}{References}
+% ===================================================================== %
+\begingroup
+\setlength{\parindent}{0pt}%
+\setlength{\parskip}{4pt}%
+\everypar{\hangindent=1.5em\hangafter=1}
+
+Caldiroli, A., Haardt, F., Gallo, E., Spinelli, R., Malsky, I., \& Rauscher, E.
+2021, A\&A, 655, A30. ``Irradiation-driven escape of primordial planetary
+atmospheres.~I. The ATES photoionization hydrodynamics code.'' (The original
+ATES code EXHALE is built on.)
+
+Huang, C., Koskinen, T., Lavvas, P., \& Fossati, L. 2023, ApJ, 951, 123. ``A
+Hydrodynamic Study of the Escape of Metal Species and Excited Hydrogen from the
+Atmosphere of the Hot Jupiter WASP-121\,b.'' (The WASP-121\,b escape model used
+here as the validation target; its description of CETIMB is what pointed to the
+Shapiro-filter remedy ported in \S\ref{sec:stabilizers}.)
+
+Koskinen, T.~T., Harris, M.~J., Yelle, R.~V., \& Lavvas, P. 2013a, Icarus, 226,
+1678. ``The escape of heavy atoms from the ionosphere of HD\,209458\,b.~I. A
+photochemical--dynamical model of the thermosphere.'' (CETIMB; the source of the
+periodic Shapiro low-pass used to damp the gravity-unbalanced base sound waves.)
+
+Shapiro, R. 1970, Reviews of Geophysics and Space Physics, 8, 359.
+``Smoothing, filtering, and boundary effects.'' (The 1--2--1 low-pass filter
+applied here.)
+\endgroup
 
 \end{document}
