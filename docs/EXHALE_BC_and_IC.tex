@@ -856,7 +856,14 @@ table (Table~\ref{tab:bc-pres}) and a density-anchored-base table
 (Table~\ref{tab:bc-dens}).
 
 In both tables: $\dot M$ is in g\,s$^{-1}$, $v_{\rm out}$ in km\,s$^{-1}$, and
-neg.\% is the percentage of cells with $v<0$. ``---'' marks a run on an infall
+neg.\% is the \emph{radius-weighted} infall fraction --- the fraction of the
+linear radius range $[r_1, r_N]$ over which $v<0$ (each cell weighted by its
+width $\Delta r$). This is used in place of the raw cell-count fraction, which
+the non-uniform grid (cells packed near the base) inflates: the dense near-base
+sliver of sub-$10\,\mathrm{m\,s^{-1}}$ noise would otherwise read as tens of
+percent. The radius-weighted measure cleanly separates that base noise
+($\lesssim 4\%$) from genuine infall (tens of percent). ``---'' marks a run on
+an infall
 branch (wind $\dot M$ undefined). ``JFNK fail $\to$ stall'' means the Newton
 steady solver did not converge, so the run fell back to time-marching and
 stopped at a $du$ plateau --- such rows are \emph{not} Newton-converged and carry
@@ -874,21 +881,21 @@ the same $\sim$2--5\% path-dependent $\dot M$ spread as the PLM-stall runs. The
 \toprule
 folder & BC & solver & S & V & He & met & IC & $\log\dot M$ & $v_{\rm out}$ & neg.\% & stop \\
 \midrule
-\texttt{pres1ub\_PWN\_He0\_met0\_cold}        & pres & PWN & \N & \N & \N & \N & cold & 10.39 & $+8.59$ & 0.4 & Newton \\
-\texttt{pres1ub\_PWN\_He1\_metCNO\_cold}      & pres & PWN & \N & \N & \Y & CNO & cold & 9.53 & $+6.63$ & 31 & JFNK fail $\to$ stall \\
-\texttt{pres1ub\_PWN\_He1\_metFULL\_cold}     & pres & PWN & \N & \N & \Y & FULL & cold & 9.37 & $+6.29$ & 36 & JFNK fail $\to$ stall \\
-\texttt{pres1ub\_PLMN\_He1\_metFULL\_cold}    & pres & PLMN & \N & \N & \Y & FULL & cold & 9.40 & $+6.10$ & 33 & JFNK fail $\to$ stall$^\S$ \\
-\texttt{pres1ub\_PWN\_He1\_metCNO\_cold\_Vflux} & pres & PWN & \N & \Y & \Y & CNO & cold & 9.53 & $+6.63$ & 31 & JFNK fail $\to$ stall \\
-\texttt{pres1ub\_PWN\_He1\_metCNO\_cold\_Shap} & pres & PWN & \Y & \N & \Y & CNO & cold & 10.21 & $+7.45$ & 76 & no conv.$^\dagger$ \\
-\texttt{pres1ub\_PLM\_He0\_met0\_cold}        & pres & PLM & \N & \N & \N & \N & cold & 10.40 & $+8.36$ & 0.2 & stall \\
+\texttt{pres1ub\_PWN\_He0\_met0\_cold}        & pres & PWN & \N & \N & \N & \N & cold & 10.39 & $+8.59$ & 0.0 & Newton \\
+\texttt{pres1ub\_PWN\_He1\_metCNO\_cold}      & pres & PWN & \N & \N & \Y & CNO & cold & 9.53 & $+6.63$ & 1.6 & JFNK fail $\to$ stall \\
+\texttt{pres1ub\_PWN\_He1\_metFULL\_cold}     & pres & PWN & \N & \N & \Y & FULL & cold & 9.37 & $+6.29$ & 2.2 & JFNK fail $\to$ stall \\
+\texttt{pres1ub\_PLMN\_He1\_metFULL\_cold}    & pres & PLMN & \N & \N & \Y & FULL & cold & 9.40 & $+6.10$ & 1.8 & JFNK fail $\to$ stall$^\S$ \\
+\texttt{pres1ub\_PWN\_He1\_metCNO\_cold\_Vflux} & pres & PWN & \N & \Y & \Y & CNO & cold & 9.53 & $+6.63$ & 1.6 & JFNK fail $\to$ stall \\
+\texttt{pres1ub\_PWN\_He1\_metCNO\_cold\_Shap} & pres & PWN & \Y & \N & \Y & CNO & cold & 10.21 & $+7.45$ & 25.3 & no conv.$^\dagger$ \\
+\texttt{pres1ub\_PLM\_He0\_met0\_cold}        & pres & PLM & \N & \N & \N & \N & cold & 10.40 & $+8.36$ & 0.0 & stall \\
 \bottomrule
 \end{tabular}%
 }
 \caption{\textbf{Pressure-anchored base} ($1\,\mu$bar, $n_0\approx5\times10^{12}\,
 \mathrm{cm^{-3}}$). Columns and general notation as described in the text.
 $^\dagger$The pressure $+$ Shapiro run never converged: it ran to the
-$10^6$-step cap with $76\%$ of cells in infall (vs.\ $31\%$ for the same run
-without Shapiro), so the filter both prevents convergence and deepens the
+$10^6$-step cap with $25\%$ of the radius in infall (vs.\ $1.6\%$ for the same
+run without Shapiro), so the filter both prevents convergence and deepens the
 infall; the quoted $\dot M$ is the outer-region value, not a steady state.
 $^\S$\texttt{PLMN} $=$ single-stage PLM $\to$ JFNK (the WENO3 stage skipped). It
 reaches an \emph{essentially identical final state} to the \texttt{PWN}
@@ -911,24 +918,22 @@ JFNK and stall, so the WENO3 stage is not the JFNK bottleneck.}
 \toprule
 folder & BC & solver & S & V & He & met & IC & $\log\dot M$ & $v_{\rm out}$ & neg.\% & stop \\
 \midrule
-\texttt{dens\_PWN\_He0\_met0\_cold}           & dens & PWN & \N & \N & \N & \N & cold & 10.50 & $+8.80$ & 0.6 & Newton \\
-\texttt{dens12p5\_PWN\_He0\_met0\_cold}       & dens & PWN & \N & \N & \N & \N & cold & 10.38 & $+8.58$ & 0.2 & Newton \\
-\texttt{dens\_PWN\_He1\_metCNO\_cold}         & dens & PWN & \N & \N & \Y & CNO & cold & 9.61 & $+6.79$ & 36 & JFNK fail $\to$ stall \\
-\texttt{dens\_PWN\_He0\_met0\_windae\_spherical} & dens & PWN & \N & \N & \N & \N & windae & 10.37 & $+5.77$ & 13 & breathing$^\ddagger$ \\
-\texttt{dens\_PLM\_He0\_metCNO\_cold}         & dens & PLM & \N & \N & \N & CNO & cold & 9.72 & $+6.77$ & 44$^\ast$ & stall \\
-\texttt{dens\_PLM\_He0\_met0\_cold\_Vflux}    & dens & PLM & \N & \Y & \N & \N & cold & 10.50 & $+8.58$ & 1.0 & stall \\
-\texttt{dens\_PLM\_He0\_met0\_cold\_Shap}     & dens & PLM & \Y & \N & \N & \N & cold & --- & $-13.34$ & 99.6 & infall \\
-\texttt{dens\_PLM\_He0\_met0\_cold\_Shap\_Vflux} & dens & PLM & \Y & \Y & \N & \N & cold & --- & $-13.32$ & 99.6 & infall \\
-\texttt{dens\_PLM\_He0\_met0\_windae\_spherical} & dens & PLM & \N & \N & \N & \N & windae & 10.08 & $+3.68$ & 31 & du-stop \\
-\texttt{dens\_PLM\_He0\_met0\_windae\_spherical\_Shap\_Vflux\_Force} & dens & PLM & \Y & \Y & \N & \N & windae$+$F & --- & $-20.03$ & 86 & infall \\
+\texttt{dens\_PWN\_He0\_met0\_cold}           & dens & PWN & \N & \N & \N & \N & cold & 10.50 & $+8.80$ & 0.0 & Newton \\
+\texttt{dens12p5\_PWN\_He0\_met0\_cold}       & dens & PWN & \N & \N & \N & \N & cold & 10.38 & $+8.58$ & 0.0 & Newton \\
+\texttt{dens\_PWN\_He1\_metCNO\_cold}         & dens & PWN & \N & \N & \Y & CNO & cold & 9.61 & $+6.79$ & 2.3 & JFNK fail $\to$ stall \\
+\texttt{dens\_PWN\_He0\_met0\_windae\_spherical} & dens & PWN & \N & \N & \N & \N & windae & 10.37 & $+5.77$ & 1.4 & breathing$^\ddagger$ \\
+\texttt{dens\_PLM\_He0\_metCNO\_cold}         & dens & PLM & \N & \N & \N & CNO & cold & 9.72 & $+6.77$ & 3.9 & stall \\
+\texttt{dens\_PLM\_He0\_met0\_cold\_Vflux}    & dens & PLM & \N & \Y & \N & \N & cold & 10.50 & $+8.58$ & 0.0 & stall \\
+\texttt{dens\_PLM\_He0\_met0\_cold\_Shap}     & dens & PLM & \Y & \N & \N & \N & cold & --- & $-13.34$ & 100 & infall \\
+\texttt{dens\_PLM\_He0\_met0\_cold\_Shap\_Vflux} & dens & PLM & \Y & \Y & \N & \N & cold & --- & $-13.32$ & 100 & infall \\
+\texttt{dens\_PLM\_He0\_met0\_windae\_spherical} & dens & PLM & \N & \N & \N & \N & windae & 10.08 & $+3.68$ & 0.6 & du-stop \\
+\texttt{dens\_PLM\_He0\_met0\_windae\_spherical\_Shap\_Vflux\_Force} & dens & PLM & \Y & \Y & \N & \N & windae$+$F & --- & $-20.03$ & 95 & infall \\
 \bottomrule
 \end{tabular}%
 }
 \caption{\textbf{Density-anchored base} ($n_0 = 10^{14}\,\mathrm{cm^{-3}}$;
 \texttt{dens12p5}: $\log n_0 = 12.5$). Columns and general notation as described
 in the text.
-$^\ast$The 44\% are $\sim-2\,\mathrm{m\,s^{-1}}$ near-hydrostatic base noise, not
-real infall.
 $^\ddagger$Wind-AE warm start: JFNK never triggered ($\lVert R\rVert$ stayed
 above the switch); the Wind-AE IC marched under WENO3 drifts to an unconverged
 breathing state ($du\!\sim\!0.7$), mostly outflow --- it does \emph{not} give a
@@ -940,7 +945,8 @@ clean Newton solution.}
 \paragraph{What the matrix shows.}
 \begin{itemize}
 \item \textbf{The Shapiro filter drives infall.} On the cold-IC density runs,
-  every S-on case relaxes to a global infall ($v<0$ in $99.6\%$ of cells) while
+  every S-on case relaxes to a global infall ($v<0$ over $\approx100\%$ of the
+  radius) while
   the matched S-off case is a clean outflow, independent of the velocity BC ---
   the headline reason the filter is opt-in (\S\ref{sec:stabilizers}). On the
   pressure $+$ full-physics case the filter instead prevents convergence
