@@ -16,6 +16,9 @@ fork of the ATES code (Caldiroli et al. 2021; Biassoni et al. 2024), adding:
 - He I 2³S metastable triplet state (coupled solver)
 - Non-LTE H(n=2) and Ly-alpha radiative transfer via the Neufeld
   escape-probability method
+  - _Planned:_ an alternative that computes the Ly-alpha radiation field with
+    the **LaRT** Monte Carlo Ly-alpha radiative-transfer code and uses it to set
+    the n=2 population, replacing the Neufeld escape-probability approximation
 - A Jacobian-free Newton-Krylov (JFNK) steady-state solver with PTC warm-up,
   SER ramp, and non-monotone (Grippo) line search
 - Roche-potential geometry (spherical or Roche-lobe domain modes)
@@ -339,3 +342,7 @@ See `examples/README.md` for the exact lines each one adds:
 3. Biassoni, F., Caldiroli, A., Gallo, E., Haardt, F., Spinelli, R., Borsa, F.
    (2024). *Self-Consistent Modeling of Metastable Helium Exoplanet Transits.*
    A&A, 682, A115.
+
+---
+
+Last updated: 2026-06-15
