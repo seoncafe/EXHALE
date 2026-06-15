@@ -929,4 +929,47 @@ clean Newton solution.}
   consistent with EXHALE's own base, is the reliable choice.
 \end{itemize}
 
+\subsection{Assessment: does the Wind-AE starter help?}
+\label{sec:windae-assess}
+
+\paragraph{So far, for HD209458b, the Wind-AE starter does not help --- the cold
+IC is better.} Across every Wind-AE-seeded run in Table~\ref{tab:bc-matrix} the
+outcome is one of: a $du$-stop at step~2 that simply returns the seed (no real
+relaxation), an unconverged breathing state when a Newton finish is requested
+(JFNK never triggers), or, when marching is forced, a drift to infall
+($v_{\rm out} = -20\,\mathrm{km\,s^{-1}}$). An earlier scratch run converged
+instead to a global \emph{infall root}. None reached a clean, Newton-converged
+outflow, whereas the cold IC with a \texttt{PWN} finish does (solver
+\texttt{info}=0, clean wind).
+
+\paragraph{Why.} A \emph{starter} replaces the entire state, \emph{including its
+own base}, with another code's solution (\S\ref{sec:ic}). That imported base is
+generally inconsistent with EXHALE's fixed lower boundary ($\rho_{\rm bc}$,
+$T_0$); the mismatch perturbs the near-base flow off the transonic-wind saddle,
+and since that saddle is unstable, the run is pulled to the nearby attractors ---
+infall, or the breathing limit cycle. This is the same dense-base/lower-BC
+tension that drives the breathing (\S\ref{sec:breathing}), now triggered by the
+seed rather than by a bad global IC.
+
+\paragraph{In fairness.} This does \emph{not} make Wind-AE useless. It was
+brought in for the \emph{hard} cases where a cold start fundamentally cannot
+launch a wind --- deep Roche-lobe-overflow geometries (e.g.\ WASP-121b Case~D,
+with the sonic point essentially at L1) and low-gravity boil-off planets ---
+where it is, at present, the only way to obtain a transonic seed. HD209458b is
+an easy case for which the cold IC already works, so there the starter is both
+unnecessary \emph{and} mildly harmful through the base mismatch. The honest
+statement is therefore: \emph{the starter is unnecessary for easy cases and,
+for its intended hard cases, has not yet delivered a clean solution because the
+base-BC reconciliation is unsolved} --- not that the approach is without value.
+
+\paragraph{What would make it useful.} The base mismatch must be removed. Two
+plausible routes (untested): (i)~have the Wind-AE bridge hand off only a
+\emph{warm overlay} --- temperature, ionization, and velocity --- on top of
+EXHALE's own hydrostatic density and base, i.e.\ demote the ``starter'' to a
+``warm seed'' (\S\ref{sec:ic}) that stays consistent with the lower boundary;
+or (ii)~ramp the imported base onto EXHALE's $(\rho_{\rm bc}, T_0)$ boundary
+before releasing the hydrodynamics. Either could keep the transonic-seed
+advantage Wind-AE offers for the RLOF cases while avoiding the infall/breathing
+seen here.
+
 \end{document}
