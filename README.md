@@ -202,6 +202,12 @@ ionization (and any metals) from the first step, so the Wind-AE IC need not
 be exactly self-consistent.  The shipped seed and spectrum live in
 `inputdata/windae_seed.csv` and `inputdata/windae_spectrum.inp`.
 
+To instead bootstrap from the **nearest** converged solution in the full
+Broome et al. (2025a) grid (~1000 solutions; `pick_nearest_seed`), download the
+grid database separately and place it under `inputdata/windae_grid/` — see
+[`inputdata/README_windae_grid.md`](inputdata/README_windae_grid.md) for the
+download links and the expected layout.
+
 This works for hot Jupiters close to the shipped seed
 (`examples/12_windae_ic_hd209/`, HD 209458 b) and, via the self-consistent
 C-2 continuation (re-converging the base boundary conditions, and turning the
