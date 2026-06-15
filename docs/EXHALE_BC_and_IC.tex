@@ -363,7 +363,7 @@ unchanged unless requested. Their measured effects are tabulated in
   \emph{However}, on the otherwise-clean cold-IC cases it injects a systematic
   momentum bias that drives the solution off the transonic-wind saddle into the
   infall branch ($v<0$ almost everywhere; see the \texttt{\_Shap} rows of
-  Table~\ref{tab:bc-matrix}). It is therefore opt-in --- useful only for cases
+  Table~\ref{tab:bc-dens}). It is therefore opt-in --- useful only for cases
   that genuinely breathe, not as a global default.
 \item[Mass-flux base velocity (\texttt{Base velocity: massflux}).] Instead of
   the one-way valve (\S\ref{sec:valve}), the base velocity is set from the
@@ -383,7 +383,7 @@ unchanged unless requested. Their measured effects are tabulated in
   the dense-base gravity source $\rho g$ that feeds the breathing. Empirically a
   density-anchored run at the same low $n_0$ ($\log n_0 = 12.5$) gives an almost
   identical converged wind, confirming that the lever is the base \emph{density},
-  not the anchoring variable (Table~\ref{tab:bc-matrix}).
+  not the anchoring variable (Tables~\ref{tab:bc-pres} and~\ref{tab:bc-dens}).
 \end{description}
 
 \paragraph{Implementation note.}
@@ -845,12 +845,23 @@ encodes the model as \texttt{<base>\_<solver>\_He\{0,1\}\_met\{0,CNO,FULL\}[\_fl
 \textbf{base} is \texttt{dens} ($n_0 = 10^{14}\,\mathrm{cm^{-3}}$ fixed; the
 \texttt{dens12p5} run lowers it to $\log n_0 = 12.5$) or \texttt{pres1ub}
 (pressure-anchored at $1\,\mu$bar, \S\ref{sec:stabilizers}); \textbf{solver} is
-\texttt{PLM} (single-stage, stopped at a $du$ plateau) or \texttt{PWN}
-(two-stage PLM$\to$WENO3 then a Newton/JFNK finish); \textbf{S}/\textbf{V} are
+\texttt{PLM} (single-stage, stopped at a $du$ plateau), \texttt{PWN}
+(two-stage PLM$\to$WENO3 then a Newton/JFNK finish), or \texttt{PLMN}
+(single-stage PLM then JFNK, skipping WENO3); \textbf{S}/\textbf{V} are
 the Shapiro filter / mass-flux base velocity of \S\ref{sec:stabilizers};
 \textbf{He}/\textbf{met} are He~$2^3$S and the trace metals (C,N,O or the full
 C,N,O,Mg,Ca,Na,Fe set); \textbf{IC} is the cold hydrostatic or the Wind-AE warm
-start (\S\ref{sec:ic}).
+start (\S\ref{sec:ic}). The results are split into a pressure-anchored-base
+table (Table~\ref{tab:bc-pres}) and a density-anchored-base table
+(Table~\ref{tab:bc-dens}).
+
+In both tables: $\dot M$ is in g\,s$^{-1}$, $v_{\rm out}$ in km\,s$^{-1}$, and
+neg.\% is the percentage of cells with $v<0$. ``---'' marks a run on an infall
+branch (wind $\dot M$ undefined). ``JFNK fail $\to$ stall'' means the Newton
+steady solver did not converge, so the run fell back to time-marching and
+stopped at a $du$ plateau --- such rows are \emph{not} Newton-converged and carry
+the same $\sim$2--5\% path-dependent $\dot M$ spread as the PLM-stall runs. The
+\texttt{Newton} rows reached a genuine solution (solver \texttt{info}=0).
 
 \begin{landscape}
 \begin{table}[p]
@@ -863,15 +874,43 @@ start (\S\ref{sec:ic}).
 \toprule
 folder & BC & solver & S & V & He & met & IC & $\log\dot M$ & $v_{\rm out}$ & neg.\% & stop \\
 \midrule
-\multicolumn{12}{l}{\textit{Pressure-anchored base ($1\,\mu$bar, $n_0\approx5\times10^{12}\,\mathrm{cm^{-3}}$)}}\\
 \texttt{pres1ub\_PWN\_He0\_met0\_cold}        & pres & PWN & \N & \N & \N & \N & cold & 10.39 & $+8.59$ & 0.4 & Newton \\
 \texttt{pres1ub\_PWN\_He1\_metCNO\_cold}      & pres & PWN & \N & \N & \Y & CNO & cold & 9.53 & $+6.63$ & 31 & JFNK fail $\to$ stall \\
 \texttt{pres1ub\_PWN\_He1\_metFULL\_cold}     & pres & PWN & \N & \N & \Y & FULL & cold & 9.37 & $+6.29$ & 36 & JFNK fail $\to$ stall \\
+\texttt{pres1ub\_PLMN\_He1\_metFULL\_cold}    & pres & PLMN & \N & \N & \Y & FULL & cold & 9.40 & $+6.10$ & 33 & JFNK fail $\to$ stall$^\S$ \\
 \texttt{pres1ub\_PWN\_He1\_metCNO\_cold\_Vflux} & pres & PWN & \N & \Y & \Y & CNO & cold & 9.53 & $+6.63$ & 31 & JFNK fail $\to$ stall \\
 \texttt{pres1ub\_PWN\_He1\_metCNO\_cold\_Shap} & pres & PWN & \Y & \N & \Y & CNO & cold & 10.21 & $+7.45$ & 76 & no conv.$^\dagger$ \\
 \texttt{pres1ub\_PLM\_He0\_met0\_cold}        & pres & PLM & \N & \N & \N & \N & cold & 10.40 & $+8.36$ & 0.2 & stall \\
-\addlinespace
-\multicolumn{12}{l}{\textit{Density-anchored base ($n_0 = 10^{14}\,\mathrm{cm^{-3}}$, except \texttt{dens12p5}: $\log n_0 = 12.5$)}}\\
+\bottomrule
+\end{tabular}%
+}
+\caption{\textbf{Pressure-anchored base} ($1\,\mu$bar, $n_0\approx5\times10^{12}\,
+\mathrm{cm^{-3}}$). Columns and general notation as described in the text.
+$^\dagger$The pressure $+$ Shapiro run never converged: it ran to the
+$10^6$-step cap with $76\%$ of cells in infall (vs.\ $31\%$ for the same run
+without Shapiro), so the filter both prevents convergence and deepens the
+infall; the quoted $\dot M$ is the outer-region value, not a steady state.
+$^\S$\texttt{PLMN} $=$ single-stage PLM $\to$ JFNK (the WENO3 stage skipped). It
+reaches an \emph{essentially identical final state} to the \texttt{PWN}
+(PLM$\to$WENO3$\to$JFNK) row above --- $\log\dot M = 9.40$ vs.\ $9.37$,
+$v_{\rm out} = +6.10$ vs.\ $+6.29$, overlapping $T/v/n/p$ profiles --- in about
+\emph{half} the steps ($9.4\times10^4$ vs.\ $1.7\times10^5$); both still fail
+JFNK and stall, so the WENO3 stage is not the JFNK bottleneck.}
+\label{tab:bc-pres}
+\end{table}
+\end{landscape}
+
+\begin{landscape}
+\begin{table}[p]
+\centering
+\footnotesize
+\setlength{\tabcolsep}{4pt}
+\renewcommand{\arraystretch}{1.2}
+\resizebox{\linewidth}{!}{%
+\begin{tabular}{l l l c c c c l r r r l}
+\toprule
+folder & BC & solver & S & V & He & met & IC & $\log\dot M$ & $v_{\rm out}$ & neg.\% & stop \\
+\midrule
 \texttt{dens\_PWN\_He0\_met0\_cold}           & dens & PWN & \N & \N & \N & \N & cold & 10.50 & $+8.80$ & 0.6 & Newton \\
 \texttt{dens12p5\_PWN\_He0\_met0\_cold}       & dens & PWN & \N & \N & \N & \N & cold & 10.38 & $+8.58$ & 0.2 & Newton \\
 \texttt{dens\_PWN\_He1\_metCNO\_cold}         & dens & PWN & \N & \N & \Y & CNO & cold & 9.61 & $+6.79$ & 36 & JFNK fail $\to$ stall \\
@@ -885,24 +924,16 @@ folder & BC & solver & S & V & He & met & IC & $\log\dot M$ & $v_{\rm out}$ & ne
 \bottomrule
 \end{tabular}%
 }
-\caption{HD209458b base-BC test matrix. $\dot M$ in g\,s$^{-1}$; $v_{\rm out}$ in
-km\,s$^{-1}$; neg.\% is the percentage of cells with $v<0$. ``---'' marks runs on
-an infall branch (wind $\dot M$ undefined). ``JFNK fail $\to$ stall'' = the
-Newton steady solver did not converge, so the run fell back to time-marching and
-stopped at a $du$ plateau; those are not Newton-converged (carry the
-$\sim$2--5\% path-dependent $\dot M$ spread of the PLM-stall runs). The
-\texttt{Newton} rows reached a genuine solution (solver \texttt{info}=0).
-$^\ast$The 44\% are $\sim-2\,\mathrm{m\,s^{-1}}$ near-hydrostatic base noise.
-$^\dagger$The pressure $+$ Shapiro run never converged: it ran to the
-$10^6$-step cap with $76\%$ of cells in infall (vs.\ $31\%$ for the same run
-without Shapiro), confirming that the filter both prevents convergence and
-deepens the infall here. The quoted $\dot M$ is the outer-region value and is
-not a converged steady state.
-$^\ddagger$Wind-AE warm start: JFNK never triggered ($\lVert R\rVert$ stayed above
-the switch); the Wind-AE IC marched under WENO3 drifts to an unconverged
+\caption{\textbf{Density-anchored base} ($n_0 = 10^{14}\,\mathrm{cm^{-3}}$;
+\texttt{dens12p5}: $\log n_0 = 12.5$). Columns and general notation as described
+in the text.
+$^\ast$The 44\% are $\sim-2\,\mathrm{m\,s^{-1}}$ near-hydrostatic base noise, not
+real infall.
+$^\ddagger$Wind-AE warm start: JFNK never triggered ($\lVert R\rVert$ stayed
+above the switch); the Wind-AE IC marched under WENO3 drifts to an unconverged
 breathing state ($du\!\sim\!0.7$), mostly outflow --- it does \emph{not} give a
 clean Newton solution.}
-\label{tab:bc-matrix}
+\label{tab:bc-dens}
 \end{table}
 \end{landscape}
 
@@ -926,6 +957,15 @@ clean Newton solution.}
   $\log\dot M$ from $\sim$10.4 to $\sim$9.5--9.6; the full metal set
   (adding Mg/Ca/Na/Fe line cooling) lowers it further to $9.37$. With full
   physics the JFNK solve fails for both bases and falls back to a stall.
+\item \textbf{Skipping WENO3 before the Newton finish (\texttt{PLMN}) changes
+  nothing but the cost.} On the full-metal case, \texttt{PLMN} (PLM$\to$JFNK)
+  reaches an essentially identical final state to \texttt{PWN}
+  (PLM$\to$WENO3$\to$JFNK) --- $\log\dot M = 9.40$ vs.\ $9.37$, overlapping
+  profiles --- in about half the steps, and both still fail JFNK and stall. So
+  the reconstruction path is not the JFNK bottleneck; the stiff coupled
+  (He~$2^3$S $+$ 7-metal) residual is. A genuine Newton finish for full physics
+  would need a smoother residual (tighter chemistry tolerance) or a relaxed
+  target, not a different reconstruction.
 \item \textbf{The Wind-AE warm start does not help here.} It either du-stops at
   step~2 (returning $\approx$ the IC) or, with a Newton finish, never triggers
   JFNK and drifts to an unconverged breathing state. The cold hydrostatic IC,
@@ -936,7 +976,7 @@ clean Newton solution.}
 \label{sec:windae-assess}
 
 \paragraph{So far, for HD209458b, the Wind-AE starter does not help --- the cold
-IC is better.} Across every Wind-AE-seeded run in Table~\ref{tab:bc-matrix} the
+IC is better.} Across every Wind-AE-seeded run in Table~\ref{tab:bc-dens} the
 outcome is one of: a $du$-stop at step~2 that simply returns the seed (no real
 relaxation), an unconverged breathing state when a Newton finish is requested
 (JFNK never triggers), or, when marching is forced, a drift to infall
