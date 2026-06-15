@@ -500,6 +500,35 @@ BC itself.
 \section{Initial conditions (\texttt{set\_IC.f90})}
 \label{sec:ic}
 
+\paragraph{Three concepts to fix first: \textbf{cold IC}, \textbf{warm IC}, and
+\textbf{starter}.} For the reader's convenience, every IC family below is a
+variation on three ideas. The distinction matters because it controls whether
+the run starts \emph{inside} the wind basin or has to be pushed there.
+\begin{description}
+\item[\textbf{Cold IC.}] The default. A fully \emph{neutral}, isothermal
+  ($T = T_0$) \emph{hydrostatic} atmosphere with only a small outward velocity
+  seed. Nothing is pre-heated or pre-ionized: the simulation grows the
+  temperature, ionization, and wind from scratch. Because it is built from
+  EXHALE's own base BC (fixed $\rho_{\rm bc}$, $T_0$), it is automatically
+  \emph{consistent with the lower boundary} and relaxes cleanly to the
+  transonic wind.
+\item[\textbf{Warm IC} (warm seed / warm start).] An initial state that already
+  carries a \emph{heated, ionized, flowing} profile, overlaid on the hydrostatic
+  density --- the transonic isothermal-wind and hot-Parker families. A plausible
+  wind therefore exists from step~0, which is needed where a cold start cannot
+  launch (deep-RLOF or low-gravity boil-off). It is still EXHALE's own base with
+  a thermodynamic overlay, so it stays consistent with the lower boundary; it
+  only auto-enables \texttt{force\_start} so the heating can settle.
+\item[\textbf{Starter} (starter solution / seed).] A \emph{complete, externally
+  pre-converged} steady wind solution read in wholesale as the IC --- the
+  Wind-AE warm start (\texttt{IC mode: windae}), which ramps a Wind-AE
+  \texttt{windsoln} (or a grid/database seed) to this planet. Unlike a warm
+  seed, a starter \emph{replaces the entire state} with another code's solution,
+  including its own base; that base can clash with EXHALE's lower BC and pull the
+  run off the wind branch (\S\ref{sec:bc-matrix}). A starter bootstraps hard
+  cases but is not guaranteed consistent with EXHALE's boundary.
+\end{description}
+
 When a run does not restart from saved profiles
 (\S\ref{sec:loadic}), the initial state is built by \texttt{set\_IC}
 in \texttt{src/modules/init/}. Three IC families exist; the
