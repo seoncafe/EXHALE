@@ -301,6 +301,7 @@
 		windae_seed_out  = ''
 		hydrostatic_base = .false.
 		base_bc_mode     = 0          ! density-anchored base (legacy) by default
+		resid_vol        = .true.     ! volume-weighted residual norm by default
 		do
 			read(11,'(A)',iostat = ios) line
 			if (ios .ne. 0) exit
@@ -438,6 +439,14 @@
 				! instead of du (<= 0 disables; legacy du-based stop).
 				str = get_word(line, 3);  read(str,*) resid_th
 				write(*,'(A,ES9.2)') ' (input_read) Residual-based convergence, tol =', resid_th
+			else if (index(line,'Resid norm') .gt. 0) then
+				! "Resid norm: vol|Linf" -- residual norm for convergence.
+				! vol (default) = volume-weighted; Linf = legacy max-over-cells.
+				str = get_word(line, 3)
+				if (str .eq. 'Linf' .or. str .eq. 'linf' .or. str .eq. 'LINF') &
+					resid_vol = .false.
+				if (str .eq. 'vol' .or. str .eq. 'volume') resid_vol = .true.
+				write(*,'(A,L1)') ' (input_read) Volume-weighted residual norm: ', resid_vol
 			else if (index(line,'CFL') .gt. 0) then
 				! Override the CFL number ("CFL: <value>"); lower = smaller dt.
 				str = get_word(line, 2);  read(str,*) CFL

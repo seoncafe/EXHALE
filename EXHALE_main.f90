@@ -9,7 +9,7 @@
       use energy_semi_implicit
       use utils
       use composition, only: get_species_densities, comp_T_from_p, comp_p_from_T
-      use steady_residual_mod, only: assemble_residual, residual_norms
+      use steady_residual_mod, only: assemble_residual, residual_norms, residual_norms_vol
       use steady_newton, only: neq_newton, pack_U, unpack_U, newton_residual, &
                                eval_residual, frozen_residual,              &
                                build_banded_jac, band_matvec,               &
@@ -41,7 +41,7 @@
 
       ! Residual-based convergence monitor (Resid tol option)
       real*8, dimension(1-Ng:N+Ng,3) :: Rres
-      real*8  :: resid_c(3), resid_max
+      real*8  :: resid_c(3), resid_cv(3), resid_max, flux_spread
       logical :: is_resid_ok
 
       ! Newton-residual self-test scratch (ATES_NEWTON_TEST hook)
@@ -189,11 +189,16 @@
            close(uu)
            write(*,'(A)') ' (EXHALE_main) wrote output/residual_profile.txt'
          end block
+         call residual_norms_vol(Rres, u, resid_cv)
          write(*,'(A)') ' (EXHALE_main) ATES_RESIDUAL=1 steady residual ||R||:'
-         write(*,'(A)') '   component   max|R|/max|u| [1/t_s]'
+         write(*,'(A)') '   component    L-inf: max|R|/max|u|    vol-wt: '// &
+                        'sum|R|V/sum|u|V   [1/t_s]'
          do k = 1,3
-            write(*,'(A,I2,4X,ES16.6)') '   k=', k, resid_c(k)
+            write(*,'(A,I2,4X,ES16.6,4X,ES16.6)') '   k=', k,               &
+                 resid_c(k), resid_cv(k)
          enddo
+         write(*,'(A,ES12.4,A,ES12.4)') '   ||R|| = max_k :  L-inf =',      &
+              maxval(resid_c), '   vol-weighted =', maxval(resid_cv)
          write(*,*) '(EXHALE_main) ATES_RESIDUAL=1: residual reported, stopping.'
          stop
       endif
@@ -606,13 +611,27 @@
             ! consistent with the final u). du/dtu can be small at a premature
             ! operator-split balance while R is large (premature WASP golden:
             ! du,dtu tiny but R_energy ~ 30), so R is the trustworthy gate.
-            if ((resid_th .gt. 0.0d0 .or. use_newton_solver) .and.       &
-                mod(count, N_resid) .eq. 0) then
+            ! Reference diagnostics every N_resid steps. Per Caldiroli (2021,
+            ! ATES) and Koskinen (2013a, CETIMB) the CONVERGENCE DECISION is
+            ! flux-based: ATES stops at d(Mdot)/Mdot < 1e-3, which here is the
+            ! du<du_th test (du is the radial spread of rho*v*r^2); CETIMB asks
+            ! that rho*v*r^2 = F_c be constant with altitude. The steady residual
+            ! ||R|| (volume-weighted by default, resid_vol) is computed and
+            ! reported FOR REFERENCE ONLY; it gates the stop solely when the user
+            ! explicitly requests it via "Resid tol:" (resid_th>0).
+            if (mod(count, N_resid) .eq. 0) then
                call assemble_residual(u, heat, cool, Rres)
-               call residual_norms(Rres, u, resid_c)
-               resid_max = maxval(resid_c)
-               write(*,'(A,I0,A,3ES11.3,A,ES11.3)') '   [resid] step ',     &
-                    count,'  R(m,p,E)=',resid_c,'  max=',resid_max
+               if (resid_vol) then
+                  call residual_norms_vol(Rres, u, resid_c)
+               else
+                  call residual_norms(Rres, u, resid_c)
+               endif
+               resid_max   = maxval(resid_c)
+               flux_spread = (maxval(mom(j_min:N)) - minval(mom(j_min:N)))   &
+                    /max(abs(sum(mom(j_min:N))/dble(N - j_min + 1)), 1.0d-30)
+               write(*,'(A,I0,A,ES10.3,A,ES10.3)') '   [diag] step ', count, &
+                    '  flux rho*v*r^2 spread=', flux_spread,                  &
+                    '   ||R||(ref)=', resid_max
             endif
             is_resid_ok = (resid_max .lt. resid_th)
 

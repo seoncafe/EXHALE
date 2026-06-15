@@ -24,7 +24,7 @@
 
       implicit none
       private
-      public :: assemble_residual, residual_norms
+      public :: assemble_residual, residual_norms, residual_norms_vol
 
       contains
 
@@ -59,6 +59,35 @@
                  /max(maxval(abs(u(j_min:N,k))), 1.0d-30)
       enddo
       end subroutine residual_norms
+
+      ! ------------------------------------------------------!
+
+      subroutine residual_norms_vol(Res, u, rc)
+      ! VOLUME-WEIGHTED relative residual over the wind [j_min:N]:
+      !   rc(k) = sum_j |R(j,k)| V_j / sum_j |u(j,k)| V_j,   V_j = r_j^2 dr_j
+      ! (the spherical cell volume up to the 4*pi factor, which cancels).
+      ! Physical meaning: the numerator is d/dt of the volume-integrated
+      ! conserved quantity k, so rc(k) is the fractional drift rate of the
+      ! GLOBAL mass/momentum/energy budget. Unlike the L-inf residual_norms
+      ! (max over cells, ~1/dr so dominated by the smallest cells on the
+      ! non-uniform grid), this weights each cell by its volume and is not
+      ! biased by an isolated small near-base cell.
+      ! NB: the residual argument is named Res (not R) because Fortran is
+      ! case-insensitive and the grid radius array is r.
+      real*8, dimension(1-Ng:N+Ng,3), intent(in)  :: Res, u
+      real*8, dimension(3),           intent(out) :: rc
+      integer :: k, j
+      real*8  :: num, den, w
+      do k = 1,3
+         num = 0.0d0;  den = 0.0d0
+         do j = j_min, N
+            w   = r(j)*r(j)*dr_j(j)
+            num = num + abs(Res(j,k))*w
+            den = den + abs(u(j,k))*w
+         enddo
+         rc(k) = num/max(den, 1.0d-30)
+      enddo
+      end subroutine residual_norms_vol
 
       ! End of module
       end module steady_residual_mod

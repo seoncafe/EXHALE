@@ -2,6 +2,43 @@
 
 Running list of known limitations and planned improvements.
 
+## (A) Explicit viscosity (Phase-2): tame the base momentum imbalance — TOP PRIORITY
+
+**Why.** The full-physics (He 2^3S + metals) runs reach a *flux-converged* wind
+(rho*v*r^2 flat to <1%, the Caldiroli 2021 / Koskinen 2013a criterion), but their
+*steady residual* is held up by a **localized near-base momentum imbalance**: the
+momentum residual is large only in a few small cells at r <~ 1.07 (L-inf
+||R||~0.86, but ~5x smaller, ~0.17, under the volume-weighted norm = concentrated
+in the densely-gridded base). This is the "breathing base" gravity-vs-pressure
+tension. CETIMB (Koskinen 2013a, 2022) damps exactly this with a periodic Shapiro
+filter PLUS explicit viscosity + heat conduction (Navier-Stokes level). EXHALE is
+inviscid HLLC and lacks the physical damping; the Shapiro filter alone
+over-diffuses and (shown this session) drives clean cold-IC cases to infall, so
+it is opt-in only. Viscosity is the physically grounded fix.
+
+**What to do.** Activate and validate the explicit viscosity that already has a
+gated Phase-1 foundation (`Viscosity: <mu0> [<s>]`, `Apply_BC.f90::viscous_accel`,
+currently `visc_mu0=0`=off, leading B5 term only):
+
+1. **Calibrate mu(T)** against Koskinen (O'Neill & Chorlton form), not ad-hoc
+   mu0*T^s.
+2. **Complete the B5 momentum term**: add `-(d mu/dr)(dv/dr)` and `-(16/3)mu*v/r^2`,
+   the viscous dissipation `q_mu` (B6) in the energy equation, and heat conduction
+   `(1/r^2) d/dr(r^2 kappa dT/dr)`.
+3. **Semi-implicit (Crank-Nicholson)** time integration -- viscosity is stiff; an
+   explicit update is CFL-limited / unstable.
+4. **Validate** vs Koskinen's HD209458b T(r), v(r)
+   (`references/Koskinen_2013Icarus_226_1678.pdf`).
+5. **Acceptance:** the near-base momentum residual drops enough that the
+   full-physics runs reach a genuine Newton-converged steady state (||R|| < 1e-3)
+   WITHOUT the Shapiro filter, and the converged wind matches the flux-criterion
+   result already obtained (Mdot, profiles unchanged within the 2-5% spread).
+
+Refs: `docs/base_breathing_progress.md`, `docs/EXHALE_BC_and_IC.pdf`
+(stabilizers + test matrix sections), memory `reference-cetimb-algorithm`.
+
+---
+
 ## DONE 2026-06-13 — Wind-AE IC continuation stage C-2 (self-consistent base BCs) + bolo turn-off
 
 **The C-2 machinery is implemented, validated, and is now the default for

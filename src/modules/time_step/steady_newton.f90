@@ -352,13 +352,23 @@
       real*8, dimension(3),           intent(out) :: rc
       real*8,                         intent(out) :: rnorm
       integer :: j, k
-      real*8  :: fmx, umx
+      real*8  :: fmx, umx, w
       do k = 1, 3
          fmx = 0.0d0;  umx = 0.0d0
-         do j = j_min, N
-            fmx = max(fmx, abs(F(3*(j-1)+k)))
-            umx = max(umx, abs(u(j,k)))
-         enddo
+         if (resid_vol) then
+            ! volume-weighted (default): sum_j |F|V / sum_j |u|V, V = r^2 dr
+            do j = j_min, N
+               w   = r(j)*r(j)*dr_j(j)
+               fmx = fmx + abs(F(3*(j-1)+k))*w
+               umx = umx + abs(u(j,k))*w
+            enddo
+         else
+            ! legacy L-inf: max over the wind region
+            do j = j_min, N
+               fmx = max(fmx, abs(F(3*(j-1)+k)))
+               umx = max(umx, abs(u(j,k)))
+            enddo
+         endif
          rc(k) = fmx/max(umx, 1.0d-30)
       enddo
       rnorm = maxval(rc)

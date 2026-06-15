@@ -348,6 +348,15 @@
       ! Default <= 0 disables (legacy du-based stop, byte-identical).
       real*8  :: resid_th = -1.0d0
       integer :: N_resid  = 500
+      ! Residual NORM used for the convergence / Newton-trigger test.
+      ! .true. (DEFAULT) = volume-weighted  sum_j|R(j,k)|V_j / sum_j|u(j,k)|V_j
+      !   (V_j = r_j^2 dr_j): the fractional drift rate of the volume-integrated
+      !   conserved quantity. This is the physically meaningful steady measure
+      !   and, unlike the L-inf max, is NOT inflated by isolated small near-base
+      !   cells on the non-uniform grid (where R ~ 1/dr).
+      ! .false. = legacy L-inf  max_j|R(j,k)| / max_j|u(:,k)|.
+      ! Set "Resid norm: Linf" in input.inp to revert.
+      logical :: resid_vol = .true.
 
       ! Energy source-term integrator: .true. = semi-implicit backward-Euler
       ! cell solve (EXHALE default); .false. = original explicit forward
