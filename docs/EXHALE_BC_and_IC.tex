@@ -13,7 +13,11 @@
 \usepackage{xcolor}
 \usepackage{booktabs}
 \usepackage{amsmath}
+\usepackage{pdflscape}
 \usepackage{babel}
+
+\newcommand{\Y}{\checkmark}
+\newcommand{\N}{--}
 \emergencystretch=3em
 
 % listing style for code snippets
@@ -321,7 +325,13 @@ parts of the code, each of which carries a dedicated counter-measure:
   (HD~189733~b is the standing example) can still fail the strict
   $du$ threshold; reducing CFL, modifying the valve, or replacing the
   boundary Riemann solver did \emph{not} remove the oscillation in our
-  experiments --- it is robustly attached to the BC type.
+  experiments --- it is robustly attached to the BC type. A periodic
+  Shapiro (1970) low-pass filter, the stabilizer the reference code
+  CETIMB (Koskinen et al.\ 2013a) applies to exactly this
+  gravity-unbalanced sound-wave instability, \emph{does} damp the
+  oscillatory component (\S\ref{sec:stabilizers}), but it biases the
+  momentum and pushes the clean cold-IC cases off the wind branch into
+  infall, so it is kept opt-in rather than a default.
 \item \emph{Newton solver.} The $v_1 = 0$ kink of the hard valve sits
   exactly on the breathing orbit; the smooth valve of
   \S\ref{sec:valve} exists for this reason.
@@ -334,6 +344,53 @@ parts of the code, each of which carries a dedicated counter-measure:
   equilibrium solution and skips the advection correction wherever
   $v \le 0$ at the base.
 \end{itemize}
+
+\subsection{Optional stabilizers and the selectable base mode (EXHALE)}
+\label{sec:stabilizers}
+
+EXHALE adds three opt-in lower-boundary controls, ported while studying the
+breathing/infall behavior against CETIMB (Koskinen et al.\ 2013a; Huang et
+al.\ 2023). All three are \emph{off by default}, so the legacy behavior is
+unchanged unless requested. Their measured effects are tabulated in
+\S\ref{sec:bc-matrix}.
+
+\begin{description}
+\item[Shapiro filter (\texttt{Shapiro filter: <eps> [<every>]}).] Every
+  \texttt{every} steps a weak two-step Shapiro (1970) 1--2--1 low-pass filter
+  $u_j \mathrel{+}= \tfrac{\varepsilon}{4}(u_{j-1} - 2u_j + u_{j+1})$ is applied
+  to the conservative variables. This is CETIMB's cure for the
+  gravity-unbalanced sound waves and it does smooth the breathing transient.
+  \emph{However}, on the otherwise-clean cold-IC cases it injects a systematic
+  momentum bias that drives the solution off the transonic-wind saddle into the
+  infall branch ($v<0$ almost everywhere; see the \texttt{\_Shap} rows of
+  Table~\ref{tab:bc-matrix}). It is therefore opt-in --- useful only for cases
+  that genuinely breathe, not as a global default.
+\item[Mass-flux base velocity (\texttt{Base velocity: massflux}).] Instead of
+  the one-way valve (\S\ref{sec:valve}), the base velocity is set from the
+  steady mass-flux continuity $v_0 = F_c/(\rho_0 r_0^2)$ with $F_c$ a slow
+  exponential moving average of $\rho v r^2$ over the wind region. It is
+  physically benign --- it never causes infall on its own and gives the cleanest
+  base (it suppresses the $\pm$m\,s$^{-1}$ valve oscillation) --- but it slows
+  convergence ($\sim$5$\times$ more steps), so the fast valve stays the default.
+\item[Pressure-anchored base (\texttt{Base BC: pressure [<p\_ubar>]}).] Instead
+  of fixing the base \emph{number density} at $n_0$ (\S\ref{sec:lower}), this
+  fixes the base \emph{pressure} at \texttt{p\_ubar} microbar (default $1\,\mu$bar,
+  the CETIMB lower boundary) and derives $n_0$ from $p = n_0 k_B T_0\,
+  n_{\rm tot,bc}$. Because the isothermal base is over-determined (it already
+  pins $T = T_0$), this is a re-parameterization of the same ghost; its physical
+  effect is simply a much less dense base ($1\,\mu$bar $\Rightarrow
+  n_0 \approx 5\times10^{12}$, $\sim$20$\times$ below $10^{14}$), which shrinks
+  the dense-base gravity source $\rho g$ that feeds the breathing. Empirically a
+  density-anchored run at the same low $n_0$ ($\log n_0 = 12.5$) gives an almost
+  identical converged wind, confirming that the lever is the base \emph{density},
+  not the anchoring variable (Table~\ref{tab:bc-matrix}).
+\end{description}
+
+\paragraph{Implementation note.}
+The per-cell ionization-equilibrium sweep is now OpenMP-parallel over cells
+(the metal- and charge-exchange per-cell coefficients are kept thread-private);
+the parallel result is bit-identical to the serial one, so none of the BC/IC
+behavior below is affected. See \texttt{docs/openmp\_parallelization.md}.
 
 \subsection{Temperature, ionization, and metals at the lower boundary}
 \label{sec:metals-bc}
@@ -748,5 +805,99 @@ L1); the hot-Parker warm seed may overlay temperature, ionization, and
 velocity on the cold density, but seeding the Parker \emph{density}
 itself tips the breathing base from self-limiting to self-amplifying
 and crashes the run.
+
+\section{Empirical base-BC test matrix (HD209458b)}
+\label{sec:bc-matrix}
+
+To pin down how the lower-boundary choices above actually affect a converged
+wind, HD209458b was relaxed under a controlled combination of solver and base
+options (the runs live in \texttt{EXHALE/HD209458b\_test/}). Each folder name
+encodes the model as \texttt{<base>\_<solver>\_He\{0,1\}\_met\{0,CNO,FULL\}[\_flags]}:
+\textbf{base} is \texttt{dens} ($n_0 = 10^{14}\,\mathrm{cm^{-3}}$ fixed; the
+\texttt{dens12p5} run lowers it to $\log n_0 = 12.5$) or \texttt{pres1ub}
+(pressure-anchored at $1\,\mu$bar, \S\ref{sec:stabilizers}); \textbf{solver} is
+\texttt{PLM} (single-stage, stopped at a $du$ plateau) or \texttt{PWN}
+(two-stage PLM$\to$WENO3 then a Newton/JFNK finish); \textbf{S}/\textbf{V} are
+the Shapiro filter / mass-flux base velocity of \S\ref{sec:stabilizers};
+\textbf{He}/\textbf{met} are He~$2^3$S and the trace metals (C,N,O or the full
+C,N,O,Mg,Ca,Na,Fe set); \textbf{IC} is the cold hydrostatic or the Wind-AE warm
+start (\S\ref{sec:ic}).
+
+\begin{landscape}
+\begin{table}[p]
+\centering
+\footnotesize
+\setlength{\tabcolsep}{4pt}
+\renewcommand{\arraystretch}{1.2}
+\resizebox{\linewidth}{!}{%
+\begin{tabular}{l l l c c c c l r r r l}
+\toprule
+folder & BC & solver & S & V & He & met & IC & $\log\dot M$ & $v_{\rm out}$ & neg.\% & stop \\
+\midrule
+\multicolumn{12}{l}{\textit{Pressure-anchored base ($1\,\mu$bar, $n_0\approx5\times10^{12}\,\mathrm{cm^{-3}}$)}}\\
+\texttt{pres1ub\_PWN\_He0\_met0\_cold}        & pres & PWN & \N & \N & \N & \N & cold & 10.39 & $+8.59$ & 0.4 & Newton \\
+\texttt{pres1ub\_PWN\_He1\_metCNO\_cold}      & pres & PWN & \N & \N & \Y & CNO & cold & 9.53 & $+6.63$ & 31 & JFNK fail $\to$ stall \\
+\texttt{pres1ub\_PWN\_He1\_metFULL\_cold}     & pres & PWN & \N & \N & \Y & FULL & cold & 9.37 & $+6.29$ & 36 & JFNK fail $\to$ stall \\
+\texttt{pres1ub\_PWN\_He1\_metCNO\_cold\_Vflux} & pres & PWN & \N & \Y & \Y & CNO & cold & 9.53 & $+6.63$ & 31 & JFNK fail $\to$ stall \\
+\texttt{pres1ub\_PWN\_He1\_metCNO\_cold\_Shap} & pres & PWN & \Y & \N & \Y & CNO & cold & --- & --- & --- & running$^\dagger$ \\
+\texttt{pres1ub\_PLM\_He0\_met0\_cold}        & pres & PLM & \N & \N & \N & \N & cold & 10.40 & $+8.36$ & 0.2 & stall \\
+\addlinespace
+\multicolumn{12}{l}{\textit{Density-anchored base ($n_0 = 10^{14}\,\mathrm{cm^{-3}}$, except \texttt{dens12p5}: $\log n_0 = 12.5$)}}\\
+\texttt{dens\_PWN\_He0\_met0\_cold}           & dens & PWN & \N & \N & \N & \N & cold & 10.50 & $+8.80$ & 0.6 & Newton \\
+\texttt{dens12p5\_PWN\_He0\_met0\_cold}       & dens & PWN & \N & \N & \N & \N & cold & 10.38 & $+8.58$ & 0.2 & Newton \\
+\texttt{dens\_PWN\_He1\_metCNO\_cold}         & dens & PWN & \N & \N & \Y & CNO & cold & 9.61 & $+6.79$ & 36 & JFNK fail $\to$ stall \\
+\texttt{dens\_PWN\_He0\_met0\_windae\_spherical} & dens & PWN & \N & \N & \N & \N & windae & 10.37 & $+5.77$ & 13 & breathing$^\ddagger$ \\
+\texttt{dens\_PLM\_He0\_metCNO\_cold}         & dens & PLM & \N & \N & \N & CNO & cold & 9.72 & $+6.77$ & 44$^\ast$ & stall \\
+\texttt{dens\_PLM\_He0\_met0\_cold\_Vflux}    & dens & PLM & \N & \Y & \N & \N & cold & 10.50 & $+8.58$ & 1.0 & stall \\
+\texttt{dens\_PLM\_He0\_met0\_cold\_Shap}     & dens & PLM & \Y & \N & \N & \N & cold & --- & $-13.34$ & 99.6 & infall \\
+\texttt{dens\_PLM\_He0\_met0\_cold\_Shap\_Vflux} & dens & PLM & \Y & \Y & \N & \N & cold & --- & $-13.32$ & 99.6 & infall \\
+\texttt{dens\_PLM\_He0\_met0\_windae\_spherical} & dens & PLM & \N & \N & \N & \N & windae & 10.08 & $+3.68$ & 31 & du-stop \\
+\texttt{dens\_PLM\_He0\_met0\_windae\_spherical\_Shap\_Vflux\_Force} & dens & PLM & \Y & \Y & \N & \N & windae$+$F & --- & $-20.03$ & 86 & infall \\
+\bottomrule
+\end{tabular}%
+}
+\caption{HD209458b base-BC test matrix. $\dot M$ in g\,s$^{-1}$; $v_{\rm out}$ in
+km\,s$^{-1}$; neg.\% is the percentage of cells with $v<0$. ``---'' marks runs on
+an infall branch (wind $\dot M$ undefined). ``JFNK fail $\to$ stall'' = the
+Newton steady solver did not converge, so the run fell back to time-marching and
+stopped at a $du$ plateau; those are not Newton-converged (carry the
+$\sim$2--5\% path-dependent $\dot M$ spread of the PLM-stall runs). The
+\texttt{Newton} rows reached a genuine solution (solver \texttt{info}=0).
+$^\ast$The 44\% are $\sim-2\,\mathrm{m\,s^{-1}}$ near-hydrostatic base noise.
+$^\dagger$The pressure $+$ Shapiro run had not converged after $>$0.8M steps when
+this table was written (Shapiro greatly slows / destabilizes convergence here).
+$^\ddagger$Wind-AE warm start: JFNK never triggered ($\lVert R\rVert$ stayed above
+the switch); the Wind-AE IC marched under WENO3 drifts to an unconverged
+breathing state ($du\!\sim\!0.7$), mostly outflow --- it does \emph{not} give a
+clean Newton solution.}
+\label{tab:bc-matrix}
+\end{table}
+\end{landscape}
+
+\paragraph{What the matrix shows.}
+\begin{itemize}
+\item \textbf{The Shapiro filter drives infall.} On the cold-IC density runs,
+  every S-on case relaxes to a global infall ($v<0$ in $99.6\%$ of cells) while
+  the matched S-off case is a clean outflow, independent of the velocity BC ---
+  the headline reason the filter is opt-in (\S\ref{sec:stabilizers}). On the
+  pressure $+$ full-physics case the filter instead prevents convergence
+  altogether (row $\dagger$).
+\item \textbf{The base BC barely changes the converged wind --- the lever is the
+  base \emph{density}.} With a Newton finish, density ($n_0=10^{14}$) and
+  pressure ($1\,\mu$bar) bases give nearly the same $\dot M$ (10.50 vs.\ 10.39).
+  A \emph{density}-anchored run at the same low density (\texttt{dens12p5},
+  $\log n_0 = 12.5$) reproduces the pressure result almost exactly (10.38 vs.\
+  10.39; $+8.58$ vs.\ $+8.59$), confirming that pressure-anchoring acts only
+  through the lower base density, not through the anchoring variable itself.
+  The mass-flux velocity (V) is benign (it reproduces the valve result).
+\item \textbf{Physics lowers $\dot M$.} He~$2^3$S $+$ C/N/O cooling drops
+  $\log\dot M$ from $\sim$10.4 to $\sim$9.5--9.6; the full metal set
+  (adding Mg/Ca/Na/Fe line cooling) lowers it further to $9.37$. With full
+  physics the JFNK solve fails for both bases and falls back to a stall.
+\item \textbf{The Wind-AE warm start does not help here.} It either du-stops at
+  step~2 (returning $\approx$ the IC) or, with a Newton finish, never triggers
+  JFNK and drifts to an unconverged breathing state. The cold hydrostatic IC,
+  consistent with EXHALE's own base, is the reliable choice.
+\end{itemize}
 
 \end{document}
