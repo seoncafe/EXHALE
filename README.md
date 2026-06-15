@@ -139,19 +139,35 @@ make
 
 ### Recommended convergence workflow
 
-For robust convergence on typical hot-Jupiter / sub-Neptune problems:
+For robust convergence on typical hot-Jupiter / sub-Neptune problems
+(**PWN**: two-stage PLM->WENO3 with a Newton finish; **leave the Shapiro filter
+off**):
 
 ```
 # in input.inp
 Reconstruction:           PLM
 du_th [PLM,WENO3]:        0.5 1.0e-3   # two-stage: coarse PLM then fine WENO3
-Solver:                   Newton        # JFNK finish once ||R||_inf < 0.05
+Solver:                   Newton        # optional JFNK finish (warm-up to ||R|| < 0.05)
+# Shapiro filter:  -1                   # OFF by default; opt-in only for breathing cases
 ```
 
 The two-stage key `du_th [PLM,WENO3]` replaces the old single-value `du_th`.
 EXHALE switches from PLM to WENO3 automatically when du falls below the first
-threshold, then hands off to the Newton-Krylov solver near the fixed point.
-See `docs/steady_solver_memo.pdf` for details.
+threshold, then optionally hands off to the Newton-Krylov solver.
+
+**Convergence criterion (flux-based).** Convergence is judged on the *flux*
+criterion of the reference codes: the fractional spread of the mass flux
+`dMdot/Mdot < du_th` (here `du` *is* the radial spread of `rho*v*r^2`), which is
+the ATES (Caldiroli 2021) test and is equivalent to the CETIMB (Koskinen 2013a)
+requirement that `F_c = rho*v*r^2` be constant with altitude. The steady residual
+`||R||` is computed and reported **for reference only** (volume-weighted by
+default, since the L-inf max is dominated by the small near-base cells); it gates
+the stop solely when you set `Resid tol:`. With full physics (He 2^3S + metals)
+the optional JFNK may not drive `||R||` below `1e-3` because of a localized
+near-base momentum imbalance ("breathing base"), yet the wind is still
+flux-converged -- that is a converged run by the reference standard, not a
+failure. See `docs/EXHALE_BC_and_IC.pdf` (convergence-criterion and test-matrix
+sections) and `docs/steady_solver_memo.pdf`.
 
 ### Enabling metal chemistry
 
