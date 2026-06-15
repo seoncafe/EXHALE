@@ -254,11 +254,15 @@ spent $>$3\,h without converging.
 Two ways to use it:
 \begin{itemize}
 \item \textbf{Production}: add \texttt{Solver: Newton} to \texttt{input.inp}. The
-  run marches (including the automatic two-stage PLM$\to$WENO3) until the
-  monitored steady residual drops below the switch threshold (default
-  $5\times10^{-2}$; the $du$-based stops are suspended), then the Newton solve
-  finishes to \texttt{Resid tol} (default $10^{-3}$), and the standard outputs and
-  post-processing follow.
+  run marches (including the automatic two-stage PLM$\to$WENO3) until the flux
+  metric $du$ (the radial spread of $\rho v r^2$) drops below the hand-off
+  threshold \texttt{newton\_du\_switch} (default $10^{-2}$; the $du$-based
+  \emph{convergence} stops are suspended), then the Newton solve finishes to
+  \texttt{Resid tol} (default $10^{-3}$), and the standard outputs and
+  post-processing follow. The hand-off point is adjustable through an optional
+  third token on the key, \texttt{Solver: Newton <du\_switch>} (e.g.\
+  \texttt{Solver: Newton 5e-3} hands off later); a bare \texttt{Solver: Newton}
+  keeps the $10^{-2}$ default.
 \item \textbf{From an existing state} (recommended for re-converging old runs):
   put the state in \texttt{output/*\_IC.txt}, set \texttt{Load IC?\ True},
   \texttt{Valve eps:\ 1.0e-4}, \texttt{Resid tol:\ 1.0e-3}, and run with the
@@ -268,13 +272,15 @@ ATES_PTC=1 ATES_PTC_JFNK=1 ATES_PTC_DTAU0=1.0 ./EXHALE.x
 \end{lstlisting}
   which solves from the loaded state, writes \texttt{output/}, and stops.
 \end{itemize}
-The warm start matters: Newton's basin requires a state with
-$\max\|R\|\lesssim5\times10^{-2}$ (a transient that merely \emph{looks} flat in
-$du$ is not enough). Do not raise the switch threshold: on WASP-121b a
-hand-off at $\|R\|=0.09$ already stalls (and a cold-IC start stalls at
-$\|R\|\sim10$), while the default $5\times10^{-2}$ converges in 16
-iterations --- the default is calibrated essentially at the basin edge
-(\texttt{steady\_solver\_memo.pdf}). Convergence is linear (frozen-weight refresh and the
+The warm start matters: Newton has a finite basin, so the hand-off must wait
+until the marching warm-up has flattened the wind. The default
+$du<10^{-2}$ is calibrated to land inside the basin --- handing off earlier (a
+larger \texttt{newton\_du\_switch}) risks starting Newton outside it and
+stalling, whereas a cold-IC start (no warm-up at all) stalls outright. Earlier
+revisions keyed the hand-off on the residual itself ($\|R\|<5\times10^{-2}$);
+the $du$-based key is equivalent in practice and consistent with the flux-based
+convergence decision (\S\ref{sec:convctl}), while the residual remains the
+\emph{target} of the JFNK finish. Convergence is linear (frozen-weight refresh and the
 chemistry noise floor); on planets with a breathing base (HD189733b) the
 practical floor is $\|R\|\sim3\times10^{-4}$.
 The Newton finish is also \emph{safe to fail}: the solver tracks the best
@@ -296,7 +302,9 @@ the JFNK finish (right).
 \caption{The \texttt{Solver: Newton} pipeline from a cold IC (WASP-121b, Roche).
 Left: maximum steady residual $\max\|R\|_\infty$ over the mass, momentum, and
 energy equations during the two-stage marching warm-up; the dashed line is the
-switch threshold $R_{\rm switch}=5\times10^{-2}$. Right: residual vs.\ JFNK outer
+legacy residual hand-off threshold $R_{\rm switch}=5\times10^{-2}$ used when this
+figure was produced (the current default keys the hand-off on $du<10^{-2}$
+instead, at a comparable point on the warm-up). Right: residual vs.\ JFNK outer
 iteration during the Newton finish, down to \texttt{Resid tol} ($10^{-3}$).}
 \label{fig:newton}
 \end{figure}

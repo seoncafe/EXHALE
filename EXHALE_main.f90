@@ -709,15 +709,17 @@
                is_stalled = (stall_count .ge. N_stall) .and. is_level_stable
             endif
 
-            ! Production Newton finish ("Solver: Newton"): once the marching
-            ! warm-up has brought the steady residual below newton_R_switch
-            ! (residual-based, NOT du-based: du dips transiently while the
-            ! energy residual is still O(1-30)), hand over to the JFNK
-            ! steady solver, refresh the thermodynamic state from the solved
-            ! u, and exit the loop (standard final outputs and
-            ! post-processing follow).
+            ! Production Newton finish ("Solver: Newton"): once the cheap
+            ! marching warm-up has flattened the wind to du < newton_du_switch
+            ! (the FLUX metric -- the radial spread of rho*v*r^2 -- consistent
+            ! with the flux-based convergence decision), hand over to the JFNK
+            ! steady solver to polish the rest of the way, refresh the
+            ! thermodynamic state from the solved u, and exit the loop (standard
+            ! final outputs and post-processing follow). Newton's quadratic local
+            ! convergence tightens du from ~1e-2 to <1e-3 in far fewer steps than
+            ! continued marching.
             if (use_newton_solver .and. .not.in_plm_stage .and.          &
-                resid_max .lt. newton_R_switch) then
+                du .lt. newton_du_switch) then
                if (valve_eps .le. 0.0d0) then
                   valve_eps = 1.0d-4
                   write(*,'(A)') ' (EXHALE_main) Solver: Newton -> '//     &

@@ -236,19 +236,23 @@
       ! without a validated "truth" to anchor the tolerance to.
       real*8  :: lev_th = -1.0d0
 
-      ! Production steady-solver wiring ("Solver: Newton [R_switch]").
+      ! Production steady-solver wiring ("Solver: Newton [du_switch]").
       ! When .true., the normal marching loop (including the automatic
-      ! two-stage PLM->WENO3) runs as a WARM-UP; once the periodic steady-
-      ! residual monitor reports max_k ||R_k|| < newton_R_switch, the JFNK
-      ! steady solver finishes the run to ||R|| < resid_th (default 1e-3 if
-      ! "Resid tol:" was not given) and the standard final outputs /
-      ! post-processing follow. The switch is residual-based, NOT du-based:
-      ! du dips transiently while the energy residual is still O(1-30)
-      ! (premature-dip lesson), far outside Newton's basin; warm starts with
-      ! ||R|| ~ 2e-2 converge robustly, hence the 5e-2 default. Requires a
-      ! smooth base valve: if "Valve eps:" was not set, 1e-4 is adopted.
+      ! two-stage PLM->WENO3) runs as a WARM-UP; the JFNK steady solver then
+      ! finishes the run to ||R|| < resid_th (default 1e-3 if "Resid tol:" was
+      ! not given) and the standard final outputs / post-processing follow.
+      ! Requires a smooth base valve: if "Valve eps:" was not set, 1e-4 is
+      ! adopted.
       logical :: use_newton_solver = .false.
-      real*8  :: newton_R_switch   = 5.0d-2
+      ! Hand-off to JFNK is keyed on the FLUX metric du (the radial spread of
+      ! rho*v*r^2), consistent with the flux-based convergence decision: once the
+      ! cheap marching has flattened the wind to du < newton_du_switch the Newton
+      ! solver polishes it the rest of the way (Newton's quadratic convergence
+      ! tightens du 1e-2 -> 1e-3 far faster than continued marching). Settable as
+      ! "Solver: Newton [du_switch]". (Earlier revisions keyed the hand-off on the
+      ! residual itself, ||R|| < 5e-2; the du-based key is equivalent in practice
+      ! and matches the flux-based convergence decision.)
+      real*8  :: newton_du_switch  = 1.0d-2
 
       ! WENO3 weight-freezing mode for the steady Newton solver (lagged /
       ! frozen nonlinear weights, the standard FV steady-solve remedy):

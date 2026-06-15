@@ -16,6 +16,17 @@ inviscid HLLC and lacks the physical damping; the Shapiro filter alone
 over-diffuses and (shown this session) drives clean cold-IC cases to infall, so
 it is opt-in only. Viscosity is the physically grounded fix.
 
+**Quantified (2026-06-15, `HD209458b_test/pres1ub_PWN_He1_metFULL_cold_duJFNK`).**
+With the flux-keyed JFNK hand-off (fire at `du<1e-2`) AND the volume-weighted
+residual norm, the JFNK drove `||R||` down to **2.3e-3** -- a ~100x improvement
+over the 0.17 it reached with the old `||R||<0.05` hand-off -- but stalled there:
+`||R||` would not drop below ~2e-3 for 15 iterations, the worst cell being the
+**base cell j=1 (r=1.0), momentum**. So the wall to a genuine `du<1e-3` /
+`||R||<1e-3` convergence for full physics is precisely this base momentum, NOT
+the solver path or reconstruction (the final wind is identical to the plain
+metFULL PWN run). This is the concrete acceptance target for the viscosity work
+below: get `||R||` past ~2e-3 down to <1e-3 by damping the base cell.
+
 **What to do.** Activate and validate the explicit viscosity that already has a
 gated Phase-1 foundation (`Viscosity: <mu0> [<s>]`, `Apply_BC.f90::viscous_accel`,
 currently `visc_mu0=0`=off, leading B5 term only):

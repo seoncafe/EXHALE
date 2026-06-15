@@ -139,35 +139,44 @@ make
 
 ### Recommended convergence workflow
 
-For robust convergence on typical hot-Jupiter / sub-Neptune problems
-(**PWN**: two-stage PLM->WENO3 with a Newton finish; **leave the Shapiro filter
-off**):
+For robust convergence on typical hot-Jupiter / sub-Neptune problems, run the
+two-stage scheme and **leave the Shapiro filter off**:
 
 ```
 # in input.inp
 Reconstruction:           PLM
-du_th [PLM,WENO3]:        0.5 1.0e-3   # two-stage: coarse PLM then fine WENO3
-Solver:                   Newton        # optional JFNK finish (warm-up to ||R|| < 0.05)
-# Shapiro filter:  -1                   # OFF by default; opt-in only for breathing cases
+du_th [PLM,WENO3]:        0.5 1.0e-3   # PLM until du<0.5, then WENO3 until du<1e-3
+# Solver:  Newton                      # OPTIONAL extra residual-tightening finish
+# Shapiro filter:  -1                  # OFF by default; opt-in only for breathing cases
 ```
 
-The two-stage key `du_th [PLM,WENO3]` replaces the old single-value `du_th`.
-EXHALE switches from PLM to WENO3 automatically when du falls below the first
-threshold, then optionally hands off to the Newton-Krylov solver.
-
 **Convergence criterion (flux-based).** Convergence is judged on the *flux*
-criterion of the reference codes: the fractional spread of the mass flux
-`dMdot/Mdot < du_th` (here `du` *is* the radial spread of `rho*v*r^2`), which is
-the ATES (Caldiroli 2021) test and is equivalent to the CETIMB (Koskinen 2013a)
-requirement that `F_c = rho*v*r^2` be constant with altitude. The steady residual
-`||R||` is computed and reported **for reference only** (volume-weighted by
-default, since the L-inf max is dominated by the small near-base cells); it gates
-the stop solely when you set `Resid tol:`. With full physics (He 2^3S + metals)
-the optional JFNK may not drive `||R||` below `1e-3` because of a localized
-near-base momentum imbalance ("breathing base"), yet the wind is still
-flux-converged -- that is a converged run by the reference standard, not a
-failure. See `docs/EXHALE_BC_and_IC.pdf` (convergence-criterion and test-matrix
-sections) and `docs/steady_solver_memo.pdf`.
+criterion of the reference codes: the fractional spread of the mass flux,
+`dMdot/Mdot < du_th` (in the code `du` *is* the radial spread of `rho*v*r^2`).
+This is the ATES test (Caldiroli 2021, `< 1e-3`) and is equivalent to the CETIMB
+requirement (Koskinen 2013a) that `F_c = rho*v*r^2` be constant with altitude.
+So the two-stage line above is the whole recipe: PLM switches to WENO3 at
+`du < 0.5`, and the run **stops when `du < 1e-3`** (flux-converged). The `Solver:
+Newton` key is **optional** and does *not* change this criterion.
+
+**About `Solver: Newton` (optional).** `du` (a mass-flux flatness) and the steady
+residual `||R|| = ||du/dt||` (mass+momentum+energy) are *different* quantities:
+`du` can reach `1e-3` while `||R||` is still larger (an operator-split / energy
+imbalance). When `Solver: Newton` is set, the WENO3 stage does **not** stop at
+`du < 1e-3`; instead it warms up until the flux metric `du < newton_du_switch`
+(default `1e-2`, the du-keyed hand-off) and then the JFNK solver drives the
+**residual** `||R||` (not `du`) toward `1e-3` -- a stricter, separate check, not
+a repeat of the `du` test. The hand-off point is adjustable via an optional
+third token on the key: `Solver: Newton <du_switch>` (e.g. `Solver: Newton 5e-3`
+hands off later; bare `Solver: Newton` keeps the `1e-2` default). `||R||` is
+otherwise computed and reported
+**for reference only** (volume-weighted by default, since the L-inf max is
+dominated by the small near-base cells) and gates the stop only if you set
+`Resid tol:`. With full physics (He 2^3S + metals) the JFNK may not reach
+`||R|| < 1e-3` because of a localized near-base momentum imbalance ("breathing
+base"), yet the wind is still flux-converged -- a converged run by the reference
+standard, not a failure. See `docs/EXHALE_BC_and_IC.pdf` (convergence-criterion
+and test-matrix sections) and `docs/steady_solver_memo.pdf`.
 
 ### Enabling metal chemistry
 

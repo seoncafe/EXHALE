@@ -375,16 +375,16 @@
 				str = get_word(line, 3);  read(str,*) lev_th
 				write(*,'(A,ES9.2)') ' (input_read) Level-stability tol =', lev_th
 			else if (index(line,'Solver') .gt. 0) then
-				! "Solver: Newton [R_switch]" = marching warm-up until the
-				! steady residual max||R|| < R_switch (default 5e-2), then
-				! the JFNK steady solve.
+				! "Solver: Newton [du_switch]" = marching warm-up until the
+				! flux metric du (radial spread of rho*v*r^2) < du_switch
+				! (default 1e-2), then the JFNK steady solve polishes to du<du_th.
 				str = get_word(line, 2)
 				if (str .eq. 'Newton') then
 					use_newton_solver = .true.
 					str = get_word(line, 3)
-					if (len_trim(str) .gt. 0) read(str,*) newton_R_switch
+					if (len_trim(str) .gt. 0) read(str,*) newton_du_switch
 					write(*,'(A,ES9.2)') ' (input_read) Solver: Newton, '// &
-						'warm-up until ||R|| <', newton_R_switch
+						'JFNK hand-off at du <', newton_du_switch
 				endif
 			else if (index(line,'Valve eps') .gt. 0) then
 				! "Valve eps: <v_eps>" smooths the base one-way valve

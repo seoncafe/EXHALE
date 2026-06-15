@@ -947,6 +947,7 @@ folder & BC & solver & S & V & He & met & IC & $\log\dot M$ & $v_{\rm out}$ & ne
 \texttt{pres1ub\_PWN\_He0\_met0\_cold}        & pres & PWN & \N & \N & \N & \N & cold & 10.39 & $+8.59$ & 0.0 & 0.53 & Newton \\
 \texttt{pres1ub\_PWN\_He1\_metCNO\_cold}      & pres & PWN & \N & \N & \Y & CNO & cold & 9.53 & $+6.63$ & 1.6 & 0.62 & flux-conv \\
 \texttt{pres1ub\_PWN\_He1\_metFULL\_cold}     & pres & PWN & \N & \N & \Y & FULL & cold & 9.37 & $+6.29$ & 2.2 & 0.87 & flux-conv \\
+\texttt{pres1ub\_PWN\_He1\_metFULL\_cold\_duJFNK} & pres & PWN$^{(d)}$ & \N & \N & \Y & FULL & cold & 9.37 & $+6.29$ & 1.7 & 0.88 & flux-conv$^{(d)}$ \\
 \texttt{pres1ub\_PLMN\_He1\_metFULL\_cold}    & pres & PLMN & \N & \N & \Y & FULL & cold & 9.40 & $+6.10$ & 1.8 & 3.5 & marginal$^\S$ \\
 \texttt{pres1ub\_PWN\_He1\_metCNO\_cold\_Vflux} & pres & PWN & \N & \Y & \Y & CNO & cold & 9.53 & $+6.63$ & 1.6 & 0.74 & flux-conv \\
 \texttt{pres1ub\_PWN\_He1\_metCNO\_cold\_Shap} & pres & PWN & \Y & \N & \Y & CNO & cold & 10.21 & $+7.45$ & 25.3 & 114 & no conv.$^\dagger$ \\
@@ -965,7 +966,19 @@ reaches an \emph{essentially identical final state} to the \texttt{PWN}
 (PLM$\to$WENO3$\to$JFNK) row above --- $\log\dot M = 9.40$ vs.\ $9.37$,
 $v_{\rm out} = +6.10$ vs.\ $+6.29$, overlapping $T/v/n/p$ profiles --- in about
 \emph{half} the steps ($9.4\times10^4$ vs.\ $1.7\times10^5$); both still fail
-JFNK and stall, so the WENO3 stage is not the JFNK bottleneck.}
+JFNK and stall, so the WENO3 stage is not the JFNK bottleneck.
+$^{(d)}$The \texttt{\_duJFNK} row is the same full-metal case but with the
+\emph{flux}-keyed JFNK hand-off (\texttt{Solver: Newton}, JFNK fired once the
+wind reached $du<10^{-2}$ rather than $\lVert R\rVert<0.05$). With this hand-off
+\emph{plus} the volume-weighted residual norm the JFNK drove $\lVert R\rVert$ down
+to $2.3\times10^{-3}$ --- a $\sim$100$\times$ improvement over the $0.17$ it
+reached with the $\lVert R\rVert$-keyed hand-off --- but it stalled there
+($\lVert R\rVert$ would not drop below $\approx2\times10^{-3}$ for 15 iterations,
+the holdout being the base cell $j{=}1$ momentum), so it still falls back and the
+\emph{final wind is identical} to the \texttt{metFULL} PWN row above ($\dot M$,
+$v_{\rm out}$, $\Delta\dot M$\% all unchanged). It confirms that the only barrier
+to a genuine $du<10^{-3}$ / $\lVert R\rVert<10^{-3}$ convergence for full physics
+is the localized near-base momentum (\S\ref{sec:breathing}), not the solver path.}
 \label{tab:bc-pres}
 \end{table}
 \end{landscape}
