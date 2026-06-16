@@ -34,7 +34,7 @@
 
 \title{EXHALE: User Manual}
 \author{Kwang-Il Seon}
-\date{Last updated: 2026-06-11}
+\date{Last updated: 2026-06-16}
 \maketitle
 
 \begin{quote}\small\itshape
@@ -137,8 +137,26 @@ $g(r)=-\,\mathrm d\phi/\mathrm dr$, with
 \]
 The inner Lagrange point $L_1$ is the root of $\mathrm d\phi/\mathrm dr=0$, where
 planetary gravity, the stellar tide, and the centrifugal force cancel; in Roche
-mode the outer boundary is placed at this $L_1$ radius, beyond which gas is no
-longer bound to the planet.
+mode the outer boundary is placed at this $L_1$ radius by default, beyond which
+gas is no longer bound to the planet.
+
+\paragraph{Roche mode with an extended outer boundary (\texttt{Outer radius} in
+Roche mode).}
+By default Roche mode truncates at $L_1$. Supplying an explicit
+\texttt{Outer radius [R\_p]:}~$>1$ \emph{without} \texttt{Domain mode: Spherical}
+now keeps the full tidal Roche potential above \emph{and} pushes the outer
+boundary out to the requested radius (e.g.\ $10\,R_p$), reproducing the
+extended-domain treatment of Yan et al.\ (2022) / Huang et al.\ (2023), whose
+escape models retain the tidal force but integrate well past $L_1$. This differs
+from \texttt{Domain mode: Spherical}, which also extends the domain but
+\emph{drops} the tidal and centrifugal terms (pure $-b_0/r$). Two caveats apply.
+First, beyond $L_1$ the Roche potential is past its maximum, so the net force is
+outward and the 1-D radial flow there is a spherical approximation to what is
+physically an $L_1$ funnel --- the same approximation Yan/Huang make. Second, the
+cold hydrostatic IC is invalid past $L_1$; use \texttt{IC mode: auto} (or
+\texttt{transonic}) so the solver seeds a transonic wind through the interior
+sonic point. The tidal singularity of the $-b_0\,q/(\tilde a-r)$ term sits at the
+star ($r=\tilde a\gg10$), so a $10\,R_p$ domain is numerically safe.
 
 \paragraph{Full 3-D form (transmission post-processing).}
 The 3-D Roche-equipotential reconstruction in \texttt{TPM.py} /
@@ -523,10 +541,13 @@ defaults restore the standard behavior).}\label{tab:inp-opt}\\
 \endfoot
 \texttt{Domain mode:} & \texttt{Spherical} & If present and \texttt{Spherical}:
   pure planetary potential $-b_0/r$, domain extended to \texttt{Outer radius}.
-  Absent (default): full Roche potential truncated at the Hill/L1 radius
-  (\S\ref{sec:potential}). \\
-\texttt{Outer radius [R\_p]:} & real $>1$ (\rp) & Outer boundary in spherical
-  mode (e.g.\ 10--15\,\rp). \\
+  Absent (default): full Roche (tidal) potential; outer boundary at the Hill/L1
+  radius unless \texttt{Outer radius} is given (\S\ref{sec:potential}). \\
+\texttt{Outer radius [R\_p]:} & real $>1$ (\rp) & Outer boundary (e.g.\
+  10--15\,\rp). In \texttt{Spherical} mode it sets the pure-$-b_0/r$ domain; in
+  Roche mode (no \texttt{Domain mode} line) it extends the domain past $L_1$ while
+  \emph{keeping} the tidal potential (Yan/Huang-style; pair with
+  \texttt{IC mode: auto}). \\
 \texttt{Stellar Teff [K]:} & real (K) & Stellar $T_{\rm eff}$ for the
   diluted-blackbody Balmer continuum that photoionizes/heats H($n{=}2$). Enables
   the excited-H model when both this \emph{and} \texttt{Stellar radius} are $>0$. \\

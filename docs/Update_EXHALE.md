@@ -2288,3 +2288,43 @@ parsing); `steady_residual.f90` (`residual_norms_vol`); `steady_newton.f90`
 (`resid_relnorm` vol/L∞ branch); `EXHALE_main.f90` (du-keyed JFNK trigger,
 always-on flux/residual diagnostic). Full detail and the test matrix:
 `docs/EXHALE_BC_and_IC.{tex,pdf}`.
+
+## 20. Tidal (Roche) potential with an extended outer boundary (2026-06-16)
+
+**Motivation.** The two domain modes were tied to two different potentials.
+`Domain mode: Spherical` extends the grid to a user `Outer radius` but *drops* the
+stellar-tidal and centrifugal terms (pure `-b0/r`); the default Roche mode keeps
+the full tidal potential but truncates at the inner Lagrange point L1. Neither
+matched Yan et al. (2022) / Huang et al. (2023), which retain the tidal force
+*and* integrate out to ~10 R_p (well past L1). For WASP-52b, L1 ≈ 2.53 R_p, so
+Roche mode cut the domain far short of Yan's 10 R_p, truncating the outer
+He 10830 / Hα absorbing layers.
+
+**Change.** The outer-boundary extent is now decoupled from the potential choice.
+In Roche mode (no `Domain mode` line → full tidal potential of `grav_field.f90`
+retained), an explicit `Outer radius [R_p]: >1` sets `r_max` to that value instead
+of the L1 radius:
+
+```fortran
+   else  ! Roche mode: full tidal potential retained
+      r_max = (3.0*Mrapp)**(-1.0/3.0)*atilde      ! L1 (default)
+      if (r_out_user .gt. 1.0d0) r_max = r_out_user  ! NEW: extend past L1
+   endif
+```
+
+This reproduces the Yan/Huang "tidal force + extended domain" setup with a
+two-line change and no new keyword (the existing `Outer radius` is simply honored
+in Roche mode too).
+
+**Caveats and usage.** Beyond L1 the Roche potential is past its maximum (net
+outward force), so the 1-D radial flow there is a spherical approximation to an L1
+funnel — the same approximation Yan/Huang make. The cold hydrostatic IC is invalid
+past L1, so pair the extended domain with `IC mode: auto` (validated: the auto
+selector finds an interior cold sonic point and seeds a transonic wind). The tidal
+singularity of the `-b0*q/(atilde-r)` term sits at the star (r = atilde ≫ 10), so
+a 10 R_p domain is numerically safe. `Domain mode: Spherical` (no tidal) remains
+available for Huang Case-A-like comparisons.
+
+**Touched files.** `input_read.f90` (honor `r_out_user` in the Roche branch of the
+`r_max` assignment). Documented in `docs/EXHALE_user_manual.tex` (potential section
+and the input-options table).

@@ -21,7 +21,7 @@
 
 \title{EXHALE: Update Log}
 \author{Kwang-Il Seon}
-\date{Last updated: 2026-06-13}
+\date{Last updated: 2026-06-16}
 \maketitle
 
 \begin{quote}\small\itshape
@@ -2747,5 +2747,48 @@ removed); \texttt{input\_read.f90} (\texttt{Base BC:}, \texttt{Resid norm:},
 (\texttt{resid\_relnorm} vol/$L_\infty$ branch); \texttt{EXHALE\_main.f90}
 ($du$-keyed JFNK trigger, always-on flux/residual diagnostic). Full detail and the
 test matrix: \texttt{docs/EXHALE\_BC\_and\_IC.\{tex,pdf\}}.
+
+\section{Tidal (Roche) potential with an extended outer boundary (2026-06-16)}
+
+\paragraph{Motivation.} The two domain modes were coupled to two different
+gravitational potentials. \texttt{Domain mode: Spherical} extends the grid to a
+user \texttt{Outer radius} but \emph{drops} the stellar-tidal and centrifugal
+terms (pure $-b_0/r$); the default Roche mode keeps the full tidal potential but
+truncates the domain at the inner Lagrange point $L_1$. Neither matched the
+escape models of Yan et al.\ (2022) / Huang et al.\ (2023), which retain the
+tidal force \emph{and} integrate out to $\sim10\,R_p$ (well past $L_1$). For
+WASP-52b, for example, $L_1\simeq2.53\,R_p$, so Roche mode truncated the domain
+far short of the $10\,R_p$ used by Yan, cutting off the outer He\,10830 / H$\alpha$
+absorbing layers.
+
+\paragraph{Change.} The outer-boundary extent is now decoupled from the choice of
+potential. In Roche mode (no \texttt{Domain mode} line, so the full tidal
+potential of \texttt{grav\_field.f90} is retained), supplying an explicit
+\texttt{Outer radius [R\_p]:}~$>1$ sets \texttt{r\_max} to that value instead of
+the $L_1$ radius:
+\begin{verbatim}
+   else  ! Roche mode: full tidal potential retained
+      r_max = (3.0*Mrapp)**(-1.0/3.0)*atilde     ! L1 (default)
+      if (r_out_user .gt. 1.0d0) r_max = r_out_user  ! NEW: extend past L1
+   endif
+\end{verbatim}
+This reproduces the Yan/Huang ``tidal force $+$ extended domain'' setup with a
+two-line change and no new keyword (the existing \texttt{Outer radius} is simply
+honored in Roche mode too).
+
+\paragraph{Caveats and usage.} Beyond $L_1$ the Roche potential is past its
+maximum (net outward force), so the 1-D radial flow there is a spherical
+approximation to what is physically an $L_1$ funnel --- the same approximation
+Yan/Huang make. The cold hydrostatic IC is invalid past $L_1$, so pair the
+extended domain with \texttt{IC mode: auto} (validated: the auto selector finds an
+interior cold sonic point and seeds a transonic wind). The tidal singularity of
+the $-b_0\,q/(\tilde a-r)$ term sits at the star ($r=\tilde a\gg10$), so a
+$10\,R_p$ domain is numerically safe. \texttt{Domain mode: Spherical} (no tidal)
+remains available for Huang Case-A-like comparisons.
+
+\paragraph{Touched files.} \texttt{input\_read.f90} (honor \texttt{r\_out\_user}
+in the Roche branch of the \texttt{r\_max} assignment). Documented in
+\texttt{docs/EXHALE\_user\_manual.tex} (\S\,potential and the input-options
+table).
 
 \end{document}

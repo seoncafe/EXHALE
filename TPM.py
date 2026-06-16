@@ -39,7 +39,7 @@ gray  = '#a0a0a0'			# Color gray for line plot
 # fig_name   = Name of the output figure (leave empty for not saving the figure)
 # abs_file   = Name of the output file with absorption data(leave empty for not saving the file)
 
-path = '.'  # ATES' files destination folder
+path = os.environ.get('TPM_PATH', '.')  # ATES' files destination folder (env override)
 Input_file = path + '/input.inp'
 Hydro_file = path + '/output/Hydro_ioniz_adv.txt'
 Ioniz_file = path + '/output/Ion_species_adv.txt'
@@ -48,13 +48,13 @@ fig_name_lya = ''
 abs_file   = ''
 
 # Data not in input_file
-R_star    = 0.44*R_sun  # Stellar radius
+R_star    = float(os.environ.get('TPM_RSTAR_RSUN', '0.44'))*R_sun  # Stellar radius (env override)
 Instr_res_HeTR = 8e4       # Instrument resolution CARMENES: 80,000 -- GIANO-B: 50,000
 Instr_res_HI = 5e4       # Instrument resolution HST-STIS 100 - 100,000
 Instr_res_Ha = 1.15e5      # Instrument resolution (optical, e.g. HARPS/CARMENES-VIS ~ 1.1e5)
 Instr_res_Hb = 1.15e5      # Instrument resolution for H-beta
 # Planet rotation period [days]
-rot_period = 4.88 # [days]
+rot_period = float(os.environ.get('TPM_ROTP', '4.88')) # [days] (env override)
 
 # ----- H-alpha (n=2 -> n=3) inputs ----- #
 # H-alpha absorption arises from the n=2 hydrogen population. Following
@@ -97,7 +97,7 @@ fig_name_ha = ''
 # manual values below are used (0 => neglected). T_star = stellar
 # effective temperature [K] (e.g. ~6065 K for HD209458, ~5050 K for
 # HD189733). R_star (above) and a_orb set the dilution.
-T_star   = 6065.0          # stellar effective temperature [K] (<=0 disables)
+T_star   = float(os.environ.get('TPM_TSTAR', '6065.0'))          # stellar effective temperature [K] (<=0 disables; env override)
 Gamma_2s = 0.0             # used only if T_star <= 0
 Gamma_2p = 0.0
 
@@ -107,9 +107,11 @@ Gamma_2p = 0.0
 Grid_Number = 200
 
 # Select range of considered wavelength and number of wavelengths
-lmin_HeTR = 10828.2
-lmax_HeTR = 10831.2
-number_lambda_HeTR = 201
+# (He window env-overridable: fast winds broaden the line past the default
+# +/-1.5 A, so widen for high-velocity / extended-domain runs.)
+lmin_HeTR = float(os.environ.get('TPM_HE_LMIN', '10828.2'))
+lmax_HeTR = float(os.environ.get('TPM_HE_LMAX', '10831.2'))
+number_lambda_HeTR = int(os.environ.get('TPM_HE_N', '201'))
 
 lmin_HI = 1214.1
 lmax_HI = 1217.0
@@ -1071,6 +1073,23 @@ if geometry == 'triaxial':
 		d_lc, d_band = triaxial_depth(lam_, f_, A_, m_, nlo_of_r[lbl], R_)
 		print('(TPM)   %-13s   %10.3f      %10.3f' % (lbl, d_lc, d_band))
 	print('')
+
+# ----- Optional: save model transmission curves for external overplotting --- #
+# Triggered by env var TPM_SAVE_PREFIX (no effect when unset). Each file has
+# columns: wavelength [A], T_lambda (theoretical), T_lambda (instr. conv.),
+# T_lambda (planet-rot + instr. conv.).  Excess absorption [%] = (1 - T)*100.
+_save_prefix = os.environ.get('TPM_SAVE_PREFIX', '')
+if len(_save_prefix) > 0:
+	np.savetxt(_save_prefix + 'tpm_He10830.txt',
+	           np.c_[l_plot_HeTR, avg_prob_HeTR,
+	                 convolved_avg_prob_HeTR, convolved_rot_prob_HeTR],
+	           header='lambda[A]  T_theo  T_instr  T_rot+instr  (He I 10830)')
+	if do_Ha:
+		np.savetxt(_save_prefix + 'tpm_Halpha.txt',
+		           np.c_[l_plot_Ha, avg_prob_Ha,
+		                 convolved_avg_prob_Ha, convolved_rot_prob_Ha],
+		           header='lambda[A]  T_theo  T_instr  T_rot+instr  (H-alpha 6562.8)')
+	print('(TPM) saved model curves with prefix:', _save_prefix)
 
 # ----- Setup of the figure ----- #
 

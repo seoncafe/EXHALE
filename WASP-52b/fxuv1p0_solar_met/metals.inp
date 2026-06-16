@@ -1,0 +1,10 @@
+# Trace metals: solar abundances (Asplund+2009 number ratios to H).
+# Total element abundance n_X/n_H; ionization solver splits over stages.
+C     2.69e-4
+N     6.76e-5
+O     4.90e-4
+Mg    3.98e-5
+Ca    2.19e-6
+Na    1.74e-6
+Fe    3.16e-5
+pp_metals 1

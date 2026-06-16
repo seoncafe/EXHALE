@@ -547,8 +547,16 @@
       endif
       r_max = r_out_user
    else
-      ! Roche mode: truncate at the Hill/L1 radius.
+      ! Roche mode: full tidal+centrifugal potential retained (grav_field
+      ! else-branch). Default outer boundary is the Hill/L1 radius; an
+      ! explicit "Outer radius [R_p]:" > 1 extends the domain PAST L1 while
+      ! KEEPING the tidal potential (Yan 2022 / Huang 2023-style tidal +
+      ! extended Rmax). Beyond L1 the Roche potential is past its maximum
+      ! (net outward force), so the 1D radial flow there is a spherical
+      ! approximation to the L1 funnel -- matching the CETIMB extended-domain
+      ! treatment.
       r_max = (3.0*Mrapp)**(-1.0/3.0)*atilde
+      if (r_out_user .gt. 1.0d0) r_max = r_out_user
    endif
             
 	!------ Normalization constants ------!
