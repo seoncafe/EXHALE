@@ -1,11 +1,5 @@
-\documentclass[11pt]{article}
-\usepackage[margin=1in]{geometry}
-\usepackage{graphicx}
+\documentclass[english,a4paper]{kiseon_memo}
 \usepackage{booktabs}
-\usepackage{amsmath}
-\usepackage{siunitx}
-\usepackage[hidelinks]{hyperref}
-\usepackage{xcolor}
 
 \newcommand{\Rp}{R_{\rm p}}
 \newcommand{\Mdot}{\dot{M}}
@@ -14,7 +8,7 @@
 \newcommand{\HeTS}{\mathrm{He}\,2^{3}S}
 
 \title{WASP-52b: EXHALE Atmospheric-Escape Model vs.\ He\,10830 and H$\alpha$ Observations}
-\author{EXHALE modeling notes}
+\author{Kwang-Il Seon}
 \date{Last updated: 2026-06-17}
 
 \begin{document}
@@ -99,6 +93,7 @@ Yan's $0.5\,\Fo$, $1\,\Fo$, $2\,\Fo$ respectively. Yan's best fit to the
 observations is $0.5\,\Fo$, i.e.\ our $0.25\times$ SED.
 
 \section{Numerical setup}
+\label{sec:numerics}
 The lower boundary is pressure-anchored at 1\,$\mu$bar (\texttt{Base BC: pressure
 1.0}), giving $n_0=P/(k_BT_0)=5.56\times10^{12}\,\mathrm{cm^{-3}}$, identical to
 Yan's base condition. The He\,$2^3S$ (metastable) network is enabled
@@ -275,15 +270,172 @@ confirming the need for a He-depleted atmosphere.}
 \label{fig:scan}
 \end{figure}
 
-\section{H$\alpha$ caveat}
+\section{H$\alpha$ with a proper Ly$\alpha$ radiative transfer (LaRT)}
 \label{sec:halpha}
-The H$\alpha$ line absorbs from the $n=2$ hydrogen population, which is set
-primarily by Ly$\alpha$ radiative pumping. \texttt{EXHALE}/\texttt{TPM.py} estimate
-the Ly$\alpha$ mean intensity with the simple Huang et al.\ (2017) prescription
-rather than a full Ly$\alpha$ radiative-transfer solution. The resulting $n=2$
-population, and hence the H$\alpha$ prediction, is therefore not reliable and is
-shown in the figures for completeness only. A proper Ly$\alpha$ RT treatment is
-required before the H$\alpha$ comparison can be interpreted.
+The H$\alpha$ line absorbs from the $n=2$ hydrogen population, set primarily by
+Ly$\alpha$ radiative pumping ($B_{1s\to2p}\bar J_{\rm Ly\alpha}$).  The simple
+Huang et al.\ (2017) estimate of $\bar J_{\rm Ly\alpha}$ used by the bare
+\texttt{TPM.py} is not adequate, so we instead compute the resonant Ly$\alpha$
+radiative transfer with the Monte Carlo code \textbf{LaRT} (Seon \& Kim 2020) in
+its spherical-illumination geometry, exactly as in Yan et al.\ (2022).
+
+\paragraph{Why a 2-D treatment is required.}
+Under stellar (one-sided) illumination the Ly$\alpha$ scattering rate
+$P_\alpha\equiv B_{1s\to2p}\bar J_{\rm Ly\alpha}$ -- and hence $n_{2p}$ -- is only
+\emph{cylindrically} symmetric about the star--planet axis, $P_\alpha(\rho,z)$, not
+spherically symmetric.  The spherical \texttt{TPM.py} is therefore replaced for
+H$\alpha$ by the 2-D integrator \texttt{examples/tpm\_halpha\_lart2d.py}, which
+reads the LaRT cylindrical scattering-rate grid (\texttt{Pa\_2D}), builds
+$n_{2p}(\rho,z)$ from the Christie et al.\ (2013) rate equilibrium, and integrates
+the H$\alpha$ optical depth along the transit line of sight (the star--planet axis).
+
+\paragraph{Normalization.}
+LaRT outputs are per unit luminosity, so
+\begin{equation}
+P_\alpha(\rho,z) = \mathrm{Pa_{LaRT}}(\rho,z)\;\times\;L_{\rm Ly\alpha}\;\times\;\texttt{fluxfac},
+\end{equation}
+where $L_{\rm Ly\alpha}=F_{\rm Ly\alpha}\,4\pi a^2/(h\nu_{\rm Ly\alpha})$ is the
+stellar Ly$\alpha$ \emph{photon} luminosity and \texttt{fluxfac}$=\Omega_\star/4\pi$
+is the geometric factor written to the LaRT header (it is \emph{not} included in
+the raw scattering-rate accumulation, which uses the photon weight only).
+
+\begin{table}[h]
+\centering
+\caption{Model parameters for the LaRT-coupled H$\alpha$ calculation.}
+\label{tab:lyaparams}
+\small
+\begin{tabular}{lll}
+\toprule
+Quantity & Value & Note \\
+\midrule
+Composition H/He         & $98/2$ ($n_{\rm He}/n_{\rm H}=0.020$) & He-poor (He-fit) \\
+XUV flux $\FXUV$         & $0.5\,\Fo$ ($=0.25\times$ fiducial SED) & Yan best fit \\
+$\beta_m=F(1\text{--}100)/F(1\text{--}912)$ & $0.218$ & $\approx$ Yan $0.22$ \\
+Incident Ly$\alpha$ flux $F_{\rm Ly\alpha}$ & $3.73\times10^{4}\,\mathrm{erg\,cm^{-2}\,s^{-1}}$ & Yan (EP\,Eri) \\
+Ly$\alpha$ line profile  & double-Gaussian, $\pm74$, $\sigma=49\,\mathrm{km\,s^{-1}}$ & Huang 2017 \\
+Ly$\alpha$ photon luminosity $L_{\rm Ly\alpha}$ & $4.75\times10^{39}\,\mathrm{photons\,s^{-1}}$ & $F_{\rm Ly\alpha}4\pi a^2/h\nu$ \\
+LaRT photons             & $10^{7}$, grid $201^3$ & \texttt{geometry\_JPa=2} (cylindrical) \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{figure}[h]
+\centering
+\includegraphics[width=0.66\textwidth]{lya_profile.png}
+\caption{Incident stellar Ly$\alpha$ line profile (Huang et al.\ 2017 / Yan et al.\
+2022 double-Gaussian, peaks at $\pm74$ km/s).  The width 49 km/s can be read as the
+Gaussian $\sigma$ (blue; broad, shallow central dip) or as the FWHM ($\sigma=20.8$
+km/s; orange, narrow peaks with a deep self-reversal).  This shape is sampled by
+LaRT as the incident spectrum; the total flux is fixed at $F_{\rm Ly\alpha}$
+(Table~\ref{tab:lyaparams}).}
+\label{fig:lyaprof}
+\end{figure}
+
+\paragraph{Results.}
+Table~\ref{tab:halpha} and Fig.~\ref{fig:halpha} compare the extended ($10\,\Rp$)
+and $L_1$-truncated domains.  The resulting scattering rates
+($P_\alpha\sim60$--$90\,\mathrm{s^{-1}}$) and $n_{2p}\sim(2$--$4)\times10^{4}\,
+\mathrm{cm^{-3}}$ are physically reasonable (Christie et al.\ 2013).  Unlike
+He\,10830, the H$\alpha$ depth is \emph{insensitive} to the outer boundary
+($1.46\%$ at $10\,\Rp$ vs.\ $1.28\%$ at $L_1$): the $n_{2p}$ layer is concentrated
+near the planet ($r\lesssim2\,\Rp$), so the outer tail beyond $L_1$ contributes
+little.  Both reproduce the line-center excess-absorption bump in the data
+($\sim$0.7--1\%), with a residual $\sim$1.5--2$\times$ over-prediction.
+
+The incident Ly$\alpha$ width 49 km/s can be read as the Gaussian $\sigma$ or as
+the FWHM (Fig.~\ref{fig:lyaprof}).  For the $L_1$ (Roche) model the narrower FWHM
+profile gives a \emph{slightly deeper} H$\alpha$ ($1.50\%$ vs.\ $1.28\%$ for
+$\sigma=49$), counter to the naive expectation that a narrower pump reduces the
+absorption: although its peak $n_{2p}$ is lower, the spatial/frequency
+redistribution of the scattered Ly$\alpha$ shifts the pumping into the layers that
+dominate the column.  The line-profile interpretation is thus a secondary
+($\sim$17\%) effect on H$\alpha$, much smaller than the $F_{\rm Ly\alpha}$ lever.
+
+\begin{table}[h]
+\centering
+\caption{LaRT-coupled H$\alpha$ line-center excess absorption and key quantities
+(H/He$=$98/2, $0.5\,\Fo$, $\beta_m=0.218$).  Ly$\alpha$ width read as $\sigma$ or
+FWHM (49 km/s).  Observed $\sim$0.7--1\%.}
+\label{tab:halpha}
+\begin{tabular}{llcccc}
+\toprule
+Domain & Ly$\alpha$ width & depth [\%] & $P_\alpha^{\max}$ [s$^{-1}$] & $n_{2p}^{\max}$ [cm$^{-3}$] & \texttt{fluxfac} \\
+\midrule
+$10\,\Rp$ (Yan-like)        & $\sigma=49$ & 1.46 & 60.4 & $2.15\times10^{4}$ & $1.21\times10^{-2}$ \\
+$L_1$-trunc.\ ($2.53\,\Rp$) & $\sigma=49$ & 1.28 & 85.8 & $4.19\times10^{4}$ & $7.66\times10^{-4}$ \\
+$L_1$-trunc.\ ($2.53\,\Rp$) & FWHM$=49$   & 1.50 & 82.3 & $1.79\times10^{4}$ & $7.66\times10^{-4}$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{figure}[h]
+\centering
+\includegraphics[width=0.78\textwidth]{halpha_lart2d.png}
+\caption{LaRT-coupled H$\alpha$ transit transmission (EXHALE $+$ LaRT cylindrical
+Ly$\alpha$, 2-D $n_{2p}(\rho,z)$): the $10\,\Rp$ and $L_1$-truncated domains, plus
+the $L_1$ run with the Ly$\alpha$ width read as FWHM (vs.\ $\sigma$), overplotted on
+the observed binned transit spectrum (excess absorption, $-\mathrm{TS}$).
+H/He$=$98/2, $\FXUV=0.5\,\Fo$, $\beta_m=0.218$.}
+\label{fig:halpha}
+\end{figure}
+
+\paragraph{The incident Ly$\alpha$ flux as the H$\alpha$ lever.}
+Because H$\alpha$ is Ly$\alpha$-pump-dominated, its depth scales with the incident
+Ly$\alpha$ flux.  Rescaling $F_{\rm Ly\alpha}$ requires \emph{no new LaRT run}:
+$P_\alpha=\mathrm{Pa}\times L_{\rm Ly\alpha}\times\texttt{fluxfac}$, so only the
+luminosity normalization is multiplied.  We dropped the $n=2$ Balmer-continuum
+photoionization ($\Gamma_2$) as a possible lever because it is negligible for this
+cool host ($\Gamma_2\simeq42\,\mathrm{s^{-1}}$ at $T_\star=5000$\,K, i.e.\
+$\sim10^{-7}A_{2p\to1s}$).  The scan (Fig.~\ref{fig:flyascan}, Table~\ref{tab:flya})
+shows the H$\alpha$ depth falling roughly linearly with $F_{\rm Ly\alpha}$ (a
+recombination floor at very low flux).  Yan's $F_{\rm Ly\alpha}=37{,}300\,\mathrm{erg\,cm^{-2}\,s^{-1}}$
+is an EP\,Eri proxy (WASP-52's Ly$\alpha$ is unobserved); the observed H$\alpha$
+depth is matched at $F_{\rm Ly\alpha}\approx0.3$--$0.5\times$ that value for the
+$L_1$ (Roche) model ($0.2$--$0.3\times$ for $10\,\Rp$), i.e.\ the H$\alpha$ line
+constrains the effective stellar Ly$\alpha$ flux.
+
+\paragraph{Why the Ly$\alpha$ flux is \emph{not} reduced by the $3$-D$\to$1-D
+factor.}
+The XUV ionizing flux is halved in the hydrodynamics (\texttt{Rate/2 + Mdot/2},
+\S\ref{sec:numerics}) as a day-side$\to$sphere redistribution \emph{approximation},
+because the 1-D model is spherically symmetric and cannot resolve the illumination
+geometry.  The incident Ly$\alpha$ flux is \emph{not} reduced by this factor: LaRT's
+spherical-illumination run is a genuine 3-D calculation that models the one-sided
+stellar irradiation explicitly (yielding the cylindrically-symmetric
+$P_\alpha(\rho,z)$), so it must use the full flux at the orbital distance
+($F_{\rm Ly\alpha}=37{,}300\,\mathrm{erg\,cm^{-2}\,s^{-1}}$).  Applying the $\times0.5$
+(or $/4$) redistribution to the Ly$\alpha$ as well would double-count the geometry,
+since LaRT already carries it.  This mirrors Yan et al.\ (2022), who use the
+redistributed XUV for the 1-D hydrodynamics but the full incident Ly$\alpha$ for the
+LaRT transfer.  Consequently the $0.3$--$0.5\times$ scaling that matches the observed
+H$\alpha$ should be read as a constraint on the \emph{actual} (unobserved) stellar
+Ly$\alpha$ flux of WASP-52 being below the EP\,Eri proxy --- \emph{not} as the 1-D
+redistribution factor; the numerical near-coincidence with $0.5$ is not physically
+the same effect.
+
+\begin{table}[h]
+\centering
+\caption{H$\alpha$ line-center excess absorption [\%] vs.\ incident Ly$\alpha$
+flux scale $F_{\rm Ly\alpha}/F_{\rm Ly\alpha}^{\rm Yan}$.  Observed $\sim$0.7--1\%.}
+\label{tab:flya}
+\begin{tabular}{lccccc}
+\toprule
+Domain & $1.0$ & $0.5$ & $0.3$ & $0.2$ & $0.1$ \\
+\midrule
+$10\,\Rp$       & 1.46 & 1.06 & 0.85 & 0.71 & 0.52 \\
+$L_1$ (Roche)   & 1.28 & 0.93 & 0.72 & 0.58 & 0.37 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{figure}[h]
+\centering
+\includegraphics[width=0.66\textwidth]{halpha_flya_scan.png}
+\caption{H$\alpha$ line-center excess absorption vs.\ the incident Ly$\alpha$ flux
+scale (LaRT 2-D, $L_{\rm Ly\alpha}$ rescaled only).  The shaded band is the observed
+$\sim$0.7--1\%; both domains cross it below the EP\,Eri-proxy value.}
+\label{fig:flyascan}
+\end{figure}
 
 \section{Conclusions}
 \begin{enumerate}
@@ -297,8 +449,17 @@ required before the H$\alpha$ comparison can be interpreted.
   and the best-fit flux ($0.5\,\Fo$), the model reproduces the observed He\,10830
   line ($\sim$3.9\% vs.\ $\sim$3.4\%), independently confirming Yan's requirement
   of a high H/He ratio.
-\item H$\alpha$ is not modeled reliably here because the Ly$\alpha$ radiative
-  transfer is not solved.
+\item H$\alpha$ is computed with a proper Ly$\alpha$ radiative transfer (LaRT,
+  spherical illumination) coupled to a 2-D $n_{2p}(\rho,z)$ population.  At the
+  He-fit composition (H/He$=$98/2, $0.5\,\Fo$, $\beta_m=0.218$) the model gives a
+  line-center depth of $1.3$--$1.5\%$ (vs.\ observed $\sim$0.7--1\%) and, unlike
+  He\,10830, is essentially insensitive to the outer boundary because the
+  $n_{2p}$ layer is concentrated at $r\lesssim2\,\Rp$.
+\item Being Ly$\alpha$-pump-dominated, H$\alpha$ scales with the incident
+  Ly$\alpha$ flux; the observed depth is matched at
+  $F_{\rm Ly\alpha}\approx0.3$--$0.5\times$ the EP\,Eri proxy value adopted by Yan
+  ($L_1$ model).  The $n=2$ Balmer-continuum photoionization ($\Gamma_2$) is
+  negligible for this cool K-type host and does not lower H$\alpha$.
 \end{enumerate}
 
 \section*{References}
@@ -309,6 +470,9 @@ Caldiroli, A., Haardt, F., Gallo, E., et al.\ 2021, A\&A, 655, A30.
 ``Irradiation-driven escape of primordial planetary atmospheres.~I. The ATES
 photoionization hydrodynamics code.''
 
+Christie, D., Arras, P., \& Li, Z.-Y. 2013, ApJ, 772, 144.
+``Pumping of the Lyman-alpha and the H$\alpha$ transmission spectrum.''
+
 Erkaev, N.~V., Kulikov, Yu.~N., Lammer, H., et al.\ 2007, A\&A, 472, 329.
 ``Roche lobe effects on the atmospheric loss from hot Jupiters.''
 
@@ -317,6 +481,9 @@ France, K., Loyd, R.~O.~P., Youngblood, A., et al.\ 2016, ApJ, 820, 89.
 
 Huang, C., Arras, P., Christie, D., \& Li, Z.-Y. 2017, ApJ, 851, 150.
 ``A Model of the H$\alpha$ and Na Transmission Spectrum of HD\,189733b.''
+
+Seon, K.-i., \& Kim, C.-G. 2020, ApJS, 250, 9.
+``LaRT: a 3-D Monte Carlo code for Ly$\alpha$ resonance-line radiative transfer.''
 
 Yan, D., Seon, K.-i., Guo, J., Chen, G., \& Li, L. 2022, ApJ, 936, 177.
 ``Modeling the H$\alpha$ and He\,10830 Transmission Spectrum of WASP-52b.''

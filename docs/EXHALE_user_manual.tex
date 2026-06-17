@@ -34,7 +34,7 @@
 
 \title{EXHALE: User Manual}
 \author{Kwang-Il Seon}
-\date{Last updated: 2026-06-16}
+\date{Last updated: 2026-06-17}
 \maketitle
 
 \begin{quote}\small\itshape
@@ -669,7 +669,7 @@ pressure-broadened (Robinson \& Catling $f(p)=1+a\,(p/p_0)^n$ via
 \texttt{OPA\_FILE\_HI} etc.). Missing keys keep their defaults, so an absent
 \texttt{opacity.inp} is equivalent to model A.
 
-\subsection{Excited hydrogen and the Ly$\alpha$ pumping field}
+\subsection{Excited hydrogen and the Ly$\alpha$ pumping field}\label{sec:excitedH}
 \label{sec:jlya}
 The non-LTE H($n{=}2$) model (the metastable $2s$ + resonance $2p$ levels,
 Christie+2013) feeds two things: in \texttt{EXHALE.x} the H($n{=}2$)
@@ -1054,6 +1054,53 @@ uses these loaders to plot the profiles and the parameter-difference
 comparisons of \S\ref{sec:examples}, and
 \texttt{examples/make\_figures.py} (which generates every figure in this
 manual) is a further worked example.
+
+\subsection{\texttt{exhale\_to\_lart.py} --- LaRT Ly$\alpha$ input from an EXHALE
+run}\label{sec:exhale2lart}
+\texttt{TPM.py} estimates the Ly$\alpha$ mean intensity $\bar J_{\rm Ly\alpha}$ with
+the simple Huang et al.\ (2017) prescription (\S\ref{sec:excitedH}). For a proper
+treatment of the resonant Ly$\alpha$ radiative transfer that sets the $n{=}2$
+hydrogen population (and hence H$\alpha$), the converged atmosphere can be
+post-processed with the Monte Carlo code \textbf{LaRT} (Seon \& Kim 2020; Seon et
+al.\ 2022). \texttt{examples/exhale\_to\_lart.py} builds a complete LaRT
+spherical-illumination input set directly from an EXHALE run.
+
+Given a run directory it loads the \texttt{\_adv} profiles (via
+\texttt{exhale\_io.py}) and \texttt{input.inp}, and writes
+\begin{itemize}\setlength{\itemsep}{0pt}
+  \item \texttt{dens\_profile.txt} --- $r\,[\Rp]$, $n_{\rm HI}\,[\mathrm{cm^{-3}}]$
+        (the Ly$\alpha$ scatterer is ground-state H);
+  \item \texttt{temp\_profile.txt} --- $r\,[\Rp]$, $T\,[\mathrm{K}]$;
+  \item \texttt{velo\_profile.txt} --- $r\,[\Rp]$, $v_r\,[\mathrm{km\,s^{-1}}]$;
+  \item \texttt{line\_profile.txt} --- the incident stellar Ly$\alpha$ profile, a
+        double-Gaussian with peaks at $\pm m$ and Gaussian width $s$ (defaults
+        $m=74$, $s=49\,\mathrm{km\,s^{-1}}$, the Huang et al.\ 2017 / Yan et al.\
+        2022 values; pass \texttt{-{}-fwhm} to read $s$ as FWHM);
+  \item \texttt{<name>\_lya.in} --- the LaRT namelist
+        (\texttt{geometry=\textquotesingle spherical\_atmosphere\textquotesingle},
+        \texttt{source\_geometry=\textquotesingle stellar\_illumination\textquotesingle});
+  \item \texttt{run.sh} --- a multi-host \texttt{mpirun} launcher.
+\end{itemize}
+The length unit is set to $\Rp$ (\texttt{distance2cm}\,$=R_{\rm p}$ in cm), so all
+LaRT radii are in $\Rp$ and match the EXHALE grid; the star--planet geometry
+(\texttt{distance\_star\_to\_planet}\,$=a/\Rp$,
+\texttt{stellar\_radius}\,$=R_\star/\Rp$) is read from \texttt{input.inp}. Because
+the stellar illumination breaks spherical symmetry, the scattering rate is requested
+as a cylindrical 2-D grid (\texttt{geometry\_JPa = 2}): $P_\alpha(\rho,z)$ is
+axisymmetric about the star--planet axis, which is the form needed to build the 2-D
+$n_{2p}(\rho,z)$ population for the H$\alpha$ transit. To populate $P_\alpha$, build
+LaRT with \texttt{make CALCPnew=1} (producing \texttt{LaRT\_calcP.x}).
+
+\begin{lstlisting}[style=sh]
+# build the LaRT input from a converged EXHALE run, then run it
+python examples/exhale_to_lart.py WASP-52b/fxuv0p25_he98 \
+       -o WASP-52b/LaRT_lya --name WASP-52b \
+       --m 74 --s 49 --rmax 10 --ngrid 201 --nphotons 1e7 \
+       --hosts lart4,lart3,lart2
+cd WASP-52b/LaRT_lya && ./run.sh
+\end{lstlisting}
+It is also importable: \texttt{import exhale\_to\_lart as e2l;
+e2l.build(run\_dir, outdir, m\_kms=74, s\_kms=49, geometry\_jpa=2, \dots)}.
 
 % ===================================================================== %
 \section{Worked examples}\label{sec:examples}
