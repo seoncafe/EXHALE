@@ -30,6 +30,9 @@
 \setbeamertemplate{caption}{\insertcaption}
 \setbeamertemplate{itemize items}{\textbullet}
 
+%% equal-height columns: fixed column body height, \vfill distributes the slack
+\newlength{\colht}\setlength{\colht}{0.848\paperheight}
+
 \newcommand{\Rp}{R_{\rm p}}
 \newcommand{\Fo}{F_{0}}
 \newcommand{\Mdot}{\dot{M}}
@@ -59,6 +62,7 @@ $^{2}$Department of Astronomy \& Space Science, University of Science and Techno
 
 %% ================= LEFT COLUMN =================
 \begin{column}{0.475\paperwidth}
+\begin{minipage}[t][\colht][s]{\linewidth}
 
 \begin{block}{1. Motivation: three lines, three layers}
 \begin{itemize}
@@ -77,6 +81,8 @@ $^{2}$Department of Astronomy \& Space Science, University of Science and Techno
 \end{itemize}
 \end{block}
 
+\vfill
+
 \begin{block}{2. Line formation: He\,$2^3S$ \& H$\alpha$ Ly$\alpha$-pumping}
 \centering
 \begin{minipage}[c]{0.47\linewidth}\centering
@@ -92,6 +98,8 @@ recombination$+$cascade, drained by FUV photoionization.
 \textbf{H$\alpha$} (right; $n{=}2\!\to\!3$) needs an enhanced $n{=}2$ set mainly by
 \textbf{Ly$\alpha$ pumping} of $1s\!\to\!2p$.
 \end{block}
+
+\vfill
 
 \begin{block}{3. EXHALE: code \& algorithms}
 \begin{itemize}
@@ -112,6 +120,8 @@ recombination$+$cascade, drained by FUV photoionization.
 \end{itemize}
 \end{block}
 
+\vfill
+
 \begin{block}{4. WASP-52b model setup}
 \begin{itemize}
 \item Planet/star (Yan+2022): $M_\star=0.87\,M_\odot$, $R_\star=0.79\,R_\odot$ (K2V);
@@ -130,10 +140,12 @@ recombination$+$cascade, drained by FUV photoionization.
 {\footnotesize Best-fit wind ($\mathbf{H/He\,98/2}$, $L_1$ domain; solar shown for reference).}
 \end{block}
 
+\end{minipage}
 \end{column}
 
 %% ================= RIGHT COLUMN =================
 \begin{column}{0.475\paperwidth}
+\begin{minipage}[t][\colht][s]{\linewidth}
 
 \begin{block}{5. He\,I\,$\lambda$10830: domain \& composition}
 \begin{columns}[T]
@@ -154,6 +166,8 @@ recombination$+$cascade, drained by FUV photoionization.
   ($\mathrm{He/H}\approx0.017$).
 \end{itemize}
 \end{block}
+
+\vfill
 
 \begin{block}{6. H$\alpha$ via proper Ly$\alpha$ radiative transfer (LaRT)}
 \begin{columns}[T]
@@ -197,6 +211,8 @@ solid-angle dilution; $\Gamma_{2p}$ = Balmer-continuum photoionization.)}
 \end{itemize}
 \end{block}
 
+\vfill
+
 \begin{block}{7. Parameters that reproduce the observations}
 \centering
 \begin{tcolorbox}[colback=accent!10,colframe=accent,boxrule=1.2pt,sharp corners,
@@ -216,6 +232,8 @@ XUV hardness $\beta_m$ & $0.218$ \\
 \end{tabular}
 \end{tcolorbox}
 \end{block}
+
+\vfill
 
 \begin{block}{8. Conclusions}
 \begin{itemize}
@@ -237,6 +255,7 @@ Caldiroli+2021 (A\&A 655, A30); Yang \& Guo 2018 (RAA 18, 077); Christie+2013
 (ApJ 772, 144); Huang+2017 (ApJ 851, 150); Seon \& Kim 2020 (ApJS 250, 9).}
 \end{block}
 
+\end{minipage}
 \end{column}
 \end{columns}
 \end{frame}
