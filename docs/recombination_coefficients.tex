@@ -200,33 +200,49 @@ Gnedin (1997), Storey \& Hummer (1995), Verner \& Ferland (1996), and
 Badnell (2006) agree to $\sim$1--2\% (Fig.~\ref{fig:recH}). No update is
 warranted; the only meaningful choice is case A vs.\ B (\S\ref{sec:H}).
 
-\paragraph{He\,I total and the $2^3S$ triplet.} The data EXHALE uses
-(Benjamin, Skillman \& Smits 1999) have been superseded \emph{in the
-nebular community} by the improved He\,I effective recombination
-coefficients of \textbf{Porter, Ferland, Storey \& Detisch (2012,
-MNRAS 425, L28; 2013 erratum MNRAS 433, L89)} --- now the default in
-Cloudy --- and more recently by \textbf{Del Zanna \& Storey (2022)}.
-These differ from Benjamin+1999 at roughly the $5$--$15\%$ level over the
-relevant temperatures.
+\paragraph{He\,I total and the $2^3S$ triplet --- no update available.}
+The newer He\,I references often cited here --- \textbf{Porter, Ferland,
+Storey \& Detisch (2012, MNRAS 425, L28; 2013 erratum MNRAS 433, L89)}
+(the Cloudy default) and \textbf{Del Zanna \& Storey (2022)} --- are
+\emph{emissivity} papers. They improve the He\,I \emph{line cascade /
+line-ratio} predictions, but they do \emph{not} provide, and do not
+change, the quantity EXHALE needs: the \emph{total} (effective)
+recombination into the triplet ladder, $\alpha_3$, which all funnels to
+the metastable $2^3S$. That total is set by (case-B total recombination)
+$\times$ (triplet spin fraction $3/4$) --- ultimately by the
+photoionization cross sections (Milne) and spin statistics --- and is
+\emph{robust} across modern treatments:
+\begin{itemize}
+\item EXHALE (Benjamin+1999):
+  $\alpha_3 = 2.10\times10^{-13}T_4^{-0.778}$,
+  $\alpha_1 = 1.54\times10^{-13}T_4^{-0.486}\acm$;
+\item 2025 thermosphere model (arXiv:2509.14499; from
+  Draine 2011 \S14.3): $\alpha_3 = \tfrac34\,(2.72\times10^{-13}T_4^{-0.789})
+  = 2.04\times10^{-13}T_4^{-0.789}$, with the \emph{identical} singlet
+  $\alpha_1 = 1.54\times10^{-13}T_4^{-0.486}\acm$.
+\end{itemize}
+$\alpha_3$ agrees to $\sim$2--3\% and $\alpha_1$ is identical. The most
+recent multi-species escape model (Taylor et al.\ 2025) likewise adopts
+Benjamin+1999 for the triplet. Attempting to extract a different value
+from the local Cloudy install confirmed the point: its
+\texttt{he\_iso\_recomb.dat} stores per-level direct radiative
+recombination, and summing all triplet ($S=3$) captures \emph{is} the
+effective $\alpha(2^3S)$ in case B, but the file carries no usable
+level$\to(n,\ell,S)$ map for its $1642$ He levels (only $111$ are resolved
+in \texttt{helike\_energies.dat}) and a trial sum overshoots the known
+case-A total by $\sim$2$\times$ --- i.e.\ there is no clean drop-in Cloudy
+number either.
 
-However, the exoplanet \emph{escape} community has \emph{not} migrated:
-the most recent multi-species escape model (Taylor et al.\ 2025) still
-adopts Benjamin+1999 for the triplet --- the same $\alpha_3 =
-2.10\times10^{-13}(T/10^4)^{-0.778}\acm$ that EXHALE uses --- and notes
-that recombination coefficients adopted across escape studies still
-``vary by a factor of $2$--$3$,'' a spread dominated by the case-A/B
-choice and by whether the singlet/triplet split is used at all, not by
-the $\sim$10\% Porter update. EXHALE is therefore fully consistent with
-current escape-modeling practice.
-
-\paragraph{Recommendation.} For the present goals (reproducing He\,10830
-at the $\sim$10\% level) the Benjamin+1999 triplet rate is adequate and
-matches the field. If sub-10\% precision on the metastable population is
-ever required, the worthwhile refinement is to adopt the Porter+2012/2013
-(or Del Zanna \& Storey 2022) effective recombination coefficients for
-$\alpha_1$ and $\alpha_3$, ideally with their density dependence; this
-would require tabulating their coefficients rather than the simple
-power-law fits used now. The H/He case-B rates should be left as they are.
+\paragraph{Recommendation.} \textbf{Leave the recombination as it is.}
+EXHALE's Benjamin+1999 $\alpha_1,\alpha_3$ already match the latest
+escape-modeling practice and the underlying atomic physics to
+$\lesssim3\%$; the Porter/Del Zanna ``updates'' are line-emissivity
+improvements that do not alter the total $2^3S$ recombination. The H/He
+case-B rates likewise need no change. The single worthwhile atomic-data
+update in this round is the \emph{photoionization} of the He\,I ground
+state (Verner+1996, now the EXHALE default; see
+\texttt{docs/Update\_EXHALE} \S22), which shifts the He\,10830 depth by
+$\sim$3\%.
 
 %=============================================================================
 \section{Reproducing this comparison}\label{sec:script}

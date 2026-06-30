@@ -48,6 +48,10 @@
       logical :: is_PL_sed     = .false.  ! Is the SED a power law
       logical :: thereis_Xray  = .false.  ! Include only EUV band	
       logical :: thereis_HeITR = .false.  ! Include calculations for He triplet
+      ! He I (1^1S) photoionization source (default .false. = Verner+1996;
+      !  .true. = legacy ATES two-term fit).  (No recombination switch: the
+      !  Benjamin+1999 He recombination already matches modern data.)
+      logical :: ates_photoion_rate = .false.
       logical :: thereis_metals = .false. ! Include trace-metal species
                                           !  (C/N/O/Mg/Si/Ca/Na/K/S/Fe)
       ! EOS mass/electron/particle policy. .true. (default) = metals enter

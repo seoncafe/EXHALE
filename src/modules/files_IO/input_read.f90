@@ -302,6 +302,7 @@
 		hydrostatic_base = .false.
 		base_bc_mode     = 0          ! density-anchored base (legacy) by default
 		resid_vol        = .true.     ! volume-weighted residual norm by default
+		ates_photoion_rate = .false.  ! default: Verner+1996 He I (1^1S) photoion.
 		do
 			read(11,'(A)',iostat = ios) line
 			if (ios .ne. 0) exit
@@ -346,6 +347,11 @@
 				! du < du_final. If du_plm <= du_final, single-stage at du_final.
 				str = get_word(line, 3);  read(str,*) du_th_plm
 				str = get_word(line, 4);  read(str,*) du_th
+			else if (index(line,'ATES_photoionization_rate') .gt. 0) then
+				! Revert He I (1^1S) photoionization to the legacy ATES 2-term fit
+				! (default is Verner+1996). "ATES_photoionization_rate: True"
+				str = get_word(line, 2)
+				if (str .eq. 'True' .or. str .eq. 'true') ates_photoion_rate = .true.
 			else if (index(line,'Stall') .gt. 0) then
 				! Stall-detector override: "Stall [tol,N]: <rel_tol> <N_steps>"
 				! (smaller tol and/or larger N = harder to declare a plateau)

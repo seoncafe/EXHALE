@@ -345,6 +345,233 @@ def fig_HeI23S_topbase():
     return E_tb, s_tb
 
 
+# =====================================================================
+#  Smooth high-energy extension (E > 59 eV), resonances ignored.
+#  Fit a power law to the TOPbase resonance-free background above the
+#  He+ n=2 resonance limit (E >= 66 eV) and report the formula.
+# =====================================================================
+HE_CUTOFF_EV = 59.208      # current sigma_HeI23S cutoff (x5 node)
+
+
+def fit_he23S_tail(E_tb, s_tb, e_fit_lo=66.0, e_fit_hi=323.0):
+    """Single-power-law fit sigma = 10^c * E^p (Mb, E in eV) to the
+    resonance-free TOPbase background above the He+ n=2 limit."""
+    m = (E_tb >= e_fit_lo) & (E_tb <= e_fit_hi)
+    p, c = np.polyfit(np.log10(E_tb[m]), np.log10(s_tb[m]), 1)
+    resid = np.log10(s_tb[m]) - (p * np.log10(E_tb[m]) + c)
+    return p, c, np.abs(resid).max()
+
+
+def sigma_he23S_tail(E, p, c):
+    return 10.0 ** (p * np.log10(E) + c)
+
+
+def fig_he23S_tail(E_tb, s_tb):
+    p, c, mres = fit_he23S_tail(E_tb, s_tb)
+    Eg = np.logspace(np.log10(HE_CUTOFF_EV), np.log10(323.0), 400)
+    fig, ax = plt.subplots(figsize=(7.2, 5.0))
+    ax.loglog(E_tb[E_tb >= 56], s_tb[E_tb >= 56], color="0.6", lw=0.8,
+              label="TOPbase / OP (with n=2 resonances)")
+    msm = E_tb >= 66.0
+    ax.loglog(E_tb[msm], s_tb[msm], "o", ms=3.5, color="#1f77b4",
+              label="TOPbase smooth background (fit pts)")
+    ax.loglog(Eg, sigma_he23S_tail(Eg, p, c), color="#d62728", lw=2.2,
+              label=r"power-law fit $\sigma=10^{%.3f}E^{%.3f}$" % (c, p))
+    # show the current EXHALE broken-PL up to the cutoff (then zero)
+    Eb = np.logspace(np.log10(40), np.log10(HE_CUTOFF_EV), 300)
+    ax.loglog(Eb, sigma_HeI23S(Eb), color="k", ls="--", lw=1.5,
+              label="EXHALE broken PL (=0 above cutoff)")
+    ax.axvline(HE_CUTOFF_EV, color="0.5", ls=":", lw=1.0)
+    ax.set_xlabel(r"photon energy $E$ [eV]")
+    ax.set_ylabel(r"$\sigma_{{\rm He}\,2^3S}$ [Mb]")
+    ax.set_title(r"He I $2^3$S: smooth high-energy extension ($E>59$ eV)")
+    ax.set_xlim(40, 330); ax.set_ylim(5e-3, 3)
+    ax.grid(True, which="both", alpha=0.25); ax.legend(loc="lower left", fontsize=9)
+    fig.tight_layout()
+    fig.savefig(os.path.join(OUTDIR, "xsec_HeI23S_tail.pdf"))
+    plt.close(fig)
+    return p, c, mres
+
+
+def print_he23S_tail(E_tb, s_tb):
+    p, c, mres = fit_he23S_tail(E_tb, s_tb)
+    s100 = 10.0 ** (p * np.log10(100.0) + c)
+    print("\n=== Smooth high-energy extension of sigma_HeI23S (E>59 eV) ===")
+    print(f"fit (E>=66 eV, resonances ignored): sigma = 10^{c:.4f} * E^{p:.4f} Mb")
+    print(f"  equivalently sigma = {s100:.4f}*(E/100 eV)^{p:.3f} Mb ; "
+          f"max resid {mres:.3f} dex ({(10**mres-1)*100:.0f}%)")
+    print(f"{'E[eV]':>7} {'fit':>9} {'TOPbase':>9} {'ratio':>7}")
+    for Eq in [60, 67, 80, 100, 150, 200, 300]:
+        i = np.argmin(np.abs(E_tb - Eq))
+        fit = 10.0 ** (p * np.log10(Eq) + c)
+        print(f"{Eq:>7.0f} {fit:>9.4f} {s_tb[i]:>9.4f} {fit/s_tb[i]:>7.3f}")
+
+
+# =====================================================================
+#  Unified full-range smooth representation of sigma_HeI23S.
+#  Resonance-AVERAGED TOPbase background as a short (E, sigma) node table
+#  interpolated log-log with a monotone cubic (PCHIP); faithful to TOPbase
+#  from threshold to ~320 eV, C^1-smooth, and a drop-in for the cooling-
+#  style table interpolation already used in EXHALE.  Below 30 eV and above
+#  66 eV the nodes are the clean TOPbase background; in 30-66 eV they are
+#  the resonance-averaged (spike-capped) values (the sharp resonances are
+#  deliberately averaged over, not followed).
+# =====================================================================
+HE23S_NODES_EV = np.array(
+    [4.77, 6.0, 8.0, 10.0, 13.6, 20.0, 30.0, 40.0, 52.0, 63.0, 80.0,
+     100.0, 150.0, 200.0, 300.0])
+HE23S_NODES_MB = np.array(
+    [4.88, 4.09, 3.11, 2.07, 1.16, 0.55, 0.273, 0.50, 1.9, 1.14, 0.577,
+     0.294, 0.085, 0.037, 0.0111])
+
+
+def _he23S_interp():
+    try:
+        from scipy.interpolate import PchipInterpolator
+        return PchipInterpolator(np.log10(HE23S_NODES_EV),
+                                 np.log10(HE23S_NODES_MB)), "PCHIP"
+    except Exception:
+        return None, "linear"
+
+
+def sigma_he23S_unified(E):
+    """Unified full-range (4.77-320 eV) resonance-averaged He 2^3 S cross
+    section (Mb), log-log monotone-cubic interpolation of the node table."""
+    E = np.asarray(E, dtype=float)
+    f, _ = _he23S_interp()
+    lx = np.log10(E)
+    if f is not None:
+        ly = f(lx)
+    else:
+        ly = np.interp(lx, np.log10(HE23S_NODES_EV), np.log10(HE23S_NODES_MB))
+    return np.where((E >= HE23S_NODES_EV[0]) & (E <= HE23S_NODES_EV[-1]),
+                    10.0 ** ly, 0.0)
+
+
+def fig_he23S_unified(E_tb, s_tb):
+    Eg = np.logspace(np.log10(4.77), np.log10(320.0), 1500)
+    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(7.2, 6.4), sharex=True,
+                                   gridspec_kw={"height_ratios": [2.4, 1.0]})
+    ax1.loglog(E_tb, np.clip(s_tb, 1e-3, None), color="0.7", lw=0.7,
+               label="TOPbase / OP (with resonances)")
+    ax1.loglog(PW_ENERGY, PW_SIGMA_MB, "s", ms=4.5, mfc="none",
+               mec="#2ca02c", mew=1.3, label="Norcross 1971 (p-winds)")
+    ax1.loglog(Eg, sigma_he23S_unified(Eg), color="#d62728", lw=2.2,
+               label="unified PCHIP background (this work)")
+    ax1.loglog(HE23S_NODES_EV, HE23S_NODES_MB, "o", ms=4.5, color="k",
+               label="node table")
+    Eb = np.logspace(np.log10(4.77), np.log10(59.18), 800)
+    ax1.loglog(Eb, sigma_HeI23S(Eb), color="#1f77b4", ls="--", lw=1.4,
+               label="EXHALE broken PL (=0 above 59 eV)")
+    ax1.set_ylabel(r"$\sigma_{{\rm He}\,2^3S}$ [Mb]")
+    ax1.set_title(r"He I $2^3$S: unified full-range smooth representation")
+    ax1.set_xlim(4.5, 330); ax1.set_ylim(5e-3, 3e1)
+    ax1.grid(True, which="both", alpha=0.25); ax1.legend(loc="upper right", fontsize=8.5)
+    # ratio of unified to TOPbase smooth points (exclude resonance spikes)
+    msm = ((E_tb <= 34) | (E_tb >= 66)) & (s_tb > 0)
+    ax2.semilogx(E_tb[msm], sigma_he23S_unified(E_tb[msm]) / s_tb[msm],
+                 ".", ms=3, color="0.5", label="/ TOPbase")
+    ax2.semilogx(PW_ENERGY, sigma_he23S_unified(PW_ENERGY) / PW_SIGMA_MB,
+                 "s", ms=4.5, mfc="none", mec="#2ca02c", mew=1.3,
+                 label="/ Norcross")
+    ax2.axhline(1.0, color="0.5", lw=0.8, ls=":")
+    ax2.legend(loc="upper left", fontsize=8.5, ncol=2)
+    ax2.set_ylabel("unified / data"); ax2.set_xlabel(r"photon energy $E$ [eV]")
+    ax2.set_xlim(4.5, 330); ax2.set_ylim(0.7, 1.3)
+    ax2.grid(True, which="both", alpha=0.25)
+    fig.tight_layout()
+    fig.savefig(os.path.join(OUTDIR, "xsec_HeI23S_unified.pdf"))
+    plt.close(fig)
+
+
+# =====================================================================
+#  Recommended minimal-change extension: keep the original broken power
+#  law up to the bump peak (x4 = 45.6 eV), RE-AIM the last power-law
+#  segment so it runs continuously from the bump peak to E_J = 70 eV and
+#  lands exactly on the TOPbase fit there, then follow the TOPbase
+#  power-law tail above 70 eV.  C^0-continuous at both x4 and 70 eV.
+# =====================================================================
+HE_EJ = 70.0   # junction energy where the broken PL meets the TOPbase fit
+
+# original broken-PL nodes/coefficients (cross_sec.f90)
+_HC = 4.1357e-15 * 2.99792458e10 * 1e8
+_x1 = np.log10(_HC / 2593.01) * 0.9999
+_x2 = np.log10(_HC / 1655.63)
+_x3 = np.log10(_HC / 357.340)
+_x4 = np.log10(_HC / 271.940)
+_a1, _a2, _a3 = -0.8134, -1.772, -3.039
+_c1 = 1.240
+_c2 = _c1 + _x2 * (_a1 - _a2)
+_c3 = 5.470
+_y3 = _a2 * _x3 + _c2
+_y4 = _a3 * _x4 + _c3            # bump-peak value at x4 (kept)
+_m = (_y4 - _y3) / (_x4 - _x3)
+
+
+def he23S_ext_params(E_tb, s_tb, e_fit_lo=70.0):
+    """Return (a3n, c3n, p, c) for the extended cross section: modified
+    last-segment slope/intercept (x4->70 eV) and the TOPbase tail fit."""
+    m = (E_tb >= e_fit_lo) & (E_tb <= 323.0)
+    p, c = np.polyfit(np.log10(E_tb[m]), np.log10(s_tb[m]), 1)
+    xJ = np.log10(HE_EJ)
+    s_TBJ = p * xJ + c                      # log10 sigma_TOPbase(70 eV)
+    a3n = (s_TBJ - _y4) / (xJ - _x4)        # re-aimed last-segment slope
+    c3n = _y4 - a3n * _x4
+    return a3n, c3n, p, c
+
+
+def sigma_HeI23S_ext(E, a3n, c3n, p, c):
+    """Extended sigma_HeI23S (Mb): original broken PL up to x4, re-aimed
+    last segment x4->70 eV, TOPbase tail above 70 eV."""
+    E = np.asarray(E, dtype=float)
+    lo = np.log10(E)
+    xJ = np.log10(HE_EJ)
+    s = np.full_like(lo, np.nan)
+    s = np.where(lo <= _x2, _a1 * lo + _c1, s)
+    s = np.where((lo > _x2) & (lo <= _x3), _a2 * lo + _c2, s)
+    s = np.where((lo > _x3) & (lo < _x4), _m * (lo - _x3) + _y3, s)
+    s = np.where((lo >= _x4) & (lo <= xJ), a3n * lo + c3n, s)   # modified seg
+    s = np.where(lo > xJ, p * lo + c, s)                        # TOPbase tail
+    out = 10.0 ** s
+    return np.where((lo < _x1) | (E > 323.0), 0.0, out)
+
+
+def fig_he23S_ext(E_tb, s_tb):
+    a3n, c3n, p, c = he23S_ext_params(E_tb, s_tb)
+    Eg = np.logspace(np.log10(4.77), np.log10(320.0), 1500)
+    fig, ax = plt.subplots(figsize=(7.4, 5.2))
+    ax.loglog(E_tb, np.clip(s_tb, 1e-3, None), color="0.7", lw=0.7,
+              label="TOPbase / OP (with resonances)")
+    ax.loglog(PW_ENERGY, PW_SIGMA_MB, "s", ms=4.0, mfc="none",
+              mec="#2ca02c", mew=1.2, label="Norcross 1971 (p-winds)")
+    Eb = np.logspace(np.log10(4.77), np.log10(59.18), 600)
+    ax.loglog(Eb, sigma_HeI23S(Eb), color="#1f77b4", ls="--", lw=1.4,
+              label="original broken PL (=0 above 59 eV)")
+    ax.loglog(Eg, sigma_HeI23S_ext(Eg, a3n, c3n, p, c), color="#d62728",
+              lw=2.2, label="extended (re-aimed last seg + TOPbase tail)")
+    ax.axvline(HE_EJ, color="0.5", ls=":", lw=1.0)
+    ax.text(HE_EJ * 1.03, 6e-3, "70 eV", color="0.4", fontsize=9)
+    ax.set_xlabel(r"photon energy $E$ [eV]")
+    ax.set_ylabel(r"$\sigma_{{\rm He}\,2^3S}$ [Mb]")
+    ax.set_title(r"He I $2^3$S: minimal-change extension to TOPbase tail")
+    ax.set_xlim(4.5, 330); ax.set_ylim(5e-3, 1e1)
+    ax.grid(True, which="both", alpha=0.25); ax.legend(loc="lower left", fontsize=9)
+    fig.tight_layout()
+    fig.savefig(os.path.join(OUTDIR, "xsec_HeI23S_ext.pdf"))
+    plt.close(fig)
+    return a3n, c3n, p, c
+
+
+def print_he23S_ext(E_tb, s_tb):
+    a3n, c3n, p, c = he23S_ext_params(E_tb, s_tb)
+    print("\n=== Minimal-change extension (keep broken PL, re-aim last seg) ===")
+    print(f"  modified last segment (x4=45.6 -> 70 eV): slope {a3n:.4f} "
+          f"(was {_a3}), intercept {c3n:.4f}")
+    print(f"  TOPbase tail (E>70 eV): sigma = 10^{c:.4f} * E^{p:.4f} Mb")
+    print(f"  junction values: sigma(45.6)={10**_y4:.4f} Mb, "
+          f"sigma(70)={10**(p*np.log10(70)+c):.4f} Mb (continuous both ends)")
+
+
 def print_topbase_table(E_tb, s_tb):
     print("\n=== He 2^3 S smooth region: EXHALE vs Norcross/p-winds vs TOPbase (Mb) ===")
     print(f"{'E[eV]':>8} {'EXHALE':>10} {'p-winds':>10} {'TOPbase':>10} "
@@ -488,8 +715,13 @@ if __name__ == "__main__":
     heI = fig_HeI_vs_verner()
     he23S = fig_HeI23S_vs_pwinds()
     E_tb, s_tb = fig_HeI23S_topbase()
+    fig_he23S_tail(E_tb, s_tb)
+    fig_he23S_unified(E_tb, s_tb)
+    fig_he23S_ext(E_tb, s_tb)
     print_tables(heI, he23S)
     print_topbase_table(E_tb, s_tb)
     print_rate_impact(E_tb, s_tb)
     print_resonance_impact(E_tb, s_tb)
+    print_he23S_tail(E_tb, s_tb)
+    print_he23S_ext(E_tb, s_tb)
     print(f"\nFigures written to {OUTDIR}")

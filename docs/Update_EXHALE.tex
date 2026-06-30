@@ -2791,4 +2791,146 @@ in the Roche branch of the \texttt{r\_max} assignment). Documented in
 \texttt{docs/EXHALE\_user\_manual.tex} (\S\,potential and the input-options
 table).
 
+\section{Photoionization cross-section benchmarks and a TOPbase high-energy extension of He\,2$^3$S (2026-07-01)}
+
+\paragraph{Motivation.} The He\,2$^3$S (metastable triplet) photoionization cross
+section \texttt{sigma\_HeI23S} --- the drain term that sets the He\,10830 lower-level
+population --- was a four-segment broken power-law fit to Norcross (1971), hard-cut
+to zero above $59.2\,$eV. Two questions: (i)~are EXHALE's H/He/He\,2$^3$S
+photoionization cross sections consistent with modern atomic data, and (ii)~does the
+unphysical $59\,$eV cutoff matter? Both are settled in the new memo
+\texttt{docs/photoion\_cross\_sections.\{tex,pdf\}} (reproducible via
+\texttt{docs/compare\_photoion\_cross\_sections.py}).
+
+\paragraph{Benchmarks.} H\,I and He\,II use the exact hydrogenic form; He\,I uses the
+two-term ATES fit, which agrees with the Verner+1996 (VFKY96) single-shell fit to
+within $14\%$ over $24.6$--$500\,$eV. The He\,2$^3$S broken PL reproduces its parent
+Norcross/p-winds table to $\sim$$10\%$ and --- checked against the \textbf{TOPbase /
+Opacity Project} R-matrix cross section (extracted from the CDS server; raw
+$922$-point table saved to \texttt{data/topbase\_HeI\_2\_3S\_photo.dat}) --- agrees
+to $\sim$$8\%$ in the smooth near-threshold region ($5$--$20\,$eV). TOPbase
+additionally resolves a $40$--$55\,$eV autoionizing-resonance forest (peaks to
+$3223\,$Mb); their \textbf{net effect on the 2$^3$S rate is only $\sim$$1$--$2\%$}
+once the few numerically under-resolved spikes are excluded (the raw table must
+\emph{not} be fed into a broadband rate integral --- a quadrature artifact).
+Extending the cross section above $59\,$eV raises the 2$^3$S rate by only
+$0.1$--$1.2\%$.
+
+\paragraph{Change.} \texttt{sigma\_HeI23S} is extended with a minimal,
+fully-connected edit (\texttt{src/modules/functions/cross\_sec.f90}): the broken PL
+is kept unchanged up to the $45.6\,$eV bump; the \textbf{last power-law segment is
+re-aimed} so it runs continuously from the bump peak to a power-law fit of the
+TOPbase smooth background at the junction $E_J=70\,$eV,
+\begin{equation*}
+  \sigma_{\rm tail}(E) = 10^{5.4623}\,E^{-2.9964}\ \mathrm{Mb}\qquad(E>70\,\mathrm{eV}),
+\end{equation*}
+(the last-segment slope changes only $-3.039\to-2.658$; the intercept is derived
+in-code for exact continuity). The old $59\,$eV cutoff is dropped, so $59$--$1240\,$eV
+now carries the TOPbase tail instead of zero. The result is $C^0$-continuous at
+\emph{both} joins ($45.6\,$eV and $70\,$eV); the original pre-modification formula is
+kept in comments. A unified full-range PCHIP node table and a tail-only power law are
+documented as alternatives, but this is the recommended drop-in (smallest rate
+change, retains the validated threshold-to-bump shape exactly).
+
+\paragraph{Validation.} A controlled before/after on WASP-52b
+(\texttt{fxuv0p25\_he98\_L1}, \texttt{Include He23S? True}, $\epsilon$\,Eri SED with
+X-rays), same IC, only \texttt{cross\_sec.f90} differing: the bulk wind is unchanged
+(\(\log\dot M=11.49\) both), and the He\,10830 line changes by $<0.001\%$ in every
+metric (line-center depth $15.2675\%\to15.2675\%$; EW $0.0877\to0.0877\,$\AA) ---
+below the Newton convergence noise. The extension is more physically correct yet
+observationally harmless for He\,10830, as predicted by the $+0.65\%$ rate estimate
+(even smaller here because the $\epsilon$\,Eri SED is soft).
+
+\paragraph{Recombination cross-check.} A companion memo
+\texttt{docs/recombination\_coefficients.\{tex,pdf\}}
+(\texttt{compare\_recombination.py}) documents the H/He/He\,2$^3$S recombination:
+H\,II, He\,II, He\,III use the Hui \& Gnedin (1997) case-B fits ($\approx$ Draine 2011
+/ Verner \& Ferland to $\sim$$2\%$); He\,II$\to$He\,I splits into Benjamin+1999
+singlet/triplet (Oklopcic \& Hirata 2018) when the 2$^3$S network is on. The
+He\,2$^3$S triplet rate is identical to the latest escape models (Benjamin+1999).
+Newer nebular-community data (Porter+2012/2013, Del Zanna \& Storey 2022) differ
+$\sim$$5$--$15\%$ but are not yet adopted by escape codes; H/He case-B needs no
+update.
+
+\paragraph{Touched files.} \texttt{src/modules/functions/cross\_sec.f90}
+(\texttt{sigma\_HeI23S}: re-aimed last segment $+$ TOPbase tail, $59\,$eV cutoff
+removed, original kept in comments). New docs:
+\texttt{photoion\_cross\_sections.\{tex,pdf\}},
+\texttt{compare\_photoion\_cross\_sections.py},
+\texttt{data/topbase\_HeI\_2\_3S\_photo.dat},
+\texttt{recombination\_coefficients.\{tex,pdf\}},
+\texttt{compare\_recombination.py}, and figures under \texttt{docs/figures/}.
+
+\section{He\,I (1$^1$S) photoionization $\to$ Verner+1996 by default, with ATES-rate switches (2026-07-01)}
+
+\paragraph{Motivation.} The He\,I \emph{ground-state} (1$^1$S, singlet)
+photoionization used the legacy ATES two-term fit, which runs $\sim$$12$--$14\%$
+below the Verner+1996 (VFKY96) single-shell fit in the $50$--$100\,$eV band
+(\texttt{photoion\_cross\_sections.tex}, \S4). We make Verner the default, keep the
+old behavior behind a switch, and add a parallel switch for the recombination data.
+
+\paragraph{Singlet/triplet separation.} He photoionization in EXHALE is already
+split by spin: \texttt{sigma\_HeI} is the \textbf{1$^1$S ground (singlet)} cross
+section (updated here to Verner --- Verner's He\,I \emph{is} the 1$^1$S ground
+state), while \texttt{sigma\_HeI23S} is the \textbf{2$^3$S metastable (triplet)}
+cross section (Norcross/TOPbase, \S21). The 2$^1$S singlet metastable is not tracked
+(only 2$^3$S, the 10830 lower level), so the Verner update correctly touches only
+the singlet ground state.
+
+\paragraph{Change.} A single backward-compatible switch in \texttt{input.inp}:
+\texttt{ATES\_photoionization\_rate: True} reverts He\,I (1$^1$S) photoionization to
+the legacy two-term fit (default $=$ Verner+1996, via \texttt{sigma\_VFKY96} with
+He\,I parameters $[E_{\rm th},E_0,\sig_0,y_a,P,y_w,y_0,y_1]=24.59,13.61,949.2,1.469,
+3.188,2.039,0.4434,2.136$). No recombination switch is needed (see below).
+
+\paragraph{Comparison.} WASP-52b (\texttt{fxuv0p25\_he98\_L1}, He23S active, same
+converged IC). Switching He\,I photoionization legacy$\to$Verner changes the He
+ionization balance and hence the metastable population (Table~\ref{tab:vernerpi}):
+unlike the $>59\,$eV tail (\S21, $<0.001\%$), the ground-state photoionization choice
+is a \textbf{real $\sim$$3\%$ effect on He\,10830} --- it matters for the absolute
+depth and the inferred He abundance. \texttt{ATES\_photoionization\_rate: True}
+reproduces the old result exactly.
+
+\begin{table}[h]
+\centering
+\caption{He\,I photoionization legacy (ATES two-term) vs Verner+1996 (new default),
+WASP-52b He\,10830.}
+\label{tab:vernerpi}
+\begin{tabular}{lrrr}
+\toprule
+metric & legacy (ATES) & Verner (new) & change\\
+\midrule
+$\log\dot M$ [g/s]              & 11.49   & 11.48   & $-2\%$\\
+He\,10830 line-center depth     & 14.516\,\% & 14.933\,\% & $+2.9\%$\\
+He\,10830 equivalent width      & 0.0877\,\AA & 0.0910\,\AA & $+3.8\%$\\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\paragraph{Recombination --- no update needed (EXHALE already current).} The companion
+update (He recombination $\to$ Porter+2012/2013 / Del Zanna \& Storey 2022) was
+investigated and found to be a \emph{no-op}: those are \emph{emissivity} papers --- they
+update the He\,I line cascade / line ratios, \emph{not} the total (effective)
+recombination to 2$^3$S, and provide no drop-in $\alpha(2^3S)/\alpha(1^1S)$. The
+escape-relevant quantity --- total recombination into the triplet ladder, all
+funnelling to the metastable 2$^3$S --- is set by (case-B total) $\times$ (triplet spin
+fraction $3/4$) and is robust across modern treatments: EXHALE (Benjamin+1999) has
+$\alpha_3=2.10\times10^{-13}T_4^{-0.778}$, $\alpha_1=1.54\times10^{-13}T_4^{-0.486}$,
+while the 2025 thermosphere paper (arXiv:2509.14499) uses
+$\alpha_3=(3/4)(2.72\times10^{-13}T_4^{-0.789})=2.04\times10^{-13}T_4^{-0.789}$ and the
+\emph{identical} singlet $\alpha_1=1.54\times10^{-13}T_4^{-0.486}$ --- so $\alpha_3$
+agrees to $\sim$$2$--$3\%$ and $\alpha_1$ is identical. EXHALE's He recombination
+already matches the latest practice; no change is warranted. (A trial direct sum of
+Cloudy's \texttt{he\_iso\_recomb.dat} per-level radiative recombination gave a total
+$\sim$2$\times$ the case-A value owing to its unmapped 1642-level indexing, confirming
+the raw file is not a usable shortcut.) No recombination switch was added.
+
+\paragraph{Touched files.} \texttt{src/modules/init/parameters.f90}
+(\texttt{ates\_photoion\_rate} switch),
+\texttt{src/modules/files\_IO/input\_read.f90} (parse the optional key),
+\texttt{src/modules/functions/cross\_sec.f90} (\texttt{sigma\_HeI} branches
+Verner default / legacy two-term). Verified: Verner is the default (He\,I $\sig$ at
+$30/50/100\,$eV $=5.36/2.02/0.394\,$Mb); \texttt{ATES\_photoionization\_rate: True}
+recovers the legacy values ($5.24/1.78/0.347\,$Mb).
+
 \end{document}

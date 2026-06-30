@@ -44,25 +44,41 @@
       
       !----- HeI -----! 
       
+      ! He I GROUND state (1^1S, singlet) photoionization.  Default: Verner+1996
+      ! (VFKY96) single-shell fit.  ates_photoion_rate=.true. reverts to the legacy
+      ! ATES two-term fit.  (The 2^3S metastable TRIPLET is handled separately by
+      ! sigma_HeI23S; this routine is the singlet ground state only.)
       double precision function sigma_HeI(E)
       real*8,intent(in) :: E
       real*8 :: eth
 
-      ! Ionization treshold
-	   eth = 24.6*0.999
-
-      if (E.ge.eth) then      ! if E > E_th
+      if (ates_photoion_rate) then
+         ! --- Legacy ATES two-term fit ---
+         eth = 24.6*0.999
+         if (E.ge.eth) then
             sigma_HeI = 0.6935/((E*1.0d-2)**1.82+(E*1.0d-2)**3.23)
+         else
+            sigma_HeI = 0.0
+         endif
       else
-	      sigma_Hei = 0.0
-	   endif
-	
+         ! --- Default: Verner, Ferland, Korista & Yakovlev 1996 He I 1^1S ---
+         ! [E_th,E_0,sigma_0,y_a,P,y_w,y_0,y_1] (sigma_0 in 1e-18 cm^2)
+         sigma_HeI = sigma_VFKY96(E, 24.59d0, 1.361d1, 9.492d2, 1.469d0, &
+                                     3.188d0, 2.039d0, 4.434d-1, 2.136d0)
+      endif
+
       ! End of function
       end function sigma_HeI
       
       !----------------------------------------
       
-      ! HeI(23S) triplet photoionization cross section
+      ! HeI(23S) triplet photoionization cross section.
+      ! Norcross (1971) broken power law up to the 45.6 eV bump, then a
+      ! re-aimed last segment joined continuously to a power-law fit of the
+      ! TOPbase/Opacity-Project smooth background above 70 eV (replaces the
+      ! old 59 eV hard cutoff; He 2^3S rate change <1%).  The original
+      ! pre-modification formula is kept in comments below.
+      ! See docs/photoion_cross_sections.tex (minimal-change extension).
       !	Fit of data from Norcross (1971)
       ! Note: Oklopcic calculations include HeITR only in the
       !	range [4.8-13.6] eV
@@ -71,15 +87,16 @@
       real*8, intent(in) :: E
       real*8 :: logE,logsigma
       real*8 :: a1,c1,a2,c2,a3,c3
-      real*8 :: x1,x2,x3,x4,x5
+      real*8 :: x1,x2,x3,x4,xJ
       real*8 :: y3,y4,m
+      real*8 :: a3n,c3n,ptail,ctail,tailJ
       
       ! Intervals of power laws
       x1 = log10(hp_eV*c_light/(2593.01*1e-8))*0.9999
       x2 = log10(hp_eV*c_light/(1655.63*1e-8))
       x3 = log10(hp_eV*c_light/(357.340*1e-8))
       x4 = log10(hp_eV*c_light/(271.940*1e-8))
-      x5 = log10(hp_eV*c_light/(209.490*1e-8))*1.0001
+      xJ = log10(70.0d0)         ! junction [eV] to the TOPbase high-E tail
       
       ! Coefficients of fit
       a1 = -0.8134
@@ -91,20 +108,36 @@
       y3 =  a2*x3 + c2
       y4 =  a3*x4 + c3
       m  =  (y4-y3)/(x4-x3)
-      
+
+      ! High-energy extension (added): power-law fit of the TOPbase /
+      ! Opacity-Project smooth background for E > 70 eV, and a re-aimed
+      ! last segment that joins the bump peak (at x4) continuously to that
+      ! tail at 70 eV.  Continuous at both x4 and 70 eV by construction.
+      ptail = -2.9964                  ! TOPbase tail slope  (E > 70 eV)
+      ctail =  5.4623                  ! TOPbase tail intercept (Mb, E in eV)
+      tailJ =  ptail*xJ + ctail        ! tail value at 70 eV
+      a3n   =  (tailJ - y4)/(xJ - x4)  ! re-aimed last-seg slope (~ -2.658)
+      c3n   =  y4 - a3n*x4             ! enforce continuity at x4
+
       ! Log of current energy
       logE = log10(E)
 
-      if (logE .lt. x1 .or. logE .gt. x5) then
+      if (logE .lt. x1) then          ! below threshold only (tail extends up)
          sigma_HeI23S = 0.0
          return
       endif
-     
+
       ! Value of log10 of cross section from the fit
       if (logE .le. x2) logsigma = a1*logE + c1
       if (logE .gt. x2 .and. logE .le. x3) logsigma = a2*logE + c2
       if (logE .gt. x3 .and. logE .lt. x4) logsigma = m*(logE - x3) + y3
-      if (logE .ge. x4) logsigma = a3*logE + c3
+      !--- Original (pre-modification) high-E branch, kept for reference: ---
+      !   x5 = log10(hp_eV*c_light/(209.490*1e-8))*1.0001  ! = log10(59.2 eV)
+      !   if (logE .lt. x1 .or. logE .gt. x5) -> sigma = 0  ! hard 59 eV cutoff
+      !   if (logE .ge. x4) logsigma = a3*logE + c3         ! last seg slope -3.039
+      !--- Modified: re-aimed last segment + TOPbase tail (no 59 eV cutoff): ---
+      if (logE .ge. x4 .and. logE .le. xJ) logsigma = a3n*logE + c3n
+      if (logE .gt. xJ)                    logsigma = ptail*logE + ctail
       
       ! Return value
       sigma_HeI23S = 10.0**logsigma
