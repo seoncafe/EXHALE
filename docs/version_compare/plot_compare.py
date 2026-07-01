@@ -19,7 +19,8 @@ planets = {
     'HD 209458b': dict(v1='v1_nodiff', v2='v2_diff', HeH=0.0833333, rmax=5.0,
                        metals=['C', 'N', 'O'], tag='hd209'),
     'WASP-121b':  dict(v1='wasp_v1_nodiff', v2='wasp_v2_diff', HeH=0.0833333,
-                       rmax=1.6, metals=['O', 'Mg', 'Fe'], tag='wasp'),
+                       rmax=1.6, metals=['O', 'Mg', 'Fe'], tag='wasp',
+                       lxlim=(10827.5, 10832.5)),
 }
 
 def load(tag):
@@ -84,7 +85,8 @@ for pname, p in planets.items():
         ax2.plot(d['lam'], dep, c, ls=ls, label=lab + '  (peak %.1f%%)' % dep.max())
     ax2.axvline(10830.3, color='gray', lw=0.7, ls=':')
     ax2.set(xlabel=r'wavelength [$\AA$]', ylabel='absorption 1 - T [%]',
-            title='%s: He I 10830 transit line' % pname, xlim=(10827, 10834))
+            title='%s: He I 10830 transit line' % pname,
+            xlim=p.get('lxlim', (10827, 10834)))
     ax2.legend(fontsize=9)
     fig2.tight_layout()
     fig2.savefig(here + 'fig_%s_He10830.pdf' % p['tag'])

@@ -118,5 +118,6 @@ not strongly separated in the line-forming region.
 ---
 
 *Regenerate:* re-run the cases in `docs/version_compare/{v1_nodiff,v2_diff,wasp_v1_nodiff,
-wasp_v2_diff}/`, run `TPM.py` (TPM_PATH / TPM_SAVE_PREFIX) in each, then
-`python3 docs/version_compare/plot_compare.py`.
+wasp_v2_diff}/`, run `TPM.py` (TPM_PATH / TPM_SAVE_PREFIX) in each — for the WASP-121b runs
+add `TPM_HE_LMIN=10827.5 TPM_HE_LMAX=10832.5 TPM_HE_N=335` (the broad line overflows the
+default 10828.2–10831.2 Å window) — then `python3 docs/version_compare/plot_compare.py`.
