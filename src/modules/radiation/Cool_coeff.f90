@@ -714,8 +714,30 @@
    real*8, dimension(1-Ng:N+Ng), intent(out) :: coeff_rec_HeII_23S
 
    coeff_rec_HeII_23S = 2.10e-13*(T/1.0e4)**(-0.778)
-   
+
    end subroutine rec_HeII_23S
+
+   !--------------!
+
+   ! Temperature-dependent Penning ionization rate coefficient for
+   ! He(2^3S) + H -> He(1^1S) + H^+ + e^-.
+   ! Taylor et al. (2025), ApJ 989:68, Table 2 ("This Work"): a two-branch
+   ! power law fitted to the Maxwell-Boltzmann-averaged cross sections of
+   ! Morgner & Niehaus (1979) and Cohen & Lane (1971).  Replaces the older
+   ! temperature-independent 5e-10 cm^3 s^-1 (Roberge & Dalgarno 1982 sum of
+   ! Penning + associative ionization, as used by Oklopcic & Hirata 2018 and
+   ! Lampon et al. 2020).  Units: cm^3 s^-1; T in K.
+   subroutine penning_HeI_23S(T,coeff_penning_HeI_23S)
+   real*8, dimension(1-Ng:N+Ng), intent(in) :: T
+   real*8, dimension(1-Ng:N+Ng), intent(out) :: coeff_penning_HeI_23S
+
+   where (T .le. 4.0e3)
+      coeff_penning_HeI_23S = 1.9e-9*(3.0e2/T)**0.07
+   elsewhere
+      coeff_penning_HeI_23S = 9.1e-9*(3.0e2/T)**0.50
+   end where
+
+   end subroutine penning_HeI_23S
 
    !--------------!
    

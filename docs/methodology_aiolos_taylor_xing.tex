@@ -1,0 +1,324 @@
+\documentclass[11pt]{article}
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath,amssymb}
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage{longtable}
+\usepackage{xcolor}
+\usepackage[colorlinks=true,linkcolor=blue,urlcolor=blue]{hyperref}
+\usepackage{enumitem}
+
+\newcommand{\Rp}{R_{\rm p}}
+\newcommand{\Mdot}{\dot{M}}
+\newcommand{\EXHALE}{\textsc{Exhale}}
+\newcommand{\AIOLOS}{\textsc{Aiolos}}
+
+\title{Methodology Comparison: \AIOLOS, Taylor et al. (2025, 2026),\\
+and Xing et al. (2023), and Their Adoption Potential for \EXHALE}
+\author{}
+\date{\today}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+This note compares the methodology of three independent modeling efforts for XUV-driven
+atmospheric escape from close-in exoplanets, and assesses which elements could be adopted
+into \EXHALE\ (our extended ATES fork). The efforts are the general-purpose 1-D
+radiation-hydrodynamics code \AIOLOS\ (Schulik \& Booth 2023); the dedicated
+thermosphere--ionosphere escape model of Taylor et al.\ (2025, 2026), built on the Koskinen
+et al.\ code; and the multi-fluid PLUTO-based model of Xing et al.\ (2023). \EXHALE's own
+methodology is summarized so the adoption analysis has a concrete baseline. The central
+finding is that \EXHALE's largest physical gap is the absence of any radius-dependent He/H
+separation, and that a Taylor-style single-fluid diffusion term (plus a temperature-dependent
+Penning ionization rate) is the highest-value, lowest-risk upgrade.
+\end{abstract}
+
+\tableofcontents
+
+\section{Scope and the codes considered}
+
+We compare three efforts for modeling XUV-driven escape from close-in planets:
+\begin{itemize}[nosep]
+  \item \textbf{\AIOLOS} --- the general-purpose 1-D multi-species radiation-hydrodynamics
+    code of Schulik \& Booth (2023, ``SB23''), distributed on GitHub
+    (\url{github.com/Schulik/aiolos}).
+  \item \textbf{Taylor et al.\ (2025)}, \emph{ApJ} 989:68 --- ``A Multispecies Atmospheric
+    Escape Model with Excited Hydrogen and Helium: Application to HD209458b,'' built on the
+    Koskinen et al.\ (2013a,b; 2022) thermosphere--ionosphere code.
+  \item \textbf{Taylor et al.\ (2026)}, \emph{ApJ} 999:214 --- ``Helium Escape in Context:
+    Comparative Signatures of Four Close-in Exoplanets,'' a direct application/extension of
+    Taylor (2025) to HD~209458b, HD~189733b, HD~149026b, and GJ~1214b.
+  \item \textbf{Xing et al.\ (2023)}, \emph{ApJ} 953:166 --- ``The Mass Fractionation of
+    Helium in the Escaping Atmosphere of HD~209458b,'' a \emph{multi-fluid} model built
+    inside PLUTO.
+\end{itemize}
+``Taylor'' denotes the shared Koskinen-based framework used in both Taylor papers unless a
+specific paper is named.
+
+\section{One-paragraph characterization of each code}
+
+\paragraph{\AIOLOS.} A \emph{general-purpose} radiation-hydrodynamics code, not a dedicated
+escape code. It solves the time-dependent Euler equations (mass, momentum, energy) for an
+arbitrary number of species --- each a \textbf{separate fluid} with its own density,
+momentum, and internal energy --- coupled by an inter-species \textbf{friction/drag} solver.
+It uses finite-volume \textbf{HLLC} fluxes with \textbf{PLM} (MC-limited) reconstruction and
+second-order TVD Runge--Kutta time-stepping, on Cartesian/cylindrical/\textbf{spherical}
+log-spaced grids. Radiation is treated with \textbf{flux-limited diffusion (FLD)} over
+arbitrary in/out spectral bands, solved implicitly via a block-tridiagonal system; chemistry
+ranges from a fast C2Ray ionization scheme to a full implicit multi-reaction network. Escape
+is one of many problems it can run.
+
+\paragraph{Taylor (2025/2026).} A \emph{dedicated} 1-D spherical thermosphere--ionosphere +
+hydrodynamic-escape model (Koskinen et al.\ 2013/2022), integrated to steady state, with a
+\textbf{single bulk momentum equation} but \textbf{multi-species molecular + eddy diffusion}
+that redistributes species (so He and H can separate diffusively). Its distinguishing
+strengths are physical completeness of the \emph{microphysics}: a full He($2^3$S) and
+H($n{=}2$) non-LTE network solved by the KPP kinetic preprocessor, a \textbf{Ly$\alpha$
+Monte Carlo} radiative-transfer model (Huang et al.\ 2017) iterated with the hydro solution
+for H$\alpha$, a new high-resolution He($2^3$S) photoionization cross section (B-spline
+K-matrix), temperature-dependent Penning ionization, and self-consistent coupling to a
+photochemical lower/middle atmosphere at the $\mu$bar level.
+
+\paragraph{Xing (2023).} A \emph{dedicated} 1-D spherical escape model whose distinguishing
+feature is that it is genuinely \textbf{multi-fluid}: H, H$^+$, He, He$^+$, and e$^-$ each
+carry their \textbf{own velocity}, coupled by resonant/non-resonant collisional drag. This
+is the only one of the three that can capture \textbf{He/H mass fractionation} (heavy He
+under-dragged by escaping H) self-consistently in the dynamics rather than through a
+diffusion coefficient. It is built on PLUTO (HLL Riemann solver, 3rd-order TVD RK) with a
+novel Riemann split to carry the electron/electric-field pressure term. The He($2^3$S)
+10830~\AA\ line is post-processed, not solved in the hydro loop.
+
+\paragraph{\EXHALE\ (baseline for comparison).} A 1-D spherical \textbf{single-fluid}
+steady-state escape code (ATES heritage), with a two-stage PLM$\rightarrow$WENO3
+reconstruction and an approximate Riemann solver, integrated to steady state on a mass-flux
+($\rho v r^2$) convergence criterion. Ionization of H, He, and trace metals (C/N/O) is solved
+as one coupled nonlinear system (analytic-Jacobian Newton with a MINPACK \texttt{hybrd1}
+fallback). It already includes a He($2^3$S) metastable network, an H($n{=}2$)/Balmer non-LTE
+population (Christie et al.\ 2013), a Ly$\alpha$ radiative-transfer suppression via a Neufeld
+escape-probability treatment, Badnell RR+DR recombination, Voronov collisional ionization,
+Kingdon \& Ferland charge exchange, CHIANTI metal-line cooling (Mg/Ca/Na/Fe\,II, C/N/O), a
+Roche/tidal potential (RLOF), and a transmission-spectrum post-processor (\texttt{TPM.py}).
+
+\section{Side-by-side methodology table}
+
+\renewcommand{\arraystretch}{1.25}
+\footnotesize
+\begin{longtable}{p{2.3cm} p{2.7cm} p{2.9cm} p{2.7cm} p{2.9cm}}
+\toprule
+\textbf{Axis} & \textbf{\AIOLOS\ (SB23)} & \textbf{Taylor 25/26} & \textbf{Xing 23} & \textbf{\EXHALE\ (current)} \\
+\midrule
+\endfirsthead
+\toprule
+\textbf{Axis} & \textbf{\AIOLOS} & \textbf{Taylor 25/26} & \textbf{Xing 23} & \textbf{\EXHALE} \\
+\midrule
+\endhead
+Purpose & General multi-species RHD & Dedicated escape + line diagnostics & Dedicated escape, He/H fractionation & Dedicated escape + line diagnostics \\
+Dimensionality & 1-D (sph/cyl/cart) & 1-D spherical & 1-D spherical & 1-D spherical \\
+Time & Time-dep.\ $\to$ steady & Time-dep.\ $\to$ steady & Time-dep.\ $\to$ steady & Steady-state (relaxation) \\
+Fluid model & \textbf{Multi-fluid} + friction & \textbf{Single bulk} + diffusion & \textbf{Multi-fluid} & \textbf{Single fluid} \\
+He/H separation & Via friction/drag & Via molecular+eddy diffusion & Via multi-fluid dynamics & \textbf{None} (fixed He/H) \\
+Reconstruction & PLM + MC limiter & finite-difference & PLM (PLUTO) & \textbf{PLM$\to$WENO3} \\
+Riemann solver & HLLC & --- & HLL (+ e$^-$-pressure split) & Approximate (ATES/PWN) \\
+Time integrator & 2nd-order TVD RK & forward to steady & 3rd-order TVD RK & RK relaxation \\
+Radiation & \textbf{FLD}, multi-band, implicit & XUV atten.\ + Ly$\alpha$ MC & Radial XUV atten.\ (53 bins) & Radial XUV atten. \\
+Heating eff. & From C2Ray split & Photoelectron 20--40\% & Freq.-avg.\ $\eta=0.1$--0.5 & Tuned efficiency \\
+Ioniz.\ solve & C2Ray or implicit network & KPP preprocessor & Semi-implicit source & \textbf{Newton / MINPACK} \\
+Metals & Via general chem.\ & Optional (solar) & None & \textbf{C/N/O ioniz.+cooling} \\
+He($2^3$S) 10830 & Not a focus & In-loop non-LTE & Post-processed & In-loop + \texttt{TPM.py} \\
+H($n{=}2$)/H$\alpha$ & Not a focus & Non-LTE + Ly$\alpha$ MC & Post-processed & Non-LTE + Ly$\alpha$ esc.\ prob. \\
+Cooling & Recomb/line/ff, dust, H$_3^+$ & Recomb + H\,I line + H$_3^+$ & \textbf{Ly$\alpha$ only} & Ly$\alpha$+recomb+ff+CHIANTI \\
+Tidal/Roche & \texttt{USE\_TIDES} & Optional / off (2026) & Stellar tidal term & Roche (RLOF) \\
+Lower boundary & Configurable & \textbf{$\mu$bar, coupled} & 1\,$\Rp$, $T{=}1500$\,K & $\sim\mu$bar, fixed $T$,$n$ \\
+Transmission & --- & Ray-traced Voigt & Post-processed & \texttt{TPM.py} (multi-line) \\
+\bottomrule
+\end{longtable}
+\normalsize
+
+\section{What they have in common}
+
+\begin{enumerate}[nosep]
+  \item \textbf{1-D spherical, XUV-driven escape} with photoionization heating balanced by
+    Ly$\alpha$/recombination cooling and adiabatic expansion is the shared physical backbone.
+  \item \textbf{Steady-state target.} All reach a stationary transonic wind --- the three
+    external codes by evolving the time-dependent equations forward, \EXHALE\ by direct
+    relaxation. The physical end state is the same.
+  \item \textbf{Tunable heating efficiency.} None derives the photoelectron heating
+    efficiency from first principles; all treat it as the primary free knob, calibrated
+    against He 10830 / mass-loss constraints.
+  \item \textbf{Same core H/He atomic physics.} Voronov collisional ionization, radiative +
+    dielectronic recombination, and H$\leftrightarrow$He charge exchange appear in Xing,
+    Taylor, and \EXHALE\ with near-identical rate coefficients (differing mainly in source
+    table: Storey \& Hummer vs Badnell vs Verner).
+  \item \textbf{He($2^3$S) as the key observable.} Taylor, Xing, and \EXHALE\ all target the
+    10830~\AA\ line via a non-LTE $2^3$S population (recombination, collisions, radiative
+    decay, Penning ionization, photoionization). \AIOLOS\ does not.
+  \item \textbf{Finite-volume, TVD-limited shock-capturing hydrodynamics} underlies \AIOLOS,
+    Xing (PLUTO), and \EXHALE\ (WENO3). Taylor's finite-difference thermosphere solver is the
+    outlier.
+\end{enumerate}
+
+\section{Where they genuinely differ}
+
+\subsection{Fluid model --- the single most important axis}
+\begin{itemize}[nosep]
+  \item \textbf{Xing is multi-fluid} (each species its own velocity), which reproduces
+    \textbf{He/H mass fractionation}: because He is $4\times$ heavier, it is under-dragged by
+    the H wind, so the \emph{escaping} He/H ($0.039$) is $\sim$half the bulk abundance
+    ($0.086$) --- explaining the weak 10830 without a subsolar He abundance.
+  \item \textbf{Taylor is single bulk momentum but adds molecular + eddy diffusion}, which
+    yields the \emph{same} qualitative diffusive He/H separation (8\%$\to$2.5\% with
+    altitude) at far lower cost; Taylor argues it reproduces Xing's and Schulik \& Owen
+    (2025)'s multi-fluid results.
+  \item \textbf{\AIOLOS\ is multi-fluid but escape-agnostic}: its friction solver would in
+    principle yield fractionation, but the code is not tuned for the transonic-wind problem.
+  \item \textbf{\EXHALE\ is strictly single-fluid} with a \emph{fixed} He/H at all radii ---
+    it \textbf{cannot} represent fractionation or diffusive separation. This is the largest
+    physical gap relative to the modern He 10830 literature.
+\end{itemize}
+
+\subsection{Radiation transport}
+\AIOLOS\ is the only one with a full \textbf{FLD} thermal-radiation solver (necessary for
+optically-thick interiors/dust, overkill for the escaping thermosphere). Taylor is the only
+one doing \textbf{Ly$\alpha$ Monte Carlo} RT, iterated with the hydro solution, for
+H($n{=}2$)/H$\alpha$. Xing and \EXHALE\ use simple radial XUV attenuation; \EXHALE\
+additionally treats Ly$\alpha$ trapping through a Neufeld escape-probability factor --- a
+middle ground between Xing's neglect and Taylor's full Monte Carlo.
+
+\subsection{Ionization/chemistry solver}
+Taylor uses the KPP kinetic preprocessor (large stiff ODE network); \AIOLOS\ uses C2Ray or a
+full implicit reaction matrix; Xing folds semi-implicit source terms into the PLUTO RK
+stages; \EXHALE\ solves a single coupled \emph{nonlinear algebraic} ionization system (Newton
++ analytic Jacobian, MINPACK fallback), appropriate for a steady-state code and already
+including trace metals in the coupled system.
+
+\subsection{Metals and cooling}
+\EXHALE\ has the richest \emph{closed-form} metal-cooling treatment (CHIANTI fits for
+Mg/Ca/Na/Fe\,II and C/N/O) and solves C/N/O ionization in the coupled system. Taylor can
+include solar-abundance metals but treats the structure as H/He-dominated (metals mainly
+lower the required heating efficiency). Xing has \textbf{no metals} and \textbf{only
+Ly$\alpha$ cooling}. \AIOLOS\ carries cooling through general chemistry (Black 1981, H$_3^+$)
+but not specialized to the metal-line escape problem.
+
+\subsection{Line diagnostics}
+Taylor self-consistently computes both 10830 and H$\alpha$ in-loop with the most complete
+non-LTE microphysics (temperature-dependent Penning ionization, B-spline $2^3$S cross
+section, proton de-excitation, photoelectron impact excitation). Xing post-processes 10830
+only. \EXHALE\ builds the $2^3$S and H($n{=}2$) populations in-run and produces the full
+transmission spectrum (10830, Ly$\alpha$, H$\alpha$, H$\beta$, metal doublets) in
+\texttt{TPM.py}. \AIOLOS\ does not target these lines.
+
+\subsection{Lower boundary}
+Taylor couples to a photochemical lower/middle atmosphere at $\sim$1~$\mu$bar (the most
+physically motivated boundary). Xing and \EXHALE\ use a fixed-density, fixed-temperature base
+near 1--2~$\mu$bar. \AIOLOS\ leaves the boundary fully configurable.
+
+\section{Adoption assessment for \EXHALE}
+
+\EXHALE\ is already a dedicated, line-diagnostic-capable escape code, so it is closest to
+\textbf{Taylor} and \textbf{Xing} and furthest from \textbf{\AIOLOS} (whose value is a
+general RHD architecture \EXHALE\ does not need). Each candidate element is rated by physics
+payoff and implementation cost, given \EXHALE's single-fluid steady-state architecture.
+
+\subsection{High payoff}
+
+\paragraph{(A) He/H diffusive separation / mass fractionation --- top priority.}
+This is \EXHALE's biggest physical gap and directly controls the He 10830 depth. Two routes:
+\begin{itemize}[nosep]
+  \item \textbf{Taylor route (recommended):} add a \textbf{molecular + eddy diffusion} term
+    that lets He/H vary with radius while keeping the single bulk-momentum solve --- a
+    bolt-on to \EXHALE's continuity equations, moderate cost; Taylor shows it reproduces the
+    multi-fluid answer, and it supplies the altitude-dependent He/H that \texttt{TPM.py}
+    needs.
+  \item \textbf{Xing route (high cost):} convert \EXHALE\ to genuinely multi-fluid
+    (per-species velocities + collisional drag + electron-pressure Riemann split) ---
+    physically purest, but effectively a rewrite of the hydro core, hard to reconcile with
+    \EXHALE's coupled-nonlinear ionization solve. \textbf{Not recommended} unless
+    fractionation in the transonic/decoupled regime becomes a primary goal.
+\end{itemize}
+
+\paragraph{(B) Temperature-dependent Penning ionization rate (Taylor 2025).}
+Taylor replaces the constant He($2^3$S)+H Penning rate ($\sim5\times10^{-10}$~cm$^3$\,s$^{-1}$)
+with a Maxwell--Boltzmann-averaged, temperature-dependent fit. Penning ionization is often
+the \emph{dominant} $2^3$S loss near the base, so this directly affects the 10830 prediction.
+\textbf{Low cost, high value} --- a drop-in replacement; worth checking whether \EXHALE\
+currently uses the constant rate.
+
+\paragraph{(C) High-resolution He($2^3$S) photoionization cross section (Taylor 2025).}
+Taylor's B-spline K-matrix cross section resolves sharp EUV autoionization resonances that
+overlap stellar coronal lines. \EXHALE\ has \emph{already} moved this way (the recent
+TOPbase-based extension + two-VFKY96 + bridge in \texttt{cross\_sec.f90}); Taylor's
+machine-readable cross section is a natural cross-check / possible upgrade for the resonance
+region. \textbf{Low cost} (data swap), moderate value (resonance overlap is star-dependent).
+
+\subsection{Medium payoff}
+
+\paragraph{(D) Whole-atmosphere lower-boundary coupling (Taylor).}
+Placing the base at $\sim$1~$\mu$bar with composition/temperature from a photochemical
+lower/middle atmosphere removes an ad hoc boundary. \textbf{Moderate-to-high cost}; valuable
+mainly for sub-Neptune / molecular regimes (GJ~1214b), less for the hot Jupiters \EXHALE\
+currently targets.
+
+\paragraph{(E) Molecular chemistry (H$_2$, H$_2^+$, H$_3^+$, HeH$^+$) and H$_3^+$ cooling
+(Taylor 2026).}
+Needed only if \EXHALE\ extends toward cooler/higher-$\mu$ sub-Neptunes, where H$_2$ survives
+into the wind and H$_3^+$ becomes a significant coolant. \textbf{Moderate cost}; defer unless
+the science scope broadens.
+
+\paragraph{(F) Ly$\alpha$ Monte Carlo vs \EXHALE's Neufeld escape probability.}
+Taylor's iterated Monte Carlo is the gold standard for the H$\alpha$-driving Ly$\alpha$
+field, but \EXHALE\ already approximates trapping with a Neufeld escape probability (chosen
+because WASP-121b's $\tau_0\approx5\times10^7$ makes brute-force Monte Carlo infeasible). Full
+Monte Carlo is \textbf{high cost for incremental gain}; keep the escape-probability approach,
+using Taylor's setup as a validation benchmark.
+
+\subsection{Low payoff for \EXHALE}
+
+\paragraph{(G) \AIOLOS's FLD radiation, HLLC solver, general chemistry architecture.}
+Excellent for a \emph{general} RHD code but solving problems \EXHALE\ does not have: FLD
+matters for optically-thick interiors/dust, not the optically-thin thermosphere; HLLC vs
+\EXHALE's approximate Riemann solver is not limiting for the smooth transonic wind; and
+\EXHALE's coupled-nonlinear ionization solve already suits steady state. \textbf{Not
+recommended} as targeted adoptions. \AIOLOS\ is best used as an \textbf{independent
+cross-check} (its friction solver is an alternative reference for fractionation physics).
+
+\paragraph{(H) Xing's electron-pressure Riemann split.}
+Elegant, but relevant only if \EXHALE\ goes multi-fluid (route A/Xing), which is not
+recommended. \textbf{Skip} unless multi-fluid is pursued.
+
+\subsection{Recommended adoption order}
+\begin{enumerate}[nosep]
+  \item \textbf{Temperature-dependent Penning ionization rate} (B) --- cheapest, directly
+    improves 10830.
+  \item \textbf{He/H diffusive separation via a diffusion term} (A, Taylor route) --- largest
+    physics gain for \EXHALE's core observable; keeps the single-fluid architecture.
+  \item \textbf{Cross-check / optionally upgrade the He($2^3$S) cross section} against
+    Taylor's B-spline data (C) --- \EXHALE\ is already most of the way there.
+  \item Consider \textbf{whole-atmosphere boundary coupling} (D) and \textbf{molecular
+    chemistry} (E) \emph{only if} the scope extends to sub-Neptunes.
+  \item Treat \textbf{\AIOLOS\ and Xing multi-fluid} as \textbf{validation references}, not
+    component donors.
+\end{enumerate}
+
+\section{Summary}
+\begin{itemize}[nosep]
+  \item \textbf{\AIOLOS} is a general-purpose, multi-fluid RHD code with the most
+    sophisticated \emph{numerics} (HLLC, FLD, implicit chemistry) but the least
+    specialization to the He/H$\alpha$ escape-diagnostic problem. Best used as an independent
+    cross-check.
+  \item \textbf{Taylor (2025/2026)} is the closest match to \EXHALE's goals and the richest
+    source of \emph{microphysics} upgrades: temperature-dependent Penning ionization, a
+    high-resolution He($2^3$S) cross section, single-fluid diffusive He/H separation, non-LTE
+    H($n{=}2$)/H$\alpha$, and whole-atmosphere coupling.
+  \item \textbf{Xing (2023)} provides the physically purest treatment of He/H mass
+    fractionation via genuine multi-fluid dynamics, but at an architectural cost \EXHALE\
+    should avoid; Taylor's diffusion approximation captures most of the same effect far more
+    cheaply.
+  \item \textbf{\EXHALE's single largest gap} is the absence of any radius-dependent He/H
+    separation. Adopting a \textbf{Taylor-style diffusion term} (plus the
+    \textbf{temperature-dependent Penning rate}) is the highest-value, lowest-risk path to
+    bringing \EXHALE's He 10830 predictions in line with the current state of the art,
+    without abandoning its single-fluid, steady-state, metal-aware design.
+\end{itemize}
+
+\end{document}

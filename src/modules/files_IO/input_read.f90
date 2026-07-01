@@ -352,6 +352,26 @@
 				! (default is Verner+1996). "ATES_photoionization_rate: True"
 				str = get_word(line, 2)
 				if (str .eq. 'True' .or. str .eq. 'true') ates_photoion_rate = .true.
+			else if (index(line,'He_Kzz') .gt. 0) then
+				! Eddy diffusion coefficient [cm^2/s] for He/H separation.
+				! "He_Kzz: 1.0e9"
+				str = get_word(line, 2);  read(str,*) he_kzz
+			else if (index(line,'He_alphaT') .gt. 0) then
+				! Thermal-diffusion factor alpha_T for He (P2c). "He_alphaT: 0.0"
+				str = get_word(line, 2);  read(str,*) he_alphaT
+			else if (index(line,'He_ambipolar') .gt. 0) then
+				! Ambipolar-corrected settling mass (P2b). "He_ambipolar: False"
+				str = get_word(line, 2)
+				if (str .eq. 'False' .or. str .eq. 'false') he_ambipolar = .false.
+			else if (index(line,'He_metal_diffusion') .gt. 0) then
+				! Diffuse trace metals too (P2d). "He_metal_diffusion: True"
+				str = get_word(line, 2)
+				if (str .eq. 'True' .or. str .eq. 'true') he_metal_diffusion = .true.
+			else if (index(line,'He_diffusion') .gt. 0) then
+				! Phase-1 He/H diffusive separation (default off).
+				! "He_diffusion: True"
+				str = get_word(line, 2)
+				if (str .eq. 'True' .or. str .eq. 'true') he_diffusion = .true.
 			else if (index(line,'Stall') .gt. 0) then
 				! Stall-detector override: "Stall [tol,N]: <rel_tol> <N_steps>"
 				! (smaller tol and/or larger N = harder to declare a plateau)

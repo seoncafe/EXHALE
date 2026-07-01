@@ -34,7 +34,7 @@
 
 \title{EXHALE: User Manual}
 \author{Kwang-Il Seon}
-\date{Last updated: 2026-06-17}
+\date{Last updated: 2026-07-02}
 \maketitle
 
 \begin{quote}\small\itshape
@@ -625,6 +625,27 @@ defaults restore the standard behavior).}\label{tab:inp-opt}\\
   \texttt{Resid tol} (default $10^{-3}$), then the standard final outputs and
   post-processing. Adopts \texttt{Valve eps:} $10^{-4}$ automatically if unset.
   See \S\ref{sec:newton}. \\
+\texttt{ATES\_photoionization\_rate:} & \texttt{True} & Revert the He\,I
+  ($1^1$S) photoionization cross section to the legacy ATES two-term fit
+  (default: Verner+1996). Does \emph{not} affect the He\,$2^3$S Penning rate,
+  which is always the temperature-dependent form (\S\ref{sec:data}). \\
+\texttt{He\_diffusion:} & logical (def.\ \texttt{False}) & Enable diffusive
+  separation of helium: transport the He element ratio $n_{\rm He}/n_{\rm H}$
+  with advection $+$ molecular-diffusion settling, so He/H falls with altitude.
+  Off $=$ He/H frozen at the input \texttt{He/H number ratio}
+  (\S\ref{sec:hediff}). \\
+\texttt{He\_Kzz:} & real (cm$^2$s$^{-1}$, def.\ $10^{9}$) & Eddy-diffusion
+  coefficient used with \texttt{He\_diffusion}: mixes He/H toward uniform below
+  the homopause (Taylor+2025 $K_{zz}$). \\
+\texttt{He\_ambipolar:} & logical (def.\ \texttt{True}) & Ambipolar-corrected
+  settling mass --- in the ionized wind the polarization field lifts He ions,
+  reducing settling ($\Delta m_{\rm eff}=3-\tfrac12(\bar Z_{\rm He}-\bar Z_{\rm
+  H})$); \texttt{False} $=$ neutral $\Delta m=3$. \\
+\texttt{He\_alphaT:} & real (def.\ 0) & Thermal-diffusion factor $\alpha_T$
+  added to the settling drift ($\alpha_T\,\partial\ln T/\partial r$); 0 $=$ off. \\
+\texttt{He\_metal\_diffusion:} & logical (def.\ \texttt{False}) & Also diffuse
+  each trace metal independently against H (own mass and binary $D$); heavier
+  elements settle more. Off $=$ metals frozen to H (\S\ref{sec:hediff}). \\
 \end{longtable}
 
 \subsection{\texttt{metals.inp} --- trace-metal abundances}
@@ -795,6 +816,38 @@ N\,I  & 14.53 & 853 & above the limit (already in the EUV band) \\
 \bottomrule
 \end{tabular}
 \end{table}
+
+\subsection{Diffusive separation of helium and metals}\label{sec:hediff}
+By default EXHALE is single-fluid: the composition is re-solved each step by
+\emph{local} ionization equilibrium, which conserves the element ratios, so
+$n_{\rm He}/n_{\rm H}$ (and each metal/H) stays frozen at the input value at
+every radius. Setting \texttt{He\_diffusion: True} adds a genuine transport
+equation for the helium element ratio $f=n_{\rm He}/n_{\rm H}$ --- advection at
+the bulk velocity plus a molecular-diffusion \emph{settling} drift of He
+relative to H,
+\[
+  \Phi_{\rm He} = -D\,n_{\rm H}\!\left(\frac{\partial f}{\partial r} + f\,G\right),
+  \quad G=\frac{\Delta m\,g}{k T},
+  \quad D=\frac{1.52\times10^{18}\,(1/m_{\rm H}+1/m_{\rm He})^{1/2}\,T^{1/2}}{n},
+\]
+(Banks \& Kockarts 1973), plus eddy diffusion $K_{zz}$ (\texttt{He\_Kzz}) on the
+gradient term. Helium then settles out relative to the escaping hydrogen and
+He/H \emph{declines with altitude}, as in Taylor et al.\ (2025) and Xing et al.\
+(2023). The equation is solved conservatively (implicit, tridiagonal) and the
+new split is written back into the composition conserving mass. Physics
+refinements: \texttt{He\_ambipolar} (default on) reduces the settling in the
+ionized wind via the polarization field; \texttt{He\_alphaT} adds thermal
+diffusion; \texttt{He\_metal\_diffusion} extends the same operator to each trace
+metal (heavier elements settle more, so they deplete faster than He).
+
+The strength of the separation scales as (settling speed)/(wind speed): it is
+suppressed by fast escape and is stronger for heavier species. On a gentle
+escaper (HD\,209458b) helium itself separates and the He\,10830 line weakens; on
+a furious escaper (WASP-121b) helium is dragged out almost unfractionated while
+the heavy metals still settle strongly. Full physics, derivation, and a
+two-planet before/after comparison: \texttt{docs/design\_hehe\_diffusion.md} and
+\texttt{docs/version\_compare.\{md,tex,pdf\}}. The flags are \textbf{default
+off}, so standard runs are byte-identical to before.
 
 % ===================================================================== %
 \section{Output files}\label{sec:outputs}
@@ -1162,8 +1215,10 @@ the \texttt{Domain mode}/\texttt{Outer radius} lines (the default truncates at
 L1); the \emph{He\,10830} line by setting \texttt{Include He23S? True}; the
 \emph{H$\alpha$/Balmer} physics by adding \texttt{Stellar Teff}/\texttt{Stellar
 radius}; and the \emph{transonic IC} by adding \texttt{Transonic IC: True} for a
-near-unbound (deep-RLOF) base. The comparison studies below quantify the effect
-of the first two.
+near-unbound (deep-RLOF) base; and \emph{diffusive He/H separation} by adding
+\texttt{He\_diffusion: True} (extend it to the metals with
+\texttt{He\_metal\_diffusion: True}; \S\ref{sec:hediff}). The comparison studies
+below quantify the effect of the first two.
 
 \subsection{Ready-made example configurations (\texttt{examples/})}
 \label{sec:exinputs}
@@ -1335,8 +1390,8 @@ Helium & He/H ratio & input parameter (\texttt{He/H number ratio}) \\
 \midrule
 \multicolumn{3}{@{}l}{\textbf{Photoionization cross sections}}\\[2pt]
 Bound--free $\sigma(E)$ & H\,I & hydrogenic (Kramers) analytic form (orig.\ ATES) \\
- & He\,I & analytic fit (orig.\ ATES) \\
- & He\,I\,$2\,^3$S (metastable) & Norcross (1971) fit \\
+ & He\,I & Verner, Ferland, Korista \& Yakovlev (1996) default; legacy ATES 2-term fit via \texttt{ATES\_photoionization\_rate} \\
+ & He\,I\,$2\,^3$S (metastable) & two VFKY96 (Verner) wings $+$ power-law bridge, fitted to TOPbase/Opacity-Project (extends the orig.\ Norcross 1971 broken power law past 60\,eV) \\
  & C, N, O, Mg, Si, Na, Fe (+ ions) & Verner, Ferland, Korista \& Yakovlev (1996), single-shell fits \\
  & K\,I & Verner \& Yakovlev (1995) \\
 Opacity model (runtime) & all (via \texttt{opacity.inp}) & A=analytic above; P=pressure-broadened (Robinson \& Catling); T=tabulated files \\
@@ -1348,6 +1403,7 @@ Rate $C(T)$ & H\,I, He\,I, He\,II & analytic fits (orig.\ ATES) \\
 \multicolumn{3}{@{}l}{\textbf{Recombination (radiative RR + dielectronic DR)}}\\[2pt]
 Case~B (RR) & H\,II, He\,II, He\,III & Hui \& Gnedin (1997) fits (DR negligible) \\
 Metastable & He\,II\,$\to2\,^3$S, $1\,^1$S & power-law fits (orig.\ ATES) \\
+Penning ionization & He\,$2\,^3$S\,$+$\,H & Taylor et al.\ (2025) temperature-dependent fit (replaces the const.\ $5\times10^{-10}$; always on) \\
 RR + DR & C, N, O, Mg, Si, Na, K, S, Ca\,II (+ stages) & Badnell (2006, ApJS 167, 334) RR + Badnell adf48 DR (TAMOC clist\_K) \\
 RR only & Ca\,I (Ca\,II$+e$) & Shull \& Van Steenberg (1982); no DR \\
 RR + DR & Fe\,I, Fe\,II & Huang et al.\ (2023) analytic fit (validation; Badnell switch deferred) \\

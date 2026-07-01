@@ -9,6 +9,7 @@
       use energy_semi_implicit
       use utils
       use composition, only: get_species_densities, comp_T_from_p, comp_p_from_T
+      use species_diffusion, only: he_diffusion_step
       use steady_residual_mod, only: assemble_residual, residual_norms, residual_norms_vol
       use steady_newton, only: neq_newton, pack_U, unpack_U, newton_residual, &
                                eval_residual, frozen_residual,              &
@@ -478,6 +479,12 @@
 
             ! Temperature profile
             call comp_T_from_p(p,n_tot,ne,T)
+
+            ! Phase-1 He/H diffusive separation: advect + diffuse the He element
+            ! ratio (updates the He/H split in f_sp; ionization equilibrium below
+            ! then re-solves the stages, conserving the new element amounts).
+            ! No-op unless he_diffusion is set (byte-identical when off).
+            if (he_diffusion) call he_diffusion_step(rho,v,T,f_sp,dt_loc)
 
             ! Phase 3a: refresh the lagged H(n=2) Balmer source + heating from
             ! the current state before the ionization/energy solve.

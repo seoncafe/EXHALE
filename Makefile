@@ -61,6 +61,7 @@ SRC := \
   src/modules/functions/UW_conversions.f90 \
   src/modules/functions/utilities.f90 \
   src/modules/functions/composition.f90 \
+  src/modules/functions/species_diffusion.f90 \
   src/modules/time_step/steady_residual.f90 \
   src/modules/time_step/steady_newton.f90 \
   src/modules/nonlinear_system_solver/dogleg.f90 \

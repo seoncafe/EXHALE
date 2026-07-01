@@ -52,6 +52,28 @@
       !  .true. = legacy ATES two-term fit).  (No recombination switch: the
       !  Benjamin+1999 He recombination already matches modern data.)
       logical :: ates_photoion_rate = .false.
+      ! Phase-1 He/H diffusive separation (docs/design_hehe_diffusion.md):
+      !  .false. (default) = He/H frozen at the input HeH everywhere (legacy);
+      !  .true. = evolve the He element ratio with advection + molecular
+      !  diffusion (He settles, He/H falls with altitude).  Metals stay frozen
+      !  to H.  Off = byte-identical to legacy.
+      logical :: he_diffusion = .false.
+      ! Eddy (turbulent) diffusion coefficient [cm^2/s] used with he_diffusion.
+      ! Mixes the He/H ratio toward uniform below the homopause (n where the
+      ! molecular D equals he_kzz), preventing runaway molecular settling from
+      ! the dense base; only the higher, tenuous layers separate.  Default
+      ! 1e9 cm^2/s ~ Taylor et al. (2025) K_zz = 1e5 m^2/s.  Set 0 for pure
+      ! molecular diffusion.  Runtime key "He_Kzz: <value>".
+      real*8  :: he_kzz = 1.0d9
+      ! P2b: ambipolar-corrected effective settling mass (ionized wind lifts
+      !  He ions, reducing settling).  Default .true.; .false. = neutral Dm=3.
+      logical :: he_ambipolar = .true.
+      ! P2c: thermal-diffusion factor alpha_T for He (settling ~ (1+alpha_T)).
+      !  Default 0 (off).  Runtime key "He_alphaT: <value>".
+      real*8  :: he_alphaT = 0.0d0
+      ! P2d: also diffuse the trace metals (each element with its own mass and
+      !  binary diffusion coefficient); default .false. = metals frozen to H.
+      logical :: he_metal_diffusion = .false.
       logical :: thereis_metals = .false. ! Include trace-metal species
                                           !  (C/N/O/Mg/Si/Ca/Na/K/S/Fe)
       ! EOS mass/electron/particle policy. .true. (default) = metals enter

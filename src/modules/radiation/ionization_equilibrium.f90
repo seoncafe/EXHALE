@@ -57,8 +57,8 @@
    ! Recombination coefficients
    real*8, dimension(1-Ng:N+Ng) ::  rchiiB,rcheiiB,rcheiiiB,rcheiTR
 
-	real*8, dimension(1-Ng:N+Ng) :: q13,q31a,q31b
-	real*8 :: A31,Q31
+	real*8, dimension(1-Ng:N+Ng) :: q13,q31a,q31b,Q31
+	real*8 :: A31
 
    ! Ionization coefficients
    real*8, dimension(1-Ng:N+Ng) ::  a_ion_HI,a_ion_HeI,a_ion_HeII
@@ -300,7 +300,7 @@
 				params(15) = q13(j)
 				params(16) = q31a(j)
 				params(17) = q31b(j)
-				params(18) = Q31
+				params(18) = Q31(j)
 			endif
 
 			! Per-element metal coefficients are handed to

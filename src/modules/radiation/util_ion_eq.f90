@@ -617,19 +617,23 @@
 	subroutine HeITR_coeffs(T_K,rcheiTR,rcheii,A31,q13,q31a,q31b,Q31)
 	
 	! Dimensional temperature
-	real*8, dimension(1-Ng:N+Ng),intent(in) ::  T_K 
-	
-	real*8, intent(out) :: A31,Q31	
+	real*8, dimension(1-Ng:N+Ng),intent(in) ::  T_K
+
+	real*8, intent(out) :: A31
 	real*8, dimension(1-Ng:N+Ng), intent(out) :: rcheiTR,rcheii,   &
-								   q13,q31a,q31b
-								   
+								   q13,q31a,q31b,Q31
+
 	call rec_HeII_23S(T_K,rcheiTR)
 	call rec_HeII_11S(T_K,rcheii)
 	call coex_HeI_1S_23S(T_K,q13)
 	call coex_HeI_23S_21S(T_K,q31a)
 	call coex_HeI_23S_21P(T_K,q31b)
 	A31 = 1.272e-4
-	Q31 = 5.00e-10
+
+	! Penning ionization He(2^3S)+H: temperature-dependent Taylor et al. (2025)
+	! rate, used unconditionally (the legacy temperature-independent 5e-10
+	! constant is no longer selectable).
+	call penning_HeI_23S(T_K,Q31)
 
    ! End of subroutine
 	end subroutine HeITR_coeffs

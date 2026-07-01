@@ -21,7 +21,7 @@
 
 \title{EXHALE: Update Log}
 \author{Kwang-Il Seon}
-\date{Last updated: 2026-06-16}
+\date{Last updated: 2026-07-02}
 \maketitle
 
 \begin{quote}\small\itshape
@@ -2966,5 +2966,336 @@ $300$: $0.0110$), continuous across the bridge ($34.70\,$eV: $0.222 \to 38: 0.50
 \paragraph{Touched files.} \texttt{src/modules/functions/cross\_sec.f90}
 (\texttt{sigma\_HeI23S}: two VFKY96 wings $+$ power-law bridge; former broken PL kept
 commented out).
+
+\section{Temperature-dependent Penning ionization of He\,2$^3$S (2026-07-01)}
+
+\paragraph{Motivation.} The metastable He($2^3$S) destruction by neutral hydrogen,
+He($2^3$S)$+$H, was carried as a \emph{temperature-independent} constant
+$Q_{31}=5\times10^{-10}\,\mathrm{cm^3\,s^{-1}}$ --- the ATES/Oklopči\'c\,\&\,Hirata (2018)
+value, itself the Roberge\,\&\,Dalgarno (1982) \emph{sum} of Penning and associative
+ionization, as also used by Lamp\'on et al.\ (2020). Taylor et al.\ (2025, ApJ 989:68)
+replaced this with a Maxwell--Boltzmann-averaged, \textbf{temperature-dependent} fit to the
+cross sections of Morgner\,\&\,Niehaus (1979) and Cohen\,\&\,Lane (1971). Because Penning
+ionization is often the \emph{dominant} $2^3$S loss near the base (where neutral H is
+abundant), this directly affects the He 10830 prediction \texttt{EXHALE} is built to compute.
+
+\paragraph{New default rate (Taylor et al.\ 2025, Table 2).} A two-branch power law
+(cm$^3$\,s$^{-1}$, $T$ in K):
+\begin{equation}
+  Q_{31}(T) =
+  \begin{cases}
+    1.9\times10^{-9}\,(300/T)^{0.07}, & T \le 4000\ \mathrm{K},\\[2pt]
+    9.1\times10^{-9}\,(300/T)^{0.50}, & T > 4000\ \mathrm{K}.
+  \end{cases}
+\end{equation}
+This is $\sim$3$\times$ the legacy constant across the relevant $2000$--$9000\,$K range.
+Note the new rate is the Penning channel only (He($2^3$S)$+$H\,$\to$\,He($1^1$S)$+$H$^+$$+$e$^-$);
+the associative-ionization channel (He($2^3$S)$+$H\,$\to$\,HeH$^+$$+$e$^-$) is not
+represented separately in \texttt{EXHALE} (no HeH$^+$), so the single $Q_{31}$ continues to carry
+the dominant $2^3$S$+$H destruction term $-n_{\rm HeITR}\,n_{\rm HI}\,Q_{31}$.
+
+\paragraph{Unconditional default.} The temperature-dependent rate is used
+\emph{unconditionally}: the legacy constant $5\times10^{-10}$ is no longer selectable.
+(The \texttt{ATES\_photoionization\_rate} flag continues to revert only the He\,I ($1^1$S)
+photoionization cross section to the legacy ATES 2-term fit; it does \emph{not} affect the
+Penning rate.)
+
+\paragraph{Implementation.} $Q_{31}$ became a per-cell array (it was a scalar). A new
+\texttt{penning\_HeI\_23S(T,coeff)} in \texttt{Cool\_coeff.f90} evaluates the piecewise fit
+over the whole grid; \texttt{HeITR\_coeffs} calls it unconditionally. The two callers
+(\texttt{ionization\_equilibrium.f90}, \texttt{post\_process\_adv.f90}) pass $Q_{31}(j)$
+per cell into \texttt{params}; the \texttt{System\_HeH\_TR*} residuals are unchanged
+(they already read $Q_{31}$ from \texttt{params}).
+
+\paragraph{Verification.} Rebuilt \texttt{EXHALE.x}; ran HD\,189733b (metals\,$+$\,He23S,
+step-capped) with the new rate and, for comparison, with the former $5\times10^{-10}$
+constant. The temperature dependence is active and physically sensible: relative to the old
+constant, He($2^3$S) is reduced near the base (ratio $\approx0.28$ at $1.0\,R_{\rm p}$,
+$0.92$ at $1.1\,R_{\rm p}$; column-integrated over $1$--$2\,R_{\rm p}$ drops to
+$0.59\times$), and the profiles converge to unity above $\sim$1.3\,$R_{\rm p}$ where H is
+ionized and Penning switches off --- the expected neutral-H-gated signature.
+
+\paragraph{Touched files.} \texttt{src/modules/radiation/Cool\_coeff.f90} (new
+\texttt{penning\_HeI\_23S}); \texttt{src/modules/radiation/util\_ion\_eq.f90}
+(\texttt{HeITR\_coeffs}: $Q_{31}$ array $+$ default/legacy branch);
+\texttt{src/modules/radiation/ionization\_equilibrium.f90} and
+\texttt{src/modules/post\_process/post\_process\_adv.f90} ($Q_{31}$ array, per-cell
+\texttt{params} assignment).
+
+\section{He/H diffusive separation --- Phase 1 (2026-07-01, experimental, default OFF)}
+
+\paragraph{Motivation.} \texttt{EXHALE} is single-fluid and re-solves composition by
+\emph{local} ionization equilibrium (conserving the element ratio), so He/H was frozen at the
+input \texttt{HeH} at all radii --- it could not represent the diffusive He/H separation of
+Taylor et al.\ (2025) (8\%$\to$2.5\%) and Xing et al.\ (2023). Top recommendation of
+\texttt{docs/methodology\_aiolos\_taylor\_xing}.
+
+\paragraph{Method.} New module \texttt{species\_diffusion.f90} transports the He element ratio
+$f=n_{\rm He}/n_{\rm H}$ with bulk advection \emph{and} a molecular-diffusion drift of He
+relative to H, $\Phi=-D\,n_{\rm H}(\partial f/\partial r + fG)$, $G=(m_{\rm He}-m_{\rm
+H})g/(kT)$, $D=1.52\times10^{18}(1/m_{\rm H}+1/m_{\rm He})^{1/2}T^{1/2}/n$ (Banks \& Kockarts
+1973), plus eddy diffusion $K_{zz}$ on the gradient term. Solved as a \textbf{fully
+conservative} implicit (backward-Euler tridiagonal) update of $n_{\rm He}$; the new split is
+written back into \texttt{f\_sp} conserving mass ($\sum_s m_s f_{{\rm sp},s}=1$, metals frozen
+to H). Gated on \texttt{He\_diffusion} (default off; \texttt{He\_Kzz} sets $K_{zz}$).
+Derivation: \texttt{docs/design\_hehe\_diffusion.md}.
+
+\paragraph{Root-cause bug (design doc \S7).} A local time scale named \texttt{t0}
+($=R_0/v_0$) shadowed the \emph{global temperature} \texttt{T0} (Fortran is case-insensitive)
+in \texttt{TK = Tcode*T0}, zeroing \texttt{TK} (floored to 1\,K) and inflating the settling
+coefficient $G\propto1/{\rm TK}$ by ${\sim}5800\times$, causing total over-settling. The two
+constants are numerically near-equal ($R_0/v_0\approx2.83\times10^4$\,s, $T_0\approx
+2.83\times10^4$\,K), which hid it. Fix: rename the local to \texttt{tscale}.
+
+\paragraph{Result (HD\,209458b, He23S$+$metals).} Physical mild separation --- $(He/H)/HeH
+\approx 0.6$--$0.9$ in the inner thermosphere, falling to ${\sim}0.17$--$0.24$ aloft ---
+consistent in magnitude with Taylor ($\to0.3\times$) and Xing. Stable (no NaN);
+\texttt{He\_diffusion} OFF is byte-identical.
+
+\paragraph{Phase-1 limitations.} A near-base pile-up from the lagged-$n_{\rm H}$ nonlinearity
+is held by a physical limiter $f\le{\rm HeH}$ (aloft observable unaffected); proper fix is a
+self-consistent $n_{\rm H}$ inner iteration. Ambipolar field, thermal diffusion, metal
+diffusion, and a Newton-finished quantitative $\dot M$ are Phase-2. Flag stays default OFF.
+
+\paragraph{Touched files.} new \texttt{src/modules/functions/species\_diffusion.f90};
+\texttt{parameters.f90} (\texttt{he\_diffusion}, \texttt{he\_kzz});
+\texttt{input\_read.f90} (\texttt{He\_diffusion}, \texttt{He\_Kzz});
+\texttt{EXHALE\_main.f90}; \texttt{Makefile}.
+
+\section{He/H diffusion --- Phase 2 (2026-07-02): ambipolar, thermal diffusion, metals}
+
+Extends \S25 (design doc \S7e). The Phase-1 kernel was factored into a shared subroutine
+\texttt{solve\_1elem} (one conservative implicit advection--diffusion--settling solve for any
+element vs the H background), reused by He and each metal.
+
+\begin{itemize}
+\item \textbf{P2b --- ambipolar-corrected settling} (default ON, \texttt{He\_ambipolar}). The
+  polarization field lifts ions, so the He-vs-H effective settling mass is $\Delta m_{\rm
+  eff}=3-0.5(\bar Z_{\rm He}-\bar Z_{\rm H})$ (mean charges from the local ionization state):
+  3 at the neutral base, 2.5 in the fully ionized wind. Modest effect ($\sim$2\% less
+  depletion aloft), correct direction.
+\item \textbf{P2c --- thermal diffusion} (default \texttt{He\_alphaT}$=0$). Adds $\alpha_T
+  \partial\ln T/\partial r$ to the settling coefficient; off by default.
+\item \textbf{P2d --- per-element metal diffusion} (default OFF, \texttt{He\_metal\_diffusion}).
+  Each trace metal element diffuses independently vs $n_{\rm H}$ with its own mass
+  (\texttt{melem\_A}), binary $D$, and ambipolar correction; ion stages rescaled to the
+  diffused total. Metals trace $\Rightarrow$ no $n_{\rm H}$ feedback. \textbf{Validated
+  (HD\,209458b C/N/O):} heavier elements deplete more --- at 3\,$R_{\rm p}$, element/base
+  $\approx$ He 0.171, C 0.158, N 0.136, O 0.105 (monotonic in mass; matches Xing et al.\
+  2023). Regression: OFF $\Rightarrow$ He/H unchanged, C/H frozen at 1.0.
+\item \textbf{P2a --- self-consistent $n_{\rm H}$: attempted, NOT adopted.} A Picard
+  $n_{\rm He}\leftrightarrow n_{\rm H}$ iteration diverges (near-base settling genuinely
+  concentrates He, driving $n_{\rm H}\to0$); the physical cap $f\le{\rm HeH}$ remains the
+  correct limiter.
+\end{itemize}
+
+\paragraph{Touched files.} \texttt{species\_diffusion.f90} (\texttt{solve\_1elem} kernel;
+ambipolar \texttt{dmeff}; thermal term; metal-diffusion loop); \texttt{parameters.f90}
+(\texttt{he\_ambipolar}, \texttt{he\_alphaT}, \texttt{he\_metal\_diffusion});
+\texttt{input\_read.f90} (\texttt{He\_ambipolar}, \texttt{He\_alphaT},
+\texttt{He\_metal\_diffusion}).
+
+\section{Diffusive separation: detailed physics and numerics}\label{sec:diff-detail}
+
+This section consolidates \S25--\S26 into a single, more complete treatment of the He/H (and
+metal) diffusion, with emphasis on the two design decisions that are easy to get wrong: the
+$n_{\rm He}$--$n_{\rm H}$ mass coupling (\S\ref{sub:selfnh}) and the settling discretization
+(\S\ref{sub:peclet}).
+
+\subsection{Governing equation}
+
+By default \texttt{EXHALE} is single-fluid: the hydro evolves $(\rho,\rho v,E)$ with one bulk
+velocity, and the composition is re-solved every step by \emph{local} ionization equilibrium,
+which conserves the element ratios. Consequently the helium-to-hydrogen ratio
+$f\equiv n_{\rm He}/n_{\rm H}$ is frozen at the input value at all radii --- \texttt{EXHALE}
+cannot represent diffusive separation without an added transport equation.
+
+We transport the He element ratio $f$ with advection at the bulk velocity plus a
+molecular-diffusion \emph{settling} drift of He relative to H,
+\begin{equation}
+  \frac{\partial f}{\partial t} + v\,\frac{\partial f}{\partial r}
+  = \frac{1}{n_{\rm H}}\frac{1}{r^{2}}\frac{\partial}{\partial r}
+    \!\left[\, r^{2}\,n_{\rm H}\,(D+K_{zz})\frac{\partial f}{\partial r}
+            + r^{2}\,n_{\rm H}\,D\,f\,G \,\right],
+  \label{eq:fdiff}
+\end{equation}
+with the diffusive number flux (relative to the bulk)
+\begin{equation}
+  \Phi_{\rm He} = -n_{\rm H}\!\left[(D+K_{zz})\frac{\partial f}{\partial r}
+                 + D\,f\,G\right],\qquad
+  G = \frac{\Delta m\, g}{k T} + \alpha_T\frac{\partial\ln T}{\partial r}.
+  \label{eq:phi}
+\end{equation}
+Here $D=1.52\times10^{18}(1/m_{\rm H}+1/m_{\rm He})^{1/2}T^{1/2}/n$ is the Banks \& Kockarts
+(1973) binary He-in-H diffusion coefficient (cm$^2$\,s$^{-1}$), $g=GM_{\rm p}/r^2$, and
+$\Delta m = m_{\rm He}-m_{\rm H}$ ($=3$~amu in the neutral limit; \S\ref{sub:ambi}). $K_{zz}$
+is the eddy diffusion coefficient (\texttt{He\_Kzz}, default $10^9$~cm$^2$\,s$^{-1}$): it
+enters only the \emph{gradient} term and drives $f$ toward uniform (mixing), whereas the
+\emph{settling} term $D\,f\,G$ is molecular only. Their competition sets the homopause:
+below it ($K_{zz}\!\gg\!D$) the atmosphere is mixed, above it ($D\!\gg\!K_{zz}$) helium
+settles. In diffusive equilibrium ($\Phi_{\rm He}=0$, no eddy) $\partial\ln f/\partial r=-G$,
+i.e.\ $f$ decreases outward with the (small) He scale height $1/G$.
+
+\subsection{Conservative implicit discretization}
+
+An early \emph{non-conservative} form (material-derivative advection $-v\,\partial f/\partial
+r$ combined with a conservative diffusive flux) proved flux-inconsistent and \emph{drained}
+helium spuriously. The production scheme is instead \textbf{fully conservative}: it evolves
+the He number density $n_{\rm He}$ with a single divergence of the total face flux
+\begin{equation}
+  J_{j+1/2} = \underbrace{n_{\rm He}\,v}_{\text{advection}} + \Phi_{\rm He},
+  \qquad
+  \frac{n_{\rm He}^{\,n+1}-n_{\rm He}^{\,n}}{\Delta t}
+  = -\frac{1}{r^{2}\,\Delta r}\big[\,r^{2}_{j+1/2}J_{j+1/2}-r^{2}_{j-1/2}J_{j-1/2}\,\big].
+\end{equation}
+Because the cold, dense base has a tiny He scale height, the diffusion is stiff and an
+explicit scheme is unstable; the update is therefore \textbf{implicit} (backward Euler),
+assembled as a tridiagonal system in $n_{\rm He}^{\,n+1}$ and solved by the Thomas algorithm.
+Implicit backward Euler is unconditionally stable, and its fixed point ($n_{\rm He}^{\,n+1}
+=n_{\rm He}^{\,n}$) is independent of $\Delta t$, so per-cell local time steps are used for
+steady-state acceleration. The new element split is written back into \texttt{f\_sp}
+conserving mass ($\sum_s m_s f_{{\rm sp},s}=1$), and the same kernel (\texttt{solve\_1elem})
+is reused for each trace metal (\S\ref{sub:ambi}).
+
+\subsection{The $n_{\rm He}$--$n_{\rm H}$ mass coupling: why a self-consistent $n_{\rm H}$ is
+\emph{not} needed}\label{sub:selfnh}
+
+Diffusion redistributes species at \emph{fixed} total mass density $\rho$ (owned by the
+hydro), so in every cell
+\begin{equation}
+  \rho = m_{\rm H} n_{\rm H} + m_{\rm He} n_{\rm He} + (\text{metals})
+  \;\;\Longrightarrow\;\;
+  n_{\rm H} = \frac{\rho(1-c_{\rm met}) - m_{\rm He} n_{\rm He}}{m_{\rm H}}.
+  \label{eq:masscons}
+\end{equation}
+Thus $n_{\rm H}$ is itself a function of $n_{\rm He}$: where helium accumulates, hydrogen must
+be displaced. But the flux \eqref{eq:phi} \emph{uses} $n_{\rm H}$ (in the coefficient and in
+$f=n_{\rm He}/n_{\rm H}$), so the solve is genuinely nonlinear in $n_{\rm He}$. Two options:
+\begin{itemize}
+  \item \textbf{Lagged $n_{\rm H}$ (adopted).} Hold $n_{\rm H}$ at its start-of-step value
+    during the solve; update it afterward, in the mass-conserving rescale, for the next step.
+  \item \textbf{Self-consistent $n_{\rm H}$ (``P2a'', tried, rejected).} Iterate within the
+    step (Picard): solve $n_{\rm He}$, reset $n_{\rm H}$ from \eqref{eq:masscons}, re-solve,
+    until $n_{\rm He}$ and $n_{\rm H}$ are mutually consistent.
+\end{itemize}
+
+\paragraph{Why the Picard iteration diverges.} Write the He mass fraction
+$Y=m_{\rm He}n_{\rm He}/\rho\in[0,1]$. Near the base, settling genuinely concentrates helium
+($n_{\rm He}\!\uparrow$); enforcing \eqref{eq:masscons} exactly then drives
+\[
+  n_{\rm H}=\frac{\rho(1-c_{\rm met})-m_{\rm He}n_{\rm He}}{m_{\rm H}}\xrightarrow[\;Y\to1\;]{}0,
+\]
+so $f=n_{\rm He}/n_{\rm H}$ and the $1/n_{\rm H}$ flux coefficients diverge --- a genuine
+singularity as helium approaches a pure-He layer. Because the concentration is \emph{real}
+(settling against a fixed reservoir base), the iteration has a positive feedback and blows up
+(NaN). The lagged scheme avoids this: with $n_{\rm H}$ held at a finite value, $1/n_{\rm H}$
+stays bounded, and the physical cap $f\le\mathrm{HeH}$ (\S\ref{sub:cap}) prevents $Y\to1$.
+
+\paragraph{Why lagging is nonetheless harmless.} Four independent arguments:
+\begin{enumerate}
+  \item \emph{The lag vanishes at the fixed point.} The diffusion runs inside a relaxation
+    loop. At steady state $n_{\rm He}^{\,n+1}=n_{\rm He}^{\,n}$ and $n_{\rm H}^{\,n+1}=
+    n_{\rm H}^{\,n}$, so the lagged $n_{\rm H}=n_{\rm H}^{\,n}$ used in the solve \emph{equals}
+    the final consistent $n_{\rm H}^{\,n+1}$. The lag affects only the transient path, not the
+    converged state: where the scheme is stable, lagged and self-consistent reach the
+    \emph{same} steady solution, and mass consistency is achieved automatically.
+  \item \emph{The region where it matters is the (unphysical) pile-up.} Lagged and
+    self-consistent differ appreciably only where $Y\to1$, a thin layer just above the fixed
+    reservoir base --- below the He\,10830 line-forming region, hence irrelevant to the
+    observable, and in any case capped (\S\ref{sub:cap}).
+  \item \emph{Helium is a minor mass fraction where the observable lives.} In the upper
+    thermosphere, where He/H falls to $\sim$0.2--0.5$\times$ (the part that weakens 10830),
+    $m_{\rm He}n_{\rm He}\ll m_{\rm H}n_{\rm H}$, so $n_{\rm H}\approx\rho/m_{\rm H}$ is nearly
+    insensitive to $n_{\rm He}$ and the lag is negligible.
+  \item \emph{Trace metals have no back-reaction.} Metals are $\sim10^{-3}$ of the mass, so
+    their diffusion does not change $n_{\rm H}$ measurably; for them the lagged $n_{\rm H}$ is
+    effectively exact.
+\end{enumerate}
+Hence the divergent Picard iteration is not merely inconvenient but \emph{unnecessary}: the
+lagged-$n_{\rm H}$ solve plus the physical cap is stable and converges to the correct steady
+state.
+
+\subsection{The near-base pile-up and the physical cap}\label{sub:cap}
+
+Settling transports helium down toward the reservoir base. Against a fixed-composition
+Dirichlet base it tends to pile up in the first cells above the base (numerically unbounded
+with a lagged $n_{\rm H}$). In a settling-plus-escape column, however, He/H \emph{cannot}
+exceed the reservoir value: there is no mechanism to enrich helium above the base abundance.
+The code therefore applies the physical limiter
+\begin{equation}
+  f \le \mathrm{HeH}
+\end{equation}
+(and, for each metal, $f_X\le f_{X,{\rm base}}$). This encodes the expectation that the
+reservoir \emph{absorbs} settled helium rather than letting it build a pure-He layer --- so
+the cap is a physical boundary condition, not merely a numerical band-aid. The aloft
+separation (the observable) sits well below HeH and is unaffected by the cap.
+
+\subsection{Settling discretization: a P\'eclet hybrid}\label{sub:peclet}
+
+The settling term $D f G$ is an advective drift (velocity $w_s=DG$, directed inward). Central
+differencing of an advective term is stable and accurate only at low P\'eclet number,
+$|D G|\,\Delta r < 2(D+K_{zz})$. For light helium this always holds (small $G$), and central
+differencing is used (least numerical diffusion). For \emph{heavy metals} (e.g.\ Fe, mass 56)
+$G$ is $\sim$18$\times$ larger; central differencing then loses diagonal dominance and the
+tridiagonal solve NaNs. The kernel therefore uses a \textbf{P\'eclet-based central/upwind
+hybrid}:
+\begin{equation}
+  \text{settling drift:}\quad
+  \begin{cases}
+    \text{central} & |D G|\,\Delta r < 2(D+K_{zz})\quad(\text{light species}),\\
+    \text{first-order upwind} & \text{otherwise}\quad(\text{stiff heavy-metal settling}).
+  \end{cases}
+\end{equation}
+Upwind keeps the matrix diagonally dominant for any settling strength; the metal-stage rescale
+additionally skips cells where the element is negligible and clamps the scale factor to avoid
+$0\times\infty$. These changes were required to run WASP-121b (Fe) stably; on HD\,209458b
+(light C/N/O), the hybrid selects central and reproduces the He-only result.
+
+\subsection{Ambipolar field, thermal diffusion, and metals}\label{sub:ambi}
+
+In the ionized wind the polarization field $eE=-(1/n_e)\,dp_e/dr$ (Koskinen et al.\ 2013)
+lifts ions; for an H$^+$ background it supports $\sim$half a proton weight per unit charge, so
+a species of charge $Z$ has effective mass $m-Z\,m_{\rm H}/2$. The He-vs-H relative settling
+mass becomes
+\begin{equation}
+  \Delta m_{\rm eff} = 3 - \tfrac12\big(\bar Z_{\rm He}-\bar Z_{\rm H}\big),
+\end{equation}
+with $\bar Z$ the mean charges from the local ionization state --- $\Delta m_{\rm eff}=3$ at
+the neutral base, $2.5$ in the fully ionized He$^{++}$/H$^+$ wind (\texttt{He\_ambipolar},
+default on). Thermal diffusion adds $\alpha_T\,\partial\ln T/\partial r$ to $G$
+(\texttt{He\_alphaT}, default 0). Each trace metal (\texttt{He\_metal\_diffusion}, default
+off) is diffused independently against the post-rescale $n_{\rm H}$ with its own mass
+(\texttt{melem\_A}), binary $D_X$, and ambipolar-corrected $\Delta m_{\rm eff}$; being heavier
+than helium, metals deplete faster with altitude \emph{where diffusion competes with the
+wind}.
+
+\subsection{The metal-rescale ratchet bug (found in review, fixed 2026-07-02)}
+
+The first version of the metal-stage rescale contained two bugs that together made metal
+depletion \emph{irreversible}: (i) an $r_X\le1$ clamp --- redundant for the
+metal/H\,$\le$\,reservoir cap (already enforced by $\min(n_X,\,f_{X,{\rm base}}n_{\rm H})$)
+but forbidding any \emph{replenishment} of a previously depleted cell (a one-way ratchet);
+and (ii) a skip of cells where the element was negligible, which made exhausted cells
+permanent holes. During early relaxation (wind undeveloped) settling transiently depletes
+metals; the ratchet locked that in. \textbf{Fix:} $r_X$ is no longer clamped above (the cap
+alone bounds it), and an exhausted cell that the solve replenishes is re-seeded through the
+neutral stage (the ionization equilibrium re-partitions the stages next step).
+\textbf{Retraction:} the previously reported WASP-121b ``metal homopause'' (Fe\,$\to0$ by
+$\sim$1.25\,$R_{\rm p}$, with a $\sim$2500\,K hotter thermosphere) was an artifact of this
+ratchet --- with the fix, WASP-121b metals track He (even Fe is advection-dominated there,
+$w_s/v\sim10^{-3}$) and the v1/v2 temperature structures agree. The HD\,209458b mass ordering
+(He $>$ C $>$ N $>$ O aloft) is unaffected.
+
+\subsection{Boundary conditions and validation}
+
+The lower boundary is Dirichlet at the reservoir composition ($f=\mathrm{HeH}$); the outer
+boundary carries a zero diffusive flux plus advective outflow (helium escapes with the wind).
+The two-planet before/after comparison (\texttt{docs/version\_compare.\{md,tex,pdf\}}) shows
+the expected regimes: on HD\,209458b helium itself separates (He\,10830
+70.5\%$\to$27.2\%, $-2.6\times$) and heavier C/N/O deplete more than He aloft, whereas on
+WASP-121b (log$\,\dot M\!\approx\!13.3$) advection dominates for every species --- helium
+\emph{and} metals are dragged out essentially unfractionated (10830 unchanged; metal/H tracks
+He/H). Both are stable (no NaN) and leave $\dot M$ essentially unchanged (metals are trace).
+All diffusion flags are \textbf{default off}, so standard runs are byte-identical.
 
 \end{document}

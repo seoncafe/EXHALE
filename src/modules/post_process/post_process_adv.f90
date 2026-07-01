@@ -80,8 +80,8 @@
    integer, dimension(n_melem) ::  meg_top
    integer :: i0,top,im
       
-   real*8, dimension(1-Ng:N+Ng) ::  q13,q31a,q31b
-	real*8 :: A31,Q31  
+   real*8, dimension(1-Ng:N+Ng) ::  q13,q31a,q31b,Q31
+	real*8 :: A31
  	
  	! Ionization coefficients
    real*8, dimension(1-Ng:N+Ng) ::  a_ion_HI,a_ion_HeI,a_ion_HeII 
@@ -357,7 +357,7 @@
 				params(18) = q13(j)
 				params(19) = q31a(j)
 				params(20) = q31b(j)
-				params(21) = Q31		
+				params(21) = Q31(j)
 				params(22) = nheiTR(j-1)/nhe(j-1)
 			endif 
 			

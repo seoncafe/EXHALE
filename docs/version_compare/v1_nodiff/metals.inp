@@ -1,0 +1,6 @@
+# Trace metals: solar C, N, O (Asplund+2009 number ratios to H).
+# EXHALE reads this at runtime (no recompile); remove the file to
+# run metals-off. CI/NI/OI set X_C/X_N/X_O.
+CI    2.69e-4
+NI    6.76e-5
+OI    4.90e-4

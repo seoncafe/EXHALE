@@ -2482,3 +2482,134 @@ to ~4% (12 eV: 1.466 vs 1.465; 30: 0.289 vs 0.289; 45.6: 2.57 vs 2.68 — bump 4
 
 **Touched files.** `src/modules/functions/cross_sec.f90` (`sigma_HeI23S`: two VFKY96 wings
 + power-law bridge; former broken PL kept commented out).
+
+## 24. Temperature-dependent Penning ionization of He 2³S (2026-07-01)
+
+**Motivation.** The metastable He(2³S) destruction by neutral hydrogen, He(2³S)+H, was
+carried as a *temperature-independent* constant Q31 = 5×10⁻¹⁰ cm³ s⁻¹ — the ATES /
+Oklopčić & Hirata (2018) value, itself the Roberge & Dalgarno (1982) *sum* of Penning and
+associative ionization (also used by Lampón et al. 2020). Taylor et al. (2025, ApJ 989:68)
+replaced it with a Maxwell–Boltzmann-averaged, **temperature-dependent** fit to the cross
+sections of Morgner & Niehaus (1979) and Cohen & Lane (1971). Penning ionization is often
+the *dominant* 2³S loss near the base (abundant neutral H), so it directly affects the
+He 10830 prediction.
+
+**New rate (Taylor et al. 2025, Table 2), cm³ s⁻¹, T in K:**
+
+- T ≤ 4000 K:  `Q31 = 1.9e-9 * (300/T)**0.07`
+- T > 4000 K:  `Q31 = 9.1e-9 * (300/T)**0.50`
+
+This is ~3× the old constant across ~2000–9000 K. The new rate is the Penning channel only
+(He(2³S)+H → He(1¹S)+H⁺+e⁻); the associative-ionization channel (→ HeH⁺+e⁻) is not
+represented separately in EXHALE (no HeH⁺), so the single Q31 keeps carrying the dominant
+2³S+H destruction term `−n_HeITR·n_HI·Q31`.
+
+**Unconditional default.** The temperature-dependent rate is used *unconditionally*; the old
+5×10⁻¹⁰ constant is no longer selectable. (`ATES_photoionization_rate` still reverts only
+the He I (1¹S) photoionization cross section to the legacy ATES 2-term fit; it does not
+affect the Penning rate.)
+
+**Implementation.** Q31 became a per-cell array (was a scalar). New `penning_HeI_23S(T,coeff)`
+in `Cool_coeff.f90` evaluates the piecewise fit over the whole grid; `HeITR_coeffs` calls it
+unconditionally. The two callers (`ionization_equilibrium.f90`, `post_process_adv.f90`) pass
+`Q31(j)` per cell into `params`; the `System_HeH_TR*` residuals are unchanged (they already
+read Q31 from `params`).
+
+**Verification.** Rebuilt EXHALE.x; ran HD189733b (metals + He23S, step-capped) with the new
+rate and, for comparison, with the former constant. Relative to the old constant, He(2³S) is
+reduced near the base (ratio ≈ 0.28 at 1.0 Rp, 0.92 at 1.1 Rp; column-integrated over
+1–2 Rp drops to 0.59×), and the profiles converge to unity above ~1.3 Rp where H is ionized
+and Penning switches off — the expected neutral-H-gated signature.
+
+**Touched files.** `src/modules/radiation/Cool_coeff.f90` (new `penning_HeI_23S`);
+`src/modules/radiation/util_ion_eq.f90` (`HeITR_coeffs`: Q31 array + unconditional call);
+`src/modules/radiation/ionization_equilibrium.f90` and
+`src/modules/post_process/post_process_adv.f90` (Q31 array, per-cell `params` assignment).
+
+## 25. He/H diffusive separation — Phase 1 (2026-07-01, experimental, default OFF)
+
+**Motivation.** EXHALE is single-fluid and re-solves composition by *local* ionization
+equilibrium (which conserves the element ratio), so He/H was frozen at the input `HeH` at all
+radii — EXHALE could not represent the diffusive He/H separation seen in Taylor et al. (2025)
+(8%→2.5%) and Xing et al. (2023). This is the top recommendation of
+`docs/methodology_aiolos_taylor_xing.md`.
+
+**Method (Phase 1).** New module `species_diffusion.f90` transports the He element ratio
+`f = n_He/n_H` with bulk advection **and** a molecular-diffusion drift of He relative to H,
+`Φ = −D n_H(∂f/∂r + fG)`, `G = (m_He−m_H)g/(kT)`, `D = 1.52e18(1/m_H+1/m_He)^½ T^½/n`
+(Banks & Kockarts 1973), plus eddy diffusion `K_zz` on the gradient term. Solved as a **fully
+conservative** implicit (backward-Euler, tridiagonal) update of `n_He`; the new element split
+is written back into `f_sp` conserving mass (`Σ m_s f_sp = 1`, metals frozen to H). Gated on
+`He_diffusion` (default `.false.`; `He_Kzz` sets K_zz). Design/derivation:
+`docs/design_hehe_diffusion.md`.
+
+**Debugging highlights (see design doc §7).** (a) Explicit schemes were unstable at the cold,
+dense base (tiny He scale height) → implicit tridiagonal. (b) A non-conservative
+material-advection form drained He → rewritten conservative. (c) **Root-cause bug:** a local
+time scale named `t0` (`=R0/v0`) shadowed the *global temperature* `T0` (Fortran is
+case-insensitive) in `TK = Tcode*T0`, zeroing `TK` (floored to 1 K) and inflating the
+settling coefficient `G ∝ 1/TK` by ~5800×, causing total over-settling. The two constants are
+numerically near-equal (`R0/v0 ≈ 2.83e4 s`, `T0 ≈ 2.83e4 K`), which hid it. **Fix:** rename
+the local to `tscale`.
+
+**Result (HD 209458b, He23S+metals).** Physical mild separation — (He/H)/HeH ≈ 0.6–0.9 in the
+inner thermosphere, falling to ~0.17–0.24 aloft — consistent in magnitude with Taylor (→0.3×)
+and Xing. Stable (no NaN); `He_diffusion` OFF is byte-identical.
+
+**Known Phase-1 limitations.** A near-base pile-up from the lagged-`n_H` nonlinearity is held
+by a physical limiter `fHe ≤ HeH` (aloft observable unaffected); proper fix is a
+self-consistent `n_H` inner iteration. Ambipolar field, thermal diffusion, metal diffusion,
+and a Newton-finished quantitative `Ṁ` are Phase-2. Flag stays default OFF (opt-in).
+
+**Touched files.** new `src/modules/functions/species_diffusion.f90`;
+`src/modules/init/parameters.f90` (`he_diffusion`, `he_kzz`);
+`src/modules/files_IO/input_read.f90` (`He_diffusion`, `He_Kzz` keys);
+`EXHALE_main.f90` (call after temperature, before ionization); `Makefile`.
+
+## 26. He/H diffusion — Phase 2 (2026-07-02): ambipolar, thermal diffusion, metals
+
+Extends §25 (design doc §7e). The Phase-1 kernel was factored into a shared subroutine
+`solve_1elem` (one conservative implicit advection–diffusion–settling solve for any element
+vs the H background), reused by He and each metal.
+
+- **P2b — ambipolar-corrected settling (default ON, `He_ambipolar`).** The polarization
+  field lifts ions, so the He-vs-H effective settling mass is `Δm_eff = 3 − 0.5(Z̄_He − Z̄_H)`
+  (mean charges from the local ionization state): 3 at the neutral base, 2.5 in the fully
+  ionized wind. Modest effect (~2% less depletion aloft), physically correct direction.
+- **P2c — thermal diffusion (default `He_alphaT = 0`).** Adds `α_T ∂lnT/∂r` to the settling
+  coefficient; off by default, activatable via `He_alphaT`.
+- **P2d — per-element metal diffusion (default OFF, `He_metal_diffusion`).** Each trace metal
+  element diffuses independently vs n_H with its own mass (`melem_A`), binary D, and ambipolar
+  correction; ion stages rescaled to the diffused total. Metals trace → no n_H feedback.
+  **Validated (HD 209458b C/N/O):** heavier elements deplete more — at 3 R_p, element/base ≈
+  He 0.171, C 0.158, N 0.136, O 0.105 (monotonic in mass; matches Xing et al. 2023).
+  Regression: OFF ⇒ He/H unchanged, C/H frozen at 1.0.
+- **P2a — self-consistent n_H: attempted, NOT adopted.** A Picard n_He↔n_H iteration diverges
+  (the near-base settling genuinely concentrates He, driving n_H→0); the physical cap
+  `fHe ≤ HeH` remains the correct limiter. Documented in design doc §7e.
+
+**Touched files.** `species_diffusion.f90` (`solve_1elem` kernel; ambipolar `dmeff`; thermal
+term; metal-diffusion loop); `parameters.f90` (`he_ambipolar`, `he_alphaT`,
+`he_metal_diffusion`); `input_read.f90` (`He_ambipolar`, `He_alphaT`, `He_metal_diffusion`).
+
+## 27. Metal-diffusion rescale: ratchet bug found in review, fixed (2026-07-02)
+
+A code review of the diffusion changes found two bugs in the §26 metal-stage rescale that
+together made metal depletion *irreversible*: (i) an `rX ≤ 1` clamp — redundant for the
+metal/H ≤ reservoir cap (already enforced by `min(nX, fXbase·nHl)`) but forbidding any
+*replenishment* of a previously depleted cell (a one-way ratchet); and (ii) a skip of cells
+where the element was negligible, which made exhausted cells permanent holes. During early
+relaxation (wind undeveloped) settling transiently depletes metals; the ratchet locked that
+in. **Fix:** rX is no longer clamped above (the cap alone bounds it), and an exhausted cell
+that the solve replenishes is re-seeded through the neutral stage (ionization equilibrium
+re-partitions next step).
+
+**Retraction:** the previously reported WASP-121b "metal homopause" (Fe → 0 by ~1.25 Rp, with
+a ~2500 K hotter thermosphere) was an artifact of this ratchet — with the fix, WASP-121b
+metals track He (even Fe is advection-dominated there, w_s/v ~ 1e-3) and the v1/v2
+temperature structures agree. HD 209458b results return to the pre-hybrid values (He I 10830
+70.5% → 27.2%, −2.6×; mass ordering He > C > N > O aloft unaffected).
+`docs/version_compare.{md,tex,pdf}` updated accordingly.
+
+**Touched files.** `species_diffusion.f90` (metal-stage rescale: cap-only bound + neutral-stage
+re-seed of exhausted cells).
