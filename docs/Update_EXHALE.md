@@ -2452,3 +2452,33 @@ raw file is not a usable shortcut.) No recombination switch was added.
 two-term). Verified: Verner is the default (He I σ at 30/50/100 eV =
 5.36/2.02/0.394 Mb), `ATES_photoionization_rate: True` recovers the legacy values
 (5.24/1.78/0.347 Mb).
+
+## 23. He 2³S photoionization → two VFKY96 (Verner) forms + power-law bridge (2026-07-01)
+
+**Motivation.** `sigma_HeI23S` was a bespoke 5-segment broken power law
+(Norcross-1971 fit + TOPbase-tail extension, §21). Since EXHALE already uses the
+Verner+1996 (VFKY96) `sigma_VFKY96` routine for He I and all metals, the metastable
+triplet is now expressed in the same form, so all photoionization cross sections share
+one analytic kernel.
+
+**Change** (`src/modules/functions/cross_sec.f90`). `sigma_HeI23S` is rebuilt from two
+VFKY96 single-shell forms joined by a log-linear (power-law) bridge, used piecewise:
+- **wing A** (E ≤ x3 ≈ 34.70 eV, threshold → Cooper minimum):
+  `[E_th,E0,σ0,ya,P,yw,y0,y1] = 4.78, 2.645, 20.8, 1.0e12, 3.42, 2.681, 1.956, 2.603`
+- **bridge** (34.70 < E < 45.59 eV): straight log–log line joining wing A(x3) to
+  wing B(x4) — this is the "power-law fitting part in the middle".
+- **wing B** (E ≥ x4 ≈ 45.59 eV, bump → tail):
+  `[E_th,E0,σ0,ya,P,yw,y0,y1] = 45.59, 49.68, 1052, 0.04393, 2.941, 1.717, 5.488e-5, 1.118`
+
+Each wing is a ~4% fit to the resonance-averaged cross section; the construction is
+**continuous at both x3 and x4**, threshold (E<4.78 eV) and the smooth high-E tail
+(~E^−7/2) are handled by the wings themselves (no hard cutoff). The former broken power
+law is retained, commented out, in the routine.
+
+**Verification.** Rebuilt EXHALE.x; `sigma_HeI23S` reproduces the former broken power law
+to ~4% (12 eV: 1.466 vs 1.465; 30: 0.289 vs 0.289; 45.6: 2.57 vs 2.68 — bump 4% low; 70:
+0.855 vs 0.858; 100: 0.294 vs 0.295; 300: 0.0110 vs 0.0110), continuous across the bridge
+(34.70 eV: 0.222 → 38: 0.502 → 40: 0.795 → 45.59: 2.570 → 46: 2.521).
+
+**Touched files.** `src/modules/functions/cross_sec.f90` (`sigma_HeI23S`: two VFKY96 wings
++ power-law bridge; former broken PL kept commented out).

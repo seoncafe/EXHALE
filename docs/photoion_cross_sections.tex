@@ -88,32 +88,69 @@ which is the exact non-relativistic result with the Gaunt-factor
 correction; at threshold $\sig = 6.3/Z^2\,\Mb$ ($6.3\,\Mb$ for H\,I,
 $1.575\,\Mb$ for He\,II).
 
-\subsection{He\,I ground state (two-term fit)}
+\subsection{He\,I ground state (1$^1$S)}
 
-The He\,I ground state uses the original ATES two-term fit
-(\texttt{sigma\_HeI}), valid above $E_{\rm th}=24.6\,$eV:
+By default the He\,I ground state (\texttt{sigma\_HeI}) uses the
+Verner+1996 (VFKY96) single-shell fit --- the form of \S\ref{sec:vfky}
+with the He\,I parameters of Table~\ref{tab:vfky}:
 \begin{equation}
-  \sig_{\rm He\,I}(E) = \frac{0.6935}
-       {(E/100)^{1.82} + (E/100)^{3.23}}\;\Mb .
+  \sig_{\rm He\,I}(E) = \sig_{\rm VFKY96}\!\big(E;\,
+    E_{\rm th}{=}24.59,\,E_0{=}13.61,\,\sig_0{=}949.2,\,y_a{=}1.469,\,
+    P{=}3.188,\,y_w{=}2.039,\,y_0{=}0.4434,\,y_1{=}2.136\big).
+  \label{eq:heiverner}
 \end{equation}
+Setting \texttt{ATES\_photoionization\_rate: True} in \texttt{input.inp}
+reverts to the legacy ATES two-term fit (valid above $E_{\rm th}=24.6\,$eV):
+\begin{equation}
+  \sig_{\rm He\,I}^{\rm ATES}(E) = \frac{0.6935}
+       {(E/100)^{1.82} + (E/100)^{3.23}}\;\Mb .
+  \label{eq:heiates}
+\end{equation}
+(The 2$^3$S metastable \emph{triplet} is a separate species,
+Eq.~\ref{eq:he23s} below; Eqs.~\ref{eq:heiverner}--\ref{eq:heiates} are the
+1$^1$S \emph{singlet} ground state only.)
 
-\subsection{He\,I\,$2^3$S metastable (broken power law)}
+\subsection{He\,I\,$2^3$S metastable (two VFKY96 forms $+$ bridge)}
 
-The metastable triplet --- the lower level of the He\,10830 line --- is
-photoionized by photons with $\lambda \lesssim 2593\,$\AA{}
-($E\gtrsim 4.78\,$eV). EXHALE uses a four-segment broken power law in
-$\log\sig$--$\log E$ (\texttt{sigma\_HeI23S}), fit to the data of
-Norcross (1971). The breakpoints sit at $\lambda =
-2593.01, 1655.63, 357.34, 271.94, 209.49\,$\AA{} (i.e.\ $E =
-4.78, 7.49, 34.70, 45.59, 59.18\,$eV); the cross section is set to zero
-outside $[4.78, 59.18]\,$eV. The third segment rises steeply to reproduce
-the deep Cooper-type minimum near $35\,$eV followed by the sharp rise
-toward $\sim$$45\,$eV.
+The metastable triplet --- the lower level of He\,10830 ---
+(\texttt{sigma\_HeI23S}) is built from \emph{two} Verner+1996 (VFKY96,
+\S\ref{sec:vfky}) single-shell forms joined by a log-linear (power-law)
+bridge, used piecewise. With $\ell\equiv\log_{10}(E/\mathrm{eV})$ and the
+node energies $E_3{=}34.70$, $E_4{=}45.59\,$eV ($x_3{\equiv}\log_{10}E_3$,
+$x_4{\equiv}\log_{10}E_4$):
+\begin{equation}
+\sig_{\rm He\,2^3S}(E) =
+\begin{cases}
+\sig_{\rm VFKY96}(E;\,\text{wing A}) & E\le E_3\quad(\text{threshold}\to\text{Cooper min})\\[2pt]
+10^{\,m_b(\ell-x_3)+y_3^{b}} & E_3<E<E_4\quad(\text{power-law bridge})\\[2pt]
+\sig_{\rm VFKY96}(E;\,\text{wing B}) & E\ge E_4\quad(\text{bump}\to\text{tail})
+\end{cases}
+\label{eq:he23s}
+\end{equation}
+Wing~A and wing~B use the parameters of Table~\ref{tab:he23svfky}
+(\S\ref{sec:he23svfky}; each a $\sim$4\% fit to the resonance-averaged
+cross section), and the bridge is the straight $\log$--$\log$ line joining
+$y_3^{b}{=}\log_{10}\sig_{\rm VFKY96}(E_3;A)$ to
+$y_4^{b}{=}\log_{10}\sig_{\rm VFKY96}(E_4;B)$ with
+$m_b{=}(y_4^{b}-y_3^{b})/(x_4-x_3)$. Wing~A vanishes below the $4.78\,$eV
+threshold (its $E_{\rm th}$), and wing~B supplies the smooth high-$E$ tail
+($\sim E^{-7/2}$), so there is no hard cutoff. The construction is
+continuous at both $E_3$ and $E_4$ and reproduces the former broken power
+law to $\sim$4\% (deepest at the bump, $2.57$ vs $2.68\,\Mb$).
 
-\subsection{Verner+1996 single-shell fit (VFKY96)}
+The \emph{former} five-segment broken power law (Norcross-1971 fit $+$
+TOPbase-tail extension of \S\ref{sec:extend}), retained commented-out in
+the code, was $\log_{10}\sig = -0.8134\,\ell{+}1.240$ ($4.78$--$7.49$),
+$-1.772\,\ell{+}2.078$ ($7.49$--$34.70$), $9.098(\ell{-}x_3){-}0.6515$
+($34.70$--$45.59$, the bump rise), $-2.660\,\ell{+}4.841$
+($45.59$--$70$), and $-2.996\,\ell{+}5.462$ ($>70\,$eV, the TOPbase tail);
+$\sig{=}0$ below $4.78\,$eV.
 
-For benchmarking we use the VFKY96 analytic fit, which is the form EXHALE
-already adopts for metals (\texttt{sigma\_VFKY96}); for $E\ge E_{\rm th}$,
+\subsection{Verner+1996 single-shell fit (VFKY96)}\label{sec:vfky}
+
+This is the VFKY96 analytic fit, the form EXHALE adopts for metals, for
+He\,II\footnote{via the hydrogenic routine} and --- now by default --- for
+the He\,I ground state (\texttt{sigma\_VFKY96}); for $E\ge E_{\rm th}$,
 \begin{align}
   x &= E/E_0 - y_0, \qquad z = \sqrt{x^2 + y_1^2}, \qquad
       Q = 5.5 - P/2, \\
@@ -611,15 +648,67 @@ to zero at $59\,$eV. The curve is continuous at both joins.}
 \label{fig:ext}
 \end{figure}
 
+\subsection{He\,$2^3$S as two VFKY96 (Verner) forms}\label{sec:he23svfky}
+
+It is natural to ask whether the He\,$2^3$S cross section could use the same
+VFKY96 machinery (\S\ref{sec:vfky}) EXHALE already applies to He\,I and the
+metals, instead of the bespoke broken power law. Fitting a \emph{single}
+VFKY96 term to each smooth part of the curve works very well
+(Fig.~\ref{fig:he23svfky}, Table~\ref{tab:he23svfky}): segments 1--2
+(threshold $\to$ Cooper minimum, $4.85$--$34.7\,$eV) and segments 4--5
+(resonance-averaged bump $\to$ tail, $45.7$--$320\,$eV) are \emph{each}
+reproduced to $\sim$$4\%$. This is physically sensible --- the two terms are
+the $2s$-shell channel and the (resonance-averaged) He\,II\,$n=2$ channel.
+
+The one region the two wings do not cover is the \emph{transition}
+($34.7$--$45.6\,$eV, shaded in Fig.~\ref{fig:he23svfky}), where the cross
+section climbs from the Cooper minimum to the bump. This is bridged by a
+short log-linear (power-law) segment joining wing~A at $E_3=34.70\,$eV to
+wing~B at $E_4=45.59\,$eV. \textbf{This two-VFKY96-plus-bridge form is now
+the EXHALE implementation} of \texttt{sigma\_HeI23S} (Eq.~\ref{eq:he23s});
+it reproduces the former broken power law to $\sim$4\% (deepest at the
+bump, $2.57$ vs $2.68\,\Mb$), is continuous at $E_3$ and $E_4$, and reuses
+the same \texttt{sigma\_VFKY96} routine as He\,I and the metals. The former
+broken power law is retained, commented out, in the code.
+
+\begin{table}[h]
+\centering
+\caption{Single-VFKY96 fits to the two smooth parts of He\,$2^3$S (form of
+\S\ref{sec:vfky}; $\sig_0$ in Mb, energies in eV). Each reproduces its
+region to $\sim$4\%.}
+\label{tab:he23svfky}
+\begin{tabular}{lrrrrrrrr}
+\toprule
+region & $E_{\rm th}$ & $E_0$ & $\sig_0$ & $y_a$ & $P$ & $y_w$ & $y_0$ & $y_1$\\
+\midrule
+seg 1--2 ($4.85$--$34.7$)  & 4.78  & 2.645 & 20.8  & $1.0{\times}10^{12}$ & 3.42 & 2.681 & 1.956 & 2.603\\
+seg 4--5 ($45.7$--$320$)   & 45.59 & 49.68 & 1052  & 0.0439 & 2.941 & 1.717 & $5.5{\times}10^{-5}$ & 1.118\\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{figure}[h]
+\centering
+\includegraphics[width=0.74\textwidth]{figures/xsec_HeI23S_vfky.pdf}
+\caption{He\,$2^3$S (black: implemented broken power law $+$ TOPbase tail)
+with single-VFKY96 fits to segments 1--2 (blue dashed) and 4--5 (red
+dash-dot), each good to $\sim$4\%. The shaded band ($34.7$--$45.6\,$eV) is
+the Cooper-minimum/rise transition where the two must be spliced piecewise;
+a simple sum fails there.}
+\label{fig:he23svfky}
+\end{figure}
+
 %=============================================================================
 \section{Summary}
 %=============================================================================
 
 \begin{itemize}
 \item EXHALE uses three distinct prescriptions: an exact hydrogenic form
-  for H\,I and He\,II, a two-term ATES fit for He\,I, and a
-  Norcross-1971 broken power law for the He\,I\,$2^3$S triplet (the
-  excited level absent from the Verner+1996 ground-shell table).
+  for H\,I and He\,II, Verner+1996 (VFKY96) for the He\,I ground state
+  (default; legacy two-term fit behind \texttt{ATES\_photoionization\_rate}),
+  and --- for the He\,I\,$2^3$S triplet --- \textbf{two VFKY96 forms joined
+  by a power-law bridge} (\S\ref{sec:he23svfky}; formerly a Norcross-1971
+  broken power law, retained commented-out in the code).
 \item The He\,I two-term fit agrees with Verner+1996 to within $14\%$
   ($24.6$--$500\,$eV; median $0.94$), running slightly low at
   $50$--$100\,$eV.
@@ -674,6 +763,7 @@ python3 compare_photoion_cross_sections.py
 #    figures/xsec_HeI23S_tail.pdf
 #    figures/xsec_HeI23S_unified.pdf
 #    figures/xsec_HeI23S_ext.pdf
+#    figures/xsec_HeI23S_vfky.pdf
 # reads: data/topbase_HeI_2_3S_photo.dat
 \end{verbatim}
 

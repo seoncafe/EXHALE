@@ -572,6 +572,82 @@ def print_he23S_ext(E_tb, s_tb):
           f"sigma(70)={10**(p*np.log10(70)+c):.4f} Mb (continuous both ends)")
 
 
+# =====================================================================
+#  Can the He 2^3S cross section be represented by VFKY96 (Verner) forms?
+#  Fit a single VFKY96 to the low-E part (segments 1-2: threshold -> Cooper
+#  minimum) and another to the high-E part (segments 4-5: bump -> tail).
+# =====================================================================
+def _vfky_free(E, Eth, E0, s0, ya, P, yw, y0, y1):
+    E = np.asarray(E, float)
+    x = E / E0 - y0
+    z = np.sqrt(x * x + y1 * y1)
+    Q = 5.5 - 0.5 * P
+    v = s0 * ((x - 1) ** 2 + yw ** 2) * z ** (-Q) * (1 + np.sqrt(z / ya)) ** (-P)
+    return np.where(E >= Eth, v, 0.0)
+
+
+def fit_he23S_vfky(E_tb, s_tb):
+    """Return (paramsA, paramsB, residA, residB): VFKY96 fits to segments
+    1-2 (4.85-34.7 eV) and 4-5 (45.7-320 eV) of the implemented He 2^3S."""
+    from scipy.optimize import curve_fit
+    import warnings
+    warnings.filterwarnings("ignore")
+    a3n, c3n, p, ct = he23S_ext_params(E_tb, s_tb)
+    lo = [0.1, 1e-3, 1e-4, 0.3, 0.0, 0.0, 0.0]
+    hi = [300, 1e8, 1e12, 25, 60, 80, 80]
+
+    def do(Elo, Ehi, Eth, tgt, p0):
+        E = np.logspace(np.log10(Elo), np.log10(Ehi), 400)
+        y = np.clip(tgt(E), 1e-10, None)
+        f = lambda E, *P: np.log10(np.clip(_vfky_free(E, Eth, *P), 1e-10, None))
+        popt, _ = curve_fit(f, E, np.log10(y), p0=p0, bounds=(lo, hi), maxfev=400000)
+        r = np.log10(y) - f(E, *popt)
+        return (Eth,) + tuple(popt), np.abs(r).max()
+
+    pA, rA = do(4.85, 34.70, 4.78, sigma_HeI23S, [13.6, 5, 2, 3, 2, 0.4, 2])
+    pB, rB = do(45.7, 320.0, 45.59,
+                lambda E: sigma_HeI23S_ext(E, a3n, c3n, p, ct),
+                [50., 3., 1., 3., 0.5, 0.1, 0.1])
+    return pA, pB, rA, rB
+
+
+def fig_he23S_vfky(E_tb, s_tb):
+    pA, pB, rA, rB = fit_he23S_vfky(E_tb, s_tb)
+    a3n, c3n, p, ct = he23S_ext_params(E_tb, s_tb)
+    fig, ax = plt.subplots(figsize=(7.4, 5.0))
+    EA = np.logspace(np.log10(4.78), np.log10(45), 400)
+    EB = np.logspace(np.log10(45), np.log10(320), 400)
+    Ef = np.logspace(np.log10(4.78), np.log10(45.593), 400)
+    Eg = np.logspace(np.log10(45.593), np.log10(320), 400)
+    ax.loglog(Ef, sigma_HeI23S(Ef), color="k", lw=2.4, label="implemented broken PL")
+    ax.loglog(Eg, sigma_HeI23S_ext(Eg, a3n, c3n, p, ct), color="k", lw=2.4)
+    ax.loglog(EA, _vfky_free(EA, *pA), color="#1f77b4", ls="--", lw=1.8,
+              label="VFKY96 fit, seg 1-2 (%.0f%%)" % ((10 ** rA - 1) * 100))
+    ax.loglog(EB, _vfky_free(EB, *pB), color="#d62728", ls="-.", lw=1.8,
+              label="VFKY96 fit, seg 4-5 (%.0f%%)" % ((10 ** rB - 1) * 100))
+    ax.axvspan(34.7, 45.6, color="0.85", alpha=0.5)
+    ax.text(39, 4, "transition\n(Cooper min)", ha="center", fontsize=8, color="0.4")
+    ax.set_xlabel(r"photon energy $E$ [eV]")
+    ax.set_ylabel(r"$\sigma_{{\rm He}\,2^3S}$ [Mb]")
+    ax.set_title(r"He I $2^3$S: two VFKY96 (Verner) fits, used piecewise")
+    ax.set_xlim(4.5, 330); ax.set_ylim(5e-3, 8)
+    ax.grid(True, which="both", alpha=0.25); ax.legend(loc="lower left", fontsize=9)
+    fig.tight_layout()
+    fig.savefig(os.path.join(OUTDIR, "xsec_HeI23S_vfky.pdf"))
+    plt.close(fig)
+    return pA, pB, rA, rB
+
+
+def print_he23S_vfky(E_tb, s_tb):
+    pA, pB, rA, rB = fit_he23S_vfky(E_tb, s_tb)
+    nm = ['Eth', 'E0', 's0', 'ya', 'P', 'yw', 'y0', 'y1']
+    print("\n=== He 2^3S represented by VFKY96 (Verner) forms ===")
+    print("seg 1-2 (4.85-34.7 eV): " + ", ".join(f"{n}={v:.4g}" for n, v in zip(nm, pA)))
+    print(f"   max resid {(10**rA-1)*100:.0f}%")
+    print("seg 4-5 (45.7-320 eV): " + ", ".join(f"{n}={v:.4g}" for n, v in zip(nm, pB)))
+    print(f"   max resid {(10**rB-1)*100:.0f}%")
+
+
 def print_topbase_table(E_tb, s_tb):
     print("\n=== He 2^3 S smooth region: EXHALE vs Norcross/p-winds vs TOPbase (Mb) ===")
     print(f"{'E[eV]':>8} {'EXHALE':>10} {'p-winds':>10} {'TOPbase':>10} "
@@ -718,6 +794,8 @@ if __name__ == "__main__":
     fig_he23S_tail(E_tb, s_tb)
     fig_he23S_unified(E_tb, s_tb)
     fig_he23S_ext(E_tb, s_tb)
+    fig_he23S_vfky(E_tb, s_tb)
+    print_he23S_vfky(E_tb, s_tb)
     print_tables(heI, he23S)
     print_topbase_table(E_tb, s_tb)
     print_rate_impact(E_tb, s_tb)

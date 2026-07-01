@@ -73,75 +73,77 @@
       !----------------------------------------
       
       ! HeI(23S) triplet photoionization cross section.
-      ! Norcross (1971) broken power law up to the 45.6 eV bump, then a
-      ! re-aimed last segment joined continuously to a power-law fit of the
-      ! TOPbase/Opacity-Project smooth background above 70 eV (replaces the
-      ! old 59 eV hard cutoff; He 2^3S rate change <1%).  The original
-      ! pre-modification formula is kept in comments below.
-      ! See docs/photoion_cross_sections.tex (minimal-change extension).
+      ! Two Verner+1996 (VFKY96) single-shell forms joined by a power-law
+      ! (log-linear) bridge, used piecewise:
+      !   wing A = threshold -> Cooper minimum   (E <= x3 ~ 34.7 eV),
+      !   bridge = log-linear rise to the bump   (x3 < E < x4 ~ 45.6 eV),
+      !   wing B = bump -> high-E tail           (E >= x4).
+      ! Each wing is a ~4% fit to the former Norcross-1971 broken PL / TOPbase
+      ! background; the bridge joins them continuously.  Threshold (E<4.78 eV)
+      ! and the high-E tail are handled by wing A/B themselves (no hard cutoff).
+      ! See docs/photoion_cross_sections.tex (sec. "He 2^3S as two VFKY96
+      ! forms") and docs/Update_EXHALE.  The former Norcross broken-PL +
+      ! TOPbase-tail implementation is retained, commented out, below.
       !	Fit of data from Norcross (1971)
       ! Note: Oklopcic calculations include HeITR only in the
       !	range [4.8-13.6] eV
 	
       double precision function sigma_HeI23S(E)
       real*8, intent(in) :: E
-      real*8 :: logE,logsigma
-      real*8 :: a1,c1,a2,c2,a3,c3
-      real*8 :: x1,x2,x3,x4,xJ
-      real*8 :: y3,y4,m
-      real*8 :: a3n,c3n,ptail,ctail,tailJ
-      
-      ! Intervals of power laws
-      x1 = log10(hp_eV*c_light/(2593.01*1e-8))*0.9999
-      x2 = log10(hp_eV*c_light/(1655.63*1e-8))
-      x3 = log10(hp_eV*c_light/(357.340*1e-8))
-      x4 = log10(hp_eV*c_light/(271.940*1e-8))
-      xJ = log10(70.0d0)         ! junction [eV] to the TOPbase high-E tail
-      
-      ! Coefficients of fit
-      a1 = -0.8134
-      a2 = -1.772
-      a3 = -3.039
-      c1 =  1.240
-      c2 =  c1 + x2*(a1-a2)	! For continuity of the broken PL
-      c3 =  5.470
-      y3 =  a2*x3 + c2
-      y4 =  a3*x4 + c3
-      m  =  (y4-y3)/(x4-x3)
+      real*8 :: logE, x3, x4, y3b, y4b, mb
+      ! VFKY96 fit parameters [E_th,E_0,sigma_0,y_a,P,y_w,y_0,y_1] (Mb, eV):
+      !   wing A -- former segments 1-2 (threshold -> Cooper min, ~4.8-34.7 eV)
+      real*8, parameter :: EthA=4.78d0,  E0A=2.645d0, s0A=2.08d1,  yaA=1.0d12,   &
+                           PA=3.42d0,    ywA=2.681d0, y0A=1.956d0, y1A=2.603d0
+      !   wing B -- former segments 4-5 (bump -> tail, ~45.6-320 eV and beyond)
+      real*8, parameter :: EthB=45.59d0, E0B=49.68d0, s0B=1.052d3, yaB=4.393d-2, &
+                           PB=2.941d0,   ywB=1.717d0, y0B=5.488d-5,y1B=1.118d0
 
-      ! High-energy extension (added): power-law fit of the TOPbase /
-      ! Opacity-Project smooth background for E > 70 eV, and a re-aimed
-      ! last segment that joins the bump peak (at x4) continuously to that
-      ! tail at 70 eV.  Continuous at both x4 and 70 eV by construction.
-      ptail = -2.9964                  ! TOPbase tail slope  (E > 70 eV)
-      ctail =  5.4623                  ! TOPbase tail intercept (Mb, E in eV)
-      tailJ =  ptail*xJ + ctail        ! tail value at 70 eV
-      a3n   =  (tailJ - y4)/(xJ - x4)  ! re-aimed last-seg slope (~ -2.658)
-      c3n   =  y4 - a3n*x4             ! enforce continuity at x4
+      ! Transition (bridge) node energies: Cooper minimum x3 and bump x4
+      x3 = log10(hp_eV*c_light/(357.340*1e-8))   ! ~34.70 eV
+      x4 = log10(hp_eV*c_light/(271.940*1e-8))    ! ~45.59 eV
 
-      ! Log of current energy
       logE = log10(E)
 
-      if (logE .lt. x1) then          ! below threshold only (tail extends up)
-         sigma_HeI23S = 0.0
-         return
+      if (logE .le. x3) then
+         ! Wing A: threshold -> Cooper minimum (VFKY96; =0 below E=4.78 eV)
+         sigma_HeI23S = sigma_VFKY96(E, EthA,E0A,s0A,yaA,PA,ywA,y0A,y1A)
+      else if (logE .ge. x4) then
+         ! Wing B: resonance-averaged bump -> high-E tail (VFKY96)
+         sigma_HeI23S = sigma_VFKY96(E, EthB,E0B,s0B,yaB,PB,ywB,y0B,y1B)
+      else
+         ! Bridge: log-linear (power-law) join of the two wings
+         y3b = log10(sigma_VFKY96(10.0d0**x3, EthA,E0A,s0A,yaA,PA,ywA,y0A,y1A))
+         y4b = log10(sigma_VFKY96(10.0d0**x4, EthB,E0B,s0B,yaB,PB,ywB,y0B,y1B))
+         mb  = (y4b - y3b)/(x4 - x3)
+         sigma_HeI23S = 10.0d0**(mb*(logE - x3) + y3b)
       endif
 
-      ! Value of log10 of cross section from the fit
-      if (logE .le. x2) logsigma = a1*logE + c1
-      if (logE .gt. x2 .and. logE .le. x3) logsigma = a2*logE + c2
-      if (logE .gt. x3 .and. logE .lt. x4) logsigma = m*(logE - x3) + y3
-      !--- Original (pre-modification) high-E branch, kept for reference: ---
-      !   x5 = log10(hp_eV*c_light/(209.490*1e-8))*1.0001  ! = log10(59.2 eV)
-      !   if (logE .lt. x1 .or. logE .gt. x5) -> sigma = 0  ! hard 59 eV cutoff
-      !   if (logE .ge. x4) logsigma = a3*logE + c3         ! last seg slope -3.039
-      !--- Modified: re-aimed last segment + TOPbase tail (no 59 eV cutoff): ---
-      if (logE .ge. x4 .and. logE .le. xJ) logsigma = a3n*logE + c3n
-      if (logE .gt. xJ)                    logsigma = ptail*logE + ctail
-      
-      ! Return value
-      sigma_HeI23S = 10.0**logsigma
-      
+      ! ================================================================
+      ! FORMER implementation (Norcross 1971 broken power law + re-aimed
+      ! last segment + TOPbase tail), retained for reference:
+      ! ----------------------------------------------------------------
+      !   real*8 :: logsigma, a1,c1,a2,c2,a3,c3, x1,x2,xJ, y3,y4,m,
+      !  &          a3n,c3n,ptail,ctail,tailJ
+      !   x1 = log10(hp_eV*c_light/(2593.01*1e-8))*0.9999   ! ~4.78 eV
+      !   x2 = log10(hp_eV*c_light/(1655.63*1e-8))          ! ~7.49 eV
+      !   xJ = log10(70.0d0)                                ! 70 eV junction
+      !   a1=-0.8134; a2=-1.772; a3=-3.039; c1=1.240
+      !   c2 = c1 + x2*(a1-a2); c3 = 5.470                  ! continuity
+      !   y3 = a2*x3 + c2; y4 = a3*x4 + c3; m = (y4-y3)/(x4-x3)
+      !   ptail=-2.9964; ctail=5.4623; tailJ=ptail*xJ+ctail
+      !   a3n=(tailJ-y4)/(xJ-x4); c3n=y4-a3n*x4
+      !   if (logE .lt. x1) then; sigma_HeI23S=0.0; return; endif
+      !   if (logE .le. x2)                    logsigma = a1*logE + c1
+      !   if (logE .gt. x2 .and. logE .le. x3) logsigma = a2*logE + c2
+      !   if (logE .gt. x3 .and. logE .lt. x4) logsigma = m*(logE-x3) + y3
+      !   if (logE .ge. x4 .and. logE .le. xJ) logsigma = a3n*logE + c3n
+      !   if (logE .gt. xJ)                    logsigma = ptail*logE + ctail
+      !   sigma_HeI23S = 10.0**logsigma
+      !   [pre-extension variant: hard cutoff at x5=log10(59.2 eV),
+      !    last segment slope a3=-3.039]
+      ! ================================================================
+
       ! End of function
       end function sigma_HeI23S
       
