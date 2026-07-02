@@ -51,3 +51,10 @@ Notes
   Newton residual floor appears to be ||R|| ~ 3e-4 (see
   `docs/steady_solver_memo.pdf`), which is below the default
   `Resid tol: 1.0e-3` and therefore harmless here.
+
+## 13_lower_atmosphere/
+Tier-1/3 lower-atmosphere connection examples for HD 209458 b, HD 189733 b,
+WASP-121 b and WASP-52 b: per-planet `input.inp` + driver-generated
+`base_iso.inp` / `base_guillot.inp` handoff files, with a results table and
+regeneration commands in its own README.  Full description:
+`docs/lower_atmosphere_coupling.pdf`.

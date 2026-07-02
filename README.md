@@ -36,6 +36,13 @@ fork of the ATES code (Caldiroli et al. 2021; Biassoni et al. 2024), adding:
 - A Jacobian-free Newton-Krylov (JFNK) steady-state solver with PTC warm-up,
   SER ramp, and non-monotone (Grippo) line search
 - Roche-potential geometry (spherical or Roche-lobe domain modes)
+- **Lower-atmosphere connection machinery** (opt-in): an analytic
+  Koskinen+2022 lower column (`Lower column:` key reports the derived 1-ubar
+  base radius and base H2/H/He), an EOS-only molecular-base correction
+  (`Molecular base:`), H3+ cooling + molecular-rate foundations for the
+  Tier-2 extension, and a `base.inp` handoff (+ `src/utils/run_lower.py`
+  driver) for external lower-atmosphere models — see
+  `docs/lower_atmosphere_coupling.pdf`
 - **TPM** (Transmission Probability Module) post-processor: transit spectra
   for He I 10830 Å, Ly-alpha, H-alpha, H-beta, and the metal resonance
   doublets Mg II h&k, Ca II H&K, and Na I D
@@ -98,6 +105,7 @@ EXHALE/
 │   ├── code_comparison.pdf    # BC/IC/solver vs ATES, Salz, Kubyshkina, Murray-Clay
 │   ├── steady_solver_memo.pdf # Newton-Krylov design notes
 │   ├── wind_ae_solver.pdf     # bundled Wind-AE solver (IC mode: windae)
+│   ├── lower_atmosphere_coupling.pdf # lower-atmosphere connection: survey + Tier 1-3
 │   ├── code_review_20260702.md # full-code review report (fixes + recommendations)
 │   └── …
 ├── observational_data/    # digitized observational comparison data
@@ -442,4 +450,4 @@ See `examples/README.md` for the exact lines each one adds:
 
 ---
 
-Last updated: 2026-07-02 14:35
+Last updated: 2026-07-02 22:41

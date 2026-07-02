@@ -2613,3 +2613,33 @@ temperature structures agree. HD 209458b results return to the pre-hybrid values
 
 **Touched files.** `species_diffusion.f90` (metal-stage rescale: cap-only bound + neutral-stage
 re-seed of exhausted cells).
+
+## 28. Lower-atmosphere connection: Tier 1-3 machinery (2026-07-02, all opt-in)
+
+Survey + proposal + implementation: `docs/lower_atmosphere_coupling.{md,tex,pdf}`.
+New folder `src/modules/lower_atmosphere/`; everything default-off (regression: standard
+HD 209458 b 3000-step run reproduces v1.0's Mdot 8.97 exactly).
+
+- **Tier 1** `lower_column.f90` + key `Lower column: <R_1bar RJ>`: Koskinen+2022 analytic
+  isothermal-Teq hypsometric column with Visscher chemical-equilibrium H2/H/He; reports the
+  derived 1-ubar base radius (equilibrium + fully-atomic bracket), base q_H2/q_H/q_He and mu
+  next to the input "Planet radius". Gate passed: Model A r0/R1bar=1.343 (paper 1.34),
+  q_H2=0.838 (0.84), q_H=0.027 (0.026).
+- **Tier 2 foundation** `h3p_cooling.f90` (Miller+2013 Table-5 LTE emission fits + Table-6
+  non-LTE factor; anchors reproduced <0.5%; paper archived as
+  `references/Miller_2013_JPCA_117_9770.pdf`) and `mol_rates.f90` (Koskinen+2022 Table-1
+  rates R1-R23, verified against the PDF). Remaining: coupled System_HeH_mol solver + EOS.
+- **Tier 2a** key `Molecular base: True`: EOS-only base correction removing the H2-bound
+  particles from ntot_bc via the equilibrium fit (chemistry stays atomic; crude, documented).
+- **Tier 3** optional `base.inp` (keys T_base/r_base/HeH_base/Kzz_base; echoed, no-op when
+  absent) consumed by input_read + driver `src/utils/run_lower.py` (isothermal or Guillot
+  2010 semi-grey T(p)); VULCAN photochemistry documented as the upgrade path.
+
+Physics note from the Tier-1 gate: the chemical-equilibrium base stays strongly molecular
+up to T~2000 K, so the atomic base of Teq~1000-2000 K hot Jupiters rests on photochemical
+dissociation (Moses 2011; Koskinen 2013a) - quantified motivation for the VULCAN tier.
+
+**Touched files.** new `src/modules/lower_atmosphere/{lower_column,h3p_cooling,mol_rates}.f90`,
+`src/utils/run_lower.py`; `parameters.f90` (`lower_col_r1bar`, `molecular_base`);
+`input_read.f90` (keys + `read_base_inp` + ntot_bc adjustment); `EXHALE_main.f90` (Tier-1
+report); `Makefile`.

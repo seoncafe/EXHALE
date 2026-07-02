@@ -3237,6 +3237,38 @@ He/H). Both are stable (no NaN) and leave $\dot M$ essentially unchanged (metals
 All diffusion flags are \textbf{default off}, so standard runs are byte-identical.
 
 % ===================================================================== %
+\section{Lower-atmosphere connection: Tier 1--3 machinery (2026-07-02)}
+% ===================================================================== %
+Survey $+$ proposal $+$ implementation: \texttt{docs/lower\_atmosphere\_coupling.\{md,tex,pdf\}}.
+New folder \texttt{src/modules/lower\_atmosphere/}; everything \textbf{opt-in / default
+off} (regression: the standard HD\,209458\,b 3000-step run reproduces v1.0's
+$\log\dot M=8.97$ exactly).
+\begin{itemize}
+\item \textbf{Tier 1} \texttt{lower\_column.f90} $+$ key \texttt{Lower column:}: the
+  Koskinen$+$2022 analytic isothermal-$T_{\rm eq}$ hypsometric column with Visscher
+  chemical-equilibrium H$_2$/H/He; reports the derived 1-$\mu$bar base radius (equilibrium
+  $+$ fully-atomic bracket), base $q_{\rm H_2}/q_{\rm H}/q_{\rm He}$ and $\mu$ next to the
+  input ``Planet radius''. Gate passed: Model~A $r_0/R_{\rm 1bar}=1.343$ (paper 1.34),
+  $q_{\rm H_2}=0.838$ (0.84), $q_{\rm H}=0.027$ (0.026).
+\item \textbf{Tier 2 foundation} \texttt{h3p\_cooling.f90} (Miller$+$2013 Table-5 LTE
+  emission fits $+$ Table-6 non-LTE factor $s(T,n_{\rm H_2})$; anchors reproduced to
+  $<$0.5\%) and \texttt{mol\_rates.f90} (Koskinen$+$2022 Table-1 rates R1--R23, verified
+  against the PDF). Remaining: the coupled \texttt{System\_HeH\_mol} solver $+$ EOS.
+\item \textbf{Tier 2a} key \texttt{Molecular base: True}: EOS-only base correction
+  removing the H$_2$-bound particles from \texttt{ntot\_bc} via the equilibrium fit
+  (chemistry stays atomic; crude, documented).
+\item \textbf{Tier 3} optional \texttt{base.inp}
+  (\texttt{T\_base}/\texttt{r\_base}/\texttt{HeH\_base}/\texttt{Kzz\_base}; echoed,
+  no-op when absent) consumed by \texttt{input\_read}, $+$ the driver
+  \texttt{src/utils/run\_lower.py} (isothermal or Guillot 2010 semi-grey $T(p)$); VULCAN
+  photochemistry is the documented upgrade path.
+\end{itemize}
+Physics note from the Tier-1 gate: the chemical-equilibrium base stays strongly molecular
+up to $T\sim2000$\,K, so the atomic base of $T_{\rm eq}\sim1000$--2000\,K hot Jupiters
+rests on \emph{photochemical} dissociation (Moses 2011; Koskinen 2013a) --- quantified
+motivation for the VULCAN tier.
+
+% ===================================================================== %
 %  APPENDIX --- bookkeeping material, kept separate from the dated update log
 % ===================================================================== %
 \clearpage

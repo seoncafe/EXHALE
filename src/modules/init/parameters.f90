@@ -74,6 +74,20 @@
       ! P2d: also diffuse the trace metals (each element with its own mass and
       !  binary diffusion coefficient); default .false. = metals frozen to H.
       logical :: he_metal_diffusion = .false.
+      ! Tier-1 analytic lower column (Koskinen+2022; docs/lower_atmosphere_
+      ! coupling.*): radius of the 1-bar level [R_J].  If > 0, on startup the
+      ! isothermal-Teq hypsometric column with chemical-equilibrium H2/H/He
+      ! is integrated from 1 bar to 1 ubar and the derived base radius
+      ! (equilibrium + fully-atomic bracket), base H2/H/He fractions and mu
+      ! are REPORTED next to the input "Planet radius" (consistency check;
+      ! nothing is overridden).  <= 0 (default) = off.
+      real*8  :: lower_col_r1bar = -1.0d0
+      ! Tier-2a passive molecular base: reduce the base particle count
+      ! (ntot_bc) by the H nuclei bound into H2 at (1 ubar, T0) from the
+      ! chemical-equilibrium fit.  EOS-only correction (lower base pressure,
+      ! heavier base mu); the chemistry stays atomic -- crude, documented in
+      ! docs/lower_atmosphere_coupling.*.  Key "Molecular base: True".
+      logical :: molecular_base = .false.
       logical :: thereis_metals = .false. ! Include trace-metal species
                                           !  (C/N/O/Mg/Si/Ca/Na/K/S/Fe)
       ! EOS mass/electron/particle policy. .true. (default) = metals enter

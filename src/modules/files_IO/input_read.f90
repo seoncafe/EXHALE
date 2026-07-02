@@ -2,6 +2,7 @@
    ! Read input planetary parameters adn define
 
    use global_parameters
+   use lower_column, only: q_h2_equilibrium   ! Tier-2a molecular base
    use metals_input        ! optional metals.inp abundance reader
    use charge_exchange, only: cx_init       ! build active charge-exchange set
    use species_table, only: n_melem, iel_C, iel_O, iel_N, iel_Mg,  &
@@ -352,6 +353,13 @@
 				! (default is Verner+1996). "ATES_photoionization_rate: True"
 				str = get_word(line, 2)
 				if (str .eq. 'True' .or. str .eq. 'true') ates_photoion_rate = .true.
+			else if (index(line,'Molecular base') .gt. 0) then
+				! Tier-2a: EOS-only molecular base (docs/lower_atmosphere_*).
+				str = get_word(line, 3)
+				if (str .eq. 'True' .or. str .eq. 'true') molecular_base = .true.
+			else if (index(line,'Lower column') .gt. 0) then
+				! Tier-1 analytic lower column: "Lower column: <R_1bar in R_J>"
+				str = get_word(line, 3);  read(str,*) lower_col_r1bar
 			else if (index(line,'He_Kzz') .gt. 0) then
 				! Eddy diffusion coefficient [cm^2/s] for He/H separation.
 				! "He_Kzz: 1.0e9"
@@ -557,6 +565,12 @@
    !------ Definition of physical parameters ------!
       
    n0     = 10.0**(n0)
+   ! ---- Tier-3 optional base.inp (written by src/utils/run_lower.py or a
+   ! lower-atmosphere model): overrides the base temperature, base radius
+   ! [R_J], He/H ratio and eddy K_zz BEFORE the derived constants below.
+   ! Absent file = no-op (byte-identical legacy).
+   call read_base_inp
+
    R0     = R0*RJ
    Mp     = Mp*MJ
    a_orb  = a_orb*AU
@@ -601,6 +615,24 @@
    endif
 
    rho_bc = mass_per_H/(1.0 + HeH)
+
+   ! Tier-2a passive molecular base (docs/lower_atmosphere_coupling.*):
+   ! remove from the base particle budget the H nuclei bound into H2 at
+   ! (1 ubar, T0) according to the chemical-equilibrium fit; per n0
+   ! (H+He nuclei) that is (x2/2)/(1+HeH) particles.  Lowers the base
+   ! pressure / raises the base mean molecular weight.  EOS-only: the
+   ! species arrays stay atomic (H2 chemistry is Tier-2 proper).
+   if (molecular_base) then
+      block
+         real*8 :: qmb, x2mb
+         qmb  = q_h2_equilibrium(1.0d-6, T0)
+         x2mb = 2.0d0*qmb*(1.0d0 + HeH)/(1.0d0 + qmb)
+         if (x2mb .gt. 1.0d0) x2mb = 1.0d0
+         ntot_bc = ntot_bc - 0.5d0*x2mb/(1.0d0 + HeH)
+         write(*,'(A,F6.3,A,F6.3)') ' (input_read) Molecular base: '//   &
+            'q_H2(1ubar,T0) =', qmb, ' -> ntot_bc =', ntot_bc
+      end block
+   endif
 
    ! Pressure-anchored base (Base BC: pressure): override n0 so that the base
    ! pressure n0*kb*T0*ntot_bc matches the target base_p_ubar [microbar].
@@ -651,6 +683,49 @@
 
    ! End of subroutine
    end subroutine input_read
+
+   ! ------------------------------------------------------------------- !
+
+   subroutine read_base_inp
+   ! Tier-3 lower-atmosphere handoff file (optional).  Keyword lines:
+   !   T_base    <K>      -> overrides T0 (base temperature)
+   !   r_base    <R_J>    -> overrides the "Planet radius" (1-ubar radius)
+   !   HeH_base  <ratio>  -> overrides the He/H number ratio
+   !   Kzz_base  <cm2/s>  -> sets he_kzz (used by He_diffusion)
+   ! '#' comments and unknown keys are ignored.  Written by
+   ! src/utils/run_lower.py (analytic column) or by an external
+   ! photochemical/RC model; see docs/lower_atmosphere_coupling.*.
+   character(len=250) :: line
+   character(len=:), allocatable :: str
+   logical :: ex
+   integer :: ios, ub
+
+   inquire(file='base.inp', exist=ex)
+   if (.not. ex) return
+   write(*,*) '(input_read) Reading base.inp (lower-atmosphere handoff)..'
+   open(newunit=ub, file='base.inp', status='old')
+   do
+      read(ub,'(A)',iostat=ios) line
+      if (ios .ne. 0) exit
+      if (len_trim(line) .eq. 0) cycle
+      if (index(adjustl(line),'#') .eq. 1) cycle
+      if (index(line,'T_base') .gt. 0) then
+         str = get_word(line,2);  read(str,*) T0
+         write(*,'(A,F9.1,A)') '   base.inp: T0 -> ', T0, ' K'
+      else if (index(line,'r_base') .gt. 0) then
+         str = get_word(line,2);  read(str,*) R0
+         write(*,'(A,F8.4,A)') '   base.inp: R0 -> ', R0, ' R_J'
+      else if (index(line,'HeH_base') .gt. 0) then
+         str = get_word(line,2);  read(str,*) HeH
+         if (HeH .gt. 0.0d0) thereis_He = .true.
+         write(*,'(A,F8.5)') '   base.inp: He/H -> ', HeH
+      else if (index(line,'Kzz_base') .gt. 0) then
+         str = get_word(line,2);  read(str,*) he_kzz
+         write(*,'(A,ES9.2,A)') '   base.inp: He_Kzz -> ', he_kzz, ' cm2/s'
+      endif
+   enddo
+   close(ub)
+   end subroutine read_base_inp
       
    ! ------------------------------------------------------- !
       

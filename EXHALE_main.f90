@@ -10,6 +10,7 @@
       use utils
       use composition, only: get_species_densities, comp_T_from_p, comp_p_from_T
       use species_diffusion, only: he_diffusion_step
+      use lower_column, only: lower_column_solve
       use steady_residual_mod, only: assemble_residual, residual_norms, residual_norms_vol
       use steady_newton, only: neq_newton, pack_U, unpack_U, newton_residual, &
                                eval_residual, frozen_residual,              &
@@ -128,7 +129,36 @@
       
       ! Read planetary parameters from file
       call input_read
-      
+
+      ! Tier-1 analytic lower column (opt-in "Lower column: <R_1bar in R_J>"):
+      ! integrate the isothermal-Teq hypsometric column (Koskinen+2022) from
+      ! the 1-bar radius to the 1-ubar base and report the derived base radius
+      ! (chem-equilibrium mu + fully-atomic bracket), the base H2/H/He mix and
+      ! mu, next to the input "Planet radius".  Report only; no override.
+      if (lower_col_r1bar .gt. 0.0d0) then
+         block
+            real*8 :: lc_rb, lc_q2, lc_qh, lc_qhe, lc_mu, lc_rba
+            call lower_column_solve(Mp, lower_col_r1bar*RJ, T0, HeH,      &
+                                    1.0d0, 1.0d-6,                        &
+                                    lc_rb, lc_q2, lc_qh, lc_qhe, lc_mu,   &
+                                    lc_rba)
+            write(*,'(a)') ' (lower_column) Tier-1 analytic lower colum'//&
+                           'n (Koskinen+2022, isothermal Teq):'
+            write(*,'(a,f8.4,a,f8.4,a)') '   r(1 ubar) = ', lc_rb/RJ,     &
+               ' R_J (chem. eq.)  /  ', lc_rba/RJ, ' R_J (atomic bracket)'
+            write(*,'(a,f8.4,a)') '   input "Planet radius"     = ',      &
+               R0/RJ, ' R_J  (should lie in the bracket above)'
+            write(*,'(a,f6.3,a,f6.3,a,f6.3,a,f6.3)')                      &
+               '   base q_H2 =', lc_q2, '   q_H =', lc_qh,                &
+               '   q_He =', lc_qhe, '   mu =', lc_mu
+            if (lc_q2 .gt. 0.3d0) write(*,'(a)') '   NOTE: chem.-equil'// &
+               'ibrium base is strongly molecular; if the planet is '//   &
+               'genuinely cool, Tier-2 molecular physics is required '//  &
+               '(for Teq~1000-2000 K hot Jupiters photochemistry '//      &
+               'dissociates H2 -- see docs/lower_atmosphere_coupling).'
+         end block
+      endif
+
       !------------------------------------------------!
       
       ! Initialize simulations

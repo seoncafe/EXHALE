@@ -1,0 +1,9 @@
+# base.inp -- lower-atmosphere handoff for EXHALE
+# written by run_lower.py  (T model: iso; R_1bar = 1.1380 R_J)
+# base q_H2 = 0.8383  q_H = 0.0203  q_He = 0.1414  (chem. equilibrium)
+# WARNING: strongly molecular base in equilibrium -- Tier-2
+#          molecular physics (or VULCAN photochemistry) needed.
+T_base    1183.00
+r_base    1.17353
+HeH_base  0.083333
+Kzz_base  1.000e+09

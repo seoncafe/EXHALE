@@ -1,0 +1,7 @@
+# base.inp -- lower-atmosphere handoff for EXHALE
+# written by run_lower.py  (T model: iso; R_1bar = 1.7530 R_J)
+# base q_H2 = 0.0049  q_H = 0.9163  q_He = 0.0788  (chem. equilibrium)
+T_base    2358.00
+r_base    2.00977
+HeH_base  0.085100
+Kzz_base  1.000e+09

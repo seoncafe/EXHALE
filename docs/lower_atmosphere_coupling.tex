@@ -1,0 +1,469 @@
+%% Survey + proposal + implementation + examples for connecting EXHALE to the
+%% lower atmosphere.  Companion of lower_atmosphere_coupling.md.
+\documentclass[english,a4paper]{kiseon_memo}
+\usepackage{booktabs}
+
+\newcommand{\Rp}{R_{\mathrm{p}}}
+\newcommand{\RJ}{R_{\mathrm{J}}}
+\newcommand{\Mdot}{\dot{M}}
+\newcommand{\ubar}{\mu\mathrm{bar}}
+\newcommand{\qHH}{q_{\mathrm{H_2}}}
+
+\title{Connecting EXHALE to the Lower Atmosphere:\\ Survey, Implementation, and Example Applications}
+\author{Kwang-Il Seon}
+\date{Last updated: 2026-07-02}
+
+\begin{document}
+\maketitle
+
+\section{Motivation and current state}
+
+EXHALE's lower boundary is the $\sim$1\,$\ubar$ level: the input ``Planet radius'' is the
+\emph{radius of that level} (user-guessed), the base temperature is fixed at
+$T_0=T_\mathrm{eq}$, the base density $n_0$ is an input (or pressure-anchored via
+\texttt{base\_p\_ubar}), and the gas is purely atomic H/He $+$ trace metals at prescribed
+abundances. No molecules exist anywhere in the domain. The Wind-AE IC port carries a
+\emph{simplified} molecular layer ($\mu$-blend \texttt{molec\_adjust} $+$ bolometric
+heating/cooling, auto-shutoff when the atomic transition reaches the base).
+
+This memo (i) surveys how the literature connects escape models to the lower atmosphere,
+(ii) documents the machinery implemented in \texttt{src/modules/lower\_atmosphere/} and
+\texttt{src/utils/run\_lower.py}, (iii) applies it to the four planets modelled with
+EXHALE (HD\,209458\,b, HD\,189733\,b, WASP-121\,b, WASP-52\,b), and (iv) prescribes how
+the outputs are used and connected to EXHALE runs.
+
+\section{What the literature does at the interface}
+
+\begin{table}[h]\centering\small
+\begin{tabular}{@{}p{2.5cm}p{4.2cm}p{4.4cm}p{3.6cm}@{}}
+\toprule
+Approach & Lower atmosphere & Hands to the wind model at $\sim$1\,$\ubar$ & Cost / availability \\
+\midrule
+Salz et al.\ (2016), TPCI & none --- CLOUDY solves the whole column (molecules disabled) &
+  n/a (single domain; base at $n=10^{14}$\,cm$^{-3}$, $T_\mathrm{eq}$) &
+  $\sim$$3\times10^{5}$ CPU-h for 18 planets; interface not public \\
+Koskinen et al.\ (2022) & \emph{analytic}: isothermal-$T_\mathrm{eq}$ hypsometric column from
+  1 bar, $\mu(p)$ from chemical-equilibrium H$_2$/H/He fits (Visscher et al.\ 2006) &
+  base \emph{radius} $r_0$(1\,$\ubar$), $T_0{=}T_\mathrm{eq}$, $\qHH/q_\mathrm{H}/q_\mathrm{He}$;
+  base $v$ from mass conservation & trivial (closed-form; all equations in the paper) \\
+Huang et al.\ (2017) & \emph{analytic spacer}: isothermal $\mu{=}2.3$ column, 1 bar $\to$ 10\,$\ubar$ &
+  base radius of the atomic layer; Ly$\alpha$ \emph{absorbing} bottom boundary
+  (H$_2$ accidental resonances, $\tau{=}1$ at $N_\mathrm{H_2}{\approx}10^{14}$\,cm$^{-2}$) & trivial \\
+Taylor et al.\ (2025, 2026) & full Lavvas \& Arfaux (2021) model (RC temperature $+$
+  $\sim$150-species kinetics of Lavvas et al.\ 2014 $+$ haze microphysics;
+  $10^{3}\to10^{-6}$ bar) & $T$(1\,$\ubar$), altitude of the 1\,$\ubar$ level, composition
+  (with a \emph{tolerated discontinuity}), $K_{zz}$ & in-house, \textbf{not public};
+  coupling is a manual splice, iterated $\sim$3$\times$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\noindent Key quantitative facts:
+\begin{itemize}
+\item \textbf{Base insensitivity for strong winds} (Salz et al.\ 2016, \S3.5--3.6):
+  $T_\mathrm{base}\pm40\% \Rightarrow \Mdot\pm5$--$10\%$ (linear); base density
+  $10^{14}\to10^{12}$\,cm$^{-3}$ $\Rightarrow \Mdot\lesssim40\%$ lower. Their error budget:
+  base density $\pm50\%$, base $T$ $\pm10\%$ --- both dwarfed by the XUV uncertainty
+  ($\times3$). $\Rightarrow$ \emph{EXHALE's fixed-$T_\mathrm{eq}$ base is already
+  defensible for hot Jupiters.}
+\item \textbf{Where the fixed base breaks:} (i) planets near radiative equilibrium
+  (stable thermospheres); (ii) cool/sub-Neptune planets where H$_2$ survives into the
+  wind --- Salz's GJ\,1214\,b test: H$_2$ 10--25\% throughout, H$^-$ a significant coolant,
+  $\Mdot-15\%$; Taylor et al.\ (2026): adding H$_2$ \emph{halves} the He 10830 signal
+  (14\%$\to$7\%); Koskinen et al.\ (2022) hot Uranus: base $\qHH\approx0.84$ and H$_3^+$ IR
+  emission is the dominant radiative coolant below $\sim$2.3\,$\Rp$.
+\item \textbf{What a photochemical lower model uniquely provides} (Lavvas et al.\ 2014;
+  Lavvas \& Arfaux 2021): the H$_2\to$H transition can sit exactly at 1\,$\ubar$ and is
+  temperature-sensitive there; photochemistry (OH-catalysed H$_2$ destruction) dissociates
+  H$_2$ even at 500--1000\,K; \emph{atomic-metal release profiles} (Na, K, Mg, Ca, Fe, Al,
+  Si return to atomic form below $\sim$$10^{-3}$ bar) --- the physically-motivated base
+  abundances for EXHALE's trace metals; photoionization-dominated electron density
+  ($\sim$$10^{8}$\,cm$^{-3}$, 100$\times$ Saha); radical/haze heating of $\pm$100--400\,K
+  right at the handoff level.
+\item \textbf{The published coupling is loose, not monolithic:} Lavvas et al.\ (2014) take
+  $T(p<1\,\ubar)$ \emph{from} the Koskinen thermosphere and use ``species $<3$ amu escape
+  at the wind velocity'' as their upper BC; Taylor et al.\ tolerate a composition
+  discontinuity at 1\,$\ubar$. Only TPCI runs a tight per-timestep coupling (and it
+  disables molecules).
+\end{itemize}
+
+\section{The three-tier plan}
+
+\textbf{Tier 1} --- analytic lower column (Koskinen-2022 style): derive the 1-$\ubar$ base
+radius and base H$_2$/H/He from a closed-form column. \textbf{Tier 2} --- molecular
+extension of EXHALE (H$_2$, H$_2^+$, H$_3^+$, HeH$^+$ chemistry $+$ H$_3^+$ IR cooling),
+required only for warm Neptunes / sub-Neptunes; \textbf{Tier 2a} --- an interim EOS-only
+molecular-base correction. \textbf{Tier 3} --- consume a real lower-atmosphere model
+(photochemistry $+$ radiative--convective $T(p)$) through a file interface; the
+open-source \texttt{VULCAN} (Tsai et al.\ 2017, 2021) $+$ \texttt{HELIOS} (Malik et al.\
+2017) stack is the practical replacement for the non-public Lavvas \& Arfaux code, and a
+TPCI-style full coupling is rejected (cost, availability, and demonstrated base
+insensitivity). Which science case needs which tier: hot Jupiters $\to$ Tier 1 only;
+He\,10830/H$\alpha$ work $\to$ Tier 1; metal transmission lines $\to$ Tier 3 (atomic-metal
+release abundances); warm Neptunes / sub-Neptunes $\to$ Tier 2 $+$ 1.
+
+% ===================================================================== %
+\section{Implementation}\label{sec:impl}
+% ===================================================================== %
+
+All Fortran lives in \texttt{src/modules/lower\_atmosphere/}; the Python driver in
+\texttt{src/utils/}. Everything is \textbf{opt-in / default off} --- with no keys and no
+\texttt{base.inp}, standard runs are unchanged (regression: HD\,209458\,b
+He\,2$^3$S$+$metals 3000-step $\log\Mdot=8.97$, identical to EXHALE\_v1.0).
+
+\subsection{Tier 1: \texttt{lower\_column.f90}}\label{sub:t1}
+
+\paragraph{Equations.} The isothermal hypsometric relation is integrated from the 1-bar
+level (radius $R_\mathrm{1bar}$, in practice the broadband transit radius) to the base
+pressure $p_0=1\,\ubar$,
+\begin{equation}
+  \frac{\mathrm{d}\ln p}{\mathrm{d}r} \;=\; -\,\frac{\mu(p,T)\,m_\mathrm{H}\,g(r)}{k_\mathrm{B}T},
+  \qquad g(r)=\frac{GM_\mathrm{p}}{r^{2}},\quad T=T_\mathrm{eq},
+  \label{eq:hypso}
+\end{equation}
+with a fixed-step 4th-order Runge--Kutta in $x=\ln p$ (2000 steps; the integrand is
+smooth). The mean molecular weight follows the chemical-equilibrium H$_2$/H partition of
+Visscher et al.\ (2006) as fitted by Koskinen et al.\ (2022, Eq.~11),
+\begin{equation}
+  \qHH \simeq \frac{1.9845 + 10^{u} - \sqrt{10^{u}\,(3.9690 + 10^{u})}}{2.3670},
+  \qquad u = -\frac{23672}{T} - \log_{10} p_\mathrm{[bar]} + 6.2645 .
+  \label{eq:visscher}
+\end{equation}
+An implementation subtlety uncovered during validation: Eq.~\eqref{eq:visscher} returns
+the \emph{full-mixture} volume mixing ratio $\qHH = n_\mathrm{H_2}/(n_\mathrm{H_2}+
+n_\mathrm{H}+n_\mathrm{He})$ (a protosolar He abundance is baked into the fit), so the
+fraction $x_2$ of H \emph{nuclei} bound in H$_2$ must be recovered as
+\begin{equation}
+  x_2 \;=\; \frac{2\,\qHH\,(1+f_\mathrm{He})}{1+\qHH}\;\le\;1,
+  \qquad
+  \mu \;=\; \frac{1+4f_\mathrm{He}}{(1-x_2)+x_2/2+f_\mathrm{He}}\;\;[\mathrm{amu}],
+  \label{eq:x2}
+\end{equation}
+with $f_\mathrm{He}=n_\mathrm{He}/n_\mathrm{H(nuclei)}$ the elemental ratio (EXHALE's
+\texttt{HeH}). Equation~\eqref{eq:x2} was verified against the Koskinen et al.\ (2022)
+Model~A base composition ($\qHH=0.84$, $q_\mathrm{H}=0.026 \Rightarrow x_2=0.985$); the
+naive H-subsystem inversion $x_2=2q/(1+q)$ is \emph{wrong} and misses the gate.
+
+\paragraph{Interface.} \texttt{lower\_column\_solve(Mp, R\_deep, T, fhe, p\_deep, p\_base,
+r\_base, qh2\_b, qh\_b, qhe\_b, mu\_b, r\_base\_atomic)} (cgs; pressures in bar). Because
+chemical equilibrium \emph{underestimates} H dissociation at
+$T_\mathrm{eq}\approx1000$--2000\,K (photochemistry ignored; Moses et al.\ 2011; Koskinen
+et al.\ 2013a), the routine also integrates the same column with the fully atomic
+$\mu=(1+4f_\mathrm{He})/(1+f_\mathrm{He})$ and returns \texttt{r\_base\_atomic}: the two
+radii \emph{bracket} the truth. The public helper \texttt{q\_h2\_equilibrium(p,T)} exposes
+Eq.~\eqref{eq:visscher} (NaN-safe, clamped to $[0,1]$).
+
+\paragraph{EXHALE key.} \texttt{Lower column: <R\_1bar in R\_J>} in \texttt{input.inp}
+triggers a startup report: the derived $r_0$(1\,$\ubar$) (equilibrium $+$ atomic bracket),
+the input ``Planet radius'' for comparison, and the base $\qHH/q_\mathrm{H}/q_\mathrm{He}/\mu$,
+plus a warning when the equilibrium base is strongly molecular. \emph{Report only ---
+nothing is overridden} (overriding is Tier 3's job, \S\ref{sub:t3}).
+
+\paragraph{Validation gate (passed).} Koskinen et al.\ (2022) Model~A (Uranus-mass planet,
+$M=8.6813\times10^{28}$\,g, $R_\mathrm{1bar}=2.5559\times10^{9}$\,cm, Sun-like star at
+0.05\,au, $T_\mathrm{eq}=1140$\,K, $f_\mathrm{He}=0.0793$):
+\begin{center}\small
+\begin{tabular}{@{}lccc@{}}
+\toprule
+ & $r_0/R_\mathrm{1bar}$ & $\qHH$(base) & $q_\mathrm{H}$(base) \\
+\midrule
+this module & 1.343 & 0.838 & 0.027 \\
+Koskinen et al.\ (2022) & 1.34 & $\approx$0.84 & $\approx$0.026 \\
+\bottomrule
+\end{tabular}
+\end{center}
+Approximations (documented in the source): isothermal column at $T_\mathrm{eq}$;
+spherical gravity (the Roche-equipotential correction matters only near RLO); chemical
+equilibrium only.
+
+\subsection{Tier 2a: the \texttt{Molecular base} key}\label{sub:t2a}
+
+\texttt{Molecular base: True} applies an \emph{EOS-only} correction at startup: the H
+nuclei bound into H$_2$ at $(1\,\ubar, T_0)$ per Eq.~\eqref{eq:visscher}--\eqref{eq:x2}
+are removed from the base particle budget,
+\begin{equation}
+  \mathtt{ntot\_bc} \;\to\; \mathtt{ntot\_bc} - \frac{x_2/2}{1+f_\mathrm{He}},
+\end{equation}
+which lowers the base pressure ($p_\mathrm{base}= \mathtt{ntot\_bc}\,n_0 k_\mathrm{B}T_0$)
+and raises the base mean molecular weight, i.e.\ a heavier, more compact base --- the
+leading-order effect of a molecular base on the hydrodynamics. The species arrays remain
+atomic (H$_2$ chemistry is Tier-2 proper), so this is a \emph{crude, clearly-flagged}
+approximation. Example: HD\,209458\,b, $\qHH(1\,\ubar,1450\,\mathrm{K})=0.831
+\Rightarrow \mathtt{ntot\_bc}\,1.0\to0.546$.
+
+\subsection{Tier 2 foundation: \texttt{h3p\_cooling.f90} and \texttt{mol\_rates.f90}}\label{sub:t2}
+
+\paragraph{H$_3^+$ infrared cooling.} Optically thin cooling per molecule from Miller et
+al.\ (2013, Table~5, $z(T)$ fits, archived as
+\texttt{references/Miller\_2013\_JPCA\_117\_9770.pdf}):
+\begin{equation}
+  \ln E(\mathrm{H_3^+},T) = \sum_n C_n T^{\,n}
+  \qquad [E\ \mathrm{in\ W\,molecule^{-1}\,sr^{-1}}],
+\end{equation}
+piecewise over 30--300, 300--800, 800--1800, and 1800--5000\,K (fit errors $<0.1\%$ over
+300--5000\,K), held frozen above 5000\,K (H$_3^+$ is destroyed well below). The
+volumetric rate is
+\begin{equation}
+  \Lambda_{\mathrm{H_3^+}} = n_{\mathrm{H_3^+}}\;4\pi\,E(T)\;
+  s_\mathrm{nonLTE}(T,n_{\mathrm{H_2}})\times10^{7}
+  \quad[\mathrm{erg\,s^{-1}\,cm^{-3}}],
+\end{equation}
+where $s_\mathrm{nonLTE}$ is the departure factor of Miller et al.\ (2013, Table~6; their
+Oka \& Epp detailed-balance approach), implemented as a bilinear interpolation in
+$(T,\log_{10}n_\mathrm{H_2})$ over $T=300$--5000\,K and $n_\mathrm{H_2}=10^{6}$--$10^{14}$
+cm$^{-3}$; $s\to1$ (LTE) at high density, and the tabulated values are upper limits per
+the paper's caveat on the proton-hopping rate. Both interpolators use the NaN-safe
+\texttt{.not.(x>edge)} bracketing adopted after the 2026-07-02 code review.
+\textbf{Validation:} the fits reproduce the paper's Table-4 anchors at
+$T=500/1000/2000/3000/5000$\,K to $<$0.5\%, and $s(1000\,\mathrm{K},10^{10}\,
+\mathrm{cm^{-3}})=0.4955$, $s(2000\,\mathrm{K},10^{12})=0.9499$ exactly.
+
+\paragraph{Molecular reaction rates.} \texttt{mol\_rates.f90} provides the full
+H$_2$/H$_2^+$/H$_3^+$/HeH$^+$ thermochemical network of Koskinen et al.\ (2022, Table~1;
+transcribed and verified against the PDF page): recombination (R1--R2, Storey \& Hummer
+1995), Voronov (1997) collisional ionization (R3--R4), H$_2^+$/H$_3^+$/HeH$^+$
+dissociative recombination (R5--R7, R16; Larsson et al.\ 2008), the H$_3^+$ production
+backbone H$_2^+ + \mathrm{H_2}\to \mathrm{H_3^+} + \mathrm{H}$ (R8, $2\times10^{-9}$),
+thermal and electron-impact H$_2$ dissociation (R12, R14), three-body chemistry (R13,
+R15), the HeH$^+$ chain (R17--R20), and H/He charge exchange (R21--R23). The stellar
+photo-rates P1--P5 (including H$_2$ dissociative and double photoionization) follow
+EXHALE's existing \texttt{PH\_heat} machinery once H$_2$ cross sections are added.
+Baseline caveat inherited from the source: Lyman--Werner neutral photodissociation is not
+in the network (Koskinen et al.'s sensitivity test bounded its effect on $\Mdot$ at
+$\times1.4$).
+
+\paragraph{Remaining Tier-2 work (open).} The coupled \texttt{System\_HeH\_mol} ionization
+system (four new unknowns, following the merged \texttt{System\_HeH\_TR\_metals} pattern),
+the EOS extension ($\mu$ and $n_\mathrm{tot}$ with H$_2$ in \texttt{composition.f90},
+diatomic dof, the 4.48\,eV dissociation sink), and H$_2$ photo cross sections. Gates:
+a hot Jupiter with molecules on must reproduce the atomic code; a GJ\,1214\,b-like case
+must halve the He\,10830 line (Taylor et al.\ 2026) with $\Mdot$ shifts $\lesssim40\%$.
+
+\subsection{Tier 3: \texttt{base.inp} and \texttt{run\_lower.py}}\label{sub:t3}
+
+\paragraph{The handoff file.} An optional \texttt{base.inp} in the run directory is read
+by \texttt{input\_read} \emph{before} the derived constants, so its overrides propagate
+consistently ($v_0$, $b_0$, grid, normalization):
+\begin{center}\small
+\begin{tabular}{@{}llll@{}}
+\toprule
+key & unit & overrides & used by \\
+\midrule
+\texttt{T\_base}   & K     & $T_0$ (base temperature)          & thermal BC, EOS scales \\
+\texttt{r\_base}   & $\RJ$ & ``Planet radius'' ($=r_0$ of 1\,$\ubar$) & grid, gravity, areas \\
+\texttt{HeH\_base} & --    & He/H number ratio                 & composition, He diffusion \\
+\texttt{Kzz\_base} & cm$^2$/s & \texttt{he\_kzz}               & \texttt{He\_diffusion} homopause \\
+\bottomrule
+\end{tabular}
+\end{center}
+Every override is echoed to stdout; an absent file is a strict no-op. Unknown keys and
+\texttt{\#} comments are ignored, so a richer lower-atmosphere model may carry extra
+metadata in the same file.
+
+\paragraph{The driver.} \texttt{src/utils/run\_lower.py <run\_dir> --r1bar <R\_J>
+[--guillot] [--tint T] [--kzz K]} reads $M_\mathrm{p}$, $T_\mathrm{eq}$, He/H from the run
+directory's \texttt{input.inp}, integrates the same column as \S\ref{sub:t1} in Python,
+and writes \texttt{base.inp}. Two temperature models: isothermal $T_\mathrm{eq}$
+(default; identical to the Fortran Tier-1 column) and the Guillot (2010) semi-grey
+global-average profile
+\begin{equation}
+  T^4(\tau) = \frac{3T_\mathrm{int}^4}{4}\Big(\frac{2}{3}+\tau\Big)
+  + \frac{3T_\mathrm{eq}^4}{4}\Big(\frac{2}{3} + \frac{1}{\gamma\sqrt3}
+  + \Big[\frac{\gamma}{\sqrt3}-\frac{1}{\gamma\sqrt3}\Big]e^{-\gamma\tau\sqrt3}\Big),
+  \qquad \tau = \kappa_\mathrm{IR}\,p/g,
+\end{equation}
+with standard hot-Jupiter defaults ($\kappa_\mathrm{IR}=10^{-2}$\,cm$^2$g$^{-1}$,
+$\gamma=0.4$, $T_\mathrm{int}=100$\,K). The file records the base
+$\qHH/q_\mathrm{H}/q_\mathrm{He}$ as comments and prints a molecular-base warning when
+$\qHH>0.3$. The upgrade path --- running \texttt{VULCAN} for the composition (including
+the photochemical H$_2$ dissociation and the atomic-metal release that feed a
+\texttt{metals.inp}) and a real RC model for $T(p)$ --- writes the \emph{same}
+\texttt{base.inp} keys, so nothing on the EXHALE side changes.
+
+% ===================================================================== %
+\section{Example applications: HD and WASP planets}\label{sec:examples}
+% ===================================================================== %
+
+The machinery was applied to the four planets modelled with EXHALE
+(\texttt{examples/13\_lower\_atmosphere/}; $R_\mathrm{1bar}$ = broadband transit radius;
+$T_\mathrm{eq}$, $M_\mathrm{p}$, He/H from each run's \texttt{input.inp}).
+
+\begin{table}[h]\centering\small
+\begin{tabular}{@{}lcccc cccc cc@{}}
+\toprule
+ & $M_\mathrm{p}$ & $T_\mathrm{eq}$ & He/H & $R_\mathrm{1bar}$ & input $R_0$ &
+ \multicolumn{2}{c}{$r_0$(1\,$\ubar$) [$\RJ$]} & $r_0^\mathrm{Gui}$ & $\qHH$ & $\mu_\mathrm{base}$ \\
+planet & [$M_\mathrm{J}$] & [K] & & [$\RJ$] & [$\RJ$] & chem.eq. & atomic & [$\RJ$] & (base) & [amu] \\
+\midrule
+HD\,209458\,b & 0.720 & 1450 & 0.0833 & 1.36  & 1.401  & 1.472 & 1.582 & 1.466 & 0.831 & 2.25 \\
+HD\,189733\,b & 1.237 & 1183 & 0.0833 & 1.138 & 1.193  & 1.174 & 1.205 & 1.171 & 0.838 & 2.26 \\
+WASP-121\,b   & 1.182 & 2358 & 0.0851 & 1.753 & 2.2075 & 2.010 & 2.133 & 1.966 & 0.005 & 1.24 \\
+WASP-52\,b    & 0.460 & 1304 & 0.0204 & 1.27  & 1.270  & 1.437 & 1.615 & 1.428 & 0.837 & 1.95 \\
+\bottomrule
+\end{tabular}
+
+\smallskip
+\parbox{0.95\textwidth}{\footnotesize Isothermal-$T_\mathrm{eq}$ column (chem.\
+equilibrium $+$ fully-atomic bracket) and the Guillot variant $r_0^\mathrm{Gui}$
+($T_\mathrm{base}^\mathrm{Gui}$ = 1313, 1072, 2136, 1181\,K respectively).
+``input $R_0$'' is the base radius currently used in the production runs.}
+\end{table}
+
+\noindent Interpretation (per planet):
+\begin{itemize}
+\item \textbf{HD\,189733\,b --- consistent.} The production base radius (1.193\,$\RJ$)
+  falls \emph{inside} the derived bracket [1.174, 1.205]: the adopted setup is validated
+  by the column, not merely assumed.
+\item \textbf{HD\,209458\,b --- input $\sim$5\% low.} The production value 1.401\,$\RJ$
+  sits just below the bracket [1.472, 1.582]. Given the isothermal-$T_\mathrm{eq}$
+  assumption this is within the method's spread, but it suggests the 1-$\ubar$ level may
+  lie slightly higher than assumed; the effect on $\Mdot$ is bounded by the Salz
+  base-sensitivity results ($\lesssim10\%$-level).
+\item \textbf{WASP-121\,b --- the atomic base is \emph{verified}.} At
+  $T_\mathrm{eq}=2358$\,K the equilibrium base is already atomic ($\qHH=0.005$,
+  $q_\mathrm{H}=0.92$, $\mu=1.24$): for this ultra-hot Jupiter EXHALE's atomic assumption
+  holds \emph{even in equilibrium}, with no appeal to photochemistry. The production base
+  radius 2.2075\,$\RJ$ (derived earlier from the Huang et al.\ 2023 Table-3 $\log g$
+  anchoring) lies $\sim$4--10\% above the isothermal-$T_\mathrm{eq}$ bracket [2.010,
+  2.133] --- consistent with a dayside lower atmosphere hotter than the
+  redistribution-averaged $T_\mathrm{eq}$, which extends the column. Note the deep layers
+  are still molecular ($\qHH(1\,\mathrm{bar})\approx0.83$), so $\mu$ varies from 2.25 to
+  1.24 along this column --- the equilibrium track is \emph{shorter} than the atomic
+  bracket here because of its heavier deep-layer $\mu$.
+\item \textbf{WASP-52\,b --- misplaced base, impact quantified.} The production runs use
+  the transit radius itself (1.27\,$\RJ$) as the 1-$\ubar$ base --- the common shortcut
+  --- but the column places that level at 1.44--1.62\,$\RJ$, i.e.\ the base is
+  0.17--0.35\,$\RJ$ (13--27\%) too deep. \emph{Recomputation} (the
+  \texttt{fxuv1p0\_he98} configuration rerun Newton-converged with the corrected
+  equilibrium-column base $r_0=1.437\,\RJ$, all else identical): $\log\Mdot$
+  $11.97\to12.14$ ($\times1.5$), but the He\,10830 observable barely moves ---
+  line-center absorption $27.11\to27.56\%$ ($\times1.02$) and equivalent width
+  $0.713\to0.722$\,\AA\ ($\times1.01$). The line-forming effective radius is set by
+  the $\tau{=}1$ surface of the extended wind, which stays nearly fixed in
+  \emph{physical} units (the larger, less-bound base raises $\Mdot$, but the He\,2$^3$S
+  column at a given physical radius is almost unchanged: peak $n_{\mathrm{2^3S}}$
+  150.5$\to$147.6\,cm$^{-3}$). Conclusion: the base misplacement biases the
+  \emph{mass-loss rate} at the $\times1.5$ level but appears not to bias the He\,10830
+  scan conclusions materially. Also note this run family's low He/H ($=0.0204$, the
+  ``He98'' abundance scan), visible in the light $\mu_\mathrm{base}$.
+\item \textbf{Common pattern.} All three $T_\mathrm{eq}\lesssim1500$\,K planets have
+  strongly molecular \emph{equilibrium} bases ($\qHH\approx0.83$, the fully-molecular
+  limit of the fit) --- quantifying that their atomic bases rest on \emph{photochemical}
+  dissociation (Moses et al.\ 2011; Koskinen et al.\ 2013a) rather than thermal, which is
+  precisely what the Tier-3 \texttt{VULCAN} upgrade would supply from first principles.
+  The Guillot column is systematically slightly more compact (cooler skin above the
+  photosphere) --- a $\lesssim$0.5\% radius effect at fixed assumptions.
+\end{itemize}
+
+% ===================================================================== %
+\section{Using and connecting the results}\label{sec:usage}
+% ===================================================================== %
+
+\subsection{Recommended per-planet workflow}
+\begin{enumerate}
+\item \textbf{Column check (always, free).} Add \texttt{Lower column: <transit radius>}
+  to \texttt{input.inp} (or run \texttt{run\_lower.py}). Read off: does the current
+  ``Planet radius'' fall inside the [chem.eq., atomic] bracket? Is $\qHH$(base) small?
+\item \textbf{Decide the tier.} $\qHH\lesssim0.1$ (e.g.\ WASP-121\,b): the atomic model
+  is verified --- proceed as usual. $\qHH\sim0.8$ with $T_\mathrm{eq}\sim1000$--2000\,K
+  (typical hot Jupiters): the atomic base rests on photochemistry --- proceed, but note
+  the assumption; a genuinely cool planet (warm Neptune / sub-Neptune) needs Tier-2
+  physics before its He\,10830 predictions are trusted.
+\item \textbf{Adopt the geometry.} If the input radius lies outside the bracket
+  (WASP-52\,b), either correct ``Planet radius'' by hand or copy the driver's
+  \texttt{base.inp} into the run directory so EXHALE adopts $r_0$, $T_0$, He/H and
+  $K_{zz}$ automatically (echoed at startup).
+\item \textbf{Run EXHALE} with the usual two-stage convergence ($+$ Newton finish for
+  quantitative $\Mdot$), then \texttt{TPM.py} for the transit spectra.
+\item \textbf{(Optional) iterate} once a real lower-atmosphere model is attached
+  (\S\ref{sub:feedback}).
+\end{enumerate}
+
+\subsection{Where each quantity connects}
+\begin{center}\small
+\begin{tabular}{@{}p{3.6cm}p{2.9cm}p{9.2cm}@{}}
+\toprule
+quantity & produced by & consumed by / effect \\
+\midrule
+$r_0$(1\,$\ubar$) & Tier 1 / \texttt{base.inp} & grid inner radius, gravity $b_0$,
+  irradiated area; TPM continuum radius \\
+bracket $[r_0^\mathrm{eq}, r_0^\mathrm{atom}]$ & Tier 1 & consistency check on the input
+  radius; systematic-error bar on $r_0$ \\
+$T_\mathrm{base}$ & driver ($T_\mathrm{eq}$ or Guillot) & thermal BC $T_0$; $v_0$, $p_0$,
+  $b_0$ normalization \\
+$\qHH$(base) & Eq.~\eqref{eq:visscher} & tier-decision switch; \texttt{Molecular base}
+  correction; Tier-2 initial condition \\
+He/H (base) & \texttt{base.inp} & composition; the \texttt{He\_diffusion} reservoir value \\
+$K_{zz}$ & \texttt{base.inp} & \texttt{he\_kzz}: homopause of the He/H (and metal)
+  diffusive separation \\
+$\Lambda_{\mathrm{H_3^+}}(T,n_{\mathrm{H_3^+}},n_\mathrm{H_2})$ & \texttt{h3p\_cooling} &
+  (Tier 2) new term in the \texttt{cool} array of the energy equation \\
+R1--R23 rates & \texttt{mol\_rates} & (Tier 2) source terms of
+  \texttt{System\_HeH\_mol}; H$_3^+$/HeH$^+$ densities for the cooling and for
+  IR-diagnostic post-processing \\
+metal release $n_X/n_\mathrm{H}$ & (Tier 3, VULCAN) & \texttt{metals.inp} values ---
+  replaces assumed solar totals for the Mg\,II/Ca\,II/Na\,I transmission lines \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\subsection{Feedback loop (future, with a real lower model)}\label{sub:feedback}
+One-way coupling (lower $\to$ \texttt{base.inp} $\to$ EXHALE, with the Taylor-style
+tolerated composition discontinuity) is the default. For the two-way iteration:
+EXHALE already computes the attenuated stellar spectrum on its energy grid, so the
+\emph{transmitted XUV flux at the base}, $F_\nu(r_0)=F_\nu e^{-\tau_\nu(r_0)}$, can be
+dumped and handed to the photochemical model as its top irradiation; and EXHALE's $\Mdot$
+supplies the lower model's upper BC (``species $<3$\,amu escape at the wind velocity'',
+exactly the Lavvas et al.\ 2014 prescription). Taylor et al.\ found $\sim$3 iterations
+sufficient for the analogous Ly$\alpha$ loop; the same is expected here since the wind is
+insensitive to base details at the $\lesssim$10\% level (Salz et al.\ 2016).
+
+\subsection{Consistency cautions}
+\begin{itemize}
+\item Do not double-count composition: if \texttt{base.inp} sets He/H from a lower model,
+  the \texttt{metals.inp} abundances should be the same model's \emph{atomic release}
+  values, not solar totals.
+\item \texttt{base.inp} overrides win over \texttt{input.inp} for $T_0$, $R_0$, He/H
+  (echoed); remove the file to return to the manual values.
+\item The Tier-1 column is isothermal and spherical: near-RLO planets (WASP-121\,b) need
+  the Roche correction before the bracket is taken quantitatively, and dayside-hot lower
+  atmospheres extend beyond the $T_\mathrm{eq}$ column (both visible in the WASP-121\,b
+  example above).
+\item The \texttt{Molecular base} key changes only the EOS budget; do not combine it with
+  quantitative He\,10830 claims for genuinely cool planets --- that is Tier-2 physics.
+\end{itemize}
+
+% ===================================================================== %
+\begin{thebibliography}{99}\small
+\bibitem{banks} Banks, P.~M., \& Kockarts, G.\ 1973, Aeronomy (New York: Academic Press)
+\bibitem{guillot} Guillot, T.\ 2010, A\&A, 520, A27
+\bibitem{huang17} Huang, C., Arras, P., Christie, D., \& Li, Z.-Y.\ 2017, ApJ, 851, 150
+\bibitem{huang23} Huang, C., Koskinen, T., Lavvas, P., \& Fossati, L.\ 2023, ApJ, 951, 123
+\bibitem{kosk13} Koskinen, T.~T., Harris, M.~J., Yelle, R.~V., \& Lavvas, P.\ 2013a,
+  Icarus, 226, 1678
+\bibitem{kosk22} Koskinen, T.~T., Lavvas, P., Huang, C., et al.\ 2022, ApJ, 929, 52
+\bibitem{larsson} Larsson, M., McCall, B.~J., \& Orel, A.~E.\ 2008, Chem.\ Phys.\ Lett.,
+  462, 145
+\bibitem{lavvas14} Lavvas, P., Koskinen, T., \& Yelle, R.~V.\ 2014, ApJ, 796, 15
+\bibitem{lavvas19} Lavvas, P., Koskinen, T., Steinrueck, M.~E., Garc\'ia Mu\~noz, A.,
+  \& Showman, A.~P.\ 2019, ApJ, 878, 118
+\bibitem{lavvas21} Lavvas, P., \& Arfaux, A.\ 2021, MNRAS, 502, 5643
+\bibitem{malik} Malik, M., Grosheintz, L., Mendon\c{c}a, J.~M., et al.\ 2017, AJ, 153, 56
+\bibitem{miller13} Miller, S., Stallard, T., Tennyson, J., \& Melin, H.\ 2013,
+  J.\ Phys.\ Chem.\ A, 117, 9770
+\bibitem{moses} Moses, J.~I., Visscher, C., Fortney, J.~J., et al.\ 2011, ApJ, 737, 15
+\bibitem{neale} Neale, L., Miller, S., \& Tennyson, J.\ 1996, ApJ, 464, 516
+\bibitem{salz} Salz, M., Czesla, S., Schneider, P.~C., \& Schmitt, J.~H.~M.~M.\ 2016,
+  A\&A, 586, A75
+\bibitem{storey} Storey, P.~J., \& Hummer, D.~G.\ 1995, MNRAS, 272, 41
+\bibitem{taylor25} Taylor, A.~R., Koskinen, T., Argenti, L., et al.\ 2025, ApJ, 989, 68
+\bibitem{taylor26} Taylor, A.~R., Koskinen, T., Huang, C., Arfaux, A., \& Lavvas, P.\
+  2026, ApJ, 999, 214
+\bibitem{tsai17} Tsai, S.-M., Lyons, J.~R., Grosheintz, L., et al.\ 2017, ApJS, 228, 20
+\bibitem{tsai21} Tsai, S.-M., Malik, M., Kitzmann, D., et al.\ 2021, ApJ, 923, 264
+\bibitem{visscher} Visscher, C., Lodders, K., \& Fegley, B.\ 2006, ApJ, 648, 1181
+\bibitem{voronov} Voronov, G.~S.\ 1997, At.\ Data Nucl.\ Data Tables, 65, 1
+\bibitem{xing} Xing, L., Yan, D., \& Guo, J.\ 2023, ApJ, 953, 166
+\end{thebibliography}
+
+\end{document}

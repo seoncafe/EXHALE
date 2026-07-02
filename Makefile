@@ -62,6 +62,9 @@ SRC := \
   src/modules/functions/utilities.f90 \
   src/modules/functions/composition.f90 \
   src/modules/functions/species_diffusion.f90 \
+  src/modules/lower_atmosphere/lower_column.f90 \
+  src/modules/lower_atmosphere/h3p_cooling.f90 \
+  src/modules/lower_atmosphere/mol_rates.f90 \
   src/modules/time_step/steady_residual.f90 \
   src/modules/time_step/steady_newton.f90 \
   src/modules/nonlinear_system_solver/dogleg.f90 \
