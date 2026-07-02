@@ -13,7 +13,21 @@ fork of the ATES code (Caldiroli et al. 2021; Biassoni et al. 2024), adding:
   accuracy), with density-dependent saturation of the [C II] 158 um /
   [O I] 63 um fine-structure floors and a 2-D statistical-equilibrium
   Fe II coefficient — see `docs/cooling_formulas.pdf`
-- He I 2³S metastable triplet state (coupled solver)
+- He I 2³S metastable triplet state (coupled solver), with a
+  **temperature-dependent He(2³S)+H Penning-ionization rate** (Taylor et
+  al. 2025; replaces the classic 5e-10 constant)
+- Updated photoionization data: **He I ground state = Verner et al. (1996)**
+  by default (legacy ATES 2-term fit via `ATES_photoionization_rate: True`),
+  and a **He I 2³S cross section extended past 60 eV** (two Verner-form
+  wings + power-law bridge fitted to TOPbase/Opacity-Project data) — see
+  `docs/photoion_cross_sections.pdf` and `docs/recombination_coefficients.pdf`
+- **Diffusive separation of helium and metals** (opt-in `He_diffusion: True`):
+  the He/H element ratio is transported with bulk advection + molecular-
+  diffusion settling (Banks & Kockarts binary D, eddy `He_Kzz`, ambipolar-
+  corrected settling mass, optional thermal diffusion `He_alphaT`), and each
+  trace metal can diffuse independently (`He_metal_diffusion: True`) — He/H
+  declines with altitude as in Taylor et al. (2025) / Xing et al. (2023);
+  before/after impact on He 10830: `docs/version_compare.pdf`
 - Non-LTE H(n=2) and Ly-alpha radiative transfer via the Neufeld
   escape-probability method
   - _Planned:_ an alternative that computes the Ly-alpha radiation field with
@@ -27,7 +41,8 @@ fork of the ATES code (Caldiroli et al. 2021; Biassoni et al. 2024), adding:
   doublets Mg II h&k, Ca II H&K, and Na I D
 
 For a complete description of the physics, solver, and all input parameters
-see **`docs/EXHALE_user_manual.pdf`**.
+see **`docs/EXHALE_user_manual.pdf`**; the full dated changelog (with a
+code-size appendix vs. the original ATES) is **`docs/Update_EXHALE.pdf`**.
 
 ---
 
@@ -72,11 +87,18 @@ EXHALE/
 │   └── tutorial/          # minimal worked example (generic hot Jupiter)
 ├── docs/
 │   ├── EXHALE_user_manual.pdf   # full reference manual
+│   ├── Update_EXHALE.pdf      # dated changelog + code-size appendix vs ATES
 │   ├── cooling_formulas.pdf   # analytic cooling-coefficient reference
+│   ├── photoion_cross_sections.pdf   # H/He/He2³S cross-section benchmarks + TOPbase ext.
+│   ├── recombination_coefficients.pdf # H/He recombination-data review
+│   ├── design_hehe_diffusion.md      # He/H + metal diffusive-separation design/validation
+│   ├── version_compare.pdf    # v1.0 vs current: diffusion impact on He 10830 (2 planets)
+│   ├── methodology_aiolos_taylor_xing.pdf # AIOLOS/Taylor/Xing methodology comparison
 │   ├── EXHALE_BC_and_IC.pdf     # boundary- and initial-condition reference
 │   ├── code_comparison.pdf    # BC/IC/solver vs ATES, Salz, Kubyshkina, Murray-Clay
 │   ├── steady_solver_memo.pdf # Newton-Krylov design notes
 │   ├── wind_ae_solver.pdf     # bundled Wind-AE solver (IC mode: windae)
+│   ├── code_review_20260702.md # full-code review report (fixes + recommendations)
 │   └── …
 ├── observational_data/    # digitized observational comparison data
 ├── TPM.py                 # transmission spectrum post-processor
@@ -201,6 +223,33 @@ post-process), `cx_full 0|1` (full Huang+2023 charge-exchange network),
 N I/N II, the default; `0` = legacy AIOLOS fits).  No recompile is
 needed; remove `metals.inp` to run without metals.  A template with all
 ten elements is in `inputdata/metals.inp.example`.
+
+### Diffusive separation of He (and metals)
+
+By default the He/H ratio is frozen at the input value at all radii.  To let
+helium diffusively separate from hydrogen (settling vs. wind drag, so He/H
+declines with altitude and the He 10830 line weakens on gentle escapers), add
+to `input.inp`:
+
+```
+He_diffusion:        True     # transport He/H (advection + settling); default False
+He_metal_diffusion:  True     # optional: each metal diffuses with its own mass/D
+# He_Kzz:            1.0e9    # eddy-diffusion coefficient [cm^2/s]
+# He_ambipolar:      False    # turn OFF the ambipolar settling correction (default on)
+# He_alphaT:         0.15     # thermal-diffusion factor (default 0 = off)
+```
+
+All flags default off, so standard runs are unchanged.  Physics, numerics,
+and validation: `docs/design_hehe_diffusion.md`; quantitative before/after
+comparison on HD 209458 b and WASP-121 b: `docs/version_compare.pdf`.
+
+### Legacy atomic-data switch
+
+The He I ground-state photoionization cross section defaults to the Verner
+et al. (1996) fit; add `ATES_photoionization_rate: True` to revert to the
+original ATES 2-term fit.  (The He 2³S cross section — TOPbase-extended
+past 60 eV — and the temperature-dependent Penning rate are always on;
+see `docs/photoion_cross_sections.pdf`.)
 
 ### Wind-AE warm-start initial condition (`IC mode: windae`)
 
@@ -374,6 +423,23 @@ See `examples/README.md` for the exact lines each one adds:
    (2024). *Self-Consistent Modeling of Metastable Helium Exoplanet Transits.*
    A&A, 682, A115.
 
+4. Huang, C., Koskinen, T., Lavvas, P., Fossati, L. (2023). *A Hydrodynamic
+   Study of the Escape of Metal Species and Excited Hydrogen from the
+   Atmosphere of WASP-121b.* ApJ, 951, 123.
+
+5. Taylor, A. R., Koskinen, T., et al. (2025). *A Multispecies Atmospheric
+   Escape Model with Excited Hydrogen and Helium: Application to HD209458b.*
+   ApJ, 989, 68.  (Temperature-dependent Penning rate; diffusive-separation
+   reference model.)
+
+6. Xing, L., Yan, D., Guo, J. (2023). *The Mass Fractionation of Helium in
+   the Escaping Atmosphere of HD 209458b.* ApJ, 953, 166.  (Multi-fluid
+   He/H fractionation reference.)
+
+7. Verner, D. A., Ferland, G. J., Korista, K. T., Yakovlev, D. G. (1996).
+   *Atomic Data for Astrophysics. II.* ApJ, 465, 487.  (Photoionization
+   cross sections.)
+
 ---
 
-Last updated: 2026-07-02 14:29
+Last updated: 2026-07-02 14:35
