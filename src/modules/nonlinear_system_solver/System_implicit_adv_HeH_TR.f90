@@ -21,6 +21,7 @@
 	real*8  :: n_h
 	real*8  :: ahii,aheii,aheiii,aheiTR
 	real*8  :: ionhi,ionhei,ionheii
+	real*8  :: heh_loc
    real*8  :: params(25)
    real*8  :: A31,q13,q31a,q31b,Q31
 	
@@ -47,6 +48,10 @@
 	q31b	     = params(20)   ! = q31b
 	Q31 	     = params(21)   ! = Q31
 	xheiTR_old = params(22)   ! = nheiTR/nh
+	! Effective He/H for the electron density: packed as the global HeH by
+	! post_process_adv (legacy, byte-identical); with He_diffusion the local,
+	! radius-dependent nhe/nh is passed instead.
+	heh_loc    = params(23)   ! = He/H (local when he_diffusion)
 
 	! Substitutions
 	xhi    = x(1)
@@ -56,9 +61,9 @@
 	xheiii = x(3)
 	xheiS  = x(2) - x(4)
 	xheiTR = x(4)
-		
+
  	! Electron density
-   xe = xhii + HeH*(xheii + 2.0*xheiii)
+   xe = xhii + heh_loc*(xheii + 2.0*xheiii)
       
     ! System of equations      
   	fvec(1) =  xhi_old - xhi + c1*(  		&

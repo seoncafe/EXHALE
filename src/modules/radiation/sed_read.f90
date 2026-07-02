@@ -114,9 +114,11 @@
 		
 	enddo
 	
-	! Convert to log10 
-	LX   = log10(LX_int)
-	LEUV = log10(LEUV_int)
+	! Convert to log10 (guard: an SED with no bins in a band leaves the
+	! integral at 0; log10(0) = -Inf would poison downstream fluxes, so
+	! floor to a negligible luminosity instead).
+	LX   = log10(max(LX_int,   1.0d-99))
+	LEUV = log10(max(LEUV_int, 1.0d-99))
 	
 	deallocate(wave_c)
 

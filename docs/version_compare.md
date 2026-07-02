@@ -23,7 +23,7 @@ Run dirs / figures / regenerate script: `docs/version_compare/`.
 |---|---|---|---|
 | He/H at 3 R_p | 0.083 (flat) | **0.014** | −83% |
 | peak n(He 2³S) [cm⁻³] | 177 | 102 | −42% |
-| **He I 10830 line-center absorption** | **70.5%** | **27.2%** | **−2.6×** |
+| **He I 10830 line-center absorption** | **70.5%** | **27.1%** | **−2.6×** |
 | log₁₀ Ṁ [g s⁻¹] | 9.31 | 9.04 | −0.27 dex |
 
 ### WASP-121b (ultra-hot Jupiter, log₁₀ Ṁ ≈ 13.3 — furious escape)
@@ -66,7 +66,7 @@ He > C > N > O above ~2.5 R_p).
 ![HD 209458b He I 10830](version_compare/fig_hd209_He10830.pdf)
 
 **Figure 2.** He I 10830 transit line. Diffusive separation lowers the line-center absorption
-from 70.5% to 27.2% and narrows the profile.
+from 70.5% to 27.1% and narrows the profile.
 
 ## WASP-121b figures
 

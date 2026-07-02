@@ -1023,7 +1023,11 @@
    do j = 1-Ng,N+Ng
       lt  = log10(max(T(j), 1.0d0))
       pos = (lt - cool_logT(1))/cool_dlogT + 1.0d0
-      if (pos .le. 1.0d0) then
+      ! NB: the first branch is written .not.(pos>1) rather than (pos<=1) so a
+      ! non-finite pos (transient NaN temperature during relaxation) lands on
+      ! the table edge instead of reaching int(pos) -> huge negative index ->
+      ! out-of-bounds read (caught by -fcheck=bounds on WASP-121b).
+      if (.not. (pos .gt. 1.0d0)) then
          out(j) = 10.0d0**logL(1)
       else if (pos .ge. dble(NCOOLT)) then
          out(j) = 10.0d0**logL(NCOOLT)
@@ -1086,7 +1090,9 @@
       ! position on the (uniform) log10 T axis
       lt   = log10(max(T(j), 1.0d0))
       post = (lt - cool_logT(1))/cool_dlogT + 1.0d0
-      if (post .le. 1.0d0) then
+      ! .not.(post > 1) also catches a NaN post (transient NaN T), so
+      ! int(post) can never index out of bounds (as in the scalar mirror).
+      if (.not. (post .gt. 1.0d0)) then
          kt = 1;          ft = 0.0d0
       else if (post .ge. dble(NCOOLT)) then
          kt = NCOOLT - 1; ft = 1.0d0
@@ -1096,7 +1102,7 @@
       ! position on the (uniform) log10 ne axis
       ln   = log10(max(ne(j), 1.0d0))
       posn = (ln - cool_logne(1))/dlogne + 1.0d0
-      if (posn .le. 1.0d0) then
+      if (.not. (posn .gt. 1.0d0)) then
          ke = 1;          fn = 0.0d0
       else if (posn .ge. dble(NCOOLNE)) then
          ke = NCOOLNE - 1; fn = 1.0d0

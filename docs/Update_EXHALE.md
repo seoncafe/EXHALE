@@ -2608,7 +2608,7 @@ re-partitions next step).
 a ~2500 K hotter thermosphere) was an artifact of this ratchet — with the fix, WASP-121b
 metals track He (even Fe is advection-dominated there, w_s/v ~ 1e-3) and the v1/v2
 temperature structures agree. HD 209458b results return to the pre-hybrid values (He I 10830
-70.5% → 27.2%, −2.6×; mass ordering He > C > N > O aloft unaffected).
+70.5% → 27.1%, −2.6×; mass ordering He > C > N > O aloft unaffected).
 `docs/version_compare.{md,tex,pdf}` updated accordingly.
 
 **Touched files.** `species_diffusion.f90` (metal-stage rescale: cap-only bound + neutral-stage

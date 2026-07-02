@@ -82,7 +82,9 @@
 		! Multiply for the dimensional coefficient 
 		heat(j)   = Hea_1*1.0e-18	
 		P_HI(j)   = PIR_1*1.0e-18*erg2eV	
-		q(j)      = Hea_1/q_abs
+		! Guard: q_abs (absorbed-energy normalization) can be 0 in a fully
+		! transparent/unilluminated cell; avoid 0/0 -> NaN in the efficiency.
+		q(j)      = Hea_1/max(q_abs, 1.0d-99)
 	
 	enddo
 	
@@ -230,7 +232,8 @@
 		P_HeITR(j) = PIR_TR *1.0e-18*erg2eV
 		P_m(j,:)   = Pm_loc(:)
 		heat(j)    = Hea_1*1.0e-18
-		q(j)       = Hea_1/q_abs
+		! Guard against q_abs = 0 (see PH_heat_H).
+		q(j)       = Hea_1/max(q_abs, 1.0d-99)
 		!$OMP END CRITICAL
 
 	enddo

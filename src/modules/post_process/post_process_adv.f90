@@ -348,6 +348,14 @@
 			params(12) = a_ion_HI(j)
 			params(13) = a_ion_HeI(j)
 			params(14) = a_ion_HeII(j)
+			! Effective He/H for the electron density inside the adv system:
+			! the global HeH normally (byte-identical legacy), the local
+			! (diffused) nhe/nh when He_diffusion is on.
+			if (he_diffusion) then
+				params(15) = nhe(j)/max(nh(j),1.0d-30)
+			else
+				params(15) = HeH
+			endif
 
 			! Add more if HeITR is present
 			if (thereis_HeITR) then 
@@ -359,7 +367,13 @@
 				params(20) = q31b(j)
 				params(21) = Q31(j)
 				params(22) = nheiTR(j-1)/nhe(j-1)
-			endif 
+				! Effective He/H for the electron density (see non-TR block).
+				if (he_diffusion) then
+					params(23) = nhe(j)/max(nh(j),1.0d-30)
+				else
+					params(23) = HeH
+				endif
+			endif
 			
 			! Initial guess of solution
 			sys_x(1) = nhi(j)/nh(j) 

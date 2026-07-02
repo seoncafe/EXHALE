@@ -20,24 +20,30 @@
 	real*8  :: n_h
 	real*8  :: ahii,aheii,aheiii
 	real*8  :: ionhi,ionhei,ionheii
+	real*8  :: heh_loc
    real*8  :: params(25)
-	
+
 	! Coefficients of the system
 
  	c1         = params(1)    ! = dr/v
- 	xhi_old    = params(2)    ! = nhi/nhe 
- 	xhei_old   = params(3)    ! = nheii/nhe 
+ 	xhi_old    = params(2)    ! = nhi/nh
+ 	xhei_old   = params(3)    ! = nhei/nhe
  	xheiii_old = params(4)    ! = nheiii/nhe
  	n_h        = params(5)    ! = nh
- 	ghi        = params(6)    ! = P_HI 
- 	ghei       = params(7)    ! = P_HeI = nh 
- 	gheii      = params(8)    ! = P_HeII = nhe 
-   ahii       = params(9)    ! = rchiiB  
- 	aheii      = params(10)   ! = rcheiiB 
- 	aheiii     = params(11)   ! = rcheiiiB  
+ 	ghi        = params(6)    ! = P_HI
+ 	ghei       = params(7)    ! = P_HeI = nh
+ 	gheii      = params(8)    ! = P_HeII = nhe
+   ahii       = params(9)    ! = rchiiB
+ 	aheii      = params(10)   ! = rcheiiB
+ 	aheiii     = params(11)   ! = rcheiiiB
 	ionhi	   = params(12)   ! = a_ion_HI
 	ionhei     = params(13)   ! = a_ion_HeI
 	ionheii    = params(14)   ! = a_ion_HEII
+	! Effective He/H for the electron density: packed as the global HeH by
+	! post_process_adv (legacy, byte-identical); with He_diffusion the local,
+	! radius-dependent nhe/nh is passed instead (the global HeH would misstate
+	! n_e by the local separation factor).
+	heh_loc    = params(15)   ! = He/H (local when he_diffusion)
 
 	! Substitutions
 	xhi    = x(1)
@@ -45,9 +51,9 @@
 	xhei   = x(2)
    xheii  = 1.0 - x(2) - x(3)
 	xheiii = x(3)
-		
+
  	! Electron density
-   xe = xhii + HeH*(xheii + 2.0*xheiii)
+   xe = xhii + heh_loc*(xheii + 2.0*xheiii)
       
    ! System of equations      
   	fvec(1) =  xhi_old - xhi   					        		&

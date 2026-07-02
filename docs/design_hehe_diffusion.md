@@ -285,11 +285,11 @@ replenishes is re-seeded through the neutral stage (the ionization equilibrium r
 next step). Consequence: the previously reported WASP-121b "metal homopause" (Fe → 0 by
 ~1.25 R_p) was an **artifact and is retracted** — with the fix, WASP metals track He (even Fe
 is advection-dominated there, w_s/v ~ 1e-3), and the HD 209458b results return to the
-pre-hybrid values (10830: 70.5%→27.2%).
+pre-hybrid values (10830: 70.5%→27.1%).
 
 **Two-planet validation (`docs/version_compare.{md,tex,pdf}`).** v1.0 (no diffusion) vs
 current on HD 209458b and WASP-121b shows two regimes: on the gentler HD 209458b helium
-itself separates (He I 10830 70.5%→27.2%, −2.6×) and heavier C/N/O deplete more than He aloft
+itself separates (He I 10830 70.5%→27.1%, −2.6×) and heavier C/N/O deplete more than He aloft
 (He > C > N > O at 3 R_p); on the furious WASP-121b (log Ṁ ≈ 13.3) advection dominates for
 every species — He *and* metals are dragged out essentially unfractionated (10830 unchanged;
 metal/H tracks He/H) — the (settling)/(wind) scaling of Koskinen (2013) / Xing (2023). Both
