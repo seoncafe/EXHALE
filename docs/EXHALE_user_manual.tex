@@ -849,6 +849,77 @@ two-planet before/after comparison: \texttt{docs/design\_hehe\_diffusion.md} and
 \texttt{docs/version\_compare.\{md,tex,pdf\}}. The flags are \textbf{default
 off}, so standard runs are byte-identical to before.
 
+\subsection{Lower-atmosphere connection (Tier 1--3)}\label{sec:loweratm}
+Three opt-in layers connect EXHALE's 1-$\mu$bar base to the atmosphere below
+(survey, implementation, examples and figures:
+\texttt{docs/lower\_atmosphere\_coupling.pdf}). All are \textbf{default off}.
+
+\paragraph{Tier 1 --- analytic lower column (consistency report).} Add
+\begin{verbatim}
+Lower column: 1.36        # radius of the 1-bar level [R_J], e.g. transit radius
+\end{verbatim}
+and EXHALE integrates the isothermal-$T_{\rm eq}$ hypsometric column with the
+chemical-equilibrium H$_2$/H/He partition (Koskinen et al.\ 2022) from 1 bar to
+1\,$\mu$bar and \emph{reports} the derived base radius (equilibrium value $+$ a
+fully-atomic bracket), the base H$_2$/H/He fractions and $\mu$, next to the input
+``Planet radius''. Nothing is overridden. A large base $q_{\rm H_2}$ on a
+genuinely cool planet signals that the molecular physics below is required.
+
+\paragraph{Tier 2a --- molecular base (EOS only).}
+\texttt{Molecular base: True} removes the H$_2$-bound particles from the base
+particle budget (\texttt{ntot\_bc}) using the same equilibrium fit --- a lower
+base pressure and heavier base $\mu$, with the species arrays still atomic.
+Crude; pair it with Tier 2 for cool planets.
+
+\paragraph{Tier 2 --- molecular chemistry.}
+\begin{verbatim}
+Molecular chemistry: True   # H2, H2+, H3+, HeH+ in the coupled equilibrium
+Molecular base:      True   # recommended companion (consistent ghost pressure)
+\end{verbatim}
+adds the four molecular species to the coupled ionization equilibrium (the
+Koskinen et al.\ 2022 reaction network), the H$_2$ photoionization opacity and
+heating (Yan et al.\ 1998 cross section), and the optically-thin H$_3^+$
+infrared cooling (Miller et al.\ 2013 with their non-LTE factor). The output
+\texttt{Ion\_species*.txt} gains four columns (\texttt{H2 H2p H3p HeHp}).
+Requires He; v1 excludes trace metals and \texttt{He\_diffusion} (the parser
+refuses the combinations). Caveats: local \emph{equilibrium} chemistry only (no
+molecular advection), no Lyman--Werner photodissociation, $\gamma=5/3$
+retained. On hot Jupiters the result is a thin molecular base under a sharp
+H$_2\to$H front with an atomic wind above --- the atomic assumption becomes a
+result rather than an input.
+
+\paragraph{Tier 3 --- \texttt{base.inp} handoff (and VULCAN).}
+An optional \texttt{base.inp} in the run directory overrides the base state
+before the derived constants are formed (each override is echoed; absent file =
+no-op):
+\begin{verbatim}
+T_base    1140.0     # [K]      -> overrides T0
+r_base    1.402      # [R_J]    -> overrides "Planet radius" (1-ubar radius)
+HeH_base  0.083      #          -> overrides the He/H number ratio
+Kzz_base  1.0e9      # [cm2/s]  -> sets He_Kzz (used by He_diffusion)
+\end{verbatim}
+Two generators are provided in \texttt{src/utils/}:
+\begin{itemize}
+\item \texttt{run\_lower.py <run\_dir> --r1bar <R\_J> [--guillot]} --- the
+  analytic column (isothermal $T_{\rm eq}$, or the Guillot 2010 semi-grey
+  $T(p)$); pure Python, no dependencies beyond numpy.
+\item \texttt{vulcan\_to\_base.py <out.vul> <run\_dir> --mp <M\_J> --r1bar
+  <R\_J>} --- converts a \textbf{VULCAN} photochemical-kinetics output into the
+  same \texttt{base.inp}, with the \emph{photochemical} H$_2$/H dissociation
+  state (on HD\,189733\,b photochemistry dissociates $\sim$11$\times$ more H
+  at 1\,$\mu$bar than chemical equilibrium) and a hypsometric base radius using
+  VULCAN's own $\mu(p)$ and $T(p)$.
+\end{itemize}
+\emph{Running VULCAN} (public, \texttt{github.com/exoclime/VULCAN}; a working
+copy lives at \texttt{../../VULCAN}): compile FastChem once (\texttt{make} in
+\texttt{fastchem\_vulcan/}), start from the repository's default
+\texttt{vulcan\_cfg.py} (the configs in \texttt{cfg\_examples/} are stale),
+set \texttt{use\_photo = True} and \texttt{use\_live\_plot = False}, and run
+\texttt{python3 vulcan.py} ($\sim$6\,h for the HD\,189733\,b network).
+VULCAN's networks are H/C/N/O(/S): it supplies the H$_2$/H state and molecular
+mixing ratios, \emph{not} the atomic-metal release (Na/Mg/Ca/Fe) ---
+\texttt{metals.inp} stays user-supplied.
+
 % ===================================================================== %
 \section{Output files}\label{sec:outputs}
 % ===================================================================== %
@@ -928,6 +999,9 @@ FeIII}
 \end{center}
 (HeI$^*$ is the metastable $2\,^3$S triplet.) The ionization fraction of any
 element is the stage density divided by the sum over that element's stages.
+With \texttt{Molecular chemistry: True} four more columns (\texttt{H2 H2p H3p
+HeHp}, cm$^{-3}$) are appended after the metals; the \texttt{\# columns}
+header always names the layout.
 
 \subsection{\texttt{Cooling\_breakdown.txt}}
 Per-channel radiative cooling [erg\,cm$^{-3}$\,s$^{-1}$] vs.\ radius (written for

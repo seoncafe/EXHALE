@@ -253,6 +253,23 @@
 		! Remove HeITR chemistry if He is not included
 		if (.not. thereis_He) thereis_HeITR = .false.
 
+		! Tier-2 molecular chemistry constraints (v1): requires He;
+		! exclusive with trace metals (merged mol+metals = later work item).
+		if (thereis_mol .and. .not. thereis_He) then
+			write(*,*) '(input_read) ERROR: Molecular chemistry needs He/H>0.'
+			stop
+		endif
+		if (thereis_mol .and. he_diffusion) then
+			write(*,*) '(input_read) ERROR: Molecular chemistry + He_diffusion'//&
+			           ' not supported yet.'
+			stop
+		endif
+		if (thereis_mol .and. thereis_metals) then
+			write(*,*) '(input_read) ERROR: Molecular chemistry + metals '//&
+			           'not supported yet (remove metals.inp).'
+			stop
+		endif
+
 		! IC status
 		read(11,'(A)') line
 		str = get_word(line, 3)
@@ -353,6 +370,10 @@
 				! (default is Verner+1996). "ATES_photoionization_rate: True"
 				str = get_word(line, 2)
 				if (str .eq. 'True' .or. str .eq. 'true') ates_photoion_rate = .true.
+			else if (index(line,'Molecular chemistry') .gt. 0) then
+				! Tier-2 molecular network (docs/lower_atmosphere_*).
+				str = get_word(line, 3)
+				if (str .eq. 'True' .or. str .eq. 'true') thereis_mol = .true.
 			else if (index(line,'Molecular base') .gt. 0) then
 				! Tier-2a: EOS-only molecular base (docs/lower_atmosphere_*).
 				str = get_word(line, 3)
@@ -670,6 +691,12 @@
 		! triplet keeps x(4) and the metals shift to x(5+2*(e-1)).
 		if (thereis_metals .and. .not.thereis_HeITR) N_eq = 3 + 2*n_melem
 		if (thereis_metals .and.      thereis_HeITR) N_eq = 4 + 2*n_melem
+
+	! Tier-2 molecular system: H+/He+/He++ + H2/H2+/H3+/HeH+ (+ He 2^3S)
+	if (thereis_mol) then
+		N_eq = 7
+		if (thereis_HeITR) N_eq = 8
+	endif
 	endif
 	
    lwa  = (N_eq*(3*N_eq+13))/2

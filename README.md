@@ -39,9 +39,14 @@ fork of the ATES code (Caldiroli et al. 2021; Biassoni et al. 2024), adding:
 - **Lower-atmosphere connection machinery** (opt-in): an analytic
   Koskinen+2022 lower column (`Lower column:` key reports the derived 1-ubar
   base radius and base H2/H/He), an EOS-only molecular-base correction
-  (`Molecular base:`), H3+ cooling + molecular-rate foundations for the
-  Tier-2 extension, and a `base.inp` handoff (+ `src/utils/run_lower.py`
-  driver) for external lower-atmosphere models — see
+  (`Molecular base:`), **full molecular chemistry** (`Molecular chemistry:
+  True` — H2/H2+/H3+/HeH+ in the coupled ionization equilibrium, Yan+1998 H2
+  photoionization opacity/heating, Miller+2013 H3+ IR cooling; hot Jupiters
+  develop a sharp H2->H front above a thin molecular base), and a `base.inp`
+  handoff with two generators: `src/utils/run_lower.py` (analytic column,
+  isothermal or Guillot T(p)) and `src/utils/vulcan_to_base.py` (converts a
+  **VULCAN** photochemistry output — the photochemical H2/H state, which on
+  HD 189733 b dissociates ~11x more H than equilibrium at 1 ubar) — see
   `docs/lower_atmosphere_coupling.pdf`
 - **TPM** (Transmission Probability Module) post-processor: transit spectra
   for He I 10830 Å, Ly-alpha, H-alpha, H-beta, and the metal resonance
@@ -50,6 +55,8 @@ fork of the ATES code (Caldiroli et al. 2021; Biassoni et al. 2024), adding:
 For a complete description of the physics, solver, and all input parameters
 see **`docs/EXHALE_user_manual.pdf`**; the full dated changelog (with a
 code-size appendix vs. the original ATES) is **`docs/Update_EXHALE.pdf`**.
+A task-oriented quick reference ("how do I run X?") is
+**[`README_HOWTO.md`](README_HOWTO.md)**.
 
 ---
 
@@ -251,6 +258,42 @@ All flags default off, so standard runs are unchanged.  Physics, numerics,
 and validation: `docs/design_hehe_diffusion.md`; quantitative before/after
 comparison on HD 209458 b and WASP-121 b: `docs/version_compare.pdf`.
 
+### Molecular chemistry (H2, H2+, H3+, HeH+)
+
+For warm Neptunes / sub-Neptunes (or to *verify* the atomic base of a hot
+Jupiter), enable the Tier-2 molecular network:
+
+```
+Molecular chemistry: True   # coupled H2/H2+/H3+/HeH+ equilibrium + H3+ cooling
+Molecular base:      True   # recommended companion (consistent base pressure)
+```
+
+`Ion_species*.txt` gains four columns (`H2 H2p H3p HeHp`). Requires He/H > 0;
+v1 is exclusive with `metals.inp` and `He_diffusion` (the parser refuses the
+combinations). Local-equilibrium caveats in
+`docs/lower_atmosphere_coupling.pdf` §4.
+
+### Lower-atmosphere handoff (`base.inp`) and VULCAN
+
+Generate a `base.inp` (overrides T0, base radius, He/H, K_zz at startup;
+absent file = no-op):
+
+```bash
+# analytic column (isothermal Teq, or --guillot for semi-grey T(p)):
+python3 src/utils/run_lower.py <run_dir> --r1bar 1.36
+
+# from a VULCAN photochemistry run (photochemical H2/H dissociation state):
+python3 src/utils/vulcan_to_base.py HD189-photo.vul <run_dir> --mp 1.237 --r1bar 1.138
+```
+
+To run VULCAN itself (public; a working copy lives at `../../VULCAN`): compile
+FastChem once (`make` in `fastchem_vulcan/`), start from the repo's default
+`vulcan_cfg.py` (the `cfg_examples/` are stale), set `use_photo = True` and
+`use_live_plot = False`, then `python3 vulcan.py` (~6 h for HD 189733 b).
+VULCAN provides H/C/N/O composition only — metal abundances stay in
+`metals.inp`. The quick one-line consistency check without any handoff is
+`Lower column: <transit radius>` in `input.inp`.
+
 ### Legacy atomic-data switch
 
 The He I ground-state photoionization cross section defaults to the Verner
@@ -450,4 +493,4 @@ See `examples/README.md` for the exact lines each one adds:
 
 ---
 
-Last updated: 2026-07-02 22:41
+Last updated: 2026-07-03 08:35

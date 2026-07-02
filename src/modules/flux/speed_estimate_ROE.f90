@@ -43,6 +43,10 @@
       ! Substitutions
       p_min = min(pL,pR)
       p_max = max(pL,pR)
+      ! Floor: guards Q = p_max/p_min against a pathological zero/negative
+      ! left/right pressure (code review 2026-07-02). No-op for healthy
+      ! states (any positive p_min above 1e-30*p_max is unchanged).
+      p_min = max(p_min, 1.0d-30*max(p_max,1.0d-300))
 
       Q = p_max/p_min
       Q_user = 2.0

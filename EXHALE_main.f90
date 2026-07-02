@@ -91,6 +91,13 @@
       ! Phase 3a decoupled outer iteration over the excited-H (H n=2) feedback
       real*8  :: exc_rel
 
+      ! Newton-diffusion co-convergence (Solver: Newton + He_diffusion):
+      ! outer iteration alternating the JFNK steady solve with diffusion
+      ! relaxation of the He/H field at the converged wind.
+      real*8, dimension(1-Ng:N+Ng) :: heh_prev, heh_new
+      real*8  :: heh_drift
+      integer :: it_diff, kd
+
       ! Maximum eigenvalue      
       real*8 :: alpha
 
@@ -719,6 +726,17 @@
                ! Newton warm-up: never stop on du/dtu/stall (du dips are
                ! premature while the energy residual is still large); the
                ! R-based switch below hands over to the JFNK finish.
+               ! DO track the du plateau: runs whose flux metric stalls just
+               ! above newton_du_switch (seen with He_diffusion: du frozen at
+               ! ~1.08e-2 vs the 1e-2 switch for 1e6 steps) hand off on stall.
+               if (count .gt. 1) then
+                  if (abs(du - du_prev)/max(du,1.0d-30) .lt. stall_tol) then
+                     stall_count = stall_count + 1
+                  else
+                     stall_count = 0
+                  endif
+               endif
+               du_prev      = du
                is_mom_const = .false.
                is_zero_dt   = .false.
                is_stalled   = .false.
@@ -756,7 +774,13 @@
             ! convergence tightens du from ~1e-2 to <1e-3 in far fewer steps than
             ! continued marching.
             if (use_newton_solver .and. .not.in_plm_stage .and.          &
-                du .lt. newton_du_switch) then
+                (du .lt. newton_du_switch .or.                            &
+                 (stall_count .ge. N_stall .and.                          &
+                  du .lt. 5.0d0*newton_du_switch))) then
+               if (du .ge. newton_du_switch)                              &
+                  write(*,'(A,ES10.2)') ' (EXHALE_main) du plateaued '//  &
+                       'near the hand-off threshold; engaging JFNK at '// &
+                       'du =', du
                if (valve_eps .le. 0.0d0) then
                   valve_eps = 1.0d-4
                   write(*,'(A)') ' (EXHALE_main) Solver: Newton -> '//     &
@@ -766,6 +790,13 @@
                if (resid_max .le. 0.0d0) resid_max = 1.0d-3
                write(*,'(A,I0,A,ES10.2)') ' (EXHALE_main) Newton finish '// &
                     'at step ', count, ', target ||R|| <', resid_max
+               ! With He_diffusion the JFNK residual does not contain the
+               ! (operator-split) diffusion of the He/H field, so a single
+               ! solve would freeze the composition at the hand-off state.
+               ! Co-converge instead: JFNK -> relax the diffused He/H at the
+               ! converged wind -> repeat until the He/H field stops moving
+               ! (max 5 outer passes; ~ the excited-H outer-iteration pattern).
+               do it_diff = 1, merge(5, 1, he_diffusion)
                call solve_steady_jfnk(u, f_sp, resid_max, 500, 1.0d0, 40, j)
                call U_to_W(u,W)
                rho = W(:,1);  v = W(:,2);  p = W(:,3);  E = u(:,3)
@@ -776,6 +807,24 @@
                call ioniz_eq(T,rho,f_sp,rho,f_sp,heat,cool,eta)
                call get_species_densities(rho,f_sp,nhi,nhii,nhei,nheii, &
                                           nheiii,nheiTR,nm,ne,n_tot)
+               if (j .ne. 0) exit                  ! JFNK failed
+               if (.not. he_diffusion) exit
+               ! Diffusion relaxation of the He element field at fixed wind
+               heh_prev = (f_sp(:,3)+f_sp(:,4)+f_sp(:,5))               &
+                         /max(f_sp(:,1)+f_sp(:,2), 1.0d-30)
+               do kd = 1, 500
+                  call he_diffusion_step(rho,v,T,f_sp,dt_loc)
+               enddo
+               call ioniz_eq(T,rho,f_sp,rho,f_sp,heat,cool,eta)
+               heh_new = (f_sp(:,3)+f_sp(:,4)+f_sp(:,5))                &
+                        /max(f_sp(:,1)+f_sp(:,2), 1.0d-30)
+               heh_drift = maxval(abs(heh_new(1:N) - heh_prev(1:N))     &
+                                 /max(heh_prev(1:N), 1.0d-10))
+               write(*,'(A,I0,A,ES10.2)') ' (EXHALE_main) Newton-'//    &
+                    'diffusion outer pass ', it_diff, ': He/H drift =', &
+                    heh_drift
+               if (heh_drift .lt. 1.0d-3) exit
+               enddo
                if (j .eq. 0) then
                   is_mom_const = .true.       ! exit the marching loop
                   is_stalled   = .false.

@@ -2,6 +2,8 @@
 %% lower atmosphere.  Companion of lower_atmosphere_coupling.md.
 \documentclass[english,a4paper]{kiseon_memo}
 \usepackage{booktabs}
+\usepackage{graphicx}
+\graphicspath{{lower_atmosphere_figs/}}
 
 \newcommand{\Rp}{R_{\mathrm{p}}}
 \newcommand{\RJ}{R_{\mathrm{J}}}
@@ -232,12 +234,52 @@ Baseline caveat inherited from the source: Lyman--Werner neutral photodissociati
 in the network (Koskinen et al.'s sensitivity test bounded its effect on $\Mdot$ at
 $\times1.4$).
 
-\paragraph{Remaining Tier-2 work (open).} The coupled \texttt{System\_HeH\_mol} ionization
-system (four new unknowns, following the merged \texttt{System\_HeH\_TR\_metals} pattern),
-the EOS extension ($\mu$ and $n_\mathrm{tot}$ with H$_2$ in \texttt{composition.f90},
-diatomic dof, the 4.48\,eV dissociation sink), and H$_2$ photo cross sections. Gates:
-a hot Jupiter with molecules on must reproduce the atomic code; a GJ\,1214\,b-like case
-must halve the He\,10830 line (Taylor et al.\ 2026) with $\Mdot$ shifts $\lesssim40\%$.
+\paragraph{Tier-2 core (implemented 2026-07-03).} The coupled system
+\texttt{System\_HeH\_mol.f90} solves 7--8 unknowns per cell (H$^+$, He$^+$, He$^{++}$,
+optionally He\,2$^3$S, plus the H-nucleus fractions bound in H$_2$, H$_2^+$, H$_3^+$,
+HeH$^+$) as element-conserving steady-state balances with \texttt{hybrd1}: the atomic
+rows use EXHALE's own rate arrays (so the molecule-free limit reproduces the atomic
+systems' solution) and the molecular channels are the Table-1 network via
+\texttt{mol\_rates} (R21/R22 H--He charge exchange deliberately excluded to preserve
+the atomic limit). The H$_2$ photoionization cross section (Yan et al.\ 1998,
+Eqs.~17--19; verified against their Table~7 to $<$0.2\%) enters the opacity, the P$_{\rm H_2}$
+photoionization integral, the photoelectric heating, and the absorbed-energy
+normalization through optional arguments of \texttt{PH\_heat\_HHe}; H$_3^+$ IR cooling
+enters the \texttt{cool} array. The EOS counts each molecule as one particle, each
+molecular ion's electron, and the correct masses (\texttt{calc\_ne/ntot/rho},
+\texttt{get\_species\_densities}). \texttt{f\_sp} grows to 37 columns (output schema
+and Load-IC names extended). Key: \texttt{Molecular chemistry: True} (requires He; v1
+excludes trace metals; pair with \texttt{Molecular base: True} for a consistent ghost
+base pressure). \textbf{Gates passed:} (0) molecules-off regression, HD\,209458\,b
+3000-step $\log\Mdot=8.97$ unchanged; (1) HD\,209458\,b molecules-on: a fully
+molecular base with a sharp H$_2\to$H front at $r=1.019\,\Rp$ and an essentially atomic
+wind above it ($\log\Mdot$ 8.91 vs.\ 8.97; He\,2$^3$S peak $+1.4\%$) --- the
+hot-Jupiter atomic base is now a \emph{result}, not an assumption; (2) a hot-Uranus-like
+case (0.0457\,$M_{\rm J}$, $T_{\rm eq}{=}1140$\,K): the front rises to
+$r=1.148\,\Rp$ and H$_3^+$ is active below it.
+Figure~\ref{fig:mol} shows the gate runs.
+
+\begin{figure}[htb]\centering
+\includegraphics[width=\textwidth]{fig_mol_structure.pdf}
+\caption{Tier-2 molecular gates (3000-step relaxation snapshots). (a) The H nuclei
+fraction bound in H$_2$: on HD\,209458\,b the base is fully molecular and a sharp
+H$_2\to$H front sits at $r=1.019\,\Rp$ (dotted); on the cooler, low-gravity hot
+Uranus the front rises to $1.148\,\Rp$. The cell-to-cell flip-flop just above the
+front marks the chemically bistable zone of \emph{equilibrium} H$_2$ chemistry ---
+kinetics$+$advection smooth it (the documented Tier-2 caveat). (b) The molecular run's
+temperature agrees with the atomic run away from the (still-relaxing) front region.
+(c) Molecular species on HD\,209458\,b: H$_3^+$ (green) and the molecular ions are
+confined below the front, as expected for a hot Jupiter.}
+\label{fig:mol}
+\end{figure}
+
+\paragraph{Remaining Tier-2 work (open).} Molecular \emph{advection} (the local
+chemical-equilibrium treatment cannot reproduce Koskinen et al.'s advective
+replenishment of high-altitude H$_2$ on cool Neptunes); Lyman--Werner photodissociation
+($\lesssim\times1.4$ on $\Mdot$ per their test); the dissociative/double
+photoionization channels (P4/P5); the 4.48\,eV dissociation energy sink; a diatomic
+$\gamma$; the metals$+$molecules merge; and the GJ\,1214\,b He-halving validation
+(Taylor et al.\ 2026) with a full M-dwarf setup.
 
 \subsection{Tier 3: \texttt{base.inp} and \texttt{run\_lower.py}}\label{sub:t3}
 
@@ -275,10 +317,38 @@ global-average profile
 with standard hot-Jupiter defaults ($\kappa_\mathrm{IR}=10^{-2}$\,cm$^2$g$^{-1}$,
 $\gamma=0.4$, $T_\mathrm{int}=100$\,K). The file records the base
 $\qHH/q_\mathrm{H}/q_\mathrm{He}$ as comments and prints a molecular-base warning when
-$\qHH>0.3$. The upgrade path --- running \texttt{VULCAN} for the composition (including
-the photochemical H$_2$ dissociation and the atomic-metal release that feed a
-\texttt{metals.inp}) and a real RC model for $T(p)$ --- writes the \emph{same}
-\texttt{base.inp} keys, so nothing on the EXHALE side changes.
+$\qHH>0.3$. The upgrade path --- running \texttt{VULCAN} for the composition and a real
+RC model for $T(p)$ --- writes the \emph{same} \texttt{base.inp} keys, so nothing on
+the EXHALE side changes.
+
+\paragraph{VULCAN upgrade implemented and demonstrated (2026-07-03).} The public
+\texttt{VULCAN} code (cloned to \texttt{../VULCAN}; FastChem compiled) was run to
+steady state for HD\,189733\,b (SNCHO-2025 photochemical network, 2356 steps) and
+converted with the new \texttt{src/utils/vulcan\_to\_base.py} (.vul $\to$
+\texttt{base.inp}: photochemical $q_{\rm H_2}/q_{\rm H}/q_{\rm He}$ at 1\,$\ubar$,
+hypsometric $r_{\rm base}$ with VULCAN's own $\mu(p)$ and $T(p)$, molecular mixing
+ratios as comments). \textbf{Result:} at 1\,$\ubar$ the photochemical base is
+$q_{\rm H_2}=0.63$, $q_{\rm H}=0.23$ --- \emph{photochemistry dissociates
+$\sim$11$\times$ more H than the chemical-equilibrium column} ($q_{\rm H}=0.020$),
+directly quantifying the Tier-1 caveat (Moses 2011; Koskinen 2013a);
+$r_{\rm base}=1.168$ vs the analytic 1.174\,$\RJ$; $T_{\rm base}=863$\,K (the
+Moses11 $T(p)$, cooler than the isothermal $T_{\rm eq}=1183$\,K). The full chain
+VULCAN $\to$ converter $\to$ \texttt{base.inp} $\to$ EXHALE startup override was
+exercised end-to-end. Caveat: VULCAN's networks are H/C/N/O(/S) --- the atomic-metal
+release (Na/Mg/Ca/Fe) has no public analogue and remains with the Lavvas collaboration
+path; \texttt{metals.inp} stays user-supplied. Figure~\ref{fig:vulcan} shows the
+converged composition against the equilibrium H$_2$ track.
+
+\begin{figure}[htb]\centering
+\includegraphics[width=0.62\textwidth]{fig_vulcan_vs_eq.pdf}
+\caption{HD\,189733\,b lower/middle atmosphere from the converged VULCAN run
+(solid/dashed: H$_2$, H, He, H$_2$O, CO, CH$_4$) compared with the
+chemical-equilibrium H$_2$ mixing ratio evaluated along the same $T(p)$ (dotted).
+Above $\sim$$10^{-4}$ bar photochemistry dissociates H$_2$ far beyond equilibrium; at
+the 1\,$\ubar$ handoff (horizontal dotted line) $q_{\rm H}=0.23$ versus the
+equilibrium 0.020 --- the $\sim$11$\times$ underestimate quantified.}
+\label{fig:vulcan}
+\end{figure}
 
 % ===================================================================== %
 \section{Example applications: HD and WASP planets}\label{sec:examples}
@@ -308,6 +378,20 @@ equilibrium $+$ fully-atomic bracket) and the Guillot variant $r_0^\mathrm{Gui}$
 ($T_\mathrm{base}^\mathrm{Gui}$ = 1313, 1072, 2136, 1181\,K respectively).
 ``input $R_0$'' is the base radius currently used in the production runs.}
 \end{table}
+
+\begin{figure}[htb]\centering
+\includegraphics[width=\textwidth]{fig_lc_planets.pdf}
+\caption{Tier-1 analytic column applied to the four planets. (a) The
+chemical-equilibrium H$_2$ mixing ratio at 1\,$\ubar$ (Eq.~\ref{eq:visscher}) as a
+function of temperature: the three $T_{\rm eq}\lesssim1500$\,K planets sit on the
+fully molecular plateau, while WASP-121\,b ($T_{\rm eq}=2358$\,K) is atomic even in
+equilibrium. (b) Derived 1-$\ubar$ base radius (equilibrium--atomic bracket, shaded)
+versus the production ``Planet radius'' (star) and the transit radius (triangle):
+HD\,189733\,b falls inside its bracket, HD\,209458\,b sits $\sim$5\% below,
+WASP-121\,b lies just above (dayside-hot lower atmosphere), and WASP-52\,b's
+transit-radius shortcut puts the base 0.17--0.35\,$\RJ$ too deep.}
+\label{fig:lc}
+\end{figure}
 
 \noindent Interpretation (per planet):
 \begin{itemize}

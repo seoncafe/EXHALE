@@ -11,7 +11,7 @@
 
 	! ------------------------------------------------------!
 
-	subroutine calc_ne(nhii,nheii,nheiii,ne,nm)
+	subroutine calc_ne(nhii,nheii,nheiii,ne,nm,nmol)
 	! Calculate the free electron density.
 	! The optional nm (per-ion metal densities, same units as nhii) adds
 	! the metal electrons when the eos_metals policy is on; omitting it
@@ -20,6 +20,9 @@
 	integer :: im
 	real*8, dimension(1-Ng:N+Ng), intent(in) :: nhii
 	real*8, dimension(1-Ng:N+Ng), intent(in) :: nheii,nheiii
+	! Optional molecular ions (Tier-2): cols 1 H2 (neutral), 2 H2+, 3 H3+,
+	! 4 HeH+ -- each molecular ion carries one electron.
+	real*8, dimension(1-Ng:N+Ng,4), intent(in), optional :: nmol
 	real*8, dimension(1-Ng:N+Ng,n_mion), intent(in), optional :: nm
 	real*8, dimension(1-Ng:N+Ng), intent(out) :: ne
 	
@@ -36,11 +39,13 @@
 		enddo
 	endif
 	
+	if (present(nmol)) ne = ne + nmol(:,2) + nmol(:,3) + nmol(:,4)
+
 	end subroutine calc_ne
 	
 	! ------------------------------------------------------!
 
-	subroutine calc_ntot(nhi,nhii,nhei,nheii,nheiii,nheiTR,n_tot,nm)
+	subroutine calc_ntot(nhi,nhii,nhei,nheii,nheiii,nheiTR,n_tot,nm,nmol)
 	! Calculate the total atomic number density.
 	! The optional nm adds the metal nuclei (all stages) when the
 	! eos_metals policy is on.
@@ -49,6 +54,7 @@
 	real*8, dimension(1-Ng:N+Ng), intent(in)  :: nhi,nhii
 	real*8, dimension(1-Ng:N+Ng), intent(in)  :: nhei,nheii,nheiii,nheiTR
 	real*8, dimension(1-Ng:N+Ng,n_mion), intent(in), optional :: nm
+	real*8, dimension(1-Ng:N+Ng,4), intent(in), optional :: nmol  ! Tier-2
 	real*8, dimension(1-Ng:N+Ng), intent(out) :: n_tot
 	
 	if (thereis_He) then
@@ -64,11 +70,15 @@
 		enddo
 	endif
 
+	! Each molecule is ONE gas particle (pressure/EOS particle count).
+	if (present(nmol)) n_tot = n_tot + nmol(:,1) + nmol(:,2)              &
+	                                 + nmol(:,3) + nmol(:,4)
+
 	end subroutine calc_ntot
 
 	! ------------------------------------------------------!
 	
-	subroutine calc_rho(nhi,nhii,nhei,nheii,nheiii,nheiTR,n_out,nm)
+	subroutine calc_rho(nhi,nhii,nhei,nheii,nheiii,nheiTR,n_out,nm,nmol)
 	! Calculate the total mass density (adimensional).
 	! The optional nm adds the metal mass (melem_A per nucleus, all
 	! stages) when the eos_metals policy is on.
@@ -77,6 +87,7 @@
 	real*8, dimension(1-Ng:N+Ng), intent(in)  :: nhi,nhii
 	real*8, dimension(1-Ng:N+Ng), intent(in)  :: nhei,nheii,nheiii,nheiTR
 	real*8, dimension(1-Ng:N+Ng,n_mion), intent(in), optional :: nm
+	real*8, dimension(1-Ng:N+Ng,4), intent(in), optional :: nmol  ! Tier-2
 	real*8, dimension(1-Ng:N+Ng), intent(out) :: n_out
 	
 	if (thereis_He) then
@@ -91,6 +102,11 @@
 			n_out = n_out + melem_A(mion_elem(im))*nm(:,im)
 		enddo
 	endif
+
+	! Molecular mass: H2/H2+ = 2 m_H, H3+ = 3 m_H, HeH+ = 5 m_H (the He
+	! nucleus in HeH+ is NOT in the nhei..nheiii free-He arrays).
+	if (present(nmol)) n_out = n_out + 2.0d0*(nmol(:,1) + nmol(:,2))      &
+	                         + 3.0d0*nmol(:,3) + 5.0d0*nmol(:,4)
 
 	end subroutine calc_rho
 
@@ -141,6 +157,21 @@
 	
 	! End of subroutine
 	end subroutine calc_column_dens
+
+	! ------------------------------------------------------!
+
+	subroutine calc_column_dens_one(nsp, Ncol)
+	! Column density of a single species (same rectangle rule and
+	! opa_pf weighting as calc_column_dens).  Used for N_H2 (Tier-2).
+	integer :: j
+	real*8, dimension(1-Ng:N+Ng), intent(in)  :: nsp
+	real*8, dimension(1-Ng:N+Ng), intent(out) :: Ncol
+	Ncol = 0.0
+	Ncol(N+Ng) = dr_j(N+Ng)*R0*nsp(N+Ng)*opa_pf(N+Ng)
+	do j = N+Ng-1,1-Ng,-1
+		Ncol(j) = Ncol(j+1) + nsp(j)*dr_j(j)*R0*opa_pf(j)
+	enddo
+	end subroutine calc_column_dens_one
 
 	! ------------------------------------------------------!
 

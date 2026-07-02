@@ -217,6 +217,50 @@
 
       !--------------!
 
+      ! H2 total photoionization cross section (Tier-2 molecular extension).
+      ! Yan, Sadeghpour & Dalgarno (1998), ApJ 496, 1044, Eqs. 17-19 (fit
+      ! coefficients verified against the PDF, archived as
+      ! references/Yan_1998_ApJ_496_1044.pdf).  Threshold 15.4 eV; pieces
+      ! join at 18 and 85 eV; sum-rule-consistent E^-7/2 tail (their Eq. 16,
+      ! sigma -> 45.6/E[keV]^3.5 barns; ~2.8x atomic H at high E).  Paper
+      ! units are barns; converted here to EXHALE units of 1e-18 cm^2
+      ! (1 barn = 1e-6 Mb).  Near-threshold resonance structure is smoothed
+      ! (as in the source fits).
+      double precision function sigma_H2(E)
+      real*8, intent(in) :: E
+      real*8 :: x, EkeV, sb
+      real*8, parameter :: eth = 15.4d0
+      real*8, parameter :: s   = 0.252d0
+
+      if (E .lt. eth) then
+         sigma_H2 = 0.0d0
+         return
+      endif
+
+      x = E/15.4d0
+      if (E .lt. 18.0d0) then
+         ! Eq. 17 (15.4 < E < 18 eV), barns
+         sb = 1.0d8*(-37.895d0 + 99.723d0*x - 87.227d0*x*x               &
+                     + 25.400d0*x*x*x)
+      else if (E .lt. 85.0d0) then
+         ! Eq. 18 (18 < E < 85 eV), barns
+         sb = 2.0d7*( 0.071d0*x**(-s)         - 0.673d0*x**(-(s+1.0d0))  &
+                    + 1.977d0*x**(-(s+2.0d0)) - 0.692d0*x**(-(s+3.0d0)) )
+      else
+         ! Eq. 19 (E > 85 eV), barns
+         EkeV = E*1.0d-3
+         sb = 45.57d0*(1.0d0 - 2.003d0/sqrt(x) - 4.806d0/x               &
+                       + 50.577d0/x**1.5d0 - 171.044d0/(x*x)             &
+                       + 231.608d0/x**2.5d0 - 81.885d0/x**3)             &
+              / EkeV**3.5d0
+      endif
+      if (sb .lt. 0.0d0) sb = 0.0d0
+      sigma_H2 = sb*1.0d-6                 ! barns -> 1e-18 cm^2
+
+      end function sigma_H2
+
+      !--------------!
+
       ! C I photoionization (outer 2p shell). Verner+1996 Table 1 (full
       ! VFKY96 form): [E_0,sigma_0,y_a,P,y_w,y_0,y_1].
       double precision function sigma_CI(E)

@@ -2643,3 +2643,79 @@ dissociation (Moses 2011; Koskinen 2013a) - quantified motivation for the VULCAN
 `src/utils/run_lower.py`; `parameters.f90` (`lower_col_r1bar`, `molecular_base`);
 `input_read.f90` (keys + `read_base_inp` + ntot_bc adjustment); `EXHALE_main.f90` (Tier-1
 report); `Makefile`.
+
+## 29. Tier-2 molecular chemistry core: H2/H2+/H3+/HeH+ (2026-07-03, opt-in)
+
+New coupled equilibrium system `System_HeH_mol.f90` (7-8 unknowns: H+, He+, He++,
+[He 2^3S], H2, H2+, H3+, HeH+ as element-conserving fractions; hybrd1): atomic rows use
+EXHALE's own rate arrays so the molecule-free limit reproduces the atomic systems; the
+molecular channels are the Koskinen+2022 Table-1 network (`mol_rates`). H2 photoionization
+cross section sigma_H2 (Yan+1998 Eqs. 17-19; verified vs their Table 7; PDF archived) added
+to `cross_sec.f90` and wired into the opacity/photoionization/heating integrals
+(`PH_heat_HHe`, optional args). H3+ IR cooling (Miller+2013 + non-LTE factor) enters the
+`cool` array. EOS is molecule-aware (`calc_ne/calc_ntot/calc_rho`, `get_species_densities`:
+each molecule = 1 particle, molecular ions carry electrons, correct masses). f_sp grows
+33->37 (H2 H2p H3p HeHp; output schema + Load-IC names extended; columns zero when off).
+Key: `Molecular chemistry: True` (requires He; v1 excludes trace metals; pair with
+`Molecular base: True` for a consistent ghost-cell base pressure).
+
+Gates: (0) mol-off regression Mdot=8.97 unchanged; (1) HD 209458 b mol-on: fully molecular
+base with a sharp H2->H front at r=1.019 Rp and an essentially atomic wind above it
+(Mdot 8.91 vs 8.97, He 2^3S peak +1.4%) -- the hot-Jupiter atomic assumption is now a
+RESULT, not an input; (2) hot-Uranus-like (0.0457 MJ, Teq=1140 K): front rises to 1.148 Rp,
+H3+ active below it. Documented caveats: local equilibrium only (no molecular advection --
+Koskinen's high-altitude H2 replenishment is not reproduced), no Lyman-Werner
+photodissociation (<=1.4x on Mdot per Koskinen), P4/P5 photo channels and the 4.48 eV
+dissociation sink omitted, gamma=5/3 retained, metals excluded (v1).
+
+## 30. Newton-diffusion co-convergence, Riemann p_min floor, OMP CRITICAL removal, fcheck regression, lya_rt lower-BC audit (2026-07-03)
+
+- **Stall-based Newton hand-off.** He_diffusion runs plateau the flux metric just above
+  the hand-off threshold (observed: du frozen at 1.084e-2 vs the 1.00e-2 switch for 1e6
+  steps, so the JFNK finish never fired). The Newton warm-up now tracks the du plateau
+  (stall counter) and hands over to JFNK when du has stalled within 5x the switch.
+  **Validated** (HD 209458 b He_diffusion run): the hand-off engaged at the plateau
+  (du = 2.2e-2). The subsequent JFNK then hit the KNOWN base-momentum holdout (worst
+  cell j=1, momentum row; ||R|| stalling at ~7.7e-3 while the volume-weighted reference
+  residual was already 2.2e-4) and fell back to marching as designed -- so the
+  co-convergence loop is validated up to its JFNK-success precondition; the base-cell
+  viscosity work remains the enabler (see HD209-BC recommendations memo).
+- **Newton + He_diffusion co-convergence.** `Solver: Newton` previously froze the diffused
+  He/H field at the hand-off state (the JFNK residual has no operator-split diffusion).
+  Now an outer iteration (excited-H pattern) alternates the JFNK solve with 500 diffusion
+  relaxation steps at the converged wind, until the He/H field drift < 1e-3 (max 5 passes;
+  drift printed per pass). Molecular chemistry + He_diffusion combination is refused (v1).
+- **Riemann speed-estimate floor** (`speed_estimate_HLLC/ROE`): `p_min` floored at
+  1e-30 p_max before `Q = p_max/p_min` -- no-op for healthy states, prevents a
+  pathological division (code-review deferred item, now applied).
+- **`PH_heat_HHe` OMP CRITICAL removed**: each thread writes only its own j elements of
+  the shared arrays, so the critical section serialized the loop for no correctness
+  benefit; values unchanged.
+- **`regression/run_fcheck.sh`**: the periodic runtime-checked regression recommended by
+  the 2026-07-02 review (rebuild with -fcheck=bounds,do,mem, bounded HD 209458 b run,
+  fail on any runtime trap, restore the production build).
+- **`lya_rt` lower-boundary audit** (vs Huang et al. 2017): our escape-probability
+  closure Jbar = S(1-beta) is local and has NO absorbing bottom boundary, whereas Huang's
+  Monte Carlo applies a pure-absorber bottom (H2 accidental-resonance true absorption at
+  N_H2 ~ 1e14 cm^-2 makes the molecular layer a photon sink). Consequence: in the bottom
+  few scale heights our Jbar (hence the n=2 population there) is likely overestimated --
+  the downward-loss channel is missing. The Halpha-forming region (1e-4 to ~1 ubar in
+  Huang) lies above the base, so the impact on the TPM Balmer spectra is expected to be
+  limited; a quantitative check (add a bottom-loss beta channel, or compare against an
+  absorbing-bottom MC) is left as the follow-up. AUDIT note recorded, no code change.
+
+## 31. Tier-3 first light: VULCAN -> base.inp (2026-07-03)
+
+VULCAN (public photochemical kinetics; cloned to `../VULCAN`, FastChem compiled, HD 189733 b
+SNCHO-2025 network with `use_photo=True`) + the new converter `src/utils/vulcan_to_base.py`
+(.vul pickle -> `base.inp`: photochemical q_H2/q_H/q_He at 1 ubar, hypsometric r_base using
+VULCAN's own mu(p) and T(p), molecular mixing ratios as comments; NO metal release -- outside
+VULCAN's scope). First light (intermediate state of the converging HD 189733 b run):
+q_H2 = 0.63, q_H = 0.23 at 1 ubar -- versus the chemical-equilibrium column's q_H = 0.020,
+i.e. **photochemistry dissociates ~11x more H than equilibrium**, directly quantifying the
+Tier-1 caveat (Moses 2011; Koskinen 2013a). r_base 1.168 vs analytic 1.174 R_J; T_base 863 K
+(the Moses11 T(p), cooler than isothermal Teq=1183 K). The run converged
+("successfully run to steady-state", 2356 steps, ~6 h wall): the base state is unchanged
+from the quoted numbers (the intermediate save was already converged). End-to-end chain
+demonstrated: VULCAN -> vulcan_to_base.py -> base.inp -> EXHALE startup override
+(T0=863.4 K, R0=1.1685 R_J, He/H=0.0969, K_zz=1e9 echoed).

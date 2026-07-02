@@ -1,0 +1,162 @@
+	module System_HeH_mol
+	! Tier-2 molecular ionization-equilibrium system: H/He (+ optional
+	! He 2^3S triplet) extended with H2, H2+, H3+, HeH+ (docs/
+	! lower_atmosphere_coupling.*).
+	!
+	! Unknowns (fractions):
+	!   x(1) = n_HII / n_H(nuclei)
+	!   x(2) = n_HeII / n_He          x(3) = n_HeIII / n_He
+	!   x(4) = 2 n_H2  / n_H          (H nuclei bound in H2)
+	!   x(5) = 2 n_H2+ / n_H          x(6) = 3 n_H3+ / n_H
+	!   x(7) = n_HeH+ / n_H
+	!   x(8) = n_HeITR / n_He         (only when thereis_HeITR)
+	! Neutral atomic H and neutral He close the element budgets (the He
+	! budget includes the He nucleus carried by HeH+).
+	!
+	! Rows are steady-state production-loss balances.  The atomic rows
+	! use EXHALE's own rate arrays (P_HI/rchiiB/Voronov...) so the
+	! molecular-free limit reproduces the atomic systems' solution; the
+	! He 2^3S row is VERBATIM from System_HeH_TR.  Molecular channels are
+	! the Koskinen et al. (2022) Table-1 network via mol_rates (R21/R22
+	! H-He charge exchange excluded to preserve the atomic limit; the
+	! Lyman-Werner photodissociation caveat is inherited -- see mol_rates).
+	!
+	! params layout (1-18 identical to System_HeH_TR):
+	!   1 P_HI  2 P_HeI  3 P_HeII  4 rchiiB  5 rcheiiB  6 rcheiiiB
+	!   7 n_h(nuclei)  8 n_he  9 a_ion_HI  10 a_ion_HeI  11 a_ion_HeII
+	!   12 rcheiTR  13 A31  14 P_HeITR  15 q13  16 q31a  17 q31b  18 Q31
+	!   19 P_H2 (photoionization rate coefficient of H2, s^-1)
+	!   20 T [K]   21 n_tot (total particle density, for 3-body M)
+
+	use global_parameters, only: thereis_HeITR
+	use mol_rates
+
+	implicit none
+
+	contains
+
+	subroutine ion_system_HeH_mol(Neq,x,fvec,iflag,params)
+
+	integer :: Neq,iflag
+	real*8  :: x(Neq),fvec(Neq)
+	real*8  :: params(40)
+	real*8  :: g_hi,g_hei,g_heii,g_heiTR,g_h2
+	real*8  :: b_hi,b_hei,b_heii
+	real*8  :: a_hii,a_heii,a_heiii,a_heiTR
+	real*8  :: A31,q13,q31a,q31b,Q31
+	real*8  :: n_h,n_he,n_e,T,ntot
+	real*8  :: n_hi,n_hii,n_h2,n_h2p,n_h3p,n_hehp
+	real*8  :: n_hei,n_heii,n_heiii,n_heiTR,n_heiSI
+	real*8  :: k5,k6,k7,k8,k9,k10,k11,k12,k13,k14,k15
+	real*8  :: k16,k17,k18,k19,k20,k23
+
+	g_hi    = params(1)
+	g_hei   = params(2)
+	g_heii  = params(3)
+	a_hii   = params(4)
+	a_heii  = params(5)
+	a_heiii = params(6)
+	n_h     = params(7)
+	n_he    = params(8)
+	b_hi    = params(9)
+	b_hei   = params(10)
+	b_heii  = params(11)
+	a_heiTR = params(12)
+	A31     = params(13)
+	g_heiTR = params(14)
+	q13     = params(15)
+	q31a    = params(16)
+	q31b    = params(17)
+	Q31     = params(18)
+	g_h2    = params(19)
+	T       = params(20)
+	ntot    = params(21)
+
+	! Species densities
+	n_hi   = (1.0d0 - x(1) - x(4) - x(5) - x(6) - x(7))*n_h
+	n_hii  = x(1)*n_h
+	n_h2   = 0.5d0*x(4)*n_h
+	n_h2p  = 0.5d0*x(5)*n_h
+	n_h3p  = x(6)*n_h/3.0d0
+	n_hehp = x(7)*n_h
+	n_hei   = (1.0d0 - x(2) - x(3))*n_he - n_hehp   ! free neutral He
+	n_heii  = x(2)*n_he
+	n_heiii = x(3)*n_he
+	if (thereis_HeITR) then
+		n_heiTR = x(8)*n_he
+	else
+		n_heiTR = 0.0d0
+	endif
+	n_heiSI = n_hei - n_heiTR
+
+	! Electron density (each molecular ion carries +1)
+	n_e = n_hii + n_h2p + n_h3p + n_hehp + n_heii + 2.0d0*n_heiii
+
+	! Rate coefficients (mol_rates; T also serves as Te)
+	k5  = rk_R5_H2p_dr(T)
+	k6  = rk_R6_H3p_dr_H2(T)
+	k7  = rk_R7_H3p_dr_3H(T)
+	k8  = rk_R8_H2p_H2()
+	k9  = rk_R9_H2p_H()
+	k10 = rk_R10_Hp_H2v4(T)
+	k11 = rk_R11_H3p_H(T)
+	k12 = rk_R12_H2_thdis(T)
+	k13 = rk_R13_Hp_H2_M(ntot)
+	k14 = rk_R14_H2_edis(T)
+	k15 = rk_R15_3body_H2(T, ntot)
+	k16 = rk_R16_HeHp_dr(T)
+	k17 = rk_R17_Hep_H2_diss(T)
+	k18 = rk_R18_HeHp_H2()
+	k19 = rk_R19_HeHp_H()
+	k20 = rk_R20_Hep_H2_HeHp()
+	k23 = rk_R23_H2_Hep_cx()
+
+	! (1) H+ balance
+	fvec(1) = (g_hi + b_hi*n_e)*n_hi                                  &
+	        + k9*n_h2p*n_hi + k17*n_heii*n_h2                         &
+	        - a_hii*n_e*n_hii - (k10 + k13)*n_hii*n_h2
+
+	! (2) He+ balance (atomic part consistent with System_HeH_TR rows
+	!     2+3 combined; + molecular sinks R17/R20/R23)
+	fvec(2) = (g_hei + b_hei*n_e)*n_heiSI + g_heiTR*n_heiTR           &
+	        + a_heiii*n_e*n_heiii                                     &
+	        - (a_heii + a_heiTR)*n_e*n_heii                           &
+	        - (g_heii + b_heii*n_e)*n_heii                            &
+	        - (k17 + k20 + k23)*n_heii*n_h2
+
+	! (3) He++ balance (verbatim atomic form + collisional ionization)
+	fvec(3) = (g_heii + b_heii*n_e)*n_heii - a_heiii*n_e*n_heiii
+
+	! (4) H2 balance
+	fvec(4) = k6*n_e*n_h3p + k9*n_h2p*n_hi + k11*n_h3p*n_hi           &
+	        + k15*n_hi*n_hi                                           &
+	        - ( g_h2 + (k10 + k13)*n_hii + k12*ntot + k14*n_e         &
+	          + k8*n_h2p + (k17 + k20 + k23)*n_heii + k18*n_hehp )*n_h2
+
+	! (5) H2+ balance
+	fvec(5) = g_h2*n_h2 + k10*n_hii*n_h2 + k11*n_h3p*n_hi             &
+	        + k19*n_hehp*n_hi + k23*n_heii*n_h2                       &
+	        - (k5*n_e + k8*n_h2 + k9*n_hi)*n_h2p
+
+	! (6) H3+ balance
+	fvec(6) = k8*n_h2p*n_h2 + k13*n_hii*n_h2 + k18*n_hehp*n_h2        &
+	        - ((k6 + k7)*n_e + k11*n_hi)*n_h3p
+
+	! (7) HeH+ balance
+	fvec(7) = k20*n_heii*n_h2                                         &
+	        - (k16*n_e + k18*n_h2 + k19*n_hi)*n_hehp
+
+	! (8) He 2^3S balance (VERBATIM System_HeH_TR row 4)
+	if (thereis_HeITR) then
+		fvec(8) = - n_heiTR*g_heiTR                                    &
+		          + n_e*( n_heii*a_heiTR                               &
+		                + n_heiSI*q13                                  &
+		                - n_heiTR*(q31a + q31b))                       &
+		          - n_heiTR*(A31 + n_hi*Q31)
+	endif
+
+	return
+	end subroutine ion_system_HeH_mol
+
+	! End of module
+	end module System_HeH_mol

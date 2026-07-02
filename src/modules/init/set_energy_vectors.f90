@@ -55,7 +55,7 @@
 
 		! Allocate vectors
 		allocate(e_v(Nl),de_v(Nl))
-		allocate(s_hi(Nl), s_hei(Nl),s_heii(Nl))
+		allocate(s_hi(Nl), s_hei(Nl),s_heii(Nl), s_h2(Nl))
 		allocate(F_XUV(Nl))
 
 		! --- Construct energy grid --- !
@@ -112,7 +112,7 @@
 		
 		! Allocate vectors
 		allocate(e_v(Nl),de_v(Nl))
-		allocate(s_hi(Nl), s_hei(Nl),s_heii(Nl))
+		allocate(s_hi(Nl), s_hei(Nl),s_heii(Nl), s_h2(Nl))
 		allocate(F_XUV(Nl))
 
 		! Define the only energy value according to the input
@@ -164,6 +164,10 @@
 
 	! HeI triplet photoioiniz. cross section
 	s_heiTR = (/ (photoion_sigma('HeITR', e_v(i)), i = 1,Nl) /)
+
+	! H2 photoionization cross section (Tier-2 molecular extension;
+	! Yan, Sadeghpour & Dalgarno 1998 fit, zero below 15.4 eV)
+	s_h2 = (/ (sigma_H2(e_v(i)), i = 1,Nl) /)
 
 	! Metal photoionization cross sections (Verner+1996), stored in the
 	! photo cross-section table in species_table iphot order.

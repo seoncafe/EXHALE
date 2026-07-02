@@ -16,6 +16,7 @@
 
       use global_parameters
       use species_table, only: n_mion, mion_fsp,                       &
+                               isp_H2, isp_H2p, isp_H3p, isp_HeHp,      &
                                isp_HI, isp_HII, isp_HeI, isp_HeII,      &
                                isp_HeIII, isp_HeTR
       use utils, only: calc_ne, calc_ntot
@@ -44,6 +45,7 @@
       real*8, dimension(1-Ng:N+Ng),          intent(inout) :: nheiii, nheiTR
       real*8, dimension(1-Ng:N+Ng,n_mion),   intent(out)   :: nm
       real*8, dimension(1-Ng:N+Ng),          intent(out)   :: ne, n_tot
+      real*8, dimension(1-Ng:N+Ng,4) :: nmol_l   ! Tier-2 molecules
       integer :: im
 
       nhi  = rho*f_sp(:,isp_HI)
@@ -58,8 +60,21 @@
          nm(:,im) = rho*f_sp(:,mion_fsp(im))
       enddo
 
+      ! Tier-2 molecular species: include their electrons and their (one
+      ! particle each) contribution to the EOS particle count.  nmol_l is
+      ! zero when thereis_mol is off, so the legacy path is unchanged.
+      if (thereis_mol) then
+         nmol_l(:,1) = rho*f_sp(:,isp_H2)
+         nmol_l(:,2) = rho*f_sp(:,isp_H2p)
+         nmol_l(:,3) = rho*f_sp(:,isp_H3p)
+         nmol_l(:,4) = rho*f_sp(:,isp_HeHp)
+         call calc_ne(nhii, nheii, nheiii, ne, nm, nmol_l)
+         call calc_ntot(nhi, nhii, nhei, nheii, nheiii, nheiTR, n_tot,  &
+                        nm, nmol_l)
+      else
       call calc_ne(nhii, nheii, nheiii, ne, nm)
       call calc_ntot(nhi, nhii, nhei, nheii, nheiii, nheiTR, n_tot, nm)
+      endif
 
       end subroutine get_species_densities
 

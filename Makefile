@@ -75,6 +75,7 @@ SRC := \
   src/modules/nonlinear_system_solver/r1mpyq.f90 \
   src/modules/nonlinear_system_solver/System_HeH.f90 \
   src/modules/nonlinear_system_solver/System_HeH_metals.f90 \
+  src/modules/nonlinear_system_solver/System_HeH_mol.f90 \
   src/modules/nonlinear_system_solver/System_HeH_TR.f90 \
   src/modules/nonlinear_system_solver/System_HeH_TR_metals.f90 \
   src/modules/nonlinear_system_solver/System_implicit_adv_HeH.f90 \

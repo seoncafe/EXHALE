@@ -94,7 +94,7 @@
 	
 	subroutine PH_heat_HHe(nhi,nhei,nheii,nheiTR, nm,             &
 				     P_HI,P_HeI,P_HeII,P_HeITR, P_m,       &
-				     heat,q)
+				     heat,q, nh2,P_H2)
 	! Computes photoionization rates and heating rates for an
 	!	atmosphere composed of H, He, and (optionally) metals.
 	! Metal ion densities arrive as nm(:,1:n_mion) in canonical
@@ -108,11 +108,19 @@
 	real*8, dimension(1-Ng:N+Ng),intent(in) :: nhi,nhei,nheii
 	real*8, dimension(1-Ng:N+Ng),intent(in) :: nheiTR
 	real*8, dimension(1-Ng:N+Ng,n_mion),intent(in) :: nm
+	! Optional H2 (Tier-2 molecular extension): adds the H2 opacity,
+	! photoionization rate P_H2 [1/s] and photoelectric heating using the
+	! Yan+1998 cross section s_h2 (threshold e_th_H2 = 15.4 eV).
+	real*8, dimension(1-Ng:N+Ng), intent(in),  optional :: nh2
+	real*8, dimension(1-Ng:N+Ng), intent(out), optional :: P_H2
 	real*8, dimension(1-Ng:N+Ng) :: nheiS
    real*8, dimension(1-Ng:N+Ng) ::  N1,N15,N2,NTR
    real*8, dimension(1-Ng:N+Ng,n_mphot) :: Nm_col
 
    real*8 :: PIR_1,PIR_15,PIR_2,PIR_TR     ! Photoionization rates (H/He)
+   real*8 :: PIR_H2                        ! H2 photoionization rate
+   real*8, dimension(1-Ng:N+Ng) :: NH2col  ! H2 column density
+   real*8, dimension(Nl) :: int_h2
    real*8 :: Hea_1                         ! Heating rate
    real*8 :: q_abs                         ! Absorbed energy
    real*8 :: Pm_loc(n_mion)                ! Per-cell metal photoion. rates
@@ -144,13 +152,17 @@
 	call calc_column_dens(nhi,nheiS,nheii,nheiTR,N1,N15,N2,NTR)
 	call calc_column_dens_metals(nm, Nm_col)
 
+	! H2 column (Tier-2)
+	if (present(nh2)) call calc_column_dens_one(nh2, NH2col)
+
 	! Metal-free P_m entries (top-stage ions) stay zero
 	P_m = 0.0
 
     !----------------------------------!
 	!$OMP PARALLEL DO &
 	!$OMP SHARED ( P_HI,P_HeI,P_HeII,P_HeITR,P_m,heat,q )                        &
-	!$OMP PRIVATE ( Hea_1,PIR_1,PIR_15,PIR_2,PIR_TR,Pm_loc,                      &
+	!$OMP PRIVATE ( Hea_1,PIR_1,PIR_15,PIR_2,PIR_TR,PIR_H2,int_h2,               &
+	!$OMP           Pm_loc,                                                      &
 	!$OMP           int_1,int_15,int_2,int_TR,int_m,                            &
 	!$OMP           int_f,int_H,int_q,acc_H,acc_q,tauE,tau_m,q_abs,i,k,j)
 
@@ -168,6 +180,7 @@
 		! original (sum)*1e-18 association exactly.
 		tauE = (s_hi*N1(j) + s_hei*N15(j) + s_heii*N2(j))*1.0e-18
 		if (thereis_HeITR) tauE = tauE + s_heiTR*NTR(j)*1.0e-18
+		if (present(nh2)) tauE = tauE + s_h2*NH2col(j)*1.0e-18
 		tau_m = 0.0
 		do i = 1,n_mion
 			if (.not. mion_isphot(i)) cycle
@@ -182,6 +195,7 @@
 		int_15 = int_f*s_hei/e_v
 		int_2  = int_f*s_heii/e_v
 		if (thereis_HeITR) int_TR =  int_f*s_heiTR/e_v
+		if (present(nh2)) int_h2 = int_f*s_h2/e_v
 
 		! Photoheating integral. Accumulate the inner bracket in the
 		! original order (H, He, then metals in iphot order) and apply
@@ -189,6 +203,8 @@
 		acc_H = (1.0-e_th_HI  /e_v)*s_hi  *nhi  (j)
 		acc_H = acc_H + (1.0-e_th_HeI /e_v)*s_hei *nheiS(j)
 		acc_H = acc_H + (1.0-e_th_HeII/e_v)*s_heii*nheii(j)
+		if (present(nh2))                                                 &
+			acc_H = acc_H + (1.0-e_th_H2/e_v)*s_h2*nh2(j)
 		do i = 1,n_mion
 			if (.not. mion_isphot(i)) cycle
 			k = mion_iphot(i)
@@ -200,6 +216,7 @@
 		acc_q = s_hi *nhi  (j)
 		acc_q = acc_q + s_hei *nheiS(j)
 		acc_q = acc_q + s_heii*nheii(j)
+		if (present(nh2)) acc_q = acc_q + s_h2*nh2(j)
 		do i = 1,n_mion
 			if (.not. mion_isphot(i)) cycle
 			k = mion_iphot(i)
@@ -212,6 +229,8 @@
 		PIR_15  = sum(int_15 *de_v)
 		PIR_2   = sum(int_2  *de_v)
 		if(thereis_HeITR) PIR_TR = sum(int_TR*de_v)
+		PIR_H2 = 0.0
+		if (present(nh2)) PIR_H2 = sum(int_h2*de_v)
 		do i = 1,n_mion
 			if (.not. mion_isphot(i)) then
 				Pm_loc(i) = 0.0
@@ -224,9 +243,12 @@
 		Hea_1   = sum(int_H  *de_v)
 		q_abs   = sum(int_q  *de_v)
 
-		!$OMP CRITICAL
-		! Save into vector
+		! Save into vectors. No synchronization needed: each thread writes
+		! only its own j elements of the shared arrays (the former OMP
+		! CRITICAL serialized the loop for no correctness benefit; removed
+		! per the 2026-07-02 review's performance note -- values unchanged).
     	P_HI(j)    = PIR_1  *1.0e-18*erg2eV
+		if (present(P_H2)) P_H2(j) = PIR_H2*1.0e-18*erg2eV
     	P_HeI(j)   = PIR_15 *1.0e-18*erg2eV
 		P_HeII(j)  = PIR_2  *1.0e-18*erg2eV
 		P_HeITR(j) = PIR_TR *1.0e-18*erg2eV
@@ -234,7 +256,6 @@
 		heat(j)    = Hea_1*1.0e-18
 		! Guard against q_abs = 0 (see PH_heat_H).
 		q(j)       = Hea_1/max(q_abs, 1.0d-99)
-		!$OMP END CRITICAL
 
 	enddo
 	!$OMP END PARALLEL DO

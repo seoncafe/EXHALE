@@ -124,7 +124,11 @@
 		! Parker velocity head-start. At the base xi=0 so T->T0, p->1+dp_bc, v->0,
 		! matching the lower BC exactly (no inverted gradient); above hp_base_rtr
 		! the gas is warm (T_wind), ionized, and carries the transonic velocity.
-		do j = 1-Ng, N+Ng
+		! Initialize ALL species columns (f_sp is intent(out); metals and
+	! Tier-2 molecular columns stay zero unless set below or loaded).
+	f_sp = 0.0d0
+
+	do j = 1-Ng, N+Ng
 			swin = min(max((r(j) - 1.0d0)/(hp_base_rtr - 1.0d0), 0.0d0), 1.0d0)
 			xi   = swin*swin*(3.0d0 - 2.0d0*swin)               ! smoothstep window
 			W(j,2) = v_p(j) * swin                              ! Parker velocity head-start, 0 at base

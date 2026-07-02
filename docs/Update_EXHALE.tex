@@ -3269,6 +3269,71 @@ rests on \emph{photochemical} dissociation (Moses 2011; Koskinen 2013a) --- quan
 motivation for the VULCAN tier.
 
 % ===================================================================== %
+\section{Tier-2 molecular chemistry core: H$_2$/H$_2^+$/H$_3^+$/HeH$^+$ (2026-07-03)}
+% ===================================================================== %
+Opt-in key \texttt{Molecular chemistry: True} (requires He; v1 excludes trace metals).
+New coupled equilibrium system \texttt{System\_HeH\_mol.f90} (7--8 unknowns; atomic rows
+$=$ EXHALE's own rates, so the molecule-free limit reproduces the atomic systems;
+molecular channels $=$ Koskinen$+$2022 Table-1 via \texttt{mol\_rates}).
+$\sigma_{\rm H_2}$ (Yan$+$1998 Eqs.\ 17--19; verified against their Table 7) added to
+\texttt{cross\_sec.f90} and wired into the opacity/photoionization/heating integrals;
+H$_3^+$ IR cooling (Miller$+$2013 $+$ non-LTE factor) enters \texttt{cool}; the EOS is
+molecule-aware (particle count, electrons, masses). \texttt{f\_sp} grows 33$\to$37
+(output schema $+$ Load-IC extended; columns zero when off). \textbf{Gates:} (0)
+molecules-off regression $\log\dot M{=}8.97$ unchanged; (1) HD\,209458\,b molecules-on:
+fully molecular base, sharp H$_2\to$H front at $r{=}1.019\,R_{\rm p}$, wind above it
+essentially atomic ($\log\dot M$ 8.91 vs 8.97, He\,2$^3$S peak $+1.4\%$); (2)
+hot-Uranus-like: front at $1.148\,R_{\rm p}$, H$_3^+$ active below. Caveats: local
+equilibrium only (no molecular advection), no Lyman--Werner photodissociation, P4/P5 and
+the 4.48\,eV sink omitted, $\gamma{=}5/3$ retained. Details:
+\texttt{docs/lower\_atmosphere\_coupling.pdf} \S4.
+
+% ===================================================================== %
+\section{Newton--diffusion co-convergence, solver hygiene, and the Ly$\alpha$ lower-BC audit (2026-07-03)}
+% ===================================================================== %
+\textbf{Stall-based Newton hand-off.} \texttt{He\_diffusion} runs plateau the flux
+metric just above the hand-off threshold (observed: $du$ frozen at $1.084\times10^{-2}$
+vs the $10^{-2}$ switch for $10^{6}$ steps). The warm-up now tracks the $du$ plateau and
+hands over to JFNK once stalled within $5\times$ the switch. \emph{Validated}: the
+hand-off engaged at $du=2.2\times10^{-2}$; the JFNK then hit the known base-momentum
+holdout (worst cell $j{=}1$, $\|R\|\sim7.7\times10^{-3}$ while the volume-weighted
+reference residual was $2.2\times10^{-4}$) and fell back gracefully --- the base-cell
+viscosity work remains the enabler.
+\textbf{Newton $+$ \texttt{He\_diffusion} co-convergence.} \texttt{Solver: Newton}
+previously froze the diffused He/H field at the hand-off state (the JFNK residual carries
+no operator-split diffusion). An outer iteration (the excited-H pattern) now alternates
+the JFNK solve with 500 diffusion-relaxation steps at the converged wind until the He/H
+field drift $<10^{-3}$ (max 5 passes, drift reported). \textbf{Riemann floor:}
+\texttt{p\_min} floored at $10^{-30}p_{\max}$ in \texttt{speed\_estimate\_HLLC/ROE}
+(no-op for healthy states). \textbf{\texttt{PH\_heat\_HHe} OMP CRITICAL removed}
+(distinct-$j$ writes are race-free; values unchanged). \textbf{\texttt{regression/
+run\_fcheck.sh}}: periodic \texttt{-fcheck} regression per the 2026-07-02 review.
+\textbf{\texttt{lya\_rt} audit} (vs.\ Huang et al.\ 2017): the escape-probability
+closure $\bar J = S(1-\beta)$ is local and lacks Huang's \emph{absorbing bottom}
+(H$_2$ accidental-resonance sink at $N_{\rm H_2}\sim10^{14}$\,cm$^{-2}$), so $\bar J$
+--- and the H($n{=}2$) population --- is likely overestimated in the bottom few scale
+heights; the H$\alpha$-forming region lies above, so the TPM impact is expected limited.
+Documented; a bottom-loss $\beta$ channel is the follow-up.
+
+% ===================================================================== %
+\section{Tier-3 first light: VULCAN $\to$ \texttt{base.inp} (2026-07-03)}
+% ===================================================================== %
+The public \texttt{VULCAN} photochemical kinetics code was cloned (\texttt{../VULCAN};
+FastChem compiled) and run to steady state for HD\,189733\,b (SNCHO-2025 network,
+\texttt{use\_photo=True}; 2356 steps, $\sim$6\,h wall). The new converter
+\texttt{src/utils/vulcan\_to\_base.py} turns the \texttt{.vul} output into an EXHALE
+\texttt{base.inp}: photochemical $q_{\rm H_2}/q_{\rm H}/q_{\rm He}$ at 1\,$\mu$bar, a
+hypsometric base radius using VULCAN's own $\mu(p)$ and $T(p)$, and the molecular mixing
+ratios as comments (\emph{no} metal release --- metal/alkali chemistry is outside
+VULCAN's scope and remains Lavvas-only). \textbf{Result} (HD\,189733\,b, 1\,$\mu$bar):
+$q_{\rm H_2}=0.63$, $q_{\rm H}=0.23$ --- photochemistry dissociates $\sim$11$\times$
+more H than the chemical-equilibrium column ($q_{\rm H}=0.020$), directly quantifying
+the Tier-1 caveat (Moses 2011; Koskinen 2013a); $r_{\rm base}=1.168$ vs the analytic
+1.174\,$R_{\rm J}$; $T_{\rm base}=863$\,K (the Moses11 $T(p)$, cooler than the
+isothermal $T_{\rm eq}=1183$\,K). End-to-end chain demonstrated: VULCAN $\to$
+converter $\to$ \texttt{base.inp} $\to$ EXHALE startup override (echoed).
+
+% ===================================================================== %
 %  APPENDIX --- bookkeeping material, kept separate from the dated update log
 % ===================================================================== %
 \clearpage

@@ -3,6 +3,7 @@
 
       use global_parameters
       use species_table, only: n_mion, mion_name
+      use ionization_equilibrium, only: nmol_eq   ! Tier-2 molecular columns
 
       contains
 
@@ -65,10 +66,18 @@
       do i = 1,n_mion
          write(3,'(A)', advance='no') ' '//trim(mion_name(i))
       enddo
+      ! Tier-2 molecular columns (present only when thereis_mol)
+      if (thereis_mol) write(3,'(A)', advance='no') ' H2 H2p H3p HeHp'
       write(3,'(A)') ''
 
       do j = 1-Ng,N+Ng
-         
+
+         if (thereis_mol) then
+            write(3,*) r(j), nhi(j)*n0, nhii(j)*n0, nhei(j)*n0,        &
+                     nheii(j)*n0, nheiii(j)*n0, nheiTR(j)*n0,          &
+                     (nm(j,i)*n0, i = 1,n_mion),                       &
+                     (nmol_eq(j,i), i = 1,4)  ! H2 H2+ H3+ HeH+ (already cm^-3)
+         else
          write(3,*) r(j),       & ! Rad. dist.
                   nhi(j)*n0,    & ! HI
                   nhii(j)*n0,   & ! HII
@@ -77,6 +86,7 @@
                   nheiii(j)*n0, & ! HeIII
                   nheiTR(j)*n0, & ! HeITR
                   (nm(j,i)*n0, i = 1,n_mion)  ! metal ions (canonical order)
+         endif
       enddo
       close(3)
                   

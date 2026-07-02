@@ -13,8 +13,10 @@
       !  16-18 MgI,MgII,MgIII 19-21 SiI,SiII,SiIII  22-24 CaI,CaII,CaIII
       !  25-26 NaI,NaII       27-28 KI,KII          29-30 SI,SII
       !  31-33 FeI,FeII,FeIII
+      !  34-37 H2,H2+,H3+,HeH+   (Tier-2 molecular extension; zero unless
+      !                           thereis_mol)
       ! (Si/Ca/Fe carry three stages like Mg; Na/K/S carry two stages.)
-      integer, parameter :: n_species = 33
+      integer, parameter :: n_species = 37
       integer :: Nl, NlTR                 ! Number of points for energy integrations
       integer :: N_eq                     ! Numbers of equations in NL solver
       integer :: lwa                      ! Working array length for NL solver
@@ -88,6 +90,12 @@
       ! heavier base mu); the chemistry stays atomic -- crude, documented in
       ! docs/lower_atmosphere_coupling.*.  Key "Molecular base: True".
       logical :: molecular_base = .false.
+      ! Tier-2 molecular chemistry (H2/H2+/H3+/HeH+ in the coupled ionization
+      ! equilibrium + H2 photoionization opacity/heating + H3+ IR cooling).
+      ! Key "Molecular chemistry: True".  v1 constraints: requires He; not
+      ! combined with trace metals (input_read errors out).  Default off =
+      ! byte-identical legacy.  docs/lower_atmosphere_coupling.*.
+      logical :: thereis_mol = .false.
       logical :: thereis_metals = .false. ! Include trace-metal species
                                           !  (C/N/O/Mg/Si/Ca/Na/K/S/Fe)
       ! EOS mass/electron/particle policy. .true. (default) = metals enter
@@ -238,6 +246,7 @@
       
       ! Threshold energies
       real*8,parameter ::  e_th_HI   = 13.6      ! Threshold for HI ionization
+      real*8, parameter ::  e_th_H2  = 15.4d0  ! H2 photoionization threshold [eV]
       real*8,parameter ::  e_th_HeI  = 24.6      ! Threshold for HeI ionization
       real*8,parameter ::  e_th_HeII = 54.4      ! Threshold for HeII ionization
       real*8,parameter ::  e_th_HeTR = 4.80      ! Threshold for HeI triplet ionization
@@ -464,6 +473,9 @@
       
       real*8, dimension(:), allocatable :: e_v, de_v
       real*8, dimension(:), allocatable :: s_hi,s_hei,s_heii,s_heiTR
+      ! H2 photoionization cross section on the energy grid (Tier-2;
+      ! Yan+1998 fit, filled in set_energy_vectors)
+      real*8, dimension(:), allocatable :: s_h2
       ! Metal photoionization cross sections, one column per photo-ionizable
       ! metal ion in species_table iphot order (1=CI,2=CII,3=OI,4=OII,
       ! 5=NI,6=NII,7=MgI,8=MgII,9=SiI,10=SiII,11=CaI,12=CaII,13=NaI,14=KI,

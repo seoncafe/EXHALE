@@ -64,6 +64,11 @@
       integer, parameter :: isp_HeII  = 4
       integer, parameter :: isp_HeIII = 5
       integer, parameter :: isp_HeTR  = 6   ! He 2^3S metastable triplet
+      ! ---- molecular species columns (Tier-2; zero unless thereis_mol) ----
+      integer, parameter :: isp_H2    = 34
+      integer, parameter :: isp_H2p   = 35
+      integer, parameter :: isp_H3p   = 36
+      integer, parameter :: isp_HeHp  = 37
 
       ! ---- per-ion indices (canonical mion order; see table above) ----
       ! Used for index-based rate dispatch (rec/ion/cool_coeff_by_ion), so

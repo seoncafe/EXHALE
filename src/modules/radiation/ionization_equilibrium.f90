@@ -3,12 +3,16 @@
 
 	use global_parameters
    use species_table, only: n_mion, mion_fsp, n_melem, melem_i0,        &
-                            melem_top, mion_stage
+                            melem_top, mion_stage,                       &
+                            isp_H2, isp_H2p, isp_H3p, isp_HeHp
    use utils
    use utils_ion_eq
    use Cooling_Coefficients      ! eval_cool, recombination/ionization rates
    use System_HeH                ! Equilibrium equations
 	use System_HeH_TR
+	use System_HeH_mol            ! Tier-2 molecular network
+	use lower_column, only: q_h2_equilibrium
+	use h3p_cooling,  only: h3p_cooling_rate
    use System_HeH_metals
    use System_HeH_TR_metals      ! merged He-triplet + metals system
    use charge_exchange, only: cx_set_cell, cx_metal_base   ! Huang Table 4 charge exchange
@@ -17,6 +21,11 @@
    use opacity_models            ! opacity_pT_factor for the 'P' model
 
    implicit none
+
+	! Tier-2 molecular species densities (cols 1 H2, 2 H2+, 3 H3+, 4 HeH+;
+	! zero unless thereis_mol).  Module state: written by the equilibrium
+	! solve, read by write_output for the extra output columns.
+	real*8, dimension(1-Ng:N+Ng,4), save :: nmol_eq = 0.0d0
 
 	contains 
 	
@@ -48,6 +57,7 @@
 
    ! Photo ionization rates
    real*8, dimension(1-Ng:N+Ng) ::  P_HI,P_HeI,P_HeII,P_HeITR
+   real*8, dimension(1-Ng:N+Ng) ::  P_H2      ! (Tier-2; zero unless mol)
    ! Per-ion metal photoionization rates (canonical order) from PH_heat.
    real*8, dimension(1-Ng:N+Ng,n_mion) ::  P_m
                        	
@@ -123,6 +133,14 @@
        nm(:,im) = f_sp_in(:,mion_fsp(im))*n_in_dim
     enddo
 
+	! Tier-2 molecular species (zero when thereis_mol is off)
+	if (thereis_mol) then
+		nmol_eq(:,1) = f_sp_in(:,isp_H2)  *n_in_dim
+		nmol_eq(:,2) = f_sp_in(:,isp_H2p) *n_in_dim
+		nmol_eq(:,3) = f_sp_in(:,isp_H3p) *n_in_dim
+		nmol_eq(:,4) = f_sp_in(:,isp_HeHp)*n_in_dim
+	endif
+
     ! Total density of each metal element (sum of its three stages, in the
     ! same neutral+singly+doubly order as the original nC=nci+ncii+nciii).
     do im = 1,n_melem
@@ -135,13 +153,23 @@
        endif
     enddo
 	
-	! Total number densities      
+	! Total number densities (with molecules: H and He NUCLEI totals --
+	! the Tier-2 system conserves elements, and nmol_eq is zero otherwise)
 	nh  = nhi  + nhii
 	nhe = nhei + nheii + nheiii
+	if (thereis_mol) then
+		nh  = nh  + 2.0d0*(nmol_eq(:,1) + nmol_eq(:,2))                  &
+		          + 3.0d0*nmol_eq(:,3) + nmol_eq(:,4)
+		nhe = nhe + nmol_eq(:,4)
+	endif
 	
 	! Free electron density (assuming overall neutrality; nm adds the
 	! metal electrons under the eos_metals policy)
-	call calc_ne(nhii,nheii,nheiii,ne,nm)
+	if (thereis_mol) then
+		call calc_ne(nhii,nheii,nheiii,ne,nm,nmol_eq)
+	else
+		call calc_ne(nhii,nheii,nheiii,ne,nm)
+	endif
 
 	! Per-cell pressure-broadening factor for the opacity ('P' model).
 	! opacity_pT_factor returns 1.0 for all other models, so opa_pf=1
@@ -155,9 +183,15 @@
     !---- Photoionization and photoheating ----!
       
 	if (thereis_He) then
+		if (thereis_mol) then
+			call PH_heat_HHe(nhi,nhei,nheii,nheiTR, nm,          &
+			         P_HI,P_HeI,P_HeII,P_HeITR, P_m,             &
+			         heat,q, nmol_eq(:,1),P_H2)
+		else
       	call PH_heat_HHe(nhi,nhei,nheii,nheiTR, nm,             &
       			     P_HI,P_HeI,P_HeII,P_HeITR, P_m,        &
       			     heat,q)
+		endif
 	else
 		call PH_heat_H(nhi,P_HI,heat,q)
 		P_m = 0.0
@@ -196,6 +230,16 @@
 
 	! Charge-exchange rate coefficients are evaluated per cell below
 	! (cx_set_cell) before each metal ionization solve.
+
+	! Tier-2: optically-thin H3+ infrared cooling (Miller+2013 fits with
+	! the Table-6 non-LTE factor), evaluated at the pre-solve state like
+	! every other channel.  Zero when molecules are off/absent.
+	if (thereis_mol) then
+		do j = 1-Ng,N+Ng
+			cool(j) = cool(j) + h3p_cooling_rate(T_K(j),               &
+			                     nmol_eq(j,3), nmol_eq(j,1))
+		enddo
+	endif
 
 	if (thereis_HeITR) then
 		call HeITR_coeffs(T_K,rcheiTR,rcheiiB,A31,q13,q31a,q31b,Q31)
@@ -303,6 +347,16 @@
 				params(18) = Q31(j)
 			endif
 
+			! Tier-2 molecular params (System_HeH_mol layout 19-21)
+			if (thereis_mol) then
+				if (.not. thereis_HeITR) then
+					params(12:18) = 0.0d0     ! no triplet channels
+				endif
+				params(19) = P_H2(j)
+				params(20) = T_K(j)
+				params(21) = n_in_dim(j)      ! M for the 3-body rates
+			endif
+
 			! Per-element metal coefficients are handed to
 			! ion_system_HeH_metals via set_metal_coeffs; the charge-
 			! exchange rate coefficients are stored for this cell by
@@ -344,6 +398,11 @@
 					sys_x(2) = 1.0
 					sys_x(3) = 1.0
 					if (thereis_HeITR) sys_x(4) = 0.01
+					if (thereis_mol) then
+						! start fully ionized aloft; molecules negligible
+						sys_x(4:7) = 1.0d-10
+						if (thereis_HeITR) sys_x(8) = 0.01
+					endif
 					if (thereis_metals) then
 						! Each metal starts fully singly ionized.
 						do im = 1,n_melem
@@ -357,6 +416,13 @@
 					sys_x(3) = nheiii(j+1)/nhe(j+1)
 					if (thereis_HeITR) &
 						sys_x(4) = nheiTR(j+1)/nhe(j+1)
+					if (thereis_mol) then
+						sys_x(4) = max(2.0d0*nmol_eq(j+1,1)/nh(j+1), 1.0d-10)
+						sys_x(5) = max(2.0d0*nmol_eq(j+1,2)/nh(j+1), 1.0d-12)
+						sys_x(6) = max(3.0d0*nmol_eq(j+1,3)/nh(j+1), 1.0d-12)
+						sys_x(7) = max(nmol_eq(j+1,4)/nh(j+1), 1.0d-14)
+						if (thereis_HeITR) sys_x(8) = nheiTR(j+1)/nhe(j+1)
+					endif
 					if (thereis_metals) then
 						do im = 1,n_melem
 							i0 = melem_i0(im)
@@ -376,6 +442,13 @@
 				sys_x(2) = nheii(j)/nhe(j)
 				sys_x(3) = nheiii(j)/nhe(j)
 				if (thereis_HeITR) sys_x(4) = nheiTR(j)/nhe(j)
+				if (thereis_mol) then
+					sys_x(4) = 2.0d0*nmol_eq(j,1)/nh(j)
+					sys_x(5) = 2.0d0*nmol_eq(j,2)/nh(j)
+					sys_x(6) = 3.0d0*nmol_eq(j,3)/nh(j)
+					sys_x(7) = nmol_eq(j,4)/nh(j)
+					if (thereis_HeITR) sys_x(8) = nheiTR(j)/nhe(j)
+				endif
 				if (thereis_metals) then
 					do im = 1,n_melem
 						i0 = melem_i0(im)
@@ -394,7 +467,11 @@
 		 	! Analytic-Jacobian Newton (Task 2); hybrd1 fallback inside solve_ieq.
 			! The He metastable-triplet systems keep the MINPACK solve (no
 			! analytic Jacobian written for the triplet kinetics).
-			if (thereis_HeITR .and. thereis_metals) then
+			if (thereis_mol) then
+				! Tier-2 molecular network (metals excluded by input_read)
+				call hybrd1(ion_system_HeH_mol,N_eq,sys_x,sys_sol,   &
+						    tol,info,wa,lwa,params)
+			else if (thereis_HeITR .and. thereis_metals) then
 				! Merged He-triplet + metals: triplet at sys_x(4), metals at
 				! sys_x(5..). The per-cell metal coefficients (set_metal_coeffs)
 				! and charge-exchange rates (cx_set_cell) were already loaded
@@ -416,12 +493,29 @@
 			endif
 
 			! Extract solution profiles
+			if (thereis_mol) then
+				! guard tiny negatives from the NL solve
+				sys_x(1:N_eq) = max(sys_x(1:N_eq), 0.0d0)
+				nhii(j)   = nh(j)*sys_x(1)
+				nmol_eq(j,1) = 0.5d0*sys_x(4)*nh(j)
+				nmol_eq(j,2) = 0.5d0*sys_x(5)*nh(j)
+				nmol_eq(j,3) = sys_x(6)*nh(j)/3.0d0
+				nmol_eq(j,4) = sys_x(7)*nh(j)
+				nhi(j)    = nh(j)*max(1.0d0 - sys_x(1) - sys_x(4)      &
+				              - sys_x(5) - sys_x(6) - sys_x(7), 0.0d0)
+				nheii(j)  = nhe(j)*sys_x(2)
+				nheiii(j) = nhe(j)*sys_x(3)
+				nhei(j)   = max(nhe(j)*(1.0d0 - sys_x(2) - sys_x(3))   &
+				              - nmol_eq(j,4), 0.0d0)
+				if (thereis_HeITR) nheiTR(j) = nhe(j)*sys_x(8)
+			else
 			nhi(j)    = nh(j)*(1.0 - sys_x(1))
 			nhii(j)   = nh(j)*sys_x(1)
 			nhei(j)   = nhe(j)*(1.0 - sys_x(2) - sys_x(3))
 			nheii(j)  = nhe(j)*sys_x(2)
 			nheiii(j) = nhe(j)*sys_x(3)
 			if (thereis_HeITR) nheiTR(j) = nhe(j)*sys_x(4)
+			endif
 			if (thereis_metals) then
 				do im = 1,n_melem
 					i0 = melem_i0(im)
@@ -445,7 +539,11 @@
 	
 	! Density with atomic numbers (nm adds the metal mass under the
 	! eos_metals policy)
-   call calc_rho(nhi,nhii,nhei,nheii,nheiii,nheiTR,n_out,nm)
+   if (thereis_mol) then
+      call calc_rho(nhi,nhii,nhei,nheii,nheiii,nheiTR,n_out,nm,nmol_eq)
+   else
+      call calc_rho(nhi,nhii,nhei,nheii,nheiii,nheiTR,n_out,nm)
+   endif
 
    ! Abundancies profiles
    f_sp_out(:,1) = nhi/n_out
@@ -454,6 +552,16 @@
    f_sp_out(:,4) = nheii/n_out
    f_sp_out(:,5) = nheiii/n_out
    f_sp_out(:,6) = nheiTR/n_out
+   ! Tier-2 molecular abundances
+   if (thereis_mol) then
+      f_sp_out(:,isp_H2)   = nmol_eq(:,1)/n_out
+      f_sp_out(:,isp_H2p)  = nmol_eq(:,2)/n_out
+      f_sp_out(:,isp_H3p)  = nmol_eq(:,3)/n_out
+      f_sp_out(:,isp_HeHp) = nmol_eq(:,4)/n_out
+   else
+      f_sp_out(:,isp_H2:isp_HeHp) = 0.0d0
+   endif
+
    ! Metal abundances in canonical order (col mion_fsp(im) of f_sp_out).
    do im = 1,n_mion
       f_sp_out(:,mion_fsp(im)) = nm(:,im)/n_out

@@ -15,6 +15,7 @@
 
       use global_parameters
       use species_table, only: isp_HI, isp_HII, isp_HeI, isp_HeII,    &
+                               isp_H2, isp_H2p, isp_H3p, isp_HeHp,     &
                                isp_HeIII, isp_HeTR,                    &
                                n_mion, n_melem, mion_fsp, mion_name,   &
                                mion_elem, melem_i0, melem_top
@@ -217,6 +218,11 @@
          case ('HeII');  species_column = isp_HeII
          case ('HeIII'); species_column = isp_HeIII
          case ('HeITR'); species_column = isp_HeTR
+         ! Tier-2 molecular columns
+         case ('H2');    species_column = isp_H2
+         case ('H2p');   species_column = isp_H2p
+         case ('H3p');   species_column = isp_H3p
+         case ('HeHp');  species_column = isp_HeHp
          case default
             species_column = 0
             do i = 1, n_mion
