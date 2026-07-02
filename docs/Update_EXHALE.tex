@@ -2312,68 +2312,6 @@ caveat} documenting the issue and fix above. The Fig.~4 example was regenerated
 from the corrected \texttt{\_adv} output.
 
 % ===================================================================== %
-\section{Code-size summary: EXHALE vs.\ the original ATES (2026-06-07)}
-% ===================================================================== %
-A line-by-line comparison of the Fortran source against the pristine upstream code
-(\texttt{ATES/ATES-Code-main}) quantifies the extent of the in-house extension.
-\emph{Pure code lines (SLOC)} exclude blank lines and comments (the comment
-stripper is string-aware, so a \texttt{!} inside a quoted string is not treated as
-a comment); the line-by-line diff additionally normalizes whitespace and case, so
-reformatting and comment-only edits are \emph{not} counted as changes.
-
-\begin{center}\small
-\begin{tabular}{@{}lcc@{}}
-\toprule
- & Fortran files & code lines (SLOC) \\
-\midrule
-Original ATES (\texttt{ATES-Code-main}) & 47 & 3\,444 \\
-EXHALE                              & 57 & 7\,258 \\
-\midrule
-net change & $+10$ & $+3\,814$ ($\approx2.1\times$) \\
-\bottomrule
-\end{tabular}
-\end{center}
-
-\noindent
-\textbf{Line-by-line diff} (comments + blanks excluded; whitespace/case normalized):
-\textbf{3\,908} code lines added in EXHALE (new modules + the new side of
-modified lines) and \textbf{94} removed from the original (deleted + the old side of
-modified lines), for \textbf{4\,002} total changed lines. At the file level, of the
-47 original files \textbf{21 were modified} and \textbf{26 are unchanged} (none were
-removed), and \textbf{10 new modules} were added:
-
-\begin{center}\small
-\begin{tabular}{@{}llr@{}}
-\toprule
-New module & Purpose & SLOC \\
-\midrule
-\texttt{radiation/charge\_exchange.f90}  & charge-exchange network (Huang Table 4) & 311 \\
-\texttt{radiation/excited\_hydrogen.f90} & H($n{=}2$) model + Balmer feedback & 300 \\
-\texttt{radiation/opacity\_models.f90}   & opacity dispatcher (A/C/P/T) & 180 \\
-\texttt{nonlinear\_system\_solver/System\_HeH\_metals.f90} & coupled H/He$+$metals ionization ($+$analytic Jacobian) & 171 \\
-\texttt{nonlinear\_system\_solver/newton\_solver.f90} & analytic-Jacobian Newton ($+$\,hybrd1 fallback) & 124 \\
-\texttt{time\_step/energy\_semi\_implicit.f90} & semi-implicit energy solver & 104 \\
-\texttt{files\_IO/metals\_input\_read.f90} & parse \texttt{metals.inp} & 89 \\
-\texttt{files\_IO/opacity\_input\_read.f90} & parse \texttt{opacity.inp} & 85 \\
-\texttt{init/species\_table.f90}          & metal-species metadata table & 70 \\
-\texttt{radiation/lya\_rt.f90}            & Ly$\alpha$ escape-probability RT & 68 \\
-\midrule
-\multicolumn{2}{r}{new-module total} & 1\,502 \\
-\bottomrule
-\end{tabular}
-\end{center}
-
-\noindent
-So the 10 new modules contribute 1\,502 of the 3\,908 added code lines; the
-remaining $\sim$2\,406 added (and 94 removed) lines are edits spread across the 21
-modified files (chiefly the ionization-equilibrium, cooling, cross-section, I/O,
-gravity/IC, and energy modules that wire the metals, opacity dispatcher, Roche
-potential, transonic IC, excited-H/Ly$\alpha$ physics, and the Brent/Newton solver
-upgrades into the existing solver). In total EXHALE roughly \emph{doubles} the
-original code base (3\,444\,$\to$\,7\,258 SLOC, $\approx2.1\times$) and touches just
-under half of its files (21 of 47 modified, plus 10 new).
-
-% ===================================================================== %
 \section{He\,2$^3$S triplet $+$ metals simultaneous solve, Ly$\alpha$-flux guard, and convergence workflow (2026-06-08)}
 % ===================================================================== %
 
@@ -3297,5 +3235,94 @@ WASP-121b (log$\,\dot M\!\approx\!13.3$) advection dominates for every species -
 \emph{and} metals are dragged out essentially unfractionated (10830 unchanged; metal/H tracks
 He/H). Both are stable (no NaN) and leave $\dot M$ essentially unchanged (metals are trace).
 All diffusion flags are \textbf{default off}, so standard runs are byte-identical.
+
+% ===================================================================== %
+%  APPENDIX --- bookkeeping material, kept separate from the dated update log
+% ===================================================================== %
+\clearpage
+\appendix
+
+\section{Code-size summary: EXHALE vs.\ the original ATES (2026-06-07; updated 2026-07-02)}
+% ===================================================================== %
+A line-by-line comparison of the Fortran source against the pristine upstream code
+(\texttt{ATES/ATES-Code-main}) quantifies the extent of the in-house extension.
+\emph{Pure code lines (SLOC)} exclude blank lines and comments (the comment
+stripper is string-aware, so a \texttt{!} inside a quoted string is not treated as
+a comment); the line-by-line diff additionally normalizes whitespace and case, so
+reformatting and comment-only edits are \emph{not} counted as changes. Updated
+2026-07-02 after the Newton steady solver, the He\,2$^3$S$+$metals merge, the
+composition module, He/H$+$metal diffusive separation, and the Wind-AE IC port;
+the \emph{core} rows exclude the ported Wind-AE solver (listed separately).
+
+\begin{center}\small
+\begin{tabular}{@{}lcc@{}}
+\toprule
+ & Fortran files & code lines (SLOC) \\
+\midrule
+Original ATES (\texttt{ATES-Code-main}) & 47 & 3\,514 \\
+EXHALE core (excl.\ Wind-AE port)       & 62 & 9\,245 \\
+\midrule
+net change (core) & $+15$ & $+5\,731$ ($\approx2.6\times$) \\
+\midrule
+Wind-AE IC-generator port (\texttt{wind\_ae/}) & $+36$ & $+4\,746$ \\
+EXHALE total & 98 & 13\,991 ($\approx4.0\times$) \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\noindent
+\textbf{Line-by-line diff, core} (comments + blanks excluded; whitespace/case
+normalized): \textbf{5\,970} code lines added in EXHALE (new modules + the new side
+of modified lines) and \textbf{239} removed from the original (deleted + the old
+side of modified lines), for \textbf{6\,209} total changed lines. At the file level,
+of the 47 original files \textbf{27 were modified} and \textbf{20 are unchanged}
+(none were removed --- the unchanged set is chiefly the 11 vendored MINPACK
+routines, the HLLC/ROE Riemann solvers with the flux/reconstruction pieces, and
+small utility modules), and \textbf{15 new core modules} were added:
+
+\begin{center}\small
+\begin{tabular}{@{}llr@{}}
+\toprule
+New module & Purpose & SLOC \\
+\midrule
+\texttt{time\_step/steady\_newton.f90}    & JFNK steady-state solve (Newton finish) & 540 \\
+\texttt{radiation/charge\_exchange.f90}  & charge-exchange network (Huang Table 4) & 314 \\
+\texttt{radiation/excited\_hydrogen.f90} & H($n{=}2$) model + Balmer feedback & 305 \\
+\texttt{functions/species\_diffusion.f90} & He/H ($+$ metal) diffusive separation & 216 \\
+\texttt{radiation/opacity\_models.f90}   & opacity dispatcher (A/C/P/T) & 180 \\
+\texttt{nonlinear\_system\_solver/System\_HeH\_metals.f90} & coupled H/He$+$metals ionization ($+$analytic Jacobian) & 171 \\
+\texttt{nonlinear\_system\_solver/newton\_solver.f90} & analytic-Jacobian Newton ($+$\,hybrd1 fallback) & 124 \\
+\texttt{files\_IO/metals\_input\_read.f90} & parse \texttt{metals.inp} & 111 \\
+\texttt{time\_step/energy\_semi\_implicit.f90} & semi-implicit energy solver & 106 \\
+\texttt{init/species\_table.f90}          & metal-species metadata table & 89 \\
+\texttt{files\_IO/opacity\_input\_read.f90} & parse \texttt{opacity.inp} & 85 \\
+\texttt{nonlinear\_system\_solver/System\_HeH\_TR\_metals.f90} & merged He\,2$^3$S$+$metals system & 84 \\
+\texttt{radiation/lya\_rt.f90}            & Ly$\alpha$ escape-probability RT & 68 \\
+\texttt{functions/composition.f90}        & single-point species/EOS policy & 46 \\
+\texttt{time\_step/steady\_residual.f90}  & steady-residual assembly/norms & 45 \\
+\midrule
+\multicolumn{2}{r}{new-module total} & 2\,484 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\noindent
+So the 15 new core modules contribute 2\,484 of the 5\,970 added code lines; the
+remaining $\sim$3\,486 added (and 239 removed) lines are edits spread across the 27
+modified files --- dominated by the cooling module (\texttt{Cool\_coeff.f90}, 442
+$\to$ 2\,230 raw lines: CHIANTI metal-line fits, Fe tables, temperature-dependent
+Penning rate), followed by \texttt{TPM.py}-side physics and the main driver,
+parameters/input parsing, IC construction, cross sections, ionization equilibrium,
+and the post-processor, which wire the metals, opacity dispatcher, Roche potential,
+transonic/auto IC, excited-H/Ly$\alpha$ physics, diffusion hooks, and the
+Brent/Newton solver upgrades into the existing solver. In total the EXHALE core is
+now $\approx$2.6$\times$ the original code base (3\,514\,$\to$\,9\,245 SLOC),
+touching a bit over half of the original files (27 of 47 modified, none deleted,
+plus 15 new); with the ported Wind-AE IC generator the full Fortran tree is 98
+files / 13\,991 SLOC ($\approx$4$\times$). Beyond Fortran, the tree also carries
+the Python tooling (GUI, the \texttt{TPM.py} transmission post-processor,
+plotting/analysis) and $\approx$20\,000 lines of documentation under
+\texttt{docs/}.
+
 
 \end{document}
