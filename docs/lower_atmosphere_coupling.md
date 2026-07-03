@@ -1,5 +1,10 @@
 # Connecting EXHALE to the lower atmosphere: survey and proposal
 
+> **Figures:** the tex/pdf version now carries four result figures (Tier-1 4-planet
+> brackets, Tier-2 dissociation fronts/molecular species, VULCAN-vs-equilibrium,
+> WASP-52b He 10830 base-radius comparison) — sources and data snapshots in
+> `docs/lower_atmosphere_figs/` (`make_figures.py`).
+
 **Sources surveyed** (references/): Taylor et al. 2025, 2026 (μbar coupling to Lavvas &
 Arfaux); Koskinen et al. 2013a, 2022 (CETIMB lower boundary; analytic lower column; H₃⁺);
 Lavvas et al. 2014 / Lavvas & Koskinen 2017-era / Lavvas & Arfaux 2021 (the lower/middle

@@ -172,8 +172,8 @@ print('fig_vulcan_vs_eq.pdf')
 # ------------------------------------------------------------------ #
 # Fig 4: WASP-52b He 10830 old vs corrected base radius (if data ready)
 # ------------------------------------------------------------------ #
-old_tpm = '/tmp/w52o/tpm_tpm_He10830.txt'
-new_tpm = os.path.join(EX, 'WASP-52b', 'fxuv1p0_he98_rbase', 'tpm_tpm_He10830.txt')
+old_tpm = os.path.join(HERE, 'data_w52', 'tpm_old_R1p270.txt')
+new_tpm = os.path.join(HERE, 'data_w52', 'tpm_new_R1p437.txt')
 if os.path.exists(old_tpm) and os.path.exists(new_tpm):
     Lo = np.loadtxt(old_tpm); Ln = np.loadtxt(new_tpm)
     fig, ax = plt.subplots(figsize=(5.2, 3.4))
