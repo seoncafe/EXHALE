@@ -280,6 +280,13 @@ def main():
     depth = (1.0 - Tl.min()) * 100.0
     print('H-alpha line-center excess absorption = %.3f %%' % depth)
 
+    # save the profile for external overplotting (columns: lambda[A], T)
+    _txt = os.environ.get('LART_HA_SAVE', '')
+    if _txt:
+        np.savetxt(_txt, np.c_[lam, Tl],
+                   header='lambda[A]  T (H-alpha, LaRT 2D cylindrical Ly-a)')
+        print('saved profile:', _txt)
+
     # plot
     import matplotlib
     matplotlib.use('Agg'); matplotlib.rcParams['text.usetex'] = False

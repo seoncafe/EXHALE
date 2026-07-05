@@ -323,6 +323,82 @@ r,rho,v,p,T,heat,cool = np.loadtxt(Hydro_file, unpack = True)
 r,nhi,nhii,nhei,nheii,nheiii,nheiTR = \
     np.loadtxt(Ioniz_file, usecols = range(7), unpack = True)
 
+# --------------------------------------------------------------------- #
+# Auto-size the per-line wavelength windows so the WHOLE line profile is
+# captured (the line returns to the continuum inside the window) for any
+# wind, instead of using fixed +/-few-A windows that clip fast/hot winds.
+#
+# The line half-width has two contributions, and we take whichever is
+# larger:
+#   (1) KINEMATIC:  dv_kin = |v_r|_max + K_th * v_thermal + v_rot
+#       (the fastest line-of-sight gas plus its Doppler wing plus rotation);
+#   (2) DAMPING WING: for an optically thick line the Lorentzian wings stay
+#       black far past the kinematic edge.  The wing reaches optical depth
+#       unity at x_w = sqrt(tau0 * a / sqrt(pi)) Doppler widths, where
+#       tau0 = sigma0 * N_lower is the line-center optical depth of the
+#       vertical column and a = A21 lambda / (4 pi c) / (v_th/c) is the
+#       Voigt parameter.  dv_wing = x_w * v_thermal.
+# The window is lambda0 * (1 +/- margin * max(dv_kin, dv_wing)), never
+# narrower than the historical default, honoring TPM_HE_LMIN/LMAX overrides.
+_amu = 1.66053907e-27
+_kB  = 1.380649e-23
+_ec2 = 0.026540045                # pi e^2 / (m_e c)  [cm^2 Hz] (sqrt-pi form below)
+_ccm = 2.99792458e10
+
+def _line_halfwidth(lam0_A, m_atom_amu, fosc, A21, N_col_cm2):
+    """Return the physical line half-width [m/s]."""
+    T_max = float(np.nanmax(T))
+    v_max = float(np.nanmax(np.abs(v)))*1.0e-2                  # m/s
+    v_th  = np.sqrt(2.0*_kB*T_max/(m_atom_amu*_amu))           # m/s
+    v_rot = 2.0e4                                              # ~20 km/s
+    dv_kin = v_max + 5.0*v_th + v_rot
+    # damping-wing extent from the vertical line-center optical depth
+    lam0_cm = lam0_A*1.0e-8
+    nu0     = _ccm/lam0_cm
+    dnuD    = nu0*(v_th*1.0e2)/_ccm                            # Doppler width [Hz]
+    sig0    = np.sqrt(np.pi)*(4.803204e-10**2/(9.109384e-28*_ccm))*fosc/max(dnuD,1e-30)
+    tau0    = sig0*max(N_col_cm2, 0.0)
+    avoigt  = (A21/(4.0*np.pi))/max(dnuD, 1e-30)
+    x_w     = np.sqrt(max(tau0*avoigt/np.sqrt(np.pi), 0.0))    # Doppler widths to tau=1
+    dv_wing = v_max + x_w*v_th
+    # A very optically thick line (Lya, tau0 ~ 1e8) is black far into its
+    # 1/x^2 damping wings; capping the wing extent keeps the window generous
+    # enough to show the profile turning over without an absurd velocity span.
+    DV_CAP = 2.5e6                                             # 2500 km/s
+    return 1.25*min(max(dv_kin, dv_wing), DV_CAP)
+
+def _apply_window(lam0_A, dv_half, lmin0, lmax0, forced=False):
+    if forced:
+        return lmin0, lmax0
+    dlam = lam0_A*dv_half/2.99792458e8
+    return min(lmin0, lam0_A - dlam), max(lmax0, lam0_A + dlam)
+
+# vertical columns of the lower-level absorbers [cm^-2] (rectangle rule; r in R_p)
+_dr_cm = np.abs(np.gradient(r))*Rp             # cm (r in R_p, Rp in cm)
+_N_HI    = float(np.sum(nhi*_dr_cm))           # cm^-3 * cm -> cm^-2
+_N_HeTR  = float(np.sum(nheiTR*_dr_cm))
+_fHe = f10830_34 + f10830_25 + f10829_09
+_he_forced = ('TPM_HE_LMIN' in os.environ) or ('TPM_HE_LMAX' in os.environ)
+lmin_HeTR, lmax_HeTR = _apply_window(10830.34,
+    _line_halfwidth(10830.34, 4.0, _fHe, 1.022e7, _N_HeTR), lmin_HeTR, lmax_HeTR, _he_forced)
+lmin_HI, lmax_HI = _apply_window(1215.67,
+    _line_halfwidth(1215.67, 1.0, 0.4162, 6.27e8, _N_HI), lmin_HI, lmax_HI)
+# Balmer lines are optically thin in the n=2 population -> kinematic only
+lmin_Ha, lmax_Ha = _apply_window(6562.80,
+    _line_halfwidth(6562.80, 1.0, 0.6407, 4.41e7, 0.0), lmin_Ha, lmax_Ha)
+lmin_Hb, lmax_Hb = _apply_window(4861.35,
+    _line_halfwidth(4861.35, 1.0, 0.1193, 8.42e6, 0.0), lmin_Hb, lmax_Hb)
+
+# adequate, ODD sampling after widening (astropy convolution needs odd kernels)
+def _odd(n):
+    n = int(n); return n if n % 2 == 1 else n+1
+number_lambda_HeTR = _odd(max(number_lambda_HeTR, (lmax_HeTR-lmin_HeTR)/0.02))
+number_lambda_HI   = _odd(max(number_lambda_HI,   (lmax_HI  -lmin_HI  )/0.02))
+number_lambda_Ha   = _odd(max(number_lambda_Ha,   (lmax_Ha  -lmin_Ha  )/0.02))
+number_lambda_Hb   = _odd(max(number_lambda_Hb,   (lmax_Hb  -lmin_Hb  )/0.02))
+print('(TPM) auto windows [A]: He[%.1f,%.1f] Lya[%.1f,%.1f] Ha[%.1f,%.1f]'
+      % (lmin_HeTR, lmax_HeTR, lmin_HI, lmax_HI, lmin_Ha, lmax_Ha))
+
 # Save inverted profiles
 r_I 	   = -np.flip(r)
 T_I 	   =  np.flip(T)
@@ -669,6 +745,12 @@ avg_prob_HD = ((A_star - A_atm) + (A_atm - A_planet)*prob_tot_HD[:])/A_star
 # Normalization to continuum
 avg_prob_HD = avg_prob_HD[:]*A_star/(A_star - A_planet)
 
+# Physical transmission is in [0,1]; clip any non-finite entries (a saturated
+# Lya damping wing can overflow exp(-tau) in a single grid cell) so the line
+# profile and the auto-scaled plot axes stay well defined.
+avg_prob_HD = np.clip(np.nan_to_num(avg_prob_HD, nan=1.0, posinf=1.0, neginf=0.0),
+                      0.0, 1.0)
+
 # Integral over the planet's projected area H-alpha and H-beta
 if do_Ha:
 	for l in range(number_lambda_Ha):
@@ -801,8 +883,19 @@ if do_Ha:
 amu = 1.66053907e-27
 mMg, mCa, mNa = 24.305*amu, 40.078*amu, 22.990*amu
 
-nMgII_cm, nCaII_cm, nNaI_cm = np.loadtxt(Ioniz_file, usecols=(17, 23, 25),
-                                         unpack=True)                 # cm^-3
+# Metals-off runs write only the H/He columns (<=16): skip the metal
+# resonance lines automatically (He/Lya/Ha/Hb above are unaffected).
+_ncol_ion = np.loadtxt(Ioniz_file, max_rows=1).size
+do_metals = (_ncol_ion >= 26)
+if do_metals:
+	nMgII_cm, nCaII_cm, nNaI_cm = np.loadtxt(Ioniz_file, usecols=(17, 23, 25),
+	                                         unpack=True)              # cm^-3
+else:
+	_r0col = np.loadtxt(Ioniz_file, usecols=(0,))
+	nMgII_cm = np.zeros_like(_r0col)   # metals-off: zero metal absorption,
+	nCaII_cm = np.zeros_like(_r0col)   # so the metal lines are flat and the
+	nNaI_cm  = np.zeros_like(_r0col)   # He/Lya/Ha output still saves.
+	print('(TPM) metals-off run: skipping metal resonance lines.')
 # symmetric (night + day) chord arrays, m^-3 (mirror data_nHI at line ~460)
 data_nMgII = np.concatenate((np.flip(nMgII_cm), nMgII_cm))*1.0e6
 data_nCaII = np.concatenate((np.flip(nCaII_cm), nCaII_cm))*1.0e6
@@ -1089,6 +1182,12 @@ if len(_save_prefix) > 0:
 		           np.c_[l_plot_Ha, avg_prob_Ha,
 		                 convolved_avg_prob_Ha, convolved_rot_prob_Ha],
 		           header='lambda[A]  T_theo  T_instr  T_rot+instr  (H-alpha 6562.8)')
+		# Lyman-alpha (HI 1215.67) shares the n=2 / excited-H pipeline with
+		# H-alpha, so it is written alongside it.
+		np.savetxt(_save_prefix + 'tpm_Lya.txt',
+		           np.c_[l_plot_HI, avg_prob_HD,
+		                 convolved_avg_prob_HD, convolved_rot_prob_HD],
+		           header='lambda[A]  T_theo  T_instr  T_rot+instr  (Ly-alpha 1215.67)')
 	print('(TPM) saved model curves with prefix:', _save_prefix)
 
 # ----- Setup of the figure ----- #
