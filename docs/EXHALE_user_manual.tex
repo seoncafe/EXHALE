@@ -902,14 +902,14 @@ The pre-step can be invoked \emph{by EXHALE itself}: with
 \begin{verbatim}
 Lower atmosphere: vulcan 1.36     # or: analytic 1.36  (arg = 1-bar radius R_J)
 \end{verbatim}
-in \texttt{input.inp}, the code runs the bundled \texttt{VULCAN}
+in \texttt{input.inp}, the code runs the \texttt{VULCAN}
 photochemistry (or the analytic column) at startup when no \texttt{base.inp}
 exists, then proceeds with the wind solve on the generated base ---
 subroutine-style, with the first VULCAN run taking hours and later runs
 reusing the cached result in \texttt{<run\_dir>/vulcan\_work/}. Omitting the
-key disables the pre-step entirely. The bundled \texttt{VULCAN/} tree (which
-ships \texttt{FastChem} inside it) carries its own citation requirements ---
-see the README ``Bundled third-party codes'' section. Two generators are
+key disables the pre-step entirely. The \texttt{VULCAN/} tree (obtained by
+\texttt{setup\_vulcan.sh}; it ships \texttt{FastChem} inside it) carries its own
+citation requirements --- see \S\ref{sec:bundled}. Two generators are
 provided in \texttt{src/utils/}:
 \begin{itemize}
 \item \texttt{run\_lower.py <run\_dir> --r1bar <R\_J> [--guillot]} --- the
@@ -924,8 +924,9 @@ provided in \texttt{src/utils/}:
 \end{itemize}
 \emph{Running VULCAN} is handled automatically by the driver
 \texttt{src/utils/vulcan\_driver.py}, so no manual VULCAN setup is required.
-When the pre-step is requested it (i) copies the bundled \texttt{EXHALE/VULCAN/}
-tree into \texttt{<run\_dir>/vulcan\_work/} (once, then reused), (ii) builds a
+When the pre-step is requested it (i) obtains VULCAN if needed
+(via \texttt{src/utils/setup\_vulcan.sh}; see \S\ref{sec:bundled}) and copies the
+\texttt{EXHALE/VULCAN/} tree into \texttt{<run\_dir>/vulcan\_work/} (once, then reused), (ii) builds a
 Guillot (2010) semi-grey $T(p)$/$K_{zz}$ atmosphere for the planet and selects a
 stellar UV spectrum from the shipped spectra by the host $T_{\rm eff}$ ($>6800$\,K
 $\to$ 51\,Eri; $5300$--$6800$\,K $\to$ solar; $4300$--$5300$\,K $\to$
@@ -939,43 +940,50 @@ H$_2$/H state and molecular mixing ratios, \emph{not} the atomic-metal release
 (Na/Mg/Ca/Fe) --- \texttt{metals.inp} stays user-supplied.
 
 % ===================================================================== %
-\subsection{Bundled third-party codes: VULCAN and FastChem}\label{sec:bundled}
+\subsection{Obtaining VULCAN and FastChem}\label{sec:bundled}
 % ===================================================================== %
-For convenience the distribution bundles, under \texttt{EXHALE/VULCAN/}, a copy
-of the \textbf{VULCAN} photochemical-kinetics code and (inside it, as shipped by
-VULCAN) the \textbf{FastChem} equilibrium-chemistry code that provides VULCAN's
-initial state. These are third-party open-source codes: obtain updates from, and
-cite, the original sources.
+The lower-atmosphere pre-step uses the \textbf{VULCAN} photochemical-kinetics
+code, which ships the \textbf{FastChem} equilibrium-chemistry code inside it.
+These are third-party open-source codes and are \emph{not} committed to the
+EXHALE repository (\texttt{VULCAN/} is git-ignored). Fetch and prepare them with
+\begin{verbatim}
+src/utils/setup_vulcan.sh
+\end{verbatim}
+which clones VULCAN into \texttt{EXHALE/VULCAN/}, applies the two modifications
+EXHALE needs, builds FastChem, and removes stale run products. EXHALE also runs
+this automatically the first time the \texttt{vulcan} pre-step is used and
+\texttt{VULCAN/} is missing. Obtain updates from, and \emph{cite}, the original
+sources:
 \begin{itemize}
 \item \textbf{VULCAN} --- \texttt{github.com/exoclime/VULCAN} (mirror
   \texttt{github.com/shami-EEG/VULCAN}). Cite Tsai et al.\ (2017, ApJS 228, 20)
   and Tsai et al.\ (2021, ApJ 923, 264).
-\item \textbf{FastChem} --- \texttt{github.com/NewStrangeWorlds/FastChem}. Cite
-  Stock et al.\ (2018, MNRAS 479, 865), and Stock et al.\ (2022, MNRAS 517,
-  4070) for FastChem\,2.
+\item \textbf{FastChem} --- \texttt{github.com/NewStrangeWorlds/FastChem}
+  (shipped inside VULCAN). Cite Stock et al.\ (2018, MNRAS 479, 865), and Stock
+  et al.\ (2022, MNRAS 517, 4070) for FastChem\,2.
 \end{itemize}
-Local modifications/additions relative to the upstream VULCAN tree:
+The modifications \texttt{setup\_vulcan.sh} applies to the cloned VULCAN tree
+(i.e.\ the only changes needed if you set it up by hand):
 \begin{center}\small
-\begin{tabular}{@{}p{4.4cm}p{9.5cm}@{}}
+\begin{tabular}{@{}p{3.6cm}p{10.2cm}@{}}
 \toprule
-File & Change \\
+File (in the VULCAN clone) & Modification \\
 \midrule
-\texttt{VULCAN/make\_chem\_funs.py} & bug fix: \texttt{np.genfromtxt(...,
-  encoding=None)} so the element-conservation check does not crash on Python 3 \\
-\texttt{VULCAN/vulcan\_cfg.py} & defaults for the EXHALE pre-step
-  (\texttt{use\_photo = True}, \texttt{use\_live\_plot = False}) \\
-\texttt{VULCAN/output/*.vul} & removed (run products regenerated per run in
-  \texttt{vulcan\_work/}) \\
-\texttt{src/utils/vulcan\_driver.py} & \emph{added} --- the subroutine-style
-  driver (planet cfg, FastChem build, cached VULCAN run, \texttt{base.inp}) \\
-\texttt{src/utils/vulcan\_to\_base.py} & \emph{added} --- \texttt{.vul} $\to$
-  \texttt{base.inp} converter \\
-\texttt{input\_read.f90}, \texttt{parameters.f90} & \emph{modified} --- the
-  \texttt{Lower atmosphere:} key and the \texttt{run\_lower\_atm\_prestep}
-  invocation \\
+\texttt{make\_chem\_funs.py} & add \texttt{encoding=None} to the
+  \texttt{np.genfromtxt(vulcan\_cfg.com\_file, ...)} call so the
+  element-conservation check does not crash on Python 3 \\
+\texttt{vulcan\_cfg.py} & set \texttt{use\_photo = True} and
+  \texttt{use\_live\_plot = False} (this file is the driver's template) \\
+\texttt{output/*.vul} & delete (run products; regenerated in
+  \texttt{<run\_dir>/vulcan\_work/}) \\
+\texttt{fastchem\_vulcan/} & \texttt{make} to build the \texttt{fastchem} binary \\
 \bottomrule
 \end{tabular}
 \end{center}
+On the EXHALE side (in this repository) the pre-step adds
+\texttt{src/utils/setup\_vulcan.sh}, \texttt{vulcan\_driver.py} and
+\texttt{vulcan\_to\_base.py}, and the \texttt{Lower atmosphere:} key in
+\texttt{input\_read.f90}/\texttt{parameters.f90}.
 
 % ===================================================================== %
 \section{Output files}\label{sec:outputs}

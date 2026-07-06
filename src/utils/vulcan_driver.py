@@ -98,10 +98,22 @@ def main():
     print('(vulcan_driver) %s: Mp=%.3f MJ Teq=%.0f K a=%.4f AU Teff=%.0f -> gs=%.0f cm/s2'
           % (name, P['Mp'], P['Teq'], P['a_AU'], P['Teff'], gs))
 
+    # 0. the VULCAN code is NOT shipped in the EXHALE repository; obtain it
+    #    (once) with setup_vulcan.sh, which clones it and applies the EXHALE
+    #    patches.  Auto-run the setup if the bundle is missing.
+    if not os.path.isdir(BUNDLE):
+        setup = os.path.join(HERE, 'setup_vulcan.sh')
+        print('(vulcan_driver) VULCAN not found at %s -- running %s' % (BUNDLE, setup))
+        rc = subprocess.call(['bash', setup])
+        if rc != 0 or not os.path.isdir(BUNDLE):
+            sys.exit('(vulcan_driver) ERROR: could not obtain VULCAN. Run\n'
+                     '    %s\n'
+                     'by hand (needs network access to clone exoclime/VULCAN).' % setup)
+
     # 1. private work tree (copy once)
     work = os.path.join(run_dir, 'vulcan_work')
     if not os.path.isdir(work):
-        print('(vulcan_driver) copying bundled VULCAN ->', work)
+        print('(vulcan_driver) copying VULCAN ->', work)
         shutil.copytree(BUNDLE, work)
 
     # 2. inputs

@@ -92,7 +92,7 @@ reads it at startup and echoes every override (absent file = strict no-op).
 ## Use VULCAN photochemistry for the base state (subroutine-style)
 
 ```
-# input.inp — one line; EXHALE runs bundled VULCAN itself on startup:
+# input.inp — one line; EXHALE runs VULCAN itself on startup (auto-fetched):
 Lower atmosphere: vulcan 1.138      # arg = 1-bar (transit) radius [R_J]
 ```
 First run takes hours (VULCAN to steady state in `<run_dir>/vulcan_work/`);
@@ -102,8 +102,10 @@ entirely. Manual control: `python3 src/utils/vulcan_driver.py <run_dir>
 --r1bar 1.138 [--force]`. The photochemical base differs from equilibrium
 (HD 189733 b: q_H = 0.23 at 1 ubar vs 0.020 — 11x more dissociation).
 VULCAN is H/C/N/O(/S) only: metal abundances stay in `metals.inp`.
-VULCAN+FastChem are BUNDLED under `VULCAN/` — see README "Bundled
-third-party codes" for origins and required citations.
+VULCAN+FastChem are third-party codes fetched by
+`src/utils/setup_vulcan.sh` into `VULCAN/` (not committed; EXHALE also
+fetches them automatically on first use) — see README "Obtaining VULCAN and
+FastChem" for the download URLs and required citations.
 -> `docs/lower_atmosphere_coupling.pdf` §4.4 and Fig. 2.
 
 ## Warm-start a hard planet (Wind-AE IC)

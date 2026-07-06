@@ -91,8 +91,8 @@ EXHALE/
 ├── src/
 │   ├── modules/           # Fortran source modules (flux, init, radiation, …)
 │   └── utils/             # Python GUI (EXHALE_interface_main.py), fortdep.py
-├── VULCAN/                # bundled VULCAN photochemistry (incl. FastChem) — see
-│                          #   "Bundled third-party codes" below
+├── VULCAN/                # third-party VULCAN (+FastChem), NOT in this repo;
+│                          #   fetched by src/utils/setup_vulcan.sh — see below
 ├── inputdata/             # opacity / SED table samples (*.atesopa, Jlya.txt, …)
 ├── cooling_data/          # CHIANTI cooling-formula fit scripts + notebooks
 ├── examples/
@@ -281,14 +281,14 @@ EXHALE can generate its own lower-boundary conditions before the wind solve.
 One line in `input.inp` is enough:
 
 ```
-Lower atmosphere: vulcan 1.36     # run bundled VULCAN photochemistry
+Lower atmosphere: vulcan 1.36     # run VULCAN photochemistry (auto-fetched if absent)
 #Lower atmosphere: analytic 1.36  # or: fast chemical-equilibrium column
 #  (no key at all = classic base; the VULCAN step is fully optional)
 ```
 
 The number is the 1-bar (transit) radius in R_J. On startup EXHALE invokes
-`src/utils/vulcan_driver.py`, which copies the bundled `VULCAN/` tree into
-`<run_dir>/vulcan_work/`, builds the planet's T(p)/Kzz atmosphere (Guillot
+`src/utils/vulcan_driver.py`, which (if `VULCAN/` is not yet present) fetches
+it via `src/utils/setup_vulcan.sh`, copies the tree into `<run_dir>/vulcan_work/`, builds the planet's T(p)/Kzz atmosphere (Guillot
 2010) and picks a stellar UV spectrum by the host Teff, compiles FastChem if
 needed, runs VULCAN to steady state (**hours** on the first run; later runs
 reuse the cached `.vul`), converts the result to `base.inp` (photochemical
@@ -306,31 +306,49 @@ VULCAN provides H/C/N/O(/S) composition only — metal abundances stay in
 `metals.inp`. The quick one-line consistency check without any handoff is
 `Lower column: <transit radius>` in `input.inp`.
 
-## Bundled third-party codes (VULCAN + FastChem)
+## Obtaining VULCAN and FastChem (third-party; not in this repo)
 
-For convenience this repository bundles, under `VULCAN/`, a copy of the
-**VULCAN** photochemical kinetics code and (inside it, as shipped by VULCAN)
-the **FastChem** equilibrium-chemistry code used for its initial state. They
-are third-party open-source codes — please obtain updates from, and cite,
-the original sources:
+The lower-atmosphere pre-step uses the **VULCAN** photochemical-kinetics code,
+which ships the **FastChem** equilibrium-chemistry code inside it. These are
+third-party open-source codes and are **not** committed to the EXHALE
+repository (`VULCAN/` is git-ignored). Fetch and prepare them with one command:
 
-- VULCAN: https://github.com/exoclime/VULCAN (also mirrored at
-  https://github.com/shami-EEG/VULCAN) — cite **Tsai et al. 2017, ApJS 228,
-  20** and **Tsai et al. 2021, ApJ 923, 264** in any publication using it.
-- FastChem: https://github.com/NewStrangeWorlds/FastChem — cite **Stock et
-  al. 2018, MNRAS 479, 865** (and **Stock et al. 2022, MNRAS 517, 4070** for
-  FastChem 2).
+```bash
+src/utils/setup_vulcan.sh          # clones VULCAN into EXHALE/VULCAN/ + patches + builds FastChem
+```
 
-Local modifications/additions relative to the upstream VULCAN tree:
+(EXHALE also runs this automatically the first time you use `Lower atmosphere:
+vulcan …` and `VULCAN/` is missing.) The script clones VULCAN, applies the two
+modifications EXHALE needs, builds FastChem, and removes stale run products.
+
+**Download sources / required citations** (please cite in any publication that
+uses the pre-step):
+
+- VULCAN — https://github.com/exoclime/VULCAN (mirror
+  https://github.com/shami-EEG/VULCAN). Cite **Tsai et al. 2017, ApJS 228, 20**
+  and **Tsai et al. 2021, ApJ 923, 264**.
+- FastChem — https://github.com/NewStrangeWorlds/FastChem (shipped inside
+  VULCAN). Cite **Stock et al. 2018, MNRAS 479, 865** and, for FastChem 2,
+  **Stock et al. 2022, MNRAS 517, 4070**.
+
+**What `setup_vulcan.sh` changes in the cloned VULCAN tree** (i.e. the only
+modifications you need to make if you set it up by hand):
+
+| File (in the VULCAN clone) | Modification |
+|---|---|
+| `make_chem_funs.py` | add `encoding=None` to the `np.genfromtxt(vulcan_cfg.com_file, …)` call so the element-conservation check does not crash on Python 3 (bytes-vs-str) |
+| `vulcan_cfg.py` | set `use_photo = True` and `use_live_plot = False` (this file is the driver's template) |
+| `output/*.vul` | delete (run products; regenerated per run in `<run_dir>/vulcan_work/`) |
+| `fastchem_vulcan/` | `make` to build the `fastchem` binary |
+
+**Added / modified on the EXHALE side** (these *are* in this repository):
 
 | File | Change |
 |---|---|
-| `VULCAN/make_chem_funs.py` | bug fix: `np.genfromtxt(..., encoding=None)` so the element-conservation check does not crash on Python 3 (bytes-vs-str) |
-| `VULCAN/vulcan_cfg.py` | defaults set for the EXHALE pre-step: `use_photo = True`, `use_live_plot = False` (upstream default config otherwise) |
-| `VULCAN/output/*.vul` | removed (run products are regenerated per run in `<run_dir>/vulcan_work/`) |
-| `src/utils/vulcan_driver.py` | **added (EXHALE side)**: the subroutine-style driver (planet cfg generation, FastChem build, cached VULCAN run, `base.inp` conversion) |
-| `src/utils/vulcan_to_base.py` | **added (EXHALE side)**: `.vul` → `base.inp` converter |
-| `src/modules/files_IO/input_read.f90`, `src/modules/init/parameters.f90` | **modified (EXHALE side)**: `Lower atmosphere: vulcan|analytic <R_1bar>` key and the `run_lower_atm_prestep` invocation |
+| `src/utils/setup_vulcan.sh` | **added**: fetch VULCAN + apply the above patches + build FastChem |
+| `src/utils/vulcan_driver.py` | **added**: subroutine-style driver (planet cfg, cached VULCAN run, `base.inp`) |
+| `src/utils/vulcan_to_base.py` | **added**: `.vul` → `base.inp` converter |
+| `src/modules/files_IO/input_read.f90`, `src/modules/init/parameters.f90` | **modified**: the `Lower atmosphere: vulcan\|analytic <R_1bar>` key and the `run_lower_atm_prestep` invocation |
 
 ### Legacy atomic-data switch
 
@@ -531,4 +549,4 @@ See `examples/README.md` for the exact lines each one adds:
 
 ---
 
-Last updated: 2026-07-06 11:17
+Last updated: 2026-07-06 11:32

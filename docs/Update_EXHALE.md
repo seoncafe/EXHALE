@@ -2729,8 +2729,8 @@ Guillot T(p)/Kzz atmosphere, picks a stellar UV spectrum by host Teff, compiles 
 once, runs VULCAN to steady state -- hours on first run, cached .vul afterwards -- and
 converts to base.inp), then proceeds with the wind solve. `Lower atmosphere: analytic
 <R_1bar>` invokes the fast equilibrium column instead; no key = classic base (fully
-optional). EXHALE_ROOT env overrides the code root for relocated installs. Local changes
-to the upstream VULCAN tree and required citations (Tsai+2017,2021; Stock+2018,2022 for
-FastChem; github.com/shami-EEG/VULCAN, github.com/NewStrangeWorlds/FastChem) are listed
-in README "Bundled third-party codes". Tested: analytic branch end-to-end, VULCAN branch
-with cached .vul (photochemical HD189 base T=863 K applied), and opt-out regression.
+optional). EXHALE_ROOT env overrides the code root for relocated installs. The download URLs, required citations (Tsai+2017,2021; Stock+2018,2022 for
+FastChem; github.com/shami-EEG/VULCAN, github.com/NewStrangeWorlds/FastChem) and the exact
+modifications setup_vulcan.sh applies are in README "Obtaining VULCAN and FastChem". Tested:
+analytic branch end-to-end, VULCAN branch with cached .vul (photochemical HD189 base
+T=863 K applied), and opt-out regression.
