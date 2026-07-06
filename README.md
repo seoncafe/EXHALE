@@ -550,4 +550,4 @@ See `examples/README.md` for the exact lines each one adds:
 
 ---
 
-Last updated: 2026-07-06 11:51
+Last updated: 2026-07-06 16:52

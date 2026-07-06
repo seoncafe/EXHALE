@@ -62,10 +62,16 @@ abs_file   = ''
 
 # Data not in input_file
 R_star    = float(_tenv('RSTAR_RSUN', '0.44'))*R_sun  # Stellar radius (env override)
-Instr_res_HeTR = 8e4       # Instrument resolution CARMENES: 80,000 -- GIANO-B: 50,000
-Instr_res_HI = 5e4       # Instrument resolution HST-STIS 100 - 100,000
-Instr_res_Ha = 1.15e5      # Instrument resolution (optical, e.g. HARPS/CARMENES-VIS ~ 1.1e5)
-Instr_res_Hb = 1.15e5      # Instrument resolution for H-beta
+# Instrument spectral resolving power R = lambda/Delta-lambda for the Gaussian
+# line-spread convolution.  Each is env-overridable (EXHALE_TRANSIT_RES_* , with
+# the TPM_RES_* fallback); defaults below match the instruments named inline.
+Instr_res_HeTR = float(_tenv('RES_HETR', '8e4'))  # He I 10830: CARMENES 8e4 / GIANO-B 5e4
+Instr_res_HI   = float(_tenv('RES_HI',   '5e4'))  # Ly-alpha 1215.67: HST-STIS ~ 1e4-1e5
+Instr_res_Ha   = float(_tenv('RES_HA',   '1.15e5'))  # H-alpha 6562.8: HARPS/CARMENES-VIS ~ 1.1e5
+Instr_res_Hb   = float(_tenv('RES_HB',   '1.15e5'))  # H-beta 4861.35
+Instr_res_MgII = float(_tenv('RES_MGII', '3e4'))  # Mg II h&k 2796/2803 NUV: HST/STIS ~ 3e4
+Instr_res_CaII = float(_tenv('RES_CAII', str(Instr_res_Ha)))  # Ca II H&K optical
+Instr_res_NaI  = float(_tenv('RES_NAI',  str(Instr_res_Ha)))  # Na I D optical
 # Planet rotation period [days]
 rot_period = float(_tenv('ROTP', '4.88')) # [days] (env override)
 
@@ -776,6 +782,58 @@ if do_Ha:
 	avg_prob_Hb = avg_prob_Hb[:]*A_star/(A_star - A_planet)
 
 # -------------------------------------------------------------------- #
+# Planet-rotation broadening: exact projected-disk integral.
+#
+# For a tidally-/solid-body-rotating atmosphere the line-of-sight velocity of
+# a projected disk patch is v = v_ang * x, where x = b*cos(phi) is the sky
+# coordinate perpendicular to the spin axis (transit geometry), b the impact
+# parameter, and phi the azimuth around the disk.  We Doppler-shift each
+# impact-parameter transmission profile by its LOCAL rotational velocity,
+# average over azimuth, and only then take the same projected-area disk
+# average as the non-rotating profile.  This is the full rotational-broadening
+# integral for an azimuthally-symmetric absorber -- it replaces the former
+# approximation of convolving the disk-averaged profile with a single Gaussian
+# kernel built from one effective-radius velocity v_ang*R_eff.
+v_ang     = 2.0*np.pi/(60.0*60.0*24.0*rot_period)   # angular rate [rad/s]
+N_phi_rot = int(_tenv('ROT_NPHI', '64'))            # azimuthal samples
+
+
+def _disk_average(mat, nlam):
+	"""Projected-area disk average of a per-impact-parameter transmission
+	matrix mat[p, l] (p over r_grid, l over wavelength), identical to the
+	non-rotating normalization used above."""
+	prob = np.array([np.trapz(x=r_grid, y=2.0*mat[:, l]*r_grid)
+	                 * A_planet/(A_atm - A_planet) for l in range(nlam)])
+	avg = ((A_star - A_atm) + (A_atm - A_planet)*prob)/A_star
+	return avg*A_star/(A_star - A_planet)
+
+
+def _rotate_disk_average(exp_tau_mat, l_onde):
+	"""Rotation-broadened, projected-area disk-averaged transmission.
+	exp_tau_mat[p, l] is the line-of-sight transmission at impact parameter
+	r_grid[p] (in R_p) and rest-frame wavelength l_onde[l] (m).  Each chord's
+	profile is shifted by the solid-body rotational Doppler velocity
+	v = v_ang*b*cos(phi) and averaged over azimuth phi before the disk
+	average -- the exact rotational broadening for this azimuthally-symmetric
+	absorber (no single-R_eff / Gaussian-kernel approximation)."""
+	nlam = l_onde.size
+	if v_ang <= 0.0:
+		return _disk_average(exp_tau_mat, nlam)
+	cphi = np.cos(np.linspace(0.0, 2.0*np.pi, N_phi_rot, endpoint=False))
+	rot = np.empty_like(exp_tau_mat)
+	for p in range(exp_tau_mat.shape[0]):
+		b_m  = r_grid[p]*Rp                         # impact parameter [m]
+		prof = exp_tau_mat[p, :]
+		acc  = np.zeros(nlam)
+		for cp in cphi:
+			v = v_ang*b_m*cp                        # LOS rotational velocity
+			# absorption seen at l_onde originates at rest wavelength
+			# l_onde*(1 + v/c); continuum (transmission ~ 1) outside window.
+			acc += np.interp(l_onde*(1.0 + v/c_light), l_onde, prof,
+			                 left=prof[0], right=prof[-1])
+		rot[p, :] = acc/N_phi_rot
+	return _disk_average(rot, nlam)
+
 
 # Create vector of wavelengths to convolve metastable HeI triplet profile
 l_range_HeTR = l_onde_HeTR[-1] - l_onde_HeTR[0]
@@ -810,57 +868,27 @@ if do_Ha:
 
 # ------------------------- #
 
-# Do convolution including planet rotation (for metastable HeI triplet)
+# Planet rotation (exact projected-disk integral), then instrument LSF.
+# The intrinsic rotation broadening is applied at the disk-integration level
+# via _rotate_disk_average; the instrument Gaussian is convolved afterwards.
+transit_depth = (Rp/R_star)**2.0    # retained for the metal generic path below
 
-transit_depth = (Rp/R_star)**2.0
-hHeTR = 1.0 - convolved_avg_prob_HeTR.min()
-if hHeTR > (Rib**2.0 - 1.0)*transit_depth:
-    Reff_HeTR = Rp*Rib
-else:
-    Reff_HeTR = Rp*np.sqrt((hHeTR + transit_depth)/transit_depth)
-    
-v_ang     	  = 2.0*np.pi/(60.0*60.0*24.0*rot_period)
-v_rot_HeTR 	  = v_ang*Reff_HeTR  # [m/sec]
-dl_gauss_HeTR 	  = 10830.0*1e-10*(v_rot_HeTR/c_light)
-sigma_rot_HeTR 	  = dl_gauss_HeTR/(2.0*np.sqrt(2.0*np.log(2.0)))
-gaussian_vrot_HeTR = np.exp(-0.5*(v_gauss_HeTR[:]/sigma_rot_HeTR)**2.0)
-convolved_rot_prob_HeTR = convolve(convolved_avg_prob_HeTR, gaussian_vrot_HeTR, boundary = 'extend')
+# metastable HeI triplet
+avg_prob_rot_HeTR = _rotate_disk_average(exp_tau_HeTR, l_onde_HeTR)
+convolved_rot_prob_HeTR = convolve(avg_prob_rot_HeTR, gaussian_HeTR, boundary='extend')
 
-# -----
+# Hydrogen and Deuterium (Ly-alpha); guard the saturated-wing overflow as above
+avg_prob_rot_HD = _rotate_disk_average(exp_tau_HD, l_onde_HI)
+avg_prob_rot_HD = np.clip(np.nan_to_num(avg_prob_rot_HD, nan=1.0, posinf=1.0,
+                                        neginf=0.0), 0.0, 1.0)
+convolved_rot_prob_HD = convolve(avg_prob_rot_HD, gaussian_HD, boundary='extend')
 
-# Do convolution including planet rotation (for Hydrogen and Deuterium)
-
-hHD = 1.0 - convolved_avg_prob_HD.min()
-if hHD > (Rib**2-1)*transit_depth:
-    Reff_HD = Rp*Rib
-else:
-    Reff_HD = Rp*np.sqrt((hHD + transit_depth)/transit_depth)
-    
-v_rot_HD 	  = v_ang*Reff_HD  # [m/sec]
-dl_gauss_HD 	  = 1215.0*1e-10*(v_rot_HD/c_light)
-sigma_rot_HD 	  = dl_gauss_HD/(2.0*np.sqrt(2.0*np.log(2.0)))
-gaussian_vrot_HD = np.exp(-0.5*(v_gauss_HD[:]/sigma_rot_HD)**2.0)
-convolved_rot_prob_HD = convolve(convolved_avg_prob_HD, gaussian_vrot_HD, boundary = 'extend')
-
-# -----
-
-# Do convolution including planet rotation (for H-alpha)
+# H-alpha / H-beta
 if do_Ha:
-	hHa = 1.0 - convolved_avg_prob_Ha.min()
-	if hHa > (Rib**2-1)*transit_depth:
-		Reff_Ha = Rp*Rib
-	else:
-		Reff_Ha = Rp*np.sqrt((hHa + transit_depth)/transit_depth)
-	v_rot_Ha 	  = v_ang*Reff_Ha  # [m/sec]
-	dl_gauss_Ha 	  = 6562.8*1e-10*(v_rot_Ha/c_light)
-	sigma_rot_Ha 	  = dl_gauss_Ha/(2.0*np.sqrt(2.0*np.log(2.0)))
-	gaussian_vrot_Ha = np.exp(-0.5*(v_gauss_Ha[:]/sigma_rot_Ha)**2.0)
-	convolved_rot_prob_Ha = convolve(convolved_avg_prob_Ha, gaussian_vrot_Ha, boundary = 'extend')
-	# H-beta (reuse the H-alpha effective radius for the rotation kernel)
-	dl_gauss_Hb 	  = 4861.35*1e-10*(v_rot_Ha/c_light)
-	sigma_rot_Hb 	  = dl_gauss_Hb/(2.0*np.sqrt(2.0*np.log(2.0)))
-	gaussian_vrot_Hb = np.exp(-0.5*(v_gauss_Hb[:]/sigma_rot_Hb)**2.0)
-	convolved_rot_prob_Hb = convolve(convolved_avg_prob_Hb, gaussian_vrot_Hb, boundary = 'extend')
+	avg_prob_rot_Ha = _rotate_disk_average(exp_tau_Ha, l_onde_Ha)
+	convolved_rot_prob_Ha = convolve(avg_prob_rot_Ha, gaussian_Ha, boundary='extend')
+	avg_prob_rot_Hb = _rotate_disk_average(exp_tau_Hb, l_onde_Hb)
+	convolved_rot_prob_Hb = convolve(avg_prob_rot_Hb, gaussian_Hb, boundary='extend')
 
 # Transmission minima
 
@@ -964,9 +992,9 @@ def resonance_depth(lam0_A, f_osc, A21, mass, n_lower, instr_res,
 # Mg II NUV (HST/STIS ~ 3e4), Ca II / Na I optical (~ Instr_res_Ha).
 metal_lines = [
 	# label,        lam0_A,   f,      A21,     mass, n_lower,     R_instr
-	('Mg II 2796',  2796.35,  0.608,  2.60e8,  mMg,  data_nMgII,  3.0e4),
-	('Ca II K 3934', 3933.66, 0.6267, 1.47e8,  mCa,  data_nCaII,  Instr_res_Ha),
-	('Na I D2 5890', 5889.95, 0.641,  6.16e7,  mNa,  data_nNaI,   Instr_res_Ha),
+	('Mg II 2796',  2796.35,  0.608,  2.60e8,  mMg,  data_nMgII,  Instr_res_MgII),
+	('Ca II K 3934', 3933.66, 0.6267, 1.47e8,  mCa,  data_nCaII,  Instr_res_CaII),
+	('Na I D2 5890', 5889.95, 0.641,  6.16e7,  mNa,  data_nNaI,   Instr_res_NaI),
 ]
 metal_depth = {}
 print('')
@@ -998,21 +1026,21 @@ METAL_DOUBLETS = [
 	#   instrument R, window [A], nlam
 	('MgII', 'Mg II h&k',
 	 [(2796.352, 0.608, 2.60e8), (2803.531, 0.303, 2.57e8)],
-	 mMg, data_nMgII, 3.0e4, (2790.0, 2810.0), 601, fig_name_mgii),
+	 mMg, data_nMgII, Instr_res_MgII, (2790.0, 2810.0), 601, fig_name_mgii),
 	('CaII', 'Ca II H&K',
 	 [(3933.663, 0.6267, 1.47e8), (3968.469, 0.3116, 1.40e8)],
-	 mCa, data_nCaII, Instr_res_Ha, (3927.0, 3975.0), 961, fig_name_caii),
+	 mCa, data_nCaII, Instr_res_CaII, (3927.0, 3975.0), 961, fig_name_caii),
 	('NaI', 'Na I D',
 	 [(5889.951, 0.641, 6.16e7), (5895.924, 0.320, 6.14e7)],
-	 mNa, data_nNaI, Instr_res_Ha, (5884.0, 5902.0), 541, fig_name_nai),
+	 mNa, data_nNaI, Instr_res_NaI, (5884.0, 5902.0), 541, fig_name_nai),
 ]
 
 
 def resonance_spectrum(components, mass, n_lower, instr_res, window_A, nlam):
 	"""Disk-averaged transmission spectrum of a multi-component resonance
-	line: spherical chords, Voigt tau summed over the components,
-	instrument convolution, and planet-rotation convolution with the
-	Reff(depth) kernel of the He/Lya pipeline (vectorized in lambda)."""
+	line: spherical chords, Voigt tau summed over the components, instrument
+	convolution, and planet rotation via the exact projected-disk integral
+	(_rotate_disk_average), matching the He/Lya/Balmer pipeline."""
 	l_onde = np.linspace(window_A[0]*1e-10, window_A[1]*1e-10, nlam)
 	nu_l   = c_light/l_onde
 	exp_tau = np.zeros((Grid_Number, nlam))
@@ -1045,17 +1073,9 @@ def resonance_spectrum(components, mass, n_lower, instr_res, window_A, nlam):
 	vg   = np.linspace(-(l_onde[-1]-l_onde[0])*0.5,
 	                    (l_onde[-1]-l_onde[0])*0.5, nlam)
 	conv = convolve(avg, np.exp(-0.5*(vg/sig)**2.0), boundary='extend')
-	# planet-rotation convolution (Reff from the convolved depth, capped
-	# at the impact-parameter boundary Rib, as for He/Lya)
-	h = 1.0 - conv.min()
-	if h > (Rib**2.0 - 1.0)*transit_depth:
-		Reff = Rp*Rib
-	else:
-		Reff = Rp*np.sqrt((h + transit_depth)/transit_depth)
-	dl_rot  = lam_ref*(v_ang*Reff/c_light)
-	sig_rot = dl_rot/(2.0*np.sqrt(2.0*np.log(2.0)))
-	conv_rot = convolve(conv, np.exp(-0.5*(vg/sig_rot)**2.0),
-	                    boundary='extend')
+	# planet rotation: exact projected-disk integral, then instrument LSF
+	avg_rot  = _rotate_disk_average(exp_tau, l_onde)
+	conv_rot = convolve(avg_rot, np.exp(-0.5*(vg/sig)**2.0), boundary='extend')
 	return dict(l_plot=l_onde*1e10, avg=avg, conv=conv, conv_rot=conv_rot,
 	            Tl=(1.0 - avg.min())*100.0,
 	            Tl_conv=(1.0 - conv.min())*100.0,

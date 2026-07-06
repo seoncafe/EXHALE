@@ -2818,7 +2818,7 @@ the singlet ground state.
 \paragraph{Change.} A single backward-compatible switch in \texttt{input.inp}:
 \texttt{ATES\_photoionization\_rate: True} reverts He\,I (1$^1$S) photoionization to
 the legacy two-term fit (default $=$ Verner+1996, via \texttt{sigma\_VFKY96} with
-He\,I parameters $[E_{\rm th},E_0,\sig_0,y_a,P,y_w,y_0,y_1]=24.59,13.61,949.2,1.469,
+He\,I parameters $[E_{\rm th},E_0,\sigma_0,y_a,P,y_w,y_0,y_1]=24.59,13.61,949.2,1.469,
 3.188,2.039,0.4434,2.136$). No recombination switch is needed (see below).
 
 \paragraph{Comparison.} WASP-52b (\texttt{fxuv0p25\_he98\_L1}, He23S active, same
@@ -2867,7 +2867,7 @@ the raw file is not a usable shortcut.) No recombination switch was added.
 (\texttt{ates\_photoion\_rate} switch),
 \texttt{src/modules/files\_IO/input\_read.f90} (parse the optional key),
 \texttt{src/modules/functions/cross\_sec.f90} (\texttt{sigma\_HeI} branches
-Verner default / legacy two-term). Verified: Verner is the default (He\,I $\sig$ at
+Verner default / legacy two-term). Verified: Verner is the default (He\,I $\sigma$ at
 $30/50/100\,$eV $=5.36/2.02/0.394\,$Mb); \texttt{ATES\_photoionization\_rate: True}
 recovers the legacy values ($5.24/1.78/0.347\,$Mb).
 
@@ -2881,7 +2881,7 @@ section shares one analytic kernel.
 
 \paragraph{Change.} (\texttt{src/modules/functions/cross\_sec.f90}.) \texttt{sigma\_HeI23S}
 is rebuilt from two VFKY96 single-shell forms joined by a log-linear (power-law) bridge,
-used piecewise, with $[E_{\rm th},E_0,\sig_0,y_a,P,y_w,y_0,y_1]$:
+used piecewise, with $[E_{\rm th},E_0,\sigma_0,y_a,P,y_w,y_0,y_1]$:
 \begin{itemize}
 \item \textbf{wing A} ($E\le x_3\simeq34.70\,$eV, threshold $\to$ Cooper minimum):
   $4.78, 2.645, 20.8, 1.0\!\times\!10^{12}, 3.42, 2.681, 1.956, 2.603$;
@@ -2899,7 +2899,7 @@ broken power law is retained, commented out, in the routine.
 former broken power law to $\sim$4\% ($12\,$eV: $1.466$ vs $1.465$; $30$: $0.289$;
 $45.6$: $2.57$ vs $2.68$ --- bump 4\% low; $70$: $0.855$ vs $0.858$; $100$: $0.294$;
 $300$: $0.0110$), continuous across the bridge ($34.70\,$eV: $0.222 \to 38: 0.502 \to
-40: 0.795 \to 45.59: 2.570 \to 46: 2.521\,\Mb$).
+40: 0.795 \to 45.59: 2.570 \to 46: 2.521\,\mathrm{Mb}$).
 
 \paragraph{Touched files.} \texttt{src/modules/functions/cross\_sec.f90}
 (\texttt{sigma\_HeI23S}: two VFKY96 wings $+$ power-law bridge; former broken PL kept
@@ -3465,6 +3465,60 @@ files / 13\,991 SLOC ($\approx$4$\times$). Beyond Fortran, the tree also carries
 the Python tooling (GUI, the \texttt{EXHALE\_transit.py} transmission post-processor,
 plotting/analysis) and $\approx$20\,000 lines of documentation under
 \texttt{docs/}.
+
+
+% ===================================================================== %
+\section{Fortran source inherited unchanged from ATES}\label{sec:untouched}
+% ===================================================================== %
+Of the 47 upstream Fortran files (\texttt{ATES/ATES-Code-main}), \textbf{18 are
+byte-for-byte identical} in EXHALE --- the numerics EXHALE reuses without
+touching. They fall into three groups: the vendored \textsc{MINPACK} nonlinear
+solver (the \texttt{hybrd} Powell hybrid method and its linear-algebra helpers,
+called by the ionization-equilibrium solver), the finite-volume hydrodynamics
+core (HLLC fluxes, reconstruction, source terms, Runge--Kutta right-hand side),
+and two radiation/ionization pieces. Table~\ref{tab:untouched} lists them with
+their role. Two further files --- the HLLC and ROE wave-speed estimators
+(\texttt{flux/speed\_estimate\_HLLC.f90}, \texttt{speed\_estimate\_ROE.f90}) ---
+are \emph{effectively} untouched: their original logic is preserved verbatim and
+only a one-line defensive floor \texttt{p\_min\,=\,max(p\_min,\,1e-30\,p\_max)}
+(plus its comment) was appended in the 2026-07-02 code review, so no original
+line was altered.
+
+\begin{table}[h]
+\centering\small
+\caption{The 18 Fortran files byte-identical between the original ATES
+(\texttt{ATES-Code-main}) and EXHALE, grouped by role.}
+\label{tab:untouched}
+\begin{tabular}{@{}l p{0.60\linewidth}@{}}
+\toprule
+File & Purpose \\
+\midrule
+\multicolumn{2}{@{}l}{\emph{MINPACK nonlinear-system solver} (vendored, Argonne; dir \texttt{nonlinear\_system\_solver/})}\\
+\texttt{hybrd.f90}   & Powell hybrid method: find a zero of $n$ nonlinear equations in $n$ unknowns \\
+\texttt{hybrd1.f90}  & Simplified user-facing driver for \texttt{hybrd} \\
+\texttt{fdjac1.f90}  & Forward-difference approximation of the Jacobian \\
+\texttt{qrfac.f90}   & QR factorization via Householder transformations \\
+\texttt{qform.f90}   & Accumulate the orthogonal factor $Q$ from the QR factorization \\
+\texttt{r1updt.f90}  & Rank-one update of the QR factorization \\
+\texttt{r1mpyq.f90}  & Apply the Givens-rotation sequence of the rank-one update \\
+\texttt{dogleg.f90}  & Dogleg (trust-region) step combining Gauss--Newton and steepest descent \\
+\texttt{enorm.f90}   & Euclidean norm of a vector (overflow/underflow safe) \\
+\texttt{dpmpar.f90}  & Machine floating-point precision / range constants \\
+\midrule
+\multicolumn{2}{@{}l}{\emph{Hydrodynamics \& grid core} (finite-volume Godunov)}\\
+\texttt{flux/Num\_Fluxes.f90}          & Numerical interface flux assembly (HLLC Riemann fluxes) \\
+\texttt{functions/UW\_conversions.f90} & Conserved $\leftrightarrow$ primitive variable conversions \\
+\texttt{states/PLM\_rec.f90}           & Piecewise-linear (2nd-order) cell reconstruction \\
+\texttt{states/Source.f90}             & Gravitational $+$ geometric source terms \\
+\texttt{time\_step/RK\_rhs.f90}        & Runge--Kutta right-hand side (convection $+$ source) \\
+\texttt{init/set\_gravity\_grid.f90}   & Pre-evaluate gravity at cell centers and interfaces \\
+\midrule
+\multicolumn{2}{@{}l}{\emph{Radiation \& ionization}}\\
+\texttt{radiation/J\_inc.f90}          & Energy-dependent incident stellar spectrum for photoionization \\
+\texttt{nonlinear\_system\_solver/System\_implicit\_adv\_H.f90} & H-only advection-coupled implicit ionization system (He/metal work went into the \texttt{HeH}/\texttt{HeH\_TR} variants, leaving this untouched) \\
+\bottomrule
+\end{tabular}
+\end{table}
 
 
 \end{document}

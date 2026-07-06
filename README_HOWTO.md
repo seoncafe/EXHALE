@@ -43,6 +43,27 @@ EXHALE_TRANSIT_HE_LMIN=10827.5 EXHALE_TRANSIT_HE_LMAX=10832.5 python3 EXHALE_tra
 ```
 -> manual §5.2.
 
+### Instrument resolution and rotation (env overrides)
+
+The per-line instrument resolving power `R = lambda/Delta-lambda` and the azimuthal
+sampling of the rotation integral are run-time overridable (old `TPM_*` names still
+work as fallbacks):
+
+```bash
+# resolving power per line (defaults in parentheses):
+#   RES_HETR (8e4, He 10830)   RES_HI  (5e4, Lya)    RES_HA (1.15e5, Halpha)
+#   RES_HB   (1.15e5, Hbeta)   RES_MGII(3e4, Mg II)  RES_CAII/RES_NAI (=RES_HA)
+EXHALE_TRANSIT_RES_HETR=5e4 EXHALE_TRANSIT_RES_HI=1.14e5 python3 EXHALE_transit.py
+
+# planet rotation period [days] and azimuthal samples of the exact disk integral:
+EXHALE_TRANSIT_ROTP=2.2185 EXHALE_TRANSIT_ROT_NPHI=64 python3 EXHALE_transit.py
+```
+
+Rotation is computed as the exact projected-disk integral (each chord Doppler-shifted by
+its local solid-body velocity `Omega*b*cos(phi)` and averaged over azimuth), not a
+single-velocity Gaussian convolution; it conserves each line's equivalent width.
+-> manual §5.2.
+
 ## He/H (and metal) diffusive separation
 
 ```
