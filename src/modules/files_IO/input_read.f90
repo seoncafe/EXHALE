@@ -378,6 +378,14 @@
 				! Tier-2a: EOS-only molecular base (docs/lower_atmosphere_*).
 				str = get_word(line, 3)
 				if (str .eq. 'True' .or. str .eq. 'true') molecular_base = .true.
+			else if (index(line,'Lower atmosphere') .gt. 0) then
+				! Lower-atmosphere pre-step (docs/lower_atmosphere_*).
+				str = get_word(line, 3)
+				if (str .eq. 'vulcan')   lower_atm_mode = 2
+				if (str .eq. 'analytic') lower_atm_mode = 1
+				if (str .eq. 'none')     lower_atm_mode = 0
+				str = get_word(line, 4)
+				if (len_trim(str) .gt. 0) read(str,*) lower_atm_r1bar
 			else if (index(line,'Lower column') .gt. 0) then
 				! Tier-1 analytic lower column: "Lower column: <R_1bar in R_J>"
 				str = get_word(line, 3);  read(str,*) lower_col_r1bar
@@ -586,6 +594,13 @@
    !------ Definition of physical parameters ------!
       
    n0     = 10.0**(n0)
+   ! ---- Lower-atmosphere pre-step ("Lower atmosphere: vulcan|analytic").
+   ! If requested and no base.inp exists yet, generate it now by invoking
+   ! the bundled generator (VULCAN photochemistry or the analytic column).
+   ! The wind solve then proceeds on the produced base -- VULCAN as a
+   ! subroutine.  Opt-out: omit the key (default off).
+   call run_lower_atm_prestep
+
    ! ---- Tier-3 optional base.inp (written by src/utils/run_lower.py or a
    ! lower-atmosphere model): overrides the base temperature, base radius
    ! [R_J], He/H ratio and eddy K_zz BEFORE the derived constants below.
@@ -753,6 +768,55 @@
    enddo
    close(ub)
    end subroutine read_base_inp
+
+   ! ------------------------------------------------------------------- !
+
+   subroutine run_lower_atm_prestep
+   ! Invoke the lower-atmosphere generator (VULCAN or the analytic column)
+   ! when "Lower atmosphere: vulcan|analytic <R_1bar[R_J]>" is set and no
+   ! base.inp is present.  The EXHALE code root is taken from the
+   ! EXHALE_ROOT environment variable when set (for relocated installs).
+   character(len=1024) :: root, cmd
+   character(len=32)   :: r1str
+   logical :: ex
+   integer :: rc, cst
+
+   if (lower_atm_mode .le. 0) return
+   inquire(file='base.inp', exist=ex)
+   if (ex) then
+      write(*,*) '(input_read) Lower atmosphere: existing base.inp found'//&
+                 ' -- using it (delete it to regenerate).'
+      return
+   endif
+   if (lower_atm_r1bar .le. 0.0d0) then
+      write(*,*) '(input_read) ERROR: "Lower atmosphere:" needs the 1-bar'//&
+                 ' (transit) radius, e.g. "Lower atmosphere: vulcan 1.36".'
+      stop
+   endif
+
+   call get_environment_variable('EXHALE_ROOT', root)
+   if (len_trim(root) .eq. 0) root =                                     &
+      '/nfs/mocafe/kiseon/RT_Codes/Exoplanetary_Atmospheres/ATES/EXHALE'
+   write(r1str,'(F0.5)') lower_atm_r1bar
+
+   if (lower_atm_mode .eq. 2) then
+      write(*,*) '(input_read) Lower atmosphere: running bundled VULCAN'//&
+                 ' photochemistry (first run takes hours; cached after).'
+      cmd = 'python3 '//trim(root)//'/src/utils/vulcan_driver.py . '//   &
+            '--r1bar '//trim(r1str)
+   else
+      write(*,*) '(input_read) Lower atmosphere: analytic column.'
+      cmd = 'python3 '//trim(root)//'/src/utils/run_lower.py . '//       &
+            '--r1bar '//trim(r1str)
+   endif
+   call execute_command_line(trim(cmd), exitstat=rc, cmdstat=cst)
+   inquire(file='base.inp', exist=ex)
+   if (rc .ne. 0 .or. cst .ne. 0 .or. .not. ex) then
+      write(*,*) '(input_read) ERROR: lower-atmosphere generator failed'//&
+                 ' (see messages above); no base.inp produced.'
+      stop
+   endif
+   end subroutine run_lower_atm_prestep
       
    ! ------------------------------------------------------- !
       

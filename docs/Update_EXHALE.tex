@@ -3334,6 +3334,33 @@ isothermal $T_{\rm eq}=1183$\,K). End-to-end chain demonstrated: VULCAN $\to$
 converter $\to$ \texttt{base.inp} $\to$ EXHALE startup override (echoed).
 
 % ===================================================================== %
+\section{Bundled VULCAN as a subroutine-style pre-step (2026-07-06)}
+% ===================================================================== %
+VULCAN (with \texttt{FastChem} inside it, as shipped) is now \textbf{bundled} under
+\texttt{EXHALE/VULCAN/} and can be invoked by EXHALE itself. The key
+\begin{quote}\texttt{Lower atmosphere: vulcan <R\_1bar>}\end{quote}
+in \texttt{input.inp} runs the new driver \texttt{src/utils/vulcan\_driver.py} at
+startup whenever no \texttt{base.inp} exists: it copies the bundled tree into
+\texttt{<run\_dir>/vulcan\_work/}, builds the planet's Guillot $T(p)$/$K_{zz}$
+atmosphere and picks a stellar UV spectrum by host $T_{\rm eff}$, compiles
+\texttt{FastChem} once, runs VULCAN to steady state (hours on the first run, cached
+\texttt{.vul} afterwards; \texttt{-{}-force} to redo), converts the result to
+\texttt{base.inp}, and then proceeds with the wind solve --- i.e.\ VULCAN acts as a
+subroutine of EXHALE. \texttt{Lower atmosphere: analytic <R\_1bar>} invokes the fast
+chemical-equilibrium column (\texttt{run\_lower.py}) instead; omitting the key
+disables the pre-step (fully optional). \texttt{EXHALE\_ROOT} overrides the code-root
+path for relocated installs, and an existing \texttt{base.inp} always wins.
+Implementation: \texttt{parameters.f90} (\texttt{lower\_atm\_mode/lower\_atm\_r1bar}),
+\texttt{input\_read.f90} (\texttt{run\_lower\_atm\_prestep} via
+\texttt{execute\_command\_line} before \texttt{read\_base\_inp}), and the added
+\texttt{vulcan\_driver.py}. Tested: analytic branch end-to-end, VULCAN branch with a
+cached \texttt{.vul} (HD\,189733\,b photochemical base $T=863$\,K applied), and the
+opt-out (no key) path. Bundling and citation requirements (VULCAN: Tsai et al.\ 2017,
+2021; FastChem: Stock et al.\ 2018, 2022; download URLs; the table of local
+modifications) are documented in the README ``Bundled third-party codes'' section and
+the user manual (\S ``Bundled third-party codes'').
+
+% ===================================================================== %
 %  APPENDIX --- bookkeeping material, kept separate from the dated update log
 % ===================================================================== %
 \clearpage

@@ -2719,3 +2719,18 @@ Tier-1 caveat (Moses 2011; Koskinen 2013a). r_base 1.168 vs analytic 1.174 R_J; 
 from the quoted numbers (the intermediate save was already converged). End-to-end chain
 demonstrated: VULCAN -> vulcan_to_base.py -> base.inp -> EXHALE startup override
 (T0=863.4 K, R0=1.1685 R_J, He/H=0.0969, K_zz=1e9 echoed).
+
+## 32. Bundled VULCAN as a subroutine-style pre-step (2026-07-06)
+
+VULCAN (with FastChem inside, as shipped) is now BUNDLED under `EXHALE/VULCAN/` and can be
+invoked by EXHALE itself: `Lower atmosphere: vulcan <R_1bar>` in input.inp runs the new
+`src/utils/vulcan_driver.py` at startup when no base.inp exists (builds the planet's
+Guillot T(p)/Kzz atmosphere, picks a stellar UV spectrum by host Teff, compiles FastChem
+once, runs VULCAN to steady state -- hours on first run, cached .vul afterwards -- and
+converts to base.inp), then proceeds with the wind solve. `Lower atmosphere: analytic
+<R_1bar>` invokes the fast equilibrium column instead; no key = classic base (fully
+optional). EXHALE_ROOT env overrides the code root for relocated installs. Local changes
+to the upstream VULCAN tree and required citations (Tsai+2017,2021; Stock+2018,2022 for
+FastChem; github.com/shami-EEG/VULCAN, github.com/NewStrangeWorlds/FastChem) are listed
+in README "Bundled third-party codes". Tested: analytic branch end-to-end, VULCAN branch
+with cached .vul (photochemical HD189 base T=863 K applied), and opt-out regression.

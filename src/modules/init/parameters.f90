@@ -84,6 +84,16 @@
       ! are REPORTED next to the input "Planet radius" (consistency check;
       ! nothing is overridden).  <= 0 (default) = off.
       real*8  :: lower_col_r1bar = -1.0d0
+      ! Lower-atmosphere pre-step ("Lower atmosphere: vulcan|analytic <R_1bar>"):
+      !  0 = off (default; classic base, or a hand-made base.inp),
+      !  1 = analytic chemical-equilibrium column (src/utils/run_lower.py),
+      !  2 = bundled VULCAN photochemistry (src/utils/vulcan_driver.py; the
+      !      first run takes HOURS, later runs reuse the cached .vul).
+      ! When set and no base.inp exists, EXHALE invokes the generator itself
+      ! (EXECUTE_COMMAND_LINE) and then reads the produced base.inp -- i.e.
+      ! VULCAN acts as a subroutine-style pre-step of the wind solve.
+      integer :: lower_atm_mode  = 0
+      real*8  :: lower_atm_r1bar = -1.0d0
       ! Tier-2a passive molecular base: reduce the base particle count
       ! (ntot_bc) by the H nuclei bound into H2 at (1 ubar, T0) from the
       ! chemical-equilibrium fit.  EOS-only correction (lower base pressure,

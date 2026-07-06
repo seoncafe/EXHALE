@@ -91,6 +91,8 @@ EXHALE/
 ├── src/
 │   ├── modules/           # Fortran source modules (flux, init, radiation, …)
 │   └── utils/             # Python GUI (EXHALE_interface_main.py), fortdep.py
+├── VULCAN/                # bundled VULCAN photochemistry (incl. FastChem) — see
+│                          #   "Bundled third-party codes" below
 ├── inputdata/             # opacity / SED table samples (*.atesopa, Jlya.txt, …)
 ├── cooling_data/          # CHIANTI cooling-formula fit scripts + notebooks
 ├── examples/
@@ -273,26 +275,62 @@ v1 is exclusive with `metals.inp` and `He_diffusion` (the parser refuses the
 combinations). Local-equilibrium caveats in
 `docs/lower_atmosphere_coupling.pdf` §4.
 
-### Lower-atmosphere handoff (`base.inp`) and VULCAN
+### Lower-atmosphere pre-step: VULCAN as a subroutine
 
-Generate a `base.inp` (overrides T0, base radius, He/H, K_zz at startup;
-absent file = no-op):
+EXHALE can generate its own lower-boundary conditions before the wind solve.
+One line in `input.inp` is enough:
 
-```bash
-# analytic column (isothermal Teq, or --guillot for semi-grey T(p)):
-python3 src/utils/run_lower.py <run_dir> --r1bar 1.36
-
-# from a VULCAN photochemistry run (photochemical H2/H dissociation state):
-python3 src/utils/vulcan_to_base.py HD189-photo.vul <run_dir> --mp 1.237 --r1bar 1.138
+```
+Lower atmosphere: vulcan 1.36     # run bundled VULCAN photochemistry
+#Lower atmosphere: analytic 1.36  # or: fast chemical-equilibrium column
+#  (no key at all = classic base; the VULCAN step is fully optional)
 ```
 
-To run VULCAN itself (public; a working copy lives at `../../VULCAN`): compile
-FastChem once (`make` in `fastchem_vulcan/`), start from the repo's default
-`vulcan_cfg.py` (the `cfg_examples/` are stale), set `use_photo = True` and
-`use_live_plot = False`, then `python3 vulcan.py` (~6 h for HD 189733 b).
-VULCAN provides H/C/N/O composition only — metal abundances stay in
+The number is the 1-bar (transit) radius in R_J. On startup EXHALE invokes
+`src/utils/vulcan_driver.py`, which copies the bundled `VULCAN/` tree into
+`<run_dir>/vulcan_work/`, builds the planet's T(p)/Kzz atmosphere (Guillot
+2010) and picks a stellar UV spectrum by the host Teff, compiles FastChem if
+needed, runs VULCAN to steady state (**hours** on the first run; later runs
+reuse the cached `.vul`), converts the result to `base.inp` (photochemical
+H2/H/He state, base temperature and radius), and then proceeds with the wind
+solve on that base — i.e. VULCAN acts as a subroutine of EXHALE. An existing
+`base.inp` always wins (delete it to regenerate); `EXHALE_ROOT` overrides the
+code-root path for relocated installs. Manual invocation and finer control:
+
+```bash
+python3 src/utils/vulcan_driver.py <run_dir> --r1bar 1.36 [--force] [--sflux F] [--atm F]
+python3 src/utils/run_lower.py     <run_dir> --r1bar 1.36 [--guillot]
+```
+
+VULCAN provides H/C/N/O(/S) composition only — metal abundances stay in
 `metals.inp`. The quick one-line consistency check without any handoff is
 `Lower column: <transit radius>` in `input.inp`.
+
+## Bundled third-party codes (VULCAN + FastChem)
+
+For convenience this repository bundles, under `VULCAN/`, a copy of the
+**VULCAN** photochemical kinetics code and (inside it, as shipped by VULCAN)
+the **FastChem** equilibrium-chemistry code used for its initial state. They
+are third-party open-source codes — please obtain updates from, and cite,
+the original sources:
+
+- VULCAN: https://github.com/exoclime/VULCAN (also mirrored at
+  https://github.com/shami-EEG/VULCAN) — cite **Tsai et al. 2017, ApJS 228,
+  20** and **Tsai et al. 2021, ApJ 923, 264** in any publication using it.
+- FastChem: https://github.com/NewStrangeWorlds/FastChem — cite **Stock et
+  al. 2018, MNRAS 479, 865** (and **Stock et al. 2022, MNRAS 517, 4070** for
+  FastChem 2).
+
+Local modifications/additions relative to the upstream VULCAN tree:
+
+| File | Change |
+|---|---|
+| `VULCAN/make_chem_funs.py` | bug fix: `np.genfromtxt(..., encoding=None)` so the element-conservation check does not crash on Python 3 (bytes-vs-str) |
+| `VULCAN/vulcan_cfg.py` | defaults set for the EXHALE pre-step: `use_photo = True`, `use_live_plot = False` (upstream default config otherwise) |
+| `VULCAN/output/*.vul` | removed (run products are regenerated per run in `<run_dir>/vulcan_work/`) |
+| `src/utils/vulcan_driver.py` | **added (EXHALE side)**: the subroutine-style driver (planet cfg generation, FastChem build, cached VULCAN run, `base.inp` conversion) |
+| `src/utils/vulcan_to_base.py` | **added (EXHALE side)**: `.vul` → `base.inp` converter |
+| `src/modules/files_IO/input_read.f90`, `src/modules/init/parameters.f90` | **modified (EXHALE side)**: `Lower atmosphere: vulcan|analytic <R_1bar>` key and the `run_lower_atm_prestep` invocation |
 
 ### Legacy atomic-data switch
 
@@ -493,4 +531,4 @@ See `examples/README.md` for the exact lines each one adds:
 
 ---
 
-Last updated: 2026-07-05 22:02
+Last updated: 2026-07-06 11:17

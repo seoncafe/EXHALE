@@ -89,22 +89,21 @@ writes `<run_dir>/base.inp` with `T_base r_base HeH_base Kzz_base`; EXHALE
 reads it at startup and echoes every override (absent file = strict no-op).
 -> `docs/lower_atmosphere_coupling.pdf` §4.4.
 
-## Use VULCAN photochemistry for the base state
+## Use VULCAN photochemistry for the base state (subroutine-style)
 
-```bash
-cd ../../VULCAN                      # working copy (github.com/exoclime/VULCAN)
-(cd fastchem_vulcan && make)         # once
-# edit vulcan_cfg.py (start from the repo DEFAULT, not cfg_examples/ - stale):
-#   use_photo = True ; use_live_plot = False
-python3 vulcan.py                    # ~6 h for the HD 189733 b network
-cd -
-python3 src/utils/vulcan_to_base.py \
-    ../../VULCAN/output/HD189-photo.vul <run_dir> --mp 1.237 --r1bar 1.138
 ```
-The converter writes the same `base.inp`, now with the *photochemical* H2/H
-state (HD 189733 b: q_H = 0.23 at 1 ubar vs 0.020 in equilibrium — 11x more
-dissociation) and a base radius from VULCAN's own mu(p), T(p). VULCAN is
-H/C/N/O(/S) only: metal abundances stay in `metals.inp`.
+# input.inp — one line; EXHALE runs bundled VULCAN itself on startup:
+Lower atmosphere: vulcan 1.138      # arg = 1-bar (transit) radius [R_J]
+```
+First run takes hours (VULCAN to steady state in `<run_dir>/vulcan_work/`);
+later runs reuse the cached `.vul`. `Lower atmosphere: analytic 1.138` uses
+the fast equilibrium column instead; omit the key to skip the pre-step
+entirely. Manual control: `python3 src/utils/vulcan_driver.py <run_dir>
+--r1bar 1.138 [--force]`. The photochemical base differs from equilibrium
+(HD 189733 b: q_H = 0.23 at 1 ubar vs 0.020 — 11x more dissociation).
+VULCAN is H/C/N/O(/S) only: metal abundances stay in `metals.inp`.
+VULCAN+FastChem are BUNDLED under `VULCAN/` — see README "Bundled
+third-party codes" for origins and required citations.
 -> `docs/lower_atmosphere_coupling.pdf` §4.4 and Fig. 2.
 
 ## Warm-start a hard planet (Wind-AE IC)
