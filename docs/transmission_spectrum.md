@@ -1,14 +1,14 @@
-# Transmission spectra in `TPM.py`: H-alpha/H-beta and the metal resonance doublets
+# Transmission spectra in `EXHALE_transit.py`: H-alpha/H-beta and the metal resonance doublets
 
 Quick reference for the H-alpha (6562.8 Å, n=2→n=3) and H-beta
 transmission spectra (non-LTE n=2 population, Christie+2013 Ly-alpha
 pumping) and the metal resonance doublets (Mg II h&k, Ca II H&K, Na I D)
-in `TPM.py`. Full physics and equations are in
+in `EXHALE_transit.py`. Full physics and equations are in
 `transmission_spectrum.tex` / `.pdf`.
 
 ## What it does
 
-`TPM.py` already builds transit transmission spectra (impact-parameter
+`EXHALE_transit.py` already builds transit transmission spectra (impact-parameter
 LOS Voigt integration + disk average + instrument/rotation convolution)
 for **He I 10830 Å** and **Ly-alpha 1215.67 Å**. The new branch adds
 **H-alpha**, which absorbs out of the `n=2` hydrogen level. The `n=2`
@@ -24,7 +24,7 @@ H-alpha is **always computed**; only the source of the Ly-alpha mean
 intensity `J_lya(r)` (which ATES does **not** produce) depends on whether
 you supply a file:
 
-**Option 1 — supply `J_lya(r)` as a file.** Set `Jlya_file` in `TPM.py`:
+**Option 1 — supply `J_lya(r)` as a file.** Set `Jlya_file` in `EXHALE_transit.py`:
 
 ```python
 Jlya_file = path + '/Jlya.txt'
@@ -71,7 +71,7 @@ This is a uniform-illumination approximation — it omits the decline of
 `J_lya` deep in the atmosphere (Huang+2017 Eq.7) and the direct stellar
 Ly-alpha component; for a self-consistent profile, use Option 1.
 
-Then run `python3 TPM.py` as usual: **H-alpha and H-beta** are added as
+Then run `python3 EXHALE_transit.py` as usual: **H-alpha and H-beta** are added as
 extra figures and printouts; He/Ly-alpha behavior is unchanged.
 
 **H-beta (n=2 -> 4, 4861.4 A)** shares the same n=2 population and is

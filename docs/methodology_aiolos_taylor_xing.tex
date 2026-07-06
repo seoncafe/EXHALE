@@ -98,7 +98,7 @@ fallback). It already includes a He($2^3$S) metastable network, an H($n{=}2$)/Ba
 population (Christie et al.\ 2013), a Ly$\alpha$ radiative-transfer suppression via a Neufeld
 escape-probability treatment, Badnell RR+DR recombination, Voronov collisional ionization,
 Kingdon \& Ferland charge exchange, CHIANTI metal-line cooling (Mg/Ca/Na/Fe\,II, C/N/O), a
-Roche/tidal potential (RLOF), and a transmission-spectrum post-processor (\texttt{TPM.py}).
+Roche/tidal potential (RLOF), and a transmission-spectrum post-processor (\texttt{EXHALE\_transit.py}).
 
 \section{Side-by-side methodology table}
 
@@ -125,12 +125,12 @@ Radiation & \textbf{FLD}, multi-band, implicit & XUV atten.\ + Ly$\alpha$ MC & R
 Heating eff. & From C2Ray split & Photoelectron 20--40\% & Freq.-avg.\ $\eta=0.1$--0.5 & Tuned efficiency \\
 Ioniz.\ solve & C2Ray or implicit network & KPP preprocessor & Semi-implicit source & \textbf{Newton / MINPACK} \\
 Metals & Via general chem.\ & Optional (solar) & None & \textbf{C/N/O ioniz.+cooling} \\
-He($2^3$S) 10830 & Not a focus & In-loop non-LTE & Post-processed & In-loop + \texttt{TPM.py} \\
+He($2^3$S) 10830 & Not a focus & In-loop non-LTE & Post-processed & In-loop + \texttt{EXHALE\_transit.py} \\
 H($n{=}2$)/H$\alpha$ & Not a focus & Non-LTE + Ly$\alpha$ MC & Post-processed & Non-LTE + Ly$\alpha$ esc.\ prob. \\
 Cooling & Recomb/line/ff, dust, H$_3^+$ & Recomb + H\,I line + H$_3^+$ & \textbf{Ly$\alpha$ only} & Ly$\alpha$+recomb+ff+CHIANTI \\
 Tidal/Roche & \texttt{USE\_TIDES} & Optional / off (2026) & Stellar tidal term & Roche (RLOF) \\
 Lower boundary & Configurable & \textbf{$\mu$bar, coupled} & 1\,$\Rp$, $T{=}1500$\,K & $\sim\mu$bar, fixed $T$,$n$ \\
-Transmission & --- & Ray-traced Voigt & Post-processed & \texttt{TPM.py} (multi-line) \\
+Transmission & --- & Ray-traced Voigt & Post-processed & \texttt{EXHALE\_transit.py} (multi-line) \\
 \bottomrule
 \end{longtable}
 \normalsize
@@ -206,7 +206,7 @@ non-LTE microphysics (temperature-dependent Penning ionization, B-spline $2^3$S 
 section, proton de-excitation, photoelectron impact excitation). Xing post-processes 10830
 only. \EXHALE\ builds the $2^3$S and H($n{=}2$) populations in-run and produces the full
 transmission spectrum (10830, Ly$\alpha$, H$\alpha$, H$\beta$, metal doublets) in
-\texttt{TPM.py}. \AIOLOS\ does not target these lines.
+\texttt{EXHALE\_transit.py}. \AIOLOS\ does not target these lines.
 
 \subsection{Lower boundary}
 Taylor couples to a photochemical lower/middle atmosphere at $\sim$1~$\mu$bar (the most
@@ -228,7 +228,7 @@ This is \EXHALE's biggest physical gap and directly controls the He 10830 depth.
   \item \textbf{Taylor route (recommended):} add a \textbf{molecular + eddy diffusion} term
     that lets He/H vary with radius while keeping the single bulk-momentum solve --- a
     bolt-on to \EXHALE's continuity equations, moderate cost; Taylor shows it reproduces the
-    multi-fluid answer, and it supplies the altitude-dependent He/H that \texttt{TPM.py}
+    multi-fluid answer, and it supplies the altitude-dependent He/H that \texttt{EXHALE\_transit.py}
     needs.
   \item \textbf{Xing route (high cost):} convert \EXHALE\ to genuinely multi-fluid
     (per-species velocities + collisional drag + electron-pressure Riemann split) ---

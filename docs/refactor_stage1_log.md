@@ -36,7 +36,7 @@ harness; "PASS" means the gate ran green immediately after the step.
 - `write_output.f90`: schema-2 `#` headers on `Hydro_ioniz*.txt` and
   `Ion_species*.txt`; the species-label line is generated from
   `species_table`, so it stays correct when species are added. NumPy readers
-  (`EXHALE_plots.py`, `TPM.py`, `examples/exhale_io.py`) are unaffected
+  (`EXHALE_plots.py`, `EXHALE_transit.py`, `examples/exhale_io.py`) are unaffected
   (`np.loadtxt` skips `#` by default).
 - `load_IC.f90` rewritten: schema-2 files are read by label mapping
   (order-free), restoring **all** species including the metal ions — metal

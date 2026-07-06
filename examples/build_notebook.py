@@ -87,7 +87,7 @@ plt.tight_layout(); plt.show()
 
 md("## 5. Transmission: metal transit radii vs Huang et al. (2023)\n"
    "Convert TPM line depths $h$ to $R_{\\rm eff}/R_\\star=\\sqrt{(R_p/R_\\star)^2+h}$. "
-   "Run `TPM.py` (spherical/triaxial) for the depths; values below are Case A.")
+   "Run `EXHALE_transit.py` (spherical/triaxial) for the depths; values below are Case A.")
 code("""Rp, Rstar = 2.058*aio.RJ, 1.458*6.957e10
 td = (Rp/Rstar)**2; reff = lambda h: np.sqrt(td + h/100.0)
 lines = ['Mg II (4A)','Ca II K','Na D2']

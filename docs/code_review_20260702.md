@@ -26,7 +26,7 @@ checks; recommend a periodic `-fcheck` regression run.
 `System_implicit_adv_HeH{,_TR}.f90`: `xe = xhii + HeH*(xheii + 2 xheiii)` assumed the He/H
 ratio equals the input constant in every cell. Correct for legacy runs, but with
 `He_diffusion` the local He/H differs from `HeH` by up to ~6× aloft, so the `_adv`
-re-ionization (which feeds `TPM.py`) misstated n_e. **Fix:** new params slot (15 non-TR / 23
+re-ionization (which feeds `EXHALE_transit.py`) misstated n_e. **Fix:** new params slot (15 non-TR / 23
 TR) carries the effective He/H — packed as `HeH` when diffusion is off (byte-identical
 legacy) and as the local `nhe(j)/nh(j)` when on. Effect on the version comparison: HD 209458b
 He 10830 27.2% → 27.1% (trivial); docs updated. Also fixed two wrong params comments

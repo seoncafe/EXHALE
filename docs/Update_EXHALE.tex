@@ -1673,7 +1673,7 @@ changed --- denser --- wind profile, not the coefficient.
 
 \emph{Added 2026-06-05.}
 
-The \texttt{\_adv} profiles that \texttt{TPM.py} reads are built by
+The \texttt{\_adv} profiles that \texttt{EXHALE\_transit.py} reads are built by
 \texttt{post\_process\_adv.f90}, which re-solves the \emph{per-cell temperature}
 at the advection-corrected structure (the wind is advected, then its \(T(r)\) is
 re-converged against heating/cooling). Until now the metal \emph{ion} densities
@@ -1846,7 +1846,7 @@ the equilibrium structure, with the physically expected sign (more ionization
 where the advected wind is hotter) and magnitude (single-digit-percent,
 transition-localized). The default remains \texttt{pp\_metals 1} (frozen): the
 deliberate, documented choice (the equilibrium split is the converged one, and
-\texttt{TPM.py}'s lines are dominated by H and He). Mode 2 is provided for studies
+\texttt{EXHALE\_transit.py}'s lines are dominated by H and He). Mode 2 is provided for studies
 that need the metal ionization to track the advected wind. The table and
 \texttt{metal\_resolve\_compare.png} are surfaced for that comparison, not
 asserted as a validation pass.
@@ -2095,7 +2095,7 @@ L1-truncated wind needs.
 \section{Phase 5: velocity-broadened transmission spectrum (in progress)}
 Phase~5 is the headline deliverable --- the NUV/optical \textbf{transit-depth spectrum} the
 whole upgrade exists to match (Huang Table~3 / Figs.~17--24). It extends the existing
-spherical post-processor \texttt{TPM.py} in two stages: \textbf{5a} adds the metal resonance
+spherical post-processor \texttt{EXHALE\_transit.py} in two stages: \textbf{5a} adds the metal resonance
 lines (spherical, gated on Case~A); \textbf{5b} replaces the spherical geometry with the 3-D
 Roche-equipotential reconstruction + velocity broadening (gated on Case~D). Pure Python
 post-processing --- no Fortran change.
@@ -2119,7 +2119,7 @@ absorption fraction \(h\), mapped to the same quantity via
 \(R_{\rm eff}/R_* = \sqrt{(R_p/R_*)^2 + h}\).
 
 \subsection{5a --- metal resonance lines (Mg II, Ca II, Na I D), spherical --- done}
-\texttt{TPM.py} gained Mg II \(\lambda2796\), Ca II K \(\lambda3934\), Na I D2 \(\lambda5890\)
+\texttt{EXHALE\_transit.py} gained Mg II \(\lambda2796\), Ca II K \(\lambda3934\), Na I D2 \(\lambda5890\)
 as an \textbf{isolated appended block} (the validated He\,10830 / Ly\(\alpha\) / H\(\alpha\) /
 H\(\beta\) pipeline above it is untouched). These are resonance lines whose lower level is the
 ion ground state; at \(\sim10^4\)\,K the excited fine-structure levels are
@@ -2160,7 +2160,7 @@ Roche potential (\(R_p\) units) mirrors \texttt{grav\_field.f90}:
 Tidal terms \(\to0\) recovers \(\phi=-1/r\) (spherical), so the triaxial reconstruction
 reduces to the 5a spherical case for Case~A. The module gives \texttt{roche\_phi}, the L1 root
 of \(d\phi_{\rm sub}/dr=0\), a monotone \(\phi_{\rm sub}\!\to\!r_{\rm eff}\) inverse
-(\texttt{ReconMap}), the triaxial radii, and the Eggleton lobe radius. \texttt{TPM.py} gained
+(\texttt{ReconMap}), the triaxial radii, and the Eggleton lobe radius. \texttt{EXHALE\_transit.py} gained
 a \texttt{geometry='triaxial'} switch (\texttt{triaxial\_depth()}): the transit LOS runs along
 \(+x\); the state at each 3-D point is the substellar state at \(r_{\rm eff}\); and the
 \textbf{per-sector LOS velocity} \(v_{\rm sub}(r_{\rm eff})\,x/r - \Omega y\) (wind +
@@ -3365,6 +3365,20 @@ opt-out (no key) path. The download URLs, citation requirements (VULCAN: Tsai et
 FastChem'' section and the user manual (\S ``Obtaining VULCAN and FastChem'').
 
 % ===================================================================== %
+\section{\texttt{TPM.py} renamed to \texttt{EXHALE\_transit.py} (2026-07-06)}
+% ===================================================================== %
+The transmission-spectrum post-processor \texttt{TPM.py} (the acronym clashed with
+``Trusted Platform Module'' and did not describe the tool) is renamed
+\texttt{EXHALE\_transit.py}, matching the \texttt{EXHALE\_*} convention. Run-time
+overrides are now \texttt{EXHALE\_TRANSIT\_<NAME>} (\texttt{PATH},
+\texttt{SAVE\_PREFIX}, \texttt{HE\_LMIN/LMAX/N}, \texttt{RSTAR\_RSUN},
+\texttt{ROTP}, \texttt{TSTAR}); the old \texttt{TPM\_<NAME>} names remain as
+backward-compatible fallbacks (a \texttt{\_tenv()} helper checks the new name first,
+then the old). Output filenames are unchanged (\texttt{<prefix>tpm\_He10830.txt} etc.)
+so downstream notebooks and figure scripts keep working. All in-repo references were
+updated; \texttt{VULCAN/} untouched.
+
+% ===================================================================== %
 %  APPENDIX --- bookkeeping material, kept separate from the dated update log
 % ===================================================================== %
 \clearpage
@@ -3439,7 +3453,7 @@ So the 15 new core modules contribute 2\,484 of the 5\,970 added code lines; the
 remaining $\sim$3\,486 added (and 239 removed) lines are edits spread across the 27
 modified files --- dominated by the cooling module (\texttt{Cool\_coeff.f90}, 442
 $\to$ 2\,230 raw lines: CHIANTI metal-line fits, Fe tables, temperature-dependent
-Penning rate), followed by \texttt{TPM.py}-side physics and the main driver,
+Penning rate), followed by \texttt{EXHALE\_transit.py}-side physics and the main driver,
 parameters/input parsing, IC construction, cross sections, ionization equilibrium,
 and the post-processor, which wire the metals, opacity dispatcher, Roche potential,
 transonic/auto IC, excited-H/Ly$\alpha$ physics, diffusion hooks, and the
@@ -3448,7 +3462,7 @@ now $\approx$2.6$\times$ the original code base (3\,514\,$\to$\,9\,245 SLOC),
 touching a bit over half of the original files (27 of 47 modified, none deleted,
 plus 15 new); with the ported Wind-AE IC generator the full Fortran tree is 98
 files / 13\,991 SLOC ($\approx$4$\times$). Beyond Fortran, the tree also carries
-the Python tooling (GUI, the \texttt{TPM.py} transmission post-processor,
+the Python tooling (GUI, the \texttt{EXHALE\_transit.py} transmission post-processor,
 plotting/analysis) and $\approx$20\,000 lines of documentation under
 \texttt{docs/}.
 

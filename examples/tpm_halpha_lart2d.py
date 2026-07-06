@@ -2,16 +2,16 @@
 """tpm_halpha_lart2d.py -- H-alpha transit transmission from a 2D (cylindrical)
 Ly-alpha scattering rate computed by LaRT (spherical-illumination model).
 
-Why this is separate from TPM.py
+Why this is separate from EXHALE_transit.py
 --------------------------------
-TPM.py assumes a spherically symmetric atmosphere, n_2p = n_2p(r).  Under
+EXHALE_transit.py assumes a spherically symmetric atmosphere, n_2p = n_2p(r).  Under
 stellar (spherical) illumination the Ly-alpha mean intensity -- and therefore the
 H(2p) population that produces H-alpha -- is only *cylindrically* symmetric about
 the star-planet axis, n_2p = n_2p(rho, z).  This script builds n_2p(rho,z) from the
 LaRT scattering rate P_alpha(rho,z) and integrates the H-alpha optical depth along
 the transit line of sight (= the star-planet axis = z), so the spherical assumption
 is dropped.  He 10830 (set by the spherically symmetric He 2^3S ionization balance)
-is unaffected and is still handled by TPM.py.
+is unaffected and is still handled by EXHALE_transit.py.
 
 Pipeline
 --------
@@ -38,7 +38,7 @@ import h5py
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import exhale_io as aio   # noqa: E402
 
-# ---- constants (SI, matching TPM.py) ----
+# ---- constants (SI, matching EXHALE_transit.py) ----
 kb   = 1.380649e-23
 mp   = 1.672623e-27
 me   = 9.109384e-31
@@ -56,7 +56,7 @@ f_Ha   = 0.6407
 A12_Ha = 4.4101e7
 Fadd_const = np.sqrt(np.pi) * echg**2 / (4.0 * np.pi * E0 * me * c_l)
 
-# Ly-alpha 1s<->2p pumping (cgs B coefficients, as in TPM.py)
+# Ly-alpha 1s<->2p pumping (cgs B coefficients, as in EXHALE_transit.py)
 lA      = 1215.6701e-10
 nu_Lya  = c_l / lA
 A_2p1s  = 6.3e8
@@ -198,7 +198,7 @@ def halpha_transmission(run, Pa, z, rho, n2p, Rp_m, Rstar_m, lam_grid,
             tau = np.sum(0.5 * dz_m * (integrand[:-1] + integrand[1:]))
             exp_tau[ip, il] = np.exp(-tau)
 
-    # disk-average (TPM.py convention)
+    # disk-average (EXHALE_transit.py convention)
     A_star   = np.pi * Rstar_m**2
     A_planet = np.pi * Rp_m**2
     A_atm    = np.pi * (rib * Rp_m)**2

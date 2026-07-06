@@ -1387,7 +1387,7 @@ changed — denser — wind profile, not the coefficient.
 
 *Added 2026-06-05.*
 
-The `_adv` profiles that `TPM.py` reads are built by `post_process_adv.f90`, which
+The `_adv` profiles that `EXHALE_transit.py` reads are built by `post_process_adv.f90`, which
 re-solves the **per-cell temperature** at the advection-corrected structure (the
 wind is advected, then its `T(r)` is re-converged against heating/cooling). Until
 now the metal *ion* densities carried into those profiles were handled in one of
@@ -1524,7 +1524,7 @@ flagged here as denominator artifacts, not a physical re-solve effect.
 structure, with the physically expected sign (more ionization where the advected
 wind is hotter) and magnitude (single-digit-percent, transition-localized). The
 default remains `pp_metals 1` (frozen): the deliberate, documented choice (the
-equilibrium split is the converged one, and `TPM.py`'s lines are dominated by H
+equilibrium split is the converged one, and `EXHALE_transit.py`'s lines are dominated by H
 and He). Mode 2 is provided for studies that need the metal ionization to track
 the advected wind. The table and `metal_resolve_compare.png` are surfaced for
 that comparison, not asserted as a validation pass.
@@ -1783,7 +1783,7 @@ needs.
 
 Phase 5 is the headline deliverable — the NUV/optical **transit-depth spectrum** the whole
 upgrade exists to match (Huang Table 3 / Figs 17–24). It extends the existing spherical
-post-processor `TPM.py` in two stages: **5a** adds the metal resonance lines (spherical,
+post-processor `EXHALE_transit.py` in two stages: **5a** adds the metal resonance lines (spherical,
 gated on Case A); **5b** replaces the spherical geometry with the 3-D Roche-equipotential
 reconstruction + velocity broadening (gated on Case D). Pure Python post-processing — no
 Fortran change.
@@ -1803,7 +1803,7 @@ its prose is a loose gloss of 0.30). Our code returns the line-center absorption
 
 ### 5a — metal resonance lines (Mg II, Ca II, Na I D), spherical — done
 
-`TPM.py` gained Mg II λ2796, Ca II K λ3934, Na I D2 λ5890 as an **isolated, appended block**
+`EXHALE_transit.py` gained Mg II λ2796, Ca II K λ3934, Na I D2 λ5890 as an **isolated, appended block**
 (the validated He 10830 / Lyα / Hα / Hβ pipeline above it is untouched). They are resonance
 lines whose lower level is the ion ground state; at ~10⁴ K the excited fine-structure levels
 are Boltzmann-negligible, so the lower-level density is the ion density itself
@@ -1850,7 +1850,7 @@ dimensionless Roche potential (R_p units, `GM_p/R_p` energy units) mirrors `grav
 Setting the tidal terms → 0 recovers φ = −1/r (spherical), so the triaxial reconstruction
 reduces to the 5a spherical case. The module provides `roche_phi`, the L1 root of
 `dφ_sub/dr = 0`, a monotone `phi_sub → r_eff` inverse (`ReconMap`), the triaxial radii, and
-the Eggleton Roche-lobe radius. `TPM.py` gained a `geometry='triaxial'` switch
+the Eggleton Roche-lobe radius. `EXHALE_transit.py` gained a `geometry='triaxial'` switch
 (`triaxial_depth()`): the transit LOS runs along +x; the state at each 3-D point is the
 substellar state at `r_eff`; and the **per-sector LOS velocity** `v_sub(r_eff)·x/r − Ω·y`
 (wind + tidally-locked rotation, Huang Eq. 16) is integrated over **20 angular sectors**
@@ -2734,3 +2734,14 @@ FastChem; github.com/shami-EEG/VULCAN, github.com/NewStrangeWorlds/FastChem) and
 modifications setup_vulcan.sh applies are in README "Obtaining VULCAN and FastChem". Tested:
 analytic branch end-to-end, VULCAN branch with cached .vul (photochemical HD189 base
 T=863 K applied), and opt-out regression.
+
+## 33. TPM.py renamed to EXHALE_transit.py (2026-07-06)
+
+The transmission-spectrum post-processor `TPM.py` (the acronym clashed with "Trusted Platform
+Module" and did not describe the tool) is renamed `EXHALE_transit.py`, matching the
+`EXHALE_*` convention. Run-time overrides are now `EXHALE_TRANSIT_<NAME>` (PATH, SAVE_PREFIX,
+HE_LMIN/LMAX/N, RSTAR_RSUN, ROTP, TSTAR); the old `TPM_<NAME>` names remain as
+backward-compatible fallbacks (a `_tenv()` helper checks the new name first, then the old).
+Output filenames are unchanged (`<prefix>tpm_He10830.txt` etc.) so downstream notebooks and
+figure scripts keep working. All in-repo references (scripts, run_tpm_all.sh, examples,
+docs, README/HOWTO/manual) were updated; VULCAN/ untouched.

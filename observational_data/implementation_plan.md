@@ -1,6 +1,6 @@
 # Implementation Plan - Collecting Observational Data for Exoplanet Atmospheres
 
-We are building a clean, structured repository of public observational datasets for Lyman-alpha ($\text{Ly}\alpha$), H-alpha ($\text{H}\alpha$), and Helium I ($\text{He I } 10830\text{ \AA}$) transmission spectra to compare with the outputs of our radiation-hydrodynamics models (such as `TPM.py`).
+We are building a clean, structured repository of public observational datasets for Lyman-alpha ($\text{Ly}\alpha$), H-alpha ($\text{H}\alpha$), and Helium I ($\text{He I } 10830\text{ \AA}$) transmission spectra to compare with the outputs of our radiation-hydrodynamics models (such as `EXHALE_transit.py`).
 
 ## User Review Required
 
@@ -35,4 +35,4 @@ We will create a new directory `observational_data` inside the main `EXHALE` wor
 
 ### Verification Plan
 
-We will write a python script `create_observational_data.py` to generate these files and verify that they can be successfully loaded by `TPM.py` or the Jupyter notebooks.
+We will write a python script `create_observational_data.py` to generate these files and verify that they can be successfully loaded by `EXHALE_transit.py` or the Jupyter notebooks.

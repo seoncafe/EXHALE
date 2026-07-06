@@ -1,6 +1,6 @@
 # Exoplanet Transmission Spectroscopy Observational Datasets
 
-This folder contains public observational data files for Lyman-alpha ($\text{Ly}\alpha$), H-alpha ($\text{H}\alpha$), and Helium I ($10830\text{ \AA}$) lines, formatted to easily compare with model outputs (like `TPM.py`).
+This folder contains public observational data files for Lyman-alpha ($\text{Ly}\alpha$), H-alpha ($\text{H}\alpha$), and Helium I ($10830\text{ \AA}$) lines, formatted to easily compare with model outputs (like `EXHALE_transit.py`).
 
 ## Summary of Datasets
 

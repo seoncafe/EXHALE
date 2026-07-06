@@ -142,7 +142,7 @@ In `ATES_extended/inputdata/`, none of which exist in EXHALE:
 | Separate `Metals_ioniz_adv.txt` output | Yes | No (appends to `Ion_species.txt`) |
 | Coronal-balance metal solver | Yes | No (uses coupled MINPACK system) |
 | **Charge transfer with H** (Kingdon & Ferland 1996) | **No** | **Yes** (couples metal & H ionization) |
-| **H-alpha transmission** (`TPM.py`, Christie+2013 Lyα pumping) | **No** (TPM has He 10830 + Lyα only) | **Yes** (n=2 population + J_lya input; see `transmission_spectrum.{tex,md}`) |
+| **H-alpha transmission** (`EXHALE_transit.py`, Christie+2013 Lyα pumping) | **No** (TPM has He 10830 + Lyα only) | **Yes** (n=2 population + J_lya input; see `transmission_spectrum.{tex,md}`) |
 
 ## Caveat — these are *additive* features, not strict supersets
 

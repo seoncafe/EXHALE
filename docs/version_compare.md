@@ -98,7 +98,7 @@ not strongly separated in the line-forming region.
   diffusion coefficient, and ambipolar-corrected settling. Where diffusion competes with the
   wind (HD 209458b aloft) heavier elements deplete faster (He > C > N > O); where advection
   dominates (WASP-121b) even Fe stays locked to He. Relevant for metal-line transmission
-  diagnostics (Mg II / Ca II / Na I in `TPM.py`).
+  diagnostics (Mg II / Ca II / Na I in `EXHALE_transit.py`).
 
 ## Caveats
 
@@ -118,6 +118,6 @@ not strongly separated in the line-forming region.
 ---
 
 *Regenerate:* re-run the cases in `docs/version_compare/{v1_nodiff,v2_diff,wasp_v1_nodiff,
-wasp_v2_diff}/`, run `TPM.py` (TPM_PATH / TPM_SAVE_PREFIX) in each — for the WASP-121b runs
+wasp_v2_diff}/`, run `EXHALE_transit.py` (TPM_PATH / TPM_SAVE_PREFIX) in each — for the WASP-121b runs
 add `TPM_HE_LMIN=10827.5 TPM_HE_LMAX=10832.5 TPM_HE_N=335` (the broad line overflows the
 default 10828.2–10831.2 Å window) — then `python3 docs/version_compare/plot_compare.py`.

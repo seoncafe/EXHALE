@@ -28,7 +28,7 @@ each option does.
 | `05_metals` | Trace-metal cooling (solar C/N/O/Mg/Ca/Na/Fe) | `metals.inp` present |
 | `06_he23s` | He 2^3S metastable level (He I 10830 line) | `Include He23S? True` |
 | `07_balmer_lya` | Non-LTE H(n=2) + Ly-alpha pumping (H-alpha/H-beta) | + `Stellar Teff/radius`, `Deexc heat`, `Jlya escape-prob`, `Stellar Lya flux/halfwidth/boost` |
-| `08_full` | Everything on (= the `HD189733b/` planet folder + Newton); feeds `TPM.py` | 07 + `metals.inp` |
+| `08_full` | Everything on (= the `HD189733b/` planet folder + Newton); feeds `EXHALE_transit.py` | 07 + `metals.inp` |
 | `09_spherical` | Spherical domain instead of the default Roche/L1 truncation | `Domain mode: Spherical`, `Outer radius [R_p]: 10.0` |
 | `10_warm_seed_ic` | Warm-seed (hot Parker overlay) initial condition | `Hot Parker IC: 10000` |
 | `11_windae_ic` | In-process Wind-AE IC for HD189733b — far from the seed, so the **C-2 continuation** (base-BC re-convergence + molecular-layer turn-off) is exercised; the Wind-AE ramp converges and writes the IC. EXHALE's *own* HD189733b base-breathing instability (separate from the IC) then limits the warm start | `+ IC mode: windae`, `+ Solver: Newton` |

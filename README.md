@@ -118,7 +118,7 @@ EXHALE/
 │   ├── code_review_20260702.md # full-code review report (fixes + recommendations)
 │   └── …
 ├── observational_data/    # digitized observational comparison data
-├── TPM.py                 # transmission spectrum post-processor
+├── EXHALE_transit.py                 # transmission spectrum post-processor
 ├── EXHALE_plots.py          # live / static profile plotter
 ├── roche_recon.py         # Roche-lobe geometry helper
 └── eta_approx.py          # analytic heating-efficiency approximation
@@ -472,15 +472,16 @@ figure automatically for a metals-on run.
 
 ---
 
-## Transmission spectra (TPM)
+## Transmission spectra (`EXHALE_transit.py`)
 
 After a converged run, compute the transit transmission spectra with:
 
 ```bash
-MPLBACKEND=Agg python3 TPM.py
+MPLBACKEND=Agg python3 EXHALE_transit.py
 ```
 
-TPM reads `input.inp` and the `*_adv.txt` profiles in `output/`, and
+`EXHALE_transit.py` (formerly `TPM.py`) reads `input.inp` and the
+`*_adv.txt` profiles in `output/`, and
 produces spectrum figures (PNG + vector PDF; theoretical, instrument-
 convolved, and instrument+rotation-convolved curves) for **He I 10830 Å,
 Ly-alpha, H-alpha, H-beta** and the metal resonance doublets **Mg II h&k,
@@ -489,7 +490,7 @@ parameters (`R_star`, `rot_period`, `T_star` for the Balmer lines) and the
 output figure names are set in the script's header block.  A 3-D
 Roche-equipotential geometry is available via `geometry = 'triaxial'`
 (`roche_recon.py`).  Full description in `docs/transmission_spectrum.pdf`
-and the manual's TPM section.
+and the manual's transmission-spectra section.
 
 ---
 
@@ -549,4 +550,4 @@ See `examples/README.md` for the exact lines each one adds:
 
 ---
 
-Last updated: 2026-07-06 11:32
+Last updated: 2026-07-06 11:51

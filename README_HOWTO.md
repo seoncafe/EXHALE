@@ -35,9 +35,11 @@ Include He23S? True
 ```
 TPM computes the 10830 line from the `*_adv` output:
 ```bash
-MPLBACKEND=Agg python3 TPM.py          # He 10830, Lya, Halpha, Hbeta, metal lines
+MPLBACKEND=Agg python3 EXHALE_transit.py          # He 10830, Lya, Halpha, Hbeta, metal lines
 # wide window when the line is broad:
-TPM_HE_LMIN=10827.5 TPM_HE_LMAX=10832.5 TPM_HE_N=335 python3 TPM.py
+# widen the He window (auto by default; override with EXHALE_TRANSIT_HE_LMIN/
+# LMAX/N -- the old TPM_HE_* names still work):
+EXHALE_TRANSIT_HE_LMIN=10827.5 EXHALE_TRANSIT_HE_LMAX=10832.5 python3 EXHALE_transit.py
 ```
 -> manual §5.2.
 
@@ -119,7 +121,7 @@ Solver:   Newton
 
 ## Post-process into transmission spectra
 
-`MPLBACKEND=Agg python3 TPM.py` in the run directory (reads `input.inp` +
+`MPLBACKEND=Agg python3 EXHALE_transit.py` in the run directory (reads `input.inp` +
 `output/*_adv.txt`). Metal doublets (Mg II, Ca II, Na I D) appear
 automatically for metals-on runs; `geometry='triaxial'` enables the
 Roche-equipotential geometry (`roche_recon.py`). -> manual §5.2,

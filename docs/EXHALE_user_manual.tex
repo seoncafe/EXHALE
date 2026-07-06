@@ -83,7 +83,7 @@ collisional ionization, radiative + dielectronic recombination, and charge
 exchange. The converged run yields the radial profiles of density, velocity,
 temperature, and the ionization state, plus the steady-state \emph{mass-loss
 rate} $\dot M$. A post-processing pass adds advection to the ionization balance,
-and the Python tool \texttt{TPM.py} turns a converged model into transit
+and the Python tool \texttt{EXHALE\_transit.py} turns a converged model into transit
 \emph{transmission spectra} (He\,10830, Ly$\alpha$, H$\alpha$/H$\beta$, and the
 metal resonance lines Mg\,II, Ca\,II, Na\,I).
 
@@ -159,7 +159,7 @@ sonic point. The tidal singularity of the $-b_0\,q/(\tilde a-r)$ term sits at th
 star ($r=\tilde a\gg10$), so a $10\,R_p$ domain is numerically safe.
 
 \paragraph{Full 3-D form (transmission post-processing).}
-The 3-D Roche-equipotential reconstruction in \texttt{TPM.py} /
+The 3-D Roche-equipotential reconstruction in \texttt{EXHALE\_transit.py} /
 \texttt{roche\_recon.py} (\S\ref{sec:tpm}) needs the potential off-axis as well.
 With the substellar direction $\hat x$ pointing toward the star and $(y,z)$ the
 sky plane,
@@ -183,7 +183,7 @@ A model run consists of:
 \item Build and run \texttt{./EXHALE.x}; it reads the input files from the current
   directory and writes profiles to \texttt{output/}.
 \item Inspect with \texttt{EXHALE\_plots.py} (live profiles) and the example
-  notebook; compute transmission spectra with \texttt{TPM.py}.
+  notebook; compute transmission spectra with \texttt{EXHALE\_transit.py}.
 \end{enumerate}
 
 % ===================================================================== %
@@ -695,7 +695,7 @@ pressure-broadened (Robinson \& Catling $f(p)=1+a\,(p/p_0)^n$ via
 The non-LTE H($n{=}2$) model (the metastable $2s$ + resonance $2p$ levels,
 Christie+2013) feeds two things: in \texttt{EXHALE.x} the H($n{=}2$)
 photoionization adds a Balmer proton source and photoelectric heating to the
-energy/ionization balance; in \texttt{TPM.py} the $n{=}2$ population sets the
+energy/ionization balance; in \texttt{EXHALE\_transit.py} the $n{=}2$ population sets the
 H$\alpha$/H$\beta$ transmission. The model is \emph{off by default}; it switches
 on only when both \texttt{Stellar Teff} and \texttt{Stellar radius} are given (they
 supply the diluted-blackbody Balmer continuum that ionizes/heats $n{=}2$), so the
@@ -743,7 +743,7 @@ options:
 \end{description}
 
 \noindent
-\texttt{TPM.py} uses the \emph{same} logic for its H$\alpha$/H$\beta$ $n{=}2$
+\texttt{EXHALE\_transit.py} uses the \emph{same} logic for its H$\alpha$/H$\beta$ $n{=}2$
 population: if a \texttt{Jlya\_file} is set it is read (mode 1), otherwise the
 mode-0 parameterized estimate above is used (with $F_{\rm LyC}$ rebuilt from the
 run's H\,I column and the stellar EUV). So a converged run with no Ly$\alpha$ input
@@ -1111,8 +1111,8 @@ fractions. With \texttt{--live N} it refreshes every $N$ seconds (watch a run
 converge). If the \texttt{*\_adv.txt} files exist they are overplotted (dashed)
 against the equilibrium profiles (solid). It also prints $\log_{10}\dot M$.
 
-\subsection{\texttt{TPM.py} --- transmission spectra}\label{sec:tpm}
-\texttt{TPM.py} post-processes a converged run (\texttt{*\_adv.txt} +
+\subsection{\texttt{EXHALE\_transit.py} --- transmission spectra}\label{sec:tpm}
+\texttt{EXHALE\_transit.py} post-processes a converged run (\texttt{*\_adv.txt} +
 \texttt{input.inp}) into transit transmission spectra and reports the line-center
 absorption depths (theoretical, instrument-convolved, and
 instrument+rotation-convolved) for \textbf{He\,10830}, \textbf{Ly$\alpha$},
@@ -1130,7 +1130,7 @@ Set the planet/star parameters in its header (e.g.\ \texttt{R\_star},
 \texttt{rot\_period}, \texttt{T\_star}); these are \emph{not} read from
 \texttt{input.inp} except $R_p$, $M_p$, $a$, $L_{\rm EUV}$.
 
-\paragraph{Step-by-step usage.} \texttt{TPM.py} reads
+\paragraph{Step-by-step usage.} \texttt{EXHALE\_transit.py} reads
 \texttt{output/Hydro\_ioniz\_adv.txt} and \texttt{output/Ion\_species\_adv.txt}
 from \texttt{path} (default \texttt{'.'}), so it is normally copied into the run
 directory and executed there:
@@ -1142,13 +1142,13 @@ directory and executed there:
   \texttt{Hydro\_ioniz\_IC.txt} and likewise for \texttt{Ion\_species}, set
   \texttt{Load IC?\ True} and \texttt{Do only PP:\ True} in \texttt{input.inp},
   and run \texttt{./EXHALE.x} once (seconds).
-\item \emph{Edit the header block} of the copied \texttt{TPM.py}: the stellar
+\item \emph{Edit the header block} of the copied \texttt{EXHALE\_transit.py}: the stellar
   radius \texttt{R\_star}, the rotation period \texttt{rot\_period} (use the
   orbital period for a tidally locked planet), the stellar \texttt{T\_star}
   (enables the Balmer-continuum $n{=}2$ photoionization; $\le0$ disables), the
   instrument resolutions, and the output names \texttt{fig\_name\_hei/lya/ha/hb}
   (empty $=$ do not save).
-\item \emph{Run} \texttt{MPLBACKEND=Agg python3 TPM.py} (the \texttt{Agg} backend
+\item \emph{Run} \texttt{MPLBACKEND=Agg python3 EXHALE\_transit.py} (the \texttt{Agg} backend
   suppresses the interactive windows on headless machines). The script saves the
   requested figures and prints the line-center absorption depths
   (theoretical / instrument-convolved / $+$rotation) and the metal-line summary.
@@ -1157,7 +1157,7 @@ Worked examples (the converged Newton solutions of WASP-121b and HD189733b, with
 all four H/He spectra and the metal lines): \texttt{regression/tpm\_wasp/} and
 \texttt{regression/tpm\_hd189/}, collected in the notebook
 \texttt{regression/}\allowbreak\texttt{steady\_solver\_results.ipynb}.
-Figure~\ref{fig:tpmspec} shows the four H/He spectra \texttt{TPM.py} saves for
+Figure~\ref{fig:tpmspec} shows the four H/He spectra \texttt{EXHALE\_transit.py} saves for
 the WASP-121b Newton solution of \texttt{regression/tpm\_wasp/} (run with
 \texttt{Include He23S? True}, so the He\,I\,10830 line is populated).
 
@@ -1166,7 +1166,7 @@ the WASP-121b Newton solution of \texttt{regression/tpm\_wasp/} (run with
 \includegraphics[width=0.49\textwidth]{figures/tpm_Lya.pdf}\\[2pt]
 \includegraphics[width=0.49\textwidth]{figures/tpm_Halpha.pdf}\hfill
 \includegraphics[width=0.49\textwidth]{figures/tpm_Hbeta.pdf}
-\caption{\texttt{TPM.py} output spectra for WASP-121b (Roche, Newton solution
+\caption{\texttt{EXHALE\_transit.py} output spectra for WASP-121b (Roche, Newton solution
 with He\,$2^3$S on; \texttt{regression/tpm\_wasp/}): He\,I\,10830 (top left),
 Ly$\alpha$ (top right), H$\alpha$ (bottom left), and H$\beta$ (bottom right).
 Each panel shows the theoretical line, the instrument-convolved line, and the
@@ -1249,7 +1249,7 @@ manual) is a further worked example.
 
 \subsection{\texttt{exhale\_to\_lart.py} --- LaRT Ly$\alpha$ input from an EXHALE
 run}\label{sec:exhale2lart}
-\texttt{TPM.py} estimates the Ly$\alpha$ mean intensity $\bar J_{\rm Ly\alpha}$ with
+\texttt{EXHALE\_transit.py} estimates the Ly$\alpha$ mean intensity $\bar J_{\rm Ly\alpha}$ with
 the simple Huang et al.\ (2017) prescription (\S\ref{sec:excitedH}). For a proper
 treatment of the resonant Ly$\alpha$ radiative transfer that sets the $n{=}2$
 hydrogen population (and hence H$\alpha$), the converged atmosphere can be
@@ -1400,7 +1400,7 @@ separate base-breathing instability (\S\ref{sec:windae}).
   Teff/radius}, \texttt{Deexc heat}, \texttt{Jlya escape-prob},
   \texttt{Stellar Lya flux/halfwidth/boost} \\
 \texttt{08\_full} & everything on ($=$ the \texttt{HD189733b/} planet folder
-  $+$ Newton); feeds \texttt{TPM.py} & \texttt{07} $+$ \texttt{metals.inp} \\
+  $+$ Newton); feeds \texttt{EXHALE\_transit.py} & \texttt{07} $+$ \texttt{metals.inp} \\
 \texttt{09\_spherical} & spherical domain instead of the default Roche/L1
   truncation (\S\ref{sec:potential}) & \texttt{Domain mode: Spherical},
   \texttt{Outer radius [R\_p]: 10.0} \\
@@ -1481,7 +1481,7 @@ planet.}\label{fig:roche}
 \end{figure}
 
 \subsection{Transmission spectra}
-\texttt{TPM.py} turns a converged model into transit absorption. The metal
+\texttt{EXHALE\_transit.py} turns a converged model into transit absorption. The metal
 resonance lines are the key NUV/optical diagnostics; Figure~\ref{fig:trans}
 compares the modelled effective transit radii $R_{\rm eff}/R_\star$ (spherical
 Case~A) against Huang et al.\ (2023). Recall the conventions of \S5.2: Mg\,II is a
@@ -1512,7 +1512,7 @@ charge-exchange data were added in this work.
 \caption{Atomic data sources, by process. Source files:
 \texttt{cross\_sec.f90} (cross sections); \texttt{Cool\_coeff.f90} (collisional
 rates, recombination, cooling); \texttt{charge\_exchange.f90};
-\texttt{excited\_hydrogen.f90}; \texttt{TPM.py} (transmission line
+\texttt{excited\_hydrogen.f90}; \texttt{EXHALE\_transit.py} (transmission line
 data).}\label{tab:data}\\
 \toprule
 \textbf{Process} & \textbf{Species} & \textbf{Source} \\
@@ -1563,7 +1563,7 @@ $2s/2p$ rate equilibrium & H($n{=}2$) & Christie, Arras \& Li (2013) Table~2 \\
 recombination cascade to $n{=}2$ & H & Draine (2011) \\
 Ly$\alpha$ pumping field (mode~0) & H & Huang et al.\ (2017) Eq.~6 \\
 \midrule
-\multicolumn{3}{@{}l}{\textbf{Transmission line data (\texttt{TPM.py})}}\\[2pt]
+\multicolumn{3}{@{}l}{\textbf{Transmission line data (\texttt{EXHALE\_transit.py})}}\\[2pt]
 $\lambda$, $f$-value, $A_{ki}$ & He\,10830, Ly$\alpha$, H$\alpha$, H$\beta$, Mg\,II, Ca\,II\,H\&K, Na\,I\,D & NIST ASD \\
 line profile & all & Voigt (Faddeeva, \texttt{scipy.special.wofz}) \\
 \end{longtable}

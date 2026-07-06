@@ -1,4 +1,4 @@
-%% H-alpha transmission in TPM.py: method and implementation
+%% H-alpha transmission in EXHALE\_transit.py: method and implementation
 %% Author: Kwang-Il Seon
 \documentclass[english,a4paper]{kiseon_memo}
 \synctex=1
@@ -25,7 +25,7 @@
 
 \begin{document}
 
-\title{Transmission Spectra in TPM.py:\\
+\title{Transmission Spectra in EXHALE\_transit.py:\\
 H$\alpha$/H$\beta$ from the Non-LTE $n=2$ Population,\\
 and the Metal Resonance Doublets}
 \author{Kwang-Il Seon}
@@ -39,7 +39,7 @@ and the Metal Resonance Doublets}
 \section{Overview}
 %=============================================================================
 
-\texttt{TPM.py} (the Transmission Probability Model shipped with ATES)
+\texttt{EXHALE\_transit.py} (the Transmission Probability Model shipped with ATES)
 computes transit transmission spectra by integrating the line-of-sight
 (LOS) optical depth on an impact-parameter grid, using Voigt profiles
 evaluated through the Faddeeva function, and then averaging over the
@@ -180,7 +180,7 @@ the atmosphere ($2.6\times10^{4}\,\mathrm{erg\,cm^{-2}\,s^{-1}}$ for
 HD\,189733b, page~11).
 
 \textbf{$F_{\rm LyC}$ from the actual stellar input.} Rather than a fixed
-number, \texttt{TPM.py} computes the absorbed LyC flux from the ATES
+number, \texttt{EXHALE\_transit.py} computes the absorbed LyC flux from the ATES
 inputs:
 \[
   F_{\rm LyC} = \xi\,
@@ -264,7 +264,7 @@ default star, and $\simeq0.41\%$ / $0.26\%$ with HD\,209458's actual
 $R_\star,T_\star$ (see the comparison notebook).
 
 %=============================================================================
-\section{Implementation in \texttt{TPM.py}}
+\section{Implementation in \texttt{EXHALE\_transit.py}}
 %=============================================================================
 
 \begin{itemize}
@@ -339,7 +339,7 @@ impact-parameter boundary), $\delta=(R_p/R_\star)^2$. Figures are saved
 
 \begin{table}[htbp]
 \centering\small
-\caption{Metal resonance doublets in \texttt{TPM.py} (NIST).}
+\caption{Metal resonance doublets in \texttt{EXHALE\_transit.py} (NIST).}
 \label{tab:metal-lines}
 \begin{tabular}{llcccl}
 \toprule

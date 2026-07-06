@@ -7,6 +7,19 @@ import time
 
 start = time.time()
 
+# ----- ENVIRONMENT OVERRIDES ----- #
+# This module was renamed TPM.py -> EXHALE_transit.py.  Its run-time overrides
+# are now EXHALE_TRANSIT_<NAME>, with the old TPM_<NAME> names kept as
+# backward-compatible fallbacks.  `_tenv('PATH', '.')` returns
+# EXHALE_TRANSIT_PATH if set, else TPM_PATH, else the default.
+def _tenv(name, default=None):
+    return os.environ.get('EXHALE_TRANSIT_' + name,
+                          os.environ.get('TPM_' + name, default))
+
+
+def _tenv_set(name):
+    return ('EXHALE_TRANSIT_' + name) in os.environ or ('TPM_' + name) in os.environ
+
 # ----- CONSTANTS ----- #
 
 # Physicals constants
@@ -39,7 +52,7 @@ gray  = '#a0a0a0'			# Color gray for line plot
 # fig_name   = Name of the output figure (leave empty for not saving the figure)
 # abs_file   = Name of the output file with absorption data(leave empty for not saving the file)
 
-path = os.environ.get('TPM_PATH', '.')  # ATES' files destination folder (env override)
+path = _tenv('PATH', '.')  # ATES' files destination folder (env override)
 Input_file = path + '/input.inp'
 Hydro_file = path + '/output/Hydro_ioniz_adv.txt'
 Ioniz_file = path + '/output/Ion_species_adv.txt'
@@ -48,13 +61,13 @@ fig_name_lya = ''
 abs_file   = ''
 
 # Data not in input_file
-R_star    = float(os.environ.get('TPM_RSTAR_RSUN', '0.44'))*R_sun  # Stellar radius (env override)
+R_star    = float(_tenv('RSTAR_RSUN', '0.44'))*R_sun  # Stellar radius (env override)
 Instr_res_HeTR = 8e4       # Instrument resolution CARMENES: 80,000 -- GIANO-B: 50,000
 Instr_res_HI = 5e4       # Instrument resolution HST-STIS 100 - 100,000
 Instr_res_Ha = 1.15e5      # Instrument resolution (optical, e.g. HARPS/CARMENES-VIS ~ 1.1e5)
 Instr_res_Hb = 1.15e5      # Instrument resolution for H-beta
 # Planet rotation period [days]
-rot_period = float(os.environ.get('TPM_ROTP', '4.88')) # [days] (env override)
+rot_period = float(_tenv('ROTP', '4.88')) # [days] (env override)
 
 # ----- H-alpha (n=2 -> n=3) inputs ----- #
 # H-alpha absorption arises from the n=2 hydrogen population. Following
@@ -97,7 +110,7 @@ fig_name_ha = ''
 # manual values below are used (0 => neglected). T_star = stellar
 # effective temperature [K] (e.g. ~6065 K for HD209458, ~5050 K for
 # HD189733). R_star (above) and a_orb set the dilution.
-T_star   = float(os.environ.get('TPM_TSTAR', '6065.0'))          # stellar effective temperature [K] (<=0 disables; env override)
+T_star   = float(_tenv('TSTAR', '6065.0'))          # stellar effective temperature [K] (<=0 disables; env override)
 Gamma_2s = 0.0             # used only if T_star <= 0
 Gamma_2p = 0.0
 
@@ -109,9 +122,9 @@ Grid_Number = 200
 # Select range of considered wavelength and number of wavelengths
 # (He window env-overridable: fast winds broaden the line past the default
 # +/-1.5 A, so widen for high-velocity / extended-domain runs.)
-lmin_HeTR = float(os.environ.get('TPM_HE_LMIN', '10828.2'))
-lmax_HeTR = float(os.environ.get('TPM_HE_LMAX', '10831.2'))
-number_lambda_HeTR = int(os.environ.get('TPM_HE_N', '201'))
+lmin_HeTR = float(_tenv('HE_LMIN', '10828.2'))
+lmax_HeTR = float(_tenv('HE_LMAX', '10831.2'))
+number_lambda_HeTR = int(_tenv('HE_N', '201'))
 
 lmin_HI = 1214.1
 lmax_HI = 1217.0
@@ -378,7 +391,7 @@ _dr_cm = np.abs(np.gradient(r))*Rp             # cm (r in R_p, Rp in cm)
 _N_HI    = float(np.sum(nhi*_dr_cm))           # cm^-3 * cm -> cm^-2
 _N_HeTR  = float(np.sum(nheiTR*_dr_cm))
 _fHe = f10830_34 + f10830_25 + f10829_09
-_he_forced = ('TPM_HE_LMIN' in os.environ) or ('TPM_HE_LMAX' in os.environ)
+_he_forced = _tenv_set('HE_LMIN') or _tenv_set('HE_LMAX')
 lmin_HeTR, lmax_HeTR = _apply_window(10830.34,
     _line_halfwidth(10830.34, 4.0, _fHe, 1.022e7, _N_HeTR), lmin_HeTR, lmax_HeTR, _he_forced)
 lmin_HI, lmax_HI = _apply_window(1215.67,
@@ -1171,7 +1184,7 @@ if geometry == 'triaxial':
 # Triggered by env var TPM_SAVE_PREFIX (no effect when unset). Each file has
 # columns: wavelength [A], T_lambda (theoretical), T_lambda (instr. conv.),
 # T_lambda (planet-rot + instr. conv.).  Excess absorption [%] = (1 - T)*100.
-_save_prefix = os.environ.get('TPM_SAVE_PREFIX', '')
+_save_prefix = _tenv('SAVE_PREFIX', '')
 if len(_save_prefix) > 0:
 	np.savetxt(_save_prefix + 'tpm_He10830.txt',
 	           np.c_[l_plot_HeTR, avg_prob_HeTR,

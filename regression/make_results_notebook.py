@@ -155,7 +155,7 @@ else:
 
 cells.append(M(r"""## 6. Absorption (transmission) spectra of the Newton solutions
 
-`TPM.py` post-processes each converged Newton solution (after a PP-only run
+`EXHALE_transit.py` post-processes each converged Newton solution (after a PP-only run
 generates the `*_adv.txt` profiles): He I 10830 triplet, Ly$\alpha$,
 H$\alpha$, H$\beta$, plus the Phase-5 metal resonance lines (Mg II 2796,
 Ca II K, Na I D2 — WASP-121b, metals on). Per-planet stellar parameters:

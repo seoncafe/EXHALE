@@ -131,7 +131,7 @@ new per-cell `nh(j)`, `nhe(j)` (interface already accepts these independently).
 3. **Timescale check:** separation appears where `τ_D/τ_v = vH/D ≳ 1`, negligible where ≪1.
 4. **Conservation:** total He number flux `r²(n_He v + Φ_He)` constant at steady state;
    `rho` unchanged by the diffusion operator (mass conserved).
-5. **He 10830** recomputed (TPM.py) — expect a weaker line consistent with reduced upper-
+5. **He 10830** recomputed (EXHALE_transit.py) — expect a weaker line consistent with reduced upper-
    atmosphere He (the physical point of the whole exercise).
 
 ## 7b. Validation status (2026-07-01) — GATE NOT PASSED
@@ -317,7 +317,7 @@ so a Newton-finish refines the hydro at frozen composition).
 ## 8. Original Phase-2 plan (now implemented above; historical)
 
 - Metals diffuse with their own `D_i`, `m_i` (loop the generic operator) — heavier ⇒ stronger
-  depletion; needed for metal-line transmission (Mg II/Ca II/Na I in TPM.py).
+  depletion; needed for metal-line transmission (Mg II/Ca II/Na I in EXHALE_transit.py).
 - Explicit **ambipolar** field `eE = -(1/n_e) dp_e/dr` (replaces the Δm≈3 approximation).
 - **Thermal diffusion** α_T ≠ 0.
 - Ion-stage-resolved diffusion (vs element-level) and Coulomb/resonant D corrections.

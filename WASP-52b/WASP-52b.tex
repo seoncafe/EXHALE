@@ -274,7 +274,7 @@ H/He\,$\approx$\,98/2, confirming the need for a He-depleted atmosphere.}
 The H$\alpha$ line absorbs from the $n=2$ hydrogen population, set primarily by
 Ly$\alpha$ radiative pumping ($B_{1s\to2p}\bar J_{\rm Ly\alpha}$).  The simple
 Huang et al.\ (2017) estimate of $\bar J_{\rm Ly\alpha}$ used by the bare
-\texttt{TPM.py} is not adequate, so we instead compute the resonant Ly$\alpha$
+\texttt{EXHALE\_transit.py} is not adequate, so we instead compute the resonant Ly$\alpha$
 radiative transfer with the Monte Carlo code \textbf{LaRT} (Seon \& Kim 2020) in
 its spherical-illumination geometry, exactly as in Yan et al.\ (2022).
 
@@ -282,7 +282,7 @@ its spherical-illumination geometry, exactly as in Yan et al.\ (2022).
 Under stellar (one-sided) illumination the Ly$\alpha$ scattering rate
 $P_\alpha\equiv B_{1s\to2p}\bar J_{\rm Ly\alpha}$ -- and hence $n_{2p}$ -- is only
 \emph{cylindrically} symmetric about the star--planet axis, $P_\alpha(\rho,z)$, not
-spherically symmetric.  The spherical \texttt{TPM.py} is therefore replaced for
+spherically symmetric.  The spherical \texttt{EXHALE\_transit.py} is therefore replaced for
 H$\alpha$ by the 2-D integrator \texttt{examples/tpm\_halpha\_lart2d.py}, which
 reads the LaRT cylindrical scattering-rate grid (\texttt{Pa\_2D}), builds
 $n_{2p}(\rho,z)$ from the Christie et al.\ (2013) rate equilibrium, and integrates

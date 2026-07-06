@@ -128,7 +128,7 @@ except Exception as e:
 
 # --- Fig 5: transmission summary (R_eff/R_star, model vs Huang) ------------ #
 try:
-    # Case A spherical depths from TPM.py (line-center % and 4 A-band %),
+    # Case A spherical depths from EXHALE_transit.py (line-center % and 4 A-band %),
     # converted to R_eff/R_star = sqrt((Rp/R*)^2 + h). Rp=2.058 RJ, R*=1.458 Rsun.
     Rp = 2.058 * aio.RJ
     Rstar = 1.458 * 6.957e10

@@ -34,7 +34,7 @@ The current tree is already well past a bare ATES v2.0:
   (`radiation/opacity_models.f90`, `functions/cross_sec.f90`).
 - **Cooling:** AIOLOS/Black metal-line cooling (+ optional two-level
   fine-structure via `use_2lev_cool`) in `radiation/Cool_coeff.f90`.
-- **Excited H (post-processing only):** `TPM.py` already builds the non-LTE
+- **Excited H (post-processing only):** `EXHALE_transit.py` already builds the non-LTE
   H(n=2) population (Christie+2013) and Hα/Hβ/Lyα/He-10830 transmission spectra
   with a **decoupled, parameterized** `J_Lyα` (Huang+2017 Eq. 6) and a
   Balmer-continuum n=2 photoionization estimate. This is *post-processing*, not
@@ -469,7 +469,7 @@ layer).
 - New `lya_rt.f90`: H(2s)/H(2p) populations, Balmer-continuum photoionization
   into the H balance, photoelectric + deexcitation heating into the energy eqn.
 - **Stage it:** first drive H(n=2) with a **parameterized `J̄_Lyα`** (the
-  TPM.py / Huang+2017 Eq. 6 estimate) to get the coupling and signs right; only
+  EXHALE_transit.py / Huang+2017 Eq. 6 estimate) to get the coupling and signs right; only
   then add the **Monte Carlo RT + B-spline + outer iteration**. Keep the RT
   decoupled from the hydro sub-step (iterate between converged hydro states).
 - **Gate:** photoionization of H(n=2) is a significant proton source below
@@ -485,7 +485,7 @@ layer).
   **Ṁ ≈ 1.03 M_p/Gyr** (Table 3). Outflow velocity ≈ 7× the Case A value at R_*
   (Fig. 20).
 
-### Phase 5 — Velocity-broadened transmission spectrum (extend `TPM.py`)
+### Phase 5 — Velocity-broadened transmission spectrum (extend `EXHALE_transit.py`)
 - Continuum: H⁻ (John 1988), Rayleigh-H (Lee & Kim 2004), He, H₂.
 - Lines: H Balmer (Hα, Hβ, Hγ from H(2s)/H(2p)); **Mg II λ2796/λ2804;
   Ca II λ3934/λ3968; Na I λ5892/λ5898 (+ λ3303); K I λ4045/λ4048/λ7667/λ7701;
@@ -598,5 +598,5 @@ holds across the RK loop.
 | Excited-H / Lyα RT | new `radiation/lya_rt.f90` |
 | Roche potential / tidal source terms | `functions/grav_field.f90`, `states/Source.f90` |
 | Output of new species | `files_IO/write_output.f90` |
-| Transmission spectrum (broadening, geometry) | `TPM.py` |
+| Transmission spectrum (broadening, geometry) | `EXHALE_transit.py` |
 | Add new sources to the build | `SRC` list in `Makefile` (deps auto-generated) |

@@ -62,7 +62,7 @@ metastable network, an H(n=2)/Balmer non-LTE population (Christie et al. 2013), 
 radiative-transfer suppression via a Neufeld escape-probability treatment, Badnell RR+DR
 recombination, Voronov collisional ionization, Kingdon & Ferland charge exchange, CHIANTI
 metal-line cooling (Mg/Ca/Na/Fe II, C/N/O), a Roche/tidal potential (RLOF), and a
-transmission-spectrum post-processor (`TPM.py`).
+transmission-spectrum post-processor (`EXHALE_transit.py`).
 
 ---
 
@@ -84,12 +84,12 @@ transmission-spectrum post-processor (`TPM.py`).
 | Ionization solve | C2Ray (Brent) or implicit network | KPP kinetic preprocessor | Semi-implicit source terms | **MINPACK / analytic-Jacobian Newton** |
 | Species (fiducial) | Arbitrary (gas/dust/ions) | H, H(n=2), He, H⁺, He⁺, He²⁺, He(2³S), e⁻ (+metals, +H₂) | H, H⁺, He, He⁺, e⁻ | H, He (all stages), C/N/O, e⁻, He(2³S), H(n=2) |
 | Metals | Via general chemistry | Optional (solar abundances) | None | **C/N/O ionization + Mg/Ca/Na/Fe cooling** |
-| He(2³S) 10830 | Not a design focus | In-loop non-LTE network | Post-processed (Yan 2022) | In-loop metastable network + `TPM.py` |
+| He(2³S) 10830 | Not a design focus | In-loop non-LTE network | Post-processed (Yan 2022) | In-loop metastable network + `EXHALE_transit.py` |
 | H(n=2) / Hα | Not a focus | Non-LTE, Lyα Monte Carlo, iterated | Post-processed | Non-LTE (Christie 2013) + Lyα escape prob. |
 | Cooling | Recomb/line/free-free (Black 1981), dust, H₃⁺ | Recomb + H I line (Huang 2023) + H₃⁺ | **Lyα only** (+ adiabatic, frictional) | Lyα + recomb + free-free + CHIANTI metals |
 | Tidal / Roche | `USE_TIDES` quadrupole | Optional (Taylor 2025); off in 2026 | Stellar tidal term in a_ext | Roche potential (RLOF) |
 | Lower boundary | Configurable | **μbar, coupled to photochemistry** | 1 Rp, fixed n, T=1500 K | ~μbar base, fixed T/n |
-| Transmission spectrum | — | Ray-traced Voigt (He 10830, Hα) | Post-processed 10830 | `TPM.py` (10830, Lyα, Hα/β, metal doublets) |
+| Transmission spectrum | — | Ray-traced Voigt (He 10830, Hα) | Post-processed 10830 | `EXHALE_transit.py` (10830, Lyα, Hα/β, metal doublets) |
 
 ---
 
@@ -168,7 +168,7 @@ transmission-spectrum post-processor (`TPM.py`).
   cross section, proton de-excitation, photoelectron impact excitation).
 - **Xing** post-processes 10830 only (Yan et al. 2022 NLTE), decoupled from the hydro.
 - **EXHALE** sits between: it builds the 2³S and H(n=2) populations *in the run* and
-  produces the full transmission spectrum (10830, Lyα, Hα, Hβ, metal doublets) in `TPM.py`.
+  produces the full transmission spectrum (10830, Lyα, Hα, Hβ, metal doublets) in `EXHALE_transit.py`.
 - **AIOLOS** does not target these lines.
 
 ### 4.6 Lower boundary
@@ -197,7 +197,7 @@ built to predict. Two adoption routes:
   He/H ratio vary with radius while keeping the single bulk-momentum solve. This is a
   bolt-on to EXHALE's existing single-fluid framework (a diffusion flux in the species
   continuity equations), moderate cost, and Taylor shows it reproduces the multi-fluid
-  answer. It also naturally supplies the altitude-dependent He/H that `TPM.py` needs.
+  answer. It also naturally supplies the altitude-dependent He/H that `EXHALE_transit.py` needs.
 - **Xing route (high cost):** convert EXHALE to genuinely multi-fluid (per-species
   velocities + collisional drag + electron-pressure Riemann split). This is the physically
   purest treatment of fractionation but is effectively a rewrite of the hydro core and its
