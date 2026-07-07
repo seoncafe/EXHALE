@@ -218,7 +218,7 @@ option-(c) guard; see \texttt{Update\_EXHALE\_solver}) --- but here it strikes t
 % =====================================================================
 \begin{figure}[ht]
 \centering
-\includegraphics[width=\linewidth]{../ic_start_benchmark/ic_vs_final.pdf}
+\includegraphics[width=\linewidth]{../benchmarks/ic_start_benchmark/ic_vs_final.pdf}
 \caption{Initial condition (dashed) vs.\ converged final (solid) for each IC:
 temperature (top), velocity (middle), density (bottom). \textbf{hydrostatic} and
 \textbf{transonic} (the latter identical, having fallen back) relax from the flat cold
@@ -230,7 +230,7 @@ the ``NaN at base'' annotation; the final velocity turns negative --- base inflo
 
 \begin{figure}[ht]
 \centering
-\includegraphics[width=0.92\linewidth]{../ic_start_benchmark/finals_overlay.pdf}
+\includegraphics[width=0.92\linewidth]{../benchmarks/ic_start_benchmark/finals_overlay.pdf}
 \caption{Converged final temperature and velocity for the ICs that converged
 (hydrostatic and transonic): they coincide, confirming the IC affects only convergence
 cost, not the steady state. The diverged hot-Parker run is excluded.}
@@ -239,7 +239,7 @@ cost, not the steady state. The diverged hot-Parker run is excluded.}
 
 \begin{figure}[ht]
 \centering
-\includegraphics[width=0.92\linewidth]{../ic_start_benchmark/convergence_bars.pdf}
+\includegraphics[width=0.92\linewidth]{../benchmarks/ic_start_benchmark/convergence_bars.pdf}
 \caption{Steps and wall-clock per IC. The hot-Parker bars (red) are an early numerical
 breakdown, \emph{not} a speedup --- the run never converged.}
 \label{fig:bars}
@@ -306,7 +306,7 @@ visiting the $\mathrm dC/\mathrm dT\le0$ branch). The warm Parker IC violates bo
 
 \begin{figure}[ht]
 \centering
-\includegraphics[width=\linewidth]{../ic_start_benchmark/base_breakdown.pdf}
+\includegraphics[width=\linewidth]{../benchmarks/ic_start_benchmark/base_breakdown.pdf}
 \caption{Instrumented hot-Parker startup (base cell $j{=}1$, first 500 steps, 60 threads).
 (a) the base velocity flips from the IC outflow to \emph{inflow} by step 3 and grows
 monotonically more negative (the one-way-valve base BC cannot relieve it); (b) the base
@@ -383,7 +383,7 @@ warm-seed (fixed)    & 93\,068 & 1860.9 & yes, no NaN                     & 11.5
 
 \begin{figure}[ht]
 \centering
-\includegraphics[width=\linewidth]{../ic_start_benchmark/warmseed_fix.pdf}
+\includegraphics[width=\linewidth]{../benchmarks/ic_start_benchmark/warmseed_fix.pdf}
 \caption{The fixed warm-seed IC. (a) $du$ convergence history: the warm seed's early transient
 is gentler (peak $\sim\!10^3$ vs $\sim\!10^6$), but the histories merge and the step-count-setting
 tail is identical --- convergence is momentum-gated. (b,c) the warm-seed IC (dashed: already

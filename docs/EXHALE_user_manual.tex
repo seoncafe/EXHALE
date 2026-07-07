@@ -397,17 +397,22 @@ zero effect when unset. The four diagnostic tests (top block) and
 \label{tab:env}
 \end{table}
 
-\subsection{Metal cooling on/off and the comparison script}
+\subsection{Metal cooling on/off comparison}
 Metal-line cooling is active \emph{iff} a \texttt{metals.inp} is present
-(\S\ref{sec:inputs}); remove or rename it for a metals-off run. To run the
-\emph{same} planet both ways automatically:
+(\S\ref{sec:inputs}); remove or rename it for a metals-off run. Because the metal
+abundances are read at run time, the executable is built once and the two cases
+differ only by whether \texttt{metals.inp} exists---no source edits or rebuild.
+To run the \emph{same} planet both ways:
 \begin{lstlisting}[style=sh]
-./run_compare_metals.sh        # uses ./input.inp and ./metals.inp
+make                                     # build once
+# metals ON (solar C/N/O from metals.inp):
+printf 'CI 2.69e-4\nNI 6.76e-5\nOI 4.90e-4\n' > metals.inp
+./EXHALE.x ; mv output output_metals_on
+# metals OFF (no metals.inp):
+rm -f metals.inp
+./EXHALE.x ; mv output output_metals_off
 \end{lstlisting}
-This compiles once and runs the planet with metals on, then off, saving the two
-full results to \texttt{output\_metals\_on/} and \texttt{output\_metals\_off/}
-(each with a copy of the inputs used; the second run reuses the binary). The
-per-planet notebooks \texttt{metals\_comparison*.ipynb} read the two folders and
+The per-planet notebooks \texttt{metals\_comparison*.ipynb} read the two folders and
 plot the temperature, velocity / mass-flux, H and metal ionization, and
 heating/cooling differences (cf.\ \S\ref{sec:compare}).
 

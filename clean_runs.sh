@@ -6,7 +6,8 @@
 #   - python / jupyter caches  -> __pycache__, .ipynb_checkpoints, *.pyc
 #
 # KEEPS: converged output*/ profiles, input.inp/metals.inp, notebooks, docs/,
-# src/, and the curated WASP-121b/solver_validation/ package.
+# src/, the curated */solver_validation/ package, and EVERYTHING under backup/
+# and archive/ (user-curated backups are never descended into or touched).
 #
 # Usage:  ./clean_runs.sh          (report what would be freed, then clean)
 #         ./clean_runs.sh -n       (dry run: list only, delete nothing)
@@ -14,24 +15,27 @@ set -u
 cd "$(dirname "$0")"
 DRY=0; [ "${1:-}" = "-n" ] && DRY=1
 
-KEEP='*/solver_validation/*'
+# Directories never descended into: user backups + the curated validation pkg.
+# Both the dir node and its contents are listed so pruning still fires under a
+# global -mindepth (which skips the depth-1 backup/ and archive/ nodes).
+PRUNE=( -path ./backup -o -path './backup/*' -o -path ./archive -o -path './archive/*' \
+        -o -path '*/solver_validation' -o -path '*/solver_validation/*' )
 
 list() {
-  find . -name '*.log'      -not -path "$KEEP"
-  find . -mindepth 2 -name 'EXHALE.x' -not -path "$KEEP"
-  find . -type d -name __pycache__ -o -type d -name .ipynb_checkpoints
+  find . \( "${PRUNE[@]}" \) -prune -o -type f -name '*.log' -print
+  find . -mindepth 2 \( "${PRUNE[@]}" \) -prune -o -type f -name 'EXHALE.x' -print
+  find . \( "${PRUNE[@]}" \) -prune -o -type d \( -name __pycache__ -o -name .ipynb_checkpoints \) -print
   [ -d build ] && echo "./build"
 }
 
 if [ "$DRY" = 1 ]; then
-  echo "[dry run] would remove:"; list; exit 0
+  echo "[dry run] would remove (backup/ and archive/ are excluded):"; list; exit 0
 fi
 
 echo "Freeing: $(list | xargs -r du -sch 2>/dev/null | tail -1 | cut -f1)"
-find . -name '*.log' -not -path "$KEEP" -delete
-find . -mindepth 2 -name 'EXHALE.x' -not -path "$KEEP" -delete
-find . -type d -name __pycache__         -prune -exec rm -rf {} + 2>/dev/null
-find . -type d -name .ipynb_checkpoints  -prune -exec rm -rf {} + 2>/dev/null
-find . -name '*.pyc' -delete
+find . \( "${PRUNE[@]}" \) -prune -o -type f -name '*.log' -print0 | xargs -0r rm -f
+find . -mindepth 2 \( "${PRUNE[@]}" \) -prune -o -type f -name 'EXHALE.x' -print0 | xargs -0r rm -f
+find . \( "${PRUNE[@]}" \) -prune -o -type d \( -name __pycache__ -o -name .ipynb_checkpoints \) -print0 | xargs -0r rm -rf
+find . \( "${PRUNE[@]}" \) -prune -o -type f -name '*.pyc' -print0 | xargs -0r rm -f
 rm -rf build
 echo "Done. Rebuild with 'make'; re-run planets as needed."

@@ -112,7 +112,7 @@ SRC := \
   src/modules/init/set_IC.f90 \
   src/modules/init/init.f90 \
   $(wildcard src/modules/wind_ae/wae_*.f90) \
-  EXHALE_main.f90
+  src/EXHALE_main.f90
 
 # objects (flat in $(OBJDIR)); let make find the sources in their subdirs
 OBJ     := $(addprefix $(OBJDIR)/,$(notdir $(SRC:.f90=.o)))

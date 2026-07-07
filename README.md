@@ -85,10 +85,10 @@ No additional installation step is required.
 
 ```
 EXHALE/
-├── EXHALE_main.f90          # program entry point
 ├── Makefile               # incremental build (FC=gfortran default)
 ├── run_EXHALE.sh            # optional GUI launcher (writes input.inp, calls make)
 ├── src/
+│   ├── EXHALE_main.f90    # program entry point
 │   ├── modules/           # Fortran source modules (flux, init, radiation, …)
 │   └── utils/             # Python GUI (EXHALE_interface_main.py), fortdep.py
 ├── VULCAN/                # third-party VULCAN (+FastChem), NOT in this repo;
@@ -167,13 +167,14 @@ add the lines by hand or start from `examples/` (Option B).
 
 ### Option B — direct (recommended for scripted or repeated runs)
 
-1. Edit `input.inp` (copy from `examples/` as a starting point).
+1. Pick or create a run directory containing an `input.inp` (copy one from
+   `examples/` as a starting point; `examples/tutorial/` is a ready-to-run demo).
 2. If metals are required, place a `metals.inp` in the same directory.
-3. Build and run:
+3. Build once at the repo root, then run the binary from inside the run directory:
 
 ```bash
-make
-./EXHALE.x
+make                                    # build ./EXHALE.x at the repo root
+cd examples/tutorial && ../../EXHALE.x  # reads ./input.inp, writes ./output/
 ```
 
 ### Recommended convergence workflow
@@ -552,4 +553,4 @@ See `examples/README.md` for the exact lines each one adds:
 
 ---
 
-Last updated: 2026-07-07 20:20
+Last updated: 2026-07-07 21:47

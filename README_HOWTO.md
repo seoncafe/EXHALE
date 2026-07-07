@@ -14,7 +14,8 @@ du_th [PLM,WENO3]:        0.5 1.0e-3
 Solver: Newton
 ```
 ```bash
-make && ./EXHALE.x
+make                                   # build ./EXHALE.x once at the repo root
+cd examples/tutorial && ../../EXHALE.x # run in a self-contained run dir (input.inp + output/)
 ```
 `Reconstruction scheme: PLM+WENO3` enables the two-stage PLM->WENO3 marching
 (PLM to the first `du_th` value, WENO3 to the second); `Reconstruction scheme:

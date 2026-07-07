@@ -109,7 +109,7 @@ subroutine `solve_energy_semi_implicit(u, W, dt, heat, cool, f_sp)`. In
 `EXHALE_main.f90` the explicit `u(:,3) = u(:,3) + dt*(heat - cool)` was replaced by
 `call solve_energy_semi_implicit(u,W,dt,heat,cool,f_sp)`; Makefile updated.
 
-**Verification (HD 209458b, `run_compare_metals.sh`).** Metals-ON converged in
+**Verification (HD 209458b, metals on/off comparison).** Metals-ON converged in
 **71,993** steps vs **236,344** explicit (~33% less wall-clock, 14 min 7 s). Same
 state: log10 Ṁ 9.49061 vs 9.49064; T_max 6525.4 vs 6525.6 K; T_min 1009.3 K
 (exact). Metals-OFF: explicit stalled at du≈0.033; semi-implicit reached du=0.02.
