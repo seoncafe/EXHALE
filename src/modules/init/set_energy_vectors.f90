@@ -147,7 +147,7 @@
 	! Calculate the integrated value of the flux
 	J_XUV  = (10.0**LX + 10.0**LEUV)/(4.0*pi*a_orb**2.0)
 
-	! Read optional opacity.inp and load any .atesopa tables, then
+	! Read optional opacity.inp and load any .opa tables, then
 	! fill the H/He cross sections through the model dispatcher
 	! (model 'A' reproduces the analytic curves exactly).
 	call read_opacity_input

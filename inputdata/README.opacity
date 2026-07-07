@@ -1,4 +1,4 @@
-.atesopa tabulated cross-section format
+.opa tabulated cross-section format
 ========================================
 
 Two whitespace-separated columns:
@@ -17,14 +17,14 @@ by 1e18 before saving.
 Activate by adding to opacity.inp:
 
     OPACITY_MODEL = T
-    OPA_FILE_HI   = inputdata/HI_sample.atesopa
-    OPA_FILE_HEI  = inputdata/HeI_sample.atesopa
+    OPA_FILE_HI   = inputdata/HI_sample.opa
+    OPA_FILE_HEI  = inputdata/HeI_sample.opa
     ...
 
 Per-species files are independent: any species without an OPA_FILE_*
 entry falls back to the analytic curve from cross_sec.f90 even when
 OPACITY_MODEL = T.
 
-The shipped HI_sample.atesopa is generated from cross_sec.f90's
+The shipped HI_sample.opa is generated from cross_sec.f90's
 analytic formula at 13 sample energies; using it with model 'T'
 should reproduce the analytic 'A' result to interpolation accuracy.

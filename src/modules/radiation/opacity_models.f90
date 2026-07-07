@@ -5,7 +5,7 @@
       !   'A' analytic (cross_sec.f90; current ATES default)
       !   'C' constant   (sigma_threshold * user factor, above threshold)
       !   'P' physical   (constant + Robinson&Catling pressure broadening)
-      !   'T' tabulated  (.atesopa two-column file: E[eV], sigma[1e-18 cm^2])
+      !   'T' tabulated  (.opa two-column file: E[eV], sigma[1e-18 cm^2])
       !
       ! Cross sections are returned in ATES's internal unit of 1e-18 cm^2,
       ! same as cross_sec.f90, so downstream code is unchanged.
@@ -43,7 +43,7 @@
       !----------------------------------------------------------!
 
       subroutine load_opacity_tables
-      ! Load every per-species .atesopa file whose path was set in
+      ! Load every per-species .opa file whose path was set in
       ! opacity.inp. Empty paths are no-ops (the dispatcher will fall
       ! back to the analytic curve for that species).
 

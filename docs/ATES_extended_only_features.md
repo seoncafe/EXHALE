@@ -12,7 +12,7 @@ See also `ATES_versions_diff.md` for the full side-by-side comparison.
 ## 1. Opacity model dispatcher (entire Phase 1 — no equivalent at all)
 
 > **Update (2026):** No longer extended-only. The dispatcher
-> (`opacity_models.f90`, A/C/P/T, `.atesopa` tables, `opacity.inp`) has
+> (`opacity_models.f90`, A/C/P/T, `.opa` tables, `opacity.inp`) has
 > been ported to EXHALE, and the Robinson & Catling
 > pressure-broadening — a dormant hook in ATES_extended — is now
 > **actually applied per-cell** (weights the opacity column density). See
@@ -26,13 +26,13 @@ ATES_extended adds a complete pluggable opacity layer:
   * `'A'` analytic (current ATES default)
   * `'C'` constant (threshold cross section x user factor)
   * `'P'` physical (constant + Robinson & Catling pressure broadening)
-  * `'T'` tabulated (per-species `.atesopa` file)
+  * `'T'` tabulated (per-species `.opa` file)
   Returns in ATES's internal `1e-18 cm^2` unit so downstream code is
   unchanged. Includes the `opacity_pT_factor(p)` per-cell multiplier and
   `opa_table` derived type with `load_opacity_tables` / `free_opacity_tables`.
 * **`src/modules/files_IO/opacity_input_read.f90`** (~116 LOC) — parser
   for the new `opacity.inp` key=value file.
-* **`.atesopa` table format** — two-column (E[eV], sigma[1e-18 cm^2])
+* **`.opa` table format** — two-column (E[eV], sigma[1e-18 cm^2])
   per-species tabulated cross-section file, with analytic fallback when a
   path is empty.
 
@@ -114,8 +114,8 @@ In `ATES_extended/inputdata/`, none of which exist in EXHALE:
 
 * `metals.inp.example` — annotated abundance template.
 * `opacity.inp.example` — annotated opacity-model key documentation.
-* `HI_sample.atesopa` — 13-row sample tabulated cross-section table.
-* `README.opacity` — `.atesopa` / opacity format documentation.
+* `HI_sample.opa` — 13-row sample tabulated cross-section table.
+* `README.opacity` — `.opa` / opacity format documentation.
 
 ## 8. Companion design memo
 
@@ -133,7 +133,7 @@ In `ATES_extended/inputdata/`, none of which exist in EXHALE:
 | Capability | In ATES_extended | In EXHALE |
 |---|---|---|
 | Opacity model dispatcher (A/C/P/T) | Yes | **Yes** (ported) |
-| `.atesopa` tabulated cross sections | Yes | **Yes** |
+| `.opa` tabulated cross sections | Yes | **Yes** |
 | Pressure-broadening (Robinson & Catling) | Yes (Phase 1; per-cell **deferred**) | **Yes — applied per-cell** (completed) |
 | Nitrogen (NI/NII/NIII) ionization + opacity | Yes | **Yes** (in the MINPACK 9-eq system) |
 | Dielectronic recombination | Yes (Badnell, despite stale SVS-1982 docstring) | **Yes** (Badnell 2006 RR + adf48 DR) |

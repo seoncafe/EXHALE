@@ -49,7 +49,7 @@ data sources, and footprint. This document compares them side by side.
 
 | Aspect | ATES_extended | EXHALE |
 |---|---|---|
-| Opacity model dispatcher (Phase 1) | **Yes** — A/C/P/T models in `opacity_models.f90`, `.atesopa` table format, pressure-broadening **hook (deferred)** | **Yes** — same dispatcher ported; pressure broadening **applied per-cell** (completed) |
+| Opacity model dispatcher (Phase 1) | **Yes** — A/C/P/T models in `opacity_models.f90`, `.opa` table format, pressure-broadening **hook (deferred)** | **Yes** — same dispatcher ported; pressure broadening **applied per-cell** (completed) |
 | Charge transfer with H (Kingdon & Ferland 1996) | No | **Yes** — O/N/C ↔ H in `System_HeHCO.f90`, couples metal & H ionization |
 | Module organization | Highly modular (8 new files plus 5 modifications) | Less modular (1 new file plus 14 modifications) |
 | Regression test specification | Documented in memo: with no `metals.inp` present, results must be bit-identical to upstream | Only a smoke test (executable initializes correctly) |

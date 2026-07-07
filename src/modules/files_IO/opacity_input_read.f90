@@ -14,7 +14,7 @@
       !   OPA_PB_FACTOR     = <real>      (Robinson&Catling a)
       !   OPA_PB_EXPONENT   = <real>      (n)
       !   OPA_PB_PIVOT      = <real>      (dyne/cm^2; default 1e5)
-      !   OPA_FILE_HI       = <path>      (.atesopa table for HI)
+      !   OPA_FILE_HI       = <path>      (.opa table for HI)
       !   OPA_FILE_HEI      = <path>
       !   OPA_FILE_HEII     = <path>
       !   OPA_FILE_HEITR    = <path>

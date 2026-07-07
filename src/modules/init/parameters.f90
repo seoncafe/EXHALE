@@ -505,7 +505,7 @@
       real*8 :: opa_pb_factor   = 0.0d0    ! a
       real*8 :: opa_pb_exponent = 1.0d0    ! n
       real*8 :: opa_pb_pivot    = 1.0d5    ! dyne/cm^2 = 0.1 bar
-      ! Tabulated-model (.atesopa) per-species file paths:
+      ! Tabulated-model (.opa) per-species file paths:
       character(len = :), allocatable :: opa_file_HI
       character(len = :), allocatable :: opa_file_HeI
       character(len = :), allocatable :: opa_file_HeII

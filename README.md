@@ -93,7 +93,7 @@ EXHALE/
 │   └── utils/             # Python GUI (EXHALE_interface_main.py), fortdep.py
 ├── VULCAN/                # third-party VULCAN (+FastChem), NOT in this repo;
 │                          #   fetched by src/utils/setup_vulcan.sh — see below
-├── inputdata/             # opacity / SED table samples (*.atesopa, Jlya.txt, …)
+├── inputdata/             # opacity / SED table samples (*.opa, Jlya.txt, …)
 ├── cooling_data/          # CHIANTI cooling-formula fit scripts + notebooks
 ├── examples/
 │   ├── 01_legacy_marching/ … 12_windae_ic_hd209/  # ready-made input configs
@@ -553,4 +553,4 @@ See `examples/README.md` for the exact lines each one adds:
 
 ---
 
-Last updated: 2026-07-07 21:47
+Last updated: 2026-07-07 21:54

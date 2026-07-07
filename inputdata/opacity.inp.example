@@ -4,7 +4,7 @@
 
 # Model: A=analytic (default, current ATES), C=constant,
 #        P=constant + Robinson&Catling pressure broadening,
-#        T=tabulated (.atesopa file per species)
+#        T=tabulated (.opa file per species)
 OPACITY_MODEL    = A
 
 # Multiplicative factors for C/P models (default 1.0)
@@ -20,7 +20,7 @@ OPA_PB_EXPONENT  = 1.0
 OPA_PB_PIVOT     = 1.0e5
 
 # Tabulated cross sections for T model. Empty = analytic fallback.
-# OPA_FILE_HI    = inputdata/HI_sample.atesopa
-# OPA_FILE_HEI   = inputdata/HeI.atesopa
-# OPA_FILE_HEII  = inputdata/HeII.atesopa
-# OPA_FILE_HEITR = inputdata/HeITR.atesopa
+# OPA_FILE_HI    = inputdata/HI_sample.opa
+# OPA_FILE_HEI   = inputdata/HeI.opa
+# OPA_FILE_HEII  = inputdata/HeII.opa
+# OPA_FILE_HEITR = inputdata/HeITR.opa

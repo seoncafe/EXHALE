@@ -115,7 +115,7 @@ ATES_extended/
       post_process/
         post_process_adv.f90                  (modified: 9 lines added)
   inputdata/
-    HI_sample.atesopa                         (new: sample table)
+    HI_sample.opa                         (new: sample table)
     opacity.inp.example                       (new)
     metals.inp.example                        (new)
     README.opacity                            (new)
@@ -200,17 +200,17 @@ OPA_CONST_HEITR  = 1.0
 OPA_PB_FACTOR    = 0.0          # Robinson & Catling a
 OPA_PB_EXPONENT  = 1.0          # n
 OPA_PB_PIVOT     = 1.0e5        # dyne/cm^2
-OPA_FILE_HI      = inputdata/HI_sample.atesopa
-OPA_FILE_HEI     = inputdata/HeI.atesopa
-OPA_FILE_HEII    = inputdata/HeII.atesopa
-OPA_FILE_HEITR   = inputdata/HeITR.atesopa
+OPA_FILE_HI      = inputdata/HI_sample.opa
+OPA_FILE_HEI     = inputdata/HeI.opa
+OPA_FILE_HEII    = inputdata/HeII.opa
+OPA_FILE_HEITR   = inputdata/HeITR.opa
 \end{verbatim}
 
 If the file is absent, every key keeps its default from
 \texttt{parameters.f90} (model A, factor 1.0, no table paths) and there is
 no behavior change. Unrecognized keys produce a warning and are skipped.
 
-\subsection{\texttt{.atesopa} table format}
+\subsection{\texttt{.opa} table format}
 
 Two columns, whitespace separated, no header:
 \begin{verbatim}
@@ -226,7 +226,7 @@ falls back to linear-in-$y$ interpolation. This format is semantically
 equivalent to AIOLOS' \texttt{*.opa} files but is given a distinct extension
 to make the unit convention explicit.
 
-The shipped \texttt{inputdata/HI\_sample.atesopa} is a 13-point evaluation of
+The shipped \texttt{inputdata/HI\_sample.opa} is a 13-point evaluation of
 the analytic HI curve (at 13.61, 14, 16, 20, 25, 35, 50, 75, 100, 200, 500,
 1000, 5000~eV). Running model T with this file should reproduce the model A
 result to within interpolation accuracy --- a useful regression check.
@@ -770,7 +770,7 @@ sources (e.g.\ Reilman \& Manson 1979, $\sim 2.94\,$Mb). This reflects the
 characteristics of the Verner+1996 fit (resonance smoothing); \emph{the
 ported code reproduces the published Verner fit exactly}. If higher
 accuracy is needed the user can supply a custom cross-section table as a
-\texttt{.atesopa} file --- but note the current dispatcher only handles
+\texttt{.opa} file --- but note the current dispatcher only handles
 H/He, so a metals-side dispatcher would need to be added (small
 generalization of \texttt{cross\_sec\_metals.f90}).
 
@@ -833,8 +833,8 @@ be bit-identical. Any discrepancy points to a regression in the
 \texttt{set\_energy\_vectors} edits.
 
 \item \textbf{Model T regression test}: with
-\texttt{HI\_sample.atesopa} and \texttt{OPACITY\_MODEL = T},
-\texttt{OPA\_FILE\_HI = inputdata/HI\_sample.atesopa} (other species fall
+\texttt{HI\_sample.opa} and \texttt{OPACITY\_MODEL = T},
+\texttt{OPA\_FILE\_HI = inputdata/HI\_sample.opa} (other species fall
 back to the analytic curve). \texttt{Hydro\_ioniz.txt} should agree with
 the model-A run to $\lesssim 1\%$ (interpolation accuracy).
 
@@ -894,7 +894,7 @@ Path & Role & Lines \\
 \texttt{src/modules/radiation/metals\_drive.f90}        & per-cell coronal driver     &  92 \\
 \texttt{src/modules/radiation/metals\_cool.f90}         & Black 1981 cooling fits     & 102 \\
 \texttt{src/modules/files\_IO/write\_metals\_output.f90}& output writer               &  62 \\
-\texttt{inputdata/HI\_sample.atesopa}                   & 13-row sample table         &  13 \\
+\texttt{inputdata/HI\_sample.opa}                   & 13-row sample table         &  13 \\
 \texttt{inputdata/opacity.inp.example}                  & key documentation           &  22 \\
 \texttt{inputdata/metals.inp.example}                   & usage example               &  10 \\
 \texttt{inputdata/README.opacity}                       & format documentation        &  31 \\
@@ -1680,7 +1680,7 @@ now filled through \texttt{photoion\_sigma(sp,E)}, which selects:
   \item \textbf{P} --- constant plus Robinson \& Catling (2012)
     pressure broadening (below);
   \item \textbf{T} --- tabulated from a per-species two-column
-    \texttt{.atesopa} file (\(E\,[\mathrm{eV}],\,\sigma\,[10^{-18}\,
+    \texttt{.opa} file (\(E\,[\mathrm{eV}],\,\sigma\,[10^{-18}\,
     \mathrm{cm}^2]\)), log--log interpolated, analytic fallback when a
     species has no file.
 \end{itemize}
@@ -1719,7 +1719,7 @@ edit source and rebuild:
 \end{itemize}
 \begin{sloppypar}
 Templates ship in \texttt{inputdata/} (\texttt{metals.inp.example},
-\texttt{opacity.inp.example}, \texttt{HI\_sample.atesopa},
+\texttt{opacity.inp.example}, \texttt{HI\_sample.opa},
 \texttt{README.opacity}).
 \end{sloppypar}
 
