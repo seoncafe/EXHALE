@@ -165,7 +165,7 @@
 	! HeI triplet photoioiniz. cross section
 	s_heiTR = (/ (photoion_sigma('HeITR', e_v(i)), i = 1,Nl) /)
 
-	! H2 photoionization cross section (Tier-2 molecular extension;
+	! H2 photoionization cross section (molecular extension;
 	! Yan, Sadeghpour & Dalgarno 1998 fit, zero below 15.4 eV)
 	s_h2 = (/ (sigma_H2(e_v(i)), i = 1,Nl) /)
 

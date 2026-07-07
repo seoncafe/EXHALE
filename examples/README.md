@@ -4,7 +4,7 @@ One folder per solver/physics combination. Folders `01`–`11` are the
 same planet (HD189733b) so the effect of each option can be isolated;
 `12_windae_ic_hd209`, `14_diffusion` and `15_molecular` use HD209458b, where
 those lower-atmosphere / diffusion options are validated (`11` uses HD189733b
-far from the seed to exercise the self-consistent C-2 continuation). Each
+far from the seed to exercise the self-consistent-BC continuation). Each
 folder is self-contained: `cd` into it and run the repo-root binary,
 
 ```sh
@@ -31,7 +31,7 @@ each option does.
 | `08_full` | Everything on (= the `HD189733b/` planet folder + Newton); feeds `EXHALE_transit.py` | 07 + `metals.inp` |
 | `09_spherical` | Spherical domain instead of the default Roche/L1 truncation | `Domain mode: Spherical`, `Outer radius [R_p]: 10.0` |
 | `10_warm_seed_ic` | Warm-seed (hot Parker overlay) initial condition | `Hot Parker IC: 10000` |
-| `11_windae_ic` | In-process Wind-AE IC for HD189733b — far from the seed, so the **C-2 continuation** (base-BC re-convergence + molecular-layer turn-off) is exercised; the Wind-AE ramp converges and writes the IC. EXHALE's *own* HD189733b base-breathing instability (separate from the IC) then limits the warm start | `+ IC mode: windae`, `+ Solver: Newton` |
+| `11_windae_ic` | In-process Wind-AE IC for HD189733b — far from the seed, so the **self-consistent-BC continuation** (base-BC re-convergence + molecular-layer turn-off) is exercised; the Wind-AE ramp converges and writes the IC. EXHALE's *own* HD189733b base-breathing instability (separate from the IC) then limits the warm start | `+ IC mode: windae`, `+ Solver: Newton` |
 | `12_windae_ic_hd209` | In-process Wind-AE warm-start IC that **works** — HD209458b (not HD189733b), close to the shipped seed, so the ramp converges and EXHALE warm-starts cleanly (spherical 10 Rp) | HD209458b params `+ Domain mode: Spherical`, `IC mode: windae`, `Solver: Newton` |
 | `13_lower_atmosphere` | **Lower-atmosphere connection** for four planets: an analytic 1-ubar base column plus a `base.inp` handoff (isothermal or Guillot T(p) generator) — see the folder's own README (multi-planet, not the HD189733b baseline) | `Lower column: <R_1bar>`; driver-generated `base_iso.inp` / `base_guillot.inp` |
 | `14_diffusion` | **Diffusive separation of He and metals** (HD209458b): the He/H ratio declines with altitude and each trace metal settles independently, reshaping the He 10830 line | HD209458b params `+ Include He23S? True`, `+ He_diffusion: True`, `+ He_metal_diffusion: True`, `+ He_Kzz: 1.0e9`, `+ He_alphaT: 0.0`, `metals.inp` present |
@@ -40,7 +40,7 @@ each option does.
 Notes
 - Wind-AE IC (`11`/`12`, `docs/wind_ae_solver.pdf`): `IC mode: windae`
   builds the IC in-process from a shipped seed (`inputdata/windae_seed.csv`,
-  symlinked into each folder), via the self-consistent C-2 continuation.
+  symlinked into each folder), via the self-consistent-BC continuation.
   This converges seed-adjacent hot Jupiters (`12`, HD209458b) and
   far-from-seed planets (`11`, HD189733b) alike. Whether EXHALE then
   time-integrates the result cleanly is a separate matter: HD189733b hits an
@@ -56,7 +56,7 @@ Notes
   `Resid tol: 1.0e-3` and therefore harmless here.
 
 ## 13_lower_atmosphere/
-Tier-1/3 lower-atmosphere connection examples for HD 209458 b, HD 189733 b,
+Lower-atmosphere connection examples for HD 209458 b, HD 189733 b,
 WASP-121 b and WASP-52 b: per-planet `input.inp` + driver-generated
 `base_iso.inp` / `base_guillot.inp` handoff files, with a results table and
 regeneration commands in its own README.  Full description:

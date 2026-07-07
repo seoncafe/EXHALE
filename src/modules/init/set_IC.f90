@@ -125,7 +125,7 @@
 		! matching the lower BC exactly (no inverted gradient); above hp_base_rtr
 		! the gas is warm (T_wind), ionized, and carries the transonic velocity.
 		! Initialize ALL species columns (f_sp is intent(out); metals and
-	! Tier-2 molecular columns stay zero unless set below or loaded).
+	! molecular columns stay zero unless set below or loaded).
 	f_sp = 0.0d0
 
 	do j = 1-Ng, N+Ng

@@ -1,5 +1,5 @@
 	module System_HeH_mol
-	! Tier-2 molecular ionization-equilibrium system: H/He (+ optional
+	! molecular ionization-equilibrium system: H/He (+ optional
 	! He 2^3S triplet) extended with H2, H2+, H3+, HeH+ (docs/
 	! lower_atmosphere_coupling.*).
 	!

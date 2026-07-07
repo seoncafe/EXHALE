@@ -64,7 +64,7 @@
       call wae_load_spectrum(trim(specf))
       call load_seed(trim(seedf))
       ! rho convergence scale from the loaded seed's base density, matching the
-      ! reference C code's 10^floor(log10(rho_rmin*0.01)); the C-2 ramp updates
+      ! reference C code's 10^floor(log10(rho_rmin*0.01)); the self-consistent-BC ramp updates
       ! it as rho_rmin changes. (The old "b0>120 -> 10" heuristic mis-scaled the
       ! seed -- whose rho_rmin ~ 2e4 needs ~100 -- and stalled the first solve.)
       rhoscale = 10.0d0**floor(log10(par%rho_rmin*0.01d0))
@@ -82,15 +82,15 @@
          Lstar_t = 0.0d0
       end if
 
-      ! Stage C-1 first (static base BCs): fast for seed-adjacent hot Jupiters.
-      write(*,'(A)') '      (wae bridge) ramping seed -> this planet (stage C-1)...'
+      ! Static-BC ramp first: fast for seed-adjacent hot Jupiters.
+      write(*,'(A)') '      (wae bridge) ramping seed -> this planet (static-BC ramp)...'
       rc = ramp_to(Ftot_t, Mp, R0, Mstar, a_orb, Lstar_t)
       if (rc .ne. 0) then
-         ! C-1 stalled -> strongly-bound / far-from-seed planet (e.g. HD189733b).
-         ! Reload the seed and retry with stage C-2: re-converge the base BCs and
+         ! static-BC ramp stalled -> strongly-bound / far-from-seed planet (e.g. HD189733b).
+         ! Reload the seed and retry with the self-consistent-BC ramp: re-converge the base BCs and
          ! turn the molecular layer off once the base falls inside the wind.
-         write(*,'(A)') '      (wae bridge) C-1 stalled; retrying with stage C-2'// &
-                        ' (self-consistent base BCs)...'
+         write(*,'(A)') '      (wae bridge) static-BC ramp stalled; retrying with'// &
+                        ' self-consistent-BC ramp...'
          call load_seed(trim(seedf))
          rhoscale = 10.0d0**floor(log10(par%rho_rmin*0.01d0))
          call setup_indices_scales()

@@ -162,17 +162,17 @@ target planet:
   reference wrapper round-trips it through \code{guess.inp}).
 \end{itemize}
 During the ramp the base boundary conditions can either be held fixed at
-the seed values (\emph{stage C-1}) or re-converged at every step
-(\emph{stage C-2}); the port implements both, selected by an optional
+the seed values (\emph{static-BC mode}) or re-converged at every step
+(\emph{self-consistent-BC mode}); the port implements both, selected by an optional
 \code{static\_bcs} flag on \code{ramp\_var}/\code{ramp\_to} (absent or
-\code{.true.}\ $=$ C-1; \code{.false.}\ $=$ C-2).
+\code{.true.}\ $=$ static-BC mode; \code{.false.}\ $=$ self-consistent-BC mode).
 
-\subsection{Self-consistent base BCs (continuation stage C-2)}\label{sec:c2}
-Stage C-1 (static BCs) suffices for hot Jupiters near the seed, but as the
+\subsection{Self-consistent base BCs}\label{sec:c2}
+The static-BC ramp suffices for hot Jupiters near the seed, but as the
 ramp moves toward a strongly-bound, highly-irradiated planet the seed's
 base density, pressure, and sonic-point column density become physically
 inconsistent with the new gravity and flux, and the relaxation stalls.
-Stage C-2 restores consistency by recomputing the lower boundary as the
+The self-consistent-BC ramp restores consistency by recomputing the lower boundary as the
 parameters move. It has three pieces, ported from the reference wrapper.
 
 \paragraph{Closed-form base state (\code{base\_bcs}).} Taking \Rp\ as the
@@ -248,7 +248,7 @@ far-from-seed planets (HD\,189733b in $\sim$4\,min). The reference wrapper's
 expensive success-path re-convergence (\code{converge\_bcs}) likewise
 defaults off.
 
-\paragraph{Status (2026-06-13): stage C-2 converges HD\,189733b.} On
+\paragraph{Status (2026-06-13): the self-consistent-BC ramp converges HD\,189733b.} On
 HD\,189733b --- far from the seed ($F_{\rm XUV}$ rises $\sim$22$\times$, the
 surface gravity roughly doubles) --- the base-BC re-convergence fires as the
 ramp proceeds, and on the $M_{\rm pl}$ ramp the transition reaches the base
@@ -291,7 +291,7 @@ Module(s) & Role \\
 \code{wae\_nr} & the relaxation stack \code{solvde}/\code{pinvs}/\code{red}/\code{bksub} \\
 \code{wae\_intode} & outward Bulirsch--Stoer integration \\
 \code{wae\_params,\_continuation} & input reading; seed load,
-  \code{ramp\_var}/\code{ramp\_to}, and the stage-C-2 base-BC machinery
+  \code{ramp\_var}/\code{ramp\_to}, and the self-consistent-BC base-BC machinery
   (\code{base\_bcs}, \code{ramp\_base\_bcs}, \code{self\_consistent\_Ncol},
   \code{converge\_Ncol\_sp}) \\
 \code{wae\_ic\_writer} & project the solution onto the EXHALE grid, write \code{*\_IC.txt} \\
@@ -348,13 +348,13 @@ so it stays self-contained.
   metals in equilibrium from the first step, and the IC writer rescales
   the density to EXHALE's exact He/H.
 \item \textbf{Continuation BCs.} The in-process ramp uses the
-  self-consistent stage C-2 (\S\ref{sec:c2}) by default
+  self-consistent-BC ramp (\S\ref{sec:c2}) by default
   (\code{static\_bcs=.false.}): \code{base\_bcs} (bit-exact),
   \code{converge\_Ncol\_sp} (within tolerance), \code{converge\_mol\_atomic}
   (bolometric-layer turn-off), and the reactive/proactive re-convergence in
   \code{ramp\_var}/\code{ramp\_to}. This converges seed-adjacent hot Jupiters
   \emph{and} strongly-bound, far-from-seed planets such as HD\,189733b (which
-  stalled under the older static-BC stage C-1). The static-BC path remains
+  stalled under the older static-BC ramp). The static-BC path remains
   available as \code{static\_bcs=.true.}. Note this concerns the
   \emph{Wind-AE} ramp only; whether EXHALE then time-integrates a given
   planet cleanly is a separate matter (e.g.\ HD\,189733b hits an EXHALE-side

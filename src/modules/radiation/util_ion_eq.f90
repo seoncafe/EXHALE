@@ -108,7 +108,7 @@
 	real*8, dimension(1-Ng:N+Ng),intent(in) :: nhi,nhei,nheii
 	real*8, dimension(1-Ng:N+Ng),intent(in) :: nheiTR
 	real*8, dimension(1-Ng:N+Ng,n_mion),intent(in) :: nm
-	! Optional H2 (Tier-2 molecular extension): adds the H2 opacity,
+	! Optional H2 (molecular extension): adds the H2 opacity,
 	! photoionization rate P_H2 [1/s] and photoelectric heating using the
 	! Yan+1998 cross section s_h2 (threshold e_th_H2 = 15.4 eV).
 	real*8, dimension(1-Ng:N+Ng), intent(in),  optional :: nh2
@@ -152,7 +152,7 @@
 	call calc_column_dens(nhi,nheiS,nheii,nheiTR,N1,N15,N2,NTR)
 	call calc_column_dens_metals(nm, Nm_col)
 
-	! H2 column (Tier-2)
+	! H2 column (molecular)
 	if (present(nh2)) call calc_column_dens_one(nh2, NH2col)
 
 	! Metal-free P_m entries (top-stage ions) stay zero
@@ -536,7 +536,7 @@
 	! Total cooling rate
 	cool = ne*(brem + coex + reco + coio) + cool_M
 
-	! Per-channel breakdown for the Phase-2 diagnostic (Huang Fig. 10).
+	! Per-channel breakdown for the diagnostic (Huang Fig. 10).
 	! Read straight from the arrays already computed above, so the sum of
 	! all channels reproduces `cool` exactly in the default branch.
 	if (present(cool_chan)) then
@@ -559,7 +559,7 @@
 	! ------------------------------------------------------------- !
 
 	subroutine write_cool_breakdown_eq(T_in,n_in,f_sp_in)
-	! Phase-2 diagnostic. Dump the per-channel radiative cooling rate vs
+	! Diagnostic. Dump the per-channel radiative cooling rate vs
 	! radius for the converged equilibrium state, reusing eval_cool's exact
 	! coefficients (no offline re-derivation). Columns: H/He recombination,
 	! collisional ionization, collisional excitation, bremsstrahlung, then

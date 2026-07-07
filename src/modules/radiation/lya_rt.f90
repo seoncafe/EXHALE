@@ -1,10 +1,10 @@
    module lya_rt
-   ! Phase 3b: Ly-alpha radiative transfer by the escape-probability method,
+   ! Ly-alpha radiative transfer by the escape-probability method,
    ! computed IN-LINE (every timestep) from the current state.
    !
    ! Because we use the Neufeld(1990)/Harrington analytic escape probability rather
    ! than a Monte Carlo, the field is cheap and is evaluated directly inside the
-   ! run (like the Phase-3a H(n=2) feedback) instead of an offline pass. The result
+   ! run (like the H(n=2) feedback) instead of an offline pass. The result
    ! is the Voigt-profile-averaged Ly-alpha mean intensity J_lya(r) (Huang et al.
    ! 2023 Eq. 11), which excited_hydrogen uses to pump H(n=2) when jlya_mode = 2.
    ! The separate option of reading an externally-computed (e.g. real Monte Carlo)

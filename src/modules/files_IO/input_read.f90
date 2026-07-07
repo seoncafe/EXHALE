@@ -2,7 +2,7 @@
    ! Read input planetary parameters adn define
 
    use global_parameters
-   use lower_column, only: q_h2_equilibrium   ! Tier-2a molecular base
+   use lower_column, only: q_h2_equilibrium   ! molecular base
    use metals_input        ! optional metals.inp abundance reader
    use charge_exchange, only: cx_init       ! build active charge-exchange set
    use species_table, only: n_melem, iel_C, iel_O, iel_N, iel_Mg,  &
@@ -259,7 +259,7 @@
 		! Remove HeITR chemistry if He is not included
 		if (.not. thereis_He) thereis_HeITR = .false.
 
-		! Tier-2 molecular chemistry constraints (v1): requires He;
+		! molecular chemistry constraints (v1): requires He;
 		! exclusive with trace metals (merged mol+metals = later work item).
 		if (thereis_mol .and. .not. thereis_He) then
 			write(*,*) '(input_read) ERROR: Molecular chemistry needs He/H>0.'
@@ -304,7 +304,7 @@
 		! to a pure planetary potential (-b0/r) extended to <value> R_p
 		! (Huang Case A-like). Scanned by keyword (index) so blank trailing
 		! lines and line ordering do not matter.
-		! Phase 3a excited-H option (also appended after "Force start:" so
+		! excited-H option (also appended after "Force start:" so
 		! older files are unaffected): "Stellar Teff [K]: <T>" + "Stellar
 		! radius [R_sun]: <R>" supply the diluted-blackbody Balmer continuum
 		! that photoionizes/heats H(n=2). The coupling is enabled iff both are
@@ -392,11 +392,11 @@
 				str = get_word(line, 2)
 				if (str .eq. 'True' .or. str .eq. 'true') ates_photoion_rate = .true.
 			else if (index(line,'Molecular chemistry') .gt. 0) then
-				! Tier-2 molecular network (docs/lower_atmosphere_*).
+				! molecular network (docs/lower_atmosphere_*).
 				str = get_word(line, 3)
 				if (str .eq. 'True' .or. str .eq. 'true') thereis_mol = .true.
 			else if (index(line,'Molecular base') .gt. 0) then
-				! Tier-2a: EOS-only molecular base (docs/lower_atmosphere_*).
+				! EOS-only molecular base (docs/lower_atmosphere_*).
 				str = get_word(line, 3)
 				if (str .eq. 'True' .or. str .eq. 'true') molecular_base = .true.
 			else if (index(line,'Lower atmosphere') .gt. 0) then
@@ -408,7 +408,7 @@
 				str = get_word(line, 4)
 				if (len_trim(str) .gt. 0) read(str,*) lower_atm_r1bar
 			else if (index(line,'Lower column') .gt. 0) then
-				! Tier-1 analytic lower column: "Lower column: <R_1bar in R_J>"
+				! analytic lower column: "Lower column: <R_1bar in R_J>"
 				str = get_word(line, 3);  read(str,*) lower_col_r1bar
 			else if (index(line,'He_Kzz') .gt. 0) then
 				! Eddy diffusion coefficient [cm^2/s] for He/H separation.
@@ -426,7 +426,7 @@
 				str = get_word(line, 2)
 				if (str .eq. 'True' .or. str .eq. 'true') he_metal_diffusion = .true.
 			else if (index(line,'He_diffusion') .gt. 0) then
-				! Phase-1 He/H diffusive separation (default off).
+				! He/H diffusive separation (default off).
 				! "He_diffusion: True"
 				str = get_word(line, 2)
 				if (str .eq. 'True' .or. str .eq. 'true') he_diffusion = .true.
@@ -516,7 +516,7 @@
 				str = get_word(line, 4)
 				if (len_trim(str) .gt. 0) read(str,*) visc_s
 				if (visc_mu0 .gt. 0.0d0) write(*,'(A,ES9.2,A,F5.2,A)')  &
-				   ' (input_read) Viscosity (Phase-1) mu0 =', visc_mu0,  &
+				   ' (input_read) Viscosity mu0 =', visc_mu0,  &
 				   ', s =', visc_s, '  [un-validated]'
 			else if (index(line,'Resid tol') .gt. 0) then
 				! "Resid tol: <val>" = converge on the steady residual ||R||
@@ -622,7 +622,7 @@
    ! subroutine.  Opt-out: omit the key (default off).
    call run_lower_atm_prestep
 
-   ! ---- Tier-3 optional base.inp (written by src/utils/run_lower.py or a
+   ! ---- optional external base.inp (written by src/utils/run_lower.py or a
    ! lower-atmosphere model): overrides the base temperature, base radius
    ! [R_J], He/H ratio and eddy K_zz BEFORE the derived constants below.
    ! Absent file = no-op (byte-identical legacy).
@@ -673,12 +673,12 @@
 
    rho_bc = mass_per_H/(1.0 + HeH)
 
-   ! Tier-2a passive molecular base (docs/lower_atmosphere_coupling.*):
+   ! passive molecular base (docs/lower_atmosphere_coupling.*):
    ! remove from the base particle budget the H nuclei bound into H2 at
    ! (1 ubar, T0) according to the chemical-equilibrium fit; per n0
    ! (H+He nuclei) that is (x2/2)/(1+HeH) particles.  Lowers the base
    ! pressure / raises the base mean molecular weight.  EOS-only: the
-   ! species arrays stay atomic (H2 chemistry is Tier-2 proper).
+   ! species arrays stay atomic (H2 chemistry is the molecular network proper).
    if (molecular_base) then
       block
          real*8 :: qmb, x2mb
@@ -728,7 +728,7 @@
 		if (thereis_metals .and. .not.thereis_HeITR) N_eq = 3 + 2*n_melem
 		if (thereis_metals .and.      thereis_HeITR) N_eq = 4 + 2*n_melem
 
-	! Tier-2 molecular system: H+/He+/He++ + H2/H2+/H3+/HeH+ (+ He 2^3S)
+	! molecular system: H+/He+/He++ + H2/H2+/H3+/HeH+ (+ He 2^3S)
 	if (thereis_mol) then
 		N_eq = 7
 		if (thereis_HeITR) N_eq = 8
@@ -750,7 +750,7 @@
    ! ------------------------------------------------------------------- !
 
    subroutine read_base_inp
-   ! Tier-3 lower-atmosphere handoff file (optional).  Keyword lines:
+   ! lower-atmosphere handoff file (optional).  Keyword lines:
    !   T_base    <K>      -> overrides T0 (base temperature)
    !   r_base    <R_J>    -> overrides the "Planet radius" (1-ubar radius)
    !   HeH_base  <ratio>  -> overrides the He/H number ratio

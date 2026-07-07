@@ -9,7 +9,7 @@
       ! Active set:
       !   cx_full = .false. (default): the 23 metal + H/H+ reactions (Group A),
       !             which couple each metal's ionization balance to the H+
-      !             fraction. This is the Phase-1d default.
+      !             fraction. This is the default.
       !   cx_full = .true. : the full Table 4 -- adds He + H (Group B),
       !             metal + He (Group C) and metal + metal (Group D).
       !

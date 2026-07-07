@@ -153,10 +153,10 @@
    subroutine viscous_accel(vel, Tcell, Fv)
    ! Leading CETIMB viscous momentum acceleration (Koskinen 2022 B5, first term):
    ! F_mu = (4/3)(1/r^2) d/dr(r^2 mu dvel/dr), with mu = visc_mu0 * Tcell^visc_s
-   ! in code units. Phase-1 FOUNDATION (un-validated): no-op if visc_mu0 <= 0;
+   ! in code units. experimental (un-validated): no-op if visc_mu0 <= 0;
    ! the (dmu/dr)(dvel/dr) and -(16/3)mu vel/r^2 corrections, the viscous
    ! dissipation q_mu + heat conduction, and a stable semi-implicit time
-   ! integration are deferred to Phase-2 (calibration + validation vs Koskinen).
+   ! integration are deferred to a later revision (calibration + validation vs Koskinen).
    real*8, intent(in)  :: vel(1-Ng:N+Ng), Tcell(1-Ng:N+Ng)
    real*8, intent(out) :: Fv(1-Ng:N+Ng)
    real*8 :: mu(1-Ng:N+Ng), rp, rm, mup, mum, fluxp, fluxm

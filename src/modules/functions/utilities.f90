@@ -20,7 +20,7 @@
 	integer :: im
 	real*8, dimension(1-Ng:N+Ng), intent(in) :: nhii
 	real*8, dimension(1-Ng:N+Ng), intent(in) :: nheii,nheiii
-	! Optional molecular ions (Tier-2): cols 1 H2 (neutral), 2 H2+, 3 H3+,
+	! Optional molecular ions: cols 1 H2 (neutral), 2 H2+, 3 H3+,
 	! 4 HeH+ -- each molecular ion carries one electron.
 	real*8, dimension(1-Ng:N+Ng,4), intent(in), optional :: nmol
 	real*8, dimension(1-Ng:N+Ng,n_mion), intent(in), optional :: nm
@@ -54,7 +54,7 @@
 	real*8, dimension(1-Ng:N+Ng), intent(in)  :: nhi,nhii
 	real*8, dimension(1-Ng:N+Ng), intent(in)  :: nhei,nheii,nheiii,nheiTR
 	real*8, dimension(1-Ng:N+Ng,n_mion), intent(in), optional :: nm
-	real*8, dimension(1-Ng:N+Ng,4), intent(in), optional :: nmol  ! Tier-2
+	real*8, dimension(1-Ng:N+Ng,4), intent(in), optional :: nmol  ! molecular
 	real*8, dimension(1-Ng:N+Ng), intent(out) :: n_tot
 	
 	if (thereis_He) then
@@ -87,7 +87,7 @@
 	real*8, dimension(1-Ng:N+Ng), intent(in)  :: nhi,nhii
 	real*8, dimension(1-Ng:N+Ng), intent(in)  :: nhei,nheii,nheiii,nheiTR
 	real*8, dimension(1-Ng:N+Ng,n_mion), intent(in), optional :: nm
-	real*8, dimension(1-Ng:N+Ng,4), intent(in), optional :: nmol  ! Tier-2
+	real*8, dimension(1-Ng:N+Ng,4), intent(in), optional :: nmol  ! molecular
 	real*8, dimension(1-Ng:N+Ng), intent(out) :: n_out
 	
 	if (thereis_He) then
@@ -162,7 +162,7 @@
 
 	subroutine calc_column_dens_one(nsp, Ncol)
 	! Column density of a single species (same rectangle rule and
-	! opa_pf weighting as calc_column_dens).  Used for N_H2 (Tier-2).
+	! opa_pf weighting as calc_column_dens).  Used for N_H2 (molecular).
 	integer :: j
 	real*8, dimension(1-Ng:N+Ng), intent(in)  :: nsp
 	real*8, dimension(1-Ng:N+Ng), intent(out) :: Ncol

@@ -1,5 +1,5 @@
       program base_bcs_test
-      ! C-2 Phase-1 validation: load a seed windsoln, compute base_bcs, print.
+      ! self-consistent-BC ramp validation (base_bcs): load a seed windsoln, compute base_bcs, print.
       ! Compare against relax_wrapper.base_bcs (Python oracle).
       ! Usage: base_bcs_test <seed.csv>
       use wae_params,       only: par => wae_par

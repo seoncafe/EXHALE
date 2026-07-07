@@ -1,6 +1,6 @@
       program ramp_test
-      ! C-1 test: load a seed windsoln, ramp the system params to a target
-      ! (static BCs), integrate outward, write the full windsoln.
+      ! static-BC ramp test: load a seed windsoln, ramp the system params to a target,
+      ! integrate outward, write the full windsoln.
       ! Usage: ramp_test <seed.csv> <spectrum.inp> <out.csv> <rhoscale> \
       !                  <Ftot> <Mp> <Rp> <Mstar> <a> <Lstar>
       use wae_config,      only: nsp => wae_nspecies, m => wae_m,         &

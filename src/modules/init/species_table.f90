@@ -64,7 +64,7 @@
       integer, parameter :: isp_HeII  = 4
       integer, parameter :: isp_HeIII = 5
       integer, parameter :: isp_HeTR  = 6   ! He 2^3S metastable triplet
-      ! ---- molecular species columns (Tier-2; zero unless thereis_mol) ----
+      ! ---- molecular species columns (molecular; zero unless thereis_mol) ----
       integer, parameter :: isp_H2    = 34
       integer, parameter :: isp_H2p   = 35
       integer, parameter :: isp_H3p   = 36
@@ -142,7 +142,7 @@
              8.152d0, 16.35d0, 0.0d0,  6.113d0, 11.87d0, 0.0d0,      &
              5.139d0, 0.0d0,   4.341d0, 0.0d0,   10.36d0, 0.0d0,     &
              7.902d0, 16.199d0, 0.0d0 ]
-      ! contributes to metal line cooling (cool_M)?  Phase-2 (Huang+2023)
+      ! contributes to metal line cooling (cool_M)?  (Huang+2023)
       ! adds CHIANTI Ca II H&K, Na I D, and Fe II to the C/N/O/Mg coolants
       ! already present (cool_coeff_metal dispatches each by name), plus Fe I
       ! (NIST f-values + Van Regemorter, Huang Fig 5). Si/K/S still have no

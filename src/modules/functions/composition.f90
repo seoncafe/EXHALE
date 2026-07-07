@@ -45,7 +45,7 @@
       real*8, dimension(1-Ng:N+Ng),          intent(inout) :: nheiii, nheiTR
       real*8, dimension(1-Ng:N+Ng,n_mion),   intent(out)   :: nm
       real*8, dimension(1-Ng:N+Ng),          intent(out)   :: ne, n_tot
-      real*8, dimension(1-Ng:N+Ng,4) :: nmol_l   ! Tier-2 molecules
+      real*8, dimension(1-Ng:N+Ng,4) :: nmol_l   ! molecules
       integer :: im
 
       nhi  = rho*f_sp(:,isp_HI)
@@ -60,7 +60,7 @@
          nm(:,im) = rho*f_sp(:,mion_fsp(im))
       enddo
 
-      ! Tier-2 molecular species: include their electrons and their (one
+      ! molecular species: include their electrons and their (one
       ! particle each) contribution to the EOS particle count.  nmol_l is
       ! zero when thereis_mol is off, so the legacy path is unchanged.
       if (thereis_mol) then

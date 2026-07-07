@@ -217,7 +217,7 @@
 
       !--------------!
 
-      ! H2 total photoionization cross section (Tier-2 molecular extension).
+      ! H2 total photoionization cross section (molecular extension).
       ! Yan, Sadeghpour & Dalgarno (1998), ApJ 496, 1044, Eqs. 17-19 (fit
       ! coefficients verified against the PDF, archived as
       ! references/Yan_1998_ApJ_496_1044.pdf).  Threshold 15.4 eV; pieces

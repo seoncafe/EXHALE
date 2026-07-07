@@ -218,7 +218,7 @@
          case ('HeII');  species_column = isp_HeII
          case ('HeIII'); species_column = isp_HeIII
          case ('HeITR'); species_column = isp_HeTR
-         ! Tier-2 molecular columns
+         ! molecular columns
          case ('H2');    species_column = isp_H2
          case ('H2p');   species_column = isp_H2p
          case ('H3p');   species_column = isp_H3p

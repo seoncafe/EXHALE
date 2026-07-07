@@ -1,5 +1,5 @@
       module h3p_cooling
-      ! Optically-thin H3+ infrared cooling (Tier 2 of the lower-atmosphere
+      ! Optically-thin H3+ infrared cooling (the molecular level of the lower-atmosphere
       ! plan; docs/lower_atmosphere_coupling.*).
       !
       ! Per-molecule LTE emission E(H3+,T) from Miller, Stallard, Tennyson &

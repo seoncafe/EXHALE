@@ -74,7 +74,7 @@
       
       ! Momentum variables
       real*8, dimension(1-Ng:N+Ng) :: mom
-      real*8, dimension(1-Ng:N+Ng) :: Fvisc   ! Phase-1 viscous acceleration
+      real*8, dimension(1-Ng:N+Ng) :: Fvisc   ! viscous acceleration
       real*8 :: mom_max,mom_min
 
       ! Convergence stall detection (ported from ATES_extended)
@@ -88,7 +88,7 @@
       logical            :: diag_base = .false.
       character(len=64)  :: diag_env
 
-      ! Phase 3a decoupled outer iteration over the excited-H (H n=2) feedback
+      ! Decoupled outer iteration over the excited-H (H n=2) feedback
       real*8  :: exc_rel
 
       ! Newton-diffusion co-convergence (Solver: Newton + He_diffusion):
@@ -137,7 +137,7 @@
       ! Read planetary parameters from file
       call input_read
 
-      ! Tier-1 analytic lower column (opt-in "Lower column: <R_1bar in R_J>"):
+      ! analytic lower column (opt-in "Lower column: <R_1bar in R_J>"):
       ! integrate the isothermal-Teq hypsometric column (Koskinen+2022) from
       ! the 1-bar radius to the 1-ubar base and report the derived base radius
       ! (chem-equilibrium mu + fully-atomic bracket), the base H2/H/He mix and
@@ -149,7 +149,7 @@
                                     1.0d0, 1.0d-6,                        &
                                     lc_rb, lc_q2, lc_qh, lc_qhe, lc_mu,   &
                                     lc_rba)
-            write(*,'(a)') ' (lower_column) Tier-1 analytic lower colum'//&
+            write(*,'(a)') ' (lower_column) analytic lower colum'//&
                            'n (Koskinen+2022, isothermal Teq):'
             write(*,'(a,f8.4,a,f8.4,a)') '   r(1 ubar) = ', lc_rb/RJ,     &
                ' R_J (chem. eq.)  /  ', lc_rba/RJ, ' R_J (atomic bracket)'
@@ -160,7 +160,7 @@
                '   q_He =', lc_qhe, '   mu =', lc_mu
             if (lc_q2 .gt. 0.3d0) write(*,'(a)') '   NOTE: chem.-equil'// &
                'ibrium base is strongly molecular; if the planet is '//   &
-               'genuinely cool, Tier-2 molecular physics is required '//  &
+               'genuinely cool, molecular physics is required '//  &
                '(for Teq~1000-2000 K hot Jupiters photochemistry '//      &
                'dissociates H2 -- see docs/lower_atmosphere_coupling).'
          end block
@@ -375,13 +375,13 @@
       call get_environment_variable('EXHALE_MAXSTEPS', prof_env)
       if (len_trim(prof_env) .gt. 0) read(prof_env,*) max_steps
 
-      ! Phase 3a excited-H feedback is a decoupled (lagged-explicit) source:
+      ! excited-H H(n=2) feedback is a decoupled (lagged-explicit) source:
       ! at the top of every timestep the H(n=2) Balmer proton source + photo-
       ! electric heating are recomputed from the current state and frozen into
       ! the global arrays that ioniz_eq reads (never inside its Newton solve).
       ! The single hydro+ionization relaxation then converges hydro, ionization
       ! and the Balmer feedback together. Off => arrays stay zero, so the run is
-      ! byte-identical to the Phase-2 result.
+      ! byte-identical to the result with excited-H off.
       exc_rel = 1.0d0
 
       is_mom_const = .false.
@@ -519,13 +519,13 @@
             ! Temperature profile
             call comp_T_from_p(p,n_tot,ne,T)
 
-            ! Phase-1 He/H diffusive separation: advect + diffuse the He element
+            ! He/H diffusive separation: advect + diffuse the He element
             ! ratio (updates the He/H split in f_sp; ionization equilibrium below
             ! then re-solves the stages, conserving the new element amounts).
             ! No-op unless he_diffusion is set (byte-identical when off).
             if (he_diffusion) call he_diffusion_step(rho,v,T,f_sp,dt_loc)
 
-            ! Phase 3a: refresh the lagged H(n=2) Balmer source + heating from
+            ! Refresh the lagged H(n=2) Balmer source + heating from
             ! the current state before the ionization/energy solve.
             if (use_excited_H) call excited_H_update(T,rho,f_sp,v,exc_rel)
 
@@ -587,10 +587,10 @@
   	      ! Temperature profile
   	      call comp_T_from_p(p,n_tot,ne,T)
 
-            ! Phase-1 viscous momentum acceleration (gated; visc_mu0=0 disables).
+            ! viscous momentum acceleration (gated; visc_mu0=0 disables).
             ! Adds CETIMB's physical (diffusive) damping that EXHALE's inviscid
-            ! HLLC scheme lacks. UN-VALIDATED foundation (explicit; leading term
-            ! only) -- calibrate + extend + make semi-implicit in Phase-2.
+            ! HLLC scheme lacks. experimental, un-validated (explicit; leading term
+            ! only) -- calibrate + extend + make semi-implicit in a later revision.
             if (visc_mu0 .gt. 0.0d0) then
                call viscous_accel(v, T, Fvisc)
                u(1:N,2) = u(1:N,2) + dt_loc(1:N)*Fvisc(1:N)
@@ -937,7 +937,7 @@
 
       !---------------------------------------------------!
 
-      ! Phase-3a: refresh the H(n=2) diagnostics from the converged state for
+      ! Refresh the H(n=2) diagnostics from the converged state for
       ! write_excited_H below (the in-loop Balmer source was lagged one step).
       ! The Balmer photoelectric heating is ~1e-4 of the total, so we do NOT
       ! re-solve ioniz_eq here: that would desync T/f_sp from the converged
@@ -951,11 +951,11 @@
       call write_output(rho,v,p,T,heat,cool,eta,                         &
                         nhi,nhii,nhei,nheii,nheiii,nheiTR,nm,'eq')
 
-      ! Phase-2 diagnostic: per-channel radiative cooling vs radius
+      ! Diagnostic: per-channel radiative cooling vs radius
       ! (reuses eval_cool's coefficients; see Huang et al. 2023 Fig. 10).
       call write_cool_breakdown_eq(T,rho,f_sp)
 
-      ! Phase-3a diagnostic: H(n=2) populations, Balmer proton source, and
+      ! Diagnostic: H(n=2) populations, Balmer proton source, and
       ! photoelectric/de-excitation heating vs radius (Huang Figs. 11/27/10/26).
       if (use_excited_H) call write_excited_H
 

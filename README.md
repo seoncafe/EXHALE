@@ -397,7 +397,7 @@ download links and the expected layout.
 
 This works for hot Jupiters close to the shipped seed
 (`examples/12_windae_ic_hd209/`, HD 209458 b) and, via the self-consistent
-C-2 continuation (re-converging the base boundary conditions, and turning the
+self-consistent-BC continuation (re-converging the base boundary conditions, and turning the
 molecular layer off when the base sinks into the wind), for strongly-bound,
 far-from-seed planets too — including HD 189733 b (`examples/11_windae_ic/`),
 whose Wind-AE ramp now converges and writes a valid IC.  (If a ramp ever
@@ -520,7 +520,7 @@ See `examples/README.md` for the exact lines each one adds:
 | `08_full/` | Full physics (metals + He 2³S + Balmer/Lya) |
 | `09_spherical/` | Extended spherical domain |
 | `10_warm_seed_ic/` | Warm-seed initial condition |
-| `11_windae_ic/` | In-process Wind-AE IC for HD 189733 b — the C-2 ramp converges and writes the IC; EXHALE's own base-breathing instability (separate from the IC) then limits the warm start |
+| `11_windae_ic/` | In-process Wind-AE IC for HD 189733 b — the self-consistent-BC ramp converges and writes the IC; EXHALE's own base-breathing instability (separate from the IC) then limits the warm start |
 | `12_windae_ic_hd209/` | In-process Wind-AE warm-start IC that works (HD 209458 b, seed-adjacent) |
 | `13_lower_atmosphere/` | Lower-atmosphere connection for four planets: analytic 1-µbar base column + `base.inp` handoff (isothermal / Guillot T(p)) |
 | `14_diffusion/` | Diffusive separation of He and metals (HD 209458 b): He/H declines with altitude, each metal settles independently, reshaping He 10830 |
@@ -561,4 +561,4 @@ See `examples/README.md` for the exact lines each one adds:
 
 ---
 
-Last updated: 2026-07-07 22:17
+Last updated: 2026-07-07 22:44

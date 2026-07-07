@@ -3,7 +3,7 @@
       ! wind-ae glq_rates.c : calc_gql_rates() (Shull & van Steenberg 1985
       ! energy partition; Dere 2007 secondary-ionization coefficients).
       ! Faithful to the C arithmetic and evaluation order -- behavior
-      ! changes (e.g. Stage-2 spectrum binning) belong in a later phase.
+      ! changes (e.g. Stage-2 spectrum binning) belong in a later revision.
       !
       ! Rate layout matches ionization_rate[]: for 0-based species j,
       ! ion(j*(nsp+1)+1)        = primary ionization rate,

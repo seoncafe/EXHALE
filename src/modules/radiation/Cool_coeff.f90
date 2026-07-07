@@ -124,7 +124,7 @@
         [7.300d-8,2.577d-7,4.961d-8,9.520d-7,9.586d-7,6.849d-4,6.539d-4,0d0,0d0], &
         [5.077d2,6.007d2,2.342d3,7.269d3,2.190d4,1.483d5,1.906d5,0d0,0d0])
 
-   !--- CHIANTI collisional metal line cooling (Huang 2023 Phase 2) ---!
+   !--- CHIANTI collisional metal line cooling (Huang 2023) ---!
    ! Effective cooling coefficient Lambda(T) per (n_e * n_ion) [erg cm^3 s^-1],
    ! optically thin / coronal limit (only the ground level significantly
    ! populated; every collisional excitation is followed by a radiative decay).
@@ -1514,7 +1514,7 @@
    ! published paper (arXiv:2304.07352). NOTE: this is Huang's analytic fit,
    ! used here for validation against Huang Fig 12; the rest of the metal
    ! grid uses Badnell RR+DR (alpha_rec_metal). A switch to a uniform
-   ! Badnell-only Fe rate is deferred to the production pass (Phase 6) and
+   ! Badnell-only Fe rate is deferred to a later pass and
    ! should be documented when made.
 
    ! Fe II + e -> Fe I  (rate producing the Fe I daughter).

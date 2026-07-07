@@ -10,7 +10,7 @@
    use Cooling_Coefficients      ! eval_cool, recombination/ionization rates
    use System_HeH                ! Equilibrium equations
 	use System_HeH_TR
-	use System_HeH_mol            ! Tier-2 molecular network
+	use System_HeH_mol            ! molecular network
 	use lower_column, only: q_h2_equilibrium
 	use h3p_cooling,  only: h3p_cooling_rate
    use System_HeH_metals
@@ -22,7 +22,7 @@
 
    implicit none
 
-	! Tier-2 molecular species densities (cols 1 H2, 2 H2+, 3 H3+, 4 HeH+;
+	! molecular species densities (cols 1 H2, 2 H2+, 3 H3+, 4 HeH+;
 	! zero unless thereis_mol).  Module state: written by the equilibrium
 	! solve, read by write_output for the extra output columns.
 	real*8, dimension(1-Ng:N+Ng,4), save :: nmol_eq = 0.0d0
@@ -57,7 +57,7 @@
 
    ! Photo ionization rates
    real*8, dimension(1-Ng:N+Ng) ::  P_HI,P_HeI,P_HeII,P_HeITR
-   real*8, dimension(1-Ng:N+Ng) ::  P_H2      ! (Tier-2; zero unless mol)
+   real*8, dimension(1-Ng:N+Ng) ::  P_H2      ! (molecular; zero unless mol)
    ! Per-ion metal photoionization rates (canonical order) from PH_heat.
    real*8, dimension(1-Ng:N+Ng,n_mion) ::  P_m
                        	
@@ -133,7 +133,7 @@
        nm(:,im) = f_sp_in(:,mion_fsp(im))*n_in_dim
     enddo
 
-	! Tier-2 molecular species (zero when thereis_mol is off)
+	! molecular species (zero when thereis_mol is off)
 	if (thereis_mol) then
 		nmol_eq(:,1) = f_sp_in(:,isp_H2)  *n_in_dim
 		nmol_eq(:,2) = f_sp_in(:,isp_H2p) *n_in_dim
@@ -154,7 +154,7 @@
     enddo
 	
 	! Total number densities (with molecules: H and He NUCLEI totals --
-	! the Tier-2 system conserves elements, and nmol_eq is zero otherwise)
+	! the molecular system conserves elements, and nmol_eq is zero otherwise)
 	nh  = nhi  + nhii
 	nhe = nhei + nheii + nheiii
 	if (thereis_mol) then
@@ -197,7 +197,7 @@
 		P_m = 0.0
 	endif
 
-	! Phase 3a excited-H feedback (zero unless use_excited_H). The Balmer
+	! excited-H H(n=2) feedback (zero unless use_excited_H). The Balmer
 	! photoionization of H(n=2) adds an effective HI photoionization rate
 	! [s^-1] (proton source), and the Balmer photoelectric (+ optional
 	! collisional de-excitation) heating adds to the photoheating rate
@@ -221,7 +221,7 @@
 			    	a_ion_HI,a_ion_HeI,a_ion_HeII, aion_m,         &
 			    	cool)
 
-	! Phase-3a: capture the ground-state H proton-budget coefficients on
+	! Capture the ground-state H proton-budget coefficients on
 	! every pass (the converged pass is the one read out by write_excited_H).
 	if (use_excited_H) then
 		cion_HI  = a_ion_HI          ! collisional ionization [cm^3 s^-1]
@@ -231,7 +231,7 @@
 	! Charge-exchange rate coefficients are evaluated per cell below
 	! (cx_set_cell) before each metal ionization solve.
 
-	! Tier-2: optically-thin H3+ infrared cooling (Miller+2013 fits with
+	! optically-thin H3+ infrared cooling (Miller+2013 fits with
 	! the Table-6 non-LTE factor), evaluated at the pre-solve state like
 	! every other channel.  Zero when molecules are off/absent.
 	if (thereis_mol) then
@@ -347,7 +347,7 @@
 				params(18) = Q31(j)
 			endif
 
-			! Tier-2 molecular params (System_HeH_mol layout 19-21)
+			! molecular params (System_HeH_mol layout 19-21)
 			if (thereis_mol) then
 				if (.not. thereis_HeITR) then
 					params(12:18) = 0.0d0     ! no triplet channels
@@ -468,7 +468,7 @@
 			! The He metastable-triplet systems keep the MINPACK solve (no
 			! analytic Jacobian written for the triplet kinetics).
 			if (thereis_mol) then
-				! Tier-2 molecular network (metals excluded by input_read)
+				! molecular network (metals excluded by input_read)
 				call hybrd1(ion_system_HeH_mol,N_eq,sys_x,sys_sol,   &
 						    tol,info,wa,lwa,params)
 			else if (thereis_HeITR .and. thereis_metals) then
@@ -552,7 +552,7 @@
    f_sp_out(:,4) = nheii/n_out
    f_sp_out(:,5) = nheiii/n_out
    f_sp_out(:,6) = nheiTR/n_out
-   ! Tier-2 molecular abundances
+   ! molecular abundances
    if (thereis_mol) then
       f_sp_out(:,isp_H2)   = nmol_eq(:,1)/n_out
       f_sp_out(:,isp_H2p)  = nmol_eq(:,2)/n_out

@@ -1,5 +1,5 @@
       module species_diffusion
-      ! Phase 1 He/H diffusive separation for the single-fluid EXHALE wind.
+      ! He/H diffusive separation for the single-fluid EXHALE wind.
       !
       ! EXHALE's hydro evolves only (rho, momentum, energy); the composition
       ! f_sp is re-solved each step by LOCAL ionization equilibrium, which
@@ -15,7 +15,7 @@
       !   D = 1.52e18 (1/m_H+1/m_He)^1/2 T^1/2 / n_tot   [cm^2/s]  (Banks &
       !                                        Kockarts 1973 binary He-in-H)
       !
-      ! Design notes: docs/design_hehe_diffusion.md.  Phase 1 scope:
+      ! Design notes: docs/design_hehe_diffusion.md.  Current scope:
       !   * He element only; metals stay frozen to H (scaled with H).
       !   * neutral-atom mass difference Dm = 3 amu (ambipolar deferred; for
       !     He++ in H+ the ambipolar-corrected settling force ~ 3 m_H g, so the

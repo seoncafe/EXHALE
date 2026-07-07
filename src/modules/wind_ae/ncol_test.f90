@@ -1,5 +1,5 @@
       program ncol_test
-      ! C-2 Phase-2 validation: load a converged seed, compute the
+      ! self-consistent-BC ramp validation (ncol): load a converged seed, compute the
       ! self-consistent sonic-point column density goal, print it.
       ! Compare against relax_wrapper.self_consistent_Ncol (Python oracle).
       ! Usage: ncol_test <seed.csv> <spectrum.inp>

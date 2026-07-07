@@ -1,5 +1,5 @@
       module wae_continuation
-      ! C-1 continuation driver (static BCs): ramp the system parameters
+      ! static-BC continuation driver: ramp the system parameters
       ! (Ftot, gravity, star) from a shipped seed windsoln to a target,
       ! re-relaxing at each adaptive step. Mirrors the Python wrapper's
       ! ramp_var/ramp_to with static_bcs=True (the base BCs stay at the
@@ -90,8 +90,8 @@
 
       integer function ramp_var(which, target, label, static_bcs)
       ! Adaptive multiplicative ramp of one system parameter. With static_bcs
-      ! absent or .true., the seed base BCs are held fixed (C-1). With
-      ! static_bcs=.false. (C-2), after 5 consecutive failed steps the base BCs
+      ! absent or .true., the seed base BCs are held fixed (static-BC mode). With
+      ! static_bcs=.false. (self-consistent-BC mode), after 5 consecutive failed steps the base BCs
       ! and the sonic-point column density are re-converged (ramp_base_bcs +
       ! converge_Ncol_sp) before retrying -- this is what lets far-from-seed
       ! planets keep moving. Returns 0 on success, 101 on failure.
@@ -144,7 +144,7 @@
             cur = trial
             if (.not. (flip .lt. 0.0d0 .and. delta .le. -0.5d0)) delta = delta*2.0d0
             failed = 0
-            ! C-2 (proactive, cheap): periodically check the molecular/atomic
+            ! self-consistent-BC (proactive, cheap): periodically check the molecular/atomic
             ! transition and turn the bolometric layer off once the base enters
             ! the wind. converge_mol_atomic does NO solve unless it actually
             ! turns bolo off (drop_index<=10), so for a seed-adjacent planet
@@ -168,7 +168,7 @@
                                static_bcs)
       ! ramp order matches the wrapper: Ftot -> gravity (Rp,Mp) ->
       ! star (Mstar, semimajor, Lstar). With static_bcs absent/.true. the seed
-      ! BCs are held fixed (C-1); with static_bcs=.false. (C-2) the base BCs
+      ! BCs are held fixed (static-BC mode); with static_bcs=.false. (self-consistent-BC mode) the base BCs
       ! re-converge when a ramp stalls and once more at the end.
       real*8, intent(in) :: Ftot_t, Mp_t, Rp_t, Mstar_t, a_t, Lstar_t
       logical, intent(in), optional :: static_bcs
@@ -185,7 +185,7 @@
       if (Lstar_t .gt. 0.0d0) then
          r = ramp_var(6, Lstar_t, 'Lstar',  static); if (r.ne.0) then; ramp_to=r; return; end if
       end if
-      ! final BC self-consistency pass (C-2 only)
+      ! final BC self-consistency pass (self-consistent-BC mode only)
       if (.not. static) then
          r = ramp_base_bcs(.false.)
          r = converge_mol_atomic()
@@ -194,7 +194,7 @@
       end function ramp_to
 
       ! ====================================================================
-      !  C-2 BC self-consistency machinery
+      !  self-consistent-BC machinery
       ! ====================================================================
 
       subroutine base_bcs(R_out, Rmax_out, rho_out, T_out)
@@ -682,7 +682,7 @@
       subroutine pick_nearest_seed(Mp_t, Rp_t, Ftot_t, griddir, path_out)
       ! Scan <griddir>/manifest.csv (one "path,Mp,Rp,Ftot" row per converged
       ! grid solution) and return the path whose (log Mp, log Rp, log Ftot) is
-      ! nearest the target planet, so the C-1/C-2 ramp starts from a close
+      ! nearest the target planet, so the static-/self-consistent-BC ramp starts from a close
       ! solution instead of the single distant fiducial seed. Falls back to
       ! inputdata/windae_seed.csv (with a warning) if the manifest is missing.
       real*8, intent(in) :: Mp_t, Rp_t, Ftot_t

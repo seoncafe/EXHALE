@@ -1,6 +1,6 @@
       module wae_config
       ! Compile-time configuration for the Wind-AE Fortran port, mirroring
-      ! wind-ae src/defs.h. Stage 1 keeps NSPECIES fixed at 2 (H/He); the
+      ! wind-ae src/defs.h. The port keeps NSPECIES fixed at 2 (H/He); the
       ! dynamic-species generalization is out of scope (metals are EXHALE's
       ! job -- see md_backup/wind_ae_fortran_port_plan.md).
       implicit none

@@ -1,8 +1,8 @@
       program ramp2_test
-      ! C-2 test: load a seed windsoln, ramp the system params to a target with
+      ! self-consistent-BC ramp test: load a seed windsoln, ramp the system params to a target with
       ! static_bcs=.false. so the base BCs and sonic-point column density
       ! re-converge as the ramp moves far from the seed (the case that stalls
-      ! C-1). Reports success + final base BCs + a sanity check on the solution.
+      ! the static-BC ramp). Reports success + final base BCs + a sanity check on the solution.
       ! Usage: ramp2_test <seed.csv> <spectrum.inp> <rhoscale> \
       !                   <Ftot> <Mp> <Rp> <Mstar> <a> <Lstar>
       use wae_config,      only: nsp => wae_nspecies, m => wae_m, ne => wae_ne
@@ -67,8 +67,8 @@
       write(*,'(A,I0,A,L1)') ' relaxed soln: nonpos-v pts = ', nbad,        &
          ', finite/positive = ', okfin
       if (r .eq. 0 .and. okfin) then
-         write(*,'(A)') ' RESULT: C-2 RAMP CONVERGED'
+         write(*,'(A)') ' RESULT: SELF-CONSISTENT-BC RAMP CONVERGED'
       else
-         write(*,'(A)') ' RESULT: C-2 RAMP FAILED'
+         write(*,'(A)') ' RESULT: SELF-CONSISTENT-BC RAMP FAILED'
       end if
       end program ramp2_test

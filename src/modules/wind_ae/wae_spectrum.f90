@@ -1,5 +1,5 @@
       module wae_spectrum
-      ! Spectrum + parameter loading for the Wind-AE port (Stage 1).
+      ! Spectrum + parameter loading for the Wind-AE port.
       ! Reads inputs/spectrum.inp (GLQ nodes, cross sections, ion. pots)
       ! and the header of inputs/guess.inp (mass fractions, atomic masses,
       ! Ftot) -- exactly the fields wind-ae's init_glq()/set_parameters()

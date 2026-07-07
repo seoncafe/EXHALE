@@ -73,13 +73,13 @@
       ! seed and stall the first relaxation).
       if (exh_spherical) r = ramp_tidal(0.0d0)
 
-      ! 4. ramp to EXHALE target params. Stage C-1 first (static base BCs):
+      ! 4. ramp to EXHALE target params. Static-BC ramp first:
       !    fast for seed-adjacent planets. If it stalls (far-from-seed /
-      !    strongly-bound), reload the seed and retry with stage C-2.
-      write(*,'(A)') ' (wind_ae_ic) ramping seed -> EXHALE planet (stage C-1)...'
+      !    strongly-bound), reload the seed and retry with the self-consistent-BC ramp.
+      write(*,'(A)') ' (wind_ae_ic) ramping seed -> EXHALE planet (static-BC ramp)...'
       r = ramp_to(Ftot_t, Mp_t, Rp_t, Mstar_t, a_t, Lstar_t)
       if (r .ne. 0) then
-         write(*,'(A)') ' (wind_ae_ic) C-1 stalled; retrying with stage C-2...'
+         write(*,'(A)') ' (wind_ae_ic) static-BC ramp stalled; retrying with self-consistent-BC ramp...'
          call load_seed(trim(seed))
          rhoscale = 10.0d0**floor(log10(par%rho_rmin*0.01d0))
          call setup_indices_scales()

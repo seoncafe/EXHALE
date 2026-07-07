@@ -1,5 +1,5 @@
       module mol_rates
-      ! Tier-2 molecular (H2 / H2+ / H3+ / HeH+) reaction-rate coefficients,
+      ! molecular (H2 / H2+ / H3+ / HeH+) reaction-rate coefficients,
       ! transcribed VERBATIM from Koskinen et al. (2022), ApJ 929:52, Table 1
       ! (page 19; verified against the PDF in references/).  All rates in
       ! cgs (cm^3 s^-1; the two three-body rates R13/R15 in cm^6 s^-1 --
@@ -18,9 +18,9 @@
       ! network; their sensitivity test with a Backx et al. (1976) cross
       ! section and dissociation probability 0.125 changed Mdot by <= 1.4x.
       !
-      ! Status: FOUNDATION for the Tier-2 molecular extension (rates +
+      ! Status: groundwork for the molecular extension (rates +
       ! H3+ cooling implemented and unit-tested standalone); the coupled
-      ! System_HeH_mol solver / EOS integration is the remaining Tier-2
+      ! System_HeH_mol solver / EOS integration is the remaining molecular
       ! work item (docs/lower_atmosphere_coupling.*).
 
       implicit none

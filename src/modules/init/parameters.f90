@@ -13,7 +13,7 @@
       !  16-18 MgI,MgII,MgIII 19-21 SiI,SiII,SiIII  22-24 CaI,CaII,CaIII
       !  25-26 NaI,NaII       27-28 KI,KII          29-30 SI,SII
       !  31-33 FeI,FeII,FeIII
-      !  34-37 H2,H2+,H3+,HeH+   (Tier-2 molecular extension; zero unless
+      !  34-37 H2,H2+,H3+,HeH+   (molecular extension; zero unless
       !                           thereis_mol)
       ! (Si/Ca/Fe carry three stages like Mg; Na/K/S carry two stages.)
       integer, parameter :: n_species = 37
@@ -54,7 +54,7 @@
       !  .true. = legacy ATES two-term fit).  (No recombination switch: the
       !  Benjamin+1999 He recombination already matches modern data.)
       logical :: ates_photoion_rate = .false.
-      ! Phase-1 He/H diffusive separation (docs/design_hehe_diffusion.md):
+      ! He/H diffusive separation (docs/design_hehe_diffusion.md):
       !  .false. (default) = He/H frozen at the input HeH everywhere (legacy);
       !  .true. = evolve the He element ratio with advection + molecular
       !  diffusion (He settles, He/H falls with altitude).  Metals stay frozen
@@ -76,7 +76,7 @@
       ! P2d: also diffuse the trace metals (each element with its own mass and
       !  binary diffusion coefficient); default .false. = metals frozen to H.
       logical :: he_metal_diffusion = .false.
-      ! Tier-1 analytic lower column (Koskinen+2022; docs/lower_atmosphere_
+      ! analytic lower column (Koskinen+2022; docs/lower_atmosphere_
       ! coupling.*): radius of the 1-bar level [R_J].  If > 0, on startup the
       ! isothermal-Teq hypsometric column with chemical-equilibrium H2/H/He
       ! is integrated from 1 bar to 1 ubar and the derived base radius
@@ -94,13 +94,13 @@
       ! VULCAN acts as a subroutine-style pre-step of the wind solve.
       integer :: lower_atm_mode  = 0
       real*8  :: lower_atm_r1bar = -1.0d0
-      ! Tier-2a passive molecular base: reduce the base particle count
+      ! passive molecular base: reduce the base particle count
       ! (ntot_bc) by the H nuclei bound into H2 at (1 ubar, T0) from the
       ! chemical-equilibrium fit.  EOS-only correction (lower base pressure,
       ! heavier base mu); the chemistry stays atomic -- crude, documented in
       ! docs/lower_atmosphere_coupling.*.  Key "Molecular base: True".
       logical :: molecular_base = .false.
-      ! Tier-2 molecular chemistry (H2/H2+/H3+/HeH+ in the coupled ionization
+      ! molecular chemistry (H2/H2+/H3+/HeH+ in the coupled ionization
       ! equilibrium + H2 photoionization opacity/heating + H3+ IR cooling).
       ! Key "Molecular chemistry: True".  v1 constraints: requires He; not
       ! combined with trace metals (input_read errors out).  Default off =
@@ -389,14 +389,14 @@
       logical :: base_v_massflux = .false.
       real*8  :: base_flux_const = -1.0d0   ! F_c [code units], updated each step
 
-      ! Explicit viscosity ("Viscosity: <mu0> [<s>]"), Phase-1 port of CETIMB's
+      ! Explicit viscosity ("Viscosity: <mu0> [<s>]"), port of CETIMB's
       ! viscous momentum term (Koskinen 2022 B5 leading diffusion term
       ! (4/3)(1/r^2) d/dr(r^2 mu dv/dr)), mu = visc_mu0*T^visc_s in code units.
-      ! Adds the physical (diffusive) damping EXHALE lacks. UN-VALIDATED Phase-1
-      ! foundation -- explicit (CETIMB uses semi-implicit Crank-Nicholson for
+      ! Adds the physical (diffusive) damping EXHALE lacks. Experimental,
+      ! un-validated -- explicit (CETIMB uses semi-implicit Crank-Nicholson for
       ! this stiff term), leading term only (dmu/dr and -(16/3)mu v/r^2 + the
       ! viscous dissipation q_mu / conduction deferred). Default visc_mu0=0 =
-      ! OFF; calibrate visc_mu0 and add the rest + semi-implicit in Phase-2.
+      ! OFF; calibrate visc_mu0 and add the rest + semi-implicit in a later revision.
       real*8 :: visc_mu0 = 0.0d0
       real*8 :: visc_s   = 0.7d0
 
@@ -484,7 +484,7 @@
       
       real*8, dimension(:), allocatable :: e_v, de_v
       real*8, dimension(:), allocatable :: s_hi,s_hei,s_heii,s_heiTR
-      ! H2 photoionization cross section on the energy grid (Tier-2;
+      ! H2 photoionization cross section on the energy grid (molecular;
       ! Yan+1998 fit, filled in set_energy_vectors)
       real*8, dimension(:), allocatable :: s_h2
       ! Metal photoionization cross sections, one column per photo-ionizable
@@ -518,12 +518,12 @@
       real*8, dimension(1-Ng:N+Ng) :: r,r_edg,dr_j
       real*8, dimension(1-Ng:N+Ng) :: Gphi_c,Gphi_i
 
-      !------- Phase 3a: excited hydrogen H(n=2) coupling -------!
+      !------- excited hydrogen H(n=2) coupling -------!
       ! Christie+2013 / Huang+2017 n=2 (2s/2p) model feeding back into
       ! the H ionization balance and the energy equation. All terms are
       ! ZERO unless use_excited_H = .true. (enabled at runtime when a
       ! stellar T_eff is supplied in input.inp), so the default build is
-      ! byte-identical to the Phase-2 result. See excited_hydrogen.f90.
+      ! byte-identical to the result with excited-H off. See excited_hydrogen.f90.
       logical :: use_excited_H   = .false. ! master switch (set if T_star_eff>0)
       logical :: incl_deexc_heat = .false. ! add collisional de-excitation
                                            !  heating (overlaps the existing HI
@@ -543,13 +543,13 @@
       !                    in excited_H_update (see lya_rt.f90).
       integer :: jlya_mode  = 0
       character(len=200) :: jlya_rt_file = 'jlya_rt.txt'
-      ! ----- Phase 3b: Ly-alpha radiative transfer ----- !
+      ! ----- Ly-alpha radiative transfer ----- !
       !  F_Lya_star -> incident stellar Ly-alpha flux at the planet
       !  [erg cm^-2 s^-1] (the stellar source of J_lya in jlya_mode 2; Case D
-      !  scales it x0.35). The "cooling trapping" is realized through the Phase-3a
+      !  scales it x0.35). The "cooling trapping" is realized through the
       !  H(n=2) heating channels (photoelectric + collisional de-excitation), as in
       !  Huang et al. 2023, NOT a separate escape-probability factor on the Ly-alpha
-      !  cooling. OFF by default => byte-identical to Phase 3a.
+      !  cooling. OFF by default => byte-identical to the no-Lya result.
       real*8  :: F_Lya_star = 0.0d0
       ! Stellar Ly-alpha line half-width [km/s] (broad plateau ~+-70 km/s,
       ! Huang+2017); sets how deep the (trapped) stellar beam penetrates via the

@@ -1,5 +1,5 @@
       module lower_column
-      ! Tier-1 analytic lower/middle atmosphere (Koskinen et al. 2022, Sec 2.2).
+      ! analytic lower/middle atmosphere (Koskinen et al. 2022, Sec 2.2).
       !
       ! Integrates the hypsometric relation from the 1-bar level (radius
       ! R_1bar, e.g. the broadband transit radius) up to the escape-model base
@@ -23,13 +23,13 @@
       ! actual base temperature dissociate H2 there (Koskinen 2013a; Moses
       ! 2011).  The solver therefore also returns r_base_atomic (fully atomic
       ! mu) to BRACKET the base radius; a large q_H2 on a genuinely cool
-      ! planet signals that Tier-2 molecular physics is required.
+      ! planet signals that molecular physics is required.
       !
       ! Approximations (documented): isothermal column at T_eq; spherical
       ! gravity g = GM/r^2 (the Roche/tidal correction to the column is a
       ! refinement -- Koskinen 2022 use equipotentials, which matters near
       ! RLO); chemical equilibrium only (photochemistry UNDERESTIMATES H
-      ! dissociation at Teff ~ 1000-2000 K -- the Tier-3 hook).
+      ! dissociation at Teff ~ 1000-2000 K -- the external-handoff hook).
       !
       ! Validation gate (docs/lower_atmosphere_coupling.*): Koskinen 2022
       ! Model A -- Uranus-mass planet (M = 8.6813e28 g, R_1bar = 2.5559e9 cm)

@@ -1390,7 +1390,7 @@ Every HD189733b folder differs from the baseline
 \texttt{01\_legacy\_marching/input.inp} only by the lines listed in
 Table~\ref{tab:exinputs} (so \texttt{diff} against the baseline shows exactly
 what an option adds); all configurations have been smoke-tested.
-\texttt{11\_windae\_ic} (HD189733b) exercises the self-consistent C-2
+\texttt{11\_windae\_ic} (HD189733b) exercises the self-consistent-BC
 continuation: its Wind-AE ramp converges and writes the IC, though EXHALE's own
 time-integration of HD189733b is limited by a separate base-breathing
 instability (\S\ref{sec:windae}). \texttt{12\_windae\_ic\_hd209} is the
@@ -1430,7 +1430,7 @@ molecular network (\S\ref{sec:loweratm}) respectively, on HD209458b.
 \texttt{10\_warm\_seed\_ic} & warm-seed (hot Parker overlay) initial
   condition & \texttt{Hot Parker IC: 10000} \\
 \texttt{11\_windae\_ic} & in-process Wind-AE IC for HD189733b
-  (\S\ref{sec:windae}): far from the seed, so the C-2 continuation (base-BC
+  (\S\ref{sec:windae}): far from the seed, so the self-consistent-BC continuation (base-BC
   re-convergence $+$ molecular-layer turn-off) is exercised; the Wind-AE ramp
   converges and writes the IC. EXHALE's own HD189733b base-breathing
   instability (separate from the IC) then limits the warm start &
@@ -1465,8 +1465,8 @@ molecular network (\S\ref{sec:loweratm}) respectively, on HD209458b.
 \end{tabular}
 \caption{Ready-made example configurations under \texttt{examples/}
 (\texttt{01}--\texttt{11} are HD189733b; \texttt{12}, \texttt{14}, \texttt{15}
-are HD209458b; \texttt{13} spans four planets). The Wind-AE IC ramp (stage
-C-2) converges for both planets; \texttt{11} additionally exercises the
+are HD209458b; \texttt{13} spans four planets). The Wind-AE IC ramp
+converges for both planets; \texttt{11} additionally exercises the
 molecular-layer turn-off. Metals on/off is a runtime switch: any folder
 becomes metals-on by copying a \texttt{metals.inp} into it --- except
 \texttt{15\_molecular}, where molecular chemistry is mutually exclusive with

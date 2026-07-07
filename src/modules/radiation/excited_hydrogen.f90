@@ -1,5 +1,5 @@
    module excited_hydrogen
-   ! Phase 3a: in-code excited hydrogen H(n=2).
+   ! In-code excited hydrogen H(n=2).
    !
    ! Solves the 2s/2p rate-equilibrium of Christie, Arras & Li (2013, ApJ
    ! 772, 144; their Eqs. 12-13) -- collisional 1s<->2s/2p, 2s<->2p l-mixing,
@@ -16,7 +16,7 @@
    ! TPM.py (which uses it for H-alpha/H-beta line opacity).
    !
    ! All feedback is gated by use_excited_H; when off, the module is inert and
-   ! the global feedback arrays stay zero, so the build reproduces Phase 2.
+   ! the global feedback arrays stay zero, so the build reproduces the no-excited-H result.
    !
    ! Coupling is DECOUPLED (lagged-explicit): excited_H_update is called once
    ! per timestep from EXHALE_main BEFORE the ionization/energy solve, fills the
@@ -431,7 +431,7 @@
    ! converged outer pass.
    integer :: j
    open(unit = 72, file = './output/Excited_H.txt')
-   write(72,'(a)') '# Excited hydrogen H(n=2) diagnostic (Phase 3a).'
+   write(72,'(a)') '# Excited hydrogen H(n=2) diagnostic.'
    write(72,'(a,es12.5)') '# Stellar T_eff [K]       = ', T_star_eff
    write(72,'(a,es12.5)') '# Stellar R_star [Rsun]   = ', R_star/Rsun
    write(72,'(a,es12.5)') '# Gamma_2 (Balmer) [s-1]  = ', gamma2_bal

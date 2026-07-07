@@ -3,7 +3,7 @@
 
       use global_parameters
       use species_table, only: n_mion, mion_name
-      use ionization_equilibrium, only: nmol_eq   ! Tier-2 molecular columns
+      use ionization_equilibrium, only: nmol_eq   ! molecular columns
 
       contains
 
@@ -66,7 +66,7 @@
       do i = 1,n_mion
          write(3,'(A)', advance='no') ' '//trim(mion_name(i))
       enddo
-      ! Tier-2 molecular columns (present only when thereis_mol)
+      ! molecular columns (present only when thereis_mol)
       if (thereis_mol) write(3,'(A)', advance='no') ' H2 H2p H3p HeHp'
       write(3,'(A)') ''
 
