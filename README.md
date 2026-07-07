@@ -96,7 +96,10 @@ EXHALE/
 ├── inputdata/             # opacity / SED table samples (*.opa, Jlya.txt, …)
 ├── cooling_data/          # CHIANTI cooling-formula fit scripts + notebooks
 ├── examples/
-│   ├── 01_legacy_marching/ … 12_windae_ic_hd209/  # ready-made input configs
+│   ├── 01_legacy_marching/ … 15_molecular/  # ready-made input configs
+│   │                          #   (solver stages, metals, He 2³S, Balmer/Lya,
+│   │                          #    Wind-AE IC, lower atmosphere, He/metal
+│   │                          #    diffusion, full molecular chemistry)
 │   ├── README.md          # one-line description of each config folder
 │   ├── exhale_io.py         # Python loaders for all output files
 │   ├── EXHALE_analysis.ipynb
@@ -553,4 +556,4 @@ See `examples/README.md` for the exact lines each one adds:
 
 ---
 
-Last updated: 2026-07-07 21:57
+Last updated: 2026-07-07 22:10
