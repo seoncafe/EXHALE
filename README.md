@@ -503,7 +503,9 @@ and the manual's transmission-spectra section.
 ## Example configurations
 
 Ready-made `input.inp` templates covering all physics/solver combinations
-are in `examples/` (folders `01`–`11` are HD 189733 b; `12` is HD 209458 b).
+are in `examples/` (folders `01`–`11` are HD 189733 b so each option can be
+isolated; `12`, `14`, `15` are HD 209458 b, where the Wind-AE warm start,
+diffusion and molecular options are validated; `13` spans four planets).
 See `examples/README.md` for the exact lines each one adds:
 
 | Folder | Description |
@@ -520,6 +522,9 @@ See `examples/README.md` for the exact lines each one adds:
 | `10_warm_seed_ic/` | Warm-seed initial condition |
 | `11_windae_ic/` | In-process Wind-AE IC for HD 189733 b — the C-2 ramp converges and writes the IC; EXHALE's own base-breathing instability (separate from the IC) then limits the warm start |
 | `12_windae_ic_hd209/` | In-process Wind-AE warm-start IC that works (HD 209458 b, seed-adjacent) |
+| `13_lower_atmosphere/` | Lower-atmosphere connection for four planets: analytic 1-µbar base column + `base.inp` handoff (isothermal / Guillot T(p)) |
+| `14_diffusion/` | Diffusive separation of He and metals (HD 209458 b): He/H declines with altitude, each metal settles independently, reshaping He 10830 |
+| `15_molecular/` | Full molecular chemistry (HD 209458 b): H2/H2+/H3+/HeH+ coupled equilibrium; sharp H2→H front above a thin molecular base (metals/diffusion off) |
 
 ---
 
@@ -556,4 +561,4 @@ See `examples/README.md` for the exact lines each one adds:
 
 ---
 
-Last updated: 2026-07-07 22:10
+Last updated: 2026-07-07 22:14
