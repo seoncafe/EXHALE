@@ -21,7 +21,7 @@ recombination cascade, two-photon decay, 2s↔2p ℓ-mixing, and
 ## How to use
 
 H-alpha is **always computed**; only the source of the Ly-alpha mean
-intensity `J_lya(r)` (which ATES does **not** produce) depends on whether
+intensity `J_lya(r)` (which EXHALE does **not** produce) depends on whether
 you supply a file:
 
 **Option 1 — supply `J_lya(r)` as a file.** Set `Jlya_file` in `EXHALE_transit.py`:
@@ -34,7 +34,7 @@ with a two-column text file:
 
 | col 1 | col 2 |
 |-------|-------|
-| `r / R_p` (same radial coordinate as the ATES output) | `J_lya` = Ly-alpha mean intensity `J_nu` at line center, **cgs** `erg s^-1 cm^-2 Hz^-1 sr^-1` |
+| `r / R_p` (same radial coordinate as the EXHALE output) | `J_lya` = Ly-alpha mean intensity `J_nu` at line center, **cgs** `erg s^-1 cm^-2 Hz^-1 sr^-1` |
 
 Template: `inputdata/Jlya.txt.example`.
 
@@ -58,7 +58,7 @@ F_LyC = xi * [ 10^LEUV / (4*pi*a^2) ] * ( 1 - exp(-sigma_LyC * N_HI) )
 
 where `LEUV` (EUV-band luminosity, E>13.6 eV) and orbital distance `a`
 are read from `input.inp`, `N_HI` is the vertical neutral-H column from
-the ATES profile, and `sigma_LyC ~ 6.3e-18 cm^2`. `xi` is the day-night /
+the EXHALE profile, and `sigma_LyC ~ 6.3e-18 cm^2`. `xi` is the day-night /
 2D flux dilution matching ATES's "2D approximate method" (`Rate/2`->0.5,
 `Rate/4`->0.25, else 1; read from `input.inp`; cf. the xi factor of
 Christie+2013 / Huang+2017). For the optically-thick atomic layer the
@@ -107,7 +107,7 @@ center in cgs. A different convention requires rescaling the constant.
   single diluted stellar blackbody (Balmer continuum) via `T_star` — an
   approximation to the true stellar near-UV spectrum. `T_star <= 0`
   reverts to the manual constants (default 0).
-- `n_e = n_HII + n_HeII + 2 n_HeIII` from ATES (Christie assume
+- `n_e = n_HII + n_HeII + 2 n_HeIII` from EXHALE (Christie assume
   `n_e = n_p`; difference is small).
 - H-alpha uses the air wavelength 6562.8 Å and `f_23 = 0.64`; the line is
   Doppler-dominated (natural width negligible).

@@ -7,7 +7,7 @@ stops miss entirely — the premature WASP golden had `R_energy ~ 30`).
 
 ## 1. What we already have (building blocks)
 
-- `eval` of the steady residual is proven (the `ATES_RESIDUAL=1` hook and the
+- `eval` of the steady residual is proven (the `EXHALE_RESIDUAL=1` hook and the
   in-loop monitor): `R(:,1)=dF-S`, `R(:,2)=dF-S`, `R(:,3)=dF_E-S_E-(heat-cool)`,
   assembled from `Reconstruct` + `RK_rhs` (hydro) and `ioniz_eq` (heat/cool via
   local ionization-equilibrium elimination). HLLC ignores `alpha`.
@@ -79,11 +79,11 @@ side → pentadiagonal in cells; with 3 components that is bandwidth
 1. **[DONE]** Factor the residual evaluation into a shared module
    `steady_residual.f90` (`assemble_residual`, `residual_norms`), used by the
    diagnostic hook, the in-loop monitor, and Newton. Byte-identical re-confirmed;
-   `ATES_RESIDUAL` numbers unchanged.
+   `EXHALE_RESIDUAL` numbers unchanged.
 2. **[DONE]** `steady_newton.f90`: `pack_U`/`unpack_U` (unknowns = hydro on
    physical cells `1..N`, `neq=3*N`; ghosts set by `Apply_BC`) + `newton_residual
-   (Y, f_sp, F)` (local ionization elimination). Validated via `ATES_NEWTON_TEST=1`:
-   pack/unpack are exact inverses, and `F(Y)` reproduces the `ATES_RESIDUAL`
+   (Y, f_sp, F)` (local ionization elimination). Validated via `EXHALE_NEWTON_TEST=1`:
+   pack/unpack are exact inverses, and `F(Y)` reproduces the `EXHALE_RESIDUAL`
    diagnostic to all digits. KEY FIX: the residual must `Apply_BC` BEFORE the
    ioniz_eq/heat-cool step so `F(Y)` depends only on the interior `Y` (ghosts =
    BC); the diagnostic hook was reordered to match (this shifted the consistent
@@ -94,7 +94,7 @@ side → pentadiagonal in cells; with 3 components that is bandwidth
    against directional finite differences of `F`.
 4. **[PARTIAL]** PTC driver (`solve_steady_ptc`): `(I/dtau + J) dY = -F` via
    LAPACK `dgbtrf`/`dgbtrs`, backtracking line search, positivity, SER `dtau`
-   ramp; `ATES_PTC=1` hook. Status on WASP-121b:
+   ramp; `EXHALE_PTC=1` hook. Status on WASP-121b:
    - Cold IC: stalls (expected — `du`/thermal transient too far for Newton).
    - **KEY FIX**: the line-search merit must be the smooth `||F||_2`, not the
      component-wise max-relative `rnorm` (non-smooth → rejected all steps).
@@ -121,8 +121,8 @@ side → pentadiagonal in cells; with 3 components that is bandwidth
 Implemented matrix-free Newton-Krylov (`jv_product` = directional FD of the
 FULL residual; `pgmres` = right-preconditioned GMRES(m) with the banded
 `build_banded_jac_full` factorization as preconditioner; `solve_steady_jfnk`
-= PTC + GMRES + `||F||_2` line search). Hook: `ATES_PTC=1 ATES_PTC_JFNK=1`
-(`ATES_PTC_DTAU0=<v>` overrides dtau0). LAPACK linked (`LDLIBS=-llapack`).
+= PTC + GMRES + `||F||_2` line search). Hook: `EXHALE_PTC=1 EXHALE_PTC_JFNK=1`
+(`EXHALE_PTC_DTAU0=<v>` overrides dtau0). LAPACK linked (`LDLIBS=-llapack`).
 
 Results on WASP-121b (warm start from the cold-35k state, dtau0 = 1):
 - GMRES works: inner solve converges in ~9 Krylov vectors.
@@ -145,7 +145,7 @@ convergence window), and the `Rate/2` 2D factor is a global constant.
 ## 9. Reduction tests (2026-06-11) — base-freeze does NOT unblock; scaling is
 the prime suspect
 
-- Frozen-base experiment (`ATES_PTC_NFIX=n`: anchor rows `F_j = Y_j - Y^fix_j`
+- Frozen-base experiment (`EXHALE_PTC_NFIX=n`: anchor rows `F_j = Y_j - Y^fix_j`
   for the first n cells): the worst cell simply FOLLOWS the slab edge
   (n=0 -> j=1; n=2 -> j=5; n=60 -> j=61, r=1.012, momentum), and with any
   freezing the very FIRST Newton step already fails its line search (whereas

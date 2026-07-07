@@ -288,7 +288,7 @@ Two ways to use it:
   \texttt{Valve eps:\ 1.0e-4}, \texttt{Resid tol:\ 1.0e-3}, and run with the
   environment hook
 \begin{lstlisting}[style=sh]
-ATES_PTC=1 ATES_PTC_JFNK=1 ATES_PTC_DTAU0=1.0 ./EXHALE.x
+EXHALE_PTC=1 EXHALE_PTC_JFNK=1 EXHALE_PTC_DTAU0=1.0 ./EXHALE.x
 \end{lstlisting}
   which solves from the loaded state, writes \texttt{output/}, and stops.
 \end{itemize}
@@ -308,8 +308,8 @@ iterate seen, aborts once no new best residual has appeared for 15 outer
 iterations, and on failure the run prints \texttt{JFNK failed}, keeps the best
 iterate, and falls back to plain time-marching with the $du$-based stops
 re-armed --- an unconverged Newton state is never accepted as the final
-answer. The associated diagnostic hooks (\texttt{ATES\_RESIDUAL},
-\texttt{ATES\_JAC\_TEST}, \texttt{ATES\_NEWTON\_TEST}, \ldots) are environment
+answer. The associated diagnostic hooks (\texttt{EXHALE\_RESIDUAL},
+\texttt{EXHALE\_JAC\_TEST}, \texttt{EXHALE\_NEWTON\_TEST}, \ldots) are environment
 variables, collected in \S\ref{sec:envvars} (Table~\ref{tab:env}). Full
 development record and validation: \texttt{steady\_solver\_memo.pdf}.
 Figure~\ref{fig:newton} shows the production pipeline end-to-end on WASP-121b
@@ -336,12 +336,12 @@ A small set of \emph{environment variables} expose diagnostic and expert
 entry points without touching \texttt{input.inp} (Table~\ref{tab:env}). They
 are read once at startup; when unset they have strictly zero effect, so normal
 runs are unaffected. All of them are diagnostics or validation aids --- the only
-one used in a production workflow is the \texttt{ATES\_PTC} family, which
+one used in a production workflow is the \texttt{EXHALE\_PTC} family, which
 implements the ``Newton from an existing state'' recipe of \S\ref{sec:newton}
 (and \texttt{examples/04\_newton\_from\_state/}). Typical usage:
 \begin{lstlisting}[style=sh]
-ATES_RESIDUAL=1 ./EXHALE.x                      # rank a "converged" state
-ATES_PTC=1 ATES_PTC_JFNK=1 ATES_PTC_DTAU0=1.0 ./EXHALE.x   # re-converge it
+EXHALE_RESIDUAL=1 ./EXHALE.x                      # rank a "converged" state
+EXHALE_PTC=1 EXHALE_PTC_JFNK=1 EXHALE_PTC_DTAU0=1.0 ./EXHALE.x   # re-converge it
 \end{lstlisting}
 
 \begin{table}[htbp]\centering\small
@@ -349,43 +349,43 @@ ATES_PTC=1 ATES_PTC_JFNK=1 ATES_PTC_DTAU0=1.0 ./EXHALE.x   # re-converge it
 \toprule
 Variable & Effect \\
 \midrule
-\texttt{ATES\_DUMP\_IC=1} & After \texttt{Load IC?\ True}, dump the restored
+\texttt{EXHALE\_DUMP\_IC=1} & After \texttt{Load IC?\ True}, dump the restored
   state to \texttt{output/IC\_dump.txt} \emph{before} the first
   ionization-equilibrium solve re-equilibrates the species fractions
   (verifies a snapshot/restart round-trip). \\
-\texttt{ATES\_RESIDUAL=1} & Evaluate the steady residual $R$ of the loaded
+\texttt{EXHALE\_RESIDUAL=1} & Evaluate the steady residual $R$ of the loaded
   state (WENO3, boundary conditions applied first), print the per-equation
   norms (mass, momentum, energy), and stop. The criterion-independent way to
   rank candidate ``converged'' states (a premature-dip state shows
   $\|R\|_E\sim O(10)$ despite $du<10^{-3}$). \\
-\texttt{ATES\_NEWTON\_TEST=1} & Self-test of the Newton infrastructure
+\texttt{EXHALE\_NEWTON\_TEST=1} & Self-test of the Newton infrastructure
   (\texttt{pack\_U}/\texttt{unpack\_U} round-trip and the frozen residual
-  against the \texttt{ATES\_RESIDUAL} values); prints and stops. \\
-\texttt{ATES\_JAC\_TEST=1} & Verify the colored-FD banded Jacobian against a
+  against the \texttt{EXHALE\_RESIDUAL} values); prints and stops. \\
+\texttt{EXHALE\_JAC\_TEST=1} & Verify the colored-FD banded Jacobian against a
   directional finite difference $J\,r\simeq[F(Y+\epsilon r)-F(Y)]/\epsilon$;
   a correct band layout matches to $\sim10^{-6}$, a wrong one is $O(1)$ off.
   Prints and stops. \\
 \midrule
-\texttt{ATES\_PTC=1} & Solve the \emph{loaded} state directly with the steady
+\texttt{EXHALE\_PTC=1} & Solve the \emph{loaded} state directly with the steady
   solver (no marching), write \texttt{output/}, and stop. Requires
   \texttt{Load IC?\ True}; set \texttt{Valve eps:\ 1.0e-4} and
   \texttt{Resid tol:\ 1.0e-3} (\S\ref{sec:newton}). Default engine: banded
   PTC. \\
-\texttt{ATES\_PTC\_JFNK=1} & With \texttt{ATES\_PTC=1}: use the full JFNK
+\texttt{EXHALE\_PTC\_JFNK=1} & With \texttt{EXHALE\_PTC=1}: use the full JFNK
   solver (GMRES on the matrix-free $J$) instead of the banded PTC ---
   the recommended engine. \\
-\texttt{ATES\_PTC\_DTAU0=}$\langle v\rangle$ & With \texttt{ATES\_PTC=1}:
+\texttt{EXHALE\_PTC\_DTAU0=}$\langle v\rangle$ & With \texttt{EXHALE\_PTC=1}:
   override the initial pseudo-time step $\Delta\tau_0$ (default: the CFL
   $\Delta t$ of the loaded state). A large value (e.g.\ \texttt{1.0}) probes
   the pure-Newton regime directly. \\
-\texttt{ATES\_PTC\_NFIX=}$\langle n\rangle$ & With \texttt{ATES\_PTC=1}:
+\texttt{EXHALE\_PTC\_NFIX=}$\langle n\rangle$ & With \texttt{EXHALE\_PTC=1}:
   anchor the first $n$ physical cells (frozen-base experiment; solves the
   wind on top of a fixed base). \\
 \midrule
-\texttt{ATES\_DIAG\_BASE=1} & Write \texttt{output/base\_diag.txt} ($r$, $n$,
+\texttt{EXHALE\_DIAG\_BASE=1} & Write \texttt{output/base\_diag.txt} ($r$, $n$,
   $v$, $T$, heating, cooling of the first few cells over the first steps) to
   trace IC-startup transients at the base. \\
-\texttt{ATES\_FORCE\_HYBRD1=1} & Force every ionization-equilibrium solve to
+\texttt{EXHALE\_FORCE\_HYBRD1=1} & Force every ionization-equilibrium solve to
   use MINPACK \texttt{hybrd1}, skipping the analytic-Jacobian Newton: lets the
   same binary produce both solvers' outputs for an A/B validation
   (\texttt{Update\_EXHALE\_solver.pdf} \S6). \\
@@ -393,7 +393,7 @@ Variable & Effect \\
 \end{tabular}
 \caption{Environment-variable hooks. All are read once at startup and have
 zero effect when unset. The four diagnostic tests (top block) and
-\texttt{ATES\_PTC} runs stop after printing/writing; they do not march.}
+\texttt{EXHALE\_PTC} runs stop after printing/writing; they do not march.}
 \label{tab:env}
 \end{table}
 
@@ -1098,8 +1098,8 @@ $T_{\rm eff}$ and radius are set). 16 columns:
 recombination rates (for the proton-budget comparison), \texttt{15--16}~the
 internal and stellar contributions to $\bar J_{\rm Ly\alpha}$.
 
-\subsection{\texttt{ATES.out} and the mass-loss rate}
-\texttt{ATES.out} is a human-readable setup report (planet/star parameters, the
+\subsection{\texttt{EXHALE\_setup.out} and the mass-loss rate}
+\texttt{EXHALE\_setup.out} is a human-readable setup report (planet/star parameters, the
 Jeans parameter, composition, numerics) plus the final result. The
 \textbf{steady-state mass-loss rate} is $\dot M = 4\pi\rho v r^2$ evaluated near
 the outer boundary, corrected by the 2-D-approximation factor from
@@ -1147,7 +1147,7 @@ directory and executed there:
 \begin{enumerate}
 \item \emph{Ensure the \texttt{*\_adv.txt} files exist.} A normal converged run
   writes them automatically. To post-process an existing state (e.g.\ a Newton
-  solution produced by the \texttt{ATES\_PTC} hook, which writes only the
+  solution produced by the \texttt{EXHALE\_PTC} hook, which writes only the
   \texttt{eq} files): copy \texttt{Hydro\_ioniz.txt} $\to$
   \texttt{Hydro\_ioniz\_IC.txt} and likewise for \texttt{Ion\_species}, set
   \texttt{Load IC?\ True} and \texttt{Do only PP:\ True} in \texttt{input.inp},
@@ -1194,7 +1194,7 @@ optically-thick line, so always compare in the same definition.
 
 \subsection{\texttt{exhale\_io.py} --- named, physical-unit loaders}
 \label{sec:atesio}
-\texttt{examples/exhale\_io.py} loads every ATES output file into named arrays
+\texttt{examples/exhale\_io.py} loads every EXHALE output file into named arrays
 in physical units, so analysis code need not remember column orders
 (Table~\ref{tab:atesio}). The central object is the \texttt{Run} container:
 \texttt{load\_run(outdir, inputfile)} fills it with the hydro profiles
@@ -1403,7 +1403,7 @@ separate base-breathing instability (\S\ref{sec:windae}).
 \texttt{04\_newton\_from\_state} & Newton re-convergence of an existing state
   (no marching; needs \texttt{output/*\_IC.txt}, see the folder
   \texttt{README}) & \texttt{Load IC? True}, \texttt{Valve eps: 1.0e-4},
-  \texttt{Resid tol: 1.0e-3}; run via the \texttt{ATES\_PTC} hook \\
+  \texttt{Resid tol: 1.0e-3}; run via the \texttt{EXHALE\_PTC} hook \\
 \texttt{05\_metals} & trace-metal cooling, solar C/N/O/Mg/Ca/Na/Fe
   (\S\ref{sec:inputs}) & \texttt{metals.inp} present \\
 \texttt{06\_he23s} & He~$2^3$S metastable level (He\,I~10830) &

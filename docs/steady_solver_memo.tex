@@ -125,7 +125,7 @@ refuses the premature dip (the cold run marches past step 7{,}288), but a
 practical tolerance cannot discriminate ultra-slow drifts; it is necessary,
 not sufficient. Default off.
 
-\paragraph{Steady-residual diagnostic (\code{ATES\_RESIDUAL=1}).}
+\paragraph{Steady-residual diagnostic (\code{EXHALE\_RESIDUAL=1}).}
 The finite-volume steady residual
 \begin{equation}
 \Rres_j \;=\;
@@ -189,7 +189,7 @@ the non-local radiation (column densities) is inside $F$. The residual
 construction is shared with the diagnostics
 (\code{steady\_residual.f90}: \code{assemble\_residual}); the vector form
 lives in \code{steady\_newton.f90} (\code{pack\_U}/\code{unpack\_U}/
-\code{eval\_residual}), validated to reproduce the \code{ATES\_RESIDUAL}
+\code{eval\_residual}), validated to reproduce the \code{EXHALE\_RESIDUAL}
 numbers to all digits. One ordering subtlety: \code{Apply\_BC} must run
 \emph{before} the chemistry/heating step so that $F$ depends only on the
 interior $Y$; the diagnostic hook was aligned to the same order.
@@ -203,7 +203,7 @@ $k_l{+}k_u{+}1=17$ recovers all band entries of a \emph{local} residual
 from 17 finite-difference probes. The banded matrix is factored with
 LAPACK \code{dgbtrf}/\code{dgbtrs} (\code{LDLIBS=-llapack}; ATLAS LAPACK
 3.7.1 on this machine, link-tested). A unit test
-(\code{ATES\_JAC\_TEST=1}) checks $J r$ against a directional finite
+(\code{EXHALE\_JAC\_TEST=1}) checks $J r$ against a directional finite
 difference: relative mismatch $1.3\times10^{-4}$, i.e.\ the band layout is
 correct (an error would be $O(1)$).
 
@@ -362,15 +362,15 @@ input line & default & effect\\
 \toprule
 environment hook & effect\\
 \midrule
-\code{ATES\_DUMP\_IC=1} & write the loaded state and stop (restart
+\code{EXHALE\_DUMP\_IC=1} & write the loaded state and stop (restart
  round-trip test)\\
-\code{ATES\_RESIDUAL=1} & evaluate and report the steady residual of the
+\code{EXHALE\_RESIDUAL=1} & evaluate and report the steady residual of the
  loaded state, then stop\\
-\code{ATES\_NEWTON\_TEST=1} & pack/unpack + vector-residual self-test\\
-\code{ATES\_JAC\_TEST=1} & banded-Jacobian vs.\ directional-FD unit test\\
-\code{ATES\_PTC=1} & run the steady solver from the (loaded) IC, write
- output, stop; \code{ATES\_PTC\_JFNK=1} selects JFNK (else banded PTC);
- \code{ATES\_PTC\_DTAU0}, \code{ATES\_PTC\_NFIX} optional\\
+\code{EXHALE\_NEWTON\_TEST=1} & pack/unpack + vector-residual self-test\\
+\code{EXHALE\_JAC\_TEST=1} & banded-Jacobian vs.\ directional-FD unit test\\
+\code{EXHALE\_PTC=1} & run the steady solver from the (loaded) IC, write
+ output, stop; \code{EXHALE\_PTC\_JFNK=1} selects JFNK (else banded PTC);
+ \code{EXHALE\_PTC\_DTAU0}, \code{EXHALE\_PTC\_NFIX} optional\\
 \bottomrule
 \end{tabular}
 \end{center}
@@ -379,7 +379,7 @@ environment hook & effect\\
 \begin{lstlisting}[language=bash]
 # input.inp: ... + "Valve eps: 1.0e-4" + "Resid tol: 1.0e-3"
 # output/{Hydro_ioniz,Ion_species}_IC.txt: a warm-start state
-ATES_PTC=1 ATES_PTC_JFNK=1 ATES_PTC_DTAU0=1.0 ./EXHALE.x
+EXHALE_PTC=1 EXHALE_PTC_JFNK=1 EXHALE_PTC_DTAU0=1.0 ./EXHALE.x
 \end{lstlisting}
 
 %====================================================================
@@ -494,7 +494,7 @@ step, so a cold-start PTC could not beat the marching warm-up
 economically even where it survives. Practical caveat: when a
 \code{Solver: Newton} run prints \code{JFNK failed}, the fallback
 finishes on the $du$ stop, which can be a premature state (13.34/13.38
-vs.\ 13.71 here) --- re-check such runs with \code{ATES\_RESIDUAL=1}.
+vs.\ 13.71 here) --- re-check such runs with \code{EXHALE\_RESIDUAL=1}.
 Probes preserved in \code{regression/\{jfnk\_cold, newton\_rsw05,
 newton\_rsw01\}}.
 

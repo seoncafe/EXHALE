@@ -10,7 +10,7 @@ This is what lets them launch winds robustly across the full escape-
 parameter range, including the boil-off (low-gravity, nearly
 hydrostatic) cases that do **not** launch from a cold static start — the
 same regime where EXHALE's breathing base is hardest to converge
-(e.g. HD 189733 b). ATES already has the building blocks; this sketch
+(e.g. HD 189733 b). EXHALE already has the building blocks; this sketch
 automates the *choice* among them. See `code_comparison.tex` for the
 full motivation.
 

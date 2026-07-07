@@ -1,8 +1,8 @@
-# Cleaner convergence methods for ATES steady-state winds
+# Cleaner convergence methods for EXHALE steady-state winds
 
 ## Motivation
 
-ATES reaches its steady state by **explicit time-marching** (RK + HLLC/ROE
+EXHALE reaches its steady state by **explicit time-marching** (RK + HLLC/ROE
 finite volume) until the momentum non-uniformity `du = ΔṀ/Ṁ` (the spatial
 spread of the mass flux `ρvr²` over the wind region `[j_min:N]`) drops below
 `du_th`. In practice this requires the somewhat awkward **two-stage workflow**:
@@ -23,7 +23,7 @@ The clunkiness has two distinct roots:
 
 Below are cleaner alternatives, in increasing order of implementation effort.
 
-## Option 1 — Local (per-cell) time-stepping  *(cheapest; stays inside ATES)*
+## Option 1 — Local (per-cell) time-stepping  *(cheapest; stays inside EXHALE)*
 
 For a *steady* state, time-accuracy is irrelevant, so give each cell its own
 maximum-CFL `dt` instead of the global minimum `dt`. The slow-relaxing cells
@@ -70,7 +70,7 @@ ramp `dt → ∞`, which turns the iteration into pure Newton (quadratic).
 
 | Want | Use |
 | :-- | :-- |
-| A quick, low-risk win inside ATES | **Option 1 (local time-stepping)** (+ residual smoothing) |
+| A quick, low-risk win inside EXHALE | **Option 1 (local time-stepping)** (+ residual smoothing) |
 | The cleanest "always converges well" solver | **Option 3 (PTC → JFNK)** |
 | The most physics-tailored / fastest | **Option 2 (BVP / Newton relaxation)** |
 

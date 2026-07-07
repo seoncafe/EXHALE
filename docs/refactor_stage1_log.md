@@ -14,7 +14,7 @@ harness; "PASS" means the gate ran green immediately after the step.
   `wasp_full` (He 2^3S on + metals on; exercises the HeITR and metal paths) and
   `wasp_he23off` (He 2^3S off + metals on; exercises the HeITR-off branches).
 - `test_roundtrip.sh` + `check_roundtrip.py` — restart loader test using the
-  `ATES_DUMP_IC=1` hook in `EXHALE_main.f90`, which writes the state exactly as
+  `EXHALE_DUMP_IC=1` hook in `EXHALE_main.f90`, which writes the state exactly as
   loaded and stops. The dump happens *before* the first ionization-equilibrium
   solve: the per-step equilibrium re-solve would otherwise re-derive the metal
   fractions and mask a loader that resets metals to neutral.
@@ -128,7 +128,7 @@ Revised conclusions (superseding the first draft of this appendix):
 
 ## Steady-residual diagnostic (2026-06-10) — criterion-independent convergence
 
-`ATES_RESIDUAL=1` (env hook in EXHALE_main, like ATES_DUMP_IC) loads a state,
+`EXHALE_RESIDUAL=1` (env hook in EXHALE_main, like EXHALE_DUMP_IC) loads a state,
 evaluates the finite-volume steady residual R = du/dt once (reusing
 Reconstruct + RK_rhs for dF, S and ioniz_eq for heat,cool; WENO3), and stops.
 R(:,1)=dF-S (mass), R(:,2)=dF-S (mom), R(:,3)=dF_E-S_E-(heat-cool). Reported as

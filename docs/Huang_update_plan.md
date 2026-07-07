@@ -65,7 +65,7 @@ Ionization states actually solved by Huang+2023:
   carries C/N/O to 2nd. See Open Question Q1.)*
 
 Counting ratio-unknowns (Huang's choice): H(1) + He(2) + Mg/Fe/Si/Ca(2×4=8) +
-O/C/N/S/Na/K(1×6=6) = **17**. If ATES keeps C/N/O at 2nd ionization, it is
+O/C/N/S/Na/K(1×6=6) = **17**. If EXHALE keeps C/N/O at 2nd ionization, it is
 **20**. The "19-equation" figure in the old draft was imprecise — size the
 solver from this table, not from a remembered number.
 
@@ -73,7 +73,7 @@ solver from this table, not from a remembered number.
 - Cross sections: **Verner+1996** (outer shell) + **Verner & Yakovlev 1995**
   (inner shell); **Opacity Project / TOP** high-resolution tables near threshold
   for H I, He I, C I, N I, O I, Na I, Mg I, Mg II, Si I, Si II, Ca I, Ca II, and
-  **H I(2s), H I(2p)**; **Fe I from Zatsarinny+2019**. ATES already has Verner —
+  **H I(2s), H I(2p)**; **Fe I from Zatsarinny+2019**. EXHALE already has Verner —
   extend the dispatcher and tables to the new species.
 - Collisional ionization: **Voronov (1997)** for all species (already present).
 - Photoelectron heating efficiency ≈ **0.93** (50 eV, electron mixing ratio 0.1;
@@ -538,7 +538,7 @@ holds across the RK loop.
 
 > [!CAUTION]
 > **Q1 — C/N/O ionization depth.** EXHALE carries C/N/O to 2nd ionization;
-> Huang+2023 stops at 1st. *Recommend keeping ATES's 2nd-ion C/N/O* (more
+> Huang+2023 stops at 1st. *Recommend keeping EXHALE's 2nd-ion C/N/O* (more
 > complete, already validated) and noting the difference, rather than reducing
 > the network to match the paper exactly.
 

@@ -138,7 +138,7 @@ The reader scans the trailing lines by \emph{keyword} (using
 \texttt{index(line,\ldots)}), not by fixed line position, so blank trailing
 lines and line ordering do not matter, and \texttt{input.inp} files written
 before this change (which lack both lines) keep the default Roche behavior. The
-active mode is echoed in the setup report \texttt{ATES.out}.
+active mode is echoed in the setup report \texttt{EXHALE\_setup.out}.
 
 \subsection{Implementation}
 
@@ -152,7 +152,7 @@ active mode is echoed in the setup report \texttt{ATES.out}.
 \item \texttt{src/modules/files\_IO/input\_read.f90}: keyword scan of the
   trailing lines, and the $r_{\max}$ branch with the validity guard.
 \item \texttt{src/modules/files\_IO/write\_setup\_report.f90}: prints the
-  active mode to \texttt{ATES.out}.
+  active mode to \texttt{EXHALE\_setup.out}.
 \end{itemize}
 
 \paragraph{Gravity branch.}
@@ -1492,7 +1492,7 @@ cooling smoothly interpolates between the two limits:
 \]
 At low \(n_e\), \(\Lambda_{\rm eff}\to\Lambda_{\rm coronal}(T)\); at high \(n_e\) it
 falls off \(\sim1/n_e\) as the numerator saturates. This \(\Lambda_{\rm eff}\) is
-exactly the per-\((n_e n_{\rm FeII})\) coefficient ATES already tabulates, so the
+exactly the per-\((n_e n_{\rm FeII})\) coefficient EXHALE already tabulates, so the
 existing assembly \(\texttt{cool\_M}=\beta_{\rm esc}\,n_e\sum_i
 n_{\rm ion}(i)\,\Lambda(i)\) carries it unchanged --- the \(n_e\) in the prefactor
 times \(\Lambda_{\rm eff}\) gives \(\beta_{\rm esc}\,n_{\rm FeII}\times(\text{cooling
@@ -1878,7 +1878,7 @@ MC) profile is kept.
 \item \textbf{No \(\beta\)-on-cooling term.} From Huang \S2.5/Fig.~7 directly: the
 ``Ly\(\alpha\) cooling \(10\times\) lower'' is the Black~(1981) vs CHIANTI
 \emph{collisional-excitation rate-coefficient} difference, not photon trapping.
-ATES already uses the CHIANTI-consistent Cen \texttt{coex\_rate\_HI} (\S7), so there
+EXHALE already uses the CHIANTI-consistent Cen \texttt{coex\_rate\_HI} (\S7), so there
 is no \(10\times\) to apply. The trapping feedback is instead the Phase-3a H(\(n{=}2\))
 heating (photoelectric \texttt{Hpe} \(+\) collisional de-excitation \texttt{Hdx}),
 which strengthens once \(\bar J_{\mathrm{Ly}\alpha}\) is correct. The scaffolding
@@ -1933,14 +1933,14 @@ Deexc heat: True                     # Phase-3a collisional de-excitation heatin
 \subsection{WASP-121b validation setup (spherical Case~A, matched to Huang)}
 Huang's Fig.~11 is \textbf{Case~A} (spherical, no RLOF), so the comparison must match
 his geometry \emph{and} radial frame --- which exposed a setup error: the run had
-been Roche-truncated at \(\sim2\,R_p\), and ATES's base (\(r{=}1\)) sits at
+been Roche-truncated at \(\sim2\,R_p\), and EXHALE's base (\(r{=}1\)) sits at
 \textbf{1\,\(\mu\)bar} (\(n_0=3.1\times10^{12}\), \(T=2358\,\mathrm K\)), but Huang
 defines \(R_p\) at the \textbf{4\,mbar transit radius} and places his 1\,\(\mu\)bar
 hydro bottom at \(\sim1.25\,R_p\) (Fig.~9 top-pressure axis / Fig.~12 green band; the
 earlier ``1.46\,\(R_p\)'' note was wrong). The setup was corrected to spherical
 Case~A with \(R_0\) set to Huang's 1\,\(\mu\)bar radius
 (\(R_0=1.25\times1.766=2.2075\,R_J\), planet mass unchanged \(\Rightarrow\) correct
-base gravity) and outer radius 15.2 (\(=19\,R_p^{\rm Huang}\)); ATES \(r\) maps as
+base gravity) and outer radius 15.2 (\(=19\,R_p^{\rm Huang}\)); EXHALE \(r\) maps as
 \(R_{\rm Huang}=1.25\,r\). The Case-A \(\dot M=0.077\,M_p/\mathrm{Gyr}\) is within
 \(\sim1.5\times\) of Huang's 0.052 (Table~3).
 
@@ -1949,9 +1949,9 @@ Huang's \(\bar J_{\mathrm{Ly}\alpha}\) is a \textbf{plane-parallel Monte Carlo} 
 ours is an analytic escape-probability formula, so the two cannot agree
 quantitatively --- a quantitative comparison is only sensible once \emph{all}
 Phase-3b features (incl.\ the velocity term) are in. Qualitatively
-(\texttt{lya\_caseA\_huang11.py}), both show a significant inner peak (ATES
+(\texttt{lya\_caseA\_huang11.py}), both show a significant inner peak (EXHALE
 \(\sim0.6\) at \(1.35\), Huang \(\sim0.5\) at \(1.6\,R_p\)) and comparable magnitude
-(0.05--0.6). ATES has a dip at \(\sim1.8\,R_p\) and rises gently outward where Huang
+(0.05--0.6). EXHALE has a dip at \(\sim1.8\,R_p\) and rises gently outward where Huang
 gently declines; the outward rise traces to the \(n2s\) recombination cascade in the
 Phase-3a H(\(2s/2p\)) model (\(n{=}2\) stays recombination-populated while
 ground-state H vanishes in the ionized wind), \emph{not} \(\bar J\), which after the
@@ -1981,7 +1981,7 @@ trend-first guidance:} the post-all-features quantitative comparison and the
 Phase 4 adds the Roche-lobe-overflow (RLOF) tidal physics that drives Huang's
 enhanced mass loss --- \textbf{Case B \(\dot M=0.32\), Case D \(=1.03\,M_p/\mathrm{Gyr}\)}
 --- the regime that matches the observed transit depths (spherical Case A
-underestimates them). \textbf{ATES already has the 1D Roche potential}
+underestimates them). \textbf{EXHALE already has the 1D Roche potential}
 (\texttt{grav\_field.f90}, the \texttt{spherical\_domain=.false.} branch:
 planet $+$ stellar-tidal $+$ centrifugal), the L1-truncated domain, and the tidal
 momentum source (\texttt{Source.f90}) --- Caldiroli's ATES-v2 Roche mode. So the
@@ -2009,7 +2009,7 @@ heating puff the 1\,\(\mu\)bar level outward (weaker base gravity), driving the 
 WASP-121b in Roche mode (tidal on) $+$ the corrected base $+$ metals $+$ Ly\(\alpha\)
 mode-2 gives \(\dot M=0.337\,M_p/\mathrm{Gyr}\approx\) Huang's Case~B (0.32), within
 \(\sim5\%\). With the base-radius fix both cases agree (Case~A 0.077 \(\approx1.5\times\)
-Huang's 0.052; Case~B 0.337 \(\approx1.05\times\) Huang's 0.32). ATES's existing Roche
+Huang's 0.052; Case~B 0.337 \(\approx1.05\times\) Huang's 0.32). EXHALE's existing Roche
 potential thus captures the RLOF enhancement --- no geometric-reconstruction code was
 needed for the Case~B \(\dot M\) gate.
 
@@ -2048,7 +2048,7 @@ zero-momentum cell, but it was \emph{not} what unblocked Case~D --- with an empt
 
 \paragraph{Transonic-wind IC (implemented, \texttt{Transonic IC: True}).}
 \texttt{set\_IC.f90} gained an optional transonic isothermal-wind profile, solved from
-the ATES potential via the algebraic (Bernoulli) integral of the steady isothermal-wind
+the EXHALE potential via the algebraic (Bernoulli) integral of the steady isothermal-wind
 equation,
 \[
 \tfrac12 v^2 - c^2\ln v - 2c^2\ln r + \phi(r) = B,\qquad c^2=(1+\delta p_{bc})/\rho_{bc},
@@ -2082,7 +2082,7 @@ the hydrostatic IC here: both launch the same subsonic flow.
 re-read inconsistency --- so it is not a workaround.)
 
 \paragraph{Conclusion.} Case~D's deep RLOF (\(\dot M=1.03\)) is \textbf{not reachable in
-ATES's 1-D L1-truncated Roche mode}: the wind is subsonic at L1, so the truncated domain
+EXHALE's 1-D L1-truncated Roche mode}: the wind is subsonic at L1, so the truncated domain
 structurally undershoots. Capturing it needs the 3-D geometric treatment (Phase~5) or a
 domain extended past L1 --- \emph{not} a different IC. The transonic IC and the
 escape-radius guard are correct, necessary infrastructure (they remove the false
@@ -2558,7 +2558,7 @@ parameter $b_0$ (Kubyshkina's $\Lambda$) is logged as a diagnostic but is
 \texttt{IC mode: <cold|transonic|hot\_parker|auto>}. The named modes simply set
 the legacy flags; \texttt{auto} defers the decision to \texttt{set\_IC}. The
 legacy keys (\texttt{Transonic IC:}, \texttt{Hot Parker IC:}) take precedence
-over \texttt{auto}, and the setup report (\texttt{ATES.out}) records the family
+over \texttt{auto}, and the setup report (\texttt{EXHALE\_setup.out}) records the family
 actually in effect, with a ``\texttt{(chosen automatically: IC mode = auto)}''
 tag. Touched files: \texttt{parameters.f90} (\texttt{ic\_mode}),
 \texttt{input\_read.f90} (key parsing), \texttt{set\_IC.f90}

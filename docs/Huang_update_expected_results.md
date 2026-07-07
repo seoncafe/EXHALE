@@ -1,6 +1,6 @@
-# Expected Effects and Results of the Huang et al. Updates in ATES
+# Expected Effects and Results of the Huang et al. Updates in EXHALE
 
-이 문서는 `Huang_update_plan.md`에 제안된 물리적 과정(금속 원소 확장, Lyα 복사 전달, $H(n=2)$ 들뜸 상태, 로쉬 포텐셜 및 경계 조건 업데이트 등)을 ATES에 반영했을 때 예상되는 대기 구조, 이온화도 분포, 질량 손실률 및 관측 스펙트럼의 변화를 정리한 문서입니다.
+이 문서는 `Huang_update_plan.md`에 제안된 물리적 과정(금속 원소 확장, Lyα 복사 전달, $H(n=2)$ 들뜸 상태, 로쉬 포텐셜 및 경계 조건 업데이트 등)을 EXHALE에 반영했을 때 예상되는 대기 구조, 이온화도 분포, 질량 손실률 및 관측 스펙트럼의 변화를 정리한 문서입니다.
 
 ---
 

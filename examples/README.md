@@ -24,7 +24,7 @@ each option does.
 | `01_legacy_marching` | Classic ATES v2 baseline: PLM marching, H/He only, Roche domain, `du`-based stop | (none — baseline) |
 | `02_two_stage` | Two-stage PLM -> WENO3 marching | `Reconstruction scheme: PLM+WENO3`, `du_th [PLM,WENO3]: 0.5 1.0e-3` |
 | `03_newton` | **Recommended default**: two-stage warm-up + JFNK Newton finish to the true steady state | + `Solver: Newton` |
-| `04_newton_from_state` | Newton re-convergence of an existing state (no marching) | `Load IC? True`, `Valve eps: 1.0e-4`, `Resid tol: 1.0e-3`; run with `ATES_PTC=1 ATES_PTC_JFNK=1 ATES_PTC_DTAU0=1.0 ../../EXHALE.x` |
+| `04_newton_from_state` | Newton re-convergence of an existing state (no marching) | `Load IC? True`, `Valve eps: 1.0e-4`, `Resid tol: 1.0e-3`; run with `EXHALE_PTC=1 EXHALE_PTC_JFNK=1 EXHALE_PTC_DTAU0=1.0 ../../EXHALE.x` |
 | `05_metals` | Trace-metal cooling (solar C/N/O/Mg/Ca/Na/Fe) | `metals.inp` present |
 | `06_he23s` | He 2^3S metastable level (He I 10830 line) | `Include He23S? True` |
 | `07_balmer_lya` | Non-LTE H(n=2) + Ly-alpha pumping (H-alpha/H-beta) | + `Stellar Teff/radius`, `Deexc heat`, `Jlya escape-prob`, `Stellar Lya flux/halfwidth/boost` |

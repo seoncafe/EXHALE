@@ -20,7 +20,7 @@ Measured thread scaling (no-metals HD209458b cold IC, steps/s):
 
 Only ~1.40x from 1->16 threads, nothing beyond 16, and **60 threads is slower
 than 16** (fork/join overhead on a ~500-cell grid). Amdahl back-out => ~70%
-serial. A lightweight phase profiler (env `ATES_PROFILE=1`, prints the
+serial. A lightweight phase profiler (env `EXHALE_PROFILE=1`, prints the
 `ioniz_eq` wall-time fraction) showed `ioniz_eq` is **31.7%** of a no-metals
 step but **60.9%** of a full-physics (He 2^3S + metals) step — the per-cell
 Newton solves dominate the heavy runs.
@@ -67,7 +67,7 @@ balances the uneven per-cell solve cost.
 
 Because each cell solve is independent and deterministic, a correct
 parallelization must be **bit-identical** to serial. Verified with a
-deterministic step cap (env `ATES_MAXSTEPS=N`): 3000-step HD209458b runs at
+deterministic step cap (env `EXHALE_MAXSTEPS=N`): 3000-step HD209458b runs at
 OMP_NUM_THREADS = 1 vs 8 vs 16 produced **byte-identical** `Hydro_ioniz.txt` and
 `Ion_species.txt`, for **both** metals-off and full-physics (He 2^3S + metals).
 Bit-identical per step => the full converged trajectory is identical, so the
@@ -88,6 +88,6 @@ pass). 16 threads remains the practical knee.
 
 ## Diagnostics added (env-gated, zero cost when off)
 
-- `ATES_PROFILE=1` — prints the `ioniz_eq` wall-time fraction every 500 steps.
-- `ATES_MAXSTEPS=N` — stop after N steps and write output (serial-vs-parallel
+- `EXHALE_PROFILE=1` — prints the `ioniz_eq` wall-time fraction every 500 steps.
+- `EXHALE_MAXSTEPS=N` — stop after N steps and write output (serial-vs-parallel
   bit-comparison; also handy for fixed-length benchmarks).

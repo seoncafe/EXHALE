@@ -46,18 +46,18 @@
       real*8  :: resid_c(3), resid_cv(3), resid_max, flux_spread
       logical :: is_resid_ok
 
-      ! Newton-residual self-test scratch (ATES_NEWTON_TEST hook)
+      ! Newton-residual self-test scratch (EXHALE_NEWTON_TEST hook)
       real*8, allocatable :: Yvec(:), Fvec(:)
       real*8, dimension(1-Ng:N+Ng,n_species) :: f_sp_test
-      ! Banded-Jacobian self-test scratch (ATES_JAC_TEST hook)
+      ! Banded-Jacobian self-test scratch (EXHALE_JAC_TEST hook)
       real*8, allocatable :: abjac(:,:), rdir(:), Jr(:), dFD(:), F0f(:)
       real*8, dimension(1-Ng:N+Ng) :: heat0, cool0
       real*8 :: jac_eps, jac_err
-      ! --- lightweight phase profiler (gated by env ATES_PROFILE=1) ---
+      ! --- lightweight phase profiler (gated by env EXHALE_PROFILE=1) ---
       logical :: do_profile = .false.
       real*8  :: tp_step0, tp_a, tp_ion = 0.0d0, tp_hyd = 0.0d0, tp_tot = 0.0d0
       character(len=8) :: prof_env
-      ! Deterministic step cap (env ATES_MAXSTEPS=N): stop after N steps and write
+      ! Deterministic step cap (env EXHALE_MAXSTEPS=N): stop after N steps and write
       ! output. Used to compare serial vs parallel runs at an identical step.
       integer :: max_steps = 0
       
@@ -81,7 +81,7 @@
       real*8  :: du_prev
       integer :: stall_count
 
-      ! Optional base-cell startup diagnostic (env ATES_DIAG_BASE=1): dumps the
+      ! Optional base-cell startup diagnostic (env EXHALE_DIAG_BASE=1): dumps the
       ! first few cells (r, n, v, T, heat, cool, dC/dT sign) for the first steps,
       ! to trace IC-startup transients (e.g. warm-Parker base breakdown). Off by
       ! default => zero effect on normal runs.
@@ -130,7 +130,7 @@
       !------------------------------------------------! 
       
       ! Open output report file 
-      open(unit = outfile, file = 'ATES.out')
+      open(unit = outfile, file = 'EXHALE_setup.out')
       
       !------------------------------------------------!
       
@@ -171,11 +171,11 @@
       ! Initialize simulations
       call init(W,u,f_sp)
 
-      ! Optional IC-dump hook (env ATES_DUMP_IC=1): write the state exactly
+      ! Optional IC-dump hook (env EXHALE_DUMP_IC=1): write the state exactly
       ! as initialized/loaded and stop. Lets the restart round-trip test
       ! inspect what load_IC restored BEFORE the first ionization-
       ! equilibrium solve re-equilibrates the species fractions.
-      call get_environment_variable('ATES_DUMP_IC', diag_env)
+      call get_environment_variable('EXHALE_DUMP_IC', diag_env)
       if (trim(diag_env) .eq. '1') then
          rho = W(:,1)
          v   = W(:,2)
@@ -186,11 +186,11 @@
          heat = 0.0d0; cool = 0.0d0; eta = 0.0d0
          call write_output(rho,v,p,T,heat,cool,eta,                    &
                            nhi,nhii,nhei,nheii,nheiii,nheiTR,nm,'eq')
-         write(*,*) '(EXHALE_main) ATES_DUMP_IC=1: IC state written, stopping.'
+         write(*,*) '(EXHALE_main) EXHALE_DUMP_IC=1: IC state written, stopping.'
          stop
       endif
 
-      ! Optional steady-residual diagnostic (env ATES_RESIDUAL=1): evaluate
+      ! Optional steady-residual diagnostic (env EXHALE_RESIDUAL=1): evaluate
       ! the finite-volume steady residual R = du/dt of the loaded state and
       ! stop. R = dF - S for mass/momentum and dF_E - S_E - (heat - cool) for
       ! energy; at a true steady state R = 0, INDEPENDENT of how the run was
@@ -198,7 +198,7 @@
       ! max_j |R(j,k)| / max|u(:,k)| over the wind region [j_min:N]. Used to
       ! rank candidate "converged" states (premature-dip vs true steady).
       ! Evaluated in WENO3 (the production scheme the states converged under).
-      call get_environment_variable('ATES_RESIDUAL', diag_env)
+      call get_environment_variable('EXHALE_RESIDUAL', diag_env)
       if (trim(diag_env) .eq. '1') then
          rec_method = 'WENO3';  use_weno3 = .true.;  use_plm = .false.
          ! Apply_BC first so the residual depends only on the interior state
@@ -228,7 +228,7 @@
            write(*,'(A)') ' (EXHALE_main) wrote output/residual_profile.txt'
          end block
          call residual_norms_vol(Rres, u, resid_cv)
-         write(*,'(A)') ' (EXHALE_main) ATES_RESIDUAL=1 steady residual ||R||:'
+         write(*,'(A)') ' (EXHALE_main) EXHALE_RESIDUAL=1 steady residual ||R||:'
          write(*,'(A)') '   component    L-inf: max|R|/max|u|    vol-wt: '// &
                         'sum|R|V/sum|u|V   [1/t_s]'
          do k = 1,3
@@ -237,16 +237,16 @@
          enddo
          write(*,'(A,ES12.4,A,ES12.4)') '   ||R|| = max_k :  L-inf =',      &
               maxval(resid_c), '   vol-weighted =', maxval(resid_cv)
-         write(*,*) '(EXHALE_main) ATES_RESIDUAL=1: residual reported, stopping.'
+         write(*,*) '(EXHALE_main) EXHALE_RESIDUAL=1: residual reported, stopping.'
          stop
       endif
 
-      ! Optional Newton-residual self-test (env ATES_NEWTON_TEST=1): verify
+      ! Optional Newton-residual self-test (env EXHALE_NEWTON_TEST=1): verify
       ! the vector residual F(Y) used by the steady solver reproduces the
       ! diagnostic residual. (a) pack/unpack are exact inverses; (b) the
-      ! per-component max|F|/max|u| over [j_min:N] equals the ATES_RESIDUAL
+      ! per-component max|F|/max|u| over [j_min:N] equals the EXHALE_RESIDUAL
       ! values. Validates increment (ii)-2 before the Jacobian/PTC driver.
-      call get_environment_variable('ATES_NEWTON_TEST', diag_env)
+      call get_environment_variable('EXHALE_NEWTON_TEST', diag_env)
       if (trim(diag_env) .eq. '1') then
          rec_method = 'WENO3';  use_weno3 = .true.;  use_plm = .false.
          allocate(Yvec(neq_newton()), Fvec(neq_newton()))
@@ -257,7 +257,7 @@
               maxval(abs(W(1:N,:) - u(1:N,:)))
          f_sp_test = f_sp                           ! copy: newton_residual mutates it
          call newton_residual(Yvec, f_sp_test, Fvec)
-         write(*,'(A)') ' (newton_test) max|F|/max|u| over [j_min:N] (cf. ATES_RESIDUAL):'
+         write(*,'(A)') ' (newton_test) max|F|/max|u| over [j_min:N] (cf. EXHALE_RESIDUAL):'
          do k = 1,3
             mom = 0.0d0
             do j = 1,N
@@ -266,15 +266,15 @@
             write(*,'(A,I2,4X,ES16.6)') '   k=', k,                    &
                maxval(abs(mom(j_min:N)))/max(maxval(abs(u(j_min:N,k))),1.0d-30)
          enddo
-         write(*,*) '(EXHALE_main) ATES_NEWTON_TEST=1: done, stopping.'
+         write(*,*) '(EXHALE_main) EXHALE_NEWTON_TEST=1: done, stopping.'
          stop
       endif
 
-      ! Optional banded-Jacobian self-test (env ATES_JAC_TEST=1): verify the
+      ! Optional banded-Jacobian self-test (env EXHALE_JAC_TEST=1): verify the
       ! colored-FD banded Jacobian of the frozen residual reproduces a
       ! directional finite difference, J*r ~= (F(Y+eps r)-F(Y))/eps. A wrong
       ! band layout gives an O(1) mismatch; a correct one matches to ~1e-6.
-      call get_environment_variable('ATES_JAC_TEST', diag_env)
+      call get_environment_variable('EXHALE_JAC_TEST', diag_env)
       if (trim(diag_env) .eq. '1') then
          rec_method = 'WENO3';  use_weno3 = .true.;  use_plm = .false.
          k = neq_newton()
@@ -300,30 +300,30 @@
          write(*,'(A,ES12.4)') ' (jac_test) max|F_frozen(Y)| = ', maxval(abs(F0f))
          write(*,'(A,ES12.4)') ' (jac_test) ||J*r - dFD||_inf / ||J*r||_inf = ', jac_err
          write(*,'(A)')        '   (correct band layout => ~1e-6; wrong => O(1))'
-         write(*,*) '(EXHALE_main) ATES_JAC_TEST=1: done, stopping.'
+         write(*,*) '(EXHALE_main) EXHALE_JAC_TEST=1: done, stopping.'
          stop
       endif
 
-      ! Optional steady-state PTC-Newton solve (env ATES_PTC=1): solve
+      ! Optional steady-state PTC-Newton solve (env EXHALE_PTC=1): solve
       ! F(Y)=0 directly from the current IC, write the converged profiles,
       ! and stop. Validation of increment (ii)-4 against the marching
       ! reference (WASP-121b ~13.71).
-      call get_environment_variable('ATES_PTC', diag_env)
+      call get_environment_variable('EXHALE_PTC', diag_env)
       if (trim(diag_env) .eq. '1') then
          rec_method = 'WENO3';  use_weno3 = .true.;  use_plm = .false.
          call U_to_W(u,W)
          call eval_dt(W, dt, dt_loc)            ! CFL dt = default PTC dtau0
          resid_max = resid_th
          if (resid_max .le. 0.0d0) resid_max = 1.0d-3
-         ! Optional dtau0 override for experimentation (ATES_PTC_DTAU0=<val>):
+         ! Optional dtau0 override for experimentation (EXHALE_PTC_DTAU0=<val>):
          ! a larger start probes the Newton regime directly.
-         call get_environment_variable('ATES_PTC_DTAU0', diag_env)
+         call get_environment_variable('EXHALE_PTC_DTAU0', diag_env)
          if (len_trim(diag_env) .gt. 0) read(diag_env,*) dt
          write(*,'(A,ES10.2)') ' (EXHALE_main) PTC dtau0 = ', dt
-         ! Optional frozen-base experiment (ATES_PTC_NFIX=<n>): anchor the
+         ! Optional frozen-base experiment (EXHALE_PTC_NFIX=<n>): anchor the
          ! first n physical cells (non-smooth base-BC region) and solve for
          ! the wind on top of them.
-         call get_environment_variable('ATES_PTC_NFIX', diag_env)
+         call get_environment_variable('EXHALE_PTC_NFIX', diag_env)
          if (len_trim(diag_env) .gt. 0) then
             read(diag_env,*) k
             allocate(Yvec(neq_newton()))
@@ -332,7 +332,7 @@
             deallocate(Yvec)
             write(*,'(A,I0,A)') ' (EXHALE_main) frozen-base: first ', k, ' cells anchored'
          endif
-         call get_environment_variable('ATES_PTC_JFNK', diag_env)
+         call get_environment_variable('EXHALE_PTC_JFNK', diag_env)
          if (trim(diag_env) .eq. '1') then
             call solve_steady_jfnk(u, f_sp, resid_max, 3000, dt, 40, j)
          else
@@ -349,7 +349,7 @@
                                     nheiii,nheiTR,nm,ne,n_tot)
          call write_output(rho,v,p,T,heat,cool,eta,                    &
                            nhi,nhii,nhei,nheii,nheiii,nheiTR,nm,'eq')
-         write(*,*) '(EXHALE_main) ATES_PTC=1: solver done, output written, stopping.'
+         write(*,*) '(EXHALE_main) EXHALE_PTC=1: solver done, output written, stopping.'
          stop
       endif
 
@@ -370,9 +370,9 @@
       ! Get starting time
       write(*,*) '(EXHALE_main.f90) Starting time integration..'
       start = omp_get_wtime()
-      call get_environment_variable('ATES_PROFILE', prof_env)
+      call get_environment_variable('EXHALE_PROFILE', prof_env)
       if (trim(prof_env) .eq. '1') do_profile = .true.
-      call get_environment_variable('ATES_MAXSTEPS', prof_env)
+      call get_environment_variable('EXHALE_MAXSTEPS', prof_env)
       if (len_trim(prof_env) .gt. 0) read(prof_env,*) max_steps
 
       ! Phase 3a excited-H feedback is a decoupled (lagged-explicit) source:
@@ -424,7 +424,7 @@
       is_resid_ok = .false.
 
       ! Activate base-cell startup diagnostic if requested
-      call get_environment_variable('ATES_DIAG_BASE', diag_env)
+      call get_environment_variable('EXHALE_DIAG_BASE', diag_env)
       if (trim(diag_env) .eq. '1') then
          diag_base = .true.
          open(unit=778, file='output/base_diag.txt', status='replace')
@@ -1007,7 +1007,7 @@
       write(*,101) ' ---> Log10 of steady-state Mdot = ', Mdot, ' g/s'
       
       ! Write Mdot to report file 
-      open(unit = outfile, file = 'ATES.out', access = 'append' )
+      open(unit = outfile, file = 'EXHALE_setup.out', access = 'append' )
       	write(outfile,101) ' '
       	write(outfile,102) ' - Log10 of steady-state Mdot = ', Mdot, ' g/s'
       close(unit = outfile)

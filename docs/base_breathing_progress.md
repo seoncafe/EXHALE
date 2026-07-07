@@ -19,7 +19,7 @@ normalization.
 ## The problem (localized)
 
 - The steady residual is **purely momentum** (mass ~2e-3, energy ~5e-2, momentum
-  ~4.6). A per-cell dump (`ATES_RESIDUAL=1` → `output/residual_profile.txt`,
+  ~4.6). A per-cell dump (`EXHALE_RESIDUAL=1` → `output/residual_profile.txt`,
   added this session) shows it **peaks at the dense base** (r≈1.0002,
   R_mom≈180, driven by the gravity source ρg at n0=1e14) and decays outward.
 - The convergence metric uses `max|R(j_min:N)|` (excludes the base cells), and
@@ -55,7 +55,7 @@ Time-dependent relaxation (like EXHALE/ATES), but with stabilizers EXHALE lacks:
 | **Mass-flux base velocity** | `Base velocity: massflux\|valve` | **ON (massflux, EMA)** | ≈valve here, EMA-stabilized |
 | Momentum-consistent base p | `Hydrostatic base: True` | off | null for this case |
 | Roche IC base blend | (auto, `tidalforce`-gated) | on for tidal | correct improvement |
-| Per-cell residual dump | env `ATES_RESIDUAL=1` | — | the key diagnostic |
+| Per-cell residual dump | env `EXHALE_RESIDUAL=1` | — | the key diagnostic |
 | **Viscosity (Phase-1)** | `Viscosity: <mu0> [<s>]` | **off (visc_mu0=0)** | un-validated foundation |
 
 Files touched: `src/modules/init/parameters.f90`, `.../files_IO/input_read.f90`,
@@ -157,9 +157,9 @@ validate physics, not rush):
 
 ## Diagnostics / how to reproduce
 
-- Per-cell residual: `ATES_RESIDUAL=1 ./EXHALE.x` → `output/residual_profile.txt`
+- Per-cell residual: `EXHALE_RESIDUAL=1 ./EXHALE.x` → `output/residual_profile.txt`
   (columns r, n, v, T, R_mass, R_mom, R_energy).
-- Direct steady solve from the IC: `ATES_PTC=1` (+ `ATES_PTC_NFIX`, `ATES_PTC_DTAU0`).
+- Direct steady solve from the IC: `EXHALE_PTC=1` (+ `EXHALE_PTC_NFIX`, `EXHALE_PTC_DTAU0`).
 - Disable the new defaults to recover legacy: `Shapiro filter: -1`,
   `Base velocity: valve`.
 

@@ -1,6 +1,6 @@
       module steady_residual_mod
       ! Finite-volume STEADY residual  R = du/dt  (zero at a true steady
-      ! state), shared by the ATES_RESIDUAL diagnostic, the in-loop
+      ! state), shared by the EXHALE_RESIDUAL diagnostic, the in-loop
       ! convergence monitor, and the steady-state Newton/PTC solver.
       !
       !   R(:,1) = dF - S                 (mass)

@@ -21,7 +21,7 @@
       ! how many fell back to MINPACK hybrd1.
       integer, save, public :: nt_calls = 0, nt_fallback = 0
       ! Reproducible-validation switch: if the environment variable
-      ! ATES_FORCE_HYBRD1 is set (to a non-empty value), solve_ieq skips Newton
+      ! EXHALE_FORCE_HYBRD1 is set (to a non-empty value), solve_ieq skips Newton
       ! and always uses MINPACK hybrd1. Lets the same binary produce both the
       ! Newton and the reference hybrd1 outputs for an A/B comparison.
       logical, save :: nt_init = .false., nt_force = .false.
@@ -41,9 +41,9 @@
       real*8  :: xsave(n), fvec(n)
       character(len=8) :: envval
 
-      ! One-time check of the ATES_FORCE_HYBRD1 validation switch.
+      ! One-time check of the EXHALE_FORCE_HYBRD1 validation switch.
       if (.not. nt_init) then
-         call get_environment_variable('ATES_FORCE_HYBRD1', envval)
+         call get_environment_variable('EXHALE_FORCE_HYBRD1', envval)
          nt_force = (len_trim(envval) .gt. 0)
          nt_init  = .true.
       endif

@@ -206,7 +206,7 @@ exclusive with metals, unused here).
 **Validation.** PP-only sweep over converged Case B (504 cells):
 - **Newton 504/504 solves (100%, zero fallback)** — analytic Jacobian (H/He + 10
   metals + charge exchange) converges on every cell.
-- **A/B at identical state** (Newton vs forced-`hybrd1` via `ATES_FORCE_HYBRD1=1`,
+- **A/B at identical state** (Newton vs forced-`hybrd1` via `EXHALE_FORCE_HYBRD1=1`,
   so the one-step hydro drift cancels): `Ion_species` agrees to **7.2e-7** over all
   stages, T to 3.5e-4 → Jacobian correct.
 - log10 Ṁ 13.38 unchanged.
@@ -227,7 +227,7 @@ keywords (anywhere in the optional block):
 | `Brent solver: True/False`  | `True` | energy solve uses legacy `hybrd1` + 2×-band reject |
 
 Absent keywords keep the new solvers. Flags `use_newton_ieq` / `use_brent_tsolve`
-(global_parameters), parsed in `input_read.f90`. The `ATES_FORCE_HYBRD1=1`
+(global_parameters), parsed in `input_read.f90`. The `EXHALE_FORCE_HYBRD1=1`
 environment variable also forces the `hybrd1` ionization path for validation
 without editing the input.
 

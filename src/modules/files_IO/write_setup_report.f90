@@ -12,7 +12,7 @@
 	subroutine write_setup_report
 	! Write summary of the current simulation setup to file
 
-	write(*,*) '(write_setup_report.f90) Writing the setup report on ATES.out..'
+	write(*,*) '(write_setup_report.f90) Writing the setup report on EXHALE_setup.out..'
 	
 	write(outfile,*) '######## Simulation for ', p_name, ' ########'
 	write(outfile,*) ' '

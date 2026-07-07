@@ -39,7 +39,7 @@ and the Metal Resonance Doublets}
 \section{Overview}
 %=============================================================================
 
-\texttt{EXHALE\_transit.py} (the Transmission Probability Model shipped with ATES)
+\texttt{EXHALE\_transit.py} (the Transmission Probability Model shipped with EXHALE)
 computes transit transmission spectra by integrating the line-of-sight
 (LOS) optical depth on an impact-parameter grid, using Voigt profiles
 evaluated through the Faddeeva function, and then averaging over the
@@ -56,7 +56,7 @@ population must be computed from a non-LTE balance. We follow
 collisional excitation/de-excitation, recombination cascade, two-photon
 decay, $\ell$-mixing, and \textbf{Ly$\alpha$ radiative pumping}
 ($1s\leftrightarrow2p$). The Ly$\alpha$ mean intensity $J_{\rm Ly\alpha}(r)$
-is \emph{not} produced by ATES; it is either read from an external text
+is \emph{not} produced by EXHALE; it is either read from an external text
 file or, by default, estimated with the simple prescription of Huang
 et~al.~(2017) --- see \S\ref{sec:jlya}.
 
@@ -77,7 +77,7 @@ The $2s$ and $2p$ states are treated separately because they have very
 different lifetimes (the $2p\to1s$ Ly$\alpha$ decay is fast,
 $A_{2p\to1s}=6.3\times10^{8}\,$s$^{-1}$, whereas the $2s\to1s$ two-photon
 decay is slow, $A_{2s\to1s}=8.26\,$s$^{-1}$). With $n_{1s}=n_{\rm H\,I}$,
-$n_e$ and $T$ taken from the ATES profiles, the rate-equilibrium
+$n_e$ and $T$ taken from the EXHALE profiles, the rate-equilibrium
 equations are (Christie et~al.\ Eqs.~12--13)
 
 \begin{align}
@@ -154,12 +154,12 @@ $J_{\rm Ly\alpha}(r)$ is obtained in one of two ways.
 two-column text file, $J_{\rm Ly\alpha}(r)$ is read from it:
 \begin{center}
 \begin{tabular}{ll}
-column 1 & $r/R_p$ \quad(same radial coordinate as the ATES output) \\
+column 1 & $r/R_p$ \quad(same radial coordinate as the EXHALE output) \\
 column 2 & $J_{\rm Ly\alpha}$ \quad[$\mathrm{erg\,s^{-1}\,cm^{-2}\,Hz^{-1}\,sr^{-1}}$] \\
 \end{tabular}
 \end{center}
 \begin{sloppypar}
-linearly interpolated onto the ATES grid and clamped to the endpoints.
+linearly interpolated onto the EXHALE grid and clamped to the endpoints.
 A template ships as \texttt{inputdata/Jlya.txt.example}.
 \end{sloppypar}
 
@@ -180,7 +180,7 @@ the atmosphere ($2.6\times10^{4}\,\mathrm{erg\,cm^{-2}\,s^{-1}}$ for
 HD\,189733b, page~11).
 
 \textbf{$F_{\rm LyC}$ from the actual stellar input.} Rather than a fixed
-number, \texttt{EXHALE\_transit.py} computes the absorbed LyC flux from the ATES
+number, \texttt{EXHALE\_transit.py} computes the absorbed LyC flux from the EXHALE
 inputs:
 \[
   F_{\rm LyC} = \xi\,
@@ -191,7 +191,7 @@ inputs:
 \]
 where $L_{\rm EUV}$ (the EUV-band luminosity, $E>13.6$\,eV) and the
 orbital distance $a$ are read from \texttt{input.inp}, $N_{\rm H\,I}$ is
-the vertical neutral-hydrogen column from the ATES profile, and
+the vertical neutral-hydrogen column from the EXHALE profile, and
 $\sigma_{\rm LyC}\simeq6.3\times10^{-18}\,\mathrm{cm^2}$. The factor
 $\xi$ is the day-night / 2D flux dilution, taken to match ATES's ``2D
 approximate method'' (\texttt{Rate/2}$\to0.5$, \texttt{Rate/4}$\to0.25$,
@@ -215,7 +215,7 @@ Ly$\alpha$ component; for a self-consistent profile, supply
 The $n=2$ levels are photoionized by the stellar Balmer continuum
 ($E>3.4$\,eV, $\lambda<3647$\,\AA{}); this depletes $n_2$ and is included
 in Eqs.~(12)--(13) through $\Gamma_{2s},\Gamma_{2p}$. The Balmer-continuum
-field is outside ATES's XUV scope, so it is estimated from a diluted
+field is outside EXHALE's XUV scope, so it is estimated from a diluted
 stellar blackbody: for a stellar effective temperature \texttt{T\_star}
 and radius \texttt{R\_star},
 \[
@@ -409,7 +409,7 @@ transmission, as for the H/He lines.}
     blackbody approximation to the true stellar near-UV spectrum. Setting
     \texttt{T\_star}$\le0$ reverts to the manual constants (default $0$).
   \item \textbf{Electron density.} $n_e=n_{\rm H\,II}+n_{\rm He\,II}
-    +2n_{\rm He\,III}$ from ATES is used (Christie assume $n_e=n_p$); the
+    +2n_{\rm He\,III}$ from EXHALE is used (Christie assume $n_e=n_p$); the
     difference is small.
   \item \textbf{$J_{\rm Ly\alpha}$ convention.} The input must be the
     mean intensity $J_\nu$ at line center in cgs (\S\ref{sec:jlya}). A
