@@ -36,12 +36,11 @@ rebuild. Optional keys inside: `pp_metals`, `cx_full`, `cno_cool`, `eos_metals`.
 ```
 Include He23S? True
 ```
-TPM computes the 10830 line from the `*_adv` output:
+`EXHALE_transit.py` computes the 10830 line from the `*_adv` output:
 ```bash
 MPLBACKEND=Agg python3 EXHALE_transit.py          # He 10830, Lya, Halpha, Hbeta, metal lines
 # wide window when the line is broad:
-# widen the He window (auto by default; override with EXHALE_TRANSIT_HE_LMIN/
-# LMAX/N -- the old TPM_HE_* names still work):
+# widen the He window (auto by default; override with EXHALE_TRANSIT_HE_LMIN/LMAX/N):
 EXHALE_TRANSIT_HE_LMIN=10827.5 EXHALE_TRANSIT_HE_LMAX=10832.5 python3 EXHALE_transit.py
 ```
 -> manual §5.2.
@@ -49,8 +48,7 @@ EXHALE_TRANSIT_HE_LMIN=10827.5 EXHALE_TRANSIT_HE_LMAX=10832.5 python3 EXHALE_tra
 ### Instrument resolution and rotation (env overrides)
 
 The per-line instrument resolving power `R = lambda/Delta-lambda` and the azimuthal
-sampling of the rotation integral are run-time overridable (old `TPM_*` names still
-work as fallbacks):
+sampling of the rotation integral are run-time overridable:
 
 ```bash
 # resolving power per line (defaults in parentheses):

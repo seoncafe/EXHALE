@@ -48,7 +48,7 @@ fork of the ATES code (Caldiroli et al. 2021; Biassoni et al. 2024), adding:
   **VULCAN** photochemistry output — the photochemical H2/H state, which on
   HD 189733 b dissociates ~11x more H than equilibrium at 1 ubar) — see
   `docs/lower_atmosphere_coupling.pdf`
-- **TPM** (Transmission Probability Module) post-processor: transit spectra
+- **`EXHALE_transit.py`** transmission post-processor: transit spectra
   for He I 10830 Å, Ly-alpha, H-alpha, H-beta, and the metal resonance
   doublets Mg II h&k, Ca II H&K, and Na I D
 
@@ -482,7 +482,7 @@ After a converged run, compute the transit transmission spectra with:
 MPLBACKEND=Agg python3 EXHALE_transit.py
 ```
 
-`EXHALE_transit.py` (formerly `TPM.py`) reads `input.inp` and the
+`EXHALE_transit.py` reads `input.inp` and the
 `*_adv.txt` profiles in `output/`, and
 produces spectrum figures (PNG + vector PDF; theoretical, instrument-
 convolved, and instrument+rotation-convolved curves) for **He I 10830 Å,
@@ -552,4 +552,4 @@ See `examples/README.md` for the exact lines each one adds:
 
 ---
 
-Last updated: 2026-07-07 16:29
+Last updated: 2026-07-07 16:40
