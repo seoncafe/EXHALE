@@ -77,7 +77,7 @@ field with the steady wind (outer JFNK<->diffusion iteration). Physics and
 two-planet impact: `docs/design_hehe_diffusion.md`,
 `docs/version_compare.pdf`. -> manual §3.6.
 
-## Check the base radius (Tier-1 lower column)
+## Check the base radius (analytic lower column)
 
 ```
 Lower column: 1.36     # the 1-bar (transit) radius [R_J]

@@ -28,11 +28,11 @@ fork of the ATES code (Caldiroli et al. 2021; Biassoni et al. 2024), adding:
   trace metal can diffuse independently (`He_metal_diffusion: True`) — He/H
   declines with altitude as in Taylor et al. (2025) / Xing et al. (2023);
   before/after impact on He 10830: `docs/version_compare.pdf`
-- Non-LTE H(n=2) and Ly-alpha radiative transfer via the Neufeld
-  escape-probability method
-  - _Planned:_ an alternative that computes the Ly-alpha radiation field with
-    the **LaRT** Monte Carlo Ly-alpha radiative-transfer code and uses it to set
-    the n=2 population, replacing the Neufeld escape-probability approximation
+- Non-LTE H(n=2) and Ly-alpha radiative transfer, computed either with a fast
+  Neufeld escape-probability closure or by coupling to the **LaRT** Monte Carlo
+  Ly-alpha radiative-transfer code, which sets the n=2 population from the full
+  scattered field — including the Ly-alpha emitted in situ within the wind by
+  recombination and collisional excitation
 - A Jacobian-free Newton-Krylov (JFNK) steady-state solver with PTC warm-up,
   SER ramp, and non-monotone (Grippo) line search
 - Roche-potential geometry (spherical or Roche-lobe domain modes)
@@ -114,7 +114,7 @@ EXHALE/
 │   ├── code_comparison.pdf    # BC/IC/solver vs ATES, Salz, Kubyshkina, Murray-Clay
 │   ├── steady_solver_memo.pdf # Newton-Krylov design notes
 │   ├── wind_ae_solver.pdf     # bundled Wind-AE solver (IC mode: windae)
-│   ├── lower_atmosphere_coupling.pdf # lower-atmosphere connection: survey + Tier 1-3
+│   ├── lower_atmosphere_coupling.pdf # lower-atmosphere connection: analytic column, molecular chemistry, VULCAN
 │   ├── code_review_20260702.md # full-code review report (fixes + recommendations)
 │   └── …
 ├── observational_data/    # digitized observational comparison data
@@ -265,7 +265,7 @@ comparison on HD 209458 b and WASP-121 b: `docs/version_compare.pdf`.
 ### Molecular chemistry (H2, H2+, H3+, HeH+)
 
 For warm Neptunes / sub-Neptunes (or to *verify* the atomic base of a hot
-Jupiter), enable the Tier-2 molecular network:
+Jupiter), enable the molecular network:
 
 ```
 Molecular chemistry: True   # coupled H2/H2+/H3+/HeH+ equilibrium + H3+ cooling
@@ -552,4 +552,4 @@ See `examples/README.md` for the exact lines each one adds:
 
 ---
 
-Last updated: 2026-07-07 16:40
+Last updated: 2026-07-07 16:45
