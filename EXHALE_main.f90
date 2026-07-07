@@ -390,10 +390,12 @@
       du_prev      = huge(1.0d0)
       stall_count  = 0
 
-      ! Two-stage reconstruction setup: if du_th_plm > du_th (both from input.inp
-      ! "du_th [PLM,WENO3]:"), run PLM until du < du_th_plm, then switch
-      ! reconstruction to WENO3 and converge at du < du_th. Otherwise the run is
-      ! single-stage with the reconstruction set by "Reconstruction scheme:".
+      ! Two-stage reconstruction setup. input_read sets du_th_plm > 0 only when
+      ! "Reconstruction scheme: PLM+WENO3" was given with two du_th values (it
+      ! sets du_th_plm = -1 for single-stage PLM/WENO3). So du_th_plm > du_th
+      ! means run PLM until du < du_th_plm, then switch reconstruction to WENO3
+      ! and converge at du < du_th; otherwise the run is single-stage with the
+      ! reconstruction set by "Reconstruction scheme:".
       in_plm_stage = (du_th_plm .gt. du_th)
       if (in_plm_stage) then
          rec_method = 'PLM'

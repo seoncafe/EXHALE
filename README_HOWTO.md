@@ -9,14 +9,17 @@ runs the legacy ATES-compatible model. (Reference manual:
 
 ```
 # input.inp
-Reconstruction:           PLM
+Reconstruction scheme:    PLM+WENO3
 du_th [PLM,WENO3]:        0.5 1.0e-3
 Solver: Newton
 ```
 ```bash
 make && ./EXHALE.x
 ```
-Two-stage PLM->WENO3 marching, then the JFNK Newton finish. If the flux metric
+`Reconstruction scheme: PLM+WENO3` enables the two-stage PLM->WENO3 marching
+(PLM to the first `du_th` value, WENO3 to the second); `Reconstruction scheme:
+PLM` (or `WENO3`) alone is single-stage and uses only the first `du_th` value.
+Then the JFNK Newton finish runs. If the flux metric
 plateaus just above the hand-off threshold (seen with He diffusion), the
 hand-off now fires on the plateau automatically. Quantitative Mdot always
 needs the Newton finish. -> manual §2.5–2.6.

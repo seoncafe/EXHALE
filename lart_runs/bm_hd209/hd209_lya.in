@@ -55,7 +55,7 @@
 
  !-- star-planet geometry (in R_p units) --
  par%distance_star_to_planet = 73.3133
- par%stellar_radius          = 7.1029
+ par%stellar_radius          = 8.2039
 
  !-- distance to the system (only scales output images, not internal P_alpha) --
  par%distance = 5.369e+20

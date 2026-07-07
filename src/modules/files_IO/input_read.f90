@@ -239,11 +239,17 @@
 		read(11,'(A)') line
 		flux = get_word(line, 3)
 		
-		! Read reconstruction scheme
+		! Read reconstruction scheme. "PLM" and "WENO3" are single-stage and
+		! use only the FIRST du_th value; "PLM+WENO3" is two-stage (PLM then
+		! WENO3) and uses BOTH du_th values (see the du_th parsing below).
 		read(11,'(A)') line
 		rec_method = get_word(line, 3)
 		if (rec_method.eq.'WENO3') use_weno3 = .true.
 		if (rec_method.eq.'PLM')   use_plm = .true.
+		if (rec_method.eq.'PLM+WENO3') then
+			use_plm         = .true.    ! start in PLM; switch to WENO3 mid-run
+			recon_two_stage = .true.
+		endif
 		
 		! Include He23S
 		read(11,'(A)') line
@@ -360,11 +366,26 @@
 				str = get_word(line, 5)
 				read(str,*) lya_star_boost
 			else if (index(line,'du_th') .gt. 0) then
-				! Two convergence thresholds: "du_th [PLM,WENO3]: <du_plm> <du_final>"
-				! Run PLM until du < du_plm, then switch to WENO3 and converge at
-				! du < du_final. If du_plm <= du_final, single-stage at du_final.
-				str = get_word(line, 3);  read(str,*) du_th_plm
-				str = get_word(line, 4);  read(str,*) du_th
+				! "du_th [PLM,WENO3]: <du1> [<du2>]". How the numbers are used is
+				! decided by "Reconstruction scheme:" (parsed above):
+				!   PLM+WENO3 -> two-stage: PLM until du<du1, then WENO3 until du<du2.
+				!   PLM or WENO3 -> single-stage at du1; any second number is ignored.
+				str = get_word(line, 3);  read(str,*) du_th      ! first threshold
+				str = get_word(line, 4)                          ! optional second
+				if (recon_two_stage) then
+					if (len_trim(str) .gt. 0) then
+						du_th_plm = du_th   ! first number = stage-1 (PLM) threshold
+						read(str,*) du_th   ! second number = stage-2 (WENO3) threshold
+					else
+						write(*,*) '(input_read) WARNING: "Reconstruction scheme:'//&
+						   ' PLM+WENO3" needs two du_th values; only one given'//&
+						   ' -> single-stage PLM.'
+						du_th_plm = -1.0d0
+					endif
+				else
+					! PLM or WENO3: single-stage; ignore any second du_th value.
+					du_th_plm = -1.0d0
+				endif
 			else if (index(line,'ATES_photoionization_rate') .gt. 0) then
 				! Revert He I (1^1S) photoionization to the legacy ATES 2-term fit
 				! (default is Verner+1996). "ATES_photoionization_rate: True"

@@ -2007,17 +2007,19 @@ or ≤ 0, the run now stops with an explanatory message rather than silently dro
 stellar beam (in mode 2 `J̄_Lyα = J̄_int + J̄_star` with `J̄_star ∝ F_Lya_star`, so
 `F_Lya_star = 0` would make the halfwidth/boost settings silent no-ops).
 
-**Convergence threshold and automated two-stage reconstruction (factual).**
+**Convergence threshold and `Reconstruction scheme:`-controlled two-stage reconstruction (factual).**
 - `du_th` is now a runtime variable (was a compile-time `parameter`) with default
   `1.0e-3` — the original ATES-Code-main value. EXHALE had carried `2.0e-2`, at which
   a run flagged "converged" can still show ~2% spatial spread in the supersonic mass flux
   ρvr².
-- A new runtime variable `du_th_plm` plus the input line `du_th [PLM,WENO3]: <du_plm>
-  <du_final>` enables an *automatic* two-stage run: `EXHALE_main.f90` starts in PLM and
-  switches `rec_method` to WENO3 once `du < du_plm` (or PLM stalls), then converges at
-  `du < du_final`. This automates the manual PLM → `Load IC` + WENO3 workflow recommended
-  in the ATES README. If `du_plm ≤ du_final` (or the line is absent) the run is
-  single-stage.
+- The single-stage vs. two-stage choice is set by the `Reconstruction scheme:` line.
+  `Reconstruction scheme: PLM+WENO3` selects a two-stage run: the input line
+  `du_th [PLM,WENO3]: <du_plm> <du_final>` supplies both thresholds (`du_th_plm` and
+  `du_th`), and `EXHALE_main.f90` starts in PLM and switches `rec_method` to WENO3 once
+  `du < du_plm` (or PLM stalls), then converges at `du < du_final`. This automates the
+  manual PLM → `Load IC` + WENO3 workflow recommended in the ATES README.
+  `Reconstruction scheme: PLM` or `WENO3` is single-stage and uses only the first
+  `du_th` value (the second is ignored).
 - `CFL` is now runtime and settable via the input line `CFL: <value>`.
 
 **Other source-term changes (kept, with caveats).** `energy_semi_implicit.f90` now damps
@@ -2745,3 +2747,46 @@ backward-compatible fallbacks (a `_tenv()` helper checks the new name first, the
 Output filenames are unchanged (`<prefix>tpm_He10830.txt` etc.) so downstream notebooks and
 figure scripts keep working. All in-repo references (scripts, run_tpm_all.sh, examples,
 docs, README/HOWTO/manual) were updated; VULCAN/ untouched.
+
+## 34. Sub-level-resolved Balmer opacity + LaRT 2s inclusion (2026-07-06)
+
+The H-alpha (and H-beta) transmission was computed as `f_multiplet * n_2` with the
+statistical multiplet oscillator strength (Ha `f_23 = 0.6407`). This implicitly assumes the
+`2s:2p` populations sit in the `1:3` statistical ratio. They do not: the metastable `2s`
+(`A_2s1s = 8.26 s^-1`, two-photon) and the Ly-alpha-pumped `2p` depart strongly from it. The
+`2s` and `2p` sub-levels also have **different Balmer cross sections** (only `2s->3p` is
+allowed from `2s`; `2p` goes to `3s`+`3d`). Fixed to sum per sub-level,
+`tau ~ f_2s n_2s + f_2p n_2p`, with NIST/Wiese absorption oscillator strengths
+`Ha: f_2s=0.4349, f_2p=0.70941` (`=2p->3s 0.01361 + 2p->3d 0.69580`);
+`Hb: f_2s=0.1028, f_2p=0.125886`. The fine-structure components share the Doppler-dominated
+profile, so this is an exact re-weighting of the same line.
+
+- **`EXHALE_transit.py`** (escape-prob path): now carries `data_n2s`/`data_n2p` separately and
+  weights Ha/Hb by `f_2s n_2s + f_2p n_2p`. Effect is small (< a few percent) because with the
+  in-code Jlya the `2s:2p` ratio is near-statistical in the Ha-forming region.
+- **`examples/tpm_halpha_lart2d.py`** (LaRT path): previously used the `2p`-only population
+  (`_, n2p, _ = n2_populations(...)`) with `f_23` — it **discarded the `2s` absorption
+  entirely**. Now `build_n2p_2d` returns both `n2s` and `n2p` (masked to the physical
+  atmosphere, since `2s` is recombination/collisionally fed everywhere, not only where the
+  LaRT scattering rate `Pa>0`), and `halpha_transmission` uses the sub-level sum. The LaRT
+  Ly-alpha field correctly pumps only `1s->2p` (the pump enters the `S_2p` source term in
+  `n2_populations`, not `S_2s`). Effect is large: +21% (HD189733b) to +67% (WASP-121b).
+
+Verified that the **Ly-alpha absorption line itself is unchanged and already correct** — it
+is `1s->2p` only (`f_la = 0.41641`, applied to the ground-state `n_HI`); `1s->2s` is a
+forbidden two-photon transition and is not part of the line.
+
+**hd209 benchmark input fix:** `benchmarks/hd209/input.inp` was missing `Stellar Lya flux`,
+`Stellar Teff`, and `Stellar radius` (a stray `t` line was also removed). Without the Lya
+flux the LaRT converter read `F_lya = 0 -> L_lya = 0 -> Palpha = 0 -> n2p ~ 0`, giving a
+spurious `Ha = 0.000%`. Added `Stellar Teff: 6065`, `Stellar radius: 1.155`, and
+`Stellar Lya flux: 3.5e3 erg/cm2/s` (a quiet-solar-analog value scaled by R*^2 for this
+inactive G0; the absolute LaRT depth scales with this input, so it is provisional).
+
+**Impact on the paper (Table `tab:lart`, Sec. `sec:lartcomp`).** With both paths on the same
+VULCAN-BC winds and the sub-level opacity, the escape-prob/LaRT Ha ratios are:
+HD209458b 0.84/0.43 (2.0), HD189733b 1.23/0.91 (1.4), WASP-121b 4.41/2.33 (1.9),
+WASP-52b 5.69/2.20 (2.6). The inline closure thus overestimates Ha only by ~1.4-2.6x, far
+less than the earlier ~4-30x (which combined pre-VULCAN winds with the 2p-only LaRT). Paper
+abstract, Sec. 3.2 (new `sec:n2opacity`), Sec. `sec:lartcomp`, summary, and
+`figs/make_lart_fig.py` (both curves now from `benchmarks/<p>`) updated accordingly.

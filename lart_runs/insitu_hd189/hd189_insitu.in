@@ -1,0 +1,77 @@
+&parameters
+ !=====================================================================
+ ! LaRT in-situ diffuse-emissivity Ly-alpha RT for hd189.
+ ! Source: the Ly-alpha volume emissivity produced INSIDE the escaping
+ !   atmosphere (recombination + collisional excitation), read from
+ !   ./insitu_emiss.txt (2-col r[R_p], eps_tot; LaRT multiplies by r^2).
+ ! Atmosphere structure (n_HI, T, v_radial) from the EXHALE run:
+ !   /nfs/mocafe/kiseon/RT_Codes/Exoplanetary_Atmospheres/ATES/EXHALE/benchmarks/hd189
+ ! Emission is in the local comoving gas frame (comoving_source default=T).
+ ! spectral_type='voigt': intrinsic Voigt line at the local T.
+ ! geometry_JPa=1 -> radial P_alpha (Pa_1D). distance2cm = R_p.
+ ! Build LaRT with CALCPnew=1 (-> LaRT_calcP.x) for the scattering rate P_alpha.
+ !=====================================================================
+
+ par%no_photons  = 2e5
+
+ par%DGR         = 0.0
+ par%use_stokes  = .false.
+ par%save_Jin        = .true.
+ par%save_direc0     = .true.
+ par%recoil          = .true.
+ par%save_all        = .false.
+
+ !-- scattering rate P_alpha output geometry: 1 = spherically averaged radial
+ !   profile (Pa_1D), appropriate for the isotropic in-situ volume source.
+ par%geometry_JPa = 1
+
+ !-- intrinsic emission profile: Voigt at the local gas temperature, emitted
+ !   in the comoving frame (par%comoving_source default = .true.) --
+ par%spectral_type       = 'voigt'
+
+ !-- spherical planetary atmosphere illuminated by the spherical star --
+ par%geometry        = 'spherical_atmosphere'
+ par%source_geometry = 'diffuse_emissivity'
+ par%emiss_file      = './insitu_emiss.txt'
+ par%dens_file       = './dens_profile.txt'   ! n_HI  [cm^-3]
+ par%temp_file       = './temp_profile.txt'   ! T     [K]
+ par%velo_file       = './velo_profile.txt'   ! v_r   [km/s]
+
+ !-- length unit: 1 code unit = R_p = 8.3404e+09 cm --
+ par%distance2cm  = 8.3404e+09
+
+ !-- spectral sampling around Ly-alpha 1215.67 A --
+ par%wavelength_min = 1214
+ par%wavelength_max = 1217.4
+ par%nwavelength    = 161
+
+ !-- Cartesian grid covering r = 1..4.52068 R_p --
+ par%nx     = 201
+ par%ny     = 201
+ par%nz     = 201
+ par%xmax   = 4.52068
+ par%ymax   = 4.52068
+ par%zmax   = 4.52068
+ par%rmin   = 1
+ par%rmax   = 4.52068
+
+ !-- star-planet geometry (in R_p units) --
+ par%distance_star_to_planet = 59.1907
+ par%stellar_radius          = 6.3811
+
+ !-- distance to the system (only scales output images, not internal P_alpha) --
+ par%distance = 5.369e+20
+
+ !-- observer & detector (peel-off; transit view along the star-planet axis) --
+ par%save_peeloff_2D = .false.
+ par%save_peeloff_3D = .false.
+ par%nxim = 201
+ par%nyim = 201
+ par%out_bitpix = -64
+ par%alpha = 0.0
+ par%beta  = 90.0
+ par%gamma = 90.0
+
+ par%out_merge = .true.
+ par%nprint = 1e6
+/

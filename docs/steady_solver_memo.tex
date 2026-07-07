@@ -337,8 +337,10 @@ the harness after every change in this memo).
 \toprule
 input line & default & effect\\
 \midrule
-\code{du\_th [PLM,WENO3]: a b} & single-stage & automatic two-stage
- reconstruction: PLM until $du<a$ (or stall), then WENO3 until $du<b$\\
+\code{du\_th [PLM,WENO3]: a b} & --- & convergence thresholds; the
+ single-stage vs.\ two-stage choice is set by \code{Reconstruction scheme:}
+ (\code{PLM}/\code{WENO3} single-stage use only $a$; \code{PLM+WENO3}
+ two-stage: PLM until $du<a$ or stall, then WENO3 until $du<b$)\\
 \code{Stall [tol,N]: t n} & $10^{-6}$, 2000 & stall-detector override\\
 \code{Level tol: v} & off & mass-flux level-stability gate
  (\S\ref{sec:diag})\\

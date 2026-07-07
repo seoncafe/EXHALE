@@ -187,14 +187,25 @@ Fadd_const = np.sqrt(np.pi)*e**2.0/(4.0*np.pi*E0*me*c_light)
 # H-alpha (n=2 -> n=3), air wavelength [m]
 l_Ha   = 6562.8e-10
 nu_Ha  = c_light/l_Ha
-f_Ha   = 0.6407                 # effective oscillator strength (Christie f23 = 0.64)
+f_Ha   = 0.6407                 # multiplet oscillator strength (statistical 2s:2p = 1:3)
 A12_Ha = 4.4101e7               # Einstein A(3->2) [s^-1]; line is Doppler-dominated
 
 # H-beta (n=2 -> n=4), air wavelength [m]; same lower level (n=2) as H-alpha
 l_Hb   = 4861.35e-10
 nu_Hb  = c_light/l_Hb
-f_Hb   = 0.11938                # oscillator strength n=2->n=4
+f_Hb   = 0.11938                # multiplet oscillator strength n=2->n=4
 A12_Hb = 8.4193e6               # Einstein A(4->2) [s^-1]; Doppler-dominated
+
+# Sub-level absorption oscillator strengths. The 2s and 2p sub-levels have
+# DIFFERENT absorption cross sections; the multiplet f_Ha/f_Hb above are only
+# their statistical-weight (2:6) averages. Because the metastable 2s and the
+# Ly-alpha-pumped 2p depart strongly from the 1:3 statistical ratio, the Balmer
+# optical depth must be summed per sub-level, tau ~ f_2s n_2s + f_2p n_2p, not
+# f_multiplet (n_2s + n_2p). NIST/Wiese absorption oscillator strengths:
+f_Ha_2s = 0.4349      # 2s -> 3p
+f_Ha_2p = 0.70941     # 2p -> 3s (0.01361) + 2p -> 3d (0.69580)
+f_Hb_2s = 0.1028      # 2s -> 4p
+f_Hb_2p = 0.125886    # 2p -> 4s (0.002986) + 2p -> 4d (0.12290)
 
 # Statistical weights
 g1s, g2s, g2p = 2.0, 2.0, 6.0
@@ -481,11 +492,13 @@ if do_Ha:
 		      ' (T_star = %g K)' % (Gamma_2s, T_star))
 	n2s_cm, n2p_cm, n2_cm = n2_populations(T, n1s_cm, ne_cm, Jlya,
 	                                       G2s = Gamma_2s, G2p = Gamma_2p)
-	n2_I = np.flip(n2_cm)
-	# Symmetric (inverted + normal) profile, converted to m^-3
-	data_n2 = np.concatenate((n2_I*1.0e6, n2_cm*1.0e6))
-	print('(TPM) H-alpha: J_lya from %s; max n2 = %.3e cm^-3'
-	      % (jlya_src, n2_cm.max()))
+	# Carry the 2s and 2p populations separately (different Balmer cross
+	# sections); build the symmetric (inverted + normal) chord profiles in m^-3.
+	data_n2  = np.concatenate((np.flip(n2_cm)*1.0e6,  n2_cm*1.0e6))
+	data_n2s = np.concatenate((np.flip(n2s_cm)*1.0e6, n2s_cm*1.0e6))
+	data_n2p = np.concatenate((np.flip(n2p_cm)*1.0e6, n2p_cm*1.0e6))
+	print('(TPM) H-alpha: J_lya from %s; max n2 = %.3e cm^-3 (2s/2p max ratio %.2f)'
+	      % (jlya_src, n2_cm.max(), (n2p_cm/np.maximum(n2s_cm,1e-99)).max()))
 
 # Areas
 A_star    = np.pi*R_star**2.0
@@ -709,9 +722,13 @@ for p in range(Grid_Number):
 
 # ----- End loop for Hydrogen and Deuterium ----- #
 
-	# ----- H-alpha (n=2 -> n=3), absorbing from the n=2 population ----- #
+	# ----- H-alpha (n=2 -> n=3), sub-level-resolved absorption ----- #
+	# 2s and 2p have different absorption oscillator strengths, so the optical
+	# depth is f_2s*n_2s + f_2p*n_2p (not f_multiplet*n_2). The fine-structure
+	# components share the same Doppler-dominated profile.
 	if do_Ha:
-		n_2    = data_n2[data_arg]
+		n_2s   = data_n2s[data_arg]
+		n_2p   = data_n2p[data_arg]
 		Dnu_Ha = (nu_Ha*v_th_HI)/c_light     # same thermal width as HI (proton)
 		a_Ha   = A12_Ha/(4.0*np.pi*Dnu_Ha)
 
@@ -720,22 +737,22 @@ for p in range(Grid_Number):
 			# Voigt absorption profile via Faddeeva method
 			X_Ha = (c_light/l - nu_Ha)/Dnu_Ha[:]
 			arg_Fadd_Ha = X_Ha[:] - v_x[:]/v_th_HI[:] + 1j*a_Ha[:]
-			Voigt_Ha = f_Ha*Fadd_const/Dnu_Ha[:]*wofz(arg_Fadd_Ha).real
+			Voigt_Ha = Fadd_const/Dnu_Ha[:]*wofz(arg_Fadd_Ha).real
 
 			# Optical depth via trapezoids along the line of sight
-			I_Ha = n_2[:]*Voigt_Ha[:]
+			I_Ha = (f_Ha_2s*n_2s[:] + f_Ha_2p*n_2p[:])*Voigt_Ha[:]
 			tau_not_sum_Ha = data_dx/2.0*(I_Ha[:-1] + I_Ha[1:])
 			tau_v_Ha = sum(tau_not_sum_Ha)
 			exp_tau_Ha[p,l_idx] = np.exp(-tau_v_Ha)
 
-		# ----- H-beta (n=2 -> n=4), same n=2 population ----- #
+		# ----- H-beta (n=2 -> n=4), same 2s/2p populations ----- #
 		Dnu_Hb = (nu_Hb*v_th_HI)/c_light
 		a_Hb   = A12_Hb/(4.0*np.pi*Dnu_Hb)
 		for l_idx,l in enumerate(l_onde_Hb):
 			X_Hb = (c_light/l - nu_Hb)/Dnu_Hb[:]
 			arg_Fadd_Hb = X_Hb[:] - v_x[:]/v_th_HI[:] + 1j*a_Hb[:]
-			Voigt_Hb = f_Hb*Fadd_const/Dnu_Hb[:]*wofz(arg_Fadd_Hb).real
-			I_Hb = n_2[:]*Voigt_Hb[:]
+			Voigt_Hb = Fadd_const/Dnu_Hb[:]*wofz(arg_Fadd_Hb).real
+			I_Hb = (f_Hb_2s*n_2s[:] + f_Hb_2p*n_2p[:])*Voigt_Hb[:]
 			tau_not_sum_Hb = data_dx/2.0*(I_Hb[:-1] + I_Hb[1:])
 			exp_tau_Hb[p,l_idx] = np.exp(-sum(tau_not_sum_Hb))
 

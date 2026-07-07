@@ -183,7 +183,7 @@ two-stage scheme and **leave the Shapiro filter off**:
 
 ```
 # in input.inp
-Reconstruction:           PLM
+Reconstruction scheme:    PLM+WENO3    # two-stage; PLM (or WENO3) alone is single-stage
 du_th [PLM,WENO3]:        0.5 1.0e-3   # PLM until du<0.5, then WENO3 until du<1e-3
 # Solver:  Newton                      # OPTIONAL extra residual-tightening finish
 # Shapiro filter:  -1                  # OFF by default; opt-in only for breathing cases
@@ -194,9 +194,11 @@ criterion of the reference codes: the fractional spread of the mass flux,
 `dMdot/Mdot < du_th` (in the code `du` *is* the radial spread of `rho*v*r^2`).
 This is the ATES test (Caldiroli 2021, `< 1e-3`) and is equivalent to the CETIMB
 requirement (Koskinen 2013a) that `F_c = rho*v*r^2` be constant with altitude.
-So the two-stage line above is the whole recipe: PLM switches to WENO3 at
-`du < 0.5`, and the run **stops when `du < 1e-3`** (flux-converged). The `Solver:
-Newton` key is **optional** and does *not* change this criterion.
+So the two lines above are the whole recipe: `Reconstruction scheme: PLM+WENO3`
+enables the two-stage run, PLM switches to WENO3 at `du < 0.5`, and the run
+**stops when `du < 1e-3`** (flux-converged). (With `Reconstruction scheme: PLM`
+or `WENO3` the run is single-stage and only the first `du_th` value is used.)
+The `Solver: Newton` key is **optional** and does *not* change this criterion.
 
 **About `Solver: Newton` (optional).** `du` (a mass-flux flatness) and the steady
 residual `||R|| = ||du/dt||` (mass+momentum+energy) are *different* quantities:
@@ -550,4 +552,4 @@ See `examples/README.md` for the exact lines each one adds:
 
 ---
 
-Last updated: 2026-07-06 16:52
+Last updated: 2026-07-07 16:29

@@ -2355,19 +2355,22 @@ $\bar J_{\rm Ly\alpha}=\bar J_{\rm int}+\bar J_\star$ with
 $\bar J_\star\propto F_{\rm Ly\alpha,\star}$, so $F_{\rm Ly\alpha,\star}=0$ would make
 the \texttt{halfwidth}/\texttt{boost} settings silent no-ops).
 
-\paragraph{Convergence threshold and automated two-stage reconstruction (factual).}
+\paragraph{Convergence threshold and \texttt{Reconstruction scheme:}-controlled two-stage reconstruction (factual).}
 \begin{itemize}\itemsep1pt
 \item \texttt{du\_th} is now a runtime variable (was a compile-time \texttt{parameter})
   with default \texttt{1.0e-3} --- the original ATES-Code-main value. EXHALE had
   carried \texttt{2.0e-2}, at which a run flagged ``converged'' can still show
   $\sim$2\% spatial spread in the supersonic mass flux $\rho v r^2$.
-\item A new runtime variable \texttt{du\_th\_plm} plus the input line
-  \texttt{du\_th [PLM,WENO3]: <du\_plm> <du\_final>} enables an \emph{automatic}
-  two-stage run: \texttt{EXHALE\_main.f90} starts in PLM and switches \texttt{rec\_method}
-  to WENO3 once $du<du_{\rm plm}$ (or PLM stalls), then converges at $du<du_{\rm final}$.
-  This automates the manual PLM\,$\to$\,\texttt{Load IC}$+$WENO3 workflow recommended in
-  the ATES README. If $du_{\rm plm}\le du_{\rm final}$ (or the line is absent) the run
-  is single-stage.
+\item The single-stage vs.\ two-stage choice is now set by the
+  \texttt{Reconstruction scheme:} line. \texttt{Reconstruction scheme: PLM+WENO3}
+  selects a two-stage run: with the input line
+  \texttt{du\_th [PLM,WENO3]: <du\_plm> <du\_final>} supplying both thresholds
+  (\texttt{du\_th\_plm} and \texttt{du\_th}), \texttt{EXHALE\_main.f90} starts in
+  PLM and switches \texttt{rec\_method} to WENO3 once $du<du_{\rm plm}$ (or PLM
+  stalls), then converges at $du<du_{\rm final}$. This automates the manual
+  PLM\,$\to$\,\texttt{Load IC}$+$WENO3 workflow recommended in the ATES README.
+  \texttt{Reconstruction scheme: PLM} or \texttt{WENO3} is single-stage and uses
+  only the first \texttt{du\_th} value (the second is ignored).
 \item \texttt{CFL} is now runtime and settable via the input line \texttt{CFL: <value>}.
 \end{itemize}
 
@@ -3377,6 +3380,41 @@ backward-compatible fallbacks (a \texttt{\_tenv()} helper checks the new name fi
 then the old). Output filenames are unchanged (\texttt{<prefix>tpm\_He10830.txt} etc.)
 so downstream notebooks and figure scripts keep working. All in-repo references were
 updated; \texttt{VULCAN/} untouched.
+
+\section{Sub-level-resolved Balmer opacity and LaRT 2s inclusion (2026-07-06)}
+
+The H$\alpha$/H$\beta$ transmission was computed as $f_{23}\,n_2$ with the multiplet
+oscillator strength ($f_{23}=0.6407$ for H$\alpha$), which implicitly assumes the
+$2s\!:\!2p$ populations sit in the $1\!:\!3$ statistical ratio. They do not---the metastable
+$2s$ ($A_{2s1s}=8.26$\,s$^{-1}$) and the Ly$\alpha$-pumped $2p$ depart strongly from it---and
+the two sub-levels have \emph{different} Balmer cross sections (only $2s\rightarrow3p$ is
+allowed from $2s$; $2p\rightarrow3s,3d$ from $2p$). Fixed to sum per sub-level,
+$\tau\sim f_{2s}n_{2s}+f_{2p}n_{2p}$, with $f_{2s}=0.4349$, $f_{2p}=0.70941$ (H$\alpha$) and
+$0.1028$, $0.125886$ (H$\beta$); the components share the Doppler-dominated profile.
+
+\texttt{EXHALE\_transit.py} (escape-prob path) now carries $n_{2s}$/$n_{2p}$ separately;
+the effect is small ($\lesssim$few\,\%) since the in-code $J_{\rm Ly\alpha}$ keeps
+$2s\!:\!2p$ near statistical in the forming region. \texttt{examples/tpm\_halpha\_lart2d.py}
+(LaRT path) previously used the $2p$-only population, \emph{discarding the $2s$ absorption
+entirely}; it now returns and sums both (the LaRT scattering rate pumps only
+$1s\rightarrow2p$, entering the $S_{2p}$ source term, while $2s$ is
+recombination/collisionally fed throughout the atmosphere). Effect: $+21\%$ (HD\,189733\,b)
+to $+67\%$ (WASP-121\,b). The Ly$\alpha$ absorption line itself is unchanged and already
+correct---$1s\rightarrow2p$ only ($f=0.41641$ on the ground-state $n_{\rm HI}$;
+$1s\rightarrow2s$ is a forbidden two-photon transition).
+
+\texttt{benchmarks/hd209/input.inp} was missing \texttt{Stellar Lya flux}, \texttt{Stellar
+Teff}, and \texttt{Stellar radius}; without the Ly$\alpha$ flux the LaRT converter read
+$F_{\rm Ly\alpha}=0\Rightarrow L_{\rm Ly\alpha}=0\Rightarrow n_{2p}\simeq0$, a spurious
+$\mathrm{H}\alpha=0.000\%$. Added $T_{\rm eff}=6065$\,K, $R_\star=1.155\,R_\odot$, and
+$F_{\rm Ly\alpha}=3.5\times10^3$\,erg\,cm$^{-2}$\,s$^{-1}$ (quiet-solar-analog, $R_\star^2$
+scaled; provisional, since the absolute LaRT depth scales with it). With both paths on the
+same VULCAN-BC winds and the sub-level opacity, the escape-prob/LaRT H$\alpha$ ratios become
+HD\,209458\,b 0.84/0.43 (2.0), HD\,189733\,b 1.23/0.91 (1.4), WASP-121\,b 4.41/2.33 (1.9),
+WASP-52\,b 5.69/2.20 (2.6)---so the inline closure overestimates H$\alpha$ by only
+$\sim$1.4--2.6$\times$, far less than the earlier $\sim$4--30$\times$ (pre-VULCAN winds with
+the $2p$-only LaRT). Paper abstract, methods, results table, summary, and
+\texttt{figs/make\_lart\_fig.py} were updated accordingly.
 
 % ===================================================================== %
 %  APPENDIX --- bookkeeping material, kept separate from the dated update log

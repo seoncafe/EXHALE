@@ -46,11 +46,13 @@ set.)
 - `parameters.f90`: `du_th` is now a runtime variable (was a compile-time
   `parameter`) with default `1.0e-3` — the original ATES-Code-main value.
   (EXHALE had it at `2.0e-2`; see §2.1.) `dtu_th = 1e-8` unchanged.
-- New runtime variable `du_th_plm` (default off). Input line
-  `du_th [PLM,WENO3]: <du_plm> <du_final>` enables an **automatic two-stage**
-  run: `EXHALE_main.f90` starts in PLM and switches `rec_method` to WENO3 once
-  `du < du_plm` (or PLM stalls), then converges at `du < du_final`. If
-  `du_plm <= du_final` (or the line is absent) the run is single-stage.
+- The single-stage vs. two-stage choice is set by the `Reconstruction scheme:`
+  line. `Reconstruction scheme: PLM+WENO3` selects a **two-stage** run: the
+  input line `du_th [PLM,WENO3]: <du_plm> <du_final>` supplies both thresholds
+  (`du_th_plm` and `du_th`), and `EXHALE_main.f90` starts in PLM and switches
+  `rec_method` to WENO3 once `du < du_plm` (or PLM stalls), then converges at
+  `du < du_final`. `Reconstruction scheme: PLM` or `WENO3` is single-stage and
+  uses only the first `du_th` value (the second is ignored).
 - `CFL` is now runtime + settable via the input line `CFL: <value>`.
 
 ### 1.4 Other source-term changes (kept, with caveats)
@@ -82,7 +84,8 @@ explain why several earlier "converged" profiles did not look flat.
 The ATES README recommends PLM from general ICs until $\Delta\dot M/\dot M
 \lesssim 0.5\text{--}1$, then a restart with `Load IC` + WENO3. We had been
 running single-stage PLM, which *appears* to stall near `du ~ 0.02`. With the
-two-stage workflow (now automated, §1.3) and strict `du_th`, WASP-121b
+two-stage workflow (now enabled via `Reconstruction scheme: PLM+WENO3`, §1.3)
+and strict `du_th`, WASP-121b
 (He 2$^3$S + metals) reached `du ~ 1e-3` with a supersonic mass-flux spread of
 ~0.16% (vs ~2% for single-stage PLM). We interpret this as the two-stage being
 necessary for a flat solution, though we have only tested it on a few cases.
@@ -153,7 +156,7 @@ See `docs/numerical_methods.md` for a fuller discussion of solver options.
 - He 2$^3$S + metals can now be solved together; this was exercised end-to-end
   on WASP-121b with the full physics stack (triplet + metals + excited-H + Lyα)
   and reached a flat, converged solution.
-- The convergence pipeline (`du_th=1e-3`, automatic two-stage, input-settable
-  `CFL`) is in place.
+- The convergence pipeline (`du_th=1e-3`, `Reconstruction scheme: PLM+WENO3`
+  two-stage, input-settable `CFL`) is in place.
 - HD189733b's marginal-wind oscillation is unresolved and is recorded above as
   an open problem with tentative hypotheses, not a closed result.

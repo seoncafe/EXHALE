@@ -559,8 +559,11 @@ equations and, near the fixed point, to solve $F(Y)=0$ directly.
 \paragraph{What was added} (all opt-in via \texttt{input.inp} keywords;
 every legacy default is byte-identical, regression-gated):
 \begin{itemize}
-\item \emph{Automatic two-stage marching} (\texttt{du\_th [PLM,WENO3]}):
-  PLM warm-up, switch to WENO3 at the first threshold, stop at the second.
+\item \emph{Two-stage marching} (enabled by \texttt{Reconstruction scheme:
+  PLM+WENO3}, with thresholds from \texttt{du\_th [PLM,WENO3]}): PLM warm-up,
+  switch to WENO3 at the first threshold, stop at the second.
+  \texttt{Reconstruction scheme: PLM} or \texttt{WENO3} alone is single-stage
+  and uses only the first threshold.
 \item \emph{Residual monitor and residual-based stop} (\texttt{Resid
   tol}, \texttt{Level tol}): periodic $\max\|R\|_\infty$ over mass /
   momentum / energy; criterion-independent of $du$.

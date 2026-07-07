@@ -16,7 +16,7 @@ Log10 of X-ray luminosity [erg/s]: 28.0
 Log10 of EUV luminosity [erg/s]: 29.0
 Grid type: Mixed
 Numerical flux: HLLC
-Reconstruction scheme: PLM
+Reconstruction scheme: PLM+WENO3
 Include He23S? True
 Load IC? False
 Do only PP: False

@@ -29,6 +29,7 @@
 }
 \newcommand{\rp}{$R_p$}
 \newcommand{\msun}{$M_\odot$}
+\newcommand{\Rp}{R_{\rm p}}   % planet radius, for use inside math mode
 
 \begin{document}
 
@@ -272,7 +273,8 @@ spent $>$3\,h without converging.
 Two ways to use it:
 \begin{itemize}
 \item \textbf{Production}: add \texttt{Solver: Newton} to \texttt{input.inp}. The
-  run marches (including the automatic two-stage PLM$\to$WENO3) until the flux
+  run marches (including the two-stage PLM$\to$WENO3 when
+  \texttt{Reconstruction scheme: PLM+WENO3} is set) until the flux
   metric $du$ (the radial spread of $\rho v r^2$) drops below the hand-off
   threshold \texttt{newton\_du\_switch} (default $10^{-2}$; the $du$-based
   \emph{convergence} stops are suspended), then the Newton solve finishes to
@@ -319,7 +321,8 @@ the JFNK finish (right).
 \includegraphics[width=0.95\textwidth]{figures/newton_convergence.pdf}
 \caption{The \texttt{Solver: Newton} pipeline from a cold IC (WASP-121b, Roche).
 Left: maximum steady residual $\max\|R\|_\infty$ over the mass, momentum, and
-energy equations during the two-stage marching warm-up; the dashed line is the
+energy equations during the two-stage (\texttt{Reconstruction scheme:
+PLM+WENO3}) marching warm-up; the dashed line is the
 legacy residual hand-off threshold $R_{\rm switch}=5\times10^{-2}$ used when this
 figure was produced (the current default keys the hand-off on $du<10^{-2}$
 instead, at a comparable point on the warm-up). Right: residual vs.\ JFNK outer
@@ -515,8 +518,12 @@ $(\ast)$ \texttt{Log10 of X-ray luminosity [erg/s]:} & real (log$_{10}$) & Only
   is the usual choice. \\
 \texttt{Numerical flux:} & \texttt{HLLC} $|$ \texttt{ROE} & Riemann solver for
   the hydrodynamic fluxes. \\
-\texttt{Reconstruction scheme:} & \texttt{PLM} $|$ \texttt{WENO3} & Spatial
-  reconstruction order. \\
+\texttt{Reconstruction scheme:} & \texttt{PLM} $|$ \texttt{WENO3} $|$
+  \texttt{PLM+WENO3} & Spatial reconstruction order and staging.
+  \texttt{PLM} or \texttt{WENO3} runs a single stage (only the first
+  \texttt{du\_th} value is used as the convergence threshold);
+  \texttt{PLM+WENO3} selects the two-stage mode (march in PLM to the first
+  \texttt{du\_th} value, then switch to WENO3 and converge at the second). \\
 \texttt{Include He23S?:} & logical & Include the metastable He\,$2\,^3$S triplet
   (needed for the He\,10830 line). \\
 \texttt{Load IC?:} & logical & Restart from the previous run's
@@ -577,11 +584,14 @@ defaults restore the standard behavior).}\label{tab:inp-opt}\\
   energy equation with a bracketing (Brent) root-finder that selects the physical
   root; \texttt{False} reverts to legacy \texttt{hybrd1} $+$ a 2$\times$-band
   reject. \\
-\texttt{du\_th [PLM,WENO3]:} & two reals & Automatic two-stage reconstruction:
-  run PLM until $du<$ first value (or a PLM stall), then switch to WENO3 and
-  converge at $du<$ second value (e.g.\ \texttt{0.5 1.0e-3}). Replaces the manual
-  PLM $\to$ stop $\to$ \texttt{Load IC}$+$WENO3 restart of the official ATES
-  recipe. \\
+\texttt{du\_th [PLM,WENO3]:} & two reals & Convergence thresholds (e.g.\
+  \texttt{0.5 1.0e-3}). Which are used is set by \texttt{Reconstruction
+  scheme:} above. With \texttt{PLM+WENO3} (two-stage) EXHALE marches in PLM
+  until $du<$ first value (or a PLM stall), then switches to WENO3 and converges
+  at $du<$ second value; with single-stage \texttt{PLM} or \texttt{WENO3} only
+  the first value is used and the second is ignored. The \texttt{PLM+WENO3}
+  mode replaces the manual PLM $\to$ stop $\to$ \texttt{Load IC}$+$WENO3 restart
+  of the official ATES recipe. \\
 \texttt{Stall [tol,N]:} & real, int & Stall-detector override (relative $du$
   change and window; defaults $10^{-6}$, 2000). \\
 \texttt{CFL:} & real (def.\ 0.6) & CFL-number override. \\
@@ -1321,7 +1331,7 @@ Log10 of X-ray luminosity [erg/s]: 27.0
 Log10 of EUV luminosity [erg/s]: 29.30
 Grid type: Mixed
 Numerical flux: HLLC
-Reconstruction scheme: PLM
+Reconstruction scheme: PLM+WENO3
 Include He23S? False
 Load IC? False
 Do only PP: False
@@ -1331,9 +1341,11 @@ Outer radius [R_p]: 10.0
 du_th [PLM,WENO3]: 0.5 1.0e-3
 Solver: Newton
 \end{lstlisting}
-The last two lines enable the automatic two-stage reconstruction and the
-steady-state Newton finish (\S\ref{sec:newton}), so the run converges to the true
-steady state without manual restarts. With \texttt{metals.inp} present (solar
+The \texttt{Reconstruction scheme: PLM+WENO3} line enables the two-stage
+reconstruction (with the two \texttt{du\_th} values as the PLM and WENO3
+thresholds), and the \texttt{Solver: Newton} line adds the steady-state Newton
+finish (\S\ref{sec:newton}), so the run converges to the true steady state
+without manual restarts. With \texttt{metals.inp} present (solar
 abundances, \S\ref{sec:inputs}), run
 \texttt{./EXHALE.x} in that directory. Figure~\ref{fig:tut} shows the converged
 profiles read back with \texttt{exhale\_io}: the wind heats to $\sim10^4$\,K, the
@@ -1383,8 +1395,9 @@ separate base-breathing instability (\S\ref{sec:windae}).
 \midrule
 \texttt{01\_legacy\_marching} & classic ATES~v2 baseline: PLM marching,
   H/He only, Roche domain, $du$-based stop & (none --- baseline) \\
-\texttt{02\_two\_stage} & automatic two-stage PLM$\to$WENO3 marching
-  (\S\ref{sec:convctl}) & \texttt{du\_th [PLM,WENO3]: 0.5 1.0e-3} \\
+\texttt{02\_two\_stage} & two-stage PLM$\to$WENO3 marching
+  (\S\ref{sec:convctl}) & \texttt{Reconstruction scheme: PLM+WENO3},
+  \texttt{du\_th [PLM,WENO3]: 0.5 1.0e-3} \\
 \texttt{03\_newton} & \textbf{recommended default}: two-stage warm-up $+$
   Newton finish (\S\ref{sec:newton}) & $+$ \texttt{Solver: Newton} \\
 \texttt{04\_newton\_from\_state} & Newton re-convergence of an existing state

@@ -1,0 +1,6 @@
+# in-situ Ly-alpha luminosity summary for wasp52
+# X    L_X[erg/s]      photons/s(=L_X/E_Lya, E_Lya=1.6340e-11 erg)
+rec    2.268445e+24   1.388277e+35
+col    8.245662e+23   5.046305e+34
+tot    3.093012e+24   1.892908e+35
+# rec:col fraction of L_tot = 0.7334 : 0.2666

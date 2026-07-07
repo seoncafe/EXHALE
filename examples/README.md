@@ -22,7 +22,7 @@ each option does.
 | Folder | Demonstrates | Added / changed lines |
 |---|---|---|
 | `01_legacy_marching` | Classic ATES v2 baseline: PLM marching, H/He only, Roche domain, `du`-based stop | (none — baseline) |
-| `02_two_stage` | Automatic two-stage PLM -> WENO3 marching | `du_th [PLM,WENO3]: 0.5 1.0e-3` |
+| `02_two_stage` | Two-stage PLM -> WENO3 marching | `Reconstruction scheme: PLM+WENO3`, `du_th [PLM,WENO3]: 0.5 1.0e-3` |
 | `03_newton` | **Recommended default**: two-stage warm-up + JFNK Newton finish to the true steady state | + `Solver: Newton` |
 | `04_newton_from_state` | Newton re-convergence of an existing state (no marching) | `Load IC? True`, `Valve eps: 1.0e-4`, `Resid tol: 1.0e-3`; run with `ATES_PTC=1 ATES_PTC_JFNK=1 ATES_PTC_DTAU0=1.0 ../../EXHALE.x` |
 | `05_metals` | Trace-metal cooling (solar C/N/O/Mg/Ca/Na/Fe) | `metals.inp` present |

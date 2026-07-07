@@ -23,9 +23,26 @@ Pipeline
   tau(b,nu)   = int n_2p(rho=b, z) sigma_Ha(nu, v_LOS, T) dz,   v_LOS = v(r) z/r
   disk-average over impact parameter b -> H-alpha transmission spectrum
 
+In-situ (internal diffuse) Ly-alpha extension
+--------------------------------------------
+LaRT can also be run with an internal, spherically symmetric diffuse Ly-alpha
+volume source (e.g. recombination emission), whose output h5 carries a *radial*
+scattering-rate profile `Pa_1D(r)` instead of the cylindrical `Pa_2D(rho,z)`.
+Pa_1D is, like Pa_2D, a scattering number per atom per photon (already divided
+by nphotons and shell volume), so its physical rate is
+
+  P_alpha_insitu(r) = Pa_1D(r) * L_insitu
+
+with L_insitu the TOTAL in-situ Ly-alpha photon luminosity [photons/s].  A
+volume source carries NO stellar solid-angle dilution, so `fluxfac` is *not*
+applied to the in-situ term (any fluxfac attr in the in-situ h5 is ignored).
+When supplied, this in-situ 2p pump is interpolated onto the (rho,z) spherical
+radius and ADDED to the stellar P_alpha before forming Jlya_eff = P_alpha/B12.
+
 Usage
 -----
   python tpm_halpha_lart2d.py <exhale_run_dir> <lart_h5> [--obs FILE] [--out PNG]
+                              [--insitu-h5 FILE] [--L-insitu PHOT_PER_S]
 """
 
 import os
@@ -52,7 +69,12 @@ hp_eV = 4.135667696e-15
 # H-alpha (n=2 -> n=3), air wavelength
 l_Ha   = 6562.8e-10
 nu_Ha  = c_l / l_Ha
-f_Ha   = 0.6407
+f_Ha   = 0.6407       # multiplet f (statistical 2s:2p = 1:3); kept for reference
+# Sub-level absorption oscillator strengths: 2s and 2p have different Balmer
+# cross sections, so tau ~ f_2s n_2s + f_2p n_2p (NIST/Wiese), matching
+# EXHALE_transit.py.
+f_Ha_2s = 0.4349      # 2s -> 3p
+f_Ha_2p = 0.70941     # 2p -> 3s (0.01361) + 2p -> 3d (0.69580)
 A12_Ha = 4.4101e7
 Fadd_const = np.sqrt(np.pi) * echg**2 / (4.0 * np.pi * E0 * me * c_l)
 
@@ -130,7 +152,37 @@ def read_lart_pa2d(h5file):
     return Pa, z, rho, a
 
 
-def build_n2p_2d(run, Pa, z, rho, L_lya, fluxfac=1.0, T_star=0.0, R_over_a=0.0):
+def read_lart_pa1d(h5file):
+    """Return (Pa1[nr], r1[nr, Rp], attrs) for the radial in-situ P_alpha profile
+    (unit-luminosity), from a LaRT run with an internal diffuse Ly-alpha source.
+
+    The radial axis is reconstructed exactly like the LaRT reduced-radial binning
+    (grid_mod_car.f90): with nr = len(Pa_1D) as stored,
+      nr odd : dr = rmax/(nr-0.5),  r_k = (k-1)*dr  = arange(nr)*dr
+      nr even: dr = rmax/nr,        r_k = (k-0.5)*dr = (arange(nr)+0.5)*dr
+    rmax = min(xmax,ymax,zmax).  Same convention as the rho-axis in read_lart_pa2d."""
+    with h5py.File(h5file, 'r') as f:
+        if 'Pa_1D/data' not in f:
+            raise KeyError("dataset 'Pa_1D/data' not found in %s -- this is not a "
+                           "LaRT in-situ (diffuse volume source) output" % h5file)
+        Pa1 = np.ravel(f['Pa_1D/data'][:]).astype(float)   # (nr,) or (nr,1)/(1,nr) -> (nr,)
+        a = dict(f['Spectrum'].attrs)
+    nr = Pa1.size
+    xmax = float(np.ravel(a['xmax'])[0])
+    ymax = float(np.ravel(a.get('ymax', xmax))[0])
+    zmax = float(np.ravel(a.get('zmax', xmax))[0])
+    rmax = min(xmax, ymax, zmax)
+    if nr % 2 == 1:
+        dr = rmax / (nr - 0.5)
+        r1 = np.arange(nr) * dr
+    else:
+        dr = rmax / nr
+        r1 = (np.arange(nr) + 0.5) * dr
+    return Pa1, r1, a
+
+
+def build_n2p_2d(run, Pa, z, rho, L_lya, fluxfac=1.0, T_star=0.0, R_over_a=0.0,
+                 Pa1=None, r1=None, L_insitu=0.0):
     """n2p(rho,z) [cm^-3] from the physical scattering rate.
 
     P_alpha = Pa * L_lya * fluxfac.  The LaRT scattering-rate accumulation
@@ -152,23 +204,39 @@ def build_n2p_2d(run, Pa, z, rho, L_lya, fluxfac=1.0, T_star=0.0, R_over_a=0.0):
     nHI_g = np.interp(rad, r, nHI, left=nHI[0], right=0.0)
     ne_g  = np.interp(rad, r, ne,  left=ne[0],  right=0.0)
     Palpha = Pa * L_lya * fluxfac              # [s^-1 atom^-1]  (fluxfac = Omega_star/4pi)
+    if Pa1 is not None and L_insitu > 0.0:
+        # In-situ diffuse Ly-alpha volume source: radial profile, NO fluxfac.
+        # Interpolate the radial rate onto the (rho,z) spherical radius and add.
+        Palpha_insitu = np.interp(rad, r1, Pa1, left=Pa1[0], right=0.0) * L_insitu
+        Palpha = Palpha + Palpha_insitu
     Jlya_eff = Palpha / B12_lya
     G2 = gamma_n2_balmer(T_star, R_over_a)     # n=2 Balmer-continuum photoionization sink
-    _, n2p, _ = n2_populations(T_g, nHI_g, ne_g, Jlya_eff, G2s=G2, G2p=G2)
-    n2p = np.where(inside & (Pa > 0.0), n2p, 0.0)
-    return n2p, rad
+    n2s, n2p, _ = n2_populations(T_g, nHI_g, ne_g, Jlya_eff, G2s=G2, G2p=G2)
+    # The LaRT Ly-alpha field (Jlya_eff, built from Pa) pumps ONLY 1s->2p inside
+    # n2_populations (the pump enters the 2p source term, not 2s), so using the
+    # LaRT scattering rate here is the correct 1s->2p pumping. The 2s population
+    # is recombination/collisionally fed and exists throughout the atmosphere,
+    # NOT only where Pa>0, so both are kept and masked to the physical atmosphere
+    # (rad <= rmaxp). Both are returned because 2s and 2p have different H-alpha
+    # cross sections (see halpha_transmission).
+    n2s = np.where(inside, n2s, 0.0)
+    n2p = np.where(inside, n2p, 0.0)
+    return n2s, n2p, rad
 
 
-def halpha_transmission(run, Pa, z, rho, n2p, Rp_m, Rstar_m, lam_grid,
+def halpha_transmission(run, Pa, z, rho, n2s, n2p, Rp_m, Rstar_m, lam_grid,
                         rib=None, nb=200, nz_los=801):
-    """Disk-averaged H-alpha transmission spectrum.  Returns (lam[A], T_lambda)."""
+    """Disk-averaged H-alpha transmission spectrum.  Returns (lam[A], T_lambda).
+    The optical depth is sub-level-resolved, tau ~ f_2s n_2s + f_2p n_2p, since
+    2s and 2p have different H-alpha cross sections."""
     r = np.asarray(run.r, float)
     Tprof = np.asarray(run.T, float)
     vprof = np.asarray(run.v, float) / 100.0   # cm/s -> m/s
     rmaxp = r.max()
     rib = rib or rmaxp
-    # 2D n2p interpolator (rho, z) -> n2p [cm^-3]
+    # 2D interpolators (rho, z) -> n_2s, n_2p [cm^-3]
     from scipy.interpolate import RegularGridInterpolator
+    n2s_interp = RegularGridInterpolator((z, rho), n2s, bounds_error=False, fill_value=0.0)
     n2p_interp = RegularGridInterpolator((z, rho), n2p, bounds_error=False, fill_value=0.0)
 
     b_grid = np.array([rib**(j / (nb - 1.0)) for j in range(nb)])   # 1..rib, log-spaced
@@ -186,15 +254,18 @@ def halpha_transmission(run, Pa, z, rho, n2p, Rp_m, Rstar_m, lam_grid,
         T_l   = np.interp(radl, r, Tprof, left=Tprof[0], right=Tprof[-1])
         v_l   = np.interp(radl, r, vprof, left=vprof[0], right=vprof[-1])
         v_los = v_l * zl / radl                         # radial velocity projected on LOS
-        n2_l  = n2p_interp(np.column_stack([zl, np.full_like(zl, b)])) * 1.0e6  # cm^-3 -> m^-3
+        pts   = np.column_stack([zl, np.full_like(zl, b)])
+        n2s_l = n2s_interp(pts) * 1.0e6                  # cm^-3 -> m^-3
+        n2p_l = n2p_interp(pts) * 1.0e6
         v_th  = np.sqrt(2.0 * kb * np.maximum(T_l, 1.0) / mp)
         Dnu   = nu_Ha * v_th / c_l
         a_v   = A12_Ha / (4.0 * np.pi * Dnu)
         for il, nu in enumerate(nu_arr):
             X    = (nu - nu_Ha) / Dnu
             arg  = X - v_los / v_th + 1j * a_v
-            sig  = f_Ha * Fadd_const / Dnu * wofz(arg).real     # [m^2]
-            integrand = n2_l * sig                              # [m^-1]
+            prof = Fadd_const / Dnu * wofz(arg).real            # shared Voigt profile [m^2]
+            # sub-level-resolved absorption: 2s and 2p have different cross sections
+            integrand = (f_Ha_2s * n2s_l + f_Ha_2p * n2p_l) * prof   # [m^-1]
             tau = np.sum(0.5 * dz_m * (integrand[:-1] + integrand[1:]))
             exp_tau[ip, il] = np.exp(-tau)
 
@@ -221,9 +292,11 @@ def lya_photon_luminosity(run):
 
 
 def compute_halpha(run_dir, lart_h5, lam_min=6561.0, lam_max=6564.6, nlam=201, adv=True,
-                   lya_scale=1.0):
+                   lya_scale=1.0, insitu_h5=None, L_insitu=0.0):
     """Full pipeline: EXHALE run + LaRT Pa_2D -> H-alpha transmission spectrum.
     lya_scale multiplies the incident Ly-alpha flux (hence P_alpha and the pump).
+    insitu_h5/L_insitu optionally add an in-situ (internal diffuse volume source)
+    Ly-alpha 2p pump from a radial LaRT Pa_1D profile (see module docstring).
     Returns (lam[A], T_lambda, info-dict)."""
     run = aio.load_run(os.path.join(run_dir, 'output'),
                        os.path.join(run_dir, 'input.inp'), adv=adv)
@@ -236,12 +309,20 @@ def compute_halpha(run_dir, lart_h5, lam_min=6561.0, lam_max=6564.6, nlam=201, a
     L_lya   = lya_photon_luminosity(run) * lya_scale
     Pa, z, rho, attrs = read_lart_pa2d(lart_h5)
     fluxfac = float(np.ravel(attrs.get('fluxfac', [1.0]))[0])
-    n2p, _  = build_n2p_2d(run, Pa, z, rho, L_lya, fluxfac=fluxfac,
-                           T_star=T_star, R_over_a=R_over_a)
+    Pa1 = r1 = None
+    Palpha_insitu_max = 0.0
+    if insitu_h5 is not None and L_insitu > 0.0:
+        Pa1, r1, _ = read_lart_pa1d(insitu_h5)
+        Palpha_insitu_max = float((Pa1 * L_insitu).max())
+    n2s, n2p, _ = build_n2p_2d(run, Pa, z, rho, L_lya, fluxfac=fluxfac,
+                               T_star=T_star, R_over_a=R_over_a,
+                               Pa1=Pa1, r1=r1, L_insitu=L_insitu)
     lam = np.linspace(lam_min, lam_max, nlam)
-    lam, Tl = halpha_transmission(run, Pa, z, rho, n2p, Rp_m, Rstar_m, lam)
+    lam, Tl = halpha_transmission(run, Pa, z, rho, n2s, n2p, Rp_m, Rstar_m, lam)
     info = dict(L_lya=L_lya, fluxfac=fluxfac, Palpha_max=(Pa * L_lya * fluxfac).max(),
-                n2p_max=n2p.max(), depth_pct=(1.0 - Tl.min()) * 100.0)
+                n2s_max=n2s.max(), n2p_max=n2p.max(),
+                depth_pct=(1.0 - Tl.min()) * 100.0,
+                L_insitu=L_insitu, Palpha_insitu_max=Palpha_insitu_max)
     return lam, Tl, info
 
 
@@ -256,6 +337,10 @@ def main():
     ap.add_argument('--obs', default=None, help='observed Halpha file (lam, TS, e_TS, ...)')
     ap.add_argument('--out', default='halpha_lart2d.png')
     ap.add_argument('--eq', action='store_true')
+    ap.add_argument('--insitu-h5', default=None,
+                    help='LaRT in-situ (diffuse volume source) .h5 with Pa_1D radial profile')
+    ap.add_argument('--L-insitu', type=float, default=0.0,
+                    help='total in-situ Ly-alpha photon luminosity [photons/s]')
     args = ap.parse_args()
 
     run = aio.load_run(os.path.join(args.run_dir, 'output'),
@@ -271,12 +356,22 @@ def main():
 
     Pa, z, rho, attrs = read_lart_pa2d(args.lart_h5)
     fluxfac = float(np.ravel(attrs.get('fluxfac', [1.0]))[0])
-    n2p, rad = build_n2p_2d(run, Pa, z, rho, L_lya, fluxfac=fluxfac)
-    print('L_lya = %.3e photons/s ;  fluxfac = %.4e ;  P_alpha max = %.3e s^-1 ;  n2p max = %.3e cm^-3'
-          % (L_lya, fluxfac, (Pa * L_lya * fluxfac).max(), n2p.max()))
+    Pa1 = r1 = None
+    Palpha_insitu_max = 0.0
+    if args.insitu_h5 is not None and args.L_insitu > 0.0:
+        Pa1, r1, _ = read_lart_pa1d(args.insitu_h5)
+        Palpha_insitu_max = float((Pa1 * args.L_insitu).max())
+    n2s, n2p, rad = build_n2p_2d(run, Pa, z, rho, L_lya, fluxfac=fluxfac,
+                                 Pa1=Pa1, r1=r1, L_insitu=args.L_insitu)
+    print('L_lya = %.3e photons/s ;  fluxfac = %.4e ;  P_alpha max = %.3e s^-1 ;'
+          '  n2s max = %.3e ;  n2p max = %.3e cm^-3'
+          % (L_lya, fluxfac, (Pa * L_lya * fluxfac).max(), n2s.max(), n2p.max()))
+    if Pa1 is not None and args.L_insitu > 0.0:
+        print('in-situ Ly-a: L_insitu = %.3e photons/s ;  P_alpha_insitu max = %.3e s^-1'
+              % (args.L_insitu, Palpha_insitu_max))
 
     lam = np.linspace(args.lam_min, args.lam_max, args.nlam)
-    lam, Tl = halpha_transmission(run, Pa, z, rho, n2p, Rp_m, Rstar_m, lam)
+    lam, Tl = halpha_transmission(run, Pa, z, rho, n2s, n2p, Rp_m, Rstar_m, lam)
     depth = (1.0 - Tl.min()) * 100.0
     print('H-alpha line-center excess absorption = %.3f %%' % depth)
 

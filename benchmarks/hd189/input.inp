@@ -16,7 +16,7 @@ Log10 of X-ray luminosity [erg/s]: 28.420
 Log10 of EUV luminosity [erg/s]: 28.680
 Grid type: Mixed
 Numerical flux: HLLC
-Reconstruction scheme: PLM
+Reconstruction scheme: PLM+WENO3
 Include He23S? True
 Load IC? False
 Do only PP: False
@@ -25,7 +25,7 @@ Stellar Teff [K]: 4875
 Stellar radius [R_sun]: 0.765
 Deexc heat: True
 Jlya escape-prob: True
-Stellar Lya flux [erg/cm2/s]: 1.0e5
+Stellar Lya flux [erg/cm2/s]: 2.0e4
 Lya stellar halfwidth [km/s]: 70
 Lya stellar boost [-]: 5
 du_th [PLM,WENO3]: 0.5 1.0e-3

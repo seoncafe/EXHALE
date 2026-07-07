@@ -158,6 +158,7 @@
                                           !  are off (nm = 0 either way).
       logical :: use_weno3     = .false.  ! Use WENO3 reconstruction
       logical :: use_plm       = .false.  ! Use PLM reconstruction
+      logical :: recon_two_stage = .false.  ! "Reconstruction scheme: PLM+WENO3": run PLM (stage 1) then WENO3 (stage 2), using BOTH du_th values. PLM/WENO3 alone are single-stage and use only the first du_th value.
       logical :: is_stalled    = .false.  ! Convergence stalled at a du plateau
       logical :: spherical_domain = .false. ! Domain mode (set via input.inp):
                                           !  .false. = full Roche potential

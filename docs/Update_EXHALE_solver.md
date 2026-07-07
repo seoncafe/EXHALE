@@ -302,8 +302,10 @@ equations and, near the fixed point, to solve F(Y)=0 directly.
 **What was added** (all opt-in via `input.inp` keywords; every legacy
 default is byte-identical, regression-gated):
 
-- *Automatic two-stage marching* (`du_th [PLM,WENO3]:`): PLM warm-up,
-  switch to WENO3 at the first threshold, stop at the second.
+- *Two-stage marching* (enabled by `Reconstruction scheme: PLM+WENO3`, with
+  thresholds from `du_th [PLM,WENO3]:`): PLM warm-up, switch to WENO3 at the
+  first threshold, stop at the second. `Reconstruction scheme: PLM` or `WENO3`
+  alone is single-stage and uses only the first threshold.
 - *Residual monitor and residual-based stop* (`Resid tol:`, `Level tol:`):
   periodic max ||R||_inf over mass/momentum/energy, independent of `du`.
 - *Preconditioned JFNK steady solver*
