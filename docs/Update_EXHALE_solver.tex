@@ -36,7 +36,7 @@ changes in \texttt{EXHALE} relative to the original ATES
 (\texttt{ATES/ATES-Code-main}): time integration of the stiff source terms, the
 convergence algorithm, the radial-grid convergence window, the advection
 post-processor's solve, and the nonlinear solvers (ionization equilibrium and the
-per-cell energy equation). It \emph{excludes} the physics changes (metals,
+energy equation in each cell). It \emph{excludes} the physics changes (metals,
 cooling, opacity, charge exchange, excited hydrogen, Ly$\alpha$), which are
 documented in \texttt{Update\_EXHALE} and \texttt{Update\_EXHALE\_early\_phase}. It
 absorbs in full the former
@@ -335,7 +335,7 @@ guard at a breathing base''.} Summary of the numerical change in
 For strongly Roche-filling planets the 1D wind is subsonic at $L_1$ and the dense
 lower atmosphere settles into a slowly recirculating (``breathing'') state with
 small \emph{negative} (inflow) velocities and a stagnation point ($v=0$) near the
-wind base. The advection post-processor re-solves the per-cell energy/ionization
+wind base. The advection post-processor re-solves, in each cell, the energy/ionization
 balance assuming an outflow (each cell upwinds from the next-inner cell); in the
 dense base the non-monotone metal line-cooling curve gives the energy equation a
 second, spurious \emph{hot} root that the Newton/Powell solve can land on, and the
@@ -346,13 +346,13 @@ advection correction is skipped and the converged equilibrium ionization and
 temperature are kept (gated on \texttt{pp\_metal\_on}; metals-off byte-identical).
 This breaks the upwind cascade at its source. The remaining genuine 1D limitation
 (the breathing base itself) is represented there by the smooth equilibrium
-solution. \S\ref{sec:task1} makes the same per-cell energy solve robust by
+solution. \S\ref{sec:task1} makes the same cell-by-cell energy solve robust by
 construction (Brent), removing the spurious-root failure mode entirely.
 
 % =====================================================================
 \section{Brent for the scalar energy equation (Task 1, 2026-06-07)}\label{sec:task1}
 % =====================================================================
-\texttt{T\_equation} (the per-cell post-process energy balance) is a single
+\texttt{T\_equation} (the post-process energy balance in each cell) is a single
 nonlinear equation in $x=T/T_0$. With metal cooling its residual is
 \emph{non-monotone} and admits a second, spurious \emph{hot} root that the general
 Newton/Powell solver (\texttt{hybrd1}) can land on --- the root cause of the
@@ -374,7 +374,7 @@ Added to \texttt{T\_equation.f90} (module \texttt{equation\_T}):
 \end{itemize}
 
 \subsection{Wiring}
-In \texttt{post\_process\_adv.f90}'s per-cell $T$ loop: when \texttt{pp\_metal\_on}
+In \texttt{post\_process\_adv.f90}'s $T$ loop over cells: when \texttt{pp\_metal\_on}
 (and \texttt{use\_brent\_tsolve}, \S\ref{sec:switch}) call \texttt{solve\_T\_brent}
 (fall back to eq \texttt{T\_in} if no bracket); otherwise the legacy \texttt{hybrd1}
 solve $+$ the 2$\times$-band reject is used. Metals-off keeps the original
@@ -431,7 +431,7 @@ He metastable-triplet system (\texttt{System\_HeH\_TR}) is left on \texttt{hybrd
 \subsection{Wiring and build}
 In \texttt{ionization\_\allowbreak equilibrium.f90} the H-only, H/He, and
 H/He$+$metals \texttt{hybrd1} calls now go through the dispatcher
-\texttt{solve\_ieq} (with the per-system \texttt{jac\_*} callbacks);
+\texttt{solve\_ieq} (with the \texttt{jac\_*} callbacks for each system);
 the triplet call is unchanged. \texttt{newton\_solver.f90} was added to the
 \texttt{Makefile}. Builds clean (gfortran).
 
@@ -495,7 +495,7 @@ hybrd1 & 2027 & 67.8 / 68.9 s & 33.7 \\
 
 \noindent The analytic-Jacobian Newton is \textbf{$\sim$25\% faster per step
 ($\times1.25$)} than legacy \texttt{hybrd1}; the step counts match to $0.2\%$
-(fair per-step comparison). The \texttt{ioniz\_eq} cell loop is \emph{serial}, so
+(fair step-for-step comparison). The \texttt{ioniz\_eq} cell loop is \emph{serial}, so
 the relative speedup grows with the thread count (hydro/radiation parallelize, the
 solve does not). This is on top of the $\sim$2$\times$ hydro-loop speedup from the
 semi-implicit energy solver (\S\ref{sec:semi}). Raw numbers in

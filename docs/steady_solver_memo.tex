@@ -105,12 +105,12 @@ restarts $\to$13.716; the naive local-$dt$ experiment $\to$13.716 in 1{,}702
 steps). \textbf{The old golden was a premature $du$-dip snapshot, not the
 steady state} --- approximately $0.08$~dex ($\sim$20\%) low in $\dot M$.
 
-Two earlier conclusions were corrected as a result. First, naive per-cell
+Two earlier conclusions were corrected as a result. First, naive cell-by-cell
 pseudo-time stepping (``\code{Time stepping: Local}'') had been judged
 ``answer-shifting''; in fact it reaches the \emph{correct deeper} state
 $\sim$20$\times$ faster --- the judgment was an artifact of comparing
-against the premature golden. (The LTS state does carry larger per-cell
-hydro residuals, \S\ref{sec:resid}, so it is ``fast but needs polishing.'')
+against the premature golden. (The LTS state does carry larger
+hydro residuals in each cell, \S\ref{sec:resid}, so it is ``fast but needs polishing.'')
 Second, the apparent ``path-dependent quasi-steady states'' largely
 collapse to one true state plus premature snapshots along the way.
 
@@ -120,7 +120,7 @@ collapse to one true state plus premature snapshots along the way.
 stop additionally requires the mean $|\rho v r^2|$ over $[j_{\min},N]$ to
 change by less than \code{lev\_th} (relative) across the last
 $N_{\rm stall}$ steps (ring buffer in \code{EXHALE\_main}; the relative level
-change is now the 4th column of the per-step stdout). This correctly
+change is now the 4th column of the stdout at each step). This correctly
 refuses the premature dip (the cold run marches past step 7{,}288), but a
 practical tolerance cannot discriminate ultra-slow drifts; it is necessary,
 not sufficient. Default off.
@@ -346,8 +346,8 @@ input line & default & effect\\
  (\S\ref{sec:diag})\\
 \code{Resid tol: v} & off & residual-based convergence
  (\S\ref{sec:diag})\\
-\code{Time stepping: Local} & off & per-cell pseudo-$dt$ (steady-state
- acceleration; reaches the deep state fast but leaves per-cell residuals)\\
+\code{Time stepping: Local} & off & cell-by-cell pseudo-$dt$ (steady-state
+ acceleration; reaches the deep state fast but leaves residuals in each cell)\\
 \code{Energy solver: Explicit} & semi-implicit & original forward-Euler
  source update (isolation tests)\\
 \code{Valve eps: v} & off (hard $\max(v,0)$) & smooth base valve

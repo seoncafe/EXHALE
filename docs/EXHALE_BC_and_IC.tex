@@ -390,8 +390,8 @@ unchanged unless requested. Their measured effects are tabulated in
 \end{description}
 
 \paragraph{Implementation note.}
-The per-cell ionization-equilibrium sweep is now OpenMP-parallel over cells
-(the metal- and charge-exchange per-cell coefficients are kept thread-private);
+The cell-by-cell ionization-equilibrium sweep is now OpenMP-parallel over cells
+(the metal and charge-exchange coefficients in each cell are kept thread-private);
 the parallel result is bit-identical to the serial one, so none of the BC/IC
 behavior below is affected. See \texttt{docs/openmp\_parallelization.md}.
 

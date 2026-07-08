@@ -18,7 +18,7 @@ What it does
    - a stellar UV flux chosen by the host Teff from the shipped spectra
      (unless --sflux): >6800 K -> 51 Eri (F0, T7250); 5300-6800 -> solar
      (Gueymard); 4300-5300 -> eps Eri (K2V); <=4300 -> GJ 436 (M).
-   - a per-planet vulcan_cfg.py (photochemistry ON, no live plotting).
+   - a vulcan_cfg.py for each planet (photochemistry ON, no live plotting).
 3. Compiles FastChem once if its binary is missing.
 4. Runs VULCAN to steady state (hours!) -- SKIPPED if a converged
    output/<name>-photo.vul already exists (use --force to redo).

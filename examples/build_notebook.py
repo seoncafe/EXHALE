@@ -57,7 +57,7 @@ for a in ax: a.set_xlabel(r'$r$ [$R_p$]'); a.grid(alpha=0.3)
 plt.tight_layout(); plt.show()
 """)
 
-md("## 3. Per-channel cooling breakdown (WASP-121b, metals on)\n"
+md("## 3. Cooling breakdown by channel (WASP-121b, metals on)\n"
    "From `Cooling_breakdown.txt`: which coolant dominates at each altitude.")
 code("""c = aio.load_cooling(os.path.join(W,'output','Cooling_breakdown.txt'))
 fig, ax = plt.subplots(figsize=(8,5))

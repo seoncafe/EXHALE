@@ -370,7 +370,7 @@
       ! HD209458b_test/) showed that with the filter ON the clean cold-IC solution
       ! is driven OFF the transonic-wind saddle into the INFALL attractor (v < 0
       ! everywhere) regardless of the velocity BC, while filter-OFF relaxes to a
-      ! clean outflow. So it must NOT be a global default; enable per-run with
+      ! clean outflow. So it must NOT be a global default; enable for each run with
       ! "Shapiro filter: <eps> [<every>]" only for cases that actually breathe.
       real*8  :: shapiro_eps   = -1.0d0
       integer :: shapiro_every = 4
@@ -428,7 +428,7 @@
       ! solver-component isolation tests.
       logical :: use_semi_implicit_energy = .true.
 
-      ! Local (per-cell) pseudo-time stepping ("Time stepping: Local" in
+      ! Local (cell-by-cell) pseudo-time stepping ("Time stepping: Local" in
       ! input.inp). Steady-state acceleration only: each cell marches with its
       ! own CFL step dt_j = CFL*dr_j/(|v|+cs), removing the global-dt
       ! bottleneck set by the smallest base cell. Time accuracy is lost but
@@ -463,7 +463,7 @@
       real*8  ::  X_K         ! K/H  number ratio (solar ~ 1.07e-7)
       real*8  ::  X_S         ! S/H  number ratio (solar ~ 1.32e-5)
       real*8  ::  X_Fe        ! Fe/H number ratio (solar ~ 3.16e-5)
-      real*8, allocatable :: melem_ab(:) ! per-element abundance, canonical
+      real*8, allocatable :: melem_ab(:) ! abundance for each element, canonical
                                           !  element order (iel_*); set in
                                           !  input_read so metal code can index
                                           !  abundance by element, not by name
@@ -505,13 +505,13 @@
       real*8 :: opa_pb_factor   = 0.0d0    ! a
       real*8 :: opa_pb_exponent = 1.0d0    ! n
       real*8 :: opa_pb_pivot    = 1.0d5    ! dyne/cm^2 = 0.1 bar
-      ! Tabulated-model (.opa) per-species file paths:
+      ! Tabulated-model (.opa) file paths for each species:
       character(len = :), allocatable :: opa_file_HI
       character(len = :), allocatable :: opa_file_HeI
       character(len = :), allocatable :: opa_file_HeII
       character(len = :), allocatable :: opa_file_HeITR
       real*8, dimension(:), allocatable :: F_XUV
-      ! Per-cell pressure-broadening multiplier for the opacity ('P'
+      ! Cell-by-cell pressure-broadening multiplier for the opacity ('P'
       ! model). 1.0 everywhere unless opacity_model='P'; set before each
       ! photoheating call and used to weight the opacity column density.
       real*8, dimension(1-Ng:N+Ng) :: opa_pf = 1.0d0
@@ -561,10 +561,10 @@
       ! region; the full 1/beta over-counts). Tuned to Huang+2023 Fig. 11.
       ! Editable: "Lya stellar boost [-]:".
       real*8  :: lya_star_boost = 5.0d0
-      ! Per-cell feedback arrays injected into ioniz_eq (zero unless enabled):
+      ! Cell-by-cell feedback arrays injected into ioniz_eq (zero unless enabled):
       real*8, dimension(1-Ng:N+Ng) :: gph_balmer_HI = 0.0d0 ! extra HI photoion [s^-1]
       real*8, dimension(1-Ng:N+Ng) :: heat_balmer   = 0.0d0 ! extra heat [erg cm^-3 s^-1]
-      ! Per-cell diagnostics for output/Excited_H.txt:
+      ! Cell-by-cell diagnostics for output/Excited_H.txt:
       real*8, dimension(1-Ng:N+Ng) :: Jlya_arr  = 0.0d0 ! Lya mean intensity [cgs]
       real*8, dimension(1-Ng:N+Ng) :: n2s_arr   = 0.0d0 ! H(2s) density [cm^-3]
       real*8, dimension(1-Ng:N+Ng) :: n2p_arr   = 0.0d0 ! H(2p) density [cm^-3]
@@ -578,9 +578,9 @@
       real*8, dimension(1-Ng:N+Ng) :: cion_HI       = 0.0d0 ! HI collisional ioniz. [cm^3 s^-1]
       real*8, dimension(1-Ng:N+Ng) :: arec_HII      = 0.0d0 ! HII recombination [cm^3 s^-1]
 
-      ! NL solver vectors. These are per-cell scratch for the ionization
+      ! NL solver vectors. These are cell-by-cell scratch for the ionization
       ! equilibrium solve, which now runs OpenMP-parallel over cells, so each
-      ! thread needs its own copy (info is the per-solve status flag). In serial
+      ! thread needs its own copy (info is the status flag for each solve). In serial
       ! regions (input_read setup, post_process_adv) they resolve to the master
       ! thread's copy = the original behavior. The allocatables are allocated
       ! per thread inside ioniz_eq (the master's also in input_read).

@@ -3,7 +3,7 @@
 **Status:** Phase 1 and Phase 2 implemented and validated (2026-07-02). Flag `He_diffusion`
 default OFF (opt-in). See §7d/§7e for results.
 **Scope:** Phase 1 = He element relative to H (§2–§7). Phase 2 = ambipolar-corrected
-settling (P2b), thermal diffusion α_T (P2c), and per-element trace-metal diffusion (P2d);
+settling (P2b), thermal diffusion α_T (P2c), and trace-metal diffusion element by element (P2d);
 self-consistent n_H (P2a) attempted but abandoned (§7e).
 
 ---
@@ -16,7 +16,7 @@ ionization equilibrium, which conserves the element ratio. There is currently **
 of the element ratio at all** — not even advection — so He/H is globally fixed at the input
 `HeH`. To get diffusive separation we must add a genuine **He-element transport equation**
 (advection at bulk `v` **plus** a diffusive drift), then feed the resulting radius-dependent
-`nhe(j)/nh(j)` into the (already per-cell) ionization solver.
+`nhe(j)/nh(j)` into the ionization solver (which already works cell by cell).
 
 ---
 
@@ -100,7 +100,7 @@ n_H(j)  = rho(j) (1 − Y(j)) / (m_H + Σ_metal A_metal m_metal)   ! metals slav
 
 then rescale `f_sp` He-stages to sum to `n_He`, H-stages to `n_H` (preserving the within-
 element ionization split), metals `= A_metal n_H`; ionization equilibrium re-solves with the
-new per-cell `nh(j)`, `nhe(j)` (interface already accepts these independently).
+new `nh(j)`, `nhe(j)` in each cell (interface already accepts these independently).
 
 ## 5. Boundary conditions
 
@@ -120,7 +120,7 @@ new per-cell `nh(j)`, `nhe(j)` (interface already accepts these independently).
 - `composition.f90` / `ionization_equilibrium.f90`: derive `nh(j)`,`nhe(j)` from `rho` and
   `Y(j)` instead of the global `HeH`; rescale `f_sp` accordingly.
 - `set_IC.f90`: initialize `Y(:)` from `HeH` (uniform).
-- `write_output.f90` / `write_setup_report.f90`: already write per-cell species; optionally
+- `write_output.f90` / `write_setup_report.f90`: already write species in each cell; optionally
   add a He/H(r) column and report the flag.
 
 ## 7. Validation gate (must pass before default-on)
@@ -250,7 +250,7 @@ Extends the Phase-1 He/H kernel (now factored into `solve_1elem`) with:
 - **P2c — thermal diffusion (default `He_alphaT = 0`, no-op).** Adds `α_T ∂lnT/∂r` to the
   settling coefficient. Off by default; activatable via `He_alphaT`.
 
-- **P2d — per-element metal diffusion (default OFF, `He_metal_diffusion`).** Each trace metal
+- **P2d — metal diffusion element by element (default OFF, `He_metal_diffusion`).** Each trace metal
   element is diffused **independently** against the (post-He-rescale) background n_H with its
   own mass `melem_A`, binary D (`1.52e18(1/m_H+1/m_X)^½ T^½/n`), and mean-charge ambipolar
   correction, via the shared `solve_1elem` kernel; the element's ion stages are rescaled to

@@ -16,7 +16,7 @@ harness; "PASS" means the gate ran green immediately after the step.
 - `test_roundtrip.sh` + `check_roundtrip.py` — restart loader test using the
   `EXHALE_DUMP_IC=1` hook in `EXHALE_main.f90`, which writes the state exactly as
   loaded and stops. The dump happens *before* the first ionization-equilibrium
-  solve: the per-step equilibrium re-solve would otherwise re-derive the metal
+  solve: the equilibrium re-solve at each step would otherwise re-derive the metal
   fractions and mask a loader that resets metals to neutral.
 
 ## Phase 1 — named species constants + composition module (PASS, bitwise)
@@ -42,19 +42,19 @@ harness; "PASS" means the gate ran green immediately after the step.
   (order-free), restoring **all** species including the metal ions — metal
   restarts now preserve the ionization state (verified to rtol 1e-12).
   Headerless legacy files keep the historical behavior exactly (H/He read,
-  metals to neutral-from-abundance). Per-element rule: an element is restored
+  metals to neutral-from-abundance). Rule for each element: an element is restored
   only if all of its ion stages are present in the file.
 
 ## Phase 3 — abundance unification (PASS, bitwise)
 
-- The hard-coded per-element metal blocks in `set_IC` (and the fallback in
+- The hard-coded metal blocks for each element in `set_IC` (and the fallback in
   `load_IC`) are element loops over `melem_ab(:)` / `melem_i0` / `melem_top` /
   `mion_fsp`. The `X_C..X_Fe` scalars survive only as the input-parsing
   targets that fill `melem_ab`; no downstream physics code reads them.
 
 ## Phase 4a — rate dispatch by ion index (PASS, bitwise + roundtrip)
 
-- `species_table.f90`: per-ion index constants `im_CI..im_FeIII` (canonical
+- `species_table.f90`: index constants for each ion `im_CI..im_FeIII` (canonical
   mion order). Note: Fortran identifiers are case-insensitive, so sulfur is
   `im_S_I`/`im_S_II` — `im_SII` would collide with `im_SiI` (neutral Si).
 - `Cool_coeff.f90`: `rec_coeff_by_ion`, `ion_coeff_by_ion`,
@@ -63,12 +63,12 @@ harness; "PASS" means the gate ran green immediately after the step.
   remain as thin wrappers (`ion_index_of` + delegate) for compatibility.
 - Call sites switched to index dispatch: `util_ion_eq` (rec/ion/cool loops
   and the Fe II density-dependent override) and `T_equation` (post-process
-  metal coolant sum). No per-call `trim(mion_name(i))` string comparisons
+  metal coolant sum). No `trim(mion_name(i))` string comparisons at each call
   remain on the rate path.
 
 ## Phase 5 — ionization-solver context (deferred by design)
 
-Step 1 of the v3 plan ("wrap the per-cell coefficients in an explicit
+Step 1 of the v3 plan ("wrap the coefficients for each cell in an explicit
 setter") already exists as `set_metal_coeffs` in `System_HeH_metals.f90`.
 The remaining steps (local context for the analytic Newton, thread-local or
 serial-only MINPACK fallback, active-only unknown mapping) are prerequisites
@@ -89,7 +89,7 @@ deferred until that parallelization is actually scheduled.
 
 Two runtime options were added (both opt-in; absent => global-dt path is
 byte-identical, regression-gated):
-- `Time stepping: Local` — per-cell `dt_j = CFL*dr_j/(|v|+cs)`.
+- `Time stepping: Local` — cell-by-cell `dt_j = CFL*dr_j/(|v|+cs)`.
 - `Level tol: <val>` — mass-flux LEVEL-stability gate: a converged/stalled
   stop additionally requires the mean `|rho v r^2|` over `[j_min:N]` to be
   unchanged (relative `< lev_th`) across the last `N_stall` steps. `du` is the
@@ -150,7 +150,7 @@ Conclusions (tentative but strong):
   R_E ~1e-2 (not fully steady; lev_rel was still 2.7e-3 climbing) -> a direct
   steady solve is needed to reach R=0 cheaply.
 - warm has the right LEVEL (13.716) but large hydro residual: naive LTS reaches
-  the level fast but leaves per-cell profile artifacts needing global cleanup.
+  the level fast but leaves profile artifacts in each cell needing global cleanup.
   (So LTS is "fast but needs polishing", not simply vindicated.)
 - ||R|| is the criterion-independent convergence measure the project needed,
   and the building block for PTC + Newton (which drives ||R|| -> 0 directly).

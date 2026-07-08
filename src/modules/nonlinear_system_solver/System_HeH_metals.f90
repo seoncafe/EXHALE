@@ -11,7 +11,7 @@
 	!   x(4 + 2*(e-1)) = n_(Xe)II /n_Xe
 	!   x(5 + 2*(e-1)) = n_(Xe)III/n_Xe   (pinned to 0 when met_top(e) < 2)
 	!
-	! The per-element metal data (total density + photoionization,
+	! The metal data for each element (total density + photoionization,
 	! collisional-ionization and recombination coefficients) is supplied
 	! per cell through the module-level arrays below, set by the driver via
 	! set_metal_coeffs before each hybrd1 call. This is safe because the
@@ -31,7 +31,7 @@
 
 	implicit none
 
-	! Per-cell metal element data, set by set_metal_coeffs.
+	! Cell-by-cell metal element data, set by set_metal_coeffs.
 	integer, save :: met_nelem = 0
 	real*8, allocatable, save :: met_ntot(:)   ! total density of the element
 	real*8, allocatable, save :: met_g0(:)     ! photoionization of neutral
@@ -46,7 +46,7 @@
 	! zero in the residual to keep the Jacobian non-singular.
 	integer, allocatable, save :: met_top(:)
 
-	! These per-cell coefficients are set (set_metal_coeffs) and read inside the
+	! These cell-by-cell coefficients are set (set_metal_coeffs) and read inside the
 	! ionization-equilibrium cell sweep, which is now OpenMP-parallel over cells.
 	! Make each thread keep its own copy so concurrent cells do not clobber one
 	! another. The allocatables are lazily allocated per thread on first use in
@@ -56,7 +56,7 @@
 
 	contains
 
-	! Store the per-cell metal element coefficients for ion_system_HeH_metals.
+	! Store the cell-by-cell metal element coefficients for ion_system_HeH_metals.
 	subroutine set_metal_coeffs(nelem, ntot, g0, g1, b0, b1, a1, a2, top)
 		integer, intent(in) :: nelem
 		real*8, dimension(nelem), intent(in) :: ntot, g0, g1, b0, b1, a1, a2
@@ -90,8 +90,8 @@
 	real*8  :: n_h,n_he,n_e
 	! H/He densities
 	real*8  :: n_hi,n_hii,n_hei,n_heii,n_heiii
-	! Per-element metal densities (neutral/+/++). Charge exchange is added
-	! generically afterwards by cx_add_to_fvec, so no per-element CX arrays
+	! Each element's metal densities (neutral/+/++). Charge exchange is added
+	! generically afterwards by cx_add_to_fvec, so no separate CX arrays for each element
 	! are needed here.
 	real*8  :: nm0(met_nelem),nm1(met_nelem),nm2(met_nelem)
 	real*8  :: n_X

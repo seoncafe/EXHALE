@@ -354,8 +354,8 @@ Variable & Effect \\
   ionization-equilibrium solve re-equilibrates the species fractions
   (verifies a snapshot/restart round-trip). \\
 \texttt{EXHALE\_RESIDUAL=1} & Evaluate the steady residual $R$ of the loaded
-  state (WENO3, boundary conditions applied first), print the per-equation
-  norms (mass, momentum, energy), and stop. The criterion-independent way to
+  state (WENO3, boundary conditions applied first), print the norms
+  for each equation (mass, momentum, energy), and stop. The criterion-independent way to
   rank candidate ``converged'' states (a premature-dip state shows
   $\|R\|_E\sim O(10)$ despite $du<10^{-3}$). \\
 \texttt{EXHALE\_NEWTON\_TEST=1} & Self-test of the Newton infrastructure
@@ -412,7 +412,7 @@ printf 'CI 2.69e-4\nNI 6.76e-5\nOI 4.90e-4\n' > metals.inp
 rm -f metals.inp
 ./EXHALE.x ; mv output output_metals_off
 \end{lstlisting}
-The per-planet notebooks \texttt{metals\_comparison*.ipynb} read the two folders and
+The notebooks for each planet \texttt{metals\_comparison*.ipynb} read the two folders and
 plot the temperature, velocity / mass-flux, H and metal ionization, and
 heating/cooling differences (cf.\ \S\ref{sec:compare}).
 
@@ -624,9 +624,9 @@ defaults restore the standard behavior).}\label{tab:inp-opt}\\
   residual $\max_k\max_j |R_{j,k}|/\max_j|u_k|$ falls below the value (monitored
   every 500 steps), \emph{replacing} the $du$ test ($\le0$ = off, default).
   $du$ alone is blind to the energy imbalance (\S\ref{sec:newton}). \\
-\texttt{Time stepping:} & \texttt{Local} & Per-cell pseudo-time steps
+\texttt{Time stepping:} & \texttt{Local} & Pseudo-time steps in each cell
   (steady-state acceleration; not time-accurate). Reaches the deep state fast but
-  leaves per-cell residuals; pair with a Newton finish. \\
+  leaves residuals in each cell; pair with a Newton finish. \\
 \texttt{Energy solver:} & \texttt{Explicit} & Revert to the original
   forward-Euler source update (solver-isolation tests). \\
 \texttt{Valve eps:} & real (code $v$) & Smooth base valve: ghost velocity
@@ -697,11 +697,11 @@ pp_metals 1
 \texttt{opacity.inp} selects the bound-free opacity model via
 \texttt{OPACITY\_MODEL = A|C|P|T}: \textbf{A} analytic (default, the standard
 ATES cross sections); \textbf{C} constant (threshold $\sigma$ times the
-per-species factors \texttt{OPA\_CONST\_HI/HEI/HEII/HEITR}); \textbf{P}
+factors for each species \texttt{OPA\_CONST\_HI/HEI/HEII/HEITR}); \textbf{P}
 pressure-broadened (Robinson \& Catling $f(p)=1+a\,(p/p_0)^n$ via
 \texttt{OPA\_PB\_FACTOR}=$a$, \texttt{OPA\_PB\_EXPONENT}=$n$,
-\texttt{OPA\_PB\_PIVOT}=$p_0$); \textbf{T} tabulated (per-species two-column
-\texttt{.opa} files, energy [eV] vs.\ $\sigma$ [$10^{-18}$\,cm$^2$], given by
+\texttt{OPA\_PB\_PIVOT}=$p_0$); \textbf{T} tabulated (two-column
+\texttt{.opa} files per species, energy [eV] vs.\ $\sigma$ [$10^{-18}$\,cm$^2$], given by
 \texttt{OPA\_FILE\_HI} etc.). Missing keys keep their defaults, so an absent
 \texttt{opacity.inp} is equivalent to model A.
 
@@ -1024,7 +1024,7 @@ WASP-121b). Two compounding causes, both confined to the base, are responsible:
   intrinsic to the spherically-symmetric (1-D) geometry --- removing it would
   require a 2-D/3-D model --- and is not a numerical bug.
 \item \emph{A spurious hot root in the metal-cooled post-processor.} The
-  post-processor re-solves the per-cell energy/ionization balance \emph{including}
+  post-processor re-solves the energy/ionization balance in each cell \emph{including}
   advection, assuming an outflow (each cell takes the next-inner cell as its
   upwind state). In the dense base the non-monotonic metal line-cooling curve
   gives the energy equation a second, spurious \emph{hot} root that the Newton
@@ -1084,7 +1084,7 @@ HeHp}, cm$^{-3}$) are appended after the metals; the \texttt{\# columns}
 header always names the layout.
 
 \subsection{\texttt{Cooling\_breakdown.txt}}
-Per-channel radiative cooling [erg\,cm$^{-3}$\,s$^{-1}$] vs.\ radius (written for
+Radiative cooling by channel [erg\,cm$^{-3}$\,s$^{-1}$] vs.\ radius (written for
 metals-on runs). Columns: \texttt{1}=$r$, \texttt{2}=$T$ [K], \texttt{3}=$n_e$
 [cm$^{-3}$], \texttt{4}=total cooling; \texttt{5--8}= the four H/He channels
 (recombination, collisional ionization, collisional excitation, bremsstrahlung);
@@ -1236,7 +1236,7 @@ Function & Returns \\
 \texttt{load\_ions(path)} & \texttt{(r, \{ion: density\})} from
   \texttt{Ion\_species(\_adv).txt} (all 33 stages). \\
 \texttt{load\_cooling(path)} & \texttt{r,T,ne,cool\_total} $+$
-  \texttt{chan} dict of per-channel cooling (4 H/He channels
+  \texttt{chan} dict of cooling in each channel (4 H/He channels
   \texttt{rec/coll\_ion/coll\_exc/brems} $+$ 27 metal-line channels). \\
 \texttt{load\_excited\_H(path)} & \texttt{Excited\_H.txt} as a dict
   (\texttt{n2s, n2p, Jlya, tau\_lya, Sproton, Hpe, \ldots}). \\
@@ -1485,7 +1485,7 @@ electrons). Figure~\ref{fig:metals} compares the tutorial planet with and withou
 $\sim1800$\,K (acting as a thermostat that prevents the H/He-only over-heating),
 while the H ionization structure is barely changed. The effect is far stronger
 for hotter, more irradiated planets (e.g.\ WASP-121b, where metal cooling is
-essential to match the observed temperatures); the detailed per-channel cooling
+essential to match the observed temperatures); the detailed cooling by channel
 budget is in Figure~\ref{fig:cool}.
 
 \begin{figure}[htbp]\centering
@@ -1497,7 +1497,7 @@ the peak temperature (left) while the H ionization fraction is nearly unchanged
 
 \begin{figure}[htbp]\centering
 \includegraphics[width=0.72\textwidth]{figures/cooling_breakdown.pdf}
-\caption{Per-channel radiative cooling vs.\ radius (WASP-121b, metals on; from
+\caption{Radiative cooling by channel vs.\ radius (WASP-121b, metals on; from
 \texttt{Cooling\_breakdown.txt}). Below $\sim1.4\,R_p$ the metal lines (e.g.\
 Fe\,II, Mg\,II, C/O) compete with or dominate the H/He collisional channels.}
 \label{fig:cool}

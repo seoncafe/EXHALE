@@ -4,7 +4,7 @@ The single, complete record of the **solver / numerics** changes in EXHALE
 relative to the original ATES (`ATES/ATES-Code-main`): time integration of the
 stiff source terms, the convergence algorithm, the radial-grid convergence window,
 the advection post-processor's solve, and the nonlinear solvers (ionization
-equilibrium and the per-cell energy equation). It **excludes** the physics changes
+equilibrium and the energy equation in each cell). It **excludes** the physics changes
 (metals, cooling, opacity, charge exchange, excited hydrogen, Lyα), which are in
 `Update_EXHALE` and `Update_EXHALE_early_phase`. It absorbs in full the
 former `energy_semi_implicit_solver.tex` (§2) and the solver portion of
@@ -139,7 +139,7 @@ recoverable warning.
 breathing base".* In `src/modules/post_process/post_process_adv.f90`: for strongly
 Roche-filling planets the 1D wind is subsonic at L1 and the dense base recirculates
 (small *negative* inflow velocities, stagnation point v=0 near the wind base). The
-advection post-processor re-solves the per-cell energy/ionization balance assuming
+advection post-processor re-solves, in each cell, the energy/ionization balance assuming
 an outflow (upwinds from the next-inner cell); in the dense base the non-monotone
 metal cooling gives the energy equation a spurious *hot* root, and the upwind
 coupling cascades it (sawtooth + spike).
@@ -153,7 +153,7 @@ by construction (Brent).
 
 ## 5. Brent for the scalar energy equation (Task 1, 2026-06-07)
 
-`T_equation` (per-cell post-process energy balance) is a single nonlinear equation
+`T_equation` (the post-process energy balance in each cell) is a single nonlinear equation
 in `x = T/T0`. With metal cooling its residual is non-monotone and has a spurious
 *hot* root that the general Newton/Powell solver (`hybrd1`) can land on (the root
 cause of the §4 spike). A bracketing solver that selects the lowest (physical) root
@@ -244,7 +244,7 @@ Full-run wall-clock (hydro + radiation + ionization) over the converged Case B w
 | hybrd1 | 2027 | 67.8 / 68.9 s | 33.7 |
 
 The analytic-Jacobian Newton is **~25% faster per step (×1.25)** than legacy
-`hybrd1`; step counts match to 0.2% (fair per-step comparison). The `ioniz_eq` cell
+`hybrd1`; step counts match to 0.2% (fair step-for-step comparison). The `ioniz_eq` cell
 loop is **serial**, so the relative speedup grows with thread count (hydro/radiation
 parallelize, the solve does not). This is on top of the ~2× hydro-loop speedup from
 the semi-implicit energy solver (§2). Raw numbers in

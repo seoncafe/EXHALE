@@ -96,7 +96,7 @@ for nm in IONS:
     print(f'{nm:4s}  new-fit max err {rel.max()*100:5.2f}%   {astr}')"""))
 
 cells.append(nbf.v4.new_markdown_cell(
-    "## Per-ion comparison\n\nBlue = CHIANTI v11 data, black dashed = new "
+    "## Ion-by-ion comparison\n\nBlue = CHIANTI v11 data, black dashed = new "
     "closed-form fit, red dotted = current AIOLOS formula (absent for N).\n"
     "Bottom strips: relative deviation from CHIANTI ($\\pm$5% band shaded); "
     "note the AIOLOS curves can leave the strip range."))

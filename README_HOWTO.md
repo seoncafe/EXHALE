@@ -48,7 +48,7 @@ EXHALE_TRANSIT_HE_LMIN=10827.5 EXHALE_TRANSIT_HE_LMAX=10832.5 python3 EXHALE_tra
 
 ### Instrument resolution and rotation (env overrides)
 
-The per-line instrument resolving power `R = lambda/Delta-lambda` and the azimuthal
+The instrument resolving power for each line `R = lambda/Delta-lambda` and the azimuthal
 sampling of the rotation integral are run-time overridable:
 
 ```bash
@@ -167,5 +167,5 @@ real out-of-bounds read on WASP-121b in the 2026-07-02 review).
 - `docs/Update_EXHALE.pdf` — dated changelog + code-size appendix vs ATES
 - `docs/lower_atmosphere_coupling.pdf` — lower-atmosphere connection: survey,
   implementation, 4-planet examples, figures
-- `examples/` — ready-made configs 01–13 (+ per-planet folders `HD209458b/`,
+- `examples/` — ready-made configs 01–13 (+ one folder per planet: `HD209458b/`,
   `HD189733b/`, `WASP-121b/`, `WASP-52b/` with analysis notebooks)

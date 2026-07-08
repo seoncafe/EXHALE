@@ -226,7 +226,7 @@ the ramp moves to a strongly-bound planet the base sinks \emph{into} the
 wind. The transition finder (a port of the reference \code{erf\_velocity})
 locates the first grid point where photoionization heating exceeds the
 magnitude of PdV (adiabatic-expansion) cooling --- where the wind launches;
-$\code{heat}=\sum_s n_{{\rm neut},s}\,h_s$ (the per-species rates from
+$\code{heat}=\sum_s n_{{\rm neut},s}\,h_s$ (the rates for each species from
 \code{wae\_glq\_rates\_eval}) and
 $\code{cool}=(k_B T/\mu_{\rm mol}m_H)\,v\,d\rho/dr$. When that point reaches
 the base (within $\sim$10 cells), \code{turn\_off\_bolo} ramps
@@ -302,7 +302,7 @@ Module(s) & Role \\
 
 \paragraph{Validation (against the C/Python reference).} Each layer was
 gated with a trace-driver comparison:
-the photoionization/heating rates and the per-species $dY_s/dr$ are
+the photoionization/heating rates and each species's $dY_s/dr$ are
 \emph{bit-identical}; the heating/cooling $Q$ and the residual equations
 match to machine precision except where the libm \code{erf} differs from
 gfortran's by $\sim$1 ulp (a benign $\sim10^{-10}$, washed out at the

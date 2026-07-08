@@ -9,7 +9,7 @@
    subroutine eval_dt(W,dt,dt_loc)
    ! Evaluate the time step according to the CFL condition.
    ! dt     = global CFL step (minimum over the grid; original behavior).
-   ! dt_loc = per-cell pseudo-time step used by the RK and source updates.
+   ! dt_loc = cell-by-cell pseudo-time step used by the RK and source updates.
    !          With "Time stepping: Local" each cell gets its own CFL step
    !          dt_j = CFL*dr_j/(|v_j|+cs_j) (steady-state acceleration: the
    !          fixed point dF = S, heating = cooling is dt-independent);

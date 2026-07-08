@@ -13,7 +13,7 @@
 
 	subroutine calc_ne(nhii,nheii,nheiii,ne,nm,nmol)
 	! Calculate the free electron density.
-	! The optional nm (per-ion metal densities, same units as nhii) adds
+	! The optional nm (metal densities for each ion, same units as nhii) adds
 	! the metal electrons when the eos_metals policy is on; omitting it
 	! (or eos_metals 0) reproduces the legacy H/He-only electron count.
 

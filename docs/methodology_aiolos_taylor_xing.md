@@ -73,7 +73,7 @@ transmission-spectrum post-processor (`EXHALE_transit.py`).
 | Purpose | General multi-species RHD | Dedicated escape + line diagnostics | Dedicated escape, He/H fractionation | Dedicated escape + line diagnostics |
 | Dimensionality | 1-D (sph/cyl/cart) | 1-D spherical | 1-D spherical | 1-D spherical |
 | Time | Time-dependent → steady | Time-dependent → steady | Time-dependent → steady | Steady-state (relaxation) |
-| Fluid model | **Multi-fluid** (per-species v, ρ, E) + friction | **Single bulk** momentum + multispecies diffusion | **Multi-fluid** (per-species v) | **Single fluid** (one bulk v) |
+| Fluid model | **Multi-fluid** (v, ρ, E for each species) + friction | **Single bulk** momentum + multispecies diffusion | **Multi-fluid** (v for each species) | **Single fluid** (one bulk v) |
 | He/H separation | Via friction/drag | Via molecular + eddy diffusion | Via multi-fluid dynamics (fractionation) | **None** (fixed He/H) |
 | Reconstruction | PLM + MC limiter | (finite-difference, Koskinen 2013) | PLM (PLUTO) | **PLM → WENO3** (two-stage) |
 | Riemann solver | HLLC | — | HLL (+ electron-pressure split) | Approximate (ATES/PWN) |
@@ -198,8 +198,8 @@ built to predict. Two adoption routes:
   bolt-on to EXHALE's existing single-fluid framework (a diffusion flux in the species
   continuity equations), moderate cost, and Taylor shows it reproduces the multi-fluid
   answer. It also naturally supplies the altitude-dependent He/H that `EXHALE_transit.py` needs.
-- **Xing route (high cost):** convert EXHALE to genuinely multi-fluid (per-species
-  velocities + collisional drag + electron-pressure Riemann split). This is the physically
+- **Xing route (high cost):** convert EXHALE to genuinely multi-fluid (velocities
+  for each species + collisional drag + electron-pressure Riemann split). This is the physically
   purest treatment of fractionation but is effectively a rewrite of the hydro core and its
   steady-state relaxation, and is hard to reconcile with EXHALE's coupled-nonlinear
   ionization solve. **Not recommended** unless fractionation in the *transonic/decoupled*

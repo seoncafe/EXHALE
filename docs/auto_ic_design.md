@@ -366,8 +366,8 @@ two other reference codes suggest complementary ideas worth recording:
   conditions, which is a larger change (noted in `code_comparison.tex`
   §"A different solver philosophy").
 
-- **Per-grid-point auto IC (Kubyshkina et al. 2018).** The original
-  motivation: their automatic per-planet initial-profile selection is
+- **Auto IC at each grid point (Kubyshkina et al. 2018).** The original
+  motivation: their automatic initial-profile selection for each planet is
   exactly the `select_IC_auto` logic of §3, generalized to a parameter
   grid. If EXHALE is ever used to mass-produce a model grid, the selector
   should be driven directly by the grid coordinates (`b0`, T_eq, orbital

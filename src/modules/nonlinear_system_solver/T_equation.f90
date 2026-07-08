@@ -10,7 +10,7 @@
 
 	implicit none
 
-	! Per-cell metal state for the advection post-process temperature solve.
+	! Cell-by-cell metal state for the advection post-process temperature solve.
 	! post_process_adv sets these (cgs densities for the current cell, and
 	! the on/off switch) immediately before each hybrd1(T_equation,...) call,
 	! so the implicit T it converges to balances the SAME metal line cooling
@@ -52,7 +52,7 @@
    dr	   = params(10)
    Told   = params(11)
    heaold = params(12)
-   ! Metal densities are supplied per-cell through the module array
+   ! Metal densities are supplied cell-by-cell through the module array
    ! pp_nm_cell (cgs), set by post_process_adv; pp_metal_on gates whether
    ! metals contribute. params(13-18) are no longer used.
 

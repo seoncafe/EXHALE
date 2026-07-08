@@ -160,8 +160,8 @@ the prime suspect
   where FD is accurate) are excellent, then the residual moves to small-scale
   cells and no computed direction descends.
 
-Next concrete step: per-unknown diagonal scaling D (e.g.
-`D_i = max(|Y_i|, c_k * max_j|u(:,k)|)` with a per-component floor c_k ~ 1e-6):
+Next concrete step: diagonal scaling D applied to each unknown (e.g.
+`D_i = max(|Y_i|, c_k * max_j|u(:,k)|)` with a floor c_k ~ 1e-6 for each component):
 solve the scaled system `D^-1 J D z = -D^-1 F`, take FD steps relative to D,
 and use `||D^-1 F||_2` as the line-search merit. Then re-run the JFNK probes
 (and only afterwards revisit base-BC smoothness if a residual blocker remains).

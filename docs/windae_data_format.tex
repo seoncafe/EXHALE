@@ -74,7 +74,7 @@ Table~\ref{tab:grid}.
 
 \begin{table}[t]\centering\small
 \caption{Header lines of a windsoln file. Field order is exact;
-``$\times N$'' marks a per-species block.}
+``$\times N$'' marks a block repeated for each species.}
 \label{tab:hdr}
 \begin{tabular}{@{}l l p{8.4cm}@{}}
 \toprule
@@ -124,7 +124,7 @@ the file itself, in two parts:
         solar-like SED), the spectral kind (\code{full}, i.e.\ resolved
         rather than monochromatic), the integration window in wavelength
         ($\approx[6,912]\,$\AA, i.e.\ X-ray to the H Lyman limit), and the
-        per-species ionization potentials $\chi_s$ (e.g.\
+        the ionization potentials $\chi_s$ for each species (e.g.\
         $2.18\times10^{-11}\,$erg $=13.6$\,eV for H,
         $3.94\times10^{-11}\,$erg $=24.6$\,eV for He).
   \item the \code{\#\#} rows --- the spectrum proper, one row per

@@ -23,7 +23,7 @@ The clunkiness has two distinct roots:
 
 Below are cleaner alternatives, in increasing order of implementation effort.
 
-## Option 1 — Local (per-cell) time-stepping  *(cheapest; stays inside EXHALE)*
+## Option 1 — Local (cell-by-cell) time-stepping  *(cheapest; stays inside EXHALE)*
 
 For a *steady* state, time-accuracy is irrelevant, so give each cell its own
 maximum-CFL `dt` instead of the global minimum `dt`. The slow-relaxing cells

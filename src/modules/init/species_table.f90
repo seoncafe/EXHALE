@@ -70,9 +70,9 @@
       integer, parameter :: isp_H3p   = 36
       integer, parameter :: isp_HeHp  = 37
 
-      ! ---- per-ion indices (canonical mion order; see table above) ----
+      ! ---- indices for each ion (canonical mion order; see table above) ----
       ! Used for index-based rate dispatch (rec/ion/cool_coeff_by_ion), so
-      ! rate routines are selected without per-call string comparisons.
+      ! rate routines are selected without a string comparison on each call.
       integer, parameter :: im_CI    =  1, im_CII   =  2, im_CIII  =  3
       integer, parameter :: im_OI    =  4, im_OII   =  5, im_OIII  =  6
       integer, parameter :: im_NI    =  7, im_NII   =  8, im_NIII  =  9
@@ -98,7 +98,7 @@
       integer, parameter :: iel_S  = 9
       integer, parameter :: iel_Fe = 10
 
-      ! ---- per-ion metadata (length n_mion) ----
+      ! ---- metadata for each ion (length n_mion) ----
       ! f_sp species column for this ion
       integer, parameter :: mion_fsp(n_mion) = &
            [  7,  8,  9, 10, 11, 12, 13, 14, 15, 16, 17, 18,          &
@@ -165,7 +165,7 @@
              'NaI  ', 'NaII ', 'KI   ', 'KII  ', 'SI   ', 'SII  ',    &
              'FeI  ', 'FeII ', 'FeIII' ]
 
-      ! ---- per-element metadata (length n_melem) ----
+      ! ---- metadata for each element (length n_melem) ----
       ! nuclear charge (Z), used for the metal Gaunt factor
       integer, parameter :: melem_Z(n_melem)   = &
            [ 6, 8, 7, 12, 14, 20, 11, 19, 16, 26 ]

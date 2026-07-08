@@ -68,8 +68,8 @@
       ! ------------------------------------------------------!
 
       subroutine build_scaling(Y, D)
-      ! Per-unknown diagonal scale D_i = max(|Y_i|, c*max_j|Y(:,k)|), with a
-      ! per-component floor (c = 1e-6) so wind cells (|Y| ~ 1e-7 of the base
+      ! Diagonal scale for each unknown D_i = max(|Y_i|, c*max_j|Y(:,k)|), with a
+      ! floor for each component (c = 1e-6) so wind cells (|Y| ~ 1e-7 of the base
       ! in code units) get finite, physically sensible scales. Used for the
       ! scaled Newton system D^-1 J D, for FD step sizes, and for the
       ! line-search merit ||D^-1 F||_2. Without this, FD perturbations sized
@@ -295,7 +295,7 @@
       sqeps = sqrt(epsilon(1.0d0))
       ab    = 0.0d0
 
-      ! FD column steps RELATIVE to the per-unknown scale (a flat
+      ! FD column steps RELATIVE to the scale for each unknown (a flat
       ! max(|Y|,1) floor gives wind cells, ~1e-7 of the base in code
       ! units, order-unity relative kicks and garbage columns).
       call build_scaling(Y, Dsc)
@@ -345,7 +345,7 @@
       ! ------------------------------------------------------!
 
       subroutine resid_relnorm(F, u, rc, rnorm)
-      ! Per-component relative residual rc(k) and its max rnorm over the
+      ! Relative residual rc(k) for each component and its max rnorm over the
       ! wind region [j_min:N] (same definition the marching monitor uses).
       real*8, dimension(3*N),         intent(in)  :: F
       real*8, dimension(1-Ng:N+Ng,3), intent(in)  :: u

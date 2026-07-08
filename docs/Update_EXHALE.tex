@@ -387,8 +387,8 @@ in \texttt{mg\_validation/}.
 Each metal added so far (C/N/O, then Mg in \S2) widened the named-argument lists
 of \verb|PH_heat_HHe|, \verb|eval_cool|, \verb|calc_column_dens_metals|,
 \verb|write_output|, the MINPACK system \verb|ion_system_HeH_metals|, and the driver
-\verb|ionization_equilibrium.f90| by several per-ion arguments, and threaded the
-per-cell MINPACK coefficients through a hand-indexed flat \verb|params(60)|. This
+\verb|ionization_equilibrium.f90| by several arguments for each ion, and threaded the
+MINPACK coefficients for each cell through a hand-indexed flat \verb|params(60)|. This
 step converts that plumbing to a \textbf{species-metadata table $+$
 array-indexed (2D) data flow}, so that adding an element becomes ``add rows to a
 table'' instead of ``thread $N$ new arguments through $M$ routines.'' \textbf{No
@@ -400,37 +400,37 @@ bit-for-bit against \S2 (below).
 {\sloppy
 \begin{itemize}
 \item \textbf{A --- Metadata module} (\texttt{init/species\_table.f90}, new). One
-  canonical table holds per-ion metadata (length \verb|n_mion = 12|): f\_sp
+  canonical table holds metadata for each ion (length \verb|n_mion = 12|): f\_sp
   column (\verb|mion_fsp|), parent element (\verb|mion_elem|), stage / charge$^2$
   (\verb|mion_stage|, \verb|mion_z2|), photo-ionizable flag and photo-table column
   (\verb|mion_isphot|, \verb|mion_iphot|), threshold (\verb|mion_ethr|), cooling
-  flag (\verb|mion_iscool|); and per-element metadata (length \verb|n_melem = 4|):
+  flag (\verb|mion_iscool|); and metadata for each element (length \verb|n_melem = 4|):
   nuclear charge (\verb|melem_Z|), neutral-ion index (\verb|melem_i0|), top stage
   (\verb|melem_top|). The canonical ion order (C\,I..Mg\,III $=$ \texttt{f\_sp}
   columns 7--18) is defined here once; element indices \verb|iel_C/O/N/Mg|.
 \item \textbf{B --- \texttt{write\_output} 2D.} Metal ion densities pass as
   \verb|nm(:, 1:n_mion)| and are written with an implied-do over the table
-  (\verb|(nm(j,i)*n0, i = 1,n_mion)|), not per-ion named writes.
+  (\verb|(nm(j,i)*n0, i = 1,n_mion)|), not a named write for each ion.
 \item \textbf{C --- \texttt{PH\_heat\_HHe} $+$ column density 2D.} Optical depth,
   photoheating, and the photoionization rates loop over photo-ionizable ions via
   \verb|sigma_tab(:,mion_iphot(i))| and \verb|Nm_col|, returning a 2D rate array
-  \verb|P_m(:, 1:n_mion)| (inert top stages stay zero) instead of per-ion
-  \verb|P_CI..P_MgII| arguments.
+  \verb|P_m(:, 1:n_mion)| (inert top stages stay zero) instead of separate
+  \verb|P_CI..P_MgII| arguments, one for each ion.
 \item \textbf{D --- \texttt{eval\_cool} metal channels 2D.} Recombination and
   collisional-ionization coefficients return as 2D arrays (\verb|rec_m|,
   \verb|aion_m|); bremsstrahlung sums
-  \verb|mion_z2(i)*GF_elem(:,mion_elem(i))*nm(:,i)| over ions. No per-ion
-  coefficient arguments.
+  \verb|mion_z2(i)*GF_elem(:,mion_elem(i))*nm(:,i)| over ions. No separate
+  coefficient arguments for each ion.
 \item \textbf{E --- Generalized MINPACK system.} \verb|ion_system_HeH_metals| keeps
   hybrd1's fixed \verb|(N_eq,x,fvec,iflag,params)| signature but (i) receives the
-  per-cell metal coefficients through a \textbf{module-level block} in
+  metal coefficients for each cell through a \textbf{module-level block} in
   \verb|System_HeH_metals| (\verb|set_metal_coeffs| stores
   \verb|met_ntot/g0/g1/b0/b1/a1/a2|), set by the driver before each \verb|hybrd1|
   call --- safe because the ionization-equilibrium cell loop is serial --- and
   (ii) assembles \verb|fvec| by \textbf{looping over elements} (two balance
   equations each, force-zeroing absent elements). \verb|params| now carries only
   H/He (1--11), HeITR (12--18), and the C/N/O charge-transfer rates (40--48); the
-  old per-element slots 49--55 are gone. The driver builds metal densities,
+  old slots 49--55, one for each element, are gone. The driver builds metal densities,
   initial guesses, and the solution unpack by looping over
   \verb|n_melem|/\verb|n_mion|. The system size is now the formula
   \verb|N_eq = 3 + 2*n_melem| ($=11$ for the current four elements), set in
@@ -470,7 +470,7 @@ never used in the H/He\,$+$\,metals run), not an effect of the refactor.
 \item \textbf{Charge exchange with H} is still hardcoded for C/N/O only (the
   \verb|fvec(1)| C,N,O sum and the \verb|cxlo|/\verb|cxup| mapping via
   \verb|iel_C/O/N| in \verb|System_HeH_metals|). Generalizing it is Phase 1d.
-\item \textbf{Per-ion atomic data and per-element abundance remain manual
+\item \textbf{Atomic data for each ion and abundance for each element remain manual
   entries} --- the \verb|sigma_tab(:,1..8)| assignments and the \verb|sigma_XX|
   cross-section functions in \verb|set_energy_vectors.f90|, the abundance scalars
   \verb|X_C/X_O/X_N/X_Mg|, the \texttt{metals.inp} keys, and the \verb|melem_ab|
@@ -491,7 +491,7 @@ never used in the H/He\,$+$\,metals run), not an effect of the refactor.
 \item \texttt{radiation/util\_ion\_eq.f90}: \verb|PH_heat_HHe| $+$ column density
   2D (C); \verb|eval_cool| metal channels 2D (D).
 \item \texttt{nonlinear\_system\_solver/System\_HeH\_metals.f90}: module-level
-  per-cell metal block $+$ element-loop residual (E).
+  metal block for each cell $+$ element-loop residual (E).
 \item \texttt{radiation/ionization\_equilibrium.f90}: metadata-driven density
   build, params packing (H/He $+$ charge transfer only), initial guesses, solution
   unpack (E).
@@ -502,7 +502,7 @@ never used in the H/He\,$+$\,metals run), not an effect of the refactor.
 
 \subsection{Status and relation to the Huang plan}
 
-Phase 1a is complete: the per-element plumbing of \S2 is now table-driven. Adding
+Phase 1a is complete: the element-by-element plumbing of \S2 is now table-driven. Adding
 the Phase-1b metals should require only metadata rows plus atomic/abundance data,
 with \textbf{no changes to \texttt{System\_HeH\_metals.f90} or
 \texttt{ionization\_equilibrium.f90}}. Next: \textbf{Phase 1b} --- Si, Ca, Na, K,
@@ -534,9 +534,9 @@ The metal MINPACK solver was also \textbf{renamed} (below).
 \subsection{Variable-stage solver (2- and 3-stage elements in one packing)}
 
 Huang+2023 carries Si, Ca (like Mg) to second ionization but Na, K, S only to
-first. The solver keeps a uniform \textbf{two-unknowns-per-element} packing
-(\verb|N_eq = 3 + 2*n_melem = 21| with all nine elements) and a per-element
-\verb|melem_top| flag:
+first. The solver keeps a uniform packing of \textbf{two unknowns for each element}
+(\verb|N_eq = 3 + 2*n_melem = 21| with all nine elements) and a
+\verb|melem_top| flag for each element:
 \begin{itemize}
 \item \verb|melem_top = 2| (C, O, N, Mg, Si, Ca): solve both
   X$^0\!\leftrightarrow$X$^+$ and X$^+\!\leftrightarrow$X$^{2+}$.
@@ -626,7 +626,7 @@ Observations (for evaluation, not pass/fail):
   $n_e$, optical depth, photoionizing flux), not a change in Mg atomic data. Mg
   is coupled to the global state, hence \emph{not} an isolated control.
 \item \textbf{Numerics.} Zero NaN/Inf; the 21-unknown system converges over the
-  full $T$ range; per-element X/H is conserved to $\sim10^{-13}$ for all nine
+  full $T$ range; X/H for each element is conserved to $\sim10^{-13}$ for all nine
   elements including the two-stage Na/K/S --- direct evidence the variable-stage
   packing does not leak between element columns.
 \item \textbf{New-metal ionization (run B).} Si, Ca mostly \emph{doubly} ionized
@@ -803,7 +803,7 @@ Observations (for evaluation, not pass/fail):
   line cooling yet, iron acts only as an added electron donor /
   photoelectric-heating channel, so the thermosphere runs slightly hotter, not
   cooler.
-\item \textbf{Numerics.} Run \texttt{on} converged with zero NaNs; per-element X/H
+\item \textbf{Numerics.} Run \texttt{on} converged with zero NaNs; X/H for each element
   is conserved to $8.3\times10^{-13}$ across all five active elements including iron.
 \end{itemize}
 
@@ -904,13 +904,13 @@ in the reference doc.
 
 \subsection{Touched files}
 
-A new module plus minimal wiring; the solver's old per-element C/N/O CT block is
+A new module plus minimal wiring; the solver's old element-by-element C/N/O CT block is
 deleted, not extended:
 \begin{itemize}
 \item \texttt{radiation/charge\_exchange.f90} \textbf{(new)} --- the full Table-4
   descriptor arrays, the \verb|cx_rate| dispatcher, and the generic residual
   assembly. Entry points: \verb|cx_init| (build the active list from
-  \verb|cx_full|), \verb|cx_set_cell(T)| (per-cell rates), \verb|cx_add_to_fvec|
+  \verb|cx_full|), \verb|cx_set_cell(T)| (rates in each cell), \verb|cx_add_to_fvec|
   (add CT terms to the MINPACK residual via the \verb|cx_fvidx| element/stage
   $\to$ row map), and the \verb|cx_full| switch. The zero-abundance guard is
   automatic: each rate is $k\,n_{\rm donor}\,n_{\rm acceptor}$.
@@ -1029,7 +1029,7 @@ remains deferred: until metal line cooling (Fe\,II in particular) lands in
 Phase 2 brings the CHIANTI-based metal line cooling (Mg\,I/II, Ca\,II, Na\,I,
 Fe\,II, on top of the C/N/O coolants) into the coupled energy balance and
 \textbf{closes the Phase 2 validation gate} against Huang et~al.\ (2023) Fig.~10.
-The per-coolant atomic data and the CHIANTI effective-cooling tables are
+The atomic data for each coolant and the CHIANTI effective-cooling tables are
 documented in \texttt{Update\_EXHALE\_early\_phase} (Parts~II--III); this section records the integrated
 WASP-121b gate and the diagnostic used to close it.
 
@@ -1047,7 +1047,7 @@ In the optically thin limit \(\beta_{\rm esc}=1\) (see
 N\,I/II carry the \verb|iscool| flag but have no tabulated line cooling
 (\(\Lambda=0\)), so they contribute exactly zero.
 
-\subsection{Per-channel cooling diagnostic (this phase)}
+\subsection{Channel-by-channel cooling diagnostic (this phase)}
 
 To close the gate quantitatively, \verb|eval_cool| (\texttt{util\_ion\_eq.f90})
 gained an optional \verb|cool_chan| output --- an \textbf{exact} decomposition of
@@ -1089,7 +1089,7 @@ important coolant in \(1.15 < r/R_{\rm p} < 1.4\)).
 \subsection{Touched files}
 \begin{itemize}
   \item \texttt{src/modules/radiation/util\_ion\_eq.f90} --- optional
-    \verb|cool_chan| out-arg on \verb|eval_cool| (exact per-channel split); new
+    \verb|cool_chan| out-arg on \verb|eval_cool| (exact channel-by-channel split); new
     \verb|write_cool_breakdown_eq| writer; \verb|mion_fsp| added to the
     \texttt{species\_table} use-list.
   \item \texttt{EXHALE\_main.f90} ---
@@ -1101,9 +1101,9 @@ important coolant in \(1.15 < r/R_{\rm p} < 1.4\)).
 
 \subsection{Caveats and deferred}
 \begin{itemize}
-  \item The per-ion metal decomposition is exact in the default branch
+  \item The ion-by-ion metal decomposition is exact in the default branch
     (\verb|use_2lev_cool = .false.|, the WASP-121b setting). In the optional
-    two-level fine-structure branch the per-ion terms are the resonance-line
+    two-level fine-structure branch the terms for each ion are the resonance-line
     approximation and need not sum to the two-level \verb|cool_M|.
   \item \textbf{Fe\,II} uses Boltzmann/coronal lower-level populations
     (\(E_{\rm cut}=38459\)\,cm\(^{-1}\)), validated vs Huang Fig.~6 coronal curve
@@ -1175,7 +1175,7 @@ in \texttt{input.inp} the build is byte-identical to the Phase-2 result
 \subsection{Coupling into the solver}
 
 The model runs \textbf{decoupled (lagged one outer step)} to keep it out of the
-per-cell Newton solve: \verb|excited_H_update| fills two global per-cell arrays
+cell-by-cell Newton solve: \verb|excited_H_update| fills two global arrays (one entry per cell)
 from the previous converged state, and \verb|ioniz_eq| injects them:
 \begin{itemize}
   \item \verb|gph_balmer_HI| [s\(^{-1}\)] is added to the H\,I photoionization rate
@@ -1406,17 +1406,17 @@ flattening shape of Huang Fig.~5.
     Fe\,I alongside the other coolants.
   \item \texttt{init/species\_table.f90} --- \verb|mion_iscool(FeI) = .true.|
     (canonical ion index 25), so the \verb|eval_cool| metal-cooling loop and the
-    per-channel breakdown both pick up Fe\,I automatically.
+    channel-by-channel breakdown both pick up Fe\,I automatically.
 \end{itemize}
 
 \subsection{Validation on WASP-121b}
 
 Re-ran the converged full-metals WASP-121b equilibrium (same SED/grid as the
-Phase~2 gate) with Fe\,I cooling on; the per-channel \texttt{Cooling\_breakdown.txt}
+Phase~2 gate) with Fe\,I cooling on; the channel-by-channel \texttt{Cooling\_breakdown.txt}
 then gives the Fe\,I share directly. Diagnostics:
 \texttt{WASP-121b/analyze\_FeI\_cooling.py} (left panel $=$ the ported
 \(\Lambda_{\rm FeI}(T)\) coefficient read straight from \texttt{Cool\_coeff.f90} vs
-the Fe\,II coronal curve, Huang Fig.~5 style; right panel $=$ per-channel cooling vs
+the Fe\,II coronal curve, Huang Fig.~5 style; right panel $=$ cooling in each channel vs
 radius, Huang Fig.~10 style), figure
 \texttt{WASP-121b/FeI\_cooling\_validation.png}.
 
@@ -1500,7 +1500,7 @@ per ion})\), i.e.\ the correct saturated base cooling.
 
 \paragraph{Why electron-only SE is sufficient at the (mostly neutral) base.}
 In the saturated limit the upper levels reach their \textbf{Boltzmann (LTE)
-populations regardless of which collider thermalizes them}, and the per-ion cooling
+populations regardless of which collider thermalizes them}, and the cooling of each ion
 becomes collider- and \(n_e\)-independent. At the base \(n_e\sim10^{8}\) already
 exceeds \(n_{\rm crit}\) for the dominant forbidden lines, so the electron-only SE
 already reaches that LTE plateau; adding the (more abundant) neutral-H collider
@@ -1514,12 +1514,12 @@ collider channel is flagged as a future refinement in the module.
 \verb|lambda_eff_table(Tgrid, negrid)| and Fortran emitters
 (\verb|fortran_grid_1d|, \verb|fortran_block_2d|, \verb|emit_fortran_table|; run
 \verb|python3 fe2_cooling.py --table|). The optimization is required because the
-naive per-cell solve rebuilds a cubic spline for every one of the \(\sim\)4300
+naive cell-by-cell solve rebuilds a cubic spline for every one of the \(\sim\)4300
 transitions at every grid cell: instead the descaled \(\Upsilon\) is evaluated
 \textbf{once per transition over the whole T-grid} (\verb|upsilon()| accepts an
 array \(T\)), and the rate matrix is split \(M = n_e\,Q_{\rm coll}(T) + A_{\rm rad}\),
 so the \(n_e\)-loop only reassembles and solves. The full \(41\times29\) table
-builds in \(\sim\)3\,s and matches the naive per-cell solve to \textbf{\(1.5\times
+builds in \(\sim\)3\,s and matches the naive cell-by-cell solve to \textbf{\(1.5\times
 10^{-15}\)} (machine precision).
 
 The emitted table is on the ATES temperature grid (\verb|NCOOLT = 41|, \(\log_{10}T
@@ -1564,7 +1564,7 @@ The generated table and its interpolators are now in
     \verb|dlogne = 0.5|. Both axes clamp to the nearest edge outside the table
     (so \(n_e\) below the grid gives the coronal plateau, above it the LTE
     branch). A scalar twin \verb|interp_cool_table_2d_scalar(logL2d,Ts,nes)|
-    mirrors it bit-for-bit for the per-cell post-process solve.
+    mirrors it bit-for-bit for the cell-by-cell post-process solve.
   \item \textbf{Coolant wrapper.} \verb|cool_FeII_ne(T,ne,out)| calls the 2-D
     interpolator on \verb|cool_logL_FeII_ne|. The 1-D \verb|cool_FeII| is kept as
     the low-\(n_e\) edge / scalar fallback; its header \verb|!To Be Checked| note
@@ -1586,15 +1586,15 @@ selects the coronal\,\(\rightarrow\)\,LTE-saturated branch automatically:
     assembly \(\mathrm{cool\_M} = \beta_{\rm esc}\,n_e \sum_i n_{m,i}\,c_{{\rm
     metal},i}\) then multiplies by \(n_e\), which \emph{cancels} the \(1/n_e\)
     in \(\Lambda_{\rm eff} = (\sum_u n_u A_{ul}\,\Delta E_{ul})/n_e\), leaving the
-    correct per-Fe\,II-ion cooling. The saturated (LTE) populations are
+    correct cooling for each Fe\,II ion. The saturated (LTE) populations are
     collider-independent, so the electron-only SE solve is exact in that limit;
     at low \(n_e\), \(\Lambda_{\rm eff}\) reduces to the coronal rate, so
     optically-thin upper-atmosphere cells are unaffected. The override flows
     automatically into the \verb|use_2lev_cool| branch (which already reads
-    \verb|c_metal(:,26)|) and into the per-channel \verb|cool_chan| diagnostic
+    \verb|c_metal(:,26)|) and into the channel-by-channel \verb|cool_chan| diagnostic
     (which reads \verb|c_metal(:,i)|), so the breakdown stays an exact
     decomposition of \verb|cool|.
-  \item \textbf{Post-process per-cell solve (\texttt{T\_equation.f90}).} This path
+  \item \textbf{Post-process cell-by-cell solve (\texttt{T\_equation.f90}).} This path
     computes its own local \(n_e\) (from H, He, and the frozen metal stages) and
     sums the metal coolants with the scalar dispatcher. The Fe\,II term is
     special-cased to call the new \verb|cool_FeII_ne_scalar(TT, ne)| (a thin
@@ -1625,7 +1625,7 @@ of the base cooling, the \emph{total} radiative cooling at the base falls
 1.84\!\times\!10^{-6}\)); Fe\,II's share there is now \textbf{0.9\%}. The
 previous run's post-process printed \emph{``35 of 502 cells fell back to eq T
 (stiff base band)''}; with the spurious base overcooling removed that message is
-\textbf{gone} --- the per-cell \(T\) solve no longer stiffens at the base.
+\textbf{gone} --- the cell-by-cell \(T\) solve no longer stiffens at the base.
 
 \paragraph{Transition region 1.15--1.4\,\(R_p\) (Huang Fig.~10).}
 The band-integrated metal-line cooling share in the new run is
@@ -1674,7 +1674,7 @@ changed --- denser --- wind profile, not the coefficient.
 \emph{Added 2026-06-05.}
 
 The \texttt{\_adv} profiles that \texttt{EXHALE\_transit.py} reads are built by
-\texttt{post\_process\_adv.f90}, which re-solves the \emph{per-cell temperature}
+\texttt{post\_process\_adv.f90}, which re-solves the \emph{temperature in each cell}
 at the advection-corrected structure (the wind is advected, then its \(T(r)\) is
 re-converged against heating/cooling). Until now the metal \emph{ion} densities
 carried into those profiles were handled in one of two ways, selected at runtime
@@ -1733,7 +1733,7 @@ wind. Two properties fall out for free:
     to the advected hydrogen ionization, not the equilibrium one.
 \end{itemize}
 
-\subsection{The per-cell sweep in \texttt{post\_process\_adv}}
+\subsection{The cell-by-cell sweep in \texttt{post\_process\_adv}}
 Mode 2 adds one sweep over cells, placed after the post-advection
 \texttt{calc\_ne} and before the photoheating refresh, inside the same \(k\)-loop
 that re-converges \(T\), so metals, H/He and \(T\) are driven to a \emph{joint}
@@ -1741,7 +1741,7 @@ fixed point. Per cell \(j\) (skipping \(n_h(j) \le 0\)):
 \begin{enumerate}
   \item \texttt{cx\_set\_cell(T\_K(j))} --- charge-exchange rate coefficients at
     the local \(T\).
-  \item Build the per-element coefficients (canonical order) from the existing
+  \item Build the coefficients for each element (canonical order) from the existing
     post-process rate arrays: \(\texttt{meg\_g0} = \texttt{P\_m}\)
     (photoionization), \(\texttt{meg\_b0} = \texttt{aion\_m\_pp}\) (collisional
     ionization), \(\texttt{meg\_a1} = \texttt{rec\_m\_pp}\) (recombination), and
@@ -1782,7 +1782,7 @@ and writes \texttt{metal\_resolve\_compare.png}.
 
 \paragraph{Singly-ionized fraction \(X^+/X_{\mathrm{tot}}\) in the \texttt{\_adv}
 wind (eq frozen \(\to\) re-solve).} Only the elements that move appreciably are
-tabulated (Mg and Na are unchanged to \(\le 2\%\)); the full per-element output is
+tabulated (Mg and Na are unchanged to \(\le 2\%\)); the full output for each element is
 in the analysis script.
 
 \begin{center}
@@ -1801,7 +1801,7 @@ in the analysis script.
 \end{tabular}
 \end{center}
 
-\paragraph{Largest density change.} The per-element scan of
+\paragraph{Largest density change.} The element-by-element scan of
 \(\max |\Delta n(X^+)| / n(X^+)\) over the wind \(1.0\)--\(1.48\,R_p\):
 
 \begin{center}
@@ -1987,7 +1987,7 @@ planet $+$ stellar-tidal $+$ centrifugal), the L1-truncated domain, and the tida
 momentum source (\texttt{Source.f90}) --- Caldiroli's ATES-v2 Roche mode. So the
 substellar tidal hydrodynamics is already in place.
 
-\subsection{Per-case base gravity (Huang Table 3)}
+\subsection{Base gravity for each case (Huang Table 3)}
 The key to each case is the 1\,\(\mu\)bar base radius \(R_0\). Huang's Table~3 lists
 \(\log g\,@\,1\,\mu\mathrm{bar}=GM_p/r_{1\mu\mathrm{bar}}^2\) per case --- exactly the
 \(R_0\)-setting quantity (\(R_0=\sqrt{GM_p/g}\)):
@@ -2163,7 +2163,7 @@ of \(d\phi_{\rm sub}/dr=0\), a monotone \(\phi_{\rm sub}\!\to\!r_{\rm eff}\) inv
 (\texttt{ReconMap}), the triaxial radii, and the Eggleton lobe radius. \texttt{EXHALE\_transit.py} gained
 a \texttt{geometry='triaxial'} switch (\texttt{triaxial\_depth()}): the transit LOS runs along
 \(+x\); the state at each 3-D point is the substellar state at \(r_{\rm eff}\); and the
-\textbf{per-sector LOS velocity} \(v_{\rm sub}(r_{\rm eff})\,x/r - \Omega y\) (wind +
+\textbf{LOS velocity in each sector} \(v_{\rm sub}(r_{\rm eff})\,x/r - \Omega y\) (wind +
 tidally-locked rotation, Huang Eq.~16) is integrated over \textbf{20 angular sectors}.
 
 \paragraph{Demonstrated on the converged Case~B (Roche) run.} Geometry self-consistent:
@@ -2234,7 +2234,7 @@ match Huang once compared in his own bins (Mg II 4\,\AA\ 0.22 vs 0.182, Na 0.175
 Remaining items are minor: \textbf{Ca II \(\sim1.5\times\) high} (line-center; plausibly
 Ca II\(\to\)Ca III or the Ca abundance), the slightly-high Balmer \(n=2\), the
 \(R_{py}R_{pz}=R_p^2\) normalization (methodological), a terminating Case~D run, and
-\texttt{phase5\_transmission.ipynb}. Comparisons must use Huang's per-line definition (4\,\AA\
+\texttt{phase5\_transmission.ipynb}. Comparisons must use Huang's line-by-line definition (4\,\AA\
 bin for the NUV metals, line-center for the optical lines) --- the two differ by \(\sim3\times\)
 for the optically-thick Mg II.
 
@@ -2256,7 +2256,7 @@ the spike is a post-processing artifact, not a feature of the hydro solution.
   (inflow) velocities and a stagnation point ($v=0$) near the wind base
   ($r\approx1.1$). This is intrinsic to spherical symmetry, not a bug.
 \item \emph{A spurious hot root in the metal-cooled post-processor.} The advection
-  post-processor re-solves the per-cell energy/ionization balance assuming an
+  post-processor re-solves the energy/ionization balance in each cell assuming an
   outflow (each cell upwinds from the next-inner cell). In the dense base the
   non-monotonic metal line-cooling curve gives the energy equation a second,
   spurious \emph{hot} root that the Newton (MINPACK) solver can land on; the upwind
@@ -2271,7 +2271,7 @@ the post-processor now \emph{skips} the advection correction and keeps the
 converged \texttt{eq} ionization and temperature. Three guards were added, all
 gated on \texttt{pp\_metal\_on} so the metals-off mode stays byte-identical: the
 no-He and He H/He advection loops (set the H/He fractions to \texttt{eq} and
-\texttt{cycle} when $v(j)\le0$ or $v(j-1)\le0$) and the per-cell temperature solve
+\texttt{cycle} when $v(j)\le0$ or $v(j-1)\le0$) and the cell-by-cell temperature solve
 (set $T_{\rm out}=T_{\rm in}$ and \texttt{cycle} when $v\le0$). Keeping the inner
 cells at \texttt{eq} removes the spurious root \emph{and} breaks the upwind cascade
 at its source, while the genuine \texttt{\_adv} correction is retained in the
@@ -2437,7 +2437,7 @@ routes if pursued (both substantial, uncertain payoff): a characteristic / non-r
 (NSCBC-style) base BC; a steady-state Newton / BVP solver (which would not orbit a
 time-marching limit cycle if a steady solution exists); or accepting HD189733b as a
 marginal, time-averaged quasi-steady case. A separate, cheaper idea for \emph{speed}
-(not the oscillation) is local per-cell time-stepping, since the global $dt$ is currently
+(not the oscillation) is local cell-by-cell time-stepping, since the global $dt$ is currently
 set by the smallest base cell (\texttt{eval\_dt.f90}). Full working notes:
 \texttt{docs/heitr\_metals\_and\_convergence\_notes.md}; solver-option discussion:
 \texttt{docs/numerical\_methods.md}.
@@ -2523,9 +2523,9 @@ solving the metal ionization to high precision. Recorded in
 \end{itemize}
 
 \paragraph{Still open (small).} The \texttt{use\_2lev\_cool} legacy cooling
-branch remains AIOLOS-hard-coded (default off), and the per-cell scalar
+branch remains AIOLOS-hard-coded (default off), and the cell-by-cell scalar
 \texttt{T\_equation} uses \texttt{pp\_nm\_cell} only in the post-process path
-(the time-marching per-cell solve receives $n_e$ via the now-metal-aware
+(the time-marching cell-by-cell solve receives $n_e$ via the now-metal-aware
 \texttt{energy\_semi\_implicit}).
 
 % ===================================================================== %
@@ -2536,7 +2536,7 @@ branch remains AIOLOS-hard-coded (default off), and the per-cell scalar
 hydrostatic (default), transonic isothermal wind (added for the Phase-4
 deep-RLOF Case~D, where the cold IC false-converges), and the hot-Parker warm
 seed (benchmarked: no speedup) --- and the choice was manual. Kubyshkina+2018
-build a per-planet IC automatically; the design study is
+build an IC for each planet automatically; the design study is
 \texttt{docs/auto\_ic\_design.md} and the literature comparison
 \texttt{docs/code\_comparison.tex}.
 
@@ -2862,7 +2862,7 @@ $\alpha_3=(3/4)(2.72\times10^{-13}T_4^{-0.789})=2.04\times10^{-13}T_4^{-0.789}$ 
 \emph{identical} singlet $\alpha_1=1.54\times10^{-13}T_4^{-0.486}$ --- so $\alpha_3$
 agrees to $\sim$$2$--$3\%$ and $\alpha_1$ is identical. EXHALE's He recombination
 already matches the latest practice; no change is warranted. (A trial direct sum of
-Cloudy's \texttt{he\_iso\_recomb.dat} per-level radiative recombination gave a total
+Cloudy's \texttt{he\_iso\_recomb.dat} level-by-level radiative recombination gave a total
 $\sim$2$\times$ the case-A value owing to its unmapped 1642-level indexing, confirming
 the raw file is not a usable shortcut.) No recombination switch was added.
 
@@ -2941,7 +2941,7 @@ the dominant $2^3$S$+$H destruction term $-n_{\rm HeITR}\,n_{\rm HI}\,Q_{31}$.
 photoionization cross section to the legacy ATES 2-term fit; it does \emph{not} affect the
 Penning rate.)
 
-\paragraph{Implementation.} $Q_{31}$ became a per-cell array (it was a scalar). A new
+\paragraph{Implementation.} $Q_{31}$ became an array over the cells (it was a scalar). A new
 \texttt{penning\_HeI\_23S(T,coeff)} in \texttt{Cool\_coeff.f90} evaluates the piecewise fit
 over the whole grid; \texttt{HeITR\_coeffs} calls it unconditionally. The two callers
 (\texttt{ionization\_equilibrium.f90}, \texttt{post\_process\_adv.f90}) pass $Q_{31}(j)$
@@ -2960,8 +2960,8 @@ ionized and Penning switches off --- the expected neutral-H-gated signature.
 \texttt{penning\_HeI\_23S}); \texttt{src/modules/radiation/util\_ion\_eq.f90}
 (\texttt{HeITR\_coeffs}: $Q_{31}$ array $+$ default/legacy branch);
 \texttt{src/modules/radiation/ionization\_equilibrium.f90} and
-\texttt{src/modules/post\_process/post\_process\_adv.f90} ($Q_{31}$ array, per-cell
-\texttt{params} assignment).
+\texttt{src/modules/post\_process/post\_process\_adv.f90} ($Q_{31}$ array,
+\texttt{params} assignment in each cell).
 
 \section{He/H diffusive separation --- Phase 1 (2026-07-01, experimental, default OFF)}
 
@@ -3017,7 +3017,7 @@ element vs the H background), reused by He and each metal.
   depletion aloft), correct direction.
 \item \textbf{P2c --- thermal diffusion} (default \texttt{He\_alphaT}$=0$). Adds $\alpha_T
   \partial\ln T/\partial r$ to the settling coefficient; off by default.
-\item \textbf{P2d --- per-element metal diffusion} (default OFF, \texttt{He\_metal\_diffusion}).
+\item \textbf{P2d --- element-by-element metal diffusion} (default OFF, \texttt{He\_metal\_diffusion}).
   Each trace metal element diffuses independently vs $n_{\rm H}$ with its own mass
   (\texttt{melem\_A}), binary $D$, and ambipolar correction; ion stages rescaled to the
   diffused total. Metals trace $\Rightarrow$ no $n_{\rm H}$ feedback. \textbf{Validated
@@ -3093,7 +3093,7 @@ Because the cold, dense base has a tiny He scale height, the diffusion is stiff 
 explicit scheme is unstable; the update is therefore \textbf{implicit} (backward Euler),
 assembled as a tridiagonal system in $n_{\rm He}^{\,n+1}$ and solved by the Thomas algorithm.
 Implicit backward Euler is unconditionally stable, and its fixed point ($n_{\rm He}^{\,n+1}
-=n_{\rm He}^{\,n}$) is independent of $\Delta t$, so per-cell local time steps are used for
+=n_{\rm He}^{\,n}$) is independent of $\Delta t$, so local cell-by-cell time steps are used for
 steady-state acceleration. The new element split is written back into \texttt{f\_sp}
 conserving mass ($\sum_s m_s f_{{\rm sp},s}=1$), and the same kernel (\texttt{solve\_1elem})
 is reused for each trace metal (\S\ref{sub:ambi}).

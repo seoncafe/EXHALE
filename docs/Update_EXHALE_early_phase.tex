@@ -108,7 +108,7 @@ ATES_extended/
         opacity_models.f90                    (new: A/C/P/T dispatcher)
         metals.f90                            (new: metals registry)
         metals_solve.f90                      (new: coronal balance helpers)
-        metals_drive.f90                      (new: per-cell driver)
+        metals_drive.f90                      (new: cell-by-cell driver)
       files_IO/
         opacity_input_read.f90                (new: opacity.inp parser)
         write_metals_output.f90               (new: output writer)
@@ -461,7 +461,7 @@ File & Responsibility \\
      $\alpha_{\rm rec} = \alpha_{\rm RR} + \alpha_{\rm DR}$;
      $r = \Gamma / (\alpha_{\rm rec}\,n_e)$ helper \\
 \texttt{metals\_drive.f90}
-   & Per-cell attenuated-flux recomputation, calls
+   & Attenuated-flux recomputation cell by cell, calls
      \texttt{coronal\_ratio} for every active metal, fills neutral/ion
      density arrays \\
 \texttt{write\_metals\_output.f90}
@@ -575,7 +575,7 @@ m_cool = params(13)                                        ! NEW
 cool   = ne*(brem + coex + reco + coio)/q0  +  m_cool      ! MODIFIED
 \end{verbatim}
 
-The metal cooling enters as a precomputed per-cell number
+The metal cooling enters as a number precomputed for each cell
 (\texttt{params(13)}) rather than being recomputed at every MINPACK
 iteration. This is a deliberate one-iteration lag: \texttt{post\_process\_adv}
 runs an outer convergence loop \texttt{do k = 1, 10}, and each pass
@@ -805,9 +805,9 @@ energy state vector $\mathbf{u}(j) \in \mathbb{R}^3$, so converting requires:
 \item $\mathbf{u}(j) \in \mathbb{R}^{3N}$.
 \item Full rewrite of \texttt{src/modules/states/} (Apply\_BC, PLM\_rec,
 Reconstruction, Source).
-\item Full rewrite or per-species dispatch in \texttt{src/modules/flux/}
+\item Full rewrite or dispatch for each species in \texttt{src/modules/flux/}
 (HLLC, ROE, Num\_Fluxes).
-\item Per-species RHS in \texttt{src/modules/time\_step/RK\_rhs.f90}.
+\item RHS for each species in \texttt{src/modules/time\_step/RK\_rhs.f90}.
 \item A friction (drag) source-coupling module from
 AIOLOS' \texttt{source.cpp} (ATES has none --- need both an analytic
 implicit and a numeric implicit solver).
@@ -891,7 +891,7 @@ Path & Role & Lines \\
 \texttt{src/modules/functions/cross\_sec\_metals.f90}   & Verner+1996 fit             & 121 \\
 \texttt{src/modules/radiation/metals.f90}               & metals registry             & 162 \\
 \texttt{src/modules/radiation/metals\_solve.f90}        & A\&P RR + SVS DR, ratio helpers & 209 \\
-\texttt{src/modules/radiation/metals\_drive.f90}        & per-cell coronal driver     &  92 \\
+\texttt{src/modules/radiation/metals\_drive.f90}        & cell-by-cell coronal driver &  92 \\
 \texttt{src/modules/radiation/metals\_cool.f90}         & Black 1981 cooling fits     & 102 \\
 \texttt{src/modules/files\_IO/write\_metals\_output.f90}& output writer               &  62 \\
 \texttt{inputdata/HI\_sample.opa}                   & 13-row sample table         &  13 \\
@@ -1024,7 +1024,7 @@ SB23 paper supplement or the Schulik PhD thesis remains pending.}
 
 The cooling functions are applied in
 \texttt{chemistry.cpp:1000--1090} via
-\verb|c_Sim::do_highenergy_cooling()|, with a per-cell rate
+\verb|c_Sim::do_highenergy_cooling()|, with a rate in each cell
 \[
   \dot{Q}_{\mathrm{cool},X} \;=\; n_X\, n_e\, \beta\, \mu\, \Lambda_X(T_e),
 \]
@@ -1110,7 +1110,7 @@ ATES\_extended's \(\approx 2852\)\,K.
 ATES v2.0 solves a one-dimensional, time-dependent
 photoionization-hydrodynamics problem on a radial grid in
 \(r \in [R_p, r_\mathrm{max}]\).  The species fraction array
-\texttt{f\_sp(1-Ng:N+Ng,k)} carries the per-cell mass fraction of each
+\texttt{f\_sp(1-Ng:N+Ng,k)} carries, in each cell, the mass fraction of each
 chemical species, originally indexed by
 \(k \in \{1,2,3,4,5,6\}\) for
 \{H\,I, H\,II, He\,I, He\,II, He\,III, He\,I(2\,\(^3\!\mathrm{S}\))\}.
@@ -1679,16 +1679,16 @@ now filled through \texttt{photoion\_sigma(sp,E)}, which selects:
     \(\sigma = \texttt{OPA\_CONST\_}X\times\sigma(E_\mathrm{th})\);
   \item \textbf{P} --- constant plus Robinson \& Catling (2012)
     pressure broadening (below);
-  \item \textbf{T} --- tabulated from a per-species two-column
-    \texttt{.opa} file (\(E\,[\mathrm{eV}],\,\sigma\,[10^{-18}\,
+  \item \textbf{T} --- tabulated from a two-column
+    \texttt{.opa} file per species (\(E\,[\mathrm{eV}],\,\sigma\,[10^{-18}\,
     \mathrm{cm}^2]\)), log--log interpolated, analytic fallback when a
     species has no file.
 \end{itemize}
 
 \textbf{Pressure broadening (completed).}  In \texttt{ATES\_extended}
-the per-cell pressure factor was a dormant hook
+the pressure factor for each cell was a dormant hook
 (\texttt{opacity\_pT\_factor} was never called).  Here it is actually
-applied: a per-cell multiplier
+applied: a multiplier in each cell
 \[
   f(p_j) = 1 + a\,(p_j/p_\mathrm{pivot})^{n},
   \qquad p_j = (n_{\mathrm{tot},j}+n_{e,j})\,k_B T_j,

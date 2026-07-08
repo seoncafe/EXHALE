@@ -12,7 +12,7 @@
       ! A separate runtime multiplier opacity_pT_factor(p) is applied
       ! per cell in 'P' mode (see PH_heat_HHe / calc_column_dens).
       !
-      ! Ported from ATES_extended; in ATES-Code-main the per-cell
+      ! Ported from ATES_extended; in ATES-Code-main the cell-by-cell
       ! pressure factor is actually applied (it was a deferred hook in
       ! ATES_extended).
 
@@ -43,7 +43,7 @@
       !----------------------------------------------------------!
 
       subroutine load_opacity_tables
-      ! Load every per-species .opa file whose path was set in
+      ! Load each species's .opa file whose path was set in
       ! opacity.inp. Empty paths are no-ops (the dispatcher will fall
       ! back to the analytic curve for that species).
 

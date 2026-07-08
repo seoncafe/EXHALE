@@ -144,7 +144,7 @@ def lambda_eff_table(Tgrid, negrid, nmax=None):
     g = np.array([lev[i][0] for i in idxs])
     E = np.array([lev[i][1] for i in idxs])           # cm^-1
 
-    # per-transition Upsilon over the whole T-grid (one spline build each)
+    # Upsilon for each transition over the whole T-grid (one spline build each)
     trans = []
     for tr in sc:
         ll, ul = tr['ll'], tr['ul']

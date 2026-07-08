@@ -44,7 +44,7 @@
    real*8, dimension(1-Ng:N+Ng,n_mion), intent(in) :: nm_in
 	
 	integer i,j,k
-	integer :: n_pp_reject       ! per-cell T solves rejected as non-physical
+	integer :: n_pp_reject       ! cell-by-cell T solves rejected as non-physical
 	integer :: Neq_adv,lwa_adv   ! advection system size (metal-independent)
 	 
 	real*8, dimension(1-Ng:N+Ng) ::  T_K,p_out,T_out     ! Dimensional temperature
@@ -55,7 +55,7 @@
 
    ! Photo ionization rates
    real*8, dimension(1-Ng:N+Ng) ::  P_HI,P_HeI,P_HeII,P_HeITR
-   ! Per-ion metal photoionization rates (filled by PH_heat_HHe; used for the
+   ! Metal photoionization rates for each ion (filled by PH_heat_HHe; used for the
    ! metal re-solve in mode 2, otherwise discarded).
    real*8, dimension(1-Ng:N+Ng,n_mion) ::  P_m
    ! Working metal densities driving the post-process heating/cooling [cgs].
@@ -66,14 +66,14 @@
 
    ! Recombination coefficients
    real*8, dimension(1-Ng:N+Ng) ::  rchiiB,rcheiiB,rcheiiiB,rcheiTR
-   ! Per-ion metal recombination/ionization rates returned by eval_cool.
-   ! In the re-solve mode (pp_metals=2) they feed the per-cell metal
+   ! Metal recombination/ionization rates for each ion returned by eval_cool.
+   ! In the re-solve mode (pp_metals=2) they feed the cell-by-cell metal
    ! ionization-balance solve; in the frozen mode they are discarded.
    real*8, dimension(1-Ng:N+Ng,n_mion) ::  rec_m_pp,aion_m_pp
-   ! Per-element total metal density (sum of stages, held fixed across the
+   ! Each element's total metal density (sum of stages, held fixed across the
    ! re-solve since ionization only redistributes among an element's stages).
    real*8, dimension(1-Ng:N+Ng,n_melem) ::  nm_tot_pp
-   ! Per-element metal coefficients handed to set_metal_coeffs for the
+   ! Each element's metal coefficients handed to set_metal_coeffs for the
    ! re-solve (canonical element order); built per cell from the 2-D rates.
    real*8, dimension(n_melem) ::  meg_ntot,meg_g0,meg_g1,meg_b0,meg_b1,  &
                                   meg_a1,meg_a2
@@ -178,7 +178,7 @@
 	! Select the metal treatment for the post-process (set via 'pp_metals'
 	! in metals.inp -> pp_metal_mode). Metals are off => zero either way.
 	!   0 metal-free (legacy), 1 frozen eq metals, 2 re-solve.
-	! pp_metal_on (module flag in equation_T) tells the per-cell temperature
+	! pp_metal_on (module flag in equation_T) tells the cell-by-cell temperature
 	! solve to include the metal cooling/brem/n_e terms.
 	if (thereis_metals .and. pp_metal_mode >= 1) then
 		nm_w        = nm_in*n0          ! eq metal densities [cgs] (frozen or seed)
@@ -192,7 +192,7 @@
 	! per cell inside the post-process loop at the advection-corrected H/He and
 	! the post-process temperature (see the block after the H/He advection
 	! solve). The element totals are conserved by ionization (only the stage
-	! split changes), so freeze the per-element total from the eq densities and
+	! split changes), so freeze each element's total from the eq densities and
 	! reuse it as a constant throughout. nm_w starts at the eq split and is
 	! overwritten with the re-solved split each iteration.
 	if (pp_metal_mode == 2 .and. thereis_metals .and. thereis_He) then
@@ -222,7 +222,7 @@
 	! metal electrons under the eos_metals policy)
 	call calc_ne(nhii,nheii,nheiii,ne,nm_w)
 
-	! Per-cell opacity pressure factor ('P' model; =1 otherwise)
+	! Cell-by-cell opacity pressure factor ('P' model; =1 otherwise)
 	do j = 1-Ng,N+Ng
 		opa_pf(j) = opacity_pT_factor((nh(j)+nhe(j)+ne(j))*kb_erg*T_K(j))
 	enddo
@@ -447,7 +447,7 @@
 			! Charge-exchange rate coefficients for this cell temperature.
 			call cx_set_cell(T_K(j))
 
-			! Per-element metal coefficients (canonical order) from the 2-D
+			! Each element's metal coefficients (canonical order) from the 2-D
 			! photo/collisional/recombination rate arrays.
 			do im = 1,n_melem
 				i0  = melem_i0(im)
@@ -540,7 +540,7 @@
 	! Calculate mean molecular weight
 	call calc_mmw(nh,nhe,ne,mmw)
 
-	! Count per-cell temperature solves rejected as non-physical (metal modes).
+	! Count cell-by-cell temperature solves rejected as non-physical (metal modes).
 	n_pp_reject = 0
 
 	do j = 3-Ng,N+Ng ! Start from first computational cell
@@ -677,7 +677,7 @@
 	! stored in pp_xHII_fix / pp_xHeII_fix / pp_xHeIII_fix. hybrd1 therefore
 	! leaves H/He fixed and moves only the metal stages, while the electron
 	! density and charge exchange inside the coupled residual still see the
-	! correct (fixed) H/He densities. The per-cell metal coefficients must be
+	! correct (fixed) H/He densities. The cell-by-cell metal coefficients must be
 	! loaded via set_metal_coeffs and the fractions pinned before each call.
 	subroutine ion_system_metals_pp(N_in,x,fvec,iflag,params)
 	integer :: N_in,iflag

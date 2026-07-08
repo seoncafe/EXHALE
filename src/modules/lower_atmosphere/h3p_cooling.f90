@@ -2,7 +2,7 @@
       ! Optically-thin H3+ infrared cooling (the molecular level of the lower-atmosphere
       ! plan; docs/lower_atmosphere_coupling.*).
       !
-      ! Per-molecule LTE emission E(H3+,T) from Miller, Stallard, Tennyson &
+      ! LTE emission per molecule E(H3+,T) from Miller, Stallard, Tennyson &
       ! Melin (2013), J. Phys. Chem. A 117, 9770 (Table 5, z(T) fits):
       !
       !   log_e E(T) = sum_n C_n T^n     [E in W molecule^-1 sr^-1],
@@ -80,7 +80,7 @@
 
       ! ------------------------------------------------------------------ !
 
-      ! LTE per-molecule emission E(H3+,T) [W molecule^-1 sr^-1].
+      ! LTE emission per molecule E(H3+,T) [W molecule^-1 sr^-1].
       double precision function h3p_emission_lte(T) result(E)
       real*8, intent(in) :: T
       real*8 :: tt, lnE

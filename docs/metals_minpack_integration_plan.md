@@ -89,7 +89,7 @@ initially for a like-for-like comparison).
 - `nonlinear_system_solver/System_HeHCO_TR.f90` — the combined residual
   routine `ion_system_HeHCO_TR(N_eq, x, fvec, iflag, params)`. Generalize
   `EXHALE/.../System_HeHCO.f90` to (a) read the active metal list
-  and per-ion coefficients from `params`, and (b) optionally include the
+  and coefficients for each ion from `params`, and (b) optionally include the
   HeITR block.
 
 **Modified**

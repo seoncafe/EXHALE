@@ -53,7 +53,7 @@ Key quantitative facts:
 - **The published coupling is loose, not monolithic:** Lavvas 2014 takes T(p>1 μbar…top)
   *from* the Koskinen thermosphere and uses "species < 3 amu escape at the wind
   velocity" as its upper BC; Taylor tolerates a composition discontinuity at 1 μbar.
-  Nobody runs a tight per-timestep two-way coupling except TPCI (and it disables
+  Nobody runs a tight two-way coupling at every timestep except TPCI (and it disables
   molecules).
 
 ---
@@ -96,7 +96,7 @@ recombination (R6/R7, Larsson 2008), HeH⁺ chain (R16–R20), three-body H₂ f
   one policy point), γ/dof for a diatomic, and the 4.48 eV dissociation energy sink in
   the energy equation;
 - **H₃⁺ infrared cooling**, optically thin: start with the Miller et al. (2013) LTE
-  per-molecule emission fits (analytic log-polynomial in T); defer the non-LTE
+  emission fits for each molecule (analytic log-polynomial in T); defer the non-LTE
   correction factor (Koskinen et al. 2009) with a documented caveat — same
   fit-first/refine-later pattern as our CHIANTI cooling work;
 - optional interim step (**Tier 2a, ~days**): promote the Wind-AE port's *passive*
@@ -147,7 +147,7 @@ The Lavvas & Arfaux code is not public, so the practical paths are:
    tolerated, as in Taylor);
 2. optionally feed back: EXHALE's transmitted XUV spectrum at the base (we already
    compute the attenuated flux — add a dump of F_ν(r_base)) as the photochemical
-   model's top irradiation, and Ṁ (or per-species escape velocity) as its upper BC —
+   model's top irradiation, and Ṁ (or the escape velocity for each species) as its upper BC —
    precisely the Lavvas 2014 upper BC ("species < 3 amu escape at the model wind
    velocity"). Taylor found ~3 iterations suffice for the analogous Lyα loop.
 
@@ -171,7 +171,7 @@ abundances vs. Lavvas 2014 Fig. 9 (Mg/Fe/Si ionic above 10⁻⁶ bar, Na/K atomi
 | 1 analytic column | `lower_column.f90` (~150 SLOC) or Python pre-processor | days | low (closed-form, gate = published numbers) |
 | 2a passive molecular base | reuse `wind_ae` molec machinery | days | low |
 | 2 full molecular chemistry | `System_HeH_mol*`, EOS, H₃⁺ cooling | weeks | medium (solver stiffness; γ/EOS consistency) |
-| 3(a) open-source lower stack | Python driver + `base.inp` reader | weeks–months (mostly VULCAN/HELIOS learning + per-planet setup) | medium (network/opacity choices); EXHALE-side change is small |
+| 3(a) open-source lower stack | Python driver + `base.inp` reader | weeks–months (mostly VULCAN/HELIOS learning + setup for each planet) | medium (network/opacity choices); EXHALE-side change is small |
 
 **Recommended order:** Tier 1 → (science-driven fork) hot-Jupiter metals ⇒ Tier 3(a);
 sub-Neptunes ⇒ Tier 2 (with 2a as the quick bridge). Tier 1 is worth doing

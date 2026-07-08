@@ -49,7 +49,7 @@ data sources, and footprint. This document compares them side by side.
 
 | Aspect | ATES_extended | EXHALE |
 |---|---|---|
-| Opacity model dispatcher (Phase 1) | **Yes** — A/C/P/T models in `opacity_models.f90`, `.opa` table format, pressure-broadening **hook (deferred)** | **Yes** — same dispatcher ported; pressure broadening **applied per-cell** (completed) |
+| Opacity model dispatcher (Phase 1) | **Yes** — A/C/P/T models in `opacity_models.f90`, `.opa` table format, pressure-broadening **hook (deferred)** | **Yes** — same dispatcher ported; pressure broadening **applied in each cell** (completed) |
 | Charge transfer with H (Kingdon & Ferland 1996) | No | **Yes** — O/N/C ↔ H in `System_HeHCO.f90`, couples metal & H ionization |
 | Module organization | Highly modular (8 new files plus 5 modifications) | Less modular (1 new file plus 14 modifications) |
 | Regression test specification | Documented in memo: with no `metals.inp` present, results must be bit-identical to upstream | Only a smoke test (executable initializes correctly) |
@@ -113,7 +113,7 @@ omitted):
    critical-density saturation factor to `lambda_X`; add NI/NII fits.
 5. **Phase 1d** — pressure-broadening multiplier per cell. The current
    Phase-1 implementation only replaces the prebaked global vector;
-   per-cell application is an explicit deferred item.
+   applying it in each cell is an explicit deferred item.
 6. **Python plot helper** — extend `EXHALE_plots.py` to overlay
    `Metals_ioniz_adv.txt` on the same coordinates as
    `Hydro_ioniz_adv.txt`.

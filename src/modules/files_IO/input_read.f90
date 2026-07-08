@@ -96,7 +96,7 @@
 	                                   .or. (X_S  .gt. 0.0d0)       &
 	                                   .or. (X_Fe .gt. 0.0d0)
 
-	! Per-element abundances in canonical element order (iel_*), so the
+	! Abundances for each element in canonical element order (iel_*), so the
 	! grid/solver code can index metals by element rather than by named
 	! scalar. Extend this block (and the metals.inp reader) when adding
 	! elements.
@@ -446,12 +446,12 @@
 					write(*,*) '(input_read) Energy solver: explicit forward Euler'
 				endif
 			else if (index(line,'Time stepping') .gt. 0) then
-				! "Time stepping: Local" = per-cell pseudo-time steps
+				! "Time stepping: Local" = cell-by-cell pseudo-time steps
 				! (steady-state convergence acceleration; not time-accurate).
 				str = get_word(line, 3)
 				if (str .eq. 'Local') then
 					use_local_dt = .true.
-					write(*,*) '(input_read) Time stepping: local (per-cell) pseudo-dt'
+					write(*,*) '(input_read) Time stepping: local (cell-by-cell) pseudo-dt'
 				endif
 			else if (index(line,'Level tol') .gt. 0) then
 				! "Level tol: <val>" overrides the mass-flux level-stability

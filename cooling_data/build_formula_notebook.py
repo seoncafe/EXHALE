@@ -109,7 +109,7 @@ ax2.set_ylabel(r'residual [\%]')
 plt.tight_layout(); plt.show()"""))
 
 cells.append(nbf.v4.new_markdown_cell(
-    "## Per-channel comparison with signed residuals\n\n"
+    "## Channel-by-channel comparison with signed residuals\n\n"
     "Grey band = $\\pm$1%. Vertical dotted line marks where the coolant "
     "becomes non-negligible ($\\Lambda > 10^{-3}\\Lambda_{\\rm max}$); "
     "to its left $\\Lambda$ is so small that the error is irrelevant."))

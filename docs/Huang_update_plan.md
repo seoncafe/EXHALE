@@ -99,7 +99,7 @@ solver from this table, not from a remembered number.
 > EXHALE uses for C/N/O. **The intended final state is therefore to replace
 > all metal recombination rates (H excepted — keep case B) with Badnell RR+DR.**
 > Plan accordingly:
-> 1. Build the recombination code so the per-ion rate source is **swappable**
+> 1. Build the recombination code so the rate source for each ion is **swappable**
 >    (a dispatcher or table keyed by ion), with Huang's §1.3 sources as one option
 >    and Badnell as the other.
 > 2. Do the full Huang reproduction (Phase 1 → Case D) with **Huang's** rates so
@@ -195,11 +195,11 @@ substellar rate. Triaxial radii `R_px,R_py,R_pz` with `R_py R_pz = R_p²`
 
 > [!IMPORTANT]
 > **Revised 2026-06-05 — two changes to *how* Phase 1 is executed.**
-> 1. **Refactor the per-species interfaces *before* adding more elements
+> 1. **Refactor the interfaces for each species *before* adding more elements
 >    (Phase 1a).** Each element added so far (C/N/O, then Mg) widened the argument
 >    lists of `PH_heat_HHe`, `eval_cool`, `calc_column_dens_metals`,
 >    `write_output`, the MINPACK system (`ion_system_HeH_metals`), and the driver
->    (`ionization_equilibrium.f90`) by ~3–6 named per-ion arguments, and the
+>    (`ionization_equilibrium.f90`) by ~3–6 named arguments for each ion, and the
 >    MINPACK coefficients are passed through a hand-indexed flat `params(60)`
 >    array. Threading six more elements this way is unmaintainable and
 >    error-prone. Convert to a **species-metadata table + array-indexed data
@@ -218,27 +218,27 @@ The goal is that adding an element becomes "add rows to a table," not "thread N
 new arguments through M subroutines." Target structure:
 
 - **Species-metadata module** (new `init/species_table.f90`, populated at init):
-  - Per-ion arrays of length `n_ion`: `ion_elem(i)` (element index),
+  - Arrays for each ion of length `n_ion`: `ion_elem(i)` (element index),
     `ion_stage(i)` (0/1/2), `ion_charge(i)` (for bremsstrahlung `Z²`),
     `ion_ethr(i)` (photoionization threshold [eV]), `ion_is_phot(i)` (is this ion
     photo-ionizable, i.e. not the top stage).
-  - Per-element arrays of length `n_elem`: `el_abund(e)` (Asplund+2009 relative to
+  - Arrays for each element of length `n_elem`: `el_abund(e)` (Asplund+2009 relative to
     H), `el_nstage(e)` (1 or 2 ionization steps solved), `el_Z(e)` (nuclear charge
     for the Gaunt factor).
   - `sigma_tab(Nl, n_phot)`: photoionization cross sections per energy bin per
-    photo-ionizable ion, filled once at init by a per-ion `sigma()` dispatcher.
+    photo-ionizable ion, filled once at init by a `sigma()` dispatcher keyed by ion.
     Replaces the loose globals `s_hi, s_hei, …, s_mgi, s_mgii`.
 - **2D density flow.** Pass the existing `f_sp(:, :)` / a derived `n_ion(:, :)`
   array directly into `PH_heat`, `eval_cool`, `write_output`,
   `calc_column_dens`, instead of unpacking into named scalars at every call.
   Each routine **loops over ions** using the metadata table:
   - `PH_heat`: `tauE = Σᵢ sigma_tab(:,i)·N_col(:,i)`; photoheating
-    `Σᵢ (1−ethr(i)/e_v)·sigma_tab(:,i)·n(:,i)`; per-ion `P(:,i)`. Returns a 2D
-    photoionization-rate array, no per-ion `P_*` arguments.
+    `Σᵢ (1−ethr(i)/e_v)·sigma_tab(:,i)·n(:,i)`; `P(:,i)` for each ion. Returns a 2D
+    photoionization-rate array, no `P_*` arguments for each ion.
   - `eval_cool`: brem `= Σᵢ charge(i)²·GF(elem)·n(:,i)`; recomb/ioniz/line-cool
     coefficients via **dispatchers keyed by ion index** returning 2D arrays.
 - **Generalized MINPACK system.** `ion_system` must keep hybrd1's fixed
-  `(N_eq,x,fvec,iflag,params)` signature, so feed per-cell coefficients via a
+  `(N_eq,x,fvec,iflag,params)` signature, so feed the coefficients for each cell via a
   **module-level current-cell block** (a derived type the driver sets before each
   `hybrd1` call), and assemble `fvec` by **looping over elements** (1 or 2 balance
   equations each, force-zeroing absent elements as now). *Recommended over
@@ -268,11 +268,11 @@ fits; **Badnell** recombination via the swappable dispatcher (same deliberate
 early). **No line cooling** (Phase 2); **no charge exchange** (Phase 1d).
 - **Gate:** the now ~20-unknown MINPACK system converges without NaNs across the
   full T range; ionization structure matches **Fig. 12** — Si/Ca mostly **doubly**
-  ionized in the upper thermosphere, Na/K mostly **singly** ionized; per-element
+  ionized in the upper thermosphere, Na/K mostly **singly** ionized; each element's
   X/H abundance conserved; the batch leaves Ṁ within a factor ~2 of Case A. Bring
   numbers + figures in a notebook (no pass/fail), as for Mg. Watch the same
   C I-type **grid-extension confound** now extended to every low-IP metal — isolate
-  cleanly with batch-vs-no-metals (and per-element if a single species looks off).
+  cleanly with batch-vs-no-metals (and element by element if a single species looks off).
 
 #### Phase 1c — Iron (handled separately — needs non-uniform data/physics)
 
@@ -317,12 +317,12 @@ layer).
 
 > [!NOTE]
 > **Progress (2026-06-05) — Phase 1a done (interface/data-structure refactor).**
-> The per-element named plumbing is now table-driven (Steps A–F): a single
-> `init/species_table.f90` metadata table (per-ion `mion_*`, per-element
-> `melem_*`); `write_output`, `PH_heat_HHe` + column density, and `eval_cool`
+> The named plumbing for each element is now table-driven (Steps A–F): a single
+> `init/species_table.f90` metadata table (`mion_*` for each ion, `melem_*` for
+> each element); `write_output`, `PH_heat_HHe` + column density, and `eval_cool`
 > pass 2D `nm(:,1:n_mion)` / rate arrays and loop over ions; the MINPACK system
-> `ion_system_HeH_metals` keeps hybrd1's fixed signature but takes per-cell metal
-> coefficients via a module-level block (`set_metal_coeffs`) and assembles `fvec`
+> `ion_system_HeH_metals` keeps hybrd1's fixed signature but takes the metal
+> coefficients for each cell via a module-level block (`set_metal_coeffs`) and assembles `fvec`
 > by looping over elements, so `params` carries only H/He + C/N/O charge transfer
 > and `N_eq = 3 + 2*n_melem`; the sub-13.6 eV grid floor is now `min` over active
 > low-IP metals' neutral thresholds (`set_energy_vectors.f90`, driven by a new
@@ -343,7 +343,7 @@ layer).
 > `cross_sec.f90`); **(2)** the five uniform-template metals **Si, Ca, Na, K, S**
 > were added as one batch, completing the §1.1 set except Fe. Now `n_species=30`,
 > `n_mion=24`, `n_melem=9`; the MINPACK system is `N_eq = 3 + 2*n_melem = 21` with
-> a per-element `melem_top` (2nd ionization for C/O/N/Mg/Si/Ca; 1st only for
+> a `melem_top` for each element (2nd ionization for C/O/N/Mg/Si/Ca; 1st only for
 > Na/K/S, whose unused upper unknown is pinned to keep the Jacobian non-singular).
 > Voronov ionization + Badnell recombination (the §1.3 deviation already accepted
 > for Mg) for the new ions; **no line cooling** (`mion_iscool=.false.`, Phase 2)
@@ -437,18 +437,18 @@ layer).
 ### Phase 2 — Updated radiative cooling (§1.5)
 - Implement Mg I/II, Ca II, Fe II, Fe I, Na I two-level/CHIANTI cooling and
   free–free in `Cool_coeff.f90`; replace Black (1981) Lyα cooling with CHIANTI.
-- **Gate:** per-species cooling-rate curves reproduce **Figs. 4–7** (e.g.
+- **Gate:** the cooling-rate curves for each species reproduce **Figs. 4–7** (e.g.
   Mg II is the dominant coolant; Fe II free–free matters at T<3000 K); a metal-
   driven cooling feature appears at **1.15–1.4 R_p** (Fig. 10), though on
   WASP-121b adiabatic cooling still dominates globally.
 
 > **Progress (2026-06-05) — Phase 2 done; gate closed (user-validated).**
 > The CHIANTI-based line coolants (Mg I/II, Ca II, Na I, Fe II on top of the
-> C/N/O coolants) are active in the coupled energy balance; per-species physics
+> C/N/O coolants) are active in the coupled energy balance; the physics for each species
 > and atomic-data provenance live in `Update_EXHALE_early_phase` (Parts II–III),
 > and the integrated WASP-121b gate is written up
 > in `Update_EXHALE.{md,tex}` §7. The gate was closed with a new **exact
-> per-channel cooling diagnostic**: `eval_cool` gained an optional `cool_chan`
+> cooling diagnostic split by channel**: `eval_cool` gained an optional `cool_chan`
 > out-array (an exact split of the total `cool` into H/He recombination,
 > collisional ionization, collisional excitation, bremsstrahlung, and one column
 > per metal ion), and `write_cool_breakdown_eq` (utils_ion_eq, called once from
@@ -501,7 +501,7 @@ layer).
 ### Phase 6 (final, production) — swap recombination to Badnell RR+DR
 Once Cases A–D are reproduced with Huang's recombination rates (§1.3), switch the
 production default to **Badnell RR+DR** for all metals (H stays case B). Because
-the recombination code is built with a swappable per-ion rate source (§1.3), this
+the recombination code is built with a swappable rate source for each ion (§1.3), this
 is a configuration change, not a rewrite.
 - **Gate:** re-run the Phase-1 (ionization structure) and Phase-5 (transit depth)
   checks with Badnell rates and **record the deltas** vs the Huang-rate results
@@ -587,9 +587,9 @@ holds across the RK loop.
 
 | Concern | File(s) |
 | :--- | :--- |
-| **Species metadata table (Phase 1a refactor)** | new `init/species_table.f90` (per-ion/per-element metadata, `sigma_tab`, rate dispatchers) |
+| **Species metadata table (Phase 1a refactor)** | new `init/species_table.f90` (metadata for each ion and element, `sigma_tab`, rate dispatchers) |
 | Ionization network / MINPACK | `nonlinear_system_solver/System_*.f90`, `radiation/ionization_equilibrium.f90` (generalize `params`→module-level cell block; loop over elements) |
-| Per-species interfaces (de-argument) | `radiation/util_ion_eq.f90` (`PH_heat`, `eval_cool`), `functions/utilities.f90` (`calc_column_dens`), `files_IO/write_output.f90` — pass 2D `n_ion(:,:)`, loop over the metadata table |
+| Interfaces for each species (de-argument) | `radiation/util_ion_eq.f90` (`PH_heat`, `eval_cool`), `functions/utilities.f90` (`calc_column_dens`), `files_IO/write_output.f90` — pass 2D `n_ion(:,:)`, loop over the metadata table |
 | Recombination, Voronov, cooling, charge exchange | `radiation/Cool_coeff.f90` (consider splitting `charge_exchange.f90`) |
 | Photoionization cross sections | `functions/cross_sec.f90`, `radiation/opacity_models.f90` |
 | Species arrays, abundances, RLOF params, boundary | `init/parameters.f90`, `files_IO/metals_input_read.f90`, `files_IO/opacity_input_read.f90` |

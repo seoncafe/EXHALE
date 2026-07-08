@@ -442,7 +442,7 @@
 
       !---------------------------------------------------------------!
       subroutine wae_linearize_dvdr_crit(x, y, m, ne)
-      ! Once-per-iteration setup of dvdr_slope/last/q_last (L'Hopital at
+      ! Setup once per iteration of dvdr_slope/last/q_last (L'Hopital at
       ! the critical point). Ported from soe.c:linearize_dvdr_crit.
       use wae_types, only: wae_varlist
       integer, intent(in) :: m, ne

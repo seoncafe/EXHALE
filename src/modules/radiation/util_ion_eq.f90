@@ -98,7 +98,7 @@
 	! Computes photoionization rates and heating rates for an
 	!	atmosphere composed of H, He, and (optionally) metals.
 	! Metal ion densities arrive as nm(:,1:n_mion) in canonical
-	! species_table order; per-ion photoionization rates leave as
+	! species_table order; the photoionization rates for each ion leave as
 	! P_m(:,1:n_mion). Only photo-ionizable metal ions (mion_isphot)
 	! contribute to opacity, photoheating, absorbed energy, and have a
 	! nonzero P_m; top-stage ions (C III, N III, O III, Mg III) are inert.
@@ -123,7 +123,7 @@
    real*8, dimension(Nl) :: int_h2
    real*8 :: Hea_1                         ! Heating rate
    real*8 :: q_abs                         ! Absorbed energy
-   real*8 :: Pm_loc(n_mion)                ! Per-cell metal photoion. rates
+   real*8 :: Pm_loc(n_mion)                ! Metal photoion. rates in each cell
 
 	! Integral variables
 	real*8, dimension(Nl) :: tauE,tau_m
@@ -273,7 +273,7 @@
 	! Evaluate the cooling rate contributions to energy and
 	!	rate equations. Includes H, He, and metal channels. Metals are
 	!	driven from species_table metadata (canonical ion order); nm,
-	!	rec_m and aion_m carry the per-ion densities and rates, so the
+	!	rec_m and aion_m carry the densities and rates for each ion, so the
 	!	argument list no longer grows when a metal is added.
 
 	integer :: i,j,e
@@ -291,7 +291,7 @@
    real*8, dimension(1-Ng:N+Ng) :: brem_acc,coolm_acc   ! sum accumulators
    real*8, dimension(1-Ng:N+Ng) :: metal_col            ! dispatcher scratch
    real*8, dimension(1-Ng:N+Ng,n_mion)  :: c_metal      ! metal line-cool coeffs
-   real*8, dimension(1-Ng:N+Ng,n_melem) :: GF_elem      ! per-element Gaunt fac.
+   real*8, dimension(1-Ng:N+Ng,n_melem) :: GF_elem      ! Gaunt fac. for each element
    real*8, dimension(1-Ng:N+Ng) :: tau_eff,beta_esc     ! beta escape prob.
    real*8, dimension(1-Ng:N+Ng) :: kappa_loc,dr_cm
 	real*8, dimension(1-Ng:N+Ng) :: ne		  			 ! Electron number density
@@ -305,7 +305,7 @@
    real*8, dimension(1-Ng:N+Ng),intent(out) :: rchiiB,	 &
 												rcheiiB, &
 												rcheiiiB
-   ! Per-ion metal recombination rates (canonical order)
+   ! Metal recombination rates for each ion (canonical order)
    real*8, dimension(1-Ng:N+Ng,n_mion),intent(out) :: rec_m
 
 	! Recombination cooling coefficients
@@ -317,7 +317,7 @@
    real*8, dimension(1-Ng:N+Ng),intent(out) ::  a_ion_HI,	&
       							   				 a_ion_HeI, &
 												 a_ion_HeII
-   ! Per-ion metal collisional ionization rates (canonical order)
+   ! Metal collisional ionization rates for each ion (canonical order)
    real*8, dimension(1-Ng:N+Ng,n_mion),intent(out) :: aion_m
 
 	real*8, dimension(1-Ng:N+Ng) :: coeff_coex_rate_HI,    &
@@ -327,13 +327,13 @@
 	! Heating, cooling
 	real*8, dimension(1-Ng:N+Ng),intent(out) ::  cool
 
-	! Optional per-channel cooling breakdown (cgs erg cm^-3 s^-1, same
+	! Optional cooling breakdown in each channel (cgs erg cm^-3 s^-1, same
 	! units as `cool`). Columns 1-4 = H/He recombination, collisional
 	! ionization, collisional excitation, bremsstrahlung (the last incl.
 	! metal-ion charges); columns 4+i = metal ion i line cooling (0 for
 	! non-coolant ions). This is an exact decomposition of `cool` in the
 	! default (.not.use_2lev_cool) branch; in the two-level branch the
-	! per-ion metal terms are the resonance-line approximation and need
+	! the metal terms for each ion are the resonance-line approximation and need
 	! not sum to cool_M.
 	real*8, dimension(1-Ng:N+Ng,4+n_mion),intent(out),optional :: cool_chan
 
@@ -407,7 +407,7 @@
 	!-- Metal recombination + collisional ionization rates --!
 	! (rates for ionization equilibrium; not part of cool here.)
 	! Filled per canonical ion via the metadata dispatchers, which call
-	! the same per-ion routines as before; ions with no entry (inert top
+	! the same routines for each ion as before; ions with no entry (inert top
 	! stage, neutral non-recombiner) return 0.
 	do i = 1,n_mion
 		call rec_coeff_by_ion(i,T_K,metal_col)
@@ -430,7 +430,7 @@
 	! statistical-equilibrium coefficient Lambda_eff(T,ne) = (sum_u n_u A_ul
 	! dE_ul)/ne. In the assembly cool_M = beta_esc*ne*sum_i nm(:,i)*c_metal,
 	! the ne cancels the 1/ne in Lambda_eff, leaving the correct LTE-saturated
-	! per-ion cooling (collider-independent, so the electron-only SE solve is
+	! cooling for each ion (collider-independent, so the electron-only SE solve is
 	! exact in this limit). At low ne it reduces to the coronal rate.
 	call cool_FeII_ne(T_K, ne, metal_col)
 	c_metal(:,im_FeII) = metal_col
@@ -536,7 +536,7 @@
 	! Total cooling rate
 	cool = ne*(brem + coex + reco + coio) + cool_M
 
-	! Per-channel breakdown for the diagnostic (Huang Fig. 10).
+	! Breakdown by channel for the diagnostic (Huang Fig. 10).
 	! Read straight from the arrays already computed above, so the sum of
 	! all channels reproduces `cool` exactly in the default branch.
 	if (present(cool_chan)) then
@@ -559,7 +559,7 @@
 	! ------------------------------------------------------------- !
 
 	subroutine write_cool_breakdown_eq(T_in,n_in,f_sp_in)
-	! Diagnostic. Dump the per-channel radiative cooling rate vs
+	! Diagnostic. Dump the radiative cooling rate in each channel vs
 	! radius for the converged equilibrium state, reusing eval_cool's exact
 	! coefficients (no offline re-derivation). Columns: H/He recombination,
 	! collisional ionization, collisional excitation, bremsstrahlung, then
@@ -617,7 +617,7 @@
 		' (write_cool_breakdown_eq) max |sum(channels)/cool - 1| = ', maxrel
 
 	open(unit = 71, file = './output/Cooling_breakdown.txt')
-	write(71,'(a)') '# Per-channel radiative cooling rate [cgs erg cm^-3 s^-1] vs radius.'
+	write(71,'(a)') '# Radiative cooling rate in each channel [cgs erg cm^-3 s^-1] vs radius.'
 	write(71,'(a)') '# Channel sum reproduces the Hydro_ioniz.txt cool column.'
 	write(71,'(a)') '# col1 r/Rp  col2 T[K]  col3 ne  col4 cool_total  col5 reco'  &
 	             // '  col6 coio  col7 coex  col8 brem  then one col per metal ion:'

@@ -55,7 +55,7 @@
    subroutine jlya_escape_prob(T_K, nhi, nhii, ne, v_in, Jlya, tau)
    ! Voigt-averaged Ly-alpha mean intensity J_lya(r) [erg s^-1 cm^-2 Hz^-1 sr^-1]
    ! by the escape-probability method, and the line-center optical depth tau(r).
-   ! T_K/nhi/nhii/ne are physical (cgs) per-cell arrays; v_in is the dimensionless
+   ! T_K/nhi/nhii/ne are physical (cgs) cell-by-cell arrays; v_in is the dimensionless
    ! radial velocity (v_in*v0 = cm/s). Called in-line from excited_H_update.
    real*8, dimension(1-Ng:N+Ng), intent(in)  :: T_K, nhi, nhii, ne, v_in
    real*8, dimension(1-Ng:N+Ng), intent(out) :: Jlya, tau

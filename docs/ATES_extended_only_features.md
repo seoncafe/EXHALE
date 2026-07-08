@@ -15,7 +15,7 @@ See also `ATES_versions_diff.md` for the full side-by-side comparison.
 > (`opacity_models.f90`, A/C/P/T, `.opa` tables, `opacity.inp`) has
 > been ported to EXHALE, and the Robinson & Catling
 > pressure-broadening — a dormant hook in ATES_extended — is now
-> **actually applied per-cell** (weights the opacity column density). See
+> **actually applied in each cell** (weights the opacity column density). See
 > `Update_EXHALE_early_phase`, Part II. The description below is the original
 > ATES_extended implementation.
 
@@ -26,14 +26,14 @@ ATES_extended adds a complete pluggable opacity layer:
   * `'A'` analytic (current ATES default)
   * `'C'` constant (threshold cross section x user factor)
   * `'P'` physical (constant + Robinson & Catling pressure broadening)
-  * `'T'` tabulated (per-species `.opa` file)
+  * `'T'` tabulated (a `.opa` file per species)
   Returns in ATES's internal `1e-18 cm^2` unit so downstream code is
-  unchanged. Includes the `opacity_pT_factor(p)` per-cell multiplier and
+  unchanged. Includes the `opacity_pT_factor(p)` multiplier in each cell and
   `opa_table` derived type with `load_opacity_tables` / `free_opacity_tables`.
 * **`src/modules/files_IO/opacity_input_read.f90`** (~116 LOC) — parser
   for the new `opacity.inp` key=value file.
 * **`.opa` table format** — two-column (E[eV], sigma[1e-18 cm^2])
-  per-species tabulated cross-section file, with analytic fallback when a
+  tabulated cross-section file per species, with analytic fallback when a
   path is empty.
 
 ## 2. Nitrogen as a coolant/ion species
@@ -91,11 +91,11 @@ The whole module set below has no analog in EXHALE, which instead
 folded metals into the existing MINPACK system (`System_HeHCO.f90`):
 
 * **`src/modules/radiation/metals.f90`** (~162 LOC) — abundance registry,
-  per-ion cross-section grids on `e_v(Nl)`, `photoion_rate_metal`.
+  cross-section grids for each ion on `e_v(Nl)`, `photoion_rate_metal`.
 * **`src/modules/radiation/metals_solve.f90`** (~209 LOC) — `coronal_ratio`
   helper solving `n_X^(k+1)/n_X^k = Gamma_k / (alpha_rec * n_e)` per ion
   pair independently, plus the RR/DR coefficient functions.
-* **`src/modules/radiation/metals_drive.f90`** (~92 LOC) — per-cell driver
+* **`src/modules/radiation/metals_drive.f90`** (~92 LOC) — cell-by-cell driver
   `solve_metals_post` invoked from post-processing.
 * **`src/modules/radiation/metals_cool.f90`** (~102 LOC) — `lambda_X`
   cooling fits and `eval_metal_cooling`; couples to `T_equation` via the
@@ -134,7 +134,7 @@ In `ATES_extended/inputdata/`, none of which exist in EXHALE:
 |---|---|---|
 | Opacity model dispatcher (A/C/P/T) | Yes | **Yes** (ported) |
 | `.opa` tabulated cross sections | Yes | **Yes** |
-| Pressure-broadening (Robinson & Catling) | Yes (Phase 1; per-cell **deferred**) | **Yes — applied per-cell** (completed) |
+| Pressure-broadening (Robinson & Catling) | Yes (Phase 1; cell-by-cell application **deferred**) | **Yes — applied in each cell** (completed) |
 | Nitrogen (NI/NII/NIII) ionization + opacity | Yes | **Yes** (in the MINPACK 9-eq system) |
 | Dielectronic recombination | Yes (Badnell, despite stale SVS-1982 docstring) | **Yes** (Badnell 2006 RR + adf48 DR) |
 | Runtime abundance file (`metals.inp`) | Yes | **Yes** (CI/NI/OI → X_C/X_N/X_O) |

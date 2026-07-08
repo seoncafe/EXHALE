@@ -354,7 +354,7 @@ r,nhi,nhii,nhei,nheii,nheiii,nheiTR = \
     np.loadtxt(Ioniz_file, usecols = range(7), unpack = True)
 
 # --------------------------------------------------------------------- #
-# Auto-size the per-line wavelength windows so the WHOLE line profile is
+# Auto-size the wavelength window for each line so the WHOLE line profile is
 # captured (the line returns to the continuum inside the window) for any
 # wind, instead of using fixed +/-few-A windows that clip fast/hot winds.
 #
@@ -816,7 +816,7 @@ N_phi_rot = int(_tenv('ROT_NPHI', '64'))            # azimuthal samples
 
 
 def _disk_average(mat, nlam):
-	"""Projected-area disk average of a per-impact-parameter transmission
+	"""Projected-area disk average of a transmission
 	matrix mat[p, l] (p over r_grid, l over wavelength), identical to the
 	non-rotating normalization used above."""
 	prob = np.array([np.trapz(x=r_grid, y=2.0*mat[:, l]*r_grid)
@@ -1115,7 +1115,7 @@ for key_m, lbl_m, comps_m, m_m, ncol_m, R_m, win_m, nl_m, fnm_m 		in METAL_DOUBL
 # --------------------------------------------------------------------- #
 # Set geometry = 'triaxial' to map the 1-D substellar profile onto the full
 # 3-D Roche potential (roche_recon.py) and integrate the transit along the
-# +x (substellar) line of sight at each sky point (y,z), with the per-sector
+# +x (substellar) line of sight at each sky point (y,z), with the
 # LOS velocity v_sub(r_eff)*x/r - Omega*y (wind + tidally-locked rotation,
 # Huang Eq. 16) over 20 angular sectors. Only meaningful for a Roche (Case
 # B/D) run; for the spherical Case A run leave geometry = 'spherical'.

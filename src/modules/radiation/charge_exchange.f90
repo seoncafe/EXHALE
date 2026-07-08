@@ -132,9 +132,9 @@
       ! sets cx_metal_base = 5 around its solve and resets to 4 afterward.
       integer, save :: cx_metal_base = 4
 
-      ! Active reaction list (row indices) and per-cell rate coefficients.
+      ! Active reaction list (row indices) and cell-by-cell rate coefficients.
       ! cx_act / cx_nact are built ONCE by cx_init (read-only during the sweep)
-      ! and stay shared; cx_kc and cx_metal_base are PER-CELL state, so they are
+      ! and stay shared; cx_kc and cx_metal_base are CELL-BY-CELL state, so they are
       ! threadprivate now that the ionization cell sweep runs OpenMP-parallel.
       ! cx_kc is lazily allocated per thread in cx_set_cell; cx_metal_base is
       ! broadcast to each thread (copyin) at the parallel region and toggled
@@ -192,7 +192,7 @@
       end subroutine cx_set_cell
 
       ! Add the charge-exchange source terms to an already-built residual
-      ! vector. dens(el,stage) is assembled from the per-species densities;
+      ! vector. dens(el,stage) is assembled from each species's densities;
       ! each reaction moves R from the donor's lower boundary (+R) to the
       ! acceptor's lower boundary (-R), reproducing the previous hard-coded
       ! C/N/O terms exactly while scaling to all metals.
@@ -379,7 +379,7 @@
       end function cx_rate
 
       ! Analytic Jacobian counterpart of cx_add_to_fvec (Task 2): add
-      ! d(CX source)/dx to the dense Jacobian fjac. Each per-species density is
+      ! d(CX source)/dx to the dense Jacobian fjac. Each species's density is
       ! a LINEAR function of the unknowns, so for a reaction rate
       ! R = kc*D*A (donor density D, acceptor density A),
       !   dR/dx_k = kc*(dD/dx_k * A + D * dA/dx_k),

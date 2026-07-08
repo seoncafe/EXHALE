@@ -28,7 +28,7 @@
 	!  * The electron density couples the two blocks: it is the H/He sum PLUS
 	!    the metal charges (X+ once, X++ twice). The triplet is a neutral
 	!    excited state and does NOT contribute to n_e.
-	!  * Metal per-cell coefficients come through the System_HeH_metals
+	!  * Metal coefficients for each cell come through the System_HeH_metals
 	!    module arrays (set by set_metal_coeffs); charge exchange is added by
 	!    cx_add_to_fvec with cx_metal_base = 5 (metals shifted to row 5).
 	!
@@ -57,7 +57,7 @@
 	real*8  :: n_h,n_he,n_e
 	real*8  :: n_hi,n_hii
 	real*8  :: n_hei,n_heii,n_heiii,n_heiTR,n_heiSI
-	! Per-element metal densities (neutral/+/++); charge exchange added later.
+	! Each element's metal densities (neutral/+/++); charge exchange added later.
 	real*8  :: nm0(met_nelem),nm1(met_nelem),nm2(met_nelem)
 	real*8  :: n_X
 	integer :: e,ix

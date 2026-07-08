@@ -85,7 +85,7 @@ Taylor et al.\ (2025, 2026) & full Lavvas \& Arfaux (2021) model (RC temperature
 \item \textbf{The published coupling is loose, not monolithic:} Lavvas et al.\ (2014) take
   $T(p<1\,\ubar)$ \emph{from} the Koskinen thermosphere and use ``species $<3$ amu escape
   at the wind velocity'' as their upper BC; Taylor et al.\ tolerate a composition
-  discontinuity at 1\,$\ubar$. Only TPCI runs a tight per-timestep coupling (and it
+  discontinuity at 1\,$\ubar$. Only TPCI runs a tight coupling at every timestep (and it
   disables molecules).
 \end{itemize}
 
@@ -455,7 +455,7 @@ misplacement instead biases $\Mdot$ ($\log\Mdot$ 11.97$\to$12.14, $\times$1.5).}
 \section{Using and connecting the results}\label{sec:usage}
 % ===================================================================== %
 
-\subsection{Recommended per-planet workflow}
+\subsection{Recommended workflow for each planet}
 \begin{enumerate}
 \item \textbf{Column check (always, free).} Add \texttt{Lower column: <transit radius>}
   to \texttt{input.inp} (or run \texttt{run\_lower.py}). Read off: does the current

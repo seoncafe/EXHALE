@@ -144,7 +144,7 @@ uncertain payoff for a wind this marginal — appear to be:
 - accepting HD189733b as a marginal case and reporting a time-averaged
   quasi-steady state.
 - a cheaper, separate idea worth trying for *speed* (not the oscillation):
-  local (per-cell) time-stepping, since the global `dt` is currently set by the
+  local (cell-by-cell) time-stepping, since the global `dt` is currently set by the
   smallest base cell (`eval_dt.f90`: `dt = CFL·min(dr/(|v|+cs))`).
 
 See `docs/numerical_methods.md` for a fuller discussion of solver options.

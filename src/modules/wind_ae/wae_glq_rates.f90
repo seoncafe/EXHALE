@@ -82,7 +82,7 @@
          Phi(i) = wPhi(i)*exp(-tau)
       end do
 
-      ! Per-species ionization (primary + secondary) and heating
+      ! Ionization for each species (primary + secondary) and heating
       do j = 1, nsp
          do i = 1, npts
             background = n_ion_tot/n_tot

@@ -219,7 +219,7 @@ EXHALE documents this explicitly (\texttt{EXHALE\_BC\_and\_IC.tex}\,\S3).
 \toprule
  & Salz & Kubyshkina & EXHALE \\
 \midrule
-Method & single fixed IC (tuned to a medium-\Mdot\ atmosphere), same for all planets & \textbf{per-planet automatic selection of an initial profile} & cold hydrostatic (default) / transonic / hot-Parker \\
+Method & single fixed IC (tuned to a medium-\Mdot\ atmosphere), same for all planets & \textbf{automatic selection of an initial profile for each planet} & cold hydrostatic (default) / transonic / hot-Parker \\
 Stated property & ``final steady state does not depend on the IC'' & auto-selection accelerates a 7000-model grid & same \Mdot\ regardless; convergence is momentum-($du$)-gated \\
 Transient & two shock waves cross in the first hours, then settle & --- & breathing-base limit cycle \\
 \bottomrule
@@ -229,7 +229,7 @@ Transient & two shock waves cross in the first hours, then settle & --- & breath
 
 Salz demonstrates IC-independence of the steady state and gets away with
 a single hand-tuned IC, at the cost of an expensive shock-laden
-relaxation. \textbf{Kubyshkina's automatic per-planet IC selection is
+relaxation. \textbf{Kubyshkina's automatic IC selection for each planet is
 the key engineering idea}: choosing an appropriate starting atmosphere
 at each grid point is what makes mass-producing 7000 models tractable
 and what lets the code launch winds across the full escape-parameter
@@ -299,7 +299,7 @@ steady state.
 \textbf{Kubyshkina advantages:}
 \begin{itemize}
 \item \emph{Robust across the full boil-off / blow-off range.} The
-  molecular-H$_2$ base plus per-planet automatic IC let it span escape
+  molecular-H$_2$ base plus automatic IC for each planet let it span escape
   parameters $\Lambda\sim20$--$80$ and produce 7000 models --- precisely
   the low-gravity / nearly-hydrostatic regime where EXHALE's breathing
   base is hardest to converge (e.g.\ HD\,189733\,b).

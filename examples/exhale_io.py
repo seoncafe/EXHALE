@@ -87,7 +87,7 @@ def load_ions(path):
 
 def load_cooling(path):
     """Read Cooling_breakdown.txt -> dict with r, T, ne, cool_total, and a
-    'chan' dict of per-channel cooling [erg/cm^3/s] (H/He + metal lines)."""
+    'chan' dict of cooling in each channel [erg/cm^3/s] (H/He + metal lines)."""
     d = np.loadtxt(path, unpack=True)
     out = dict(r=d[0], T=d[1], ne=d[2], cool_total=d[3], chan={})
     names = COOL_HHE_CHANNELS + METAL_IONS

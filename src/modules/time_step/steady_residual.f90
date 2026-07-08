@@ -48,7 +48,7 @@
       ! ------------------------------------------------------!
 
       subroutine residual_norms(R, u, rc)
-      ! Per-component max relative residual rate over the wind [j_min:N]:
+      ! The max relative residual rate for each component over the wind [j_min:N]:
       !   rc(k) = max_j |R(j,k)| / max|u(:,k)|     [units 1/t_s]
       real*8, dimension(1-Ng:N+Ng,3), intent(in)  :: R
       real*8, dimension(1-Ng:N+Ng,3), intent(in)  :: u

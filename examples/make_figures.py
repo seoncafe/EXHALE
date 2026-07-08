@@ -91,7 +91,7 @@ try:
     axx.set_xlabel(r'$r$ [$R_p$]')
     axx.set_ylabel(r'cooling [erg cm$^{-3}$ s$^{-1}$]')
     axx.set_ylim(c['cool_total'].max() * 1e-4, c['cool_total'].max() * 2)
-    axx.set_title('Per-channel radiative cooling (WASP-121b, metals on)')
+    axx.set_title('Radiative cooling by channel (WASP-121b, metals on)')
     axx.legend(ncol=2, fontsize=8); axx.grid(alpha=0.3)
     save(fig, 'cooling_breakdown.png')
 except Exception as e:

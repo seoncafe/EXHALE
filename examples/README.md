@@ -57,7 +57,7 @@ Notes
 
 ## 13_lower_atmosphere/
 Lower-atmosphere connection examples for HD 209458 b, HD 189733 b,
-WASP-121 b and WASP-52 b: per-planet `input.inp` + driver-generated
+WASP-121 b and WASP-52 b: one `input.inp` per planet + driver-generated
 `base_iso.inp` / `base_guillot.inp` handoff files, with a results table and
 regeneration commands in its own README.  Full description:
 `docs/lower_atmosphere_coupling.pdf`.

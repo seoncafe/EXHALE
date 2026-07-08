@@ -171,7 +171,7 @@
       enddo
    endif
 
-   ! ----- Per-cell n=2 populations + feedback ----- !
+   ! ----- Cell-by-cell n=2 populations + feedback ----- !
    do j = 1-Ng, N+Ng
       call n2_populations(T_K(j), max(nhi(j),0.0d0), max(ne(j),0.0d0),     &
                           Jlya_arr(j), gamma2_bal, gamma2_bal, n2s, n2p)
@@ -425,7 +425,7 @@
    ! --------------------------------------------------------------- !
 
    subroutine write_excited_H
-   ! Dump the per-cell excited-H diagnostic to output/Excited_H.txt for
+   ! Dump the cell-by-cell excited-H diagnostic to output/Excited_H.txt for
    ! validation against Huang et al. (2023) Figs. 11/27 (proton source) and
    ! Figs. 10/26 (heating budget). All quantities cgs; written for the last
    ! converged outer pass.

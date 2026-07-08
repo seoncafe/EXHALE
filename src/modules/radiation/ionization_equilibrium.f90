@@ -44,13 +44,13 @@
 	                                 ne,n_in_dim
    ! Metal ion densities in canonical species_table order (col im maps
    ! to f_sp column mion_fsp(im)); used throughout in place of named
-   ! per-ion scalars so the driver scales with the number of metals.
+   ! scalars for each ion so the driver scales with the number of metals.
    real*8, dimension(1-Ng:N+Ng,n_mion) ::  nm
    ! Total density of each metal element (canonical element order),
    ! held constant across the cell sweep (sum of its three stages).
    real*8, dimension(1-Ng:N+Ng,n_melem) ::  nm_tot
 
-   ! Per-ion metal recombination and collisional ionization rates from
+   ! Metal recombination and collisional ionization rates for each ion from
    ! eval_cool (canonical order); bridged to the named rc*/a_ion_*
    ! scalars below for the params packing.
    real*8, dimension(1-Ng:N+Ng,n_mion) ::  rec_m,aion_m
@@ -58,7 +58,7 @@
    ! Photo ionization rates
    real*8, dimension(1-Ng:N+Ng) ::  P_HI,P_HeI,P_HeII,P_HeITR
    real*8, dimension(1-Ng:N+Ng) ::  P_H2      ! (molecular; zero unless mol)
-   ! Per-ion metal photoionization rates (canonical order) from PH_heat.
+   ! Metal photoionization rates for each ion (canonical order) from PH_heat.
    real*8, dimension(1-Ng:N+Ng,n_mion) ::  P_m
                        	
    ! Heating, cooling
@@ -76,7 +76,7 @@
 	! Equilibrium system setup
    real*8 :: tol,dpmpar
    real*8, dimension(60) :: params
-   ! Per-element metal coefficients for ion_system_HeH_metals (canonical order),
+   ! Each element's metal coefficients for ion_system_HeH_metals (canonical order),
    ! built per cell from the 2D rate arrays and handed to set_metal_coeffs.
    real*8, dimension(n_melem) :: meg_ntot,meg_g0,meg_g1,meg_b0,meg_b1, &
                                  meg_a1,meg_a2
@@ -171,7 +171,7 @@
 		call calc_ne(nhii,nheii,nheiii,ne,nm)
 	endif
 
-	! Per-cell pressure-broadening factor for the opacity ('P' model).
+	! Cell-by-cell pressure-broadening factor for the opacity ('P' model).
 	! opacity_pT_factor returns 1.0 for all other models, so opa_pf=1
 	! and the column densities are unchanged (bit-identical).
 	do j = 1-Ng,N+Ng
@@ -252,7 +252,7 @@
 
 	if (.not.thereis_He) then ! If no helium
 
-		! Per-cell ionization solves are independent (the count>0 warm-start uses
+		! Ionization solves in each cell are independent (the count>0 warm-start uses
 		! this cell's own previous-step value), so the sweep is OpenMP-parallel
 		! over cells. sys_x/wa/info are threadprivate (global_parameters); only
 		! the subroutine-local scratch is private. count==0 runs serial (the if
@@ -307,7 +307,7 @@
 		mbase = 4
 		if (thereis_HeITR) mbase = 5
 
-		! OpenMP-parallel cell sweep (see the no-He branch above). The per-cell
+		! OpenMP-parallel cell sweep (see the no-He branch above). The cell-by-cell
 		! metal coefficients (met_*, System_HeH_metals) and charge-exchange rates
 		! (cx_kc, cx_metal_base) are threadprivate, so each thread keeps its own;
 		! cx_metal_base is broadcast (copyin) and toggled 4<->5 per cell. All the
@@ -357,14 +357,14 @@
 				params(21) = n_in_dim(j)      ! M for the 3-body rates
 			endif
 
-			! Per-element metal coefficients are handed to
+			! Each element's metal coefficients are handed to
 			! ion_system_HeH_metals via set_metal_coeffs; the charge-
 			! exchange rate coefficients are stored for this cell by
 			! cx_set_cell (used inside the residual by cx_add_to_fvec).
 			if (thereis_metals) then
 				call cx_set_cell(T_K(j))
 
-				! Build per-element metal coefficients in canonical order
+				! Build the metal coefficients for each element in canonical order
 				! from the 2D rate arrays (col i0 = neutral, i0+1 = +,
 				! i0+2 = ++) and store them for the residual.
 				do im = 1,n_melem
@@ -473,7 +473,7 @@
 						    tol,info,wa,lwa,params)
 			else if (thereis_HeITR .and. thereis_metals) then
 				! Merged He-triplet + metals: triplet at sys_x(4), metals at
-				! sys_x(5..). The per-cell metal coefficients (set_metal_coeffs)
+				! sys_x(5..). The cell-by-cell metal coefficients (set_metal_coeffs)
 				! and charge-exchange rates (cx_set_cell) were already loaded
 				! above in the thereis_metals block; here we only point charge
 				! exchange at the shifted metal rows for the merged solve.

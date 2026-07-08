@@ -54,7 +54,7 @@ diffusion-off path is arithmetically identical by construction.
 - **gfortran `maybe-uninitialized` at `EXHALE_main.f90:496/813`** — false positives
   (assigned by `ioniz_eq` before use).
 - **`cx_metal_base` threadprivate hazard** — safe: statically initialized per OpenMP rules;
-  the runtime `= 5` assignment happens inside the per-cell OMP loop (per-thread).
+  the runtime `= 5` assignment happens inside the cell-by-cell OMP loop (private to each thread).
 - **Missing analytic Jacobians for the TR systems** — by design (documented); MINPACK
   `hybrd1` retained for the triplet/merged systems.
 
@@ -75,7 +75,7 @@ not add to the list.
   floor — safe for healthy states (positivity maintained upstream); add
   `p_min = max(p_min, tiny*p_max)` if pathological states ever appear. Not touched to keep
   the golden-validated hydro core byte-identical.
-- **OMP CRITICAL in `PH_heat_HHe`** serializes the per-cell result writes — a scaling
+- **OMP CRITICAL in `PH_heat_HHe`** serializes the result writes in each cell — a scaling
   (not correctness) limitation; measured 2.07×@16 threads previously. Optimization candidate.
 - **Cooling/Fe II table clamps** extrapolate flat outside [1e3,1e5] K × [1,1e14] cm⁻³;
   fine for current regimes, revisit for denser/colder bases.

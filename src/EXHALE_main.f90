@@ -101,7 +101,7 @@
       ! Maximum eigenvalue      
       real*8 :: alpha
 
-      ! Temporal step (global) and per-cell pseudo-time steps
+      ! Temporal step (global) and cell-by-cell pseudo-time steps
       real*8 :: dt
       real*8, dimension(1-Ng:N+Ng) :: dt_loc
       
@@ -213,7 +213,7 @@
          call ioniz_eq(T,rho,f_sp,rho,f_sp,heat,cool,eta)
          call assemble_residual(u, heat, cool, Rres)
          call residual_norms(Rres, u, resid_c)
-         ! per-cell residual profile (localize the momentum imbalance)
+         ! cell-by-cell residual profile (localize the momentum imbalance)
          block
            integer :: jj, uu
            open(newunit=uu, file='output/residual_profile.txt',           &
@@ -244,7 +244,7 @@
       ! Optional Newton-residual self-test (env EXHALE_NEWTON_TEST=1): verify
       ! the vector residual F(Y) used by the steady solver reproduces the
       ! diagnostic residual. (a) pack/unpack are exact inverses; (b) the
-      ! per-component max|F|/max|u| over [j_min:N] equals the EXHALE_RESIDUAL
+      ! the max|F|/max|u| for each component over [j_min:N] equals the EXHALE_RESIDUAL
       ! values. Validates increment (ii)-2 before the Jacobian/PTC driver.
       call get_environment_variable('EXHALE_NEWTON_TEST', diag_env)
       if (trim(diag_env) .eq. '1') then
@@ -439,7 +439,7 @@
                 force_start )
 
             !---- Time step evaluation ----!
-            ! dt_loc = per-cell pseudo-dt ("Time stepping: Local"), or
+            ! dt_loc = cell-by-cell pseudo-dt ("Time stepping: Local"), or
             ! uniformly the global dt (default; bit-identical updates).
             call eval_dt(W,dt,dt_loc)
             if (do_profile) tp_step0 = omp_get_wtime()
@@ -613,7 +613,7 @@
             ! CETIMB-style base velocity: update the mass-flux constant F_c from
             ! the [j_min:N] constant-momentum (escape) region -- NOT the base,
             ! where rho*v*r^2 is not yet flat. A slow exponential moving average
-            ! makes v0 track the STABLE flux constant rather than the per-step
+            ! makes v0 track the STABLE flux constant rather than the step-by-step
             ! transient noise (the instantaneous value feeds the breathing back
             ! into the base velocity). Used by the next step's base BC.
             if (base_v_massflux .and. j_min .le. N) then
@@ -951,7 +951,7 @@
       call write_output(rho,v,p,T,heat,cool,eta,                         &
                         nhi,nhii,nhei,nheii,nheiii,nheiTR,nm,'eq')
 
-      ! Diagnostic: per-channel radiative cooling vs radius
+      ! Diagnostic: radiative cooling in each channel vs radius
       ! (reuses eval_cool's coefficients; see Huang et al. 2023 Fig. 10).
       call write_cool_breakdown_eq(T,rho,f_sp)
 

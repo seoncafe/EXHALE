@@ -24,7 +24,7 @@ EXHALE relaxes HD209458b-like hot Jupiters to a steady wind, but HD189733b
 does not converge: the time-marching settles into a bounded limit cycle
 (the ``base breathing''), and the steady (Newton/PTC) solvers stall ---
 even when started from a converged, spectrum-matched Wind-AE warm-start
-initial condition. This memo records a per-cell localization of the steady
+initial condition. This memo records a cell-by-cell localization of the steady
 residual, three targeted fixes that all turned out to be null, and the
 resulting conclusion: the obstruction is not the base boundary condition
 nor the initial-condition blend, but an intrinsic mismatch between the
@@ -43,10 +43,10 @@ the JFNK/PTC hand-off never fires (or, when forced, stalls). HD209458b and
 other less strongly bound planets converge normally with the identical
 machinery.
 
-\section{Diagnostic: a per-cell residual dump}
+\section{Diagnostic: a residual dump for each cell}
 \code{residual\_norms} (\code{steady\_residual.f90}) reports only the
-per-component \emph{maximum} relative residual; it hides \emph{where} the
-imbalance lives. A per-cell dump was added to the \code{ATES\_RESIDUAL=1}
+\emph{maximum} relative residual of each component; it hides \emph{where} the
+imbalance lives. A cell-by-cell dump was added to the \code{ATES\_RESIDUAL=1}
 path (\code{EXHALE\_main.f90}), writing
 \code{output/residual\_profile.txt} with columns
 $r,\,n,\,v,\,T,\,R_{\rm mass},\,R_{\rm mom},\,R_{\rm energy}$ for every cell
@@ -56,11 +56,11 @@ $j=1\dots N$. This was the decisive tool.
 The steady residual of the loaded (banked, spectrum-matched) HD189733b
 Wind-AE IC is \emph{purely momentum}: the reported component norms are
 $R_{\rm mass}=2.2\times10^{-3}$, $\mathbf{R_{\rm mom}=4.63}$,
-$R_{\rm energy}=5.2\times10^{-2}$. The per-cell profile
+$R_{\rm energy}=5.2\times10^{-2}$. The profile over cells
 (Table~\ref{tab:loc}) shows two distinct facts:
 
 \begin{table}[h]\centering\small
-\caption{Per-cell momentum residual of the HD189733b Wind-AE IC. The
+\caption{Momentum residual in each cell of the HD189733b Wind-AE IC. The
 windsoln base radius is $R_{\rm min}\approx1.030\,\Rp$; the convergence
 metric uses only $[j_{\min}:N]$ (here $j_{\min}$ is at $r\approx1.05$).}
 \label{tab:loc}
@@ -148,7 +148,7 @@ PTC / JFNK from the IC &
 
 \section{What was added (gated, working cases byte-identical)}
 \begin{itemize}\itemsep2pt
-  \item \textbf{Per-cell residual dump} --- the \code{ATES\_RESIDUAL=1} path
+  \item \textbf{Residual dump for each cell} --- the \code{ATES\_RESIDUAL=1} path
         writes \code{output/residual\_profile.txt}. The diagnostic that
         localized everything above; kept.
   \item \textbf{\code{Hydrostatic base:} flag} (\code{hydrostatic\_base},

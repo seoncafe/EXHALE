@@ -137,7 +137,7 @@
       ! so the scheme is flux-consistent (the earlier non-conservative
       ! material-advection form was not, which drained He).  n_H is lagged
       ! from the current f_sp; the settling scale height is tiny at the cold
-      ! base so the solve is implicit (unconditionally stable).  Per-cell
+      ! base so the solve is implicit (unconditionally stable).  Cell-by-cell
       ! dt_phys (local-timestepping): the fixed point dn_He/dt=0 is
       ! dt-independent.
       tscale  = R0/v0

@@ -14,7 +14,7 @@ contains
       ! Input/Output variables
       real*8, dimension(1-Ng:N+Ng,3), intent(inout) :: u
       real*8, dimension(1-Ng:N+Ng,3), intent(inout) :: W
-      ! Per-cell pseudo-time steps (uniform = global dt unless
+      ! Cell-by-cell pseudo-time steps (uniform = global dt unless
       ! "Time stepping: Local"; the cell solve below is local anyway).
       real*8, dimension(1-Ng:N+Ng), intent(in) :: dt
       real*8, dimension(1-Ng:N+Ng), intent(in) :: heat
@@ -28,7 +28,7 @@ contains
       real*8, dimension(1-Ng:N+Ng,n_mion) :: nm
       real*8, dimension(1-Ng:N+Ng) :: rchiiB, rcheiiB, rcheiiiB
       real*8, dimension(1-Ng:N+Ng) :: a_ion_HI, a_ion_HeI, a_ion_HeII
-      ! Per-ion metal rates returned by eval_cool but unused here
+      ! Metal rates for each ion returned by eval_cool but unused here
       real*8, dimension(1-Ng:N+Ng,n_mion) :: rec_m, aion_m
       real*8, dimension(1-Ng:N+Ng) :: cool_dim, cool_trial, cool_perturbed
       real*8, dimension(1-Ng:N+Ng) :: F, dF_dT, dC_dT, delta_T
@@ -67,7 +67,7 @@ contains
          nheiTR = 0.0d0
       endif
       ! Metal ion densities in canonical species_table order
-      ! (mion_fsp = [7..18], so nm(:,im) reproduces the per-ion
+      ! (mion_fsp = [7..18], so nm(:,im) reproduces each ion's
       ! rho*f_sp(:,col)*n0 expressions bit-for-bit).
       do im = 1,n_mion
          nm(:,im) = rho*f_sp(:,mion_fsp(im))*n0

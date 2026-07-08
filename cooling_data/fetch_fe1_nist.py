@@ -7,7 +7,7 @@ the two auditable raw inputs:
 
   fe1_nist_lines.tsv   permitted (E1) Fe I lines: Aki, g_i, g_k, E_i, E_k.
                        Fetched over a wide wavelength range, chunked to dodge
-                       any per-query row cap. Forbidden (M1/E2) lines and lines
+                       any row cap for each query. Forbidden (M1/E2) lines and lines
                        with no transition probability are kept in the raw dump
                        but filtered out downstream.
   fe1_nist_levels.tsv  every Fe I level (g, E) for the partition function U(T)

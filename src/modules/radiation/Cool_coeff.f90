@@ -1977,7 +1977,7 @@
 
    !--------------!
 
-   ! Metadata dispatchers: select the per-ion rate routine by the ion's
+   ! Metadata dispatchers: select the rate routine for each ion by the ion's
    ! canonical species_table index (im_* constants). The case lists live
    ! HERE ONLY; the name-keyed versions below delegate through
    ! ion_index_of for any legacy caller. Results are bit-identical to the
@@ -2106,7 +2106,7 @@
 
    !--------------!
 
-   ! Scalar (single-T) mirror of interp_cool_table, used by the per-cell
+   ! Scalar (single-T) mirror of interp_cool_table, used by the cell-by-cell
    ! temperature solve (T_equation) inside the advection post-process. The
    ! algorithm is bit-identical to interp_cool_table so the temperature the
    ! solver converges to is consistent with the cooling eval_cool reports.
@@ -2133,7 +2133,7 @@
    !--------------!
 
    ! Scalar (single T, single ne) mirror of interp_cool_table_2d, for the
-   ! per-cell post-process temperature solve. Bit-identical algorithm to the
+   ! cell-by-cell post-process temperature solve. Bit-identical algorithm to the
    ! vectorized routine so the converged T is consistent with eval_cool.
    double precision function interp_cool_table_2d_scalar(logL2d,Ts,nes)
    real*8, dimension(NCOOLT,NCOOLNE), intent(in) :: logL2d
@@ -2173,7 +2173,7 @@
 
    ! Scalar density-dependent Fe II coefficient Lambda_eff(T,ne) per
    ! (n_e n_FeII): post-process twin of cool_FeII_ne, used by T_equation so
-   ! the converged per-cell T balances the same Fe II cooling eval_cool applies.
+   ! the converged cell-by-cell T balances the same Fe II cooling eval_cool applies.
    double precision function cool_FeII_ne_scalar(Ts,nes)
    real*8, intent(in) :: Ts, nes
    cool_FeII_ne_scalar = interp_cool_table_2d_scalar(cool_logL_FeII_ne, Ts, nes)

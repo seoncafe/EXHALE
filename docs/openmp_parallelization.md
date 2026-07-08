@@ -9,7 +9,7 @@ efficiency._
 Before this change the only `!$omp parallel do` in the code was the
 photoheating / photoionization-rate energy-integral loop in
 `radiation/util_ion_eq.f90`. Everything else — the hydro RK stages, the
-per-cell ionization-equilibrium Newton solves, cooling, charge exchange,
+cell-by-cell ionization-equilibrium Newton solves, cooling, charge exchange,
 temperature, advection — ran serial.
 
 Measured thread scaling (no-metals HD209458b cold IC, steps/s):
@@ -22,7 +22,7 @@ Only ~1.40x from 1->16 threads, nothing beyond 16, and **60 threads is slower
 than 16** (fork/join overhead on a ~500-cell grid). Amdahl back-out => ~70%
 serial. A lightweight phase profiler (env `EXHALE_PROFILE=1`, prints the
 `ioniz_eq` wall-time fraction) showed `ioniz_eq` is **31.7%** of a no-metals
-step but **60.9%** of a full-physics (He 2^3S + metals) step — the per-cell
+step but **60.9%** of a full-physics (He 2^3S + metals) step — the cell-by-cell
 Newton solves dominate the heavy runs.
 
 ## What was changed
@@ -33,14 +33,14 @@ explicit `OMP_NUM_THREADS` is honored as-is; otherwise the default is
 `min(cores, 16)` (the measured knee). Frees cores and is no slower.
 
 ### (1) Parallel ionization-equilibrium cell sweep
-The two per-cell solver loops in `radiation/ionization_equilibrium.f90` are now
+The two solver loops over cells in `radiation/ionization_equilibrium.f90` are now
 `!$omp parallel do` over cells. The sweep is embarrassingly parallel: at
 `count > 0` each cell's Newton warm-start is its **own** previous-step value, so
 cells are independent and the backward loop order is irrelevant. `count == 0`
 runs serial (the `if(count > 0)` clause) because its first-step warm-start reads
 the just-solved neighbour cell.
 
-Thread-safety required making the per-cell scratch and module state per-thread:
+Thread-safety required making the scratch for each cell and the module state thread-local:
 
 - **Global NL scratch** `sys_x, sys_sol, wa, info` (`init/parameters.f90`) made
   `!$omp threadprivate`. Serial regions (setup, post-processing) resolve to the
@@ -48,9 +48,9 @@ Thread-safety required making the per-cell scratch and module state per-thread:
   `ioniz_eq`.
 - **Metal coefficients** `met_*` (`System_HeH_metals.f90`, also `use`d by
   `System_HeH_TR_metals`) made `threadprivate` — they are rebuilt per cell by
-  `set_metal_coeffs`. Lazy per-thread allocation (the existing `if(.not.
+  `set_metal_coeffs`. Lazy allocation for each thread (the existing `if(.not.
   allocated)` guard runs per thread).
-- **Charge exchange** `cx_kc` (per-cell rates) and `cx_metal_base` (the 4<->5
+- **Charge exchange** `cx_kc` (rates in each cell) and `cx_metal_base` (the 4<->5
   row toggle) made `threadprivate`; `cx_set_cell` lazily allocates `cx_kc` per
   thread; `cx_metal_base` is broadcast with `copyin`. The setup-once
   `cx_act / cx_nact` stay shared (read-only during the sweep).
@@ -61,7 +61,7 @@ Thread-safety required making the per-cell scratch and module state per-thread:
 
 The subroutine-local scratch (`params`, `usednt`, `i0`, `top`, `im`, the `meg_*`
 metal-coefficient temporaries) is in the `private` clause; `schedule(dynamic,8)`
-balances the uneven per-cell solve cost.
+balances the uneven cost of solving each cell.
 
 ## Verification (correctness first)
 

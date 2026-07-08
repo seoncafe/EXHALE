@@ -434,7 +434,7 @@ All output is written to `output/` in the run directory.
 | `Ion_species.txt` | Number densities of H I, H II, He I, He II, He III, He 2³S, and the metal ionization stages (33 species; zero columns when a species is off) |
 | `Hydro_ioniz_adv.txt` | Post-processed version of `Hydro_ioniz.txt` (advection-corrected) |
 | `Ion_species_adv.txt` | Post-processed version of `Ion_species.txt` |
-| `Cooling_breakdown.txt` | Per-channel radiative cooling vs. radius |
+| `Cooling_breakdown.txt` | Radiative cooling by channel vs. radius |
 | `Excited_H.txt` | Non-LTE H(n=2) populations (when the Balmer/Ly-alpha physics is on) |
 
 Every file starts with a `# columns ...` schema header, so analysis tools
@@ -561,4 +561,4 @@ See `examples/README.md` for the exact lines each one adds:
 
 ---
 
-Last updated: 2026-07-07 22:45
+Last updated: 2026-07-08 11:08

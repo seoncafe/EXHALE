@@ -21,7 +21,7 @@
       real*8,  intent(in)    :: y(ne, wae_m)
       if (k .eq. k1) then
          call set_bcs_base(s, y, ne, indexv, jsf)
-         call wae_linearize_dvdr_crit(x, y, wae_m, ne)  ! once-per-iter
+         call wae_linearize_dvdr_crit(x, y, wae_m, ne)  ! once per iter
       else if (k .gt. k2) then
          call set_bcs_sp(s, y, ne, indexv, jsf)
       else
