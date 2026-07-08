@@ -12,10 +12,15 @@ cd examples/03_newton
 OMP_NUM_THREADS=8 ../../EXHALE.x
 ```
 
-Outputs land in the folder's own `output/`. The folders differ from the
-baseline `01_legacy_marching/input.inp` only by the lines quoted below
-(`diff 01_legacy_marching/input.inp <other>/input.inp` shows exactly what
-each option adds). See the user manual (`docs/EXHALE_user_manual.pdf`)
+Outputs land in the folder's own `output/`. In the table below the **Added /
+changed lines** are relative to each example's natural base, not always `01`:
+the legacy `01_legacy_marching/input.inp` for the solver examples `02`–`04`
+(and the Wind-AE `11`/`12`), and the recommended-solver `03_newton/input.inp`
+(two-stage `PLM+WENO3` + `Solver: Newton`) for the physics examples `05`–`10`,
+which all inherit that solver and add only their signature option on top. So
+`diff 03_newton/input.inp 05_metals/input.inp` shows exactly what the metals
+add, while `diff 01_legacy_marching/input.inp 03_newton/input.inp` shows the
+solver progression. See the user manual (`docs/EXHALE_user_manual.pdf`)
 Sect. "Worked examples" for the corresponding table, and Sect. 2 for what
 each option does.
 

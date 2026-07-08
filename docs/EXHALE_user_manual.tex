@@ -1386,10 +1386,15 @@ use HD209458b (where the Wind-AE warm start, diffusion and molecular-chemistry
 options are validated), and \texttt{13} spans four planets. Each folder is
 self-contained: \texttt{cd} into it and run the repo-root binary
 (\texttt{../../EXHALE.x}); outputs land in the folder's own \texttt{output/}.
-Every HD189733b folder differs from the baseline
-\texttt{01\_legacy\_marching/input.inp} only by the lines listed in
-Table~\ref{tab:exinputs} (so \texttt{diff} against the baseline shows exactly
-what an option adds); all configurations have been smoke-tested.
+The ``Added / changed lines'' column of Table~\ref{tab:exinputs} is relative
+to each example's natural base: the legacy
+\texttt{01\_legacy\_marching/input.inp} for the solver examples
+\texttt{02}--\texttt{04} (and Wind-AE \texttt{11}/\texttt{12}), and the
+recommended-solver \texttt{03\_newton/input.inp} (two-stage
+\texttt{PLM+WENO3}\,$+$\,\texttt{Solver: Newton}) for the physics examples
+\texttt{05}--\texttt{10}, which all inherit that solver and add only their
+signature option on top. A \texttt{diff} against the appropriate base shows
+exactly what an option adds; all configurations have been smoke-tested.
 \texttt{11\_windae\_ic} (HD189733b) exercises the self-consistent-BC
 continuation: its Wind-AE ramp converges and writes the IC, though EXHALE's own
 time-integration of HD189733b is limited by a separate base-breathing
