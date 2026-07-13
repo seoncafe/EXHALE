@@ -16,8 +16,13 @@ echo ' https://github.com/seoncafe/EXHALE'
 
 #------- Directories -------#
 
+# Resolve the project root from this script's own location so the script works
+# regardless of the directory it is invoked from, then run from there.
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+cd "$SCRIPT_DIR" || exit 1
+
 # Main program directory
-DIR_MAIN="$(pwd)"
+DIR_MAIN="$SCRIPT_DIR"
 
 # Source / utilities directories
 DIR_SRC="$DIR_MAIN/src"

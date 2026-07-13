@@ -194,7 +194,9 @@ A model run consists of:
 \subsection{Requirements}
 A Fortran compiler (\texttt{gfortran} by default; Intel \texttt{ifort}/\texttt{ifx}
 supported), \texttt{make}, and --- for the GUI and analysis --- Python~3 with
-\texttt{tkinter}, \texttt{numpy}, \texttt{scipy}, and \texttt{matplotlib}.
+\texttt{tkinter}, \texttt{numpy}, \texttt{scipy}, \texttt{matplotlib}, and
+\texttt{astropy} (the last is used by \texttt{EXHALE\_transit.py} for
+\texttt{astropy.convolution}).
 
 \subsection{Build}
 \texttt{EXHALE} uses an incremental \texttt{Makefile}; module dependencies

@@ -952,6 +952,7 @@ def resonance_depth(lam0_A, f_osc, A21, mass, n_lower, instr_res,
 	lam0   = lam0_A*1e-10
 	nu0    = c_light/lam0
 	l_onde = np.linspace((lam0_A-half_A)*1e-10, (lam0_A+half_A)*1e-10, nlam)
+	nu_l   = c_light/l_onde
 	exp_tau = np.zeros((Grid_Number, nlam))
 	for p in range(Grid_Number):
 		r_temp = r_grid[p]*Rp
@@ -964,11 +965,13 @@ def resonance_depth(lam0_A, f_osc, A21, mass, n_lower, instr_res,
 		n_lo   = n_lower[arg]
 		Dnu    = nu0*v_th/c_light
 		a_v    = A21/(4.0*np.pi*Dnu)
-		for li, lam in enumerate(l_onde):
-			X     = (c_light/lam - nu0)/Dnu
-			Voigt = f_osc*Fadd_const/Dnu*wofz(X - v_x/v_th + 1j*a_v).real
-			I     = n_lo*Voigt
-			exp_tau[p, li] = np.exp(-np.sum(dx/2.0*(I[:-1] + I[1:])))
+		# Vectorized over wavelength: line-of-sight on axis 0, wavelength on axis 1.
+		X     = (nu_l[None, :] - nu0)/Dnu[:, None]
+		Voigt = f_osc*Fadd_const/Dnu[:, None] \
+		        * wofz(X - (v_x/v_th)[:, None] + 1j*a_v[:, None]).real
+		I     = n_lo[:, None]*Voigt
+		exp_tau[p, :] = np.exp(-np.sum(dx[:, None]/2.0
+		                               * (I[:-1, :] + I[1:, :]), axis=0))
 	prob_tot = np.array([np.trapz(x=r_grid, y=2.0*exp_tau[:, li]*r_grid)
 	                     *A_planet/(A_atm - A_planet) for li in range(nlam)])
 	avg = ((A_star - A_atm) + (A_atm - A_planet)*prob_tot)/A_star

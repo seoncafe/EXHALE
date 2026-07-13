@@ -45,8 +45,15 @@ else
 endif
 
 # LAPACK (banded LU dgbtrf/dgbtrs) for the steady-state Newton/PTC solver.
-# Override with e.g.  make LDLIBS='-L/path -llapack -lblas'
-LDLIBS ?= -llapack
+#
+# ABI caveat: a system-provided LAPACK may have been built against an older
+# libgfortran runtime (e.g. libgfortran.so.4) than the one this build uses
+# (libgfortran.so.5). The linker then warns and the mismatch is a runtime
+# ABI risk. For production, link a LAPACK/BLAS built with the same compiler
+# runtime and point at it without editing this file, e.g.
+#     make LAPACK_LIBS='-L/path -llapack -lblas'
+LAPACK_LIBS ?= -llapack
+LDLIBS ?= $(LAPACK_LIBS)
 
 # ---- source list (canonical build order, mirrors run_EXHALE.sh) -------
 SRC := \
@@ -152,9 +159,19 @@ FLAGHASH   := $(firstword $(shell printf '%s' '$(BUILDFLAGS)' | cksum))
 FLAGSTAMP  := $(OBJDIR)/.buildflags-$(FLAGHASH)
 
 # ---------------------------------------------------------------------
-.PHONY: all clean distclean ifort ifx wind_ae_ic
+.PHONY: all clean distclean ifort ifx wind_ae_ic check
 all: $(EXE)
 wind_ae_ic: $(WAE_EXE)
+
+# Byte-identical regression harness: rebuilds and re-runs the wasp_full /
+# wasp_he23off cases single-thread, comparing against refreshed goldens.
+# Non-fatal when the harness is absent (e.g. a checkout without backup/).
+check: $(EXE)
+	@if [ -x backup/regression/run_check.sh ]; then \
+	   backup/regression/run_check.sh check ; \
+	 else \
+	   echo "regression harness not found (backup/regression/run_check.sh)"; \
+	 fi
 
 $(EXE): $(OBJ)
 	$(FC) $(FFLAGS) $(MODFLAG) $(OBJ) -o $@ $(LDLIBS)

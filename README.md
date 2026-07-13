@@ -65,7 +65,7 @@ A task-oriented quick reference ("how do I run X?") is
 | Component | Version |
 |-----------|---------|
 | Fortran compiler | `gfortran` >= 9.3 or `ifort`/`ifx` >= 2021 |
-| Python 3 | >= 3.8; packages: `numpy`, `scipy`, `matplotlib`, `tkinter` |
+| Python 3 | >= 3.8; packages: `numpy`, `scipy`, `matplotlib`, `tkinter`, `astropy` (`astropy` is used by `EXHALE_transit.py` for `astropy.convolution`) |
 | MINPACK | included in `src/modules/nonlinear_system_solver/` |
 
 ---
