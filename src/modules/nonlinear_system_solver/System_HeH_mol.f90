@@ -33,7 +33,39 @@
 
 	implicit none
 
+	! Molecular rate coefficients, invariant across a cell's Newton solve
+	! (depend only on T and n_tot). Computed once per cell by set_mol_coeffs
+	! and read by the residual, mirroring set_metal_coeffs / cx_set_cell.
+	real*8, save :: mk5,mk6,mk7,mk8,mk9,mk10,mk11,mk12,mk13,mk14,mk15
+	real*8, save :: mk16,mk17,mk18,mk19,mk20,mk23
+	!$omp threadprivate(mk5,mk6,mk7,mk8,mk9,mk10,mk11,mk12,mk13,mk14,mk15, &
+	!$omp                mk16,mk17,mk18,mk19,mk20,mk23)
+
 	contains
+
+	! Compute the molecular rate coefficients that are invariant across a
+	! cell's Newton solve (they depend only on T and n_tot). Called once per
+	! cell from ioniz_eq before hybrd1, like set_metal_coeffs / cx_set_cell.
+	subroutine set_mol_coeffs(T, ntot)
+	real*8, intent(in) :: T, ntot
+	mk5  = rk_R5_H2p_dr(T)
+	mk6  = rk_R6_H3p_dr_H2(T)
+	mk7  = rk_R7_H3p_dr_3H(T)
+	mk8  = rk_R8_H2p_H2()
+	mk9  = rk_R9_H2p_H()
+	mk10 = rk_R10_Hp_H2v4(T)
+	mk11 = rk_R11_H3p_H(T)
+	mk12 = rk_R12_H2_thdis(T)
+	mk13 = rk_R13_Hp_H2_M(ntot)
+	mk14 = rk_R14_H2_edis(T)
+	mk15 = rk_R15_3body_H2(T, ntot)
+	mk16 = rk_R16_HeHp_dr(T)
+	mk17 = rk_R17_Hep_H2_diss(T)
+	mk18 = rk_R18_HeHp_H2()
+	mk19 = rk_R19_HeHp_H()
+	mk20 = rk_R20_Hep_H2_HeHp()
+	mk23 = rk_R23_H2_Hep_cx()
+	end subroutine set_mol_coeffs
 
 	subroutine ion_system_HeH_mol(Neq,x,fvec,iflag,params)
 
@@ -92,24 +124,25 @@
 	! Electron density (each molecular ion carries +1)
 	n_e = n_hii + n_h2p + n_h3p + n_hehp + n_heii + 2.0d0*n_heiii
 
-	! Rate coefficients (mol_rates; T also serves as Te)
-	k5  = rk_R5_H2p_dr(T)
-	k6  = rk_R6_H3p_dr_H2(T)
-	k7  = rk_R7_H3p_dr_3H(T)
-	k8  = rk_R8_H2p_H2()
-	k9  = rk_R9_H2p_H()
-	k10 = rk_R10_Hp_H2v4(T)
-	k11 = rk_R11_H3p_H(T)
-	k12 = rk_R12_H2_thdis(T)
-	k13 = rk_R13_Hp_H2_M(ntot)
-	k14 = rk_R14_H2_edis(T)
-	k15 = rk_R15_3body_H2(T, ntot)
-	k16 = rk_R16_HeHp_dr(T)
-	k17 = rk_R17_Hep_H2_diss(T)
-	k18 = rk_R18_HeHp_H2()
-	k19 = rk_R19_HeHp_H()
-	k20 = rk_R20_Hep_H2_HeHp()
-	k23 = rk_R23_H2_Hep_cx()
+	! Rate coefficients hoisted once per cell into module state by
+	! set_mol_coeffs (they depend only on T and n_tot); read here.
+	k5  = mk5
+	k6  = mk6
+	k7  = mk7
+	k8  = mk8
+	k9  = mk9
+	k10 = mk10
+	k11 = mk11
+	k12 = mk12
+	k13 = mk13
+	k14 = mk14
+	k15 = mk15
+	k16 = mk16
+	k17 = mk17
+	k18 = mk18
+	k19 = mk19
+	k20 = mk20
+	k23 = mk23
 
 	! (1) H+ balance
 	fvec(1) = (g_hi + b_hi*n_e)*n_hi                                  &

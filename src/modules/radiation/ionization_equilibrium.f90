@@ -351,6 +351,10 @@
 				params(19) = P_H2(j)
 				params(20) = T_K(j)
 				params(21) = n_in_dim(j)      ! M for the 3-body rates
+				! Compute the molecular rate coefficients that are invariant
+				! across this cell's Newton solve (they depend only on T and
+				! n_tot); the residual then reads them, like set_metal_coeffs.
+				call set_mol_coeffs(T_K(j), n_in_dim(j))
 			endif
 
 			! Each element's metal coefficients are handed to
