@@ -52,6 +52,30 @@
       integer :: nfix_base = 0
       real*8, allocatable :: Yfix_base(:)
 
+      ! Explicit interfaces for the external LAPACK banded-LU routines used by
+      ! the direct/preconditioned Newton solves below (double-precision,
+      ! general band form). The array dummies are assumed-size so that the
+      ! call sites, which pass the right-hand side as a rank-1 vector
+      ! (nrhs = 1), match without any argument change; this only gives the
+      ! compiler kind/rank/intent information and does not alter the call.
+      interface
+         subroutine dgbtrf(m, n, kl, ku, ab, ldab, ipiv, info)
+            integer,          intent(in)    :: m, n, kl, ku, ldab
+            real*8,           intent(inout) :: ab(ldab,*)
+            integer,          intent(out)   :: ipiv(*)
+            integer,          intent(out)   :: info
+         end subroutine dgbtrf
+
+         subroutine dgbtrs(trans, n, kl, ku, nrhs, ab, ldab, ipiv, b, ldb, info)
+            character(1),     intent(in)    :: trans
+            integer,          intent(in)    :: n, kl, ku, nrhs, ldab, ldb
+            real*8,           intent(in)    :: ab(ldab,*)
+            integer,          intent(in)    :: ipiv(*)
+            real*8,           intent(inout) :: b(*)
+            integer,          intent(out)   :: info
+         end subroutine dgbtrs
+      end interface
+
       contains
 
       ! ------------------------------------------------------!
@@ -401,7 +425,6 @@
       real*8, dimension(1-Ng:N+Ng,n_species)  :: f_sp_j
       real*8  :: rnorm, rnorm_try, rc(3), dtau, lam, f2, f2_try
       logical :: ok
-      external :: dgbtrf, dgbtrs
 
       neq  = 3*N
       ldab = 2*kl_jac + ku_jac + 1
@@ -534,7 +557,6 @@
       real*8, allocatable :: V(:,:), Hs(:,:), gg(:), cs(:), sn(:), yy(:)
       real*8, allocatable :: z(:), w(:), u(:)
       real*8 :: beta, hij, nrm, denom, tmp
-      external :: dgbtrs
 
       neq = 3*N
       allocate(V(neq,m+1), Hs(m+1,m), gg(m+1), cs(m), sn(m), yy(m))
@@ -638,7 +660,6 @@
       integer :: nstuck
       logical :: ok
       real*8, allocatable :: Ybest(:)
-      external :: dgbtrf
 
       neq  = 3*N
       ldab = 2*kl_jac + ku_jac + 1
