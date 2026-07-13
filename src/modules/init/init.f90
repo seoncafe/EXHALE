@@ -29,7 +29,7 @@
       character(len=32) :: omp_env
       real*8, dimension(1-Ng:N+Ng)   :: rho,v,p,T
       real*8, dimension(1-Ng:N+Ng,n_species),intent(out) :: f_sp
-      real*8, dimension(1-Ng:N+Ng,3),intent(out) :: W,u    
+      real*8, dimension(3,1-Ng:N+Ng),intent(out) :: W,u
       
       write(*,*) '(init.f90) Initializing the simulation..'
 

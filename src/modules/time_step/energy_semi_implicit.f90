@@ -12,8 +12,8 @@ contains
 
    subroutine solve_energy_semi_implicit(u, W, dt, heat, cool, f_sp)
       ! Input/Output variables
-      real*8, dimension(1-Ng:N+Ng,3), intent(inout) :: u
-      real*8, dimension(1-Ng:N+Ng,3), intent(inout) :: W
+      real*8, dimension(3,1-Ng:N+Ng), intent(inout) :: u
+      real*8, dimension(3,1-Ng:N+Ng), intent(inout) :: W
       ! Cell-by-cell pseudo-time steps (uniform = global dt unless
       ! "Time stepping: Local"; the cell solve below is local anyway).
       real*8, dimension(1-Ng:N+Ng), intent(in) :: dt
@@ -44,9 +44,9 @@ contains
       zero_arr = 0.0d0
 
       ! Extract primitive variables
-      rho = W(:,1)
-      v   = W(:,2)
-      p   = W(:,3)
+      rho = W(1,:)
+      v   = W(2,:)
+      p   = W(3,:)
 
       ! Dimensional species densities (n0 is the density normalization)
       nhi  = rho*f_sp(:,isp_HI)*n0
@@ -157,8 +157,8 @@ contains
 
       ! Update the primitive pressure and conservative energy density
       p = (n_tot_ad + ne_ad) * T_trial
-      W(:,3) = p
-      u(:,3) = 0.5d0 * rho * v**2.0 + p / (g - 1.0d0)
+      W(3,:) = p
+      u(3,:) = 0.5d0 * rho * v**2.0 + p / (g - 1.0d0)
 
       ! Set the output cool array (adimensional)
       cool = cool_trial

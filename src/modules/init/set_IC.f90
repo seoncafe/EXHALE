@@ -24,7 +24,7 @@
 	! while the density is the (stable, balanced) cold hydrostatic profile.
 	real*8, dimension(1-Ng:N+Ng) :: rho_p, v_p
 	real*8 :: swin
-	real*8, dimension(1-Ng:N+Ng,3), intent(out) :: W
+	real*8, dimension(3,1-Ng:N+Ng), intent(out) :: W
 	real*8, dimension(1-Ng:N+Ng),   intent(out) :: T
 	real*8, dimension(1-Ng:N+Ng,n_species), intent(out) :: f_sp
 
@@ -73,7 +73,7 @@
 		write(*,*)
 	else if (transonic_ic) then
 		c2 = (ntot_bc + dp_bc)/rho_bc
-		call wind_profile(W(:,1), W(:,2), c2, wind_ok)
+		call wind_profile(W(1,:), W(2,:), c2, wind_ok)
 		if (wind_ok) then
 			write(*,*) '   (set_IC.f90) Using transonic isothermal-wind IC'
 			write(*,*)
@@ -90,13 +90,13 @@
 		! Density (isothermal hydrostatic)
 		b0_eff = 1.0d0	! Change if the planet b0 is too low - only for IC
 		do
-			W(:,1) = (/ (rho_bc*exp(b0_eff*(-Gphi_c(j) + Gphi_c(0))), 	&
+			W(1,:) = (/ (rho_bc*exp(b0_eff*(-Gphi_c(j) + Gphi_c(0))), 	&
 					j = 1-Ng,N+Ng) /)
 
 			! Calculate minimum of density profile
 			r_half = 0.5e0*(r_max + 1.0e0)
 			i_rhalf = minloc(abs(r-r_half), dim = 1)
-			minrho = W(i_rhalf,1)
+			minrho = W(1,i_rhalf)
 
 			if (minrho .gt. 1.0e-8) then
 				b0_eff = b0_eff + 0.2
@@ -111,11 +111,11 @@
 		write(*,*)
 
 		! Velocity: small linear seed (default), or the Parker head-start (hot-Parker)
-		W(:,2) = 0.5*(r-r(0))
+		W(2,:) = 0.5*(r-r(0))
 	endif
 
 	! Fix density in outer layers
-	where (W(:,1).lt.(1.0e-8)) W(:,1) = 1.0e-8
+	where (W(1,:).lt.(1.0e-8)) W(1,:) = 1.0e-8
 
 	if (hot_parker_ic) then
 		! Warm-seed overlay on the hydrostatic density. xi is a spatial smoothstep
@@ -131,9 +131,9 @@
 	do j = 1-Ng, N+Ng
 			swin = min(max((r(j) - 1.0d0)/(hp_base_rtr - 1.0d0), 0.0d0), 1.0d0)
 			xi   = swin*swin*(3.0d0 - 2.0d0*swin)               ! smoothstep window
-			W(j,2) = v_p(j) * swin                              ! Parker velocity head-start, 0 at base
+			W(2,j) = v_p(j) * swin                              ! Parker velocity head-start, 0 at base
 			T(j)   = 1.0d0 + (T_wind_ic/T0 - 1.0d0)*xi
-			W(j,3) = W(j,1)*((ntot_bc + dp_bc)/rho_bc)*T(j)*(1.0d0 + xi)
+			W(3,j) = W(1,j)*((ntot_bc + dp_bc)/rho_bc)*T(j)*(1.0d0 + xi)
 			f_sp(j,isp_HI)    = (1.0d0 - (dp_bc + (1.0d0-dp_bc)*xi))/mass_per_H
 			f_sp(j,isp_HII)   = (dp_bc + (1.0d0-dp_bc)*xi)/mass_per_H
 			f_sp(j,isp_HeI)   = HeH*(1.0d0 - xi)/mass_per_H
@@ -144,7 +144,7 @@
 	else
 		! Pressure (= rho * c_iso^2, isothermal; consistent with the base BC,
 		!  where p_base = ntot_bc + dp_bc and rho_base = rho_bc)
-		W(:,3) = (ntot_bc + dp_bc)*W(:,1)/rho_bc
+		W(3,:) = (ntot_bc + dp_bc)*W(1,:)/rho_bc
 		! Temperature
 		T = 1.0
 		! Ionized fractions (mostly neutral)
@@ -175,7 +175,7 @@
 	open(unit = 77, file = 'output/IC_dump.txt', status = 'replace')
 	write(77,'(A)') '# r[R_p]        n[cm-3]        v[cm/s]         p[cgs]          T[K]'
 	do j = 1-Ng, N+Ng
-		write(77,'(5(ES15.6,1X))') r(j), W(j,1)*n0, W(j,2)*v0, W(j,3)*p0, T(j)*T0
+		write(77,'(5(ES15.6,1X))') r(j), W(1,j)*n0, W(2,j)*v0, W(3,j)*p0, T(j)*T0
 	enddo
 	close(77)
 

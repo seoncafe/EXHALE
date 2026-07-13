@@ -11,8 +11,8 @@
    subroutine Apply_BC(u)
    ! Boundary conditions for conservative variables (in place)
 
-   real*8, intent(inout) :: u(1-Ng:N+Ng,3)
-   real*8 :: W(1-Ng:N+Ng,3)
+   real*8, intent(inout) :: u(3,1-Ng:N+Ng)
+   real*8 :: W(3,1-Ng:N+Ng)
 
    ! Convert to primitive variables
    call U_to_W(u,W)
@@ -32,25 +32,25 @@
    ! Component-wise BC in case of zero-velocity gradient
    !     at the lower boundary
 
-   real*8, intent(inout)  :: W_in(1-Ng:N+Ng,3)
+   real*8, intent(inout)  :: W_in(3,1-Ng:N+Ng)
    integer, intent(in)    :: index
 
    ! Density: always the base anchor rho_bc (the mass reservoir).
-   W_in(index,1) = rho_bc
+   W_in(1,index) = rho_bc
    ! Velocity. base_v_massflux: CETIMB-style v0 = F_c/(rho_bc r^2) with F_c the
    ! mass-flux constant from the [j_min:N] constant-momentum region (NOT the
    ! base, where rho*v*r^2 is not yet flat). Else the legacy one-way valve.
    if (base_v_massflux .and. base_flux_const .gt. 0.0d0) then
-      W_in(index,2) = base_flux_const/(rho_bc*r(index)**2)
+      W_in(2,index) = base_flux_const/(rho_bc*r(index)**2)
    else if (valve_eps .gt. 0.0d0) then
       ! Smooth one-way valve 0.5*(v + sqrt(v^2 + eps^2)): differentiable at
       ! v=0, -> 0 as v -> -inf, -> v for v >> eps (bias +eps/2 only near
       ! v ~ 0). Needed by the steady-state Newton solver, whose line search
       ! cannot cross the hard-max kink the breathing base sits on.
-      W_in(index,2) = 0.5d0*(W_in(1,2)                                   &
-                      + sqrt(W_in(1,2)**2 + valve_eps**2))
+      W_in(2,index) = 0.5d0*(W_in(2,1)                                   &
+                      + sqrt(W_in(2,1)**2 + valve_eps**2))
    else
-      W_in(index,2) = max(W_in(1,2),0.0)
+      W_in(2,index) = max(W_in(2,1),0.0)
    endif
    ! Pressure. Legacy: fixed ntot_bc + dp_bc (-> T = T0 isothermal base).
    ! hydrostatic_base (momentum-consistent): extrapolate the interior pressure
@@ -59,10 +59,10 @@
    ! balance gravity (the source of the breathing momentum residual). With
    ! rho pinned to rho_bc, T_base floats slightly off T0.
    if (hydrostatic_base) then
-      W_in(index,3) = W_in(1,3) + (W_in(2,3) - W_in(1,3))                 &
+      W_in(3,index) = W_in(3,1) + (W_in(3,2) - W_in(3,1))                 &
                       /(r(2) - r(1))*(r(index) - r(1))
    else
-      W_in(index,3) = ntot_bc + dp_bc
+      W_in(3,index) = ntot_bc + dp_bc
    endif
 
    ! End of subroutine
@@ -73,7 +73,7 @@
    subroutine Apply_BC_W(W)
    ! Boundary conditions for primitive variables (in place)
 
-   real*8, intent(inout) :: W(1-Ng:N+Ng,3)
+   real*8, intent(inout) :: W(3,1-Ng:N+Ng)
    integer :: k
 
    ! BC with constant rho at lower boundary
@@ -83,8 +83,8 @@
 
    do k = 1,Ng
       ! Upper boundary
-      W(N+k,:) = W(N,:)
-      if (use_weno3) W(N+k,:) = 2.0*W(N+k-1,:) - W(N+k-2,:)
+      W(:,N+k) = W(:,N)
+      if (use_weno3) W(:,N+k) = 2.0*W(:,N+k-1) - W(:,N+k-2)
    enddo
 
    ! End of subroutine
@@ -95,9 +95,9 @@
    subroutine Rec_BC(WL_in,WR_in,WL_out,WR_out)
    ! Boundary conditions for reconstructed variables
 
-   real*8, dimension(1-Ng:N+Ng,3), intent(in) :: WL_in, WR_in
+   real*8, dimension(3,1-Ng:N+Ng), intent(in) :: WL_in, WR_in
    integer :: k
-   real*8, dimension(1-Ng:N+Ng,3), intent(out) :: WL_out, WR_out
+   real*8, dimension(3,1-Ng:N+Ng), intent(out) :: WL_out, WR_out
    
    WL_out = WL_in
    WR_out = WR_in
@@ -112,12 +112,12 @@
          
    ! Upper boundary
    do k = 1,Ng
-      WR_out(N+k,:) = WR_out(N,:)
-      if (use_weno3) WR_out(N+k,:) = 2.0*WR_out(N+k-1,:) - WR_out(N+k-2,:)
+      WR_out(:,N+k) = WR_out(:,N)
+      if (use_weno3) WR_out(:,N+k) = 2.0*WR_out(:,N+k-1) - WR_out(:,N+k-2)
    enddo
    
-   WL_out(N+2,:) = WL_out(N+1,:)
-   if (use_weno3) WL_out(N+2,:) = 2.0*WL_out(N+1,:) - WL_out(N,:)
+   WL_out(:,N+2) = WL_out(:,N+1)
+   if (use_weno3) WL_out(:,N+2) = 2.0*WL_out(:,N+1) - WL_out(:,N)
 
    ! End of subroutine
    end subroutine Rec_BC
@@ -130,15 +130,15 @@
    ! the way CETIMB (Koskinen et al. 2013a) does. No-op if shapiro_eps <= 0.
    ! Caller must Apply_BC before (ghosts j=0, N+1 are used) and after (to reset
    ! the ghosts to their BC values).
-   real*8, intent(inout) :: u(1-Ng:N+Ng,3)
-   real*8 :: f(1-Ng:N+Ng,3)
+   real*8, intent(inout) :: u(3,1-Ng:N+Ng)
+   real*8 :: f(3,1-Ng:N+Ng)
    integer :: j, k
    if (shapiro_eps .le. 0.0d0) return
    f = u
    do k = 1,3
       do j = 1,N
-         u(j,k) = f(j,k) + 0.25d0*shapiro_eps                            &
-                  *(f(j-1,k) - 2.0d0*f(j,k) + f(j+1,k))
+         u(k,j) = f(k,j) + 0.25d0*shapiro_eps                            &
+                  *(f(k,j-1) - 2.0d0*f(k,j) + f(k,j+1))
       enddo
    enddo
    end subroutine shapiro_filter

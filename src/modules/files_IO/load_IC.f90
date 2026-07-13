@@ -44,7 +44,7 @@
       ! Output variables
       real*8, dimension(1-Ng:N+Ng),   intent(out) :: rho,v,p,T
       real*8, dimension(1-Ng:N+Ng,n_species), intent(out) :: f_sp
-      real*8, dimension(1-Ng:N+Ng,3), intent(out) :: W
+      real*8, dimension(3,1-Ng:N+Ng), intent(out) :: W
 
 
 	   !-------------------------------------!
@@ -158,9 +158,9 @@
       enddo
 
       ! Construct matrix of primitive profiles
-      W(:,1) = rho
-      W(:,2) = v
-      W(:,3) = p
+      W(1,:) = rho
+      W(2,:) = v
+      W(3,:) = p
 
       ! End of subroutine
       end subroutine load_IC

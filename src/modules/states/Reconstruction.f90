@@ -17,12 +17,12 @@
       subroutine Reconstruct(u_in,WL_out,WR_out) 
       
       integer :: j,k
-      real*8, dimension(1-Ng:N+Ng,3), intent(in) :: u_in
-      real*8, dimension(1-Ng:N+Ng,3) :: WL,WR
-      real*8, dimension(1-Ng:N+Ng,3), intent(out) :: WL_out, WR_out
+      real*8, dimension(3,1-Ng:N+Ng), intent(in) :: u_in
+      real*8, dimension(3,1-Ng:N+Ng) :: WL,WR
+      real*8, dimension(3,1-Ng:N+Ng), intent(out) :: WL_out, WR_out
 
       ! ESWENO3 variables
-      real*8, dimension(1-Ng:N+Ng,3) :: W,dW
+      real*8, dimension(3,1-Ng:N+Ng) :: W,dW
       real*8, dimension(3) :: dWp,dWm
       real*8, dimension(3) :: b0,b1
       real*8, dimension(3) :: tau
@@ -47,8 +47,8 @@
             call U_to_W(u_in,W)
          
             ! Evaluate jumps at interfaces
-            dW(1-Ng:N+Ng-1,:) = W(2-Ng:N+Ng,:) - W(1-Ng:N+Ng-1,:)
-            dW(N+Ng,:) = 0.0
+            dW(:,1-Ng:N+Ng-1) = W(:,2-Ng:N+Ng) - W(:,1-Ng:N+Ng-1)
+            dW(:,N+Ng) = 0.0
             
             ! Calculate cell volumes
             do j = 0, N+1			
@@ -80,8 +80,8 @@
             endif
             do j = 0,N+1
 
-               dWp = dW(j,:)
-               dWm = dW(j-1,:)
+               dWp = dW(:,j)
+               dWm = dW(:,j-1)
 
                if (weno_mode .eq. 2) then
                   S0 = S0sav(j,:)
@@ -100,11 +100,11 @@
                   endif
                endif
 
-               WL(j,:) = W(j,:)	&
+               WL(:,j) = W(:,j)	&
                   + (S0*C1(j)*dWp + D1(j)*S1*C1(j-1)*dWm) &
                   /(S0 + D1(j)*S1)
                
-               WR(j-1,:) = W(j,:)  &
+               WR(:,j-1) = W(:,j)  &
                   - (D2(j)*S0*C2(j)*dWp + S1*C2(j-1)*dWm) &
                   /(D2(j)*S0 + S1)
             enddo

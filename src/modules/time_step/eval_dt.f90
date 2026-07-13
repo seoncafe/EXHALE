@@ -15,15 +15,15 @@
    !          fixed point dF = S, heating = cooling is dt-independent);
    !          otherwise dt_loc is uniformly the global dt, which makes the
    !          update arithmetic bit-identical to the original scalar form.
-   real*8, dimension(1-Ng:N+Ng,3), intent(in) :: W
+   real*8, dimension(3,1-Ng:N+Ng), intent(in) :: W
    real*8, dimension(1-Ng:N+Ng) :: rho,v,p,cs
    real*8, intent(out) :: dt
    real*8, dimension(1-Ng:N+Ng), intent(out) :: dt_loc
 
    ! Extract physical variables
-   rho = W(:,1)
-   v   = W(:,2)
-   p   = W(:,3)
+   rho = W(1,:)
+   v   = W(2,:)
+   p   = W(3,:)
 
    ! Evaluate sound speed
    cs = sqrt(g*p/rho)

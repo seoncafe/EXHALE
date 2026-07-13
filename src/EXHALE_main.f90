@@ -42,7 +42,7 @@
       logical :: is_level_stable
 
       ! Residual-based convergence monitor (Resid tol option)
-      real*8, dimension(1-Ng:N+Ng,3) :: Rres
+      real*8, dimension(3,1-Ng:N+Ng) :: Rres
       real*8  :: resid_c(3), resid_cv(3), resid_max, flux_spread
       logical :: is_resid_ok
 
@@ -121,11 +121,11 @@
       real*8, dimension(1-Ng:N+Ng,n_species) :: f_sp  ! 1-6: H/He(+HeITR), 7-9: CI/II/III, 10-12: OI/II/III, 13-15: NI/II/III, 16-18: MgI/II/III
        
       ! Conservative and primitive vectors
-      real*8, dimension(1-Ng:N+Ng,3) :: u,u1,u2,u_old
-      real*8, dimension(1-Ng:N+Ng,3) :: W,WL,WR
+      real*8, dimension(3,1-Ng:N+Ng) :: u,u1,u2,u_old
+      real*8, dimension(3,1-Ng:N+Ng) :: W,WL,WR
           
       ! Flux and source vectors
-      real*8, dimension(1-Ng:N+Ng,3) :: dF,S
+      real*8, dimension(3,1-Ng:N+Ng) :: dF,S
       
       !------------------------------------------------! 
       
@@ -177,9 +177,9 @@
       ! equilibrium solve re-equilibrates the species fractions.
       call get_environment_variable('EXHALE_DUMP_IC', diag_env)
       if (trim(diag_env) .eq. '1') then
-         rho = W(:,1)
-         v   = W(:,2)
-         p   = W(:,3)
+         rho = W(1,:)
+         v   = W(2,:)
+         p   = W(3,:)
          call get_species_densities(rho,f_sp,nhi,nhii,nhei,nheii,      &
                                     nheiii,nheiTR,nm,ne,n_tot)
          call comp_T_from_p(p,n_tot,ne,T)
@@ -205,7 +205,7 @@
          ! (ghosts set by BC), matching the Newton residual F(Y) definition.
          call Apply_BC(u)
          call U_to_W(u,W)
-         rho = W(:,1);  v = W(:,2);  p = W(:,3)
+         rho = W(1,:);  v = W(2,:);  p = W(3,:)
          call get_species_densities(rho,f_sp,nhi,nhii,nhei,nheii,      &
                                     nheiii,nheiTR,nm,ne,n_tot)
          call comp_T_from_p(p,n_tot,ne,T)
@@ -221,8 +221,8 @@
            write(uu,'(A)') '# r[Rp]  n[cm-3]  v[cm/s]  T[K]  '//           &
                 'R_mass  R_mom  R_energy'
            do jj = 1, N
-              write(uu,'(1X,7(ES16.8,1X))') r(jj), W(jj,1)*n0, W(jj,2)*v0, &
-                   T(jj)*T0, Rres(jj,1), Rres(jj,2), Rres(jj,3)
+              write(uu,'(1X,7(ES16.8,1X))') r(jj), W(1,jj)*n0, W(2,jj)*v0, &
+                   T(jj)*T0, Rres(1,jj), Rres(2,jj), Rres(3,jj)
            end do
            close(uu)
            write(*,'(A)') ' (EXHALE_main) wrote output/residual_profile.txt'
@@ -254,7 +254,7 @@
          W = 0.0d0                                  ! reuse W as unpack target
          call unpack_U(Yvec, W)
          write(*,'(A,ES12.3)') ' (newton_test) max|unpack(pack(u))-u| (cells 1..N) = ', &
-              maxval(abs(W(1:N,:) - u(1:N,:)))
+              maxval(abs(W(:,1:N) - u(:,1:N)))
          f_sp_test = f_sp                           ! copy: newton_residual mutates it
          call newton_residual(Yvec, f_sp_test, Fvec)
          write(*,'(A)') ' (newton_test) max|F|/max|u| over [j_min:N] (cf. EXHALE_RESIDUAL):'
@@ -264,7 +264,7 @@
                mom(j) = Fvec(3*(j-1)+k)
             enddo
             write(*,'(A,I2,4X,ES16.6)') '   k=', k,                    &
-               maxval(abs(mom(j_min:N)))/max(maxval(abs(u(j_min:N,k))),1.0d-30)
+               maxval(abs(mom(j_min:N)))/max(maxval(abs(u(k,j_min:N))),1.0d-30)
          enddo
          write(*,*) '(EXHALE_main) EXHALE_NEWTON_TEST=1: done, stopping.'
          stop
@@ -339,7 +339,7 @@
             call solve_steady_ptc(u, f_sp, resid_max, 3000, dt, j)
          endif
          ! Final consistent state + output
-         call U_to_W(u,W);  rho = W(:,1);  v = W(:,2);  p = W(:,3)
+         call U_to_W(u,W);  rho = W(1,:);  v = W(2,:);  p = W(3,:)
          call get_species_densities(rho,f_sp,nhi,nhii,nhei,nheii,      &
                                     nheiii,nheiTR,nm,ne,n_tot)
          call comp_T_from_p(p,n_tot,ne,T)
@@ -460,7 +460,7 @@
             call RK_rhs(u,WL,WR,alpha,dF,S)
             
             do k = 1,3
-               u1(:,k) = u(:,k) - dt_loc*(dF(:,k) - S(:,k))
+               u1(k,:) = u(k,:) - dt_loc*(dF(k,:) - S(k,:))
             enddo
              
             ! Apply boundary conditions
@@ -478,7 +478,7 @@
                     
             ! Advance in time
             do k = 1,3
-               u2(:,k) = (3.0*u(:,k) + u1(:,k) - dt_loc*(dF(:,k) - S(:,k)))/4.0
+               u2(k,:) = (3.0*u(k,:) + u1(k,:) - dt_loc*(dF(k,:) - S(k,:)))/4.0
             enddo
 
             ! Apply boundary conditions            
@@ -496,7 +496,7 @@
                   
             ! Advance in time
             do k = 1,3
-               u(:,k) = (u(:,k) + 2.0*(u2(:,k) - dt_loc*(dF(:,k) - S(:,k))))/3.0
+               u(k,:) = (u(k,:) + 2.0*(u2(k,:) - dt_loc*(dF(k,:) - S(k,:))))/3.0
             enddo
 
             ! Apply boundary conditions
@@ -508,9 +508,9 @@
  		
             ! Extract primitive variables
             call U_to_W(u,W)
-            rho = W(:,1)
-            v   = W(:,2)
-            p   = W(:,3)
+            rho = W(1,:)
+            v   = W(2,:)
+            p   = W(3,:)
             
             ! Evaluate species densities, ne and n_tot (single policy point)
             call get_species_densities(rho,f_sp,nhi,nhii,nhei,nheii,  &
@@ -542,9 +542,9 @@
             call comp_p_from_T(T,n_tot,ne,p)
             
             ! Convert to primitive profiles
-            W(:,1) = rho
-            W(:,2) = v
-            W(:,3) = p
+            W(1,:) = rho
+            W(2,:) = v
+            W(3,:) = p
             
             ! Revert to conservative 
             call W_to_U(W,u)
@@ -558,7 +558,7 @@
             if (use_semi_implicit_energy) then
                call solve_energy_semi_implicit(u,W,dt_loc,heat,cool,f_sp)
             else
-               u(:,3) = u(:,3) + dt_loc*(heat - cool)
+               u(3,:) = u(3,:) + dt_loc*(heat - cool)
             endif
 
 		call Apply_BC(u)
@@ -575,10 +575,10 @@
 
             ! Convert to physical variables and extract profiles
             call U_to_W(u,W)
-            rho = W(:,1)
-            v   = W(:,2)
-            p   = W(:,3)
-            E   = u(:,3)
+            rho = W(1,:)
+            v   = W(2,:)
+            p   = W(3,:)
+            E   = u(3,:)
             
             ! Evaluate ionized densities, ne and n_tot (single policy point)
             call get_species_densities(rho,f_sp,nhi,nhii,nhei,nheii,  &
@@ -593,9 +593,9 @@
             ! only) -- calibrate + extend + make semi-implicit in a later revision.
             if (visc_mu0 .gt. 0.0d0) then
                call viscous_accel(v, T, Fvisc)
-               u(1:N,2) = u(1:N,2) + dt_loc(1:N)*Fvisc(1:N)
+               u(2,1:N) = u(2,1:N) + dt_loc(1:N)*Fvisc(1:N)
                call Apply_BC(u)
-               call U_to_W(u,W);  rho = W(:,1); v = W(:,2); p = W(:,3)
+               call U_to_W(u,W);  rho = W(1,:); v = W(2,:); p = W(3,:)
             endif
 
             ! Base-cell startup diagnostic (first 500 steps): trace r, n, v, T,
@@ -603,7 +603,7 @@
             if (diag_base .and. count .le. 500) then
                do j = 1,6
                   write(778,'(I7,I4,1X,F10.6,5(1X,ES13.6))') count, j, r(j), &
-                       W(j,1)*n0, W(j,2)*v0, T(j)*T0, heat(j), cool(j)
+                       W(1,j)*n0, W(2,j)*v0, T(j)*T0, heat(j), cool(j)
                enddo
             endif
 
@@ -643,12 +643,12 @@
             du = abs((mom_max-mom_min)/max(mom_min, 1.0d-30))
             
             ! Evaluate variation of time derivative          
-      	u(:,2) = u(:,2) + 1.0e-16 ! To avoid division by zero          
+      	u(2,:) = u(2,:) + 1.0e-16 ! To avoid division by zero          
 	      
 	      ! --- Infty-norm
-	      dtu = max(maxval(abs(1.0-u(j_min:N,1)/u_old(j_min:N,1))), &
-	      	    maxval(abs(1.0-u(j_min:N,2)/u_old(j_min:N,2))))
-		dtu = max(maxval(abs(1.0-u(j_min:N,3)/u_old(j_min:N,3))), &
+	      dtu = max(maxval(abs(1.0-u(1,j_min:N)/u_old(1,j_min:N))), &
+	      	    maxval(abs(1.0-u(2,j_min:N)/u_old(2,j_min:N))))
+		dtu = max(maxval(abs(1.0-u(3,j_min:N)/u_old(3,j_min:N))), &
 	      	    dtu)
 
             ! Periodic steady-residual monitor (Resid tol option). R = du/dt
@@ -801,7 +801,7 @@
                do it_diff = 1, merge(5, 1, he_diffusion)
                call solve_steady_jfnk(u, f_sp, resid_max, 500, 1.0d0, 40, j)
                call U_to_W(u,W)
-               rho = W(:,1);  v = W(:,2);  p = W(:,3);  E = u(:,3)
+               rho = W(1,:);  v = W(2,:);  p = W(3,:);  E = u(3,:)
                call get_species_densities(rho,f_sp,nhi,nhii,nhei,nheii, &
                                           nheiii,nheiTR,nm,ne,n_tot)
                call comp_T_from_p(p,n_tot,ne,T)
@@ -849,13 +849,13 @@
             ! Detect NaNs
             do j = 1-Ng,N+Ng
             	do k = 1,3
-            		dum = u(j,k)
+            		dum = u(k,j)
             		if (dum.ne.dum) then
                               write(*,*)
             			write(*,'(A20,F8.6)') 'NaN detected at r = ',r(j)
-                              write(*,'(A6,E13.6)') 'rho = ',W(j,1)*n0
-                              write(*,'(A4,E13.6)') 'v = ',W(j,2)*v0/1.0e5
-                              write(*,'(A4,E13.6)') 'p = ',W(j,3)*p0
+                              write(*,'(A6,E13.6)') 'rho = ',W(1,j)*n0
+                              write(*,'(A4,E13.6)') 'v = ',W(2,j)*v0/1.0e5
+                              write(*,'(A4,E13.6)') 'p = ',W(3,j)*p0
                               write(*,'(A4,F8.1)')  'T = ',T(j)*T0
                               write(*,'(A6,E13.6)') 'nhi = ',nhi(j)*n0
                               write(*,'(A7,E13.6)') 'nhii = ',nhii(j)*n0

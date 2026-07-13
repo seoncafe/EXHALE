@@ -119,12 +119,12 @@
       subroutine pack_U(u, Y)
       ! Physical-cell conserved variables -> flat unknown vector.
       ! Y(3*(j-1)+k) = u(j,k), j = 1..N, k = 1..3.
-      real*8, dimension(1-Ng:N+Ng,3), intent(in)  :: u
+      real*8, dimension(3,1-Ng:N+Ng), intent(in)  :: u
       real*8, dimension(3*N),         intent(out) :: Y
       integer :: j, k
       do j = 1, N
          do k = 1, 3
-            Y(3*(j-1)+k) = u(j,k)
+            Y(3*(j-1)+k) = u(k,j)
          enddo
       enddo
       end subroutine pack_U
@@ -135,11 +135,11 @@
       ! Flat unknown vector -> physical-cell conserved variables.
       ! Ghost cells are left untouched (Apply_BC sets them).
       real*8, dimension(3*N),         intent(in)    :: Y
-      real*8, dimension(1-Ng:N+Ng,3), intent(inout) :: u
+      real*8, dimension(3,1-Ng:N+Ng), intent(inout) :: u
       integer :: j, k
       do j = 1, N
          do k = 1, 3
-            u(j,k) = Y(3*(j-1)+k)
+            u(k,j) = Y(3*(j-1)+k)
          enddo
       enddo
       end subroutine unpack_U
@@ -159,7 +159,7 @@
       real*8, dimension(3*N),                  intent(out)   :: Fvec
       real*8, dimension(1-Ng:N+Ng),            intent(out)   :: heat, cool
 
-      real*8, dimension(1-Ng:N+Ng,3) :: u, W, R
+      real*8, dimension(3,1-Ng:N+Ng) :: u, W, R
       real*8, dimension(1-Ng:N+Ng)   :: rho, v, p, T
       real*8, dimension(1-Ng:N+Ng)   :: nhi, nhii, nhei, nheii, nheiii, nheiTR
       real*8, dimension(1-Ng:N+Ng,n_mion) :: nm
@@ -171,7 +171,7 @@
       call Apply_BC(u)           ! fill ghosts from the interior
 
       call U_to_W(u, W)
-      rho = W(:,1);  v = W(:,2);  p = W(:,3)
+      rho = W(1,:);  v = W(2,:);  p = W(3,:)
       call get_species_densities(rho,f_sp,nhi,nhii,nhei,nheii,         &
                                  nheiii,nheiTR,nm,ne,n_tot)
       call comp_T_from_p(p, n_tot, ne, T)
@@ -207,7 +207,7 @@
       real*8, dimension(3*N),       intent(in)  :: Y
       real*8, dimension(1-Ng:N+Ng), intent(in)  :: heat, cool
       real*8, dimension(3*N),       intent(out) :: Fvec
-      real*8, dimension(1-Ng:N+Ng,3) :: u, R
+      real*8, dimension(3,1-Ng:N+Ng) :: u, R
       u = 0.0d0
       call unpack_U(Y, u)
       call Apply_BC(u)
@@ -220,12 +220,12 @@
 
       subroutine pack_R(R, Fvec)
       ! Pack residual array (physical cells) into the flat vector.
-      real*8, dimension(1-Ng:N+Ng,3), intent(in)  :: R
+      real*8, dimension(3,1-Ng:N+Ng), intent(in)  :: R
       real*8, dimension(3*N),         intent(out) :: Fvec
       integer :: j, k
       do j = 1, N
          do k = 1, 3
-            Fvec(3*(j-1)+k) = R(j,k)
+            Fvec(3*(j-1)+k) = R(k,j)
          enddo
       enddo
       end subroutine pack_R
@@ -348,7 +348,7 @@
       ! Relative residual rc(k) for each component and its max rnorm over the
       ! wind region [j_min:N] (same definition the marching monitor uses).
       real*8, dimension(3*N),         intent(in)  :: F
-      real*8, dimension(1-Ng:N+Ng,3), intent(in)  :: u
+      real*8, dimension(3,1-Ng:N+Ng), intent(in)  :: u
       real*8, dimension(3),           intent(out) :: rc
       real*8,                         intent(out) :: rnorm
       integer :: j, k
@@ -360,13 +360,13 @@
             do j = j_min, N
                w   = r(j)*r(j)*dr_j(j)
                fmx = fmx + abs(F(3*(j-1)+k))*w
-               umx = umx + abs(u(j,k))*w
+               umx = umx + abs(u(k,j))*w
             enddo
          else
             ! legacy L-inf: max over the wind region
             do j = j_min, N
                fmx = max(fmx, abs(F(3*(j-1)+k)))
-               umx = max(umx, abs(u(j,k)))
+               umx = max(umx, abs(u(k,j)))
             enddo
          endif
          rc(k) = fmx/max(umx, 1.0d-30)
@@ -386,7 +386,7 @@
       !   dtau <- dtau * rnorm_old/rnorm_new (SER ramp; cut on failure)
       ! As dtau->inf this is Newton; small dtau behaves like explicit
       ! relaxation, giving the robust startup PTC is designed for.
-      real*8, dimension(1-Ng:N+Ng,3),         intent(inout) :: u
+      real*8, dimension(3,1-Ng:N+Ng),         intent(inout) :: u
       real*8, dimension(1-Ng:N+Ng,n_species), intent(inout) :: f_sp
       real*8,  intent(in)  :: resid_tol, dtau0
       integer, intent(in)  :: maxit
@@ -397,7 +397,7 @@
       real*8, allocatable :: ab(:,:), abf(:,:)
       integer, allocatable :: ipiv(:)
       real*8, dimension(1-Ng:N+Ng)            :: heat0, cool0
-      real*8, dimension(1-Ng:N+Ng,3)          :: utry, Wtry
+      real*8, dimension(3,1-Ng:N+Ng)          :: utry, Wtry
       real*8, dimension(1-Ng:N+Ng,n_species)  :: f_sp_j
       real*8  :: rnorm, rnorm_try, rc(3), dtau, lam, f2, f2_try
       logical :: ok
@@ -448,8 +448,8 @@
             Ytry = Y + lam*dY
             call unpack_U(Ytry, utry)
             call U_to_W(utry, Wtry)
-            if (minval(Wtry(1:N,1)) .gt. 0.0d0 .and.                    &
-                minval(Wtry(1:N,3)) .gt. 0.0d0) then
+            if (minval(Wtry(1,1:N)) .gt. 0.0d0 .and.                    &
+                minval(Wtry(3,1:N)) .gt. 0.0d0) then
                f_sp_j = f_sp
                call eval_residual(Ytry, f_sp_j, Ftry, heat0, cool0)
                f2_try = sqrt(sum(Ftry*Ftry))
@@ -617,7 +617,7 @@
       !                                free; captures non-local radiation)
       !   Y <- Y + lam*dY   (||F||_2 line search + positivity)
       !   dtau <- SER ramp
-      real*8, dimension(1-Ng:N+Ng,3),         intent(inout) :: u
+      real*8, dimension(3,1-Ng:N+Ng),         intent(inout) :: u
       real*8, dimension(1-Ng:N+Ng,n_species), intent(inout) :: f_sp
       real*8,  intent(in)  :: resid_tol, dtau0
       integer, intent(in)  :: maxit, gm_m
@@ -631,7 +631,7 @@
       real*8, allocatable :: ab(:,:), abf(:,:)
       integer, allocatable :: ipiv(:)
       real*8, dimension(1-Ng:N+Ng)            :: heat0, cool0
-      real*8, dimension(1-Ng:N+Ng,3)          :: utry, Wtry
+      real*8, dimension(3,1-Ng:N+Ng)          :: utry, Wtry
       real*8, dimension(1-Ng:N+Ng,n_species)  :: f_sp_j, f_sp_best
       real*8  :: rnorm, rc(3), dtau, lam, f2, f2_try, idtau
       real*8  :: f2hist(5), f2ref, rnorm_best
@@ -714,8 +714,8 @@
             Ytry = Y + lam*dY
             call unpack_U(Ytry, utry)
             call U_to_W(utry, Wtry)
-            if (minval(Wtry(1:N,1)) .gt. 0.0d0 .and.                    &
-                minval(Wtry(1:N,3)) .gt. 0.0d0) then
+            if (minval(Wtry(1,1:N)) .gt. 0.0d0 .and.                    &
+                minval(Wtry(3,1:N)) .gt. 0.0d0) then
                f_sp_j = f_sp
                call eval_residual(Ytry, f_sp_j, Ftry, heat0, cool0)
                f2_try = sqrt(sum((Ftry/D)**2))
@@ -761,7 +761,7 @@
          do kk = 1, 3
             umaxk(kk) = 1.0d-30
             do jj = 1, N
-               umaxk(kk) = max(umaxk(kk), abs(u(jj,kk)))
+               umaxk(kk) = max(umaxk(kk), abs(u(kk,jj)))
             enddo
          enddo
          amx = -1.0d0;  jworst = 1;  kworst = 1
