@@ -83,7 +83,7 @@
          write(*,*) '(opacity_models) ERROR: ', trim(path),                 &
                     ' has fewer than 2 rows.'
          close(37)
-         stop 1
+         error stop 1
       endif
 
       rewind(37)
@@ -99,7 +99,7 @@
          if (tab%e(k) <= tab%e(k-1)) then
             write(*,*) '(opacity_models) ERROR: ', trim(path),              &
                        ' energy column not strictly increasing at row', k
-            stop 1
+            error stop 1
          endif
       enddo
 

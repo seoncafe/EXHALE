@@ -96,7 +96,7 @@
                  opacity_model == 'P' .or. opacity_model == 'T')) then
          write(*,*) '(opacity_input) ERROR: OPACITY_MODEL must be one of A/C/P/T, got "', &
                     opacity_model, '".'
-         stop 1
+         error stop 1
       endif
 
       write(*,'(a,i0,a,a)') ' (opacity_input) Done. ', n_set, &

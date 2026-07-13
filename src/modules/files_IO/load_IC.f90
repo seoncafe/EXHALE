@@ -82,7 +82,7 @@
             read(2,'(A)',iostat=ios) line
             if (ios .ne. 0) exit
          enddo
-         if (nlab .lt. 2) stop '(load_IC) header found but no "# columns" line'
+         if (nlab .lt. 2) error stop '(load_IC) header found but no "# columns" line'
 
          ! Build the label -> f_sp column map (0 = ignore). labels(1) is r.
          col2fsp = 0

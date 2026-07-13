@@ -101,7 +101,7 @@
          write(*,*) '      (wae bridge) RAMP FAILED (code', rc, ').'
          write(*,*) '      This planet may be unreachable from the shipped seed; '// &
                     'try "IC mode: auto" instead.'
-         stop '(wae_generate_ic) ramp failed'
+         error stop '(wae_generate_ic) ramp failed'
       end if
 
       ! optionally bank the converged relaxation solution as a reusable seed

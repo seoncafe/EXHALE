@@ -601,7 +601,7 @@
 			write(*,*) '  and the halfwidth/boost settings would do nothing.'
 			write(*,*) '  Add e.g. "Stellar Lya flux [erg/cm2/s]: 1.0e5" to'
 			write(*,*) '  input.inp, or disable escape-prob mode. Aborting.'
-			stop 1
+			error stop 1
 		endif
 
    close(unit = 1)
@@ -661,7 +661,7 @@
       if (r_out_user .le. 1.0d0) then
          write(*,*) '(input_read.f90) ERROR: Domain mode = Spherical '   // &
                     'requires "Outer radius [R_p]:" > 1.0 in input.inp.'
-         stop
+         error stop 1
       endif
       r_max = r_out_user
    else
@@ -817,7 +817,8 @@
    ! Invoke the lower-atmosphere generator (VULCAN or the analytic column)
    ! when "Lower atmosphere: vulcan|analytic <R_1bar[R_J]>" is set and no
    ! base.inp is present.  The EXHALE code root is taken from the
-   ! EXHALE_ROOT environment variable when set (for relocated installs).
+   ! EXHALE_ROOT environment variable; it must be set to the EXHALE install
+   ! directory so the generator scripts under src/utils/ can be located.
    character(len=1024) :: root, cmd
    character(len=32)   :: r1str
    logical :: ex
@@ -833,12 +834,18 @@
    if (lower_atm_r1bar .le. 0.0d0) then
       write(*,*) '(input_read) ERROR: "Lower atmosphere:" needs the 1-bar'//&
                  ' (transit) radius, e.g. "Lower atmosphere: vulcan 1.36".'
-      stop
+      error stop 1
    endif
 
    call get_environment_variable('EXHALE_ROOT', root)
-   if (len_trim(root) .eq. 0) root =                                     &
-      '/nfs/mocafe/kiseon/RT_Codes/Exoplanetary_Atmospheres/ATES/EXHALE'
+   if (len_trim(root) .eq. 0) then
+      write(*,*) '(input_read) ERROR: "Lower atmosphere:" requires the'//  &
+                 ' EXHALE_ROOT environment variable to locate the'
+      write(*,*) '  generator scripts under src/utils/. Set it to the'//   &
+                 ' EXHALE install directory, e.g.'
+      write(*,*) '  export EXHALE_ROOT=/path/to/EXHALE'
+      error stop 1
+   endif
    write(r1str,'(F0.5)') lower_atm_r1bar
 
    if (lower_atm_mode .eq. 2) then
@@ -856,7 +863,7 @@
    if (rc .ne. 0 .or. cst .ne. 0 .or. .not. ex) then
       write(*,*) '(input_read) ERROR: lower-atmosphere generator failed'//&
                  ' (see messages above); no base.inp produced.'
-      stop
+      error stop 1
    endif
    end subroutine run_lower_atm_prestep
       
