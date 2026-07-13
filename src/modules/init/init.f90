@@ -112,7 +112,7 @@
 
       ! Apply BC to initial condition
       call W_to_U(W,u)
-      call Apply_BC(u,u)    
+      call Apply_BC(u)    
 
       write(*,*) '(init.f90) Done.'
       

@@ -108,7 +108,13 @@
          enddo
        
        !--------------------------------------------------
-            
+
+      case default
+
+         write(*,*) 'ERROR: unknown grid type: ', trim(grid_type)
+         write(*,*) '  allowed: Uniform, Stretched, Mixed'
+         error stop 1
+
       end select
       
       !--- Cell edges r_{j+1/2} ---!

@@ -404,7 +404,7 @@ def _apply_window(lam0_A, dv_half, lmin0, lmax0, forced=False):
     return min(lmin0, lam0_A - dlam), max(lmax0, lam0_A + dlam)
 
 # vertical columns of the lower-level absorbers [cm^-2] (rectangle rule; r in R_p)
-_dr_cm = np.abs(np.gradient(r))*Rp             # cm (r in R_p, Rp in cm)
+_dr_cm = np.abs(np.gradient(r))*Rp*1.0e2       # cm (r in R_p, Rp in m -> *1e2)
 _N_HI    = float(np.sum(nhi*_dr_cm))           # cm^-3 * cm -> cm^-2
 _N_HeTR  = float(np.sum(nheiTR*_dr_cm))
 _fHe = f10830_34 + f10830_25 + f10829_09
@@ -651,76 +651,56 @@ for p in range(Grid_Number):
 	
 	# ------------------------ #
 	
-	for l_idx,l in enumerate(l_onde_HeTR):
+	# ----- Absorption integrals via Faddeeva method, vectorized over wavelength ----- #
+	nu_HeTR_l = c_light/l_onde_HeTR
+	vx_over_vth_HeTR = (v_x/v_th_HeTR)[:, None]
 
-		# Arguments of Voigt Function
-		X_He3_2 = (c_light/l - nu_He3_2)/Dnu_He3_2[:]
-		X_He3_3 = (c_light/l - nu_He3_3)/Dnu_He3_3[:]
-		X_He3_1 = (c_light/l - nu_He3_1)/Dnu_He3_1[:]
+	# First line HeI3
+	X_He3_1 = (nu_HeTR_l[None, :] - nu_He3_1)/Dnu_He3_1[:, None]
+	Voigt_1 = f10830_34*Fadd_const/Dnu_He3_1[:, None] \
+	          * wofz(X_He3_1 - vx_over_vth_HeTR + 1j*a_He3_1[:, None]).real
 
-		# ----- Calculate absorption integrals via Faddeeva method ----- #
-		
-		# First line HeI3
-		arg_Fadd_1 = X_He3_1[:] - v_x[:]/v_th_HeTR[:] + 1j*a_He3_1[:]
-		Voigt_1  = f10830_34*Fadd_const/Dnu_He3_1[:]*wofz(arg_Fadd_1).real
-			
-		# Second line HeI3
-		arg_Fadd_2 = X_He3_2[:] - v_x[:]/v_th_HeTR[:] + 1j*a_He3_2[:]
-		Voigt_2  = f10830_25*Fadd_const/Dnu_He3_2[:]*wofz(arg_Fadd_2).real
+	# Second line HeI3
+	X_He3_2 = (nu_HeTR_l[None, :] - nu_He3_2)/Dnu_He3_2[:, None]
+	Voigt_2 = f10830_25*Fadd_const/Dnu_He3_2[:, None] \
+	          * wofz(X_He3_2 - vx_over_vth_HeTR + 1j*a_He3_2[:, None]).real
 
-		# Third line HeI3
-		arg_Fadd_3 = X_He3_3[:] - v_x[:]/v_th_HeTR[:] + 1j*a_He3_3[:]
-		Voigt_3  = f10829_09*Fadd_const/Dnu_He3_3[:]*wofz(arg_Fadd_3).real
+	# Third line HeI3
+	X_He3_3 = (nu_HeTR_l[None, :] - nu_He3_3)/Dnu_He3_3[:, None]
+	Voigt_3 = f10829_09*Fadd_const/Dnu_He3_3[:, None] \
+	          * wofz(X_He3_3 - vx_over_vth_HeTR + 1j*a_He3_3[:, None]).real
 
-		# Calculate integrands
-		I_He3_1 = n_HeTR[:]*Voigt_1[:]
-		I_He3_2 = n_HeTR[:]*Voigt_2[:]
-		I_He3_3 = n_HeTR[:]*Voigt_3[:]	
+	# Integrand summed over the three components
+	I_HeTR = n_HeTR[:, None]*(Voigt_1 + Voigt_2 + Voigt_3)
 
-		# Calculate optical depth via trapezoids
-		tau_not_sum_HeTR = data_dx/2.0*(
-		   I_He3_1[:-1] + I_He3_1[1:]  + 
-		   I_He3_2[:-1] + I_He3_2[1:]  +
-		   I_He3_3[:-1] + I_He3_3[1:])
-		tau_v_HeTR = sum(tau_not_sum_HeTR)
-		
-		# Calculate transmission probability and append to matrix
-		exp_tau_HeTR[p,l_idx] = np.exp(-tau_v_HeTR)
-		
-# ----- End loop for HeI metastable triplet ----- #
+	# Optical depth via trapezoids along the line of sight
+	exp_tau_HeTR[p, :] = np.exp(-np.sum(data_dx[:, None]/2.0
+	                                    * (I_HeTR[:-1, :] + I_HeTR[1:, :]), axis=0))
+
+# ----- End HeI metastable triplet ----- #
 
 
-	for l_idx,l in enumerate(l_onde_HI):
+	# ----- Absorption integrals via Faddeeva method, vectorized over wavelength ----- #
+	nu_HI_l = c_light/l_onde_HI
 
-		# Arguments of Voigt Function
-		X_HI = (c_light/l - nu_HI)/Dnu_HI[:]
-		X_D = (c_light/l - nu_D)/Dnu_D[:]
+	# Hydrogen
+	X_HI = (nu_HI_l[None, :] - nu_HI)/Dnu_HI[:, None]
+	Voigt_HI = f_la*Fadd_const/Dnu_HI[:, None] \
+	           * wofz(X_HI - (v_x/v_th_HI)[:, None] + 1j*a_HI[:, None]).real
 
-		# ----- Calculate absorption integrals via Faddeeva method ----- #
-		
-		# Hydrogen
-		arg_Fadd_HI = X_HI[:] - v_x[:]/v_th_HI[:] + 1j*a_HI[:]
-		Voigt_HI  = f_la*Fadd_const/Dnu_HI[:]*wofz(arg_Fadd_HI).real
-			
-		# Deuterium
-		arg_Fadd_D = X_D[:] - v_x[:]/v_th_D[:] + 1j*a_D[:]
-		Voigt_D  = f_D*Fadd_const/Dnu_D[:]*wofz(arg_Fadd_D).real
+	# Deuterium
+	X_D = (nu_HI_l[None, :] - nu_D)/Dnu_D[:, None]
+	Voigt_D = f_D*Fadd_const/Dnu_D[:, None] \
+	          * wofz(X_D - (v_x/v_th_D)[:, None] + 1j*a_D[:, None]).real
 
+	# Integrand summed over Hydrogen and Deuterium
+	I_HD = n_HI[:, None]*Voigt_HI + n_D[:, None]*Voigt_D
 
-		# Calculate integrands
-		I_HI = n_HI[:]*Voigt_HI[:]
-		I_D = n_D[:]*Voigt_D[:]
+	# Optical depth via trapezoids along the line of sight
+	exp_tau_HD[p, :] = np.exp(-np.sum(data_dx[:, None]/2.0
+	                                  * (I_HD[:-1, :] + I_HD[1:, :]), axis=0))
 
-		# Calculate optical depth via trapezoids
-		tau_not_sum_HD = data_dx/2.0*(
-		   I_HI[:-1] + I_HI[1:]  + 
-		   I_D[:-1] + I_D[1:])
-		tau_v_HD = sum(tau_not_sum_HD)
-		
-		# Calculate transmission probability and append to matrix
-		exp_tau_HD[p,l_idx] = np.exp(-tau_v_HD)
-
-# ----- End loop for Hydrogen and Deuterium ----- #
+# ----- End Hydrogen and Deuterium ----- #
 
 	# ----- H-alpha (n=2 -> n=3), sub-level-resolved absorption ----- #
 	# 2s and 2p have different absorption oscillator strengths, so the optical
@@ -732,31 +712,29 @@ for p in range(Grid_Number):
 		Dnu_Ha = (nu_Ha*v_th_HI)/c_light     # same thermal width as HI (proton)
 		a_Ha   = A12_Ha/(4.0*np.pi*Dnu_Ha)
 
-		for l_idx,l in enumerate(l_onde_Ha):
+		# Voigt absorption profile via Faddeeva method, vectorized over wavelength
+		nu_Ha_l = c_light/l_onde_Ha
+		X_Ha = (nu_Ha_l[None, :] - nu_Ha)/Dnu_Ha[:, None]
+		Voigt_Ha = Fadd_const/Dnu_Ha[:, None] \
+		           * wofz(X_Ha - (v_x/v_th_HI)[:, None] + 1j*a_Ha[:, None]).real
 
-			# Voigt absorption profile via Faddeeva method
-			X_Ha = (c_light/l - nu_Ha)/Dnu_Ha[:]
-			arg_Fadd_Ha = X_Ha[:] - v_x[:]/v_th_HI[:] + 1j*a_Ha[:]
-			Voigt_Ha = Fadd_const/Dnu_Ha[:]*wofz(arg_Fadd_Ha).real
-
-			# Optical depth via trapezoids along the line of sight
-			I_Ha = (f_Ha_2s*n_2s[:] + f_Ha_2p*n_2p[:])*Voigt_Ha[:]
-			tau_not_sum_Ha = data_dx/2.0*(I_Ha[:-1] + I_Ha[1:])
-			tau_v_Ha = sum(tau_not_sum_Ha)
-			exp_tau_Ha[p,l_idx] = np.exp(-tau_v_Ha)
+		# Optical depth via trapezoids along the line of sight
+		I_Ha = (f_Ha_2s*n_2s + f_Ha_2p*n_2p)[:, None]*Voigt_Ha
+		exp_tau_Ha[p, :] = np.exp(-np.sum(data_dx[:, None]/2.0
+		                                  * (I_Ha[:-1, :] + I_Ha[1:, :]), axis=0))
 
 		# ----- H-beta (n=2 -> n=4), same 2s/2p populations ----- #
 		Dnu_Hb = (nu_Hb*v_th_HI)/c_light
 		a_Hb   = A12_Hb/(4.0*np.pi*Dnu_Hb)
-		for l_idx,l in enumerate(l_onde_Hb):
-			X_Hb = (c_light/l - nu_Hb)/Dnu_Hb[:]
-			arg_Fadd_Hb = X_Hb[:] - v_x[:]/v_th_HI[:] + 1j*a_Hb[:]
-			Voigt_Hb = Fadd_const/Dnu_Hb[:]*wofz(arg_Fadd_Hb).real
-			I_Hb = (f_Hb_2s*n_2s[:] + f_Hb_2p*n_2p[:])*Voigt_Hb[:]
-			tau_not_sum_Hb = data_dx/2.0*(I_Hb[:-1] + I_Hb[1:])
-			exp_tau_Hb[p,l_idx] = np.exp(-sum(tau_not_sum_Hb))
+		nu_Hb_l = c_light/l_onde_Hb
+		X_Hb = (nu_Hb_l[None, :] - nu_Hb)/Dnu_Hb[:, None]
+		Voigt_Hb = Fadd_const/Dnu_Hb[:, None] \
+		           * wofz(X_Hb - (v_x/v_th_HI)[:, None] + 1j*a_Hb[:, None]).real
+		I_Hb = (f_Hb_2s*n_2s + f_Hb_2p*n_2p)[:, None]*Voigt_Hb
+		exp_tau_Hb[p, :] = np.exp(-np.sum(data_dx[:, None]/2.0
+		                                  * (I_Hb[:-1, :] + I_Hb[1:, :]), axis=0))
 
-# ----- End loop for H-alpha / H-beta ----- #
+# ----- End H-alpha / H-beta ----- #
 
 
 

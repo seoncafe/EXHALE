@@ -168,7 +168,7 @@
 
       u = 0.0d0
       call unpack_U(Y, u)
-      call Apply_BC(u, u)           ! fill ghosts from the interior
+      call Apply_BC(u)           ! fill ghosts from the interior
 
       call U_to_W(u, W)
       rho = W(:,1);  v = W(:,2);  p = W(:,3)
@@ -176,7 +176,7 @@
                                  nheiii,nheiTR,nm,ne,n_tot)
       call comp_T_from_p(p, n_tot, ne, T)
       if (use_excited_H) call excited_H_update(T,rho,f_sp,v,rel_change)
-      call ioniz_eq(T,rho,f_sp,rho,f_sp,heat,cool,eta)
+      call ioniz_eq(T,rho,f_sp,heat,cool,eta)
 
       call assemble_residual(u, heat, cool, R)
       call pack_R(R, Fvec)
@@ -210,7 +210,7 @@
       real*8, dimension(1-Ng:N+Ng,3) :: u, R
       u = 0.0d0
       call unpack_U(Y, u)
-      call Apply_BC(u, u)
+      call Apply_BC(u)
       call assemble_residual(u, heat, cool, R)
       call pack_R(R, Fvec)
       if (nfix_base .gt. 0) call apply_base_fix(Y, Fvec)
@@ -462,7 +462,7 @@
 
          if (ok) then
             Y = Ytry;  F = Ftry;  f_sp = f_sp_j
-            call unpack_U(Y, u);  call Apply_BC(u, u)
+            call unpack_U(Y, u);  call Apply_BC(u)
             call resid_relnorm(F, u, rc, rnorm)
             ! SER ramp on the merit ratio, scaled by the accepted step.
             dtau = min(dtau*max(lam,0.1d0)*(f2/max(f2_try,1.0d-30)),     &
@@ -478,7 +478,7 @@
               iter,'  ||R||=',rnorm,'  ||F||2=',f2,'  dtau=',dtau,'  lam=',lam
       enddo
 
-      call unpack_U(Y, u);  call Apply_BC(u, u)
+      call unpack_U(Y, u);  call Apply_BC(u)
       call resid_relnorm(F, u, rc, rnorm)
       write(*,'(A,I0,A,ES11.3)') ' (PTC) done info=',info,' ||R||=',rnorm
 
@@ -728,7 +728,7 @@
 
          if (ok) then
             Y = Ytry;  F = Ftry;  f_sp = f_sp_j
-            call unpack_U(Y, u);  call Apply_BC(u, u)
+            call unpack_U(Y, u);  call Apply_BC(u)
             call resid_relnorm(F, u, rc, rnorm)
             dtau = min(dtau*max(lam,0.1d0)*(f2/max(f2_try,1.0d-30)),     &
                        1.0d14*dtau0)
@@ -784,7 +784,7 @@
          write(*,'(A,ES11.3)') ' (JFNK) returning best iterate, '//      &
               '||R||=', rnorm
       endif
-      call unpack_U(Y, u);  call Apply_BC(u, u)
+      call unpack_U(Y, u);  call Apply_BC(u)
       write(*,'(A,I0,A,ES11.3)') ' (JFNK) done info=',info,' ||R||=',rnorm
       deallocate(Y,F,Ftry,dY,Ytry,dZ,D,Ybest,ab,abf,ipiv)
       end subroutine solve_steady_jfnk

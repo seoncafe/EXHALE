@@ -8,22 +8,21 @@
    
    contains
    
-   subroutine Apply_BC(u_in,u_out)
-   ! Boundary conditions for conservative variables
+   subroutine Apply_BC(u)
+   ! Boundary conditions for conservative variables (in place)
 
-   real*8, intent(in) :: u_in(1-Ng:N+Ng,3)
+   real*8, intent(inout) :: u(1-Ng:N+Ng,3)
    real*8 :: W(1-Ng:N+Ng,3)
-   real*8, intent(out) :: u_out(1-Ng:N+Ng,3)
-   
+
    ! Convert to primitive variables
-   call U_to_W(u_in,W)
-   
+   call U_to_W(u,W)
+
    ! Apply bc to W's
-   call Apply_BC_W(W,W)     
-   
+   call Apply_BC_W(W)
+
    ! Return to conservaive variables
-   call W_to_U(W,u_out)     
-   
+   call W_to_U(W,u)
+
    ! End of subroutine
    end subroutine Apply_BC
    
@@ -71,27 +70,23 @@
 
    !------------------------------------------!
 
-   subroutine Apply_BC_W(W_in,W_out)
-   ! Boundary conditions for primitive variables
-   
-   real*8, intent(in)  :: W_in(1-Ng:N+Ng,3)
+   subroutine Apply_BC_W(W)
+   ! Boundary conditions for primitive variables (in place)
+
+   real*8, intent(inout) :: W(1-Ng:N+Ng,3)
    integer :: k
-   real*8, intent(out) :: W_out(1-Ng:N+Ng,3)
-   
-   ! Copy input vector
-   W_out = W_in
-   
+
    ! BC with constant rho at lower boundary
    do k = 1,Ng
-      call BC_component_constrho(W_out,1-k)
+      call BC_component_constrho(W,1-k)
    enddo
-         
+
    do k = 1,Ng
       ! Upper boundary
-      W_out(N+k,:) = W_out(N,:)
-      if (use_weno3) W_out(N+k,:) = 2.0*W_out(N+k-1,:) - W_out(N+k-2,:)
+      W(N+k,:) = W(N,:)
+      if (use_weno3) W(N+k,:) = 2.0*W(N+k-1,:) - W(N+k-2,:)
    enddo
-   
+
    ! End of subroutine
    end subroutine Apply_BC_W
    

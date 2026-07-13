@@ -110,8 +110,14 @@
             enddo
             
             ! Apply BC to reconstructed variables
-            call Rec_BC(WL,WR,WL_out,WR_out)	
-      
+            call Rec_BC(WL,WR,WL_out,WR_out)
+
+         case default
+
+            write(*,*) 'ERROR: unknown reconstruction scheme: ', trim(rec_method)
+            write(*,*) '  allowed: PLM, WENO3'
+            error stop 1
+
       end select
   
       ! End of subroutine

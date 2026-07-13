@@ -172,9 +172,24 @@
 				read(str,*) e_low  
 				
 				! Remove helium if monochromatic and
-				!	photon energy lower than helium ionization threshold
-				if (e_low .lt. e_th_HeI) thereis_He = .false.
-			     	
+				!	photon energy lower than helium ionization threshold.
+				! Also zero the He/H ratio so the whole downstream (mass_per_H,
+				! rho_bc, set_IC He fractions, EOS) is a self-consistent H-only
+				! gas rather than carrying He mass with thereis_He = .false.
+				if (e_low .lt. e_th_HeI) then
+					thereis_He = .false.
+					HeH        = 0.0d0
+					write(*,*) '(input_read) Monochromatic photon energy below'//&
+					   ' the He I ionization threshold: gas treated as pure'//&
+					   ' hydrogen (He/H set to 0).'
+				endif
+
+			case default
+				write(*,*) '(input_read) ERROR: unknown spectrum type "'//&
+				   trim(sp_type)//'".'
+				write(*,*) '   Allowed values: Load, Power-law, Monochromatic.'
+				error stop 1
+
 		end select
 		
 		! Only EUV status
@@ -255,26 +270,6 @@
 		read(11,'(A)') line
 		str = get_word(line, 3)
 		if (str .eq. 'True')  thereis_HeITR = .true.
-
-		! Remove HeITR chemistry if He is not included
-		if (.not. thereis_He) thereis_HeITR = .false.
-
-		! molecular chemistry constraints (v1): requires He;
-		! exclusive with trace metals (merged mol+metals = later work item).
-		if (thereis_mol .and. .not. thereis_He) then
-			write(*,*) '(input_read) ERROR: Molecular chemistry needs He/H>0.'
-			stop
-		endif
-		if (thereis_mol .and. he_diffusion) then
-			write(*,*) '(input_read) ERROR: Molecular chemistry + He_diffusion'//&
-			           ' not supported yet.'
-			stop
-		endif
-		if (thereis_mol .and. thereis_metals) then
-			write(*,*) '(input_read) ERROR: Molecular chemistry + metals '//&
-			           'not supported yet (remove metals.inp).'
-			stop
-		endif
 
 		! IC status
 		read(11,'(A)') line
@@ -627,6 +622,32 @@
    ! [R_J], He/H ratio and eddy K_zz BEFORE the derived constants below.
    ! Absent file = no-op (byte-identical legacy).
    call read_base_inp
+
+   ! ---- Composition reconciliation and validation. Placed here so every
+   ! flag (thereis_He, HeH, thereis_HeITR, thereis_mol, he_diffusion,
+   ! thereis_metals) has its final value: base.inp above can still flip
+   ! thereis_He/HeH, and the trailing keyword scan sets thereis_mol and
+   ! he_diffusion. This is the single authoritative check before N_eq sizing.
+
+   ! Remove HeITR chemistry if He is not included
+   if (.not. thereis_He) thereis_HeITR = .false.
+
+   ! molecular chemistry constraints (v1): requires He;
+   ! exclusive with trace metals (merged mol+metals = later work item).
+   if (thereis_mol .and. .not. thereis_He) then
+      write(*,*) '(input_read) ERROR: Molecular chemistry needs He/H>0.'
+      error stop 1
+   endif
+   if (thereis_mol .and. he_diffusion) then
+      write(*,*) '(input_read) ERROR: Molecular chemistry + He_diffusion'//&
+                 ' not supported yet.'
+      error stop 1
+   endif
+   if (thereis_mol .and. thereis_metals) then
+      write(*,*) '(input_read) ERROR: Molecular chemistry + metals '//&
+                 'not supported yet (remove metals.inp).'
+      error stop 1
+   endif
 
    R0     = R0*RJ
    Mp     = Mp*MJ

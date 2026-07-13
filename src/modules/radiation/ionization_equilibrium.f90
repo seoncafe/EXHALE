@@ -29,14 +29,16 @@
 
 	contains 
 	
-	subroutine ioniz_eq(T_in,n_in,f_sp_in,n_out, &
-      	 		  f_sp_out,heat_out,cool_out,q)
+	subroutine ioniz_eq(T_in,n_io,f_sp_io,heat_out,cool_out,q)
       	 		  
 	integer :: j,im
 	logical :: usednt                     ! Task 2: Newton-vs-fallback flag
 
-	real*8, dimension(1-Ng:N+Ng),   intent(in) :: T_in,n_in
-	real*8, dimension(1-Ng:N+Ng,n_species), intent(in) :: f_sp_in
+	real*8, dimension(1-Ng:N+Ng),   intent(in) :: T_in
+	! Density and species fractions are read on entry and overwritten with the
+	! equilibrium result on exit (in place); callers must not alias them.
+	real*8, dimension(1-Ng:N+Ng),   intent(inout) :: n_io
+	real*8, dimension(1-Ng:N+Ng,n_species), intent(inout) :: f_sp_io
 
 	real*8, dimension(1-Ng:N+Ng) ::  T_K      ! Dimensional temperature
 	real*8, dimension(1-Ng:N+Ng) ::  nh,nhi,nhii,                   & ! Species densities
@@ -87,16 +89,10 @@
    ! Base index of the first metal element's X+ unknown in sys_x: 4 normally,
    ! 5 when the He triplet occupies x(4) (merged HeITR+metals system).
    integer :: mbase
-      
-   ! Output density
-   real*8, dimension(1-Ng:N+Ng),intent(out) :: n_out 
-      
-   ! Output heating,cooling and absorbed energy 
-   real*8, dimension(1-Ng:N+Ng),intent(out) :: heat_out,cool_out,q 
-      
-   ! Output species fractions
-   real*8, dimension(1-Ng:N+Ng,n_species),intent(out) :: f_sp_out
-	
+
+   ! Output heating,cooling and absorbed energy
+   real*8, dimension(1-Ng:N+Ng),intent(out) :: heat_out,cool_out,q
+
    !----------------------------------------------------------!      
    ! Global parameters
       
@@ -108,17 +104,17 @@
 	! Preliminary profiles exctraction
 	
 	! Dimensional total number density profile and temperature
-	n_in_dim = n_in*n0
+	n_in_dim = n_io*n0
 	T_K      = T_in*T0
 		
 	! Extract species profiles
-	nhi    = f_sp_in(:,1)*n_in_dim    ! HI
-	nhii   = f_sp_in(:,2)*n_in_dim    ! HII
+	nhi    = f_sp_io(:,1)*n_in_dim    ! HI
+	nhii   = f_sp_io(:,2)*n_in_dim    ! HII
 	if (thereis_He) then
-		nhei   = f_sp_in(:,3)*n_in_dim    ! HeI
-		nheii  = f_sp_in(:,4)*n_in_dim    ! HeII
-		nheiii = f_sp_in(:,5)*n_in_dim    ! HeIII
-		nheiTR = f_sp_in(:,6)*n_in_dim    ! HeITR
+		nhei   = f_sp_io(:,3)*n_in_dim    ! HeI
+		nheii  = f_sp_io(:,4)*n_in_dim    ! HeII
+		nheiii = f_sp_io(:,5)*n_in_dim    ! HeIII
+		nheiTR = f_sp_io(:,6)*n_in_dim    ! HeITR
 	else
 		! Enforce condition of zero helium
 		nhei   = 0.0
@@ -130,15 +126,15 @@
     ! Metal ion densities in canonical species_table order (col im maps to
     ! f_sp column mion_fsp(im)).
     do im = 1,n_mion
-       nm(:,im) = f_sp_in(:,mion_fsp(im))*n_in_dim
+       nm(:,im) = f_sp_io(:,mion_fsp(im))*n_in_dim
     enddo
 
 	! molecular species (zero when thereis_mol is off)
 	if (thereis_mol) then
-		nmol_eq(:,1) = f_sp_in(:,isp_H2)  *n_in_dim
-		nmol_eq(:,2) = f_sp_in(:,isp_H2p) *n_in_dim
-		nmol_eq(:,3) = f_sp_in(:,isp_H3p) *n_in_dim
-		nmol_eq(:,4) = f_sp_in(:,isp_HeHp)*n_in_dim
+		nmol_eq(:,1) = f_sp_io(:,isp_H2)  *n_in_dim
+		nmol_eq(:,2) = f_sp_io(:,isp_H2p) *n_in_dim
+		nmol_eq(:,3) = f_sp_io(:,isp_H3p) *n_in_dim
+		nmol_eq(:,4) = f_sp_io(:,isp_HeHp)*n_in_dim
 	endif
 
     ! Total density of each metal element (sum of its three stages, in the
@@ -540,35 +536,35 @@
 	! Density with atomic numbers (nm adds the metal mass under the
 	! eos_metals policy)
    if (thereis_mol) then
-      call calc_rho(nhi,nhii,nhei,nheii,nheiii,nheiTR,n_out,nm,nmol_eq)
+      call calc_rho(nhi,nhii,nhei,nheii,nheiii,nheiTR,n_io,nm,nmol_eq)
    else
-      call calc_rho(nhi,nhii,nhei,nheii,nheiii,nheiTR,n_out,nm)
+      call calc_rho(nhi,nhii,nhei,nheii,nheiii,nheiTR,n_io,nm)
    endif
 
    ! Abundancies profiles
-   f_sp_out(:,1) = nhi/n_out
-   f_sp_out(:,2) = nhii/n_out
-   f_sp_out(:,3) = nhei/n_out
-   f_sp_out(:,4) = nheii/n_out
-   f_sp_out(:,5) = nheiii/n_out
-   f_sp_out(:,6) = nheiTR/n_out
+   f_sp_io(:,1) = nhi/n_io
+   f_sp_io(:,2) = nhii/n_io
+   f_sp_io(:,3) = nhei/n_io
+   f_sp_io(:,4) = nheii/n_io
+   f_sp_io(:,5) = nheiii/n_io
+   f_sp_io(:,6) = nheiTR/n_io
    ! molecular abundances
    if (thereis_mol) then
-      f_sp_out(:,isp_H2)   = nmol_eq(:,1)/n_out
-      f_sp_out(:,isp_H2p)  = nmol_eq(:,2)/n_out
-      f_sp_out(:,isp_H3p)  = nmol_eq(:,3)/n_out
-      f_sp_out(:,isp_HeHp) = nmol_eq(:,4)/n_out
+      f_sp_io(:,isp_H2)   = nmol_eq(:,1)/n_io
+      f_sp_io(:,isp_H2p)  = nmol_eq(:,2)/n_io
+      f_sp_io(:,isp_H3p)  = nmol_eq(:,3)/n_io
+      f_sp_io(:,isp_HeHp) = nmol_eq(:,4)/n_io
    else
-      f_sp_out(:,isp_H2:isp_HeHp) = 0.0d0
+      f_sp_io(:,isp_H2:isp_HeHp) = 0.0d0
    endif
 
-   ! Metal abundances in canonical order (col mion_fsp(im) of f_sp_out).
+   ! Metal abundances in canonical order (col mion_fsp(im) of f_sp_io).
    do im = 1,n_mion
-      f_sp_out(:,mion_fsp(im)) = nm(:,im)/n_out
+      f_sp_io(:,mion_fsp(im)) = nm(:,im)/n_io
    enddo
 
    ! Adimensional number density profile
-	n_out = n_out/n0
+	n_io = n_io/n0
 
    ! Adimensional heating and cooling rates
    heat_out = heat/q0

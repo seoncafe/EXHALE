@@ -217,8 +217,14 @@
 	      ! Output pressure
          p_out = 0.5*(pR + pL)
 		   
+      case default
+
+         write(*,*) 'ERROR: unknown numerical flux: ', trim(flux)
+         write(*,*) '  allowed: LLF, HLLC, ROE'
+         error stop 1
+
       end select
-      
+
       ! End of subroutine
       end subroutine Num_flux
       

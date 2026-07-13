@@ -203,14 +203,14 @@
          rec_method = 'WENO3';  use_weno3 = .true.;  use_plm = .false.
          ! Apply_BC first so the residual depends only on the interior state
          ! (ghosts set by BC), matching the Newton residual F(Y) definition.
-         call Apply_BC(u,u)
+         call Apply_BC(u)
          call U_to_W(u,W)
          rho = W(:,1);  v = W(:,2);  p = W(:,3)
          call get_species_densities(rho,f_sp,nhi,nhii,nhei,nheii,      &
                                     nheiii,nheiTR,nm,ne,n_tot)
          call comp_T_from_p(p,n_tot,ne,T)
          if (use_excited_H) call excited_H_update(T,rho,f_sp,v,exc_rel)
-         call ioniz_eq(T,rho,f_sp,rho,f_sp,heat,cool,eta)
+         call ioniz_eq(T,rho,f_sp,heat,cool,eta)
          call assemble_residual(u, heat, cool, Rres)
          call residual_norms(Rres, u, resid_c)
          ! cell-by-cell residual profile (localize the momentum imbalance)
@@ -344,7 +344,7 @@
                                     nheiii,nheiTR,nm,ne,n_tot)
          call comp_T_from_p(p,n_tot,ne,T)
          if (use_excited_H) call excited_H_update(T,rho,f_sp,v,exc_rel)
-         call ioniz_eq(T,rho,f_sp,rho,f_sp,heat,cool,eta)
+         call ioniz_eq(T,rho,f_sp,heat,cool,eta)
          call get_species_densities(rho,f_sp,nhi,nhii,nhei,nheii,      &
                                     nheiii,nheiTR,nm,ne,n_tot)
          call write_output(rho,v,p,T,heat,cool,eta,                    &
@@ -464,7 +464,7 @@
             enddo
              
             ! Apply boundary conditions
-            call Apply_BC(u1,u1)
+            call Apply_BC(u1)
                       
             !----------------------------
             
@@ -482,7 +482,7 @@
             enddo
 
             ! Apply boundary conditions            
-            call Apply_BC(u2,u2)
+            call Apply_BC(u2)
             
             !----------------------------
             
@@ -500,7 +500,7 @@
             enddo
 
             ! Apply boundary conditions
-            call Apply_BC(u,u)
+            call Apply_BC(u)
  		
 		!------------------------------------------------!
  		
@@ -531,7 +531,7 @@
 
             ! Evaluate ionization equilibrium
             if (do_profile) tp_a = omp_get_wtime()
-            call ioniz_eq(T,rho,f_sp,rho,f_sp,heat,cool,eta)
+            call ioniz_eq(T,rho,f_sp,heat,cool,eta)
             if (do_profile) tp_ion = tp_ion + (omp_get_wtime() - tp_a)
 
             ! Evaluate partial densities, ne and n_tot (single policy point)
@@ -561,14 +561,14 @@
                u(:,3) = u(:,3) + dt_loc*(heat - cool)
             endif
 
-		call Apply_BC(u,u)
+		call Apply_BC(u)
 
             ! Periodic Shapiro low-pass filter to damp the gravity-unbalanced
             ! sound waves (base breathing), as in CETIMB (Koskinen et al. 2013a).
             if (shapiro_eps .gt. 0.0d0 .and.                             &
                 mod(count, shapiro_every) .eq. 0) then
                call shapiro_filter(u)
-               call Apply_BC(u,u)
+               call Apply_BC(u)
             endif
 
             !------------------------------------------------!
@@ -594,7 +594,7 @@
             if (visc_mu0 .gt. 0.0d0) then
                call viscous_accel(v, T, Fvisc)
                u(1:N,2) = u(1:N,2) + dt_loc(1:N)*Fvisc(1:N)
-               call Apply_BC(u,u)
+               call Apply_BC(u)
                call U_to_W(u,W);  rho = W(:,1); v = W(:,2); p = W(:,3)
             endif
 
@@ -806,7 +806,7 @@
                                           nheiii,nheiTR,nm,ne,n_tot)
                call comp_T_from_p(p,n_tot,ne,T)
                if (use_excited_H) call excited_H_update(T,rho,f_sp,v,exc_rel)
-               call ioniz_eq(T,rho,f_sp,rho,f_sp,heat,cool,eta)
+               call ioniz_eq(T,rho,f_sp,heat,cool,eta)
                call get_species_densities(rho,f_sp,nhi,nhii,nhei,nheii, &
                                           nheiii,nheiTR,nm,ne,n_tot)
                if (j .ne. 0) exit                  ! JFNK failed
@@ -817,7 +817,7 @@
                do kd = 1, 500
                   call he_diffusion_step(rho,v,T,f_sp,dt_loc)
                enddo
-               call ioniz_eq(T,rho,f_sp,rho,f_sp,heat,cool,eta)
+               call ioniz_eq(T,rho,f_sp,heat,cool,eta)
                heh_new = (f_sp(:,3)+f_sp(:,4)+f_sp(:,5))                &
                         /max(f_sp(:,1)+f_sp(:,2), 1.0d-30)
                heh_drift = maxval(abs(heh_new(1:N) - heh_prev(1:N))     &

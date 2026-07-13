@@ -50,8 +50,9 @@
 	real*8, dimension(1-Ng:N+Ng) ::  T_K,p_out,T_out     ! Dimensional temperature
 	real*8, dimension(1-Ng:N+Ng) ::  nh,nhe,ne,n_tot 
 	
-	! Dummy variable
-	real*8, dimension(1-Ng:N+Ng) ::  dum_v
+	! Discard scratch: distinct locals for the discarded intent(out) slots so no
+	! two out-arguments in the same call alias one another.
+	real*8, dimension(1-Ng:N+Ng) ::  dum_v1,dum_v2,dum_v3,dum_v4,dum_v5,dum_v6
 
    ! Photo ionization rates
    real*8, dimension(1-Ng:N+Ng) ::  P_HI,P_HeI,P_HeII,P_HeITR
@@ -232,9 +233,9 @@
 	if (thereis_He) then
 		call PH_heat_HHe(nhi,nhei,nheii,nheiTR, nm_w,           &
 					 P_HI,P_HeI,P_HeII,P_HeITR, P_m,        &
-					 dum_v,dum_v)
+					 dum_v1,dum_v2)
   	else
-	  	call PH_heat_H(nhi,P_HI,dum_v,dum_v)
+	  	call PH_heat_H(nhi,P_HI,dum_v1,dum_v2)
   	endif
 
    !---- Recombination rates ----!
@@ -242,7 +243,7 @@
 	call eval_cool(T_K,nhi,nhii,nhei,nheii,nheiii, nm_w,            &
 	  			   rchiiB,rcheiiB,rcheiiiB, rec_m_pp,             &
 				   a_ion_HI,a_ion_HeI,a_ion_HeII, aion_m_pp,          &
-				   dum_v)
+				   dum_v1)
 
  	
  	if (thereis_HeITR) then
@@ -519,10 +520,10 @@
 	
 	if (thereis_He) then
 		call PH_heat_HHe(nhi,nhei,nheii,nheiTR, nm_w,           &
-		                 dum_v,dum_v,dum_v,dum_v, P_m,          &
-		                 theat,dum_v)
+		                 dum_v1,dum_v2,dum_v3,dum_v4, P_m,          &
+		                 theat,dum_v5)
   	else
-	  	call PH_heat_H(nhi,dum_v,theat,dum_v)
+	  	call PH_heat_H(nhi,dum_v1,theat,dum_v2)
   	endif
 
 	! Adimensionalize
@@ -638,8 +639,8 @@
 	!---- Update cooling rates ----!	
 	
 	call eval_cool(T_K,nhi,nhii,nhei,nheii,nheiii, nm_w,            &
-	  			   dum_v,dum_v,dum_v, rec_m_pp,                   &
-				   dum_v,dum_v,dum_v, aion_m_pp,                      &
+	  			   dum_v1,dum_v2,dum_v3, rec_m_pp,                   &
+				   dum_v4,dum_v5,dum_v6, aion_m_pp,                      &
 				   tcool)
 
 	! Adimensionalize

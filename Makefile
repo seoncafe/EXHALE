@@ -15,8 +15,12 @@
 #  generated automatically by src/utils/fortdep.py into $(DEPFILE), so it
 #  stays correct when sources are added or their `use` statements change.
 #
-#  All build artifacts (objects, .mod files, dep/compiler stamps) live in
+#  All build artifacts (objects, .mod files, dep/flag stamps) live in
 #  $(OBJDIR)/; source basenames are unique, so a flat object dir is safe.
+#
+#  Changing FC, FFLAGS, or MODFLAG forces a full rebuild: the objects
+#  depend on a stamp file whose NAME encodes a hash of the effective flag
+#  string, so a different flag set names a different (missing) stamp.
 # =====================================================================
 
 OBJDIR := build
@@ -135,9 +139,17 @@ WAE_EXE := wind_ae_ic.x
 WAE_DEPFILE := $(OBJDIR)/.deps_wae.mk
 vpath %.f90 $(WAE_DIR)
 
-# Rebuild everything when the compiler changes: the stamp file name
-# encodes $(FC), so a different compiler makes the previous objects stale.
-CSTAMP  := $(OBJDIR)/.compiler-$(FC)
+# Rebuild everything when the effective build flags change. The stamp file
+# NAME encodes a hash of the full flag string ($(FC) $(FFLAGS) $(MODFLAG)),
+# so a different flag set names a different stamp: the previous one becomes
+# a missing prerequisite of every object and forces a rebuild, while an
+# unchanged flag set names the same (already-present) stamp and rebuilds
+# nothing. Deriving the name from the flags -- rather than rewriting a
+# fixed-name file -- means a dry run (make -n) with other flags leaves the
+# real build state untouched.
+BUILDFLAGS := $(FC) $(FFLAGS) $(MODFLAG)
+FLAGHASH   := $(firstword $(shell printf '%s' '$(BUILDFLAGS)' | cksum))
+FLAGSTAMP  := $(OBJDIR)/.buildflags-$(FLAGHASH)
 
 # ---------------------------------------------------------------------
 .PHONY: all clean distclean ifort ifx wind_ae_ic
@@ -152,17 +164,19 @@ $(EXE): $(OBJ)
 $(WAE_EXE): $(WAE_OBJ)
 	$(FC) $(FFLAGS) $(MODFLAG) $(WAE_OBJ) -o $@
 	@echo "built $@"
-$(WAE_OBJ): $(CSTAMP)
+$(WAE_OBJ): $(FLAGSTAMP)
 
 # compile each source to $(OBJDIR)/<base>.o (also writes its .mod there)
 $(OBJDIR)/%.o: %.f90 | $(OBJDIR)
 	$(FC) $(FFLAGS) $(MODFLAG) -c $< -o $@
 
-# compiler-change stamp: a normal prerequisite of every object so that
-# switching compilers (the stamp file name changes) forces a full rebuild
-$(OBJ): $(CSTAMP)
-$(CSTAMP): | $(OBJDIR)
-	@rm -f $(OBJDIR)/.compiler-* && touch $@
+# flag-change stamp: a normal prerequisite of every object so that a change
+# in FC / FFLAGS / MODFLAG (which renames the stamp) forces a full rebuild.
+# The recipe drops any stale sibling stamps, so only the current flag set is
+# ever present in $(OBJDIR)/.
+$(OBJ): $(FLAGSTAMP)
+$(FLAGSTAMP): | $(OBJDIR)
+	@rm -f $(OBJDIR)/.buildflags-* && touch $@
 
 $(OBJDIR):
 	@mkdir -p $@
