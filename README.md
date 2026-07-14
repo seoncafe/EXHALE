@@ -559,10 +559,10 @@ See `examples/README.md` for the exact lines each one adds:
    *Atomic Data for Astrophysics. II.* ApJ, 465, 487.  (Photoionization
    cross sections.)
 
+---
+
 ## Author
 
 Kwang-Il Seon (KASI / UST)
 
----
-
-Last updated: 2026-07-14 10:49
+Last updated: 2026-07-14 10:50
