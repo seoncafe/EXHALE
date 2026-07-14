@@ -1,7 +1,7 @@
 #!/bin/bash
 source /data/opt/oneapi_2025.3.1/setvars.sh >/dev/null 2>&1 || true
-BASE=/nfs/mocafe/kiseon/RT_Codes/Exoplanetary_Atmospheres/ATES/EXHALE/lart_runs
-EXEC=/nfs/mocafe/kiseon/RT_Codes/Exoplanetary_Atmospheres/ATES/EXHALE/lart_runs/LaRT_build_dab6f28/LaRT_calcP.x
+BASE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+EXEC="$BASE/LaRT_build_dab6f28/LaRT_calcP.x"
 run() {
   cd $BASE/$1
   echo "[$(date +%m-%d\ %H:%M)] START $3" >> $BASE/insitu_driver.log

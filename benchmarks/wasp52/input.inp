@@ -9,7 +9,7 @@ He/H number ratio: 0.020408
 2D approximate method: Rate/2 + Mdot/2
 Parent star mass [M_sun]: 0.87
 Spectrum type: Load from file..
-Spectrum file: /nfs/mocafe/kiseon/RT_Codes/Exoplanetary_Atmospheres/ATES/EXHALE/WASP-52b/eps_eri_sed_fxuv1p0.txt
+Spectrum file: /nfs/mocafe/kiseon/RT_Codes/Exoplanetary_Atmospheres/EXHALE/WASP-52b/eps_eri_sed_fxuv1p0.txt
 Use only EUV? False
 [E_low,E_mid,E_high] = [ 13.60 , 123.98 , 1.24e3 ]
 Log10 of X-ray luminosity [erg/s]: 28.0

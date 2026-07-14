@@ -1,7 +1,7 @@
 #!/bin/bash
 # Driver B: hd189/hd209 stellar reruns (new winds) + their in-situ runs.
 source /data/opt/oneapi_2025.3.1/setvars.sh >/dev/null 2>&1 || true
-BASE=/nfs/mocafe/kiseon/RT_Codes/Exoplanetary_Atmospheres/ATES/EXHALE/lart_runs
+BASE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 run() { # dir infile tag
   cd $BASE/$1
   echo "[$(date +%m-%d\ %H:%M)] START $3" >> $BASE/insitu_driver.log
