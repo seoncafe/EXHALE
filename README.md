@@ -561,4 +561,4 @@ See `examples/README.md` for the exact lines each one adds:
 
 ---
 
-Last updated: 2026-07-08 11:42
+Last updated: 2026-07-14 09:23
