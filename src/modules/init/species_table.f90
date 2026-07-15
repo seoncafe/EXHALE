@@ -1,5 +1,7 @@
       module species_table
-      ! Canonical metadata table for the trace-metal ion stages.
+      ! Canonical metadata table for the trace-metal ion stages, plus
+      ! composition metadata (mass/charge/nuclei) for the base H/He and
+      ! molecular species (bsp_* below).
       !
       ! This module exists so that adding a metal becomes "add rows to a
       ! table" rather than "thread N new arguments through M subroutines."
@@ -69,6 +71,40 @@
       integer, parameter :: isp_H2p   = 35
       integer, parameter :: isp_H3p   = 36
       integer, parameter :: isp_HeHp  = 37
+
+      ! ---- metadata for each base (H/He/molecular) species ----
+      ! Composition metadata for the non-metal species, so the EOS helpers
+      ! (calc_rho / calc_ne / calc_ntot in utilities.f90) can eventually be
+      ! driven from one table instead of hardcoded branches (§5.3 of
+      ! docs/refactor_plan_system_composition_parser.md). The numeric values
+      ! deliberately MIRROR THE LITERALS THE CODE USES TODAY (He mass 4.0,
+      ! not 4.0026; H2/H2+ = 2, H3+ = 3, HeH+ = 5 m_H), so a future
+      ! metadata-driven rewrite can stay byte-identical. Every species counts
+      ! as ONE gas particle in the pressure/EOS particle sum.
+      integer, parameter :: n_bsp = 10   ! HI HII HeI HeII HeIII HeTR H2 H2+ H3+ HeH+
+      ! f_sp species column for each base species
+      integer, parameter :: bsp_fsp(n_bsp) = &
+           [ isp_HI, isp_HII, isp_HeI, isp_HeII, isp_HeIII, isp_HeTR,   &
+             isp_H2, isp_H2p, isp_H3p, isp_HeHp ]
+      ! mass [m_H units] as used by calc_rho (code values, see note above)
+      real*8,  parameter :: bsp_mass(n_bsp) = &
+           [ 1.0d0, 1.0d0, 4.0d0, 4.0d0, 4.0d0, 4.0d0,                  &
+             2.0d0, 2.0d0, 3.0d0, 5.0d0 ]
+      ! net charge = free electrons contributed (calc_ne: each molecular
+      ! ion carries +1; the He 2^3S triplet is neutral)
+      integer, parameter :: bsp_charge(n_bsp) = &
+           [ 0, 1, 0, 1, 2, 0,  0, 1, 1, 1 ]
+      ! H nuclei carried by one particle of the species
+      integer, parameter :: bsp_nH(n_bsp) = &
+           [ 1, 1, 0, 0, 0, 0,  2, 2, 3, 1 ]
+      ! He nuclei carried (the He nucleus in HeH+ is NOT in the free-He
+      ! arrays; see the calc_rho comment)
+      integer, parameter :: bsp_nHe(n_bsp) = &
+           [ 0, 0, 1, 1, 1, 1,  0, 0, 0, 1 ]
+      ! human-readable species label (diagnostics only)
+      character(len=5), parameter :: bsp_name(n_bsp) = &
+           [ 'HI   ', 'HII  ', 'HeI  ', 'HeII ', 'HeIII', 'HeTR ',      &
+             'H2   ', 'H2+  ', 'H3+  ', 'HeH+ ' ]
 
       ! ---- indices for each ion (canonical mion order; see table above) ----
       ! Used for index-based rate dispatch (rec/ion/cool_coeff_by_ion), so
