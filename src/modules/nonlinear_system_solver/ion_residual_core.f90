@@ -1,8 +1,11 @@
 	module ion_residual_core
 	! Pure, stateless helpers for the standard H/He ionization residual rows
-	! (with collisional ionization) and their analytic-Jacobian pieces. These
-	! blocks are verbatim-shared by System_HeH and System_HeH_metals
-	! (docs/refactor_plan_system_composition_parser.md, §5.2 Inc 1). Only
+	! (with collisional ionization) and their analytic-Jacobian pieces, plus
+	! the TR-form H/He/triplet rows (Oklopcic form, no collisional ionization).
+	! The standard blocks are verbatim-shared by System_HeH and
+	! System_HeH_metals (§5.2 Inc 1); the TR-form rows and the He 2^3S triplet
+	! row are shared by System_HeH_TR, System_HeH_TR_metals and System_HeH_mol
+	! (§5.2 Inc 3, docs/refactor_plan_system_composition_parser.md). Only
 	! explicit-shape / assumed-size dummies are used here: assumed-shape (:)
 	! dummies can change gfortran -O3 code generation and break the
 	! byte-identical regression (review item 4.1). The arithmetic order is
@@ -58,6 +61,53 @@
 	fjac(3,2) = fjac(3,2) + n_he*g_heii + (n_he*b_heii)*n_e
 	fjac(3,3) = fjac(3,3) + (-a_heiii*n_he)*n_e
 	end subroutine heh_jac_local
+
+	! He 2^3S triplet balance row (Oklopcic form, no collisional ionization).
+	! Sets ftr to the single triplet residual expression; verbatim-shared as
+	! row 4 of the TR / TR_metals systems and row 8 of the molecular system.
+	! The continuation-line layout is kept so the expression reads exactly as
+	! the original inline statement, and the arithmetic order is preserved.
+	subroutine tr_triplet_row(ftr, n_hi, n_heiSI, n_heiTR, n_heii, n_e,   &
+	                          g_heiTR, a_heiTR, q13, q31a, q31b, Q31, A31)
+	real*8, intent(out) :: ftr
+	real*8, intent(in)  :: n_hi, n_heiSI, n_heiTR, n_heii, n_e
+	real*8, intent(in)  :: g_heiTR, a_heiTR, q13, q31a, q31b, Q31, A31
+
+	ftr = - n_heiTR*g_heiTR                                         &
+	      + n_e*( n_heii*a_heiTR                                    &
+	            + n_heiSI*q13                                       &
+	            - n_heiTR*(q31a + q31b))                            &
+	      - n_heiTR*(A31 + n_hi*Q31)
+	end subroutine tr_triplet_row
+
+	! TR-form four H/He/triplet residual rows (Oklopcic form, no collisional
+	! ionization). Writes fvec(1), fvec(2), fvec(3) in this exact order, then
+	! obtains fvec(4) from tr_triplet_row so the triplet expression lives in
+	! one place. Verbatim-shared by System_HeH_TR and System_HeH_TR_metals;
+	! n_e is an INPUT, so the metals system can pass its metal-inclusive
+	! electron density.
+	subroutine heh_tr_rows(fvec, n_hi, n_hii, n_heiSI, n_heiTR, n_heii,   &
+	                       n_heiii, n_e, g_hi, g_hei, g_heii, g_heiTR,     &
+	                       a_hii, a_heii, a_heiii, a_heiTR,                &
+	                       q13, q31a, q31b, Q31, A31)
+	real*8 :: fvec(*)
+	real*8, intent(in) :: n_hi, n_hii, n_heiSI, n_heiTR, n_heii, n_heiii, n_e
+	real*8, intent(in) :: g_hi, g_hei, g_heii, g_heiTR
+	real*8, intent(in) :: a_hii, a_heii, a_heiii, a_heiTR
+	real*8, intent(in) :: q13, q31a, q31b, Q31, A31
+
+	fvec(1) = n_hi*g_hi - a_hii*n_hii*n_e
+
+	! New equation for hei - sum of the two equations of Oklopcic
+	fvec(2) =   n_heii*(a_heiTR + a_heii)*n_e                            &
+	          - n_heiSI*g_hei                                           &
+	          - n_heiTR*g_heiTR
+
+	fvec(3) = n_heii*g_heii - a_heiii*n_heiii*n_e
+
+	call tr_triplet_row(fvec(4), n_hi, n_heiSI, n_heiTR, n_heii, n_e,     &
+	                    g_heiTR, a_heiTR, q13, q31a, q31b, Q31, A31)
+	end subroutine heh_tr_rows
 
 	! Metal ion densities (neutral/+/++) from fractions, in canonical element
 	! order. `base` is the row of the first metal unknown (4 in the metals

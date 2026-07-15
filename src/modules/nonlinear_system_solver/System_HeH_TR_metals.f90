@@ -41,7 +41,7 @@
 	                      IPE_PTR, IPE_Q13, IPE_Q31A, IPE_Q31B, IPE_Q31
 	use charge_exchange,    only: cx_add_to_fvec
 	use ion_residual_core,  only: metal_fractions, metal_electron_sum,    &
-	                              metal_rows
+	                              metal_rows, heh_tr_rows
 	use System_HeH_metals,  only: met_nelem, met_ntot, met_g0, met_g1,    &
 	                              met_b0, met_b1, met_a1, met_a2, met_top
 
@@ -107,25 +107,10 @@
 	call metal_electron_sum(n_e, met_nelem, nm1, nm2)
 
 	! --- H/He/triplet rows (verbatim System_HeH_TR, n_e now metal-inclusive) ---
-
-	! HI <-> HII
-	fvec(1) = n_hi*g_hi - a_hii*n_hii*n_e
-
-	! HeI singlet ground (recombination into singlet + triplet, minus
-	! photoionization of the singlet ground and the triplet)
-	fvec(2) =   n_heii*(a_heiTR + a_heii)*n_e                            &
-	          - n_heiSI*g_hei                                           &
-	          - n_heiTR*g_heiTR
-
-	! HeII <-> HeIII
-	fvec(3) = n_heii*g_heii - a_heiii*n_heiii*n_e
-
-	! He 2^3S triplet balance
-	fvec(4) = - n_heiTR*g_heiTR                                         &
-	          + n_e*( n_heii*a_heiTR                                    &
-	                + n_heiSI*q13                                       &
-	                - n_heiTR*(q31a + q31b))                            &
-	          - n_heiTR*(A31 + n_hi*Q31)
+	call heh_tr_rows(fvec, n_hi, n_hii, n_heiSI, n_heiTR, n_heii, n_heiii,  &
+	                 n_e, g_hi, g_hei, g_heii, g_heiTR,                      &
+	                 a_hii, a_heii, a_heiii, a_heiTR,                        &
+	                 q13, q31a, q31b, Q31, A31)
 
 	! --- Metal rows (verbatim System_HeH_metals, shifted to rows 5..) ---
 	call metal_rows(fvec, x, 5, met_nelem, met_ntot, met_g0, met_g1,     &

@@ -6,6 +6,7 @@
 	                      IPE_AHEIII, IPE_NH, IPE_NHE, IPE_BHI, IPE_BHEI,       &
 	                      IPE_BHEII, IPE_ATR, IPE_A31, IPE_PTR, IPE_Q13,        &
 	                      IPE_Q31A, IPE_Q31B, IPE_Q31
+	use ion_residual_core, only: heh_tr_rows
 
 	implicit none
 	
@@ -61,23 +62,13 @@
  	! Electron density
    n_e = n_hii + n_heii + 2.0*n_heiii
 
-    ! System of equations      
-  	fvec(1) = n_hi*g_hi - a_hii*n_hii*n_e  
-  	
-  	! New equation for hei - sum of the two equations of Oklopcic
-  	fvec(2) =  n_heii*(a_heiTR + a_heii)*n_e	&
-  		     - n_heiSI*g_hei					      &
-  		     - n_heiTR*g_heiTR
-  	
-  	fvec(3) = n_heii*g_heii - a_heiii*n_heiii*n_e
-  	
-  	fvec(4) = - n_heiTR*g_heiTR 		  	      &
-  		      + n_e*( n_heii*a_heiTR   	      &
-			        + n_heiSI*q13   		      &
-		    	    - n_heiTR*(q31a + q31b))	   &
-		       - n_heiTR*(A31 + n_hi*Q31)
-	
-	return 
+    ! System of equations (verbatim TR-form rows now live in ion_residual_core)
+	call heh_tr_rows(fvec, n_hi, n_hii, n_heiSI, n_heiTR, n_heii, n_heiii,  &
+	                 n_e, g_hi, g_hei, g_heii, g_heiTR,                      &
+	                 a_hii, a_heii, a_heiii, a_heiTR,                        &
+	                 q13, q31a, q31b, Q31, A31)
+
+	return
 	
 	! End of subroutine
 	end subroutine ion_system_HeH_TR

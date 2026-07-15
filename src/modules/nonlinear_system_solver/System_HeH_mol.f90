@@ -30,6 +30,7 @@
 
 	use global_parameters, only: thereis_HeITR
 	use mol_rates
+	use ion_residual_core, only: tr_triplet_row
 	use params_idx, only: IPE_PHI, IPE_PHEI, IPE_PHEII, IPE_AHII, IPE_AHEII,   &
 	                      IPE_AHEIII, IPE_NH, IPE_NHE, IPE_BHI, IPE_BHEI,       &
 	                      IPE_BHEII, IPE_ATR, IPE_A31, IPE_PTR, IPE_Q13,        &
@@ -185,11 +186,8 @@
 
 	! (8) He 2^3S balance (VERBATIM System_HeH_TR row 4)
 	if (thereis_HeITR) then
-		fvec(8) = - n_heiTR*g_heiTR                                    &
-		          + n_e*( n_heii*a_heiTR                               &
-		                + n_heiSI*q13                                  &
-		                - n_heiTR*(q31a + q31b))                       &
-		          - n_heiTR*(A31 + n_hi*Q31)
+		call tr_triplet_row(fvec(8), n_hi, n_heiSI, n_heiTR, n_heii, n_e,   &
+		                    g_heiTR, a_heiTR, q13, q31a, q31b, Q31, A31)
 	endif
 
 	return
