@@ -3,7 +3,8 @@
 
    use global_parameters
    use species_table, only: n_mion, n_mphot, mion_isphot, mion_iphot,  &
-                            mion_stage, mion_elem, melem_A
+	                         mion_stage, mion_elem, melem_A,  &
+	                         bsp_charge, bsp_mass
 
    implicit none
 
@@ -16,6 +17,11 @@
 	! The optional nm (metal densities for each ion, same units as nhii) adds
 	! the metal electrons when the eos_metals policy is on; omitting it
 	! (or eos_metals 0) reproduces the legacy H/He-only electron count.
+	! The base H/He/molecular electrons are accumulated in the canonical bsp
+	! order of species_table, each species weighted by its net charge
+	! (bsp_charge = free electrons released); neutral species (charge 0) are
+	! skipped as no-ops.  Accumulating in bsp order deliberately fixes the FP
+	! add order (a golden re-snapshot decision, section 5.3 Inc 1).
 
 	integer :: im
 	real*8, dimension(1-Ng:N+Ng), intent(in) :: nhii
@@ -25,12 +31,15 @@
 	real*8, dimension(1-Ng:N+Ng,4), intent(in), optional :: nmol
 	real*8, dimension(1-Ng:N+Ng,n_mion), intent(in), optional :: nm
 	real*8, dimension(1-Ng:N+Ng), intent(out) :: ne
-	
+
+	ne = 0.0d0
+
+	! Base H/He electrons (bsp 2,4,5; bsp 1 HI, 3 HeI, 6 HeTR are neutral).
+	call accum(nhii,   dble(bsp_charge(2)))        ! HII   (bsp 2)
 	if (thereis_He) then
-		ne = nhii + nheii + 2.0*nheiii
-	else
-		ne = nhii
-	endif	
+		call accum(nheii,  dble(bsp_charge(4)))     ! HeII  (bsp 4)
+		call accum(nheiii, dble(bsp_charge(5)))     ! HeIII (bsp 5)
+	endif
 
 	if (present(nm) .and. eos_include_metals .and. thereis_metals) then
 		do im = 1,n_mion
@@ -38,8 +47,21 @@
 				ne = ne + dble(mion_stage(im))*nm(:,im)
 		enddo
 	endif
-	
-	if (present(nmol)) ne = ne + nmol(:,2) + nmol(:,3) + nmol(:,4)
+
+	! Molecular ions (bsp 8,9,10; bsp 7 H2 is neutral).
+	if (present(nmol)) then
+		call accum(nmol(:,2), dble(bsp_charge(8)))     ! H2+  (bsp 8)
+		call accum(nmol(:,3), dble(bsp_charge(9)))     ! H3+  (bsp 9)
+		call accum(nmol(:,4), dble(bsp_charge(10)))    ! HeH+ (bsp 10)
+	endif
+
+	contains
+		subroutine accum(vec, w)
+		! Accumulate w*vec into ne in canonical bsp order.
+		real*8, dimension(1-Ng:N+Ng), intent(in) :: vec
+		real*8, intent(in) :: w
+		ne = ne + w*vec
+		end subroutine accum
 
 	end subroutine calc_ne
 	
@@ -47,8 +69,11 @@
 
 	subroutine calc_ntot(nhi,nhii,nhei,nheii,nheiii,nheiTR,n_tot,nm,nmol)
 	! Calculate the total atomic number density.
-	! The optional nm adds the metal nuclei (all stages) when the
-	! eos_metals policy is on.
+	! Every species counts as ONE gas particle, so the base H/He/molecular
+	! contribution is accumulated with unit weight in the canonical bsp order
+	! of species_table; the optional nm adds the metal nuclei (all stages)
+	! when the eos_metals policy is on.  bsp-order accumulation deliberately
+	! fixes the FP add order (a golden re-snapshot decision, section 5.3 Inc 1).
 
 	integer :: im
 	real*8, dimension(1-Ng:N+Ng), intent(in)  :: nhi,nhii
@@ -56,12 +81,17 @@
 	real*8, dimension(1-Ng:N+Ng,n_mion), intent(in), optional :: nm
 	real*8, dimension(1-Ng:N+Ng,4), intent(in), optional :: nmol  ! molecular
 	real*8, dimension(1-Ng:N+Ng), intent(out) :: n_tot
-	
+
+	n_tot = 0.0d0
+
+	! Base H/He particles (bsp 1..6), one particle each.
+	call accum(nhi)                     ! HI    (bsp 1)
+	call accum(nhii)                    ! HII   (bsp 2)
 	if (thereis_He) then
-		n_tot = nhi + nhii + nhei + nheii + nheiii
-		if (thereis_HeITR) n_tot = n_tot + nheiTR
-	else
-		n_tot = nhi + nhii 
+		call accum(nhei)                ! HeI   (bsp 3)
+		call accum(nheii)               ! HeII  (bsp 4)
+		call accum(nheiii)              ! HeIII (bsp 5)
+		if (thereis_HeITR) call accum(nheiTR)   ! HeTR (bsp 6)
 	endif
 
 	if (present(nm) .and. eos_include_metals .and. thereis_metals) then
@@ -70,9 +100,20 @@
 		enddo
 	endif
 
-	! Each molecule is ONE gas particle (pressure/EOS particle count).
-	if (present(nmol)) n_tot = n_tot + nmol(:,1) + nmol(:,2)              &
-	                                 + nmol(:,3) + nmol(:,4)
+	! Each molecule is ONE gas particle (bsp 7..10).
+	if (present(nmol)) then
+		call accum(nmol(:,1))           ! H2   (bsp 7)
+		call accum(nmol(:,2))           ! H2+  (bsp 8)
+		call accum(nmol(:,3))           ! H3+  (bsp 9)
+		call accum(nmol(:,4))           ! HeH+ (bsp 10)
+	endif
+
+	contains
+		subroutine accum(vec)
+		! Accumulate vec into n_tot (unit weight; one particle per species).
+		real*8, dimension(1-Ng:N+Ng), intent(in) :: vec
+		n_tot = n_tot + vec
+		end subroutine accum
 
 	end subroutine calc_ntot
 
@@ -80,8 +121,13 @@
 	
 	subroutine calc_rho(nhi,nhii,nhei,nheii,nheiii,nheiTR,n_out,nm,nmol)
 	! Calculate the total mass density (adimensional).
-	! The optional nm adds the metal mass (melem_A per nucleus, all
-	! stages) when the eos_metals policy is on.
+	! The base H/He/molecular mass is accumulated in the canonical bsp order
+	! of species_table, each species weighted by bsp_mass [m_H units]; this
+	! bsp-order weighted accumulation deliberately reorders the FP adds versus
+	! the old factored 4.0*(nhei+...) form (a golden re-snapshot decision,
+	! section 5.3 Inc 1).  The optional nm adds the metal mass (melem_A per
+	! nucleus, all stages) when the eos_metals policy is on.  (HeH+ carries
+	! 5 m_H: its He nucleus is NOT in the nhei..nheiii free-He arrays.)
 
 	integer :: im
 	real*8, dimension(1-Ng:N+Ng), intent(in)  :: nhi,nhii
@@ -89,12 +135,17 @@
 	real*8, dimension(1-Ng:N+Ng,n_mion), intent(in), optional :: nm
 	real*8, dimension(1-Ng:N+Ng,4), intent(in), optional :: nmol  ! molecular
 	real*8, dimension(1-Ng:N+Ng), intent(out) :: n_out
-	
+
+	n_out = 0.0d0
+
+	! Base H/He mass (bsp 1..6), weighted by bsp_mass.
+	call accum(nhi,    bsp_mass(1))     ! HI    (bsp 1)
+	call accum(nhii,   bsp_mass(2))     ! HII   (bsp 2)
 	if (thereis_He) then
-		n_out = nhi + nhii + 4.0*(nhei + nheii + nheiii)
-		if (thereis_HeITR) n_out = n_out + 4.0*nheiTR
-	else
-		n_out = nhi + nhii 
+		call accum(nhei,   bsp_mass(3))     ! HeI   (bsp 3)
+		call accum(nheii,  bsp_mass(4))     ! HeII  (bsp 4)
+		call accum(nheiii, bsp_mass(5))     ! HeIII (bsp 5)
+		if (thereis_HeITR) call accum(nheiTR, bsp_mass(6))   ! HeTR (bsp 6)
 	endif
 
 	if (present(nm) .and. eos_include_metals .and. thereis_metals) then
@@ -103,10 +154,21 @@
 		enddo
 	endif
 
-	! Molecular mass: H2/H2+ = 2 m_H, H3+ = 3 m_H, HeH+ = 5 m_H (the He
-	! nucleus in HeH+ is NOT in the nhei..nheiii free-He arrays).
-	if (present(nmol)) n_out = n_out + 2.0d0*(nmol(:,1) + nmol(:,2))      &
-	                         + 3.0d0*nmol(:,3) + 5.0d0*nmol(:,4)
+	! Molecular mass (bsp 7..10): H2/H2+ = 2, H3+ = 3, HeH+ = 5 m_H.
+	if (present(nmol)) then
+		call accum(nmol(:,1), bsp_mass(7))     ! H2   (bsp 7)
+		call accum(nmol(:,2), bsp_mass(8))     ! H2+  (bsp 8)
+		call accum(nmol(:,3), bsp_mass(9))     ! H3+  (bsp 9)
+		call accum(nmol(:,4), bsp_mass(10))    ! HeH+ (bsp 10)
+	endif
+
+	contains
+		subroutine accum(vec, w)
+		! Accumulate w*vec into n_out in canonical bsp order.
+		real*8, dimension(1-Ng:N+Ng), intent(in) :: vec
+		real*8, intent(in) :: w
+		n_out = n_out + w*vec
+		end subroutine accum
 
 	end subroutine calc_rho
 
