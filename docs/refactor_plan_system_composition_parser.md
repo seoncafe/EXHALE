@@ -127,6 +127,16 @@ state logic.
 **Note:** §5.3 Inc 1 is the increment most likely to require a re-snapshot. Treat
 it as a decision, not an automatic byte-identical change.
 
+**Inc 1 executed 2026-07-16 (re-snapshot accepted).** Measured record: the
+reorder seed is 1-3 ulp (max rel diff 7.3e-16 across all columns at step 1);
+the converged wasp states differ by median ~1e-14 / max ~2e-10 with identical
+step counts and unchanged Mdot (13.30 both cases); OMP 1-vs-16 stays mutually
+byte-identical. Caveat for future gates: the bounded 400-step molecular
+checkpoint sits in a chaotic transient — the stiff H2 front amplifies any
+1-ulp seed by roughly e per step, so the front decorrelates by 1-2 cells at
+that step count; this is transient decorrelation, not a physics change.
+Goldens and the bounded molecular/SED/OMP references were re-snapshotted.
+
 ---
 
 ## §5.6 — Unify input parsing
