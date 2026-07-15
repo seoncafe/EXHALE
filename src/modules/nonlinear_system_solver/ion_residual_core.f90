@@ -59,5 +59,79 @@
 	fjac(3,3) = fjac(3,3) + (-a_heiii*n_he)*n_e
 	end subroutine heh_jac_local
 
+	! Metal ion densities (neutral/+/++) from fractions, in canonical element
+	! order. `base` is the row of the first metal unknown (4 in the metals
+	! system, 5 with the He 2^3S triplet), so ix = base + 2*(e-1) locates the
+	! X+/X++ fractions of element e. Sets nm0/nm1/nm2 in this exact order.
+	subroutine metal_fractions(x, base, nelem, mtot, nm0, nm1, nm2)
+	integer, intent(in) :: base, nelem
+	real*8, intent(in)  :: x(*)
+	real*8, intent(in)  :: mtot(nelem)
+	real*8, intent(out) :: nm0(nelem), nm1(nelem), nm2(nelem)
+	integer :: e, ix
+	real*8  :: n_X
+
+	do e = 1,nelem
+		ix     = base + 2*(e-1)
+		n_X    = mtot(e)
+		nm1(e) = x(ix)*n_X
+		nm2(e) = x(ix+1)*n_X
+		nm0(e) = (1.0 - x(ix) - x(ix+1))*n_X
+	enddo
+	end subroutine metal_fractions
+
+	! Add the metal electron contribution to n_e (X+ counts once, X++ twice),
+	! in canonical element order. n_e accumulates in place, reproducing the
+	! original loop's add order exactly.
+	subroutine metal_electron_sum(n_e, nelem, nm1, nm2)
+	integer, intent(in)   :: nelem
+	real*8, intent(inout) :: n_e
+	real*8, intent(in)    :: nm1(nelem), nm2(nelem)
+	integer :: e
+
+	do e = 1,nelem
+		n_e = n_e + nm1(e) + 2.0*nm2(e)
+	enddo
+	end subroutine metal_electron_sum
+
+	! Metal ionization balance rows, one element at a time (force-zero if the
+	! element is absent; otherwise the normal balance). `base` locates the
+	! first metal row (4 or 5); ix = base + 2*(e-1). Three-stage elements
+	! (mtop >= 2) solve both X0<->X+ and X+<->X++; two-stage elements solve
+	! only X0<->X+ and pin the unused upper unknown. Expression order is
+	! verbatim from the System_HeH_metals residual.
+	subroutine metal_rows(fvec, x, base, nelem, mtot, mg0, mg1,        &
+	                      mb0, mb1, ma1, ma2, mtop, nm0, nm1, nm2, n_e)
+	integer, intent(in) :: base, nelem
+	real*8 :: fvec(*)
+	real*8, intent(in)  :: x(*)
+	real*8, intent(in)  :: mtot(nelem), mg0(nelem), mg1(nelem)
+	real*8, intent(in)  :: mb0(nelem), mb1(nelem), ma1(nelem), ma2(nelem)
+	integer, intent(in) :: mtop(nelem)
+	real*8, intent(in)  :: nm0(nelem), nm1(nelem), nm2(nelem)
+	real*8, intent(in)  :: n_e
+	integer :: e, ix
+
+	do e = 1,nelem
+		ix = base + 2*(e-1)
+		if (mtot(e) .le. 1.0d-30) then
+			fvec(ix)   = x(ix)
+			fvec(ix+1) = x(ix+1)
+		else
+			! X0 <-> X+
+			fvec(ix)   = nm0(e)*mg0(e)                            &
+			           + (nm0(e)*mb0(e) - ma1(e)*nm1(e))*n_e
+			if (mtop(e) .ge. 2) then
+				! X+ <-> X++
+				fvec(ix+1) = nm1(e)*mg1(e)                            &
+				           + (nm1(e)*mb1(e) - ma2(e)*nm2(e))*n_e
+			else
+				! Two-stage element: no X++, pin the unused unknown.
+				fvec(ix+1) = x(ix+1)
+			endif
+		endif
+	enddo
+	end subroutine metal_rows
+
 	! End of module
 	end module ion_residual_core

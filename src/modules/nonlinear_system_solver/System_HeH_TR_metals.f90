@@ -40,6 +40,8 @@
 	                      IPE_AHEIII, IPE_NH, IPE_NHE, IPE_ATR, IPE_A31,        &
 	                      IPE_PTR, IPE_Q13, IPE_Q31A, IPE_Q31B, IPE_Q31
 	use charge_exchange,    only: cx_add_to_fvec
+	use ion_residual_core,  only: metal_fractions, metal_electron_sum,    &
+	                              metal_rows
 	use System_HeH_metals,  only: met_nelem, met_ntot, met_g0, met_g1,    &
 	                              met_b0, met_b1, met_a1, met_a2, met_top
 
@@ -97,20 +99,12 @@
 
 	! Metal ion densities (neutral/+/++) from fractions, canonical order.
 	! Metals occupy rows 5.. (shifted up by one from System_HeH_metals).
-	do e = 1,met_nelem
-		ix     = 5 + 2*(e-1)
-		n_X    = met_ntot(e)
-		nm1(e) = x(ix)*n_X
-		nm2(e) = x(ix+1)*n_X
-		nm0(e) = (1.0 - x(ix) - x(ix+1))*n_X
-	enddo
+	call metal_fractions(x, 5, met_nelem, met_ntot, nm0, nm1, nm2)
 
 	! Electron density: H/He first (reproducing the original sum), then the
 	! metal charges. The triplet is neutral and contributes nothing.
 	n_e = n_hii + n_heii + 2.0*n_heiii
-	do e = 1,met_nelem
-		n_e = n_e + nm1(e) + 2.0*nm2(e)
-	enddo
+	call metal_electron_sum(n_e, met_nelem, nm1, nm2)
 
 	! --- H/He/triplet rows (verbatim System_HeH_TR, n_e now metal-inclusive) ---
 
@@ -134,25 +128,9 @@
 	          - n_heiTR*(A31 + n_hi*Q31)
 
 	! --- Metal rows (verbatim System_HeH_metals, shifted to rows 5..) ---
-	do e = 1,met_nelem
-		ix = 5 + 2*(e-1)
-		if (met_ntot(e) .le. 1.0d-30) then
-			fvec(ix)   = x(ix)
-			fvec(ix+1) = x(ix+1)
-		else
-			! X0 <-> X+
-			fvec(ix)   = nm0(e)*met_g0(e)                              &
-			           + (nm0(e)*met_b0(e) - met_a1(e)*nm1(e))*n_e
-			if (met_top(e) .ge. 2) then
-				! X+ <-> X++
-				fvec(ix+1) = nm1(e)*met_g1(e)                          &
-				           + (nm1(e)*met_b1(e) - met_a2(e)*nm2(e))*n_e
-			else
-				! Two-stage element: pin the unused X++ unknown.
-				fvec(ix+1) = x(ix+1)
-			endif
-		endif
-	enddo
+	call metal_rows(fvec, x, 5, met_nelem, met_ntot, met_g0, met_g1,     &
+	                met_b0, met_b1, met_a1, met_a2, met_top,             &
+	                nm0, nm1, nm2, n_e)
 
 	! Charge exchange (Huang Table 4) on the H, He and metal rows. The metal
 	! rows are at base 5 here; the driver sets cx_metal_base = 5 before this

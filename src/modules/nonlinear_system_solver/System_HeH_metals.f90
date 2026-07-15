@@ -29,7 +29,9 @@
 	use global_parameters
 	use params_idx, only: IPE_PHI, IPE_PHEI, IPE_PHEII, IPE_AHII, IPE_AHEII,  &
 	                      IPE_AHEIII, IPE_NH, IPE_NHE, IPE_BHI, IPE_BHEI, IPE_BHEII
-	use ion_residual_core, only: heh_rows, heh_crow, heh_jac_local
+	use ion_residual_core, only: heh_rows, heh_crow, heh_jac_local,       &
+	                             metal_fractions, metal_electron_sum,     &
+	                             metal_rows
 	use charge_exchange, only: cx_add_to_fvec, cx_add_to_jac
 
 	implicit none
@@ -121,20 +123,12 @@
 	n_hei   = (1.0 - x(2) - x(3))*n_he
 
 	! Metal ion densities (neutral/+/++) from fractions, canonical order
-	do e = 1,met_nelem
-		ix     = 4 + 2*(e-1)
-		n_X    = met_ntot(e)
-		nm1(e) = x(ix)*n_X
-		nm2(e) = x(ix+1)*n_X
-		nm0(e) = (1.0 - x(ix) - x(ix+1))*n_X
-	enddo
+	call metal_fractions(x, 4, met_nelem, met_ntot, nm0, nm1, nm2)
 
 	! Electron density (X+ counts once, X++ twice). H/He first, then the
 	! metals in canonical element order, reproducing the original sum.
 	n_e = n_hii + n_heii + 2.0*n_heiii
-	do e = 1,met_nelem
-		n_e = n_e + nm1(e) + 2.0*nm2(e)
-	enddo
+	call metal_electron_sum(n_e, met_nelem, nm1, nm2)
 
 	! Steady-state balance equations: fvec = 0 when
 	! (production from lower stage) = (loss to upper stage). Charge
@@ -150,25 +144,9 @@
 	! element is absent; otherwise normal balance). Three-stage elements
 	! solve both X0<->X+ and X+<->X++; two-stage elements solve only
 	! X0<->X+ and pin the unused upper unknown to zero.
-	do e = 1,met_nelem
-		ix = 4 + 2*(e-1)
-		if (met_ntot(e) .le. 1.0d-30) then
-			fvec(ix)   = x(ix)
-			fvec(ix+1) = x(ix+1)
-		else
-			! X0 <-> X+
-			fvec(ix)   = nm0(e)*met_g0(e)                            &
-			           + (nm0(e)*met_b0(e) - met_a1(e)*nm1(e))*n_e
-			if (met_top(e) .ge. 2) then
-				! X+ <-> X++
-				fvec(ix+1) = nm1(e)*met_g1(e)                            &
-				           + (nm1(e)*met_b1(e) - met_a2(e)*nm2(e))*n_e
-			else
-				! Two-stage element: no X++, pin the unused unknown.
-				fvec(ix+1) = x(ix+1)
-			endif
-		endif
-	enddo
+	call metal_rows(fvec, x, 4, met_nelem, met_ntot, met_g0, met_g1,   &
+	                met_b0, met_b1, met_a1, met_a2, met_top,           &
+	                nm0, nm1, nm2, n_e)
 
 	! Add charge exchange (Huang Table 4) to the H, He and metal balance
 	! rows. Rates were stored per cell by cx_set_cell; absent reactants
@@ -206,14 +184,9 @@
 
    n_hii=x(1)*n_h;  n_hi=(1.0-x(1))*n_h
    n_heii=x(2)*n_he; n_heiii=x(3)*n_he; n_hei=(1.0-x(2)-x(3))*n_he
-   do e=1,met_nelem
-      ix=4+2*(e-1); n_X=met_ntot(e)
-      nm1(e)=x(ix)*n_X; nm2(e)=x(ix+1)*n_X; nm0(e)=(1.0-x(ix)-x(ix+1))*n_X
-   enddo
+   call metal_fractions(x, 4, met_nelem, met_ntot, nm0, nm1, nm2)
    n_e = n_hii + n_heii + 2.0*n_heiii
-   do e=1,met_nelem
-      n_e = n_e + nm1(e) + 2.0*nm2(e)
-   enddo
+   call metal_electron_sum(n_e, met_nelem, nm1, nm2)
 
    ! Electron-density gradient dne(k) = d n_e / d x_k.
    dne = 0.0d0
