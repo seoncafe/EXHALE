@@ -2,10 +2,7 @@
 	! Ionization equilibrium system with both H and He
 	
 	use global_parameters
-	use params_idx, only: IPE_PHI, IPE_PHEI, IPE_PHEII, IPE_AHII, IPE_AHEII,   &
-	                      IPE_AHEIII, IPE_NH, IPE_NHE, IPE_BHI, IPE_BHEI,       &
-	                      IPE_BHEII, IPE_ATR, IPE_A31, IPE_PTR, IPE_Q13,        &
-	                      IPE_Q31A, IPE_Q31B, IPE_Q31
+	use ion_cell_state, only: ieq_cell
 	use ion_residual_core, only: heh_tr_rows
 
 	implicit none
@@ -27,26 +24,26 @@
 	
 	! Coefficients of the system
 
- 	g_hi    = params(IPE_PHI)    ! = P_HI 
- 	g_hei   = params(IPE_PHEI)    ! = P_HeI
- 	g_heii  = params(IPE_PHEII)    ! = P_HeII 
- 	a_hii   = params(IPE_AHII)    ! = rchiiB 
- 	a_heii  = params(IPE_AHEII)    ! = rcheiiB 
- 	a_heiii = params(IPE_AHEIII)    ! = rcheiiiB 
- 	n_h     = params(IPE_NH)    ! = nh 
- 	n_he    = params(IPE_NHE)    ! = nhe 
-   b_hi    = params(IPE_BHI)    ! = a_ion_HI 
- 	b_hei   = params(IPE_BHEI)   ! = a_ion_HeI 
- 	b_heii  = params(IPE_BHEII)   ! = a_ion_HeII 
- 	
+ 	g_hi    = ieq_cell%P_HI        ! = P_HI
+ 	g_hei   = ieq_cell%P_HeI       ! = P_HeI
+ 	g_heii  = ieq_cell%P_HeII      ! = P_HeII
+ 	a_hii   = ieq_cell%rchiiB      ! = rchiiB
+ 	a_heii  = ieq_cell%rcheiiB     ! = rcheiiB
+ 	a_heiii = ieq_cell%rcheiiiB    ! = rcheiiiB
+ 	n_h     = ieq_cell%nh          ! = nh
+ 	n_he    = ieq_cell%nhe         ! = nhe
+   b_hi    = ieq_cell%a_ion_HI    ! = a_ion_HI
+ 	b_hei   = ieq_cell%a_ion_HeI   ! = a_ion_HeI
+ 	b_heii  = ieq_cell%a_ion_HeII  ! = a_ion_HeII
+
  	! Triplet parameters
- 	a_heiTR = params(IPE_ATR)   ! = rcheiTR
- 	A31     = params(IPE_A31)   ! = A31
- 	g_heiTR = params(IPE_PTR)   ! = P_HeITR
- 	q13     = params(IPE_Q13)   ! = q13
- 	q31a    = params(IPE_Q31A)   ! = q31a
- 	q31b    = params(IPE_Q31B)   ! = q31b
- 	Q31     = params(IPE_Q31)   ! = Q31
+ 	a_heiTR = ieq_cell%rcheiTR  ! = rcheiTR
+ 	A31     = ieq_cell%A31      ! = A31
+ 	g_heiTR = ieq_cell%P_HeITR  ! = P_HeITR
+ 	q13     = ieq_cell%q13      ! = q13
+ 	q31a    = ieq_cell%q31a     ! = q31a
+ 	q31b    = ieq_cell%q31b     ! = q31b
+ 	Q31     = ieq_cell%Q31      ! = Q31
  	
  	
  	! Species densities

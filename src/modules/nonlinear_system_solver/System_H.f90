@@ -2,7 +2,7 @@
 	! Ionization equilibrium system with only H
 	
 	use global_parameters
-	use params_idx, only: IPH_PHI, IPH_AHII, IPH_NH, IPH_BHI
+	use ion_cell_state, only: ieq_cell
 
 	implicit none
 	
@@ -21,10 +21,10 @@
 	
 	! Coefficients of the system
 
- 	g_hi    = params(IPH_PHI)    ! = P_HI 
- 	a_hii   = params(IPH_AHII)    ! = rchiiB 
- 	n_h     = params(IPH_NH)    ! = nh 
-   b_hi    = params(IPH_BHI)    ! = a_ion_HI 
+ 	g_hi    = ieq_cell%P_HI      ! = P_HI
+ 	a_hii   = ieq_cell%rchiiB    ! = rchiiB
+ 	n_h     = ieq_cell%nh        ! = nh
+   b_hi    = ieq_cell%a_ion_HI  ! = a_ion_HI
  	
  	! Species densities
  	n_hi  = (1.0-x(1))*n_h
@@ -46,10 +46,10 @@
 	real*8  :: x(Neq), fjac(Neq,Neq), params(40)
 	real*8  :: g_hi, a_hii, n_h, b_hi
 	real*8  :: n_hi, n_hii, n_e, C1
-	g_hi  = params(IPH_PHI)
-	a_hii = params(IPH_AHII)
-	n_h   = params(IPH_NH)
-	b_hi  = params(IPH_BHI)
+	g_hi  = ieq_cell%P_HI
+	a_hii = ieq_cell%rchiiB
+	n_h   = ieq_cell%nh
+	b_hi  = ieq_cell%a_ion_HI
 	n_hi  = (1.0 - x(1))*n_h
 	n_hii = x(1)*n_h
 	n_e   = n_hii

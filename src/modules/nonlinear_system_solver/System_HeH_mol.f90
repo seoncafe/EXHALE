@@ -31,10 +31,7 @@
 	use global_parameters, only: thereis_HeITR
 	use mol_rates
 	use ion_residual_core, only: tr_triplet_row
-	use params_idx, only: IPE_PHI, IPE_PHEI, IPE_PHEII, IPE_AHII, IPE_AHEII,   &
-	                      IPE_AHEIII, IPE_NH, IPE_NHE, IPE_BHI, IPE_BHEI,       &
-	                      IPE_BHEII, IPE_ATR, IPE_A31, IPE_PTR, IPE_Q13,        &
-	                      IPE_Q31A, IPE_Q31B, IPE_Q31, IPE_PH2, IPE_T, IPE_NTOT
+	use ion_cell_state, only: ieq_cell
 
 	implicit none
 
@@ -87,27 +84,27 @@
 	real*8  :: k5,k6,k7,k8,k9,k10,k11,k12,k13,k14,k15
 	real*8  :: k16,k17,k18,k19,k20,k23
 
-	g_hi    = params(IPE_PHI)
-	g_hei   = params(IPE_PHEI)
-	g_heii  = params(IPE_PHEII)
-	a_hii   = params(IPE_AHII)
-	a_heii  = params(IPE_AHEII)
-	a_heiii = params(IPE_AHEIII)
-	n_h     = params(IPE_NH)
-	n_he    = params(IPE_NHE)
-	b_hi    = params(IPE_BHI)
-	b_hei   = params(IPE_BHEI)
-	b_heii  = params(IPE_BHEII)
-	a_heiTR = params(IPE_ATR)
-	A31     = params(IPE_A31)
-	g_heiTR = params(IPE_PTR)
-	q13     = params(IPE_Q13)
-	q31a    = params(IPE_Q31A)
-	q31b    = params(IPE_Q31B)
-	Q31     = params(IPE_Q31)
-	g_h2    = params(IPE_PH2)
-	T       = params(IPE_T)
-	ntot    = params(IPE_NTOT)
+	g_hi    = ieq_cell%P_HI
+	g_hei   = ieq_cell%P_HeI
+	g_heii  = ieq_cell%P_HeII
+	a_hii   = ieq_cell%rchiiB
+	a_heii  = ieq_cell%rcheiiB
+	a_heiii = ieq_cell%rcheiiiB
+	n_h     = ieq_cell%nh
+	n_he    = ieq_cell%nhe
+	b_hi    = ieq_cell%a_ion_HI
+	b_hei   = ieq_cell%a_ion_HeI
+	b_heii  = ieq_cell%a_ion_HeII
+	a_heiTR = ieq_cell%rcheiTR
+	A31     = ieq_cell%A31
+	g_heiTR = ieq_cell%P_HeITR
+	q13     = ieq_cell%q13
+	q31a    = ieq_cell%q31a
+	q31b    = ieq_cell%q31b
+	Q31     = ieq_cell%Q31
+	g_h2    = ieq_cell%P_H2
+	T       = ieq_cell%T_K
+	ntot    = ieq_cell%ntot
 
 	! Species densities
 	n_hi   = (1.0d0 - x(1) - x(4) - x(5) - x(6) - x(7))*n_h

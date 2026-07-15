@@ -19,9 +19,10 @@
 	                      IPA_AHEII, IPA_AHEIII, IPA_BHI, IPA_BHEI, IPA_BHEII,  &
 	                      IPA_HEH, IPAT_ATR, IPAT_A31, IPAT_PTR, IPAT_Q13,      &
 	                      IPAT_Q31A, IPAT_Q31B, IPAT_Q31, IPAT_XTR, IPAT_HEH,   &
-	                      IPE_NH, IPE_NHE, IPT_NHI, IPT_NHII, IPT_NHEI,         &
+	                      IPT_NHI, IPT_NHII, IPT_NHEI,                          &
 	                      IPT_NHEII, IPT_NHEIII, IPT_MUP, IPT_MUM, IPT_RHOV,    &
 	                      IPT_COEFF, IPT_DR, IPT_TOLD, IPT_HEAOLD
+	use ion_cell_state, only: ieq_cell
 	use species_table, only: n_mion, n_melem, melem_i0, melem_top
 	use utils
 	use System_implicit_adv_H
@@ -499,11 +500,14 @@
 			pp_xHeII_fix  = nheii(j)/max(nhe(j),1.0d-300)
 			pp_xHeIII_fix = nheiii(j)/max(nhe(j),1.0d-300)
 
-			! H/He params for the residual: only n_h, n_he are consumed once
-			! rows 1-3 are pinned (the H/He rates drop out).
+			! Named-field cell state for the residual: only n_h, n_he are
+			! consumed once rows 1-3 are pinned (the H/He rates drop out). pp
+			! runs serially on the master thread, so this master threadprivate
+			! copy is the one read by ion_system_HeH_metals inside the wrapper.
+			! params stays only the MINPACK transport argument (unread).
 			params    = 0.0d0
-			params(IPE_NH) = nh(j)
-			params(IPE_NHE) = nhe(j)
+			ieq_cell%nh  = nh(j)
+			ieq_cell%nhe = nhe(j)
 
 			! Initial guess: pinned H/He fractions + current metal split.
 			sys_x(1) = pp_xHII_fix

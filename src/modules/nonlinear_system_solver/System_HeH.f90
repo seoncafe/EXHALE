@@ -2,8 +2,7 @@
 	! Ionization equilibrium system with both H and He
 	
 	use global_parameters
-	use params_idx, only: IPE_PHI, IPE_PHEI, IPE_PHEII, IPE_AHII, IPE_AHEII,  &
-	                      IPE_AHEIII, IPE_NH, IPE_NHE, IPE_BHI, IPE_BHEI, IPE_BHEII
+	use ion_cell_state, only: ieq_cell
 	use ion_residual_core, only: heh_rows, heh_crow, heh_jac_local
 
 	implicit none
@@ -24,17 +23,17 @@
 	
 	! Coefficients of the system
 
- 	g_hi    = params(IPE_PHI)    ! = P_HI 
- 	g_hei   = params(IPE_PHEI)    ! = P_HeI
- 	g_heii  = params(IPE_PHEII)    ! = P_HeII 
- 	a_hii   = params(IPE_AHII)    ! = rchiiB 
- 	a_heii  = params(IPE_AHEII)    ! = rcheiiB 
- 	a_heiii = params(IPE_AHEIII)    ! = rcheiiiB 
- 	n_h     = params(IPE_NH)    ! = nh 
- 	n_he    = params(IPE_NHE)    ! = nhe 
-   b_hi    = params(IPE_BHI)    ! = a_ion_HI 
- 	b_hei   = params(IPE_BHEI)   ! = a_ion_HeI 
- 	b_heii  = params(IPE_BHEII)   ! = a_ion_HeII 
+ 	g_hi    = ieq_cell%P_HI        ! = P_HI
+ 	g_hei   = ieq_cell%P_HeI       ! = P_HeI
+ 	g_heii  = ieq_cell%P_HeII      ! = P_HeII
+ 	a_hii   = ieq_cell%rchiiB      ! = rchiiB
+ 	a_heii  = ieq_cell%rcheiiB     ! = rcheiiB
+ 	a_heiii = ieq_cell%rcheiiiB    ! = rcheiiiB
+ 	n_h     = ieq_cell%nh          ! = nh
+ 	n_he    = ieq_cell%nhe         ! = nhe
+   b_hi    = ieq_cell%a_ion_HI    ! = a_ion_HI
+ 	b_hei   = ieq_cell%a_ion_HeI   ! = a_ion_HeI
+ 	b_heii  = ieq_cell%a_ion_HeII  ! = a_ion_HeII
  	
  	! Species densities
  	n_hi    = (1.0-x(1))*n_h
@@ -71,10 +70,10 @@
 	real*8  :: C1,C2,C3, dne(3)
 	integer :: k
 
-	g_hi    = params(IPE_PHI);  g_hei   = params(IPE_PHEI);  g_heii  = params(IPE_PHEII)
-	a_hii   = params(IPE_AHII);  a_heii  = params(IPE_AHEII);  a_heiii = params(IPE_AHEIII)
-	n_h     = params(IPE_NH);  n_he    = params(IPE_NHE)
-	b_hi    = params(IPE_BHI);  b_hei   = params(IPE_BHEI); b_heii  = params(IPE_BHEII)
+	g_hi    = ieq_cell%P_HI;  g_hei   = ieq_cell%P_HeI;  g_heii  = ieq_cell%P_HeII
+	a_hii   = ieq_cell%rchiiB;  a_heii  = ieq_cell%rcheiiB;  a_heiii = ieq_cell%rcheiiiB
+	n_h     = ieq_cell%nh;  n_he    = ieq_cell%nhe
+	b_hi    = ieq_cell%a_ion_HI;  b_hei   = ieq_cell%a_ion_HeI; b_heii  = ieq_cell%a_ion_HeII
 
 	n_hi    = (1.0-x(1))*n_h
 	n_hii   = x(1)*n_h

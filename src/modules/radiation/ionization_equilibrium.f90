@@ -2,11 +2,7 @@
 	! Evaluate the ionization structure and the heating and cooling functions for a given temperature
 
 	use global_parameters
-   use params_idx, only: IPH_PHI, IPH_AHII, IPH_NH, IPH_BHI, IPE_PHI,         &
-                         IPE_PHEI, IPE_PHEII, IPE_AHII, IPE_AHEII, IPE_AHEIII, &
-                         IPE_NH, IPE_NHE, IPE_BHI, IPE_BHEI, IPE_BHEII,        &
-                         IPE_ATR, IPE_A31, IPE_PTR, IPE_Q13, IPE_Q31A,         &
-                         IPE_Q31B, IPE_Q31, IPE_PH2, IPE_T, IPE_NTOT
+   use ion_cell_state, only: ieq_cell
    use species_table, only: n_mion, mion_fsp, n_melem, melem_i0,        &
                             melem_top, mion_stage,                       &
                             isp_H2, isp_H2p, isp_H3p, isp_HeHp
@@ -266,11 +262,13 @@
 			if (.not. allocated(sys_x)) allocate(sys_x(N_eq))
 			if (.not. allocated(wa))    allocate(wa(lwa))
 
-			! Ionization equilibrium system setup
-			params(IPH_PHI) = P_HI(j)
-			params(IPH_AHII) = rchiiB(j)
-			params(IPH_NH) = nh(j)
-			params(IPH_BHI) = a_ion_HI(j)
+			! Ionization equilibrium system setup: named-field cell state
+			! (Inc 4). System_H reads these; params is now only the MINPACK
+			! transport argument (unread by the converted system).
+			ieq_cell%P_HI     = P_HI(j)
+			ieq_cell%rchiiB   = rchiiB(j)
+			ieq_cell%nh       = nh(j)
+			ieq_cell%a_ion_HI = a_ion_HI(j)
 
 			 ! Initial guess
 			if (count.le.0) then
@@ -324,38 +322,46 @@
 			if (.not. allocated(sys_sol)) allocate(sys_sol(N_eq))
 			if (.not. allocated(wa))      allocate(wa(lwa))
 
-			! System coefficients
-			params(IPE_PHI)  = P_HI(j)
-			params(IPE_PHEI)  = P_HeI(j)
-			params(IPE_PHEII)  = P_HeII(j)
-			params(IPE_AHII)  = rchiiB(j)
-			params(IPE_AHEII)  = rcheiiB(j)
-			params(IPE_AHEIII)  = rcheiiiB(j)
-			params(IPE_NH)  = nh(j)
-			params(IPE_NHE)  = nhe(j)
-			params(IPE_BHI)  = a_ion_HI(j) 
-			params(IPE_BHEI) = a_ion_HeI(j) 
-			params(IPE_BHEII) = a_ion_HeII(j)  
-			
+			! System coefficients: named-field cell state (Inc 4). The He
+			! equilibrium systems read these; params is now only the MINPACK
+			! transport argument (unread by the converted systems).
+			ieq_cell%P_HI       = P_HI(j)
+			ieq_cell%P_HeI      = P_HeI(j)
+			ieq_cell%P_HeII     = P_HeII(j)
+			ieq_cell%rchiiB     = rchiiB(j)
+			ieq_cell%rcheiiB    = rcheiiB(j)
+			ieq_cell%rcheiiiB   = rcheiiiB(j)
+			ieq_cell%nh         = nh(j)
+			ieq_cell%nhe        = nhe(j)
+			ieq_cell%a_ion_HI   = a_ion_HI(j)
+			ieq_cell%a_ion_HeI  = a_ion_HeI(j)
+			ieq_cell%a_ion_HeII = a_ion_HeII(j)
+
 			! Add more if HeITR is present
 			if (thereis_HeITR) then
-				params(IPE_ATR) = rcheiTR(j)
-				params(IPE_A31) = A31
-				params(IPE_PTR) = P_HeITR(j)
-				params(IPE_Q13) = q13(j)
-				params(IPE_Q31A) = q31a(j)
-				params(IPE_Q31B) = q31b(j)
-				params(IPE_Q31) = Q31(j)
+				ieq_cell%rcheiTR = rcheiTR(j)
+				ieq_cell%A31     = A31
+				ieq_cell%P_HeITR = P_HeITR(j)
+				ieq_cell%q13     = q13(j)
+				ieq_cell%q31a    = q31a(j)
+				ieq_cell%q31b    = q31b(j)
+				ieq_cell%Q31     = Q31(j)
 			endif
 
-			! molecular params (System_HeH_mol layout 19-21)
+			! molecular cell state (System_HeH_mol layout)
 			if (thereis_mol) then
 				if (.not. thereis_HeITR) then
-					params(IPE_ATR:IPE_Q31) = 0.0d0     ! no triplet channels
+					ieq_cell%rcheiTR = 0.0d0     ! no triplet channels
+					ieq_cell%A31     = 0.0d0
+					ieq_cell%P_HeITR = 0.0d0
+					ieq_cell%q13     = 0.0d0
+					ieq_cell%q31a    = 0.0d0
+					ieq_cell%q31b    = 0.0d0
+					ieq_cell%Q31     = 0.0d0
 				endif
-				params(IPE_PH2) = P_H2(j)
-				params(IPE_T) = T_K(j)
-				params(IPE_NTOT) = n_in_dim(j)      ! M for the 3-body rates
+				ieq_cell%P_H2 = P_H2(j)
+				ieq_cell%T_K  = T_K(j)
+				ieq_cell%ntot = n_in_dim(j)      ! M for the 3-body rates
 				! Compute the molecular rate coefficients that are invariant
 				! across this cell's Newton solve (they depend only on T and
 				! n_tot); the residual then reads them, like set_metal_coeffs.
