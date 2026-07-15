@@ -137,6 +137,18 @@
       ! Read planetary parameters from file
       call input_read
 
+      ! Optional parse-dump mode (env EXHALE_PARSE_DUMP=1): write every variable
+      ! input_read derived from input.inp (and any base.inp override) to
+      ! parse_dump.txt and stop cleanly, BEFORE any grid/IC/init or output work.
+      ! Feeds the parser-refactor regression corpus
+      ! (backup/regression/run_parse_corpus.sh). Env unset => run unchanged.
+      call get_environment_variable('EXHALE_PARSE_DUMP', diag_env)
+      if (trim(diag_env) .eq. '1') then
+         call write_parse_dump
+         write(*,*) '(EXHALE_main) EXHALE_PARSE_DUMP=1: parse dump written, stopping.'
+         stop
+      endif
+
       ! analytic lower column (opt-in "Lower column: <R_1bar in R_J>"):
       ! integrate the isothermal-Teq hypsometric column (Koskinen+2022) from
       ! the 1-bar radius to the 1-ubar base and report the derived base radius

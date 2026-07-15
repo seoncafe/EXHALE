@@ -119,8 +119,175 @@
 	write(*,*) '(write_setup_report.f90) Done.'
 
 	end subroutine write_setup_report
-	
-	
-	
+
+	! ------------------------------ !
+
+	subroutine write_parse_dump
+	! Dump every variable input_read derives from input.inp (plus any base.inp
+	! override) to parse_dump.txt, one "name = value" line per variable, in the
+	! docs/input_schema.md key order. Gated by EXHALE_PARSE_DUMP=1 in
+	! EXHALE_main and used by the parser-refactor regression corpus
+	! (backup/regression/run_parse_corpus.sh). metals.inp / opacity.inp
+	! variables are out of scope (separate parsers). Values are the final
+	! post-input_read state: n0, R0, Mp, a_orb, Mstar in cgs, and T0/R0/HeH/
+	! he_kzz after any base.inp override, so the dump captures the whole
+	! derived-parameter chain deterministically.
+	! Formats: reals ES23.15E3, integers plain, logicals T/F, strings trimmed.
+	integer :: u
+
+	open(newunit=u, file='parse_dump.txt', status='replace', action='write')
+
+	write(u,'(A)') '# EXHALE parse dump (EXHALE_PARSE_DUMP=1): variables set by input_read'
+	write(u,'(A)') '# order follows docs/input_schema.md; cgs where input_read converts'
+
+	! ----- core block (fixed order) -----
+	call put_s('p_name', p_name)
+	call put_r('n0', n0)
+	call put_r('R0', R0)
+	call put_r('Mp', Mp)
+	call put_r('T0', T0)
+	call put_r('a_orb', a_orb)
+	call put_r('r_esc', r_esc)
+	call put_r('HeH', HeH)
+	call put_l('thereis_He', thereis_He)
+	call put_s('appx_mth', appx_mth)
+	call put_r('a_tau', a_tau)
+	call put_r('Mstar', Mstar)
+	call put_s('sp_type', sp_type)
+	if (do_read_sed) then
+	   call put_s('sed_file', sed_file)
+	else
+	   call put_s('sed_file', '(unset)')
+	endif
+	call put_l('do_read_sed', do_read_sed)
+	if (is_PL_sed) then
+	   call put_r('PLind', PLind)
+	else
+	   call put_s('PLind', '(unset)')
+	endif
+	call put_l('is_PL_sed', is_PL_sed)
+	call put_l('is_monochr', is_monochr)
+	call put_r('e_low', e_low)
+	call put_l('thereis_Xray', thereis_Xray)
+	if (.not. is_monochr) then
+	   call put_r('e_mid', e_mid)
+	   call put_r('e_top', e_top)
+	else
+	   call put_s('e_mid', '(unset)')
+	   call put_s('e_top', '(unset)')
+	endif
+	call put_r('LX', LX)
+	call put_r('LEUV', LEUV)
+	call put_s('grid_type', grid_type)
+	call put_s('flux', flux)
+	call put_s('rec_method', rec_method)
+	call put_l('use_weno3', use_weno3)
+	call put_l('use_plm', use_plm)
+	call put_l('recon_two_stage', recon_two_stage)
+	call put_l('thereis_HeITR', thereis_HeITR)
+	call put_l('do_load_IC', do_load_IC)
+	call put_l('do_only_pp', do_only_pp)
+	call put_l('force_start', force_start)
+
+	! ----- keyword-extension block -----
+	call put_l('spherical_domain', spherical_domain)
+	call put_r('r_out_user', r_out_user)
+	call put_r('T_star_eff', T_star_eff)
+	call put_r('R_star', R_star)
+	call put_l('incl_deexc_heat', incl_deexc_heat)
+	call put_s('windae_seed_out', windae_seed_out)
+	call put_s('windae_seed_file', windae_seed_file)
+	call put_s('jlya_rt_file', jlya_rt_file)
+	call put_i('jlya_mode', jlya_mode)
+	call put_r('F_Lya_star', F_Lya_star)
+	call put_r('dv_star_lya', dv_star_lya)
+	call put_r('lya_star_boost', lya_star_boost)
+	call put_r('du_th', du_th)
+	call put_r('du_th_plm', du_th_plm)
+	call put_l('ates_photoion_rate', ates_photoion_rate)
+	call put_l('thereis_mol', thereis_mol)
+	call put_l('molecular_base', molecular_base)
+	call put_i('lower_atm_mode', lower_atm_mode)
+	call put_r('lower_atm_r1bar', lower_atm_r1bar)
+	call put_r('lower_col_r1bar', lower_col_r1bar)
+	call put_r('he_kzz', he_kzz)
+	call put_r('he_alphaT', he_alphaT)
+	call put_l('he_ambipolar', he_ambipolar)
+	call put_l('he_metal_diffusion', he_metal_diffusion)
+	call put_l('he_diffusion', he_diffusion)
+	call put_r('stall_tol', stall_tol)
+	call put_i('N_stall', N_stall)
+	call put_l('use_semi_implicit_energy', use_semi_implicit_energy)
+	call put_l('use_local_dt', use_local_dt)
+	call put_r('lev_th', lev_th)
+	call put_l('use_newton_solver', use_newton_solver)
+	call put_r('newton_du_switch', newton_du_switch)
+	call put_r('valve_eps', valve_eps)
+	call put_l('hydrostatic_base', hydrostatic_base)
+	call put_r('shapiro_eps', shapiro_eps)
+	call put_i('shapiro_every', shapiro_every)
+	call put_i('base_bc_mode', base_bc_mode)
+	call put_r('base_p_ubar', base_p_ubar)
+	call put_l('base_v_massflux', base_v_massflux)
+	call put_r('visc_mu0', visc_mu0)
+	call put_r('visc_s', visc_s)
+	call put_r('resid_th', resid_th)
+	call put_l('resid_vol', resid_vol)
+	call put_r('CFL', CFL)
+	call put_l('transonic_ic', transonic_ic)
+	call put_r('T_wind_ic', T_wind_ic)
+	call put_l('hot_parker_ic', hot_parker_ic)
+	call put_i('ic_mode', ic_mode)
+	call put_l('use_newton_ieq', use_newton_ieq)
+	call put_l('use_brent_tsolve', use_brent_tsolve)
+
+	! ----- derived flags / normalization constants -----
+	call put_l('use_excited_H', use_excited_H)
+	call put_r('Mrapp', Mrapp)
+	call put_r('atilde', atilde)
+	call put_r('r_max', r_max)
+	call put_r('mass_per_H', mass_per_H)
+	call put_r('ntot_bc', ntot_bc)
+	call put_r('rho_bc', rho_bc)
+	call put_r('v0', v0)
+	call put_r('t_s', t_s)
+	call put_r('p0', p0)
+	call put_r('q0', q0)
+	call put_r('b0', b0)
+	call put_r('dp_bc', dp_bc)
+	call put_i('N_eq', N_eq)
+	call put_i('lwa', lwa)
+
+	close(u)
+	write(*,*) '(write_parse_dump) wrote parse_dump.txt'
+
+	contains
+
+	subroutine put_r(name, val)   ! real*8
+	character(len=*), intent(in) :: name
+	real*8,           intent(in) :: val
+	write(u,'(A,ES23.15E3)') name//' = ', val
+	end subroutine put_r
+
+	subroutine put_i(name, val)   ! integer
+	character(len=*), intent(in) :: name
+	integer,          intent(in) :: val
+	write(u,'(A,I0)') name//' = ', val
+	end subroutine put_i
+
+	subroutine put_l(name, val)   ! logical
+	character(len=*), intent(in) :: name
+	logical,          intent(in) :: val
+	write(u,'(A,L1)') name//' = ', val
+	end subroutine put_l
+
+	subroutine put_s(name, val)   ! string
+	character(len=*), intent(in) :: name
+	character(len=*), intent(in) :: val
+	write(u,'(A)') name//' = '//trim(val)
+	end subroutine put_s
+
+	end subroutine write_parse_dump
+
 	! End of module
 	end module setup_report
