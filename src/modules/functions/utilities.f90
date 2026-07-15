@@ -271,13 +271,17 @@
 	! ------------------------------------------------------!
 
 	subroutine calc_mmw(nh,nhe,ne,mmw)
-	! Calculate the mean molecular weight for a certain ionization profile
+	! Calculate the mean molecular weight for a certain ionization profile.
+	! The H/He nucleus masses come from the species_table metadata
+	! (bsp_mass(1) = HI = 1, bsp_mass(3) = HeI = 4 in m_H units — for the
+	! atomic species the bsp position equals the f_sp column), reproducing
+	! the old literals bitwise.
 
 	real*8, dimension(1-Ng:N+Ng), intent(in)  :: nh,nhe,ne
 	real*8, dimension(1-Ng:N+Ng), intent(out) :: mmw
-	
+
 	if (thereis_He) then
-		mmw = (nh + 4.0*nhe)/(nh + nhe + ne)
+		mmw = (bsp_mass(1)*nh + bsp_mass(3)*nhe)/(nh + nhe + ne)
 	else
 		mmw = nh/(nh + ne)
 	endif
