@@ -24,7 +24,8 @@ RJ = 6.9911e9          # Jupiter radius [cm]
 MJ = 1.898e30          # Jupiter mass  [g]
 Msun = 1.989e33        # Solar mass    [g]
 AU = 1.495978707e13    # Astronomical unit [cm]
-mu = 1.673e-24         # hydrogen mass [g]
+mu = 1.673e-24         # hydrogen mass m_H [g] (NOT a mean molecular weight;
+                       # converts the m_H-density column n to g/cm^3)
 GYR = 3.15576e16       # 1 Gyr [s]
 
 # Hydrogen + helium columns of Ion_species(_adv).txt, in file order (cols 2-7).
@@ -48,7 +49,8 @@ class Run:
 
     def __init__(self):
         self.r = None          # radius [R_p]
-        self.n = None          # total density [cm^-3]
+        self.n = None          # mass density in m_H units [m_H/cm^3] = rho/m_H
+                               # (the rho*n0 column; metals included). n*mu -> g/cm^3.
         self.v = None          # radial velocity [cm/s]
         self.p = None          # pressure [erg/cm^3]
         self.T = None          # temperature [K]
@@ -71,7 +73,8 @@ class Run:
 
 def load_hydro(path):
     """Read Hydro_ioniz.txt or Hydro_ioniz_adv.txt -> dict of physical arrays.
-    Columns: r[R_p], n[cm^-3], v[cm/s], p[erg/cm^3], T[K], heat, cool."""
+    Columns: r[R_p], n[m_H/cm^3] (mass density = rho/m_H, metals included),
+    v[cm/s], p[erg/cm^3], T[K], heat, cool."""
     r, n, v, p, T, heat, cool = np.loadtxt(path, unpack=True)
     return dict(r=r, n=n, v=v, p=p, T=T, heat=heat, cool=cool)
 

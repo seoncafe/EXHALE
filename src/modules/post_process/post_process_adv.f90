@@ -1,7 +1,17 @@
 	module post_processing
 	! Subroutine to correct the output ionization profiles
 	!	taking into account the ionization term
-	
+	!
+	! Composition approximation (documented): the _adv reconstruction treats the
+	! gas as H/He + trace metals and EXCLUDES the molecular species (H2, H2+,
+	! H3+, HeH+). The advection correction receives only the H/He (nhi..nheiTR)
+	! and metal (nm_in) densities; the molecular densities are not passed in and
+	! are not re-solved here, so calc_ne / calc_ntot below are called WITHOUT the
+	! nmol argument. In a molecular run this omits the neutral-H2 particle count
+	! and the molecular-ion electrons from the _adv n_tot/ne. This is acceptable
+	! where the _adv post-process is used (atomic/ionized escape flow); a
+	! molecular base needs a molecular-aware post-process instead.
+
 	use global_parameters
 	use params_idx, only: IPAH_C1, IPAH_XHI, IPAH_NH, IPAH_PHI, IPAH_AHII,     &
 	                      IPAH_BHI, IPA_C1, IPA_XHI, IPA_XHEI, IPA_XHEIII,      &
@@ -229,7 +239,9 @@
 	if (thereis_HeITR) nhe = nhe + nheiTR
 
 	! Free electron density (assuming overall neutrality; nm_w adds the
-	! metal electrons under the eos_metals policy)
+	! metal electrons under the eos_metals policy). Molecular-ion electrons are
+	! excluded here -- the post-process does not carry the molecular densities
+	! (see the module-header composition note).
 	call calc_ne(nhii,nheii,nheiii,ne,nm_w)
 
 	! Cell-by-cell opacity pressure factor ('P' model; =1 otherwise)
@@ -430,11 +442,13 @@
 	nhe = nheiS + nheii + nheiii
 	if (thereis_HeITR) nhe = nhe + nheiTR
 
-   ! Total number density (incl. metal nuclei under eos_metals)
+   ! Total number density (incl. metal nuclei under eos_metals). Molecular
+   ! species are excluded -- the post-process does not carry them (see the
+   ! module-header composition note).
    call calc_ntot(nhi,nhii,nhei,nheii,nheiii,nheiTR,n_tot,nm_w)
 
    ! Free electron density (assuming overall neutrality; incl. metal
-   ! electrons under eos_metals)
+   ! electrons under eos_metals; molecular-ion electrons excluded, as above)
    call calc_ne(nhii,nheii,nheiii,ne,nm_w)
 
 	!----------------------------------!

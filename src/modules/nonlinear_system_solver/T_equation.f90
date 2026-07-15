@@ -59,7 +59,9 @@
    ! pp_nm_cell (cgs), set by post_process_adv; pp_metal_on gates whether
    ! metals contribute. params(13-18) are no longer used.
 
-   ! Free electron density (includes metal ions)
+   ! Free electron density (includes metal ions). Molecular ions are
+   ! deliberately omitted as trace electron donors (negligible in the atomic
+   ! post-process gas where this energy residual is solved).
    if (thereis_He) then
 		ne = nhii + nheii + 2.0*nheiii
 	else

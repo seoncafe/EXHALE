@@ -29,7 +29,9 @@
       ! gravity g = GM/r^2 (the Roche/tidal correction to the column is a
       ! refinement -- Koskinen 2022 use equipotentials, which matters near
       ! RLO); chemical equilibrium only (photochemistry UNDERESTIMATES H
-      ! dissociation at Teff ~ 1000-2000 K -- the external-handoff hook).
+      ! dissociation at Teff ~ 1000-2000 K -- the external-handoff hook);
+      ! mu is the H2/H/He mean molecular weight only (the trace-metal mass is
+      ! neglected in the column mu, a << 1% effect at solar metallicity).
       !
       ! Validation gate (docs/lower_atmosphere_coupling.*): Koskinen 2022
       ! Model A -- Uranus-mass planet (M = 8.6813e28 g, R_1bar = 2.5559e9 cm)

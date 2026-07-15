@@ -117,6 +117,12 @@
 	! Fix density in outer layers
 	where (W(1,:).lt.(1.0e-8)) W(1,:) = 1.0e-8
 
+	! Initialize ALL species columns (f_sp is intent(out); metals and molecular
+	! columns stay zero unless set below or loaded). This must run before EVERY
+	! IC branch: the cold-hydrostatic branch assigns only H/He + metals, so the
+	! molecular columns would otherwise stay undefined.
+	f_sp = 0.0d0
+
 	if (hot_parker_ic) then
 		! Warm-seed overlay on the hydrostatic density. xi is a spatial smoothstep
 		! window (0 at the cold static base -> 1 in the warm ionized wind at
@@ -124,10 +130,6 @@
 		! Parker velocity head-start. At the base xi=0 so T->T0, p->1+dp_bc, v->0,
 		! matching the lower BC exactly (no inverted gradient); above hp_base_rtr
 		! the gas is warm (T_wind), ionized, and carries the transonic velocity.
-		! Initialize ALL species columns (f_sp is intent(out); metals and
-	! molecular columns stay zero unless set below or loaded).
-	f_sp = 0.0d0
-
 	do j = 1-Ng, N+Ng
 			swin = min(max((r(j) - 1.0d0)/(hp_base_rtr - 1.0d0), 0.0d0), 1.0d0)
 			xi   = swin*swin*(3.0d0 - 2.0d0*swin)               ! smoothstep window

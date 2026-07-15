@@ -581,7 +581,9 @@
       
    ! Adjust value of pressure boundary condition (the base electron
    ! density in units of n0; with eos_metals the metal electrons are
-   ! included, consistently with calc_ne)
+   ! included, consistently with calc_ne). Molecular ions are deliberately
+   ! omitted as trace electron donors: the base is nearly neutral, so the
+   ! molecular-ion electrons are negligible in dp_bc.
    dp_bc = (nhii(1-Ng) + nheii(1-Ng) + 2.0*nheiii(1-Ng))/n0
    if (eos_include_metals .and. thereis_metals) then
       do im = 1,n_mion

@@ -36,8 +36,11 @@
 
       ! Schema header ('#' comment lines; readers that predate the header
       ! can skip them, numeric content is unchanged)
+      ! Column 2 is rho*n0: the MASS density in units of m_H per cm^3 (metals
+      ! included under the eos_metals policy), not a number density. Multiply by
+      ! m_H to get g/cm^3.
       write(2,'(A)') '# EXHALE schema 2'
-      write(2,'(A)') '# columns r[Rp] n[cm-3] v[cm/s] p[cgs] T[K] '//   &
+      write(2,'(A)') '# columns r[Rp] rho[mH/cm3] v[cm/s] p[cgs] T[K] '//   &
                      'heat[erg/cm3/s] cool[erg/cm3/s]'
 
          do j = 1-Ng,N+Ng

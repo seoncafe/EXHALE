@@ -200,3 +200,41 @@ gating constraint.
    precision), it is a **golden re-snapshot decision**, not a silent change —
    surface it, and remember re-snapshotting does not restore reproducibility
    against already-published numbers.
+
+---
+
+## 2026-07-16 physics-correctness audit (pre-Inc 4)
+
+Criterion: physical correctness only — impact size and backward compatibility
+are never arguments (see the user-level instructions). Two systematic sweeps
+(mass/density accounting; electron/particle/pressure accounting) found that
+the eos_metals policy had been wired everywhere but the LATER molecular
+network had not. Fixed (all byte-identical for atomic runs; molecular
+reference re-snapshotted for the corrected physics):
+
+- calc_mmw: metal mass + nuclei under the eos policy (the _adv temperature
+  solve was using an H/He-only mmw while its ne already carried the metal
+  electrons). _adv T shifts ~0.3% median on wasp_full.
+- load_IC: rho reconstruction now uses calc_rho (the run's own mass policy:
+  HeITR + metals + molecules); the old H/He-only formula left a ~1.1% mass
+  discontinuity on a metals-on restart (now closed to 4e-16). Molecular f_sp
+  columns are now restored; f_sp fully zero-initialized.
+- set_IC: f_sp zeroed before BOTH IC branches (the cold-hydrostatic branch
+  left the molecular columns undefined).
+- energy_semi_implicit: molecular densities passed to calc_ne/calc_ntot —
+  neutral H2 was missing from n_tot (first-order at a molecular base; the
+  bounded molecular checkpoint changes mainly at the H2 front, r~1.03).
+- EXHALE_transit.py: the free-electron density is now metal-aware (stage-
+  weighted metal columns; +molecular ions when present) — ne was underestimated
+  up to ~30x at the near-neutral base where low-IP metals dominate, biasing
+  the n=2 Balmer rates. Metals-off files keep the legacy expression.
+- Documented-approximation notes added where molecular ions are deliberately
+  neglected as trace electron donors (eval_cool, excited_hydrogen, T_equation,
+  dp_bc), and in lower_column (metal mass absent from its mu). post_process_adv
+  now states its composition scope (H/He + metals; no molecular treatment).
+- Output label corrected: Hydro_ioniz column 1 is rho in m_H/cm^3 (metals
+  included), not a number density; header now says rho[mH/cm3].
+
+Still-correct-as-is (judged, not deferred): wind-ae converters (their oracle
+is genuinely metal-free); charge_exchange (depends on neutral H, not ne);
+brem Z^2 weighting; the System_* internal n_e sums.

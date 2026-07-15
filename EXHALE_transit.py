@@ -160,6 +160,37 @@ r,rho,v,p,T,heat,cool = np.loadtxt(Hydro_file, unpack = True)
 r,nhi,nhii,nhei,nheii,nheiii,nheiTR = \
     np.loadtxt(Ioniz_file, usecols = range(7), unpack = True)
 
+# Metal- (and molecular-) ion electron donors, so the free-electron density
+# below is not metal-blind. Ion_species.txt carries the 27 trace-metal ion
+# columns right after the 7 H/He columns (canonical species_table order), and,
+# for a molecular run, 4 more molecular columns (H2 H2+ H3+ HeH+). We sum each
+# ion's net charge (= electrons released); neutral stages contribute nothing.
+# Metals-off files (only the 7 H/He columns) keep ne_metal = 0, so the legacy
+# H/He-only electron count is reproduced.
+_ncol_ion = 0
+with open(Ioniz_file) as _fh:
+    for _row in _fh:
+        _s = _row.strip()
+        if _s and not _s.startswith('#'):
+            _ncol_ion = len(_s.split())
+            break
+# Net ionic charge per metal column (C,O,N,Mg,Si,Ca,Fe: 0/1/2; Na,K,S: 0/1).
+_metal_charge = [0, 1, 2,  0, 1, 2,  0, 1, 2,  0, 1, 2,  0, 1, 2,  0, 1, 2,
+                 0, 1,     0, 1,     0, 1,     0, 1, 2]
+ne_metal_cm = np.zeros_like(nhi)
+if _ncol_ion >= 7 + len(_metal_charge):
+    _nm = np.loadtxt(Ioniz_file,
+                     usecols = range(7, 7 + len(_metal_charge)), unpack = True)
+    for _ic, _z in enumerate(_metal_charge):
+        if _z > 0:
+            ne_metal_cm = ne_metal_cm + _z*_nm[_ic]
+    # Molecular ions (H2+, H3+, HeH+ each release one electron), if present.
+    if _ncol_ion >= 7 + len(_metal_charge) + 4:
+        _c0 = 7 + len(_metal_charge)
+        _h2p, _h3p, _hehp = np.loadtxt(
+            Ioniz_file, usecols = (_c0 + 1, _c0 + 2, _c0 + 3), unpack = True)
+        ne_metal_cm = ne_metal_cm + _h2p + _h3p + _hehp
+
 # --------------------------------------------------------------------- #
 # Auto-size the wavelength window for each line so the WHOLE line profile is
 # captured (the line returns to the continuum inside the window) for any
@@ -216,8 +247,9 @@ nD_I = np.flip(nD)
 Rib  = min(r[-1],R_star/Rp)
 
 # ----- H-alpha: n=2 hydrogen population (Christie+2013) ----- #
-# Electron density [cm^-3] (H + He contributions). n1s = neutral H.
-ne_cm  = nhii + nheii + 2.0*nheiii
+# Electron density [cm^-3] (H + He + metal/molecular ion contributions).
+# n1s = neutral H.
+ne_cm  = nhii + nheii + 2.0*nheiii + ne_metal_cm
 n1s_cm = nhi
 do_Ha = True   # H-alpha is always computed (J_lya from file or estimate)
 if do_Ha:

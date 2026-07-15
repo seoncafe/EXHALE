@@ -2,7 +2,8 @@ module energy_semi_implicit
    use global_parameters
    use species_table, only: n_mion, mion_fsp,                        &
                             isp_HI, isp_HII, isp_HeI, isp_HeII,       &
-                            isp_HeIII, isp_HeTR
+                            isp_HeIII, isp_HeTR,                      &
+                            isp_H2, isp_H2p, isp_H3p, isp_HeHp
    use utils
    use utils_ion_eq
 
@@ -26,6 +27,8 @@ contains
       real*8, dimension(1-Ng:N+Ng) :: nhi, nhii, nhei, nheii, nheiii, nheiTR
       ! Metal ion densities (canonical species_table order)
       real*8, dimension(1-Ng:N+Ng,n_mion) :: nm
+      ! Molecular densities (adimensional): H2, H2+, H3+, HeH+
+      real*8, dimension(1-Ng:N+Ng,4) :: nmol_l
       real*8, dimension(1-Ng:N+Ng) :: rchiiB, rcheiiB, rcheiiiB
       real*8, dimension(1-Ng:N+Ng) :: a_ion_HI, a_ion_HeI, a_ion_HeII
       ! Metal rates for each ion returned by eval_cool but unused here
@@ -72,22 +75,32 @@ contains
       do im = 1,n_mion
          nm(:,im) = rho*f_sp(:,mion_fsp(im))*n0
       enddo
+      ! Molecular densities (adimensional, matching the nm/n0 units used below).
+      ! Zero for non-molecular runs (f_sp molecular columns are zero), so
+      ! calc_ne/calc_ntot add exactly zero and the atomic result is bitwise
+      ! unchanged; for molecular runs they restore the neutral-H2 particle count
+      ! and the molecular-ion electrons to n_tot/ne (first-order near a
+      ! molecular base, where H2 dominates the particle budget).
+      nmol_l(:,1) = rho*f_sp(:,isp_H2)
+      nmol_l(:,2) = rho*f_sp(:,isp_H2p)
+      nmol_l(:,3) = rho*f_sp(:,isp_H3p)
+      nmol_l(:,4) = rho*f_sp(:,isp_HeHp)
 
       ! Compute adimensional total and electron densities for T calculation
       ! (nm/n0 = adimensional metal densities; adds the metal electrons and
       ! nuclei under the eos_metals policy)
-      call calc_ne(rho*f_sp(:,isp_HII), rho*f_sp(:,isp_HeII), rho*f_sp(:,isp_HeIII), ne_ad, nm/n0)
+      call calc_ne(rho*f_sp(:,isp_HII), rho*f_sp(:,isp_HeII), rho*f_sp(:,isp_HeIII), ne_ad, nm/n0, nmol_l)
       if (thereis_He) then
          if (thereis_HeITR) then
             call calc_ntot(rho*f_sp(:,isp_HI), rho*f_sp(:,isp_HII), rho*f_sp(:,isp_HeI), &
-                           rho*f_sp(:,isp_HeII), rho*f_sp(:,isp_HeIII), rho*f_sp(:,isp_HeTR), n_tot_ad, nm/n0)
+                           rho*f_sp(:,isp_HeII), rho*f_sp(:,isp_HeIII), rho*f_sp(:,isp_HeTR), n_tot_ad, nm/n0, nmol_l)
          else
             call calc_ntot(rho*f_sp(:,isp_HI), rho*f_sp(:,isp_HII), rho*f_sp(:,isp_HeI), &
-                           rho*f_sp(:,isp_HeII), rho*f_sp(:,isp_HeIII), zero_arr, n_tot_ad, nm/n0)
+                           rho*f_sp(:,isp_HeII), rho*f_sp(:,isp_HeIII), zero_arr, n_tot_ad, nm/n0, nmol_l)
          endif
       else
          call calc_ntot(rho*f_sp(:,isp_HI), rho*f_sp(:,isp_HII), zero_arr, &
-                        zero_arr, zero_arr, zero_arr, n_tot_ad, nm/n0)
+                        zero_arr, zero_arr, zero_arr, n_tot_ad, nm/n0, nmol_l)
       endif
 
       ! Old temperature (adimensional)

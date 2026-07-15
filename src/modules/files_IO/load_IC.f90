@@ -19,6 +19,7 @@
                                isp_HeIII, isp_HeTR,                    &
                                n_mion, n_melem, mion_fsp, mion_name,   &
                                mion_elem, melem_i0, melem_top
+      use utils, only: calc_rho
 
       implicit none
 
@@ -27,10 +28,14 @@
       subroutine load_IC(rho,v,p,T,f_sp,W)
 
       ! Integer variables
-      integer :: j, k, ios, nlab, c, e, i0
+      integer :: j, k, ios, nlab, c, e, i0, im
 
       ! Loaded number densities for every f_sp column (zero = not in file)
       real*8, dimension(1-Ng:N+Ng,n_species) :: nsp_l
+      ! Metal and molecular densities assembled for the calc_rho mass policy
+      real*8, dimension(1-Ng:N+Ng,n_mion) :: nm_l
+      real*8, dimension(1-Ng:N+Ng,4)      :: nmol_l
+      real*8, dimension(1-Ng:N+Ng)        :: rho_dim
       logical :: col_present(n_species), elem_ok
       ! Auxiliary temporary variable
       real*8 :: tmp
@@ -115,20 +120,43 @@
       endif
       close(2)
 
-      ! Construct mass density profile (adimensional).
-      ! Same H/He-mass formula as the historical loader (HeITR and trace
-      ! metals excluded), so legacy reloads are bit-identical.
-      rho = (nsp_l(:,isp_HI) + nsp_l(:,isp_HII)                        &
-             + 4.0*(nsp_l(:,isp_HeI) + nsp_l(:,isp_HeII)               &
-                    + nsp_l(:,isp_HeIII)))/n0
+      ! Zero the whole f_sp before any assignment so columns not restored
+      ! below -- in particular the molecular columns, absent from most IC
+      ! files -- are defined.
+      f_sp = 0.0d0
 
-      ! H/He(+HeITR) fractions
+      ! Reconstruct the mass density (adimensional) from the LOADED densities
+      ! with the SAME mass policy as the run (calc_rho): the He 2^3S mass, the
+      ! trace-metal mass under the eos_metals policy, and the molecular mass are
+      ! all included, exactly as calc_rho does in the main loop. A restart
+      ! therefore preserves the conserved mass exactly. The old H/He-only
+      ! formula (rho = (nHI+nHII+4*(nHeI+nHeII+nHeIII))/n0) is gone deliberately:
+      ! it dropped the HeITR/metal/molecular mass and left a mass discontinuity
+      ! on reload. Columns absent from the file are zero in nsp_l, so they add
+      ! nothing (calc_rho honors thereis_He/thereis_HeITR/eos_include_metals).
+      do im = 1, n_mion
+         nm_l(:,im) = nsp_l(:,mion_fsp(im))
+      enddo
+      nmol_l(:,1) = nsp_l(:,isp_H2)
+      nmol_l(:,2) = nsp_l(:,isp_H2p)
+      nmol_l(:,3) = nsp_l(:,isp_H3p)
+      nmol_l(:,4) = nsp_l(:,isp_HeHp)
+      call calc_rho(nsp_l(:,isp_HI),  nsp_l(:,isp_HII),   nsp_l(:,isp_HeI),   &
+                    nsp_l(:,isp_HeII), nsp_l(:,isp_HeIII), nsp_l(:,isp_HeTR),  &
+                    rho_dim, nm_l, nmol_l)
+      rho = rho_dim/n0
+
+      ! H/He(+HeITR) and molecular fractions (f = n/(rho*n0)).
       f_sp(:,isp_HI)    = nsp_l(:,isp_HI)/(rho*n0)
       f_sp(:,isp_HII)   = nsp_l(:,isp_HII)/(rho*n0)
       f_sp(:,isp_HeI)   = nsp_l(:,isp_HeI)/(rho*n0)
       f_sp(:,isp_HeII)  = nsp_l(:,isp_HeII)/(rho*n0)
       f_sp(:,isp_HeIII) = nsp_l(:,isp_HeIII)/(rho*n0)
       f_sp(:,isp_HeTR)  = nsp_l(:,isp_HeTR)/(rho*n0)
+      f_sp(:,isp_H2)    = nsp_l(:,isp_H2)/(rho*n0)
+      f_sp(:,isp_H2p)   = nsp_l(:,isp_H2p)/(rho*n0)
+      f_sp(:,isp_H3p)   = nsp_l(:,isp_H3p)/(rho*n0)
+      f_sp(:,isp_HeHp)  = nsp_l(:,isp_HeHp)/(rho*n0)
 
       ! Metals, element by element: if every ion stage of the element was
       ! present in the IC file, restore the loaded state; otherwise fall

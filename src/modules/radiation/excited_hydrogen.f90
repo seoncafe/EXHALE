@@ -105,6 +105,8 @@
    do im = 1,n_mion
       nm(:,im) = f_sp_in(:,mion_fsp(im))*n_dim
    enddo
+   ! Molecular ions are deliberately omitted as trace electron donors
+   ! (negligible in the hot, atomic n=2 layer this module models).
    call calc_ne(nhii, nheii, nheiii, ne, nm)
 
    ! ----- Day-night / 2D dilution factor xi ----- !
