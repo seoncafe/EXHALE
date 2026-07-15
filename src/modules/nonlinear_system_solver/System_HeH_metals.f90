@@ -29,6 +29,7 @@
 	use global_parameters
 	use params_idx, only: IPE_PHI, IPE_PHEI, IPE_PHEII, IPE_AHII, IPE_AHEII,  &
 	                      IPE_AHEIII, IPE_NH, IPE_NHE, IPE_BHI, IPE_BHEI, IPE_BHEII
+	use ion_residual_core, only: heh_rows, heh_crow, heh_jac_local
 	use charge_exchange, only: cx_add_to_fvec, cx_add_to_jac
 
 	implicit none
@@ -139,14 +140,11 @@
 	! (production from lower stage) = (loss to upper stage). Charge
 	! exchange is added to the relevant rows by cx_add_to_fvec below.
 
-	! HI <-> HII
-	fvec(1) = n_hi*g_hi + (n_hi*b_hi - a_hii*n_hii)*n_e
-
-	! HeI <-> HeII
-	fvec(2) = n_hei*g_hei + (n_hei*b_hei - a_heii*n_heii)*n_e
-
-	! HeII <-> HeIII
-	fvec(3) = n_heii*g_heii + (n_heii*b_heii - a_heiii*n_heiii)*n_e
+	! HI <-> HII, HeI <-> HeII, HeII <-> HeIII (standard H/He rows, shared
+	! helper; n_e here already includes the metal electrons).
+	call heh_rows(fvec, n_hi, n_hii, n_hei, n_heii, n_heiii, n_e,  &
+	              g_hi, g_hei, g_heii, a_hii, a_heii, a_heiii,      &
+	              b_hi, b_hei, b_heii)
 
 	! Metal ionization balance, one element at a time (force-zero if the
 	! element is absent; otherwise normal balance). Three-stage elements
@@ -228,9 +226,8 @@
 
    ! n_e-coefficient C_i of each row (the factor multiplying n_e in fvec_i).
    Crow = 0.0d0
-   Crow(1) = n_hi*b_hi    - a_hii*n_hii
-   Crow(2) = n_hei*b_hei  - a_heii*n_heii
-   Crow(3) = n_heii*b_heii- a_heiii*n_heiii
+   call heh_crow(Crow(1), Crow(2), Crow(3), n_hi, n_hii, n_hei, n_heii,  &
+                 n_heiii, a_hii, a_heii, a_heiii, b_hi, b_hei, b_heii)
    do e=1,met_nelem
       ix=4+2*(e-1)
       if (met_ntot(e) .gt. 1.0d-30) then
@@ -247,11 +244,8 @@
    enddo
 
    ! Local "direct" terms (photoionization + dC_i/dx_local * n_e). H/He rows:
-   fjac(1,1) = fjac(1,1) - n_h*g_hi + (-n_h*b_hi - a_hii*n_h)*n_e
-   fjac(2,2) = fjac(2,2) - n_he*g_hei + (-n_he*b_hei - a_heii*n_he)*n_e
-   fjac(2,3) = fjac(2,3) - n_he*g_hei + (-n_he*b_hei)*n_e
-   fjac(3,2) = fjac(3,2) + n_he*g_heii + (n_he*b_heii)*n_e
-   fjac(3,3) = fjac(3,3) + (-a_heiii*n_he)*n_e
+   call heh_jac_local(N_eq, fjac, n_h, n_he, n_e, g_hi, g_hei, g_heii,  &
+                      a_hii, a_heii, a_heiii, b_hi, b_hei, b_heii)
    ! Metal rows (present elements only):
    do e=1,met_nelem
       ix=4+2*(e-1); n_X=met_ntot(e)

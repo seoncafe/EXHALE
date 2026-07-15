@@ -4,6 +4,7 @@
 	use global_parameters
 	use params_idx, only: IPE_PHI, IPE_PHEI, IPE_PHEII, IPE_AHII, IPE_AHEII,  &
 	                      IPE_AHEIII, IPE_NH, IPE_NHE, IPE_BHI, IPE_BHEI, IPE_BHEII
+	use ion_residual_core, only: heh_rows, heh_crow, heh_jac_local
 
 	implicit none
 	
@@ -46,10 +47,10 @@
    n_e = n_hii + n_heii + 2.0*n_heiii
       
       
-      ! System of equations      
-  	fvec(1) = n_hi*g_hi + (n_hi*b_hi - a_hii*n_hii)*n_e      
-  	fvec(2) = n_hei*g_hei + (n_hei*b_hei - a_heii*n_heii)*n_e
-  	fvec(3) = n_heii*g_heii + (n_heii*b_heii - a_heiii*n_heiii)*n_e
+      ! System of equations (standard H/He rows, shared helper)
+	call heh_rows(fvec, n_hi, n_hii, n_hei, n_heii, n_heiii, n_e,  &
+	              g_hi, g_hei, g_heii, a_hii, a_heii, a_heiii,      &
+	              b_hi, b_hei, b_heii)
 	
 	return
 
@@ -82,9 +83,8 @@
 	n_heiii = x(3)*n_he
 	n_e     = n_hii + n_heii + 2.0*n_heiii
 
-	C1 = n_hi*b_hi   - a_hii*n_hii
-	C2 = n_hei*b_hei - a_heii*n_heii
-	C3 = n_heii*b_heii - a_heiii*n_heiii
+	call heh_crow(C1, C2, C3, n_hi, n_hii, n_hei, n_heii, n_heiii,  &
+	              a_hii, a_heii, a_heiii, b_hi, b_hei, b_heii)
 	dne(1) = n_h;  dne(2) = n_he;  dne(3) = 2.0*n_he
 
 	! rank-1 n_e coupling: fjac(i,k) = C_i * dne(k)
@@ -94,11 +94,8 @@
 		fjac(3,k) = C3*dne(k)
 	enddo
 	! add the local "direct" terms (photoionization + dC_i/dx_local * n_e)
-	fjac(1,1) = fjac(1,1) - n_h*g_hi + (-n_h*b_hi - a_hii*n_h)*n_e
-	fjac(2,2) = fjac(2,2) - n_he*g_hei + (-n_he*b_hei - a_heii*n_he)*n_e
-	fjac(2,3) = fjac(2,3) - n_he*g_hei + (-n_he*b_hei)*n_e
-	fjac(3,2) = fjac(3,2) + n_he*g_heii + (n_he*b_heii)*n_e
-	fjac(3,3) = fjac(3,3) + (-a_heiii*n_he)*n_e
+	call heh_jac_local(N_eq, fjac, n_h, n_he, n_e, g_hi, g_hei, g_heii,  &
+	                   a_hii, a_heii, a_heiii, b_hi, b_hei, b_heii)
 	end subroutine jac_system_HeH
 
 	! End of module
