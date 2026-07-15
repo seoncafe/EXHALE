@@ -237,6 +237,75 @@ def get_word(string_in,word_number):
 				continue
 
 
+# ----- input.inp label matching (mirrors input_read.f90) ----- #
+
+def _is_sep(c):
+	# Value separator after a label: ':', '?', whitespace, tab or '='
+	# (same set as input_read.f90 is_sep).
+	return c in (':', '?', ' ', '\t', '=')
+
+
+def lbl_match(line, key):
+	"""True iff `line` (after lstrip) begins with `key` followed by a value
+	separator (':', '?', whitespace, '=') or the end of the line. This mirrors
+	the anchored label match in input_read.f90 (lbl_match), so line order is
+	irrelevant and a substring buried mid-line does not false-match."""
+	t = line.rstrip('\n').lstrip()
+	if not t.startswith(key):
+		return False
+	rest = t[len(key):]
+	if rest == '':
+		return True
+	return _is_sep(rest[0])
+
+
+def find_input_label(lines, key):
+	"""Return the LAST line in `lines` matching `key` as an anchored label, or
+	None. Last-occurrence-wins matches input_read.f90 find_lbl / the keyword
+	loop, which keep the last match."""
+	found = None
+	for ln in lines:
+		if lbl_match(ln, key):
+			found = ln
+	return found
+
+
+def read_input_params(path):
+	"""Read the header parameters EXHALE_transit needs from input.inp by LABEL
+	(order-independent), matching the input_read.f90 core block. Rp/Mp/T0/
+	a_orb/Mstar are taken from the labeled lines the Fortran uses, at the same
+	word positions as the legacy positional reader; LEUV and the 2D approximate
+	method stay content-matched. Returns a dict:
+	  Rp [m], Mp [kg], T0 [K], a_orb [m], Mstar [kg], LEUV, appx_mth."""
+	with open(path, 'r') as f:
+		lines = f.readlines()
+
+	def word(key, n):
+		ln = find_input_label(lines, key)
+		if ln is None:
+			raise ValueError('input.inp: mandatory line "%s" not found in %s'
+			                 % (key, path))
+		return get_word(ln, n)
+
+	Rp    = float(word('Planet radius', 4)) * RJ
+	Mp    = float(word('Planet mass', 4)) * MJ
+	T0    = float(word('Equilibrium temperature', 4))
+	a_orb = float(word('Orbital distance', 4)) * AU
+	Mstar = float(word('Parent star mass', 5)) * M_sun
+
+	LEUV = None
+	appx_mth = ''
+	leuv_ln = find_input_label(lines, 'Log10 of EUV luminosity')
+	if leuv_ln is not None:
+		LEUV = float(leuv_ln.split(':')[-1])
+	appx_ln = find_input_label(lines, '2D approximate method')
+	if appx_ln is not None:
+		appx_mth = appx_ln.split(':')[-1].strip()
+
+	return dict(Rp=Rp, Mp=Mp, T0=T0, a_orb=a_orb, Mstar=Mstar,
+	            LEUV=LEUV, appx_mth=appx_mth)
+
+
 def _line_halfwidth(lam0_A, m_atom_amu, fosc, A21, N_col_cm2, T, v):
     """Return the physical line half-width [m/s].
 

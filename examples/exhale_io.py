@@ -163,6 +163,36 @@ def load_run(outdir, inputfile, adv=True):
     return run
 
 
+# Mdot output-correction factor for every '2D approximate method' the Fortran
+# accepts, keyed on the method token (word 4 of the line, i.e. the first word
+# of the value, before input_read.f90 rewrites 'Rate/2'->'Rate/2 + Mdot/2' and
+# 'Rate/4'->'Rate/4 + Mdot'). Matches EXHALE_main.f90, which subtracts log10(2)
+# for 'Rate/2 + Mdot/2' (factor 0.5) and log10(4) for 'Mdot/4' (factor 0.25)
+# and leaves the output Mdot unscaled otherwise: 'Rate/4 + Mdot' already dilutes
+# the incident flux by 1/4 during the run (set_energy_vectors.f90), and 'alpha'
+# scales the attenuation, so neither takes an output correction.
+_MDOT_FACTOR = {
+    'Mdot/4': 0.25,   # output divided by 4
+    'Rate/2': 0.5,    # 'Rate/2 + Mdot/2': output halved
+    'Rate/4': 1.0,    # 'Rate/4 + Mdot':  flux already /4, no output correction
+    'alpha':  1.0,    # alpha attenuation: no output correction
+}
+
+
+def _mdot_factor(method):
+    """Mdot output-correction factor for a '2D approximate method' value.
+    `method` is the raw input.inp value (e.g. 'Rate/2 + Mdot/2' or 'Rate/2');
+    the factor is chosen by its first token, matching input_read.f90 +
+    EXHALE_main.f90. Raises ValueError on an unrecognized method."""
+    tok = method.split()[0] if method and method.split() else ''
+    try:
+        return _MDOT_FACTOR[tok]
+    except KeyError:
+        raise ValueError(
+            "unrecognized '2D approximate method' value %r; expected one of "
+            "Mdot/4, Rate/2[ + Mdot/2], Rate/4[ + Mdot], alpha" % method)
+
+
 def mdot_log10(run, j_from_top=20):
     """log10 of the steady-state mass-loss rate [g/s], 4*pi*rho*v*r^2 evaluated
     near the outer boundary, with the 2D-approximation factor from input.inp's
@@ -171,10 +201,7 @@ def mdot_log10(run, j_from_top=20):
     j = len(run.r) - j_from_top
     mdot = 4.0 * np.pi * run.n[j] * mu * run.v[j] * (run.r[j] * Rp) ** 2
     method = run.inp.get('raw', {}).get('2D approximate method', '')
-    if 'Rate/2 + Mdot/2' in method:
-        mdot *= 0.5
-    elif 'Mdot/4' in method:
-        mdot *= 0.25
+    mdot *= _mdot_factor(method)
     return np.log10(mdot)
 
 

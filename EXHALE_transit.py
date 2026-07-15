@@ -22,7 +22,7 @@ from exhale_transit_lib import (
     g1s, g2s, g2p, nu_Lya, A_2p1s, A_2s1s,
     c_cgs, h_cgs, kb_cgs, eV2Hz, B21_lya, B12_lya,
     _amu, _kB, _ec2, _ccm,
-    n2_populations, gamma_n2_balmer, get_word,
+    n2_populations, gamma_n2_balmer, get_word, read_input_params,
     _line_halfwidth, _apply_window, _odd,
     resonance_depth, resonance_spectrum,
 )
@@ -138,26 +138,19 @@ fig_name_hb = ''
 
 # ------------------------- #
 
-# Read useful parameters from the input file of ATES
-LEUV = None      # log10 of EUV (Lyman-continuum-band) luminosity [erg/s]
-appx_mth = ''    # ATES 2D flux approximation (sets the day-night xi factor)
-with open(Input_file,'r') as f:
-
-	data = f.readline()
-	num = 1
-	while data:
-		data = f.readline()
-		if num == 2:  Rp = float(get_word(data,4))*RJ
-		if num == 3:  Mp = float(get_word(data,4))*MJ
-		if num == 4:  T0 = float(get_word(data,4))
-		if num == 5:  a_orb = float(get_word(data,4))*AU
-		if num == 9:  Mstar = float(get_word(data,5))*M_sun
-		# Content-based reads (robust to line shifts from spectrum options)
-		if 'EUV luminosity'    in data:  LEUV = float(data.split(':')[-1])
-		if 'approximate method' in data: appx_mth = data.split(':')[-1].strip()
-		num += 1
-
-f.close()
+# Read useful parameters from the input file of ATES. Every read is matched by
+# LABEL (read_input_params -> input_read.f90 semantics), so the header line
+# order is irrelevant, matching the Fortran core block. Rp/Mp/T0/a_orb/Mstar
+# keep their legacy word positions; LEUV and the 2D approximate method stay
+# content-matched (last occurrence wins).
+_par = read_input_params(Input_file)
+Rp    = _par['Rp']       # planet radius [m]
+Mp    = _par['Mp']       # planet mass [kg]
+T0    = _par['T0']       # equilibrium temperature [K]
+a_orb = _par['a_orb']    # orbital distance [m]
+Mstar = _par['Mstar']    # parent star mass [kg]
+LEUV     = _par['LEUV']      # log10 of EUV (Lyman-continuum-band) luminosity [erg/s]
+appx_mth = _par['appx_mth']  # ATES 2D flux approximation (sets the day-night xi factor)
 
 # Load profiles
 r,rho,v,p,T,heat,cool = np.loadtxt(Hydro_file, unpack = True)
