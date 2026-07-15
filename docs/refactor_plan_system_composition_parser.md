@@ -124,6 +124,16 @@ state logic.
   and the BC/IC composition through the same centralized helpers so composition
   cannot disagree between code paths (the root cause behind §3.4). Gate.
 
+  **Inc 2 executed 2026-07-16 (bit-identical, no re-snapshot).** The base
+  scalars flow through `comp_mass_per_H`/`comp_ntot_bc`/`comp_rho_bc`
+  (composition.f90); the mono-He path sets `HeH = 0` before that block, so it
+  uses the same source. Two deliberate exceptions stay: (1) `load_IC.f90`
+  keeps the historical H/He-only mass formula so legacy IC reloads remain
+  bit-identical — documented in-file, do not "fix"; (2) `calc_mmw`
+  (utilities.f90, a post-process diagnostic) still hardcodes the He mass 4.0
+  and could be moved onto `bsp_mass` in a follow-up. The wind-ae converters
+  intentionally use H/He-only conversions matching their metal-free oracle.
+
 **Note:** §5.3 Inc 1 is the increment most likely to require a re-snapshot. Treat
 it as a decision, not an automatic byte-identical change.
 
