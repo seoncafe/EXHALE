@@ -25,28 +25,74 @@ treat the increment as a deliberate golden re-snapshot and flag it.
 logic and communicate through a position-indexed `params(N)` array. A single
 displaced index is not type-checkable and is a known fragility.
 
+Two facts the increments below must respect:
+
+- **Analytic Jacobians duplicate the residuals.** `System_H`, `System_HeH`, and
+  `System_HeH_metals` carry hand-written `jac_system_*` routines (used by the
+  Newton solver, `newton_solver.f90`) — the same reaction physics in derivative
+  form. The TR, TR_metals, and mol systems have no analytic Jacobian (hybrd1
+  finite differences only). Any change to a residual body must keep its paired
+  Jacobian consistent.
+- **OpenMP threadprivate state.** The ionization sweep over cells runs
+  OpenMP-parallel; `System_HeH_metals` holds threadprivate module state
+  (`met_*`), and the charge-transfer state (`cx_*`) in `charge_exchange` is
+  threadprivate too. Refactors that move this state between modules or into
+  derived types can silently break the parallel sweep.
+
 **Increments (each byte-identical unless noted):**
 
 - **Inc 0 — named params indices.** Replace the magic `params(20)`, `params(21)`,
-  … with named `integer, parameter` constants (e.g. `IP_T`, `IP_NTOT`, …) in a
-  shared module, used across all `System_*`. Pure renaming → byte-identical.
-  Removes the displaced-index fragility and is a prerequisite for the rest.
+  … with named `integer, parameter` constants. **One flat constant set is not
+  possible:** the slot meanings differ between families — in the equilibrium
+  systems `params(1)` is P_HI (and `params(15)` is q13 in the TR variants),
+  while in `System_implicit_adv_*` `params(1)` is dr/v and `params(15)` is the
+  local He/H ratio. Define one named set for each family (e.g. `IPE_*` equilibrium,
+  `IPA_*` advection) in a shared module, and apply it at BOTH ends: the packing
+  sites (`ionization_equilibrium.f90`, `post_process_adv.f90`) and the
+  `System_*` unpacking. Pure renaming → byte-identical. Removes the
+  displaced-index fragility and is a prerequisite for the rest.
   Gate: WASP + molecular byte-identical.
-- **Inc 1 — H/He common core.** Extract the H and He ionization/recombination
-  residual contributions that are IDENTICAL across the four non-mol systems into
-  small pure subroutines (`add_H_residual`, `add_He_residual`) that write into
-  `fvec` in the SAME order as today. Convert ONE `System_*` at a time to call
-  them; regress after each. Gate each conversion.
+- **Inc 1 — H/He common core.** The H/He rows are identical within PAIRS, not
+  across all four non-mol systems (verified against the bodies): the standard
+  three rows (with collisional ionization) are verbatim-shared by `System_HeH`
+  and `System_HeH_metals`; the TR-form four rows (no collisional ionization,
+  Oklopcic He form) are verbatim-shared by `System_HeH_TR` and
+  `System_HeH_TR_metals`, and the triplet row is additionally verbatim in
+  `System_HeH_mol` (its row 8). Inc 1 extracts the standard three rows (plus
+  the matching Jacobian local terms shared by `jac_system_HeH` and
+  `jac_system_HeH_metals`) into small pure subroutines that write into
+  `fvec` in the SAME order as today; the TR-form rows move in Inc 3. Convert ONE `System_*` at a time to call
+  them; regress after each. The advection systems (`System_implicit_adv_*`)
+  are fraction-form with time terms and share no verbatim block — they stay
+  out of the extraction. Where the converted system has a paired analytic
+  Jacobian (`jac_system_H/HeH/HeH_metals`), update the Jacobian in the SAME
+  increment — either extract a matching derivative helper or re-check it term
+  by term. A residual/Jacobian drift changes Newton's iteration path, and the
+  hybrd1 fallback can rescue convergence on the gate cases while the drift
+  bites elsewhere — do not rely on the byte gate alone to catch it. Gate each
+  conversion.
 - **Inc 2 — metals block.** Extract the metal-loop residual contribution shared
   by `System_HeH_metals` and `System_HeH_TR_metals` into one pure subroutine.
-  Gate.
-- **Inc 3 — TR and molecular blocks.** Extract the He 2^3S triplet block and the
-  molecular block (`System_HeH_mol`) the same way. Gate (molecular reference).
+  The two copies are verbatim except the metal row base (`ix = 4 + 2*(e-1)` vs
+  `5 + 2*(e-1)`) — pass the base as an argument (mirroring `cx_metal_base`).
+  The safest shape for the threadprivate state (`met_*`, `cx_*`): keep it
+  declared where it is and have the CALLERS pass their thread's arrays as
+  actual arguments, so the helper stays pure and stateless; run the OpenMP
+  identity check (see the checklist). Gate.
+- **Inc 3 — TR and molecular blocks.** Extract the TR-form four rows
+  (verbatim-shared by `System_HeH_TR` and `System_HeH_TR_metals`) the same way,
+  with the He 2^3S triplet row as its own helper so `System_HeH_mol` (whose
+  row 8 is verbatim that row; its molecular rows 1-7 are unique and stay put)
+  calls it too. No analytic Jacobian exists for the TR/mol systems, so there
+  is no Jacobian counterpart to keep in step. Gate (molecular reference).
 - **Inc 4 — derived types (bigger).** Introduce `type(ion_cell_state)` and
   `type(ion_rates)` with named fields to replace the `params` packing in
   `ionization_equilibrium.f90` and all residuals. This touches packing/unpacking
   everywhere; do it after Inc 1-3 so the residual bodies already read through
-  helpers. Gate byte-identical; watch operation order.
+  helpers. Keep each thread's cell state local (subroutine variables) or
+  threadprivate — a shared module variable of the new types breaks the parallel
+  sweep silently. Gate byte-identical (including the OpenMP identity check);
+  watch operation order.
 - **Inc 5 — metadata-driven assembly (optional).** Assemble residual/Jacobian by
   iterating active-species metadata (`species_table`). Highest reordering risk;
   may require a golden re-snapshot — decide explicitly.
@@ -87,8 +133,8 @@ it as a decision, not an automatic byte-identical change.
 
 **Current state.** The Fortran parser mixes positional mandatory header lines
 (read by line order) with keyword-scan optional keys later; the Python utilities
-(`examples/exhale_io.py`, `EXHALE_transit.py`'s `get_word` reads) parse the same
-file independently. Highest back-compatibility risk of the three, because a
+(`examples/exhale_io.py`, and `exhale_transit_lib.py`'s `get_word` used by
+`EXHALE_transit.py`) parse the same file independently. Highest back-compatibility risk of the three, because a
 parser change affects every run and every shipped `input.inp`.
 
 **Increments:**
@@ -117,13 +163,20 @@ gating constraint.
 
 ## Cross-cutting gate checklist (run for every increment)
 
+0. Before the FIRST increment: confirm `make check` already passes at the
+   starting commit (goldens current), so any later failure is attributable to
+   an increment and not to stale goldens.
 1. `make check` — wasp_full + wasp_he23off byte-identical.
 2. Molecular reference (`examples/15_molecular`, bounded) byte-identical if the
    molecular path is touched.
 3. Loaded-SED run byte-identical if `sed_read`/energy-grid is touched.
 4. `run_fcheck` (bounds/FPE) periodically to catch out-of-bounds from index
    changes.
-5. If an increment intentionally changes the last bits (operation-order or
+5. OpenMP identity when `System_HeH_metals`, `charge_exchange`, or the sweep
+   scratch is touched: one bounded run with `OMP_NUM_THREADS=1` vs. 16 must
+   stay byte-identical. The regression harness itself is single-thread and
+   does NOT cover this.
+6. If an increment intentionally changes the last bits (operation-order or
    precision), it is a **golden re-snapshot decision**, not a silent change —
    surface it, and remember re-snapshotting does not restore reproducibility
    against already-published numbers.
