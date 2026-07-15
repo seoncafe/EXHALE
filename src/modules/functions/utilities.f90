@@ -270,21 +270,39 @@
 
 	! ------------------------------------------------------!
 
-	subroutine calc_mmw(nh,nhe,ne,mmw)
+	subroutine calc_mmw(nh,nhe,ne,mmw,nm)
 	! Calculate the mean molecular weight for a certain ionization profile.
 	! The H/He nucleus masses come from the species_table metadata
 	! (bsp_mass(1) = HI = 1, bsp_mass(3) = HeI = 4 in m_H units — for the
 	! atomic species the bsp position equals the f_sp column), reproducing
-	! the old literals bitwise.
+	! the old literals bitwise. The optional nm adds the metal mass and
+	! metal nuclei under the same eos_metals policy as calc_rho/calc_ntot,
+	! so the post-process temperature solve uses the same composition as
+	! the main loop (the metal mass raises mmw by ~1%; omitting nm keeps
+	! the legacy H/He-only diagnostic).
 
+	integer :: im
 	real*8, dimension(1-Ng:N+Ng), intent(in)  :: nh,nhe,ne
+	real*8, dimension(1-Ng:N+Ng,n_mion), intent(in), optional :: nm
 	real*8, dimension(1-Ng:N+Ng), intent(out) :: mmw
+	real*8, dimension(1-Ng:N+Ng) :: mass_l, npart_l
 
 	if (thereis_He) then
-		mmw = (bsp_mass(1)*nh + bsp_mass(3)*nhe)/(nh + nhe + ne)
+		mass_l  = bsp_mass(1)*nh + bsp_mass(3)*nhe
+		npart_l = nh + nhe + ne
 	else
-		mmw = nh/(nh + ne)
+		mass_l  = nh
+		npart_l = nh + ne
 	endif
+
+	if (present(nm) .and. eos_include_metals .and. thereis_metals) then
+		do im = 1,n_mion
+			mass_l  = mass_l + melem_A(mion_elem(im))*nm(:,im)
+			npart_l = npart_l + nm(:,im)
+		enddo
+	endif
+
+	mmw = mass_l/npart_l
 
 	! End of subroutine
 	end subroutine calc_mmw

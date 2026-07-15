@@ -547,8 +547,11 @@
 	! Initialize temperature at ghost cells
 	T_out = T_K/T0
 	
-	! Calculate mean molecular weight
-	call calc_mmw(nh,nhe,ne,mmw)
+	! Calculate mean molecular weight. nm_w adds the metal mass/nuclei under
+	! the eos_metals policy, so the _adv temperature solve uses the same
+	! composition as the main loop (ne above already carries the metal
+	! electrons via calc_ne).
+	call calc_mmw(nh,nhe,ne,mmw,nm_w)
 
 	! Count cell-by-cell temperature solves rejected as non-physical (metal modes).
 	n_pp_reject = 0
