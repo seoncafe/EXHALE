@@ -162,18 +162,54 @@ missing file is a no-op. Format: keyword lines, `#` comments ignored.
 
 ## 3. Parsing semantics
 
-### 3.1 Positional core reads
+### 3.0 Update (§5.6 Inc 1): the core block is now label-matched
 
-The core block is read by fixed sequence of `read(11, '(A)') line` statements,
-each followed by `get_word(line, n)`. The parser never inspects the label; it
-trusts that line N holds the intended parameter and that the value sits at word
-position N on that line. Consequently:
+As of §5.6 Inc 1, the Fortran core block is **no longer read by line order**.
+Every core key is matched as a **label**: anchored at the start of the
+left-trimmed line and terminated by a value separator (`:`, `?`, whitespace, or
+`=`). The optional keyword-extension block uses the same anchored matching.
+Practical consequences:
 
-- Inserting or deleting any core line shifts every later core read.
+- **Line order is irrelevant** and blank / `#`-comment lines are skipped, so a
+  reordered header or an inserted comment parses identically. Legacy positional
+  files parse unchanged because their lines are self-labeling (e.g. `Planet
+  radius [R_J]: 1.401`).
+- **The value is still taken by word position** with `get_word(line, n)` on the
+  matched line, so every "word N" entry in the §2 table is still accurate; only
+  *which* line supplies the value changed (label lookup instead of sequence).
+- **Collisions are resolved deterministically.** Anchoring removes the old
+  capitalization-only hazard (`Newton solver:` no longer false-matches
+  `Solver`). The one prefix pair that anchoring alone cannot separate,
+  `Wind-AE seed out` vs `Wind-AE seed` (a whitespace-separated prefix), is
+  resolved by testing the longer/most-specific key first in the keyword loop,
+  as is `He_metal_diffusion` before `He_diffusion`.
+- **A duplicated key resolves to its LAST occurrence** (both the core lookup and
+  the keyword loop keep the last match), matching the pre-change keyword-loop
+  behavior.
+- **A missing mandatory core key aborts** with `error stop 1` and a message
+  naming the key, instead of silently misreading a neighbor.
+- The conditional lines are unchanged in meaning but are now driven by
+  **content, not position**: `Spectrum type` selects which property line
+  (`Spectrum file` / `Power-law index` / `Photon energy`) is consumed; the
+  energy-band line is read unless the spectrum is monochromatic; the X-ray
+  luminosity line is read only when X-rays are included.
+
+The rest of §3 documents the original positional design that Inc 1 replaced.
+
+### 3.1 Core reads (formerly positional; now label-matched)
+
+Before §5.6 Inc 1 the core block was read by a fixed sequence of
+`read(11, '(A)') line` statements, each followed by `get_word(line, n)`; the
+parser never inspected the label and trusted that line N held the intended
+parameter with its value at word position N. That positional design (described
+here for reference) had these consequences, now removed by the label matching in
+§3.0:
+
+- Inserting or deleting any core line shifted every later core read.
 - The number of core lines is not constant: it grows or shrinks with
   `Spectrum type` (line 11a/11b/11c), with the monochromatic flag (line 13
   skipped), and with the X-ray choice (lines 13 word 8 and 14). The Fortran
-  parser tracks these with matching `if` branches, so it stays consistent, but
+  parser tracked these with matching `if` branches, so it stayed consistent, but
   any external reader that assumes fixed line numbers will not (see §5).
 
 ### 3.2 Keyword matching

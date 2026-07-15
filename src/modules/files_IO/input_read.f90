@@ -14,14 +14,16 @@
    contains
       
    subroutine input_read
-   ! Subroutine to read the input file and assign names and values 
-   !	to global constants
-	
-	character(len = :), allocatable :: str
-	character(len = 250) 		    :: line
-	integer                         :: ios
-	integer                         :: im
-      
+   ! Subroutine to read the input file and assign names and values
+   !    to global constants
+
+      character(len = :), allocatable :: str
+      character(len = 250)            :: line
+      character(len = 250), allocatable :: filelines(:)
+      integer                         :: ios
+      integer                         :: im
+      integer                         :: i, nlines
+
    ! ----- Read planetary parameters from input file ----- !
 
    ! Metal abundances (default: no metals). Overridden at runtime by an
@@ -39,258 +41,222 @@
    X_Fe = 0.0d0
    call read_metals_input
 
-   ! Open file for reading
-	write(*,*) '(input_read.f90) Reading the input.inp file..'
+   ! ----- Read every line of input.inp into memory -----
+   ! The core block below is matched by LABEL: each key is anchored at the
+   ! start of the left-trimmed line and terminated by its value separator
+   ! (':', '?', whitespace, or '='), so the physical line order no longer
+   ! matters and blank / '#'-comment lines are ignored. Legacy positional
+   ! files parse unchanged because their lines are self-labeling (e.g.
+   ! "Planet radius [R_J]: 1.401"); within a line the value is still taken by
+   ! word position with get_word, exactly as before. The optional keyword-
+   ! extension block that follows uses the same anchored matching. A
+   ! duplicated key resolves to its LAST occurrence (find_lbl below), matching
+   ! the keyword loop, which overwrites on each match.
+   write(*,*) '(input_read.f90) Reading the input.inp file..'
    open(unit = 11, file = inp_file)
+   nlines = 0
+   do
+      read(11,'(A)',iostat = ios) line
+      if (ios .ne. 0) exit
+      nlines = nlines + 1
+   enddo
+   allocate(character(len=250) :: filelines(nlines))
+   rewind(11)
+   do i = 1, nlines
+      read(11,'(A)') filelines(i)
+   enddo
+   close(11)
 
-	! --- Go line by line and read
-	
-		! Planet name
-		read(11,'(A)') line
-		p_name = get_word(line, 3)
+   ! ----- Core block (label-matched; order-independent) -----
 
-     		! Log10 of n0
-      	read(11,'(A)') line
-      	str = get_word(line, 7)
-     		read(str,*) n0
-    
-	     	! Planet radius
-	     	read(11,'(A)') line
-	     	str = get_word(line, 4)
-	     	read(str,*) R0 
-	     	
-	     	! Planet mass
-	     	read(11,'(A)') line
-	     	str = get_word(line, 4)
-	     	read(str,*) Mp 
-	     	
-	     	! Equilibrium temperature
-	     	read(11,'(A)') line
-	     	str = get_word(line, 4)
-	     	read(str,*) T0 
-	     	
-	     	! Orbital distance
-	     	read(11,'(A)') line
-	     	str = get_word(line, 4)
-	     	read(str,*) a_orb 
-	     	
-	     	! Escape radius
-	     	read(11,'(A)') line
-	     	str = get_word(line, 4)
-	     	read(str,*) r_esc 
-	     	
-	     	! He/H number ratio
-	     	read(11,'(A)') line
-	     	str = get_word(line, 4)
-	     	read(str,*) HeH 
-		if (HeH .gt. 0.0e0) thereis_He = .true.
+   ! Planet name (single token at word 3)
+   p_name = get_word(req('Planet name'), 3)
 
-	! Activate metal species if any metal abundance is set
-	thereis_metals = (X_C .gt. 0.0d0) .or. (X_N .gt. 0.0d0)        &
-	                                   .or. (X_O .gt. 0.0d0)        &
-	                                   .or. (X_Mg .gt. 0.0d0)       &
-	                                   .or. (X_Si .gt. 0.0d0)       &
-	                                   .or. (X_Ca .gt. 0.0d0)       &
-	                                   .or. (X_Na .gt. 0.0d0)       &
-	                                   .or. (X_K  .gt. 0.0d0)       &
-	                                   .or. (X_S  .gt. 0.0d0)       &
-	                                   .or. (X_Fe .gt. 0.0d0)
+   ! Log10 of n0
+   str = get_word(req('Log10 lower boundary'), 7);  read(str,*) n0
 
-	! Abundances for each element in canonical element order (iel_*), so the
-	! grid/solver code can index metals by element rather than by named
-	! scalar. Extend this block (and the metals.inp reader) when adding
-	! elements.
-	allocate(melem_ab(n_melem))
-	melem_ab(iel_C)  = X_C
-	melem_ab(iel_O)  = X_O
-	melem_ab(iel_N)  = X_N
-	melem_ab(iel_Mg) = X_Mg
-	melem_ab(iel_Si) = X_Si
-	melem_ab(iel_Ca) = X_Ca
-	melem_ab(iel_Na) = X_Na
-	melem_ab(iel_K)  = X_K
-	melem_ab(iel_S)  = X_S
-	melem_ab(iel_Fe) = X_Fe
+   ! Planet radius
+   str = get_word(req('Planet radius'), 4);  read(str,*) R0
 
-	! An active metal whose neutral ionization threshold lies below the
-	! 13.6 eV HI edge (e.g. Mg I at 7.646 eV) needs the below-threshold
-	! sub-grid extension in set_energy_vectors (mutually exclusive with
-	! the HeI triplet). Triggered by any such active element.
-	do im = 1, n_melem
-		if (melem_ab(im) .gt. 0.0d0 .and.                       &
-		    mion_ethr(melem_i0(im)) .lt. e_th_HI)               &
-			thereis_lowIP_metal = .true.
-	enddo
-	     	
-		! 2D approximate method
-		read(11,'(A)') line
-		appx_mth = get_word(line, 4)
-		
-		! Read alpha if selected
-		if (appx_mth .eq. 'alpha') then
-			str = get_word(line, 6)
-			read(str,*) a_tau 
-		else
-			a_tau = 0.0
-		endif
-		
-		! Correct appx_meth keywords
-		if (appx_mth .eq. 'Rate/4') appx_mth = 'Rate/4 + Mdot'
-		if (appx_mth .eq. 'Rate/2') appx_mth = 'Rate/2 + Mdot/2'
-		
-		! Parent star mass
-		read(11,'(A)') line
-		str = get_word(line, 5)
-	     	read(str,*) Mstar 
-	     	
-		! Spectrum type 
-		read(11,'(A)') line
-		sp_type = get_word(line, 3)
+   ! Planet mass
+   str = get_word(req('Planet mass'), 4);  read(str,*) Mp
 
-		! Next read properties of spectrum
-		select case (sp_type)
-		
-			case ('Load')			! Load from file
-				read(11,'(A)') line
-				sed_file = get_word(line, 3)
-				do_read_sed = .true.
-			
-			case ('Power-law')
-				read(11,'(A)') line
-				str = get_word(line, 3)
-				read(str,*) PLind 
-				is_PL_sed = .true.
-	
-			case ('Monochromatic')
-			
-				! Set corresponding logical to true
-				is_monochr = .true.
-				
-				! Read photon enerrgy
-				read(11,'(A)') line
-				str = get_word(line, 4)
-				read(str,*) e_low  
-				
-				! Remove helium if monochromatic and
-				!	photon energy lower than helium ionization threshold.
-				! Also zero the He/H ratio so the whole downstream (mass_per_H,
-				! rho_bc, set_IC He fractions, EOS) is a self-consistent H-only
-				! gas rather than carrying He mass with thereis_He = .false.
-				if (e_low .lt. e_th_HeI) then
-					thereis_He = .false.
-					HeH        = 0.0d0
-					write(*,*) '(input_read) Monochromatic photon energy below'//&
-					   ' the He I ionization threshold: gas treated as pure'//&
-					   ' hydrogen (He/H set to 0).'
-				endif
+   ! Equilibrium temperature
+   str = get_word(req('Equilibrium temperature'), 4);  read(str,*) T0
 
-			case default
-				write(*,*) '(input_read) ERROR: unknown spectrum type "'//&
-				   trim(sp_type)//'".'
-				write(*,*) '   Allowed values: Load, Power-law, Monochromatic.'
-				error stop 1
+   ! Orbital distance
+   str = get_word(req('Orbital distance'), 4);  read(str,*) a_orb
 
-		end select
-		
-		! Only EUV status
-		read(11,'(A)') line
-		str = get_word(line, 4)
-		if (str .eq. 'False') thereis_Xray = .true.
-		
-		! If not monochromatic, read energy bands
-		if (.not. is_monochr ) then 
-			
-			if (.not.thereis_Xray) then 
-			
-				! Read e_low
-				read(11,'(A)') line
-				str = get_word(line, 4)
-			     	read(str,*) e_low  
-			     	
-				! Read e_mid
-				str = get_word(line, 6)
-				read(str,*) e_mid 
-				
-				! Set e_top to default
-				e_top = 1.24e3 
-			     	
-			else
-				! Read e_low
-				read(11,'(A)') line
-				str = get_word(line, 4)
-			     	read(str,*) e_low  
-			     	
-				! Read e_mid
-				str = get_word(line, 6)
-			     	read(str,*) e_mid 
-				
-				! Read e_top
-				str = get_word(line, 8)
-			     	read(str,*) e_top 
-			     	
-			endif
-			
-		endif
-			
-		! Read X-ray luminosity if included
-		if (thereis_Xray) then
-			read(11,'(A)') line
-			str = get_word(line, 6)
-		     	read(str,*) LX  
-		else
-			LX = 0.0
-		endif
-		
-		! Read LEUV luminosity
-		read(11,'(A)') line
-		str = get_word(line, 6)
-		read(str,*) LEUV  
-		
-		! Read grid type
-		read(11,'(A)') line
-		grid_type = get_word(line, 3)
-		
-		! Read numerical flux
-		read(11,'(A)') line
-		flux = get_word(line, 3)
-		
-		! Read reconstruction scheme. "PLM" and "WENO3" are single-stage and
-		! use only the FIRST du_th value; "PLM+WENO3" is two-stage (PLM then
-		! WENO3) and uses BOTH du_th values (see the du_th parsing below).
-		read(11,'(A)') line
-		rec_method = get_word(line, 3)
-		if (rec_method.eq.'WENO3') use_weno3 = .true.
-		if (rec_method.eq.'PLM')   use_plm = .true.
-		if (rec_method.eq.'PLM+WENO3') then
-			use_plm         = .true.    ! start in PLM; switch to WENO3 mid-run
-			recon_two_stage = .true.
-		endif
-		
-		! Include He23S
-		read(11,'(A)') line
-		str = get_word(line, 3)
-		if (str .eq. 'True')  thereis_HeITR = .true.
+   ! Escape radius
+   str = get_word(req('Escape radius'), 4);  read(str,*) r_esc
 
-		! IC status
-		read(11,'(A)') line
-		str = get_word(line, 3)
-		if (str .eq. 'True')  do_load_IC = .true.
-		
-		! Do only post-processing
-		read(11,'(A)') line
-		str = get_word(line, 4)
-		if (str .eq. 'True')  then
-			do_only_pp  = .true.
-			force_start = .false. ! Set to false to avoid overlap
-		endif
+   ! He/H number ratio
+   str = get_word(req('He/H number ratio'), 4);  read(str,*) HeH
+   if (HeH .gt. 0.0e0) thereis_He = .true.
 
-		! Force start of sim.
-		read(11,'(A)') line
-		str = get_word(line, 3)
-		if (str .eq. 'True')  then
-			force_start = .true.
-			do_only_pp  = .false. ! Set to false to avoid overlap
-		endif
+   ! Activate metal species if any metal abundance is set
+   thereis_metals = (X_C .gt. 0.0d0) .or. (X_N .gt. 0.0d0)        &
+                                      .or. (X_O .gt. 0.0d0)        &
+                                      .or. (X_Mg .gt. 0.0d0)       &
+                                      .or. (X_Si .gt. 0.0d0)       &
+                                      .or. (X_Ca .gt. 0.0d0)       &
+                                      .or. (X_Na .gt. 0.0d0)       &
+                                      .or. (X_K  .gt. 0.0d0)       &
+                                      .or. (X_S  .gt. 0.0d0)       &
+                                      .or. (X_Fe .gt. 0.0d0)
+
+   ! Abundances for each element in canonical element order (iel_*), so the
+   ! grid/solver code can index metals by element rather than by named
+   ! scalar. Extend this block (and the metals.inp reader) when adding
+   ! elements.
+   allocate(melem_ab(n_melem))
+   melem_ab(iel_C)  = X_C
+   melem_ab(iel_O)  = X_O
+   melem_ab(iel_N)  = X_N
+   melem_ab(iel_Mg) = X_Mg
+   melem_ab(iel_Si) = X_Si
+   melem_ab(iel_Ca) = X_Ca
+   melem_ab(iel_Na) = X_Na
+   melem_ab(iel_K)  = X_K
+   melem_ab(iel_S)  = X_S
+   melem_ab(iel_Fe) = X_Fe
+
+   ! An active metal whose neutral ionization threshold lies below the
+   ! 13.6 eV HI edge (e.g. Mg I at 7.646 eV) needs the below-threshold
+   ! sub-grid extension in set_energy_vectors (mutually exclusive with
+   ! the HeI triplet). Triggered by any such active element.
+   do im = 1, n_melem
+      if (melem_ab(im) .gt. 0.0d0 .and.                       &
+          mion_ethr(melem_i0(im)) .lt. e_th_HI)               &
+         thereis_lowIP_metal = .true.
+   enddo
+
+   ! 2D approximate method
+   line = req('2D approximate method')
+   appx_mth = get_word(line, 4)
+   ! Read alpha if selected
+   if (appx_mth .eq. 'alpha') then
+      str = get_word(line, 6)
+      read(str,*) a_tau
+   else
+      a_tau = 0.0
+   endif
+   ! Correct appx_meth keywords
+   if (appx_mth .eq. 'Rate/4') appx_mth = 'Rate/4 + Mdot'
+   if (appx_mth .eq. 'Rate/2') appx_mth = 'Rate/2 + Mdot/2'
+
+   ! Parent star mass
+   str = get_word(req('Parent star mass'), 5);  read(str,*) Mstar
+
+   ! Spectrum type selects WHICH property line is consumed (Spectrum file /
+   ! Power-law index / Photon energy); the value word position within that
+   ! line is unchanged from the legacy layout.
+   sp_type = get_word(req('Spectrum type'), 3)
+   select case (sp_type)
+
+      case ('Load')          ! Load from file
+         sed_file    = get_word(req('Spectrum file'), 3)
+         do_read_sed = .true.
+
+      case ('Power-law')
+         str = get_word(req('Power-law index'), 3)
+         read(str,*) PLind
+         is_PL_sed = .true.
+
+      case ('Monochromatic')
+         is_monochr = .true.
+         ! Read photon energy
+         str = get_word(req('Photon energy'), 4)
+         read(str,*) e_low
+         ! Remove helium if monochromatic and photon energy lower than the
+         ! helium ionization threshold. Also zero the He/H ratio so the whole
+         ! downstream (mass_per_H, rho_bc, set_IC He fractions, EOS) is a
+         ! self-consistent H-only gas rather than carrying He mass with
+         ! thereis_He = .false.
+         if (e_low .lt. e_th_HeI) then
+            thereis_He = .false.
+            HeH        = 0.0d0
+            write(*,*) '(input_read) Monochromatic photon energy below'//&
+               ' the He I ionization threshold: gas treated as pure'//&
+               ' hydrogen (He/H set to 0).'
+         endif
+
+      case default
+         write(*,*) '(input_read) ERROR: unknown spectrum type "'//&
+            trim(sp_type)//'".'
+         write(*,*) '   Allowed values: Load, Power-law, Monochromatic.'
+         error stop 1
+
+   end select
+
+   ! Only EUV status: word 4 == 'False' includes the X-rays (see schema).
+   str = get_word(req('Use only EUV'), 4)
+   if (str .eq. 'False') thereis_Xray = .true.
+
+   ! Energy bands, present unless the spectrum is monochromatic. Word
+   ! positions 4/6/8 land on the numbers regardless of the value separator
+   ! used inside the brackets.
+   if (.not. is_monochr) then
+      line = req_eband()
+      str = get_word(line, 4);  read(str,*) e_low
+      str = get_word(line, 6);  read(str,*) e_mid
+      if (thereis_Xray) then
+         str = get_word(line, 8);  read(str,*) e_top
+      else
+         e_top = 1.24e3
+      endif
+   endif
+
+   ! X-ray luminosity, only when X-rays are included
+   if (thereis_Xray) then
+      str = get_word(req('Log10 of X-ray luminosity'), 6)
+      read(str,*) LX
+   else
+      LX = 0.0
+   endif
+
+   ! EUV luminosity
+   str = get_word(req('Log10 of EUV luminosity'), 6);  read(str,*) LEUV
+
+   ! Grid type
+   grid_type = get_word(req('Grid type'), 3)
+
+   ! Numerical flux
+   flux = get_word(req('Numerical flux'), 3)
+
+   ! Reconstruction scheme. "PLM" and "WENO3" are single-stage and use only
+   ! the FIRST du_th value; "PLM+WENO3" is two-stage (PLM then WENO3) and
+   ! uses BOTH du_th values (see the du_th parsing below).
+   rec_method = get_word(req('Reconstruction scheme'), 3)
+   if (rec_method.eq.'WENO3') use_weno3 = .true.
+   if (rec_method.eq.'PLM')   use_plm = .true.
+   if (rec_method.eq.'PLM+WENO3') then
+      use_plm         = .true.    ! start in PLM; switch to WENO3 mid-run
+      recon_two_stage = .true.
+   endif
+
+   ! Include He23S
+   str = get_word(req('Include He23S'), 3)
+   if (str .eq. 'True')  thereis_HeITR = .true.
+
+   ! IC status
+   str = get_word(req('Load IC'), 3)
+   if (str .eq. 'True')  do_load_IC = .true.
+
+   ! Do only post-processing. Kept BEFORE "Force start" so that, when both
+   ! are True, force_start wins (matching the legacy sequential order).
+   str = get_word(req('Do only PP'), 4)
+   if (str .eq. 'True')  then
+      do_only_pp  = .true.
+      force_start = .false. ! Set to false to avoid overlap
+   endif
+
+   ! Force start of sim.
+   str = get_word(req('Force start'), 3)
+   if (str .eq. 'True')  then
+      force_start = .true.
+      do_only_pp  = .false. ! Set to false to avoid overlap
+   endif
 
 		! ---- Optional domain-extent option ----
 		! Appended at the end of input.inp (after "Force start:") so older
@@ -322,45 +288,45 @@
 		base_bc_mode     = 0          ! density-anchored base (legacy) by default
 		resid_vol        = .true.     ! volume-weighted residual norm by default
 		ates_photoion_rate = .false.  ! default: Verner+1996 He I (1^1S) photoion.
-		do
-			read(11,'(A)',iostat = ios) line
-			if (ios .ne. 0) exit
+		do i = 1, nlines
+			line = filelines(i)
 			if (len_trim(line) .eq. 0) cycle
-			if (index(line,'Domain mode') .gt. 0) then
+			if (index(adjustl(line),'#') .eq. 1) cycle
+			if (lbl_match(line, 'Domain mode')) then
 				str = get_word(line, 3)
 				if (str .eq. 'Spherical') spherical_domain = .true.
-			else if (index(line,'Outer radius') .gt. 0) then
+			else if (lbl_match(line, 'Outer radius')) then
 				str = get_word(line, 4)
 				read(str,*) r_out_user
-			else if (index(line,'Stellar Teff') .gt. 0) then
+			else if (lbl_match(line, 'Stellar Teff')) then
 				str = get_word(line, 4)
 				read(str,*) T_star_eff
-			else if (index(line,'Stellar radius') .gt. 0) then
+			else if (lbl_match(line, 'Stellar radius')) then
 				str = get_word(line, 4)
 				read(str,*) R_star
-			else if (index(line,'Deexc heat') .gt. 0) then
+			else if (lbl_match(line, 'Deexc heat')) then
 				str = get_word(line, 3)
 				if (str .eq. 'True') incl_deexc_heat = .true.
-			else if (index(line,'Wind-AE seed out') .gt. 0) then
+			else if (lbl_match(line, 'Wind-AE seed out')) then
 				windae_seed_out = trim(get_word(line, 4))
-			else if (index(line,'Wind-AE seed') .gt. 0) then
+			else if (lbl_match(line, 'Wind-AE seed')) then
 				windae_seed_file = trim(get_word(line, 3))
-			else if (index(line,'Jlya RT file') .gt. 0) then
+			else if (lbl_match(line, 'Jlya RT file')) then
 				jlya_rt_file = get_word(line, 4)
 				jlya_mode    = 1
-			else if (index(line,'Jlya escape-prob') .gt. 0) then
+			else if (lbl_match(line, 'Jlya escape-prob')) then
 				str = get_word(line, 3)
 				if (str .eq. 'True') jlya_mode = 2
-			else if (index(line,'Stellar Lya flux') .gt. 0) then
+			else if (lbl_match(line, 'Stellar Lya flux')) then
 				str = get_word(line, 5)
 				read(str,*) F_Lya_star
-			else if (index(line,'Lya stellar halfwidth') .gt. 0) then
+			else if (lbl_match(line, 'Lya stellar halfwidth')) then
 				str = get_word(line, 5)
 				read(str,*) dv_star_lya
-			else if (index(line,'Lya stellar boost') .gt. 0) then
+			else if (lbl_match(line, 'Lya stellar boost')) then
 				str = get_word(line, 5)
 				read(str,*) lya_star_boost
-			else if (index(line,'du_th') .gt. 0) then
+			else if (lbl_match(line, 'du_th')) then
 				! "du_th [PLM,WENO3]: <du1> [<du2>]". How the numbers are used is
 				! decided by "Reconstruction scheme:" (parsed above):
 				!   PLM+WENO3 -> two-stage: PLM until du<du1, then WENO3 until du<du2.
@@ -381,20 +347,20 @@
 					! PLM or WENO3: single-stage; ignore any second du_th value.
 					du_th_plm = -1.0d0
 				endif
-			else if (index(line,'ATES_photoionization_rate') .gt. 0) then
+			else if (lbl_match(line, 'ATES_photoionization_rate')) then
 				! Revert He I (1^1S) photoionization to the legacy ATES 2-term fit
 				! (default is Verner+1996). "ATES_photoionization_rate: True"
 				str = get_word(line, 2)
 				if (str .eq. 'True' .or. str .eq. 'true') ates_photoion_rate = .true.
-			else if (index(line,'Molecular chemistry') .gt. 0) then
+			else if (lbl_match(line, 'Molecular chemistry')) then
 				! molecular network (docs/lower_atmosphere_*).
 				str = get_word(line, 3)
 				if (str .eq. 'True' .or. str .eq. 'true') thereis_mol = .true.
-			else if (index(line,'Molecular base') .gt. 0) then
+			else if (lbl_match(line, 'Molecular base')) then
 				! EOS-only molecular base (docs/lower_atmosphere_*).
 				str = get_word(line, 3)
 				if (str .eq. 'True' .or. str .eq. 'true') molecular_base = .true.
-			else if (index(line,'Lower atmosphere') .gt. 0) then
+			else if (lbl_match(line, 'Lower atmosphere')) then
 				! Lower-atmosphere pre-step (docs/lower_atmosphere_*).
 				str = get_word(line, 3)
 				if (str .eq. 'vulcan')   lower_atm_mode = 2
@@ -402,37 +368,37 @@
 				if (str .eq. 'none')     lower_atm_mode = 0
 				str = get_word(line, 4)
 				if (len_trim(str) .gt. 0) read(str,*) lower_atm_r1bar
-			else if (index(line,'Lower column') .gt. 0) then
+			else if (lbl_match(line, 'Lower column')) then
 				! analytic lower column: "Lower column: <R_1bar in R_J>"
 				str = get_word(line, 3);  read(str,*) lower_col_r1bar
-			else if (index(line,'He_Kzz') .gt. 0) then
+			else if (lbl_match(line, 'He_Kzz')) then
 				! Eddy diffusion coefficient [cm^2/s] for He/H separation.
 				! "He_Kzz: 1.0e9"
 				str = get_word(line, 2);  read(str,*) he_kzz
-			else if (index(line,'He_alphaT') .gt. 0) then
+			else if (lbl_match(line, 'He_alphaT')) then
 				! Thermal-diffusion factor alpha_T for He (P2c). "He_alphaT: 0.0"
 				str = get_word(line, 2);  read(str,*) he_alphaT
-			else if (index(line,'He_ambipolar') .gt. 0) then
+			else if (lbl_match(line, 'He_ambipolar')) then
 				! Ambipolar-corrected settling mass (P2b). "He_ambipolar: False"
 				str = get_word(line, 2)
 				if (str .eq. 'False' .or. str .eq. 'false') he_ambipolar = .false.
-			else if (index(line,'He_metal_diffusion') .gt. 0) then
+			else if (lbl_match(line, 'He_metal_diffusion')) then
 				! Diffuse trace metals too (P2d). "He_metal_diffusion: True"
 				str = get_word(line, 2)
 				if (str .eq. 'True' .or. str .eq. 'true') he_metal_diffusion = .true.
-			else if (index(line,'He_diffusion') .gt. 0) then
+			else if (lbl_match(line, 'He_diffusion')) then
 				! He/H diffusive separation (default off).
 				! "He_diffusion: True"
 				str = get_word(line, 2)
 				if (str .eq. 'True' .or. str .eq. 'true') he_diffusion = .true.
-			else if (index(line,'Stall') .gt. 0) then
+			else if (lbl_match(line, 'Stall')) then
 				! Stall-detector override: "Stall [tol,N]: <rel_tol> <N_steps>"
 				! (smaller tol and/or larger N = harder to declare a plateau)
 				str = get_word(line, 3);  read(str,*) stall_tol
 				str = get_word(line, 4);  read(str,*) N_stall
 				write(*,'(A,ES9.2,A,I0)') ' (input_read) Stall override: tol =', &
 				                          stall_tol, ', N =', N_stall
-			else if (index(line,'Energy solver') .gt. 0) then
+			else if (lbl_match(line, 'Energy solver')) then
 				! "Energy solver: Explicit" reverts to the original forward-
 				! Euler source update (solver-component isolation tests).
 				str = get_word(line, 3)
@@ -440,7 +406,7 @@
 					use_semi_implicit_energy = .false.
 					write(*,*) '(input_read) Energy solver: explicit forward Euler'
 				endif
-			else if (index(line,'Time stepping') .gt. 0) then
+			else if (lbl_match(line, 'Time stepping')) then
 				! "Time stepping: Local" = cell-by-cell pseudo-time steps
 				! (steady-state convergence acceleration; not time-accurate).
 				str = get_word(line, 3)
@@ -448,12 +414,12 @@
 					use_local_dt = .true.
 					write(*,*) '(input_read) Time stepping: local (cell-by-cell) pseudo-dt'
 				endif
-			else if (index(line,'Level tol') .gt. 0) then
+			else if (lbl_match(line, 'Level tol')) then
 				! "Level tol: <val>" overrides the mass-flux level-stability
 				! tolerance (<= 0 disables the level gate; legacy stops).
 				str = get_word(line, 3);  read(str,*) lev_th
 				write(*,'(A,ES9.2)') ' (input_read) Level-stability tol =', lev_th
-			else if (index(line,'Solver') .gt. 0) then
+			else if (lbl_match(line, 'Solver')) then
 				! "Solver: Newton [du_switch]" = marching warm-up until the
 				! flux metric du (radial spread of rho*v*r^2) < du_switch
 				! (default 1e-2), then the JFNK steady solve polishes to du<du_th.
@@ -465,24 +431,24 @@
 					write(*,'(A,ES9.2)') ' (input_read) Solver: Newton, '// &
 						'JFNK hand-off at du <', newton_du_switch
 				endif
-			else if (index(line,'Valve eps') .gt. 0) then
+			else if (lbl_match(line, 'Valve eps')) then
 				! "Valve eps: <v_eps>" smooths the base one-way valve
 				! (softplus; <= 0 keeps the exact legacy max(v,0)).
 				str = get_word(line, 3);  read(str,*) valve_eps
 				write(*,'(A,ES9.2)') ' (input_read) Smooth base valve, eps =', valve_eps
-			else if (index(line,'Hydrostatic base') .gt. 0) then
+			else if (lbl_match(line, 'Hydrostatic base')) then
 				str = get_word(line, 3)
 				if (str .eq. 'True') hydrostatic_base = .true.
 				if (hydrostatic_base) write(*,'(A)') ' (input_read) '//   &
 				   'Hydrostatic base ghost cells enabled'
-			else if (index(line,'Shapiro filter') .gt. 0) then
+			else if (lbl_match(line, 'Shapiro filter')) then
 				str = get_word(line, 3);  read(str,*) shapiro_eps
 				str = get_word(line, 4)
 				if (len_trim(str) .gt. 0) read(str,*) shapiro_every
 				if (shapiro_eps .gt. 0.0d0) write(*,'(A,ES9.2,A,I0,A)')  &
 				   ' (input_read) Shapiro filter eps =', shapiro_eps,    &
 				   ', every ', shapiro_every, ' steps'
-			else if (index(line,'Base BC') .gt. 0) then
+			else if (lbl_match(line, 'Base BC')) then
 				str = get_word(line, 3)
 				if (str .eq. 'density')  base_bc_mode = 0
 				if (str .eq. 'pressure') base_bc_mode = 1
@@ -496,7 +462,7 @@
 					write(*,'(A)') ' (input_read) Base BC: density '//   &
 					   '(legacy, n0 from input)'
 				endif
-			else if (index(line,'Base velocity') .gt. 0) then
+			else if (lbl_match(line, 'Base velocity')) then
 				str = get_word(line, 3)
 				if (str .eq. 'valve')    base_v_massflux = .false.
 				if (str .eq. 'massflux') base_v_massflux = .true.
@@ -506,19 +472,19 @@
 				else
 					write(*,'(A)') ' (input_read) Base velocity: legacy valve'
 				endif
-			else if (index(line,'Viscosity') .gt. 0) then
+			else if (lbl_match(line, 'Viscosity')) then
 				str = get_word(line, 3);  read(str,*) visc_mu0
 				str = get_word(line, 4)
 				if (len_trim(str) .gt. 0) read(str,*) visc_s
 				if (visc_mu0 .gt. 0.0d0) write(*,'(A,ES9.2,A,F5.2,A)')  &
 				   ' (input_read) Viscosity mu0 =', visc_mu0,  &
 				   ', s =', visc_s, '  [un-validated]'
-			else if (index(line,'Resid tol') .gt. 0) then
+			else if (lbl_match(line, 'Resid tol')) then
 				! "Resid tol: <val>" = converge on the steady residual ||R||
 				! instead of du (<= 0 disables; legacy du-based stop).
 				str = get_word(line, 3);  read(str,*) resid_th
 				write(*,'(A,ES9.2)') ' (input_read) Residual-based convergence, tol =', resid_th
-			else if (index(line,'Resid norm') .gt. 0) then
+			else if (lbl_match(line, 'Resid norm')) then
 				! "Resid norm: vol|Linf" -- residual norm for convergence.
 				! vol (default) = volume-weighted; Linf = legacy max-over-cells.
 				str = get_word(line, 3)
@@ -526,17 +492,17 @@
 					resid_vol = .false.
 				if (str .eq. 'vol' .or. str .eq. 'volume') resid_vol = .true.
 				write(*,'(A,L1)') ' (input_read) Volume-weighted residual norm: ', resid_vol
-			else if (index(line,'CFL') .gt. 0) then
+			else if (lbl_match(line, 'CFL')) then
 				! Override the CFL number ("CFL: <value>"); lower = smaller dt.
 				str = get_word(line, 2);  read(str,*) CFL
-			else if (index(line,'Transonic IC') .gt. 0) then
+			else if (lbl_match(line, 'Transonic IC')) then
 				str = get_word(line, 3)
 				if (str .eq. 'True') transonic_ic = .true.
-			else if (index(line,'Hot Parker IC') .gt. 0) then
+			else if (lbl_match(line, 'Hot Parker IC')) then
 				str = get_word(line, 4)
 				read(str,*) T_wind_ic
 				hot_parker_ic = .true.
-			else if (index(line,'IC mode') .gt. 0) then
+			else if (lbl_match(line, 'IC mode')) then
 				! "IC mode: <cold|transonic|hot_parker|auto>". The named
 				! modes are synonyms for the legacy keys; 'auto' defers the
 				! choice to select_IC_auto (set_IC.f90), which probes the
@@ -564,10 +530,10 @@
 					           'mode: ', str, '"; using cold hydrostatic.'
 					ic_mode = 0
 				endif
-			else if (index(line,'Newton solver') .gt. 0) then
+			else if (lbl_match(line, 'Newton solver')) then
 				str = get_word(line, 3)
 				if (str .eq. 'False') use_newton_ieq = .false.
-			else if (index(line,'Brent solver') .gt. 0) then
+			else if (lbl_match(line, 'Brent solver')) then
 				str = get_word(line, 3)
 				if (str .eq. 'False') use_brent_tsolve = .false.
 			endif
@@ -766,6 +732,99 @@
    if (thereis_metals) call cx_init
 
    ! End of subroutine
+
+   contains
+
+   ! --------------------------------------------------------------------- !
+   ! input.inp label matching. A key matches a line ONLY as a label:
+   ! anchored at the start of the left-trimmed line and terminated by a value
+   ! separator (':', '?', whitespace, '=', or end-of-line). This makes line
+   ! order irrelevant and removes the old substring-collision hazards (e.g.
+   ! "Newton solver:" no longer false-matches the "Solver" key). The one
+   ! remaining prefix collision, "Wind-AE seed out" vs "Wind-AE seed" (they
+   ! share a whitespace-separated prefix), is resolved by testing the longer
+   ! key first in the keyword loop above (longest / most-specific first).
+   ! --------------------------------------------------------------------- !
+
+   logical function lbl_match(line, key)
+   ! .true. iff adjustl(line) begins with `key` followed by a value separator.
+   character(len=*), intent(in) :: line, key
+   character(len=250) :: t
+   integer :: lk, lt
+   lbl_match = .false.
+   t  = adjustl(line)
+   lk = len(key)
+   lt = len_trim(t)
+   if (lt .lt. lk) return
+   if (t(1:lk) .ne. key) return
+   if (lk .eq. lt) then
+      lbl_match = .true.                 ! key is the whole trimmed line
+   else
+      lbl_match = is_sep(t(lk+1:lk+1))    ! next char must be a separator
+   endif
+   end function lbl_match
+
+   logical function is_sep(c)
+   character(len=1), intent(in) :: c
+   is_sep = (c .eq. ':' .or. c .eq. '?' .or. c .eq. ' ' .or.   &
+             c .eq. char(9) .or. c .eq. '=')
+   end function is_sep
+
+   function find_lbl(key, found) result(res)
+   ! Last line matching `key` (last occurrence wins, as in the keyword loop).
+   character(len=*), intent(in)  :: key
+   logical,          intent(out) :: found
+   character(len=250) :: res
+   integer :: j
+   found = .false.
+   res   = ''
+   do j = 1, nlines
+      if (lbl_match(filelines(j), key)) then
+         res   = filelines(j)
+         found = .true.
+      endif
+   enddo
+   end function find_lbl
+
+   function req(key) result(res)
+   ! Mandatory key: return its (last) line or abort naming the key.
+   character(len=*), intent(in) :: key
+   character(len=250) :: res
+   logical :: found
+   res = find_lbl(key, found)
+   if (.not. found) then
+      write(*,*) '(input_read.f90) ERROR: mandatory input line "'//   &
+         trim(key)//'" not found in '//trim(inp_file)//'.'
+      error stop 1
+   endif
+   end function req
+
+   function req_eband() result(res)
+   ! Mandatory energy-band line "[E_low,E_mid(,E_high)] = [ ... ]", anchored
+   ! by its bracket-delimited "[E_low" prefix (the char after the prefix is
+   ! ',', so this uses a plain prefix test rather than lbl_match).
+   character(len=250) :: res, t
+   integer :: j
+   logical :: found
+   found = .false.
+   res   = ''
+   do j = 1, nlines
+      t = adjustl(filelines(j))
+      if (len_trim(t) .ge. 6) then
+         if (t(1:6) .eq. '[E_low') then
+            res   = filelines(j)
+            found = .true.
+         endif
+      endif
+   enddo
+   if (.not. found) then
+      write(*,*) '(input_read.f90) ERROR: mandatory energy-band line'//   &
+         ' "[E_low,E_mid,E_high] = [ ... ]" not found in '//              &
+         trim(inp_file)//'.'
+      error stop 1
+   endif
+   end function req_eband
+
    end subroutine input_read
 
    ! ------------------------------------------------------------------- !
