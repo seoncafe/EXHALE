@@ -30,6 +30,10 @@
 
 	use global_parameters, only: thereis_HeITR
 	use mol_rates
+	use params_idx, only: IPE_PHI, IPE_PHEI, IPE_PHEII, IPE_AHII, IPE_AHEII,   &
+	                      IPE_AHEIII, IPE_NH, IPE_NHE, IPE_BHI, IPE_BHEI,       &
+	                      IPE_BHEII, IPE_ATR, IPE_A31, IPE_PTR, IPE_Q13,        &
+	                      IPE_Q31A, IPE_Q31B, IPE_Q31, IPE_PH2, IPE_T, IPE_NTOT
 
 	implicit none
 
@@ -82,27 +86,27 @@
 	real*8  :: k5,k6,k7,k8,k9,k10,k11,k12,k13,k14,k15
 	real*8  :: k16,k17,k18,k19,k20,k23
 
-	g_hi    = params(1)
-	g_hei   = params(2)
-	g_heii  = params(3)
-	a_hii   = params(4)
-	a_heii  = params(5)
-	a_heiii = params(6)
-	n_h     = params(7)
-	n_he    = params(8)
-	b_hi    = params(9)
-	b_hei   = params(10)
-	b_heii  = params(11)
-	a_heiTR = params(12)
-	A31     = params(13)
-	g_heiTR = params(14)
-	q13     = params(15)
-	q31a    = params(16)
-	q31b    = params(17)
-	Q31     = params(18)
-	g_h2    = params(19)
-	T       = params(20)
-	ntot    = params(21)
+	g_hi    = params(IPE_PHI)
+	g_hei   = params(IPE_PHEI)
+	g_heii  = params(IPE_PHEII)
+	a_hii   = params(IPE_AHII)
+	a_heii  = params(IPE_AHEII)
+	a_heiii = params(IPE_AHEIII)
+	n_h     = params(IPE_NH)
+	n_he    = params(IPE_NHE)
+	b_hi    = params(IPE_BHI)
+	b_hei   = params(IPE_BHEI)
+	b_heii  = params(IPE_BHEII)
+	a_heiTR = params(IPE_ATR)
+	A31     = params(IPE_A31)
+	g_heiTR = params(IPE_PTR)
+	q13     = params(IPE_Q13)
+	q31a    = params(IPE_Q31A)
+	q31b    = params(IPE_Q31B)
+	Q31     = params(IPE_Q31)
+	g_h2    = params(IPE_PH2)
+	T       = params(IPE_T)
+	ntot    = params(IPE_NTOT)
 
 	! Species densities
 	n_hi   = (1.0d0 - x(1) - x(4) - x(5) - x(6) - x(7))*n_h

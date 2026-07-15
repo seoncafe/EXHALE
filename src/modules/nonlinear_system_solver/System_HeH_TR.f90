@@ -2,7 +2,11 @@
 	! Ionization equilibrium system with both H and He
 	
 	use global_parameters
-	
+	use params_idx, only: IPE_PHI, IPE_PHEI, IPE_PHEII, IPE_AHII, IPE_AHEII,   &
+	                      IPE_AHEIII, IPE_NH, IPE_NHE, IPE_BHI, IPE_BHEI,       &
+	                      IPE_BHEII, IPE_ATR, IPE_A31, IPE_PTR, IPE_Q13,        &
+	                      IPE_Q31A, IPE_Q31B, IPE_Q31
+
 	implicit none
 	
 	contains
@@ -22,26 +26,26 @@
 	
 	! Coefficients of the system
 
- 	g_hi    = params(1)    ! = P_HI 
- 	g_hei   = params(2)    ! = P_HeI
- 	g_heii  = params(3)    ! = P_HeII 
- 	a_hii   = params(4)    ! = rchiiB 
- 	a_heii  = params(5)    ! = rcheiiB 
- 	a_heiii = params(6)    ! = rcheiiiB 
- 	n_h     = params(7)    ! = nh 
- 	n_he    = params(8)    ! = nhe 
-   b_hi    = params(9)    ! = a_ion_HI 
- 	b_hei   = params(10)   ! = a_ion_HeI 
- 	b_heii  = params(11)   ! = a_ion_HeII 
+ 	g_hi    = params(IPE_PHI)    ! = P_HI 
+ 	g_hei   = params(IPE_PHEI)    ! = P_HeI
+ 	g_heii  = params(IPE_PHEII)    ! = P_HeII 
+ 	a_hii   = params(IPE_AHII)    ! = rchiiB 
+ 	a_heii  = params(IPE_AHEII)    ! = rcheiiB 
+ 	a_heiii = params(IPE_AHEIII)    ! = rcheiiiB 
+ 	n_h     = params(IPE_NH)    ! = nh 
+ 	n_he    = params(IPE_NHE)    ! = nhe 
+   b_hi    = params(IPE_BHI)    ! = a_ion_HI 
+ 	b_hei   = params(IPE_BHEI)   ! = a_ion_HeI 
+ 	b_heii  = params(IPE_BHEII)   ! = a_ion_HeII 
  	
  	! Triplet parameters
- 	a_heiTR = params(12)   ! = rcheiTR
- 	A31     = params(13)   ! = A31
- 	g_heiTR = params(14)   ! = P_HeITR
- 	q13     = params(15)   ! = q13
- 	q31a    = params(16)   ! = q31a
- 	q31b    = params(17)   ! = q31b
- 	Q31     = params(18)   ! = Q31
+ 	a_heiTR = params(IPE_ATR)   ! = rcheiTR
+ 	A31     = params(IPE_A31)   ! = A31
+ 	g_heiTR = params(IPE_PTR)   ! = P_HeITR
+ 	q13     = params(IPE_Q13)   ! = q13
+ 	q31a    = params(IPE_Q31A)   ! = q31a
+ 	q31b    = params(IPE_Q31B)   ! = q31b
+ 	Q31     = params(IPE_Q31)   ! = Q31
  	
  	
  	! Species densities

@@ -27,6 +27,8 @@
 	! exchange vanishes automatically for any absent reactant.
 
 	use global_parameters
+	use params_idx, only: IPE_PHI, IPE_PHEI, IPE_PHEII, IPE_AHII, IPE_AHEII,  &
+	                      IPE_AHEIII, IPE_NH, IPE_NHE, IPE_BHI, IPE_BHEI, IPE_BHEII
 	use charge_exchange, only: cx_add_to_fvec, cx_add_to_jac
 
 	implicit none
@@ -98,17 +100,17 @@
 	integer :: e,ix
 
 	! Unpack H/He coefficients
-	g_hi    = params(1)
-	g_hei   = params(2)
-	g_heii  = params(3)
-	a_hii   = params(4)
-	a_heii  = params(5)
-	a_heiii = params(6)
-	n_h     = params(7)
-	n_he    = params(8)
-	b_hi    = params(9)
-	b_hei   = params(10)
-	b_heii  = params(11)
+	g_hi    = params(IPE_PHI)
+	g_hei   = params(IPE_PHEI)
+	g_heii  = params(IPE_PHEII)
+	a_hii   = params(IPE_AHII)
+	a_heii  = params(IPE_AHEII)
+	a_heiii = params(IPE_AHEIII)
+	n_h     = params(IPE_NH)
+	n_he    = params(IPE_NHE)
+	b_hi    = params(IPE_BHI)
+	b_hei   = params(IPE_BHEI)
+	b_heii  = params(IPE_BHEII)
 
 	! H/He densities from fractions
 	n_hii   = x(1)*n_h
@@ -199,10 +201,10 @@
    integer :: e,ix,i,k
 
    ! Unpack H/He coefficients (params 1-11, same as the residual).
-   g_hi=params(1); g_hei=params(2); g_heii=params(3)
-   a_hii=params(4); a_heii=params(5); a_heiii=params(6)
-   n_h=params(7); n_he=params(8)
-   b_hi=params(9); b_hei=params(10); b_heii=params(11)
+   g_hi=params(IPE_PHI); g_hei=params(IPE_PHEI); g_heii=params(IPE_PHEII)
+   a_hii=params(IPE_AHII); a_heii=params(IPE_AHEII); a_heiii=params(IPE_AHEIII)
+   n_h=params(IPE_NH); n_he=params(IPE_NHE)
+   b_hi=params(IPE_BHI); b_hei=params(IPE_BHEI); b_heii=params(IPE_BHEII)
 
    n_hii=x(1)*n_h;  n_hi=(1.0-x(1))*n_h
    n_heii=x(2)*n_he; n_heiii=x(3)*n_he; n_hei=(1.0-x(2)-x(3))*n_he

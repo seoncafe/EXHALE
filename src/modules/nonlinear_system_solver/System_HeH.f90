@@ -2,7 +2,9 @@
 	! Ionization equilibrium system with both H and He
 	
 	use global_parameters
-	
+	use params_idx, only: IPE_PHI, IPE_PHEI, IPE_PHEII, IPE_AHII, IPE_AHEII,  &
+	                      IPE_AHEIII, IPE_NH, IPE_NHE, IPE_BHI, IPE_BHEI, IPE_BHEII
+
 	implicit none
 	
 	contains
@@ -21,17 +23,17 @@
 	
 	! Coefficients of the system
 
- 	g_hi    = params(1)    ! = P_HI 
- 	g_hei   = params(2)    ! = P_HeI
- 	g_heii  = params(3)    ! = P_HeII 
- 	a_hii   = params(4)    ! = rchiiB 
- 	a_heii  = params(5)    ! = rcheiiB 
- 	a_heiii = params(6)    ! = rcheiiiB 
- 	n_h     = params(7)    ! = nh 
- 	n_he    = params(8)    ! = nhe 
-   b_hi    = params(9)    ! = a_ion_HI 
- 	b_hei   = params(10)   ! = a_ion_HeI 
- 	b_heii  = params(11)   ! = a_ion_HeII 
+ 	g_hi    = params(IPE_PHI)    ! = P_HI 
+ 	g_hei   = params(IPE_PHEI)    ! = P_HeI
+ 	g_heii  = params(IPE_PHEII)    ! = P_HeII 
+ 	a_hii   = params(IPE_AHII)    ! = rchiiB 
+ 	a_heii  = params(IPE_AHEII)    ! = rcheiiB 
+ 	a_heiii = params(IPE_AHEIII)    ! = rcheiiiB 
+ 	n_h     = params(IPE_NH)    ! = nh 
+ 	n_he    = params(IPE_NHE)    ! = nhe 
+   b_hi    = params(IPE_BHI)    ! = a_ion_HI 
+ 	b_hei   = params(IPE_BHEI)   ! = a_ion_HeI 
+ 	b_heii  = params(IPE_BHEII)   ! = a_ion_HeII 
  	
  	! Species densities
  	n_hi    = (1.0-x(1))*n_h
@@ -68,10 +70,10 @@
 	real*8  :: C1,C2,C3, dne(3)
 	integer :: k
 
-	g_hi    = params(1);  g_hei   = params(2);  g_heii  = params(3)
-	a_hii   = params(4);  a_heii  = params(5);  a_heiii = params(6)
-	n_h     = params(7);  n_he    = params(8)
-	b_hi    = params(9);  b_hei   = params(10); b_heii  = params(11)
+	g_hi    = params(IPE_PHI);  g_hei   = params(IPE_PHEI);  g_heii  = params(IPE_PHEII)
+	a_hii   = params(IPE_AHII);  a_heii  = params(IPE_AHEII);  a_heiii = params(IPE_AHEIII)
+	n_h     = params(IPE_NH);  n_he    = params(IPE_NHE)
+	b_hi    = params(IPE_BHI);  b_hei   = params(IPE_BHEI); b_heii  = params(IPE_BHEII)
 
 	n_hi    = (1.0-x(1))*n_h
 	n_hii   = x(1)*n_h

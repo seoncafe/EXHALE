@@ -2,7 +2,10 @@
 	! Ionization equilibrium system with both H and He
 	
 	use global_parameters
-	
+	use params_idx, only: IPA_C1, IPA_XHI, IPA_XHEI, IPA_XHEIII, IPA_NH,        &
+	                      IPA_PHI, IPA_PHEI, IPA_PHEII, IPA_AHII, IPA_AHEII,     &
+	                      IPA_AHEIII, IPA_BHI, IPA_BHEI, IPA_BHEII, IPA_HEH
+
 	implicit none
 	
 	contains
@@ -25,25 +28,25 @@
 
 	! Coefficients of the system
 
- 	c1         = params(1)    ! = dr/v
- 	xhi_old    = params(2)    ! = nhi/nh
- 	xhei_old   = params(3)    ! = nhei/nhe
- 	xheiii_old = params(4)    ! = nheiii/nhe
- 	n_h        = params(5)    ! = nh
- 	ghi        = params(6)    ! = P_HI
- 	ghei       = params(7)    ! = P_HeI = nh
- 	gheii      = params(8)    ! = P_HeII = nhe
-   ahii       = params(9)    ! = rchiiB
- 	aheii      = params(10)   ! = rcheiiB
- 	aheiii     = params(11)   ! = rcheiiiB
-	ionhi	   = params(12)   ! = a_ion_HI
-	ionhei     = params(13)   ! = a_ion_HeI
-	ionheii    = params(14)   ! = a_ion_HEII
+ 	c1         = params(IPA_C1)    ! = dr/v
+ 	xhi_old    = params(IPA_XHI)    ! = nhi/nh
+ 	xhei_old   = params(IPA_XHEI)    ! = nhei/nhe
+ 	xheiii_old = params(IPA_XHEIII)    ! = nheiii/nhe
+ 	n_h        = params(IPA_NH)    ! = nh
+ 	ghi        = params(IPA_PHI)    ! = P_HI
+ 	ghei       = params(IPA_PHEI)    ! = P_HeI = nh
+ 	gheii      = params(IPA_PHEII)    ! = P_HeII = nhe
+   ahii       = params(IPA_AHII)    ! = rchiiB
+ 	aheii      = params(IPA_AHEII)   ! = rcheiiB
+ 	aheiii     = params(IPA_AHEIII)   ! = rcheiiiB
+	ionhi	   = params(IPA_BHI)   ! = a_ion_HI
+	ionhei     = params(IPA_BHEI)   ! = a_ion_HeI
+	ionheii    = params(IPA_BHEII)   ! = a_ion_HEII
 	! Effective He/H for the electron density: packed as the global HeH by
 	! post_process_adv (legacy, byte-identical); with He_diffusion the local,
 	! radius-dependent nhe/nh is passed instead (the global HeH would misstate
 	! n_e by the local separation factor).
-	heh_loc    = params(15)   ! = He/H (local when he_diffusion)
+	heh_loc    = params(IPA_HEH)   ! = He/H (local when he_diffusion)
 
 	! Substitutions
 	xhi    = x(1)

@@ -2,7 +2,12 @@
 	! Ionization equilibrium system with both H and He
 	
 	use global_parameters
-	
+	use params_idx, only: IPA_C1, IPA_XHI, IPA_XHEI, IPA_XHEIII, IPA_NH,        &
+	                      IPA_PHI, IPA_PHEI, IPA_PHEII, IPA_AHII, IPA_AHEII,     &
+	                      IPA_AHEIII, IPA_BHI, IPA_BHEI, IPA_BHEII, IPAT_ATR,    &
+	                      IPAT_A31, IPAT_PTR, IPAT_Q13, IPAT_Q31A, IPAT_Q31B,    &
+	                      IPAT_Q31, IPAT_XTR, IPAT_HEH
+
 	implicit none
 	
 	contains
@@ -26,32 +31,32 @@
    real*8  :: A31,q13,q31a,q31b,Q31
 	
 	! Coefficients of the system
- 	c1         = params(1)    ! = dr/v
- 	xhi_old    = params(2)    ! = nhi/nhe 
- 	xhei_old   = params(3)    ! = nheii/nhe 
- 	xheiii_old = params(4)    ! = nheiii/nhe
- 	n_h        = params(5)    ! = nh
- 	ghi        = params(6)    ! = P_HI 
- 	ghei       = params(7)    ! = P_HeI 
- 	gheii      = params(8)    ! = P_HeII 
-   ahii       = params(9)    ! = rchiiB  
- 	aheii      = params(10)   ! = rcheiiB 
- 	aheiii     = params(11)   ! = rcheiiiB  
-	ionhi	     = params(12)   ! = a_ion_HI
-	ionhei     = params(13)   ! = a_ion_HeI
-	ionheii    = params(14)   ! = a_ion_HEII
-	aheiTR     = params(15)	  ! = rcheiTR
-	A31	     = params(16)   ! = A31
-	gheiTR     = params(17)   ! = P_HeITR
-	q13        = params(18)   ! = q13
-	q31a	     = params(19)   ! = q31a
-	q31b	     = params(20)   ! = q31b
-	Q31 	     = params(21)   ! = Q31
-	xheiTR_old = params(22)   ! = nheiTR/nh
+ 	c1         = params(IPA_C1)    ! = dr/v
+ 	xhi_old    = params(IPA_XHI)    ! = nhi/nhe 
+ 	xhei_old   = params(IPA_XHEI)    ! = nheii/nhe 
+ 	xheiii_old = params(IPA_XHEIII)    ! = nheiii/nhe
+ 	n_h        = params(IPA_NH)    ! = nh
+ 	ghi        = params(IPA_PHI)    ! = P_HI 
+ 	ghei       = params(IPA_PHEI)    ! = P_HeI 
+ 	gheii      = params(IPA_PHEII)    ! = P_HeII 
+   ahii       = params(IPA_AHII)    ! = rchiiB  
+ 	aheii      = params(IPA_AHEII)   ! = rcheiiB 
+ 	aheiii     = params(IPA_AHEIII)   ! = rcheiiiB  
+	ionhi	     = params(IPA_BHI)   ! = a_ion_HI
+	ionhei     = params(IPA_BHEI)   ! = a_ion_HeI
+	ionheii    = params(IPA_BHEII)   ! = a_ion_HEII
+	aheiTR     = params(IPAT_ATR)	  ! = rcheiTR
+	A31	     = params(IPAT_A31)   ! = A31
+	gheiTR     = params(IPAT_PTR)   ! = P_HeITR
+	q13        = params(IPAT_Q13)   ! = q13
+	q31a	     = params(IPAT_Q31A)   ! = q31a
+	q31b	     = params(IPAT_Q31B)   ! = q31b
+	Q31 	     = params(IPAT_Q31)   ! = Q31
+	xheiTR_old = params(IPAT_XTR)   ! = nheiTR/nh
 	! Effective He/H for the electron density: packed as the global HeH by
 	! post_process_adv (legacy, byte-identical); with He_diffusion the local,
 	! radius-dependent nhe/nh is passed instead.
-	heh_loc    = params(23)   ! = He/H (local when he_diffusion)
+	heh_loc    = params(IPAT_HEH)   ! = He/H (local when he_diffusion)
 
 	! Substitutions
 	xhi    = x(1)

@@ -78,6 +78,7 @@ SRC := \
   src/modules/lower_atmosphere/mol_rates.f90 \
   src/modules/time_step/steady_residual.f90 \
   src/modules/time_step/steady_newton.f90 \
+  src/modules/nonlinear_system_solver/params_idx.f90 \
   src/modules/nonlinear_system_solver/dogleg.f90 \
   src/modules/nonlinear_system_solver/enorm.f90 \
   src/modules/nonlinear_system_solver/hybrd1.f90 \

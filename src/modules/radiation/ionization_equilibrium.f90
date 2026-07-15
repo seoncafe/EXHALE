@@ -2,6 +2,11 @@
 	! Evaluate the ionization structure and the heating and cooling functions for a given temperature
 
 	use global_parameters
+   use params_idx, only: IPH_PHI, IPH_AHII, IPH_NH, IPH_BHI, IPE_PHI,         &
+                         IPE_PHEI, IPE_PHEII, IPE_AHII, IPE_AHEII, IPE_AHEIII, &
+                         IPE_NH, IPE_NHE, IPE_BHI, IPE_BHEI, IPE_BHEII,        &
+                         IPE_ATR, IPE_A31, IPE_PTR, IPE_Q13, IPE_Q31A,         &
+                         IPE_Q31B, IPE_Q31, IPE_PH2, IPE_T, IPE_NTOT
    use species_table, only: n_mion, mion_fsp, n_melem, melem_i0,        &
                             melem_top, mion_stage,                       &
                             isp_H2, isp_H2p, isp_H3p, isp_HeHp
@@ -262,10 +267,10 @@
 			if (.not. allocated(wa))    allocate(wa(lwa))
 
 			! Ionization equilibrium system setup
-			params(1) = P_HI(j)
-			params(2) = rchiiB(j)
-			params(3) = nh(j)
-			params(4) = a_ion_HI(j)
+			params(IPH_PHI) = P_HI(j)
+			params(IPH_AHII) = rchiiB(j)
+			params(IPH_NH) = nh(j)
+			params(IPH_BHI) = a_ion_HI(j)
 
 			 ! Initial guess
 			if (count.le.0) then
@@ -320,37 +325,37 @@
 			if (.not. allocated(wa))      allocate(wa(lwa))
 
 			! System coefficients
-			params(1)  = P_HI(j)
-			params(2)  = P_HeI(j)
-			params(3)  = P_HeII(j)
-			params(4)  = rchiiB(j)
-			params(5)  = rcheiiB(j)
-			params(6)  = rcheiiiB(j)
-			params(7)  = nh(j)
-			params(8)  = nhe(j)
-			params(9)  = a_ion_HI(j) 
-			params(10) = a_ion_HeI(j) 
-			params(11) = a_ion_HeII(j)  
+			params(IPE_PHI)  = P_HI(j)
+			params(IPE_PHEI)  = P_HeI(j)
+			params(IPE_PHEII)  = P_HeII(j)
+			params(IPE_AHII)  = rchiiB(j)
+			params(IPE_AHEII)  = rcheiiB(j)
+			params(IPE_AHEIII)  = rcheiiiB(j)
+			params(IPE_NH)  = nh(j)
+			params(IPE_NHE)  = nhe(j)
+			params(IPE_BHI)  = a_ion_HI(j) 
+			params(IPE_BHEI) = a_ion_HeI(j) 
+			params(IPE_BHEII) = a_ion_HeII(j)  
 			
 			! Add more if HeITR is present
 			if (thereis_HeITR) then
-				params(12) = rcheiTR(j)
-				params(13) = A31
-				params(14) = P_HeITR(j)
-				params(15) = q13(j)
-				params(16) = q31a(j)
-				params(17) = q31b(j)
-				params(18) = Q31(j)
+				params(IPE_ATR) = rcheiTR(j)
+				params(IPE_A31) = A31
+				params(IPE_PTR) = P_HeITR(j)
+				params(IPE_Q13) = q13(j)
+				params(IPE_Q31A) = q31a(j)
+				params(IPE_Q31B) = q31b(j)
+				params(IPE_Q31) = Q31(j)
 			endif
 
 			! molecular params (System_HeH_mol layout 19-21)
 			if (thereis_mol) then
 				if (.not. thereis_HeITR) then
-					params(12:18) = 0.0d0     ! no triplet channels
+					params(IPE_ATR:IPE_Q31) = 0.0d0     ! no triplet channels
 				endif
-				params(19) = P_H2(j)
-				params(20) = T_K(j)
-				params(21) = n_in_dim(j)      ! M for the 3-body rates
+				params(IPE_PH2) = P_H2(j)
+				params(IPE_T) = T_K(j)
+				params(IPE_NTOT) = n_in_dim(j)      ! M for the 3-body rates
 				! Compute the molecular rate coefficients that are invariant
 				! across this cell's Newton solve (they depend only on T and
 				! n_tot); the residual then reads them, like set_metal_coeffs.

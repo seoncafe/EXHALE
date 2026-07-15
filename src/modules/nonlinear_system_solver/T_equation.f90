@@ -2,6 +2,9 @@
 	! Equation for temperature at the steady state
 
 	use global_parameters
+	use params_idx, only: IPT_NHI, IPT_NHII, IPT_NHEI, IPT_NHEII, IPT_NHEIII,  &
+	                      IPT_MUP, IPT_MUM, IPT_RHOV, IPT_COEFF, IPT_DR,        &
+	                      IPT_TOLD, IPT_HEAOLD
 	use utils, only : calc_ne
 	use Cooling_Coefficients
 	use species_table, only : n_mion, mion_iscool, mion_name,           &
@@ -40,18 +43,18 @@
 	integer :: im
 
 	! Parameters
-	nhi    = params(1)
-	nhii   = params(2)
-	nhei   = params(3)
-	nheii  = params(4)
-	nheiii = params(5)
-  	mup    = params(6)
-   mum    = params(7)
-   rhov   = params(8)
-   coeff  = params(9)
-   dr	   = params(10)
-   Told   = params(11)
-   heaold = params(12)
+	nhi    = params(IPT_NHI)
+	nhii   = params(IPT_NHII)
+	nhei   = params(IPT_NHEI)
+	nheii  = params(IPT_NHEII)
+	nheiii = params(IPT_NHEIII)
+  	mup    = params(IPT_MUP)
+   mum    = params(IPT_MUM)
+   rhov   = params(IPT_RHOV)
+   coeff  = params(IPT_COEFF)
+   dr	   = params(IPT_DR)
+   Told   = params(IPT_TOLD)
+   heaold = params(IPT_HEAOLD)
    ! Metal densities are supplied cell-by-cell through the module array
    ! pp_nm_cell (cgs), set by post_process_adv; pp_metal_on gates whether
    ! metals contribute. params(13-18) are no longer used.
