@@ -18,12 +18,13 @@
       use species_table, only: n_mion, mion_fsp,                       &
                                isp_H2, isp_H2p, isp_H3p, isp_HeHp,      &
                                isp_HI, isp_HII, isp_HeI, isp_HeII,      &
-                               isp_HeIII, isp_HeTR
+                               isp_HeIII, isp_HeTR, bsp_mass, melem_A
       use utils, only: calc_ne, calc_ntot
 
       implicit none
       private
       public :: get_species_densities, comp_T_from_p, comp_p_from_T
+      public :: comp_mass_per_H, comp_ntot_bc, comp_rho_bc
 
       contains
 
@@ -95,6 +96,52 @@
       real*8, dimension(1-Ng:N+Ng), intent(out) :: p
       p = (n_tot + ne)*T
       end subroutine comp_p_from_T
+
+      ! ------------------------------------------------------!
+      ! Base composition scalars. These three functions are the SINGLE
+      ! SOURCE of the base composition policy: mass_per_H, ntot_bc, rho_bc
+      ! (set in input_read) all flow from here, so the policy cannot
+      ! disagree between code paths (the §3.4 root cause).
+      !
+      ! Byte-identity: bsp_mass(isp_HI) is exactly 1.0d0 and
+      ! bsp_mass(isp_HeI) exactly 4.0d0, and 1.0 / 4.0 are exact in double,
+      ! so bsp_mass(isp_HI) + bsp_mass(isp_HeI)*HeH reproduces the legacy
+      ! literal "1.0 + 4.0*HeH" bitwise. The metal terms and the division
+      ! order match the original expressions exactly.
+      ! ------------------------------------------------------!
+
+      real*8 function comp_mass_per_H()
+      ! Gas mass per H nucleus [m_H]. H + He (bsp metadata) plus the trace
+      ! metals when they are in the EOS budget (eos_include_metals and
+      ! metals present); H/He-only otherwise.
+      ! Indexing note: bsp_mass is indexed by bsp POSITION, and for the six
+      ! base atomic species bsp_fsp(1:6) = 1..6, so isp_HI/isp_HeI coincide
+      ! with the bsp positions here. Do NOT extend this shortcut to the
+      ! molecular species (isp_H2 = 34 but bsp position 7).
+      comp_mass_per_H = bsp_mass(isp_HI) + bsp_mass(isp_HeI)*HeH
+      if (eos_include_metals .and. thereis_metals) then
+         comp_mass_per_H = comp_mass_per_H + sum(melem_ab*melem_A)
+      endif
+      end function comp_mass_per_H
+
+      ! ------------------------------------------------------!
+
+      real*8 function comp_ntot_bc()
+      ! Total nuclei density at the base in units of n0 (n0 = H+He nuclei).
+      ! Legacy H/He-only value is 1; the trace metals add their nuclei when
+      ! in the EOS budget.
+      comp_ntot_bc = 1.0d0
+      if (eos_include_metals .and. thereis_metals) then
+         comp_ntot_bc = (1.0d0 + HeH + sum(melem_ab))/(1.0d0 + HeH)
+      endif
+      end function comp_ntot_bc
+
+      ! ------------------------------------------------------!
+
+      real*8 function comp_rho_bc()
+      ! Base mass density [rho normalization]: gas mass per (H+He) nucleus.
+      comp_rho_bc = comp_mass_per_H()/(1.0d0 + HeH)
+      end function comp_rho_bc
 
       ! End of module
       end module composition

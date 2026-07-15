@@ -8,6 +8,7 @@
    use species_table, only: n_melem, iel_C, iel_O, iel_N, iel_Mg,  &
                             iel_Si, iel_Ca, iel_Na, iel_K, iel_S,  &
                             iel_Fe, mion_ethr, melem_i0, melem_A
+   use composition, only: comp_mass_per_H, comp_ntot_bc, comp_rho_bc
 
    implicit none
       
@@ -702,14 +703,12 @@
    ! eos_metals 1 (default) the trace metals contribute their mass and
    ! their nuclei; with eos_metals 0 (or no metals) both reduce to the
    ! legacy H/He-only values (mass_per_H = 1+4*HeH, ntot_bc = 1).
-   mass_per_H = 1.0 + 4.0*HeH
-   ntot_bc    = 1.0
-   if (eos_include_metals .and. thereis_metals) then
-      mass_per_H = mass_per_H + sum(melem_ab*melem_A)
-      ntot_bc    = (1.0 + HeH + sum(melem_ab))/(1.0 + HeH)
-   endif
-
-   rho_bc = mass_per_H/(1.0 + HeH)
+   ! Routed through the composition module (single source of the base
+   ! composition policy). comp_* reproduce the legacy expressions bitwise;
+   ! eos_metals / metals-present branching lives inside them.
+   mass_per_H = comp_mass_per_H()
+   ntot_bc    = comp_ntot_bc()
+   rho_bc     = comp_rho_bc()
 
    ! passive molecular base (docs/lower_atmosphere_coupling.*):
    ! remove from the base particle budget the H nuclei bound into H2 at
