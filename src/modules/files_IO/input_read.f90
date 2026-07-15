@@ -23,6 +23,34 @@
       integer                         :: ios
       integer                         :: im
       integer                         :: i, nlines
+      integer                         :: kk
+      logical                         :: is_known
+
+   ! Every label input_read recognizes: the core block followed by the
+   ! keyword-extension block, in the same order as the reads below. Used only
+   ! by the trailing unknown-line scan to WARN (never stop) on a non-blank,
+   ! non-'#' line that matches no key -- e.g. a "Newton Solver:" (capital S)
+   ! typo that anchored matching would otherwise silently ignore. The energy-
+   ! band line ("[E_low...") is a bracket prefix, checked separately there.
+   character(len=32), parameter :: known_keys(*) = [ character(len=32) ::    &
+      'Planet name', 'Log10 lower boundary', 'Planet radius', 'Planet mass', &
+      'Equilibrium temperature', 'Orbital distance', 'Escape radius',        &
+      'He/H number ratio', '2D approximate method', 'Parent star mass',      &
+      'Spectrum type', 'Spectrum file', 'Power-law index', 'Photon energy',  &
+      'Use only EUV', 'Log10 of X-ray luminosity', 'Log10 of EUV luminosity',&
+      'Grid type', 'Numerical flux', 'Reconstruction scheme', 'Include He23S',&
+      'Load IC', 'Do only PP', 'Force start',                                &
+      'Domain mode', 'Outer radius', 'Stellar Teff', 'Stellar radius',       &
+      'Deexc heat', 'Wind-AE seed out', 'Wind-AE seed', 'Jlya RT file',      &
+      'Jlya escape-prob', 'Stellar Lya flux', 'Lya stellar halfwidth',       &
+      'Lya stellar boost', 'du_th', 'ATES_photoionization_rate',             &
+      'Molecular chemistry', 'Molecular base', 'Lower atmosphere',           &
+      'Lower column', 'He_Kzz', 'He_alphaT', 'He_ambipolar',                 &
+      'He_metal_diffusion', 'He_diffusion', 'Stall', 'Energy solver',        &
+      'Time stepping', 'Level tol', 'Solver', 'Valve eps', 'Hydrostatic base',&
+      'Shapiro filter', 'Base BC', 'Base velocity', 'Viscosity', 'Resid tol',&
+      'Resid norm', 'CFL', 'Transonic IC', 'Hot Parker IC', 'IC mode',       &
+      'Newton solver', 'Brent solver' ]
 
    ! ----- Read planetary parameters from input file ----- !
 
@@ -537,6 +565,29 @@
 				str = get_word(line, 3)
 				if (str .eq. 'False') use_brent_tsolve = .false.
 			endif
+		enddo
+
+		! ----- Unknown-line warning -----
+		! Now that every core and keyword line has been consumed, flag any
+		! non-blank, non-'#' line that matches NO known label (and is not the
+		! energy-band "[E_low" line). Catches typos like "Newton Solver:"
+		! (capital S) that anchored matching silently ignores. WARN only --
+		! never stop, so a stray line never aborts the run.
+		do i = 1, nlines
+			if (len_trim(filelines(i)) .eq. 0) cycle
+			line = adjustl(filelines(i))
+			if (line(1:1) .eq. '#') cycle
+			if (line(1:6) .eq. '[E_low') cycle
+			is_known = .false.
+			do kk = 1, size(known_keys)
+				if (lbl_match(filelines(i), trim(known_keys(kk)))) then
+					is_known = .true.
+					exit
+				endif
+			enddo
+			if (.not. is_known)                                          &
+				write(*,*) '(input_read.f90) WARNING: unrecognized input '// &
+				   'line (matches no known key): '//trim(line)
 		enddo
 
 		! The transonic-wind IC already satisfies steady mass conservation
