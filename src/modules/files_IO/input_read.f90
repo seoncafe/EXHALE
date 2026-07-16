@@ -382,7 +382,13 @@
 				str = get_word(line, 2)
 				if (str .eq. 'True' .or. str .eq. 'true') ates_photoion_rate = .true.
 			else if (lbl_match(line, 'Molecular chemistry')) then
-				! molecular network (docs/lower_atmosphere_*).
+				! molecular network (docs/lower_atmosphere_*). Solving molecular
+				! chemistry implies the molecular-base particle count for the
+				! base pressure BC: with an atomic ntot_bc the base temperature
+				! is inflated by the particle-count ratio (~1.8x for a fully
+				! molecular base), thermally dissociating the H2 layer the
+				! chemistry just built. molecular_base is therefore coupled on
+				! below (after all keys are parsed).
 				str = get_word(line, 3)
 				if (str .eq. 'True' .or. str .eq. 'true') thereis_mol = .true.
 			else if (lbl_match(line, 'Molecular base')) then
@@ -696,6 +702,15 @@
    endif
             
 	!------ Normalization constants ------!
+
+   ! Solving molecular chemistry implies the molecular-base particle count
+   ! for the base pressure BC (see the 'Molecular chemistry' key note above);
+   ! an atomic ntot_bc with a molecular base is physically inconsistent.
+   if (thereis_mol .and. .not. molecular_base) then
+      molecular_base = .true.
+      write(*,*) '(input_read.f90) Molecular chemistry on: enabling the'//   &
+         ' molecular base particle count (Molecular base: True).'
+   endif
 
    ! Composition factors. mass_per_H = gas mass per H nucleus [m_H];
    ! ntot_bc = total nuclei density at the base in units of n0 (n0 keeps

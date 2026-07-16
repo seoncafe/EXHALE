@@ -2790,3 +2790,37 @@ WASP-52b 5.69/2.20 (2.6). The inline closure thus overestimates Ha only by ~1.4-
 less than the earlier ~4-30x (which combined pre-VULCAN winds with the 2p-only LaRT). Paper
 abstract, Sec. 3.2 (new `sec:n2opacity`), Sec. `sec:lartcomp`, summary, and
 `figs/make_lart_fig.py` (both curves now from `benchmarks/<p>`) updated accordingly.
+
+## 35. Molecular equilibrium seeding fix, molecular-base coupling, Tier-2 gate refresh (2026-07-16)
+
+- **Frozen-atomic-base bug (diagnosed and fixed).** The 8-unknown molecular
+  equilibrium (`ion_system_HeH_mol`, hybrd1) is bistable in its initial guess: from a
+  zero-molecular warm start it fails to converge at the dense, optically-thick base,
+  and the `thereis_mol` branch never checked `info` -- the failed state was silently
+  adopted and then frozen indefinitely (x_H2 = 0.0122 at the base, flat across 130k
+  steps and independent of T; numerically NOT a root of the coded network -- it would
+  require an H2 photoionization rate 15x the unattenuated stellar bound). The true
+  dark-base equilibrium is strongly molecular (3-body formation R15 vs thermal
+  dissociation R12), which the earlier gate runs had reached only because the
+  then-uninitialized molecular `f_sp` columns acted as an accidental nonzero seed;
+  the composition-audit zero-init exposed the latent fragility. Fixes: (i) `info` is
+  checked and a failed solve retries ONCE from a physically-informed guess seeded by
+  the chemical-equilibrium H2 fit `q_h2_equilibrium(p,T)` (still-failing cells keep
+  the previous state and are counted in a one-line summary warning); (ii) `set_IC`
+  seeds the molecular H2 column from the same fit (H nuclei conserved) instead of
+  zero.
+- **Molecular base coupled on.** Solving molecular chemistry now implies the
+  molecular base particle count (`Molecular base: True` behavior): with an atomic
+  `ntot_bc` the base temperature is inflated by the particle-count ratio (~1.8x for
+  a fully molecular base), thermally dissociating the H2 layer the chemistry just
+  built. A note is printed when the coupling engages.
+- **Tier-2 gates re-established (deterministic; inputs pinned at
+  `docs/lower_atmosphere_figs/data_g*/input.inp`).** Gate 0 (HD 209458 b atomic,
+  3000 steps): log Mdot = 8.97 unchanged. Gate 1 (HD 209458 b molecular): fully
+  molecular base (x_H2 = 0.997, base T unchanged at ~1464 K), sharp H2->H front at
+  r = 1.019 Rp, log Mdot 8.87 vs 8.97 atomic, He 2^3S peak +1.3%; stable over 12000
+  steps with zero solve failures. Gate 2 (hot-Uranus-like: 0.0457 M_J, R_p = 0.49 R_J,
+  T_eq = 1140 K, HD209 orbit/spectrum -- input recovered by matching the archived
+  domain fingerprint r_max = 4.814118 to 6 decimals): fully molecular base, front at
+  r = 1.166 Rp, H3+ active in the molecular layer. Atomic runs byte-identical
+  throughout (make check + OMP identity).

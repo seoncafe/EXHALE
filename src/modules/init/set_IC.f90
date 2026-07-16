@@ -3,8 +3,9 @@
 
 	use global_parameters
 	use species_table, only: isp_HI, isp_HII, isp_HeI, isp_HeII,      &
-	                         isp_HeIII, isp_HeTR,                      &
+	                         isp_HeIII, isp_HeTR, isp_H2,             &
 	                         n_melem, melem_i0, melem_top, mion_fsp
+	use lower_column, only: q_h2_equilibrium
 	use grav_func
 
 	implicit none
@@ -19,6 +20,8 @@
 	real*8 :: r_half, minrho
 	real*8 :: b0_eff
 	real*8 :: c2, cs, xi
+	! Molecular IC seed (thereis_mol): local pressure and H2 fraction scalars.
+	real*8 :: pbar_ic, qh2_ic, x2_ic, dfHI_ic
 	logical :: wind_ok
 	! Hot-Parker warm-seed IC: Parker velocity head-start kept in temp arrays
 	! while the density is the (stable, balanced) cold hydrostatic profile.
@@ -156,6 +159,27 @@
 		f_sp(:,isp_HeII)  = 1.0d-10*HeH/mass_per_H
 		f_sp(:,isp_HeIII) = 0.0
 		f_sp(:,isp_HeTR)  = 0.0
+	endif
+
+	! Molecular IC seed: fill the H2 column from the chemical-equilibrium fit
+	! instead of leaving it zero, so the interior base starts in the molecular
+	! basin (the dark, optically-thick base equilibrium is strongly molecular;
+	! a zero-H2 start makes the base solve land on / fail into the spurious
+	! atomic root). The H-nucleus fraction bound in H2 is x2(local p, T0) from
+	! the same Koskinen 2022 / Visscher 2006 fit used for the molecular base BC.
+	! 2 H -> 1 H2 (H2 mass = 2 m_H) conserves both H nuclei and mass; the
+	! transfer is capped by the available neutral HI so warm/ionized layers
+	! stay atomic. thereis_mol only -> atomic runs are unchanged.
+	if (thereis_mol) then
+		do j = 1-Ng, N+Ng
+			pbar_ic = W(3,j)*p0/1.0d6            ! local gas pressure [bar]
+			qh2_ic  = q_h2_equilibrium(pbar_ic, T0)
+			x2_ic   = 2.0d0*qh2_ic*(1.0d0 + HeH)/(1.0d0 + qh2_ic)
+			if (x2_ic .gt. 1.0d0) x2_ic = 1.0d0
+			dfHI_ic = min(x2_ic/mass_per_H, f_sp(j,isp_HI))
+			f_sp(j,isp_H2) = 0.5d0*dfHI_ic
+			f_sp(j,isp_HI) = f_sp(j,isp_HI) - dfHI_ic
+		enddo
 	endif
 
    ! Metals: start mostly neutral, element by element from the abundance

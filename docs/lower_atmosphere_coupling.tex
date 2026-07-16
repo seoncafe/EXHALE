@@ -13,7 +13,7 @@
 
 \title{Connecting EXHALE to the Lower Atmosphere:\\ Survey, Implementation, and Example Applications}
 \author{Kwang-Il Seon}
-\date{Last updated: 2026-07-02}
+\date{Last updated: 2026-07-16}
 
 \begin{document}
 \maketitle
@@ -249,14 +249,18 @@ enters the \texttt{cool} array. The EOS counts each molecule as one particle, ea
 molecular ion's electron, and the correct masses (\texttt{calc\_ne/ntot/rho},
 \texttt{get\_species\_densities}). \texttt{f\_sp} grows to 37 columns (output schema
 and Load-IC names extended). Key: \texttt{Molecular chemistry: True} (requires He; v1
-excludes trace metals; pair with \texttt{Molecular base: True} for a consistent ghost
-base pressure). \textbf{Gates passed:} (0) molecules-off regression, HD\,209458\,b
-3000-step $\log\Mdot=8.97$ unchanged; (1) HD\,209458\,b molecules-on: a fully
-molecular base with a sharp H$_2\to$H front at $r=1.019\,\Rp$ and an essentially atomic
-wind above it ($\log\Mdot$ 8.91 vs.\ 8.97; He\,2$^3$S peak $+1.4\%$) --- the
-hot-Jupiter atomic base is now a \emph{result}, not an assumption; (2) a hot-Uranus-like
-case (0.0457\,$M_{\rm J}$, $T_{\rm eq}{=}1140$\,K): the front rises to
-$r=1.148\,\Rp$ and H$_3^+$ is active below it.
+excludes trace metals; the molecular base particle count is coupled on automatically ---
+an atomic \texttt{ntot\_bc} under a molecular base is physically inconsistent).
+\textbf{Gates passed} (numbers re-established 2026-07-16 after the deterministic
+chemical-equilibrium seeding of the molecular solve; the exact gate inputs are pinned at
+\texttt{lower\_atmosphere\_figs/data\_g*/input.inp}): (0) molecules-off regression,
+HD\,209458\,b 3000-step $\log\Mdot=8.97$ unchanged; (1) HD\,209458\,b molecules-on: a
+fully molecular base ($x_{\rm H_2}\simeq0.997$) with a sharp H$_2\to$H front at
+$r=1.019\,\Rp$ and an essentially atomic wind above it ($\log\Mdot$ 8.87 vs.\ 8.97;
+He\,2$^3$S peak $+1.3\%$) --- the hot-Jupiter atomic base is now a \emph{result}, not an
+assumption; (2) a hot-Uranus-like case (0.0457\,$M_{\rm J}$,
+$R_{\rm p}=0.49\,R_{\rm J}$, $T_{\rm eq}{=}1140$\,K, HD\,209458\,b orbit and spectrum):
+the front rises to $r=1.166\,\Rp$ and H$_3^+$ is active below it.
 Figure~\ref{fig:mol} shows the gate runs.
 
 \begin{figure}[htb]\centering
@@ -264,7 +268,7 @@ Figure~\ref{fig:mol} shows the gate runs.
 \caption{Tier-2 molecular gates (3000-step relaxation snapshots). (a) The H nuclei
 fraction bound in H$_2$: on HD\,209458\,b the base is fully molecular and a sharp
 H$_2\to$H front sits at $r=1.019\,\Rp$ (dotted); on the cooler, low-gravity hot
-Uranus the front rises to $1.148\,\Rp$. The cell-to-cell flip-flop just above the
+Uranus the front rises to $1.166\,\Rp$. The cell-to-cell flip-flop just above the
 front marks the chemically bistable zone of \emph{equilibrium} H$_2$ chemistry ---
 kinetics$+$advection smooth it (the documented Tier-2 caveat). (b) The molecular run's
 temperature agrees with the atomic run away from the (still-relaxing) front region.

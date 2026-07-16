@@ -90,6 +90,11 @@
    ! Base index of the first metal element's X+ unknown in sys_x: 4 normally,
    ! 5 when the He triplet occupies x(4) (merged HeITR+metals system).
    integer :: mbase
+   ! Molecular solve (thereis_mol): count of cells whose equilibrium solve
+   ! failed (kept previous state), and the physically-informed guess scalars
+   ! for the retry (chemical-equilibrium H2 fit at the local p, T).
+   integer :: n_molfail
+   real*8  :: pbar_loc, qh2_loc, x2_loc
 
    ! Output heating,cooling and absorbed energy
    real*8, dimension(1-Ng:N+Ng),intent(out) :: heat_out,cool_out,q
@@ -312,9 +317,14 @@
 		! cx_metal_base is broadcast (copyin) and toggled 4<->5 per cell. All the
 		! subroutine-local scratch is private. count==0 stays serial (neighbour
 		! warm-start).
+		! Molecular failed-cell counter (combined via the reduction below);
+		! reset once per equilibrium sweep.
+		n_molfail = 0
 		!$omp parallel do default(shared) schedule(dynamic,8) copyin(cx_metal_base) &
 		!$omp   private(params, usednt, i0, top, im, meg_ntot, meg_g0, meg_g1,      &
-		!$omp           meg_b0, meg_b1, meg_a1, meg_a2, meg_top) if(count > 0)
+		!$omp           meg_b0, meg_b1, meg_a1, meg_a2, meg_top,                     &
+		!$omp           pbar_loc, qh2_loc, x2_loc)                                   &
+		!$omp   reduction(+:n_molfail) if(count > 0)
 		do j = N+Ng,1-Ng,-1
 
 			! Lazily allocate this thread's threadprivate NL scratch.
@@ -482,6 +492,43 @@
 				! molecular network (metals excluded by input_read)
 				call hybrd1(ion_system_HeH_mol,N_eq,sys_x,sys_sol,   &
 						    tol,info,wa,lwa,params)
+				! hybrd1 is bistable in its initial guess: from a zero-
+				! molecular warm-start it fails to converge at the dense,
+				! optically-thick base, where the true root is strongly
+				! molecular. On failure, retry ONCE from a physically-informed
+				! guess built from the chemical-equilibrium H2 fit at the local
+				! (p, T): the H-nucleus fraction bound in H2 seeds sys_x(4).
+				if (info .ne. 1) then
+					pbar_loc = n_in_dim(j)*kb_erg*T_K(j)/1.0d6   ! gas pressure [bar]
+					qh2_loc  = q_h2_equilibrium(pbar_loc, T_K(j))
+					x2_loc   = 2.0d0*qh2_loc*(1.0d0 + HeH)/(1.0d0 + qh2_loc)
+					if (x2_loc .gt. 1.0d0) x2_loc = 1.0d0
+					sys_x(1) = nhii(j)/nh(j)      ! near-neutral H (dark base)
+					sys_x(2) = nheii(j)/nhe(j)
+					sys_x(3) = nheiii(j)/nhe(j)
+					sys_x(4) = x2_loc             ! 2 n_H2 / n_H from the fit
+					sys_x(5) = 1.0d-10            ! tiny H2+ seed
+					sys_x(6) = 1.0d-10            ! tiny H3+ seed
+					sys_x(7) = 1.0d-10            ! tiny HeH+ seed
+					if (thereis_HeITR) sys_x(8) = nheiTR(j)/nhe(j)
+					call hybrd1(ion_system_HeH_mol,N_eq,sys_x,sys_sol,   &
+							    tol,info,wa,lwa,params)
+					if (info .ne. 1) then
+						! Both attempts failed: keep this cell's previous state
+						! by restoring sys_x to the pre-solve fractions (the
+						! extraction below then reproduces it unchanged), and
+						! count the cell for the one-line summary warning.
+						sys_x(1) = nhii(j)/nh(j)
+						sys_x(2) = nheii(j)/nhe(j)
+						sys_x(3) = nheiii(j)/nhe(j)
+						sys_x(4) = 2.0d0*nmol_eq(j,1)/nh(j)
+						sys_x(5) = 2.0d0*nmol_eq(j,2)/nh(j)
+						sys_x(6) = 3.0d0*nmol_eq(j,3)/nh(j)
+						sys_x(7) = nmol_eq(j,4)/nh(j)
+						if (thereis_HeITR) sys_x(8) = nheiTR(j)/nhe(j)
+						n_molfail = n_molfail + 1
+					endif
+				endif
 			else if (thereis_HeITR .and. thereis_metals) then
 				! Merged He-triplet + metals: triplet at sys_x(4), metals at
 				! sys_x(5..). The cell-by-cell metal coefficients (set_metal_coeffs)
@@ -544,6 +591,14 @@
 
 		enddo
 		!$omp end parallel do
+
+		! One summary line per sweep if any molecular cell failed to converge
+		! twice (kept its previous state).
+		if (thereis_mol .and. n_molfail .gt. 0) then
+			write(*,'(A,I0,A)') ' (ioniz_eq) WARNING: molecular '//        &
+				'equilibrium failed at ', n_molfail,                       &
+				' cells (kept previous state)'
+		endif
 
 	endif
 

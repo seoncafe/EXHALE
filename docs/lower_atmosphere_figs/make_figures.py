@@ -107,7 +107,7 @@ r_u, x2_u, h2u, h2pu, h3pu, hehpu, T_u = mol_profiles('data_g2')
 fig, ax = plt.subplots(1, 3, figsize=(10.5, 3.2))
 ax[0].semilogy(r_m, np.maximum(x2_m, 1e-22), 'C0-', label='HD 209458 b')
 ax[0].semilogy(r_u, np.maximum(x2_u, 1e-22), 'C3-', label='hot Uranus (Teq=1140 K)')
-for rr, c in [(1.019, 'C0'), (1.148, 'C3')]:
+for rr, c in [(1.019, 'C0'), (1.166, 'C3')]:
     ax[0].axvline(rr, color=c, ls=':', lw=0.8)
 ax[0].set_xlim(1, 3); ax[0].set_ylim(1e-14, 2)
 ax[0].set_xlabel(r'$r/R_{\rm p}$')
