@@ -2,9 +2,7 @@
 	! Ionization equilibrium system with both H and He
 	
 	use global_parameters
-	use params_idx, only: IPA_C1, IPA_XHI, IPA_XHEI, IPA_XHEIII, IPA_NH,        &
-	                      IPA_PHI, IPA_PHEI, IPA_PHEII, IPA_AHII, IPA_AHEII,     &
-	                      IPA_AHEIII, IPA_BHI, IPA_BHEI, IPA_BHEII, IPA_HEH
+	use ion_cell_state, only: adv_cell
 
 	implicit none
 	
@@ -28,25 +26,25 @@
 
 	! Coefficients of the system
 
- 	c1         = params(IPA_C1)    ! = dr/v
- 	xhi_old    = params(IPA_XHI)    ! = nhi/nh
- 	xhei_old   = params(IPA_XHEI)    ! = nhei/nhe
- 	xheiii_old = params(IPA_XHEIII)    ! = nheiii/nhe
- 	n_h        = params(IPA_NH)    ! = nh
- 	ghi        = params(IPA_PHI)    ! = P_HI
- 	ghei       = params(IPA_PHEI)    ! = P_HeI = nh
- 	gheii      = params(IPA_PHEII)    ! = P_HeII = nhe
-   ahii       = params(IPA_AHII)    ! = rchiiB
- 	aheii      = params(IPA_AHEII)   ! = rcheiiB
- 	aheiii     = params(IPA_AHEIII)   ! = rcheiiiB
-	ionhi	   = params(IPA_BHI)   ! = a_ion_HI
-	ionhei     = params(IPA_BHEI)   ! = a_ion_HeI
-	ionheii    = params(IPA_BHEII)   ! = a_ion_HEII
+ 	c1         = adv_cell%c1    ! = dr/v
+ 	xhi_old    = adv_cell%xhi_old    ! = nhi/nh
+ 	xhei_old   = adv_cell%xhei_old    ! = nhei/nhe
+ 	xheiii_old = adv_cell%xheiii_old    ! = nheiii/nhe
+ 	n_h        = adv_cell%nh    ! = nh
+ 	ghi        = adv_cell%P_HI    ! = P_HI
+ 	ghei       = adv_cell%P_HeI    ! = P_HeI = nh
+ 	gheii      = adv_cell%P_HeII    ! = P_HeII = nhe
+   ahii       = adv_cell%rchiiB    ! = rchiiB
+ 	aheii      = adv_cell%rcheiiB   ! = rcheiiB
+ 	aheiii     = adv_cell%rcheiiiB   ! = rcheiiiB
+	ionhi	   = adv_cell%a_ion_HI   ! = a_ion_HI
+	ionhei     = adv_cell%a_ion_HeI   ! = a_ion_HeI
+	ionheii    = adv_cell%a_ion_HeII   ! = a_ion_HEII
 	! Effective He/H for the electron density: packed as the global HeH by
 	! post_process_adv (legacy, byte-identical); with He_diffusion the local,
 	! radius-dependent nhe/nh is passed instead (the global HeH would misstate
 	! n_e by the local separation factor).
-	heh_loc    = params(IPA_HEH)   ! = He/H (local when he_diffusion)
+	heh_loc    = adv_cell%heh_loc   ! = He/H (local when he_diffusion)
 
 	! Substitutions
 	xhi    = x(1)

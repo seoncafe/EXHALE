@@ -2,9 +2,7 @@
 	! Equation for temperature at the steady state
 
 	use global_parameters
-	use params_idx, only: IPT_NHI, IPT_NHII, IPT_NHEI, IPT_NHEII, IPT_NHEIII,  &
-	                      IPT_MUP, IPT_MUM, IPT_RHOV, IPT_COEFF, IPT_DR,        &
-	                      IPT_TOLD, IPT_HEAOLD
+	use ion_cell_state, only: teq_cell
 	use utils, only : calc_ne
 	use Cooling_Coefficients
 	use species_table, only : n_mion, mion_iscool, mion_name,           &
@@ -42,22 +40,24 @@
 	real*8  :: TT
 	integer :: im
 
-	! Parameters
-	nhi    = params(IPT_NHI)
-	nhii   = params(IPT_NHII)
-	nhei   = params(IPT_NHEI)
-	nheii  = params(IPT_NHEII)
-	nheiii = params(IPT_NHEIII)
-  	mup    = params(IPT_MUP)
-   mum    = params(IPT_MUM)
-   rhov   = params(IPT_RHOV)
-   coeff  = params(IPT_COEFF)
-   dr	   = params(IPT_DR)
-   Told   = params(IPT_TOLD)
-   heaold = params(IPT_HEAOLD)
+	! Parameters. The energy-equation coefficients are read from the named-field
+	! teq_cell state; params stays only the MINPACK transport argument (unread),
+	! passed through by hybrd1 / solve_T_brent / Tres.
+	nhi    = teq_cell%nhi
+	nhii   = teq_cell%nhii
+	nhei   = teq_cell%nhei
+	nheii  = teq_cell%nheii
+	nheiii = teq_cell%nheiii
+  	mup    = teq_cell%mup
+   mum    = teq_cell%mum
+   rhov   = teq_cell%rhov
+   coeff  = teq_cell%coeff
+   dr	   = teq_cell%dr
+   Told   = teq_cell%Told
+   heaold = teq_cell%heaold
    ! Metal densities are supplied cell-by-cell through the module array
    ! pp_nm_cell (cgs), set by post_process_adv; pp_metal_on gates whether
-   ! metals contribute. params(13-18) are no longer used.
+   ! metals contribute.
 
    ! Free electron density (includes metal ions). Molecular ions are
    ! deliberately omitted as trace electron donors (negligible in the atomic

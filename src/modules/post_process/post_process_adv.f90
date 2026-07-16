@@ -13,16 +13,7 @@
 	! molecular base needs a molecular-aware post-process instead.
 
 	use global_parameters
-	use params_idx, only: IPAH_C1, IPAH_XHI, IPAH_NH, IPAH_PHI, IPAH_AHII,     &
-	                      IPAH_BHI, IPA_C1, IPA_XHI, IPA_XHEI, IPA_XHEIII,      &
-	                      IPA_NH, IPA_PHI, IPA_PHEI, IPA_PHEII, IPA_AHII,       &
-	                      IPA_AHEII, IPA_AHEIII, IPA_BHI, IPA_BHEI, IPA_BHEII,  &
-	                      IPA_HEH, IPAT_ATR, IPAT_A31, IPAT_PTR, IPAT_Q13,      &
-	                      IPAT_Q31A, IPAT_Q31B, IPAT_Q31, IPAT_XTR, IPAT_HEH,   &
-	                      IPT_NHI, IPT_NHII, IPT_NHEI,                          &
-	                      IPT_NHEII, IPT_NHEIII, IPT_MUP, IPT_MUM, IPT_RHOV,    &
-	                      IPT_COEFF, IPT_DR, IPT_TOLD, IPT_HEAOLD
-	use ion_cell_state, only: ieq_cell
+	use ion_cell_state, only: ieq_cell, adv_cell, teq_cell
 	use species_table, only: n_mion, n_melem, melem_i0, melem_top
 	use utils
 	use System_implicit_adv_H
@@ -310,12 +301,12 @@
 			As  = dr/(v(j-1)*v0)
 
 			! Advection coeff.
-			params(IPAH_C1) = As
-			params(IPAH_XHI) = nhi(j-1)/nh(j-1)
-			params(IPAH_NH) = nh(j)
-			params(IPAH_PHI) = P_HI(j)
-			params(IPAH_AHII) = rchiiB(j)
-			params(IPAH_BHI) = a_ion_HI(j)
+			adv_cell%c1 = As
+			adv_cell%xhi_old = nhi(j-1)/nh(j-1)
+			adv_cell%nh = nh(j)
+			adv_cell%P_HI = P_HI(j)
+			adv_cell%rchiiB = rchiiB(j)
+			adv_cell%a_ion_HI = a_ion_HI(j)
 			
 			! Initial guess of solution
 			sys_x(1) = nhi(j)/nh(j)     
@@ -357,44 +348,44 @@
 			As  = dr/(v(j-1)*v0)
 
 			! Advection coeff.
-			params(IPA_C1)  = As
-			params(IPA_XHI)  = nhi(j-1)/nh(j-1)
-			params(IPA_XHEI)  = nhei(j-1)/nhe(j-1)
-			params(IPA_XHEIII)  = nheiii(j-1)/nhe(j-1)
-			params(IPA_NH)  = nh(j)
-			params(IPA_PHI)  = P_HI(j)
-			params(IPA_PHEI)  = P_HeI(j)
-			params(IPA_PHEII)  = P_HeII(j)
-			params(IPA_AHII)  = rchiiB(j)
-			params(IPA_AHEII) = rcheiiB(j)
-			params(IPA_AHEIII) = rcheiiiB(j)
-			params(IPA_BHI) = a_ion_HI(j)
-			params(IPA_BHEI) = a_ion_HeI(j)
-			params(IPA_BHEII) = a_ion_HeII(j)
+			adv_cell%c1  = As
+			adv_cell%xhi_old  = nhi(j-1)/nh(j-1)
+			adv_cell%xhei_old  = nhei(j-1)/nhe(j-1)
+			adv_cell%xheiii_old  = nheiii(j-1)/nhe(j-1)
+			adv_cell%nh  = nh(j)
+			adv_cell%P_HI  = P_HI(j)
+			adv_cell%P_HeI  = P_HeI(j)
+			adv_cell%P_HeII  = P_HeII(j)
+			adv_cell%rchiiB  = rchiiB(j)
+			adv_cell%rcheiiB = rcheiiB(j)
+			adv_cell%rcheiiiB = rcheiiiB(j)
+			adv_cell%a_ion_HI = a_ion_HI(j)
+			adv_cell%a_ion_HeI = a_ion_HeI(j)
+			adv_cell%a_ion_HeII = a_ion_HeII(j)
 			! Effective He/H for the electron density inside the adv system:
 			! the global HeH normally (byte-identical legacy), the local
 			! (diffused) nhe/nh when He_diffusion is on.
 			if (he_diffusion) then
-				params(IPA_HEH) = nhe(j)/max(nh(j),1.0d-30)
+				adv_cell%heh_loc = nhe(j)/max(nh(j),1.0d-30)
 			else
-				params(IPA_HEH) = HeH
+				adv_cell%heh_loc = HeH
 			endif
 
 			! Add more if HeITR is present
 			if (thereis_HeITR) then 
-				params(IPAT_ATR) = rcheiTR(j)
-				params(IPAT_A31) = A31
-				params(IPAT_PTR) = P_HeITR(j)
-				params(IPAT_Q13) = q13(j)
-				params(IPAT_Q31A) = q31a(j)
-				params(IPAT_Q31B) = q31b(j)
-				params(IPAT_Q31) = Q31(j)
-				params(IPAT_XTR) = nheiTR(j-1)/nhe(j-1)
+				adv_cell%rcheiTR = rcheiTR(j)
+				adv_cell%A31 = A31
+				adv_cell%P_HeITR = P_HeITR(j)
+				adv_cell%q13 = q13(j)
+				adv_cell%q31a = q31a(j)
+				adv_cell%q31b = q31b(j)
+				adv_cell%Q31 = Q31(j)
+				adv_cell%xheiTR_old = nheiTR(j-1)/nhe(j-1)
 				! Effective He/H for the electron density (see non-TR block).
 				if (he_diffusion) then
-					params(IPAT_HEH) = nhe(j)/max(nh(j),1.0d-30)
+					adv_cell%heh_loc = nhe(j)/max(nh(j),1.0d-30)
 				else
-					params(IPAT_HEH) = HeH
+					adv_cell%heh_loc = HeH
 				endif
 			endif
 			
@@ -595,18 +586,18 @@
 	 	!--- Solve equation for temperature implicitly ---!
 		
 		! Parameters
-		paramsT(IPT_NHI)  = nhi(j)
-	 	paramsT(IPT_NHII)  = nhii(j)
-	 	paramsT(IPT_NHEI)  = nhei(j)
-	 	paramsT(IPT_NHEII)  = nheii(j)
-	 	paramsT(IPT_NHEIII)  = nheiii(j)
-	 	paramsT(IPT_MUP)  = mmw(j)
-	 	paramsT(IPT_MUM)  = mmw(j-1)
-	 	paramsT(IPT_RHOV)  = rhop*vp
-	 	paramsT(IPT_COEFF)  = mum*vp*(rhop-rhom)
-	 	paramsT(IPT_DR) = dr
-	 	paramsT(IPT_TOLD) = T_out(j-1)
-	 	paramsT(IPT_HEAOLD) = theat(j)
+		teq_cell%nhi  = nhi(j)
+	 	teq_cell%nhii  = nhii(j)
+	 	teq_cell%nhei  = nhei(j)
+	 	teq_cell%nheii  = nheii(j)
+	 	teq_cell%nheiii  = nheiii(j)
+	 	teq_cell%mup  = mmw(j)
+	 	teq_cell%mum  = mmw(j-1)
+	 	teq_cell%rhov  = rhop*vp
+	 	teq_cell%coeff  = mum*vp*(rhop-rhom)
+	 	teq_cell%dr = dr
+	 	teq_cell%Told = T_out(j-1)
+	 	teq_cell%heaold = theat(j)
 	 	! Metal densities for this cell [cgs] go through the equation_T module
 	 	! array (the 27-ion vector does not fit params). pp_metal_on gates
 	 	! whether T_equation adds the metal cooling/brem/n_e terms.

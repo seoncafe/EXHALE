@@ -2,7 +2,7 @@
 	! Ionization equilibrium system with both H and He
 	
 	use global_parameters
-	use params_idx, only: IPAH_C1, IPAH_XHI, IPAH_NH, IPAH_PHI, IPAH_AHII, IPAH_BHI
+	use ion_cell_state, only: adv_cell
 
 	implicit none
 	
@@ -23,12 +23,12 @@
 	
 	
 	! Coefficients of the system
- 	c1      = params(IPAH_C1)    ! = dr/v
- 	xhi_old = params(IPAH_XHI)    ! = nhi/nh
- 	n_h     = params(IPAH_NH)    ! = nh
- 	ghi     = params(IPAH_PHI)    ! = P_HI  
-   ahii    = params(IPAH_AHII)    ! = rchiiB  
-	ionhi   = params(IPAH_BHI)    ! = a_ion_HI
+ 	c1      = adv_cell%c1    ! = dr/v
+ 	xhi_old = adv_cell%xhi_old    ! = nhi/nh
+ 	n_h     = adv_cell%nh    ! = nh
+ 	ghi     = adv_cell%P_HI    ! = P_HI  
+   ahii    = adv_cell%rchiiB    ! = rchiiB  
+	ionhi   = adv_cell%a_ion_HI    ! = a_ion_HI
 	
 	! Substitutions
 	xhi = x(1)

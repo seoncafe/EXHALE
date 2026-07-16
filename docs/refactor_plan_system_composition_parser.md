@@ -52,6 +52,7 @@ Two facts the increments below must respect:
   `System_*` unpacking. Pure renaming → byte-identical. Removes the
   displaced-index fragility and is a prerequisite for the rest.
   Gate: WASP + molecular byte-identical.
+  These named constants (`params_idx`) were the Inc 0-3 stepping stone and were retired by Inc 4's named-field cell state (`ion_cell_state`), which replaced all `params` packing/unpacking; the module was removed once nothing referenced it.
 - **Inc 1 — H/He common core.** The H/He rows are identical within PAIRS, not
   across all four non-mol systems (verified against the bodies): the standard
   three rows (with collisional ionization) are verbatim-shared by `System_HeH`
@@ -97,8 +98,32 @@ Two facts the increments below must respect:
   iterating active-species metadata (`species_table`). Highest reordering risk;
   may require a golden re-snapshot — decide explicitly.
 
+  **Inc 5 decision (2026-07-16): NOT implemented — goal already met.** Scoping
+  after Inc 0-4 showed the generic assembler would add nothing and cost real
+  structure:
+  - The only block that GROWS with new species — the metal rows — is already
+    metadata-driven (`met_*` coefficient arrays in canonical `species_table`
+    order, `met_top` staging, `metal_rows`/`metal_fractions`/
+    `metal_electron_sum` helpers, `cx_add_to_fvec` generic charge exchange).
+    Adding a metal element is already "add table rows".
+  - The remaining cores are deliberately DIFFERENT physics, not duplicated
+    code: the standard H/He rows carry collisional ionization, the TR form
+    omits it (Oklopcic triplet formulation) and adds the 2^3S kinetics, and
+    the molecular system has its own reaction network (rows 1-7). A generic
+    species-iterating assembler would need a special case for each of these,
+    reintroducing in table form the branching it is meant to remove.
+  - The standard family's hand-written analytic Jacobians (Newton solver)
+    have no generic counterpart; assembly-driven residuals would fall back to
+    fdjac1 finite differences (slower) or require a matching generic Jacobian
+    assembler (new, unvalidated code on paper-critical physics).
+  - Any assembly reordering forces another golden re-snapshot, for zero
+    physics payoff.
+  If a future need arises (e.g. a species whose rows do not fit the current
+  three shapes), revisit with that concrete case in hand.
+
 **Recommended stop point:** Inc 0-3 give most of the dedup value at low risk.
-Inc 4-5 are optional and carry byte-identity risk.
+Inc 4-5 are optional and carry byte-identity risk. (Executed 2026-07-16:
+Inc 0-4 done; Inc 5 explicitly declined — see above.)
 
 ---
 
