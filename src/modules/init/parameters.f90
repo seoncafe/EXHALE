@@ -68,6 +68,16 @@
       !   fraction of the H+He nuclei. .false. = legacy full-thermalization
       !   (bit-identical to the pre-2026 behavior).
       logical :: use_sec_ion = .true.
+      ! He recombination radiation ionizing H (Draine 2011 y/z parametrization,
+      ! on-the-spot; see docs/QUESTIONS_2026-07-17.md).
+      !  .false. (default) = He II -> He I recombination photons are all lost
+      !   locally (pure case B, y=0), as in the legacy path -- bit-identical.
+      !  .true. = the >= 24.6 eV ground-capture continuum ionizes H with the
+      !   local fraction y (Draine Eq. 14.16) and the < 24.6 eV cascade photons
+      !   ionize H with the density-dependent fraction z (Draine Sec. 15.5);
+      !   couples an extra H I photoionization rate and its photoelectron
+      !   heating, and corrects the He II recombination to alpha_B + y alpha_1.
+      logical :: use_he_rec_coupling = .false.
       ! He/H diffusive separation (docs/design_hehe_diffusion.md):
       !  .false. (default) = He/H frozen at the input HeH everywhere (legacy);
       !  .true. = evolve the He element ratio with advection + molecular

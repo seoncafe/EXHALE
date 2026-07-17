@@ -549,6 +549,18 @@
                3.6800d0, 4.1030d-1)
    end function alphaB_HeII_new
 
+   ! Mao & Kaastra (2016) n=1 (ground, 1s^2) direct-capture coefficient for
+   ! He II -> He I [cm^3 s^-1] -- this is alpha_1 in alpha_B = alpha_A - alpha_1
+   ! (the same fit subtracted in alphaB_HeII_new). Used by the He recombination
+   ! radiation -> H ionization coupling (use_he_rec_coupling); the ground-capture
+   ! continuum (>= 24.6 eV) it produces is what a fraction y ionizes H with.
+   elemental double precision function alpha1_HeII_mao(T)
+   real*8, intent(in) :: T
+   alpha1_HeII_mao =                                                         &
+        rr_mao(T, 3.7790d-2, 1.1400d0, 3.9760d-3, 1.2030d2, 9.9590d-1,       &
+               3.6800d0, 4.1030d-1)
+   end function alpha1_HeII_mao
+
    elemental double precision function alphaB_HeIII_new(T)
    real*8, intent(in) :: T
    alphaB_HeIII_new =                                                        &

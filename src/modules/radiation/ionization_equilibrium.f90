@@ -72,6 +72,10 @@
    ! Recombination coefficients
    real*8, dimension(1-Ng:N+Ng) ::  rchiiB,rcheiiB,rcheiiiB,rcheiTR
 
+   ! He recombination radiation -> H ionization coupling scratch
+   ! (use_he_rec_coupling; zero-effect when off).
+   real*8, dimension(1-Ng:N+Ng) ::  rcheiiB_hrc,dP_HI_hrc,dheat_hrc
+
 	real*8, dimension(1-Ng:N+Ng) :: q13,q31a,q31b,Q31
 	real*8 :: A31
 
@@ -253,10 +257,25 @@
 		call HeITR_coeffs(T_K,rcheiTR,rcheiiB,A31,q13,q31a,q31b,Q31)
 		! NOTE: rcheiiB is alpha1 from Oklopcic - being overwritten
 	endif
-	
+
+	! He recombination radiation ionizing H I (Draine 2011 on-the-spot y/z;
+	! default off => no change). Uses the pre-solve (lagged) densities, like
+	! the other lagged rate terms; corrects the He II recombination coefficient
+	! rcheiiB, adds an H I photoionization rate to P_HI, and adds photoelectron
+	! heating to heat. The He II recombination *cooling* (rec_cool_HeII =
+	! kT alpha_B) is left unchanged; the mismatch is <= y alpha_1 kT, negligible.
+	if (use_he_rec_coupling .and. thereis_He) then
+		call he_rec_coupling(T_K, nhi, nhei, nheii, nheiTR, ne,           &
+		                     A31, q31a, q31b,                             &
+		                     rcheiiB_hrc, dP_HI_hrc, dheat_hrc)
+		rcheiiB = rcheiiB_hrc
+		P_HI    = P_HI + dP_HI_hrc
+		heat    = heat + dheat_hrc
+	endif
+
    !----------------------------------!
-      
-   ! Ionization equilibrium system solution	
+
+   ! Ionization equilibrium system solution
 
 	if (.not.thereis_He) then ! If no helium
 

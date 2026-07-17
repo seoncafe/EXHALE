@@ -8,6 +8,7 @@
                             melem_Z, melem_top, im_FeII
    use utils
    use Cooling_Coefficients      ! Various functions for cooling coefficients
+   use Cross_sections, only: sigma, sigma_HeI  ! sigma_H(E,Z), sigma_HeI(E)
    use omp_lib                   ! OMP libraries
 	
 	! Move here photoionization and photoheating
@@ -787,6 +788,112 @@
 
    ! End of subroutine
 	end subroutine HeITR_coeffs
+
+	! ------------------------------------------------------------- !
+
+	! He recombination radiation ionizing H I (Draine 2011 on-the-spot y/z;
+	! docs/QUESTIONS_2026-07-17.md). Given the pre-solve (lagged) densities and
+	! the rate coefficients, returns the He II recombination coefficient the
+	! ionization balance should use (rcheiiB_new), the extra H I photoionization
+	! rate [s^-1] (dP_HI), and the extra photoelectron heating [erg cm^-3 s^-1]
+	! (dheat). All three are zero when the flag is off; the caller applies them.
+	!
+	! The corrections depend only on T and the densities: alpha_1 and alpha_B are
+	! recomputed here from T (matching the active case-B function eval_cool uses),
+	! so the passed rcheiiB is not read -- the caller may call this both before
+	! (rate/rate-limited) and after (heating) it overwrites rcheiiB.
+	!
+	! atomic mode (thereis_HeITR = .false.):
+	!   alpha_1 = Mao & Kaastra ground (1s^2) capture; alpha_B = active He II
+	!   case B (rec_HeII_B). rcheiiB_new = alpha_B + y alpha_1 (Draine Eq. 14.17);
+	!   dP_HI = n_HeII n_e [z alpha_B + y alpha_1]/n_HI; the heating uses the
+	!   ground photoelectron energy E_gnd = 24.6-13.6 = 11.0 eV and a
+	!   cascade-averaged E_casc ~ 6.3 eV.
+	! TR mode (thereis_HeITR = .true.): channels are explicit -- alpha_1 is the
+	!   1^1S channel (rec_HeII_11S, which HeITR_coeffs writes into rcheiiB) and
+	!   the 2^3S / singlet cascade rates (A31, q31a, q31b, n_2^3S = nheiTR) drive
+	!   the H-ionizing photon production directly, so z is not used (a 2^3S
+	!   destroyed by photoionization/Penning emits no 19.8 eV photon).
+	subroutine he_rec_coupling(T_K, nhi, nhei, nheii, nheiTR, ne,        &
+	                           A31, q31a, q31b,                          &
+	                           rcheiiB_new, dP_HI, dheat)
+
+	real*8, dimension(1-Ng:N+Ng), intent(in)  :: T_K, nhi, nhei, nheii, &
+	                                              nheiTR, ne, q31a, q31b
+	real*8,                       intent(in)  :: A31
+	real*8, dimension(1-Ng:N+Ng), intent(out) :: rcheiiB_new, dP_HI, dheat
+
+	real*8, dimension(1-Ng:N+Ng) :: alpha1, alphaB
+	real*8 :: Rratio, y, z, T4, ncrit, P_add, H_add
+	integer :: j
+
+	! Photoionization cross-section ratio sigma_He/sigma_H at the 24.6 eV He I
+	! ground edge, used to split the >= 24.6 eV ground-capture continuum between
+	! H and He (Draine Eq. 14.16). Its (small) kT dependence is neglected; R ~ 6.
+	Rratio = sigma_HeI(24.6d0)/max(sigma(24.6d0,1.0d0), 1.0d-99)
+
+	! alpha_B is the active He II case B (whichever fit eval_cool uses).
+	call rec_HeII_B(T_K, alphaB)
+
+	if (.not. thereis_HeITR) then
+		! atomic (case-B) mode: alpha_1 = Mao & Kaastra ground capture.
+		alpha1 = alpha1_HeII_mao(T_K)
+		do j = 1-Ng,N+Ng
+			! y: fraction of >= 24.6 eV ground-capture photons ionizing H.
+			y = 1.0d0/(1.0d0 + Rratio*nhei(j)/max(nhi(j),1.0d-99))
+			! z: density-dependent fraction of case-B cascade photons ionizing H;
+			! 0.96 (low density, 19.8 eV line ionizes H) -> 0.67 (2^3S
+			! collisionally converted to singlets) via the 2^3S critical density
+			! (documented interpolation between Draine's two limits).
+			T4    = T_K(j)/1.0d4
+			ncrit = 1100.0d0*exp(1.2d0/T4)*sqrt(T4)
+			z     = 0.67d0 + 0.29d0/(1.0d0 + ne(j)/ncrit)
+			! He II recombination: alpha_eff = alpha_B + y alpha_1.
+			rcheiiB_new(j) = alphaB(j) + y*alpha1(j)
+			! Extra H I photoionization rate [s^-1].
+			dP_HI(j) = nheii(j)*ne(j)*(z*alphaB(j) + y*alpha1(j))          &
+			           /max(nhi(j),1.0d-99)
+			! Photoelectron heating [erg cm^-3 s^-1]. E_casc = 6.3 eV is a
+			! low-density channel-weighted average (~0.75*6.2 + 0.17*7.6 +
+			! 0.08*3.0), approximate; E_gnd = 11.0 eV (24.6-13.6).
+			dheat(j) = nheii(j)*ne(j)*(z*alphaB(j)*6.3d0                   &
+			           + y*alpha1(j)*11.0d0)/erg2eV
+		enddo
+	else
+		! TR mode: alpha_1 = 1^1S channel (rec_HeII_11S).
+		call rec_HeII_11S(T_K, alpha1)
+		do j = 1-Ng,N+Ng
+			y = 1.0d0/(1.0d0 + Rratio*nhei(j)/max(nhi(j),1.0d-99))
+			! (1) 1^1S channel coefficient: net ground capture (y alpha_1) plus
+			! the singlet-excited capture channel (0.25 alpha_B) missing from the
+			! current network.
+			rcheiiB_new(j) = y*alpha1(j) + 0.25d0*alphaB(j)
+			! (2) H-ionizing photon production [cm^-3 s^-1]:
+			P_add = y*alpha1(j)*nheii(j)*ne(j)                    ! ground (>=24.6)
+			! singlet-excited captures: 0.85 = 2/3*1.0 (584 A resonance) +
+			! 1/3*0.56 (2^1S two-photon fraction above 13.6 eV).
+			P_add = P_add + 0.85d0*0.25d0*alphaB(j)*nheii(j)*ne(j)
+			! 2^3S radiative decay (19.8 eV line, always ionizes H).
+			P_add = P_add + A31*nheiTR(j)
+			! 2^3S collisionally converted to singlets, then decaying: 2^1S
+			! two-photon (0.56 ionizing) + 2^1P -> 584 A (1.0 ionizing).
+			P_add = P_add + ne(j)*nheiTR(j)*(q31a(j)*0.56d0 + q31b(j)*1.0d0)
+			dP_HI(j) = P_add/max(nhi(j),1.0d-99)
+			! (3) photoelectron heating [erg cm^-3 s^-1], channel E_dep [eV]:
+			! ground 11.0; singlet-excited 5.6 (= 2/3*7.6 + 1/3*0.56*3.0, where
+			! 584 A -> 7.6, two-photon -> 3.0); 19.8 eV line -> 6.2; 2^3S coll.
+			! -> singlet: two-photon 3.0 + 584 A 7.6.
+			H_add = y*alpha1(j)*nheii(j)*ne(j)*11.0d0
+			H_add = H_add + 0.25d0*alphaB(j)*nheii(j)*ne(j)*5.6d0
+			H_add = H_add + A31*nheiTR(j)*6.2d0
+			H_add = H_add + ne(j)*nheiTR(j)                                &
+			        *(q31a(j)*0.56d0*3.0d0 + q31b(j)*1.0d0*7.6d0)
+			dheat(j) = H_add/erg2eV
+		enddo
+	endif
+
+	! End of subroutine
+	end subroutine he_rec_coupling
 
 	! ------------------------------------------------------------- !
 

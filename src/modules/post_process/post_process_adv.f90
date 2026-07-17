@@ -80,6 +80,9 @@
 
    ! Recombination coefficients
    real*8, dimension(1-Ng:N+Ng) ::  rchiiB,rcheiiB,rcheiiiB,rcheiTR
+   ! He recombination radiation -> H ionization coupling scratch
+   ! (use_he_rec_coupling; zero-effect when off).
+   real*8, dimension(1-Ng:N+Ng) ::  rcheiiB_hrc,dP_HI_hrc,dheat_hrc
    ! Metal recombination/ionization rates for each ion returned by eval_cool.
    ! In the re-solve mode (pp_metals=2) they feed the cell-by-cell metal
    ! ionization-balance solve; in the frozen mode they are discarded.
@@ -271,10 +274,22 @@
 		! NOTE: rcheiiB is alpha1 from Oklopcic - being overwritten
 
 	endif
-	
+
+	! He recombination radiation ionizing H I (Draine 2011; default off).
+	! Correct the He II recombination coefficient and the H I photoionization
+	! rate driving the advection ODE (the heating correction is applied later,
+	! to theat). Mirrors ionization_equilibrium.
+	if (use_he_rec_coupling .and. thereis_He) then
+		call he_rec_coupling(T_K, nhi, nhei, nheii, nheiTR, ne,           &
+		                     A31, q31a, q31b,                             &
+		                     rcheiiB_hrc, dP_HI_hrc, dheat_hrc)
+		rcheiiB = rcheiiB_hrc
+		P_HI    = P_HI + dP_HI_hrc
+	endif
+
    !----------------------------------!
-      
-   ! Evolve species including the advection term in the 
+
+   ! Evolve species including the advection term in the
    ! 	ODE form
    ! Note: we are using point values here instead of 
    ! 	volume averages; they agree up to O(dr^2)
@@ -551,8 +566,19 @@
 	  	call PH_heat_H(nhi, xion, dum_v1,theat,dum_v2)
   	endif
 
+	! He recombination radiation ionizing H I (Draine 2011; default off):
+	! photoelectron heating from the coupled H ionizations, evaluated at the
+	! advection-corrected densities (the rate/coefficient corrections were
+	! applied to P_HI/rcheiiB before the advection solve above).
+	if (use_he_rec_coupling .and. thereis_He) then
+		call he_rec_coupling(T_K, nhi, nhei, nheii, nheiTR, ne,           &
+		                     A31, q31a, q31b,                             &
+		                     rcheiiB_hrc, dP_HI_hrc, dheat_hrc)
+		theat = theat + dheat_hrc
+	endif
+
 	! Adimensionalize
-	theat = theat/q0		
+	theat = theat/q0
 
 	!----------------------------------!
 	

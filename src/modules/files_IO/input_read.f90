@@ -319,6 +319,7 @@
 		ates_photoion_rate = .false.  ! default: Verner+1996 He I (1^1S) photoion.
 		legacy_hhe_rates   = .false.  ! default: Badnell/Mao + Voronov H/He rates
 		use_sec_ion        = .true.   ! default: SvS85 secondary ionization ON
+		use_he_rec_coupling = .false. ! default: He rec. photons lost locally
 		do i = 1, nlines
 			line = filelines(i)
 			if (len_trim(line) .eq. 0) cycle
@@ -395,6 +396,12 @@
 				str = get_word(line, 2)
 				if (str .eq. 'False' .or. str .eq. 'false') use_sec_ion = .false.
 				if (str .eq. 'True'  .or. str .eq. 'true' ) use_sec_ion = .true.
+			else if (lbl_match(line, 'He_rec_coupling')) then
+				! Couple He II -> He I recombination radiation to H ionization
+				! (Draine 2011 y/z, on-the-spot). Default off (photons lost).
+				! "He_rec_coupling: True"
+				str = get_word(line, 2)
+				if (str .eq. 'True' .or. str .eq. 'true') use_he_rec_coupling = .true.
 			else if (lbl_match(line, 'Molecular chemistry')) then
 				! molecular network (docs/lower_atmosphere_*). Solving molecular
 				! chemistry implies the molecular-base particle count for the
