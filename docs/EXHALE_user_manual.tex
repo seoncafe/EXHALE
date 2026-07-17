@@ -35,7 +35,7 @@
 
 \title{EXHALE: User Manual}
 \author{Kwang-Il Seon}
-\date{Last updated: 2026-07-02}
+\date{Last updated: \docmoddate}
 \maketitle
 
 \begin{quote}\small\itshape
@@ -646,6 +646,21 @@ defaults restore the standard behavior).}\label{tab:inp-opt}\\
   ($1^1$S) photoionization cross section to the legacy ATES two-term fit
   (default: Verner+1996). Does \emph{not} affect the He\,$2^3$S Penning rate,
   which is always the temperature-dependent form (\S\ref{sec:data}). \\
+\texttt{Legacy\_HHe\_rates:} & logical (def.\ \texttt{False}) & Revert the H/He
+  case-B recombination and collisional ionization to the legacy ATES fits
+  (Hui \& Gnedin 1997 recombination; Abel+1997 / Hui \& Gnedin 1997 collisional
+  ionization). Default uses Badnell (2023) RR ($+$ He\,II DR) minus the Mao \&
+  Kaastra (2016) $\alpha_1$ for case B, and Voronov (1997) collisional
+  ionization (\S\ref{sec:data}). The free-free Gaunt factor and its ion
+  net-charge weighting are always the van Hoof et al.\ (2014) form,
+  independent of this switch. \\
+\texttt{Secondary\_ionization:} & logical (def.\ \texttt{True}) & Shull \& van
+  Steenberg (1985) secondary ionization by fast photoelectrons in the main
+  loop: a photoelectron ejected with $E_0>40\,$eV deposits only $f_{\rm
+  heat}(x)$ of its excess as heat and drives further H\,I / He\,I ionizations,
+  where $x$ is the ionized fraction of the H$+$He nuclei. \texttt{False}
+  restores full photoelectron thermalization, bit-identical to the legacy
+  path. \\
 \texttt{He\_diffusion:} & logical (def.\ \texttt{False}) & Enable diffusive
   separation of helium: transport the He element ratio $n_{\rm He}/n_{\rm H}$
   with advection $+$ molecular-diffusion settling, so He/H falls with altitude.
@@ -1587,11 +1602,11 @@ Bound--free $\sigma(E)$ & H\,I & hydrogenic (Kramers) analytic form (orig.\ ATES
 Opacity model (runtime) & all (via \texttt{opacity.inp}) & A=analytic above; P=pressure-broadened (Robinson \& Catling); T=tabulated files \\
 \midrule
 \multicolumn{3}{@{}l}{\textbf{Collisional (electron-impact) ionization}}\\[2pt]
-Rate $C(T)$ & H\,I, He\,I, He\,II & analytic fits (orig.\ ATES) \\
+Rate $C(T)$ & H\,I, He\,I, He\,II & Voronov (1997, ADNDT 65, 1) default; legacy ATES fits (Abel+1997 / Hui \& Gnedin 1997) via \texttt{Legacy\_HHe\_rates} \\
  & C--Fe, all stages & Voronov (1997, ADNDT 65, 1) \\
 \midrule
 \multicolumn{3}{@{}l}{\textbf{Recombination (radiative RR + dielectronic DR)}}\\[2pt]
-Case~B (RR) & H\,II, He\,II, He\,III & Hui \& Gnedin (1997) fits (DR negligible) \\
+Case~B (RR) & H\,II, He\,II, He\,III & Badnell (2023) RR $-$ Mao \& Kaastra (2016) $\alpha_1$ ($+$ Badnell DR for He\,II) default; legacy Hui \& Gnedin (1997) fits via \texttt{Legacy\_HHe\_rates} \\
 Metastable & He\,II\,$\to2\,^3$S, $1\,^1$S & power-law fits (orig.\ ATES) \\
 Penning ionization & He\,$2\,^3$S\,$+$\,H & Taylor et al.\ (2025) temperature-dependent fit (replaces the const.\ $5\times10^{-10}$; always on) \\
 RR + DR & C, N, O, Mg, Si, Na, K, S, Ca\,II (+ stages) & Badnell (2006, ApJS 167, 334) RR + Badnell adf48 DR (TAMOC clist\_K) \\
@@ -1603,11 +1618,14 @@ metal\,$+$\,H/H$^+$ (default) & 23 reactions (Group~A) & Huang et al.\ (2023, Ap
 full network (\texttt{cx\_full}) & $+$ He$+$H, metal$+$He, metal$+$metal & Huang et al.\ (2023) Table~4 (Groups B/C/D) \\
 \midrule
 \multicolumn{3}{@{}l}{\textbf{Radiative cooling}}\\[2pt]
-recomb., coll.\ ion./exc., free--free & H, He & orig.\ ATES (Hui \& Gnedin 1997; Black 1981; Gaunt-factor bremsstrahlung) \\
+recomb., coll.\ ion./exc., free--free & H, He & Hui \& Gnedin (1997) recomb.\ cooling; Black (1981) collisional; free--free bremsstrahlung with the van Hoof et al.\ (2014) thermal Gaunt factor, weighted by ion net charge \\
 metal line cooling \mbox{(analytic)} & C\,I/II, N\,I/II, O\,I/II & closed-form fits to CHIANTI v11.0.2 (default); legacy AIOLOS fits via \texttt{cno\_cool 0} (no N cooling) \\
 metal line cooling \mbox{(analytic)} & Mg\,I/II, Ca\,II\,H\&K, Na\,I\,D, Fe\,II coronal & closed-form fits to CHIANTI v11.0.2 (Burgess--Tully descaled; 1--3\% accuracy); Na\,I\,D via effective $\bar g\!\approx\!0.2$ \\
 metal line cooling \mbox{(tabulated)} & Fe\,I; Fe\,II\,$(T,n_e)$ & NIST $f$-values $+$ Van Regemorter; CHIANTI multilevel statistical equilibrium \\
 fine-structure (opt., \texttt{use\_2lev\_cool}) & [O\,I] etc. & Lique et al.\ (2017) / Draine (2011) \\
+\midrule
+\multicolumn{3}{@{}l}{\textbf{Photoelectric heating}}\\[2pt]
+secondary ionization (def.\ on, \texttt{Secondary\_ionization}) & H\,I, He\,I & Shull \& van Steenberg (1985) $f_{\rm heat}(x)$, $f_{\rm ion}(x)$ fits; photoelectrons with $E_0>40\,$eV drive secondary H\,I / He\,I ionizations, heating scaled to $f_{\rm heat}$; the He\,$2^3$S photoelectron feeds the same heating and secondary-source budget \\
 \midrule
 \multicolumn{3}{@{}l}{\textbf{Excited hydrogen H($n{=}2$) and Ly$\alpha$}}\\[2pt]
 $2s/2p$ rate equilibrium & H($n{=}2$) & Christie, Arras \& Li (2013) Table~2 \\

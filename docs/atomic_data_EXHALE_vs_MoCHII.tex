@@ -1,0 +1,399 @@
+%% Atomic data in EXHALE compared with MoCHII, and the 2026-07-17 rate update.
+%% Author: Kwang-Il Seon
+\documentclass[english,a4paper]{kiseon_memo}
+\synctex=1
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{amsmath,amssymb}
+\usepackage{array}
+\usepackage{xcolor}
+\usepackage{babel}
+\setlength{\emergencystretch}{3em}
+% top-align a float that ends up alone on the last page
+\makeatletter
+\setlength{\@fptop}{0pt}
+\makeatother
+
+\newcommand{\acm}{\ensuremath{\,\mathrm{cm^3\,s^{-1}}}}
+% zero-width breakpoint, so long typewriter paths can wrap at separators
+\newcommand{\bk}{\discretionary{}{}{}}
+\newcommand{\code}[1]{\texttt{#1}}
+
+\begin{document}
+
+\title{Atomic Data in EXHALE versus MoCHII:\\
+Comparison and the 2026-07-17 Rate Update}
+\author{Kwang-Il Seon}
+\date{2026-07-17}
+\maketitle
+
+\tableofcontents
+\bigskip
+
+%=============================================================================
+\section{Purpose and scope}
+%=============================================================================
+
+This memo has two parts. Part~1 compares the atomic data that EXHALE and
+MoCHII (\code{/home/kiseon/\bk RT\_Codes/\bk MoCHII}) use for the microphysical
+processes the two codes have in common: photoionization cross sections,
+recombination, collisional ionization, charge exchange, cooling, and
+heating. The conclusion is that, where the two codes overlap, they draw on
+the same lineage of published data; the differences are in coverage
+(MoCHII spans more elements; EXHALE adds the metastable He\,I\,$2^3$S
+network and planet-atmosphere species) and in a few modeling choices.
+
+Part~2 documents the rate update applied on 2026-07-17. Before that update
+EXHALE inherited its H/He recombination and collisional-ionization fits
+from ATES, and several of those fits carried no source annotation. The
+update makes the EXHALE default match the Badnell/Mao recombination and
+Voronov collisional ionization that MoCHII uses, introduces the
+\code{legacy\_hhe\_rates} switch to reproduce the old fits, replaces the
+free-free Gaunt factor with the van Hoof et al.\ (2014) thermal average,
+and corrects a physical error in the free-free charge weighting.
+
+%=============================================================================
+\section{Part 1 --- Process-by-process comparison}
+%=============================================================================
+
+Table~\ref{tab:overlap} summarizes the overlapping processes. The
+subsections below add the details that do not fit in the table.
+
+\begin{table}[htbp]
+\centering
+\footnotesize
+\renewcommand{\arraystretch}{1.25}
+\caption{Atomic data for the processes EXHALE and MoCHII have in common.
+Both codes descend from the same published sources for each process; the
+right two columns note where they diverge. EXHALE rows marked
+``[updated]'' reflect the 2026-07-17 default (Part~2).}
+\label{tab:overlap}
+\begin{tabular}{@{}p{0.14\textwidth}p{0.40\textwidth}p{0.38\textwidth}@{}}
+\toprule
+\textbf{Process} & \textbf{EXHALE} & \textbf{MoCHII} \\
+\midrule
+Photoionization cross sections &
+Verner et al.\ 1996 (VFKY96) with Verner \& Yakovlev 1995 fallback; H\,I
+and He\,II from the hydrogenic analytic form. Adds He\,I\,$2^3$S (VFKY96
+wing bridge) and H$_2$ (Yan, Sadeghpour \& Dalgarno 1998). Tuned for
+planet atmospheres (Na, K). &
+Verner et al.\ 1996 with Verner \& Yakovlev 1995 fallback; H\,I and
+He\,II hydrogenic. Wider element set (Ne, Cl, Ar). \\
+
+Recombination (H, He) &
+[updated] Badnell (2023) radiative $\alpha_A$ minus Mao \& Kaastra (2016)
+$\alpha_1$, giving case~B; He\,II includes Badnell dielectronic
+recombination. Identical coefficients to MoCHII. &
+Badnell (2023) radiative $\alpha_A$ and Mao \& Kaastra (2016) $\alpha_1$
+for case~B, with Badnell dielectronic recombination for He\,II. \\
+
+Recombination (metals) &
+Badnell radiative/dielectronic recombination (Badnell 2006 and adf48
+data), Ca\,I from Shull \& Van Steenberg 1982, Fe from the Huang et al.\
+2023 fit. &
+Badnell radiative/dielectronic recombination
+(\code{badnell\_rr/dr.dat}) with a CHIANTI fallback. \\
+
+Collisional ionization (H, He) &
+[updated] Voronov 1997. &
+Voronov 1997 (unified fits), with Dere 2007 as an option. \\
+
+Collisional ionization (metals) &
+Voronov 1997. &
+Voronov 1997. \\
+
+Charge exchange &
+Huang et al.\ 2023 (ApJ 951, 123) Table~4, based on Kingdon \& Ferland
+1996. 63 reactions (metal$+$H by default; He and metal--metal via the
+\code{cx\_full} option). &
+Huang et al.\ 2023 Table~4 (Kingdon \& Ferland 1996), metals only. \\
+
+Recombination cooling &
+Hui \& Gnedin 1997 case-B cooling fits. &
+Hui \& Gnedin 1997 lineage, with a case-A/case-B choice. \\
+
+Free-free cooling &
+[updated] Constant $1.426\times10^{-27}$; thermally-averaged Gaunt factor
+from van Hoof et al.\ 2014 (161-point table). &
+Constant $1.426\times10^{-27}$; Gaunt from Hummer 1988 / van Hoof et al.\
+2014. \\
+
+Metal line cooling &
+CHIANTI v11.0.2 fit $\Lambda(T)=T^{-1/2}\sum_i A_i e^{-T_i/T}$
+(\code{cooling\_data/fit\_cno\_formulas.py}), extended with
+density-dependent treatments (see \S\ref{sec:unique}). &
+CHIANTI v11.0.2 fit of the same form (\code{chianti\_cooling.py}), in the
+low-density limit; emission lines handled by a separate n-level solver. \\
+
+Heating (photoelectric) &
+[updated] Shull \& van Steenberg (1985) secondary ionization in the main
+loop: a photoelectron with $E_0>40$~eV deposits only $f_{\rm heat}(x)$ of its
+excess as heat and drives H\,I / He\,I secondary ionizations (default on,
+\code{use\_sec\_ion}). Below 40~eV the photoelectron thermalizes fully. &
+Full photoelectron excess energy thermalized; no secondary ionization. \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Photoionization cross sections}
+Both codes use Verner et al.\ (1996) fits with the Verner \& Yakovlev
+(1995) inner-shell data as a fallback, and both take H\,I and He\,II from
+the hydrogenic analytic form. EXHALE adds two cross sections that MoCHII
+does not carry: the metastable He\,I\,$2^3$S level (bridged onto the
+VFKY96 wing) and molecular hydrogen (Yan, Sadeghpour \& Dalgarno 1998).
+MoCHII covers a broader element list (including Ne, Cl, and Ar); EXHALE
+instead carries the alkali species (Na, K) relevant to planet
+atmospheres.
+
+\subsection{Recombination}
+Before 2026-07-17 the EXHALE H/He case-B coefficients were unattributed
+fits inherited from ATES. A numerical check showed them to be exactly the
+Hui \& Gnedin (1997) case-B fits. MoCHII builds its default case-B
+coefficients from the Badnell (2023) radiative $\alpha_A$ and the Mao \&
+Kaastra (2016) $\alpha_1$ subtraction, with Badnell dielectronic
+recombination added for He\,II. The 2026-07-17 update (Part~2) adopts the
+same construction as the EXHALE default, so the two codes now agree on the
+H/He recombination coefficients. For metals, both codes already used
+Badnell radiative and dielectronic recombination, with small differences
+in the fallback data for a few ions.
+
+\subsection{Collisional ionization}
+Before the update the EXHALE H\,I and He\,I collisional-ionization rates
+came from Abel et al.\ (1997), which reproduces the Janev et al.\ (1987)
+fits, and He\,II from a Hui \& Gnedin (1997) fit; none of these carried a
+source annotation. MoCHII uses the unified Voronov (1997) fits throughout,
+with Dere (2007) as an option. The 2026-07-17 update makes Voronov (1997)
+the EXHALE default for H and He as well; the metal rates were already
+Voronov (1997) in both codes.
+
+\subsection{Charge exchange}
+Both codes transcribe Table~4 of Huang et al.\ (2023, ApJ 951, 123), which
+rests on Kingdon \& Ferland (1996). EXHALE carries 63 reactions: metal
+charge exchange with H is on by default, while He reactions and
+metal--metal reactions are enabled by the \code{cx\_full} option. MoCHII
+carries the metal reactions only.
+
+\subsection{Cooling}
+Recombination cooling in both codes follows the Hui \& Gnedin (1997)
+case-B family (MoCHII offers a case-A/case-B choice). Both use the same
+free-free constant, $1.426\times10^{-27}$; the Gaunt factor is discussed
+in \S\ref{sec:gaunt}. Metal line cooling in both codes is a CHIANTI
+v11.0.2 fit of the form $\Lambda(T)=T^{-1/2}\sum_i A_i e^{-T_i/T}$
+(EXHALE: \code{cooling\_data/fit\_cno\_formulas.py}; MoCHII:
+\code{chianti\_cooling.py}). The MoCHII fit is the low-density limit, with
+the emission lines themselves computed by a separate n-level solver.
+
+\subsection{Heating}
+EXHALE now includes Shull \& van Steenberg (1985) secondary ionization by
+fast photoelectrons in the main loop (default on, \code{use\_sec\_ion}; see
+Part~2). MoCHII thermalizes the full excess energy of the photoelectron and
+does not add secondary ionization, which is appropriate in the nearly fully
+ionized H\,II region it targets. The \code{wind\_ae} initial-condition
+generator separately uses the same SvS85 partition together with the Dere
+(2007) coefficients.
+
+\subsection{Processes carried by only one code}\label{sec:unique}
+EXHALE carries several networks that MoCHII does not: the metastable
+He\,I\,$2^3$S chemistry (Oklop\v{c}i\'c \& Hirata 2018; Bray 2000; Penning
+ionization from Taylor et al.\ 2025), the H\,($n{=}2$) 2s/2p populations
+(Christie, Arras \& Li 2013; Draine 2011), Lyman-$\alpha$ radiative
+transfer (Neufeld 1990), and the H$_2$/H$_3^+$ molecular network (Miller
+et al.\ 2013). Its cooling also adds density-dependent treatments absent
+from the MoCHII low-density fits: a two-dimensional $(T,n_e)$ statistical
+equilibrium table for Fe\,II, the [C\,II] 158\,$\mu$m and [O\,I]
+63\,$\mu$m saturation, the Mg\,II h\&k, Ca\,II H\&K, and Na\,I~D two-level
+terms, and a Fe\,I table from NIST.
+
+MoCHII in turn carries an n-level statistical-equilibrium emission-line
+solver (CHIANTI v11), Storey \& Hummer (1995) recombination lines, Porter
+et al.\ (2012, 2013) He\,I case-B emissivities, the nebular continuum
+(free-bound plus two-photon, from Nussbaumer \& Schmutz 1984 / Almog \&
+Netzer 1989), and dust photoelectric heating (Bakes \& Tielens 1994).
+
+%=============================================================================
+\section{Part 2 --- The 2026-07-17 rate update}
+%=============================================================================
+
+The changes below are implemented in the radiation modules
+\code{Cool\_coeff.f90} and \code{util\_ion\_eq.f90}, in the temperature
+solver \code{T\_equation.f90}, and in the input parsing under
+\code{src/modules/files\_IO/}. Items~1, 2, and 3 are gated by the new
+\code{legacy\_hhe\_rates} switch; items~4 and 5 apply always, independent
+of the switch.
+
+\subsection{H/He recombination default}
+The default H/He case-B coefficients are now
+\begin{equation}
+\alpha_B = \alpha_A^{\rm Badnell} - \alpha_1^{\rm Mao},
+\end{equation}
+where $\alpha_A^{\rm Badnell}$ is the Badnell radiative total (with the
+three-term Badnell dielectronic recombination added for He\,II) and
+$\alpha_1^{\rm Mao}$ is the Mao \& Kaastra (2016, A\&A 587, A84)
+ground-state coefficient. The implementation is in
+\code{Cool\_coeff.f90}: \code{rr\_badnell} (line~506),
+\code{dr\_HeII\_badnell} (line~516), \code{rr\_mao} (line~525), and the
+assembled \code{alphaB\_HII\_new} / \code{alphaB\_HeII\_new} /
+\code{alphaB\_HeIII\_new} (lines~534, 542, 552). The coefficients match
+those in the MoCHII \code{recomb\_mod.f90}.
+
+\subsection{H/He collisional ionization default}
+The default H/He collisional-ionization rates are now the Voronov (1997,
+ADNDT 65, 1) fits, implemented through \code{voronov\_ci}
+(\code{Cool\_coeff.f90}, line~562). The adopted parameters are listed in
+Table~\ref{tab:voronov}.
+
+\begin{table}[htbp]
+\centering
+\small
+\caption{Voronov (1997) collisional-ionization parameters adopted as the
+EXHALE default.}
+\label{tab:voronov}
+\begin{tabular}{@{}lccccc@{}}
+\toprule
+Ion & $\Delta E$ [eV] & $P$ & $A$ & $X$ & $K$ \\
+\midrule
+H\,I   & 13.6 & 0 & $2.91\times10^{-8}$ & 0.232 & 0.39 \\
+He\,I  & 24.6 & 0 & $1.75\times10^{-8}$ & 0.180 & 0.35 \\
+He\,II & 54.4 & 1 & $2.05\times10^{-9}$ & 0.265 & 0.25 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{The \code{legacy\_hhe\_rates} switch}
+A new input flag \code{legacy\_hhe\_rates} (default \code{False}) restores
+the previous fits: Hui \& Gnedin (1997) recombination and the
+Abel et al.\ (1997) / Hui \& Gnedin (1997) collisional ionization. It is
+parsed in \code{input\_read.f90} (default set at line~320, read at
+line~390), declared in \code{parameters.f90} (line~63), and echoed to
+\code{parse\_dump.txt} by \code{write\_setup\_report.f90} (line~208). It
+is registered as row K14b in \code{docs/input\_schema.md}. Setting it to
+\code{True} reverts items~1 and 2 exactly; the free-free changes (items~4
+and 5) are not affected.
+
+\subsection{Free-free Gaunt factor}\label{sec:gaunt}
+The free-free Gaunt factor is now the thermally-averaged non-relativistic
+$\langle g_{\rm ff}\rangle(\gamma^2)$ of van Hoof et al.\ (2014, MNRAS
+444, 420), with $\gamma^2 = Z_{\rm ion}^2\,\mathrm{Ry}/kT$. The frequency
+average
+\begin{equation}
+\langle g_{\rm ff}\rangle(\gamma^2)
+  = \frac{\int e^{-u}\,g_{\rm ff}(\gamma^2,u)\,du}{\int e^{-u}\,du}
+\end{equation}
+is tabulated at 161 points in $\log_{10}\gamma^2 = -6$ to $10$ in steps of
+0.1~dex (generated by \code{cooling\_data/\bk gauntff\_\bk thermal\_\bk avg.py}; the
+table \code{gff\_avg} starts at line~459 of \code{Cool\_coeff.f90}). This
+replaces the previous unattributed two-branch logarithmic fit and applies
+always, regardless of \code{legacy\_hhe\_rates}. The tabulated value at
+$T=10^4$\,K and $Z=1$ is $\langle g_{\rm ff}\rangle = 1.266$.
+
+\subsection{Free-free charge-weighting correction}
+The previous code weighted He\,II (net charge $+1$) by $Z^2=4$ and
+evaluated the metal Gaunt factor at the nuclear atomic number ($Z=8$ for
+O, $Z=26$ for Fe). This is physically wrong: free-free emission scales
+with the ion \emph{net} charge $Z_{\rm ion}$, not the nuclear number. The
+correction sets $Z_{\rm ion}=1$ for H\,II, He\,II, and singly-ionized
+metals, and $Z_{\rm ion}=2$ for He\,III and doubly-ionized metals
+(\code{util\_ion\_eq.f90} \code{eval\_cool}, lines~376--396;
+\code{T\_equation.f90}, lines~105--121). The most visible consequence is
+that the free-free cooling of a He\,II-dominated layer drops by a factor
+of four. Like the Gaunt-table change, this correction applies always.
+
+\subsection{Benchmark values}
+Table~\ref{tab:bench} lists the new default case-B recombination and
+collisional-ionization rates at $T=10^4,\,10^5,\,10^6$\,K, with the legacy
+values at $10^4$\,K where relevant. The Fortran implementation reproduces
+an independent Python recomputation to all printed digits, and the legacy
+branch reproduces the pre-update values exactly.
+
+\begin{table}[!ht]
+\centering
+\small
+\caption{New default rates ($\alpha_B$ and collisional ionization $ci$;
+units \acm{}), with legacy values at $10^4$\,K for comparison. The legacy
+$\alpha_B(\mathrm{H\,II})$ at $10^4$\,K is the Hui \& Gnedin (1997) fit,
+$2.592\times10^{-13}$.}
+\label{tab:bench}
+\begin{tabular}{@{}lcccc@{}}
+\toprule
+Coefficient & $T=10^4$\,K & $T=10^5$\,K & $T=10^6$\,K & legacy ($10^4$\,K)\\
+\midrule
+$\alpha_B(\mathrm{H\,II})$  & $2.606\times10^{-13}$ & $3.070\times10^{-14}$ & $2.163\times10^{-15}$ & $2.592\times10^{-13}$ \\
+$\alpha_B(\mathrm{He\,II})$ & $2.807\times10^{-13}$ & $5.006\times10^{-13}$ & $1.015\times10^{-12}$ & $2.616\times10^{-13}$ \\
+$\alpha_B(\mathrm{He\,III})$& $1.536\times10^{-12}$ & $2.370\times10^{-13}$ & $2.244\times10^{-14}$ & --- \\
+$ci(\mathrm{H\,I})$         & $7.448\times10^{-16}$ & $3.963\times10^{-9}$  & $3.103\times10^{-8}$  & $7.247\times10^{-16}$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The new $\alpha_B(\mathrm{H\,II})$ at $10^4$\,K differs from the legacy
+Hui \& Gnedin (1997) value by about $1\%$; the He\,II and He\,III case-B
+coefficients differ more, mainly because the new He\,II value carries the
+Badnell dielectronic contribution explicitly.
+
+\subsection{Secondary ionization in the main loop}\label{sec:secion}
+A photoelectron ejected with kinetic energy $E_0 = e_\nu - E_{\rm th}$ above
+about 40~eV does not thermalize immediately: before it does, it collisionally
+ionizes further H\,I and He\,I atoms. Shull \& van Steenberg (1985) give
+asymptotic fits for the partition of the photoelectron's energy as a function
+of the ionized fraction $x$ of the H+He nuclei,
+\begin{align}
+  f_{\rm heat}(x)    &= 0.9971\,(1 - (1 - x^{0.2663})^{1.3163}), \\
+  f_{\rm ion,HI}(x)  &= 0.3908\,(1 - x^{0.4092})^{1.7592}, \\
+  f_{\rm ion,HeI}(x) &= 0.0554\,(1 - x^{0.4614})^{1.6660}.
+\end{align}
+As $x\to1$ the heating fraction approaches unity and both ionization fractions
+go to zero; as $x\to0$ the heating fraction vanishes and the ionization
+fractions reach their maxima (0.3908 and 0.0554). In neutral gas a large share
+of the photoelectron energy therefore goes into secondary ionizations rather
+than heat.
+
+A 40~eV threshold gates the partition: for $E_0\le40$~eV the photoelectron
+thermalizes fully (no secondary ionization), matching the \code{wind\_ae}
+X-ray cutoff. SvS85 is strictly an $E_0\gtrsim100$~eV asymptotic fit, so
+applying it down to 40~eV is a deliberate approximation adopted here.
+
+Only H\,I and He\,I receive secondary ionizations, the two channels SvS85
+resolves. The SvS85 Ly$\alpha$ excitation channel is assumed to escape as line
+radiation and is not put into any rate (a future refinement could couple it to
+the Ly$\alpha$ field of the excited-H model). Each absorbing species $s$
+(H\,I, He\,I, He\,II, the He\,I triplet when active, H$_2$ when present, and
+the photoionizable metal ions)
+contributes photoelectrons of energy $E_0 = e_\nu - E_{{\rm th},s}$ that drive
+$f_{\rm ion,HI}\,E_0/E_{\rm th,HI}$ secondary H\,I ionizations and
+$f_{\rm ion,HeI}\,E_0/E_{\rm th,HeI}$ secondary He\,I ionizations. The He\,I
+triplet ($2^3$S, threshold 4.8~eV) previously contributed opacity and its
+photoionization rate but no photoheating; its photoelectron energy now enters
+the heating and absorbed-energy budgets and the secondary source like every
+other absorber.
+
+This differs from how \code{wind\_ae} handles the same physics.
+\code{wind\_ae} combines the SvS85 $f_{\rm heat}$ / $f_{\rm exc}$ partition
+with the Dere (2007) coefficient tables to split the secondary ionizations
+across species, but those Dere tables are tied to the fixed \code{wind\_ae}
+spectral grid and cannot be reused in the main loop, which runs on a runtime
+SED and a variable energy grid. The main loop therefore applies the
+species-resolved SvS85 fits ($f_{\rm ion,HI}$, $f_{\rm ion,HeI}$) directly.
+
+The feature is gated by \code{use\_sec\_ion} (default True). With
+\code{use\_sec\_ion = False} the photoelectron thermalizes fully and the
+heating and photoionization rates are bit-identical to the legacy path. It is
+implemented in the \code{PH\_heat\_H} and \code{PH\_heat\_HHe} routines of
+\code{util\_ion\_eq.f90}, wired through the callers in
+\code{ionization\_equilibrium.f90} and \code{post\_process\_adv.f90}; the flag
+is declared in \code{parameters.f90}, parsed in \code{input\_read.f90}, echoed
+by \code{write\_setup\_report.f90}, and documented as key K14c in
+\code{input\_schema.md}.
+
+\subsection{Effect on existing results}
+Because the default rates change, results computed with the new default
+differ from the pre-update golden and gate outputs. Setting
+\code{legacy\_hhe\_rates = True} reproduces the old H/He rates and
+recovers the previous ionization balance, with two exceptions that apply
+in all cases: the free-free charge-weighting correction (\S3.5) and the
+van Hoof et al.\ (2014) Gaunt table (\S3.4). Those two changes are
+physical corrections and are intentionally not tied to the switch.
+Secondary ionization (\S\ref{sec:secion}) is a further default change on top
+of the rate update; \code{use\_sec\_ion = False} restores the
+full-thermalization heating and photoionization rates bit-identically.
+
+\end{document}

@@ -36,7 +36,7 @@ Units are code-normalized: radius `r` in planetary radii `R0 = R_p`;
 
 **Why spherical drops the tidal terms.** Beyond L1 the full Roche potential
 turns over (effective gravity reverses toward the star), so a steady outward
-wind is undefined there and the sonic-point machinery breaks down. Dropping the
+wind is undefined there and the sonic-point treatment breaks down. Dropping the
 tidal/centrifugal terms restores a monotonic potential, which is what allows the
 domain to extend arbitrarily far.
 
@@ -346,7 +346,7 @@ Gate scratch run: `/tmp/ates_gate/cno_mg/` vs frozen reference
 
 *Added 2026-06-05.*
 
-Two changes are bundled in this update, both enabled by the Phase 1a (§3)
+Two changes are made together in this update, both enabled by the Phase 1a (§3)
 table-driven plumbing:
 
 1. **Corrected the C/N/O photoionization cross sections** to the full
@@ -1100,7 +1100,7 @@ Fe I model atom**, so — following Huang et al. (2023) §2.5 — Fe I cooling i
 from NIST permitted-line oscillator strengths plus the Van Regemorter
 collision-strength approximation, with the lower levels populated in Boltzmann
 equilibrium over the metastable manifold. The new coolant flows through the same
-`beta_esc * ne * n_FeI * Lambda_FeI(T)` machinery as the other Phase-2 metals.
+`beta_esc * ne * n_FeI * Lambda_FeI(T)` channel as the other Phase-2 metals.
 
 ### Atomic data and method (sources, not fabricated)
 
@@ -1810,7 +1810,7 @@ are Boltzmann-negligible, so the lower-level density is the ion density itself
 (`n_lower ≈ n_ion`). The ion densities live past the H/He block of `Ion_species_adv.txt`, in
 `mion_fsp` order (`species_table.f90`): numpy columns **17 = Mg II, 23 = Ca II, 25 = Na I**.
 The block reuses the existing spherical chord / Voigt (`wofz`) / trapezoid-τ / disk-average /
-instrument-convolution machinery (`resonance_depth()`), so it is mechanically identical to
+instrument-convolution path (`resonance_depth()`), so it is mechanically identical to
 the He/Lyα lines.
 
 **Case A result (line-center % / 4 Å-band %), and diagnosis:**
@@ -1823,7 +1823,7 @@ the He/Lyα lines.
 | Na D2 | 0.8% | 0.06% | 0.7 R_p | 0.152 |
 
 Two real gaps surface, both informative: (1) **Mg II already reaches Huang's extent**
-(line-center 26% → R_eff 4.2 R_p, vs Huang's clustered ~3.6 R_p) — the metal machinery is
+(line-center 26% → R_eff 4.2 R_p, vs Huang's clustered ~3.6 R_p) — the metal treatment is
 sound — but **Ca II / Na I / Hα are too optically thin** (R_eff 0.7–1.9 R_p), a
 line-specific ionization / abundance / n=2-population question, not a geometry one. (2) **The
 lines are too narrow**: the Case A wind reaches only **29 km/s**, so a 26%-deep core washes
@@ -1916,7 +1916,7 @@ negligible. Crucially, a test showed **×30 more Mg II photoionization moves R_e
 0.57→0.32** — the resonance line is so optically thick that ionizing it harder cannot confine
 it, so the ionization is a dead end as a lever (and is not the cause once the bin is matched).
 
-**Status:** the full Phase-5 machinery (metal + Balmer lines, spherical & triaxial geometry,
+**Status:** the full Phase-5 pipeline (metal + Balmer lines, spherical & triaxial geometry,
 wind + rotation broadening, triaxial-radii prediction) is implemented and runs end-to-end;
 the hydro/Ṁ reproduces Huang (Case A 0.056, Case B 0.337); and the metal transit radii match
 Huang once compared in his own bins — Mg II (4 Å) 0.22 vs 0.182, Na 0.175 vs 0.152. Remaining
@@ -2616,7 +2616,7 @@ temperature structures agree. HD 209458b results return to the pre-hybrid values
 **Touched files.** `species_diffusion.f90` (metal-stage rescale: cap-only bound + neutral-stage
 re-seed of exhausted cells).
 
-## 28. Lower-atmosphere connection: Tier 1-3 machinery (2026-07-02, all opt-in)
+## 28. Lower-atmosphere connection: Tier 1-3 (2026-07-02, all opt-in)
 
 Survey + proposal + implementation: `docs/lower_atmosphere_coupling.{md,tex,pdf}`.
 New folder `src/modules/lower_atmosphere/`; everything default-off (regression: standard
@@ -2824,3 +2824,117 @@ abstract, Sec. 3.2 (new `sec:n2opacity`), Sec. `sec:lartcomp`, summary, and
   domain fingerprint r_max = 4.814118 to 6 decimals): fully molecular base, front at
   r = 1.166 Rp, H3+ active in the molecular layer. Atomic runs byte-identical
   throughout (make check + OMP identity).
+
+## 36. Default H/He rates -> Badnell+Mao / Voronov, van Hoof free-free Gaunt factor, free-free charge fix, and secondary ionization (2026-07-17)
+
+Six coupled changes to the H/He microphysics. Items 1-2 are gated by the new
+`legacy_hhe_rates` flag (default `False` = new rates); items 3-4 (free-free)
+apply always; item 5 (secondary ionization) is gated by `use_sec_ion` (default
+`True`); item 6 rides along with the heating rework. Full cross-code context
+and the benchmark table: `docs/atomic_data_EXHALE_vs_MoCHII.{md,tex}`.
+
+### What changed and why
+
+1. **H/He recombination default -> Badnell (2023) RR minus Mao & Kaastra (2016)
+   alpha_1, giving case B; Badnell dielectronic recombination added for He II.**
+   The pre-update H/He case-B coefficients were unattributed fits inherited from
+   ATES; a numerical check showed them to be exactly the Hui & Gnedin (1997)
+   case-B fits. The new default `alpha_B = alpha_A(Badnell) - alpha_1(Mao)`
+   matches the construction MoCHII already uses, so the two codes now share the
+   same H/He recombination coefficients. Setting `legacy_hhe_rates = True`
+   restores the Hui & Gnedin fits exactly.
+
+2. **H/He collisional ionization default -> Voronov (1997, ADNDT 65, 1).** The
+   legacy H I / He I rates were Abel et al. (1997) (reproducing Janev et al.
+   1987) and He II a Hui & Gnedin (1997) fit, none source-annotated. Voronov
+   (1997) is now the default, matching the metal rates (already Voronov in both
+   codes) and MoCHII. Reverted together with item 1 by `legacy_hhe_rates`.
+
+3. **Free-free Gaunt factor -> van Hoof et al. (2014) thermal average.** The
+   frequency-averaged non-relativistic `<g_ff>(gamma^2)` (gamma^2 = Z_ion^2
+   Ry/kT) is tabulated at 161 points in log10(gamma^2) from -6 to 10 in 0.1 dex
+   steps (generator `cooling_data/gauntff_thermal_avg.py`), replacing the earlier
+   unattributed two-branch logarithmic fit. Applies always, independent of
+   `legacy_hhe_rates`.
+
+4. **Free-free charge-weighting correction (physical bug).** The previous code
+   weighted He II (net charge +1) by Z^2 = 4 and evaluated the metal Gaunt factor
+   at the nuclear atomic number (Z = 8 for O, 26 for Fe). Free-free emission
+   scales with the ion *net* charge, not the nuclear number: Z_ion = 1 for H II,
+   He II, and singly-ionized metals; Z_ion = 2 for He III and doubly-ionized
+   metals. The most visible consequence is that the free-free cooling of a
+   He II-dominated layer drops by a factor of four. Applies always.
+
+5. **Secondary ionization (Shull & van Steenberg 1985) in the main loop.** A
+   photoelectron ejected with E0 = e_v - E_th above ~40 eV does not thermalize
+   immediately: it deposits only `f_heat(x)` of its excess as heat and drives
+   secondary H I and He I ionizations, where x is the ionized fraction of the
+   H+He nuclei. The SvS85 asymptotic fits are applied species-resolved:
+   `f_heat(x) = 0.9971 (1 - (1 - x^0.2663)^1.3163)`,
+   `f_ion,HI(x) = 0.3908 (1 - x^0.4092)^1.7592`,
+   `f_ion,HeI(x) = 0.0554 (1 - x^0.4614)^1.6660`.
+   Below 40 eV the photoelectron thermalizes fully. Gated by `use_sec_ion`
+   (default `True`); `use_sec_ion = False` is bit-identical to the legacy
+   full-thermalization path. This differs from `wind_ae`, which combines the
+   same SvS85 partition with Dere (2007) tables tied to its fixed spectral grid;
+   the main loop runs on a runtime SED and applies the SvS85 species-resolved
+   fits directly.
+
+6. **He I 2^3S triplet photoheating channel added.** The metastable He I 2^3S
+   (threshold 4.8 eV) previously contributed only opacity and its photoionization
+   rate but no photoheating. Its photoelectron energy now enters the heating and
+   absorbed-energy budgets and the secondary-ionization source consistently with
+   every other absorber.
+
+### Files touched
+
+- `src/modules/radiation/Cool_coeff.f90` -- `rr_badnell`, `dr_HeII_badnell`,
+  `rr_mao`, the assembled `alphaB_*_new`, `voronov_ci` / `ci_*_new`, and the
+  161-point `gff_avg` van Hoof table.
+- `src/modules/radiation/util_ion_eq.f90` -- free-free net-charge weighting in
+  `eval_cool`; secondary ionization and He 2^3S heating in `PH_heat_H` /
+  `PH_heat_HHe`.
+- `src/modules/nonlinear_system_solver/T_equation.f90` -- free-free net-charge
+  weighting.
+- `src/modules/radiation/ionization_equilibrium.f90`,
+  `src/modules/post_process/post_process_adv.f90` -- callers wired for the new
+  heating/secondary-ionization signatures.
+- `src/modules/files_IO/input_read.f90`, `src/modules/init/parameters.f90`,
+  `src/modules/files_IO/write_setup_report.f90` -- `legacy_hhe_rates` and
+  `use_sec_ion` declared, defaulted, parsed, and echoed to `parse_dump.txt`.
+- `cooling_data/gauntff_thermal_avg.py` -- generator for the van Hoof table.
+- `docs/input_schema.md` -- keys K14b (`Legacy_HHe_rates`) and K14c
+  (`Secondary_ionization`).
+
+### Quantitative check
+
+New default rates (`alpha_B`, collisional ionization `ci`; cm^3 s^-1), with the
+legacy value at 1e4 K for comparison. The legacy `alpha_B(H II)` at 1e4 K is the
+Hui & Gnedin (1997) fit, 2.592e-13.
+
+| Coefficient | 1e4 K | 1e5 K | 1e6 K | legacy (1e4 K) |
+|---|---|---|---|---|
+| alpha_B(H II)   | 2.606e-13 | 3.070e-14 | 2.163e-15 | 2.592e-13 |
+| alpha_B(He II)  | 2.807e-13 | 5.006e-13 | 1.015e-12 | 2.616e-13 |
+| alpha_B(He III) | 1.536e-12 | 2.370e-13 | 2.244e-14 | --- |
+| ci(H I)         | 7.448e-16 | 3.963e-9  | 3.103e-8  | 7.247e-16 |
+
+The Fortran reproduces an independent Python recomputation to all printed
+digits, and the legacy branch reproduces the pre-update values exactly. The new
+`alpha_B(H II)` at 1e4 K differs from the legacy Hui & Gnedin value by ~1%; He II
+and He III differ more, mainly because the new He II value carries the Badnell
+dielectronic contribution explicitly. The van Hoof thermal Gaunt factor at
+T = 1e4 K and Z = 1 is `<g_ff>` = 1.266. A smoke run confirms the expected
+factor-of-four drop in free-free cooling across a He II-dominated layer, and
+`use_sec_ion = False` reproduces the legacy heating and photoionization rates
+bit-identically.
+
+### Effect on existing results
+
+Because the default rates change, results computed with the new default differ
+from the pre-update golden and gate outputs. `legacy_hhe_rates = True` recovers
+the old H/He ionization balance, with two always-on exceptions: the free-free
+charge-weighting correction (item 4) and the van Hoof Gaunt table (item 3), both
+physical corrections intentionally not tied to the switch. Secondary ionization
+(item 5) is a further default change; `use_sec_ion = False` restores the
+full-thermalization rates bit-identically.

@@ -21,7 +21,7 @@
 
 \title{EXHALE: Update Log}
 \author{Kwang-Il Seon}
-\date{Last updated: 2026-07-02}
+\date{Last updated: \docmoddate}
 \maketitle
 
 \begin{quote}\small\itshape
@@ -108,7 +108,7 @@ The outer boundary cannot simply be pushed past L1 while keeping the full Roche
 potential. Beyond L1 the Roche potential \emph{turns over}: the effective
 gravity changes sign (points toward the star), so a monotonic, steadily
 accelerating outward wind is no longer defined there and the
-sonic-point/steady-state machinery breaks down. Removing the stellar-tidal and
+sonic-point/steady-state treatment breaks down. Removing the stellar-tidal and
 centrifugal terms restores a monotonic potential ($\phi=-b_0/r$ increases
 monotonically toward zero as $r\to\infty$), which is what permits the domain to
 extend arbitrarily far. This is exactly the spherical geometry of Huang Case A.
@@ -515,7 +515,7 @@ S added together as a uniform-template batch. Gate scratch run:
 
 \subsection{Overview}
 
-Two changes are bundled here, both enabled by the Phase 1a (\S3) table-driven
+Two changes are made together here, both enabled by the Phase 1a (\S3) table-driven
 plumbing:
 \begin{enumerate}
 \item \textbf{Corrected the C/N/O photoionization cross sections} to the full
@@ -1352,7 +1352,7 @@ cooling is built from NIST permitted-line oscillator strengths plus the
 Van Regemorter collision-strength approximation, with the lower levels populated
 in Boltzmann equilibrium over the metastable manifold. The new coolant flows
 through the same \(\beta_{\rm esc}\,n_e\,n_{\rm FeI}\,\Lambda_{\rm FeI}(T)\)
-machinery as the other Phase-2 metals.
+channel as the other Phase-2 metals.
 
 \subsection{Atomic data and method (sources, not fabricated)}
 
@@ -2128,13 +2128,13 @@ Boltzmann-negligible, so the lower-level density is the ion density itself
 \texttt{Ion\_species\_adv.txt}, in \texttt{mion\_fsp} order (\texttt{species\_table.f90}):
 numpy columns \textbf{17 = Mg II, 23 = Ca II, 25 = Na I}. The block reuses the existing
 spherical chord / Voigt (\texttt{wofz}) / trapezoid-\(\tau\) / disk-average / instrument
-convolution machinery (\texttt{resonance\_depth()}).
+convolution path (\texttt{resonance\_depth()}).
 
 \paragraph{Case A result (line-center \% / 4\,\AA-band \%) and diagnosis.}
 Mg II: 26.1 / 2.3 (\(R_{\rm eff}=4.2\,R_p\)); Ca II K: 5.5 / 0.33 (1.9\,\(R_p\)); H\(\alpha\):
 3.9 (1.6\,\(R_p\)); Na D2: 0.8 / 0.06 (0.7\,\(R_p\)). Two real gaps: (1)~\textbf{Mg II already
 reaches Huang's extent} (\(R_{\rm eff}=4.2\,R_p\) vs his clustered \(\sim3.6\,R_p\)) --- the
-metal machinery is sound --- but \textbf{Ca II / Na I / H\(\alpha\) are too optically thin}
+metal treatment is sound --- but \textbf{Ca II / Na I / H\(\alpha\) are too optically thin}
 (\(R_{\rm eff}=0.7\)--\(1.9\,R_p\)), a line-specific ionization / abundance / \(n=2\) question,
 not geometry. (2)~The lines are \textbf{too narrow}: the Case~A wind reaches only
 \(\sim29\)\,km/s, so a 26\%-deep core washes out to \(\sim2\%\) over a 4\,\AA\
@@ -2228,7 +2228,7 @@ ionization (\(e^{-15\,{\rm eV}/kT}\) at \(10^4\)\,K) are negligible. A test show
 the resonance line is so optically thick that ionizing it harder cannot confine it, so the
 ionization is a dead end as a lever (and is not the cause once the bin is matched).
 
-\textbf{Status:} the full Phase-5 machinery is implemented and runs end-to-end; the
+\textbf{Status:} the full Phase-5 pipeline is implemented and runs end-to-end; the
 hydro/\(\dot M\) reproduces Huang (Case~A 0.056, Case~B 0.337); and the metal transit radii
 match Huang once compared in his own bins (Mg II 4\,\AA\ 0.22 vs 0.182, Na 0.175 vs 0.152).
 Remaining items are minor: \textbf{Ca II \(\sim1.5\times\) high} (line-center; plausibly
@@ -3240,7 +3240,7 @@ He/H). Both are stable (no NaN) and leave $\dot M$ essentially unchanged (metals
 All diffusion flags are \textbf{default off}, so standard runs are byte-identical.
 
 % ===================================================================== %
-\section{Lower-atmosphere connection: Tier 1--3 machinery (2026-07-02)}
+\section{Lower-atmosphere connection: Tier 1--3 (2026-07-02)}
 % ===================================================================== %
 Survey $+$ proposal $+$ implementation: \texttt{docs/lower\_atmosphere\_coupling.\{md,tex,pdf\}}.
 New folder \texttt{src/modules/lower\_atmosphere/}; everything \textbf{opt-in / default
@@ -3337,7 +3337,7 @@ isothermal $T_{\rm eq}=1183$\,K). End-to-end chain demonstrated: VULCAN $\to$
 converter $\to$ \texttt{base.inp} $\to$ EXHALE startup override (echoed).
 
 % ===================================================================== %
-\section{VULCAN lower-atmosphere pre-step: obtained, not bundled (2026-07-06)}
+\section{VULCAN lower-atmosphere pre-step: obtained, not included in the tree (2026-07-06)}
 % ===================================================================== %
 VULCAN (with \texttt{FastChem} inside it, as shipped) is used as a lower-atmosphere
 pre-step invoked by EXHALE itself. VULCAN is a third-party code and is \emph{not}
@@ -3416,6 +3416,172 @@ $\sim$1.4--2.6$\times$, far less than the earlier $\sim$4--30$\times$ (pre-VULCA
 the $2p$-only LaRT). Paper abstract, methods, results table, summary, and
 \texttt{figs/make\_lart\_fig.py} were updated accordingly.
 
+\section{Molecular equilibrium seeding fix, molecular-base coupling, Tier-2 gate refresh (2026-07-16)}
+
+\textbf{Frozen-atomic-base bug (diagnosed and fixed).} The 8-unknown molecular
+equilibrium (\texttt{ion\_system\_HeH\_mol}, \texttt{hybrd1}) is bistable in its
+initial guess: from a zero-molecular warm start it fails to converge at the dense,
+optically-thick base, and the \texttt{thereis\_mol} branch never checked
+\texttt{info}---the failed state was silently adopted and then frozen indefinitely
+($x_{\rm H_2}=0.0122$ at the base, flat across 130k steps and independent of $T$;
+numerically \emph{not} a root of the coded network---it would require an H$_2$
+photoionization rate $15\times$ the unattenuated stellar bound). The true dark-base
+equilibrium is strongly molecular (3-body formation R15 vs.\ thermal dissociation
+R12), which the earlier gate runs had reached only because the then-uninitialized
+molecular \texttt{f\_sp} columns acted as an accidental nonzero seed; the
+composition-audit zero-init exposed the latent fragility. Fixes: (i) \texttt{info}
+is checked and a failed solve retries once from a physically-informed guess seeded
+by the chemical-equilibrium H$_2$ fit \texttt{q\_h2\_equilibrium(p,T)}
+(still-failing cells keep the previous state and are counted in a one-line summary
+warning); (ii) \texttt{set\_IC} seeds the molecular H$_2$ column from the same fit
+(H nuclei conserved) instead of zero.
+
+\textbf{Molecular base coupled on.} Solving molecular chemistry now implies the
+molecular base particle count (\texttt{Molecular base: True} behavior): with an
+atomic \texttt{ntot\_bc} the base temperature is inflated by the particle-count
+ratio ($\sim$1.8$\times$ for a fully molecular base), thermally dissociating the
+H$_2$ layer the chemistry just built. A note is printed when the coupling engages.
+
+\textbf{Tier-2 gates re-established} (deterministic; inputs pinned at
+\texttt{docs/lower\_atmosphere\_figs/data\_g*/input.inp}). Gate 0 (HD\,209458\,b
+atomic, 3000 steps): $\log\dot{M}=8.97$ unchanged. Gate 1 (HD\,209458\,b
+molecular): fully molecular base ($x_{\rm H_2}=0.997$, base $T$ unchanged at
+$\sim$1464\,K), sharp H$_2\rightarrow$H front at $r=1.019\,R_p$,
+$\log\dot{M}=8.87$ vs.\ 8.97 atomic, He\,$2^3$S peak $+1.3\%$; stable over 12000
+steps with zero solve failures. Gate 2 (hot-Uranus-like: $0.0457\,M_J$,
+$R_p=0.49\,R_J$, $T_{\rm eq}=1140$\,K, HD\,209458\,b orbit/spectrum---input
+recovered by matching the archived domain fingerprint $r_{\rm max}=4.814118$ to 6
+decimals): fully molecular base, front at $r=1.166\,R_p$, H$_3^+$ active in the
+molecular layer. Atomic runs byte-identical throughout (\texttt{make check} $+$
+OMP identity).
+
+\section{Default H/He rates $\to$ Badnell$+$Mao / Voronov, van Hoof free-free Gaunt factor, free-free charge fix, and secondary ionization (2026-07-17)}
+
+Six coupled changes to the H/He microphysics. Items 1--2 are gated by the new
+\texttt{legacy\_hhe\_rates} flag (default \texttt{False} $=$ new rates); items
+3--4 (free-free) apply always; item 5 (secondary ionization) is gated by
+\texttt{use\_sec\_ion} (default \texttt{True}); item 6 rides along with the
+heating rework. Full cross-code context and the benchmark table:
+\texttt{docs/atomic\_data\_EXHALE\_vs\_MoCHII}.
+
+\subsection{What changed and why}
+
+\paragraph{1. H/He recombination default.} The pre-update H/He case-B
+coefficients were unattributed fits inherited from ATES; a numerical check
+showed them to be exactly the Hui \& Gnedin (1997) case-B fits. The new default
+is
+\begin{equation}
+\alpha^{B}(T) = \alpha^{A}_{\rm Badnell}(T) - \alpha_1^{\rm Mao}(T),
+\end{equation}
+the Badnell (2023) radiative total minus the Mao \& Kaastra (2016, A\&A 587,
+A84) $n=1$ coefficient, with the Badnell three-term dielectronic recombination
+added to $\alpha^{A}$ for He\,II. This matches the construction MoCHII already
+uses, so the two codes now share the H/He recombination coefficients. Setting
+\texttt{legacy\_hhe\_rates = True} restores the Hui \& Gnedin fits exactly.
+
+\paragraph{2. H/He collisional ionization default.} The legacy H\,I / He\,I
+rates were Abel et al.\ (1997) (reproducing Janev et al.\ 1987) and He\,II a
+Hui \& Gnedin (1997) fit, none source-annotated. The Voronov (1997, ADNDT 65, 1)
+fits,
+\begin{equation}
+k(T) = A\,\frac{(1+P\sqrt{U})\,U^{K}\,e^{-U}}{X+U},
+\qquad U = \Delta E[\mathrm{eV}]/k_B T,
+\end{equation}
+are now the default, matching the metal rates (already Voronov in both codes)
+and MoCHII. Reverted together with item 1 by \texttt{legacy\_hhe\_rates}.
+
+\paragraph{3. Free-free Gaunt factor.} The frequency-averaged non-relativistic
+$\langle g_{\rm ff}\rangle(\gamma^2)$ (with $\gamma^2 = Z_{\rm ion}^2\,{\rm
+Ry}/k_BT$) of van Hoof et al.\ (2014, MNRAS 444, 420) is tabulated at 161 points
+in $\log_{10}\gamma^2$ from $-6$ to $10$ in $0.1\,$dex steps (generator
+\texttt{cooling\_data/gauntff\_thermal\_avg.py}), replacing the earlier
+unattributed two-branch logarithmic fit. Applies always, independent of
+\texttt{legacy\_hhe\_rates}.
+
+\paragraph{4. Free-free charge-weighting correction (physical bug).} The previous
+code weighted He\,II (net charge $+1$) by $Z^2 = 4$ and evaluated the metal
+Gaunt factor at the nuclear atomic number ($Z=8$ for O, $26$ for Fe). Free-free
+emission scales with the ion \emph{net} charge, not the nuclear number:
+$Z_{\rm ion}=1$ for H\,II, He\,II, and singly-ionized metals; $Z_{\rm ion}=2$ for
+He\,III and doubly-ionized metals. The most visible consequence is that the
+free-free cooling of a He\,II-dominated layer drops by a factor of four. Applies
+always.
+
+\paragraph{5. Secondary ionization (Shull \& van Steenberg 1985) in the main
+loop.} A photoelectron ejected with $E_0 = e_\nu - E_{\rm th}$ above $\sim$40\,eV
+does not thermalize immediately: it deposits only $f_{\rm heat}(x)$ of its excess
+as heat and drives secondary H\,I and He\,I ionizations, where $x$ is the ionized
+fraction of the H$+$He nuclei,
+\begin{align}
+f_{\rm heat}(x)     &= 0.9971\,(1 - (1 - x^{0.2663})^{1.3163}),\\
+f_{\rm ion,HI}(x)   &= 0.3908\,(1 - x^{0.4092})^{1.7592},\\
+f_{\rm ion,HeI}(x)  &= 0.0554\,(1 - x^{0.4614})^{1.6660}.
+\end{align}
+Below 40\,eV the photoelectron thermalizes fully. Gated by \texttt{use\_sec\_ion}
+(default \texttt{True}); \texttt{use\_sec\_ion = False} is bit-identical to the
+legacy full-thermalization path. This differs from \texttt{wind\_ae}, which
+combines the same SvS85 partition with Dere (2007) tables tied to its fixed
+spectral grid; the main loop runs on a runtime SED and applies the SvS85
+species-resolved fits directly.
+
+\paragraph{6. He\,I $2^3$S triplet photoheating channel added.} The metastable
+He\,I $2^3$S (threshold 4.8\,eV) previously contributed only opacity and its
+photoionization rate but no photoheating. Its photoelectron energy now enters the
+heating and absorbed-energy budgets and the secondary-ionization source
+consistently with every other absorber.
+
+\subsection{Files touched}
+\texttt{Cool\_coeff.f90} (\texttt{rr\_badnell}, \texttt{dr\_HeII\_badnell},
+\texttt{rr\_mao}, \texttt{alphaB\_*\_new}, \texttt{voronov\_ci}/\texttt{ci\_*\_new},
+the 161-point \texttt{gff\_avg} table); \texttt{util\_ion\_eq.f90} (free-free
+net-charge weighting in \texttt{eval\_cool}; secondary ionization and He\,$2^3$S
+heating in \texttt{PH\_heat\_H}/\texttt{PH\_heat\_HHe}); \texttt{T\_equation.f90}
+(free-free net-charge weighting); \texttt{ionization\_equilibrium.f90} and
+\texttt{post\_process\_adv.f90} (callers wired for the new signatures);
+\texttt{input\_read.f90}, \texttt{parameters.f90}, \texttt{write\_setup\_report.f90}
+(\texttt{legacy\_hhe\_rates} and \texttt{use\_sec\_ion} declared, defaulted,
+parsed, echoed); \texttt{cooling\_data/gauntff\_thermal\_avg.py} (van Hoof table
+generator); \texttt{docs/input\_schema.md} (keys K14b, K14c).
+
+\subsection{Quantitative check}
+New default rates ($\alpha_B$, collisional ionization $ci$; $\mathrm{cm^3\,s^{-1}}$),
+with the legacy value at $10^4\,$K for comparison. The legacy
+$\alpha_B(\mathrm{H\,II})$ at $10^4\,$K is the Hui \& Gnedin (1997) fit,
+$2.592\times10^{-13}$.
+
+\begin{center}
+\begin{tabular}{lcccc}
+\toprule
+Coefficient & $10^4\,$K & $10^5\,$K & $10^6\,$K & legacy ($10^4\,$K)\\
+\midrule
+$\alpha_B(\mathrm{H\,II})$   & 2.606e-13 & 3.070e-14 & 2.163e-15 & 2.592e-13\\
+$\alpha_B(\mathrm{He\,II})$  & 2.807e-13 & 5.006e-13 & 1.015e-12 & 2.616e-13\\
+$\alpha_B(\mathrm{He\,III})$ & 1.536e-12 & 2.370e-13 & 2.244e-14 & ---\\
+$ci(\mathrm{H\,I})$          & 7.448e-16 & 3.963e-9  & 3.103e-8  & 7.247e-16\\
+\bottomrule
+\end{tabular}
+\end{center}
+
+The Fortran reproduces an independent Python recomputation to all printed digits,
+and the legacy branch reproduces the pre-update values exactly. The new
+$\alpha_B(\mathrm{H\,II})$ at $10^4\,$K differs from the legacy Hui \& Gnedin value
+by $\sim$1\%; He\,II and He\,III differ more, mainly because the new He\,II value
+carries the Badnell dielectronic contribution explicitly. The van Hoof thermal
+Gaunt factor at $T=10^4\,$K and $Z=1$ is $\langle g_{\rm ff}\rangle = 1.266$. A
+smoke run confirms the expected factor-of-four drop in free-free cooling across a
+He\,II-dominated layer, and \texttt{use\_sec\_ion = False} reproduces the legacy
+heating and photoionization rates bit-identically.
+
+\subsection{Effect on existing results}
+Because the default rates change, results computed with the new default differ
+from the pre-update golden and gate outputs. \texttt{legacy\_hhe\_rates = True}
+recovers the old H/He ionization balance, with two always-on exceptions: the
+free-free charge-weighting correction (item 4) and the van Hoof Gaunt table
+(item 3), both physical corrections intentionally not tied to the switch.
+Secondary ionization (item 5) is a further default change;
+\texttt{use\_sec\_ion = False} restores the full-thermalization rates
+bit-identically.
+
 % ===================================================================== %
 %  APPENDIX --- bookkeeping material, kept separate from the dated update log
 % ===================================================================== %
@@ -3456,7 +3622,7 @@ normalized): \textbf{5\,970} code lines added in EXHALE (new modules + the new s
 of modified lines) and \textbf{239} removed from the original (deleted + the old
 side of modified lines), for \textbf{6\,209} total changed lines. At the file level,
 of the 47 original files \textbf{27 were modified} and \textbf{20 are unchanged}
-(none were removed --- the unchanged set is chiefly the 11 vendored MINPACK
+(none were removed --- the unchanged set is chiefly the 11 included MINPACK
 routines, the HLLC/ROE Riemann solvers with the flux/reconstruction pieces, and
 small utility modules), and \textbf{15 new core modules} were added:
 
@@ -3510,7 +3676,7 @@ plotting/analysis) and $\approx$20\,000 lines of documentation under
 % ===================================================================== %
 Of the 47 upstream Fortran files (\texttt{ATES/ATES-Code-main}), \textbf{18 are
 byte-for-byte identical} in EXHALE --- the numerics EXHALE reuses without
-touching. They fall into three groups: the vendored \textsc{MINPACK} nonlinear
+touching. They fall into three groups: the included \textsc{MINPACK} nonlinear
 solver (the \texttt{hybrd} Powell hybrid method and its linear-algebra helpers,
 called by the ionization-equilibrium solver), the finite-volume hydrodynamics
 core (HLLC fluxes, reconstruction, source terms, Runge--Kutta right-hand side),
@@ -3531,7 +3697,7 @@ line was altered.
 \toprule
 File & Purpose \\
 \midrule
-\multicolumn{2}{@{}l}{\emph{MINPACK nonlinear-system solver} (vendored, Argonne; dir \texttt{nonlinear\_system\_solver/})}\\
+\multicolumn{2}{@{}l}{\emph{MINPACK nonlinear-system solver} (Argonne; dir \texttt{nonlinear\_system\_solver/})}\\
 \texttt{hybrd.f90}   & Powell hybrid method: find a zero of $n$ nonlinear equations in $n$ unknowns \\
 \texttt{hybrd1.f90}  & Simplified user-facing driver for \texttt{hybrd} \\
 \texttt{fdjac1.f90}  & Forward-difference approximation of the Jacobian \\

@@ -7,8 +7,16 @@ published fits, over the temperature range relevant to escaping
 thermospheres (3e3 - 2e4 K).
 
 EXHALE sources (src/modules/radiation/Cool_coeff.f90):
-  - H+, He++ -> case-B fits of Hui & Gnedin (1997)
-  - He+ -> He total -> case-B of Hui & Gnedin (1997)
+  - Since 2026-07-17 the EXHALE default H/He case-B coefficients are
+    alpha_A(Badnell 2023) - alpha_1(Mao & Kaastra 2016), with Badnell DR
+    added for He II (functions alphaB_*_new / rr_badnell / rr_mao). The H+/
+    He++ curves plotted here are the legacy Hui & Gnedin (1997) fits, now
+    the `legacy_hhe_rates` option; the new default differs by ~1% for H+ and
+    He++ and is ~7% higher for the He+ total (Badnell dielectronic term), so
+    the plotted curves still represent the H+/He++ default. Port alphaB_*_new
+    to overlay the exact new default.
+  - H+, He++ -> case-B fits of Hui & Gnedin (1997) [legacy_hhe_rates]
+  - He+ -> He total -> case-B of Hui & Gnedin (1997) [legacy_hhe_rates]
   - He+ -> He(1^1S) and He+ -> He(2^3S) -> Benjamin, Skillman & Smits
     (1999) effective (cascade-summed) coefficients, as parametrized by
     Oklopcic & Hirata (2018); used when the He 2^3S network is active.
@@ -96,7 +104,8 @@ def fig_H():
     ex = aB_HII_HG97(T)
     fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(7.0, 6.2), sharex=True,
                                    gridspec_kw={"height_ratios": [2.4, 1.0]})
-    ax1.loglog(T, ex, color="#d62728", label="EXHALE: Hui & Gnedin 1997 (case B)")
+    ax1.loglog(T, ex, color="#d62728",
+               label="EXHALE legacy: Hui & Gnedin 1997 (case B)")
     ax1.loglog(T, aB_H_Draine(T), color="k", ls="--", label="Draine 2011 (case B)")
     ax1.loglog(T, aA_H_Draine(T), color="0.45", ls=":", label="Draine 2011 (case A)")
     ax1.loglog(T, aA_H_Taylor25(T), color="#1f77b4", ls="-.",
@@ -121,7 +130,7 @@ def fig_He():
 
     # He++ -> He+
     axL.loglog(T, aB_HeIII_HG97(T), color="#d62728",
-               label="EXHALE: Hui & Gnedin 1997 (case B)")
+               label="EXHALE legacy: Hui & Gnedin 1997 (case B)")
     axL.loglog(T, aB_HeIII_Draine(T), color="k", ls="--",
                label="Draine 2011 hydrogenic (case B)")
     axL.loglog(T, aA_HeIII_Taylor25(T), color="#1f77b4", ls="-.",

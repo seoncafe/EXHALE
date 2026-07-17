@@ -16,7 +16,10 @@
 \title{Methodology Comparison: \AIOLOS, Taylor et al. (2025, 2026),\\
 and Xing et al. (2023), and Their Adoption Potential for \EXHALE}
 \author{}
-\date{\today}
+% print the source modification date (not the compile date)
+\usepackage{filemod}
+\newcommand*{\isodate}[7]{#1-#2-#3}
+\date{\filemodparse\isodate{\jobname.tex}}
 
 \begin{document}
 \maketitle

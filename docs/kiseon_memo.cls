@@ -18,6 +18,9 @@
 %%
 %% \title, \author, \date behave exactly as in the original kiseon_memo.tex:
 %%   they store values used in the header/footer and the boxed \maketitle.
+%%   \date defaults to \docmoddate, the modification date (YYYY-MM-DD) of the
+%%   main .tex source, so an undated document always shows when its source
+%%   was last edited; an explicit \date{...} overrides it.
 
 \NeedsTeXFormat{LaTeX2e}
 \ProvidesClass{kiseon_memo}[2026/04/26 v1.1 Kiseon memo class]
@@ -199,10 +202,20 @@
 \renewcommand{\thesection}{\@arabic\c@section.}
 \renewcommand{\thesubsection}{\thesection\@arabic\c@subsection}
 
+%% ---- Source modification date ----------------------------------------------
+%% \docmoddate prints the modification date (YYYY-MM-DD) of the main .tex
+%% source (\jobname.tex), via the filemod package. It is the DEFAULT \date:
+%% a document that never calls \date shows its source's true modification
+%% date in the footer, and it stays current on every rebuild. An explicit
+%% \date{...} overrides it (pass \docmoddate to \date to keep it automatic).
+\RequirePackage{filemod}
+\newcommand*{\kiseonmemo@isodate}[7]{#1-#2-#3}
+\newcommand*{\docmoddate}{\filemodparse\kiseonmemo@isodate{\jobname.tex}}
+
 %% ---- Internal storage for title / author / date ---------------------------
 \newcommand{\TheTitle}{}
 \newcommand{\TheAuthor}{}
-\newcommand{\TheDate}{}
+\newcommand{\TheDate}{\docmoddate}
 
 \renewcommand{\title}[1]{\renewcommand{\TheTitle}{#1}}
 \renewcommand{\author}[1]{\renewcommand{\TheAuthor}{#1}}
