@@ -3582,6 +3582,137 @@ Secondary ionization (item 5) is a further default change;
 \texttt{use\_sec\_ion = False} restores the full-thermalization rates
 bit-identically.
 
+%=============================================================================
+\section{He recombination radiation $\to$ H\,I ionization coupling (\texttt{use\_he\_rec\_coupling}, 2026-07-17)}
+
+EXHALE carries no diffuse radiation field, so pure case B implicitly assumes
+every He\,II\,$\to$\,He\,I recombination photon is reabsorbed locally by helium
+($\alpha_B=\alpha_A-\alpha_1$, ground capture dropped). In H-dominated gas that
+is wrong: part of the He recombination radiation --- the $\ge24.6\,$eV
+ground-capture continuum, the 584\,\AA{} resonance line, the 19.8\,eV
+$2^3$S line, and the ${>}13.6\,$eV part of the He\,I two-photon continuum ---
+ionizes H instead. The physics and the choice of recipe were worked out in
+\texttt{docs/QUESTIONS\_2026-07-17.md}. This section documents an opt-in
+coupling using Draine's (2011) on-the-spot $y$/$z$ parametrization. New input
+key \texttt{He\_rec\_coupling} (flag \texttt{use\_he\_rec\_coupling}), default
+\texttt{False} $\to$ pure case B, bit-identical to the legacy path.
+
+\subsection{What changed and why}
+When on, the He recombination photons that ionize H are added as an extra H\,I
+photoionization rate with its photoelectron heating, and the He\,II
+recombination coefficient becomes $\alpha_B+y\,\alpha_1$ rather than pure case
+B. Two local parameters set the split:
+\begin{itemize}
+\item $y = 1/(1 + R\,n_{\rm HeI}/n_{\rm HI})$ (Draine Eq.~14.16), the fraction
+  of the $\ge24.6\,$eV ground-capture continuum absorbed by H, with the
+  cross-section ratio $R=\sigma_{\rm He}/\sigma_{\rm H}$ at the 24.6\,eV He\,I
+  ground edge. Evaluated from the code cross sections, $R=6.004$.
+\item $z = 0.67 + 0.29/(1 + n_e/n_{\rm crit})$ (Draine Sec.~15.5), the
+  density-dependent fraction of case-B (excited-state) cascade photons that
+  ionize H, with the $2^3$S critical density $n_{\rm crit} = 1100\,e^{1.2/T_4}
+  T_4^{1/2}\,\mathrm{cm^{-3}}$; it interpolates between Draine's two limits
+  ($\sim$0.96 low density $\to\sim$0.67 high density).
+\end{itemize}
+
+\paragraph{Atomic (case-B) mode.} No explicit $2^3$S: $\alpha_1$ is the
+Mao \& Kaastra (2016) ground ($1s^2$) capture and $\alpha_B$ the active He\,II
+case B. The He\,II recombination coefficient is $\alpha_{\rm eff} =
+\alpha_B + y\,\alpha_1$; the extra H\,I photoionization rate is
+$n_{\rm HeII}n_e[z\,\alpha_B + y\,\alpha_1]/n_{\rm HI}$; the photoelectron
+heating uses the ground-channel energy $E_{\rm gnd}=24.6-13.6=11.0\,$eV and a
+cascade-averaged $E_{\rm casc}\approx6.3\,$eV.
+
+\paragraph{He\,I $2^3$S (triplet) mode.} The mode that computes 10830: the
+decay channels are explicit, so $z$ is not used --- a $2^3$S atom destroyed by
+photoionization or Penning emits no 19.8\,eV photon, so the cascade must be
+summed at the actual channel rates ($\alpha_1$ is the $1^1$S channel). The
+$1^1$S channel coefficient is $y\,\alpha_1 + 0.25\,\alpha_B$: the net ground
+capture plus the singlet-excited capture channel ($0.25\,\alpha_B$) the current
+network omits. The H-ionizing photon production is summed over channels: ground
+$y\,\alpha_1 n_{\rm HeII}n_e$; singlet-excited $0.85\times0.25\,\alpha_B
+n_{\rm HeII}n_e$ ($0.85=\tfrac23$ from the 584\,\AA{} line $+$ $\tfrac13\times0.56$
+from the $2^1$S two-photon continuum above 13.6\,eV); $2^3$S radiative decay
+$A_{31}n(2^3S)$ (19.8\,eV line, always ionizes H); and $2^3$S collisionally
+converted to the singlets $n_e n(2^3S)(0.56\,q_{31a}+q_{31b})$. The channel
+deposit energies are 11.0 (ground), 5.6 (singlet-excited), 6.2 (19.8\,eV line),
+and 3.0/7.6\,eV (collisionally converted two-photon / 584\,\AA).
+
+The corrections are applied at the lagged (pre-solve) densities in the main
+ionization-equilibrium loop and re-evaluated at the advection-corrected
+densities in the post-processor (rate/coefficient before the advection solve,
+heating after). The He\,II recombination \emph{cooling} is left at
+$kT\,\alpha_B$; the mismatch is at most $y\,\alpha_1 kT$, negligible.
+
+\subsection{Files touched}
+\texttt{util\_ion\_eq.f90} (new \texttt{he\_rec\_coupling} subroutine returning
+the corrected He\,II recombination coefficient, the extra H\,I photoionization
+rate, and the photoelectron heating; all zero when off); \texttt{Cool\_coeff.f90}
+(new \texttt{alpha1\_HeII\_mao}, the Mao \& Kaastra 2016 ground $1s^2$ capture,
+i.e.\ the $\alpha_1$ subtracted in \texttt{alphaB\_HeII\_new});
+\texttt{ionization\_equilibrium.f90} and \texttt{post\_process\_adv.f90}
+(callers wired to \texttt{rcheiiB}/\texttt{P\_HI}/\texttt{heat} in the main loop
+and to the advection ODE and \texttt{theat} in post-process);
+\texttt{input\_read.f90}, \texttt{parameters.f90}, \texttt{write\_setup\_report.f90}
+(\texttt{use\_he\_rec\_coupling} declared, defaulted \texttt{.false.}, parsed,
+echoed); \texttt{docs/input\_schema.md} (key K14d).
+
+\subsection{Quantitative check (HD\,209458\,b)}
+Protocol: HD\,209458\,b \texttt{input.inp}\,$+$\,\texttt{metals.inp}, the
+converged profiles loaded as IC, then four runs
+$\{$atomic, He\,$2^3$S$\}\times\{$off, on$\}$ each relaxed for 15000 steps from
+the same IC. The IC predates the 2026-07-17 rate update, so both branches share
+the same partial re-relaxation and \textbf{only the on/off difference is
+meaningful} (not the absolute values). Across the wind $y\sim0.65$--$0.69$ and
+$R=\sigma_{\rm He}/\sigma_{\rm H}(24.6\,\mathrm{eV})=6.004$. Script
+\texttt{docs/plot\_he\_rec\_coupling.py}; figures
+\texttt{docs/figures/he\_rec\_coupling\_\{atomic,heitr\}.pdf}.
+
+\begin{center}
+\small
+\begin{tabular}{@{}l p{0.44\linewidth} l@{}}
+\toprule
+Quantity (on/off) & Atomic mode & He\,I $2^3$S mode\\
+\midrule
+He\,I            & $\times1.04$ (1.2\,$R_p$) $\to\times1.25$ plateau (1.5--3.5\,$R_p$) $\to\times1.32$ (3\,$R_p$) & $\times1.01$--$1.16$\\
+He\,II (min.)    & $\times0.72$--$0.74$ (1.1--1.2\,$R_p$) $\to\sim1.0$ (2\,$R_p$) & $\times0.885$\\
+$n(2^3S)$        & --- (not computed) & $\times0.89$ (1.05), $\times0.92$ (1.2), $\times0.98$--$1.01$ (1.5--2\,$R_p$)\\
+Temperature      & $\le+1\%$ (outer $+3\%$) & $\le+0.3\%$\\
+$\log\dot M$     & $9.58\to9.65$ ($+0.07\,$dex, ${\sim}{+}17\%$) & $9.57\to9.61$ ($+0.04\,$dex, ${\sim}{+}10\%$)\\
+\bottomrule
+\end{tabular}
+\end{center}
+
+The atomic mode carries the larger He ionization-structure change (case B
+alone, $y=0$, under-recombines He), and its extra H photoionization raises the
+mass-loss rate by ${\sim}17\%$. In the $2^3$S mode the 10830-forming region
+(1.5--2\,$R_p$) sees $n(2^3S)$ within ${\sim}1$--$2\%$ of the off case, so the
+He\,I 10830 line is essentially unchanged, while the base $2^3$S drops
+${\sim}11\%$ (the TR-mode $1^1$S channel coefficient change feeds directly into
+$n_{\rm HeII}$). The temperature response is small in both modes. Default off is
+bit-identical to the pre-update path; existing goldens and gates are unaffected.
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.98\textwidth]{figures/he_rec_coupling_atomic.pdf}
+\caption{He recombination radiation $\to$ H\,I coupling, \textbf{atomic mode}
+(HD\,209458\,b). Clockwise from top left: He ionization fractions off vs.\ on;
+the on/off ratio for He\,I and He\,II; the photoheating rate; and the
+temperature. Turning the coupling on raises He\,I and lowers the He\,II minimum,
+with the ${\sim}17\%$ mass-loss increase reflected in the extra photoheating.}
+\label{fig:hrc-atomic}
+\end{figure}
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.98\textwidth]{figures/he_rec_coupling_heitr.pdf}
+\caption{Same comparison in the \textbf{He\,I $2^3$S mode}. The extra panel and
+ratio curve track the metastable $2^3$S density: it drops ${\sim}11\%$ at the
+base but stays within ${\sim}1$--$2\%$ of the off case through the
+10830-forming region (1.5--2\,$R_p$), so the He\,I 10830 line is essentially
+unchanged.}
+\label{fig:hrc-heitr}
+\end{figure}
+
 % ===================================================================== %
 %  APPENDIX --- bookkeeping material, kept separate from the dated update log
 % ===================================================================== %

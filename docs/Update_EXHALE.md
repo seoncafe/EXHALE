@@ -2938,3 +2938,117 @@ charge-weighting correction (item 4) and the van Hoof Gaunt table (item 3), both
 physical corrections intentionally not tied to the switch. Secondary ionization
 (item 5) is a further default change; `use_sec_ion = False` restores the
 full-thermalization rates bit-identically.
+
+## 37. He recombination radiation -> H I ionization coupling (`use_he_rec_coupling`, 2026-07-17)
+
+### What changed and why
+
+EXHALE carries no diffuse radiation field, so pure case B implicitly assumes
+every He II -> He I recombination photon is reabsorbed locally by helium
+(`alpha_B = alpha_A - alpha_1`, ground capture dropped). In H-dominated gas that
+is wrong: part of the He recombination radiation (the >= 24.6 eV ground-capture
+continuum, the 584 A resonance line, the 19.8 eV 2^3S line, and the >13.6 eV
+part of the He I two-photon continuum) ionizes H instead. The physics and the
+choice of recipe were worked out in `docs/QUESTIONS_2026-07-17.md`.
+
+This adds an opt-in coupling using Draine's (2011) on-the-spot `y`/`z`
+parametrization. New input key `He_rec_coupling` (flag `use_he_rec_coupling`),
+default `False` -> pure case B, bit-identical to the legacy path. When on, the He
+recombination photons that ionize H are added as an extra H I photoionization
+rate with its photoelectron heating, and the He II recombination coefficient
+becomes `alpha_B + y alpha_1` rather than pure case B.
+
+Two local parameters set the split:
+
+- `y = 1 / (1 + R n_HeI/n_HI)` (Draine Eq. 14.16), the fraction of the
+  >= 24.6 eV ground-capture continuum absorbed by H, with the cross-section
+  ratio `R = sigma_He/sigma_H` at the 24.6 eV He I ground edge. Evaluated from
+  the code cross sections, `R = 6.004`.
+- `z = 0.67 + 0.29/(1 + n_e/n_crit)` (Draine Sec. 15.5), the density-dependent
+  fraction of case-B (excited-state) cascade photons that ionize H, with the
+  2^3S critical density `n_crit = 1100 e^{1.2/T4} T4^{0.5} cm^-3`. This
+  interpolates between Draine's two limits (~0.96 low density -> ~0.67 high
+  density).
+
+### The two modes
+
+**Atomic (case-B) mode** (no explicit 2^3S): `alpha_1` is the Mao & Kaastra
+(2016) ground (1s^2) capture and `alpha_B` the active He II case B.
+
+- He II recombination coefficient `alpha_eff = alpha_B + y alpha_1`.
+- Extra H I photoionization rate `n_HeII n_e [z alpha_B + y alpha_1] / n_HI`.
+- Photoelectron heating with ground-channel energy `E_gnd = 24.6 - 13.6 =
+  11.0 eV` and a cascade-averaged `E_casc ~ 6.3 eV`.
+
+**He I 2^3S (triplet, TR) mode** (computes 10830): the decay channels are
+explicit, so `z` is not used -- a 2^3S atom destroyed by photoionization or
+Penning emits no 19.8 eV photon, so the cascade must be summed at the actual
+channel rates. `alpha_1` is the 1^1S channel (`rec_HeII_11S`).
+
+- 1^1S channel coefficient `y alpha_1 + 0.25 alpha_B`: the net ground capture
+  plus the singlet-excited capture channel (0.25 alpha_B) that the current
+  network omits.
+- H-ionizing photon production summed over channels: ground `y alpha_1
+  n_HeII n_e`; singlet-excited `0.85 x 0.25 alpha_B n_HeII n_e` (0.85 = 2/3
+  from the 584 A resonance line plus 1/3 x 0.56 from the 2^1S two-photon
+  continuum above 13.6 eV); 2^3S radiative decay `A31 n(2^3S)` (19.8 eV line,
+  always ionizes H); 2^3S collisionally converted to the singlets
+  `n_e n(2^3S) (0.56 q31a + q31b)`.
+- Channel deposit energies 11.0 (ground), 5.6 (singlet-excited), 6.2 (19.8 eV
+  line), and 3.0/7.6 eV (collisionally converted two-photon / 584 A).
+
+The corrections are applied at the lagged (pre-solve) densities in the main
+ionization-equilibrium loop, and re-evaluated at the advection-corrected
+densities in the post-processor (rate/coefficient before the advection solve,
+heating after). The He II recombination *cooling* is left at `kT alpha_B`; the
+mismatch is at most `y alpha_1 kT`, negligible.
+
+### Files touched
+
+- `src/modules/radiation/util_ion_eq.f90` -- new `he_rec_coupling` subroutine
+  returning the corrected He II recombination coefficient, the extra H I
+  photoionization rate, and the photoelectron heating; all zero when off.
+- `src/modules/radiation/Cool_coeff.f90` -- new `alpha1_HeII_mao` (the Mao &
+  Kaastra 2016 ground 1s^2 capture, i.e. the `alpha_1` subtracted in
+  `alphaB_HeII_new`).
+- `src/modules/radiation/ionization_equilibrium.f90`,
+  `src/modules/post_process/post_process_adv.f90` -- callers wired to add the
+  coupling to `rcheiiB` / `P_HI` / `heat` (main loop) and to the advection ODE
+  and `theat` (post-process).
+- `src/modules/files_IO/input_read.f90`, `src/modules/init/parameters.f90`,
+  `src/modules/files_IO/write_setup_report.f90` -- `use_he_rec_coupling`
+  declared, defaulted `.false.`, parsed, and echoed to `parse_dump.txt`.
+- `docs/input_schema.md` -- key K14d (`He_rec_coupling`).
+
+### Quantitative check (HD 209458 b)
+
+Protocol: HD 209458 b `input.inp` + `metals.inp`, the converged profiles loaded
+as IC, then four runs `{atomic, He 2^3S} x {off, on}` each relaxed for 15000
+steps from the same IC. The IC predates the 2026-07-17 rate update, so both
+branches share the same partial re-relaxation and **only the on/off difference
+is meaningful** (not the absolute values). Across the wind `y ~ 0.65-0.69` and
+`R = sigma_He/sigma_H(24.6 eV) = 6.004`. Script:
+`docs/plot_he_rec_coupling.py`; figures
+`docs/figures/he_rec_coupling_{atomic,heitr}.pdf`.
+
+| Quantity (on/off) | Atomic mode | He I 2^3S mode |
+|---|---|---|
+| He I | x1.04 (1.2 R_p) -> x1.25 plateau (1.5-3.5 R_p) -> x1.32 (3 R_p) | x1.01-1.16 |
+| He II (minimum) | x0.72-0.74 (1.1-1.2 R_p) -> ~1.0 (2 R_p) | x0.885 |
+| n(2^3S) | --- (not computed) | x0.89 (1.05), x0.92 (1.2), x0.98-1.01 (1.5-2 R_p) |
+| Temperature | <= +1% (outer +3%) | <= +0.3% |
+| log Mdot | 9.58 -> 9.65 (+0.07 dex, ~+17%) | 9.57 -> 9.61 (+0.04 dex, ~+10%) |
+
+The atomic mode carries the larger He ionization-structure change (case B
+alone, `y = 0`, under-recombines He), and its extra H photoionization raises the
+mass-loss rate by ~17%. In the 2^3S mode the 10830-forming region (1.5-2 R_p)
+sees n(2^3S) within ~1-2% of the off case, so the He I 10830 line is essentially
+unchanged, while the base 2^3S drops ~11% (the TR-mode 1^1S channel coefficient
+change feeds directly into `n_HeII`). The temperature response is small in both
+modes.
+
+### Effect on existing results
+
+Default off is bit-identical to the pre-update path; existing goldens and gates
+are unaffected. Turning `He_rec_coupling = True` on changes the He ionization
+structure and the mass-loss rate as tabulated above.
