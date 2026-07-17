@@ -38,6 +38,7 @@
 	real*8  :: Told,heaold
 	real*8  :: reco,coio,brem,coex,cool,cool_M
 	real*8  :: TT
+	real*8  :: GF_z1,GF_z2   ! free-free Gaunt at ion net charge Z_ion = 1, 2
 	integer :: im
 
 	! Parameters. The energy-equation coefficients are read from the named-field
@@ -100,16 +101,21 @@
 
    !-- Bremsstrahlung --!
 
-   ! Cooling rate (H/He plus every charged metal ion, Z^2-weighted, matching
-   ! the brem accumulator in eval_cool). Neutral stages carry z2 = 0.
-   brem = ih**2.0*GF_func(TT,ih)*nhii                       &  ! HII
-        + ihe**2.0*GF_func(TT,ihe)*(nheii + nheiii)            ! He
+   ! Cooling rate (H/He plus every charged metal ion). Free-free scales with
+   ! the ion NET charge Z_ion: H II, He II and singly-ionized metals are
+   ! Z_ion = 1; He III and doubly-ionized metals are Z_ion = 2. The Gaunt
+   ! factor is evaluated at Z_ion. Matches the brem accumulator in eval_cool.
+   GF_z1 = GF_func(TT, 1.0d0)
+   GF_z2 = GF_func(TT, 2.0d0)
+   brem = GF_z1*nhii + GF_z1*nheii + 4.0d0*GF_z2*nheiii   ! HII, HeII, HeIII
    if (pp_metal_on) then
       do im = 1,n_mion
          if (mion_z2(im) == 0) cycle
-         brem = brem + dble(mion_z2(im))                          &
-                       *GF_func(TT, dble(melem_Z(mion_elem(im)))) &
-                       *pp_nm_cell(im)
+         if (mion_stage(im) == 2) then
+            brem = brem + dble(mion_z2(im))*GF_z2*pp_nm_cell(im)
+         else
+            brem = brem + dble(mion_z2(im))*GF_z1*pp_nm_cell(im)
+         endif
       enddo
    endif
    brem = 1.426e-27*sqrt(TT)*brem

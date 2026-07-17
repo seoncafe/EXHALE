@@ -54,6 +54,20 @@
       !  .true. = legacy ATES two-term fit).  (No recombination switch: the
       !  Benjamin+1999 He recombination already matches modern data.)
       logical :: ates_photoion_rate = .false.
+      ! H/He recombination + collisional-ionization rate model:
+      !  .false. (default) = Badnell RR (+ He II DR) minus Mao & Kaastra 2016
+      !   alpha_1 for case-B recombination, and Voronov 1997 collisional
+      !   ionization; .true. = legacy ATES fits (Hui & Gnedin 1997 recombination,
+      !   Abel+1997/HG97 collisional ionization).  Free-free always uses the
+      !   van Hoof et al. 2014 Gaunt table regardless of this flag.
+      logical :: legacy_hhe_rates = .false.
+      ! Secondary ionization by fast photoelectrons (Shull & van Steenberg 1985).
+      !  .true. (default) = high-energy photoelectrons (E0 > 40 eV) partition their
+      !   excess energy into heating f_heat(x), H I secondary ionization, and He I
+      !   secondary ionization following the SvS85 asymptotic fits; x is the ionized
+      !   fraction of the H+He nuclei. .false. = legacy full-thermalization
+      !   (bit-identical to the pre-2026 behavior).
+      logical :: use_sec_ion = .true.
       ! He/H diffusive separation (docs/design_hehe_diffusion.md):
       !  .false. (default) = He/H frozen at the input HeH everywhere (legacy);
       !  .true. = evolve the He element ratio with advection + molecular
@@ -261,6 +275,11 @@
       real*8,parameter ::  e_th_HeI  = 24.6      ! Threshold for HeI ionization
       real*8,parameter ::  e_th_HeII = 54.4      ! Threshold for HeII ionization
       real*8,parameter ::  e_th_HeTR = 4.80      ! Threshold for HeI triplet ionization
+      ! Photoelectron energy threshold above which the SvS85 secondary-ionization
+      ! partition is applied (40 eV, matching the wind_ae X-ray cutoff). Below it a
+      ! photoelectron thermalizes fully. Note SvS85 is strictly an E0 >~ 100 eV
+      ! asymptotic fit; using it down to 40 eV is a deliberate approximation.
+      real*8, parameter :: E_sec_ion = 40.0d0
       real*8,parameter ::  e_th_MgI  = 7.646     ! Threshold for MgI ionization
       real*8,parameter ::  e_th_MgII = 15.035    ! Threshold for MgII ionization
 

@@ -59,7 +59,9 @@
 	integer :: Neq_adv,lwa_adv   ! advection system size (metal-independent)
 	 
 	real*8, dimension(1-Ng:N+Ng) ::  T_K,p_out,T_out     ! Dimensional temperature
-	real*8, dimension(1-Ng:N+Ng) ::  nh,nhe,ne,n_tot 
+	real*8, dimension(1-Ng:N+Ng) ::  nh,nhe,ne,n_tot
+	! Ionized fraction of the H+He nuclei, for the SvS85 secondary ionization.
+	real*8, dimension(1-Ng:N+Ng) ::  xion
 	
 	! Discard scratch: distinct locals for the discarded intent(out) slots so no
 	! two out-arguments in the same call alias one another.
@@ -226,9 +228,14 @@
 	! Use singlet if included
 	nheiS = nhei
 	if (thereis_HeITR) nheiS = nhei - nheiTR
-	nh  = nhi  + nhii 
-	nhe = nheiS + nheii + nheiii 
+	nh  = nhi  + nhii
+	nhe = nheiS + nheii + nheiii
 	if (thereis_HeITR) nhe = nhe + nheiTR
+
+	! Ionized fraction of the H+He nuclei, for the SvS85 secondary-ionization
+	! partition (metals excluded; nheiTR is neutral and not in the numerator).
+	! Reused for both PH_heat calls below (nhi/nheii/nheiii unchanged between them).
+	xion = min(max((nhii + nheii + nheiii)/max(nh + nhe, 1.0d-99), 0.0d0), 1.0d0)
 
 	! Free electron density (assuming overall neutrality; nm_w adds the
 	! metal electrons under the eos_metals policy). Molecular-ion electrons are
@@ -244,11 +251,11 @@
    ! Calculate the photoionization rates
 
 	if (thereis_He) then
-		call PH_heat_HHe(nhi,nhei,nheii,nheiTR, nm_w,           &
+		call PH_heat_HHe(nhi,nhei,nheii,nheiTR, nm_w, xion,     &
 					 P_HI,P_HeI,P_HeII,P_HeITR, P_m,        &
 					 dum_v1,dum_v2)
   	else
-	  	call PH_heat_H(nhi,P_HI,dum_v1,dum_v2)
+	  	call PH_heat_H(nhi, xion, P_HI,dum_v1,dum_v2)
   	endif
 
    !---- Recombination rates ----!
@@ -537,11 +544,11 @@
 	!---- Update photoheating rate ----!
 	
 	if (thereis_He) then
-		call PH_heat_HHe(nhi,nhei,nheii,nheiTR, nm_w,           &
+		call PH_heat_HHe(nhi,nhei,nheii,nheiTR, nm_w, xion,     &
 		                 dum_v1,dum_v2,dum_v3,dum_v4, P_m,          &
 		                 theat,dum_v5)
   	else
-	  	call PH_heat_H(nhi,dum_v1,theat,dum_v2)
+	  	call PH_heat_H(nhi, xion, dum_v1,theat,dum_v2)
   	endif
 
 	! Adimensionalize

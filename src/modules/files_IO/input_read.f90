@@ -317,6 +317,8 @@
 		base_bc_mode     = 0          ! density-anchored base (legacy) by default
 		resid_vol        = .true.     ! volume-weighted residual norm by default
 		ates_photoion_rate = .false.  ! default: Verner+1996 He I (1^1S) photoion.
+		legacy_hhe_rates   = .false.  ! default: Badnell/Mao + Voronov H/He rates
+		use_sec_ion        = .true.   ! default: SvS85 secondary ionization ON
 		do i = 1, nlines
 			line = filelines(i)
 			if (len_trim(line) .eq. 0) cycle
@@ -381,6 +383,18 @@
 				! (default is Verner+1996). "ATES_photoionization_rate: True"
 				str = get_word(line, 2)
 				if (str .eq. 'True' .or. str .eq. 'true') ates_photoion_rate = .true.
+			else if (lbl_match(line, 'Legacy_HHe_rates')) then
+				! Revert H/He recombination + collisional ionization to the legacy
+				! ATES fits (default is Badnell/Mao case B + Voronov 1997).
+				! "Legacy_HHe_rates: True"
+				str = get_word(line, 2)
+				if (str .eq. 'True' .or. str .eq. 'true') legacy_hhe_rates = .true.
+			else if (lbl_match(line, 'Secondary_ionization')) then
+				! Turn OFF SvS85 secondary ionization (default ON).
+				! "Secondary_ionization: False"
+				str = get_word(line, 2)
+				if (str .eq. 'False' .or. str .eq. 'false') use_sec_ion = .false.
+				if (str .eq. 'True'  .or. str .eq. 'true' ) use_sec_ion = .true.
 			else if (lbl_match(line, 'Molecular chemistry')) then
 				! molecular network (docs/lower_atmosphere_*). Solving molecular
 				! chemistry implies the molecular-base particle count for the

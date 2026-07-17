@@ -45,6 +45,8 @@
 	real*8, dimension(1-Ng:N+Ng) ::  nh,nhi,nhii,                   & ! Species densities
 	                                 nhe,nhei,nheii,nheiii,nheiTR,  &
 	                                 ne,n_in_dim
+	! Ionized fraction of the H+He nuclei, for the SvS85 secondary ionization.
+	real*8, dimension(1-Ng:N+Ng) ::  xion
    ! Metal ion densities in canonical species_table order (col im maps
    ! to f_sp column mion_fsp(im)); used throughout in place of named
    ! scalars for each ion so the driver scales with the number of metals.
@@ -164,7 +166,11 @@
 		          + 3.0d0*nmol_eq(:,3) + nmol_eq(:,4)
 		nhe = nhe + nmol_eq(:,4)
 	endif
-	
+
+	! Ionized fraction of the H+He nuclei, for the SvS85 secondary-ionization
+	! partition (metals excluded; nheiTR is neutral and not in the numerator).
+	xion = min(max((nhii + nheii + nheiii)/max(nh + nhe, 1.0d-99), 0.0d0), 1.0d0)
+
 	! Free electron density (assuming overall neutrality; nm adds the
 	! metal electrons under the eos_metals policy)
 	if (thereis_mol) then
@@ -186,16 +192,16 @@
       
 	if (thereis_He) then
 		if (thereis_mol) then
-			call PH_heat_HHe(nhi,nhei,nheii,nheiTR, nm,          &
+			call PH_heat_HHe(nhi,nhei,nheii,nheiTR, nm, xion,    &
 			         P_HI,P_HeI,P_HeII,P_HeITR, P_m,             &
 			         heat,q, nmol_eq(:,1),P_H2)
 		else
-      	call PH_heat_HHe(nhi,nhei,nheii,nheiTR, nm,             &
+      	call PH_heat_HHe(nhi,nhei,nheii,nheiTR, nm, xion,      &
       			     P_HI,P_HeI,P_HeII,P_HeITR, P_m,        &
       			     heat,q)
 		endif
 	else
-		call PH_heat_H(nhi,P_HI,heat,q)
+		call PH_heat_H(nhi, xion, P_HI,heat,q)
 		P_m = 0.0
 	endif
 

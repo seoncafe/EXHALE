@@ -118,6 +118,8 @@ by the Python loaders except where noted.
 | K12 | `Lya stellar boost` | word 5 | real | - | `5.0` | `lya_star_boost` | F360-362. |
 | K13 | `du_th` | word 3 (+ optional word 4) | real(s) | - | `du_th=1.0e-3`, `du_th_plm=-1` | `du_th`, `du_th_plm` | F363-383. Two values only if `Reconstruction scheme: PLM+WENO3` (order dependency on line 18). |
 | K14 | `ATES_photoionization_rate` | word 2 == `True`/`true` | flag | - | `.false.` (Verner 1996) | `ates_photoion_rate` | F384-388. Reverts He I (1^1S) photoionization to the legacy ATES fit. |
+| K14b | `Legacy_HHe_rates` | word 2 == `True`/`true` | flag | - | `.false.` (Badnell/Mao + Voronov) | `legacy_hhe_rates` | Reverts H/He case-B recombination and collisional ionization to the legacy ATES fits (Hui & Gnedin 1997 recombination; Abel+1997/HG97 collisional ionization). Default uses Badnell RR (+ He II DR) minus Mao & Kaastra 2016 alpha_1 for case B, and Voronov 1997 collisional ionization. Free-free always uses the van Hoof et al. 2014 Gaunt table. |
+| K14c | `Secondary_ionization` | word 2 == `False`/`false` (or `True`) | flag | - | `.true.` (SvS85 secondary ionization ON) | `use_sec_ion` | Shull & van Steenberg (1985) secondary ionization by fast photoelectrons (E0 > 40 eV) in the main loop: heating is scaled by f_heat(x) and H I / He I gain secondary ionizations; x is the ionized fraction of the H+He nuclei. Set `False` to restore full photoelectron thermalization (bit-identical to the legacy path). |
 | K15 | `Molecular chemistry` | word 3 == `True`/`true` | flag | - | `.false.` | `thereis_mol` | F389-392. Requires He; exclusive with `He_diffusion` and metals (fatal otherwise, F637-650). |
 | K16 | `Molecular base` | word 3 == `True`/`true` | flag | - | `.false.` | `molecular_base` | F393-396. EOS-only molecular base correction to `ntot_bc`. |
 | K17 | `Lower atmosphere` | word 3 (+ optional word 4) | string + real | - / R_J | `lower_atm_mode=0` | `lower_atm_mode`, `lower_atm_r1bar` | F397-404. `none`/`analytic`/`vulcan`. Triggers `run_lower_atm_prestep` (needs `EXHALE_ROOT`). |
@@ -235,8 +237,8 @@ chain of `else if (index(line, 'KEY') > 0)` clauses. Matching is:
 ### 3.3 Value-word conventions differ by key
 
 Value word position is not uniform: the `He_*`, `CFL`, `Solver`,
-`ATES_photoionization_rate` keys take their value at word 2 (short one-word
-labels), while multi-word labels (`Stellar Lya flux`, `Base BC`, `Domain mode`,
+`ATES_photoionization_rate`, `Legacy_HHe_rates` keys take their value at word 2
+(short one-word labels), while multi-word labels (`Stellar Lya flux`, `Base BC`, `Domain mode`,
 etc.) place the value at word 3, 4, or 5. The table above records each
 position. This is a direct consequence of `get_word` counting whitespace tokens
 rather than parsing `key: value`.

@@ -19,13 +19,19 @@
 	
 	! ------------------------------------------------------------- !
 
-	subroutine PH_heat_H(nhi,P_HI,heat,q)
+	subroutine PH_heat_H(nhi, xion, P_HI,heat,q)
 	! Computes photoionization rates and heating rates for
 	!	an atmosphere composed of H and He
-	
+
 	integer :: i,j
-	
-	real*8, dimension(1-Ng:N+Ng),intent(in) :: nhi    
+
+	real*8, dimension(1-Ng:N+Ng),intent(in) :: nhi
+	! Ionized fraction of the H+He nuclei, for the SvS85 secondary ionization.
+	real*8, dimension(1-Ng:N+Ng),intent(in) :: xion
+
+	! SvS85 secondary-ionization scratch (H-only: no He I secondary channel).
+	real*8, dimension(Nl) :: acc_secHI, fhv
+	real*8 :: xj, fh, fiHI, R_secHI
 
 	! Dummy zero 
 	real*8, dimension(1-Ng:N+Ng), parameter :: nhei   = 0.0, nheii  = 0.0
@@ -70,7 +76,20 @@
 
 		! Initial integrands
 		int_f = F_XUV*exp(-tauE)/(1.0 + a_tau*tauE)
-		int_H = int_f*(1.0-e_th_HI/e_v)*s_hi*nhi(j)
+		! SvS85 secondary-ionization energy partition (scalars for this cell).
+		if (use_sec_ion) then
+			xj   = min(max(xion(j), 0.0d0), 1.0d0)
+			fh   = svs85_fheat(xj)
+			fiHI = svs85_fion_HI(xj)
+		else
+			fh = 1.0d0; fiHI = 0.0d0
+		endif
+		! Heating fraction: fh above the E_sec_ion photoelectron threshold, 1
+		! (full thermalization) below it. fhv = 1 when use_sec_ion is off, so
+		! the heating integrand is bit-identical to the legacy path.
+		fhv = 1.0d0
+		if (use_sec_ion) fhv = merge(fh, 1.0d0, e_v > e_th_HI + E_sec_ion)
+		int_H = int_f*(1.0-e_th_HI/e_v)*fhv*s_hi*nhi(j)
 		int_1 = int_f*s_hi/e_v
 		int_q = int_f*s_hi*nhi(j)
 
@@ -80,8 +99,15 @@
 		q_abs = sum(int_q*de_v)
 		
 		! Multiply for the dimensional coefficient 
-		heat(j)   = Hea_1*1.0e-18	
-		P_HI(j)   = PIR_1*1.0e-18*erg2eV	
+		heat(j)   = Hea_1*1.0e-18
+		P_HI(j)   = PIR_1*1.0e-18*erg2eV
+		! Add the H I secondary-ionization rate from fast photoelectrons.
+		if (use_sec_ion) then
+			acc_secHI = int_f*s_hi*nhi(j)/e_v * &
+			     merge(fiHI*(e_v-e_th_HI)/e_th_HI, 0.0d0, e_v > e_th_HI + E_sec_ion)
+			R_secHI = sum(acc_secHI*de_v)*1.0e-18*erg2eV
+			P_HI(j) = P_HI(j) + R_secHI/max(nhi(j), 1.0d-99)
+		endif
 		! Guard: q_abs (absorbed-energy normalization) can be 0 in a fully
 		! transparent/unilluminated cell; avoid 0/0 -> NaN in the efficiency.
 		q(j)      = Hea_1/max(q_abs, 1.0d-99)
@@ -92,7 +118,7 @@
 
 	! ------------------------------------------------------------- !
 	
-	subroutine PH_heat_HHe(nhi,nhei,nheii,nheiTR, nm,             &
+	subroutine PH_heat_HHe(nhi,nhei,nheii,nheiTR, nm, xion,       &
 				     P_HI,P_HeI,P_HeII,P_HeITR, P_m,       &
 				     heat,q, nh2,P_H2)
 	! Computes photoionization rates and heating rates for an
@@ -108,6 +134,8 @@
 	real*8, dimension(1-Ng:N+Ng),intent(in) :: nhi,nhei,nheii
 	real*8, dimension(1-Ng:N+Ng),intent(in) :: nheiTR
 	real*8, dimension(1-Ng:N+Ng,n_mion),intent(in) :: nm
+	! Ionized fraction of the H+He nuclei, for the SvS85 secondary ionization.
+	real*8, dimension(1-Ng:N+Ng),intent(in) :: xion
 	! Optional H2 (molecular extension): adds the H2 opacity,
 	! photoionization rate P_H2 [1/s] and photoelectric heating using the
 	! Yan+1998 cross section s_h2 (threshold e_th_H2 = 15.4 eV).
@@ -130,6 +158,9 @@
 	real*8, dimension(Nl) :: int_f,int_1,int_15,int_2,int_TR
 	real*8, dimension(Nl) :: int_m
 	real*8, dimension(Nl) :: int_q,int_H,acc_H,acc_q
+	! SvS85 secondary-ionization scratch.
+	real*8, dimension(Nl) :: acc_secHI,acc_secHeI,fhv
+	real*8 :: xj,fh,fiHI,fiHeI,R_secHI,R_secHeI
 
    ! Photo ionization rates
 	real*8, dimension(1-Ng:N+Ng), intent(out) ::  P_HI
@@ -164,6 +195,7 @@
 	!$OMP PRIVATE ( Hea_1,PIR_1,PIR_15,PIR_2,PIR_TR,PIR_H2,int_h2,               &
 	!$OMP           Pm_loc,                                                      &
 	!$OMP           int_1,int_15,int_2,int_TR,int_m,                            &
+	!$OMP           acc_secHI,acc_secHeI,fhv,xj,fh,fiHI,fiHeI,R_secHI,R_secHeI, &
 	!$OMP           int_f,int_H,int_q,acc_H,acc_q,tauE,tau_m,q_abs,i,k,j)
 
 	do j = 1-Ng,N+Ng
@@ -197,18 +229,97 @@
 		if (thereis_HeITR) int_TR =  int_f*s_heiTR/e_v
 		if (present(nh2)) int_h2 = int_f*s_h2/e_v
 
+		! SvS85 secondary-ionization energy partition (scalars for this cell).
+		if (use_sec_ion) then
+			xj    = min(max(xion(j), 0.0d0), 1.0d0)
+			fh    = svs85_fheat(xj)
+			fiHI  = svs85_fion_HI(xj)
+			fiHeI = svs85_fion_HeI(xj)
+		else
+			fh = 1.0d0; fiHI = 0.0d0; fiHeI = 0.0d0
+		endif
+		acc_secHI  = 0.0d0
+		acc_secHeI = 0.0d0
+
 		! Photoheating integral. Accumulate the inner bracket in the
 		! original order (H, He, then metals in iphot order) and apply
-		! the int_f factor once, preserving the original association.
-		acc_H = (1.0-e_th_HI  /e_v)*s_hi  *nhi  (j)
-		acc_H = acc_H + (1.0-e_th_HeI /e_v)*s_hei *nheiS(j)
-		acc_H = acc_H + (1.0-e_th_HeII/e_v)*s_heii*nheii(j)
-		if (present(nh2))                                                 &
-			acc_H = acc_H + (1.0-e_th_H2/e_v)*s_h2*nh2(j)
+		! the int_f factor once, preserving the original association. Where a
+		! photoelectron energy E0 = e_v - E_th exceeds E_sec_ion, only f_heat(x)
+		! of its excess is deposited as heat (fhv) and the balance drives H I /
+		! He I secondary ionizations; below the threshold it thermalizes fully.
+		! fhv = 1 when use_sec_ion is off, so the heating integrand is
+		! bit-identical to the legacy full-thermalization path. He I triplet
+		! photoionization (threshold e_th_HeTR = 4.8 eV) deposits its
+		! photoelectron energy here as well, consistently with its opacity
+		! and its P_HeITR rate.
+		fhv = 1.0d0
+		if (use_sec_ion) fhv = merge(fh, 1.0d0, e_v > e_th_HI + E_sec_ion)
+		acc_H = (1.0-e_th_HI/e_v)*fhv*s_hi*nhi(j)
+		if (use_sec_ion) then
+			acc_secHI  = acc_secHI  + s_hi*nhi(j)/e_v *                       &
+			     merge(fiHI *(e_v-e_th_HI)/e_th_HI , 0.0d0, e_v > e_th_HI + E_sec_ion)
+			acc_secHeI = acc_secHeI + s_hi*nhi(j)/e_v *                       &
+			     merge(fiHeI*(e_v-e_th_HI)/e_th_HeI, 0.0d0, e_v > e_th_HI + E_sec_ion)
+		endif
+
+		fhv = 1.0d0
+		if (use_sec_ion) fhv = merge(fh, 1.0d0, e_v > e_th_HeI + E_sec_ion)
+		acc_H = acc_H + (1.0-e_th_HeI/e_v)*fhv*s_hei*nheiS(j)
+		if (use_sec_ion) then
+			acc_secHI  = acc_secHI  + s_hei*nheiS(j)/e_v *                    &
+			     merge(fiHI *(e_v-e_th_HeI)/e_th_HI , 0.0d0, e_v > e_th_HeI + E_sec_ion)
+			acc_secHeI = acc_secHeI + s_hei*nheiS(j)/e_v *                    &
+			     merge(fiHeI*(e_v-e_th_HeI)/e_th_HeI, 0.0d0, e_v > e_th_HeI + E_sec_ion)
+		endif
+
+		fhv = 1.0d0
+		if (use_sec_ion) fhv = merge(fh, 1.0d0, e_v > e_th_HeII + E_sec_ion)
+		acc_H = acc_H + (1.0-e_th_HeII/e_v)*fhv*s_heii*nheii(j)
+		if (use_sec_ion) then
+			acc_secHI  = acc_secHI  + s_heii*nheii(j)/e_v *                   &
+			     merge(fiHI *(e_v-e_th_HeII)/e_th_HI , 0.0d0, e_v > e_th_HeII + E_sec_ion)
+			acc_secHeI = acc_secHeI + s_heii*nheii(j)/e_v *                   &
+			     merge(fiHeI*(e_v-e_th_HeII)/e_th_HeI, 0.0d0, e_v > e_th_HeII + E_sec_ion)
+		endif
+
+		! He I 2^3S (triplet): photoelectron energy hv - 4.8 eV, same
+		! secondary partition as the other absorbers.
+		if (thereis_HeITR) then
+			fhv = 1.0d0
+			if (use_sec_ion) fhv = merge(fh, 1.0d0, e_v > e_th_HeTR + E_sec_ion)
+			acc_H = acc_H + (1.0-e_th_HeTR/e_v)*fhv*s_heiTR*nheiTR(j)
+			if (use_sec_ion) then
+				acc_secHI  = acc_secHI  + s_heiTR*nheiTR(j)/e_v *             &
+				     merge(fiHI *(e_v-e_th_HeTR)/e_th_HI , 0.0d0, e_v > e_th_HeTR + E_sec_ion)
+				acc_secHeI = acc_secHeI + s_heiTR*nheiTR(j)/e_v *             &
+				     merge(fiHeI*(e_v-e_th_HeTR)/e_th_HeI, 0.0d0, e_v > e_th_HeTR + E_sec_ion)
+			endif
+		endif
+
+		if (present(nh2)) then
+			fhv = 1.0d0
+			if (use_sec_ion) fhv = merge(fh, 1.0d0, e_v > e_th_H2 + E_sec_ion)
+			acc_H = acc_H + (1.0-e_th_H2/e_v)*fhv*s_h2*nh2(j)
+			if (use_sec_ion) then
+				acc_secHI  = acc_secHI  + s_h2*nh2(j)/e_v *                   &
+				     merge(fiHI *(e_v-e_th_H2)/e_th_HI , 0.0d0, e_v > e_th_H2 + E_sec_ion)
+				acc_secHeI = acc_secHeI + s_h2*nh2(j)/e_v *                   &
+				     merge(fiHeI*(e_v-e_th_H2)/e_th_HeI, 0.0d0, e_v > e_th_H2 + E_sec_ion)
+			endif
+		endif
+
 		do i = 1,n_mion
 			if (.not. mion_isphot(i)) cycle
 			k = mion_iphot(i)
-			acc_H = acc_H + (1.0-mion_ethr(i)/e_v)*sigma_tab(:,k)*nm(j,i)
+			fhv = 1.0d0
+			if (use_sec_ion) fhv = merge(fh, 1.0d0, e_v > mion_ethr(i) + E_sec_ion)
+			acc_H = acc_H + (1.0-mion_ethr(i)/e_v)*fhv*sigma_tab(:,k)*nm(j,i)
+			if (use_sec_ion) then
+				acc_secHI  = acc_secHI  + sigma_tab(:,k)*nm(j,i)/e_v *        &
+				     merge(fiHI *(e_v-mion_ethr(i))/e_th_HI , 0.0d0, e_v > mion_ethr(i) + E_sec_ion)
+				acc_secHeI = acc_secHeI + sigma_tab(:,k)*nm(j,i)/e_v *        &
+				     merge(fiHeI*(e_v-mion_ethr(i))/e_th_HeI, 0.0d0, e_v > mion_ethr(i) + E_sec_ion)
+			endif
 		enddo
 		int_H = int_f*acc_H
 
@@ -216,6 +327,7 @@
 		acc_q = s_hi *nhi  (j)
 		acc_q = acc_q + s_hei *nheiS(j)
 		acc_q = acc_q + s_heii*nheii(j)
+		if (thereis_HeITR) acc_q = acc_q + s_heiTR*nheiTR(j)
 		if (present(nh2)) acc_q = acc_q + s_h2*nh2(j)
 		do i = 1,n_mion
 			if (.not. mion_isphot(i)) cycle
@@ -250,6 +362,15 @@
     	P_HI(j)    = PIR_1  *1.0e-18*erg2eV
 		if (present(P_H2)) P_H2(j) = PIR_H2*1.0e-18*erg2eV
     	P_HeI(j)   = PIR_15 *1.0e-18*erg2eV
+		! Add the H I / He I secondary-ionization rates from fast photoelectrons.
+		if (use_sec_ion) then
+			R_secHI  = sum(int_f*acc_secHI *de_v)*1.0e-18*erg2eV
+			R_secHeI = sum(int_f*acc_secHeI*de_v)*1.0e-18*erg2eV
+			! x -> 1 gives f_ion -> 0, so R_sec -> 0 there; the max() is only a
+			! divide-by-zero guard for an (unphysical) fully depleted cell.
+			P_HI(j)  = P_HI(j)  + R_secHI /max(nhi(j)  , 1.0d-99)
+			P_HeI(j) = P_HeI(j) + R_secHeI/max(nheiS(j), 1.0d-99)
+		endif
 		P_HeII(j)  = PIR_2  *1.0e-18*erg2eV
 		P_HeITR(j) = PIR_TR *1.0e-18*erg2eV
 		P_m(j,:)   = Pm_loc(:)
@@ -291,11 +412,10 @@
    real*8, dimension(1-Ng:N+Ng) :: brem_acc,coolm_acc   ! sum accumulators
    real*8, dimension(1-Ng:N+Ng) :: metal_col            ! dispatcher scratch
    real*8, dimension(1-Ng:N+Ng,n_mion)  :: c_metal      ! metal line-cool coeffs
-   real*8, dimension(1-Ng:N+Ng,n_melem) :: GF_elem      ! Gaunt fac. for each element
    real*8, dimension(1-Ng:N+Ng) :: tau_eff,beta_esc     ! beta escape prob.
    real*8, dimension(1-Ng:N+Ng) :: kappa_loc,dr_cm
 	real*8, dimension(1-Ng:N+Ng) :: ne		  			 ! Electron number density
-	real*8, dimension(1-Ng:N+Ng) :: GF_H,GF_He			 ! Gaunt factors
+	real*8, dimension(1-Ng:N+Ng) :: GF_z1,GF_z2			 ! free-free Gaunt at Z_ion=1,2
 	real*8 :: Cdex_OI,Cdex_CII                           ! 2-level collis. de-exc.
 	! Named bridges for the (verbatim) two-level cooling branch
 	real*8, dimension(1-Ng:N+Ng) :: nci,ncii,noi,noii,nmgi,nmgii
@@ -374,23 +494,25 @@
 	
 	!-- Bremsstrahlung --!
 
-	! Gaunt factors (H, He explicit; one per metal element from its Z)
-	call GF(T_K,ih,GF_H)
-	call GF(T_K,ihe,GF_He)
-	do e = 1,n_melem
-		call GF(T_K, dble(melem_Z(e)), GF_elem(:,e))
-	enddo
+	! Free-free scales with the ion NET charge Z_ion (not the nuclear number):
+	! H II, He II and singly-ionized metals are Z_ion = 1; He III and doubly-
+	! ionized metals are Z_ion = 2. The Gaunt factor is evaluated at Z_ion, so
+	! only the charge-1 and charge-2 values are needed.
+	call GF(T_K, 1.0d0, GF_z1)
+	call GF(T_K, 2.0d0, GF_z2)
 
-	! Cooling rate (extended with metal ion charges). Accumulate the
-	! charge^2-weighted sum in the original H, He, then canonical-metal
-	! order and apply the 1.426e-27*sqrt(T_K) prefactor once, so the
-	! result is bit-identical to the explicit expression. Neutral metals
-	! carry z2=0 and contribute an exact +0 term.
-	brem_acc = ih**2.0*GF_H*nhii                          ! HII
-	brem_acc = brem_acc + ihe**2.0*GF_He*(nheii + nheiii) ! He
+	! Cooling rate: sum n_ion * Z_ion^2 * gbar(Z_ion) over all charged ions.
+	! mion_z2 = mion_stage^2 already holds the metal charge^2 (neutral -> 0,
+	! an exact +0 term); the Gaunt table is selected by mion_stage.
+	brem_acc = GF_z1*nhii                       ! HII   (Z_ion = 1)
+	brem_acc = brem_acc + GF_z1*nheii           ! HeII  (Z_ion = 1)
+	brem_acc = brem_acc + 4.0*GF_z2*nheiii      ! HeIII (Z_ion = 2)
 	do i = 1,n_mion
-		brem_acc = brem_acc                                          &
-		         + mion_z2(i)*GF_elem(:,mion_elem(i))*nm(:,i)
+		if (mion_stage(i) == 2) then
+			brem_acc = brem_acc + mion_z2(i)*GF_z2*nm(:,i)
+		else
+			brem_acc = brem_acc + mion_z2(i)*GF_z1*nm(:,i)
+		endif
 	enddo
 	brem = 1.426e-27*sqrt(T_K)*brem_acc
 
@@ -665,6 +787,32 @@
 
    ! End of subroutine
 	end subroutine HeITR_coeffs
-	
+
+	! ------------------------------------------------------------- !
+
+	! Shull & van Steenberg (1985, ApJ 298, 268) high-energy asymptotic
+	! partition of a fast photoelectron's excess energy. x = ionized fraction.
+	! A possible future refinement is to couple the SvS85 Ly-alpha excitation
+	! channel f_exc,Lya = 0.4766*(1-x^0.2735)^1.5221 to the Ly-alpha field of
+	! the excited-H model; here that energy is assumed to escape as line
+	! radiation and is not put into any rate.
+	elemental function svs85_fheat(x) result(f)
+		real*8, intent(in) :: x
+		real*8 :: f
+		f = 0.9971d0*(1.0d0 - (1.0d0 - x**0.2663d0)**1.3163d0)
+	end function svs85_fheat
+
+	elemental function svs85_fion_HI(x) result(f)
+		real*8, intent(in) :: x
+		real*8 :: f
+		f = 0.3908d0*(1.0d0 - x**0.4092d0)**1.7592d0
+	end function svs85_fion_HI
+
+	elemental function svs85_fion_HeI(x) result(f)
+		real*8, intent(in) :: x
+		real*8 :: f
+		f = 0.0554d0*(1.0d0 - x**0.4614d0)**1.6660d0
+	end function svs85_fion_HeI
+
 	! End of module
 	end module utils_ion_eq
