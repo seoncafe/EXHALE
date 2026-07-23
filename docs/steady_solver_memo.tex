@@ -6,7 +6,7 @@
 %% solution. Companion design notes: steady_solver_design.md,
 %% refactor_stage1_log.md.
 %% Author: Kwang-Il Seon
-\documentclass[english,a4paper]{kiseon_memo}
+\documentclass[english,a4paper]{my_memo}
 \synctex=1
 \usepackage{listings}
 \usepackage{xcolor}
@@ -237,7 +237,7 @@ corresponding stall.
   $\|D^{-1}F\|_2$). After the fix the banded-PTC driver descends, but only
   linearly ($\sim$2\%/iteration) --- and a $\Delta\tau_0=1$ probe showed a
   textbook Newton step (residual halved in one step) before stalling,
-  proving the machinery and isolating the next blocker.
+  proving the approach and isolating the next blocker.
 \item \textbf{Matrix-free $Jv$ (JFNK).} The banded Jacobian omits the
   non-local radiation response; with exact $Jv$ via GMRES the merit fell
   $4.5\times$ in two steps (vs.\ 2\%/step), $\Delta\tau$ grew. Stall again

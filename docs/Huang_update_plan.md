@@ -337,7 +337,7 @@ layer).
 
 > [!NOTE]
 > **Progress (2026-06-05) — Phase 1b done (C/N/O cross-section fix + Si/Ca/Na/K/S).**
-> Two bundled changes on top of Phase 1a: **(1)** the C/N/O photoionization cross
+> Two changes on top of Phase 1a: **(1)** the C/N/O photoionization cross
 > sections were corrected from the simpler Verner & Yakovlev 1995 form (no
 > `y_0`/`y_1`) to the **full VFKY96 Eq. (1)** form (`sigma_VFKY96` in
 > `cross_sec.f90`); **(2)** the five uniform-template metals **Si, Ca, Na, K, S**

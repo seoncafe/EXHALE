@@ -1,6 +1,6 @@
 %% The Wind-AE windsoln / seed file format.
 %% Author: Kwang-Il Seon
-\documentclass[english,a4paper]{kiseon_memo}
+\documentclass[english,a4paper]{my_memo}
 \synctex=1
 \usepackage{booktabs}
 \usepackage{array}
@@ -26,7 +26,7 @@ block of comment-prefixed header lines that carry every parameter,
 boundary condition, and the stellar spectrum, followed by the solution
 profile itself as a table of normalized (code-unit) columns. The same
 format is used by (i) the original Wind-AE Python wrapper (Murray-Clay et
-al.\ 2009; Broome et al.\ 2025), (ii) the bundled solution grid under
+al.\ 2009; Broome et al.\ 2025), (ii) the included solution grid under
 \code{inputdata/windae\_grid/}, and (iii) EXHALE's Fortran port, whose
 \code{load\_seed} reads such a file as the starting point of a
 continuation and whose \code{dump\_seed} writes one back. This note is the
@@ -68,7 +68,7 @@ A minimal excerpt:
 
 \section{Header reference}
 Table~\ref{tab:hdr} lists every header key. $N$ is the number of species
-(\hd{nspecies}; $N=2$ for the bundled H/He data). Planet parameters are in
+(\hd{nspecies}; $N=2$ for the included H/He data). Planet parameters are in
 cgs; boundary conditions and the data grid are in the code units of
 Table~\ref{tab:grid}.
 
@@ -137,13 +137,13 @@ The crucial point is the separation of \emph{shape} and \emph{amplitude}:
 the \code{\#\#} weights are normalized by $\Ftot$, so they encode only the
 spectral \emph{shape} (which photon energies carry what fraction of the
 ionizing flux), while the absolute level is set by the single scalar
-$\Ftot$ in \hd{plnt\_prms}. This is why the bundled grid can keep one fixed
+$\Ftot$ in \hd{plnt\_prms}. This is why the included grid can keep one fixed
 \code{scaled-solar} shape across all $\sim$1000 solutions and vary only
 $\Ftot$ (and $M_{\rm p},\Rp$) from planet to planet. Verified: \hd{spec\_prms}
 is byte-identical across the entire grid.
 
 \medskip\noindent\textbf{Caveat (spectrum dependence).} The wind structure
-depends on the SED shape, not only on $\Ftot$. The bundled data assume a
+depends on the SED shape, not only on $\Ftot$. The included data assume a
 \code{scaled-solar} spectrum; an EXHALE run that instead assumes, say, a
 power law produces different heating/ionization profiles. A Wind-AE
 warm-start is therefore only self-consistent with an EXHALE run that uses

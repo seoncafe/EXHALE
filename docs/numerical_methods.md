@@ -32,7 +32,7 @@ where it is needed (the weak winds) — and largely removing the need for staged
 restarts.
 
 - **Pros:** minimal code change (a few lines in `eval_dt` and the update loop);
-  keeps the existing reconstruction/flux machinery; directly attacks the
+  keeps the existing reconstruction and flux routines; directly attacks the
   slow-weak-wind problem. Optionally combine with implicit residual smoothing or
   FAS multigrid for further acceleration.
 - **Cons:** still only first-order (linear) convergence to the steady state — a

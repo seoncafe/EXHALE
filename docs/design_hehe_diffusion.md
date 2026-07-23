@@ -136,7 +136,7 @@ new `nh(j)`, `nhe(j)` in each cell (interface already accepts these independentl
 
 ## 7b. Validation status (2026-07-01) — GATE NOT PASSED
 
-The machinery is implemented and **numerically stable** (implicit tridiagonal solve,
+The implementation is **numerically stable** (implicit tridiagonal solve,
 no NaN on HD 209458b; flag OFF is byte-identical) and **produces diffusive separation**
 (He/H falls with altitude). **But it over-separates**: on HD 209458b (He23S on, metals on,
 15k steps) He/H holds ~8% to 1.2 R_p then collapses to ~3e-5 by 1.4 R_p and →0 above —

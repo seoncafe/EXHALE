@@ -391,7 +391,7 @@ two other reference codes suggest complementary ideas worth recording:
   Wind-AE also showed a steady HD189733b solution exists (its BVP
   converges; the EXHALE limit cycle is likely numerics), and its
   continuation stalls for the WASP-121b near-RLOF corner — it
-  complements, not replaces, the Roche machinery. Details:
+  complements, not replaces, the Roche-potential handling. Details:
   `code_comparison.tex` §"Wind-AE ... verified in-tree".
 
 ## 8. Open questions / caveats

@@ -8,7 +8,7 @@
 %%   - Murray-Clay et al. 2009 (ApJ 693, 23): steady-state BVP archetype
 %% Source PDFs under ../../references/.
 %% Author: Kwang-Il Seon
-\documentclass[english,a4paper]{kiseon_memo}
+\documentclass[english,a4paper]{my_memo}
 \synctex=1
 \usepackage{booktabs}
 \usepackage{array}
@@ -372,7 +372,7 @@ under \texttt{wind-ae-main/}. It keeps the MC09 BVP relaxation core
 Bulirsch--Stoer outward) and adds atomic metals, multifrequency XUV with
 X-ray secondary/K-shell ionization, a toggleable tidal $+$ centrifugal
 potential, and --- importantly --- a Python wrapper that implements
-exactly the continuation/homotopy machinery of \S\ref{sec:mc}
+exactly the continuation/homotopy scheme of \S\ref{sec:mc}
 (\texttt{ramp\_to}, \texttt{ramp\_grav}, \texttt{ramp\_Ftot},
 \texttt{polish\_bcs}). Limitations relative to EXHALE: one ionization
 stage per species (no Mg\,\textsc{ii}/Fe\,\textsc{ii} line work), no
@@ -385,8 +385,8 @@ Python 3.11 --- but remains under consideration for code
 completeness/uniformity of the in-house tool set.
 
 The following was verified hands-on (2026-06-13), ramping from the
-bundled MC09 fiducial to EXHALE's own \texttt{input.inp} parameters with
-matched integrated XUV flux (caveat: Wind-AE's bundled multifrequency
+included MC09 fiducial to EXHALE's own \texttt{input.inp} parameters with
+matched integrated XUV flux (caveat: Wind-AE's included multifrequency
 spectrum vs.\ EXHALE's power law; substellar vs.\ \texttt{Rate/2}
 heating geometry — factor-of-a-few agreement is the realistic target):
 
@@ -413,7 +413,7 @@ heating geometry — factor-of-a-few agreement is the realistic target):
   (step size driven to $\sim$1\%); the deep-RLOF $+$ extreme-XUV corner
   appears not (easily) reachable --- consistent with the sonic-anchored
   formulation's difficulty when the critical point approaches L1.
-  EXHALE's Roche machinery (Phase 4) has no replacement here.
+  EXHALE's Roche-potential handling (Phase 4) has no replacement here.
 \end{itemize}
 
 \paragraph{Wind-AE as an EXHALE initial condition (tested).} A

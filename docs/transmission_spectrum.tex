@@ -1,6 +1,6 @@
 %% H-alpha transmission in EXHALE\_transit.py: method and implementation
 %% Author: Kwang-Il Seon
-\documentclass[english,a4paper]{kiseon_memo}
+\documentclass[english,a4paper]{my_memo}
 \synctex=1
 \usepackage{listings}
 \usepackage{xcolor}
@@ -237,7 +237,7 @@ suppresses $n_2$ and hence the Balmer-line depth. Setting
 %=============================================================================
 
 Once $n_2(r)$ is known, the H$\alpha$ transmission is computed with the
-same LOS machinery as Ly$\alpha$. Along a chord at impact parameter $b$,
+same LOS integration as Ly$\alpha$. Along a chord at impact parameter $b$,
 \[
   \tau_\nu(b) = \int n_2(r)\,\sigma_{\rm H\alpha}(\nu,r)\,d\ell,
   \qquad
@@ -322,7 +322,7 @@ population calculation is needed. The ion-density profiles are read from
 the metal block of \texttt{Ion\_species\_adv.txt}; a metals-off run
 (all-zero columns) skips this section automatically.
 
-\subsection{Atomic data and machinery}
+\subsection{Atomic data and implementation}
 
 Each species is treated as a \textbf{doublet}, with both components
 summed in a single wavelength window

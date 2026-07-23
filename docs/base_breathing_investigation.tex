@@ -1,6 +1,6 @@
 %% HD189733b base-breathing / EXHALE-stage convergence: localization and fixes.
 %% Author: Kwang-Il Seon
-\documentclass[english,a4paper]{kiseon_memo}
+\documentclass[english,a4paper]{my_memo}
 \synctex=1
 \usepackage{booktabs}
 \usepackage{array}
@@ -41,7 +41,7 @@ $\sim$0.15, then erupts back to $\sim$2.4 and repeats --- a sustained limit
 cycle that never reaches the Newton-finish threshold ($5\times10^{-2}$), so
 the JFNK/PTC hand-off never fires (or, when forced, stalls). HD209458b and
 other less strongly bound planets converge normally with the identical
-machinery.
+numerics.
 
 \section{Diagnostic: a residual dump for each cell}
 \code{residual\_norms} (\code{steady\_residual.f90}) reports only the

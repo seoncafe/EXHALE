@@ -1,6 +1,6 @@
 %% Wind-AE steady-wind solver: ported algorithm, ramp, BC/IC.
 %% Author: Kwang-Il Seon
-\documentclass[english,a4paper]{kiseon_memo}
+\documentclass[english,a4paper]{my_memo}
 \synctex=1
 \usepackage{booktabs}
 \usepackage{array}
@@ -12,7 +12,7 @@
 \newcommand{\Mdot}{$\dot M$}
 \newcommand{\code}[1]{\texttt{#1}}
 
-\title{The bundled Wind-AE steady-wind solver:\\
+\title{The Wind-AE steady-wind solver:\\
 algorithm, continuation, and boundary/initial conditions}
 \author{Kwang-Il Seon}
 \date{2026-06-13}
@@ -291,7 +291,7 @@ Module(s) & Role \\
 \code{wae\_nr} & the relaxation stack \code{solvde}/\code{pinvs}/\code{red}/\code{bksub} \\
 \code{wae\_intode} & outward Bulirsch--Stoer integration \\
 \code{wae\_params,\_continuation} & input reading; seed load,
-  \code{ramp\_var}/\code{ramp\_to}, and the self-consistent-BC base-BC machinery
+  \code{ramp\_var}/\code{ramp\_to}, and the self-consistent base-BC handling
   (\code{base\_bcs}, \code{ramp\_base\_bcs}, \code{self\_consistent\_Ncol},
   \code{converge\_Ncol\_sp}) \\
 \code{wae\_ic\_writer} & project the solution onto the EXHALE grid, write \code{*\_IC.txt} \\
