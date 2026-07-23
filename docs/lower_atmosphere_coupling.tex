@@ -276,6 +276,25 @@ source / He($2^3$S) sink and adds $(E[2^3S]-\mathrm{IP}[\mathrm{H_2}])\approx
 4.4\,$eV of electron heating; the minor associative H$+$HeH$^+$ branch
 (${\sim}10\%$) is folded into the Penning channel.
 
+\paragraph{The \texttt{\_adv} post-process is atomic-only, so the Penning-H$_2$
+term does not appear there.} The advection-corrected reconstruction in
+\texttt{post\_process\_adv.f90} (header, lines 4--13) treats the gas as
+H/He\,$+$\,trace metals and excludes the molecular species entirely: the
+molecular densities are never passed in or re-solved, and its
+\texttt{calc\_ne}/\texttt{calc\_ntot} calls omit the \texttt{nmol} argument.
+Consequences for a molecular run: (i) the \texttt{\_adv} $n_{\rm tot}/n_e$ omit
+the neutral-H$_2$ particle count and the molecular-ion electrons; (ii) the
+He($2^3$S)$+$H$_2$ Penning sink cannot act in the \texttt{\_adv} solve (no
+$n_{\rm H_2}$ there), so the \texttt{\_adv} outputs --- and the transit module
+that reads them --- carry the \emph{equilibrium} molecular-base triplet
+suppression ($39\times$ at the HD\,209458\,b base, $430\times$ on the
+hot-Uranus case) without an advection correction. This is acceptable where
+\texttt{\_adv} is physically meaningful (the atomic/ionized escape flow above
+the H$_2\to$H front); below the front the atomic \texttt{\_adv} approximation
+is outside its validity domain anyway. A molecular-aware \texttt{\_adv} is a
+separate extension, naturally paired with the open ``molecular advection''
+item in the Tier-2 remaining list.
+
 \begin{figure}[htb]\centering
 \includegraphics[width=\textwidth]{fig_mol_structure.pdf}
 \caption{Tier-2 molecular gates (3000-step relaxation snapshots). (a) The H nuclei

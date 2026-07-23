@@ -118,6 +118,23 @@ T^0.6760 exp(−695.21/T) cm³ s⁻¹, reproducing the tabulated 500–10000 K p
 adds (E[2³S] − IP[H₂]) ≈ 4.4 eV of electron heating; the minor associative
 H + HeH⁺ branch (~10%) is folded into the Penning channel.
 
+**The `_adv` post-process is atomic-only (documented design), so the Penning-H₂
+term does not appear there.** The advection-corrected reconstruction in
+`post_process_adv.f90` (header, lines 4–13) treats the gas as H/He + trace
+metals and excludes the molecular species entirely: the molecular densities are
+never passed in or re-solved, and its `calc_ne`/`calc_ntot` calls omit the
+`nmol` argument. Consequences for a molecular run: (i) the `_adv` n_tot/n_e
+omit the neutral-H₂ particle count and the molecular-ion electrons; (ii) the
+He(2³S)+H₂ Penning sink cannot act in the `_adv` solve (no n_H₂ there), so the
+`_adv` outputs — and the transit module that reads them — carry the
+*equilibrium* molecular-base triplet suppression (39× at the HD 209458 b base,
+430× on the hot-Uranus case) without an advection correction. This is
+acceptable where `_adv` is physically meaningful (the atomic/ionized escape
+flow above the H₂→H front); below the front the atomic `_adv` approximation is
+outside its validity domain anyway. A molecular-aware `_adv` is a separate
+extension, naturally paired with the open "molecular advection" item in the
+Tier-2 remaining list below.
+
 ### Tier 3 — coupling to a real photochemical/RC lower-atmosphere model. *~months; the metal-abundance payoff.*
 
 The Lavvas & Arfaux code is not public, so the practical paths are:
