@@ -152,6 +152,26 @@ that coefficient shift feeds directly into the coupled n_HeII the 2^3S balance
 divides by -- a more direct path than the cancellation argument accounted for.
 The 10830-forming region is nonetheless unaffected, as anticipated.
 
+### Update 2026-07-23: default flipped ON
+
+As part of the Falorca & Vidotto (2026) review series (Update_EXHALE §39,
+item 4; `docs/falorca2026_he3d_review.md` §3.4/§7), `He_rec_coupling` is now
+**default ON**. Rationale (physical correctness): the photons are real, and
+with the coupling off the TR-mode singlet recombination used alpha_1 alone —
+neither case A (missing the 0.25 alpha_B singlet-excited channel) nor case B
+(no local recycling of the ground-capture photons). Additional validation on
+the high-gravity wasp_full case: stable (no NaN, convergence count essentially
+unchanged), base n(2^3S) -10%, the 10830-forming region within ~2%, Mdot
+unchanged there — consistent with the HD 209458 b table above, whose +0.04-0.07
+dex Mdot shift is the reason the paper-draft planet runs need re-convergence.
+`He_rec_coupling: False` restores the legacy lost-photon path (byte-identical).
+A finer split of the singlet-excited capture channel (explicit
+alpha_B[He(2^1S)] = 5.55e-15 (T/1e4)^-0.451 and
+alpha_A-B[He(2^1P)] = 1.26e-14 (T/1e4)^-0.695 from the Allan et al. 2025
+erratum's corrected Table 2, instead of the 0.25 alpha_B lump) remains an
+optional refinement; the erratum's ~20% He 10830 EW sensitivity to the
+2^1S handling is the reason it may matter.
+
 ## 2. Electron contribution to the mean molecular weight — included
 
 **Question.** Does the mean-molecular-weight (particle-count) bookkeeping
