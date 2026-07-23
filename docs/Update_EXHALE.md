@@ -2825,6 +2825,23 @@ abstract, Sec. 3.2 (new `sec:n2opacity`), Sec. `sec:lartcomp`, summary, and
   r = 1.166 Rp, H3+ active in the molecular layer. Atomic runs byte-identical
   throughout (make check + OMP identity).
 
+**Gate refresh (2026-07-23, current production defaults).** After the 2026-07-17
+onward changes (staged secondary ionization, `He_rec_coupling` ON, He-H charge
+exchange ON; §36-39) the three gates were re-recorded at a uniform 12000-step
+relaxation-snapshot convention (the earlier gate numbers mixed cap conventions).
+Key result: the H2->H fronts and molecular base composition are essentially
+unchanged (front 1.019 -> 1.020 for HD209, 1.166 -> 1.156 for the hot Uranus;
+base x_H2 0.996 / 0.9998), so the dissociation-front physics is robust to the new
+defaults. The wind Mdot now reads log 10.58 for both HD209 runs at 12000 steps --
+these are relaxation snapshots, not flux-flat converged: under the new defaults
+the HD209 atomic gate does not converge (du reaches a fixed point ~2.6e-6 but the
+rho*v*r^2 mass-flux spread plateaus near 4%), so all three gates use the same
+step cap. He 2^3S is now strongly suppressed in the molecular base below the front
+(He 2^3S + H2 Penning destruction, ~1e4x at the front, rising back to the atomic
+value above ~1.3 Rp); the earlier "+1.3% peak" was a whole-domain-peak artifact of
+the outer-wind transient, not a base signal. Pinned `data_g*/` refreshed;
+`lower_atmosphere_coupling.{md,tex,pdf}` and `fig_mol_structure.pdf` updated.
+
 ## 36. Default H/He rates -> Badnell+Mao / Voronov, van Hoof free-free Gaunt factor, free-free charge fix, and secondary ionization (2026-07-17)
 
 Six coupled changes to the H/He microphysics. Items 1-2 are gated by the new

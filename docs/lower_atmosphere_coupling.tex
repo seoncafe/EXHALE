@@ -110,8 +110,10 @@ release abundances); warm Neptunes / sub-Neptunes $\to$ Tier 2 $+$ 1.
 
 All Fortran lives in \texttt{src/modules/lower\_atmosphere/}; the Python driver in
 \texttt{src/utils/}. Everything is \textbf{opt-in / default off} --- with no keys and no
-\texttt{base.inp}, standard runs are unchanged (regression: HD\,209458\,b
-He\,2$^3$S$+$metals 3000-step $\log\Mdot=8.97$, identical to EXHALE\_v1.0).
+\texttt{base.inp}, standard runs are unchanged by the lower-atmosphere code (the
+molecular chemistry off-switch reproduces the atomic systems byte-for-byte; the
+absolute production baseline itself moved with the 2026-07-23 defaults --- staged
+secondary ionization, \texttt{He\_rec\_coupling}, He--H charge exchange).
 
 \subsection{Tier 1: \texttt{lower\_column.f90}}\label{sub:t1}
 
@@ -254,13 +256,20 @@ an atomic \texttt{ntot\_bc} under a molecular base is physically inconsistent).
 \textbf{Gates passed} (numbers re-established 2026-07-16 after the deterministic
 chemical-equilibrium seeding of the molecular solve; the exact gate inputs are pinned at
 \texttt{lower\_atmosphere\_figs/data\_g*/input.inp}): (0) molecules-off regression,
-HD\,209458\,b 3000-step $\log\Mdot=8.97$ unchanged; (1) HD\,209458\,b molecules-on: a
-fully molecular base ($x_{\rm H_2}\simeq0.997$) with a sharp H$_2\to$H front at
-$r=1.019\,\Rp$ and an essentially atomic wind above it ($\log\Mdot$ 8.87 vs.\ 8.97;
-He\,2$^3$S peak $+1.3\%$) --- the hot-Jupiter atomic base is now a \emph{result}, not an
-assumption; (2) a hot-Uranus-like case (0.0457\,$M_{\rm J}$,
-$R_{\rm p}=0.49\,R_{\rm J}$, $T_{\rm eq}{=}1140$\,K, HD\,209458\,b orbit and spectrum):
-the front rises to $r=1.166\,\Rp$ and H$_3^+$ is active below it.
+molecular chemistry off reproduces the atomic systems; (1) HD\,209458\,b molecules-on: a
+fully molecular base ($x_{\rm H_2}\simeq0.996$) with a sharp H$_2\to$H front at
+$r=1.020\,\Rp$ and an essentially atomic wind above it --- the hot-Jupiter atomic base
+is now a \emph{result}, not an assumption --- while below the front the molecular base
+suppresses He\,2$^3$S by orders of magnitude (He\,2$^3$S$+$H$_2$ Penning destruction,
+${\sim}10^4\times$ at the front, rising back to the atomic value above ${\sim}1.3\,\Rp$);
+(2) a hot-Uranus-like case (0.0457\,$M_{\rm J}$, $R_{\rm p}=0.49\,R_{\rm J}$,
+$T_{\rm eq}{=}1140$\,K, HD\,209458\,b orbit and spectrum): the front sits at
+$r=1.156\,\Rp$ and H$_3^+$ is active below it (peak ${\sim}7{\times}10^4$\,cm$^{-3}$ at
+$r{\approx}1.04$). The H$_2\to$H fronts and molecular base composition are essentially
+unchanged from the 2026-07-16 gates (front $1.019{\to}1.020$, $1.166{\to}1.156$),
+confirming the dissociation-front result is robust to the 2026-07-23 production defaults;
+refreshed 2026-07-23 at a shared 12000-step relaxation-snapshot convention (both HD209
+runs $\log\Mdot=10.58$; relaxation snapshots, not flux-flat converged).
 Figure~\ref{fig:mol} shows the gate runs.
 
 \paragraph{He\,2$^3$S $+$ H$_2$ Penning ionization.} When \texttt{Include
@@ -297,10 +306,10 @@ item in the Tier-2 remaining list.
 
 \begin{figure}[htb]\centering
 \includegraphics[width=\textwidth]{fig_mol_structure.pdf}
-\caption{Tier-2 molecular gates (3000-step relaxation snapshots). (a) The H nuclei
+\caption{Tier-2 molecular gates (12000-step relaxation snapshots). (a) The H nuclei
 fraction bound in H$_2$: on HD\,209458\,b the base is fully molecular and a sharp
-H$_2\to$H front sits at $r=1.019\,\Rp$ (dotted); on the cooler, low-gravity hot
-Uranus the front rises to $1.166\,\Rp$. The cell-to-cell flip-flop just above the
+H$_2\to$H front sits at $r=1.020\,\Rp$ (dotted); on the cooler, low-gravity hot
+Uranus the front sits at $1.156\,\Rp$. The cell-to-cell flip-flop just above the
 front marks the chemically bistable zone of \emph{equilibrium} H$_2$ chemistry ---
 kinetics$+$advection smooth it (the documented Tier-2 caveat). (b) The molecular run's
 temperature agrees with the atomic run away from the (still-relaxing) front region.

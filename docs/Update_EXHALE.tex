@@ -3455,6 +3455,24 @@ decimals): fully molecular base, front at $r=1.166\,R_p$, H$_3^+$ active in the
 molecular layer. Atomic runs byte-identical throughout (\texttt{make check} $+$
 OMP identity).
 
+\paragraph{Gate refresh (2026-07-23, current production defaults).} After the
+2026-07-17 onward changes (staged secondary ionization, \texttt{He\_rec\_coupling}
+on, He--H charge exchange on; \S\S36--39) the three gates were re-recorded at a
+uniform 12000-step relaxation-snapshot convention. The H$_2\rightarrow$H fronts and
+molecular base composition are essentially unchanged (front $1.019\rightarrow1.020$
+for HD\,209458\,b, $1.166\rightarrow1.156$ for the hot Uranus; base
+$x_{\rm H_2}=0.996/0.9998$), so the dissociation-front physics is robust to the new
+defaults. The wind $\log\dot{M}$ now reads 10.58 for both HD\,209458\,b runs at
+12000 steps --- these are relaxation snapshots, not flux-flat converged: under the
+new defaults the HD\,209458\,b atomic gate does not converge ($du$ reaches a fixed
+point ${\sim}2.6\times10^{-6}$ while the $\rho v r^2$ mass-flux spread plateaus near
+4\%), so all three gates share the same step cap. He\,$2^3$S is now strongly
+suppressed in the molecular base below the front (He\,$2^3$S$+$H$_2$ Penning
+destruction, ${\sim}10^4\times$ at the front, rising back to the atomic value above
+${\sim}1.3\,R_p$); the earlier ``$+1.3\%$ peak'' was a whole-domain-peak artifact of
+the outer-wind transient. Pinned \texttt{data\_g*/} refreshed;
+\texttt{lower\_atmosphere\_coupling} and \texttt{fig\_mol\_structure.pdf} updated.
+
 \section{Default H/He rates $\to$ Badnell$+$Mao / Voronov, van Hoof free-free Gaunt factor, free-free charge fix, and secondary ionization (2026-07-17)}
 
 Six coupled changes to the H/He microphysics. Items 1--2 are gated by the new

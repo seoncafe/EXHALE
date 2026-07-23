@@ -7,7 +7,7 @@ fig_vulcan_vs_eq.pdf Tier-3: VULCAN photochemical H2/H vs chemical equilibrium
 fig_w52_he10830.pdf  WASP-52b He 10830: old vs corrected base radius (run separately
                      once /tmp/w52o finishes; see add_w52 below)
 
-Data: data_g1m (HD209 molecular, 3000 steps), data_g1a (HD209 atomic),
+Data: data_g1m (HD209 molecular, 12000-step snapshot), data_g1a (HD209 atomic),
 data_g2 (hot-Uranus molecular), ../../..../VULCAN/output/HD189-photo.vul.
 """
 import sys, os, math, pickle
@@ -107,7 +107,7 @@ r_u, x2_u, h2u, h2pu, h3pu, hehpu, T_u = mol_profiles('data_g2')
 fig, ax = plt.subplots(1, 3, figsize=(10.5, 3.2))
 ax[0].semilogy(r_m, np.maximum(x2_m, 1e-22), 'C0-', label='HD 209458 b')
 ax[0].semilogy(r_u, np.maximum(x2_u, 1e-22), 'C3-', label='hot Uranus (Teq=1140 K)')
-for rr, c in [(1.019, 'C0'), (1.166, 'C3')]:
+for rr, c in [(1.020, 'C0'), (1.156, 'C3')]:
     ax[0].axvline(rr, color=c, ls=':', lw=0.8)
 ax[0].set_xlim(1, 3); ax[0].set_ylim(1e-14, 2)
 ax[0].set_xlabel(r'$r/R_{\rm p}$')
@@ -119,7 +119,7 @@ ax[1].plot(Ha[:, 0], Ha[:, 4], 'k--', label='atomic run')
 ax[1].plot(r_m, T_m, 'C0-', label='molecular run')
 ax[1].set_xlim(1, 4.2)
 ax[1].set_xlabel(r'$r/R_{\rm p}$'); ax[1].set_ylabel('T [K]')
-ax[1].set_title('(b) HD 209458 b: T (3000-step relaxation snapshot)')
+ax[1].set_title('(b) HD 209458 b: T (12000-step relaxation snapshot)')
 ax[1].legend(fontsize=7)
 
 for y, lab, c in [(h2m, r'H$_2$', 'C0'), (h2pm, r'H$_2^+$', 'C1'),
