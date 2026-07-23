@@ -73,7 +73,7 @@ module (Fortran `lower_column.f90` or a Python pre-processor):
 - Deliverables to EXHALE: **base radius r₀(1 μbar)** — replacing the user-guessed
   "Planet radius" with a derived quantity (or a consistency check on it), **base
   H₂/H/He fractions**, and the correct base mean molecular weight.
-- Same machinery gives the TPM/Balmer "molecular spacer" of Huang 2017 (their Eq. 15 is
+- The same handling gives the TPM/Balmer "molecular spacer" of Huang 2017 (their Eq. 15 is
   the μ=const degenerate case) — useful for the transmission-continuum radius.
 - **Validation gate:** reproduce Koskinen 2022 Model A (hot Uranus, 0.05 au):
   r₀ = 1.34 R_p, T₀ = 1140 K, q_H₂ ≈ 0.84 at 1 μbar. And for a hot Jupiter confirm
@@ -107,6 +107,16 @@ recombination (R6/R7, Larsson 2008), HeH⁺ chain (R16–R20), three-body H₂ f
   results reproduce the atomic code (regression); (ii) GJ 1214 b-like case ⇒ He 10830
   drops by ~×2 with H₂ on (Taylor 2026), Ṁ shifts ≲40% (Koskinen 2022 photodissociation
   sensitivity was ×1.4; Salz −15%).
+
+When `Include He23S?` is also on, the metastable couples to H₂ through Penning
+ionization He(2³S) + H₂ → He(1¹S) + H₂⁺ + e⁻ — the dominant He(2³S) loss toward
+an H₂-dominated base (García Muñoz 2025, A&A 698, A199, Fig. 4). Its rate
+coefficient `penning_HeI23S_H2` (Cool_coeff.f90) is an analytic fit to García
+Muñoz Table A.5 (Cohen & Lane 1977 cross sections), k(T) = 5.3791e-12
+T^0.6760 exp(−695.21/T) cm³ s⁻¹, reproducing the tabulated 500–10000 K points to
+≤0.13%. It enters `System_HeH_mol` as an H₂ loss / H₂⁺ source / He(2³S) sink and
+adds (E[2³S] − IP[H₂]) ≈ 4.4 eV of electron heating; the minor associative
+H + HeH⁺ branch (~10%) is folded into the Penning channel.
 
 ### Tier 3 — coupling to a real photochemical/RC lower-atmosphere model. *~months; the metal-abundance payoff.*
 
@@ -169,7 +179,7 @@ abundances vs. Lavvas 2014 Fig. 9 (Mg/Fe/Si ionic above 10⁻⁶ bar, Na/K atomi
 | Tier | New code | Effort | Risk |
 |---|---|---|---|
 | 1 analytic column | `lower_column.f90` (~150 SLOC) or Python pre-processor | days | low (closed-form, gate = published numbers) |
-| 2a passive molecular base | reuse `wind_ae` molec machinery | days | low |
+| 2a passive molecular base | reuse the `wind_ae` molecular routines | days | low |
 | 2 full molecular chemistry | `System_HeH_mol*`, EOS, H₃⁺ cooling | weeks | medium (solver stiffness; γ/EOS consistency) |
 | 3(a) open-source lower stack | Python driver + `base.inp` reader | weeks–months (mostly VULCAN/HELIOS learning + setup for each planet) | medium (network/opacity choices); EXHALE-side change is small |
 

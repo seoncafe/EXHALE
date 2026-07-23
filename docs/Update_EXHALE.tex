@@ -1,6 +1,6 @@
 %% EXHALE: running update log (potential/domain extent, network, ...)
 %% Author: Kwang-Il Seon
-\documentclass[english,a4paper]{kiseon_memo}
+\documentclass[english,a4paper]{my_memo}
 \synctex=1
 \usepackage{listings}
 \usepackage{xcolor}
@@ -3712,6 +3712,152 @@ base but stays within ${\sim}1$--$2\%$ of the off case through the
 unchanged.}
 \label{fig:hrc-heitr}
 \end{figure}
+
+\section{Staged activation of secondary ionization (2026-07-23)}
+
+\subsection{The regression}
+With secondary ionization on by default (the \texttt{use\_sec\_ion} item of the
+2026-07-17 rate update), the high-gravity WASP-121\,b cases
+(\texttt{backup/regression/wasp\_full}, \texttt{wasp\_he23off}) crashed with a
+NaN at ${\sim}$step~587: negative densities first, then a NaN base pressure and
+temperature. The coupling itself is physically correct in magnitude --- at the
+shielded base the SvS85 secondary channel raises the H photoionization rate by
+${\sim}35\times$ over the direct rate, the expected size for the ${\sim}$keV
+photoelectrons there. The failure is a transient-path problem, not a
+steady-state one: the extra base ionization deepens the base cooling valley and
+amplifies the base acoustic mode of the marginal cold initial condition until
+the hydro diverges. Two facts pin this down: (a) a run with the coupling off
+converges cleanly ($du<10^{-3}$, $\log_{10}\dot M=13.30$); and (b) restarting
+with the coupling on from that converged state is benign --- no NaN, $du$ stays
+$\lesssim4\times10^{-2}$ during a ${\sim}$2000-step adjustment and re-converges.
+The steady state with the full physics exists and is stable; only the cold-start
+path to it is fatal.
+
+\subsection{The fix: converge first without the coupling, then switch it on}
+A runtime state flag \texttt{sec\_ion\_active} now controls whether the SvS85
+partition is applied, separately from the \texttt{use\_sec\_ion} enable flag.
+The photoionization / photoheating routines apply the coupling only when
+\texttt{use\_sec\_ion .and. sec\_ion\_active}; when it is off the code path is
+bit-identical to the \texttt{use\_sec\_ion = False} (full-thermalization) path.
+The main loop keeps \texttt{sec\_ion\_active = False} while the wind first
+relaxes; the moment that first relaxation reaches a convergence/stall criterion,
+the flag flips to \texttt{True}, the convergence logicals and the mass-flux
+level-stability history are reset, and the run continues and re-converges with
+the full physics. Stops are additionally held for \texttt{N\_stall} (default
+2000) steps after the flip: $du$ reacts only once the base adjustment wave driven
+by the new coupling has formed, so without the hold the run stopped one step
+after activation (activation at step 7144, spurious stop at 7145) with a state
+that had not yet incorporated the physics. The Newton (\texttt{Solver: Newton})
+finish and the direct-solve diagnostic modes (which bypass the marching loop)
+switch the coupling on before their solve, and the flag is forced on after the
+loop so post-processing and final outputs always carry the physics even if the
+loop hit the iteration cap before the flip.
+
+\subsection{The \texttt{Immediate} override}
+\texttt{Secondary\_ionization: Immediate} sets \texttt{use\_sec\_ion = True} and
+applies the coupling from step~0, restoring the pre-staging behavior. It is
+intended for A/B tests only; on the high-gravity cold-start cases it reproduces
+the ${\sim}$step-587 NaN crash, confirming that the staged path is what removes
+it.
+
+\subsection{Files touched}
+\texttt{parameters.f90} (\texttt{sec\_ion\_active}, \texttt{sec\_ion\_immediate});
+\texttt{util\_ion\_eq.f90} (\texttt{PH\_heat\_H} / \texttt{PH\_heat\_HHe} gate on
+the local \texttt{sec\_on = use\_sec\_ion .and. sec\_ion\_active});
+\texttt{EXHALE\_main.f90} (init, stage flip on first convergence, Newton-finish
+and diagnostic-mode activation, post-loop force-on); \texttt{input\_read.f90}
+(the \texttt{Immediate} value parsed).
+
+\subsection{Effect on existing results (wasp\_full validation)}
+For \texttt{Secondary\_ionization: False} the run is bit-identical to before
+(verified byte-identical on \texttt{wasp\_full} and \texttt{wasp\_he23off}). For
+the default (staged on) \texttt{wasp\_full}: activation at step 7144,
+re-convergence at step 13489 ($du=9.98\times10^{-4}$), and $\log_{10}\dot M$
+moves $13.30\to13.22$. The ${\sim}{-}17\%$ mass-loss rate is the real
+secondary-ionization physics: the SvS85 partition diverts most of the hard-photon
+photoelectron energy from heat into ionization and excitation in the weakly
+ionized base, so less energy drives the wind. \texttt{Immediate} reproduces the
+old (crashing) behavior on the high-gravity cases.
+
+\section{He-triplet physics series from the Falorca \& Vidotto (2026) review (2026-07-23)}
+
+The line-by-line comparison against Falorca \& Vidotto (2026,
+arXiv:2607.18193) and Garc\'ia Mu\~noz (2025, A\&A 698, A199) --- full analysis
+in \texttt{docs/falorca2026\_he3d\_review.md} --- exposed six physics gaps, all
+implemented and validated in this series (its validation work also surfaced the
+secondary-ionization NaN regression fixed in the previous section). Physical
+correctness is the acceptance criterion throughout; the impact sizes below are
+informational.
+
+\begin{enumerate}
+\item \textbf{Penning ionization products}
+  (\texttt{heh\_tr\_rows}, \texttt{System\_HeH\_mol},
+  \texttt{adv\_implicit\_HeH\_TR}): He($2^3$S)$+$H$^0\to$He($1^1$S)$+$H$^+ + e^-$
+  now produces the H$^+$ (with its 6.2\,eV of electron heating,
+  $e_{\rm th,HeI}-e_{\rm th,HeTR}-e_{\rm th,HI}$) it always removed the triplet
+  for. In the EUV-shielded base ($\Gamma_{\rm HI}$ exponentially small) this is
+  the \emph{dominant} H-ionization channel: $n_{\rm HII}$ rises $2$--$7\times$
+  at $r<1.03$ on \texttt{wasp\_full}, while the wind and $\dot M$ are unchanged.
+  The associative branch ($\to$HeH$^+$, ${\sim}10\%$, GM25) is folded in as
+  H$^+$ (documented at the code site).
+\item \textbf{Collisional ionization in the TR systems} (\texttt{heh\_tr\_rows}
+  $b$ terms; \texttt{ci\_HeI23S} in \texttt{Cool\_coeff.f90}, the
+  Black-1981-derived $6.41\times10^{-21}\sqrt{T}\,e^{-55338/T}/E_{23S}$,
+  $k(10^4\,\mathrm{K})=3.3\times10^{-10}$): the TR (Oklopcic-form) rows silently
+  dropped \emph{all} electron-impact ionization while \texttt{eval\_cool} kept
+  charging its cooling --- both restored and consistent now, including CI of the
+  metastable itself (a ${\sim}1$--$2\%$ $2^3$S loss at $10^4$\,K, its 4.8\,eV
+  cooling in the \texttt{coio} channel, and its He\,I / adv-row counterparts).
+\item \textbf{Explicit-$n(2^3S)$ cooling} (\texttt{eval\_cool} $+$ the
+  semi-implicit energy solver): the 10830\,\AA{} collisional-excitation channel
+  $1.16\times10^{-20}\sqrt{T}\,e^{-13179/T}\,n_e n_{23S}$ (Black form with the
+  \emph{explicit} metastable density --- Falorca \& Vidotto warn Black's
+  implicit steady-state triplet is wrong here) plus the 0.80/1.40\,eV
+  $q_{31a}/q_{31b}$ conversion ledger. The $q_{13}$ (19.8\,eV) term is
+  deliberately excluded: the Cen-1992 He\,I excitation-cooling term already
+  carries that channel. The terms are passed into
+  \texttt{solve\_energy\_semi\_implicit} (all three \texttt{eval\_cool} calls)
+  so they act on $T$; without that wiring they were diagnostic-only. Measured:
+  $1$--$5\%$ of the total cooling on WASP-121\,b ($8$--$11\%$ of local
+  Ly$\alpha$ at the $2^3$S peak), locally up to ${\sim}28\%$ on HD\,209458\,b.
+\item \textbf{\texttt{He\_rec\_coupling} default ON} (the previous section has
+  the model): with the coupling off the TR singlet recombination used
+  $\alpha_1$ alone --- neither case A nor case B --- and the He recombination
+  photons ionized/heated nothing. Validated stable on \texttt{wasp\_full}: base
+  $n_{2^3S}$ $-10\%$, the 10830-forming region within ${\sim}2\%$, $\dot M$
+  unchanged; on HD\,209458\,b $\dot M$ rises $+0.04$--$0.07$\,dex.
+  \texttt{He\_rec\_coupling: False} restores the legacy path (byte-identical).
+\item \textbf{He$\leftrightarrow$H charge exchange in the default set}
+  (\texttt{he\_h\_charge\_exchange}, default on; Koskinen 2013 rates via Huang
+  2023 Table~4): the group-B pair moved out of the \texttt{cx\_full}-gated table
+  assembly into dedicated \texttt{he\_h\_cx\_fvec/jac/fvec\_adv} routines called
+  by \emph{every} ionization system with He (previously only the metals systems
+  could reach it), including the advection pair and the analytic Jacobians of
+  the Newton systems. The effect is confined to the neutral-H base --- He\,II
+  $\times0.59$ at $r=1.05$, $-1\%$ by $r\ge1.2$, $\dot M$ unchanged --- exactly
+  the He$^+ +$H$^0\to$He$^0 +$H$^+$ sink where $n_{\rm H^0}$ dominates.
+  \texttt{cx\_full} still gates groups C/D. The new input keys of this and the
+  preceding sections were also added to the parser's known-keys list (they
+  parsed correctly but tripped the unknown-line warning).
+\item \textbf{He($2^3$S)$+$H$_2$ Penning ionization}
+  (\texttt{penning\_HeI23S\_H2}; \texttt{System\_HeH\_mol} rows 4/5/8 $+$
+  4.4\,eV heating): GM25 Table~A.5 (Cohen \& Lane 1977) fitted as
+  $5.3791\times10^{-12}\,T^{0.676}\,e^{-695.21/T}$ ($\le0.13\%$ over
+  $500$--$10^4$\,K). On the pinned molecular gates the metastable drops
+  $39\times$ (HD\,209 base) and $430\times$ (hot-Uranus, out to $r\sim1.1$)
+  exactly where $x_{\rm H_2}\to1$, with the upper wind and $\dot M$ unchanged
+  --- GM25's dominant deep metastable sink, now present for Tier-2 $+$ triplet
+  runs. The \texttt{\_adv} post-process is atomic-only (documented) and needs no
+  counterpart.
+\end{enumerate}
+
+Regression state after the series: \texttt{Secondary\_ionization: False} $+$
+\texttt{He\_rec\_coupling: False} $+$ \texttt{He\_H\_charge\_exchange: False}
+reproduce the respective legacy paths byte-identically; the wasp goldens and the
+parse-dump corpus were re-snapshotted once at the end of the series (defaults:
+staged secondary ionization, He recombination coupling on, He$\leftrightarrow$H
+charge exchange on). Converged \texttt{wasp\_full} reference: activation at step
+${\sim}7144$, final count ${\sim}13486$, $\log_{10}\dot M=13.22$.
 
 % ===================================================================== %
 %  APPENDIX --- bookkeeping material, kept separate from the dated update log

@@ -2722,9 +2722,9 @@ from the quoted numbers (the intermediate save was already converged). End-to-en
 demonstrated: VULCAN -> vulcan_to_base.py -> base.inp -> EXHALE startup override
 (T0=863.4 K, R0=1.1685 R_J, He/H=0.0969, K_zz=1e9 echoed).
 
-## 32. Bundled VULCAN as a subroutine-style pre-step (2026-07-06)
+## 32. VULCAN as a subroutine-style pre-step (2026-07-06)
 
-VULCAN (with FastChem inside, as shipped) is now BUNDLED under `EXHALE/VULCAN/` and can be
+VULCAN (with FastChem inside, as shipped) is now included under `EXHALE/VULCAN/` and can be
 invoked by EXHALE itself: `Lower atmosphere: vulcan <R_1bar>` in input.inp runs the new
 `src/utils/vulcan_driver.py` at startup when no base.inp exists (builds the planet's
 Guillot T(p)/Kzz atmosphere, picks a stellar UV spectrum by host Teff, compiles FastChem
@@ -3052,3 +3052,139 @@ modes.
 Default off is bit-identical to the pre-update path; existing goldens and gates
 are unaffected. Turning `He_rec_coupling = True` on changes the He ionization
 structure and the mass-loss rate as tabulated above.
+
+## 38. Staged activation of secondary ionization (2026-07-23)
+
+### The regression
+
+With secondary ionization on by default (section 36, item 5), the high-gravity
+WASP-121 b cases (`backup/regression/wasp_full`, `wasp_he23off`) crashed with a
+NaN at ~step 587: negative densities first, then a NaN base pressure and
+temperature. The coupling itself is physically correct in magnitude -- at the
+shielded base the SvS85 secondary channel raises the H photoionization rate by
+~35x over the direct rate, which is the expected size for the ~keV
+photoelectrons there. The failure is a transient-path problem, not a steady-state
+one: the extra base ionization deepens the base cooling valley and amplifies the
+base acoustic mode of the marginal cold initial condition until the hydro
+diverges. Two facts pin this down: (a) a run with the coupling off converges
+cleanly (du < 1e-3, Mdot 13.30); and (b) restarting with the coupling on from
+that converged state is benign -- no NaN, du stays <~ 4e-2 during a ~2000-step
+adjustment and re-converges. The steady state with the full physics exists and
+is stable; only the cold-start path to it is fatal.
+
+### The fix: converge first without the coupling, then switch it on
+
+A runtime state flag `sec_ion_active` now controls whether the SvS85 partition is
+applied, separately from the `use_sec_ion` enable flag. The photoionization /
+photoheating routines apply the coupling only when `use_sec_ion .and.
+sec_ion_active`; when it is off the code path is bit-identical to the
+`use_sec_ion = False` (full-thermalization) path. The main loop keeps
+`sec_ion_active = False` while the wind first relaxes; the moment that first
+relaxation reaches a convergence/stall criterion, the flag flips to `True`, the
+convergence logicals and the mass-flux level-stability history are reset, and the
+run continues and re-converges with the full physics. Stops are additionally
+held for `N_stall` (default 2000) steps after the flip: du reacts only once the
+base adjustment wave driven by the new coupling has formed, so without the hold
+the run stopped one step after activation (activation at step 7144, spurious
+stop at 7145) with a state that had not yet incorporated the physics. The
+Newton ("Solver:
+Newton") finish and the direct-solve diagnostic modes (which bypass the marching
+loop) switch the coupling on before their solve, and the flag is forced on after
+the loop so post-processing and final outputs always carry the physics even if
+the loop hit the iteration cap before the flip.
+
+### The `Immediate` override
+
+`Secondary_ionization: Immediate` sets `use_sec_ion = True` and applies the
+coupling from step 0, restoring the pre-staging behavior. It is intended for A/B
+tests only; on the high-gravity cold-start cases it reproduces the ~step-587 NaN
+crash, confirming that the staged path is what removes it.
+
+### Files touched
+
+- `src/modules/init/parameters.f90` -- `sec_ion_active`, `sec_ion_immediate`.
+- `src/modules/radiation/util_ion_eq.f90` -- `PH_heat_H` / `PH_heat_HHe` gate on
+  the local `sec_on = use_sec_ion .and. sec_ion_active`.
+- `src/EXHALE_main.f90` -- init, stage flip on first convergence, Newton-finish
+  and diagnostic-mode activation, post-loop force-on.
+- `src/modules/files_IO/input_read.f90` -- `Immediate` value parsed.
+
+### Effect on existing results (wasp_full validation)
+
+For `Secondary_ionization: False` the run is bit-identical to before
+(verified byte-identical on `wasp_full` and `wasp_he23off`). For the default
+(staged on) `wasp_full`: activation at step 7144, re-convergence at step 13489
+(du = 9.98e-4), and log10 Mdot moves 13.30 -> 13.22. The ~-17% mass-loss rate
+is the real secondary-ionization physics: the SvS85 partition diverts most of
+the hard-photon photoelectron energy from heat into ionization and excitation
+in the weakly ionized base, so less energy drives the wind. `Immediate`
+reproduces the old (crashing) behavior on the high-gravity cases.
+
+## 39. He-triplet physics series from the Falorca & Vidotto (2026) review (2026-07-23)
+
+The line-by-line comparison against Falorca & Vidotto (2026, arXiv:2607.18193)
+and Garcia Munoz (2025, A&A 698, A199) — full analysis in
+`docs/falorca2026_he3d_review.md` — exposed six physics gaps, all implemented
+and validated in this series (its validation work also surfaced the
+secondary-ionization NaN regression fixed in §38). Physical correctness is the
+acceptance criterion throughout; impact sizes below are informational.
+
+1. **Penning ionization products** (`heh_tr_rows`, `System_HeH_mol`,
+   `adv_implicit_HeH_TR`): He(2^3S)+H0 -> He(1^1S)+H+ + e- now produces the
+   H+ (+ its 6.2 eV of electron heating, `e_th_HeI - e_th_HeTR - e_th_HI`) it
+   always removed the triplet for. In the EUV-shielded base (g_HI
+   exponentially small) this is the DOMINANT H-ionization channel: n_HII rises
+   2-7x at r < 1.03 on wasp_full, while the wind and Mdot are unchanged. The
+   associative branch (-> HeH+, ~10%, GM25) is folded in as H+ (documented at
+   the code site).
+2. **Collisional ionization in the TR systems** (`heh_tr_rows` b terms;
+   `ci_HeI23S` in Cool_coeff.f90, the Black-1981-derived
+   6.41e-21 sqrt(T) exp(-55338/T)/E_23S, k(1e4 K) = 3.3e-10): the TR
+   (Oklopcic-form) rows silently dropped ALL electron-impact ionization while
+   eval_cool kept charging its cooling — both restored/consistent now,
+   including CI of the metastable itself (a ~1-2% 2^3S loss at 1e4 K, its
+   4.8 eV cooling in the coio channel, and its He I/adv-row counterparts).
+3. **Explicit-n(2^3S) cooling** (eval_cool + the semi-implicit energy solver):
+   the 10830 A collisional-excitation channel 1.16e-20 sqrt(T) exp(-13179/T)
+   n_e n_23S (Black form with the EXPLICIT metastable density — Falorca &
+   Vidotto warn Black's implicit steady-state triplet is wrong here) plus the
+   0.80/1.40 eV q31a/q31b conversion ledger. The q13 (19.8 eV) term is
+   deliberately excluded: the Cen-1992 He I excitation-cooling term already
+   carries that channel. The terms are passed into
+   `solve_energy_semi_implicit` (all three eval_cool calls) so they act on T;
+   without that wiring they were diagnostic-only. Measured: 1-5% of the total
+   cooling on WASP-121b (8-11% of local Lya at the 2^3S peak), locally up to
+   ~28% on HD 209458 b.
+4. **`He_rec_coupling` default ON** (§37 has the model): with the coupling off
+   the TR singlet recombination used alpha_1 alone — neither case A nor case
+   B — and the He recombination photons ionized/heated nothing. Validated
+   stable on wasp_full: base n_2^3S -10%, 10830-forming region within ~2%,
+   Mdot unchanged; on HD 209458 b (§37) Mdot rises +0.04-0.07 dex.
+   `He_rec_coupling: False` restores the legacy path (byte-identical).
+5. **He<->H charge exchange in the default set** (`he_h_charge_exchange`,
+   default on; Koskinen 2013 rates via Huang 2023 Table 4): the group-B pair
+   moved out of the cx_full-gated table assembly into dedicated
+   `he_h_cx_fvec/jac/fvec_adv` routines called by EVERY ionization system
+   with He (previously only the metals systems could reach it), including the
+   advection pair and the analytic Jacobians of the Newton systems. Effect is
+   confined to the neutral-H base — He II x0.59 at r = 1.05, -1% by
+   r >= 1.2, Mdot unchanged — exactly the He+ + H0 -> He0 + H+ sink where
+   n_H0 dominates. `cx_full` still gates groups C/D. The new input keys of
+   §36-§39 were also added to the parser's known-keys list (they parsed
+   correctly but tripped the unknown-line warning).
+6. **He(2^3S)+H2 Penning ionization** (`penning_HeI23S_H2`;
+   `System_HeH_mol` rows 4/5/8 + 4.4 eV heating): GM25 Table A.5
+   (Cohen & Lane 1977) fitted as 5.3791e-12 T^0.676 exp(-695.21/T)
+   (<=0.13% over 500-10^4 K). On the pinned molecular gates the metastable
+   drops 39x (HD209 base) and 430x (hot-Uranus, out to r ~ 1.1) exactly where
+   x_H2 -> 1, with the upper wind and Mdot unchanged — GM25's dominant deep
+   metastable sink, now present for Tier-2 + triplet runs. The `_adv`
+   post-process is atomic-only (documented) and needs no counterpart.
+
+Regression state after the series: `Secondary_ionization: False` +
+`He_rec_coupling: False` + `He_H_charge_exchange: False` reproduce the
+respective legacy paths byte-identically; the wasp goldens and the parse-dump
+corpus were re-snapshotted once at the end of the series (defaults: staged
+secondary ionization, He recombination coupling on, He<->H charge exchange
+on). Converged wasp_full reference: activation at step ~7144, final count
+~13486, log10 Mdot = 13.22.

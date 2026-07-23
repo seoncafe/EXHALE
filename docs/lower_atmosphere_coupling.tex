@@ -1,6 +1,6 @@
 %% Survey + proposal + implementation + examples for connecting EXHALE to the
 %% lower atmosphere.  Companion of lower_atmosphere_coupling.md.
-\documentclass[english,a4paper]{kiseon_memo}
+\documentclass[english,a4paper]{my_memo}
 \usepackage{booktabs}
 \usepackage{graphicx}
 \graphicspath{{lower_atmosphere_figs/}}
@@ -29,7 +29,7 @@ abundances. No molecules exist anywhere in the domain. The Wind-AE IC port carri
 heating/cooling, auto-shutoff when the atomic transition reaches the base).
 
 This memo (i) surveys how the literature connects escape models to the lower atmosphere,
-(ii) documents the machinery implemented in \texttt{src/modules/lower\_atmosphere/} and
+(ii) documents the implementation in \texttt{src/modules/lower\_atmosphere/} and
 \texttt{src/utils/run\_lower.py}, (iii) applies it to the four planets modelled with
 EXHALE (HD\,209458\,b, HD\,189733\,b, WASP-121\,b, WASP-52\,b), and (iv) prescribes how
 the outputs are used and connected to EXHALE runs.
@@ -229,7 +229,7 @@ backbone H$_2^+ + \mathrm{H_2}\to \mathrm{H_3^+} + \mathrm{H}$ (R8, $2\times10^{
 thermal and electron-impact H$_2$ dissociation (R12, R14), three-body chemistry (R13,
 R15), the HeH$^+$ chain (R17--R20), and H/He charge exchange (R21--R23). The stellar
 photo-rates P1--P5 (including H$_2$ dissociative and double photoionization) follow
-EXHALE's existing \texttt{PH\_heat} machinery once H$_2$ cross sections are added.
+EXHALE's existing \texttt{PH\_heat} routines once H$_2$ cross sections are added.
 Baseline caveat inherited from the source: Lyman--Werner neutral photodissociation is not
 in the network (Koskinen et al.'s sensitivity test bounded its effect on $\Mdot$ at
 $\times1.4$).
@@ -262,6 +262,19 @@ assumption; (2) a hot-Uranus-like case (0.0457\,$M_{\rm J}$,
 $R_{\rm p}=0.49\,R_{\rm J}$, $T_{\rm eq}{=}1140$\,K, HD\,209458\,b orbit and spectrum):
 the front rises to $r=1.166\,\Rp$ and H$_3^+$ is active below it.
 Figure~\ref{fig:mol} shows the gate runs.
+
+\paragraph{He\,2$^3$S $+$ H$_2$ Penning ionization.} When \texttt{Include
+He23S?} is also on, the metastable couples to H$_2$ through Penning ionization
+He($2^3$S)$+$H$_2\to$He($1^1$S)$+$H$_2^+ + e^-$ --- the dominant He($2^3$S) loss
+toward an H$_2$-dominated base (Garc\'ia Mu\~noz 2025, A\&A 698, A199, Fig.~4).
+Its rate coefficient \texttt{penning\_HeI23S\_H2} (\texttt{Cool\_coeff.f90}) is
+an analytic fit to Garc\'ia Mu\~noz Table~A.5 (Cohen \& Lane 1977 cross
+sections), $k(T)=5.3791\times10^{-12}\,T^{0.6760}\,e^{-695.21/T}\,
+\mathrm{cm^3\,s^{-1}}$, reproducing the tabulated 500--10000\,K points to
+$\le0.13\%$. It enters \texttt{System\_HeH\_mol} as an H$_2$ loss / H$_2^+$
+source / He($2^3$S) sink and adds $(E[2^3S]-\mathrm{IP}[\mathrm{H_2}])\approx
+4.4\,$eV of electron heating; the minor associative H$+$HeH$^+$ branch
+(${\sim}10\%$) is folded into the Penning channel.
 
 \begin{figure}[htb]\centering
 \includegraphics[width=\textwidth]{fig_mol_structure.pdf}
@@ -358,7 +371,7 @@ equilibrium 0.020 --- the $\sim$11$\times$ underestimate quantified.}
 \section{Example applications: HD and WASP planets}\label{sec:examples}
 % ===================================================================== %
 
-The machinery was applied to the four planets modelled with EXHALE
+The approach was applied to the four planets modelled with EXHALE
 (\texttt{examples/13\_lower\_atmosphere/}; $R_\mathrm{1bar}$ = broadband transit radius;
 $T_\mathrm{eq}$, $M_\mathrm{p}$, He/H from each run's \texttt{input.inp}).
 

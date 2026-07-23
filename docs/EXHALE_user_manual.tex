@@ -1,6 +1,6 @@
 %% EXHALE: User Manual
 %% Author: Kwang-Il Seon
-\documentclass[english,a4paper]{kiseon_memo}
+\documentclass[english,a4paper]{my_memo}
 \synctex=1
 \usepackage{listings}
 \usepackage{xcolor}
@@ -51,7 +51,7 @@ detailed physics derivations live in the companion notes
 reference for every analytic cooling coefficient ---
 \texttt{EXHALE\_BC\_and\_IC.tex} --- the boundary- and
 initial-condition reference --- and \texttt{wind\_ae\_solver.tex} ---
-the bundled Wind-AE steady-wind solver used by \texttt{IC mode: windae});
+the Wind-AE steady-wind solver used by \texttt{IC mode: windae});
 this document is the practical user guide.
 \end{quote}
 
@@ -81,7 +81,16 @@ $\mathcal{C}$ the radiative cooling. Coupled to the hydrodynamics, at every step
 \emph{ionization equilibrium} of H, He, and the trace metals (C, N, O, Mg, Si,
 Ca, Na, K, S, Fe) with a Newton (MINPACK) solver, including photoionization,
 collisional ionization, radiative + dielectronic recombination, and charge
-exchange. The converged run yields the radial profiles of density, velocity,
+exchange. The photoelectron energy budget carries Shull \& van Steenberg (1985)
+secondary ionization (a fast photoelectron drives further H\,I / He\,I
+ionizations instead of thermalizing fully), the He\,II\,$\to$\,He\,I
+recombination radiation is coupled to H\,I ionization on the spot (Draine 2011
+$y$/$z$), and the He\,$\leftrightarrow$\,H charge-exchange pair (Koskinen 2013)
+acts in every helium-bearing ionization system. When the metastable He\,$2\,^3$S
+triplet is included the code adds its explicit collisional-excitation cooling
+(the 10830\,\AA\ channel) and the He\,$2\,^3$S\,$+$\,H / H$_2$ Penning
+ionization that removes the metastable. The converged run yields the radial
+profiles of density, velocity,
 temperature, and the ionization state, plus the steady-state \emph{mass-loss
 rate} $\dot M$. A post-processing pass adds advection to the ionization balance,
 and the Python tool \texttt{EXHALE\_transit.py} turns a converged model into transit
@@ -260,6 +269,20 @@ $\sim$30). For production answers use the residual-based stop
 (\texttt{Resid tol:}) or the Newton finish (\texttt{Solver: Newton},
 \S\ref{sec:newton}); details in \texttt{steady\_solver\_memo}.
 
+\paragraph{Staged secondary ionization.} With
+\texttt{Secondary\_ionization: True} (the default) the Shull \& van Steenberg
+(1985) coupling is \emph{not} applied from step~0. From a cold initial condition
+it would deepen the base cooling valley and amplify the base acoustic mode into
+a NaN runaway on high-gravity cases. Instead the wind first relaxes without the
+coupling; the moment that first relaxation converges (or stalls) the coupling
+switches on (the terminal prints \texttt{secondary ionization activated at step
+N}), the convergence logicals and flux-level history are reset, and stops are
+held for \texttt{N\_stall} steps while the base adjustment wave forms, after
+which the run re-converges with the full physics. Expect roughly double the step
+count on high-gravity cases. \texttt{Secondary\_ionization: False} disables the
+coupling entirely; \texttt{Immediate} applies it from step~0 (for A/B tests
+only --- it reproduces the cold-start crash on high-gravity cases).
+
 \subsection{The steady-state Newton solver (\texttt{Solver: Newton})}
 \label{sec:newton}
 The finite-volume steady state can be solved directly --- $F(Y)=0$ for the hydro
@@ -420,7 +443,7 @@ heating/cooling differences (cf.\ \S\ref{sec:compare}).
 
 \subsection{Wind-AE warm-start initial conditions}\label{sec:windae}
 A 1-D steady-state Parker-wind solver (a Fortran port of \emph{Wind-AE};
-Murray-Clay et al.\ 2009 / Broome et al.\ 2025) is bundled under
+Murray-Clay et al.\ 2009 / Broome et al.\ 2025) is included under
 \texttt{src/modules/wind\_ae/} and can supply the initial condition for a
 hard-to-launch EXHALE run. There are two ways to use it; the underlying
 algorithm, ramp, and BC/IC are documented in \texttt{docs/wind\_ae\_solver.tex}.
@@ -654,21 +677,33 @@ defaults restore the standard behavior).}\label{tab:inp-opt}\\
   ionization (\S\ref{sec:data}). The free-free Gaunt factor and its ion
   net-charge weighting are always the van Hoof et al.\ (2014) form,
   independent of this switch. \\
-\texttt{Secondary\_ionization:} & logical (def.\ \texttt{True}) & Shull \& van
+\texttt{Secondary\_ionization:} & \texttt{False} $|$ \texttt{True} $|$
+  \texttt{Immediate} (def.\ \texttt{True}, staged) & Shull \& van
   Steenberg (1985) secondary ionization by fast photoelectrons in the main
   loop: a photoelectron ejected with $E_0>40\,$eV deposits only $f_{\rm
   heat}(x)$ of its excess as heat and drives further H\,I / He\,I ionizations,
-  where $x$ is the ionized fraction of the H$+$He nuclei. \texttt{False}
+  where $x$ is the ionized fraction of the H$+$He nuclei. The default is
+  \emph{staged} (\S\ref{sec:convctl}): the coupling switches on only after the
+  wind first converges without it, then the run re-converges. \texttt{False}
   restores full photoelectron thermalization, bit-identical to the legacy
-  path. \\
-\texttt{He\_rec\_coupling:} & logical (def.\ \texttt{False}) & Couple
+  path; \texttt{Immediate} applies it from step~0 (A/B tests only). \\
+\texttt{He\_rec\_coupling:} & logical (def.\ \texttt{True}) & Couple
   He\,II\,$\to$\,He\,I recombination radiation to H\,I ionization (Draine 2011
   on-the-spot $y$/$z$; \S\ref{sec:data}). Adds an H\,I photoionization rate
   $n_{\rm HeII}n_e[z\,\alpha_B+y\,\alpha_1]$ with its photoelectron heating and
   shifts the He\,II recombination to $\alpha_B+y\,\alpha_1$; $y$ is the local
   $\ge24.6\,$eV ground-capture share ionizing H, $z$ the density-dependent
-  cascade share. \texttt{False} $=$ pure case B (photons lost locally),
-  bit-identical to the legacy path. \\
+  cascade share. \texttt{False} $=$ pure case B (photons lost locally, the
+  legacy path; in the He\,$2\,^3$S mode the singlet recombination is then
+  neither case A nor case B). \\
+\texttt{He\_H\_charge\_exchange:} & logical (def.\ \texttt{True}) & The
+  He\,$\leftrightarrow$\,H charge-exchange pair (Koskinen 2013 rates via Huang
+  2023 Table~4): He$^0+$H$^+\!\to$He$^+\!+$H$^0$ (endothermic) and the
+  He$^+\!+$H$^0\!\to$He$^0+$H$^+$ loss channel where neutral H dominates
+  ($\sim40\%$ of He\,II at $r\simeq1.05$ on WASP-121\,b, $<1\%$ by
+  $r\ge1.2$). Applied by dedicated routines in \emph{every} helium-bearing
+  ionization system, independent of \texttt{cx\_full} (which still gates the
+  metal groups). \texttt{False} $=$ legacy no-He-CX path, bit-identical. \\
 \texttt{He\_diffusion:} & logical (def.\ \texttt{False}) & Enable diffusive
   separation of helium: transport the He element ratio $n_{\rm He}/n_{\rm H}$
   with advection $+$ molecular-diffusion settling, so He/H falls with altitude.
@@ -949,7 +984,7 @@ subroutine-style, with the first VULCAN run taking hours and later runs
 reusing the cached result in \texttt{<run\_dir>/vulcan\_work/}. Omitting the
 key disables the pre-step entirely. The \texttt{VULCAN/} tree (obtained by
 \texttt{setup\_vulcan.sh}; it ships \texttt{FastChem} inside it) carries its own
-citation requirements --- see \S\ref{sec:bundled}. Two generators are
+citation requirements --- see \S\ref{sec:vulcan-obtain}. Two generators are
 provided in \texttt{src/utils/}:
 \begin{itemize}
 \item \texttt{run\_lower.py <run\_dir> --r1bar <R\_J> [--guillot]} --- the
@@ -965,7 +1000,7 @@ provided in \texttt{src/utils/}:
 \emph{Running VULCAN} is handled automatically by the driver
 \texttt{src/utils/vulcan\_driver.py}, so no manual VULCAN setup is required.
 When the pre-step is requested it (i) obtains VULCAN if needed
-(via \texttt{src/utils/setup\_vulcan.sh}; see \S\ref{sec:bundled}) and copies the
+(via \texttt{src/utils/setup\_vulcan.sh}; see \S\ref{sec:vulcan-obtain}) and copies the
 \texttt{EXHALE/VULCAN/} tree into \texttt{<run\_dir>/vulcan\_work/} (once, then reused), (ii) builds a
 Guillot (2010) semi-grey $T(p)$/$K_{zz}$ atmosphere for the planet and selects a
 stellar UV spectrum from the shipped spectra by the host $T_{\rm eff}$ ($>6800$\,K
@@ -980,7 +1015,7 @@ H$_2$/H state and molecular mixing ratios, \emph{not} the atomic-metal release
 (Na/Mg/Ca/Fe) --- \texttt{metals.inp} stays user-supplied.
 
 % ===================================================================== %
-\subsection{Obtaining VULCAN and FastChem}\label{sec:bundled}
+\subsection{Obtaining VULCAN and FastChem}\label{sec:vulcan-obtain}
 % ===================================================================== %
 The lower-atmosphere pre-step uses the \textbf{VULCAN} photochemical-kinetics
 code, which ships the \textbf{FastChem} equilibrium-chemistry code inside it.
@@ -1615,7 +1650,7 @@ Rate $C(T)$ & H\,I, He\,I, He\,II & Voronov (1997, ADNDT 65, 1) default; legacy 
 \midrule
 \multicolumn{3}{@{}l}{\textbf{Recombination (radiative RR + dielectronic DR)}}\\[2pt]
 Case~B (RR) & H\,II, He\,II, He\,III & Badnell (2023) RR $-$ Mao \& Kaastra (2016) $\alpha_1$ ($+$ Badnell DR for He\,II) default; legacy Hui \& Gnedin (1997) fits via \texttt{Legacy\_HHe\_rates} \\
-He rec.\ radiation $\to$ H\,I (opt., \texttt{He\_rec\_coupling}) & He\,II\,$\to$\,He\,I & Draine (2011) on-the-spot $y$/$z$: extra H\,I photoionization $n_{\rm HeII}n_e[z\,\alpha_B+y\,\alpha_1]$ with photoelectron heating, He\,II recombination shifted to $\alpha_B+y\,\alpha_1$; default off $=$ pure case B \\
+He rec.\ radiation $\to$ H\,I (def.\ on, \texttt{He\_rec\_coupling}) & He\,II\,$\to$\,He\,I & Draine (2011) on-the-spot $y$/$z$: extra H\,I photoionization $n_{\rm HeII}n_e[z\,\alpha_B+y\,\alpha_1]$ with photoelectron heating, He\,II recombination shifted to $\alpha_B+y\,\alpha_1$; \texttt{False} $=$ pure case B \\
 Metastable & He\,II\,$\to2\,^3$S, $1\,^1$S & power-law fits (orig.\ ATES) \\
 Penning ionization & He\,$2\,^3$S\,$+$\,H & Taylor et al.\ (2025) temperature-dependent fit (replaces the const.\ $5\times10^{-10}$; always on) \\
 RR + DR & C, N, O, Mg, Si, Na, K, S, Ca\,II (+ stages) & Badnell (2006, ApJS 167, 334) RR + Badnell adf48 DR (TAMOC clist\_K) \\
