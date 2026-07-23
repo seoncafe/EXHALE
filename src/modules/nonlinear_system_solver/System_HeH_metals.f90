@@ -31,7 +31,8 @@
 	use ion_residual_core, only: heh_rows, heh_crow, heh_jac_local,       &
 	                             metal_fractions, metal_electron_sum,     &
 	                             metal_rows
-	use charge_exchange, only: cx_add_to_fvec, cx_add_to_jac
+	use charge_exchange, only: cx_add_to_fvec, cx_add_to_jac,             &
+	                           he_h_cx_fvec, he_h_cx_jac
 
 	implicit none
 
@@ -153,6 +154,11 @@
 	call cx_add_to_fvec(N_eq, fvec, nm0, nm1, nm2,                  &
 	                    n_hi, n_hii, n_hei, n_heii, n_heiii)
 
+	! He <-> H charge exchange (Huang Table 4 group B). Standard He row
+	! (HeI->HeII positive), so he_row_sign = +1.
+	call he_h_cx_fvec(fvec, ieq_cell%kcx_He0_Hp, ieq_cell%kcx_Hep_H0,  &
+	                  n_hi, n_hii, n_hei, n_heii, 1.0d0)
+
 	return
 
 	end subroutine ion_system_HeH_metals
@@ -237,6 +243,11 @@
    call cx_add_to_jac(N_eq, fjac, nm0, nm1, nm2,                       &
                       n_hi, n_hii, n_hei, n_heii, n_heiii,             &
                       met_ntot, n_h, n_he)
+
+   ! He <-> H charge-exchange Jacobian (rows 1,2; cols 1,2,3), mirror of
+   ! the he_h_cx_fvec call in the residual (standard He row, +1).
+   call he_h_cx_jac(N_eq, fjac, ieq_cell%kcx_He0_Hp, ieq_cell%kcx_Hep_H0,  &
+                    n_h, n_he, n_hi, n_hii, n_hei, n_heii)
 
    ! Pinned/identity rows LAST (CX never targets them): absent elements pin
    ! both stages; two-stage elements pin the unused X++ unknown.

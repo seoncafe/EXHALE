@@ -4,6 +4,7 @@
 	use global_parameters
 	use ion_cell_state, only: ieq_cell
 	use ion_residual_core, only: heh_tr_rows
+	use charge_exchange, only: he_h_cx_fvec
 
 	implicit none
 	
@@ -14,7 +15,7 @@
 	integer :: Neq,iflag
 	real*8  :: x(Neq),fvec(Neq)
 	real*8  :: g_hi,g_hei,g_heii,g_heiTR		! Photoionization rates
-	real*8  :: b_hi,b_hei,b_heii			! Collisional ionization rates
+	real*8  :: b_hi,b_hei,b_heii,b_heiTR		! Collisional ionization rates
 	real*8  :: A31,q13,q31a,q31b,Q31
 	real*8  :: a_hii,a_heii,a_heiii,a_heiTR	! Recombination rates
    real*8  :: params(40)
@@ -44,8 +45,9 @@
  	q31a    = ieq_cell%q31a     ! = q31a
  	q31b    = ieq_cell%q31b     ! = q31b
  	Q31     = ieq_cell%Q31      ! = Q31
- 	
- 	
+ 	b_heiTR = ieq_cell%a_ion_HeITR  ! = a_ion_HeITR (He 2^3S collisional ioniz.)
+
+
  	! Species densities
  	n_hi    = (1.0-x(1))*n_h
  	n_hii   = x(1)*n_h
@@ -63,10 +65,16 @@
 	call heh_tr_rows(fvec, n_hi, n_hii, n_heiSI, n_heiTR, n_heii, n_heiii,  &
 	                 n_e, g_hi, g_hei, g_heii, g_heiTR,                      &
 	                 a_hii, a_heii, a_heiii, a_heiTR,                        &
+	                 b_hi, b_hei, b_heii, b_heiTR,                           &
 	                 q13, q31a, q31b, Q31, A31)
 
+	! He <-> H charge exchange (Huang Table 4 group B). The summed He I row
+	! (fvec 2) is written HeI-gain positive here, so he_row_sign = -1.
+	call he_h_cx_fvec(fvec, ieq_cell%kcx_He0_Hp, ieq_cell%kcx_Hep_H0,  &
+	                  n_hi, n_hii, n_hei, n_heii, -1.0d0)
+
 	return
-	
+
 	! End of subroutine
 	end subroutine ion_system_HeH_TR
 	

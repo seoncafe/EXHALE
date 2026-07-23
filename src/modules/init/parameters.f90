@@ -68,16 +68,29 @@
       !   fraction of the H+He nuclei. .false. = legacy full-thermalization
       !   (bit-identical to the pre-2026 behavior).
       logical :: use_sec_ion = .true.
+      ! Runtime state of the SvS85 coupling: .true. only once it is actually
+      ! applied. From a cold IC the secondary-ionization base feedback amplifies
+      ! the startup transient into a runaway, so the coupling is switched on only
+      ! after the wind has first converged without it (set in serial code only --
+      ! no threadprivate).
+      logical :: sec_ion_active = .false.
+      ! Input override "Secondary_ionization: Immediate": apply the coupling from
+      ! step 0 (pre-staging behavior), for A/B tests only.
+      logical :: sec_ion_immediate = .false.
       ! He recombination radiation ionizing H (Draine 2011 y/z parametrization,
       ! on-the-spot; see docs/QUESTIONS_2026-07-17.md).
-      !  .false. (default) = He II -> He I recombination photons are all lost
-      !   locally (pure case B, y=0), as in the legacy path -- bit-identical.
-      !  .true. = the >= 24.6 eV ground-capture continuum ionizes H with the
-      !   local fraction y (Draine Eq. 14.16) and the < 24.6 eV cascade photons
-      !   ionize H with the density-dependent fraction z (Draine Sec. 15.5);
-      !   couples an extra H I photoionization rate and its photoelectron
+      !  .true. (default) = the >= 24.6 eV ground-capture continuum ionizes H
+      !   with the local fraction y (Draine Eq. 14.16) and the < 24.6 eV cascade
+      !   photons ionize H with the density-dependent fraction z (Draine Sec.
+      !   15.5); couples an extra H I photoionization rate and its photoelectron
       !   heating, and corrects the He II recombination to alpha_B + y alpha_1.
-      logical :: use_he_rec_coupling = .false.
+      !   In TR mode this also restores the singlet-excited capture channel
+      !   (0.25 alpha_B) that the alpha_1-only network omits -- with the
+      !   coupling off, the TR singlet recombination is neither case A nor
+      !   case B. The photons are real; default on (2026-07-23, Update §39).
+      !  .false. = He II -> He I recombination photons are all lost locally
+      !   (pure case B, y=0), the legacy path.
+      logical :: use_he_rec_coupling = .true.
       ! He/H diffusive separation (docs/design_hehe_diffusion.md):
       !  .false. (default) = He/H frozen at the input HeH everywhere (legacy);
       !  .true. = evolve the He element ratio with advection + molecular

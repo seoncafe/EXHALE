@@ -1,6 +1,6 @@
-%% kiseon_memo.cls
-%% Document class equivalent of kiseon_memo.tex.
-%% Usage: \documentclass[<options>]{kiseon_memo}
+%% my_memo.cls
+%% Document class equivalent of my_memo.tex.
+%% Usage: \documentclass[<options>]{my_memo}
 %%
 %% Options passed through to the underlying 'article' class (e.g. a4paper,
 %% 10pt, 11pt, 12pt, english, korean, ...).  The class loads its own fixed
@@ -23,7 +23,7 @@
 %%   was last edited; an explicit \date{...} overrides it.
 
 \NeedsTeXFormat{LaTeX2e}
-\ProvidesClass{kiseon_memo}[2026/04/26 v1.1 Kiseon memo class]
+\ProvidesClass{my_memo}[2026/07/18 v1.2 Kiseon memo class; round speed v scoped to bare math italic]
 
 %% ---- Pass all unknown options to 'article' --------------------------------
 \DeclareOption*{\PassOptionsToClass{\CurrentOption}{article}}
@@ -104,8 +104,35 @@
 \newif\iftx@ch        \tx@chfalse
 \DeclareSymbolFont{ntxlettersA}{U}{ntxmia}{m}{it}
 \SetSymbolFont{ntxlettersA}{bold}{U}{ntxmia}{b}{it}
-\DeclareMathSymbol{v}{\mathalpha}{ntxlettersA}{51}
-\DeclareMathSymbol{\varv}{\mathalpha}{ntxlettersA}{51}
+\DeclareMathSymbol{\varv}{\mathord}{ntxlettersA}{51}
+%% The math letter v dispatches on the current math alphabet instead of
+%% being remapped outright.  The former
+%% \DeclareMathSymbol{v}{\mathalpha}{ntxlettersA}{51} broke every
+%% \mathrm/\mathbf v: \mathalpha (class 7) lets an alphabet command
+%% redirect the FAMILY but keeps the SLOT, so {\rm v} fetched slot 51 of
+%% the Times text font -- the digit '3'.  Instead v is made math-active
+%% ("8000): outside any alphabet (\fam = -1, i.e. a bare $v$ -- the
+%% speed symbol) it typesets the round-bottomed \varv; inside
+%% \mathrm/\mathbf/\mathit/{\rm ...} it typesets slot 118 (the letter v
+%% itself) of the CURRENT family, so roman/bold/italic v all come out as
+%% the genuine Times v.
+\begingroup\lccode`\~=`\v
+\lowercase{\endgroup\gdef~}{\ifnum\fam<\z@\varv
+  \else\mathchar\numexpr\fam*"100+"76\relax\fi}
+\AtBeginDocument{\mathcode`\v="8000 }
+%% Text extraction: the round-bottomed glyph is /v1 in txmia (the base
+%% font behind the ntxmia virtual font), whose default ToUnicode falls
+%% back to its slot ('3').  Map the variant-letter glyph names to their
+%% plain letters so copy/paste and pdftotext give v (and g/y/w for the
+%% sibling variants).
+\ifdefined\pdfglyphtounicode
+  \input{glyphtounicode}%
+  \pdfgentounicode=1
+  \pdfglyphtounicode{v1}{0076}%
+  \pdfglyphtounicode{g1}{0067}%
+  \pdfglyphtounicode{y1}{0079}%
+  \pdfglyphtounicode{w1}{0077}%
+\fi
 
 \thinmuskip=2mu
 \medmuskip=2.5mu plus 1mu minus 1mu

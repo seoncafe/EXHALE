@@ -4,7 +4,8 @@
    use global_parameters
    use lower_column, only: q_h2_equilibrium   ! molecular base
    use metals_input        ! optional metals.inp abundance reader
-   use charge_exchange, only: cx_init       ! build active charge-exchange set
+   use charge_exchange, only: cx_init,       &  ! build active charge-exchange set
+                              he_h_charge_exchange  ! He <-> H pair (group B) switch
    use species_table, only: n_melem, iel_C, iel_O, iel_N, iel_Mg,  &
                             iel_Si, iel_Ca, iel_Na, iel_K, iel_S,  &
                             iel_Fe, mion_ethr, melem_i0, melem_A
@@ -45,6 +46,8 @@
       'Deexc heat', 'Wind-AE seed out', 'Wind-AE seed', 'Jlya RT file',      &
       'Jlya escape-prob', 'Stellar Lya flux', 'Lya stellar halfwidth',       &
       'Lya stellar boost', 'du_th', 'ATES_photoionization_rate',             &
+      'Legacy_HHe_rates', 'Secondary_ionization', 'He_rec_coupling',         &
+      'He_H_charge_exchange',                                                &
       'Molecular chemistry', 'Molecular base', 'Lower atmosphere',           &
       'Lower column', 'He_Kzz', 'He_alphaT', 'He_ambipolar',                 &
       'He_metal_diffusion', 'He_diffusion', 'Stall', 'Energy solver',        &
@@ -319,7 +322,9 @@
 		ates_photoion_rate = .false.  ! default: Verner+1996 He I (1^1S) photoion.
 		legacy_hhe_rates   = .false.  ! default: Badnell/Mao + Voronov H/He rates
 		use_sec_ion        = .true.   ! default: SvS85 secondary ionization ON
-		use_he_rec_coupling = .false. ! default: He rec. photons lost locally
+		sec_ion_immediate  = .false.  ! default: staged (applied after 1st converge)
+		use_he_rec_coupling = .true.  ! default: He rec. photons ionize/heat H
+		he_h_charge_exchange = .true. ! default: He <-> H charge exchange (group B) ON
 		do i = 1, nlines
 			line = filelines(i)
 			if (len_trim(line) .eq. 0) cycle
@@ -391,17 +396,36 @@
 				str = get_word(line, 2)
 				if (str .eq. 'True' .or. str .eq. 'true') legacy_hhe_rates = .true.
 			else if (lbl_match(line, 'Secondary_ionization')) then
-				! Turn OFF SvS85 secondary ionization (default ON).
-				! "Secondary_ionization: False"
+				! SvS85 secondary ionization (default ON, staged: applied only
+				! after the wind first converges without the coupling).
+				! "Secondary_ionization: False"     -> off entirely
+				! "Secondary_ionization: Immediate"  -> on from step 0
+				!    (restores the pre-staging behavior, for A/B tests only)
 				str = get_word(line, 2)
 				if (str .eq. 'False' .or. str .eq. 'false') use_sec_ion = .false.
 				if (str .eq. 'True'  .or. str .eq. 'true' ) use_sec_ion = .true.
+				if (str .eq. 'Immediate' .or. str .eq. 'immediate') then
+					use_sec_ion       = .true.
+					sec_ion_immediate = .true.
+				endif
 			else if (lbl_match(line, 'He_rec_coupling')) then
 				! Couple He II -> He I recombination radiation to H ionization
-				! (Draine 2011 y/z, on-the-spot). Default off (photons lost).
-				! "He_rec_coupling: True"
+				! (Draine 2011 y/z, on-the-spot). Default ON (the photons are
+				! real; "He_rec_coupling: False" restores the legacy lost-photon
+				! path, which in TR mode leaves the singlet recombination
+				! neither case A nor case B).
 				str = get_word(line, 2)
-				if (str .eq. 'True' .or. str .eq. 'true') use_he_rec_coupling = .true.
+				if (str .eq. 'True'  .or. str .eq. 'true' ) use_he_rec_coupling = .true.
+				if (str .eq. 'False' .or. str .eq. 'false') use_he_rec_coupling = .false.
+			else if (lbl_match(line, 'He_H_charge_exchange')) then
+				! He <-> H charge exchange (Huang 2023 Table 4 group B, rates
+				! from Koskinen 2013): He0+H+ <-> He++H0. Default ON in every
+				! ionization system that contains He. "He_H_charge_exchange:
+				! False" restores the legacy no-He-CX path (Group B not
+				! assembled anywhere).
+				str = get_word(line, 2)
+				if (str .eq. 'True'  .or. str .eq. 'true' ) he_h_charge_exchange = .true.
+				if (str .eq. 'False' .or. str .eq. 'false') he_h_charge_exchange = .false.
 			else if (lbl_match(line, 'Molecular chemistry')) then
 				! molecular network (docs/lower_atmosphere_*). Solving molecular
 				! chemistry implies the molecular-base particle count for the

@@ -16,7 +16,9 @@
 	! Rows are steady-state production-loss balances.  The atomic rows
 	! use EXHALE's own rate arrays (P_HI/rchiiB/Voronov...) so the
 	! molecular-free limit reproduces the atomic systems' solution; the
-	! He 2^3S row is VERBATIM from System_HeH_TR.  Molecular channels are
+	! He 2^3S row follows System_HeH_TR plus the He(2^3S)+H2 Penning loss
+	! (Garcia Munoz 2025 Table A.5), the dominant metastable sink toward an
+	! H2-rich base.  Molecular channels are
 	! the Koskinen et al. (2022) Table-1 network via mol_rates (R21/R22
 	! H-He charge exchange excluded to preserve the atomic limit; the
 	! Lyman-Werner photodissociation caveat is inherited -- see mol_rates).
@@ -32,6 +34,8 @@
 	use mol_rates
 	use ion_residual_core, only: tr_triplet_row
 	use ion_cell_state, only: ieq_cell
+	use charge_exchange, only: he_h_cx_fvec
+	use Cooling_Coefficients, only: penning_HeI23S_H2   ! He(2^3S)+H2 Penning rate
 
 	implicit none
 
@@ -40,8 +44,11 @@
 	! and read by the residual, mirroring set_metal_coeffs / cx_set_cell.
 	real*8, save :: mk5,mk6,mk7,mk8,mk9,mk10,mk11,mk12,mk13,mk14,mk15
 	real*8, save :: mk16,mk17,mk18,mk19,mk20,mk23
+	! He(2^3S)+H2 Penning ionization rate coefficient (Garcia Munoz 2025
+	! Table A.5); depends only on T. Zero-effect unless the triplet is present.
+	real*8, save :: mk_pen_H2
 	!$omp threadprivate(mk5,mk6,mk7,mk8,mk9,mk10,mk11,mk12,mk13,mk14,mk15, &
-	!$omp                mk16,mk17,mk18,mk19,mk20,mk23)
+	!$omp                mk16,mk17,mk18,mk19,mk20,mk23,mk_pen_H2)
 
 	contains
 
@@ -67,6 +74,7 @@
 	mk19 = rk_R19_HeHp_H()
 	mk20 = rk_R20_Hep_H2_HeHp()
 	mk23 = rk_R23_H2_Hep_cx()
+	mk_pen_H2 = penning_HeI23S_H2(T)   ! He(2^3S)+H2 Penning ionization
 	end subroutine set_mol_coeffs
 
 	subroutine ion_system_HeH_mol(Neq,x,fvec,iflag,params)
@@ -75,14 +83,14 @@
 	real*8  :: x(Neq),fvec(Neq)
 	real*8  :: params(40)
 	real*8  :: g_hi,g_hei,g_heii,g_heiTR,g_h2
-	real*8  :: b_hi,b_hei,b_heii
+	real*8  :: b_hi,b_hei,b_heii,b_heiTR
 	real*8  :: a_hii,a_heii,a_heiii,a_heiTR
 	real*8  :: A31,q13,q31a,q31b,Q31
 	real*8  :: n_h,n_he,n_e,T,ntot
 	real*8  :: n_hi,n_hii,n_h2,n_h2p,n_h3p,n_hehp
 	real*8  :: n_hei,n_heii,n_heiii,n_heiTR,n_heiSI
 	real*8  :: k5,k6,k7,k8,k9,k10,k11,k12,k13,k14,k15
-	real*8  :: k16,k17,k18,k19,k20,k23
+	real*8  :: k16,k17,k18,k19,k20,k23,k_pen_H2
 
 	g_hi    = ieq_cell%P_HI
 	g_hei   = ieq_cell%P_HeI
@@ -95,6 +103,7 @@
 	b_hi    = ieq_cell%a_ion_HI
 	b_hei   = ieq_cell%a_ion_HeI
 	b_heii  = ieq_cell%a_ion_HeII
+	b_heiTR = ieq_cell%a_ion_HeITR   ! He 2^3S collisional ioniz. (0 if no triplet)
 	a_heiTR = ieq_cell%rcheiTR
 	A31     = ieq_cell%A31
 	g_heiTR = ieq_cell%P_HeITR
@@ -145,15 +154,21 @@
 	k19 = mk19
 	k20 = mk20
 	k23 = mk23
+	k_pen_H2 = mk_pen_H2   ! He(2^3S)+H2 -> He(1^1S)+H2+ + e- (0 without triplet)
 
 	! (1) H+ balance
+	! Q31*n_heiTR*n_hi: Penning ionization He(2^3S)+H0 -> He(1^1S)+H+ + e-
+	! (n_heiTR is 0 when thereis_HeITR is false, so the term is unconditional).
 	fvec(1) = (g_hi + b_hi*n_e)*n_hi                                  &
 	        + k9*n_h2p*n_hi + k17*n_heii*n_h2                         &
+	        + Q31*n_heiTR*n_hi                                        &
 	        - a_hii*n_e*n_hii - (k10 + k13)*n_hii*n_h2
 
 	! (2) He+ balance (atomic part consistent with System_HeH_TR rows
-	!     2+3 combined; + molecular sinks R17/R20/R23)
+	!     2+3 combined; + molecular sinks R17/R20/R23). b_heiTR*n_e*n_heiTR is
+	!     electron-impact ionization of the He 2^3S metastable into He+.
 	fvec(2) = (g_hei + b_hei*n_e)*n_heiSI + g_heiTR*n_heiTR           &
+	        + b_heiTR*n_e*n_heiTR                                     &
 	        + a_heiii*n_e*n_heiii                                     &
 	        - (a_heii + a_heiTR)*n_e*n_heii                           &
 	        - (g_heii + b_heii*n_e)*n_heii                            &
@@ -163,14 +178,19 @@
 	fvec(3) = (g_heii + b_heii*n_e)*n_heii - a_heiii*n_e*n_heiii
 
 	! (4) H2 balance
+	! k_pen_H2*n_heiTR: He(2^3S)+H2 -> He(1^1S)+H2+ + e- Penning loss of H2
+	! (n_heiTR is 0 when thereis_HeITR is false, so the term is unconditional).
 	fvec(4) = k6*n_e*n_h3p + k9*n_h2p*n_hi + k11*n_h3p*n_hi           &
 	        + k15*n_hi*n_hi                                           &
 	        - ( g_h2 + (k10 + k13)*n_hii + k12*ntot + k14*n_e         &
-	          + k8*n_h2p + (k17 + k20 + k23)*n_heii + k18*n_hehp )*n_h2
+	          + k8*n_h2p + (k17 + k20 + k23)*n_heii + k18*n_hehp      &
+	          + k_pen_H2*n_heiTR )*n_h2
 
 	! (5) H2+ balance
+	! k_pen_H2*n_heiTR*n_h2: H2+ produced by He(2^3S)+H2 Penning ionization.
 	fvec(5) = g_h2*n_h2 + k10*n_hii*n_h2 + k11*n_h3p*n_hi             &
 	        + k19*n_hehp*n_hi + k23*n_heii*n_h2                       &
+	        + k_pen_H2*n_heiTR*n_h2                                   &
 	        - (k5*n_e + k8*n_h2 + k9*n_hi)*n_h2p
 
 	! (6) H3+ balance
@@ -184,8 +204,18 @@
 	! (8) He 2^3S balance (VERBATIM System_HeH_TR row 4)
 	if (thereis_HeITR) then
 		call tr_triplet_row(fvec(8), n_hi, n_heiSI, n_heiTR, n_heii, n_e,   &
-		                    g_heiTR, a_heiTR, q13, q31a, q31b, Q31, A31)
+		                    g_heiTR, a_heiTR, q13, q31a, q31b, Q31, A31,    &
+		                    b_heiTR)
+		! He(2^3S)+H2 Penning ionization triplet loss (product is ground
+		! He I, so no He+ row term). Garcia Munoz (2025) Table A.5.
+		fvec(8) = fvec(8) - k_pen_H2*n_heiTR*n_h2
 	endif
+
+	! He <-> H charge exchange (Huang Table 4 group B). Row 1 (H+ balance)
+	! and row 2 (He+ balance) are both written production positive, so
+	! he_row_sign = +1. The ground singlet n_heiSI is the CX He I reservoir.
+	call he_h_cx_fvec(fvec, ieq_cell%kcx_He0_Hp, ieq_cell%kcx_Hep_H0,   &
+	                  n_hi, n_hii, n_heiSI, n_heii, 1.0d0)
 
 	return
 	end subroutine ion_system_HeH_mol

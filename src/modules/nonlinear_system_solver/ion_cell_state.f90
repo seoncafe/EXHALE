@@ -34,6 +34,7 @@
 		real*8 :: a_ion_HI
 		real*8 :: a_ion_HeI
 		real*8 :: a_ion_HeII
+		real*8 :: a_ion_HeITR
 		real*8 :: rcheiTR
 		real*8 :: A31
 		real*8 :: P_HeITR
@@ -44,6 +45,10 @@
 		real*8 :: P_H2
 		real*8 :: T_K
 		real*8 :: ntot
+		! He <-> H charge-exchange rate coefficients (Huang Table 4 group B):
+		! kcx_He0_Hp = He0+H+ -> He++H0, kcx_Hep_H0 = He++H0 -> He0+H+.
+		real*8 :: kcx_He0_Hp
+		real*8 :: kcx_Hep_H0
 	end type ion_rates
 
 	type(ion_rates), save :: ieq_cell
@@ -71,6 +76,7 @@
 		real*8 :: a_ion_HI
 		real*8 :: a_ion_HeI
 		real*8 :: a_ion_HeII
+		real*8 :: a_ion_HeITR
 		real*8 :: heh_loc
 		real*8 :: rcheiTR
 		real*8 :: A31
@@ -80,6 +86,10 @@
 		real*8 :: q31b
 		real*8 :: Q31
 		real*8 :: xheiTR_old
+		! He <-> H charge-exchange rate coefficients (Huang Table 4 group B),
+		! set per cell at the advection call site (see he_h_cx_rates).
+		real*8 :: kcx_He0_Hp
+		real*8 :: kcx_Hep_H0
 	end type adv_rates
 
 	type(adv_rates), save :: adv_cell

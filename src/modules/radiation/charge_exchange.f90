@@ -6,12 +6,21 @@
       ! direct data exist). The image-verified source transcription lives in
       ! docs/charge_exchange_table4.md.
       !
-      ! Active set:
+      ! Active set (generic cx_act assembly, cx_add_to_fvec/cx_add_to_jac):
       !   cx_full = .false. (default): the 23 metal + H/H+ reactions (Group A),
       !             which couple each metal's ionization balance to the H+
       !             fraction. This is the default.
-      !   cx_full = .true. : the full Table 4 -- adds He + H (Group B),
-      !             metal + He (Group C) and metal + metal (Group D).
+      !   cx_full = .true. : adds metal + He (Group C) and metal + metal
+      !             (Group D). It NO LONGER adds He + H (Group B): the He<->H
+      !             pair is now applied by the dedicated he_h_cx_* routines
+      !             below and is excluded from cx_act by cx_init (rows 24,25),
+      !             so it is never counted twice.
+      !
+      ! He <-> H charge exchange (Group B, He0+H+ and He++H0) is handled
+      ! separately so it is available in EVERY ionization system containing He
+      ! -- not only the metals systems that call cx_add_to_fvec. It is gated by
+      ! he_h_charge_exchange (default .true.), independent of cx_full, and the
+      ! same two rate coefficients feed every system via he_h_cx_rates.
       !
       ! NOTE on C/N/O: Table 4 contains only the neutral<->singly-ionized
       ! charge transfer for C, N, O (rows A13-A18). Re-sourcing C/N/O to Huang
@@ -37,10 +46,23 @@
 
       public :: cx_init, cx_set_cell, cx_add_to_fvec, cx_add_to_jac, cx_full
       public :: cx_metal_base
+      ! Dedicated He <-> H charge-exchange pair (Group B), available in every
+      ! system with He, independent of cx_full.
+      public :: he_h_charge_exchange, he_h_cx_rates
+      public :: he_h_cx_fvec, he_h_cx_jac, he_h_cx_fvec_adv
 
       ! Pseudo-element codes for H and He (metals use iel_* = 1..10).
       integer, parameter :: cx_H  = 11
       integer, parameter :: cx_He = 12
+
+      ! Table-4 row ids of the He <-> H pair (Group B). Excluded from the
+      ! generic cx_act set (cx_init) because the pair is applied by he_h_cx_*.
+      integer, parameter :: cx_B1_He0_Hp = 24   ! He0 + H+ -> He+ + H0
+      integer, parameter :: cx_B2_Hep_H0 = 25   ! He+ + H0 -> He0 + H+
+
+      ! Master switch for the He <-> H charge-exchange pair (default on). Set
+      ! from input.inp ("He_H_charge_exchange: False") by input_read.
+      logical, save :: he_h_charge_exchange = .true.
 
       ! Total number of Table-4 rows carried (23 A + 2 B + 6 C + 32 D).
       integer, parameter :: n_cxreac = 63
@@ -160,6 +182,9 @@
       integer :: r, k
       cx_nact = 0
       do r = 1, n_cxreac
+         ! The He<->H pair (Group B) is applied by he_h_cx_*, not the generic
+         ! assembly, so it is never in cx_act (avoids double counting).
+         if (r .eq. cx_B1_He0_Hp .or. r .eq. cx_B2_Hep_H0) cycle
          if (cx_default(r) .or. cx_full) cx_nact = cx_nact + 1
       enddo
       if (allocated(cx_act)) deallocate(cx_act)
@@ -167,6 +192,7 @@
       allocate(cx_act(cx_nact), cx_kc(cx_nact))
       k = 0
       do r = 1, n_cxreac
+         if (r .eq. cx_B1_He0_Hp .or. r .eq. cx_B2_Hep_H0) cycle
          if (cx_default(r) .or. cx_full) then
             k = k + 1
             cx_act(k) = r
@@ -472,5 +498,99 @@
          endif
       endif
       end subroutine cx_dens_lin
+
+      ! ================================================================
+      ! Dedicated He <-> H charge-exchange pair (Huang 2023, Table 4,
+      ! group B). Applied by every ionization system that contains He, so it
+      ! is not tied to the metal charge-exchange assembly (cx_add_to_fvec).
+      !   B1: He0 + H+ -> He+ + H0   (k1, endothermic, exp(-12.75/T4))
+      !   B2: He+ + H0 -> He0 + H+   (k2, exothermic)
+      ! B1 ionizes He (HeI->HeII) and recombines H (HII->HI); B2 ionizes H
+      ! (HI->HII) and recombines He (HeII->HeI). Both directions share the
+      ! two rate coefficients from he_h_cx_rates. Gated by
+      ! he_h_charge_exchange (default .true.): each routine adds nothing when
+      ! the switch is off.
+      ! ================================================================
+
+      ! Rate coefficients [cm^3 s^-1] of the He<->H pair at temperature T [K].
+      ! k_He0_Hp is B1 (He0+H+), k_Hep_H0 is B2 (He++H0). The formulas live in
+      ! one place (cx_rate rows 24,25), so this reuses them.
+      subroutine he_h_cx_rates(T, k_He0_Hp, k_Hep_H0)
+      real*8, intent(in)  :: T
+      real*8, intent(out) :: k_He0_Hp, k_Hep_H0
+      k_He0_Hp = cx_rate(cx_B1_He0_Hp, T)
+      k_Hep_H0 = cx_rate(cx_B2_Hep_H0, T)
+      end subroutine he_h_cx_rates
+
+      ! Residual terms for the systems whose H row (fvec(1)) is written
+      ! HI->HII (ionization) positive and He row (fvec(2)) carries the
+      ! HeI<->HeII balance. he_row_sign = +1 when that He row is written
+      ! HeI->HeII (ionization) positive (System_HeH / System_HeH_metals, and
+      ! the He+-production row of System_HeH_mol); he_row_sign = -1 when it is
+      ! written HeI-gain positive (the summed HeI row of the TR systems). The
+      ! H row is HI->HII positive in all of them. k1 = He0+H+, k2 = He++H0.
+      subroutine he_h_cx_fvec(fvec, k1, k2, n_hi, n_hii, n_hei, n_heii,   &
+                              he_row_sign)
+      real*8              :: fvec(*)
+      real*8, intent(in)  :: k1, k2, n_hi, n_hii, n_hei, n_heii, he_row_sign
+      real*8 :: R1, R2
+      if (.not. he_h_charge_exchange) return
+      R1 = k1*n_hei*n_hii       ! He0 + H+ -> He+ + H0
+      R2 = k2*n_heii*n_hi       ! He+ + H0 -> He0 + H+
+      ! H row (HI->HII positive): B2 ionizes H0 (+R2), B1 recombines H+ (-R1).
+      fvec(1) = fvec(1) + R2 - R1
+      ! He row: B1 ionizes HeI->HeII (+R1), B2 recombines HeII->HeI (-R2), in
+      ! the ionization-positive orientation; he_row_sign flips it for the
+      ! HeI-gain (TR) orientation.
+      fvec(2) = fvec(2) + he_row_sign*(R1 - R2)
+      end subroutine he_h_cx_fvec
+
+      ! Analytic-Jacobian counterpart of he_h_cx_fvec for the systems that
+      ! carry a written Jacobian (System_HeH, System_HeH_metals), whose He row
+      ! is HeI->HeII positive (he_row_sign = +1). Unknown layout
+      ! x1 = n_HII/n_H, x2 = n_HeII/n_He, x3 = n_HeIII/n_He, so the pair
+      ! touches rows 1,2 and columns 1,2,3 only. nsz = system size.
+      subroutine he_h_cx_jac(nsz, fjac, k1, k2, n_h, n_he,                &
+                             n_hi, n_hii, n_hei, n_heii)
+      integer, intent(in) :: nsz
+      real*8              :: fjac(nsz,nsz)
+      real*8, intent(in)  :: k1, k2, n_h, n_he, n_hi, n_hii, n_hei, n_heii
+      real*8 :: j1, j2, j3
+      if (.not. he_h_charge_exchange) return
+      ! j_k = d(R2 - R1)/dx_k (the H-row derivative), with the linear density
+      ! derivatives dn_hi/dx1=-n_h, dn_hii/dx1=n_h, dn_heii/dx2=n_he,
+      ! dn_hei/dx2 = dn_hei/dx3 = -n_he. The He row (he_row_sign=+1) is minus
+      ! the H row, so fjac(2,k) += -j_k.
+      j1 = -k2*n_heii*n_h - k1*n_hei*n_h           ! d/dx1
+      j2 =  k2*n_he*n_hi  + k1*n_he*n_hii          ! d/dx2
+      j3 =  k1*n_he*n_hii                          ! d/dx3
+      fjac(1,1) = fjac(1,1) + j1
+      fjac(1,2) = fjac(1,2) + j2
+      fjac(1,3) = fjac(1,3) + j3
+      fjac(2,1) = fjac(2,1) - j1
+      fjac(2,2) = fjac(2,2) - j2
+      fjac(2,3) = fjac(2,3) - j3
+      end subroutine he_h_cx_jac
+
+      ! Residual terms for the advection-correction systems
+      ! (System_implicit_adv_HeH / _HeH_TR). Those rows are fraction-
+      ! normalized and written neutral-gain positive: fvec(1) tracks n_HI
+      ! (per n_H), fvec(2) tracks n_HeI (per n_He = heh_loc*n_H). c1 = dr/v.
+      ! xhi/xhii = HI/HII fractions of H; xhei/xheii = HeI/HeII fractions of
+      ! He. k1 = He0+H+, k2 = He++H0.
+      subroutine he_h_cx_fvec_adv(fvec, c1, xhi, xhii, xhei, xheii,       &
+                                  heh_loc, n_h, k1, k2)
+      real*8              :: fvec(*)
+      real*8, intent(in)  :: c1, xhi, xhii, xhei, xheii, heh_loc, n_h, k1, k2
+      real*8 :: rr1, rr2
+      if (.not. he_h_charge_exchange) return
+      ! rr1 = R1/n_he = k1*n_hei*n_hii/n_he, rr2 = R2/n_he. Then R/n_h = rr*heh_loc.
+      rr1 = k1*xhei*xhii*n_h        ! He0 + H+ -> He+ + H0, per n_he
+      rr2 = k2*xheii*xhi*n_h        ! He+ + H0 -> He0 + H+, per n_he
+      ! H row (HI-gain positive): B1 makes HI (+R1), B2 destroys HI (-R2); /n_h.
+      fvec(1) = fvec(1) + c1*heh_loc*(rr1 - rr2)
+      ! He row (HeI-gain positive): B2 makes HeI (+R2), B1 destroys HeI (-R1); /n_he.
+      fvec(2) = fvec(2) + c1*(rr2 - rr1)
+      end subroutine he_h_cx_fvec_adv
 
       end module charge_exchange

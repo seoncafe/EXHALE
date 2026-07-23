@@ -33,6 +33,8 @@
 	! SvS85 secondary-ionization scratch (H-only: no He I secondary channel).
 	real*8, dimension(Nl) :: acc_secHI, fhv
 	real*8 :: xj, fh, fiHI, R_secHI
+	! SvS85 coupling applied only when enabled AND staged on (see EXHALE_main).
+	logical :: sec_on
 
 	! Dummy zero 
 	real*8, dimension(1-Ng:N+Ng), parameter :: nhei   = 0.0, nheii  = 0.0
@@ -62,11 +64,13 @@
       
 	!----------------------------------!
 	
+	sec_on = use_sec_ion .and. sec_ion_active
+
 	! Evaluate the column density
 	call calc_column_dens(nhi,nhei,nheii,nheiTR,N1,N15,N2,NTR)
 
    ! Evaluate photoionization rates and photoheating rates
-	do j = 1-Ng,N+Ng   
+	do j = 1-Ng,N+Ng
 
 		! Initialization of integrands
 		Hea_1  = 0.0
@@ -78,7 +82,7 @@
 		! Initial integrands
 		int_f = F_XUV*exp(-tauE)/(1.0 + a_tau*tauE)
 		! SvS85 secondary-ionization energy partition (scalars for this cell).
-		if (use_sec_ion) then
+		if (sec_on) then
 			xj   = min(max(xion(j), 0.0d0), 1.0d0)
 			fh   = svs85_fheat(xj)
 			fiHI = svs85_fion_HI(xj)
@@ -86,10 +90,10 @@
 			fh = 1.0d0; fiHI = 0.0d0
 		endif
 		! Heating fraction: fh above the E_sec_ion photoelectron threshold, 1
-		! (full thermalization) below it. fhv = 1 when use_sec_ion is off, so
+		! (full thermalization) below it. fhv = 1 when the coupling is off, so
 		! the heating integrand is bit-identical to the legacy path.
 		fhv = 1.0d0
-		if (use_sec_ion) fhv = merge(fh, 1.0d0, e_v > e_th_HI + E_sec_ion)
+		if (sec_on) fhv = merge(fh, 1.0d0, e_v > e_th_HI + E_sec_ion)
 		int_H = int_f*(1.0-e_th_HI/e_v)*fhv*s_hi*nhi(j)
 		int_1 = int_f*s_hi/e_v
 		int_q = int_f*s_hi*nhi(j)
@@ -103,7 +107,7 @@
 		heat(j)   = Hea_1*1.0e-18
 		P_HI(j)   = PIR_1*1.0e-18*erg2eV
 		! Add the H I secondary-ionization rate from fast photoelectrons.
-		if (use_sec_ion) then
+		if (sec_on) then
 			acc_secHI = int_f*s_hi*nhi(j)/e_v * &
 			     merge(fiHI*(e_v-e_th_HI)/e_th_HI, 0.0d0, e_v > e_th_HI + E_sec_ion)
 			R_secHI = sum(acc_secHI*de_v)*1.0e-18*erg2eV
@@ -162,6 +166,8 @@
 	! SvS85 secondary-ionization scratch.
 	real*8, dimension(Nl) :: acc_secHI,acc_secHeI,fhv
 	real*8 :: xj,fh,fiHI,fiHeI,R_secHI,R_secHeI
+	! SvS85 coupling applied only when enabled AND staged on (see EXHALE_main).
+	logical :: sec_on
 
    ! Photo ionization rates
 	real*8, dimension(1-Ng:N+Ng), intent(out) ::  P_HI
@@ -190,9 +196,11 @@
 	! Metal-free P_m entries (top-stage ions) stay zero
 	P_m = 0.0
 
+	sec_on = use_sec_ion .and. sec_ion_active
+
     !----------------------------------!
 	!$OMP PARALLEL DO &
-	!$OMP SHARED ( P_HI,P_HeI,P_HeII,P_HeITR,P_m,heat,q )                        &
+	!$OMP SHARED ( P_HI,P_HeI,P_HeII,P_HeITR,P_m,heat,q, sec_on )                &
 	!$OMP PRIVATE ( Hea_1,PIR_1,PIR_15,PIR_2,PIR_TR,PIR_H2,int_h2,               &
 	!$OMP           Pm_loc,                                                      &
 	!$OMP           int_1,int_15,int_2,int_TR,int_m,                            &
@@ -231,7 +239,7 @@
 		if (present(nh2)) int_h2 = int_f*s_h2/e_v
 
 		! SvS85 secondary-ionization energy partition (scalars for this cell).
-		if (use_sec_ion) then
+		if (sec_on) then
 			xj    = min(max(xion(j), 0.0d0), 1.0d0)
 			fh    = svs85_fheat(xj)
 			fiHI  = svs85_fion_HI(xj)
@@ -248,15 +256,15 @@
 		! photoelectron energy E0 = e_v - E_th exceeds E_sec_ion, only f_heat(x)
 		! of its excess is deposited as heat (fhv) and the balance drives H I /
 		! He I secondary ionizations; below the threshold it thermalizes fully.
-		! fhv = 1 when use_sec_ion is off, so the heating integrand is
+		! fhv = 1 when the coupling is off, so the heating integrand is
 		! bit-identical to the legacy full-thermalization path. He I triplet
 		! photoionization (threshold e_th_HeTR = 4.8 eV) deposits its
 		! photoelectron energy here as well, consistently with its opacity
 		! and its P_HeITR rate.
 		fhv = 1.0d0
-		if (use_sec_ion) fhv = merge(fh, 1.0d0, e_v > e_th_HI + E_sec_ion)
+		if (sec_on) fhv = merge(fh, 1.0d0, e_v > e_th_HI + E_sec_ion)
 		acc_H = (1.0-e_th_HI/e_v)*fhv*s_hi*nhi(j)
-		if (use_sec_ion) then
+		if (sec_on) then
 			acc_secHI  = acc_secHI  + s_hi*nhi(j)/e_v *                       &
 			     merge(fiHI *(e_v-e_th_HI)/e_th_HI , 0.0d0, e_v > e_th_HI + E_sec_ion)
 			acc_secHeI = acc_secHeI + s_hi*nhi(j)/e_v *                       &
@@ -264,9 +272,9 @@
 		endif
 
 		fhv = 1.0d0
-		if (use_sec_ion) fhv = merge(fh, 1.0d0, e_v > e_th_HeI + E_sec_ion)
+		if (sec_on) fhv = merge(fh, 1.0d0, e_v > e_th_HeI + E_sec_ion)
 		acc_H = acc_H + (1.0-e_th_HeI/e_v)*fhv*s_hei*nheiS(j)
-		if (use_sec_ion) then
+		if (sec_on) then
 			acc_secHI  = acc_secHI  + s_hei*nheiS(j)/e_v *                    &
 			     merge(fiHI *(e_v-e_th_HeI)/e_th_HI , 0.0d0, e_v > e_th_HeI + E_sec_ion)
 			acc_secHeI = acc_secHeI + s_hei*nheiS(j)/e_v *                    &
@@ -274,9 +282,9 @@
 		endif
 
 		fhv = 1.0d0
-		if (use_sec_ion) fhv = merge(fh, 1.0d0, e_v > e_th_HeII + E_sec_ion)
+		if (sec_on) fhv = merge(fh, 1.0d0, e_v > e_th_HeII + E_sec_ion)
 		acc_H = acc_H + (1.0-e_th_HeII/e_v)*fhv*s_heii*nheii(j)
-		if (use_sec_ion) then
+		if (sec_on) then
 			acc_secHI  = acc_secHI  + s_heii*nheii(j)/e_v *                   &
 			     merge(fiHI *(e_v-e_th_HeII)/e_th_HI , 0.0d0, e_v > e_th_HeII + E_sec_ion)
 			acc_secHeI = acc_secHeI + s_heii*nheii(j)/e_v *                   &
@@ -287,9 +295,9 @@
 		! secondary partition as the other absorbers.
 		if (thereis_HeITR) then
 			fhv = 1.0d0
-			if (use_sec_ion) fhv = merge(fh, 1.0d0, e_v > e_th_HeTR + E_sec_ion)
+			if (sec_on) fhv = merge(fh, 1.0d0, e_v > e_th_HeTR + E_sec_ion)
 			acc_H = acc_H + (1.0-e_th_HeTR/e_v)*fhv*s_heiTR*nheiTR(j)
-			if (use_sec_ion) then
+			if (sec_on) then
 				acc_secHI  = acc_secHI  + s_heiTR*nheiTR(j)/e_v *             &
 				     merge(fiHI *(e_v-e_th_HeTR)/e_th_HI , 0.0d0, e_v > e_th_HeTR + E_sec_ion)
 				acc_secHeI = acc_secHeI + s_heiTR*nheiTR(j)/e_v *             &
@@ -299,9 +307,9 @@
 
 		if (present(nh2)) then
 			fhv = 1.0d0
-			if (use_sec_ion) fhv = merge(fh, 1.0d0, e_v > e_th_H2 + E_sec_ion)
+			if (sec_on) fhv = merge(fh, 1.0d0, e_v > e_th_H2 + E_sec_ion)
 			acc_H = acc_H + (1.0-e_th_H2/e_v)*fhv*s_h2*nh2(j)
-			if (use_sec_ion) then
+			if (sec_on) then
 				acc_secHI  = acc_secHI  + s_h2*nh2(j)/e_v *                   &
 				     merge(fiHI *(e_v-e_th_H2)/e_th_HI , 0.0d0, e_v > e_th_H2 + E_sec_ion)
 				acc_secHeI = acc_secHeI + s_h2*nh2(j)/e_v *                   &
@@ -313,9 +321,9 @@
 			if (.not. mion_isphot(i)) cycle
 			k = mion_iphot(i)
 			fhv = 1.0d0
-			if (use_sec_ion) fhv = merge(fh, 1.0d0, e_v > mion_ethr(i) + E_sec_ion)
+			if (sec_on) fhv = merge(fh, 1.0d0, e_v > mion_ethr(i) + E_sec_ion)
 			acc_H = acc_H + (1.0-mion_ethr(i)/e_v)*fhv*sigma_tab(:,k)*nm(j,i)
-			if (use_sec_ion) then
+			if (sec_on) then
 				acc_secHI  = acc_secHI  + sigma_tab(:,k)*nm(j,i)/e_v *        &
 				     merge(fiHI *(e_v-mion_ethr(i))/e_th_HI , 0.0d0, e_v > mion_ethr(i) + E_sec_ion)
 				acc_secHeI = acc_secHeI + sigma_tab(:,k)*nm(j,i)/e_v *        &
@@ -364,7 +372,7 @@
 		if (present(P_H2)) P_H2(j) = PIR_H2*1.0e-18*erg2eV
     	P_HeI(j)   = PIR_15 *1.0e-18*erg2eV
 		! Add the H I / He I secondary-ionization rates from fast photoelectrons.
-		if (use_sec_ion) then
+		if (sec_on) then
 			R_secHI  = sum(int_f*acc_secHI *de_v)*1.0e-18*erg2eV
 			R_secHeI = sum(int_f*acc_secHeI*de_v)*1.0e-18*erg2eV
 			! x -> 1 gives f_ion -> 0, so R_sec -> 0 there; the max() is only a
@@ -390,7 +398,7 @@
 	subroutine eval_cool(T_K,nhi,nhii,nhei,nheii,nheiii, nm,        &
 				   rchiiB,rcheiiB,rcheiiiB, rec_m,             &
 				   a_ion_HI,a_ion_HeI,a_ion_HeII, aion_m,      &
-				   cool, cool_chan)
+				   cool, cool_chan, nheiTR, a_ion_HeITR)
 
 	! Evaluate the cooling rate contributions to energy and
 	!	rate equations. Includes H, He, and metal channels. Metals are
@@ -444,6 +452,10 @@
 	real*8, dimension(1-Ng:N+Ng) :: coeff_coex_rate_HI,    &
 	 								coeff_coex_rate_HeI,   &
 									coeff_coex_rate_HeII
+	! He 2^3S metastable cooling coefficients (triplet-tracking callers only):
+	! 10830 A collisional-excitation cooling, and the q31a/q31b conversion
+	! rate coefficients reused for their thermal-energy ledger.
+	real*8, dimension(1-Ng:N+Ng) :: coeff_coex_HeI23S_10830, q31a_l, q31b_l
 									 
 	! Heating, cooling
 	real*8, dimension(1-Ng:N+Ng),intent(out) ::  cool
@@ -457,6 +469,18 @@
 	! the metal terms for each ion are the resonance-line approximation and need
 	! not sum to cool_M.
 	real*8, dimension(1-Ng:N+Ng,4+n_mion),intent(out),optional :: cool_chan
+
+	! He 2^3S metastable density [cm^-3], present only for the triplet-tracking
+	! callers. When supplied it adds the collisional-ionization cooling of the
+	! 2^3S state (4.8 eV per event, ci_HeI23S) to the CI channel. a_ion_HeITR
+	! returns the He(2^3S) collisional-ionization rate coefficient [cm^3 s^-1]
+	! for the ionization equations, mirroring a_ion_HI/HeI/HeII.
+	real*8, dimension(1-Ng:N+Ng),intent(in),optional  :: nheiTR
+	real*8, dimension(1-Ng:N+Ng),intent(out),optional :: a_ion_HeITR
+
+	! He 2^3S collisional-ionization rate coefficient (always computed; only
+	! exported / applied through the optional arguments above).
+	real*8, dimension(1-Ng:N+Ng) :: aion_HeITR
 
    ! Free electron density (incl. metal electrons under eos_metals). Molecular
    ! ions are deliberately omitted as trace electron donors (negligible in the
@@ -487,11 +511,19 @@
 	call ion_coeff_HI(T_K,a_ion_HI)      ! HI
 	call ion_coeff_HeI(T_K,a_ion_HeI)    ! HeI
 	call ion_coeff_HeII(T_K,a_ion_HeII)  ! HeII
-	
-	! Cooling rate
+	call ci_HeI23S(T_K,aion_HeITR)       ! He 2^3S metastable (4.8 eV threshold)
+	if (present(a_ion_HeITR)) a_ion_HeITR = aion_HeITR
+
+	! Cooling rate. The prefactors are the ionization potentials in erg
+	! (13.6/24.6/54.4 eV for HI/HeI/HeII; e_th_HeTR = 4.8 eV for the 2^3S
+	! metastable, e_th_HeTR/erg2eV = 7.69e-12 erg). The 2^3S term (added only
+	! when nheiTR is supplied) reproduces the Black (1981) form
+	! 6.41e-21 sqrt(T) exp(-55338/T) n_e n_23S once multiplied by n_e below.
 	coio =  2.179e-11*a_ion_HI*nhi  	 & ! HI
 		  + 3.940e-11*a_ion_HeI*nhei 	 & ! HeI
 		  + 8.715e-11*a_ion_HeII*nheii   ! HeII
+	if (present(nheiTR)) coio = coio                                     &
+		  + (e_th_HeTR/erg2eV)*aion_HeITR*nheiTR   ! He 2^3S
 	
 	!-- Bremsstrahlung --!
 
@@ -528,6 +560,29 @@
 	coex = coeff_coex_rate_HI*nhi       &    ! HI
 		  + coeff_coex_rate_HeI*nhei     &    ! HeI
 		  + coeff_coex_rate_HeII*nheii        ! HeII
+
+	! He 2^3S metastable collisional cooling (triplet-tracking callers only).
+	! Both terms scale with the EXPLICITLY computed n_23S (nheiTR); the common
+	! n_e factor is applied together with the other coex terms in `cool` below.
+	!  (1) 2^3S -> 2^3P collisional excitation, then 10830 A radiative decay
+	!      and photon escape (Black 1981 / Allan 2024 / Falorca & Vidotto 2026
+	!      Table A2). The 10830 photon leaves the gas radially (the wind is thin
+	!      to it); its line optical depth is what the transit sees. Black's
+	!      implicit steady-state triplet form (~T^-0.6687 n_e n_He+) is NOT used.
+	!  (2) 2^3S -> 2^1S (0.80 eV) and 2^3S -> 2^1P (1.40 eV) collisional
+	!      conversions each remove their threshold energy from the electron gas;
+	!      the excited singlet then decays radiatively (that photon is not
+	!      thermal). Rate coefficients reused from coex_HeI_23S_21S / _21P.
+	! The ground -> triplet excitation (q13, 19.82 eV) is deliberately EXCLUDED:
+	! that channel is already carried by the Cen-1992 He I coex term above
+	! (coeff_coex_rate_HeI*nhei); adding q13 here would double count it.
+	if (present(nheiTR)) then
+		call coex_rate_HeI23S_10830(T_K,coeff_coex_HeI23S_10830)
+		call coex_HeI_23S_21S(T_K,q31a_l)
+		call coex_HeI_23S_21P(T_K,q31b_l)
+		coex = coex + ( coeff_coex_HeI23S_10830                          &
+		              + (0.80d0*q31a_l + 1.40d0*q31b_l)/erg2eV )*nheiTR
+	endif
 
 	!-- Metal recombination + collisional ionization rates --!
 	! (rates for ionization equilibrium; not part of cool here.)
@@ -699,7 +754,7 @@
 	real*8, dimension(1-Ng:N+Ng,n_species), intent(in) :: f_sp_in
 
 	real*8, dimension(1-Ng:N+Ng) :: n_dim,T_K,ne
-	real*8, dimension(1-Ng:N+Ng) :: nhi,nhii,nhei,nheii,nheiii
+	real*8, dimension(1-Ng:N+Ng) :: nhi,nhii,nhei,nheii,nheiii,nheiTR
 	real*8, dimension(1-Ng:N+Ng,n_mion) :: nm
 	real*8, dimension(1-Ng:N+Ng) :: cool,csum,rel
 	real*8, dimension(1-Ng:N+Ng,4+n_mion) :: chan
@@ -721,6 +776,13 @@
 	else
 		nhei = 0.0d0; nheii = 0.0d0; nheiii = 0.0d0
 	endif
+	! He 2^3S metastable, so the collisional-ionization channel matches the
+	! main cool column (0 when the triplet is not tracked).
+	if (thereis_HeITR) then
+		nheiTR = f_sp_in(:,6)*n_dim
+	else
+		nheiTR = 0.0d0
+	endif
 	do im = 1,n_mion
 		nm(:,im) = f_sp_in(:,mion_fsp(im))*n_dim
 	enddo
@@ -731,7 +793,7 @@
 	call eval_cool(T_K,nhi,nhii,nhei,nheii,nheiii, nm,            &
 				   rchiiB,rcheiiB,rcheiiiB, rec_m,                &
 				   a_ion_HI,a_ion_HeI,a_ion_HeII, aion_m,         &
-				   cool, cool_chan = chan)
+				   cool, cool_chan = chan, nheiTR = nheiTR)
 
 	! Internal consistency: channel sum vs total cool (default branch -> ~eps)
 	csum = 0.0d0

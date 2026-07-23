@@ -41,6 +41,11 @@
       integer :: lev_count
       logical :: is_level_stable
 
+      ! Step at which the staged secondary-ionization coupling was switched on
+      ! (-1 = not yet); stops are held for N_stall steps after the flip so the
+      ! coupling has time to feed back into the hydro before a stop is accepted.
+      integer :: sec_flip_step = -1
+
       ! Residual-based convergence monitor (Resid tol option)
       real*8, dimension(3,1-Ng:N+Ng) :: Rres
       real*8  :: resid_c(3), resid_cv(3), resid_max, flux_spread
@@ -213,6 +218,7 @@
       call get_environment_variable('EXHALE_RESIDUAL', diag_env)
       if (trim(diag_env) .eq. '1') then
          rec_method = 'WENO3';  use_weno3 = .true.;  use_plm = .false.
+         sec_ion_active = use_sec_ion   ! bypass mode skips the time loop
          ! Apply_BC first so the residual depends only on the interior state
          ! (ghosts set by BC), matching the Newton residual F(Y) definition.
          call Apply_BC(u)
@@ -261,6 +267,7 @@
       call get_environment_variable('EXHALE_NEWTON_TEST', diag_env)
       if (trim(diag_env) .eq. '1') then
          rec_method = 'WENO3';  use_weno3 = .true.;  use_plm = .false.
+         sec_ion_active = use_sec_ion   ! bypass mode skips the time loop
          allocate(Yvec(neq_newton()), Fvec(neq_newton()))
          call pack_U(u, Yvec)
          W = 0.0d0                                  ! reuse W as unpack target
@@ -289,6 +296,7 @@
       call get_environment_variable('EXHALE_JAC_TEST', diag_env)
       if (trim(diag_env) .eq. '1') then
          rec_method = 'WENO3';  use_weno3 = .true.;  use_plm = .false.
+         sec_ion_active = use_sec_ion   ! bypass mode skips the time loop
          k = neq_newton()
          allocate(Yvec(k), Fvec(k), F0f(k), rdir(k), Jr(k), dFD(k))
          allocate(abjac(2*kl_jac+ku_jac+1, k))
@@ -323,6 +331,7 @@
       call get_environment_variable('EXHALE_PTC', diag_env)
       if (trim(diag_env) .eq. '1') then
          rec_method = 'WENO3';  use_weno3 = .true.;  use_plm = .false.
+         sec_ion_active = use_sec_ion   ! bypass mode skips the time loop
          call U_to_W(u,W)
          call eval_dt(W, dt, dt_loc)            ! CFL dt = default PTC dtau0
          resid_max = resid_th
@@ -401,6 +410,12 @@
       is_stalled   = .false.
       du_prev      = huge(1.0d0)
       stall_count  = 0
+
+      ! Staged secondary ionization: the SvS85 coupling starts applied only if
+      ! "Secondary_ionization: Immediate" was set; otherwise it is switched on
+      ! after the wind first converges without it (see the stage flip below).
+      sec_ion_active = (use_sec_ion .and. sec_ion_immediate)
+      sec_flip_step  = -1
 
       ! Two-stage reconstruction setup. input_read sets du_th_plm > 0 only when
       ! "Reconstruction scheme: PLM+WENO3" was given with two du_th values (it
@@ -778,6 +793,32 @@
                is_stalled = (stall_count .ge. N_stall) .and. is_level_stable
             endif
 
+            ! Staged secondary ionization: the SvS85 coupling is applied only
+            ! after the wind has first converged without it -- from a cold IC the
+            ! secondary-ionization base feedback amplifies the startup transient
+            ! into a runaway (NaN); from a converged state the coupling is benign
+            ! and the run re-converges with the full physics included.
+            if (use_sec_ion .and. .not.sec_ion_active .and.                   &
+                (is_mom_const .or. is_zero_dt .or. is_stalled)) then
+               sec_ion_active = .true.
+               sec_flip_step  = count
+               is_mom_const = .false.;  is_zero_dt = .false.;  is_stalled = .false.
+               stall_count  = 0
+               du_prev      = huge(1.0d0)
+               ! restart the mass-flux level-stability history
+               lev_count    = 0
+               is_level_stable = (lev_th .le. 0.0d0)   ! gate disabled => always pass
+               write(*,'(A,I0,A,ES10.2)') '    -> secondary ionization activated at step ', &
+                                          count, ', du =', du
+            else if (sec_flip_step .ge. 0 .and.                               &
+                     count - sec_flip_step .lt. N_stall) then
+               ! Hold any stop for N_stall steps after the flip: du reacts only
+               ! once the base adjustment wave driven by the new coupling has
+               ! formed, so an immediate stop would freeze a state that has not
+               ! yet incorporated the secondary-ionization physics.
+               is_mom_const = .false.;  is_zero_dt = .false.;  is_stalled = .false.
+            endif
+
             ! Production Newton finish ("Solver: Newton"): once the cheap
             ! marching warm-up has flattened the wind to du < newton_du_switch
             ! (the FLUX metric -- the radial spread of rho*v*r^2 -- consistent
@@ -791,6 +832,14 @@
                 (du .lt. newton_du_switch .or.                            &
                  (stall_count .ge. N_stall .and.                          &
                   du .lt. 5.0d0*newton_du_switch))) then
+               ! The JFNK finish bypasses the stage-flip above, so switch the
+               ! secondary-ionization coupling on here too -- the Newton solve
+               ! and the finished state then include the full physics.
+               if (use_sec_ion .and. .not.sec_ion_active) then
+                  sec_ion_active = .true.
+                  write(*,'(A,I0)') '    -> secondary ionization activated for '// &
+                                    'Newton finish at step ', count
+               endif
                if (du .ge. newton_du_switch)                              &
                   write(*,'(A,ES10.2)') ' (EXHALE_main) du plateaued '//  &
                        'near the hand-off threshold; engaging JFNK at '// &
@@ -914,6 +963,10 @@
       ! End of temporal while loop
       enddo
       write(*,*) '(EXHALE_main.f90) Time integration done.'
+
+      ! Ensure the post-processing and final-output rates carry the full physics
+      ! even if the loop hit the iteration cap before the stage flip fired.
+      if (use_sec_ion) sec_ion_active = .true.
       if (do_profile) then
          write(*,'(A)')          ' (profile) phase breakdown over the run:'
          write(*,'(A,F10.3,A)')  '   ioniz_eq total :', tp_ion, ' s'

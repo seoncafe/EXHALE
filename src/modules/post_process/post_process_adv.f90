@@ -20,7 +20,7 @@
 	use System_implicit_adv_HeH
 	use System_implicit_adv_HeH_TR
 	use System_HeH_metals, only: ion_system_HeH_metals, set_metal_coeffs
-	use charge_exchange,   only: cx_set_cell
+	use charge_exchange,   only: cx_set_cell, he_h_cx_rates
 	use Cooling_Coefficients
 	use utils_ion_eq
 	use output_write
@@ -101,7 +101,7 @@
 	real*8 :: A31
  	
  	! Ionization coefficients
-   real*8, dimension(1-Ng:N+Ng) ::  a_ion_HI,a_ion_HeI,a_ion_HeII 
+   real*8, dimension(1-Ng:N+Ng) ::  a_ion_HI,a_ion_HeI,a_ion_HeII,a_ion_HeITR
       
    ! Heating, cooling
    real*8, dimension(1-Ng:N+Ng) ::  theat,tcool
@@ -266,7 +266,7 @@
 	call eval_cool(T_K,nhi,nhii,nhei,nheii,nheiii, nm_w,            &
 	  			   rchiiB,rcheiiB,rcheiiiB, rec_m_pp,             &
 				   a_ion_HI,a_ion_HeI,a_ion_HeII, aion_m_pp,          &
-				   dum_v1)
+				   dum_v1, a_ion_HeITR=a_ion_HeITR)
 
  	
  	if (thereis_HeITR) then
@@ -384,6 +384,12 @@
 			adv_cell%a_ion_HI = a_ion_HI(j)
 			adv_cell%a_ion_HeI = a_ion_HeI(j)
 			adv_cell%a_ion_HeII = a_ion_HeII(j)
+			! He <-> H charge-exchange rate coefficients (Huang Table 4 group
+			! B), read by he_h_cx_fvec_adv in the H/He adv systems. T-only, so
+			! evaluate once per cell; the adv residual adds nothing when
+			! he_h_charge_exchange is off (bit-identical).
+			call he_h_cx_rates(T_K(j), adv_cell%kcx_He0_Hp,                &
+			                           adv_cell%kcx_Hep_H0)
 			! Effective He/H for the electron density inside the adv system:
 			! the global HeH normally (byte-identical legacy), the local
 			! (diffused) nhe/nh when He_diffusion is on.
@@ -394,7 +400,7 @@
 			endif
 
 			! Add more if HeITR is present
-			if (thereis_HeITR) then 
+			if (thereis_HeITR) then
 				adv_cell%rcheiTR = rcheiTR(j)
 				adv_cell%A31 = A31
 				adv_cell%P_HeITR = P_HeITR(j)
@@ -402,6 +408,7 @@
 				adv_cell%q31a = q31a(j)
 				adv_cell%q31b = q31b(j)
 				adv_cell%Q31 = Q31(j)
+				adv_cell%a_ion_HeITR = a_ion_HeITR(j)
 				adv_cell%xheiTR_old = nheiTR(j-1)/nhe(j-1)
 				! Effective He/H for the electron density (see non-TR block).
 				if (he_diffusion) then
@@ -577,6 +584,14 @@
 		theat = theat + dheat_hrc
 	endif
 
+	! Penning ionization heating (mirrors ionization_equilibrium): He(2^3S)+H0
+	! -> He(1^1S)+H+ + e- releases e_th_HeI - e_th_HeTR - e_th_HI (= 6.2 eV).
+	! theat here is the freshly recomputed photoheating (+ he_rec_coupling), so
+	! this term is added once and is not double-counted. Advection-corrected
+	! densities.
+	if (thereis_HeITR) theat = theat                                 &
+	     + nheiTR*nhi*Q31*(e_th_HeI - e_th_HeTR - e_th_HI)/erg2eV
+
 	! Adimensionalize
 	theat = theat/q0
 
@@ -695,7 +710,7 @@
 	call eval_cool(T_K,nhi,nhii,nhei,nheii,nheiii, nm_w,            &
 	  			   dum_v1,dum_v2,dum_v3, rec_m_pp,                   &
 				   dum_v4,dum_v5,dum_v6, aion_m_pp,                      &
-				   tcool)
+				   tcool, nheiTR=nheiTR)
 
 	! Adimensionalize
 	tcool = tcool/q0

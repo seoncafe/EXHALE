@@ -1,7 +1,8 @@
 	module ion_residual_core
 	! Pure, stateless helpers for the standard H/He ionization residual rows
 	! (with collisional ionization) and their analytic-Jacobian pieces, plus
-	! the TR-form H/He/triplet rows (Oklopcic form, no collisional ionization).
+	! the TR-form H/He/triplet rows (Oklopcic form; electron-impact ionization
+	! of H0/He(1^1S)/He+ and of the He 2^3S metastable is included).
 	! The standard blocks are verbatim-shared by System_HeH and
 	! System_HeH_metals (§5.2 Inc 1); the TR-form rows and the He 2^3S triplet
 	! row are shared by System_HeH_TR, System_HeH_TR_metals and System_HeH_mol
@@ -62,21 +63,25 @@
 	fjac(3,3) = fjac(3,3) + (-a_heiii*n_he)*n_e
 	end subroutine heh_jac_local
 
-	! He 2^3S triplet balance row (Oklopcic form, no collisional ionization).
-	! Sets ftr to the single triplet residual expression; verbatim-shared as
-	! row 4 of the TR / TR_metals systems and row 8 of the molecular system.
-	! The continuation-line layout is kept so the expression reads exactly as
-	! the original inline statement, and the arithmetic order is preserved.
+	! He 2^3S triplet balance row (Oklopcic form + electron-impact ionization
+	! of the metastable). Sets ftr to the single triplet residual expression;
+	! verbatim-shared as row 4 of the TR / TR_metals systems and row 8 of the
+	! molecular system. b_heiTR is the He(2^3S) collisional-ionization
+	! coefficient (ci_HeI23S, threshold 4.8 eV): He(2^3S)+e- -> He+ + 2e-
+	! removes the triplet, so it enters as a destruction term -n_e*n_heiTR*b_heiTR.
 	subroutine tr_triplet_row(ftr, n_hi, n_heiSI, n_heiTR, n_heii, n_e,   &
-	                          g_heiTR, a_heiTR, q13, q31a, q31b, Q31, A31)
+	                          g_heiTR, a_heiTR, q13, q31a, q31b, Q31, A31, &
+	                          b_heiTR)
 	real*8, intent(out) :: ftr
 	real*8, intent(in)  :: n_hi, n_heiSI, n_heiTR, n_heii, n_e
 	real*8, intent(in)  :: g_heiTR, a_heiTR, q13, q31a, q31b, Q31, A31
+	real*8, intent(in)  :: b_heiTR
 
 	ftr = - n_heiTR*g_heiTR                                         &
 	      + n_e*( n_heii*a_heiTR                                    &
 	            + n_heiSI*q13                                       &
-	            - n_heiTR*(q31a + q31b))                            &
+	            - n_heiTR*(q31a + q31b)                             &
+	            - n_heiTR*b_heiTR)                                  &
 	      - n_heiTR*(A31 + n_hi*Q31)
 	end subroutine tr_triplet_row
 
@@ -89,24 +94,39 @@
 	subroutine heh_tr_rows(fvec, n_hi, n_hii, n_heiSI, n_heiTR, n_heii,   &
 	                       n_heiii, n_e, g_hi, g_hei, g_heii, g_heiTR,     &
 	                       a_hii, a_heii, a_heiii, a_heiTR,                &
+	                       b_hi, b_hei, b_heii, b_heiTR,                   &
 	                       q13, q31a, q31b, Q31, A31)
 	real*8 :: fvec(*)
 	real*8, intent(in) :: n_hi, n_hii, n_heiSI, n_heiTR, n_heii, n_heiii, n_e
 	real*8, intent(in) :: g_hi, g_hei, g_heii, g_heiTR
 	real*8, intent(in) :: a_hii, a_heii, a_heiii, a_heiTR
+	real*8, intent(in) :: b_hi, b_hei, b_heii, b_heiTR
 	real*8, intent(in) :: q13, q31a, q31b, Q31, A31
 
-	fvec(1) = n_hi*g_hi - a_hii*n_hii*n_e
+	! Penning ionization source He(2^3S)+H0 -> He(1^1S) + H+ + e- (rate Q31,
+	! Taylor 2025): the same event that removes the triplet in tr_triplet_row
+	! ionizes H0, so it enters here as an H+ production term. All products are
+	! counted as H+; the associative branch (-> HeH+ + e-, ~10%, GM25) is not
+	! resolved here. n_hi*b_hi*n_e is the electron-impact ionization of H0
+	! (Voronov b_hi), restored to match the standard heh_rows.
+	fvec(1) = n_hi*g_hi + n_heiTR*n_hi*Q31 + n_hi*b_hi*n_e - a_hii*n_hii*n_e
 
-	! New equation for hei - sum of the two equations of Oklopcic
+	! New equation for hei - sum of the two equations of Oklopcic. The last
+	! two terms are electron-impact ionization of ground-state (b_hei) and
+	! metastable (b_heiTR) He I; both remove He I and produce He+, so they sit
+	! on the loss side of this summed He I balance.
 	fvec(2) =   n_heii*(a_heiTR + a_heii)*n_e                            &
 	          - n_heiSI*g_hei                                           &
-	          - n_heiTR*g_heiTR
+	          - n_heiTR*g_heiTR                                         &
+	          - n_heiSI*b_hei*n_e                                       &
+	          - n_heiTR*b_heiTR*n_e
 
-	fvec(3) = n_heii*g_heii - a_heiii*n_heiii*n_e
+	! n_heii*b_heii*n_e: electron-impact ionization of He+ into He++.
+	fvec(3) = n_heii*g_heii + n_heii*b_heii*n_e - a_heiii*n_heiii*n_e
 
 	call tr_triplet_row(fvec(4), n_hi, n_heiSI, n_heiTR, n_heii, n_e,     &
-	                    g_heiTR, a_heiTR, q13, q31a, q31b, Q31, A31)
+	                    g_heiTR, a_heiTR, q13, q31a, q31b, Q31, A31,      &
+	                    b_heiTR)
 	end subroutine heh_tr_rows
 
 	! Metal ion densities (neutral/+/++) from fractions, in canonical element

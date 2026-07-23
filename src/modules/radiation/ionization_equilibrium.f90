@@ -16,7 +16,8 @@
 	use h3p_cooling,  only: h3p_cooling_rate
    use System_HeH_metals
    use System_HeH_TR_metals      ! merged He-triplet + metals system
-   use charge_exchange, only: cx_set_cell, cx_metal_base   ! Huang Table 4 charge exchange
+   use charge_exchange, only: cx_set_cell, cx_metal_base,  &   ! Huang Table 4 charge exchange
+                              he_h_cx_rates                     ! He <-> H pair (group B)
    use System_H
    use newton_solver, only: solve_ieq   ! Task 2: analytic-Jacobian Newton (+ hybrd1 fallback)
    use opacity_models            ! opacity_pT_factor for the 'P' model
@@ -80,7 +81,7 @@
 	real*8 :: A31
 
    ! Ionization coefficients
-   real*8, dimension(1-Ng:N+Ng) ::  a_ion_HI,a_ion_HeI,a_ion_HeII
+   real*8, dimension(1-Ng:N+Ng) ::  a_ion_HI,a_ion_HeI,a_ion_HeII,a_ion_HeITR
 
 	! Equilibrium system setup
    real*8 :: tol,dpmpar
@@ -231,7 +232,7 @@
     call eval_cool(T_K,nhi,nhii,nhei,nheii,nheiii, nm,           &
 			   	   	rchiiB,rcheiiB,rcheiiiB, rec_m,             &
 			    	a_ion_HI,a_ion_HeI,a_ion_HeII, aion_m,         &
-			    	cool)
+			    	cool, nheiTR=nheiTR, a_ion_HeITR=a_ion_HeITR)
 
 	! Capture the ground-state H proton-budget coefficients on
 	! every pass (the converged pass is the one read out by write_excited_H).
@@ -272,6 +273,23 @@
 		P_HI    = P_HI + dP_HI_hrc
 		heat    = heat + dheat_hrc
 	endif
+
+	! Penning ionization heating: He(2^3S)+H0 -> He(1^1S)+H+ + e- releases the
+	! electron kinetic energy e_th_HeI - e_th_HeTR - e_th_HI (= 6.2 eV) into the
+	! gas. Lagged (pre-solve) densities, like every other channel above; nheiTR
+	! is the same array he_rec_coupling already consumes.
+	if (thereis_HeITR) heat = heat                                    &
+	     + nheiTR*nhi*Q31*(e_th_HeI - e_th_HeTR - e_th_HI)/erg2eV
+
+	! Molecular Penning ionization heating: He(2^3S)+H2 -> He(1^1S)+H2+ + e-
+	! releases the electron kinetic energy (e_th_HeI - e_th_HeTR) - e_th_H2
+	! (= 24.6 - 4.80 - 15.4 = 4.4 eV) into the gas. Lagged (pre-solve)
+	! densities; nmol_eq(:,1) is the neutral-H2 number density. The rate
+	! coefficient is the Garcia Munoz (2025) Table A.5 fit penning_HeI23S_H2
+	! (Cool_coeff.f90). Zero unless a molecular run also tracks the triplet.
+	if (thereis_mol .and. thereis_HeITR) heat = heat                  &
+	     + nheiTR*nmol_eq(:,1)*penning_HeI23S_H2(T_K)                  &
+	       *((e_th_HeI - e_th_HeTR) - e_th_H2)/erg2eV
 
    !----------------------------------!
 
@@ -372,6 +390,14 @@
 			ieq_cell%a_ion_HeI  = a_ion_HeI(j)
 			ieq_cell%a_ion_HeII = a_ion_HeII(j)
 
+			! He <-> H charge-exchange rate coefficients (Huang Table 4 group
+			! B): read by he_h_cx_fvec/he_h_cx_jac in every He system. Depends
+			! only on T, so evaluate once per cell here (cheap). The residual
+			! routines add nothing when he_h_charge_exchange is off, so this is
+			! harmless (and bit-identical) in that case.
+			call he_h_cx_rates(T_K(j), ieq_cell%kcx_He0_Hp,               &
+			                           ieq_cell%kcx_Hep_H0)
+
 			! Add more if HeITR is present
 			if (thereis_HeITR) then
 				ieq_cell%rcheiTR = rcheiTR(j)
@@ -381,6 +407,7 @@
 				ieq_cell%q31a    = q31a(j)
 				ieq_cell%q31b    = q31b(j)
 				ieq_cell%Q31     = Q31(j)
+				ieq_cell%a_ion_HeITR = a_ion_HeITR(j)
 			endif
 
 			! molecular cell state (System_HeH_mol layout)
@@ -393,6 +420,7 @@
 					ieq_cell%q31a    = 0.0d0
 					ieq_cell%q31b    = 0.0d0
 					ieq_cell%Q31     = 0.0d0
+					ieq_cell%a_ion_HeITR = 0.0d0
 				endif
 				ieq_cell%P_H2 = P_H2(j)
 				ieq_cell%T_K  = T_K(j)

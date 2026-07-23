@@ -3,6 +3,7 @@
 	
 	use global_parameters
 	use ion_cell_state, only: adv_cell
+	use charge_exchange, only: he_h_cx_fvec_adv
 
 	implicit none
 	
@@ -64,8 +65,14 @@
   		    + c1*(-(ghei+ionhei)*xhei  + aheii*xheii*xe*n_h) 
   	 	      	 	    
   	fvec(3) =  xheiii_old - xheiii					  			&
-  	        + c1*((gheii+ionheii)*xheii - aheiii*xheiii*xe*n_h) 
-  		    
+  	        + c1*((gheii+ionheii)*xheii - aheiii*xheiii*xe*n_h)
+
+	! He <-> H charge exchange (Huang Table 4 group B) on the H (row 1) and
+	! He I (row 2) rows, both written neutral-gain positive here. xhei is the
+	! He I fraction (n_HeI/n_he).
+	call he_h_cx_fvec_adv(fvec, c1, xhi, xhii, xhei, xheii, heh_loc, n_h, &
+	                      adv_cell%kcx_He0_Hp, adv_cell%kcx_Hep_H0)
+
 	! End of subroutine
 	end subroutine adv_implicit_HeH
 	

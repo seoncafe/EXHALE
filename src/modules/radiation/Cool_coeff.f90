@@ -896,9 +896,28 @@
                         *ups/3.0
    
    end subroutine coex_HeI_23S_21P
-   
+
    !--------------!
-   
+
+   ! Collisional-excitation cooling of the He 2^3S metastable via
+   ! 2^3S -> 2^3P, followed by 10830 A radiative decay and photon escape.
+   ! Returns the cooling-rate coefficient [erg cm^3 s^-1]; the full rate is
+   ! this times n_e n_23S.  Black (1981) form with the 1.14 eV (13179 K)
+   ! threshold, as adopted by Allan et al. (2024) and Falorca & Vidotto
+   ! (2026, Table A2) using the EXPLICITLY tracked n_23S.  Black's implicit
+   ! steady-state triplet form (propto T^-0.6687 n_e n_He+) must NOT be used
+   ! when the metastable density is computed directly (Falorca & Vidotto warn
+   ! it is then incorrect).  T in K.
+   subroutine coex_rate_HeI23S_10830(T,coeff_coex_rate_HeI23S_10830)
+   real*8, dimension(1-Ng:N+Ng), intent(in)  :: T
+   real*8, dimension(1-Ng:N+Ng), intent(out) :: coeff_coex_rate_HeI23S_10830
+
+   coeff_coex_rate_HeI23S_10830 = 1.16e-20*sqrt(T)*exp(-13179.0/T)
+
+   end subroutine coex_rate_HeI23S_10830
+
+   !--------------!
+
    ! Recombination coefficient of HeII on 23S state
    subroutine rec_HeII_23S(T,coeff_rec_HeII_23S)
    real*8, dimension(1-Ng:N+Ng), intent(in) :: T
@@ -931,7 +950,47 @@
    end subroutine penning_HeI_23S
 
    !--------------!
-   
+
+   ! Temperature-dependent Penning ionization rate coefficient for
+   ! He(2^3S) + H2 -> He(1^1S) + H2^+ + e^-.  Analytic fit (power law times
+   ! Arrhenius factor) to Garcia Munoz (2025), A&A 698, A199, Table A.5, the
+   ! Maxwell-Boltzmann-averaged Cohen & Lane (1977) cross sections tabulated
+   ! at 500/2000/5000/10000 K (8.94e-11, 6.48e-10, 1.48e-9, 2.54e-9
+   ! cm^3 s^-1).  The fit reproduces all four points to <= 0.13% over its
+   ! 500-10000 K validity range.  The minor H + HeH^+ associative-ionization
+   ! branch (~10% in Garcia Munoz 2025, Fig. 4) is not resolved: the full
+   ! rate is assigned to the dominant Penning channel He(1^1S)+H2^+ + e^-,
+   ! the same one-line approximation used for the atomic He(2^3S)+H Penning
+   ! term.  Units: cm^3 s^-1; T in K.  Elemental so it serves both the scalar
+   ! per-cell wiring in System_HeH_mol::set_mol_coeffs and the array
+   ! evaluation of the heating term in ionization_equilibrium.
+   elemental double precision function penning_HeI23S_H2(T) result(k)
+   real*8, intent(in) :: T
+   k = 5.3791d-12 * T**0.6760d0 * exp(-695.21d0/T)
+   end function penning_HeI23S_H2
+
+   !--------------!
+
+   ! Electron-impact collisional ionization of the He 2^3S metastable,
+   ! He(2^3S) + e^- -> He^+ + 2e^-.  The rate coefficient is the Black (1981)
+   ! collisional-ionization cooling coefficient divided by the ionization
+   ! potential of the 2^3S state (4.8 eV), the same form adopted by Allan et
+   ! al. (2024) and Falorca & Vidotto (2026), Table A1:
+   !   k(T) = 6.41e-21 sqrt(T) exp(-55338/T) / e_ion_23S_erg   [cm^3 s^-1].
+   ! Threshold 55338 K = 4.8 eV = e_th_HeTR; e_ion_23S_erg = e_th_HeTR/erg2eV
+   ! is that potential in erg (7.69e-12).  T in K.
+   subroutine ci_HeI23S(T,coeff_ci_HeI23S)
+   real*8, dimension(1-Ng:N+Ng), intent(in) :: T
+   real*8, dimension(1-Ng:N+Ng), intent(out) :: coeff_ci_HeI23S
+   real*8 :: e_ion_23S_erg
+
+   e_ion_23S_erg = e_th_HeTR/erg2eV                 ! 4.8 eV in erg
+   coeff_ci_HeI23S = 6.41e-21*sqrt(T)*exp(-55338.0/T)/e_ion_23S_erg
+
+   end subroutine ci_HeI23S
+
+   !--------------!
+
    ! Recombination coefficient of HeII on 23S state
    subroutine rec_HeII_11S(T,coeff_rec_HeII_11S)
    real*8, dimension(1-Ng:N+Ng), intent(in) :: T

@@ -20,11 +20,10 @@
 	! Design choices (documented for validation):
 	!  * The H/He/triplet rows (1-4) are taken VERBATIM from System_HeH_TR,
 	!    so with met_nelem = 0 this system reduces exactly to the validated
-	!    triplet solver. Consequently the H/He rows omit collisional
-	!    ionization (the Oklopcic triplet formulation does), whereas the
-	!    metal rows keep it (System_HeH_metals form). Collisional ionization
-	!    of H/He is negligible at the ~1e4 K wind temperatures, so this
-	!    asymmetry is immaterial; it is kept to preserve each validated block.
+	!    triplet solver. Those rows carry electron-impact ionization of
+	!    H0/He(1^1S)/He+ and of the He 2^3S metastable, matching the metal
+	!    rows; the H/He collisional ionization is negligible at the ~1e4 K
+	!    wind temperatures but is kept for internal consistency.
 	!  * The electron density couples the two blocks: it is the H/He sum PLUS
 	!    the metal charges (X+ once, X++ twice). The triplet is a neutral
 	!    excited state and does NOT contribute to n_e.
@@ -37,7 +36,7 @@
 
 	use global_parameters
 	use ion_cell_state, only: ieq_cell
-	use charge_exchange,    only: cx_add_to_fvec
+	use charge_exchange,    only: cx_add_to_fvec, he_h_cx_fvec
 	use ion_residual_core,  only: metal_fractions, metal_electron_sum,    &
 	                              metal_rows, heh_tr_rows
 	use System_HeH_metals,  only: met_nelem, met_ntot, met_g0, met_g1,    &
@@ -55,6 +54,7 @@
 
 	! H/He/triplet coefficients (params 1-18, same layout as System_HeH_TR)
 	real*8  :: g_hi,g_hei,g_heii,g_heiTR        ! photoionization
+	real*8  :: b_hi,b_hei,b_heii,b_heiTR        ! collisional ionization
 	real*8  :: a_hii,a_heii,a_heiii,a_heiTR     ! recombination
 	real*8  :: A31,q13,q31a,q31b,Q31            ! triplet kinetics
 	real*8  :: n_h,n_he,n_e
@@ -74,8 +74,10 @@
 	a_heiii = ieq_cell%rcheiiiB   ! = rcheiiiB
 	n_h     = ieq_cell%nh         ! = nh
 	n_he    = ieq_cell%nhe        ! = nhe
-	! a_ion_HI/HeI/HeII are intentionally unused here: the TR H/He balance
-	! omits collisional ionization (see header note).
+	b_hi    = ieq_cell%a_ion_HI      ! = a_ion_HI
+	b_hei   = ieq_cell%a_ion_HeI     ! = a_ion_HeI
+	b_heii  = ieq_cell%a_ion_HeII    ! = a_ion_HeII
+	b_heiTR = ieq_cell%a_ion_HeITR   ! = a_ion_HeITR (He 2^3S collisional ioniz.)
 
 	! Triplet parameters
 	a_heiTR = ieq_cell%rcheiTR   ! = rcheiTR
@@ -108,6 +110,7 @@
 	call heh_tr_rows(fvec, n_hi, n_hii, n_heiSI, n_heiTR, n_heii, n_heiii,  &
 	                 n_e, g_hi, g_hei, g_heii, g_heiTR,                      &
 	                 a_hii, a_heii, a_heiii, a_heiTR,                        &
+	                 b_hi, b_hei, b_heii, b_heiTR,                           &
 	                 q13, q31a, q31b, Q31, A31)
 
 	! --- Metal rows (verbatim System_HeH_metals, shifted to rows 5..) ---
@@ -120,6 +123,13 @@
 	! solve. Absent reactants contribute zero, preserving the identity rows.
 	call cx_add_to_fvec(N_eq, fvec, nm0, nm1, nm2,                       &
 	                    n_hi, n_hii, n_hei, n_heii, n_heiii)
+
+	! He <-> H charge exchange (Huang Table 4 group B). The summed He I row
+	! (fvec 2) is written HeI-gain positive here (verbatim System_HeH_TR),
+	! so he_row_sign = -1. Group B is excluded from cx_act, so it is applied
+	! only here (no double counting with cx_add_to_fvec).
+	call he_h_cx_fvec(fvec, ieq_cell%kcx_He0_Hp, ieq_cell%kcx_Hep_H0,    &
+	                  n_hi, n_hii, n_hei, n_heii, -1.0d0)
 
 	return
 

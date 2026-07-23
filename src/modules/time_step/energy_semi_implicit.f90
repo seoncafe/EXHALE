@@ -110,11 +110,14 @@ contains
       T_trial = T_old
 
       ! 1. Evaluate cooling at T_old (initial guess T_trial is T_old)
+      ! nheiTR adds the He 2^3S channels (collisional ionization, 10830 A
+      ! excitation, 2^3S -> 2^1S/2^1P conversion) to the cooling that acts on
+      ! the temperature update; the array is zero when the triplet is off.
       T_K = T_trial * T0
       call eval_cool(T_K, nhi, nhii, nhei, nheii, nheiii, nm, &
                      rchiiB, rcheiiB, rcheiiiB, rec_m, &
                      a_ion_HI, a_ion_HeI, a_ion_HeII, aion_m, &
-                     cool_dim)
+                     cool_dim, nheiTR = nheiTR)
       cool_trial = cool_dim / q0
 
       ! 2. Evaluate cooling at perturbed temperature to get derivative
@@ -124,7 +127,7 @@ contains
       call eval_cool(T_K, nhi, nhii, nhei, nheii, nheiii, nm, &
                      rchiiB, rcheiiB, rcheiiiB, rec_m, &
                      a_ion_HI, a_ion_HeI, a_ion_HeII, aion_m, &
-                     cool_dim)
+                     cool_dim, nheiTR = nheiTR)
       cool_perturbed = cool_dim / q0
 
       dC_dT = (cool_perturbed - cool_trial) / delta_T
@@ -163,7 +166,7 @@ contains
             call eval_cool(T_K, nhi, nhii, nhei, nheii, nheiii, nm, &
                            rchiiB, rcheiiB, rcheiiiB, rec_m, &
                            a_ion_HI, a_ion_HeI, a_ion_HeII, aion_m, &
-                           cool_dim)
+                           cool_dim, nheiTR = nheiTR)
             cool_trial = cool_dim / q0
          end if
       end do

@@ -4,6 +4,7 @@
 	use global_parameters
 	use ion_cell_state, only: ieq_cell
 	use ion_residual_core, only: heh_rows, heh_crow, heh_jac_local
+	use charge_exchange, only: he_h_cx_fvec, he_h_cx_jac
 
 	implicit none
 	
@@ -50,7 +51,12 @@
 	call heh_rows(fvec, n_hi, n_hii, n_hei, n_heii, n_heiii, n_e,  &
 	              g_hi, g_hei, g_heii, a_hii, a_heii, a_heiii,      &
 	              b_hi, b_hei, b_heii)
-	
+
+	! He <-> H charge exchange (Huang Table 4 group B). He row is written
+	! HeI->HeII (ionization) positive here, so he_row_sign = +1.
+	call he_h_cx_fvec(fvec, ieq_cell%kcx_He0_Hp, ieq_cell%kcx_Hep_H0,  &
+	                  n_hi, n_hii, n_hei, n_heii, 1.0d0)
+
 	return
 
 	! End of subroutine
@@ -95,6 +101,10 @@
 	! add the local "direct" terms (photoionization + dC_i/dx_local * n_e)
 	call heh_jac_local(N_eq, fjac, n_h, n_he, n_e, g_hi, g_hei, g_heii,  &
 	                   a_hii, a_heii, a_heiii, b_hi, b_hei, b_heii)
+
+	! He <-> H charge-exchange Jacobian (rows 1,2; cols 1,2,3).
+	call he_h_cx_jac(N_eq, fjac, ieq_cell%kcx_He0_Hp, ieq_cell%kcx_Hep_H0,  &
+	                 n_h, n_he, n_hi, n_hii, n_hei, n_heii)
 	end subroutine jac_system_HeH
 
 	! End of module

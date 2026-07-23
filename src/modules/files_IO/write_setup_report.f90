@@ -3,7 +3,8 @@
 	!	simulation to file
 	
 	use global_parameters
-	
+	use charge_exchange, only: he_h_charge_exchange
+
 	implicit none
 	contains
 	
@@ -208,6 +209,7 @@
 	call put_l('legacy_hhe_rates', legacy_hhe_rates)
 	call put_l('use_sec_ion', use_sec_ion)
 	call put_l('use_he_rec_coupling', use_he_rec_coupling)
+	call put_l('he_h_charge_exchange', he_h_charge_exchange)
 	call put_l('thereis_mol', thereis_mol)
 	call put_l('molecular_base', molecular_base)
 	call put_i('lower_atm_mode', lower_atm_mode)
