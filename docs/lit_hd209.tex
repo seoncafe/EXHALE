@@ -1,0 +1,212 @@
+\section{HD\,209458\,b}
+\label{sec:hd209458b}
+
+HD\,209458\,b (``Osiris'') is the archetypal evaporating hot Jupiter and the
+first exoplanet with a detected extended, escaping upper atmosphere. Its
+upper-atmosphere / escape diagnostics have been probed in the hydrogen
+Lyman-$\alpha$ and H-$\alpha$ lines, the metastable He\,\textsc{i} triplet at
+$10830$\,\AA, and a set of metal resonance lines (O\,\textsc{i}, C\,\textsc{ii},
+Si\,\textsc{iii}, Mg\,\textsc{i}/Mg\,\textsc{ii}, Na\,\textsc{i}). Below,
+observational detections and upper limits are collected first, followed by the
+theoretical / model studies. All entries are drawn from records retrieved
+through the NASA ADS API; bibcodes are given in \texttt{typewriter} font.
+
+\subsection{Observations}
+
+\begin{longtable}{@{}p{2.3cm}p{2.9cm}p{5.7cm}p{2.6cm}@{}}
+\toprule
+\textbf{Line(s)} & \textbf{Instrument / facility} & \textbf{Result} & \textbf{Reference} \\
+\midrule
+\endfirsthead
+\toprule
+\textbf{Line(s)} & \textbf{Instrument / facility} & \textbf{Result} & \textbf{Reference} \\
+\midrule
+\endhead
+\bottomrule
+\endfoot
+
+Ly-$\alpha$ (H\,\textsc{i}) & HST/STIS & First detection of an extended H atmosphere; $15\pm4\%$ absorption in the stellar Ly-$\alpha$ core; absorption requires material beyond the Roche limit (escaping H). & Vidal-Madjar 2003, \texttt{2003Natur.422..143V} \\
+Ly-$\alpha$ (H\,\textsc{i}) & HST/STIS & Data-reduction description of the 2003 Ly-$\alpha$ transit ($15\pm4\%$); background and airglow subtraction. & D\'esert 2003, \texttt{2003astro.ph.12383D} \\
+Ly-$\alpha$ (H\,\textsc{i}) & HST/STIS (reanalysis) & Reaffirms evaporation: $15\pm4\%$ over line core ($-130$ to $+100$\,km\,s$^{-1}$), consistent with $8.9\pm2.1\%$ over a wider band; H\,\textsc{i} must exceed escape velocity / lie outside Roche lobe. & Vidal-Madjar 2008, \texttt{2008ApJ...676L..57V} \\
+Ly-$\alpha$ (H\,\textsc{i}) & HST/ACS & Transit depth $8.0\pm5.7\%$ over the whole Ly-$\alpha$ line (two visits averaged); confirms extended exosphere but does not tighten $\dot M$. & Ehrenreich 2008, \texttt{2008A\&A...483..933E} \\
+Ly-$\alpha$ (H\,\textsc{i}) & HST FUV (STIS archive) & $8.4$--$8.9\pm2.0\%$ absorption; symmetric, optically-thick Lorentzian profile; argues against huge / strongly asymmetric absorption. & Ben-Jaffel 2008, \texttt{2008ApJ...688.1352B} \\
+Ly-$\alpha$ (H\,\textsc{i}) & HST archive & $8.9\pm2.1\%$ absorption but claims \emph{no} evaporation signature; reports stellar Ly-$\alpha$ time variability affecting earlier diagnostics. & Ben-Jaffel 2007, \texttt{2007ApJ...671L..61B} \\
+O\,\textsc{i}, C\,\textsc{ii}, H\,\textsc{i} & HST/STIS (G140L) & First heavy atoms in the escaping atmosphere: O\,\textsc{i} $13\pm4.5\%$, C\,\textsc{ii} $7.5\pm3.5\%$, H\,\textsc{i} $5\pm2\%$; no absorption in other UV lines; species carried to / beyond the Roche lobe. & Vidal-Madjar 2004, \texttt{2004ApJ...604L..69V} \\
+C\,\textsc{ii}, Si\,\textsc{iii} & HST/COS & C\,\textsc{ii} $7.8\pm1.3\%$ and Si\,\textsc{iii} $8.2\pm1.4\%$ transit absorption ($-50$ to $+50$\,km\,s$^{-1}$); tentative velocity structure; $\dot M \sim (8$--$40)\times10^{10}$\,g\,s$^{-1}$ (solar C). & Linsky 2010, \texttt{2010ApJ...717.1291L} \\
+C\,\textsc{ii}, Si\,\textsc{iii} & HST/COS & Deep spectroscopy; C\,\textsc{ii} and Si\,\textsc{iii} both $\sim8\%$ mean transit attenuation; first firm Si detection attributed to long-term variability. & France 2011, \texttt{2011Ap\&SS.335...25F} \\
+Si\,\textsc{iii} (non-det.) & HST/COS + STIS (G140M) reanalysis & \emph{No} Si\,\textsc{iii} detection: reported COS Si\,\textsc{iii}/C\,\textsc{ii} ``absorption'' attributed to stellar emission variability; STIS G140M consistent with zero Si\,\textsc{iii}. & Ballester 2015, \texttt{2015ApJ...804..116B} \\
+Mg\,\textsc{i}, Mg\,\textsc{ii} & HST/STIS (NUV) & Mg\,\textsc{i} absorption $6.2\pm2.9\%$ ($-62$ to $-19$\,km\,s$^{-1}$); \emph{no} Mg\,\textsc{ii} signal; probes thermosphere--exosphere transition; Mg\,\textsc{i} to $\sim7.5\,R_p$; $\dot M_{\rm Mg\,I}\sim3\times10^{7}$\,g\,s$^{-1}$. & Vidal-Madjar 2013, \texttt{2013A\&A...560A..54V} \\
+Na\,\textsc{i} D & HST/STIS + ground high-res & Na\,\textsc{i} D core profile probes $\sim$14 scale heights ($1$\,mbar--$10^{-9}$\,bar); T--P profile with isothermal layer ($1500$\,K) then thermospheric rise to $\sim2500$\,K; ionization layer near $3\times10^{-5}$\,bar. & Vidal-Madjar 2011, \texttt{2011A\&A...527A.110V} (corrigendum \texttt{2011A\&A...533C...4V}) \\
+Na\,\textsc{i} D & HET (HRS) & Tentative Na\,\textsc{i} absorption $(-2.63\pm0.81)\times10^{-4}$ (12\,\AA{} band); alkali survey with empirical Monte Carlo error control. & Jensen 2011, \texttt{2011ApJ...743..203J} \\
+Na\,\textsc{i} D & HIRES/Keck & Excess in-transit Na\,D $(-108.8\pm25.7)\times10^{-5}$ (narrow band), $\sim$4.7$\times$ larger than Charbonneau et al.; cautions on continuum / telluric systematics. & Langland-Shula 2009, \texttt{2009ApJ...696.1355L} \\
+H-$\alpha$ & HET (HRS) & Band-integrated H-$\alpha$ over wide band consistent with zero, but a statistically significant reflection-symmetric feature is present; interpretation ambiguous (contrast with firm H-$\alpha$ in HD\,189733\,b). & Jensen 2012, \texttt{2012ApJ...751...86J} \\
+He\,\textsc{i} $10830$ & CARMENES (Calar Alto 3.5\,m) & First firm He\,\textsc{i} triplet detection: $0.91\pm0.10\%$ ($9\sigma$) at mid-transit; net blueshift $1.8\pm1.3$\,km\,s$^{-1}$; possible extended tail; strength correlates with X-ray/EUV irradiation. & Alonso-Floriano 2019, \texttt{2019A\&A...629A.110A} \\
+He\,\textsc{i} $10830$ & SPIRou (CFHT) & Tentative He\,\textsc{i} detection; new $\dot M$ / temperature constraints from 1D Parker-wind NLTE models. & Masson 2024, \texttt{2024A\&A...688A.179M} \\
+He\,\textsc{i} $10830$ & HET/HPF & Confirms the previous (robust/tentative) He\,\textsc{i} detection for HD\,209458\,b within a 16-planet survey. & Orell-Miquel 2026, \texttt{2026AJ....171..194O} \\
+FUV (O\,\textsc{i}, C\,\textsc{ii}, H\,\textsc{i}) & HST FUV emission spectra & Non-thermal line broadening required: O\,\textsc{i} and (probably) C\,\textsc{ii} preferentially heated ($T_{\rm O\,I}/T_B\sim10$, $T_{\rm C\,II}/T_B\sim5$); H\,\textsc{i} column diagnostics. & Ben-Jaffel 2010, \texttt{2010ApJ...709.1284B} \\
+\end{longtable}
+
+\noindent\textit{Strongest / cleanest detections by line.} Ly-$\alpha$:
+robust extended-H detection (Vidal-Madjar 2003; $15\pm4\%$), with independent
+confirmations at $\sim8$--$9\%$ over wider bands. He\,\textsc{i} $10830$: firm
+$0.91\%$ ($9\sigma$) CARMENES detection (Alonso-Floriano 2019). Metals: firm
+O\,\textsc{i} and C\,\textsc{ii} (Vidal-Madjar 2004), Mg\,\textsc{i}
+(Vidal-Madjar 2013); Si\,\textsc{iii} is \emph{disputed} (claimed by Linsky
+2010 / France 2011, refuted by Ballester 2015); Mg\,\textsc{ii} \emph{not}
+detected. H-$\alpha$: only an ambiguous, non-conclusive feature exists for
+HD\,209458\,b (unlike the firm HD\,189733\,b detection).
+
+\subsection{Model studies}
+
+Each entry lists the code / method, the initial conditions / setup, and the key
+results, as stated in the paper abstract. ``Not stated in abstract'' marks
+details the abstract does not give.
+
+\begin{itemize}
+
+\item \textbf{Yelle 2004} (\texttt{2004Icar..170..167Y}).
+\emph{Code/method:} 1D aeronomical thermosphere model.
+\emph{Setup:} extra-solar giant planets at $0.01$--$0.1$\,AU; EUV heating; H$_2$/H/H$^+$ + H$_3^+$ ion chemistry, molecular diffusion, thermal conduction.
+\emph{Results:} thermosphere heated $>10{,}000$\,K, rapid (adiabatic-cooled) escape; lower thermosphere cooled by H$_3^+$; abrupt molecular$\rightarrow$atomic transition at the thermosphere base.
+
+\item \textbf{Tian 2005} (\texttt{2005ApJ...621.1049T}; thesis \texttt{2005PhDT........10T}).
+\emph{Code/method:} time-dependent 1D hydrodynamic escape solver (transonic; 2D energy-deposition rather than single-layer heating).
+\emph{Setup:} neutral-gas escape, validated against isothermal analytic wind.
+\emph{Results:} transonic Parker-type outflow in good agreement with the HD\,209458\,b Ly-$\alpha$ observations.
+
+\item \textbf{Garc\'ia Mu\~noz 2007} (\texttt{2007P\&SS...55.1426G}).
+\emph{Code/method:} self-consistent 1D physical + chemical aeronomy / hydrodynamic escape model.
+\emph{Setup:} H/C/O/N chemistry and ionization in the thermosphere; EUV heating at $0.045$\,AU.
+\emph{Results:} predicts thermospheric composition and evaporation rate; supports heavy-species presence at high altitude (foundational HD\,209458\,b model, highly cited).
+
+\item \textbf{Murray-Clay 2009} (\texttt{2009ApJ...693...23M}).
+\emph{Code/method:} 1D hydrodynamic (Parker) wind escape model.
+\emph{Setup:} realistic photoionization heating/cooling, ionization balance, tidal gravity, confinement by host-star wind pressure.
+\emph{Results:} escape is a dayside Parker wind; main-sequence $\dot M\sim2\times10^{10}$\,g\,s$^{-1}$ (up to $\sim2\times10^{12}$ in pre-MS); energy-limited scaling $\dot M\propto F_{\rm UV}^{0.9}$ (steeper radiation/recombination-limited regime at high flux); mass loss cannot significantly alter planet mass.
+
+\item \textbf{Koskinen 2013 I} (\texttt{2013Icar..226.1678K}).
+\emph{Code/method:} photochemical--dynamical hydrodynamic escape model of the thermosphere.
+\emph{Setup:} first model including \emph{all} detected species (H, heavy atoms, ions) to explain their high-altitude presence.
+\emph{Results:} constrains composition, temperature and density profiles; explains heavy-atom transport to high altitude.
+
+\item \textbf{Koskinen 2013 II} (\texttt{2013Icar..226.1695K}).
+\emph{Code/method:} companion interpretation paper (empirical + hydrodynamic model comparison).
+\emph{Setup:} fits H\,\textsc{i} $1216$, O\,\textsc{i} $1334$, C\,\textsc{ii} $1335$, Si\,\textsc{iii} $1206.5$\,\AA{} transit constraints.
+\emph{Results:} constrains mean temperature and ionization state; implications for the lower atmosphere.
+
+\item \textbf{Liang 2003} (\texttt{2003ApJ...596L.247L}).
+\emph{Code/method:} 1D photochemical (upper-atmosphere chemistry) model.
+\emph{Setup:} H, C, O, H$_2$, CO, H$_2$O, CH$_4$; $T\sim1000$\,K, elevated stellar irradiance.
+\emph{Results:} atomic-H production dominated by H$_2$O photolysis + OH\,+\,H$_2$; bulk H $\sim3$ orders of magnitude above Jupiter.
+
+\item \textbf{Lecavelier des Etangs 2004} (\texttt{2004A\&A...418L...1L}).
+\emph{Code/method:} analytic energy-balance escape estimate.
+\emph{Setup:} tidal forces + high thermospheric temperatures; Roche-lobe geometry.
+\emph{Results:} escape rate matches the Ly-$\alpha$ observation; identifies a new intermediate-temperature ``geometrical'' escape mode where the exobase reaches the Roche lobe; estimates planet lifetimes.
+
+\item \textbf{Jaritz 2005} (\texttt{2005A\&A...439..771J}).
+\emph{Code/method:} Roche-potential blow-off analysis.
+\emph{Setup:} short-period giants incl.\ HD\,209458\,b; compares blow-off radius vs.\ L1 distance.
+\emph{Results:} HD\,209458\,b in classical hydrodynamic blow-off (blow-off radius inside L1); distinguishes classical vs.\ geometrical (Roche-limited) mass loss.
+
+\item \textbf{Schneiter 2007} (\texttt{2007ApJ...671L..57S}).
+\emph{Code/method:} 3D hydrodynamic (star--planet wind interaction) simulation.
+\emph{Setup:} planetary wind launched at escape velocity ($60$\,km\,s$^{-1}$) into the stellar wind; four runs, $\dot M_p = 1.5\times10^{-17}$ to $1.5\times10^{-14}\,M_\odot$\,yr$^{-1}$.
+\emph{Results:} Ly-$\alpha$ absorption fit gives $\dot M_p=(1.8\pm0.4)\times10^{-16}\,M_\odot$\,yr$^{-1}$ ($\sim10^{10}$\,g\,s$^{-1}$), consistent with Vidal-Madjar lower limit.
+
+\item \textbf{Bourrier 2013} (\texttt{2013A\&A...557A.124B}).
+\emph{Code/method:} 3D particle (Monte-Carlo dynamics) model of escaping neutral H.
+\emph{Setup:} radiation-pressure acceleration + stellar-wind charge exchange; ionizing flux and $\dot M$ as free parameters.
+\emph{Results:} HD\,209458\,b blue-wing velocities to $-130$\,km\,s$^{-1}$ explained by radiation pressure alone; ionizing flux $\sim3$--$4\times$ solar, $\dot M\sim10^{9}$--$10^{11}$\,g\,s$^{-1}$; escaping gas forms a cometary tail.
+
+\item \textbf{Bourrier 2014} (\texttt{2014A\&A...565A.105B}).
+\emph{Code/method:} 3D particle model of neutral + ionized Mg, coupled to an analytic sub-exobase atmosphere.
+\emph{Setup:} fits the Mg\,\textsc{i} blue-wing transit absorption; radiation pressure, photoionization, electron recombination.
+\emph{Results:} $\dot M_{\rm Mg^0}=2.9^{+0.5}_{-0.9}\times10^{7}$\,g\,s$^{-1}$, exobase near Roche lobe ($R_{\rm exo}\sim3\,R_p$), wind $\sim25$\,km\,s$^{-1}$; $-60$\,km\,s$^{-1}$ velocities from radiation pressure; mean sub-exobase $T>6100$\,K.
+
+\item \textbf{Christie 2013} (\texttt{2013ApJ...772..144C}; conf.\ \texttt{2014IAUS..299..281C}).
+\emph{Code/method:} model for H($n=2$) population + H-$\alpha$ line profile.
+\emph{Setup:} hydrostatic atmosphere in thermal + photoionization equilibrium; collisional and radiative $n=2$ transitions.
+\emph{Results:} H-$\alpha$ set by an optically-thin $\tau\sim1$ shell of metastable 2s H below the ionization layer; reproduces HD\,189733\,b Ly-$\alpha$+H-$\alpha$ with $10\times$ enhanced ionization, but \emph{cannot} reproduce the asymmetric HD\,209458\,b H-$\alpha$ profile (model gives symmetric line).
+
+\item \textbf{Lamp\'on 2020} (\texttt{2020A\&A...636A..13L}).
+\emph{Code/method:} 1D spherical hydrodynamic thermosphere + NLTE He\,\textsc{i} triplet model + high-res radiative transfer.
+\emph{Setup:} fits the He\,\textsc{i} $10830$ absorption; H/He ratio, temperature and $\dot M$ retrieved.
+\emph{Results:} H/H$^+$ transition at $1.2$--$1.9\,R_p$; He-triplet peak at $1.04$--$1.60\,R_p$; H/He $\geq90/10$ (likely $\sim98/2$); $\dot M=(0.42$--$1.00)\times10^{11}$\,g\,s$^{-1}$ at $T=7125$--$8125$\,K (energy-limited, $\eta=0.1$--$0.2$).
+
+\item \textbf{Lamp\'on 2021} (\texttt{2021A\&A...648L...7L}; conf.\ \texttt{2021EPSC...15..413L}).
+\emph{Code/method:} 1D hydrodynamic model + He\,\textsc{i} $10830$ and Ly-$\alpha$ analysis.
+\emph{Setup:} estimates H recombination and advection rates from the line data.
+\emph{Results:} identifies escape regimes observationally --- HD\,209458\,b is the benchmark \emph{energy-limited} case (HD\,189733\,b recombination-limited, GJ\,3470\,b photon-limited).
+
+\item \textbf{Salz 2016} (\texttt{2016A\&A...586A..75S}).
+\emph{Code/method:} PLUTO--CLOUDY 1D spherically-symmetric radiation-hydrodynamics (photoionization + MHD).
+\emph{Setup:} 18 strongly-irradiated hot gas planets incl.\ HD\,209458\,b; detailed heating/cooling; computes Ly-$\alpha$ absorption/emission.
+\emph{Results:} reproduces the HD\,189733\,b Na T--P profile but shows unexplained differences for HD\,209458\,b; classifies thermospheres by Ly-$\alpha$ absorption (cool winds) vs.\ emission (hot stable thermospheres); Ly-$\alpha$ cooling / free--free cooling important for compact planets.
+
+\item \textbf{Salz 2015} (\texttt{2015A\&A...576A..42S}).
+\emph{Code/method:} X-ray-derived high-energy irradiation + energy-limited $\dot M$ estimates.
+\emph{Setup:} Chandra/XMM X-ray observations of nine nearby hot Jupiters incl.\ HD\,209458.
+\emph{Results:} several targets exceed the HD\,209458\,b mass-loss rate; improved interstellar-absorbed Ly-$\alpha$ luminosities; seven of nine amenable to Ly-$\alpha$ transit spectroscopy.
+
+\item \textbf{Louden 2017} (\texttt{2017MNRAS.464.2396L}).
+\emph{Code/method:} differential-emission-measure reconstruction of the stellar XUV spectrum (escape-model input).
+\emph{Setup:} HST/COS UV line strengths + XMM X-ray, coronal/transition-region model $10^{4.1}$--$10^{8}$\,K.
+\emph{Results:} H-ionizing luminosity $10^{28.26}$\,erg\,s$^{-1}$ (near mean solar); incompatible with energy-limited $\dot M$ from COS unless efficiency $>40\%$; compatible with early STIS-based $\dot M$.
+
+\item \textbf{Esquivel 2019} (\texttt{2019MNRAS.487.5788E}).
+\emph{Code/method:} 3D hydrodynamic star--planet wind interaction with radiation pressure + charge exchange.
+\emph{Setup:} photoionization/recombination/collisional ionization; single stellar-wind parameter set for HD\,209458.
+\emph{Results:} Ly-$\alpha$ absorption dominated by planetary material (+ charge-exchange neutrals); neither radiation pressure nor charge exchange alone reaches $-100$\,km\,s$^{-1}$, but together with the broad thermal profile they match the observations.
+
+\item \textbf{Debrecht 2020} (\texttt{2020MNRAS.493.1292D}; thesis \texttt{2021PhDT........10D}).
+\emph{Code/method:} high-resolution 3D hydrodynamic photoevaporation simulation (self-consistent wind launching).
+\emph{Setup:} ionization + heating from incident high-energy radiation; radiation-pressure term included.
+\emph{Results:} for the expected Ly-$\alpha$ flux, radiation pressure is \emph{unlikely} to significantly shape the wind or explain the high observed line-of-sight velocities.
+
+\item \textbf{Hazra 2020} (\texttt{2020MNRAS.496.4017H}).
+\emph{Code/method:} 1D hydrodynamic escape model driven by a time-varying (solar-cycle) XUV input.
+\emph{Setup:} observed solar XUV over $1.5$ cycles applied to an HD\,209458\,b-like planet; computes Ly-$\alpha$ and H-$\alpha$ transits.
+\emph{Results:} $\dot M$ varies $7.6$--$18.5\times10^{10}$\,g\,s$^{-1}$ over the cycle; Ly-$\alpha$ variation undetectable, H-$\alpha$ equivalent width varies $\sim1.9$\,m\AA{} (potentially detectable); strong flares enhance both lines.
+
+\item \textbf{Chadney 2017} (\texttt{2017A\&A...608A..75C}).
+\emph{Code/method:} 1D upper-atmosphere thermal-escape model with photo/electron-impact ionization and diffusion.
+\emph{Setup:} HD\,209458\,b and HD\,189733\,b under stellar flares (Sun / $\epsilon$\,Eri proxies).
+\emph{Results:} typical flares do not significantly change neutral upper atmosphere or $\dot M$; ionospheric electron density rises $2.2$--$3.5\times$ for $3$--$10$\,h post-flare.
+
+\item \textbf{Guo 2010} (\texttt{2010ApJ...712.1107G}).
+\emph{Code/method:} combined mass-loss + tidal-evolution (analytic) model.
+\emph{Setup:} energy-limited evaporation with heating efficiency $\beta$; various initial masses/separations.
+\emph{Results:} evaporation and tidal evolution interact; HD\,209458\,b physical parameters reproduced.
+
+\item \textbf{Lilensten 2013} (\texttt{2013Icar..222..169L}).
+\emph{Code/method:} Boltzmann transport of doubly-charged ions (dications) + thermal photo-ions.
+\emph{Setup:} Beer--Lambert escape of fast dissociation products; applied to HD\,209458\,b among solar-system cases.
+\emph{Results:} dication + thermal-ion escape \emph{cannot} account for the measured C$^+$ escape flux of HD\,209458\,b (marginal but non-negligible source).
+
+\item \textbf{Linssen 2022} (\texttt{2022A\&A...667A..54L}; corrigendum \texttt{2023A\&A...671C...3L}).
+\emph{Code/method:} Cloudy photoionization code in an iterative scheme over 1D Parker-wind profiles.
+\emph{Setup:} radiative heating/cooling + expansion cooling + heat advection; self-consistency test resolves the $T$--$\dot M$ degeneracy.
+\emph{Results:} framework to constrain thermospheric temperature (and thus $\dot M$) from He/UV-metal transit spectra; HD\,209458\,b in the analyzed grid.
+
+\item \textbf{Linssen 2024 (sunbather)} (\texttt{2024A\&A...688A..43L}).
+\emph{Code/method:} open-source \texttt{sunbather} coupling the p-winds Parker-wind code with Cloudy.
+\emph{Setup:} isothermal Parker wind + photoionization; computes any known spectral tracer (He\,$10830$, UV metals).
+\emph{Results:} community tool for $\dot M$ retrieval from He and metal-line transit spectra (framework, general to hot Jupiters incl.\ HD\,209458\,b).
+
+\item \textbf{Oklop\v{c}i\'c \& Hirata 2018} (\texttt{2018ApJ...855L..11O}).
+\emph{Code/method:} simple 1D framework for the metastable He\,\textsc{i} $10830$ population in escaping atmospheres.
+\emph{Setup:} balance of the He triplet level under stellar XUV/mid-UV; ISM-transparent tracer (complement to Ly-$\alpha$).
+\emph{Results:} establishes the $10830$\,\AA{} line as a window into escaping atmospheres --- the foundational method later applied to HD\,209458\,b (e.g.\ Lamp\'on 2020, Alonso-Floriano 2019).
+
+\end{itemize}
+
+\noindent\textit{Codes / methods appearing:} 1D self-consistent
+photochemical--hydrodynamic escape models (Yelle; Tian; Garc\'ia Mu\~noz;
+Murray-Clay Parker wind; Koskinen I/II), 3D hydrodynamic and 3D Monte-Carlo
+particle models (Schneiter; Bourrier H and Mg; Esquivel; Debrecht),
+photoionization-coupled Parker-wind frameworks (Salz PLUTO--CLOUDY; Linssen
+Cloudy / \texttt{sunbather} with p-winds), NLTE He\,\textsc{i} triplet models
+(Lamp\'on; Oklop\v{c}i\'c \& Hirata), H($n=2$)/H-$\alpha$ models (Christie),
+analytic energy-balance / Roche-geometry estimates (Lecavelier; Jaritz; Guo),
+and XUV-reconstruction inputs (Louden; Salz 2015).

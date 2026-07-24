@@ -1,0 +1,36 @@
+% Literature survey for the four EXHALE paper planets: observational
+% detections and model studies of the upper-atmosphere transmission lines
+% (H-alpha, Ly-alpha, He I 10830/10833, and metal excess-absorption lines).
+% Assembled 2026-07-24 from an ADS search (one section per planet).
+% Build: pdflatex literature_survey (twice for cross-references).
+\documentclass[english,a4paper]{my_memo}
+\usepackage{booktabs}
+\usepackage{longtable}
+\usepackage{array}
+\usepackage{ragged2e}
+
+\newcommand{\bibc}[1]{\href{https://ui.adsabs.harvard.edu/abs/#1}{\texttt{#1}}}
+
+\title{Observational and model literature for the EXHALE paper planets:
+       H$\alpha$, Ly$\alpha$, He\,\textsc{i} 10830, and metal transmission lines}
+
+\begin{document}
+\maketitle
+
+\noindent This survey gathers, for HD\,209458\,b, HD\,189733\,b, WASP-52\,b, and
+WASP-121\,b, the observational detections and the theoretical/model studies of the
+upper-atmosphere transmission tracers targeted by \texttt{EXHALE}: hydrogen
+H$\alpha$ and Ly$\alpha$, the metastable He\,\textsc{i} 10830 triplet, and the
+metal excess-absorption lines. For each model study we record the code or method,
+the initial conditions/setup, and the reported results. References are given as
+clickable ADS bibcodes; entries are drawn from an ADS query and its abstracts.
+
+\input{lit_hd209.tex}
+\input{lit_hd189.tex}
+\input{lit_wasp52.tex}
+\input{lit_wasp121.tex}
+
+\clearpage
+\input{lit_analysis.tex}
+
+\end{document}

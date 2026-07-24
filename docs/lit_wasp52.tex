@@ -1,0 +1,141 @@
+\section{WASP-52\,b}
+\label{sec:wasp52b}
+
+WASP-52\,b is an inflated, low-density hot Jupiter ($M_p\approx0.46\,M_{\rm J}$,
+$R_p\approx1.27\,R_{\rm J}$, $T_{\rm eq}\approx1300$\,K) on a 1.75\,d orbit around a
+moderately active K2\,V dwarf, sitting at the upper edge of the Neptune desert with a
+large Roche-lobe filling fraction. Its upper atmosphere has been probed in the
+metastable He\,I 10830 triplet, H$\alpha$, and the Na\,I\,D / K\,I resonance lines.
+No Ly$\alpha$ transit study of WASP-52\,b was found in the literature searched here.
+A recurring complication for every optical study is stellar activity
+(spot/faculae crossings and the CLV\,+\,RM effect), which can mimic or mask planetary
+absorption.
+
+\subsection{Observations}
+
+\begin{longtable}{@{}p{2.0cm} p{2.8cm} p{5.3cm} p{2.9cm}@{}}
+\toprule
+Line & Instrument / method & Result & Reference \\
+\midrule
+\endhead
+He\,I 10830 & Keck\,II / NIRSPEC (high-res.) &
+\textbf{Detection}: excess absorption $3.44\pm0.31\%$ ($11\sigma$), $\approx66$ scale
+heights, centred on the planet rest frame ($\Delta v=0.00\pm1.19$\,km\,s$^{-1}$) &
+{\footnotesize\texttt{2022AJ....164...24K}} \\
+He\,I 10830 & Palomar / WIRC ultranarrowband photometry (0.635\,nm filter) &
+Non-detection; $95$th-percentile upper limit $<0.47\%$ excess absorption &
+{\footnotesize\texttt{2020AJ....159..278V}} \\
+He\,I 10830 & Palomar / WIRC He survey (Neptune-desert edge) &
+Tentative detection; outflow much smaller than photoevaporation predictions &
+{\footnotesize\texttt{2022AJ....164..234V}} \\
+He\,I 10830 & JWST / NIRISS-SOSS &
+Detection of He at $7.3\sigma$ with evidence of an escaping tail ($\sim2.9\sigma$);
+also H$_2$O ($10.8\sigma$) and K hints ($2.5\sigma$) &
+{\footnotesize\texttt{2025MNRAS.539..422F}} \\
+He\,I 10830 & HET / HPF (high-res.\ survey of 16 gas giants) &
+Confirms the previous WASP-52\,b He triplet detection &
+{\footnotesize\texttt{2026AJ....171..194O}} \\
+He\,I 10830 & VLT / CRIRES$^+$ + CARMENES (high-res., $\phi\simeq\pm0.1$--$0.5$) &
+No significant material beyond transit; no in-transit blueshift (rules out strong
+day--night anisotropy); notes prior literature range $1.5$--$5.5\%$ &
+{\footnotesize\texttt{2025A\&A...702A.238N}} \\
+H$\alpha$ & VLT / ESPRESSO (3 transits) &
+\textbf{Detection}: line contrast $0.86\pm0.13\%$, FWHM $11$--$22$\,km\,s$^{-1}$, no net
+wind shift; 2nd non-ultra-hot Jupiter with H$\alpha$ after HD\,189733\,b &
+{\footnotesize\texttt{2020A\&A...635A.171C}} \\
+H$\alpha$, Ca, Na & Magellan / MIKE (high-res.) &
+Non-detection of excess absorption; upper limits $<2\%$ to $<8\%$; CLV in stellar
+H$\alpha$/Ca noted &
+{\footnotesize\texttt{2026AAS...24711403W}} \\
+Na\,I\,D & VLT / ESPRESSO &
+\textbf{Detection}: Na\,D$_1$ $1.09\pm0.16\%$, Na\,D$_2$ $1.31\pm0.13\%$; K\,D$_1$
+$0.46\pm0.13\%$; planetary origin confirmed by orbital velocity tracking &
+{\footnotesize\texttt{2020A\&A...635A.171C}} \\
+Na\,I\,D & GTC / OSIRIS (low-res., 522--903\,nm) &
+First Na detection; otherwise flat/cloudy spectrum; positive $T$ gradient
+$0.88\pm0.65$\,K\,km$^{-1}$ (possible upper-atmosphere heating) &
+{\footnotesize\texttt{2017A\&A...600L..11C}} \\
+Na\,I & HST / STIS + Spitzer (PanCET) &
+Hint of Na at $2.3\sigma$; cloudy atmosphere; no K detected &
+{\footnotesize\texttt{2018AJ....156..298A}} \\
+Na\,I & WHT / ULTRACAM (Na-filter photometry) &
+Flat/cloud-dominated transmission; Rayleigh not dominant; stellar bright-region anomaly &
+{\footnotesize\texttt{2016MNRAS.463.2922K}} \\
+Na\,I & VLT / ESPRESSO + 3D NLTE stellar spectra &
+Sample study of the CLV\,+\,RM bias on Na detection (WASP-52 included); methods focus &
+{\footnotesize\texttt{2024A\&A...692A..43C}} \\
+\bottomrule
+\end{longtable}
+
+\noindent\textbf{Ly$\alpha$:} no dedicated WASP-52\,b Ly$\alpha$ transit
+observation was found (see gaps).
+
+\subsection{Model studies}
+
+\paragraph{Yan et al.\ (2022) --- \texttt{2022ApJ...936..177Y}.}
+\emph{Code/method:} 1D hydrodynamic escape model coupled to a non-LTE level solver,
+with a new Monte-Carlo Ly$\alpha$ radiative-transfer simulation (spherical stellar
+Ly$\alpha$ + spherical planetary atmosphere) to obtain the mean Ly$\alpha$ intensity
+that sets the H($n{=}2$) population; He($2^3$S) also solved.
+\emph{Initial conditions:} escaping-atmosphere outflow; grids over XUV flux
+$F_{\rm XUV}$ (fraction of a fiducial value) and X-ray fraction $\beta_m$; varied H/He
+ratio.
+\emph{Key results:} simultaneous fit of H$\alpha$ and He\,10830 requires a high H/He
+$\sim98/2$, $F_{\rm XUV}\approx0.5\times$ fiducial and $\beta_m\approx0.3$; both species
+originate in the escaping atmosphere; mass-loss rate
+$\dot M\approx2.8\times10^{11}$\,g\,s$^{-1}$.
+
+\paragraph{Sharipov et al.\ (2023) --- \texttt{2023ARep...67..272S}.}
+\emph{Code/method:} 3D hydrodynamic atmosphere code; Ly$\alpha$ photon transport by
+Monte-Carlo; H($n{=}2$) volume-density maps used to synthesize H$\alpha$ absorption.
+\emph{Initial conditions:} several XUV ionizing-flux values considered.
+\emph{Key results:} H$\alpha$ absorption forms in a layer $\sim1.5\,R_p$ thick;
+recombination Ly$\alpha$ photons (electron--proton recombination) dominate the
+excitation of H($n{=}2$).
+
+\paragraph{Nail et al.\ (2025) --- \texttt{2025A\&A...702A.238N} (observation + model).}
+\emph{Code/method:} 3D hydrodynamic simulations coupled to an improved radiative-transfer
+treatment of the He\,I 10833 triplet, compared with CRIRES$^+$/CARMENES high-res.\ data.
+\emph{Initial conditions:} outflow morphology grid spanning stream-like (cold) to
+tail-like (hot) regimes; large Roche-lobe filling.
+\emph{Key results:} WASP-52\,b lies in an intermediate hydrodynamic-escape-parameter
+regime between stream and tail morphologies; a faint stream could exist below detection
+limits; no in-transit blueshift rules out strong day--night anisotropy.
+
+\paragraph{Linssen et al.\ (2022) --- \texttt{2022A\&A...667A..54L}.}
+\emph{Code/method:} isothermal Parker-wind density/velocity profiles post-processed with
+the photoionization code \textsc{Cloudy} in an iterative, self-consistency scheme
+(radiative heating/cooling + expansion cooling + heat advection).
+\emph{Initial conditions:} 1D Parker-wind grid, assumed $T=4000$--$12000$\,K and
+$\dot M=10^{8}$--$10^{11}$\,g\,s$^{-1}$, fixed composition, no stellar-wind confinement;
+self-consistency checked in the He\,10830 line-forming region.
+\emph{Key results:} demonstrated on HD\,209458\,b ($T\approx8200$\,K,
+$\dot M\approx10^{9.84}$\,g\,s$^{-1}$); the same procedure constrains $T$ and $\dot M$ for
+WASP-52\,b (part of the applied sample).
+
+\paragraph{Vissapragada et al.\ (2020, 2022) --- \texttt{2020AJ....159..278V},
+\texttt{2022AJ....164..234V} (observation + model).}
+\emph{Code/method:} isothermal Parker-wind / 1D atmospheric-escape models and the
+hydrodynamic outflow code \textsc{ATES} used to interpret the He\,10830 photometry and
+derive mass-loss rates.
+\emph{Initial conditions:} grids at $T\approx7000$ and $12000$\,K; energy-limited
+outflow framing for the Neptune-desert-edge population.
+\emph{Key results:} for WASP-52\,b, upper limits
+$\dot M\le2.1\times10^{-4}$ ($2.1\times10^{-3}$)\,$M_{\rm J}$\,Gyr$^{-1}$ at
+$7000$ ($12000$)\,K; the measured/limited outflow is much smaller than the \textsc{ATES}
+prediction, so photoevaporation is too inefficient to carve the upper Neptune-desert edge.
+
+\medskip
+{\sloppy
+\noindent\emph{Off-scope models.} JWST-era retrieval/GCM work on WASP-52\,b
+(\texttt{2025AAS...24531602P}, \texttt{2026ASTCS..1160078S}) targets lower-atmosphere
+chemistry (H$_2$O, CO$_2$), clouds, and morning--evening asymmetry rather than the
+escaping-outflow lines, and is not detailed here.\par}
+
+\subsection{Gaps}
+No Ly$\alpha$ transit observation of WASP-52\,b exists in the searched literature.
+He\,I 10830 detections span $1.5$--$5.5\%$ across studies (with one photometric
+non-detection), reflecting stellar-activity and epoch dependence rather than an agreed
+value. Reported and modelled mass-loss rates disagree by more than an order of magnitude
+($\sim10^{11}$\,g\,s$^{-1}$ from line fits versus much lower He-inferred limits and
+sub-\textsc{ATES} outflows), leaving $\dot M$ poorly pinned.

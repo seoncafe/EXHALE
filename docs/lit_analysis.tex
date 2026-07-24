@@ -1,0 +1,118 @@
+\section{Unique and meaningful EXHALE analyses for each planet}
+\label{sec:unique}
+
+The literature above shows which lines are detected and which codes have been
+applied to each planet. This section identifies, for each target, the analysis
+that \texttt{EXHALE} is distinctively placed to contribute --- capabilities that
+the published models for that planet did not combine in one self-consistent
+calculation. The distinguishing features of \texttt{EXHALE} are: (i) hydrogen,
+helium, and the trace metals C, N, O, Mg, Ca, Na, Fe solved in a \emph{single}
+coupled ionization system, so the metal transmission lines and the H/He escape
+share the same wind, electron density, and charge exchange; (ii) the metastable
+He\,\textsc{i} 10830 triplet and the excited $n=2$ hydrogen population carried
+self-consistently, giving He 10830 and H$\alpha$ from one model; (iii) He/H and
+He/metal diffusive separation; (iv) a channel-by-channel heating/cooling budget;
+(v) an optional lower-atmosphere boundary from VULCAN photochemistry; and (vi) an
+$L_1$ Roche-lobe truncation of the line-of-sight integration.
+
+\subsection{The LaRT Ly$\alpha$ radiative transfer recomputation of H$\alpha$}
+\label{sec:lart}
+
+This analysis is present in the companion poster but \emph{not yet} in the paper,
+and it applies to all four planets. \texttt{EXHALE\_transit.py} computes H$\alpha$
+under a spherically symmetric Ly$\alpha$ field: the $n=2$ hydrogen population is
+taken as $n_{2p}=n_{2p}(r)$ with an escape-probability closure for the Ly$\alpha$
+mean intensity. Under real (one-sided) stellar illumination the Ly$\alpha$ mean
+intensity --- and therefore the H($2p$) population that produces H$\alpha$ --- is
+only \emph{cylindrically} symmetric about the star--planet axis,
+$n_{2p}=n_{2p}(\rho,z)$. A Monte-Carlo Ly$\alpha$ radiative-transfer calculation
+with \texttt{LaRT} drops the spherical assumption:
+
+\begin{enumerate}
+\item \texttt{exhale\_to\_lart.py} exports the converged EXHALE run
+  ($n_{\rm HI}(r)$, $T(r)$, $v_r(r)$, and the incident stellar Ly$\alpha$ line
+  profile) to a \texttt{LaRT} spherical-atmosphere, stellar-illumination model.
+\item \texttt{LaRT} returns the two-dimensional Ly$\alpha$ scattering rate
+  $P_\alpha(\rho,z)$ (per atom, per unit source luminosity).
+\item \texttt{tpm\_halpha\_lart2d.py} scales it by the stellar Ly$\alpha$
+  luminosity, forms $J_{{\rm Ly}\alpha,\rm eff}(\rho,z)=P_\alpha/B_{12}$, rebuilds
+  $n_{2p}(\rho,z)$ from the Christie et al.\ (2013) rate equilibrium, integrates
+  the H$\alpha$ optical depth along the transit sight line
+  ($v_{\rm LOS}=v(r)\,z/r$), and disk-averages over impact parameter.
+\end{enumerate}
+
+He 10830, which is set by the spherically symmetric He\,$2^3$S balance, is
+unchanged; only H$\alpha$ is recomputed. \texttt{LaRT} can additionally be run
+with an internal, diffuse Ly$\alpha$ volume source (recombination emission), whose
+radial scattering-rate profile $P_\alpha^{\rm insitu}(r)$ adds the in-situ
+Ly$\alpha$ pumping that the escape-probability closure only approximates. Both the
+stellar-illumination and in-situ \texttt{LaRT} runs already exist for all four
+planets (\texttt{lart\_runs/bm\_*} and \texttt{lart\_runs/insitu\_*}), and the
+poster demonstrated for WASP-52\,b that the $L_1$-truncated, \texttt{LaRT}-coupled
+H$\alpha$ reproduces the Chen et al.\ (2020) depth once the Ly$\alpha$ flux is
+scaled. Adding this recomputation to the paper gives a geometrically consistent,
+scattering-resolved H$\alpha$ prediction that no escape-probability treatment
+provides, and it is the natural EXHALE tool for the H$\alpha$ questions below.
+
+\subsection{HD\,209458\,b: the missing H$\alpha$ and the coupled metal exosphere}
+The observational record has a firm Ly$\alpha$ detection, a firm He 10830
+detection, and firm O\,\textsc{i}/C\,\textsc{ii}/Mg\,\textsc{i} metal absorption,
+but \emph{no} conclusive H$\alpha$ --- in contrast to HD\,189733\,b --- and the
+Christie et al.\ (2013) model cannot reproduce a strong H$\alpha$ either. The
+unique EXHALE analysis is therefore twofold. First, the LaRT Ly$\alpha$
+recomputation (Section~\ref{sec:lart}) predicts the intrinsic H$\alpha$ depth from
+the same wind that matches the Ly$\alpha$ and He 10830 data, testing whether the
+weak/absent H$\alpha$ is the expected outcome of HD\,209458\,b's Ly$\alpha$ field
+rather than a modeling shortfall. Second, because O, C, and Mg are solved inside
+the coupled system, EXHALE predicts the O\,\textsc{i} 1302, C\,\textsc{ii} 1335,
+and Mg\,\textsc{i} 2852 excess absorption and their thermosphere-to-exosphere
+transition simultaneously with the H/He escape --- a single self-consistent
+account of the detected metals, which the published metal studies treated with
+separate models. The channel-by-channel budget also identifies whether Ly$\alpha$,
+metal-line, or adiabatic cooling controls this moderately irradiated wind.
+
+\subsection{HD\,189733\,b: disentangling planetary H$\alpha$ from stellar activity}
+HD\,189733\,b has the strongest but most \emph{contested} H$\alpha$: a claimed
+detection (Jensen 2012; Cauley) versus a non-detection (Kohl 2018), with the
+chromospheric lines (H$\alpha$, Ca\,\textsc{ii}, Na\,\textsc{i} D) pervasively
+contaminated by stellar activity. The high-impact EXHALE analysis is the LaRT
+Ly$\alpha$ recomputation of the \emph{intrinsic planetary} H$\alpha$: a physically
+grounded prediction of the wind's own H$\alpha$ helps separate the planetary
+contribution from the stellar activity that the observations cannot cleanly
+remove. The in-situ diffuse-Ly$\alpha$ run is especially relevant here because
+HD\,189733\,b is the benchmark recombination-limited case, where recombination
+Ly$\alpha$ pumping of $n=2$ is largest. Coupled to this, EXHALE predicts Na\,\textsc{i}
+D, O\,\textsc{i}, and C\,\textsc{ii} from the same wind for comparison with the
+long detection chain, and quantifies the recombination-limited energy budget.
+
+\subsection{WASP-52\,b: the domain/geometry control of He 10830 and the LaRT H$\alpha$}
+This is where the poster analysis is most developed and should enter the paper.
+The He 10830 depth reported across studies spans $1.5$--$5.5\%$ (with one
+photometric non-detection), and our Phase-1 run over-predicts it. The poster shows
+that the over-prediction is a \emph{domain/geometry} effect: truncating the
+line-of-sight integration at the $L_1$ Roche point (rather than carrying it to
+$10\,R_{\rm p}$) brings He 10830 into agreement, and the LaRT-coupled H$\alpha$
+then reproduces the Chen et al.\ (2020) $0.86\%$ depth once the Ly$\alpha$ flux is
+scaled. The unique EXHALE contribution is thus a joint He 10830 $+$ H$\alpha$ $+$
+Na\,\textsc{i} D account from one wind, with the He/H ratio and the $L_1$
+truncation as the controlling parameters, that reconciles the scattered He values
+and predicts H$\alpha$ with the geometrically consistent LaRT transfer rather than
+the spherical closure.
+
+\subsection{WASP-121\,b: the escaping metal lines and a differential test of the closest analog}
+WASP-121\,b is the metal-rich, near-Roche-lobe-overflow case: Mg\,\textsc{ii} and
+Fe\,\textsc{ii} are seen to exospheric radii (Sing 2019), Ca\,\textsc{ii} extends
+to $\sim2.5\,R_{\rm p}$, and H$\alpha$ reaches beyond the Roche lobe, while the
+closest published escape model (Huang et al.\ 2023) already argues for
+Roche-lobe-overflow-driven outflow. The distinctive EXHALE analysis is the
+prediction of the \emph{escaping} metal transmission lines (Fe\,\textsc{ii},
+Mg\,\textsc{ii}, Ca\,\textsc{ii}) from the coupled-metal wind --- a
+one-dimensional coupled-metal escape account to set against the three-dimensional
+and photospheric-composition models that dominate the literature --- together with
+the $L_1$-truncated line-of-sight integration required by the observed extended
+radii. The LaRT H$\alpha$ recomputation supplies the Balmer prediction (Cabot 2020,
+$1.87\%$) for this ultra-hot wind, and because Huang et al.\ (2023) is the closest
+methodological analog, WASP-121\,b is the natural target for a differential
+code comparison (mass-loss rate, thermal/ionization structure, and line depths)
+that quantifies where the coupled-metal treatment and the LaRT Ly$\alpha$ transfer
+change the predicted spectra.
