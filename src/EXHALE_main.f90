@@ -19,7 +19,7 @@
                                solve_steady_jfnk, set_base_fix
       use Conversion
       use ionization_equilibrium
-      use utils_ion_eq, only: write_cool_breakdown_eq
+      use utils_ion_eq, only: write_cool_breakdown_eq, write_heat_breakdown_eq
       use excited_hydrogen, only: excited_H_update, write_excited_H
       use Reconstruction_step
       use RK_integration
@@ -1019,6 +1019,10 @@
       ! Diagnostic: radiative cooling in each channel vs radius
       ! (reuses eval_cool's coefficients; see Huang et al. 2023 Fig. 10).
       call write_cool_breakdown_eq(T,rho,f_sp)
+
+      ! Diagnostic: volumetric heating in each channel vs radius
+      ! (photoionization per absorber + Balmer + He-recomb + Penning).
+      call write_heat_breakdown_eq(T,rho,f_sp)
 
       ! Diagnostic: H(n=2) populations, Balmer proton source, and
       ! photoelectric/de-excitation heating vs radius (Huang Figs. 11/27/10/26).

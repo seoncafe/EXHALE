@@ -125,7 +125,7 @@
 	
 	subroutine PH_heat_HHe(nhi,nhei,nheii,nheiTR, nm, xion,       &
 				     P_HI,P_HeI,P_HeII,P_HeITR, P_m,       &
-				     heat,q, nh2,P_H2)
+				     heat,q, nh2,P_H2, heat_chan)
 	! Computes photoionization rates and heating rates for an
 	!	atmosphere composed of H, He, and (optionally) metals.
 	! Metal ion densities arrive as nm(:,1:n_mion) in canonical
@@ -180,6 +180,16 @@
    ! Heating rate
 	real*8, dimension(1-Ng:N+Ng),intent(out) ::  heat
 
+	! Optional per-absorber photoheating breakdown (cgs erg cm^-3 s^-1).
+	! Columns: 1 H I, 2 He I (singlet ground), 3 He II, 4 He 2^3S,
+	! 5 H2 (molecular, 0 when absent), 6 metals (sum over photo-ionizable
+	! metal ions). Columns 1-6 sum to `heat` up to rounding; `heat` itself is
+	! computed unchanged, so this is a diagnostic-only add-on.
+	real*8, dimension(1-Ng:N+Ng,6),intent(out),optional :: heat_chan
+	! Frequency-integrand accumulators for the per-absorber split (only used
+	! when heat_chan is present).
+	real*8, dimension(Nl) :: acc_HI,acc_HeI,acc_HeII,acc_HeTR,acc_H2,acc_mtl
+
 	!----------------------------------!
 
 	! Use nheiS as variable
@@ -205,6 +215,7 @@
 	!$OMP           Pm_loc,                                                      &
 	!$OMP           int_1,int_15,int_2,int_TR,int_m,                            &
 	!$OMP           acc_secHI,acc_secHeI,fhv,xj,fh,fiHI,fiHeI,R_secHI,R_secHeI, &
+	!$OMP           acc_HI,acc_HeI,acc_HeII,acc_HeTR,acc_H2,acc_mtl,            &
 	!$OMP           int_f,int_H,int_q,acc_H,acc_q,tauE,tau_m,q_abs,i,k,j)
 
 	do j = 1-Ng,N+Ng
@@ -215,6 +226,14 @@
       PIR_2   = 0.0
       PIR_TR  = 0.0
       q_abs   = 0.0
+
+		! Per-absorber photoheating accumulators default to zero so the He 2^3S
+		! and H2 columns stay 0 in cells/runs where those absorbers are absent.
+		if (present(heat_chan)) then
+			acc_HeTR = 0.0d0
+			acc_H2   = 0.0d0
+			acc_mtl  = 0.0d0
+		endif
 
 		! Calculate optical depth. Accumulate the metal block separately
 		! in iphot order before applying the 1e-18 factor, matching the
@@ -264,6 +283,7 @@
 		fhv = 1.0d0
 		if (sec_on) fhv = merge(fh, 1.0d0, e_v > e_th_HI + E_sec_ion)
 		acc_H = (1.0-e_th_HI/e_v)*fhv*s_hi*nhi(j)
+		if (present(heat_chan)) acc_HI = (1.0-e_th_HI/e_v)*fhv*s_hi*nhi(j)
 		if (sec_on) then
 			acc_secHI  = acc_secHI  + s_hi*nhi(j)/e_v *                       &
 			     merge(fiHI *(e_v-e_th_HI)/e_th_HI , 0.0d0, e_v > e_th_HI + E_sec_ion)
@@ -274,6 +294,7 @@
 		fhv = 1.0d0
 		if (sec_on) fhv = merge(fh, 1.0d0, e_v > e_th_HeI + E_sec_ion)
 		acc_H = acc_H + (1.0-e_th_HeI/e_v)*fhv*s_hei*nheiS(j)
+		if (present(heat_chan)) acc_HeI = (1.0-e_th_HeI/e_v)*fhv*s_hei*nheiS(j)
 		if (sec_on) then
 			acc_secHI  = acc_secHI  + s_hei*nheiS(j)/e_v *                    &
 			     merge(fiHI *(e_v-e_th_HeI)/e_th_HI , 0.0d0, e_v > e_th_HeI + E_sec_ion)
@@ -284,6 +305,7 @@
 		fhv = 1.0d0
 		if (sec_on) fhv = merge(fh, 1.0d0, e_v > e_th_HeII + E_sec_ion)
 		acc_H = acc_H + (1.0-e_th_HeII/e_v)*fhv*s_heii*nheii(j)
+		if (present(heat_chan)) acc_HeII = (1.0-e_th_HeII/e_v)*fhv*s_heii*nheii(j)
 		if (sec_on) then
 			acc_secHI  = acc_secHI  + s_heii*nheii(j)/e_v *                   &
 			     merge(fiHI *(e_v-e_th_HeII)/e_th_HI , 0.0d0, e_v > e_th_HeII + E_sec_ion)
@@ -297,6 +319,7 @@
 			fhv = 1.0d0
 			if (sec_on) fhv = merge(fh, 1.0d0, e_v > e_th_HeTR + E_sec_ion)
 			acc_H = acc_H + (1.0-e_th_HeTR/e_v)*fhv*s_heiTR*nheiTR(j)
+			if (present(heat_chan)) acc_HeTR = (1.0-e_th_HeTR/e_v)*fhv*s_heiTR*nheiTR(j)
 			if (sec_on) then
 				acc_secHI  = acc_secHI  + s_heiTR*nheiTR(j)/e_v *             &
 				     merge(fiHI *(e_v-e_th_HeTR)/e_th_HI , 0.0d0, e_v > e_th_HeTR + E_sec_ion)
@@ -309,6 +332,7 @@
 			fhv = 1.0d0
 			if (sec_on) fhv = merge(fh, 1.0d0, e_v > e_th_H2 + E_sec_ion)
 			acc_H = acc_H + (1.0-e_th_H2/e_v)*fhv*s_h2*nh2(j)
+			if (present(heat_chan)) acc_H2 = (1.0-e_th_H2/e_v)*fhv*s_h2*nh2(j)
 			if (sec_on) then
 				acc_secHI  = acc_secHI  + s_h2*nh2(j)/e_v *                   &
 				     merge(fiHI *(e_v-e_th_H2)/e_th_HI , 0.0d0, e_v > e_th_H2 + E_sec_ion)
@@ -323,6 +347,7 @@
 			fhv = 1.0d0
 			if (sec_on) fhv = merge(fh, 1.0d0, e_v > mion_ethr(i) + E_sec_ion)
 			acc_H = acc_H + (1.0-mion_ethr(i)/e_v)*fhv*sigma_tab(:,k)*nm(j,i)
+			if (present(heat_chan)) acc_mtl = acc_mtl + (1.0-mion_ethr(i)/e_v)*fhv*sigma_tab(:,k)*nm(j,i)
 			if (sec_on) then
 				acc_secHI  = acc_secHI  + sigma_tab(:,k)*nm(j,i)/e_v *        &
 				     merge(fiHI *(e_v-mion_ethr(i))/e_th_HI , 0.0d0, e_v > mion_ethr(i) + E_sec_ion)
@@ -384,6 +409,16 @@
 		P_HeITR(j) = PIR_TR *1.0e-18*erg2eV
 		P_m(j,:)   = Pm_loc(:)
 		heat(j)    = Hea_1*1.0e-18
+		! Per-absorber photoheating split (same 1e-18 factor and int_f weight
+		! as heat above). Columns 1-6 sum to heat(j) up to rounding.
+		if (present(heat_chan)) then
+			heat_chan(j,1) = sum(int_f*acc_HI  *de_v)*1.0e-18
+			heat_chan(j,2) = sum(int_f*acc_HeI *de_v)*1.0e-18
+			heat_chan(j,3) = sum(int_f*acc_HeII*de_v)*1.0e-18
+			heat_chan(j,4) = sum(int_f*acc_HeTR*de_v)*1.0e-18
+			heat_chan(j,5) = sum(int_f*acc_H2  *de_v)*1.0e-18
+			heat_chan(j,6) = sum(int_f*acc_mtl *de_v)*1.0e-18
+		endif
 		! Guard against q_abs = 0 (see PH_heat_H).
 		q(j)       = Hea_1/max(q_abs, 1.0d-99)
 
@@ -461,14 +496,17 @@
 	real*8, dimension(1-Ng:N+Ng),intent(out) ::  cool
 
 	! Optional cooling breakdown in each channel (cgs erg cm^-3 s^-1, same
-	! units as `cool`). Columns 1-4 = H/He recombination, collisional
-	! ionization, collisional excitation, bremsstrahlung (the last incl.
-	! metal-ion charges); columns 4+i = metal ion i line cooling (0 for
-	! non-coolant ions). This is an exact decomposition of `cool` in the
-	! default (.not.use_2lev_cool) branch; in the two-level branch the
-	! the metal terms for each ion are the resonance-line approximation and need
-	! not sum to cool_M.
-	real*8, dimension(1-Ng:N+Ng,4+n_mion),intent(out),optional :: cool_chan
+	! units as `cool`). Columns 1-6 = H/He recombination, collisional
+	! ionization, then the collisional-excitation channel split into its
+	! three absorbers -- H I (the Lyman-alpha-dominated H-line cooling),
+	! He I, He II -- and finally bremsstrahlung (incl. metal-ion charges);
+	! columns 6+i = metal ion i line cooling (0 for non-coolant ions).
+	! The He I column also carries the He 2^3S metastable collisional cooling
+	! (10830 A + singlet-conversion terms), so columns 3-5 sum exactly to
+	! ne*coex. This is an exact decomposition of `cool` in the default
+	! (.not.use_2lev_cool) branch; in the two-level branch the metal terms for
+	! each ion are the resonance-line approximation and need not sum to cool_M.
+	real*8, dimension(1-Ng:N+Ng,6+n_mion),intent(out),optional :: cool_chan
 
 	! He 2^3S metastable density [cm^-3], present only for the triplet-tracking
 	! callers. When supplied it adds the collisional-ionization cooling of the
@@ -722,13 +760,20 @@
 	if (present(cool_chan)) then
 		cool_chan(:,1) = ne*reco
 		cool_chan(:,2) = ne*coio
-		cool_chan(:,3) = ne*coex
-		cool_chan(:,4) = ne*brem
+		! Collisional excitation split by absorber. H I is the
+		! Lyman-alpha-dominated H-line cooling; He II is its own term. The
+		! He I column is taken as the remainder ne*coex - HI - HeII so that it
+		! also absorbs the He 2^3S metastable terms folded into coex above,
+		! keeping columns 3-5 an exact split of ne*coex.
+		cool_chan(:,3) = ne*(coeff_coex_rate_HI*nhi)      ! coex_HI [Lya]
+		cool_chan(:,5) = ne*(coeff_coex_rate_HeII*nheii)  ! coex_HeII
+		cool_chan(:,4) = ne*coex - cool_chan(:,3) - cool_chan(:,5)  ! coex_HeI
+		cool_chan(:,6) = ne*brem
 		do i = 1,n_mion
 			if (mion_iscool(i)) then
-				cool_chan(:,4+i) = beta_esc*ne*nm(:,i)*c_metal(:,i)
+				cool_chan(:,6+i) = beta_esc*ne*nm(:,i)*c_metal(:,i)
 			else
-				cool_chan(:,4+i) = 0.0d0
+				cool_chan(:,6+i) = 0.0d0
 			endif
 		enddo
 	endif
@@ -757,7 +802,7 @@
 	real*8, dimension(1-Ng:N+Ng) :: nhi,nhii,nhei,nheii,nheiii,nheiTR
 	real*8, dimension(1-Ng:N+Ng,n_mion) :: nm
 	real*8, dimension(1-Ng:N+Ng) :: cool,csum,rel
-	real*8, dimension(1-Ng:N+Ng,4+n_mion) :: chan
+	real*8, dimension(1-Ng:N+Ng,6+n_mion) :: chan
 	! Throwaway eval_cool rate outputs (not needed for the dump)
 	real*8, dimension(1-Ng:N+Ng) :: rchiiB,rcheiiB,rcheiiiB
 	real*8, dimension(1-Ng:N+Ng) :: a_ion_HI,a_ion_HeI,a_ion_HeII
@@ -797,7 +842,7 @@
 
 	! Internal consistency: channel sum vs total cool (default branch -> ~eps)
 	csum = 0.0d0
-	do i = 1,4+n_mion
+	do i = 1,6+n_mion
 		csum = csum + chan(:,i)
 	enddo
 	rel    = abs(csum - cool)/max(abs(cool),1.0d-99)
@@ -809,7 +854,8 @@
 	write(71,'(a)') '# Radiative cooling rate in each channel [cgs erg cm^-3 s^-1] vs radius.'
 	write(71,'(a)') '# Channel sum reproduces the Hydro_ioniz.txt cool column.'
 	write(71,'(a)') '# col1 r/Rp  col2 T[K]  col3 ne  col4 cool_total  col5 reco'  &
-	             // '  col6 coio  col7 coex  col8 brem  then one col per metal ion:'
+	             // '  col6 coio  col7 coex_HI[Lya]  col8 coex_HeI  col9 coex_HeII'  &
+	             // '  col10 brem  then one col per metal ion:'
 	write(71,'(a)',advance='no') '#   metal-ion columns (canonical order):'
 	do i = 1,n_mion
 		write(71,'(1x,a)',advance='no') trim(mion_name(i))
@@ -818,11 +864,134 @@
 	do j = 1-Ng,N+Ng
 		write(71,*) r(j), T_K(j), ne(j), cool(j),                        &
 		            chan(j,1), chan(j,2), chan(j,3), chan(j,4),           &
-		            (chan(j,4+i), i = 1,n_mion)
+		            chan(j,5), chan(j,6),                                 &
+		            (chan(j,6+i), i = 1,n_mion)
 	enddo
 	close(71)
 
 	end subroutine write_cool_breakdown_eq
+
+	! ------------------------------------------------------------- !
+
+	subroutine write_heat_breakdown_eq(T_in,n_in,f_sp_in)
+	! Diagnostic. Dump the volumetric heating rate in each channel vs
+	! radius for the converged equilibrium state, recomputing the same
+	! photoheating (PH_heat_HHe) the solver uses plus the excited-H Balmer,
+	! He-recombination, and He(2^3S) Penning heating terms added in
+	! ionization_equilibrium. All in cgs erg cm^-3 s^-1; the channel sum
+	! reproduces the total heating (heat_total column) and, up to convergence,
+	! the Hydro_ioniz.txt heat column. Photoheating columns: H I, He I,
+	! He II, He 2^3S, H2, metals (sum over photo-ionizable metal ions). Then
+	! the excited-H photoelectric (Hpe) and Lyman-alpha de-excitation (Hdx)
+	! heating, He-recombination-driven H heating, and He(2^3S)+H Penning
+	! heating. The printed max relative residual is the internal consistency
+	! check on the photoheating split.
+
+	integer :: j,i,im
+	real*8, dimension(1-Ng:N+Ng), intent(in) :: T_in,n_in
+	real*8, dimension(1-Ng:N+Ng,n_species), intent(in) :: f_sp_in
+
+	real*8, dimension(1-Ng:N+Ng) :: n_dim,T_K,ne
+	real*8, dimension(1-Ng:N+Ng) :: nhi,nhii,nhei,nheii,nheiii,nheiTR
+	real*8, dimension(1-Ng:N+Ng) :: nh,nhe,xion
+	real*8, dimension(1-Ng:N+Ng,n_mion) :: nm
+	real*8, dimension(1-Ng:N+Ng,6) :: hchan
+	real*8, dimension(1-Ng:N+Ng) :: heat_ph,heat_tot,csum,rel
+	real*8, dimension(1-Ng:N+Ng) :: h_hrc,h_penning
+	! Throwaway PH_heat_HHe rate outputs (not needed for the dump)
+	real*8, dimension(1-Ng:N+Ng) :: P_HI,P_HeI,P_HeII,P_HeITR,q
+	real*8, dimension(1-Ng:N+Ng,n_mion) :: P_m
+	! He-recombination coupling / triplet scratch
+	real*8, dimension(1-Ng:N+Ng) :: rcheiTR,rcheii,q13,q31a,q31b,Q31
+	real*8, dimension(1-Ng:N+Ng) :: rcheiiB_hrc,dP_HI_hrc
+	real*8 :: A31,maxrel
+
+	! Dimensionalize exactly as ioniz_eq does
+	n_dim = n_in*n0
+	T_K   = T_in*T0
+	nhi   = f_sp_in(:,1)*n_dim
+	nhii  = f_sp_in(:,2)*n_dim
+	if (thereis_He) then
+		nhei   = f_sp_in(:,3)*n_dim
+		nheii  = f_sp_in(:,4)*n_dim
+		nheiii = f_sp_in(:,5)*n_dim
+	else
+		nhei = 0.0d0; nheii = 0.0d0; nheiii = 0.0d0
+	endif
+	if (thereis_HeITR) then
+		nheiTR = f_sp_in(:,6)*n_dim
+	else
+		nheiTR = 0.0d0
+	endif
+	do im = 1,n_mion
+		nm(:,im) = f_sp_in(:,mion_fsp(im))*n_dim
+	enddo
+	call calc_ne(nhii,nheii,nheiii,ne,nm)
+
+	! Ionized fraction for the SvS85 secondary-ionization partition (atomic
+	! form; molecular donors are omitted -- this diagnostic targets atomic
+	! runs). See ionization_equilibrium for the exact expression.
+	if (thereis_mol) write(*,'(a)') ' (write_heat_breakdown_eq) NOTE: molecular '  &
+		// 'run -- H2 and molecular Penning heating channels are omitted.'
+	nh   = nhi + nhii
+	nhe  = nhei + nheii + nheiii
+	xion = min(max((nhii + nheii + nheiii)/max(nh + nhe, 1.0d-99), 0.0d0), 1.0d0)
+
+	! Photoheating split (same call the solver makes, atomic path).
+	if (thereis_He) then
+		call PH_heat_HHe(nhi,nhei,nheii,nheiTR, nm, xion,             &
+		         P_HI,P_HeI,P_HeII,P_HeITR, P_m,                      &
+		         heat_ph,q, heat_chan = hchan)
+	else
+		call PH_heat_H(nhi, xion, P_HI, heat_ph, q)
+		hchan = 0.0d0
+		hchan(:,1) = heat_ph
+	endif
+
+	! He-recombination-driven H heating and He(2^3S)+H Penning heating,
+	! reconstructed exactly as ionization_equilibrium adds them to `heat`.
+	A31 = 0.0d0; q31a = 0.0d0; q31b = 0.0d0; Q31 = 0.0d0
+	if (thereis_HeITR) &
+		call HeITR_coeffs(T_K,rcheiTR,rcheii,A31,q13,q31a,q31b,Q31)
+	h_hrc = 0.0d0
+	if (use_he_rec_coupling .and. thereis_He) then
+		call he_rec_coupling(T_K, nhi, nhei, nheii, nheiTR, ne,       &
+		                     A31, q31a, q31b,                         &
+		                     rcheiiB_hrc, dP_HI_hrc, h_hrc)
+	endif
+	h_penning = 0.0d0
+	if (thereis_HeITR) h_penning =                                    &
+		nheiTR*nhi*Q31*(e_th_HeI - e_th_HeTR - e_th_HI)/erg2eV
+
+	! Total heating (independent of the per-channel columns; the residual
+	! below checks the photoheating decomposition against heat_ph).
+	heat_tot = heat_ph + Hpe_arr + Hdx_arr + h_hrc + h_penning
+
+	! Internal consistency of the photoheating split.
+	csum   = hchan(:,1) + hchan(:,2) + hchan(:,3) + hchan(:,4)        &
+	       + hchan(:,5) + hchan(:,6)
+	rel    = abs(csum - heat_ph)/max(abs(heat_ph),1.0d-99)
+	maxrel = maxval(rel(1:N))
+	write(*,'(a,es9.2)')                                                  &
+		' (write_heat_breakdown_eq) max |sum(photo channels)/heat_photo - 1| = ', maxrel
+
+	open(unit = 72, file = './output/Heating_breakdown.txt')
+	write(72,'(a)') '# Volumetric heating rate in each channel [cgs erg cm^-3 s^-1] vs radius.'
+	write(72,'(a)') '# Channel sum reproduces the heat_total column (and the Hydro_ioniz.txt'  &
+	             // ' heat column up to convergence).'
+	write(72,'(a)') '# col1 r/Rp  col2 T[K]  col3 ne  col4 heat_total  col5 heat_HI'  &
+	             // '  col6 heat_HeI  col7 heat_HeII  col8 heat_He23S  col9 heat_H2'  &
+	             // '  col10 heat_metals  col11 heat_Hpe[excitedH]'                    &
+	             // '  col12 heat_Hdx[Lya-deexc]  col13 heat_He_recomb  col14 heat_He23S_Penning'
+	do j = 1-Ng,N+Ng
+		write(72,*) r(j), T_K(j), ne(j), heat_tot(j),                    &
+		            hchan(j,1), hchan(j,2), hchan(j,3), hchan(j,4),       &
+		            hchan(j,5), hchan(j,6),                               &
+		            Hpe_arr(j), Hdx_arr(j), h_hrc(j), h_penning(j)
+	enddo
+	close(72)
+
+	end subroutine write_heat_breakdown_eq
 
 	!----------------------------------!
 
