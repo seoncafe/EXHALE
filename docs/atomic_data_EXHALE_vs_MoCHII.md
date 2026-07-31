@@ -73,6 +73,13 @@ on Kingdon & Ferland (1996). EXHALE carries 63 reactions: metal charge exchange
 with H is on by default, while He reactions and metal-metal reactions are enabled
 by the `cx_full` option. MoCHII carries the metal reactions only.
 
+The printed Table 4 exchanges the reactant labels of its two oxygen rows: the
+`exp(-227/T)` Boltzmann factor appears on `O+ + H0`, but `IP(O I) > IP(H I)`
+makes `O0 + H+` the endothermic direction that must carry it. EXHALE assigns
+the two rate coefficients to the physically correct rows; see
+`HUANG2023_TABLE4_OXYGEN_ERRATUM.md` for the detailed-balance and Cloudy
+cross-checks. Any code transcribing the table as printed inherits the error.
+
 ### Cooling
 Recombination cooling in both codes follows the Hui & Gnedin (1997) case-B family
 (MoCHII offers a case-A/case-B choice). Both use the same free-free constant,

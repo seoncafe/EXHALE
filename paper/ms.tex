@@ -257,12 +257,37 @@ radiative and dielectronic recombination from the Badnell data
 \citep{Badnell2006rr,Badnell2003dr} (with Storey \& Hummer hydrogenic recombination where
 appropriate; \citealt{StoreyHummer1995}), collisional ionization from the
 \citet{Voronov1997} fits, and charge exchange between hydrogen and the metals from
-\citet{KingdonFerland1996}. The trace-metal abundances are set at runtime through a
+\citet{KingdonFerland1996}, taken in the tabulation of \citet{Huang2023}. The
+trace-metal abundances are set at runtime through a
 configuration file, so a model can be run with or without metals without recompiling.
 Because the metals contribute to the mass, electron, and particle budgets, they are
 included self-consistently in the bulk-gas equation of state, so their presence feeds
 back on the base density, pressure, and mean molecular weight rather than being a passive
 overlay.
+
+One entry of that tabulation is corrected here. As printed, the two oxygen rows of
+Table~4 of \citet{Huang2023} are inconsistent with detailed balance: the
+$\exp(-227/T)$ Boltzmann factor sits on the $\mathrm{O^+}+\mathrm{H}$ row, whereas
+IP(\mbox{O\,\textsc{i}})~$=13.6181$~eV exceeds IP(\mbox{H\,\textsc{i}})~$=13.5984$~eV,
+so that $\mathrm{O}+\mathrm{H^+}\rightarrow\mathrm{O^+}+\mathrm{H}$ is the endothermic
+direction ($\Delta E/k = 227.7$~K, matching the printed argument to $0.3\%$) and is the
+one that must carry it. Read as printed the pair violates detailed balance by a factor of
+$1.47$ at $8000$~K; exchanging the two reactant labels restores it to within $9\%$. Both
+the expressions of \citet{Huang2023} and the two oxygen fits carried by \textsc{Cloudy}
+\citep{Cloudy2025} descend from the same calculation \citep{Stancil1999}, and the two
+sources attach the labels the opposite way, agreeing to $1$--$3\%$ per direction under the
+exchange; this is therefore a check of the assignment and not an independent
+determination of the rate. Helium is the only other row of Table~4 carrying an explicit
+Boltzmann factor whose placement is fixed by the ionization potentials, and it is printed
+correctly, its argument $12.75$ (in units of $10^{4}$~K) matching
+IP(\mbox{He\,\textsc{i}})~$-$~IP(\mbox{H\,\textsc{i}})~$=12.752$. The most likely reading
+is therefore a transposition of the two oxygen labels rather than an error in the
+coefficients, and we adopt the exchanged assignment. This concerns the printed table
+only; we make no claim about the coefficients used in the calculations of
+\citet{Huang2023}. In our WASP-121~b model the correction leaves the wind essentially
+unchanged --- the mass-loss rate shifts by $0.05\%$ and the temperature by less than
+$10$~K --- but it raises the neutral-oxygen density in the ionized wind by a factor of
+$1.6$, which would matter for any \mbox{O\,\textsc{i}} line prediction.
 
 \subsection{Cooling}
 \label{sec:cooling}

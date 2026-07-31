@@ -63,8 +63,8 @@ direct H charge exchange in Table 4** — it appears only in Group D.
 | A10 | Si+ + H | GJ07 | `4.71e-11 * (T/300)^0.95 * exp(-6.32/T4)` |
 | A11 | Si+ + H+ | KF96 | `4.1e-10 * T4^0.24 * [1 + 3.17*exp(-4.18e-3*T4)] * exp(-3.18/T4)` |
 | A12 | Si2+ + H | KF96 | `1.26e-9 * T4^0.24 * [1 + 3.17*exp(-4.18e-3*T4)]` |
-| A13 | O + H+ | S99 | `2.08e-9 * T4^0.405 + 1.11e-11 * T4^(-0.458)` |
-| A14 | O+ + H | S99 | `(1.26e-9 * T4^0.517 + 4.25e-10 * T4^(6.69e-3)) * exp(-227/T)` |
+| A13 | O + H+ | S99 | `(1.26e-9 * T4^0.517 + 4.25e-10 * T4^(6.69e-3)) * exp(-227/T)` |
+| A14 | O+ + H | S99 | `2.08e-9 * T4^0.405 + 1.11e-11 * T4^(-0.458)` |
 | A15 | C + H+ | S98 | `1.31e-15 * (T/300)^0.213` |
 | A16 | C+ + H | S98 | `6.3e-17 * (T/300)^1.96 * exp(-17/T4)` |
 | A17 | N + H+ | L05 | `exp[-35.4 + 1.94*lnT - 0.154*lnT^2 - 6.3e-3*lnT^3 - 1.16e-3*lnT^4]` |
@@ -76,6 +76,13 @@ direct H charge exchange in Table 4** — it appears only in Group D.
 | A23 | K + H+ | W02 | `exp[-27.8 + 0.125*lnT + 0.0663*lnT^2 - 0.0237*lnT^3 - 1.36e-3*lnT^4]` |
 
 Notes on Group A:
+- **A13/A14 (O + H+ / O+ + H)**: the two rate coefficients are shown here with
+  the reactant labels corrected relative to the printed Table 4, which exchanges
+  them. `IP(O I) = 13.6181 eV > IP(H I) = 13.5984 eV`, so `O0 + H+ -> O+ + H0`
+  is endothermic (`dE/k = 227.7 K`) and carries `exp(-227/T)`, while `O+ + H0`
+  is exothermic and does not. As printed the pair violates detailed balance by
+  1.47x at 8000 K; corrected it satisfies it to ~9% and matches Cloudy c25.00
+  to 1-3% per direction. See `HUANG2023_TABLE4_OXYGEN_ERRATUM.md`.
 - **A16 (C+ + H)** uses `exp(-17/T4)`, i.e. a 1.7e5 K activation barrier. This is
   the endothermic reverse of the fast `C + H+` charge transfer and is utterly
   negligible (~1e-24 at T4 = 1); ported verbatim per the paper.

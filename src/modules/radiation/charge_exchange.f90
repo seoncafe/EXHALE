@@ -300,9 +300,19 @@
       case (10); cx_rate = gp(4.71d-11, 0.95d0,   6.32d0)                      ! A10 Si+ + H
       case (11); cx_rate = kf(4.1d-10,  0.24d0,   3.17d0, -4.18d-3,   3.18d0)  ! A11 Si+ + H+
       case (12); cx_rate = kf(1.26d-9,  0.24d0,   3.17d0, -4.18d-3,   0.0d0)   ! A12 Si2+ + H
-      case (13); cx_rate = 2.08d-9*t4**0.405d0 + 1.11d-11*t4**(-0.458d0)       ! A13 O + H+
-      case (14); cx_rate = (1.26d-9*t4**0.517d0 + 4.25d-10*t4**6.69d-3)       &
-                           *exp(-227.0d0/T)                                    ! A14 O+ + H
+      ! Oxygen O <-> H+ near-resonant charge exchange. Huang et al. (2023)
+      ! Table 4 prints the two rate coefficients with the reactant labels
+      ! exchanged: the exp(-227/T) Boltzmann factor is printed on the O+ + H0
+      ! row, but IP(O I)=13.6181 eV > IP(H I)=13.5984 eV, so the O0 + H+ -> O+
+      ! + H0 ionizing channel is the endothermic one (dE/k = 227.7 K) and must
+      ! carry the barrier; O+ + H0 -> O0 + H+ is exothermic and must not.
+      ! Assigned here to the physically correct rows (detailed balance then
+      ! holds to ~9%, and each direction matches Cloudy c25.00 to 1-3%; as
+      ! printed it violates detailed balance by 1.47x at 8000 K). See
+      ! docs/HUANG2023_TABLE4_OXYGEN_ERRATUM.md.
+      case (13); cx_rate = (1.26d-9*t4**0.517d0 + 4.25d-10*t4**6.69d-3)       &
+                           *exp(-227.0d0/T)                                    ! A13 O + H+  (endothermic, ionizing)
+      case (14); cx_rate = 2.08d-9*t4**0.405d0 + 1.11d-11*t4**(-0.458d0)       ! A14 O+ + H  (exothermic, recombining)
       case (15); cx_rate = gp(1.31d-15, 0.213d0,  0.0d0)                       ! A15 C + H+
       case (16); cx_rate = gp(6.3d-17,  1.96d0,   17.0d0)                      ! A16 C+ + H
       case (17); cx_rate = p4(-35.4d0,  1.94d0,  -0.154d0, -6.3d-3, -1.16d-3, 0.0d0)  ! A17 N + H+
