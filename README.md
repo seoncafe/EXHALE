@@ -565,4 +565,4 @@ See `examples/README.md` for the exact lines each one adds:
 
 Kwang-Il Seon (KASI / UST)
 
-Last updated: 2026-07-31 12:05 KST
+Last updated: 2026-08-09 09:42

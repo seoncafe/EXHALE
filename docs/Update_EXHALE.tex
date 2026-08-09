@@ -3638,7 +3638,7 @@ case B. The He\,II recombination coefficient is $\alpha_{\rm eff} =
 \alpha_B + y\,\alpha_1$; the extra H\,I photoionization rate is
 $n_{\rm HeII}n_e[z\,\alpha_B + y\,\alpha_1]/n_{\rm HI}$; the photoelectron
 heating uses the ground-channel energy $E_{\rm gnd}=24.6-13.6=11.0\,$eV and a
-cascade-averaged $E_{\rm casc}\approx6.3\,$eV.
+cascade-averaged $E_{\rm casc}\approx6.14\,$eV.
 
 \paragraph{He\,I $2^3$S (triplet) mode.} The mode that computes 10830: the
 decay channels are explicit, so $z$ is not used --- a $2^3$S atom destroyed by
@@ -3647,13 +3647,25 @@ summed at the actual channel rates ($\alpha_1$ is the $1^1$S channel). The
 $1^1$S channel coefficient is $y\,\alpha_1 + 0.25\,\alpha_B$: the net ground
 capture plus the singlet-excited capture channel ($0.25\,\alpha_B$) the current
 network omits. The H-ionizing photon production is summed over channels: ground
-$y\,\alpha_1 n_{\rm HeII}n_e$; singlet-excited $0.85\times0.25\,\alpha_B
-n_{\rm HeII}n_e$ ($0.85=\tfrac23$ from the 584\,\AA{} line $+$ $\tfrac13\times0.56$
-from the $2^1$S two-photon continuum above 13.6\,eV); $2^3$S radiative decay
-$A_{31}n(2^3S)$ (19.8\,eV line, always ionizes H); and $2^3$S collisionally
-converted to the singlets $n_e n(2^3S)(0.56\,q_{31a}+q_{31b})$. The channel
-deposit energies are 11.0 (ground), 5.6 (singlet-excited), 6.2 (19.8\,eV line),
-and 3.0/7.6\,eV (collisionally converted two-photon / 584\,\AA).
+$y\,\alpha_1 n_{\rm HeII}n_e$; singlet-excited $0.8521\times0.25\,\alpha_B
+n_{\rm HeII}n_e$ ($0.8521=\tfrac23$ from the 584\,\AA{} line $+$
+$\tfrac13\times0.5564$ from the $2^1$S two-photon continuum above 13.6\,eV);
+$2^3$S radiative decay $A_{31}n(2^3S)$ (19.8\,eV line, always ionizes H); and
+$2^3$S collisionally converted to the singlets
+$n_e n(2^3S)(0.5564\,q_{31a}+q_{31b})$. The channel deposit energies are 11.0
+(ground), 5.53 (singlet-excited), 6.2 (19.8\,eV line), and 2.512/7.6\,eV
+(collisionally converted two-photon / 584\,\AA).
+
+The two-photon constants are integrals of the Drake, Victor \& Dalgarno (1969)
+spectral shape rather than round numbers. The $2^1$S term emits a photon
+\emph{pair} summing to 20.62\,eV with a distribution peaking at half that, so
+above the H\,I edge it delivers 0.5564 ionizing photons per decay carrying
+8.9646\,eV --- a mean photon energy of 16.110\,eV, hence 2.512\,eV of
+photoelectron energy each. Treating the in-band photons as uniformly
+distributed instead puts the mean at 17.109\,eV and the photoelectron at
+3.511\,eV, 40\% high. \texttt{f\_2q\_HeI} and \texttt{Ee\_2q\_HeI} in
+\texttt{util\_ion\_eq.f90} carry these, and the $0.8521/5.53/6.14$
+combinations are formed from them so the three cannot drift apart.
 
 The corrections are applied at the lagged (pre-solve) densities in the main
 ionization-equilibrium loop and re-evaluated at the advection-corrected

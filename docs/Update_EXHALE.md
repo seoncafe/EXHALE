@@ -2995,7 +2995,7 @@ Two local parameters set the split:
 - He II recombination coefficient `alpha_eff = alpha_B + y alpha_1`.
 - Extra H I photoionization rate `n_HeII n_e [z alpha_B + y alpha_1] / n_HI`.
 - Photoelectron heating with ground-channel energy `E_gnd = 24.6 - 13.6 =
-  11.0 eV` and a cascade-averaged `E_casc ~ 6.3 eV`.
+  11.0 eV` and a cascade-averaged `Ee_casc_HeI ~ 6.14 eV`.
 
 **He I 2^3S (triplet, TR) mode** (computes 10830): the decay channels are
 explicit, so `z` is not used -- a 2^3S atom destroyed by photoionization or
@@ -3006,13 +3006,24 @@ channel rates. `alpha_1` is the 1^1S channel (`rec_HeII_11S`).
   plus the singlet-excited capture channel (0.25 alpha_B) that the current
   network omits.
 - H-ionizing photon production summed over channels: ground `y alpha_1
-  n_HeII n_e`; singlet-excited `0.85 x 0.25 alpha_B n_HeII n_e` (0.85 = 2/3
-  from the 584 A resonance line plus 1/3 x 0.56 from the 2^1S two-photon
-  continuum above 13.6 eV); 2^3S radiative decay `A31 n(2^3S)` (19.8 eV line,
-  always ionizes H); 2^3S collisionally converted to the singlets
-  `n_e n(2^3S) (0.56 q31a + q31b)`.
-- Channel deposit energies 11.0 (ground), 5.6 (singlet-excited), 6.2 (19.8 eV
-  line), and 3.0/7.6 eV (collisionally converted two-photon / 584 A).
+  n_HeII n_e`; singlet-excited `0.8521 x 0.25 alpha_B n_HeII n_e` (0.8521 =
+  2/3 from the 584 A resonance line plus 1/3 x 0.5564 from the 2^1S
+  two-photon continuum above 13.6 eV); 2^3S radiative decay `A31 n(2^3S)`
+  (19.8 eV line, always ionizes H); 2^3S collisionally converted to the
+  singlets `n_e n(2^3S) (0.5564 q31a + q31b)`.
+- Channel deposit energies 11.0 (ground), 5.53 (singlet-excited), 6.2 (19.8 eV
+  line), and 2.512/7.6 eV (collisionally converted two-photon / 584 A).
+
+The two-photon constants are integrals of the Drake, Victor & Dalgarno (1969)
+spectral shape, not round numbers: the 2^1S term emits a photon *pair*
+summing to 20.62 eV with a distribution peaking at half that, so over the
+window above the H I edge it delivers 0.5564 ionizing photons per decay
+carrying 8.9646 eV, i.e. a mean photon energy of 16.110 eV and 2.512 eV of
+photoelectron energy each. Treating the in-band photons as uniformly
+distributed instead would put the mean at 17.109 eV and the photoelectron at
+3.511 eV, 40% high. `f_2q_HeI` and `Ee_2q_HeI` in `util_ion_eq.f90` carry
+these, and the 0.8521 / 5.53 / 6.14 combinations are formed from them so the
+three cannot drift apart.
 
 The corrections are applied at the lagged (pre-solve) densities in the main
 ionization-equilibrium loop, and re-evaluated at the advection-corrected

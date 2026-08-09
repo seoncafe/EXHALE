@@ -15,7 +15,32 @@
 	! Two subroutines for H and He+H
 	
    implicit none
-	
+
+	! ----- He I 2^1S -> 1^1S two-photon continuum ----- !
+	! The 2^1S term decays by emitting a photon PAIR summing to 20.62 eV, with
+	! the Drake, Victor & Dalgarno (1969) spectral shape peaking at half that.
+	! The part above the H I edge is therefore neither a round fraction of the
+	! pair nor flat within the window; integrating the tabulated shape over
+	! 13.598-20.62 eV gives 0.5564 H-ionizing photons per decay carrying
+	! 8.9646 eV, i.e. a mean in-band photon energy of 16.110 eV and hence
+	! 2.512 eV of photoelectron energy per photon. A flat distribution over the
+	! same window would instead put the mean at 17.109 eV and the photoelectron
+	! at 3.511 eV, overestimating the deposited energy by 40%.
+	real*8, parameter :: f_2q_HeI  = 0.5564d0   ! ionizing photons per 2^1S decay
+	real*8, parameter :: Ee_2q_HeI = 2.512d0    ! photoelectron energy [eV]
+	! Photoelectron energies of the He cascade exits that are single lines:
+	! 584 A resonance (21.2-13.6) and the 2^3S 19.8 eV line (19.8-13.6).
+	real*8, parameter :: Ee_584_HeI  = 7.6d0
+	! Singlet-excited captures: 2/3 go to 2^1P -> 584 A (always ionizing),
+	! 1/3 to 2^1S -> two-photon.
+	real*8, parameter :: f_sing_HeI  = (2.0d0 + f_2q_HeI)/3.0d0
+	real*8, parameter :: Ee_sing_HeI = (2.0d0*Ee_584_HeI                    &
+	                                    + f_2q_HeI*Ee_2q_HeI)/3.0d0
+	! Low-density channel-weighted average over the case-B cascade exits
+	! (19.8 eV line / 584 A / two-photon), used in atomic mode.
+	real*8, parameter :: Ee_casc_HeI = 0.75d0*6.2d0 + 0.17d0*Ee_584_HeI     &
+	                                   + 0.08d0*Ee_2q_HeI
+
 	contains
 	
 	! ------------------------------------------------------------- !
@@ -1039,7 +1064,7 @@
 	!   case B (rec_HeII_B). rcheiiB_new = alpha_B + y alpha_1 (Draine Eq. 14.17);
 	!   dP_HI = n_HeII n_e [z alpha_B + y alpha_1]/n_HI; the heating uses the
 	!   ground photoelectron energy E_gnd = 24.6-13.6 = 11.0 eV and a
-	!   cascade-averaged E_casc ~ 6.3 eV.
+	!   cascade-averaged Ee_casc_HeI ~ 6.14 eV.
 	! TR mode (thereis_HeITR = .true.): channels are explicit -- alpha_1 is the
 	!   1^1S channel (rec_HeII_11S, which HeITR_coeffs writes into rcheiiB) and
 	!   the 2^3S / singlet cascade rates (A31, q31a, q31b, n_2^3S = nheiTR) drive
@@ -1084,10 +1109,10 @@
 			! Extra H I photoionization rate [s^-1].
 			dP_HI(j) = nheii(j)*ne(j)*(z*alphaB(j) + y*alpha1(j))          &
 			           /max(nhi(j),1.0d-99)
-			! Photoelectron heating [erg cm^-3 s^-1]. E_casc = 6.3 eV is a
-			! low-density channel-weighted average (~0.75*6.2 + 0.17*7.6 +
-			! 0.08*3.0), approximate; E_gnd = 11.0 eV (24.6-13.6).
-			dheat(j) = nheii(j)*ne(j)*(z*alphaB(j)*6.3d0                   &
+			! Photoelectron heating [erg cm^-3 s^-1]. Ee_casc_HeI = 6.14 eV is a
+			! low-density channel-weighted average, approximate;
+			! E_gnd = 11.0 eV (24.6-13.6).
+			dheat(j) = nheii(j)*ne(j)*(z*alphaB(j)*Ee_casc_HeI             &
 			           + y*alpha1(j)*11.0d0)/erg2eV
 		enddo
 	else
@@ -1101,24 +1126,23 @@
 			rcheiiB_new(j) = y*alpha1(j) + 0.25d0*alphaB(j)
 			! (2) H-ionizing photon production [cm^-3 s^-1]:
 			P_add = y*alpha1(j)*nheii(j)*ne(j)                    ! ground (>=24.6)
-			! singlet-excited captures: 0.85 = 2/3*1.0 (584 A resonance) +
-			! 1/3*0.56 (2^1S two-photon fraction above 13.6 eV).
-			P_add = P_add + 0.85d0*0.25d0*alphaB(j)*nheii(j)*ne(j)
+			! singlet-excited captures: f_sing_HeI = 0.8521 = 2/3*1.0 (584 A
+			! resonance) + 1/3*f_2q_HeI (2^1S two-photon fraction above 13.6 eV).
+			P_add = P_add + f_sing_HeI*0.25d0*alphaB(j)*nheii(j)*ne(j)
 			! 2^3S radiative decay (19.8 eV line, always ionizes H).
 			P_add = P_add + A31*nheiTR(j)
 			! 2^3S collisionally converted to singlets, then decaying: 2^1S
-			! two-photon (0.56 ionizing) + 2^1P -> 584 A (1.0 ionizing).
-			P_add = P_add + ne(j)*nheiTR(j)*(q31a(j)*0.56d0 + q31b(j)*1.0d0)
+			! two-photon (f_2q_HeI ionizing) + 2^1P -> 584 A (1.0 ionizing).
+			P_add = P_add + ne(j)*nheiTR(j)*(q31a(j)*f_2q_HeI + q31b(j)*1.0d0)
 			dP_HI(j) = P_add/max(nhi(j),1.0d-99)
 			! (3) photoelectron heating [erg cm^-3 s^-1], channel E_dep [eV]:
-			! ground 11.0; singlet-excited 5.6 (= 2/3*7.6 + 1/3*0.56*3.0, where
-			! 584 A -> 7.6, two-photon -> 3.0); 19.8 eV line -> 6.2; 2^3S coll.
-			! -> singlet: two-photon 3.0 + 584 A 7.6.
+			! ground 11.0; singlet-excited Ee_sing_HeI = 5.53; 19.8 eV line
+			! -> 6.2; 2^3S coll. -> singlet: two-photon Ee_2q_HeI + 584 A 7.6.
 			H_add = y*alpha1(j)*nheii(j)*ne(j)*11.0d0
-			H_add = H_add + 0.25d0*alphaB(j)*nheii(j)*ne(j)*5.6d0
+			H_add = H_add + 0.25d0*alphaB(j)*nheii(j)*ne(j)*Ee_sing_HeI
 			H_add = H_add + A31*nheiTR(j)*6.2d0
 			H_add = H_add + ne(j)*nheiTR(j)                                &
-			        *(q31a(j)*0.56d0*3.0d0 + q31b(j)*1.0d0*7.6d0)
+			        *(q31a(j)*f_2q_HeI*Ee_2q_HeI + q31b(j)*Ee_584_HeI)
 			dheat(j) = H_add/erg2eV
 		enddo
 	endif

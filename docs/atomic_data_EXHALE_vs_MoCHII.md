@@ -113,6 +113,18 @@ MoCHII in turn carries an n-level statistical-equilibrium emission-line solver
 from Nussbaumer & Schmutz 1984 / Almog & Netzer 1989), and dust photoelectric
 heating (Bakes & Tielens 1994).
 
+One quantity crosses between them. MoCHII transports the He I 2^1S two-photon
+continuum as sampled packets and so needs the full Drake, Victor & Dalgarno
+(1969) shape; EXHALE never forms a spectrum, but its He II cascade coupling
+(`he_rec_coupling`) needs two moments of that same shape above the H I edge --
+how many ionizing photons a 2^1S decay yields and how much energy each of them
+deposits. Both had been round numbers, 0.56 and 3.0 eV. Integrating the shape
+gives 0.5564 and 2.512 eV: the photon count was right, but the deposited energy
+was 20% high, being close to the 3.511 eV a uniform in-band distribution would
+give rather than to the peaked one the pair actually has. MoCHII found the same
+defect in its own sampler, which drew the in-band photons flat. EXHALE now
+carries the two integrals as `f_2q_HeI` and `Ee_2q_HeI`.
+
 ## Part 2 — The 2026-07-17 rate update
 
 The changes below are implemented in the radiation modules `Cool_coeff.f90` and
