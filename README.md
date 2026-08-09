@@ -36,7 +36,7 @@ fork of the ATES code (Caldiroli et al. 2021; Biassoni et al. 2024), adding:
 - A Jacobian-free Newton-Krylov (JFNK) steady-state solver with PTC warm-up,
   SER ramp, and non-monotone (Grippo) line search
 - Roche-potential geometry (spherical or Roche-lobe domain modes)
-- **Lower-atmosphere connection machinery** (opt-in): an analytic
+- **Lower-atmosphere connection** (opt-in): an analytic
   Koskinen+2022 lower column (`Lower column:` key reports the derived 1-ubar
   base radius and base H2/H/He), an EOS-only molecular-base correction
   (`Molecular base:`), **full molecular chemistry** (`Molecular chemistry:
@@ -116,7 +116,7 @@ EXHALE/
 │   ├── EXHALE_BC_and_IC.pdf     # boundary- and initial-condition reference
 │   ├── code_comparison.pdf    # BC/IC/solver vs ATES, Salz, Kubyshkina, Murray-Clay
 │   ├── steady_solver_memo.pdf # Newton-Krylov design notes
-│   ├── wind_ae_solver.pdf     # bundled Wind-AE solver (IC mode: windae)
+│   ├── wind_ae_solver.pdf     # included Wind-AE solver (IC mode: windae)
 │   ├── lower_atmosphere_coupling.pdf # lower-atmosphere connection: analytic column, molecular chemistry, VULCAN
 │   ├── code_review_20260702.md # full-code review report (fixes + recommendations)
 │   └── …
@@ -367,7 +367,7 @@ see `docs/photoion_cross_sections.pdf`.)
 ### Wind-AE warm-start initial condition (`IC mode: windae`)
 
 For a planet that is hard to launch from the default cold/auto initial
-conditions, EXHALE can build the initial condition from a bundled 1-D
+conditions, EXHALE can build the initial condition from an included 1-D
 steady-state Parker-wind solver (a Fortran port of **Wind-AE**; Murray-Clay
 et al. 2009 / Broome et al. 2025, under `src/modules/wind_ae/`).  There are
 two ways to use it.
@@ -565,4 +565,4 @@ See `examples/README.md` for the exact lines each one adds:
 
 Kwang-Il Seon (KASI / UST)
 
-Last updated: 2026-08-09 15:50
+Last updated: 2026-08-09 22:50

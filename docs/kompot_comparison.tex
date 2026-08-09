@@ -1,0 +1,575 @@
+%% Uses the local my_memo document class (docs/my_memo.cls), which auto-loads
+%% graphicx, amsmath, amssymb, hyperref, xcolor, kotex, fancyhdr, and sets its
+%% own A4 geometry / boxed title / header-footer.  booktabs and longtable are
+%% not provided by the class, so they are loaded here.
+\documentclass{my_memo}
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage{longtable}
+%% Ragged-right fixed-width column: the table columns here are narrow enough
+%% that justification opens large interword gaps.
+\newcolumntype{L}[1]{>{\raggedright\arraybackslash}p{#1}}
+
+\newcommand{\EXHALE}{\textsc{Exhale}}
+\newcommand{\Kompot}{\textsc{Kompot}}
+\newcommand{\Mdot}{\dot{M}}
+\newcommand{\Lya}{Ly$\alpha$}
+\newcommand{\Ha}{H$\alpha$}
+\newcommand{\Kzz}{K_{zz}}
+\newcommand{\ergs}{erg\,s$^{-1}$}
+\newcommand{\gs}{g\,s$^{-1}$}
+\newcommand{\cmc}{cm$^{-3}$}
+%% Compact table body: the class sets \linespread{1.5} for running text, which
+%% makes multi-line p-columns unnecessarily tall.
+\newcommand{\tabsetup}{\footnotesize\linespread{1.05}\selectfont
+  \renewcommand{\arraystretch}{1.15}}
+
+\title{The \Kompot\ Code (Johnstone et al.\ 2018, 2019, 2021;\\
+Robeling et al.\ 2026) versus \EXHALE:\\
+model comparison and implementation-path analysis}
+\author{K.-I. Seon}
+\date{\docmoddate}
+
+\begin{document}
+\maketitle
+
+\section{Purpose and summary}
+
+This memo compares the \Kompot\ Code, as documented across its four defining papers, with
+\EXHALE, and then assesses two possible construction paths: writing a \Kompot-class code from
+scratch using the published papers, and extending \EXHALE\ with selected \Kompot\ physics. The
+headline verdicts, stated first, are the following.
+
+\begin{enumerate}
+  \item \textbf{The two codes appear largely complementary rather than competing.} \Kompot\
+    targets the thermal and chemical structure of weakly to moderately irradiated thermospheres
+    --- terrestrial secondary atmospheres, and in the 2026 paper a hydrostatic H$_2$ giant ---
+    while \EXHALE\ targets strongly irradiated transonic H/He\,$+$\,metal winds and the
+    spectral line diagnostics that trace them. The two overlap only in the transonic corner,
+    which is the subject of Johnstone et al.\ (2019) and the core regime of \EXHALE.
+
+  \item \textbf{The deepest architectural difference is the treatment of chemistry.} \Kompot\
+    integrates a time-dependent kinetic reaction network (Rosenbrock solver) and transports every
+    species by advection and diffusion; \EXHALE\ solves local ionization equilibrium in each cell
+    at every step. \EXHALE's choice appears valid where the ionization and recombination
+    timescales are short compared with the flow time, which is its own regime, but it cannot by
+    construction represent transport-limited neutral photochemistry such as hydrocarbon or
+    CO$_2$ chemistry. That limitation is presumably why \EXHALE\ couples to \textsc{Vulcan}
+    offline for the lower atmosphere rather than solving that chemistry internally.
+
+  \item \textbf{From-scratch feasibility differs sharply between the papers.} Johnstone et al.\
+    (2018) is unusually complete: all governing equations, numerical appendices, and a reaction
+    table running to roughly ten pages. A reimplementation in that operating mode appears
+    feasible provided the external data sets are collected. The new numerics introduced in
+    Johnstone et al.\ (2019) are underspecified but can be replaced by standard methods. Robeling
+    et al.\ (2026), by contrast, does not appear reimplementable from the paper alone: the
+    chemical network is not tabulated, the CH$_4$ cooling fit is unpublished, the H$_3^+$
+    non-LTE factor is not stated, and the infrared heating channel is never described.
+
+  \item \textbf{For \EXHALE, a few ports look realistic and one does not.} Thermal conduction,
+    the closed-form CO$_2$/NO/O cooling functions, and a \Kompot-style subsonic (Jeans-boundary)
+    solution mode are all plausible additions. Adopting kinetic chemistry with species transport
+    would, in contrast, touch the solver core deeply enough that it would amount to writing a new
+    code rather than extending the existing one.
+\end{enumerate}
+
+\section{The \Kompot\ lineage and its three operating modes}
+
+The four papers do not describe one fixed code. They describe a common physics core that is run
+in three distinct hydrodynamic modes: a semi-static mode with a moving exobase (2018, 2021), a
+fully transonic Godunov mode (2019), and a hydrostatic mode (2026). Table~\ref{tab:lineage}
+summarizes the lineage; the paragraphs that follow give the detail.
+
+\begin{table}[htbp]
+\centering
+\caption{The four \Kompot\ papers, their operating modes, and their targets.}
+\label{tab:lineage}
+\vspace{2pt}
+{\tabsetup
+\begin{tabular}{@{}L{0.148\textwidth}L{0.148\textwidth}L{0.188\textwidth}L{0.148\textwidth}L{0.253\textwidth}@{}}
+\toprule
+Reference & Operating mode & Composition and target & Escape regime & Key result \\
+\midrule
+Johnstone et al.\ (2018), A\&A 617, A107 &
+Semi-static, three temperatures, moving exobase &
+Full N/O/C/H network, 63 species; modern Earth and Venus &
+Jeans escape at the exobase &
+Foundation paper; validated against NRLMSISE-00, IRI-2007 and Hedin (1983); solar XUV evolution
+from $-3$ to $+2.5$~Gyr \\[3pt]
+Johnstone et al.\ (2019), A\&A 624, L10 &
+Transonic, MUSCL-Hancock, single temperature &
+Earth composition (N$_2$/O$_2$) at 1~AU &
+Fully transonic hydrodynamic wind &
+Earth's atmosphere under the young active Sun escapes hydrodynamically,
+$\Mdot = 1.8\times10^{9}$~\gs \\[3pt]
+Johnstone et al.\ (2021), EPSL 576, 117197 &
+Semi-static (2018 mode restored) &
+Reduced C/N/O network, 30 species; Archean Earth CO$_2$/N$_2$ &
+Jeans escape, with a rapid-escape threshold &
+At least ${\sim}40\%$ CO$_2$ needed at 3.8~Ga; the young Sun was likely a slow rotator \\[3pt]
+Robeling et al.\ (2026), arXiv:2608.04086 &
+Hydrostatic ($v = 0$ imposed) &
+H$_2$-rich with hydrocarbons to C$_2$H$_6$; Jupiter &
+None (bound atmosphere) &
+Reproduces the Galileo/JUNO thermal inversion; Joule heating dominates the energy budget as
+prescribed \\
+\bottomrule
+\end{tabular}}
+\end{table}
+
+\subsection{Johnstone et al.\ (2018): the foundation}
+
+The 2018 paper defines the physics core. It is a one-dimensional, time-dependent model carrying
+three separate temperatures --- neutral, ion, and electron --- coupled by collisional energy
+exchange. The hydrodynamics follow the semi-static reduction of Tian et al.\ (2008): mass and
+momentum are assumed steady, the velocity ordinary differential equation is integrated downward
+from the exobase given an imposed exobase outflow speed taken from the Jeans-consistent
+expressions of Luger et al.\ (2015), and the density equation is integrated upward from a fixed
+lower boundary. The upper boundary is the exobase itself and moves with the solution; it is
+placed where the mean free path equals the pressure scale height, using a constant collision
+cross section of $2\times10^{-15}$~cm$^{2}$.
+
+The chemistry is a kinetic network of 63 species, 30 of them ions, connected by 503 reactions
+including 56 photoreactions and 7 photoelectron reactions. It is integrated with the RODAS3
+Rosenbrock method using an analytic Jacobian, and the chemistry and radiation updates are applied
+every 100 hydrodynamic steps rather than every step. The model was validated against NRLMSISE-00
+and IRI-2007 for the modern Earth and against Hedin et al.\ (1983) for Venus. Two applications
+follow: an experiment varying the CO$_2$ abundance from $0.01\times$ to $1000\times$ the present
+value, and an evolutionary sequence in solar XUV from 3~Gyr in the past to 2.5~Gyr into the
+future. In the latter, the exobase neutral temperature at 3~Gyr ago is about 4600~K (with the
+electron temperature about 5100~K), against a present-day value near 1100~K read from their
+figure.
+
+The design principle worth flagging is that \emph{no heating efficiency parameter appears
+anywhere}. The heating rate is instead built up term by term: excess energy from photodissociation,
+a photoelectron degradation spectrum following Schunk \& Nagy (1978) with 100 logarithmic bins
+between 1 and 1000~eV and local deposition, tabulated reaction enthalpies, infrared absorption by
+CO$_2$ and H$_2$O using HITRAN/HITEMP line data processed through \texttt{kspectrum}, and a Joule
+term calibrated to a global total of $1.4\times10^{18}$~\ergs\ for the Earth with a uniform
+$B = 0.5$~G.
+
+\subsection{Johnstone et al.\ (2019): the transonic mode}
+
+The 2019 letter keeps the physics and replaces the hydrodynamics. The semi-static reduction gives
+way to a MUSCL-Hancock scheme on primitive variables following Toro (1999), and the three
+temperatures collapse to one because the chosen Riemann solver requires a single temperature. The
+grid is fixed, spanning altitudes from 50 to 50\,000~km in 500 cells, with a zero-gradient
+outflow condition at the top. Notably, no sonic-point condition is imposed anywhere: the
+transonic solution emerges from time relaxation.
+
+One model is presented. An Earth-composition (N$_2$/O$_2$) atmosphere is placed at 1~AU under the
+young active Sun, using the Claire et al.\ (2012) spectrum for 4.4~Gyr ago, in which the flux
+below 100~nm is enhanced by roughly a factor of 60. The result is a fully transonic wind with
+$\Mdot = 1.8\times10^{9}$~\gs, which would remove the Earth's present atmosphere in about
+0.1~Myr. At the top of the domain the temperature reaches 19\,000~K and the outflow speed 7~km\,s$^{-1}$,
+against an escape velocity of 4~km\,s$^{-1}$. The outflow is dominated by atomic N and O and reaches
+up to 20\% ionization, and hydrogen is lost about 2.5 times more efficiently than most other
+species.
+
+\subsection{Johnstone et al.\ (2021): the Archean application}
+
+The 2021 paper returns to the 2018 semi-static three-temperature mode; the 2019 numerics are not
+used. The chemistry is reduced to the C, N and O elements, leaving 30 species with 11 ions and
+241 reactions including 42 photoreactions. The lower boundary is a pure CO$_2$\,$+$\,N$_2$
+mixture at $T = 267$~K and $n = 5\times10^{16}$~\cmc\ at 50~km altitude. The parameter study
+crosses base CO$_2$ mixing ratios from 0.001 to 0.99 with solar activity levels
+$F_X \approx 2$--15~\ergs\,cm$^{-2}$ at 1~AU (roughly 3--23 times the modern mean) taken along the
+rotation tracks of Tu et al.\ (2015).
+
+Escape is counted as Jeans escape at the exobase only. A ``rapid escape'' regime is diagnosed from
+a runaway in the exobase solution together with a mass-loss threshold
+$\Mdot > 0.1$~bar\,Myr$^{-1}$, about $1.7\times10^{7}$~\gs. The principal conclusions are that at
+3.8~Ga the atmosphere required at least about 40\% CO$_2$ to survive, that above
+$F_X \approx 13$~\ergs\,cm$^{-2}$ even a pure CO$_2$ atmosphere escapes rapidly, and that the
+young Sun must therefore have been a slow rotator.
+
+\subsection{Robeling et al.\ (2026): the giant-planet extension}
+
+The 2026 paper extends the code to a giant planet and drops the hydrodynamics entirely: $v = 0$ is
+imposed in the momentum relation, so the model is hydrostatic, and the exobase is located where
+the Knudsen number reaches unity. The target is an H$_2$-rich Jupiter benchmarked against Galileo
+and JUNO thermal structure and hydrocarbon profiles. The chemistry is extended to hydrocarbons up
+to C$_2$H$_6$, drawn from KIDA, PHIDRATES and several further networks, but the resulting network
+is not tabulated in the paper. H$_3^+$ cooling is taken from Table~5 of Miller et al.\ (2013)
+multiplied by a non-LTE scale factor whose value is not stated; CH$_4$ cooling comes from an LTE
+fit to ExoMol data over 1--1500~K, with the fit itself deferred to a paper in preparation.
+
+Joule heating dominates the model energy budget and is a scaled free parameter. The total
+$\Gamma_j \approx 10^{21}$~\ergs\ is taken from M\"uller-Wodarg et al.\ (2025) and distributed
+over a shape function computed from the Pedersen conductivity with a placeholder unit electric
+field and a single scalar $B = 4.17$~G. The eddy diffusion coefficient $\Kzz$ is the other major
+free parameter, explored using the Moses et al.\ (2005) profiles~A and~C together with constant
+values of $10^{6}$ and $10^{7}$~cm$^{2}$\,s$^{-1}$. The model reproduces the thermal inversion and
+the upper-atmosphere temperatures well, overpredicts C$_2$H$_2$ by a factor of about 2--3, and the
+authors acknowledge that aerosols, particle precipitation and non-LTE CH$_4$ are missing. A
+coupling to \textsc{TauREx} produces gas-only transmission spectra over 1--15~$\mu$m, in which
+CH$_4$ dominates from 1 to 10~$\mu$m and C$_2$H$_2$ beyond 10~$\mu$m.
+
+Two internal tensions are worth recording, tentatively. First, the headline that Joule heating
+dominates appears to follow from the input choice of $\Gamma_j$ rather than from an independent
+derivation, since the total is prescribed rather than computed. Second, Table~1 quotes
+$\Gamma_j \approx 10^{21}$~\ergs, which is 100~TW, while the discussion of Fig.~3 reports the
+integrated Joule contribution as about 200~TW; the two statements do not appear reconcilable from
+the text alone.
+
+\section{Physics comparison with \EXHALE}
+
+The verdict first: within \EXHALE's own regime --- strongly irradiated escaping H/He\,$+$\,metal
+atmospheres and the line diagnostics that probe them --- nothing in the four \Kompot\ papers
+supersedes what \EXHALE\ already does, and in several places (\Lya\ transfer, excited hydrogen,
+metal line cooling, transit spectra) \EXHALE\ goes considerably further. Conversely, in \Kompot's
+regime --- bound or weakly escaping thermospheres with neutral molecular chemistry --- \EXHALE\
+currently cannot operate at all, because it has no bound-atmosphere solution mode, no thermal
+conduction, and no kinetic chemistry. Table~\ref{tab:physics} sets the two side by side. The
+\EXHALE\ entries were checked against the source tree rather than against its documentation.
+
+{\tabsetup
+\begin{longtable}{@{}L{0.155\textwidth}L{0.39\textwidth}L{0.39\textwidth}@{}}
+\caption{Physics comparison. \Kompot\ entries are as described in the four papers; \EXHALE\
+entries were verified in \texttt{EXHALE/src/}.}
+\label{tab:physics}\\
+\toprule
+Aspect & \Kompot\ (2018--2026) & \EXHALE \\
+\midrule
+\endfirsthead
+\multicolumn{3}{@{}l}{\emph{Table \ref{tab:physics}, continued}}\\
+\toprule
+Aspect & \Kompot\ (2018--2026) & \EXHALE \\
+\midrule
+\endhead
+\bottomrule
+\endfoot
+Hydrodynamics and regime &
+Three modes: semi-static with moving exobase (2018, 2021), transonic MUSCL-Hancock (2019),
+hydrostatic $v=0$ (2026). Bound and escaping atmospheres both representable. &
+Single-fluid three-equation Euler system, spherical, Roche potential on by default. Transonic
+wind only; a bound hydrostatic solution regime does not exist in the code. \\
+
+Steady-state method &
+Time relaxation in all modes; convergence criterion not stated in any of the papers. &
+Explicit SSP-RK3 marching, optionally finished by a pseudo-transient-continuation
+Jacobian-free Newton--Krylov solver with GMRES
+(\texttt{steady\_newton.f90}). Convergence on the mass-flux spread
+$du = \mathrm{spread}(\rho \varv r^2) < 10^{-3}$. \\
+
+Numerical scheme &
+2019: MUSCL-Hancock on primitive variables, Riemann solver cited only by equation number in
+Toro (1999). 2018/2021: ODE integration, no Riemann solver. &
+PLM or WENO3 reconstruction; HLLC, Roe or LLF fluxes (\texttt{Num\_Fluxes.f90},
+\texttt{Reconstruction.f90}). \\
+
+Temperatures &
+Three ($T_n$, $T_i$, $T_e$) with collisional exchange in 2018, 2021, 2026; collapsed to one in
+2019 because the Riemann solver requires it. &
+One temperature shared by neutrals, ions and electrons,
+$T = p / [(n_{\rm tot} + n_e)k]$. No $T_e$ anywhere in the source. \\
+
+Thermal conduction &
+Present in all modes, with separate conductivities for neutrals, ions and electrons; dominant
+near the base of a bound thermosphere. &
+Absent. The conduction slot in the energy source vector is identically zero
+(\texttt{Source.f90}, \texttt{S(3) = 0.0}); the only mentions of conduction in the source are
+comments recording that it is deferred. \\
+
+Photo-heating and heating efficiency &
+Built from first principles; no heating efficiency parameter anywhere, stated explicitly as a
+design goal. &
+Photoionization heating computed from the frequency integral, also with no efficiency parameter.
+The $\eta$ reported in the output is a diagnostic, not an input. The design stance is the same in
+both codes. \\
+
+Secondary and photoelectron treatment &
+Photoelectron degradation spectrum transported over 100 logarithmic bins from 1 to 1000~eV
+(Schunk \& Nagy 1978), with local deposition. &
+Secondary ionization by fast photoelectrons through the Shull \& van Steenberg (1985) fits: a
+local energy-partition treatment, not a degradation-spectrum calculation. \\
+
+Chemical heating &
+General bookkeeping of tabulated reaction enthalpies across the whole network. &
+Only specific channels: He($2^3$S)\,$+$\,H and He($2^3$S)\,$+$\,H$_2$ Penning ionization (6.2 and
+4.4~eV), He recombination-radiation coupling, and photoelectrons from H($n=2$) Balmer-continuum
+ionization. No general reaction-enthalpy bookkeeping. \\
+
+Joule heating &
+Present. Earth: total $1.4\times10^{18}$~\ergs, $B = 0.5$~G. Jupiter: total
+$\Gamma_j \approx 10^{21}$~\ergs\ distributed over a Pedersen conductivity shape,
+$B = 4.17$~G. &
+Absent. A search of the source for Joule, magnetic or Pedersen terms returns no hits; there is
+no magnetic field in the model. \\
+
+Infrared and bolometric heating &
+CO$_2$ and H$_2$O infrared absorption (2018) from HITRAN/HITEMP; an infrared heating channel is
+referred to but not described in 2026. &
+No bolometric infrared heating in the production solve. The energy grid floor is 4.8~eV (or the
+lowest metal ionization potential); the only sub-XUV stellar inputs are a diluted-blackbody
+Balmer continuum acting on H($n=2$) and stellar \Lya\ pumping. \\
+
+Cooling channels &
+CO$_2$ 15~$\mu$m cool-to-space (two-level, Kumer \& James escape probabilities), NO 5.3~$\mu$m,
+O 63/147~$\mu$m, H$_2$O; plus H$_3^+$ and CH$_4$ in 2026. &
+\Lya; H and He recombination, collisional ionization and free-free; He\,$2^3$S channels; metal
+lines as closed-form CHIANTI~v11 fits for C\,\textsc{i/ii}, N\,\textsc{i/ii}, O\,\textsc{i/ii},
+Mg\,\textsc{i/ii}, Ca\,\textsc{ii}, Na\,\textsc{i}, Fe\,\textsc{i/ii}, with density-dependent
+[C\,\textsc{ii}]~158~$\mu$m and [O\,\textsc{i}]~63~$\mu$m saturation floors and a
+statistical-equilibrium Fe\,\textsc{ii} coefficient; H$_3^+$ infrared cooling
+(\texttt{h3p\_cooling.f90}). No CO$_2$, NO or CH$_4$ cooling. \\
+
+H$_3^+$ cooling detail &
+Miller et al.\ (2013) Table~5 fits times a non-LTE scale factor whose value is not given
+(2026). &
+The same Miller et al.\ (2013) Table~5 fits, plus the Table~6 non-LTE departure factor. On this
+one item \EXHALE\ appears better documented than Robeling et al.\ (2026). \\
+
+Chemistry treatment &
+Time-dependent kinetic network integrated with RODAS3 Rosenbrock and an analytic Jacobian; every
+species carries its own continuity equation. &
+Local steady-state ionization equilibrium solved in every cell at every step
+(\texttt{util\_ion\_eq.f90}, \texttt{ionization\_equilibrium.f90}), by an analytic-Jacobian
+Newton method with a MINPACK \texttt{hybrd1} fallback. \\
+
+Species set &
+2018: 63 species, 30 ions, 503 reactions. 2021: 30 species, 11 ions, 241 reactions. 2026: extended
+to hydrocarbons up to C$_2$H$_6$ (network not tabulated). &
+37 species: H\,\textsc{i/ii}; He\,\textsc{i/ii/iii} and He\,$2^3$S; 27 metal ion stages of the ten
+elements C, N, O, Mg, Si, Ca, Na, K, S, Fe (\texttt{species\_table.f90}); and H$_2$, H$_2^+$,
+H$_3^+$, HeH$^+$. Charge exchange from Huang et al.\ (2023) Table~4; the molecular network is 23
+reactions with Koskinen et al.\ (2022) rates, also in local equilibrium. H$_2$ Lyman--Werner
+photodissociation is absent, as noted in the code comments. \\
+
+Species transport &
+Every species is advected and diffused; molecular diffusion coefficients from Banks \& Kockarts
+with an N$_2$ background, plus eddy diffusion. &
+No species advection in the main loop; an advection-corrected re-solve exists only as a
+post-processing step (\texttt{post\_process\_adv.f90}). He/H element-ratio diffusion with binary
+molecular $D$, eddy $\Kzz$, ambipolar-corrected settling (on by default within the option) and
+optional thermal diffusion (\texttt{species\_diffusion.f90}); each metal may diffuse
+independently. The whole diffusion option is off by default, and there is no eddy diffusion of the
+bulk gas. \\
+
+Radiative-transfer geometry &
+Single slant ray at a chosen zenith angle (66$^\circ$ for Earth, 60$^\circ$ in 2026); optical
+depth summed over all photoreactions. &
+Radial column with $\exp(-\tau)$ attenuation and a day--night redistribution factor $\xi$ (0.5 or
+0.25). Spectrum from a broken power law, a tabulated SED, or monochromatic; default range
+13.6--1240~eV (the floor drops to 4.8~eV with He\,$2^3$S, or to the lowest neutral-metal
+ionization potential), in about 200 bins. The two treatments are different one-dimensional
+averaging approximations, not a right-versus-wrong distinction. \\
+
+\Lya\ transfer and excited hydrogen &
+Not treated. &
+\Lya\ radiative transfer through a Neufeld escape-probability closure computed in line, or an
+imported mean-intensity profile from the LaRT Monte Carlo code (\texttt{lya\_rt.f90}); full
+non-LTE H($n=2$) 2s/2p balance feeding Balmer-continuum ionization and heating
+(\texttt{excited\_hydrogen.f90}). Nothing comparable exists in \Kompot. \\
+
+Boundaries and domain &
+Lower boundary fixed at 50~km (2019, 2021) or 65~km (2018 Earth). Upper boundary at the moving
+exobase (2018, 2021, 2026) or zero-gradient outflow at 50\,000~km (2019). &
+500 cells by default from the base radius to the Hill or L1 radius set by the Roche geometry
+(overridable). Fixed base density and temperature, with $T_0$ the equilibrium temperature, plus a
+one-way valve enforcing $\varv \ge 0$ at the base; zero-gradient outflow at the top; $\Mdot$ read
+near the top. \\
+
+Free parameters &
+Eddy $\Kzz$, described by the authors as the only real free parameter (2019); the Joule total and
+its electric field; the H$_3^+$ non-LTE factor (2026). &
+Eddy $\Kzz$ when diffusion is enabled, and the day--night redistribution factor $\xi$. \\
+
+Outputs and observables &
+Thermal, chemical and ionization structure; exobase state; Jeans or hydrodynamic mass-loss rate;
+gas-only transmission spectra through \textsc{TauREx} in 2026. &
+Thermal, chemical and ionization structure; $\Mdot$; and transit transmission spectra for
+He\,\textsc{i}~10830, \Lya, \Ha, H$\beta$, Mg\,\textsc{ii}~h\&k, Ca\,\textsc{ii}~H\&K and
+Na\,\textsc{i}~D. \\
+\end{longtable}}
+
+\subsection{Free parameters, stated honestly}
+
+The \Kompot\ papers make a point of using no heating efficiency parameter, and that claim appears
+accurate. It should not be read, however, as meaning that the models are free of tuned inputs. By
+the authors' own statement the eddy diffusion coefficient is a free parameter; the Joule heating
+total and the electric field used to shape its deposition are prescribed rather than derived; and
+the H$_3^+$ non-LTE scale factor in the 2026 paper is an unstated multiplier. \EXHALE\ shares the
+first of these ($\Kzz$, when diffusion is switched on) and adds the day--night redistribution
+factor $\xi$, which plays a role loosely analogous to \Kompot's choice of zenith angle. On the
+specific question of heating efficiency the two codes take the same first-principles position.
+
+\section{Reproducibility of each paper}
+
+Verdict first: Johnstone et al.\ (2018) comes close to a complete specification of a working code;
+the 2019 and 2021 papers inherit that specification but leave their own new pieces
+underdocumented; and Robeling et al.\ (2026) does not appear reproducible from the paper alone.
+
+\subsection{Johnstone et al.\ (2018)}
+
+What is fully specified is unusually broad. It includes all governing equations, including the
+semi-static reduction and the directions in which each ODE is integrated; the radiation scheme
+(10--4000~\AA\ in 1000 bins, infrared 1--20~$\mu$m in roughly $10^4$ selected bins, ray step
+$H/5$, optical depth summed over photoreactions); the photoelectron degradation equation with its
+bin structure and all cross-section sources; every heating and cooling formula together with its
+constants (the CO$_2$ cool-to-space two-level model with Kumer \& James escape probabilities and
+the collider rate table, NO 5.3~$\mu$m, O 63 and 147~$\mu$m, and the conductivities for neutrals,
+ions and electrons); the diffusion coefficients and thermal-diffusion factors; all numerical
+solvers at appendix level of detail (Crank--Nicolson tridiagonal forms, RODAS3 with tolerances,
+MUSCL/TVD parameters); the complete reaction table with rates, enthalpies and validity ranges
+(Table~H.1); the operator-splitting order and the 100-step update cadence; and a set of solver
+validations against an analytic Parker wind, a Sod tube compared with VAC, a cross-check against
+KROME, and a photoelectron spectrum compared with Singhal \& Haider (1984).
+
+What is left out is a shorter but not empty list: the number of grid cells and the exact spacing
+law; the steady-state convergence criterion, which is likely the largest single obstacle to
+reproducing the quoted numbers; the Courant number, given only as $C \sim 1$; the Joule electric
+field, which is tuned to a global total and is therefore not reconstructible for a single column;
+the H$_2$O cooling equations, for which the reader is pointed to Kasting \& Pollack (1983); the
+algorithm for the thermal/non-thermal crossover energy $E_t$; the energy-loss tabulations
+$\Delta E$; the ion and electron cooling terms $Q_{c,i}$ and $Q_{c,e}$, which appear in the
+equations but are never given; and the exobase regridding algorithm. Beyond the paper, an
+implementer would need the external numerical arrays: PHIDRATES cross sections; electron-impact
+cross sections from Green \& Barth (1965), Watson et al.\ (1967), Jackman et al.\ (1977) and
+Jusick et al.\ (1967); the Banks \& Kockarts and Schunk \& Nagy collision tables; HITRAN/HITEMP
+line lists processed through \texttt{kspectrum}; and the Claire et al.\ (2012) spectra.
+
+\subsection{Johnstone et al.\ (2019)}
+
+The physics is inherited from 2018 and is therefore documented. What the letter adds is a change
+of numerics, and that change is underspecified: the Riemann solver is identified only by an
+equation number in Toro (1999); the limiter, the operator-splitting order, the CFL number, the
+sonic-point cutoff used to disable diffusion, the definition used for the mass-loss rate, and the
+convergence criterion are all absent. The 50~km base state --- temperature, density, and all 63
+mixing ratios --- is not tabulated, and it cannot simply be copied from the 2018 paper because
+that Earth model was based at 65~km. None of these gaps involves physics, so all of them can be
+closed by an implementer's own reasonable choices, at the cost of not reproducing the quoted
+numbers exactly.
+
+\subsection{Johnstone et al.\ (2021)}
+
+This paper is largely derivable from 2018 by mechanical means: the element filter rule is given,
+and the CO$_2$/N$_2$ base state is in fact better documented than the 2019 base state. The real
+gaps are the eddy diffusion coefficient adopted for a CO$_2$-rich atmosphere, which directly
+controls how much CO$_2$ reaches the radiating region and therefore controls the headline
+threshold; whether Joule heating was enabled; the grid; the set of species allowed to escape by
+Jeans escape; and the conversion used between bar\,Myr$^{-1}$ and \gs.
+
+\subsection{Robeling et al.\ (2026)}
+
+Four items block an independent implementation, and for each of them there is no citable closing
+source. The chemical network is not tabulated, and it is described as the union of six cited
+sources with an undocumented selection rule. The CH$_4$ cooling fit is deferred to a paper in
+preparation. The H$_3^+$ non-LTE scale factor is given neither a value nor a reference. The
+infrared heating channel appears in the abstract and in a figure legend but is never described.
+Secondary omissions are the epoch of the solar spectrum and the orbital distance, and the internal
+100~TW versus 200~TW inconsistency noted in \S2.4. The conclusion is that an independent
+implementation could only be built ``in the style of'' Robeling et al.\ (2026) --- for instance,
+with a \textsc{Vulcan}-derived network and fits of the implementer's own construction --- and
+should not be described as a reproduction.
+
+\section{Implementation paths}
+
+\subsection{Building a \Kompot-class code from scratch}
+
+A reimplementation in the 2018 operating mode appears feasible as a standalone project. The paper
+together with its appendices amounts to a near-complete specification, and the missing numerical
+items (grid, convergence criterion, Courant number) are choices any implementer can make without
+guessing at physics. The labor would be dominated not by the equations but by collecting the
+external data --- cross-section and rate archives, collision tables, line lists --- and by
+entering the 503-reaction network. Reproducing the published curves qualitatively appears
+realistic on that basis; matching the quoted numbers exactly does not, because the convergence
+criteria are not published. Adding the transonic mode of 2019 requires an independent choice of
+Godunov-type numerics, for which \EXHALE-grade methods would be entirely adequate. None of this
+requires inventing new physics.
+
+\subsection{Extending \EXHALE}
+
+Table~\ref{tab:ports} lists the candidate ports with a verdict, a rough effort estimate, and an
+assessment of physical value; the notes below expand on the entries that need it.
+
+\begin{table}[htbp]
+\centering
+\caption{Candidate \Kompot-inspired additions to \EXHALE.}
+\label{tab:ports}
+\vspace{2pt}
+{\tabsetup
+\begin{tabular}{@{}L{0.03\textwidth}L{0.235\textwidth}L{0.10\textwidth}L{0.55\textwidth}@{}}
+\toprule
+& Candidate & Effort & Verdict and physical value \\
+\midrule
+(a) & CO$_2$/NO/O closed-form cooling (2018 Eqs.~34--43 plus the collider table) & low &
+Trivial to code, but meaningless without the corresponding neutral species. Valuable only together
+with~(d). \\
+(b) & Thermal conduction & moderate &
+Realistic port. All coefficients are in the 2018 paper; for a single-temperature gas the
+density-weighted mixing of 2019 applies. Prerequisite for~(c). \\
+(c) & Subsonic/Jeans solution mode & large &
+The most scientifically interesting port. Would extend \EXHALE\ to weakly irradiated planets where
+no transonic wind exists. \\
+(d) & Kinetic chemistry with species transport & very large &
+Not an extension. Would effectively be a new code. \\
+(e) & Schunk \& Nagy photoelectron degradation & moderate &
+Closed specification, but marginal gain in \EXHALE's strongly ionized regime. \\
+(f) & Joule heating in the Robeling form & low &
+Technically easy, but imports an unconstrained free parameter. Sensitivity studies only. \\
+(g) & Robeling-style Jupiter infrared thermosphere & --- &
+Out of reach as \EXHALE\ stands; needs (d) and (b) plus a hydrostatic mode. \\
+\bottomrule
+\end{tabular}}
+\end{table}
+
+\paragraph{(b) Thermal conduction.}
+The effort is moderate rather than small because the term must enter in two places: \EXHALE\
+already has an implicit energy-update pattern that can be extended, but the Jacobian-free
+Newton--Krylov residual would also need the conduction term for the steady solver to remain
+consistent. Physically, conduction is negligible where advection dominates, which is the case in
+\EXHALE's converged winds, but it matters near the base and it matters throughout for weakly
+irradiated planets. That is why it is a prerequisite for~(c) rather than an end in itself.
+
+\paragraph{(c) A subsonic/Jeans solution mode.}
+This means a semi-static hydrodynamic solve with a moving exobase and a Jeans-consistent upper
+boundary, and it is structurally the largest realistic addition on the list. The algorithm is
+documented completely in Appendix~D of the 2018 paper, so the specification risk is low even though
+the implementation effort is high. The scientific argument for it is that \EXHALE\ currently
+cannot represent a bound thermosphere at all: the base valve and the outflow top together assume a
+wind. Adding this mode would extend the code's planet class downward, to planets where a transonic
+wind does not exist.
+
+\paragraph{(d) Kinetic chemistry with species transport.}
+This is the chasm in the comparison. Replacing local ionization equilibrium with a Rosenbrock
+network integration plus advection and diffusion of every species would touch the solver core, the
+Newton--Krylov residual, and the post-processing chain simultaneously. It is better described as
+writing a new code than as extending \EXHALE. If terrestrial-composition escape --- Archean-Earth
+type questions --- ever becomes a research goal here, a fresh implementation guided by the 2018
+paper appears more sensible than bending \EXHALE\ to fit.
+
+\paragraph{(f) and (g).}
+Joule heating is easy to add in the Robeling form, since it amounts to distributing a prescribed
+total over a Pedersen conductivity shape, but for exoplanets both $B$ and the effective electric
+field are unknown, so its value appears limited to sensitivity studies. As for a Robeling-style
+Jupiter application, it is out of reach for \EXHALE\ as it stands. It is worth noting, though, that
+\EXHALE\ already has the H$_3^+$ cooling piece, and that it reaches the neutral molecular lower
+atmosphere by a different route --- the offline \textsc{Vulcan} coupling --- rather than by
+solving that chemistry internally.
+
+\subsection{Recommendation}
+
+Tentatively, the comparison suggests keeping the two codes' regimes separate rather than trying to
+make either one cover both. For \EXHALE's own science, (b) and (c) appear to be the natural
+\Kompot-inspired upgrades: they extend the range of planets the code can address without
+disturbing what it already does well. Items (a) and (d) are worth revisiting only if secondary
+atmospheres become a research goal, and in that case a new code guided by the 2018 paper looks
+more sensible than an extension; item (f) is worth having only as a sensitivity knob. Finally,
+the \Kompot\ papers independently validate \EXHALE's design stance on first-principles heating:
+both codes compute heating term by term, neither uses a heating efficiency parameter, and the
+\Kompot\ authors treat that as a selling point.
+
+\section{Caveats}
+
+This memo rests on the four papers --- published text for the three Johnstone papers, preprint
+text for Robeling et al.\ (2026) --- together with the \EXHALE\ source tree. The \Kompot\ source
+is not public, so every statement here about \Kompot\ is a statement about what its papers say,
+and the code may contain physics or numerics they do not describe. Several numbers above are read
+from published figures rather than tabulated values: some Johnstone et al.\ (2021) thresholds,
+the present-day exobase temperature in Johnstone et al.\ (2018), and the Robeling et al.\ (2026)
+temperatures. The effort estimates in \S5.2 are qualitative. The \EXHALE\ statements were checked
+in the source at the time of writing and describe the default configuration; several features
+discussed are opt-in.
+
+\end{document}
