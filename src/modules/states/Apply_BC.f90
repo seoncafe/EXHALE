@@ -143,33 +143,5 @@
    enddo
    end subroutine shapiro_filter
 
-   !------------------------------------------!
-
-   subroutine viscous_accel(vel, Tcell, Fv)
-   ! Leading CETIMB viscous momentum acceleration (Koskinen 2022 B5, first term):
-   ! F_mu = (4/3)(1/r^2) d/dr(r^2 mu dvel/dr), with mu = visc_mu0 * Tcell^visc_s
-   ! in code units. experimental (un-validated): no-op if visc_mu0 <= 0;
-   ! the (dmu/dr)(dvel/dr) and -(16/3)mu vel/r^2 corrections, the viscous
-   ! dissipation q_mu + heat conduction, and a stable semi-implicit time
-   ! integration are deferred to a later revision (calibration + validation vs Koskinen).
-   real*8, intent(in)  :: vel(1-Ng:N+Ng), Tcell(1-Ng:N+Ng)
-   real*8, intent(out) :: Fv(1-Ng:N+Ng)
-   real*8 :: mu(1-Ng:N+Ng), rp, rm, mup, mum, fluxp, fluxm
-   integer :: j
-   Fv = 0.0d0
-   if (visc_mu0 .le. 0.0d0) return
-   do j = 1-Ng, N+Ng
-      mu(j) = visc_mu0*Tcell(j)**visc_s
-   enddo
-   do j = 1, N
-      rp = 0.5d0*(r(j) + r(j+1));  mup = 0.5d0*(mu(j) + mu(j+1))
-      rm = 0.5d0*(r(j) + r(j-1));  mum = 0.5d0*(mu(j) + mu(j-1))
-      fluxp = rp*rp*mup*(vel(j+1) - vel(j))/(r(j+1) - r(j))
-      fluxm = rm*rm*mum*(vel(j) - vel(j-1))/(r(j) - r(j-1))
-      Fv(j) = (4.0d0/3.0d0)/(r(j)*r(j))                                  &
-              *(fluxp - fluxm)/(0.5d0*(r(j+1) - r(j-1)))
-   enddo
-   end subroutine viscous_accel
-
    ! End of module
    end module BC_Apply

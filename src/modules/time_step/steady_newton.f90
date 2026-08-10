@@ -170,18 +170,22 @@
 
       ! ------------------------------------------------------!
 
-      subroutine eval_residual(Y, f_sp, Fvec, heat, cool)
+      subroutine eval_residual(Y, f_sp, Fvec, heat, cool, n_part)
       ! Full steady residual F(Y) with local ionization-equilibrium
       ! elimination, AND the heat/cool it used (so the caller can FREEZE the
       ! radiation when building the banded Jacobian).
       !   unpack Y -> u(1:N); Apply_BC fills ghosts;
       !   (rho,v,p) -> densities, T; refresh excited-H; ioniz_eq -> heat,cool;
-      !   R = assemble_residual(u, heat, cool); pack R(1:N) -> Fvec.
+      !   R = assemble_residual(u, n_part, heat, cool); pack R(1:N) -> Fvec.
       ! f_sp is updated in place to the equilibrium fractions (intent inout).
+      ! n_part = n_tot + n_e is returned too, so a caller that later builds a
+      ! FROZEN-radiation residual can hand the same particle count back and
+      ! keep T = p/n_part (hence the transport coefficients) consistent.
       real*8, dimension(3*N),                  intent(in)    :: Y
       real*8, dimension(1-Ng:N+Ng,n_species),  intent(inout) :: f_sp
       real*8, dimension(3*N),                  intent(out)   :: Fvec
       real*8, dimension(1-Ng:N+Ng),            intent(out)   :: heat, cool
+      real*8, dimension(1-Ng:N+Ng), optional,  intent(out)   :: n_part
 
       real*8, dimension(3,1-Ng:N+Ng) :: u, W, R
       real*8, dimension(1-Ng:N+Ng)   :: rho, v, p, T
@@ -201,10 +205,17 @@
       call comp_T_from_p(p, n_tot, ne, T)
       if (use_excited_H) call excited_H_update(T,rho,f_sp,v,rel_change)
       call ioniz_eq(T,rho,f_sp,heat,cool,eta)
+      ! Refresh the particle count from the equilibrium fractions, exactly as
+      ! the marching loop does before its transport stage, so the residual's
+      ! T = p/(n_tot+n_e) is the same temperature the marching step diffuses.
+      ! Only the transport terms read it; with them off nothing changes.
+      call get_species_densities(rho,f_sp,nhi,nhii,nhei,nheii,         &
+                                 nheiii,nheiTR,nm,ne,n_tot)
 
-      call assemble_residual(u, heat, cool, R)
+      call assemble_residual(u, n_tot + ne, heat, cool, R)
       call pack_R(R, Fvec)
       if (nfix_base .gt. 0) call apply_base_fix(Y, Fvec)
+      if (present(n_part)) n_part = n_tot + ne
 
       end subroutine eval_residual
 
@@ -221,7 +232,7 @@
 
       ! ------------------------------------------------------!
 
-      subroutine frozen_residual(Y, heat, cool, Fvec)
+      subroutine frozen_residual(Y, n_part, heat, cool, Fvec)
       ! FROZEN-radiation residual: the hydro flux/gravity residual at Y with
       ! heat/cool held FIXED (no ioniz_eq, no column-density recompute). This
       ! is strictly local (WENO3 stencil) and hence exactly banded, so the
@@ -229,13 +240,13 @@
       ! the approximate Jacobian / preconditioner for the inexact Newton: the
       ! weakly non-local radiation response is left to the outer iteration.
       real*8, dimension(3*N),       intent(in)  :: Y
-      real*8, dimension(1-Ng:N+Ng), intent(in)  :: heat, cool
+      real*8, dimension(1-Ng:N+Ng), intent(in)  :: n_part, heat, cool
       real*8, dimension(3*N),       intent(out) :: Fvec
       real*8, dimension(3,1-Ng:N+Ng) :: u, R
       u = 0.0d0
       call unpack_U(Y, u)
       call Apply_BC(u)
-      call assemble_residual(u, heat, cool, R)
+      call assemble_residual(u, n_part, heat, cool, R)
       call pack_R(R, Fvec)
       if (nfix_base .gt. 0) call apply_base_fix(Y, Fvec)
       end subroutine frozen_residual
@@ -256,7 +267,7 @@
 
       ! ------------------------------------------------------!
 
-      subroutine build_banded_jac(Y, heat, cool, ab)
+      subroutine build_banded_jac(Y, n_part, heat, cool, ab)
       ! Colored finite-difference banded Jacobian of the FROZEN residual,
       ! stored in LAPACK general-band form for dgbtrf/dgbtrs:
       !   ab(kl+ku+1 + i - j, j) = J(i,j),  i in [j-ku, j+kl]
@@ -264,7 +275,7 @@
       ! have disjoint row supports, so one probe per color recovers their
       ! band entries with no cross-contamination.
       real*8, dimension(3*N),               intent(in)  :: Y
-      real*8, dimension(1-Ng:N+Ng),         intent(in)  :: heat, cool
+      real*8, dimension(1-Ng:N+Ng),         intent(in)  :: n_part, heat, cool
       real*8, dimension(2*kl_jac+ku_jac+1, 3*N), intent(out) :: ab
       real*8, dimension(3*N) :: F0, Fp, Yp, dYc
       integer :: neq, color, jcol, irow, ilo, ihi
@@ -274,7 +285,7 @@
       sqeps = sqrt(epsilon(1.0d0))
       ab    = 0.0d0
 
-      call frozen_residual(Y, heat, cool, F0)
+      call frozen_residual(Y, n_part, heat, cool, F0)
 
       do color = 1, ncolor_jac
          Yp  = Y
@@ -283,7 +294,7 @@
             dYc(jcol) = sqeps*max(abs(Y(jcol)), 1.0d0)
             Yp(jcol)  = Y(jcol) + dYc(jcol)
          enddo
-         call frozen_residual(Yp, heat, cool, Fp)
+         call frozen_residual(Yp, n_part, heat, cool, Fp)
          do jcol = color, neq, ncolor_jac
             ilo = max(1,   jcol - ku_jac)
             ihi = min(neq, jcol + kl_jac)

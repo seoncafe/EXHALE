@@ -56,10 +56,11 @@ Time-dependent relaxation (like EXHALE/ATES), but with stabilizers EXHALE lacks:
 | Momentum-consistent base p | `Hydrostatic base: True` | off | null for this case |
 | Roche IC base blend | (auto, `tidalforce`-gated) | on for tidal | correct improvement |
 | Cell-by-cell residual dump | env `EXHALE_RESIDUAL=1` | — | the key diagnostic |
-| **Viscosity (Phase-1)** | `Viscosity: <mu0> [<s>]` | **off (visc_mu0=0)** | un-validated foundation |
+| **Viscosity + heat conduction** | `Viscosity: True`, `Conduction: True` | **off** | complete and validated; ~1e-4 of the base momentum residual, so it does not help (see below) |
 
 Files touched: `src/modules/init/parameters.f90`, `.../files_IO/input_read.f90`,
-`.../states/Apply_BC.f90` (shapiro_filter, viscous_accel, base-v branch),
+`.../states/Apply_BC.f90` (shapiro_filter, base-v branch),
+`.../time_step/viscous_conduction.f90` (viscosity + heat conduction),
 `EXHALE_main.f90` (loop wiring + residual dump). All default-gated except the two
 new defaults above; both `EXHALE.x` and `wind_ae_ic.x` build clean.
 
@@ -141,19 +142,26 @@ contributes to the base imbalance — _without_ changing the Shapiro conclusion
 (this run has S off). (Not yet tested: S on + pressure base, i.e. whether a light
 base lets the Shapiro filter run without driving infall.)
 
-## Next: (b) viscosity Phase-2 (validated)
+## (b) viscosity — DONE 2026-08-10, and it does not work
 
-The Phase-1 foundation (`Viscosity:`, gated off, leading B5 term, explicit) is in
-place. Phase-2 (focused, with a validation gate — the project mandate is to
-validate physics, not rush):
+The full Navier–Stokes viscous force, its dissipation, and heat conduction are
+implemented (`Viscosity: True` / `Conduction: True`, Crank–Nicolson, consistent
+between the marching update and the steady residual;
+`docs/viscosity_conduction.md`). Calibrated coefficients: Watson et al. (1981)
+`κ(T) = 4.45e4 (T/1000 K)^0.7` with `μ(T)` tied to it by the monatomic
+Chapman–Enskog relation. Koskinen (2022) never prints a transport coefficient,
+and its B5/B6 as printed are not the Navier–Stokes expressions, so the correct
+ones are used instead.
 
-1. **Calibrate μ(T)** against Koskinen (the O'Neill & Chorlton form).
-2. Add the B5 corrections `−(∂μ/∂r)(∂v/∂r) − (16/3)μv/r²`, the viscous
-   dissipation `q_μ` (B6), and heat conduction `(1/r²)∂/∂r(r²κ∂T/∂r)`.
-3. Make it **semi-implicit (Crank–Nicholson)** — viscosity is stiff; an explicit
-   update will be CFL-limited / unstable.
-4. **Validate** against Koskinen's HD209458b temperature/velocity profiles.
-5. Revisit the **residual normalization** (don't divide by tiny ρv).
+**The measurement kills the idea.** On the converged WASP-121 b state the
+viscous force is 7.8e-4 of the volume-weighted momentum residual and 1.8e-4 of
+it in the worst base cell; `μ` would have to be ~5.7e3 times the physical value
+to cancel the base imbalance, and even then the imbalance just moves to the next
+cell. The base momentum residual is not a viscous phenomenon. What is left for
+this document's problem is the lower boundary condition itself.
+
+Still open from the original list: revisit the **residual normalization** (don't
+divide by tiny ρv).
 
 ## Diagnostics / how to reproduce
 

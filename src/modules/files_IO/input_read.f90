@@ -52,7 +52,8 @@
       'Lower column', 'He_Kzz', 'He_alphaT', 'He_ambipolar',                 &
       'He_metal_diffusion', 'He_diffusion', 'Stall', 'Energy solver',        &
       'Time stepping', 'Level tol', 'Solver', 'Valve eps', 'Hydrostatic base',&
-      'Shapiro filter', 'Base BC', 'Base velocity', 'Viscosity', 'Resid tol',&
+      'Shapiro filter', 'Base BC', 'Base velocity', 'Viscosity',             &
+      'Conduction', 'Resid tol',                                             &
       'Resid norm', 'CFL', 'Transonic IC', 'Hot Parker IC', 'IC mode',       &
       'Newton solver', 'Brent solver' ]
 
@@ -553,12 +554,36 @@
 					write(*,'(A)') ' (input_read) Base velocity: legacy valve'
 				endif
 			else if (lbl_match(line, 'Viscosity')) then
-				str = get_word(line, 3);  read(str,*) visc_mu0
-				str = get_word(line, 4)
-				if (len_trim(str) .gt. 0) read(str,*) visc_s
-				if (visc_mu0 .gt. 0.0d0) write(*,'(A,ES9.2,A,F5.2,A)')  &
-				   ' (input_read) Viscosity mu0 =', visc_mu0,  &
-				   ', s =', visc_s, '  [un-validated]'
+				! "Viscosity: True" selects the calibrated mu(T) (Watson+1981
+				! conductivity through the monatomic Chapman-Enskog relation)
+				! and enables the viscous dissipation q_mu; the numeric form
+				! "Viscosity: <mu0> [<s>]" keeps its meaning, a diagnostic
+				! power law mu = mu0*T^s in code units. Both are one-word
+				! keys, so the value sits at word 2 (as for "Solver"/"CFL").
+				str = get_word(line, 2)
+				if (str .eq. 'True' .or. str .eq. 'true') then
+					visc_on = .true.
+					write(*,'(A)') ' (input_read) Viscosity: calibrated '// &
+					   'mu(T) (Chapman-Enskog / Watson+1981), q_mu included'
+				else if (str .eq. 'False' .or. str .eq. 'false' .or.      &
+				         len_trim(str) .eq. 0) then
+					visc_on = .false.;  visc_mu0 = 0.0d0
+				else
+					read(str,*) visc_mu0
+					str = get_word(line, 3)
+					if (len_trim(str) .gt. 0) read(str,*) visc_s
+					if (visc_mu0 .gt. 0.0d0) write(*,'(A,ES9.2,A,F5.2)')  &
+					   ' (input_read) Viscosity power-law override mu0 =',  &
+					   visc_mu0, ', s =', visc_s
+				endif
+			else if (lbl_match(line, 'Conduction')) then
+				! "Conduction: True" enables heat conduction with the
+				! Watson et al. (1981) atomic-hydrogen kappa(T).
+				str = get_word(line, 2)
+				if (str .eq. 'True' .or. str .eq. 'true') cond_on = .true.
+				if (str .eq. 'False' .or. str .eq. 'false') cond_on = .false.
+				if (cond_on) write(*,'(A)') ' (input_read) Heat conduction: '// &
+				   'kappa(T) = 4.45e4 (T/1000 K)^0.7 erg/cm/s/K'
 			else if (lbl_match(line, 'Resid tol')) then
 				! "Resid tol: <val>" = converge on the steady residual ||R||
 				! instead of du (<= 0 disables; legacy du-based stop).

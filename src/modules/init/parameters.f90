@@ -447,14 +447,25 @@
       logical :: base_v_massflux = .false.
       real*8  :: base_flux_const = -1.0d0   ! F_c [code units], updated each step
 
-      ! Explicit viscosity ("Viscosity: <mu0> [<s>]"), port of CETIMB's
-      ! viscous momentum term (Koskinen 2022 B5 leading diffusion term
-      ! (4/3)(1/r^2) d/dr(r^2 mu dv/dr)), mu = visc_mu0*T^visc_s in code units.
-      ! Adds the physical (diffusive) damping EXHALE lacks. Experimental,
-      ! un-validated -- explicit (CETIMB uses semi-implicit Crank-Nicholson for
-      ! this stiff term), leading term only (dmu/dr and -(16/3)mu v/r^2 + the
-      ! viscous dissipation q_mu / conduction deferred). Default visc_mu0=0 =
-      ! OFF; calibrate visc_mu0 and add the rest + semi-implicit in a later revision.
+      ! Molecular transport (Navier-Stokes level), the physical damping of
+      ! the near-base momentum imbalance that CETIMB carries and EXHALE's
+      ! inviscid HLLC scheme lacks. Full derivation, discretization and
+      ! boundary treatment: src/modules/time_step/viscous_conduction.f90 and
+      ! docs/viscosity_conduction.md. Both switches default OFF, so a run
+      ! without the keys is byte-identical to the inviscid code.
+      !
+      ! "Viscosity: True" -- radial viscous force (div tau)_r plus its
+      !  dissipation q_mu = (4/3) mu (dv/dr - v/r)^2 in the energy equation,
+      !  with mu(T) = (4/15)(m_H/k_B) kappa(T) (monatomic Chapman-Enskog,
+      !  Prandtl 2/3) tied to the Watson et al. (1981) atomic-hydrogen
+      !  conductivity.
+      logical :: visc_on = .false.
+      ! "Conduction: True" -- heat conduction (1/r^2) d/dr(r^2 kappa dT/dr)
+      !  with kappa(T) = 4.45e4 (T/1000 K)^0.7 erg cm^-1 s^-1 K^-1.
+      logical :: cond_on = .false.
+      ! "Viscosity: <mu0> [<s>]" -- diagnostic power-law override in CODE
+      !  units, mu = visc_mu0*T^visc_s (visc_mu0 > 0 takes precedence over
+      !  the calibrated form). Kept for sensitivity scans.
       real*8 :: visc_mu0 = 0.0d0
       real*8 :: visc_s   = 0.7d0
 

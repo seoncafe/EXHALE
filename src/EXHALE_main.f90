@@ -12,6 +12,7 @@
       use species_diffusion, only: he_diffusion_step
       use lower_column, only: lower_column_solve
       use steady_residual_mod, only: assemble_residual, residual_norms, residual_norms_vol
+      use viscous_conduction, only: transport_active, viscous_conduction_step
       use steady_newton, only: neq_newton, pack_U, unpack_U, newton_residual, &
                                eval_residual, frozen_residual,              &
                                build_banded_jac, band_matvec,               &
@@ -56,7 +57,7 @@
       real*8, dimension(1-Ng:N+Ng,n_species) :: f_sp_test
       ! Banded-Jacobian self-test scratch (EXHALE_JAC_TEST hook)
       real*8, allocatable :: abjac(:,:), rdir(:), Jr(:), dFD(:), F0f(:)
-      real*8, dimension(1-Ng:N+Ng) :: heat0, cool0
+      real*8, dimension(1-Ng:N+Ng) :: heat0, cool0, npart0
       real*8 :: jac_eps, jac_err
       ! --- lightweight phase profiler (gated by env EXHALE_PROFILE=1) ---
       logical :: do_profile = .false.
@@ -79,7 +80,6 @@
       
       ! Momentum variables
       real*8, dimension(1-Ng:N+Ng) :: mom
-      real*8, dimension(1-Ng:N+Ng) :: Fvisc   ! viscous acceleration
       real*8 :: mom_max,mom_min
 
       ! Convergence stall detection (ported from ATES_extended)
@@ -229,7 +229,9 @@
          call comp_T_from_p(p,n_tot,ne,T)
          if (use_excited_H) call excited_H_update(T,rho,f_sp,v,exc_rel)
          call ioniz_eq(T,rho,f_sp,heat,cool,eta)
-         call assemble_residual(u, heat, cool, Rres)
+         call get_species_densities(rho,f_sp,nhi,nhii,nhei,nheii,      &
+                                    nheiii,nheiTR,nm,ne,n_tot)
+         call assemble_residual(u, n_tot + ne, heat, cool, Rres)
          call residual_norms(Rres, u, resid_c)
          ! cell-by-cell residual profile (localize the momentum imbalance)
          block
@@ -303,9 +305,9 @@
          call pack_U(u, Yvec)
          f_sp_test = f_sp
          ! F0 + frozen heat/cool at Y, then the banded Jacobian
-         call eval_residual(Yvec, f_sp_test, Fvec, heat0, cool0)
-         call frozen_residual(Yvec, heat0, cool0, F0f)
-         call build_banded_jac(Yvec, heat0, cool0, abjac)
+         call eval_residual(Yvec, f_sp_test, Fvec, heat0, cool0, npart0)
+         call frozen_residual(Yvec, npart0, heat0, cool0, F0f)
+         call build_banded_jac(Yvec, npart0, heat0, cool0, abjac)
          ! Deterministic probe direction (max|r| = 1)
          do j = 1, k
             rdir(j) = sin(0.1d0*dble(j))
@@ -314,7 +316,7 @@
          call band_matvec(abjac, rdir, Jr)
          jac_eps = 1.0d-7
          Yvec = Yvec + jac_eps*rdir
-         call frozen_residual(Yvec, heat0, cool0, dFD)
+         call frozen_residual(Yvec, npart0, heat0, cool0, dFD)
          dFD = (dFD - F0f)/jac_eps
          jac_err = maxval(abs(dFD - Jr))/max(maxval(abs(Jr)), 1.0d-30)
          write(*,'(A,ES12.4)') ' (jac_test) max|F_frozen(Y)| = ', maxval(abs(F0f))
@@ -590,6 +592,22 @@
 
 		call Apply_BC(u)
 
+            ! Molecular transport (viscous momentum diffusion + its
+            ! dissipation + heat conduction), Crank-Nicolson, as an
+            ! operator-split stage. The spatial operators are the same ones
+            ! assemble_residual subtracts, so the fixed point of the marching
+            ! loop is the zero of the steady residual the Newton solver drives
+            ! down. No-op unless "Viscosity:"/"Conduction:" were given, so a
+            ! run without those keys is byte-identical to the inviscid code.
+            ! Serial: the tridiagonal solves recur along r.
+            if (transport_active()) then
+               call U_to_W(u,W)
+               rho = W(1,:);  v = W(2,:);  p = W(3,:)
+               call comp_T_from_p(p,n_tot,ne,T)
+               call viscous_conduction_step(u,W,T,n_tot+ne,dt_loc)
+               call Apply_BC(u)
+            endif
+
             ! Periodic Shapiro low-pass filter to damp the gravity-unbalanced
             ! sound waves (base breathing), as in CETIMB (Koskinen et al. 2013a).
             if (shapiro_eps .gt. 0.0d0 .and.                             &
@@ -613,17 +631,6 @@
 
   	      ! Temperature profile
   	      call comp_T_from_p(p,n_tot,ne,T)
-
-            ! viscous momentum acceleration (gated; visc_mu0=0 disables).
-            ! Adds CETIMB's physical (diffusive) damping that EXHALE's inviscid
-            ! HLLC scheme lacks. experimental, un-validated (explicit; leading term
-            ! only) -- calibrate + extend + make semi-implicit in a later revision.
-            if (visc_mu0 .gt. 0.0d0) then
-               call viscous_accel(v, T, Fvisc)
-               u(2,1:N) = u(2,1:N) + dt_loc(1:N)*Fvisc(1:N)
-               call Apply_BC(u)
-               call U_to_W(u,W);  rho = W(1,:); v = W(2,:); p = W(3,:)
-            endif
 
             ! Base-cell startup diagnostic (first 500 steps): trace r, n, v, T,
             ! heat, cool for the lowest cells to expose IC-startup transients.
@@ -693,7 +700,7 @@
             ! reported FOR REFERENCE ONLY; it gates the stop solely when the user
             ! explicitly requests it via "Resid tol:" (resid_th>0).
             if (mod(count, N_resid) .eq. 0) then
-               call assemble_residual(u, heat, cool, Rres)
+               call assemble_residual(u, n_tot + ne, heat, cool, Rres)
                if (resid_vol) then
                   call residual_norms_vol(Rres, u, resid_c)
                else

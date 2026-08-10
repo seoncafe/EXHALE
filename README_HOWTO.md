@@ -25,6 +25,23 @@ plateaus just above the hand-off threshold (seen with He diffusion), the
 hand-off now fires on the plateau automatically. Quantitative Mdot always
 needs the Newton finish. -> manual §2.5–2.6.
 
+## Damp the base with viscosity and heat conduction
+
+```
+# input.inp
+Viscosity:  True     # radial viscous force + its dissipation q_mu
+Conduction: True     # heat conduction, kappa(T) = 4.45e4 (T/1000 K)^0.7
+```
+Adds the Navier-Stokes molecular transport that CETIMB carries and the inviscid
+HLLC scheme lacks, integrated Crank-Nicolson so the stiff base cells do not
+limit the step. Aimed at the near-base momentum imbalance that otherwise floors
+the JFNK residual; both keys default off and a run without them is unchanged.
+`mu(T)` follows `kappa(T)` through the monatomic Chapman-Enskog relation
+(Prandtl 2/3); `Viscosity: <mu0> [<s>]` instead sets a diagnostic power law
+`mu = mu0*T^s` in code units. Coefficients are the neutral atomic-hydrogen
+values — the ionized-wind (Spitzer) conductivity is not included. ->
+`docs/viscosity_conduction.md`.
+
 ## Add trace metals
 
 Put a `metals.inp` in the run directory (abundances n_X/n_H by number; template

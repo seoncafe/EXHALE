@@ -236,6 +236,8 @@
 	call put_i('base_bc_mode', base_bc_mode)
 	call put_r('base_p_ubar', base_p_ubar)
 	call put_l('base_v_massflux', base_v_massflux)
+	call put_l('visc_on', visc_on)
+	call put_l('cond_on', cond_on)
 	call put_r('visc_mu0', visc_mu0)
 	call put_r('visc_s', visc_s)
 	call put_r('resid_th', resid_th)

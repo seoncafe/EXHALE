@@ -35,6 +35,13 @@ fork of the ATES code (Caldiroli et al. 2021; Biassoni et al. 2024), adding:
   recombination and collisional excitation
 - A Jacobian-free Newton-Krylov (JFNK) steady-state solver with PTC warm-up,
   SER ramp, and non-monotone (Grippo) line search
+- **Molecular transport** (opt-in `Viscosity: True` / `Conduction: True`): the
+  Navier-Stokes viscous force, its dissipation, and heat conduction
+  (`kappa(T) = 4.45e4 (T/1000 K)^0.7`, Watson et al. 1981; `mu(T)` tied to it
+  by the monatomic Chapman-Enskog relation), integrated Crank-Nicolson and
+  entering the steady residual with the same operator — see
+  `docs/viscosity_conduction.md`, which also records that they are far too
+  small to cure the near-base momentum residual they were added for
 - Roche-potential geometry (spherical or Roche-lobe domain modes)
 - **Lower-atmosphere connection** (opt-in): an analytic
   Koskinen+2022 lower column (`Lower column:` key reports the derived 1-ubar
@@ -565,4 +572,4 @@ See `examples/README.md` for the exact lines each one adds:
 
 Kwang-Il Seon (KASI / UST)
 
-Last updated: 2026-08-10 10:46
+Last updated: 2026-08-10 12:01

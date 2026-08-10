@@ -141,7 +141,8 @@ by the Python loaders except where noted.
 | K31 | `Shapiro filter` | word 3 (+ optional word 4) | real, int | - , steps | `shapiro_eps=-1`, `shapiro_every=4` | `shapiro_eps`, `shapiro_every` | F478-484. |
 | K32 | `Base BC` | word 3 (+ optional word 4 if `pressure`) | string + real | - / microbar | `base_bc_mode=0` (density), `base_p_ubar=1.0` | `base_bc_mode`, `base_p_ubar` | F485-498. `density` or `pressure`. Pressure mode derives `n0` (F720-724). |
 | K33 | `Base velocity` | word 3 | string | - | `base_v_massflux=.false.` (valve) | `base_v_massflux` | F499-508. `valve` or `massflux`. |
-| K34 | `Viscosity` | word 3 (+ optional word 4) | real, real | - | `visc_mu0=0` (off), `visc_s=0.7` | `visc_mu0`, `visc_s` | F509-515. Marked un-validated in code. |
+| K34 | `Viscosity` | word 2 (+ optional word 3) | `True`/`False` or real, real | - | `visc_on=.false.`, `visc_mu0=0` (off), `visc_s=0.7` | `visc_on`, `visc_mu0`, `visc_s` | `True` = calibrated `mu(T)` + dissipation `q_mu`; a number = diagnostic power law `mu0*T^s` in code units. One-word key, so the value is word 2 (was word 3, which no input file used). See `docs/viscosity_conduction.md`. |
+| K34b | `Conduction` | word 2 | `True`/`False` | - | `cond_on=.false.` | `cond_on` | Heat conduction with `kappa(T) = 4.45e4 (T/1000 K)^0.7` (Watson+1981). Independent of K34. |
 | K35 | `Resid tol` | word 3 | real | - | `resid_th=-1` | `resid_th` | F516-520. Residual-norm convergence instead of du. |
 | K36 | `Resid norm` | word 3 | string | - | `resid_vol=.true.` (vol) | `resid_vol` | F521-528. `vol`/`volume` or `Linf`/`linf`/`LINF`. |
 | K37 | `CFL` | word 2 | real | - | `CFL=0.6` | `CFL` | F529-531. |

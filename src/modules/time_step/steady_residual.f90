@@ -3,10 +3,10 @@
       ! state), shared by the EXHALE_RESIDUAL diagnostic, the in-loop
       ! convergence monitor, and the steady-state Newton/PTC solver.
       !
-      !   R(:,1) = dF - S                 (mass)
-      !   R(:,2) = dF - S                 (momentum)
-      !   R(:,3) = dF_E - S_E - (heat-cool)   (energy: flux/gravity minus
-      !                                        the radiative net source)
+      !   R(:,1) = dF - S                          (mass)
+      !   R(:,2) = dF - S - F_mu                   (momentum)
+      !   R(:,3) = dF_E - S_E - (heat-cool)
+      !                       - (w F_mu + q_mu + conduction)   (energy)
       !
       ! dF, S come from the existing Reconstruct + RK_rhs (HLLC; alpha is
       ! unused by the HLLC flux so 0 is passed). heat/cool are supplied by
@@ -15,12 +15,25 @@
       ! Newton residual first call ioniz_eq (local ionization-equilibrium
       ! elimination) to get heat/cool consistent with u.
       !
+      ! The molecular-transport terms are the operator-split stage that
+      ! viscous_conduction_step relaxes in the marching loop, evaluated by
+      ! the SAME routine (viscous_conduction_sources) from the same
+      ! tridiagonal operator, so the Newton solver solves exactly the system
+      ! the marching relaxes. They vanish identically unless "Viscosity:" /
+      ! "Conduction:" are set. The caller passes n_part = n_tot + n_e (the
+      ! adimensional particle count) rather than T itself, so that T = p/n_part
+      ! stays a function of the unknowns and the temperature dependence of
+      ! the conduction operator is picked up by the residual's linearization.
+      !
       ! The reconstruction scheme is whatever use_plm/use_weno3/rec_method
       ! currently select; callers set WENO3 for a production residual.
 
       use global_parameters
+      use Conversion, only: U_to_W
       use Reconstruction_step
       use RK_integration
+      use viscous_conduction, only: transport_active,                   &
+                                    viscous_conduction_sources
 
       implicit none
       private
@@ -30,18 +43,28 @@
 
       ! ------------------------------------------------------!
 
-      subroutine assemble_residual(u, heat, cool, R)
+      subroutine assemble_residual(u, n_part, heat, cool, R)
       real*8, dimension(3,1-Ng:N+Ng), intent(in)  :: u
+      real*8, dimension(1-Ng:N+Ng),   intent(in)  :: n_part
       real*8, dimension(1-Ng:N+Ng),   intent(in)  :: heat, cool
       real*8, dimension(3,1-Ng:N+Ng), intent(out) :: R
       ! Local scratch so callers' own WL/WR/dF/S are untouched
-      real*8, dimension(3,1-Ng:N+Ng) :: WL, WR, dF, S
+      real*8, dimension(3,1-Ng:N+Ng) :: WL, WR, dF, S, W
+      real*8, dimension(1-Ng:N+Ng)   :: Tc, Smom, Sene
 
       call Reconstruct(u, WL, WR)
       call RK_rhs(u, WL, WR, 0.0d0, dF, S)
       R(1,:) = dF(1,:) - S(1,:)
       R(2,:) = dF(2,:) - S(2,:)
       R(3,:) = dF(3,:) - S(3,:) - (heat - cool)
+
+      if (transport_active()) then
+         call U_to_W(u, W)
+         Tc = W(3,:)/n_part
+         call viscous_conduction_sources(W(2,:), Tc, Smom, Sene)
+         R(2,:) = R(2,:) - Smom
+         R(3,:) = R(3,:) - Sene
+      endif
 
       end subroutine assemble_residual
 
