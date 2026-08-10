@@ -2,14 +2,14 @@
    ! Read input planetary parameters adn define
 
    use global_parameters
-   use lower_column, only: q_h2_equilibrium   ! molecular base
    use metals_input        ! optional metals.inp abundance reader
    use charge_exchange, only: cx_init,       &  ! build active charge-exchange set
                               he_h_charge_exchange  ! He <-> H pair (group B) switch
    use species_table, only: n_melem, iel_C, iel_O, iel_N, iel_Mg,  &
                             iel_Si, iel_Ca, iel_Na, iel_K, iel_S,  &
                             iel_Fe, mion_ethr, melem_i0, melem_A
-   use composition, only: comp_mass_per_H, comp_ntot_bc, comp_rho_bc
+   use composition, only: comp_mass_per_H, comp_ntot_bc, comp_rho_bc,   &
+                          h2_mixing_ratio_base
 
    implicit none
       
@@ -681,7 +681,7 @@
    n0     = 10.0**(n0)
    ! ---- Lower-atmosphere pre-step ("Lower atmosphere: vulcan|analytic").
    ! If requested and no base.inp exists yet, generate it now by invoking
-   ! the bundled generator (VULCAN photochemistry or the analytic column).
+   ! the generator (VULCAN photochemistry or the analytic column).
    ! The wind solve then proceeds on the produced base -- VULCAN as a
    ! subroutine.  Opt-out: omit the key (default off).
    call run_lower_atm_prestep
@@ -762,30 +762,29 @@
    ! its H/He-nuclei meaning, so n_H = n0/(1+HeH) is unchanged). With
    ! eos_metals 1 (default) the trace metals contribute their mass and
    ! their nuclei; with eos_metals 0 (or no metals) both reduce to the
-   ! legacy H/He-only values (mass_per_H = 1+4*HeH, ntot_bc = 1).
+   ! legacy H/He-only values (mass_per_H = 1+4*HeH, ntot_bc = 1).  With
+   ! "Molecular base: True" comp_ntot_bc also removes the H nuclei bound
+   ! into H2 at the base (passive molecular base, EOS-only: the species
+   ! arrays stay atomic; docs/lower_atmosphere_coupling.*).
    ! Routed through the composition module (single source of the base
    ! composition policy). comp_* reproduce the legacy expressions bitwise;
-   ! eos_metals / metals-present branching lives inside them.
+   ! eos_metals / metals-present / molecular_base branching lives inside.
    mass_per_H = comp_mass_per_H()
    ntot_bc    = comp_ntot_bc()
    rho_bc     = comp_rho_bc()
 
-   ! passive molecular base (docs/lower_atmosphere_coupling.*):
-   ! remove from the base particle budget the H nuclei bound into H2 at
-   ! (1 ubar, T0) according to the chemical-equilibrium fit; per n0
-   ! (H+He nuclei) that is (x2/2)/(1+HeH) particles.  Lowers the base
-   ! pressure / raises the base mean molecular weight.  EOS-only: the
-   ! species arrays stay atomic (H2 chemistry is the molecular network proper).
+   ! Echo which H2 source set the base particle count: the photochemical
+   ! handoff (base.inp key q_H2_base) or the chemical-equilibrium fit.
    if (molecular_base) then
-      block
-         real*8 :: qmb, x2mb
-         qmb  = q_h2_equilibrium(1.0d-6, T0)
-         x2mb = 2.0d0*qmb*(1.0d0 + HeH)/(1.0d0 + qmb)
-         if (x2mb .gt. 1.0d0) x2mb = 1.0d0
-         ntot_bc = ntot_bc - 0.5d0*x2mb/(1.0d0 + HeH)
-         write(*,'(A,F6.3,A,F6.3)') ' (input_read) Molecular base: '//   &
-            'q_H2(1ubar,T0) =', qmb, ' -> ntot_bc =', ntot_bc
-      end block
+      if (q_h2_base .gt. 0.0d0) then
+         write(*,'(A,F6.3,A,F6.3)') ' (input_read) Molecular base: '//     &
+            'q_H2(base, photochemical) =', h2_mixing_ratio_base(),         &
+            ' -> ntot_bc =', ntot_bc
+      else
+         write(*,'(A,F6.3,A,F6.3)') ' (input_read) Molecular base: '//     &
+            'q_H2(base, chem.eq. fit)  =', h2_mixing_ratio_base(),         &
+            ' -> ntot_bc =', ntot_bc
+      endif
    endif
 
    ! Pressure-anchored base (Base BC: pressure): override n0 so that the base
@@ -945,6 +944,11 @@
    !   r_base    <R_J>    -> overrides the "Planet radius" (1-ubar radius)
    !   HeH_base  <ratio>  -> overrides the He/H number ratio
    !   Kzz_base  <cm2/s>  -> sets he_kzz (used by He_diffusion)
+   !   q_H2_base <ratio>  -> photochemical H2 volume mixing ratio at the base;
+   !                         replaces the chemical-equilibrium fit in the
+   !                         molecular-base particle count
+   !   p_base    <bar>    -> pressure level the handoff describes (default
+   !                         1e-6 bar); the equilibrium fit is evaluated there
    ! '#' comments and unknown keys are ignored.  Written by
    ! src/utils/run_lower.py (analytic column) or by an external
    ! photochemical/RC model; see docs/lower_atmosphere_coupling.*.
@@ -975,9 +979,34 @@
       else if (index(line,'Kzz_base') .gt. 0) then
          str = get_word(line,2);  read(str,*) he_kzz
          write(*,'(A,ES9.2,A)') '   base.inp: He_Kzz -> ', he_kzz, ' cm2/s'
+      else if (index(line,'q_H2_base') .gt. 0) then
+         str = get_word(line,2);  read(str,*) q_h2_base
+         write(*,'(A,F8.5)') '   base.inp: q_H2(base) -> ', q_h2_base
+      else if (index(line,'p_base') .gt. 0) then
+         str = get_word(line,2);  read(str,*) p_base_bar
+         write(*,'(A,ES9.2,A)') '   base.inp: p_base -> ', p_base_bar, ' bar'
       endif
    enddo
    close(ub)
+
+   ! Consistency echo, printed once with the final values (the keys may come
+   ! in any order).  q_H2_base and HeH_base are NOT independent -- both are
+   ! read off the same lower-atmosphere solution -- but only HeH enters the
+   ! elemental budget, so a mismatched pair would otherwise pass unnoticed.
+   ! Print only: an inconsistent handoff is the user's to judge, never a
+   ! reason to refuse to run.
+   if (q_h2_base .gt. 0.0d0) then
+      write(*,'(A,F8.5,A,F8.5)') '   base.inp: photochemical q_H2 =',      &
+         q_h2_base, ' is used with He/H =', HeH
+      write(*,*) '     (both must come from the same lower-atmosphere'//   &
+                 ' solution)'
+   endif
+   if (abs(p_base_bar/1.0d-6 - 1.0d0) .gt. 1.0d-6) then
+      write(*,'(A,ES9.2,A)') '   base.inp: NOTE the handoff level p_base =',&
+         p_base_bar, ' bar is not the'
+      write(*,*) '     standard 1 microbar; the base composition and the'
+      write(*,*) '     chemical-equilibrium H2 fit both refer to that level.'
+   endif
    end subroutine read_base_inp
 
    ! ------------------------------------------------------------------- !
@@ -1018,7 +1047,7 @@
    write(r1str,'(F0.5)') lower_atm_r1bar
 
    if (lower_atm_mode .eq. 2) then
-      write(*,*) '(input_read) Lower atmosphere: running bundled VULCAN'//&
+      write(*,*) '(input_read) Lower atmosphere: running VULCAN'//        &
                  ' photochemistry (first run takes hours; cached after).'
       cmd = 'python3 '//trim(root)//'/src/utils/vulcan_driver.py . '//   &
             '--r1bar '//trim(r1str)

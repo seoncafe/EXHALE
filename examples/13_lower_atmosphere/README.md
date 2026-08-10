@@ -21,7 +21,7 @@ EXHALE reads it on startup and overrides T0 / base radius / He/H / K_zz
 (echoed to stdout; absent file = no-op). The in-code consistency report is
 the one-line alternative: add `Lower column: <R_1bar>` to `input.inp`.
 
-Results, interpretation, and the full machinery description:
+Results, interpretation, and the full description:
 `docs/lower_atmosphere_coupling.pdf` (§Examples).
 
 Headline numbers (isothermal column; r in R_J):

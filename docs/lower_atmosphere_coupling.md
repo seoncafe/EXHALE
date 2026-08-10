@@ -148,21 +148,25 @@ The Lavvas & Arfaux code is not public, so the practical paths are:
 
   ```
   # base.inp — written by the lower-atmosphere driver (VULCAN + T(p))
-  T_base   [K]      1140.0
-  r_base   [RJ]     1.402      # radius of the 1 ubar level
-  q_H2              0.03
-  q_H               0.88
-  q_He              0.09
+  T_base    1140.0            # K
+  r_base    1.402             # R_J, radius of the 1 ubar level
+  HeH_base  0.0793
+  Kzz_base  1.0e9             # cm2/s
+  q_H2_base 0.03              # photochemical H2 mixing ratio at the base
+  p_base    1.0e-6            # bar, the level all of the above refer to
+  # q_H = 0.88, q_He = 0.09 (comments; implied by q_H2_base and HeH_base)
   # atomic-metal release fractions at 1 ubar (replace solar totals in metals.inp)
   Na  1.6e-6
   Mg  3.1e-5
   ...
-  Kzz_base [cm2/s]  1.0e9
   ```
 
   EXHALE-side work is small: extend `input_read.f90` to consume `base.inp`
   (override T₀, base radius, He/H, metal abundances; `He_Kzz` default), exactly the
-  keyword-block pattern already used for `metals.inp`/`opacity.inp`.
+  keyword-block pattern already used for `metals.inp`/`opacity.inp`. As of 2026-08-10
+  `read_base_inp` consumes T_base / r_base / HeH_base / Kzz_base / q_H2_base / p_base;
+  the metal release fractions are still not read (no public photochemical source
+  produces them — Tier 3(a) remains the Lavvas collaboration path).
 - **(b) Collaboration path:** request Lavvas & Arfaux outputs for target planets
   ("shared on reasonable request") — the fastest route to a Taylor-grade coupled model
   for a specific system, at the cost of dependency.
@@ -224,9 +228,9 @@ He_rec_coupling, He–H charge exchange).
 | 2 (foundation) | `h3p_cooling.f90` — Miller+2013 Table-5 LTE emission fits + Table-6 non-LTE factor s(T,n_H₂), bilinear; `mol_rates.f90` — Koskinen 2022 Table-1 rates R1–R23 (verified against the PDF, saved as `references/Miller_2013_JPCA_117_9770.pdf` / `Koskinen_2022...`) | **done (standalone)** | fit reproduces Miller Table-4 anchors at 500–5000 K to <0.5%; s(1000 K, 10¹⁰ cm⁻³)=0.4955 exact |
 | 2 (core) | **`System_HeH_mol.f90`** — coupled H⁺/He⁺/He⁺⁺(+2³S) + H₂/H₂⁺/H₃⁺/HeH⁺ equilibrium (7–8 unknowns, hybrd1; atomic rows use EXHALE's own rates so the molecule-free limit reproduces the atomic systems); **σ_H₂** (Yan+1998 Eqs. 17–19, `cross_sec.f90`) wired into opacity/photoionization/heating (`PH_heat_HHe`); H₃⁺ cooling in the `cool` array; EOS (`calc_ne/ntot/rho`, `composition`) molecule-aware; output/IC columns H2/H2p/H3p/HeHp; key `Molecular chemistry: True` (v1: metals excluded) | **done (core)** | σ_H₂ reproduces Yan Table 7 (0.04761/0.006169/0.001739 Mb at 100/200/300 eV); Gate 0: mol-off byte-equivalent (molecular chemistry off reproduces the atomic systems); Gate 1 (HD209 mol-on): fully molecular base (x_H₂≈0.996) + sharp H₂→H front at r=1.020 R_p, wind above the front ≈ atomic; below the front the molecular base suppresses He2³S by orders of magnitude (He2³S+H₂ Penning destruction — ~10⁴× at the front, rising back to the atomic value above ~1.3 R_p); Gate 2 (hot-Uranus-like: 0.0457 M_J, R_p=0.49 R_J, T_eq=1140 K, HD209 orbit/spectrum): front at r=1.156, H₃⁺ active in the molecular layer (peak ~7×10⁴ cm⁻³ at r≈1.04). The H₂→H fronts and molecular base composition are essentially unchanged from the 2026-07-16 gates (front 1.019→1.020, 1.166→1.156), confirming the dissociation-front result is robust to the 2026-07-23 production defaults (staged secondary ionization, He_rec_coupling, He–H charge exchange). Gate numbers refreshed 2026-07-23 at a shared 12000-step relaxation-snapshot convention: both HD209 runs read Ṁ = log₁₀ 10.58 (relaxation snapshots, not flux-flat converged — under these defaults the HD209 atomic gate plateaus near 4% mass-flux spread). Gate inputs pinned at `lower_atmosphere_figs/data_g*/input.inp` (Update_EXHALE §35) |
 | 2 (remaining) | local-equilibrium caveat (no molecular *advection* — Koskinen's high-altitude H₂ replenishment not reproduced); Lyman–Werner photodissociation; dissociative/double photoionization channels (P4/P5); 4.48 eV dissociation energy sink; diatomic γ; metals+molecules merge; `_adv` post-process; GJ 1214 b He-halving validation (full M-dwarf setup) | open | gates defined in §Tier-2 |
-| 2a | `Molecular base: True` — EOS-only base correction: removes the H₂-bound particles from `ntot_bc` via the equilibrium fit (lower base pressure / heavier base μ; chemistry stays atomic — crude, documented) | **done** | HD 209458 b: q_H₂(1 μbar,1450 K)=0.831 → ntot_bc 1.0→0.546 |
+| 2a | `Molecular base: True` — EOS-only base correction: removes the H₂-bound particles from `ntot_bc` (lower base pressure / heavier base μ; chemistry stays atomic — crude, documented). q_H₂ comes from the photochemical handoff when `base.inp` carries `q_H2_base`, and from the equilibrium fit otherwise (2026-08-10; `composition.f90`) | **done** | HD 209458 b: q_H₂(1 μbar,1450 K)=0.831 → ntot_bc 1.0→0.546 (equilibrium fit) |
 | 3 | `base.inp` reader in `input_read` (T_base / r_base / HeH_base / Kzz_base, echo + no-op when absent) + `src/utils/run_lower.py` driver (isothermal or Guillot 2010 semi-grey T(p); writes base.inp with a molecular-base warning) | **done (analytic stack)** | end-to-end: driver → base.inp → EXHALE consumes and echoes; iso vs Guillot: r₀ 1.4723 vs 1.4660 R_J, T_base 1450 vs 1313 K (HD 209458 b) |
-| 3 (upgrade) | **VULCAN end-to-end**: public VULCAN cloned (`../VULCAN`, FastChem compiled), HD 189733 b SNCHO photochemical run converged (2356 steps); converter `src/utils/vulcan_to_base.py` (.vul → base.inp with photochemical q_H2/q_H, VULCAN-μ/T hypsometric r_base; molecular mixing ratios as comments; **no metal release** — outside VULCAN's scope, stays Lavvas-only) | **done (H/C/N/O composition)** | HD 189733 b at 1 μbar: **q_H2=0.63, q_H=0.23 — photochemistry dissociates ~11× more H than the equilibrium column (q_H=0.020)**, directly quantifying the Tier-1 caveat; r_base 1.168 vs analytic 1.174 R_J; T_base 863 K (Moses11 T(p)); EXHALE consumes the file (overrides echoed) |
+| 3 (upgrade) | **VULCAN end-to-end**: public VULCAN cloned (`../VULCAN`, FastChem compiled), HD 189733 b SNCHO photochemical run converged (2356 steps); converter `src/utils/vulcan_to_base.py` (.vul → base.inp with photochemical q_H2/q_H, VULCAN-μ/T hypsometric r_base; molecular mixing ratios as comments; **no metal release** — outside VULCAN's scope, stays Lavvas-only). Since 2026-08-10 the converter also writes the read keys `q_H2_base` and `p_base`, so the photochemical H₂ partition **replaces the chemical-equilibrium fit** in the molecular-base particle count instead of being recorded as a comment (`docs/base_composition_handoff_plan.md`) | **done (H/C/N/O composition)** | HD 189733 b at 1 μbar: **q_H2=0.63, q_H=0.23 — photochemistry dissociates ~11× more H than the equilibrium column (q_H=0.020)**, directly quantifying the Tier-1 caveat; r_base 1.168 vs analytic 1.174 R_J; T_base 863 K (Moses11 T(p)); EXHALE consumes the file (overrides echoed) |
 
 Notable physics finding from the Tier-1 gate work: the Visscher **equilibrium** fit keeps the
 1 μbar base strongly molecular up to T ≈ 2000 K (fully atomic only above ~2400 K), so for

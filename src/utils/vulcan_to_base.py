@@ -12,8 +12,11 @@ Reads the VULCAN output (T(p), composition mixing ratios vs pressure) and
    chemical-equilibrium column of run_lower.py lacks at Teq ~ 1000-2000 K);
 2. integrates the hypsometric relation from the 1-bar radius upward using
    VULCAN's own mu(p) and T(p) profiles to get the base radius r_base;
-3. writes base.inp (same keys as run_lower.py: T_base, r_base, HeH_base,
-   Kzz_base), recording the molecular mixing ratios as comments.
+3. writes base.inp: the keys run_lower.py also writes (T_base, r_base,
+   HeH_base, Kzz_base) plus the photochemical H2 mixing ratio q_H2_base and
+   the handoff level p_base, which EXHALE uses in place of its
+   chemical-equilibrium H2 fit (docs/base_composition_handoff_plan.md).
+   The molecular mixing ratios stay comments.
 
 What it does NOT provide: atomic-metal release fractions (Na/Mg/Ca/Fe).
 VULCAN's networks are H/C/N/O(/S) -- metal/alkali chemistry and condensation
@@ -125,6 +128,11 @@ def main():
         f.write('r_base    %.5f\n' % (r / RJ))
         f.write('HeH_base  %.6f\n' % heh)
         f.write('Kzz_base  %.3e\n' % a.kzz)
+        # Photochemical H2 partition and the level it refers to. EXHALE uses
+        # q_H2_base in place of its chemical-equilibrium fit in the
+        # molecular-base particle count, and evaluates that fit at p_base.
+        f.write('q_H2_base %.6e\n' % q2)
+        f.write('p_base    %.3e\n' % a.pbase)
     print('wrote %s:  r(%.0e bar) = %.4f R_J,  T_base = %.1f K,  q_H2 = %.3e, q_H = %.3e'
           % (out, a.pbase, r / RJ, Tb, q2, qh))
 

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""vulcan_driver.py -- run the bundled VULCAN photochemistry as an EXHALE
+"""vulcan_driver.py -- run the included VULCAN photochemistry as an EXHALE
 pre-step ("subroutine-style") and write the run's `base.inp`.
 
 Invoked automatically by EXHALE when `input.inp` contains
@@ -13,7 +13,7 @@ What it does
 1. Reads the planet parameters from <run_dir>/input.inp (name, Mp, Teq,
    orbital distance, stellar radius/Teff).
 2. Prepares a private VULCAN work tree <run_dir>/vulcan_work/ (a copy of the
-   bundled EXHALE/VULCAN, made once and reused), with:
+   EXHALE/VULCAN tree, made once and reused), with:
    - a Guillot (2010) semi-grey T(p)+Kzz atmosphere file (unless --atm),
    - a stellar UV flux chosen by the host Teff from the shipped spectra
      (unless --sflux): >6800 K -> 51 Eri (F0, T7250); 5300-6800 -> solar
@@ -22,7 +22,7 @@ What it does
 3. Compiles FastChem once if its binary is missing.
 4. Runs VULCAN to steady state (hours!) -- SKIPPED if a converged
    output/<name>-photo.vul already exists (use --force to redo).
-5. Converts the result to <run_dir>/base.inp via the same machinery as
+5. Converts the result to <run_dir>/base.inp the same way as
    vulcan_to_base.py (photochemical q_H2/q_H/q_He at 1 ubar, hypsometric
    base radius with VULCAN's own mu(p), T(p)).
 
@@ -30,7 +30,7 @@ Opt-out: simply omit the `Lower atmosphere:` key (EXHALE then uses its
 classic base), or use `Lower atmosphere: analytic <R_1bar>` for the fast
 chemical-equilibrium column (run_lower.py) instead of VULCAN.
 """
-import argparse, math, os, shutil, subprocess, sys
+import argparse, math, os, re, shutil, subprocess, sys
 
 HERE   = os.path.dirname(os.path.abspath(__file__))
 EXROOT = os.path.abspath(os.path.join(HERE, '..', '..'))
@@ -126,20 +126,26 @@ def main():
     out_name = '%s-photo.vul' % name
 
     cfg = open(os.path.join(BUNDLE, 'vulcan_cfg.py')).read()
-    subs = {
-        "atm_file = 'atm/atm_HD189_Kzz.txt'":  "atm_file = '%s'" % atm_rel,
-        "sflux_file = 'atm/stellar_flux/sflux-HD189_Moses11.txt'":
-            "sflux_file = '%s'" % sflux_rel,
-        "r_star = 0.805": "r_star = %.4f" % P['Rstar'],
-        "Rp = 1.138*7.1492E9": "Rp = %.4f*7.1492E9" % a.r1bar,
-        "orbit_radius = 0.03142": "orbit_radius = %.5f" % P['a_AU'],
-        "gs = 2140.": "gs = %.1f" % gs,
-        "out_name =  'HD189-photo.vul'": "out_name =  '%s'" % out_name,
-    }
-    for k, v in subs.items():
-        if k not in cfg:
-            sys.exit('(vulcan_driver) ERROR: cfg anchor missing: ' + k)
-        cfg = cfg.replace(k, v, 1)
+    # Anchor each substitution on the KEY (start of line), not on the exact
+    # previous value: the in-tree vulcan_cfg.py may have been hand-edited for
+    # an earlier planet, and a value-literal anchor then fails spuriously.
+    # Rp uses the SAME R_J as gs above (RJ = 6.9911e9 cm, shared with
+    # run_lower.py / vulcan_to_base.py); VULCAN evaluates g(z) from Rp, so a
+    # different radius constant here would make g(z) inconsistent with gs
+    # (the upstream literal 7.1492E9 is 2.3% larger).
+    subs = [
+        (r"^atm_file\s*=.*$",     "atm_file = '%s'" % atm_rel),
+        (r"^sflux_file\s*=.*$",   "sflux_file = '%s'" % sflux_rel),
+        (r"^r_star\s*=.*$",       "r_star = %.4f" % P['Rstar']),
+        (r"^Rp\s*=.*$",           "Rp = %.4f*%.4e  # R(1 bar) [cm]" % (a.r1bar, RJ)),
+        (r"^orbit_radius\s*=.*$", "orbit_radius = %.5f" % P['a_AU']),
+        (r"^gs\s*=.*$",           "gs = %.1f" % gs),
+        (r"^out_name\s*=.*$",     "out_name = '%s'" % out_name),
+    ]
+    for pat, repl in subs:
+        cfg, n = re.subn(pat, repl, cfg, count=1, flags=re.M)
+        if n != 1:
+            sys.exit('(vulcan_driver) ERROR: cfg key not found: ' + pat)
     open(os.path.join(work, 'vulcan_cfg.py'), 'w').write(cfg)
 
     # 3. FastChem binary

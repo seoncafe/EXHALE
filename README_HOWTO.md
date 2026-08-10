@@ -112,6 +112,9 @@ python3 src/utils/run_lower.py <run_dir> --r1bar 1.36
 ```
 writes `<run_dir>/base.inp` with `T_base r_base HeH_base Kzz_base`; EXHALE
 reads it at startup and echoes every override (absent file = strict no-op).
+The VULCAN converter (`src/utils/vulcan_to_base.py`, below) adds `q_H2_base`
+and `p_base`: with `Molecular base: True` the photochemical H2 mixing ratio
+then replaces EXHALE's chemical-equilibrium fit in the base particle count.
 -> `docs/lower_atmosphere_coupling.pdf` §4.4.
 
 ## Use VULCAN photochemistry for the base state (subroutine-style)

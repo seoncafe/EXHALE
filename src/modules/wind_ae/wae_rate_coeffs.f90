@@ -1,7 +1,7 @@
       module wae_rate_coeffs
       ! Secondary-ionization rate coefficients R(row, col) ported
       ! verbatim from wind-ae rate_coeffs.h (Dere 2007 Table 29 fit;
-      ! scaled-solar bundled spectrum). row = nspecies*j_emit + m,
+      ! scaled-solar included spectrum). row = nspecies*j_emit + m,
       ! 0-based in C -> here wae_R(row+1, col+1). C rows beyond the
       ! 4 initialized ones are zero.
       implicit none

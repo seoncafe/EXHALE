@@ -340,6 +340,8 @@ key & unit & overrides & used by \\
 \texttt{r\_base}   & $\RJ$ & ``Planet radius'' ($=r_0$ of 1\,$\ubar$) & grid, gravity, areas \\
 \texttt{HeH\_base} & --    & He/H number ratio                 & composition, He diffusion \\
 \texttt{Kzz\_base} & cm$^2$/s & \texttt{he\_kzz}               & \texttt{He\_diffusion} homopause \\
+\texttt{q\_H2\_base} & --  & \texttt{q\_h2\_base} ($\qHH$ at the base) & \texttt{Molecular base} particle count \\
+\texttt{p\_base}   & bar   & \texttt{p\_base\_bar}             & level of the handoff; the $\qHH$ fit \\
 \bottomrule
 \end{tabular}
 \end{center}
@@ -383,6 +385,22 @@ exercised end-to-end. Caveat: VULCAN's networks are H/C/N/O(/S) --- the atomic-m
 release (Na/Mg/Ca/Fe) has no public analogue and remains with the Lavvas collaboration
 path; \texttt{metals.inp} stays user-supplied. Figure~\ref{fig:vulcan} shows the
 converged composition against the equilibrium H$_2$ track.
+
+\paragraph{The photochemical $\qHH$ now reaches the solve (2026-08-10).} Until then
+the converter recorded $\qHH$ as a comment while the \texttt{Molecular base}
+correction took its own $\qHH$ from the chemical-equilibrium fit --- the very
+approximation the pre-step exists to replace. \texttt{base.inp} now carries two
+further read keys, \texttt{q\_H2\_base} (the photochemical H$_2$ volume mixing ratio
+at the base) and \texttt{p\_base} (the level it refers to, at which the fit is
+evaluated so that fit and handoff always describe the same level). Both converters
+write them, and the base particle count is built in one place
+(\texttt{comp\_ntot\_bc} in \texttt{composition.f90}) from the photochemical value
+when it is present and from the fit otherwise, so a \texttt{base.inp} without the key
+behaves exactly as before. For HD\,189733\,b the VULCAN value $\qHH=0.6181$ against
+the fit's $0.8384$ moves the subtraction from $\texttt{ntot\_bc}$ by $0.074$ per
+nucleus ($\sim$7\%), which the base density inherits in
+\texttt{Base BC: pressure} mode. Design and validation:
+\texttt{docs/base\_composition\_handoff\_plan.md}.
 
 \begin{figure}[htb]\centering
 \includegraphics[width=0.62\textwidth]{fig_vulcan_vs_eq.pdf}

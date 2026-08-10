@@ -198,3 +198,14 @@ and to whatever consumes the base composition, and it has not been scoped here.
 
 Neither code provides atomic-metal release (Na/Mg/Ca/Fe), which EXHALE needs
 for the metal lines; that part of the base stays user-supplied.
+
+**2026-08-10 — the interface change described above is implemented.**
+`read_base_inp` now reads `q_H2_base` (the photochemical H2 volume mixing ratio
+at the base) and `p_base` (the level it refers to), and both converters write
+them. With `Molecular base: True` the photochemical value replaces the
+chemical-equilibrium fit in the base particle count, so the difference between
+networks now reaches the wind solve; `base.inp` files without the key behave
+exactly as before. Design, size of the effect and the validation gates:
+`docs/base_composition_handoff_plan.md`. `q_H` and the molecular mixing ratios
+stay comments — `q_H` is implied by `q_H2_base` and `HeH_base`, and the
+molecules have nothing to act on in EXHALE's atomic metal set.

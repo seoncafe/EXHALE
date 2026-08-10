@@ -124,7 +124,7 @@
       ! Lower-atmosphere pre-step ("Lower atmosphere: vulcan|analytic <R_1bar>"):
       !  0 = off (default; classic base, or a hand-made base.inp),
       !  1 = analytic chemical-equilibrium column (src/utils/run_lower.py),
-      !  2 = bundled VULCAN photochemistry (src/utils/vulcan_driver.py; the
+      !  2 = VULCAN photochemistry (src/utils/vulcan_driver.py; the
       !      first run takes HOURS, later runs reuse the cached .vul).
       ! When set and no base.inp exists, EXHALE invokes the generator itself
       ! (EXECUTE_COMMAND_LINE) and then reads the produced base.inp -- i.e.
@@ -132,11 +132,27 @@
       integer :: lower_atm_mode  = 0
       real*8  :: lower_atm_r1bar = -1.0d0
       ! passive molecular base: reduce the base particle count
-      ! (ntot_bc) by the H nuclei bound into H2 at (1 ubar, T0) from the
-      ! chemical-equilibrium fit.  EOS-only correction (lower base pressure,
-      ! heavier base mu); the chemistry stays atomic -- crude, documented in
-      ! docs/lower_atmosphere_coupling.*.  Key "Molecular base: True".
+      ! (ntot_bc) by the H nuclei bound into H2 at (p_base_bar, T0), taken
+      ! from the photochemical handoff when one was supplied and from the
+      ! chemical-equilibrium fit otherwise.  EOS-only correction (lower base
+      ! pressure, heavier base mu); the chemistry stays atomic -- crude,
+      ! documented in docs/lower_atmosphere_coupling.*.
+      ! Key "Molecular base: True".
       logical :: molecular_base = .false.
+      ! H2 volume mixing ratio q_H2 = n_H2/(n_H2+n_H+n_He) at the base, as
+      ! determined by the lower-atmosphere photochemistry and carried by the
+      ! "q_H2_base" key of base.inp.  This is the same quantity the
+      ! chemical-equilibrium fit q_h2_equilibrium returns, so no conversion
+      ! is involved: when supplied it REPLACES the fit in the molecular-base
+      ! particle count (docs/base_composition_handoff_plan.md).  Negative
+      ! (default) = no photochemical value, the fit is used, so a base.inp
+      ! without the key behaves exactly as before.
+      real*8  :: q_h2_base  = -1.0d0
+      ! Pressure level of the lower-atmosphere handoff [bar] ("p_base" in
+      ! base.inp; --pbase of src/utils/vulcan_to_base.py).  The
+      ! chemical-equilibrium fit is evaluated at this level, so the fit and
+      ! the handoff always describe the same level.  Default 1 microbar.
+      real*8  :: p_base_bar = 1.0d-6
       ! molecular chemistry (H2/H2+/H3+/HeH+ in the coupled ionization
       ! equilibrium + H2 photoionization opacity/heating + H3+ IR cooling).
       ! Key "Molecular chemistry: True".  v1 constraints: requires He; not

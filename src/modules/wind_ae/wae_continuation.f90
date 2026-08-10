@@ -194,7 +194,7 @@
       end function ramp_to
 
       ! ====================================================================
-      !  self-consistent-BC machinery
+      !  self-consistent boundary conditions
       ! ====================================================================
 
       subroutine base_bcs(R_out, Rmax_out, rho_out, T_out)

@@ -159,10 +159,12 @@ missing file is a no-op. Format: keyword lines, `#` comments ignored.
 
 | Key substring | Value word | Overrides | Notes |
 |---|---|---|---|
-| `T_base` | word 2 | `T0` [K] | F796-798 |
-| `r_base` | word 2 | `R0` [R_J] | F799-801 |
-| `HeH_base` | word 2 | `HeH` (sets `thereis_He` if > 0) | F802-805 |
-| `Kzz_base` | word 2 | `he_kzz` [cm^2/s] | F806-808 |
+| `T_base` | word 2 | `T0` [K] | F969-971 |
+| `r_base` | word 2 | `R0` [R_J] | F972-974 |
+| `HeH_base` | word 2 | `HeH` (sets `thereis_He` if > 0) | F975-978 |
+| `Kzz_base` | word 2 | `he_kzz` [cm^2/s] | F979-981 |
+| `q_H2_base` | word 2 | `q_h2_base` (H2 volume mixing ratio at the base) | F982-984. Photochemical value from the lower-atmosphere pre-step. With `Molecular base: True` it replaces the chemical-equilibrium fit in `comp_ntot_bc` (`composition.f90`). Absent (default `-1`) = fit used, i.e. the historical behavior. |
+| `p_base` | word 2 | `p_base_bar` [bar] | F985-987. Pressure level the handoff describes; the equilibrium fit is evaluated there. Default `1e-6`. A value away from 1 microbar is echoed at startup, never rejected. |
 
 ## 3. Parsing semantics
 
@@ -434,6 +436,7 @@ simply less exhaustive than the parser.
 
 Whether metals are active is decided by the presence of `metals.inp`, not by any
 `input.inp` key, and `base.inp` can silently override `T0`/`R0`/`HeH`/`he_kzz`
-after `input.inp` is read. Additionally, `metals.inp` element labels are matched
+after `input.inp` is read, as well as set the base H2 mixing ratio
+(`q_H2_base`) and the handoff level (`p_base`). Additionally, `metals.inp` element labels are matched
 case-sensitively while `opacity.inp` keys are upper-cased before matching, so the
 two companion readers follow opposite case conventions.

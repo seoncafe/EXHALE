@@ -212,6 +212,8 @@
 	call put_l('he_h_charge_exchange', he_h_charge_exchange)
 	call put_l('thereis_mol', thereis_mol)
 	call put_l('molecular_base', molecular_base)
+	call put_r('q_h2_base', q_h2_base)
+	call put_r('p_base_bar', p_base_bar)
 	call put_i('lower_atm_mode', lower_atm_mode)
 	call put_r('lower_atm_r1bar', lower_atm_r1bar)
 	call put_r('lower_col_r1bar', lower_col_r1bar)

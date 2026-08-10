@@ -10,7 +10,7 @@
       ! Photo-rates P1-P5 (H, He, H2 photoionization; H2 dissociative and
       ! double photoionization) are "SC" in the paper -- computed from cross
       ! sections x stellar flux x column densities.  In EXHALE these follow
-      ! the existing PH_heat machinery (util_ion_eq) once H2 cross sections
+      ! the existing PH_heat routines (util_ion_eq) once H2 cross sections
       ! are added; they are NOT part of this module.
       !
       ! NOTE (baseline caveat, Koskinen 2022): neutral H2 photodissociation

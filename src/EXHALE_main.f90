@@ -832,14 +832,30 @@
                 (du .lt. newton_du_switch .or.                            &
                  (stall_count .ge. N_stall .and.                          &
                   du .lt. 5.0d0*newton_du_switch))) then
-               ! The JFNK finish bypasses the stage-flip above, so switch the
-               ! secondary-ionization coupling on here too -- the Newton solve
-               ! and the finished state then include the full physics.
                if (use_sec_ion .and. .not.sec_ion_active) then
+               ! Newton may only be asked to solve the system the marched
+               ! state approximately satisfies. Flipping the secondary-
+               ! ionization coupling on in the same breath as starting JFNK
+               ! hands the solver a state that was relaxed WITHOUT the
+               ! coupling -- from there GMRES stagnates (info=2, no residual
+               ! reduction; measured on HD 209458 b, 2026-08-10). So flip
+               ! first, re-arm the marching stops exactly as the staged
+               ! activation above does, and let the wind re-relax under the
+               ! full physics; the JFNK hand-off re-fires once du crosses
+               ! the switch again after the N_stall hold.
                   sec_ion_active = .true.
-                  write(*,'(A,I0)') '    -> secondary ionization activated for '// &
-                                    'Newton finish at step ', count
-               endif
+                  sec_flip_step  = count
+                  is_mom_const = .false.;  is_zero_dt = .false.
+                  is_stalled   = .false.
+                  stall_count  = 0
+                  du_prev      = huge(1.0d0)
+                  lev_count    = 0
+                  is_level_stable = (lev_th .le. 0.0d0)
+                  write(*,'(A,I0,A,ES10.2)') '    -> secondary ionization '// &
+                       'activated ahead of the Newton finish at step ',       &
+                       count, ', du =', du
+               else if (sec_flip_step .lt. 0 .or.                         &
+                        count - sec_flip_step .ge. N_stall) then
                if (du .ge. newton_du_switch)                              &
                   write(*,'(A,ES10.2)') ' (EXHALE_main) du plateaued '//  &
                        'near the hand-off threshold; engaging JFNK at '// &
@@ -899,6 +915,7 @@
                   write(*,'(A,I0,A)') ' (EXHALE_main) JFNK failed (info=', &
                        j, '); resuming time-marching with du-based stops'
                endif
+               endif   ! sec-ion pending / hold / engage
             endif
 
             ! Write to standard output (4th column: relative mass-flux level

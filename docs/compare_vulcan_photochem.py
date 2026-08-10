@@ -276,11 +276,16 @@ def write_base_inp(path, label, P, T, mix, mp_MJ, r1bar_RJ, pbase_bar=1e-6, kzz=
         f.write('# base.inp -- lower-atmosphere handoff for EXHALE\n')
         f.write(f'# source: {label}\n')
         f.write(f'# q_H2={q2:.4e} q_H={qh:.4e} q_He={qhe:.4f} mu={mub:.3f}'
-                '   (comments only; EXHALE reads the four keys below)\n')
+                '   (q_H and mu are comments; the keys below are read)\n')
         f.write(f'T_base    {Tb:.2f}\n')
         f.write(f'r_base    {r/RJ:.5f}\n')
         f.write(f'HeH_base  {heh:.6f}\n')
         f.write(f'Kzz_base  {kzz:.3e}\n')
+        # Photochemical H2 partition and the level it refers to. EXHALE uses
+        # q_H2_base in place of its chemical-equilibrium fit in the
+        # molecular-base particle count, and evaluates that fit at p_base.
+        f.write(f'q_H2_base {q2:.6e}\n')
+        f.write(f'p_base    {pbase_bar:.3e}\n')
     print(f'  {label:22s} T_base={Tb:7.2f} K  r_base={r/RJ:.5f} R_J  '
           f'HeH_base={heh:.6f}  mu={mub:.3f}  (q_H={qh:.4f})')
 
