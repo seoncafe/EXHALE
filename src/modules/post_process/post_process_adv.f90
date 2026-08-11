@@ -77,6 +77,9 @@
    ! 1 -> frozen eq metals, 2 -> re-solved. nm_out is its dimensionless (n0)
    ! copy written to the _adv ion-species file.
    real*8, dimension(1-Ng:N+Ng,n_mion) ::  nm_w, nm_out
+   ! Line-center escape probabilities of [O I] 63um / [C II] 158um, frozen at
+   ! the profile the temperature solve starts from (see equation_T pp_beta_*).
+   real*8, dimension(1-Ng:N+Ng) ::  beta_OI63_pp, beta_CII158_pp
 
    ! Recombination coefficients
    real*8, dimension(1-Ng:N+Ng) ::  rchiiB,rcheiiB,rcheiiiB,rcheiTR
@@ -610,6 +613,12 @@
 	! electrons via calc_ne).
 	call calc_mmw(nh,nhe,ne,mmw,nm_w)
 
+	! Line trapping of the two ground-term fine-structure lines, from the
+	! incoming profile, so the cell-by-cell energy solve balances the same
+	! metal cooling eval_cool reports.
+	call fine_structure_escape(T_K, nm_w(:,im_OI), nm_w(:,im_CII),        &
+	                           beta_OI63_pp, beta_CII158_pp)
+
 	! Count cell-by-cell temperature solves rejected as non-physical (metal modes).
 	n_pp_reject = 0
 
@@ -649,7 +658,9 @@
 	 	! Metal densities for this cell [cgs] go through the equation_T module
 	 	! array (the 27-ion vector does not fit params). pp_metal_on gates
 	 	! whether T_equation adds the metal cooling/brem/n_e terms.
-	 	pp_nm_cell(:) = nm_w(j,:)
+	 	pp_nm_cell(:)  = nm_w(j,:)
+	 	pp_beta_OI63   = beta_OI63_pp(j)
+	 	pp_beta_CII158 = beta_CII158_pp(j)
 
 	 	! Initial guess of solution
 		sys_x_T(1) = T_out(j)

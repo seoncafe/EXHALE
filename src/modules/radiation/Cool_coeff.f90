@@ -962,7 +962,7 @@
    ! rate is assigned to the dominant Penning channel He(1^1S)+H2^+ + e^-,
    ! the same one-line approximation used for the atomic He(2^3S)+H Penning
    ! term.  Units: cm^3 s^-1; T in K.  Elemental so it serves both the scalar
-   ! per-cell wiring in System_HeH_mol::set_mol_coeffs and the array
+   ! calls in System_HeH_mol::set_mol_coeffs and the array
    ! evaluation of the heating term in ionization_equilibrium.
    elemental double precision function penning_HeI23S_H2(T) result(k)
    real*8, intent(in) :: T
@@ -1026,6 +1026,9 @@
    ! densities (n_e ~ 10-1e5 cm^-3) and saturate at the dense base; both
    ! these fits and the AIOLOS floors overestimate that contribution
    ! there. use_2lev_cool treats the saturation explicitly.
+   ! All CHIANTI-derived coefficients below carry the
+   ! coronal_excitation_cutoff factor, which removes them smoothly below
+   ! the 1e3 K floor of the data they were fitted to (see that function).
 
    elemental double precision function cool_CI_chianti(T)
    real*8, intent(in) :: T
@@ -1033,7 +1036,8 @@
                      + 1.39158295d-18*exp(-15172.3d0/T)             &
                      + 6.96187591d-18*exp(-25411.0d0/T)             &
                      + 6.59348477d-17*exp(-72609.1d0/T)             &
-                     + 3.01715156d-16*exp(-177264.0d0/T) )/sqrt(T)
+                     + 3.01715156d-16*exp(-177264.0d0/T) )/sqrt(T)   &
+                     *coronal_excitation_cutoff(T)
    end function cool_CI_chianti
 
    elemental double precision function cool_CII_chianti(T)
@@ -1042,7 +1046,8 @@
                       + 2.41049257d-20*exp(-7183.05d0/T)            &
                       + 3.90434784d-17*exp(-64103.6d0/T)            &
                       + 3.33191635d-16*exp(-124809.0d0/T)           &
-                      + 1.36009298d-15*exp(-246136.0d0/T) )/sqrt(T)
+                      + 1.36009298d-15*exp(-246136.0d0/T) )/sqrt(T)  &
+                      *coronal_excitation_cutoff(T)
    end function cool_CII_chianti
 
    elemental double precision function cool_NI_chianti(T)
@@ -1051,7 +1056,8 @@
                      + 4.87732307d-18*exp(-34693.8d0/T)             &
                      + 1.15970782d-17*exp(-50740.7d0/T)             &
                      + 1.57486268d-16*exp(-139916.0d0/T)            &
-                     + 3.17477537d-16*exp(-254192.0d0/T) )/sqrt(T)
+                     + 3.17477537d-16*exp(-254192.0d0/T) )/sqrt(T)   &
+                     *coronal_excitation_cutoff(T)
    end function cool_NI_chianti
 
    elemental double precision function cool_NII_chianti(T)
@@ -1061,7 +1067,8 @@
                       + 8.04015794d-18*exp(-23770.8d0/T)            &
                       + 1.54493674d-17*exp(-64487.2d0/T)            &
                       + 2.88420949d-16*exp(-157103.0d0/T)           &
-                      + 6.94381304d-16*exp(-295894.0d0/T) )/sqrt(T)
+                      + 6.94381304d-16*exp(-295894.0d0/T) )/sqrt(T)  &
+                      *coronal_excitation_cutoff(T)
    end function cool_NII_chianti
 
    elemental double precision function cool_OI_chianti(T)
@@ -1070,7 +1077,8 @@
                      + 6.57165017d-20*exp(-19058.9d0/T)             &
                      + 1.80264414d-18*exp(-31568.4d0/T)             &
                      + 6.76183709d-18*exp(-70528.3d0/T)             &
-                     + 3.37196426d-17*exp(-178827.0d0/T) )/sqrt(T)
+                     + 3.37196426d-17*exp(-178827.0d0/T) )/sqrt(T)   &
+                     *coronal_excitation_cutoff(T)
    end function cool_OI_chianti
 
    elemental double precision function cool_OII_chianti(T)
@@ -1078,7 +1086,8 @@
    cool_OII_chianti = ( 1.76816973d-17*exp(-44128.6d0/T)            &
                       + 8.07102200d-18*exp(-59732.3d0/T)            &
                       + 2.34447515d-16*exp(-179091.0d0/T)           &
-                      + 8.78914372d-16*exp(-325669.0d0/T) )/sqrt(T)
+                      + 8.78914372d-16*exp(-325669.0d0/T) )/sqrt(T)  &
+                      *coronal_excitation_cutoff(T)
    end function cool_OII_chianti
 
    !--- Density-dependent [C II] 158um / [O I] 63um saturation ---------!
@@ -1100,14 +1109,28 @@
    ! use_2lev_cool branch (O I+H Draine 2011/Lique+2017, C II+H
    ! Goldsmith+2012) -- !To Be Checked/AIOLOS tuning?
    ! Returned per (n_e n_ion) [erg cm^3 s^-1]: W_FS/ne + Lambda_rem, so
-   ! the assembly prefactor beta_esc*ne*n_ion recovers the H-collision
-   ! part exactly (the ne cancels); ne is floored to avoid 0/0.
+   ! the assembly prefactor ne*n_ion recovers the H-collision part exactly
+   ! (the ne cancels); ne is floored to avoid 0/0.
    ! [O I] 146um and the C I / N II FS floors remain coronal (few-%
    ! pieces of their respective floors).
+   !
+   ! LINE TRAPPING. beta is the escape probability of the ground-term line
+   ! itself ([C II] 158um / [O I] 63um), and it enters as A_ul -> beta*A_ul
+   ! INSIDE the two-level solution, not as a factor on the result. That is
+   ! the physically correct place: in the subcritical limit the cooling is
+   ! set by the collisional excitation rate and is independent of beta
+   ! (every excitation still ends as an escaped photon, just later), while
+   ! in the saturated (LTE) limit the escaping flux is proportional to
+   ! beta. Multiplying the result would be wrong by a factor beta in the
+   ! first limit. The coronal remainder Lambda_rem is left optically thin:
+   ! it collects higher-lying transitions whose lower levels are far less
+   ! populated, so their opacity is orders of magnitude below the
+   ! ground-term line's. beta = 1 reproduces the optically thin result
+   ! bit-for-bit.
 
-   elemental double precision function cool_CII_ne_func(T,ne,nHI)
-   real*8, intent(in) :: T, ne, nHI
-   real*8 :: xl, ups, ke, Cdex, x, f1, w
+   elemental double precision function cool_CII_ne_func(T,ne,nHI,beta)
+   real*8, intent(in) :: T, ne, nHI, beta
+   real*8 :: xl, ups, ke, Cdex, x, f1, w, Aul
    xl  = log10(T/1.0d4)
    ups = 10.0d0**(0.33433316d0 + 0.11618314d0*xl                    &
                   - 0.087925806d0*xl**2 - 0.061804561d0*xl**3)
@@ -1115,18 +1138,20 @@
    Cdex = ne*ke + nHI*4.0d-11
    x   = 2.0d0*exp(-91.213d0/T)
    f1  = 2.0d0/(2.0d0 + 4.0d0*exp(-91.213d0/T))
-   w   = f1*kb_erg*91.213d0*2.290d-6*x*Cdex                         &
-         /(2.290d-6 + Cdex*(1.0d0 + x))
+   Aul = beta*2.290d-6
+   w   = f1*kb_erg*91.213d0*Aul*x*Cdex                              &
+         /(Aul + Cdex*(1.0d0 + x))
    cool_CII_ne_func = w/max(ne, 1.0d-30)                            &
         + ( 1.06878629d-23*exp(-294.754d0/T)                        &
           + 3.04162479d-17*exp(-61740.4d0/T)                        &
           + 2.30421959d-16*exp(-112006.0d0/T)                       &
-          + 1.29701808d-15*exp(-223343.0d0/T) )/sqrt(T)
+          + 1.29701808d-15*exp(-223343.0d0/T) )/sqrt(T)             &
+          *coronal_excitation_cutoff(T)
    end function cool_CII_ne_func
 
-   elemental double precision function cool_OI_ne_func(T,ne,nHI)
-   real*8, intent(in) :: T, ne, nHI
-   real*8 :: xl, ups, ke, Cdex, x, f1, w
+   elemental double precision function cool_OI_ne_func(T,ne,nHI,beta)
+   real*8, intent(in) :: T, ne, nHI, beta
+   real*8 :: xl, ups, ke, Cdex, x, f1, w, Aul
    xl  = log10(T/1.0d4)
    ups = 10.0d0**(-2.0890112d0 + 0.19632883d0*xl                    &
                   - 0.16253745d0*xl**2 + 0.041658804d0*xl**3)
@@ -1134,27 +1159,29 @@
    Cdex = ne*ke + nHI*4.2d-11*(T/100.0d0)**0.67d0
    x   = 0.6d0*exp(-227.708d0/T)
    f1  = 5.0d0/(5.0d0 + 3.0d0*exp(-227.708d0/T) + exp(-326.567d0/T))
-   w   = f1*kb_erg*227.708d0*8.542d-5*x*Cdex                        &
-         /(8.542d-5 + Cdex*(1.0d0 + x))
+   Aul = beta*8.542d-5
+   w   = f1*kb_erg*227.708d0*Aul*x*Cdex                             &
+         /(Aul + Cdex*(1.0d0 + x))
    cool_OI_ne_func = w/max(ne, 1.0d-30)                             &
         + ( 1.29166532d-22*exp(-930.111d0/T)                        &
           + 2.54689509d-19*exp(-22878.3d0/T)                        &
           + 1.91904760d-18*exp(-34189.1d0/T)                        &
           + 7.47798840d-18*exp(-75919.8d0/T)                        &
-          + 3.40871685d-17*exp(-185985.0d0/T) )/sqrt(T)
+          + 3.40871685d-17*exp(-185985.0d0/T) )/sqrt(T)             &
+          *coronal_excitation_cutoff(T)
    end function cool_OI_ne_func
 
    ! Vectorized wrappers (grid versions for the eval_cool override).
-   subroutine cool_CII_ne(T,ne,nHI,out)
-   real*8, dimension(1-Ng:N+Ng), intent(in)  :: T, ne, nHI
+   subroutine cool_CII_ne(T,ne,nHI,beta,out)
+   real*8, dimension(1-Ng:N+Ng), intent(in)  :: T, ne, nHI, beta
    real*8, dimension(1-Ng:N+Ng), intent(out) :: out
-   out = cool_CII_ne_func(T,ne,nHI)
+   out = cool_CII_ne_func(T,ne,nHI,beta)
    end subroutine cool_CII_ne
 
-   subroutine cool_OI_ne(T,ne,nHI,out)
-   real*8, dimension(1-Ng:N+Ng), intent(in)  :: T, ne, nHI
+   subroutine cool_OI_ne(T,ne,nHI,beta,out)
+   real*8, dimension(1-Ng:N+Ng), intent(in)  :: T, ne, nHI, beta
    real*8, dimension(1-Ng:N+Ng), intent(out) :: out
-   out = cool_OI_ne_func(T,ne,nHI)
+   out = cool_OI_ne_func(T,ne,nHI,beta)
    end subroutine cool_OI_ne
 
    !--------------!
@@ -1295,6 +1322,9 @@
          out(j) = 10.0d0**( h00*logL(k)   + h10*m0          &
                           + h01*logL(k+1) + h11*m1 )
       endif
+      ! Below the 1e3 K table edge the value above is the held endpoint,
+      ! which is an unconstrained clamp rather than a cooling rate.
+      out(j) = out(j)*coronal_excitation_cutoff(T(j))
    enddo
    end subroutine interp_cool_table
 
@@ -1366,7 +1396,7 @@
       f11 = logL2d(kt+1, ke+1)
       l0  = f00 + ft*(f10 - f00)
       l1  = f01 + ft*(f11 - f01)
-      out(j) = 10.0d0**( l0 + fn*(l1 - l0) )
+      out(j) = 10.0d0**( l0 + fn*(l1 - l0) )*coronal_excitation_cutoff(T(j))
    enddo
    end subroutine interp_cool_table_2d
 
@@ -1390,7 +1420,7 @@
    real*8 :: ups
    ups = 0.35579231d0 + 15.122288d0*log(1.0d0 + T/94126.484d0)
    cool_MgI_func = 8.629d-6/sqrt(T)*ups*6.95044482d-12              &
-                   *exp(-50341.867d0/T)
+                   *exp(-50341.867d0/T)*coronal_excitation_cutoff(T)
    end function cool_MgI_func
 
    ! Mg II h&k 2796/2804 A (3s 2S -> 3p 2P); dE = 4.2766 eV, g_l = 2.
@@ -1401,7 +1431,7 @@
    real*8 :: ups
    ups = 16.230522d0 + 20.344762d0*log(1.0d0 + T/121896.19d0)
    cool_MgII_func = 8.629d-6/(2.0d0*sqrt(T))*ups*6.85184290d-12     &
-                    *exp(-49627.696d0/T)
+                    *exp(-49627.696d0/T)*coronal_excitation_cutoff(T)
    end function cool_MgII_func
 
    ! Ca II H&K 3934/3969 A (4s 2S -> 4p 2P); dE = 3.1438 eV, g_l = 2
@@ -1410,7 +1440,7 @@
    real*8 :: ups
    ups = 14.741545d0 + 19.491995d0*log(1.0d0 + T/36218.324d0)
    cool_CaII_func = 8.629d-6/(2.0d0*sqrt(T))*ups*5.03698606d-12     &
-                    *exp(-36482.742d0/T)
+                    *exp(-36482.742d0/T)*coronal_excitation_cutoff(T)
    end function cool_CaII_func
 
    ! Na I D 5890/5896 A (3s 2S -> 3p 2P); dE = 2.1037 eV, g_l = 2,
@@ -1418,7 +1448,8 @@
    elemental double precision function cool_NaI_func(T)
    real*8, intent(in) :: T
    cool_NaI_func = 8.629d-6/(2.0d0*sqrt(T))*36.074352d0             &
-                   *3.37049304d-12*exp(-24412.382d0/T)
+                   *3.37049304d-12*exp(-24412.382d0/T)               &
+                   *coronal_excitation_cutoff(T)
    end function cool_NaI_func
 
    ! Fe II GROUND-LEVEL coronal cooling (Lambda propto n_e, no level
@@ -1433,7 +1464,8 @@
    cool_FeII_func = ( 1.98893470d-18*exp(-1350.0756d0/T)            &
                     + 1.67934160d-17*exp(-9630.3075d0/T)            &
                     + 6.53618984d-16*exp(-58939.313d0/T)            &
-                    + 7.46383822d-16*exp(-139593.29d0/T) )/sqrt(T)
+                    + 7.46383822d-16*exp(-139593.29d0/T) )/sqrt(T)  &
+                    *coronal_excitation_cutoff(T)
    end function cool_FeII_func
 
    ! Vectorized wrappers (grid versions used by the cooling assembly).
@@ -1505,6 +1537,198 @@
    x  = gu_gl*exp(-Ek/Te)
    lambda_2level = hv*A*x*Cdex/(A + Cdex*(1.0d0+x))
    end function lambda_2level
+
+   !---------------------------------------------------!
+
+   !--- Validity floor of the coronal line-cooling fits ----------------!
+   ! Every metal line-cooling coefficient in this module is a fit to, or
+   ! an interpolation of, a CHIANTI optically thin curve tabulated over
+   ! 1e3-1e5 K: the analytic C/N/O and Mg/Ca/Na/Fe forms, and the 1-D /
+   ! 2-D tables (whose log10(T) axis starts exactly at 3.0 and which
+   ! otherwise hold their edge value indefinitely below it). Below that
+   ! floor the fitted exponentials are unconstrained by the data behind
+   ! them, and the softest one dominates: for O I it is exp(-930.111/T),
+   ! whose 930 K matches NO [O I] ground-term splitting (the splittings
+   ! are 227.7 K and 326.6 K); for C I it is exp(-2351.38/T) against
+   ! splittings of 23.6 K and 62.4 K. Evaluated at the ~240 K base of
+   ! HD 189733 b those components supplied 99.7% of the O I cooling rate
+   ! and drove the base to a fifth of T_eq
+   ! (docs/hd189_base_checkerboard.md).
+   !
+   ! Physically, at T far below 1e3 K the only metal transitions still
+   ! collisionally excitable are the ground-term fine-structure lines,
+   ! and those are carried EXPLICITLY by the two-level solutions
+   ! (cool_OI_ne_func, cool_CII_ne_func, lambda_2level), which also
+   ! include the critical-density saturation the coronal curves lack. The
+   ! coronal part is therefore switched off below the fit floor.
+   !
+   ! The switch is a Gaussian in the fractional temperature deficit,
+   !   x = (T_floor/T - 1)/w,   cutoff = exp(-x^2)   for T < T_floor,
+   ! and exactly 1 for T >= T_floor. Both the value and the dT-derivative
+   ! are continuous at T_floor (x = 0 and dx/dT finite, so d(exp(-x^2))/dT
+   ! = 0 there), which matters because the Brent energy solve and the
+   ! semi-implicit update finite-difference the cooling in T. At and above
+   ! 1e3 K every coefficient is BIT-IDENTICAL to the unguarded form.
+   !
+   ! VALIDITY / CHOICE: w = 0.5 makes the coronal part e-fold away once T
+   ! has fallen about a third below the floor. It is a modeling choice,
+   ! not a measured quantity; the base temperature the model settles at
+   ! depends on it at the ~100 K level. The guard leaves NO cooling at all
+   ! for ions that have no explicit two-level term (C I, N I/II, Mg, Ca,
+   ! Na, Fe) below ~700 K. For C I that omits the real [C I] 609/370um
+   ! lines; at the HD 189733 b base their LTE rate is ~1e-10 erg cm^-3
+   ! s^-1, i.e. 1e-4 of the local heating, so the omission is negligible
+   ! there, but it would not be in a colder or more carbon-rich base.
+   ! The legacy AIOLOS branch (cno_chianti = .false.) is deliberately NOT
+   ! guarded: its constant floors (1.0e-24 etc.) are crude stand-ins for
+   ! fine-structure cooling, not extrapolated coronal fits.
+   elemental double precision function coronal_excitation_cutoff(T)
+   real*8, intent(in) :: T
+   real*8, parameter :: T_fit_floor = 1.0d3   ! [K] lower edge of the fits
+   real*8, parameter :: w_fit_floor = 0.5d0   ! fractional width of the roll-off
+   real*8 :: x
+   ! .not.(T < floor) so a non-finite T falls on the unguarded branch,
+   ! matching how the table interpolators handle a transient NaN.
+   if (.not. (T .lt. T_fit_floor)) then
+      coronal_excitation_cutoff = 1.0d0
+   else
+      x = (T_fit_floor/max(T,1.0d0) - 1.0d0)/w_fit_floor
+      if (x .gt. 26.0d0) then
+         coronal_excitation_cutoff = 0.0d0     ! exp(-676) underflows anyway
+      else
+         coronal_excitation_cutoff = exp(-x*x)
+      endif
+   endif
+   end function coronal_excitation_cutoff
+
+   !---------------------------------------------------!
+
+   !--- Ground-term fine-structure line trapping -----------------------!
+   ! HISTORY. AIOLOS (chemistry.cpp:1006) multiplies its gray escape
+   ! optical depth by an arbitrary 1e8, which drives beta -> 0 and so
+   ! switches metal-line cooling off entirely. EXHALE replaced that with
+   ! beta = 1 (fully optically thin), which is the right limit for the
+   ! thin wind but overestimates the cooling of the dense base, where the
+   ! dominant coolant lines are measured to be optically thick (tau ~ 3,
+   ! beta ~ 0.16, for [O I] 63um through the HD 189733 b base). Both were gray in the
+   ! XUV continuum opacity, which has nothing to do with line trapping.
+   ! What follows computes the LINE-CENTER optical depth of the two
+   ! ground-term fine-structure lines the cooling assembly solves
+   ! explicitly and derives beta from it.
+   !
+   ! SCOPE. Trapping is applied to [O I] 63um and [C II] 158um only --
+   ! exactly the two lines for which this module carries an explicit
+   ! two-level solution, so emission and opacity use one set of atomic
+   ! data. All other metal-line cooling keeps beta = 1. That is correct in
+   ! the wind and is the residual approximation at the base: at the
+   ! HD 189733 b base the other coolants together are < 0.3% of the total
+   ! once the coronal fits are guarded. It is NOT correct for a thick
+   ! resonance line in a metal-rich wind (Mg II h&k reaches large
+   ! line-center depths in ultrahot Jupiters); that case is not treated
+   ! here.
+
+   ! Line-center absorption coefficient [cm^-1] of a two-level line whose
+   ! lower and upper levels follow the Boltzmann ratio,
+   !   kappa_0 = lambda^3/(8 pi^3/2) (g_u/g_l) A_ul n_low (1 - e^-Ek/T)/v_th
+   ! for a Doppler core of width v_th = sqrt(2 k T/m) (no turbulent
+   ! broadening, so this is an upper bound on kappa_0). The last factor is
+   ! the stimulated-emission correction 1 - (g_l n_u)/(g_u n_l). The
+   ! Boltzmann assumption holds wherever the result matters: the dense
+   ! base has Cdex >> A_ul, so the ground-term levels are in LTE; in the
+   ! thin wind kappa_0 is negligible either way. Ek [K] is the transition
+   ! energy in temperature units, which also fixes lambda = hc/(k Ek).
+   elemental double precision function line_center_opacity_lte           &
+                                        (T,n_low,Ek,A_ul,gu_gl,amu)
+   real*8, intent(in) :: T, n_low, Ek, A_ul, gu_gl, amu
+   real*8, parameter :: hc_over_k = 1.43877736d0     ! [cm K]
+   real*8, parameter :: amu_g     = 1.66053907d-24   ! [g]
+   real*8 :: lam, vth, Ts
+   ! T is floored as in the table interpolators, so a transient non-physical
+   ! trial temperature cannot turn the Doppler width into a NaN.
+   Ts  = max(T, 1.0d0)
+   lam = hc_over_k/Ek
+   vth = sqrt(2.0d0*kb_erg*Ts/(amu*amu_g))
+   line_center_opacity_lte = lam**3/(8.0d0*pi*sqrt(pi))*gu_gl*A_ul     &
+                             *n_low*(1.0d0 - exp(-Ek/Ts))/vth
+   end function line_center_opacity_lte
+
+   ! [O I] 63.19um, 3P1 -> 3P2. A_ul, Ek and the ground-term partition sum
+   ! are the same values cool_OI_ne_func emits with; g_u/g_l = 3/5.
+   elemental double precision function kappa_OI63(T,nOI)
+   real*8, intent(in) :: T, nOI
+   real*8 :: f2
+   f2 = 5.0d0/(5.0d0 + 3.0d0*exp(-227.708d0/T) + exp(-326.567d0/T))
+   kappa_OI63 = line_center_opacity_lte(T, f2*nOI, 227.708d0,          &
+                                        8.542d-5, 0.6d0, 15.999d0)
+   end function kappa_OI63
+
+   ! [C II] 158um, 2P3/2 -> 2P1/2, matching cool_CII_ne_func; g_u/g_l = 2.
+   elemental double precision function kappa_CII158(T,nCII)
+   real*8, intent(in) :: T, nCII
+   real*8 :: f1
+   f1 = 2.0d0/(2.0d0 + 4.0d0*exp(-91.213d0/T))
+   kappa_CII158 = line_center_opacity_lte(T, f1*nCII, 91.213d0,        &
+                                          2.290d-6, 2.0d0, 12.011d0)
+   end function kappa_CII158
+
+   ! Escape probability of a static Doppler line at line-center optical
+   ! depth tau. Shape from the plane-parallel single-flight result used by
+   ! Hollenbach & McKee (1979) and de Jong, Boland & Dalgarno (1980),
+   !   beta = (1 - e^-a tau)/(2 a tau)      thin side,
+   !   beta = 1/(4 tau sqrt(ln(tau/sqrt(pi))))   thick side (Doppler wings),
+   ! with a = 2.34, but RENORMALIZED by a factor 2 so that beta(0) = 1
+   ! exactly. The published form tends to 1/2 because it counts escape
+   ! through one face of a slab; here tau is the column from the emitting
+   ! cell to the TOP of the domain, and a photon sent the other way is
+   ! removed from the modeled gas regardless (it is absorbed by the lower
+   ! atmosphere, which the model treats as a fixed reservoir at T_eq), so
+   ! the thin limit must be full escape. The renormalization keeps the
+   ! optically thin wind exactly at the previous beta = 1 behaviour.
+   ! The two branches meet where 2 sqrt(ln(tau/sqrt(pi))) = a, i.e. at
+   ! tau_c = sqrt(pi) exp(a^2/4) = 6.967, so the switch is continuous in
+   ! value by construction (the residual slope kink there is < 1%).
+   elemental double precision function line_escape_probability(tau)
+   real*8, intent(in) :: tau
+   real*8, parameter :: a = 2.34d0
+   real*8 :: x, tau_c
+   x = a*tau
+   tau_c = sqrt(pi)*exp(0.25d0*a*a)
+   if (.not. (x .gt. 1.0d-8)) then
+      line_escape_probability = 1.0d0 - 0.5d0*max(x,0.0d0)   ! series limit
+   else if (tau .lt. tau_c) then
+      line_escape_probability = (1.0d0 - exp(-x))/x
+   else
+      line_escape_probability = 1.0d0/(2.0d0*tau*sqrt(log(tau/sqrt(pi))))
+   endif
+   end function line_escape_probability
+
+   ! Escape probabilities of [O I] 63um and [C II] 158um on the grid.
+   ! tau(j) is the line-center column from the CENTER of cell j to the top
+   ! of the domain: half of the emitting cell plus every cell above it.
+   ! The outward column is the escape path (see line_escape_probability
+   ! for why the downward direction is not counted separately). Being a
+   ! column rather than a single cell width, tau is grid-independent and
+   ! converges under refinement, unlike the cell-width gray depth it
+   ! replaces.
+   subroutine fine_structure_escape(T,nOI,nCII,beta_OI63,beta_CII158)
+   real*8, dimension(1-Ng:N+Ng), intent(in)  :: T, nOI, nCII
+   real*8, dimension(1-Ng:N+Ng), intent(out) :: beta_OI63, beta_CII158
+   integer :: j
+   real*8  :: dl, dtau_OI, dtau_CII, col_OI, col_CII
+   col_OI  = 0.0d0
+   col_CII = 0.0d0
+   do j = N+Ng,1-Ng,-1
+      dl       = dr_j(j)*R0
+      ! Floored at zero: the ionization solve can leave a trace species with a
+      ! small negative density, and an optical depth cannot be negative.
+      dtau_OI  = max(kappa_OI63  (T(j),nOI (j))*dl, 0.0d0)
+      dtau_CII = max(kappa_CII158(T(j),nCII(j))*dl, 0.0d0)
+      beta_OI63  (j) = line_escape_probability(col_OI  + 0.5d0*dtau_OI )
+      beta_CII158(j) = line_escape_probability(col_CII + 0.5d0*dtau_CII)
+      col_OI  = col_OI  + dtau_OI
+      col_CII = col_CII + dtau_CII
+   enddo
+   end subroutine fine_structure_escape
 
    !---------------------------------------------------!
 
@@ -2392,6 +2616,8 @@
       frac = pos - dble(k)
       interp_cool_table_scalar = 10.0d0**( logL(k) + frac*(logL(k+1) - logL(k)) )
    endif
+   interp_cool_table_scalar = interp_cool_table_scalar                &
+                              *coronal_excitation_cutoff(Ts)
    end function interp_cool_table_scalar
 
    !--------------!
@@ -2430,7 +2656,8 @@
    f11 = logL2d(kt+1, ke+1)
    l0  = f00 + ft*(f10 - f00)
    l1  = f01 + ft*(f11 - f01)
-   interp_cool_table_2d_scalar = 10.0d0**( l0 + fn*(l1 - l0) )
+   interp_cool_table_2d_scalar = 10.0d0**( l0 + fn*(l1 - l0) )           &
+                                 *coronal_excitation_cutoff(Ts)
    end function interp_cool_table_2d_scalar
 
    !--------------!

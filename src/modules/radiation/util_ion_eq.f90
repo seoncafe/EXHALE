@@ -481,8 +481,9 @@
    real*8, dimension(1-Ng:N+Ng) :: brem_acc,coolm_acc   ! sum accumulators
    real*8, dimension(1-Ng:N+Ng) :: metal_col            ! dispatcher scratch
    real*8, dimension(1-Ng:N+Ng,n_mion)  :: c_metal      ! metal line-cool coeffs
-   real*8, dimension(1-Ng:N+Ng) :: tau_eff,beta_esc     ! beta escape prob.
-   real*8, dimension(1-Ng:N+Ng) :: kappa_loc,dr_cm
+   ! Line-center escape probabilities of the two ground-term
+   ! fine-structure lines solved explicitly (Cool_coeff: fine_structure_escape)
+   real*8, dimension(1-Ng:N+Ng) :: beta_OI63,beta_CII158
 	real*8, dimension(1-Ng:N+Ng) :: ne		  			 ! Electron number density
 	real*8, dimension(1-Ng:N+Ng) :: GF_z1,GF_z2			 ! free-free Gaunt at Z_ion=1,2
 	real*8 :: Cdex_OI,Cdex_CII                           ! 2-level collis. de-exc.
@@ -671,12 +672,26 @@
 	! lines (n_crit ~ 1e4-1e7 cm^-3) are collisionally saturated there
 	! (n_e >> n_crit). Replace c_metal(:,FeII) with the multilevel
 	! statistical-equilibrium coefficient Lambda_eff(T,ne) = (sum_u n_u A_ul
-	! dE_ul)/ne. In the assembly cool_M = beta_esc*ne*sum_i nm(:,i)*c_metal,
+	! dE_ul)/ne. In the assembly cool_M = ne*sum_i nm(:,i)*c_metal,
 	! the ne cancels the 1/ne in Lambda_eff, leaving the correct LTE-saturated
 	! cooling for each ion (collider-independent, so the electron-only SE solve is
 	! exact in this limit). At low ne it reduces to the coronal rate.
 	call cool_FeII_ne(T_K, ne, metal_col)
 	c_metal(:,im_FeII) = metal_col
+
+	! Line trapping of the two ground-term fine-structure lines this
+	! module solves explicitly. Earlier versions built a GRAY escape
+	! probability from the lowest XUV band opacity over one cell width
+	! (AIOLOS chemistry.cpp:1006 scaled that by an arbitrary 1e8, driving
+	! beta -> 0 and switching metal-line cooling off; EXHALE replaced it
+	! with beta = 1 everywhere, the optically thin limit). Neither is a
+	! line optical depth, and beta = 1 overestimates the cooling of a
+	! dense base where [O I] 63um reaches tau ~ 3. beta is now the
+	! line-center escape probability of each line, from the outward column
+	! (Cool_coeff.f90: fine_structure_escape). Every other metal ion keeps
+	! the optically thin limit; see the scope note there.
+	call fine_structure_escape(T_K, nm(:,im_OI), nm(:,im_CII),         &
+	                           beta_OI63, beta_CII158)
 
 	! Density-dependent override for the [C II] 158um / [O I] 63um
 	! ground-term fine-structure floors (CHIANTI mode only; the legacy
@@ -684,46 +699,14 @@
 	! W_FS/ne + remainder convention as Fe II above; the two-level
 	! solution saturates the floor (n_crit,e([C II]) ~ 20 cm^-3!) and
 	! adds the H-collision excitation channel the electron-only coronal
-	! curve misses. See cool_CII_ne_func / cooling_data/
-	! fit_fs_saturation.py.
+	! curve misses. beta enters as A_ul -> beta*A_ul inside that solution.
+	! See cool_CII_ne_func / cooling_data/fit_fs_saturation.py.
 	if (cno_chianti) then
-		call cool_CII_ne(T_K, ne, nhi, metal_col)
+		call cool_CII_ne(T_K, ne, nhi, beta_CII158, metal_col)
 		c_metal(:,im_CII) = metal_col
-		call cool_OI_ne(T_K, ne, nhi, metal_col)
+		call cool_OI_ne(T_K, ne, nhi, beta_OI63, metal_col)
 		c_metal(:,im_OI) = metal_col
 	endif
-
-	! AIOLOS-style β escape probability for resonance line trapping.
-	! tau_eff = local opacity (lowest XUV band) * cell width [cm].
-	! s_*(1) are in 1e-18 cm^2, so multiply by 1e-18.
-	! The trailing 1.0e8 factor mirrors AIOLOS chemistry.cpp:1006:
-	! a boost converting gray opacity to metal line-center opacity.
-	! See feedback memory: "To Be Checked/AIOLOS tuning?".
-	do j = 1-Ng,N+Ng
-		dr_cm(j)     = dr_j(j)*R0
-		kappa_loc(j) = (s_hi(1)*nhi(j) + s_hei(1)*nhei(j) +           &
-		                s_heii(1)*nheii(j))*1.0e-18
-		!To Be Checked/AIOLOS tuning?
-		!tau_eff(j) = kappa_loc(j) * dr_cm(j) * 1.0e8
-		tau_eff(j) = kappa_loc(j) * dr_cm(j)
-		if (tau_eff(j) .lt. 7.0) then
-			beta_esc(j) = (1.0 - exp(-2.34*tau_eff(j)))/             &
-			              (4.68*max(tau_eff(j),1.0d-30))
-		else
-			beta_esc(j) = 1.0/(4.0*tau_eff(j)*                       &
-			              sqrt(log(tau_eff(j)/sqrt(pi))))
-		endif
-	enddo
-	beta_esc(1-Ng) = 0.0
-
-	! AIOLOS multiplies the escape probability by a 1e8 factor
-	! (chemistry.cpp:1006), which drives tau_eff up to ~1e6 so that
-	! beta_esc -> ~0 and the metal lines are treated as essentially
-	! fully trapped (metal-line cooling switched off).
-	! Here we instead assume 100% escape (optically-thin limit):
-	! beta_esc = 1, so the full metal-line cooling is applied,
-	! matching ATES_extended's coronal treatment.
-	beta_esc = 1.0d0
 
 	if (use_2lev_cool) then
 		! Bridge the metadata arrays to the named scalars used below.
@@ -743,37 +726,42 @@
 		! exponential ("forbidden") part of the C II / O I fit is retained
 		! on top of the two-level ground term (matching ATES_extended).
 		! N has no line cooling.
+		! Trapping enters as A_ul -> beta*A_ul in the two fine-structure
+		! lambda_2level calls (the physically correct place; see
+		! cool_OI_ne_func). The exponential "forbidden" add-ons and every
+		! other ion stay optically thin.
 		do j = 1-Ng,N+Ng
 			! Collisional de-excitation rates [s^-1]
 			Cdex_OI  = nhi(j)*4.2d-11*(T_K(j)/100.0d0)**0.67          ! H
 			Cdex_CII = ne(j) *8.7d-8 *(T_K(j)/2000.0d0)**(-0.37)      & ! e
 			         + nhi(j)*4.0d-11                                   ! H
-			cool_M(j) = beta_esc(j)*(                                       &
+			cool_M(j) =                                                    &
 			    ne(j)*nci(j)*c_CI(j)                                       &
-			  + noi(j) *( lambda_2level(8.91d-5,227.7d0,0.6d0,Cdex_OI ,T_K(j)) &
+			  + noi(j) *( lambda_2level(beta_OI63(j)*8.91d-5,227.7d0,0.6d0,Cdex_OI ,T_K(j)) &
 			              + ne(j)*1.1d-20*exp(-30162.0d0/T_K(j))           &
 			                     *(1.0d0+(T_K(j)/0.75d4)**0.5) )           &
-			  + ncii(j)*( lambda_2level(2.29d-6,91.21d0,2.0d0,Cdex_CII,T_K(j)) &
+			  + ncii(j)*( lambda_2level(beta_CII158(j)*2.29d-6,91.21d0,2.0d0,Cdex_CII,T_K(j)) &
 			              + ne(j)*3.1d-20*exp(-45162.0d0/T_K(j))           &
 			                     *(1.0d0+(T_K(j)/0.75d4)**1.5) )           &
 			  + ne(j)*noii(j)*c_OII(j)                                  &
 			  + ne(j)*nmgi(j)*c_MgI(j) + ne(j)*nmgii(j)*c_MgII(j)                          &
                   + ne(j)*nm(j,17)*c_metal(j,17)               &
                   + ne(j)*nm(j,19)*c_metal(j,19)               &
-                  + ne(j)*nm(j,26)*c_metal(j,26) )
+                  + ne(j)*nm(j,26)*c_metal(j,26)
 		enddo
 	else
 		! Sum the line-cooling metal ions (mion_iscool) in canonical
-		! order, then apply the (beta_esc*ne) prefactor once. This is
+		! order, then apply the ne prefactor once. This is
 		! bit-identical to the explicit eight-term expression: the
 		! iscool ions, in canonical order, are exactly
-		! CI,CII,OI,OII,NI,NII,MgI,MgII.
+		! CI,CII,OI,OII,NI,NII,MgI,MgII. Line trapping is already inside
+		! c_metal for [O I] 63um / [C II] 158um; the rest are thin.
 		coolm_acc = 0.0d0
 		do i = 1,n_mion
 			if (.not. mion_iscool(i)) cycle
 			coolm_acc = coolm_acc + nm(:,i)*c_metal(:,i)
 		enddo
-		cool_M = beta_esc * ne * coolm_acc
+		cool_M = ne * coolm_acc
 	endif
 
 	! Total cooling rate
@@ -796,7 +784,7 @@
 		cool_chan(:,6) = ne*brem
 		do i = 1,n_mion
 			if (mion_iscool(i)) then
-				cool_chan(:,6+i) = beta_esc*ne*nm(:,i)*c_metal(:,i)
+				cool_chan(:,6+i) = ne*nm(:,i)*c_metal(:,i)
 			else
 				cool_chan(:,6+i) = 0.0d0
 			endif

@@ -20,6 +20,14 @@
 	! the post-process temperature loop is serial.
 	real*8  :: pp_nm_cell(n_mion) = 0.0d0   ! current-cell metal densities [cm^-3]
 	logical :: pp_metal_on        = .false. ! add metal cooling/brem/ne in T_equation
+	! Line-center escape probabilities of [O I] 63um / [C II] 158um for the
+	! current cell, set alongside pp_nm_cell from the profile the post-process
+	! starts from. They are HELD FIXED while the root finder varies T, exactly
+	! as the metal densities are: the optical depth is a column over the whole
+	! atmosphere above the cell, so it is not a function of this cell's trial
+	! temperature alone. 1 = optically thin, the value used when metals are off.
+	real*8  :: pp_beta_OI63   = 1.0d0
+	real*8  :: pp_beta_CII158 = 1.0d0
 
 	contains
 	
@@ -127,9 +135,10 @@
         + coex_rate_HeI_func(TT)*nhei     &    ! HeI
         + coex_rate_HeII_func(TT)*nheii        ! HeII
 
-   !-- Metal line cooling (optically thin, beta = 1, as in eval_cool).
-   ! Sum the same mion_iscool coolants eval_cool sums, using the scalar
-   ! coefficient dispatcher so the converged T balances the reported cooling.
+   !-- Metal line cooling. Sum the same mion_iscool coolants eval_cool
+   ! sums, using the scalar coefficient dispatcher so the converged T
+   ! balances the reported cooling. Trapping of [O I] 63um / [C II] 158um
+   ! enters through pp_beta_*, everything else is optically thin.
    cool_M = 0.0d0
    if (pp_metal_on) then
       do im = 1,n_mion
@@ -140,10 +149,12 @@
             cool_M = cool_M + pp_nm_cell(im)*cool_FeII_ne_scalar(TT, ne)
          else if (cno_chianti .and. im .eq. im_CII) then
             ! density-dependent [C II] 158um floor (matches eval_cool)
-            cool_M = cool_M + pp_nm_cell(im)*cool_CII_ne_func(TT, ne, nhi)
+            cool_M = cool_M + pp_nm_cell(im)                          &
+                              *cool_CII_ne_func(TT, ne, nhi, pp_beta_CII158)
          else if (cno_chianti .and. im .eq. im_OI) then
             ! density-dependent [O I] 63um floor (matches eval_cool)
-            cool_M = cool_M + pp_nm_cell(im)*cool_OI_ne_func(TT, ne, nhi)
+            cool_M = cool_M + pp_nm_cell(im)                          &
+                              *cool_OI_ne_func(TT, ne, nhi, pp_beta_OI63)
          else
             cool_M = cool_M + pp_nm_cell(im)                          &
                               *cool_coeff_by_ion_scalar(im, TT)
