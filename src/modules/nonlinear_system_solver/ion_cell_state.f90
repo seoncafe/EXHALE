@@ -90,6 +90,14 @@
 		! set per cell at the advection call site (see he_h_cx_rates).
 		real*8 :: kcx_He0_Hp
 		real*8 :: kcx_Hep_H0
+		! Metal electrons of the cell, counted per H nucleus (n_e,metal/n_h).
+		! The recombination terms of the advection residuals scale with the
+		! TOTAL free electron density, and in the shielded base the metals are
+		! the dominant electron donors (n_e,metal/n_e = 0.4-1.1 there), so the
+		! residuals add this to the H/He electrons. Same definition as the
+		! equilibrium residual's metal_electron_sum (X+ once, X++ twice) and as
+		! calc_ne; zero when metals are absent.
+		real*8 :: xe_metal = 0.0d0
 	end type adv_rates
 
 	type(adv_rates), save :: adv_cell

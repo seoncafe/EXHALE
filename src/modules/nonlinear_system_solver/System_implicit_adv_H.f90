@@ -34,8 +34,11 @@
 	xhi = x(1)
 	xhii = 1.0 - x(1)
 
- 	! Electron density
-   xe = xhii
+ 	! Electron density, per H nucleus. The metal electrons (adv_cell%xe_metal,
+ 	! the same X+/X++ sum the equilibrium residual counts) are included: they
+ 	! dominate the electron budget of the shielded base, where the H ionized
+ 	! fraction is vanishingly small.
+   xe = xhii + adv_cell%xe_metal
       
       ! System of equations      
   	fvec(1) =  xhi_old - x(1)					&

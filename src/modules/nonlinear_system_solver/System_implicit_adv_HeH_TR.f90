@@ -65,8 +65,11 @@
 	xheiS  = x(2) - x(4)
 	xheiTR = x(4)
 
- 	! Electron density
-   xe = xhii + heh_loc*(xheii + 2.0*xheiii)
+ 	! Electron density, per H nucleus. The metal electrons (adv_cell%xe_metal,
+ 	! the same X+/X++ sum the equilibrium residual counts) are included: they
+ 	! dominate the electron budget of the shielded base, where the H/He
+ 	! ionized fractions are vanishingly small.
+   xe = xhii + heh_loc*(xheii + 2.0*xheiii) + adv_cell%xe_metal
       
     ! System of equations      
   	! - Q31*xheiTR*heh_loc*n_h*xhi: Penning loss of neutral H,

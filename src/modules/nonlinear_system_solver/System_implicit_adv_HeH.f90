@@ -54,10 +54,22 @@
    xheii  = 1.0 - x(2) - x(3)
 	xheiii = x(3)
 
- 	! Electron density
-   xe = xhii + heh_loc*(xheii + 2.0*xheiii)
+ 	! Electron density, per H nucleus. The metal electrons (adv_cell%xe_metal,
+ 	! the same X+/X++ sum the equilibrium residual counts) are included: they
+ 	! dominate the electron budget of the shielded base, where the H/He
+ 	! ionized fractions are vanishingly small.
+   xe = xhii + heh_loc*(xheii + 2.0*xheiii) + adv_cell%xe_metal
       
-   ! System of equations      
+   ! System of equations
+   ! To Be Checked: the electron-impact ionization terms below (ionhi, ionhei,
+   ! ionheii) are NOT multiplied by xe*n_h, unlike every other form of the same
+   ! physics in this code -- adv_implicit_H, adv_implicit_HeH_TR and the
+   ! equilibrium rows (heh_rows: n_hi*b_hi*n_e) all carry the electron density.
+   ! The coefficients are rate coefficients [cm^3/s], so as written these three
+   ! terms are also dimensionally inconsistent with the photoionization rates
+   ! they are added to. This path is taken only when He is on and He 2^3S is
+   ! off; fixing it changes that configuration's _adv output and is left to a
+   ! separate change.
   	fvec(1) =  xhi_old - xhi   					        		&
   	        + c1*(-(ghi+ionhi)*xhi    + ahii*xhii*xe*n_h) 	   
   		     		    
