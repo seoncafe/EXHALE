@@ -14,7 +14,7 @@
 
 	use global_parameters
 	use ion_cell_state, only: ieq_cell, adv_cell, teq_cell
-	use species_table, only: n_mion, n_melem, melem_i0, melem_top
+	use species_table, only: n_mion, n_melem, melem_i0, melem_top, mion_stage
 	use utils
 	use System_implicit_adv_H
 	use System_implicit_adv_HeH
@@ -28,6 +28,19 @@
 	use opacity_models           ! opacity_pT_factor for the 'P' model
 
 	implicit none
+
+	! Validity limits of the advection correction (see post_process_adv, where
+	! both are used and their derivation is written out).
+	!
+	! Da_local_equilibrium: above this Damkohler number the gas relaxes to the
+	! local ionization equilibrium many times over while it crosses the cell,
+	! so the equilibrium solution already solves the advection ODE.
+	real*8, parameter :: Da_local_equilibrium = 1.0d2
+	! xHII_adv_min: the residuals carry the NEUTRAL fraction and the ion
+	! density is extracted as (1-x_HI)*n_h, so an equilibrium ion fraction
+	! below this cannot be represented to better than ~1% by a solver whose
+	! absolute resolution on x_HI is sqrt(eps) = 1.5e-8.
+	real*8, parameter :: xHII_adv_min = 1.0d-6
 
 	! Advection-corrected H/He ionized fractions for the current cell, pinned
 	! while the metal re-solve (pp_metals=2) adjusts only the metal stages.
@@ -60,6 +73,10 @@
 	 
 	real*8, dimension(1-Ng:N+Ng) ::  T_K,p_out,T_out     ! Dimensional temperature
 	real*8, dimension(1-Ng:N+Ng) ::  nh,nhe,ne,n_tot
+	! Metal electron density [cgs]: the metal part of ne (X+ once, X++ twice),
+	! handed to the advection residuals as adv_cell%xe_metal. Zero when metals
+	! are absent or the post-process runs metal-free (nm_w = 0).
+	real*8, dimension(1-Ng:N+Ng) ::  ne_metal
 	! Ionized fraction of the H+He nuclei, for the SvS85 secondary ionization.
 	real*8, dimension(1-Ng:N+Ng) ::  xion
 	
@@ -136,6 +153,13 @@
       
 	! Substitution in the ODE solution
 	real*8 :: As
+
+	! Validity of the advection correction, cell by cell (filled by the block
+	! just before the ionization loop, where the three conditions are stated).
+	logical, dimension(1-Ng:N+Ng) :: adv_correction_valid
+	real*8  :: Da_ion         ! Damkohler number of the H ionization balance
+	real*8  :: xHII_eq        ! equilibrium H ionized fraction of the cell
+	integer :: n_adv_eq       ! cells left at the equilibrium ionization
 
 
    ! 60 entries to match the ion_system_HeH_metals / ion_system_metals_pp
@@ -249,6 +273,20 @@
 	! (see the module-header composition note).
 	call calc_ne(nhii,nheii,nheiii,ne,nm_w)
 
+	! Metal electrons alone, for the electron density inside the advection
+	! residuals. Same definition as calc_ne above and as the equilibrium
+	! residual's metal_electron_sum (stage 1 counts one electron, stage 2 two).
+	! Unlike calc_ne this is NOT conditioned on eos_include_metals: that switch
+	! governs whether the metals enter the gas mass/particle budget, while the
+	! recombination terms of the residuals need the true free electron density.
+	! nm_w is already zero when metals are off or the post-process runs
+	! metal-free, so this is zero there.
+	ne_metal = 0.0d0
+	do im = 1,n_mion
+		if (mion_stage(im) .gt. 0)                                        &
+			ne_metal = ne_metal + dble(mion_stage(im))*nm_w(:,im)
+	enddo
+
 	! Cell-by-cell opacity pressure factor ('P' model; =1 otherwise)
 	do j = 1-Ng,N+Ng
 		opa_pf(j) = opacity_pT_factor((nh(j)+nhe(j)+ne(j))*kb_erg*T_K(j))
@@ -292,6 +330,59 @@
 
    !----------------------------------!
 
+	!---- Where is the advection correction valid? ----!
+	!
+	! The correction replaces the local ionization balance of a cell by the
+	! steady advection-ionization ODE, integrated upwind across the cell. Three
+	! conditions make that replacement carry no information; where any of them
+	! holds the cell keeps the converged equilibrium ionization instead.
+	!
+	!  (i)   Inflow, v <= 0 on either face -- PHYSICAL. The upwind
+	!        discretization takes the upstream state from the cell below, which
+	!        is not the upstream cell when the gas moves inward (the breathing
+	!        base). The residence time dr/v is then negative as well.
+	!
+	!  (ii)  Da = (dr/v)*(P_HI + alpha_HII*n_e) > Da_local_equilibrium --
+	!        PHYSICAL. The Damkohler number compares the time the gas spends in
+	!        the cell with the H ionization/recombination time. Da >> 1 means
+	!        the ionization state relaxes to local equilibrium many times over
+	!        while the gas crosses the cell, so the equilibrium solution IS the
+	!        solution of the ODE and the correction can only add integration
+	!        error. n_e here is the metal-inclusive electron density, the same
+	!        one the equilibrium solve used.
+	!
+	!  (iii) x_HII,eq < xHII_adv_min -- NUMERICAL. The residuals carry the
+	!        neutral fraction x_HI and the ion density is extracted as
+	!        (1-x_HI)*n_h, so the ion fraction inherits the solver's ABSOLUTE
+	!        resolution on x_HI: xtol = sqrt(eps) = 1.5e-8, which is also the
+	!        forward-difference step of the MINPACK Jacobian. Below 1e-6 the
+	!        extracted ion fraction is worse than 1% relative, and in a
+	!        shielded base with x_HII,eq ~ 1e-13 it is quantized at 1e-8 with
+	!        an arbitrary sign -- a negative ion density that the upwind
+	!        cascade then carries into the cells above.
+	!
+	! (i) and (ii) are statements about the flow and (iii) about the
+	! representation of the unknown, so none of them depends on whether metal
+	! cooling is switched on.
+
+	adv_correction_valid = .true.
+	adv_correction_valid(1-Ng) = .false.   ! inner boundary: never corrected
+	n_adv_eq = 0
+	do j = 2-Ng,N+Ng
+		if (v(j) <= 0.0d0 .or. v(j-1) <= 0.0d0) then
+			adv_correction_valid(j) = .false.
+		else
+			Da_ion  = (r(j) - r(j-1))*R0/(v(j-1)*v0)                       &
+			          *(P_HI(j) + rchiiB(j)*ne(j))
+			xHII_eq = nhii_in(j)/max(nhi_in(j) + nhii_in(j), 1.0d-300)
+			if (Da_ion > Da_local_equilibrium .or. xHII_eq < xHII_adv_min) &
+				adv_correction_valid(j) = .false.
+		endif
+		if (.not. adv_correction_valid(j)) n_adv_eq = n_adv_eq + 1
+	enddo
+
+   !----------------------------------!
+
    ! Evolve species including the advection term in the
    ! 	ODE form
    ! Note: we are using point values here instead of 
@@ -309,18 +400,15 @@
 	      
    if (.not.thereis_He) then
 	      
-		do j = 2-Ng,N+Ng 
-			! Option-(c) guard: in metal-cooled mode keep the converged eq ionization
-			! wherever the flow is not a clean outflow (v<=0: the breathing/inflow
-			! base). The advection correction assumes outflow upwinding and is invalid
-			! there; skipping it also breaks the upwind cascade that produces the
-			! spurious base temperature spike. Metals-off mode is left byte-identical.
-			if (pp_metal_on .and. (v(j) <= 0.0d0 .or. v(j-1) <= 0.0d0)) then
+		do j = 2-Ng,N+Ng
+			! Outside its validity range the advection correction carries no
+			! information; the cell keeps the converged equilibrium ionization.
+			if (.not. adv_correction_valid(j)) then
 				nhi(j)  = nhi_in(j)*n0
 				nhii(j) = nhii_in(j)*n0
 				cycle
 			endif
-	
+
 			! Substitutions
 			dr  = (r(j) - r(j-1))*R0
 			As  = dr/(v(j-1)*v0)
@@ -332,7 +420,10 @@
 			adv_cell%P_HI = P_HI(j)
 			adv_cell%rchiiB = rchiiB(j)
 			adv_cell%a_ion_HI = a_ion_HI(j)
-			
+			! Metal electrons of this cell, per H nucleus, for the electron
+			! density the recombination terms of the residual see.
+			adv_cell%xe_metal = ne_metal(j)/max(nh(j),1.0d-30)
+
 			! Initial guess of solution
 			sys_x(1) = nhi(j)/nh(j)     
 			
@@ -354,10 +445,11 @@
 
 	else
 		
-		do j = 2-Ng,N+Ng 
-			! Option-(c) guard (see the no-He branch): in metal-cooled mode the
-			! non-outflow base (v<=0) keeps the converged eq H/He ionization.
-			if (pp_metal_on .and. (v(j) <= 0.0d0 .or. v(j-1) <= 0.0d0)) then
+		do j = 2-Ng,N+Ng
+			! Outside its validity range the advection correction carries no
+			! information; the cell keeps the converged equilibrium H/He
+			! ionization (see the no-He branch).
+			if (.not. adv_correction_valid(j)) then
 				nhi(j)    = nhi_in(j)*n0
 				nhii(j)   = nhii_in(j)*n0
 				nhei(j)   = nhei_in(j)*n0
@@ -367,7 +459,7 @@
 				if (thereis_HeITR) nheiTR(j) = nheiTR_in(j)*n0
 				cycle
 			endif
-	
+
 			! Substitutions
 			dr  = (r(j) - r(j-1))*R0
 			As  = dr/(v(j-1)*v0)
@@ -401,6 +493,9 @@
 			else
 				adv_cell%heh_loc = HeH
 			endif
+			! Metal electrons of this cell, per H nucleus, for the electron
+			! density the recombination terms of the residual see.
+			adv_cell%xe_metal = ne_metal(j)/max(nh(j),1.0d-30)
 
 			! Add more if HeITR is present
 			if (thereis_HeITR) then
@@ -629,10 +724,15 @@
 		rhom = rho(j-1)
 		vm = v(j-1) 
 		vp = v(j)
-		! Option-(c) guard: in metal-cooled mode the non-outflow base (v<=0) keeps
-		! the converged eq temperature; the advection-corrected energy solve assumes
-		! outflow and would otherwise land on the spurious hot root that cascades up.
-		if (pp_metal_on .and. (vp <= 0.0d0 .or. vm <= 0.0d0)) then
+		! Inflow (condition (i) of the validity block above): the cell keeps the
+		! converged eq temperature. The advection-corrected energy solve is
+		! upwind-differenced just like the ionization solve, so it is invalid
+		! wherever the gas moves inward, and it would otherwise land on the
+		! spurious hot root that then cascades up. This is a property of the
+		! discretization, so it does not depend on the metal switch. Conditions
+		! (ii) and (iii) are statements about the ionization balance and its
+		! representation and are deliberately NOT applied here.
+		if (vp <= 0.0d0 .or. vm <= 0.0d0) then
 			T_out(j) = T_in(j)
 			cycle
 		endif
@@ -706,6 +806,15 @@
 	T_K = T_out*T0
       
 	enddo ! End loop on post processing
+
+	! Report how many cells the advection correction was not applied to
+	! (inflow, local ionization equilibrium, or an unrepresentable ion
+	! fraction; see the validity block above). Counted on the last pass.
+	if (n_adv_eq > 0) then
+		write(*,'(a,i0,a,i0,a)') ' (post_process_adv) advection correction: ', &
+		   n_adv_eq, ' of ', N+2*Ng-1,                                          &
+		   ' cells kept at the equilibrium ionization.'
+	endif
 
 	! Report how many base cells fell back to the eq temperature (metal modes).
 	if (pp_metal_on .and. n_pp_reject > 0) then

@@ -132,15 +132,24 @@ The molecular network keeps its own chemical-equilibrium retry and is left
 alone; the H-only system (no helium) and the post-processing advection solves
 in `post_process_adv.f90` are not covered by this validation.
 
-That last exclusion is visible in the production outputs. Measured 2026-08-11
+That last exclusion was visible in the production outputs. Measured 2026-08-11
 after the re-convergences below, the equilibrium `Ion_species.txt` of all four
 paper planets is free of negative densities, but the advected
-`Ion_species_adv.txt` of HD209458b still carries 42 negative entries in the
+`Ion_species_adv.txt` of HD209458b still carried 42 negative entries in the
 first 14 cells above the base (r = 1.0000-1.0033 R_p): H II down to
 -3.7e7 cm^-3 against a base H density of ~1e14, plus He III and He 2^3S at
--7.6e-6 and -7.3e-7 cm^-3. HD189733b, WASP-52b and WASP-121b are clean in both
-files. Those entries come from the advection correction, not from the
-equilibrium solve, so they are outside what this change addresses.
+-7.6e-6 and -7.3e-7 cm^-3. HD189733b, WASP-52b and WASP-121b were clean in both
+files. Those entries came from the advection correction, not from the
+equilibrium solve, so they were outside what this change addresses.
+
+**Resolved 2026-08-12**, separately, by two changes in `post_process_adv.f90`:
+the electron density inside the advection residuals now includes the metal
+electrons (in that base the metals are the dominant donors), and the correction
+is skipped where it cannot be computed or is not needed --- an inflowing cell,
+a cell in local ionization equilibrium (`Da > 100`), or a cell whose
+equilibrium ion fraction is below the solver's absolute resolution
+(`x_HII,eq < 1e-6`). The `_adv` files of all four planets are now free of
+negative densities. See `docs/postprocess_advection_validity.md`.
 
 ## Gates
 

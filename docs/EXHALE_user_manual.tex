@@ -1230,6 +1230,29 @@ directly. (Velocity and density are \emph{identical} in the \texttt{eq} and
 \texttt{\_adv} files --- the post-processor corrects only the ionization and
 temperature.)
 
+\paragraph{Validity range of the advection correction.} The inflow condition above is one
+of three under which the post-processor keeps the converged equilibrium ionization instead
+of correcting it. A cell is left at equilibrium when
+\begin{enumerate}\itemsep2pt
+\item $v\le0$ on either face (inflow): the upwind discretization has no upstream cell, and
+  the residence time $\Delta r/v$ is negative;
+\item ${\rm Da} = (\Delta r/v)(\Gamma_{\rm H\,I} + \alpha_{\rm H\,II}n_e) > 100$: the gas
+  relaxes to local ionization equilibrium many times over while it crosses the cell, so the
+  equilibrium solution already solves the advection ODE and the correction can only add
+  integration error;
+\item $x_{\rm H\,II,eq} < 10^{-6}$: the residuals carry the \emph{neutral} fraction and
+  report the ion density as $(1-x_{\rm H\,I})n_h$, so the ion fraction is resolved only to
+  the solver's absolute tolerance $\sqrt{\epsilon} = 1.5\times10^{-8}$. In a shielded base
+  with $x_{\rm H\,II,eq}\sim10^{-13}$ the returned value is numerical noise of arbitrary
+  sign, which the upwind cascade would then carry outward as negative ion densities.
+\end{enumerate}
+Conditions 1 and 2 are properties of the flow and 3 of the representation of the unknown,
+so none of them depends on whether metal cooling is active. In practice they trigger only
+in the dense base: in the four shipped planet runs no cell above $r=1.04\,R_{\rm p}$ is
+affected, and the wind is corrected as before. The temperature solve applies condition~1
+only. The count of cells left at equilibrium is printed at the end of the run. Full
+account: \texttt{docs/postprocess\_advection\_validity.md}.
+
 \subsection{\texttt{Hydro\_ioniz.txt} / \texttt{Hydro\_ioniz\_adv.txt}}
 Thermodynamic profiles (7 columns). The dimensionless code variables are
 restored to cgs with the normalizations $n_0$ (base density), $v_0=\sqrt{k_BT_0/\mu}$,

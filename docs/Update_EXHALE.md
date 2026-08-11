@@ -3667,3 +3667,92 @@ site as a justified effective treatment with its validity condition, in the
 `SCOPE` comment of `src/modules/radiation/Cool_coeff.f90`, instead of an
 acknowledged omission. Full measurement:
 `docs/resonance_line_trapping.md`.
+
+---
+
+## 47. Metal electrons and a validity range for the post-process advection correction (2026-08-12)
+
+Two defects in `post_process_adv`, both confined to the advection-corrected
+`*_adv.txt` output (the post-processor is the last call of the run and its
+arguments are `intent(in)`, so the converged wind and the equilibrium `*.txt`
+files cannot be affected by anything here).
+
+**The electron density inside the advection residuals was wrong.** It counted
+only the H and He electrons while the equilibrium residual it corrects counts
+the metal electrons as well (`metal_electron_sum`), and the *same* routine
+already used the metal-inclusive `n_e` for its heating, cooling and temperature
+solve. In a shielded base the metals are the dominant electron donors --
+measured `n_e,metal/n_e = 0.48-1.00` in the base cells of all four paper
+planets -- so the recombination terms were low by up to six orders of
+magnitude. Solved to machine precision with Brent, the residual *as
+coded* had its fixed point at `x_HII = 4.74e-8` in the first HD 209458 b cell
+against an equilibrium `7.46e-14`. A field `adv_cell%xe_metal` now carries the
+metal electrons per H nucleus into all three advection residuals, with the
+definition `calc_ne` and `metal_electron_sum` use. It is not conditioned on
+`eos_include_metals`: that switch decides whether metals enter the mass and
+particle budget, whereas recombination needs the true electron density. Metals
+off gives zero identically.
+
+**The correction was applied where it cannot be computed and is not needed.**
+The residuals carry the *neutral* fraction and report the ion density as
+`(1-x_HI) n_h`, so the ion fraction inherits the solver's absolute resolution
+on `x_HI`, `xtol = sqrt(eps) = 1.5e-8`. Where the equilibrium ion fraction is
+`1e-13` the returned value is quantized at `1e-8` with an arbitrary sign: the
+first HD 209458 b cell got `x_HII = -4.96e-8` where the exact root is
+`+4.74e-8`, right magnitude and wrong sign, and the upwind cascade carried the
+negative density outward over 14 cells. Those same cells are in local
+ionization equilibrium to `Da = (dr/v)(P_HI + alpha_HII n_e) = 350-2900`, so
+the equilibrium solution is the answer the ODE would give anyway. The
+correction is now skipped, and the converged equilibrium ionization kept,
+wherever the cell is (i) inflowing (`v <= 0` on either face, the upwind
+discretization has no upstream cell), (ii) equilibrium-dominated (`Da > 100`)
+or (iii) unrepresentable (`x_HII,eq < 1e-6`, less than 1% relative accuracy at
+that resolution). (i) and (ii) are statements about the flow, (iii) about the
+representation of the unknown, so the pre-existing `pp_metal_on` gate on the
+inflow condition is removed -- it made a discretization property depend on the
+metal-cooling switch. The temperature loop keeps condition (i) alone, likewise
+ungated; a thermal Damkohler number is not evaluated. Clipping the extracted
+densities at zero was tested and rejected: it breaks the H nucleus budget
+`n_HI + n_HII = n_h`.
+
+Gates. `make check`: PASS, all three cases byte-identical (the goldens compare
+`Hydro_ioniz.txt` and `Ion_species.txt`, which this does not write). Isolated
+A/B, the pristine HEAD binary and the modified one run from the same
+configuration: `Hydro_ioniz.txt`, `Ion_species.txt`, `Cooling_breakdown.txt`
+and `Excited_H.txt` byte-identical, only the `_adv` files differ.
+
+| planet | Mdot [log g/s] | negative `_adv` entries | cells held at eq (newly) | outermost held | max change, `r > 1.05` |
+|---|---|---|---|---|---|
+| HD 209458 b | 9.31 -> 9.31 | 48 -> 0 | 103 -> 124 (21) | 1.0316 | 1.4% (He III) |
+| HD 189733 b | 9.05 -> 9.05 | 0 -> 0 | 135 -> 212 (77) | 1.0380 | 0.37% (He III) |
+| WASP-121 b | 13.17 -> 13.17 | 0 -> 0 | 0 -> 0 (0) | - | 3.8% (He III) |
+| WASP-52 b | 11.63 -> 11.63 | 0 -> 0 | 3 -> 57 (54) | 1.0106 | 3.3% (He III) |
+
+Every cell whose equilibrium ion fraction is below `1e-6` is now held at the
+equilibrium value, and no newly held cell lies above `r = 1.038 R_p`. The
+change in the wind is entirely the metal electrons: a build carrying the guard
+alone removes all 48 HD 209458 b negative entries by itself and changes the
+profiles above `r = 1.05 R_p` by exactly zero on three of the four planets and
+by `4.2e-5` on WASP-52 b. Transmission spectra move by at
+most 0.07% in peak depth (He 10830 of HD 209458 b) and 0.08% in equivalent
+width (H-alpha of WASP-121 b).
+
+The re-run reproduces the stored `output/` of WASP-121 b and WASP-52 b
+byte-identically but not that of HD 209458 b and HD 189733 b, which restart
+from `output/*_IC.txt` files that had been refreshed to the previous run's
+converged state; re-running continues that convergence (HD 209458 b `du`
+1.199e-2 -> 3.13e-3) and moves the profiles by up to 9% in density at unchanged
+`Mdot`. That is unrelated to this change --- the pristine binary follows the same
+new trajectory --- and is why the table above is an A/B between two binaries.
+
+Files: `src/modules/post_process/post_process_adv.f90`,
+`src/modules/nonlinear_system_solver/ion_cell_state.f90`,
+`src/modules/nonlinear_system_solver/System_implicit_adv_{H,HeH,HeH_TR}.f90`.
+Full account: `docs/postprocess_advection_validity.md`.
+
+Found and **not** fixed, marked at the code site: `System_implicit_adv_HeH`
+(helium on, He 2^3S off) writes its electron-impact ionization terms without
+the `n_e n_h` factor that `adv_implicit_H`, `adv_implicit_HeH_TR` and the
+equilibrium rows all carry, which also makes them dimensionally inconsistent
+with the photoionization rates they are added to. None of the four paper
+planets uses that path.
