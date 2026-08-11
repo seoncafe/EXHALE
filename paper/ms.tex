@@ -49,14 +49,15 @@ from a photochemical (\texttt{VULCAN}) column. We apply the model to HD~209458~b
 HD~189733~b, WASP-52~b, and WASP-121~b and compare synthetic \mbox{He\,10830}, \Ha,
 \Lya, and metal-line transit depths against published observations. The four
 Newton-converged models span mass-loss rates
-$\log_{10}(\Mdot/{\rm g\,s^{-1}})\approx8.7$--$13.2$, from the compact
+$\log_{10}(\Mdot/{\rm g\,s^{-1}})\approx9.0$--$13.2$, from the compact
 HD~189733~b wind to the strongly irradiated WASP-121~b, with thermosphere
-temperatures of $\sim0.8$--$1.2\times10^{4}$~K on the cooler planets. The
+temperature maxima of $\sim0.8$--$1.2\times10^{4}$~K. The
 synthetic depths range from sub-percent \Ha\ on the quieter targets to tens of
 percent in \mbox{He\,10830} and \Lya, and are compared line by line with
 published measurements; the model reproduces the order of magnitude of the
-observed \mbox{He\,10830}, \Ha, and \Lya\ absorption on most targets while
-over-predicting the WASP-52~b depths, motivating the composition and
+observed \mbox{He\,10830}, \Ha, and \Lya\ absorption on the two cooler targets,
+over-predicts the WASP-52~b depths, and on WASP-121~b saturates against the
+truncation of the modeled domain, motivating the composition and
 domain refinements discussed in the text.
 \end{abstract}
 
@@ -106,7 +107,7 @@ of \EXHALE\ and applies it to four benchmark planets.
 
 Section~\ref{sec:method} describes the model. Section~\ref{sec:ates} contrasts \EXHALE\
 with \ATES\ in both algorithm and physics. Section~\ref{sec:results} presents the
-per-planet application (scaffold), and Section~\ref{sec:summary} summarizes.
+application to each planet (scaffold), and Section~\ref{sec:summary} summarizes.
 
 %=====================================================================
 \section{Method}
@@ -126,7 +127,14 @@ piecewise-linear method (PLM, MC-limited) or with a third-order essentially
 non-oscillatory scheme (ESWENO3), and time integration uses a strong-stability-preserving
 Runge--Kutta update at CFL number $0.6$ \citep{Caldiroli2021,Salz2016}. The grid has 500
 cells plus ghost cells on a mixed uniform--stretched mesh spanning the base radius to the
-outer boundary. In this respect \EXHALE\ and the PLUTO--CLOUDY interface of
+outer boundary. The spacing of the uniform region is a runtime quantity, because it sets
+the number of cells per base density scale height $H=k_BT/(\mu g)$, and a base resolved by
+too few cells supports a stationary cell-to-cell entropy (contact) mode that the
+non-dissipative Riemann fluxes do not damp. The code reports $H(T_{\rm eq})/\Delta r$ at
+startup; on the default grid this is $\approx27$ cells for HD~189733~b against
+$\approx102$ for WASP-121~b, and the high-gravity, compact HD~189733~b is correspondingly
+the planet of the four that needs a refined base. In this respect \EXHALE\ and the
+PLUTO--CLOUDY interface of
 \citet{Salz2016} are numerical near-twins, sharing the same reconstruction, Riemann
 solver, and time integrator.
 
@@ -332,9 +340,31 @@ cooling at the dense base, where the densities exceed the line critical densitie
 that regime the fine-structure floor is replaced by the exact two-level statistical
 equilibrium solution, which saturates the line at high density and recovers the coronal
 value in the low-density limit; this also restores the hydrogen-collision de-excitation
-channel that the electron-only coronal curves omit. All of the cooling fits are
-calibrated over $10^3$--$10^5$~K and extrapolate smoothly but unvalidated outside that
-range (their documented domain of validity). In molecular runs an $\mathrm{H_3^+}$
+channel that the electron-only coronal curves omit. These two lines are additionally
+allowed to be optically thick. Their line-center optical depth is accumulated over the
+column between the emitting cell and the top of the domain, and the corresponding escape
+probability $\beta(\tau)$ --- the plane-parallel Doppler form of \citet{HollenbachMcKee1979}
+and \citet{deJong1980}, renormalized by a factor two so that $\beta(0)=1$ exactly, since
+radiation escaping downward is absorbed by the lower atmosphere and leaves the modeled gas
+either way --- multiplies the spontaneous rate, $A_{ul}\to\beta A_{ul}$, \emph{inside} the
+two-level solution. Placing $\beta$ inside matters: in the subcritical limit the cooling is
+fixed by the collisional excitation rate and must not depend on $\beta$, which an external
+factor would violate. In the tenuous wind $\beta\to1$ and the optically thin result is
+recovered; at the HD~189733~b base, where the layer is cold and dense,
+$\tau([\mbox{O\,\textsc{i}}]\,63\,\mu{\rm m})\simeq3$ and the trapping is a factor of a few.
+Resonance metal lines that can be thick in a metal-rich wind
+(\mbox{Mg\,\textsc{ii}} h\&k) are still treated as optically thin; this is a documented
+limitation rather than a solved problem.
+
+All of the CHIANTI coefficients are fitted over $10^3$--$10^5$~K, and below that floor they
+are not merely unvalidated but unphysical: their softest exponentials carry excitation
+temperatures of several hundred to a few thousand kelvin that correspond to no ground-term
+splitting of the ion in question. The coronal part is therefore removed smoothly below
+$10^3$~K by a cutoff factor that is exactly unity at and above the floor, with continuous
+value and temperature derivative (the bracketing temperature solve and the semi-implicit
+energy update both differentiate the cooling in $T$). Only the explicit two-level
+fine-structure terms, which are valid there, survive below the floor. The width of the
+cutoff is a modeling choice, not a measurement. In molecular runs an $\mathrm{H_3^+}$
 ro-vibrational cooling term is added (Miller et al. 2013).
 
 The radiative channels above are the source term in the thermal energy equation; the gas
@@ -538,36 +568,52 @@ We apply \EXHALE\ to four transiting planets that span the relevant parameter ra
 have published transit-absorption measurements. For each we report the Newton-converged
 wind structure (Figures~\ref{fig:struct_hd209}--\ref{fig:struct_wasp121}), the
 steady-state mass-loss rate, and the synthetic transit depths against observations
-(Figures~\ref{fig:transit_he}--\ref{fig:transit_lya}). Quoted transit depths are the
-line-center excess absorption of the rotation- and instrument-convolved model curve.
-One caveat applies throughout: the WASP-121~b model reported here is a first-stage
-solution computed without the diffusive He/H separation of Section~\ref{sec:diffusion};
-the other three include it. The structure figures resolve both the radiative cooling and
-the heating into their individual channels, with the collisional-excitation cooling split
-by absorber into an \mbox{H\,\textsc{i}} (\Lya-dominated) term and the helium terms.
+(Figures~\ref{fig:transit_he}--\ref{fig:transit_lya}). All four solutions are converged
+with the JFNK steady-state solver rather than stopped on the $du$ criterion, reaching
+discrete steady residuals of $7.7\times10^{-4}$, $5.4\times10^{-4}$, $1.6\times10^{-4}$
+and $5.7\times10^{-5}$ for HD~209458~b, HD~189733~b, WASP-52~b and WASP-121~b; this
+matters quantitatively, because a $du$-threshold stop alone carries a path-dependent
+spread of several percent in $\Mdot$.
+
+Quoted transit depths are the line-center excess absorption of the model curve, with the
+instrument-convolved value given after a slash where the convolution changes it
+appreciably. The figures additionally include the broadening by the (tidally locked)
+planet rotation, which lowers the plotted peak further; the planet, stellar, and spin
+parameters all come from each run directory's own input file. Of the four models only
+HD~189733~b carries the diffusive He/H and He/metal separation of
+Section~\ref{sec:diffusion}; the other three are run with a fixed He/H ratio, so
+composition gradients are not a differentiating factor between them. The structure figures
+resolve both the radiative cooling and the heating into their individual channels, with
+the collisional-excitation cooling split by absorber into an \mbox{H\,\textsc{i}}
+(\Lya-dominated) term and the helium terms.
 
 \subsection{HD~209458~b}
 \label{sec:hd209}
 
 \EXHALE\ relaxes HD~209458~b to a steady transonic wind with a mass-loss rate of
-$\log_{10}(\Mdot/{\rm g\,s^{-1}})=9.57$. The temperature climbs from the $\sim1450$~K base
+$\log_{10}(\Mdot/{\rm g\,s^{-1}})=9.31$. The temperature climbs from the $\sim1450$~K base
 through a steep thermosphere to a broad maximum of $\approx7.8\times10^{3}$~K near
 $1.4$--$1.6\,\Rp$, and the gas becomes predominantly ionized above $\sim1.1\,\Rp$, where
 \mbox{H\,\textsc{ii}} overtakes \mbox{H\,\textsc{i}} and helium is mostly singly ionized
 (Figure~\ref{fig:struct_hd209}). The outflow is slow and subsonic across the modeled
-thermosphere, reaching $\lesssim1$~km\,s$^{-1}$ at the $2\,\Rp$ escape radius and
-accelerating outward beyond it. In the cooling budget the \Lya-dominated collisional
-excitation and recombination channels balance the photoionization heating in the ionized
-layer, while adiabatic expansion becomes comparable to the radiative losses in the outer
-wind.
+thermosphere, reaching $0.7$~km\,s$^{-1}$ at the $2\,\Rp$ escape radius and crossing the
+sonic point only at $\approx4.1\,\Rp$, well outside it. In the cooling budget the
+\Lya-dominated collisional excitation and recombination channels balance the
+photoionization heating in the ionized layer, while adiabatic expansion becomes comparable
+to the radiative losses in the outer wind.
 
-The synthetic \mbox{He\,10830} triplet has a line-center depth of $7.1\%$ and \Lya\ reaches
-$\approx25\%$, while \Ha\ is weak at $0.40\%$ (Figures~\ref{fig:transit_he},
-\ref{fig:transit_ha}, and~\ref{fig:transit_lya}). The digitized wing \Lya\ profile of
-\citet{VidalMadjar2003} and the noisy \Ha\ trace of \citet{Jensen2012} are of comparable
-magnitude to the model, although the \Lya\ core is inaccessible to observation because of
-interstellar and geocoronal absorption and the model \Ha\ appears narrower than the broad,
-antisymmetric structure in the digitized data.
+The synthetic \mbox{He\,10830} triplet has a line-center depth of $9.7/9.1\%$ and \Lya\
+reaches $25.1\%$, while \Ha\ is weak at $0.22\%$ (Figures~\ref{fig:transit_he},
+\ref{fig:transit_ha}, and~\ref{fig:transit_lya}). The metal resonance lines of this
+solar-composition run are predicted at
+$10.3/5.9\%$ (\mbox{Mg\,\textsc{ii}} h\&k), $3.1\%$ (\mbox{Ca\,\textsc{ii}} H\&K), and
+$1.4/1.3\%$ (\mbox{Na\,\textsc{i}} D); the large convolution effect on
+\mbox{Mg\,\textsc{ii}} reflects how narrow its saturated core is. The digitized wing \Lya\
+profile of \citet{VidalMadjar2003} is of comparable magnitude to the model, although the
+\Lya\ core is inaccessible to observation because of interstellar and geocoronal
+absorption. The \Ha\ trace of \citet{Jensen2012} scatters by $\pm0.7$--$0.9\%$ about zero,
+several times the model depth, so it neither confirms nor excludes a signal this weak; the
+model line is also narrower than the broad, antisymmetric structure in the digitized data.
 
 \begin{figure*}
 \centering
@@ -593,18 +639,30 @@ Table~\ref{tab:energy}. Curves are drawn to the $2\,\Rp$ escape radius. Generate
 \label{sec:hd189}
 
 For the denser, more strongly bound HD~189733~b the model gives a mass-loss rate of
-$\log_{10}(\Mdot/{\rm g\,s^{-1}})=8.72$, the lowest of the four. The thermosphere is hotter
+$\log_{10}(\Mdot/{\rm g\,s^{-1}})=9.04$, the lowest of the four. The thermosphere is hotter
 and more compact than that of HD~209458~b, with a temperature maximum of
-$\approx1.16\times10^{4}$~K, and the wind is again slow and subsonic through the modeled
-region (Figure~\ref{fig:struct_hd189}). Hydrogen and helium ionize over a narrow shell just
+$\approx1.25\times10^{4}$~K, and the wind is again slow and subsonic through the modeled
+region, reaching only $0.5$~km\,s$^{-1}$ at $2\,\Rp$ (Figure~\ref{fig:struct_hd189}).
+Hydrogen and helium ionize over a narrow shell just
 above the base; the diffusive He/H separation included in this run lets the He/H ratio fall
-with altitude. The base-oscillation (``breathing'') tendency that develops at the steep
-base density gradient is controlled by the Newton finish, which drives the discrete steady
-residual below the level reachable by time marching.
+with altitude.
 
-The synthetic \mbox{He\,10830} depth is $1.9\%$ and \Ha\ is $0.61\%$
-(Figures~\ref{fig:transit_he} and~\ref{fig:transit_ha}). The model \mbox{He\,10830} is a
-factor of a few deeper than the \citet{Salz2018} detection, which peaks near $0.7\%$, while
+This is the planet for which the base grid has to be refined. On the default spacing its
+base density scale height spans only ${\sim}27$ cells, the least margin of the four, and the
+resulting stationary cell-to-cell entropy mode described in Section~\ref{sec:hydro} survives
+in the converged state. The model quoted here therefore doubles the base resolution, which
+removes the mode from the interior cells; a residual alternating signature remains in the
+first two cells above the boundary, where it measures the ghost-to-cell density jump rather
+than the entropy mode, and is a documented numerical artifact of the lower boundary rather
+than a physical feature. The base temperature this run settles to, ${\sim}490$~K, is set by
+where the trapped fine-structure cooling of Section~\ref{sec:cooling} balances the local
+metal photoionization heating; the model contains no stellar optical/infrared absorption
+and no thermal background, so nothing enforces a floor at the equilibrium temperature for a
+layer that has shielded out the XUV.
+
+The synthetic \mbox{He\,10830} depth is $2.5\%$ and \Ha\ is $0.52\%$
+(Figures~\ref{fig:transit_he} and~\ref{fig:transit_ha}). The model \mbox{He\,10830} is
+about three times deeper than the \citet{Salz2018} detection, which peaks near $0.9\%$, while
 sharing the double-peaked triplet shape. Conversely, the clean $\approx2.2\%$ \Ha\ dip
 digitized from \citet{Jensen2012} is deeper than the model \Ha, indicating that the $n=2$
 population and its \Lya\ pumping in this run under-produce the observed Balmer absorption.
@@ -624,31 +682,35 @@ separation. Generated by \texttt{python/make\_struct\_figures.py}.}
 \label{sec:wasp52}
 
 WASP-52~b is a low-gravity, strongly irradiated planet, and the model produces a
-correspondingly large mass-loss rate of $\log_{10}(\Mdot/{\rm g\,s^{-1}})=11.80$. The
-temperature reaches $\approx9.3\times10^{3}$~K and the gas is highly ionized through the
+correspondingly large mass-loss rate of $\log_{10}(\Mdot/{\rm g\,s^{-1}})=11.61$. The
+temperature reaches $\approx9.1\times10^{3}$~K and the gas is highly ionized through the
 extended thermosphere, which is modeled here on a domain reaching to $10\,\Rp$; the wind
-accelerates smoothly and remains transonic within the escape radius
+accelerates smoothly, passes $10$~km\,s$^{-1}$ at the $2\,\Rp$ escape radius, and crosses
+the sonic point just outside it at $\approx2.2\,\Rp$
 (Figure~\ref{fig:struct_wasp52}). The low assumed He/H ratio ($\simeq0.02$) still leaves a
 large neutral-hydrogen and metastable-helium column along the extended line of sight.
 
 The resulting transit depths are the largest of the sample: the model \mbox{He\,10830}
-triplet saturates at $\approx49\%$, \Ha\ at $4.5\%$, and \Lya\ is fully saturated near
-$100\%$ (Figures~\ref{fig:transit_he}--\ref{fig:transit_lya}). These greatly exceed the
-measured absorption --- the \citet{Kirk2022} \mbox{He\,10830} spectrum is at the
-$\sim1\%$ level and the \citet{Chen2020} \Ha\ spectrum is consistent with a
-sub-percent signal. The model therefore over-predicts the WASP-52~b line depths by roughly
-an order of magnitude. The most likely contributors are the large radial extent of the
+triplet reaches $23.5/22.9\%$, \Ha\ $3.5\%$, and \Lya\ is fully saturated near
+$100\%$ (Figures~\ref{fig:transit_he}--\ref{fig:transit_lya}). The metal lines are deeper
+still, with \mbox{Mg\,\textsc{ii}} at $65.0/57.2\%$ and \mbox{Ca\,\textsc{ii}} at $14.8\%$.
+These greatly exceed the measured absorption --- the \citet{Kirk2022}
+\mbox{He\,10830} spectrum peaks near $3.6\%$ and the \citet{Chen2020} \Ha\ spectrum is
+consistent with a sub-percent signal. The model therefore over-predicts the WASP-52~b line
+depths by a factor of several. The most likely contributors are the large radial extent of the
 absorbing column on the $10\,\Rp$ domain and the assumed composition; a reduced He/H ratio
 and a line of sight truncated nearer the Roche lobe would both lower the predicted depths,
 and quantifying this sensitivity is left to future work rather than tuned here. A companion
-poster analysis of the same target isolates the domain dependence directly: keeping the
-microphysics fixed and truncating the line-of-sight integration at the $L_1$ Roche point,
-rather than carrying it to $10\,\Rp$, brings the synthetic \mbox{He\,10830} depth down into
-agreement with the measured value, whereas the extended domain retains the over-prediction.
-This indicates that the discrepancy is primarily a domain and geometry effect --- the
-absorbing column integrated well beyond the region the planet can gravitationally retain ---
-rather than a failure of the underlying microphysics, and it is best addressed with a
-Roche-lobe truncation of the transit geometry in future work.
+analysis of the same target separates the two levers. Holding the microphysics and
+composition fixed and truncating the line-of-sight integration at the $L_1$ Roche point,
+rather than carrying it to $10\,\Rp$, lowers the synthetic \mbox{He\,10830} depth by a
+factor of $3$--$10$ on its own, because most of the absorbing column on the extended domain
+lies beyond the radius the planet can gravitationally retain. Reducing the helium abundance
+from solar to $\mathrm{H/He}\simeq98/2$ then accounts for a further factor of about two, and
+the two together reproduce the measured depth. The larger of the two effects is therefore
+the domain, which argues that the over-prediction reported here is primarily a geometry
+problem, to be addressed with a Roche-lobe truncation of the transit integration rather than
+by adjusting the microphysics.
 
 \begin{figure*}
 \centering
@@ -663,32 +725,43 @@ domain extends to $10\,\Rp$). Generated by \texttt{python/make\_struct\_figures.
 \label{sec:wasp121}
 
 WASP-121~b is the most extreme target, an ultra-hot Jupiter close to Roche-lobe overflow.
-The first-stage model, computed without diffusive separation, gives a mass-loss rate of
-$\log_{10}(\Mdot/{\rm g\,s^{-1}})=13.20$, the highest of the sample. The thermosphere is
+The model, computed without diffusive separation, gives a mass-loss rate of
+$\log_{10}(\Mdot/{\rm g\,s^{-1}})=13.17$, the highest of the sample. The thermosphere is
 very hot --- of order $10^{4}$~K through most of the modeled shell and rising steeply toward
-the $1.5\,\Rp$ escape radius --- and the wind reaches $\sim90$~km\,s$^{-1}$ near the outer
-boundary (Figure~\ref{fig:struct_wasp121}). The gas is strongly ionized, with metal ions
+the $1.5\,\Rp$ escape radius --- and the wind reaches $14$~km\,s$^{-1}$ there, crossing the
+sonic point at $\approx1.6\,\Rp$, just beyond the escape radius
+(Figure~\ref{fig:struct_wasp121}). The gas is strongly ionized, with metal ions
 such as \mbox{C\,\textsc{ii}}, \mbox{O\,\textsc{ii}}, and \mbox{N\,\textsc{ii}} carrying an
 appreciable fraction of the electrons and contributing to the metal-line cooling. Because
 the escape radius lies inside the Roche geometry, the profile near the outer boundary is
-sensitive to the domain truncation, and the first-stage solution shows a boundary-layer
-temperature feature there; the diffusive-separation stage is required for a quantitative
-prediction.
+sensitive to the domain truncation, and the solution shows a boundary-layer
+temperature feature there.
 
-The synthetic depths are modest despite the high mass-loss rate, reflecting the strong
-ionization: \mbox{He\,10830} is $1.8\%$, \Ha\ $1.1\%$, and \Lya\ only $2.2\%$
-(Figures~\ref{fig:transit_he}--\ref{fig:transit_lya}). The model \mbox{He\,10830} amplitude
-is comparable to the \citet{Czesla2024} measurement, near the $1$--$2\%$ level, though the
-observed absorption is offset in wavelength relative to the model line center. The metal
-resonance lines are also predicted at the percent level in line center (for example
-$\approx1.7\%$ \mbox{Mg\,\textsc{ii}} and $\approx1.2\%$ \mbox{Ca\,\textsc{ii}}), consistent
-with the metal-rich, highly ionized wind expected for this planet
+The synthetic depths are the most nearly uniform across lines of the four planets, and
+several of them sit at the same value: \mbox{He\,10830} is $3.7\%$, \Ha\ $3.3\%$, \Lya\
+$3.7\%$, \mbox{Mg\,\textsc{ii}} $3.8\%$, and \mbox{Ca\,\textsc{ii}} $3.7\%$
+(Figures~\ref{fig:transit_he}--\ref{fig:transit_lya}). That common ceiling is geometric
+rather than physical. A line whose absorbing column is optically thick all the way to the
+edge of the modeled profile blocks the whole annulus between the planet and that edge, so
+its depth cannot exceed $(\Rp/\Rstar)^2\,(r_{\rm out}^2-1)$, which is $3.9\%$ here for a
+profile ending at $r_{\rm out}=1.61\,\Rp$ on a $1.458\,R_{\odot}$ star. The saturated lines
+sit just under that bound. Every one of these depths is therefore a lower bound imposed by
+the domain rather than a prediction, and none of them should be read as a measurement of
+how much absorption the wind actually produces: what the model establishes on this planet
+is that the wind is optically thick in all five lines out to the truncation radius. A
+quantitative depth requires a domain carried past the Roche lobe, which is where the
+one-dimensional spherical geometry stops being the right description in any case. For the
+same reason, the fact that the \mbox{He\,10830} depth exceeds the \citet{Czesla2024}
+measurement, which peaks near $2\%$, is not yet evidence of a discrepancy in the
+microphysics; we note only that the observed absorption is offset in wavelength relative to
+the model line center. That the metal lines saturate at all is consistent with the
+metal-rich, highly ionized wind expected for this planet
 \citep{Huang2023,Koskinen2022}.
 
 \begin{figure*}
 \centering
 \includegraphics[width=0.92\textwidth]{fig_struct_wasp121.pdf}
-\caption{Radial structure of the first-stage WASP-121~b model (no diffusive separation),
+\caption{Radial structure of the WASP-121~b model (no diffusive separation),
 as in Figure~\ref{fig:struct_hd209}, shown to the $1.5\,\Rp$ escape radius. The temperature
 panel is clipped to a robust upper percentile so the boundary-layer feature near the escape
 radius does not dominate the scale. Generated by
@@ -745,13 +818,15 @@ steady-state solver; and a tiered lower-atmosphere coupling. Applied to HD~20945
 HD~189733~b, WASP-52~b, and WASP-121~b, the model produces mass-loss rates and synthetic
 \mbox{He\,10830}, \Ha, \Lya, and metal-line transit spectra for direct comparison with
 observations. Across the four benchmarks the model gives mass-loss rates of
-$\log_{10}(\Mdot/{\rm g\,s^{-1}})=9.57$ (HD~209458~b), $8.72$ (HD~189733~b), $11.80$
-(WASP-52~b), and $13.20$ (WASP-121~b), and synthetic line depths that match the order of
-magnitude of the measured \mbox{He\,10830}, \Ha, and \Lya\ absorption on HD~209458~b,
-HD~189733~b, and WASP-121~b, while over-predicting the WASP-52~b depths --- pointing to the
-composition and line-of-sight domain, and to the excited-state microphysics behind the
-opposite-sign HD~189733~b \mbox{He\,10830} and \Ha\ mismatches, as the priorities for the
-next iteration.
+$\log_{10}(\Mdot/{\rm g\,s^{-1}})=9.31$ (HD~209458~b), $9.04$ (HD~189733~b), $11.61$
+(WASP-52~b), and $13.17$ (WASP-121~b), each converged with the steady-state solver rather
+than stopped on the mass-flux criterion, and synthetic line depths that match the order of
+magnitude of the measured \mbox{He\,10830}, \Ha, and \Lya\ absorption on HD~209458~b and
+HD~189733~b, while over-predicting the WASP-52~b depths and saturating against the domain
+truncation on WASP-121~b. The priorities these point to are the composition and the
+line-of-sight domain, a transit geometry carried past the Roche lobe for the most extended
+winds, and the excited-state microphysics behind the opposite-sign HD~189733~b
+\mbox{He\,10830} and \Ha\ mismatches.
 
 \begin{acknowledgments}
 %% PLACEHOLDER: acknowledgments, funding, facilities.

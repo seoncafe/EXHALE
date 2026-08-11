@@ -62,6 +62,11 @@ Czesla, S., Lamp{\'o}n, M., Sanz-Forcada, J., {et~al.} 2024,
   spectrum of WASP-121\,b},} A\&A, 692, A230
 
 % type= article
+\bibitem[{T. de~Jong {et~al.}(1980)de~Jong, Boland, \& Dalgarno}]{deJong1980}
+de~Jong, T., Boland, W., \& Dalgarno, A. 1980, \bibinfo{title}{{Hydrostatic
+  models of molecular clouds},} A\&A, 91, 68
+
+% type= article
 \bibitem[{G. Del~Zanna {et~al.}(2021)Del~Zanna, Dere, Young, \&
   Landi}]{DelZanna2021}
 Del~Zanna, G., Dere, K.~P., Young, P.~R., \& Landi, E. 2021,
@@ -91,6 +96,13 @@ France, K., Loyd, R. O.~P., Youngblood, A., {et~al.} 2016, \bibinfo{title}{{The
   Chakraborty, Shaw, Bianchi, Chatzikos, Tsujimoto, \& Ferland}]{Cloudy2025}
 Gunasekera, C.~M., van Hoof, P. A.~M., Dehghanian, M., {et~al.} 2025,
   \bibinfo{title}{{The 2025 Release of Cloudy},} RMxAA, 61, 120
+
+% type= article
+\bibitem[{D. Hollenbach {\&} C.~F. McKee(1979)Hollenbach \&
+  McKee}]{HollenbachMcKee1979}
+Hollenbach, D., \& McKee, C.~F. 1979, \bibinfo{title}{{Molecule formation and
+  infrared emission in fast interstellar shocks. I. Physical processes},} ApJS,
+  41, 555
 
 % type= article
 \bibitem[{C. Huang {et~al.}(2017)Huang, Arras, Christie, \& Li}]{Huang2017}

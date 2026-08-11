@@ -114,7 +114,7 @@ recombination$+$cascade, drained by FUV photoionization.
 \item \textbf{He\,$2^3S$} metastable network $\to$ He\,10830; \textbf{H\,$n{=}2$}
   $\to$ H$\alpha$ (Christie+2013 NLTE $+$ Ly$\alpha$ pumping).
 \item \textbf{Steady solver:} PLM$\to$WENO3 march $+$ Newton/JFNK (flux convergence);
-  \textbf{transmission} via Voigt LOS $+$ disk average (\texttt{EXHALE\_transit.py}).
+  \textbf{transmission} via impact-parameter Voigt LOS $+$ disk average (\texttt{TPM}).
 \item \textbf{Ly$\alpha$ RT:} coupled to \textbf{LaRT} 3-D Monte Carlo (Seon \& Kim
   2020) $\to$ cylindrical $P_\alpha(\rho,z)$ $\to$ 2-D $n_{2p}$ $\to$ H$\alpha$.
 \end{itemize}
@@ -163,7 +163,7 @@ recombination$+$cascade, drained by FUV photoionization.
   over-counts the $L_1$ funnel); the physical \textbf{$L_1$ (Roche)} domain matches.
 \item \textbf{Composition:} solar (92/8) is too strong; matching the observed
   $\sim\!3.4\%$ requires a \textbf{He-depleted} atmosphere, $\mathbf{H/He\approx98/2}$
-  ($\mathrm{He/H}\approx0.0204$).
+  ($\mathrm{He/H}\approx0.017$).
 \end{itemize}
 \end{block}
 
@@ -206,7 +206,7 @@ solid-angle dilution; $\Gamma_{2p}$ = Balmer-continuum photoionization.)}
   double-Gaussian ($\pm74$\,km/s, width 49\,km/s).
 \item H$\alpha$ is \textbf{pump-dominated}, domain-\emph{insensitive}, depth
   $\propto F_{\rm Ly\alpha}$; matched at
-  $\mathbf{F_{\rm Ly\alpha}\approx0.3\text{--}0.5\times}$ the $\epsilon$\,Eri proxy
+  $\mathbf{F_{\rm Ly\alpha}\approx0.3\text{--}0.5\times}$ the EP\,Eri proxy
   $\Rightarrow$ WASP-52's Ly$\alpha$ is $\sim\!1/3$--$1/4$ of the proxy.
 \end{itemize}
 \end{block}
@@ -224,9 +224,9 @@ solid-angle dilution; $\Gamma_{2p}$ = Balmer-continuum photoionization.)}
 \midrule
 Mass loss $\Mdot$ & matches Yan+2022 within $\sim$10\% (\emph{no tuning}) \\
 He\,10830 ($\sim\!3.4\%$) & $L_1$ (Roche) domain $+$ He-poor
-  $\mathrm{H/He}\approx98/2$ ($\mathrm{He/H}\approx0.0204$) $+$ $0.5\,\Fo$ \\
+  $\mathrm{H/He}\approx98/2$ ($\mathrm{He/H}\approx0.017$) $+$ $0.5\,\Fo$ \\
 H$\alpha$ ($\sim\!0.8\%$) & LaRT Ly$\alpha$ RT $+$
-  $F_{\rm Ly\alpha}\approx0.3\text{--}0.5\times$ $\epsilon$\,Eri proxy \\
+  $F_{\rm Ly\alpha}\approx0.3\text{--}0.5\times$ EP\,Eri proxy \\
 XUV hardness $\beta_m$ & $0.218$ \\
 \bottomrule
 \end{tabular}
@@ -241,7 +241,7 @@ XUV hardness $\beta_m$ & $0.218$ \\
   self-consistent escape model; He\,10830 demands the \textbf{Roche ($L_1$) domain}
   and a \textbf{He-depleted} atmosphere ($\mathrm{H/He}\approx98/2$).
 \item H$\alpha$, via proper Ly$\alpha$ RT, is a \textbf{diagnostic of the stellar
-  Ly$\alpha$ flux} ($\approx1/3$--$1/4$ of the $\epsilon$\,Eri proxy). Jointly modeling the
+  Ly$\alpha$ flux} ($\approx1/3$--$1/4$ of the EP\,Eri proxy). Jointly modeling the
   three lines breaks degeneracies among composition, $\Mdot$, and stellar Ly$\alpha$.
 \item \textbf{Outlook:} we will extend this EXHALE$+$LaRT framework to a
   \textbf{systematic analysis of other exoplanet atmosphere observations}
@@ -253,15 +253,6 @@ Keck/NIRSPEC); H$\alpha$ -- Chen et al.\ 2020 (A\&A 635, A171; ESPRESSO/VLT).\\
 \textbf{Model/theory:} Yan, Seon, Guo, Chen \& Li 2022 (ApJ 936, 177);
 Caldiroli+2021 (A\&A 655, A30); Yang \& Guo 2018 (RAA 18, 077); Christie+2013
 (ApJ 772, 144); Huang+2017 (ApJ 851, 150); Seon \& Kim 2020 (ApJS 250, 9).}
-%% Model vintage: every number and figure above comes from the WASP-52b/fxuv*
-%% case directories as they stood on 2026-08-09.  They predate the 2026-08-11
-%% metal-line trapping / coronal-cutoff cooling and the corrected JFNK line
-%% search and have NOT been re-converged under them.  The current production run
-%% of this planet (10 R_p domain, full F_0, He/H = 0.0204) gives
-%% log10 Mdot = 11.61 with ||R|| = 1.6e-4; that is a different configuration
-%% from the L_1-domain, He-depleted best fit shown here, and is not this number.
-%% The column body is exactly full: adding even one visible line to either
-%% column overflows it (measured, 2026-08-11).
 \end{block}
 
 \end{minipage}
