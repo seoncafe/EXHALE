@@ -29,6 +29,15 @@
 	! solve, read by write_output for the extra output columns.
 	real*8, dimension(1-Ng:N+Ng,4), save :: nmol_eq = 0.0d0
 
+	! Run-wide totals of the atomic ionization root validation, reported once
+	! at the end of the run (EXHALE_main) next to the Newton usage counters:
+	! stored states rejected as a starting point, cell solves that needed a
+	! second or third starting point, first roots that lay outside the
+	! physical simplex, and cells where no starting point produced an
+	! admissible root. All zero for a run that never leaves the simplex.
+	integer, save :: ieq_n_reseed = 0, ieq_n_retry  = 0
+	integer, save :: ieq_n_unphys = 0, ieq_n_noroot = 0
+
 	contains 
 	
 	subroutine ioniz_eq(T_in,n_io,f_sp_io,heat_out,cool_out,q)
@@ -102,6 +111,21 @@
    ! for the retry (chemical-equilibrium H2 fit at the local p, T).
    integer :: n_molfail
    real*8  :: pbar_loc, qh2_loc, x2_loc
+
+   ! Atomic (non-molecular) ionization solve: validation of the returned root.
+   ! The equilibrium systems are polynomial and possess roots outside the
+   ! physical simplex (negative stage fractions, or ionized stages of one
+   ! element summing above its nucleus total); such a root makes the neutral
+   ! density negative and is not a solution of the physical problem even when
+   ! the algebraic residual vanishes. Each cell therefore tries up to three
+   ! starting points and keeps the best admissible root; x_root_best holds it,
+   ! ok_rank grades the attempt (0 none, 1 physical, 2 physical + converged),
+   ! and the counters feed the one-line sweep summary.
+   integer, parameter :: n_x_max = 4 + 2*n_melem   ! largest atomic N_eq
+   integer :: iatt, info_ieq, ok_rank, best_rank
+   integer :: n_ieq_reseed, n_ieq_retry, n_ieq_unphys, n_ieq_fail
+   logical :: conv_ieq, phys_ieq
+   real*8, dimension(n_x_max) :: x_root_best
 
    ! Output heating,cooling and absorbed energy
    real*8, dimension(1-Ng:N+Ng),intent(out) :: heat_out,cool_out,q
@@ -360,14 +384,23 @@
 		! cx_metal_base is broadcast (copyin) and toggled 4<->5 per cell. All the
 		! subroutine-local scratch is private. count==0 stays serial (neighbour
 		! warm-start).
-		! Molecular failed-cell counter (combined via the reduction below);
-		! reset once per equilibrium sweep.
-		n_molfail = 0
+		! Failed-cell counters (combined via the reduction below); reset once
+		! per equilibrium sweep. n_molfail counts molecular cells that kept
+		! their previous state; the n_ieq_* counters are the atomic root
+		! validation (see the declarations above).
+		n_molfail    = 0
+		n_ieq_reseed = 0
+		n_ieq_retry  = 0
+		n_ieq_unphys = 0
+		n_ieq_fail   = 0
 		!$omp parallel do default(shared) schedule(dynamic,8) copyin(cx_metal_base) &
 		!$omp   private(params, usednt, i0, top, im, meg_ntot, meg_g0, meg_g1,      &
 		!$omp           meg_b0, meg_b1, meg_a1, meg_a2, meg_top,                     &
-		!$omp           pbar_loc, qh2_loc, x2_loc)                                   &
-		!$omp   reduction(+:n_molfail) if(count > 0)
+		!$omp           pbar_loc, qh2_loc, x2_loc,                                   &
+		!$omp           iatt, info_ieq, ok_rank, best_rank, conv_ieq, phys_ieq,      &
+		!$omp           x_root_best)                                                 &
+		!$omp   reduction(+:n_molfail,n_ieq_reseed,n_ieq_retry,n_ieq_unphys,   &
+		!$omp               n_ieq_fail) if(count > 0)
 		do j = N+Ng,1-Ng,-1
 
 			! Lazily allocate this thread's threadprivate NL scratch.
@@ -536,6 +569,21 @@
 						endif
 					enddo
 				endif
+
+				! The guess just built is this cell's previous state. If that
+				! state is not physical it must not seed the solve again: an
+				! unphysical root fed back as the next step's guess reproduces
+				! itself indefinitely (the self-sticking negative H II / Fe I
+				! state at the base). Start from the local ionization balance
+				! instead, which lies inside the simplex by construction. The
+				! molecular network keeps its own chemical-equilibrium retry.
+				if (.not.thereis_mol) then
+					if (.not.ionization_fractions_physical(sys_x,N_eq,mbase)) then
+						call ionization_balance_at_fixed_ne(sys_x,N_eq,   &
+						                                    mbase,ne(j))
+						n_ieq_reseed = n_ieq_reseed + 1
+					endif
+				endif
 			endif
 
 		 	! Analytic-Jacobian Newton (Task 2); hybrd1 fallback inside solve_ieq.
@@ -582,25 +630,89 @@
 						n_molfail = n_molfail + 1
 					endif
 				endif
-			else if (thereis_HeITR .and. thereis_metals) then
-				! Merged He-triplet + metals: triplet at sys_x(4), metals at
-				! sys_x(5..). The cell-by-cell metal coefficients (set_metal_coeffs)
-				! and charge-exchange rates (cx_set_cell) were already loaded
-				! above in the thereis_metals block; here we only point charge
-				! exchange at the shifted metal rows for the merged solve.
-				cx_metal_base = 5
-				call hybrd1(ion_system_HeH_TR_metals,N_eq,sys_x,sys_sol,  &
-						    tol,info,wa,lwa,params)
-				cx_metal_base = 4
-			else if (thereis_HeITR) then
-				call hybrd1(ion_system_HeH_TR,N_eq,sys_x,sys_sol,   &
-						    tol,info,wa,lwa,params)
-			else if (thereis_metals) then
-				call solve_ieq(ion_system_HeH_metals,jac_system_HeH_metals,  &
-				            N_eq,sys_x,params,tol,wa,lwa,usednt)
 			else
-				call solve_ieq(ion_system_HeH,jac_system_HeH,       &
-                            N_eq,sys_x,params,tol,wa,lwa,usednt)
+				! Atomic H/He (+ He 2^3S) (+ metals). A vanishing residual is
+				! not sufficient: the root must also be physical, i.e. every
+				! stage fraction non-negative and the ionized stages of each
+				! element summing to at most its nucleus total. The cell is
+				! solved from up to three starting points and the best
+				! admissible root is kept:
+				!   1  the guess built above (previous state / neighbour),
+				!   2  the uncoupled ionization balance at the incoming n_e,
+				!   3  the optically thick limit, all nuclei neutral.
+				! Attempt 1 is accepted as it stands whenever it converges to
+				! a physical root, so a healthy cell takes exactly the same
+				! solver path as before.
+				best_rank = 0
+				do iatt = 1,3
+					if (iatt .eq. 2) then
+						call ionization_balance_at_fixed_ne(sys_x,N_eq,   &
+						                                    mbase,ne(j))
+						n_ieq_retry = n_ieq_retry + 1
+					else if (iatt .eq. 3) then
+						sys_x(1:N_eq) = 0.0d0
+					endif
+
+					if (thereis_HeITR .and. thereis_metals) then
+						! Merged He-triplet + metals: triplet at sys_x(4),
+						! metals at sys_x(5..). The cell-by-cell metal
+						! coefficients (set_metal_coeffs) and charge-exchange
+						! rates (cx_set_cell) were already loaded above in the
+						! thereis_metals block; here we only point charge
+						! exchange at the shifted metal rows for the merged
+						! solve.
+						cx_metal_base = 5
+						call hybrd1(ion_system_HeH_TR_metals,N_eq,sys_x,  &
+						            sys_sol,tol,info,wa,lwa,params)
+						cx_metal_base = 4
+						conv_ieq = (info .eq. 1)
+					else if (thereis_HeITR) then
+						call hybrd1(ion_system_HeH_TR,N_eq,sys_x,sys_sol, &
+						            tol,info,wa,lwa,params)
+						conv_ieq = (info .eq. 1)
+					else if (thereis_metals) then
+						call solve_ieq(ion_system_HeH_metals,             &
+						            jac_system_HeH_metals,                &
+						            N_eq,sys_x,params,tol,wa,lwa,usednt,  &
+						            info_ieq)
+						conv_ieq = (info_ieq .eq. 1)
+					else
+						call solve_ieq(ion_system_HeH,jac_system_HeH,     &
+						            N_eq,sys_x,params,tol,wa,lwa,usednt,  &
+						            info_ieq)
+						conv_ieq = (info_ieq .eq. 1)
+					endif
+
+					phys_ieq = ionization_fractions_physical(sys_x,N_eq,mbase)
+					if (iatt .eq. 1 .and. .not.phys_ieq)                &
+						n_ieq_unphys = n_ieq_unphys + 1
+					ok_rank = 0
+					if (phys_ieq) ok_rank = 1
+					if (phys_ieq .and. conv_ieq) ok_rank = 2
+					! Strict improvement only, so attempt 1 wins any tie and
+					! an already healthy cell is untouched.
+					if (ok_rank .gt. best_rank) then
+						best_rank = ok_rank
+						x_root_best(1:N_eq) = sys_x(1:N_eq)
+					endif
+					if (ok_rank .eq. 2) exit
+				enddo
+
+				if (best_rank .lt. 2) then
+					if (best_rank .eq. 1) then
+						! No attempt met the solver tolerance; keep the best
+						! physical root found.
+						sys_x(1:N_eq) = x_root_best(1:N_eq)
+					else
+						! Every attempt left the physical simplex. Rather than
+						! propagate negative densities, hand back the uncoupled
+						! ionization balance, which is admissible by
+						! construction, and report the cell.
+						call ionization_balance_at_fixed_ne(sys_x,N_eq,   &
+						                                    mbase,ne(j))
+						n_ieq_fail = n_ieq_fail + 1
+					endif
+				endif
 			endif
 
 			! Extract solution profiles
@@ -652,6 +764,27 @@
 				'equilibrium failed at ', n_molfail,                       &
 				' cells (kept previous state)'
 		endif
+
+		! One summary line per sweep whenever a state left the physical
+		! simplex: how many cells had their stored state rejected as a
+		! starting point, how many first roots were outside the simplex, and
+		! how many ended on the ionization balance because no starting point
+		! produced an admissible root. A cell that is merely retried because
+		! the solver did not reach its tolerance is routine and stays silent
+		! here; it is counted in the run-wide totals reported at the end.
+		if (n_ieq_reseed + n_ieq_unphys + n_ieq_fail .gt. 0) then
+			write(*,'(A,I0,A,I0,A,I0,A,I0,A)')                             &
+				' (ioniz_eq) step ', count,                                &
+				': ionization roots - ', n_ieq_reseed,                     &
+				' stored state(s) rejected, ', n_ieq_unphys,               &
+				' root(s) outside the simplex, no admissible root at ',    &
+				n_ieq_fail, ' cell(s)'
+		endif
+
+		ieq_n_reseed = ieq_n_reseed + n_ieq_reseed
+		ieq_n_retry  = ieq_n_retry  + n_ieq_retry
+		ieq_n_unphys = ieq_n_unphys + n_ieq_unphys
+		ieq_n_noroot = ieq_n_noroot + n_ieq_fail
 
 	endif
 
@@ -706,8 +839,192 @@
       enddo
    endif
 
-	! End of subroutine 
+	! End of subroutine
 	end subroutine ioniz_eq
-	
+
+	!----------------------------------!
+
+	logical function ionization_fractions_physical(x,n,mbase) result(ok)
+	! Is a root of the equilibrium system a physically admissible state?
+	!
+	! Every unknown of these systems is the fraction of one element's nuclei
+	! found in one ionization stage, so a physical state has
+	!   (i)  every fraction >= 0, and
+	!   (ii) for each element, the tracked ionized stages summing to <= 1,
+	!        the neutral stage being the remainder 1 - sum.
+	! The residuals are polynomials in the fractions and do admit roots
+	! outside this simplex; such a root gives a negative neutral density and
+	! is not a solution of the physical problem, however small the residual.
+	! Downstream it poisons the photoionization integrals (a negative
+	! absorber column gives negative photoheating) and the element budget.
+	!
+	! The comparisons carry a small tolerance so that a root sitting on a
+	! face of the simplex (a fully neutral or fully ionized element) is not
+	! rejected for round-off; it is far below the violations this test is
+	! meant to catch (fractions of ~1e-6 to ~1e-1 outside the simplex).
+	!
+	! Layout: x(1) = H II / H, x(2) = He II / He, x(3) = He III / He,
+	! x(4) = He 2^3S / He when the triplet is tracked (x(8) in the molecular
+	! layout, where x(4..7) are the H nuclei bound in H2, H2+, H3+, HeH+),
+	! and the metal stages X+ / X++ from x(mbase) upwards, two per element.
+
+	integer, intent(in) :: n, mbase
+	real*8,  intent(in) :: x(n)
+	real*8, parameter   :: ftol = 1.0d-10
+	integer :: im, ix
+	real*8  :: s
+
+	ok = .false.
+
+	! Hydrogen nuclei: H II, plus the H bound in molecules where tracked.
+	if (x(1) .lt. -ftol) return
+	s = x(1)
+	if (thereis_mol) then
+		do ix = 4,7
+			if (x(ix) .lt. -ftol) return
+			s = s + x(ix)
+		enddo
+	endif
+	if (s .gt. 1.0d0 + ftol) return
+
+	! Helium nuclei: He II, He III and the 2^3S metastable, which the systems
+	! carry as a separate level inside the neutral stage.
+	if (thereis_He) then
+		if (x(2) .lt. -ftol) return
+		if (x(3) .lt. -ftol) return
+		s = x(2) + x(3)
+		if (thereis_HeITR) then
+			ix = 4
+			if (thereis_mol) ix = 8
+			if (x(ix) .lt. -ftol) return
+			s = s + x(ix)
+		endif
+		if (s .gt. 1.0d0 + ftol) return
+	endif
+
+	! Each metal element separately: X+ (+ X++ for the three-stage elements).
+	if (thereis_metals) then
+		do im = 1,n_melem
+			ix = mbase + 2*(im-1)
+			if (x(ix) .lt. -ftol) return
+			s = x(ix)
+			if (melem_top(im) .ge. 2) then
+				if (x(ix+1) .lt. -ftol) return
+				s = s + x(ix+1)
+			endif
+			if (s .gt. 1.0d0 + ftol) return
+		enddo
+	endif
+
+	ok = .true.
+
+	end function ionization_fractions_physical
+
+	!----------------------------------!
+
+	subroutine ionization_balance_at_fixed_ne(x,n,mbase,n_e)
+	! Stage fractions of each element in its OWN ionization balance at a
+	! given electron density: photoionization plus electron-impact ionization
+	! against radiative recombination,
+	!
+	!    n_k (gamma_k + beta_k n_e) = alpha_{k+1} n_e n_{k+1},
+	!
+	! with the couplings between elements (charge exchange, and the
+	! dependence of n_e on the unknowns themselves) dropped and n_e taken
+	! from the incoming state. Writing u_k = gamma_k + beta_k n_e for the
+	! rate out of stage k and d_k = alpha_k n_e for the rate back into stage
+	! k-1, the three-stage solution is
+	!
+	!    (n_0, n_1, n_2) proportional to (d_1 d_2, u_0 d_2, u_0 u_1),
+	!
+	! non-negative and normalized to one, so the result always lies inside
+	! the physical simplex whatever state it is asked to replace. It is used
+	! as a starting point for the coupled solve, and as the state of last
+	! resort for a cell where no starting point produced an admissible root.
+	!
+	! The He 2^3S fraction is the steady state of the metastable level at
+	! those populations: recombination and collisional excitation feed it,
+	! radiative decay, collisional de-excitation, photoionization and Penning
+	! ionization on H0 drain it. It is capped by the neutral He fraction.
+	!
+	! Rates come from the same cell state the residuals read (ieq_cell and
+	! the met_* coefficients of System_HeH_metals), so this is the incoming
+	! cell's own physics, not a generic guess. Atomic layouts only.
+
+	use System_HeH_metals, only: met_nelem, met_ntot, met_g0, met_g1,     &
+	                             met_b0, met_b1, met_a1, met_a2, met_top
+
+	integer, intent(in)  :: n, mbase
+	real*8,  intent(in)  :: n_e
+	real*8,  intent(out) :: x(n)
+	integer :: im, ix, top
+	real*8  :: u0,u1,d1,d2,w1,w2,s
+	real*8  :: xneu, n_hi_loc
+
+	x(1:n) = 0.0d0
+
+	! Hydrogen
+	u0 = ieq_cell%P_HI + ieq_cell%a_ion_HI*n_e
+	d1 = ieq_cell%rchiiB*n_e
+	s  = u0 + d1
+	if (s .gt. 0.0d0) x(1) = u0/s
+
+	if (thereis_He) then
+		! Helium. Both He+ recombination channels return to neutral He: the
+		! metastable capture rcheiTR is a branch of the recombination, so it
+		! adds to the rate back into He I when the triplet is tracked.
+		u0 = ieq_cell%P_HeI + ieq_cell%a_ion_HeI*n_e
+		d1 = ieq_cell%rcheiiB*n_e
+		if (thereis_HeITR) d1 = d1 + ieq_cell%rcheiTR*n_e
+		u1 = ieq_cell%P_HeII + ieq_cell%a_ion_HeII*n_e
+		d2 = ieq_cell%rcheiiiB*n_e
+		w1 = u0*d2
+		w2 = u0*u1
+		s  = d1*d2 + w1 + w2
+		if (s .gt. 0.0d0) then
+			x(2) = w1/s
+			x(3) = w2/s
+		endif
+
+		if (thereis_HeITR) then
+			xneu     = max(1.0d0 - x(2) - x(3), 0.0d0)
+			n_hi_loc = max(1.0d0 - x(1), 0.0d0)*ieq_cell%nh
+			s = ieq_cell%P_HeITR + ieq_cell%A31                          &
+			  + n_hi_loc*ieq_cell%Q31                                    &
+			  + (ieq_cell%q31a + ieq_cell%q31b                           &
+			     + ieq_cell%a_ion_HeITR)*n_e
+			if (s .gt. 0.0d0) x(4) = min(                                &
+			      n_e*(x(2)*ieq_cell%rcheiTR + xneu*ieq_cell%q13)/s, xneu)
+		endif
+	endif
+
+	! Metals, element by element in canonical order. An element that is
+	! absent keeps its stages pinned at zero, as its residual rows do.
+	if (thereis_metals) then
+		do im = 1,met_nelem
+			if (met_ntot(im) .le. 1.0d-30) cycle
+			ix  = mbase + 2*(im-1)
+			top = met_top(im)
+			u0  = met_g0(im) + met_b0(im)*n_e
+			d1  = met_a1(im)*n_e
+			if (top .ge. 2) then
+				u1 = met_g1(im) + met_b1(im)*n_e
+				d2 = met_a2(im)*n_e
+				w1 = u0*d2
+				w2 = u0*u1
+				s  = d1*d2 + w1 + w2
+				if (s .gt. 0.0d0) then
+					x(ix)   = w1/s
+					x(ix+1) = w2/s
+				endif
+			else
+				s = d1 + u0
+				if (s .gt. 0.0d0) x(ix) = u0/s
+			endif
+		enddo
+	endif
+
+	end subroutine ionization_balance_at_fixed_ne
+
 	! End of module
-	end module ionization_equilibrium         
+	end module ionization_equilibrium

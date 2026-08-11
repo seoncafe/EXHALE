@@ -30,13 +30,18 @@
 
       ! Try the analytic-Jacobian Newton; on failure restore x and call hybrd1.
       ! used_newton returns .true. iff Newton converged (for fallback counting).
-      subroutine solve_ieq(fcn, jac, n, x, params, tol, wa, lwa, used_newton)
+      ! The optional converged flag reports whether the returned x met the
+      ! requested tolerance in EITHER solver (1 = converged, 0 = not), so a
+      ! caller can tell an accepted solution from a solver that gave up.
+      subroutine solve_ieq(fcn, jac, n, x, params, tol, wa, lwa, used_newton,  &
+                           converged)
       external :: fcn, jac, hybrd1
       integer, intent(in)    :: n, lwa
       real*8,  intent(inout) :: x(n)
       real*8,  intent(in)    :: params(*), tol
       real*8,  intent(inout) :: wa(lwa)
       logical, intent(out)   :: used_newton
+      integer, intent(out), optional :: converged
       integer :: info, info_m
       real*8  :: xsave(n), fvec(n)
       character(len=8) :: envval
@@ -61,11 +66,13 @@
       endif
       if (info .eq. 1) then
          used_newton = .true.
+         if (present(converged)) converged = 1
       else
          ! Newton failed -> exact-as-before MINPACK solve from the same guess.
          x = xsave
          call hybrd1(fcn, n, x, fvec, tol, info_m, wa, lwa, params)
          used_newton = .false.
+         if (present(converged)) converged = merge(1, 0, info_m .eq. 1)
          !$omp atomic
          nt_fallback = nt_fallback + 1
       endif

@@ -138,12 +138,23 @@
 			R_secHI = sum(acc_secHI*de_v)*1.0e-18*erg2eV
 			P_HI(j) = P_HI(j) + R_secHI/max(nhi(j), 1.0d-99)
 		endif
-		! Guard: q_abs (absorbed-energy normalization) can be 0 in a fully
-		! transparent/unilluminated cell; avoid 0/0 -> NaN in the efficiency.
-		q(j)      = Hea_1/max(q_abs, 1.0d-99)
-	
+		! q_abs = int F sigma n_HI dE is the energy absorbed per unit volume
+		! and time: it is non-negative for any physical state, and it vanishes
+		! together with Hea_1 in a transparent or unilluminated cell. The
+		! heating efficiency is undefined there and zero is its physical value
+		! (nothing absorbed, nothing deposited). A non-positive q_abs with a
+		! non-zero Hea_1 can only come from a negative neutral density, i.e.
+		! from an unphysical ionization root; the ionization solve rejects
+		! those (ionization_fractions_physical), and the test here keeps the
+		! efficiency finite and signed correctly if one ever survives.
+		if (q_abs .gt. 0.0d0) then
+			q(j)  = Hea_1/q_abs
+		else
+			q(j)  = 0.0d0
+		endif
+
 	enddo
-	
+
 	end subroutine PH_heat_H
 
 	! ------------------------------------------------------------- !
@@ -444,8 +455,13 @@
 			heat_chan(j,5) = sum(int_f*acc_H2  *de_v)*1.0e-18
 			heat_chan(j,6) = sum(int_f*acc_mtl *de_v)*1.0e-18
 		endif
-		! Guard against q_abs = 0 (see PH_heat_H).
-		q(j)       = Hea_1/max(q_abs, 1.0d-99)
+		! Absorbed energy is non-negative; see PH_heat_H for why a
+		! non-positive q_abs gives a zero heating efficiency.
+		if (q_abs .gt. 0.0d0) then
+			q(j)   = Hea_1/q_abs
+		else
+			q(j)   = 0.0d0
+		endif
 
 	enddo
 	!$OMP END PARALLEL DO
