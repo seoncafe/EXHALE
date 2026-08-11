@@ -51,6 +51,15 @@ new options at their defaults, the marching code is byte-identical to the
 pre-existing behavior (verified by the regression harness after every
 increment). Statements of physical interpretation below are tentative
 unless explicitly verified.
+
+\medskip
+\textbf{Note added 2026-08-10.} This is a work log of 2026-06-10/11 and is kept
+as written. Three of the solver constants it records have since been replaced:
+the diagonal scaling, the stagnation watchdog, and the warm-up hand-off
+criterion. Section~\ref{sec:postscript} lists what changed and what it means for
+the stall diagnoses recorded here --- in short, the repeated finding that
+``every stall pins to the base cells'' was an artifact of the old scaling and of
+a worst-cell print that normalized momentum by the base cell's own $|\rho v|$.
 \end{quote}
 
 \tableofcontents
@@ -110,7 +119,7 @@ pseudo-time stepping (``\code{Time stepping: Local}'') had been judged
 ``answer-shifting''; in fact it reaches the \emph{correct deeper} state
 $\sim$20$\times$ faster --- the judgment was an artifact of comparing
 against the premature golden. (The LTS state does carry larger
-hydro residuals in each cell, \S\ref{sec:resid}, so it is ``fast but needs polishing.'')
+hydro residuals in each cell, \S\ref{sec:diag}, so it is ``fast but needs polishing.'')
 Second, the apparent ``path-dependent quasi-steady states'' largely
 collapse to one true state plus premature snapshots along the way.
 
@@ -253,7 +262,8 @@ corresponding stall.
   absolute floors give wind cells 15--60\% relative perturbations and
   corrupt exactly the columns where the residual lives after the first
   base-scale corrections. With
-  $D_i=\max(|Y_i|,\,10^{-6}\max_j|Y^{(k)}|)$, the scaled system
+  $D_i=\max(|Y_i|,\,10^{-6}\max_j|Y^{(k)}|)$ \emph{(the 2026-06 form;
+  replaced 2026-08-10, \S\ref{sec:postscript})}, the scaled system
   $D^{-1}(\tfrac{1}{\Delta\tau}I+J)D$, D-relative FD steps, and merit
   $\|D^{-1}F\|_2$: GMRES needs 2--6 vectors (was 9) and the merit falls
   $24\times$ before stalling --- at the base again.
@@ -411,10 +421,11 @@ Two failure modes were found and fixed along the way, both reiterating the
 central lesson: (i) a $du$-based switch fails --- at $du<10^{-2}$ during the
 early transient the residual is still $\|R\|\approx4.8$, far outside
 Newton's basin; (ii) with the switch fixed, the marching's own $du<10^{-3}$
-stop fired first, returning the premature state. The final design:
-\emph{the switch and the warm-up termination are both residual-based}
+stop fired first, returning the premature state. The design adopted at
+the time: \emph{the switch and the warm-up termination are both residual-based}
 (periodic monitor; switch at $\max\|R\|<5\times10^{-2}$, $du$-stops
-suspended in this mode). End-to-end validation from a \emph{cold
+suspended in this mode). \emph{This was later reverted to a flux-keyed
+hand-off; see \S\ref{sec:postscript}.} End-to-end validation from a \emph{cold
 isothermal IC} (WASP-121b, single input line \code{Solver: Newton}):
 two-stage warm-up to step 27{,}000 ($\|R\|=4.85\times10^{-2}$) $\to$ JFNK
 16 iterations $\to$ $\|R\|=5.4\times10^{-4}$ $\to$ standard outputs and
@@ -432,7 +443,7 @@ Peak line-center absorptions: WASP-121b He 3.7\%, H$\alpha$ 3.7\%;
 HD189733b He 11.9\%, Ly$\alpha$ 46\%, H$\alpha$ 1.8\% (consistent in
 magnitude with the Jensen et al.\ 2012 H$\alpha$ detection). Figures and
 numbers are collected in
-\code{regression/steady\_solver\_results.ipynb}; usage is documented in
+\code{backup/regression/steady\_solver\_results.ipynb}; usage is documented in
 the updated user manual (\S\,TPM).
 
 \paragraph{Failure containment (a genuine JFNK failure, and two fixes).}
@@ -449,7 +460,8 @@ converged and wrote it out. Two fixes (both in the default-off Newton
 path; legacy byte-identity re-verified): (i)~\emph{best-iterate tracking
 and fail-fast} in \code{solve\_steady\_jfnk} --- the best residual state
 is stored, and the solve aborts with \code{info=2} after 15 outer
-iterations without a new best, returning the best iterate; (ii)~in
+iterations without a new best, returning the best iterate \emph{(this rule was
+replaced 2026-08-10, \S\ref{sec:postscript})}; (ii)~in
 \code{EXHALE\_main}, \code{info}$\ne$0 is treated as a failure: the run
 prints \code{JFNK failed}, keeps the best iterate, disables the Newton
 mode, and \emph{resumes plain time-marching} with the $du$-based stops
@@ -545,7 +557,7 @@ file & content\\
 \code{src/modules/files\_IO/input\_read.f90} & option parsing (keyword
  lines after \code{Force start:})\\
 \code{EXHALE\_main.f90} & level/residual monitors and stops; env hooks\\
-\code{regression/} & harness, goldens, and all probe run directories
+\code{backup/regression/} & harness, goldens, and all probe run directories
  (\code{ptc\_warm}, \code{crit\_cold}, \code{resid\_*}, \dots)\\
 \code{docs/steady\_solver\_design.md} & incremental design notes
  (\S\S4--11) with the raw probe logs\\
@@ -553,5 +565,46 @@ file & content\\
 \bottomrule
 \end{tabular}
 \end{center}
+
+%====================================================================
+\section{Postscript: what changed after this log (2026-08-10)}
+\label{sec:postscript}
+%====================================================================
+
+Three things recorded above are no longer what the code does.
+
+\begin{enumerate}
+\item \textbf{The hand-off is flux-keyed, not residual-keyed.} The
+  \code{Solver: Newton} key hands off when the flux metric $du$ (the radial
+  spread of $\rho v r^2$) falls below \code{newton\_du\_switch}, default
+  $10^{-2}$, settable as \code{Solver: Newton <du\_switch>}. The
+  \code{R\_switch} keys of the tables above no longer exist.
+
+\item \textbf{The diagonal scaling is local and parameter-free.}
+  \code{build\_scaling} was replaced by \code{cell\_state\_scales}, which builds
+  every scale from the cell's own state: $\rho$, $\rho(|v|+c_s)$, $E$. The old
+  momentum floor $10^{-6}\max_j|\rho v|$ was set by the base cell, which holds
+  the global maximum of $|\rho v|$ while carrying no wind, so cells where the
+  flow reverses were divided by a number unrelated to their own state.
+
+\item \textbf{The stagnation watchdog counts failed line searches.} It aborts
+  after 12 consecutive outer iterations in which the line search found no
+  acceptable step, instead of after 15 iterations without a new best $\|R\|$.
+  Every solve measured needs 27--38 iterations before it first improves on the
+  warm-start $\|R\|$, so the old rule fired during the opening pseudo-transient
+  in normal operation.
+\end{enumerate}
+
+The consequence for this memo is that its recurring diagnosis --- that every
+stall lands on the base cells $j=1$--2, momentum --- does not survive
+re-measurement. The base momentum row is satisfiable: its residual is the
+remainder of a four-order cancellation of gravity against the pressure gradient,
+$6.5\times10^{-5}$ of the gravity term, and a 2.9\,ppm change of the ghost
+pressure drives it to zero. What actually dominated the line-search merit were
+the momentum rows around the stagnation point, mis-scaled by the floor above.
+Configurations that this memo records as stalling now converge with
+\code{info}$=0$. Full account and numbers:
+\code{docs/newton\_scaling\_and\_base\_wall.md}.
+
 
 \end{document}

@@ -236,9 +236,11 @@ and what lets the code launch winds across the full escape-parameter
 range, including the boil-off cases that do not launch from a cold
 static start. EXHALE already has the \emph{ingredients} for this --- the
 transonic and hot-Parker IC families exist precisely for ``won't launch
-from hydrostatic'' cases --- but the choice is currently \emph{manual}
-(input keys), whereas Kubyshkina automates it. This is the main
-actionable gap; see \texttt{auto\_ic\_design.md}.
+from hydrostatic'' cases. This was written when the choice was still
+\emph{manual} (input keys); it is now automated by \texttt{IC mode: auto}
+(\texttt{select\_IC\_auto} in \texttt{set\_IC.f90}), which probes the cold
+sonic point and picks the family --- the design is in
+\texttt{auto\_ic\_design.md}.
 
 EXHALE's IC behavior is, however, the best-documented of the three: the
 benchmark
@@ -348,9 +350,12 @@ Two lessons for EXHALE:
   problems'': start from an isothermal wind, then add photoionization,
   heating, cooling, and tidal gravity ``one by one $\ldots$ in a diluted
   form first and gradually strengthened to full amplitude.'' This is a
-  proven recipe for reaching a transonic solution that EXHALE does not
-  currently use; it is noted as an alternative IC/continuation strategy
-  in \texttt{auto\_ic\_design.md}.
+  proven recipe for reaching a transonic solution. EXHALE's main loop does
+  not use it, but the same scheme now runs in-tree in the Wind-AE
+  initial-condition path
+  (\texttt{src/modules/wind\_ae/wae\_continuation.f90}, \S\ref{sec:windae});
+  it is also noted as an alternative IC/continuation strategy in
+  \texttt{auto\_ic\_design.md}.
 \end{itemize}
 
 The trade-off: a steady-state BVP solver like Murray-Clay's is elegant
@@ -377,12 +382,12 @@ exactly the continuation/homotopy scheme of \S\ref{sec:mc}
 \texttt{polish\_bcs}). Limitations relative to EXHALE: one ionization
 stage per species (no Mg\,\textsc{ii}/Fe\,\textsc{ii} line work), no
 Fe/Ca cooling, substellar-point streamline geometry, and integration
-stops near the Coriolis turning radius. A Fortran port is planned in
-\texttt{md\_backup/wind\_ae\_fortran\_port\_plan.md}; it is not
-\emph{required} for use --- the C core compiles and runs on this Linux
-machine as-is ($\sim$14\,s per solve) and the wrapper works under
-Python 3.11 --- but remains under consideration for code
-completeness/uniformity of the in-house tool set.
+stops near the Coriolis turning radius. The Fortran port planned at the time
+of writing now exists as \texttt{src/modules/wind\_ae/} and is reached by
+\texttt{IC mode: windae} (and by the standalone \texttt{wind\_ae\_ic.x}); see
+\texttt{wind\_ae\_solver.pdf}. The reference C core also compiles and runs on
+this Linux machine as-is ($\sim$14\,s per solve), with the wrapper under
+Python 3.11.
 
 The following was verified hands-on (2026-06-13), ramping from the
 included MC09 fiducial to EXHALE's own \texttt{input.inp} parameters with
@@ -459,16 +464,20 @@ its solution must never be accepted through the bare $du$ stop.
   point.
 \item \textbf{The Newton finish is a genuine, unique strength} --- only
   EXHALE converges to the fixed point rather than time-averaging. The
-  real limitation is not the solver but the breathing base in
-  low-\Mdot\ / low-gravity cases.
+  remaining difficulty is the marching-time breathing base in
+  low-\Mdot\ / low-gravity cases. \emph{(This item originally read ``the
+  real limitation is not the solver but the breathing base''. On the cases
+  measured it was the solver: the JFNK residual floor came from its diagonal
+  scaling and stagnation watchdog, both replaced 2026-08-10 ---
+  \texttt{docs/newton\_scaling\_and\_base\_wall.md}.)}
 \item \textbf{The most worthwhile idea to adopt is Kubyshkina's
   automatic IC selection} (and, relatedly, a deeper / molecular base for
   boil-off). EXHALE already has the transonic and hot-Parker IC families
   and computes the escape parameter $b_0\equiv\Lambda = GM_{\rm pl}\,
-  m_{\rm H}/(k_BT_0R_{\rm pl})$; what is missing is an automatic rule
-  that picks the IC family from $b_0$ and the sonic-point location. This
-  directly targets EXHALE's weakest regime. See
-  \texttt{auto\_ic\_design.md}.
+  m_{\rm H}/(k_BT_0R_{\rm pl})$. The automatic rule this item asked for ---
+  pick the IC family from a cold sonic-point probe --- was implemented as
+  \texttt{IC mode: auto}; see \texttt{auto\_ic\_design.md}. A deeper /
+  molecular base for boil-off is separate, and is the lower-atmosphere work.
 \item \textbf{The microphysics ceiling is Salz/CLOUDY.} The known
   limitations of EXHALE's equilibrium + fitted cooling (the
   \texttt{use\_2lev\_cool} branch, fine-structure floors, etc.\ in

@@ -4,6 +4,17 @@ _Working status note (2026-06-14). Companion to the formal write-up
 `docs/base_breathing_investigation.tex`; captures everything since, including
 the CETIMB reference findings and the new knobs._
 
+> **Note added 2026-08-10.** Two claims below have been overtaken.
+> (i) The Newton/PTC stalls attributed here to the base cells (`worst cell
+> j=1/2, momentum`) were a solver artifact, not a property of the base: the
+> diagonal scaling floored every momentum scale at `1e-6` of the *base*
+> `|rho v|`, and the worst-cell print normalized by the same quantity. With a
+> local scale and a watchdog on consecutive failed line searches the affected
+> configurations converge — `docs/newton_scaling_and_base_wall.md`. The
+> *marching-time* breathing described here is a separate observation and
+> stands. (ii) The selectable base BC "planned" at the end of this note is
+> implemented (`Base BC: density|pressure [<p_ubar>]`, default density).
+
 ## Summary
 
 HD189733b does not fully converge in EXHALE: the time-marching settles into a
@@ -51,8 +62,9 @@ Time-dependent relaxation (like EXHALE/ATES), but with stabilizers EXHALE lacks:
 
 | Capability | input.inp key | default | status |
 |---|---|---|---|
-| **Shapiro low-pass filter** | `Shapiro filter: <eps> <every>` | **ON (0.5, 4)** | works for the sound-wave component |
-| **Mass-flux base velocity** | `Base velocity: massflux\|valve` | **ON (massflux, EMA)** | ≈valve here, EMA-stabilized |
+| **Shapiro low-pass filter** | `Shapiro filter: <eps> <every>` | **off** (`shapiro_eps = -1`) | works for the sound-wave component; made default-on briefly in 2026-06, reverted per the recommendation below |
+| **Mass-flux base velocity** | `Base velocity: massflux\|valve` | **off** (`base_v_massflux = .false.`) | ≈valve here, EMA-stabilized; also reverted |
+| **Base BC anchor** | `Base BC: density\|pressure [<p_ubar>]` | density (legacy) | the pressure mode planned at the end of this note is implemented |
 | Momentum-consistent base p | `Hydrostatic base: True` | off | null for this case |
 | Roche IC base blend | (auto, `tidalforce`-gated) | on for tidal | correct improvement |
 | Cell-by-cell residual dump | env `EXHALE_RESIDUAL=1` | — | the key diagnostic |
@@ -61,8 +73,8 @@ Time-dependent relaxation (like EXHALE/ATES), but with stabilizers EXHALE lacks:
 Files touched: `src/modules/init/parameters.f90`, `.../files_IO/input_read.f90`,
 `.../states/Apply_BC.f90` (shapiro_filter, base-v branch),
 `.../time_step/viscous_conduction.f90` (viscosity + heat conduction),
-`EXHALE_main.f90` (loop wiring + residual dump). All default-gated except the two
-new defaults above; both `EXHALE.x` and `wind_ae_ic.x` build clean.
+`EXHALE_main.f90` (loop wiring + residual dump). All default-gated; both
+`EXHALE.x` and `wind_ae_ic.x` build clean.
 
 ## Test results — what each knob does (HD189733b / HD209458b)
 
@@ -157,8 +169,11 @@ ones are used instead.
 viscous force is 7.8e-4 of the volume-weighted momentum residual and 1.8e-4 of
 it in the worst base cell; `μ` would have to be ~5.7e3 times the physical value
 to cancel the base imbalance, and even then the imbalance just moves to the next
-cell. The base momentum residual is not a viscous phenomenon. What is left for
-this document's problem is the lower boundary condition itself.
+cell. The base momentum residual is not a viscous phenomenon. *(The follow-on
+reading — that what is left is the lower boundary condition itself — was
+withdrawn on 2026-08-10; the base momentum row is satisfiable to within a
+2.9 ppm ghost-pressure change, and the JFNK floor was the solver's scaling and
+watchdog. See `docs/newton_scaling_and_base_wall.md`.)*
 
 Still open from the original list: revisit the **residual normalization** (don't
 divide by tiny ρv).
@@ -217,7 +232,10 @@ Cold + time-march works today; the windae path needs the base-BC reconciliation.
 _Gotcha: cold-IC relaxation is slow — tens of minutes to many hours (even tens
 of hours). Run detached; do not poll frequently._
 
-## Planned: selectable base BC — density (legacy) vs pressure / 1 μbar (CETIMB)
+## Selectable base BC — density (legacy) vs pressure / 1 μbar (CETIMB)
+
+_Planned here, implemented since: `Base BC: density | pressure [<p_ubar>]`,
+`base_bc_mode` in `parameters.f90`, default density._
 
 The original ATES/EXHALE base BC fixes the **density** (n0, `Log10 lower
 boundary number density`) and T (=Teq) at r=Rp. n0=1e14 is very dense → a large
@@ -227,8 +245,7 @@ cm⁻³, ~30× less dense), deriving ρ from the ideal gas. Lowering n0 to ~12.5
 1 μbar-like density) already gave a much milder transient (spike 233 → 14.6),
 confirming the direction.
 
-**Plan (a base-reformulation phase, paired with viscosity, not yet done):** make
-the base BC a selectable mode —
+**Plan as written (since carried out):** make the base BC a selectable mode —
 
 - `Base BC: density` — fix ρ=rho_bc(n0) + T=Teq (legacy, default, backward-
   compatible), and

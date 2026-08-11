@@ -257,7 +257,7 @@ reference re-snapshotted for the corrected physics):
   neglected as trace electron donors (eval_cool, excited_hydrogen, T_equation,
   dp_bc), and in lower_column (metal mass absent from its mu). post_process_adv
   now states its composition scope (H/He + metals; no molecular treatment).
-- Output label corrected: Hydro_ioniz column 1 is rho in m_H/cm^3 (metals
+- Output label corrected: Hydro_ioniz column 2 is rho in m_H/cm^3 (metals
   included), not a number density; header now says rho[mH/cm3].
 
 Still-correct-as-is (judged, not deferred): wind-ae converters (their oracle

@@ -21,7 +21,7 @@ algorithm, continuation, and boundary/initial conditions}
 \maketitle
 
 \begin{quote}\small\itshape
-EXHALE bundles a 1-D, steady-state, transonic Parker-wind solver --- a
+EXHALE includes a 1-D, steady-state, transonic Parker-wind solver --- a
 Fortran port of \emph{Wind-AE} (Murray-Clay et al.\ 2009; Broome et al.\
 2025) --- under \code{src/modules/wind\_ae/}. It is used to manufacture a
 warm-start initial condition for the time-dependent EXHALE run (the
@@ -147,7 +147,7 @@ from a single shipped converged solution and \emph{continues} it to the
 target planet:
 \begin{itemize}\itemsep1pt
 \item \textbf{Seed.} One converged windsoln (the Murray-Clay fiducial hot
-  Jupiter) is shipped (\code{inputdata/windae\_seed.csv}). It provides
+  Jupiter) is included as \code{inputdata/}\allowbreak\code{windae\_seed.csv}. It provides
   both the relaxation guess and the base BCs.
 \item \textbf{Adaptive ramp (\code{ramp\_var}).} A target parameter is
   approached in multiplicative steps $p\leftarrow p(1+\delta)$; after each
@@ -235,8 +235,9 @@ scaled by that flag, turning it off also drops $\mu$ to its atomic value
 --- i.e.\ the $b=1\to b=0$ transition the target planet requires.
 
 \paragraph{Orchestration.} With \code{static\_bcs=.false.},
-\code{ramp\_var} runs the \emph{full} lower-boundary re-convergence
-(\code{ramp\_base\_bcs}\,$+$\,\code{converge\_mol\_atomic}\,$+$\,\code{converge\_Ncol\_sp})
+\code{ramp\_var} runs the \emph{full} base-BC re-convergence
+(\code{ramp\_base\_bcs} $+$ \code{converge\_mol\_atomic} $+$
+\code{converge\_Ncol\_sp})
 \emph{reactively} --- only when a step stalls (five consecutive failures);
 and the cheap molecular/atomic check \code{converge\_mol\_atomic} alone runs
 \emph{proactively} (every ten successful steps --- it does no relaxation
@@ -347,9 +348,9 @@ so it stays self-contained.
   remain EXHALE's job. For an IC this is sufficient: EXHALE adds the
   metals in equilibrium from the first step, and the IC writer rescales
   the density to EXHALE's exact He/H.
-\item \textbf{Continuation BCs.} The in-process ramp uses the
-  self-consistent-BC ramp (\S\ref{sec:c2}) by default
-  (\code{static\_bcs=.false.}): \code{base\_bcs} (bit-exact),
+\item \textbf{Continuation BCs.} By default (\code{static\_bcs=.false.})
+  the in-process ramp uses the self-consistent-BC ramp (\S\ref{sec:c2}):
+  \code{base\_bcs} (bit-exact),
   \code{converge\_Ncol\_sp} (within tolerance), \code{converge\_mol\_atomic}
   (bolometric-layer turn-off), and the reactive/proactive re-convergence in
   \code{ramp\_var}/\code{ramp\_to}. This converges seed-adjacent hot Jupiters

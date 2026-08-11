@@ -1,4 +1,14 @@
-> **Status note (2026):** This plan has been **realized** in `EXHALE` (the renamed `EXHALE`): metals C/N/O are solved inside the coupled MINPACK 9-equation system, with Badnell RR+DR recombination and Kingdon&Ferland charge transfer. See `Update_EXHALE_early_phase`, Part II. The plan below is kept for historical reference.
+> **Status note.** This plan has been **realized**, and then some. It was
+> written for `ATES_extended`, borrowing from a sister tree that has since
+> become EXHALE; a global rename later collapsed both names onto `EXHALE`, so
+> some sentences below refer to "the sister tree `EXHALE`" and mean the
+> predecessor of this repository. What was actually built is the coupled
+> MINPACK system in `src/modules/nonlinear_system_solver/`: ten elements over
+> 27 ion stages (`System_HeH_metals.f90`, and `System_HeH_TR_metals.f90` with
+> the He 2^3S triplet), Badnell RR+DR recombination, and Huang et al. (2023)
+> Table 4 charge exchange in place of Kingdon & Ferland. No `System_HeHCO*.f90`
+> module exists; the names in the plan were never adopted. See
+> `Update_EXHALE_early_phase`, Part II. Kept for historical reference.
 
 # Plan: integrating trace metals into the MINPACK ionization system
 
@@ -28,8 +38,8 @@ Folding the metals into the MINPACK system removes these limitations: a
 single nonlinear solve returns H, He, (He triplet) and all metal stages
 simultaneously, with one shared electron density.
 
-Note: the **physics already exists** in the sister tree
-`EXHALE`, where a 7-equation `System_HeHCO` (HII, HeII, HeIII,
+Note: the **physics already exists** in the sister tree (the predecessor of
+this repository), where a 7-equation `System_HeHCO` (HII, HeII, HeIII,
 CII, CIII, OII, OIII) was built. This plan adapts that to
 `ATES_extended` and additionally supports the He triplet and a variable
 metal list.
@@ -88,7 +98,7 @@ initially for a like-for-like comparison).
 **New**
 - `nonlinear_system_solver/System_HeHCO_TR.f90` — the combined residual
   routine `ion_system_HeHCO_TR(N_eq, x, fvec, iflag, params)`. Generalize
-  `EXHALE/.../System_HeHCO.f90` to (a) read the active metal list
+  the sister tree's `System_HeHCO.f90` to (a) read the active metal list
   and coefficients for each ion from `params`, and (b) optionally include the
   HeITR block.
 
@@ -118,7 +128,7 @@ initially for a like-for-like comparison).
   coefficients per cell; unpack `x` into `f_sp(:,7:)`.
 - `init/set_IC.f90`, `files_IO/load_IC.f90`, `files_IO/write_output.f90`,
   `EXHALE_main.f90` — widen `f_sp` from 6 to `6 + 3*n_elem` and add the
-  metal columns to `Ion_species.txt` (mirrors the EXHALE change).
+  metal columns to `Ion_species.txt` (mirrors the sister tree's change).
 - `radiation/metals_cool.f90` — unchanged; `eval_metal_cooling` now takes
   the metal densities from `f_sp`/the MINPACK solution instead of from
   `solve_metals_post`.
@@ -128,7 +138,7 @@ initially for a like-for-like comparison).
 
 ## 5. Implementation steps
 
-1. **Port the residual.** Copy `System_HeHCO.f90` from `EXHALE`,
+1. **Port the residual.** Copy `System_HeHCO.f90` from the sister tree,
    rename to `System_HeHCO_TR.f90`, and (a) drive the metal block off the
    active `metal_list` so it works for any subset of C/N/O, (b) add the
    optional HeITR equation, (c) update the electron-density sum.
@@ -178,7 +188,7 @@ initially for a like-for-like comparison).
 
 ## 8. Effort estimate
 
-Roughly comparable to the EXHALE metal port: ~1 new module
+Roughly comparable to the sister tree's metal port: ~1 new module
 (~150 LOC) plus edits to ~6 existing files for the `f_sp` widening and
 dispatch. The coefficient and recombination data already exist
 (`cross_sec_metals.f90`, Badnell rates in `metals_solve.f90`), so the

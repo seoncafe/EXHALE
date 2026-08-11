@@ -73,10 +73,13 @@ not add to the list.
 
 - **Riemann wave-speed estimate** (`speed_estimate_*`): `Q = p_max/p_min` with no p_min
   floor — safe for healthy states (positivity maintained upstream); add
-  `p_min = max(p_min, tiny*p_max)` if pathological states ever appear. Not touched to keep
-  the golden-validated hydro core byte-identical.
+  `p_min = max(p_min, tiny*p_max)` if pathological states ever appear. Not touched at the
+  time, to keep the golden-validated hydro core byte-identical. *Since fixed:*
+  `speed_estimate_HLLC.f90` and `speed_estimate_ROE.f90` now apply
+  `p_min = max(p_min, 1.0d-30*max(p_max,1.0d-300))`.
 - **OMP CRITICAL in `PH_heat_HHe`** serializes the result writes in each cell — a scaling
-  (not correctness) limitation; measured 2.07×@16 threads previously. Optimization candidate.
+  (not correctness) limitation; measured 2.07×@16 threads previously. *Since fixed:* the
+  CRITICAL region was removed from `util_ion_eq.f90` (no correctness benefit).
 - **Cooling/Fe II table clamps** extrapolate flat outside [1e3,1e5] K × [1,1e14] cm⁻³;
   fine for current regimes, revisit for denser/colder bases.
 - **Negative intermediate fractions** (`xheii = 1-x2-x3`) during solver exploration —

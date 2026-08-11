@@ -38,7 +38,7 @@ The two solver loops over cells in `radiation/ionization_equilibrium.f90` are no
 `count > 0` each cell's Newton warm-start is its **own** previous-step value, so
 cells are independent and the backward loop order is irrelevant. `count == 0`
 runs serial (the `if(count > 0)` clause) because its first-step warm-start reads
-the just-solved neighbour cell.
+the just-solved neighbor cell.
 
 Thread-safety required making the scratch for each cell and the module state thread-local:
 

@@ -37,7 +37,7 @@ and nothing else. The following are deliberately untracked and were therefore
 
 | lost from the remote's point of view | why it matters |
 |---|---|
-| `WASP-121b/`, `HD209458b/`, `HD189733b/`, `WASP-52b/` | the per-planet run folders: `input.inp`, `metals.inp`, converged `output*/`, the analysis notebooks |
+| `WASP-121b/`, `HD209458b/`, `HD189733b/`, `WASP-52b/` | the run folders: `input.inp`, `metals.inp`, converged `output*/`, the analysis notebooks |
 | `backup/` | the regression harness and every golden |
 | `.gitignore` | never tracked, so the ignore rules themselves were lost |
 | `benchmarks/*/output*`, `examples/*/output` | the shipped benchmark and example results |

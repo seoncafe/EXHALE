@@ -19,8 +19,9 @@ residual* as the top-priority use. That capability now exists in-house:
 `src/modules/time_step/steady_newton.f90` implements pseudo-transient
 continuation with a Jacobian-free Newton–Krylov solver (right-preconditioned
 GMRES, SER ramp, non-monotone Grippo line search), plus a matrix-based PTC
-Newton variant. It is the production convergence path (marching warm-up
-followed by the Newton finish). The plan's priority-1 item is therefore done
+Newton variant. It is the recommended path for a quantitative mass-loss rate
+(marching warm-up followed by the Newton finish), selected per run by
+`Solver: Newton`; the marching-only path remains the default. The plan's priority-1 item is therefore done
 without SUNDIALS.
 
 ## Module-by-module check against the current code
@@ -28,7 +29,7 @@ without SUNDIALS.
 | SUNDIALS module | Corresponding place in EXHALE | Assessment |
 |---|---|---|
 | KINSOL (nonlinear system, global) | `steady_newton.f90` JFNK | Already implemented in-house. |
-| KINSOL (nonlinear system, cell-local) | Ionization equilibrium in each cell: analytic-Jacobian Newton with the in-tree MINPACK `hybrd1` fallback (`src/modules/nonlinear_system_solver/`) | No gain. The systems are small and dense (up to ~40 unknowns), so the current solver is close to optimal; the solve runs inside the OpenMP cell sweep, so KINSOL contexts would have to be created for every thread, adding overhead only. |
+| KINSOL (nonlinear system, cell-local) | Ionization equilibrium in each cell: analytic-Jacobian Newton with the in-tree MINPACK `hybrd1` fallback (`src/modules/nonlinear_system_solver/`) | No gain. The systems are small and dense (`N_eq = 4 + 2*n_melem` with `n_melem = 10`, i.e. 24 unknowns with the triplet and every metal on), so the current solver is close to optimal; the solve runs inside the OpenMP cell sweep, so KINSOL contexts would have to be created for every thread, adding overhead only. |
 | CVODE (stiff ODE) | No corresponding place — EXHALE chemistry is local algebraic equilibrium, not time integration | Meaningless today; becomes the standard tool if a kinetic network is ever integrated in time. |
 | ARKODE (IMEX time integration) | SSP-RK3 hyperbolic step + semi-implicit energy update | The goal is a steady state, so higher time accuracy has no practical value. |
 | CVODES/IDAS (sensitivities) | None | Only relevant if sensitivity analysis becomes a goal. |

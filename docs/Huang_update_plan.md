@@ -22,6 +22,18 @@ refer to Huang+2023 unless noted).
 
 ## 0. What EXHALE already has (do **not** reinvent these)
 
+> **Snapshot, not current state.** This section, and the progress notes further
+> down, describe the tree as it stood when the plan was written. Every phase
+> below has since been carried out, so the "already has" list is a lower bound:
+> the metal set is now ten elements (27 ion stages), charge exchange follows
+> Huang+2023 Table 4 rather than Kingdon & Ferland, metal-line cooling is the
+> CHIANTI closed-form fit set, and excited hydrogen with Ly-alpha transfer runs
+> in-code (`radiation/excited_hydrogen.f90`, `radiation/lya_rt.f90`) rather than
+> only in post-processing. The validation run directories named in the phase
+> sections (`mg_validation/`, `phase1b_validation/`, `phase1c_validation/`,
+> `phase1d_validation/`) and the `ATES/EXHALE_something_wrong/` tree no longer
+> exist; the surviving records are in `docs/Update_EXHALE`.
+
 The current tree is already well past a bare ATES v2.0:
 
 - **Ionization network:** a MINPACK steady-state system for **H, He, C, N, O**
@@ -544,7 +556,7 @@ holds across the RK loop.
 
 > [!CAUTION]
 > **Q2 — 1 μbar boundary.** Hardcode a WASP-121b profile, or build a file-reader
-> for an external photochemical/Lavvas profile? *Recommend a labelled file-reader*
+> for an external photochemical/Lavvas profile? *Recommend a labeled file-reader*
 > (`boundary_profile.txt` with `HI`, `MgI`, `FeII`, … rows), reusing the concept
 > from the prior attempt's `load_boundary_profile`, so other planets are easy.
 

@@ -11,6 +11,17 @@ full-physics runs.
 Implementation: `src/modules/time_step/viscous_conduction.f90`.
 Both switches default OFF.
 
+**2026-08-10 (later the same day): the motivation stated above no longer
+holds.** There is no near-base momentum wall. The `info = 2` residual floor
+reported throughout Sec. 5 and Sec. 8 was traced to the JFNK diagonal scaling
+and the stagnation watchdog, and the same cases now converge with `info = 0`;
+see `docs/newton_scaling_and_base_wall.md`. The derivation, the discretization,
+the verification of Sec. 7 and the physical A/B numbers of Sec. 8 are
+unaffected — only the diagnosis they were measured against is. All `info = 2`
+outcomes and every "worst residual cell `j = 1`" entry below were produced with
+the old scaling and the old worst-cell print, both of which normalized momentum
+by the base cell's `|rho v|`.
+
 ---
 
 ## 1. Equations
@@ -217,10 +228,13 @@ a cell-parallel region.
 
 ## 5. Why the marching loop and the Newton residual solve the same system
 
-The lesson of `docs/base_composition_handoff_plan.md` Sec. 11.8-11.9 is that
-JFNK must solve *exactly* the system the marching relaxes; a term present in one
-and absent from the other reproduces the `info=2` stagnation. Three properties
-enforce that here.
+JFNK must solve *exactly* the system the marching relaxes: a term present in one
+and absent from the other makes the two paths converge to different states.
+(This section originally cited the `info=2` stagnation of
+`docs/base_composition_handoff_plan.md` Sec. 11.8-11.9 as evidence for that
+requirement. That attribution is withdrawn — the stagnation was the solver's
+scaling and watchdog, Sec. 11.10 there — but the consistency requirement itself
+stands on its own and is what the three properties below enforce.)
 
 1. **One definition of the source.** `viscous_conduction_sources` returns the
    pair `(F_mu, w F_mu + q_mu + Q)`. `assemble_residual` subtracts exactly that
@@ -337,11 +351,15 @@ dyn cm^-3`) the viscous force `mu w/dr^2` reaches `rho g` only at
 `w ~ 1.5e8 cm s^-1`, four orders above the actual base velocity. The cell
 Reynolds number at the base is ~1e8.
 
-*Interpretation (tentative).* The near-base momentum residual appears to be a
-property of the lower boundary condition and the discrete hydrostatic balance
-rather than a missing bulk diffusive term; a remedy would have to act on the
-base ghost / base-cell equations themselves. This follows from the numbers
-above, but has not been demonstrated by constructing such a remedy.
+*Interpretation.* The numbers above establish only that the viscous force is
+too small by ~4 orders to cancel the base-cell momentum residual, and that
+raising `mu` enough to cancel it at `j = 1` relocates the imbalance to `j = 2`.
+The further reading recorded here originally — that the residual is therefore a
+property of the lower boundary condition — was **withdrawn on 2026-08-10**:
+the base momentum row was subsequently measured to be satisfiable (a 2.9 ppm
+ghost-pressure change nulls it), and the `j = 1` "worst cell" was an artifact of
+a diagnostic that normalized momentum by the base cell's own `|rho v|`. See
+`docs/newton_scaling_and_base_wall.md`.
 
 **G3 — the full-physics continuation**
 (`vulcan_work/hd209_wind_response/photo_deep_secion_cont/`, HD 209458 b with a

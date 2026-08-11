@@ -267,6 +267,21 @@ $R_\star,T_\star$ (see the comparison notebook).
 \section{Implementation in \texttt{EXHALE\_transit.py}}
 %=============================================================================
 
+\paragraph{System parameters.} The planet and the star are taken from the
+\texttt{input.inp} of the run directory, matched by label exactly as
+\texttt{input\_read.f90} does. Besides $R_p$, $M_p$, $T_{\rm eq}$, $a$,
+$M_\star$, $L_{\rm EUV}$ and the 2-D approximate method, this includes the
+stellar radius (\texttt{Stellar radius [R\_sun]}) and effective temperature
+(\texttt{Stellar Teff [K]}), which set the transit normalization $A_\star$,
+the $R_\star/R_p$ cap on the absorbing annulus, and the diluted-blackbody
+Balmer continuum of \S\ref{sec:gamma2}. The planet spin period has no
+\texttt{input.inp} key: a close-in giant is tidally locked, so it defaults to
+the Keplerian orbital period $P_{\rm orb}=2\pi\sqrt{a^3/[G(M_\star+M_p)]}$.
+Each of the three is resolved as \texttt{EXHALE\_TRANSIT\_RSTAR\_RSUN} /
+\texttt{\_TSTAR} / \texttt{\_ROTP} environment override $>$
+\texttt{./input.inp} $>$ built-in default, and the resolved values and their
+sources are printed at startup.
+
 \begin{itemize}
   \item \texttt{n2\_populations(T,n1s,ne,Jlya,G2s,G2p)} solves the
     $2\times2$ system above and returns $(n_{2s},n_{2p},n_2)$ in
@@ -291,6 +306,34 @@ $R_\star,T_\star$ (see the comparison notebook).
     $r$ and the six H/He species. This also remains correct for the old
     13-column (C/O-only) and 7-column (H/He-only) outputs.
 \end{itemize}
+
+\subsection{Outputs}\label{sec:outputs}
+
+Every line carries one key --- \texttt{He10830}, \texttt{Lya},
+\texttt{Halpha}, \texttt{Hbeta}, \texttt{MgII}, \texttt{CaII},
+\texttt{NaI} --- and both products of a line are named from that key and
+land in the run directory:
+
+\begin{center}
+\begin{tabular}{@{}lll@{}}
+\hline
+Product & Name & Default \\
+\hline
+model curve & \texttt{<path>/tpm\_<line>.txt} & always written \\
+figure & \texttt{<path>/<prefix><line>.png} ($+$ \texttt{.pdf})
+        & off; set \texttt{EXHALE\_TRANSIT\_FIG\_PREFIX} \\
+\hline
+\end{tabular}
+\end{center}
+
+\noindent A curve file has the columns \texttt{lambda[A]}, $T_\lambda$
+(theoretical), $T_\lambda$ (instrument-convolved), $T_\lambda$
+($+$rotation), so the excess absorption in percent is
+$(1-T_\lambda)\times100$. The set follows the run: a metals-off run
+writes no metal curves. \texttt{EXHALE\_TRANSIT\_SAVE\_PREFIX} decorates
+the curve name exactly as the figure prefix decorates the figure name,
+and both are resolved against the run directory, so an absolute prefix
+writes elsewhere and nothing depends on the working directory.
 
 %=============================================================================
 \section{Validation}
@@ -334,8 +377,10 @@ $v_{\rm los}=v\,x/r$, Voigt profiles via the Faddeeva function
 average, then the instrument convolution and the planet-rotation
 convolution with the depth-dependent effective radius
 $R_{\rm eff}=R_p\sqrt{(h+\delta)/\delta}$ (capped at the
-impact-parameter boundary), $\delta=(R_p/R_\star)^2$. Figures are saved
-(PNG $+$ vector PDF) via \texttt{fig\_name\_mgii/caii/nai}.
+impact-parameter boundary), $\delta=(R_p/R_\star)^2$. The three doublets
+are written under the same \texttt{tpm\_<line>} naming as the H/He lines
+(\S\ref{sec:outputs}), with the keys \texttt{MgII}, \texttt{CaII},
+\texttt{NaI}.
 
 \begin{table}[htbp]
 \centering\small
@@ -379,7 +424,7 @@ rotation) and reports the same depth table.
 \subsection{Example spectra}
 
 Figure~\ref{fig:metalspec} shows the three doublet spectra for the
-WASP-121b worked example (\texttt{regression/tpm\_wasp/}, Roche Newton
+WASP-121b worked example (\texttt{backup/regression/tpm\_wasp/}, Roche Newton
 solution, metals on). The optically thick cores saturate, so the two
 doublet members reach similar depths despite the 2:1 oscillator-strength
 ratio; the rotation convolution mainly shallows and broadens the narrow
@@ -387,11 +432,11 @@ Na\,I\,D cores.
 
 \begin{figure}[htbp]
 \centering
-\includegraphics[width=0.49\textwidth]{figures/tpm_MgII_hk.pdf}\hfill
-\includegraphics[width=0.49\textwidth]{figures/tpm_CaII_HK.pdf}\\[2pt]
-\includegraphics[width=0.49\textwidth]{figures/tpm_NaI_D.pdf}
+\includegraphics[width=0.49\textwidth]{figures/tpm_MgII.pdf}\hfill
+\includegraphics[width=0.49\textwidth]{figures/tpm_CaII.pdf}\\[2pt]
+\includegraphics[width=0.49\textwidth]{figures/tpm_NaI.pdf}
 \caption{Metal resonance doublet transmission spectra for WASP-121b
-(\texttt{regression/tpm\_wasp/}): Mg\,II\,h\&k (top left),
+(\texttt{backup/regression/tpm\_wasp/}): Mg\,II\,h\&k (top left),
 Ca\,II\,H\&K (top right), and Na\,I\,D (bottom). Each panel shows the
 theoretical, instrument-convolved, and instrument$+$rotation-convolved
 transmission, as for the H/He lines.}

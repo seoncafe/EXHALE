@@ -31,6 +31,18 @@ nor the initial-condition blend, but an intrinsic mismatch between the
 Wind-AE solution and EXHALE's discretized momentum equation, amplified by
 the residual normalization. It is recorded so the dead ends are not
 re-explored and the live options are clear.
+
+\medskip
+\textbf{Note added 2026-08-10.} The PTC/JFNK stalls recorded here (and their
+reading as an intrinsic Wind-AE/EXHALE discretization mismatch amplified by the
+residual normalization) were measured with a diagonal scaling that floored
+every momentum scale at $10^{-6}$ of the \emph{base} $|\rho v|$, and with a
+watchdog that aborted after 15 outer iterations without a new best
+$\lVert R\rVert$ --- before the opening pseudo-transient has finished raising
+it. Both have since been replaced, and configurations that stalled this way now
+converge; see \code{docs/newton\_scaling\_and\_base\_wall.md}. The
+\emph{marching-time} breathing this memo localizes is a separate observation and
+is not affected. The stall diagnoses have not been re-run under the new solver.
 \end{quote}
 
 \section{Symptom}
@@ -46,7 +58,7 @@ numerics.
 \section{Diagnostic: a residual dump for each cell}
 \code{residual\_norms} (\code{steady\_residual.f90}) reports only the
 \emph{maximum} relative residual of each component; it hides \emph{where} the
-imbalance lives. A cell-by-cell dump was added to the \code{ATES\_RESIDUAL=1}
+imbalance lives. A cell-by-cell dump was added to the \code{EXHALE\_RESIDUAL=1}
 path (\code{EXHALE\_main.f90}), writing
 \code{output/residual\_profile.txt} with columns
 $r,\,n,\,v,\,T,\,R_{\rm mass},\,R_{\rm mom},\,R_{\rm energy}$ for every cell
@@ -137,10 +149,10 @@ Attempt & What it changed & Why it was null \\
 \midrule
 PTC / JFNK from the IC &
   direct pseudo-transient / Jacobian-free Newton steady solve
-  (\code{ATES\_PTC=1}) &
+  (\code{EXHALE\_PTC=1}) &
   stalls at $\lVert R\rVert\!\approx\!4.6$, $d\tau$ frozen, line-search
   $\lambda\!\to\!10^{-7}$ (no descent direction). \\
-\;+ frozen base (\code{ATES\_PTC\_NFIX}) & anchor the first few base cells & same stall. \\
+\;+ frozen base (\code{EXHALE\_PTC\_NFIX}) & anchor the first few base cells & same stall. \\
 \;+ smooth valve (\code{Valve eps}) & differentiable base velocity valve & same stall. \\
 \bottomrule
 \end{tabular}
@@ -148,7 +160,7 @@ PTC / JFNK from the IC &
 
 \section{What was added (gated, working cases byte-identical)}
 \begin{itemize}\itemsep2pt
-  \item \textbf{Residual dump for each cell} --- the \code{ATES\_RESIDUAL=1} path
+  \item \textbf{Residual dump for each cell} --- the \code{EXHALE\_RESIDUAL=1} path
         writes \code{output/residual\_profile.txt}. The diagnostic that
         localized everything above; kept.
   \item \textbf{\code{Hydrostatic base:} flag} (\code{hydrostatic\_base},

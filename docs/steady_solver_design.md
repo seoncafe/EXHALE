@@ -243,3 +243,22 @@ Remaining hardening (next):
 Everything remains opt-in; the marching default and all regressions are
 byte-identical (re-confirmed after each increment, including weno_mode=0 and
 the valve-off default).
+
+## 12. Scaling replaced; the "base blocker" of §9-§10 reassessed (2026-08-10)
+
+`build_scaling` (`D_i = max(|Y_i|, 1e-6 max_j |Y_k|)`), introduced in §10, is
+replaced by `cell_state_scales`, which builds every scale from the cell's own
+state: `rho`, `rho(|v| + c_s)`, `E`. Everything else in §10-§11 stands — the
+scaled system, the D-relative FD steps, the merit `||D^-1 F||_2`, the smooth
+valve, the frozen WENO weights, the non-monotone line search.
+
+The old momentum floor `1e-6 max_j |rho v|` was set by the base cell, which
+holds the global maximum of `|rho v|` while carrying no wind, so cells where
+the flow reverses were scaled by a number unrelated to their own state. The
+repeated observation in §9-§10 that "the stall ALWAYS lands on the base cells
+(j = 1-2)" was in large part that floor plus a worst-cell diagnostic that also
+normalized by `max_j |u(k,j)|`; the base momentum row itself turns out to be
+satisfiable to within a 2.9 ppm ghost-pressure change. The stagnation watchdog
+was also changed, from "no new best `||R||` in 15 iterations" to a count of
+consecutive failed line searches. Measurements and the cases this unblocks:
+`docs/newton_scaling_and_base_wall.md`.

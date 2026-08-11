@@ -23,7 +23,7 @@ Root paths: `A = ~/Exoplanetary_Atmosphere`,
 
 ## 0. In-repo digitized observations (already formatted for comparison)
 
-`E/observational_data/` and the per-planet folders hold hand-digitized
+`E/observational_data/` and the planet folders hold hand-digitized
 observations already cast in the EXHALE comparison convention: column 2 is
 `dF/F` (relative flux change), so transmission `T = 1 + dF/F`. These are
 lower-fidelity eye-traces, but they are ready to overplot and cover lines the

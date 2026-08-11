@@ -19,7 +19,7 @@ The following items should receive the highest priority.
 | P1 | The monochromatic H-only branch treats helium inconsistently | High-confidence state inconsistency | Initial density, particle count, and chemistry assume different compositions |
 | P1 | Transit auto-window column calculation omits the metre-to-centimetre conversion | Confirmed arithmetic defect | The column is 100 times too small, potentially clipping broad wings |
 | P1 | The SED reader lacks safe EOF, row-count, and ordering checks | High-confidence input defect | It can loop indefinitely or access `e_v(2)` out of bounds |
-| P1 | HLLC/PLM hot loops create noncontiguous row-section temporaries | Observed at runtime | Per-cell and per-interface copies add avoidable overhead |
+| P1 | HLLC/PLM hot loops create noncontiguous row-section temporaries | Observed at runtime | Copying at every cell and interface adds avoidable overhead |
 | P2 | User-facing string selections lack `case default` validation | High-confidence input defect | A typo can propagate as undefined state instead of failing immediately |
 | P2 | The build stamp does not track `FFLAGS` changes | Reproduced | Debug/release flag changes can silently reuse stale objects |
 | P2 | Constants and external calls generate substantial precision/interface warnings | Build evidence | Reduced numerical accuracy and missed call-signature errors |
@@ -210,7 +210,7 @@ Recommended improvements:
 
 ### 4.3 Repeated chemistry and cooling rates
 
-The H/He, triplet, metal, and molecular systems recompute similar rates and electron densities for the same cell state. This should be confirmed with a profiler before refactoring. If it is material, use a named per-cell rate cache/derived type shared by residual and Jacobian evaluation. Its lifetime and temperature/density dependencies must be explicit to prevent stale-rate defects.
+The H/He, triplet, metal, and molecular systems recompute similar rates and electron densities for the same cell state. This should be confirmed with a profiler before refactoring. If it is material, use a named rate cache/derived type, one entry per cell, shared by residual and Jacobian evaluation. Its lifetime and temperature/density dependencies must be explicit to prevent stale-rate defects.
 
 ### 4.4 OpenMP status
 
@@ -241,7 +241,7 @@ Recommended structure:
 - Assemble residuals/Jacobians by iterating active species metadata.
 - Migrate incrementally—H/He common code, then metals, then molecules—with golden tests at each step.
 
-The current omission of collisional ionization in the triplet path is documented as intentional in source comments. It should not be labelled a defect without a quantitative study; instead, document the temperature range over which its effect is negligible.
+The current omission of collisional ionization in the triplet path is documented as intentional in source comments. It should not be labeled a defect without a quantitative study; instead, document the temperature range over which its effect is negligible.
 
 ### 5.3 Centralize composition calculations
 

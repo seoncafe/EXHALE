@@ -36,6 +36,11 @@ only the thermal/ionization/velocity overlay \emph{converges to the identical st
 (\S7), but gives \emph{no speedup} for this planet, because ATES's convergence is gated by
 hydrodynamic momentum-steadiness, not the thermal relaxation the seed shortcuts. The cold
 hydrostatic IC remains the recommended default.
+
+\medskip
+\textbf{Naming.} This memo predates the rename: ``ATES'' below means this code,
+now EXHALE, except where it explicitly cites the upstream ATES of Caldiroli et
+al.\ (2021). The diagnostic hook is now \texttt{EXHALE\_DIAG\_BASE=1}.
 \end{quote}
 
 \tableofcontents
@@ -250,7 +255,7 @@ breakdown, \emph{not} a speedup --- the run never converged.}
 % =====================================================================
 A time-marching code \emph{should} relax any initial condition to the same steady state,
 so a divergence is not inevitable --- it points to a specific, identifiable mechanism. We
-instrumented the base cells (an env-gated diagnostic, \texttt{ATES\_DIAG\_BASE=1}, dumping
+instrumented the base cells (an env-gated diagnostic, \texttt{EXHALE\_DIAG\_BASE=1}, dumping
 $r,n,v,T$, heat, cool for the lowest cells over the first 500 steps; run with 60 OpenMP
 threads) and traced the exact onset (Fig.~\ref{fig:basebreak}). The causal chain is:
 
@@ -294,7 +299,9 @@ threads) and traced the exact onset (Fig.~\ref{fig:basebreak}). The causal chain
   where the neutral fraction collapses and the cooling rate \emph{falls} with $T$, i.e.\
   $\mathrm dC/\mathrm dT\le0$), the $\max(0,\cdot)$ disengages the safeguard,
   $\mathrm dF/\mathrm dT\to1$, the update becomes \emph{fully explicit with no damping}, and
-  the temperature runs away.
+  the temperature runs away. \emph{(Since fixed: \texttt{energy\_semi\_implicit.f90} now uses
+  $1 + c_{\rm factor}\,|\mathrm dC/\mathrm dT|$, i.e.\ recommendation~2 of
+  \S\ref{sec:reco} below, so this branch of the mechanism no longer exists in the code.)}
 \end{enumerate}
 
 \noindent So the divergence is the product of two design assumptions, each individually
@@ -359,9 +366,11 @@ in essentially the \emph{same} cost ($93\,068$ vs $95\,274$ steps, $-2.3\%$; wal
 $+0.5\%$ --- within noise). Figure~\ref{fig:warmfix}a shows why: although the warm seed's early
 transient is markedly \emph{gentler} (its $du$ peaks near $10^3$ versus $\sim\!10^6$ for the cold
 start), the two convergence histories merge after $\sim\!15\,000$ steps and the long
-slowly-decaying tail --- which sets the total step count --- is identical. ATES's stopping
-criterion is the \textbf{hydrodynamic momentum-steadiness} test ($du<2\times10^{-2}$, i.e.\
-$\rho v r^2=$const), and the warm seed accelerates the \emph{thermal} relaxation, not that
+slowly-decaying tail --- which sets the total step count --- is identical. The stopping
+criterion inherited from ATES is the \textbf{hydrodynamic momentum-steadiness} test
+($du<du_{\rm th}$, i.e.\ $\rho v r^2=$const; the runs of this benchmark used the loosened
+$du_{\rm th}=2\times10^{-2}$ of the time, and the default is now $10^{-3}$), and the warm seed
+accelerates the \emph{thermal} relaxation, not that
 hydrodynamic one. So for this (momentum-gated) planet the warm start is a correctness-neutral
 option, not a performance win.
 
@@ -393,7 +402,7 @@ profile (solid).}
 \end{figure}
 
 % =====================================================================
-\section{Discussion and recommendation}
+\section{Discussion and recommendation}\label{sec:reco}
 % =====================================================================
 \paragraph{Does a Parker-wind start speed up ATES? No --- and that is consistent with
 how ATES converges.} ATES is a \emph{time-marching} code: it relaxes any initial
@@ -429,7 +438,8 @@ wind, sets the step count). Two further, independent improvements remain availab
 \item \textbf{A characteristic / pressure-gradient base BC} (instead of the hard cold-pinned
   $\rho,p$ with $v=\max(v_1,0)$) would let the base breathe physically and widen the basin of
   attraction for non-hydrostatic starts generally.
-\item \textbf{Make the energy solver unconditionally stable on \emph{both} branches} --- use a
+\item \textbf{Make the energy solver unconditionally stable on \emph{both} branches}
+  \emph{(done: the code now takes $|\mathrm dC/\mathrm dT|$)} --- use a
   true backward-Euler step on the full cooling (or take $|\mathrm dC/\mathrm dT|$ rather than
   $\max(0,\mathrm dC/\mathrm dT)$ in \texttt{energy\_semi\_implicit.f90}), so a cell pushed past
   the cooling peak during \emph{any} transient cannot run away. This is the same spirit as the
@@ -438,7 +448,7 @@ wind, sets the step count). Two further, independent improvements remain availab
   but a worthwhile robustness margin.)
 \end{enumerate}
 
-The instrumentation used here is retained (env-gated \texttt{ATES\_DIAG\_BASE=1};
+The instrumentation used here is retained (env-gated \texttt{EXHALE\_DIAG\_BASE=1};
 zero effect when unset) so any future base-stability work can re-trace the startup directly.
 
 \paragraph{Contrast with relaxation BVP codes.} This negative result actually highlights an

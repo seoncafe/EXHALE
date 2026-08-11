@@ -5,7 +5,7 @@ running the **same** planet on the two code versions, for **two contrasting plan
 
 - **v1.0** — `ATES/EXHALE_v1.0/`: clean GitHub `main` + the temperature-dependent Penning
   rate. **No** diffusive separation (He/H and metal/H frozen at the input values).
-- **current** — `ATES/EXHALE/`: v1.0 physics **plus** He/H and element-by-element metal diffusion
+- **current** — `EXHALE/`: v1.0 physics **plus** He/H and element-by-element metal diffusion
   (`He_diffusion` + `He_metal_diffusion`, ambipolar settling on).
 
 Both versions share the temperature-dependent Penning rate, so the **only** difference is the

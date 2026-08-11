@@ -310,9 +310,15 @@ planets stable (no NaN); Ṁ essentially unchanged (metals trace).
   `he_diffusion_step`); pair the flags.
 
 **Remaining (genuinely future):** the near-base pile-up limiter (a more physical base BC or
-stronger near-base K_zz would remove it), and a Newton-finished quantitative Ṁ with the
-diffusion operator inside the Newton path (currently diffusion runs in the RK relaxation only,
-so a Newton-finish refines the hydro at frozen composition).
+stronger near-base K_zz would remove it).
+
+*Update.* The second item listed here — that a Newton finish refines the hydro at frozen
+composition, because the diffusion operator is outside the Newton path — no longer describes
+the code. `Solver: Newton` together with `He_diffusion` now runs an outer co-convergence
+(`EXHALE_main.f90`, the `it_diff` loop): JFNK solve, then 500 diffusion relaxation steps of
+the He/H field at the converged wind, repeated until the He/H field moves by less than 1e-3
+between passes, at most 5 passes. The diffusion operator is still *not* part of the JFNK
+residual; the outer loop is what makes the two consistent.
 
 ## 8. Original Phase-2 plan (now implemented above; historical)
 

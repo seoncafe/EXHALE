@@ -124,8 +124,12 @@ in `base.inp`.
 
 This did not resolve anything, for a reason worth recording. HD 189733 b does
 not reach a steady state: over 87000 steps `du` wandered between 0.77 and 1.86
-and never approached 1e-3 — the base-breathing problem already logged in
-`TO_BE_DONE.md` (A). Cutting both runs at a fixed 20000 steps
+and never approached 1e-3 — the marching-time base breathing that HD 189733 b
+has shown since ATES. (This originally cited `TO_BE_DONE.md` item (A); note
+that item is now closed, and its diagnosis of the *JFNK* residual floor as a
+base-momentum wall was refuted — `docs/newton_scaling_and_base_wall.md`. The
+marching oscillation described here is a separate observation and stands.)
+Cutting both runs at a fixed 20000 steps
 (`EXHALE_MAXSTEPS`) and comparing on common physical radii gives median
 differences of 0.1-2% and maxima of tens of percent concentrated in the
 innermost cells at r ~ 1.17 R_J.

@@ -228,7 +228,7 @@ chmod +x run_EXHALE.sh
 You may equally skip the GUI: place a hand-written \texttt{input.inp} (and
 optional \texttt{metals.inp}/\texttt{opacity.inp}) in a run directory, ensure an
 \texttt{output/} subdirectory exists, and run \texttt{./EXHALE.x} there. Each
-modelled planet typically lives in its own subdirectory holding its
+modeled planet typically lives in its own subdirectory holding its
 \texttt{input.inp}, its \texttt{EXHALE.x}, and its \texttt{output*/} folders.
 Progress (iteration counter, the momentum-variation \texttt{du}, and the
 time-derivative norm \texttt{dtu}) is printed to the terminal; the run stops when
@@ -283,13 +283,54 @@ count on high-gravity cases. \texttt{Secondary\_ionization: False} disables the
 coupling entirely; \texttt{Immediate} applies it from step~0 (for A/B tests
 only --- it reproduces the cold-start crash on high-gravity cases).
 
+\subsection{Base grid resolution (\texttt{Base grid [dr,cells]})}
+\label{sec:basegrid}
+The \texttt{Mixed} grid stacks \texttt{cells} uniform cells of size \texttt{dr}
+(in \rp) on the lower boundary and fills the rest of the domain with
+$N-\texttt{cells}$ geometrically stretched cells; $N=500$ is a compile-time
+constant. The two numbers share one input line because they are not
+independent: their product is the radial extent of the uniform region
+($0.01\,R_p$ with the default \texttt{2.0e-4 50}).
+
+The quantity that matters physically is how many uniform cells span the base
+density scale height, $H/dr$ with $H=kT/(\mu g)$. Where $H/dr$ is of order a few
+cells the discretization supports a \emph{stationary} $2\,dr$ entropy (contact)
+mode that nothing in the scheme removes: HLLC resolves a contact of zero speed
+exactly and so adds no dissipation to it, the gravity source is cell-local, the
+WENO3 pressure gradient sees only interface pressures, and there is no
+conduction or physical viscosity unless they are switched on. The measured
+dependence is an alternating $\ln\rho$ amplitude of $\sim$$10^{-2}$ for
+$H/dr<5$ and $\sim$$10^{-4}$ for $H/dr>100$. High-gravity planets have the
+least margin --- at $T_{\rm eq}$ on the default grid HD\,189733\,b spans only
+$\sim$27 cells per $H$, against $\sim$60--100 for HD\,209458\,b, WASP-52\,b and
+WASP-121\,b --- and a cool, shielded base shrinks $H$ further. The value in
+effect is echoed in \texttt{EXHALE\_setup.out} as \texttt{Base scale-height
+resolution: H(T\_eq)/dr}, with a warning below 10 cells.
+
+Refine at fixed extent, i.e.\ divide \texttt{dr} and multiply \texttt{cells} by
+the same factor: \texttt{Base grid [dr,cells]: 5.0e-5 200} is the $4\times$
+refinement. Two costs follow. The CFL time step is set by the smallest cell, so
+a $4\times$ finer base means $\sim$$4\times$ more steps for the same physical
+time; and because $N$ is fixed, the stretched region loses those cells and
+coarsens (for a $4.43\,R_p$ domain, the cell size at $1.5\,R_p$ grows from
+$6.1\times10^{-3}$ to $1.3\times10^{-2}\,R_p$). In practice the $2\times$ step
+(\texttt{1.0e-4 100}) is the one to try first: it is where the mode goes, and
+$4\times$ is not reachable to convergence on HD\,189733\,b within the
+compile-time step cap because its time step is $4\times$ smaller. That $2\times$
+setting is what \texttt{HD189733b/input.inp} carries; the other three production
+planets run on the default. The full investigation is
+\texttt{docs/hd189\_base\_checkerboard.md}.
+
 \subsection{The steady-state Newton solver (\texttt{Solver: Newton})}
 \label{sec:newton}
 The finite-volume steady state can be solved directly --- $F(Y)=0$ for the hydro
 state, with the ionization equilibrium eliminated locally inside the residual ---
 by a preconditioned Jacobian-free Newton--Krylov method (banded LAPACK
 preconditioner, frozen WENO weights, diagonal scaling, non-monotone line search;
-the smooth base valve \texttt{Valve eps:} is required and auto-adopted). This
+the smooth base valve \texttt{Valve eps:} is required and auto-adopted). Each
+unknown is scaled by its own cell's state --- $\rho$, $\rho(|v|+c_s)$, $E$ ---
+so that no cell sets another's scale; the momentum scale uses the fastest
+signal speed because $\rho v$ itself vanishes wherever the flow reverses. This
 reaches residual levels unattainable by marching at a small fraction of the cost:
 WASP-121b converges in 8 Newton iterations ($\sim$200 marching-steps of cost,
 vs.\ $>$35{,}000 insufficient marching steps), HD189733b in 33\,s where marching
@@ -329,8 +370,9 @@ convergence decision (\S\ref{sec:convctl}), while the residual remains the
 chemistry noise floor); on planets with a breathing base (HD189733b) the
 practical floor is $\|R\|\sim3\times10^{-4}$.
 The Newton finish is also \emph{safe to fail}: the solver tracks the best
-iterate seen, aborts once no new best residual has appeared for 15 outer
-iterations, and on failure the run prints \texttt{JFNK failed}, keeps the best
+iterate seen, aborts once the line search has failed to find any acceptable
+step in 12 consecutive outer iterations, and on failure the run prints
+\texttt{JFNK failed}, keeps the best
 iterate, and falls back to plain time-marching with the $du$-based stops
 re-armed --- an unconverged Newton state is never accepted as the final
 answer. The associated diagnostic hooks (\texttt{EXHALE\_RESIDUAL},
@@ -374,8 +416,9 @@ EXHALE_PTC=1 EXHALE_PTC_JFNK=1 EXHALE_PTC_DTAU0=1.0 ./EXHALE.x   # re-converge i
 \toprule
 Variable & Effect \\
 \midrule
-\texttt{EXHALE\_DUMP\_IC=1} & After \texttt{Load IC?\ True}, dump the restored
-  state to \texttt{output/IC\_dump.txt} \emph{before} the first
+\texttt{EXHALE\_DUMP\_IC=1} & After \texttt{Load IC?\ True}, write the restored
+  state to \texttt{output/Hydro\_ioniz.txt} and
+  \texttt{output/Ion\_species.txt} and stop, \emph{before} the first
   ionization-equilibrium solve re-equilibrates the species fractions
   (verifies a snapshot/restart round-trip). \\
 \texttt{EXHALE\_RESIDUAL=1} & Evaluate the steady residual $R$ of the loaded
@@ -530,7 +573,7 @@ marked $(\ast)$.}\label{tab:inp-core}\\
 \texttt{Spectrum type:} & \texttt{Power-law} $|$ \texttt{Monochromatic} $|$
   \texttt{Load} & Shape of the incident XUV SED. \\
 $(\ast)$ \texttt{Power-law index:} / \texttt{Photon energy [eV]:} /
-  \texttt{SED file:} & real / real / path & Property of the chosen SED:
+  \texttt{Spectrum file:} & real / real / path & Property of the chosen SED:
   power-law slope $E^{\rm PLind}$, the monochromatic energy, or a numerical SED
   file. With metals, mind the required wavelength coverage
   (\S\ref{sec:metalsed}). \\
@@ -585,6 +628,19 @@ defaults restore the standard behavior).}\label{tab:inp-opt}\\
   Roche mode (no \texttt{Domain mode} line) it extends the domain past $L_1$ while
   \emph{keeping} the tidal potential (Yan/Huang-style; pair with
   \texttt{IC mode: auto}). \\
+\texttt{Base grid [dr,cells]:} & real (\rp), int
+  (def.\ \texttt{2.0e-4 50}) & Resolution of the uniform region of the
+  \texttt{Mixed} grid: \texttt{cells} uniform cells of size \texttt{dr} stacked
+  on the base, then $N-\texttt{cells}$ stretched cells out to $r_{\rm max}$.
+  The product $\texttt{dr}\times\texttt{cells}$ is the extent of the uniform
+  region ($0.01\,R_p$ by default), so refining the base at fixed extent means
+  dividing \texttt{dr} and multiplying \texttt{cells} by the same factor
+  (\texttt{5.0e-5 200} is the $4\times$ refinement). Requirement: \texttt{dr}
+  must resolve the base density scale height $H=kT/(\mu g)$; below $\sim$5 cells
+  per $H$ the scheme carries an undamped stationary $2\,dr$ entropy mode at the
+  base (\S\ref{sec:basegrid}). Ignored by \texttt{Grid type: Uniform} and
+  \texttt{Stretched}. The total cell count $N$ is a compile-time constant, so a
+  finer base leaves fewer cells for the stretched region. \\
 \texttt{Stellar Teff [K]:} & real (K) & Stellar $T_{\rm eff}$ for the
   diluted-blackbody Balmer continuum that photoionizes/heats H($n{=}2$). Enables
   the excited-H model when both this \emph{and} \texttt{Stellar radius} are $>0$. \\
@@ -660,8 +716,9 @@ defaults restore the standard behavior).}\label{tab:inp-opt}\\
   is insensitive to $\varepsilon$ ($10^{-4}$ vs.\ $10^{-5}$ tested identical).
   $\le0$ = exact legacy valve (default). \\
 \texttt{Solver:} & \texttt{Newton} [real] & Production steady-state solve:
-  marching warm-up until the monitored steady residual $\max\|R\|$ drops below
-  the optional value (default $5\times10^{-2}$), then the JFNK Newton finish to
+  marching warm-up until the flux metric $du$ (the radial spread of
+  $\rho v r^2$) drops below the optional value
+  \texttt{newton\_du\_switch} (default $10^{-2}$), then the JFNK Newton finish to
   \texttt{Resid tol} (default $10^{-3}$), then the standard final outputs and
   post-processing. Adopts \texttt{Valve eps:} $10^{-4}$ automatically if unset.
   See \S\ref{sec:newton}. \\
@@ -849,7 +906,7 @@ the predicted metal lines. How far the spectrum reaches depends on the SED type
   indicative; load a real SED for quantitative metal work. \emph{Caveat:} the
   He\,$2\,^3$S-triplet sub-grid and the metal sub-grid are mutually exclusive ---
   a single power-law run cannot carry both.
-\item[\textmd{Loaded SED (\texttt{Load}, \texttt{SED file:}).}]
+\item[\textmd{Loaded SED (\texttt{Load}, \texttt{Spectrum file:}).}]
   The file's own energy/wavelength grid \emph{is} the radiative grid (read
   verbatim, no extrapolation). The SED file must therefore \textbf{extend to at
   least the lowest threshold of your active metals} --- e.g.\ to
@@ -1119,7 +1176,7 @@ $p_0=n_0\mu v_0^2$, $T_0$ (base temperature), $q_0=n_0\mu v_0^3/R_p$.
 Col & Quantity & Unit & Note \\
 \midrule
 1 & $r$ & \rp & radius (base $=1$) \\
-2 & $\rho$ (number density) & cm$^{-3}$ & total density ($=\rho_{\rm code}\,n_0$) \\
+2 & $\rho$ (mass density) & $m_{\rm H}$\,cm$^{-3}$ & mass density ($=\rho_{\rm code}\,n_0$) \\
 3 & $v$ & cm\,s$^{-1}$ & radial velocity ($\times v_0$) \\
 4 & $p$ & erg\,cm$^{-3}$ & pressure ($\times p_0$) \\
 5 & $T$ & K & temperature ($\times T_0$) \\
@@ -1128,6 +1185,10 @@ Col & Quantity & Unit & Note \\
 \bottomrule
 \end{tabular}
 \end{center}
+
+\noindent Column~2 is a \emph{mass} density expressed in units of $m_{\rm H}$ per
+cm$^3$ (metals included under the \texttt{eos\_metals} policy), not a number
+density; multiply by $m_{\rm H}$ to get g\,cm$^{-3}$.
 
 \subsection{\texttt{Ion\_species.txt} / \texttt{Ion\_species\_adv.txt}}
 Ion number densities [cm$^{-3}$] (34 columns). Column~1 is $r$; columns 2--7 are
@@ -1196,19 +1257,70 @@ pumped by the Ly$\alpha$ field of \S\ref{sec:jlya}),
 and the metal resonance doublets \textbf{Mg\,II\,h\&k}, \textbf{Ca\,II\,H\&K},
 and \textbf{Na\,I\,D} --- the metals get the same full treatment as the H/He
 lines (both doublet components in one window, theoretical / instrument /
-$+$rotation spectra, figures via \texttt{fig\_name\_mgii/caii/nai}), plus the
-validated single-component line-center and 4\,\AA-band depth table; a
+$+$rotation spectra, written under the same \texttt{tpm\_<line>} names), plus
+the validated single-component line-center and 4\,\AA-band depth table; a
 metals-off run skips them automatically. It supports two
 geometries via \texttt{geometry = 'spherical'} (Phase~5a) or \texttt{'triaxial'}
 (Phase~5b, the 3-D Roche-equipotential reconstruction in \texttt{roche\_recon.py}).
-Set the planet/star parameters in its header (e.g.\ \texttt{R\_star},
-\texttt{rot\_period}, \texttt{T\_star}); these are \emph{not} read from
-\texttt{input.inp} except $R_p$, $M_p$, $a$, $L_{\rm EUV}$.
+
+\paragraph{Where the system parameters come from.} Every planet and star
+parameter is taken from the \texttt{input.inp} of the run directory, so the
+spectra always describe the same system as the simulation. Each is resolved
+with the precedence
+\begin{center}
+\texttt{EXHALE\_TRANSIT\_*} environment override $>$ \texttt{./input.inp} $>$
+built-in default,
+\end{center}
+so an explicit override still wins for an experiment. The labels are matched
+exactly as \texttt{input\_read.f90} does, so line order is irrelevant.
+
+\begin{center}
+\begin{tabular}{@{}lll@{}}
+\hline
+Quantity & \texttt{input.inp} label & Override \\
+\hline
+$R_p$          & \texttt{Planet radius [R\_J]}        & --- \\
+$M_p$          & \texttt{Planet mass [M\_J]}          & --- \\
+$T_{\rm eq}$   & \texttt{Equilibrium temperature [K]} & --- \\
+$a$            & \texttt{Orbital distance [AU]}       & --- \\
+$M_\star$      & \texttt{Parent star mass [M\_sun]}   & --- \\
+$L_{\rm EUV}$  & \texttt{Log10 of EUV luminosity}     & --- \\
+$\xi$ (day--night) & \texttt{2D approximate method}   & \texttt{xi\_override} \\
+$R_\star$      & \texttt{Stellar radius [R\_sun]}     & \texttt{EXHALE\_TRANSIT\_RSTAR\_RSUN} \\
+$T_\star$      & \texttt{Stellar Teff [K]}            & \texttt{EXHALE\_TRANSIT\_TSTAR} \\
+$P_{\rm spin}$ & from $a$, $M_\star{+}M_p$ (tidal locking) & \texttt{EXHALE\_TRANSIT\_ROTP} \\
+\hline
+\end{tabular}
+\end{center}
+
+\noindent The planet spin period has no \texttt{input.inp} key: a close-in
+giant is tidally locked, so the default is the Keplerian orbital period
+$P_{\rm orb}=2\pi\sqrt{a^3/[G(M_\star+M_p)]}$ built from the orbital distance
+and the masses already in \texttt{input.inp}. Only the instrument resolving
+powers, the wavelength windows, and the geometry switch remain
+script/environment settings --- they describe the observation, not the
+system. At startup the script prints every resolved parameter together with
+its source (\texttt{input.inp}, \texttt{env ...}, or built-in default), and
+warns when \texttt{Stellar radius}/\texttt{Stellar Teff} are missing from
+\texttt{input.inp}; read that block first when a spectrum looks wrong.
+
+\paragraph{Outputs.} Every line carries one key --- \texttt{He10830},
+\texttt{Lya}, \texttt{Halpha}, \texttt{Hbeta}, \texttt{MgII}, \texttt{CaII},
+\texttt{NaI} --- and both products of a line are named from that key and land
+in the run directory: the model curve \texttt{tpm\_<line>.txt} (always written)
+and, when \texttt{EXHALE\_TRANSIT\_FIG\_PREFIX} is set, the figure
+\texttt{<prefix><line>.png} together with its vector \texttt{.pdf}. A curve
+file has the columns \texttt{lambda[A]}, $T_\lambda$ (theoretical),
+$T_\lambda$ (instrument-convolved), $T_\lambda$ ($+$rotation), so the excess
+absorption in percent is $(1-T_\lambda)\times100$; a metals-off run simply
+writes no metal curves. \texttt{EXHALE\_TRANSIT\_SAVE\_PREFIX} decorates the
+curve name in the same way the figure prefix decorates the figure name; both
+are resolved against the run directory, so an absolute prefix writes elsewhere.
 
 \paragraph{Step-by-step usage.} \texttt{EXHALE\_transit.py} reads
 \texttt{output/Hydro\_ioniz\_adv.txt} and \texttt{output/Ion\_species\_adv.txt}
-from \texttt{path} (default \texttt{'.'}), so it is normally copied into the run
-directory and executed there:
+from \texttt{path}, which is the current directory unless
+\texttt{EXHALE\_TRANSIT\_PATH} names the run directory:
 \begin{enumerate}
 \item \emph{Ensure the \texttt{*\_adv.txt} files exist.} A normal converged run
   writes them automatically. To post-process an existing state (e.g.\ a Newton
@@ -1217,32 +1329,34 @@ directory and executed there:
   \texttt{Hydro\_ioniz\_IC.txt} and likewise for \texttt{Ion\_species}, set
   \texttt{Load IC?\ True} and \texttt{Do only PP:\ True} in \texttt{input.inp},
   and run \texttt{./EXHALE.x} once (seconds).
-\item \emph{Edit the header block} of the copied \texttt{EXHALE\_transit.py}: the stellar
-  radius \texttt{R\_star}, the rotation period \texttt{rot\_period} (use the
-  orbital period for a tidally locked planet), the stellar \texttt{T\_star}
-  (enables the Balmer-continuum $n{=}2$ photoionization; $\le0$ disables), the
-  instrument resolutions, and the output names \texttt{fig\_name\_hei/lya/ha/hb}
-  (empty $=$ do not save).
-\item \emph{Run} \texttt{MPLBACKEND=Agg python3 EXHALE\_transit.py} (the \texttt{Agg} backend
-  suppresses the interactive windows on headless machines). The script saves the
-  requested figures and prints the line-center absorption depths
-  (theoretical / instrument-convolved / $+$rotation) and the metal-line summary.
+\item \emph{Set what describes the observation}, if the defaults do not: the
+  instrument resolutions and wavelength windows
+  (\texttt{EXHALE\_TRANSIT\_RES\_*}, \texttt{\_HE\_LMIN/LMAX/N}), the azimuthal
+  sampling of the rotation integral, and \texttt{geometry} for a Roche run.
+  The star and the spin period need nothing --- they come from
+  \texttt{input.inp}.
+\item \emph{Run} \texttt{MPLBACKEND=Agg EXHALE\_TRANSIT\_PATH=<run dir> python3
+  EXHALE\_transit.py} (the \texttt{Agg} backend suppresses the interactive
+  windows on headless machines). The script writes the \texttt{tpm\_<line>.txt}
+  curves into the run directory and prints the line-center absorption depths
+  (theoretical / instrument-convolved / $+$rotation) and the metal-line summary;
+  add \texttt{EXHALE\_TRANSIT\_FIG\_PREFIX=tpm\_} to save the figures as well.
 \end{enumerate}
 Worked examples (the converged Newton solutions of WASP-121b and HD189733b, with
-all four H/He spectra and the metal lines): \texttt{regression/tpm\_wasp/} and
-\texttt{regression/tpm\_hd189/}, collected in the notebook
-\texttt{regression/}\allowbreak\texttt{steady\_solver\_results.ipynb}.
+all four H/He spectra and the metal lines): \texttt{backup/regression/tpm\_wasp/} and
+\texttt{backup/regression/tpm\_hd189/}, collected in the notebook
+\texttt{backup/regression/}\allowbreak\texttt{steady\_solver\_results.ipynb}.
 Figure~\ref{fig:tpmspec} shows the four H/He spectra \texttt{EXHALE\_transit.py} saves for
-the WASP-121b Newton solution of \texttt{regression/tpm\_wasp/} (run with
+the WASP-121b Newton solution of \texttt{backup/regression/tpm\_wasp/} (run with
 \texttt{Include He23S? True}, so the He\,I\,10830 line is populated).
 
 \begin{figure}[htbp]\centering
-\includegraphics[width=0.49\textwidth]{figures/tpm_HeI_10830.pdf}\hfill
+\includegraphics[width=0.49\textwidth]{figures/tpm_He10830.pdf}\hfill
 \includegraphics[width=0.49\textwidth]{figures/tpm_Lya.pdf}\\[2pt]
 \includegraphics[width=0.49\textwidth]{figures/tpm_Halpha.pdf}\hfill
 \includegraphics[width=0.49\textwidth]{figures/tpm_Hbeta.pdf}
 \caption{\texttt{EXHALE\_transit.py} output spectra for WASP-121b (Roche, Newton solution
-with He\,$2^3$S on; \texttt{regression/tpm\_wasp/}): He\,I\,10830 (top left),
+with He\,$2^3$S on; \texttt{backup/regression/tpm\_wasp/}): He\,I\,10830 (top left),
 Ly$\alpha$ (top right), H$\alpha$ (bottom left), and H$\beta$ (bottom right).
 Each panel shows the theoretical line, the instrument-convolved line, and the
 instrument$+$rotation-convolved line as produced by the script.}
@@ -1592,7 +1706,7 @@ planet.}\label{fig:roche}
 \subsection{Transmission spectra}
 \texttt{EXHALE\_transit.py} turns a converged model into transit absorption. The metal
 resonance lines are the key NUV/optical diagnostics; Figure~\ref{fig:trans}
-compares the modelled effective transit radii $R_{\rm eff}/R_\star$ (spherical
+compares the modeled effective transit radii $R_{\rm eff}/R_\star$ (spherical
 Case~A) against Huang et al.\ (2023). Recall the conventions of \S5.2: Mg\,II is a
 4\,\AA\ bin, Ca\,II/Na are line-center, and $R_{\rm eff}/R_\star=\sqrt{(R_p/R_\star)^2+h}$.
 
@@ -1605,13 +1719,16 @@ compared with Huang et al.\ (2023) Case~A and Case~D.}\label{fig:trans}
 % ===================================================================== %
 \section{Atomic and molecular data}\label{sec:data}
 % ===================================================================== %
-EXHALE is a \emph{purely atomic/ionic} code: the modeled species are H, He
+By default EXHALE is an \emph{atomic/ionic} code: the modeled species are H, He
 (including the He\,$2\,^3$S metastable triplet), and ten trace metals
 (C, N, O, Mg, Si, Ca, Na, K, S, Fe) across their first two--three ionization
-stages. There is \textbf{no molecular chemistry and no molecular opacity} --- no
-H$_2$, H$^-$, CO, or H$_2$O --- so no molecular line lists or partition functions
-enter the calculation (the only ``molecular'' quantity in the code is the mean
-\emph{molecular} weight $\mu$, i.e.\ the mean mass per particle). Table~\ref{tab:data}
+stages. The optional molecular network (\texttt{Molecular chemistry: True},
+\S\ref{sec:loweratm}) adds H$_2$, H$_2^+$, H$_3^+$ and HeH$^+$ to the coupled
+equilibrium, with H$_2$ photoionization opacity (Yan et al.\ 1998) and H$_3^+$
+infrared cooling (Miller et al.\ 2013). Beyond those four there is \textbf{no
+molecular chemistry and no molecular opacity} --- no H$^-$, CO, or H$_2$O ---
+so no molecular line lists or partition functions enter the calculation.
+Table~\ref{tab:data}
 collects the provenance of every rate and cross section, grouped by physical
 process. The H/He baseline is inherited essentially unchanged from the original
 ATES (Caldiroli et al.\ 2021, 2022); the metal, excited-hydrogen, and
@@ -1667,6 +1784,8 @@ metal line cooling \mbox{(analytic)} & C\,I/II, N\,I/II, O\,I/II & closed-form f
 metal line cooling \mbox{(analytic)} & Mg\,I/II, Ca\,II\,H\&K, Na\,I\,D, Fe\,II coronal & closed-form fits to CHIANTI v11.0.2 (Burgess--Tully descaled; 1--3\% accuracy); Na\,I\,D via effective $\bar g\!\approx\!0.2$ \\
 metal line cooling \mbox{(tabulated)} & Fe\,I; Fe\,II\,$(T,n_e)$ & NIST $f$-values $+$ Van Regemorter; CHIANTI multilevel statistical equilibrium \\
 fine-structure (opt., \texttt{use\_2lev\_cool}) & [O\,I] etc. & Lique et al.\ (2017) / Draine (2011) \\
+line trapping in the two-level solution & [O\,I] 63\,\textmu m, [C\,II] 158\,\textmu m & line-center escape probability from the column above the cell, Hollenbach \& McKee (1979) / de Jong, Boland \& Dalgarno (1980) plane-parallel Doppler form renormalized to $\beta(0)=1$; applied as $A_{ul}\!\to\!\beta A_{ul}$ \emph{inside} the two-level solution. Other lines, including Mg\,II h\&k, are treated as optically thin \\
+validity floor of the coronal fits & all CHIANTI-derived coefficients & the coronal part is cut off smoothly below $10^{3}$\,K (the lower end of the fitted range), continuous in value and $dT$-slope and bit-identical above it; only the explicit two-level fine-structure terms survive below. Not applied to the legacy AIOLOS branch (\texttt{cno\_cool 0}) \\
 \midrule
 \multicolumn{3}{@{}l}{\textbf{Photoelectric heating}}\\[2pt]
 secondary ionization (def.\ on, \texttt{Secondary\_ionization}) & H\,I, He\,I & Shull \& van Steenberg (1985) $f_{\rm heat}(x)$, $f_{\rm ion}(x)$ fits; photoelectrons with $E_0>40\,$eV drive secondary H\,I / He\,I ionizations, heating scaled to $f_{\rm heat}$; the He\,$2^3$S photoelectron feeds the same heating and secondary-source budget \\

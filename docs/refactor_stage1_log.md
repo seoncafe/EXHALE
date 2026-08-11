@@ -1,10 +1,11 @@
 # Stage I Extensibility Refactor — Change Log
 
-Date: 2026-06-10. Companion to `ATES/ATES_refactor_plan_from_metal.md` (Path B).
+Date: 2026-06-10. Companion to `ATES_refactor_plan_from_metal.md` (Path B),
+which lives in the workspace-level `ATES/` directory, not in this repository.
 Every step below is a no-physics-change refactor gated by the regression
 harness; "PASS" means the gate ran green immediately after the step.
 
-## Regression harness (`regression/`)
+## Regression harness (`backup/regression/`)
 
 - `run_check.sh {golden|check} [case...]` — rebuilds, re-runs each matrix case
   single-threaded (`OMP_NUM_THREADS=1`, fully deterministic), and compares
@@ -28,8 +29,10 @@ harness; "PASS" means the gate ran green immediately after the step.
   (rho, f_sp → all number densities + ne + n_tot), `comp_T_from_p`,
   `comp_p_from_T`. The three near-identical extraction blocks in `EXHALE_main`
   collapse into calls; the electron/total-density policy now lives in one
-  place. `eos_include_metals` flag added (default `.false.`, byte-identical;
-  hook for a future fully-coupled-metal EOS experiment).
+  place. `eos_include_metals` flag added (introduced as `.false.` and
+  byte-identical; it became the default `.true.` with the 2026-06-13
+  `eos_metals` work, and `eos_metals 0` now selects the legacy trace
+  approximation).
 
 ## Phase 2 — output schema + restart preservation (PASS, data-identical + roundtrip)
 

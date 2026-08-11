@@ -1,10 +1,18 @@
 # EXHALE `input.inp` schema (authoritative)
 
-This document is the authoritative schema of EXHALE's `input.inp` file. It is
-§5.6 Inc 0 of `docs/refactor_plan_system_composition_parser.md` ("document the
-schema"): a prerequisite for the later increments that will convert the Fortran
-positional reads to keyword matching and unify the Python loaders. No code is
-changed here.
+This document is the authoritative schema of EXHALE's `input.inp` file. It began
+as §5.6 Inc 0 of `docs/refactor_plan_system_composition_parser.md` ("document the
+schema"), the prerequisite for the increments that converted the Fortran
+positional reads to anchored label matching and unified the Python loaders.
+Those increments have since been carried out; §3.0 describes the parser as it
+now behaves, and §3.1--3.2 are retained as a record of the positional design it
+replaced.
+
+**Line-number caveat.** The `F<n>` citations throughout point at
+`input_read.f90` as it stood when each section was written and have drifted by
+tens to a couple of hundred lines. Treat them as navigational hints, not
+addresses; the `GUI<n>` citations into
+`src/utils/EXHALE_interface_functions.py` are current.
 
 The single source of truth for the file format is the Fortran parser
 `src/modules/files_IO/input_read.f90` (`subroutine input_read`, plus its
@@ -18,21 +26,22 @@ mismatch is called out in the "Discrepancies and fragilities" section.
 `input.inp` is a plain-text file, read line by line. It has two structurally
 different regions:
 
-1. A **fixed-order core block** (the planet/star parameters and the numerics
-   selectors). These lines are consumed strictly by line order; the parser does
-   not look at the label text, only at a chosen word position on each line via
-   `get_word(line, n)`. A few of these lines are **conditional**: the
-   spectrum-property line depends on `Spectrum type`, the energy-band line is
-   skipped for a monochromatic spectrum, and the X-ray luminosity line is
-   present only when X-rays are included. This means the absolute line number of
-   a later core line (for example the EUV luminosity) depends on earlier
-   choices.
+1. A **core block** (the planet/star parameters and the numerics selectors).
+   Each of these keys is mandatory; a missing one aborts with `error stop 1`.
+   They are located by anchored label match (`req` -> `find_lbl` ->
+   `lbl_match`), so their order in the file does not matter, but the *value* is
+   still taken by word position on the matched line via `get_word(line, n)`. A
+   few are **conditional**: the spectrum-property line depends on
+   `Spectrum type`, the energy-band line is skipped for a monochromatic
+   spectrum, and the X-ray luminosity line is read only when X-rays are
+   included. (Historically this block was read strictly by line order; §3.1
+   records that design.)
 
-2. An **optional keyword-extension block** that follows the core block. Every
-   remaining line is scanned in a `do` loop and matched by substring with
-   `index(line, 'KEY')`. Any of these keys may be omitted (the code holds a
-   default for each), may appear in any order relative to each other, and blank
-   lines are skipped. These keys carry the newer physics and solver options.
+2. An **optional keyword-extension block**. Every line of the file is scanned in
+   a `do` loop and matched with the same anchored `lbl_match`. Any of these keys
+   may be omitted (the code holds a default for each), may appear in any order,
+   and blank / `#`-comment lines are skipped. An unrecognized non-blank line
+   draws a warning. These keys carry the newer physics and solver options.
 
 Four independent consumers read this file:
 
@@ -43,9 +52,10 @@ Four independent consumers read this file:
   string prefix, so it is robust to line order, but it surfaces only a subset of
   the parameters.
 - **`EXHALE_transit.py`** (top level of `EXHALE/`) via
-  `exhale_transit_lib.get_word` — the transit post-processor. It reads a few
-  header parameters by a **positional counter** (Rp, Mp, T0, a_orb, Mstar) and
-  the rest by content match (LEUV, `2D approximate method`).
+  `exhale_transit_lib.read_input_params` — the transit post-processor. Every
+  field it needs (Rp, Mp, T0, a_orb, Mstar, LEUV, `2D approximate method`) is
+  matched by label through `find_input_label`; the positional counter it used
+  before Inc 2 is gone.
 - **`src/utils/EXHALE_interface_functions.py`** — the Tk GUI writer
   (`start_func`). It writes the core block only (through `Force start`); it does
   not emit any keyword-block line.
@@ -84,7 +94,7 @@ Rows are in the exact order `input_read.f90` reads them.
 | 11a | `Spectrum file:` (only if `Load`) | positional, word 3 | string (path) | - | conditional | F154-155; GUI964 | Sets `sed_file`, `do_read_sed = .true.`. |
 | 11b | `Power-law index:` (only if `Power-law`) | positional, word 3 | real | - | conditional | F159-161; GUI968 | Sets `PLind`, `is_PL_sed = .true.`. |
 | 11c | `Photon energy [eV]:` (only if `Monochromatic`) | positional, word 4 | real | eV | conditional | F170-172; GUI972 | Sets `e_low`, `is_monochr = .true.`. If below the He I threshold, He is removed and `HeH` is zeroed (F179-185). |
-| 12 | `Use only EUV?` | positional, word 4 | bool-ish | - | mandatory | F196-198; GUI985/987 | Word 4 `== 'False'` sets `thereis_Xray = .true.` (X-rays INCLUDED). `True` leaves X-rays off. See the double-negative note in §5. |
+| 12 | `Use only EUV?` | positional, word 4 | bool-ish | - | mandatory | F196-198; GUI985/987 | Word 4 `== 'False'` sets `thereis_Xray = .true.` (X-rays INCLUDED). `True` leaves X-rays off. See the double-negative note in §6.7. |
 | 13 | `[E_low,E_mid(,E_high)] = [ ... ]` (skipped if monochromatic) | positional, words 4, 6, 8 | reals | eV | conditional | F201-233; GUI999/1004 | If X-rays off: read `e_low` (word 4) and `e_mid` (word 6); `e_top` defaults to `1.24e3`. If X-rays on: also read `e_top` (word 8). The GUI writes `-`-separated values; examples use `,`; both parse because only word positions 4/6/8 matter. |
 | 14 | `Log10 of X-ray luminosity [erg/s]:` (only if X-rays on) | positional, word 6 | real | log10(erg/s) | conditional | F237-239; GUI1013 | Sets `LX`; `LX = 0` when X-rays off. |
 | 15 | `Log10 of EUV luminosity [erg/s]:` | positional, word 6 | real | log10(erg/s) | mandatory | F245-247; GUI1017; IO `LEUV`; TR content match (F156) | Sets `LEUV`. |
@@ -94,12 +104,12 @@ Rows are in the exact order `input_read.f90` reads them.
 | 19 | `Include He23S?` | positional, word 3 | bool-ish | - | mandatory | F270-272; GUI1033/1035 | Word 3 `== 'True'` sets `thereis_HeITR`. Forced off later if He is absent (F633). |
 | 20 | `Load IC?` | positional, word 3 | bool-ish | - | mandatory | F275-277; GUI1040/1042 | `True` sets `do_load_IC`. |
 | 21 | `Do only PP:` | positional, word 4 | bool-ish | - | mandatory | F280-285; GUI1056/1058 | `True` sets `do_only_pp` and clears `force_start`. |
-| 22 | `Force start:` | positional, word 3 | bool-ish | - | mandatory | F288-293; GUI1062/1064 | `True` sets `force_start` and clears `do_only_pp`. This is the LAST positional line; the keyword loop consumes everything after it. |
+| 22 | `Force start:` | positional, word 3 | bool-ish | - | mandatory | F288-293; GUI1062/1064 | `True` sets `force_start` and clears `do_only_pp`. Historically the last positional line; with anchored matching its position no longer matters. |
 
 ### 2b. Keyword-extension block (optional; scanned after the core block)
 
-Every remaining line is matched by `index(line, 'KEY')` in the `do` loop
-(F325-574), in the order shown. Any line may be omitted. None of these are read
+Every line is matched by `lbl_match(line, 'KEY')` in the keyword `do` loop, in
+the order shown. Any line may be omitted. None of these are read
 by the Python loaders except where noted.
 
 | # | Key substring | Match / value word | Type | Units | Default (if absent) | Sets | Notes |
@@ -135,7 +145,7 @@ by the Python loaders except where noted.
 | K25 | `Energy solver` | word 3 == `Explicit` | flag | - | semi-implicit (`.true.`) | `use_semi_implicit_energy=.false.` | F435-442. |
 | K26 | `Time stepping` | word 3 == `Local` | flag | - | global (`.false.`) | `use_local_dt=.true.` | F443-450. Cell-by-cell pseudo-time. |
 | K27 | `Level tol` | word 3 | real | - | `lev_th=-1` | `lev_th` | F451-455. Mass-flux level-stability tolerance. |
-| K28 | `Solver` | word 2 == `Newton` (+ optional word 3) | flag + real | - | `use_newton_solver=.false.`, `newton_du_switch=1e-2` | `use_newton_solver`, `newton_du_switch` | F456-467. JFNK hand-off. Distinct from K41/K42 (see §5). |
+| K28 | `Solver` | word 2 == `Newton` (+ optional word 3) | flag + real | - | `use_newton_solver=.false.`, `newton_du_switch=1e-2` | `use_newton_solver`, `newton_du_switch` | F456-467. JFNK hand-off. Distinct from K41/K42 (see §6.9). |
 | K29 | `Valve eps` | word 3 | real | - | `valve_eps=-1` | `valve_eps` | F468-472. Softplus base valve. |
 | K30 | `Hydrostatic base` | word 3 == `True` | flag | - | `.false.` | `hydrostatic_base` | F473-477. |
 | K31 | `Shapiro filter` | word 3 (+ optional word 4) | real, int | - , steps | `shapiro_eps=-1`, `shapiro_every=4` | `shapiro_eps`, `shapiro_every` | F478-484. |
@@ -217,27 +227,31 @@ here for reference) had these consequences, now removed by the label matching in
   `Spectrum type` (line 11a/11b/11c), with the monochromatic flag (line 13
   skipped), and with the X-ray choice (lines 13 word 8 and 14). The Fortran
   parser tracked these with matching `if` branches, so it stayed consistent, but
-  any external reader that assumes fixed line numbers will not (see §5).
+  any external reader that assumes fixed line numbers will not (see §6).
 
-### 3.2 Keyword matching
+### 3.2 Keyword matching (historical: the substring design)
 
-After `Force start:`, the loop reads each remaining line and tests it against a
-chain of `else if (index(line, 'KEY') > 0)` clauses. Matching is:
+*Superseded by §3.0. Kept because the clause ordering it describes is still what
+the code does.* The loop tested each line against a chain of
+`else if (index(line, 'KEY') > 0)` clauses. Matching was:
 
-- **Substring, not exact.** A line matches a key if the key text appears
-  anywhere in it. This makes ordering of the clauses significant when one key is
-  a substring of another. The code already orders the two known cases correctly:
-  `Wind-AE seed out` (K6) is tested before `Wind-AE seed` (K7), and
-  `He_metal_diffusion` (K22) before `He_diffusion` (K23).
+- **Substring, not exact.** A line matched a key if the key text appeared
+  anywhere in it. This made clause ordering significant when one key is a
+  substring of another. The two cases that need it are still ordered the same
+  way under anchored matching: `Wind-AE seed out` (K6) before `Wind-AE seed`
+  (K7), and `He_metal_diffusion` (K22) before `He_diffusion` (K23).
 - **Case-sensitive** for the key text. The `Solver` clause (K28) matches the
   literal `Solver`, while `Newton solver`/`Brent solver`/`Energy solver` use a
-  lowercase `solver`; the branches stay separate only because of this
-  capitalization difference (see §5).
+  lowercase `solver`. Under the old substring rule the branches stayed separate
+  only by that capitalization; anchoring now separates them structurally, and a
+  mistyped `Newton Solver:` draws an unknown-line warning instead of
+  false-matching.
 - **First matching clause wins.** Each line falls into at most one branch (the
-  `else if` chain), so a line never fires two keys.
+  `else if` chain), so a line never fires two keys. This is unchanged.
 - **Absent key = compiled default.** Every keyword variable is initialized
-  before the loop (F308-324) or in `parameters.f90`, so omitting a line simply
-  leaves the default in place. There is no "required" keyword.
+  before the loop or in `parameters.f90`, so omitting a keyword line leaves the
+  default in place. There is no required *keyword*; the 24 core keys, by
+  contrast, are now mandatory.
 
 ### 3.3 Value-word conventions differ by key
 
@@ -250,9 +264,9 @@ rather than parsing `key: value`.
 
 ### 3.4 Order dependencies
 
-- The keyword block must come **after** the entire core block. A keyword line
-  placed before `Force start:` is consumed positionally as a core line and
-  misread.
+- Placement of a keyword line relative to the core block no longer matters
+  (with the positional reads it did: a keyword line before `Force start:` was
+  consumed as a core line and misread).
 - `du_th` (K13) behavior depends on `Reconstruction scheme:` (core line 18):
   two thresholds are honored only when `recon_two_stage` is set by `PLM+WENO3`;
   otherwise the second value is ignored.
@@ -335,51 +349,47 @@ Any other key warns ("unknown key") and is skipped.
 
 ## 6. Discrepancies and fragilities
 
-Framed tentatively; these are the observations that motivate §5.6 Inc 1.
+Framed tentatively. Items 6.1--6.4 and 6.8 were the observations that motivated
+§5.6 Inc 1--3; all five have since been resolved and are kept with their
+resolutions, because the resolution is the thing worth knowing.
 
-### 6.1 Positional fragility (the core issue Inc 1 targets)
+### 6.1 Positional fragility (resolved)
 
-The core block is read by absolute line order, so inserting or removing any core
-line shifts every later read. The parser stays self-consistent only because it
-mirrors the conditional lines (spectrum property, energy band, X-ray) with
-matching `if` branches. This is exactly the design Inc 1 proposes to replace with
-keyword matching while preserving back-compatibility.
+The core block used to be read by absolute line order, so inserting or removing
+any core line shifted every later read; the parser stayed self-consistent only
+because it mirrored the conditional lines (spectrum property, energy band,
+X-ray) with matching `if` branches. **Resolved by Inc 1:** every core key is
+found by anchored label match, order is irrelevant, and a missing mandatory key
+aborts with a message naming it (§3.0).
 
-### 6.2 `EXHALE_transit.py` reads header parameters positionally
+### 6.2 `EXHALE_transit.py` header reads (resolved)
 
-`EXHALE_transit.py` (F150-154 of that file) reads Rp, Mp, T0, a_orb, and Mstar
-by a positional `num` counter, not by label. The counter is offset by one from
-the physical line because a `readline()` runs before the loop, so `num == 2`
-reads file line 3 (Planet radius), `num == 3` line 4, and so on up to `num == 9`
-= file line 10 (Parent star mass). It appears robust today only because the first
-ten header lines are fixed; any inserted line before `Parent star mass` would
-make the `num == 9` read grab the wrong line. The same script reads `LEUV` and
-`2D approximate method` by content match (F156-157), which does survive
-spectrum-option line shifts, so it appears these two were deliberately hardened
-while Rp..Mstar were left positional. This is the most fragile external
-consumer.
+`EXHALE_transit.py` used to read Rp, Mp, T0, a_orb and Mstar by a positional
+`num` counter offset by one from the physical line, which would have grabbed the
+wrong value had any line been inserted before `Parent star mass`. **Resolved by
+Inc 2:** `read_input_params` in `exhale_transit_lib.py` matches every field by
+label through `find_input_label`; there is no counter left in the script.
 
-### 6.3 The three readers surface different subsets and use different match rules
+### 6.3 The readers surface different subsets (partly resolved)
 
-- Fortran reads everything positionally/by keyword substring.
+- Fortran matches every key by anchored label.
 - `exhale_io.py:read_input` is label-based (splits on `:`, matches by string
   prefix) and returns only n0, Rp, Mp, T0, a_orb, r_esc, HeH, Mstar, LEUV, and a
   `spherical` flag, plus the full raw dict. It never parses the energy-band line
   (no `:`), and the X-ray luminosity is present only in the raw dict, not as a
   named field.
-- `EXHALE_transit.py` mixes positional (Rp, Mp, T0, a_orb, Mstar) and content
-  (LEUV, appx) reads.
+- `EXHALE_transit.py` matches by label throughout.
 
-So the same file is parsed three different ways with three different fragility
-profiles. Unifying these is §5.6 Inc 2.
+The fragility difference is gone; what remains is that the two Python loaders
+surface different *subsets* of the file.
 
-### 6.4 `exhale_io.mdot_log10` handles only two of the four flux methods
+### 6.4 `exhale_io.mdot_log10` and the four flux methods (resolved)
 
-`mdot_log10` scales by 0.5 for `Rate/2 + Mdot/2` and by 0.25 for `Mdot/4`, but
-has no branch for `Rate/4 + Mdot` or `alpha` (F173-178 of `exhale_io.py`). For
-those two methods it appears to return the unscaled mass-loss rate, which would
-likely disagree with the Fortran flux factor. Worth verifying before trusting
-`mdot_log10` on `Rate/4`/`alpha` runs.
+`mdot_log10` used to scale only `Rate/2 + Mdot/2` and `Mdot/4`, with no branch
+for `Rate/4 + Mdot` or `alpha`. **Resolved:** `examples/exhale_io.py` now holds
+an explicit `_MDOT_FACTOR` table with all four methods (`Rate/4` and `alpha`
+take no output correction, by design), and `_mdot_factor()` raises `ValueError`
+on anything else.
 
 ### 6.5 The GUI writes only the core block
 
@@ -405,14 +415,17 @@ the "canonical" format is ambiguous.
 the label, which is easy to misread. This is a semantic gotcha rather than a
 bug.
 
-### 6.8 Keyword substring collisions rely on ordering and capitalization
+### 6.8 Keyword substring collisions (resolved)
 
-`index()` substring matching is safe today only by convention: `Wind-AE seed
-out` is tested before `Wind-AE seed`, and the `Solver` clause is distinguished
-from `Newton solver`/`Brent solver`/`Energy solver` purely by capitalization. A
-user who writes `Newton Solver:` (capital S) would false-match the plain
-`Solver` clause first. Centralized validation with explicit key definitions
-(§5.6 Inc 3) would remove this hazard.
+Under `index()` substring matching, safety rested on convention: `Wind-AE seed
+out` tested before `Wind-AE seed`, and the `Solver` clause distinguished from
+`Newton solver`/`Brent solver`/`Energy solver` purely by capitalization, so a
+user writing `Newton Solver:` would false-match plain `Solver`. **Resolved:**
+anchored `lbl_match` plus the `known_keys` list, which makes an unrecognized
+non-blank line print a warning naming it — added for exactly this typo. The
+`Wind-AE seed out` / `He_metal_diffusion` orderings are still needed and still
+in place, since those are whitespace-separated prefixes that anchoring alone
+does not separate.
 
 ### 6.9 Two unrelated "solver" concepts share similar labels
 
@@ -429,7 +442,7 @@ The user manual (`docs/EXHALE_user_manual.tex`, §"input.inp", around lines
 optional keyword block) and the conditional spectrum-property line, so it
 appears broadly consistent with the code. The manual's keyword table is a
 curated subset (it documents `Domain mode`, `Outer radius`, and the headline
-physics options) and does not enumerate every one of the 42 keyword keys; this
+physics options) and does not enumerate every one of the 47 keyword keys; this
 schema is the complete list. No outright contradiction was found; the manual is
 simply less exhaustive than the parser.
 

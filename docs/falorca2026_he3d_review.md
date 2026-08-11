@@ -8,6 +8,14 @@ radiation (mUV 7 eV / sEUV 20 eV / hEUV 40 eV / X-ray 248 eV), stellar-wind
 interaction, synthetic He I 10830 transits. The population scheme closely
 follows Allan et al. (2024, MNRAS 527, 4657).
 
+> **Reading note.** Everything in §§1–6 describes EXHALE as it stood when this
+> review was written. All six gaps it identifies were implemented on
+> 2026-07-23; §7 is the record. Where the body says a term is missing or a flag
+> defaults off — §3.1 (Penning products), §3.2/§3.3 (triplet collisional
+> ionization and cooling), §3.4 (`use_he_rec_coupling`), §3.5 (He<->H charge
+> exchange, and its "metals-only" scope), §4 (He(2^3S)+H2 Penning) — the code
+> now says otherwise. Read §7 first.
+
 **Companion references pulled for this review** (all in `references/`):
 Allan_2024_MNRAS_527_4657.pdf (population scheme source; the file has the
 published erratum appended — see §2.1),
@@ -33,8 +41,8 @@ in-place fixes; none require adopting the paper's infrastructure.
 ## 1. What the paper does (relevant scope)
 
 - Solves the 6-species population network *coupled to* the 3D hydrodynamics
-  (Eq. 5), with photoionization (4 bins + per-species weighting factor
-  ω_sp,λ, their Eq. 14), recombination, collisional ionization, collisional
+  (Eq. 5), with photoionization (4 bins + a weighting factor ω_sp,λ for each
+  species, their Eq. 14), recombination, collisional ionization, collisional
   (de-)excitation, charge exchange, radiative decay (Table A1, largely
   Black 1981 / Cen 1992 / Benjamin 1999 / Bray 2000 / Koskinen 2013 rates).
 - 12 cooling channels (Table A2). Notably they re-express the Black (1981)
@@ -180,7 +188,7 @@ the α_B[He(1^1S)] = 6.23e-14 (T/1e4)^-0.827 row of their Table A1) nor case B
 re-ionization). Falorca & Vidotto (and Allan 2024) keep both channels and
 recycle the ground-capture photons locally. EXHALE's `he_rec_coupling`
 (Draine y/z on-the-spot; `use_he_rec_coupling`) already implements a *more*
-detailed version — per-channel photon energies, the 19.8 eV line, 584 Å,
+detailed version — photon energies for each channel, the 19.8 eV line, 584 Å,
 two-photon fractions — and its TR branch explicitly restores the missing
 0.25 α_B channel; but the flag defaults to `.false.`, so none of it acts.
 

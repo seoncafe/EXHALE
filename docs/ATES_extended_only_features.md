@@ -1,7 +1,7 @@
 # Features in ATES_extended but NOT in EXHALE
 
 This lists everything present in `ATES/ATES_extended/` that has no
-counterpart in `ATES/EXHALE/` (the latter being this session's
+counterpart in `EXHALE/` (the latter being this session's
 fully-coupled metal-cooling work). It is the "what would be lost if we
 discarded ATES_extended" inventory.
 

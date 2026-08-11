@@ -25,6 +25,22 @@ plateaus just above the hand-off threshold (seen with He diffusion), the
 hand-off now fires on the plateau automatically. Quantitative Mdot always
 needs the Newton finish. -> manual §2.5–2.6.
 
+Check `EXHALE_setup.out` for `Base scale-height resolution: H(T_eq)/dr`. Below
+about 10 cells (the code warns) the base carries a stationary cell-to-cell
+entropy mode that the inviscid HLLC fluxes do not damp, and the converged
+profile shows an alternating density/temperature pattern at constant pressure.
+Refine at fixed extent — halve `dr`, double the cell count:
+
+```
+# input.inp   (Mixed grid only; default is 2.0e-4 50)
+Base grid [dr,cells]:  1.0e-4 100
+```
+
+Of the four production planets only HD 189733 b needs this (27 cells on the
+default grid, against 102 for WASP-121 b). The cells come out of the stretched
+region, so a finer base is a coarser wind and a smaller CFL step; 2x is the
+step that has been carried to convergence. -> `docs/hd189_base_checkerboard.md`.
+
 ## Damp the base with viscosity and heat conduction
 
 ```
@@ -34,8 +50,10 @@ Conduction: True     # heat conduction, kappa(T) = 4.45e4 (T/1000 K)^0.7
 ```
 Adds the Navier-Stokes molecular transport that CETIMB carries and the inviscid
 HLLC scheme lacks, integrated Crank-Nicolson so the stiff base cells do not
-limit the step. Aimed at the near-base momentum imbalance that otherwise floors
-the JFNK residual; both keys default off and a run without them is unchanged.
+limit the step. Both keys default off and a run without them is unchanged. On
+the hot-Jupiter cases tested the terms change nothing measurable; on a cold
+molecular base (HD 209458 b with a `base.inp` handoff) conduction moves base
+`T` by up to 4% and `rho` by up to 13%.
 `mu(T)` follows `kappa(T)` through the monatomic Chapman-Enskog relation
 (Prandtl 2/3); `Viscosity: <mu0> [<s>]` instead sets a diagnostic power law
 `mu = mu0*T^s` in code units. Coefficients are the neutral atomic-hydrogen
@@ -63,6 +81,54 @@ EXHALE_TRANSIT_HE_LMIN=10827.5 EXHALE_TRANSIT_HE_LMAX=10832.5 python3 EXHALE_tra
 ```
 -> manual §5.2.
 
+### Where the star and planet parameters come from
+
+`EXHALE_transit.py` takes the whole system from the `input.inp` of the run
+directory, so the spectra always describe the same system as the simulation.
+Each parameter is resolved as
+
+```
+EXHALE_TRANSIT_* environment override  >  ./input.inp  >  built-in default
+```
+
+| Quantity | `input.inp` label | Override |
+|----------|-------------------|----------|
+| `R_p`, `M_p`, `T_eq`, `a`, `M_star` | `Planet radius`, `Planet mass`, `Equilibrium temperature`, `Orbital distance`, `Parent star mass` | - |
+| `L_EUV`, day-night `xi` | `Log10 of EUV luminosity`, `2D approximate method` | `xi_override` in the script |
+| `R_star` | `Stellar radius [R_sun]` | `EXHALE_TRANSIT_RSTAR_RSUN` |
+| `T_star` | `Stellar Teff [K]` | `EXHALE_TRANSIT_TSTAR` |
+| planet spin period | none - computed as `P_orb` from `a` and `M_star + M_p` (tidal locking) | `EXHALE_TRANSIT_ROTP` |
+
+The script prints every resolved parameter and its source at startup, and warns
+when `Stellar radius`/`Stellar Teff` are missing from `input.inp`. Read that
+block first when a spectrum looks wrong: `R_star` sets the transit
+normalization, so a wrong stellar radius rescales every absorption depth.
+Instrument resolving powers, wavelength windows, and geometry stay
+script/environment settings - they describe the observation, not the system.
+
+### Where the spectra go
+
+Every line carries one key - `He10830`, `Lya`, `Halpha`, `Hbeta`, `MgII`,
+`CaII`, `NaI` - and both products of a line are named from it, in the run
+directory:
+
+| Product | Name | Default |
+|---------|------|---------|
+| model curve | `<path>/tpm_<line>.txt` | always written |
+| figure | `<path>/<prefix><line>.png` (and `.pdf`) | off; set `EXHALE_TRANSIT_FIG_PREFIX` |
+
+```bash
+MPLBACKEND=Agg EXHALE_TRANSIT_PATH=WASP-121b \
+  EXHALE_TRANSIT_FIG_PREFIX=tpm_ python3 EXHALE_transit.py
+```
+
+The curves are written for whatever the run contains, so a metals-off run
+simply has no `tpm_MgII/CaII/NaI.txt`. Each file has columns
+`lambda[A]  T_theo  T_instr  T_rot+instr`; excess absorption in percent is
+`(1 - T)*100`. `EXHALE_TRANSIT_SAVE_PREFIX` decorates the curve name
+(`<path>/<prefix>tpm_<line>.txt`); both prefixes are resolved against the run
+directory, so give an absolute prefix to write somewhere else.
+
 ### Instrument resolution and rotation (env overrides)
 
 The instrument resolving power for each line `R = lambda/Delta-lambda` and the azimuthal
@@ -74,7 +140,10 @@ sampling of the rotation integral are run-time overridable:
 #   RES_HB   (1.15e5, Hbeta)   RES_MGII(3e4, Mg II)  RES_CAII/RES_NAI (=RES_HA)
 EXHALE_TRANSIT_RES_HETR=5e4 EXHALE_TRANSIT_RES_HI=1.14e5 python3 EXHALE_transit.py
 
-# planet rotation period [days] and azimuthal samples of the exact disk integral:
+# planet rotation period [days] and azimuthal samples of the exact disk integral.
+# ROTP overrides the tidally-locked default (the orbital period built from
+# `Orbital distance` and `Parent star mass` + `Planet mass`); use it only for a
+# planet that is not tidally locked, or to test the sensitivity to the spin.
 EXHALE_TRANSIT_ROTP=2.2185 EXHALE_TRANSIT_ROT_NPHI=64 python3 EXHALE_transit.py
 ```
 
@@ -173,11 +242,12 @@ Roche-equipotential geometry (`roche_recon.py`). -> manual §5.2,
 ## Regression / hygiene
 
 ```bash
-./regression/run_check.sh        # golden regression
-./regression/run_fcheck.sh       # runtime-checked build (bounds/mem), periodic
-./regression/test_roundtrip.sh   # restart round-trip
+make check                              # golden regression (= backup/regression/run_check.sh check)
+./backup/regression/run_fcheck.sh       # runtime-checked build (bounds/mem), periodic
+./backup/regression/test_roundtrip.sh   # restart round-trip
 ```
-`run_fcheck.sh` rebuilds with `-fcheck`, runs a bounded HD 209458 b case,
+The harness lives in `backup/regression/`, which is a working-copy directory
+and is not in the git remote. `run_fcheck.sh` rebuilds with `-fcheck`, runs a bounded HD 209458 b case,
 fails on any runtime trap, then restores the production build (it caught a
 real out-of-bounds read on WASP-121b in the 2026-07-02 review).
 
@@ -187,5 +257,8 @@ real out-of-bounds read on WASP-121b in the 2026-07-02 review).
 - `docs/Update_EXHALE.pdf` — dated changelog + code-size appendix vs ATES
 - `docs/lower_atmosphere_coupling.pdf` — lower-atmosphere connection: survey,
   implementation, 4-planet examples, figures
-- `examples/` — ready-made configs 01–13 (+ one folder per planet: `HD209458b/`,
-  `HD189733b/`, `WASP-121b/`, `WASP-52b/` with analysis notebooks)
+- `docs/newton_scaling_and_base_wall.md` — JFNK diagonal scaling, line-search
+  merit and stagnation watchdog; why the base momentum row is not the blocker
+- `examples/` — ready-made configs 01–15; the planet directories `HD209458b/`,
+  `HD189733b/`, `WASP-121b/`, `WASP-52b/` sit at the repo root and are
+  self-contained (own `input.inp`, output, notebooks)

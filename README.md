@@ -13,6 +13,19 @@ fork of the ATES code (Caldiroli et al. 2021; Biassoni et al. 2024), adding:
   accuracy), with density-dependent saturation of the [C II] 158 um /
   [O I] 63 um fine-structure floors and a 2-D statistical-equilibrium
   Fe II coefficient — see `docs/cooling_formulas.pdf`
+- **Line trapping in the two fine-structure coolants**: the [O I] 63 um and
+  [C II] 158 um line-center escape probability is computed from the column
+  above each cell (Hollenbach & McKee 1979 / de Jong, Boland & Dalgarno 1980
+  form, renormalized so beta(0) = 1) and applied as `A_ul -> beta*A_ul`
+  *inside* the two-level solution, so the subcritical limit stays independent
+  of beta. beta -> 1 in the thin wind; it matters only at a cold dense base.
+  Resonance metal lines (Mg II h&k) are still treated as thin
+- **The CHIANTI coronal fits are switched off below their 10^3 K validity
+  floor** by a smooth cutoff (value and dT-slope continuous, bit-identical at
+  and above 10^3 K), leaving only the explicit two-level fine-structure terms,
+  which are valid there. Below the floor the coronal fits were dominated by
+  exponentials whose excitation temperatures match no ground-term splitting of
+  the ion. `cno_cool 0` (legacy AIOLOS branch) is deliberately not cut off
 - He I 2³S metastable triplet state (coupled solver), with a
   **temperature-dependent He(2³S)+H Penning-ionization rate** (Taylor et
   al. 2025; replaces the classic 5e-10 constant)
@@ -40,8 +53,8 @@ fork of the ATES code (Caldiroli et al. 2021; Biassoni et al. 2024), adding:
   (`kappa(T) = 4.45e4 (T/1000 K)^0.7`, Watson et al. 1981; `mu(T)` tied to it
   by the monatomic Chapman-Enskog relation), integrated Crank-Nicolson and
   entering the steady residual with the same operator — see
-  `docs/viscosity_conduction.md`, which also records that they are far too
-  small to cure the near-base momentum residual they were added for
+  `docs/viscosity_conduction.md`, which also records that on the cases tested
+  they change nothing measurable except at a cold molecular base
 - Roche-potential geometry (spherical or Roche-lobe domain modes)
 - **Lower-atmosphere connection** (opt-in): an analytic
   Koskinen+2022 lower column (`Lower column:` key reports the derived 1-ubar
@@ -103,7 +116,7 @@ EXHALE/
 ├── inputdata/             # opacity / SED table samples (*.opa, Jlya.txt, …)
 ├── cooling_data/          # CHIANTI cooling-formula fit scripts + notebooks
 ├── examples/
-│   ├── 01_legacy_marching/ … 15_molecular/  # ready-made input configs
+│   ├── 01_legacy_marching/ … 15_molecular/  # ready-made input configs (15 folders)
 │   │                          #   (solver stages, metals, He 2³S, Balmer/Lya,
 │   │                          #    Wind-AE IC, lower atmosphere, He/metal
 │   │                          #    diffusion, full molecular chemistry)
@@ -123,6 +136,8 @@ EXHALE/
 │   ├── EXHALE_BC_and_IC.pdf     # boundary- and initial-condition reference
 │   ├── code_comparison.pdf    # BC/IC/solver vs ATES, Salz, Kubyshkina, Murray-Clay
 │   ├── steady_solver_memo.pdf # Newton-Krylov design notes
+│   ├── newton_scaling_and_base_wall.md # JFNK diagonal scaling, line-search merit, watchdog
+│   ├── viscosity_conduction.md # molecular viscosity + heat conduction: derivation, gates
 │   ├── wind_ae_solver.pdf     # included Wind-AE solver (IC mode: windae)
 │   ├── lower_atmosphere_coupling.pdf # lower-atmosphere connection: analytic column, molecular chemistry, VULCAN
 │   ├── code_review_20260702.md # full-code review report (fixes + recommendations)
@@ -224,11 +239,47 @@ hands off later; bare `Solver: Newton` keeps the `1e-2` default). `||R||` is
 otherwise computed and reported
 **for reference only** (volume-weighted by default, since the L-inf max is
 dominated by the small near-base cells) and gates the stop only if you set
-`Resid tol:`. With full physics (He 2^3S + metals) the JFNK may not reach
-`||R|| < 1e-3` because of a localized near-base momentum imbalance ("breathing
-base"), yet the wind is still flux-converged -- a converged run by the reference
-standard, not a failure. See `docs/EXHALE_BC_and_IC.pdf` (convergence-criterion
-and test-matrix sections) and `docs/steady_solver_memo.pdf`.
+`Resid tol:`. A run that stops on `du` without reaching `||R|| < 1e-3` is still
+flux-converged by the reference standard; it is not a failure, but the Mdot then
+carries the `du`-stop path dependence of a few percent, so quote a
+Newton-converged value where one is available. Full-physics cases
+(He 2^3S + metals, secondary ionization, a `base.inp` handoff) that used to
+abort at `info = 2` around `||R|| ~ 2.8e-3` now reach `info = 0`; the cause was
+the solver's diagonal scaling and its stagnation watchdog, not the lower
+boundary condition -- see `docs/newton_scaling_and_base_wall.md`,
+`docs/EXHALE_BC_and_IC.pdf` (convergence-criterion and test-matrix sections)
+and `docs/steady_solver_memo.pdf`.
+
+### Base grid resolution (`Base grid [dr,cells]`)
+
+With `Grid type: Mixed` the grid is `cells` uniform cells of size `dr` (in R_p)
+stacked on the lower boundary, followed by `N - cells` stretched cells out to
+`r_max` (`N = 500`, a compile-time constant). The default reproduces the
+historical hardcoded grid:
+
+```
+# in input.inp -- optional; this line IS the default
+Base grid [dr,cells]:  2.0e-4 50     # 50 cells of 2e-4 R_p = 0.01 R_p uniform
+Base grid [dr,cells]:  5.0e-5 200    # the 4x refinement, same 0.01 R_p extent
+```
+
+The two numbers belong on one line because their product is the extent of the
+uniform region: refine at fixed extent by dividing `dr` and multiplying `cells`
+by the same factor. The key is ignored by `Grid type: Uniform` and `Stretched`.
+
+**Why it matters.** `dr` has to resolve the base density scale height
+`H = kT/(mu g)`. Where `H/dr` is only a few cells the discretization carries a
+*stationary* 2-cell entropy (contact) mode that nothing damps: HLLC resolves a
+zero-speed contact exactly, the gravity source is cell-local, and the WENO3
+pressure gradient sees only interface pressures. Measured amplitudes are ~1e-2
+in `ln rho` for `H/dr < 5` and ~1e-4 for `H/dr > 100`. High-gravity planets have
+the least margin, and a cool shielded base shrinks `H` further.
+`EXHALE_setup.out` echoes the value in effect as
+`Base scale-height resolution: H(T_eq)/dr` and warns below 10 cells. Costs: the
+CFL step scales with the smallest cell (a 4x finer base means ~4x more steps for
+the same physical time), and since `N` is fixed the stretched region gives up
+those cells and coarsens. Full investigation:
+`docs/hd189_base_checkerboard.md`.
 
 ### Enabling metal chemistry
 
@@ -403,8 +454,8 @@ grid database separately and place it under `inputdata/windae_grid/` — see
 download links and the expected layout.
 
 This works for hot Jupiters close to the shipped seed
-(`examples/12_windae_ic_hd209/`, HD 209458 b) and, via the self-consistent
-self-consistent-BC continuation (re-converging the base boundary conditions, and turning the
+(`examples/12_windae_ic_hd209/`, HD 209458 b) and, via the self-consistent-BC
+continuation (re-converging the base boundary conditions, and turning the
 molecular layer off when the base sinks into the wind), for strongly-bound,
 far-from-seed planets too — including HD 189733 b (`examples/11_windae_ic/`),
 whose Wind-AE ramp now converges and writes a valid IC.  (If a ramp ever
@@ -495,12 +546,22 @@ MPLBACKEND=Agg python3 EXHALE_transit.py
 
 `EXHALE_transit.py` reads `input.inp` and the
 `*_adv.txt` profiles in `output/`, and
-produces spectrum figures (PNG + vector PDF; theoretical, instrument-
-convolved, and instrument+rotation-convolved curves) for **He I 10830 Å,
+produces the model transmission curves (theoretical, instrument-convolved,
+and instrument+rotation-convolved) — and, on request, figures as PNG +
+vector PDF — for **He I 10830 Å,
 Ly-alpha, H-alpha, H-beta** and the metal resonance doublets **Mg II h&k,
-Ca II H&K, Na I D** (skipped automatically for a metals-off run).  Stellar
-parameters (`R_star`, `rot_period`, `T_star` for the Balmer lines) and the
-output figure names are set in the script's header block.  A 3-D
+Ca II H&K, Na I D** (skipped automatically for a metals-off run).  The whole
+system comes from the run directory's `input.inp`: the stellar radius and
+effective temperature from `Stellar radius [R_sun]` / `Stellar Teff [K]`, and
+the planet spin period as the tidally-locked orbital period built from
+`Orbital distance` and `Parent star mass` + `Planet mass`.  Each is resolved as
+`EXHALE_TRANSIT_*` environment override > `./input.inp` > built-in default, and
+the resolved values and their sources are printed at startup.  Instrument
+resolving powers and wavelength windows stay in the script's header block.
+Each line is written into the run directory under its own key as
+`tpm_<line>.txt` (`He10830`, `Lya`, `Halpha`, `Hbeta`, `MgII`, `CaII`, `NaI`);
+the figures carry the same keys and are saved only when
+`EXHALE_TRANSIT_FIG_PREFIX` is set.  A 3-D
 Roche-equipotential geometry is available via `geometry = 'triaxial'`
 (`roche_recon.py`).  Full description in `docs/transmission_spectrum.pdf`
 and the manual's transmission-spectra section.
@@ -572,4 +633,4 @@ See `examples/README.md` for the exact lines each one adds:
 
 Kwang-Il Seon (KASI / UST)
 
-Last updated: 2026-08-10 12:01
+Last updated: 2026-08-11 19:00 KST

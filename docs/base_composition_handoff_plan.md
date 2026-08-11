@@ -740,6 +740,21 @@ reference in this working copy to anchor an absolute Mdot on. Measuring the
 stored profiles directly (4 pi rho v r^2 twenty cells from the top, halved for
 `Rate/2 + Mdot/2`, R_p = 1.401 R_J):
 
+> **2026-08-11.** That statement no longer holds, and the table row for
+> `HD209458b/output` below is stale. `HD209458b/` has since been re-converged
+> from a restored solar-composition `metals.inp` with the corrected JFNK line
+> search and the metal-line trapping / coronal-cutoff cooling, reaching
+> `info = 0`, `||R|| = 7.690e-04`, `log10 Mdot = 9.31`. That is the current
+> production anchor for this planet. The absolute gaps quoted in the readings
+> below (0.21 dex against 9.49, 0.49-0.54 dex against the 1 microbar handoff)
+> were measured against the old stored run and are not restated here, because
+> the handoff runs themselves predate the same two changes; re-anchoring them
+> means re-running the handoff pair, not re-arithmetic. What the section is
+> being cited for -- that the wind response is a property of the handoff
+> *level* rather than of using photochemistry, measured as a difference between
+> two runs sharing everything else -- is a differential result and is not
+> affected.
+
 | stored run | log10 Mdot | T(ghost) | window spread | note |
 |---|---|---|---|---|
 | `HD209458b/output` | 9.61 | 1450.0 | 1.4e-1 | its `EXHALE.out` reports L_EUV 27.83 / L_X 26.39 and `Reconstruction method: PLM`, against 27.93 / 27.20 and PLM+WENO3 in the current `input.inp` |
@@ -954,8 +969,8 @@ the new binary, `EXHALE_MAXSTEPS=60000`:
 
 | start state | flip | JFNK engaged | result | afterwards |
 |---|---|---|---|---|
-| `photo_deep` march end (du 4.2e-2) | step 2 | step 2002 | info=2, ||R|| stuck at 1.84e-2 | du climbs to 0.146 by step 40719, Mdot 9.80 |
-| `photo_deep_newton` converged state (du 1.9e-3, ||R|| 5.7e-4) | step 2 | step 2002 | info=2, ||R|| 2.80e-3 | du plateau 0.103 at step 41375, Mdot 9.66 |
+| `photo_deep` march end (du 4.2e-2) | step 2 | step 2002 | info=2, \|\|R\|\| stuck at 1.84e-2 | du climbs to 0.146 by step 40719, Mdot 9.80 |
+| `photo_deep_newton` converged state (du 1.9e-3, \|\|R\|\| 5.7e-4) | step 2 | step 2002 | info=2, \|\|R\|\| 2.80e-3 | du plateau 0.103 at step 41375, Mdot 9.66 |
 
 Kept as `vulcan_work/hd209_wind_response/photo_deep_newton_fix/` and
 `.../photo_deep_secion_cont/`.
@@ -972,3 +987,28 @@ the coupling, not a hand-off artifact. The secondary-ionization-OFF caveat at
 the end of §11.8 therefore still stands for every quantitative number in §11;
 lifting it waits on item (A), for which the recorded direction is the explicit
 base viscosity work.
+
+### 11.10 The §11.9 residual floor was the solver, not the base (2026-08-10)
+
+The reading at the end of §11.9 — that `photo_deep_secion_cont` has no steady
+state reachable by marching or JFNK, and that the `2.80e-3` floor is the
+`TO_BE_DONE` item (A) base-momentum problem — is **withdrawn**. It was traced
+instead to the JFNK diagonal scaling and to the stagnation watchdog; full
+account and numbers in `docs/newton_scaling_and_base_wall.md`.
+
+Two things were measured. First, the base momentum row is solvable: `R(2,1)` is
+the remainder of a four-order cancellation, `6.5e-5` of the gravity term, and a
+2.9 ppm change of the ghost pressure nulls it. Second, the residual the merit
+was actually dominated by lived at `r = 1.32-1.37`, where `rho v` changes sign
+at the hand-off, and it appeared there only because the momentum scale was
+floored at `1e-6` of the *base* `|rho v|`. The watchdog then aborted after 15
+iterations without a new best `||R||`, while every variant of this solve needs
+27-38 iterations before it first improves on the warm start.
+
+With the local scale `D_mom = rho(|v| + c_s)` and a watchdog on consecutive
+failed line searches, the same configuration converges: `info = 0`,
+`||R|| = 5.053e-04`, 59 outer iterations, `log10 Mdot = 9.47`. The `9.66-9.70`
+values quoted in §11.8-11.9 came from marching stopped on `du` after the JFNK
+failure; `9.47` is the first Newton-converged number for this configuration and
+is the one to carry forward. The secondary-ionization-OFF caveat on §11's other
+numbers is unaffected — those runs never fired the staged trigger.

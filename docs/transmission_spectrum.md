@@ -76,9 +76,20 @@ extra figures and printouts; He/Ly-alpha behavior is unchanged.
 
 **H-beta (n=2 -> 4, 4861.4 A)** shares the same n=2 population and is
 computed automatically alongside H-alpha (knobs `Instr_res_Hb`,
-`lmin_Hb/lmax_Hb/number_lambda_Hb`, `fig_name_hb`). Both lines are
+`lmin_Hb/lmax_Hb/number_lambda_Hb`). Both lines are
 optically thick, so their depth ratio is far smaller than the
 optical-depth ratio (~7.3).
+
+**System parameters** come from the `input.inp` of the run directory,
+matched by label exactly as `input_read.f90` does. Besides `Rp`, `Mp`,
+`T_eq`, `a`, `Mstar`, `LEUV` and the 2D approximate method, this includes
+`R_star` (`Stellar radius [R_sun]`) and `T_star` (`Stellar Teff [K]`).
+The planet spin period has no `input.inp` key: a close-in giant is
+tidally locked, so it defaults to the Keplerian orbital period
+`P_orb = 2 pi sqrt(a^3/[G(Mstar+Mp)])`. Each of the three is resolved as
+`EXHALE_TRANSIT_RSTAR_RSUN`/`_TSTAR`/`_ROTP` environment override >
+`./input.inp` > built-in default, and the resolved values and their
+sources are printed at startup.
 
 **n=2 photoionization** `Gamma_2s/Gamma_2p` is estimated from a diluted
 stellar-blackbody Balmer continuum when `T_star > 0` (stellar effective
@@ -87,11 +98,29 @@ temperature [K]; uses `R_star`, `a`). This reproduces Huang+2017's
 HD209458), suppressing n2. Set `T_star <= 0` to use the manual
 `Gamma_2s/Gamma_2p` (default 0).
 
-Other H-alpha knobs: `Instr_res_Ha`, `lmin_Ha/lmax_Ha/number_lambda_Ha`,
-`fig_name_ha`.
+Other H-alpha knobs: `Instr_res_Ha`, `lmin_Ha/lmax_Ha/number_lambda_Ha`.
 
 A worked **HD209458b comparison with Jensen et al. (2012)** is in the
 notebook `HD209458b/Halpha_compare_HD209458b.ipynb`.
+
+## Outputs
+
+Every line carries one key - `He10830`, `Lya`, `Halpha`, `Hbeta`, `MgII`,
+`CaII`, `NaI` - and both products of a line are named from that key and land
+in the run directory:
+
+| Product | Name | Default |
+|---------|------|---------|
+| model curve | `<path>/tpm_<line>.txt` | always written |
+| figure | `<path>/<prefix><line>.png` (and `.pdf`) | off; set `EXHALE_TRANSIT_FIG_PREFIX` |
+
+A curve file has the columns `lambda[A]`, `T_theo`, `T_instr`,
+`T_rot+instr`, so the excess absorption in percent is `(1 - T)*100`. The set
+follows the run: a metals-off run writes no metal curves.
+`EXHALE_TRANSIT_SAVE_PREFIX` decorates the curve name exactly as the figure
+prefix decorates the figure name, and both are resolved against the run
+directory, so an absolute prefix writes elsewhere and nothing depends on the
+working directory.
 
 ## Ly-alpha pumping convention
 
@@ -144,8 +173,9 @@ Mg II 2796.352/2803.531, Ca II 3933.663/3968.469, Na I 5889.951/5895.924)
 are summed in one wavelength window and pushed through the same pipeline
 as He/Ly-alpha: spherical-chord Voigt LOS integration, disk average,
 instrument convolution, and planet-rotation convolution with the
-depth-dependent effective radius. Figures (PNG + vector PDF) are saved
-via `fig_name_mgii/caii/nai`.
+depth-dependent effective radius. The three doublets are written under
+the same `tpm_<line>` naming as the H/He lines (see "Outputs"), with the
+keys `MgII`, `CaII`, `NaI`.
 
 The validated single-component depth table (line-center and 4 Å-band %)
 is still printed for the Huang+2023 comparisons. Two conventions matter

@@ -1,59 +1,118 @@
 # Expected Effects and Results of the Huang et al. Updates in EXHALE
 
-이 문서는 `Huang_update_plan.md`에 제안된 물리적 과정(금속 원소 확장, Lyα 복사 전달, $H(n=2)$ 들뜸 상태, 로쉬 포텐셜 및 경계 조건 업데이트 등)을 EXHALE에 반영했을 때 예상되는 대기 구조, 이온화도 분포, 질량 손실률 및 관측 스펙트럼의 변화를 정리한 문서입니다.
+This note collects the changes in atmospheric structure, ionization structure,
+mass-loss rate and observed spectrum that are expected once the physical
+processes proposed in `Huang_update_plan.md` (the extended metal set, Ly-alpha
+radiative transfer, the $H(n=2)$ excited state, the Roche potential and the
+boundary-condition update) are implemented in EXHALE.
 
 ---
 
-## 1. 대기 온도 구조 ($T(r)$)의 변화
+## 1. Changes in the temperature structure $T(r)$
 
-### 추가적인 금속 선 냉각 (Mg II & Fe II 효과)
-* **현재 상태:** C, N, O의 냉각선([O I] 63 $\mu$m, [C II] 158 $\mu$m)만 기여합니다. (HD 209458b 시뮬레이션 결과 기준, 금속 냉각이 켜졌을 때 최고 온도는 약 **6,525 K**로, 금속 냉각이 없을 때의 **8,272 K**보다 **약 1,750 K** 낮아집니다.)
-* **예상 변화:** 초고온 목성(WASP-121b 등) 대기에서는 온도가 더욱 높아지므로 **Mg II와 Fe II 선 냉각**이 하부 열권($1.15 \lesssim r/R_p \lesssim 1.4$)에서 가장 중요한 냉각 메커니즘이 됩니다. 이 효과가 추가되면 대기 하부 온도가 추가로 냉각되어 대기가 보다 수축(Compact)하는 효과를 낳습니다.
+### Additional metal-line cooling (Mg II and Fe II)
 
-### $H(n=2)$ 들뜸 상태에 의한 발머 가열 추가
-* **예상 변화:** Lyα 복사압과 전자 충돌에 의해 $H(n=2)$ 상태(2s, 2p)의 밀도가 증가하면, stellar Balmer continuum 광자에 의한 광전리 가열(Photoelectric heating)이 일어납니다. 이는 starlight XUV가 침투하지 못하는 하부 대기 영역($r < 2 R_p$)에서 강한 가열원으로 작동하여 하부 열권 온도를 국소적으로 상승시키는 역할을 합니다.
+* **Current state:** only the C, N, O cooling lines contribute ([O I] 63 $\mu$m,
+  [C II] 158 $\mu$m). In the HD 209458 b simulation, the peak temperature with
+  metal cooling on is about **6,525 K**, about **1,750 K** below the
+  **8,272 K** reached with metal cooling off.
+* **Expected change:** in an ultra-hot Jupiter atmosphere (WASP-121 b and
+  similar) the temperature is higher still, so **Mg II and Fe II line cooling**
+  becomes the dominant cooling mechanism in the lower thermosphere
+  ($1.15 \lesssim r/R_p \lesssim 1.4$). Adding it cools the lower atmosphere
+  further and makes the atmosphere more compact.
 
-### 경계면 고도 상승에 의한 단열 냉각
-* **예상 변화:** 하부 경계인 $1\,\mu\text{bar}$ 고도를 대기 하부 광화학 모델과 결합하여 더 바깥쪽 고도(WASP-121b의 경우 **$1.46 \, R_p$**)로 설정하게 됩니다. 이에 따라 유출 속도가 가속화되면서 강한 **단열 팽창 냉각(Adiabatic cooling)**이 발생하고, 로쉬 로브 내부 대기 온도가 전반적으로 낮아집니다.
+### Balmer heating from the $H(n=2)$ excited state
 
----
+* **Expected change:** as Ly-alpha radiation and electron collisions raise the
+  population of the $H(n=2)$ states (2s, 2p), photoionization heating by
+  stellar Balmer-continuum photons switches on. This acts as a strong heat
+  source in the lower atmosphere ($r < 2 R_p$), where the stellar XUV does not
+  penetrate, and locally raises the lower-thermosphere temperature.
 
-## 2. 이온화 및 화학 구조의 변화
+### Adiabatic cooling from raising the boundary altitude
 
-### 금속 이온화도 분포
-* **예상 변화:** Mg, Ca, Fe, Si 등은 강한 중심성 복사장 하에서 상부 열권에서 대부분 2차 이온화된 상태($Mg^{2+}, Ca^{2+}, Fe^{2+}$)로 존재하며, Na와 K는 1차 이온화된 상태($Na^+, K^+$)로 존재하게 됩니다.
-
-### 전하 교환(Charge Exchange)에 의한 이온화 결합
-* **예상 변화:** $Fe + H^+ \leftrightarrow Fe^+ + H$와 같은 전하 교환 반응이 결합되어 수소와 금속의 이온화도가 긴밀하게 엮됩니다. 대기 하부에서 이 반응 속도는 일반적인 복사 재결합 속도를 크게 상회하며, **수소 이온($H^+$)을 중성 수소로 돌려보내는 가장 지배적인 소멸 메커니즘**으로 작동합니다.
-
-### 하부 열권 전자 밀도 증가
-* **예상 변화:** Lyα 복사 전달에 의해 들뜬 $H(n=2)$가 Balmer 연속광에 의해 이온화되므로, 하부 대기에서 수소의 이온화 분율과 전자 밀도($n_e$)가 수소 분자/원자 전이 영역 부근에서 크게 증가합니다.
-
----
-
-## 3. 질량 손실률 ($\dot{M}$)의 변화
-
-* **금속 냉각 단독 효과 (질량 손실률 감소):** 
-  * 금속 냉각만 단독으로 켤 경우 온도가 낮아져 대기 척도고(Scale height)가 줄어들기 때문에 질량 손실률이 감소하는 경향을 보입니다. (HD 209458b 기준 Metals OFF 일 때 $\sim 3.0 \times 10^{10}\text{ g/s}$에서 Metals ON 일 때 $\sim 3.1 \times 10^9\text{ g/s}$로 약 10배 감소).
-* **조석 잠금 포텐셜 및 경계 조건 결합 효과 (질량 손실률 대폭 증가):**
-  * 그러나 WASP-121b와 같은 초고온 목성 모델에 **로쉬 포텐셜(Roche Potential)**과 **$1\,\mu\text{bar}$ 경계 조건 고도 이동**을 모두 적용하면 상황이 완전히 달라집니다.
-  * 구형 대칭 포텐셜 기준의 모델(Case A)에서는 질량 손실률이 **$0.052 \, M_p/\text{Gyr}$** ($\sim 3.7 \times 10^{12}\text{ g/s}$)에 불과하지만, 로쉬 로브 오버플로우(RLOF) 효과와 경계 고도를 올린 최종 매칭 모델(Case D)에서는 **$1.03 \, M_p/\text{Gyr}$** ($\sim 7.3 \times 10^{13}\text{ g/s}$)로 **약 20배 증가**하게 됩니다.
+* **Expected change:** coupling the $1\,\mu$bar lower boundary to a
+  photochemical model of the lower atmosphere moves it outward (to
+  **$1.46\,R_p$** for WASP-121 b). The outflow then accelerates, strong
+  **adiabatic expansion cooling** sets in, and the temperature inside the Roche
+  lobe drops overall.
 
 ---
 
-## 4. 대기 통과 스펙트럼 (Transit Depth)의 비교
+## 2. Changes in the ionization and chemical structure
 
-Huang et al. (2023)의 WASP-121b 시뮬레이션 데이터를 기준으로 구형 대칭 모델(Case A)과 최종 로쉬 포텐셜+금속 효과 모델(Case D)의 흡수 깊이 변화는 다음과 같습니다. (단위: $R_p/R_*$)
+### Metal ionization structure
 
-| 물리량 / 흡수선 | Case A (구형 대칭, canonical) | Case D (최종 매칭 모델, RLOF 반영) | 실제 관측치 |
+* **Expected change:** under a strong stellar radiation field, Mg, Ca, Fe and
+  Si are mostly doubly ionized ($Mg^{2+}$, $Ca^{2+}$, $Fe^{2+}$) in the upper
+  thermosphere, while Na and K are singly ionized ($Na^+$, $K^+$).
+
+### Ionization coupling through charge exchange
+
+* **Expected change:** charge-exchange reactions such as
+  $Fe + H^+ \leftrightarrow Fe^+ + H$ tie the hydrogen and metal ionization
+  states tightly together. In the lower atmosphere these rates greatly exceed
+  the ordinary radiative recombination rates and act as the **dominant sink
+  returning $H^+$ to neutral hydrogen**.
+
+### Higher electron density in the lower thermosphere
+
+* **Expected change:** because Ly-alpha radiative transfer populates $H(n=2)$,
+  which is then ionized by the Balmer continuum, the hydrogen ionization
+  fraction and the electron density $n_e$ rise sharply in the lower atmosphere
+  near the molecular-to-atomic transition.
+
+---
+
+## 3. Changes in the mass-loss rate $\dot{M}$
+
+* **Metal cooling alone (lower mass-loss rate).** With only metal cooling
+  enabled the temperature drops, the atmospheric scale height shrinks, and the
+  mass-loss rate falls. For HD 209458 b it goes from
+  $\sim 3.0 \times 10^{10}$ g/s with metals off to
+  $\sim 3.1 \times 10^{9}$ g/s with metals on, a factor of about 10.
+* **Roche potential plus the boundary-condition change (much higher mass-loss
+  rate).** For an ultra-hot Jupiter such as WASP-121 b, applying both the
+  **Roche potential** and the shift of the $1\,\mu$bar boundary altitude
+  reverses the picture. With a spherically symmetric potential (Case A) the
+  mass-loss rate is only **$0.052\,M_p/\mathrm{Gyr}$**
+  ($\sim 3.7 \times 10^{12}$ g/s), whereas the final matched model (Case D),
+  which includes Roche-lobe overflow (RLOF) and the raised boundary, gives
+  **$1.03\,M_p/\mathrm{Gyr}$** ($\sim 7.3 \times 10^{13}$ g/s) — about a factor
+  of 20 higher.
+
+---
+
+## 4. Comparison of transit depths
+
+The table below compares the spherically symmetric model (Case A) with the
+final Roche-potential-plus-metals model (Case D) for the WASP-121 b simulation
+of Huang et al. (2023). Units: $R_p/R_\star$.
+
+*(Correction, recorded in `Update_EXHALE` §14: these values are the effective
+transit radius $R_{\rm eff}/R_\star$, not $R_p/R_\star$ and not an absorption
+percent. The "$\sim 30\%$" wording in the prose below is a loose gloss of
+0.30.)*
+
+| Quantity / line | Case A (spherical, canonical) | Case D (final matched model, with RLOF) | Observed |
 | :--- | :---: | :---: | :---: |
-| **질량 손실률 ($\dot{M}$)** | $0.052 \, M_p/\text{Gyr}$ | **$1.03 \, M_p/\text{Gyr}$** | - |
-| **Mg II $\lambda 2796$ (NUV 4Å)** | 0.182 | **0.302** | $0.309 \pm 0.036$ |
+| **Mass-loss rate ($\dot{M}$)** | $0.052 \, M_p/\text{Gyr}$ | **$1.03 \, M_p/\text{Gyr}$** | - |
+| **Mg II $\lambda 2796$ (NUV 4 Å)** | 0.182 | **0.302** | $0.309 \pm 0.036$ |
 | **Ca II K $\lambda 3935$** | 0.199 | **0.278** | $0.281 \pm 0.009$ |
 | **H$\alpha$ $\lambda 6563$** | 0.201 | **0.185** | $0.186 \pm 0.003$ |
 | **H$\beta$ $\lambda 4861$** | 0.174 | **0.135** | $0.143 \pm 0.005$ |
 | **Na D2 $\lambda 5890$** | 0.152 | **0.147** | $0.147 \pm 0.002$ |
-| **NUV 피팅 오차 ($\chi^2/N$)** | 2.08 | **1.20** | - |
+| **NUV fit quality ($\chi^2/N$)** | 2.08 | **1.20** | - |
 
-* **금속 흡수선 (Mg II, Ca II):** 대기가 로쉬 로브를 따라 조석력 방향으로 확장되고 유출 속도가 빨라지면서 금속 선폭이 Doppler 넓힘(Broadening) 효과를 강하게 받습니다. 그 결과 관측치인 $\sim 28\%$(Ca II) 및 $\sim 30\%$(Mg II) 수준의 깊고 넓은 NUV/optical 흡수선을 만족스럽게 재현할 수 있습니다.
-* **수소 발머선 (H$\alpha$, H$\beta$):** 금속 냉각이 없는 모델은 대기 온도가 과하게 높게 예측되어 발머 흡수 깊이를 과대평가하는 경향이 있습니다. 최종 모델(Case D)에서는 금속 냉각 및 stellar Lyα 플럭스 조정 덕분에 H$\alpha$ 흡수 깊이가 적절히 억제되어 관측치($18.5\%$)에 부합하게 됩니다.
+* **Metal lines (Mg II, Ca II).** As the atmosphere expands along the Roche
+  lobe in the tidal direction and the outflow speeds up, the metal lines are
+  strongly Doppler-broadened. The deep, broad NUV/optical lines of the
+  observations — $\sim 28\%$ for Ca II and $\sim 30\%$ for Mg II — are then
+  reproduced satisfactorily.
+* **Hydrogen Balmer lines (H$\alpha$, H$\beta$).** A model without metal
+  cooling predicts too high an atmospheric temperature and therefore
+  overestimates the Balmer absorption depth. In the final model (Case D), metal
+  cooling together with the adjusted stellar Ly-alpha flux suppresses the
+  H$\alpha$ depth appropriately, bringing it in line with the observed
+  $18.5\%$.

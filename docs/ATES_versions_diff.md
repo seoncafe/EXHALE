@@ -7,7 +7,7 @@ data sources, and footprint. This document compares them side by side.
 * `ATES/ATES_extended/` — earlier work (last edit 2026-04-29), accompanied
   by `docs/aiolos_port_memo.pdf` describing Phase 1 (opacity dispatcher)
   and Phase 2 (trace metals).
-* `ATES/EXHALE/` — recent work (this session, 2026-05-28),
+* `EXHALE/` — recent work (this session, 2026-05-28),
   documented in `docs/Update_EXHALE_early_phase` (Part II).
 
 ---
@@ -120,7 +120,7 @@ omitted):
 
 ### From EXHALE:
 
-See `ATES/EXHALE/docs/Update_EXHALE_early_phase`, Part II
+See `EXHALE/docs/Update_EXHALE_early_phase`, Part II
 ("Caveats and Verification Items") for the corresponding list. The most
 important verification items are:
 

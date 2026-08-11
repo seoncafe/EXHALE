@@ -1789,8 +1789,8 @@ reconstruction + velocity broadening (gated on Case D). Pure Python post-process
 Fortran change.
 
 **Validation targets** — these are the **effective transit radius `R_eff/R_star`**, not an
-absorption percent (the expected-results doc header states *"단위: R_p/R_*"*; the "~30%" in
-its prose is a loose gloss of 0.30). Our code returns the line-center absorption fraction
+absorption percent (the expected-results doc labels the table *"Units: R_p/R_star"*; the
+"~30%" in its prose is a loose gloss of 0.30). Our code returns the line-center absorption fraction
 `h`, which maps to the same quantity via `R_eff/R_star = √((R_p/R_star)² + h)`:
 
 | Line | Case A | Case D | Observed |
@@ -1978,7 +1978,7 @@ breathing-base caveat. Fig. 4 was regenerated from the corrected `_adv` output.
 **Motivation.** Until now the He metastable triplet (He 2³S, "HeITR") and the
 trace-metal ionization network could not be solved in the same run: both placed an extra
 unknown at `x(4)` of the coupled ionization residual, and `input_read.f90` allocated the
-metal unknowns only `if (thereis_metals .and. .not. thereis_HeITR)`. Modelling HD189733b
+metal unknowns only `if (thereis_metals .and. .not. thereis_HeITR)`. Modeling HD189733b
 with the triplet *and* solar metals requires both at once.
 
 **Merged solver (factual).** New module
@@ -2025,7 +2025,7 @@ stellar beam (in mode 2 `J̄_Lyα = J̄_int + J̄_star` with `J̄_star ∝ F_Lya
 **Other source-term changes (kept, with caveats).** `energy_semi_implicit.f90` now damps
 the implicit energy update with `dF/dT = 1 + c·|dC/dT|` (was `max(0, dC/dT)`), adding
 damping on the falling cooling branch; it removed one oscillation in testing but did
-*not* by itself fix the convergence behaviour below. `Cool_coeff.f90` now interpolates
+*not* by itself fix the convergence behavior below. `Cool_coeff.f90` now interpolates
 the cooling tables with monotone PCHIP (C¹) rather than linear (C⁰); this was implemented
 to test an interpolation-kink hypothesis (not supported, below) and is retained as a
 smoothness improvement.
@@ -2054,7 +2054,7 @@ A plausible (but unproven) reading is that the difficulty tracks how weakly driv
 strongly bound the wind is, rather than the metal content per se.
 
 **Base-breathing hypothesis and the fixes that did *not* work.** The HD189733b
-oscillation resembles the known base-breathing behaviour, and the lower boundary
+oscillation resembles the known base-breathing behavior, and the lower boundary
 (`Apply_BC.f90`, `BC_component_constrho`) hard-pins the ghost density and pressure to
 cold reservoir values with a one-way velocity valve `max(v1,0)` — a configuration that
 can reflect acoustic waves. Three variants were tried and reverted:
@@ -2693,7 +2693,7 @@ dissociation sink omitted, gamma=5/3 retained, metals excluded (v1).
 - **`PH_heat_HHe` OMP CRITICAL removed**: each thread writes only its own j elements of
   the shared arrays, so the critical section serialized the loop for no correctness
   benefit; values unchanged.
-- **`regression/run_fcheck.sh`**: the periodic runtime-checked regression recommended by
+- **`backup/regression/run_fcheck.sh`**: the periodic runtime-checked regression recommended by
   the 2026-07-02 review (rebuild with -fcheck=bounds,do,mem, bounded HD 209458 b run,
   fail on any runtime trap, restore the production build).
 - **`lya_rt` lower-boundary audit** (vs Huang et al. 2017): our escape-probability
@@ -3216,3 +3216,231 @@ corpus were re-snapshotted once at the end of the series (defaults: staged
 secondary ionization, He recombination coupling on, He<->H charge exchange
 on). Converged wasp_full reference: activation at step ~7144, final count
 ~13486, log10 Mdot = 13.22.
+
+---
+
+## 40. `du` triggers require a descending crossing (2026-08-11)
+
+The `du < du_th` convergence stop and the JFNK hand-off (with the
+secondary-ionization flip that shares its `du` test) now fire only after `du`
+has been seen at or above their own threshold; they start armed for a
+`Load IC? True` run and unarmed for a generated IC. A transonic IC reported
+`du(1) = 1.85e-05` on WASP-121 b, which tripped both on step 1 and ran away to
+NaN by step 1220; with the guard the same input converges (step 8706,
+`log10 Mdot = 13.21`). The PLM -> WENO3 switch is not guarded (the regression
+cases legitimately switch on step 1 at `du(1) = 0.37`). No new input keys.
+Details: `docs/newton_scaling_and_base_wall.md` §9.
+
+---
+
+## 41. JFNK line search decides on the true residual (2026-08-11)
+
+The line search in `solve_steady_jfnk` accepted steps on the residual with the
+WENO3 weights frozen at the previous iterate, compared it against a memory that
+mixed that measure with the true one and was refreshed only on acceptance, and
+reported `||R||` and the `info = 0` verdict from the frozen residual as well.
+*Measured* on the HD 189733 b hand-off state: 7 of 14 accepted steps raised the
+true residual, by factors 1.09 to 9.05, and the reference stood 2.4x below the
+true merit of the iterate the search was starting from, which is what produced
+the 12-consecutive-failure abort. Trials are now evaluated with the weights
+recomputed at the trial state, the merit memory holds true merits and is written
+at the start of every outer iteration, and the diagonal scaling is formed before
+the merit it scales. The frozen weights still define the inner Newton model.
+WASP-121 b now reaches `info = 0` (`||R|| = 5.72e-05`, `log10 Mdot = 13.17`,
+superseding the `du`-stop 13.21 of §40); `photo_deep_secion_cont` converges in
+24 outer iterations instead of 59; no case exhausts its backtracks any more.
+No new input keys, no golden changed. Details:
+`docs/newton_scaling_and_base_wall.md` §10.
+
+---
+
+## 42. Metal-line cooling at a cold base: line trapping and the coronal-fit validity floor (2026-08-11)
+
+Two physically wrong statements in the metal cooling were corrected. Both bite
+only where the gas is cold and dense, i.e. at the base of a planet whose base
+falls out of the coronal regime; the wind is unaffected.
+
+**(a) The escape probability was hardwired to 1.** `eval_cool` built a
+`beta_esc` from the lowest XUV-band *continuum* opacity across *one cell*, then
+overwrote it with `beta_esc = 1.0` and applied the full optically thin
+metal-line cooling everywhere. (AIOLOS `chemistry.cpp:1006` instead scales the
+same gray depth by an arbitrary `1e8`, which drives `beta -> 0` and switches
+metal-line cooling off; EXHALE had replaced that with the opposite limit.)
+Neither quantity is a line optical depth, and neither is grid-independent.
+Measured on the converged HD 189733 b base, the dominant coolant line
+`[O I] 63um` carries a line-center optical depth `tau = 2.7` through the cold
+layer, i.e. an escape probability of `0.16`, not 1.
+
+`beta` is now the line-center escape probability of the line itself, from the
+*column* between the emitting cell and the top of the domain
+(`Cool_coeff.f90`: `kappa_OI63`, `kappa_CII158`, `line_escape_probability`,
+`fine_structure_escape`). The shape is the plane-parallel Doppler result used
+by Hollenbach & McKee (1979) / de Jong, Boland & Dalgarno (1980),
+renormalized by a factor 2 so that `beta(0) = 1` *exactly* (the published form
+tends to 1/2 because it counts escape through one face of a slab; here the
+other direction is absorbed by the lower atmosphere, so it removes energy from
+the modeled gas either way). The two branches are switched at
+`tau_c = sqrt(pi) exp(a^2/4) = 6.967`, where they cross, so the switch is
+continuous in value. In the optically thin wind `beta -> 1`, reproducing the
+previous behavior.
+
+`beta` enters as `A_ul -> beta*A_ul` INSIDE the two-level solution, not as a
+factor on its result: in the subcritical limit the cooling is set by the
+collisional excitation rate and must be independent of `beta`, and multiplying
+outside would be wrong by a factor `beta` there. Trapping is applied to
+`[O I] 63um` and `[C II] 158um` only, the two lines for which the code carries
+an explicit two-level solution; everything else stays optically thin, which is
+right in the wind and is the residual approximation at the base (< 0.3% of the
+base cooling there). A thick resonance line in a metal-rich wind (Mg II h&k)
+is still treated as thin — recorded, not fixed.
+
+**(b) The CHIANTI coronal fits were evaluated far below their validity
+floor.** Every metal cooling coefficient in `Cool_coeff.f90` is a fit or a
+table built over `1e3-1e5 K`. At the 236 K HD 189733 b base, 99.7% of the
+`[O I]` rate came from the fit's softest exponential, `exp(-930.111/T)`, whose
+930 K corresponds to no `[O I]` ground-term splitting at all (the splittings
+are 227.7 K and 326.6 K); C I is the same case (`exp(-2351.38/T)` against
+splittings of 23.6 K and 62.4 K). Below the floor the only excitable metal
+transitions are the ground-term fine-structure lines, which the explicit
+two-level terms already carry, saturation included.
+
+`coronal_excitation_cutoff(T)` now removes the coronal part below 1e3 K as
+`exp(-((T_floor/T - 1)/w)^2)`, `w = 0.5`, and is exactly 1 above it. Value and
+`dT`-slope are continuous at the floor (the Brent energy solve and the
+semi-implicit update differentiate the cooling in T), and every coefficient is
+**bit-identical at and above 1e3 K**. The factor is applied to all
+CHIANTI-derived coefficients — the analytic C/N/O and Mg/Ca/Na/Fe forms and
+the 1-D/2-D tables, whose `log10 T` axis starts exactly at 3.0 and which
+otherwise hold their edge value indefinitely below it — and to the coronal
+remainder of `cool_OI_ne_func` / `cool_CII_ne_func`, but NOT to their
+two-level parts. The legacy AIOLOS branch (`cno_cool 0`) is deliberately left
+alone: its constant floors are crude fine-structure stand-ins, not
+extrapolated coronal fits. `w = 0.5` is a modeling choice, not a measurement.
+
+**Measured.** HD 189733 b, cell 1: total cooling `3.40e-05 -> 2.68e-08` erg
+cm^-3 s^-1 against a heating of `7.0e-06`, so the base net rate changes sign
+from `-2.65e-05` (cooling) to `+6.97e-06` (heating). Almost all of that comes
+from (b); (a) alone is a factor ~5 on the `[O I]` two-level term. Sweeping the
+code's own cooling assembly in T at that cell's frozen densities, against the
+heating measured there, the local radiative balance temperature moves from
+**168 K to 486 K** — 168.2 K from (a) alone, 485.5 K from (b) alone, so (b)
+does essentially all of the work at the base — and the two cooling curves are
+identical from 1e3 K up. A
+side-by-side marching test does NOT resolve this: on a 5e4-step scale the base
+is riding an inflow transient whose adiabatic heating dominates the radiative
+term in both binaries. WASP-121 b
+(base at 2358 K, `tau([O I] 63um) = 0.039`, `beta = 0.956`) is unchanged:
+`log10 Mdot = 13.17` before and after, outer mass flux to `3e-7` relative,
+profile max relative difference `8e-5`. `make check`: `mol_base_handoff`
+(metals off) stays byte-identical (PASS); the two metal cases move by the
+intended physics with `log10 Mdot = 13.22` unchanged in both — `wasp_full`
+max relative difference `3.7e-7` (density), outer mass flux to `2e-8`;
+`wasp_he23off` `1.6e-3` (density, temperature) in the narrow band at
+`r = 1.012-1.014`, outer mass flux to `1.2e-5`. Goldens NOT re-snapshotted. Separately noted while
+comparing: both goldens already contain **negative species densities** in that
+band (H I, O I, O II, S II; 17 cells in `wasp_full`, 3 in `wasp_he23off`) — a
+pre-existing defect, unrelated to this change.
+
+**Not fixed by this.** The model still has no stellar optical/IR absorption and
+no thermal background, so nothing sets a radiative floor at `T_eq` for a
+shielded layer; and below ~700 K the guard leaves ions without an explicit
+two-level term (C I, N, Mg, Ca, Na, Fe) with no cooling at all — for C I that
+omits the real `[C I] 609/370um` lines, whose LTE rate at the HD 189733 b base
+is ~1e-10 erg cm^-3 s^-1, i.e. 1e-4 of the local heating. Files:
+`src/modules/radiation/Cool_coeff.f90`, `src/modules/radiation/util_ion_eq.f90`,
+`src/modules/nonlinear_system_solver/T_equation.f90`,
+`src/modules/post_process/post_process_adv.f90`. Details:
+`docs/hd189_base_checkerboard.md` §10.
+
+---
+
+## 43. Base grid resolution as an input key (`Base grid [dr,cells]`, 2026-08-11)
+
+The resolution of the uniform region of the `Mixed` grid was two hardcoded
+locals in `define_grid.f90` (`N_low = 50` cells of `drc = 2.0e-4` R_p). It is
+now an input key, because that spacing is what decides whether the base
+carries the stationary 2*dr* entropy mode diagnosed in
+`docs/hd189_base_checkerboard.md`: the controlling parameter is the number of
+cells per base density scale height, `H/dr` with `H = kT/(mu g)`, and a 4x
+refinement was measured to remove the mode.
+
+```
+Base grid [dr,cells]:  2.0e-4 50     # the default -- the historical grid
+Base grid [dr,cells]:  5.0e-5 200    # 4x refinement at the same 0.01 R_p extent
+```
+
+The two numbers share one line, as `du_th [PLM,WENO3]` does, because they are
+not independent: their product is the radial extent of the uniform region
+(0.01 R_p by default). Refining at fixed extent means dividing `dr` and
+multiplying `cells` by the same factor; changing only one moves the junction
+with the stretched region. The second value may be omitted (the count then
+keeps its default). The key applies to `Grid type: Mixed` only; `Uniform` and
+`Stretched` build their grids from `r_max` and `N` alone, and
+`EXHALE_setup.out` echoes that the key is ignored for them.
+
+`EXHALE_setup.out` also reports the resolution actually achieved,
+`Base scale-height resolution: H(T_eq)/dr = 1/(b0*dr_j(1))` (`b0` is the
+surface Jeans parameter, `dr_j(1)` the first cell after the Mixed-grid
+smoothing), and warns below 10 cells. On the default grid this is 26.9 cells
+for HD 189733 b against 102.3 for WASP-121 b — the margin the high-gravity
+planet does not have. `Grid type: Stretched` gives 1.7 cells for HD 189733 b,
+i.e. it is unusable at the base for this class of problem.
+
+The smoothing pass at the end of `define_grid` started at the literal `50`,
+which was `N_low` written out; it now follows `N_low` so that the junction
+between the uniform and stretched regions is smoothed wherever it is.
+
+**Two costs, both structural.** The CFL step is set by the smallest cell, so a
+4x finer base needs about 4x more steps for the same physical time. And the
+total cell count `N = 500` is a compile-time parameter, so the cells given to
+the base come out of the stretched region: on the 4.43 R_p HD 189733 b domain
+the stretch ratio goes 1.0119 -> 1.0252 and the cell size at 1.5 R_p grows
+from 6.1e-3 to 1.3e-2 R_p. Refining the base therefore coarsens the wind, which
+is where `Mdot` and the transmission spectrum are formed. Making `N` runtime-
+settable would need the static `(1-Ng:N+Ng)` arrays to become allocatable
+throughout; it was not done here.
+
+**Default is bit-exact.** `dr_base` is declared with a *default-real* literal
+(`2.0e-4`, not `2.0d-4`) because that is what the old local was: the stored
+value is the single-precision neighbour of 2e-4, 2.5e-8 relative below it.
+Declaring the exact double moves every base cell by that amount; measured on
+`wasp_full` it changed the converged density by 5e-10 relative (step count and
+`log10 Mdot = 13.22` unchanged), which is not a physics difference but is not
+byte-identity either. The literal is kept so that an `input.inp` without the
+key reproduces earlier runs exactly. The consequence to know: writing the
+default out explicitly (`Base grid [dr,cells]: 2.0e-4 50`) does *not* reproduce
+it, because the list-directed read into `real*8` gives the exact double.
+
+**HD 189733 b, what is and is not shown.** Splitting the alternating-amplitude
+window separates the ghost-to-cell-1 boundary jump (cells 1-2) from the 2*dr*
+mode proper (cells 3-12). Measured on cold-start re-convergences at the same
+stage of their transient, against the pre-fix converged reference: the interior
+`A(ln rho)` is 9.0e-3 (reference, base at 236 K), 1.6e-3 on the default grid
+with the base now at 601 K (the metal-cooling fix of item 42 alone, a factor 6),
+and 9e-5 / 5e-5 at `1.0e-4 100` / `5.0e-5 200` (a further factor 17-31, into the
+regime where the mode is gone). The
+1-12 window stays at 1.3-2.4e-2 in all cases because it is measuring the
+boundary jump, which grid refinement does not touch. **These runs had not
+converged**, so no `Mdot` is quoted from them and `HD189733b/` was left alone.
+
+Recorded while doing this: `count_max = 1000000` is a compile-time parameter and
+the `EXHALE_MAXSTEPS` hook only lowers it, so a 4x-refined base - whose CFL step
+is 4x smaller - can reach at most 1/4 of the physical time the default grid
+reaches within the cap. The pre-fix HD 189733 b run used its full 1e6 steps, so
+4x is not reachable to convergence there without raising `count_max`; 2x is, and
+2x is already where the mode goes.
+
+**Checks.** Byte-identity was tested differentially, against the binary built
+immediately before this change rather than against `backup/regression/golden/`
+(the goldens are stale by the intended metal-cooling physics change of item 42).
+All output files of `wasp_full`, `wasp_he23off` and `mol_base_handoff` are
+byte-identical including headers, with the same step counts (13488 / 13482 /
+12000) and `log10 Mdot` (13.22 / 13.22 / 10.58). WASP-121 b run to completion
+with the key absent: `log10 Mdot = 13.17`, JFNK `info = 0`,
+`||R|| = 5.7e-5` — unchanged from item 42. Malformed values are rejected in
+`define_grid` (a cell count outside `[2, N-10]`, or a uniform region that does
+not fit inside `r_max`).
+
+Files: `src/modules/init/parameters.f90`, `src/modules/init/define_grid.f90`,
+`src/modules/files_IO/input_read.f90`,
+`src/modules/files_IO/write_setup_report.f90`.

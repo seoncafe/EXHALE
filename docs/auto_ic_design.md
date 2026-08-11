@@ -374,10 +374,14 @@ two other reference codes suggest complementary ideas worth recording:
   separation) rather than re-probed per run.
 
 - **Wind-AE warm-start IC (tested 2026-06-13).** The MC09 successor
-  Wind-AE (Broome et al. 2025; in-tree at `wind-ae-main/`, builds and
-  runs on this machine, ~14 s per solve) provides converged steady BVP
-  solutions that can be interpolated onto the EXHALE grid and loaded via
-  `Load IC` (converter: `src/utils/windae_to_exhale_ic.py`). Hands-on
+  Wind-AE (Broome et al. 2025; reference copy in the workspace at
+  `wind-ae-main/`, builds and runs on this machine, ~14 s per solve)
+  provides converged steady BVP solutions that can be interpolated onto the
+  EXHALE grid and loaded via `Load IC` (converter:
+  `src/utils/windae_to_exhale_ic.py`). *Since then the solver was ported to
+  Fortran and runs in-process: `src/modules/wind_ae/`, key `IC mode: windae`,
+  documented in `docs/wind_ae_solver.pdf`. The external-converter route below
+  is the 2026-06 arrangement.* Hands-on
   result on
   HD209458b (H/He, spherical, 10 Rp): the loaded state is flux-flat *by
   construction*, so plain marching trips the `du` stop **in 3 steps — a

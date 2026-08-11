@@ -1,5 +1,18 @@
 # Cleaner convergence methods for EXHALE steady-state winds
 
+**Status.** This is the options survey written before a steady solver existed.
+**Option 3 (PTC -> JFNK) was chosen and implemented** and is now the
+`Solver: Newton` key: matrix-free Newton-Krylov with a banded preconditioner,
+pseudo-transient continuation, frozen WENO weights and a non-monotone line
+search (`src/modules/time_step/steady_newton.f90`; design record
+`docs/steady_solver_design.md`, `docs/newton_scaling_and_base_wall.md`). It does
+*not* replace the two-stage marching described below — it warms up with it and
+takes over at `du < newton_du_switch`. Option 1 (local time-stepping) and
+Option 2 (steady BVP relaxation) were not implemented in the main solver;
+Option 2's algorithm does exist in the tree as the Wind-AE initial-condition
+generator (`src/modules/wind_ae/`, `IC mode: windae`). The rest of this note is
+kept as the reasoning that led to that choice.
+
 ## Motivation
 
 EXHALE reaches its steady state by **explicit time-marching** (RK + HLLC/ROE
