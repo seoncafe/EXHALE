@@ -275,8 +275,12 @@ def read_input_params(path):
 	(order-independent), matching the input_read.f90 core block. Rp/Mp/T0/
 	a_orb/Mstar are taken from the labeled lines the Fortran uses, at the same
 	word positions as the legacy positional reader; LEUV and the 2D approximate
-	method stay content-matched. Returns a dict:
-	  Rp [m], Mp [kg], T0 [K], a_orb [m], Mstar [kg], LEUV, appx_mth."""
+	method stay content-matched. The stellar radius and effective temperature
+	are read from the same "Stellar radius [R_sun]:" / "Stellar Teff [K]:"
+	lines the Fortran core uses (word 4 in both cases), and are None when the
+	line is absent -- they are optional in input.inp. Returns a dict:
+	  Rp [m], Mp [kg], T0 [K], a_orb [m], Mstar [kg], LEUV, appx_mth,
+	  R_star_Rsun [R_sun or None], T_star [K or None]."""
 	with open(path, 'r') as f:
 		lines = f.readlines()
 
@@ -287,11 +291,29 @@ def read_input_params(path):
 			                 % (key, path))
 		return get_word(ln, n)
 
+	def optional_word(key, n):
+		ln = find_input_label(lines, key)
+		if ln is None:
+			return None
+		try:
+			return float(get_word(ln, n))
+		except (TypeError, ValueError):
+			return None
+
 	Rp    = float(word('Planet radius', 4)) * RJ
 	Mp    = float(word('Planet mass', 4)) * MJ
 	T0    = float(word('Equilibrium temperature', 4))
 	a_orb = float(word('Orbital distance', 4)) * AU
 	Mstar = float(word('Parent star mass', 5)) * M_sun
+
+	# Stellar radius / effective temperature (same labels and word positions as
+	# input_read.f90). A non-positive entry means "not specified" there too.
+	R_star_Rsun = optional_word('Stellar radius', 4)
+	T_star      = optional_word('Stellar Teff', 4)
+	if R_star_Rsun is not None and R_star_Rsun <= 0.0:
+		R_star_Rsun = None
+	if T_star is not None and T_star <= 0.0:
+		T_star = None
 
 	LEUV = None
 	appx_mth = ''
@@ -303,7 +325,34 @@ def read_input_params(path):
 		appx_mth = appx_ln.split(':')[-1].strip()
 
 	return dict(Rp=Rp, Mp=Mp, T0=T0, a_orb=a_orb, Mstar=Mstar,
-	            LEUV=LEUV, appx_mth=appx_mth)
+	            LEUV=LEUV, appx_mth=appx_mth,
+	            R_star_Rsun=R_star_Rsun, T_star=T_star)
+
+
+def orbital_period_days(a_orb, Mstar, Mp):
+	"""Keplerian orbital period [days] of the two-body system,
+	P = 2 pi sqrt(a^3 / (G (M_star + M_p))).  a_orb [m], Mstar and Mp [kg].
+	Used as the planet spin period under the tidal-locking assumption."""
+	return 2.0*np.pi*np.sqrt(a_orb**3.0/(G*(Mstar + Mp)))/86400.0
+
+
+def parameter_with_source(env_name, input_value, default,
+                          input_label='input.inp',
+                          default_label='built-in default'):
+	"""Resolve one run parameter and report where it came from.
+
+	Precedence: EXHALE_TRANSIT_<env_name> (explicit run-time override, with
+	the legacy TPM_<env_name> spelling) > the value read from ./input.inp >
+	the built-in default.  Returns (value, source_string)."""
+	raw = _tenv(env_name)
+	if raw is not None:
+		src = 'EXHALE_TRANSIT_' + env_name
+		if ('EXHALE_TRANSIT_' + env_name) not in os.environ:
+			src = 'TPM_' + env_name
+		return float(raw), 'env ' + src
+	if input_value is not None:
+		return float(input_value), input_label
+	return float(default), default_label
 
 
 def _line_halfwidth(lam0_A, m_atom_amu, fosc, A21, N_col_cm2, T, v):

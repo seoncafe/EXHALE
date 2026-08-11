@@ -26,12 +26,13 @@ For each planet it writes a 2x3 multi-panel PDF ``fig_struct_<tag>.pdf`` to
 
 Usage
 -----
-    python3 make_struct_figures.py                 # all staged Phase-1 runs
+    python3 make_struct_figures.py                 # all four planet runs
     python3 make_struct_figures.py --rundir DIR --tag TAG --name "Name"
 
-The staged run directories default to figs_run/<tag>/ (see paper_data.py); pass
---rundir to regenerate the figures from re-converged per-planet outputs in
-Phase 2.  Column maps and the adiabatic-cooling formula live in paper_data.py.
+The run directories are the self-contained planet folders of the EXHALE tree
+(HD209458b/, HD189733b/, WASP-52b/, WASP-121b/; see RUNDIR in paper_data.py);
+pass --rundir for any other run.  Column maps and the adiabatic-cooling formula
+live in paper_data.py.
 
 matplotlib usetex is left ON (the machine default); all labels are ASCII or
 LaTeX strings.
@@ -284,7 +285,7 @@ def main():
         return
 
     for name, tag, _ in pd.PLANETS:
-        rundir = pd.staged_rundir(tag, base=args.base)
+        rundir = pd.planet_rundir(tag, base=args.base)
         d = pd.load_planet(rundir, name=name)
         make_one(d, tag)
 

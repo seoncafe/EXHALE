@@ -73,19 +73,35 @@ METAL_LABEL = {
     'FeII': r'Fe\,{\sc ii}', 'FeIII': r'Fe\,{\sc iii}',
 }
 
-# Staged Phase-1 run directories (tag -> subdir).  Override with EXHALE_FIGS_RUN
-# or the --base CLI flag; the loaders themselves take an explicit path.
-STAGED_DEFAULT = os.environ.get(
-    'EXHALE_FIGS_RUN',
-    '/tmp/claude-1000/-nfs-mocafe-kiseon-RT-Codes-ExoAtmosphere/'
-    '3c17a7ed-9e0d-4907-a6ee-caeb01dbc98d/scratchpad/figs_run')
+# The paper figures read the self-contained planet folders of the EXHALE tree:
+# each holds its own input.inp, its metals.inp, and its output/, and is the run
+# the paper quotes.  There is no separate staging copy -- one planet, one
+# directory.  RUN_BASE (env EXHALE_FIGS_RUN or the --base CLI flag) relocates
+# the whole set, e.g. to an alternative tree; the loaders themselves still take
+# an explicit path.
+EXHALE_DIR = os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..'))
+RUN_BASE = os.environ.get('EXHALE_FIGS_RUN', EXHALE_DIR)
 
-# name, tag, log10 Mdot [g/s] (final Phase-1 converged values).
+# tag -> planet run directory (relative to RUN_BASE).
+RUNDIR = {
+    'hd209':   'HD209458b',
+    'hd189':   'HD189733b',
+    'wasp52':  'WASP-52b',
+    'wasp121': 'WASP-121b',
+}
+
+# name, tag, log10 Mdot [g/s].  2026-08-11 production set: every entry is a
+# JFNK Newton-converged solution (info = 0), taken from the run log of the
+# planet's own directory, under the metal-line trapping / coronal-cutoff
+# cooling and the corrected JFNK line search of that date.  Reached residuals
+# ||R|| were 7.69e-4 (hd209), 5.37e-4 (hd189), 1.59e-4 (wasp52), 5.72e-5
+# (wasp121).  A du-threshold stop alone is not quantitative for Mdot, so these
+# supersede the earlier marching-stop values 9.57 / 8.72 / 11.80 / 13.20.
 PLANETS = [
-    ('HD 209458 b', 'hd209',   9.57),
-    ('HD 189733 b', 'hd189',   8.72),
-    ('WASP-52 b',   'wasp52', 11.80),
-    ('WASP-121 b',  'wasp121', 13.20),
+    ('HD 209458 b', 'hd209',   9.31),
+    ('HD 189733 b', 'hd189',   9.04),
+    ('WASP-52 b',   'wasp52', 11.61),
+    ('WASP-121 b',  'wasp121', 13.17),
 ]
 
 
@@ -332,15 +348,15 @@ def load_planet(run_dir, name=None, adv=True):
     return Planet(name, run_dir, adv=adv)
 
 
-def staged_rundir(tag, base=None):
-    """Path to a staged Phase-1 run directory for the given tag."""
-    return os.path.join(base or STAGED_DEFAULT, tag)
+def planet_rundir(tag, base=None):
+    """Path to the planet run directory for the given tag (see RUNDIR)."""
+    return os.path.join(base or RUN_BASE, RUNDIR.get(tag, tag))
 
 
 if __name__ == '__main__':
     for nm, tag, lm in PLANETS:
         try:
-            d = load_planet(staged_rundir(tag), name=nm)
+            d = load_planet(planet_rundir(tag), name=nm)
             phys = d.r <= d.r_esc
             print('%-14s Rp=%.3f RJ  Tmax=%.0f K  vmax=%.1f km/s  '
                   'metals=%d  log10Mdot=%.2f'

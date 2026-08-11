@@ -23,19 +23,23 @@ used directly.  This is a fair common axis; it does NOT force a match.
 Model curves
 ------------
 The tpm_*.txt curves come from EXHALE_transit.py.  With --run this script
-regenerates them by invoking that post-processor on each run directory (writing
-tpm_He10830.txt / tpm_Halpha.txt / tpm_Lya.txt); without --run it loads whatever
+regenerates them by invoking that post-processor on each run directory, which
+writes the canonical tpm_<line>.txt set there; without --run it loads whatever
 tpm files are already present.
 
 Usage
 -----
     python3 make_transit_figures.py            # load tpm_*.txt, make figures
     python3 make_transit_figures.py --run      # regenerate tpm_*.txt first
+    python3 make_transit_figures.py --run --tags hd189 wasp52 --no-figures
+                                               # curves only, chosen planets
 
-The per-planet transit inputs (stellar radius/T_eff, rotation period, run dir)
-live in TRANSIT_CFG below; repoint the run directories there (or via --base) to
-apply the pipeline to re-converged Phase-2 outputs.  matplotlib usetex is left
-ON; all labels are ASCII or LaTeX strings.
+Run directories are the self-contained planet folders of the EXHALE tree
+(RUNDIR in paper_data.py; relocate the set with --base).  The planet and
+stellar parameters -- radius, T_eff, orbit, and the tidally locked spin period
+derived from it -- are read by EXHALE_transit.py from each folder's input.inp,
+which is the single source; this script passes none of them.  matplotlib usetex
+is left ON; all labels are ASCII or LaTeX strings.
 """
 import os
 import sys
@@ -51,7 +55,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 import paper_data as pd
 
-EXHALE_DIR = os.path.abspath(os.path.join(HERE, '..'))
+EXHALE_DIR = pd.EXHALE_DIR
 TRANSIT_PY = os.path.join(EXHALE_DIR, 'EXHALE_transit.py')
 OUTDIR = os.path.join(HERE, '..', 'paper')
 OBS_A = os.path.expanduser('~/Exoplanetary_Atmosphere')   # "A" root in the doc
@@ -60,20 +64,11 @@ OBS_E = EXHALE_DIR                                         # "E" root in the doc
 C_KMS = 2.99792458e5
 LYA0 = 1215.67   # Ly-alpha line center [Angstrom]
 
-# Per-planet transit configuration.  'tdir' is the directory the transit
-# post-processor reads (input.inp + output/) and writes its tpm_*.txt into; for
-# WASP-121 b it is the ghost-cell-cleaned copy of the staged run.
-TRANSIT_CFG = {
-    'hd209':   dict(name='HD 209458 b', tdir='hd209',
-                    rstar=1.155, tstar=6065, rotp=3.5247),
-    'hd189':   dict(name='HD 189733 b', tdir='hd189',
-                    rstar=0.765, tstar=4875, rotp=2.2186),
-    'wasp52':  dict(name='WASP-52 b',   tdir='wasp52',
-                    rstar=0.79,  tstar=5000, rotp=1.7498),
-    'wasp121': dict(name='WASP-121 b',  tdir='wasp121_clean',
-                    rstar=1.458, tstar=6459, rotp=1.2749),
-}
+# Panel order and titles.  The run directory of each tag comes from
+# paper_data.RUNDIR, and every physical parameter from that directory's
+# input.inp -- nothing about the planets is duplicated here.
 ORDER = ['hd209', 'hd189', 'wasp52', 'wasp121']
+PLANET_NAME = {tag: name for name, tag, _ in pd.PLANETS}
 
 # Observation registry.  Each entry:
 #   file, xcol, ycol, errcol (or None), conv, xkind, frame, label
@@ -142,20 +137,24 @@ def vac_to_air(lv):
                  + 0.00015998 / (38.9 - s**2))
 
 
-def run_transit(base=None):
-    """Regenerate tpm_He10830/Halpha/Lya.txt for every planet via
-    EXHALE_transit.py.  Writes canonical 'tpm_<line>.txt' names into each run
-    directory."""
-    for tag in ORDER:
-        cfg = TRANSIT_CFG[tag]
-        rundir = pd.staged_rundir(cfg['tdir'], base=base)
+def run_transit(base=None, tags=None):
+    """Regenerate the canonical tpm_<line>.txt set in each planet folder via
+    EXHALE_transit.py.
+
+    Only the run directory is passed; the planet, star, and spin period come
+    from that directory's input.inp, and the curves are written there under
+    their canonical names, so no naming or parameter override is needed here.
+    """
+    for tag in (tags or ORDER):
+        rundir = pd.planet_rundir(tag, base=base)
         env = dict(os.environ)
         env['MPLBACKEND'] = 'Agg'
         env['EXHALE_TRANSIT_PATH'] = rundir
-        env['EXHALE_TRANSIT_SAVE_PREFIX'] = os.path.join(rundir, '')
-        env['EXHALE_TRANSIT_RSTAR_RSUN'] = str(cfg['rstar'])
-        env['EXHALE_TRANSIT_TSTAR'] = str(cfg['tstar'])
-        env['EXHALE_TRANSIT_ROTP'] = str(cfg['rotp'])
+        for _stale in ('EXHALE_TRANSIT_SAVE_PREFIX', 'TPM_SAVE_PREFIX',
+                       'EXHALE_TRANSIT_RSTAR_RSUN', 'TPM_RSTAR_RSUN',
+                       'EXHALE_TRANSIT_TSTAR', 'TPM_TSTAR',
+                       'EXHALE_TRANSIT_ROTP', 'TPM_ROTP'):
+            env.pop(_stale, None)   # input.inp is the single source
         print('running transit for', tag, '->', rundir)
         subprocess.run([sys.executable, TRANSIT_PY], env=env,
                        cwd=EXHALE_DIR, check=False,
@@ -165,8 +164,10 @@ def run_transit(base=None):
 def load_tpm(rundir, line):
     """Load a tpm model curve; returns (lambda[A], A_model[%]) or None.
 
-    Accepts both the canonical 'tpm_<line>.txt' and a doubled 'tpm_tpm_<line>'
-    name (an artifact of the SAVE_PREFIX used when the curves were first staged).
+    The canonical name is 'tpm_<line>.txt', which EXHALE_transit.py now always
+    writes into the run directory.  A doubled 'tpm_tpm_<line>.txt' from an
+    earlier generation, when the save prefix had to be given by hand, is still
+    accepted so an older run directory keeps loading.
     """
     for pat in ('tpm_%s.txt' % line, 'tpm_tpm_%s.txt' % line,
                 '*tpm_%s.txt' % line):
@@ -222,8 +223,7 @@ def make_line_figure(line, base=None):
     xlabel = (r'velocity [km s$^{-1}$]' if line == 'Lya'
               else r'wavelength [\AA] (air)')
     for ax, tag in zip(axes, ORDER):
-        cfg = TRANSIT_CFG[tag]
-        rundir = pd.staged_rundir(cfg['tdir'], base=base)
+        rundir = pd.planet_rundir(tag, base=base)
         tpm = load_tpm(rundir, line)
         if tpm is not None:
             lam, A = tpm
@@ -240,7 +240,7 @@ def make_line_figure(line, base=None):
                             color='tab:red', alpha=0.7, capsize=0,
                             label=label, zorder=2)
         ax.axhline(0.0, color='0.6', lw=0.6)
-        ax.set_title(cfg['name'])
+        ax.set_title(PLANET_NAME[tag])
         ax.set_xlabel(xlabel)
         ax.set_ylabel(r'excess absorption [\%]')
         ax.legend(fontsize=7.5, loc='best')
@@ -270,10 +270,20 @@ def main():
     ap.add_argument('--run', action='store_true',
                     help='regenerate tpm_*.txt via EXHALE_transit.py first')
     ap.add_argument('--base', default=None,
-                    help='base dir holding the staged <tag>/ run dirs')
+                    help='base dir holding the planet run dirs '
+                         '(default: the EXHALE tree)')
+    ap.add_argument('--tags', nargs='+', default=None, choices=ORDER,
+                    help='restrict --run to these planets '
+                         '(e.g. skip a folder with a run in progress)')
+    ap.add_argument('--no-figures', action='store_true',
+                    help='stop after --run; do not touch the paper figures '
+                         '(use while some planets are still re-converging, so '
+                         'a panel is never drawn from a stale curve)')
     args = ap.parse_args()
     if args.run:
-        run_transit(base=args.base)
+        run_transit(base=args.base, tags=args.tags)
+    if args.no_figures:
+        return
     for line in ('He10830', 'Halpha', 'Lya'):
         make_line_figure(line, base=args.base)
 

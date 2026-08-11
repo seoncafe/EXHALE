@@ -23,6 +23,7 @@ from exhale_transit_lib import (
     c_cgs, h_cgs, kb_cgs, eV2Hz, B21_lya, B12_lya,
     _amu, _kB, _ec2, _ccm,
     n2_populations, gamma_n2_balmer, get_word, read_input_params,
+    orbital_period_days, parameter_with_source,
     _line_halfwidth, _apply_window, _odd,
     resonance_depth, resonance_spectrum,
 )
@@ -37,19 +38,81 @@ start = time.time()
 # Input_file = ATES' auto-generated input file
 # Hydro_file = ATES' hydro output (with path)
 # Ioniz_file = ATES' ionization output (with path)
-# fig_name   = Name of the output figure (leave empty for not saving the figure)
-# abs_file   = Name of the output file with absorption data(leave empty for not saving the file)
 
 path = _tenv('PATH', '.')  # ATES' files destination folder (env override)
 Input_file = path + '/input.inp'
 Hydro_file = path + '/output/Hydro_ioniz_adv.txt'
 Ioniz_file = path + '/output/Ion_species_adv.txt'
-fig_name_hei = ''
-fig_name_lya = ''
-abs_file   = ''
 
-# Data not in input_file
-R_star    = float(_tenv('RSTAR_RSUN', '0.44'))*R_sun  # Stellar radius (env override)
+# ----- Output naming: one rule for every product of this script ----- #
+# Every line computed here is identified by the same key -- He10830, Lya,
+# Halpha, Hbeta, MgII, CaII, NaI -- and both products of a line are named from
+# that key and land in the run directory:
+#
+#   <path>/<save prefix>tpm_<line>.txt   model curve   (always written)
+#   <path>/<fig prefix><line>.png/.pdf   figure        (only if a prefix is set)
+#
+# Both prefixes are name prefixes resolved against the run directory, so an
+# unattended run leaves its products next to the output they were built from
+# and never depends on the working directory.  Give an absolute prefix to write
+# somewhere else.  The curve prefix is empty by default -- the canonical
+# tpm_<line>.txt -- and EXHALE_TRANSIT_SAVE_PREFIX only decorates that name.
+# Figures are off by default because they are a presentation product, not a
+# data product; set EXHALE_TRANSIT_FIG_PREFIX (e.g. "tpm_") to save them.
+_save_prefix = os.path.join(path, _tenv('SAVE_PREFIX', ''))
+_fig_prefix  = _tenv('FIG_PREFIX', '')
+
+
+def _fig_name(line):
+	"""Figure file name for a line key ('' = do not save this figure)."""
+	return (os.path.join(path, _fig_prefix + line + '.png')
+	        if len(_fig_prefix) > 0 else '')
+
+
+fig_name_hei  = _fig_name('He10830')
+fig_name_lya  = _fig_name('Lya')
+fig_name_ha   = _fig_name('Halpha')
+fig_name_hb   = _fig_name('Hbeta')
+fig_name_mgii = _fig_name('MgII')
+fig_name_caii = _fig_name('CaII')
+fig_name_nai  = _fig_name('NaI')
+
+# ----- Parameters read from input.inp ----- #
+# Every read is matched by LABEL (read_input_params -> input_read.f90
+# semantics), so the header line order is irrelevant, matching the Fortran
+# core block. Rp/Mp/T0/a_orb/Mstar keep their legacy word positions; the
+# stellar radius / Teff use the same word positions as the Fortran; LEUV and
+# the 2D approximate method stay content-matched (last occurrence wins).
+_par = read_input_params(Input_file)
+Rp    = _par['Rp']       # planet radius [m]
+Mp    = _par['Mp']       # planet mass [kg]
+T0    = _par['T0']       # equilibrium temperature [K]
+a_orb = _par['a_orb']    # orbital distance [m]
+Mstar = _par['Mstar']    # parent star mass [kg]
+LEUV     = _par['LEUV']      # log10 of EUV (Lyman-continuum-band) luminosity [erg/s]
+appx_mth = _par['appx_mth']  # ATES 2D flux approximation (sets the day-night xi factor)
+
+# ----- Stellar and planet-rotation parameters ----- #
+# The star sets the transit normalization (A_star, and the R_star/Rp cap on
+# the absorbing annulus) and the diluted-blackbody Balmer continuum that
+# photoionizes H(n=2), so it must describe the SAME system as the simulation.
+# Each parameter is resolved as
+#     EXHALE_TRANSIT_* environment override  >  ./input.inp  >  built-in default
+# so an explicit override still wins, but an unattended run now inherits the
+# star of the run directory instead of a fixed built-in one.
+R_star_Rsun, _src_R_star = parameter_with_source('RSTAR_RSUN',
+                                                 _par['R_star_Rsun'], 0.44)
+R_star = R_star_Rsun*R_sun                     # stellar radius [m]
+# Planet rotation period [days]. It enters as the solid-body spin of the
+# atmosphere (rotational Doppler broadening, and the Roche-geometry spin).
+# Close-in giants are tidally locked, so the default is the Keplerian orbital
+# period built from the orbital distance and the masses in input.inp.
+_P_orb = orbital_period_days(a_orb, Mstar, Mp)
+rot_period, _src_rot_period = parameter_with_source(
+    'ROTP', _P_orb, _P_orb,
+    input_label='input.inp (tidally locked: P_orb from a, M_star + M_p)',
+    default_label='input.inp (tidally locked: P_orb from a, M_star + M_p)')
+
 # Instrument spectral resolving power R = lambda/Delta-lambda for the Gaussian
 # line-spread convolution.  Each is env-overridable (EXHALE_TRANSIT_RES_* , with
 # the TPM_RES_* fallback); defaults below match the instruments named inline.
@@ -60,8 +123,6 @@ Instr_res_Hb   = float(_tenv('RES_HB',   '1.15e5'))  # H-beta 4861.35
 Instr_res_MgII = float(_tenv('RES_MGII', '3e4'))  # Mg II h&k 2796/2803 NUV: HST/STIS ~ 3e4
 Instr_res_CaII = float(_tenv('RES_CAII', str(Instr_res_Ha)))  # Ca II H&K optical
 Instr_res_NaI  = float(_tenv('RES_NAI',  str(Instr_res_Ha)))  # Na I D optical
-# Planet rotation period [days]
-rot_period = float(_tenv('ROTP', '4.88')) # [days] (env override)
 
 # ----- H-alpha (n=2 -> n=3) inputs ----- #
 # H-alpha absorption arises from the n=2 hydrogen population. Following
@@ -97,16 +158,52 @@ sigma_LyC      = 6.3e-18   # H photoionization cross section at LyC [cm^2]
 # else 1.0. This is read from input.inp automatically; set xi_override>0
 # to force a value (cf. the xi factor of Christie+2013 / Huang+2017).
 xi_override    = 0.0       # 0 => auto from input.inp appx_mth
-fig_name_ha = ''
 # n=2 photoionization (Balmer continuum) rates Gamma_2s, Gamma_2p [s^-1].
 # If T_star > 0 they are estimated from a diluted stellar blackbody
 # Balmer continuum (E>3.4 eV) at the orbital distance; otherwise the
 # manual values below are used (0 => neglected). T_star = stellar
-# effective temperature [K] (e.g. ~6065 K for HD209458, ~5050 K for
-# HD189733). R_star (above) and a_orb set the dilution.
-T_star   = float(_tenv('TSTAR', '6065.0'))          # stellar effective temperature [K] (<=0 disables; env override)
+# effective temperature [K], resolved with the same
+# env > input.inp > built-in precedence as R_star. R_star (above) and a_orb
+# set the dilution.
+T_star, _src_T_star = parameter_with_source('TSTAR', _par['T_star'], 6065.0)
 Gamma_2s = 0.0             # used only if T_star <= 0
 Gamma_2p = 0.0
+
+# ----- Resolved-parameter report (cf. write_setup_report.f90) ----- #
+print('(EXHALE_transit) resolved parameters  [value, source]')
+print('  input file          : %s' % Input_file)
+print('  planet radius       : %-12.4f R_J     input.inp' % (Rp/RJ))
+print('  planet mass         : %-12.4f M_J     input.inp' % (Mp/MJ))
+print('  equilibrium T       : %-12.1f K       input.inp' % T0)
+print('  orbital distance    : %-12.5f AU      input.inp' % (a_orb/AU))
+print('  parent star mass    : %-12.4f M_sun   input.inp' % (Mstar/M_sun))
+print('  stellar radius      : %-12.4f R_sun   %s' % (R_star_Rsun, _src_R_star))
+print('  stellar Teff        : %-12.1f K       %s' % (T_star, _src_T_star))
+print('  planet spin period  : %-12.5f d       %s' % (rot_period, _src_rot_period))
+print('  log10 L_EUV         : %-12s erg/s   input.inp'
+      % ('%.3f' % LEUV if LEUV is not None else 'not read'))
+print('  2D approx. method   : %-12s         input.inp' % (appx_mth or 'none'))
+print('  model curves        : %stpm_<line>.txt   %s'
+      % (_save_prefix,
+         'EXHALE_TRANSIT_SAVE_PREFIX' if _tenv_set('SAVE_PREFIX')
+         else 'run directory, canonical name (default)'))
+print('  figures             : %s'
+      % (os.path.join(path, _fig_prefix) + '<line>.png (+.pdf)   '
+         'EXHALE_TRANSIT_FIG_PREFIX' if len(_fig_prefix) > 0
+         else 'not saved (set EXHALE_TRANSIT_FIG_PREFIX)'))
+print('  resolving powers    : He %.3g, Lya %.3g, Ha %.3g, Hb %.3g,'
+      ' MgII %.3g, CaII %.3g, NaI %.3g   (EXHALE_TRANSIT_RES_* overrides)'
+      % (Instr_res_HeTR, Instr_res_HI, Instr_res_Ha, Instr_res_Hb,
+         Instr_res_MgII, Instr_res_CaII, Instr_res_NaI))
+if _par['R_star_Rsun'] is None:
+	print('  WARNING: "Stellar radius [R_sun]:" absent from %s -- the transit'
+	      ' normalization uses a built-in radius that need not match this'
+	      ' system.' % Input_file)
+if _par['T_star'] is None:
+	print('  WARNING: "Stellar Teff [K]:" absent from %s -- the n=2'
+	      ' photoionization rate uses a built-in temperature that need not'
+	      ' match this system.' % Input_file)
+print('')
 
 # ------------------------------ #
 
@@ -132,25 +229,10 @@ number_lambda_Ha = 201
 lmin_Hb = 4860.0
 lmax_Hb = 4862.7
 number_lambda_Hb = 201
-fig_name_hb = ''
 
 # ------------------------------ #
 
 # ------------------------- #
-
-# Read useful parameters from the input file of ATES. Every read is matched by
-# LABEL (read_input_params -> input_read.f90 semantics), so the header line
-# order is irrelevant, matching the Fortran core block. Rp/Mp/T0/a_orb/Mstar
-# keep their legacy word positions; LEUV and the 2D approximate method stay
-# content-matched (last occurrence wins).
-_par = read_input_params(Input_file)
-Rp    = _par['Rp']       # planet radius [m]
-Mp    = _par['Mp']       # planet mass [kg]
-T0    = _par['T0']       # equilibrium temperature [K]
-a_orb = _par['a_orb']    # orbital distance [m]
-Mstar = _par['Mstar']    # parent star mass [kg]
-LEUV     = _par['LEUV']      # log10 of EUV (Lyman-continuum-band) luminosity [erg/s]
-appx_mth = _par['appx_mth']  # ATES 2D flux approximation (sets the day-night xi factor)
 
 # Load profiles
 r,rho,v,p,T,heat,cool = np.loadtxt(Hydro_file, unpack = True)
@@ -774,14 +856,10 @@ print('')
 # Same spherical pipeline as resonance_depth, but with BOTH doublet
 # components summed in one wavelength window, and with the instrument
 # and planet-rotation convolutions applied exactly as for the H/He
-# lines, so the metal lines are first-class TPM outputs (figures saved
-# as PNG+PDF below). The Phase 5a table above keeps the validated
+# lines, so the metal lines are first-class TPM outputs, written under
+# the same tpm_<line> naming. The Phase 5a table above keeps the validated
 # single-component numbers. Skipped automatically for a metals-off run
 # (all-zero ion columns). NIST atomic data (Kramida 2020).
-
-fig_name_mgii = ''   # empty = compute but do not save
-fig_name_caii = ''
-fig_name_nai  = ''
 
 METAL_DOUBLETS = [
 	# key, label, components (lam0_A, f, A21), mass, chord density,
@@ -923,28 +1001,31 @@ if geometry == 'triaxial':
 		print('(TPM)   %-13s   %10.3f      %10.3f' % (lbl, d_lc, d_band))
 	print('')
 
-# ----- Optional: save model transmission curves for external overplotting --- #
-# Triggered by env var TPM_SAVE_PREFIX (no effect when unset). Each file has
-# columns: wavelength [A], T_lambda (theoretical), T_lambda (instr. conv.),
-# T_lambda (planet-rot + instr. conv.).  Excess absorption [%] = (1 - T)*100.
-_save_prefix = _tenv('SAVE_PREFIX', '')
-if len(_save_prefix) > 0:
-	np.savetxt(_save_prefix + 'tpm_He10830.txt',
-	           np.c_[l_plot_HeTR, avg_prob_HeTR,
-	                 convolved_avg_prob_HeTR, convolved_rot_prob_HeTR],
-	           header='lambda[A]  T_theo  T_instr  T_rot+instr  (He I 10830)')
-	if do_Ha:
-		np.savetxt(_save_prefix + 'tpm_Halpha.txt',
-		           np.c_[l_plot_Ha, avg_prob_Ha,
-		                 convolved_avg_prob_Ha, convolved_rot_prob_Ha],
-		           header='lambda[A]  T_theo  T_instr  T_rot+instr  (H-alpha 6562.8)')
-		# Lyman-alpha (HI 1215.67) shares the n=2 / excited-H pipeline with
-		# H-alpha, so it is written alongside it.
-		np.savetxt(_save_prefix + 'tpm_Lya.txt',
-		           np.c_[l_plot_HI, avg_prob_HD,
-		                 convolved_avg_prob_HD, convolved_rot_prob_HD],
-		           header='lambda[A]  T_theo  T_instr  T_rot+instr  (Ly-alpha 1215.67)')
-	print('(TPM) saved model curves with prefix:', _save_prefix)
+# ----- Save the model transmission curves ----- #
+# One file per line, named <save prefix>tpm_<line>.txt (see the output-naming
+# block at the top).  Columns: wavelength [A], T_lambda (theoretical),
+# T_lambda (instr. conv.), T_lambda (planet-rot + instr. conv.).
+# Excess absorption [%] = (1 - T)*100.  A metals-off run simply has no metal
+# lines to write.
+_curves = [('He10830', 'He I 10830', l_plot_HeTR, avg_prob_HeTR,
+            convolved_avg_prob_HeTR, convolved_rot_prob_HeTR),
+           ('Lya', 'Ly-alpha 1215.67', l_plot_HI, avg_prob_HD,
+            convolved_avg_prob_HD, convolved_rot_prob_HD)]
+if do_Ha:
+	_curves += [('Halpha', 'H-alpha 6562.8', l_plot_Ha, avg_prob_Ha,
+	             convolved_avg_prob_Ha, convolved_rot_prob_Ha),
+	            ('Hbeta', 'H-beta 4861.35', l_plot_Hb, avg_prob_Hb,
+	             convolved_avg_prob_Hb, convolved_rot_prob_Hb)]
+_curves += [(key_m, sp['label'], sp['l_plot'], sp['avg'],
+             sp['conv'], sp['conv_rot'])
+            for key_m, sp in metal_spec.items()]
+
+for _key, _lbl, _lam, _t0, _t1, _t2 in _curves:
+	np.savetxt(_save_prefix + 'tpm_%s.txt' % _key,
+	           np.c_[_lam, _t0, _t1, _t2],
+	           header='lambda[A]  T_theo  T_instr  T_rot+instr  (%s)' % _lbl)
+print('(TPM) saved model curves: %stpm_{%s}.txt'
+      % (_save_prefix, ','.join(k for k, _, _, _, _, _ in _curves)))
 
 # ----- Setup of the figure ----- #
 
