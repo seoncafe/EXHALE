@@ -25,7 +25,11 @@ fork of the ATES code (Caldiroli et al. 2021; Biassoni et al. 2024), adding:
   and above 10^3 K), leaving only the explicit two-level fine-structure terms,
   which are valid there. Below the floor the coronal fits were dominated by
   exponentials whose excitation temperatures match no ground-term splitting of
-  the ion. `cno_cool 0` (legacy AIOLOS branch) is deliberately not cut off
+  the ion. `cno_cool 0` (legacy AIOLOS branch) is deliberately not cut off.
+  The roll-off width is `exp(-x^2)` with `x = (T_floor/T - 1)/w`, `w = 0.5` by
+  default and settable with `Coronal cutoff width: <w>`; `w` is a modeling
+  choice, not a measured quantity, and the temperature the base settles at
+  depends on it at the ~100 K level
 - He I 2³S metastable triplet state (coupled solver), with a
   **temperature-dependent He(2³S)+H Penning-ionization rate** (Taylor et
   al. 2025; replaces the classic 5e-10 constant)
@@ -213,6 +217,7 @@ Reconstruction scheme:    PLM+WENO3    # two-stage; PLM (or WENO3) alone is sing
 du_th [PLM,WENO3]:        0.5 1.0e-3   # PLM until du<0.5, then WENO3 until du<1e-3
 # Solver:  Newton                      # OPTIONAL extra residual-tightening finish
 # Shapiro filter:  -1                  # OFF by default; opt-in only for breathing cases
+# Max steps:  1000000                  # hard iteration cap (this IS the default)
 ```
 
 **Convergence criterion (flux-based).** Convergence is judged on the *flux*
@@ -279,6 +284,42 @@ the least margin, and a cool shielded base shrinks `H` further.
 CFL step scales with the smallest cell (a 4x finer base means ~4x more steps for
 the same physical time), and since `N` is fixed the stretched region gives up
 those cells and coarsens. Full investigation:
+`docs/hd189_base_checkerboard.md`.
+
+### Base ghost temperature (`Base ghost temperature`)
+
+The lower ghost cells always pin the density to the base value `rho_bc`. Their
+*temperature* is a separate choice:
+
+```
+# in input.inp -- optional; `isothermal` IS the default
+Base ghost temperature:  isothermal    # legacy: ghost pressure = ntot_bc + dp_bc, i.e. T_ghost = T0
+Base ghost temperature:  continuous    # dT/dr = 0: ghost carries T(cell 1) at the same pinned density
+```
+
+Nothing in the model backs the `T0` pin — the radiative equilibrium of the
+lower atmosphere is outside the domain — and it becomes harmful when the first
+interior cell settles far below `T0`: on HD 189733 b with the CHIANTI metal
+cooling, cell 1 sits at 494 K against `T0 = 1183 K`, so a factor-2.4 contact
+discontinuity (plus a density inversion `rho_1/rho_ghost = 2.3`) is held
+permanently on the boundary. With `continuous` the ghost keeps the base
+composition (`ntot_bc` nuclei + `dp_bc` electrons at `rho_bc`, the same
+particle count the isothermal pin uses) but carries the cell-1 temperature,
+`p_ghost = (ntot_bc + dp_bc) * T_1`.
+
+Measured on HD 189733 b (production configuration, Newton-finished): the
+boundary jump disappears (`T_ghost = 540 K` vs `T_1 = 540 K`,
+`rho_1/rho_ghost = 0.95`), the alternating `ln rho` amplitude over cells 1-12
+falls 0.0264 -> 0.0092, the steady residual 5.4e-4 -> 2.8e-4, and beyond cell 7
+the alternation drops by one to two orders of magnitude, at the cost of a
+stronger 3-cell disturbance in cells 2-4; `log10 Mdot` moves +0.01 dex
+(9.04 -> 9.05). `HD189733b/` has since been re-converged with the key on
+together with the ionization-root validation, and that state reads lower still
+(`T_ghost/T_1 = 529.4/529.6 K`, cells 1-12 amplitude `1.9e-3`, `||R|| =
+1.7e-4`). The key is ignored when `Hydrostatic base: True` is set (that
+key sets the same ghost pressure from the interior gradient); with
+`Base BC: pressure` only the base *density* stays anchored, since the microbar
+target is imposed at `T0` when `n0` is derived. Full investigation:
 `docs/hd189_base_checkerboard.md`.
 
 ### Enabling metal chemistry
@@ -633,4 +674,4 @@ See `examples/README.md` for the exact lines each one adds:
 
 Kwang-Il Seon (KASI / UST)
 
-Last updated: 2026-08-11 19:00 KST
+Last updated: 2026-08-11 23:08 KST

@@ -93,14 +93,18 @@ RUNDIR = {
 # name, tag, log10 Mdot [g/s].  2026-08-11 production set: every entry is a
 # JFNK Newton-converged solution (info = 0), taken from the run log of the
 # planet's own directory, under the metal-line trapping / coronal-cutoff
-# cooling and the corrected JFNK line search of that date.  Reached residuals
-# ||R|| were 7.69e-4 (hd209), 5.37e-4 (hd189), 1.59e-4 (wasp52), 5.72e-5
-# (wasp121).  A du-threshold stop alone is not quantitative for Mdot, so these
-# supersede the earlier marching-stop values 9.57 / 8.72 / 11.80 / 13.20.
+# cooling, the corrected JFNK line search, and the ionization-root validation
+# of that date.  Reached residuals ||R|| were 7.67e-4 (hd209), 1.72e-4
+# (hd189), 1.59e-4 (wasp52), 1.73e-4 (wasp121); the hd189 entry is its
+# run_20260811_rootfix.log, which also carries the continuous-temperature base
+# ghost closure ("Base ghost temperature: continuous") and moved that planet
+# from 9.04 to 9.05.  A du-threshold stop alone is not quantitative for Mdot,
+# so these supersede the earlier marching-stop values 9.57 / 8.72 / 11.80 /
+# 13.20.
 PLANETS = [
     ('HD 209458 b', 'hd209',   9.31),
-    ('HD 189733 b', 'hd189',   9.04),
-    ('WASP-52 b',   'wasp52', 11.61),
+    ('HD 189733 b', 'hd189',   9.05),
+    ('WASP-52 b',   'wasp52', 11.63),
     ('WASP-121 b',  'wasp121', 13.17),
 ]
 

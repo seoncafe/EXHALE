@@ -3292,7 +3292,8 @@ outside would be wrong by a factor `beta` there. Trapping is applied to
 an explicit two-level solution; everything else stays optically thin, which is
 right in the wind and is the residual approximation at the base (< 0.3% of the
 base cooling there). A thick resonance line in a metal-rich wind (Mg II h&k)
-is still treated as thin — recorded, not fixed.
+is still treated as thin — recorded here, and measured in §46, which finds
+that to be the correct effective treatment.
 
 **(b) The CHIANTI coronal fits were evaluated far below their validity
 floor.** Every metal cooling coefficient in `Cool_coeff.f90` is a fit or a
@@ -3402,7 +3403,7 @@ throughout; it was not done here.
 
 **Default is bit-exact.** `dr_base` is declared with a *default-real* literal
 (`2.0e-4`, not `2.0d-4`) because that is what the old local was: the stored
-value is the single-precision neighbour of 2e-4, 2.5e-8 relative below it.
+value is the single-precision neighbor of 2e-4, 2.5e-8 relative below it.
 Declaring the exact double moves every base cell by that amount; measured on
 `wasp_full` it changed the converged density by 5e-10 relative (step count and
 `log10 Mdot = 13.22` unchanged), which is not a physics difference but is not
@@ -3444,3 +3445,225 @@ not fit inside `r_max`).
 Files: `src/modules/init/parameters.f90`, `src/modules/init/define_grid.f90`,
 `src/modules/files_IO/input_read.f90`,
 `src/modules/files_IO/write_setup_report.f90`.
+
+---
+
+## 44. Base ghost temperature, runtime step cap, coronal-cutoff width as input keys (2026-08-11)
+
+Three settings that were compile-time constants or an unexamined default became
+`input.inp` keys. All three default to the previous behavior, so a file without
+them runs exactly as before (`make check`: all three golden cases
+byte-identical).
+
+### 44.1 `Base ghost temperature: isothermal | continuous`
+
+The lower ghost cells pin the density to `rho_bc` (the mass reservoir) and, in
+the legacy closure, the pressure to `ntot_bc + dp_bc`, i.e. the temperature to
+`T0`. **The `T0` pin has no physical backing**: the radiative equilibrium of the
+lower atmosphere is outside the model, so nothing in the code determines the
+ghost temperature, and `T_eq` is a choice, not a boundary condition. It becomes
+actively wrong once the first interior cell settles far from `T0`. With the
+metal-line cooling of item 42, cell 1 on HD 189733 b sits at 494 K against
+`T0 = 1183 K`: a factor-2.4 contact discontinuity, plus a 2.3x density
+inversion, held permanently on the boundary.
+
+`continuous` imposes `dT/dr = 0` at the base face instead. The ghost keeps the
+base composition -- `ntot_bc` nuclei and `dp_bc` electrons at `rho_bc`, exactly
+the particle count the isothermal pin uses -- and carries the cell-1
+temperature:
+
+```
+p_ghost = (ntot_bc + dp_bc) * T_1 ,   T_1 = p_1 / (n_tot + n_e)_1 .
+```
+
+`(n_tot + n_e)_1` comes from `get_species_densities`, the single point where the
+code decides what counts as a particle, and is stored in `n_part_cell1`. The
+ghost pressure therefore remains a differentiable function of the interior
+pressure (what the JFNK line search needs), while the ionization state it
+divides by is lagged exactly like every other composition quantity across a
+hydro step. `BC_component_constrho` is the only place the lower ghost is built,
+and marching, the JFNK residual and the reconstruction boundary all go through
+it, so the closure cannot differ between code paths.
+
+The key sets the same quantity as `Hydrostatic base: True` (the ghost pressure,
+which that key extrapolates from the interior gradient instead), so the two are
+mutually exclusive: `Hydrostatic base` is tested first and `input_read` warns
+when both appear. With `Base BC: pressure` the microbar target is imposed at
+`T0` when `n0` is derived, so under a continuous-`T` ghost only the base
+*density* stays anchored; `input_read` notes that too. The closure in effect is
+echoed in `EXHALE_setup.out`.
+
+**Measured** on HD 189733 b (production configuration restarted from the
+converged production state and Newton-finished, in a scratch copy; the planet
+folder was not written to). The baseline restart reproduces the stored state
+digit for digit, so the comparison is like for like:
+
+| | `isothermal` | `continuous` |
+|---|---|---|
+| `T_ghost` / `T_1` [K] | 1183.0 / 493.6 | 539.9 / 540.2 |
+| `rho_1/rho_ghost` | 2.33 | 0.95 |
+| `A(ln rho)` cells 1-12 | 0.0264 | 0.0092 |
+| `A(ln rho)` cells 3-12 / 5-14 | 4.41e-3 / 1.62e-3 | 9.28e-3 / 8.95e-4 |
+| JFNK | `info = 0`, `\|\|R\|\| = 5.37e-4` | `info = 0`, `\|\|R\|\| = 2.76e-4` |
+| `log10 Mdot` | 9.04 | 9.05 |
+
+The boundary jump and the density inversion are gone; the extended alternating
+tail is gone as well (beyond cell 7 the amplitude drops 13x to 420x), and what
+remains is a stronger disturbance confined to cells 2-4. Three further
+restart+Newton cycles reproduce each state digit for digit, so both are exact
+fixed points and no further decay is available from cycling. Details, window
+sweep and scope: `docs/hd189_base_checkerboard.md` §13. **Not** measured at that
+point: a cold start under the new closure (6 h, 1e6 steps), other planets,
+transit observables.
+
+**Adopted for production later the same day.** `HD189733b/input.inp` now carries
+`Base ghost temperature: continuous`, and the folder was re-converged with it
+together with the ionization-root validation of item 45
+(`run_20260811_rootfix.log`): `log10 Mdot = 9.05`, JFNK `info = 0`,
+`||R|| = 1.724e-04`, 2002 steps. On that converged state
+`T_ghost/T_1 = 529.4/529.6 K`, `rho_1/rho_ghost = 0.95`, and `A(ln rho)` over
+cells 1-12 is `1.9e-3`, well below the 0.0092 of the isolated A/B above --- the
+root validation appears to remove a further part of the base disturbance
+(`docs/hd189_base_checkerboard.md` §14). The paper and `python/paper_data.py`
+carry 9.05 for this planet, with He 10830 2.485%, H-alpha 0.524% and Ly-alpha
+35.9% line-center depths (2.467 / 0.520 / 35.74 before).
+
+### 44.2 `Max steps: <N>`
+
+`count_max` was an `integer, parameter = 1000000`. Item 43 recorded the
+consequence: a 4x-refined base, whose CFL step is 4x smaller, cannot reach a
+converged state within a cap that the default grid already used in full, and the
+`EXHALE_MAXSTEPS` hook only lowers the cap. `count_max` is now a runtime
+variable with the same default. `EXHALE_MAXSTEPS` keeps its separate meaning (a
+deterministic mid-loop exit used by the regression harness); it does not raise
+`count_max`.
+
+### 44.3 `Coronal cutoff width: <w>`
+
+The coronal-excitation guard of item 42 multiplies every CHIANTI-derived coronal
+coefficient by `exp(-x^2)` with `x = (T_floor/T - 1)/w` below `T_floor = 1e3 K`.
+`w = 0.5` was a hardwired `parameter`. It is a modeling choice, not a measured
+quantity, and the temperature the base settles at depends on it at the ~100 K
+level, so it is now settable, still defaulting to 0.5 (division by a variable
+holding 0.5d0 is the same arithmetic, hence byte-identical). Values `<= 0` are
+rejected at parse time. The manual states the sensitivity where the guard is
+documented.
+
+### 44.4 Checks
+
+`make check`: `wasp_full`, `wasp_he23off`, `mol_base_handoff` all byte-identical
+with the keys absent. WASP-121 b run to completion with the keys absent:
+`log10 Mdot = 13.17`, JFNK `info = 0`, `||R|| = 5.686e-05`, 8228 steps, and its
+output is byte-identical to the same case run with a binary built from `HEAD`
+without these changes. (The stored `WASP-121b/output/` differs slightly from
+both -- it predates this comparison, not these keys.) The parse-dump corpus
+(`backup/regression/run_parse_corpus.sh`) gains three lines per case and needs a
+deliberate `golden` refresh; it was not refreshed here.
+
+Files: `src/modules/init/parameters.f90`, `src/modules/states/Apply_BC.f90`,
+`src/modules/functions/composition.f90`,
+`src/modules/radiation/Cool_coeff.f90`,
+`src/modules/files_IO/input_read.f90`,
+`src/modules/files_IO/write_setup_report.f90`.
+
+---
+
+## 45. Ionization-equilibrium roots validated against the physical simplex (2026-08-11)
+
+`Ion_species.txt` carried negative number densities (H II, O II, O III, Fe I)
+in a thin band just above the base: 17 cells at r = 1.0106-1.0140 R_p in the
+`wasp_full` golden, 15 cells in the WASP-121b production run, 5 in HD189733b.
+
+The equilibrium systems are polynomial in the stage fractions and possess
+roots outside the physical simplex. At the step where secondary ionization is
+switched on (step 7186 of `wasp_full`) MINPACK `hybrd1` returned `info = 1` on
+such a root -- x(H II) = -5.2e-6, the Fe stage fractions summing to 1.2209,
+i.e. an Fe I density 22% below zero. Nothing tested the root, and the next
+step's warm start re-seeded the solve from the same values, so the state
+reproduced itself for the remaining 6302 steps. The heating paid for it twice:
+the metal photoheating channel went negative (-6.6e-7 erg cm^-3 s^-1, which is
+impossible), and the ionized fraction, clamped into [0,1], sent the Spitzer &
+Scott (1985) heating fraction f_heat to zero, switching off every photoheating
+channel above the photoelectron threshold. Total heating in the band sat 93%
+below its neighbors.
+
+Every atomic cell solve now validates its root -- each stage fraction >= 0,
+and each element's ionized stages summing to at most its nucleus total -- and
+on failure restarts from physically defined starting points: the uncoupled
+ionization balance at the incoming electron density
+(`ionization_balance_at_fixed_ne`, admissible by construction), then the
+optically thick fully neutral limit. A stored state that is not physical no
+longer seeds the next solve, which is what breaks the self-sticking. A cell
+where no starting point produces an admissible root is left on the ionization
+balance and reported rather than accepted. A first attempt that converges to a
+physical root is accepted unchanged, so healthy cells follow exactly the same
+solver path as before. `q_abs`, an absorbed energy rate, must now be positive
+before it normalizes the heating efficiency.
+
+Gates (single-threaded; a baseline `make check` on the same tree passed all
+three cases, so the differences are this change alone). `wasp_full` FAILs by
+intent: negative densities 17 cells -> 0, Mdot 13.22 -> 13.22, T/rho/v/p
+within 0.89%/0.77%/1.3%/0.13% of the golden away from the band, metal
+photoheating positive everywhere (domain minimum -8.9e-7 -> +1.03e-7).
+`wasp_he23off` also FAILs: its golden looks clean but the run reports 35 roots
+outside the simplex over 13478 steps, previously accepted in silence; Mdot
+unchanged, T/rho/p within 0.28%/0.086%/0.039%. `mol_base_handoff` is
+byte-identical. WASP-121b (13.17) and HD189733b (9.05) keep their mass-loss
+rates and step counts and lose their negative densities entirely. Goldens were
+not re-snapshotted.
+
+Files: `src/modules/radiation/ionization_equilibrium.f90`,
+`src/modules/radiation/util_ion_eq.f90`,
+`src/modules/nonlinear_system_solver/newton_solver.f90`,
+`src/EXHALE_main.f90`. Full account: `docs/ionization_root_validation.md`.
+
+---
+
+## 46. Line trapping in the thick metal resonance lines: measured, no change (2026-08-11)
+
+§42 introduced `beta(tau)` for `[O I] 63um` and `[C II] 158um` and recorded the
+thick resonance lines of a metal-rich wind (Mg II h&k, Ca II H&K, Na I D, the
+Fe II UV multiplets) as an untreated case. They were measured on the converged
+WASP-121 b, HD 209458 b and HD 189733 b runs. **No code path changed.**
+
+The lines are thick — Mg II k reaches `tau0 = 7.6e4` at the WASP-121 b base and
+stays above `1e2` through the region where Mg II carries a third of the local
+cooling, and over 99% of the integrated Mg II / Ca II / Fe II / Mg I cooling
+comes from gas with `tau0 > 1`. That is not the test, though. Trapping
+lengthens the random walk of a resonance photon; it does not destroy it. In
+two-level equilibrium the correction to an optically thin coronal fit is
+
+```
+S = beta A_ul / ( beta A_ul + ne q_ul ),   q_ul = 8.629e-6 Ups/(g_u sqrt(T))
+```
+
+— not a factor `beta` — so it bites only above `n_crit,eff = beta A_ul/q_ul`.
+For these permitted lines `A_ul ~ 1e8 s^-1`, so even at `beta ~ 1e-6` the
+escape rate keeps `n_crit,eff` at `1e9-1e15 cm^-3`, against a maximum `ne` of
+`4.3e9 cm^-3` in the WASP-121 b run. The forbidden fine-structure lines are the
+opposite case (`A_ul ~ 1e-5-1e-3 s^-1`, `n_crit,eff ~ 1e0-1e5 cm^-3`), which is
+why they, and only they, need `beta`.
+
+Measured `Delta Lambda` integrated over the wind: **0.0214%** of the total
+radiative losses of WASP-121 b, 0.0022% of HD 209458 b, 0.0015% of HD 189733 b.
+The largest local effect is 1.65% in the first WASP-121 b cell, whose `T` is
+pinned at `T_eq` by the boundary condition; the loss exceeds 0.1% only below
+`r = 1.007 R_p`. Per line it is 0.1% of the Mg II cooling, 0.015% of Ca II,
+1.4% of Na I (its `A_ul` is the smallest of the set) and 0.02-0.8% of Fe II.
+The measurement is a conservative bound: it uses the Doppler-core escape
+probability, which understates `beta` by 4-10x for these Voigt profiles, and no
+turbulent broadening.
+
+Checked in passing: the Fe II `a6D` fine-structure lines at 25.99/35.35 um, the
+one metal transition with an `A_ul` small enough to trap, reach only
+`tau0 <= 0.06`, so the `cool_FeII_ne` statistical-equilibrium table needs no
+escape probability either. H I Ly-alpha, outside this scope, has
+`tau0 = 1.3e8` and a cooling-weighted `S = 0.9994` — two-level trapping is not
+what suppresses Ly-alpha cooling, and the destruction channels that could
+(photoionization of `H(n=2)`, collisional `2p -> 2s`) were not evaluated.
+
+`beta = 1` for the resonance lines is kept and is now documented at the code
+site as a justified effective treatment with its validity condition, in the
+`SCOPE` comment of `src/modules/radiation/Cool_coeff.f90`, instead of an
+acknowledged omission. Full measurement:
+`docs/resonance_line_trapping.md`.

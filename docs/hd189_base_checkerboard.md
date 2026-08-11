@@ -586,8 +586,12 @@ the cell center and the top of the domain:
   lines for which the code carries an explicit two-level solution. All other
   metal-line cooling keeps `beta = 1`. That is correct in the wind, and at the
   HD 189733 b base the other coolants are together < 0.3% of the total once
-  (b) is applied. It is NOT correct for a thick resonance line in a
-  metal-rich wind (Mg II h&k); that case is recorded here, not fixed.
+  (b) is applied. The thick resonance lines of a metal-rich wind (Mg II h&k)
+  were recorded here as untreated; they were measured afterwards and `beta = 1`
+  turns out to be the correct effective treatment for them, because their
+  `A_ul ~ 1e8 s^-1` keeps the trapped-photon escape rate `beta A_ul` far above
+  the collisional de-excitation rate `ne q_ul`. See
+  `docs/resonance_line_trapping.md`.
 
 **(b) Coronal-fit validity floor.** `coronal_excitation_cutoff(T)` multiplies
 every CHIANTI-derived coefficient — the analytic C/N/O and Mg/Ca/Na/Fe fits,
@@ -674,7 +678,7 @@ term by a factor 6.4 at 236 K, but that term is small against the heating with
 or without it. The two changes are independent and both are in.
 
 The converged run sits at 236 K, between the two, because the base is not in
-local radiative balance (it also exchanges energy with its neighbours). The
+local radiative balance (it also exchanges energy with its neighbors). The
 2.9x rise in the balance temperature is the size of the effect. Held fixed in
 this measurement: the ionization state, `n_e`, and the heating rate, all taken
 from the 236 K solution; a self-consistent solve would move them, and the metal
@@ -754,8 +758,16 @@ step 11000 and never reached the 1e-2 hand-off, identically for both binaries.
    the real `[C I] 609/370um` lines; their LTE rate at the HD 189733 b base is
    ~1e-10 erg cm^-3 s^-1, i.e. 1e-4 of the local heating, so it is negligible
    there but would not be in a colder or more carbon-rich base.
-3. **Thick resonance lines in the wind are still treated as thin** (Mg II h&k
-   in an ultrahot Jupiter). Nothing in this change moves that either way.
+3. ~~**Thick resonance lines in the wind are still treated as thin** (Mg II h&k
+   in an ultrahot Jupiter). Nothing in this change moves that either way.~~
+   **Settled 2026-08-11, no change needed.** The lines are thick
+   (`tau0 ~ 7.6e4` for Mg II k at the WASP-121 b base) but their cooling is
+   not suppressed by it: the correction to an optically thin coronal fit is
+   `beta A_ul/(beta A_ul + ne q_ul)`, not `beta`, and with `A_ul ~ 1e8 s^-1`
+   the effective critical density `beta A_ul/q_ul` sits one to six decades
+   above the `ne` these winds reach. Measured effect on the total radiative
+   losses: 0.02% (WASP-121 b), 0.002% (HD 209458 b), 0.0015% (HD 189733 b).
+   `docs/resonance_line_trapping.md`.
 4. **The checkerboard.** The mode tracks `H/dr` (§4-§5), and a warmer base
    raises `H`. Whether the warming is enough to leave the damped regime is not
    settled by these runs; see §10.4.
@@ -904,8 +916,11 @@ He 2^3S, He/metal diffusion).
 | Newton finish restarted from it (`Load IC`, hand-off at step 2002) | `run_20260811_newton_finish.log` | JFNK `info = 0`, `\|\|R\|\| = 5.369e-04`, **`log10 Mdot = 9.04`** |
 
 The 0.20 dex between the two is the familiar point that a `du`-threshold stop is
-not quantitative for `Mdot`; 9.04 is the Newton-grade number and is what the
-paper and `python/paper_data.py` now carry.
+not quantitative for `Mdot`; 9.04 is the Newton-grade number for the
+configuration of this section, i.e. with the legacy `T_eq`-pinned ghost.
+(**Superseded 2026-08-11, later the same day.** The folder was re-converged with
+`Base ghost temperature: continuous` and the ionization-root validation, and now
+gives 9.05; see §14. That is what the paper and `python/paper_data.py` carry.)
 
 ### 12.2 The mode in the converged state (measured here)
 
@@ -967,3 +982,155 @@ This section changes no source file. It records the configuration adopted for
 production and one measurement on the resulting output. The open items of §10.7
 are unchanged, and item 4 there ("whether the warming is enough to leave the
 damped regime") is now answered: on the evidence of §12.2, not by itself.
+
+---
+
+## 13. Remedy 2 implemented and measured: `Base ghost temperature: continuous` (2026-08-11)
+
+§7 remedy 2 (remove the ghost/cell-1 temperature jump) is now an input key,
+`Base ghost temperature: isothermal | continuous`, default `isothermal` (the
+legacy `T_0` pin, so every existing run is unchanged; the byte-identical
+regression matrix passes).
+
+### 13.1 What the key does
+
+The lower ghost keeps the base composition -- `ntot_bc` nuclei and `dp_bc`
+electrons at the pinned `rho_bc`, exactly the particle count the isothermal pin
+uses -- but carries the temperature of the first interior cell:
+
+```
+p_ghost = (ntot_bc + dp_bc) * T_1 ,   T_1 = p_1 / (n_tot + n_e)_1 ,
+```
+
+in the code's `T0` units. `(n_tot + n_e)_1` is taken from the composition solve
+(`get_species_densities`, the single policy point for what counts as a
+particle), so the ghost pressure stays a differentiable function of the interior
+pressure -- what the JFNK line search needs -- while the ionization state it
+divides by is lagged exactly like every other composition quantity in a hydro
+step. This differs from the §4.2 E2 scratch patch (`p_ghost = rho_bc*p_1/rho_1`),
+which assumed the ghost carries the cell-1 composition per unit mass; the two
+agree to 0.07% in `T_ghost` (the E2 row shows `T_ghost = 281.6` against
+`T_1 = 281.8`), and the form above closes that gap by construction.
+
+The key sets the same quantity as `Hydrostatic base: True` (the ghost pressure),
+so the two are mutually exclusive; `Hydrostatic base` is tested first and
+input_read warns when both are given. With `Base BC: pressure` the microbar
+target is imposed at `T0` when `n0` is derived, so under a continuous-`T` ghost
+only the base density remains anchored; input_read notes this too.
+
+### 13.2 Measurement (production configuration, HD 189733 b)
+
+Both runs are the production `HD189733b/input.inp` (`Load IC`,
+`Base grid [dr,cells]: 1.0e-4 100`, `Solver: Newton 5.0e-2`, metals, He 2^3S,
+He/metal diffusion), restarted from the converged production state in
+`HD189733b/output/` and Newton-finished, in a scratch copy; the planet folder
+itself was not written to. The baseline restart reproduces the stored production
+state digit for digit under the §11.3 metric, so the comparison is like for like.
+
+Both columns are the state as it stood **before** the ionization-root validation
+of `docs/ionization_root_validation.md`; §14 gives the production numbers after
+it.
+
+| quantity | `isothermal` (production at the time) | `continuous` |
+|---|---|---|
+| `T_ghost` [K] | 1183.0 | 539.9 |
+| `T` cell 1 [K] | 493.6 | 540.2 |
+| `rho_1/rho_ghost` | 2.33 | 0.95 |
+| `A(ln rho)` cells 1-12 | 0.0264 | **0.0092** |
+| `A(ln rho)` cells 3-12 | 4.41e-3 | 9.28e-3 |
+| `A(ln rho)` cells 5-14 | 1.62e-3 | 8.95e-4 |
+| `A(ln p)` cells 1-12 | 5.46e-4 | 3.80e-4 |
+| JFNK | `info = 0`, `\|\|R\|\| = 5.369e-04` | `info = 0`, `\|\|R\|\| = 2.757e-04` |
+| `log10 Mdot` | 9.04 | 9.05 |
+
+Window sweep of `A(ln rho)` over 10 cells, by first cell of the window:
+
+| first cell | 1 | 3 | 5 | 7 | 9 | 11 | 13 |
+|---|---|---|---|---|---|---|---|
+| `isothermal` | 5.28e-2 | 7.74e-3 | 4.21e-4 | 1.21e-3 | 4.84e-4 | 6.62e-5 | 3.84e-6 |
+| `continuous` | 1.25e-2 | 1.16e-2 | 4.04e-3 | 9.23e-5 | 1.14e-6 | 1.87e-6 | 1.75e-6 |
+
+Readings:
+
+* **The boundary jump is gone.** `T_ghost` and `T_1` now agree to 0.06% and the
+  density inversion is removed (2.33 -> 0.95). The cells 1-12 amplitude, which
+  §11.3 and §12.2 attributed to that jump, falls by 2.9x.
+* **The mode is localized, not removed.** Beyond cell 7 the alternation falls
+  13x (7-16 window) to 420x (9-18), i.e. the extended tail the isothermal pin
+  carried out to cell ~20 is gone. What replaces it is a stronger disturbance
+  confined to cells 2-4 (`T` 556, 592, 524 K), which is why the 3-12 window
+  reads 2.1x *worse* while 5-14 reads 1.8x better. The velocity alternation
+  decays monotonically (-259, +228, -120, +52, -16, +9, -1 cm/s) instead of
+  sitting at +-9 cm/s out to cell 10.
+* **The base velocity field changes character.** The isothermal ghost holds a
+  -1125 cm/s inflow at cell 1 against a valved ~0 ghost; the continuous ghost
+  gives +1389 cm/s outflow through the ghost and cell 1.
+* **The steady residual improves 1.9x** and `Mdot` moves by +0.01 dex, i.e. the
+  wind solution is unaffected within the du-stop path dependence.
+* **Repeated restart cycles do not reduce the mode further.** Three further
+  restart+Newton cycles of each run reproduce their own output digit for digit:
+  both states are exact fixed points of the production workflow, so no residual
+  decay is available from cycling. (This also settles the §12.3 attribution
+  about damping cycles for this configuration: none of the ~4% decay per cycle
+  reported there is reproducible here.)
+
+### 13.3 Scope
+
+Checked: the two restarts above and their Newton finishes; the byte-identical
+regression matrix (`wasp_full`, `wasp_he23off`, `mol_base_handoff`) with the key
+absent; a full WASP-121 b run with the key absent, which reproduces the HEAD
+binary byte for byte.
+
+Not checked: a cold start under the continuous ghost (the production cold start
+costs 6 h and 1e6 steps, so this measurement says how the converged isothermal
+state responds to the new closure, not what a run started from scratch under it
+would settle on); any other planet; the transit observables; whether the
+remaining cells 2-4 disturbance responds to the base grid.
+
+---
+
+## 14. Production state after adopting the key and the root validation (2026-08-11)
+
+`HD189733b/input.inp` now carries `Base ghost temperature: continuous` alongside
+`Base grid [dr,cells]: 1.0e-4 100`, and the folder was re-converged with the
+ionization-root validation of `docs/ionization_root_validation.md` in place
+(`run_20260811_rootfix.log`, restarted from the stored IC, JFNK hand-off at step
+2002): `log10 Mdot = 9.05`, JFNK `info = 0`, `||R|| = 1.724e-04`.
+
+Measured on `HD189733b/output/Hydro_ioniz.txt` with the §11.3 metric, against
+the two §13.2 columns (both of which predate the root validation):
+
+| run | `T_ghost` [K] | `T` cell 1 [K] | `rho_1/rho_ghost` | `A(ln rho)` 1-12 | 3-12 | 5-14 | `A(ln p)` 1-12 |
+|---|---|---|---|---|---|---|---|
+| `isothermal`, pre-root-fix (§13.2) | 1183.0 | 493.6 | 2.33 | 0.0264 | 4.41e-3 | 1.62e-3 | 5.46e-4 |
+| `continuous`, pre-root-fix (§13.2) | 539.9 | 540.2 | 0.95 | 0.0092 | 9.28e-3 | 8.95e-4 | 3.80e-4 |
+| **production now** (`continuous` + root fix) | **529.4** | **529.6** | **0.95** | **0.0019** | **7.30e-4** | **5.58e-4** | **3.77e-5** |
+
+Readings, stated tentatively because the two changes were not separated in this
+state (the §13.2 A/B isolated the ghost closure; the root-validation gates
+isolated the root fix; this row carries both):
+
+* The boundary jump stays removed -- `T_ghost` and `T_1` agree to 0.04% and the
+  density inversion is still gone.
+* Every alternating amplitude is now lower than in either §13.2 column: 1-12 by
+  14x against the isothermal pin and 4.8x against the pre-root-fix continuous
+  run, and the cells 2-4 disturbance that §13.2 flagged as what replaces the
+  extended tail has come down with it (`T` cells 1-8: 529.6, 539.6, 540.0,
+  541.0, 540.0, 543.9, 542.3, 542.4 K, against 540.2, 556.1, 592.3, 523.8 in
+  §13.2). The base velocity alternation is a few tens of cm/s (-58, +19, -5,
+  +14, -2, +11, +1, +4) against +1389, -259, +228 before.
+* The pressure field is smooth to 3.8e-5, an order of magnitude below anything
+  measured earlier in this document.
+* `A(ln rho)` over cells 3-12, the mode proper by §11.3, reads 7.3e-4 -- between
+  the mid-transient 2x value (9e-5) and the converged pre-fix reference
+  (9.0e-3), i.e. the interior mode is reduced but not removed.
+
+The likely reading is that the root validation removed part of what §13.2
+measured as the residual cells 2-4 disturbance: five of those cells carried
+negative species densities in the stored state, and the run rejects exactly
+those five at step 1 (see `docs/ionization_root_validation.md`). Separating the
+two contributions would need a `continuous`-with-old-binary rerun, which was not
+done.
+
+Not checked here: a cold start under this configuration, the other planets, and
+whether the remaining cells 1-4 alternation responds to further base refinement.

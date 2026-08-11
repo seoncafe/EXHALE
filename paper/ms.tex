@@ -179,6 +179,15 @@ oscillations (``breathing'') that otherwise develop at steep base density gradie
 the same valve adopted independently by \citet{Caldiroli2021} and \citet{Salz2016}.
 \EXHALE\ adds a dynamic base-pressure correction that pins the base temperature exactly
 through the equation of state, and, for the Newton solver, a smooth variant of the valve.
+Pinning the ghost temperature to $T_{\rm eq}$ has no physical backing, however: the
+radiative equilibrium of the layer below is outside the model, so nothing in the code
+determines the ghost temperature, and the pin becomes a permanent contact discontinuity
+once the first interior cell settles far from $T_{\rm eq}$. \EXHALE\ therefore offers a
+second closure in which the ghost carries the first-cell temperature at the same pinned
+density, $p_{\rm gh}=(n_{\rm tot}+n_e)_{\rm bc}\,T_1$, i.e.\ $dT/dr=0$ at the base face;
+only the base density is then anchored. The $T_{\rm eq}$ pin remains the default, and the
+choice matters only for a planet whose base settles far from $T_{\rm eq}$
+(Section~\ref{sec:hd189}).
 The upper boundary is supersonic free outflow, imposed by zero-gradient or linear
 extrapolation at the outer (Roche-lobe) radius. Within physically realistic ranges the
 mass-loss rate is insensitive to the base density, temperature, and ionization fraction
@@ -570,8 +579,8 @@ wind structure (Figures~\ref{fig:struct_hd209}--\ref{fig:struct_wasp121}), the
 steady-state mass-loss rate, and the synthetic transit depths against observations
 (Figures~\ref{fig:transit_he}--\ref{fig:transit_lya}). All four solutions are converged
 with the JFNK steady-state solver rather than stopped on the $du$ criterion, reaching
-discrete steady residuals of $7.7\times10^{-4}$, $5.4\times10^{-4}$, $1.6\times10^{-4}$
-and $5.7\times10^{-5}$ for HD~209458~b, HD~189733~b, WASP-52~b and WASP-121~b; this
+discrete steady residuals of $7.7\times10^{-4}$, $1.7\times10^{-4}$, $9.1\times10^{-4}$
+and $1.7\times10^{-4}$ for HD~209458~b, HD~189733~b, WASP-52~b and WASP-121~b; this
 matters quantitatively, because a $du$-threshold stop alone carries a path-dependent
 spread of several percent in $\Mdot$.
 
@@ -593,9 +602,9 @@ the collisional-excitation cooling split by absorber into an \mbox{H\,\textsc{i}
 \EXHALE\ relaxes HD~209458~b to a steady transonic wind with a mass-loss rate of
 $\log_{10}(\Mdot/{\rm g\,s^{-1}})=9.31$. The temperature climbs from the $\sim1450$~K base
 through a steep thermosphere to a broad maximum of $\approx7.8\times10^{3}$~K near
-$1.4$--$1.6\,\Rp$, and the gas becomes predominantly ionized above $\sim1.1\,\Rp$, where
-\mbox{H\,\textsc{ii}} overtakes \mbox{H\,\textsc{i}} and helium is mostly singly ionized
-(Figure~\ref{fig:struct_hd209}). The outflow is slow and subsonic across the modeled
+$1.4$--$1.6\,\Rp$, and the gas becomes predominantly ionized above $\approx1.3\,\Rp$, where
+\mbox{H\,\textsc{ii}} overtakes \mbox{H\,\textsc{i}}; helium follows, singly ionized
+stages exceeding the neutral above $\approx1.4\,\Rp$ (Figure~\ref{fig:struct_hd209}). The outflow is slow and subsonic across the modeled
 thermosphere, reaching $0.7$~km\,s$^{-1}$ at the $2\,\Rp$ escape radius and crossing the
 sonic point only at $\approx4.1\,\Rp$, well outside it. In the cooling budget the
 \Lya-dominated collisional excitation and recombination channels balance the
@@ -639,7 +648,7 @@ Table~\ref{tab:energy}. Curves are drawn to the $2\,\Rp$ escape radius. Generate
 \label{sec:hd189}
 
 For the denser, more strongly bound HD~189733~b the model gives a mass-loss rate of
-$\log_{10}(\Mdot/{\rm g\,s^{-1}})=9.04$, the lowest of the four. The thermosphere is hotter
+$\log_{10}(\Mdot/{\rm g\,s^{-1}})=9.05$, the lowest of the four. The thermosphere is hotter
 and more compact than that of HD~209458~b, with a temperature maximum of
 $\approx1.25\times10^{4}$~K, and the wind is again slow and subsonic through the modeled
 region, reaching only $0.5$~km\,s$^{-1}$ at $2\,\Rp$ (Figure~\ref{fig:struct_hd189}).
@@ -647,21 +656,29 @@ Hydrogen and helium ionize over a narrow shell just
 above the base; the diffusive He/H separation included in this run lets the He/H ratio fall
 with altitude.
 
-This is the planet for which the base grid has to be refined. On the default spacing its
-base density scale height spans only ${\sim}27$ cells, the least margin of the four, and the
-resulting stationary cell-to-cell entropy mode described in Section~\ref{sec:hydro} survives
-in the converged state. The model quoted here therefore doubles the base resolution, which
-removes the mode from the interior cells; a residual alternating signature remains in the
-first two cells above the boundary, where it measures the ghost-to-cell density jump rather
-than the entropy mode, and is a documented numerical artifact of the lower boundary rather
-than a physical feature. The base temperature this run settles to, ${\sim}490$~K, is set by
-where the trapped fine-structure cooling of Section~\ref{sec:cooling} balances the local
-metal photoionization heating; the model contains no stellar optical/infrared absorption
-and no thermal background, so nothing enforces a floor at the equilibrium temperature for a
-layer that has shielded out the XUV.
+This is the planet whose lower boundary needs both of the base treatments of
+Section~\ref{sec:hydro}. On the default spacing its base density scale height spans only
+${\sim}27$ cells, the least margin of the four, and the resulting stationary cell-to-cell
+entropy mode survives in the converged state, so the model quoted here doubles the base
+resolution. Refinement alone does not remove the alternating signature of the first cells,
+because that part of it measures the ghost-to-cell jump imposed by pinning the ghost
+temperature to $T_{\rm eq}$ rather than the entropy mode; this run therefore also uses the
+continuous-temperature ghost closure ($dT/dr=0$ at the base face). The two together leave a
+converged base whose ghost and first cell agree to $0.05\%$ in temperature, whose density
+inversion is gone ($\rho_1/\rho_{\rm gh}=0.95$ against $2.33$ under the $T_{\rm eq}$ pin),
+and whose alternating amplitude over the first twelve cells is $1.9\times10^{-3}$ in
+$\ln\rho$, an order of magnitude below the $2.6\times10^{-2}$ the pinned ghost carried. What
+survives is a residual alternation of a few tens of ${\rm cm\,s^{-1}}$ in the first cells,
+which appears to be a numerical artifact of the lower boundary rather than a physical
+feature. The base temperature this run settles to, ${\sim}530$~K, is set by where the
+trapped fine-structure cooling of Section~\ref{sec:cooling} balances the local metal
+photoionization heating; the model contains no stellar optical/infrared absorption and no
+thermal background, so nothing enforces a floor at the equilibrium temperature for a layer
+that has shielded out the XUV.
 
-The synthetic \mbox{He\,10830} depth is $2.5\%$ and \Ha\ is $0.52\%$
-(Figures~\ref{fig:transit_he} and~\ref{fig:transit_ha}). The model \mbox{He\,10830} is
+The synthetic \mbox{He\,10830} depth is $2.5\%$ and \Ha\ is $0.52\%$, while \Lya\ reaches
+$35.9\%$ (Figures~\ref{fig:transit_he}, \ref{fig:transit_ha},
+and~\ref{fig:transit_lya}). The model \mbox{He\,10830} is
 about three times deeper than the \citet{Salz2018} detection, which peaks near $0.9\%$, while
 sharing the double-peaked triplet shape. Conversely, the clean $\approx2.2\%$ \Ha\ dip
 digitized from \citet{Jensen2012} is deeper than the model \Ha, indicating that the $n=2$
@@ -682,7 +699,7 @@ separation. Generated by \texttt{python/make\_struct\_figures.py}.}
 \label{sec:wasp52}
 
 WASP-52~b is a low-gravity, strongly irradiated planet, and the model produces a
-correspondingly large mass-loss rate of $\log_{10}(\Mdot/{\rm g\,s^{-1}})=11.61$. The
+correspondingly large mass-loss rate of $\log_{10}(\Mdot/{\rm g\,s^{-1}})=11.63$. The
 temperature reaches $\approx9.1\times10^{3}$~K and the gas is highly ionized through the
 extended thermosphere, which is modeled here on a domain reaching to $10\,\Rp$; the wind
 accelerates smoothly, passes $10$~km\,s$^{-1}$ at the $2\,\Rp$ escape radius, and crosses
@@ -691,7 +708,7 @@ the sonic point just outside it at $\approx2.2\,\Rp$
 large neutral-hydrogen and metastable-helium column along the extended line of sight.
 
 The resulting transit depths are the largest of the sample: the model \mbox{He\,10830}
-triplet reaches $23.5/22.9\%$, \Ha\ $3.5\%$, and \Lya\ is fully saturated near
+triplet reaches $23.9/23.3\%$, \Ha\ $3.7\%$, and \Lya\ is fully saturated near
 $100\%$ (Figures~\ref{fig:transit_he}--\ref{fig:transit_lya}). The metal lines are deeper
 still, with \mbox{Mg\,\textsc{ii}} at $65.0/57.2\%$ and \mbox{Ca\,\textsc{ii}} at $14.8\%$.
 These greatly exceed the measured absorption --- the \citet{Kirk2022}
@@ -818,7 +835,7 @@ steady-state solver; and a tiered lower-atmosphere coupling. Applied to HD~20945
 HD~189733~b, WASP-52~b, and WASP-121~b, the model produces mass-loss rates and synthetic
 \mbox{He\,10830}, \Ha, \Lya, and metal-line transit spectra for direct comparison with
 observations. Across the four benchmarks the model gives mass-loss rates of
-$\log_{10}(\Mdot/{\rm g\,s^{-1}})=9.31$ (HD~209458~b), $9.04$ (HD~189733~b), $11.61$
+$\log_{10}(\Mdot/{\rm g\,s^{-1}})=9.31$ (HD~209458~b), $9.05$ (HD~189733~b), $11.63$
 (WASP-52~b), and $13.17$ (WASP-121~b), each converged with the steady-state solver rather
 than stopped on the mass-flux criterion, and synthetic line depths that match the order of
 magnitude of the measured \mbox{He\,10830}, \Ha, and \Lya\ absorption on HD~209458~b and
