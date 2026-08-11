@@ -47,6 +47,24 @@
       ! coupling has time to feed back into the hydro before a stop is accepted.
       integer :: sec_flip_step = -1
 
+      ! Descending-crossing guard on the du-threshold triggers. du is the radial
+      ! spread of rho*v*r^2, so a SMALL du is evidence of relaxation only for a
+      ! state the marching loop has actually relaxed. On a freshly generated IC
+      ! (cold hydrostatic, transonic, Wind-AE, Parker) the profile is analytic
+      ! and smooth, and its du measures the smoothness of the formula rather than
+      ! the wind: measured du(1) = 1.85e-5 for the WASP-121b transonic IC, which
+      ! tripped both the Newton hand-off and the secondary-ionization flip on
+      ! step 1 and ran away to NaN. Each of these triggers is therefore armed
+      ! only once du has been seen at or above its own threshold, and fires only
+      ! on the way back down. A state read back with "Load IC? True" was relaxed
+      ! by the marching loop of the run that wrote it, so its du is meaningful
+      ! and both triggers start armed. Cold hydrostatic starts arm on step 1
+      ! anyway (measured du(1) = 0.37 for the WASP regression cases, 7.9 for
+      ! mol_base_handoff), so their behavior is unchanged.
+      logical :: du_stop_armed   = .false.   ! du < du_th convergence stop
+      logical :: du_newton_armed = .false.   ! JFNK hand-off, and the secondary-
+                                             ! ionization flip sharing its test
+
       ! Residual-based convergence monitor (Resid tol option)
       real*8, dimension(3,1-Ng:N+Ng) :: Rres
       real*8  :: resid_c(3), resid_cv(3), resid_max, flux_spread
@@ -419,6 +437,12 @@
       sec_ion_active = (use_sec_ion .and. sec_ion_immediate)
       sec_flip_step  = -1
 
+      ! du triggers start armed only for a state loaded from a previous EXHALE
+      ! run (see the declarations); a generated IC has to demonstrate a du above
+      ! the threshold first.
+      du_stop_armed   = do_load_IC
+      du_newton_armed = do_load_IC
+
       ! Two-stage reconstruction setup. input_read sets du_th_plm > 0 only when
       ! "Reconstruction scheme: PLM+WENO3" was given with two du_th values (it
       ! sets du_th_plm = -1 for single-stage PLM/WENO3). So du_th_plm > du_th
@@ -675,7 +699,21 @@
             ! a deep-RLOF wind whose base sits close to L1); a zero here would give
             ! du = Inf and a spurious "converged" exit on the first step.
             du = abs((mom_max-mom_min)/max(mom_min, 1.0d-30))
-            
+
+            ! Arm the du triggers the first time the flux spread is seen at or
+            ! above their thresholds; from then on only a descending crossing
+            ! can fire them (see the declarations of du_*_armed).
+            if (du .ge. du_th .and. .not.du_stop_armed) then
+               du_stop_armed = .true.
+               write(*,'(A,ES12.4,A,I0)') '    -> du stop armed at du =',   &
+                                          du, ', step ', count
+            endif
+            if (du .ge. newton_du_switch .and. .not.du_newton_armed) then
+               du_newton_armed = .true.
+               write(*,'(A,ES12.4,A,I0)') '    -> Newton hand-off armed '// &
+                                          'at du =', du, ', step ', count
+            endif
+
             ! Evaluate variation of time derivative          
       	u(2,:) = u(2,:) + 1.0e-16 ! To avoid division by zero          
 	      
@@ -786,7 +824,8 @@
             else
                ! Stage 2 (WENO3) or single-stage: normal convergence + stall,
                ! each additionally gated on mass-flux level stability.
-               is_mom_const = (du .lt. du_th)   .and. is_level_stable
+               is_mom_const = (du .lt. du_th)   .and. du_stop_armed          &
+                                                .and. is_level_stable
                is_zero_dt   = (dtu .lt. dtu_th) .and. is_level_stable
                ! Stall detection: du settled on a plateau
                if (count .gt. 1) then
@@ -836,6 +875,7 @@
             ! convergence tightens du from ~1e-2 to <1e-3 in far fewer steps than
             ! continued marching.
             if (use_newton_solver .and. .not.in_plm_stage .and.          &
+                du_newton_armed .and.                                     &
                 (du .lt. newton_du_switch .or.                            &
                  (stall_count .ge. N_stall .and.                          &
                   du .lt. 5.0d0*newton_du_switch))) then
