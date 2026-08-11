@@ -76,6 +76,23 @@
 	write(outfile,*) '----- Numerical parameters -----'	
 	write(outfile,*)
 	write(outfile,*) '- Grid type: ', grid_type
+	if (grid_type .eq. 'Mixed') then
+		write(outfile,16) '- Base grid: ', N_low_cells,                    &
+			' uniform cells of ', dr_base, ' R_p (uniform region ',        &
+			dr_base*N_low_cells, ' R_p)'
+	else
+		write(outfile,*) '- Base grid: "Base grid [dr,cells]" is ignored'//&
+			' by grid type '//trim(grid_type)//' (Mixed only)'
+	endif
+	! Resolution of the base density scale height H = kT_eq/(mu g) in cells:
+	! b0 = R_p/H(T_eq) is the Jeans parameter, dr_j(1) the first cell size
+	! after the Mixed-grid smoothing. Below ~5 cells per H the scheme carries
+	! an undamped stationary 2*dr entropy mode (docs/hd189_base_checkerboard.md).
+	write(outfile,17) '- Base scale-height resolution: H(T_eq)/dr = ',      &
+		1.0d0/(b0*dr_j(1)), ' cells'
+	if (1.0d0/(b0*dr_j(1)) .lt. 10.0d0)                                     &
+		write(outfile,*) '  WARNING: base scale height spans < 10 cells;'//&
+			' expect a stationary cell-to-cell entropy mode at the base.'
 	write(outfile,*) '- Numerical flux: ', flux
 	write(outfile,*) '- Reconstruction method: ', rec_method
 	write(outfile,*) 
@@ -116,6 +133,8 @@
 13 format(A45,F7.2)	
 14	format(A48,F6.3)		
 15 format(A40,F5.2,A6)
+16 format(A14,I4,A19,ES9.2,A22,ES9.2,A6)
+17 format(A46,F8.1,A7)
 
 	write(*,*) '(write_setup_report.f90) Done.'
 
@@ -180,6 +199,8 @@
 	call put_r('LX', LX)
 	call put_r('LEUV', LEUV)
 	call put_s('grid_type', grid_type)
+	call put_r('dr_base', dr_base)
+	call put_i('N_low_cells', N_low_cells)
 	call put_s('flux', flux)
 	call put_s('rec_method', rec_method)
 	call put_l('use_weno3', use_weno3)

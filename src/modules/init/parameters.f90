@@ -27,7 +27,40 @@
       character(len = 9), parameter   :: inp_file = 'input.inp'
       character(len = :), allocatable :: p_name
       character(len = :), allocatable :: grid_type
-      character(len = :), allocatable :: flux 
+
+      ! ----- Base grid resolution ('Grid type: Mixed' only) -----
+      ! The Mixed grid stacks N_low_cells uniform cells of size dr_base [R_p]
+      ! on the base and fills the rest of the domain with N - N_low_cells
+      ! geometrically stretched cells out to r_max. Their product
+      ! dr_base*N_low_cells is the radial extent of the uniform region
+      ! (0.01 R_p with the defaults below), so refining the base at fixed
+      ! extent means dividing dr_base and multiplying N_low_cells by the same
+      ! factor. The Uniform and Stretched grid types ignore both values.
+      !
+      ! Physical requirement: the uniform cells must resolve the base density
+      ! scale height H = kT/(mu g). Where H/dr_base is of order a few cells,
+      ! the discretization supports a stationary 2*dr entropy (contact) mode
+      ! that nothing in the scheme damps -- HLLC resolves a contact of zero
+      ! speed exactly, the gravity source is cell-local, and the WENO3
+      ! pressure gradient only sees interface pressures. The measured
+      ! dependence is a 1e-2 alternating amplitude in ln(rho) for H/dr < 5
+      ! and 1e-4 for H/dr > 100 (docs/hd189_base_checkerboard.md). High-
+      ! gravity planets have the least margin: on the default grid the value
+      ! write_setup_report echoes is 26.9 cells per H at T_eq for
+      ! HD 189733 b against 102.3 for WASP-121 b.
+      ! The default is written with a DEFAULT-REAL literal (2.0e-4, not 2.0d-4)
+      ! because that is what the hardcoded local in define_grid.f90 was: the
+      ! value stored is the single-precision neighbour of 2e-4, 2.5e-8 relative
+      ! below it. Writing 2.0d-4 here moves every base cell by that amount and
+      ! changes the last few digits of a converged solution. The literal is kept
+      ! as-is so that an input.inp without the key reproduces earlier runs
+      ! bit-for-bit; note that spelling the default out in input.inp
+      ! ("Base grid [dr,cells]: 2.0e-4 50") does NOT reproduce it, because the
+      ! list-directed read into a real*8 gives the exact double 2e-4.
+      real*8  :: dr_base     = 2.0e-4   ! uniform base cell size [R_p]
+      integer :: N_low_cells = 50       ! number of uniform base cells
+
+      character(len = :), allocatable :: flux
       character(len = :), allocatable :: rec_method 
       character(len = :), allocatable :: appx_mth
       character(len = :), allocatable :: sp_type

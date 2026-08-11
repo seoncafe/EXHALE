@@ -9,15 +9,39 @@
 
       subroutine define_grid
       integer :: j
-      integer,parameter :: N_low = 50
-      integer :: N_up = N - N_low
-      real*8 :: drc = 2.0e-4
+      ! Base resolution of the Mixed grid: N_low uniform cells of size drc
+      ! [R_p] on the base, then N_up stretched cells out to r_max. Both come
+      ! from input.inp ("Base grid [dr,cells]:") and default to the historical
+      ! hardcoded values 2.0e-4 and 50; see the scale-height requirement
+      ! documented with dr_base in parameters.f90.
+      integer :: N_low
+      integer :: N_up
+      real*8 :: drc
       real*8 :: x0,x1
       real*8 :: f,df
       real*8 :: tol = 1.0
       real*8 :: q
       real*8 :: dr
-  
+
+      N_low = N_low_cells
+      drc   = dr_base
+      N_up  = N - N_low
+
+      if (grid_type .eq. 'Mixed') then
+         if (N_low .lt. 2 .or. N_low .gt. N-10) then
+            write(*,'(A,I0,A,I0,A)') ' (define_grid.f90) ERROR: "Base grid'// &
+               ' cells: ', N_low, '" must lie in [2,', N-10, '] (the '//      &
+               'stretched region needs the remaining cells).'
+            error stop 1
+         endif
+         if (drc .le. 0.0d0 .or. 1.0d0 + N_low*drc .ge. r_max) then
+            write(*,'(A,ES10.3,A,I0,A,F7.3,A)') ' (define_grid.f90) ERROR: '//&
+               'base grid spacing ', drc, ' R_p x ', N_low, ' cells does '//  &
+               'not fit inside the domain r_max = ', r_max, ' R_p.'
+            error stop 1
+         endif
+      endif
+
       select case (grid_type)
       
       case ('Uniform')
@@ -131,9 +155,12 @@
       
       
       ! Do a smoothing of the mixed-type grid
+      ! The 1-2-1 pass runs downward from the uniform/stretched junction to
+      ! the base, so its start index is N_low (it was written as the literal
+      ! 50 when N_low itself was hardcoded to 50).
       if (grid_type .eq. 'Mixed') then
-      
-         do j = 50,2-Ng,-1
+
+         do j = N_low,2-Ng,-1
             dr_j(j) = 0.25*(dr_j(j-1) + 2.0*dr_j(j) + dr_j(j+1))
          enddo
 	      

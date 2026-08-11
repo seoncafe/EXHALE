@@ -40,7 +40,8 @@
       'He/H number ratio', '2D approximate method', 'Parent star mass',      &
       'Spectrum type', 'Spectrum file', 'Power-law index', 'Photon energy',  &
       'Use only EUV', 'Log10 of X-ray luminosity', 'Log10 of EUV luminosity',&
-      'Grid type', 'Numerical flux', 'Reconstruction scheme', 'Include He23S',&
+      'Grid type', 'Base grid',                                              &
+      'Numerical flux', 'Reconstruction scheme', 'Include He23S',            &
       'Load IC', 'Do only PP', 'Force start',                                &
       'Domain mode', 'Outer radius', 'Stellar Teff', 'Stellar radius',       &
       'Deexc heat', 'Wind-AE seed out', 'Wind-AE seed', 'Jlya RT file',      &
@@ -318,6 +319,9 @@
 		windae_seed_file = 'inputdata/windae_seed.csv'
 		windae_seed_out  = ''
 		hydrostatic_base = .false.
+		dr_base          = 2.0e-4     ! uniform base cell size [R_p] (Mixed grid);
+		                              ! default-real literal on purpose, see parameters.f90
+		N_low_cells      = 50         ! number of uniform base cells
 		base_bc_mode     = 0          ! density-anchored base (legacy) by default
 		resid_vol        = .true.     ! volume-weighted residual norm by default
 		ates_photoion_rate = .false.  ! default: Verner+1996 He I (1^1S) photoion.
@@ -553,6 +557,25 @@
 				else
 					write(*,'(A)') ' (input_read) Base velocity: legacy valve'
 				endif
+			else if (lbl_match(line, 'Base grid')) then
+				! "Base grid [dr,cells]: <dr_base> [<N_low_cells>]" sets the
+				! resolution of the uniform region of the Mixed grid: N_low_cells
+				! cells of size dr_base [R_p] stacked on the base. The two numbers
+				! are NOT independent -- their product is the radial extent of the
+				! uniform region (0.01 R_p by default) -- so they share one line,
+				! as "du_th [PLM,WENO3]" does. Refining the base at fixed extent
+				! means dividing dr_base and multiplying N_low_cells by the same
+				! factor: "Base grid [dr,cells]: 5.0e-5 200" is the 4x refinement.
+				! Requirement: dr_base must resolve the base scale height
+				! H = kT/(mu g); see docs/hd189_base_checkerboard.md. Ignored by
+				! the Uniform and Stretched grid types.
+				str = get_word(line, 4);  read(str,*) dr_base
+				str = get_word(line, 5)
+				if (len_trim(str) .gt. 0) read(str,*) N_low_cells
+				write(*,'(A,ES9.2,A,I0,A,ES9.2,A)')                       &
+				   ' (input_read) Base grid: dr =', dr_base,              &
+				   ' R_p x ', N_low_cells, ' cells (uniform region ',     &
+				   dr_base*N_low_cells, ' R_p)'
 			else if (lbl_match(line, 'Viscosity')) then
 				! "Viscosity: True" selects the calibrated mu(T) (Watson+1981
 				! conductivity through the monatomic Chapman-Enskog relation)
