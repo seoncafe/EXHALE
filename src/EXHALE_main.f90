@@ -1064,6 +1064,19 @@
             '%); rest fell back to hybrd1'
       endif
 
+      ! Root validation of the atomic ionization solves: how often a cell was
+      ! re-solved from another starting point, how often the first root lay
+      ! outside the physical simplex, how often a stored state was rejected as
+      ! a starting point, and how often no starting point produced an
+      ! admissible root. Silent for a run that never leaves the simplex.
+      if (ieq_n_retry + ieq_n_unphys + ieq_n_reseed + ieq_n_noroot .gt. 0) then
+         write(*,'(A,I0,A,I0,A,I0,A,I0,A)')                                    &
+            '     ioniz-eq roots: ', ieq_n_retry, ' cell solve(s) restarted, ',&
+            ieq_n_unphys, ' root(s) outside the physical simplex, ',           &
+            ieq_n_reseed, ' stored state(s) rejected, ', ieq_n_noroot,         &
+            ' cell(s) left on the ionization balance'
+      endif
+
       !---------------------------------------------------!
 
       ! Refresh the H(n=2) diagnostics from the converged state for

@@ -225,6 +225,13 @@
                                           !   no N cooling; O off by 40-70%
                                           !   vs CHIANTI in the wind region)
                                           !   (metals.inp key 'cno_cool 0|1')
+      ! Roll-off width of the coronal-excitation guard, in units of the
+      ! fractional temperature deficit below the 1e3 K CHIANTI fit floor
+      ! ("Coronal cutoff width: <w>"; see coronal_excitation_cutoff in
+      ! Cool_coeff.f90). The guard is exp(-x^2) with x = (T_floor/T - 1)/w, so
+      ! w is a modeling choice, not a measured quantity: the temperature the
+      ! base settles at depends on it at the ~100 K level. Default 0.5.
+      real*8  :: coronal_cutoff_width = 0.5d0
       integer :: pp_metal_mode  = 1       ! Metal treatment in the advection
                                           !  post-process (post_process_adv):
                                           !  0 = metal-free (legacy: metals
@@ -366,7 +373,11 @@
       ! Convergence stall detection (ported from ATES_extended): stop runs
       ! whose du settles on a plateau above du_th (steady state reached but
       ! the strict thresholds physically unreachable for the given setup).
-      integer,parameter :: count_max = 1000000  ! hard cap on iterations
+      ! Hard cap on marching iterations, settable as "Max steps: <N>".
+      ! (The env variable EXHALE_MAXSTEPS is a separate, lower deterministic
+      ! cap used by the regression harness; it exits the loop without the
+      ! "reached count_max" message and never raises this one.)
+      integer :: count_max = 1000000
       integer :: N_stall   = 2000     ! window of stalled steps; settable via
                                       !   input line "Stall [tol,N]: <tol> <N>"
       real*8  :: stall_tol = 1.0d-6   ! rel. du change defining a stall (same line)
@@ -435,6 +446,33 @@
       ! gravity; rho stays anchored at rho_bc and T_base floats slightly off
       ! T0. Default off = byte-identical legacy behavior.
       logical :: hydrostatic_base = .false.
+
+      ! Base ghost temperature closure
+      ! ("Base ghost temperature: isothermal | continuous").
+      !   isothermal (DEFAULT, legacy): the ghost pressure is pinned to
+      !            ntot_bc + dp_bc at the pinned density rho_bc, i.e. the ghost
+      !            is held at T = T0 (the equilibrium temperature).
+      !   continuous: dT/dr = 0 at the base face -- the ghost pressure is set to
+      !            (ntot_bc + dp_bc)*T(cell 1), so the ghost carries the SAME
+      !            temperature as the first interior cell at the same pinned
+      !            density. The T0 pin has no physical backing (the lower
+      !            atmosphere's radiative equilibrium is outside the model), and
+      !            when the first cell cools far below T0 the pin becomes a
+      !            contact discontinuity sitting on the boundary: on HD 189733 b
+      !            with the CHIANTI metal cooling, T(cell 1) ~ 490 K against
+      !            T0 = 1183 K, and removing that jump cut the alternating base
+      !            density amplitude by 18x (docs/hd189_base_checkerboard.md
+      !            §4.2 E2). The rho_bc anchor is untouched either way.
+      ! Ignored when hydrostatic_base is on (that key sets the ghost pressure
+      ! from the interior gradient instead, so it fixes neither T nor p).
+      logical :: base_ghost_T_continuous = .false.
+      ! Particle density (n_tot + n_e) of the first interior cell in units of
+      ! n0, refreshed by the composition solve (get_species_densities, the
+      ! single policy point). The continuous-T ghost needs it to convert the
+      ! cell-1 pressure into a temperature, T(1) = p(1)/n_part(1), without
+      ! duplicating the electron/nuclei bookkeeping. Initialized in input_read
+      ! to the base value ntot_bc + dp_bc.
+      real*8  :: n_part_cell1 = 1.0d0
 
       ! Base boundary-condition anchor ("Base BC: density" / "pressure [<p_ubar>]").
       !   density  (0, default, legacy): the base number density is fixed at n0

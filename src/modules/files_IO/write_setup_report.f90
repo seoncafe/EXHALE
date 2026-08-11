@@ -95,6 +95,20 @@
 			' expect a stationary cell-to-cell entropy mode at the base.'
 	write(outfile,*) '- Numerical flux: ', flux
 	write(outfile,*) '- Reconstruction method: ', rec_method
+	! Lower boundary: which closure sets the ghost pressure, and the hard cap
+	! on marching steps.
+	if (hydrostatic_base) then
+		write(outfile,*) '- Base ghost pressure: interior gradient '//       &
+			'extrapolation (Hydrostatic base)'
+	else if (base_ghost_T_continuous) then
+		write(outfile,*) '- Base ghost temperature: continuous '//           &
+			'(dT/dr = 0, T_ghost = T_1)'
+	else
+		write(outfile,*) '- Base ghost temperature: isothermal (T_ghost = T0)'
+	endif
+	write(outfile,18) '- Coronal cooling cutoff width: w = ',                &
+		coronal_cutoff_width
+	write(outfile,19) '- Max marching steps: ', count_max
 	write(outfile,*) 
 	if (.not.do_load_IC) &
 		write(outfile,*) '----- Starting a new simulation ----- '
@@ -135,6 +149,8 @@
 15 format(A40,F5.2,A6)
 16 format(A14,I4,A19,ES9.2,A22,ES9.2,A6)
 17 format(A46,F8.1,A7)
+18 format(A,F6.3)
+19 format(A,I0)
 
 	write(*,*) '(write_setup_report.f90) Done.'
 
@@ -254,6 +270,9 @@
 	call put_l('hydrostatic_base', hydrostatic_base)
 	call put_r('shapiro_eps', shapiro_eps)
 	call put_i('shapiro_every', shapiro_every)
+	call put_l('base_ghost_T_continuous', base_ghost_T_continuous)
+	call put_i('count_max', count_max)
+	call put_r('coronal_cutoff_width', coronal_cutoff_width)
 	call put_i('base_bc_mode', base_bc_mode)
 	call put_r('base_p_ubar', base_p_ubar)
 	call put_l('base_v_massflux', base_v_massflux)

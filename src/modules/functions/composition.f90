@@ -79,6 +79,12 @@
       call calc_ntot(nhi, nhii, nhei, nheii, nheiii, nheiTR, n_tot, nm)
       endif
 
+      ! Particle count of the first interior cell, kept where n_tot and n_e are
+      ! defined so the lower boundary cannot disagree with the EOS about what a
+      ! particle is. Read by the continuous-temperature base ghost (Apply_BC),
+      ! which needs T(1) = p(1)/n_part_cell1; unused otherwise.
+      n_part_cell1 = n_tot(1) + ne(1)
+
       end subroutine get_species_densities
 
       ! ------------------------------------------------------!

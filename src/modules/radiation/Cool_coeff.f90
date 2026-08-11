@@ -1570,7 +1570,8 @@
    ! semi-implicit update finite-difference the cooling in T. At and above
    ! 1e3 K every coefficient is BIT-IDENTICAL to the unguarded form.
    !
-   ! VALIDITY / CHOICE: w = 0.5 makes the coronal part e-fold away once T
+   ! VALIDITY / CHOICE: w = 0.5 (the default; "Coronal cutoff width: <w>"
+   ! in input.inp changes it) makes the coronal part e-fold away once T
    ! has fallen about a third below the floor. It is a modeling choice,
    ! not a measured quantity; the base temperature the model settles at
    ! depends on it at the ~100 K level. The guard leaves NO cooling at all
@@ -1585,14 +1586,15 @@
    elemental double precision function coronal_excitation_cutoff(T)
    real*8, intent(in) :: T
    real*8, parameter :: T_fit_floor = 1.0d3   ! [K] lower edge of the fits
-   real*8, parameter :: w_fit_floor = 0.5d0   ! fractional width of the roll-off
    real*8 :: x
    ! .not.(T < floor) so a non-finite T falls on the unguarded branch,
    ! matching how the table interpolators handle a transient NaN.
    if (.not. (T .lt. T_fit_floor)) then
       coronal_excitation_cutoff = 1.0d0
    else
-      x = (T_fit_floor/max(T,1.0d0) - 1.0d0)/w_fit_floor
+      ! coronal_cutoff_width (global, default 0.5) is the roll-off width in
+      ! fractional temperature deficit; "Coronal cutoff width: <w>".
+      x = (T_fit_floor/max(T,1.0d0) - 1.0d0)/coronal_cutoff_width
       if (x .gt. 26.0d0) then
          coronal_excitation_cutoff = 0.0d0     ! exp(-676) underflows anyway
       else
@@ -1619,13 +1621,36 @@
    ! SCOPE. Trapping is applied to [O I] 63um and [C II] 158um only --
    ! exactly the two lines for which this module carries an explicit
    ! two-level solution, so emission and opacity use one set of atomic
-   ! data. All other metal-line cooling keeps beta = 1. That is correct in
-   ! the wind and is the residual approximation at the base: at the
-   ! HD 189733 b base the other coolants together are < 0.3% of the total
-   ! once the coronal fits are guarded. It is NOT correct for a thick
-   ! resonance line in a metal-rich wind (Mg II h&k reaches large
-   ! line-center depths in ultrahot Jupiters); that case is not treated
-   ! here.
+   ! data. All other metal-line cooling keeps beta = 1. That is the
+   ! residual approximation at the base: at the HD 189733 b base the other
+   ! coolants together are < 0.3% of the total once the coronal fits are
+   ! guarded.
+   !
+   ! VALIDITY for the PERMITTED RESONANCE lines (Mg I 2853, Mg II h&k,
+   ! Ca II H&K, Na I D, the Fe II UV multiplets). Those lines DO reach
+   ! large line-center depths -- tau0 ~ 1e3-1e5 through the WASP-121 b
+   ! wind -- but a large tau0 alone does not suppress their cooling.
+   ! Trapping lengthens the random walk; it does not destroy the photon.
+   ! In two-level equilibrium with escape probability beta,
+   !   Lambda = h nu q_lu ne * [ beta A_ul / (beta A_ul + ne q_ul) ],
+   ! and the bracket -- not beta -- is the correction to the optically
+   ! thin coronal fits used here. It stays at 1 unless the gas is dense
+   ! enough to de-excite the ion before the trapped photon works its way
+   ! out, i.e. unless
+   !   ne >~ n_crit,eff = beta A_ul / q_ul,   q_ul = 8.629e-6 Ups/(gu sqrt(T)).
+   ! For these lines A_ul ~ 1e8 s^-1, so even at beta ~ 1e-4 the escape
+   ! rate beta A_ul ~ 1e4 s^-1 leaves n_crit,eff ~ 1e10-1e15 cm^-3, one to
+   ! six decades above the ne these winds reach (max 4.3e9 cm^-3 in the
+   ! WASP-121 b run). beta = 1 is therefore the correct EFFECTIVE
+   ! treatment for them here, and the bracket was measured to remove only
+   ! 0.02% of the total radiative losses of WASP-121 b, 0.002% of
+   ! HD 209458 b and 0.0015% of HD 189733 b, confined to the innermost
+   ! ~0.007 R_p. The forbidden fine-structure lines above are the opposite
+   ! case (A_ul ~ 1e-5-1e-3 s^-1, n_crit,eff ~ 1e0-1e5 cm^-3), which is
+   ! why they, and only they, need beta. The approximation would have to
+   ! be revisited for a base an order of magnitude denser in ne, or for a
+   ! line whose ne q_ul is comparable to beta A_ul.
+   ! Measurement and derivation: docs/resonance_line_trapping.md.
 
    ! Line-center absorption coefficient [cm^-1] of a two-level line whose
    ! lower and upper levels follow the Boltzmann ratio,

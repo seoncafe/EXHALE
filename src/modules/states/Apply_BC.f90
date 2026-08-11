@@ -58,9 +58,20 @@
    ! rather than flattened to 0; the base-face pressure gradient can then
    ! balance gravity (the source of the breathing momentum residual). With
    ! rho pinned to rho_bc, T_base floats slightly off T0.
+   ! base_ghost_T_continuous: dT/dr = 0 instead of T = T0. The ghost keeps the
+   ! base composition (ntot_bc nuclei + dp_bc electrons at rho_bc, the same
+   ! particle count the isothermal pin uses) but carries the temperature of
+   ! the first interior cell, T(1) = W(3,1)/n_part_cell1 in units of T0:
+   !    p_ghost = (ntot_bc + dp_bc)*T(1).
+   ! n_part_cell1 = n_tot(1) + n_e(1) comes from the composition solve, so the
+   ! ghost pressure stays a differentiable function of the interior pressure
+   ! (what the JFNK line search needs) while the ionization state it divides by
+   ! is lagged exactly like every other composition quantity in a hydro step.
    if (hydrostatic_base) then
       W_in(3,index) = W_in(3,1) + (W_in(3,2) - W_in(3,1))                 &
                       /(r(2) - r(1))*(r(index) - r(1))
+   else if (base_ghost_T_continuous) then
+      W_in(3,index) = (ntot_bc + dp_bc)*W_in(3,1)/n_part_cell1
    else
       W_in(3,index) = ntot_bc + dp_bc
    endif

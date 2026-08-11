@@ -54,6 +54,7 @@
       'He_metal_diffusion', 'He_diffusion', 'Stall', 'Energy solver',        &
       'Time stepping', 'Level tol', 'Solver', 'Valve eps', 'Hydrostatic base',&
       'Shapiro filter', 'Base BC', 'Base velocity', 'Viscosity',             &
+      'Base ghost temperature', 'Max steps', 'Coronal cutoff width',         &
       'Conduction', 'Resid tol',                                             &
       'Resid norm', 'CFL', 'Transonic IC', 'Hot Parker IC', 'IC mode',       &
       'Newton solver', 'Brent solver' ]
@@ -547,6 +548,33 @@
 					write(*,'(A)') ' (input_read) Base BC: density '//   &
 					   '(legacy, n0 from input)'
 				endif
+			else if (lbl_match(line, 'Base ghost temperature')) then
+				! "Base ghost temperature: isothermal|continuous" selects the
+				! temperature closure of the lower ghost cells (the density
+				! anchor rho_bc is unaffected). isothermal (default) pins
+				! T = T0; continuous imposes dT/dr = 0 at the base face, so the
+				! ghost carries T(cell 1). See parameters.f90 and
+				! docs/hd189_base_checkerboard.md sec. 4.2 and 13.
+				str = get_word(line, 4)
+				if (str .eq. 'continuous') base_ghost_T_continuous = .true.
+				if (str .eq. 'isothermal') base_ghost_T_continuous = .false.
+				if (str .ne. 'continuous' .and. str .ne. 'isothermal')       &
+					write(*,*) '(input_read.f90) WARNING: unknown "Base '//  &
+					   'ghost temperature: ', trim(str), '"; keeping isothermal.'
+				if (base_ghost_T_continuous) write(*,'(A)') ' (input_read) '// &
+				   'Base ghost temperature: continuous (dT/dr = 0, T_ghost = T_1)'
+			else if (lbl_match(line, 'Max steps')) then
+				! "Max steps: <N>" overrides the hard cap on marching
+				! iterations (default 1000000).
+				str = get_word(line, 3);  read(str,*) count_max
+				write(*,'(A,I0)') ' (input_read) Max marching steps =', count_max
+			else if (lbl_match(line, 'Coronal cutoff width')) then
+				! "Coronal cutoff width: <w>" sets the roll-off width of the
+				! coronal-excitation guard below the 1e3 K CHIANTI fit floor
+				! (Cool_coeff.f90). Default 0.5.
+				str = get_word(line, 4);  read(str,*) coronal_cutoff_width
+				write(*,'(A,F6.3)') ' (input_read) Coronal excitation cutoff'// &
+				   ' width w =', coronal_cutoff_width
 			else if (lbl_match(line, 'Base velocity')) then
 				str = get_word(line, 3)
 				if (str .eq. 'valve')    base_v_massflux = .false.
@@ -689,6 +717,30 @@
 				write(*,*) '(input_read.f90) WARNING: unrecognized input '// &
 				   'line (matches no known key): '//trim(line)
 		enddo
+
+		! ----- Base ghost-pressure closures are mutually exclusive -----
+		! Both keys set the SAME quantity, the ghost pressure: hydrostatic_base
+		! extrapolates the interior gradient (fixing neither T nor p), while
+		! base_ghost_T_continuous fixes T_ghost = T_1. hydrostatic_base is
+		! tested first in BC_component_constrho, so say so rather than let the
+		! continuous-T key look effective.
+		if (hydrostatic_base .and. base_ghost_T_continuous) then
+			write(*,*) '(input_read.f90) WARNING: "Hydrostatic base: True" '// &
+			   'and "Base ghost temperature: continuous" both set; the'
+			write(*,*) '  hydrostatic ghost pressure wins and the temperature'//&
+			   ' closure is ignored.'
+		endif
+		if (base_bc_mode .eq. 1 .and. base_ghost_T_continuous) then
+			write(*,*) '(input_read.f90) NOTE: "Base BC: pressure" derives n0'//&
+			   ' from the target base pressure AT T0; with a continuous-T'
+			write(*,*) '  ghost the base pressure then floats with T(cell 1),'//&
+			   ' so only the base DENSITY stays anchored.'
+		endif
+		if (coronal_cutoff_width .le. 0.0d0) then
+			write(*,*) '(input_read.f90) ERROR: "Coronal cutoff width" must '// &
+			   'be > 0 (it divides the fractional temperature deficit).'
+			error stop 1
+		endif
 
 		! The transonic-wind IC already satisfies steady mass conservation
 		! (rho*v*r^2 = const), so du ~ 0 at step 0 would trip the "momentum
@@ -852,7 +904,12 @@
    q0     = n0*mu*v0*v0*v0/R0
    b0     = (Gc*Mp*mu)/(kb_erg*T0*R0)
    dp_bc  = 1.0e-10
-	
+   ! Base particle count seen by the continuous-temperature ghost before the
+   ! first composition solve refreshes it (Apply_BC can run first, e.g. in the
+   ! IC/residual paths). With the base value the ghost then simply copies the
+   ! cell-1 pressure, which is the T_ghost = T_1 statement for base composition.
+   n_part_cell1 = ntot_bc + dp_bc
+
    !------ Allocations ------!
       
    ! Allocate variables according to composition
