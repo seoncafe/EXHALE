@@ -61,23 +61,17 @@
    xe = xhii + heh_loc*(xheii + 2.0*xheiii) + adv_cell%xe_metal
       
    ! System of equations
-   ! To Be Checked: the electron-impact ionization terms below (ionhi, ionhei,
-   ! ionheii) are NOT multiplied by xe*n_h, unlike every other form of the same
-   ! physics in this code -- adv_implicit_H, adv_implicit_HeH_TR and the
-   ! equilibrium rows (heh_rows: n_hi*b_hi*n_e) all carry the electron density.
-   ! The coefficients are rate coefficients [cm^3/s], so as written these three
-   ! terms are also dimensionally inconsistent with the photoionization rates
-   ! they are added to. This path is taken only when He is on and He 2^3S is
-   ! off; fixing it changes that configuration's _adv output and is left to a
-   ! separate change.
+   ! The electron-impact ionization coefficients (ionhi, ionhei, ionheii,
+   ! [cm^3 s^-1]) multiply the electron density xe*n_h, as in adv_implicit_H,
+   ! adv_implicit_HeH_TR and the equilibrium rows (heh_rows: n_hi*b_hi*n_e).
   	fvec(1) =  xhi_old - xhi   					        		&
-  	        + c1*(-(ghi+ionhi)*xhi    + ahii*xhii*xe*n_h) 	   
-  		     		    
+  	        + c1*(-(ghi + ionhi*xe*n_h)*xhi    + ahii*xhii*xe*n_h)
+
   	fvec(2) =  xhei_old - xhei 						  		    &
-  		    + c1*(-(ghei+ionhei)*xhei  + aheii*xheii*xe*n_h) 
-  	 	      	 	    
+  		    + c1*(-(ghei + ionhei*xe*n_h)*xhei  + aheii*xheii*xe*n_h)
+
   	fvec(3) =  xheiii_old - xheiii					  			&
-  	        + c1*((gheii+ionheii)*xheii - aheiii*xheiii*xe*n_h)
+  	        + c1*((gheii + ionheii*xe*n_h)*xheii - aheiii*xheiii*xe*n_h)
 
 	! He <-> H charge exchange (Huang Table 4 group B) on the H (row 1) and
 	! He I (row 2) rows, both written neutral-gain positive here. xhei is the
