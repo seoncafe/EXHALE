@@ -43,12 +43,17 @@
 
       ! Frozen-base option: the residual of the first nfix_base physical
       ! cells is replaced by the anchor row F_j = Y_j - Yfix_j, pinning them
-      ! to the warm-start state. Rationale: the lower BC (hard-pinned
-      ! rho_bc/p_bc ghosts + the v-valve max(v,0)) makes the cell-1 residual
-      ! both non-smooth (kink at v=0) and generally non-zero at any steady
-      ! interior solution -- the same root cause as the marching base
-      ! breathing. Freezing the base lets Newton solve for the WIND on top
-      ! of a given base state. Set via set_base_fix before a solve.
+      ! to the warm-start state, so that Newton solves for the WIND on top of
+      ! a given base state. Set via set_base_fix before a solve.
+      ! NB: it was previously assumed that the cell-1 momentum row cannot be
+      ! satisfied at all, the lower BC (hard-pinned rho_bc/p_bc ghosts + the
+      ! v-valve max(v,0)) leaving it non-zero at any steady interior solution.
+      ! Direct measurement on the HD 209458 b hand-off state does not support
+      ! that: R(2,1) is a four-order cancellation of gravity against the
+      ! pressure gradient whose remainder is 6.5e-5 of the gravity term, and a
+      ! 2.9 ppm change of the ghost pressure drives it to zero
+      ! (docs/newton_scaling_and_base_wall.md). The option is kept as an
+      ! experiment, not as a remedy for a base that cannot be solved.
       integer :: nfix_base = 0
       real*8, allocatable :: Yfix_base(:)
 
@@ -91,31 +96,48 @@
 
       ! ------------------------------------------------------!
 
-      subroutine build_scaling(Y, D)
-      ! Diagonal scale for each unknown D_i = max(|Y_i|, c*max_j|Y(:,k)|), with a
-      ! floor for each component (c = 1e-6) so wind cells (|Y| ~ 1e-7 of the base
-      ! in code units) get finite, physically sensible scales. Used for the
-      ! scaled Newton system D^-1 J D, for FD step sizes, and for the
-      ! line-search merit ||D^-1 F||_2. Without this, FD perturbations sized
-      ! on the base values are O(10-60%) RELATIVE perturbations in the wind,
-      ! corrupting the Jacobian exactly where the residual lives after the
-      ! first base-scale corrections.
+      subroutine cell_state_scales(Y, D)
+      ! Characteristic scale of each conserved unknown IN ITS OWN CELL, from
+      ! the local state alone:
+      !
+      !   mass        D = rho_j
+      !   momentum    D = |rho v|_j + rho_j c_s,j = rho_j (|v|_j + c_s,j)
+      !   energy      D = E_j
+      !
+      ! with c_s = sqrt(g p/rho) and p = (g-1)(E - (rho v)^2/2rho), so D is a
+      ! function of Y only. It sets the finite-difference step sizes, the
+      ! scaled Newton system D^-1 J D, and the line-search merit ||D^-1 F||_2.
+      !
+      ! rho and E are positive definite and are their own scales. The momentum
+      ! density is not: it passes through zero wherever the flow reverses, and
+      ! at the hand-off from marching the whole sub-sonic region below the
+      ! stagnation point is still infalling, so |rho v| vanishes there and is
+      ! no measure of how large a momentum residual is. The scale that does
+      ! not vanish is rho times the fastest characteristic speed of the Euler
+      ! system, |v| + c_s: the momentum density the cell carries when moved at
+      ! its own signal speed. This is parameter-free -- no floor fraction to
+      ! choose -- and it is local, so no single cell can set the scale of the
+      ! whole domain.
       real*8, dimension(3*N), intent(in)  :: Y
       real*8, dimension(3*N), intent(out) :: D
-      real*8  :: umax(3)
-      integer :: j, k
-      umax = 0.0d0
+      real*8  :: rho, mom, ene, pgas, cs
+      integer :: j, i1, i2, i3
       do j = 1, N
-         do k = 1, 3
-            umax(k) = max(umax(k), abs(Y(3*(j-1)+k)))
-         enddo
+         i1 = 3*(j-1) + 1;  i2 = i1 + 1;  i3 = i1 + 2
+         rho = Y(i1);  mom = Y(i2);  ene = Y(i3)
+         if (rho .gt. 0.0d0) then
+            pgas = (g - 1.0d0)*(ene - 0.5d0*mom*mom/rho)
+            cs   = sqrt(g*max(pgas, 0.0d0)/rho)
+         else
+            ! Not a physical state (the line search rejects these); fall back
+            ! to the bare magnitudes rather than taking a root of a negative.
+            rho = abs(rho);  cs = 0.0d0
+         endif
+         D(i1) = max(rho,                    tiny(1.0d0))
+         D(i2) = max(abs(mom) + rho*cs,      tiny(1.0d0))
+         D(i3) = max(abs(ene),               tiny(1.0d0))
       enddo
-      do j = 1, N
-         do k = 1, 3
-            D(3*(j-1)+k) = max(abs(Y(3*(j-1)+k)), 1.0d-6*umax(k))
-         enddo
-      enddo
-      end subroutine build_scaling
+      end subroutine cell_state_scales
 
       ! ------------------------------------------------------!
 
@@ -333,7 +355,7 @@
       ! FD column steps RELATIVE to the scale for each unknown (a flat
       ! max(|Y|,1) floor gives wind cells, ~1e-7 of the base in code
       ! units, order-unity relative kicks and garbage columns).
-      call build_scaling(Y, Dsc)
+      call cell_state_scales(Y, Dsc)
 
       fwork = f_sp_base
       call eval_residual(Y, fwork, F0, heat, cool)
@@ -658,7 +680,7 @@
 
       integer :: neq, ldab, iter, ls, lpinfo, jc, gmit
       integer :: jj, kk, jworst, kworst, irow, ilo, ihi
-      real*8  :: amx, umaxk(3)
+      real*8  :: amx
       real*8, allocatable :: Y(:), F(:), Ftry(:), dY(:), Ytry(:)
       real*8, allocatable :: dZ(:), D(:)
       real*8, allocatable :: ab(:,:), abf(:,:)
@@ -668,7 +690,13 @@
       real*8, dimension(1-Ng:N+Ng,n_species)  :: f_sp_j, f_sp_best
       real*8  :: rnorm, rc(3), dtau, lam, f2, f2_try, idtau
       real*8  :: f2hist(5), f2ref, rnorm_best
-      integer :: nstuck
+      integer :: n_no_descent, n_window_used
+      ! Stagnation limit: consecutive outer iterations in which the line
+      ! search found NO acceptable step at all. Measured on the HD 209458 b
+      ! hand-off state (docs/newton_scaling_and_base_wall.md): runs that go on
+      ! to converge never string more than 4 such iterations together, runs
+      ! that are truly stuck string 34 or more.
+      integer, parameter :: n_no_descent_max = 12
       logical :: ok
       real*8, allocatable :: Ybest(:)
 
@@ -682,10 +710,11 @@
       call pack_U(u, Y)
       call eval_residual(Y, f_sp, F, heat0, cool0)
       call resid_relnorm(F, u, rc, rnorm)
-      call build_scaling(Y, D)
+      call cell_state_scales(Y, D)
       f2 = sqrt(sum((F/D)**2))     ! merit in the SCALED space
       f2hist = f2                  ! non-monotone line-search memory
-      rnorm_best = rnorm;  Ybest = Y;  f_sp_best = f_sp;  nstuck = 0
+      rnorm_best = rnorm;  Ybest = Y;  f_sp_best = f_sp;  n_no_descent = 0
+      n_window_used = 0
       write(*,'(A,ES11.3,A,ES10.2)') ' (JFNK) start ||R||=',rnorm,        &
            '  ||Fs||2=',f2
 
@@ -695,20 +724,27 @@
          endif
          idtau = 1.0d0/dtau
 
+         ! Diagonal scaling for this outer iteration.
+         call cell_state_scales(Y, D)
+
          ! FREEZE the WENO3 weights at the current iterate: one mode-1
          ! residual evaluation stores the smoothness factors and yields the
-         ! frozen-weights F; every inner evaluation (Jacobian probes, J*v,
-         ! line-search trials) then reuses them (mode 2), so the inner
-         ! Newton problem excludes the strongly nonlinear weight response
-         ! (the standard lagged-weights remedy for FV steady solves).
+         ! frozen-weights F; the inner evaluations that build the Newton model
+         ! (Jacobian probes, J*v) then reuse them (mode 2), so the inner
+         ! problem excludes the strongly nonlinear weight response (the
+         ! standard lagged-weights remedy for FV steady solves). The line
+         ! search does NOT use them -- see there.
          weno_mode = 1
          f_sp_j = f_sp
          call eval_residual(Y, f_sp_j, F, heat0, cool0)
          weno_mode = 2
-         f2 = sqrt(sum((F/D)**2))
+         f2 = sqrt(sum((F/D)**2))     ! TRUE merit of the current iterate
 
-         ! Diagonal scaling for this outer iteration.
-         call build_scaling(Y, D)
+         ! Grippo non-monotone reference: the worst true merit of the last 5
+         ! outer iterates, the current one included. Recording it here, and not
+         ! only when a step is accepted, is what keeps the reference from
+         ! lagging behind the state the line search actually starts from.
+         f2hist = (/ f2hist(2:5), f2 /)
 
          ! Banded preconditioner of the SCALED system:
          ! M = I/dtau + D^-1 J_banded D, factored.
@@ -735,13 +771,22 @@
                      1.0d-1, gmit)
          dY = D*dZ
 
-         ! Scaled ||F/D||_2 NON-MONOTONE (Grippo) backtracking line search
-         ! with positivity: accept a step that improves on the WORST of the
-         ! last 5 accepted merits. A strictly monotone test rejects valid
-         ! steps once the required decrease (1e-4*lam*f2) falls below the
-         ! iterative-chemistry noise floor of the residual evaluation.
+         ! Scaled ||F/D||_2 backtracking line search with positivity, tested
+         ! against the non-monotone reference above.
+         !
+         ! The trial states are evaluated with weno_mode = 0, i.e. with the
+         ! smoothness weights recomputed at the trial state, so what decides
+         ! acceptance is the residual the solve is driving to zero. Evaluating
+         ! the trials with the weights frozen at Y instead -- the quantity the
+         ! inner Newton model minimizes -- is a different measure: on the
+         ! HD 189733 b hand-off state the two differ by a median factor 2.2 at
+         ! lam = 1, and 7 of the 14 steps the frozen test accepted RAISED the
+         ! true residual, by up to 9x (docs/newton_scaling_and_base_wall.md
+         ! §10). Mode 0 leaves the stored weights alone, so the frozen model of
+         ! this outer iteration survives the search.
          f2ref = maxval(f2hist)
          lam = 1.0d0;  ok = .false.
+         weno_mode = 0
          do ls = 1, 20
             Ytry = Y + lam*dY
             call unpack_U(Ytry, utry)
@@ -752,7 +797,10 @@
                call eval_residual(Ytry, f_sp_j, Ftry, heat0, cool0)
                f2_try = sqrt(sum((Ftry/D)**2))
                if (f2_try .lt. (1.0d0 - 1.0d-4*lam)*f2ref) then
-                  ok = .true.;  exit
+                  ok = .true.
+                  if (f2_try .ge. (1.0d0 - 1.0d-4*lam)*f2)              &
+                       n_window_used = n_window_used + 1
+                  exit
                endif
             endif
             lam = 0.5d0*lam
@@ -765,42 +813,47 @@
             dtau = min(dtau*max(lam,0.1d0)*(f2/max(f2_try,1.0d-30)),     &
                        1.0d14*dtau0)
             f2 = f2_try
-            f2hist = (/ f2hist(2:5), f2 /)
          else
             dtau = max(dtau*0.25d0, dtau0)
          endif
 
-         ! Best-iterate tracking + fail-fast: a non-monotone search may
-         ! accept near-zero steps (lam ~ 1e-6 against a flat 5-entry
-         ! reference) forever; abort once no NEW best residual has been
-         ! seen for 15 outer iterations and return the best iterate.
+         ! Keep the best iterate seen (by the convergence measure) so that a
+         ! failed solve returns it rather than wherever it stopped.
          if (rnorm .lt. rnorm_best) then
             rnorm_best = rnorm;  Ybest = Y;  f_sp_best = f_sp
-            nstuck = 0
-         else
-            nstuck = nstuck + 1
          endif
-         if (nstuck .ge. 15) then
+
+         ! Stagnation: the failure mode of the non-monotone search is that it
+         ! stops finding ANY acceptable step and the iterate no longer moves.
+         ! Count consecutive such iterations. (A watchdog on rnorm instead
+         ! cannot work here: rnorm measures only [j_min:N], while the solver
+         ! minimizes the whole-domain merit, and the opening pseudo-transient
+         ! legitimately raises rnorm for ~30 iterations while it repairs the
+         ! sub-sonic region -- see docs/newton_scaling_and_base_wall.md.)
+         if (ok) then
+            n_no_descent = 0
+         else
+            n_no_descent = n_no_descent + 1
+         endif
+         if (n_no_descent .ge. n_no_descent_max) then
             info = 2
-            write(*,'(A)') ' (JFNK) no new best residual for 15 '//      &
-                 'iterations -- aborting'
+            write(*,'(A,I0,A)') ' (JFNK) line search found no descent '// &
+                 'step in ', n_no_descent_max, ' consecutive iterations'// &
+                 ' -- aborting'
             exit
          endif
 
-         ! Locate the worst relative-residual cell over the WHOLE domain
-         ! 1..N (searching only [j_min:N] pins the max to the window edge
-         ! whenever the true max lies below r_esc).
-         do kk = 1, 3
-            umaxk(kk) = 1.0d-30
-            do jj = 1, N
-               umaxk(kk) = max(umaxk(kk), abs(u(kk,jj)))
-            enddo
-         enddo
+         ! Locate the cell carrying the largest scaled residual |F/D|, i.e.
+         ! the term the merit is actually dominated by, over the whole domain
+         ! 1..N. (Normalizing by max_j|u(k,j)| instead reports the base cell
+         ! almost always, because the base holds the global maximum of |rho v|
+         ! while carrying no wind.)
          amx = -1.0d0;  jworst = 1;  kworst = 1
          do jj = 1, N
             do kk = 1, 3
-               if (abs(F(3*(jj-1)+kk))/umaxk(kk) .gt. amx) then
-                  amx = abs(F(3*(jj-1)+kk))/umaxk(kk);  jworst = jj;  kworst = kk
+               if (abs(F(3*(jj-1)+kk))/D(3*(jj-1)+kk) .gt. amx) then
+                  amx = abs(F(3*(jj-1)+kk))/D(3*(jj-1)+kk)
+                  jworst = jj;  kworst = kk
                endif
             enddo
          enddo
@@ -817,7 +870,8 @@
               '||R||=', rnorm
       endif
       call unpack_U(Y, u);  call Apply_BC(u)
-      write(*,'(A,I0,A,ES11.3)') ' (JFNK) done info=',info,' ||R||=',rnorm
+      write(*,'(A,I0,A,ES11.3,A,I0)') ' (JFNK) done info=',info,        &
+           ' ||R||=',rnorm,'  window-only accepts=',n_window_used
       deallocate(Y,F,Ftry,dY,Ytry,dZ,D,Ybest,ab,abf,ipiv)
       end subroutine solve_steady_jfnk
 
