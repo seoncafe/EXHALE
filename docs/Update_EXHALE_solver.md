@@ -196,8 +196,9 @@ counters `nt_calls`/`nt_fallback` reported by `EXHALE_main`.
 in `charge_exchange.f90`), the exact derivative mirror of `cx_add_to_fvec` (each
 rate kc*D*A is bilinear in two reactant densities, both linear in the unknowns).
 Absent elements and the unused upper stage of two-stage elements are pinned to
-identity rows. `System_HeH_TR` (He triplet) stays on `hybrd1` (no Jacobian; mutually
-exclusive with metals, unused here).
+identity rows. `System_HeH_TR` (He triplet) stays on `hybrd1` (no Jacobian; at the
+time of this change mutually exclusive with metals and unused here — the merged
+`System_HeH_TR_metals` came later).
 
 **Wiring/build.** `ionization_equilibrium.f90`: the H-only, H/He, and H/He+metals
 `hybrd1` calls go through `solve_ieq(..., jac_*, ...)`; triplet unchanged.

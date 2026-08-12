@@ -135,11 +135,12 @@ _ec2 = 0.026540045                # pi e^2 / (m_e c)  [cm^2 Hz] (sqrt-pi form be
 _ccm = 2.99792458e10
 
 
-def n2_populations(T, n1s, ne, Jlya, G2s=0.0, G2p=0.0):
+def n2_populations(T, n1s, nHII, ne, Jlya, G2s=0.0, G2p=0.0):
 	# Solve the 2s/2p rate-equilibrium (Christie+2013 Eqs. 12-13) for the
 	# n=2 populations [cm^-3]. All densities in cm^-3, T in K, Jlya in cgs.
 	# Returns (n2s, n2p, n2tot). Forward collisional rates from Table 2;
 	# reverse rates by detailed balance (g-weights; 2s,2p ~ degenerate).
+	# Mirrors src/modules/radiation/excited_hydrogen.f90::n2_populations.
 	T  = np.maximum(T, 1.0)               # defensive floor (avoid 1/T, log(0))
 	t4 = T/1.0e4
 	# Case-B and level-resolved recombination (Draine 2011; Table 2 R2,R8,R9)
@@ -163,8 +164,11 @@ def n2_populations(T, n1s, ne, Jlya, G2s=0.0, G2p=0.0):
 	# 2x2 linear system  [[L2p, -M12],[-M21, L2s]] [n2p,n2s]^T = [S2p,S2s]^T
 	L2p = A_2p1s + Pstim + (C2p1s + C2p2s)*ne + G2p
 	L2s = (C2s1s + C2s2p)*ne + G2s + A_2s1s
-	S2p = (Ppump + C1s2p*ne)*n1s + a2p*ne**2.0
-	S2s = (C1s2s*ne)*n1s + a2s*ne**2.0
+	# Cascade source: the electron recombines onto a proton, so the rate is
+	# alpha_2l*ne*nHII. ne and nHII part company wherever helium and metals
+	# supply the electrons while hydrogen is still neutral, i.e. at the base.
+	S2p = (Ppump + C1s2p*ne)*n1s + a2p*ne*nHII
+	S2s = (C1s2s*ne)*n1s + a2s*ne*nHII
 	M12 = C2s2p*ne
 	M21 = C2p2s*ne
 	det = L2p*L2s - M12*M21

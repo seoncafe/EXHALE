@@ -62,7 +62,7 @@ md("## 3. Cooling breakdown by channel (WASP-121b, metals on)\n"
 code("""c = aio.load_cooling(os.path.join(W,'output','Cooling_breakdown.txt'))
 fig, ax = plt.subplots(figsize=(8,5))
 ax.semilogy(c['r'], c['cool_total'], 'k', lw=2, label='total')
-for nm in ['coll_exc','rec','FeII','MgII','CII','OII','CaII']:
+for nm in ['coex_HI','rec','FeII','MgII','CII','OII','CaII']:
     if nm in c['chan']:
         ax.semilogy(c['r'], np.clip(c['chan'][nm],1e-30,None), label=nm)
 ax.set_ylim(c['cool_total'].max()*1e-4, c['cool_total'].max()*2)

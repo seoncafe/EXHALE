@@ -60,11 +60,23 @@ code rather than transcribed from a single numbered equation in any one paper.
 
 ## Implementation
 
-- Heating term: [excited_hydrogen.f90:199-206](EXHALE/src/modules/radiation/excited_hydrogen.f90#L199-L206) (`excited_H_update`, fills `Hdx_arr`).
-- Rate coefficients: [excited_hydrogen.f90:342-357](EXHALE/src/modules/radiation/excited_hydrogen.f90#L342-L357) (`c2s1s_rate`, `c2p1s_rate`); the energy gap `E21_erg` at line 50.
-- `J_Lya` that populates `n = 2`: `J_Lya ~ 0.1 F_LyC / dnu_D` (Huang et al. 2017, Eq. 6), [excited_hydrogen.f90:157](EXHALE/src/modules/radiation/excited_hydrogen.f90#L157).
-- Runtime toggle: `Deexc heat: True` sets `incl_deexc_heat` in [input_read.f90:344-346](EXHALE/src/modules/files_IO/input_read.f90#L344-L346); the flag is declared in `parameters.f90`.
-- Injection into the energy equation: [ionization_equilibrium.f90:220-224](EXHALE/src/modules/radiation/ionization_equilibrium.f90#L220-L224) (`heat = heat + heat_balmer`, with `heat_balmer = Hpe_arr + Hdx_arr`).
+- Heating term: `excited_hydrogen.f90`, `excited_H_update` (fills `Hdx_arr`).
+- Rate coefficients: `c2s1s_rate`, `c2p1s_rate` and the energy gap `E21_erg` in
+  `src/modules/radiation/hydrogen_n2_rates.f90`, which is the single definition
+  shared with the `n = 2` population solve and with `lya_rt.f90`.
+- `J_Lya` that populates `n = 2`: `J_Lya ~ 0.1 F_LyC / dnu_D` (Huang et al.
+  2017, Eq. 6) for `jlya_mode = 0`; the escape-probability field of `lya_rt.f90`
+  for `jlya_mode = 2`; an imported profile for `jlya_mode = 1`.
+- Runtime toggle: `incl_deexc_heat`, declared in `parameters.f90` and read from
+  the `Deexc heat` key in `input_read.f90`. **On by default since 2026-08-12**
+  (`docs/Update_EXHALE.md` section 50): the argument that had justified the old
+  default -- that the term overlaps the H I collisional-excitation cooling --
+  does not hold, because that cooling is the one-way Cen (1992) coronal rate
+  with no de-excitation term in it. `Deexc heat: False` restores the one-way
+  ledger. The key is inert unless the excited-H model is enabled by a stellar
+  `T_eff` and radius.
+- Injection into the energy equation: `ionization_equilibrium.f90`,
+  `heat = heat + heat_balmer` with `heat_balmer = Hpe_arr + Hdx_arr`.
 
 ## Source references
 
@@ -93,16 +105,24 @@ and the electron density is high enough for collisional de-excitation to compete
 with radiative decay — i.e. the denser, partially ionized layers of a strongly
 irradiated escaping atmosphere.
 
-**Numerical caveat (HD 209458 b).** With `Deexc heat: True`, HD 209458 b (the
-lowest-irradiation case of the paper set, `log L_X = 27.2`, `log L_EUV = 27.9`)
-develops a base instability: the run reaches NaN at the innermost cell
-(`r ~ 1.0002 R_p`) after a few thousand steps. Isolation runs show the
-instability is specific to this heating term — with the in-situ Lyman-alpha
-field on but `Deexc heat` off, the same setup is stable, and the more strongly
-irradiated planets tolerate the term. It is not yet established whether this is a
-physical heating runaway (Lyman-alpha heating outrunning the local cooling at the
-cool HD 209458 b base) or a numerical stiffness of the term as currently coupled
-to the energy update; it interacts with the separately documented base-breathing
-behavior of HD 209458 b / HD 189733 b. Until this is resolved, the term is kept
-off for the low-irradiation cases, with the in-situ Lyman-alpha field itself left
-on, and the choice recorded per run.
+**Numerical caveat (HD 209458 b), historical.** With `Deexc heat: True`,
+HD 209458 b (the lowest-irradiation case of the paper set, `log L_X = 27.2`,
+`log L_EUV = 27.9`) used to develop a base instability: the run reached NaN at
+the innermost cell (`r ~ 1.0002 R_p`) after a few thousand steps. Isolation runs
+showed it was specific to this heating term — with the in-situ Lyman-alpha field
+on but `Deexc heat` off the same setup was stable, and the more strongly
+irradiated planets tolerated the term. That is why the key was kept off for the
+low-irradiation cases.
+
+**Retested 2026-08-12, and it no longer reproduces.** The `n = 2` corrections of
+`docs/Update_EXHALE.md` section 50 cut the population that drives this term:
+`n(2s)` roughly halves and the volume-integrated `Hdx` of the `wasp_full`
+configuration falls to 0.56 of its former value. With those in place and
+`Deexc heat` on by default, HD 209458 b re-converges from its stored initial
+condition in about 2000 steps with no NaN (`log10 Mdot` 9.454 with the term off,
+9.458 with it on), and a cold start survives a 20000-step cap without a NaN
+(that run stops at the cap rather than converging, so its `Mdot` is not
+comparable). The base cell is still where the term shows most: turning it on
+moves the innermost cell by 17% in temperature and the domain outside
+`r = 1.01` by up to 9%. The instability should be treated as fixed but watched —
+if it returns on a colder base, `Deexc heat: False` is the isolation switch.

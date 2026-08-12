@@ -29,6 +29,11 @@
 	!   12 rcheiTR  13 A31  14 P_HeITR  15 q13  16 q31a  17 q31b  18 Q31
 	!   19 P_H2 (photoionization rate coefficient of H2, s^-1)
 	!   20 T [K]   21 n_tot (total particle density, for 3-body M)
+	!
+	! The eight balance rows live in mol_heh_rows below, which takes the free
+	! electron density as an INPUT. System_HeH_mol_metals calls the same
+	! routine with a metal-inclusive n_e, so the molecular network is written
+	! once (the rate coefficients mk5..mk23 likewise stay in this module).
 
 	use global_parameters, only: thereis_HeITR
 	use mol_rates
@@ -89,8 +94,6 @@
 	real*8  :: n_h,n_he,n_e,T,ntot
 	real*8  :: n_hi,n_hii,n_h2,n_h2p,n_h3p,n_hehp
 	real*8  :: n_hei,n_heii,n_heiii,n_heiTR,n_heiSI
-	real*8  :: k5,k6,k7,k8,k9,k10,k11,k12,k13,k14,k15
-	real*8  :: k16,k17,k18,k19,k20,k23,k_pen_H2
 
 	g_hi    = ieq_cell%P_HI
 	g_hei   = ieq_cell%P_HeI
@@ -134,6 +137,48 @@
 
 	! Electron density (each molecular ion carries +1)
 	n_e = n_hii + n_h2p + n_h3p + n_hehp + n_heii + 2.0d0*n_heiii
+
+	call mol_heh_rows(fvec, n_hi, n_hii, n_h2, n_h2p, n_h3p, n_hehp,   &
+	                  n_heiSI, n_heiTR, n_heii, n_heiii, n_e, ntot,     &
+	                  g_hi, g_hei, g_heii, g_heiTR, g_h2,               &
+	                  a_hii, a_heii, a_heiii, a_heiTR,                  &
+	                  b_hi, b_hei, b_heii, b_heiTR,                     &
+	                  q13, q31a, q31b, Q31, A31)
+
+	! He <-> H charge exchange (Huang Table 4 group B). Row 1 (H+ balance)
+	! and row 2 (He+ balance) are both written production positive, so
+	! he_row_sign = +1. The ground singlet n_heiSI is the CX He I reservoir.
+	call he_h_cx_fvec(fvec, ieq_cell%kcx_He0_Hp, ieq_cell%kcx_Hep_H0,   &
+	                  n_hi, n_hii, n_heiSI, n_heii, 1.0d0)
+
+	return
+	end subroutine ion_system_HeH_mol
+
+	!----------------------------------!
+
+	! The eight balance rows of the molecular network, shared verbatim by
+	! System_HeH_mol and System_HeH_mol_metals. n_e is an INPUT so that the
+	! metal-coupled system can pass its metal-inclusive electron density; the
+	! molecular rate coefficients are read from this module's own cell state
+	! (set_mol_coeffs). Rows 1-7 are always written; row 8 only when the He
+	! 2^3S metastable is tracked. Only explicit-shape / assumed-size dummies
+	! are used, as in ion_residual_core.
+	subroutine mol_heh_rows(fvec, n_hi, n_hii, n_h2, n_h2p, n_h3p, n_hehp,  &
+	                        n_heiSI, n_heiTR, n_heii, n_heiii, n_e, ntot,    &
+	                        g_hi, g_hei, g_heii, g_heiTR, g_h2,              &
+	                        a_hii, a_heii, a_heiii, a_heiTR,                 &
+	                        b_hi, b_hei, b_heii, b_heiTR,                    &
+	                        q13, q31a, q31b, Q31, A31)
+
+	real*8 :: fvec(*)
+	real*8, intent(in) :: n_hi,n_hii,n_h2,n_h2p,n_h3p,n_hehp
+	real*8, intent(in) :: n_heiSI,n_heiTR,n_heii,n_heiii,n_e,ntot
+	real*8, intent(in) :: g_hi,g_hei,g_heii,g_heiTR,g_h2
+	real*8, intent(in) :: a_hii,a_heii,a_heiii,a_heiTR
+	real*8, intent(in) :: b_hi,b_hei,b_heii,b_heiTR
+	real*8, intent(in) :: q13,q31a,q31b,Q31,A31
+	real*8  :: k5,k6,k7,k8,k9,k10,k11,k12,k13,k14,k15
+	real*8  :: k16,k17,k18,k19,k20,k23,k_pen_H2
 
 	! Rate coefficients hoisted once per cell into module state by
 	! set_mol_coeffs (they depend only on T and n_tot); read here.
@@ -211,14 +256,7 @@
 		fvec(8) = fvec(8) - k_pen_H2*n_heiTR*n_h2
 	endif
 
-	! He <-> H charge exchange (Huang Table 4 group B). Row 1 (H+ balance)
-	! and row 2 (He+ balance) are both written production positive, so
-	! he_row_sign = +1. The ground singlet n_heiSI is the CX He I reservoir.
-	call he_h_cx_fvec(fvec, ieq_cell%kcx_He0_Hp, ieq_cell%kcx_Hep_H0,   &
-	                  n_hi, n_hii, n_heiSI, n_heii, 1.0d0)
-
-	return
-	end subroutine ion_system_HeH_mol
+	end subroutine mol_heh_rows
 
 	! End of module
 	end module System_HeH_mol

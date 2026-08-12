@@ -106,7 +106,7 @@ def gamma_n2_balmer(T_star, R_over_a):
     return np.trapz(Fnu / (h_cgs * nu) * sig2, nu)
 
 
-def n2_populations(T, n1s, ne, Jlya, G2s=0.0, G2p=0.0):
+def n2_populations(T, n1s, nHII, ne, Jlya, G2s=0.0, G2p=0.0):
     """Christie+2013 2s/2p rate equilibrium -> (n2s, n2p, n2tot) [cm^-3].
     G2s, G2p are the n=2 Balmer-continuum photoionization sinks [s^-1]."""
     T  = np.maximum(T, 1.0)
@@ -124,8 +124,10 @@ def n2_populations(T, n1s, ne, Jlya, G2s=0.0, G2p=0.0):
     Pstim = B21_lya * Jlya
     L2p = A_2p1s + Pstim + (C2p1s + C2p2s) * ne + G2p
     L2s = (C2s1s + C2s2p) * ne + A_2s1s + G2s
-    S2p = (Ppump + C1s2p * ne) * n1s + a2p * ne**2
-    S2s = (C1s2s * ne) * n1s + a2s * ne**2
+    # Cascade source alpha_2l*ne*nHII: the recombining partner is a proton,
+    # and ne >> nHII wherever helium and metals supply the electrons.
+    S2p = (Ppump + C1s2p * ne) * n1s + a2p * ne * nHII
+    S2s = (C1s2s * ne) * n1s + a2s * ne * nHII
     M12 = C2s2p * ne
     M21 = C2p2s * ne
     det = L2p * L2s - M12 * M21
@@ -192,7 +194,8 @@ def build_n2p_2d(run, Pa, z, rho, L_lya, fluxfac=1.0, T_star=0.0, R_over_a=0.0,
     here (in addition to the physical Ly-alpha photon luminosity L_lya)."""
     r = np.asarray(run.r, float)
     nHI = np.asarray(run.ion['HI'], float)
-    ne  = np.asarray(run.ion['HII'], float) + np.asarray(run.ion['HeII'], float) \
+    nHII = np.asarray(run.ion['HII'], float)
+    ne  = nHII + np.asarray(run.ion['HeII'], float) \
           + 2.0 * np.asarray(run.ion['HeIII'], float)
     T   = np.asarray(run.T, float)
     rmaxp = r.max()
@@ -203,6 +206,7 @@ def build_n2p_2d(run, Pa, z, rho, L_lya, fluxfac=1.0, T_star=0.0, R_over_a=0.0,
     T_g   = np.interp(rad, r, T,   left=T[0],   right=T[-1])
     nHI_g = np.interp(rad, r, nHI, left=nHI[0], right=0.0)
     ne_g  = np.interp(rad, r, ne,  left=ne[0],  right=0.0)
+    nHII_g = np.interp(rad, r, nHII, left=nHII[0], right=0.0)
     Palpha = Pa * L_lya * fluxfac              # [s^-1 atom^-1]  (fluxfac = Omega_star/4pi)
     if Pa1 is not None and L_insitu > 0.0:
         # In-situ diffuse Ly-alpha volume source: radial profile, NO fluxfac.
@@ -211,7 +215,7 @@ def build_n2p_2d(run, Pa, z, rho, L_lya, fluxfac=1.0, T_star=0.0, R_over_a=0.0,
         Palpha = Palpha + Palpha_insitu
     Jlya_eff = Palpha / B12_lya
     G2 = gamma_n2_balmer(T_star, R_over_a)     # n=2 Balmer-continuum photoionization sink
-    n2s, n2p, _ = n2_populations(T_g, nHI_g, ne_g, Jlya_eff, G2s=G2, G2p=G2)
+    n2s, n2p, _ = n2_populations(T_g, nHI_g, nHII_g, ne_g, Jlya_eff, G2s=G2, G2p=G2)
     # The LaRT Ly-alpha field (Jlya_eff, built from Pa) pumps ONLY 1s->2p inside
     # n2_populations (the pump enters the 2p source term, not 2s), so using the
     # LaRT scattering rate here is the correct 1s->2p pumping. The 2s population

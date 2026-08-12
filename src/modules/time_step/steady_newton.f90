@@ -218,6 +218,18 @@
 
       u = 0.0d0
       call unpack_U(Y, u)
+      ! Composition of the INTERIOR of Y, evaluated before the ghosts are
+      ! filled: Apply_BC reads n_part_cell1 for the continuous-temperature base
+      ! ghost (T(1) = p(1)/n_part_cell1) and that global is written by
+      ! get_species_densities. Without this call it still holds the value left
+      ! by the PREVIOUS residual evaluation, so F would depend on the previous Y
+      ! as well as on Y -- and a finite-difference Jacobian column would then
+      ! mix two states. Cost is one array pass; ioniz_eq below dominates.
+      ! u(1,:) is already the density, so no U_to_W here: the ghosts are still
+      ! zero at this point and U_to_W would divide by them.
+      rho = u(1,:)
+      call get_species_densities(rho,f_sp,nhi,nhii,nhei,nheii,         &
+                                 nheiii,nheiTR,nm,ne,n_tot)
       call Apply_BC(u)           ! fill ghosts from the interior
 
       call U_to_W(u, W)

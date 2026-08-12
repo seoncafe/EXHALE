@@ -304,13 +304,14 @@
 		! older files are unaffected): "Stellar Teff [K]: <T>" + "Stellar
 		! radius [R_sun]: <R>" supply the diluted-blackbody Balmer continuum
 		! that photoionizes/heats H(n=2). The coupling is enabled iff both are
-		! given (T_star_eff>0, R_star>0). "Deexc heat: True" additionally turns
-		! on the (overlapping) collisional de-excitation heating term.
+		! given (T_star_eff>0, R_star>0). The collisional de-excitation heating
+		! of the pumped n=2 population is on with them; "Deexc heat: False"
+		! drops back to the one-way coronal ledger (see parameters.f90).
 		spherical_domain = .false.
 		r_out_user       = 0.0d0
 		T_star_eff       = 0.0d0
 		R_star           = 0.0d0
-		incl_deexc_heat  = .false.
+		incl_deexc_heat  = .true.
 		jlya_mode        = 0
 		transonic_ic     = .false.
 		hot_parker_ic    = .false.
@@ -349,7 +350,8 @@
 				read(str,*) R_star
 			else if (lbl_match(line, 'Deexc heat')) then
 				str = get_word(line, 3)
-				if (str .eq. 'True') incl_deexc_heat = .true.
+				if (str .eq. 'True'  .or. str .eq. 'true' ) incl_deexc_heat = .true.
+				if (str .eq. 'False' .or. str .eq. 'false') incl_deexc_heat = .false.
 			else if (lbl_match(line, 'Wind-AE seed out')) then
 				windae_seed_out = trim(get_word(line, 4))
 			else if (lbl_match(line, 'Wind-AE seed')) then
@@ -571,7 +573,8 @@
 			else if (lbl_match(line, 'Coronal cutoff width')) then
 				! "Coronal cutoff width: <w>" sets the roll-off width of the
 				! coronal-excitation guard below the 1e3 K CHIANTI fit floor
-				! (Cool_coeff.f90). Default 0.5.
+				! (Cool_coeff.f90). Default 0.1; justified window 0.08-0.13
+				! (docs/coronal_cutoff_width.md).
 				str = get_word(line, 4);  read(str,*) coronal_cutoff_width
 				write(*,'(A,F6.3)') ' (input_read) Coronal excitation cutoff'// &
 				   ' width w =', coronal_cutoff_width
@@ -801,8 +804,9 @@
    ! Remove HeITR chemistry if He is not included
    if (.not. thereis_He) thereis_HeITR = .false.
 
-   ! molecular chemistry constraints (v1): requires He;
-   ! exclusive with trace metals (merged mol+metals = later work item).
+   ! molecular chemistry constraints: requires He. Trace metals are solved
+   ! together with the molecular network (System_HeH_mol_metals), so the two
+   ! are no longer exclusive; He/H diffusion still is.
    if (thereis_mol .and. .not. thereis_He) then
       write(*,*) '(input_read) ERROR: Molecular chemistry needs He/H>0.'
       error stop 1
@@ -810,11 +814,6 @@
    if (thereis_mol .and. he_diffusion) then
       write(*,*) '(input_read) ERROR: Molecular chemistry + He_diffusion'//&
                  ' not supported yet.'
-      error stop 1
-   endif
-   if (thereis_mol .and. thereis_metals) then
-      write(*,*) '(input_read) ERROR: Molecular chemistry + metals '//&
-                 'not supported yet (remove metals.inp).'
       error stop 1
    endif
 
@@ -929,10 +928,13 @@
 		if (thereis_metals .and. .not.thereis_HeITR) N_eq = 3 + 2*n_melem
 		if (thereis_metals .and.      thereis_HeITR) N_eq = 4 + 2*n_melem
 
-	! molecular system: H+/He+/He++ + H2/H2+/H3+/HeH+ (+ He 2^3S)
+	! molecular system: H+/He+/He++ + H2/H2+/H3+/HeH+ (+ He 2^3S), and, when
+	! metals are also present, two more unknowns per metal element appended
+	! above them (System_HeH_mol_metals; metal_row_base = 8 or 9).
 	if (thereis_mol) then
 		N_eq = 7
 		if (thereis_HeITR) N_eq = 8
+		if (thereis_metals) N_eq = N_eq + 2*n_melem
 	endif
 	endif
 	

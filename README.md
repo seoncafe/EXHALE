@@ -26,10 +26,14 @@ fork of the ATES code (Caldiroli et al. 2021; Biassoni et al. 2024), adding:
   which are valid there. Below the floor the coronal fits were dominated by
   exponentials whose excitation temperatures match no ground-term splitting of
   the ion. `cno_cool 0` (legacy AIOLOS branch) is deliberately not cut off.
-  The roll-off width is `exp(-x^2)` with `x = (T_floor/T - 1)/w`, `w = 0.5` by
-  default and settable with `Coronal cutoff width: <w>`; `w` is a modeling
-  choice, not a measured quantity, and the temperature the base settles at
-  depends on it at the ~100 K level
+  The roll-off width is `exp(-x^2)` with `x = (T_floor/T - 1)/w`, `w = 0.1` by
+  default and settable with `Coronal cutoff width: <w>`. Since the ground-term
+  fine-structure floors were solved in statistical equilibrium (2026-08-12) the
+  results no longer depend on `w`: the base-cell balance temperature of all
+  four paper planets is identical to every digit printed over `w = 0.02-1.2`,
+  against a 500-650 K spread before. The guard is kept because extrapolating a
+  fit below its fitted range is the wrong thing to do, not as a tuning knob
+  (`docs/coronal_cutoff_width.md` section 7)
 - He I 2³S metastable triplet state (coupled solver), with a
   **temperature-dependent He(2³S)+H Penning-ionization rate** (Taylor et
   al. 2025; replaces the classic 5e-10 constant)
@@ -314,9 +318,11 @@ falls 0.0264 -> 0.0092, the steady residual 5.4e-4 -> 2.8e-4, and beyond cell 7
 the alternation drops by one to two orders of magnitude, at the cost of a
 stronger 3-cell disturbance in cells 2-4; `log10 Mdot` moves +0.01 dex
 (9.04 -> 9.05). `HD189733b/` has since been re-converged with the key on
-together with the ionization-root validation, and that state reads lower still
+together with the ionization-root validation, and that state read lower still
 (`T_ghost/T_1 = 529.4/529.6 K`, cells 1-12 amplitude `1.9e-3`, `||R|| =
-1.7e-4`). The key is ignored when `Hydrostatic base: True` is set (that
+1.7e-4`); with the later cooling and H(n=2) corrections the folder now converges
+at a 551 K base and `log10 Mdot = 9.14`, which is what `paper/` carries. The key
+is ignored when `Hydrostatic base: True` is set (that
 key sets the same ghost pressure from the interior gradient); with
 `Base BC: pressure` only the base *density* stays anchored, since the microbar
 target is imposed at `T0` when `n0` is derived. Full investigation:
@@ -375,10 +381,14 @@ Molecular chemistry: True   # coupled H2/H2+/H3+/HeH+ equilibrium + H3+ cooling
 Molecular base:      True   # recommended companion (consistent base pressure)
 ```
 
-`Ion_species*.txt` gains four columns (`H2 H2p H3p HeHp`). Requires He/H > 0;
-v1 is exclusive with `metals.inp` and `He_diffusion` (the parser refuses the
-combinations). Local-equilibrium caveats in
-`docs/lower_atmosphere_coupling.pdf` §4.
+`Ion_species*.txt` gains four columns (`H2 H2p H3p HeHp`). Requires He/H > 0.
+A `metals.inp` may be present: the trace metals are then solved in the same
+system as the molecular network, which they share the free electron density
+with (in the shielded molecular base the metals are the dominant electron
+donors, so the two cannot be solved apart). `He_diffusion` is still refused by
+the parser. Local-equilibrium caveats in `docs/lower_atmosphere_coupling.pdf`
+§4; the advection-corrected `*_adv` profiles remain molecule-free (see the
+header of `post_process_adv.f90`).
 
 ### Lower-atmosphere pre-step: VULCAN as a subroutine
 
@@ -634,6 +644,7 @@ See `examples/README.md` for the exact lines each one adds:
 | `13_lower_atmosphere/` | Lower-atmosphere connection for four planets: analytic 1-µbar base column + `base.inp` handoff (isothermal / Guillot T(p)) |
 | `14_diffusion/` | Diffusive separation of He and metals (HD 209458 b): He/H declines with altitude, each metal settles independently, reshaping He 10830 |
 | `15_molecular/` | Full molecular chemistry (HD 209458 b): H2/H2+/H3+/HeH+ coupled equilibrium; sharp H2→H front above a thin molecular base (metals/diffusion off) |
+| `16_molecular_metals/` | Molecular chemistry **and** trace metals in one system (HD 209458 b): the H2/H2+/H3+/HeH+ network and the metal ionization stages share the free electron density, which the metals dominate in the shielded molecular base |
 
 ---
 
@@ -674,4 +685,4 @@ See `examples/README.md` for the exact lines each one adds:
 
 Kwang-Il Seon (KASI / UST)
 
-Last updated: 2026-08-12 06:04 KST
+Last updated: 2026-08-13 07:21 KST

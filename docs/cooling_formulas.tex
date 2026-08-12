@@ -1,8 +1,8 @@
 %% EXHALE (EXHALE): closed-form metal line-cooling formulas.
 %% Complete reference for the analytic cooling coefficients implemented in
-%% Cool_coeff.f90 (2026-06-11): CHIANTI-fitted resonance lines, Fe II,
+%% Cool_coeff.f90 (2026-08-12): CHIANTI-fitted resonance lines, Fe II,
 %% C/N/O (with the legacy AIOLOS fits for comparison), and the
-%% density-dependent [C II] 158um / [O I] 63um fine-structure saturation.
+%% ground-term fine-structure statistical equilibrium of C I/C II/N II/O I.
 %% Fit provenance: cooling_data/fit_cooling_formulas.py,
 %% fit_cno_formulas.py, fit_fs_saturation.py; figures by
 %% cooling_data/make_cooling_doc_figures.py.
@@ -17,7 +17,7 @@
 
 \title{Closed-form metal line-cooling formulas in EXHALE}
 \author{Kwang-Il Seon}
-\date{2026-06-11}
+\date{2026-08-12}
 
 \begin{document}
 \maketitle
@@ -226,72 +226,187 @@ difference from CHIANTI; the grey band is $\pm5\%$.}
 \label{fig:cno}
 \end{figure}
 
-\section{Density-dependent fine-structure saturation}
+\section{Ground-term fine-structure statistical equilibrium}
 \label{sec:fs}
 
-The coronal C\,II and O\,I curves include the ground-term
-fine-structure floors ([C\,II] 158\,$\mu$m, [O\,I] 63\,$\mu$m)
-\emph{unsaturated}, although their critical densities
-($n_{\rm crit,e}\simeq20\,\mathrm{cm^{-3}}$ for [C\,II];
-$n_{\rm crit,H}\simeq4\times10^5\,\mathrm{cm^{-3}}$ for [O\,I]) lie far
-below the atmosphere base density.  In the CHIANTI mode the floor is
-therefore replaced by the exact two-level solution
+The coronal C/N/O curves carry the ground-term fine-structure (FS) lines
+in the optically thin, \emph{low-density} limit, although their critical
+densities are of order $10^0$--$10^5\,\mathrm{cm^{-3}}$, decades below
+the base density of an irradiated atmosphere
+($n_e\sim10^9$, $n_{\rm HI}\sim10^{14}\,\mathrm{cm^{-3}}$).  At the
+converged base of the four planet runs the coronal form overshoots what
+the same lines can actually radiate by 2.9--8.3 decades
+(Table~\ref{tab:fsover}).  In the CHIANTI mode the FS part is therefore
+replaced, for every C/N/O coolant whose ground term is split, by the
+exact statistical-equilibrium (SE) solution of that term,
 \begin{equation}
-W_{\rm FS}(T,n_e,n_{\rm HI}) \;=\; f_l(T)\,
-\frac{h\nu\,A_{ul}\,x\,C_{\rm dex}}{A_{ul} + C_{\rm dex}\,(1+x)},
-\qquad
-x = \frac{g_u}{g_l}\,e^{-E/k_BT},\qquad
-C_{\rm dex} = n_e k_e(T) + n_{\rm HI}\,k_{\rm H}(T),
-\label{eq:fs}
+\sum_j f_j R_{ji} = f_i \sum_j R_{ij},\qquad \sum_i f_i = 1,
+\label{eq:se}
 \end{equation}
-in erg\,s$^{-1}$ per ion, plus a multi-exponential refit of the
-CHIANTI curve with the $1{\to}2$ channel removed (the ``remainder'').
-The ground-term Boltzmann weight $f_l = g_l/Z_{\rm term}(T)$ makes the
-high-density limit of Eq.~(\ref{eq:fs}) equal to the exact multi-level
-LTE population result, while the $C_{\rm dex}\to0$ limit reproduces the
-CHIANTI coronal channel by construction (verified to $\le3.4\%$, set by
-the cubic log-$\Upsilon$ fits below).  The assembly uses
+\begin{equation}
+R_{ul} = C_{ul} + \beta_{ul} A_{ul},\qquad
+R_{lu} = C_{ul}\,\frac{g_u}{g_l}\,e^{-E_{ul}/k_BT},\qquad
+C_{ul} = n_e k_{e,ul}(T) + n_{\rm HI}\,k_{{\rm H},ul}(T),
+\end{equation}
+\begin{equation}
+W_{\rm FS} = \sum_{u>l} f_u\,\beta_{ul}A_{ul}\,k_B E_{ul}
+\qquad [\mathrm{erg\,s^{-1}}\ \mathrm{per\ ion}],
+\label{eq:wfs}
+\end{equation}
+together with a multi-exponential refit $\Lambda_{\rm rem}(T)$ of the
+CHIANTI curve that keeps \emph{only} the channels leaving the ground
+term.  The assembly uses
 $\Lambda_{\rm eff} = W_{\rm FS}/n_e + \Lambda_{\rm rem}(T)$, so the
 $n_e$ prefactor cancels and the H-collision channel --- which the
 electron-only coronal curves lack entirely --- is recovered exactly.
+The ions treated are the complete set of split ground terms among the
+coolants:
 
-Atomic data: [C\,II] $E/k_B = 91.21$\,K, $A_{ul}=2.290\times10^{-6}$
-\,s$^{-1}$, $g_l{=}2$, $g_u{=}4$ (the two-level form is exact);
-[O\,I] 63\,$\mu$m $E/k_B = 227.71$\,K, $A_{ul}=8.542\times10^{-5}$
-\,s$^{-1}$, $g_l{=}5$, $g_u{=}3$, with
-$f_1 = 5/(5+3e^{-227.7/T}+e^{-326.6/T})$.  The electron de-excitation
-rate is $k_e = 8.629\times10^{-6}\,\Upsilon(T)/(g_u\sqrt T)$ with
-$\log_{10}\Upsilon$ a cubic in $x=\log_{10}(T/10^4)$ fitted to the
-CHIANTI $\Upsilon$ (max err 3.4--3.6\%); the H-atom rates follow the
-values used by the legacy \texttt{use\_2lev\_cool} branch
-($4.0\times10^{-11}$ for C\,II, Goldsmith et al.\ 2012;
-$4.2\times10^{-11}(T/100)^{0.67}$ for O\,I, Draine 2011 / Lique et al.\
-2017; both flagged approximate).  The weaker [O\,I] 146\,$\mu$m and the
-C\,I / N\,II fine-structure floors remain coronal --- each is a
-few-percent piece of its floor.
+\begin{center}
+\begin{tabular}{llll}
+\hline
+ion & ground term & levels & lines \\
+\hline
+C\,I  & $2p^2\ ^3P_{0,1,2}$   & 3 & [C\,I] 609.1, 370.4\,$\mu$m \\
+C\,II & $2p\ ^2P_{1/2,3/2}$   & 2 & [C\,II] 157.7\,$\mu$m \\
+N\,II & $2p^2\ ^3P_{0,1,2}$   & 3 & [N\,II] 205.3, 121.8\,$\mu$m \\
+O\,I  & $2p^4\ ^3P_{2,1,0}$   & 3 & [O\,I] 63.2, 145.5, 44.1\,$\mu$m \\
+\hline
+\end{tabular}
+\end{center}
+
+\noindent
+N\,I and O\,II have a single-level $^4S$ ground term; Mg\,I/II, Ca\,II
+and Na\,I have a single ground level; Fe\,I is built from permitted
+lines only; and Fe\,II is already density-dependent through its
+two-dimensional SE table (Section~\ref{sec:feii}).  The $^3P_2$--$^3P_0$
+channels of C\,I and N\,II have no CHIANTI transition probability
+(magnetic quadrupole, $A<10^{-12}\,\mathrm{s^{-1}}$) and enter as
+collisional couplings only.
+
+\paragraph{Limits.}  As $n_e,n_{\rm HI}\to0$ the SE populations collapse
+onto the ground level and Eq.~(\ref{eq:wfs}) reproduces the coronal
+within-term channel to the accuracy of the $\Upsilon$ fits (1.3--4.4\%).
+As either density $\to\infty$ it saturates at the exact multilevel LTE
+emission $\sum_u f_u^{\rm Boltz} A_{ul} h\nu_{ul}$, verified to
+$10^{-14}$ relative.  The earlier two-level treatment of [O\,I]
+63\,$\mu$m and [C\,II] 158\,$\mu$m multiplied a two-level solution ---
+already normalized to the \emph{two-level} partition function --- by the
+ground-term Boltzmann fraction of its lower level; that double
+normalization left its LTE limit low by a factor
+$1+(g_u/g_l)e^{-E/k_BT}$, i.e.\ $2.7\times$ for [C\,II] 158\,$\mu$m at
+the 530\,K base of HD\,189733\,b.  $\Lambda_{\rm rem}$ keeps the
+ground-term Boltzmann weighting of its lower levels, the convention of
+the CHIANTI curves it is fitted to; that is the right weighting wherever
+it matters, and where it is not the ground-only and Boltzmann weightings
+agree to 1.4--1.9\% anyway, because $\Upsilon_{lu}\propto g_l$ for the
+LS-coupled transitions that leave the ground term.
+
+\paragraph{Line trapping.}  $\beta_{ul}$ is the escape probability of
+that FS line and enters as $A_{ul}\to\beta_{ul}A_{ul}$ \emph{inside}
+Eq.~(\ref{eq:se}), not as a factor on Eq.~(\ref{eq:wfs}).  That is the
+physically correct place: in the subcritical limit the cooling is set by
+the collisional excitation rate and is independent of $\beta$, while in
+the saturated limit the escaping flux is proportional to $\beta$.  The
+opacity of each line uses the same atomic data and the ground-term
+Boltzmann lower-level population.  $\Lambda_{\rm rem}$ is left optically
+thin.
+
+\paragraph{Atomic data.}  Levels, $A$ values and the electron collision
+strengths are CHIANTI v11.0.2 (\texttt{elvlc} / \texttt{wgfa} /
+\texttt{scups}); $\log_{10}\Upsilon$ is a quartic in
+$x=\log_{10}(T/10^4)$ fitted over $10^3$--$10^5$\,K (max error 4.8\%,
+against 8.8\% for a cubic on the C\,I $^3P_0$--$^3P_2$ strength) and
+$T$ is clamped to that range.  The electron de-excitation rate is
+$k_e = 8.629\times10^{-6}\,\Upsilon(T)/(g_u\sqrt T)$.  The H-atom
+de-excitation rates are taken from quantum scattering calculations,
+$\log_{10}k_{\rm H}$ a quadratic in $\log_{10}(T/10^3)$ with $T$ clamped
+to the tabulated range (max error 4.9\%):
+
+\begin{center}
+\begin{tabular}{lll}
+\hline
+ion & source & range \\
+\hline
+C\,I, N\,II & Yan \& Babb (2023), MNRAS 518, 6004, Tables 1--2 & 10--$10^4$\,K \\
+O\,I  & Abrahamsson, Krems \& Dalgarno (2007), ApJ 654, 1171 & 20--1000\,K \\
+C\,II & Barinovs et al.\ (2005), ApJ 620, 537 & 20--2000\,K \\
+\hline
+\end{tabular}
+\end{center}
+
+\noindent
+These replace the values of the legacy \texttt{use\_2lev\_cool} branch
+(a constant $4.0\times10^{-11}$ for [C\,II] 158\,$\mu$m$+$H and
+$4.2\times10^{-11}(T/100)^{0.67}$ for [O\,I] 63\,$\mu$m$+$H, both
+flagged approximate), which are 5--20$\times$ below them.  H collisions
+on the \emph{ion} N\,II are included on the same footing as on the
+neutrals; they are not what saturates N\,II at the base
+($n_{\rm crit,e}$ of [N\,II] 205\,$\mu$m is ${\sim}10^2\,\mathrm{cm^{-3}}$),
+they matter only in gas thin enough for the electron channel alone to be
+subcritical.  \texttt{cooling\_data/fit\_fs\_saturation.py} is the
+auditable source and prints every coefficient.
+
+\begin{table}[htbp]
+\centering
+\caption{Ground-term fine-structure cooling at the converged base cell of
+each run: the coronal within-term channel as the CHIANTI fits carry it,
+against the exact SE value at the local $(n_e,n_{\rm HI})$, both
+volumetric [erg\,cm$^{-3}$\,s$^{-1}$], $\beta=1$.  The last column is the
+SE value as a fraction of the local heating rate.}
+\label{tab:fsover}
+\begin{tabular}{llrrrr}
+\hline
+run & ion & coronal & SE (saturated) & decades & SE/heat \\
+\hline
+HD\,189733\,b   & C\,I  & $1.61\times10^{-4}$ & $2.00\times10^{-11}$ & 6.9 & $5.9\times10^{-6}$\\
+$T=528$\,K      & C\,II & $1.14\times10^{-4}$ & $2.09\times10^{-12}$ & 7.7 & $6.2\times10^{-7}$\\
+                & N\,II & $7.47\times10^{-10}$& $5.97\times10^{-17}$ & 7.1 & $1.8\times10^{-11}$\\
+                & O\,I  & $1.47\times10^{-4}$ & $3.08\times10^{-8}$  & 3.7 & $9.1\times10^{-3}$\\
+\hline
+HD\,209458\,b   & C\,I  & $7.77\times10^{-5}$ & $5.76\times10^{-11}$ & 6.1 & $3.0\times10^{-4}$\\
+$T=519$\,K      & C\,II & $2.50\times10^{-12}$& $2.56\times10^{-19}$ & 7.0 & $1.3\times10^{-12}$\\
+                & N\,II & $1.28\times10^{-15}$& $5.72\times10^{-22}$ & 6.3 & $3.0\times10^{-15}$\\
+                & O\,I  & $7.42\times10^{-5}$ & $8.77\times10^{-8}$  & 2.9 & $4.5\times10^{-1}$\\
+\hline
+WASP-52\,b      & C\,I  & $2.15\times10^{-5}$ & $1.94\times10^{-12}$ & 7.0 & $1.1\times10^{-6}$\\
+$T=794$\,K      & C\,II & $6.14\times10^{-5}$ & $2.43\times10^{-12}$ & 7.4 & $1.4\times10^{-6}$\\
+                & N\,II & $8.42\times10^{-10}$& $1.48\times10^{-16}$ & 6.8 & $8.2\times10^{-11}$\\
+                & O\,I  & $8.92\times10^{-6}$ & $3.40\times10^{-9}$  & 3.4 & $1.9\times10^{-3}$\\
+\hline
+WASP-121\,b     & C\,I  & $8.08\times10^{-6}$ & $4.48\times10^{-14}$ & 8.3 & $5.2\times10^{-9}$\\
+$T=2407$\,K     & C\,II & $8.19\times10^{-4}$ & $1.33\times10^{-11}$ & 7.8 & $1.6\times10^{-6}$\\
+                & N\,II & $1.14\times10^{-8}$ & $8.49\times10^{-16}$ & 7.1 & $9.9\times10^{-11}$\\
+                & O\,I  & $1.26\times10^{-5}$ & $1.20\times10^{-9}$  & 4.0 & $1.4\times10^{-4}$\\
+\hline
+\end{tabular}
+\end{table}
 
 \begin{figure}[htbp]
 \centering
 \includegraphics[width=0.95\textwidth]{figures/cool_fs_saturation.pdf}
-\caption{Effective C\,II (left) and O\,I (right) cooling coefficients
-with the fine-structure floor saturated, Eq.~(\ref{eq:fs}), for
-densities from the wind to the deep base, compared with the
-electron-only coronal curve.  The [C\,II] floor is suppressed by up to
-${\sim}4\times10^3$ at base densities; for O\,I the H-collision channel
-partly offsets the saturation in mostly neutral gas.}
+\caption{Effective C\,I, C\,II, N\,II and O\,I cooling coefficients with
+the ground term solved in statistical equilibrium, Eqs.~(\ref{eq:se})
+and (\ref{eq:wfs}), for densities from the wind to the deep base,
+compared with the electron-only coronal curve.  The low-temperature
+plateau of each coronal curve is the unsaturated fine-structure floor;
+it collapses by several decades once the ground term is allowed to
+thermalise.}
 \label{fig:fssat}
 \end{figure}
 
-The practical impact is large: on WASP-121b the \emph{unsaturated}
-CHIANTI floors had lowered the base temperature by ${\sim}1000$\,K and
-the mass-loss rate by 15\% ($\log\dot M$ 13.31${\to}$13.24); with
-Eq.~(\ref{eq:fs}) both effects disappear ($\log\dot M = 13.31$;
-saturated vs.\ AIOLOS profiles differ by at most 111\,K, 1.7\%).  This
-appears to indicate that the small constant floors of the AIOLOS fits,
-Eq.~(\ref{eq:aiolos}), effectively encode the saturated regime, which
-is likely why they performed well in practice.  The genuinely new
-physics of the CHIANTI mode is then the nitrogen cooling, the corrected
-O\,I/O\,II curves, and the H-collision fine-structure channel.
+\paragraph{Impact.}  The effect is confined to the base but is not
+small there.  On HD\,189733\,b the C\,I coronal floor had been the
+dominant coolant of the whole layer below $r\simeq1.01\,R_p$
+($3.3\times10^{-6}$ against a local heating of $3.4\times10^{-6}$
+erg\,cm$^{-3}$\,s$^{-1}$); with the ground term saturated it falls to
+$10^{-11}$, the base warms from 528 to 613\,K, the density at
+$1.01\,R_p$ rises by a factor 3.3 and the mass-loss rate at $r=2\,R_p$
+increases by 21\%, from $2.35\times10^{9}$ to
+$2.85\times10^{9}\,\mathrm{g\,s^{-1}}$.  Outside $r\simeq1.1\,R_p$ the
+temperature profile moves by less than 4\%.  The same change also
+removes the sensitivity of the base to the coronal-fit cutoff width
+$w$: see \texttt{docs/coronal\_cutoff\_width.md}.
 
 \section{Free--free and the remaining tabulated pieces}
 
@@ -311,9 +426,10 @@ carries no runtime cost concern.
 exponential parts for C\,II/O\,I and is not reached by the CHIANTI
 formulas; it is superseded by Sect.~\ref{sec:fs} and kept only for
 comparison (default off).
-(ii) The H-collision rates in Eq.~(\ref{eq:fs}) are order-of-magnitude
-literature values, not fits to a specific calculation
-(\texttt{!To Be Checked} in the source).
+(ii) The H-collision rates of Sect.~\ref{sec:fs} are fits to published
+quantum scattering calculations, but O\,I is tabulated only to 1000\,K
+and C\,II to 2000\,K; above those the rate is held at its endpoint value
+rather than extrapolated.
 (iii) All formulas are calibrated over $10^3$--$10^5$\,K; outside this
 range they extrapolate smoothly but are unvalidated.
 

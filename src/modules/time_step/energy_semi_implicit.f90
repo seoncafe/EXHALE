@@ -27,8 +27,10 @@ contains
       real*8, dimension(1-Ng:N+Ng) :: nhi, nhii, nhei, nheii, nheiii, nheiTR
       ! Metal ion densities (canonical species_table order)
       real*8, dimension(1-Ng:N+Ng,n_mion) :: nm
-      ! Molecular densities (adimensional): H2, H2+, H3+, HeH+
-      real*8, dimension(1-Ng:N+Ng,4) :: nmol_l
+      ! Molecular densities: H2, H2+, H3+, HeH+ -- adimensional (nmol_l, the
+      ! units calc_ne is called with here) and cgs (nmol_dim, the units
+      ! eval_cool takes alongside nhi..nm)
+      real*8, dimension(1-Ng:N+Ng,4) :: nmol_l, nmol_dim
       real*8, dimension(1-Ng:N+Ng) :: rchiiB, rcheiiB, rcheiiiB
       real*8, dimension(1-Ng:N+Ng) :: a_ion_HI, a_ion_HeI, a_ion_HeII
       ! Metal rates for each ion returned by eval_cool but unused here
@@ -85,6 +87,7 @@ contains
       nmol_l(:,2) = rho*f_sp(:,isp_H2p)
       nmol_l(:,3) = rho*f_sp(:,isp_H3p)
       nmol_l(:,4) = rho*f_sp(:,isp_HeHp)
+      nmol_dim    = nmol_l*n0
 
       ! Compute adimensional total and electron densities for T calculation
       ! (nm/n0 = adimensional metal densities; adds the metal electrons and
@@ -113,11 +116,13 @@ contains
       ! nheiTR adds the He 2^3S channels (collisional ionization, 10830 A
       ! excitation, 2^3S -> 2^1S/2^1P conversion) to the cooling that acts on
       ! the temperature update; the array is zero when the triplet is off.
+      ! nmol_dim gives eval_cool the same electron density the equilibrium
+      ! solver uses (molecular ions included); zero for an atomic run.
       T_K = T_trial * T0
       call eval_cool(T_K, nhi, nhii, nhei, nheii, nheiii, nm, &
                      rchiiB, rcheiiB, rcheiiiB, rec_m, &
                      a_ion_HI, a_ion_HeI, a_ion_HeII, aion_m, &
-                     cool_dim, nheiTR = nheiTR)
+                     cool_dim, nheiTR = nheiTR, nmol = nmol_dim)
       cool_trial = cool_dim / q0
 
       ! 2. Evaluate cooling at perturbed temperature to get derivative
@@ -127,7 +132,7 @@ contains
       call eval_cool(T_K, nhi, nhii, nhei, nheii, nheiii, nm, &
                      rchiiB, rcheiiB, rcheiiiB, rec_m, &
                      a_ion_HI, a_ion_HeI, a_ion_HeII, aion_m, &
-                     cool_dim, nheiTR = nheiTR)
+                     cool_dim, nheiTR = nheiTR, nmol = nmol_dim)
       cool_perturbed = cool_dim / q0
 
       dC_dT = (cool_perturbed - cool_trial) / delta_T
@@ -166,7 +171,7 @@ contains
             call eval_cool(T_K, nhi, nhii, nhei, nheii, nheiii, nm, &
                            rchiiB, rcheiiB, rcheiiiB, rec_m, &
                            a_ion_HI, a_ion_HeI, a_ion_HeII, aion_m, &
-                           cool_dim, nheiTR = nheiTR)
+                           cool_dim, nheiTR = nheiTR, nmol = nmol_dim)
             cool_trial = cool_dim / q0
          end if
       end do

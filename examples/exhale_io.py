@@ -40,8 +40,12 @@ METAL_IONS = [
 ION_NAMES = HE_IONS + METAL_IONS
 
 # Cooling_breakdown.txt channels: cols 1-4 are r, T, ne, cool_total; then
-# 4 H/He channels, then the 27 metal-ion channels (same order as METAL_IONS).
-COOL_HHE_CHANNELS = ['rec', 'coll_ion', 'coll_exc', 'brems']
+# 6 H/He channels, then the 27 metal-ion channels (same order as METAL_IONS).
+# The collisional-excitation channel is written split by absorber (H I, He I,
+# He II), so there are six fixed channels, not four; see the 'col5 reco ...'
+# header line the writer emits.
+COOL_HHE_CHANNELS = ['rec', 'coll_ion', 'coex_HI', 'coex_HeI', 'coex_HeII',
+                     'brems']
 
 
 class Run:

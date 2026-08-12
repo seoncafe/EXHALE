@@ -25,23 +25,27 @@
    !   P(r)     = alpha_B ne nhii + C_1s2p ne nhi              Ly-alpha production
    !              (recombination cascade, 1 per case-B recomb; electron-impact
    !               1s->2p -- the two internal sources used by Huang)
-   !   J_int(r) = (2 h nu^3/c^2)(g1s/g2p) P / (A_2p1s beta nhi)
-   !              (trapped source-function buildup: n2p = P/(A beta), Eq. 11)
-   !   J_star(r)= xi F_Lya_star/(4 pi Dnu_D) exp(-tau)         stellar beam (dayside
-   !              dilution xi as for ground-state EUV; attenuated to the photosphere)
+   !   D(r)     = ne q_2p1s + Gamma_2 + ne C_2p2s P_2gamma     2p destruction
+   !              (the channels that remove the atom from 2p without putting a
+   !               photon into the line; hydrogen_n2_rates.f90)
+   !   J_int(r) = (2 h nu^3/c^2)(g1s/g2p) P / ((A_2p1s beta + D) nhi)
+   !              (trapped source-function buildup: n2p = P/(A beta + D), Eq. 11
+   !               with the destruction channels retained in the denominator)
+   !   J_star(r)= xi F_Lya_star/(4 pi Dnu_star) T_s E          stellar beam (dayside
+   !              dilution xi as for ground-state EUV; Dnu_star is the BROAD
+   !              stellar line width, T_s = erfc(x1/(sqrt(2) Xs)) the fraction of
+   !              the stellar profile whose wings reach depth tau, and
+   !              E = 1 + (lya_star_boost-1)(1-beta) T_s the bounded trapping
+   !              buildup of the scattered beam)
    !   J_lya = J_int + J_star.
 
    use global_parameters
+   use hydrogen_n2_rates, only: lA_lya, nu_lya, A_2p1s, g1s, g2p, C_lya,     &
+                                c1s2p_rate, alpha_B_hydrogen,                &
+                                n2p_destruction_rate
 
    implicit none
 
-   ! ----- Ly-alpha atomic data (cgs; same values as excited_hydrogen.f90) ----- !
-   real*8, parameter :: lA_lya  = 1215.6701d-8       ! Ly-alpha wavelength [cm]
-   real*8, parameter :: nu_lya  = c_light/lA_lya     ! Ly-alpha frequency [s^-1]
-   real*8, parameter :: A_2p1s  = 6.3d8              ! A(2p->1s) [s^-1]
-   real*8, parameter :: g1s_l   = 2.0d0, g2p_l = 6.0d0
-   real*8, parameter :: f_lya   = 0.4162d0           ! Ly-alpha oscillator strength
-   real*8, parameter :: C_lya   = 1.49736d-2*f_lya   ! sqrt(pi) e^2/(m_e c) f [cm^2 Hz]
    real*8, parameter :: beta_c  = 0.7511255d0        ! pi^(-1/4), wing-escape prefactor
 
    ! Diagnostic split of J_lya into internal (recomb+collisional) and stellar
@@ -49,6 +53,35 @@
    real*8, dimension(1-Ng:N+Ng) :: jint_arr = 0.0d0, jstar_arr = 0.0d0
 
    contains
+
+   ! --------------------------------------------------------------- !
+
+   subroutine lya_line_center_optical_depth(T_K, nhi, tau)
+   ! Top-down Ly-alpha line-center optical depth tau(r): the Doppler-core
+   ! opacity nhi*C_lya/Dnu_D integrated inward from the outer boundary by
+   ! trapezoid. T_K [K] and nhi [cm^-3] are cell-by-cell physical arrays.
+   ! Used by every jlya_mode -- as the attenuation of the parameterized field
+   ! (mode 0), as the escape-probability input (mode 2), and as the tau_Lya
+   ! diagnostic column in all three.
+   real*8, dimension(1-Ng:N+Ng), intent(in)  :: T_K, nhi
+   real*8, dimension(1-Ng:N+Ng), intent(out) :: tau
+
+   integer :: j
+   real*8, dimension(1-Ng:N+Ng) :: DnuD
+
+   do j = 1-Ng, N+Ng
+      DnuD(j) = nu_lya*sqrt(2.0d0*kb_erg*max(T_K(j),1.0d0)/mu)/c_light
+   enddo
+
+   tau(N+Ng) = 0.0d0
+   do j = N+Ng-1, 1-Ng, -1
+      tau(j) = tau(j+1)                                                     &
+             + 0.5d0*( nhi(j)  *C_lya/max(DnuD(j),  1.0d-30)                &
+                     + nhi(j+1)*C_lya/max(DnuD(j+1),1.0d-30) )              &
+             *(r(j+1) - r(j))*R0
+   enddo
+
+   end subroutine lya_line_center_optical_depth
 
    ! --------------------------------------------------------------- !
 
@@ -62,8 +95,8 @@
 
    integer :: j, jm, jp
    real*8, dimension(1-Ng:N+Ng) :: DnuD
-   real*8 :: avoigt, beta_esc, Tl, t4, aB, C1s2p, Prec, Pcol, Jint, Jstar, Jpref, xi
-   real*8 :: vth, Xs, x1, Tstar, Dnu_star
+   real*8 :: avoigt, beta_esc, Tl, aB, C1s2p, Prec, Pcol, Jint, Jstar, Jpref, xi
+   real*8 :: vth, Xs, x1, Tstar, Dnu_star, D2p
    real*8 :: C_sob, dvdr, tau_sob, beta_sob, beta_tot
 
    ! Doppler width (needed for both tau and the source function).
@@ -72,13 +105,7 @@
    enddo
 
    ! Top-down line-center optical depth to the outer surface.
-   tau(N+Ng) = 0.0d0
-   do j = N+Ng-1, 1-Ng, -1
-      tau(j) = tau(j+1)                                                     &
-             + 0.5d0*( nhi(j)  *C_lya/max(DnuD(j),  1.0d-30)                &
-                     + nhi(j+1)*C_lya/max(DnuD(j+1),1.0d-30) )             &
-             *(r(j+1) - r(j))*R0
-   enddo
+   call lya_line_center_optical_depth(T_K, nhi, tau)
 
    ! Dayside dilution for the stellar beam (same factor as ground-state EUV).
    if      (index(appx_mth,'Rate/4') .gt. 0) then
@@ -113,19 +140,24 @@
       beta_tot = 1.0d0 - (1.0d0 - beta_esc)*(1.0d0 - beta_sob)
 
       Tl    = max(T_K(j), 1.0d0)
-      t4    = Tl/1.0d4
-      aB    = 2.54d-13*t4**(-0.8163d0 - 0.0208d0*log(t4))      ! case-B [cm^3/s]
-      C1s2p = 1.71d-8*(1.0d0/t4)**0.077d0*exp(-118400.0d0/Tl)  ! 1s->2p [cm^3/s]
+      aB    = alpha_B_hydrogen(Tl)                             ! case-B [cm^3/s]
+      C1s2p = c1s2p_rate(Tl)                                   ! 1s->2p [cm^3/s]
       Prec  = aB*ne(j)*nhii(j)
       Pcol  = C1s2p*ne(j)*nhi(j)
 
       ! Trapped internal field, escape-probability closure Jbar = S(1-beta):
-      ! S = (2hv3/c2)(g1s/g2p) n2p/n1s with the trapped pile-up n2p = P/(A beta).
+      ! S = (2hv3/c2)(g1s/g2p) n2p/n1s with the trapped pile-up
+      ! n2p = P/(A beta + D). D collects the channels that empty 2p without
+      ! returning a photon to the line -- collisional de-excitation, n=2
+      ! photoionization, and l-mixing followed by two-photon decay. Where the
+      ! line is thick enough that A beta drops to D (the base), leaving D out
+      ! over-estimates n2p and hence the pumping field.
       ! The (1-beta) factor makes Jbar -> S in the thick limit and -> 0 when thin
       ! (beta -> 1), instead of the source function S diverging as n1s -> 0 in the
       ! ionized outer wind (which spuriously raised Jbar outward).
-      Jint  = Jpref*(g1s_l/g2p_l)*(Prec + Pcol)*(1.0d0 - beta_tot)         &
-            /(A_2p1s*max(beta_tot,1.0d-30)*max(nhi(j),1.0d-30))
+      D2p   = n2p_destruction_rate(Tl, ne(j), gamma2_bal, gamma2_bal)
+      Jint  = Jpref*(g1s/g2p)*(Prec + Pcol)*(1.0d0 - beta_tot)             &
+            /(max(A_2p1s*beta_tot + D2p, 1.0d-30)*max(nhi(j),1.0d-30))
 
       ! Stellar beam: resonantly SCATTERED, not destroyed -- so it is not killed by
       ! exp(-tau); instead the broad stellar line penetrates through its wings and

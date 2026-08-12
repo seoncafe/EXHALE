@@ -232,8 +232,11 @@ the shortcut used for the six atomic species does **not** extend to `isp_H2`.
 
 `vulcan_to_base.py` also records `q_H2O`, `q_CO`, `q_CH4`, `q_CO2`, `q_NH3`,
 `q_HCN`. These are not actionable yet: EXHALE's metal set is atomic
-(C/N/O/Mg/Si/Ca/Na/K/S/Fe) and `input_read` refuses `Molecular chemistry`
-together with trace metals. Neither VULCAN nor Photochem releases atomic metals
+(C/N/O/Mg/Si/Ca/Na/K/S/Fe), and its own molecular network is H2/H2+/H3+/HeH+,
+so a VULCAN molecule has nowhere to land. (The parser also refused
+`Molecular chemistry` together with trace metals when this was written; since
+2026-08-13 the two are solved in one system, but that changes nothing here.)
+Neither VULCAN nor Photochem releases atomic metals
 at all, so `metals.inp` stays user-supplied regardless — that part of the
 Lavvas model has no public analogue. Leave these as comments.
 
@@ -683,9 +686,12 @@ correct pressure scale height and sound speed -- necessarily gives the wrong
 base *temperature*, because the model's mean molecular weight is that of an
 atomic gas. `vulcan_to_base.py` writes the matching warning into every
 `base.inp` it produces ("molecular base persists photochemically -- Tier-2 ...
-is required"). Tier-2 is the consistent resolution and is not reachable here:
-`input_read.f90:714-718` rejects `Molecular chemistry` together with a
-`metals.inp`, and the A/B carries metals.
+is required"). Tier-2 is the consistent resolution, and it was not reachable
+here until 2026-08-13: the parser rejected `Molecular chemistry` together with
+a `metals.inp`, and the A/B carries metals. That restriction is gone --- the
+metal stages are now solved in the same system as the molecular network
+(`System_HeH_mol_metals`) --- so the deep handoff can be run in the consistent
+configuration; see the smoke test recorded in `Update_EXHALE.md`.
 
 **The pair therefore runs at p_base = 1e-4 bar**, the deepest level that
 integrates with the shallow pair's numerics unchanged (cold isothermal IC, same
@@ -835,9 +841,10 @@ on this planet as things stand. What the evidence supports is narrower:
    molecular-base EOS correction outside its usable range (base temperature
    depressed to 0.55 x T_base, lambda = 133, NaN at 1e-3 bar).
 3. The consistent configuration is Tier-2 molecular chemistry at a deep
-   handoff, which `input_read.f90:714-718` currently forbids together with
-   metals. Lifting that restriction is the prerequisite for a quantitative deep
-   handoff on a molecular-base planet.
+   handoff, which the parser forbade together with metals until 2026-08-13.
+   That restriction has been lifted, so the quantitative deep handoff on a
+   molecular-base planet is now a matter of running it; the pair above was
+   built before the lift and still carries the 1e-4 bar level.
 
 ---
 

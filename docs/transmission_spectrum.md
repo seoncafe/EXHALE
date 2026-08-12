@@ -136,14 +136,17 @@ center in cgs. A different convention requires rescaling the constant.
   single diluted stellar blackbody (Balmer continuum) via `T_star` — an
   approximation to the true stellar near-UV spectrum. `T_star <= 0`
   reverts to the manual constants (default 0).
-- `n_e = n_HII + n_HeII + 2 n_HeIII` from EXHALE (Christie assume
-  `n_e = n_p`; difference is small).
+- `n_e = n_HII + n_HeII + 2 n_HeIII` (plus metal electrons) from EXHALE, while
+  the recombination cascade source is `alpha_2l n_e n_HII`. Christie et al. set
+  `n_e = n_p`; the two part company at the base, where helium and metals supply
+  the electrons and hydrogen is still neutral, which is why the two densities
+  are passed separately.
 - H-alpha uses the air wavelength 6562.8 Å and `f_23 = 0.64`; the line is
   Doppler-dominated (natural width negligible).
 
 ## Implementation notes
 
-- `n2_populations(T, n1s, ne, Jlya, G2s, G2p)` returns `(n2s, n2p, n2)`.
+- `n2_populations(T, n1s, nHII, ne, Jlya, G2s, G2p)` returns `(n2s, n2p, n2)`.
 - **Compatibility fix:** the `Ion_species.txt` reader now uses
   `usecols=range(7)` (EXHALE's file has 16 columns including the
   trace metals); this is also correct for the old 13- and 7-column files.

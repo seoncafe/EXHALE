@@ -230,8 +230,10 @@
       ! ("Coronal cutoff width: <w>"; see coronal_excitation_cutoff in
       ! Cool_coeff.f90). The guard is exp(-x^2) with x = (T_floor/T - 1)/w, so
       ! w is a modeling choice, not a measured quantity: the temperature the
-      ! base settles at depends on it at the ~100 K level. Default 0.5.
-      real*8  :: coronal_cutoff_width = 0.5d0
+      ! base settles at depends on it at the ~100 K level. The measured
+      ! justified window is w = 0.08-0.13 (docs/coronal_cutoff_width.md);
+      ! 0.1 is the default.
+      real*8  :: coronal_cutoff_width = 0.1d0
       integer :: pp_metal_mode  = 1       ! Metal treatment in the advection
                                           !  post-process (post_process_adv):
                                           !  0 = metal-free (legacy: metals
@@ -665,9 +667,19 @@
       ! stellar T_eff is supplied in input.inp), so the default build is
       ! byte-identical to the result with excited-H off. See excited_hydrogen.f90.
       logical :: use_excited_H   = .false. ! master switch (set if T_star_eff>0)
-      logical :: incl_deexc_heat = .false. ! add collisional de-excitation
-                                           !  heating (overlaps the existing HI
-                                           !  coex cooling; off by default)
+      ! Collisional de-excitation of H(n=2) returns 10.2 eV to the electron
+      ! gas (Hdx_arr). It is NOT a double count of the H I collisional-
+      ! excitation cooling: the Cen (1992) coefficient in Cool_coeff.f90
+      ! (coex_rate_HI) is a one-way, Boltzmann-suppressed excitation rate --
+      ! the coronal limit, in which every excitation is assumed to escape --
+      ! and carries no density-dependent de-excitation term. Subtracting the
+      ! de-excitation is the correction to that limit. Most of the n=2
+      ! population is maintained by Ly-alpha pumping rather than by a
+      ! collision, so the term is best read as absorbed Ly-alpha thermalized
+      ! by a collision. It is the same size as the photoelectric heating the
+      ! code already applies unconditionally, so it is on by default; set
+      ! "Deexc heat: False" in input.inp for the one-way coronal ledger.
+      logical :: incl_deexc_heat = .true.  ! collisional de-excitation heating
       real*8  :: T_star_eff = 0.0d0        ! stellar effective temperature [K]
                                            !  (<=0 disables the Balmer continuum)
       real*8  :: R_star     = 0.0d0        ! stellar radius [cm] (Balmer dilution)

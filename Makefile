@@ -90,6 +90,7 @@ SRC := \
   src/modules/nonlinear_system_solver/System_HeH.f90 \
   src/modules/nonlinear_system_solver/System_HeH_metals.f90 \
   src/modules/nonlinear_system_solver/System_HeH_mol.f90 \
+  src/modules/nonlinear_system_solver/System_HeH_mol_metals.f90 \
   src/modules/nonlinear_system_solver/System_HeH_TR.f90 \
   src/modules/nonlinear_system_solver/System_HeH_TR_metals.f90 \
   src/modules/nonlinear_system_solver/System_implicit_adv_HeH.f90 \
@@ -106,6 +107,7 @@ SRC := \
   src/modules/radiation/Cool_coeff.f90 \
   src/modules/radiation/util_ion_eq.f90 \
   src/modules/radiation/ionization_equilibrium.f90 \
+  src/modules/radiation/hydrogen_n2_rates.f90 \
   src/modules/radiation/lya_rt.f90 \
   src/modules/radiation/excited_hydrogen.f90 \
   src/modules/nonlinear_system_solver/T_equation.f90 \

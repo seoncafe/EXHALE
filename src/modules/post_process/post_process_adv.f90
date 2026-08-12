@@ -8,9 +8,13 @@
 	! and metal (nm_in) densities; the molecular densities are not passed in and
 	! are not re-solved here, so calc_ne / calc_ntot below are called WITHOUT the
 	! nmol argument. In a molecular run this omits the neutral-H2 particle count
-	! and the molecular-ion electrons from the _adv n_tot/ne. This is acceptable
-	! where the _adv post-process is used (atomic/ionized escape flow); a
-	! molecular base needs a molecular-aware post-process instead.
+	! and the molecular-ion electrons from the _adv n_tot/ne, and nh = nhi+nhii
+	! counts only the free H nuclei. This is acceptable where the _adv
+	! post-process is used (atomic/ionized escape flow); a molecular base needs
+	! a molecular-aware post-process instead. Trace metals may now be solved
+	! together with the molecular network, and pp_metal_mode carries the metal
+	! stages here as usual -- but on that same molecule-free H/He background, so
+	! _adv metal profiles inside the molecular layer inherit the approximation.
 
 	use global_parameters
 	use ion_cell_state, only: ieq_cell, adv_cell, teq_cell
@@ -70,6 +74,7 @@
 	integer i,j,k
 	integer :: n_pp_reject       ! cell-by-cell T solves rejected as non-physical
 	integer :: Neq_adv,lwa_adv   ! advection system size (metal-independent)
+	integer :: Neq_mpp,lwa_mpp   ! metal re-solve system size (pp_metals=2)
 	 
 	real*8, dimension(1-Ng:N+Ng) ::  T_K,p_out,T_out     ! Dimensional temperature
 	real*8, dimension(1-Ng:N+Ng) ::  nh,nhe,ne,n_tot
@@ -94,9 +99,10 @@
    ! 1 -> frozen eq metals, 2 -> re-solved. nm_out is its dimensionless (n0)
    ! copy written to the _adv ion-species file.
    real*8, dimension(1-Ng:N+Ng,n_mion) ::  nm_w, nm_out
-   ! Line-center escape probabilities of [O I] 63um / [C II] 158um, frozen at
-   ! the profile the temperature solve starts from (see equation_T pp_beta_*).
-   real*8, dimension(1-Ng:N+Ng) ::  beta_OI63_pp, beta_CII158_pp
+   ! Line-center escape probabilities of the ground-term fine-structure
+   ! lines, frozen at the profile the temperature solve starts from (see
+   ! equation_T pp_beta_fs).
+   real*8, dimension(1-Ng:N+Ng,n_fsline) ::  beta_fs_pp
 
    ! Recombination coefficients
    real*8, dimension(1-Ng:N+Ng) ::  rchiiB,rcheiiB,rcheiiiB,rcheiTR
@@ -195,6 +201,16 @@
       Neq_adv = 3
    endif
    lwa_adv = (Neq_adv*(3*Neq_adv + 13))/2
+
+   ! Metal re-solve system size (pp_metals=2 below). ion_system_metals_pp
+   ! pins the three H/He rows and solves the metal stages from row 4, so the
+   ! system is 3 + 2*n_melem rows -- NOT the global N_eq, which is larger
+   ! whenever the equilibrium layout carries extra unknowns (the He 2^3S
+   ! metastable, or the molecular H2/H2+/H3+/HeH+ block). Passing N_eq there
+   ! leaves those trailing rows of fvec unwritten, i.e. hybrd1 iterating on
+   ! uninitialized residuals; the same reason lwa_adv exists above.
+   Neq_mpp = 3 + 2*n_melem
+   lwa_mpp = (Neq_mpp*(3*Neq_mpp + 13))/2
 
    !----------------------------------!
 	
@@ -304,6 +320,8 @@
 
    !---- Recombination rates ----!
 
+	! nmol is not passed: the _adv reconstruction is molecule-free, so
+	! eval_cool builds the atomic electron sum (module-header composition note).
 	call eval_cool(T_K,nhi,nhii,nhei,nheii,nheiii, nm_w,            &
 	  			   rchiiB,rcheiiB,rcheiiiB, rec_m_pp,             &
 				   a_ion_HI,a_ion_HeI,a_ion_HeII, aion_m_pp,          &
@@ -641,8 +659,8 @@
 				endif
 			enddo
 
-			call hybrd1(ion_system_metals_pp,N_eq,sys_x,sys_sol,   &
-			            tol,info,wa,lwa,params)
+			call hybrd1(ion_system_metals_pp,Neq_mpp,sys_x,sys_sol,   &
+			            tol,info,wa,lwa_mpp,params)
 
 			! Extract the re-solved stage split (element totals conserved).
 			do im = 1,n_melem
@@ -708,11 +726,10 @@
 	! electrons via calc_ne).
 	call calc_mmw(nh,nhe,ne,mmw,nm_w)
 
-	! Line trapping of the two ground-term fine-structure lines, from the
+	! Line trapping of the ground-term fine-structure lines, from the
 	! incoming profile, so the cell-by-cell energy solve balances the same
 	! metal cooling eval_cool reports.
-	call fine_structure_escape(T_K, nm_w(:,im_OI), nm_w(:,im_CII),        &
-	                           beta_OI63_pp, beta_CII158_pp)
+	call fine_structure_escape(T_K, nm_w, beta_fs_pp)
 
 	! Count cell-by-cell temperature solves rejected as non-physical (metal modes).
 	n_pp_reject = 0
@@ -759,8 +776,7 @@
 	 	! array (the 27-ion vector does not fit params). pp_metal_on gates
 	 	! whether T_equation adds the metal cooling/brem/n_e terms.
 	 	pp_nm_cell(:)  = nm_w(j,:)
-	 	pp_beta_OI63   = beta_OI63_pp(j)
-	 	pp_beta_CII158 = beta_CII158_pp(j)
+	 	pp_beta_fs(:)  = beta_fs_pp(j,:)
 
 	 	! Initial guess of solution
 		sys_x_T(1) = T_out(j)
@@ -825,8 +841,9 @@
 
    ! ---------------------------- !
       
-	!---- Update cooling rates ----!	
-	
+	!---- Update cooling rates ----!
+
+	! Molecule-free electron sum, as at the first eval_cool call above.
 	call eval_cool(T_K,nhi,nhii,nhei,nheii,nheiii, nm_w,            &
 	  			   dum_v1,dum_v2,dum_v3, rec_m_pp,                   &
 				   dum_v4,dum_v5,dum_v6, aion_m_pp,                      &

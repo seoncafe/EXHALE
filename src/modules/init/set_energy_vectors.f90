@@ -31,20 +31,22 @@
 	! Set the energy band of the spectrum
 	if (is_PL_sed) then
 
-		! Points below 13.6 eV. Two mutually exclusive sources need them:
-		!  - He triplet (HeI 2^3S), threshold 4.8 eV; or
-		!  - low-IP metals (e.g. Mg I, threshold 7.646 eV).
-		! HeITR + metals is unsupported, so at most one applies.
+		! Points below 13.6 eV. Two sources need them, and they can be
+		! active together (the merged triplet+metals systems):
+		!  - He triplet (HeI 2^3S), threshold 4.8 eV;
+		!  - low-IP metals (e.g. Mg I, threshold 7.646 eV; K I, 4.341 eV).
+		! The grid floor is the LOWEST threshold over whichever are active,
+		! as in the loaded-SED path (sed_read): stopping at the triplet edge
+		! would leave K I, whose threshold is below it, without ionizing
+		! photons and hold it spuriously neutral.
 		NlTR      = 0
 		e_sub_low = e_th_HI
 		if (thereis_HeITR) then
 			NlTR      = 20
 			e_sub_low = e_th_HeTR
-		else if (thereis_lowIP_metal) then
+		endif
+		if (thereis_lowIP_metal) then
 			NlTR      = 20
-			! Grid floor = lowest neutral-metal ionization threshold
-			! below the HI edge, over active elements. Reduces to
-			! e_th_MgI when Mg is the only sub-13.6 eV species present.
 			do j = 1,n_melem
 				if (melem_ab(j) .gt. 0.0d0 .and.                  &
 				    mion_ethr(melem_i0(j)) .lt. e_th_HI)          &

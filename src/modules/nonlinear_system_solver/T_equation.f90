@@ -7,7 +7,7 @@
 	use Cooling_Coefficients
 	use species_table, only : n_mion, mion_iscool, mion_name,           &
 	                          mion_z2, mion_elem, mion_stage, melem_Z,  &
-	                          im_FeII
+	                          im_CI, im_CII, im_NII, im_OI, im_FeII
 
 	implicit none
 
@@ -20,14 +20,14 @@
 	! the post-process temperature loop is serial.
 	real*8  :: pp_nm_cell(n_mion) = 0.0d0   ! current-cell metal densities [cm^-3]
 	logical :: pp_metal_on        = .false. ! add metal cooling/brem/ne in T_equation
-	! Line-center escape probabilities of [O I] 63um / [C II] 158um for the
-	! current cell, set alongside pp_nm_cell from the profile the post-process
-	! starts from. They are HELD FIXED while the root finder varies T, exactly
-	! as the metal densities are: the optical depth is a column over the whole
-	! atmosphere above the cell, so it is not a function of this cell's trial
-	! temperature alone. 1 = optically thin, the value used when metals are off.
-	real*8  :: pp_beta_OI63   = 1.0d0
-	real*8  :: pp_beta_CII158 = 1.0d0
+	! Line-center escape probabilities of the ground-term fine-structure
+	! lines for the current cell, set alongside pp_nm_cell from the profile
+	! the post-process starts from. They are HELD FIXED while the root finder
+	! varies T, exactly as the metal densities are: the optical depth is a
+	! column over the whole atmosphere above the cell, so it is not a function
+	! of this cell's trial temperature alone. 1 = optically thin, the value
+	! used when metals are off.
+	real*8  :: pp_beta_fs(n_fsline) = 1.0d0
 
 	contains
 	
@@ -137,8 +137,9 @@
 
    !-- Metal line cooling. Sum the same mion_iscool coolants eval_cool
    ! sums, using the scalar coefficient dispatcher so the converged T
-   ! balances the reported cooling. Trapping of [O I] 63um / [C II] 158um
-   ! enters through pp_beta_*, everything else is optically thin.
+   ! balances the reported cooling. Trapping of the ground-term
+   ! fine-structure lines enters through pp_beta_fs, everything else is
+   ! optically thin.
    cool_M = 0.0d0
    if (pp_metal_on) then
       do im = 1,n_mion
@@ -147,14 +148,30 @@
             ! density-dependent Fe II (matches eval_cool's c_metal override:
             ! the local ne selects the coronal->LTE-saturated coefficient)
             cool_M = cool_M + pp_nm_cell(im)*cool_FeII_ne_scalar(TT, ne)
+         else if (cno_chianti .and. im .eq. im_CI) then
+            ! saturated [C I] 609/370um ground term (matches eval_cool)
+            cool_M = cool_M + pp_nm_cell(im)                          &
+                              *cool_CI_ne_func(TT, ne, nhi,           &
+                                 pp_beta_fs(ifs_CI609),               &
+                                 pp_beta_fs(ifs_CI370))
          else if (cno_chianti .and. im .eq. im_CII) then
-            ! density-dependent [C II] 158um floor (matches eval_cool)
+            ! saturated [C II] 158um ground term (matches eval_cool)
             cool_M = cool_M + pp_nm_cell(im)                          &
-                              *cool_CII_ne_func(TT, ne, nhi, pp_beta_CII158)
+                              *cool_CII_ne_func(TT, ne, nhi,          &
+                                 pp_beta_fs(ifs_CII158))
+         else if (cno_chianti .and. im .eq. im_NII) then
+            ! saturated [N II] 205/122um ground term (matches eval_cool)
+            cool_M = cool_M + pp_nm_cell(im)                          &
+                              *cool_NII_ne_func(TT, ne, nhi,          &
+                                 pp_beta_fs(ifs_NII205),              &
+                                 pp_beta_fs(ifs_NII122))
          else if (cno_chianti .and. im .eq. im_OI) then
-            ! density-dependent [O I] 63um floor (matches eval_cool)
+            ! saturated [O I] 63/145/44um ground term (matches eval_cool)
             cool_M = cool_M + pp_nm_cell(im)                          &
-                              *cool_OI_ne_func(TT, ne, nhi, pp_beta_OI63)
+                              *cool_OI_ne_func(TT, ne, nhi,           &
+                                 pp_beta_fs(ifs_OI63),                &
+                                 pp_beta_fs(ifs_OI145),               &
+                                 pp_beta_fs(ifs_OI44))
          else
             cool_M = cool_M + pp_nm_cell(im)                          &
                               *cool_coeff_by_ion_scalar(im, TT)

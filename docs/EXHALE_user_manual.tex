@@ -362,7 +362,10 @@ drops by one to two orders of magnitude; $\log_{10}\dot M$ moves by $+0.01$~dex
 cells 2--4; it is much reduced in the production state that
 \texttt{HD189733b/} has carried since, where the key is combined with the
 ionization-root validation ($T_{\rm ghost}/T_1=529.4/529.6$\,K, cells 1--12
-amplitude $1.9\times10^{-3}$). Details and the full window sweep:
+amplitude $1.9\times10^{-3}$). With the later cooling and H($n{=}2$)
+corrections that folder now converges at a 551\,K base and
+$\log_{10}\dot M = 9.14$, the value \texttt{paper/} carries. Details and the
+full window sweep:
 \texttt{docs/hd189\_base\_checkerboard.md}.
 
 \subsection{The steady-state Newton solver (\texttt{Solver: Newton})}
@@ -699,13 +702,18 @@ defaults restore the standard behavior).}\label{tab:inp-opt}\\
   the cap is reached. Lower it to bound an exploratory run, raise it for a
   high-gravity case whose base time step makes $10^{6}$ steps too short
   (\S\ref{sec:convctl}). \\
-\texttt{Coronal cutoff width:} & real (def.\ 0.5) & Roll-off width $w$ of the
+\texttt{Coronal cutoff width:} & real (def.\ 0.1) & Roll-off width $w$ of the
   coronal-excitation guard below the $10^{3}$\,K CHIANTI fit floor: the coronal
   part of every metal-line coefficient is multiplied by $\exp(-x^2)$ with
   $x=(T_{\rm floor}/T-1)/w$, so smaller $w$ cuts the extrapolated coronal
-  cooling off more sharply. It is a modeling choice, not a measured quantity,
-  and the temperature the base settles at depends on it at the $\sim$100\,K
-  level (\S\ref{sec:data}). \\
+  cooling off more sharply. Since the ground-term fine-structure floors were
+  solved in statistical equilibrium (\S\ref{sec:data}) the results no longer
+  depend on $w$: the base-cell balance temperature of all four paper planets is
+  identical to every digit printed over $w = 0.02$--$1.2$, against a
+  500--650\,K spread before. The default is kept at $0.1$, and the guard is
+  kept because extrapolating a fit below its fitted range is the wrong thing to
+  do, not as a tuning knob
+  (\texttt{docs/coronal\_cutoff\_width.md}, section~7). \\
 \texttt{Stellar Teff [K]:} & real (K) & Stellar $T_{\rm eff}$ for the
   diluted-blackbody Balmer continuum that photoionizes/heats H($n{=}2$). Enables
   the excited-H model when both this \emph{and} \texttt{Stellar radius} are $>0$. \\
@@ -721,8 +729,13 @@ defaults restore the standard behavior).}\label{tab:inp-opt}\\
   half-width; controls how deep the trapped stellar beam penetrates (default 70). \\
 \texttt{Lya stellar boost [-]:} & real & Bounded buildup cap for the trapped
   stellar Ly$\alpha$ beam (default 5). \\
-\texttt{Deexc heat:} & \texttt{True} & Add collisional de-excitation heating of
-  H($n{=}2$) to the energy budget. \\
+\texttt{Deexc heat:} & logical (def.\ \texttt{True}) & Collisional de-excitation
+  of H($n{=}2$) returns $10.2\,$eV to the electrons. It is not a double count of
+  the H\,\textsc{i} collisional-excitation cooling, which is the one-way coronal
+  rate of Cen (1992) with no de-excitation term in it; most of the $n{=}2$
+  population is maintained by Ly$\alpha$ pumping, so the term is absorbed
+  Ly$\alpha$ thermalized by a collision. Active only with the excited-H model;
+  \texttt{False} reverts to the one-way ledger. \\
 \texttt{Transonic IC:} & \texttt{True} & Use a transonic isothermal-wind initial
   condition (solved from the potential via the Bernoulli integral) instead of the
   hydrostatic IC; needed for deep-RLOF bases that do not launch from rest.
@@ -968,9 +981,10 @@ the predicted metal lines. How far the spectrum reaches depends on the SED type
   No extra input is needed --- but the FUV/NUV flux that ionizes the metals is
   just the EUV slope extended downward, which real stars do \emph{not} follow
   (their flux rises steeply into the NUV). Treat power-law metal ionization as
-  indicative; load a real SED for quantitative metal work. \emph{Caveat:} the
-  He\,$2\,^3$S-triplet sub-grid and the metal sub-grid are mutually exclusive ---
-  a single power-law run cannot carry both.
+  indicative; load a real SED for quantitative metal work. When the
+  He\,$2\,^3$S triplet and low-IP metals are active together the sub-grid
+  starts at the lowest threshold of either (4.80\,eV for the triplet,
+  4.341\,eV for K\,I), so one power-law run carries both.
 \item[\textmd{Loaded SED (\texttt{Load}, \texttt{Spectrum file:}).}]
   The file's own energy/wavelength grid \emph{is} the radiative grid (read
   verbatim, no extrapolation). The SED file must therefore \textbf{extend to at
@@ -1078,8 +1092,12 @@ Koskinen et al.\ 2022 reaction network), the H$_2$ photoionization opacity and
 heating (Yan et al.\ 1998 cross section), and the optically-thin H$_3^+$
 infrared cooling (Miller et al.\ 2013 with their non-LTE factor). The output
 \texttt{Ion\_species*.txt} gains four columns (\texttt{H2 H2p H3p HeHp}).
-Requires He; v1 excludes trace metals and \texttt{He\_diffusion} (the parser
-refuses the combinations). Caveats: local \emph{equilibrium} chemistry only (no
+Requires He; \texttt{He\_diffusion} is refused by the parser. A
+\texttt{metals.inp} may be present: the trace metals are then solved in the
+same system as the molecular network (\texttt{System\_HeH\_mol\_metals}),
+because the two blocks share the free electron density and the metals are the
+dominant electron donors in the shielded molecular base. Caveats: local
+\emph{equilibrium} chemistry only (no
 molecular advection), no Lyman--Werner photodissociation, $\gamma=5/3$
 retained. On hot Jupiters the result is a thin molecular base under a sharp
 H$_2\to$H front with an atomic wind above --- the atomic assumption becomes a
@@ -1643,9 +1661,10 @@ below quantify the effect of the first two.
 For every solver/physics combination there is a ready-to-run folder under
 \texttt{examples/} (paths relative to the \texttt{EXHALE} root). Folders
 \texttt{01}--\texttt{11} are the \emph{same} planet (HD189733b) so that the
-effect of each option can be isolated; \texttt{12}, \texttt{14} and \texttt{15}
-use HD209458b (where the Wind-AE warm start, diffusion and molecular-chemistry
-options are validated), and \texttt{13} spans four planets. Each folder is
+effect of each option can be isolated; \texttt{12} and
+\texttt{14}--\texttt{16} use HD209458b (where the Wind-AE warm start,
+diffusion and molecular chemistry, with and without metals, are validated),
+and \texttt{13} spans four planets. Each folder is
 self-contained: \texttt{cd} into it and run the repo-root binary
 (\texttt{../../EXHALE.x}); outputs land in the folder's own \texttt{output/}.
 The ``Added / changed lines'' column of Table~\ref{tab:exinputs} is relative
@@ -1663,13 +1682,30 @@ time-integration of HD189733b is limited by a separate base-breathing
 instability (\S\ref{sec:windae}). \texttt{12\_windae\_ic\_hd209} is the
 seed-adjacent HD209458b case. \texttt{14\_diffusion} and \texttt{15\_molecular}
 turn on the He/metal diffusive separation (\S\ref{sec:hediff}) and the full
-molecular network (\S\ref{sec:loweratm}) respectively, on HD209458b.
+molecular network (\S\ref{sec:loweratm}) respectively, on HD209458b, and
+\texttt{16\_molecular\_metals} adds a \texttt{metals.inp} to the latter.
 
-\begin{table}[htbp]\centering\small
-\begin{tabular}{@{}lp{4.6cm}p{5.6cm}@{}}
+{\small
+\begin{longtable}{@{}lp{4.6cm}p{5.6cm}@{}}
+\caption{Ready-made example configurations under \texttt{examples/}
+(\texttt{01}--\texttt{11} are HD189733b; \texttt{12}, \texttt{14}--\texttt{16}
+are HD209458b; \texttt{13} spans four planets). The Wind-AE IC ramp
+converges for both planets; \texttt{11} additionally exercises the
+molecular-layer turn-off. Metals on/off is a runtime switch: any folder
+becomes metals-on by copying a \texttt{metals.inp} into it, molecular folders
+included --- that is what \texttt{16\_molecular\_metals} is.}
+\label{tab:exinputs}\\
 \toprule
 \texttt{examples/}\ldots & Demonstrates & Added / changed lines \\
 \midrule
+\endfirsthead
+\multicolumn{3}{l}{\small\itshape Table~\ref{tab:exinputs}, continued}\\
+\toprule
+\texttt{examples/}\ldots & Demonstrates & Added / changed lines \\
+\midrule
+\endhead
+\bottomrule
+\endfoot
 \texttt{01\_legacy\_marching} & classic ATES~v2 baseline: PLM marching,
   H/He only, Roche domain, $du$-based stop & (none --- baseline) \\
 \texttt{02\_two\_stage} & two-stage PLM$\to$WENO3 marching
@@ -1726,20 +1762,13 @@ molecular network (\S\ref{sec:loweratm}) respectively, on HD209458b.
   ionization equilibrium; a sharp H$_2\!\to$H front forms above a thin
   molecular base ($r\approx1.02\,R_p$), the wind above it essentially atomic &
   HD209458b params $+$ \texttt{Molecular chemistry: True} (no
-  \texttt{metals.inp}; mutually exclusive with metals and
-  \texttt{He\_diffusion}) \\
-\bottomrule
-\end{tabular}
-\caption{Ready-made example configurations under \texttt{examples/}
-(\texttt{01}--\texttt{11} are HD189733b; \texttt{12}, \texttt{14}, \texttt{15}
-are HD209458b; \texttt{13} spans four planets). The Wind-AE IC ramp
-converges for both planets; \texttt{11} additionally exercises the
-molecular-layer turn-off. Metals on/off is a runtime switch: any folder
-becomes metals-on by copying a \texttt{metals.inp} into it --- except
-\texttt{15\_molecular}, where molecular chemistry is mutually exclusive with
-the trace-metal solver.}
-\label{tab:exinputs}
-\end{table}
+  \texttt{metals.inp} here; \texttt{He\_diffusion} is still refused) \\
+\texttt{16\_molecular\_metals} & molecular chemistry \emph{and} trace metals
+  solved in one system (HD209458b): the H$_2$/H$_2^+$/H$_3^+$/HeH$^+$ network
+  and the metal ionization stages share the free electron density, which the
+  metals dominate in the shielded molecular base &
+  \texttt{15\_molecular} $+$ \texttt{metals.inp} (solar C/N/O) \\
+\end{longtable}}
 
 % ===================================================================== %
 \section{Comparison studies}\label{sec:compare}
@@ -1871,9 +1900,9 @@ recomb., coll.\ ion./exc., free--free & H, He & Hui \& Gnedin (1997) recomb.\ co
 metal line cooling \mbox{(analytic)} & C\,I/II, N\,I/II, O\,I/II & closed-form fits to CHIANTI v11.0.2 (default); legacy AIOLOS fits via \texttt{cno\_cool 0} (no N cooling) \\
 metal line cooling \mbox{(analytic)} & Mg\,I/II, Ca\,II\,H\&K, Na\,I\,D, Fe\,II coronal & closed-form fits to CHIANTI v11.0.2 (Burgess--Tully descaled; 1--3\% accuracy); Na\,I\,D via effective $\bar g\!\approx\!0.2$ \\
 metal line cooling \mbox{(tabulated)} & Fe\,I; Fe\,II\,$(T,n_e)$ & NIST $f$-values $+$ Van Regemorter; CHIANTI multilevel statistical equilibrium \\
-fine-structure (opt., \texttt{use\_2lev\_cool}) & [O\,I] etc. & Lique et al.\ (2017) / Draine (2011) \\
-line trapping in the two-level solution & [O\,I] 63\,\textmu m, [C\,II] 158\,\textmu m & line-center escape probability from the column above the cell, Hollenbach \& McKee (1979) / de Jong, Boland \& Dalgarno (1980) plane-parallel Doppler form renormalized to $\beta(0)=1$; applied as $A_{ul}\!\to\!\beta A_{ul}$ \emph{inside} the two-level solution. Other lines, including Mg\,II h\&k, are treated as optically thin \\
-validity floor of the coronal fits & all CHIANTI-derived coefficients & the coronal part is cut off smoothly below $10^{3}$\,K (the lower end of the fitted range), continuous in value and $dT$-slope and bit-identical above it; only the explicit two-level fine-structure terms survive below. The roll-off is $\exp(-x^2)$ with $x=(T_{\rm floor}/T-1)/w$ and $w=0.5$ by default, settable as \texttt{Coronal cutoff width:}; $w$ is a modeling choice, not a measured quantity, and the temperature the base settles at depends on it at the $\sim$100\,K level. Not applied to the legacy AIOLOS branch (\texttt{cno\_cool 0}) \\
+ground-term fine structure (statistical equilibrium) & C\,I $2p^2\,^3P$, C\,II $2p\,^2P$, N\,II $2p^2\,^3P$, O\,I $2p^4\,^3P$ & the split ground term is solved in exact statistical equilibrium at the local $(n_e, n_{\rm H\,I})$ instead of the low-density coronal limit, which overstates these lines by 2.9--8.3 decades at the base. Electron collision strengths from CHIANTI v11.0.2; H-atom rates from Yan \& Babb (2023) for C\,I/N\,II, Abrahamsson, Krems \& Dalgarno (2007) for O\,I, Barinovs et al.\ (2005) for C\,II. The coronal curve is kept only for the channels leaving the ground term. The complete set: the other coolants have a single ground level, are built from permitted lines (Fe\,I), or already use a statistical-equilibrium table (Fe\,II) \\
+line trapping & the eight ground-term fine-structure lines & line-center escape probability from the column above the cell, Hollenbach \& McKee (1979) / de Jong, Boland \& Dalgarno (1980) plane-parallel Doppler form renormalized to $\beta(0)=1$; applied as $A_{ul}\!\to\!\beta A_{ul}$ \emph{inside} the statistical-equilibrium solution, the only placement correct in both the low- and high-density limits. Other lines, including Mg\,II h\&k, are treated as optically thin \\
+validity floor of the coronal fits & all CHIANTI-derived coefficients & the coronal part is cut off smoothly below $10^{3}$\,K (the lower end of the fitted range), continuous in value and $dT$-slope and bit-identical above it; only the explicitly solved ground-term fine-structure terms survive below. The roll-off is $\exp(-x^2)$ with $x=(T_{\rm floor}/T-1)/w$ and $w=0.1$ by default, settable as \texttt{Coronal cutoff width:}. With the C/N/O ground-term fine-structure floors saturated no coronal cooling survives below the floor for the guard to remove, and the base-cell balance temperature of all four paper planets is identical over $w = 0.02$--$1.2$. Not applied to the legacy AIOLOS branch (\texttt{cno\_cool 0}) \\
 \midrule
 \multicolumn{3}{@{}l}{\textbf{Photoelectric heating}}\\[2pt]
 secondary ionization (def.\ on, \texttt{Secondary\_ionization}) & H\,I, He\,I & Shull \& van Steenberg (1985) $f_{\rm heat}(x)$, $f_{\rm ion}(x)$ fits; photoelectrons with $E_0>40\,$eV drive secondary H\,I / He\,I ionizations, heating scaled to $f_{\rm heat}$; the He\,$2^3$S photoelectron feeds the same heating and secondary-source budget \\

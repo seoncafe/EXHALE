@@ -83,7 +83,7 @@ try:
     c = aio.load_cooling(os.path.join(W, 'output', 'Cooling_breakdown.txt'))
     fig, axx = plt.subplots(figsize=(8, 5))
     axx.semilogy(c['r'], c['cool_total'], 'k-', lw=2, label='total')
-    show = ['coll_exc', 'rec', 'FeII', 'MgII', 'CII', 'OII', 'CaII']
+    show = ['coex_HI', 'rec', 'FeII', 'MgII', 'CII', 'OII', 'CaII']
     for nm in show:
         if nm in c['chan']:
             y = np.clip(c['chan'][nm], 1e-30, None)

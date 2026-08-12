@@ -3756,3 +3756,537 @@ the `n_e n_h` factor that `adv_implicit_H`, `adv_implicit_HeH_TR` and the
 equilibrium rows all carry, which also makes them dimensionally inconsistent
 with the photoionization rates they are added to. None of the four paper
 planets uses that path.
+
+---
+
+## 48. Ground-term fine-structure statistical equilibrium for C I, C II, N II and O I (2026-08-12)
+
+The CHIANTI C/N/O cooling fits carry the ground-term fine-structure (FS) lines
+in the optically thin, *low-density* limit. Their critical densities are of
+order `1e0-1e5 cm^-3`, decades below the base density of an irradiated
+atmosphere (`n_e ~ 1e9`, `n_HI ~ 1e14 cm^-3`), so at the base the coronal form
+overstates what those lines can radiate by 2.9-8.3 decades. Two of them
+(`[O I] 63 um`, `[C II] 158 um`) already had a two-level saturation; C I, N II
+and the `[O I] 145.5/44 um` channels did not, and C I was in consequence the
+dominant coolant of the whole base layer of HD 189733 b at a value comparable
+to the local heating rate.
+
+**What replaces it.** Every C/N/O coolant with a split ground term now has that
+term solved in exact statistical equilibrium at the local `(n_e, n_HI)`:
+
+```
+solve  sum_j f_j R_ji = f_i sum_j R_ij,   sum_i f_i = 1
+R_ul = C_ul + beta_ul A_ul,   R_lu = C_ul (g_u/g_l) exp(-E_ul/kT)
+C_ul = n_e k_e,ul(T) + n_HI k_H,ul(T)
+W_FS = sum_{u>l} f_u beta_ul A_ul k_B E_ul        [erg/s per ion]
+```
+
+and the coronal curve is refitted to keep only the channels that *leave* the
+ground term (`Lambda_rem`). The coefficient handed to the assembly is
+`Lambda_eff = W_FS/n_e + Lambda_rem`, so the `n_e n_ion` prefactor recovers the
+H-collision channel exactly. Treated: C I `2p2 3P` (609.1/370.4 um), C II
+`2p 2P` (157.7 um), N II `2p2 3P` (205.3/121.8 um), O I `2p4 3P`
+(63.2/145.5/44.1 um). That is the complete set -- N I and O II have a
+single-level `4S` ground term, Mg I/II, Ca II and Na I a single ground level,
+Fe I is built from permitted lines only, Fe II already uses a 2-D
+statistical-equilibrium table.
+
+Limits: `n_e, n_HI -> 0` collapses onto the ground level and reproduces the
+coronal within-term channel to the accuracy of the collision-strength fits
+(1.3-4.4%); high density saturates at the exact multilevel LTE emission
+(verified to `1e-14` relative). `beta_ul` enters inside the solution, not as a
+factor on the result, which is the only placement that is right in both limits.
+All eight lines with a transition probability now get their own line-center
+escape probability from the outward column; previously only two did.
+
+**Two defects fixed on the way.** (i) The two-level form multiplied a solution
+already normalized to the two-level partition function by the ground-term
+Boltzmann fraction of its lower level, so its LTE limit was low by
+`1 + (g_u/g_l) exp(-E/kT)` -- 2.7x for `[C II] 158 um` at the 530 K base of
+HD 189733 b. (ii) The H-atom de-excitation rates (a constant `4.0e-11` for
+C II, `4.2e-11 (T/100)^0.67` for O I, both flagged approximate in the source)
+are replaced by fits to published quantum scattering calculations: Yan & Babb
+(2023, MNRAS 518, 6004) for C I and N II, Abrahamsson, Krems & Dalgarno (2007,
+ApJ 654, 1171) for O I, Barinovs et al. (2005, ApJ 620, 537) for C II. They are
+5-20x larger.
+
+**What it does.** The `coronal_excitation_cutoff` guard was standing in for the
+missing saturation, so its width `w` behaved as a tuning knob on the base
+temperature. It no longer does: the local balance temperature of the base cell
+is identical to every digit printed over `w = 0.02-1.2` on all four planet
+runs, against a 500-650 K spread before. Converged runs:
+
+| run | base T | Mdot at 2 R_p |
+|---|---|---|
+| HD 189733 b (warm restart, `w = 0.1`) | 528.5 -> 613.2 K | 2.351e9 -> 2.850e9 g/s (+21.2%) |
+| WASP-121 b (cold start) | 2406.9 -> 2438.8 K | 3.106e13 -> 3.370e13 g/s (+8.5%) |
+| `wasp_full` golden case | 2340.6 -> 2357.3 K | 3.482e13 -> 3.549e13 g/s (+2.0%) |
+
+Transit depths on HD 189733 b move by +4.4% (Ca II) to +20.7% (H-beta). The
+profiles outside `r ~ 1.1 R_p` move by a few percent; the change is a base-layer
+change that propagates through the density.
+
+Files: `src/modules/radiation/Cool_coeff.f90` (the SE solvers, the four ion
+coefficients, the generalized line opacity and escape routine),
+`src/modules/radiation/util_ion_eq.f90`,
+`src/modules/nonlinear_system_solver/T_equation.f90`,
+`src/modules/post_process/post_process_adv.f90`,
+`cooling_data/fit_fs_saturation.py` (generator; prints every coefficient),
+`cooling_data/make_cooling_doc_figures.py`, `docs/cooling_formulas.tex`,
+`docs/coronal_cutoff_width.md` section 7, `TO_BE_DONE.md` item (C).
+
+Also fixed here, unrelated but found while reading the cooling diagnostics:
+`examples/exhale_io.py` named only four fixed channels in
+`Cooling_breakdown.txt` while the writer emits six (the collisional-excitation
+channel is written split by absorber), so every metal column was labeled two
+ions too early. `python/paper_data.py` parses the header and was already
+correct.
+
+Still open: with the artifact gone it is plain that the base is not in local
+radiative balance at all -- at the HD 189733 b base the total radiative cooling
+is `3.5e-8` against a heating of `3.4e-6`. Its temperature is set by the inner
+boundary and by the flow.
+
+---
+
+## 49. Base ghost built from the composition of the state it bounds
+
+*Added 2026-08-12.*
+
+`Apply_BC` closes the `Base ghost temperature: continuous` ghost with
+`p_ghost = (ntot_bc + dp_bc) * p(1) / n_part_cell1`, where `n_part_cell1` is the
+cell-1 particle count written by `get_species_densities`. Two call sites filled
+the ghosts before any composition solve had run on the state in question, so
+they used whatever `n_part_cell1` was left over -- the `input_read` placeholder
+`ntot_bc + dp_bc` in the first case:
+
+- `init.f90`: the initial `Apply_BC`. On HD 189733 b the placeholder differs
+  from the true cell-1 particle count by 4.4%, and the finite-volume steady
+  residual of the loaded state (which stops right after `init`) reported the
+  resulting contact discontinuity at the base face as a cells 1-2 spike of 60
+  (mass) and 120 (energy) per sound crossing time.
+- `steady_newton.f90`, `eval_residual`: `Apply_BC` after `unpack_U`. There
+  `F(Y)` depended on the previous `Y` as well as on `Y`, so a finite-difference
+  Jacobian column mixed two states.
+
+Both now evaluate the composition of the interior first. `init.f90` also seeds
+`base_flux_const` from the initial state, for the same reason: with
+`Base velocity: massflux` that constant starts at `-1`, which `Apply_BC` reads as
+"not available yet" before falling back to the valve, so the first step and any
+diagnostic stopping right after `init` used a different velocity boundary
+condition than the run. Files: `src/modules/init/init.f90`,
+`src/modules/time_step/steady_newton.f90`.
+
+Checks. `n_part_cell1` is read only by the continuous branch and
+`base_flux_const` only by the mass-flux branch, so a run setting neither key is
+unaffected and `make check` is byte-identical; an `isothermal` HD 189733 b
+residual reproduces bit for bit. With the key on, the
+cells 1-2 mass residual falls from `5.97e+01, 5.92e+01` to `6.41e-02, 7.70e-02`
+and the energy residual from `1.12e+02, 1.20e+02` to `1.31e-01, 1.54e-01`, with
+cell 3 outward and the wind window unchanged to every digit. Re-converging the
+planet from its stored state: JFNK scaled merit `||Fs||_2` `1.43 -> 0.315`,
+`info = 0`, `log10 Mdot` `9.15 -> 9.14`. Measurements and term-by-term split:
+`docs/hd189_base_checkerboard.md` section 15.
+
+## 50. H(n=2) rate coefficients, the trapped-2p balance, and de-excitation heating (2026-08-12)
+
+*Added 2026-08-12.*
+
+Four corrections to the excited-hydrogen and Ly-alpha modules, plus the
+structural change that made the first one possible. Measurement and the full
+number tables: `docs/lya_destruction_channels.md` section 11.
+
+**One definition of the n=2 rate coefficients.** The Ly-alpha and n=2 atomic
+data and every collisional rate coefficient existed in three copies -- inside
+`n2_populations`, again as standalone functions in the same file, and a third
+time in `lya_rt.f90`. They are now one module,
+`src/modules/radiation/hydrogen_n2_rates.f90` (`c1s2s_rate`, `c1s2p_rate`,
+`c2s2p_rate`, `c2s1s_rate`, `c2p1s_rate`, `c2p2s_rate`, `alpha_B_hydrogen`,
+`alpha_2s_hydrogen`, `alpha_2p_hydrogen`, `n2p_destruction_rate`, and the line
+constants). `excited_hydrogen.f90` and `lya_rt.f90` use it.
+
+1. **Statistical weights shadowed by dummy arguments.** `n2_populations` was
+   declared `(T, n1s, ne_l, Jlya, G2s, G2p, n2s, n2p)`. Fortran does not
+   distinguish `G2s` from the module parameter `g2s`, so the three
+   detailed-balance rate coefficients written out in the routine body evaluated
+   their weights as the Balmer photoionization rate the caller passed:
+   `2s->1s` and `2p->1s` de-excitation came out 5 to 306 times too small
+   (planet-dependent, scaling with the stellar Balmer continuum) and the
+   `2p->2s` l-mixing rate 3 times too large. The dummies are now `gam_ion_2s` /
+   `gam_ion_2p` and the body calls the shared rate functions, so the weights are
+   resolved at module scope and out of a dummy's reach. Two further shadows of
+   the same kind, both harmless, were renamed: the frequency-sample count
+   `ng = 400` in `gamma_n2_balmer` and `heat_n2_balmer` shadowed the global
+   ghost-cell count `Ng`; it is `n_nu`.
+
+2. **Recombination cascade source.** `a2s*ne**2` / `a2p*ne**2` -> `a2s*ne*nHII` /
+   `a2p*ne*nHII`. The electron recombines onto a proton; at the base the
+   electrons come largely from helium and metals while hydrogen is still
+   neutral, and `ne/nHII` reaches 2 on WASP-121 b and 5e6 on HD 209458 b. The
+   Python transmission tool (`exhale_transit_lib.py`, `EXHALE_transit.py`) and
+   `examples/tpm_halpha_lart2d.py` carried the same expression and were
+   corrected the same way; their `n2_populations` signatures gained an `nHII`
+   argument.
+
+3. **Destruction channels in the `J_int` closure.** `lya_rt.f90` built the
+   trapped field from `n2p = P/(A_2p1s beta)`. The 2p budget also loses atoms to
+   collisional de-excitation, n=2 photoionization, and l-mixing followed by
+   two-photon decay; the denominator is now `A_2p1s beta + D` with `D` from
+   `n2p_destruction_rate`. Where `beta` is smallest the omission over-estimated
+   `J_int` by up to 1.5x. In the same module the top-down Ly-alpha line-center
+   optical depth, previously two identical inline loops, is the single routine
+   `lya_line_center_optical_depth`; all three `jlya_mode` values call it, so the
+   `tau_Lya` column of `Excited_H.txt` is filled in the LaRT import mode instead
+   of being written as zero.
+
+4. **`Deexc heat` now defaults on.** The comment justifying the old default --
+   that collisional de-excitation heating overlaps the H I collisional-excitation
+   cooling -- was wrong: `coex_rate_HI` is the one-way Cen (1992) coronal rate
+   with no de-excitation term in it, so `Hdx` is the correction to that limit,
+   not a double count. Most of the n=2 population it de-excites was pumped by
+   Ly-alpha rather than excited by a collision, which makes the term absorbed
+   Ly-alpha thermalized by a collision, the same size as the photoelectric
+   heating the code already applied unconditionally. The key now also honours
+   `Deexc heat: False`, which it previously ignored. **This changes results for
+   any run that supplies a stellar `T_eff`/radius and does not set the key.**
+
+Audited and left alone: the energy equation applies no escape-probability factor
+to the Ly-alpha cooling. `cool` is built from the bare Cen coefficient
+(`Cool_coeff.f90:843` -> `util_ion_eq.f90:640,787`); `beta` appears nowhere in
+that path, in any `jlya_mode`. That is the correct form -- 98.2-99.99% of trapped
+Ly-alpha photons escape and the collisional destruction that would suppress the
+cooling is at most 0.06% -- so the historical expectation of a ~10x transfer
+suppression is not in the code and should not be.
+
+**Checks.** `mol_base_handoff` (no stellar `T_eff`, so the excited-H model is
+off) is byte-identical at every stage, as is its comparison against the stored
+golden. `wasp_full` and `wasp_he23off` move: `log10 Mdot` 13.23039 -> 13.22966
+and 13.23106 -> 13.23026, with the largest local temperature change 0.57%
+(item 1), 0.081% (item 2) and 0.147% (item 3); both cases pin `Deexc heat: True`
+in their `input.inp`, so item 4 moves nothing in them. Their goldens were
+already stale against the pre-fix tree and were left as they are. Re-converged
+from their stored initial conditions in a scratch copy, WASP-121 b gives
+13.2075 -> 13.2030, HD 189733 b 9.1286 -> 9.1392 and HD 209458 b
+9.3790 -> 9.4581; the H-alpha and H-beta transit depths move by 0.4-1.7%
+(`n(2p)`, which carries the opacity, barely moves, while `n(2s)` halves).
+HD 209458 b is the largest move (0.075 dex, from items 1-3) because its
+Ly-alpha cooling is a negligible share of its radiative losses while the n=2
+heating terms are not; it is also the case `docs/lya_deexcitation_heating.md`
+recorded as going NaN at the base with the de-excitation heating on, which no
+longer reproduces with the corrected populations (re-converges from its stored
+initial condition, and a cold start survives a 20000-step cap). A build at
+`-O1 -fopenmp -g -fcheck=bounds,do,mem` running the `wasp_full` configuration is
+clean. Files: `src/modules/radiation/hydrogen_n2_rates.f90` (new),
+`src/modules/radiation/excited_hydrogen.f90`,
+`src/modules/radiation/lya_rt.f90`, `src/modules/init/parameters.f90`,
+`src/modules/files_IO/input_read.f90`, `Makefile`, `exhale_transit_lib.py`,
+`EXHALE_transit.py`, `examples/tpm_halpha_lart2d.py`.
+
+---
+
+## 51. Molecular chemistry and trace metals solved in one system (2026-08-13)
+
+The parser refused `Molecular chemistry: True` together with a `metals.inp`.
+That refusal blocked two things: the deep (1e-3 bar) lower-atmosphere handoff
+of `base_composition_handoff_plan.md` §11.7, whose A/B pair carries metals and
+whose consistent configuration is Tier-2 molecular chemistry; and trace-metal
+work on sub-Neptunes, which have a molecular base by construction.
+
+The two networks cannot be solved apart, and the reason is quantitative rather
+than architectural: **in the shielded molecular base the metals supply
+essentially all the free electrons.** Measured on the two smoke tests below
+(base cell, molecular-base planets, solar metals):
+
+| case | n_e with metals [cm^-3] | metal share | n_e metals-off [cm^-3] |
+|---|---|---|---|
+| hot Uranus, solar 7 metals | 1.20e8 | 1.000 | 6.29e4 |
+| HD 209458 b, 1e-3 bar handoff, C/N/O | 9.42e5 | 0.990 | 9.27e4 |
+
+The reason is that the flux which ionizes the low-IP metals -- Mg I at
+7.65 eV, Fe I at 7.90 eV, C I at 11.26 eV -- is below both the H I edge
+(13.60 eV) and the H2 threshold (15.4 eV), so it is absorbed by neither and
+reaches the base almost unattenuated. On the hot-Uranus case it holds Mg and Fe
+about 1.6% ionized at the base, which is already enough to swamp the H/He and
+molecular electrons. Every recombination and electron-impact term of the
+molecular network scales with n_e, so solving the network at the metal-free n_e
+misses a factor 1900 (hot Uranus) to 10 (HD 209458 b at 1e-3 bar) in that
+layer.
+
+**The merged system.** `System_HeH_mol_metals` follows the pattern
+`System_HeH_TR_metals` established: the molecular unknowns keep their rows, the
+metals are appended above them, and both blocks are shared code rather than
+re-derived. The eight balance rows of the molecular network moved into
+`mol_heh_rows` (still in `System_HeH_mol`, with the Koskinen 2022 rate
+coefficients, which stay defined in exactly one module) and take n_e as an
+input, exactly as `heh_tr_rows` does; the metal rows, the metal electron sum
+and the stage fractions come from `ion_residual_core` unchanged. Layout:
+
+```
+x(1..3)   H II, He II, He III        x(4..7)  H2, H2+, H3+, HeH+
+x(8)      He 2^3S      (when tracked)
+x(mbase..)  X+, X++ for each metal element,  mbase = metal_row_base() = 8 or 9
+N_eq = 7 (+1 with the triplet) + 2*n_melem
+```
+
+`metal_row_base()` is the single definition of that offset, read by the
+residual, by the driver's seeding and root validation, and by `cx_metal_base`
+so the Huang Table-4 charge exchange writes to the shifted metal rows. With
+`met_nelem = 0` the system reduces exactly to `System_HeH_mol`.
+
+**Root validation and seeding (§45 extended to the molecular branch).** The
+molecular cell solve is bistable because the cell is: a molecular basin (the
+dense, optically thick base) and an atomic basin (the wind above the H2 -> H
+front). It now tries one starting point in each in turn -- the warm start, the
+chemical-equilibrium H2 fraction at the local (p, T) with the metal stages from
+their own ionization balance at the incoming n_e, then the molecule-free
+ionization balance of every element -- and keeps a converged root only if it is
+also physical, on the same rule §45 applied to the atomic systems. The metal
+part of `ionization_balance_at_fixed_ne` was split into
+`metal_ionization_balance_at_fixed_ne` so the molecular retry seeds its metals
+from the same balance instead of a second copy of it. The third starting point
+is what the front cells needed: on the hot-Uranus case the coupled solve leaves
+3 cells at r = 1.21-1.22 (the ionization front) with no admissible root at every
+step with two starting points, and 0 cells with three.
+
+**Two defects found in the surrounding code and fixed.**
+
+- The sub-13.6 eV energy grid of a power-law spectrum was an `if
+  (thereis_HeITR) ... else if (thereis_lowIP_metal)`, with the comment "HeITR +
+  metals is unsupported, so at most one applies". That has not been true since
+  the triplet and the metals were merged. With the triplet on, the grid floor
+  stopped at 4.80 eV, which is above the K I threshold (4.341 eV), so K I would
+  be held spuriously neutral in a triplet run. The floor is now the lowest
+  threshold over whichever sources are active, matching what the loaded-SED
+  path (`sed_read`) already did. No golden carries K, so this is byte-identical
+  there.
+- The `pp_metals 2` metal re-solve passed the global `N_eq` to `hybrd1` while
+  its residual (`ion_system_metals_pp`) writes only rows 1..3+2*n_melem. With
+  the He 2^3S triplet that already left one row of `fvec` unwritten; with the
+  molecular layout it would leave four or five. It is now sized `3 + 2*n_melem`
+  with a matching workspace, the same reasoning `lwa_adv` already carried a few
+  lines above. Both goldens run `pp_metals 1`, so this is byte-identical there
+  and changes results only for `pp_metals 2` runs.
+
+**Left in place, with the validity range now written at the code.** `eval_cool`
+builds its own electron density without the molecular ions. That is right in
+the hot atomic gas it was written for and wrong inside a deep molecular base,
+where H3+ can be the dominant ion; there it disagrees with the n_e the
+equilibrium solver itself uses (`ionization_equilibrium` does pass `nmol_eq` to
+`calc_ne`), so the ne-scaling cooling channels are under-counted in that layer.
+Two definitions of the same quantity is one too many, but closing the gap
+changes the molecular results and belongs in its own change with its own
+measurement; the validity range is written at the call site and the item is
+left open below. *Closed in §52.*
+
+**Gates.** `make check` PASSes byte-identical on all three cases
+(`wasp_full`, `wasp_he23off`, `mol_base_handoff`); a baseline `make check` on
+the same tree before the change also passed, so the comparison is this change
+alone. Goldens were not re-snapshotted. A build at
+`-O1 -fopenmp -g -fcheck=bounds,do,mem` is clean on all three coupled layouts
+for 200-300 steps: hot Uranus with the He 2^3S triplet (N_eq = 28, metals at
+row 9), the same case without it (N_eq = 27, metals at row 8), and the
+HD 209458 b deep handoff.
+
+Hot Uranus (the Tier-2 gate configuration of
+`docs/lower_atmosphere_figs/data_g2`) plus solar C/N/O/Mg/Ca/Na/Fe, 12000-step
+relaxation snapshot against the same case metals-off: the H2 -> H front sits at
+r = 1.1577 in both (the gate's 1.156), the base stays fully molecular in both,
+log10 Mdot = 10.58 in both, no negative densities, no cell left without an
+admissible root (the same case with the triplet off, N_eq = 27 with the metals
+at row 8, is clean over a shorter 400-step smoke). What the metals change is
+the base chemistry: n_e rises 1900x
+and H3+ falls by a factor 1350 (7.08e4 -> 5.25e1 cm^-3), its peak moving out
+from r = 1.040 to r = 1.130 -- H3+ is destroyed by dissociative recombination
+(Koskinen R6/R7, both proportional to n_e), so it survives only where the metal
+electron fraction starts to fall. Metal ionization runs the expected way: C II/C
+= 8e-10 at the base, 0.22 at the front, 0.43 at 1.9 R_p; Mg III stays below
+1e-8 up to the front and reaches 2.4e-3 only at 1.9 R_p.
+
+HD 209458 b at the 1e-3 bar handoff (the §11.7 blocker), C/N/O, He 2^3S on,
+4000-step bounded run: it integrates. §11.7 records that the atomic pair built
+at this level terminated with a NaN at r = 1.067 after 1846 steps with the time
+step collapsed to dtu = 1.2e-6 (that run was not repeated here); this one
+reaches the cap with dtu = 0.198 and no NaN, a fully
+molecular base, and the front at r = 1.0150 (1.0169 metals-off). It is a
+relaxation snapshot at du = 747, nowhere near converged, so no mass-loss rate
+should be read off it.
+
+**Open item.** The `_adv` post-process is still molecule-free by design
+(`post_process_adv.f90` header): `nh = nhi + nhii` counts only the free H
+nuclei and the molecular electrons are absent from its n_e. The metal stages
+are carried there as usual under `pp_metals`, but on that molecule-free H/He
+background, so `_adv` metal profiles inside the molecular layer inherit the
+approximation. With the `eval_cool` electron density closed in §52, this is the
+one remaining place where a molecular run and a metal run still meet on the
+atomic assumption.
+
+Files: `src/modules/nonlinear_system_solver/System_HeH_mol_metals.f90` (new),
+`src/modules/nonlinear_system_solver/System_HeH_mol.f90`,
+`src/modules/radiation/ionization_equilibrium.f90`,
+`src/modules/radiation/util_ion_eq.f90`,
+`src/modules/files_IO/input_read.f90`,
+`src/modules/files_IO/write_setup_report.f90` (the startup report now names the
+species blocks the coupled system carries and prints `N_eq`),
+`src/modules/init/set_energy_vectors.f90`,
+`src/modules/post_process/post_process_adv.f90`, `Makefile`,
+`examples/16_molecular_metals/` (new). Documentation: `README.md`,
+`README_HOWTO.md`, `examples/README.md`, `docs/EXHALE_user_manual.tex`
+(the example table also became a `longtable`, which it needed already --- as a
+float it ran past the bottom margin into the page footer),
+`docs/input_schema.md`, `docs/lower_atmosphere_coupling.md`,
+`docs/base_composition_handoff_plan.md`.
+
+---
+
+## 52. One electron density for the cooling and for the ionization solver (2026-08-13)
+
+`eval_cool` rebuilt its own free-electron density and left the molecular ions
+out of it. The equilibrium solver in the same sweep does not: it balances
+ionization against `calc_ne(nhii,nheii,nheiii,ne,nm,nmol_eq)`, i.e. H+, He+,
+He++, the metal stages under the `eos_metals` policy, **and** H2+, H3+, HeH+.
+A molecular run therefore carried two definitions of n_e, and the cooling used
+the smaller one. That is wrong wherever a molecular ion carries a
+non-negligible share of the charge, which is exactly the deep molecular base.
+Measured on the metals-off hot-Uranus Tier-2 gate, the two definitions differ by
+**168.5x at the base cell** (373 vs 6.29e4 cm^-3, H3+ supplying essentially all
+of it), 4.5x at r = 1.05, 2.8% at r = 1.10, and nothing above r ~ 1.15; on the
+`mol_base_handoff` case the base ratio is 175.7x.
+
+`eval_cool` now takes an optional `nmol` (H2, H2+, H3+, HeH+, cgs) and passes
+it straight to `calc_ne` -- the electron density is not reconstructed anywhere
+inside `eval_cool`, it has one definition and one implementation. Callers that
+track the molecular network supply it: `ionization_equilibrium` (`nmol_eq`),
+the semi-implicit energy solver (`nmol_dim`, the cgs copy of the adimensional
+array it already hands `calc_ne`/`calc_ntot`), and the `Cooling_breakdown`
+dump. The `_adv` advection post-process deliberately does not: that
+reconstruction is molecule-free by design (its module header), and omitting the
+argument gives it the atomic charge sum it is built on.
+`ionization_equilibrium`'s own `calc_ne` call lost its `thereis_mol` branch at
+the same time -- `nmol_eq` is zero for an atomic run, so one call covers both.
+
+Every n_e-scaling channel picks the correction up: recombination, collisional
+ionization, collisional excitation and bremsstrahlung are linear in n_e, and
+the coronal metal line coefficients enter as `ne*nm*c_metal`. The saturated
+ground-term coefficients (Fe II, and C I/C II/N II/O I under `cno_chianti`)
+are `Lambda_eff = W/ne`, so the assembly's n_e cancels and they respond only
+through the level populations (`C21 ~ ne`) -- the correct behavior, and there
+is no double counting of n_e anywhere in `eval_cool`.
+
+**Atomic runs are exactly unchanged.** `nmol_eq` and the molecular `f_sp`
+columns are zero, and `calc_ne` adds them as `ne + 1.0*0.0`, which is exact.
+`make check` is byte-identical on `wasp_full` (metals + He 2^3S) and
+`wasp_he23off`; a full WASP-121b run (metals, He 2^3S, Ly-alpha escape
+probability, excited H, transonic IC) reproduces all eight output files
+byte-identically -- `Hydro_ioniz{,_adv}`, `Ion_species{,_adv}`,
+`Cooling_breakdown`, `Heating_breakdown`, `Excited_H`, `IC_dump` -- at
+log10 Mdot = 13.20.
+
+**`mol_base_handoff` changes, and that is the point of the change.** At the
+pinned 12000-step snapshot the two runs stop at the same `du = 2.6689` and the
+same `dtu`, every hydrodynamic column agrees to <= 4e-8 relative and every
+species column to <= 4.2e-6 (that worst case is H3+ at r = 2.96, where H3+ is
+3e-19 cm^-3); the one column that moves is the reported cooling rate at the
+near-neutral base, 2.799e-20 -> 4.942e-18 erg cm^-3 s^-1 (x176.5, the n_e
+ratio, as expected for channels linear in n_e). log10 Mdot stays 10.58. The
+golden was NOT re-snapshotted here.
+
+**Why the dynamics barely notice.** A molecular layer cools through the H3+
+infrared lines, which do not scale with n_e, so multiplying the electron
+channels by 176 at the base moves the cooling from 2.8e-20 to 4.9e-18 against
+1.3e-7 erg cm^-3 s^-1 of photoheating there. The correction is real and it is
+now the same quantity the solver balances ionization against, but it is
+energetically negligible in the layer where it is large.
+
+**Molecular smoke tests** (hot Uranus, the Tier-2 gate configuration,
+12000-step relaxation snapshots -- both runs stop at `du` of order unity, so
+these are snapshots and not converged solutions):
+
+| | metals off | metals on (solar C/N/O/Mg/Ca/Na/Fe) |
+|---|---|---|
+| n_e(base) old -> new | 373 -> 6.29e4 cm^-3 (x168.5) | 1.2016e8 -> 1.2016e8 (x1.0000) |
+| cooling at the base | 3.18e-20 -> 5.36e-18 erg/cm3/s | +7e-7 relative |
+| H2 -> H front | 1.15631 -> 1.15631 | 1.15677 -> 1.15677 |
+| H3+ peak | 7.0808e4 -> 7.0807e4 cm^-3 at r = 1.0396 | 52.465 -> 52.465 at r = 1.1304 |
+| `du` at step 12000 | 4.3354 -> 4.2914 | 5.8177 -> 5.8177 |
+| log10 Mdot | 10.58 -> 10.58 | 10.58 -> 10.58 |
+
+The metals-on column is the expected null: the low-IP metals hold n_e at 1.2e8
+at that base (section 51), against 52 cm^-3 of H3+, so adding the molecular
+ions moves nothing (max relative change 7e-10 in rho/T/p, 3e-9 in the metal
+stages). Metals-off, the snapshot differs by 1% in `du` and by sub-percent in
+the bulk state just above the layer (rho -0.7%, T +0.8% at r = 1.19), with the
+trace species that depend exponentially on T amplifying that into H3+ -16%,
+H2 -13%, He II +10% at the same radius. Those are differences between two
+snapshots of an unconverged relaxation, not a converged shift; the gate
+observables -- front position, H3+ peak, mass-loss rate -- are unchanged.
+
+On the HD 209458 b 1e-3 bar handoff with C/N/O (4000-step bounded snapshot,
+also unconverged) the base picture is the same: the metals dominate n_e, the
+base cooling rises 0.45%, the molecular-layer cooling by at most 1.9%, the
+front moves 1.01503 -> 1.01518 and the H3+ peak by 0.05%.
+
+An `-O1 -fopenmp -g -fcheck=bounds,do,mem` build runs all three molecular
+layouts (hot Uranus with and without metals, HD 209458 b deep handoff) for 300
+steps with no runtime check firing.
+
+**Two related items found and recorded, not changed here.**
+
+- The H3+ infrared cooling is added to `cool` in `ionization_equilibrium`,
+  *after* `eval_cool` returns. The JFNK steady residual uses that array, but
+  the semi-implicit energy update (the default) rebuilds `cool` from
+  `eval_cool` alone and overwrites it, so it never sees the H3+ term. For a
+  molecular run the marching stage and the Newton stage therefore integrate
+  slightly different energy equations, and the marching fixed point is not the
+  zero of the residual the Newton solver drives down. The fix is to move the
+  term inside `eval_cool` (which already receives `nmol`) with its own
+  `cool_chan` column; that changes the `Cooling_breakdown.txt` schema and the
+  molecular results, so it belongs in its own change. The `Cooling_breakdown`
+  header now states that the channel sum falls short of the `cool` column by
+  that term in the molecular layer.
+- H2+, H3+ and HeH+ donate their electron to n_e but are left out of the
+  bremsstrahlung charge sum, so that sum is smaller than n_e inside the
+  molecular layer. They are Z_ion = 1 and belong there formally, but they only
+  exist at T ~ 1e3 K, where the hot-plasma free-free expression is an
+  extrapolation emitting at frequencies the atmosphere is not thin to, and
+  where free-free is negligible against the H3+ and metal line cooling. The
+  scope is written at the accumulator.
+
+Files: `src/modules/radiation/util_ion_eq.f90`,
+`src/modules/radiation/ionization_equilibrium.f90`,
+`src/modules/time_step/energy_semi_implicit.f90`,
+`src/modules/post_process/post_process_adv.f90` (comments only).
+Documentation: `docs/lower_atmosphere_coupling.md`.
+
+---
+
+## 53. A fourth regression case for the molecular + metals system (2026-08-13)
+
+The coupled molecular + metals system of §51 was not guarded by anything in the
+matrix: `mol_base_handoff` runs the molecular network metals-off, and the two
+`wasp_*` cases run metals without molecules, so the merged residual, the
+`metal_row_base()` offset and the three-starting-point seeding had no golden.
+
+`backup/regression/mol_metals` is that case: the same hot-Uranus Tier-2 gate
+configuration as `mol_base_handoff` (`Molecular chemistry: True`, its `base.inp`
+handoff, 12000 steps pinned in `maxsteps`) plus a solar-abundance
+`metals.inp` with the seven elements C/N/O/Mg/Ca/Na/Fe. It stops at
+`du = 3.1770`, `log10 Mdot = 10.58`. `DEFAULT_CASES` in
+`backup/regression/run_check.sh` is now
+`wasp_full wasp_he23off mol_base_handoff mol_metals`, and the case list in the
+script header describes what each one guards.
+
+Goldens for all four cases were re-snapshotted at the end of this change
+series, so they carry §51 and §52. The two atomic cases are byte-identical to
+their previous goldens (both changes are exact no-ops without molecules);
+`mol_base_handoff` moves only in its cooling column, by the factor 176.5 of
+§52.
+
+One harness trap, hit while doing this and now written into the script: `golden`
+does **not** re-run the cases, it copies whatever `output/` currently sits in
+each case directory. Snapshotting straight after a code change baselines the
+*previous* binary. The order is `check` (which rebuilds and re-runs), then
+`golden`, then `check` again.
+
+Files: `backup/regression/run_check.sh`, `backup/regression/mol_metals/` (new),
+`backup/regression/golden/` (re-snapshotted). Documentation: the workspace
+`CLAUDE.md`, `README_HOWTO.md`.

@@ -13,7 +13,19 @@
 	subroutine write_setup_report
 	! Write summary of the current simulation setup to file
 
+	! Number of metal elements with a non-zero abundance. NOTE: the intrinsic
+	! COUNT cannot be used here -- `count` is the global step counter in
+	! global_parameters, so the name is shadowed module-wide.
+	integer :: imet, n_met_active
+
 	write(*,*) '(write_setup_report.f90) Writing the setup report on EXHALE_setup.out..'
+
+	n_met_active = 0
+	if (thereis_metals) then
+		do imet = 1,size(melem_ab)
+			if (melem_ab(imet) .gt. 0.0d0) n_met_active = n_met_active + 1
+		enddo
+	endif
 	
 	write(outfile,*) '######## Simulation for ', p_name, ' ########'
 	write(outfile,*) ' '
@@ -55,9 +67,21 @@
          ' - Simulating a H/He atmosphere with',' He/H ratio of ', HeH
 		if (thereis_HeITR) 	&
 			write(outfile,*) '- Including helium triplet chemistry'
-	else 
+	else
 		write(outfile,*) '- Simulating a pure H atmosphere'
 	endif
+	! Which species blocks the coupled equilibrium system carries, and how
+	! large that makes it. Molecules and metals are solved together when both
+	! are present (System_HeH_mol_metals), so say so here rather than leaving
+	! the reader to infer it from N_eq.
+	if (thereis_mol) write(outfile,*) &
+      '- Including molecular chemistry (H2, H2+, H3+, HeH+)'
+	if (thereis_metals) write(outfile,'(A,I0,A)') &
+      ' - Including ', n_met_active, ' trace metal element(s)'
+	if (thereis_mol .and. thereis_metals) write(outfile,*) &
+      '- Molecules and metals solved in one system (shared electron density)'
+	write(outfile,'(A,I0)') &
+      ' - Coupled equilibrium system size: N_eq = ', N_eq
 	if (do_read_sed) &
 		write(outfile,*) & 
          ' - Spectrum read from external file: ', sed_file

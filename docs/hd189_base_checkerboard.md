@@ -919,8 +919,12 @@ The 0.20 dex between the two is the familiar point that a `du`-threshold stop is
 not quantitative for `Mdot`; 9.04 is the Newton-grade number for the
 configuration of this section, i.e. with the legacy `T_eq`-pinned ghost.
 (**Superseded 2026-08-11, later the same day.** The folder was re-converged with
-`Base ghost temperature: continuous` and the ionization-root validation, and now
-gives 9.05; see §14. That is what the paper and `python/paper_data.py` carry.)
+`Base ghost temperature: continuous` and the ionization-root validation, and
+gave 9.05; see §14. **Superseded again 2026-08-13**: after the ground-term
+fine-structure statistical equilibrium, the base-ghost composition fix of §15 and
+the H(n=2) rate corrections, the folder re-converges to `log10 Mdot = 9.14`
+(`run_20260812_lyafix.log`, JFNK `info = 0`, `||R|| = 8.78e-04`), and that is
+what `paper/ms.tex` and `python/paper_data.py` carry.)
 
 ### 12.2 The mode in the converged state (measured here)
 
@@ -1091,6 +1095,17 @@ remaining cells 2-4 disturbance responds to the base grid.
 
 ## 14. Production state after adopting the key and the root validation (2026-08-11)
 
+> **Dated 2026-08-13.** The state described in this section is the 2026-08-11
+> one and is no longer what the folder holds. The current production run
+> (`run_20260812_lyafix.log`) carries three later changes -- the ground-term
+> fine-structure statistical equilibrium of `docs/coronal_cutoff_width.md` §7,
+> the base-ghost composition fix of §15 below, and the H(n=2) rate corrections
+> of `docs/lya_destruction_channels.md` §11 -- and converges to
+> `log10 Mdot = 9.14` with `||R|| = 8.78e-04`, at a base temperature of 551 K
+> rather than the 529 K tabulated here. The ghost/cell-1 agreement (0.05%) and
+> the removed density inversion (`rho_1/rho_ghost = 0.95`) still hold in that
+> run; the alternating amplitudes below were not re-measured on it.
+
 `HD189733b/input.inp` now carries `Base ghost temperature: continuous` alongside
 `Base grid [dr,cells]: 1.0e-4 100`, and the folder was re-converged with the
 ionization-root validation of `docs/ionization_root_validation.md` in place
@@ -1134,3 +1149,205 @@ done.
 
 Not checked here: a cold start under this configuration, the other planets, and
 whether the remaining cells 1-4 alternation responds to further base refinement.
+
+## 15. The cell 1-2 steady residual was a stale composition in the ghost, not the ghost closure (2026-08-12)
+
+The measurement that opened this section asked which term of the finite-volume
+steady residual carries the cells 1-2 spike that a `Base ghost temperature:
+continuous` run of HD 189733 b reports (mass 53-60, energy 106-120 per sound
+crossing time, unchanged under 8x base refinement and unchanged across initial
+conditions, and absent from an `isothermal` run). The answer is that the spike
+is not a property of the closure. It is produced by the residual evaluation
+itself, which built the ghost from a particle count belonging to a different
+state.
+
+### 15.1 Term split of the residual (measured)
+
+Instrumentation: a scratch copy of the tree with one added routine
+(`base_face_terms` in `steady_residual.f90`) that repeats the production
+`Reconstruct` / `Num_flux` / `source` path and writes, for each of the first
+cells, the inner-face flux, the outer-face flux and the source separately, plus
+the reconstructed states on both sides of every face. Configuration: the
+production HD 189733 b input (`Base ghost temperature: continuous`, `Base grid
+[dr,cells]: 1.0e-4 100`, `N = 500`, WENO3), evaluated on the converged state of
+the grid-response series. `Fc` below is the wind mass-flux constant
+`<rho v r^2>` over `[j_min:N]`, `5.9718e-08` in code units.
+
+For mass, `S = 0` identically, so `R(1,j)` is nothing but the difference of the
+two face flows. Measured face flows `r_edg^2 (rho v)_HLLC`, in units of `Fc`:
+
+| face | 0 (base) | 1 | 2 | 3 | 10 | 20 |
+|---|---|---|---|---|---|---|
+| as evaluated | 2.19e5 | 1.05e5 | 128 | 115 | 101 | 88 |
+| composition refreshed first | 142 | 265 | 128 | 115 | 101 | 88 |
+
+The two innermost faces carried five orders more mass than the wind while faces
+2 and outward sat at ~1e2 `Fc`. Cell by cell (code units, per sound crossing
+time), with `out` and `in` the outer- and inner-face contributions:
+
+| cell | `R1` | mass out | mass in | `R3` | energy out | energy in | `heat-cool` |
+|---|---|---|---|---|---|---|---|
+| 1 | -71.19 | 65.73 | 136.92 | -69.64 | 70.63 | 142.11 | 4.77e-03 |
+| 2 | -65.64 | 0.080 | 65.72 | -69.93 | 0.087 | 70.61 | 4.47e-03 |
+| 3 | -8.11e-03 | 0.0719 | 0.0800 | -1.21e-02 | 0.0777 | 0.0868 | 4.31e-03 |
+
+Readings: the energy spike is not radiative -- `heat - cool` is four orders
+below `R3` -- it is the same acoustic flux carrying enthalpy. The momentum row
+behaves the same way: at cell 1 the WENO3 pressure term and gravity cancel to
+`-4.07` out of `-230.3` and `-226.2`, and the `+58.2` flux difference is what is
+left. Every component therefore points at one place, the flux through the base
+face.
+
+### 15.2 What the base face was seeing
+
+`BC_component_constrho` closes the continuous ghost as
+`p_ghost = (ntot_bc + dp_bc) * p(1) / n_part_cell1`, i.e. the base particle
+count times the interior temperature `T(1) = p(1)/n_part_cell1`.
+`n_part_cell1` is a module variable written by `get_species_densities`
+(the single composition policy point) and read by `Apply_BC`. `input_read`
+initializes it to the placeholder `ntot_bc + dp_bc`.
+
+In the state measured, `ntot_bc + dp_bc = 1.00084` and the true cell-1 particle
+count is `0.958583`, a ratio of `1.0441`. The standalone residual diagnostic
+calls `Apply_BC` before any composition solve, so the cell-average ghost was
+built with the placeholder, i.e. with ratio exactly 1:
+
+* `W(3,0) = W(3,1)` to every printed digit -- a zero pressure gradient, not the
+  continuous-temperature ghost the key asks for;
+* that zero left-hand jump made ESWENO3 flatten cell 1, giving
+  `WL(3,1) = 0.4990916` against `WR(3,1) = 0.4884203` from cell 2, a 2.2%
+  pressure discontinuity *at face 1*;
+* `Rec_BC`, which runs inside `assemble_residual` after `ioniz_eq` has refreshed
+  `n_part_cell1`, rebuilt the ghost with the correct ratio,
+  `WL(3,0) = 0.5210929` against `WR(3,0) = 0.4990927`, a 4.4% discontinuity *at
+  face 0*.
+
+So a single residual evaluation carried two mutually inconsistent ghosts, and
+HLLC read both jumps as contact discontinuities and returned the corresponding
+acoustic mass flux. This also explains the three properties that made the spike
+look structural: the jump is a ratio of two particle counts, hence independent
+of `dr` and of the initial condition, and `n_part_cell1` is read only by the
+continuous branch, hence absent from `isothermal` runs.
+
+### 15.3 Fix
+
+The rule applied is that the ghost is built from the composition of the state it
+bounds. Two call sites needed it:
+
+* `init.f90` -- evaluate `get_species_densities` on the initial state before the
+  first `Apply_BC`. This is the only entry point where `n_part_cell1` can still
+  be the placeholder; every `Apply_BC` in the marching loop is already preceded
+  by a composition solve.
+* `steady_newton.f90`, `eval_residual` -- same call after `unpack_U` and before
+  `Apply_BC`. Without it `F(Y)` also depended on the *previous* `Y` through
+  `n_part_cell1`, so a finite-difference Jacobian column mixed two states.
+
+The mass-flux base velocity carries the same defect and is seeded in the same
+place (section 15.8).
+
+Runs that do not set `Base ghost temperature: continuous` never read
+`n_part_cell1`, so nothing outside that key can change; `make check` is
+byte-identical (section 15.5).
+
+With the composition refreshed, `W(3,0) = 0.5210898 = 1.0441 p(1)` as the key
+intends, and `WL(3,1) = 0.4884517` now agrees with `WR(3,1) = 0.4884203` to
+6.4e-05, i.e. 0.006%.
+
+### 15.4 Effect on the residual (measured)
+
+Local fractional residual rate `|R_k| / |u_k|` per sound crossing time, same
+state, WENO3:
+
+| grid | | cell 1 | cell 2 | cell 3 | wind `r > 2` |
+|---|---|---|---|---|---|
+| `dr = 9.55e-05` | mass, before | 5.97e+01 | 5.92e+01 | 7.67e-03 | 8.59e-04 |
+| | mass, after | 6.41e-02 | 7.70e-02 | 7.67e-03 | 8.59e-04 |
+| | energy, before | 1.12e+02 | 1.20e+02 | 2.18e-02 | 6.22e-03 |
+| | energy, after | 1.31e-01 | 1.54e-01 | 2.18e-02 | 6.22e-03 |
+| `dr = 2.40e-05` | mass, before | 5.59e+01 | 5.70e+01 | 1.29e-02 | 6.99e-04 |
+| | mass, after | 9.98e-01 | 2.06e-01 | 1.29e-02 | 6.99e-04 |
+| | energy, before | 1.10e+02 | 1.15e+02 | 2.40e-02 | 3.97e-03 |
+| | energy, after | 2.00e+00 | 4.12e-01 | 2.40e-02 | 3.97e-03 |
+
+Cells 3 and outward and the wind window are untouched to every digit, which is
+the expected signature of a two-face boundary effect. The reduction at cell 1 is
+930x on the default grid and 56x at 4x refinement; what is left grows under
+refinement rather than staying flat, so it is not the same object.
+
+An `isothermal` run of the same planet reproduces bit for bit across the fix,
+and against it the corrected continuous closure is now the better one at every
+one of the first five cells (mass 6.4e-02, 7.7e-02, 7.7e-03, 2.1e-03, 6.8e-04
+against 8.2e-02, 1.2e-01, 3.4e-02, 2.4e-02, 1.9e-02) -- which restores, rather
+than contradicts, the section 13-14 reading.
+
+### 15.5 Gates
+
+* Re-convergence, HD 189733 b, restart from the stored state, 6000-step cap, JFNK
+  finish. The marching phase is unchanged to four digits (`step 2000`: flux
+  spread `3.601e-03`, `||R||(ref) 1.941e-03` in all three builds). The JFNK
+  scaled merit `||Fs||_2`, which unlike `||R||` includes the base cells, reads
+  `1.43` before, `5.02` with the `init` fix alone (the residual then re-imported
+  its own lag at every call) and `0.315` with both -- 4.5x below the starting
+  point. `info = 0` throughout; `||R||` `7.13e-04` / `9.90e-04` / `8.48e-04`;
+  `log10 Mdot` `9.15` / `9.14` / `9.14`.
+* Residual of each build on its own converged state: cells 1-2 mass
+  `6.06e+01, 6.15e+01` before against `1.43e-01, 2.58e-02` after (425x, 2380x),
+  energy `1.13e+02, 1.21e+02` against `2.78e-01, 5.07e-02`.
+* `make check` byte-identical, the fix being unreachable for the golden cases.
+  WASP-121 b is covered by `wasp_full`, and it does not set the key.
+
+### 15.6 What this does not fix
+
+After the correction the first faces still carry ~1.4e+2 to 2.7e+2 times the
+wind mass flux, and the excess decays outward over `r - 1 ~ 0.05` (roughly 500
+cells on this grid), so it is the broad near-base non-stationarity documented in
+sections 12 and 14, not a boundary closure defect. The factor ~2 by which face 1
+exceeds its neighbors corresponds to the sign alternation of the velocity
+between cells 1 and 2 (-21 and +21 cm/s in the state measured), the checkerboard
+remnant of section 14. The cell-1 residual is still ~1.7e+2 times the wind level
+and grows under base refinement.
+
+On this evidence the alternative ghost closures that were drafted before the
+measurement -- anchoring `rho_bc` on the base face instead of the cell center,
+or deriving the ghost velocity from the mass-flux constant -- were aimed at a
+disturbance that was not there, and none was implemented. The reading is
+tentative in one respect: what remains has been localized (faces, and the
+cell 1-2 velocity alternation) but not attributed to a specific term.
+
+### 15.7 A bounded inconsistency left in place
+
+The in-loop residual monitor calls `Apply_BC` with the previous step's
+`n_part_cell1` and then `Reconstruct` with the current one, so it carries the
+same mismatch, of the size of one step's change in the cell-1 particle count
+(~1e-08 relative near convergence, against the 4.4% above). Inside a marching
+step the three RK stages are self-consistent -- their `Apply_BC` and their
+`Rec_BC` read the same value, lagged by one step like every other composition
+quantity in an operator-split step -- while the `Apply_BC` calls that follow the
+composition solve read the value that solve just wrote, so the lag is not uniform
+across the step either. Both are bounded by one step's change and both are left
+as they are; changing them would alter continuous-key results for no measurable
+gain.
+
+### 15.8 The same defect in the mass-flux base velocity
+
+`Base velocity: massflux` sets the ghost velocity to `F_c/(rho_bc r^2)`, with
+`F_c` the wind mass-flux constant that the marching loop refreshes each step.
+`F_c` starts at `-1`, and `Apply_BC` guards on `base_flux_const > 0`, so before
+the first refresh the key silently falls back to the valve. Measured: with the
+key appended to the HD 189733 b input, the residual diagnostic of the pre-fix
+build reproduces the valve run bit for bit, i.e. the key had no effect on
+anything that stops right after `init`. `init` now seeds `F_c` from the initial
+state by the same average over `[j_min:N]` the loop takes, and the key does
+change the residual (cells 1-2 mass `6.377e-02, 7.699e-02` against
+`6.412e-02, 7.701e-02` for the valve). The guard stays, so a state with no
+outward flux still falls back as before.
+
+### 15.9 Reproduction
+
+Scratch tree, diagnostic routine and run directories:
+`scratchpad/base_close/` -- `t_cont` / `t_cont_ord` / `t_fix` (default grid,
+before / order forced / fixed), `t_x4` / `t_x4o` (`N = 916`), `t_iso` /
+`t_iso_fix`, `march_pre` / `march_post` / `march_post2` (re-convergence),
+`rz_pre` / `rz_post2` (residual of each converged state). The added routine
+writes `output/base_terms.txt`; it is a scratch instrument and was not added to
+the tree.

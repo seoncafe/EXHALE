@@ -118,7 +118,7 @@ by the Python loaders except where noted.
 | K2 | `Outer radius` | word 4 | real | R_planet | `0.0` | `r_out_user` | F332-334. Required (> 1) in spherical mode; in Roche mode extends `r_max` past L1. |
 | K3 | `Stellar Teff` | word 4 | real | K | `0.0` | `T_star_eff` | F335-337. With K4 enables the diluted-blackbody Balmer continuum (`use_excited_H`, F588). |
 | K4 | `Stellar radius` | word 4 | real | R_sun | `0.0` | `R_star` | F338-340. Converted to cm (`R_star*Rsun`, F587). |
-| K5 | `Deexc heat` | word 3 == `True` | flag | - | `.false.` | `incl_deexc_heat` | F341-343. Collisional de-excitation heating of H(n=2). |
+| K5 | `Deexc heat` | word 3 == `True`/`False` | flag | - | `.true.` | `incl_deexc_heat` | F341-343. Collisional de-excitation heating of H(n=2); active only with the excited-H model (K3+K4). `False` reverts to the one-way coronal ledger. |
 | K6 | `Wind-AE seed out` | word 4 | string (path) | - | `''` | `windae_seed_out` | F344-345. Must be tested before K7 (substring). |
 | K7 | `Wind-AE seed` | word 3 | string (path) | - | `inputdata/windae_seed.csv` | `windae_seed_file` | F346-347. |
 | K8 | `Jlya RT file` | word 4 | string (path) | - | `jlya_rt.txt` | `jlya_rt_file`, `jlya_mode=1` | F348-350. Read a J_Lya(r) profile. |
@@ -132,7 +132,7 @@ by the Python loaders except where noted.
 | K14c | `Secondary_ionization` | word 2 == `False`/`True`/`Immediate` | flag | - | `.true.`, STAGED (SvS85 on after first convergence) | `use_sec_ion`, `sec_ion_immediate` | Shull & van Steenberg (1985) secondary ionization by fast photoelectrons (E0 > 40 eV): heating is scaled by f_heat(x) and H I / He I gain secondary ionizations; x is the ionized fraction of the H+He nuclei. STAGED activation (Update §38): the coupling is applied only after the wind first converges without it, then the run re-converges (stops are held N_stall steps after the flip) — from a cold IC the immediate coupling amplifies the base startup transient into a NaN runaway on high-gravity cases. `False` = full photoelectron thermalization (bit-identical to the legacy path); `Immediate` = apply from step 0 (pre-staging behavior, A/B tests only). |
 | K14d | `He_rec_coupling` | word 2 == `True`/`False` | flag | - | `.true.` (photons ionize/heat H; `False` = legacy lost-photon path) | `use_he_rec_coupling` | Couples He II -> He I recombination radiation to H I ionization (Draine 2011 on-the-spot y/z; see docs/QUESTIONS_2026-07-17.md). Adds an extra H I photoionization rate `n_HeII n_e [z alpha_B + y alpha_1]` with its photoelectron heating, and corrects the He II recombination to `alpha_B + y alpha_1`. `y` (Eq. 14.16) is the local `>= 24.6 eV` ground-capture share ionizing H; `z` (Sec. 15.5) is the density-dependent cascade share. `False` = pure case B (legacy; in TR mode the singlet recombination is then neither case A nor case B). |
 | K14e | `He_H_charge_exchange` | word 2 == `True`/`False` | flag | - | `.true.` (He<->H pair active in every He system) | `he_h_charge_exchange` (charge_exchange module) | The He<->H charge-exchange pair (Huang 2023 Table 4 group B = Koskinen 2013 rates): B1 `He0+H+ -> He+ +H0` (endothermic, exp(-128000/T)) and B2 `He+ +H0 -> He0+H+` (the He+ loss channel where neutral H dominates, ~40% of He II at r~1.05 on WASP-121b, <1% by r>=1.2). Applied by dedicated routines in EVERY ionization system with He (including the advection pair and the analytic Newton Jacobians), independent of `cx_full` (which still gates the metal+He / metal+metal groups C/D). `False` = legacy no-He-CX path (bit-identical). |
-| K15 | `Molecular chemistry` | word 3 == `True`/`true` | flag | - | `.false.` | `thereis_mol` | F389-392. Requires He; exclusive with `He_diffusion` and metals (fatal otherwise, F637-650). |
+| K15 | `Molecular chemistry` | word 3 == `True`/`true` | flag | - | `.false.` | `thereis_mol` | F389-392. Requires He; exclusive with `He_diffusion` (fatal otherwise). Metals are allowed: they are solved in the same system as the molecular network. |
 | K16 | `Molecular base` | word 3 == `True`/`true` | flag | - | `.false.` | `molecular_base` | F393-396. EOS-only molecular base correction to `ntot_bc`. |
 | K17 | `Lower atmosphere` | word 3 (+ optional word 4) | string + real | - / R_J | `lower_atm_mode=0` | `lower_atm_mode`, `lower_atm_r1bar` | F397-404. `none`/`analytic`/`vulcan`. Triggers `run_lower_atm_prestep` (needs `EXHALE_ROOT`). |
 | K18 | `Lower column` | word 3 | real | R_J | `lower_col_r1bar=-1` | `lower_col_r1bar` | F405-407. Analytic lower column 1-bar radius. |
@@ -152,7 +152,7 @@ by the Python loaders except where noted.
 | K32 | `Base BC` | word 3 (+ optional word 4 if `pressure`) | string + real | - / microbar | `base_bc_mode=0` (density), `base_p_ubar=1.0` | `base_bc_mode`, `base_p_ubar` | F485-498. `density` or `pressure`. Pressure mode derives `n0` (F720-724). |
 | K32b | `Base ghost temperature` | word 4 | string | - | `base_ghost_T_continuous=.false.` (isothermal) | `base_ghost_T_continuous` | `isothermal` (legacy, ghost pressure `ntot_bc + dp_bc`, i.e. `T_ghost = T0`) or `continuous` (`dT/dr = 0`, ghost pressure `(ntot_bc + dp_bc)*T_1`). Unknown value warns and keeps isothermal. Ignored when K30 is set. |
 | K32c | `Max steps` | word 3 | int | steps | `count_max=1000000` | `count_max` | Hard cap on marching iterations. The env variable `EXHALE_MAXSTEPS` is separate and only exits earlier. |
-| K32d | `Coronal cutoff width` | word 4 | real | - | `coronal_cutoff_width=0.5` | `coronal_cutoff_width` | Roll-off width of the coronal-excitation guard below the 1e3 K CHIANTI fit floor (`Cool_coeff.f90`). Must be > 0; input_read aborts otherwise. |
+| K32d | `Coronal cutoff width` | word 4 | real | - | `coronal_cutoff_width=0.1` | `coronal_cutoff_width` | Roll-off width of the coronal-excitation guard below the 1e3 K CHIANTI fit floor (`Cool_coeff.f90`). Must be > 0; input_read aborts otherwise. Justified window 0.08-0.13 (`docs/coronal_cutoff_width.md`). |
 | K33 | `Base velocity` | word 3 | string | - | `base_v_massflux=.false.` (valve) | `base_v_massflux` | F499-508. `valve` or `massflux`. |
 | K34 | `Viscosity` | word 2 (+ optional word 3) | `True`/`False` or real, real | - | `visc_on=.false.`, `visc_mu0=0` (off), `visc_s=0.7` | `visc_on`, `visc_mu0`, `visc_s` | `True` = calibrated `mu(T)` + dissipation `q_mu`; a number = diagnostic power law `mu0*T^s` in code units. One-word key, so the value is word 2 (was word 3, which no input file used). See `docs/viscosity_conduction.md`. |
 | K34b | `Conduction` | word 2 | `True`/`False` | - | `cond_on=.false.` | `cond_on` | Heat conduction with `kappa(T) = 4.45e4 (T/1000 K)^0.7` (Watson+1981). Independent of K34. |
@@ -283,8 +283,7 @@ The parser aborts with `error stop 1` (a nonzero exit) on genuine input errors:
 - Unknown `Spectrum type` (F187-192).
 - `Jlya escape-prob: True` with `Stellar Lya flux <= 0` (F597-605).
 - `Domain mode: Spherical` without `Outer radius > 1` (F661-665).
-- Molecular chemistry combined with no He, with `He_diffusion`, or with metals
-  (F637-650).
+- Molecular chemistry combined with no He, or with `He_diffusion`.
 - `Lower atmosphere` requested without a 1-bar radius or without `EXHALE_ROOT`,
   or a failed generator (F834-867).
 

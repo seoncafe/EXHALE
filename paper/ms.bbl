@@ -6,6 +6,13 @@
 \providecommand{\doarXiv}[1]{\href{https://arxiv.org/abs/#1}{\nolinkurl{https://arxiv.org/abs/#1}}}
 
 % type= article
+\bibitem[{E. Abrahamsson {et~al.}(2007)Abrahamsson, Krems, \&
+  Dalgarno}]{Abrahamsson2007}
+Abrahamsson, E., Krems, R.~V., \& Dalgarno, A. 2007,
+  \bibinfo{title}{{Fine-Structure Excitation of O I and C I by Impact with
+  Atomic Hydrogen},} ApJ, 654, 1171
+
+% type= article
 \bibitem[{N.~R. Badnell(2006)Badnell}]{Badnell2006rr}
 Badnell, N.~R. 2006, \bibinfo{title}{{Radiative Recombination Data for Modeling
   Dynamic Finite-Density Plasmas},} ApJS, 167, 334
@@ -16,6 +23,13 @@ Badnell, N.~R. 2006, \bibinfo{title}{{Radiative Recombination Data for Modeling
 Badnell, N.~R., O'Mullane, M.~G., Summers, H.~P., {et~al.} 2003,
   \bibinfo{title}{{Dielectronic recombination data for dynamic finite-density
   plasmas},} A\&A, 406, 1151
+
+% type= article
+\bibitem[{{\v G}. Barinovs {et~al.}(2005)Barinovs, van Hemert, Krems, \&
+  Dalgarno}]{Barinovs2005}
+Barinovs, {\v G}., van Hemert, M.~C., Krems, R., \& Dalgarno, A. 2005,
+  \bibinfo{title}{{Fine-Structure Excitation of C$^{+}$ and Si$^{+}$ by Atomic
+  Hydrogen},} ApJ, 620, 537
 
 % type= article
 \bibitem[{J.~H. Black(1981)Black}]{Black1981}
@@ -268,5 +282,11 @@ Xing, L., Yan, D., \& Guo, J. 2023, \bibinfo{title}{{The Mass Fractionation of
 Yan, D., Seon, K.-i., Guo, J., Chen, G., \& Li, L. 2022,
   \bibinfo{title}{{Modeling the H{\alpha} and He 10830 Transmission Spectrum of
   WASP-52b},} ApJ, 936, 177
+
+% type= article
+\bibitem[{P.-G. Yan {\&} J.~F. Babb(2023)Yan \& Babb}]{YanBabb2023}
+Yan, P.-G., \& Babb, J.~F. 2023, \bibinfo{title}{{Fine-structure transitions of
+  the carbon isoelectronic sequence C, N$^{+}$, and O$^{2+}$ induced by
+  collisions with atomic hydrogen},} MNRAS, 518, 6004
 
 \end{thebibliography}

@@ -28,7 +28,7 @@ Functional API
 
 Convenience
 -----------
-    load_planet(run_dir, name=None)  -> Planet object bundling all of the above.
+    load_planet(run_dir, name=None)  -> Planet object collecting all of the above.
 
 All densities are cm^-3, rates erg cm^-3 s^-1, T in K, v in cm/s, r in R_p.
 By default the *advected* profiles (``*_adv.txt``) are read because those are the
@@ -90,22 +90,23 @@ RUNDIR = {
     'wasp121': 'WASP-121b',
 }
 
-# name, tag, log10 Mdot [g/s].  2026-08-11 production set: every entry is a
-# JFNK Newton-converged solution (info = 0), taken from the run log of the
-# planet's own directory, under the metal-line trapping / coronal-cutoff
-# cooling, the corrected JFNK line search, and the ionization-root validation
-# of that date.  Reached residuals ||R|| were 7.67e-4 (hd209), 1.72e-4
-# (hd189), 1.59e-4 (wasp52), 1.73e-4 (wasp121); the hd189 entry is its
-# run_20260811_rootfix.log, which also carries the continuous-temperature base
-# ghost closure ("Base ghost temperature: continuous") and moved that planet
-# from 9.04 to 9.05.  A du-threshold stop alone is not quantitative for Mdot,
-# so these supersede the earlier marching-stop values 9.57 / 8.72 / 11.80 /
-# 13.20.
+# name, tag, log10 Mdot [g/s].  2026-08-12/13 production set: every entry is a
+# JFNK Newton-converged solution (info = 0), read off the run log of the
+# planet's own directory (run_20260812_lyafix.log in each folder).  Reached
+# residuals ||R|| were 2.04e-4 (hd209), 8.78e-4 (hd189), 8.65e-4 (wasp52),
+# 7.80e-4 (wasp121).  These runs carry the ground-term fine-structure
+# statistical equilibrium of the C/N/O coolants, the base ghost built from the
+# composition of the state it bounds, and the corrected H(n=2) rate
+# coefficients with the collisional de-excitation heating on by default; the
+# hd189 entry also uses the continuous-temperature base ghost closure ("Base
+# ghost temperature: continuous").  A du-threshold stop alone is not
+# quantitative for Mdot, so these supersede the du-stop values and the earlier
+# converged set 9.31 / 9.05 / 11.63 / 13.17 of 2026-08-11.
 PLANETS = [
-    ('HD 209458 b', 'hd209',   9.31),
-    ('HD 189733 b', 'hd189',   9.05),
-    ('WASP-52 b',   'wasp52', 11.63),
-    ('WASP-121 b',  'wasp121', 13.17),
+    ('HD 209458 b', 'hd209',   9.46),
+    ('HD 189733 b', 'hd189',   9.14),
+    ('WASP-52 b',   'wasp52', 11.70),
+    ('WASP-121 b',  'wasp121', 13.20),
 ]
 
 
@@ -315,7 +316,7 @@ def adiabatic_cooling(r_cm, p, v):
 # Convenience object
 # --------------------------------------------------------------------------- #
 class Planet(object):
-    """Bundle one converged EXHALE run: hydro, ions, cooling, excited H."""
+    """Collect one converged EXHALE run: hydro, ions, cooling, excited H."""
 
     def __init__(self, name, run_dir, adv=True):
         self.name = name

@@ -158,6 +158,16 @@ configuration. Their `Hydro_ioniz.txt`, `Ion_species.txt`,
 `Cooling_breakdown.txt` and `Excited_H.txt` come out byte-identical -- only the
 `_adv` files differ, as the call structure requires.
 
+> **Dated 2026-08-13.** The `Mdot` column below is the A/B of two binaries on the
+> 2026-08-11 production configuration and is a record of that measurement, not
+> the current production set. The planet folders have since been re-converged
+> under the ground-term fine-structure statistical equilibrium, the base-ghost
+> composition fix and the H(n=2) rate corrections, and now give
+> `log10 Mdot = 9.46` (HD 209458 b), `9.14` (HD 189733 b), `11.70` (WASP-52 b)
+> and `13.20` (WASP-121 b) -- see each folder's `run_20260812_lyafix.log`. The
+> finding this table supports (the `_adv` files change, the equilibrium files do
+> not) is unaffected.
+
 | planet | Mdot [log g/s] | negative `_adv` entries | cells held at eq | newly held | outermost held | max change, `r > 1.05` |
 |---|---|---|---|---|---|---|
 | HD 209458 b | 9.31 -> 9.31 | 48 -> 0 | 103 -> 124 | 21 | 1.0316 | 1.4% (He III) |

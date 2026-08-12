@@ -8,7 +8,7 @@ are recomputed live via chianti_cooling.py.
 Writes to ../docs/figures/:
   cool_resonance_fits.pdf   resonance lines + Fe II: table vs formula + resid
   cool_cno_compare.pdf      C/N/O: CHIANTI vs new fits vs AIOLOS + deviation
-  cool_fs_saturation.pdf    [C II]158/[O I]63 density-dependent saturation
+  cool_fs_saturation.pdf    C I/C II/N II/O I ground-term FS saturation
   cool_feii_decomp.pdf      Fe II coronal 4-term decomposition
 """
 
@@ -149,49 +149,52 @@ plt.close(fig)
 print("wrote cool_cno_compare.pdf")
 
 # ------------------------------------------------- FS saturation figure
-def cii_sat(T, ne, nHI):
-    xl = np.log10(T/1e4)
-    ups = 10**(0.33433316 + 0.11618314*xl - 0.087925806*xl**2
-               - 0.061804561*xl**3)
-    ke = PREF*ups/(4*np.sqrt(T))
-    Cdex = ne*ke + nHI*4.0e-11
-    x = 2*np.exp(-91.213/T)
-    f1 = 2/(2 + 4*np.exp(-91.213/T))
-    w = f1*KB_CODE*91.213*2.290e-6*x*Cdex/(2.290e-6 + Cdex*(1 + x))
-    rem = multiexp([1.06878629e-23, 3.04162479e-17, 2.30421959e-16,
-                    1.29701808e-15],
-                   [294.754, 61740.4, 112006.0, 223343.0], T)
-    return w/np.maximum(ne, 1e-30) + rem
+# The ground-term statistical-equilibrium coefficients, evaluated straight
+# from the generator so the figure and the Fortran share one set of numbers.
+from fit_fs_saturation import (FS_IONS, KH_TAB, REM_GUESS, ground_term_data,
+                               fit_upsilon, fit_kH, above_term_coronal,
+                               fit_multiexp, w_fs)
 
-def oi_sat(T, ne, nHI):
-    xl = np.log10(T/1e4)
-    ups = 10**(-2.0890112 + 0.19632883*xl - 0.16253745*xl**2
-               + 0.041658804*xl**3)
-    ke = PREF*ups/(3*np.sqrt(T))
-    Cdex = ne*ke + nHI*4.2e-11*(T/100)**0.67
-    x = 0.6*np.exp(-227.708/T)
-    f1 = 5/(5 + 3*np.exp(-227.708/T) + np.exp(-326.567/T))
-    w = f1*KB_CODE*227.708*8.542e-5*x*Cdex/(8.542e-5 + Cdex*(1 + x))
-    rem = multiexp([1.29166532e-22, 2.54689509e-19, 1.91904760e-18,
-                    7.47798840e-18, 3.40871685e-17],
-                   [930.111, 22878.3, 34189.1, 75919.8, 185985.0], T)
-    return w/np.maximum(ne, 1e-30) + rem
+FSDATA = {}
+for _nm, (_el, _ion, _nlev, _amu) in FS_IONS.items():
+    _g, _Ek, _A, _ups = ground_term_data(_el, _ion, _nlev)
+    _uf = {k: fit_upsilon(tr)[0] for k, tr in _ups.items()}
+    _Tt, _kt = KH_TAB[_nm]
+    _kf = {k: fit_kH(_Tt, v)[0:3:2] for k, v in _kt.items()}
+    _Ar, _Tr = fit_multiexp(above_term_coronal(_el, _ion, _nlev, T),
+                            REM_GUESS[_nm])
+    FSDATA[_nm] = (_g, _Ek, _A, _uf, _kf, _Ar, _Tr, _nlev)
 
-fig, axes = plt.subplots(1, 2, figsize=(10.5, 4.4))
+
+def fs_sat(name, Tv, ne, nHI):
+    """Lambda_eff(T, ne, nHI) per (n_e n_ion), beta = 1."""
+    g, Ek, A, uf, kf, Ar, Tr, nlev = FSDATA[name]
+    x = np.log10(np.clip(Tv, 1e3, 1e5)/1e4)
+    C = {}
+    for (l, u), c in uf.items():
+        C[(u, l)] = ne*PREF*10.0**np.polyval(c, x)/(g[u]*np.sqrt(Tv))
+    for (u, l), (c, lim) in kf.items():
+        uu = np.log10(np.clip(Tv, lim[0], lim[1])/1e3)
+        C[(u-1, l-1)] = C[(u-1, l-1)] + nHI*10.0**np.polyval(c, uu)
+    W = w_fs(g, Ek, A, C, np.ones((nlev, nlev)), Tv)
+    return W/max(ne, 1e-30) + multiexp(Ar, Tr, Tv)
+
+
+fig, axes = plt.subplots(2, 2, figsize=(10.5, 8.0))
 CASES = [(1e2, 0.99, r"wind: $n_{\rm H}{=}10^2$, $x_e{=}0.99$"),
          (1e6, 0.5, r"$n_{\rm H}{=}10^6$, $x_e{=}0.5$"),
          (1e10, 1e-3, r"base: $n_{\rm H}{=}10^{10}$, $x_e{=}10^{-3}$"),
          (1e13, 1e-4, r"deep base: $n_{\rm H}{=}10^{13}$, $x_e{=}10^{-4}$")]
-for ax, nm, fsat, lam0 in [(axes[0], "C II", cii_sat, CHI["CII"]),
-                           (axes[1], "O I", oi_sat, CHI["OI"])]:
-    ax.plot(T, lam0, lw=2.6, alpha=0.4, label="coronal (CHIANTI, e-only)")
-    for nH, xe, lab in CASES:
-        ax.plot(T, fsat(T, nH*xe, nH*(1 - xe)), lw=1.2, label=lab)
+for ax, nm, lab in zip(axes.ravel(), ["CI", "CII", "NII", "OI"],
+                       ["C I", "C II", "N II", "O I"]):
+    ax.plot(T, CHI[nm], lw=2.6, alpha=0.4, label="coronal (CHIANTI, e-only)")
+    for nH, xe, cl in CASES:
+        ax.plot(T, fs_sat(nm, T, nH*xe, nH*(1 - xe)), lw=1.2, label=cl)
     ax.set_xscale("log"); ax.set_yscale("log")
     ax.set_xlabel(r"$T$ [K]")
     ax.set_ylabel(r"$\Lambda_{\rm eff}$ [erg cm$^3$ s$^{-1}$]")
-    ax.set_title(nm); ax.legend(fontsize=7, loc="upper left")
-axes[0].set_ylim(1e-27, 1e-18); axes[1].set_ylim(1e-27, 1e-19)
+    ax.set_title(lab); ax.legend(fontsize=7, loc="upper left")
+    ax.set_ylim(1e-29, 1e-18)
 fig.tight_layout()
 fig.savefig(os.path.join(OUT, "cool_fs_saturation.pdf"), bbox_inches="tight")
 plt.close(fig)

@@ -426,7 +426,8 @@ exact derivative mirror of \texttt{cx\_add\_to\_fvec} (each rate $R=k_c D A$ is
 bilinear in two reactant densities, both linear in the unknowns). Absent elements
 and the unused upper stage of two-stage elements are pinned to identity rows. The
 He metastable-triplet system (\texttt{System\_HeH\_TR}) is left on \texttt{hybrd1}
-(no analytic Jacobian; it is mutually exclusive with metals and unused here).
+(no analytic Jacobian; at the time of this change it was mutually exclusive with
+metals and unused here --- the merged \texttt{System\_HeH\_TR\_metals} came later).
 
 \subsection{Wiring and build}
 In \texttt{ionization\_\allowbreak equilibrium.f90} the H-only, H/He, and

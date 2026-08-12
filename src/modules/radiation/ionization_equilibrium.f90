@@ -12,6 +12,7 @@
    use System_HeH                ! Equilibrium equations
 	use System_HeH_TR
 	use System_HeH_mol            ! molecular network
+	use System_HeH_mol_metals     ! merged molecular network + metals
 	use lower_column, only: q_h2_equilibrium
 	use h3p_cooling,  only: h3p_cooling_rate
    use System_HeH_metals
@@ -104,7 +105,9 @@
    integer, dimension(n_melem) :: meg_top
    integer :: i0,top
    ! Base index of the first metal element's X+ unknown in sys_x: 4 normally,
-   ! 5 when the He triplet occupies x(4) (merged HeITR+metals system).
+   ! 5 when the He triplet occupies x(4) (merged HeITR+metals system), and
+   ! metal_row_base() = 8 or 9 in the molecular layout, where x(4..7) are the
+   ! H nuclei bound into H2/H2+/H3+/HeH+ and x(8) the triplet.
    integer :: mbase
    ! Molecular solve (thereis_mol): count of cells whose equilibrium solve
    ! failed (kept previous state), and the physically-informed guess scalars
@@ -112,7 +115,7 @@
    integer :: n_molfail
    real*8  :: pbar_loc, qh2_loc, x2_loc
 
-   ! Atomic (non-molecular) ionization solve: validation of the returned root.
+   ! Ionization solve: validation of the returned root.
    ! The equilibrium systems are polynomial and possess roots outside the
    ! physical simplex (negative stage fractions, or ionized stages of one
    ! element summing above its nucleus total); such a root makes the neutral
@@ -121,7 +124,8 @@
    ! starting points and keeps the best admissible root; x_root_best holds it,
    ! ok_rank grades the attempt (0 none, 1 physical, 2 physical + converged),
    ! and the counters feed the one-line sweep summary.
-   integer, parameter :: n_x_max = 4 + 2*n_melem   ! largest atomic N_eq
+   ! Largest N_eq over the layouts: molecular (7) + triplet (1) + metals.
+   integer, parameter :: n_x_max = 8 + 2*n_melem
    integer :: iatt, info_ieq, ok_rank, best_rank
    integer :: n_ieq_reseed, n_ieq_retry, n_ieq_unphys, n_ieq_fail
    logical :: conv_ieq, phys_ieq
@@ -201,12 +205,9 @@
 	xion = min(max((nhii + nheii + nheiii)/max(nh + nhe, 1.0d-99), 0.0d0), 1.0d0)
 
 	! Free electron density (assuming overall neutrality; nm adds the
-	! metal electrons under the eos_metals policy)
-	if (thereis_mol) then
-		call calc_ne(nhii,nheii,nheiii,ne,nm,nmol_eq)
-	else
-		call calc_ne(nhii,nheii,nheiii,ne,nm)
-	endif
+	! metal electrons under the eos_metals policy, nmol_eq the molecular-ion
+	! electrons -- it is zero for an atomic run, so the sum is unchanged there)
+	call calc_ne(nhii,nheii,nheiii,ne,nm,nmol_eq)
 
 	! Cell-by-cell pressure-broadening factor for the opacity ('P' model).
 	! opacity_pT_factor returns 1.0 for all other models, so opa_pf=1
@@ -253,10 +254,13 @@
    ! Evaluate cooling rates and recombination/collisional 
    ! 	ionization rates
       
+    ! nmol_eq gives the cooling the same electron density this routine
+    ! balances the ionization against (zero for an atomic run).
     call eval_cool(T_K,nhi,nhii,nhei,nheii,nheiii, nm,           &
 			   	   	rchiiB,rcheiiB,rcheiiiB, rec_m,             &
 			    	a_ion_HI,a_ion_HeI,a_ion_HeII, aion_m,         &
-			    	cool, nheiTR=nheiTR, a_ion_HeITR=a_ion_HeITR)
+			    	cool, nheiTR=nheiTR, a_ion_HeITR=a_ion_HeITR,  &
+			    	nmol=nmol_eq)
 
 	! Capture the ground-state H proton-budget coefficients on
 	! every pass (the converged pass is the one read out by write_excited_H).
@@ -375,8 +379,15 @@
 
 		! Metal unknowns start at sys_x(4) normally, but shift to sys_x(5)
 		! when the He triplet occupies sys_x(4) (merged HeITR+metals system).
-		mbase = 4
-		if (thereis_HeITR) mbase = 5
+		! In the molecular layout the molecular unknowns own sys_x(4..7) and
+		! the metals follow at metal_row_base() (single definition, shared
+		! with the merged molecular+metals residual).
+		if (thereis_mol) then
+			mbase = metal_row_base()
+		else
+			mbase = 4
+			if (thereis_HeITR) mbase = 5
+		endif
 
 		! OpenMP-parallel cell sweep (see the no-He branch above). The cell-by-cell
 		! metal coefficients (met_*, System_HeH_metals) and charge-exchange rates
@@ -590,35 +601,94 @@
 			! The He metastable-triplet systems keep the MINPACK solve (no
 			! analytic Jacobian written for the triplet kinetics).
 			if (thereis_mol) then
-				! molecular network (metals excluded by input_read)
-				call hybrd1(ion_system_HeH_mol,N_eq,sys_x,sys_sol,   &
-						    tol,info,wa,lwa,params)
-				! hybrd1 is bistable in its initial guess: from a zero-
-				! molecular warm-start it fails to converge at the dense,
-				! optically-thick base, where the true root is strongly
-				! molecular. On failure, retry ONCE from a physically-informed
-				! guess built from the chemical-equilibrium H2 fit at the local
-				! (p, T): the H-nucleus fraction bound in H2 seeds sys_x(4).
-				if (info .ne. 1) then
-					pbar_loc = n_in_dim(j)*kb_erg*T_K(j)/1.0d6   ! gas pressure [bar]
-					qh2_loc  = q_h2_equilibrium(pbar_loc, T_K(j))
-					x2_loc   = 2.0d0*qh2_loc*(1.0d0 + HeH)/(1.0d0 + qh2_loc)
-					if (x2_loc .gt. 1.0d0) x2_loc = 1.0d0
-					sys_x(1) = nhii(j)/nh(j)      ! near-neutral H (dark base)
-					sys_x(2) = nheii(j)/nhe(j)
-					sys_x(3) = nheiii(j)/nhe(j)
-					sys_x(4) = x2_loc             ! 2 n_H2 / n_H from the fit
-					sys_x(5) = 1.0d-10            ! tiny H2+ seed
-					sys_x(6) = 1.0d-10            ! tiny H3+ seed
-					sys_x(7) = 1.0d-10            ! tiny HeH+ seed
-					if (thereis_HeITR) sys_x(8) = nheiTR(j)/nhe(j)
-					call hybrd1(ion_system_HeH_mol,N_eq,sys_x,sys_sol,   &
-							    tol,info,wa,lwa,params)
-					if (info .ne. 1) then
-						! Both attempts failed: keep this cell's previous state
-						! by restoring sys_x to the pre-solve fractions (the
-						! extraction below then reproduces it unchanged), and
-						! count the cell for the one-line summary warning.
+				! Molecular network, with the trace metals solved in the same
+				! system when they are present (System_HeH_mol_metals: the two
+				! blocks share the free electron density, which the metals
+				! dominate in the shielded molecular base).
+				!
+				! hybrd1 is bistable in its initial guess, because the cell
+				! itself is: a molecular basin (the dense, optically-thick
+				! base, where the true root is strongly molecular) and an
+				! atomic basin (the wind above the H2 -> H front). From a
+				! zero-molecular warm start the solve fails at the base; at
+				! the front cells themselves neither warm start need land in
+				! the right basin. One starting point in each basin is
+				! therefore tried in turn:
+				!   1  the guess built above (previous state / neighbour),
+				!   2  molecular basin -- the chemical-equilibrium H2 fit at
+				!      the local (p, T); the H-nucleus fraction bound in H2
+				!      seeds sys_x(4), with the metal stages from their own
+				!      ionization balance at the incoming n_e,
+				!   3  atomic basin -- the molecule-free ionization balance of
+				!      every element at the incoming n_e (H2/H2+/H3+/HeH+ set
+				!      to zero, the metastable and the metals to their own
+				!      steady states),
+				! and, as in the atomic branch below, a converged root is kept
+				! only if it is also physical (every stage fraction >= 0, each
+				! element's tracked stages summing to at most its nuclei).
+				best_rank = 0
+				do iatt = 1,3
+					if (iatt .eq. 3) then
+						call ionization_balance_at_fixed_ne(sys_x,N_eq,   &
+						                                    mbase,ne(j))
+						n_ieq_retry = n_ieq_retry + 1
+					else if (iatt .eq. 2) then
+						pbar_loc = n_in_dim(j)*kb_erg*T_K(j)/1.0d6   ! gas pressure [bar]
+						qh2_loc  = q_h2_equilibrium(pbar_loc, T_K(j))
+						x2_loc   = 2.0d0*qh2_loc*(1.0d0 + HeH)/(1.0d0 + qh2_loc)
+						if (x2_loc .gt. 1.0d0) x2_loc = 1.0d0
+						sys_x(1) = nhii(j)/nh(j)      ! near-neutral H (dark base)
+						sys_x(2) = nheii(j)/nhe(j)
+						sys_x(3) = nheiii(j)/nhe(j)
+						sys_x(4) = x2_loc             ! 2 n_H2 / n_H from the fit
+						sys_x(5) = 1.0d-10            ! tiny H2+ seed
+						sys_x(6) = 1.0d-10            ! tiny H3+ seed
+						sys_x(7) = 1.0d-10            ! tiny HeH+ seed
+						if (thereis_HeITR) sys_x(8) = nheiTR(j)/nhe(j)
+						if (thereis_metals)                                &
+							call metal_ionization_balance_at_fixed_ne(     &
+							                     sys_x,N_eq,mbase,ne(j))
+						n_ieq_retry = n_ieq_retry + 1
+					endif
+
+					if (thereis_metals) then
+						! Metals appended above the molecular unknowns; point
+						! charge exchange at their rows for this solve.
+						cx_metal_base = mbase
+						call hybrd1(ion_system_HeH_mol_metals,N_eq,sys_x,  &
+						            sys_sol,tol,info,wa,lwa,params)
+						cx_metal_base = 4
+					else
+						call hybrd1(ion_system_HeH_mol,N_eq,sys_x,sys_sol, &
+						            tol,info,wa,lwa,params)
+					endif
+					conv_ieq = (info .eq. 1)
+
+					phys_ieq = ionization_fractions_physical(sys_x,N_eq,mbase)
+					if (iatt .eq. 1 .and. .not.phys_ieq)                &
+						n_ieq_unphys = n_ieq_unphys + 1
+					ok_rank = 0
+					if (phys_ieq) ok_rank = 1
+					if (phys_ieq .and. conv_ieq) ok_rank = 2
+					! Strict improvement only, so attempt 1 wins any tie.
+					if (ok_rank .gt. best_rank) then
+						best_rank = ok_rank
+						x_root_best(1:N_eq) = sys_x(1:N_eq)
+					endif
+					if (ok_rank .eq. 2) exit
+				enddo
+
+				if (best_rank .lt. 2) then
+					if (best_rank .eq. 1) then
+						! No attempt met the solver tolerance; keep the best
+						! physical root found.
+						sys_x(1:N_eq) = x_root_best(1:N_eq)
+					else
+						! No starting point produced an admissible root: keep
+						! this cell's previous state by restoring sys_x to the
+						! pre-solve fractions (the extraction below then
+						! reproduces it unchanged), and count the cell for the
+						! one-line summary warning.
 						sys_x(1) = nhii(j)/nh(j)
 						sys_x(2) = nheii(j)/nhe(j)
 						sys_x(3) = nheiii(j)/nhe(j)
@@ -627,6 +697,19 @@
 						sys_x(6) = 3.0d0*nmol_eq(j,3)/nh(j)
 						sys_x(7) = nmol_eq(j,4)/nh(j)
 						if (thereis_HeITR) sys_x(8) = nheiTR(j)/nhe(j)
+						if (thereis_metals) then
+							do im = 1,n_melem
+								i0 = melem_i0(im)
+								sys_x(mbase+2*(im-1)) = nm(j,i0+1)         &
+								                  /max(nm_tot(j,im),1.0d-30)
+								if (melem_top(im) .ge. 2) then
+									sys_x(mbase+1+2*(im-1)) = nm(j,i0+2)       &
+									                  /max(nm_tot(j,im),1.0d-30)
+								else
+									sys_x(mbase+1+2*(im-1)) = 0.0d0
+								endif
+							enddo
+						endif
 						n_molfail = n_molfail + 1
 					endif
 				endif
@@ -949,15 +1032,15 @@
 	!
 	! Rates come from the same cell state the residuals read (ieq_cell and
 	! the met_* coefficients of System_HeH_metals), so this is the incoming
-	! cell's own physics, not a generic guess. Atomic layouts only.
-
-	use System_HeH_metals, only: met_nelem, met_ntot, met_g0, met_g1,     &
-	                             met_b0, met_b1, met_a1, met_a2, met_top
+	! cell's own physics, not a generic guess. Molecules are not part of this
+	! balance: it is the molecule-free limit of the state, so in the molecular
+	! layout the H2/H2+/H3+/HeH+ fractions x(4..7) are left at zero and the
+	! metastable sits at x(8).
 
 	integer, intent(in)  :: n, mbase
 	real*8,  intent(in)  :: n_e
 	real*8,  intent(out) :: x(n)
-	integer :: im, ix, top
+	integer :: itr
 	real*8  :: u0,u1,d1,d2,w1,w2,s
 	real*8  :: xneu, n_hi_loc
 
@@ -987,44 +1070,70 @@
 		endif
 
 		if (thereis_HeITR) then
+			itr = 4
+			if (thereis_mol) itr = 8
 			xneu     = max(1.0d0 - x(2) - x(3), 0.0d0)
 			n_hi_loc = max(1.0d0 - x(1), 0.0d0)*ieq_cell%nh
 			s = ieq_cell%P_HeITR + ieq_cell%A31                          &
 			  + n_hi_loc*ieq_cell%Q31                                    &
 			  + (ieq_cell%q31a + ieq_cell%q31b                           &
 			     + ieq_cell%a_ion_HeITR)*n_e
-			if (s .gt. 0.0d0) x(4) = min(                                &
+			if (s .gt. 0.0d0) x(itr) = min(                              &
 			      n_e*(x(2)*ieq_cell%rcheiTR + xneu*ieq_cell%q13)/s, xneu)
 		endif
 	endif
 
-	! Metals, element by element in canonical order. An element that is
-	! absent keeps its stages pinned at zero, as its residual rows do.
-	if (thereis_metals) then
-		do im = 1,met_nelem
-			if (met_ntot(im) .le. 1.0d-30) cycle
-			ix  = mbase + 2*(im-1)
-			top = met_top(im)
-			u0  = met_g0(im) + met_b0(im)*n_e
-			d1  = met_a1(im)*n_e
-			if (top .ge. 2) then
-				u1 = met_g1(im) + met_b1(im)*n_e
-				d2 = met_a2(im)*n_e
-				w1 = u0*d2
-				w2 = u0*u1
-				s  = d1*d2 + w1 + w2
-				if (s .gt. 0.0d0) then
-					x(ix)   = w1/s
-					x(ix+1) = w2/s
-				endif
-			else
-				s = d1 + u0
-				if (s .gt. 0.0d0) x(ix) = u0/s
-			endif
-		enddo
-	endif
+	if (thereis_metals)                                                  &
+		call metal_ionization_balance_at_fixed_ne(x,n,mbase,n_e)
 
 	end subroutine ionization_balance_at_fixed_ne
+
+	!----------------------------------!
+
+	subroutine metal_ionization_balance_at_fixed_ne(x,n,mbase,n_e)
+	! Metal stage fractions in each element's OWN ionization balance at a
+	! given electron density, element by element in canonical order (the
+	! metal part of ionization_balance_at_fixed_ne above; see there for the
+	! balance itself). Written separately because the molecular retry needs
+	! exactly this part: its H/He/molecular unknowns come from the
+	! chemical-equilibrium H2 fit, its metal unknowns from here. Only
+	! x(mbase..) is touched, so the caller's other seeds are preserved. An
+	! element that is absent keeps its stages at zero, as its residual rows do.
+
+	use System_HeH_metals, only: met_nelem, met_ntot, met_g0, met_g1,     &
+	                             met_b0, met_b1, met_a1, met_a2, met_top
+
+	integer, intent(in)    :: n, mbase
+	real*8,  intent(in)    :: n_e
+	real*8,  intent(inout) :: x(n)
+	integer :: im, ix, top
+	real*8  :: u0,u1,d1,d2,w1,w2,s
+
+	do im = 1,met_nelem
+		ix = mbase + 2*(im-1)
+		x(ix)   = 0.0d0
+		x(ix+1) = 0.0d0
+		if (met_ntot(im) .le. 1.0d-30) cycle
+		top = met_top(im)
+		u0  = met_g0(im) + met_b0(im)*n_e
+		d1  = met_a1(im)*n_e
+		if (top .ge. 2) then
+			u1 = met_g1(im) + met_b1(im)*n_e
+			d2 = met_a2(im)*n_e
+			w1 = u0*d2
+			w2 = u0*u1
+			s  = d1*d2 + w1 + w2
+			if (s .gt. 0.0d0) then
+				x(ix)   = w1/s
+				x(ix+1) = w2/s
+			endif
+		else
+			s = d1 + u0
+			if (s .gt. 0.0d0) x(ix) = u0/s
+		endif
+	enddo
+
+	end subroutine metal_ionization_balance_at_fixed_ne
 
 	! End of module
 	end module ionization_equilibrium

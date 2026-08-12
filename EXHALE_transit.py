@@ -379,7 +379,7 @@ if do_Ha:
 		Gamma_2p = Gamma_2s   # ~equal (Huang+2017 Table 2: 25.7 vs 21.5 s^-1)
 		print('(TPM)   n=2 photoionization: Gamma_2s = Gamma_2p = %.2e s^-1'
 		      ' (T_star = %g K)' % (Gamma_2s, T_star))
-	n2s_cm, n2p_cm, n2_cm = n2_populations(T, n1s_cm, ne_cm, Jlya,
+	n2s_cm, n2p_cm, n2_cm = n2_populations(T, n1s_cm, nhii, ne_cm, Jlya,
 	                                       G2s = Gamma_2s, G2p = Gamma_2p)
 	# Carry the 2s and 2p populations separately (different Balmer cross
 	# sections); build the symmetric (inverted + normal) chord profiles in m^-3.

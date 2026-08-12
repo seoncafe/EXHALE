@@ -184,8 +184,10 @@ Molecular base:      True
 ```
 H2/H2+/H3+/HeH+ join the coupled ionization equilibrium; H2 photoionization
 opacity/heating (Yan+1998) and H3+ IR cooling (Miller+2013) are included;
-`Ion_species*.txt` gains `H2 H2p H3p HeHp` columns. Requires He; v1 refuses
-`metals.inp` and `He_diffusion`. Hot Jupiters: thin molecular base, sharp
+`Ion_species*.txt` gains `H2 H2p H3p HeHp` columns. Requires He; `He_diffusion`
+is refused. A `metals.inp` may be present -- the metal stages are then solved in
+the same system as the molecular network, which they share the free electron
+density with (`examples/16_molecular_metals`). Hot Jupiters: thin molecular base, sharp
 H2->H front, atomic wind above (the atomic assumption becomes a result).
 Caveat: local equilibrium (no molecular advection).
 -> `docs/lower_atmosphere_coupling.pdf` §4.3.
@@ -247,7 +249,20 @@ make check                              # golden regression (= backup/regression
 ./backup/regression/test_roundtrip.sh   # restart round-trip
 ```
 The harness lives in `backup/regression/`, which is a working-copy directory
-and is not in the git remote. `run_fcheck.sh` rebuilds with `-fcheck`, runs a bounded HD 209458 b case,
+and is not in the git remote. Default matrix (four cases, each bitwise against
+its golden `Hydro_ioniz.txt` / `Ion_species.txt`):
+
+| case | what it guards |
+|---|---|
+| `wasp_full` | WASP-121 b with He 2³S **and** metals |
+| `wasp_he23off` | the same with He 2³S off (the HeITR-off branch) |
+| `mol_base_handoff` | hot-Uranus Tier-2 gate: molecular chemistry + a `base.inp` handoff whose `q_H2_base` drives the photochemical base particle count; 12000-step snapshot |
+| `mol_metals` | the same gate + solar C/N/O/Mg/Ca/Na/Fe: the molecular and metal networks in one system; 12000-step snapshot |
+
+Any other case directory can be named on the command line. `run_check.sh golden`
+does **not** re-run — it snapshots whatever `output/` sits in each case
+directory, so the order after a code change is `check`, `golden`, `check`.
+`run_fcheck.sh` rebuilds with `-fcheck`, runs a bounded HD 209458 b case,
 fails on any runtime trap, then restores the production build (it caught a
 real out-of-bounds read on WASP-121b in the 2026-07-02 review).
 
@@ -259,6 +274,6 @@ real out-of-bounds read on WASP-121b in the 2026-07-02 review).
   implementation, 4-planet examples, figures
 - `docs/newton_scaling_and_base_wall.md` — JFNK diagonal scaling, line-search
   merit and stagnation watchdog; why the base momentum row is not the blocker
-- `examples/` — ready-made configs 01–15; the planet directories `HD209458b/`,
+- `examples/` — ready-made configs 01–16; the planet directories `HD209458b/`,
   `HD189733b/`, `WASP-121b/`, `WASP-52b/` sit at the repo root and are
   self-contained (own `input.inp`, output, notebooks)

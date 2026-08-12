@@ -11,9 +11,9 @@
    ! The resulting H(n=2) population is then (i) photoionized by the stellar
    ! Balmer continuum (E > 3.4 eV), adding a proton source to the H ionization
    ! balance, and (ii) heated by the photoelectron excess energy (photoelectric
-   ! heating) and, optionally, by collisional de-excitation of the Ly-alpha-
-   ! pumped n=2 atoms. This is the Fortran counterpart of the n=2 model in
-   ! TPM.py (which uses it for H-alpha/H-beta line opacity).
+   ! heating) and by collisional de-excitation of the Ly-alpha-pumped n=2 atoms
+   ! (incl_deexc_heat). This is the Fortran counterpart of the n=2 model in
+   ! EXHALE_transit.py (which uses it for H-alpha/H-beta line opacity).
    !
    ! All feedback is gated by use_excited_H; when off, the module is inert and
    ! the global feedback arrays stay zero, so the build reproduces the no-excited-H result.
@@ -28,31 +28,22 @@
    use global_parameters
    use species_table, only: n_mion, mion_fsp
    use utils, only: calc_ne
-   use lya_rt, only: jlya_escape_prob, jint_arr, jstar_arr
+   use lya_rt, only: jlya_escape_prob, jint_arr, jstar_arr,                  &
+                     lya_line_center_optical_depth
+   ! n=2 / Ly-alpha atomic data and collisional rate coefficients
+   ! (Christie+2013 Table 2, Draine 2011); one definition, shared with lya_rt.
+   use hydrogen_n2_rates
 
    implicit none
-
-   ! ----- n=2 / Ly-alpha atomic data (Christie+2013 Table 2; cgs) ----- !
-   real*8, parameter :: lA_lya   = 1215.6701d-8        ! Ly-alpha wavelength [cm]
-   real*8, parameter :: nu_lya   = c_light/lA_lya      ! Ly-alpha frequency [s^-1]
-   real*8, parameter :: A_2p1s   = 6.3d8               ! A(2p->1s) [s^-1]
-   real*8, parameter :: A_2s1s   = 8.26d0              ! A(2s->1s) two-photon [s^-1]
-   real*8, parameter :: g1s = 2.0d0, g2s = 2.0d0, g2p = 6.0d0
-   ! Einstein-B in the J_nu (mean-intensity) convention: B*J gives s^-1.
-   real*8, parameter :: B21_lya = A_2p1s*c_light**2.0/(2.0d0*hp_erg*nu_lya**3.0)
-   real*8, parameter :: B12_lya = (g2p/g1s)*B21_lya
 
    ! ----- Balmer-continuum (n=2 photoionization) data ----- !
    real*8, parameter :: eV2Hz    = 2.417989242d14      ! Hz per eV
    real*8, parameter :: E2_thr   = 3.40d0              ! n=2 ionization edge [eV]
    real*8, parameter :: nu2_thr  = E2_thr*eV2Hz        ! [s^-1]
    real*8, parameter :: s2_thr   = 1.4d-17             ! sigma_2 at threshold [cm^2]
-   real*8, parameter :: E21_erg  = 1.634d-11           ! 1s-2s/2p gap, 10.2 eV [erg]
 
    ! ----- Ly-alpha pumping (parameterized J_lya) data ----- !
    real*8, parameter :: sigma_LyC = 6.3d-18            ! H photoion. xsec at LyC [cm^2]
-   real*8, parameter :: f_lya     = 0.4162d0           ! Ly-alpha oscillator strength
-   real*8, parameter :: C_lya     = 1.49736d-2*f_lya   ! sqrt(pi) e^2/(m_e c) f_lya [cm^2 Hz]
 
    ! RT-supplied J_lya(r) profile (jlya_mode=1), interpolated onto the grid once.
    logical, save :: jlya_rt_loaded = .false.
@@ -85,7 +76,7 @@
    real*8, dimension(1-Ng:N+Ng,n_mion) :: nm
    real*8, dimension(1-Ng:N+Ng) :: heat_prev
    real*8 :: F_LyC, F_inc, xi, abs_frac, N_HI_tot, a_cm
-   real*8 :: Dnu_D, Dnu_D1, n2s, n2p, n2tot, relc
+   real*8 :: Dnu_D, n2s, n2p, n2tot, relc
 
    ! Remember the previous heating for the outer-iteration convergence test.
    heat_prev = heat_balmer
@@ -127,7 +118,8 @@
    hpe2_bal   = xi*heat_n2_balmer(T_star_eff,  R_star/max(a_orb,1.0d-30))
 
    ! ----- Deposited Ly-continuum flux F_LyC (Huang+2017 Eq. 6 input) ----- !
-   ! Single deposited flux from the total neutral-H column, matching TPM.py:
+   ! Single deposited flux from the total neutral-H column, matching
+   ! EXHALE_transit.py:
    ! each absorbed LyC photon balanced by a recombination -> Ly-alpha photon.
    a_cm  = a_orb                                   ! a_orb already in cm
    F_inc = 10.0d0**LEUV/(4.0d0*pi*a_cm**2.0)       ! incident stellar LyC [erg cm^-2 s^-1]
@@ -143,9 +135,11 @@
    ! ----- Ly-alpha mean intensity J_lya(r) ----- !
    if (jlya_mode .eq. 1) then
       ! (b) Externally-computed Ly-alpha RT profile (already physical); loaded
-      ! once and reused. No depth attenuation -- the RT carries it.
+      ! once and reused. No depth attenuation -- the RT carries it. tau_Lya is
+      ! still evaluated, as a diagnostic only: it says where the imported field
+      ! is optically thick, and nothing in this mode consumes it.
       if (.not. jlya_rt_loaded) call load_jlya_rt()
-      taulya = 0.0d0
+      call lya_line_center_optical_depth(T_K, nhi, taulya)
       do j = 1-Ng, N+Ng
          Jlya_arr(j) = jlya_rt_grid(j)
       enddo
@@ -158,15 +152,7 @@
       ! by 1/(1+tau_lya) with tau_lya the top-down line-center Ly-alpha optical
       ! depth, so the pumping vanishes below the Ly-alpha photosphere. This is
       ! an approximate staging estimate; the accurate field is jlya_mode=1.
-      taulya(N+Ng) = 0.0d0
-      do j = N+Ng-1, 1-Ng, -1
-         Dnu_D  = nu_lya*sqrt(2.0d0*kb_erg*max(T_K(j),  1.0d0)/mu)/c_light
-         Dnu_D1 = nu_lya*sqrt(2.0d0*kb_erg*max(T_K(j+1),1.0d0)/mu)/c_light
-         taulya(j) = taulya(j+1)                                           &
-            + 0.5d0*( nhi(j)  *C_lya/max(Dnu_D, 1.0d-30)                   &
-                    + nhi(j+1)*C_lya/max(Dnu_D1,1.0d-30) )                 &
-            *(r(j+1) - r(j))*R0
-      enddo
+      call lya_line_center_optical_depth(T_K, nhi, taulya)
       do j = 1-Ng, N+Ng
          Dnu_D = nu_lya*sqrt(2.0d0*kb_erg*max(T_K(j),1.0d0)/mu)/c_light
          Jlya_arr(j) = 0.1d0*F_LyC/max(Dnu_D,1.0d-30)/(1.0d0 + taulya(j))
@@ -175,8 +161,9 @@
 
    ! ----- Cell-by-cell n=2 populations + feedback ----- !
    do j = 1-Ng, N+Ng
-      call n2_populations(T_K(j), max(nhi(j),0.0d0), max(ne(j),0.0d0),     &
-                          Jlya_arr(j), gamma2_bal, gamma2_bal, n2s, n2p)
+      call n2_populations(T_K(j), max(nhi(j),0.0d0), max(nhii(j),0.0d0),    &
+                          max(ne(j),0.0d0), Jlya_arr(j),                    &
+                          gamma2_bal, gamma2_bal, n2s, n2p)
       n2tot = n2s + n2p
 
       ! Diagnostics
@@ -220,45 +207,53 @@
 
    ! --------------------------------------------------------------- !
 
-   subroutine n2_populations(T, n1s, ne_l, Jlya, G2s, G2p, n2s, n2p)
+   subroutine n2_populations(T, n1s, nHII_l, ne_l, Jlya,                     &
+                             gam_ion_2s, gam_ion_2p, n2s, n2p)
    ! Christie+2013 Eqs. 12-13: solve the 2x2 2s/2p rate equilibrium for the
    ! H(n=2) populations [cm^-3]. T in K, densities in cm^-3, Jlya in cgs
-   ! (erg s^-1 cm^-2 Hz^-1 sr^-1). G2s/G2p = n=2 photoionization rates [s^-1].
+   ! (erg s^-1 cm^-2 Hz^-1 sr^-1). gam_ion_2s/gam_ion_2p = photoionization
+   ! rates [s^-1] out of 2s and 2p (the stellar Balmer continuum).
+   !
+   ! The rate coefficients come from hydrogen_n2_rates so that the statistical
+   ! weights g1s/g2s/g2p are evaluated once, at module scope, and cannot be
+   ! shadowed by a dummy argument of this routine (Fortran is case-insensitive,
+   ! and the dummies used to be called G2s/G2p).
 
-   real*8, intent(in)  :: T, n1s, ne_l, Jlya, G2s, G2p
+   real*8, intent(in)  :: T, n1s, nHII_l, ne_l, Jlya, gam_ion_2s, gam_ion_2p
    real*8, intent(out) :: n2s, n2p
 
-   real*8 :: Tl, t4, aB, a2s, a2p
+   real*8 :: Tl, a2s, a2p
    real*8 :: C1s2s, C1s2p, C2s2p, C2s1s, C2p1s, C2p2s
    real*8 :: Ppump, Pstim, L2p, L2s, S2p, S2s, M12, M21, det
 
    Tl = max(T, 1.0d0)
-   t4 = Tl/1.0d4
 
-   ! Case-B and level-resolved recombination (Draine 2011; Table 2 R2,R8,R9).
-   aB  = 2.54d-13*t4**(-0.8163d0 - 0.0208d0*log(t4))
-   a2s = (0.282d0 + 0.047d0*t4 - 0.006d0*t4**2.0)*aB
-   a2p = aB - a2s
+   ! Level-resolved recombination (Draine 2011; Table 2 R2,R8,R9).
+   a2s = alpha_2s_hydrogen(Tl)
+   a2p = alpha_2p_hydrogen(Tl)
 
-   ! Collisional excitation 1s->2s, 1s->2p and 2s<->2p l-mixing (R3,R4,R5).
-   C1s2s = 1.21d-8*(1.0d0/t4)**0.455d0*exp(-118400.0d0/Tl)
-   C1s2p = 1.71d-8*(1.0d0/t4)**0.077d0*exp(-118400.0d0/Tl)
-   C2s2p = 6.21d-5*(log(Tl/1.02d0) - 0.57721d0)/sqrt(Tl)
-   ! Reverse rates by detailed balance, in the analytically-cancelled form
-   ! (the Boltzmann factor cancels, avoiding 0*inf at very low T).
-   C2s1s = 1.21d-8*(1.0d0/t4)**0.455d0*(g1s/g2s)
-   C2p1s = 1.71d-8*(1.0d0/t4)**0.077d0*(g1s/g2p)
-   C2p2s = C2s2p*(g2s/g2p)
+   ! Collisional excitation 1s->2s, 1s->2p, 2s<->2p l-mixing and the reverse
+   ! 2s/2p->1s de-excitation (R3,R4,R5 and their detailed-balance partners).
+   C1s2s = c1s2s_rate(Tl)
+   C1s2p = c1s2p_rate(Tl)
+   C2s2p = c2s2p_rate(Tl)
+   C2s1s = c2s1s_rate(Tl)
+   C2p1s = c2p1s_rate(Tl)
+   C2p2s = c2p2s_rate(Tl)
 
    ! Ly-alpha pump (1s->2p) and stimulated emission (2p->1s).
    Ppump = B12_lya*Jlya
    Pstim = B21_lya*Jlya
 
    ! 2x2 system [[L2p,-M12],[-M21,L2s]] [n2p,n2s]^T = [S2p,S2s]^T.
-   L2p = A_2p1s + Pstim + (C2p1s + C2p2s)*ne_l + G2p
-   L2s = (C2s1s + C2s2p)*ne_l + G2s + A_2s1s
-   S2p = (Ppump + C1s2p*ne_l)*n1s + a2p*ne_l**2.0
-   S2s = (C1s2s*ne_l)*n1s + a2s*ne_l**2.0
+   ! The cascade source is alpha_2l * ne * nHII: the recombining partner of an
+   ! electron is a proton, not another electron. The two differ wherever the
+   ! electrons come from helium and metals while hydrogen is still neutral,
+   ! which is the case through the base.
+   L2p = A_2p1s + Pstim + (C2p1s + C2p2s)*ne_l + gam_ion_2p
+   L2s = (C2s1s + C2s2p)*ne_l + gam_ion_2s + A_2s1s
+   S2p = (Ppump + C1s2p*ne_l)*n1s + a2p*ne_l*nHII_l
+   S2s = (C1s2s*ne_l)*n1s + a2s*ne_l*nHII_l
    M12 = C2s2p*ne_l
    M21 = C2p2s*ne_l
    det = L2p*L2s - M12*M21
@@ -278,7 +273,8 @@
    ! 13.6 eV the BB flux is negligible and ground-state H absorbs it).
 
    real*8, intent(in) :: Tstar, R_over_a
-   integer, parameter :: ng = 400
+   ! n_nu, not ng: Ng is the global ghost-cell count and would be shadowed.
+   integer, parameter :: n_nu = 400
    integer :: i
    real*8 :: Eg, nu, dnu, Bnu, Fnu, sig2, integ, nu_a, nu_b, x
 
@@ -287,9 +283,9 @@
 
    nu_a  = E2_thr  *eV2Hz
    nu_b  = e_th_HI *eV2Hz
-   dnu   = (nu_b - nu_a)/dble(ng-1)
+   dnu   = (nu_b - nu_a)/dble(n_nu-1)
    integ = 0.0d0
-   do i = 1, ng
+   do i = 1, n_nu
       nu   = nu_a + dble(i-1)*dnu
       x    = hp_erg*nu/(kb_erg*Tstar)
       Bnu  = (2.0d0*hp_erg*nu**3.0/c_light**2.0)/(exp(x) - 1.0d0)
@@ -297,7 +293,7 @@
       sig2 = s2_thr*(nu2_thr/nu)**3.0
       ! Integrand F_nu/(h nu) * sigma_2  ; trapezoid weights (endpoints 1/2).
       Eg   = Fnu/(hp_erg*nu)*sig2
-      if (i .eq. 1 .or. i .eq. ng) Eg = 0.5d0*Eg
+      if (i .eq. 1 .or. i .eq. n_nu) Eg = 0.5d0*Eg
       integ = integ + Eg
    enddo
    gamma_n2_balmer = integ*dnu
@@ -311,7 +307,8 @@
    ! gamma_n2_balmer weighted by the photoelectron excess energy (h nu - 3.4 eV).
 
    real*8, intent(in) :: Tstar, R_over_a
-   integer, parameter :: ng = 400
+   ! n_nu, not ng: Ng is the global ghost-cell count and would be shadowed.
+   integer, parameter :: n_nu = 400
    integer :: i
    real*8 :: nu, dnu, Bnu, Fnu, sig2, integ, nu_a, nu_b, x, w, term
 
@@ -320,9 +317,9 @@
 
    nu_a  = E2_thr  *eV2Hz
    nu_b  = e_th_HI *eV2Hz
-   dnu   = (nu_b - nu_a)/dble(ng-1)
+   dnu   = (nu_b - nu_a)/dble(n_nu-1)
    integ = 0.0d0
-   do i = 1, ng
+   do i = 1, n_nu
       nu   = nu_a + dble(i-1)*dnu
       x    = hp_erg*nu/(kb_erg*Tstar)
       Bnu  = (2.0d0*hp_erg*nu**3.0/c_light**2.0)/(exp(x) - 1.0d0)
@@ -330,31 +327,12 @@
       sig2 = s2_thr*(nu2_thr/nu)**3.0
       w    = hp_erg*(nu - nu2_thr)                  ! photoelectron excess [erg]
       term = Fnu/(hp_erg*nu)*sig2*w
-      if (i .eq. 1 .or. i .eq. ng) term = 0.5d0*term
+      if (i .eq. 1 .or. i .eq. n_nu) term = 0.5d0*term
       integ = integ + term
    enddo
    heat_n2_balmer = integ*dnu
 
    end function heat_n2_balmer
-
-   ! --------------------------------------------------------------- !
-
-   real*8 function c2s1s_rate(T)
-   ! 2s->1s collisional de-excitation rate coefficient [cm^3 s^-1]
-   ! (Christie+2013 Table 2, detailed-balance form).
-   real*8, intent(in) :: T
-   real*8 :: t4
-   t4 = max(T,1.0d0)/1.0d4
-   c2s1s_rate = 1.21d-8*(1.0d0/t4)**0.455d0*(g1s/g2s)
-   end function c2s1s_rate
-
-   real*8 function c2p1s_rate(T)
-   ! 2p->1s collisional de-excitation rate coefficient [cm^3 s^-1].
-   real*8, intent(in) :: T
-   real*8 :: t4
-   t4 = max(T,1.0d0)/1.0d4
-   c2p1s_rate = 1.71d-8*(1.0d0/t4)**0.077d0*(g1s/g2p)
-   end function c2p1s_rate
 
    ! --------------------------------------------------------------- !
 

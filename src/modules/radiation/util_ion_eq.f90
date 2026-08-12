@@ -5,7 +5,8 @@
                             mion_isphot, mion_iphot, mion_ethr,       &
                             mion_z2, mion_elem, mion_iscool,          &
                             mion_stage, mion_name, mion_fsp,          &
-                            melem_Z, melem_top, im_FeII
+                            melem_Z, melem_top, im_FeII,              &
+                            isp_H2, isp_H2p, isp_H3p, isp_HeHp
    use utils
    use Cooling_Coefficients      ! Various functions for cooling coefficients
    use Cross_sections, only: sigma, sigma_HeI  ! sigma_H(E,Z), sigma_HeI(E)
@@ -474,7 +475,7 @@
 	subroutine eval_cool(T_K,nhi,nhii,nhei,nheii,nheiii, nm,        &
 				   rchiiB,rcheiiB,rcheiiiB, rec_m,             &
 				   a_ion_HI,a_ion_HeI,a_ion_HeII, aion_m,      &
-				   cool, cool_chan, nheiTR, a_ion_HeITR)
+				   cool, cool_chan, nheiTR, a_ion_HeITR, nmol)
 
 	! Evaluate the cooling rate contributions to energy and
 	!	rate equations. Includes H, He, and metal channels. Metals are
@@ -497,9 +498,9 @@
    real*8, dimension(1-Ng:N+Ng) :: brem_acc,coolm_acc   ! sum accumulators
    real*8, dimension(1-Ng:N+Ng) :: metal_col            ! dispatcher scratch
    real*8, dimension(1-Ng:N+Ng,n_mion)  :: c_metal      ! metal line-cool coeffs
-   ! Line-center escape probabilities of the two ground-term
-   ! fine-structure lines solved explicitly (Cool_coeff: fine_structure_escape)
-   real*8, dimension(1-Ng:N+Ng) :: beta_OI63,beta_CII158
+   ! Line-center escape probabilities of the ground-term fine-structure
+   ! lines solved explicitly (Cool_coeff: fine_structure_escape)
+   real*8, dimension(1-Ng:N+Ng,n_fsline) :: beta_fs
 	real*8, dimension(1-Ng:N+Ng) :: ne		  			 ! Electron number density
 	real*8, dimension(1-Ng:N+Ng) :: GF_z1,GF_z2			 ! free-free Gaunt at Z_ion=1,2
 	real*8 :: Cdex_OI,Cdex_CII                           ! 2-level collis. de-exc.
@@ -558,14 +559,31 @@
 	real*8, dimension(1-Ng:N+Ng),intent(in),optional  :: nheiTR
 	real*8, dimension(1-Ng:N+Ng),intent(out),optional :: a_ion_HeITR
 
+	! Molecular densities [cm^-3], canonical order H2, H2+, H3+, HeH+ (the
+	! same layout calc_ne takes). Supplied by every caller that tracks the
+	! molecular network, so the electron density used by the cooling is the
+	! one the equilibrium solver itself uses. Omitted only by callers that
+	! model a molecule-free gas (see the note at calc_ne below).
+	real*8, dimension(1-Ng:N+Ng,4),intent(in),optional :: nmol
+
 	! He 2^3S collisional-ionization rate coefficient (always computed; only
 	! exported / applied through the optional arguments above).
 	real*8, dimension(1-Ng:N+Ng) :: aion_HeITR
 
-   ! Free electron density (incl. metal electrons under eos_metals). Molecular
-   ! ions are deliberately omitted as trace electron donors (negligible in the
-   ! hot, atomic gas where eval_cool operates).
-   call calc_ne(nhii,nheii,nheiii,ne,nm)
+   ! Free electron density: ONE definition, the calc_ne charge sum over every
+   ! tracked ion -- H+, He+, He++, the metal stages under eos_metals, and the
+   ! molecular ions H2+, H3+, HeH+ when the caller tracks them. Inside a deep
+   ! molecular base H3+ is the dominant ion, so dropping the molecular donors
+   ! would under-count every ne-scaling cooling channel (recombination,
+   ! collisional excitation/ionization, bremsstrahlung, metal line cooling)
+   ! there, and would disagree with the ne the equilibrium solver balances
+   ! ionization against. Callers that model a molecule-free gas (the _adv
+   ! advection post-process) omit nmol and get the atomic charge sum.
+   if (present(nmol)) then
+      call calc_ne(nhii,nheii,nheiii,ne,nm,nmol)
+   else
+      call calc_ne(nhii,nheii,nheiii,ne,nm)
+   endif
 
 
 	!-- Recombination --!
@@ -617,6 +635,13 @@
 	! Cooling rate: sum n_ion * Z_ion^2 * gbar(Z_ion) over all charged ions.
 	! mion_z2 = mion_stage^2 already holds the metal charge^2 (neutral -> 0,
 	! an exact +0 term); the Gaunt table is selected by mion_stage.
+	! The molecular ions H2+, H3+ and HeH+ are Z_ion = 1 and DO donate to ne
+	! above, but are deliberately left out of this charge sum: they exist only
+	! in the cold (T ~ 1e3 K) molecular base, where this hot-plasma free-free
+	! expression is an extrapolation whose emission comes out at radio/IR
+	! frequencies the atmosphere is not thin to. Free-free is negligible against
+	! the H3+ infrared and metal line cooling there, so the ion charge sum is
+	! smaller than ne by the molecular-ion density inside the molecular layer.
 	brem_acc = GF_z1*nhii                       ! HII   (Z_ion = 1)
 	brem_acc = brem_acc + GF_z1*nheii           ! HeII  (Z_ion = 1)
 	brem_acc = brem_acc + 4.0*GF_z2*nheiii      ! HeIII (Z_ion = 2)
@@ -695,8 +720,8 @@
 	call cool_FeII_ne(T_K, ne, metal_col)
 	c_metal(:,im_FeII) = metal_col
 
-	! Line trapping of the two ground-term fine-structure lines this
-	! module solves explicitly. Earlier versions built a GRAY escape
+	! Line trapping of the ground-term fine-structure lines this module
+	! solves explicitly. Earlier versions built a GRAY escape
 	! probability from the lowest XUV band opacity over one cell width
 	! (AIOLOS chemistry.cpp:1006 scaled that by an arbitrary 1e8, driving
 	! beta -> 0 and switching metal-line cooling off; EXHALE replaced it
@@ -706,22 +731,25 @@
 	! line-center escape probability of each line, from the outward column
 	! (Cool_coeff.f90: fine_structure_escape). Every other metal ion keeps
 	! the optically thin limit; see the scope note there.
-	call fine_structure_escape(T_K, nm(:,im_OI), nm(:,im_CII),         &
-	                           beta_OI63, beta_CII158)
+	call fine_structure_escape(T_K, nm, beta_fs)
 
-	! Density-dependent override for the [C II] 158um / [O I] 63um
-	! ground-term fine-structure floors (CHIANTI mode only; the legacy
-	! AIOLOS fits keep their own constant floors). Same Lambda_eff =
-	! W_FS/ne + remainder convention as Fe II above; the two-level
-	! solution saturates the floor (n_crit,e([C II]) ~ 20 cm^-3!) and
+	! Density-dependent override for the ground-term fine-structure floors
+	! of C I, C II, N II and O I (CHIANTI mode only; the legacy AIOLOS fits
+	! keep their own constant floors). Same Lambda_eff = W_FS/ne +
+	! remainder convention as Fe II above; the statistical-equilibrium
+	! solution saturates the floor (n_crit,e([C II] 158um) ~ 20 cm^-3!) and
 	! adds the H-collision excitation channel the electron-only coronal
 	! curve misses. beta enters as A_ul -> beta*A_ul inside that solution.
-	! See cool_CII_ne_func / cooling_data/fit_fs_saturation.py.
+	! See cool_CI_ne_func / cooling_data/fit_fs_saturation.py.
 	if (cno_chianti) then
-		call cool_CII_ne(T_K, ne, nhi, beta_CII158, metal_col)
+		call cool_CI_ne (T_K, ne, nhi, beta_fs, metal_col)
+		c_metal(:,im_CI)  = metal_col
+		call cool_CII_ne(T_K, ne, nhi, beta_fs, metal_col)
 		c_metal(:,im_CII) = metal_col
-		call cool_OI_ne(T_K, ne, nhi, beta_OI63, metal_col)
-		c_metal(:,im_OI) = metal_col
+		call cool_NII_ne(T_K, ne, nhi, beta_fs, metal_col)
+		c_metal(:,im_NII) = metal_col
+		call cool_OI_ne (T_K, ne, nhi, beta_fs, metal_col)
+		c_metal(:,im_OI)  = metal_col
 	endif
 
 	if (use_2lev_cool) then
@@ -753,10 +781,10 @@
 			         + nhi(j)*4.0d-11                                   ! H
 			cool_M(j) =                                                    &
 			    ne(j)*nci(j)*c_CI(j)                                       &
-			  + noi(j) *( lambda_2level(beta_OI63(j)*8.91d-5,227.7d0,0.6d0,Cdex_OI ,T_K(j)) &
+			  + noi(j) *( lambda_2level(beta_fs(j,ifs_OI63)*8.91d-5,227.7d0,0.6d0,Cdex_OI ,T_K(j)) &
 			              + ne(j)*1.1d-20*exp(-30162.0d0/T_K(j))           &
 			                     *(1.0d0+(T_K(j)/0.75d4)**0.5) )           &
-			  + ncii(j)*( lambda_2level(beta_CII158(j)*2.29d-6,91.21d0,2.0d0,Cdex_CII,T_K(j)) &
+			  + ncii(j)*( lambda_2level(beta_fs(j,ifs_CII158)*2.29d-6,91.21d0,2.0d0,Cdex_CII,T_K(j)) &
 			              + ne(j)*3.1d-20*exp(-45162.0d0/T_K(j))           &
 			                     *(1.0d0+(T_K(j)/0.75d4)**1.5) )           &
 			  + ne(j)*noii(j)*c_OII(j)                                  &
@@ -822,6 +850,9 @@
 	! Hydro_ioniz.txt `cool` column. The printed max relative residual is the
 	! internal consistency check. Lets the user identify the dominant coolant
 	! in 1.15 <~ r/Rp <~ 1.4 against Huang et al. (2023) Fig. 10.
+	! Molecular runs: the H3+ infrared cooling ioniz_eq adds on top of
+	! eval_cool has no channel column here, so in the molecular layer the
+	! channel sum falls short of the Hydro_ioniz.txt cool column by that term.
 
 	integer :: j,i,im
 	real*8, dimension(1-Ng:N+Ng), intent(in) :: T_in,n_in
@@ -830,6 +861,8 @@
 	real*8, dimension(1-Ng:N+Ng) :: n_dim,T_K,ne
 	real*8, dimension(1-Ng:N+Ng) :: nhi,nhii,nhei,nheii,nheiii,nheiTR
 	real*8, dimension(1-Ng:N+Ng,n_mion) :: nm
+	! Molecular densities [cm^-3] (H2, H2+, H3+, HeH+); zero for an atomic run
+	real*8, dimension(1-Ng:N+Ng,4) :: nmol
 	real*8, dimension(1-Ng:N+Ng) :: cool,csum,rel
 	real*8, dimension(1-Ng:N+Ng,6+n_mion) :: chan
 	! Throwaway eval_cool rate outputs (not needed for the dump)
@@ -860,14 +893,22 @@
 	do im = 1,n_mion
 		nm(:,im) = f_sp_in(:,mion_fsp(im))*n_dim
 	enddo
-	! Molecular ions are deliberately omitted as trace electron donors
-	! (negligible in this diagnostic's hot, atomic gas).
-	call calc_ne(nhii,nheii,nheiii,ne,nm)
+	! Molecular ions, so the dumped ne and the cooling channels are the ones
+	! ioniz_eq itself uses (all zero for an atomic run).
+	nmol = 0.0d0
+	if (thereis_mol) then
+		nmol(:,1) = f_sp_in(:,isp_H2)  *n_dim
+		nmol(:,2) = f_sp_in(:,isp_H2p) *n_dim
+		nmol(:,3) = f_sp_in(:,isp_H3p) *n_dim
+		nmol(:,4) = f_sp_in(:,isp_HeHp)*n_dim
+	endif
+	call calc_ne(nhii,nheii,nheiii,ne,nm,nmol)
 
 	call eval_cool(T_K,nhi,nhii,nhei,nheii,nheiii, nm,            &
 				   rchiiB,rcheiiB,rcheiiiB, rec_m,                &
 				   a_ion_HI,a_ion_HeI,a_ion_HeII, aion_m,         &
-				   cool, cool_chan = chan, nheiTR = nheiTR)
+				   cool, cool_chan = chan, nheiTR = nheiTR,       &
+				   nmol = nmol)
 
 	! Internal consistency: channel sum vs total cool (default branch -> ~eps)
 	csum = 0.0d0

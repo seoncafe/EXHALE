@@ -491,6 +491,44 @@
         1.000717d0, 1.000661d0, 1.000614d0, 1.000567d0, 1.000526d0, &
         1.000485d0 ]
 
+   !--- Ground-term fine-structure lines ------------------------------!
+   ! The forbidden lines emitted inside the split ground term of the C/N/O
+   ! coolants. Level energies E/k [K], statistical weights and transition
+   ! probabilities are CHIANTI v11.0.2 (elvlc / wgfa); level indices run in
+   ! energy order, so for the inverted O I term level 1 is 3P2.
+   !   C I  2p2 3P: g = 1, 3, 5      [C I]  609.1 / 370.4 um
+   !   C II 2p  2P: g = 2, 4         [C II] 157.7 um
+   !   N II 2p2 3P: g = 1, 3, 5      [N II] 205.3 / 121.8 um
+   !   O I  2p4 3P: g = 5, 3, 1      [O I]   63.2 / 145.5 / 44.1 um
+   ! The 3P2-3P0 lines of C I and N II have no CHIANTI transition
+   ! probability (magnetic quadrupole, A < 1e-12 s^-1) and are carried as
+   ! collisional couplings only.
+   real*8, parameter :: Ek_CI2  =  23.6204d0, Ek_CI3  =  62.4631d0
+   real*8, parameter :: Ek_CII2 =  91.2141d0
+   real*8, parameter :: Ek_NII2 =  70.0684d0, Ek_NII3 = 188.1920d0
+   real*8, parameter :: Ek_OI2  = 227.7080d0, Ek_OI3  = 326.5693d0
+   real*8, parameter :: A_CI609  = 7.960d-8, A_CI370  = 2.660d-7
+   real*8, parameter :: A_CII158 = 2.290d-6
+   real*8, parameter :: A_NII205 = 2.080d-6, A_NII122 = 7.460d-6
+   real*8, parameter :: A_OI63   = 8.542d-5, A_OI145  = 1.643d-5
+   real*8, parameter :: A_OI44   = 1.380d-10
+   ! Atomic weights [m_H] for the Doppler width of these lines
+   real*8, parameter :: amu_C = 12.011d0, amu_N = 14.007d0,            &
+                        amu_O = 15.999d0
+
+   ! Escape-probability slots, one per line with a transition probability.
+   ! fine_structure_escape fills them; the cooling coefficients consume
+   ! them. Order: C I, C II, N II, O I.
+   integer, parameter :: n_fsline    = 8
+   integer, parameter :: ifs_CI609   = 1, ifs_CI370  = 2,              &
+                         ifs_CII158  = 3,                              &
+                         ifs_NII205  = 4, ifs_NII122 = 5,              &
+                         ifs_OI63    = 6, ifs_OI145  = 7,              &
+                         ifs_OI44    = 8
+   ! emitting ion of each slot (canonical mion index)
+   integer, parameter :: fsline_ion(n_fsline) =                        &
+        [ im_CI, im_CI, im_CII, im_NII, im_NII, im_OI, im_OI, im_OI ]
+
    contains
 
    !---------------------------------------------------!
@@ -1021,11 +1059,16 @@
    ! N I/N II cooling; the AIOLOS O I/O II fits deviate 40-70% from
    ! CHIANTI in the wind-launch region (see cooling_data/
    ! cno_cooling_comparison.ipynb).
-   ! CAVEAT (as for Fe II coronal): the fine-structure floor terms
-   ! ([C II] 158um, [O I] 63um, ...; T_i < 1e3 K) have low critical
-   ! densities (n_e ~ 10-1e5 cm^-3) and saturate at the dense base; both
-   ! these fits and the AIOLOS floors overestimate that contribution
-   ! there. use_2lev_cool treats the saturation explicitly.
+   ! CAVEAT (as for Fe II coronal): the ground-term fine-structure floor
+   ! terms ([C I] 609/370um, [C II] 158um, [N II] 205/122um,
+   ! [O I] 63/145/44um; T_i < 1e3 K) have critical densities of order
+   ! 1e0-1e5 cm^-3 and are collisionally saturated at the dense base, where
+   ! these coronal forms overestimate them by 3-8 decades. The functions
+   ! below are therefore NOT the ones the cooling assembly uses for those
+   ! four ions: eval_cool overrides them with the ground-term
+   ! statistical-equilibrium coefficients cool_CI_ne / cool_CII_ne /
+   ! cool_NII_ne / cool_OI_ne. They are retained as the coronal reference
+   ! and for the legacy branches.
    ! All CHIANTI-derived coefficients below carry the
    ! coronal_excitation_cutoff factor, which removes them smoothly below
    ! the 1e3 K floor of the data they were fitted to (see that function).
@@ -1090,98 +1133,318 @@
                       *coronal_excitation_cutoff(T)
    end function cool_OII_chianti
 
-   !--- Density-dependent [C II] 158um / [O I] 63um saturation ---------!
-   ! The coronal cool_CII_chianti / cool_OI_chianti above include the
-   ! ground-term fine-structure floor unsaturated; its critical density
-   ! (n_crit,e ~ 20 cm^-3 for [C II] 158um, n_crit,H ~ 4e5 cm^-3 for
-   ! [O I] 63um) lies far below the atmosphere base density, so the floor
-   ! badly overestimates base cooling. These functions replace the floor
-   ! with the EXACT two-level fine-structure solution
-   !   W_FS = f_l(T) hv A x Cdex / (A + Cdex (1+x)),  x=(g_u/g_l)e^-E/kT,
-   !   Cdex = ne k_e(T) + nHI k_H(T),  f_l = g_l/Z_term(T)
-   ! plus a multi-exp refit of the CHIANTI ground-term curve with the
-   ! (1->2) channel removed (cooling_data/fit_fs_saturation.py).
-   ! Limits: ne,nHI->0 reproduces the CHIANTI coronal curve (<=3.4%, set
-   ! by the cubic log-Upsilon fits); high density saturates at the exact
-   ! multi-level LTE value (the f_l weighting makes the two-level LTE
-   ! population equal to the full ground-term Boltzmann one).
-   ! k_e from CHIANTI .scups Upsilon; k_H de-excitation as in the legacy
-   ! use_2lev_cool branch (O I+H Draine 2011/Lique+2017, C II+H
-   ! Goldsmith+2012) -- !To Be Checked/AIOLOS tuning?
-   ! Returned per (n_e n_ion) [erg cm^3 s^-1]: W_FS/ne + Lambda_rem, so
-   ! the assembly prefactor ne*n_ion recovers the H-collision part exactly
-   ! (the ne cancels); ne is floored to avoid 0/0.
-   ! [O I] 146um and the C I / N II FS floors remain coronal (few-%
-   ! pieces of their respective floors).
+   !--- Ground-term fine-structure statistical equilibrium -------------!
+   ! The coronal cool_*_chianti fits above carry the ground-term fine-
+   ! structure (FS) lines in the optically thin, LOW-DENSITY limit. Their
+   ! critical densities are of order 1e0-1e5 cm^-3, decades below the base
+   ! density of an irradiated atmosphere (n_e ~ 1e9, n_HI ~ 1e14 cm^-3), so
+   ! the coronal form overestimates the FS cooling there by up to seven
+   ! decades. For every C/N/O coolant whose ground term is split, the FS
+   ! part is therefore replaced by the EXACT statistical-equilibrium (SE)
+   ! solution of the ground term,
+   !   solve  sum_j f_j R_ji = f_i sum_j R_ij,   sum_i f_i = 1,
+   !   R_ul = C_ul + beta_ul A_ul,  R_lu = C_ul (g_u/g_l) exp(-E_ul/kT),
+   !   C_ul = n_e k_e,ul(T) + n_HI k_H,ul(T),
+   !   W_FS = sum_{u>l} f_u beta_ul A_ul k_B E_ul       [erg/s per ion],
+   ! and the coronal curve is replaced by a refit (Lambda_rem) that keeps
+   ! only the channels LEAVING the ground term. The coefficient returned is
+   !   Lambda_eff = W_FS/n_e + Lambda_rem      [erg cm^3 s^-1],
+   ! so the assembly prefactor n_e*n_ion recovers the H-collision part
+   ! exactly (the n_e cancels); n_e is floored to avoid 0/0.
    !
-   ! LINE TRAPPING. beta is the escape probability of the ground-term line
-   ! itself ([C II] 158um / [O I] 63um), and it enters as A_ul -> beta*A_ul
-   ! INSIDE the two-level solution, not as a factor on the result. That is
-   ! the physically correct place: in the subcritical limit the cooling is
-   ! set by the collisional excitation rate and is independent of beta
-   ! (every excitation still ends as an escaped photon, just later), while
-   ! in the saturated (LTE) limit the escaping flux is proportional to
-   ! beta. Multiplying the result would be wrong by a factor beta in the
-   ! first limit. The coronal remainder Lambda_rem is left optically thin:
-   ! it collects higher-lying transitions whose lower levels are far less
-   ! populated, so their opacity is orders of magnitude below the
-   ! ground-term line's. beta = 1 reproduces the optically thin result
-   ! bit-for-bit.
+   ! IONS TREATED -- this is the complete set:
+   !   C I  2p2 3P_0,1,2    [C I]  609.1 / 370.4 um
+   !   C II 2p  2P_1/2,3/2  [C II] 157.7 um
+   !   N II 2p2 3P_0,1,2    [N II] 205.3 / 121.8 um
+   !   O I  2p4 3P_2,1,0    [O I]   63.2 / 145.5 / 44.1 um (inverted term)
+   ! N I and O II have a single-level 4S ground term; Mg I/II, Ca II and
+   ! Na I have a single ground level; Fe I is built from permitted lines
+   ! only (no forbidden a5D fine structure in its table); and Fe II is
+   ! already density-dependent through its 2-D SE table (cool_FeII_ne).
+   !
+   ! LIMITS. n_e, n_HI -> 0 collapses the SE populations onto the ground
+   ! level and reproduces the coronal within-term channel to the accuracy
+   ! of the Upsilon fits (1.3-4.4%). n_e or n_HI -> infinity saturates at
+   ! the exact multilevel LTE emission sum_u f_u^Boltz A_ul h nu_ul (checked
+   ! to 1e-14 relative). The earlier two-level treatment of [O I] 63um and
+   ! [C II] 158um multiplied a two-level solution -- already normalized to
+   ! the TWO-LEVEL partition function -- by the ground-term Boltzmann
+   ! fraction of the lower level; that double normalization left its LTE
+   ! limit low by a factor (1 + (g_u/g_l) exp(-E/kT)), i.e. 2.7x for
+   ! [C II] 158um at the 530 K base of HD 189733 b.
+   !
+   ! Lambda_rem keeps the ground-term Boltzmann weighting of its lower
+   ! levels (the convention of the CHIANTI curves it is fitted to). That is
+   ! the right weighting wherever it matters: the FS levels sit above their
+   ! critical densities, hence in LTE, throughout these winds. Where they
+   ! do not, the ground-only and Boltzmann weightings agree to 1.4-1.9%
+   ! anyway, because Upsilon_lu is roughly proportional to g_l for the
+   ! LS-coupled transitions that leave the ground term.
+   !
+   ! LINE TRAPPING. beta_ul is the escape probability of that FS line and
+   ! enters as A_ul -> beta_ul A_ul INSIDE the SE solution, not as a factor
+   ! on the result. That is the physically correct place: in the
+   ! subcritical limit the cooling is set by the collisional excitation
+   ! rate and is independent of beta (every excitation still ends as an
+   ! escaped photon, just later), while in the saturated limit the escaping
+   ! flux is proportional to beta. beta = 1 reproduces the optically thin
+   ! result exactly. Lambda_rem is left optically thin: it collects
+   ! transitions to higher terms whose lower levels are far less populated,
+   ! so their opacity is orders of magnitude below the FS lines'.
+   !
+   ! ATOMIC DATA. cooling_data/fit_fs_saturation.py is the auditable source
+   ! and prints every coefficient below.
+   !   levels, A values, electron Upsilon: CHIANTI v11.0.2 elvlc/wgfa/scups
+   !   k_H (H-atom de-excitation):
+   !     C I, N II  Yan, Stancil, Satta, Wang, Gu & Forrey (2022),
+   !                MNRAS 518, 6004, Tables 1 and 2 (10-1e4 K)
+   !     O I        Abrahamsson, Krems & Dalgarno (2007), ApJ 654, 1171
+   !                (20-1000 K, as tabulated in LAMDA oatom.dat)
+   !     C II       Barinovs, van Hemert, Krems & Dalgarno (2005),
+   !                ApJ 620, 537 (20-2000 K, LAMDA c+.dat)
+   ! These replace the k_H values of the earlier two-level branch (a
+   ! constant 4.0e-11 for [C II] 158um + H and 4.2e-11 (T/100)^0.67 for
+   ! [O I] 63um + H), which were flagged approximate and are 5-20x below
+   ! the quantum-scattering results above. H collisions on the ION N II are
+   ! included on the same footing as on the neutrals; they are not what
+   ! saturates N II at the base (n_crit,e of [N II] 205um is ~1e2 cm^-3),
+   ! they matter only in gas thin enough for the electron channel alone to
+   ! be subcritical.
 
-   elemental double precision function cool_CII_ne_func(T,ne,nHI,beta)
-   real*8, intent(in) :: T, ne, nHI, beta
-   real*8 :: xl, ups, ke, Cdex, x, f1, w, Aul
-   xl  = log10(T/1.0d4)
-   ups = 10.0d0**(0.33433316d0 + 0.11618314d0*xl                    &
-                  - 0.087925806d0*xl**2 - 0.061804561d0*xl**3)
-   ke  = 8.629d-6*ups/(4.0d0*sqrt(T))
-   Cdex = ne*ke + nHI*4.0d-11
-   x   = 2.0d0*exp(-91.213d0/T)
-   f1  = 2.0d0/(2.0d0 + 4.0d0*exp(-91.213d0/T))
-   Aul = beta*2.290d-6
-   w   = f1*kb_erg*91.213d0*Aul*x*Cdex                              &
-         /(Aul + Cdex*(1.0d0 + x))
-   cool_CII_ne_func = w/max(ne, 1.0d-30)                            &
-        + ( 1.06878629d-23*exp(-294.754d0/T)                        &
-          + 3.04162479d-17*exp(-61740.4d0/T)                        &
-          + 2.30421959d-16*exp(-112006.0d0/T)                       &
-          + 1.29701808d-15*exp(-223343.0d0/T) )/sqrt(T)             &
-          *coronal_excitation_cutoff(T)
+   ! Effective collision strength of one fine-structure transition:
+   ! log10(Upsilon) as a quartic in x = log10(T/1e4), fitted to the CHIANTI
+   ! .scups values over 1e3-1e5 K (max error 4.8%; a cubic reaches 8.8% on
+   ! the C I 3P0-3P2 strength). T is clamped to the fitted range, so
+   ! outside it the strength is held at the endpoint value rather than
+   ! extrapolated by a quartic.
+   pure double precision function fine_structure_upsilon                 &
+                                    (c0,c1,c2,c3,c4,T)
+   real*8, intent(in) :: c0,c1,c2,c3,c4,T
+   real*8 :: x
+   x = log10(min(max(T,1.0d3),1.0d5)/1.0d4)
+   fine_structure_upsilon = 10.0d0**(c0 + x*(c1 + x*(c2 + x*(c3 + x*c4))))
+   end function fine_structure_upsilon
+
+   ! Electron-impact de-excitation rate coefficient [cm^3 s^-1] of a
+   ! transition with upper-level weight g_u and effective collision
+   ! strength Upsilon: k_ul = 8.629e-6 Upsilon / (g_u sqrt(T)).
+   pure double precision function electron_impact_deexcitation(ups,g_u,T)
+   real*8, intent(in) :: ups, g_u, T
+   electron_impact_deexcitation = 8.629d-6*ups/(g_u*sqrt(max(T,1.0d0)))
+   end function electron_impact_deexcitation
+
+   ! H-atom impact de-excitation rate coefficient [cm^3 s^-1], log10(k_H) a
+   ! quadratic in u = log10(T/1e3) fitted to the tabulated quantum results
+   ! (max error 4.9%). T is clamped to [Tlo,Thi], the range those results
+   ! cover, so the rate is held at its endpoint value outside it.
+   pure double precision function h_impact_deexcitation                  &
+                                    (a0,a1,a2,Tlo,Thi,T)
+   real*8, intent(in) :: a0,a1,a2,Tlo,Thi,T
+   real*8 :: u
+   u = log10(min(max(T,Tlo),Thi)/1.0d3)
+   h_impact_deexcitation = 10.0d0**(a0 + u*(a1 + u*a2))
+   end function h_impact_deexcitation
+
+   ! Exact statistical equilibrium of a TWO-level ground term.
+   ! f_2 = R_12/(R_12 + R_21); returns the escaping power per ion [erg/s].
+   pure double precision function fine_structure_cooling_2level          &
+                                    (T,g1,g2,E2,A21,C21,b21) result(W)
+   real*8, intent(in) :: T,g1,g2,E2,A21,C21,b21
+   real*8 :: R12, R21
+   R21 = C21 + b21*A21
+   R12 = C21*(g2/g1)*exp(-E2/T)
+   W   = kb_erg*E2*b21*A21*R12/max(R12 + R21, 1.0d-300)
+   end function fine_structure_cooling_2level
+
+   ! Exact statistical equilibrium of a THREE-level ground term. Levels are
+   ! in energy order with E1 = 0; C_ul are the total collisional
+   ! de-excitation rates [s^-1] and b_ul the escape probabilities.
+   ! Eliminating f_1 = 1 - f_2 - f_3 from the two level-balance equations
+   ! leaves a 2x2 system, solved by Cramer's rule:
+   !   f_2 (R12+R21+R23) + f_3 (R12-R32) = R12
+   !   f_2 (R13-R23) + f_3 (R13+R31+R32) = R13
+   pure double precision function fine_structure_cooling_3level          &
+                                    (T,g1,g2,g3,E2,E3,A21,A31,A32,      &
+                                     C21,C31,C32,b21,b31,b32) result(W)
+   real*8, intent(in) :: T,g1,g2,g3,E2,E3,A21,A31,A32
+   real*8, intent(in) :: C21,C31,C32,b21,b31,b32
+   real*8 :: R12,R13,R23,R21,R31,R32, m11,m12,m21,m22, det, f2,f3
+   R21 = C21 + b21*A21
+   R31 = C31 + b31*A31
+   R32 = C32 + b32*A32
+   R12 = C21*(g2/g1)*exp(-E2/T)
+   R13 = C31*(g3/g1)*exp(-E3/T)
+   R23 = C32*(g3/g2)*exp(-(E3 - E2)/T)
+   m11 = R12 + R21 + R23
+   m12 = R12 - R32
+   m21 = R13 - R23
+   m22 = R13 + R31 + R32
+   det = m11*m22 - m12*m21
+   ! det > 0 for any non-degenerate set of positive rates; the guard only
+   ! catches the fully depopulated limit (every rate zero), where the
+   ! excited fractions are zero too.
+   if (det .gt. 0.0d0) then
+      f2 = (R12*m22 - m12*R13)/det
+      f3 = (m11*R13 - m21*R12)/det
+   else
+      f2 = 0.0d0
+      f3 = 0.0d0
+   endif
+   W = kb_erg*( f2*b21*A21*E2 + f3*b31*A31*E3                        &
+              + f3*b32*A32*(E3 - E2) )
+   end function fine_structure_cooling_3level
+
+   ! C I: [C I] 609.1um (3P1-3P0) and 370.4um (3P2-3P1). The 3P2-3P0
+   ! channel has no transition probability but does couple the levels
+   ! collisionally, so it enters C31 with A31 = 0.
+   elemental double precision function cool_CI_ne_func                   &
+                                         (T,ne,nHI,b609,b370)
+   real*8, intent(in) :: T, ne, nHI, b609, b370
+   real*8 :: Ts, C21, C31, C32, W
+   Ts  = max(T, 1.0d0)
+   C21 = ne*electron_impact_deexcitation(fine_structure_upsilon(        &
+            -0.37088326d0, 0.26869763d0, -0.43938354d0,                 &
+             0.31669952d0, -0.066539711d0, Ts), 3.0d0, Ts)              &
+       + nHI*h_impact_deexcitation(-9.6487495d0, 0.27178113d0,          &
+             0.110106d0, 5.0d1, 1.0d4, Ts)
+   C31 = ne*electron_impact_deexcitation(fine_structure_upsilon(        &
+            -0.58854272d0, 0.1254109d0, -0.28561856d0,                  &
+             0.38455288d0, -0.13877131d0, Ts), 5.0d0, Ts)               &
+       + nHI*h_impact_deexcitation(-9.7250154d0, 0.35123928d0,          &
+             0.032556919d0, 5.0d1, 1.0d4, Ts)
+   C32 = ne*electron_impact_deexcitation(fine_structure_upsilon(        &
+             0.047058d0, 0.19212794d0, -0.35176286d0,                   &
+             0.35085975d0, -0.1097328d0, Ts), 5.0d0, Ts)                &
+       + nHI*h_impact_deexcitation(-9.2461144d0, 0.34543127d0,          &
+             0.053368443d0, 5.0d1, 1.0d4, Ts)
+   W = fine_structure_cooling_3level(Ts, 1.0d0, 3.0d0, 5.0d0,           &
+          Ek_CI2, Ek_CI3, A_CI609, 0.0d0, A_CI370,                      &
+          C21, C31, C32, b609, 1.0d0, b370)
+   cool_CI_ne_func = W/max(ne, 1.0d-30)                                 &
+        + ( 1.68601052d-18*exp(-16400.7d0/Ts)                           &
+          + 4.56976084d-18*exp(-22917.8d0/Ts)                           &
+          + 4.41186120d-17*exp(-60832.4d0/Ts)                           &
+          + 2.88720952d-16*exp(-157618.0d0/Ts) )/sqrt(Ts)               &
+          *coronal_excitation_cutoff(Ts)
+   end function cool_CI_ne_func
+
+   ! C II: [C II] 157.7um (2P3/2-2P1/2). The ground term has only two
+   ! levels, so the two-level solution is exact.
+   elemental double precision function cool_CII_ne_func(T,ne,nHI,b158)
+   real*8, intent(in) :: T, ne, nHI, b158
+   real*8 :: Ts, C21, W
+   Ts  = max(T, 1.0d0)
+   C21 = ne*electron_impact_deexcitation(fine_structure_upsilon(        &
+             0.34358662d0, 0.11618314d0, -0.17955473d0,                 &
+            -0.061804561d0, 0.10585072d0, Ts), 4.0d0, Ts)               &
+       + nHI*h_impact_deexcitation(-8.9730551d0, 0.19760195d0,          &
+             0.048910789d0, 6.0d1, 2.0d3, Ts)
+   W = fine_structure_cooling_2level(Ts, 2.0d0, 4.0d0, Ek_CII2,         &
+                                     A_CII158, C21, b158)
+   cool_CII_ne_func = W/max(ne, 1.0d-30)                                &
+        + ( 2.93308492d-17*exp(-61715.6d0/Ts)                           &
+          + 1.67055747d-16*exp(-104746.0d0/Ts)                          &
+          + 1.21597175d-15*exp(-206827.0d0/Ts)                          &
+          + 1.55568440d-17*exp(-4269450.0d0/Ts) )/sqrt(Ts)              &
+          *coronal_excitation_cutoff(Ts)
    end function cool_CII_ne_func
 
-   elemental double precision function cool_OI_ne_func(T,ne,nHI,beta)
-   real*8, intent(in) :: T, ne, nHI, beta
-   real*8 :: xl, ups, ke, Cdex, x, f1, w, Aul
-   xl  = log10(T/1.0d4)
-   ups = 10.0d0**(-2.0890112d0 + 0.19632883d0*xl                    &
-                  - 0.16253745d0*xl**2 + 0.041658804d0*xl**3)
-   ke  = 8.629d-6*ups/(3.0d0*sqrt(T))
-   Cdex = ne*ke + nHI*4.2d-11*(T/100.0d0)**0.67d0
-   x   = 0.6d0*exp(-227.708d0/T)
-   f1  = 5.0d0/(5.0d0 + 3.0d0*exp(-227.708d0/T) + exp(-326.567d0/T))
-   Aul = beta*8.542d-5
-   w   = f1*kb_erg*227.708d0*Aul*x*Cdex                             &
-         /(Aul + Cdex*(1.0d0 + x))
-   cool_OI_ne_func = w/max(ne, 1.0d-30)                             &
-        + ( 1.29166532d-22*exp(-930.111d0/T)                        &
-          + 2.54689509d-19*exp(-22878.3d0/T)                        &
-          + 1.91904760d-18*exp(-34189.1d0/T)                        &
-          + 7.47798840d-18*exp(-75919.8d0/T)                        &
-          + 3.40871685d-17*exp(-185985.0d0/T) )/sqrt(T)             &
-          *coronal_excitation_cutoff(T)
+   ! N II: [N II] 205.3um (3P1-3P0) and 121.8um (3P2-3P1); the 3P2-3P0
+   ! channel again couples collisionally only.
+   elemental double precision function cool_NII_ne_func                  &
+                                         (T,ne,nHI,b205,b122)
+   real*8, intent(in) :: T, ne, nHI, b205, b122
+   real*8 :: Ts, C21, C31, C32, W
+   Ts  = max(T, 1.0d0)
+   C21 = ne*electron_impact_deexcitation(fine_structure_upsilon(        &
+            -0.42246159d0, 0.072197861d0, 0.00061260034d0,              &
+            -0.030925591d0, 0.032840538d0, Ts), 3.0d0, Ts)              &
+       + nHI*h_impact_deexcitation(-9.5141594d0, 0.11153196d0,          &
+             0.11112557d0, 5.0d1, 1.0d4, Ts)
+   C31 = ne*electron_impact_deexcitation(fine_structure_upsilon(        &
+            -0.7274134d0, 0.39557547d0, 0.0075952529d0,                 &
+            -0.16026379d0, -0.0042245925d0, Ts), 5.0d0, Ts)             &
+       + nHI*h_impact_deexcitation(-9.4220729d0, 0.29532393d0,          &
+             0.022835614d0, 5.0d1, 1.0d4, Ts)
+   C32 = ne*electron_impact_deexcitation(fine_structure_upsilon(        &
+             0.16115542d0, 0.065397085d0, -0.066407862d0,               &
+            -0.024467821d0, 0.028877476d0, Ts), 5.0d0, Ts)              &
+       + nHI*h_impact_deexcitation(-8.990019d0, 0.28444121d0,           &
+             0.0409254d0, 5.0d1, 1.0d4, Ts)
+   W = fine_structure_cooling_3level(Ts, 1.0d0, 3.0d0, 5.0d0,           &
+          Ek_NII2, Ek_NII3, A_NII205, 0.0d0, A_NII122,                  &
+          C21, C31, C32, b205, 1.0d0, b122)
+   cool_NII_ne_func = W/max(ne, 1.0d-30)                                &
+        + ( 7.73307386d-18*exp(-23583.7d0/Ts)                           &
+          + 7.10630523d-18*exp(-51230.3d0/Ts)                           &
+          + 1.47261398d-16*exp(-128351.0d0/Ts)                          &
+          + 7.12394741d-16*exp(-249383.0d0/Ts) )/sqrt(Ts)               &
+          *coronal_excitation_cutoff(Ts)
+   end function cool_NII_ne_func
+
+   ! O I: the term is inverted (3P2 lowest), so level 1 is 3P2 and the
+   ! lines are [O I] 63.2um (3P1-3P2), 145.5um (3P0-3P1) and the very weak
+   ! 44.1um (3P0-3P2).
+   elemental double precision function cool_OI_ne_func                   &
+                                         (T,ne,nHI,b63,b145,b44)
+   real*8, intent(in) :: T, ne, nHI, b63, b145, b44
+   real*8 :: Ts, C21, C31, C32, W
+   Ts  = max(T, 1.0d0)
+   C21 = ne*electron_impact_deexcitation(fine_structure_upsilon(        &
+            -2.085627d0, 0.19632883d0, -0.19604793d0,                   &
+             0.041658804d0, 0.038711659d0, Ts), 3.0d0, Ts)              &
+       + nHI*h_impact_deexcitation(-9.0268259d0, 0.45769694d0,          &
+             0.050610554d0, 5.0d1, 1.0d3, Ts)
+   C31 = ne*electron_impact_deexcitation(fine_structure_upsilon(        &
+            -2.4371056d0, 0.19190357d0, -0.19143454d0,                  &
+             0.044307965d0, 0.0341186d0, Ts), 1.0d0, Ts)                &
+       + nHI*h_impact_deexcitation(-9.1067415d0, 0.43724931d0,          &
+             0.05693361d0, 5.0d1, 1.0d3, Ts)
+   C32 = ne*electron_impact_deexcitation(fine_structure_upsilon(        &
+            -3.9438141d0, 0.30537308d0, -0.29646725d0,                  &
+             0.10285117d0, 0.015703868d0, Ts), 1.0d0, Ts)               &
+       + nHI*h_impact_deexcitation(-8.9724741d0, 0.034669741d0,         &
+            -0.35264943d0, 5.0d1, 1.0d3, Ts)
+   W = fine_structure_cooling_3level(Ts, 5.0d0, 3.0d0, 1.0d0,           &
+          Ek_OI2, Ek_OI3, A_OI63, A_OI44, A_OI145,                      &
+          C21, C31, C32, b63, b44, b145)
+   cool_OI_ne_func = W/max(ne, 1.0d-30)                                 &
+        + ( 2.71001452d-19*exp(-23812.5d0/Ts)                           &
+          + 1.16093484d-18*exp(-30987.5d0/Ts)                           &
+          + 4.76406809d-18*exp(-58052.6d0/Ts)                           &
+          + 3.17851200d-17*exp(-158655.0d0/Ts) )/sqrt(Ts)               &
+          *coronal_excitation_cutoff(Ts)
    end function cool_OI_ne_func
 
    ! Vectorized wrappers (grid versions for the eval_cool override).
-   subroutine cool_CII_ne(T,ne,nHI,beta,out)
-   real*8, dimension(1-Ng:N+Ng), intent(in)  :: T, ne, nHI, beta
+   subroutine cool_CI_ne(T,ne,nHI,beta_fs,out)
+   real*8, dimension(1-Ng:N+Ng), intent(in)  :: T, ne, nHI
+   real*8, dimension(1-Ng:N+Ng,n_fsline), intent(in) :: beta_fs
    real*8, dimension(1-Ng:N+Ng), intent(out) :: out
-   out = cool_CII_ne_func(T,ne,nHI,beta)
+   out = cool_CI_ne_func(T,ne,nHI,beta_fs(:,ifs_CI609),beta_fs(:,ifs_CI370))
+   end subroutine cool_CI_ne
+
+   subroutine cool_CII_ne(T,ne,nHI,beta_fs,out)
+   real*8, dimension(1-Ng:N+Ng), intent(in)  :: T, ne, nHI
+   real*8, dimension(1-Ng:N+Ng,n_fsline), intent(in) :: beta_fs
+   real*8, dimension(1-Ng:N+Ng), intent(out) :: out
+   out = cool_CII_ne_func(T,ne,nHI,beta_fs(:,ifs_CII158))
    end subroutine cool_CII_ne
 
-   subroutine cool_OI_ne(T,ne,nHI,beta,out)
-   real*8, dimension(1-Ng:N+Ng), intent(in)  :: T, ne, nHI, beta
+   subroutine cool_NII_ne(T,ne,nHI,beta_fs,out)
+   real*8, dimension(1-Ng:N+Ng), intent(in)  :: T, ne, nHI
+   real*8, dimension(1-Ng:N+Ng,n_fsline), intent(in) :: beta_fs
    real*8, dimension(1-Ng:N+Ng), intent(out) :: out
-   out = cool_OI_ne_func(T,ne,nHI,beta)
+   out = cool_NII_ne_func(T,ne,nHI,beta_fs(:,ifs_NII205),               &
+                          beta_fs(:,ifs_NII122))
+   end subroutine cool_NII_ne
+
+   subroutine cool_OI_ne(T,ne,nHI,beta_fs,out)
+   real*8, dimension(1-Ng:N+Ng), intent(in)  :: T, ne, nHI
+   real*8, dimension(1-Ng:N+Ng,n_fsline), intent(in) :: beta_fs
+   real*8, dimension(1-Ng:N+Ng), intent(out) :: out
+   out = cool_OI_ne_func(T,ne,nHI,beta_fs(:,ifs_OI63),                  &
+                         beta_fs(:,ifs_OI145),beta_fs(:,ifs_OI44))
    end subroutine cool_OI_ne
 
    !--------------!
@@ -1525,11 +1788,15 @@
    ! Cdex = total collisional de-excitation rate [s^-1] = sum_c n_c*k_ul^c.
    ! Low-density limit Lambda ~ hv*x*Cdex (collision-limited); high-density
    ! limit saturates at hv*A*x/(1+x) (critical density n_cr = A/k_ul).
-   ! Used (when use_2lev_cool=.true.) for [O I] 63um and [C II] 158um, the
-   ! dominant coolants at the cool, dense, partially-ionized base.
+   ! Used ONLY by the legacy use_2lev_cool branch, for [O I] 63um and
+   ! [C II] 158um. The default path solves the whole ground term in
+   ! statistical equilibrium instead (cool_OI_ne_func and friends), which
+   ! is exact for a two-level term and, unlike this function as it is
+   ! called there, does not double-normalize the level population.
    ! Data flagged approximate (cf. ATES_extended): A and Ek from atomic
    ! databases; collision rates k_ul from Goldsmith+2012 ([C II]) and
-   ! Lique+2017 / Draine 2011 ([O I]); VERIFY before production use.
+   ! Lique+2017 / Draine 2011 ([O I]) -- both 5-20x below the
+   ! quantum-scattering rates the default path now uses.
    double precision function lambda_2level(A,Ek,gu_gl,Cdex,Te)
    real*8, intent(in) :: A,Ek,gu_gl,Cdex,Te
    real*8 :: hv,x
@@ -1557,10 +1824,11 @@
    !
    ! Physically, at T far below 1e3 K the only metal transitions still
    ! collisionally excitable are the ground-term fine-structure lines,
-   ! and those are carried EXPLICITLY by the two-level solutions
-   ! (cool_OI_ne_func, cool_CII_ne_func, lambda_2level), which also
-   ! include the critical-density saturation the coronal curves lack. The
-   ! coronal part is therefore switched off below the fit floor.
+   ! and those are carried EXPLICITLY by the statistical-equilibrium
+   ! solutions (cool_CI_ne_func, cool_CII_ne_func, cool_NII_ne_func,
+   ! cool_OI_ne_func), which also include the critical-density saturation
+   ! the coronal curves lack. The coronal part is therefore switched off
+   ! below the fit floor.
    !
    ! The switch is a Gaussian in the fractional temperature deficit,
    !   x = (T_floor/T - 1)/w,   cutoff = exp(-x^2)   for T < T_floor,
@@ -1570,16 +1838,26 @@
    ! semi-implicit update finite-difference the cooling in T. At and above
    ! 1e3 K every coefficient is BIT-IDENTICAL to the unguarded form.
    !
-   ! VALIDITY / CHOICE: w = 0.5 (the default; "Coronal cutoff width: <w>"
-   ! in input.inp changes it) makes the coronal part e-fold away once T
-   ! has fallen about a third below the floor. It is a modeling choice,
-   ! not a measured quantity; the base temperature the model settles at
-   ! depends on it at the ~100 K level. The guard leaves NO cooling at all
-   ! for ions that have no explicit two-level term (C I, N I/II, Mg, Ca,
-   ! Na, Fe) below ~700 K. For C I that omits the real [C I] 609/370um
-   ! lines; at the HD 189733 b base their LTE rate is ~1e-10 erg cm^-3
-   ! s^-1, i.e. 1e-4 of the local heating, so the omission is negligible
-   ! there, but it would not be in a colder or more carbon-rich base.
+   ! VALIDITY / CHOICE: w = 0.1 is the default ("Coronal cutoff width: <w>"
+   ! in input.inp changes it). w is a modeling choice, not a measured
+   ! quantity, and it was bounded to 0.08-0.13 in
+   ! docs/coronal_cutoff_width.md by (i) confining the band in which the
+   ! unsaturated coronal residual still dominated and (ii) keeping the
+   ! guard's own log slope within an order of magnitude of the 8.3-8.7 the
+   ! cooling function already has inside the fitted range.
+   !
+   ! WHAT THE GUARD NOW DOES. That bound was set while the ground-term
+   ! fine-structure floors of C I, N II and the [O I] 145.5um channel were
+   ! still coronal, and they dominated everything the guard removed. Now
+   ! that all four split ground terms are solved in statistical
+   ! equilibrium, no coronal term reaching below 1e3 K is left: the softest
+   ! exponential surviving in any of the remainders is exp(-16400/T), which
+   ! at 500 K is 1e-15 of its 1e4 K value. The guard is back to its stated
+   ! job -- refusing to extrapolate a fit below the data it was made from --
+   ! and the base is no longer sensitive to w: the local balance
+   ! temperature of the base cell is identical to six digits over
+   ! w = 0.02-1.2 for all four planet runs, against a 500-650 K spread
+   ! before (docs/coronal_cutoff_width.md section 7).
    ! The legacy AIOLOS branch (cno_chianti = .false.) is deliberately NOT
    ! guarded: its constant floors (1.0e-24 etc.) are crude stand-ins for
    ! fine-structure cooling, not extrapolated coronal fits.
@@ -1592,7 +1870,7 @@
    if (.not. (T .lt. T_fit_floor)) then
       coronal_excitation_cutoff = 1.0d0
    else
-      ! coronal_cutoff_width (global, default 0.5) is the roll-off width in
+      ! coronal_cutoff_width (global, default 0.1) is the roll-off width in
       ! fractional temperature deficit; "Coronal cutoff width: <w>".
       x = (T_fit_floor/max(T,1.0d0) - 1.0d0)/coronal_cutoff_width
       if (x .gt. 26.0d0) then
@@ -1618,13 +1896,12 @@
    ! ground-term fine-structure lines the cooling assembly solves
    ! explicitly and derives beta from it.
    !
-   ! SCOPE. Trapping is applied to [O I] 63um and [C II] 158um only --
-   ! exactly the two lines for which this module carries an explicit
-   ! two-level solution, so emission and opacity use one set of atomic
-   ! data. All other metal-line cooling keeps beta = 1. That is the
-   ! residual approximation at the base: at the HD 189733 b base the other
-   ! coolants together are < 0.3% of the total once the coronal fits are
-   ! guarded.
+   ! SCOPE. Trapping is applied to the eight ground-term fine-structure
+   ! lines of C I, C II, N II and O I -- exactly the lines for which this
+   ! module carries an explicit statistical-equilibrium solution, so
+   ! emission and opacity use one set of atomic data. All other metal-line
+   ! cooling keeps beta = 1; the validity note below is why that is the
+   ! right effective treatment for the permitted resonance lines.
    !
    ! VALIDITY for the PERMITTED RESONANCE lines (Mg I 2853, Mg II h&k,
    ! Ca II H&K, Na I D, the Fe II UV multiplets). Those lines DO reach
@@ -1677,24 +1954,57 @@
                              *n_low*(1.0d0 - exp(-Ek/Ts))/vth
    end function line_center_opacity_lte
 
-   ! [O I] 63.19um, 3P1 -> 3P2. A_ul, Ek and the ground-term partition sum
-   ! are the same values cool_OI_ne_func emits with; g_u/g_l = 3/5.
-   elemental double precision function kappa_OI63(T,nOI)
-   real*8, intent(in) :: T, nOI
-   real*8 :: f2
-   f2 = 5.0d0/(5.0d0 + 3.0d0*exp(-227.708d0/T) + exp(-326.567d0/T))
-   kappa_OI63 = line_center_opacity_lte(T, f2*nOI, 227.708d0,          &
-                                        8.542d-5, 0.6d0, 15.999d0)
-   end function kappa_OI63
-
-   ! [C II] 158um, 2P3/2 -> 2P1/2, matching cool_CII_ne_func; g_u/g_l = 2.
-   elemental double precision function kappa_CII158(T,nCII)
-   real*8, intent(in) :: T, nCII
-   real*8 :: f1
-   f1 = 2.0d0/(2.0d0 + 4.0d0*exp(-91.213d0/T))
-   kappa_CII158 = line_center_opacity_lte(T, f1*nCII, 91.213d0,        &
-                                          2.290d-6, 2.0d0, 12.011d0)
-   end function kappa_CII158
+   ! Line-center opacity [cm^-1] of one ground-term fine-structure line.
+   ! The lower-level population is the ground-term Boltzmann fraction, the
+   ! same partition sum the cooling coefficients emit with; A_ul, E_ul and
+   ! g_u/g_l are the CHIANTI values declared at module scope. n_ion is the
+   ! TOTAL density of the emitting ion.
+   elemental double precision function fine_structure_line_opacity       &
+                                         (iline,T,n_ion) result(kap)
+   integer, intent(in) :: iline
+   real*8,  intent(in) :: T, n_ion
+   real*8 :: Ts, Z
+   Ts = max(T, 1.0d0)
+   select case (iline)
+      case (ifs_CI609)     ! 3P1 - 3P0
+         Z = 1.0d0 + 3.0d0*exp(-Ek_CI2/Ts) + 5.0d0*exp(-Ek_CI3/Ts)
+         kap = line_center_opacity_lte(Ts, n_ion/Z, Ek_CI2,             &
+                                       A_CI609, 3.0d0, amu_C)
+      case (ifs_CI370)     ! 3P2 - 3P1
+         Z = 1.0d0 + 3.0d0*exp(-Ek_CI2/Ts) + 5.0d0*exp(-Ek_CI3/Ts)
+         kap = line_center_opacity_lte(Ts,                              &
+                  3.0d0*exp(-Ek_CI2/Ts)*n_ion/Z, Ek_CI3 - Ek_CI2,       &
+                  A_CI370, 5.0d0/3.0d0, amu_C)
+      case (ifs_CII158)    ! 2P3/2 - 2P1/2
+         Z = 2.0d0 + 4.0d0*exp(-Ek_CII2/Ts)
+         kap = line_center_opacity_lte(Ts, 2.0d0*n_ion/Z, Ek_CII2,      &
+                                       A_CII158, 2.0d0, amu_C)
+      case (ifs_NII205)    ! 3P1 - 3P0
+         Z = 1.0d0 + 3.0d0*exp(-Ek_NII2/Ts) + 5.0d0*exp(-Ek_NII3/Ts)
+         kap = line_center_opacity_lte(Ts, n_ion/Z, Ek_NII2,            &
+                                       A_NII205, 3.0d0, amu_N)
+      case (ifs_NII122)    ! 3P2 - 3P1
+         Z = 1.0d0 + 3.0d0*exp(-Ek_NII2/Ts) + 5.0d0*exp(-Ek_NII3/Ts)
+         kap = line_center_opacity_lte(Ts,                              &
+                  3.0d0*exp(-Ek_NII2/Ts)*n_ion/Z, Ek_NII3 - Ek_NII2,    &
+                  A_NII122, 5.0d0/3.0d0, amu_N)
+      case (ifs_OI63)      ! 3P1 - 3P2 (inverted term)
+         Z = 5.0d0 + 3.0d0*exp(-Ek_OI2/Ts) + exp(-Ek_OI3/Ts)
+         kap = line_center_opacity_lte(Ts, 5.0d0*n_ion/Z, Ek_OI2,       &
+                                       A_OI63, 0.6d0, amu_O)
+      case (ifs_OI145)     ! 3P0 - 3P1
+         Z = 5.0d0 + 3.0d0*exp(-Ek_OI2/Ts) + exp(-Ek_OI3/Ts)
+         kap = line_center_opacity_lte(Ts,                              &
+                  3.0d0*exp(-Ek_OI2/Ts)*n_ion/Z, Ek_OI3 - Ek_OI2,       &
+                  A_OI145, 1.0d0/3.0d0, amu_O)
+      case (ifs_OI44)      ! 3P0 - 3P2
+         Z = 5.0d0 + 3.0d0*exp(-Ek_OI2/Ts) + exp(-Ek_OI3/Ts)
+         kap = line_center_opacity_lte(Ts, 5.0d0*n_ion/Z, Ek_OI3,       &
+                                       A_OI44, 0.2d0, amu_O)
+      case default
+         kap = 0.0d0
+   end select
+   end function fine_structure_line_opacity
 
    ! Escape probability of a static Doppler line at line-center optical
    ! depth tau. Shape from the plane-parallel single-flight result used by
@@ -1727,31 +2037,32 @@
    endif
    end function line_escape_probability
 
-   ! Escape probabilities of [O I] 63um and [C II] 158um on the grid.
-   ! tau(j) is the line-center column from the CENTER of cell j to the top
-   ! of the domain: half of the emitting cell plus every cell above it.
+   ! Escape probabilities of every ground-term fine-structure line on the
+   ! grid. tau(j) is the line-center column from the CENTER of cell j to the
+   ! top of the domain: half of the emitting cell plus every cell above it.
    ! The outward column is the escape path (see line_escape_probability
    ! for why the downward direction is not counted separately). Being a
    ! column rather than a single cell width, tau is grid-independent and
    ! converges under refinement, unlike the cell-width gray depth it
    ! replaces.
-   subroutine fine_structure_escape(T,nOI,nCII,beta_OI63,beta_CII158)
-   real*8, dimension(1-Ng:N+Ng), intent(in)  :: T, nOI, nCII
-   real*8, dimension(1-Ng:N+Ng), intent(out) :: beta_OI63, beta_CII158
-   integer :: j
-   real*8  :: dl, dtau_OI, dtau_CII, col_OI, col_CII
-   col_OI  = 0.0d0
-   col_CII = 0.0d0
+   subroutine fine_structure_escape(T,nm,beta_fs)
+   real*8, dimension(1-Ng:N+Ng), intent(in)  :: T
+   real*8, dimension(1-Ng:N+Ng,n_mion), intent(in)  :: nm
+   real*8, dimension(1-Ng:N+Ng,n_fsline), intent(out) :: beta_fs
+   integer :: j, k
+   real*8  :: dl, dtau, col(n_fsline)
+   col = 0.0d0
    do j = N+Ng,1-Ng,-1
-      dl       = dr_j(j)*R0
-      ! Floored at zero: the ionization solve can leave a trace species with a
-      ! small negative density, and an optical depth cannot be negative.
-      dtau_OI  = max(kappa_OI63  (T(j),nOI (j))*dl, 0.0d0)
-      dtau_CII = max(kappa_CII158(T(j),nCII(j))*dl, 0.0d0)
-      beta_OI63  (j) = line_escape_probability(col_OI  + 0.5d0*dtau_OI )
-      beta_CII158(j) = line_escape_probability(col_CII + 0.5d0*dtau_CII)
-      col_OI  = col_OI  + dtau_OI
-      col_CII = col_CII + dtau_CII
+      dl = dr_j(j)*R0
+      do k = 1,n_fsline
+         ! Floored at zero: the ionization solve can leave a trace species
+         ! with a small negative density, and an optical depth cannot be
+         ! negative.
+         dtau = max(fine_structure_line_opacity(k, T(j),                &
+                                                nm(j,fsline_ion(k)))*dl, 0.0d0)
+         beta_fs(j,k) = line_escape_probability(col(k) + 0.5d0*dtau)
+         col(k) = col(k) + dtau
+      enddo
    enddo
    end subroutine fine_structure_escape
 
