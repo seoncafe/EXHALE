@@ -497,13 +497,22 @@ modifications you need to make if you set it up by hand:
 
 ## Warm-start a hard planet (Wind-AE IC)
 
-For a planet that is hard to launch from the default cold/auto initial
-conditions, EXHALE can build the initial condition from an included 1-D
-steady-state Parker-wind solver — a Fortran port of **Wind-AE** (Murray-Clay
-et al. 2009; Broome et al. 2025), under `src/modules/wind_ae/`. There are two
-ways to use it.
+**Reach for this only when the default path fails.** The working recipe for a
+quantitative model is the cold hydrostatic initial condition (or `IC mode:
+auto`) followed by the Newton finish, and that is what the four benchmark
+planets use — none of them starts from Wind-AE. A warm initial condition does
+not buy convergence speed either: the Parker-seed benchmark reaches the same
+mass-loss rate in 2% fewer steps, because convergence here is set by the
+momentum spread `du` rather than by thermal relaxation
+(`docs/initial_condition_benchmark.pdf`).
 
-**In-process (recommended)** — add these lines to `input.inp`:
+For a planet that will not launch that way, EXHALE can build the initial
+condition from an included 1-D steady-state Parker-wind solver — a Fortran
+port of **Wind-AE** (Murray-Clay et al. 2009; Broome et al. 2025), under
+`src/modules/wind_ae/`. There are two ways to use it.
+
+**In-process** — preferred over the standalone generator below, since it needs
+no separate invocation. Add these lines to `input.inp`:
 
 ```
 IC mode:  windae
