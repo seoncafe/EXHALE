@@ -714,6 +714,35 @@ defaults restore the standard behavior).}\label{tab:inp-opt}\\
   kept because extrapolating a fit below its fitted range is the wrong thing to
   do, not as a tuning knob
   (\texttt{docs/coronal\_cutoff\_width.md}, section~7). \\
+\texttt{Base IR field:} & \texttt{True}/\texttt{False} (def.\ \texttt{False})
+  & Let the infrared coolants of the molecular layer see the thermal radiation
+  of the atmosphere below the base instead of emitting into vacuum. The lower
+  atmosphere is taken to be black at those wavelengths and to radiate
+  $B_\nu(T_0)$ over the sky fraction $1-\sqrt{1-(R_{\rm p}/r)^2}$, and the
+  cooling becomes the net rate, emission minus absorption of that field, so
+  each band stops cooling at its own radiative-equilibrium temperature
+  ($576$--$642$\,K for the C\,I/O\,I fine-structure lines and $936$\,K for the
+  H$_3^+$ bands, at $T_0 = 1140$\,K and half-sky coverage). Applies to the
+  eight ground-term fine-structure lines of C\,I, C\,II, N\,II, O\,I and to the
+  H$_3^+$ infrared cooling; every other channel keeps the optically thin,
+  no-incident-field limit. Off by default, and with no effect on an atomic run,
+  where those channels carry no cooling
+  (\texttt{docs/lower\_atmosphere\_coupling.md}). \\
+\texttt{Stellar LW flux [erg/cm2/s]:} & real (def.\ 0) & Band-integrated
+  stellar flux in the H$_2$ Lyman--Werner bands (912--1110\,\AA, i.e.\
+  11.2--13.6\,eV) \emph{at the planet's orbit}. Switches on H$_2$
+  photodissociation, $\mathrm{H_2}+h\nu\to\mathrm{H}+\mathrm{H}$, in the
+  molecular network: an unattenuated rate $k_0 = 1.757\times10^{-7}\,
+  F_{\rm LW}$\,s$^{-1}$ (Draine \& Bertoldi 1996 calibration) times their
+  eq.~(37) self-shielding factor of the star-ward H$_2$ column, plus
+  $0.4$\,eV of heating per dissociation (Black \& Dalgarno 1977). The band
+  is a separate input because the code's own energy grid does not carry it:
+  a numerical SED is read only down to the 13.6\,eV H\,\textsc{i} edge, and a
+  power-law SED below 13.6\,eV is an extrapolation of the XUV law rather
+  than a stellar FUV spectrum. 0 (default) = no photodissociation, and the
+  key is inert without \texttt{Molecular chemistry: True}. Writes
+  \texttt{output/Lyman\_Werner.txt}
+  (\texttt{docs/lower\_atmosphere\_coupling.md}). \\
 \texttt{Stellar Teff [K]:} & real (K) & Stellar $T_{\rm eff}$ for the
   diluted-blackbody Balmer continuum that photoionizes/heats H($n{=}2$). Enables
   the excited-H model when both this \emph{and} \texttt{Stellar radius} are $>0$. \\
@@ -1096,12 +1125,28 @@ Requires He; \texttt{He\_diffusion} is refused by the parser. A
 \texttt{metals.inp} may be present: the trace metals are then solved in the
 same system as the molecular network (\texttt{System\_HeH\_mol\_metals}),
 because the two blocks share the free electron density and the metals are the
-dominant electron donors in the shielded molecular base. Caveats: local
-\emph{equilibrium} chemistry only (no
-molecular advection), no Lyman--Werner photodissociation, $\gamma=5/3$
-retained. On hot Jupiters the result is a thin molecular base under a sharp
+dominant electron donors in the shielded molecular base. H$_2$
+photodissociation in the Lyman--Werner bands is available and opt-in --- add
+\texttt{Stellar LW flux [erg/cm2/s]:} with the band flux at the planet.
+Caveats: local \emph{equilibrium} chemistry only (no
+molecular advection), $\gamma=5/3$ retained. On hot Jupiters the result is a thin molecular base under a sharp
 H$_2\to$H front with an atomic wind above --- the atomic assumption becomes a
 result rather than an input.
+
+\textbf{Converging a molecular run takes three keys an atomic run does not
+need:} \texttt{Solver: Newton 5.0e-2}, \texttt{Resid tol: 1.0e-5} and
+\texttt{Max steps: 150000}. The $du$ descent of a molecular run is not
+monotonic, so the default $10^{-2}$ hand-off threshold can consume the whole
+step budget; and $\|R\|$ is set by the two or three cells just above the base,
+so a run stopped at the default \texttt{Resid tol: 1.0e-3} leaves the molecular
+layer still cooling (its energy residual there is still $0.7\times$ the local
+H$_3^+$ cooling rate). Marching alone never reaches that layer --- its H$_3^+$
+cooling time is ${\sim}10^{7}$ CFL steps --- so the Newton finish is not
+optional. The converged layer is much colder than the relaxation snapshot
+(${\sim}400$\,K on HD\,209458\,b, 190--300\,K on a hot Uranus) and, without
+\texttt{Base IR field}, that collapse is the model's own steady state rather
+than a prediction; see \texttt{docs/lower\_atmosphere\_coupling.pdf} \S7--\S9
+and item (G) of \texttt{TO\_BE\_DONE.md}.
 
 \paragraph{Tier 3 --- \texttt{base.inp} handoff (and VULCAN).}
 An optional \texttt{base.inp} in the run directory overrides the base state
@@ -1311,13 +1356,30 @@ HeHp}, cm$^{-3}$) are appended after the metals; the \texttt{\# columns}
 header always names the layout.
 
 \subsection{\texttt{Cooling\_breakdown.txt}}
-Radiative cooling by channel [erg\,cm$^{-3}$\,s$^{-1}$] vs.\ radius (written for
-metals-on runs). Columns: \texttt{1}=$r$, \texttt{2}=$T$ [K], \texttt{3}=$n_e$
-[cm$^{-3}$], \texttt{4}=total cooling; \texttt{5--8}= the four H/He channels
-(recombination, collisional ionization, collisional excitation, bremsstrahlung);
-\texttt{9--35}= the 27 metal-line cooling channels (same ion order as
-\texttt{Ion\_species}). The channels sum to column~4. Useful for identifying the
-dominant coolant vs.\ altitude (cf.\ Huang+2023 Fig.~10).
+Radiative cooling by channel [erg\,cm$^{-3}$\,s$^{-1}$] vs.\ radius. Columns:
+\texttt{1}=$r$, \texttt{2}=$T$ [K], \texttt{3}=$n_e$ [cm$^{-3}$], \texttt{4}=total
+cooling; \texttt{5--10}= the six H/He channels (recombination, collisional
+ionization, then collisional excitation split by absorber into
+H\,{\sc i} --- the Ly$\alpha$-dominated H-line cooling ---, He\,{\sc i} (which
+also carries the He\,$2^3$S metastable terms) and He\,{\sc ii}, and finally
+bremsstrahlung); \texttt{11}= the H$_3^+$ infrared cooling (zero unless the run
+tracks the molecular network); \texttt{12--38}= the 27 metal-line cooling
+channels (same ion order as \texttt{Ion\_species}). The channels sum to
+column~4. Useful for identifying the dominant coolant vs.\ altitude (cf.\
+Huang+2023 Fig.~10), and the H$_3^+$ column is the coolant of a molecular base.
+The \texttt{\# col} header line always names the layout.
+
+\subsection{\texttt{Lyman\_Werner.txt}}
+H$_2$ photodissociation diagnostic, written when a molecular run carries a
+\texttt{Stellar LW flux}. 8 columns: \texttt{1}~$r$ [\rp], \texttt{2}~$T$ [K],
+\texttt{3}~$x_{\rm H_2}=2n_{\rm H_2}/n_{\rm H}$, \texttt{4}~$n_{\rm H_2}$
+[cm$^{-3}$], \texttt{5}~the star-ward H$_2$ column $N_{\rm H_2}$ [cm$^{-2}$],
+\texttt{6}~the Draine \& Bertoldi (1996) self-shielding factor $f_{\rm shield}$,
+\texttt{7}~the resulting dissociation rate $k_{\rm LW}$ [s$^{-1}$], and
+\texttt{8}~the photodissociation heating [erg\,cm$^{-3}$\,s$^{-1}$]. It shows
+directly how deep the band penetrates: $f_{\rm shield}\to1$ in the thin wind
+above the H$_2\to$H front, collapsing by orders of magnitude inside the
+self-shielded molecular base.
 
 \subsection{\texttt{Excited\_H.txt}}
 H($n{=}2$) diagnostic (written when the excited-H model is on, i.e.\ stellar
@@ -1516,10 +1578,13 @@ Function & Returns \\
 \texttt{load\_ions(path)} & \texttt{(r, \{ion: density\})} from
   \texttt{Ion\_species(\_adv).txt} (all 33 stages). \\
 \texttt{load\_cooling(path)} & \texttt{r,T,ne,cool\_total} $+$
-  \texttt{chan} dict of cooling in each channel (4 H/He channels
-  \texttt{rec/coll\_ion/coll\_exc/brems} $+$ 27 metal-line channels). \\
+  \texttt{chan} dict of cooling in each channel (6 H/He channels
+  \texttt{rec/coll\_ion/coex\_HI/coex\_HeI/coex\_HeII/brems}, the
+  \texttt{H3p} infrared channel, $+$ 27 metal-line channels). \\
 \texttt{load\_excited\_H(path)} & \texttt{Excited\_H.txt} as a dict
   (\texttt{n2s, n2p, Jlya, tau\_lya, Sproton, Hpe, \ldots}). \\
+\texttt{load\_lyman\_werner(path)} & \texttt{Lyman\_Werner.txt} as a dict
+  (\texttt{x\_H2, NH2, f\_shield, k\_LW, heat\_LW}). \\
 \texttt{read\_input(path)} & \texttt{input.inp} as a dict
   (\texttt{Rp\_RJ, Mp\_MJ, a\_AU, HeH, LX, LEUV, \ldots} $+$ raw lines). \\
 \texttt{mdot\_log10(run, j\_from\_top=20)} & $\log_{10}\dot M$ [g/s]:
@@ -1760,14 +1825,21 @@ included --- that is what \texttt{16\_molecular\_metals} is.}
 \texttt{15\_molecular} & full molecular chemistry (HD209458b;
   \S\ref{sec:loweratm}): H$_2$/H$_2^+$/H$_3^+$/HeH$^+$ in the coupled
   ionization equilibrium; a sharp H$_2\!\to$H front forms above a thin
-  molecular base ($r\approx1.02\,R_p$), the wind above it essentially atomic &
-  HD209458b params $+$ \texttt{Molecular chemistry: True} (no
+  molecular base, the wind above it essentially atomic. Newton-converged
+  2026-08-13 ($\|R\| = 9.5\times10^{-6}$): the front sits at
+  $r=1.0089\,R_p$ and the molecular layer below it collapses to ${\sim}400$\,K &
+  HD209458b params $+$ \texttt{Molecular chemistry: True},
+  \texttt{Solver: Newton 5.0e-2}, \texttt{Resid tol: 1.0e-5},
+  \texttt{Max steps: 150000} (no
   \texttt{metals.inp} here; \texttt{He\_diffusion} is still refused) \\
 \texttt{16\_molecular\_metals} & molecular chemistry \emph{and} trace metals
   solved in one system (HD209458b): the H$_2$/H$_2^+$/H$_3^+$/HeH$^+$ network
   and the metal ionization stages share the free electron density, which the
-  metals dominate in the shielded molecular base &
-  \texttt{15\_molecular} $+$ \texttt{metals.inp} (solar C/N/O) \\
+  metals dominate in the shielded molecular base. Not converged: with metals on
+  the JFNK line search stalls at $\|R\|=3.6\times10^{-4}$ on the base-adjacent
+  momentum row &
+  \texttt{15\_molecular} $+$ \texttt{metals.inp} (solar C/N/O), without
+  \texttt{15}'s three convergence keys \\
 \end{longtable}}
 
 % ===================================================================== %
@@ -1897,6 +1969,7 @@ full network (\texttt{cx\_full}) & $+$ He$+$H, metal$+$He, metal$+$metal & Huang
 \midrule
 \multicolumn{3}{@{}l}{\textbf{Radiative cooling}}\\[2pt]
 recomb., coll.\ ion./exc., free--free & H, He & Hui \& Gnedin (1997) recomb.\ cooling; Black (1981) collisional; free--free bremsstrahlung with the van Hoof et al.\ (2014) thermal Gaunt factor, weighted by ion net charge \\
+H$_3^+$ infrared (molecular runs) & H$_3^+$ & Miller et al.\ (2013) LTE emission per molecule (Table~5 $z(T)$ fits) times their Table~6 non-LTE departure factor $s(T,n_{\rm H_2})$; optically thin. The dominant coolant of a molecular base, where every atomic channel above is exponentially suppressed \\
 metal line cooling \mbox{(analytic)} & C\,I/II, N\,I/II, O\,I/II & closed-form fits to CHIANTI v11.0.2 (default); legacy AIOLOS fits via \texttt{cno\_cool 0} (no N cooling) \\
 metal line cooling \mbox{(analytic)} & Mg\,I/II, Ca\,II\,H\&K, Na\,I\,D, Fe\,II coronal & closed-form fits to CHIANTI v11.0.2 (Burgess--Tully descaled; 1--3\% accuracy); Na\,I\,D via effective $\bar g\!\approx\!0.2$ \\
 metal line cooling \mbox{(tabulated)} & Fe\,I; Fe\,II\,$(T,n_e)$ & NIST $f$-values $+$ Van Regemorter; CHIANTI multilevel statistical equilibrium \\

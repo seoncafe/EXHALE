@@ -528,6 +528,13 @@
    ! emitting ion of each slot (canonical mion index)
    integer, parameter :: fsline_ion(n_fsline) =                        &
         [ im_CI, im_CI, im_CII, im_NII, im_NII, im_OI, im_OI, im_OI ]
+   ! transition energy E_ul/k [K] of each slot, in the same order. Note the
+   ! O I term is inverted, so slot ifs_OI44 (3P0-3P2) carries the full
+   ! Ek_OI3 while ifs_OI145 (3P0-3P1) carries the difference.
+   real*8, parameter :: fsline_Ek(n_fsline) =                          &
+        [ Ek_CI2, Ek_CI3 - Ek_CI2, Ek_CII2,                            &
+          Ek_NII2, Ek_NII3 - Ek_NII2,                                  &
+          Ek_OI2, Ek_OI3 - Ek_OI2, Ek_OI3 ]
 
    contains
 
@@ -1246,35 +1253,53 @@
    end function h_impact_deexcitation
 
    ! Exact statistical equilibrium of a TWO-level ground term.
-   ! f_2 = R_12/(R_12 + R_21); returns the escaping power per ion [erg/s].
+   ! f_2 = R_12/(R_12 + R_21); returns the NET escaping power per ion
+   ! [erg/s], emission minus absorption of the incident field.
+   ! nb21 is the photon occupation number of that incident field at the line
+   ! frequency (0 = no incident radiation, the optically thin vacuum limit),
+   ! so the radiative rates are b A (1 + nb) down and b A (g2/g1) nb up, and
+   !   W = kB E b A [ f2 (1 + nb) - f1 (g2/g1) nb ].
+   ! With nb = W_dil/(exp(E/T_rad) - 1) this vanishes when the level ratio
+   ! reaches the equilibrium set by the field, which is the radiative
+   ! equilibrium floor of the line; below it W is negative, i.e. the line
+   ! heats the gas.
    pure double precision function fine_structure_cooling_2level          &
-                                    (T,g1,g2,E2,A21,C21,b21) result(W)
-   real*8, intent(in) :: T,g1,g2,E2,A21,C21,b21
-   real*8 :: R12, R21
-   R21 = C21 + b21*A21
-   R12 = C21*(g2/g1)*exp(-E2/T)
-   W   = kb_erg*E2*b21*A21*R12/max(R12 + R21, 1.0d-300)
+                                    (T,g1,g2,E2,A21,C21,b21,nb21) result(W)
+   real*8, intent(in) :: T,g1,g2,E2,A21,C21,b21,nb21
+   ! The emission factor is written first and multiplied by (1 + nb21) so
+   ! that nb21 = 0 reproduces the vacuum expression bit for bit.
+   real*8 :: R12, R21, f2
+   R21 = C21 + b21*A21*(1.0d0 + nb21)
+   R12 = C21*(g2/g1)*exp(-E2/T) + b21*A21*(g2/g1)*nb21
+   f2  = R12/max(R12 + R21, 1.0d-300)
+   W   = kb_erg*E2*b21*A21*R12/max(R12 + R21, 1.0d-300)*(1.0d0 + nb21) &
+       - kb_erg*E2*b21*A21*(1.0d0 - f2)*(g2/g1)*nb21
    end function fine_structure_cooling_2level
 
    ! Exact statistical equilibrium of a THREE-level ground term. Levels are
    ! in energy order with E1 = 0; C_ul are the total collisional
-   ! de-excitation rates [s^-1] and b_ul the escape probabilities.
+   ! de-excitation rates [s^-1], b_ul the escape probabilities and nb_ul the
+   ! photon occupation numbers of the incident field at each line frequency
+   ! (0 = vacuum). The radiative rates are b A (1 + nb) down and
+   ! b A (g_u/g_l) nb up, so the returned power is the NET one, emission
+   ! minus absorption of that field (see the two-level routine above).
    ! Eliminating f_1 = 1 - f_2 - f_3 from the two level-balance equations
    ! leaves a 2x2 system, solved by Cramer's rule:
    !   f_2 (R12+R21+R23) + f_3 (R12-R32) = R12
    !   f_2 (R13-R23) + f_3 (R13+R31+R32) = R13
    pure double precision function fine_structure_cooling_3level          &
                                     (T,g1,g2,g3,E2,E3,A21,A31,A32,      &
-                                     C21,C31,C32,b21,b31,b32) result(W)
+                                     C21,C31,C32,b21,b31,b32,           &
+                                     nb21,nb31,nb32) result(W)
    real*8, intent(in) :: T,g1,g2,g3,E2,E3,A21,A31,A32
-   real*8, intent(in) :: C21,C31,C32,b21,b31,b32
-   real*8 :: R12,R13,R23,R21,R31,R32, m11,m12,m21,m22, det, f2,f3
-   R21 = C21 + b21*A21
-   R31 = C31 + b31*A31
-   R32 = C32 + b32*A32
-   R12 = C21*(g2/g1)*exp(-E2/T)
-   R13 = C31*(g3/g1)*exp(-E3/T)
-   R23 = C32*(g3/g2)*exp(-(E3 - E2)/T)
+   real*8, intent(in) :: C21,C31,C32,b21,b31,b32,nb21,nb31,nb32
+   real*8 :: R12,R13,R23,R21,R31,R32, m11,m12,m21,m22, det, f1,f2,f3
+   R21 = C21 + b21*A21*(1.0d0 + nb21)
+   R31 = C31 + b31*A31*(1.0d0 + nb31)
+   R32 = C32 + b32*A32*(1.0d0 + nb32)
+   R12 = C21*(g2/g1)*exp(-E2/T) + b21*A21*(g2/g1)*nb21
+   R13 = C31*(g3/g1)*exp(-E3/T) + b31*A31*(g3/g1)*nb31
+   R23 = C32*(g3/g2)*exp(-(E3 - E2)/T) + b32*A32*(g3/g2)*nb32
    m11 = R12 + R21 + R23
    m12 = R12 - R32
    m21 = R13 - R23
@@ -1290,16 +1315,24 @@
       f2 = 0.0d0
       f3 = 0.0d0
    endif
-   W = kb_erg*( f2*b21*A21*E2 + f3*b31*A31*E3                        &
-              + f3*b32*A32*(E3 - E2) )
+   f1 = 1.0d0 - f2 - f3
+   ! Each line contributes f_u b A (1 + nb) - f_l b A (g_u/g_l) nb; the
+   ! emission terms are written exactly as in the vacuum expression so that
+   ! nb = 0 reproduces it bit for bit.
+   W = kb_erg*( f2*b21*A21*E2*(1.0d0 + nb21)                         &
+              + f3*b31*A31*E3*(1.0d0 + nb31)                         &
+              + f3*b32*A32*(E3 - E2)*(1.0d0 + nb32) )                &
+     - kb_erg*( f1*b21*A21*E2*(g2/g1)*nb21                           &
+              + f1*b31*A31*E3*(g3/g1)*nb31                           &
+              + f2*b32*A32*(E3 - E2)*(g3/g2)*nb32 )
    end function fine_structure_cooling_3level
 
    ! C I: [C I] 609.1um (3P1-3P0) and 370.4um (3P2-3P1). The 3P2-3P0
    ! channel has no transition probability but does couple the levels
    ! collisionally, so it enters C31 with A31 = 0.
    elemental double precision function cool_CI_ne_func                   &
-                                         (T,ne,nHI,b609,b370)
-   real*8, intent(in) :: T, ne, nHI, b609, b370
+                                         (T,ne,nHI,b609,b370,n609,n370)
+   real*8, intent(in) :: T, ne, nHI, b609, b370, n609, n370
    real*8 :: Ts, C21, C31, C32, W
    Ts  = max(T, 1.0d0)
    C21 = ne*electron_impact_deexcitation(fine_structure_upsilon(        &
@@ -1319,7 +1352,7 @@
              0.053368443d0, 5.0d1, 1.0d4, Ts)
    W = fine_structure_cooling_3level(Ts, 1.0d0, 3.0d0, 5.0d0,           &
           Ek_CI2, Ek_CI3, A_CI609, 0.0d0, A_CI370,                      &
-          C21, C31, C32, b609, 1.0d0, b370)
+          C21, C31, C32, b609, 1.0d0, b370, n609, 0.0d0, n370)
    cool_CI_ne_func = W/max(ne, 1.0d-30)                                 &
         + ( 1.68601052d-18*exp(-16400.7d0/Ts)                           &
           + 4.56976084d-18*exp(-22917.8d0/Ts)                           &
@@ -1330,8 +1363,8 @@
 
    ! C II: [C II] 157.7um (2P3/2-2P1/2). The ground term has only two
    ! levels, so the two-level solution is exact.
-   elemental double precision function cool_CII_ne_func(T,ne,nHI,b158)
-   real*8, intent(in) :: T, ne, nHI, b158
+   elemental double precision function cool_CII_ne_func(T,ne,nHI,b158,n158)
+   real*8, intent(in) :: T, ne, nHI, b158, n158
    real*8 :: Ts, C21, W
    Ts  = max(T, 1.0d0)
    C21 = ne*electron_impact_deexcitation(fine_structure_upsilon(        &
@@ -1340,7 +1373,7 @@
        + nHI*h_impact_deexcitation(-8.9730551d0, 0.19760195d0,          &
              0.048910789d0, 6.0d1, 2.0d3, Ts)
    W = fine_structure_cooling_2level(Ts, 2.0d0, 4.0d0, Ek_CII2,         &
-                                     A_CII158, C21, b158)
+                                     A_CII158, C21, b158, n158)
    cool_CII_ne_func = W/max(ne, 1.0d-30)                                &
         + ( 2.93308492d-17*exp(-61715.6d0/Ts)                           &
           + 1.67055747d-16*exp(-104746.0d0/Ts)                          &
@@ -1352,8 +1385,8 @@
    ! N II: [N II] 205.3um (3P1-3P0) and 121.8um (3P2-3P1); the 3P2-3P0
    ! channel again couples collisionally only.
    elemental double precision function cool_NII_ne_func                  &
-                                         (T,ne,nHI,b205,b122)
-   real*8, intent(in) :: T, ne, nHI, b205, b122
+                                         (T,ne,nHI,b205,b122,n205,n122)
+   real*8, intent(in) :: T, ne, nHI, b205, b122, n205, n122
    real*8 :: Ts, C21, C31, C32, W
    Ts  = max(T, 1.0d0)
    C21 = ne*electron_impact_deexcitation(fine_structure_upsilon(        &
@@ -1373,7 +1406,7 @@
              0.0409254d0, 5.0d1, 1.0d4, Ts)
    W = fine_structure_cooling_3level(Ts, 1.0d0, 3.0d0, 5.0d0,           &
           Ek_NII2, Ek_NII3, A_NII205, 0.0d0, A_NII122,                  &
-          C21, C31, C32, b205, 1.0d0, b122)
+          C21, C31, C32, b205, 1.0d0, b122, n205, 0.0d0, n122)
    cool_NII_ne_func = W/max(ne, 1.0d-30)                                &
         + ( 7.73307386d-18*exp(-23583.7d0/Ts)                           &
           + 7.10630523d-18*exp(-51230.3d0/Ts)                           &
@@ -1386,8 +1419,9 @@
    ! lines are [O I] 63.2um (3P1-3P2), 145.5um (3P0-3P1) and the very weak
    ! 44.1um (3P0-3P2).
    elemental double precision function cool_OI_ne_func                   &
-                                         (T,ne,nHI,b63,b145,b44)
-   real*8, intent(in) :: T, ne, nHI, b63, b145, b44
+                                         (T,ne,nHI,b63,b145,b44,        &
+                                          n63,n145,n44)
+   real*8, intent(in) :: T, ne, nHI, b63, b145, b44, n63, n145, n44
    real*8 :: Ts, C21, C31, C32, W
    Ts  = max(T, 1.0d0)
    C21 = ne*electron_impact_deexcitation(fine_structure_upsilon(        &
@@ -1407,7 +1441,7 @@
             -0.35264943d0, 5.0d1, 1.0d3, Ts)
    W = fine_structure_cooling_3level(Ts, 5.0d0, 3.0d0, 1.0d0,           &
           Ek_OI2, Ek_OI3, A_OI63, A_OI44, A_OI145,                      &
-          C21, C31, C32, b63, b44, b145)
+          C21, C31, C32, b63, b44, b145, n63, n44, n145)
    cool_OI_ne_func = W/max(ne, 1.0d-30)                                 &
         + ( 2.71001452d-19*exp(-23812.5d0/Ts)                           &
           + 1.16093484d-18*exp(-30987.5d0/Ts)                           &
@@ -1417,34 +1451,41 @@
    end function cool_OI_ne_func
 
    ! Vectorized wrappers (grid versions for the eval_cool override).
-   subroutine cool_CI_ne(T,ne,nHI,beta_fs,out)
+   ! nbar_fs is the incident-field photon occupation number of each line
+   ! (zero unless the lower-atmosphere infrared field is on).
+   subroutine cool_CI_ne(T,ne,nHI,beta_fs,nbar_fs,out)
    real*8, dimension(1-Ng:N+Ng), intent(in)  :: T, ne, nHI
-   real*8, dimension(1-Ng:N+Ng,n_fsline), intent(in) :: beta_fs
+   real*8, dimension(1-Ng:N+Ng,n_fsline), intent(in) :: beta_fs, nbar_fs
    real*8, dimension(1-Ng:N+Ng), intent(out) :: out
-   out = cool_CI_ne_func(T,ne,nHI,beta_fs(:,ifs_CI609),beta_fs(:,ifs_CI370))
+   out = cool_CI_ne_func(T,ne,nHI,beta_fs(:,ifs_CI609),beta_fs(:,ifs_CI370), &
+                         nbar_fs(:,ifs_CI609),nbar_fs(:,ifs_CI370))
    end subroutine cool_CI_ne
 
-   subroutine cool_CII_ne(T,ne,nHI,beta_fs,out)
+   subroutine cool_CII_ne(T,ne,nHI,beta_fs,nbar_fs,out)
    real*8, dimension(1-Ng:N+Ng), intent(in)  :: T, ne, nHI
-   real*8, dimension(1-Ng:N+Ng,n_fsline), intent(in) :: beta_fs
+   real*8, dimension(1-Ng:N+Ng,n_fsline), intent(in) :: beta_fs, nbar_fs
    real*8, dimension(1-Ng:N+Ng), intent(out) :: out
-   out = cool_CII_ne_func(T,ne,nHI,beta_fs(:,ifs_CII158))
+   out = cool_CII_ne_func(T,ne,nHI,beta_fs(:,ifs_CII158),               &
+                          nbar_fs(:,ifs_CII158))
    end subroutine cool_CII_ne
 
-   subroutine cool_NII_ne(T,ne,nHI,beta_fs,out)
+   subroutine cool_NII_ne(T,ne,nHI,beta_fs,nbar_fs,out)
    real*8, dimension(1-Ng:N+Ng), intent(in)  :: T, ne, nHI
-   real*8, dimension(1-Ng:N+Ng,n_fsline), intent(in) :: beta_fs
+   real*8, dimension(1-Ng:N+Ng,n_fsline), intent(in) :: beta_fs, nbar_fs
    real*8, dimension(1-Ng:N+Ng), intent(out) :: out
    out = cool_NII_ne_func(T,ne,nHI,beta_fs(:,ifs_NII205),               &
-                          beta_fs(:,ifs_NII122))
+                          beta_fs(:,ifs_NII122),                        &
+                          nbar_fs(:,ifs_NII205),nbar_fs(:,ifs_NII122))
    end subroutine cool_NII_ne
 
-   subroutine cool_OI_ne(T,ne,nHI,beta_fs,out)
+   subroutine cool_OI_ne(T,ne,nHI,beta_fs,nbar_fs,out)
    real*8, dimension(1-Ng:N+Ng), intent(in)  :: T, ne, nHI
-   real*8, dimension(1-Ng:N+Ng,n_fsline), intent(in) :: beta_fs
+   real*8, dimension(1-Ng:N+Ng,n_fsline), intent(in) :: beta_fs, nbar_fs
    real*8, dimension(1-Ng:N+Ng), intent(out) :: out
    out = cool_OI_ne_func(T,ne,nHI,beta_fs(:,ifs_OI63),                  &
-                         beta_fs(:,ifs_OI145),beta_fs(:,ifs_OI44))
+                         beta_fs(:,ifs_OI145),beta_fs(:,ifs_OI44),      &
+                         nbar_fs(:,ifs_OI63),nbar_fs(:,ifs_OI145),      &
+                         nbar_fs(:,ifs_OI44))
    end subroutine cool_OI_ne
 
    !--------------!
@@ -1883,7 +1924,7 @@
 
    !---------------------------------------------------!
 
-   !--- Ground-term fine-structure line trapping -----------------------!
+   !--- Ground-term fine-structure line transfer -----------------------!
    ! HISTORY. AIOLOS (chemistry.cpp:1006) multiplies its gray escape
    ! optical depth by an arbitrary 1e8, which drives beta -> 0 and so
    ! switches metal-line cooling off entirely. EXHALE replaced that with
@@ -1892,16 +1933,40 @@
    ! dominant coolant lines are measured to be optically thick (tau ~ 3,
    ! beta ~ 0.16, for [O I] 63um through the HD 189733 b base). Both were gray in the
    ! XUV continuum opacity, which has nothing to do with line trapping.
-   ! What follows computes the LINE-CENTER optical depth of the two
-   ! ground-term fine-structure lines the cooling assembly solves
-   ! explicitly and derives beta from it.
+   ! What follows computes the LINE-CENTER optical depth of the ground-term
+   ! fine-structure lines the cooling assembly solves explicitly, derives
+   ! beta from it, and (with "Base IR field" on) the thermal infrared field
+   ! those same lines absorb from the lower atmosphere.
    !
-   ! SCOPE. Trapping is applied to the eight ground-term fine-structure
-   ! lines of C I, C II, N II and O I -- exactly the lines for which this
-   ! module carries an explicit statistical-equilibrium solution, so
-   ! emission and opacity use one set of atomic data. All other metal-line
-   ! cooling keeps beta = 1; the validity note below is why that is the
-   ! right effective treatment for the permitted resonance lines.
+   ! SCOPE. Trapping, and the incident base infrared field that goes with
+   ! it, are applied to the eight ground-term fine-structure lines of C I,
+   ! C II, N II and O I -- exactly the lines for which this module carries
+   ! an explicit statistical-equilibrium solution, so emission, opacity and
+   ! absorption of the incident field use one set of atomic data. All other
+   ! metal-line cooling keeps beta = 1 and no incident field; the validity
+   ! note below is why beta = 1 is the right effective treatment for the
+   ! permitted resonance lines, and what follows is why the incident field
+   ! is left out of the other channels:
+   !   - the coronal REMAINDERS added on top of each fine-structure ground
+   !     term (the exp(-E/T) sums in cool_CI_ne_func and friends) and the
+   !     coronal curves of the other ions are fits to CHIANTI sums over many
+   !     transitions with no line list in the code, so the matching
+   !     absorption integral int kappa_nu(T) B_nu(T_rad) dnu cannot be
+   !     formed from them. Their lowest terms sit at E/k >~ 1.6e4 K, where
+   !     B_nu(T0 ~ 1.2e3 K) is down by e^-13, and the heating they would add
+   !     was estimated at ~0.4% of the total radiative losses in the
+   !     molecular layer of the hot Uranus gate -- small, but an
+   !     approximation, not zero.
+   !   - Fe II is a precomputed 2-D statistical-equilibrium table
+   !     (cool_FeII_ne), which cannot take a radiation field as an argument.
+   !   - H3+ (h3p_cooling) is the Miller et al. (2013) fit to the TOTAL
+   !     optically thin emission of an LTE molecule, so it has no line list
+   !     either -- but its 3-4 um bands ARE within reach of a 1.2e3 K
+   !     blackbody, and with metals off it carries 100% of the cooling of
+   !     the molecular base, so leaving it emitting into vacuum is not a
+   !     small omission. It is treated with a one-band net-exchange form
+   !     under the same switch; the approximation and its range are written
+   !     at h3p_net_cooling_rate.
    !
    ! VALIDITY for the PERMITTED RESONANCE lines (Mg I 2853, Mg II h&k,
    ! Ca II H&K, Na I D, the Fe II UV multiplets). Those lines DO reach
@@ -2006,65 +2071,152 @@
    end select
    end function fine_structure_line_opacity
 
-   ! Escape probability of a static Doppler line at line-center optical
-   ! depth tau. Shape from the plane-parallel single-flight result used by
-   ! Hollenbach & McKee (1979) and de Jong, Boland & Dalgarno (1980),
-   !   beta = (1 - e^-a tau)/(2 a tau)      thin side,
-   !   beta = 1/(4 tau sqrt(ln(tau/sqrt(pi))))   thick side (Doppler wings),
-   ! with a = 2.34, but RENORMALIZED by a factor 2 so that beta(0) = 1
-   ! exactly. The published form tends to 1/2 because it counts escape
-   ! through one face of a slab; here tau is the column from the emitting
-   ! cell to the TOP of the domain, and a photon sent the other way is
-   ! removed from the modeled gas regardless (it is absorbed by the lower
-   ! atmosphere, which the model treats as a fixed reservoir at T_eq), so
-   ! the thin limit must be full escape. The renormalization keeps the
-   ! optically thin wind exactly at the previous beta = 1 behaviour.
-   ! The two branches meet where 2 sqrt(ln(tau/sqrt(pi))) = a, i.e. at
-   ! tau_c = sqrt(pi) exp(a^2/4) = 6.967, so the switch is continuous in
-   ! value by construction (the residual slope kink there is < 1%).
-   elemental double precision function line_escape_probability(tau)
+   ! Probability that a photon emitted at line-center optical depth tau from
+   ! ONE face of a plane-parallel slab escapes through that face. Static
+   ! Doppler line; shape from the single-flight result used by Hollenbach &
+   ! McKee (1979) and de Jong, Boland & Dalgarno (1980),
+   !   beta_1 = (1 - e^-a tau)/(2 a tau)          thin side,
+   !   beta_1 = 1/(4 tau sqrt(ln(tau/sqrt(pi))))  thick side (Doppler wings),
+   ! with a = 2.34, so beta_1(0) = 1/2 (half of the photons leave through
+   ! the near face). The two branches meet where 2 sqrt(ln(tau/sqrt(pi)))
+   ! = a, i.e. at tau_c = sqrt(pi) exp(a^2/4) = 6.967, so the switch is
+   ! continuous in value by construction (the residual slope kink there is
+   ! < 1%). The escape probability of a cell is the sum over its two faces,
+   ! beta = beta_1(tau_up) + beta_1(tau_down).
+   elemental double precision function line_escape_probability_one_face  &
+                                        (tau)
    real*8, intent(in) :: tau
    real*8, parameter :: a = 2.34d0
    real*8 :: x, tau_c
    x = a*tau
    tau_c = sqrt(pi)*exp(0.25d0*a*a)
    if (.not. (x .gt. 1.0d-8)) then
-      line_escape_probability = 1.0d0 - 0.5d0*max(x,0.0d0)   ! series limit
+      line_escape_probability_one_face                                  &
+                     = 0.5d0*(1.0d0 - 0.5d0*max(x,0.0d0))  ! series limit
    else if (tau .lt. tau_c) then
-      line_escape_probability = (1.0d0 - exp(-x))/x
+      line_escape_probability_one_face = 0.5d0*((1.0d0 - exp(-x))/x)
    else
-      line_escape_probability = 1.0d0/(2.0d0*tau*sqrt(log(tau/sqrt(pi))))
+      line_escape_probability_one_face                                  &
+                     = 0.5d0*(1.0d0/(2.0d0*tau*sqrt(log(tau/sqrt(pi)))))
    endif
-   end function line_escape_probability
+   end function line_escape_probability_one_face
 
-   ! Escape probabilities of every ground-term fine-structure line on the
-   ! grid. tau(j) is the line-center column from the CENTER of cell j to the
-   ! top of the domain: half of the emitting cell plus every cell above it.
-   ! The outward column is the escape path (see line_escape_probability
-   ! for why the downward direction is not counted separately). Being a
-   ! column rather than a single cell width, tau is grid-independent and
-   ! converges under refinement, unlike the cell-width gray depth it
-   ! replaces.
-   subroutine fine_structure_escape(T,nm,beta_fs)
+   ! Photon occupation number of a blackbody at T_rad at a line whose
+   ! transition energy is Ek = h nu / k [K]:  n = 1/(exp(Ek/T_rad) - 1).
+   ! The mean intensity follows as Jbar = (2 h nu^3/c^2) n, so n is the form
+   ! the level-balance rates b A (1+n) and b A (g_u/g_l) n need directly.
+   elemental double precision function planck_photon_occupation          &
+                                        (Ek,T_rad)
+   real*8, intent(in) :: Ek, T_rad
+   real*8 :: x
+   x = Ek/max(T_rad, 1.0d0)
+   if (x .gt. 7.0d2) then
+      planck_photon_occupation = 0.0d0            ! exp() would overflow
+   else
+      planck_photon_occupation = 1.0d0/(exp(x) - 1.0d0)
+   endif
+   end function planck_photon_occupation
+
+   ! Fraction of the sky covered, at radius rr [R_p], by a sphere of radius
+   ! r_base [R_p]:  f = 1 - sqrt(1 - (r_base/rr)^2), i.e. twice the usual
+   ! dilution factor W. It is 1 at the surface (the lower atmosphere fills
+   ! the whole lower hemisphere, W = 1/2) and falls off as
+   ! (1/2)(r_base/rr)^2 far away, which is what removes the base infrared
+   ! field from the outer wind.
+   elemental double precision function base_sky_fraction(rr,r_base)
+   real*8, intent(in) :: rr, r_base
+   real*8 :: q
+   q = min(r_base/max(rr, 1.0d-30), 1.0d0)
+   base_sky_fraction = 1.0d0 - sqrt(max(1.0d0 - q*q, 0.0d0))
+   end function base_sky_fraction
+
+   ! Line transfer closure of the ground-term fine-structure lines on the
+   ! grid: the escape probability beta_fs of each line and the photon
+   ! occupation number nbar_fs of the radiation incident on it.
+   !
+   ! tau_up(j) is the line-center column from the CENTER of cell j to the top
+   ! of the domain (half of the emitting cell plus every cell above it) and
+   ! tau_dn(j) the column to the bottom of the domain. Being columns rather
+   ! than single cell widths they are grid-independent and converge under
+   ! refinement, unlike the cell-width gray depth they replace.
+   !
+   ! WITHOUT the base infrared field (base_ir_field = .false., the default)
+   ! the lower atmosphere is treated as a cold, perfectly absorbing floor:
+   ! everything emitted downward is lost from the modeled gas and nothing
+   ! comes back, so beta = 2 beta_1(tau_up) (the downward hemisphere is
+   ! assumed as transparent as the upward one) and nbar = 0.
+   !
+   ! WITH the field on, the gas below the base is what it physically is: an
+   ! optically thick H2 atmosphere at T0. Measured on the converged hot
+   ! Uranus molecular solution, one pressure scale height below the base
+   ! already carries tau = 1.08 in [O I] 63um and 0.32 in [O I] 145um, and
+   ! [C I] 609/370um reach tau = 1 within 2-3 scale heights, so the lower
+   ! hemisphere is a blackbody at T0 in every line that matters. Then
+   !   beta   = beta_1(tau_up) + beta_1(tau_dn)     (still a loss downward:
+   !            the reservoir absorbs it), and
+   !   nbar   = beta_1(tau_dn) f_sky(r) / (exp(Ek/T0) - 1),
+   ! i.e. a blackbody at T0 covering the fraction f_sky of the sky, hence a
+   ! dilution factor f_sky/2, damped on its way to the cell by the same
+   ! line opacity (the attenuation is 2 beta_1(tau_dn), which is 1 at
+   ! tau_dn = 0, so at the base nbar = (1/2)/(exp(Ek/T0) - 1), the half-sky
+   ! value). Using the escape probability for the penetration of the
+   ! incident field is the usual reciprocity approximation; it is exact
+   ! when the two columns are equal and the reservoir is black, and both
+   ! hold in the molecular layer this is written for.
+   !
+   ! VALIDITY. T0 is the fixed base temperature, so the field is imposed,
+   ! not solved for: the layer can be heated by the base but cannot heat it
+   ! back. The closure is one-dimensional and static (no velocity shift
+   ! between the emitter and the reservoir), which the molecular layer
+   ! satisfies (v of order 1-1e2 cm/s there, four decades below the ~1 km/s
+   ! Doppler width these lines are broadened by),
+   ! and it applies only to the eight fine-structure lines with an explicit
+   ! statistical-equilibrium solution -- see the scope note below the H3+
+   ! and remainder terms in eval_cool.
+   subroutine fine_structure_line_transfer(T,nm,beta_fs,nbar_fs)
    real*8, dimension(1-Ng:N+Ng), intent(in)  :: T
    real*8, dimension(1-Ng:N+Ng,n_mion), intent(in)  :: nm
-   real*8, dimension(1-Ng:N+Ng,n_fsline), intent(out) :: beta_fs
+   real*8, dimension(1-Ng:N+Ng,n_fsline), intent(out) :: beta_fs, nbar_fs
    integer :: j, k
-   real*8  :: dl, dtau, col(n_fsline)
-   col = 0.0d0
-   do j = N+Ng,1-Ng,-1
+   real*8  :: dl, col(n_fsline), b_dn
+   real*8  :: dtau(1-Ng:N+Ng,n_fsline), tau_dn(1-Ng:N+Ng,n_fsline)
+   ! Line-center depth of each cell. Floored at zero: the ionization solve
+   ! can leave a trace species with a small negative density, and an optical
+   ! depth cannot be negative.
+   do j = 1-Ng,N+Ng
       dl = dr_j(j)*R0
       do k = 1,n_fsline
-         ! Floored at zero: the ionization solve can leave a trace species
-         ! with a small negative density, and an optical depth cannot be
-         ! negative.
-         dtau = max(fine_structure_line_opacity(k, T(j),                &
-                                                nm(j,fsline_ion(k)))*dl, 0.0d0)
-         beta_fs(j,k) = line_escape_probability(col(k) + 0.5d0*dtau)
-         col(k) = col(k) + dtau
+         dtau(j,k) = max(fine_structure_line_opacity(k, T(j),           &
+                                     nm(j,fsline_ion(k)))*dl, 0.0d0)
       enddo
    enddo
-   end subroutine fine_structure_escape
+   ! Column downward, from the bottom of the domain up
+   col = 0.0d0
+   do j = 1-Ng,N+Ng
+      do k = 1,n_fsline
+         tau_dn(j,k) = col(k) + 0.5d0*dtau(j,k)
+         col(k) = col(k) + dtau(j,k)
+      enddo
+   enddo
+   ! Column upward, from the top of the domain down; assemble beta and nbar
+   col = 0.0d0
+   nbar_fs = 0.0d0
+   do j = N+Ng,1-Ng,-1
+      do k = 1,n_fsline
+         if (base_ir_field) then
+            b_dn = line_escape_probability_one_face(tau_dn(j,k))
+            beta_fs(j,k) = line_escape_probability_one_face             &
+                              (col(k) + 0.5d0*dtau(j,k)) + b_dn
+            nbar_fs(j,k) = b_dn*base_sky_fraction(r(j), 1.0d0)          &
+                           *planck_photon_occupation(fsline_Ek(k), T0)
+         else
+            beta_fs(j,k) = 2.0d0*line_escape_probability_one_face       &
+                              (col(k) + 0.5d0*dtau(j,k))
+         endif
+         col(k) = col(k) + dtau(j,k)
+      enddo
+   enddo
+   end subroutine fine_structure_line_transfer
 
    !---------------------------------------------------!
 

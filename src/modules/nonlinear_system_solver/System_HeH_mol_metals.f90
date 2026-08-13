@@ -67,6 +67,7 @@
 	real*8  :: params(60)
 
 	real*8  :: g_hi,g_hei,g_heii,g_heiTR,g_h2   ! photoionization
+	real*8  :: g_lw                             ! LW photodissociation
 	real*8  :: b_hi,b_hei,b_heii,b_heiTR        ! collisional ionization
 	real*8  :: a_hii,a_heii,a_heiii,a_heiTR     ! recombination
 	real*8  :: A31,q13,q31a,q31b,Q31            ! triplet kinetics
@@ -98,6 +99,7 @@
 	q31b    = ieq_cell%q31b
 	Q31     = ieq_cell%Q31
 	g_h2    = ieq_cell%P_H2
+	g_lw    = ieq_cell%k_LW      ! Lyman-Werner photodissociation (0 if off)
 	ntot    = ieq_cell%ntot
 
 	! Species densities (verbatim System_HeH_mol)
@@ -129,7 +131,7 @@
 	! --- Molecular network rows (System_HeH_mol, metal-inclusive n_e) ---
 	call mol_heh_rows(fvec, n_hi, n_hii, n_h2, n_h2p, n_h3p, n_hehp,   &
 	                  n_heiSI, n_heiTR, n_heii, n_heiii, n_e, ntot,     &
-	                  g_hi, g_hei, g_heii, g_heiTR, g_h2,               &
+	                  g_hi, g_hei, g_heii, g_heiTR, g_h2, g_lw,         &
 	                  a_hii, a_heii, a_heiii, a_heiTR,                  &
 	                  b_hi, b_hei, b_heii, b_heiTR,                     &
 	                  q13, q31a, q31b, Q31, A31)

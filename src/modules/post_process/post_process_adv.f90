@@ -99,10 +99,10 @@
    ! 1 -> frozen eq metals, 2 -> re-solved. nm_out is its dimensionless (n0)
    ! copy written to the _adv ion-species file.
    real*8, dimension(1-Ng:N+Ng,n_mion) ::  nm_w, nm_out
-   ! Line-center escape probabilities of the ground-term fine-structure
-   ! lines, frozen at the profile the temperature solve starts from (see
-   ! equation_T pp_beta_fs).
-   real*8, dimension(1-Ng:N+Ng,n_fsline) ::  beta_fs_pp
+   ! Line transfer of the ground-term fine-structure lines (escape
+   ! probabilities and the incident lower-atmosphere field), frozen at the
+   ! profile the temperature solve starts from (see equation_T pp_beta_fs).
+   real*8, dimension(1-Ng:N+Ng,n_fsline) ::  beta_fs_pp, nbar_fs_pp
 
    ! Recombination coefficients
    real*8, dimension(1-Ng:N+Ng) ::  rchiiB,rcheiiB,rcheiiiB,rcheiTR
@@ -321,7 +321,9 @@
    !---- Recombination rates ----!
 
 	! nmol is not passed: the _adv reconstruction is molecule-free, so
-	! eval_cool builds the atomic electron sum (module-header composition note).
+	! eval_cool builds the atomic electron sum and leaves out the H3+ infrared
+	! cooling (module-header composition note). Both omissions are the same
+	! approximation and both end at the molecular layer.
 	call eval_cool(T_K,nhi,nhii,nhei,nheii,nheiii, nm_w,            &
 	  			   rchiiB,rcheiiB,rcheiiiB, rec_m_pp,             &
 				   a_ion_HI,a_ion_HeI,a_ion_HeII, aion_m_pp,          &
@@ -726,10 +728,10 @@
 	! electrons via calc_ne).
 	call calc_mmw(nh,nhe,ne,mmw,nm_w)
 
-	! Line trapping of the ground-term fine-structure lines, from the
+	! Line transfer of the ground-term fine-structure lines, from the
 	! incoming profile, so the cell-by-cell energy solve balances the same
 	! metal cooling eval_cool reports.
-	call fine_structure_escape(T_K, nm_w, beta_fs_pp)
+	call fine_structure_line_transfer(T_K, nm_w, beta_fs_pp, nbar_fs_pp)
 
 	! Count cell-by-cell temperature solves rejected as non-physical (metal modes).
 	n_pp_reject = 0
@@ -777,6 +779,7 @@
 	 	! whether T_equation adds the metal cooling/brem/n_e terms.
 	 	pp_nm_cell(:)  = nm_w(j,:)
 	 	pp_beta_fs(:)  = beta_fs_pp(j,:)
+	 	pp_nbar_fs(:)  = nbar_fs_pp(j,:)
 
 	 	! Initial guess of solution
 		sys_x_T(1) = T_out(j)
@@ -843,7 +846,9 @@
       
 	!---- Update cooling rates ----!
 
-	! Molecule-free electron sum, as at the first eval_cool call above.
+	! Molecule-free electron sum and no H3+ cooling, as at the first eval_cool
+	! call above; T_equation, which solved for this T_K, assembles the same
+	! channels.
 	call eval_cool(T_K,nhi,nhii,nhei,nheii,nheiii, nm_w,            &
 	  			   dum_v1,dum_v2,dum_v3, rec_m_pp,                   &
 				   dum_v4,dum_v5,dum_v6, aion_m_pp,                      &

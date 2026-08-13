@@ -192,6 +192,47 @@ H2->H front, atomic wind above (the atomic assumption becomes a result).
 Caveat: local equilibrium (no molecular advection).
 -> `docs/lower_atmosphere_coupling.pdf` §4.3.
 
+**Converging a molecular run needs three more keys than an atomic one:**
+
+```
+Solver:     Newton 5.0e-2
+Resid tol:  1.0e-5
+Max steps:  150000
+```
+`Solver: Newton 5.0e-2` raises the hand-off threshold, because the `du` descent
+of a molecular run is not monotonic and the run can spend its whole step budget
+above the `1e-2` default. `Resid tol: 1.0e-5` is what converges the molecular
+layer itself: `||R||` is set by the two or three cells just above the base, so a
+run stopped at the `1e-3` default leaves the layer still cooling (HD 209458 b
+with the band on needs `2.0e-5`, where the base-adjacent momentum row stalls).
+`Max steps: 150000` covers the marching warm-up. Marching alone never reaches
+the layer -- the H3+ cooling time there is ~1e7 CFL steps -- so the Newton
+finish is not optional here. Converged solutions and numbers:
+`docs/lower_atmosphere_coupling.pdf` §7.
+
+The infrared coolants of that layer emit into vacuum unless the atmosphere below
+the base is given to them:
+
+```
+Base IR field: True
+```
+The lower atmosphere is then taken to be black at those wavelengths and to
+radiate B_nu(T0) over the sky fraction it subtends, so the eight ground-term
+fine-structure lines (C I, C II, N II, O I) and the H3+ bands return the *net*
+rate, emission minus absorption, and each stops cooling at its own radiative
+equilibrium temperature. Default off; no effect on an atomic run.
+-> `docs/lower_atmosphere_coupling.pdf` §8.
+
+Lyman-Werner photodissociation of H2 is opt-in; add the band flux at the
+planet (912-1110 A, integrated), which the XUV grid does not carry:
+
+```
+Stellar LW flux [erg/cm2/s]: 343.0
+```
+Self-shielding follows Draine & Bertoldi (1996); 0.4 eV of heating per
+dissociation; `output/Lyman_Werner.txt` records column, shielding and rate.
+-> `docs/lower_atmosphere_coupling.pdf` §9.
+
 ## Hand off a lower-atmosphere model (`base.inp`)
 
 ```bash
@@ -249,7 +290,7 @@ make check                              # golden regression (= backup/regression
 ./backup/regression/test_roundtrip.sh   # restart round-trip
 ```
 The harness lives in `backup/regression/`, which is a working-copy directory
-and is not in the git remote. Default matrix (four cases, each bitwise against
+and is not in the git remote. Default matrix (five cases, each bitwise against
 its golden `Hydro_ioniz.txt` / `Ion_species.txt`):
 
 | case | what it guards |
@@ -258,6 +299,7 @@ its golden `Hydro_ioniz.txt` / `Ion_species.txt`):
 | `wasp_he23off` | the same with He 2³S off (the HeITR-off branch) |
 | `mol_base_handoff` | hot-Uranus Tier-2 gate: molecular chemistry + a `base.inp` handoff whose `q_H2_base` drives the photochemical base particle count; 12000-step snapshot |
 | `mol_metals` | the same gate + solar C/N/O/Mg/Ca/Na/Fe: the molecular and metal networks in one system; 12000-step snapshot |
+| `mol_lyman_werner` | the same gate + `Stellar LW flux [erg/cm2/s]: 343.0`: H2 photodissociation and its self-shielding inside the molecular network; 12000-step snapshot |
 
 Any other case directory can be named on the command line. `run_check.sh golden`
 does **not** re-run — it snapshots whatever `output/` sits in each case
@@ -271,7 +313,9 @@ real out-of-bounds read on WASP-121b in the 2026-07-02 review).
 - `docs/EXHALE_user_manual.pdf` — full reference (inputs, outputs, physics)
 - `docs/Update_EXHALE.pdf` — dated changelog + code-size appendix vs ATES
 - `docs/lower_atmosphere_coupling.pdf` — lower-atmosphere connection: survey,
-  implementation, 4-planet examples, figures
+  implementation, 4-planet examples, figures; §7 the converged Tier-2 solutions
+  and the recipe that reaches them, §8 `Base IR field`, §9 Lyman-Werner
+  photodissociation
 - `docs/newton_scaling_and_base_wall.md` — JFNK diagonal scaling, line-search
   merit and stagnation watchdog; why the base momentum row is not the blocker
 - `examples/` — ready-made configs 01–16; the planet directories `HD209458b/`,

@@ -40,12 +40,13 @@ METAL_IONS = [
 ION_NAMES = HE_IONS + METAL_IONS
 
 # Cooling_breakdown.txt channels: cols 1-4 are r, T, ne, cool_total; then
-# 6 H/He channels, then the 27 metal-ion channels (same order as METAL_IONS).
-# The collisional-excitation channel is written split by absorber (H I, He I,
-# He II), so there are six fixed channels, not four; see the 'col5 reco ...'
-# header line the writer emits.
-COOL_HHE_CHANNELS = ['rec', 'coll_ion', 'coex_HI', 'coex_HeI', 'coex_HeII',
-                     'brems']
+# 6 H/He channels and the H3+ infrared channel, then the 27 metal-ion channels
+# (same order as METAL_IONS).  The collisional-excitation channel is written
+# split by absorber (H I, He I, He II), so there are six H/He channels, not
+# four; see the 'col5 reco ...' header line the writer emits.  'H3p' is zero
+# unless the run tracks the molecular network.
+COOL_GAS_CHANNELS = ['rec', 'coll_ion', 'coex_HI', 'coex_HeI', 'coex_HeII',
+                     'brems', 'H3p']
 
 
 class Run:
@@ -85,10 +86,21 @@ def load_hydro(path):
 
 def load_ions(path):
     """Read Ion_species.txt(_adv) -> (r, {ion_name: density[cm^-3]}).
-    Reads all 34 columns (r + 6 H/He + 27 metals)."""
+    Column names come from the '# columns' header, so molecular columns
+    (H2, H2p, H3p, HeHp) are picked up when the run tracks them; a file
+    without the header falls back to the fixed atomic order ION_NAMES."""
+    names = None
+    with open(path) as f:
+        for line in f:
+            if not line.startswith('#'):
+                break
+            if line.startswith('# columns'):
+                names = line.split()[3:]   # drop '#', 'columns', 'r[Rp]'
+    if names is None:
+        names = ION_NAMES
     d = np.loadtxt(path, unpack=True)
     r = d[0]
-    ion = {name: d[i + 1] for i, name in enumerate(ION_NAMES) if i + 1 < d.shape[0]}
+    ion = {name: d[i + 1] for i, name in enumerate(names) if i + 1 < d.shape[0]}
     return r, ion
 
 
@@ -97,7 +109,7 @@ def load_cooling(path):
     'chan' dict of cooling in each channel [erg/cm^3/s] (H/He + metal lines)."""
     d = np.loadtxt(path, unpack=True)
     out = dict(r=d[0], T=d[1], ne=d[2], cool_total=d[3], chan={})
-    names = COOL_HHE_CHANNELS + METAL_IONS
+    names = COOL_GAS_CHANNELS + METAL_IONS
     for i, name in enumerate(names):
         col = 4 + i
         if col < d.shape[0]:
@@ -116,6 +128,22 @@ def load_excited_H(path):
     """Read Excited_H.txt -> dict keyed by EXCITED_H_COLS (only present cols)."""
     d = np.loadtxt(path, unpack=True)
     return {name: d[i] for i, name in enumerate(EXCITED_H_COLS) if i < d.shape[0]}
+
+
+# Lyman_Werner.txt columns (write_output.f90), in order.
+LYMAN_WERNER_COLS = [
+    'r', 'T', 'x_H2', 'nH2', 'NH2', 'f_shield', 'k_LW', 'heat_LW',
+]
+
+
+def load_lyman_werner(path):
+    """Read Lyman_Werner.txt -> dict keyed by LYMAN_WERNER_COLS. Written only
+    by a molecular run that carries a "Stellar LW flux": the star-ward H2
+    column, the Draine & Bertoldi (1996) self-shielding factor, the
+    photodissociation rate [1/s] and its heating [erg/cm^3/s]."""
+    d = np.loadtxt(path, unpack=True)
+    return {name: d[i] for i, name in enumerate(LYMAN_WERNER_COLS)
+            if i < d.shape[0]}
 
 
 def read_input(path):

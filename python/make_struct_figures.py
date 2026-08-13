@@ -73,10 +73,13 @@ COOL_CH_LABEL = {
     'coex_HeI': r'coll.\ excitation He\,{\sc i}',
     'coex_HeII': r'coll.\ excitation He\,{\sc ii}',
     'brem': 'bremsstrahlung',
+    'H3p_IR': r'H$_3^+$ infrared',
 }
 
-# Ordered list of the fixed cooling channels drawn in panel (d).
-COOL_CH_ORDER = ['reco', 'coio', 'coex_HI', 'coex_HeI', 'coex_HeII', 'brem']
+# Ordered list of the fixed cooling channels drawn in panel (d).  H3p_IR is
+# zero outside a molecular layer and is then dropped by the amplitude cut.
+COOL_CH_ORDER = ['reco', 'coio', 'coex_HI', 'coex_HeI', 'coex_HeII', 'brem',
+                 'H3p_IR']
 
 HEAT_CH_LABEL = {
     'heat_HI': r'H\,{\sc i} photoion.',

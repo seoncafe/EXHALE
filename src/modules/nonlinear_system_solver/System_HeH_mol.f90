@@ -20,8 +20,9 @@
 	! (Garcia Munoz 2025 Table A.5), the dominant metastable sink toward an
 	! H2-rich base.  Molecular channels are
 	! the Koskinen et al. (2022) Table-1 network via mol_rates (R21/R22
-	! H-He charge exchange excluded to preserve the atomic limit; the
-	! Lyman-Werner photodissociation caveat is inherited -- see mol_rates).
+	! H-He charge exchange excluded to preserve the atomic limit), plus the
+	! Lyman-Werner photodissociation the Table-1 network omits
+	! (lyman_werner.f90; opt-in, see below).
 	!
 	! params layout (1-18 identical to System_HeH_TR):
 	!   1 P_HI  2 P_HeI  3 P_HeII  4 rchiiB  5 rcheiiB  6 rcheiiiB
@@ -29,6 +30,13 @@
 	!   12 rcheiTR  13 A31  14 P_HeITR  15 q13  16 q31a  17 q31b  18 Q31
 	!   19 P_H2 (photoionization rate coefficient of H2, s^-1)
 	!   20 T [K]   21 n_tot (total particle density, for 3-body M)
+	!
+	! Lyman-Werner photodissociation H2 + hv -> H + H enters row 4 next to
+	! the H2 photoionization, as the self-shielded rate k_LW carried by the
+	! cell state (lyman_werner.f90).  It is zero unless the run supplies a
+	! Lyman-Werner band flux, so the molecular network without it is
+	! unchanged.  Both products are neutral H, which the H-nucleus closure
+	! (1 - x1 - x4 - x5 - x6 - x7) supplies automatically; no other row moves.
 	!
 	! The eight balance rows live in mol_heh_rows below, which takes the free
 	! electron density as an INPUT. System_HeH_mol_metals calls the same
@@ -87,7 +95,7 @@
 	integer :: Neq,iflag
 	real*8  :: x(Neq),fvec(Neq)
 	real*8  :: params(40)
-	real*8  :: g_hi,g_hei,g_heii,g_heiTR,g_h2
+	real*8  :: g_hi,g_hei,g_heii,g_heiTR,g_h2,g_lw
 	real*8  :: b_hi,b_hei,b_heii,b_heiTR
 	real*8  :: a_hii,a_heii,a_heiii,a_heiTR
 	real*8  :: A31,q13,q31a,q31b,Q31
@@ -115,6 +123,7 @@
 	q31b    = ieq_cell%q31b
 	Q31     = ieq_cell%Q31
 	g_h2    = ieq_cell%P_H2
+	g_lw    = ieq_cell%k_LW      ! Lyman-Werner photodissociation (0 if off)
 	T       = ieq_cell%T_K
 	ntot    = ieq_cell%ntot
 
@@ -140,7 +149,7 @@
 
 	call mol_heh_rows(fvec, n_hi, n_hii, n_h2, n_h2p, n_h3p, n_hehp,   &
 	                  n_heiSI, n_heiTR, n_heii, n_heiii, n_e, ntot,     &
-	                  g_hi, g_hei, g_heii, g_heiTR, g_h2,               &
+	                  g_hi, g_hei, g_heii, g_heiTR, g_h2, g_lw,         &
 	                  a_hii, a_heii, a_heiii, a_heiTR,                  &
 	                  b_hi, b_hei, b_heii, b_heiTR,                     &
 	                  q13, q31a, q31b, Q31, A31)
@@ -165,7 +174,7 @@
 	! are used, as in ion_residual_core.
 	subroutine mol_heh_rows(fvec, n_hi, n_hii, n_h2, n_h2p, n_h3p, n_hehp,  &
 	                        n_heiSI, n_heiTR, n_heii, n_heiii, n_e, ntot,    &
-	                        g_hi, g_hei, g_heii, g_heiTR, g_h2,              &
+	                        g_hi, g_hei, g_heii, g_heiTR, g_h2, g_lw,        &
 	                        a_hii, a_heii, a_heiii, a_heiTR,                 &
 	                        b_hi, b_hei, b_heii, b_heiTR,                    &
 	                        q13, q31a, q31b, Q31, A31)
@@ -173,7 +182,7 @@
 	real*8 :: fvec(*)
 	real*8, intent(in) :: n_hi,n_hii,n_h2,n_h2p,n_h3p,n_hehp
 	real*8, intent(in) :: n_heiSI,n_heiTR,n_heii,n_heiii,n_e,ntot
-	real*8, intent(in) :: g_hi,g_hei,g_heii,g_heiTR,g_h2
+	real*8, intent(in) :: g_hi,g_hei,g_heii,g_heiTR,g_h2,g_lw
 	real*8, intent(in) :: a_hii,a_heii,a_heiii,a_heiTR
 	real*8, intent(in) :: b_hi,b_hei,b_heii,b_heiTR
 	real*8, intent(in) :: q13,q31a,q31b,Q31,A31
@@ -225,9 +234,11 @@
 	! (4) H2 balance
 	! k_pen_H2*n_heiTR: He(2^3S)+H2 -> He(1^1S)+H2+ + e- Penning loss of H2
 	! (n_heiTR is 0 when thereis_HeITR is false, so the term is unconditional).
+	! g_lw: Lyman-Werner photodissociation H2 + hv -> H + H, already
+	! self-shielded (lyman_werner.f90); 0 when the run supplies no band flux.
 	fvec(4) = k6*n_e*n_h3p + k9*n_h2p*n_hi + k11*n_h3p*n_hi           &
 	        + k15*n_hi*n_hi                                           &
-	        - ( g_h2 + (k10 + k13)*n_hii + k12*ntot + k14*n_e         &
+	        - ( g_h2 + g_lw + (k10 + k13)*n_hii + k12*ntot + k14*n_e  &
 	          + k8*n_h2p + (k17 + k20 + k23)*n_heii + k18*n_hehp      &
 	          + k_pen_H2*n_heiTR )*n_h2
 

@@ -76,6 +76,16 @@
 	! the reader to infer it from N_eq.
 	if (thereis_mol) write(outfile,*) &
       '- Including molecular chemistry (H2, H2+, H3+, HeH+)'
+	if (thereis_mol) then
+		if (F_LW_star .gt. 0.0d0) then
+			write(outfile,'(A,ES10.3,A)') &
+      ' - H2 Lyman-Werner photodissociation on: band flux ', F_LW_star,   &
+      ' erg cm^-2 s^-1 (912-1110 A, at the planet)'
+		else
+			write(outfile,*) &
+      '- H2 Lyman-Werner photodissociation off ("Stellar LW flux" unset)'
+		endif
+	endif
 	if (thereis_metals) write(outfile,'(A,I0,A)') &
       ' - Including ', n_met_active, ' trace metal element(s)'
 	if (thereis_mol .and. thereis_metals) write(outfile,*) &
@@ -132,6 +142,13 @@
 	endif
 	write(outfile,18) '- Coronal cooling cutoff width: w = ',                &
 		coronal_cutoff_width
+	if (base_ir_field) then
+		write(outfile,*) '- Base IR field: on (fine-structure lines see '//   &
+			'a diluted B_nu(T0) from the lower atmosphere)'
+	else
+		write(outfile,*) '- Base IR field: off (fine-structure lines '//      &
+			'emit into vacuum)'
+	endif
 	write(outfile,19) '- Max marching steps: ', count_max
 	write(outfile,*) 
 	if (.not.do_load_IC) &
@@ -272,6 +289,7 @@
 	call put_l('use_he_rec_coupling', use_he_rec_coupling)
 	call put_l('he_h_charge_exchange', he_h_charge_exchange)
 	call put_l('thereis_mol', thereis_mol)
+	call put_r('F_LW_star', F_LW_star)
 	call put_l('molecular_base', molecular_base)
 	call put_r('q_h2_base', q_h2_base)
 	call put_r('p_base_bar', p_base_bar)
@@ -297,6 +315,7 @@
 	call put_l('base_ghost_T_continuous', base_ghost_T_continuous)
 	call put_i('count_max', count_max)
 	call put_r('coronal_cutoff_width', coronal_cutoff_width)
+	call put_l('base_ir_field', base_ir_field)
 	call put_i('base_bc_mode', base_bc_mode)
 	call put_r('base_p_ubar', base_p_ubar)
 	call put_l('base_v_massflux', base_v_massflux)

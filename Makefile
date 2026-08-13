@@ -76,6 +76,7 @@ SRC := \
   src/modules/lower_atmosphere/lower_column.f90 \
   src/modules/lower_atmosphere/h3p_cooling.f90 \
   src/modules/lower_atmosphere/mol_rates.f90 \
+  src/modules/lower_atmosphere/lyman_werner.f90 \
   src/modules/time_step/viscous_conduction.f90 \
   src/modules/time_step/steady_residual.f90 \
   src/modules/time_step/steady_newton.f90 \

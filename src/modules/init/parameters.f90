@@ -192,6 +192,18 @@
       ! combined with trace metals (input_read errors out).  Default off =
       ! byte-identical legacy.  docs/lower_atmosphere_coupling.*.
       logical :: thereis_mol = .false.
+      ! Band-integrated stellar flux in the H2 Lyman-Werner bands
+      ! (912-1110 A, i.e. 11.2-13.6 eV) AT THE PLANET'S ORBIT
+      ! [erg cm^-2 s^-1].  Key "Stellar LW flux [erg cm^-2 s^-1]: <F>".
+      ! It is a separate input because the code's own energy grid does not
+      ! carry this band: for a numerical SED the grid stops at the 13.6 eV
+      ! HI edge (only the He 2^3S / low-IP-metal thresholds push it lower),
+      ! and for a power-law SED anything below 13.6 eV is an extrapolation
+      ! of the XUV law, which has nothing to do with a star's FUV.
+      ! 0 (default) = no Lyman-Werner photodissociation, i.e. the molecular
+      ! network as it was before this key existed, bit for bit.
+      ! See src/modules/lower_atmosphere/lyman_werner.f90.
+      real*8  :: F_LW_star = 0.0d0
       logical :: thereis_metals = .false. ! Include trace-metal species
                                           !  (C/N/O/Mg/Si/Ca/Na/K/S/Fe)
       ! EOS mass/electron/particle policy. .true. (default) = metals enter
@@ -234,6 +246,18 @@
       ! justified window is w = 0.08-0.13 (docs/coronal_cutoff_width.md);
       ! 0.1 is the default.
       real*8  :: coronal_cutoff_width = 0.1d0
+      ! Thermal infrared field of the lower atmosphere, seen by the
+      ! ground-term fine-structure lines ("Base IR field: T|F"). The gas
+      ! below the base is optically thick in [C I] 609/370um and
+      ! [O I] 63/145um (tau = 1 within 1-3 pressure scale heights below the
+      ! base), so it radiates a diluted blackbody at T0 into the lower
+      ! hemisphere of every cell. .false. (default) leaves those lines with
+      ! no incident field, i.e. the lower atmosphere is treated as cold and
+      ! the lines can only cool; .true. solves the ground term with the
+      ! incident field in it, which gives a radiative-equilibrium floor near
+      ! the temperature where B_nu(T) = W B_nu(T0). See
+      ! fine_structure_line_transfer in Cool_coeff.f90.
+      logical :: base_ir_field  = .false.
       integer :: pp_metal_mode  = 1       ! Metal treatment in the advection
                                           !  post-process (post_process_adv):
                                           !  0 = metal-free (legacy: metals

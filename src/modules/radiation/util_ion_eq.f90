@@ -9,6 +9,8 @@
                             isp_H2, isp_H2p, isp_H3p, isp_HeHp
    use utils
    use Cooling_Coefficients      ! Various functions for cooling coefficients
+   ! Miller+2013 H3+ infrared cooling, emitted and net of the lower-atmosphere field
+   use h3p_cooling, only: h3p_cooling_rate, h3p_net_cooling_rate
    use Cross_sections, only: sigma, sigma_HeI  ! sigma_H(E,Z), sigma_HeI(E)
    use omp_lib                   ! OMP libraries
 	
@@ -495,12 +497,14 @@
 
    real*8, dimension(1-Ng:N+Ng) :: brem,coex,coio,reco  ! Cooling rates
    real*8, dimension(1-Ng:N+Ng) :: cool_M               ! Metal cooling
+   real*8, dimension(1-Ng:N+Ng) :: cool_H3p             ! H3+ infrared cooling
    real*8, dimension(1-Ng:N+Ng) :: brem_acc,coolm_acc   ! sum accumulators
    real*8, dimension(1-Ng:N+Ng) :: metal_col            ! dispatcher scratch
    real*8, dimension(1-Ng:N+Ng,n_mion)  :: c_metal      ! metal line-cool coeffs
-   ! Line-center escape probabilities of the ground-term fine-structure
-   ! lines solved explicitly (Cool_coeff: fine_structure_escape)
-   real*8, dimension(1-Ng:N+Ng,n_fsline) :: beta_fs
+   ! Line transfer of the ground-term fine-structure lines solved explicitly
+   ! (Cool_coeff: fine_structure_line_transfer): escape probabilities and the
+   ! photon occupation number of the field incident from the lower atmosphere
+   real*8, dimension(1-Ng:N+Ng,n_fsline) :: beta_fs, nbar_fs
 	real*8, dimension(1-Ng:N+Ng) :: ne		  			 ! Electron number density
 	real*8, dimension(1-Ng:N+Ng) :: GF_z1,GF_z2			 ! free-free Gaunt at Z_ion=1,2
 	real*8 :: Cdex_OI,Cdex_CII                           ! 2-level collis. de-exc.
@@ -543,13 +547,14 @@
 	! ionization, then the collisional-excitation channel split into its
 	! three absorbers -- H I (the Lyman-alpha-dominated H-line cooling),
 	! He I, He II -- and finally bremsstrahlung (incl. metal-ion charges);
-	! columns 6+i = metal ion i line cooling (0 for non-coolant ions).
+	! column 7 = H3+ infrared cooling (0 unless the caller supplies nmol);
+	! columns 7+i = metal ion i line cooling (0 for non-coolant ions).
 	! The He I column also carries the He 2^3S metastable collisional cooling
 	! (10830 A + singlet-conversion terms), so columns 3-5 sum exactly to
 	! ne*coex. This is an exact decomposition of `cool` in the default
 	! (.not.use_2lev_cool) branch; in the two-level branch the metal terms for
 	! each ion are the resonance-line approximation and need not sum to cool_M.
-	real*8, dimension(1-Ng:N+Ng,6+n_mion),intent(out),optional :: cool_chan
+	real*8, dimension(1-Ng:N+Ng,7+n_mion),intent(out),optional :: cool_chan
 
 	! He 2^3S metastable density [cm^-3], present only for the triplet-tracking
 	! callers. When supplied it adds the collisional-ionization cooling of the
@@ -562,8 +567,10 @@
 	! Molecular densities [cm^-3], canonical order H2, H2+, H3+, HeH+ (the
 	! same layout calc_ne takes). Supplied by every caller that tracks the
 	! molecular network, so the electron density used by the cooling is the
-	! one the equilibrium solver itself uses. Omitted only by callers that
-	! model a molecule-free gas (see the note at calc_ne below).
+	! one the equilibrium solver itself uses, and so the H3+ infrared cooling
+	! (which needs n_H3+ and the n_H2 collider density) is part of the same
+	! `cool` every caller gets. Omitted only by callers that model a
+	! molecule-free gas (see the note at calc_ne below).
 	real*8, dimension(1-Ng:N+Ng,4),intent(in),optional :: nmol
 
 	! He 2^3S collisional-ionization rate coefficient (always computed; only
@@ -728,10 +735,12 @@
 	! with beta = 1 everywhere, the optically thin limit). Neither is a
 	! line optical depth, and beta = 1 overestimates the cooling of a
 	! dense base where [O I] 63um reaches tau ~ 3. beta is now the
-	! line-center escape probability of each line, from the outward column
-	! (Cool_coeff.f90: fine_structure_escape). Every other metal ion keeps
-	! the optically thin limit; see the scope note there.
-	call fine_structure_escape(T_K, nm, beta_fs)
+	! line-center escape probability of each line, from the columns above
+	! and below the cell, and nbar_fs carries the thermal infrared field of
+	! the lower atmosphere the same lines absorb ("Base IR field", off by
+	! default) (Cool_coeff.f90: fine_structure_line_transfer). Every other
+	! metal ion keeps the optically thin limit; see the scope note there.
+	call fine_structure_line_transfer(T_K, nm, beta_fs, nbar_fs)
 
 	! Density-dependent override for the ground-term fine-structure floors
 	! of C I, C II, N II and O I (CHIANTI mode only; the legacy AIOLOS fits
@@ -742,13 +751,13 @@
 	! curve misses. beta enters as A_ul -> beta*A_ul inside that solution.
 	! See cool_CI_ne_func / cooling_data/fit_fs_saturation.py.
 	if (cno_chianti) then
-		call cool_CI_ne (T_K, ne, nhi, beta_fs, metal_col)
+		call cool_CI_ne (T_K, ne, nhi, beta_fs, nbar_fs, metal_col)
 		c_metal(:,im_CI)  = metal_col
-		call cool_CII_ne(T_K, ne, nhi, beta_fs, metal_col)
+		call cool_CII_ne(T_K, ne, nhi, beta_fs, nbar_fs, metal_col)
 		c_metal(:,im_CII) = metal_col
-		call cool_NII_ne(T_K, ne, nhi, beta_fs, metal_col)
+		call cool_NII_ne(T_K, ne, nhi, beta_fs, nbar_fs, metal_col)
 		c_metal(:,im_NII) = metal_col
-		call cool_OI_ne (T_K, ne, nhi, beta_fs, metal_col)
+		call cool_OI_ne (T_K, ne, nhi, beta_fs, nbar_fs, metal_col)
 		c_metal(:,im_OI)  = metal_col
 	endif
 
@@ -773,7 +782,10 @@
 		! Trapping enters as A_ul -> beta*A_ul in the two fine-structure
 		! lambda_2level calls (the physically correct place; see
 		! cool_OI_ne_func). The exponential "forbidden" add-ons and every
-		! other ion stay optically thin.
+		! other ion stay optically thin, and this branch takes no incident
+		! field even under "Base IR field": it is the legacy AIOLOS two-level
+		! form kept for comparison, and the ground-term statistical
+		! equilibrium that replaced it is where the field belongs.
 		do j = 1-Ng,N+Ng
 			! Collisional de-excitation rates [s^-1]
 			Cdex_OI  = nhi(j)*4.2d-11*(T_K(j)/100.0d0)**0.67          ! H
@@ -808,8 +820,43 @@
 		cool_M = ne * coolm_acc
 	endif
 
+	!-- H3+ infrared cooling (molecular layer) --!
+
+	! Optically thin rotational-vibrational emission of H3+, Miller et al.
+	! (2013) LTE emission per molecule with their Table-6 non-LTE departure
+	! factor s(T, n_H2) (h3p_cooling module -- ONE definition, shared with
+	! every caller of eval_cool). Inside a molecular base at T ~ 1e3 K this is
+	! the dominant coolant: the atomic channels above are all exponentially
+	! suppressed there, so leaving it out of `cool` leaves that gas with no
+	! radiative loss at all. It lives here, not on top of eval_cool's return
+	! value, so that the temperature update in the marching loop
+	! (energy_semi_implicit) and the steady residual (ioniz_eq ->
+	! assemble_residual) balance the SAME cooling function.
+	! Zero for callers that model a molecule-free gas (nmol absent) and for
+	! cells with no H3+; the rate is exactly proportional to n_H3+, so
+	! skipping those cells is not an approximation.
+	! With "Base IR field" on the same 3-4 um bands also ABSORB the thermal
+	! infrared of the lower atmosphere, a blackbody at T0 covering half the
+	! sky at the base; W_dil = 0 (the default) leaves the emission-only rate
+	! untouched. Approximations and their range: h3p_net_cooling_rate.
+	cool_H3p = 0.0d0
+	if (present(nmol)) then
+		do j = 1-Ng,N+Ng
+			if (nmol(j,3) .ne. 0.0d0) then
+				if (base_ir_field) then
+					cool_H3p(j) = h3p_net_cooling_rate(T_K(j),         &
+					                 nmol(j,3), nmol(j,1), T0,         &
+					                 0.5d0*base_sky_fraction(r(j),1.0d0))
+				else
+					cool_H3p(j) = h3p_cooling_rate(T_K(j), nmol(j,3),  &
+					                               nmol(j,1))
+				endif
+			endif
+		enddo
+	endif
+
 	! Total cooling rate
-	cool = ne*(brem + coex + reco + coio) + cool_M
+	cool = ne*(brem + coex + reco + coio) + cool_M + cool_H3p
 
 	! Breakdown by channel for the diagnostic (Huang Fig. 10).
 	! Read straight from the arrays already computed above, so the sum of
@@ -826,11 +873,12 @@
 		cool_chan(:,5) = ne*(coeff_coex_rate_HeII*nheii)  ! coex_HeII
 		cool_chan(:,4) = ne*coex - cool_chan(:,3) - cool_chan(:,5)  ! coex_HeI
 		cool_chan(:,6) = ne*brem
+		cool_chan(:,7) = cool_H3p
 		do i = 1,n_mion
 			if (mion_iscool(i)) then
-				cool_chan(:,6+i) = ne*nm(:,i)*c_metal(:,i)
+				cool_chan(:,7+i) = ne*nm(:,i)*c_metal(:,i)
 			else
-				cool_chan(:,6+i) = 0.0d0
+				cool_chan(:,7+i) = 0.0d0
 			endif
 		enddo
 	endif
@@ -844,15 +892,13 @@
 	! Diagnostic. Dump the radiative cooling rate in each channel vs
 	! radius for the converged equilibrium state, reusing eval_cool's exact
 	! coefficients (no offline re-derivation). Columns: H/He recombination,
-	! collisional ionization, collisional excitation, bremsstrahlung, then
-	! one column per metal ion line-cooling channel (canonical species_table
-	! order). All in cgs erg cm^-3 s^-1; the channel sum reproduces the
-	! Hydro_ioniz.txt `cool` column. The printed max relative residual is the
-	! internal consistency check. Lets the user identify the dominant coolant
-	! in 1.15 <~ r/Rp <~ 1.4 against Huang et al. (2023) Fig. 10.
-	! Molecular runs: the H3+ infrared cooling ioniz_eq adds on top of
-	! eval_cool has no channel column here, so in the molecular layer the
-	! channel sum falls short of the Hydro_ioniz.txt cool column by that term.
+	! collisional ionization, collisional excitation, bremsstrahlung, H3+
+	! infrared cooling, then one column per metal ion line-cooling channel
+	! (canonical species_table order). All in cgs erg cm^-3 s^-1; the channel
+	! sum reproduces the Hydro_ioniz.txt `cool` column. The printed max
+	! relative residual is the internal consistency check. Lets the user
+	! identify the dominant coolant in 1.15 <~ r/Rp <~ 1.4 against Huang et
+	! al. (2023) Fig. 10, and the H3+ column the coolant of the molecular base.
 
 	integer :: j,i,im
 	real*8, dimension(1-Ng:N+Ng), intent(in) :: T_in,n_in
@@ -864,7 +910,7 @@
 	! Molecular densities [cm^-3] (H2, H2+, H3+, HeH+); zero for an atomic run
 	real*8, dimension(1-Ng:N+Ng,4) :: nmol
 	real*8, dimension(1-Ng:N+Ng) :: cool,csum,rel
-	real*8, dimension(1-Ng:N+Ng,6+n_mion) :: chan
+	real*8, dimension(1-Ng:N+Ng,7+n_mion) :: chan
 	! Throwaway eval_cool rate outputs (not needed for the dump)
 	real*8, dimension(1-Ng:N+Ng) :: rchiiB,rcheiiB,rcheiiiB
 	real*8, dimension(1-Ng:N+Ng) :: a_ion_HI,a_ion_HeI,a_ion_HeII
@@ -912,7 +958,7 @@
 
 	! Internal consistency: channel sum vs total cool (default branch -> ~eps)
 	csum = 0.0d0
-	do i = 1,6+n_mion
+	do i = 1,7+n_mion
 		csum = csum + chan(:,i)
 	enddo
 	rel    = abs(csum - cool)/max(abs(cool),1.0d-99)
@@ -925,7 +971,7 @@
 	write(71,'(a)') '# Channel sum reproduces the Hydro_ioniz.txt cool column.'
 	write(71,'(a)') '# col1 r/Rp  col2 T[K]  col3 ne  col4 cool_total  col5 reco'  &
 	             // '  col6 coio  col7 coex_HI[Lya]  col8 coex_HeI  col9 coex_HeII'  &
-	             // '  col10 brem  then one col per metal ion:'
+	             // '  col10 brem  col11 H3p_IR  then one col per metal ion:'
 	write(71,'(a)',advance='no') '#   metal-ion columns (canonical order):'
 	do i = 1,n_mion
 		write(71,'(1x,a)',advance='no') trim(mion_name(i))
@@ -934,8 +980,8 @@
 	do j = 1-Ng,N+Ng
 		write(71,*) r(j), T_K(j), ne(j), cool(j),                        &
 		            chan(j,1), chan(j,2), chan(j,3), chan(j,4),           &
-		            chan(j,5), chan(j,6),                                 &
-		            (chan(j,6+i), i = 1,n_mion)
+		            chan(j,5), chan(j,6), chan(j,7),                      &
+		            (chan(j,7+i), i = 1,n_mion)
 	enddo
 	close(71)
 
@@ -1002,7 +1048,8 @@
 	! form; molecular donors are omitted -- this diagnostic targets atomic
 	! runs). See ionization_equilibrium for the exact expression.
 	if (thereis_mol) write(*,'(a)') ' (write_heat_breakdown_eq) NOTE: molecular '  &
-		// 'run -- H2 and molecular Penning heating channels are omitted.'
+		// 'run -- H2 photoheating, molecular Penning and Lyman-Werner '           &
+		// 'photodissociation heating are omitted.'
 	nh   = nhi + nhii
 	nhe  = nhei + nheii + nheiii
 	xion = min(max((nhii + nheii + nheiii)/max(nh + nhe, 1.0d-99), 0.0d0), 1.0d0)

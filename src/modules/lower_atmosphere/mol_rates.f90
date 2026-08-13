@@ -13,15 +13,13 @@
       ! the existing PH_heat routines (util_ion_eq) once H2 cross sections
       ! are added; they are NOT part of this module.
       !
-      ! NOTE (baseline caveat, Koskinen 2022): neutral H2 photodissociation
-      ! through the Lyman-Werner bands (lambda > 80.35 nm) is NOT in this
-      ! network; their sensitivity test with a Backx et al. (1976) cross
-      ! section and dissociation probability 0.125 changed Mdot by <= 1.4x.
-      !
-      ! Status: groundwork for the molecular extension (rates +
-      ! H3+ cooling implemented and unit-tested standalone); the coupled
-      ! System_HeH_mol solver / EOS integration is the remaining molecular
-      ! work item (docs/lower_atmosphere_coupling.*).
+      ! NOTE (Koskinen 2022 baseline): neutral H2 photodissociation through
+      ! the Lyman-Werner bands is NOT part of their Table 1; their
+      ! sensitivity test with a Backx et al. (1976) cross section and
+      ! dissociation probability 0.125 changed Mdot by <= 1.4x.  EXHALE adds
+      ! it separately and opt-in, in
+      ! src/modules/lower_atmosphere/lyman_werner.f90 (Draine & Bertoldi
+      ! 1996; key "Stellar LW flux"), so it is deliberately absent here.
 
       implicit none
       private

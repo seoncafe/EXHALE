@@ -49,12 +49,14 @@
       'Lya stellar boost', 'du_th', 'ATES_photoionization_rate',             &
       'Legacy_HHe_rates', 'Secondary_ionization', 'He_rec_coupling',         &
       'He_H_charge_exchange',                                                &
-      'Molecular chemistry', 'Molecular base', 'Lower atmosphere',           &
+      'Molecular chemistry', 'Molecular base', 'Stellar LW flux',           &
+      'Lower atmosphere',                                                   &
       'Lower column', 'He_Kzz', 'He_alphaT', 'He_ambipolar',                 &
       'He_metal_diffusion', 'He_diffusion', 'Stall', 'Energy solver',        &
       'Time stepping', 'Level tol', 'Solver', 'Valve eps', 'Hydrostatic base',&
       'Shapiro filter', 'Base BC', 'Base velocity', 'Viscosity',             &
       'Base ghost temperature', 'Max steps', 'Coronal cutoff width',         &
+      'Base IR field',                                                       &
       'Conduction', 'Resid tol',                                             &
       'Resid norm', 'CFL', 'Transonic IC', 'Hot Parker IC', 'IC mode',       &
       'Newton solver', 'Brent solver' ]
@@ -444,6 +446,13 @@
 				! below (after all keys are parsed).
 				str = get_word(line, 3)
 				if (str .eq. 'True' .or. str .eq. 'true') thereis_mol = .true.
+			else if (lbl_match(line, 'Stellar LW flux')) then
+				! "Stellar LW flux [erg/cm2/s]: <F>" -- band-integrated
+				! stellar flux in the H2 Lyman-Werner bands (912-1110 A) at
+				! the planet's orbit. Drives H2 photodissociation in the
+				! molecular network (lyman_werner.f90). 0 = off (default).
+				str = get_word(line, 5)
+				read(str,*) F_LW_star
 			else if (lbl_match(line, 'Molecular base')) then
 				! EOS-only molecular base (docs/lower_atmosphere_*).
 				str = get_word(line, 3)
@@ -578,6 +587,19 @@
 				str = get_word(line, 4);  read(str,*) coronal_cutoff_width
 				write(*,'(A,F6.3)') ' (input_read) Coronal excitation cutoff'// &
 				   ' width w =', coronal_cutoff_width
+			else if (lbl_match(line, 'Base IR field')) then
+				! "Base IR field: True|False" lets the infrared coolants of a
+				! molecular layer -- the eight ground-term fine-structure lines
+				! of C I, C II, N II, O I and the H3+ bands -- see the thermal
+				! radiation of the lower atmosphere (a blackbody at T0,
+				! geometrically diluted) instead of only emitting into vacuum,
+				! so each stops cooling at its own radiative equilibrium
+				! temperature. Default False. See fine_structure_line_transfer
+				! (Cool_coeff.f90) and h3p_net_cooling_rate (h3p_cooling.f90).
+				str = get_word(line, 4)
+				if (str .eq. 'True' .or. str .eq. 'true') base_ir_field = .true.
+				if (base_ir_field) write(*,'(A)') ' (input_read) Base IR '//   &
+				   'field on: infrared coolants see B_nu(T0) from below'
 			else if (lbl_match(line, 'Base velocity')) then
 				str = get_word(line, 3)
 				if (str .eq. 'valve')    base_v_massflux = .false.
@@ -815,6 +837,20 @@
       write(*,*) '(input_read) ERROR: Molecular chemistry + He_diffusion'//&
                  ' not supported yet.'
       error stop 1
+   endif
+
+   ! Lyman-Werner photodissociation acts on H2, which only exists as a
+   ! solved species with the molecular network on. Report rather than stop:
+   ! the key is then simply inert.
+   if (F_LW_star .gt. 0.0d0) then
+      if (thereis_mol) then
+         write(*,'(A,ES10.3,A)') ' (input_read) Lyman-Werner band flux at'//&
+            ' the planet: ', F_LW_star, ' erg cm^-2 s^-1'
+      else
+         write(*,'(A)') ' (input_read) WARNING: "Stellar LW flux" is set'// &
+            ' but "Molecular chemistry" is off; there is no H2 to'//        &
+            ' photodissociate, so the key has no effect.'
+      endif
    endif
 
    R0     = R0*RJ

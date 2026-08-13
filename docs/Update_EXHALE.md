@@ -4290,3 +4290,421 @@ each case directory. Snapshotting straight after a code change baselines the
 Files: `backup/regression/run_check.sh`, `backup/regression/mol_metals/` (new),
 `backup/regression/golden/` (re-snapshotted). Documentation: the workspace
 `CLAUDE.md`, `README_HOWTO.md`.
+
+---
+
+## 54. H3+ infrared cooling inside `eval_cool`: one energy equation for a molecular run (2026-08-13)
+
+Closes item (F) of `TO_BE_DONE.md`, opened by the audit in section 52.
+
+The H3+ infrared cooling was added to `cool` in `ionization_equilibrium`, *after*
+`eval_cool` returned. Only some of the consumers of `cool` saw it:
+
+| term in `cool` | rebuilt by `energy_semi_implicit` (the default marching temperature update) | returned by `ioniz_eq` (JFNK steady residual, the explicit-energy option, the in-loop `||R||` monitor, the `Hydro_ioniz.txt` cool column) |
+|---|---|---|
+| H/He recombination | yes | yes |
+| collisional ionization (H I, He I, He II, He 2^3S) | yes | yes |
+| collisional excitation (H I Ly-alpha, He I, He II, He 2^3S 10830 + 2^1S/2^1P conversion) | yes | yes |
+| bremsstrahlung (H+, He+, He++, metal ions) | yes | yes |
+| metal line cooling (27 ions, saturated ground-term fine structure included) | yes | yes |
+| **H3+ infrared (Miller+2013)** | **NO** | **yes** |
+
+`heat` has no such split: it is assembled once in `ioniz_eq` (photoheating per
+absorber including H2 and the metals, Shull & van Steenberg secondary-ionization
+partition, Balmer photoelectric and Ly-alpha de-excitation, He-recombination
+coupling, He 2^3S + H and He 2^3S + H2 Penning) and passed into
+`energy_semi_implicit` as `intent(in)`, never rebuilt. H3+ was the only
+asymmetric term, and it was the whole asymmetry.
+
+Three consequences followed from that one row.
+
+- **The marching fixed point was not the zero of the residual the Newton solver
+  drives down.** The marching relaxed `heat = cool_atomic+metal`; the residual
+  demanded `heat = cool_atomic+metal + Lambda_H3+`.
+- **The two energy-solver options integrated different equations.**
+  `Energy solver: Explicit` used the `ioniz_eq` array directly and did carry the
+  term; the semi-implicit default (the production setting) did not.
+- **The `cool` column of `Hydro_ioniz.txt` meant different things depending on
+  how the run stopped.** A `du`-stop left the semi-implicit array (no H3+) in
+  place; the JFNK finish calls `ioniz_eq` after `solve_steady_jfnk` and left the
+  array that has it.
+
+**Size of the missing term.** On the metals-off hot-Uranus Tier-2 gate
+(`backup/regression/mol_base_handoff`) the H3+ lines carry **more than 99% of
+the total radiative cooling from the base out to the H2 -> H front**
+(`Cooling_breakdown` H3p_IR / cool_total > 0.5 over r = 0.9998-1.1856, > 0.99
+over 0.9998-1.1557), peaking at 9.35e-7 erg cm^-3 s^-1 at r = 1.0413, which is
+**7.3x the local photoheating**. Below the front every atomic channel is
+exponentially suppressed at T ~ 1.3e3 K, so the marching stage was integrating
+that layer with essentially no radiative loss at all: the cooling it used was
+smaller than the true total by a factor 1.1e2 to 1.2e11 over r = 1.00-1.156.
+With solar trace metals (`mol_metals`) the metal lines dominate instead and H3+
+reaches only 22% of the local cooling, in a thin band r = 1.066-1.193.
+
+**The fix.** `eval_cool` computes the H3+ cooling itself, from the `nmol` array
+it has taken since section 52, using the same `h3p_cooling` module (one
+definition of the Miller+2013 fits and the Table-6 non-LTE factor; `eval_cool`
+`use`s it, nothing is re-derived). The post-return addition in
+`ionization_equilibrium` is gone, and a comment at the `eval_cool` call states
+why nothing may be added there. `cool_chan` gains column 7 for the channel, so
+the decomposition still reproduces `cool` exactly (measured
+`max |sum(channels)/cool - 1| = 3.3e-16` on the molecular gate, 5.5e-16 on
+`wasp_full`). Callers that model a molecule-free gas (`post_process_adv`, and
+`T_equation` which solves for the `_adv` temperature) omit `nmol` and therefore
+still get the atomic charge sum *and* no H3+ term -- the same approximation,
+stated at both call sites.
+
+A side effect worth naming: `energy_semi_implicit` builds its damping
+derivative `dC/dT` by finite-differencing `eval_cool` in temperature, so the
+steep temperature dependence of the H3+ emission now enters the implicit
+temperature update instead of being invisible to it.
+
+**Output schema.** `Cooling_breakdown.txt` gains `col11 H3p_IR`; the 27
+metal-ion columns move from 11-37 to 12-38. It is written for every run and is
+zero without the molecular network. `python/paper_data.py` reads the column
+names from the header and follows automatically; `examples/exhale_io.py` has a
+fixed list, which now carries `H3p` (and is named `COOL_GAS_CHANNELS`, since it
+is no longer only the H/He channels).
+
+**Atomic runs are exactly unchanged.** `nmol(:,3)` is zero, the term is skipped
+cell by cell, and the total is `... + 0.0`. `make check` is byte-identical on
+`wasp_full` (14060 steps, metals + He 2^3S) and `wasp_he23off` (14037 steps),
+with the same step counts as their goldens.
+
+**The two molecular cases change, which is the point.** Both were re-run at
+their pinned 12000-step convention; the goldens were **not** re-snapshotted.
+
+| | metals off (`mol_base_handoff`) | metals on (`mol_metals`) |
+|---|---|---|
+| `du` at step 12000 | 2.6689 -> 2.6274 | 3.1770 -> 3.1769 |
+| log10 Mdot | 10.9043 -> 10.9040 | 10.9105 -> 10.9105 |
+| H2 -> H front (2 n_H2 / n_H = 0.5) | 1.16087 -> 1.16039 | 1.16246 -> 1.16246 |
+| H3+ peak | 7.0237e4 -> 7.0285e4 cm^-3 at r = 1.0419 | 52.139 -> 52.140 at r = 1.1355 |
+| base T | 1213.42 -> 1213.42 K | 1213.46 -> 1213.46 K |
+| max T change, whole grid | +1.4% at r = 1.93 (wind transient) | +5.2e-5 at r = 1.20 |
+| T change where H3+ dominates | -0.53% at r = 1.078, mean -0.20% over r <= 1.156 | -3.0e-5 at r = 1.183 |
+| reported cooling at the base | 4.94e-18 -> 5.97e-7 erg cm^-3 s^-1 (x1.2e11) | unchanged |
+| max cooling change | x1.23e11 at r = 1.0021 | +28% at r = 1.1597 |
+
+**Why the gate observables barely move, and why that is not evidence the term is
+small.** The molecular layer is thermally massive: its H3+ cooling time
+`(3/2) n k T / Lambda_H3+` is 3.7e6 s at r = 1.04 and 2.2e7 s at the base, i.e.
+**200-2000 sound-crossing times `t_s = R0/v0`**. A 12000-step snapshot advances
+a small fraction of that, so the layer has only begun to respond: T has fallen
+by 0.1-0.5% through r = 1.02-1.12 and is still falling. The front, the H3+ peak
+and Mdot are unchanged to < 0.1% *at this step budget*, so the recorded Tier-2
+gate numbers stand -- but the converged molecular solution now has a different
+thermal structure than the pre-change code would have produced, and reaching it
+needs a step budget the gate convention does not provide. When this was written no
+molecular configuration in the tree had converged (`examples/15_molecular` had
+run 135694 steps to `du = 2.9e-2`), so it was stated as a limit, not a result;
+the paragraph below closes it.
+
+**What was verified and what was not.** The residual/Newton path is unchanged by
+the move: `EXHALE_RESIDUAL=1` on one frozen molecular state gives a
+**bit-identical** `output/residual_profile.txt` before and after, so only the
+marching side moved. What could *not* be shown is the H3+ term disappearing from
+the steady energy residual: on the only molecular states available -- 12000-step
+relaxation snapshots with a base-breathing transient, volume-weighted
+`||R|| ~ 3` -- the cell-by-cell energy residual in the molecular layer is 1.5-7x
+larger than `Lambda_H3+/q0`, so the systematic offset is buried in the transient.
+That check needs a converged molecular run.
+
+**Closed 2026-08-13: the check on a converged molecular run.** Restarting the
+metals-off hot-Uranus snapshot with `Load IC? True`, `Solver: Newton 5.0e-2` and
+`Max steps: 150000` reaches `info = 0` after a JFNK finish at step 22556 -- the
+first Newton-grade molecular solution the code has produced. In the 180 cells
+where H3+ carries more than half the cooling (the cells at `r <= 1.001`, whose
+residual sets `||R||`, excluded) the ratio of the cell-by-cell energy residual to
+`Lambda_H3+/q0` falls from **4.42 at the 12000-step snapshot (sign 89+/166-) to
+0.70 at the default `||R|| < 1e-3` solution (173+/7-) to 0.0017 once the same
+state is re-solved at `Resid tol: 1.0e-5` (25+/79-)**: at the converged solution
+the residual carries no offset of the size of the H3+ term, and no preferred sign.
+Two things follow. First, the default `||R|| < 1e-3` is not a converged molecular
+run -- the norm is set by two or three cells above the base that carry ~10^3 times
+the residual of anything else, so the molecular layer is still cooling when the
+solver stops; `Resid tol: 1.0e-5` is required, and a third solve from that state
+reproduces it (T to 0.14%, front to five digits, `||R||` 6.7e-7). Second, an A/B
+against the pre-change binary isolates the term directly: marching both binaries
+12000 steps from the same converged state, the temperature difference
+`T(before) - T(after)` is proportional to the local `Lambda_H3+/(3/2 n k)` with a
+single constant: over the 155 cells where `Lambda_H3+` is within two decades of
+its peak the ratio has median 1.27 and 10-90% range 1.13-1.32, and over all 187
+cells where H3+ carries more than half the cooling the sign is right in 181. The
+whole difference between the two marching energy equations is the H3+ term and
+nothing else. The physics of the converged solution, including the 190-300 K collapse of
+the molecular layer that the optically thin line cooling produces once the
+marching feels it, is in `docs/lower_atmosphere_coupling.md`.
+
+An `-O1 -fopenmp -g -fcheck=bounds,do,mem` build runs both molecular
+configurations for 300 steps with no runtime check firing.
+
+Files: `src/modules/radiation/util_ion_eq.f90`,
+`src/modules/radiation/ionization_equilibrium.f90`,
+`src/modules/post_process/post_process_adv.f90` (comments only),
+`examples/exhale_io.py`, `python/paper_data.py`,
+`python/make_struct_figures.py`. Documentation: `README.md`,
+`docs/EXHALE_user_manual.tex` (section 4.3 rewritten -- it still described four
+H/He channels and columns 9-35 for the metals, which had been wrong since the
+collisional-excitation split; a radiative-cooling row for H3+ added to the
+atomic-data table), `docs/lower_atmosphere_coupling.md`, `TO_BE_DONE.md`.
+
+## 55. The infrared field of the lower atmosphere (`Base IR field`) (2026-08-13)
+
+Narrows item (G) of `TO_BE_DONE.md`, opened by section 54.
+
+The infrared coolants of a molecular base were radiating into a vacuum they are
+not in. The ground-term fine-structure lines carried an escape probability built
+from the OUTWARD column only, with the downward direction dismissed as "absorbed
+by the lower atmosphere, which the model treats as a fixed reservoir"; the H3+
+bands carried no transfer at all. Absorption of what that reservoir radiates back
+was in neither.
+
+**Measured first.** Line-center depths on the converged metals-on hot-Uranus
+solution (level populations and Doppler widths from the cooling module itself):
+
+| direction | C I 609 um | C I 370 um | O I 63 um | O I 145 um |
+|---|---|---|---|---|
+| outward, base cell | 0.088 | 0.172 | 2.01 | 0.54 |
+| outward, coldest cell (r = 1.083) | 1.4e-3 | 2.6e-3 | 0.028 | 4.6e-3 |
+| one scale height below the base | 0.046 | 0.092 | **1.08** | **0.32** |
+| pressure where the downward tau = 1 | 205 ubar | 106 ubar | **17 ubar** | **37 ubar** |
+
+The base sits at 9.0 ubar, so every line that carries the cooling is black
+downward within one to three scale heights of unresolved atmosphere, while
+outward the collapsed layer is thin (beta >= 0.90 for C I, >= 0.63 for O I above
+r = 1.05). Trapping was never the missing piece; the incident field was. The
+ratio of the incident mean intensity to the line source function,
+(1/2)B_nu(T_base)/B_nu(T), passes 1 below T ~ 610 K and reaches 3.4-5.7 at the
+coldest cell: those lines were cooling a gas they should have been heating.
+
+**And it refutes the diagnosis in item (G) for the metals-on case.** The specific
+entropy p/rho^gamma RISES monotonically outward through the whole "collapsed"
+layer, 1.00 at the base to 1.67 at r = 1.05 and 5.69 at r = 1.083; the gas is net
+heated everywhere and is cold only because rho has fallen by 1e2. Its cooling is 36% of the local
+photoheating at r = 1.01 and 2-16% above r = 1.02, and heat - cool is balanced by
+rho v [de/dr + p d(1/rho)/dr] to a few percent. And the metals-off solution, with
+no fine-structure cooling at all, collapses further (115 K at r = 1.033, total
+cooling 3.8e-12 erg cm^-3 s^-1). The metals-on layer is an adiabatic expansion,
+not a radiative collapse. Radiation does dominate in one place: the metals-off
+base, where H3+ carries 100% of the cooling and the entropy FALLS by a factor 3
+between the base and r = 1.02.
+
+**What was implemented.** `Base IR field: True` (default `False`) has the lower
+atmosphere radiate `B_nu(T0)` over the sky fraction `f = 1 - sqrt(1-(R_p/r)^2)`
+and both coolant families absorb it.
+
+- Fine structure: the field enters INSIDE the ground-term statistical
+  equilibrium as the photon occupation number
+  `nbar = beta_1(tau_dn) f/(exp(E_ul/T0)-1)`, with radiative rates
+  `beta A (1+nbar)` down and `beta A (g_u/g_l) nbar` up, so the returned power is
+  the net one. The escape probability becomes two-sided,
+  `beta = beta_1(tau_up) + beta_1(tau_dn)`, `beta_1` the single-face
+  Hollenbach & McKee (1979) / de Jong et al. (1980) form; with the field off it
+  is `2 beta_1(tau_up)`, the previous value, bit for bit. Each line stops cooling
+  at its own radiative equilibrium temperature -- 575.8 K ([C I] 609 um) to
+  641.7 K ([O I] 44 um) for `T0 = 1140` K and half-sky coverage.
+- H3+: Miller et al. (2013) fit the TOTAL emission, so the exchange is closed on
+  ONE effective band, the nu2 fundamental at 2521.3 cm^-1 (E/k = 3627.5 K):
+  `Lambda_net = Lambda_emit(T)[1 - nbar exp(E/T)]`, equilibrium at 936.1 K at the
+  base. The approximations and their range are written at
+  `h3p_net_cooling_rate`.
+- Not applied, with the reason at the code: Fe II (a precomputed
+  statistical-equilibrium table, which cannot take a field as an argument), the
+  coronal remainders and every other metal ion (fits to CHIANTI sums with no line
+  list; their lowest terms are at E/k >~ 1.6e4 K, and the heating they would add
+  was estimated at ~0.4% of the losses of this layer), and the legacy
+  `use_2lev_cool` branch.
+
+**Effect.** Restarting the two converged `Resid tol: 1.0e-5` molecular solutions
+with the switch on, both returning `info = 0`:
+
+| | metals off, off -> **on** | metals on, off -> **on** |
+|---|---|---|
+| T at r = 1.005 | 626.8 -> **910.0 K** | 1099.0 -> 1098.9 K |
+| T at r = 1.02 | 299.6 -> **859.4 K** | 928.9 -> 928.9 K |
+| T at r = 1.03 | 140.2 -> **840.2 K** | 820.0 -> 820.1 K |
+| coldest cell | 115.1 K @ 1.0334 -> **229.7 K @ 1.0947** | 187.9 -> 189.1 K @ 1.0831 |
+| H2 -> H front | 1.03582 -> **1.08833** | 1.07976 -> 1.07979 |
+| log10 Mdot [g/s], spherical | 10.539 -> **10.617** | 10.596 -> 10.596 |
+
+The metals-off layer settles ON the H3+ radiative equilibrium curve: predicted
+911/886/874 K at r = 1.005/1.02/1.03 with the local sky fraction, solution
+910/859/840 K, just below by the margin the expansion takes out. Its H3+ channel
+is now a heating term (-1.1e-7 erg cm^-3 s^-1 at r = 1.02). The solution is a
+fixed point: re-solving returns `info = 0` at `||R|| = 8.8e-6` and reproduces T
+below r = 1.3 to 1e-4. The metals-on layer does not move, which is the measurement
+above, not a failure of the closure.
+
+Atomic runs are unaffected: the switch is off by default, and even on it touches
+only channels that carry no cooling in an atomic wind. `make check` is
+byte-identical on all four cases.
+
+Files: `src/modules/radiation/Cool_coeff.f90`,
+`src/modules/lower_atmosphere/h3p_cooling.f90`,
+`src/modules/radiation/util_ion_eq.f90`,
+`src/modules/nonlinear_system_solver/T_equation.f90`,
+`src/modules/post_process/post_process_adv.f90`,
+`src/modules/init/parameters.f90`, `src/modules/files_IO/input_read.f90`,
+`src/modules/files_IO/write_setup_report.f90`. Documentation:
+`docs/lower_atmosphere_coupling.md`, `docs/EXHALE_user_manual.tex`,
+`TO_BE_DONE.md`.
+
+## 56. H2 photodissociation in the Lyman-Werner bands (`Stellar LW flux`) (2026-08-13)
+
+The molecular network had no photodissociation of neutral H2. The Koskinen et
+al. (2022) Table-1 photo-rates start at the 15.4 eV photoionization edge, so
+below that the only H2 losses were thermal (R12), electron impact (R14) and ion
+chemistry. `docs/base_composition_handoff_plan.md` section 5 named the omission
+as the reason EXHALE's base comes out more molecular than any photochemical code
+gives, and recorded that pinning `q_H2` at the base (Route 1) patches over it.
+This adds the missing term.
+
+**The band is not in the code's own radiation field, and had to be.** Checked in
+the source: `set_energy_vectors` builds the photon grid from 13.6 eV up and
+reaches below the H I edge only when the He 2^3S metastable (4.8 eV) or a low-IP
+metal is active, and then only to that species' threshold; `read_sed` selects
+SED rows by the same `e_low`. For a numerical SED the 11.2-13.6 eV band is
+therefore not read at all, and for a power-law SED (every Tier-2 gate case) it
+is the XUV power law extrapolated downward, which has nothing to do with a
+star's FUV. Even where the grid does reach into the band, its opacity is
+continuum photoionization, whereas Lyman-Werner absorption is a forest of
+saturated lines. The band flux is a separate input:
+
+```
+Stellar LW flux [erg/cm2/s]: 343.0    # 912-1110 A, integrated, at the planet
+```
+
+Default 0 = off; inert (with a warning) when `Molecular chemistry` is off.
+
+**Rate.** Draine & Bertoldi (1996), ApJ 468, 269 (published version). For their
+flat-F_lambda spectrum (u_nu ~ nu^-2, their eq. 24) at chi = 1 the band photon
+flux is F = 1.208e7 cm^-2 s^-1 (Table 1) and the unshielded dissociation rate is
+zeta_diss(0) = 4.17e-11 s^-1 (Table 2, Fig. 7 caption), so the rate per band
+photon is an effective cross section sigma_LW = 3.452e-18 cm^2. With the mean
+photon energy of a flat-F_lambda band, 2hc/(912 + 1110 A) = 12.2635 eV,
+
+    k_LW,thin = 1.757e-7 * F_LW    [s^-1, F_LW in erg cm^-2 s^-1] .
+
+Their Table 1 was reproduced numerically from their eqs. (22)-(24) to confirm
+the flux convention (Habing 1.2220e7 vs 1.222e7; nu^-2 1.2084e7 vs 1.208e7;
+Draine 1978 1.2313e7 vs 1.232e7). The band-shape sensitivity is +-25%: the same
+arithmetic for the soft Draine 1978 field gives 2.685e-18 cm^2.
+
+**Self-shielding** is their eq. (37), the fit to the full multiline calculation
+including line overlap, valid over 1e14 < N_H2 < 3e21 cm^-2, with b the thermal
+H2 Doppler parameter (2kT/m_H2)^1/2. N_H2 is the star-ward column, built by the
+same `calc_column_dens_one` radial integration and `opa_pf` weighting as every
+other absorber column, from the incoming (pre-solve) H2 density. No dust
+(EXHALE's metals are atomic and trace), and the trace-metal continuum in the
+band is tau ~ 4e-23 N_H, negligible where the shielding matters; the H
+Lyman-series lines inside the band are inside DB96's own fit and not treated
+separately.
+
+**Chemistry and heating.** H2 + hv -> H + H enters the H2 balance row of the
+coupled system next to the H2 photoionization (`mol_heh_rows`, shared by
+`System_HeH_mol` and `System_HeH_mol_metals`), so it is solved with everything
+else. Both products are neutral H, which the H-nucleus closure supplies; no
+other row changes. The fragments carry 0.4 eV of kinetic energy (Black &
+Dalgarno 1977, ApJS 34, 405, p. 418, "the yield is about 0.4 eV per atom pair"),
+added to `heat`. The 4.48 eV bond energy is paid by the photon, not by the gas,
+and is not a sink of this channel.
+
+`output/Lyman_Werner.txt` (r, T, x_H2, n_H2, N_H2, f_shield, k_LW, heating) is
+written whenever a molecular run carries a band flux.
+
+**Band flux for a planet.** Integrated externally from the VULCAN stellar
+spectra in the tree (`EXHALE/VULCAN/atm/stellar_flux/`, stellar surface) over
+91.2-111.0 nm and diluted by (R_star/a)^2. The `VULCAN_run_*` spectra directories
+are empty since the 2026-08-09 loss, so no HD 209458 spectrum exists here and the
+solar spectrum stands in: 343 erg cm^-2 s^-1 at 0.048 AU behind a 1.155 R_sun
+star, k_LW,thin = 6.03e-5 s^-1. The same file returns a solar Lyman-alpha
+irradiance of 6.12 erg cm^-2 s^-1 at 1 AU against an observed 6-8, which is the
+calibration check. HD 189733 b comes out at 600 (Moses11 spectrum) or 1830
+(Bourrier 2020) erg cm^-2 s^-1 -- a factor 3 that dwarfs the +-25% of the band
+shape.
+
+**Effect.** A/B on the key alone, hot-Uranus gate (metals off, the
+`mol_base_handoff` configuration restarted with `Solver: Newton 5.0e-2`,
+`Resid tol: 1.0e-5`, `Base IR field: True`), both returning `info = 0`:
+
+| | LW off | **LW on (343)** |
+|---|---|---|
+| residual norm at exit | 8.15e-6 | 4.86e-6 |
+| H2 -> H front (x_H2 = 0.5) | 1.08806 | **1.08622** |
+| x_H2 at the base | 0.99921 | 0.99883 |
+| x_H2 at r = 1.10 | 2.54e-2 | **1.51e-4** |
+| H3+ peak [cm^-3] | 3.19e5 @ 1.0079 | 3.20e5 @ 1.0025 |
+| log10 Mdot [g/s], spherical | 10.6196 | 10.6248 |
+
+and on HD 209458 b (`examples/15_molecular` + `Base IR field: True`, both members
+at `Resid tol: 2.0e-5` because the band-on run stalls the JFNK at 1.5e-5 on the
+base-adjacent momentum row, item (A) of `TO_BE_DONE.md`; both `info = 0`, both
+mass fluxes flat to 4.1e-3): front 1.01578 -> 1.01290, x_H2 at r = 1.02
+2.37e-4 -> 4.22e-6, log10 Mdot 10.5711 -> 10.5600.
+
+The self-shielding is doing exactly what it should: at the hot-Uranus base
+N_H2 = 4.3e21 cm^-2 gives f_shield = 9.8e-7 and k_LW = 5.9e-11 s^-1, while above
+r = 1.15 the column has fallen below 1e10 cm^-2, f_shield = 1.000 and k_LW
+recovers the unshielded 6.026e-5 s^-1.
+
+**It does not close the base-composition gap, and the measurement says why.**
+The base q_H2 moves from 0.8618 to 0.8612 against the 0.75 the case's `base.inp`
+carries -- 0.5% of the gap -- even though Lyman-Werner becomes the largest single
+H2 loss at the base (5.9e-11 s^-1 against 2.5e-11 for H+ + H2). The two facts are
+consistent because the base partition is a formation-destruction balance in which
+the three-body R15 sets n_H2 ~ n_H^2, so n_H/n_H2 scales as the square root of
+the destruction rate: the measured 2.3x rise in destruction raises the atomic
+fraction only 1.5x. Reaching q_H2 = 0.75 needs a destruction rate 4100x larger.
+The unshielded band would supply it many times over; the column stops it. The
+extra atomic H photochemical codes find at 1 microbar comes from catalytic cycles
+on O, OH and H2O, and EXHALE's H2/H2+/H3+/HeH+ network has nowhere to put them.
+Route 1 (`q_H2_base`) therefore stays the only way EXHALE can carry a
+photochemical base partition, and is now a documented modeling choice rather
+than a patch over a missing term.
+
+`make check` is byte-identical on all four cases with the key absent.
+
+Files: new `src/modules/lower_atmosphere/lyman_werner.f90`;
+`src/modules/init/parameters.f90`, `src/modules/files_IO/input_read.f90`,
+`src/modules/files_IO/write_setup_report.f90`,
+`src/modules/files_IO/write_output.f90`,
+`src/modules/nonlinear_system_solver/ion_cell_state.f90`,
+`src/modules/nonlinear_system_solver/System_HeH_mol.f90`,
+`src/modules/nonlinear_system_solver/System_HeH_mol_metals.f90`,
+`src/modules/radiation/ionization_equilibrium.f90`,
+`src/modules/lower_atmosphere/mol_rates.f90`,
+`src/modules/radiation/util_ion_eq.f90`, `Makefile`. Documentation:
+`docs/lower_atmosphere_coupling.md`, `docs/base_composition_handoff_plan.md`,
+`docs/EXHALE_user_manual.tex`, `docs/input_schema.md`, `README.md`,
+`README_HOWTO.md`.
+
+---
+
+## 57. A fifth regression case for Lyman-Werner photodissociation (2026-08-13)
+
+Nothing in the four-case matrix exercised the code the section 56 key turns
+on: with `Stellar LW flux` absent every case leaves `F_LW_star = 0`, so the
+star-ward H2 column, the Draine & Bertoldi self-shielding factor, the LW loss
+row in the H2 budget, the 0.4 eV fragment heating and the `Lyman_Werner.txt`
+writer all ran in no case.
+
+`backup/regression/mol_lyman_werner` is that case: a copy of
+`mol_base_handoff` (the hot-Uranus Tier-2 gate, `Molecular chemistry: True`,
+the same `base.inp` handoff, 12000 steps pinned in `maxsteps`) plus the single
+line `Stellar LW flux [erg/cm2/s]: 343.0` — the HD 209458 b solar-proxy band
+flux of section 56. It stops at `du = 2.1841`, `dtu = 4.8072e-3`, clearly
+apart from the LW-off `mol_base_handoff` (`du = 2.6274`, `dtu = 5.7385e-3`):
+the case does pass through the new code path. `DEFAULT_CASES` in
+`backup/regression/run_check.sh` is now `wasp_full wasp_he23off
+mol_base_handoff mol_metals mol_lyman_werner`, and the script header describes
+what the case guards.
+
+The golden was taken in the order the section 53 trap requires — `check`
+(which rebuilds and re-runs the case), then `golden`, then the full `check`
+again — and the final run is byte-identical on all five cases.
+
+Files: `backup/regression/run_check.sh`,
+`backup/regression/mol_lyman_werner/` (new),
+`backup/regression/golden/mol_lyman_werner/` (new). Documentation: the
+workspace `CLAUDE.md`, `README_HOWTO.md`.

@@ -70,7 +70,10 @@ fork of the ATES code (Caldiroli et al. 2021; Biassoni et al. 2024), adding:
   (`Molecular base:`), **full molecular chemistry** (`Molecular chemistry:
   True` — H2/H2+/H3+/HeH+ in the coupled ionization equilibrium, Yan+1998 H2
   photoionization opacity/heating, Miller+2013 H3+ IR cooling; hot Jupiters
-  develop a sharp H2->H front above a thin molecular base), and a `base.inp`
+  develop a sharp H2->H front above a thin molecular base), H2 photodissociation
+  in the Lyman-Werner bands (`Stellar LW flux:`, Draine & Bertoldi 1996
+  self-shielding), the thermal infrared field of the atmosphere below the base
+  (`Base IR field:`), and a `base.inp`
   handoff with two generators: `src/utils/run_lower.py` (analytic column,
   isothermal or Guillot T(p)) and `src/utils/vulcan_to_base.py` (converts a
   **VULCAN** photochemistry output — the photochemical H2/H state, which on
@@ -124,10 +127,10 @@ EXHALE/
 ├── inputdata/             # opacity / SED table samples (*.opa, Jlya.txt, …)
 ├── cooling_data/          # CHIANTI cooling-formula fit scripts + notebooks
 ├── examples/
-│   ├── 01_legacy_marching/ … 15_molecular/  # ready-made input configs (15 folders)
+│   ├── 01_legacy_marching/ … 16_molecular_metals/  # ready-made configs (16 folders)
 │   │                          #   (solver stages, metals, He 2³S, Balmer/Lya,
 │   │                          #    Wind-AE IC, lower atmosphere, He/metal
-│   │                          #    diffusion, full molecular chemistry)
+│   │                          #    diffusion, molecular chemistry ± metals)
 │   ├── README.md          # one-line description of each config folder
 │   ├── exhale_io.py         # Python loaders for all output files
 │   ├── EXHALE_analysis.ipynb
@@ -390,6 +393,43 @@ the parser. Local-equilibrium caveats in `docs/lower_atmosphere_coupling.pdf`
 §4; the advection-corrected `*_adv` profiles remain molecule-free (see the
 header of `post_process_adv.f90`).
 
+H2 photodissociation in the Lyman-Werner bands is opt-in and needs the band
+flux, which the code's own XUV grid does not carry:
+
+```
+Stellar LW flux [erg/cm2/s]: 343.0   # 912-1110 A, integrated, at the planet
+```
+
+It adds `H2 + hv -> H + H` to the network with the Draine & Bertoldi (1996)
+self-shielding of the star-ward H2 column and 0.4 eV of heating per
+dissociation, and writes `output/Lyman_Werner.txt` (column, shielding factor,
+rate). Default 0 = off.
+
+The infrared coolants of the molecular layer emit into vacuum unless the
+atmosphere below the base is given to them:
+
+```
+Base IR field: True         # default False
+```
+
+The lower atmosphere is then taken to be black at those wavelengths and to
+radiate `B_nu(T0)` over the sky fraction `1 - sqrt(1 - (R_p/r)^2)`, so the eight
+ground-term fine-structure lines of C I, C II, N II, O I and the H3+ bands
+return the *net* rate, emission minus absorption of that field, and each stops
+cooling at its own radiative-equilibrium temperature (576–642 K for the C I/O I
+lines, 936 K for the H3+ bands at `T0 = 1140 K` and half-sky coverage). Every
+other cooling channel keeps the optically thin, no-incident-field limit; an
+atomic run is unaffected, because those channels carry no cooling there.
+
+Converging a molecular run needs three keys the atomic examples do not:
+`Solver: Newton 5.0e-2` (the `du` descent is not monotonic, so the default
+`1e-2` hand-off threshold can consume the whole step budget), `Resid tol:
+1.0e-5` (`||R||` is set by the two or three cells above the base, so the default
+`1e-3` leaves the molecular layer still cooling) and `Max steps: 150000`.
+Marching alone never reaches that layer — the H3+ cooling time there is ~1e7 CFL
+steps — so the Newton finish is not optional. Converged solutions, the recipe
+and the caveats: `docs/lower_atmosphere_coupling.pdf` §7–§9.
+
 ### Lower-atmosphere pre-step: VULCAN as a subroutine
 
 EXHALE can generate its own lower-boundary conditions before the wind solve.
@@ -543,8 +583,9 @@ All output is written to `output/` in the run directory.
 | `Ion_species.txt` | Number densities of H I, H II, He I, He II, He III, He 2³S, and the metal ionization stages (33 species; zero columns when a species is off) |
 | `Hydro_ioniz_adv.txt` | Post-processed version of `Hydro_ioniz.txt` (advection-corrected) |
 | `Ion_species_adv.txt` | Post-processed version of `Ion_species.txt` |
-| `Cooling_breakdown.txt` | Radiative cooling by channel vs. radius |
+| `Cooling_breakdown.txt` | Radiative cooling by channel vs. radius: six H/He channels, the H3+ infrared channel, then one column per metal ion |
 | `Excited_H.txt` | Non-LTE H(n=2) populations (when the Balmer/Ly-alpha physics is on) |
+| `Lyman_Werner.txt` | H2 photodissociation diagnostics (only when a molecular run carries a `Stellar LW flux`): radius, temperature, H2 fraction and density, star-ward H2 column, self-shielding factor, rate, heating |
 
 Every file starts with a `# columns ...` schema header, so analysis tools
 adapt to the column layout automatically.
@@ -685,4 +726,4 @@ See `examples/README.md` for the exact lines each one adds:
 
 Kwang-Il Seon (KASI / UST)
 
-Last updated: 2026-08-13 07:21 KST
+Last updated: 2026-08-13 13:41 KST

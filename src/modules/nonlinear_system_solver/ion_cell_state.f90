@@ -43,6 +43,13 @@
 		real*8 :: q31b
 		real*8 :: Q31
 		real*8 :: P_H2
+		! Lyman-Werner photodissociation rate of H2 [s^-1], already carrying
+		! the self-shielding of the star-ward H2 column (lyman_werner.f90).
+		! Zero unless the run supplies a Lyman-Werner band flux. Assigned by
+		! ioniz_eq for every molecular cell (no default initializer: this
+		! type is threadprivate, where an initializer only reaches the
+		! master thread).
+		real*8 :: k_LW
 		real*8 :: T_K
 		real*8 :: ntot
 		! He <-> H charge-exchange rate coefficients (Huang Table 4 group B):

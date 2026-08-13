@@ -14,7 +14,10 @@
 	use System_HeH_mol            ! molecular network
 	use System_HeH_mol_metals     ! merged molecular network + metals
 	use lower_column, only: q_h2_equilibrium
-	use h3p_cooling,  only: h3p_cooling_rate
+	use lyman_werner_photodissociation, only:                            &
+	                           lyman_werner_dissociation_rate,            &
+	                           h2_self_shielding_factor,                  &
+	                           h2_doppler_parameter, e_lw_fragment_erg
    use System_HeH_metals
    use System_HeH_TR_metals      ! merged He-triplet + metals system
    use charge_exchange, only: cx_set_cell, cx_metal_base,  &   ! Huang Table 4 charge exchange
@@ -29,6 +32,15 @@
 	! zero unless thereis_mol).  Module state: written by the equilibrium
 	! solve, read by write_output for the extra output columns.
 	real*8, dimension(1-Ng:N+Ng,4), save :: nmol_eq = 0.0d0
+
+	! Lyman-Werner photodissociation diagnostics, filled by the equilibrium
+	! solve when a band flux is supplied and read by write_lyman_werner:
+	! star-ward H2 column [cm^-2], the DB96 self-shielding factor, and the
+	! resulting dissociation rate [s^-1]. Untouched (shielding 1, rate 0)
+	! when the run supplies no band flux.
+	real*8, dimension(1-Ng:N+Ng), save :: NH2_col_lw  = 0.0d0
+	real*8, dimension(1-Ng:N+Ng), save :: f_shield_lw = 1.0d0
+	real*8, dimension(1-Ng:N+Ng), save :: k_lw_diss   = 0.0d0
 
 	! Run-wide totals of the atomic ionization root validation, reported once
 	! at the end of the run (EXHALE_main) next to the Newton usage counters:
@@ -74,6 +86,8 @@
    ! Photo ionization rates
    real*8, dimension(1-Ng:N+Ng) ::  P_HI,P_HeI,P_HeII,P_HeITR
    real*8, dimension(1-Ng:N+Ng) ::  P_H2      ! (molecular; zero unless mol)
+   ! Doppler parameter of H2 in a cell, for the Lyman-Werner shielding.
+   real*8 :: b_h2_lw
    ! Metal photoionization rates for each ion (canonical order) from PH_heat.
    real*8, dimension(1-Ng:N+Ng,n_mion) ::  P_m
                        	
@@ -218,6 +232,26 @@
 
 	!----------------------------------!
 
+	! Lyman-Werner photodissociation of H2 (Draine & Bertoldi 1996; see
+	! src/modules/lower_atmosphere/lyman_werner.f90). The star-ward H2
+	! column uses the same radial integration and opa_pf weighting as every
+	! other absorber column, and the incoming (pre-solve) H2 density, like
+	! the photoionization columns built inside PH_heat_HHe. The band lies
+	! below the H I edge, so nothing else in the model absorbs it: there is
+	! no dust, and the trace-metal continuum is negligible against the H2
+	! line self-shielding (module header).
+	if (thereis_mol .and. F_LW_star .gt. 0.0d0) then
+		call calc_column_dens_one(nmol_eq(:,1), NH2_col_lw)
+		do j = 1-Ng,N+Ng
+			b_h2_lw = h2_doppler_parameter(T_K(j))
+			f_shield_lw(j) = h2_self_shielding_factor(NH2_col_lw(j), b_h2_lw)
+			k_lw_diss(j)   = lyman_werner_dissociation_rate(F_LW_star,     &
+			                                       NH2_col_lw(j), T_K(j))
+		enddo
+	endif
+
+	!----------------------------------!
+
     !---- Photoionization and photoheating ----!
       
 	if (thereis_He) then
@@ -255,7 +289,11 @@
    ! 	ionization rates
       
     ! nmol_eq gives the cooling the same electron density this routine
-    ! balances the ionization against (zero for an atomic run).
+    ! balances the ionization against, and the H3+/H2 densities its infrared
+    ! cooling channel needs (zero for an atomic run). Nothing is added to
+    ! `cool` after this call: the marching temperature update rebuilds the
+    ! cooling from eval_cool alone, so any term added here would be a source
+    ! the marching relaxes without and the steady residual demands.
     call eval_cool(T_K,nhi,nhii,nhei,nheii,nheiii, nm,           &
 			   	   	rchiiB,rcheiiB,rcheiiiB, rec_m,             &
 			    	a_ion_HI,a_ion_HeI,a_ion_HeII, aion_m,         &
@@ -271,16 +309,6 @@
 
 	! Charge-exchange rate coefficients are evaluated per cell below
 	! (cx_set_cell) before each metal ionization solve.
-
-	! optically-thin H3+ infrared cooling (Miller+2013 fits with
-	! the Table-6 non-LTE factor), evaluated at the pre-solve state like
-	! every other channel.  Zero when molecules are off/absent.
-	if (thereis_mol) then
-		do j = 1-Ng,N+Ng
-			cool(j) = cool(j) + h3p_cooling_rate(T_K(j),               &
-			                     nmol_eq(j,3), nmol_eq(j,1))
-		enddo
-	endif
 
 	if (thereis_HeITR) then
 		call HeITR_coeffs(T_K,rcheiTR,rcheiiB,A31,q13,q31a,q31b,Q31)
@@ -318,6 +346,14 @@
 	if (thereis_mol .and. thereis_HeITR) heat = heat                  &
 	     + nheiTR*nmol_eq(:,1)*penning_HeI23S_H2(T_K)                  &
 	       *((e_th_HeI - e_th_HeTR) - e_th_H2)/erg2eV
+
+	! Lyman-Werner photodissociation heating: H2 + hv -> H + H leaves the
+	! fragment pair with about 0.4 eV of kinetic energy (Black & Dalgarno
+	! 1977, ApJS 34, 405, p. 418). The 4.48 eV bond energy is paid by the
+	! absorbed photon, not by the gas, so it is NOT a thermal sink of this
+	! channel. Lagged (pre-solve) H2 density, like every channel above.
+	if (thereis_mol .and. F_LW_star .gt. 0.0d0)                       &
+	     heat = heat + k_lw_diss*nmol_eq(:,1)*e_lw_fragment_erg
 
    !----------------------------------!
 
@@ -467,6 +503,7 @@
 					ieq_cell%a_ion_HeITR = 0.0d0
 				endif
 				ieq_cell%P_H2 = P_H2(j)
+				ieq_cell%k_LW = k_lw_diss(j)   ! 0 without a LW band flux
 				ieq_cell%T_K  = T_K(j)
 				ieq_cell%ntot = n_in_dim(j)      ! M for the 3-body rates
 				! Compute the molecular rate coefficients that are invariant

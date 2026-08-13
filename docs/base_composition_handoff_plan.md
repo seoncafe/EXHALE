@@ -219,14 +219,46 @@ in between.
 
 The direction Route 2 should take instead: the reason EXHALE's network wants a
 more molecular base than the photochemistry gives is that the network is
-missing the physics that dissociates H2 — Lyman-Werner photodissociation is on
-the Tier-2 open list (`lower_atmosphere_coupling.md`, "2 (remaining)"). Adding
-that is a fix to the network; pinning `q_H2` at the base is a patch over its
-absence. Prefer the fix.
+missing the physics that dissociates H2 — Lyman-Werner photodissociation was
+then on the Tier-2 open list. Adding that is a fix to the network; pinning
+`q_H2` at the base is a patch over its absence. Prefer the fix. (It was added
+on 2026-08-13, and the next subsection records what it did.)
 
 Nothing here should be built until that choice is made. Note also the indexing
 warning in `composition.f90:117-121`: `bsp_mass` is indexed by bsp position and
 the shortcut used for the six atomic species does **not** extend to `isp_H2`.
+
+### Route 2 executed, 2026-08-13: the missing term is now in, and it is not the answer
+
+Lyman-Werner photodissociation was implemented in the coupled network — new key
+`Stellar LW flux [erg/cm2/s]:` (default 0), module
+`src/modules/lower_atmosphere/lyman_werner.f90`, Draine & Bertoldi (1996)
+calibration and eq. (37) self-shielding of the star-ward H2 column, 0.4 eV of
+heating per dissociation (Black & Dalgarno 1977). Full description, derivation
+and validation: `lower_atmosphere_coupling.md`, section "H2 photodissociation in
+the Lyman-Werner bands".
+
+Result on the hot-Uranus gate (metals off, both A and B Newton-converged,
+`info = 0`, band flux 343 erg cm^-2 s^-1 for the HD 209458 orbit): **the base
+composition does not move.** q_H2 at the base goes from 0.8618 to 0.8612 against
+the 0.75 the case's `base.inp` carries — 0.5% of the gap. Lyman-Werner does
+become the largest single H2 loss at the base (5.9e-11 s^-1 against 2.5e-11 for
+H+ + H2), but the base partition is a formation-destruction balance in which
+n_H/n_H2 scales as the square root of the destruction rate, so reaching
+q_H2 = 0.75 would need a destruction rate 4100x larger. The unshielded band
+supplies 6.0e-5 s^-1, more than enough; the base column N_H2 = 4.3e21 cm^-2
+suppresses it by 1e6. The band physically cannot reach 1 microbar.
+
+The conclusion recorded above — that the network is missing the physics that
+dissociates H2 — was right in kind and wrong in identity. The photochemical
+codes' extra atomic H at 1 microbar comes from catalytic cycles on O, OH and
+H2O (`lower_atmosphere_coupling.md` section 1), and EXHALE's H2/H2+/H3+/HeH+
+network has nowhere to put those species. **Route 1 therefore stays the only way
+EXHALE can carry the photochemical base partition**, and it should be described
+as a deliberate modeling choice rather than as a patch over a missing term.
+What Lyman-Werner does change is the top of the molecular layer, where the
+column has thinned: the H2 fraction at r = 1.10 falls by 168x, the H2->H front
+moves in by 0.0018 R_p and Mdot rises by 0.005 dex.
 
 ## 6. Route 3: what stays out
 

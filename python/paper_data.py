@@ -55,7 +55,7 @@ MOLECULES = ('H2', 'H2p', 'H3p', 'HeHp')
 # 2^3S metastable terms) and coex_HeII the helium lines.  These are only the
 # fallback names; the loader reads the actual names from the file header.
 COOL_FIXED = ('r', 'T', 'ne', 'cool_total', 'reco', 'coio',
-              'coex_HI', 'coex_HeI', 'coex_HeII', 'brem')
+              'coex_HI', 'coex_HeI', 'coex_HeII', 'brem', 'H3p_IR')
 
 # Fixed channels of Heating_breakdown.txt (all named; no trailing metal
 # columns).  Fallback only -- the loader reads the header when present.
@@ -211,7 +211,7 @@ def metal_ion_names(ion_dict):
 def load_cooling_breakdown(run_dir):
     """Return {channel: array} for Cooling_breakdown.txt.
 
-    The 8 fixed channels are parsed from the 'colN <name>' header; the trailing
+    The fixed channels are parsed from the 'colN <name>' header; the trailing
     columns are one per metal ion, whose names are taken (in order) from the
     Ion_species header so the mapping stays correct if the metal set changes.
     Extra unnamed trailing columns are kept as 'extra_k' rather than dropped, so

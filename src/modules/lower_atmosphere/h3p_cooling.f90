@@ -30,9 +30,16 @@
 
       implicit none
       private
-      public :: h3p_emission_lte, h3p_nonlte_factor, h3p_cooling_rate
+      public :: h3p_emission_lte, h3p_nonlte_factor, h3p_cooling_rate,   &
+                h3p_net_cooling_rate
 
       real*8, parameter :: fourpi = 12.566370614359172d0
+
+      ! Band center of the nu2 fundamental, 2521.3 cm^-1, in temperature
+      ! units (hc/k = 1.4387769 cm K).  Miller et al. (2013) emit most of
+      ! their power in this band and its hot bands near 3-4 um; it is the
+      ! single effective transition energy the net-exchange form below uses.
+      real*8, parameter :: Ek_nu2 = 3627.5d0   ! [K]
 
       ! --- Table 5 coefficients: log_e E = sum C_n T^n  [W/molecule/sr] ---
       ! 30-300 K (n = 0..9)
@@ -152,6 +159,58 @@
       real*8, intent(in) :: T, nH3p, nH2
       lam = nH3p*fourpi*h3p_emission_lte(T)*h3p_nonlte_factor(T,nH2)*1.0d7
       end function h3p_cooling_rate
+
+      ! ------------------------------------------------------------------ !
+
+      ! NET H3+ infrared cooling [erg s^-1 cm^-3]: the emission above minus
+      ! the absorption of the thermal infrared radiation of the lower
+      ! atmosphere, a blackbody at T_rad filling a fraction W_dil of the
+      ! solid angle (W_dil = 0 recovers h3p_cooling_rate exactly).
+      !
+      ! CLOSURE.  Miller et al. (2013) give the TOTAL emission of the
+      ! molecule, not a line list, so the matching absorption integral
+      ! int kappa_nu B_nu(T_rad) dnu cannot be formed transition by
+      ! transition.  Collapsing the emission onto ONE effective transition
+      ! of energy Ek_nu2 and Boltzmann level populations at T gives
+      !   Lambda_abs = Lambda_emit * exp(Ek_nu2/T) * nbar,
+      !   nbar       = W_dil/(exp(Ek_nu2/T_rad) - 1),
+      ! because the lower level of that transition is more populated than
+      ! the upper one by exp(Ek_nu2/T) at the same statistical weight ratio
+      ! that appears in the emission.  The bracket vanishes at
+      !   T_eq = Ek_nu2/(Ek_nu2/T_rad + ln(1/W_dil)),
+      ! the radiative equilibrium temperature of the band (about 1.0e3 K
+      ! for T_rad = 1.2e3 K and W_dil = 1/2): below it the band heats.
+      !
+      ! VALIDITY.  (i) One effective band: the true emission is spread over
+      ! the nu2 fundamental, its hot bands and overtones, so the exchange
+      ! is right where the 3-4 um band dominates -- i.e. below about 2e3 K
+      ! -- and increasingly crude above it, where H3+ is thermally
+      ! destroyed anyway.  (ii) The lower atmosphere is taken to be black
+      ! at 3-4 um, which an H2 atmosphere at the microbar base and below is
+      ! (H2 collision-induced absorption plus the H2O/CH4/CO bands), but
+      ! the incident field is NOT attenuated by the intervening H3+ column,
+      ! so where those lines are self-shielding this overestimates the
+      ! absorption -- the same trapping would also reduce the emission
+      ! term, which is not modeled either.  (iii) The non-LTE departure
+      ! factor multiplies the emission only; the absorbing levels are the
+      ! thermally populated ground states, so this is consistent, but it
+      ! means the net rate is more heating-dominated at low n_H2 than the
+      ! LTE form would suggest.
+      double precision function h3p_net_cooling_rate                      &
+                                 (T, nH3p, nH2, T_rad, W_dil) result(lam)
+      real*8, intent(in) :: T, nH3p, nH2, T_rad, W_dil
+      real*8 :: nbar, xg, xr
+      lam = h3p_cooling_rate(T, nH3p, nH2)
+      if (.not. (W_dil .gt. 0.0d0)) return
+      xr = Ek_nu2/max(T_rad, 1.0d0)
+      xg = Ek_nu2/max(T, 1.0d0)
+      if (xr .gt. 7.0d2) return                    ! exp() would overflow
+      nbar = W_dil/(exp(xr) - 1.0d0)
+      ! Cap the Boltzmann factor of the absorbing level: at very low trial
+      ! temperatures exp(Ek/T) overflows, and the heating it would imply is
+      ! bounded by the field itself, not by this ratio.
+      lam = lam*(1.0d0 - nbar*exp(min(xg, 7.0d2)))
+      end function h3p_net_cooling_rate
 
       ! End of module
       end module h3p_cooling

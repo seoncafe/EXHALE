@@ -28,6 +28,10 @@
 	! of this cell's trial temperature alone. 1 = optically thin, the value
 	! used when metals are off.
 	real*8  :: pp_beta_fs(n_fsline) = 1.0d0
+	! Photon occupation number of the lower-atmosphere infrared field at each
+	! of those lines, set from the same profile. 0 = no incident field, the
+	! value used when metals are off or "Base IR field" is off.
+	real*8  :: pp_nbar_fs(n_fsline) = 0.0d0
 
 	contains
 	
@@ -153,25 +157,33 @@
             cool_M = cool_M + pp_nm_cell(im)                          &
                               *cool_CI_ne_func(TT, ne, nhi,           &
                                  pp_beta_fs(ifs_CI609),               &
-                                 pp_beta_fs(ifs_CI370))
+                                 pp_beta_fs(ifs_CI370),               &
+                                 pp_nbar_fs(ifs_CI609),               &
+                                 pp_nbar_fs(ifs_CI370))
          else if (cno_chianti .and. im .eq. im_CII) then
             ! saturated [C II] 158um ground term (matches eval_cool)
             cool_M = cool_M + pp_nm_cell(im)                          &
                               *cool_CII_ne_func(TT, ne, nhi,          &
-                                 pp_beta_fs(ifs_CII158))
+                                 pp_beta_fs(ifs_CII158),              &
+                                 pp_nbar_fs(ifs_CII158))
          else if (cno_chianti .and. im .eq. im_NII) then
             ! saturated [N II] 205/122um ground term (matches eval_cool)
             cool_M = cool_M + pp_nm_cell(im)                          &
                               *cool_NII_ne_func(TT, ne, nhi,          &
                                  pp_beta_fs(ifs_NII205),              &
-                                 pp_beta_fs(ifs_NII122))
+                                 pp_beta_fs(ifs_NII122),              &
+                                 pp_nbar_fs(ifs_NII205),              &
+                                 pp_nbar_fs(ifs_NII122))
          else if (cno_chianti .and. im .eq. im_OI) then
             ! saturated [O I] 63/145/44um ground term (matches eval_cool)
             cool_M = cool_M + pp_nm_cell(im)                          &
                               *cool_OI_ne_func(TT, ne, nhi,           &
                                  pp_beta_fs(ifs_OI63),                &
                                  pp_beta_fs(ifs_OI145),               &
-                                 pp_beta_fs(ifs_OI44))
+                                 pp_beta_fs(ifs_OI44),                &
+                                 pp_nbar_fs(ifs_OI63),                &
+                                 pp_nbar_fs(ifs_OI145),               &
+                                 pp_nbar_fs(ifs_OI44))
          else
             cool_M = cool_M + pp_nm_cell(im)                          &
                               *cool_coeff_by_ion_scalar(im, TT)
