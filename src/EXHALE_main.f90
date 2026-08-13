@@ -29,6 +29,8 @@
       use post_processing
       use ionization_equilibrium
       use newton_solver, only: nt_calls, nt_fallback   ! Task 2 usage counters
+      use low_mach_dissipation, only: low_mach_damping_active,          &
+                                      contact_mode_dissipation_magnitude
       
       implicit none
       
@@ -120,6 +122,12 @@
       real*8, dimension(1-Ng:N+Ng) :: heh_prev, heh_new
       real*8  :: heh_drift
       integer :: it_diff, kd
+
+      ! Admissibility record of the low-Mach contact-mode dissipation: how big
+      ! the artificial stress got against the physical momentum flux it was
+      ! added to, and how far out its Mach gate stayed open. Only written when
+      ! "Low-Mach damping" is on.
+      real*8  :: lowmach_ratio, lowmach_r_peak, lowmach_r_gate
 
       ! Maximum eigenvalue      
       real*8 :: alpha
@@ -1075,6 +1083,33 @@
             ieq_n_unphys, ' root(s) outside the physical simplex, ',           &
             ieq_n_reseed, ' stored state(s) rejected, ', ieq_n_noroot,         &
             ' cell(s) left on the ionization balance'
+      endif
+
+      ! Molecular cells whose equilibrium roots all left the physical simplex,
+      ! so the closest one was clamped onto the element budget. Silent for a
+      ! run whose molecular solve stays inside the simplex, and for an
+      ! atomic run.
+      if (ieq_n_mol_clamped .gt. 0) then
+         write(*,'(A,I0,A)')                                                  &
+            '     ioniz-eq molecular: ', ieq_n_mol_clamped,                   &
+            ' cell(s) clamped onto the element budget'
+      endif
+
+      ! The artificial stress is a numerical dissipation, so it is admissible
+      ! only where it is negligible against the physical fluxes. Record on the
+      ! final state how big it actually was and where its gate was still open.
+      if (low_mach_damping_active()) then
+         call contact_mode_dissipation_magnitude(u, lowmach_ratio,           &
+                                     lowmach_r_peak, lowmach_r_gate)
+         if (lowmach_r_gate .gt. 0.0d0) then
+            write(*,'(A,ES9.2,A,F7.4,A,F7.4,A)')                             &
+               '     low-Mach damping: peak |D_p|/|rho v^2+p| =',            &
+               lowmach_ratio, ' at r =', lowmach_r_peak,                     &
+               ' R_p; Mach gate open out to r =', lowmach_r_gate, ' R_p'
+         else
+            write(*,'(A)') '     low-Mach damping: Mach gate closed'//       &
+               ' everywhere on the final state (term identically zero)'
+         endif
       endif
 
       !---------------------------------------------------!

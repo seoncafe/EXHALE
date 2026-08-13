@@ -120,6 +120,7 @@ SRC := \
   src/modules/flux/speed_estimate_HLLC.f90 \
   src/modules/flux/speed_estimate_ROE.f90 \
   src/modules/flux/Num_Fluxes.f90 \
+  src/modules/flux/low_mach_dissipation.f90 \
   src/modules/time_step/RK_rhs.f90 \
   src/modules/time_step/eval_dt.f90 \
   src/modules/time_step/energy_semi_implicit.f90 \

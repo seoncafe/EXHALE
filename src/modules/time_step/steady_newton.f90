@@ -723,6 +723,22 @@
       call eval_residual(Y, f_sp, F, heat0, cool0)
       call resid_relnorm(F, u, rc, rnorm)
       call cell_state_scales(Y, D)
+      ! Line-search merit: the scaled 2-norm over the WHOLE domain 1..N, which
+      ! is NOT the region the convergence measure rnorm looks at ([j_min:N]).
+      ! The mismatch is deliberate and has been measured twice. Aligning the
+      ! merit's region with rnorm's -- a volume-weighted RMS of F/D over
+      ! [j_min:N] -- was tried on 2026-08-11 and again on 2026-08-13, and both
+      ! times it broke solves that converge with the whole-domain norm:
+      ! photo_deep_secion_cont goes info = 0 at ||R|| = 7.28e-4 in 4 outer
+      ! iterations against info = 2 at 3.25e-3 in 15, and examples/15
+      ! (HD 209458 b, molecular) goes info = 0 at 9.54e-6 in 272 against
+      ! info = 2 at 1.17e-4 in 30. The Newton step is computed from the full
+      ! residual over ALL rows, so a merit that ignores most of those rows
+      ! rejects the steps that step actually takes. What the region mismatch
+      ! does cost is that the iterate with the smallest ||R|| need not be the
+      ! last one -- handled at the end of this routine, not by changing the merit
+      ! (docs/newton_scaling_and_base_wall.md section 4,
+      ! docs/hd209_metal_stagnation.md).
       f2 = sqrt(sum((F/D)**2))     ! merit in the SCALED space
       f2hist = f2                  ! non-monotone line-search memory
       rnorm_best = rnorm;  Ybest = Y;  f_sp_best = f_sp;  n_no_descent = 0
@@ -876,11 +892,22 @@
       enddo
 
       weno_mode = 0                 ! restore default reconstruction
-      if (info .ne. 0 .and. rnorm_best .lt. rnorm) then
+
+      ! Return the best iterate SEEN, not the last one visited, and judge
+      ! convergence on it. The line search minimizes a merit; the solve is
+      ! accepted on ||R||. These are different functionals, so the iterate with
+      ! the smallest ||R|| is not in general the last one, and a run that
+      ! reached ||R|| < resid_tol at some iterate and then wandered off has
+      ! nonetheless produced a state that satisfies the code's own convergence
+      ! criterion -- reporting it as a failure throws that state away and sends
+      ! the caller back to time-marching (measured on examples/16: a 3.958e-5
+      ! iterate discarded at iteration 2, docs/hd209_metal_stagnation.md).
+      if (rnorm_best .lt. rnorm) then
          Y = Ybest;  f_sp = f_sp_best;  rnorm = rnorm_best
          write(*,'(A,ES11.3)') ' (JFNK) returning best iterate, '//      &
               '||R||=', rnorm
       endif
+      if (rnorm .lt. resid_tol) info = 0
       call unpack_U(Y, u);  call Apply_BC(u)
       write(*,'(A,I0,A,ES11.3,A,I0)') ' (JFNK) done info=',info,        &
            ' ||R||=',rnorm,'  window-only accepts=',n_window_used

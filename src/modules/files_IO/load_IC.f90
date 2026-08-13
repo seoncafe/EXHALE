@@ -10,18 +10,29 @@
       !    including the metal ions -- are restored. Restarts therefore
       !    preserve the metal ionization state.
       !  * legacy headerless files: the original fixed 7-column read
-      !    (r + H/He/HeITR); metals fall back to neutral-from-abundance
-      !    (the historical behavior).
+      !    (r + H/He/HeITR); metals are initialized from the abundance.
+      !
+      ! An element whose stages are not carried by the file -- either no
+      ! column at all, or columns that are identically zero because the run
+      ! that wrote them had metals off -- is initialized from the abundance
+      ! exactly as a cold start does, and the substitution is reported.
 
       use global_parameters
       use species_table, only: isp_HI, isp_HII, isp_HeI, isp_HeII,    &
                                isp_H2, isp_H2p, isp_H3p, isp_HeHp,     &
                                isp_HeIII, isp_HeTR,                    &
                                n_mion, n_melem, mion_fsp, mion_name,   &
-                               mion_elem, melem_i0, melem_top
+                               mion_elem, melem_i0, melem_top,         &
+                               melem_name
       use utils, only: calc_rho
 
       implicit none
+
+      ! Elements whose density had to be built from the abundance because the
+      ! restart file did not carry it (see the metals block below). Allocated
+      ! by load_IC, so a run that starts cold leaves it unallocated; the setup
+      ! report tests for that.
+      logical, allocatable :: melem_from_abundance(:)
 
       contains
 
@@ -36,6 +47,8 @@
       real*8, dimension(1-Ng:N+Ng,n_mion) :: nm_l
       real*8, dimension(1-Ng:N+Ng,4)      :: nmol_l
       real*8, dimension(1-Ng:N+Ng)        :: rho_dim
+      ! Hydrogen nuclei density of the loaded state (free + bound in molecules)
+      real*8, dimension(1-Ng:N+Ng)        :: nH_l
       logical :: col_present(n_species), elem_ok
       ! Auxiliary temporary variable
       real*8 :: tmp
@@ -125,6 +138,58 @@
       ! files -- are defined.
       f_sp = 0.0d0
 
+      ! ---- metals the file does not carry: build them from the abundance ----
+      ! Two ways a restart file can fail to carry an element: it has no column
+      ! for some ionization stage (legacy headerless files, or a file written
+      ! by a run with fewer elements), or it has the columns but they are
+      ! identically zero because the run that wrote them had metals OFF. The
+      ! schema-2 writer emits the metal columns unconditionally, so the column
+      ! test alone accepts a metals-off file and the restart then runs with
+      ! zero metal density everywhere -- while the base boundary condition
+      ! still counts metals in the mass and particle budget (eos_metals),
+      ! which leaves an O(1) residual in the first cells.
+      !
+      ! Such an element is initialized exactly as a cold start does (set_IC):
+      ! n_X = melem_ab(e) * n_H with all of it in the neutral stage. It is put
+      ! into the loaded density array BEFORE the mass density is reconstructed,
+      ! so calc_rho sees it and the restart keeps the mass closure
+      ! sum_i f_i A_i = 1 that the cold start has by construction.
+      nH_l = nsp_l(:,isp_HI)  + nsp_l(:,isp_HII)                         &
+           + 2.0d0*(nsp_l(:,isp_H2) + nsp_l(:,isp_H2p))                  &
+           + 3.0d0*nsp_l(:,isp_H3p) + nsp_l(:,isp_HeHp)
+      if (.not. allocated(melem_from_abundance))                         &
+         allocate(melem_from_abundance(n_melem))
+      melem_from_abundance = .false.
+      do e = 1, n_melem
+         i0 = melem_i0(e)
+         elem_ok = .true.
+         do k = 0, melem_top(e)
+            if (.not. col_present(mion_fsp(i0+k))) elem_ok = .false.
+         enddo
+         if (elem_ok) then
+            tmp = 0.0d0
+            do k = 0, melem_top(e)
+               tmp = tmp + sum(abs(nsp_l(1:N,mion_fsp(i0+k))))
+            enddo
+            if (tmp .le. 0.0d0) elem_ok = .false.
+         endif
+         if (elem_ok) cycle
+         do k = 0, melem_top(e)
+            c = mion_fsp(i0+k)
+            if (k .eq. 0) then
+               nsp_l(:,c) = melem_ab(e)*nH_l
+            else
+               nsp_l(:,c) = 0.0d0
+            endif
+         enddo
+         if (melem_ab(e) .gt. 0.0d0) then
+            melem_from_abundance(e) = .true.
+            write(*,'(A)') ' (load_IC) WARNING: the restart file carries no'// &
+                 ' density for element '//trim(melem_name(e))//               &
+                 '; initializing it as neutral at the input abundance.'
+         endif
+      enddo
+
       ! Reconstruct the mass density (adimensional) from the LOADED densities
       ! with the SAME mass policy as the run (calc_rho): the He 2^3S mass, the
       ! trace-metal mass under the eos_metals policy, and the molecular mass are
@@ -132,8 +197,9 @@
       ! therefore preserves the conserved mass exactly. The old H/He-only
       ! formula (rho = (nHI+nHII+4*(nHeI+nHeII+nHeIII))/n0) is gone deliberately:
       ! it dropped the HeITR/metal/molecular mass and left a mass discontinuity
-      ! on reload. Columns absent from the file are zero in nsp_l, so they add
-      ! nothing (calc_rho honors thereis_He/thereis_HeITR/eos_include_metals).
+      ! on reload. Columns absent from the file are zero in nsp_l -- except the
+      ! metals the block above rebuilt from the abundance -- so they add nothing
+      ! (calc_rho honors thereis_He/thereis_HeITR/eos_include_metals).
       do im = 1, n_mion
          nm_l(:,im) = nsp_l(:,mion_fsp(im))
       enddo
@@ -158,31 +224,17 @@
       f_sp(:,isp_H3p)   = nsp_l(:,isp_H3p)/(rho*n0)
       f_sp(:,isp_HeHp)  = nsp_l(:,isp_HeHp)/(rho*n0)
 
-      ! Metals, element by element: if every ion stage of the element was
-      ! present in the IC file, restore the loaded state; otherwise fall
-      ! back to the historical neutral-from-abundance initialization
-      ! (f_X = X_X/mass_per_H, so n_X = X_X*n_H; higher stages zero).
+      ! Metal fractions. One rule for every element: the density array holds
+      ! either the loaded state or the abundance-built one from the block
+      ! above, and the fraction is n/(rho*n0) in both cases. For an element
+      ! built from the abundance this is f_X = melem_ab/mass_per_H whenever the
+      ! loaded H/He respects the input He/H ratio, i.e. the cold-start value.
       do e = 1, n_melem
          i0 = melem_i0(e)
-         elem_ok = .true.
          do k = 0, melem_top(e)
-            if (.not. col_present(mion_fsp(i0+k))) elem_ok = .false.
+            c = mion_fsp(i0+k)
+            f_sp(:,c) = nsp_l(:,c)/(rho*n0)
          enddo
-         if (elem_ok) then
-            do k = 0, melem_top(e)
-               c = mion_fsp(i0+k)
-               f_sp(:,c) = nsp_l(:,c)/(rho*n0)
-            enddo
-         else
-            do k = 0, melem_top(e)
-               c = mion_fsp(i0+k)
-               if (k .eq. 0) then
-                  f_sp(:,c) = melem_ab(e)/mass_per_H
-               else
-                  f_sp(:,c) = 0.0
-               endif
-            enddo
-         endif
       enddo
 
       ! Construct matrix of primitive profiles

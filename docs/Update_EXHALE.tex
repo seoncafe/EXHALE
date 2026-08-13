@@ -5510,6 +5510,509 @@ the workspace \texttt{CLAUDE.md}, \texttt{README\_HOWTO.md}.
 \par}
 
 % ===================================================================== %
+\section{JFNK convergence is judged on the iterate the solver returns;
+\texttt{load\_IC} no longer accepts an all-zero metal column (2026-08-13)}
+% ===================================================================== %
+{\sloppy
+Two things came out of trying to converge HD\,209458\,b with molecular
+chemistry AND solar C/N/O (\texttt{examples/16\_molecular\_metals}), which fails
+with the prescription that works for its metals-off twin
+\texttt{examples/15\_molecular}.\par}
+The diagnosis is in
+\texttt{docs/hd209\_metal\_stagnation.md}; what follows is what changed in the
+code, and one thing that was measured and deliberately \emph{not} changed.
+
+\paragraph{The measurement.} \texttt{solve\_steady\_jfnk} accepts a step on the
+whole-domain scaled merit $\|F/D\|_2$ over cells $1\ldots N$ and decides
+\texttt{info} on $\|R\|$, the volume-weighted relative residual over the escape
+region $[j_{\rm min}\!:\!N]$ alone. On this configuration the two move in
+opposite directions. Warm-restarted from its own stalled state, the solve
+reached $\|R\| = 3.958\times10^{-5}$ at outer iteration 2 and then, over 115
+further iterations, cut the merit from $5.67\times10^{-1}$ to
+$1.58\times10^{-2}$ --- a factor 36 --- while $\|R\|$ rose to
+$9.5\times10^{-5}$. The reason is a shell just above the base that stops
+flowing once the metal cooling is on: at $r = 1.02\,R_p$ cooling exceeds
+heating by a factor 9.7 with C/N/O against heating exceeding cooling by a factor
+33 without them, the mean speed over $r = 1.015$--$1.030$ falls from 207 to
+6--24 cm\,s$^{-1}$, and an undamped $2\,\mathrm{d}r$ contact mode grows there
+whose amplitude reaches several times the mean velocity. That shell dominates
+the whole-domain merit and is invisible to $\|R\|$.
+
+\paragraph{Aligning the merit's region was tried and rejected, for the second
+time.} Replacing $\|F/D\|_2$ over $1\ldots N$ by the volume-weighted RMS of
+$F/D$ over $[j_{\rm min}\!:\!N]$ breaks solves that converge today:
+\texttt{examples/15} goes from \texttt{info = 0} at
+$\|R\| = 9.542\times10^{-6}$ in 272 outer iterations to \texttt{info = 2} with a
+best of $1.171\times10^{-4}$ in 30, and the HD\,209458\,b \texttt{base.inp}
+continuation \texttt{photo\_deep\_secion\_cont} from \texttt{info = 0} at
+$7.284\times10^{-4}$ in 4 iterations to \texttt{info = 2} at
+$3.249\times10^{-3}$ in 15. This reproduces on two more cases the measurement
+that rejected the same change on 2026-08-11
+(\texttt{docs/newton\_scaling\_and\_base\_wall.md} \S4), and for the reason
+given there: the Newton step is computed from the full residual over all rows,
+so a merit that ignores most of those rows rejects the steps that step takes.
+The merit stays whole-domain, and the code now says so at the site with the
+numbers.
+
+\paragraph{What did change: \texttt{info} is decided on the iterate that is
+returned.} The solver already tracked the best iterate by $\|R\|$, already
+returned it when the solve failed, and already tested
+$\|R\| < \texttt{resid\_tol}$ at the top of every outer iteration --- so an
+iterate that satisfies the tolerance is normally caught the moment it is
+produced. Two gaps remained. The restore of the best iterate was gated on
+\texttt{info} $\neq 0$, and the tolerance was never tested after the loop, so a
+solve whose last allowed iteration met the tolerance fell out with
+\texttt{info = 1}. Both close with one line,
+\texttt{if (rnorm < resid\_tol) info = 0} after the loop, with the best-iterate
+restore made unconditional. It matters because \texttt{EXHALE\_main} treats
+\texttt{info} $\neq 0$ as a failure, disables the Newton finish for the rest of
+the run, and falls back to a \texttt{du}-stopped march --- discarding a state
+that satisfied the convergence criterion.
+
+\emph{Scope, measured, not inferred}: this changes no trajectory, and it is not
+what unlocks \texttt{examples/16}. The stalled \texttt{examples/16} warm restart
+was re-run at \texttt{Resid tol: 5.0e-5} with the binary before and the binary
+after: both hand off at marching step 9363, both take 2 outer iterations, both
+print the same two iterate lines to every digit, and both end \texttt{info = 0}
+at $\|R\| = 3.958\times10^{-5}$. The \texttt{examples/16} failures at
+\texttt{Resid tol: 1.0e-5} are therefore not a bookkeeping artifact either ---
+that configuration genuinely does not reach $10^{-5}$, for the reasons in the
+memo. What the fix removes is the remaining way for a returned state that
+satisfies the tolerance to be labelled a failure.
+
+\paragraph{\texttt{load\_IC} no longer accepts a metal column that is present
+but zero.} It decided whether the restart file carried an element from the
+presence of its columns alone. The schema-2 writer emits the metal columns
+unconditionally, so a metals-OFF output carries them with the value zero; a
+metals-ON restart from such a file therefore ran with \textbf{zero metal density
+everywhere} while the base boundary condition still counted metals in the mass
+and particle budget under \texttt{eos\_metals}. It was silent, and it produced
+confident nonsense: restarting the converged \texttt{examples/15} (metals off)
+solution as a metals-on run reported $\|R\| = 9.54\times10^{-6}$ --- it was
+reproducing the metals-off solution under a metals-on label. An element is now
+taken from the file only if every stage has a column AND the loaded stages are
+not identically zero everywhere; otherwise it is built from the abundance
+exactly as \texttt{set\_IC} does, $n_X = \texttt{melem\_ab}\cdot n_{\rm H}$ all
+in the neutral stage, and the substitution is reported on stdout and in
+\texttt{EXHALE\_setup.out}. The rebuilt density is inserted before
+\texttt{calc\_rho}, so the restart keeps the mass closure $\sum_i f_i A_i = 1$
+that a cold start has by construction; for the same reason the legacy
+headerless-file path now carries its metal mass in $\rho$ as well.
+\emph{Measured} on that restart: the three elements are reported, the base
+density at $j = 1$ goes from $2.0618\times10^{14}$ to $2.0804\times10^{14}$
+$m_{\rm H}$\,cm$^{-3}$ (0.9\,\%, the metal mass), and the reported $\|R\|$ goes
+from the false $9.54\times10^{-6}$ to $7.36\times10^{-2}$ --- the honest
+distance of a metals-off wind from the metals-on steady state. A metals-off
+restart, and a restart whose file does carry metal densities, both give a
+byte-identical residual profile to before.
+
+\paragraph{Gates.} \texttt{make check} is 5/5 byte-identical (no regression case
+reaches the JFNK hand-off and none uses \texttt{Load IC}, so neither change can
+touch them). \texttt{examples/15} re-run from cold with the changed binary
+reproduces its reference output \textbf{byte-identically} --- \texttt{info = 0},
+$\|R\| = 9.542\times10^{-6}$, 272 outer iterations, 25837 marching steps,
+$\log_{10}\dot M = 10.23$, H$_2 = $ H\,\textsc{i} front at $1.0084\,R_p$. The
+hot-Uranus molecular $+$ solar-metals configuration
+(\texttt{backup/regression/mol\_metals} run to the Newton finish instead of its
+12000-step regression snapshot) converges: \texttt{info = 0},
+$\|R\| = 3.342\times10^{-6}$ in 23 outer iterations, 34537 marching steps,
+$\log_{10}\dot M = 10.30$. \texttt{photo\_deep\_secion\_cont} converges:
+\texttt{info = 0}, $\|R\| = 7.284\times10^{-4}$ in 4 iterations,
+$\log_{10}\dot M = 9.69$.
+
+And \texttt{examples/16} itself now has a Newton-grade solution on the warm
+path. Restarted from the converged \texttt{examples/15} state --- exactly the
+restart the \texttt{load\_IC} fix repairs --- with \texttt{Resid tol: 5.0e-5} it
+converges: \texttt{info = 0}, $\|R\| = 3.337\times10^{-5}$ in 30 outer
+iterations, $\log_{10}\dot M = 9.65$. At $10^{-5}$ it does not, and the cold path
+converges at neither tolerance --- 112920 marching steps to the hand-off against
+25837 for the metals-off twin, then 281 outer iterations to a best $\|R\|$ of
+$3.623\times10^{-4}$ with the worst scaled residual at $r = 1.021$, inside the
+stagnant shell. Both remain open, in
+\texttt{docs/hd209\_metal\_stagnation.md}.
+
+{\sloppy
+Files: \texttt{src/modules/time\_step/steady\_newton.f90},
+\texttt{src/modules/files\_IO/load\_IC.f90},
+\texttt{src/modules/files\_IO/write\_setup\_report.f90}. Documentation:
+\texttt{docs/hd209\_metal\_stagnation.md} (new), \texttt{TO\_BE\_DONE.md}
+item~(A).
+\par}
+
+% ===================================================================== %
+\section{The molecular equilibrium no longer inherits a cell's previous
+composition (2026-08-13)}
+% ===================================================================== %
+{\sloppy
+\texttt{ioniz\_eq} solves the ionization equilibrium --- and, under
+\texttt{Molecular chemistry: True}, the dissociation equilibrium with it ---
+cell by cell, and the composition it returns is what the cooling, the
+photoionization columns and the steady residual are all built on. When the
+coupled molecular network produced no root inside the physical simplex in a
+cell, it used to hand that cell its own \emph{incoming} fractions back and warn
+(\texttt{molecular equilibrium failed at N cells (kept previous state)}).\par}
+
+That is wrong on its own terms. The composition returned is then not the
+equilibrium of the cell at the state being evaluated; it is whatever the
+previous evaluation happened to leave there, and the error is not small. In the
+JFNK finish it also means that the residual changes definition between outer
+iterations: \texttt{f\_sp} is overwritten by each accepted trial, so the map the
+next iteration differentiates and line-searches differs from the previous one,
+by a finite amount, at exactly those cells
+(\texttt{docs/hd209\_metal\_stagnation.md} section~3, where the same section
+corrects an earlier claim --- within one outer iteration the Jacobian probes and
+the line-search trials do all start from the same composition).
+
+\paragraph{What the cells were failing on.} Measured with a counting build on
+the HD\,209458\,b molecular $+$ solar C/N/O warm restart (40 marching steps,
+single-threaded): 224 cell solves ended below the solver tolerance, 223 of them
+keeping a physical but unconverged root and 1 inheriting its previous
+composition. The rejected roots were not on another branch. At step~1, cell
+$j = 117$ ($r = 1.0294$, $T = 1652$~K), the first attempt converged
+(\texttt{info} $= 1$) to a root violating the simplex only by
+$x(\mathrm{He\,II}) = -3.8\times10^{-6}$ and
+$x(\mathrm{H_2}) = -4.5\times10^{-4}$, and the molecular-basin retry returned a
+strongly molecular root, $x(\mathrm{H_2}) = 0.998$, violating it only by
+$x(\mathrm{He\,II}) = -1.2\times10^{-8}$ --- round-off around a fully neutral
+helium. What fails is a root resolved onto a \emph{face} of the simplex, not an
+unphysical branch.
+
+\paragraph{Two changes, both in \texttt{ionization\_equilibrium.f90}.}
+\begin{enumerate}
+\item \emph{The molecular-basin retry seed is now a state.} It used to combine
+the chemical-equilibrium H$_2$ fraction at the local $(p, T)$ with the
+\textbf{previous state's} H\,II, He\,II, He\,III and $2^3$S fractions --- a pair
+that can put more H nuclei into H$_2$ and H\,II together than the cell has, i.e.
+a starting point that is not a composition at all. The new seed,
+\texttt{dissociation\_ionization\_balance\_at\_fixed\_ne}, is the limit of the
+network in which the couplings to the molecular ions are dropped: the H nuclei
+split between H$_2$ and atomic H by the same Koskinen et al.\ (2022) Eq.~11
+mixing ratio the molecular base boundary condition uses, the atomic remainder
+and every other element in their own ionization balance at the incoming $n_e$,
+H$_2^+$/H$_3^+$/HeH$^+$ at zero. It is inside the simplex by construction and
+depends only on the local state.
+
+\item \emph{A cell whose roots all left the simplex keeps the closest one,
+clamped.} \texttt{element\_budget\_violation} measures how far a root lies
+outside the allowed states (the largest negative stage fraction, and the largest
+amount by which one element's tracked stages exceed its nuclei); the
+least-offending root is kept and
+\texttt{clamp\_fractions\_to\_element\_budget} moves it onto the boundary ---
+negative fractions to zero, and any element still over its nuclei scaled to sum
+exactly to them. Given the measurement above this is the treatment of a root the
+solver has resolved onto a face and delivered as a small number of either sign:
+the clamped state is that root, to the accuracy the solve reached. The cell's
+previous composition is never used.
+\end{enumerate}
+
+{\sloppy
+The warning is now \texttt{every molecular equilibrium root left the physical
+simplex at N cell(s), clamped onto the element budget}, and the run-wide count
+is reported at the end of the run next to the \texttt{ioniz-eq roots} line. A
+cell that reaches the solver tolerance on a physical root takes exactly the path
+it took before, so the change is inert wherever the solve is healthy.\par}
+
+\paragraph{One thing was tried and reverted.}
+\texttt{ionization\_fractions\_physical} rejects a root for a component below
+$-10^{-10}$, and the rejected roots above sit at $-10^{-8}$, inside the solver's
+own \texttt{xtol} $= \sqrt{\epsilon_{\rm mach}}$. Widening the test to that band
+is defensible on paper and worse in practice: it lets a cell stop on a root just
+outside a face instead of retrying from another starting point, and the retried
+root is the better one. With the band widened, \texttt{examples/15} goes from
+\texttt{info} $= 0$ at $\|R\| = 6.105\times10^{-6}$ in 89 outer iterations to
+\texttt{info} $= 2$ at $1.112\times10^{-4}$ in 133. The band stays at
+$10^{-10}$ and the measurement is recorded at the site.
+
+\paragraph{Gates.} \texttt{make check} is 4/5 byte-identical. The fifth,
+\texttt{mol\_metals}, moves: one cell in the 12000-step run takes a retry it did
+not take before (\texttt{ioniz-eq roots} restarts $9 \to 10$), and the
+difference that survives to the output is at round-off --- at most
+$1.3\times10^{-11}$ relative in every \texttt{Hydro\_ioniz.txt} column and in
+every H, He and metal density, $1.1\times10^{-7}$ in H$_2$ and H$_2^+$, and
+$2.3\times10^{-4}$ in H$_3^+$ in the far wind where H$_3^+$ is
+$10^{-17}$~cm$^{-3}$ against a peak of 52. $\log_{10}\dot M$ is 10.58 before and
+after. The golden was re-snapshotted for that case only, in the order
+\texttt{check} $\to$ \texttt{golden} $\to$ \texttt{check}. No molecular
+regression case reaches the clamp (\texttt{0 cell(s)} in all three).
+
+\texttt{examples/15} (HD\,209458\,b, molecular, cold) gets \emph{better}, not
+merely different: \texttt{info} $= 0$ at $\|R\| = 6.105\times10^{-6}$ in
+\textbf{89} outer iterations against \texttt{info} $= 0$ at
+$9.542\times10^{-6}$ in 272, hand-off at marching step 25839 against 25837,
+$\log_{10}\dot M = 10.24$ against 10.23, H$_2 = $ H\,I front at
+$1.0098\,R_p$ against $1.0084$. The hot-Uranus molecular $+$ solar-metals
+configuration holds: \texttt{info} $= 0$ at $\|R\| = 5.826\times10^{-6}$ in 23
+outer iterations against $3.342\times10^{-6}$ in 23, same 34537 marching steps,
+$\log_{10}\dot M = 10.30$ unchanged. Runtime checks
+(\texttt{-O1 -fcheck=bounds,do,mem}) are clean on \texttt{mol\_metals},
+\texttt{mol\_base\_handoff} and on the warm restart that does exercise the
+clamp.
+
+{\sloppy
+\texttt{examples/16} (HD\,209458\,b, molecular AND solar C/N/O), the case the
+memo is about, does \textbf{not} improve --- it gets worse. The warm restart
+that reached \texttt{info} $= 0$ at $\|R\| = 3.337\times10^{-5}$ in 30 outer
+iterations now bottoms at $7.931\times10^{-5}$ in 67 and reports
+\texttt{info} $= 2$, identically at \texttt{Resid tol} $5\times10^{-5}$,
+$2\times10^{-5}$ and $10^{-5}$; the cold path bottoms at $1.081\times10^{-3}$
+against $5.038\times10^{-4}$ before. Each half of the change on its own
+converges that restart --- retry seed alone at $3.059\times10^{-5}$, clamp alone
+at $4.853\times10^{-5}$ --- and each half on its own fails \texttt{examples/15},
+which the two together converge in a third of the iterations it used to take.
+Both HD\,209458\,b cases are
+marginal solves and an $O(1)$ change to a handful of cells' composition moves
+them either way; what does not move is that their worst scaled residual sits in
+the stagnant shell at $r = 1.021$ throughout
+(\texttt{docs/hd209\_metal\_stagnation.md} section~6). Removing the inheritance
+is justified on its own terms, not by what it does to these two solves.\par}
+
+{\sloppy
+Files: \texttt{src/modules/radiation/ionization\_equilibrium.f90},
+\texttt{src/EXHALE\_main.f90}. Documentation:
+\texttt{docs/hd209\_metal\_stagnation.md} sections~3 and~5,
+\texttt{TO\_BE\_DONE.md} item~(A).
+\par}
+
+\section{Damping the stagnant layer: a gated fourth difference inside the
+numerical flux (\texttt{Low-Mach damping}) (2026-08-13)}
+% ===================================================================== %
+The HLLC flux resolves the middle wave of the Riemann fan exactly. The jump
+that wave carries --- the entropy jump, at constant pressure and velocity ---
+moves at the contact speed $S^\ast\simeq v$, and the dissipation the solver
+applies to it is proportional to $|S^\ast|$. It therefore vanishes as the flow
+stagnates. The acoustic families keep their damping at $|v|\pm c_s$, so a
+stationary cell-to-cell entropy pattern is a discretely undamped mode of the
+scheme, and in a near-hydrostatic layer the velocity field is tied to it by
+continuity and by the force balance, so it carries the same pattern.
+
+{\sloppy
+HD\,209458\,b with molecular chemistry and solar C/N/O is where that stops being
+academic. The metal cooling exceeds the photoionization heating by a factor
+${\sim}10$ at $r\simeq1.02\,R_p$ and stops the flow: the mean $|v|$ over
+$r = 1.015$--$1.030$ falls to 6--24\,cm\,s$^{-1}$ against
+${\sim}207$\,cm\,s$^{-1}$ in the metals-off twin ($M\sim3\times10^{-5}$ against
+a sound speed of ${\sim}4.5$\,km\,s$^{-1}$), and the alternating component of
+$v$ grows to 4.7--10 times the local mean $|v|$ where the metals-off solution
+carries 0.001. Every failed steady solve of that configuration puts its worst
+scaled residual in that shell (\texttt{docs/hd209\_metal\_stagnation.md}
+sections~1 and~6).\par}
+
+\paragraph{The term.} \texttt{Low-Mach damping: <eps4> [<M\_th>]} adds a
+fourth-difference (Jameson, Schmidt \& Turkel 1981) stress to the numerical
+\textbf{momentum} flux at each interior face,
+\begin{equation}
+D_p^{\,j+1/2} = \varepsilon_4\, g(M)\, \rho_f \lambda_f
+   \left( v_{j+2} - 3 v_{j+1} + 3 v_j - v_{j-1} \right), \qquad
+\lambda_f = \tfrac12\left[(|v|+c_s)_j + (|v|+c_s)_{j+1}\right],
+\end{equation}
+and, because a stress does work, $D_E^{\,j+1/2} = v_f D_p^{\,j+1/2}$ to the
+\textbf{total energy} flux --- the same pairing \texttt{viscous\_conduction}
+uses for the physical Navier--Stokes stress. Without it the kinetic energy the
+stress removes would come out of the internal energy instead of being converted
+into it. With it the pair conserves total energy exactly, and the
+internal-energy change is $-D_p\,\mathrm{d}v/\mathrm{d}r$, which has either sign
+cell by cell but integrates to
+$+\int \mu_4 (\mathrm{d}^2v/\mathrm{d}r^2)^2\,\mathrm{d}r \ge 0$: kinetic energy
+into heat, never the reverse. The undivided third difference is
+$\Delta r^3\,\mathrm{d}^3v/\mathrm{d}r^3 + O(\Delta r^4)$, so the stress is
+$\tau = -\mu_4\,\mathrm{d}^3v/\mathrm{d}r^3$ with
+$\mu_4 = \varepsilon_4\, g\, \rho\, c_s\, \Delta r^3$ --- the acoustic momentum
+diffusivity $\rho c_s \Delta r$ an upwind scheme already carries, reapplied at
+fourth order.
+
+\textbf{The mass flux is not touched}, and neither is the energy flux other than
+through the work term. The plain JST form, a fourth difference on the conserved
+variables themselves, is inadmissible here and was measured to be so: the
+physical mass flux $\rho v$ and energy flux $v(E+p)$ both vanish with the
+velocity while $\Delta r^3\,\mathrm{d}^3\rho/\mathrm{d}r^3$ and
+$\Delta r^3\,\mathrm{d}^3E/\mathrm{d}r^3$ do not, because $\rho$ and $E$ are
+stratified over a barely resolved scale height. Their dissipative divergences
+come out $10^4$--$10^5$ times the physical mass-flux divergence and
+${\sim}5\times10^3$ times the radiative source --- they would rewrite the base
+velocity and thermal structure rather than damp an oscillation. The momentum
+flux $\rho v^2 + p$ does not vanish at stagnation (it tends to $p$), which is
+why the momentum form stays small there.
+
+\paragraph{The gate.}
+\begin{equation}
+g = \left[\max\!\left(0,\ 1 - M_f^2/M_{\rm th}^2\right)\right]^2, \qquad
+M_f^2 = \tfrac12\left(M_j^2 + M_{j+1}^2\right)
+\end{equation}
+is 1 at $M = 0$, exactly 0 for $M_f \ge M_{\rm th}$, and $C^1$ at the threshold
+so the steady residual stays differentiable for the Newton solve. It is written
+in $M^2$ rather than $|v|/c_s$ because $|v|$ has a kink at $v = 0$ and the
+stagnant layer is exactly where $v$ changes sign.
+
+\paragraph{Discrete consistency is the point of the design.} The stress is added
+inside \texttt{RK\_rhs}, the one routine the marching loop and
+\texttt{assemble\_residual} --- hence the JFNK steady solver --- both call. The
+equation the Newton residual measures is the equation the marching loop relaxes,
+and the fixed point of one is the zero of the other. This is exactly what the
+Shapiro filter lacks: it is applied to the marching state only, so the Newton
+residual never sees it and the mode it suppresses during marching is still an
+undamped mode of the system Newton solves.
+
+Both fluxes are set to zero at the base face ($j = 0$) and the outer face
+($j = N$), so nothing is injected or removed through the boundaries; those are
+also the faces whose four-cell stencil would reach outside the ghost layer. Cell
+$j$ then depends on cells $j-2\ldots j+2$, which is exactly the stencil the
+WENO3 residual already has (\texttt{WL(:,j)} reads cells $j-1\ldots j+1$,
+\texttt{WR(:,j)} cells $j\ldots j+2$), so the banded Jacobian bandwidth
+\texttt{kl\_jac} $=$ \texttt{ku\_jac} $= 8$ is unchanged.
+
+\paragraph{Stability.} On the $2\Delta r$ mode $v_j = (-1)^j a$ the fourth
+difference is $16a$, so the mode decays at $16\varepsilon_4\lambda/\Delta r$;
+the explicit step is $\Delta t = \mathrm{CFL}\,\Delta r/\lambda$, so it is damped
+by $16\varepsilon_4\,\mathrm{CFL}$ per step and explicit stability requires
+$\varepsilon_4 < 1/(16\,\mathrm{CFL})$ --- 0.10 at the default
+$\mathrm{CFL} = 0.6$. \texttt{input\_read} warns when the bound is violated. The
+classical JST range $1/64$--$1/32$ sits inside it.
+
+\paragraph{How big the term actually gets.} A numerical dissipation is
+admissible only where it is negligible against the physical fluxes, and neither
+the fourth difference nor the gate is a bound on that by itself, so any run that
+uses the key now reports it: \texttt{contact\_mode\_dissipation\_magnitude}
+prints the peak $|D_p|/|\rho v^2+p|$ over the interior faces, where it occurs,
+and the outermost face at which the gate is still open. Measured on the
+converged profiles (recomputing the same quantities in cgs from
+\texttt{Hydro\_ioniz.txt}, independently of the Fortran, agrees to the printed
+digits):
+
+\begin{center}
+\begin{tabular}{llllll}
+\hline
+run & $\varepsilon_4$ & peak $|D_p|/|\rho v^2{+}p|$ & at & gate open to &
+  first $M>0.1$ \\
+\hline
+\texttt{examples/15} (metals off) & $2\times10^{-2}$ & $1.83\times10^{-4}$ &
+  1.0005 & 1.043 $R_p$ & 1.76 $R_p$ \\
+\texttt{examples/16} warm & $1\times10^{-2}$ & $8.36\times10^{-5}$ & 1.0005 &
+  1.108 $R_p$ & 1.99 $R_p$ \\
+\texttt{examples/16} warm & $5\times10^{-3}$ & $3.94\times10^{-5}$ & 1.0005 &
+  1.105 $R_p$ & 1.99 $R_p$ \\
+hot Uranus (mol.\ $+$ metals) & $2\times10^{-2}$ & $3.70\times10^{-5}$ & 1.0005 &
+  1.083 $R_p$ & --- \\
+\hline
+\end{tabular}
+\end{center}
+
+The peak is at the first interior face, where the base boundary condition forces
+the steepest velocity gradient in the domain, and it is 0.02\% or less of the
+physical momentum flux there; through the stagnant shell itself it is
+$10^{-7}$ or below. The first cell with $M>0.1$ is at 1.76--2.00 $R_p$, so the
+wind, the $r_{\rm esc}=2\,R_p$ window over which $||R||$ is measured and the
+$N-20$ cell at which $\dot M$ is evaluated all sit where the term is identically
+zero.
+
+\paragraph{Gates.} \texttt{make check} is \textbf{5/5 byte-identical}
+(\texttt{wasp\_full}, \texttt{wasp\_he23off}, \texttt{mol\_base\_handoff},
+\texttt{mol\_metals}, \texttt{mol\_lyman\_werner}); no golden was touched, and
+none should have been, since none of those inputs carries the key. A
+\texttt{-O1 -fcheck=bounds,do,mem} build is clean on two key-ON cases (the
+HD\,209458\,b molecular $+$ C/N/O warm restart, which exercises the open gate,
+and the hot-Uranus cold start, which exercises the closed one).
+
+\paragraph{What it does to the case it was written for.} HD\,209458\,b with
+molecular chemistry \emph{and} solar C/N/O, warm-started from the converged
+\texttt{examples/15} state, \texttt{Resid tol: 1.0e-5},
+\texttt{Solver: Newton 5.0e-2}, \texttt{Max steps: 150000}, same binary and same
+restart files in every row:
+
+\begin{center}
+\begin{tabular}{lllllll}
+\hline
+$\varepsilon_4$ & hand-off step & \texttt{info} & best $||R||$ & outer it &
+  $\log_{10}\dot M$ & H$_2$ $=$ H\,I front \\
+\hline
+off & 48060 & 1 & $5.216\times10^{-5}$ & 500 (cap) & --- & --- \\
+$5.0\times10^{-3}$ & 48062 & \textbf{0} & $\mathbf{9.934\times10^{-6}}$ & 162 &
+  9.65 & 1.0112 \\
+$1.0\times10^{-2}$ & 48007 & \textbf{0} & $\mathbf{9.987\times10^{-6}}$ & 202 &
+  9.67 & 1.0117 \\
+$2.0\times10^{-2}$ & 65836 & 2 & $2.529\times10^{-3}$ & 237 & --- & --- \\
+$4.0\times10^{-2}$ & 66015 & 2 & $2.870\times10^{-3}$ & 66 & --- & --- \\
+\hline
+\end{tabular}
+\end{center}
+
+{\sloppy
+This is the first \texttt{info} $= 0$ at \texttt{Resid tol: 1.0e-5} this
+configuration has produced. The two converged rows stop at $9.9\times10^{-6}$
+because the solver tests the tolerance at the top of each outer iteration and
+exits on the first iterate below it, so those are first crossings and not a
+knife edge; the key-off control, from the same restart, spent its whole
+500-iteration budget and plateaued at $5.2\times10^{-5}$. Nothing diverges in
+the rows that do not converge: each falls back to time-marching and runs out the
+150000-step cap at a $du$ plateau of $1.0\times10^{-3}$ to $2.6\times10^{-3}$,
+$\log_{10}\dot M$ 9.58--9.66. Those are marching states, not Newton-grade ones,
+which is why the table leaves their $\dot M$ blank.\par}
+
+\paragraph{The coefficient has a working range, and it is the bottom of the
+classical one.} At $\varepsilon_4 \ge 2\times10^{-2}$ this solve is
+\emph{worse}, and the reason shows up before the Newton phase: the stress
+changes the base solution enough to slow the $du$ descent ($du$ at step 40000 is
+0.139 with the key off and 0.360 at $\varepsilon_4 = 2\times10^{-2}$), so the
+hand-off comes 18000 steps later from a different state. The key is opt-in and
+the pair has to be run on any new configuration; $2\times10^{-2}$ is not a
+recommended default, and there is no default.
+
+\paragraph{Sensitivity, honestly.} Halving $\varepsilon_4$ from
+$10^{-2}$ to $5\times10^{-3}$ moves $\log_{10}\dot M$ by 0.02 and the
+H$_2$ $=$ H\,I front by 0.0005 $R_p$, and in the wind ($r > 1.2\,R_p$) $\rho$ by
+$\le 7.4\%$, $v$ by $\le 3.7\%$ and $T$ by $\le 0.9\%$. Inside the stagnant
+layer the two converged states differ a great deal ($\rho$ by 137\% at
+$r = 1.013$, $T$ by 38\% at $r = 1.015$) and differ in what the layer looks
+like: the alternating component of $v$ over $r = 1.015$--$1.030$ is 0.024 at
+$\varepsilon_4 = 10^{-2}$ and 4.29 at $5\times10^{-3}$. Both satisfy
+$||R|| < 10^{-5}$ on the wind window, which is the point --- the convergence
+measure does not look at that layer, so it cannot pin it down.
+
+\paragraph{The configurations that already converge do not move.} Cold starts,
+\texttt{Resid tol: 1.0e-5}, $\varepsilon_4 = 2\times10^{-2}$ where on:
+
+\begin{center}
+\begin{tabular}{llllllll}
+\hline
+case & key & hand-off & \texttt{info} & $||R||$ & outer it &
+  $\log_{10}\dot M$ & front \\
+\hline
+\texttt{examples/15} & off & 25839 & 0 & $6.105\times10^{-6}$ & 89 & 10.24 &
+  1.0098 \\
+\texttt{examples/15} & on & 25839 & 0 & $3.642\times10^{-6}$ & 100 & 10.24 &
+  1.0095 \\
+hot Uranus & off & 34537 & 0 & $5.826\times10^{-6}$ & 23 & 10.30 & 1.0774 \\
+hot Uranus & on & 34537 & 0 & $6.252\times10^{-6}$ & 23 & 10.30 & 1.0774 \\
+\hline
+\end{tabular}
+\end{center}
+
+{\sloppy
+Both hand off at the same marching step and reach the same $\dot M$; on the hot
+Uranus the entire profile moves by at most $7.3\times10^{-4}$ relative in $\rho$
+and $7.1\times10^{-4}$ in $T$. On \texttt{examples/15} the wind above
+1.2 $R_p$ moves by at most 1.2\% in $\rho$, 0.5\% in $v$ and 0.16\% in $T$; the
+first cells above the base move more ($\rho$ up to 16\%, $T$ 6.9\% below
+1.05 $R_p$), and those are cells that carry an odd-even velocity oscillation 86
+times the local mean with the key \emph{off}. The cold \texttt{examples/16}
+start (\texttt{Resid tol: 5.0e-5}) improves and still fails: \texttt{info} $= 1$
+at $9.307\times10^{-4}$ with $\varepsilon_4 = 2\times10^{-2}$ against
+$1.081\times10^{-3}$ with the key off, from the identical hand-off step 112920
+--- the gate is closed through the cold relaxation, when the flow is still fast
+everywhere, and the term only acts at the end.\par}
+
+{\sloppy
+Files: \texttt{src/modules/flux/low\_mach\_dissipation.f90} (new),
+\texttt{src/modules/time\_step/RK\_rhs.f90},
+\texttt{src/modules/init/parameters.f90},
+\texttt{src/modules/files\_IO/input\_read.f90},
+\texttt{src/modules/files\_IO/write\_setup\_report.f90},
+\texttt{src/EXHALE\_main.f90}, \texttt{Makefile}. Documentation:
+\texttt{docs/hd209\_metal\_stagnation.md} sections~7 and~8,
+\texttt{docs/EXHALE\_user\_manual.tex}, \texttt{docs/input\_schema.md} K31b,
+\texttt{README.md}, \texttt{TO\_BE\_DONE.md} item~(A).
+\par}
+
+% ===================================================================== %
 %  APPENDIX --- bookkeeping material, kept separate from the dated update log
 % ===================================================================== %
 \clearpage

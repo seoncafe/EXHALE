@@ -51,6 +51,12 @@
 	integer, save :: ieq_n_reseed = 0, ieq_n_retry  = 0
 	integer, save :: ieq_n_unphys = 0, ieq_n_noroot = 0
 
+	! Run-wide total of molecular cells whose equilibrium roots all left the
+	! physical simplex, so the closest one was clamped back onto the element
+	! budget (ioniz_eq). Zero for a run whose molecular solve stays inside the
+	! simplex everywhere, and zero for an atomic run.
+	integer, save :: ieq_n_mol_clamped = 0
+
 	contains 
 	
 	subroutine ioniz_eq(T_in,n_io,f_sp_io,heat_out,cool_out,q)
@@ -123,11 +129,12 @@
    ! metal_row_base() = 8 or 9 in the molecular layout, where x(4..7) are the
    ! H nuclei bound into H2/H2+/H3+/HeH+ and x(8) the triplet.
    integer :: mbase
-   ! Molecular solve (thereis_mol): count of cells whose equilibrium solve
-   ! failed (kept previous state), and the physically-informed guess scalars
-   ! for the retry (chemical-equilibrium H2 fit at the local p, T).
-   integer :: n_molfail
-   real*8  :: pbar_loc, qh2_loc, x2_loc
+   ! Molecular solve (thereis_mol): count of cells whose roots all left the
+   ! physical simplex, so the closest one was clamped back onto the element
+   ! budget, and the local gas pressure [bar] the H2 dissociation
+   ! equilibrium of the retry seed is evaluated at.
+   integer :: n_mol_clamped
+   real*8  :: pbar_loc
 
    ! Ionization solve: validation of the returned root.
    ! The equilibrium systems are polynomial and possess roots outside the
@@ -144,6 +151,10 @@
    integer :: n_ieq_reseed, n_ieq_retry, n_ieq_unphys, n_ieq_fail
    logical :: conv_ieq, phys_ieq
    real*8, dimension(n_x_max) :: x_root_best
+   ! Molecular cell whose roots all left the physical simplex: how far the
+   ! least-offending one lies outside it, so the closest to a state can be
+   ! selected and clamped back onto the element budget.
+   real*8  :: viol, viol_best
 
    ! Output heating,cooling and absorbed energy
    real*8, dimension(1-Ng:N+Ng),intent(out) :: heat_out,cool_out,q
@@ -432,10 +443,10 @@
 		! subroutine-local scratch is private. count==0 stays serial (neighbour
 		! warm-start).
 		! Failed-cell counters (combined via the reduction below); reset once
-		! per equilibrium sweep. n_molfail counts molecular cells that kept
-		! their previous state; the n_ieq_* counters are the atomic root
-		! validation (see the declarations above).
-		n_molfail    = 0
+		! per equilibrium sweep. n_mol_clamped counts molecular cells whose roots
+		! were all outside the physical simplex; the n_ieq_* counters are the
+		! atomic root validation (see the declarations above).
+		n_mol_clamped = 0
 		n_ieq_reseed = 0
 		n_ieq_retry  = 0
 		n_ieq_unphys = 0
@@ -443,10 +454,10 @@
 		!$omp parallel do default(shared) schedule(dynamic,8) copyin(cx_metal_base) &
 		!$omp   private(params, usednt, i0, top, im, meg_ntot, meg_g0, meg_g1,      &
 		!$omp           meg_b0, meg_b1, meg_a1, meg_a2, meg_top,                     &
-		!$omp           pbar_loc, qh2_loc, x2_loc,                                   &
+		!$omp           pbar_loc, viol, viol_best,                                  &
 		!$omp           iatt, info_ieq, ok_rank, best_rank, conv_ieq, phys_ieq,      &
-		!$omp           x_root_best)                                                 &
-		!$omp   reduction(+:n_molfail,n_ieq_reseed,n_ieq_retry,n_ieq_unphys,   &
+		!$omp           x_root_best)                                                &
+		!$omp   reduction(+:n_mol_clamped,n_ieq_reseed,n_ieq_retry,n_ieq_unphys, &
 		!$omp               n_ieq_fail) if(count > 0)
 		do j = N+Ng,1-Ng,-1
 
@@ -652,39 +663,35 @@
 				! the right basin. One starting point in each basin is
 				! therefore tried in turn:
 				!   1  the guess built above (previous state / neighbour),
-				!   2  molecular basin -- the chemical-equilibrium H2 fit at
-				!      the local (p, T); the H-nucleus fraction bound in H2
-				!      seeds sys_x(4), with the metal stages from their own
+				!   2  molecular basin -- the H2 dissociation equilibrium of
+				!      the local (p, T) with every element in its own
 				!      ionization balance at the incoming n_e,
-				!   3  atomic basin -- the molecule-free ionization balance of
-				!      every element at the incoming n_e (H2/H2+/H3+/HeH+ set
-				!      to zero, the metastable and the metals to their own
-				!      steady states),
-				! and, as in the atomic branch below, a converged root is kept
-				! only if it is also physical (every stage fraction >= 0, each
-				! element's tracked stages summing to at most its nuclei).
+				!   3  atomic basin -- the same balance with no H2,
+				! and a root is kept only if it is physical (every stage
+				! fraction >= 0, each element's tracked stages summing to at
+				! most its nuclei).
+				!
+				! A cell that reaches the solver tolerance on a physical root
+				! takes that root and stops. A cell that does not keeps the
+				! best root the three attempts produced, and when NONE of them
+				! was admissible it keeps the one lying closest to the simplex
+				! and clamps it back onto the element budget. Every outcome is
+				! therefore a root of the network computed at THIS cell's
+				! state; none of them is the cell's previous composition,
+				! which would make the equilibrium -- and the steady residual
+				! built on it -- a function of the sequence of evaluations
+				! rather than of the state being evaluated.
 				best_rank = 0
+				viol_best = 0.0d0
+				pbar_loc  = n_in_dim(j)*kb_erg*T_K(j)/1.0d6   ! gas pressure [bar]
 				do iatt = 1,3
-					if (iatt .eq. 3) then
+					if (iatt .eq. 2) then
+						call dissociation_ionization_balance_at_fixed_ne(  &
+						                 sys_x,N_eq,mbase,ne(j),pbar_loc,T_K(j))
+						n_ieq_retry = n_ieq_retry + 1
+					else if (iatt .eq. 3) then
 						call ionization_balance_at_fixed_ne(sys_x,N_eq,   &
 						                                    mbase,ne(j))
-						n_ieq_retry = n_ieq_retry + 1
-					else if (iatt .eq. 2) then
-						pbar_loc = n_in_dim(j)*kb_erg*T_K(j)/1.0d6   ! gas pressure [bar]
-						qh2_loc  = q_h2_equilibrium(pbar_loc, T_K(j))
-						x2_loc   = 2.0d0*qh2_loc*(1.0d0 + HeH)/(1.0d0 + qh2_loc)
-						if (x2_loc .gt. 1.0d0) x2_loc = 1.0d0
-						sys_x(1) = nhii(j)/nh(j)      ! near-neutral H (dark base)
-						sys_x(2) = nheii(j)/nhe(j)
-						sys_x(3) = nheiii(j)/nhe(j)
-						sys_x(4) = x2_loc             ! 2 n_H2 / n_H from the fit
-						sys_x(5) = 1.0d-10            ! tiny H2+ seed
-						sys_x(6) = 1.0d-10            ! tiny H3+ seed
-						sys_x(7) = 1.0d-10            ! tiny HeH+ seed
-						if (thereis_HeITR) sys_x(8) = nheiTR(j)/nhe(j)
-						if (thereis_metals)                                &
-							call metal_ionization_balance_at_fixed_ne(     &
-							                     sys_x,N_eq,mbase,ne(j))
 						n_ieq_retry = n_ieq_retry + 1
 					endif
 
@@ -711,43 +718,34 @@
 					if (ok_rank .gt. best_rank) then
 						best_rank = ok_rank
 						x_root_best(1:N_eq) = sys_x(1:N_eq)
+					else if (best_rank .eq. 0) then
+						! Nothing admissible yet: remember the root that lies
+						! closest to the simplex, to be clamped onto it below.
+						viol = element_budget_violation(sys_x,N_eq,mbase)
+						if (iatt .eq. 1 .or. viol .lt. viol_best) then
+							viol_best = viol
+							x_root_best(1:N_eq) = sys_x(1:N_eq)
+						endif
 					endif
 					if (ok_rank .eq. 2) exit
 				enddo
 
 				if (best_rank .lt. 2) then
-					if (best_rank .eq. 1) then
-						! No attempt met the solver tolerance; keep the best
-						! physical root found.
-						sys_x(1:N_eq) = x_root_best(1:N_eq)
-					else
-						! No starting point produced an admissible root: keep
-						! this cell's previous state by restoring sys_x to the
-						! pre-solve fractions (the extraction below then
-						! reproduces it unchanged), and count the cell for the
-						! one-line summary warning.
-						sys_x(1) = nhii(j)/nh(j)
-						sys_x(2) = nheii(j)/nhe(j)
-						sys_x(3) = nheiii(j)/nhe(j)
-						sys_x(4) = 2.0d0*nmol_eq(j,1)/nh(j)
-						sys_x(5) = 2.0d0*nmol_eq(j,2)/nh(j)
-						sys_x(6) = 3.0d0*nmol_eq(j,3)/nh(j)
-						sys_x(7) = nmol_eq(j,4)/nh(j)
-						if (thereis_HeITR) sys_x(8) = nheiTR(j)/nhe(j)
-						if (thereis_metals) then
-							do im = 1,n_melem
-								i0 = melem_i0(im)
-								sys_x(mbase+2*(im-1)) = nm(j,i0+1)         &
-								                  /max(nm_tot(j,im),1.0d-30)
-								if (melem_top(im) .ge. 2) then
-									sys_x(mbase+1+2*(im-1)) = nm(j,i0+2)       &
-									                  /max(nm_tot(j,im),1.0d-30)
-								else
-									sys_x(mbase+1+2*(im-1)) = 0.0d0
-								endif
-							enddo
-						endif
-						n_molfail = n_molfail + 1
+					! No attempt met the solver tolerance; keep the best root
+					! found. If none of them was admissible, keep the one that
+					! lies closest to the simplex and clamp it onto the element
+					! budget: the violations are the solver's own resolution of a
+					! root sitting on a face (a fully dissociated or fully
+					! ionized species), so the clamped state is a root of the
+					! network to the accuracy the solve reached. What it is NOT
+					! is the cell's previous composition -- inheriting that would
+					! make the equilibrium, and the steady residual built on it,
+					! a function of the sequence of evaluations rather than of
+					! the state being evaluated.
+					sys_x(1:N_eq) = x_root_best(1:N_eq)
+					if (best_rank .eq. 0) then
+						call clamp_fractions_to_element_budget(sys_x,N_eq,mbase)
+						n_mol_clamped = n_mol_clamped + 1
 					endif
 				endif
 			else
@@ -877,12 +875,13 @@
 		enddo
 		!$omp end parallel do
 
-		! One summary line per sweep if any molecular cell failed to converge
-		! twice (kept its previous state).
-		if (thereis_mol .and. n_molfail .gt. 0) then
-			write(*,'(A,I0,A)') ' (ioniz_eq) WARNING: molecular '//        &
-				'equilibrium failed at ', n_molfail,                       &
-				' cells (kept previous state)'
+		! One summary line per sweep when a molecular cell's roots were all
+		! outside the physical simplex, so the closest one was clamped onto the
+		! element budget.
+		if (thereis_mol .and. n_mol_clamped .gt. 0) then
+			write(*,'(A,I0,A)') ' (ioniz_eq) WARNING: every molecular '//     &
+				'equilibrium root left the physical simplex at ',              &
+				n_mol_clamped, ' cell(s), clamped onto the element budget'
 		endif
 
 		! One summary line per sweep whenever a state left the physical
@@ -905,6 +904,7 @@
 		ieq_n_retry  = ieq_n_retry  + n_ieq_retry
 		ieq_n_unphys = ieq_n_unphys + n_ieq_unphys
 		ieq_n_noroot = ieq_n_noroot + n_ieq_fail
+		ieq_n_mol_clamped = ieq_n_mol_clamped + n_mol_clamped
 
 	endif
 
@@ -982,6 +982,14 @@
 	! face of the simplex (a fully neutral or fully ionized element) is not
 	! rejected for round-off; it is far below the violations this test is
 	! meant to catch (fractions of ~1e-6 to ~1e-1 outside the simplex).
+	!
+	! Widening it to the solver's own xtol = sqrt(machine epsilon) was tried
+	! and measured: it lets a cell stop on a root that sits just outside a
+	! face instead of retrying from another starting point, and the retried
+	! root is the better one. On examples/15 (HD 209458 b, molecular, cold)
+	! the wider band turns info = 0 at ||R|| = 6.105e-6 in 89 outer
+	! iterations into info = 2 at 1.112e-4 in 133, so the band stays at
+	! round-off.
 	!
 	! Layout: x(1) = H II / H, x(2) = He II / He, x(3) = He III / He,
 	! x(4) = He 2^3S / He when the triplet is tracked (x(8) in the molecular
@@ -1124,6 +1132,167 @@
 		call metal_ionization_balance_at_fixed_ne(x,n,mbase,n_e)
 
 	end subroutine ionization_balance_at_fixed_ne
+
+	!----------------------------------!
+
+	real*8 function element_budget_violation(x,n,mbase) result(viol)
+	! How far a root of an equilibrium system lies outside the physically
+	! allowed states: the largest of the negative stage fractions and of the
+	! amounts by which one element's tracked stages exceed its nuclei, both
+	! measured as fractions of the element. Zero for an admissible state.
+	! Used to pick, among roots that are all inadmissible, the one closest to
+	! a state (see clamp_fractions_to_element_budget). Same layout as
+	! ionization_fractions_physical.
+
+	integer, intent(in) :: n, mbase
+	real*8,  intent(in) :: x(n)
+	integer :: im, ix
+	real*8  :: s
+
+	viol = 0.0d0
+	do ix = 1,n
+		viol = max(viol, -x(ix))
+	enddo
+
+	s = x(1)
+	if (thereis_mol) s = s + x(4) + x(5) + x(6) + x(7)
+	viol = max(viol, s - 1.0d0)
+
+	if (thereis_He) then
+		s = x(2) + x(3)
+		if (thereis_HeITR) then
+			ix = 4
+			if (thereis_mol) ix = 8
+			s = s + x(ix)
+		endif
+		viol = max(viol, s - 1.0d0)
+	endif
+
+	if (thereis_metals) then
+		do im = 1,n_melem
+			ix = mbase + 2*(im-1)
+			s  = x(ix)
+			if (melem_top(im) .ge. 2) s = s + x(ix+1)
+			viol = max(viol, s - 1.0d0)
+		enddo
+	endif
+
+	end function element_budget_violation
+
+	!----------------------------------!
+
+	subroutine clamp_fractions_to_element_budget(x,n,mbase)
+	! Move a root that lies just outside the physically allowed states onto the
+	! nearest allowed one: no negative populations, and no element with more
+	! nuclei in its tracked stages than it has. Negative fractions are set to
+	! zero and, where an element's tracked stages still sum above its nuclei,
+	! they are scaled down to sum exactly to them, leaving the neutral stage
+	! empty.
+	!
+	! This is the treatment of a root the solver has resolved to a face of the
+	! allowed region -- a fully dissociated H2, a fully neutral or fully
+	! ionized element -- and delivered as a small number of either sign. The
+	! clamped state is that root to the accuracy the solve reached, so it
+	! remains a solution of the equilibrium at THIS cell's state; what it must
+	! not be replaced by is a composition carried over from an earlier
+	! evaluation.
+
+	integer, intent(in)    :: n, mbase
+	real*8,  intent(inout) :: x(n)
+	integer :: im, ix
+	real*8  :: s
+
+	do ix = 1,n
+		if (x(ix) .lt. 0.0d0) x(ix) = 0.0d0
+	enddo
+
+	! Hydrogen nuclei: H II and the H bound in molecules where tracked.
+	s = x(1)
+	if (thereis_mol) s = s + x(4) + x(5) + x(6) + x(7)
+	if (s .gt. 1.0d0) then
+		x(1) = x(1)/s
+		if (thereis_mol) then
+			do ix = 4,7
+				x(ix) = x(ix)/s
+			enddo
+		endif
+	endif
+
+	! Helium nuclei: He II, He III and the 2^3S metastable.
+	if (thereis_He) then
+		s = x(2) + x(3)
+		ix = 0
+		if (thereis_HeITR) then
+			ix = 4
+			if (thereis_mol) ix = 8
+			s = s + x(ix)
+		endif
+		if (s .gt. 1.0d0) then
+			x(2) = x(2)/s
+			x(3) = x(3)/s
+			if (ix .gt. 0) x(ix) = x(ix)/s
+		endif
+	endif
+
+	! Each metal element separately.
+	if (thereis_metals) then
+		do im = 1,n_melem
+			ix = mbase + 2*(im-1)
+			s  = x(ix)
+			if (melem_top(im) .ge. 2) s = s + x(ix+1)
+			if (s .gt. 1.0d0) then
+				x(ix) = x(ix)/s
+				if (melem_top(im) .ge. 2) x(ix+1) = x(ix+1)/s
+			endif
+		enddo
+	endif
+
+	end subroutine clamp_fractions_to_element_budget
+
+	!----------------------------------!
+
+	subroutine dissociation_ionization_balance_at_fixed_ne(x,n,mbase,n_e,   &
+	                                                       p_bar,T_gas)
+	! H2 dissociation equilibrium at the local (p, T), with every element in
+	! its own ionization balance at a given electron density: the limit of the
+	! molecular network in which the couplings between the molecular ions and
+	! the ionization of H and He are dropped.
+	!
+	!   - The H nuclei are partitioned between H2 and atomic H by the
+	!     chemical-equilibrium mixing ratio q_H2(p, T) of Koskinen et al.
+	!     (2022) Eq. 11, the same fit the molecular base boundary condition
+	!     uses; per H nucleus the fraction bound in H2 is
+	!     2 q (1 + He/H)/(1 + q) (lower_column::mu_mixture).
+	!   - The atomic remainder is ionized in the H ionization balance of
+	!     ionization_balance_at_fixed_ne, which also sets He, the 2^3S
+	!     metastable and the metal stages.
+	!   - H2+, H3+ and HeH+ are left at zero: each is a trace intermediate
+	!     whose abundance is set by the very couplings this limit drops, and
+	!     each holds far fewer H nuclei than H2 wherever the gas is molecular.
+	!
+	! Every fraction returned is non-negative and each element's stages sum to
+	! at most its nuclei, so the starting point is a physically allowed state,
+	! and it depends only on the local (p, T, n_e) and on the rate
+	! coefficients of the cell -- not on the cell's previous composition.
+	!
+	! Molecular layout only: x(4) is the H-nucleus fraction bound in H2 there,
+	! and the He 2^3S metastable sits at x(8).
+
+	integer, intent(in)  :: n, mbase
+	real*8,  intent(in)  :: n_e, p_bar, T_gas
+	real*8,  intent(out) :: x(n)
+	real*8 :: qh2, x_h2
+
+	call ionization_balance_at_fixed_ne(x,n,mbase,n_e)
+
+	qh2  = q_h2_equilibrium(p_bar, T_gas)
+	x_h2 = 2.0d0*qh2*(1.0d0 + HeH)/(1.0d0 + qh2)
+	if (x_h2 .gt. 1.0d0) x_h2 = 1.0d0
+	x(4) = x_h2
+	! Only the H nuclei left atomic are available to ionize.
+	x(1) = x(1)*(1.0d0 - x_h2)
+
+	end subroutine dissociation_ionization_balance_at_fixed_ne
 
 	!----------------------------------!
 

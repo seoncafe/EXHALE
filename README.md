@@ -224,8 +224,19 @@ Reconstruction scheme:    PLM+WENO3    # two-stage; PLM (or WENO3) alone is sing
 du_th [PLM,WENO3]:        0.5 1.0e-3   # PLM until du<0.5, then WENO3 until du<1e-3
 # Solver:  Newton                      # OPTIONAL extra residual-tightening finish
 # Shapiro filter:  -1                  # OFF by default; opt-in only for breathing cases
+# Low-Mach damping:  2.0e-2            # OFF by default; for a cooling-stalled shell
 # Max steps:  1000000                  # hard iteration cap (this IS the default)
 ```
+
+`Low-Mach damping` is the one to reach for when a run stalls because a shell has
+stopped flowing rather than because the base is breathing — metal cooling
+beating the photoionization heating just above the base, say, so the local Mach
+number falls to `1e-5` and a `2*dr` mode grows there that the contact-resolving
+HLLC flux no longer damps. It adds a gated fourth-difference stress to the
+numerical flux (exactly zero above `M = 1e-3`, and it enters the flux, so the
+JFNK residual sees the same equation the marching loop does), unlike the Shapiro
+filter, which smooths the marching state only. See
+`docs/hd209_metal_stagnation.md`.
 
 **Convergence criterion (flux-based).** Convergence is judged on the *flux*
 criterion of the reference codes: the fractional spread of the mass flux,
@@ -726,4 +737,4 @@ See `examples/README.md` for the exact lines each one adds:
 
 Kwang-Il Seon (KASI / UST)
 
-Last updated: 2026-08-13 13:41 KST
+Last updated: 2026-08-13 23:44 KST

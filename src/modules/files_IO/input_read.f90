@@ -54,7 +54,8 @@
       'Lower column', 'He_Kzz', 'He_alphaT', 'He_ambipolar',                 &
       'He_metal_diffusion', 'He_diffusion', 'Stall', 'Energy solver',        &
       'Time stepping', 'Level tol', 'Solver', 'Valve eps', 'Hydrostatic base',&
-      'Shapiro filter', 'Base BC', 'Base velocity', 'Viscosity',             &
+      'Shapiro filter', 'Low-Mach damping',                                  &
+      'Base BC', 'Base velocity', 'Viscosity',                               &
       'Base ghost temperature', 'Max steps', 'Coronal cutoff width',         &
       'Base IR field',                                                       &
       'Conduction', 'Resid tol',                                             &
@@ -545,6 +546,22 @@
 				if (shapiro_eps .gt. 0.0d0) write(*,'(A,ES9.2,A,I0,A)')  &
 				   ' (input_read) Shapiro filter eps =', shapiro_eps,    &
 				   ', every ', shapiro_every, ' steps'
+			else if (lbl_match(line, 'Low-Mach damping')) then
+				! "Low-Mach damping: <eps4> [<M_th>]" -- gated fourth-
+				! difference dissipation of the 2 dr contact/entropy mode
+				! the HLLC flux stops damping as v -> 0. eps4 <= 0 disables.
+				! See src/modules/flux/low_mach_dissipation.f90.
+				str = get_word(line, 3);  read(str,*) lowmach_damp_eps
+				str = get_word(line, 4)
+				if (len_trim(str) .gt. 0) read(str,*) lowmach_damp_mach_th
+				if (lowmach_damp_eps .gt. 0.0d0) then
+					write(*,'(A,ES9.2,A,ES9.2)') ' (input_read) Low-Mach'// &
+					   ' contact-mode damping eps4 =', lowmach_damp_eps,  &
+					   ', M_th =', lowmach_damp_mach_th
+					if (lowmach_damp_mach_th .le. 0.0d0)                  &
+					   write(*,*) '(input_read.f90) WARNING: "Low-Mach '//&
+					   'damping" M_th <= 0 switches the term off everywhere.'
+				endif
 			else if (lbl_match(line, 'Base BC')) then
 				str = get_word(line, 3)
 				if (str .eq. 'density')  base_bc_mode = 0
@@ -760,6 +777,18 @@
 			   ' from the target base pressure AT T0; with a continuous-T'
 			write(*,*) '  ghost the base pressure then floats with T(cell 1),'//&
 			   ' so only the base DENSITY stays anchored.'
+		endif
+		! ----- Low-Mach damping vs the explicit stability bound -----
+		! The 2 dr mode decays at 16 eps4 lambda/dr while the marching step is
+		! dt = CFL dr/lambda, so the per-step damping factor is 16 eps4 CFL and
+		! the explicit update is unstable beyond 1. Checked here, after the
+		! keyword loop, because "CFL:" may appear on either side of this key.
+		if (lowmach_damp_eps .gt. 0.0d0 .and.                            &
+		    16.0d0*lowmach_damp_eps*CFL .gt. 1.0d0) then
+			write(*,'(A,ES9.2,A,F7.4,A)') ' (input_read.f90) WARNING: '// &
+			   '"Low-Mach damping" eps4 =', lowmach_damp_eps,            &
+			   ' exceeds the explicit stability bound 1/(16 CFL) =',      &
+			   1.0d0/(16.0d0*CFL), '; the marching loop may diverge.'
 		endif
 		if (coronal_cutoff_width .le. 0.0d0) then
 			write(*,*) '(input_read.f90) ERROR: "Coronal cutoff width" must '// &

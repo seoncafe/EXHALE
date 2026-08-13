@@ -829,6 +829,22 @@ defaults restore the standard behavior).}\label{tab:inp-opt}\\
   \texttt{Resid tol} (default $10^{-3}$), then the standard final outputs and
   post-processing. Adopts \texttt{Valve eps:} $10^{-4}$ automatically if unset.
   See \S\ref{sec:newton}. \\
+\texttt{Low-Mach damping:} & real $\varepsilon_4$ [, real $M_{\rm th}$]
+  (def.\ $-1$, i.e.\ off; $M_{\rm th}=10^{-3}$) & Artificial dissipation of the
+  $2\Delta r$ contact/entropy mode. The HLLC flux carries the middle wave at
+  $S^\ast\!\simeq v$, so the dissipation it applies to the entropy family
+  vanishes as the flow stagnates and that mode becomes marginally damped; where
+  metal cooling stalls a shell (HD\,209458\,b with solar C/N/O, $r\simeq1.02$,
+  $M\sim10^{-5}$) it grows to several times the local mean $|v|$. This key adds
+  a gated fourth-difference (Jameson, Schmidt \& Turkel 1981) stress
+  $\varepsilon_4\,g(M)\,\rho_f\lambda_f\,(v_{j+2}-3v_{j+1}+3v_j-v_{j-1})$ to the
+  numerical \emph{momentum} flux, and its work $v_f D_p$ to the energy flux, with
+  the gate $g=[\max(0,1-M^2/M_{\rm th}^2)]^2$ exactly zero for $M\ge M_{\rm
+  th}$. It enters the numerical flux, so the marching loop and the JFNK steady
+  residual see the \emph{same} equation. Explicit stability requires
+  $\varepsilon_4<1/(16\,\mathrm{CFL})$ (0.10 at the default CFL); the classical
+  range $1/64$--$1/32$ works. $\varepsilon_4\le0$ $=$ off, bit-identical. See
+  \texttt{src/modules/flux/low\_mach\_dissipation.f90}. \\
 \texttt{ATES\_photoionization\_rate:} & \texttt{True} & Revert the He\,I
   ($1^1$S) photoionization cross section to the legacy ATES two-term fit
   (default: Verner+1996). Does \emph{not} affect the He\,$2^3$S Penning rate,

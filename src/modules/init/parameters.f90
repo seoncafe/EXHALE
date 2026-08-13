@@ -530,6 +530,23 @@
       real*8  :: shapiro_eps   = -1.0d0
       integer :: shapiro_every = 4
 
+      ! Low-Mach contact-mode dissipation ("Low-Mach damping: <eps4> [<M_th>]").
+      ! The HLLC contact wave is carried at S* ~ v, so the dissipation the flux
+      ! applies to the entropy/contact family vanishes as the flow stagnates and
+      ! a 2 dr mode in v and T becomes marginally damped. A gated fourth-
+      ! difference (Jameson-Schmidt-Turkel) flux restores that damping where
+      ! M < lowmach_damp_mach_th and vanishes identically above it. Added to the
+      ! numerical flux inside RK_rhs, so the marching loop and the steady
+      ! (Newton) residual see the SAME equation -- unlike the Shapiro filter,
+      ! which touches only the marching state. Full statement, stability bound
+      ! eps4 < 1/(16 CFL), and measured magnitudes:
+      ! src/modules/flux/low_mach_dissipation.f90.
+      ! OFF BY DEFAULT: eps4 <= 0 disables, and the code path is then skipped
+      ! entirely, so a run without the key is byte-identical to the code
+      ! without the term.
+      real*8  :: lowmach_damp_eps     = -1.0d0
+      real*8  :: lowmach_damp_mach_th =  1.0d-3
+
       ! CETIMB-style base velocity ("Base velocity: massflux" / "valve"). The
       ! legacy lower BC valves v (max(v1,0)); CETIMB (Koskinen 2013a) instead sets
       ! the base velocity from the steady mass-flux continuity rho0*v0*r0^2 = F_c,

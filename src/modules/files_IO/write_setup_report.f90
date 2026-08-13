@@ -4,6 +4,8 @@
 	
 	use global_parameters
 	use charge_exchange, only: he_h_charge_exchange
+	use species_table,   only: melem_name
+	use IC_load,         only: melem_from_abundance
 
 	implicit none
 	contains
@@ -129,6 +131,19 @@
 			' expect a stationary cell-to-cell entropy mode at the base.'
 	write(outfile,*) '- Numerical flux: ', flux
 	write(outfile,*) '- Reconstruction method: ', rec_method
+	! Artificial dissipation of the 2*dr contact/entropy mode that the
+	! contact-resolving upwind flux stops damping as v -> 0. It enters the
+	! numerical flux, so the marching loop and the steady residual see the
+	! same equation; the Shapiro filter above does not.
+	if (lowmach_damp_eps .gt. 0.0d0) then
+		write(outfile,20) '- Low-Mach contact-mode damping: eps4 = ',        &
+			lowmach_damp_eps, ', gate closes at M = ', lowmach_damp_mach_th
+		if (16.0d0*lowmach_damp_eps*CFL .gt. 1.0d0)                          &
+			write(outfile,*) '  WARNING: eps4 exceeds the explicit'//        &
+				' stability bound 1/(16 CFL).'
+	else
+		write(outfile,*) '- Low-Mach contact-mode damping: off'
+	endif
 	! Lower boundary: which closure sets the ghost pressure, and the hard cap
 	! on marching steps.
 	if (hydrostatic_base) then
@@ -155,6 +170,15 @@
 		write(outfile,*) '----- Starting a new simulation ----- '
 	if (do_load_IC) 		&
 		write(outfile,*) '----- Continuing existing simulation ----- '
+	if (do_load_IC .and. allocated(melem_from_abundance)) then
+		do imet = 1,size(melem_from_abundance)
+			if (melem_from_abundance(imet))                                 &
+				write(outfile,*) '- WARNING: element ',                      &
+					trim(melem_name(imet)), ' was absent (or identically '// &
+					'zero) in the restart file and was initialized as '//    &
+					'neutral at the input abundance'
+		enddo
+	endif
 	if (.not.do_load_IC) then
 		! IC family actually in effect (this report is written after
 		! set_IC, so an "IC mode: auto" selection has already run).
@@ -192,6 +216,7 @@
 17 format(A46,F8.1,A7)
 18 format(A,F6.3)
 19 format(A,I0)
+20 format(A,ES9.2,A,ES9.2)
 
 	write(*,*) '(write_setup_report.f90) Done.'
 
@@ -312,6 +337,8 @@
 	call put_l('hydrostatic_base', hydrostatic_base)
 	call put_r('shapiro_eps', shapiro_eps)
 	call put_i('shapiro_every', shapiro_every)
+	call put_r('lowmach_damp_eps', lowmach_damp_eps)
+	call put_r('lowmach_damp_mach_th', lowmach_damp_mach_th)
 	call put_l('base_ghost_T_continuous', base_ghost_T_continuous)
 	call put_i('count_max', count_max)
 	call put_r('coronal_cutoff_width', coronal_cutoff_width)
