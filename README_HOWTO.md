@@ -374,6 +374,18 @@ never reaches the layer — the H3+ cooling time there is ~1e7 CFL steps — so 
 Newton finish is not optional here. Converged solutions, the recipe and the
 caveats: `docs/lower_atmosphere_coupling.pdf` §7.
 
+**Molecular chemistry with `metals.inp` present needs two more things.** On
+HD 209458 b that combination does not converge from a cold start at any
+`Low-Mach damping` coefficient: the metal cooling stops the flow in a thin
+shell at `r ~ 1.02 R_p`, the JFNK line search bottoms around `||R|| ~ 1e-3`
+there, and the run falls back to marching. What converges it is a warm restart
+from a freshly converged metals-off state plus the `Low-Mach damping` key
+(`5.0e-3`, with `1.0e-2` run alongside for comparison). The seed has to be
+converged with the binary in hand — a restart file written by an older binary
+is a different seed and fails. Step-by-step recipe: `examples/README.md`, the
+`16_molecular_metals` note. Why, and what the residual measure does and does
+not control in that shell: `docs/hd209_metal_stagnation.md` §9.
+
 The infrared coolants of that layer emit into vacuum unless the atmosphere
 below the base is given to them:
 

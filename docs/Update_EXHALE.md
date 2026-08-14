@@ -5119,3 +5119,148 @@ Files: `src/modules/flux/low_mach_dissipation.f90` (new),
 `Makefile`. Documentation: `docs/hd209_metal_stagnation.md` sections 7 and 8,
 `docs/EXHALE_user_manual.tex`, `docs/input_schema.md` K31b, `README.md`,
 `TO_BE_DONE.md` item (A).
+
+## 61. The residual below the escape radius, and what closes the HD 209458 b molecular + metals case (2026-08-15)
+
+Section 60 left the `examples/16` configuration converging from a warm restart
+at two damping coefficients and failing from a cold one, and left open whether
+the acceptance window should be widened to include the layer that the failures
+live in. Both questions, and the seed the warm prescription depends on, were
+measured on 2026-08-15. The full account is
+`docs/hd209_metal_stagnation.md` section 9; this section records the code
+change and the conclusions.
+
+### The change: the layer's residual is printed, not tested
+
+`resid_relnorm_below_escape` and `write_resid_below_escape` in
+`src/modules/time_step/steady_newton.f90` apply the **same** volume-weighted
+relative norm that `resid_relnorm` uses for the convergence measure to the
+complementary region `[1:j_min-1]`, i.e. below the escape radius, and locate
+the cell carrying the largest cell-wise relative residual
+`|F_k,j| / |u_k,j|` there, reporting `j`, `r(j)` and which of the three rows it
+is. One line is printed at four points: PTC start, PTC end, JFNK start, JFNK
+end. The JFNK end line is emitted *before* the best-iterate restore, because
+that is the last point at which `F` and `u` are a consistent pair; it therefore
+refers to the last iterate visited, which is also the returned state whenever
+no restore happens.
+
+The value is never tested and nothing in the solve depends on it. The whole
+change is **+95 lines in that one file**, output only, and `make check` is
+**5/5 byte-identical** (`wasp_full`, `wasp_he23off`, `mol_base_handoff`,
+`mol_metals`, `mol_lyman_werner`) — no output file moves, only stdout grows.
+
+### Widening the acceptance window is rejected by what it prints
+
+With the diagnostic in place the question is a measurement rather than a
+design argument. The norm over `[1:401]` (`j_min = 402`) on states that
+converge today:
+
+| state | norm below `r_esc` | worst cell |
+|---|---|---|
+| `examples/16` converged, `eps4 = 5e-3` | 0.195 | `j = 75`, `r = 1.0153` |
+| `examples/16` converged, `eps4 = 1e-2` | 2.352 | `j = 5`, `r = 1.0010` |
+| `examples/16` converged, `eps4 = 5e-3` + LW | 0.939 | `j = 3` |
+| `examples/15` converged (**metals off**) | 9.99 | `j = 2` |
+| warm restart at JFNK start | 0.60-1.21 | `j = 6`-15, momentum |
+| cold `eps4 = 5e-3`, at failure | 594 | `j = 97`, `r = 1.0218` |
+| cold `eps4 = 1e-2`, at failure | 1599 | `j = 112`, `r = 1.0273` |
+
+A converged state carries a relative residual of 0.2 to 10 below the escape
+radius, four to six orders above `Resid tol`, and the largest of them belongs
+to the metals-off `examples/15` solution that nobody doubts. That is not about
+metals: the layer is near-hydrostatic (`|v| ~ 10 cm/s`), so the denominator of
+the momentum row's relative residual, `|rho v|`, collapses wherever the flow is
+slow, right state or not. Widening the window on this norm would report
+`info = 2` for every configuration that converges today without determining the
+layer any better. The window stays `[j_min:N]`; the diagnostic makes the
+uncontrolled part visible instead. The failure rows sit three orders above the
+converged ones, so the number does separate good from bad — it is the absolute
+scale that is not usable as a tolerance.
+
+### The cold path is closed; the warm prescription is pinned to its seed
+
+Scanning `Low-Mach damping` on the cold start gives `info = 1` at 1.081e-3
+(off), 9.953e-4 (5e-3), 1.025e-3 (1e-2) and 9.307e-4 (2e-2) — one ~1e-3 floor,
+a factor 100 above the tolerance, and the two coefficients that work on the
+warm restart do nothing here that `off` does not. The cold hand-off state
+appears to lie outside the Newton basin the warm restart reaches, and the
+coefficient is not the lever. The cold path for this configuration is
+abandoned.
+
+The warm prescription needs one thing section 60 did not say: the restart must
+come from an `examples/15` state converged with the **current** binary. Two
+seeds, same binary and same keys otherwise:
+
+| seed | `eps4` | hand-off | `info` | best `\|\|R\|\|` | `log10 Mdot` |
+|---|---|---|---|---|---|
+| pre-section-59 `examples/15` output (kept as `output_pre_item3_20260813`) | 5.0e-3 | 50645 | **2** | 1.303e-4 | — |
+| the same | 1.0e-2 | 50629 | **2** | 5.770e-5 | — |
+| the same, `+ Stellar LW flux: 343.0` | 5.0e-3 | 50189 | 0 | 9.799e-6 | 9.68 |
+| `examples/15` re-converged with the current binary | 5.0e-3 | 48062 | 0 | 9.934e-6 | 9.65 |
+| the same | 1.0e-2 | 48007 | 0 | 9.987e-6 | 9.67 |
+| the same, `+ Stellar LW flux: 343.0` | 5.0e-3 | 47965 | 0 | 9.900e-6 | 9.68 |
+
+The re-converged seed reproduces the section 60 table exactly, hand-off step
+included (that re-convergence itself reproduces the section 60 control:
+step 25839, `info = 0`, `||R|| = 6.105e-6`, `log10 Mdot = 10.24`, front at
+1.0097 R_p). The stored seed does not: the hand-off comes ~2600 steps later,
+from a different state, and the line search then collapses (`lambda ~ 1e-6`)
+and aborts. The section 59 change moved the `examples/15` solution by more than
+this marginal solve tolerates in its starting point, so a restart file written
+by an older binary is no longer the same seed. The Lyman-Werner member
+converges from both seeds — the LW coupling appears to widen the basin here
+rather than narrow it.
+
+### What the weak determination of the layer costs
+
+The two converged solutions (`eps4 = 5e-3` and `1e-2`, both `info = 0` at
+`Resid tol: 1.0e-5`) agree in the wind — `Drho/rho` +5.1% at 1.3 R_p, +3.4% at
+1.5, +2.6% at 2.0, `Dv/v <= 1.6%`, `DT/T <= 0.4%`, `log10 Mdot` 9.65 against
+9.67 — and disagree inside the layer, where the `1e-2`/`5e-3` density ratio
+runs 0.78 at `r = 1.005`, 1.31 at 1.013, 1.41 at 1.020, 1.32 at 1.030, `T`
+differs by +20% at 1.005, +38% at 1.015 and -7.7% at 1.020, and the alternating
+component of `v` over `r = 1.015-1.030` is 0.392 against 0.028 on a mean `|v|`
+of 12-16 cm/s.
+
+That does not stay internal. Run through `EXHALE_transit.py`, the theoretical
+peak excess absorption is 40.19% against 40.26% in He I 10830 (0.2% relative),
+2.098% against 2.199% in H-alpha (+4.8%), 1.046% against 1.134% in H-beta
+(+8.4%), with Ly-alpha saturated in both. He I 10830 forms in the wind and does
+not care which layer sits underneath it; part of the H(n=2) absorption is
+formed in the layer, so the weak determination appears to propagate to the
+Balmer depths at the 5-8% relative level. Quote those depths with the pair, not
+from a single coefficient.
+
+### Lyman-Werner with metals on
+
+The `Stellar LW flux [erg/cm2/s]: 343.0` A/B on the re-converged seed at
+`eps4 = 5e-3`, both members `info = 0`:
+
+| | LW off | LW on (343) |
+|---|---|---|
+| `log10 Mdot` | 9.65 | 9.68 |
+| H2 = H I front | 1.01108 | 1.01026 |
+| `T` at `r = 1.02` [K] | 1801 | 1470 |
+| `x(H2)` at `r = 1.02` | 4.0e-6 | 2.1e-5 |
+| H3+ peak [cm^-3] | 1.93e5 at 1.0006 | 1.99e5 at 1.0006 |
+| HeH+ peak [cm^-3] | 0.285 | 0.053 |
+| C II fraction at 1.02 / 1.20 | 0.197 / 0.449 | 0.180 / 0.430 |
+| H-alpha peak | 2.098% | 2.297% |
+| H-beta peak | 1.046% | 1.221% |
+| He I 10830 peak | 40.19% | 40.33% |
+
+The self-shielding is the section 56 physics unchanged: at the base
+`N(H2) = 2.68e21 cm^-2`, `f_shield = 2.11e-6`, `k_LW = 1.27e-10 s^-1`; above
+`r = 1.10 R_p` the shielding is gone (`f_shield = 1.000`,
+`k_LW = 6.026e-5 s^-1`). `x(H2)` at `r = 1.02` is *higher* with the band on,
+which appears to be the layer temperature rather than the chemistry: that layer
+is 330 K colder, and the temperature dependence of the H2 balance outweighs the
+added destruction. The front moves down by 0.0008 R_p, consistent with more
+destruction where the shielding has lifted. Caveat: the band changes the
+H-alpha peak by +9.5% relative and H-beta by +17%, only about twice the
+numerical spread above, so those changes are not quotable as observational
+predictions without the coefficient pair run alongside.
+
+Files: `src/modules/time_step/steady_newton.f90` (diagnostic only).
+Documentation: `docs/hd209_metal_stagnation.md` section 9,
+`examples/README.md`, `README_HOWTO.md`, `TO_BE_DONE.md` item (A).

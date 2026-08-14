@@ -41,8 +41,8 @@ each option does.
 | `12_windae_ic_hd209` | In-process Wind-AE warm-start IC that **works** — HD209458b (not HD189733b), close to the shipped seed, so the ramp converges and EXHALE warm-starts cleanly (spherical 10 Rp) | HD209458b params `+ Domain mode: Spherical`, `IC mode: windae`, `Solver: Newton` |
 | `13_lower_atmosphere` | **Lower-atmosphere connection** for four planets: an analytic 1-ubar base column plus a `base.inp` handoff (isothermal or Guillot T(p) generator) — see the folder's own README (multi-planet, not the HD189733b baseline) | driver-generated `base_iso.inp` / `base_guillot.inp` (the four `input.inp` files are plain core blocks; add `Lower column: <R_1bar>` by hand for the analytic-column report) |
 | `14_diffusion` | **Diffusive separation of He and metals** (HD209458b): the He/H ratio declines with altitude and each trace metal settles independently, reshaping the He 10830 line | HD209458b params `+ Include He23S? True`, `+ He_diffusion: True`, `+ He_metal_diffusion: True`, `+ He_Kzz: 1.0e9`, `+ He_alphaT: 0.0`, `metals.inp` present |
-| `15_molecular` | **Full molecular chemistry** (HD209458b): H2/H2+/H3+/HeH+ in the coupled ionization equilibrium; a sharp H2->H front forms above a thin molecular base, the wind above it essentially atomic. Converged to a residual norm of 9.5e-6 (2026-08-13), the front sits at r = 1.0089 R_p and the molecular layer between the base and the front collapses to ~400 K — see the note below | HD209458b params `+ Molecular chemistry: True`, `+ Solver: Newton 5.0e-2`, `+ Resid tol: 1.0e-5`, `+ Max steps: 150000` (no `metals.inp` here, but metals are allowed — see `16_molecular_metals`; `He_diffusion` is still refused) |
-| `16_molecular_metals` | **Molecular chemistry + trace metals in one system** (HD209458b): the H2/H2+/H3+/HeH+ network and the metal ionization stages share the free electron density, which the metals dominate in the shielded molecular base. Not converged — see the note below | 15 `+ metals.inp` (solar C/N/O), without 15's three convergence keys |
+| `15_molecular` | **Full molecular chemistry** (HD209458b): H2/H2+/H3+/HeH+ in the coupled ionization equilibrium; a sharp H2->H front forms above a thin molecular base, the wind above it essentially atomic. Converges to a residual norm of 6.105e-6 in 89 outer iterations from a cold start with the current code (re-run 2026-08-15; the front sits at r = 1.0097 R_p and the molecular layer between the base and the front collapses to ~400 K) — see the note below | HD209458b params `+ Molecular chemistry: True`, `+ Solver: Newton 5.0e-2`, `+ Resid tol: 1.0e-5`, `+ Max steps: 150000` (no `metals.inp` here, but metals are allowed — see `16_molecular_metals`; `He_diffusion` is still refused) |
+| `16_molecular_metals` | **Molecular chemistry + trace metals in one system** (HD209458b): the H2/H2+/H3+/HeH+ network and the metal ionization stages share the free electron density, which the metals dominate in the shielded molecular base. Converges only from a warm restart off a freshly converged `15`, with `Low-Mach damping` on — the recipe is in the note below | 15 `+ metals.inp` (solar C/N/O), without 15's three convergence keys |
 
 Notes
 - Wind-AE IC (`11`/`12`, `docs/wind_ae_solver.pdf`): `IC mode: windae`
@@ -58,10 +58,11 @@ Notes
   `output/Hydro_ioniz_IC.txt` / `output/Ion_species_IC.txt` first.
 - Metals on/off is a runtime switch: any folder becomes metals-on by
   copying a `metals.inp` into it (and metals-off by removing it).
-- HD189733b has a "breathing" (slightly inflowing) base; the practical
-  Newton residual floor appears to be ||R|| ~ 3e-4 (see
-  `docs/steady_solver_memo.pdf`), which is below the default
-  `Resid tol: 1.0e-3` and therefore harmless here.
+- HD189733b has a "breathing" (slightly inflowing) base. The
+  `||R|| ~ 3e-4` Newton floor it used to show (`docs/steady_solver_memo.pdf`)
+  is gone since the 2026-08-11 line-search and base-energy fixes: a warm
+  re-convergence now reaches `||R|| = 1.2e-5` in 11 iterations (re-measured
+  2026-08-15, `backup/regression/jfnk_hd189_tight`).
 - A molecular run (`15`, `16`) needs three keys the atomic examples do not.
   `Solver: Newton 5.0e-2` raises the hand-off threshold, because the `du`
   descent of a molecular run is not monotonic and the run can spend its whole
@@ -72,12 +73,39 @@ Notes
   never reaches the layer — the H3+ cooling time there is ~1e7 CFL steps — so
   the Newton finish is not optional here. Details and the converged numbers:
   `docs/lower_atmosphere_coupling.md`, section "Converged Tier-2 solution".
-  The three keys converge `15` (metals off) but **not** `16`: with metals on,
-  the same run reaches the hand-off and the JFNK line search then stalls at
-  `||R|| = 3.6e-4` after 281 iterations (`info = 2`, worst cell r = 1.021,
-  momentum) and falls back to marching (2026-08-13). `16` therefore still carries
-  the plain `Solver: Newton` line and has no converged solution; the hot-Uranus
-  molecular+metals case does converge, so this is specific to HD 209458 b.
+  The three keys converge `15` (metals off) from a cold start. The
+  `15_molecular/output/` stored here is the current-binary converged state
+  (replaced 2026-08-15; the earlier binary's state is kept as
+  `15_molecular/output_pre_item3_20260813/`). After any further code change,
+  re-converge `15` before using it as a seed — see the next note.
+- **Converging `16` (molecular + metals) needs a warm restart, and the seed
+  matters.** The three keys alone do not converge it: with metals on, the cold
+  run reaches the hand-off and the JFNK line search bottoms around
+  `||R|| ~ 1e-3` (worst cell r = 1.021, momentum) and falls back to marching,
+  at every `Low-Mach damping` coefficient tried — `off`, `5e-3`, `1e-2`,
+  `2e-2` (measured 2026-08-15). The cold path for this case is closed. The
+  recipe that does work:
+
+  1. Converge `15` **with the binary you are about to use**. A state converged
+     by an older binary is a different seed and it fails (`info = 2`, measured).
+  2. Copy that run's `output/Hydro_ioniz.txt` and `output/Ion_species.txt` into
+     the `16` run directory as `output/Hydro_ioniz_IC.txt` and
+     `output/Ion_species_IC.txt`.
+  3. Add `Load IC? True` and `Low-Mach damping: 5.0e-3` to `16`'s `input.inp`,
+     alongside `15`'s three keys. Run the pair `5.0e-3` **and** `1.0e-2` and
+     compare — a single coefficient is not trustworthy here (caveat below).
+  4. Expect `info = 0` at `Resid tol: 1.0e-5` and `log10 Mdot` 9.65-9.67.
+
+  Caveat: the two coefficients give two solutions that agree in the wind
+  (`log10 Mdot` within 0.02, `rho` within 5.1% above 1.3 R_p) and differ inside
+  the stagnant layer below the escape radius by tens of percent in `rho` and
+  `T`, because the convergence measure is taken over `r >= r_esc` and does not
+  look there. That propagates to the Balmer lines at the 5-8% relative level
+  (H-alpha peak 2.098% against 2.199%, H-beta 1.046% against 1.134%); He I
+  10830 is insensitive (40.19% against 40.26%). Full account:
+  `docs/hd209_metal_stagnation.md` section 9, `docs/Update_EXHALE.md`
+  section 61. The hot-Uranus molecular+metals case converges cold, so this is
+  specific to HD 209458 b.
 
 ## 13_lower_atmosphere/
 Lower-atmosphere connection examples for HD 209458 b, HD 189733 b,

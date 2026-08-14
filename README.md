@@ -221,4 +221,4 @@ schemas, convergence recipes, post-processing — is in
 
 Kwang-Il Seon (KASI / UST)
 
-Last updated: 2026-08-14 00:30
+Last updated: 2026-08-15 06:00

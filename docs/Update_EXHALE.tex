@@ -6013,6 +6013,193 @@ Files: \texttt{src/modules/flux/low\_mach\_dissipation.f90} (new),
 \par}
 
 % ===================================================================== %
+\section{The residual below the escape radius, and what closes the
+HD\,209458\,b molecular $+$ metals case (2026-08-15)}
+% ===================================================================== %
+Section~60 left the \texttt{examples/16} configuration converging from a warm
+restart at two damping coefficients and failing from a cold one, and left open
+whether the acceptance window should be widened to include the layer the
+failures live in. Both questions, and the seed the warm prescription depends
+on, were measured on 2026-08-15. The full account is
+\texttt{docs/hd209\_metal\_stagnation.md} section~9; this section records the
+code change and the conclusions.
+
+\paragraph{The change: the layer's residual is printed, not tested.}
+{\sloppy
+\texttt{resid\_relnorm\_below\_escape} and
+\texttt{write\_resid\_below\_escape} in
+\texttt{src/modules/time\_step/steady\_newton.f90} apply the \textbf{same}
+volume-weighted relative norm that \texttt{resid\_relnorm} uses for the
+convergence measure to the complementary region \texttt{[1:j\_min-1]}, i.e.\
+below the escape radius, and locate the cell carrying the largest cell-wise
+relative residual $|F_{k,j}|/|u_{k,j}|$ there, reporting $j$, $r(j)$ and which
+of the three rows it is. One line is printed at four points: PTC start, PTC
+end, JFNK start, JFNK end. The JFNK end line is emitted \emph{before} the
+best-iterate restore, because that is the last point at which $F$ and $u$ are a
+consistent pair; it therefore refers to the last iterate visited, which is also
+the returned state whenever no restore happens.\par}
+
+The value is never tested and nothing in the solve depends on it. The whole
+change is \textbf{$+$95 lines in that one file}, output only, and
+\texttt{make check} is \textbf{5/5 byte-identical} (\texttt{wasp\_full},
+\texttt{wasp\_he23off}, \texttt{mol\_base\_handoff}, \texttt{mol\_metals},
+\texttt{mol\_lyman\_werner}) --- no output file moves, only stdout grows.
+
+\paragraph{Widening the acceptance window is rejected by what it prints.} With
+the diagnostic in place the question is a measurement rather than a design
+argument. The norm over \texttt{[1:401]} ($j_{\min} = 402$):
+
+\begin{center}
+\begin{tabular}{lll}
+\hline
+state & norm below $r_{\rm esc}$ & worst cell \\
+\hline
+\texttt{examples/16} converged, $\varepsilon_4 = 5\times10^{-3}$ & 0.195 &
+  $j = 75$, $r = 1.0153$ \\
+\texttt{examples/16} converged, $\varepsilon_4 = 1\times10^{-2}$ & 2.352 &
+  $j = 5$, $r = 1.0010$ \\
+\texttt{examples/16} converged, $5\times10^{-3}$ $+$ LW & 0.939 & $j = 3$ \\
+\texttt{examples/15} converged (\textbf{metals off}) & 9.99 & $j = 2$ \\
+warm restart, at JFNK start & 0.60--1.21 & $j = 6$--15, momentum \\
+cold $\varepsilon_4 = 5\times10^{-3}$, at failure & 594 &
+  $j = 97$, $r = 1.0218$ \\
+cold $\varepsilon_4 = 1\times10^{-2}$, at failure & 1599 &
+  $j = 112$, $r = 1.0273$ \\
+\hline
+\end{tabular}
+\end{center}
+
+{\sloppy
+A converged state carries a relative residual of 0.2 to 10 below the escape
+radius, four to six orders above \texttt{Resid tol}, and the largest of them
+belongs to the metals-off \texttt{examples/15} solution that nobody doubts.
+That is not about metals: the layer is near-hydrostatic
+($|v|\sim10$\,cm\,s$^{-1}$), so the denominator of the momentum row's relative
+residual, $|\rho v|$, collapses wherever the flow is slow, right state or not.
+Widening the window on this norm would report \texttt{info} $= 2$ for every
+configuration that converges today without determining the layer any better.
+The window stays \texttt{[j\_min:N]}; the diagnostic makes the uncontrolled
+part visible instead. The failure rows sit three orders above the converged
+ones, so the number does separate good from bad --- it is the absolute scale
+that is not usable as a tolerance.\par}
+
+\paragraph{The cold path is closed.} Scanning \texttt{Low-Mach damping} on the
+cold start gives \texttt{info} $= 1$ at $1.081\times10^{-3}$ (off),
+$9.953\times10^{-4}$ ($5\times10^{-3}$), $1.025\times10^{-3}$
+($1\times10^{-2}$) and $9.307\times10^{-4}$ ($2\times10^{-2}$) --- one
+${\sim}10^{-3}$ floor, a factor 100 above the tolerance, and the two
+coefficients that work on the warm restart do nothing here that \texttt{off}
+does not. The cold hand-off state appears to lie outside the Newton basin the
+warm restart reaches, and the coefficient is not the lever. The cold path for
+this configuration is abandoned.
+
+\paragraph{The warm prescription is pinned to its seed.} It needs one thing
+section~60 did not say: the restart must come from an \texttt{examples/15}
+state converged with the \textbf{current} binary. Seed~A is the copy
+\texttt{examples/15\_molecular/output} held until 2026-08-15, written before
+the section~59 change (kept as \texttt{output\_pre\_item3\_20260813});
+seed~B is \texttt{examples/15} re-converged with the current binary, which the
+example directory holds since 2026-08-15. Same binary and same keys otherwise:
+
+\begin{center}
+\begin{tabular}{llllll}
+\hline
+seed & $\varepsilon_4$ & hand-off & \texttt{info} & best $||R||$ &
+  $\log_{10}\dot M$ \\
+\hline
+A (stored) & $5.0\times10^{-3}$ & 50645 & \textbf{2} & $1.303\times10^{-4}$ &
+  --- \\
+A (stored) & $1.0\times10^{-2}$ & 50629 & \textbf{2} & $5.770\times10^{-5}$ &
+  --- \\
+A $+$ LW 343 & $5.0\times10^{-3}$ & 50189 & 0 & $9.799\times10^{-6}$ & 9.68 \\
+B (current) & $5.0\times10^{-3}$ & 48062 & 0 & $9.934\times10^{-6}$ & 9.65 \\
+B (current) & $1.0\times10^{-2}$ & 48007 & 0 & $9.987\times10^{-6}$ & 9.67 \\
+B $+$ LW 343 & $5.0\times10^{-3}$ & 47965 & 0 & $9.900\times10^{-6}$ & 9.68 \\
+\hline
+\end{tabular}
+\end{center}
+
+{\sloppy
+Seed~B reproduces the section~60 table exactly, hand-off step included (the
+re-convergence that produces it also reproduces the section~60 control:
+step 25839, \texttt{info} $= 0$, $||R|| = 6.105\times10^{-6}$,
+$\log_{10}\dot M = 10.24$, front at 1.0097 $R_p$). Seed~A does not: the
+hand-off comes ${\sim}2600$ steps later, from a different state, and the line
+search then collapses ($\lambda\sim10^{-6}$) and aborts. The section~59 change
+moved the \texttt{examples/15} solution by more than this marginal solve
+tolerates in its starting point, so a restart file written by an older binary
+is no longer the same seed. The Lyman--Werner member converges from both seeds
+--- the LW coupling appears to widen the basin here rather than narrow it.\par}
+
+\paragraph{What the weak determination of the layer costs.} The two converged
+solutions ($\varepsilon_4 = 5\times10^{-3}$ and $1\times10^{-2}$, both
+\texttt{info} $= 0$ at \texttt{Resid tol: 1.0e-5}) agree in the wind ---
+$\Delta\rho/\rho$ $+5.1\%$ at 1.3 $R_p$, $+3.4\%$ at 1.5, $+2.6\%$ at 2.0,
+$\Delta v/v \le 1.6\%$, $\Delta T/T \le 0.4\%$, $\log_{10}\dot M$ 9.65 against
+9.67 --- and disagree inside the layer, where the
+$10^{-2}/5\times10^{-3}$ density ratio runs 0.78 at $r = 1.005$, 1.31 at 1.013,
+1.41 at 1.020 and 1.32 at 1.030, $T$ differs by $+20\%$ at 1.005, $+38\%$ at
+1.015 and $-7.7\%$ at 1.020, and the alternating component of $v$ over
+$r = 1.015$--$1.030$ is 0.392 against 0.028 on a mean $|v|$ of
+12--16\,cm\,s$^{-1}$.
+
+That does not stay internal. Run through \texttt{EXHALE\_transit.py}, the
+theoretical peak excess absorption is 40.19\% against 40.26\% in He\,I 10830
+(0.2\% relative), 2.098\% against 2.199\% in H$\alpha$ ($+4.8\%$), 1.046\%
+against 1.134\% in H$\beta$ ($+8.4\%$), with Ly$\alpha$ saturated in both.
+He\,I 10830 forms in the wind and does not care which layer sits underneath it;
+part of the H($n=2$) absorption is formed in the layer, so the weak
+determination appears to propagate to the Balmer depths at the 5--8\% relative
+level. Quote those depths with the pair, not from a single coefficient.
+
+\paragraph{Lyman--Werner with metals on.} The
+\texttt{Stellar LW flux [erg/cm2/s]: 343.0} A/B on seed~B at
+$\varepsilon_4 = 5\times10^{-3}$, both members \texttt{info} $= 0$:
+
+\begin{center}
+\begin{tabular}{lll}
+\hline
+ & LW off & LW on (343) \\
+\hline
+$\log_{10}\dot M$ & 9.65 & 9.68 \\
+H$_2$ $=$ H\,I front & 1.01108 & 1.01026 \\
+$T$ at $r = 1.02$ [K] & 1801 & 1470 \\
+$x$(H$_2$) at $r = 1.02$ & $4.0\times10^{-6}$ & $2.1\times10^{-5}$ \\
+H$_3^+$ peak [cm$^{-3}$] & $1.93\times10^{5}$ at 1.0006 &
+  $1.99\times10^{5}$ at 1.0006 \\
+HeH$^+$ peak [cm$^{-3}$] & 0.285 & 0.053 \\
+C\,II fraction at 1.02 / 1.20 & 0.197 / 0.449 & 0.180 / 0.430 \\
+H$\alpha$ peak & 2.098\% & 2.297\% \\
+H$\beta$ peak & 1.046\% & 1.221\% \\
+He\,I 10830 peak & 40.19\% & 40.33\% \\
+\hline
+\end{tabular}
+\end{center}
+
+{\sloppy
+The self-shielding is the section~56 physics unchanged: at the base
+$N({\rm H_2}) = 2.68\times10^{21}$\,cm$^{-2}$,
+$f_{\rm shield} = 2.11\times10^{-6}$,
+$k_{\rm LW} = 1.27\times10^{-10}$\,s$^{-1}$; above $r = 1.10\,R_p$ the
+shielding is gone ($f_{\rm shield} = 1.000$,
+$k_{\rm LW} = 6.026\times10^{-5}$\,s$^{-1}$). $x$(H$_2$) at $r = 1.02$ is
+\emph{higher} with the band on, which appears to be the layer temperature
+rather than the chemistry: that layer is 330\,K colder, and the temperature
+dependence of the H$_2$ balance outweighs the added destruction. The front
+moves down by 0.0008 $R_p$, consistent with more destruction where the
+shielding has lifted. Caveat: the band changes the H$\alpha$ peak by $+9.5\%$
+relative and H$\beta$ by $+17\%$, only about twice the numerical spread above,
+so those changes are not quotable as observational predictions without the
+coefficient pair run alongside.\par}
+
+{\sloppy
+Files: \texttt{src/modules/time\_step/steady\_newton.f90} (diagnostic only).
+Documentation: \texttt{docs/hd209\_metal\_stagnation.md} section~9,
+\texttt{examples/README.md}, \texttt{README\_HOWTO.md},
+\texttt{TO\_BE\_DONE.md} item~(A).
+\par}
+
+% ===================================================================== %
 %  APPENDIX --- bookkeeping material, kept separate from the dated update log
 % ===================================================================== %
 \clearpage

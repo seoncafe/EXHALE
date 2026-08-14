@@ -10,7 +10,13 @@ measured about why, section 6 where the case stood after the first three
 2026-08-13 changes, section 7 what is left, and section 8 the fourth change —
 a conservative artificial dissipation of the stagnant layer that the marching
 loop and the steady residual both see, under which the warm restart reaches
-`info = 0` at `Resid tol: 1.0e-5` for the first time.
+`info = 0` at `Resid tol: 1.0e-5` for the first time. Section 9 (2026-08-15)
+closes three of section 7's items by measurement: the cold path does not
+respond to the damping coefficient and is abandoned, the warm prescription is
+pinned to a seed converged with the current binary, and widening the acceptance
+window to include the layer is rejected — with what the layer's residual
+actually is, now printed by every run, and what its weak determination costs in
+the Balmer lines.
 
 This memo records what was measured, what was fixed on the strength of it, and
 what is still open. Diagnostic runs live under the scratch tree
@@ -271,12 +277,30 @@ on.
   the marching loop and the steady residual both see is now available as
   `Low-Mach damping` (default off), and section 8 records what it does to this
   configuration.
-- **`examples/16` itself.** Section 3's inheritance is gone (section 5 item 3),
+- **`examples/16` itself — the warm path settled, the cold path closed, see
+  sections 9.2 and 9.3.** Section 3's inheritance is gone (section 5 item 3),
   and the case is no better for it. With `Low-Mach damping` at
   `eps4 = 5e-3`-`1e-2` the warm restart now reaches `info = 0` at
   `Resid tol: 1.0e-5` (section 8.2), which it never did before; the cold path
-  and the larger coefficients still do not.
-- **Cells that end below the solver tolerance.** The equilibrium still returns,
+  and the larger coefficients still do not. Measured 2026-08-15: no coefficient
+  in `off`-`5e-3`-`1e-2`-`2e-2` rescues the cold path, which is therefore
+  closed (section 9.2), and the warm prescription of section 8.2 reproduces
+  only from a seed converged with the *current* binary (section 9.3).
+- **Whether the acceptance window should reach below `r_esc` — measured and
+  rejected, see section 9.4.** The residual of the layer is now printed by
+  every run, and at convergence it is 0.2 to 10 in the relative norm the
+  window uses, on cases that converge today including the metals-off
+  `examples/15`. Widening the window on this norm would fail them all rather
+  than determine the layer.
+- **The layer is only weakly determined, and it reaches the Balmer lines —
+  documented, not fixed, see section 9.5.** Two solves that both return
+  `info = 0` at `Resid tol: 1.0e-5` differ inside the layer by tens of percent
+  in `rho` and `T`, and that propagates to 4.8% relative in the H-alpha peak
+  and 8.4% in H-beta. He I 10830 (0.2%) and the wind are insensitive. Nothing
+  measured so far pins the layer down; the honest handling is to quote the pair
+  and carry the caveat.
+- **Cells that end below the solver tolerance — still open.** The equilibrium
+  still returns,
   in a few cells per evaluation, a root the solve did not resolve to `xtol`
   (77 cell solves over the 40-step `mm16/cb16` run, down from 224). Those roots
   are computed at the state being evaluated, so they are not the path
@@ -392,3 +416,192 @@ move much more (`rho` by up to 16%, `T` by 6.9% below `r = 1.05`) — those cell
 carry an odd-even velocity oscillation of 86 times the local mean with the key
 off, which the term reduces to 77, so they are the cells the term is for and
 they are not pinned down to begin with.
+
+## 9. The cold path closed, the acceptance window question closed, and the seed pinned (2026-08-15)
+
+Section 7 left three measurable questions: whether any damping coefficient
+rescues the cold start, whether the acceptance window should be widened to
+include the layer, and what the weak determination of the layer costs. All
+three were measured on 2026-08-15 and are recorded here; the section also
+records a diagnostic added to make the third visible in every run, and a
+Lyman-Werner A/B on the metals-on configuration.
+
+Every run in this section: the `examples/16` configuration with
+`Solver: Newton 5.0e-2`, `Resid tol: 1.0e-5`, `du_th [PLM,WENO3]: 0.5 1.0e-3`,
+`Max steps: 150000`, 4 threads, the same binary (the one carrying the
+diagnostic of section 9.1), in scratch run directories outside the repository.
+
+### 9.1 The residual of the layer is now printed
+
+`resid_relnorm_below_escape` in `src/modules/time_step/steady_newton.f90`
+applies the *same* volume-weighted relative norm the convergence measure uses
+to the complementary region `[1:j_min-1]`, i.e. below the escape radius, and
+also locates the cell with the largest cell-wise relative residual
+`|F_k,j| / |u_k,j|` in that region, reporting `j`, `r(j)` and which of the
+three rows (mass, momentum, energy) it is. `write_resid_below_escape` prints
+one line at four points: the start and the end of the PTC solve and the start
+and the end of the JFNK solve. The JFNK end line is emitted *before* the
+best-iterate restore, because that is the last point at which `F` and `u` are a
+consistent pair, so it refers to the last iterate visited — which is also the
+returned state whenever no restore happens.
+
+The value is printed and never tested; nothing in the solve depends on it. The
+change is +95 lines in that one file and `make check` is **5/5 byte-identical**
+(`wasp_full`, `wasp_he23off`, `mol_base_handoff`, `mol_metals`,
+`mol_lyman_werner`) — the output files are unchanged and only stdout grows.
+
+### 9.2 The cold path does not respond to the coefficient, and is closed
+
+Cold start (`Load IC? False`), scanning the `Low-Mach damping` coefficient:
+
+| `eps4` | JFNK outcome |
+|---|---|
+| off (section 8.3) | `info = 1`, best 1.081e-3 |
+| 5.0e-3 | `info = 1`, best 9.953e-4 |
+| 1.0e-2 | `info = 1`, best 1.025e-3; falls back to marching and runs out the 150000-step cap at a `du` plateau of ~7e-3 |
+| 2.0e-2 (section 8.3) | `info = 1`, best 9.307e-4 |
+
+All four bottom at the same ~1e-3 floor, a factor 100 above the tolerance, and
+the two coefficients that work on the warm restart (5e-3, 1e-2) do nothing here
+that `off` does not. The cold hand-off state appears to be outside the Newton
+basin of the solution the warm restart finds, and the coefficient is not the
+lever. **The cold path for this configuration is closed**: the warm restart is
+the prescription.
+
+### 9.3 The warm prescription needs a seed converged with the current binary
+
+Section 8.2 says "warm restart from the converged `examples/15` state" without
+saying *which* converged state, and that turns out to matter. Two seeds were
+run A/B, same binary, same everything else:
+
+- **Seed A** — the copy `examples/15_molecular/output` held until 2026-08-15
+  (written 2026-08-13 10:15, i.e. by the binary from *before* the section 5
+  item-3 change; H2 = H I front at 1.0089 R_p; now kept as
+  `examples/15_molecular/output_pre_item3_20260813/`, the example directory
+  itself holding the seed-B state since 2026-08-15).
+- **Seed B** — `examples/15` re-converged with the current binary. That
+  re-convergence reproduces the section 8.3 row exactly: hand-off at marching
+  step 25839, `info = 0`, `||R|| = 6.105e-6`, `log10 Mdot = 10.24`, front
+  (`n_H2 = n_HI` crossing) at 1.0097 R_p.
+
+| seed | `eps4` | hand-off step | `info` | best `\|\|R\|\|` | outer it | `log10 Mdot` |
+|---|---|---|---|---|---|---|
+| A | 5.0e-3 | 50645 | **2** | 1.303e-4 | — | — |
+| A | 1.0e-2 | 50629 | **2** | 5.770e-5 | — | — |
+| A | 5.0e-3 + `Stellar LW flux: 343.0` | 50189 | 0 | 9.799e-6 | 47 | 9.68 |
+| B | 5.0e-3 | 48062 | 0 | 9.934e-6 | 162 | 9.65 |
+| B | 1.0e-2 | 48007 | 0 | 9.987e-6 | 202 | 9.67 |
+| B | 5.0e-3 + `Stellar LW flux: 343.0` | 47965 | 0 | 9.900e-6 | — | 9.68 |
+
+The two seed-B rows without Lyman-Werner reproduce the section 8.2 table
+exactly, hand-off step included. The seed-A rows do not: the hand-off comes
+~2600 marching steps later, from a different state, and the JFNK line search
+then collapses (`lambda ~ 1e-6`) and aborts with `info = 2`; both fall back to
+marching and run out the 150000-step cap at a `du` plateau of 1.0e-3 to 9.5e-4.
+
+The reading is that the section 5 item-3 change moved the `examples/15`
+solution by more than this marginal solve tolerates in its starting point, so a
+restart file written by an older binary is no longer the same seed. **The
+prescription is therefore: re-converge `examples/15` with the binary in hand,
+and restart `examples/16` from that**, not from whatever `output/` happens to
+hold. Note also that the Lyman-Werner member converges from *both* seeds — the
+LW coupling appears to widen the basin for this configuration rather than
+narrow it.
+
+### 9.4 Extending the acceptance window below `r_esc` is rejected by measurement
+
+With the diagnostic of section 9.1 the question of section 2 — should the solve
+be accepted on a window that includes the layer? — becomes a measurement. The
+volume-weighted relative norm over `[1:401]` (`j_min = 402` here):
+
+| state | norm over `[1:j_min-1]` | worst cell |
+|---|---|---|
+| seed-B warm, at JFNK start | 0.60-1.21 | `j = 6`-15, `r = 1.001`-1.003, momentum |
+| `examples/16` converged, `eps4 = 5e-3` | 0.195 | `j = 75`, `r = 1.0153` |
+| `examples/16` converged, `eps4 = 1e-2` | 2.352 | `j = 5`, `r = 1.0010` |
+| `examples/16` converged, `eps4 = 5e-3` + LW | 0.939 | `j = 3` |
+| `examples/15` converged (**metals off**) | 9.99 | `j = 2` |
+| cold `eps4 = 5e-3`, at failure | 594 | `j = 97`, `r = 1.0218` |
+| cold `eps4 = 1e-2`, at failure | 1599 | `j = 112`, `r = 1.0273` |
+
+A converged state carries a relative residual of 0.2 to 10 below the escape
+radius — four to six orders above `Resid tol` — and the metals-off
+`examples/15` solution, which nobody doubts, carries the largest of them. That
+is not a statement about metals: the layer is near-hydrostatic (`|v| ~ 10`
+cm/s), so the denominator of the momentum row's relative residual, `|rho v|`,
+collapses, and the ratio is large wherever the flow is slow whether or not the
+state is right. **Widening the acceptance window on this norm would turn every
+configuration that converges today, `examples/15` included, into `info = 2`,
+without determining the layer any better.** The window stays at `[j_min:N]`,
+and the diagnostic makes the uncontrolled part visible in every run instead.
+
+The failure rows are 3 orders above the converged ones, so the number does
+separate a bad state from a good one; it is the absolute scale that is not
+usable as a tolerance.
+
+### 9.5 What the weak determination of the layer costs, in the lines
+
+The two seed-B solutions of section 9.3 (`eps4 = 5e-3` and `1e-2`, both
+`info = 0` at `Resid tol: 1.0e-5`) were compared cell by cell, and then run
+through `EXHALE_transit.py`. In the layer, the `1e-2`/`5e-3` ratio of `rho` is
+0.78 at `r = 1.005`, 1.31 at 1.013, 1.41 at 1.020 and 1.32 at 1.030; `T` differs
+by +20% at 1.005, +38% at 1.015 and -7.7% at 1.020; over `r = 1.015-1.030` the
+alternating component of `v` relative to the mean `|v|` is 0.392 at `5e-3`
+against 0.028 at `1e-2`, on a mean `|v|` of 12-16 cm/s. (The 137% at
+`r = 1.013` quoted in section 8.2 belongs to an earlier pair, of the seed-A
+lineage; the size differs pair by pair, the character does not.)
+
+In the wind the two agree: `Drho/rho` is +5.1% at 1.3 R_p, +3.4% at 1.5 and
++2.6% at 2.0, `Dv/v <= 1.6%`, `DT/T <= 0.4%`, and `log10 Mdot` is 9.65 against
+9.67.
+
+The transmission spectra, theoretical peak excess absorption:
+
+| line | `eps4 = 5e-3` | `eps4 = 1e-2` | relative difference |
+|---|---|---|---|
+| He I 10830 | 40.19% | 40.26% | 0.2% |
+| H-alpha | 2.098% | 2.199% | +4.8% |
+| H-beta | 1.046% | 1.134% | +8.4% |
+| Ly-alpha | saturated (100%) | saturated (100%) | — |
+
+He I 10830 forms in the wind and does not care which of the two layers sits
+underneath it. The Balmer lines do: part of the H(n=2) absorption is formed in
+the layer, so the weak determination appears to propagate to the line depth at
+the 5-8% relative level. **Any H-alpha or H-beta depth quoted from this
+configuration should be quoted with that caveat, and the `5e-3`/`1e-2` pair
+should be run rather than a single coefficient.**
+
+### 9.6 Lyman-Werner photodissociation with metals on
+
+The `Stellar LW flux [erg/cm2/s]: 343.0` A/B, on seed B at `eps4 = 5e-3`, both
+members `info = 0`:
+
+| | LW off | LW on (343) |
+|---|---|---|
+| `log10 Mdot` | 9.65 | 9.68 |
+| H2 = H I front (`n_H2 = n_HI`) | 1.01108 | 1.01026 |
+| `T` at `r = 1.02` [K] | 1801 | 1470 |
+| `x(H2)` at `r = 1.02` | 4.0e-6 | 2.1e-5 |
+| H3+ peak [cm^-3] | 1.93e5 at 1.0006 | 1.99e5 at 1.0006 |
+| HeH+ peak [cm^-3] | 0.285 | 0.053 |
+| C II fraction at 1.02 / 1.20 | 0.197 / 0.449 | 0.180 / 0.430 |
+| H-alpha peak | 2.098% | 2.297% |
+| H-beta peak | 1.046% | 1.221% |
+| He I 10830 peak | 40.19% | 40.33% |
+
+The self-shielding behaves as section 56 of `docs/Update_EXHALE.md` describes:
+at the base `N(H2) = 2.68e21 cm^-2`, `f_shield = 2.11e-6` and
+`k_LW = 1.27e-10 s^-1`, while above `r = 1.10 R_p` the shielding is gone
+(`f_shield = 1.000`, `k_LW = 6.026e-5 s^-1`).
+
+`x(H2)` at `r = 1.02` is *higher* with the band on, which at first reads
+backwards. It appears to be the layer temperature: the LW-on layer is 330 K
+colder there, and the temperature dependence of the H2 balance outweighs the
+added destruction. The front moves down by 0.0008 R_p, consistent with more
+destruction where the shielding has lifted.
+
+**Caveat on the line depths.** Turning the band on changes the H-alpha peak by
++9.5% relative and H-beta by +17%, which is only about twice the numerical
+spread of section 9.5. The direction is reproducible in this pair; the
+magnitude should not be quoted as an observational prediction without the
+coefficient pair run alongside it.

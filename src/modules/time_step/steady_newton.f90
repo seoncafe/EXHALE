@@ -445,6 +445,88 @@
 
       ! ------------------------------------------------------!
 
+      subroutine resid_relnorm_below_escape(F, u, rnorm, j_worst, r_worst, &
+                                            k_worst)
+      ! The SAME relative residual as resid_relnorm, but taken over the
+      ! stagnant layer [1:j_min-1] BELOW the escape radius instead of the wind
+      ! region [j_min:N].
+      !
+      ! Convergence is judged on [j_min:N] only, so the residual of this layer
+      ! is not controlled by anything: two solves can both return info = 0 and
+      ! still differ there by more than a factor two in density
+      ! (docs/hd209_metal_stagnation.md). This routine measures how large that
+      ! uncontrolled residual actually is, and which cell carries it. It is a
+      ! DIAGNOSTIC: the value is printed, never tested, and nothing in the
+      ! solve depends on it.
+      !
+      ! j_worst / r_worst / k_worst locate the cell with the largest cell-wise
+      ! relative residual |F(3*(j-1)+k)|/|u(k,j)| in the layer -- where the
+      ! stagnant residual sits, which the volume-weighted sums average away.
+      real*8, dimension(3*N),         intent(in)  :: F
+      real*8, dimension(3,1-Ng:N+Ng), intent(in)  :: u
+      real*8,                         intent(out) :: rnorm, r_worst
+      integer,                        intent(out) :: j_worst, k_worst
+      integer :: j, k
+      real*8  :: fmx, umx, w, rc(3), cellrel, amx
+
+      rnorm = 0.0d0;  j_worst = 0;  k_worst = 0;  r_worst = 0.0d0
+      if (j_min .le. 1) return          ! no cells below the escape radius
+
+      do k = 1, 3
+         fmx = 0.0d0;  umx = 0.0d0
+         if (resid_vol) then
+            ! volume-weighted (default): sum_j |F|V / sum_j |u|V, V = r^2 dr
+            do j = 1, j_min-1
+               w   = r(j)*r(j)*dr_j(j)
+               fmx = fmx + abs(F(3*(j-1)+k))*w
+               umx = umx + abs(u(k,j))*w
+            enddo
+         else
+            ! legacy L-inf: max over the layer
+            do j = 1, j_min-1
+               fmx = max(fmx, abs(F(3*(j-1)+k)))
+               umx = max(umx, abs(u(k,j)))
+            enddo
+         endif
+         rc(k) = fmx/max(umx, 1.0d-30)
+      enddo
+      rnorm = maxval(rc)
+
+      amx = -1.0d0
+      do j = 1, j_min-1
+         do k = 1, 3
+            cellrel = abs(F(3*(j-1)+k))/max(abs(u(k,j)), 1.0d-30)
+            if (cellrel .gt. amx) then
+               amx = cellrel;  j_worst = j;  k_worst = k
+            endif
+         enddo
+      enddo
+      if (j_worst .gt. 0) r_worst = r(j_worst)
+
+      end subroutine resid_relnorm_below_escape
+
+      ! ------------------------------------------------------!
+
+      subroutine write_resid_below_escape(tag, F, u)
+      ! One diagnostic line for the residual of the stagnant layer below the
+      ! escape radius (see resid_relnorm_below_escape). Silent when the layer
+      ! is empty. (F, u) must be a consistent pair: the caller passes the
+      ! residual of the state currently held in u.
+      character(*),                   intent(in) :: tag
+      real*8, dimension(3*N),         intent(in) :: F
+      real*8, dimension(3,1-Ng:N+Ng), intent(in) :: u
+      real*8  :: rn_below, r_worst
+      integer :: j_worst, k_worst
+      if (j_min .le. 1) return
+      call resid_relnorm_below_escape(F, u, rn_below, j_worst, r_worst,   &
+                                      k_worst)
+      write(*,'(A,A,I0,A,ES11.3,A,I0,A,F8.4,A,I0)') tag,                  &
+           ' below r_esc [1:',j_min-1,'] ||R||=',rn_below,                &
+           '  max cell j=',j_worst,' r=',r_worst,' k=',k_worst
+      end subroutine write_resid_below_escape
+
+      ! ------------------------------------------------------!
+
       subroutine solve_steady_ptc(u, f_sp, resid_tol, maxit, dtau0, info)
       ! Pseudo-transient-continuation inexact Newton solve of the steady
       ! residual F(Y)=0. Per iteration:
@@ -484,6 +566,7 @@
       f2 = sqrt(sum(F*F))                ! smooth line-search merit
       write(*,'(A,ES11.3,A,3ES10.2,A,ES10.2)') ' (PTC) start ||R||=',rnorm, &
            '  R(m,p,E)=',rc,'  ||F||2=',f2
+      call write_resid_below_escape(' (PTC)', F, u)
 
       do iter = 1, maxit
          if (rnorm .lt. resid_tol) then
@@ -549,6 +632,7 @@
       call unpack_U(Y, u);  call Apply_BC(u)
       call resid_relnorm(F, u, rc, rnorm)
       write(*,'(A,I0,A,ES11.3)') ' (PTC) done info=',info,' ||R||=',rnorm
+      call write_resid_below_escape(' (PTC)', F, u)
 
       deallocate(Y,F,Ftry,dY,Ytry,ab,abf,ipiv)
       end subroutine solve_steady_ptc
@@ -745,6 +829,7 @@
       n_window_used = 0
       write(*,'(A,ES11.3,A,ES10.2)') ' (JFNK) start ||R||=',rnorm,        &
            '  ||Fs||2=',f2
+      call write_resid_below_escape(' (JFNK)', F, u)
 
       do iter = 1, maxit
          if (rnorm .lt. resid_tol) then
@@ -892,6 +977,16 @@
       enddo
 
       weno_mode = 0                 ! restore default reconstruction
+
+      ! Residual of the stagnant layer below the escape radius, which the
+      ! convergence measure ||R|| over [j_min:N] does not see. Printed HERE,
+      ! before the best-iterate restore below, because this is the last point
+      ! at which F and u are a consistent pair: the restore replaces Y (hence
+      ! u) by the best iterate without re-evaluating F, and the diagnostic is
+      ! not worth a further residual evaluation. So the line refers to the LAST
+      ! iterate visited, which is also the returned state whenever no restore
+      ! happens.
+      call write_resid_below_escape(' (JFNK)', F, u)
 
       ! Return the best iterate SEEN, not the last one visited, and judge
       ! convergence on it. The line search minimizes a merit; the solve is
