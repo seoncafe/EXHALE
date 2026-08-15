@@ -64,7 +64,7 @@ set.)
   linear (C0) interpolation. This was implemented to test the hypothesis that
   interpolation kinks drove non-convergence; that hypothesis was **not**
   supported (§2.3). It is retained as a smoothness improvement; a keep-vs-revert
-  decision is open.
+  decision is open. [2026-08-15: decided — PCHIP is kept.]
 
 ---
 
@@ -141,11 +141,14 @@ uncertain payoff for a wind this marginal — appear to be:
 - a carefully constructed characteristic / non-reflecting (NSCBC-style) base BC;
 - a steady-state Newton / BVP solver (which, if a steady solution exists, would
   not orbit a time-marching limit cycle);
+  [2026-08-15: implemented — the JFNK steady solve in
+  `src/modules/time_step/steady_newton.f90`, selected by `Solver: Newton`.]
 - accepting HD189733b as a marginal case and reporting a time-averaged
   quasi-steady state.
 - a cheaper, separate idea worth trying for *speed* (not the oscillation):
   local (cell-by-cell) time-stepping, since the global `dt` is currently set by the
   smallest base cell (`eval_dt.f90`: `dt = CFL·min(dr/(|v|+cs))`).
+  [2026-08-15: implemented — the input key `Time stepping: Local`.]
 
 See `docs/numerical_methods.md` for a fuller discussion of solver options.
 
@@ -160,3 +163,7 @@ See `docs/numerical_methods.md` for a fuller discussion of solver options.
   two-stage, input-settable `CFL`) is in place.
 - HD189733b's marginal-wind oscillation is unresolved and is recorded above as
   an open problem with tentative hypotheses, not a closed result.
+  [2026-08-15: resolved since. HD 189733 b reaches a Newton-grade steady state
+  (`info = 0`) after the JFNK line-search fix and the beta(tau)/CHIANTI-guarded
+  cooling of 2026-08-11; see `docs/hd189_base_checkerboard.md` §10 and
+  `docs/newton_scaling_and_base_wall.md`.]

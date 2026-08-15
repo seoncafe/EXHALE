@@ -21,8 +21,16 @@ recombination cascade, two-photon decay, 2s↔2p ℓ-mixing, and
 ## How to use
 
 H-alpha is **always computed**; only the source of the Ly-alpha mean
-intensity `J_lya(r)` (which EXHALE does **not** produce) depends on whether
-you supply a file:
+intensity `J_lya(r)` depends on whether you supply a file:
+
+*[2026-08-15 correction: EXHALE does produce `J_lya(r)` itself. Every run with
+the excited-hydrogen module writes `output/Excited_H.txt`, whose `col1` is
+`r/Rp` and `col5` is `Jlya` — under whichever of the three modes the run used
+(0 = parameterized, 1 = an imported LaRT RT profile, 2 = the in-line
+escape-probability RT of `lya_rt.f90`; the mode is recorded in the file
+header). It is not a drop-in for `Jlya_file`, though: the reader is
+`np.loadtxt(Jlya_file, usecols=(0,1))`, so `Excited_H.txt` has to be cut down
+to its columns 1 and 5 first.]*
 
 **Option 1 — supply `J_lya(r)` as a file.** Set `Jlya_file` in `EXHALE_transit.py`:
 
@@ -148,8 +156,15 @@ center in cgs. A different convention requires rescaling the constant.
 
 - `n2_populations(T, n1s, nHII, ne, Jlya, G2s, G2p)` returns `(n2s, n2p, n2)`.
 - **Compatibility fix:** the `Ion_species.txt` reader now uses
-  `usecols=range(7)` (EXHALE's file has 16 columns including the
-  trace metals); this is also correct for the old 13- and 7-column files.
+  `usecols=range(7)` (EXHALE's file has more columns, from the trace metals);
+  this is also correct for the old 13- and 7-column files.
+  *[2026-08-15 correction: the column count is no longer 16. `write_output.f90`
+  writes `r` plus the six H/He species (`HI HII HeI HeII HeIII HeITR`) plus all
+  `n_mion = 27` metal ion stages = **34 columns**, and **38** for a molecular
+  run, which appends `H2 H2p H3p HeHp`. The metal columns are written whether
+  or not metals are on. The `usecols=range(7)` sentence above is unaffected —
+  the first seven columns are still `r` + the six H/He species, and the schema
+  header (`# columns ...`) is the thing to read for anything past them.]*
 
 ## References
 

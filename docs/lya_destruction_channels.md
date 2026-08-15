@@ -16,7 +16,11 @@ then stood; section 11 records the fix that followed on the same day.
 **Three findings, in order of physical seriousness.**
 
 1. **`n2_populations` in `src/modules/radiation/excited_hydrogen.f90` is
-   physically wrong.** Its dummy arguments `G2s`/`G2p` shadow the module
+   physically wrong.** [2026-08-15: was wrong; fixed 2026-08-12 -- see
+   section 11. The rate coefficients now have a single definition in
+   `radiation/hydrogen_n2_rates.f90` and the dummy arguments that shadowed the
+   statistical weights are gone. The finding is kept in the present tense as
+   written, as the record of the defect.] Its dummy arguments `G2s`/`G2p` shadow the module
    parameters `g2s`/`g2p` — Fortran is case-insensitive — so lines 249-251
    evaluate the statistical weights as the Balmer photoionization rate
    `gamma2_bal` instead of 2 and 6. All three collisional rate coefficients
@@ -47,7 +51,9 @@ then stood; section 11 records the fix that followed on the same day.
    suppression factor.** 58-86% of the `n=2` population is maintained by
    radiative pumping, not by collisional excitation. Collisional de-excitation
    of that pumped population returns energy to the electrons at a rate
-   (`Hdx_arr`, gated by `incl_deexc_heat`, default off) equal to 1.8-92% of the
+   (`Hdx_arr`, gated by `incl_deexc_heat`, default off [2026-08-15: default
+   `.true.` since 2026-08-12; section 11 reversed it, for the reason this
+   paragraph goes on to give]) equal to 1.8-92% of the
    Ly-alpha cooling on three planets and 5x it on HD 209458 b. The comment in
    `parameters.f90` justifying the default — that it "overlaps the existing HI
    coex cooling" — appears to be mistaken: the Cen (1992) coefficient in
@@ -66,7 +72,7 @@ supported by any of these channels.
 | quantity | code location | status |
 |---|---|---|
 | Ly-alpha cooling `Lambda_coex` | `Cool_coeff.f90:843` `coex_rate_HI`; assembled at `util_ion_eq.f90:640`; dumped as `cool_chan(:,3)` at `:800` | coronal limit; no escape probability, no destruction correction |
-| escape probability `beta` | `lya_rt.f90:103-113` (Neufeld/Harrington wing plus Sobolev, combined as `1-(1-b_st)(1-b_sob)`) | used *only* to build `J_int`; never multiplies the cooling |
+| escape probability `beta` | `lya_rt.f90:103-113` (Neufeld/Harrington wing plus Sobolev, combined as `1-(1-b_st)(1-b_sob)`; 2026-08-15: with `Lya absorbing bottom: True` a third factor `(1-b_bot)` joins the product -- see `lya_rt.f90`) | used *only* to build `J_int`; never multiplies the cooling |
 | `J_lya` closure | `lya_rt.f90:127-128`, `J_int = Jpref (g1s/g2p) P (1-beta)/(A beta n1s)` | implies `n2p = P/(A beta)`; no destruction in the denominator (§5) |
 | (i) `H(n=2)` photoionization | rate `gamma2_bal` at `excited_hydrogen.f90:126`; enters `L2p`/`L2s` at `:258-259`; proton source `:191-195`; heating `:198` | present, and active whenever `use_excited_H` |
 | (ii) `2p -> 2s` then two-photon decay | `C2s2p`/`C2p2s` at `:246,251`; `A_2s1s` in `L2s` at `:259` | present, but `C2p2s` is 3x too large (§2) |
@@ -263,6 +269,9 @@ Two smaller consistency notes on this ledger:
 Note that the regression cases `wasp_full` and `wasp_he23off` do set
 `Deexc heat: True`, so `Hdx` is exercised there even though the four production
 planet runs leave it off.
+[2026-08-15: `Deexc heat` is on by default since 2026-08-12, so the explicit key
+in those cases now restates the default and the production runs no longer leave
+the term off.]
 
 ## 5. The `J_int` closure omits the destruction channels
 
@@ -482,6 +491,9 @@ cooling, and never did.** `eval_cool` calls `coex_rate_HI`
 `n2p` nor `Jlya` appears anywhere in that path; `beta_tot` exists only inside
 `lya_rt.f90` and is read only at the two lines that build `J_int` and `J_star`.
 The path does not branch on `jlya_mode`, so the LaRT import mode is identical.
+[2026-08-15: still true of the cooling path. Inside `lya_rt.f90`, `beta_tot`
+gains the downward-escape factor when `Lya absorbing bottom: True`, which
+changes `J_int`/`J_star` but not this cooling term.]
 
 That is the physically right form given the measurement of section 3: the
 cooling is set by the excitation rate `P`, and the collisional destruction that

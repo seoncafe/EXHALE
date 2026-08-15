@@ -74,6 +74,8 @@ ATES model.
 
 - Runtime configuration by file presence, not compile flags: `metals.inp`
   present means metals on, likewise `opacity.inp` and `base.inp`
+- Runtime grid size: `Grid cells: <N>` in `input.inp` (default 500), so
+  base-refinement studies run without a rebuild
 - `EXHALE_transit.py` transmission post-processor: He I 10830 Å, Ly-alpha,
   H-alpha, H-beta, and the metal resonance doublets Mg II h&k, Ca II H&K and
   Na I D, with impact-parameter Voigt integration, instrument and rotation
@@ -221,4 +223,4 @@ schemas, convergence recipes, post-processing — is in
 
 Kwang-Il Seon (KASI / UST)
 
-Last updated: 2026-08-15 06:00
+Last updated: 2026-08-15 16:47

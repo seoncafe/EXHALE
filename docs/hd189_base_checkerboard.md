@@ -49,6 +49,15 @@ below `T_eq = 1183 K`, which the model has no mechanism to prevent because it
 contains no stellar optical/IR absorption and no thermal background - once the
 XUV is shielded out, nothing sets a floor.
 
+> [2026-08-15: a thermal background now exists as an option. `Base IR field:
+> True` lets the eight ground-term fine-structure lines and the H3+ bands see
+> the atmosphere below the base as a black surface radiating `B_nu(T0)` over the
+> sky fraction `1 - sqrt(1 - (R_p/r)^2)`, and returns the net rate, so each of
+> those channels stops cooling at its own radiative-equilibrium temperature. It
+> is **off by default** (the no-incident-field limit above is what an ordinary
+> run still does), and it covers only those channels -- there is still no
+> stellar optical/IR absorption.]
+
 **A direct marching test of the cooling hypothesis is not feasible.** The base
 radiative time is `u/(cool - heat) = 8.3e5 s ~ 9.6 d`, against a CFL timestep of
 0.77 s: about 1.1e6 steps. The production run that produced the converged state
@@ -391,6 +400,15 @@ From reading the code (this part is structural, not measured):
   diagonal and cannot mix neighbors either. The Shapiro filter is the only
   existing operator that acts on 2*dr*, and it is off by default.
 
+  > [2026-08-15: all three clauses have changed. Explicit viscosity and
+  > conduction exist as `src/modules/time_step/viscous_conduction.f90` (keys
+  > `Viscosity:` / `Conduction:`), a gated fourth-difference dissipation of
+  > exactly this 2*dr* contact mode exists as
+  > `src/modules/flux/low_mach_dissipation.f90` (key `Low-Mach damping`), and
+  > the metal line cooling is no longer cell-local: §10 made the escape
+  > probability a function of the column above each cell. All three are off by
+  > default, so the reading above still describes a default-configuration run.]
+
 Under this reading the only thing that damps the mode is the reconstruction
 itself, through the limiter/weights recognizing the profile as smooth - which is
 precisely what fails when `H/dr` approaches unity, and precisely the dependence
@@ -454,7 +472,9 @@ being the controlling variable rather than the flux or reconstruction choice.
 1. **Refine the base grid.** `drc = 5e-5` with `N_low = 200` removed the mode
    (`A(ln rho) = 1e-4`) and damped an imposed perturbation by 50x. `drc` and
    `N_low` are currently hardcoded local variables in
-   `src/modules/init/define_grid.f90`; they are not exposed as input keys. Cost:
+   `src/modules/init/define_grid.f90`; they are not exposed as input keys.
+   [2026-08-15: they are, as `Base grid [dr,cells]: <dr_base> [<N_low_cells>]`;
+   see section 11.] Cost:
    4x the base cells, i.e. more steps at the same CFL. This is the most direct
    fix and the one with the clearest evidence, but it treats the symptom - it
    does not address the base temperature.
@@ -498,7 +518,8 @@ being the controlling variable rather than the flux or reconstruction choice.
 
 ## 8. Raw data and reproduction
 
-Scratch tree (instrumented builds, all experiment directories, logs):
+Scratch tree (instrumented builds, all experiment directories, logs)
+(session scratchpad, no longer present):
 
 ```
 /tmp/claude-1000/-nfs-mocafe-kiseon-RT-Codes-ExoAtmosphere/
@@ -556,15 +577,21 @@ line-center escape probability of the emitting line, from the column between
 the cell center and the top of the domain:
 
 * `kappa_OI63` / `kappa_CII158` give the line-center absorption coefficient of
-  `[O I] 63um` and `[C II] 158um`, using the SAME `A_ul`, level energies and
+  `[O I] 63um` and `[C II] 158um` [2026-08-15: now the single elemental
+  function `fine_structure_line_opacity`, built on `line_center_opacity_lte`
+  and covering all eight lines], using the SAME `A_ul`, level energies and
   ground-term partition sums the two-level emission terms use, a Doppler core
   `v_th = sqrt(2kT/m)` (no turbulence) and the stimulated-emission correction
   `1 - exp(-E/kT)` for Boltzmann level ratios.
-* `fine_structure_escape` accumulates `tau(j)` downward from the top: half of
+* `fine_structure_escape` [2026-08-15: now `fine_structure_line_transfer`]
+  accumulates `tau(j)` downward from the top: half of
   the emitting cell plus every cell above it. Being a column, `tau` is
   grid-independent and converges under refinement, which the cell-width depth
   it replaces did not.
-* `line_escape_probability(tau)` is the plane-parallel Doppler form of
+* `line_escape_probability(tau)` [2026-08-15: now
+  `line_escape_probability_one_face(tau)`, summed over the two faces of the
+  cell instead of renormalized by a factor 2] is the plane-parallel Doppler
+  form of
   Hollenbach & McKee (1979) / de Jong, Boland & Dalgarno (1980),
   `(1-e^-a tau)/(a tau)` and `1/(2 tau sqrt(ln(tau/sqrt(pi))))` with
   `a = 2.34`, **renormalized by a factor 2 so that `beta(0) = 1` exactly**.
@@ -584,7 +611,11 @@ the cell center and the top of the domain:
   limit.
 * Scope: trapping is applied to `[O I] 63um` and `[C II] 158um` only, the two
   lines for which the code carries an explicit two-level solution. All other
-  metal-line cooling keeps `beta = 1`. That is correct in the wind, and at the
+  metal-line cooling keeps `beta = 1`.
+  [2026-08-15: the scope is now eight lines -- `[C I] 609/370um`,
+  `[C II] 158um`, `[N II] 205/122um` and `[O I] 63/145/44um` (`n_fsline = 8` in
+  `Cool_coeff.f90`) -- each with its own optical depth and escape probability,
+  entering the ground-term statistical equilibrium.] That is correct in the wind, and at the
   HD 189733 b base the other coolants are together < 0.3% of the total once
   (b) is applied. The thick resonance lines of a metal-rich wind (Mg II h&k)
   were recorded here as untreated; they were measured afterwards and `beta = 1`
@@ -605,6 +636,12 @@ differentiate the cooling in `T`; every coefficient is bit-identical at and
 above 1e3 K. The legacy AIOLOS branch (`cno_cool 0`) is deliberately not
 guarded: its constant floors are crude fine-structure stand-ins, not
 extrapolated coronal fits. `w = 0.5` is a modeling choice, not a measurement.
+
+> [2026-08-15: `w` is neither 0.5 nor hardcoded any more. The default is
+> `w = 0.1` and the value is set by the input key `Coronal cutoff width: <w>`
+> (`docs/coronal_cutoff_width.md`). That memo's section 7.2 also records that
+> the ground-term statistical equilibrium removed what the guard was
+> suppressing, so the base result no longer depends on `w`.]
 
 ### 10.2 Optical depths and escape probabilities actually reached
 
@@ -643,7 +680,8 @@ rate (§3.2) — while (a) alone is a factor ~5 on the two-level term.
 
 The marching timescale of §3.4 makes a direct relaxation test impractical, so
 the balance temperature was measured instead. A driver program linked against
-the compiled `Cooling_Coefficients` object (`scratchpad/fix/probe/`) assembles
+the compiled `Cooling_Coefficients` object (`scratchpad/fix/probe/`; session
+scratchpad, no longer present) assembles
 the total metal line cooling exactly as `T_equation` does, at the FROZEN cell-1
 state of the converged reference (`n_e = 9.14e8`, `n_HI = 4.15e14`, the 27 metal
 densities from `Ion_species.txt`), and sweeps `T`. Two binaries were used: the
@@ -745,6 +783,9 @@ step 11000 and never reached the 1e-2 hand-off, identically for both binaries.
   densities are PRE-EXISTING — they are in the goldens — and are unrelated to
   this change, but they are a physical-correctness defect in their own right
   and are recorded here. **Goldens were not re-snapshotted.**
+  [2026-08-15: they have been since, most recently on 2026-08-15. All five
+  golden `Ion_species.txt` files under `backup/regression/golden/` now carry
+  zero negative densities.]
 
 ### 10.7 What is still not fixed
 
@@ -753,11 +794,19 @@ step 11000 and never reached the 1e-2 hand-off, identically for both binaries.
    prevents a shielded layer from settling below `T_eq`. The equilibrium the
    base now heads for is set by where the guarded cooling meets the metal
    photoionization heating, not by `T_eq`.
+   [2026-08-15: partly addressed. `Base IR field: True` (default off) gives the
+   eight fine-structure lines and the H3+ bands the thermal field of the layer
+   below the base, so those channels reach radiative equilibrium instead of
+   radiating into vacuum. Stellar optical/IR absorption is still absent.]
 2. **Ions with no explicit two-level term have no cooling below ~700 K.** The
    guard removes their coronal fit and nothing replaces it. For C I this omits
    the real `[C I] 609/370um` lines; their LTE rate at the HD 189733 b base is
    ~1e-10 erg cm^-3 s^-1, i.e. 1e-4 of the local heating, so it is negligible
    there but would not be in a colder or more carbon-rich base.
+   [2026-08-15: closed. `[C I] 609um` and `[C I] 370um` are slots 1 and 2 of the
+   eight-line set, and the split ground terms of C I, C II, N II and O I are
+   solved in statistical equilibrium at the local `(ne, nHI)`
+   (`docs/coronal_cutoff_width.md` section 7; `TO_BE_DONE.md` item (C)).]
 3. ~~**Thick resonance lines in the wind are still treated as thin** (Mg II h&k
    in an ultrahot Jupiter). Nothing in this change moves that either way.~~
    **Settled 2026-08-11, no change needed.** The lines are thick
@@ -818,7 +867,10 @@ So the key is the same experiment, not a new one, and the 2x step (`1.0e-4
 ### 11.2 The cost of refining at fixed `N`
 
 `N = 500` is a compile-time constant, so cells given to the base come out of
-the stretched region. Computed from `define_grid` for the HD 189733 b domain
+the stretched region.
+[2026-08-15: no longer. `N` is a runtime variable set by the input key
+`Grid cells: <N>`, defaulting to the 500 that used to be compiled in, so cells
+given to the base need not come out of the stretched region.] Computed from `define_grid` for the HD 189733 b domain
 (`r_max = 4.43 R_p`):
 
 | `Base grid` | stretch ratio | `dr` at base | `dr` at 1.5 R_p | `dr` at `r_max` |
@@ -832,6 +884,9 @@ falls with the smallest cell, so the same physical time costs ~4x more steps.
 Refining the base is therefore not free for `Mdot` or for the transmission
 spectrum, both of which are formed in the region being coarsened. Raising `N`
 alongside would need the static `(1-Ng:N+Ng)` arrays to become allocatable.
+[2026-08-15: done. The grid-sized arrays are allocated by
+`allocate_grid_arrays` once `N` is read, and `Grid cells:` raises `N`, so the
+trade-off above applies only at fixed `N`.]
 
 ### 11.3 The alternating-amplitude metric mixes two different things
 
@@ -893,11 +948,15 @@ pre-fix production run needed 3.99e5 steps before its hand-off and floored at
 There is a hard ceiling worth recording. `count_max = 1000000` is a
 compile-time parameter (`parameters.f90`; the `EXHALE_MAXSTEPS` environment
 hook only lowers the cap, it does not raise it), and the CFL step falls with
-the smallest cell. A 4x-refined base therefore reaches at most 1/4 of the
+the smallest cell.
+[2026-08-15: the cap is an input key now, `Max steps: <N>`; `EXHALE_MAXSTEPS`
+still only lowers it.] A 4x-refined base therefore reaches at most 1/4 of the
 physical time the default grid gets within the same cap - the pre-fix run used
 its full 1e6 steps. On this planet 4x refinement is thus not reachable to
 convergence without raising `count_max`, whereas 2x is, and §11.3 says 2x is
 where the mode already goes. That is the configuration to try first.
+[2026-08-15: "not reachable without raising `count_max`" is no longer a
+limitation -- `Max steps:` raises it from `input.inp`.]
 
 ---
 
@@ -1345,7 +1404,8 @@ outward flux still falls back as before.
 ### 15.9 Reproduction
 
 Scratch tree, diagnostic routine and run directories:
-`scratchpad/base_close/` -- `t_cont` / `t_cont_ord` / `t_fix` (default grid,
+`scratchpad/base_close/` (session scratchpad, no longer present) --
+`t_cont` / `t_cont_ord` / `t_fix` (default grid,
 before / order forced / fixed), `t_x4` / `t_x4o` (`N = 916`), `t_iso` /
 `t_iso_fix`, `march_pre` / `march_post` / `march_post2` (re-convergence),
 `rz_pre` / `rz_post2` (residual of each converged state). The added routine

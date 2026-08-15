@@ -4,6 +4,10 @@ This note documents the collisional de-excitation heating term controlled by the
 `Deexc heat` key in `input.inp`: what it computes, the formula as coded, where it
 lives, the sources it is built from, and its numerical behavior (it destabilizes
 the low-irradiation base of HD 209458 b).
+[2026-08-15: that parenthesis is out of date and contradicts the body. The
+instability was retested on 2026-08-12 and no longer reproduces, and the term is
+**on by default** since then -- see the section "Retested 2026-08-12" below and
+the note under the runtime toggle.]
 
 ## Physical picture
 
@@ -67,6 +71,10 @@ code rather than transcribed from a single numbered equation in any one paper.
 - `J_Lya` that populates `n = 2`: `J_Lya ~ 0.1 F_LyC / dnu_D` (Huang et al.
   2017, Eq. 6) for `jlya_mode = 0`; the escape-probability field of `lya_rt.f90`
   for `jlya_mode = 2`; an imported profile for `jlya_mode = 1`.
+  [2026-08-15: for `jlya_mode = 2` the key `Lya absorbing bottom: True`
+  (default off) adds the downward escape into the H2 layer beneath the base as
+  a further loss channel of that field, which lowers `J_Lya` near the base and
+  so lowers this heating term there.]
 - Runtime toggle: `incl_deexc_heat`, declared in `parameters.f90` and read from
   the `Deexc heat` key in `input_read.f90`. **On by default since 2026-08-12**
   (`docs/Update_EXHALE.md` section 50): the argument that had justified the old

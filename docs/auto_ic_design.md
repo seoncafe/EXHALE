@@ -27,9 +27,14 @@ keys (`input_read.f90`):
 | transonic | `Transonic IC: True` | steady isothermal-wind Bernoulli profile (`wind_profile`); **falls back to hydrostatic if no interior sonic point** |
 | hot-Parker warm seed | `Hot Parker IC: <T_wind>` | cold hydrostatic density + warm T/ionization/velocity overlay (smoothstep `hp_base_rtr`) |
 
+> [2026-08-15: this section records the state before `IC mode` was added. There
+> are now five choices, `IC mode: cold | transonic | hot_parker | auto |
+> windae` — the three families above, the `auto` selector this memo designs,
+> and the Wind-AE solution imported by `src/modules/wind_ae/`.]
+
 Two facts make automation cheap:
 
-1. **The decision variable is already computed.** `input_read.f90:486`
+1. **The decision variable is already computed.** `input_read.f90`
    sets
    ```
    b0 = (Gc*Mp*mu)/(kb_erg*T0*R0)
@@ -168,7 +173,7 @@ a different mechanism entirely.
    `transonic_ic` / `hot_parker_ic` flags and the rest of `set_IC` runs
    unchanged.
 3. **force_start.** Move the `force_start` assignment (currently in
-   `input_read.f90:415`) so it is re-evaluated after `select_IC_auto`
+   `input_read.f90`) so it is re-evaluated after `select_IC_auto`
    (or recompute it inside the selector), since auto may flip the flags
    after input parsing.
 4. **Report.** Emit the chosen branch + `b0` in `write_setup_report.f90`.
@@ -232,11 +237,11 @@ available, and may still set `force_start`.
    - `call find_sonic(c2_cold, rc, have_rc)`
    - `have_rc` -> `transonic_ic = .true.`; else leave flags off.
    - set `force_start = (transonic_ic .or. hot_parker_ic) .and. .not. do_only_pp`
-     (mirrors input_read.f90:415, which cannot see auto's decision).
+     (mirrors `input_read.f90`, which cannot see auto's decision).
    - log: chosen branch, `b0`, `rc`/`have_rc`, one line, prefixed
      `(select_IC_auto)`.
    Call it at the very top of `set_IC` when `ic_mode == 3`, before the
-   `hot_parker_ic / transonic_ic` branch at set_IC.f90:43.
+   `hot_parker_ic / transonic_ic` branch in `set_IC.f90`.
 4. `write_setup_report.f90`: report the IC family actually used (and
    `auto` provenance if `ic_mode == 3`).
 5. Doc: one paragraph in `EXHALE_user_manual.tex` §input-file (optional

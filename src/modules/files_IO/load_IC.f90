@@ -39,7 +39,7 @@
       subroutine load_IC(rho,v,p,T,f_sp,W)
 
       ! Integer variables
-      integer :: j, k, ios, nlab, c, e, i0, im
+      integer :: j, k, ios, nlab, c, e, i0, im, nrec
 
       ! Loaded number densities for every f_sp column (zero = not in file)
       real*8, dimension(1-Ng:N+Ng,n_species) :: nsp_l
@@ -66,6 +66,27 @@
 
 
 	   !-------------------------------------!
+
+      ! The IC files carry one record per cell, N + 2*Ng rows. Since N is a
+      ! runtime value ("Grid cells:"), a restart file written at a different
+      ! N would otherwise die below with a bare end-of-file error; count the
+      ! data records first and state the actual mismatch.
+      nrec = 0
+      open(unit = 1, file = 'output/Hydro_ioniz_IC.txt')
+      do
+         read(1,'(A)',iostat=ios) line
+         if (ios .ne. 0) exit
+         if (.not. is_comment(line)) nrec = nrec + 1
+      enddo
+      close(1)
+      if (nrec .ne. N + 2*Ng) then
+         write(*,'(A,I0,A,I0,A)')                                            &
+            ' (load_IC) ERROR: output/Hydro_ioniz_IC.txt has ', nrec,        &
+            ' data rows, but the grid needs N + 2*Ng = ', N + 2*Ng,          &
+            ' (the IC was written at a different "Grid cells:" N,'//         &
+            ' or the file is truncated).'
+         error stop 1
+      endif
 
       ! Load thermodynamic variables (skip any '#' header lines)
       open(unit = 1, file = 'output/Hydro_ioniz_IC.txt')

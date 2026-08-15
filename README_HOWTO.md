@@ -149,8 +149,9 @@ does), unlike the Shapiro filter, which smooths the marching state only.
 
 With `Grid type: Mixed` the grid is `cells` uniform cells of size `dr` (in
 R_p) stacked on the lower boundary, followed by `N - cells` stretched cells out
-to `r_max` (`N = 500`, a compile-time constant). The default reproduces the
-historical hardcoded grid:
+to `r_max`. The total cell count is the optional key `Grid cells: <N>`
+(default 500, the value that used to be compiled in — no key, no change).
+The default reproduces the historical hardcoded grid:
 
 ```
 # input.inp -- optional; the first line IS the default
@@ -177,9 +178,14 @@ resolution: H(T_eq)/dr` and warns below 10 cells. Of the four production
 planets only HD 189733 b needs refinement (27 cells on the default grid,
 against 102 for WASP-121 b); 2x is the step that has been carried to
 convergence. Costs: the CFL step scales with the smallest cell (a 4x finer
-base means ~4x more steps for the same physical time), and since `N` is fixed
-the stretched region gives up those cells and coarsens — a finer base is a
-coarser wind. Full investigation: `docs/hd189_base_checkerboard.md`.
+base means ~4x more steps for the same physical time), and at fixed
+`Grid cells:` the stretched region gives up those cells and coarsens — a finer
+base is a coarser wind. Raising `Grid cells:` alongside holds the upper
+stretch instead (`1.0e-4 100`/500, `5.0e-5 200`/658, `2.5e-5 400`/916,
+`1.25e-5 800`/1375 keep the default-grid stretch ratio), at proportionally
+more work in every sweep. A restart must load an IC written at the same `N`
+(the row count is checked). Full investigation:
+`docs/hd189_base_checkerboard.md`.
 
 ## Base ghost temperature (`Base ghost temperature`)
 
@@ -341,7 +347,9 @@ This is the one-line consistency check that needs no handoff.
 
 ```
 Molecular chemistry: True
-Molecular base:      True
+# "Molecular base: True" is forced on by the line above -- an atomic ntot_bc
+# under a molecular base inflates the base T and dissociates the layer -- so
+# there is no need to write it.
 ```
 H2/H2+/H3+/HeH+ join the coupled ionization equilibrium; H2 photoionization
 opacity/heating (Yan+1998) and H3+ IR cooling (Miller+2013) are included;
@@ -583,6 +591,7 @@ All output is written to `output/` in the run directory.
 | `Hydro_ioniz_adv.txt` | Post-processed (advection-corrected) version of `Hydro_ioniz.txt` |
 | `Ion_species_adv.txt` | Post-processed version of `Ion_species.txt` |
 | `Cooling_breakdown.txt` | Radiative cooling by channel vs. radius: six H/He channels, the H3+ infrared channel, then one column for each metal ion |
+| `Heating_breakdown.txt` | Volumetric heating by channel vs. radius: the photoheating split by absorber (H I, He I, He II, He 2³S, H2, metals), then the excited-H, He-recombination, Penning (He 2³S + H and + H2) and Lyman-Werner channels; the channel sum reproduces the total, molecular runs included |
 | `Excited_H.txt` | Non-LTE H(n=2) populations (when the Balmer/Ly-alpha physics is on) |
 | `Lyman_Werner.txt` | H2 photodissociation diagnostics (only when a molecular run carries a `Stellar LW flux`): radius, temperature, H2 fraction and density, star-ward H2 column, self-shielding factor, rate, heating |
 

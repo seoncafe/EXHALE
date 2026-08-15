@@ -368,6 +368,28 @@ path-dependent spread. Why the JFNK solve stagnates on this configuration
 (worst cell `j ~ 357-366`, `r ~ 1.22`, energy row) is a separate open question
 from the base-cell scaling treated in §1-§5.
 
+### Addendum 2026-08-15: measured on a Wind-AE IC
+
+The arming table above covered the transonic IC and the cold hydrostatic
+starts; `IC mode: windae` -- the case whose false `du` stop within ~3 steps
+originally motivated the "always Newton-finish" prescription -- had not been
+measured. Run: the `examples/12_windae_ic_hd209` configuration (HD 209458 b,
+seed-adjacent, `Solver: Newton`, default `du_th = 1e-3`), HEAD binary,
+`EXHALE_MAXSTEPS = 2000`, 4 threads.
+
+- `du` at step 2 is `1.4267e-04` -- below both thresholds on the untouched
+  generated IC, exactly the smooth-formula situation described above.
+- Neither trigger fires there: `-> du stop armed at du = 1.0270E-03, step 23`
+  and `-> Newton hand-off armed at du = 1.0018E-02, step 222`, both on the
+  first ascending crossing, and the run marches on to the step cap
+  (`du = 0.185` at 2000, still relaxing; the cap was the point of the run).
+
+So the descending-crossing guard behaves on a Wind-AE IC as designed, and the
+pre-arming false stop is structurally gone for this IC mode too. What the
+guard does *not* change: an `Mdot` from a `du` stop still carries the
+path-dependent spread, so the Newton finish remains the prescription for a
+quantitative number.
+
 ## 10. Which residual decides the line search (2026-08-11)
 
 The judgment first: the acceptance test in `solve_steady_jfnk` was wrong, and

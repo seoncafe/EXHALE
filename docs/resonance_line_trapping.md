@@ -265,6 +265,8 @@ which is a separate question from cooling and is untouched by this memo.
 three `output/` directories with the formulas of §1-§2 and takes a few seconds.
 The inputs are `Ion_species.txt` (columns 8-34, canonical metal-ion order),
 `Hydro_ioniz.txt` (`r`, `v`, `T`) and `Cooling_breakdown.txt` (`ne`,
-`cool_total`, and one column per metal ion from column 11). Atomic data:
+`cool_total`, and one column per metal ion from column 12 --- column 11 is
+`H3p_IR` since 2026-08-13; read the `# col...` header rather than the fixed
+offset). Atomic data:
 NIST ASD for `lambda`, `f_lu`, `A_ul`, `g_u` and the Fe II level list; `Ups(T)`
 from the fits in `Cool_coeff.f90` itself.

@@ -207,11 +207,22 @@ Prioritized next experiments:
 Implemented (a) `weno_mode` (global_parameters; Reconstruction stores the
 ESWENO3 smoothness factors S0/S1 on a mode-1 pass and reuses them on mode-2
 passes; default 0 = byte-identical) — `solve_steady_jfnk` freezes the weights
-at each outer iterate and runs all inner evaluations (banded FD, GMRES J*v,
-line-search trials) with them frozen; and (b) a **non-monotone (Grippo,
-memory 5) line search** — the monotone Armijo test was rejecting valid steps
-once the required decrease fell below the iterative-chemistry noise floor of
-the residual.
+at each outer iterate and runs all inner evaluations (banded FD, GMRES J*v)
+with them frozen; and (b) a **non-monotone (Grippo, memory 5) line search** —
+the monotone Armijo test was rejecting valid steps once the required decrease
+fell below the iterative-chemistry noise floor of the residual.
+
+*[2026-08-15 note: two corrections to the paragraph above. (i) The line-search
+trials were dropped from the frozen-evaluation list — since 2026-08-11 the
+trials run with `weno_mode = 0`, i.e. the smoothness weights are recomputed at
+the trial state, so acceptance is decided on the true residual the solve is
+driving to zero (`steady_newton.f90`, the `weno_mode = 0` set just before the
+`do ls = 1, 20` search). (ii) The "iterative-chemistry noise floor"
+justification for the non-monotone window was measured and refuted: four repeat
+residual evaluations at fixed `Y`, resetting `f_sp` as the line search does,
+reproduced the residual bitwise, so there is no such floor. The window is kept,
+but for a different measured reason. Both in
+`docs/newton_scaling_and_base_wall.md` §10.]*
 
 **Result (WASP-121b He23S+metals, warm start from cold-35k, dtau0=1, smooth
 valve eps=1e-4, diagonal scaling):**
@@ -251,6 +262,11 @@ replaced by `cell_state_scales`, which builds every scale from the cell's own
 state: `rho`, `rho(|v| + c_s)`, `E`. Everything else in §10-§11 stands — the
 scaled system, the D-relative FD steps, the merit `||D^-1 F||_2`, the smooth
 valve, the frozen WENO weights, the non-monotone line search.
+*[2026-08-15 note: "the frozen WENO weights stands" no longer covers the line
+search — since 2026-08-11 the trials are evaluated with the weights recomputed
+(`weno_mode = 0`); the freezing applies to the Jacobian/GMRES evaluations only.
+The non-monotone window also stands on a different measured reason than the one
+recorded in §11. See `docs/newton_scaling_and_base_wall.md` §10.]*
 
 The old momentum floor `1e-6 max_j |rho v|` was set by the base cell, which
 holds the global maximum of `|rho v|` while carrying no wind, so cells where

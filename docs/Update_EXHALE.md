@@ -3755,7 +3755,8 @@ Found and **not** fixed, marked at the code site: `System_implicit_adv_HeH`
 the `n_e n_h` factor that `adv_implicit_H`, `adv_implicit_HeH_TR` and the
 equilibrium rows all carry, which also makes them dimensionally inconsistent
 with the photoionization rates they are added to. None of the four paper
-planets uses that path.
+planets uses that path. (Since fixed, 2026-08-12: the terms now carry
+`ionhi*xe*n_h`; commit b0d44bc, TO_BE_DONE item (B).)
 
 ---
 
@@ -5264,3 +5265,157 @@ predictions without the coefficient pair run alongside.
 Files: `src/modules/time_step/steady_newton.f90` (diagnostic only).
 Documentation: `docs/hd209_metal_stagnation.md` section 9,
 `examples/README.md`, `README_HOWTO.md`, `TO_BE_DONE.md` item (A).
+
+## 62. Runtime grid size, CODATA k_B, the layer residual on a physical scale, and two diagnostic closures (2026-08-15)
+
+One working series, no commit boundaries implied by the ordering below. The
+verification was staged so that every piece except the k_B value is proven a
+no-op on the regression matrix, and the golden refresh at the end carries the
+k_B change alone.
+
+### 62.1 `Grid cells:` — the cell count is a runtime quantity
+
+`N` was `integer, parameter :: N = 500` in `global_parameters`; it is now a
+runtime value set by the optional input key
+
+```
+Grid cells: 750
+```
+
+with default 500, the value that used to be compiled in. The grid-sized
+module arrays of `global_parameters`, `lya_rt`, `excited_hydrogen` and
+`ionization_equilibrium` are allocated (lower bound `1-Ng` unchanged) once
+input parsing has resolved the key; the main program's state vectors likewise
+(they were implicitly static and zero-started, and are zeroed on allocation to
+reproduce that). The many grid-sized arrays inside procedures were already
+automatic and needed nothing. `PH_heat_H`'s zero-filled `parameter` arrays
+became locals assigned on entry — the one place a named constant had to give
+way; an A/B on an H-only run (the path `make check` does not cover) is
+byte-identical. `write_setup_report` echoes the resolved `N`, the parse dump
+gains an `N` line, and `load_IC` now counts the IC file's records first, so a
+restart against an IC written at a different `N` reports the mismatch instead
+of dying on a bare end-of-file.
+
+This closes TO_BE_DONE item (E): the base-refinement pairs
+(`Base grid [dr,cells]`, `Grid cells`) = (`1.0e-4 100`, 500),
+(`5.0e-5 200`, 658), (`2.5e-5 400`, 916), (`1.25e-5 800`, 1375) hold the upper
+stretch at its default-grid value from `input.inp` alone, no rebuild.
+
+Gates: `make` and `make wind_ae_ic` build (the standalone source set does not
+include `parameters.f90`); `make check` **5/5 byte-identical** against the
+pre-change goldens; a 750-cell tutorial run writes 754 data rows and finishes;
+`-fcheck=bounds,do,mem` clean at 500 and 750 cells.
+
+### 62.2 `kb_erg` is the CODATA value; `lyman_werner` local copy synced
+
+`kb_erg = 1.38e-16` (the truncated ATES literal) is now the SI-exact
+`1.380649e-16`. The judgment first: the old value was wrong at 4.7e-4
+relative, and every thermal quantity in the code passes through it; that it
+"only" moves results at that level is not an argument for keeping it. The
+`kb_lw` copy in `lyman_werner.f90` (kept dependency-free on purpose) is synced
+and its comment now says the mirror is mandatory.
+
+Measured on the regression matrix (single-threaded, against the old goldens):
+the two WASP-121b cases re-converge at count 14065/14040 (from 14060/14037),
+field-level changes are a few 1e-4 to 3e-3 relative (largest in `cool`), and
+`log10 Mdot` moves 13.22 -> 13.23, i.e. the last printed digit. The three
+pinned molecular snapshots move at the same order. **The goldens were
+re-snapshotted at the end of this series and carry exactly this change**; the
+parse corpus was re-snapshotted for the new `N` line as well.
+
+Still deliberately NOT current CODATA, recorded here so the list is explicit:
+`kb_eV = 8.6167e-5` (CODATA 8.617333e-5; also internally inconsistent with
+`kb_erg*erg2eV` at 5e-4 both before and after), `hp_erg = 6.62620e-27`,
+`hp_eV = 4.1357e-15`, `mu = 1.673e-24` (a hydrogen mass, not m_p), `Gc`, and
+the astronomical constants. Scope was pinned to `kb_erg`; a full constants
+pass would be its own measured rebaseline.
+
+### 62.3 The below-escape momentum residual has a physical scale
+
+`resid_relnorm_below_escape` (section 61) divided every row by `|u|`; for the
+momentum row that is `|rho v|`, which collapses in the quasi-hydrostatic
+layer and made converged states read 0.2-10. The momentum row is now divided
+by the gravitational force density `|rho| |Gphi_i(j)-Gphi_i(j-1)|/dr_j` (the
+discrete potential difference of the source term), so the number is the
+fractional violation of hydrostatic balance; the print reports the three rows
+separately. Print-only; `make check` 5/5 byte-identical.
+
+Re-measured on the section 9.4 states of `docs/hd209_metal_stagnation.md`
+(full table and two side observations in its new section 10): the converged
+`examples/15` (old scale 9.99), `examples/16` eps4=5e-3 (0.195) and 1e-2
+(2.352) states all hold the layer at **1e-5 to 1.4e-4 of rho g**. The layer
+is not momentum-unbalanced; what stays uncontrolled between the pair members
+is which hydrostatic stratification it settles on.
+
+### 62.4 `Heating_breakdown.txt` is consistent for a molecular run
+
+`write_heat_breakdown_eq` reconstructed the atomic heating only and printed a
+NOTE admitting H2 photoheating, He(2^3S)+H2 Penning and Lyman-Werner heating
+were missing; its electron density also omitted the molecular ions and its
+`xion` the molecular nuclei. It now rebuilds all of them exactly as
+`ionization_equilibrium` does (same `isp_*` mapping as the cooling dump, same
+`calc_ne`, same rate expressions), passes the H2 density into `PH_heat_HHe` so
+the H2 column (col9) and the opacity are the solver's, and appends
+`col15 heat_He23S_H2_Penning` and `col16 heat_H2_LW`. Measured on the
+`mol_lyman_werner` case: max |sum(cols 5-16)/heat_total - 1| = 2.0e-15, with
+all three molecular channels nonzero. Atomic runs are unchanged (the new
+terms are exactly zero there); the file is not part of the regression
+comparison. The `paper_data.py` fallback column list is synced.
+
+### 62.5 `Lya absorbing bottom:` — a downward loss channel for the escape-probability closure (default off)
+
+The section 30 audit follow-up: Huang et al. (2017) close their Ly-alpha
+Monte Carlo with a pure-absorber bottom (H2 accidental-resonance true
+absorption at N_H2 ~ 1e14 cm^-2), while our local closure had no lower
+boundary, so Jbar near the base was likely overestimated. With
+
+```
+Lya absorbing bottom: True
+```
+
+a third escape channel joins the wing and Sobolev ones: the same Neufeld form
+on the line-center depth from the cell down to the bottom of the domain,
+`beta_bot = min(1, pi^-1/4 sqrt(a/tau_bot))`, `tau_bot = tau(bottom)-tau(r)`,
+combined as parallel channels. It feeds the existing `beta_tot`, so the loss
+acts consistently on the internal field and on the trapped stellar beam.
+Default off, and the off path executes the original expression unchanged —
+covered by the byte-identical regression pass below.
+
+First look (HD 189733 b benchmark configuration, 300-step snapshot, so
+qualitative only): Jbar and n_2p drop together by the same factor — 0 at the
+innermost ghost, x0.24 at r = 1.0002, x0.74 at 1.01, back to within 1.5% by
+r = 1.023 and exactly 1 above 1.05. The loss is confined to the bottom few
+scale heights, as the audit expected; the Balmer-forming region above is
+untouched. A converged A/B is the follow-up if a quantitative statement is
+ever needed.
+
+### 62.6 windae du-trigger arming, measured
+
+The 2026-08-11 descending-crossing guard (newton_scaling_and_base_wall.md
+section 9) had been measured on the transonic and cold-hydrostatic ICs but
+never on `IC mode: windae`, whose ~3-step false du stop originally forced the
+"always Newton-finish" rule. Measured on `examples/12_windae_ic_hd209`
+(2000-step cap): du at step 2 is 1.43e-4 — below every threshold on the
+untouched generated IC — and nothing fires; the du stop arms at step 23
+(du = 1.027e-3) and the Newton hand-off at step 222 (du = 1.002e-2), both on
+the first ascending crossing. The false stop is structurally gone for this IC
+mode too; a du-stop Mdot still carries the usual path spread, so the Newton
+finish stays the prescription. Addendum recorded in that memo's section 9.
+
+### 62.7 Verification ledger for the series
+
+| stage | tree | `make check` |
+|---|---|---|
+| runtime `N` (62.1) | 62.1 only | 5/5 byte-identical |
+| + layer scale (62.3) + `load_IC` guard | 62.1+62.3 | 5/5 byte-identical |
+| + breakdown fix (62.4) + Lya bottom off (62.5), k_B still old | all but 62.2 | 5/5 byte-identical |
+| + `kb_erg` CODATA (62.2) | full series | all 10 comparisons FAIL vs old goldens, differences as in 62.2; goldens re-snapshotted; final `make check` 5/5 against the new goldens |
+
+Files: `parameters.f90`, `input_read.f90`, `write_setup_report.f90`,
+`load_IC.f90`, `EXHALE_main.f90`, `excited_hydrogen.f90`, `lya_rt.f90`,
+`ionization_equilibrium.f90`, `util_ion_eq.f90`, `steady_newton.f90`,
+`lyman_werner.f90`, `python/paper_data.py`. Documentation:
+`docs/hd209_metal_stagnation.md` section 10,
+`docs/newton_scaling_and_base_wall.md` section 9 addendum,
+`docs/EXHALE_user_manual.tex`, `README.md`, `README_HOWTO.md`,
+`TO_BE_DONE.md` item (E).

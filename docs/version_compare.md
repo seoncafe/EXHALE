@@ -118,6 +118,21 @@ not strongly separated in the line-forming region.
 ---
 
 *Regenerate:* re-run the cases in `docs/version_compare/{v1_nodiff,v2_diff,wasp_v1_nodiff,
-wasp_v2_diff}/`, run `EXHALE_transit.py` (TPM_PATH / TPM_SAVE_PREFIX) in each — for the WASP-121b runs
-add `TPM_HE_LMIN=10827.5 TPM_HE_LMAX=10832.5 TPM_HE_N=335` (the broad line overflows the
+wasp_v2_diff}/`, run `EXHALE_transit.py` (`EXHALE_TRANSIT_PATH` /
+`EXHALE_TRANSIT_SAVE_PREFIX`) in each — for the WASP-121b runs
+add `EXHALE_TRANSIT_HE_LMIN=10827.5 EXHALE_TRANSIT_HE_LMAX=10832.5
+EXHALE_TRANSIT_HE_N=335` (the broad line overflows the
 default 10828.2–10831.2 Å window) — then `python3 docs/version_compare/plot_compare.py`.
+
+*[2026-08-15: two corrections. (i) The environment prefix is `EXHALE_TRANSIT_*`
+since the 2026-07-06 rename; the old `TPM_*` names still work — `_tenv` in
+`exhale_transit_lib.py` checks `EXHALE_TRANSIT_<NAME>` first and falls back to
+`TPM_<NAME>`. (ii) The stated reason for the manual He window is out of date:
+`EXHALE_transit.py` now sizes every line window itself, widening the historical
+default by a computed half-width (kinematic `max|v|` plus, for a thick line, the
+Voigt wing at `tau = 1`) and raising the sample count to match. It never
+narrows below the default, so the WASP-121b overflow is handled without any
+override. Note also that setting `HE_LMIN`/`HE_LMAX` explicitly now *suppresses*
+the automatic widening for that line (`_apply_window(..., forced=True)` returns
+the manual limits unchanged), so the override above is best dropped rather than
+translated.]*

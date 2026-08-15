@@ -89,15 +89,24 @@ Fortran over CVODE.
 
 ## What the handoff actually carries
 
-`read_base_inp` (`src/modules/files_IO/input_read.f90:942-981`) reads exactly
-four keys:
+`read_base_inp` (in `src/modules/files_IO/input_read.f90`) read exactly four
+keys at the time of this comparison:
 
 ```
 T_base -> T0        r_base -> R0        HeH_base -> HeH        Kzz_base -> he_kzz
 ```
 
 `q_H2` and `q_H` are written by `src/utils/vulcan_to_base.py` as **comments**.
-They do not reach the code. Running the same hypsometric integration on all
+They do not reach the code.
+
+*[2026-08-15: `read_base_inp` now reads six keys — the four above plus
+`q_H2_base` (the photochemical H2 volume mixing ratio at the base, which drives
+the molecular-base particle count) and `p_base` (the pressure level the handoff
+describes, default 1 ubar). So `q_H2` does reach the code now, under the name
+`q_H2_base`; the "the interface discards it" conclusion below was true when
+this memo was written and no longer is. The rest of the comparison — that
+T_base, r_base and HeH_base agree to 0.02% across the three photochemistry
+solutions because they are set by inputs rather than results — is unaffected.]* Running the same hypsometric integration on all
 three solutions:
 
 | handoff | T_base [K] | r_base [R_J] | HeH_base | (q_H, dropped) |
@@ -178,7 +187,7 @@ Each of these cost a run, and none of them announces itself.
 5. **`Load IC? True` needs `output/*_IC.txt` to exist already.** The copy from
    `Hydro_ioniz.txt` to `Hydro_ioniz_IC.txt` is done by the run script, not by
    `EXHALE.x`. Supplying only `Hydro_ioniz.txt` makes the Fortran `open`
-   create an empty `_IC` file, and the run dies at `load_IC.f90:59` with
+   create an empty `_IC` file, and the run dies in `load_IC.f90` with
    `End of file`.
 
 6. The step-cap environment variable is **`EXHALE_MAXSTEPS`**, not

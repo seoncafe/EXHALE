@@ -133,8 +133,10 @@
 
       ! Boltzmann constant and the H2 mass, in the same cgs values the rest
       ! of the code uses (global_parameters kb_erg, mu); repeated here so
-      ! the module has no dependency on the parameter block.
-      real*8, parameter :: kb_lw = 1.38d-16
+      ! the module has no dependency on the parameter block. Any change to
+      ! kb_erg or mu there must be mirrored here (kb_erg -> CODATA
+      ! 1.380649e-16 on 2026-08-15, synced below).
+      real*8, parameter :: kb_lw = 1.380649d-16
       real*8, parameter :: m_h2  = 2.0d0*1.673d-24
 
       contains

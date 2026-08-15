@@ -24,6 +24,21 @@ and Xing et al. (2023), and Their Adoption Potential for \EXHALE}
 \begin{document}
 \maketitle
 
+\begin{center}
+\fbox{\parbox{0.92\linewidth}{\small
+\textbf{Status (dated note added 2026-08-15).} Written before 2026-07; the
+\EXHALE\ column and the adoption assessment predate the metal, molecular and
+diffusion work. Since implemented: the temperature-dependent Taylor et al.\
+(2025) Penning rate (unconditional default), He/H ($+$ metal) diffusive
+separation (\texttt{species\_diffusion.f90}, keys \texttt{He\_diffusion} /
+\texttt{He\_metal\_diffusion}, default off), molecular chemistry
+H$_2$/H$_2^+$/H$_3^+$/HeH$^+$ with H$_3^+$ infrared cooling and the
+lower-atmosphere tiers (\texttt{lower\_atmosphere/}), charge exchange
+re-sourced to Huang et al.\ (2023) Table 4, and 10 elements / 27 metal ion
+stages. The text below is kept as the record of what the code looked like at
+the time; the markdown edition carries the same note with inline markers.}}
+\end{center}
+
 \begin{abstract}
 This note compares the methodology of three independent modeling efforts for XUV-driven
 atmospheric escape from close-in exoplanets, and assesses which elements could be adopted
@@ -34,7 +49,8 @@ et al.\ code; and the multi-fluid PLUTO-based model of Xing et al.\ (2023). \EXH
 methodology is summarized so the adoption analysis has a concrete baseline. The central
 finding is that \EXHALE's largest physical gap is the absence of any radius-dependent He/H
 separation, and that a Taylor-style single-fluid diffusion term (plus a temperature-dependent
-Penning ionization rate) is the highest-value, lowest-risk upgrade.
+Penning ionization rate) is the highest-value, lowest-risk upgrade. [2026-08-15: both have
+since been implemented --- see the status note above.]
 \end{abstract}
 
 \tableofcontents
@@ -120,7 +136,7 @@ Purpose & General multi-species RHD & Dedicated escape + line diagnostics & Dedi
 Dimensionality & 1-D (sph/cyl/cart) & 1-D spherical & 1-D spherical & 1-D spherical \\
 Time & Time-dep.\ $\to$ steady & Time-dep.\ $\to$ steady & Time-dep.\ $\to$ steady & Steady-state (relaxation) \\
 Fluid model & \textbf{Multi-fluid} + friction & \textbf{Single bulk} + diffusion & \textbf{Multi-fluid} & \textbf{Single fluid} \\
-He/H separation & Via friction/drag & Via molecular+eddy diffusion & Via multi-fluid dynamics & \textbf{None} (fixed He/H) \\
+He/H separation & Via friction/drag & Via molecular+eddy diffusion & Via multi-fluid dynamics & \textbf{None} (fixed He/H) [2026-08-15: since implemented] \\
 Reconstruction & PLM + MC limiter & finite-difference & PLM (PLUTO) & \textbf{PLM$\to$WENO3} \\
 Riemann solver & HLLC & --- & HLL (+ e$^-$-pressure split) & Approximate (ATES/PWN) \\
 Time integrator & 2nd-order TVD RK & forward to steady & 3rd-order TVD RK & RK relaxation \\
@@ -177,7 +193,9 @@ Transmission & --- & Ray-traced Voigt & Post-processed & \texttt{EXHALE\_transit
     principle yield fractionation, but the code is not tuned for the transonic-wind problem.
   \item \textbf{\EXHALE\ is strictly single-fluid} with a \emph{fixed} He/H at all radii ---
     it \textbf{cannot} represent fractionation or diffusive separation. This is the largest
-    physical gap relative to the modern He 10830 literature.
+    physical gap relative to the modern He 10830 literature. [2026-08-15: since
+    implemented as the Taylor-style diffusion term recommended below
+    (\texttt{species\_diffusion.f90}); see the status note on page 1.]
 \end{itemize}
 
 \subsection{Radiation transport}

@@ -47,14 +47,34 @@
 
    ! RT-supplied J_lya(r) profile (jlya_mode=1), interpolated onto the grid once.
    logical, save :: jlya_rt_loaded = .false.
-   real*8, dimension(1-Ng:N+Ng) :: jlya_rt_grid = 0.0d0
+   real*8, dimension(:), allocatable :: jlya_rt_grid
 
    ! Saved context for the diagnostic dump (filled in excited_H_update).
-   real*8, dimension(1-Ng:N+Ng) :: Tdiag = 0.0d0, nhidiag = 0.0d0, nediag = 0.0d0
-   real*8, dimension(1-Ng:N+Ng) :: nhiidiag = 0.0d0   ! nHII for the recomb. sink
-   real*8, dimension(1-Ng:N+Ng) :: taulya = 0.0d0      ! top-down Ly-alpha optical depth
+   real*8, dimension(:), allocatable :: Tdiag, nhidiag, nediag
+   real*8, dimension(:), allocatable :: nhiidiag   ! nHII for the recomb. sink
+   real*8, dimension(:), allocatable :: taulya     ! top-down Ly-alpha optical depth
 
    contains
+
+   ! --------------------------------------------------------------- !
+
+   subroutine excited_H_allocate_arrays
+   ! Allocate the grid-sized module arrays once the number of cells N is
+   ! known; called from EXHALE_main right after input_read. The zeros are
+   ! the initializers the declarations used to carry.
+
+   allocate(jlya_rt_grid(1-Ng:N+Ng))
+   allocate(Tdiag(1-Ng:N+Ng), nhidiag(1-Ng:N+Ng), nediag(1-Ng:N+Ng))
+   allocate(nhiidiag(1-Ng:N+Ng), taulya(1-Ng:N+Ng))
+
+   jlya_rt_grid = 0.0d0
+   Tdiag        = 0.0d0
+   nhidiag      = 0.0d0
+   nediag       = 0.0d0
+   nhiidiag     = 0.0d0
+   taulya       = 0.0d0
+
+   end subroutine excited_H_allocate_arrays
 
    ! --------------------------------------------------------------- !
 

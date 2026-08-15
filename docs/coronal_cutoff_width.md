@@ -25,6 +25,13 @@ section 10.
 `0.08 <= w <= 0.13`, and the default has been changed to `w = 0.1`.** The
 argument, in order:
 
+> [2026-08-15: read section 7.2 before using the window. The ground-term
+> statistical equilibrium of section 7 removed the coronal residual the window
+> was bounding, and the base balance temperature is now identical to every
+> printed digit over `w = 0.02-1.20`. The window is a record of how the default
+> was chosen, not a live constraint; `w = 0.1` is kept because a fit outside its
+> range still needs a guard.]
+
 1. What the guard removes below `1e3` K is dominated by the **ground-term
    fine-structure floor of C I**, which the CHIANTI fits carry in the
    optically thin *coronal* (low-density) limit. At the base densities of
@@ -60,6 +67,10 @@ critical-density saturation that `[O I] 63 um` and `[C II] 158 um` already
 have in `cool_OI_ne_func` / `cool_CII_ne_func`. After that the base result
 should become nearly `w`-independent. `w` is a stopgap, and this note only
 bounds it.
+[2026-08-15: that fix is implemented — the ground terms of C I, C II, N II and
+O I are solved in statistical equilibrium at the local `(ne, nHI)`
+(section 7; `TO_BE_DONE.md` item (C), RESOLVED 2026-08-12). The base result is
+`w`-independent to every printed digit (section 7.2).]
 
 ---
 
@@ -248,6 +259,8 @@ rather than as evidence of a problem.
 
 `0.08 <= w <= 0.13`. `w = 0.1` is the round value inside it and is the new
 default.
+[2026-08-15: superseded as a live constraint by section 7.2; `w = 0.1` remains
+the default.]
 
 ---
 
@@ -336,8 +349,10 @@ the base structure, not about anything this code compares to data.
 - `src/modules/init/parameters.f90`: `coronal_cutoff_width` default
   `0.5d0 -> 0.1d0`.
 - Comment blocks in `Cool_coeff.f90` (`coronal_excitation_cutoff`),
-  `input_read.f90`, `README.md`, `docs/input_schema.md` and
+  `input_read.f90`, `docs/input_schema.md` and
   `docs/EXHALE_user_manual.tex` updated to the new default and the window.
+  [2026-08-15: `README.md` was listed here as well but never carried the key;
+  it is not part of this change.]
 
 Nothing else changed. Any run can restore the old behavior with
 `Coronal cutoff width: 0.5` in `input.inp`.

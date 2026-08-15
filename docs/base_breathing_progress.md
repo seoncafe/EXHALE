@@ -27,6 +27,14 @@ viscosity foundation). **No single knob fully converges HD189733b yet**; the
 remaining pieces are explicit viscosity/conduction (Phase-2) and the residual
 normalization.
 
+> [2026-08-15: all three items of that last sentence have since closed.
+> HD 189733 b converges to Newton grade (2026-08-11) after the JFNK line-search
+> fix and the beta(tau)/CHIANTI-guarded cooling; explicit viscosity and
+> conduction exist as `src/modules/time_step/viscous_conduction.f90` behind the
+> `Viscosity:` and `Conduction:` keys; and the residual normalization was
+> settled — the volume-weighted norm is the default (`Resid norm: vol`). See
+> `docs/hd189_base_checkerboard.md` §10.]
+
 ## The problem (localized)
 
 - The steady residual is **purely momentum** (mass ~2e-3, energy ~5e-2, momentum
@@ -98,11 +106,11 @@ Files touched: `src/modules/init/parameters.f90`, `.../files_IO/input_read.f90`,
 dense-base momentum residual + (3) the small-ρv normalization. CETIMB converges
 via the _combination_; EXHALE's biggest gap is **explicit viscosity/conduction**.
 
-### Knob-combination sweep on HD209458b (cold IC, tidal) — `HD209458b_test/`
+### Knob-combination sweep on HD209458b (cold IC, tidal) — `backup/HD209458b_test/`
 
 A controlled 4-knob sweep (S = Shapiro, V = mass-flux base velocity, W = warm
 windae IC, N = Newton finish), each model in its own sub-folder, plotted by
-`HD209458b_test/plot_models.ipynb`:
+`backup/HD209458b_test/plot_models.ipynb`:
 
 The full **2×2 of S × V** on the same cold IC (each run carried to a natural
 finish, _adv written), plus the two windae warm-starts:
@@ -177,6 +185,10 @@ watchdog. See `docs/newton_scaling_and_base_wall.md`.)*
 
 Still open from the original list: revisit the **residual normalization** (don't
 divide by tiny ρv).
+
+> [2026-08-15: closed. The volume-weighted residual norm is the default
+> (`resid_vol = .true.`); `Resid norm: Linf` selects the old max-over-cells
+> norm.]
 
 ## Diagnostics / how to reproduce
 

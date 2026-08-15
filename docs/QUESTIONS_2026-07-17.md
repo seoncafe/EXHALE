@@ -180,14 +180,19 @@ include the electrons?
 **Answer: yes.** The equation of state everywhere uses
 `p = (n_tot + n_e) k T`:
 
-- `src/modules/time_step/energy_semi_implicit.f90:107`
-  `T_old = p / (n_tot_ad + ne_ad)` and `:172`
+- `src/modules/time_step/energy_semi_implicit.f90:110`
+  `T_old = p / (n_tot_ad + ne_ad)` and `:180`
   `p = (n_tot_ad + ne_ad) * T_trial`;
-- `src/modules/post_process/post_process_adv.f90:653`
+- `src/modules/post_process/post_process_adv.f90:824`
   `p_out = (n_tot + ne)/n0*T_out`;
 - the pressure-broadening opacity factor uses
   `(nh + nhe + ne) * kb_erg * T_K`
-  (`src/modules/radiation/ionization_equilibrium.f90:186`).
+  (`src/modules/radiation/ionization_equilibrium.f90:257`, feeding
+  `opacity_pT_factor` in `src/modules/radiation/opacity_models.f90`).
+
+*[Line numbers re-checked 2026-08-15; all three had drifted (107/172, 653, 186).
+They are exact at that date only — grep the quoted expression rather than trust
+the number.]*
 
 `calc_ne` adds the metal electrons and the molecular-ion electrons under the
 `eos_metals` policy, and `calc_ntot` counts every heavy species as one gas

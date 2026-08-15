@@ -31,16 +31,16 @@
 	! molecular species densities (cols 1 H2, 2 H2+, 3 H3+, 4 HeH+;
 	! zero unless thereis_mol).  Module state: written by the equilibrium
 	! solve, read by write_output for the extra output columns.
-	real*8, dimension(1-Ng:N+Ng,4), save :: nmol_eq = 0.0d0
+	real*8, dimension(:,:), allocatable :: nmol_eq
 
 	! Lyman-Werner photodissociation diagnostics, filled by the equilibrium
 	! solve when a band flux is supplied and read by write_lyman_werner:
 	! star-ward H2 column [cm^-2], the DB96 self-shielding factor, and the
 	! resulting dissociation rate [s^-1]. Untouched (shielding 1, rate 0)
 	! when the run supplies no band flux.
-	real*8, dimension(1-Ng:N+Ng), save :: NH2_col_lw  = 0.0d0
-	real*8, dimension(1-Ng:N+Ng), save :: f_shield_lw = 1.0d0
-	real*8, dimension(1-Ng:N+Ng), save :: k_lw_diss   = 0.0d0
+	real*8, dimension(:), allocatable :: NH2_col_lw
+	real*8, dimension(:), allocatable :: f_shield_lw
+	real*8, dimension(:), allocatable :: k_lw_diss
 
 	! Run-wide totals of the atomic ionization root validation, reported once
 	! at the end of the run (EXHALE_main) next to the Newton usage counters:
@@ -57,8 +57,24 @@
 	! simplex everywhere, and zero for an atomic run.
 	integer, save :: ieq_n_mol_clamped = 0
 
-	contains 
-	
+	contains
+
+	subroutine ioniz_eq_allocate_arrays
+	! Allocate the grid-sized module arrays once the number of cells N is
+	! known; called from EXHALE_main right after input_read. The values are
+	! the initializers the declarations used to carry.
+
+	allocate(nmol_eq(1-Ng:N+Ng,4))
+	allocate(NH2_col_lw(1-Ng:N+Ng), f_shield_lw(1-Ng:N+Ng),               &
+	         k_lw_diss(1-Ng:N+Ng))
+
+	nmol_eq     = 0.0d0
+	NH2_col_lw  = 0.0d0
+	f_shield_lw = 1.0d0
+	k_lw_diss   = 0.0d0
+
+	end subroutine ioniz_eq_allocate_arrays
+
 	subroutine ioniz_eq(T_in,n_io,f_sp_io,heat_out,cool_out,q)
       	 		  
 	integer :: j,im

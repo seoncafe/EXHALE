@@ -148,6 +148,11 @@ converge to \verb|du < 1e-3| will now stop earlier, at 2\% momentum non-uniformi
 Tighten \verb|du_th| (and rely on stall detection for the unreachable-threshold
 cases) if a given study needs a stricter steady state.
 
+\paragraph{2026-08-15 note.} Reverted to \verb|du_th = 1e-3|
+(\texttt{parameters.f90}), the original ATES-Code-main value; the two-stage
+\verb|du_th [PLM,WENO3]| key now carries the loose threshold on the PLM stage
+only.
+
 % =====================================================================
 \section{Semi-implicit energy solver (2026-06-03)}\label{sec:semi}
 % =====================================================================
@@ -502,6 +507,15 @@ solve does not). This is on top of the $\sim$2$\times$ hydro-loop speedup from t
 semi-implicit energy solver (\S\ref{sec:semi}). Raw numbers in
 \texttt{WASP-121b/solver\_validation/timing.txt}.
 
+\paragraph{2026-08-15 note.} The \texttt{ioniz\_eq} cell loop is no longer
+serial: the cell sweep was parallelized in 2026-06 (an \verb|!$omp parallel do|
+over the cell loop in
+\texttt{src/modules/radiation/ionization\_equilibrium.f90}; see
+\texttt{docs/openmp\_parallelization.md}), so the ``grows with the thread
+count'' argument no longer holds. The measured $\times1.25$ speedup per step is
+unaffected --- it was taken step-for-step at a fixed
+\texttt{OMP\_NUM\_THREADS=4}.
+
 % =====================================================================
 \section{Validation data (persisted) and reproduction}\label{sec:valdata}
 % =====================================================================
@@ -590,8 +604,26 @@ every legacy default is byte-identical, regression-gated):
   unconverged Newton state is never accepted as the final answer.
 \end{itemize}
 
+\paragraph{2026-08-15 note.} Two of the items above have been overtaken by
+later changes.
+\begin{itemize}
+\item \emph{Production wiring.} The hand-off criterion is the flux metric
+  $du$, not $\|R\|$. \texttt{EXHALE\_main.f90} hands over once the warm-up
+  has flattened the wind to $du < $ \texttt{newton\_du\_switch}, default
+  $10^{-2}$ (\texttt{parameters.f90}), with the trigger armed on a descending
+  crossing and a plateau escape at $5\times$\,\texttt{newton\_du\_switch} after
+  \texttt{N\_stall} steps.
+\item \emph{Failure containment.} The watchdog was replaced on 2026-08-10. It
+  now fires on \texttt{n\_no\_descent\_max = 12} consecutive failed line
+  searches (\texttt{steady\_newton.f90}), not on 15 outer iterations without a
+  new best residual; see
+  \texttt{docs/newton\_scaling\_and\_base\_wall.md}~\S4. The rest of the
+  containment is unchanged.
+\end{itemize}
+
 Ready-to-run configurations for every solver combination (legacy
 marching, two-stage, Newton, Newton-from-state, warm-seed IC, \ldots) are
-collected under \texttt{examples/} (user manual, Table~4).
+collected under \texttt{examples/01\_legacy\_marching/} \ldots
+\texttt{examples/16\_molecular\_metals/} (user manual, Table~4).
 
 \end{document}

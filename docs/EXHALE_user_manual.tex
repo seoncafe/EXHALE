@@ -213,9 +213,21 @@ are auto-generated, so only edited sources and their dependents recompile.
 \begin{lstlisting}[style=sh]
 make                 # build ./EXHALE.x with gfortran
 make FC=ifort        # Intel ifort   (or FC=ifx for the LLVM compiler)
+make wind_ae_ic      # standalone Wind-AE IC generator -> ./wind_ae_ic.x
+make check           # byte-identical regression against the stored goldens
 make clean           # remove .o/.mod (keeps EXHALE.x)
 make distclean       # wipe build/ and EXHALE.x
 \end{lstlisting}
+\texttt{make check} rebuilds, re-runs each regression case single-threaded
+(\texttt{OMP\_NUM\_THREADS=1}, so the result is deterministic) and
+\emph{bitwise}-compares \texttt{output/Hydro\_ioniz.txt} and
+\texttt{output/Ion\_species.txt} against the stored reference outputs. The
+standing rule it encodes: a refactor with no intended physics change must be
+byte-identical, and a new physics option must default to off. The harness and
+its reference outputs live in \texttt{backup/regression/}; the target reports
+that it found no harness, without failing, in a checkout that does not carry
+it. \texttt{make wind\_ae\_ic} builds the out-of-process IC generator described
+in \S\ref{sec:windae}.
 
 \subsection{Running}
 The driver script \texttt{run\_EXHALE.sh} (1) launches a Python/Tk GUI that writes
@@ -256,7 +268,19 @@ transonic wind whose $du$ floors at $\sim1\%$). Each iteration prints
 \texttt{count, du, dtu} (and the windowed flux-level change when
 \texttt{Level tol:} is set), and the run reports which criterion stopped it. The
 optional \texttt{Force start} forces the first 1000 iterations regardless (useful
-when starting near a fixed point). The rationale and history of these settings are
+when starting near a fixed point).
+
+Two of these triggers are \emph{armed} before they can fire. A generated
+initial condition (cold hydrostatic, transonic, warm-seed, Wind-AE) is an
+analytic profile the marching loop has not touched, so its $du$ measures the
+smoothness of the formula that built it, not relaxation of the wind, and it can
+start orders of magnitude below every threshold. The $du<\texttt{du\_th}$ stop
+and the Newton hand-off (together with the secondary-ionization flip that shares
+its $du$ comparison) therefore require $du$ to have been seen at or above their
+own threshold first, so only a \emph{descending} crossing stops the run; both
+arm immediately when the run started from \texttt{Load IC?\ True}, whose state
+was relaxed by the run that wrote it. Arming is reported in the log. The
+PLM\,$\to$\,WENO3 switch is deliberately not guarded. The rationale and history of these settings are
 in \texttt{Update\_EXHALE\_solver}.
 
 \paragraph{Caveat: $du$ can stop a run prematurely.} $du$ measures only the
@@ -287,10 +311,11 @@ only --- it reproduces the cold-start crash on high-gravity cases).
 \label{sec:basegrid}
 The \texttt{Mixed} grid stacks \texttt{cells} uniform cells of size \texttt{dr}
 (in \rp) on the lower boundary and fills the rest of the domain with
-$N-\texttt{cells}$ geometrically stretched cells; $N=500$ is a compile-time
-constant. The two numbers share one input line because they are not
-independent: their product is the radial extent of the uniform region
-($0.01\,R_p$ with the default \texttt{2.0e-4 50}).
+$N-\texttt{cells}$ geometrically stretched cells; the total cell count $N$ is
+set by the optional key \texttt{Grid cells:} (default 500). The two numbers
+share one input line because they are not independent: their product is the
+radial extent of the uniform region ($0.01\,R_p$ with the default
+\texttt{2.0e-4 50}).
 
 The quantity that matters physically is how many uniform cells span the base
 density scale height, $H/dr$ with $H=kT/(\mu g)$. Where $H/dr$ is of order a few
@@ -311,9 +336,14 @@ Refine at fixed extent, i.e.\ divide \texttt{dr} and multiply \texttt{cells} by
 the same factor: \texttt{Base grid [dr,cells]: 5.0e-5 200} is the $4\times$
 refinement. Two costs follow. The CFL time step is set by the smallest cell, so
 a $4\times$ finer base means $\sim$$4\times$ more steps for the same physical
-time; and because $N$ is fixed, the stretched region loses those cells and
-coarsens (for a $4.43\,R_p$ domain, the cell size at $1.5\,R_p$ grows from
-$6.1\times10^{-3}$ to $1.3\times10^{-2}\,R_p$). In practice the $2\times$ step
+time; and at fixed $N$ the stretched region loses those cells and coarsens
+(for a $4.43\,R_p$ domain, the cell size at $1.5\,R_p$ grows from
+$6.1\times10^{-3}$ to $1.3\times10^{-2}\,R_p$). Raising \texttt{Grid cells:}
+alongside the refinement keeps the upper stretch fixed instead --- the pairs
+\texttt{1.0e-4 100}/500, \texttt{5.0e-5 200}/658, \texttt{2.5e-5 400}/916 and
+\texttt{1.25e-5 800}/1375 hold the stretch ratio at its default-grid value ---
+at the price of proportionally more work in every sweep. In practice the
+$2\times$ step
 (\texttt{1.0e-4 100}) is the one to try first: it is where the mode goes, and
 $4\times$ is not reachable to convergence on HD\,189733\,b within the
 compile-time step cap because its time step is $4\times$ smaller. That $2\times$
@@ -413,9 +443,12 @@ stalling, whereas a cold-IC start (no warm-up at all) stalls outright. Earlier
 revisions keyed the hand-off on the residual itself ($\|R\|<5\times10^{-2}$);
 the $du$-based key is equivalent in practice and consistent with the flux-based
 convergence decision (\S\ref{sec:convctl}), while the residual remains the
-\emph{target} of the JFNK finish. Convergence is linear (frozen-weight refresh and the
-chemistry noise floor); on planets with a breathing base (HD189733b) the
-practical floor is $\|R\|\sim3\times10^{-4}$.
+\emph{target} of the JFNK finish. Convergence is linear (frozen-weight refresh
+and the chemistry noise floor). Planets with a breathing base (HD189733b) used
+to stop at a practical floor $\|R\|\sim3\times10^{-4}$; the 2026-08-11
+line-search and base-energy fixes removed it, and a warm re-convergence of
+HD189733b now reaches $\|R\|=1.2\times10^{-5}$ in 11 outer iterations
+(re-measured 2026-08-15).
 The Newton finish is also \emph{safe to fail}: the solver tracks the best
 iterate seen, aborts once the line search has failed to find any acceptable
 step in 12 consecutive outer iterations, and on failure the run prints
@@ -552,11 +585,36 @@ whole input\,$\to$\,Wind-AE solve\,$\to$\,IC\,$\to$\,run sequence is one
 \emph{warm start}: EXHALE re-solves the ionization (and any metals) from
 the first step, so the Wind-AE IC need not be exactly self-consistent.
 Always finish with \texttt{Solver: Newton} for a quantitative $\dot M$
-(\S\ref{sec:newton}). It is best suited to hot Jupiters near the shipped
-seed; a far-from-seed planet may fail the ramp, in which case the run
-prints a message advising \texttt{IC mode: auto}. The shipped seed and
-spectrum live in \texttt{inputdata/windae\_seed.csv} and
+(\S\ref{sec:newton}). The shipped seed and spectrum live in
+\texttt{inputdata/windae\_seed.csv} and
 \texttt{inputdata/windae\_spectrum.inp}.
+
+The ramp runs in two stages, and the second one is what makes far-from-seed
+planets reachable. It first tries the \emph{static-BC} ramp, which moves the
+system parameters (flux, gravity, star) while holding the seed's base boundary
+conditions fixed --- fast, and enough for a seed-adjacent hot Jupiter such as
+HD\,209458\,b. If that stalls, the seed is reloaded and the ramp is retried
+with the \emph{self-consistent-BC} continuation, which re-converges the base
+$R_{\rm min}$/$T$/$\rho$, the sonic-point column density, and the
+bolometric/molecular layer turn-off as the parameters move
+(\texttt{wae\_continuation.f90}). That is the default path, and with it the
+ramp converges the far-from-seed HD\,189733\,b as well as the seed-adjacent
+HD\,209458\,b (\texttt{examples/11\_windae\_ic} and
+\texttt{examples/12\_windae\_ic\_hd209}). Only if \emph{both} stages fail does
+the run stop with a message advising \texttt{IC mode: auto}. What the Wind-AE
+IC does not fix is EXHALE's own HD\,189733\,b base-breathing instability, which
+limits the warm start there whatever the IC source.
+
+Because a generated IC is an analytic profile that the marching loop has not
+touched, its $du$ can start far below every threshold and would once have
+tripped a false convergence stop within a few steps. Both the $du$ stop and the
+JFNK hand-off now require $du$ to have been seen at or above their own
+threshold first, so only a descending crossing counts (\S\ref{sec:convctl}).
+Measured on \texttt{examples/12\_windae\_ic\_hd209} (2026-08-15): $du$ at step 2
+is $1.43\times10^{-4}$, neither trigger fires, and the two arm at steps 23 and
+222 on the first ascending crossing. The false stop is structurally gone for
+this IC mode; an $\dot M$ read off a $du$ stop still carries its usual
+path-dependent spread, so the Newton finish remains the prescription.
 
 \paragraph{Standalone generator: \texttt{wind\_ae\_ic.x}.}
 The same solver builds an IC out of process:
@@ -686,8 +744,14 @@ defaults restore the standard behavior).}\label{tab:inp-opt}\\
   must resolve the base density scale height $H=kT/(\mu g)$; below $\sim$5 cells
   per $H$ the scheme carries an undamped stationary $2\,dr$ entropy mode at the
   base (\S\ref{sec:basegrid}). Ignored by \texttt{Grid type: Uniform} and
-  \texttt{Stretched}. The total cell count $N$ is a compile-time constant, so a
-  finer base leaves fewer cells for the stretched region. \\
+  \texttt{Stretched}. At fixed \texttt{Grid cells:} a finer base leaves fewer
+  cells for the stretched region; raise the two together to hold the upper
+  stretch (\S\ref{sec:basegrid}). \\
+\texttt{Grid cells:} & int $\ge 10$ (def.\ 500) & Total number of computational
+  cells $N$ (ghost cells not counted). The default reproduces the value that
+  used to be compiled in, so an \texttt{input.inp} without the key is
+  unchanged. A restart (\texttt{Load IC? True}) must load an IC written at the
+  same $N$; the row count is checked and a mismatch is reported as such. \\
 \texttt{Base ghost temperature:} & \texttt{isothermal} $|$ \texttt{continuous}
   (def.\ \texttt{isothermal}) & Temperature closure of the lower ghost cells
   (the density anchor $\rho_{\rm bc}$ is unaffected either way).
@@ -758,6 +822,13 @@ defaults restore the standard behavior).}\label{tab:inp-opt}\\
   half-width; controls how deep the trapped stellar beam penetrates (default 70). \\
 \texttt{Lya stellar boost [-]:} & real & Bounded buildup cap for the trapped
   stellar Ly$\alpha$ beam (default 5). \\
+\texttt{Lya absorbing bottom:} & logical (def.\ \texttt{False}) & Treat the
+  lower boundary of the \texttt{jlya\_mode}=2 closure as a pure absorber
+  (Huang et al.\ 2017: the H$_2$ layer beneath the base destroys Ly$\alpha$
+  through accidental resonances): a downward wing-escape channel
+  $\beta_{\rm bot}$ on the depth to the bottom joins the upward and Sobolev
+  channels, lowering $\bar J_{\rm Ly\alpha}$ (and $n_2$) in the bottom few
+  scale heights only. No effect on \texttt{jlya\_mode} 0/1. \\
 \texttt{Deexc heat:} & logical (def.\ \texttt{True}) & Collisional de-excitation
   of H($n{=}2$) returns $10.2\,$eV to the electrons. It is not a double count of
   the H\,\textsc{i} collisional-excitation cooling, which is the one-way coronal
@@ -901,6 +972,109 @@ defaults restore the standard behavior).}\label{tab:inp-opt}\\
 \texttt{He\_metal\_diffusion:} & logical (def.\ \texttt{False}) & Also diffuse
   each trace metal independently against H (own mass and binary $D$); heavier
   elements settle more. Off $=$ metals frozen to H (\S\ref{sec:hediff}). \\
+\texttt{Molecular chemistry:} & \texttt{True}/\texttt{False}
+  (def.\ \texttt{False}) & Add H$_2$, H$_2^+$, H$_3^+$ and HeH$^+$ to the
+  coupled ionization equilibrium, with the H$_2$ photoionization opacity and
+  heating and the H$_3^+$ infrared cooling. Requires \texttt{He/H number
+  ratio}\,$>0$; \texttt{He\_diffusion} is refused. Turning it on also turns
+  \texttt{Molecular base} on (see there). A \texttt{metals.inp} may be present
+  --- the metal stages are then solved in the same system
+  (\S\ref{sec:loweratm}). \\
+\texttt{Molecular base:} & \texttt{True}/\texttt{False}
+  (def.\ \texttt{False}) & Remove the H$_2$-bound particles from the base
+  particle count \texttt{ntot\_bc} using the chemical-equilibrium H$_2$/H/He
+  partition, giving a lower base pressure and a heavier base $\mu$ with the
+  species arrays still atomic (Tier~2a). Forced on by \texttt{Molecular
+  chemistry: True}, because an atomic \texttt{ntot\_bc} under a molecular base
+  inflates the base temperature by the particle-count ratio and dissociates the
+  layer the chemistry just built --- so with the chemistry on the key is
+  redundant (\S\ref{sec:loweratm}). \\
+\texttt{Lower atmosphere:} & \texttt{none} $|$ \texttt{analytic} $|$
+  \texttt{vulcan} [, real ($R_J$)] (def.\ \texttt{none}) & Lower-atmosphere
+  pre-step run before the wind: generate the base composition over the 1-bar to
+  1\,$\mu$bar column --- analytically (\texttt{src/utils/run\_lower.py}) or by
+  calling VULCAN (\texttt{src/utils/vulcan\_driver.py}, hours on the first run,
+  cached after) --- and hand it over through \texttt{base.inp} (Tier~3). The
+  second token is the 1-bar (transit) radius and is required. An existing
+  \texttt{base.inp} is used as is and nothing is regenerated; the generator
+  needs \texttt{EXHALE\_ROOT} set to the install directory
+  (\S\ref{sec:loweratm}). \\
+\texttt{Lower column:} & real ($R_J$) & Tier-1 consistency \emph{report} only:
+  integrate the isothermal-$T_{\rm eq}$ hypsometric column with the
+  chemical-equilibrium H$_2$/H/He partition from the given 1-bar radius up to
+  1\,$\mu$bar and print the derived base radius, base fractions and $\mu$ next
+  to the input \texttt{Planet radius}. Nothing is overridden
+  (\S\ref{sec:loweratm}). \\
+\texttt{Hydrostatic base:} & \texttt{True} (def.\ off) & Momentum-consistent
+  base pressure. The legacy ghost pins $p$ to $n_{\rm tot,bc}+\delta p_{\rm bc}$
+  at $T_0$, which flattens $dp/dr$ to ${\sim}0$ at the base, whereas steady
+  momentum balance needs $dp/dr=-\rho g$; on a strongly bound planet the
+  resulting base-face momentum residual drives the breathing limit cycle. With
+  this key the ghost pressure is a linear extrapolation of the interior
+  gradient (cells 1 and 2), so $dp/dr$ stays continuous through the base and can
+  balance gravity; $\rho$ stays anchored at $\rho_{\rm bc}$ and the base
+  temperature floats slightly off $T_0$. It fixes neither $T$ nor $p$, so
+  \texttt{Base ghost temperature} is ignored while it is on. Off $=$
+  byte-identical legacy behavior. \\
+\texttt{Base BC:} & \texttt{density} $|$ \texttt{pressure} [, real ($\mu$bar)]
+  (def.\ \texttt{density}) & What the lower boundary anchors.
+  \texttt{density} (legacy) fixes the base number density at the $n_0$ of the
+  core block. \texttt{pressure} (CETIMB-style) fixes the base pressure at the
+  optional second token (default $1\,\mu$bar) and \emph{derives}
+  $n_0$ from $n_0k_BT_0n_{\rm tot,bc}=p_{\rm base}$; the same isothermal ghost
+  then pins $p$ and $T_0$ and derives $\rho$. It is a re-parameterization of
+  the same ghost, whose physical effect is a much less dense base. \\
+\texttt{Base velocity:} & \texttt{valve} $|$ \texttt{massflux}
+  (def.\ \texttt{valve}) & Velocity closure of the lower ghost.
+  \texttt{valve} (legacy) one-way-valves the first interior velocity,
+  $\max(v_1,0)$ or its smooth form (\texttt{Valve eps}). \texttt{massflux}
+  sets it from steady continuity instead, $v_{\rm ghost}=F_c/(\rho_{\rm
+  bc}r^2)$ with $F_c$ the wind's mass-flux constant, as CETIMB (Koskinen et
+  al.\ 2013) does. It gives the cleanest base (the $\pm$m\,s$^{-1}$ base
+  oscillation disappears) but converges ${\sim}5\times$ slower, which is why
+  the valve stays the default. \\
+\texttt{Shapiro filter:} & real $\varepsilon$ [, int $n$]
+  (def.\ $-1$, i.e.\ off; $n=4$) & Apply a weak Shapiro (1970) 1--2--1 low-pass
+  filter $u_j \mathrel{+}= (\varepsilon/4)(u_{j-1}-2u_j+u_{j+1})$ to the
+  conservative variables every $n$ steps, damping the gravity-unbalanced
+  sound-wave (base-breathing) mode the same way CETIMB does. $\varepsilon\le0$
+  $=$ off, and off is the default on purpose: with the filter on, an HD209458b
+  cold-IC sweep left the transonic-wind saddle for an infall state ($v<0$
+  everywhere) regardless of the velocity BC, while filter-off relaxed to a clean
+  outflow. Enable it only for a case that actually breathes. Unlike
+  \texttt{Low-Mach damping} it touches only the marching state, not the
+  numerical flux, so the JFNK residual does not see it. \\
+\texttt{Viscosity:} & \texttt{True}/\texttt{False}, or real $\mu_0$ [, real $s$]
+  (def.\ \texttt{False}) & \texttt{True} adds the radial viscous force
+  $(\nabla\!\cdot\!\tau)_r$ and its dissipation $q_\mu =
+  \tfrac43\mu(\partial_r v - v/r)^2$ with the calibrated
+  $\mu(T)=\tfrac{4}{15}(m_{\rm H}/k_B)\kappa(T)$ (monatomic Chapman--Enskog at
+  Prandtl $2/3$, tied to the Watson et al.\ 1981 conductivity) --- the molecular
+  transport that damps the near-base momentum imbalance the inviscid HLLC
+  scheme lacks. A numeric value is instead a diagnostic power law
+  $\mu=\mu_0T^{s}$ in code units ($s=0.7$ by default), kept for sensitivity
+  scans. Off $=$ byte-identical to the inviscid code. \\
+\texttt{Conduction:} & logical (def.\ \texttt{False}) & Add heat conduction
+  $r^{-2}\partial_r(r^2\kappa\,\partial_rT)$ with the Watson et al.\ (1981)
+  atomic-hydrogen $\kappa(T)=4.45\times10^{4}\,(T/10^{3}\,{\rm
+  K})^{0.7}$\,erg\,cm$^{-1}$s$^{-1}$K$^{-1}$. Off $=$ byte-identical. \\
+\texttt{Resid norm:} & \texttt{vol} $|$ \texttt{Linf} (def.\ \texttt{vol}) &
+  Which norm the residual convergence test and the Newton trigger use.
+  \texttt{vol} is volume-weighted, $\sum_j|R_{j,k}|V_j/\sum_j|u_{j,k}|V_j$ with
+  $V_j=r_j^2\Delta r_j$ --- the fractional drift rate of the volume-integrated
+  conserved quantity, and not inflated by the small near-base cells of the
+  non-uniform grid, where $R\propto1/\Delta r$. \texttt{Linf} restores the
+  legacy max-over-cells norm. \\
+\texttt{Wind-AE seed:} & path, or \texttt{grid} $|$ \texttt{auto} & Which
+  converged Wind-AE solution \texttt{IC mode: windae} ramps from; the default is
+  the shipped \texttt{inputdata/}\allowbreak\texttt{windae\_seed.csv}.
+  \texttt{grid}/\texttt{auto} instead picks the nearest solution in
+  \texttt{inputdata/}\allowbreak\texttt{windae\_grid/} to this planet's
+  $(M_p,R_p,F_{\rm XUV})$, which is a shorter and more robust ramp than always
+  starting from the single fiducial seed (\S\ref{sec:windae}). \\
+\texttt{Wind-AE seed out:} & path (def.\ none) & Write the converged Wind-AE
+  relaxation solution to this file as a reusable seed, e.g.\ to grow
+  \texttt{inputdata/windae\_grid/}. Omitted $=$ nothing is written. \\
 \end{longtable}
 
 \subsection{\texttt{metals.inp} --- trace-metal abundances}
@@ -992,7 +1166,11 @@ options:
   trapped \emph{internal} field (recombination + collisional sources closed by the
   escape probability $\beta$) plus a trapped \emph{stellar beam} set by
   \texttt{Stellar Lya flux} (with the penetration controlled by \texttt{Lya stellar
-  halfwidth} and the buildup capped by \texttt{Lya stellar boost}). This is the most
+  halfwidth} and the buildup capped by \texttt{Lya stellar boost}). The default
+  closure has no lower boundary; \texttt{Lya absorbing bottom: True} adds a
+  downward loss channel into the H$_2$ layer beneath the base (a pure absorber,
+  as in the Huang et al.\ 2017 Monte Carlo), which lowers $\bar J_{\rm Ly\alpha}$
+  in the bottom few scale heights only. This is the most
   physical of the three but still an approximation; see
   \texttt{Update\_EXHALE.tex}\,\S12 for the full formulae.
 \end{description}
@@ -1125,18 +1303,25 @@ genuinely cool planet signals that the molecular physics below is required.
 \texttt{Molecular base: True} removes the H$_2$-bound particles from the base
 particle budget (\texttt{ntot\_bc}) using the same equilibrium fit --- a lower
 base pressure and heavier base $\mu$, with the species arrays still atomic.
-Crude; pair it with Tier 2 for cool planets.
+Crude on its own, and it is what Tier~2 turns on for itself, so the key is
+worth setting by hand only for a run that wants the base EOS without the
+chemistry.
 
 \paragraph{Tier 2 --- molecular chemistry.}
 \begin{verbatim}
 Molecular chemistry: True   # H2, H2+, H3+, HeH+ in the coupled equilibrium
-Molecular base:      True   # recommended companion (consistent ghost pressure)
 \end{verbatim}
 adds the four molecular species to the coupled ionization equilibrium (the
 Koskinen et al.\ 2022 reaction network), the H$_2$ photoionization opacity and
 heating (Yan et al.\ 1998 cross section), and the optically-thin H$_3^+$
 infrared cooling (Miller et al.\ 2013 with their non-LTE factor). The output
 \texttt{Ion\_species*.txt} gains four columns (\texttt{H2 H2p H3p HeHp}).
+It also turns \texttt{Molecular base} on automatically, so that key need not be
+given: with an atomic \texttt{ntot\_bc} under a molecular base the base
+temperature is inflated by the particle-count ratio (${\sim}1.8\times$ for a
+fully molecular base) and thermally dissociates the layer the chemistry just
+built, so the parser couples the two rather than leaving the inconsistent
+combination reachable.
 Requires He; \texttt{He\_diffusion} is refused by the parser. A
 \texttt{metals.inp} may be present: the trace metals are then solved in the
 same system as the molecular network (\texttt{System\_HeH\_mol\_metals}),
@@ -1384,6 +1569,29 @@ channels (same ion order as \texttt{Ion\_species}). The channels sum to
 column~4. Useful for identifying the dominant coolant vs.\ altitude (cf.\
 Huang+2023 Fig.~10), and the H$_3^+$ column is the coolant of a molecular base.
 The \texttt{\# col} header line always names the layout.
+
+\subsection{\texttt{Heating\_breakdown.txt}}
+Volumetric heating by channel [erg\,cm$^{-3}$\,s$^{-1}$] vs.\ radius, the
+companion of \texttt{Cooling\_breakdown.txt} and written unconditionally at the
+end of the run. Columns: \texttt{1}=$r$ [\rp], \texttt{2}=$T$ [K],
+\texttt{3}=$n_e$ [cm$^{-3}$], \texttt{4}=total heating; \texttt{5--10}= the
+photoionization heating split by \emph{absorber} --- H\,\textsc{i},
+He\,\textsc{i}, He\,\textsc{ii}, He\,$2^3$S, H$_2$, and the sum over the metal
+stages; \texttt{11}= the photoelectric heating of the H($n{=}2$) population
+(the excited-H model); \texttt{12}= the collisional de-excitation of
+H($n{=}2$), i.e.\ absorbed Ly$\alpha$ thermalized by a collision
+(\texttt{Deexc heat}); \texttt{13}= the He-recombination coupling
+(\texttt{He\_rec\_coupling}); \texttt{14}= He\,$2^3$S\,$+$\,H Penning
+ionization; \texttt{15}= He\,$2^3$S\,$+$\,H$_2$ Penning ionization; and
+\texttt{16}= H$_2$ Lyman--Werner photodissociation. The channels sum to
+column~4 on a molecular run as well as an atomic one: the molecular terms were
+added on 2026-08-15, and the closure was then measured at
+$\max|\sum_{5}^{16}/\text{heat}_{\rm total}-1| = 2\times10^{-15}$ on the
+Lyman--Werner regression case. The molecular channels (\texttt{9}, \texttt{15},
+\texttt{16}) and the excited-H channels (\texttt{11}, \texttt{12}) are
+identically zero when the run does not carry that physics. The run also prints
+the internal consistency of the photoionization split alone. The \texttt{\# col}
+header line always names the layout.
 
 \subsection{\texttt{Lyman\_Werner.txt}}
 H$_2$ photodissociation diagnostic, written when a molecular run carries a
@@ -1770,8 +1978,10 @@ molecular network (\S\ref{sec:loweratm}) respectively, on HD209458b, and
 \begin{longtable}{@{}lp{4.6cm}p{5.6cm}@{}}
 \caption{Ready-made example configurations under \texttt{examples/}
 (\texttt{01}--\texttt{11} are HD189733b; \texttt{12}, \texttt{14}--\texttt{16}
-are HD209458b; \texttt{13} spans four planets). The Wind-AE IC ramp
-converges for both planets; \texttt{11} additionally exercises the
+are HD209458b; \texttt{13} spans four planets). The Wind-AE IC ramp converges
+for both of the planets that use it --- HD\,189733\,b (\texttt{11}) and
+HD\,209458\,b (\texttt{12}) --- and \texttt{11}, being far from the seed,
+additionally exercises the self-consistent-BC continuation and the
 molecular-layer turn-off. Metals on/off is a runtime switch: any folder
 becomes metals-on by copying a \texttt{metals.inp} into it, molecular folders
 included --- that is what \texttt{16\_molecular\_metals} is.}
@@ -1841,9 +2051,10 @@ included --- that is what \texttt{16\_molecular\_metals} is.}
 \texttt{15\_molecular} & full molecular chemistry (HD209458b;
   \S\ref{sec:loweratm}): H$_2$/H$_2^+$/H$_3^+$/HeH$^+$ in the coupled
   ionization equilibrium; a sharp H$_2\!\to$H front forms above a thin
-  molecular base, the wind above it essentially atomic. Newton-converged
-  2026-08-13 ($\|R\| = 9.5\times10^{-6}$): the front sits at
-  $r=1.0089\,R_p$ and the molecular layer below it collapses to ${\sim}400$\,K &
+  molecular base, the wind above it essentially atomic. Newton-converged from a
+  cold start, re-run 2026-08-15 with the current code ($\|R\| =
+  6.105\times10^{-6}$ in 89 outer iterations): the front sits at
+  $r=1.0097\,R_p$ and the molecular layer below it collapses to ${\sim}400$\,K &
   HD209458b params $+$ \texttt{Molecular chemistry: True},
   \texttt{Solver: Newton 5.0e-2}, \texttt{Resid tol: 1.0e-5},
   \texttt{Max steps: 150000} (no
@@ -1851,11 +2062,21 @@ included --- that is what \texttt{16\_molecular\_metals} is.}
 \texttt{16\_molecular\_metals} & molecular chemistry \emph{and} trace metals
   solved in one system (HD209458b): the H$_2$/H$_2^+$/H$_3^+$/HeH$^+$ network
   and the metal ionization stages share the free electron density, which the
-  metals dominate in the shielded molecular base. Not converged: with metals on
-  the JFNK line search stalls at $\|R\|=3.6\times10^{-4}$ on the base-adjacent
-  momentum row &
-  \texttt{15\_molecular} $+$ \texttt{metals.inp} (solar C/N/O), without
-  \texttt{15}'s three convergence keys \\
+  metals dominate in the shielded molecular base. Converges only from a warm
+  restart, and the seed matters: seed it with a \texttt{15} converged by
+  \emph{the same binary} (a state left by an older binary is a different seed
+  and fails, \texttt{info = 2}), then expect \texttt{info = 0} at
+  \texttt{Resid tol: 1.0e-5} and $\log_{10}\dot M = 9.65$--$9.67$. The cold path
+  is closed: with metals on, the JFNK line search bottoms near
+  $\|R\|\sim10^{-3}$ (worst cell $r=1.021$, momentum) and falls back to
+  marching at every \texttt{Low-Mach damping} coefficient tried --- off,
+  $5\times10^{-3}$, $10^{-2}$, $2\times10^{-2}$ (measured 2026-08-15) &
+  as shipped, \texttt{15\_molecular} $+$ \texttt{metals.inp} (solar C/N/O)
+  without \texttt{15}'s three convergence keys. For the warm restart put the
+  seed run's \texttt{Hydro\_ioniz.txt}/\texttt{Ion\_species.txt} in
+  \texttt{output/*\_IC.txt} and use \texttt{15}'s three keys $+$
+  \texttt{Load IC?\ True} $+$ \texttt{Low-Mach damping: 5.0e-3} (run
+  \texttt{1.0e-2} as well and compare --- see the folder \texttt{README}) \\
 \end{longtable}}
 
 % ===================================================================== %
@@ -1964,7 +2185,7 @@ Bound--free $\sigma(E)$ & H\,I & hydrogenic (Kramers) analytic form (orig.\ ATES
  & He\,I\,$2\,^3$S (metastable) & two VFKY96 (Verner) wings $+$ power-law bridge, fitted to TOPbase/Opacity-Project (extends the orig.\ Norcross 1971 broken power law past 60\,eV) \\
  & C, N, O, Mg, Si, Na, Fe (+ ions) & Verner, Ferland, Korista \& Yakovlev (1996), single-shell fits \\
  & K\,I & Verner \& Yakovlev (1995) \\
-Opacity model (runtime) & all (via \texttt{opacity.inp}) & A=analytic above; P=pressure-broadened (Robinson \& Catling); T=tabulated files \\
+Opacity model (runtime) & all (via \texttt{opacity.inp}) & A=analytic above (default); C=constant above threshold, $\sigma =$ \texttt{OPA\_CONST\_}$X$ times the analytic value at the edge; P=that constant base times the pressure-broadening factor (Robinson \& Catling); T=tabulated files \\
 \midrule
 \multicolumn{3}{@{}l}{\textbf{Collisional (electron-impact) ionization}}\\[2pt]
 Rate $C(T)$ & H\,I, He\,I, He\,II & Voronov (1997, ADNDT 65, 1) default; legacy ATES fits (Abel+1997 / Hui \& Gnedin 1997) via \texttt{Legacy\_HHe\_rates} \\
@@ -1975,6 +2196,7 @@ Case~B (RR) & H\,II, He\,II, He\,III & Badnell (2023) RR $-$ Mao \& Kaastra (201
 He rec.\ radiation $\to$ H\,I (def.\ on, \texttt{He\_rec\_coupling}) & He\,II\,$\to$\,He\,I & Draine (2011) on-the-spot $y$/$z$: extra H\,I photoionization $n_{\rm HeII}n_e[z\,\alpha_B+y\,\alpha_1]$ with photoelectron heating, He\,II recombination shifted to $\alpha_B+y\,\alpha_1$; \texttt{False} $=$ pure case B \\
 Metastable & He\,II\,$\to2\,^3$S, $1\,^1$S & power-law fits (orig.\ ATES) \\
 Penning ionization & He\,$2\,^3$S\,$+$\,H & Taylor et al.\ (2025) temperature-dependent fit (replaces the const.\ $5\times10^{-10}$; always on) \\
+ & He\,$2\,^3$S\,$+$\,H$_2$ & fit to Garc\'{i}a Mu\~{n}oz (2025) Table~A.5 (\texttt{penning\_HeI23S\_H2}, valid 500--10\,000\,K): He\,$2\,^3$S\,$+$\,H$_2\to$\,He\,$1\,^1$S\,$+$\,H$_2^+ + e^-$, releasing $4.4$\,eV to the electrons. The minor H\,$+$\,HeH$^+$ associative-ionization branch is not resolved --- the full rate goes to the dominant Penning channel. Active only when a molecular run also tracks the triplet \\
 RR + DR & C, N, O, Mg, Si, Na, K, S, Ca\,II (+ stages) & Badnell (2006, ApJS 167, 334) RR + Badnell adf48 DR (TAMOC clist\_K) \\
 RR only & Ca\,I (Ca\,II$+e$) & Shull \& Van Steenberg (1982); no DR \\
 RR + DR & Fe\,I, Fe\,II & Huang et al.\ (2023) analytic fit (validation; Badnell switch deferred) \\

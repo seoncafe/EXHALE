@@ -10,7 +10,8 @@ refer to Huang+2023 unless noted).
 
 > [!IMPORTANT]
 > **Read this first — why the previous attempt was set aside.**
-> The earlier attempt (now in `ATES/EXHALE_something_wrong/`) implemented
+> The earlier attempt (`ATES/EXHALE_something_wrong/`; that tree no longer
+> exists, see the snapshot note in §0) implemented
 > *all* phases in one pass and verified only that the code **compiled** and the
 > LaTeX built. It was never validated against the paper's numerical results, and
 > the physics came out wrong. **The governing rule of this plan is: implement one
@@ -23,8 +24,10 @@ refer to Huang+2023 unless noted).
 ## 0. What EXHALE already has (do **not** reinvent these)
 
 > **Snapshot, not current state.** This section, and the progress notes further
-> down, describe the tree as it stood when the plan was written. Every phase
-> below has since been carried out, so the "already has" list is a lower bound:
+> down, describe the tree as it stood when the plan was written. Phases 0-4 have
+> since been carried out and Phase 5 in part; **Phase 6 has not been done**
+> (see the status marks on each phase in §2). So the "already has" list is a
+> lower bound:
 > the metal set is now ten elements (27 ion stages), charge exchange follows
 > Huang+2023 Table 4 rather than Kingdon & Ferland, metal-line cooling is the
 > CHIANTI closed-form fit set, and excited hydrogen with Ly-alpha transfer runs
@@ -163,6 +166,11 @@ dominant relevant exchange is **Fe + H⁺ ↔ Fe⁺ + H** near the molecule→at
   energy equation (Figs. 10, 26, 27).
 - H₂ Lyα sink (`σ_H₂≈4.0e-19 cm²` at 2500 K) is **negligible** on WASP-121b —
   do not bother (the old draft's emphasis on it was misplaced).
+  [2026-08-15: implemented anyway, as the optional key
+  `Lya absorbing bottom: True` (default off). It closes the Ly-alpha domain
+  from below with a pure absorber, as Huang et al. (2017) do, and adds the
+  downward escape `beta_bot` as a parallel loss channel; the default reflecting
+  bottom keeps every downward photon. See `src/modules/radiation/lya_rt.f90`.]
 
 ### 1.7 Lower/middle atmosphere & boundary (Section 2.6)
 Bottom boundary at **P = 1 μbar** (all molecules dissociated above). Below it,
@@ -446,7 +454,7 @@ layer).
 > **With this the ionization-network half of Phase 1 is physically complete.
 > Next: Phase 2 — metal line cooling (incl. Fe II).**
 
-### Phase 2 — Updated radiative cooling (§1.5)
+### Phase 2 — Updated radiative cooling (§1.5) — **DONE**
 - Implement Mg I/II, Ca II, Fe II, Fe I, Na I two-level/CHIANTI cooling and
   free–free in `Cool_coeff.f90`; replace Black (1981) Lyα cooling with CHIANTI.
 - **Gate:** the cooling-rate curves for each species reproduce **Figs. 4–7** (e.g.
@@ -477,18 +485,25 @@ layer).
 > the 0.35× suppression, not a cooling-rate change). **Next: Phase 3 — excited
 > H(n=2) + Lyα RT.**
 
-### Phase 3 — In-code excited H(n=2) + Lyα RT (§1.6)
+### Phase 3 — In-code excited H(n=2) + Lyα RT (§1.6) — **DONE**
 - New `lya_rt.f90`: H(2s)/H(2p) populations, Balmer-continuum photoionization
   into the H balance, photoelectric + deexcitation heating into the energy eqn.
 - **Stage it:** first drive H(n=2) with a **parameterized `J̄_Lyα`** (the
   EXHALE_transit.py / Huang+2017 Eq. 6 estimate) to get the coupling and signs right; only
   then add the **Monte Carlo RT + B-spline + outer iteration**. Keep the RT
   decoupled from the hydro sub-step (iterate between converged hydro states).
+  [2026-08-15: no Monte Carlo transfer was added and none is planned. The
+  in-code field is the Neufeld (1990) / Harrington (1973) escape-probability
+  closure evaluated directly on the grid (`radiation/lya_rt.f90`,
+  `Jlya escape-prob: True`), chosen because the WASP-121 b line-center depth
+  makes a brute Monte Carlo infeasible and forbids core skipping. A field
+  computed elsewhere — in practice the LaRT Monte Carlo code — can be imported
+  instead with `Jlya RT file:` (`jlya_mode = 1`).]
 - **Gate:** photoionization of H(n=2) is a significant proton source below
   ~2 R_p (Figs. 11, 27); Balmer photoelectric heating appears in the heating
   budget (Figs. 10, 26) without destabilizing the energy solver.
 
-### Phase 4 — RLOF / tidal potential (§1.8)
+### Phase 4 — RLOF / tidal potential (§1.8) — **DONE**
 - Add the Roche potential to `grav_field.f90` and the momentum/energy source
   terms; solve the substellar streamline; compute L1; implement the
   substellar→terminator mapping and the `4/9` mass-loss conversion.
@@ -497,7 +512,7 @@ layer).
   **Ṁ ≈ 1.03 M_p/Gyr** (Table 3). Outflow velocity ≈ 7× the Case A value at R_*
   (Fig. 20).
 
-### Phase 5 — Velocity-broadened transmission spectrum (extend `EXHALE_transit.py`)
+### Phase 5 — Velocity-broadened transmission spectrum (extend `EXHALE_transit.py`) — **PARTLY DONE**
 - Continuum: H⁻ (John 1988), Rayleigh-H (Lee & Kim 2004), He, H₂.
 - Lines: H Balmer (Hα, Hβ, Hγ from H(2s)/H(2p)); **Mg II λ2796/λ2804;
   Ca II λ3934/λ3968; Na I λ5892/λ5898 (+ λ3303); K I λ4045/λ4048/λ7667/λ7701;
@@ -510,7 +525,13 @@ layer).
 - **Gate (the headline result):** line-center transit depths approach the
   **Case D / observed** values below.
 
-### Phase 6 (final, production) — swap recombination to Badnell RR+DR
+> [2026-08-15: the velocity broadening, the sector/annulus integration and the
+> triaxial Roche geometry are implemented, and of the line list `EXHALE_transit.py`
+> computes He I 10830, Ly-alpha, H-alpha, H-beta, Mg II 2796/2803,
+> Ca II 3934/3968 and Na I D. **Not implemented:** K I 4045/4048/7667/7701,
+> Mg I 2853, Ca I, and the Fe I / Fe II line sets (nor H-gamma).]
+
+### Phase 6 (final, production) — swap recombination to Badnell RR+DR — **NOT DONE**
 Once Cases A–D are reproduced with Huang's recombination rates (§1.3), switch the
 production default to **Badnell RR+DR** for all metals (H stays case B). Because
 the recombination code is built with a swappable rate source for each ion (§1.3), this
@@ -519,6 +540,14 @@ is a configuration change, not a rewrite.
   checks with Badnell rates and **record the deltas** vs the Huang-rate results
   (ionization fractions, T(r), Ṁ, Mg II / Ca II / Hα / Hβ depths). Keep both rate
   sets selectable so the Huang-rate run remains reproducible for comparison.
+
+> [2026-08-15: not carried out. Iron still recombines through Huang+2023
+> Eqs. (5)-(6) — `alpha_rec_FeI_Huang` / `alpha_rec_FeII_Huang` in
+> `radiation/Cool_coeff.f90`, whose own comment records the Badnell swap as
+> "deferred to a later pass". The other nine metals already use Badnell RR+DR
+> through `alpha_rec_metal`, so the tree is mixed rather than switchable: there
+> is no key that selects one rate source for all metals, and no delta table has
+> been recorded.]
 
 ---
 
@@ -544,6 +573,13 @@ both hot (ionized) and cool (boundary) regimes; the semi-implicit energy solver
 stays stable with the new cooling and Balmer heating; energy/mass conservation
 holds across the RK loop.
 
+> [2026-08-15: the system is no longer a fixed 17-20 equations and MINPACK is no
+> longer the default solver. `N_eq` is built from the active physics —
+> `3 + 2*n_melem` for H+He+metals, `4 + 2*n_melem` with He 2^3S, and the
+> molecular branch adds its own rows (`input_read.f90`). The default solver is
+> the analytic-Jacobian Newton (`use_newton_ieq = .true.`, key
+> `Newton solver:`), with MINPACK `hybrd1` as the second attempt.]
+
 ---
 
 ## 4. Open questions / decisions (with recommendations)
@@ -553,17 +589,26 @@ holds across the RK loop.
 > Huang+2023 stops at 1st. *Recommend keeping EXHALE's 2nd-ion C/N/O* (more
 > complete, already validated) and noting the difference, rather than reducing
 > the network to match the paper exactly.
+> [2026-08-15: settled as recommended. C/N/O keep their 2nd ionization stage,
+> and so do Mg, Si, Ca and Fe.]
 
 > [!CAUTION]
 > **Q2 — 1 μbar boundary.** Hardcode a WASP-121b profile, or build a file-reader
 > for an external photochemical/Lavvas profile? *Recommend a labeled file-reader*
 > (`boundary_profile.txt` with `HI`, `MgI`, `FeII`, … rows), reusing the concept
 > from the prior attempt's `load_boundary_profile`, so other planets are easy.
+> [2026-08-15: settled as a labeled file-reader, named `base.inp` rather than
+> `boundary_profile.txt` — `read_base_inp` in `input_read.f90`, six keys
+> (`T_base`, `r_base`, `HeH_base`, `Kzz_base`, `q_H2_base`, `p_base`), written
+> by the lower-atmosphere pre-step. `docs/base_composition_handoff_plan.md`.]
 
 > [!CAUTION]
 > **Q3 — Lyα RT fidelity.** Full Monte Carlo + Hummer-IIB PRF + outer iteration
 > is expensive and the riskiest single piece. *Recommend the staged approach in
 > Phase 3*: parameterized `J̄_Lyα` first, MC RT only once the coupling is proven.
+> [2026-08-15: settled — the staging stopped at the escape-probability closure
+> and the Monte Carlo stage was dropped, for the reason given under Phase 3.
+> An externally computed field can be imported with `Jlya RT file:`.]
 
 > [!CAUTION]
 > **Q4 — RLOF in 1D.** The substellar-streamline + terminator-mapping
@@ -602,7 +647,7 @@ holds across the RK loop.
 | **Species metadata table (Phase 1a refactor)** | new `init/species_table.f90` (metadata for each ion and element, `sigma_tab`, rate dispatchers) |
 | Ionization network / MINPACK | `nonlinear_system_solver/System_*.f90`, `radiation/ionization_equilibrium.f90` (generalize `params`→module-level cell block; loop over elements) |
 | Interfaces for each species (de-argument) | `radiation/util_ion_eq.f90` (`PH_heat`, `eval_cool`), `functions/utilities.f90` (`calc_column_dens`), `files_IO/write_output.f90` — pass 2D `n_ion(:,:)`, loop over the metadata table |
-| Recombination, Voronov, cooling, charge exchange | `radiation/Cool_coeff.f90` (consider splitting `charge_exchange.f90`) |
+| Recombination, Voronov, cooling, charge exchange | `radiation/Cool_coeff.f90` (consider splitting `charge_exchange.f90`) — [2026-08-15: split; `radiation/charge_exchange.f90` exists] |
 | Photoionization cross sections | `functions/cross_sec.f90`, `radiation/opacity_models.f90` |
 | Species arrays, abundances, RLOF params, boundary | `init/parameters.f90`, `files_IO/metals_input_read.f90`, `files_IO/opacity_input_read.f90` |
 | Allocation / initial & boundary conditions | `init/set_energy_vectors.f90`, `init/set_IC.f90`, `files_IO/load_IC.f90` |

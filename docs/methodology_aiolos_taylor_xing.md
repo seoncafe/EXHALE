@@ -1,5 +1,17 @@
 # Methodology Comparison: AIOLOS, Taylor et al. (2025, 2026), and Xing et al. (2023)
 
+> **Status (dated note added 2026-08-15).** Written before 2026-07; the EXHALE column below
+> predates the metal/molecular/diffusion work. Items since implemented:
+> temperature-dependent Taylor+2025 Penning rate (unconditional default), He/H (+metal)
+> diffusive separation (`species_diffusion.f90`, keys `He_diffusion` / `He_metal_diffusion`,
+> default off), molecular chemistry H2/H2+/H3+/HeH+ + H3+ IR cooling + lower-atmosphere
+> tiers (`lower_atmosphere/`), charge exchange re-sourced to Huang+2023 Table 4
+> (`charge_exchange.f90`), 10 elements / 27 metal ion stages.
+>
+> The comparison table and the adoption assessment below are kept as originally written, as
+> a record of what the code looked like at the time. Individual statements that the code has
+> since overtaken carry an inline `[2026-08-15: ...]` marker pointing back to this note.
+
 **Purpose.** This note compares the methodology of three independent modeling efforts for
 XUV-driven atmospheric escape from close-in exoplanets, and assesses which elements could
 be adopted into **EXHALE** (our extended ATES fork). The three efforts are:
@@ -60,9 +72,10 @@ Ionization of H, He, and trace metals (C/N/O) is solved as one coupled nonlinear
 (analytic-Jacobian Newton with a MINPACK `hybrd1` fallback). It already includes a He(2³S)
 metastable network, an H(n=2)/Balmer non-LTE population (Christie et al. 2013), a Lyα
 radiative-transfer suppression via a Neufeld escape-probability treatment, Badnell RR+DR
-recombination, Voronov collisional ionization, Kingdon & Ferland charge exchange, CHIANTI
-metal-line cooling (Mg/Ca/Na/Fe II, C/N/O), a Roche/tidal potential (RLOF), and a
-transmission-spectrum post-processor (`EXHALE_transit.py`).
+recombination, Voronov collisional ionization, Kingdon & Ferland charge exchange
+[2026-08-15: since re-sourced to Huang+2023 Table 4 (`charge_exchange.f90`) — see status
+note], CHIANTI metal-line cooling (Mg/Ca/Na/Fe II, C/N/O), a Roche/tidal potential (RLOF),
+and a transmission-spectrum post-processor (`EXHALE_transit.py`).
 
 ---
 
@@ -74,7 +87,7 @@ transmission-spectrum post-processor (`EXHALE_transit.py`).
 | Dimensionality | 1-D (sph/cyl/cart) | 1-D spherical | 1-D spherical | 1-D spherical |
 | Time | Time-dependent → steady | Time-dependent → steady | Time-dependent → steady | Steady-state (relaxation) |
 | Fluid model | **Multi-fluid** (v, ρ, E for each species) + friction | **Single bulk** momentum + multispecies diffusion | **Multi-fluid** (v for each species) | **Single fluid** (one bulk v) |
-| He/H separation | Via friction/drag | Via molecular + eddy diffusion | Via multi-fluid dynamics (fractionation) | **None** (fixed He/H) |
+| He/H separation | Via friction/drag | Via molecular + eddy diffusion | Via multi-fluid dynamics (fractionation) | **None** (fixed He/H) *[2026-08-15: since implemented — see status note]* |
 | Reconstruction | PLM + MC limiter | (finite-difference, Koskinen 2013) | PLM (PLUTO) | **PLM → WENO3** (two-stage) |
 | Riemann solver | HLLC | — | HLL (+ electron-pressure split) | Approximate (ATES/PWN) |
 | Time integrator | 2nd-order TVD RK | forward to steady | 3rd-order TVD RK | RK relaxation |
@@ -82,13 +95,13 @@ transmission-spectrum post-processor (`EXHALE_transit.py`).
 | Radiation transport | **FLD**, multi-band, implicit block-tridiag | XUV attenuation + Lyα Monte Carlo | Radial XUV attenuation (53 bins) | Radial XUV attenuation |
 | Heating efficiency | From C2Ray energy split | Photoelectron efficiency (tuned 20–40%) | Frequency-averaged η (tuned 0.1–0.5) | Tuned efficiency |
 | Ionization solve | C2Ray (Brent) or implicit network | KPP kinetic preprocessor | Semi-implicit source terms | **MINPACK / analytic-Jacobian Newton** |
-| Species (fiducial) | Arbitrary (gas/dust/ions) | H, H(n=2), He, H⁺, He⁺, He²⁺, He(2³S), e⁻ (+metals, +H₂) | H, H⁺, He, He⁺, e⁻ | H, He (all stages), C/N/O, e⁻, He(2³S), H(n=2) |
-| Metals | Via general chemistry | Optional (solar abundances) | None | **C/N/O ionization + Mg/Ca/Na/Fe cooling** |
+| Species (fiducial) | Arbitrary (gas/dust/ions) | H, H(n=2), He, H⁺, He⁺, He²⁺, He(2³S), e⁻ (+metals, +H₂) | H, H⁺, He, He⁺, e⁻ | H, He (all stages), C/N/O, e⁻, He(2³S), H(n=2) *[2026-08-15: since implemented — see status note; +H₂/H₂⁺/H₃⁺/HeH⁺ and 10 elements / 27 metal ion stages]* |
+| Metals | Via general chemistry | Optional (solar abundances) | None | **C/N/O ionization + Mg/Ca/Na/Fe cooling** *[2026-08-15: since implemented — see status note; 10 elements / 27 ion stages in the coupled system]* |
 | He(2³S) 10830 | Not a design focus | In-loop non-LTE network | Post-processed (Yan 2022) | In-loop metastable network + `EXHALE_transit.py` |
 | H(n=2) / Hα | Not a focus | Non-LTE, Lyα Monte Carlo, iterated | Post-processed | Non-LTE (Christie 2013) + Lyα escape prob. |
 | Cooling | Recomb/line/free-free (Black 1981), dust, H₃⁺ | Recomb + H I line (Huang 2023) + H₃⁺ | **Lyα only** (+ adiabatic, frictional) | Lyα + recomb + free-free + CHIANTI metals |
 | Tidal / Roche | `USE_TIDES` quadrupole | Optional (Taylor 2025); off in 2026 | Stellar tidal term in a_ext | Roche potential (RLOF) |
-| Lower boundary | Configurable | **μbar, coupled to photochemistry** | 1 Rp, fixed n, T=1500 K | ~μbar base, fixed T/n |
+| Lower boundary | Configurable | **μbar, coupled to photochemistry** | 1 Rp, fixed n, T=1500 K | ~μbar base, fixed T/n *[2026-08-15: since implemented — see status note; `lower_atmosphere/` tiers incl. a `base.inp` photochemical handoff]* |
 | Transmission spectrum | — | Ray-traced Voigt (He 10830, Hα) | Post-processed 10830 | `EXHALE_transit.py` (10830, Lyα, Hα/β, metal doublets) |
 
 ---
@@ -134,6 +147,9 @@ transmission-spectrum post-processor (`EXHALE_transit.py`).
 - **EXHALE is strictly single-fluid** with a *fixed* He/H at all radii — it **cannot**
   represent fractionation or diffusive separation at all. This is the largest physical gap
   relative to the modern He 10830 literature.
+  *[2026-08-15: since implemented — see status note. `species_diffusion.f90` adds the
+  Taylor-route molecular + eddy diffusion flux (keys `He_diffusion`, `He_metal_diffusion`),
+  default off, so the gap is now an opt-in rather than an absence.]*
 
 ### 4.2 Radiation transport
 - **AIOLOS** is the only one with a full **flux-limited-diffusion** thermal-radiation
@@ -212,6 +228,9 @@ Morgner & Niehaus 1979 and Cohen & Lane 1971). Penning ionization is often the *
 2³S loss near the base**, so this directly affects EXHALE's 10830 prediction. **Low cost,
 high value** — a drop-in replacement in the He(2³S) network. Worth checking whether EXHALE
 currently uses the constant rate.
+*[2026-08-15: since implemented — see status note. `penning_HeI_23S` in `Cool_coeff.f90`
+is the two-branch Taylor+2025 Table 2 fit and is applied unconditionally; the constant
+5×10⁻¹⁰ rate is no longer selectable.]*
 
 **(C) High-resolution He(2³S) photoionization cross section (Taylor 2025, B-spline).**
 Taylor's B-spline K-matrix 2³S cross section resolves sharp EUV autoionization resonances
@@ -229,11 +248,16 @@ lower/middle atmosphere (rather than a fixed base) removes an ad hoc boundary as
 For EXHALE this would mean coupling to (or importing profiles from) a separate
 photochemistry model. **Moderate-to-high cost**; valuable mainly for sub-Neptune / molecular
 regimes (Taylor 2026's GJ 1214b), less so for the hot-Jupiter cases EXHALE currently targets.
+*[2026-08-15: since implemented — see status note. `lower_atmosphere/lower_column.f90` plus
+the `base.inp` handoff (fed by a VULCAN run) provide exactly this; default off.]*
 
 **(E) Molecular chemistry (H₂, H₂⁺, H₃⁺, HeH⁺) and H₃⁺ cooling (Taylor 2026).**
 Needed only if EXHALE is extended toward **cooler / higher-μ sub-Neptunes** (GJ 1214b-like),
 where H₂ survives into the wind and H₃⁺ becomes a significant coolant. **Moderate cost**;
 defer unless the science scope broadens beyond hot Jupiters.
+*[2026-08-15: since implemented — see status note. H₂/H₂⁺/H₃⁺/HeH⁺ are solved inside the
+coupled system (`System_HeH_mol*`), with H₃⁺ IR cooling (`h3p_cooling.f90`) and H₂
+Lyman-Werner photodissociation (`lyman_werner.f90`); default off.]*
 
 **(F) Lyα Monte Carlo (Taylor / Huang 2017) vs EXHALE's Neufeld escape probability.**
 Taylor's iterated Monte Carlo is the gold standard for the Hα-driving Lyα field, but EXHALE
@@ -258,6 +282,9 @@ Elegant, but only relevant if EXHALE goes multi-fluid (route A/Xing), which is n
 recommended. **Skip** unless (B)-multi-fluid is pursued.
 
 ### 5.4 Recommended adoption order
+
+*[2026-08-15: items 1-4 of this list have since been implemented — see status note. The
+list is kept as the record of what was recommended, not of what is still outstanding.]*
 
 1. **Temperature-dependent Penning ionization rate** (B) — cheapest, directly improves 10830.
 2. **He/H diffusive separation via a diffusion term** (A, Taylor route) — largest physics
@@ -287,3 +314,6 @@ recommended. **Skip** unless (B)-multi-fluid is pursued.
   rate**) is the highest-value, lowest-risk path to bringing EXHALE's He 10830 predictions
   in line with the current state of the art, without abandoning its single-fluid,
   steady-state, metal-aware design.
+  *[2026-08-15: both have since been implemented — see status note. The Taylor-style
+  diffusion term is `species_diffusion.f90` (opt-in via `He_diffusion`); the
+  temperature-dependent Penning rate is unconditional.]*

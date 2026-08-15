@@ -126,6 +126,7 @@ by the Python loaders except where noted.
 | K10 | `Stellar Lya flux` | word 5 | real | erg/cm^2/s | `0.0` | `F_Lya_star` | F354-356. |
 | K11 | `Lya stellar halfwidth` | word 5 | real | km/s | `70.0` | `dv_star_lya` | F357-359. |
 | K12 | `Lya stellar boost` | word 5 | real | - | `5.0` | `lya_star_boost` | F360-362. |
+| K12b | `Lya absorbing bottom` | word 4 == `True`/`False` | flag | - | `.false.` (reflecting bottom) | `lya_bottom_absorber` | Closes the Ly-alpha domain from below with a pure absorber instead of a reflector, as Huang et al. (2017) do: the H2 layer beneath the base really does absorb Ly-alpha through accidental resonances, and the default reflecting bottom keeps every downward photon and over-fills `Jbar` near the base. Adds the downward Neufeld escape `beta_bot`, computed on `tau(base) - tau(r)`, as a channel parallel to the upward escape, so the total escape probability gains a third factor. Acts on the in-line escape-probability RT only (`jlya_mode = 2`, i.e. `Jlya escape-prob: True`); `input_read` warns and ignores it for `jlya_mode` 0 and 1. See `src/modules/radiation/lya_rt.f90`, `docs/lya_destruction_channels.md`. |
 | K13 | `du_th` | word 3 (+ optional word 4) | real(s) | - | `du_th=1.0e-3`, `du_th_plm=-1` | `du_th`, `du_th_plm` | F363-383. Two values only if `Reconstruction scheme: PLM+WENO3` (order dependency on line 18). |
 | K14 | `ATES_photoionization_rate` | word 2 == `True`/`true` | flag | - | `.false.` (Verner 1996) | `ates_photoion_rate` | F384-388. Reverts He I (1^1S) photoionization to the legacy ATES fit. |
 | K14b | `Legacy_HHe_rates` | word 2 == `True`/`true` | flag | - | `.false.` (Badnell/Mao + Voronov) | `legacy_hhe_rates` | Reverts H/He case-B recombination and collisional ionization to the legacy ATES fits (Hui & Gnedin 1997 recombination; Abel+1997/HG97 collisional ionization). Default uses Badnell RR (+ He II DR) minus Mao & Kaastra 2016 alpha_1 for case B, and Voronov 1997 collisional ionization. Free-free always uses the van Hoof et al. 2014 Gaunt table. |
@@ -154,9 +155,11 @@ by the Python loaders except where noted.
 | K32 | `Base BC` | word 3 (+ optional word 4 if `pressure`) | string + real | - / microbar | `base_bc_mode=0` (density), `base_p_ubar=1.0` | `base_bc_mode`, `base_p_ubar` | F485-498. `density` or `pressure`. Pressure mode derives `n0` (F720-724). |
 | K32b | `Base ghost temperature` | word 4 | string | - | `base_ghost_T_continuous=.false.` (isothermal) | `base_ghost_T_continuous` | `isothermal` (legacy, ghost pressure `ntot_bc + dp_bc`, i.e. `T_ghost = T0`) or `continuous` (`dT/dr = 0`, ghost pressure `(ntot_bc + dp_bc)*T_1`). Unknown value warns and keeps isothermal. Ignored when K30 is set. |
 | K32c | `Max steps` | word 3 | int | steps | `count_max=1000000` | `count_max` | Hard cap on marching iterations. The env variable `EXHALE_MAXSTEPS` is separate and only exits earlier. |
-| K32d | `Coronal cutoff width` | word 4 | real | - | `coronal_cutoff_width=0.1` | `coronal_cutoff_width` | Roll-off width of the coronal-excitation guard below the 1e3 K CHIANTI fit floor (`Cool_coeff.f90`). Must be > 0; input_read aborts otherwise. Justified window 0.08-0.13 (`docs/coronal_cutoff_width.md`). |
+| K32d | `Coronal cutoff width` | word 4 | real | - | `coronal_cutoff_width=0.1` | `coronal_cutoff_width` | Roll-off width of the coronal-excitation guard below the 1e3 K CHIANTI fit floor (`Cool_coeff.f90`). Must be > 0; input_read aborts otherwise. Since the ground-term fine-structure statistical equilibrium (2026-08-12) the base temperature is insensitive to `w` over 0.02-1.2, so the value is no longer a tuning knob; the earlier 0.08-0.13 justification window is superseded (`docs/coronal_cutoff_width.md` section 7.2). |
 | K32e | `Base IR field` | word 4 == `True`/`true` | flag | - | `.false.` | `base_ir_field` | Lets the infrared coolants of a molecular layer see the thermal radiation of the atmosphere below the base instead of emitting into vacuum: the lower atmosphere is taken to be black at those wavelengths and to radiate `B_nu(T0)` over the sky fraction `1 - sqrt(1 - (R_p/r)^2)`. Applies to the eight ground-term fine-structure lines of C I, C II, N II, O I (the incident field enters the statistical equilibrium as a photon occupation number, and the escape probability becomes two-sided) and to the H3+ bands (closed on the `nu_2` fundamental at 2521.3 cm^-1). Returns the net rate, emission minus absorption, so each channel stops cooling at its own radiative-equilibrium temperature. Every other channel keeps the optically thin, no-incident-field limit. Off = bit-identical to the previous single-face form; no effect on an atomic run. See `fine_structure_line_transfer` (`Cool_coeff.f90`), `h3p_net_cooling_rate` (`h3p_cooling.f90`), `docs/lower_atmosphere_coupling.md`. |
 | K33 | `Base velocity` | word 3 | string | - | `base_v_massflux=.false.` (valve) | `base_v_massflux` | F499-508. `valve` or `massflux`. |
+| K33b | `Base grid` | words 4 and 5 | real, int | R_planet, cells | `dr_base=2.0e-4`, `N_low_cells=50` | `dr_base`, `N_low_cells` | `Base grid [dr,cells]: <dr_base> [<N_low_cells>]` sets the uniform region of the `Mixed` grid: `N_low_cells` cells of size `dr_base` stacked on the base. The two are not independent — their product is the radial extent of that region (0.01 R_p by default) — so they share one line, as `du_th [PLM,WENO3]` does; refining at fixed extent means dividing the first and multiplying the second (`5.0e-5 200` is the 4x refinement). `dr_base` must resolve the base scale height `H = kT/(mu g)`, which `write_setup_report` echoes as cells per `H`. Ignored by the `Uniform` and `Stretched` grid types. The default is written as a default-real literal, so spelling it out in `input.inp` does **not** reproduce a no-key run bit-for-bit. See `docs/hd189_base_checkerboard.md` §11. |
+| K33c | `Grid cells` | word 3 | int | cells | `N=500` | `N` | Number of computational cells of the radial domain; ghost cells are added on top and are not counted. Fewer than 10 is a fatal `error stop 1`. Omitting the key keeps the 500 that used to be a compile-time constant, so an existing `input.inp` is unaffected. Every grid-sized array is allocated by `allocate_grid_arrays` once `N` is known. For the `Mixed` grid the split between the uniform base region and the stretched region is set separately by K33b, and `define_grid` checks the two are compatible. |
 | K34 | `Viscosity` | word 2 (+ optional word 3) | `True`/`False` or real, real | - | `visc_on=.false.`, `visc_mu0=0` (off), `visc_s=0.7` | `visc_on`, `visc_mu0`, `visc_s` | `True` = calibrated `mu(T)` + dissipation `q_mu`; a number = diagnostic power law `mu0*T^s` in code units. One-word key, so the value is word 2 (was word 3, which no input file used). See `docs/viscosity_conduction.md`. |
 | K34b | `Conduction` | word 2 | `True`/`False` | - | `cond_on=.false.` | `cond_on` | Heat conduction with `kappa(T) = 4.45e4 (T/1000 K)^0.7` (Watson+1981). Independent of K34. |
 | K35 | `Resid tol` | word 3 | real | - | `resid_th=-1` | `resid_th` | F516-520. Residual-norm convergence instead of du. |
@@ -261,9 +264,11 @@ the code does.* The loop tested each line against a chain of
 
 ### 3.3 Value-word conventions differ by key
 
-Value word position is not uniform: the `He_*`, `CFL`, `Solver`,
-`ATES_photoionization_rate`, `Legacy_HHe_rates` keys take their value at word 2
-(short one-word labels), while multi-word labels (`Stellar Lya flux`, `Base BC`, `Domain mode`,
+Value word position is not uniform: the `He_*` keys (`He_Kzz`, `He_alphaT`,
+`He_ambipolar`, `He_metal_diffusion`, `He_diffusion`, `He_rec_coupling`,
+`He_H_charge_exchange`), `CFL`, `Solver`, `Viscosity`, `Conduction`,
+`ATES_photoionization_rate`, `Legacy_HHe_rates` and `Secondary_ionization` take
+their value at word 2 (short one-word labels), while multi-word labels (`Stellar Lya flux`, `Base BC`, `Domain mode`,
 etc.) place the value at word 3, 4, or 5. The table above records each
 position. This is a direct consequence of `get_word` counting whitespace tokens
 rather than parsing `key: value`.
@@ -319,7 +324,7 @@ neutral-ion label or its bare symbol.
 | `KI` or `K` | real | n_X/n_H | 0.0 | `X_K` | Potassium |
 | `SI` or `S` | real | n_X/n_H | 0.0 | `X_S` | Sulfur |
 | `FeI` or `Fe` | real | n_X/n_H | 0.0 | `X_Fe` | Iron |
-| `cx_full` or `CX_FULL` | 0/1 | - | `.false.` | `cx_full` | Value > 0.5 turns on the full Huang Table 4 charge-exchange set (adds He+H and metal-metal groups). |
+| `cx_full` or `CX_FULL` | 0/1 | - | `.false.` | `cx_full` | Value > 0.5 adds the metal+He (group C) and metal+metal (group D) reactions of Huang 2023 Table 4 to the metal+H set (group A) that is always active. It does **not** gate the He<->H pair (group B): that is on by default under its own `input.inp` key `He_H_charge_exchange` (K14e) and is applied independently of `cx_full`. |
 | `cno_cool` or `CNO_COOL` | 0/1 | - | `.true.` | `cno_chianti` | 1 = CHIANTI v11 C/N/O fits (default); 0 = legacy AIOLOS fits (no N cooling). |
 | `eos_metals` or `EOS_METALS` | 0/1 | - | `.true.` | `eos_include_metals` | 1 = metals contribute to the mass/electron/particle budget (default); 0 = legacy trace approximation. |
 | `pp_metals` or `pp_metal_mode` | 0/1/2 | - | `1` | `pp_metal_mode` | Metal treatment in the advection post-process: 0 metal-free, 1 frozen, 2 re-solve. Out-of-range values are clamped with a warning. |
@@ -447,7 +452,7 @@ The user manual (`docs/EXHALE_user_manual.tex`, §"input.inp", around lines
 optional keyword block) and the conditional spectrum-property line, so it
 appears broadly consistent with the code. The manual's keyword table is a
 curated subset (it documents `Domain mode`, `Outer radius`, and the headline
-physics options) and does not enumerate every one of the 47 keyword keys; this
+physics options) and does not enumerate every one of the 56 keyword keys; this
 schema is the complete list. No outright contradiction was found; the manual is
 simply less exhaustive than the parser.
 

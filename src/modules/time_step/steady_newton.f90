@@ -445,11 +445,11 @@
 
       ! ------------------------------------------------------!
 
-      subroutine resid_relnorm_below_escape(F, u, rnorm, j_worst, r_worst, &
+      subroutine resid_relnorm_below_escape(F, u, rc, j_worst, r_worst, &
                                             k_worst)
-      ! The SAME relative residual as resid_relnorm, but taken over the
-      ! stagnant layer [1:j_min-1] BELOW the escape radius instead of the wind
-      ! region [j_min:N].
+      ! The relative residual of the stagnant layer [1:j_min-1] BELOW the
+      ! escape radius (the wind region [j_min:N] is what convergence is
+      ! judged on; see resid_relnorm).
       !
       ! Convergence is judged on [j_min:N] only, so the residual of this layer
       ! is not controlled by anything: two solves can both return info = 0 and
@@ -459,49 +459,81 @@
       ! DIAGNOSTIC: the value is printed, never tested, and nothing in the
       ! solve depends on it.
       !
+      ! Row scales. The mass and energy rows use |u| like resid_relnorm: rho
+      ! and E do not vanish in the layer, so |F|/|u| is a well-posed rate.
+      ! The momentum row does NOT use |u(2,:)| = |rho v|: the layer is
+      ! quasi-hydrostatic (|v| ~ 10 cm/s), the denominator collapses, and the
+      ! ratio is large wherever the flow is slow whether or not the state is
+      ! right -- converged states measured 0.2-10 on that scale, metals-off
+      ! ones the largest (docs/hd209_metal_stagnation.md sec 9.4). The
+      ! physical scale of the momentum equation there is the hydrostatic
+      ! pair |dp/dr| ~ rho g, so the momentum row is divided by the
+      ! gravitational force density
+      !    s_grav(j) = |u(1,j)| * |Gphi_i(j) - Gphi_i(j-1)| / dr_j(j)
+      ! (the same discrete potential difference the source term uses;
+      ! Source.f90). rc(2) is then the fractional violation of hydrostatic
+      ! balance in the layer -- a controlled statement, instead of a number
+      ! whose size is set by how slow the flow is.
+      !
       ! j_worst / r_worst / k_worst locate the cell with the largest cell-wise
-      ! relative residual |F(3*(j-1)+k)|/|u(k,j)| in the layer -- where the
-      ! stagnant residual sits, which the volume-weighted sums average away.
+      ! scaled residual (same row scales) in the layer -- where the stagnant
+      ! residual sits, which the volume-weighted sums average away.
       real*8, dimension(3*N),         intent(in)  :: F
       real*8, dimension(3,1-Ng:N+Ng), intent(in)  :: u
-      real*8,                         intent(out) :: rnorm, r_worst
+      real*8, dimension(3),           intent(out) :: rc
+      real*8,                         intent(out) :: r_worst
       integer,                        intent(out) :: j_worst, k_worst
       integer :: j, k
-      real*8  :: fmx, umx, w, rc(3), cellrel, amx
+      real*8  :: fmx, umx, w, cellrel, amx, uscale
 
-      rnorm = 0.0d0;  j_worst = 0;  k_worst = 0;  r_worst = 0.0d0
+      rc = 0.0d0;  j_worst = 0;  k_worst = 0;  r_worst = 0.0d0
       if (j_min .le. 1) return          ! no cells below the escape radius
 
       do k = 1, 3
          fmx = 0.0d0;  umx = 0.0d0
          if (resid_vol) then
-            ! volume-weighted (default): sum_j |F|V / sum_j |u|V, V = r^2 dr
+            ! volume-weighted (default): sum_j |F|V / sum_j s V, V = r^2 dr
             do j = 1, j_min-1
                w   = r(j)*r(j)*dr_j(j)
                fmx = fmx + abs(F(3*(j-1)+k))*w
-               umx = umx + abs(u(k,j))*w
+               umx = umx + row_scale(k, j, u)*w
             enddo
          else
             ! legacy L-inf: max over the layer
             do j = 1, j_min-1
                fmx = max(fmx, abs(F(3*(j-1)+k)))
-               umx = max(umx, abs(u(k,j)))
+               umx = max(umx, row_scale(k, j, u))
             enddo
          endif
          rc(k) = fmx/max(umx, 1.0d-30)
       enddo
-      rnorm = maxval(rc)
 
       amx = -1.0d0
       do j = 1, j_min-1
          do k = 1, 3
-            cellrel = abs(F(3*(j-1)+k))/max(abs(u(k,j)), 1.0d-30)
+            uscale  = row_scale(k, j, u)
+            cellrel = abs(F(3*(j-1)+k))/max(uscale, 1.0d-30)
             if (cellrel .gt. amx) then
                amx = cellrel;  j_worst = j;  k_worst = k
             endif
          enddo
       enddo
       if (j_worst .gt. 0) r_worst = r(j_worst)
+
+      contains
+
+      double precision function row_scale(k, j, u) result(s)
+      ! Row scale of the below-escape diagnostic: |u| for the mass and
+      ! energy rows, the gravitational force density for the momentum row
+      ! (see the header above).
+      integer,                        intent(in) :: k, j
+      real*8, dimension(3,1-Ng:N+Ng), intent(in) :: u
+      if (k .eq. 2) then
+         s = abs(u(1,j))*abs(Gphi_i(j) - Gphi_i(j-1))/dr_j(j)
+      else
+         s = abs(u(k,j))
+      endif
+      end function row_scale
 
       end subroutine resid_relnorm_below_escape
 
@@ -511,17 +543,22 @@
       ! One diagnostic line for the residual of the stagnant layer below the
       ! escape radius (see resid_relnorm_below_escape). Silent when the layer
       ! is empty. (F, u) must be a consistent pair: the caller passes the
-      ! residual of the state currently held in u.
+      ! residual of the state currently held in u. The three numbers are the
+      ! volume-weighted row values: mass and energy relative to |u| (rates),
+      ! momentum relative to the gravitational force density (fractional
+      ! violation of hydrostatic balance in the layer).
       character(*),                   intent(in) :: tag
       real*8, dimension(3*N),         intent(in) :: F
       real*8, dimension(3,1-Ng:N+Ng), intent(in) :: u
-      real*8  :: rn_below, r_worst
+      real*8  :: rc_below(3), r_worst
       integer :: j_worst, k_worst
       if (j_min .le. 1) return
-      call resid_relnorm_below_escape(F, u, rn_below, j_worst, r_worst,   &
+      call resid_relnorm_below_escape(F, u, rc_below, j_worst, r_worst,   &
                                       k_worst)
-      write(*,'(A,A,I0,A,ES11.3,A,I0,A,F8.4,A,I0)') tag,                  &
-           ' below r_esc [1:',j_min-1,'] ||R||=',rn_below,                &
+      write(*,'(A,A,I0,A,ES10.3,A,ES10.3,A,ES10.3,A,I0,A,F8.4,A,I0)')     &
+           tag, ' below r_esc [1:',j_min-1,                               &
+           '] |R|: mass=',rc_below(1), ' mom/grav=',rc_below(2),          &
+           ' energy=',rc_below(3),                                        &
            '  max cell j=',j_worst,' r=',r_worst,' k=',k_worst
       end subroutine write_resid_below_escape
 

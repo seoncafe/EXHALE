@@ -61,7 +61,8 @@ COOL_FIXED = ('r', 'T', 'ne', 'cool_total', 'reco', 'coio',
 # columns).  Fallback only -- the loader reads the header when present.
 HEAT_FIXED = ('r', 'T', 'ne', 'heat_total', 'heat_HI', 'heat_HeI',
               'heat_HeII', 'heat_He23S', 'heat_H2', 'heat_metals',
-              'heat_Hpe', 'heat_Hdx', 'heat_He_recomb', 'heat_He23S_Penning')
+              'heat_Hpe', 'heat_Hdx', 'heat_He_recomb', 'heat_He23S_Penning',
+              'heat_He23S_H2_Penning', 'heat_H2_LW')
 
 # LaTeX-safe labels for the metal cooling channels most often plotted.
 METAL_LABEL = {
@@ -249,7 +250,8 @@ def load_heating_breakdown(run_dir):
     All channels are named in the 'colN <name>' header (photoionization heating
     per absorber -- H I, He I, He II, He 2^3S, H2, metals -- plus the excited-H
     photoelectric heat_Hpe, the Ly-alpha de-excitation heat_Hdx, the
-    He-recombination-driven H heating, and the He 2^3S Penning heating).  The
+    He-recombination-driven H heating, the He 2^3S + H and He 2^3S + H2
+    Penning heating, and the H2 Lyman-Werner photodissociation heating).  The
     channel sum reproduces the heat_total column.  Returns {} if the file is
     absent.  Header-driven, so extra trailing channels still load.
     """

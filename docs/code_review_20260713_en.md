@@ -116,7 +116,7 @@ Recommended fix:
 
 ### 3.3 [P1] Loaded SEDs discard photons needed by low-IP metals
 
-The power-law path in `src/modules/radiation/set_energy_vectors.f90:31-53` lowers the energy-grid floor to active metal ionization thresholds when `thereis_lowIP_metal` is true. The loaded-SED path in `src/modules/radiation/sed_read.f90:32-33` accounts only for the He I triplet and does not apply the low-IP metal rule.
+The power-law path in `src/modules/radiation/set_energy_vectors.f90:31-53` (sic: actually `src/modules/init/set_energy_vectors.f90`) lowers the energy-grid floor to active metal ionization thresholds when `thereis_lowIP_metal` is true. The loaded-SED path in `src/modules/radiation/sed_read.f90:32-33` accounts only for the He I triplet and does not apply the low-IP metal rule.
 
 Impact:
 
@@ -171,8 +171,8 @@ Use `_dr_cm = np.abs(np.gradient(r)) * Rp * 1e2` and add an analytic uniform-atm
 The following `select case` statements do not provide a `case default`:
 
 - reconstruction in `src/modules/states/Reconstruction.f90`
-- numerical flux in `src/modules/states/Num_Fluxes.f90`
-- grid type in `src/modules/grid/define_grid.f90`
+- numerical flux in `src/modules/states/Num_Fluxes.f90` (sic: actually `src/modules/flux/Num_Fluxes.f90`)
+- grid type in `src/modules/grid/define_grid.f90` (sic: actually `src/modules/init/define_grid.f90`)
 - spectrum type in `src/modules/files_IO/input_read.f90:151-178`
 
 A misspelled option can proceed without initializing flags or output arrays. Validate every user-facing selection immediately and report the received value plus the allowed values through `case default; error stop`.
@@ -284,7 +284,7 @@ Recommended fix:
 
 ### 6.2 Floating-point literal precision
 
-Locations such as `src/parameters.f90:230-265` assign default-precision literals to `real*8` variables. The literal can be rounded to real32 before promotion to real64, contributing to 1,417 conversion warnings.
+Locations such as `src/parameters.f90:230-265` (sic: actually `src/modules/init/parameters.f90`) assign default-precision literals to `real*8` variables. The literal can be rounded to real32 before promotion to real64, contributing to 1,417 conversion warnings.
 
 Use `iso_fortran_env, only: real64`, `real(real64)`, and literals such as `1.0_real64`. Because low bits of numerical results can change, migrate incrementally under tolerance-based physical regressions.
 

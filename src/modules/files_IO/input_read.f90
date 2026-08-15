@@ -40,13 +40,14 @@
       'He/H number ratio', '2D approximate method', 'Parent star mass',      &
       'Spectrum type', 'Spectrum file', 'Power-law index', 'Photon energy',  &
       'Use only EUV', 'Log10 of X-ray luminosity', 'Log10 of EUV luminosity',&
-      'Grid type', 'Base grid',                                              &
+      'Grid type', 'Base grid', 'Grid cells',                                &
       'Numerical flux', 'Reconstruction scheme', 'Include He23S',            &
       'Load IC', 'Do only PP', 'Force start',                                &
       'Domain mode', 'Outer radius', 'Stellar Teff', 'Stellar radius',       &
       'Deexc heat', 'Wind-AE seed out', 'Wind-AE seed', 'Jlya RT file',      &
       'Jlya escape-prob', 'Stellar Lya flux', 'Lya stellar halfwidth',       &
-      'Lya stellar boost', 'du_th', 'ATES_photoionization_rate',             &
+      'Lya stellar boost', 'Lya absorbing bottom',                           &
+      'du_th', 'ATES_photoionization_rate',                                  &
       'Legacy_HHe_rates', 'Secondary_ionization', 'He_rec_coupling',         &
       'He_H_charge_exchange',                                                &
       'Molecular chemistry', 'Molecular base', 'Stellar LW flux',           &
@@ -316,6 +317,7 @@
 		R_star           = 0.0d0
 		incl_deexc_heat  = .true.
 		jlya_mode        = 0
+		lya_bottom_absorber = .false.  ! reflecting bottom (legacy closure)
 		transonic_ic     = .false.
 		hot_parker_ic    = .false.
 		T_wind_ic        = 1.0d4
@@ -374,6 +376,13 @@
 			else if (lbl_match(line, 'Lya stellar boost')) then
 				str = get_word(line, 5)
 				read(str,*) lya_star_boost
+			else if (lbl_match(line, 'Lya absorbing bottom')) then
+				! "Lya absorbing bottom: True" terminates the Ly-alpha domain
+				! with a pure absorber (the H2 layer below the base; Huang
+				! et al. 2017), adding the downward escape as a loss channel.
+				str = get_word(line, 4)
+				if (str .eq. 'True'  .or. str .eq. 'true' ) lya_bottom_absorber = .true.
+				if (str .eq. 'False' .or. str .eq. 'false') lya_bottom_absorber = .false.
 			else if (lbl_match(line, 'du_th')) then
 				! "du_th [PLM,WENO3]: <du1> [<du2>]". How the numbers are used is
 				! decided by "Reconstruction scheme:" (parsed above):
@@ -646,6 +655,24 @@
 				   ' (input_read) Base grid: dr =', dr_base,              &
 				   ' R_p x ', N_low_cells, ' cells (uniform region ',     &
 				   dr_base*N_low_cells, ' R_p)'
+			else if (lbl_match(line, 'Grid cells')) then
+				! "Grid cells: <N>" sets the number of computational cells of
+				! the radial domain (ghost cells are added on top and are not
+				! counted). Omitting the key keeps the 500 cells that used to
+				! be a compile-time constant, so an existing input.inp is
+				! unaffected. For the Mixed grid the split between the uniform
+				! base region and the stretched region is set separately by
+				! "Base grid [dr,cells]:", and define_grid checks that the two
+				! are compatible.
+				str = get_word(line, 3);  read(str,*) N
+				if (N .lt. 10) then
+					write(*,'(A,I0,A)') ' (input_read.f90) ERROR: "Grid '//  &
+					   'cells: ', N, '" is not a usable number of '//        &
+					   'computational cells (at least 10 are needed).'
+					error stop 1
+				endif
+				write(*,'(A,I0,A)') ' (input_read) Grid cells: ', N,         &
+				   ' computational cells'
 			else if (lbl_match(line, 'Viscosity')) then
 				! "Viscosity: True" selects the calibrated mu(T) (Watson+1981
 				! conductivity through the monatomic Chapman-Enskog relation)
@@ -827,6 +854,16 @@
 			error stop 1
 		endif
 
+		! The absorbing lower boundary is a term of the escape-probability
+		! closure only, so it does nothing for jlya_mode 0 (parameterized) or 1
+		! (imported field). Say so rather than let the key look effective.
+		if (lya_bottom_absorber .and. jlya_mode .ne. 2) then
+			write(*,*) '(input_read.f90) WARNING: "Lya absorbing bottom: True"'
+			write(*,*) '  only acts on the in-line escape-probability RT'
+			write(*,*) '  ("Jlya escape-prob: True"); ignored for jlya_mode ='
+			write(*,*) '  0 (parameterized) and 1 (imported J_Lya profile).'
+		endif
+
    close(unit = 1)
 	write(*,*) '(input_read.f90) Done'
 
@@ -975,7 +1012,12 @@
    n_part_cell1 = ntot_bc + dp_bc
 
    !------ Allocations ------!
-      
+
+   ! Grid-sized module arrays of global_parameters. N is final here (the
+   ! optional "Grid cells:" key was resolved in the keyword block above) and
+   ! nothing before this point touches the radial grid.
+   call allocate_grid_arrays
+
    ! Allocate variables according to composition
    if (.not.thereis_He) then
       	N_eq = 1

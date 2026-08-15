@@ -4,7 +4,14 @@
       implicit none
       
       integer, parameter :: outfile = 99  ! Unit number of report file
-      integer, parameter :: N = 500       ! Number of computational cells
+      ! Number of computational cells. Runtime value, set from the optional
+      ! input.inp key "Grid cells: <N>" and fixed for the rest of the run;
+      ! without the key it keeps the 500 that used to be compiled in, so an
+      ! existing input.inp reproduces its earlier result. Every grid-sized
+      ! array below is allocated by allocate_grid_arrays once N is known;
+      ! grid-sized arrays inside procedures are automatic (sized on entry),
+      ! exactly as the energy-grid arrays dimension(Nl) already were.
+      integer :: N = 500
       integer, parameter :: Ng = 2        ! Number of ghost cells
       integer, parameter :: Nl_fix = 200  ! Number of default energy bins
       ! Number of ion-fraction species carried in f_sp:
@@ -347,7 +354,11 @@
       
       ! Physical constants
       real*8,parameter ::  pi      = 3.1415926536     ! pi   
-      real*8,parameter ::  kb_erg  = 1.38e-16         ! Boltzmann constant in CGS units
+      ! Boltzmann constant in CGS units (CODATA/SI exact value 1.380649e-16;
+      ! updated 2026-08-15 from the truncated ATES literal 1.38e-16, a 4.7e-4
+      ! relative change that moves every thermal quantity -- goldens were
+      ! re-snapshotted with this value).
+      real*8,parameter ::  kb_erg  = 1.380649d-16
       real*8,parameter ::  kb_eV   = 8.6167e-05       ! Boltzmann constant (eV/K)
       real*8,parameter ::  mu      = 1.673e-24        ! Hydrogen mass (g)
       real*8,parameter ::  g       = 1.666666666667   ! Polytropic index
@@ -697,9 +708,9 @@
       ! Cell-by-cell pressure-broadening multiplier for the opacity ('P'
       ! model). 1.0 everywhere unless opacity_model='P'; set before each
       ! photoheating call and used to weight the opacity column density.
-      real*8, dimension(1-Ng:N+Ng) :: opa_pf = 1.0d0
-      real*8, dimension(1-Ng:N+Ng) :: r,r_edg,dr_j
-      real*8, dimension(1-Ng:N+Ng) :: Gphi_c,Gphi_i
+      real*8, dimension(:), allocatable :: opa_pf
+      real*8, dimension(:), allocatable :: r,r_edg,dr_j
+      real*8, dimension(:), allocatable :: Gphi_c,Gphi_i
 
       !------- excited hydrogen H(n=2) coupling -------!
       ! Christie+2013 / Huang+2017 n=2 (2s/2p) model feeding back into
@@ -754,22 +765,35 @@
       ! region; the full 1/beta over-counts). Tuned to Huang+2023 Fig. 11.
       ! Editable: "Lya stellar boost [-]:".
       real*8  :: lya_star_boost = 5.0d0
+      ! Absorbing (pure-sink) lower boundary for the Ly-alpha field. The local
+      ! closure Jbar = S(1-beta) has no bottom boundary: a photon travelling
+      ! downward is assumed to come back. Huang et al. (2017) instead terminate
+      ! their Monte Carlo domain with a purely absorbing bottom, because at
+      ! N(H2) ~ 1e14 cm^-2 the accidental resonances between Ly-alpha and the
+      ! H2 Lyman/Werner bands give true (non-scattering) absorption, so the
+      ! molecular layer under the wind is a photon sink rather than a mirror.
+      ! With this flag the downward wing escape into that sink is added as a
+      ! third loss channel in jlya_escape_prob, which lowers Jbar (and the
+      ! pumped n=2 density) in the few scale heights above the base. OFF by
+      ! default => byte-identical to the reflecting-bottom closure.
+      ! Editable: "Lya absorbing bottom:".
+      logical :: lya_bottom_absorber = .false.
       ! Cell-by-cell feedback arrays injected into ioniz_eq (zero unless enabled):
-      real*8, dimension(1-Ng:N+Ng) :: gph_balmer_HI = 0.0d0 ! extra HI photoion [s^-1]
-      real*8, dimension(1-Ng:N+Ng) :: heat_balmer   = 0.0d0 ! extra heat [erg cm^-3 s^-1]
+      real*8, dimension(:), allocatable :: gph_balmer_HI ! extra HI photoion [s^-1]
+      real*8, dimension(:), allocatable :: heat_balmer   ! extra heat [erg cm^-3 s^-1]
       ! Cell-by-cell diagnostics for output/Excited_H.txt:
-      real*8, dimension(1-Ng:N+Ng) :: Jlya_arr  = 0.0d0 ! Lya mean intensity [cgs]
-      real*8, dimension(1-Ng:N+Ng) :: n2s_arr   = 0.0d0 ! H(2s) density [cm^-3]
-      real*8, dimension(1-Ng:N+Ng) :: n2p_arr   = 0.0d0 ! H(2p) density [cm^-3]
-      real*8, dimension(1-Ng:N+Ng) :: Sproton_arr = 0.0d0 ! Balmer proton src [cm^-3 s^-1]
-      real*8, dimension(1-Ng:N+Ng) :: Hpe_arr   = 0.0d0 ! photoelec. heat [erg cm^-3 s^-1]
-      real*8, dimension(1-Ng:N+Ng) :: Hdx_arr   = 0.0d0 ! de-excit. heat [erg cm^-3 s^-1]
+      real*8, dimension(:), allocatable :: Jlya_arr    ! Lya mean intensity [cgs]
+      real*8, dimension(:), allocatable :: n2s_arr     ! H(2s) density [cm^-3]
+      real*8, dimension(:), allocatable :: n2p_arr     ! H(2p) density [cm^-3]
+      real*8, dimension(:), allocatable :: Sproton_arr ! Balmer proton src [cm^-3 s^-1]
+      real*8, dimension(:), allocatable :: Hpe_arr     ! photoelec. heat [erg cm^-3 s^-1]
+      real*8, dimension(:), allocatable :: Hdx_arr     ! de-excit. heat [erg cm^-3 s^-1]
       ! Ground-state H proton-budget rate coefficients, captured by ioniz_eq on
       ! the converged pass so write_excited_H can compare the n=2 photoionization
       ! proton source against the ground-state channels (Huang Figs. 11/27):
-      real*8, dimension(1-Ng:N+Ng) :: gph_ground_HI = 0.0d0 ! ground-state HI photoion. [s^-1]
-      real*8, dimension(1-Ng:N+Ng) :: cion_HI       = 0.0d0 ! HI collisional ioniz. [cm^3 s^-1]
-      real*8, dimension(1-Ng:N+Ng) :: arec_HII      = 0.0d0 ! HII recombination [cm^3 s^-1]
+      real*8, dimension(:), allocatable :: gph_ground_HI ! ground-state HI photoion. [s^-1]
+      real*8, dimension(:), allocatable :: cion_HI       ! HI collisional ioniz. [cm^3 s^-1]
+      real*8, dimension(:), allocatable :: arec_HII      ! HII recombination [cm^3 s^-1]
 
       ! NL solver vectors. These are cell-by-cell scratch for the ionization
       ! equilibrium solve, which now runs OpenMP-parallel over cells, so each
@@ -783,5 +807,44 @@
 
       contains
 
-      ! End of module      
+      subroutine allocate_grid_arrays
+      ! Allocate the grid-sized module arrays once N is known (called from
+      ! input_read, right after the "Grid cells" key has been resolved and
+      ! before anything builds the grid). The lower bound 1-Ng and the upper
+      ! bound N+Ng are the ones the declarations used to carry. The values
+      ! assigned here are the initializers those declarations carried; the
+      ! arrays that carried none (r, r_edg, dr_j, Gphi_c, Gphi_i) were in
+      ! static storage and therefore started at zero, which is reproduced.
+
+      allocate(opa_pf(1-Ng:N+Ng))
+      allocate(r(1-Ng:N+Ng), r_edg(1-Ng:N+Ng), dr_j(1-Ng:N+Ng))
+      allocate(Gphi_c(1-Ng:N+Ng), Gphi_i(1-Ng:N+Ng))
+      allocate(gph_balmer_HI(1-Ng:N+Ng), heat_balmer(1-Ng:N+Ng))
+      allocate(Jlya_arr(1-Ng:N+Ng), n2s_arr(1-Ng:N+Ng), n2p_arr(1-Ng:N+Ng))
+      allocate(Sproton_arr(1-Ng:N+Ng))
+      allocate(Hpe_arr(1-Ng:N+Ng), Hdx_arr(1-Ng:N+Ng))
+      allocate(gph_ground_HI(1-Ng:N+Ng), cion_HI(1-Ng:N+Ng))
+      allocate(arec_HII(1-Ng:N+Ng))
+
+      opa_pf        = 1.0d0
+      r             = 0.0d0
+      r_edg         = 0.0d0
+      dr_j          = 0.0d0
+      Gphi_c        = 0.0d0
+      Gphi_i        = 0.0d0
+      gph_balmer_HI = 0.0d0
+      heat_balmer   = 0.0d0
+      Jlya_arr      = 0.0d0
+      n2s_arr       = 0.0d0
+      n2p_arr       = 0.0d0
+      Sproton_arr   = 0.0d0
+      Hpe_arr       = 0.0d0
+      Hdx_arr       = 0.0d0
+      gph_ground_HI = 0.0d0
+      cion_HI       = 0.0d0
+      arec_HII      = 0.0d0
+
+      end subroutine allocate_grid_arrays
+
+      ! End of module
       end module global_parameters

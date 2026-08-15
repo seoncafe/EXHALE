@@ -517,8 +517,8 @@
                         amu_O = 15.999d0
 
    ! Escape-probability slots, one per line with a transition probability.
-   ! fine_structure_escape fills them; the cooling coefficients consume
-   ! them. Order: C I, C II, N II, O I.
+   ! fine_structure_line_transfer (util_ion_eq.f90) fills them; the cooling
+   ! coefficients consume them. Order: C I, C II, N II, O I.
    integer, parameter :: n_fsline    = 8
    integer, parameter :: ifs_CI609   = 1, ifs_CI370  = 2,              &
                          ifs_CII158  = 3,                              &

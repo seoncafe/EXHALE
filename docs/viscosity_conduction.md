@@ -275,7 +275,9 @@ The resolved settings are echoed at startup by `input_read` and appear in
 `EXHALE_setup.out` and in the `EXHALE_PARSE_DUMP=1` dump as `visc_on`,
 `cond_on`, `visc_mu0`, `visc_s`. The two new dump lines make
 `backup/regression/parse_golden/` stale; it has deliberately not been
-re-snapshotted here.
+re-snapshotted here (re-snapshotted 2026-08-15 together with the CODATA `k_B`
+refresh; the snapshots now carry the `visc_on` / `cond_on` /
+`visc_mu0` / `visc_s` lines).
 
 ---
 

@@ -28,6 +28,14 @@ abundances. No molecules exist anywhere in the domain. The Wind-AE IC port carri
 \emph{simplified} molecular layer ($\mu$-blend \texttt{molec\_adjust} $+$ bolometric
 heating/cooling, auto-shutoff when the atomic transition reaches the base).
 
+\emph{[2026-08-15: this paragraph describes the tree as of 2026-07 and is no
+longer current. The coupled molecular network (H$_2$/H$_2^+$/H$_3^+$/HeH$^+$,
+\texttt{Molecular chemistry: True}), H$_3^+$ cooling, Lyman--Werner
+photodissociation, the analytic lower column and the \texttt{base.inp} handoff
+are all implemented in \texttt{src/modules/lower\_atmosphere/}. They default
+off, so an ordinary run is still the atomic base described here; the per-tier
+status table is the authoritative account.]}
+
 This memo (i) surveys how the literature connects escape models to the lower atmosphere,
 (ii) documents the implementation in \texttt{src/modules/lower\_atmosphere/} and
 \texttt{src/utils/run\_lower.py}, (iii) applies it to the four planets modeled with
@@ -192,7 +200,9 @@ which lowers the base pressure ($p_\mathrm{base}= \mathtt{ntot\_bc}\,n_0 k_\math
 and raises the base mean molecular weight, i.e.\ a heavier, more compact base --- the
 leading-order effect of a molecular base on the hydrodynamics. The species arrays remain
 atomic (H$_2$ chemistry is Tier-2 proper), so this is a \emph{crude, clearly-flagged}
-approximation. Example: HD\,209458\,b, $\qHH(1\,\ubar,1450\,\mathrm{K})=0.831
+approximation. \emph{[2026-08-15: \texttt{Molecular chemistry: True} turns this
+key on by itself --- an atomic \texttt{ntot\_bc} beneath a molecular base is
+physically inconsistent --- so it need not be set separately for a Tier-2 run.]} Example: HD\,209458\,b, $\qHH(1\,\ubar,1450\,\mathrm{K})=0.831
 \Rightarrow \mathtt{ntot\_bc}\,1.0\to0.546$.
 
 \subsection{Tier 2 foundation: \texttt{h3p\_cooling.f90} and \texttt{mol\_rates.f90}}\label{sub:t2}
@@ -380,7 +390,8 @@ RC model for $T(p)$ --- writes the \emph{same} \texttt{base.inp} keys, so nothin
 the EXHALE side changes.
 
 \paragraph{VULCAN upgrade implemented and demonstrated (2026-07-03).} The public
-\texttt{VULCAN} code (cloned to \texttt{../VULCAN}; FastChem compiled) was run to
+\texttt{VULCAN} code (cloned to \texttt{EXHALE/}\allowbreak\texttt{VULCAN/};
+FastChem compiled) was run to
 steady state for HD\,189733\,b (SNCHO-2025 photochemical network, 2356 steps) and
 converted with the new \texttt{src/utils/vulcan\_to\_base.py} (.vul $\to$
 \texttt{base.inp}: photochemical $q_{\rm H_2}/q_{\rm H}/q_{\rm He}$ at 1\,$\ubar$,

@@ -30,6 +30,15 @@ T_base -> T0     r_base -> R0     HeH_base -> HeH     Kzz_base -> he_kzz
 
 — and `src/utils/vulcan_to_base.py` writes `q_H2` and `q_H` as comments.
 
+> [2026-08-15: superseded by §10. `read_base_inp` now accepts six keys — the
+> four above plus `q_H2_base` (the photochemical H2 volume mixing ratio, the
+> number this memo says does not reach the code) and `p_base` (the pressure
+> level the handoff describes). The `molecular_base` correction quoted just
+> below no longer lives inline in `input_read.f90`: it is
+> `comp_ntot_bc`/`h2_mixing_ratio_base` in
+> `src/modules/functions/composition.f90`, which uses `q_H2_base` when it is
+> set and falls back to the `q_h2_equilibrium` fit otherwise.]
+
 Meanwhile EXHALE *does* use a base H2 fraction. `input_read.f90:779-789`:
 
 ```fortran
@@ -307,7 +316,11 @@ window, not an outer-half average.
 
 **Do not validate on HD 189733 b.** It does not converge — `du` wandered between
 0.77 and 1.86 over 87000 steps, the base-breathing item in `TO_BE_DONE.md` (A) —
-so a 7% base-density change cannot be separated from the oscillation. Use a
+so a 7% base-density change cannot be separated from the oscillation.
+[2026-08-15: no longer a restriction. HD 189733 b reaches a Newton-grade steady
+state (`info=0`) after the JFNK line-search fix and the beta(tau)/CHIANTI-guarded
+cooling of 2026-08-11; see `docs/hd189_base_checkerboard.md` §10 and
+`docs/newton_scaling_and_base_wall.md`.] Use a
 planet that reaches a steady state (HD 209458 b, or the WASP-121 b regression
 cases), which means running the pre-step for that planet first: VULCAN needs its
 T(p), Kzz and stellar spectrum, and the traps in
@@ -639,11 +652,16 @@ is the *smaller* of the two and the sign is therefore reversed.
   driver exits with `ERROR: cfg anchor missing`. The other six anchors still
   match. This is why the run above was configured by hand rather than through
   the driver. Not fixed here.
+  [2026-08-15: fixed since. `src/utils/vulcan_driver.py` matches anchored
+  regular expressions (`^out_name\s*=.*$`, ...) instead of literal config
+  lines, so an edited `vulcan_cfg.py` no longer breaks it.]
 - **`vulcan_driver.py` mixes two Jupiter radii.** It computes
   `gs = G Mp / (r1bar * RJ)^2` with `RJ = 6.9911e9` imported from `run_lower`,
   but substitutes `Rp = <r1bar>*7.1492E9` into the config. VULCAN uses `Rp`
   for g(z) = g_s (Rp/(Rp+z))^2, so the two disagree by 4.5% in radius and 9% in
   the implied mass. Not fixed here.
+  [2026-08-15: fixed since. `vulcan_driver.py` substitutes `Rp` with the same
+  `RJ = 6.9911e9` it uses for `gs`.]
 
 ### 11.7 Deeper handoff at p_base = 1e-4 bar (2026-08-10)
 
@@ -974,6 +992,13 @@ flip-off deep runs stopped at step 2 because JFNK had already met its target.
 4. *Unchanged by any of this.* The base region is not flux-flat even in the
    info=0 states (§11.7, last reading). Item (A) of `TO_BE_DONE.md` -- explicit
    viscosity -- remains the standing fix.
+   [2026-08-15: the "standing fix" attribution is withdrawn. §11.10 traced the
+   residual floor to the JFNK diagonal scaling and the stagnation watchdog, not
+   to a missing viscous term; the fix that made these configurations converge
+   was the solver scaling plus the line-search repair of 2026-08-11. Explicit
+   viscosity and conduction do exist
+   (`src/modules/time_step/viscous_conduction.f90`, keys `Viscosity:` /
+   `Conduction:`) but they are not what closed this.]
 
 **Is the deep configuration usable for quantitative work?** Numerically, yes:
 it is the only one of the four that reaches ||R|| < 1e-3, and its A/B pair sits
@@ -1026,6 +1051,9 @@ the coupling, not a hand-off artifact. The secondary-ionization-OFF caveat at
 the end of §11.8 therefore still stands for every quantitative number in §11;
 lifting it waits on item (A), for which the recorded direction is the explicit
 base viscosity work.
+
+> [2026-08-15: the last clause is superseded by §11.10 below — the floor was the
+> JFNK scaling and watchdog, not a missing base viscosity.]
 
 ### 11.10 The §11.9 residual floor was the solver, not the base (2026-08-10)
 

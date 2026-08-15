@@ -112,6 +112,8 @@
 	write(outfile,*) '----- Numerical parameters -----'	
 	write(outfile,*)
 	write(outfile,*) '- Grid type: ', grid_type
+	write(outfile,'(A,I0,A,I0,A)') ' - Grid cells: ', N,                    &
+		' computational cells (+ ', Ng, ' ghost cells on each side)'
 	if (grid_type .eq. 'Mixed') then
 		write(outfile,16) '- Base grid: ', N_low_cells,                    &
 			' uniform cells of ', dr_base, ' R_p (uniform region ',        &
@@ -281,6 +283,7 @@
 	call put_r('LX', LX)
 	call put_r('LEUV', LEUV)
 	call put_s('grid_type', grid_type)
+	call put_i('N', N)
 	call put_r('dr_base', dr_base)
 	call put_i('N_low_cells', N_low_cells)
 	call put_s('flux', flux)
@@ -306,6 +309,7 @@
 	call put_r('F_Lya_star', F_Lya_star)
 	call put_r('dv_star_lya', dv_star_lya)
 	call put_r('lya_star_boost', lya_star_boost)
+	call put_l('lya_bottom_absorber', lya_bottom_absorber)
 	call put_r('du_th', du_th)
 	call put_r('du_th_plm', du_th_plm)
 	call put_l('ates_photoion_rate', ates_photoion_rate)

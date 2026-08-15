@@ -67,6 +67,9 @@ Profiles unchanged to 3 sig figs.
 
 **Caveat.** `du_th=2e-2` is loose and global; tighten it (and rely on stall
 detection) if a study needs a stricter steady state.
+*2026-08-15 note: reverted to `du_th = 1e-3` (`parameters.f90`), the original
+ATES-Code-main value; the two-stage `du_th [PLM,WENO3]` key now carries the
+loose threshold on the PLM stage only.*
 
 ---
 
@@ -247,7 +250,14 @@ Full-run wall-clock (hydro + radiation + ionization) over the converged Case B w
 The analytic-Jacobian Newton is **~25% faster per step (×1.25)** than legacy
 `hybrd1`; step counts match to 0.2% (fair step-for-step comparison). The `ioniz_eq` cell
 loop is **serial**, so the relative speedup grows with thread count (hydro/radiation
-parallelize, the solve does not). This is on top of the ~2× hydro-loop speedup from
+parallelize, the solve does not).
+*2026-08-15 note: no longer serial — the `ioniz_eq` cell sweep was parallelized in
+2026-06 (`!$omp parallel do` over the cell loop in
+`src/modules/radiation/ionization_equilibrium.f90`; see
+`docs/openmp_parallelization.md`), so the "grows with thread count" argument no
+longer holds. The measured ×1.25 speedup per step above is unaffected: it was taken
+step-for-step at fixed `OMP_NUM_THREADS=4`.*
+This is on top of the ~2× hydro-loop speedup from
 the semi-implicit energy solver (§2). Raw numbers in
 `WASP-121b/solver_validation/timing.txt`.
 
@@ -321,12 +331,23 @@ default is byte-identical, regression-gated):
   `Resid tol` (1e-3), then standard outputs and post-processing. Validated
   end-to-end from a cold IC (WASP-121b: identical Mdot to the warm-started
   reference; HD189733b: 33 s where marching spent >3 h).
+  *2026-08-15 note: the hand-off criterion is the flux metric `du`, not
+  ||R||. `EXHALE_main.f90` hands over once the warm-up has flattened the wind
+  to `du < newton_du_switch`, default `1.0e-2` (`parameters.f90`), with the
+  trigger armed on a descending crossing and a plateau escape at
+  `5*newton_du_switch` after `N_stall` steps.*
 - *Failure containment* (2026-06-11): best-iterate tracking, fail-fast
   after 15 outer iterations without a new best residual (`info=2`); on
   failure `EXHALE_main` keeps the best iterate, disables the Newton mode, and
   resumes plain marching --- an unconverged Newton state is never accepted
   as the final answer.
+  *2026-08-15 note: the watchdog was replaced on 2026-08-10. It now fires on
+  `n_no_descent_max = 12` consecutive failed line searches
+  (`steady_newton.f90`), not on 15 outer iterations without a new best
+  residual; see `docs/newton_scaling_and_base_wall.md` §4. The rest of the
+  containment (best-iterate tracking, fall back to marching) is unchanged.*
 
 Ready-to-run configurations for every solver combination (legacy marching,
 two-stage, Newton, Newton-from-state, warm-seed IC, ...) live under
-`examples/inputs/` (user manual, Table 4).
+`examples/01_legacy_marching/` ... `examples/16_molecular_metals/`
+(user manual, Table 4).

@@ -12,6 +12,9 @@
    ! Miller+2013 H3+ infrared cooling, emitted and net of the lower-atmosphere field
    use h3p_cooling, only: h3p_cooling_rate, h3p_net_cooling_rate
    use Cross_sections, only: sigma, sigma_HeI  ! sigma_H(E,Z), sigma_HeI(E)
+   ! H2 Lyman-Werner photodissociation, for the heating breakdown diagnostic
+   use lyman_werner_photodissociation, only:                          &
+                            lyman_werner_dissociation_rate, e_lw_fragment_erg
    use omp_lib                   ! OMP libraries
 	
 	! Move here photoionization and photoheating
@@ -64,9 +67,9 @@
 	! SvS85 coupling applied only when enabled AND staged on (see EXHALE_main).
 	logical :: sec_on
 
-	! Dummy zero 
-	real*8, dimension(1-Ng:N+Ng), parameter :: nhei   = 0.0, nheii  = 0.0
-	real*8, dimension(1-Ng:N+Ng), parameter :: nheiii = 0.0, nheiTR = 0.0
+	! Dummy zero (set below; the number of cells is a runtime value, so these
+	! cannot be named constants)
+	real*8, dimension(1-Ng:N+Ng) :: nhei, nheii, nheiii, nheiTR
 	real*8, dimension(1-Ng:N+Ng) :: N15, N2, NTR
 
    real*8 :: dr	                ! Grid spacing
@@ -93,6 +96,11 @@
 	!----------------------------------!
 	
 	sec_on = use_sec_ion .and. sec_ion_active
+
+	nhei   = 0.0
+	nheii  = 0.0
+	nheiii = 0.0
+	nheiTR = 0.0
 
 	! Evaluate the column density
 	call calc_column_dens(nhi,nhei,nheii,nheiTR,N1,N15,N2,NTR)
@@ -993,15 +1001,18 @@
 	! Diagnostic. Dump the volumetric heating rate in each channel vs
 	! radius for the converged equilibrium state, recomputing the same
 	! photoheating (PH_heat_HHe) the solver uses plus the excited-H Balmer,
-	! He-recombination, and He(2^3S) Penning heating terms added in
+	! He-recombination, Penning and Lyman-Werner heating terms added in
 	! ionization_equilibrium. All in cgs erg cm^-3 s^-1; the channel sum
 	! reproduces the total heating (heat_total column) and, up to convergence,
 	! the Hydro_ioniz.txt heat column. Photoheating columns: H I, He I,
 	! He II, He 2^3S, H2, metals (sum over photo-ionizable metal ions). Then
 	! the excited-H photoelectric (Hpe) and Lyman-alpha de-excitation (Hdx)
-	! heating, He-recombination-driven H heating, and He(2^3S)+H Penning
-	! heating. The printed max relative residual is the internal consistency
-	! check on the photoheating split.
+	! heating, He-recombination-driven H heating, He(2^3S)+H and He(2^3S)+H2
+	! Penning heating, and H2 Lyman-Werner photodissociation heating. The last
+	! three molecular-run channels (H2 photoheating, He(2^3S)+H2 Penning,
+	! Lyman-Werner) are identically zero for an atomic run. The printed max
+	! relative residual is the internal consistency check on the photoheating
+	! split.
 
 	integer :: j,i,im
 	real*8, dimension(1-Ng:N+Ng), intent(in) :: T_in,n_in
@@ -1011,12 +1022,16 @@
 	real*8, dimension(1-Ng:N+Ng) :: nhi,nhii,nhei,nheii,nheiii,nheiTR
 	real*8, dimension(1-Ng:N+Ng) :: nh,nhe,xion
 	real*8, dimension(1-Ng:N+Ng,n_mion) :: nm
+	! Molecular densities [cm^-3] (H2, H2+, H3+, HeH+); zero for an atomic run
+	real*8, dimension(1-Ng:N+Ng,4) :: nmol
 	real*8, dimension(1-Ng:N+Ng,6) :: hchan
 	real*8, dimension(1-Ng:N+Ng) :: heat_ph,heat_tot,csum,rel
-	real*8, dimension(1-Ng:N+Ng) :: h_hrc,h_penning
+	real*8, dimension(1-Ng:N+Ng) :: h_hrc,h_penning,h_penning_h2,h_lw
 	! Throwaway PH_heat_HHe rate outputs (not needed for the dump)
-	real*8, dimension(1-Ng:N+Ng) :: P_HI,P_HeI,P_HeII,P_HeITR,q
+	real*8, dimension(1-Ng:N+Ng) :: P_HI,P_HeI,P_HeII,P_HeITR,q,P_H2
 	real*8, dimension(1-Ng:N+Ng,n_mion) :: P_m
+	! Star-ward H2 column [cm^-2] and its Lyman-Werner dissociation rate [s^-1]
+	real*8, dimension(1-Ng:N+Ng) :: NH2col,k_lw
 	! He-recombination coupling / triplet scratch
 	real*8, dimension(1-Ng:N+Ng) :: rcheiTR,rcheii,q13,q31a,q31b,Q31
 	real*8, dimension(1-Ng:N+Ng) :: rcheiiB_hrc,dP_HI_hrc
@@ -1042,23 +1057,43 @@
 	do im = 1,n_mion
 		nm(:,im) = f_sp_in(:,mion_fsp(im))*n_dim
 	enddo
-	call calc_ne(nhii,nheii,nheiii,ne,nm)
+	! Molecular ions, so the dumped ne and the molecular heating channels are
+	! the ones ioniz_eq itself uses (all zero for an atomic run).
+	nmol = 0.0d0
+	if (thereis_mol) then
+		nmol(:,1) = f_sp_in(:,isp_H2)  *n_dim
+		nmol(:,2) = f_sp_in(:,isp_H2p) *n_dim
+		nmol(:,3) = f_sp_in(:,isp_H3p) *n_dim
+		nmol(:,4) = f_sp_in(:,isp_HeHp)*n_dim
+	endif
+	call calc_ne(nhii,nheii,nheiii,ne,nm,nmol)
 
-	! Ionized fraction for the SvS85 secondary-ionization partition (atomic
-	! form; molecular donors are omitted -- this diagnostic targets atomic
-	! runs). See ionization_equilibrium for the exact expression.
-	if (thereis_mol) write(*,'(a)') ' (write_heat_breakdown_eq) NOTE: molecular '  &
-		// 'run -- H2 photoheating, molecular Penning and Lyman-Werner '           &
-		// 'photodissociation heating are omitted.'
-	nh   = nhi + nhii
-	nhe  = nhei + nheii + nheiii
+	! H and He NUCLEI totals and their ionized fraction, for the SvS85
+	! secondary-ionization partition (metals excluded; nheiTR is neutral and
+	! not in the numerator). Same expression as ionization_equilibrium.
+	nh  = nhi + nhii
+	nhe = nhei + nheii + nheiii
+	if (thereis_mol) then
+		nh  = nh  + 2.0d0*(nmol(:,1) + nmol(:,2))                     &
+		          + 3.0d0*nmol(:,3) + nmol(:,4)
+		nhe = nhe + nmol(:,4)
+	endif
 	xion = min(max((nhii + nheii + nheiii)/max(nh + nhe, 1.0d-99), 0.0d0), 1.0d0)
 
-	! Photoheating split (same call the solver makes, atomic path).
+	! Photoheating split (same call the solver makes; H2 adds its opacity and
+	! its photoelectric heating, hchan(:,5), when the run is molecular). The
+	! absorber columns are weighted by the opa_pf the last equilibrium pass
+	! left in place, so they are the solver's own up to convergence.
 	if (thereis_He) then
-		call PH_heat_HHe(nhi,nhei,nheii,nheiTR, nm, xion,             &
-		         P_HI,P_HeI,P_HeII,P_HeITR, P_m,                      &
-		         heat_ph,q, heat_chan = hchan)
+		if (thereis_mol) then
+			call PH_heat_HHe(nhi,nhei,nheii,nheiTR, nm, xion,         &
+			         P_HI,P_HeI,P_HeII,P_HeITR, P_m,                  &
+			         heat_ph,q, nmol(:,1),P_H2, heat_chan = hchan)
+		else
+			call PH_heat_HHe(nhi,nhei,nheii,nheiTR, nm, xion,         &
+			         P_HI,P_HeI,P_HeII,P_HeITR, P_m,                  &
+			         heat_ph,q, heat_chan = hchan)
+		endif
 	else
 		call PH_heat_H(nhi, xion, P_HI, heat_ph, q)
 		hchan = 0.0d0
@@ -1080,9 +1115,34 @@
 	if (thereis_HeITR) h_penning =                                    &
 		nheiTR*nhi*Q31*(e_th_HeI - e_th_HeTR - e_th_HI)/erg2eV
 
+	! He(2^3S)+H2 -> He(1^1S)+H2+ + e- Penning ionization heating: the electron
+	! carries away (e_th_HeI - e_th_HeTR) - e_th_H2 = 4.4 eV, with the Garcia
+	! Munoz (2025) rate coefficient penning_HeI23S_H2. Zero unless a molecular
+	! run also tracks the triplet.
+	h_penning_h2 = 0.0d0
+	if (thereis_mol .and. thereis_HeITR) h_penning_h2 =               &
+		nheiTR*nmol(:,1)*penning_HeI23S_H2(T_K)                        &
+		*((e_th_HeI - e_th_HeTR) - e_th_H2)/erg2eV
+
+	! H2 + hv -> H + H Lyman-Werner photodissociation heating: the fragment
+	! pair keeps about 0.4 eV of kinetic energy (the 4.48 eV bond energy is
+	! paid by the photon, not by the gas). The star-ward H2 column uses the
+	! same radial integration and opa_pf weighting as every other absorber
+	! column, as in ionization_equilibrium.
+	h_lw = 0.0d0
+	if (thereis_mol .and. F_LW_star .gt. 0.0d0) then
+		call calc_column_dens_one(nmol(:,1), NH2col)
+		do j = 1-Ng,N+Ng
+			k_lw(j) = lyman_werner_dissociation_rate(F_LW_star,       &
+			                                    NH2col(j), T_K(j))
+		enddo
+		h_lw = k_lw*nmol(:,1)*e_lw_fragment_erg
+	endif
+
 	! Total heating (independent of the per-channel columns; the residual
 	! below checks the photoheating decomposition against heat_ph).
-	heat_tot = heat_ph + Hpe_arr + Hdx_arr + h_hrc + h_penning
+	heat_tot = heat_ph + Hpe_arr + Hdx_arr + h_hrc + h_penning        &
+	         + h_penning_h2 + h_lw
 
 	! Internal consistency of the photoheating split.
 	csum   = hchan(:,1) + hchan(:,2) + hchan(:,3) + hchan(:,4)        &
@@ -1099,12 +1159,14 @@
 	write(72,'(a)') '# col1 r/Rp  col2 T[K]  col3 ne  col4 heat_total  col5 heat_HI'  &
 	             // '  col6 heat_HeI  col7 heat_HeII  col8 heat_He23S  col9 heat_H2'  &
 	             // '  col10 heat_metals  col11 heat_Hpe[excitedH]'                    &
-	             // '  col12 heat_Hdx[Lya-deexc]  col13 heat_He_recomb  col14 heat_He23S_Penning'
+	             // '  col12 heat_Hdx[Lya-deexc]  col13 heat_He_recomb  col14 heat_He23S_Penning'  &
+	             // '  col15 heat_He23S_H2_Penning  col16 heat_H2_LW'
 	do j = 1-Ng,N+Ng
 		write(72,*) r(j), T_K(j), ne(j), heat_tot(j),                    &
 		            hchan(j,1), hchan(j,2), hchan(j,3), hchan(j,4),       &
 		            hchan(j,5), hchan(j,6),                               &
-		            Hpe_arr(j), Hdx_arr(j), h_hrc(j), h_penning(j)
+		            Hpe_arr(j), Hdx_arr(j), h_hrc(j), h_penning(j),       &
+		            h_penning_h2(j), h_lw(j)
 	enddo
 	close(72)
 

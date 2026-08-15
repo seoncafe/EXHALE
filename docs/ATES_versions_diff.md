@@ -34,6 +34,15 @@ data sources, and footprint. This document compares them side by side.
 | Elements covered | C, N, O | **C, N, O** |
 | Ionization stages | CI/CII/CIII, NI/NII/NIII, OI/OII/OIII (coronal) | CI/CII/CIII, **NI/NII/NIII**, OI/OII/OIII (MINPACK 9-eq) |
 
+> [2026-08-15: two rows of this table are out of date. (i) The C/N/O cooling
+> default is no longer the Black/AIOLOS fit — it is the closed-form CHIANTI
+> fit set; `cno_cool 0` in `metals.inp` selects the legacy AIOLOS fits (which
+> carry no nitrogen cooling). (ii) `beta_esc = 1` is gone: the escape
+> probability of each of the eight ground-term fine-structure lines of C I,
+> C II, N II and O I is computed from its optical depth
+> (`fine_structure_line_transfer`, `n_fsline = 8`, in
+> `src/modules/radiation/Cool_coeff.f90`).]
+
 ---
 
 ## 3. Input / Output
@@ -64,6 +73,12 @@ data sources, and footprint. This document compares them side by side.
 | Modified existing code | ~150 LOC across 5 files | ~450 LOC across 14 files |
 | Total | ~1,350 LOC | ~700 LOC |
 
+> [2026-08-15: the file name `System_HeHCO.f90` used in this table and in §1
+> and §4 no longer exists. The coupled ionization system is the `System_HeH_*`
+> family in `src/modules/nonlinear_system_solver/` — `System_HeH_metals.f90`,
+> `System_HeH_TR_metals.f90`, `System_HeH_mol_metals.f90` and their He-only
+> counterparts.]
+
 ---
 
 ## 6. Design Trade-offs
@@ -90,6 +105,10 @@ data sources, and footprint. This document compares them side by side.
   regression risk.
 * - AIOLOS analytic cooling fits have unclear provenance (see
   `EXHALE/docs/Update_EXHALE_early_phase`, Part II).
+
+> [2026-08-15: the bullet above is superseded — the escape probability is now
+> computed from the line optical depth for eight ground-term fine-structure
+> lines rather than overridden to 1.]
 
 ---
 
@@ -135,6 +154,12 @@ important verification items are:
 5. HeITR and metals are presently mutually exclusive in the dispatch
    logic.
 
+> [2026-08-15: items 4 and 5 are both closed. (4) `post_process_adv.f90`
+> selects the metal treatment with the `metals.inp` key `pp_metals`:
+> 0 metal-free (the legacy zero vectors), 1 frozen (default), 2 re-solve.
+> (5) He 2^3S and metals are solved together by
+> `src/modules/nonlinear_system_solver/System_HeH_TR_metals.f90`.]
+
 ---
 
 ## 8. Conclusion
@@ -149,6 +174,9 @@ exclusive**.
   `1e8`-boosted beta, and ATES_extended never carried one. With AIOLOS's
   `1e8` factor the metal cooling would instead be almost fully
   suppressed.
+  [2026-08-15: no longer true of EXHALE. The `beta = 1` override was replaced
+  by an optical-depth escape probability for the eight ground-term
+  fine-structure lines of C I, C II, N II and O I.]
 * **For maintainability and verifiability**, ATES_extended's modular
   layout (with regression testing built in) and clear data citations
   (Black 1981, Verner+1996) are stronger.

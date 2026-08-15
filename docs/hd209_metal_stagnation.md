@@ -52,6 +52,10 @@ The mean speed in that shell drops by one to two orders relative to the
 metals-off solution, and the alternating component of the velocity grows to
 several times the mean. The inviscid HLLC flux does not damp a contact-mode
 oscillation, so nothing in the scheme removes it once the layer stops flowing.
+[2026-08-15: "nothing in the scheme removes it" is no longer true. The gated
+fourth-difference dissipation of section 8 (`Low-Mach damping`,
+`src/modules/flux/low_mach_dissipation.f90`) damps exactly this contact mode;
+it is off by default.]
 
 ## 2. The solve accepted on one functional and stepped on another
 
@@ -605,3 +609,71 @@ destruction where the shielding has lifted.
 spread of section 9.5. The direction is reproducible in this pair; the
 magnitude should not be quoted as an observational prediction without the
 coefficient pair run alongside it.
+
+## 10. The layer's momentum residual on a physical scale (2026-08-15)
+
+Section 9.4 ended on the observation that the below-escape number *separates*
+a failed state from a converged one but is unusable as a tolerance, because
+the momentum row's relative scale, `|rho v|`, collapses in a quasi-hydrostatic
+layer: the ratio is large wherever the flow is slow, whether or not the state
+is right. The diagnostic of section 9.1 has now been given a physical scale.
+
+### 10.1 The change
+
+In `resid_relnorm_below_escape` (`steady_newton.f90`) the momentum row is no
+longer divided by `|u(2,:)| = |rho v|` but by the gravitational force density
+
+    s_grav(j) = |rho(j)| * |Gphi_i(j) - Gphi_i(j-1)| / dr_j(j),
+
+the same discrete potential difference the momentum source term uses
+(`Source.f90`). In the layer the momentum equation is the hydrostatic pair
+`dp/dr ~ -rho g`, so the scaled number is the fractional violation of
+hydrostatic balance -- a controlled statement. The mass and energy rows keep
+`|u|` (their denominators do not collapse), and the printed line now reports
+the three rows separately:
+
+    (JFNK) below r_esc [1:401] |R|: mass= ... mom/grav= ... energy= ...
+
+The change is print-only; `make check` remains 5/5 byte-identical.
+
+### 10.2 The section 9.4 states, re-measured
+
+Each converged state was loaded (`Load IC? True`, its own converged output as
+the IC) and re-entered the JFNK, which prints the diagnostic at solve start
+and at the returned iterate. The restart marches 2000 steps before the
+hand-off (the staged secondary-ionization hold), so the "start" state is the
+loaded solution plus that hold, not byte-for-byte the section 9.4 state.
+
+| state | old norm (sec 9.4) | mom/grav at JFNK start | mom/grav at end | re-verify |
+|---|---|---|---|---|
+| `examples/15` converged (metals off) | 9.99 | 1.94e-5 | 4.50e-5 | `info = 0`, `\|\|R\|\| = 6.105e-6` (cold re-run; reproduces sec 9.3 exactly, hand-off step 25839, `log10 Mdot = 10.24`) |
+| `examples/16`, `eps4 = 5e-3` | 0.195 | 1.26e-5 | 4.21e-6 | `info = 2` at `\|\|R\|\| = 3.887e-5` (see below) |
+| `examples/16`, `eps4 = 1e-2` | 2.352 | 2.19e-5 | 1.35e-4 | `info = 0`, `\|\|R\|\| = 7.29e-7`, `log10 Mdot = 9.67` |
+
+On the physical scale the three converged solutions -- including the
+metals-off one that read 9.99 before -- all hold the layer's hydrostatic
+imbalance at **1e-5 to 1.4e-4 of `rho g`**, four to six orders below the old
+numbers and comparable to the wind-region `Resid tol`. The mass and energy
+rows stay at 1e-3 and 1e-2 to 5e-2 respectively; the worst cell moves from the
+near-base momentum rows (where the old scale put it artificially) to the
+energy row at `r = 1.52-1.57`.
+
+So the statement the caveat of section 9.5 rests on can now be made
+quantitatively: the layer is *not* momentum-unbalanced -- it satisfies
+hydrostatic balance to ~1e-4 -- and what stays uncontrolled between the
+`eps4` pair members is *which* hydrostatic stratification the layer settles
+on (the rho/T profile degeneracy of section 9.5), not the balance itself.
+
+Two side observations from the re-measurements, recorded as-is:
+
+- The `eps4 = 5e-3` re-verify stalled at `info = 2`, `||R|| = 3.887e-5`
+  (4x above tol) after the 2000-step hold, where the `1e-2` member re-verified
+  to `info = 0` in 67 s. Consistent with the marginal character of that member
+  in section 9.3; the layer values above are from the printed start/end lines
+  and stand regardless.
+- A warm restart of the *metals-off* `examples/15` converged state dies with
+  a NaN at step ~165 (`T = NaN` in a cell with `nhi = 0`), after the staged
+  secondary-ionization flip at step 2. The cold re-run of the same
+  configuration converges cleanly, so this is a restart-path artifact
+  (the state is integrated for one step without the coupling it was converged
+  with); not investigated further here.

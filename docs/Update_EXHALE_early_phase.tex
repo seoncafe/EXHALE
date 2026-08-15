@@ -34,7 +34,7 @@ memos of EXHALE that predate the main \texttt{Update\_EXHALE} phase log: the
 AIOLOS feature port (opacity-model dispatcher and trace metals), the metal-cooling
 implementation, and the Phase-2 metal extensions. Each \textbf{Part} below is one
 original memo, kept verbatim. Related documents: the H$\alpha$/H$\beta$
-transmission physics is in its own note \texttt{Halpha\_transmission}; the
+transmission physics is in its own note \texttt{transmission\_spectrum}; the
 solver/numerics history is in \texttt{Update\_EXHALE\_solver}; the ongoing phase work
 and version history are in \texttt{Update\_EXHALE}; the practical guide is
 \texttt{EXHALE\_user\_manual}.
@@ -57,8 +57,10 @@ EXHALE the metal physics lives in the coupled MINPACK ionization
 system (Badnell RR+DR recombination, nitrogen, charge transfer with H,
 an A/C/P/T opacity-model dispatcher, and runtime
 \texttt{metals.inp}/\texttt{opacity.inp}); see
-\texttt{ATES\_metal\_cooling.tex} (esp.\ \S7--\S8) for the
-EXHALE-specific implementation.
+\texttt{cooling\_formulas} for the closed-form metal line-cooling formulas
+EXHALE now uses, and \texttt{Update\_EXHALE} \S7 for the Phase-2 metal
+line-cooling validation gate. (Updated 2026-08-15: the note originally
+pointed at \texttt{ATES\_metal\_cooling.tex}, which no longer exists.)
 \end{quote}
 
 
@@ -1848,8 +1850,10 @@ EXHALE the metal physics lives in the coupled MINPACK ionization
 system (Badnell RR+DR recombination, nitrogen, charge transfer with H,
 an A/C/P/T opacity-model dispatcher, and runtime
 \texttt{metals.inp}/\texttt{opacity.inp}); see
-\texttt{ATES\_metal\_cooling.tex} (esp.\ \S7--\S8) for the
-EXHALE-specific implementation.
+\texttt{cooling\_formulas} for the closed-form metal line-cooling formulas
+EXHALE now uses, and \texttt{Update\_EXHALE} \S7 for the Phase-2 metal
+line-cooling validation gate. (Updated 2026-08-15: the note originally
+pointed at \texttt{ATES\_metal\_cooling.tex}, which no longer exists.)
 \end{quote}
 
 
@@ -2056,6 +2060,9 @@ physically complete of the three cooling treatments.
   AIOLOS exponential fit, whose origin is itself undocumented (see
   \texttt{ATES\_metal\_cooling.pdf} \S2). A first-principles multi-level
   model would be cleaner.
+  \emph{[2026-08-15: \texttt{ATES\_metal\_cooling.pdf} no longer exists;
+  the current account of the AIOLOS C/N/O fits and what replaced them is
+  \texttt{cooling\_formulas} \S4.]}
 \item \textbf{C/N two-level.} Only O\,I and C\,II have the two-level
   treatment; C\,I, O\,II, and N stages still use the AIOLOS fit scaled by
   $n_e$.  Add their fine-structure lines if those species matter.

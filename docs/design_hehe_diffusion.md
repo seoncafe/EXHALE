@@ -115,6 +115,7 @@ new `nh(j)`, `nhe(j)` in each cell (interface already accepts these independentl
   hooks, unused in Phase 1); **default OFF** (goldens unchanged; metals-off byte-identical).
 - new module `species_diffusion.f90` (generic: given element mass, abundance array, D(T),
   return updated abundance) under `src/modules/` (radiation/ or a new `transport/`).
+  [2026-08-15: it landed as `src/modules/functions/species_diffusion.f90`.]
 - `EXHALE_main.f90`: call the diffusion substep in the relaxation loop; carry a persistent
   `Y(1-Ng:N+Ng)` (He mass fraction) array across iterations.
 - `composition.f90` / `ionization_equilibrium.f90`: derive `nh(j)`,`nhe(j)` from `rho` and
@@ -334,6 +335,10 @@ residual; the outer loop is what makes the two consistent.
 
 - **D1. Diffusion coefficient:** neutral binary Mason&Marrero `D=b/n`, `b≈1.04e18 T^0.732`,
   ionized correction deferred. (recommend: yes)
+  [2026-08-15: not what was implemented. `species_diffusion.f90` uses the
+  Banks & Kockarts (1973) binary form
+  `D = 1.52e18 (1/m_H + 1/m_He)^(1/2) T^(1/2) / n_tot` cm^2/s, i.e. a
+  `T^(1/2)` law, not the Mason & Marrero `T^0.732` fit.]
 - **D2. Ambipolar field:** defer to Phase 2 (Δm=3 approximation). (recommend: defer)
 - **D3. Thermal diffusion α_T:** 0 in Phase 1. (recommend: 0)
 - **D4. Activation:** new `He_diffusion` flag, **default OFF**; enable explicitly, validate,

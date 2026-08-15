@@ -116,7 +116,7 @@ Fortran에서 한 procedure 호출 중 한 dummy가 정의되는 동안 다른 d
 
 ### 3.3 [P1] loaded SED가 low-ionization-potential 금속의 광자를 잘라냄
 
-`src/modules/radiation/set_energy_vectors.f90:31-53`의 power-law 경로는 `thereis_lowIP_metal`일 때 에너지 grid 하한을 활성 금속의 ionization threshold까지 낮춘다. 반면 `src/modules/radiation/sed_read.f90:32-33`의 loaded SED 경로는 He I triplet만 고려하고 low-IP 금속은 고려하지 않는다.
+`src/modules/radiation/set_energy_vectors.f90:31-53` (sic: actually `src/modules/init/set_energy_vectors.f90`)의 power-law 경로는 `thereis_lowIP_metal`일 때 에너지 grid 하한을 활성 금속의 ionization threshold까지 낮춘다. 반면 `src/modules/radiation/sed_read.f90:32-33`의 loaded SED 경로는 He I triplet만 고려하고 low-IP 금속은 고려하지 않는다.
 
 영향:
 
@@ -171,8 +171,8 @@ Fortran에서 한 procedure 호출 중 한 dummy가 정의되는 동안 다른 d
 다음 `select case`에는 `case default`가 없다.
 
 - reconstruction: `src/modules/states/Reconstruction.f90`
-- numerical flux: `src/modules/states/Num_Fluxes.f90`
-- grid type: `src/modules/grid/define_grid.f90`
+- numerical flux: `src/modules/states/Num_Fluxes.f90` (sic: actually `src/modules/flux/Num_Fluxes.f90`)
+- grid type: `src/modules/grid/define_grid.f90` (sic: actually `src/modules/init/define_grid.f90`)
 - spectrum type: `src/modules/files_IO/input_read.f90:151-178`
 
 오타가 난 입력은 즉시 실패하지 않고 flag나 출력 배열을 정의하지 않은 채 진행할 수 있다.
@@ -286,7 +286,7 @@ Makefile의 compiler stamp는 compiler 이름은 기록하지만 flag 전체를 
 
 ### 6.2 실수 상수 정밀도
 
-`src/parameters.f90:230-265` 등은 `real*8` 변수에 기본 정밀도 literal을 대입한다. literal이 먼저 real32로 반올림된 뒤 real64로 승격될 수 있으며, 1,417개의 conversion warning 대부분과 연결된다.
+`src/parameters.f90:230-265` (sic: actually `src/modules/init/parameters.f90`) 등은 `real*8` 변수에 기본 정밀도 literal을 대입한다. literal이 먼저 real32로 반올림된 뒤 real64로 승격될 수 있으며, 1,417개의 conversion warning 대부분과 연결된다.
 
 `iso_fortran_env, only: real64`와 `real(real64)`, `1.0_real64` 형식을 사용한다. 결과의 마지막 몇 bit가 바뀔 수 있으므로 물리량 허용오차 기반 regression과 함께 점진적으로 바꾼다.
 

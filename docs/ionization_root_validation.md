@@ -132,6 +132,17 @@ The molecular network keeps its own chemical-equilibrium retry and is left
 alone; the H-only system (no helium) and the post-processing advection solves
 in `post_process_adv.f90` are not covered by this validation.
 
+> [2026-08-15: the first clause no longer holds. The simplex test now runs on
+> the molecular branch as well: the attempt loop in
+> `radiation/ionization_equilibrium.f90` sizes its root buffer for the
+> molecular layout (`n_x_max = 8 + 2*n_melem`), and a molecular cell whose
+> attempts all leave the simplex has the least-offending root clamped onto the
+> element budget (`viol`/`viol_best`, `n_mol_clamped`) or, failing that, is
+> handed the uncoupled ionization balance and counted in `n_ieq_fail`. The
+> chemical-equilibrium retry is still there — it is now one of the starting
+> points, not a separate validation. The H-only system and
+> `post_process_adv.f90` remain outside the scope.]
+
 That last exclusion was visible in the production outputs. Measured 2026-08-11
 after the re-convergences below, the equilibrium `Ion_species.txt` of all four
 paper planets is free of negative densities, but the advected

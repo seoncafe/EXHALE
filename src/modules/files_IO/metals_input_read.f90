@@ -121,7 +121,7 @@
 
          ! 'pp_metals <0|1|2>' selects how metals are treated in the
          ! advection post-process (post_process_adv): 0 metal-free,
-         ! 1 frozen eq metals, 2 re-solve (default). 'pp_metal_mode' is
+         ! 1 frozen eq metals (default), 2 re-solve. 'pp_metal_mode' is
          ! accepted as a synonym.
          if (trim(tok) == 'pp_metals' .or. trim(tok) == 'pp_metal_mode') then
             pp_metal_mode = nint(ab)

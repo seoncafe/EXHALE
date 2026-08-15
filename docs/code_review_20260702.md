@@ -31,6 +31,9 @@ TR) carries the effective He/H — packed as `HeH` when diffusion is off (byte-i
 legacy) and as the local `nhe(j)/nh(j)` when on. Effect on the version comparison: HD 209458b
 He 10830 27.2% → 27.1% (trivial); docs updated. Also fixed two wrong params comments
 (`xhi_old = nhi/nh`, `xhei_old = nhei/nhe`).
+[2026-08-15: the positional `params` slots 15 / 23 are gone; the effective
+He/H is now the named field `adv_cell%heh_loc` of the derived type in
+`src/modules/nonlinear_system_solver/ion_cell_state.f90`.]
 
 ### 3. Robustness guards (no-op in healthy runs)
 - `util_ion_eq.f90` (2 sites): `q = Hea_1/q_abs` → `/max(q_abs, 1d-99)` — a fully

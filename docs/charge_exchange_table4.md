@@ -49,6 +49,14 @@ These couple the H ionization fraction to each metal's ionization balance and
 are the only reactions enabled by default (`cx_full` off). Note **Ca has no
 direct H charge exchange in Table 4** — it appears only in Group D.
 
+> [2026-08-15: "the only reactions enabled by default" is no longer accurate.
+> The He<->H pair of Group B (B1, B2) is also on by default, under its own key
+> `He_H_charge_exchange` (default `.true.`) and independently of `cx_full`; it
+> is applied by dedicated routines in every ionization system that contains He.
+> `cx_full` still gates Groups C and D, and the *metal* part of Group A is
+> still what it enables by default. See
+> `src/modules/radiation/charge_exchange.f90`.]
+
 | # | Reaction | Ref | Rate (cm^3 s^-1) |
 | --- | --- | --- | --- |
 | A1 | Mg + H+ | KF96 | `9.76e-12 * T4^3.14 * [1 + 55.54*exp(-1.12*T4)]` |
@@ -94,6 +102,9 @@ Notes on Group A:
 - **K has only the forward `K + H+`** in Table 4; no `K+ + H` reverse is tabulated.
 
 ## Group B — charge exchange with He / He+ (only when `cx_full` is on)
+
+> [2026-08-15: the heading is out of date — B1 and B2 are on by default under
+> `He_H_charge_exchange`, not gated by `cx_full`.]
 
 | # | Reaction | Ref | Rate (cm^3 s^-1) |
 | --- | --- | --- | --- |

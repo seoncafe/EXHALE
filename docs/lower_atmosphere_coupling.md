@@ -17,6 +17,14 @@ trace metals at prescribed abundances. No molecules. The Wind-AE port carries a 
 molecular layer (μ-blend `molec_adjust` + bolometric heating/cooling with automatic
 shutoff when the atomic transition reaches the base).
 
+> [2026-08-15: this paragraph describes the tree as of 2026-07 and is no longer
+> current. The proposal below has been built: the coupled molecular network
+> (H₂/H₂⁺/H₃⁺/HeH⁺, `Molecular chemistry: True`), H₃⁺ cooling, Lyman-Werner
+> photodissociation, the analytic lower column and the `base.inp` handoff all
+> exist in `src/modules/lower_atmosphere/`. All of them default off, so an
+> ordinary run is still the atomic base described here. The per-tier status
+> table further down is the authoritative account of what is done.]
+
 ---
 
 ## 1. What the literature actually does at the interface
@@ -100,6 +108,10 @@ recombination (R6/R7, Larsson 2008), HeH⁺ chain (R16–R20), three-body H₂ f
   emission fits for each molecule (analytic log-polynomial in T); defer the non-LTE
   correction factor (Koskinen et al. 2009) with a documented caveat — same
   fit-first/refine-later pattern as our CHIANTI cooling work;
+  [2026-08-15: the non-LTE factor was not deferred. `h3p_nonlte_factor(T, nH2)`
+  in `src/modules/lower_atmosphere/h3p_cooling.f90` bilinearly interpolates the
+  Miller et al. (2013) Table 6 departure factor, which the LTE emission is
+  multiplied by.]
 - optional interim step (**Tier 2a, ~days**): promote the Wind-AE port's *passive*
   molecular-base treatment (μ-blend `molec_adjust` + bolometric heating/cooling +
   automatic shutoff) into EXHALE's base cells — no chemistry, but the correct μ and
@@ -144,7 +156,7 @@ The Lavvas & Arfaux code is not public, so the practical paths are:
   C/H/N/O/S networks, K_zz, photolysis; the closest public analogue of the Lavvas 2014
   kinetics) for composition, plus a temperature model — either `HELIOS` (public RC) or,
   cheaper, an analytic Guillot/picket-fence T(p) as the first iteration. A thin Python
-  driver (`lower_atmosphere/run_lower.py`) runs the stack for the planet and writes a
+  driver (`src/utils/run_lower.py`) runs the stack for the planet and writes a
   new optional EXHALE input file, e.g. `base.inp`:
 
   ```
@@ -192,7 +204,7 @@ abundances vs. Lavvas 2014 Fig. 9 (Mg/Fe/Si ionic above 10⁻⁶ bar, Na/K atomi
 | Science case | Needed tier |
 |---|---|
 | Hot Jupiters (HD 209458 b, HD 189733 b, WASP-121 b) — current program | Tier 1 only (base radius + verified atomic base); fixed-T_eq base already within ±10% on Ṁ (Salz) |
-| He 10830 / Hα population work | Tier 1 (+ the Huang absorbing-bottom check on `lya_rt`'s lower BC — audit item) |
+| He 10830 / Hα population work | Tier 1 (+ the Huang absorbing-bottom check on `lya_rt`'s lower BC — audit item) [2026-08-15: implemented as the key `Lya absorbing bottom: True`, default off; `src/modules/radiation/lya_rt.f90`] |
 | Metal transmission lines (Phase 5, WASP-121 b) | Tier 3(a): photochemical atomic-metal release at the base instead of assumed solar totals (condensation/molecule sequestration) |
 | Warm Neptunes / sub-Neptunes (GJ 1214 b-class, future) | Tier 2 mandatory (H₂ in the wind, H₃⁺ cooling, ×2 He-signal effect) + Tier 1 |
 
@@ -230,9 +242,9 @@ He_rec_coupling, He–H charge exchange).
 | 2 (core) | **`System_HeH_mol.f90`** — coupled H⁺/He⁺/He⁺⁺(+2³S) + H₂/H₂⁺/H₃⁺/HeH⁺ equilibrium (7–8 unknowns, hybrd1; atomic rows use EXHALE's own rates so the molecule-free limit reproduces the atomic systems); **σ_H₂** (Yan+1998 Eqs. 17–19, `cross_sec.f90`) wired into opacity/photoionization/heating (`PH_heat_HHe`); H₃⁺ cooling **inside `eval_cool`**, with its own `Cooling_breakdown` column, so the marching temperature update and the steady residual balance the same cooling function (2026-08-13); EOS (`calc_ne/ntot/rho`, `composition`) molecule-aware, and the cooling (`eval_cool`) reads the same `calc_ne` electron density as the equilibrium solver, molecular ions included (2026-08-13); output/IC columns H2/H2p/H3p/HeHp; key `Molecular chemistry: True`; trace metals may be solved in the same system (`System_HeH_mol_metals`, 2026-08-13) | **done (core)** | σ_H₂ reproduces Yan Table 7 (0.04761/0.006169/0.001739 Mb at 100/200/300 eV); Gate 0: mol-off byte-equivalent (molecular chemistry off reproduces the atomic systems); Gate 1 (HD209 mol-on): fully molecular base (x_H₂≈0.996) + sharp H₂→H front at r=1.020 R_p, wind above the front ≈ atomic; below the front the molecular base suppresses He2³S by orders of magnitude (He2³S+H₂ Penning destruction — ~10⁴× at the front, rising back to the atomic value above ~1.3 R_p); Gate 2 (hot-Uranus-like: 0.0457 M_J, R_p=0.49 R_J, T_eq=1140 K, HD209 orbit/spectrum): front at r=1.156, H₃⁺ active in the molecular layer (peak ~7×10⁴ cm⁻³ at r≈1.04). The H₂→H fronts and molecular base composition are essentially unchanged from the 2026-07-16 gates (front 1.019→1.020, 1.166→1.156), confirming the dissociation-front result is robust to the 2026-07-23 production defaults (staged secondary ionization, He_rec_coupling, He–H charge exchange). Gate numbers refreshed 2026-07-23 at a shared 12000-step relaxation-snapshot convention: both HD209 runs read Ṁ = log₁₀ 10.58 (relaxation snapshots, not flux-flat converged — under these defaults the HD209 atomic gate plateaus near 4% mass-flux spread). Gate inputs pinned at `lower_atmosphere_figs/data_g*/input.inp` (Update_EXHALE §35). 2026-08-13 (Update_EXHALE §54): the H₃⁺ cooling moved inside `eval_cool`, so the **marching temperature update feels it for the first time** — H₃⁺ carries >99% of the radiative cooling from the base to the front (7.3× the local photoheating at r≈1.04) on the metals-off gate. At the 12000-step convention the gate observables are unchanged to <0.1% (front, H₃⁺ peak, Ṁ) because the layer's H₃⁺ cooling time is 200–2000 t_s; T has only begun to fall (−0.5% at r≈1.08). The converged molecular thermal structure is therefore **not** pinned by this gate |
 | 2 (Lyman–Werner) | **`Stellar LW flux [erg/cm2/s]:`** — H₂ + hν(912–1110 Å) → H + H in the coupled network, with the Draine & Bertoldi (1996) eq. (37) self-shielding of the star-ward H₂ column and 0.4 eV of heating per dissociation (Black & Dalgarno 1977). New module `src/modules/lower_atmosphere/lyman_werner.f90`; diagnostic `output/Lyman_Werner.txt`. Default off (band flux 0) | **done** | section "H₂ photodissociation in the Lyman–Werner bands" below |
 | 2 (remaining) | local-equilibrium caveat (no molecular *advection* — Koskinen's high-altitude H₂ replenishment not reproduced); dissociative/double photoionization channels (P4/P5); 4.48 eV dissociation energy sink; diatomic γ; `_adv` post-process; GJ 1214 b He-halving validation (full M-dwarf setup) | open | gates defined in §Tier-2 |
-| 2a | `Molecular base: True` — EOS-only base correction: removes the H₂-bound particles from `ntot_bc` (lower base pressure / heavier base μ; chemistry stays atomic — crude, documented). q_H₂ comes from the photochemical handoff when `base.inp` carries `q_H2_base`, and from the equilibrium fit otherwise (2026-08-10; `composition.f90`) | **done** | HD 209458 b: q_H₂(1 μbar,1450 K)=0.831 → ntot_bc 1.0→0.546 (equilibrium fit) |
+| 2a | `Molecular base: True` — EOS-only base correction (`Molecular chemistry: True` turns this on by itself, since an atomic `ntot_bc` under a molecular base is inconsistent): removes the H₂-bound particles from `ntot_bc` (lower base pressure / heavier base μ; chemistry stays atomic — crude, documented). q_H₂ comes from the photochemical handoff when `base.inp` carries `q_H2_base`, and from the equilibrium fit otherwise (2026-08-10; `composition.f90`) | **done** | HD 209458 b: q_H₂(1 μbar,1450 K)=0.831 → ntot_bc 1.0→0.546 (equilibrium fit) |
 | 3 | `base.inp` reader in `input_read` (T_base / r_base / HeH_base / Kzz_base, echo + no-op when absent) + `src/utils/run_lower.py` driver (isothermal or Guillot 2010 semi-grey T(p); writes base.inp with a molecular-base warning) | **done (analytic stack)** | end-to-end: driver → base.inp → EXHALE consumes and echoes; iso vs Guillot: r₀ 1.4723 vs 1.4660 R_J, T_base 1450 vs 1313 K (HD 209458 b) |
-| 3 (upgrade) | **VULCAN end-to-end**: public VULCAN cloned (`../VULCAN`, FastChem compiled), HD 189733 b SNCHO photochemical run converged (2356 steps); converter `src/utils/vulcan_to_base.py` (.vul → base.inp with photochemical q_H2/q_H, VULCAN-μ/T hypsometric r_base; molecular mixing ratios as comments; **no metal release** — outside VULCAN's scope, stays Lavvas-only). Since 2026-08-10 the converter also writes the read keys `q_H2_base` and `p_base`, so the photochemical H₂ partition **replaces the chemical-equilibrium fit** in the molecular-base particle count instead of being recorded as a comment (`docs/base_composition_handoff_plan.md`) | **done (H/C/N/O composition)** | HD 189733 b at 1 μbar: **q_H2=0.63, q_H=0.23 — photochemistry dissociates ~11× more H than the equilibrium column (q_H=0.020)**, directly quantifying the Tier-1 caveat; r_base 1.168 vs analytic 1.174 R_J; T_base 863 K (Moses11 T(p)); EXHALE consumes the file (overrides echoed) |
+| 3 (upgrade) | **VULCAN end-to-end**: public VULCAN cloned (`EXHALE/VULCAN/`, FastChem compiled), HD 189733 b SNCHO photochemical run converged (2356 steps); converter `src/utils/vulcan_to_base.py` (.vul → base.inp with photochemical q_H2/q_H, VULCAN-μ/T hypsometric r_base; molecular mixing ratios as comments; **no metal release** — outside VULCAN's scope, stays Lavvas-only). Since 2026-08-10 the converter also writes the read keys `q_H2_base` and `p_base`, so the photochemical H₂ partition **replaces the chemical-equilibrium fit** in the molecular-base particle count instead of being recorded as a comment (`docs/base_composition_handoff_plan.md`) | **done (H/C/N/O composition)** | HD 189733 b at 1 μbar: **q_H2=0.63, q_H=0.23 — photochemistry dissociates ~11× more H than the equilibrium column (q_H=0.020)**, directly quantifying the Tier-1 caveat; r_base 1.168 vs analytic 1.174 R_J; T_base 863 K (Moses11 T(p)); EXHALE consumes the file (overrides echoed) |
 
 Notable physics finding from the Tier-1 gate work: the Visscher **equilibrium** fit keeps the
 1 μbar base strongly molecular up to T ≈ 2000 K (fully atomic only above ~2400 K), so for

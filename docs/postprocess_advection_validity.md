@@ -236,7 +236,7 @@ off, and the molecular post-process. The guard and the electron term apply to
 them by construction -- with metals off `xe_metal` is identically zero -- but no
 such run was re-measured.
 
-## An unrelated defect found in passing, not fixed
+## An unrelated defect found in passing, not fixed (since fixed)
 
 `System_implicit_adv_HeH.f90` (helium on, He 2^3S off) writes its electron-
 impact ionization terms as `-(ghi + ionhi) x_HI` and so on, without the
@@ -248,6 +248,14 @@ inconsistent with the photoionization rates they are added to. The path is
 taken only when He is on and He 2^3S is off, so none of the four paper planets
 uses it; fixing it changes that configuration's `_adv` output and is left to a
 separate change. Marked at the code site.
+
+**Fixed 2026-08-12** (commit `b0d44bc`, "adv_implicit_HeH: electron density in
+the collisional-ionization terms"). Verified in the code: `adv_implicit_HeH` in
+`src/modules/nonlinear_system_solver/System_implicit_adv_HeH.f90` now writes the
+three rows as `-(ghi + ionhi*xe*n_h)*xhi + ahii*xhii*xe*n_h` and the He I / He II
+equivalents, so the electron-impact coefficients carry the `xe*n_h` factor and
+are dimensionally consistent with the photoionization rates. The paragraph above
+is left in place as the record of the state at the time of the diagnosis.
 
 ## Raw diagnostic data
 

@@ -90,6 +90,12 @@ ATES_extended adds a second recombination channel beyond radiative RR:
 The whole module set below has no analog in EXHALE, which instead
 folded metals into the existing MINPACK system (`System_HeHCO.f90`):
 
+> [2026-08-15: `System_HeHCO.f90` no longer exists. The coupled system is now
+> the `System_HeH_*` family in `src/modules/nonlinear_system_solver/`
+> (`System_HeH_metals.f90`, `System_HeH_TR_metals.f90`,
+> `System_HeH_mol_metals.f90`), and the default solver is the analytic-Jacobian
+> Newton with MINPACK `hybrd1` as the second attempt.]
+
 * **`src/modules/radiation/metals.f90`** (~162 LOC) — abundance registry,
   cross-section grids for each ion on `e_v(Nl)`, `photoion_rate_metal`.
 * **`src/modules/radiation/metals_solve.f90`** (~209 LOC) — `coronal_ratio`
@@ -116,6 +122,9 @@ In `ATES_extended/inputdata/`, none of which exist in EXHALE:
 * `opacity.inp.example` — annotated opacity-model key documentation.
 * `HI_sample.opa` — 13-row sample tabulated cross-section table.
 * `README.opacity` — `.opa` / opacity format documentation.
+
+> [2026-08-15: all four now exist in `EXHALE/inputdata/` as well, so this
+> section no longer describes a difference between the two trees.]
 
 ## 8. Companion design memo
 
@@ -154,3 +163,9 @@ assumption ATES_extended uses — CIII/OIII third stages, metals active
 during time evolution rather than only post-processing) is absent from
 ATES_extended. The two trees are complementary; see
 `ATES_versions_diff.md` Section 8.
+
+> [2026-08-15: the `beta_esc = 1` override is gone. EXHALE now computes an
+> escape probability from the optical depth of each of the eight ground-term
+> fine-structure lines of C I, C II, N II and O I (`n_fsline = 8` and
+> `fine_structure_line_transfer` in `src/modules/radiation/Cool_coeff.f90`), so
+> the 100%-escape assumption is no longer shared with ATES_extended.]

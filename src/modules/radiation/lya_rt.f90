@@ -22,6 +22,13 @@
    !   beta(r)  = pi^(-1/4) sqrt(a/tau)  (capped at 1)         wing escape prob.
    !              (photon escapes once the wing optical depth at x* ~ (a.tau)^1/2
    !               drops to unity; Neufeld 1990, Harrington 1973)
+   !   beta_bot(r) = same Neufeld form on tau_bot = tau(base) - tau(r)  DOWNWARD
+   !              loss into an absorbing lower boundary, added as a parallel
+   !              channel only when "Lya absorbing bottom: True". Huang et al.
+   !              (2017) close their Monte Carlo domain with a pure absorber
+   !              because the H2 layer beneath the base truly absorbs Ly-alpha
+   !              through accidental resonances; the default reflecting bottom
+   !              keeps every downward photon and over-fills Jbar near the base.
    !   P(r)     = alpha_B ne nhii + C_1s2p ne nhi              Ly-alpha production
    !              (recombination cascade, 1 per case-B recomb; electron-impact
    !               1s->2p -- the two internal sources used by Huang)
@@ -50,9 +57,23 @@
 
    ! Diagnostic split of J_lya into internal (recomb+collisional) and stellar
    ! contributions, filled each call for output/Excited_H.txt.
-   real*8, dimension(1-Ng:N+Ng) :: jint_arr = 0.0d0, jstar_arr = 0.0d0
+   real*8, dimension(:), allocatable :: jint_arr, jstar_arr
 
    contains
+
+   ! --------------------------------------------------------------- !
+
+   subroutine lya_rt_allocate_arrays
+   ! Allocate the grid-sized module arrays once the number of cells N is
+   ! known; called from EXHALE_main right after input_read. The zeros are
+   ! the initializers the declarations used to carry.
+
+   allocate(jint_arr(1-Ng:N+Ng), jstar_arr(1-Ng:N+Ng))
+
+   jint_arr  = 0.0d0
+   jstar_arr = 0.0d0
+
+   end subroutine lya_rt_allocate_arrays
 
    ! --------------------------------------------------------------- !
 
@@ -98,6 +119,7 @@
    real*8 :: avoigt, beta_esc, Tl, aB, C1s2p, Prec, Pcol, Jint, Jstar, Jpref, xi
    real*8 :: vth, Xs, x1, Tstar, Dnu_star, D2p
    real*8 :: C_sob, dvdr, tau_sob, beta_sob, beta_tot
+   real*8 :: tau_bot, beta_bot
 
    ! Doppler width (needed for both tau and the source function).
    do j = 1-Ng, N+Ng
@@ -136,8 +158,31 @@
       dvdr     = (v0/R0)*abs(v_in(jp) - v_in(jm))/max(abs(r(jp) - r(jm)),1.0d-30)
       tau_sob  = C_sob*max(nhi(j),0.0d0)/max(dvdr,1.0d-30)
       beta_sob = min(1.0d0,(1.0d0 - exp(-min(tau_sob,200.0d0)))/max(tau_sob,1.0d-30))
-      ! Total escape probability: escape via the static OR the Sobolev channel.
-      beta_tot = 1.0d0 - (1.0d0 - beta_esc)*(1.0d0 - beta_sob)
+      ! Total escape probability: escape via the static OR the Sobolev channel,
+      ! plus -- when the lower boundary is declared a pure absorber -- the
+      ! downward wing escape into that sink.
+      if (lya_bottom_absorber) then
+         ! Line-center depth from cell j DOWN to the bottom of the domain. tau is
+         ! accumulated top-down, so tau(1-Ng) is the total column and the
+         ! difference is the remaining depth below j (max() only guards roundoff).
+         tau_bot  = max(tau(1-Ng) - tau(j), 0.0d0)
+         ! Same Neufeld/Harrington wing form as the upward channel, and with the
+         ! same validity condition a*tau >> 1; here it is the probability that a
+         ! photon random-walks out through the wings DOWNWARD, where the H2 layer
+         ! absorbs it instead of returning it. In the bottom cells tau_bot -> 0 so
+         ! beta_bot -> 1: a cell sitting directly on the absorber loses its
+         ! downward photons outright.
+         beta_bot = min(1.0d0, beta_c*sqrt(avoigt/max(tau_bot,1.0d-30)))
+         beta_tot = 1.0d0 - (1.0d0 - beta_esc)*(1.0d0 - beta_sob)              &
+                                              *(1.0d0 - beta_bot)
+      else
+         ! Reflecting bottom (legacy closure): no downward sink.
+         beta_tot = 1.0d0 - (1.0d0 - beta_esc)*(1.0d0 - beta_sob)
+      endif
+      ! beta_tot below feeds the (1-beta_tot) trapping factor of Jint, the
+      ! A_2p1s*beta_tot term in its denominator, and the buildup factor E of
+      ! Jstar, so the bottom loss removes photons consistently from the internal
+      ! field and from the trapped stellar beam -- no further change is needed.
 
       Tl    = max(T_K(j), 1.0d0)
       aB    = alpha_B_hydrogen(Tl)                             ! case-B [cm^3/s]

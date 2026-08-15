@@ -21,7 +21,9 @@
       use Conversion
       use ionization_equilibrium
       use utils_ion_eq, only: write_cool_breakdown_eq, write_heat_breakdown_eq
-      use excited_hydrogen, only: excited_H_update, write_excited_H
+      use lya_rt, only: lya_rt_allocate_arrays
+      use excited_hydrogen, only: excited_H_update, write_excited_H,      &
+                                  excited_H_allocate_arrays
       use Reconstruction_step
       use RK_integration
       use BC_Apply
@@ -68,16 +70,16 @@
                                              ! ionization flip sharing its test
 
       ! Residual-based convergence monitor (Resid tol option)
-      real*8, dimension(3,1-Ng:N+Ng) :: Rres
+      real*8, dimension(:,:), allocatable :: Rres
       real*8  :: resid_c(3), resid_cv(3), resid_max, flux_spread
       logical :: is_resid_ok
 
       ! Newton-residual self-test scratch (EXHALE_NEWTON_TEST hook)
       real*8, allocatable :: Yvec(:), Fvec(:)
-      real*8, dimension(1-Ng:N+Ng,n_species) :: f_sp_test
+      real*8, dimension(:,:), allocatable :: f_sp_test
       ! Banded-Jacobian self-test scratch (EXHALE_JAC_TEST hook)
       real*8, allocatable :: abjac(:,:), rdir(:), Jr(:), dFD(:), F0f(:)
-      real*8, dimension(1-Ng:N+Ng) :: heat0, cool0, npart0
+      real*8, dimension(:), allocatable :: heat0, cool0, npart0
       real*8 :: jac_eps, jac_err
       ! --- lightweight phase profiler (gated by env EXHALE_PROFILE=1) ---
       logical :: do_profile = .false.
@@ -99,7 +101,7 @@
       real*8  :: dum
       
       ! Momentum variables
-      real*8, dimension(1-Ng:N+Ng) :: mom
+      real*8, dimension(:), allocatable :: mom
       real*8 :: mom_max,mom_min
 
       ! Convergence stall detection (ported from ATES_extended)
@@ -119,7 +121,7 @@
       ! Newton-diffusion co-convergence (Solver: Newton + He_diffusion):
       ! outer iteration alternating the JFNK steady solve with diffusion
       ! relaxation of the He/H field at the converged wind.
-      real*8, dimension(1-Ng:N+Ng) :: heh_prev, heh_new
+      real*8, dimension(:), allocatable :: heh_prev, heh_new
       real*8  :: heh_drift
       integer :: it_diff, kd
 
@@ -134,29 +136,29 @@
 
       ! Temporal step (global) and cell-by-cell pseudo-time steps
       real*8 :: dt
-      real*8, dimension(1-Ng:N+Ng) :: dt_loc
+      real*8, dimension(:), allocatable :: dt_loc
       
       ! Mdot value
       real*8 :: Mdot
       
       ! Vectors of thermodynamical variables
-      real*8, dimension(1-Ng:N+Ng) :: rho,v,E,p,T,cs
-      real*8, dimension(1-Ng:N+Ng) :: heat,cool
-      real*8, dimension(1-Ng:N+Ng) :: eta 
-      real*8, dimension(1-Ng:N+Ng) :: nhi,nhii
-      real*8, dimension(1-Ng:N+Ng) :: nhei,nheii,nheiii
-      real*8, dimension(1-Ng:N+Ng) :: nheiTR
+      real*8, dimension(:), allocatable :: rho,v,E,p,T,cs
+      real*8, dimension(:), allocatable :: heat,cool
+      real*8, dimension(:), allocatable :: eta
+      real*8, dimension(:), allocatable :: nhi,nhii
+      real*8, dimension(:), allocatable :: nhei,nheii,nheiii
+      real*8, dimension(:), allocatable :: nheiTR
       ! Metal ion densities, 2D: column i = ion i of the species_table
-      real*8, dimension(1-Ng:N+Ng,n_mion) :: nm
-      real*8, dimension(1-Ng:N+Ng) :: ne,n_tot
-      real*8, dimension(1-Ng:N+Ng,n_species) :: f_sp  ! 1-6: H/He(+HeITR), 7-9: CI/II/III, 10-12: OI/II/III, 13-15: NI/II/III, 16-18: MgI/II/III
+      real*8, dimension(:,:), allocatable :: nm
+      real*8, dimension(:), allocatable :: ne,n_tot
+      real*8, dimension(:,:), allocatable :: f_sp  ! 1-6: H/He(+HeITR), 7-9: CI/II/III, 10-12: OI/II/III, 13-15: NI/II/III, 16-18: MgI/II/III
        
       ! Conservative and primitive vectors
-      real*8, dimension(3,1-Ng:N+Ng) :: u,u1,u2,u_old
-      real*8, dimension(3,1-Ng:N+Ng) :: W,WL,WR
+      real*8, dimension(:,:), allocatable :: u,u1,u2,u_old
+      real*8, dimension(:,:), allocatable :: W,WL,WR
           
       ! Flux and source vectors
-      real*8, dimension(3,1-Ng:N+Ng) :: dF,S
+      real*8, dimension(:,:), allocatable :: dF,S
       
       !------------------------------------------------! 
       
@@ -167,6 +169,17 @@
       
       ! Read planetary parameters from file
       call input_read
+
+      ! The number of computational cells N is now final ("Grid cells:" in
+      ! input.inp, 500 without the key). input_read has already allocated the
+      ! grid-sized arrays of global_parameters; allocate the ones owned by the
+      ! radiation modules and the state vectors of this program, all with the
+      ! ghost-padded bounds 1-Ng:N+Ng. They start at zero, as they did when
+      ! they were sized at compile time and lived in static storage.
+      call lya_rt_allocate_arrays
+      call excited_H_allocate_arrays
+      call ioniz_eq_allocate_arrays
+      call allocate_state_vectors
 
       ! Optional parse-dump mode (env EXHALE_PARSE_DUMP=1): write every variable
       ! input_read derived from input.inp (and any base.inp override) to
@@ -1197,6 +1210,76 @@
 102   format (A32,F5.2,A4)
 
       !---------------------------------------------------!
-      
+
+      contains
+
+      subroutine allocate_state_vectors
+      ! Allocate the grid-sized state, flux and diagnostic vectors of the
+      ! marching loop, now that the number of computational cells N is known.
+      ! The bounds 1-Ng:N+Ng (and the leading 3 of the conservative /
+      ! primitive vectors) are the ones the declarations used to carry, and
+      ! the zero start reproduces the static storage they came from.
+
+      allocate(Rres(3,1-Ng:N+Ng))
+      allocate(f_sp_test(1-Ng:N+Ng,n_species))
+      allocate(heat0(1-Ng:N+Ng), cool0(1-Ng:N+Ng), npart0(1-Ng:N+Ng))
+      allocate(mom(1-Ng:N+Ng))
+      allocate(heh_prev(1-Ng:N+Ng), heh_new(1-Ng:N+Ng))
+      allocate(dt_loc(1-Ng:N+Ng))
+      allocate(rho(1-Ng:N+Ng), v(1-Ng:N+Ng), E(1-Ng:N+Ng),                &
+               p(1-Ng:N+Ng), T(1-Ng:N+Ng), cs(1-Ng:N+Ng))
+      allocate(heat(1-Ng:N+Ng), cool(1-Ng:N+Ng))
+      allocate(eta(1-Ng:N+Ng))
+      allocate(nhi(1-Ng:N+Ng), nhii(1-Ng:N+Ng))
+      allocate(nhei(1-Ng:N+Ng), nheii(1-Ng:N+Ng), nheiii(1-Ng:N+Ng))
+      allocate(nheiTR(1-Ng:N+Ng))
+      allocate(nm(1-Ng:N+Ng,n_mion))
+      allocate(ne(1-Ng:N+Ng), n_tot(1-Ng:N+Ng))
+      allocate(f_sp(1-Ng:N+Ng,n_species))
+      allocate(u(3,1-Ng:N+Ng), u1(3,1-Ng:N+Ng), u2(3,1-Ng:N+Ng),          &
+               u_old(3,1-Ng:N+Ng))
+      allocate(W(3,1-Ng:N+Ng), WL(3,1-Ng:N+Ng), WR(3,1-Ng:N+Ng))
+      allocate(dF(3,1-Ng:N+Ng), S(3,1-Ng:N+Ng))
+
+      Rres      = 0.0d0
+      f_sp_test = 0.0d0
+      heat0     = 0.0d0
+      cool0     = 0.0d0
+      npart0    = 0.0d0
+      mom       = 0.0d0
+      heh_prev  = 0.0d0
+      heh_new   = 0.0d0
+      dt_loc    = 0.0d0
+      rho       = 0.0d0
+      v         = 0.0d0
+      E         = 0.0d0
+      p         = 0.0d0
+      T         = 0.0d0
+      cs        = 0.0d0
+      heat      = 0.0d0
+      cool      = 0.0d0
+      eta       = 0.0d0
+      nhi       = 0.0d0
+      nhii      = 0.0d0
+      nhei      = 0.0d0
+      nheii     = 0.0d0
+      nheiii    = 0.0d0
+      nheiTR    = 0.0d0
+      nm        = 0.0d0
+      ne        = 0.0d0
+      n_tot     = 0.0d0
+      f_sp      = 0.0d0
+      u         = 0.0d0
+      u1        = 0.0d0
+      u2        = 0.0d0
+      u_old     = 0.0d0
+      W         = 0.0d0
+      WL        = 0.0d0
+      WR        = 0.0d0
+      dF        = 0.0d0
+      S         = 0.0d0
+
+      end subroutine allocate_state_vectors
+
       ! End of program
       end program Hydro_ioniz
