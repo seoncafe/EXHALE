@@ -1,7 +1,7 @@
 #!/bin/bash
 source /data/opt/oneapi_2025.3.1/setvars.sh >/dev/null 2>&1 || true
 BASE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-CALCP=/nfs/lart4/kiseon/LaRT/combine/LaRT_v2.00/LaRT_calcP.x
+CALCP=/home/kiseon/LaRT/combine/LaRT_v2.00/LaRT_calcJPP.x
 for p in hd209 hd189 wasp121 wasp52; do
   cd "$BASE/$p"
   echo "[$(date +%H:%M)] START $p" >> "$BASE/driver.log"

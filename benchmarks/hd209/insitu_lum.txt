@@ -1,6 +1,6 @@
 # in-situ Ly-alpha luminosity summary for hd209
 # X    L_X[erg/s]      photons/s(=L_X/E_Lya, E_Lya=1.6340e-11 erg)
-rec    1.143961e+23   7.000986e+33
-col    6.285385e+21   3.846625e+32
-tot    1.206815e+23   7.385648e+33
-# rec:col fraction of L_tot = 0.9479 : 0.0521
+rec    2.090289e+23   1.279246e+34
+col    6.475194e+21   3.962787e+32
+tot    2.155041e+23   1.318874e+34
+# rec:col fraction of L_tot = 0.9700 : 0.0300

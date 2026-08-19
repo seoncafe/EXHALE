@@ -3,7 +3,7 @@
 exec < /dev/null 2>&1
 trap "" HUP
 
-EXEC=/nfs/lart4/kiseon/LaRT/combine/LaRT_v2.00/LaRT_calcP.x
+EXEC=/home/kiseon/LaRT/combine/LaRT_v2.00/LaRT_calcJPP.x
 
 HOSTS=lart4,lart3,lart2
 host_file=/tmp/host_file_$RANDOM

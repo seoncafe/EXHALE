@@ -24,6 +24,11 @@ Badnell, N.~R., O'Mullane, M.~G., Summers, H.~P., {et~al.} 2003,
   \bibinfo{title}{{Dielectronic recombination data for dynamic finite-density
   plasmas},} A\&A, 406, 1151
 
+% type= book
+\bibitem[{P.~M. Banks {\&} G. Kockarts(1973)Banks \&
+  Kockarts}]{BanksKockarts1973}
+Banks, P.~M., \& Kockarts, G. 1973, {Aeronomy} (New York: Academic Press)
+
 % type= article
 \bibitem[{{\v G}. Barinovs {et~al.}(2005)Barinovs, van Hemert, Krems, \&
   Dalgarno}]{Barinovs2005}
@@ -60,8 +65,8 @@ Cen, R. 1992, \bibinfo{title}{{A Hydrodynamic Approach to Cosmology:
 \bibitem[{G. Chen {et~al.}(2020)Chen, Casasayas-Barris, Pall{\'e},
   {et~al.}}]{Chen2020}
 Chen, G., Casasayas-Barris, N., Pall{\'e}, E., {et~al.} 2020,
-  \bibinfo{title}{{Detection of H{\alpha}, Na, and K in the atmosphere of
-  WASP-52b},} A\&A, 635, A171
+  \bibinfo{title}{{Detection of Na, K, and H{\alpha} absorption in the
+  atmosphere of WASP-52b using ESPRESSO},} A\&A, 635, A171
 
 % type= article
 \bibitem[{D. Christie {et~al.}(2013)Christie, Arras, \& Li}]{Christie2013}
@@ -69,11 +74,11 @@ Christie, D., Arras, P., \& Li, Z.-Y. 2013, \bibinfo{title}{{Pumping of the
   Ly{\alpha} and the H{\alpha} Transmission Spectrum},} ApJ, 772, 144
 
 % type= article
-\bibitem[{S. Czesla {et~al.}(2024)Czesla, Lamp{\'o}n, Sanz-Forcada,
-  {et~al.}}]{Czesla2024}
-Czesla, S., Lamp{\'o}n, M., Sanz-Forcada, J., {et~al.} 2024,
-  \bibinfo{title}{{The metastable He\,{\sc i} triplet in the transmission
-  spectrum of WASP-121\,b},} A\&A, 692, A230
+\bibitem[{S. Czesla {et~al.}(2024)Czesla, Nail, Lavail, {et~al.}}]{Czesla2024}
+Czesla, S., Nail, F., Lavail, A., {et~al.} 2024, \bibinfo{title}{{The
+  overflowing atmosphere of WASP-121\,b: High-resolution He\,{\sc i}
+  $\lambda$10833\,\AA\ transmission spectroscopy with VLT/CRIRES$^{+}$},} A\&A,
+  692, A230
 
 % type= article
 \bibitem[{T. de~Jong {et~al.}(1980)de~Jong, Boland, \& Dalgarno}]{deJong1980}
@@ -98,6 +103,17 @@ Dere, K.~P., Landi, E., Mason, H.~E., {et~al.} 1997, \bibinfo{title}{{CHIANTI -
 dos Santos, L.~A., Vidotto, A.~A., Vissapragada, S., {et~al.} 2022,
   \bibinfo{title}{{p-winds: An open-source Python code to model planetary
   outflows and upper atmospheres},} A\&A, 659, A62
+
+% type= book
+\bibitem[{B.~T. Draine(2011)Draine}]{Draine2011}
+Draine, B.~T. 2011, {Physics of the Interstellar and Intergalactic Medium}
+  (Princeton, NJ: Princeton University Press)
+
+% type= article
+\bibitem[{B.~T. Draine {\&} F. Bertoldi(1996)Draine \&
+  Bertoldi}]{DraineBertoldi1996}
+Draine, B.~T., \& Bertoldi, F. 1996, \bibinfo{title}{{Structure of Stationary
+  Photodissociation Fronts},} ApJ, 468, 269
 
 % type= article
 \bibitem[{K. France {et~al.}(2016)France, Loyd, Youngblood,
@@ -133,8 +149,8 @@ Huang, C., Koskinen, T., Lavvas, P., \& Fossati, L. 2023,
 % type= article
 \bibitem[{A.~G. Jensen {et~al.}(2012)Jensen, Redfield, Endl,
   {et~al.}}]{Jensen2012}
-Jensen, A.~G., Redfield, S., Endl, M., {et~al.} 2012, \bibinfo{title}{{A Survey
-  of Alkali Lines and H{\alpha} in Exoplanet Atmospheres},} ApJ, 751, 86
+Jensen, A.~G., Redfield, S., Endl, M., {et~al.} 2012, \bibinfo{title}{{A
+  Detection of H{\alpha} in an Exoplanetary Exosphere},} ApJ, 751, 86
 
 % type= article
 \bibitem[{J.~B. Kingdon {\&} G.~J. Ferland(1996)Kingdon \&
@@ -146,8 +162,9 @@ Kingdon, J.~B., \& Ferland, G.~J. 1996, \bibinfo{title}{{Rate Coefficients for
 \bibitem[{J. Kirk {et~al.}(2022)Kirk, Dos~Santos, L{\'o}pez-Morales,
   {et~al.}}]{Kirk2022}
 Kirk, J., Dos~Santos, L.~A., L{\'o}pez-Morales, M., {et~al.} 2022,
-  \bibinfo{title}{{The nightside of WASP-52b: Detection of neutral helium},}
-  AJ, 164, 24
+  \bibinfo{title}{{Keck/NIRSPEC Studies of He\,{\sc i} in the Atmospheres of
+  Two Inflated Hot Gas Giants Orbiting K Dwarfs: WASP-52b and WASP-177b},} AJ,
+  164, 24
 
 % type= article
 \bibitem[{T.~T. Koskinen {et~al.}(2022{\natexlab{a}})Koskinen, Lavvas, Huang,
@@ -219,12 +236,6 @@ Stancil, P.~C., Schultz, D.~R., Kimura, M., {et~al.} 1999,
   O},} A\&AS, 140, 225
 
 % type= article
-\bibitem[{P.~J. Storey {\&} D.~G. Hummer(1995)Storey \&
-  Hummer}]{StoreyHummer1995}
-Storey, P.~J., \& Hummer, D.~G. 1995, \bibinfo{title}{{Recombination line
-  intensities for hydrogenic ions. IV.},} MNRAS, 272, 41
-
-% type= article
 \bibitem[{A.~R. Taylor {et~al.}(2025)Taylor, Koskinen, Argenti,
   {et~al.}}]{Taylor2025}
 Taylor, A.~R., Koskinen, T., Argenti, L., {et~al.} 2025, \bibinfo{title}{{A
@@ -271,6 +282,12 @@ Visscher, C., Lodders, K., \& Fegley, B. 2006, \bibinfo{title}{{Atmospheric
 Voronov, G.~S. 1997, \bibinfo{title}{{A Practical Fit Formula for Ionization
   Rate Coefficients of Atoms and Ions by Electron Impact: Z = 1-28},} Atomic
   Data and Nuclear Data Tables, 65, 1
+
+% type= article
+\bibitem[{A.~J. Watson {et~al.}(1981)Watson, Donahue, \& Walker}]{Watson1981}
+Watson, A.~J., Donahue, T.~M., \& Walker, J. C.~G. 1981, \bibinfo{title}{{The
+  dynamics of a rapidly escaping atmosphere: applications to the evolution of
+  Earth and Venus},} Icarus, 48, 150
 
 % type= article
 \bibitem[{L. Xing {et~al.}(2023)Xing, Yan, \& Guo}]{Xing2023}

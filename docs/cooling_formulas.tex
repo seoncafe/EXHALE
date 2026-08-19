@@ -1,7 +1,7 @@
 %% EXHALE (EXHALE): closed-form metal line-cooling formulas.
 %% Complete reference for the analytic cooling coefficients implemented in
 %% Cool_coeff.f90 (2026-08-12): CHIANTI-fitted resonance lines, Fe II,
-%% C/N/O (with the legacy AIOLOS fits for comparison), and the
+%% C/N/O (with the AIOLOS fits for comparison), and the
 %% ground-term fine-structure statistical equilibrium of C I/C II/N II/O I.
 %% Fit provenance: cooling_data/fit_cooling_formulas.py,
 %% fit_cno_formulas.py, fit_fs_saturation.py; figures by
@@ -17,7 +17,8 @@
 
 \title{Closed-form metal line-cooling formulas in EXHALE}
 \author{Kwang-Il Seon}
-\date{2026-08-12}
+%%\date{2026-08-12}
+\date{Last updated: \docmoddate}
 
 \begin{document}
 \maketitle
@@ -36,8 +37,12 @@ decay); the cooling assembly multiplies by
 $\beta_{\rm esc}\,n_e\,n_{\rm ion}$.  Lower levels are populated in
 Boltzmann equilibrium over the ground-term fine structure where one
 exists.  Two practical conventions matter when reproducing the numbers:
-(i) the code uses $k_B = 1.38\times10^{-16}\,\mathrm{erg\,K^{-1}}$
-(rounded, code-wide); (ii) the transition energies recovered by the fits
+(i) the fits and every number quoted here were made with the rounded
+$k_B = 1.38\times10^{-16}\,\mathrm{erg\,K^{-1}}$, the code-wide value
+until 2026-08-15; the code now carries the CODATA
+$1.380649\times10^{-16}$ (Update\_EXHALE \S62.2), a $4.7\times10^{-4}$
+relative shift that is negligible against the fit errors;
+(ii) the transition energies recovered by the fits
 are the CHIANTI \texttt{.scups} \emph{theoretical} energies, which can
 differ from the observed-wavelength energies by a few percent (e.g.\
 Mg\,II $4.277$ vs.\ $4.43$\,eV) --- using the observed value inflates
@@ -152,7 +157,7 @@ dense base.  The closed-form coronal expression is retained for the
 post-process scalar fallback and matches the low-$n_e$ edge of the 2-D
 table to ${\sim}1.6\%$.
 
-\section{C, N, O: CHIANTI fits vs.\ the legacy AIOLOS formulas}
+\section{C, N, O: CHIANTI fits vs.\ the AIOLOS formulas}
 \label{sec:cno}
 
 The C/N/O coolants inherited from AIOLOS (\texttt{photochem.cpp}; no
@@ -182,7 +187,7 @@ oxygen fits however deviate by 40--70\% across the wind-launch region
 ($1$--$3\times10^4$\,K), and nitrogen --- a non-negligible coolant
 around $2\times10^4$\,K --- was absent entirely.  The runtime key
 \texttt{cno\_cool} in \texttt{metals.inp} selects the source
-(\texttt{1} = CHIANTI fits, the default; \texttt{0} = legacy AIOLOS).
+(\texttt{1} = CHIANTI fits, the default; \texttt{0} = AIOLOS).
 
 \begin{table}[htbp]
 \centering\small
@@ -220,7 +225,7 @@ O\,II (0.2\%) & $A_i$ & 1.768($-$17) & 8.071($-$18) & 2.344($-$16) & 8.789($-$16
 \centering
 \includegraphics[width=0.92\textwidth]{figures/cool_cno_compare.pdf}
 \caption{C/N/O line cooling: CHIANTI v11 (solid blue), the new
-closed-form fits (black dashed), and the legacy AIOLOS formulas (red
+closed-form fits (black dashed), and the AIOLOS formulas (red
 dotted; absent for nitrogen).  Deviation strips show the percentage
 difference from CHIANTI; the grey band is $\pm5\%$.}
 \label{fig:cno}
@@ -307,7 +312,29 @@ that FS line and enters as $A_{ul}\to\beta_{ul}A_{ul}$ \emph{inside}
 Eq.~(\ref{eq:se}), not as a factor on Eq.~(\ref{eq:wfs}).  That is the
 physically correct place: in the subcritical limit the cooling is set by
 the collisional excitation rate and is independent of $\beta$, while in
-the saturated limit the escaping flux is proportional to $\beta$.  The
+the saturated limit the escaping flux is proportional to $\beta$.
+The functional form is the Doppler-core single-flight escape probability
+of Hollenbach \& McKee (1979) and de Jong, Boland \& Dalgarno (1980),
+per face,
+\begin{equation}
+\beta_1(\tau) \;=\;
+\begin{cases}
+  \dfrac{1-e^{-a\tau}}{2a\tau}, & \tau < \tau_c,\\[8pt]
+  \dfrac{1}{4\tau\sqrt{\ln\!\left(\tau/\sqrt{\pi}\right)}}, & \tau \ge \tau_c,
+\end{cases}
+\qquad a = 2.34,
+\label{eq:beta1}
+\end{equation}
+with $\tau$ the line-center optical depth from the cell to that face;
+the two branches meet continuously in value at
+$\tau_c=\sqrt{\pi}\,e^{a^2/4}\simeq 6.97$ (the residual slope kink there
+is below 1\%), and $\beta_1(0)=1/2$ --- half of the photons leave through
+the near face.  The escape probability of a cell is the two-face sum,
+$\beta_{ul}=\beta_1(\tau_{\rm up})+\beta_1(\tau_{\rm dn})$
+(\texttt{line\_escape\_probability\_one\_face},
+\texttt{Cool\_coeff.f90}); with \texttt{Base IR field} on, the downward
+face also carries the blackbody photon occupation number of the
+atmosphere below (\texttt{docs/lower\_atmosphere\_coupling}).  The
 opacity of each line uses the same atomic data and the ground-term
 Boltzmann lower-level population.  $\Lambda_{\rm rem}$ is left optically
 thin.

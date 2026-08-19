@@ -30,7 +30,7 @@ Typical use
 The scattering rate is requested as a cylindrical 2D grid (``geometry_JPa=2``): the
 stellar illumination breaks spherical symmetry, so P_alpha(rho,z) is axisymmetric about
 the star-planet axis -- the grid needed to build the 2D H(2p) population for the
-H-alpha transit.  Build LaRT with ``make CALCPnew=1`` (-> LaRT_calcP.x) to populate it.
+H-alpha transit.  Build LaRT with ``make CALCPnew=1`` (-> LaRT_calcJPP.x) to populate it.
 """
 
 import os
@@ -98,7 +98,7 @@ IN_TEMPLATE = """&parameters
  ! Incident stellar Ly-alpha: double-Gaussian, peaks +/-{m:g} km/s,
  ! width(sigma) {s:g} km/s (Huang 2017 / Yan 2022).
  ! distance2cm = R_p, so all radii/lengths are in R_p.
- ! Build LaRT with CALCPnew=1 (-> LaRT_calcP.x) for the scattering rate P_alpha.
+ ! Build LaRT with CALCPnew=1 (-> LaRT_calcJPP.x) for the scattering rate P_alpha.
  !=====================================================================
 
  par%no_photons  = {nphotons:g}
@@ -189,7 +189,7 @@ mpirun -machinefile $host_file $EXEC {infile}
 
 def build(run_dir, outdir, name=None, m_kms=74.0, s_kms=49.0, width_is_fwhm=False,
           rmax=None, ngrid=201, nwav=161, nphotons=1e7, geometry_jpa=2,
-          exe='/home/kiseon/LaRT/combine/LaRT_v2.00/LaRT_calcP.x',
+          exe='/home/kiseon/LaRT/combine/LaRT_v2.00/LaRT_calcJPP.x',
           hosts='lart4,lart3,lart2', distance_pc=174.0, adv=True, write_run_sh=True):
     """Build a complete LaRT spherical-illumination input set from an EXHALE run."""
     run_dir = os.path.abspath(run_dir)
@@ -251,7 +251,7 @@ def main():
     p.add_argument('--nphotons', type=float, default=1e7, help='number of MC photons')
     p.add_argument('--geometry_jpa', type=int, default=2, choices=(1, 2, 3),
                    help='P_alpha output geometry: 1 spherical, 2 cylindrical, 3 full 3D')
-    p.add_argument('--exe', default='/home/kiseon/LaRT/combine/LaRT_v2.00/LaRT_calcP.x')
+    p.add_argument('--exe', default='/home/kiseon/LaRT/combine/LaRT_v2.00/LaRT_calcJPP.x')
     p.add_argument('--hosts', default='lart4,lart3,lart2')
     p.add_argument('--distance_pc', type=float, default=174.0, help='system distance [pc]')
     p.add_argument('--eq', action='store_true', help='use eq (non-_adv) EXHALE files')

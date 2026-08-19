@@ -1,6 +1,6 @@
 # in-situ Ly-alpha luminosity summary for hd189
 # X    L_X[erg/s]      photons/s(=L_X/E_Lya, E_Lya=1.6340e-11 erg)
-rec    1.725393e+24   1.055932e+35
-col    3.094625e+24   1.893896e+35
-tot    4.820019e+24   2.949828e+35
-# rec:col fraction of L_tot = 0.3580 : 0.6420
+rec    2.851616e+24   1.745175e+35
+col    1.899470e+24   1.162466e+35
+tot    4.751086e+24   2.907641e+35
+# rec:col fraction of L_tot = 0.6002 : 0.3998

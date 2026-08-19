@@ -10,7 +10,8 @@ plt.rcParams['font.size'] = 10
 plt.rcParams['axes.grid'] = True
 plt.rcParams['grid.alpha'] = 0.3
 
-here = '/nfs/mocafe/kiseon/RT_Codes/Exoplanetary_Atmospheres/EXHALE/docs/version_compare/'
+import os
+here = os.path.dirname(os.path.abspath(__file__)) + '/'
 
 # planet: (v1 tag, v2 tag, He/H input, rmax, list of (name,cols) metals present)
 metcol = dict(C=[7, 8, 9], N=[13, 14, 15], O=[10, 11, 12], Mg=[16, 17, 18],

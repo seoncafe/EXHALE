@@ -1,6 +1,6 @@
 # in-situ Ly-alpha luminosity summary for wasp121
 # X    L_X[erg/s]      photons/s(=L_X/E_Lya, E_Lya=1.6340e-11 erg)
-rec    5.346404e+26   3.271973e+37
-col    7.007578e+26   4.288604e+37
-tot    1.235398e+27   7.560577e+37
-# rec:col fraction of L_tot = 0.4328 : 0.5672
+rec    5.736049e+26   3.510434e+37
+col    5.285311e+26   3.234584e+37
+tot    1.102136e+27   6.745018e+37
+# rec:col fraction of L_tot = 0.5204 : 0.4796

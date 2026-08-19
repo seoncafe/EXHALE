@@ -1203,8 +1203,8 @@
    ! and prints every coefficient below.
    !   levels, A values, electron Upsilon: CHIANTI v11.0.2 elvlc/wgfa/scups
    !   k_H (H-atom de-excitation):
-   !     C I, N II  Yan, Stancil, Satta, Wang, Gu & Forrey (2022),
-   !                MNRAS 518, 6004, Tables 1 and 2 (10-1e4 K)
+   !     C I, N II  Yan & Babb (2023), MNRAS 518, 6004, Tables 1 and 2
+   !                (10-1e4 K); verified against ADS 2023MNRAS.518.6004Y
    !     O I        Abrahamsson, Krems & Dalgarno (2007), ApJ 654, 1171
    !                (20-1000 K, as tabulated in LAMDA oatom.dat)
    !     C II       Barinovs, van Hemert, Krems & Dalgarno (2005),

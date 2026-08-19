@@ -37,9 +37,10 @@ scheme (HLLC/Roe fluxes, PLM and WENO3 reconstruction) and relaxes to a stationa
 transonic wind, with an optional Jacobian-free Newton--Krylov (JFNK) solver that drives
 the discrete steady residual to machine-relevant levels. The thermal and ionization
 state is set by a coupled nonlinear system for hydrogen, helium, and the trace metals
-C, N, O, Mg, Ca, Na, and Fe, solved with an analytic-Jacobian Newton iteration and a
-MINPACK fallback, using Badnell radiative and dielectronic recombination, Voronov
-collisional ionization, and Kingdon \& Ferland charge exchange with hydrogen. Cooling
+C, N, O, Mg, Ca, Na, and Fe, solved with a MINPACK dogleg iteration --- or, for the
+systems for which an analytic Jacobian is written, a Newton iteration with that
+fallback --- using Badnell radiative and dielectronic recombination, Voronov
+collisional ionization, and the Huang et al.\ charge-exchange compilation. Cooling
 includes \Lya, recombination, free--free, and closed-form metal-line coefficients fitted
 to CHIANTI. \EXHALE\ solves the metastable $\HeTS$ population that produces the
 \mbox{He\,\textsc{i}} 10830~\AA\ triplet, builds the non-LTE $n=2$ hydrogen population
@@ -121,13 +122,15 @@ application to each planet (scaffold), and Section~\ref{sec:summary} summarizes.
 radial momentum, and total energy of a single bulk fluid, with source terms for gravity,
 tidal (Roche) and centrifugal forces, photoionization heating, and radiative cooling.
 The discretization is a finite-volume Godunov method inherited from \ATES: fluxes are
-computed with an approximate Riemann solver (HLLC by default; Roe and local
-Lax--Friedrichs are also available), the interface states are reconstructed either with a
-piecewise-linear method (PLM, MC-limited) or with a third-order essentially
-non-oscillatory scheme (ESWENO3), and time integration uses a strong-stability-preserving
-Runge--Kutta update at CFL number $0.6$ \citep{Caldiroli2021,Salz2016}. The grid has 500
-cells plus ghost cells on a mixed uniform--stretched mesh spanning the base radius to the
-outer boundary. The spacing of the uniform region is a runtime quantity, because it sets
+computed with an approximate Riemann solver (HLLC in the runs presented here; Roe and local
+Lax--Friedrichs are also available, and the choice is a required input key with no compiled
+default), the interface states are reconstructed either with a piecewise-linear method
+(PLM, MC-limited) or with a third-order weighted ENO scheme (the energy-stable ESWENO3
+variant; input token \texttt{WENO3}), and time integration uses a strong-stability-preserving
+Runge--Kutta update at CFL number $0.6$ \citep{Caldiroli2021,Salz2016}. The grid is a
+mixed uniform--stretched mesh spanning the base radius to the outer boundary, with 500
+cells plus ghost cells in the models presented here. Both the cell count and the
+spacing of the uniform region are runtime quantities; the latter matters because it sets
 the number of cells per base density scale height $H=k_BT/(\mu g)$, and a base resolved by
 too few cells supports a stationary cell-to-cell entropy (contact) mode that the
 non-dissipative Riemann fluxes do not damp. The code reports $H(T_{\rm eq})/\Delta r$ at
@@ -149,11 +152,13 @@ with a two-stage schedule that marches first with PLM (robust) and then with WEN
 (low-diffusion) to a final tolerance $du_{\rm th}=10^{-3}$. This mass-flux criterion has
 two known blind spots: it cannot detect a uniform level drift of an already-flat profile,
 and on the strongly driven planets it dips transiently below threshold long before the
-wind settles, so a premature snapshot can be reported as steady. \EXHALE\ therefore adds
-(i) a level-stability gate on the windowed mean of $|\rho v r^2|$ and (ii) a diagnostic
-that evaluates the finite-volume steady residual $\mathbf{R}$ directly (mass, momentum,
-and heating-minus-cooling energy balance), which ranks candidate states independently of
-$du$ and can serve as the convergence test.
+wind settles, so a premature snapshot can be reported as steady. \EXHALE\ therefore
+provides two further gates, both opt-in and disabled by default so that a run without them
+reproduces the legacy stop: (i) a level-stability gate on the windowed mean of
+$|\rho v r^2|$ and (ii) a diagnostic that evaluates the finite-volume steady residual
+$\mathbf{R}$ directly (mass, momentum, and heating-minus-cooling energy balance), which
+ranks candidate states independently of $du$ and, when a tolerance is supplied, replaces
+$du$ as the convergence test.
 
 For quantitative mass-loss rates \EXHALE\ provides a direct steady-state solver that
 finds the root of the discrete residual, $F(Y)=0$, where $Y=(\rho,\rho v,E)$ on the
@@ -165,8 +170,11 @@ graph-colored stencil and factored with LAPACK, preconditions a matrix-free GMRE
 Jacobian--vector products capture the weakly non-local radiation response. Robust
 convergence required a smooth $\ell_2$ line-search merit, diagonal scaling across the
 several decades spanned by the base-to-wind density contrast, a differentiable base
-velocity valve, frozen WENO smoothness weights during the
-inner solve, and a non-monotone (Grippo) step acceptance. The solver reaches steady
+velocity valve, WENO smoothness weights frozen at the current iterate while the inner
+Newton model is built (the standard lagged-weights remedy, which keeps the strongly
+nonlinear weight response out of the Jacobian and the Krylov products) while the line
+search itself judges trial states on the residual with the weights recomputed, and a
+non-monotone (Grippo) step acceptance. The solver reaches steady
 residual levels unattainable by time marching at a small fraction of the cost; a
 best-iterate/fail-fast guard falls back to plain marching if the Newton basin is not
 reached, so an unconverged state cannot be mistaken for the answer.
@@ -188,8 +196,12 @@ density, $p_{\rm gh}=(n_{\rm tot}+n_e)_{\rm bc}\,T_1$, i.e.\ $dT/dr=0$ at the ba
 only the base density is then anchored. The $T_{\rm eq}$ pin remains the default, and the
 choice matters only for a planet whose base settles far from $T_{\rm eq}$
 (Section~\ref{sec:hd189}).
-The upper boundary is supersonic free outflow, imposed by zero-gradient or linear
-extrapolation at the outer (Roche-lobe) radius. Within physically realistic ranges the
+The upper boundary is free outflow, imposed as a zero-gradient copy of the last physical
+cell (linear extrapolation when the reconstruction is WENO3); no Mach condition is tested
+there, and whether the flow leaves supersonically is an outcome of the solution rather
+than a boundary condition. The outer radius defaults to the Hill/$L_1$ radius of the Roche
+potential, and an explicit outer radius extends the domain past it while keeping the tidal
+potential (as for WASP-52~b, Section~\ref{sec:wasp52}). Within physically realistic ranges the
 mass-loss rate is insensitive to the base density, temperature, and ionization fraction
 but scales steeply with the base radius, $\Mdot\propto\Rp^3$
 \citep{MurrayClay2009,Salz2016}; \EXHALE\ therefore treats the base radius (the pressure
@@ -203,23 +215,24 @@ photoelectric heating. \EXHALE\ integrates each species' energy-dependent
 photoionization cross section against the local stellar spectrum on a fixed energy grid.
 The spectrum may be read as a two-column (wavelength, flux) file --- for example a
 MUSCLES spectral energy distribution scaled to the orbital distance \citep{France2016} ---
-or represented as a broken power law over an EUV band and an X-ray band normalized to the
-band luminosities. Because the one-dimensional model is spherically symmetric and cannot
-resolve the day--night illumination geometry, the ionizing flux entering the
-hydrodynamics is reduced by a redistribution factor (the ``Rate/2 + Mdot/2''
-approximation), valid as an average over the irradiated hemisphere; diagnostics that
-model the one-sided illumination explicitly (e.g.\ the \Lya\ transfer of
-Section~\ref{sec:hets}) instead use the full incident flux, to avoid double-counting the
-geometry.
+or represented as a power law with a single spectral index but separate EUV and X-ray
+normalizations, each fixed by its band luminosity. Because the one-dimensional model is
+spherically symmetric and cannot resolve the day--night illumination geometry, the
+ionizing flux entering the hydrodynamics is reduced by a redistribution factor (the
+``Rate/2 + Mdot/2'' approximation), valid as an average over the irradiated hemisphere.
+The same factor multiplies the stellar \Lya\ beam that pumps the $n=2$ hydrogen
+population and the Balmer-continuum rates built on it (Section~\ref{sec:hets}), so the
+excited-state diagnostics carry the same hemisphere average as the ground-state EUV
+rather than a second, inconsistent geometry.
 
 The photoionization cross sections combine exact and fitted forms. Hydrogen and
 \mbox{He\,\textsc{ii}} use the analytic hydrogenic cross section with the Gaunt-factor
 correction, exact at threshold ($6.3/Z^2$~Mb). The \mbox{He\,\textsc{i}} ground state
 uses the single-shell analytic fit of \citet[VFKY96]{Verner1996} by default, which agrees
 with the legacy two-term \ATES\ fit to within $14\%$ over $24.6$--$500$~eV; the metals
-and \mbox{He\,\textsc{ii}} use the same VFKY96 functional form. The metastable $\HeTS$
-level --- the lower state of the 10830 triplet, whose threshold lies at $4.77$~eV in the
-mid-ultraviolet --- is not in the Verner tabulation, so it is represented by two VFKY96
+use the same VFKY96 functional form. The metastable $\HeTS$
+level --- the lower state of the 10830 triplet, whose threshold lies at $\approx4.8$~eV in
+the mid-ultraviolet --- is not in the Verner tabulation, so it is represented by two VFKY96
 terms (the $2s$-shell channel and the resonance-averaged \mbox{He\,\textsc{ii}} $n=2$
 channel) joined by a log-linear bridge across the Cooper minimum. This construction
 reproduces the Norcross (1971) tabulation shipped with \texttt{p-winds}
@@ -237,9 +250,15 @@ summed over every absorber the ionization network carries: \mbox{H\,\textsc{i}},
 photoionizable trace metals (C, N, O, Mg, Ca, Na, and Fe ions); molecular runs add an
 \mbox{H$_2$} photoionization term. The photoelectric heating efficiency is not unity: a
 fraction of each primary photoelectron's energy drives secondary ionizations rather than
-heating the gas, and \EXHALE\ reduces the deposited heat by that fraction following the
-ionized-fraction partition of Shull \& van Steenberg (1985), applied as an optional,
-staged activation, rather than treating the secondary ionizations as a separate channel.
+heating the gas. For photoelectrons more than $40$~eV above threshold \EXHALE\ therefore
+applies the ionized-fraction partition of Shull \& van Steenberg (1985) on both sides:
+the deposited heat is scaled by the heating fraction $f_{\rm heat}(x)$, and the secondary
+\mbox{H\,\textsc{i}} and \mbox{He\,\textsc{i}} ionizations that the remaining energy pays
+for are added to the corresponding photoionization rates. The partition is on by default.
+Because from a cold initial condition its base feedback amplifies the startup transient
+into a runaway, it is activated in stages --- the wind is first converged without it, the
+coupling is then switched on, and the run is converged again --- so what is staged is when
+it is applied, not whether.
 
 Beyond the direct photoelectric heating, \EXHALE\ tracks four reprocessing channels that
 return trapped line and recombination energy to the gas. Balmer-continuum photoelectric
@@ -262,19 +281,26 @@ channel sum reproduces the total heating that enters the hydrodynamics
 The ionization state is computed in photoionization equilibrium as a single coupled
 nonlinear algebraic system that includes hydrogen, helium, and the trace metals C, N, O,
 Mg, Ca, Na, and Fe, each carried through its relevant ionization stages, together with
-the metastable $\HeTS$ level and the excited $n=2$ hydrogen population. Solving all
+the metastable $\HeTS$ level; the excited $n=2$ hydrogen population is solved in a
+lagged-explicit outer iteration and enters the system as a frozen source. Solving all
 species simultaneously (rather than element by element) captures the shared free-electron
 density and the charge-exchange coupling between hydrogen and the metals. The system is
-solved with an analytic-Jacobian Newton iteration and a MINPACK \texttt{hybrd1} dogleg
-fallback for the cells where the Newton step leaves the physical region; the analytic
-Jacobian carries the great majority of cells and the fallback guarantees robustness.
+solved with the MINPACK \texttt{hybrd1} dogleg method. For the systems for which an
+analytic Jacobian has been written --- hydrogen alone, H/He, and H/He with metals --- a
+Newton iteration with that Jacobian is used instead, falling back to \texttt{hybrd1}
+whenever it fails to converge; the metastable-triplet and molecular systems keep the
+MINPACK solve throughout, so the models presented here, which all carry $\HeTS$, are
+solved by \texttt{hybrd1}.
 
 The reaction rates are drawn from standard atomic-data sources, not fitted internally:
 radiative and dielectronic recombination from the Badnell data
-\citep{Badnell2006rr,Badnell2003dr} (with Storey \& Hummer hydrogenic recombination where
-appropriate; \citealt{StoreyHummer1995}), collisional ionization from the
-\citet{Voronov1997} fits, and charge exchange between hydrogen and the metals from
-\citet{KingdonFerland1996}, taken in the tabulation of \citet{Huang2023}. The
+\citep{Badnell2006rr,Badnell2003dr}, collisional ionization from the
+\citet{Voronov1997} fits, and charge exchange between hydrogen and the metals from the
+compilation of \citet[][their Table 4]{Huang2023}, whose individual rate coefficients
+come from a range of sources, \citet{KingdonFerland1996} among them. Charge exchange
+between helium and hydrogen is applied in every system that carries helium, and the
+metal--helium and metal--metal reactions of the same table are available as an option.
+The
 trace-metal abundances are set at runtime through a
 configuration file, so a model can be run with or without metals without recompiling.
 Because the metals contribute to the mass, electron, and particle budgets, they are
@@ -319,8 +345,9 @@ cooling removes the ionization potential in each ionizing collision of \mbox{H\,
 \mbox{He\,\textsc{i}}, and \mbox{He\,\textsc{ii}}. Radiative recombination cooling of
 \mbox{H\,\textsc{ii}}, \mbox{He\,\textsc{ii}}, and \mbox{He\,\textsc{iii}} uses case-B
 rates (Hui \& Gnedin 1997). Free--free (bremsstrahlung) emission scales as
-$T^{0.55}\,n_e n_{\rm ion}$ and sums the contributions of hydrogen, helium, and the metal
-ions, using the free--free Gaunt factor of van Hoof et al. The metastable helium level
+$T^{1/2}\,n_e n_{\rm ion}$ times the free--free Gaunt factor of van Hoof et al.,
+interpolated from their tabulation, and sums the contributions of hydrogen, helium, and
+the metal ions. The metastable helium level
 contributes a $2^{3}S\to2^{3}P$ 10830 collisional-excitation cooling term. Metal-line
 emission is treated as described next.
 
@@ -357,9 +384,10 @@ collapses onto the coronal within-term value as the densities vanish, and becaus
 collision rates carry both electron and hydrogen-atom terms it restores the
 hydrogen-collision channel that the electron-only coronal curves omit; its high-density
 limit reproduces the exact multilevel LTE emission. The hydrogen de-excitation rates are
-fits to published quantum scattering calculations
-\citep{Abrahamsson2007,Barinovs2005,YanBabb2023} in place of the approximate constants used
-previously.
+fits to published quantum scattering calculations --- \mbox{O\,\textsc{i}} from
+\citet{Abrahamsson2007}, \mbox{C\,\textsc{ii}} from \citet{Barinovs2005}, and
+\mbox{C\,\textsc{i}} and \mbox{N\,\textsc{ii}} from \citet{YanBabb2023} --- in place of the
+approximate constants used previously.
 
 All eight fine-structure lines with a transition probability are additionally allowed to be
 optically thick. Each line-center optical depth is accumulated over the column between the
@@ -397,10 +425,14 @@ also loses energy dynamically. Adiabatic (expansion) cooling --- the $P\,dV$ wor
 the expanding wind --- is carried directly by the hydrodynamics rather than as a radiative
 loss, and it is typically the dominant energy sink in the outer wind, where it becomes
 comparable to or exceeds the radiative terms; the structure figures show it as a separate
-curve. Thermal conduction and viscous dissipation are omitted by default: the viscosity
-coefficient defaults to zero and thermal conduction is deferred, so neither enters the
-present models. Table~\ref{tab:energy} collects all of the heating, cooling, and
-dynamical channels together with their references.
+curve. Thermal conduction and viscous dissipation are implemented --- the conductivity is
+the atomic-hydrogen form
+$\kappa(T)=4.45\times10^{4}\,(T/1000\,{\rm K})^{0.7}\,{\rm erg\,cm^{-1}\,s^{-1}\,K^{-1}}$
+of \citet{Watson1981}, with the viscosity tied to it by the monatomic Eucken relation, and
+both are evaluated by the same routine in the marching loop and in the steady residual ---
+but both are off by default (the \texttt{Viscosity:} and \texttt{Conduction:} input keys),
+so neither enters the models presented here. Table~\ref{tab:energy} collects all of the
+heating, cooling, and dynamical channels together with their references.
 
 \begin{deluxetable}{ll}
 \tablecaption{Heating, cooling, and dynamical energy channels in \EXHALE. Each radiative
@@ -412,10 +444,11 @@ cooling that enter the hydrodynamics.\label{tab:energy}}
 \cutinhead{Heating}
 Photoionization, \mbox{H\,\textsc{i}} & photoelectron energy above threshold \\
 Photoionization, \mbox{He\,\textsc{i}}, \mbox{He\,\textsc{ii}} & \\
-Photoionization, $\HeTS$ metastable & mid-UV, $>4.77$~eV \\
+Photoionization, $\HeTS$ metastable & mid-UV, $\gtrsim4.8$~eV \\
 Photoionization, C/N/O/Mg/Ca/Na/Fe ions & \\
 Photoionization, $\mathrm{H_2}$ & molecular runs \\
-Secondary-ionization efficiency reduction & Shull \& van Steenberg 1985 \\
+Lyman--Werner photodissociation, $\mathrm{H_2}$ & \citet{DraineBertoldi1996};
+  molecular runs \\
 Balmer-continuum photoelectric ($n=2$ H) & \citet{Christie2013,Huang2017} \\
 \Lya\ de-excitation heating & \citet{Huang2023}; Sec.~\ref{sec:hets} \\
 He recombination-coupling heating of H & \\
@@ -426,13 +459,13 @@ Collisional excitation, \mbox{H\,\textsc{i}} (\Lya) & \citet{Cen1992,Black1981} 
 Collisional excitation, \mbox{He\,\textsc{i}}, \mbox{He\,\textsc{ii}} & \\
 Collisional ionization, H\,\textsc{i}/He\,\textsc{i}/He\,\textsc{ii} & \\
 Radiative recombination (case B) & Hui \& Gnedin 1997 \\
-Free--free, H + He + metal ions & van Hoof Gaunt factor \\
+Free--free, H + He + metal ions & $T^{1/2}$ $\times$ van Hoof Gaunt factor \\
 $\HeTS$ metastable $2^{3}S\to2^{3}P$ 10830 & \\
-Metal lines, C/N/O/Mg/Ca/Na/Si/K/S/Fe & \citet{Dere1997,DelZanna2021} \\
+Metal lines, C/N/O/Mg/Ca/Na/Fe & \citet{Dere1997,DelZanna2021} \\
 $\mathrm{H_3^+}$ ro-vibrational & Miller et al. 2013; molecular runs \\
 \cutinhead{Dynamical (energy equation)}
 Adiabatic (expansion) cooling & $P\,dV$ work of the wind \\
-Thermal conduction, viscous dissipation & omitted by default \\
+Thermal conduction, viscous dissipation & \citet{Watson1981}; off by default \\
 \enddata
 \end{deluxetable}
 
@@ -456,7 +489,8 @@ dense base.
 
 The Balmer lines absorb from the $n=2$ hydrogen population, which is built following the
 non-LTE rate equilibrium of \citet{Christie2013}: collisional excitation, the recombination
-cascade (at a rate $\alpha_{2\ell}\,n_e n_{\rm H\,\textsc{ii}}$), two-photon decay,
+cascade (at a rate $\alpha_{2\ell}\,n_e n_{\rm H\,\textsc{ii}}$, with the case-B rate and
+its $2s$/$2p$ split taken from \citealt{Draine2011}), two-photon decay,
 $\ell$-mixing between $2s$ and $2p$, and --- dominantly ---
 \Lya\ radiative pumping $B_{1s\to2p}\bar{J}_{\Lya}$. Rather than a full Monte Carlo, which
 is intractable at the \Lya\ line-center optical depths of a hot Jupiter
@@ -468,7 +502,19 @@ limit $a\tau_0\gg1$ that applies here \citep{Neufeld1990}. It combines an intern
 term (recombination cascade plus electron-impact excitation) closed on the $2p$ balance and
 a $(1-\beta)$ factor that prevents the source function from diverging as the gas ionizes in
 the outer wind, plus a trapped stellar-beam term whose penetration through the broad
-stellar-line wings uses the stellar line width. The $2p$ balance is closed against
+stellar-line wings uses the stellar line width. Two quantities enter that stellar term and
+take the same values in all four models presented here. The stellar \Lya\ half-width is
+$\Delta v_\star=70$~km\,s$^{-1}$ (input key \texttt{Lya stellar halfwidth}), the broad
+plateau of \citet{Huang2017}, and it sets how deep the beam reaches through the wings: the
+penetrating fraction is $\mathcal{T}_\star=\mathrm{erfc}\!\left[x_1 v_{\rm th}/
+(\sqrt{2}\,\Delta v_\star)\right]$ at the wing-escape frequency $x_1$, with $v_{\rm th}$
+the local thermal speed. The scattered beam then builds up
+above free streaming by a bounded factor $1+(b-1)(1-\beta)\mathcal{T}_\star$ with $b=5$
+(\texttt{Lya stellar boost}), which tends to $b$ where the beam is fully trapped and to
+unity both in the thin outer wind and at the penetration edge, where the unbounded $1/\beta$
+buildup would diverge. The value $b=5$ is calibrated against Figure~11 of \citet{Huang2023}
+rather than derived, and is the one tuned quantity in the \Lya\ field. The $2p$ balance is
+closed against
 $A_{2p\to1s}\beta + D$, with $\beta=\pi^{-1/4}\sqrt{a/\tau}$ the wing escape probability
 and $D$ collecting the channels that destroy a trapped \Lya\ photon without re-emitting it
 --- collisional de-excitation, photoionization of $n=2$, and $\ell$-mixing followed by
@@ -478,13 +524,20 @@ default, as the correction to the one-way coronal excitation rate that supplies 
 \mbox{H\,\textsc{i}} line cooling. No escape-probability factor is applied to that cooling
 itself, which appears to be the right form here: measured on these models, of order $98\%$
 or more of the trapped \Lya\ photons escape, and the collisional destruction that could
-suppress the collisionally driven cooling reaches at most ${\sim}0.06\%$. An optional Sobolev (wind-velocity) escape term is
-included; for a hot Jupiter
-it changes $\bar{J}_{\Lya}$ by less than a percent because the velocity gradient and the
-\Lya\ opacity scale together. For percent-level \Ha\ work under one-sided illumination,
-where the pumping field is only cylindrically symmetric, \EXHALE\ can instead ingest a
-two-dimensional scattering-rate grid from the \texttt{LaRT} Monte Carlo code
-\citep{SeonKim2020}.
+suppress the collisionally driven cooling reaches at most ${\sim}0.06\%$. A Sobolev
+(wind-velocity) escape channel is combined with the static wing escape unconditionally; for
+a hot Jupiter it changes $\bar{J}_{\Lya}$ by less than a percent because the velocity
+gradient and the \Lya\ opacity scale together.
+
+Two routes to an externally computed field are available. The escape model itself can read
+a tabulated radial profile $\bar{J}_{\Lya}(r)$ in place of the in-line closure (input key
+\texttt{Jlya RT file}), which leaves the wind solution spherically symmetric. For
+percent-level \Ha\ work under one-sided illumination, where the pumping field is only
+cylindrically symmetric, a separate post-processor instead reads a two-dimensional
+scattering-rate grid $P_\alpha(\varpi,z)$ from the \texttt{LaRT} Monte Carlo code
+\citep{SeonKim2020}, rebuilds $n_{2p}(\varpi,z)$ from it, and integrates the \Ha\ transit
+along the line of sight; the wind structure it reads is still the spherical one, and the
+\mbox{He\,10830} transit, set by the spherically symmetric $\HeTS$ balance, is unaffected.
 
 \subsection{Diffusive separation}
 \label{sec:diffusion}
@@ -494,7 +547,11 @@ hydrogen wind, so the escaping He/H ratio can fall below the bulk abundance with
 increasing altitude. \EXHALE\ retains its single bulk-momentum formulation but represents
 this separation with a molecular- plus eddy-diffusion term that lets the He/H ratio vary
 with radius, in the spirit of \citet{Taylor2025} and consistent with the multi-fluid
-result of \citet{Xing2023}. The homopause where the diffusive separation sets in is
+result of \citet{Xing2023}. The binary molecular diffusion coefficient is the
+He-in-H expression of \citet{BanksKockarts1973},
+$D=1.52\times10^{18}\,(1/m_{\rm H}+1/m_{\rm He})^{1/2}\,T^{1/2}/n_{\rm tot}
+\;{\rm cm^{2}\,s^{-1}}$, and a metal in hydrogen uses the same form with its own mass.
+The homopause where the diffusive separation sets in is
 controlled by an eddy-diffusion coefficient that can be supplied from the lower-atmosphere
 model (Section~\ref{sec:lower}). The same framework extends to He/metal separation. This
 altitude-dependent composition is what the transit post-processor requires for a
@@ -538,10 +595,10 @@ must be checked against the escape model's own temperature structure.
 
 \EXHALE\ inherits its hydrodynamic core and boundary/initial-condition skeleton from
 \ATES\ \citep{Caldiroli2021,Caldiroli2022}: the Godunov finite-volume scheme, the SSPRK
-time integrator, the HLLC default with Roe and LLF alternatives, PLM and ESWENO3
+time integrator, the choice of HLLC, Roe, and LLF fluxes, PLM and ESWENO3
 reconstruction, the 500-cell mixed grid, the two-stage PLM$\to$WENO3 relaxation to
 $\Delta\Mdot/\Mdot<10^{-3}$, the fixed-reservoir lower boundary with the one-way velocity
-valve, the supersonic-outflow upper boundary, and the cold neutral isothermal initial
+valve, the zero-gradient outflow upper boundary, and the cold neutral isothermal initial
 condition with a linear velocity seed. The ionization is likewise solved in
 photoionization equilibrium with a MINPACK method, and ion advection is applied as a
 post-processing step. What \EXHALE\ adds is in the microphysics and in the steady-state
@@ -562,13 +619,17 @@ Ionization solve & MINPACK dogleg & Analytic-Jacobian Newton + MINPACK fallback 
 Recombination & Standard tables & Badnell RR + DR \\
 Cooling & \Lya, recomb, free--free (H/He) & Adds CHIANTI metal-line fits (with
   fine-structure saturation) \\
-He triplet & Not solved & $\HeTS$ metastable network in-loop \\
+He triplet & $\HeTS$ in the equilibrium network & Same, extended: coupled to the metals and
+  to the diffusive He/H split; temperature-dependent Penning rate \\
 Balmer / \Lya\ RT & Not solved & $n=2$ non-LTE + in-line \Lya\ escape-probability
   field \\
-Charge exchange & --- & Kingdon \& Ferland H$\leftrightarrow$metal \\
+Charge exchange & --- & Huang et al.\ (2023) Table 4:
+  H$\leftrightarrow$metal and He$\leftrightarrow$H by default,
+  metal$\leftrightarrow$He and metal$\leftrightarrow$metal optional \\
 Diffusion & None (fixed He/H) & Optional He/H and He/metal diffusive separation \\
 Lower atmosphere & Fixed base & Tiered base (analytic / molecular / VULCAN handoff) \\
-Transit spectra & --- & \mbox{He\,10830}, \Lya, \Ha, H$\beta$, metal doublets \\
+Transit spectra & \mbox{He\,10830}, \Lya\ (\texttt{TPM.py}) & Adds \Ha, H$\beta$, metal
+  doublets; optional Roche-triaxial geometry \\
 \enddata
 \end{deluxetable*}
 
@@ -583,14 +644,16 @@ hot-root trap of stiff metal cooling.
 \paragraph{Metal chemistry.} The central physics addition is the coupled trace-metal
 network. \ATES\ carries hydrogen and helium only; \EXHALE\ solves C, N, O, Mg, Ca, Na, and
 Fe through their ionization stages in the same nonlinear system, with Badnell radiative
-and dielectronic recombination, Voronov collisional ionization, and Kingdon \& Ferland
-charge exchange, and it feeds the metals back into the equation of state. This enables
+and dielectronic recombination, Voronov collisional ionization, and the \citet{Huang2023}
+charge-exchange network, and it feeds the metals back into the equation of state. This enables
 both the metal-line cooling and the metal transit diagnostics that \ATES\ cannot produce.
 
-\paragraph{Excited states and radiative transfer.} \EXHALE\ adds the $\HeTS$ metastable
-network for \mbox{He\,10830}, the non-LTE $n=2$ hydrogen population for the Balmer lines,
-and the in-line \Lya\ escape-probability field that pumps it --- none of which are in
-\ATES. These, with the diffusive He/H separation and the tiered lower-atmosphere coupling,
+\paragraph{Excited states and radiative transfer.} \ATES\ already solves the $\HeTS$
+metastable level inside its equilibrium network and synthesizes the \mbox{He\,10830} and
+\Lya\ transits from it. \EXHALE\ keeps that level but couples it to the metals and to the
+diffusive He/H split, and adds the non-LTE $n=2$ hydrogen population for the Balmer lines
+together with the in-line \Lya\ escape-probability field that pumps it --- neither of
+which is in \ATES. These, with the diffusive He/H separation and the tiered lower-atmosphere coupling,
 turn the inherited escape solver into a line-diagnostic model. Notably, the base
 oscillation (``breathing'') phenomenology and its mitigations (the smooth valve, the
 advection guard) are \EXHALE-era findings not present in the \ATES\ description.
@@ -606,8 +669,8 @@ wind structure (Figures~\ref{fig:struct_hd209}--\ref{fig:struct_wasp121}), the
 steady-state mass-loss rate, and the synthetic transit depths against observations
 (Figures~\ref{fig:transit_he}--\ref{fig:transit_lya}). All four solutions are converged
 with the JFNK steady-state solver rather than stopped on the $du$ criterion, reaching
-discrete steady residuals of $2.0\times10^{-4}$, $8.8\times10^{-4}$, $8.7\times10^{-4}$
-and $7.8\times10^{-4}$ for HD~209458~b, HD~189733~b, WASP-52~b and WASP-121~b; this
+discrete steady residuals of $1.9\times10^{-4}$, $9.7\times10^{-4}$, $8.7\times10^{-4}$
+and $8.6\times10^{-4}$ for HD~209458~b, HD~189733~b, WASP-52~b and WASP-121~b; this
 matters quantitatively, because a $du$-threshold stop alone carries a path-dependent
 spread of several percent in $\Mdot$.
 
@@ -627,7 +690,7 @@ the collisional-excitation cooling split by absorber into an \mbox{H\,\textsc{i}
 \label{sec:hd209}
 
 \EXHALE\ relaxes HD~209458~b to a steady transonic wind with a mass-loss rate of
-$\log_{10}(\Mdot/{\rm g\,s^{-1}})=9.46$. The temperature climbs from the $\sim1450$~K base
+$\log_{10}(\Mdot/{\rm g\,s^{-1}})=9.47$. The temperature climbs from the $\sim1450$~K base
 through a steep thermosphere to a broad maximum of $\approx7.7\times10^{3}$~K near
 $1.4$--$1.6\,\Rp$, and the gas becomes predominantly ionized above $\approx1.3\,\Rp$, where
 \mbox{H\,\textsc{ii}} overtakes \mbox{H\,\textsc{i}}; helium follows, singly ionized
@@ -639,17 +702,25 @@ photoionization heating in the ionized layer, while adiabatic expansion becomes 
 to the radiative losses in the outer wind.
 
 The synthetic \mbox{He\,10830} triplet has a line-center depth of $10.2/9.6\%$ and \Lya\
-reaches $25.1\%$, while \Ha\ is weak at $0.30\%$ (Figures~\ref{fig:transit_he},
+reaches $25.1\%$, while \Ha\ is weak at $0.31\%$ (Figures~\ref{fig:transit_he},
 \ref{fig:transit_ha}, and~\ref{fig:transit_lya}). The metal resonance lines of this
 solar-composition run are predicted at
-$11.7/6.9\%$ (\mbox{Mg\,\textsc{ii}} h\&k), $3.6\%$ (\mbox{Ca\,\textsc{ii}} H\&K), and
+$11.8/6.9\%$ (\mbox{Mg\,\textsc{ii}} h\&k), $3.6\%$ (\mbox{Ca\,\textsc{ii}} H\&K), and
 $1.8/1.6\%$ (\mbox{Na\,\textsc{i}} D); the large convolution effect on
-\mbox{Mg\,\textsc{ii}} reflects how narrow its saturated core is. The digitized wing \Lya\
-profile of \citet{VidalMadjar2003} is of comparable magnitude to the model, although the
-\Lya\ core is inaccessible to observation because of interstellar and geocoronal
-absorption. The \Ha\ trace of \citet{Jensen2012} scatters by $\pm0.7$--$0.9\%$ about zero,
-a few times the model depth, so it neither confirms nor excludes a signal this weak; the
-model line is also narrower than the broad, antisymmetric structure in the digitized data.
+\mbox{Mg\,\textsc{ii}} reflects how narrow its saturated core is. The \Lya\ comparison is
+the one clear failure of this model. The core is inaccessible to observation because of
+interstellar and geocoronal absorption, so the measurement of \citet{VidalMadjar2003}
+constrains the wings, and there the model falls an order of magnitude short: at
+$|v|=50$--$120$~km\,s$^{-1}$ the digitized profile absorbs $3$--$15\%$ while the model
+absorbs $0.7$--$1.7\%$, and over the $[-130,+100]$~km\,s$^{-1}$ band the observed
+$15\pm4\%$ compares with $5.0\%$ from the model. The model \Lya\ line is far too narrow:
+a one-dimensional spherical wind produces no population of fast neutral hydrogen, which
+is what the observed wing absorption requires and what radiation-pressure acceleration
+and stellar-wind charge exchange are invoked to supply. For \Ha, \citet{Jensen2012}
+report a mid-transit absorption of $M_{\rm abs}=(0.50\pm0.80)\times10^{-4}$ over their
+$16$~\AA\ band; the model gives $0.85\times10^{-4}$ on the same band, within $0.4\sigma$
+of that measurement. The digitized trace itself shows a broad antisymmetric structure,
+significant in the original analysis, that the narrow model line does not reproduce.
 
 \begin{figure*}
 \centering
@@ -696,7 +767,7 @@ inversion is gone ($\rho_1/\rho_{\rm gh}=0.95$, against $2.33$ under the $T_{\rm
 What survives is a residual velocity alternation of order $10^{2}\,{\rm cm\,s^{-1}}$ over
 the first few cells, decaying to a few ${\rm cm\,s^{-1}}$ by the tenth, which appears to be
 a numerical artifact of the lower boundary rather than a physical feature. The base
-temperature this run settles to, ${\sim}550$~K, is not a local radiative balance: once the
+temperature this run settles to, ${\sim}560$~K, is not a local radiative balance: once the
 ground-term fine-structure lines are saturated (Section~\ref{sec:cooling}) the total
 radiative cooling of the first cell falls some two orders of magnitude below the local
 heating, so the temperature there is set by the inner boundary and by the flow rather than
@@ -704,15 +775,22 @@ by the cooling function. The model contains no stellar optical/infrared absorpti
 thermal background, so nothing enforces a floor at the equilibrium temperature for a layer
 that has shielded out the XUV.
 
-The synthetic \mbox{He\,10830} depth is $2.9/2.7\%$ and \Ha\ is $0.60\%$, while \Lya\ reaches
-$37.9/36.6\%$ (Figures~\ref{fig:transit_he}, \ref{fig:transit_ha},
-and~\ref{fig:transit_lya}). The model \mbox{He\,10830} is
-about three times deeper than the \citet{Salz2018} detection, which peaks near $0.9\%$, while
-sharing the double-peaked triplet shape. Conversely, the clean $\approx2.2\%$ \Ha\ dip
-digitized from \citet{Jensen2012} is deeper than the model \Ha, indicating that the $n=2$
-population and its \Lya\ pumping in this run under-produce the observed Balmer absorption.
-The opposite sign of these two mismatches suggests the discrepancy lies in the excited-state
-microphysics rather than in the overall wind density.
+The synthetic \mbox{He\,10830} depth is $2.9/2.8\%$ and \Ha\ is $0.61\%$, while \Lya\ reaches
+$38.0/36.7\%$ (Figures~\ref{fig:transit_he}, \ref{fig:transit_ha},
+and~\ref{fig:transit_lya}). The comparison with \citet{Salz2018} depends on which measure
+is used, so we quote the integrated one: the model equivalent width is $16.0$~m\AA\
+against their $12.7\pm0.6$~m\AA, i.e.\ $1.26$ times larger, while the line-center depths
+differ by more ($2.9\%$ against their peak $1.04\pm0.09\%$; their band-averaged
+$0.88\pm0.04\%$ over $\pm10$~km\,s$^{-1}$ is the number usually quoted). The model does
+not reproduce the observed triplet ratio: it puts $4.45$ times more absorption in the
+$10830$ component than in $10829$, against the measured $2.8\pm0.2$, which
+\citet{Salz2018} read as the signature of an optically thick, compact absorber. For \Ha,
+\citet{Jensen2012} measure $M_{\rm abs}=(-8.7\pm1.5)\times10^{-4}$ over $16$~\AA\
+($W_\lambda=0.0141$~\AA\ after their stellar-variability correction), while the model
+gives $2.5\times10^{-4}$ ($W_\lambda=0.0041$~\AA), $3.5$ times shallower. So the
+metastable helium column is reproduced to within about a quarter while the Balmer
+absorption is short by a factor of a few: the opposite sign of the two mismatches points
+to the excited-state microphysics rather than to the overall wind density.
 
 \begin{figure*}
 \centering
@@ -739,18 +817,21 @@ The resulting transit depths are the largest of the sample: the model \mbox{He\,
 triplet reaches $25.2/24.6\%$, \Ha\ $4.4\%$, and \Lya\ is fully saturated near
 $100\%$ (Figures~\ref{fig:transit_he}--\ref{fig:transit_lya}). The metal lines are deeper
 still, with \mbox{Mg\,\textsc{ii}} at $71.2/62.8\%$ and \mbox{Ca\,\textsc{ii}} at $16.9\%$.
-These greatly exceed the measured absorption --- the \citet{Kirk2022}
-\mbox{He\,10830} spectrum peaks near $3.6\%$ and the \citet{Chen2020} \Ha\ spectrum is
-consistent with a sub-percent signal. The model therefore over-predicts the WASP-52~b line
-depths by a factor of several. The most likely contributors are the large radial extent of the
-absorbing column on the $10\,\Rp$ domain and the assumed composition; a reduced He/H ratio
-and a line of sight truncated nearer the Roche lobe would both lower the predicted depths,
-and quantifying this sensitivity is left to future work rather than tuned here. A companion
-analysis of the same target separates the two levers. Holding the microphysics and
-composition fixed and truncating the line-of-sight integration at the $L_1$ Roche point,
-rather than carrying it to $10\,\Rp$, lowers the synthetic \mbox{He\,10830} depth by a
-factor of $3$--$10$ on its own, because most of the absorbing column on the extended domain
-lies beyond the radius the planet can gravitationally retain. Reducing the helium abundance
+These greatly exceed the measured absorption. The \citet{Kirk2022}
+\mbox{He\,10830} spectrum peaks near $3.6\%$, and \citet{Chen2020} report a firm \Ha\
+detection with a line contrast of $0.86\pm0.13\%$ --- a measured depth, not an upper limit
+--- against which the modeled $4.4\%$ is about five times too deep. The most likely
+contributors are the large radial extent of the absorbing column and the assumed
+composition. The hydrodynamic domain here runs to $10\,\Rp$, and the transit integration
+carries each line of sight out to $\Rstar/\Rp=6.19\,\Rp$, where the stellar disk ends; both
+are far outside the $L_1$ radius of $2.53\,\Rp$. A reduced He/H ratio and a line of sight
+truncated nearer the Roche lobe would both lower the predicted depths, and quantifying this
+sensitivity is left to future work rather than tuned here. A companion analysis of the same
+target separates the two levers. Holding the microphysics and composition fixed and
+truncating the line-of-sight integration at the $L_1$ Roche point, rather than carrying it
+to the stellar-disk edge, lowers the synthetic \mbox{He\,10830} depth by a factor of
+$3$--$10$ on its own, because most of the absorbing column on the extended domain lies
+beyond the radius the planet can gravitationally retain. Reducing the helium abundance
 from solar to $\mathrm{H/He}\simeq98/2$ then accounts for a further factor of about two, and
 the two together reproduce the measured depth. The larger of the two effects is therefore
 the domain, which argues that the over-prediction reported here is primarily a geometry
@@ -798,8 +879,14 @@ quantitative depth requires a domain carried past the Roche lobe, which is where
 one-dimensional spherical geometry stops being the right description in any case. For the
 same reason, the fact that the \mbox{He\,10830} depth exceeds the \citet{Czesla2024}
 measurement, which peaks near $2\%$, is not yet evidence of a discrepancy in the
-microphysics; we note only that the observed absorption is offset in wavelength relative to
-the model line center. That the metal lines saturate at all is consistent with the
+microphysics. We note only two features of the comparison. The observed core sits slightly
+redward of the model line: its absorption-weighted centroid over $\pm20$~km\,s$^{-1}$ of
+the 10830 component is $+1.5$~km\,s$^{-1}$ against $-1.2$~km\,s$^{-1}$ for the model, the
+``slight redshift'' \citet{Czesla2024} report and read as the signature of an
+asymmetric, tidally shaped outflow. And the modeled mid-transit equivalent width,
+$62.6$~m\AA, is about twice the transit-averaged ${\approx}30$~m\AA\ they quote, although
+a mid-transit value and a transit average are not the same measure and part of that ratio
+is expected. That the metal lines saturate at all is consistent with the
 metal-rich, highly ionized wind expected for this planet
 \citep{Huang2023,Koskinen2022}.
 
@@ -856,14 +943,14 @@ for the other three planets. Generated by \texttt{python/make\_transit\_figures.
 We have described \EXHALE, a one-dimensional multi-frequency photoionization--hydrodynamics
 model for escaping exoplanet atmospheres. Building on the \ATES\ Godunov hydro core,
 \EXHALE\ adds a coupled H/He/metal ionization network with Badnell recombination, Voronov
-collisional ionization, and Kingdon \& Ferland charge exchange; CHIANTI metal-line
+collisional ionization, and the \citet{Huang2023} charge-exchange compilation; CHIANTI metal-line
 cooling; the $\HeTS$ metastable triplet; the non-LTE $n=2$ hydrogen population with an
 in-line \Lya\ escape-probability field; optional diffusive He/H separation; a direct JFNK
 steady-state solver; and a tiered lower-atmosphere coupling. Applied to HD~209458~b,
 HD~189733~b, WASP-52~b, and WASP-121~b, the model produces mass-loss rates and synthetic
 \mbox{He\,10830}, \Ha, \Lya, and metal-line transit spectra for direct comparison with
 observations. Across the four benchmarks the model gives mass-loss rates of
-$\log_{10}(\Mdot/{\rm g\,s^{-1}})=9.46$ (HD~209458~b), $9.14$ (HD~189733~b), $11.70$
+$\log_{10}(\Mdot/{\rm g\,s^{-1}})=9.47$ (HD~209458~b), $9.14$ (HD~189733~b), $11.70$
 (WASP-52~b), and $13.20$ (WASP-121~b), each converged with the steady-state solver rather
 than stopped on the mass-flux criterion, and synthetic line depths that match the order of
 magnitude of the measured \mbox{He\,10830}, \Ha, and \Lya\ absorption on HD~209458~b and

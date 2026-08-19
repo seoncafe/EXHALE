@@ -137,10 +137,10 @@ print('fig_mol_structure.pdf')
 # ------------------------------------------------------------------ #
 # Fig 3: VULCAN photochemistry vs chemical equilibrium (HD 189733 b)
 # ------------------------------------------------------------------ #
-VUL = os.path.join(EX, '..', '..', 'VULCAN', 'output', 'HD189-photo.vul')
-VUL = os.path.abspath(VUL)
-if not os.path.exists(VUL):
-    VUL = '/nfs/mocafe/kiseon/RT_Codes/Exoplanetary_Atmospheres/VULCAN/output/HD189-photo.vul'
+# VULCAN lives inside the EXHALE tree (EXHALE/VULCAN, fetched by
+# src/utils/setup_vulcan.sh); the .vul output must be regenerated there if
+# absent (run_lower.py / vulcan_driver.py).
+VUL = os.path.join(EX, 'VULCAN', 'output', 'HD189-photo.vul')
 d = pickle.load(open(VUL, 'rb'))
 species = list(d['variable']['species'])
 ymix = d['variable']['ymix']

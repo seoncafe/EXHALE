@@ -5,7 +5,7 @@ BASE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 run() { # dir infile tag
   cd $BASE/$1
   echo "[$(date +%m-%d\ %H:%M)] START $3" >> $BASE/insitu_driver.log
-  mpirun -n 72 /nfs/lart4/kiseon/LaRT/combine/LaRT_v2.00/LaRT_calcP.x $2 > lart.log 2>&1
+  mpirun -n 72 /home/kiseon/LaRT/combine/LaRT_v2.00/LaRT_calcJPP.x $2 > lart.log 2>&1
   echo "[$(date +%m-%d\ %H:%M)] DONE $3" >> $BASE/insitu_driver.log
 }
 run bm_hd189     hd189_lya.in     "stellar hd189"

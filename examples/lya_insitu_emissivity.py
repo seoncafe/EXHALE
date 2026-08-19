@@ -217,8 +217,8 @@ def main(argv=None):
         results.append(process(d))
 
     if all_four:
-        # paper figs live one level above the EXHALE tree: ATES/paper/figs
-        figdir = os.path.join(os.path.dirname(repo), 'paper', 'figs')
+        # paper figs live inside the EXHALE tree: EXHALE/paper/figs
+        figdir = os.path.join(repo, 'paper', 'figs')
         os.makedirs(figdir, exist_ok=True)
         pdf = os.path.join(figdir, 'fig_lya_insitu.pdf')
         plot_combined(pdf, results)
