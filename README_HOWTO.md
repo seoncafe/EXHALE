@@ -465,9 +465,10 @@ provides H/C/N/O(/S) composition only — metal abundances stay in `metals.inp`.
 Which photochemistry code is not a free choice any more: VULCAN and Photochem
 disagree about `q_H` at 1 ubar by 7.2x on this planet, and since `q_H2_base`
 became a read key that difference reaches the wind solve. The measurement is
-`docs/vulcan_photochem_comparison.md`; the decision, and the wider question of
-what oxygen chemistry EXHALE should carry, is
-`docs/oxygen_chemistry_options.md`.
+`docs/vulcan_photochem_comparison.md`; the plan for the decision, and the wider
+question of what oxygen chemistry EXHALE should carry, is
+`docs/oxygen_chemistry_new_plan.md` (which supersedes the ordering in
+`docs/oxygen_chemistry_options.md`).
 Manual invocation and finer control:
 
 ```bash

@@ -1,5 +1,13 @@
 # Oxygen chemistry in EXHALE: what exists, and the directions open to us
 
+> **2026-08-19, later the same day:** the plan of record is now
+> `docs/oxygen_chemistry_new_plan.md`, which merges this document with the
+> implementation review (`oxygen_chemistry_plan_code_review.md`) and settles
+> their disagreements against the source. In particular, Section 5 below (the
+> suggested order) is superseded, and the charge-exchange case numbers in the
+> Section 1 table are wrong (the oxygen pairs are cases 13/14, 30/31, 48/49).
+> This file remains the record of the original option enumeration.
+
 2026-08-19. Written to make the deferred item "(H) oxygen chemistry scope" a
 choice between stated alternatives rather than an open-ended one. Nothing here
 is implemented; the point is to separate what oxygen chemistry would buy from

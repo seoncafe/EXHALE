@@ -60,7 +60,8 @@ Key quantitative facts:
   right at the 1 μbar handoff level. *(2026-08-19: EXHALE still has no
   O/OH/H₂O species of its own, so the OH-catalyzed destruction reaches the code
   only through the handoff. The directions open to us, with costs and validation
-  gates, are in `docs/oxygen_chemistry_options.md`; the blocker itself is
+  gates, are in `docs/oxygen_chemistry_options.md`, and the plan of record
+  built on them is `docs/oxygen_chemistry_new_plan.md`; the blocker itself is
   `TO_BE_DONE.md` item (H).)*
 - **The published coupling is loose, not monolithic:** Lavvas 2014 takes T(p>1 μbar…top)
   *from* the Koskinen thermosphere and uses "species < 3 amu escape at the wind

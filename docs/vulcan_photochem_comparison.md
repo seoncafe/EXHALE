@@ -230,4 +230,5 @@ reasons to prefer Photochem that have nothing to do with chemistry (speed, the
 `gasgiants` extension, and `clima` as the only path away from a prescribed
 T(p)), is in `docs/oxygen_chemistry_options.md` §2.4. The recommendation there
 is to fix the reaction network before changing codes, since the network carries
-4.0x of the 7.2x.
+4.0x of the 7.2x. The plan of record for acting on this, including the matched
+network-plus-domain rerun (its phase P1), is `docs/oxygen_chemistry_new_plan.md`.
