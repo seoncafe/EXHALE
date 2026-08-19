@@ -57,7 +57,11 @@ Key quantitative facts:
   Al, Si return to atomic form below ~10⁻³ bar) — i.e. the physically-motivated *base
   abundances for EXHALE's trace metals*; photoionization-dominated electron density
   (~10⁸ cm⁻³, 100× Saha) between 10 μbar and 1 bar; radical/haze heating of ±100–400 K
-  right at the 1 μbar handoff level.
+  right at the 1 μbar handoff level. *(2026-08-19: EXHALE still has no
+  O/OH/H₂O species of its own, so the OH-catalyzed destruction reaches the code
+  only through the handoff. The directions open to us, with costs and validation
+  gates, are in `docs/oxygen_chemistry_options.md`; the blocker itself is
+  `TO_BE_DONE.md` item (H).)*
 - **The published coupling is loose, not monolithic:** Lavvas 2014 takes T(p>1 μbar…top)
   *from* the Koskinen thermosphere and uses "species < 3 amu escape at the wind
   velocity" as its upper BC; Taylor tolerates a composition discontinuity at 1 μbar.

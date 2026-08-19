@@ -13,7 +13,7 @@
 
 \title{Connecting EXHALE to the Lower Atmosphere:\\ Survey, Implementation, and Example Applications}
 \author{Kwang-Il Seon}
-\date{Last updated: 2026-08-13}
+\date{Last updated: 2026-08-19}
 
 \begin{document}
 \maketitle
@@ -89,7 +89,10 @@ Taylor et al.\ (2025, 2026) & full Lavvas \& Arfaux (2021) model (RC temperature
   Si return to atomic form below $\sim$$10^{-3}$ bar) --- the physically-motivated base
   abundances for EXHALE's trace metals; photoionization-dominated electron density
   ($\sim$$10^{8}$\,cm$^{-3}$, 100$\times$ Saha); radical/haze heating of $\pm$100--400\,K
-  right at the handoff level.
+  right at the handoff level. \emph{(2026-08-19: EXHALE carries no O/OH/H$_2$O
+  species of its own, so this chemistry reaches the code only through the
+  handoff. The directions open to us, with their costs and validation gates, are
+  in \texttt{docs/oxygen\_chemistry\_options.md}.)}
 \item \textbf{The published coupling is loose, not monolithic:} Lavvas et al.\ (2014) take
   $T(p<1\,\ubar)$ \emph{from} the Koskinen thermosphere and use ``species $<3$ amu escape
   at the wind velocity'' as their upper BC; Taylor et al.\ tolerate a composition

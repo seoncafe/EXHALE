@@ -222,3 +222,12 @@ exactly as before. Design, size of the effect and the validation gates:
 `docs/base_composition_handoff_plan.md`. `q_H` and the molecular mixing ratios
 stay comments — `q_H` is implied by `q_H2_base` and `HeH_base`, and the
 molecules have nothing to act on in EXHALE's atomic metal set.
+
+**2026-08-19 — where the code choice is decided.** Because `q_H2_base` is now
+read, the 7.2x spread measured here propagates into the wind solve, so choosing
+between the two codes is no longer neutral. The decision, together with the
+reasons to prefer Photochem that have nothing to do with chemistry (speed, the
+`gasgiants` extension, and `clima` as the only path away from a prescribed
+T(p)), is in `docs/oxygen_chemistry_options.md` §2.4. The recommendation there
+is to fix the reaction network before changing codes, since the network carries
+4.0x of the 7.2x.

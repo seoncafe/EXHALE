@@ -9,6 +9,9 @@
   failure. Routes 2 and 3 remain proposals; §5 records the direction Route 2
   should take.
 - Motivation: `docs/vulcan_photochem_comparison.md`
+- What comes after this plan: `docs/oxygen_chemistry_options.md` — widening the
+  handoff beyond `q_H2_base`, computing the partition instead of importing it,
+  and the choice of photochemistry code now that `q_H2_base` reaches the wind
 - Touches: `input_read.f90`, `composition.f90`, `parameters.f90`,
   `vulcan_to_base.py`, `docs/input_schema.md`
 

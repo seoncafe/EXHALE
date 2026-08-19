@@ -461,6 +461,13 @@ code-root path for relocated installs.
 The photochemical base differs sharply from equilibrium: on HD 189733 b
 `q_H = 0.23` at 1 ubar against 0.020, i.e. ~11x more dissociation. VULCAN
 provides H/C/N/O(/S) composition only — metal abundances stay in `metals.inp`.
+
+Which photochemistry code is not a free choice any more: VULCAN and Photochem
+disagree about `q_H` at 1 ubar by 7.2x on this planet, and since `q_H2_base`
+became a read key that difference reaches the wind solve. The measurement is
+`docs/vulcan_photochem_comparison.md`; the decision, and the wider question of
+what oxygen chemistry EXHALE should carry, is
+`docs/oxygen_chemistry_options.md`.
 Manual invocation and finer control:
 
 ```bash
