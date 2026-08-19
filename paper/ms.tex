@@ -235,7 +235,7 @@ level --- the lower state of the 10830 triplet, whose threshold lies at $\approx
 the mid-ultraviolet --- is not in the Verner tabulation, so it is represented by two VFKY96
 terms (the $2s$-shell channel and the resonance-averaged \mbox{He\,\textsc{ii}} $n=2$
 channel) joined by a log-linear bridge across the Cooper minimum. This construction
-reproduces the Norcross (1971) tabulation shipped with \texttt{p-winds}
+reproduces the \citet{Norcross1971} tabulation shipped with \texttt{p-winds}
 \citep{dosSantos2022} to within $\sim10\%$ and an independent TOPbase/Opacity Project
 R-matrix cross section to within $\sim8\%$ in the smooth near-threshold region. The
 autoionizing resonances that TOPbase resolves above $\sim35$~eV, and the smooth
@@ -251,7 +251,7 @@ photoionizable trace metals (C, N, O, Mg, Ca, Na, and Fe ions); molecular runs a
 \mbox{H$_2$} photoionization term. The photoelectric heating efficiency is not unity: a
 fraction of each primary photoelectron's energy drives secondary ionizations rather than
 heating the gas. For photoelectrons more than $40$~eV above threshold \EXHALE\ therefore
-applies the ionized-fraction partition of Shull \& van Steenberg (1985) on both sides:
+applies the ionized-fraction partition of \citet{ShullVanSteenberg1985} on both sides:
 the deposited heat is scaled by the heating fraction $f_{\rm heat}(x)$, and the secondary
 \mbox{H\,\textsc{i}} and \mbox{He\,\textsc{i}} ionizations that the remaining energy pays
 for are added to the corresponding photoionization rates. The partition is on by default.
@@ -344,8 +344,8 @@ separate \mbox{He\,\textsc{i}} and \mbox{He\,\textsc{ii}} terms. Collisional-ion
 cooling removes the ionization potential in each ionizing collision of \mbox{H\,\textsc{i}},
 \mbox{He\,\textsc{i}}, and \mbox{He\,\textsc{ii}}. Radiative recombination cooling of
 \mbox{H\,\textsc{ii}}, \mbox{He\,\textsc{ii}}, and \mbox{He\,\textsc{iii}} uses case-B
-rates (Hui \& Gnedin 1997). Free--free (bremsstrahlung) emission scales as
-$T^{1/2}\,n_e n_{\rm ion}$ times the free--free Gaunt factor of van Hoof et al.,
+rates \citep{HuiGnedin1997}. Free--free (bremsstrahlung) emission scales as
+$T^{1/2}\,n_e n_{\rm ion}$ times the free--free Gaunt factor of \citet{vanHoof2014},
 interpolated from their tabulation, and sums the contributions of hydrogen, helium, and
 the metal ions. The metastable helium level
 contributes a $2^{3}S\to2^{3}P$ 10830 collisional-excitation cooling term. Metal-line
@@ -418,7 +418,7 @@ longer a consequential one: with the fine-structure lines saturated, the local r
 balance temperature of the base cell of all four models is unchanged to every digit over a
 factor $60$ in that width, against a $500$--$650$~K spread when the coronal
 fine-structure floors were still in place. In molecular runs an $\mathrm{H_3^+}$
-ro-vibrational cooling term is added (Miller et al. 2013).
+ro-vibrational cooling term is added \citep{Miller2013}.
 
 The radiative channels above are the source term in the thermal energy equation; the gas
 also loses energy dynamically. Adiabatic (expansion) cooling --- the $P\,dV$ work done by
@@ -458,11 +458,11 @@ $\HeTS$+$\mathrm{H_2}$ Penning ionization & molecular runs \\
 Collisional excitation, \mbox{H\,\textsc{i}} (\Lya) & \citet{Cen1992,Black1981} \\
 Collisional excitation, \mbox{He\,\textsc{i}}, \mbox{He\,\textsc{ii}} & \\
 Collisional ionization, H\,\textsc{i}/He\,\textsc{i}/He\,\textsc{ii} & \\
-Radiative recombination (case B) & Hui \& Gnedin 1997 \\
-Free--free, H + He + metal ions & $T^{1/2}$ $\times$ van Hoof Gaunt factor \\
+Radiative recombination (case B) & \citet{HuiGnedin1997} \\
+Free--free, H + He + metal ions & $T^{1/2}\times$ Gaunt factor, \citet{vanHoof2014} \\
 $\HeTS$ metastable $2^{3}S\to2^{3}P$ 10830 & \\
 Metal lines, C/N/O/Mg/Ca/Na/Fe & \citet{Dere1997,DelZanna2021} \\
-$\mathrm{H_3^+}$ ro-vibrational & Miller et al. 2013; molecular runs \\
+$\mathrm{H_3^+}$ ro-vibrational & \citet{Miller2013}; molecular runs \\
 \cutinhead{Dynamical (energy equation)}
 Adiabatic (expansion) cooling & $P\,dV$ work of the wind \\
 Thermal conduction, viscous dissipation & \citet{Watson1981}; off by default \\
