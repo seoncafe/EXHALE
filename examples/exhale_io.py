@@ -24,8 +24,9 @@ RJ = 6.9911e9          # Jupiter radius [cm]
 MJ = 1.898e30          # Jupiter mass  [g]
 Msun = 1.989e33        # Solar mass    [g]
 AU = 1.495978707e13    # Astronomical unit [cm]
-mu = 1.673e-24         # hydrogen mass m_H [g] (NOT a mean molecular weight;
-                       # converts the m_H-density column n to g/cm^3)
+mu = 1.67353284e-24    # hydrogen ATOM mass m_H [g] (NOT a mean molecular
+                       # weight; converts the m_H-density column n to g/cm^3).
+                       # Same value as mu in parameters.f90 -- keep in step.
 GYR = 3.15576e16       # 1 Gyr [s]
 
 # Hydrogen + helium columns of Ion_species(_adv).txt, in file order (cols 2-7).

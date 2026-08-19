@@ -28,7 +28,7 @@ if len(sys.argv) >= 2:
         sec = float(sys.argv[2])
 
 # ---------------------------------------------------------------- constants
-mu = 1.673e-24          # proton mass [g]
+mu = 1.67353284e-24     # hydrogen atom mass [g]: the density unit, as in parameters.f90
 gam = 5.0/3.0
 RJ = 6.9911e9
 

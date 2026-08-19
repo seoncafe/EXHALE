@@ -738,7 +738,10 @@
    real*8, dimension(1-Ng:N+Ng), intent(out) :: coeff_rec_cool_HeII
 
    call rec_HeII_B(T,coeff_rec_HeII_B)
-   coeff_rec_cool_HeII = 1.38e-16*T*coeff_rec_HeII_B
+   ! k_B T alpha_B. The literal 1.38e-16 inherited from ATES was replaced by
+   ! kb_erg on 2026-08-19 -- the two local copies here were missed when the
+   ! global constant went to CODATA (a 4.7e-4 shift in this coefficient).
+   coeff_rec_cool_HeII = kb_erg*T*coeff_rec_HeII_B
    
    end subroutine rec_cool_HeII
    
@@ -2473,11 +2476,15 @@
    ! Form:  alpha(T) = A*T^-1.5*exp(-T0/T)*(1 + B*exp(-T1/T))      [DR]
    !                 + C*(T/1e4)^-eta                              [RR]
    ! with T in K and alpha in cm^3/s. Coefficients verified against the
-   ! published paper (arXiv:2304.07352). NOTE: this is Huang's analytic fit,
-   ! used here for validation against Huang Fig 12; the rest of the metal
-   ! grid uses Badnell RR+DR (alpha_rec_metal). A switch to a uniform
-   ! Badnell-only Fe rate is deferred to a later pass and
-   ! should be documented when made.
+   ! published paper (arXiv:2304.07352). The rest of the metal grid uses
+   ! Badnell RR+DR (alpha_rec_metal); iron cannot, and this is not a
+   ! deferral. Fe I comes from recombining Fe II (Mn-like, 25 electrons) and
+   ! Fe II from Fe III (Cr-like, 24), while the Badnell DR project reaches
+   ! only the phosphorus isoelectronic sequence (15 electrons) as of its
+   ! paper XVI (2022) -- there is no Badnell fit to switch to for either
+   ! stage. Huang's analytic form is therefore the rate for iron, which is
+   ! also what the Huang reproduction plan prescribes for the stages where
+   ! Badnell coverage stops (docs/Huang_update_plan.md, Phase 1c).
 
    ! Fe II + e -> Fe I  (rate producing the Fe I daughter).
    double precision function alpha_rec_FeI_Huang(T)
@@ -2768,7 +2775,7 @@
    double precision function rec_cool_HeII_func(T)
    real*8, intent(in) :: T
          
-   rec_cool_HeII_func = 1.38e-16*T*rec_HeII_B_func(T)
+   rec_cool_HeII_func = kb_erg*T*rec_HeII_B_func(T)
    
    end function rec_cool_HeII_func
    

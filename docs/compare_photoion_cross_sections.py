@@ -38,7 +38,7 @@ plt.rcParams.update({
 })
 
 # ---- EXHALE physical constants (src/modules/init/parameters.f90) ----
-HP_EV   = 4.1357e-15        # Planck constant [eV s]
+HP_EV   = 4.135667696e-15   # Planck constant [eV s] (CODATA exact)
 C_LIGHT = 2.99792458e10     # speed of light  [cm/s]
 PI      = 3.1415926536
 HC_EVA  = HP_EV * C_LIGHT * 1e8   # hc [eV*Angstrom] = 12398.47
@@ -494,7 +494,7 @@ def fig_he23S_unified(E_tb, s_tb):
 HE_EJ = 70.0   # junction energy where the broken PL meets the TOPbase fit
 
 # original broken-PL nodes/coefficients (cross_sec.f90)
-_HC = 4.1357e-15 * 2.99792458e10 * 1e8
+_HC = 4.135667696e-15 * 2.99792458e10 * 1e8
 _x1 = np.log10(_HC / 2593.01) * 0.9999
 _x2 = np.log10(_HC / 1655.63)
 _x3 = np.log10(_HC / 357.340)

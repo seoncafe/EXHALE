@@ -6,7 +6,10 @@
       ! endpoint-clamped). Below Wind-AE's Rmin: hydrostatic blend to the
       ! EXHALE base anchor; above Rmax: flux-conserving extrapolation.
       implicit none
-      real*8, parameter :: ICW_mH = 1.6726d-24
+      ! H atom mass, the density unit the IC is written in (matches mu in
+      ! parameters.f90 and wae_MH; was the proton mass 1.6726d-24 until
+      ! 2026-08-19).
+      real*8, parameter :: ICW_mH = 1.67353284d-24
       real*8, parameter :: ICW_kB = 1.380649d-16
       contains
 

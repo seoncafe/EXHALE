@@ -22,8 +22,9 @@
       use wae_lc_oiii,  only: OIII
       implicit none
 
-      ! physical constants (defs.h)
-      real*8, parameter :: wae_K   = 1.380658d-16
+      ! physical constants. CODATA values, matching wae_params (see the note
+      ! there); defs.h originally carried K = 1.380658d-16.
+      real*8, parameter :: wae_K   = 1.380649d-16
       real*8, parameter :: wae_PI  = 3.141592653589793d0
       real*8, parameter :: wae_SIGSB = 5.6705d-5
       real*8, parameter :: LYACOOL_COEFF = -7.5d-19

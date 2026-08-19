@@ -20,15 +20,20 @@ ATES model.
 **Chemistry and radiation**
 
 - Trace metals (C, N, O, Mg, Si, Ca, Na, K, S, Fe) solved self-consistently
-  inside the coupled ionization system, with Badnell RR+DR recombination,
-  Voronov collisional ionization, and Huang et al. (2023) charge exchange
+  inside the coupled ionization system, with Badnell RR+DR recombination
+  (Huang et al. 2023 fits for Fe I/II and Shull & Van Steenberg for Ca I, whose
+  isoelectronic sequences the Badnell project does not reach), Voronov
+  collisional ionization, and Huang et al. (2023) charge exchange
 - Metal-line cooling as closed-form analytic fits to CHIANTI v11 (C I/II,
   N I/II, O I/II, Mg I/II, Ca II, Na I, Fe II; 0.1–3% accuracy), with
-  density-dependent saturation of the [C II] 158 um and [O I] 63 um
-  fine-structure floors solved in statistical equilibrium
-- Line trapping in the two fine-structure coolants (the line-center escape
-  probability from the column above each cell enters the two-level solution as
-  `A_ul -> beta*A_ul`), and a smooth cutoff of the coronal fits below their
+  the split ground terms of C I, C II, N II and O I solved in exact statistical
+  equilibrium at the local `(n_e, n_HI)` instead of the coronal limit, which
+  gives the density-dependent saturation of the [C II] 158 um and [O I] 63 um
+  floors
+- Line trapping in the eight ground-term fine-structure lines of C I, C II,
+  N II and O I (the line-center escape probability from the column above each
+  cell enters the statistical-equilibrium solution as `A_ul -> beta*A_ul`),
+  and a smooth cutoff of the coronal fits below their
   10^3 K validity floor, leaving only the explicit fine-structure terms
 - He I 2³S metastable triplet in the coupled solver, with a
   temperature-dependent He(2³S)+H Penning-ionization rate (Taylor et al. 2025)
@@ -223,4 +228,4 @@ schemas, convergence recipes, post-processing — is in
 
 Kwang-Il Seon (KASI / UST)
 
-Last updated: 2026-08-19 12:22
+Last updated: 2026-08-19 20:08

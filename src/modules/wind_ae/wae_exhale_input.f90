@@ -71,7 +71,9 @@
       ! composition: He/H number ratio -> H/He mass fractions
       wae_par%HX(1) = 1.0d0/(1.0d0 + 4.0d0*exh_HeH)
       wae_par%HX(2) = 4.0d0*exh_HeH/(1.0d0 + 4.0d0*exh_HeH)
-      wae_par%atomic_mass(1) = 1.6733d-24
+      ! CODATA H-atom and He-atom masses; wind-ae originally passed
+      ! 1.6733d-24 and 6.6464790722d-24 here.
+      wae_par%atomic_mass(1) = 1.67353284d-24
       wae_par%atomic_mass(2) = 6.6464790722d-24
       wae_par%species(1) = 'HI'
       wae_par%species(2) = 'HeI'

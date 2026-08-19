@@ -24,7 +24,10 @@ OUT = os.path.join(os.path.dirname(os.path.abspath(__file__)),
 os.makedirs(OUT, exist_ok=True)
 EV_ERG = 1.602176634e-12
 K_B = 1.380649e-16
-KB_CODE = 1.38e-16          # code-wide kb_erg
+KB_CODE = 1.38e-16          # the rounded k_B the CHIANTI fits were made with.
+                            # NOT the code-wide kb_erg any more: that became the
+                            # CODATA 1.380649e-16 on 2026-08-15. Kept rounded so
+                            # this script reproduces the published fit numbers.
 PREF = 8.629e-6
 
 T = np.logspace(3.0, 5.0, 201)

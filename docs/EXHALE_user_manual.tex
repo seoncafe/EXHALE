@@ -2199,7 +2199,7 @@ Penning ionization & He\,$2\,^3$S\,$+$\,H & Taylor et al.\ (2025) temperature-de
  & He\,$2\,^3$S\,$+$\,H$_2$ & fit to Garc\'{i}a Mu\~{n}oz (2025) Table~A.5 (\texttt{penning\_HeI23S\_H2}, valid 500--10\,000\,K): He\,$2\,^3$S\,$+$\,H$_2\to$\,He\,$1\,^1$S\,$+$\,H$_2^+ + e^-$, releasing $4.4$\,eV to the electrons. The minor H\,$+$\,HeH$^+$ associative-ionization branch is not resolved --- the full rate goes to the dominant Penning channel. Active only when a molecular run also tracks the triplet \\
 RR + DR & C, N, O, Mg, Si, Na, K, S, Ca\,II (+ stages) & Badnell (2006, ApJS 167, 334) RR + Badnell adf48 DR (TAMOC clist\_K) \\
 RR only & Ca\,I (Ca\,II$+e$) & Shull \& Van Steenberg (1982); no DR \\
-RR + DR & Fe\,I, Fe\,II & Huang et al.\ (2023) analytic fit (validation; Badnell switch deferred) \\
+RR + DR & Fe\,I, Fe\,II & Huang et al.\ (2023) analytic fit; the Badnell DR project does not cover these isoelectronic sequences (see the note below the table) \\
 \midrule
 \multicolumn{3}{@{}l}{\textbf{Charge exchange (charge transfer)}}\\[2pt]
 metal\,$+$\,H/H$^+$ (default) & 23 reactions (Group~A) & Huang et al.\ (2023, ApJ 951, 123) Table~4 \\
@@ -2229,10 +2229,14 @@ line profile & all & Voigt (Faddeeva, \texttt{scipy.special.wofz}) \\
 \end{longtable}
 
 \noindent
-\textbf{Note on Fe.} Iron recombination currently uses the Huang et al.\ (2023)
-analytic RR+DR fit (chosen to validate against Huang's Fig.~12) while every other
-metal uses the Badnell tabulation; unifying Fe onto Badnell is a documented
-deferred item. \textbf{Note on completeness.} The metal grid carries the stages
+\textbf{Note on Fe.} Iron recombination uses the Huang et al.\ (2023) analytic
+RR+DR fit while every other metal uses the Badnell tabulation, and this is not a
+deferred item: no Badnell fit exists for either stage. Fe\,I is formed by
+recombining Fe\,II (Mn-like, 25 electrons) and Fe\,II by Fe\,III (Cr-like, 24),
+whereas the Badnell dielectronic-recombination project reaches the phosphorus
+isoelectronic sequence (15 electrons) as of its paper~XVI (2022). Ca\,I has the
+same problem one sequence lower (K-like, 19 electrons) and likewise keeps a
+non-Badnell rate. \textbf{Note on completeness.} The metal grid carries the stages
 needed for the XUV-driven ionization balance and the observed NUV/optical lines;
 higher stages and additional elements (e.g.\ the full Fe forest, K\,I, Mg\,I)
 beyond those tabulated above are not modeled.

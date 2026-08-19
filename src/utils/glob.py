@@ -99,10 +99,11 @@ def init():
 	RJ      = 6.9911e9           # Jupiter radius (cm) 
 	AU      = 1.495978707e13     # Astronomical unit (cm)
 	Msun    = 1.989e33           # Sun mass (g)
-	Gc      = 6.67259e-8         # Gravitational constant
-	mu      = 1.673e-24          # Proton mass
-	kb      = 1.38e-16           # Boltzmann constant
-	hp_eV   = 4.1357e-15	     # Planck constant in eV
+	# These mirror parameters.f90 -- keep the two in step (CODATA 2018).
+	Gc      = 6.67430e-8         # Gravitational constant
+	mu      = 1.67353284e-24     # Hydrogen atom mass (the density unit)
+	kb      = 1.380649e-16       # Boltzmann constant
+	hp_eV   = 4.135667696e-15    # Planck constant in eV
 	c_light = 2.99792458e10      # Speed of light in cm/s
 
 # ----

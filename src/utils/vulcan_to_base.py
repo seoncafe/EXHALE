@@ -29,7 +29,9 @@ Usage:
 """
 import argparse, math, os, pickle, sys
 
-KB, MH, G = 1.380649e-16, 1.6726e-24, 6.67259e-8
+# Same constants as parameters.f90 and run_lower.py (MH is the hydrogen ATOM,
+# multiplying a dimensionless mu; was 1.6726e-24 / 6.67259e-8 until 2026-08-19).
+KB, MH, G = 1.380649e-16, 1.67353284e-24, 6.67430e-8
 RJ, MJ = 6.9911e9, 1.898e30
 BAR = 1.0e6  # dyn/cm^2
 

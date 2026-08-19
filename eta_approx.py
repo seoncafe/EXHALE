@@ -52,9 +52,9 @@ MJ   = 1.898e30           # Jupiter mass (g)
 RJ   = 6.9911e9           # Jupiter radius (cm) 
 AU   = 1.495978707e13     # Astronomical unit (cm)
 Msun = 1.989e33           # Sun mass (g)
-Gc   = 6.67259e-8         # Gravitational constant
-mu   = 1.673e-24          # Proton mass
-kb   = 1.38e-16           # Boltzmann constant
+Gc   = 6.67430e-8         # Gravitational constant (CODATA 2018)
+mu   = 1.67353284e-24     # Hydrogen atom mass, the density unit of parameters.f90
+kb   = 1.380649e-16       # Boltzmann constant (CODATA exact)
 
 # Jovian constants
 

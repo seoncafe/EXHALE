@@ -35,7 +35,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 VULCAN_DIR = os.path.join(HERE, '..', 'VULCAN')
 VULCAN_OUT = os.path.join(VULCAN_DIR, 'output', 'HD189.vul')
 
-R_SUN, AU, R_JUP, GRAV = 6.957e10, 1.495979e13, 7.1492e9, 6.674e-8
+R_SUN, AU, R_JUP, GRAV = 6.957e10, 1.495979e13, 7.1492e9, 6.67430e-8
 
 # --- HD 189733 b, taken from VULCAN's vulcan_cfg so gravity matches exactly ---
 RP = 1.138*R_JUP                  # cm
@@ -232,7 +232,7 @@ def do_compare(workdir):
 # --------------------------------------------------------------------------
 # base.inp handoff, written the same way for every source
 # --------------------------------------------------------------------------
-KB, MH, MJ, RJ = 1.380649e-16, 1.6726e-24, 1.898e30, 6.9911e9
+KB, MH, MJ, RJ = 1.380649e-16, 1.67353284e-24, 1.898e30, 6.9911e9
 MASS = {'H2': 2.016, 'H': 1.008, 'He': 4.003, 'H2O': 18.02, 'CH4': 16.04,
         'CO': 28.01, 'CO2': 44.01, 'N2': 28.01, 'NH3': 17.03, 'C2H2': 26.04,
         'HCN': 27.03, 'H2S': 34.08, 'S': 32.06, 'SO2': 64.06}

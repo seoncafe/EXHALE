@@ -42,7 +42,10 @@
       real*8, parameter :: m_H_amu  = 1.0d0
       real*8, parameter :: m_He_amu = 4.0d0
       real*8, parameter :: dm_amu   = m_He_amu - m_H_amu          ! = 3
-      real*8, parameter :: m_amu_g  = 1.6726d-24                  ! amu in g
+      ! Mass of the H = 1 unit the m_*_amu masses above are counted in, i.e.
+      ! the hydrogen ATOM as in parameters.f90 -- not the atomic mass unit u,
+      ! and not the proton (which is what 1.6726d-24 was until 2026-08-19).
+      real*8, parameter :: m_amu_g  = 1.67353284d-24
       ! D = Dpref * T^1/2 / n_tot,  Dpref = 1.52e18*(1/mH+1/mHe)^1/2
       real*8, parameter :: Dpref    = 1.52d18*1.118033989d0       ! = 1.699e18
 

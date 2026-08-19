@@ -9,10 +9,16 @@
       use wae_types,  only: wae_paramlist
       implicit none
 
-      ! constants (defs.h)
-      real*8, parameter :: wae_G  = 6.67259d-8
-      real*8, parameter :: wae_K  = 1.380658d-16
-      real*8, parameter :: wae_MH = 1.6733d-24
+      ! Physical constants. Wind-AE's defs.h carries older values; EXHALE
+      ! uses the current CODATA ones so that the IC it hands over is built
+      ! on the same constants as the rest of the code (2026-08-19).
+      ! Original defs.h values, kept here for comparison against the C/Python
+      ! oracle: G = 6.67259d-8, K = 1.380658d-16, MH = 1.6733d-24. Restore
+      ! those three lines to reproduce the bit-exact port gates of the
+      ! validation drivers (backup/regression/windae_oracle).
+      real*8, parameter :: wae_G  = 6.67430d-8      ! CODATA 2018
+      real*8, parameter :: wae_K  = 1.380649d-16    ! CODATA exact
+      real*8, parameter :: wae_MH = 1.67353284d-24  ! H atom, CODATA 2018
       real*8, parameter :: wae_CS0 = 1.0d0   ! set in init (sqrt(K*T0/MH))
 
       type(wae_paramlist) :: wae_par

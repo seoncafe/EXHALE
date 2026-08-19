@@ -236,11 +236,14 @@ the mid-ultraviolet --- is not in the Verner tabulation, so it is represented by
 terms (the $2s$-shell channel and the resonance-averaged \mbox{He\,\textsc{ii}} $n=2$
 channel) joined by a log-linear bridge across the Cooper minimum. This construction
 reproduces the \citet{Norcross1971} tabulation shipped with \texttt{p-winds}
-\citep{dosSantos2022} to within $\sim10\%$ and an independent TOPbase/Opacity Project
-R-matrix cross section to within $\sim8\%$ in the smooth near-threshold region. The
+\citep{dosSantos2022} to within $\sim10\%$ on the two fitted wings --- degrading to
+$15\%$ at the Cooper minimum itself, where the bridge joins them --- and an independent
+TOPbase/Opacity Project R-matrix cross section to within $\sim8\%$ in the smooth
+near-threshold region. The
 autoionizing resonances that TOPbase resolves above $\sim35$~eV, and the smooth
 high-energy tail above the fitted cutoff, each change the $\HeTS$ photoionization rate by
-only $1$--$2\%$; because these are below the fit and composition uncertainties, they do
+$\lesssim1\%$ for the spectral slopes used here; because these are below the fit and
+composition uncertainties, they do
 not affect the 10830 prediction (a documented approximation valid for the smooth
 resonance-averaged background, which is what the broadband rate integral samples).
 
@@ -327,10 +330,12 @@ IP(\mbox{He\,\textsc{i}})~$-$~IP(\mbox{H\,\textsc{i}})~$=12.752$. The most likel
 is therefore a transposition of the two oxygen labels rather than an error in the
 coefficients, and we adopt the exchanged assignment. This concerns the printed table
 only; we make no claim about the coefficients used in the calculations of
-\citet{Huang2023}. In our WASP-121~b model the correction leaves the wind essentially
-unchanged --- the mass-loss rate shifts by $0.05\%$ and the temperature by less than
-$10$~K --- but it raises the neutral-oxygen density in the ionized wind by a factor of
-$1.6$, which would matter for any \mbox{O\,\textsc{i}} line prediction.
+\citet{Huang2023}. Running our WASP-121~b model both ways leaves the wind unchanged for
+practical purposes --- the mass-loss rate shifts by $0.004\%$ and the temperature nowhere
+by more than $0.8$~K --- while the neutral-oxygen density in the ionized wind rises by
+$4\%$ and \mbox{O\,\textsc{ii}} falls by up to $18\%$ near the base, so the assignment
+matters for an \mbox{O\,\textsc{i}} or \mbox{O\,\textsc{ii}} line prediction rather than
+for the dynamics.
 
 \subsection{Cooling}
 \label{sec:cooling}
@@ -416,8 +421,9 @@ statistical-equilibrium fine-structure terms, which are valid there, survive bel
 floor. The width of the cutoff is a modeling choice rather than a measurement, but it is no
 longer a consequential one: with the fine-structure lines saturated, the local radiative
 balance temperature of the base cell of all four models is unchanged to every digit over a
-factor $60$ in that width, against a $500$--$650$~K spread when the coronal
-fine-structure floors were still in place. In molecular runs an $\mathrm{H_3^+}$
+factor $60$ in that width, against a $500$--$650$~K spread in the three models whose
+balance point lay below the fit floor when the coronal fine-structure floors were still in
+place (on WASP-121~b it lies above the floor, so the guard never engaged). In molecular runs an $\mathrm{H_3^+}$
 ro-vibrational cooling term is added \citep{Miller2013}.
 
 The radiative channels above are the source term in the thermal energy equation; the gas
@@ -525,9 +531,14 @@ default, as the correction to the one-way coronal excitation rate that supplies 
 itself, which appears to be the right form here: measured on these models, of order $98\%$
 or more of the trapped \Lya\ photons escape, and the collisional destruction that could
 suppress the collisionally driven cooling reaches at most ${\sim}0.06\%$. A Sobolev
-(wind-velocity) escape channel is combined with the static wing escape unconditionally; for
-a hot Jupiter it changes $\bar{J}_{\Lya}$ by less than a percent because the velocity
-gradient and the \Lya\ opacity scale together.
+(wind-velocity) escape channel is combined with the static wing escape unconditionally. It
+changes $\bar{J}_{\Lya}$ by less than a percent \emph{where the $n=2$ population resides}
+--- weighted by $n_{2p}$ the mean change is below $0.4\%$ on all four models, and $90\%$
+of the $n_{2p}r^2$ column of HD~189733~b sits inside $1.11\,\Rp$ --- because there the
+velocity gradient is small and the line is optically thick. Only in the thin outer wind,
+beyond ${\sim}2$--$4\,\Rp$, does the Sobolev term overtake the static escape and dominate
+the closure, and there the $n=2$ population it would pump is smaller by orders of
+magnitude.
 
 Two routes to an externally computed field are available. The escape model itself can read
 a tabulated radial profile $\bar{J}_{\Lya}(r)$ in place of the in-line closure (input key
@@ -669,14 +680,22 @@ wind structure (Figures~\ref{fig:struct_hd209}--\ref{fig:struct_wasp121}), the
 steady-state mass-loss rate, and the synthetic transit depths against observations
 (Figures~\ref{fig:transit_he}--\ref{fig:transit_lya}). All four solutions are converged
 with the JFNK steady-state solver rather than stopped on the $du$ criterion, reaching
-discrete steady residuals of $1.9\times10^{-4}$, $9.7\times10^{-4}$, $8.7\times10^{-4}$
-and $8.6\times10^{-4}$ for HD~209458~b, HD~189733~b, WASP-52~b and WASP-121~b; this
+discrete steady residuals of $1.8\times10^{-4}$, $8.3\times10^{-4}$, $8.7\times10^{-4}$
+and $7.8\times10^{-4}$ for HD~209458~b, HD~189733~b, WASP-52~b and WASP-121~b; this
 matters quantitatively, because a $du$-threshold stop alone carries a path-dependent
 spread of several percent in $\Mdot$.
 
 Quoted transit depths are the line-center excess absorption of the model curve, with the
 instrument-convolved value given after a slash where the convolution changes it
-appreciably. The figures additionally include the broadening by the (tidally locked)
+appreciably. The line-spread convolution uses the resolving power of the instrument each
+line is compared against --- $R=8\times10^{4}$ for CARMENES (HD~189733~b
+\mbox{He\,10830}), $9\times10^{4}$ for CRIRES$+$ (WASP-121~b), $2.5\times10^{4}$ for
+Keck/NIRSPEC (WASP-52~b), $6\times10^{4}$ for HET/HRS (\Ha), $1.4\times10^{5}$ for
+ESPRESSO (WASP-52~b \Ha), and $1.5\times10^{4}$ for HST/STIS G140M (\Lya) --- and the
+metal doublets, which have no counterpart observation here, keep the code defaults. Using
+one fixed resolving power instead changes the convolved depths by less than $1.5\%$
+except for the two lowest-resolution comparisons, where it inflates them by $6$--$8\%$.
+The figures additionally include the broadening by the (tidally locked)
 planet rotation, which lowers the plotted peak further; the planet, stellar, and spin
 parameters all come from each run directory's own input file. Of the four models only
 HD~189733~b carries the diffusive He/H and He/metal separation of
@@ -702,7 +721,7 @@ photoionization heating in the ionized layer, while adiabatic expansion becomes 
 to the radiative losses in the outer wind.
 
 The synthetic \mbox{He\,10830} triplet has a line-center depth of $10.2/9.6\%$ and \Lya\
-reaches $25.1\%$, while \Ha\ is weak at $0.31\%$ (Figures~\ref{fig:transit_he},
+reaches $25.1/23.1\%$, while \Ha\ is weak at $0.31\%$ (Figures~\ref{fig:transit_he},
 \ref{fig:transit_ha}, and~\ref{fig:transit_lya}). The metal resonance lines of this
 solar-composition run are predicted at
 $11.8/6.9\%$ (\mbox{Mg\,\textsc{ii}} h\&k), $3.6\%$ (\mbox{Ca\,\textsc{ii}} H\&K), and
@@ -712,8 +731,10 @@ the one clear failure of this model. The core is inaccessible to observation bec
 interstellar and geocoronal absorption, so the measurement of \citet{VidalMadjar2003}
 constrains the wings, and there the model falls an order of magnitude short: at
 $|v|=50$--$120$~km\,s$^{-1}$ the digitized profile absorbs $3$--$15\%$ while the model
-absorbs $0.7$--$1.7\%$, and over the $[-130,+100]$~km\,s$^{-1}$ band the observed
-$15\pm4\%$ compares with $5.0\%$ from the model. The model \Lya\ line is far too narrow:
+absorbs $0.7$--$1.7\%$. Integrated over the $1215.15$--$1216.10$~\AA\ domain
+($-130$ to $+100$~km\,s$^{-1}$ in the stellar rest frame) on which
+\citet{VidalMadjar2003} measure a $15\pm4\%$ decrease, the model gives $5.0\%$, low by
+$2.5\sigma$. The model \Lya\ line is far too narrow:
 a one-dimensional spherical wind produces no population of fast neutral hydrogen, which
 is what the observed wing absorption requires and what radiation-pressure acceleration
 and stellar-wind charge exchange are invoked to supply. For \Ha, \citet{Jensen2012}
@@ -776,7 +797,7 @@ thermal background, so nothing enforces a floor at the equilibrium temperature f
 that has shielded out the XUV.
 
 The synthetic \mbox{He\,10830} depth is $2.9/2.8\%$ and \Ha\ is $0.61\%$, while \Lya\ reaches
-$38.0/36.7\%$ (Figures~\ref{fig:transit_he}, \ref{fig:transit_ha},
+$37.9/36.7\%$ (Figures~\ref{fig:transit_he}, \ref{fig:transit_ha},
 and~\ref{fig:transit_lya}). The comparison with \citet{Salz2018} depends on which measure
 is used, so we quote the integrated one: the model equivalent width is $16.0$~m\AA\
 against their $12.7\pm0.6$~m\AA, i.e.\ $1.26$ times larger, while the line-center depths
@@ -814,7 +835,7 @@ the sonic point just outside it at $\approx2.2\,\Rp$
 large neutral-hydrogen and metastable-helium column along the extended line of sight.
 
 The resulting transit depths are the largest of the sample: the model \mbox{He\,10830}
-triplet reaches $25.2/24.6\%$, \Ha\ $4.4\%$, and \Lya\ is fully saturated near
+triplet reaches $25.2/23.2\%$, \Ha\ $4.4\%$, and \Lya\ is fully saturated near
 $100\%$ (Figures~\ref{fig:transit_he}--\ref{fig:transit_lya}). The metal lines are deeper
 still, with \mbox{Mg\,\textsc{ii}} at $71.2/62.8\%$ and \mbox{Ca\,\textsc{ii}} at $16.9\%$.
 These greatly exceed the measured absorption. The \citet{Kirk2022}

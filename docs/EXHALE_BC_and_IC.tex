@@ -37,7 +37,7 @@
 \newcommand{\rp}{$R_p$}
 \title{Boundary and initial conditions in EXHALE (EXHALE)}
 \author{Kwang-Il Seon}
-\date{2026-06-12 (updated 2026-08-15)}
+\date{2026-06-12 (updated 2026-08-19)}
 
 \begin{document}
 \maketitle
@@ -1214,14 +1214,18 @@ numbers in the two tables below, and neither has been re-measured on this matrix
 residual --- with the WENO smoothness weights recomputed at each trial state
 rather than frozen at the previous iterate --- so runs that were recorded here as
 failing their residual finish are not evidence about the current solver. (ii) The
-two ground-term fine-structure coolants are now allowed to be optically thick, and
+two ground-term fine-structure coolants of the time --- the set has since grown to
+the eight C\,\textsc{i}/C\,\textsc{ii}/N\,\textsc{ii}/O\,\textsc{i} lines --- are
+allowed to be optically thick, and
 the CHIANTI coronal fits are switched off smoothly below their $10^3$\,K validity
 floor; on a planet whose base falls out of the coronal regime this changes the base
 equilibrium temperature by hundreds of kelvin. The tables are kept as the dated
 record of the base-BC comparison they were made for, and the \emph{relative}
 ordering across base modes is what they are being cited for. They should not be
 read as current mass-loss rates: the production HD~209458~b run under the present
-code gives $\log_{10}\dot M = 9.31$ at $\lVert R\rVert = 7.7\times10^{-4}$. These
+code gives $\log_{10}\dot M = 9.47$ at $\lVert R\rVert = 1.8\times10^{-4}$ (the
+2026-08-19 production set; it read $9.31$ at $7.7\times10^{-4}$ when this
+paragraph was written on 2026-08-11). These
 runs were not repeated, because repeating them is a re-measurement of the whole
 matrix rather than a correction to it.
 

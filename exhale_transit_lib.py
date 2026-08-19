@@ -33,7 +33,7 @@ def _tenv_set(name):
 
 # Physicals constants
 kb  = 1.380649e-23		# Boltzmann constant [J/K]
-G   = 6.67e-11			# Gravitational constant [m3/kg/s2]
+G   = 6.67430e-11		# Gravitational constant [m3/kg/s2] (CODATA 2018)
 mp  = 1.672623e-27		# Proton mass [Kg]
 me  = 9.109384e-31		# Electron mass [Kg]
 mD  = 3.344497e-27		# Deuterium mass [Kg]

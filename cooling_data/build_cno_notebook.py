@@ -175,7 +175,8 @@ $1\!\to\!2$ channel; `fit_fs_saturation.py`).  Note the $n_{\rm HI}$
 channel can also *raise* the cooling above the electron-only coronal
 curve in mostly-neutral gas (the CHIANTI curve has no H collisions)."""))
 
-cells.append(nbf.v4.new_code_cell(r"""KB_CODE = 1.38e-16   # code-wide kb_erg (rounded, matches Cool_coeff.f90)
+cells.append(nbf.v4.new_code_cell(r"""KB_CODE = 1.38e-16   # rounded k_B the fits were made with (the code itself
+                     # carries CODATA 1.380649e-16 since 2026-08-15)
 
 def w_fs_cii(T, ne, nHI):
     xl = np.log10(T/1e4)

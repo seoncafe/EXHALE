@@ -20,7 +20,7 @@ import sys
 import numpy as np
 
 kB = 1.380649e-16
-mH = 1.6726e-24
+mH = 1.67353284e-24  # H atom, matching EXHALE's mu (was 1.6726e-24, the proton)
 
 def read_windsoln(fn):
     scales = None

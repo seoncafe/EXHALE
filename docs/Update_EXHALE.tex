@@ -6320,6 +6320,137 @@ $+$ CODATA \texttt{kb\_erg} & full series & FAIL vs old goldens as measured
 \end{tabular}
 \end{center}
 
+\section{The rest of the physical constants, and why iron cannot move to
+Badnell (2026-08-19)}
+% ===================================================================== %
+Two items from the ``recorded, blocks nothing'' list, taken together because
+the first needs a golden refresh and the second turned out to need none.
+
+\paragraph{The constants pass.} Section~62.2 updated $k_{\rm B}$ and listed
+what was deliberately left alone; those are now done, against CODATA 2018 and
+IAU 2015:
+
+\begin{center}\small
+\begin{tabular}{@{}lccc@{}}
+\toprule
+constant & was & now & rel.\ change \\
+\midrule
+\texttt{kb\_eV}  & $8.6167\times10^{-5}$  & $8.617333262\times10^{-5}$  & $7.4\times10^{-5}$ \\
+\texttt{mu}      & $1.673\times10^{-24}$  & $1.67353284\times10^{-24}$  & $3.2\times10^{-4}$ \\
+\texttt{Gc}      & $6.67259\times10^{-8}$ & $6.67430\times10^{-8}$      & $2.6\times10^{-4}$ \\
+\texttt{hp\_erg} & $6.62620\times10^{-27}$& $6.62607015\times10^{-27}$  & $2.0\times10^{-5}$ \\
+\texttt{hp\_eV}  & $4.1357\times10^{-15}$ & $4.135667696\times10^{-15}$ & $7.8\times10^{-6}$ \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\noindent
+$\pi$, \texttt{erg2eV}, $c$, \texttt{parsec}, \texttt{AU} and $R_J$ were
+already exact to the printed digits. \texttt{mu} is the mass of the hydrogen
+\emph{atom} ($m_p+m_e-13.6\,\mathrm{eV}/c^2$), which is what the density
+normalization means; the comment now says so. The same values appear in four
+other places, all synced: \texttt{m\_h2} in \texttt{lyman\_werner.f90},
+\texttt{Gcgs} in \texttt{lower\_column.f90}, and the Wind-AE constants in
+\texttt{wae\_params.f90}, \texttt{wae\_soe.f90} and
+\texttt{wae\_exhale\_input.f90}. The Wind-AE files port an external code, so
+the original \texttt{defs.h} values are written into the comment there;
+against them the shifts are $2.6\times10^{-4}$, $6.5\times10^{-6}$ and
+$1.4\times10^{-4}$, so the port now agrees with the C/Python reference at that
+level instead of bit-exactly, and restoring the three lines reproduces the
+gates verbatim (\texttt{backup/regression/windae\_oracle}, working copy only).
+The helium atomic mass was left at Wind-AE's $6.6464790722\times10^{-24}$,
+which is the CODATA He atom mass to $10^{-6}$.
+
+\emph{Measured effect}: fields move $10^{-3}$--$5\times10^{-3}$ relative and
+$\log_{10}\dot M$ does not move in the printed digits (\texttt{wasp\_full}
+13.23; counts $14065\to14059$, $14040\to14036$). The one outlier is the
+photoheating of the last interior cell of \texttt{wasp\_he23off}
+($r=1.6056$), which changes by 97\% because the old value was an isolated dip
+below its neighbour; the rest of that file agrees to 0.2\%. Goldens and parse
+corpus re-snapshotted, \texttt{make check} 5/5. The four paper models were
+re-converged (all \texttt{info = 0}, $\log_{10}\dot M$ unchanged at
+9.47 / 9.14 / 11.70 / 13.20); the LaRT fields were not re-run, their inputs
+moving an order of magnitude below the Monte Carlo noise of a
+$2\times10^{6}$-photon run.
+
+\paragraph{Iron recombination: Phase 6 is closed, not deferred.} The code
+carried a note that switching iron from the Huang et al.\ (2023) Eqs.\
+(5)--(6) fits to Badnell RR$+$DR was ``deferred to a later pass''. It cannot
+be done, for a reason outside this code: \textbf{the data do not exist}.
+Fe\,\textsc{i} is produced by recombining Fe\,\textsc{ii} (Mn-like, 25
+electrons) and Fe\,\textsc{ii} by Fe\,\textsc{iii} (Cr-like, 24), while the
+Badnell dielectronic-recombination project reaches the phosphorus sequence
+(15 electrons) in its latest instalment (paper XVI, 2022). Neither iron stage
+is covered --- nor is the K-like sequence the Ca\,\textsc{i} comment in the
+same file already records as missing. The other nine metals are on Badnell,
+which is what the phase asked for. The Huang plan's own Phase 1c prescribes
+exactly this fallback ``where Badnell coverage is thin'', so the code was
+following the plan rather than lagging it. What remains unbuilt is only that
+gate's bookkeeping: a runtime key selecting one rate source for all metals,
+and a Huang-vs-Badnell delta table; neither applies to iron.
+
+\paragraph{Documentation pass on the md/tex corpus.} The sweep that accompanied
+section 62 predates 63.1/63.2, so a second pass propagated them and re-checked
+the reference documents against the code. Findings beyond the expected
+propagation: the manual and the \texttt{README} presented the iron swap as
+pending (both now carry the isoelectronic reason, and the manual names the Ca\,I
+parallel); the \texttt{README} described line trapping as covering ``the two
+fine-structure coolants'' in a two-level scheme, when it has been the eight
+ground-term lines of C\,\textsc{i}/C\,\textsc{ii}/N\,\textsc{ii}/O\,\textsc{i}
+(\texttt{n\_fsline = 8}) in exact statistical equilibrium
+(\texttt{cooling\_formulas.tex} and the manual were already right);
+\texttt{EXHALE\_BC\_and\_IC.tex} quoted $\log_{10}\dot M = 9.31$ for
+HD~209458~b as the value ``under the present code'', which was the 2026-08-11
+number against 9.47 today; four line-number citations in
+\texttt{atomic\_data\_EXHALE\_vs\_MoCHII.tex} pointed at the wrong lines and were
+replaced by symbol names; the transit resolving powers were undocumented, and
+Ca\,\textsc{ii}/Na\,\textsc{i} default to \emph{whatever} \texttt{Instr\_res\_Ha}
+is, so an H$\alpha$ override silently moves both doublets
+(\texttt{README\_HOWTO.md} now tabulates the seven defaults and states the trap);
+and \texttt{wind\_ae\_solver.tex} claimed a bit-exact base-BC gate that 63.1
+turned into a $10^{-6}$--$3\times10^{-4}$ agreement. Two mechanical cross-checks
+passed in both directions: all 56 keys parsed by \texttt{input\_read.f90} appear
+in the manual, and every key-like entry in the manual is still parsed. PDFs
+rebuilt and inspected: manual 54~pp., this log 118, BC/IC 23, Wind-AE 7, atomic
+data 7; no errors, no undefined references, and the surviving overfull boxes are
+pre-existing table rows away from the edited pages.
+
+\paragraph{What the constants pass had still missed, and the golden refresh it
+needed.} Section 63.1 swept the \texttt{.f90} files for the constants \emph{named}
+in \texttt{parameters.f90}. Rescanning for their \emph{values} found four more
+sites. One is in the solution path: \texttt{Cool\_coeff.f90} computed He\,\textsc{ii}
+recombination cooling as \texttt{1.38e-16*T*alpha\_B} in two places. That literal
+is the Boltzmann constant, not a fit coefficient --- the $k_BT\alpha_B$ form
+\emph{is} the Hui \& Gnedin (1997) He\,\textsc{ii} expression, while
+H\,\textsc{ii} and He\,\textsc{iii} use their fitted case-B rates --- so it was
+the truncated ATES value section 62.2 had replaced everywhere else, leaving this
+coefficient $4.7\times10^{-4}$ low. It is \texttt{kb\_erg} now. The other three
+are report-only or write generated files: \texttt{mh\_g} in
+\texttt{lower\_column.f90} and \texttt{ICW\_mH} in \texttt{wae\_ic\_writer.f90}
+were the proton mass where the hydrogen atom is the code's mass unit, and
+\texttt{m\_amu\_g} in \texttt{species\_diffusion.f90} was labeled ``amu'' while
+holding the proton mass --- with masses on the $H=1$ scale there, the right
+multiplier is the hydrogen atom, neither the proton nor $u$. Fifteen constants
+in ten Python tools were brought to the same values, including
+\texttt{src/utils/glob.py} (the GUI's mirror of the global block) and the
+three-digit $G$ in \texttt{exhale\_transit\_lib.py}; the
+\texttt{cooling\_data} scripts deliberately keep the rounded
+$k_B = 1.38\times10^{-16}$ the CHIANTI fits were made with.
+
+The verification was staged so the two kinds of change stay separable. The
+report-only fixes alone give \texttt{make check} 5/5 byte-identical, which is
+what proves \texttt{mh\_g} never reaches a solution. Adding the \texttt{kb\_erg}
+fix fails all five, as it must: against the old goldens the fields move by
+$3.7$--$3.8\times10^{-6}$ (max, in the \texttt{cool} column --- the edited term)
+on the two atomic cases with median $\sim\!4\times10^{-7}$, and by
+$\le2\times10^{-4}$ with median $\sim\!10^{-8}$ on the molecular ones, which
+carry almost no He\,\textsc{ii}. Step counts and $\log_{10}\dot M$ (13.23) do not
+move. Goldens re-snapshotted, \texttt{make check} back to 5/5; the parse corpus
+is unchanged (125 cases OK) because none of these constants enters a derived
+setup value. The four paper models were not re-converged: $3.7\times10^{-6}$ on
+the hottest, most ionized case is three decades below the printed precision of
+every number in \texttt{paper/}.
+
 % ===================================================================== %
 %  APPENDIX --- bookkeeping material, kept separate from the dated update log
 % ===================================================================== %

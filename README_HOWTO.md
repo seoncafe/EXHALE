@@ -671,6 +671,20 @@ block first when a spectrum looks wrong: `R_star` sets the transit
 normalization, so a wrong stellar radius rescales every absorption depth.
 Instrument resolving powers, wavelength windows, and geometry stay
 script/environment settings — they describe the observation, not the system.
+The resolving powers default to the instrument that actually observes each line:
+
+| Line | `R` | Override | Instrument the default follows |
+|------|-----|----------|-------------------------------|
+| He I 10830 | 8e4 | `EXHALE_TRANSIT_RES_HETR` | CARMENES NIR (GIANO-B is 5e4) |
+| Ly-alpha | 5e4 | `EXHALE_TRANSIT_RES_HI` | HST/STIS E140M |
+| H-alpha, H-beta | 1.15e5 | `..._RES_HA`, `..._RES_HB` | HARPS / CARMENES-VIS |
+| Mg II h&k | 3e4 | `..._RES_MGII` | HST/STIS NUV |
+| Ca II H&K, Na I D | 1.15e5 | `..._RES_CAII`, `..._RES_NAI` | optical, same class as H-alpha |
+
+**Trap.** Ca II and Na I default to *whatever `Instr_res_Ha` currently is*, not
+to the literal 1.15e5, so setting `EXHALE_TRANSIT_RES_HA` alone silently moves
+the two metal doublets with it. Set `..._RES_CAII` and `..._RES_NAI` explicitly
+whenever you override the H-alpha resolution.
 
 ### Where the spectra go
 

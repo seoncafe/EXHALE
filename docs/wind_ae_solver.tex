@@ -15,7 +15,7 @@
 \title{The Wind-AE steady-wind solver:\\
 algorithm, continuation, and boundary/initial conditions}
 \author{Kwang-Il Seon}
-\date{2026-06-13}
+\date{2026-06-13 (updated 2026-08-19)}
 
 \begin{document}
 \maketitle
@@ -314,6 +314,17 @@ reproduces the Python wrapper's mass-loss rate to five digits. A subtle
 quirk of the reference --- the rate cache keys on column density only and
 ignores $Y_s$ changes --- had to be reproduced exactly for the numerical
 Jacobian to match.
+
+\paragraph{The bit-exact gates need one line restored (2026-08-19).} Those
+comparisons were run with Wind-AE's own \code{defs.h} constants. The port now
+uses the CODATA values instead, so that the IC it hands over is built on the
+same constants as the rest of EXHALE
+($G=6.67430\times10^{-8}$, $k_B=1.380649\times10^{-16}$,
+$m_{\rm H}=1.67353284\times10^{-24}$; Update\_EXHALE \S63.1). The differences
+are $2.6\times10^{-4}$, $6.5\times10^{-6}$ and $1.4\times10^{-4}$ relative, so
+agreement with the reference is now at that level rather than bit-exact.
+\code{wae\_params.f90} carries the original three values in a comment; restore
+them to reproduce the gates above verbatim.
 
 % ===================================================================== %
 \section{Using it in EXHALE}\label{sec:use}

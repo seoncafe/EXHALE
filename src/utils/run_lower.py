@@ -26,7 +26,11 @@ Writes <run_dir>/base.inp.
 """
 import argparse, math, os, re, sys
 
-KB, MH, G = 1.380649e-16, 1.6726e-24, 6.67259e-8
+# Same constants as parameters.f90 -- this driver integrates the same column as
+# lower_column.f90, so the two must not drift. MH is the hydrogen ATOM, because
+# it multiplies a dimensionless mean molecular weight (it was the proton mass
+# 1.6726e-24 and G was 6.67259e-8 until 2026-08-19).
+KB, MH, G = 1.380649e-16, 1.67353284e-24, 6.67430e-8
 RJ, MJ = 6.9911e9, 1.898e30
 
 

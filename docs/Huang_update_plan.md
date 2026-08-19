@@ -25,7 +25,9 @@ refer to Huang+2023 unless noted).
 
 > **Snapshot, not current state.** This section, and the progress notes further
 > down, describe the tree as it stood when the plan was written. Phases 0-4 have
-> since been carried out and Phase 5 in part; **Phase 6 has not been done**
+> since been carried out, Phase 5 in part, and **Phase 6 is closed as far as it
+> can be** (nine metals already recombine through Badnell; iron has no Badnell
+> data to switch to -- see that phase)
 > (see the status marks on each phase in §2). So the "already has" list is a
 > lower bound:
 > the metal set is now ten elements (27 ion stages), charge exchange follows
@@ -399,7 +401,9 @@ layer).
 > and flagged in `cross_sec.f90` as a high-XUV lower bound; (2) **recombination**
 > uses **Huang's explicit Fe fits Eqs. (5)–(6) directly** (DR Arrhenius + RR
 > power-law), **not** the Badnell dispatcher, since the Huang rates are the
-> validation target for this gate (Badnell-swap deferred to Phase 6). Voronov 1997
+> validation target for this gate (Badnell-swap deferred to Phase 6 — which is now
+> closed with the swap ruled out, since the Badnell DR project covers neither iron
+> stage; see Phase 6 below). Voronov 1997
 > `cfit.dat` for collisional ionization (the `P`/`X`/`K` columns were cross-checked
 > — an earlier abandoned attempt had transposed them). **No Fe line cooling**
 > (`mion_iscool=.false.`, Phase 2) and **no Fe charge exchange** (Phase 1d).
@@ -531,7 +535,7 @@ layer).
 > Ca II 3934/3968 and Na I D. **Not implemented:** K I 4045/4048/7667/7701,
 > Mg I 2853, Ca I, and the Fe I / Fe II line sets (nor H-gamma).]
 
-### Phase 6 (final, production) — swap recombination to Badnell RR+DR — **NOT DONE**
+### Phase 6 (final, production) — swap recombination to Badnell RR+DR — **CLOSED 2026-08-19** (nine metals already on Badnell; iron has no Badnell data to switch to)
 Once Cases A–D are reproduced with Huang's recombination rates (§1.3), switch the
 production default to **Badnell RR+DR** for all metals (H stays case B). Because
 the recombination code is built with a swappable rate source for each ion (§1.3), this
@@ -543,11 +547,24 @@ is a configuration change, not a rewrite.
 
 > [2026-08-15: not carried out. Iron still recombines through Huang+2023
 > Eqs. (5)-(6) — `alpha_rec_FeI_Huang` / `alpha_rec_FeII_Huang` in
-> `radiation/Cool_coeff.f90`, whose own comment records the Badnell swap as
-> "deferred to a later pass". The other nine metals already use Badnell RR+DR
+> `radiation/Cool_coeff.f90`. The other nine metals already use Badnell RR+DR
 > through `alpha_rec_metal`, so the tree is mixed rather than switchable: there
 > is no key that selects one rate source for all metals, and no delta table has
 > been recorded.]
+>
+> [2026-08-19: **closed — the iron half cannot be done, and the rest already
+> is.** Fe I is produced by recombining Fe II (Mn-like, 25 electrons) and Fe II
+> by Fe III (Cr-like, 24). The Badnell dielectronic-recombination project
+> reaches the phosphorus isoelectronic sequence (15 electrons) in its latest
+> instalment (paper XVI, 2022), so no Badnell fit exists for either iron stage
+> and none can be swapped in. This is the case Phase 1c of this plan already
+> anticipated ("falling back to Huang's explicit Fe fits Eqs (5)-(6) where
+> Badnell coverage is thin"), so the present code follows the plan rather than
+> lagging it. The nine other metals are on Badnell already, which is what this
+> phase asked for. What remains open is only the bookkeeping the gate wanted:
+> there is no runtime key that selects one rate source for all metals, and no
+> delta table Huang-rates vs Badnell-rates has been recorded. Neither is
+> needed for iron, since iron has only one available source.]
 
 ---
 

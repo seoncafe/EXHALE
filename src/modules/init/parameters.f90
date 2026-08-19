@@ -359,13 +359,16 @@
       ! relative change that moves every thermal quantity -- goldens were
       ! re-snapshotted with this value).
       real*8,parameter ::  kb_erg  = 1.380649d-16
-      real*8,parameter ::  kb_eV   = 8.6167e-05       ! Boltzmann constant (eV/K)
-      real*8,parameter ::  mu      = 1.673e-24        ! Hydrogen mass (g)
+      real*8,parameter ::  kb_eV   = 8.617333262d-05  ! Boltzmann constant (eV/K), CODATA exact
+      ! Mass of the hydrogen ATOM (m_p + m_e - 13.6 eV/c^2), CODATA 2018.
+      ! This is the mass unit of the density normalization, so it also sets
+      ! m_H2 in lyman_werner.f90 -- keep the two in step.
+      real*8,parameter ::  mu      = 1.67353284d-24   ! Hydrogen atom mass (g)
       real*8,parameter ::  g       = 1.666666666667   ! Polytropic index
-      real*8,parameter ::  Gc      = 6.67259e-8       ! Gravitational constant (CGS)   
+      real*8,parameter ::  Gc      = 6.67430d-8       ! Gravitational constant (CGS), CODATA 2018
       real*8,parameter ::  erg2eV  = 6.241509075e11   ! 1 erg measured in eV
-      real*8,parameter ::  hp_erg  = 6.62620e-27      ! Planck constant in CGS units
-      real*8,parameter ::  hp_eV   = 4.1357e-15       ! Planck constant (eV*s)
+      real*8,parameter ::  hp_erg  = 6.62607015d-27   ! Planck constant (CGS), CODATA exact
+      real*8,parameter ::  hp_eV   = 4.135667696d-15  ! Planck constant (eV*s), CODATA exact
       real*8,parameter ::  c_light = 2.99792458e10    ! Speed of light in cm/s
       real*8,parameter ::  parsec  = 3.08567758147e18 ! 1 pc in cm
       real*8,parameter ::  AU      = 1.495978707e13   ! Astronomical unit

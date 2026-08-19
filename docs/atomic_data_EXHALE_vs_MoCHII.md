@@ -30,7 +30,8 @@ EXHALE rows marked "[updated]" reflect the 2026-07-17 default (Part 2).
 |---|---|---|
 | Photoionization cross sections | Verner et al. 1996 (VFKY96) with Verner & Yakovlev 1995 fallback; H I and He II from the hydrogenic analytic form. Adds He I 2^3S (VFKY96 wing bridge) and H2 (Yan, Sadeghpour & Dalgarno 1998). Tuned for planet atmospheres (Na, K). | Verner et al. 1996 with Verner & Yakovlev 1995 fallback; H I and He II hydrogenic. Wider element set (Ne, Cl, Ar). |
 | Recombination (H, He) | [updated] Badnell (2023) radiative alpha_A minus Mao & Kaastra (2016) alpha_1, giving case B; He II includes Badnell dielectronic recombination. Identical coefficients to MoCHII. | Badnell (2023) radiative alpha_A and Mao & Kaastra (2016) alpha_1 for case B, with Badnell dielectronic recombination for He II. |
-| Recombination (metals) | Badnell radiative/dielectronic recombination (Badnell 2006 and adf48 data), Ca I from Shull & Van Steenberg 1982, Fe from the Huang et al. 2023 fit. | Badnell radiative/dielectronic recombination (`badnell_rr/dr.dat`) with a CHIANTI fallback. |
+| Recombination (metals) | Badnell radiative/dielectronic recombination (Badnell 2006 and adf48 data), Ca I from Shull & Van Steenberg 1982, Fe from the Huang et al. 2023 fit
+(neither the K-like nor the Mn-like/Cr-like sequences are covered by Badnell). | Badnell radiative/dielectronic recombination (`badnell_rr/dr.dat`) with a CHIANTI fallback. |
 | Collisional ionization (H, He) | [updated] Voronov 1997. | Voronov 1997 (unified fits), with Dere 2007 as an option. |
 | Collisional ionization (metals) | Voronov 1997. | Voronov 1997. |
 | Charge exchange | Huang et al. 2023 (ApJ 951, 123) Table 4, based on Kingdon & Ferland 1996. 63 reactions (metal+H by default; He and metal-metal via the `cx_full` option). | Huang et al. 2023 Table 4 (Kingdon & Ferland 1996), metals only. |
@@ -104,7 +105,9 @@ al. 2025), the H(n=2) 2s/2p populations (Christie, Arras & Li 2013; Draine 2011)
 Lyman-alpha radiative transfer (Neufeld 1990), and the H2/H3+ molecular network
 (Miller et al. 2013). Its cooling also adds density-dependent treatments absent
 from the MoCHII low-density fits: a two-dimensional (T, n_e) statistical
-equilibrium table for Fe II, the [C II] 158 um and [O I] 63 um saturation, the
+equilibrium table for Fe II, the ground terms of C I, C II, N II and O I solved
+in statistical equilibrium (which is where the [C II] 158 um and [O I] 63 um
+saturation comes from), the
 Mg II h&k, Ca II H&K, and Na I D two-level terms, and a Fe I table from NIST.
 
 MoCHII in turn carries an n-level statistical-equilibrium emission-line solver

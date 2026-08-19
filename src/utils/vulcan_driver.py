@@ -39,7 +39,7 @@ BUNDLE = os.path.join(EXROOT, 'VULCAN')
 sys.path.insert(0, HERE)
 from run_lower import guillot_T, RJ, MJ                     # noqa: E402
 
-G_CGS = 6.674e-8
+G_CGS = 6.67430e-8
 
 
 def read_input(run_dir):

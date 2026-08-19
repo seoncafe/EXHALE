@@ -43,8 +43,12 @@
       public :: lower_column_solve, q_h2_equilibrium
 
       real*8, parameter :: kbol   = 1.380649d-16   ! erg/K
-      real*8, parameter :: mh_g   = 1.6726d-24     ! H mass [g]
-      real*8, parameter :: Gcgs   = 6.67259d-8     ! CGS gravitational constant
+      ! Hydrogen ATOM mass, the same unit as mu in parameters.f90: it multiplies
+      ! a dimensionless mean molecular weight, so it has to be the mass the rest
+      ! of the code normalizes to. Was the proton mass 1.6726d-24 until
+      ! 2026-08-19, which made the scale height below 5.6e-4 too small.
+      real*8, parameter :: mh_g   = 1.67353284d-24 ! H atom mass [g], CODATA 2018
+      real*8, parameter :: Gcgs   = 6.67430d-8     ! CGS gravitational constant (CODATA 2018)
 
       contains
 

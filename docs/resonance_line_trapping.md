@@ -4,7 +4,10 @@
 introduced the escape probability `beta(tau)` for the two ground-term
 fine-structure lines `[O I] 63um` and `[C II] 158um` and explicitly left the
 thick resonance lines of a metal-rich wind untreated. This memo measures that
-open item and closes it.
+open item and closes it. (Those two lines were the whole trapped set at the
+time; it is now the eight ground-term lines of C I, C II, N II and O I, which
+does not affect the verdict below — that verdict is about permitted resonance
+lines, a different class.)
 
 **Verdict. The correction is a no-op and was not implemented.** The lines are
 genuinely optically thick — Mg II h&k reaches `tau0 ~ 7.6e4` at the WASP-121 b

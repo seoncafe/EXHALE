@@ -555,7 +555,10 @@ had its `P`/`X`/`K` columns transposed.
   power-law `C (T/10^4)^{-eta}`) used **directly**, not the Badnell dispatcher
   used for the lighter metals. This is a deliberate choice: the Huang iron rates
   are the validation target for this phase, so the model is run on exactly those
-  rates. The Badnell-swap for iron is deferred to Phase 6.
+  rates. The Badnell-swap for iron is deferred to Phase 6. *(2026-08-19: Phase 6
+  is closed and the swap will not happen -- the Badnell DR project does not cover
+  either iron stage, section 63.2. The choice recorded here is therefore the
+  permanent one, not an interim step.)*
   - Fe II $+\,e\rightarrow$ Fe I: `A=2.833e-8, T0=5.731e4, B=1.383e4, T1=120.4;  C=1.248e-12, eta=0.485`.
   - Fe III $+\,e\rightarrow$ Fe II: `A=1.094e-5, T0=1.490e4, B=36.74, T1=1.153e5;  C=1.728e-12, eta=0.618`.
 - **Line cooling:** **not** ported (`mion_iscool = .false.` for all Fe stages) --
@@ -665,7 +668,9 @@ notebook; no pass/fail asserted here -- that judgement is the reader's). The
 ionization-network half of Phase 1 now carries the full Huang element set with
 verified iron atomic data. The thermal-balance half remains deferred: until Fe II
 line cooling lands in Phase 2 the metals-on temperature profile will not match
-Huang. Next: **Phase 1d** -- charge exchange with H for all metals (Huang Table 4),
+Huang. *(It landed -- Fe II now cools through a CHIANTI multilevel
+statistical-equilibrium table and Fe I through NIST f-values plus Van Regemorter;
+see the Phase 2 entries below.)* Next: **Phase 1d** -- charge exchange with H for all metals (Huang Table 4),
 including Fe$^+$+H$^+\!\leftrightarrow$Fe$^{2+}$+H.
 
 Scratch runs: `phase1c_validation/{regression_cno_mg (off), cno_mg_fe (on),
@@ -5419,3 +5424,231 @@ Files: `parameters.f90`, `input_read.f90`, `write_setup_report.f90`,
 `docs/newton_scaling_and_base_wall.md` section 9 addendum,
 `docs/EXHALE_user_manual.tex`, `README.md`, `README_HOWTO.md`,
 `TO_BE_DONE.md` item (E).
+
+## 63. The rest of the physical constants, and why iron cannot move to Badnell (2026-08-19)
+
+Two items that had been sitting in the "recorded, blocks nothing" list, taken
+together because the first needs a golden refresh and the second turned out to
+need none.
+
+### 63.1 The constants pass
+
+Section 62.2 updated `kb_erg` to the CODATA value and listed the constants
+deliberately left alone. They are now done. Measured against CODATA 2018 and
+IAU 2015:
+
+| constant | was | now | relative change |
+|---|---|---|---|
+| `kb_eV` | 8.6167e-5 | 8.617333262e-5 | 7.4e-5 |
+| `mu` | 1.673e-24 | 1.67353284e-24 | 3.2e-4 |
+| `Gc` | 6.67259e-8 | 6.67430e-8 | 2.6e-4 |
+| `hp_erg` | 6.62620e-27 | 6.62607015e-27 | 2.0e-5 |
+| `hp_eV` | 4.1357e-15 | 4.135667696e-15 | 7.8e-6 |
+
+`pi`, `erg2eV`, `c_light`, `parsec`, `AU` and `RJ` were already exact to the
+printed digits and are unchanged. `mu` is the mass of the hydrogen ATOM
+(m_p + m_e - 13.6 eV/c^2), which is what the density normalization means; it
+is not the proton mass, and the comment now says so.
+
+The same values appear in four other places, all synced: `m_h2` in
+`lyman_werner.f90` (2 mu), `Gcgs` in `lower_column.f90`, and the Wind-AE
+constants `wae_G`/`wae_K`/`wae_MH` (`wae_params.f90`), `wae_K` (`wae_soe.f90`)
+and the hydrogen atomic mass in `wae_exhale_input.f90`. The Wind-AE files are a
+port of an external code, so the original `defs.h` values are written into the
+comment there: restoring `G = 6.67259d-8`, `K = 1.380658d-16`,
+`MH = 1.6733d-24` reproduces the bit-exact port gates in
+`backup/regression/windae_oracle` (working copy only -- `backup/` is not in the
+git remote). Against those three the shifts are 2.6e-4, 6.5e-6 and 1.4e-4, so
+the port now agrees with the reference at that level instead of bit-exactly;
+`docs/wind_ae_solver.tex` says so where it lists the gates. The helium atomic
+mass in `wae_exhale_input.f90` was left at Wind-AE's 6.6464790722e-24, which is
+the CODATA He atom mass to 1e-6.
+
+**Measured effect.** On the regression matrix the fields move by 1e-3 to 5e-3
+relative and `log10 Mdot` does not move in the printed digits (`wasp_full`
+13.23, counts 14065 -> 14059 and 14040 -> 14036). One outlier: in
+`wasp_he23off` the photoheating of the single cell at r = 1.6056 -- the last
+interior cell, next to the r = 1.610 boundary -- changes by 97%, from 2.617e-6
+to 5.158e-6, because the old value was an isolated dip below its neighbour
+(5.065e-6 at r = 1.6098) and the new one is not. Everything else in that file
+agrees to 0.2%, median 8e-4. The goldens and the parse corpus were
+re-snapshotted (the parse dump carries `n0`, `q0` and `b0`, which are derived
+from `kb_erg` and `Gc`), and `make check` is 5/5 against them.
+
+The four paper models were re-converged on the new constants: all `info = 0`,
+and `log10 Mdot` is unchanged at 9.47 / 9.14 / 11.70 / 13.20. The LaRT fields
+were NOT re-run: their inputs (n_HI, T, v) move by ~1e-3, an order of magnitude
+below the Monte Carlo noise of a 2e6-photon run.
+
+### 63.2 Iron recombination: Phase 6 of the Huang plan is closed, not deferred
+
+`Cool_coeff.f90` carried a note that switching iron from the Huang et al.
+(2023) Eqs. (5)-(6) analytic fits to Badnell RR+DR was "deferred to a later
+pass", and the Huang reproduction plan listed that switch as its last
+outstanding phase. It cannot be done, for a reason that has nothing to do with
+this code: **the data do not exist.**
+
+Fe I is produced by recombining Fe II, which is Mn-like (25 electrons), and
+Fe II by Fe III, which is Cr-like (24). The Badnell dielectronic-recombination
+project publishes by isoelectronic sequence, and as of its latest instalment
+(paper XVI, the phosphorus sequence, 2022) it reaches 15 electrons. Neither
+iron stage is covered, and neither is the K-like sequence that the Ca I
+comment in the same file already records as missing. The other nine metals are
+on Badnell RR+DR through `alpha_rec_metal`, which is what the phase asked for;
+iron has one available source and uses it.
+
+This is also what the plan itself prescribed --- its Phase 1c says to use
+Badnell "falling back to Huang's explicit Fe fits Eqs (5)-(6) where Badnell
+coverage is thin" --- so the code was following the plan rather than lagging
+it. The misleading "deferred" comment is corrected at the code site and the
+phase is closed in `docs/Huang_update_plan.md` with this reason. What remains
+unbuilt is only the bookkeeping that phase's gate wanted: a runtime key
+selecting one rate source for all metals, and a Huang-vs-Badnell delta table.
+Neither applies to iron.
+
+Files: `src/modules/init/parameters.f90`,
+`src/modules/lower_atmosphere/{lyman_werner,lower_column}.f90`,
+`src/modules/wind_ae/{wae_params,wae_soe,wae_exhale_input}.f90`,
+`src/modules/radiation/Cool_coeff.f90` (comment only).
+Documentation: `docs/Huang_update_plan.md` Phase 6, `TO_BE_DONE.md`.
+
+### 63.3 Documentation pass on the md/tex corpus (2026-08-19)
+
+The sweep that accompanied section 62 was run before 63.1/63.2 existed, so a
+second pass propagated them and checked the reference documents against the code
+again. What it found was not only the expected propagation:
+
+- **The manual and the README claimed the iron swap was pending.** Both now
+  carry the isoelectronic reason, and the manual note names the Ca I parallel
+  (K-like, 19 electrons). `docs/atomic_data_EXHALE_vs_MoCHII.{md,tex}` and the
+  Phase 1c entries in this file and in `docs/Huang_update_plan.md` gained the
+  same pointer, so a reader landing on the old "deferred to Phase 6" wording is
+  told immediately that it is closed.
+- **The README described the line trapping as covering "the two fine-structure
+  coolants" solved in a "two-level" scheme.** It has been eight lines across
+  C I, C II, N II and O I (`n_fsline = 8`) in exact ground-term statistical
+  equilibrium since that set was expanded; `cooling_formulas.tex` and the manual
+  were already correct, the README and the comparison memo were not. The two
+  dated memos that legitimately say "two" (`resonance_line_trapping.md`,
+  `EXHALE_BC_and_IC.tex`) now say so of their own date.
+- **`EXHALE_BC_and_IC.tex` quoted `log10 Mdot = 9.31` for HD 209458 b as the
+  value "under the present code".** That was the 2026-08-11 number; the
+  production value is 9.47 at `||R|| = 1.8e-4`, and the sentence now carries
+  both with their dates.
+- **Four line-number citations in `atomic_data_EXHALE_vs_MoCHII.tex` pointed at
+  the wrong lines** (`rr_badnell` is at 551, the memo said 506, and so on).
+  Line numbers in prose go stale on every edit above them, so they were replaced
+  by the symbol names.
+- **The resolving powers the transit tool actually uses were undocumented**, and
+  Ca II / Na I default to *whatever `Instr_res_Ha` is*, so overriding the
+  H-alpha resolution moves the two metal doublets with it. `README_HOWTO.md` now
+  tabulates the seven defaults and states the trap.
+- **The Wind-AE port gates.** `docs/wind_ae_solver.tex` said the base-BC layer
+  matched the C/Python reference bit-exactly. After 63.1 it matches at
+  1e-6--3e-4; the paragraph now says which three lines to restore to recover the
+  bit-exact comparison, and names the driver directory correctly
+  (`backup/regression/windae_oracle`, working copy only) here and at the code
+  site.
+
+Two mechanical cross-checks were also run in both directions: all **56** input
+keys parsed by `input_read.f90` appear in the manual, and every key-like entry
+in the manual's tables is still parsed (the 15 apparent orphans are keys the
+manual spells with their unit suffix, e.g. `Planet mass [M_J]`, which the parser
+matches on the prefix). No key is missing or obsolete.
+
+PDFs rebuilt and pages inspected: user manual 54, Update_EXHALE 118,
+EXHALE_BC_and_IC 23, wind_ae_solver 7, atomic_data 7. Zero errors and zero
+undefined references in all five; the 6 and 38 overfull boxes in the manual and
+this log are pre-existing long table rows, none of them on an edited page.
+
+### 63.4 What the constants pass had still missed, and the golden refresh it needed (2026-08-19)
+
+Section 63.1 swept `.f90` files for the constants named in `parameters.f90`. That
+was the wrong search: the same constants also sit in local copies with other
+names, in Python tools that reproduce the same physics, and -- in one case --
+inside a cooling coefficient. Rescanning for the *values* rather than the names
+turned up the following.
+
+**In the solution path (this is what needed the golden refresh).**
+`Cool_coeff.f90` computed He II recombination cooling as `1.38e-16*T*alpha_B` in
+two places (`rec_cool_HeII` and `rec_cool_HeII_func`). The literal is the
+Boltzmann constant, not a fit coefficient: the `k_B T alpha_B` form *is* the
+Hui & Gnedin (1997) He II expression, while H II and He III use their fitted
+case-B rates. These two copies were missed when section 62.2 replaced the
+truncated ATES literal `1.38e-16` with the CODATA `kb_erg` everywhere else, so
+the coefficient was 4.7e-4 low. Now `kb_erg`.
+
+**Report-only or generated-file paths.**
+
+- `lower_column.f90`: `mh_g` was the proton mass while multiplying a
+  dimensionless mean molecular weight, so the Tier-1 analytic scale height was
+  5.6e-4 too small. It is the hydrogen atom now. This affects no golden:
+  `lower_column_solve` is called report-only when `input.inp` carries
+  `Lower column:`, and no `input.inp` in the repository does.
+- `wae_ic_writer.f90`: `ICW_mH` likewise, the unit the Wind-AE IC is written in.
+- `species_diffusion.f90`: `m_amu_g` was labeled "amu in g" but held the proton
+  mass. The species masses in that file are on the H = 1 scale
+  (`m_H_amu = 1`, `m_He_amu = 4`), so the multiplying mass is the hydrogen atom
+  -- neither the proton nor the atomic mass unit u. Value and comment fixed.
+
+**Python tools.** Fifteen constants across ten files, all now equal to their
+`parameters.f90` counterparts: `src/utils/glob.py` (the GUI's mirror of the
+global block -- `Gc`, `mu`, `kb`, `hp_eV` were all stale),
+`exhale_transit_lib.py` (`G` was the three-digit 6.67e-11; it enters only the
+tidally-locked rotation period, so the induced change is -1/2 dG/G = 3.2e-4 on
+the broadening velocity), `examples/exhale_io.py` (the loader every notebook
+uses), `EXHALE_plots.py`, `eta_approx.py`, `src/utils/run_lower.py`,
+`src/utils/vulcan_to_base.py`, `src/utils/vulcan_driver.py`,
+`src/utils/windae_to_exhale_ic.py`, and the two `docs/compare_*.py` scripts.
+`cooling_data/{make_cooling_doc_figures,build_cno_notebook}.py` keep
+`KB_CODE = 1.38e-16` deliberately -- that is the rounded value the CHIANTI fits
+were made with, so the scripts must keep it to reproduce the published numbers;
+only the comment claiming it is "the code-wide kb_erg" was corrected.
+
+`run_lower.py` integrates the same column as `lower_column.f90`, so its
+correction can be measured directly: `r_base` moves 1.47226 -> 1.47216 R_J
+(HD 209458 b), 1.17353 -> 1.17350, 2.00977 -> 2.00953 and 1.43716 -> 1.43700 --
+the fifth decimal, and the three-decimal table in
+`examples/13_lower_atmosphere/README.md` does not change. The generated
+`base_{iso,guillot}.inp` files were **not** regenerated: the examples' recorded
+results were produced from them, and refreshing the inputs without re-running
+the examples would leave the two inconsistent. The pinned
+`backup/regression/mol_*/base.inp` are frozen with their goldens and are never
+regenerated.
+
+**Measured effect and the golden refresh.** Staged so the two kinds of change
+are separable. First the report-only fixes alone: `make check` **5/5
+byte-identical**, which is the measurement proving `mh_g` never reaches a
+solution. Then the `kb_erg` fix in the He II cooling: all five cases FAIL, as
+they must. Against the old goldens the fields move by
+
+| case | max rel. change | median non-zero | step count |
+|---|---|---|---|
+| `wasp_full` | 3.7e-6 (`cool`), 7.6e-6 (`Ion_species`) | 3.7e-7 / 1.5e-7 | 14059, unchanged |
+| `wasp_he23off` | 3.8e-6 (`cool`), 7.3e-6 | 3.7e-7 / 1.4e-7 | 14036, unchanged |
+| `mol_base_handoff` | 1.5e-3 (`v`), 1.1e-5 | 1.6e-8 / 7.9e-9 | 12000 (pinned) |
+| `mol_metals` | 9.6e-5 (`cool`), 2.0e-4 | 1.4e-8 / 3.8e-9 | 12000 (pinned) |
+| `mol_lyman_werner` | 1.0e-4 (`cool`), 1.5e-5 | 1.6e-8 / 6.0e-9 | 12000 (pinned) |
+
+The column that moves most is `cool`, which is the term that was edited. The
+molecular cases have almost no He II, so their median change is two decades
+smaller than the atomic ones; their larger *maxima* are single cells of a
+relaxation snapshot pinned at 12000 steps, where a 1e-8 perturbation is still
+being amplified by the transient. `log10 Mdot` is 13.23 for both `wasp` cases,
+unchanged. Goldens re-snapshotted, `make check` back to 5/5.
+
+The four paper models were **not** re-converged. The bound above -- 3.7e-6 on
+the hottest, most strongly ionized case, which is the WASP-121 b-like one -- is
+three decades below the printed precision of every number in `paper/`, and two
+to three decades below the constants pass of section 63.1, which itself moved
+exactly one printed transit digit. Re-running them would reproduce the same
+printed values at a cost of hours.
+
+Files: `src/modules/radiation/Cool_coeff.f90`,
+`src/modules/lower_atmosphere/lower_column.f90`,
+`src/modules/wind_ae/wae_ic_writer.f90`,
+`src/modules/functions/species_diffusion.f90`, and the ten Python tools listed
+above. Goldens re-snapshotted (`make check` 5/5); the parse corpus is unchanged
+and was **not** re-snapshotted -- 125 cases OK -- because none of these constants
+enters a derived setup value.
+

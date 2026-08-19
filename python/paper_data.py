@@ -91,11 +91,11 @@ RUNDIR = {
     'wasp121': 'WASP-121b',
 }
 
-# name, tag, log10 Mdot [g/s].  2026-08-16 production set: every entry is a
+# name, tag, log10 Mdot [g/s].  2026-08-19 production set: every entry is a
 # JFNK Newton-converged solution (info = 0), read off the run log of the
-# planet's own directory (run_20260815_kb.log in each folder).  Reached
-# residuals ||R|| were 1.94e-4 (hd209), 9.68e-4 (hd189), 8.72e-4 (wasp52),
-# 8.56e-4 (wasp121).  These runs carry the ground-term fine-structure
+# planet's own directory (run_20260819_const.log in each folder).  Reached
+# residuals ||R|| were 1.77e-4 (hd209), 8.35e-4 (hd189), 8.66e-4 (wasp52),
+# 7.75e-4 (wasp121).  These runs carry the ground-term fine-structure
 # statistical equilibrium of the C/N/O coolants, the base ghost built from the
 # composition of the state it bounds, and the corrected H(n=2) rate
 # coefficients with the collisional de-excitation heating on by default; the
@@ -103,10 +103,11 @@ RUNDIR = {
 # ghost temperature: continuous").  A du-threshold stop alone is not
 # quantitative for Mdot, so these supersede the du-stop values and the earlier
 # converged sets 9.31 / 9.05 / 11.63 / 13.17 (2026-08-11) and
-# 9.46 / 9.14 / 11.70 / 13.20 (2026-08-12/13).  The 2026-08-16 re-run is on the
-# CODATA k_B of Update_EXHALE sec 62.2 and moves only hd209, by one digit in
-# the last place; it is also the first wasp121 solution to reach info = 0
-# without staging tricks.
+# 9.46 / 9.14 / 11.70 / 13.20 (2026-08-12/13).  Two re-runs since: 2026-08-16 on
+# the CODATA k_B of Update_EXHALE sec 62.2, which moved only hd209 by one digit
+# in the last place and gave the first wasp121 solution to reach info = 0
+# without staging tricks; and 2026-08-19 on the rest of the constants (sec 63.1),
+# which moves no printed digit of Mdot and only the residuals quoted above.
 PLANETS = [
     ('HD 209458 b', 'hd209',   9.47),
     ('HD 189733 b', 'hd189',   9.14),
