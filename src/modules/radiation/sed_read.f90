@@ -62,7 +62,8 @@
 		! Read through file
 		do
 			! Read wavelength and flux
-			read(1,*,iostat = io) dum_w,dum_f
+			if (.not. sed_next_row(1, dum_w, dum_f, io) .and. io .eq. 0)  &
+				io = -1
 
 			! Handle the read status before using the values: a clean
 			! end of file stops the selection; any other error is fatal
@@ -125,7 +126,8 @@
 
 		! Read lines to be skipped
 		do j = 1,skip
-			read(1,*,iostat = io) dum_w,dum_f
+			if (.not. sed_next_row(1, dum_w, dum_f, io) .and. io .eq. 0)  &
+				io = -1
 			if (io .ne. 0) then
 				write(*,*) '(sed_read.f90) SED file "', trim(sed_file),  &
 				           '" changed or truncated during skip pass at row ', j
@@ -139,7 +141,8 @@
 		! well defined.
 		w_prev = 0.0d0
 		do j = 1,Nl
-			read(1,*,iostat = io) wave_c(j),F_XUV(j)
+			if (.not. sed_next_row(1, wave_c(j), F_XUV(j), io) .and.      &
+			    io .eq. 0) io = -1
 			if (io .ne. 0) then
 				write(*,*) '(sed_read.f90) SED file "', trim(sed_file),  &
 				           '" changed or truncated during data pass at row ', j
@@ -205,4 +208,29 @@
 	end subroutine read_sed
 	
 	! End of module
+	
+      logical function sed_next_row(unit, w, f, io)
+      ! Next data row of an SED file: blank lines and lines whose first
+      ! non-blank character is '#' are skipped, so a file may carry a
+      ! provenance header. Returns .false. at end of file; io > 0 is a
+      ! malformed data row and is left for the caller to report.
+      integer, intent(in)  :: unit
+      real*8,  intent(out) :: w, f
+      integer, intent(out) :: io
+      character(len=512)   :: ln
+      sed_next_row = .false.
+      io = 0
+      do
+         read(unit,'(A)',iostat = io) ln
+         if (io .lt. 0) return
+         if (io .gt. 0) return
+         ln = adjustl(ln)
+         if (len_trim(ln) .eq. 0) cycle
+         if (ln(1:1) .eq. '#') cycle
+         read(ln,*,iostat = io) w, f
+         sed_next_row = (io .eq. 0)
+         return
+      enddo
+      end function sed_next_row
+
 	end module sed_reader	

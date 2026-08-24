@@ -703,7 +703,10 @@ $(\ast)$ \texttt{Log10 of X-ray luminosity [erg/s]:} & real (log$_{10}$) & Only
   \texttt{PLM+WENO3} selects the two-stage mode (march in PLM to the first
   \texttt{du\_th} value, then switch to WENO3 and converge at the second). \\
 \texttt{Include He23S?:} & logical & Include the metastable He\,$2\,^3$S triplet
-  (needed for the He\,10830 line). \\
+  (needed for the He\,10830 line). \emph{On by default}, and the only line of
+  the core block that may be omitted: a file without it gets the triplet.
+  \texttt{False} is the deliberate opt-out, used to compare against the atomic
+  helium limit. Forced off when the gas carries no helium. \\
 \texttt{Load IC?:} & logical & Restart from the previous run's
   \texttt{output/*\_IC.txt} (warm start). \\
 \texttt{Do only PP:} & logical & Skip the time loop and only run the
@@ -810,8 +813,13 @@ defaults restore the standard behavior).}\label{tab:inp-opt}\\
 \texttt{Stellar Teff [K]:} & real (K) & Stellar $T_{\rm eff}$ for the
   diluted-blackbody Balmer continuum that photoionizes/heats H($n{=}2$). Enables
   the excited-H model when both this \emph{and} \texttt{Stellar radius} are $>0$. \\
-\texttt{Stellar radius [R\_sun]:} & real (\msun-radius) & Stellar radius (sets the
-  Balmer-continuum dilution $R_\star/a$). \\
+\texttt{Stellar radius [R\_sun]:} & real (\msun-radius) & Stellar radius: sets
+  the Balmer-continuum dilution $R_\star/a$ here, and in
+  \texttt{EXHALE\_transit.py} it normalizes every transit depth and caps the
+  impact-parameter integration at $R_\star/R_p$. Supply it for any run whose
+  spectrum will be synthesized --- absent, the transit script falls back to a
+  built-in radius that need not match the system, and the depths scale
+  accordingly. \\
 \texttt{Jlya RT file:} & path & Read an external $\bar J_{\rm Ly\alpha}(r)$ profile
   to pump H($n{=}2$) (sets \texttt{jlya\_mode}=1). \\
 \texttt{Jlya escape-prob:} & \texttt{True} & Compute $\bar J_{\rm Ly\alpha}$
@@ -1694,7 +1702,14 @@ script/environment settings --- they describe the observation, not the
 system. At startup the script prints every resolved parameter together with
 its source (\texttt{input.inp}, \texttt{env ...}, or built-in default), and
 warns when \texttt{Stellar radius}/\texttt{Stellar Teff} are missing from
-\texttt{input.inp}; read that block first when a spectrum looks wrong.
+\texttt{input.inp}; read that block first when a spectrum looks wrong. A
+missing \texttt{Stellar radius} is the one worth checking before anything
+else: transit depths are normalized by $\pi R_\star^2$ and the chord
+integration stops at $R_\star/R_p$, so the built-in fallback shifts every
+depth, and not by a single factor. Measured on the tutorial planet (a
+$1.13\,M_\odot$ star, so $R_\star \simeq 1.155\,R_\odot$), the fallback
+returned a He\,10830 depth of $22.8\%$ where the correct radius gives
+$4.0\%$.
 
 \paragraph{Outputs.} Every line carries one key --- \texttt{He10830},
 \texttt{Lya}, \texttt{Halpha}, \texttt{Hbeta}, \texttt{MgII}, \texttt{CaII},
@@ -1906,7 +1921,7 @@ Log10 of EUV luminosity [erg/s]: 29.30
 Grid type: Mixed
 Numerical flux: HLLC
 Reconstruction scheme: PLM+WENO3
-Include He23S? False
+Include He23S? True
 Load IC? False
 Do only PP: False
 Force start: False
@@ -1914,6 +1929,7 @@ Domain mode: Spherical
 Outer radius [R_p]: 10.0
 du_th [PLM,WENO3]: 0.5 1.0e-3
 Solver: Newton
+Stellar radius [R_sun]: 1.155
 \end{lstlisting}
 The \texttt{Reconstruction scheme: PLM+WENO3} line enables the two-stage
 reconstruction (with the two \texttt{du\_th} values as the PLM and WENO3
@@ -1937,7 +1953,8 @@ velocity, temperature, and the H ionization fraction vs.\ radius.}
 The same model is re-run with single-line changes to illustrate each option:
 \emph{metals off} by removing \texttt{metals.inp}; \emph{Roche/RLOF} by removing
 the \texttt{Domain mode}/\texttt{Outer radius} lines (the default truncates at
-L1); the \emph{He\,10830} line by setting \texttt{Include He23S? True}; the
+L1); the \emph{atomic-helium limit} by setting \texttt{Include He23S? False}
+(the triplet is on by default, so this is the change that removes it); the
 \emph{H$\alpha$/Balmer} physics by adding \texttt{Stellar Teff}/\texttt{Stellar
 radius}; and the \emph{transonic IC} by adding \texttt{Transonic IC: True} for a
 near-unbound (deep-RLOF) base; and \emph{diffusive He/H separation} by adding
@@ -1965,6 +1982,13 @@ recommended-solver \texttt{03\_newton/input.inp} (two-stage
 \texttt{05}--\texttt{10}, which all inherit that solver and add only their
 signature option on top. A \texttt{diff} against the appropriate base shows
 exactly what an option adds; all configurations have been smoke-tested.
+The metastable helium triplet is on by default in the code, but the ladder
+holds \texttt{Include He23S? False} on purpose --- in both bases and in every
+rung whose signature option is something else (\texttt{02}, \texttt{04},
+\texttt{05}, \texttt{09}--\texttt{12}) --- so that atomic helium is the
+baseline and \texttt{06\_he23s} remains a one-line difference. Outside the
+ladder (\texttt{tutorial/}, \texttt{13}--\texttt{16}, the planet folders) the
+triplet is on.
 \texttt{11\_windae\_ic} (HD189733b) exercises the self-consistent-BC
 continuation: its Wind-AE ramp converges and writes the IC, though EXHALE's own
 time-integration of HD189733b is limited by a separate base-breathing
@@ -2010,7 +2034,8 @@ included --- that is what \texttt{16\_molecular\_metals} is.}
   \texttt{Resid tol: 1.0e-3}; run via the \texttt{EXHALE\_PTC} hook \\
 \texttt{05\_metals} & trace-metal cooling, solar C/N/O/Mg/Ca/Na/Fe
   (\S\ref{sec:inputs}) & \texttt{metals.inp} present \\
-\texttt{06\_he23s} & He~$2^3$S metastable level (He\,I~10830) &
+\texttt{06\_he23s} & He~$2^3$S metastable level (He\,I~10830); the one rung
+  that leaves the ladder's atomic-helium baseline &
   \texttt{Include He23S? True} \\
 \texttt{07\_balmer\_lya} & non-LTE H($n{=}2$) $+$ Ly$\alpha$ pumping
   (H$\alpha$/H$\beta$, \S\ref{sec:jlya}) & $+$ \texttt{Stellar

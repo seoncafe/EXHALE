@@ -18,10 +18,12 @@ except ImportError:		# python 2
 # Define global tk variables
 def allocate_tkvars():
 
-	# Create checkbuttons variables
+	# Create checkbuttons variables.  The helium metastable triplet is on by
+	# default, as it is in parameters.f90; switching it off is a deliberate
+	# comparison case.
 	glob.onlyEUV_var = tk.IntVar()
 	glob.LoadIC_var  = tk.IntVar()
-	glob.He23S_var   = tk.IntVar()
+	glob.He23S_var   = tk.IntVar(value = 1)
 	glob.onlyPP_var  = tk.IntVar()
 	glob.force_var   = tk.IntVar()
 	
@@ -216,6 +218,9 @@ def reset_func(*args):
 			c_elem.deselect()
 		
 		
+	# The triplet is on by default, so restore it after the blanket deselect
+	glob.He23S_var.set(1)
+
 	# Reset default labels manually
 	glob.widgets['planets'].set('Choose a planet..')
 	glob.widgets['n0'].insert(0,'14.00')
@@ -354,12 +359,18 @@ def load_input(*args):
 	line = f.readline()
 	reconst = get_word(line,3)
 
-	# Include He23S
+	# Include He23S -- optional key.  The triplet is on unless the file opts
+	# out explicitly, as in input_read.f90.  A file written without the line
+	# must not shift every field below it, so keep the line when the label is
+	# not the expected one.
 	line = f.readline()
-	IncludeHe23S = get_word(line,3)
+	if line.strip().startswith('Include He23S'):
+		IncludeHe23S = get_word(line,3)
+		line = f.readline()
+	else:
+		IncludeHe23S = 'True'
 
 	# IC status
-	line = f.readline()
 	LoadIC = get_word(line,3)
 	
 	# Do only post-processing
@@ -437,7 +448,9 @@ def load_input(*args):
 	if onlyEUV == 'True':
 		glob.onlyEUV_var.set(1)
 
-	if IncludeHe23S == 'True': 
+	if IncludeHe23S in ('False','false'):
+		glob.He23S_var.set(0)
+	else:
 		glob.He23S_var.set(1)
 
 	if LoadIC == 'True': 

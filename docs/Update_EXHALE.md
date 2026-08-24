@@ -5652,3 +5652,87 @@ above. Goldens re-snapshotted (`make check` 5/5); the parse corpus is unchanged
 and was **not** re-snapshotted -- 125 cases OK -- because none of these constants
 enters a derived setup value.
 
+
+## 64. Resolved-configuration output, and the transit tool reading it (2026-08-22)
+
+`EXHALE_setup.out` records the resolved configuration in prose, but
+`EXHALE_transit.py` re-parsed `input.inp` only — so a `base.inp` handoff that
+overrides the planet radius, base temperature, or He/H reached the wind and
+not the transit geometry.  Measured on `benchmarks/wasp52`: the wind used
+1.40492 R_J / 1181.2 K / He/H 0.0959 (from `base.inp`) while the transit read
+1.27 R_J / 1304 K / 0.0204 from `input.inp`.  The radius enters chord
+lengths, absorbing areas, and the rotation velocity, so this was a real
+transit-side error for every handoff run.
+
+Fix, per `docs/lhs1140b_lower_atmosphere_plan_new.md` Phase B:
+
+- **`EXHALE_resolved.out`** (new, machine-readable): written next to
+  `EXHALE_setup.out` at startup by `write_resolved_config`
+  (`write_setup_report.f90`) after `input.inp` + `base.inp` resolution.
+  Key-value lines: `planet_radius_RJ`, `planet_mass_MJ`,
+  `equilibrium_temperature_K`, `HeH_number_ratio`, `orbital_distance_AU`,
+  `star_mass_Msun`, `base_inp_present`.
+- `exhale_transit_lib.read_input_params` prefers that file when it sits next
+  to `input.inp` (returns `resolved=True`, plus the resolved `HeH`); absent
+  file falls back to `input.inp` exactly as before.  A present-but-unreadable
+  file is an error, not a silent fallback.  `EXHALE_transit.py` prints which
+  source it used.
+- **`he_line_metrics.py`** (new, repo root): the He 10830 line metrics of
+  Cherubim et al. (2026) — three Gaussians with shared width and shift;
+  blended-red depth, blue depth, red/blue amplitude ratio, FWHM of the
+  blended feature — with a synthetic-profile selftest
+  (`python3 he_line_metrics.py --selftest`).  `EXHALE_transit.py` now fits
+  the instrument-convolved He curve (air frame) and writes
+  `tpm_He10830_metrics.txt`; a fit failure warns and does not stop the run.
+
+Verified: a scratch run with a `base.inp` overriding radius/temperature/He
+shows the transit consuming 1.50 R_J / 900 K (the override), and the fallback
+path still returns the `input.inp` values; `make check` byte-identity, since
+the new file is additive and the compared outputs are untouched.
+
+## 65. The metastable helium triplet is on by default (2026-08-22)
+
+`Include He23S` was a mandatory key initialized to `.false.`, so every run
+carried whatever the file it was copied from happened to say.  Across the
+tree that produced 28 runs with the triplet off, almost none of them off on
+purpose: the setting was inherited when the case was created for something
+else entirely (a solver, an IC, a domain).  A helium-bearing wind has the
+metastable level whether or not the input file remembers to ask for it, and
+the level is not a diagnostic add-on — it carries its own photoionization,
+Penning ionization with H and H2, recombination, and collisional-excitation
+cooling, so leaving it out changes the electron budget, the energy budget,
+and the 10830 A observable.  Off is the special case, not on.
+
+- `parameters.f90`: `thereis_HeITR = .true.`.
+- `input_read.f90`: the key became **optional** (it was read through `req`,
+  so the initializer never actually applied to a valid run).  A file that
+  omits the line gets the triplet; `Include He23S? False` is the deliberate
+  opt-out and is what the HeITR-off regression branch uses.  `thereis_He`
+  false still forces it off, as before.
+- The Tk interface (`src/utils/EXHALE_interface_functions.py`) follows: the
+  checkbutton variable starts at 1, the reset button restores it to 1
+  instead of clearing it, and `load_input` treats the key as optional with
+  the same semantics as the Fortran reader — on unless the file says
+  `False`.  Since a file may now omit the line, the sequential reader
+  checks the label before consuming the line, so an older file without it
+  no longer shifts `Load IC`, `Do only PP`, and `Force start` by one.
+
+Verified: a one-step run with the key absent prints "Including helium
+triplet chemistry" in the setup report, and `Include He23S? False` does not;
+the Tk reader parses the tutorial input with and without the line to the
+same `Load IC` / `Do only PP` values.  `make check` is unaffected — every
+`backup/regression/*/input.inp` sets the key explicitly, including the two
+`wasp_he23off*` cases that exist to exercise the off branch.
+
+The `examples/01`--`12` ladder keeps `Include He23S? False` on purpose:
+each folder is its base plus exactly one line, and atomic helium is the
+baseline that leaves `06_he23s` a one-line difference against `03_newton`
+instead of a folder that differs in nothing.  Outside the ladder the triplet
+is on -- including `examples/13_lower_atmosphere/`, which had been running two
+of its four planets with the triplet and two without.  That split mattered:
+the He 2^3S + H2 Penning channel is active only when a molecular run also
+tracks the triplet, so one example was doing different physics on different
+planets.  All four now carry `True`; none of them has stored output.
+
+The runs whose stored output predates the flip are listed in
+`docs/he23s_default_recompute_list.md`; nothing there has been recomputed.

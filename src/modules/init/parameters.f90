@@ -89,7 +89,13 @@
       logical :: is_monochr    = .false.  ! Is monochromatic radiation selected
       logical :: is_PL_sed     = .false.  ! Is the SED a power law
       logical :: thereis_Xray  = .false.  ! Include only EUV band	
-      logical :: thereis_HeITR = .false.  ! Include calculations for He triplet
+      ! He metastable triplet: ON by default.  The 2^3S state carries the
+      ! 10830 A observable and its channels feed the energy and electron
+      ! budgets, so a run that does not say otherwise gets it.  The opt-out
+      ! "Include He23S? False" exists for the deliberate HeITR-off branch
+      ! check (backup/regression/wasp_he23off).  Forced back to .false. in
+      ! input_read when the gas carries no helium (thereis_He false).
+      logical :: thereis_HeITR = .true.   ! Include calculations for He triplet
       ! He I (1^1S) photoionization source (default .false. = Verner+1996;
       !  .true. = legacy ATES two-term fit).  (No recombination switch: the
       !  Benjamin+1999 He recombination already matches modern data.)

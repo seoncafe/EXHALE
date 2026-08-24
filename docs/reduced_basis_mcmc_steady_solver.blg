@@ -1,0 +1,46 @@
+This is BibTeX, Version 0.99d (TeX Live 2017/Debian)
+Capacity: max_strings=100000, hash_size=100000, hash_prime=85009
+The top-level auxiliary file: reduced_basis_mcmc_steady_solver.aux
+The style file: plain.bst
+Database file #1: reduced_basis_mcmc_steady_solver.bib
+You've used 19 entries,
+            2118 wiz_defined-function locations,
+            633 strings with 7981 characters,
+and the built_in function-call counts, 7084 in all, are:
+= -- 665
+> -- 429
+< -- 3
++ -- 174
+- -- 150
+* -- 573
+:= -- 1223
+add.period$ -- 57
+call.type$ -- 19
+change.case$ -- 127
+chr.to.int$ -- 0
+cite$ -- 19
+duplicate$ -- 227
+empty$ -- 485
+format.name$ -- 150
+if$ -- 1414
+int.to.chr$ -- 0
+int.to.str$ -- 19
+missing$ -- 21
+newline$ -- 98
+num.names$ -- 38
+pop$ -- 113
+preamble$ -- 1
+purify$ -- 112
+quote$ -- 0
+skip$ -- 151
+stack$ -- 0
+substring$ -- 410
+swap$ -- 37
+text.length$ -- 3
+text.prefix$ -- 0
+top$ -- 0
+type$ -- 70
+warning$ -- 0
+while$ -- 62
+width$ -- 21
+write$ -- 213

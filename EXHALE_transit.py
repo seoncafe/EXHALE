@@ -25,7 +25,7 @@ from exhale_transit_lib import (
     n2_populations, gamma_n2_balmer, get_word, read_input_params,
     orbital_period_days, parameter_with_source,
     _line_halfwidth, _apply_window, _odd,
-    resonance_depth, resonance_spectrum,
+    resonance_depth, resonance_spectrum, _turb_factor,
 )
 
 start = time.time()
@@ -84,6 +84,13 @@ fig_name_nai  = _fig_name('NaI')
 # stellar radius / Teff use the same word positions as the Fortran; LEUV and
 # the 2D approximate method stay content-matched (last occurrence wins).
 _par = read_input_params(Input_file)
+if _par['resolved']:
+	print('(EXHALE_transit) Using the wind solver\'s resolved configuration '
+	      '(EXHALE_resolved.out): Rp = %.5f R_J, T0 = %.1f K'
+	      % (_par['Rp']/RJ, _par['T0']))
+else:
+	print('(EXHALE_transit) No EXHALE_resolved.out next to input.inp -- '
+	      'using input.inp values (stale if base.inp overrides them).')
 Rp    = _par['Rp']       # planet radius [m]
 Mp    = _par['Mp']       # planet mass [kg]
 T0    = _par['T0']       # equilibrium temperature [K]
@@ -511,9 +518,12 @@ for p in range(Grid_Number):
 
 	# Get values of temperature and velocity corresponding to the selected points 
 	T_LOS = data_T[data_arg]
-	v_th_HeTR = np.sqrt(2.0*kb*T_LOS/mHe)
-	v_th_HI = np.sqrt(2.0*kb*T_LOS/mp)
-	v_th_D = np.sqrt(2.0*kb*T_LOS/mD)
+	# _turb_factor() is 1 unless EXHALE_TRANSIT_TURB=1, which adds the
+	# Lampon et al. (2020) turbulence term the p-winds comparison uses.
+	_tf = _turb_factor()
+	v_th_HeTR = np.sqrt(2.0*kb*T_LOS/mHe)*_tf
+	v_th_HI = np.sqrt(2.0*kb*T_LOS/mp)*_tf
+	v_th_D = np.sqrt(2.0*kb*T_LOS/mD)*_tf
 	n_HeTR = data_nheiTR[data_arg]
 	n_HI = data_nHI[data_arg]
 	n_D = data_nD[data_arg]
@@ -954,7 +964,7 @@ if geometry == 'triaxial':
 				T_l = np.where(inside, T_of_r(reffc), 1.0)
 				vw  = np.where(inside, v_of_r(reffc), 0.0)
 				r3  = np.sqrt(x_los**2 + y*y + z*z)
-				vth = np.sqrt(2.0*kb*T_l/mass)
+				vth = np.sqrt(2.0*kb*T_l/mass)*_turb_factor()
 				vlos = vw*x_los/r3 - Omega*(y*Rp)            # m/s
 				Dnu = nu0*vth/c_light
 				a_v = A21/(4.0*np.pi*Dnu)
@@ -1026,6 +1036,29 @@ for _key, _lbl, _lam, _t0, _t1, _t2 in _curves:
 	           header='lambda[A]  T_theo  T_instr  T_rot+instr  (%s)' % _lbl)
 print('(TPM) saved model curves: %stpm_{%s}.txt'
       % (_save_prefix, ','.join(k for k, _, _, _, _, _ in _curves)))
+
+# ----- He 10830 line metrics (three-Gaussian, Cherubim et al. 2026) ----- #
+# Astrophysical metrics of the modeled He triplet: blended-red depth, blue
+# depth, red/blue amplitude ratio, FWHM of the blended feature, and the
+# shared Doppler shift.  Fit on the instrument-convolved curve, in the AIR
+# wavelength frame this script uses.  A fit failure is reported, not fatal.
+try:
+	from he_line_metrics import fit_metrics as _he_fit_metrics
+	_he_excess = (convolved_avg_prob_HeTR.max() - convolved_avg_prob_HeTR) \
+	    / convolved_avg_prob_HeTR.max() * 100.0
+	_hm = _he_fit_metrics(l_plot_HeTR, _he_excess, frame='air')
+	with open(_save_prefix + 'tpm_He10830_metrics.txt', 'w') as _fh:
+		_fh.write('# He 10830 line metrics (three-Gaussian fit, air frame,\n'
+		          '# instrument-convolved curve; he_line_metrics.py)\n')
+		for _k in ('red_depth', 'blue_depth', 'red_blue', 'fwhm_A',
+		           'shift_A', 'sigma_A'):
+			_fh.write('%-12s %14.6e\n' % (_k, _hm[_k]))
+	print('(TPM) He 10830 metrics: red %.3f%%  blue %.3f%%  red/blue %.2f  '
+	      'FWHM %.3f A  -> %stpm_He10830_metrics.txt'
+	      % (_hm['red_depth'], _hm['blue_depth'], _hm['red_blue'],
+	         _hm['fwhm_A'], _save_prefix))
+except Exception as _err:
+	print('(TPM) WARNING: He 10830 metric fit failed: %s' % _err)
 
 # ----- Setup of the figure ----- #
 

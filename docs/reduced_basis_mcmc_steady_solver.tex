@@ -1,0 +1,1612 @@
+%% Reduced-basis conservative residual inference for EXHALE steady winds.
+%% Author: Kwang-Il Seon
+\documentclass[english,a4paper]{my_memo}
+\synctex=1
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage{amsmath}
+\usepackage{babel}
+\emergencystretch=3em
+
+\newcommand{\code}[1]{\texttt{#1}}
+\newcommand{\vect}[1]{\mathbf{#1}}
+\newcommand{\Rres}{\vect{R}}
+\newcommand{\Ustate}{\vect{U}}
+\newcommand{\coef}{\vect{a}}
+\newcommand{\flux}{\vect{F}}
+\newcommand{\source}{\vect{S}}
+\newcommand{\mdot}{\dot M}
+\newcommand{\Rp}{R_{\rm p}}
+\newcommand{\Mach}{\mathcal{M}}
+
+\title{Reduced-Basis Steady Solver for EXHALE}
+\author{Kwang-Il Seon}
+\date{2026-08-23}
+
+\begin{document}
+\maketitle
+
+\begin{quote}\small\itshape
+This memo develops a direct steady-state solution strategy for EXHALE that
+does not place the full, hours-long time-dependent calculation inside an
+MCMC loop.  The proposed state is a smooth, low-dimensional expansion in
+radius.  Mass conservation is imposed analytically, while momentum, energy,
+boundary, chemistry, radiation, and sonic-point conditions are enforced by
+scaled residuals.  Bulk advection, viscous and conductive transport, elemental
+diffusion, and ion-stage advection are treated according to their conservative
+fluxes and current status in EXHALE.  Two distinct formulations are documented:
+(1) a reduced
+basis evaluated by EXHALE's existing finite-volume residual, which targets
+the current discrete fixed point exactly, and (2) a conservative weak
+spectral-element formulation in which source terms are integrated by Gaussian
+quadrature.  Nonlinear least squares is the primary solver.  Annealed MCMC,
+sequential Monte Carlo, or posterior sampling is reserved for finding multiple
+branches and measuring degeneracies.  This is a design document, not a claim
+that the proposed solver is already implemented or validated.  The current
+production workflow and the reduced proposal are compared explicitly.  Public
+numerical precedents are also surveyed, with AUTO-07p selected as the primary
+boundary-value reference and ESTER as the primary astrophysical reference.
+\end{quote}
+
+\tableofcontents
+\bigskip
+
+% =====================================================================
+\section{Objective and scope}\label{sec:objective}
+% =====================================================================
+
+The computational problem is to obtain a physically correct stationary
+solution of the one-dimensional radiation-hydrodynamic equations solved by
+EXHALE without following the long transient required by explicit relaxation.
+The intended use is a single planet and a fixed set of physical inputs, not a
+Bayesian retrieval that reruns the complete hydrodynamic model at every sample.
+
+Let the stationary equations be represented abstractly as
+\begin{equation}
+  \mathcal{R}[\Ustate;\boldsymbol{\theta}]=0,
+  \label{eq:operator}
+\end{equation}
+where \(\Ustate(r)\) is the radial atmospheric state and
+\(\boldsymbol{\theta}\) contains fixed planetary, stellar, atomic, and boundary
+parameters.  A conventional mesh-based Newton solve treats all values of
+\(\Ustate\) as independent unknowns.  The proposal instead restricts the state
+to a smooth manifold,
+\begin{equation}
+  \Ustate(r) = \mathcal{P}(r;\coef), \qquad
+  \coef\in\mathbb{R}^{K}, \qquad K\ll 3N,
+  \label{eq:reducedmap}
+\end{equation}
+and searches for coefficients \(\coef\) that make the governing residual small.
+The map \(\mathcal{P}\) must enforce positivity, composition normalization, and
+as much exact conservation as possible before any optimizer is called.
+
+The method is related to weighted-residual, collocation, spectral, and
+spectral-element methods \cite{Finlayson1972,Canuto2006,Trefethen2000}.  A
+residual interpreted as a statistical likelihood also resembles Bayesian
+physics-informed and probabilistic differential-equation methods
+\cite{Chkrebtii2016,Yang2021,Kramer2021}.  The spline implementation proposed
+here is deliberately much smaller and more physically constrained than a
+general neural network.
+
+The design has four goals:
+\begin{enumerate}
+\item reduce the nonlinear search from values at every radial cell to a few
+  tens of coefficients;
+\item preserve the conservative structure of the hydrodynamic equations;
+\item retain EXHALE's existing radiation, ionization, heating, and cooling
+  calculations rather than replace them with a fitted surrogate; and
+\item distinguish numerical solution finding from posterior uncertainty
+  quantification, so that an arbitrary likelihood width is not mistaken for
+  physical uncertainty.
+\end{enumerate}
+
+% =====================================================================
+\section{The current EXHALE fixed point}\label{sec:current}
+% =====================================================================
+
+EXHALE inherits the Godunov finite-volume hydrodynamic core of ATES
+\cite{Caldiroli2021}.  Its main marching path reconstructs left and right
+states, evaluates numerical fluxes and sources, and applies a three-stage
+strong-stability-preserving Runge--Kutta update.  The relevant implementation
+is in
+\begin{center}
+\begin{tabular}{@{}p{0.38\textwidth}p{0.56\textwidth}@{}}
+\toprule
+file & role \\
+\midrule
+\code{src/EXHALE\_main.f90} & three-stage hydrodynamic update and the
+  optional steady-solver hand-off \\
+\code{src/modules/time\_step/RK\_rhs.f90} & spherical finite-volume flux
+  divergence and hydrodynamic source terms \\
+\code{src/modules/time\_step/}\newline
+\code{steady\_residual.f90} & shared mass, momentum,
+  and energy residual \\
+\code{src/modules/time\_step/}\newline
+\code{steady\_newton.f90} & state packing, equilibrium
+  radiation/chemistry refresh, PTC, and JFNK \\
+\code{src/modules/wind\_ae/wae\_difeq.f90} & a separate steady BVP relaxation
+  with base and sonic-point conditions \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+For a physical cell \(j\), the present residual has the schematic form
+\begin{align}
+ R_{\rho,j} &= (\nabla\!\cdot\!F_\rho)_j-S_{\rho,j},\\
+ R_{p,j} &= (\nabla\!\cdot\!F_p)_j-S_{p,j}-S_{\mu,j},\\
+ R_{E,j} &= (\nabla\!\cdot\!F_E)_j-S_{E,j}
+             -(\mathcal{H}_j-\mathcal{C}_j)-S_{E,\mu,j},
+ \label{eq:exhaleresidual}
+\end{align}
+where the optional \(\mu\) terms denote viscous work, molecular transport, and
+thermal conduction.  The same reconstruction and flux calculation are used by
+time marching and by the steady residual.  A true fixed point of the current
+discretization therefore satisfies the same equation that the explicit code
+relaxes.
+
+Before evaluating Eq.~\eqref{eq:exhaleresidual}, the full residual path converts
+the candidate conserved state to primitive variables, computes temperature,
+updates excited hydrogen when enabled, solves the ionization equilibrium, and
+recomputes heating and cooling.  This detail is essential: reducing only the
+hydrodynamic unknowns does not freeze the microphysics.  It eliminates the
+species fractions conditionally at every trial state.
+
+The local Wind-AE implementation provides a second useful precedent.  It solves
+a steady boundary-value problem directly, with density, temperature, velocity,
+ionization, and column densities as mesh unknowns.  It imposes both
+\(\Mach=1\) and the regularity numerator at the sonic point, then applies Newton
+relaxation.  The reduced-basis proposal changes the representation and search
+algorithm, but the base-to-sonic BVP structure is already present in the source
+tree.  Murray-Clay et al.~\cite{MurrayClay2009} give the physical archetype for
+this class of transonic escape solution.
+
+% =====================================================================
+\section{Comparison of the current and reduced solution strategies}
+\label{sec:comparison}
+% =====================================================================
+
+The current EXHALE strategy and the proposed reduced strategy should not be
+viewed as mutually exclusive solvers.  The production path is a conservative
+and robust way to approach a discrete attractor, while the reduced path is a
+candidate accelerator for reaching the neighborhood of a stationary root.  A
+fair comparison must include the current hybrid workflow rather than describe
+EXHALE as time marching alone.
+
+\subsection{What the current workflow actually solves}
+
+The production sequence is:
+\begin{enumerate}
+\item relax the finite-volume equations with three-stage SSP-RK updates;
+\item when the mass-flux metric is sufficiently flat, optionally hand the full
+  grid state to the JFNK steady solver;
+\item evaluate equilibrium radiation, chemistry, heating, and cooling inside
+  each nonlinear residual call;
+\item include viscosity and thermal conduction through the same transport
+  operator used by the marching path; and
+\item when helium diffusion is active, alternate a JFNK hydrodynamic solve with
+  500 implicit diffusion relaxation steps for as many as five outer passes.
+\end{enumerate}
+The last operation is an outer co-convergence, not a monolithic
+hydrodynamics--diffusion Newton system.  The JFNK residual contains mass,
+momentum, and energy but not the helium element-transport equation.  Ion-stage
+advection is evaluated later by \code{post\_process\_adv.f90} and does not feed
+back into the converged equilibrium hydrodynamics.
+
+The reduced proposal instead maps a small coefficient vector to the radial
+state, eliminates density by steady mass continuity where valid, refreshes the
+same microphysics, and solves a stationary residual directly.  Depending on the
+formulation, that residual is either the existing EXHALE finite-volume residual,
+a strong collocation defect, or a conservative weak balance.
+
+\begin{center}\small
+\begin{tabular}{@{}p{0.21\textwidth}p{0.34\textwidth}p{0.37\textwidth}@{}}
+\toprule
+property & current EXHALE workflow & reduced-basis workflow \\
+\midrule
+unknowns & conserved state in every radial cell, approximately \(3N\)
+  hydrodynamic unknowns & typically tens of spline coefficients plus global
+  quantities such as \(\mdot\) and possibly a sonic radius \\
+route to stationarity & explicit relaxation followed by an optional full-grid
+  PTC/JFNK finish & direct nonlinear solve of the stationary coefficient
+  residual, normally with continuation \\
+conservation & face-based finite-volume conservation using the production
+  HLLC/WENO reconstruction & exact only for constraints built into the map or
+  for correctly assembled conservative element residuals \\
+sharp structure & robust numerical-flux treatment of shocks and narrow layers &
+  smooth and efficient when resolved, but susceptible to missed layers or
+  oscillatory basis error \\
+sonic branch & approached through characteristic time evolution and polished by
+  JFNK & must be selected by explicit topology, regularity, and boundary
+  constraints \\
+species diffusion & implicit operator splitting and outer hydro--diffusion
+  co-convergence & can retain the production outer loop or add element fractions
+  and flux equations to a simultaneous residual \\
+ion-stage advection & guarded post-processing without hydrodynamic feedback &
+  requires additional transported fields or a conditional upstream solve \\
+discrete target & unambiguously the production finite-volume fixed point & the
+  same fixed point only in Formulation A; collocation and weak forms define
+  different discrete problems \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\subsection{Advantages of the current EXHALE workflow}
+
+\paragraph{Conservation and a defined fixed point.}
+The same reconstruction, numerical face flux, boundary routine, and source
+calculation are used in marching and in \code{steady\_residual.f90}.  A
+converged JFNK state therefore solves the equation that the production
+discretization relaxes.  This supplies an unambiguous acceptance diagnostic.
+
+\paragraph{Robustness to localized and nonsmooth structure.}
+The finite-volume path is designed for steep fronts, contact modes, and shocks.
+It is safer than a coarse smooth basis when an ionization front, thermal layer,
+or diffusion scale height is narrower than the proposed basis support.
+
+\paragraph{A comparatively broad basin of attraction.}
+Time evolution follows causal propagation and physical relaxation.  It can
+bring an imperfect initial atmosphere into the local convergence basin of JFNK.
+The code also returns to time marching if the JFNK finish fails, rather than
+accepting an unconverged Newton state.
+
+\paragraph{Reuse of established microphysics.}
+Radiation, chemistry, heating, cooling, viscosity, conduction, reconstruction,
+and boundaries remain on the normal production path.  There is no second
+implementation whose agreement must be assumed.
+
+\subsection{Disadvantages of the current EXHALE workflow}
+
+\paragraph{Long transients.}
+The calculation may spend most of its runtime evolving slow thermal, chemical,
+or diffusive modes even when only one stationary state is required.  These
+hours-long trajectories are computational work toward the root, not additional
+information needed by a steady calculation.
+
+\paragraph{A high-dimensional nonlinear search.}
+The full-grid JFNK solve retains approximately \(3N\) hydrodynamic directions,
+including many radial perturbations that a smooth wind does not need.  The
+resulting Jacobian can be poorly conditioned, and GMRES performance depends on
+the warm state and preconditioning.
+
+\paragraph{Local convergence of the Newton finish.}
+The production code deliberately waits until the mass-flux metric reaches the
+handoff neighborhood.  JFNK accelerates the final convergence but does not
+currently replace the global relaxation stage.
+
+\paragraph{Split composition transport.}
+Helium diffusion is co-converged outside the JFNK residual, while ion-stage
+advection remains post-processing.  This design is practical and internally
+documented, but it does not provide one Jacobian or one simultaneous residual
+for all transported composition fields.
+
+\paragraph{Limited branch tracing.}
+One time evolution normally selects one attractor.  Parameter folds and several
+stationary branches are harder to map systematically than with
+pseudo-arclength continuation.
+
+\subsection{Advantages of the reduced strategy}
+
+\paragraph{Removal of redundant search directions.}
+A smooth wind can often be represented by tens of coefficients rather than
+values in every cell.  Exact mass-continuity elimination removes density as an
+independent function and gives \(\mdot\) a direct global meaning.
+
+\paragraph{Direct stationary solve.}
+The method seeks \(\vect{r}(\coef)=0\) without integrating the complete transient.
+It can therefore avoid the slowest relaxation modes.  This is a potential
+speed advantage, not yet a measured EXHALE result: every trial may still require
+expensive nonlocal radiation and equilibrium chemistry.
+
+\paragraph{Constraints built into the representation.}
+Positive velocity and temperature, normalized composition, fixed base values,
+and exact steady mass continuity can be imposed before the nonlinear solver is
+called.  This prevents exploration of many invalid full-grid perturbations.
+
+\paragraph{Natural continuation.}
+Radiation, chemistry, conduction, and diffusion can be activated progressively.
+AUTO-style pseudo-arclength continuation can also trace folds and distinguish
+subsonic, breeze, and transonic branches more systematically than a single
+relaxation trajectory.
+
+\paragraph{Potential simultaneous transport solution.}
+Adding a small abundance basis and a conservative total element-flux residual
+can place hydrodynamics and diffusion in one nonlinear system.  This is useful
+only after the target energy and momentum closures have been stated; adding
+diffusive enthalpy or frictional heating would define physics beyond the current
+operator-split model.
+
+\subsection{Disadvantages and risks of the reduced strategy}
+
+\paragraph{Basis truncation is a new model error.}
+A small scalar merit does not prove that a narrow heating, cooling, ionization,
+or diffusion layer is represented.  Basis refinement, an independently located
+held-out residual, and comparison with the production-grid residual are all
+required.
+
+\paragraph{Conservation is not automatic.}
+A small strong residual at collocation nodes does not by itself guarantee an
+accurate integrated flux balance.  Advective and diffusive contributions must
+enter one total conservative species flux.  Weak conservation improves the
+integrated balance but no longer targets the exact HLLC/WENO fixed point.
+
+\paragraph{Sonic regularity becomes an explicit responsibility.}
+The reduced BVP can converge to a smooth subsonic breeze unless the intended
+branch and critical conditions are imposed.  A differential equation divided by
+\(v^2-c_s^2\) is singular at the sonic point and must be desingularized, split
+into domains, or accompanied by an explicit regularity equation.
+
+\paragraph{A small state does not imply a cheap residual.}
+Spline coefficients influence several cells, and column-dependent radiation
+couples the radial domain nonlocally.  The reduced Jacobian is smaller but may be
+dense, while one residual evaluation may retain nearly the full chemistry cost.
+
+\paragraph{Smooth bases are unsuitable for genuine discontinuities.}
+A shock requires domain decomposition, an explicit shock location, or retention
+of the finite-volume solver.  Regularization must not smooth away a physically
+required discontinuity merely to improve the scalar objective.
+
+\subsection{Recommended hybrid architecture}
+
+The safest use of dimension reduction is as a front end to the production
+solver:
+\begin{equation}
+ \begin{gathered}
+  \text{simple Parker or frozen-source state}
+  \longrightarrow \text{reduced continuation}
+  \longrightarrow \text{reduced Formulation A solve} \\
+  \longrightarrow \text{full-grid JFNK correction}
+  \longrightarrow \text{short production evolution and residual check}.
+ \end{gathered}
+ \label{eq:hybridworkflow}
+\end{equation}
+The first reduced prototype should use the existing finite-volume residual, not
+a newly derived continuum residual.  It should solve only for \(v\), \(T\), and
+\(\mdot\), with density eliminated analytically and equilibrium chemistry
+refreshed conditionally.  After that path is verified, adaptive collocation,
+weak conservation, and simultaneous elemental diffusion can be introduced in
+separate validation stages.
+
+The current solver remains the final physical diagnostic and robust fallback.
+The reduced solver is successful if it places the state inside the production
+JFNK basin substantially faster while preserving the final EXHALE residual and
+physical branch.  Wall-clock acceleration must be measured; it must not be
+inferred solely from the smaller coefficient count.
+
+% =====================================================================
+\section{Two formulations that must not be conflated}\label{sec:twoforms}
+% =====================================================================
+
+There are two technically different ways to combine a reduced basis with
+EXHALE.  They have different targets and different validation requirements.
+
+\subsection{Formulation A: reduced state, existing discrete residual}
+
+The coefficient vector is mapped onto all \(N\) EXHALE cells,
+\begin{equation}
+  \coef \xrightarrow{\mathcal{P}_N} \Ustate_N(\coef)
+  \xrightarrow{\text{existing EXHALE evaluator}}
+  \vect{F}_N(\coef)\in\mathbb{R}^{3N}.
+  \label{eq:formA}
+\end{equation}
+The reduced solve minimizes a scaled norm of \(\vect{F}_N\).  This formulation
+still evaluates every cell, but one evaluation is a stationary residual call,
+not a full time integration.  It has three decisive advantages:
+\begin{enumerate}
+\item it targets the exact finite-volume fixed point of the current code;
+\item all existing boundary, WENO3/HLLC, radiation, chemistry, and transport
+  paths are reused; and
+\item the full-cell residual exposes localized errors that a quadrature grid
+  could miss.
+\end{enumerate}
+
+It is the safest prototype because a failure cannot be attributed to a newly
+derived continuum residual.  Gaussian quadrature is not needed in this first
+formulation.
+
+\subsection{Formulation B: conservative weak residual with quadrature}
+
+The second formulation defines a new spatial discretization.  Divide the radial
+domain into \(N_e\) elements \(I_e=[r_e,r_{e+1}]\).  If
+\(A(r)=r^2\), omitting the common solid-angle factor, a stationary conservation
+law reads
+\begin{equation}
+  \frac{d}{dr}\left[A(r)\flux(\Ustate)\right]
+  = A(r)\source(\Ustate,r).
+  \label{eq:conservative}
+\end{equation}
+Integrating over one element gives the conservative weak residual
+\begin{equation}
+  \Rres_e = A_{e+1}\flux(\Ustate_{e+1})
+            -A_e\flux(\Ustate_e)
+            -\int_{r_e}^{r_{e+1}}A(r)\source(\Ustate,r)\,dr.
+  \label{eq:weakresidual}
+\end{equation}
+With \(Q\)-point Gauss--Legendre quadrature,
+\begin{equation}
+ \int_{r_e}^{r_{e+1}}A\source\,dr
+ \simeq \frac{\Delta r_e}{2}
+ \sum_{q=1}^{Q}w_q A(r_{e,q})
+ \source\!\left[\mathcal{P}(r_{e,q};\coef),r_{e,q}\right].
+ \label{eq:gauss}
+\end{equation}
+
+Equation~\eqref{eq:weakresidual} conserves the integrated flux exactly up to
+quadrature and nonlinear-solve errors.  It does not require noisy numerical
+derivatives of the source terms.  It is preferable to minimizing the squared
+pointwise differential residual when the atmosphere contains narrow heating,
+cooling, or ionization transitions.  However, it no longer solves the exact
+HLLC/WENO3 finite-volume equation.  Agreement with Formulation A should be
+expected only after basis, element, and quadrature convergence.
+
+\subsection{Recommendation}
+
+Implement Formulation A first.  It tests whether dimension reduction itself
+removes the harmful search directions.  Implement Formulation B only after the
+reduced manifold is demonstrated to contain the desired discrete solution.
+The two results should be reported as a discrete EXHALE fixed point and a weak
+continuum solution, respectively.
+
+% =====================================================================
+\section{Low-dimensional representation}\label{sec:basis}
+% =====================================================================
+
+\subsection{Radial coordinate}
+
+Map the physical domain to \(x\in[0,1]\).  A logarithmic map is usually more
+appropriate than a linear map because most thermal and ionization structure is
+near the lower boundary:
+\begin{equation}
+ x(r)=\frac{\ln(r/r_{\min})}{\ln(r_{\max}/r_{\min})}.
+ \label{eq:coord}
+\end{equation}
+For an L1-truncated Roche domain, the map remains finite and monotone, but the
+outer boundary must be treated according to its actual characteristic structure;
+it must not be called a supersonic outflow boundary when the solution is
+subsonic there.
+
+\subsection{Velocity, temperature, and mass flux}
+
+For an outward solution with \(v>0\), use cubic B-splines
+\begin{align}
+ \ln v(x) &= \sum_{k=1}^{K_v}a_k B_k(x),\\
+ \ln T(x) &= \sum_{k=1}^{K_T}b_k B_k(x),\\
+ m &= \ln\mdot.
+ \label{eq:splines}
+\end{align}
+The logarithms enforce positive velocity, temperature, and mass-loss rate.  A
+single global Chebyshev expansion is attractive for very smooth Parker winds,
+but local B-splines are safer for EXHALE because their support is limited and
+knots can be concentrated near the base, a heating peak, an ionization front,
+or the sonic point.  Global polynomials may oscillate across a narrow transition.
+
+If a solution may contain inflow or a stagnation point, \(\ln v\) is invalid.
+One alternative is
+\begin{equation}
+  v(x)=v_{\rm sc}\sinh\!\left[\sum_k a_kB_k(x)\right],
+  \label{eq:signedv}
+\end{equation}
+which permits a sign change without a hard kink.  The mass-flux elimination
+below is then singular at \(v=0\), so a steady solution with nonzero \(\mdot\)
+cannot cross a true stagnation point.  Such a state belongs to a different
+physical branch and should not be hidden by regularization.
+
+\subsection{Exact elimination of steady mass continuity}
+
+For a steady spherical single-fluid wind,
+\begin{equation}
+  4\pi r^2\rho(r)v(r)=\mdot.
+  \label{eq:masscontinuity}
+\end{equation}
+Therefore
+\begin{equation}
+  \rho(r;\coef)=\frac{\exp(m)}{4\pi r^2v(r;\coef)}.
+  \label{eq:rhoeliminate}
+\end{equation}
+Density is not assigned an independent spline.  Equation
+\eqref{eq:rhoeliminate} removes an entire function, prevents a flat but
+radially inconsistent mass flux, and gives \(\mdot\) a direct physical meaning.
+The factor \(4\pi\) can be omitted internally if EXHALE's code-unit flux is used,
+provided the convention is applied consistently.
+
+This elimination assumes the mass equation has no distributed source.  Any
+future mass loading, condensation, or separate-fluid transfer would invalidate
+Eq.~\eqref{eq:masscontinuity}; in that case the mass equation must return to the
+residual system.
+
+\subsection{Pressure and composition}
+
+Given \(\rho\), \(T\), and equilibrium species fractions, pressure follows from
+the same equation of state used by EXHALE,
+\begin{equation}
+  p = (n_{\rm tot}+n_e)k_{\rm B}T.
+  \label{eq:eos}
+\end{equation}
+The coefficient-to-state map must call the existing composition and equation-of-
+state routines.  A constant mean molecular weight would change the physical
+problem and would be acceptable only for a hydrodynamics-only prototype that is
+explicitly labeled as such.
+
+The preferred design eliminates ion fractions through the existing equilibrium
+solver at every trial state.  If an advected species must instead be represented,
+use logits.  For stages \(s=1,\ldots,S\),
+\begin{equation}
+ y_s(x)=\frac{\exp z_s(x)}{\sum_{t=1}^{S}\exp z_t(x)},
+ \qquad z_s(x)=\sum_k c_{sk}B_k(x),
+ \label{eq:softmax}
+\end{equation}
+which enforces \(0<y_s<1\) and \(\sum_sy_s=1\).  One logit should be fixed to
+zero to remove the redundant common offset.
+
+\subsection{Initial coefficient count}
+
+A practical first trial is
+\begin{center}
+\begin{tabular}{lcc}
+\toprule
+quantity & coefficients & treatment \\
+\midrule
+\(v(r)\) & 8--12 & cubic B-spline in \(\ln v\) \\
+\(T(r)\) & 8--12 & cubic B-spline in \(\ln T\) \\
+\(\mdot\) & 1 & scalar in \(\ln\mdot\) \\
+\(r_s\) & 0 or 1 & explicit only when a sonic constraint is used \\
+\(\rho(r)\) & 0 & eliminated by Eq.~\eqref{eq:rhoeliminate} \\
+equilibrium species & 0 & solved conditionally at residual nodes \\
+\bottomrule
+\end{tabular}
+\end{center}
+Thus the first nonlinear search has approximately 17--26 variables.  Start with
+the coarsest basis that can represent a hot lower atmosphere and one sonic
+transition, then add knots by continuation.  A small residual obtained only
+after adding many nearly redundant coefficients is evidence of poor scaling or
+an unresolved physical layer, not evidence that a larger MCMC is required.
+
+% =====================================================================
+\section{Residual objective}\label{sec:objectivefun}
+% =====================================================================
+
+\subsection{Scaled physics merit}
+
+Let \(\vect{r}(\coef)\) collect hydrodynamic, boundary, sonic, and optional
+chemistry residuals.  Define
+\begin{equation}
+ \Phi(\coef)=\frac{1}{2}\left\|\vect{W}\vect{r}(\coef)\right\|_2^2
+             +\Phi_{\rm prior}(\coef).
+ \label{eq:merit}
+\end{equation}
+The diagonal or block matrix \(\vect{W}\) nondimensionalizes each residual.
+Without physical scaling, base momentum can dominate merely because gravity and
+pressure individually contain large cancelling terms, while an energy imbalance
+elsewhere is numerically smaller in code units.
+
+For Formulation A, retain and extend EXHALE's cell-local state scales.  A useful
+starting point is
+\begin{align}
+ s_{\rho,j} &= \max(\rho_j,\rho_{\rm floor})/t_{\rm dyn,j},\\
+ s_{p,j} &= \rho_j(|v_j|+c_{s,j})/t_{\rm dyn,j},\\
+ s_{E,j} &= \max(E_j,p_j,E_{\rm floor})/t_{\rm dyn,j},
+ \label{eq:scales}
+\end{align}
+with \(t_{\rm dyn,j}\) tied to the local crossing time.  The exact scales must
+be tested by inspecting contributions from every equation and radius.  No one
+row should become invisible because another row contains a large cancellation.
+
+For Formulation B, scale an element residual by a characteristic flux through
+that element, not by its width alone:
+\begin{equation}
+ \widehat R_{k,e}=\frac{R_{k,e}}
+ {\max(|A_eF_{k,e}|,|A_{e+1}F_{k,e+1}|,S_{k,e}^{\rm ref})}.
+ \label{eq:weakscale}
+\end{equation}
+Floors must represent a physical hydrostatic or thermal scale.  A floor imported
+from an unrelated cell can distort the solution.
+
+\subsection{Boundary conditions}
+
+Boundary conditions may be imposed in either of two ways.  A hard construction
+builds them into \(\mathcal{P}\), for example
+\begin{equation}
+ \ln T(x)=\ln T_0+x\sum_k b_k\widetilde B_k(x),
+ \label{eq:hardbc}
+\end{equation}
+which guarantees \(T(0)=T_0\).  A soft condition adds
+\begin{equation}
+ \Phi_{\rm BC}=\frac{1}{2}\sum_i
+ \left[\frac{B_i(\Ustate)}{s_{B_i}}\right]^2.
+ \label{eq:softbc}
+\end{equation}
+Hard conditions reduce dimension and avoid weight tuning, but they should be
+used only for genuinely fixed physical conditions.  A hard base velocity would
+conflict with EXHALE's valve or mass-flux condition.  The base density and
+temperature, pressure-gradient consistency, and outer characteristic condition
+must be copied from the selected EXHALE configuration rather than inferred from
+an obsolete memo.
+
+\subsection{Sonic-point conditions}
+
+The conservative equations are not algebraically singular at \(\Mach=1\), but
+the transonic branch is selected by regularity.  If the sonic radius \(r_s\) is
+an unknown, add
+\begin{align}
+ R_{\Mach} &= \Mach(r_s)-1,\\
+ R_{\rm crit} &= N_{\rm wind}(r_s),
+ \label{eq:sonicconditions}
+\end{align}
+where \(N_{\rm wind}\) is the numerator of the differential wind equation after
+the sonic denominator has been separated.  The sonic merit is
+\begin{equation}
+ \Phi_s=\frac{1}{2}\left(\frac{R_{\Mach}}{s_{\Mach}}\right)^2
+       +\frac{1}{2}\left(\frac{R_{\rm crit}}{s_{\rm crit}}\right)^2.
+ \label{eq:sonicmerit}
+\end{equation}
+This mirrors the Mach-one and numerator conditions in
+\code{wae\_difeq.f90}.  For a domain whose physical solution is subsonic at L1,
+forcing an interior sonic point is wrong.  Branch topology must be chosen before
+the constraint is enabled.
+
+\subsection{Smoothness prior}
+
+Spline truncation already imposes smoothness.  If additional regularization is
+needed, use curvature rather than coefficient magnitude:
+\begin{equation}
+ \Phi_{\rm smooth}=\frac{\lambda_v}{2}
+ \int_0^1\left[\frac{d^2\ln v}{dx^2}\right]^2dx
+ +\frac{\lambda_T}{2}
+ \int_0^1\left[\frac{d^2\ln T}{dx^2}\right]^2dx.
+ \label{eq:smoothness}
+\end{equation}
+The same Gaussian quadrature can evaluate these integrals.  Regularization may
+stabilize an underdetermined coarse solve, but it must not erase a physically
+required ionization or cooling front.  A residual decrease obtained by
+increasing \(\lambda\) is not convergence of the governing equations.
+
+\subsection{Held-out residual}
+
+Never assess the weak solution only at the quadrature nodes used in
+Eq.~\eqref{eq:gauss}.  Evaluate a held-out residual on a denser, independently
+located grid.  A low training residual and a large held-out residual indicate
+aliasing or a basis that oscillates between nodes.  For Formulation B, also
+double \(Q\) without refitting and require the integrated balances to remain
+stable.
+
+% =====================================================================
+\section{Radiation and chemistry}\label{sec:microphysics}
+% =====================================================================
+
+\subsection{Conditional elimination}
+
+At a trial \(v(r)\), \(T(r)\), and \(\mdot\), the density is known from
+Eq.~\eqref{eq:rhoeliminate}.  The preferred residual evaluation is then:
+\begin{enumerate}
+\item construct \(\rho\), \(v\), and \(T\) at all required nodes;
+\item compute cumulative columns and attenuated radiation consistently;
+\item solve the coupled equilibrium species system at those nodes;
+\item recompute \(n_{\rm tot}+n_e\), pressure, excited-state populations,
+  heating, and cooling; and
+\item assemble hydrodynamic residuals from this self-consistent state.
+\end{enumerate}
+This is a nonlinear variable-elimination or variable-projection strategy.  It
+keeps chemical unknowns out of \(\coef\) while retaining their response to the
+candidate hydrodynamic state.
+
+\subsection{Nonlocal columns}
+
+Photoionization couples radii through outward columns.  Formulation A should use
+the current EXHALE column calculation unchanged.  Formulation B has two choices:
+\begin{enumerate}
+\item compute each column by cumulative Gaussian quadrature from the outer
+  boundary; or
+\item introduce column fields satisfying
+  \begin{equation}
+   \frac{dN_s}{dr}=-n_s(r), \qquad N_s(r_{\max})=N_{s,\max},
+   \label{eq:columnode}
+  \end{equation}
+  and add their weak residuals.
+\end{enumerate}
+The first choice has fewer unknowns and is the recommended start.  The second
+choice localizes the radiation equations and may provide a sparser Jacobian,
+but it adds at least one field for every opacity carrier.
+
+\subsection{Determinism requirement}
+
+The present full residual updates the species fraction array in place.  This is
+efficient inside Newton continuation, but a statistical likelihood must be a
+deterministic function of \(\coef\).  If the same \(\coef\) yields different
+residuals depending on the previous proposal's chemistry, detailed balance is
+violated and even deterministic optimization can acquire a false noise floor.
+
+Each trial must therefore use one of the following policies:
+\begin{enumerate}
+\item restore the same reference species state before every evaluation and
+  converge equilibrium tightly;
+\item prove by repeated evaluations that the local equilibrium is unique and
+  independent of its initial guess; or
+\item include the relevant chemical branch in the state vector explicitly.
+\end{enumerate}
+Cache keys must include every state variable on which a rate depends.  Caching
+based only on radius or column would make coefficient perturbations return stale
+physics.
+
+\subsection{Differentiability}
+
+Hard switches, clipped fractions, \(\max(v,0)\) valves, table boundaries, and
+fallback chemistry solvers make \(\vect{r}(\coef)\) nonsmooth.  This matters
+more for Gauss--Newton or Hamiltonian Monte Carlo than for time marching.  The
+reduced solver should use the existing smooth valve where physically permitted,
+record every branch switch, and reject proposals that trigger an unconverged
+chemistry result.  Smoothing a switch is acceptable only when its validity range
+and effect on the physical solution are documented.
+
+% =====================================================================
+\section{Advection and diffusion in the reduced formulation}
+\label{sec:transport}
+% =====================================================================
+
+The reduced method remains applicable when advection and diffusion are active.
+They do not require a return to one unknown at every cell, but they change which
+fields, boundary conditions, and conservation equations must be retained.  The
+essential rule is to reduce the state representation, not the conservative
+transport law.
+
+\subsection{Transport already present and transport still outside the fixed point}
+
+The present EXHALE paths must be distinguished before defining the target
+residual:
+\begin{center}\small
+\begin{tabular}{@{}p{0.25\textwidth}p{0.28\textwidth}p{0.39\textwidth}@{}}
+\toprule
+process & present treatment & implication for a reduced solve \\
+\midrule
+bulk hydrodynamic advection & conservative finite-volume mass, momentum, and
+  energy fluxes & already included in Formulation A; retain conservative fluxes
+  in Formulation B \\
+viscosity and thermal conduction & common operator used by marching and the
+  steady residual when enabled & already included in the current discrete fixed
+  point \\
+elemental diffusion & implicit operator-split update, followed by outer
+  hydrodynamics--diffusion co-convergence in the current Newton workflow & not
+  a row of the JFNK residual; a direct simultaneous solve needs an additional
+  conservative element-transport residual \\
+ion-stage advection & guarded post-processing calculation & does not feed back
+  into the current equilibrium hydrodynamic solution; simultaneous coupling
+  defines an enlarged fixed point \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+Thus, Formulation A already includes bulk advection, viscosity, and conduction
+through the production residual.  It reproduces the fully co-converged result
+with elemental diffusion only if the same outer iteration is retained.  It does
+not become a simultaneous diffusion or ion-advection solve merely by evaluating
+\code{steady\_residual.f90}.
+
+\subsection{Bulk advection, viscosity, and conduction}
+
+Bulk advection is not a new free function.  It is contained in the conservative
+hydrodynamic flux \(\flux(\Ustate)\), while steady mass continuity still permits
+the exact elimination in Eq.~\eqref{eq:rhoeliminate}.  In a continuum weak
+formulation, viscosity and thermal conduction enter through the total momentum
+and energy fluxes.  Schematically,
+\begin{align}
+ F_{p}^{\rm tot} &= F_{p}^{\rm adv}+p-F_{p}^{\rm visc}, \\
+ F_{E}^{\rm tot} &= F_{E}^{\rm adv}+F_{E}^{\rm cond}
+                    +F_{E}^{\rm visc},
+ \label{eq:totalhydroflux}
+\end{align}
+with signs fixed by the production convention.  The weak residual uses these
+total fluxes in the boundary term of Eq.~\eqref{eq:weakresidual}; the flux
+derivatives should not be reintroduced as unrelated pointwise sources.  Cubic
+B-splines provide the first derivatives needed by standard constitutive laws
+and are normally sufficient.  Sharp conductive fronts still require local knot
+or element refinement.
+
+\subsection{Elemental diffusion as a conservative flux constraint}
+
+When helium or a metal element separates from hydrogen, a constant elemental
+abundance is no longer a valid conditional variable.  Introduce a bounded,
+low-dimensional elemental fraction, for example
+\begin{equation}
+ \operatorname{logit}\!\left(\frac{f_{\rm He}}{f_{\max}}\right)
+ =\sum_{k=1}^{K_{\rm He}}c_k B_k(x).
+ \label{eq:heparameterization}
+\end{equation}
+Six to ten coefficients are a reasonable initial experiment, but the accepted
+number must be determined by residual and basis refinement rather than fixed in
+advance.
+
+The helium transport implemented by EXHALE can be represented schematically by
+one total flux,
+\begin{equation}
+ J_{\rm He}=n_{\rm He}v
+ -n_{\rm H}D_{\rm He}
+ \left[\frac{df_{\rm He}}{dr}
+ +f_{\rm He}\left(G_{\rm He}
+ +\alpha_T\frac{d\ln T}{dr}\right)\right]
+ -n_{\rm H}K_{zz}\frac{df_{\rm He}}{dr},
+ \label{eq:heflux}
+\end{equation}
+where \(G_{\rm He}\) collects the gravitational and ambipolar separation
+terms, \(D_{\rm He}\) is the molecular diffusion coefficient, and \(K_{zz}\)
+is the eddy diffusion coefficient.  The exact code expression, including its
+effective mass and sign conventions, must be called or factored from
+\code{species\_diffusion.f90}; Eq.~\eqref{eq:heflux} is not a replacement
+implementation.  Multispecies escape and helium fractionation models provide
+the broader physical context for coupled advective--diffusive fluxes
+\cite{Koskinen2013a,Xing2023,Taylor2025}.
+
+If chemical reactions conserve helium nuclei, steady elemental conservation is
+\begin{equation}
+ \frac{1}{r^2}\frac{d}{dr}\left(r^2J_{\rm He}\right)=0.
+ \label{eq:heconservation}
+\end{equation}
+For an element \(e=[r_L,r_R]\) and a test function \(w_j\), its weak residual is
+\begin{equation}
+ R_{{\rm He},e,j}=
+ \left[w_j r^2J_{\rm He}\right]_{r_L}^{r_R}
+ -\int_{r_L}^{r_R}\frac{dw_j}{dr}\,r^2J_{\rm He}\,dr.
+ \label{eq:heweak}
+\end{equation}
+Gaussian quadrature evaluates the remaining integral.  With a constant test
+function, Eq.~\eqref{eq:heweak} is simply the difference between the total
+element fluxes at the two faces.  This is the most transparent conservation
+diagnostic.
+
+Diffusion also requires boundary conditions that pure hydrodynamics does not.
+The present physical choice is a fixed elemental ratio at the base and zero
+\emph{diffusive} flux at the outer boundary.  The latter must not set the total
+flux to zero: the outward advective flux remains allowed.  Applying separate
+residuals to advective and diffusive divergences can create a numerical source
+or sink; they must be combined into \(J_{\rm He}\) before conservation is
+tested.
+
+\subsection{Ion-stage advection}
+
+Local ionization equilibrium can be eliminated conditionally only when reaction
+times are short compared with transport times.  If ion stages are advected
+self-consistently, each retained stage satisfies
+\begin{equation}
+ \frac{1}{r^2}\frac{d}{dr}\left(r^2J_{X^i}\right)
+ =P_{X^i}-L_{X^i},
+ \label{eq:ionadvection}
+\end{equation}
+where \(J_{X^i}\) includes the selected advective and diffusive contributions.
+Its weak residual is
+\begin{align}
+ R_{X^i,e,j}={}&
+ \left[w_jr^2J_{X^i}\right]_{r_L}^{r_R}
+ -\int_{r_L}^{r_R}\frac{dw_j}{dr}\,r^2J_{X^i}\,dr \nonumber\\
+ &-\int_{r_L}^{r_R}w_jr^2(P_{X^i}-L_{X^i})\,dr.
+ \label{eq:ionweak}
+\end{align}
+The production and loss integrals are evaluated at Gaussian nodes using the
+same attenuated radiation and thermochemical state as the hydrodynamic source
+terms.
+
+Two reductions are practical:
+\begin{enumerate}
+\item Represent \(S-1\) independent stage logits with splines and obtain all
+  \(S\) fractions through a softmax map.  This supports a coupled boundary-value
+  solve and preserves positivity and normalization, but adds coefficients.
+\item For a trial hydrodynamic and elemental state, integrate the ion-advection
+  equations conditionally from the upstream boundary.  This uses fewer global
+  coefficients and is attractive for a strictly outward flow with \(v>0\).
+\end{enumerate}
+The second option is not generally valid through stagnation or inflow, because
+the upstream boundary changes.  Such cases require a boundary-value treatment
+or a conservative flux residual with characteristic boundary conditions.
+
+Do not impose all ion-stage equations together with an independent equation for
+their sum.  For one element, use one elemental transport equation and only
+\(S-1\) independent stage equations.  When reaction bookkeeping exactly
+conserves nuclei, the sum of the stage source terms is zero and the summed
+stage residual must reproduce the elemental residual.  This identity is both a
+rank test and a stringent implementation diagnostic.
+
+\subsection{Energy consistency and the definition of the target problem}
+
+A fully coupled multicomponent model may require more than composition fluxes.
+Species diffusion can carry enthalpy,
+\begin{equation}
+ F_E^{\rm species}=\sum_s h_sJ_s^{\rm diff},
+ \label{eq:speciesenthalpy}
+\end{equation}
+and interspecies friction can heat the gas.  Omitting these terms while adding
+composition diffusion is an approximation whose validity range must be stated.
+If the goal is the current EXHALE result, retain the present operator-split
+physics and reproduce its outer co-convergence.  Adding
+Eq.~\eqref{eq:speciesenthalpy} or new friction terms defines a different
+physical model and requires independent conservation tests.
+
+For a simultaneous reduced transport solve, the residual therefore has the
+block structure
+\begin{equation}
+ \vect{r}_{\rm total}=
+ \begin{bmatrix}
+  \vect{r}_{\rm mass} & \vect{r}_{\rm momentum} & \vect{r}_{\rm energy} &
+  \vect{r}_{\rm element} & \vect{r}_{\rm ion}
+ \end{bmatrix}^{\mathsf T}.
+ \label{eq:transportblocks}
+\end{equation}
+Blocks are included only for fields that are solved dynamically.  Equilibrium
+ion fractions must not also receive advection residuals.  The extra spline
+coefficients remain compatible with optimization and MCMC because their number
+scales with the number of transported fields, not with the number of radial
+cells.
+
+% =====================================================================
+\section{Optimization and Bayesian interpretation}\label{sec:inference}
+% =====================================================================
+
+\subsection{Why MCMC is not the primary root finder}
+
+If the equations and boundary conditions define one deterministic solution,
+the target is \(\vect{r}(\coef)=0\).  Nonlinear least squares uses residual
+magnitudes and derivatives to approach that root.  A random-walk MCMC sampler
+continues to explore after it has found the basin and therefore spends most
+evaluations estimating a distribution that was introduced artificially.
+
+The recommended hierarchy is:
+\begin{enumerate}
+\item obtain a coarse solution by trust-region least squares or
+  Levenberg--Marquardt;
+\item continue in basis size, radiation coupling, or source strength;
+\item use multistart, differential evolution, or annealed sampling only when
+  several basins are plausible; and
+\item sample a posterior only after a stable minimum and a defensible error
+  model have been established.
+\end{enumerate}
+
+\subsection{Pseudo-posterior for branch exploration}
+
+A residual-based distribution can be defined as
+\begin{equation}
+ \pi_\beta(\coef)\propto
+ \exp[-\beta\Phi(\coef)]\,p_0(\coef),
+ \label{eq:pseudoposterior}
+\end{equation}
+where \(p_0\) supplies bounds and smoothness information.  Increasing
+\(\beta\) concentrates the distribution around minima.  Parallel tempering or
+sequential Monte Carlo can move between branches more effectively than one cold
+chain.  The final modes provide starting points for deterministic root solves.
+
+This construction is a search distribution, not automatically a physical
+posterior.  Its width depends on \(\beta\), residual scaling, element count,
+and regularization.  Bayesian physics-informed models make a similar residual-
+likelihood construction \cite{Yang2021}, while probabilistic ODE/BVP methods
+place probability on solution functions and discretization error
+\cite{Chkrebtii2016,Kramer2021}.  Those frameworks justify uncertainty only
+after the stochastic model has been specified; the exponential form alone does
+not do so.
+
+\subsection{A physical posterior}
+
+A defensible posterior requires uncertain physical inputs, model discrepancy,
+or observational data.  One possible hierarchy is
+\begin{equation}
+ p(\coef,\boldsymbol{\theta}\mid D)\propto
+ p(D\mid\mathcal{G}[\mathcal{P}(\coef),\boldsymbol{\theta}])
+ p(\vect{r}(\coef,\boldsymbol{\theta})\mid\Sigma_{\rm model})
+ p_0(\coef,\boldsymbol{\theta}),
+ \label{eq:physicalposterior}
+\end{equation}
+where \(D\) is an observed spectrum, \(\mathcal{G}\) is the transit model, and
+\(\Sigma_{\rm model}\) has a stated interpretation.  Hydrodynamic escape
+analyses have used MCMC with grids or fast Parker-wind models to infer
+temperature, composition, and mass loss \cite{Lampon2021,DosSantos2022}.
+Those are inference examples, not examples of replacing a hydrodynamic root
+solver with MCMC.
+
+\subsection{Sampler choice}
+
+For \(K\lesssim30\), an affine-invariant ensemble sampler is easy to deploy and
+parallelize \cite{Goodman2010}, but it does not solve multimodality by itself.
+Hamiltonian Monte Carlo can be much more efficient in a smooth correlated basin,
+but requires reliable gradients.  Function-space MCMC methods become relevant
+only if basis refinement is taken toward a high-dimensional random function
+\cite{Cotter2013}.  For the proposed small spline expansion, careful scaling
+and a deterministic optimizer are more important than a specialized
+infinite-dimensional sampler.
+
+Convergence reporting must include more than acceptance fraction.  At minimum
+report independent-chain agreement, integrated autocorrelation times, effective
+sample sizes, trace plots for \(\ln\mdot\) and residual components, mode
+occupancy, and repeated likelihood determinism tests.
+
+% =====================================================================
+\section{Jacobians and computational cost}\label{sec:jacobian}
+% =====================================================================
+
+Let \(\vect{J}_a=\partial\vect{r}/\partial\coef\) be the reduced Jacobian.
+Even though \(\vect{r}\) may have thousands of rows, \(\vect{J}_a\) has only
+\(K\) columns.  A forward finite-difference Jacobian costs \(K+1\) residual
+evaluations and is a reasonable prototype for \(K\sim20\).  Central
+differences double that cost.  Colored differencing of mesh variables does not
+directly help because each spline coefficient has support over several cells,
+although compact B-splines preserve partial sparsity.
+
+Better long-term options are:
+\begin{enumerate}
+\item analytic derivatives of the basis map combined with directional
+  derivatives of the existing residual;
+\item complex-step differentiation for code paths that contain no comparisons
+  or nonanalytic functions of the perturbed quantity;
+\item algorithmic differentiation after the equilibrium and table interfaces
+  have been made compatible; or
+\item matrix-free products \(\vect{J}_a\delta\coef\) in a reduced
+  Gauss--Newton or trust-region method.
+\end{enumerate}
+
+If one full equilibrium residual evaluation costs \(C_R\), a finite-difference
+Gauss--Newton iteration costs approximately \((K+1)C_R\), plus a small dense
+least-squares solve.  This must be measured directly.  The hours-long time
+integration does not determine \(C_R\); chemistry and nonlocal radiation are
+expected to dominate a single call, but no runtime claim should be made before
+profiling.
+
+Warm-starting chemistry can reduce \(C_R\) during deterministic continuation.
+For MCMC it is permitted only if it changes iteration count but not the final
+residual.  A history-dependent approximate chemistry result is not an acceptable
+speed optimization.
+
+% =====================================================================
+\section{Proposed algorithms}\label{sec:algorithms}
+% =====================================================================
+
+\subsection{Algorithm A: exact discrete reduced solve}
+
+\begin{enumerate}
+\item Select the physical branch and boundary configuration.  Decide whether
+  the domain contains a transonic wind or remains subsonic at its outer edge.
+\item Choose coarse spline knots and initialize \(\ln v\), \(\ln T\), and
+  \(\ln\mdot\) from a cold, transonic, Wind-AE, or previously converged profile.
+\item Evaluate the splines on the existing EXHALE cell centers.
+\item Compute \(\rho\) from Eq.~\eqref{eq:rhoeliminate}, then obtain pressure
+  from the equilibrium composition and equation of state.
+\item Pack the conserved state and apply the same ghost-cell boundary routine
+  used by the production code.
+\item Restore a deterministic chemistry initial state and evaluate the full
+  EXHALE steady residual.
+\item If elemental diffusion is part of the target, either complete the current
+  outer hydrodynamics--diffusion co-convergence or append the conservative
+  element residual in Eq.~\eqref{eq:heweak}.  If ion-stage advection is part of
+  the target, append only the independent stage equations in
+  Eq.~\eqref{eq:ionweak}.
+\item Scale every residual row and minimize Eq.~\eqref{eq:merit} by a
+  trust-region least-squares method.
+\item If progress stalls, inspect the largest physical residuals before adding
+  knots.  Do not infer that the basis is too small from the scalar merit alone.
+\item Increase the basis dimension by knot insertion and prolong the old spline
+  into the new basis.  Continue until the solution and held-out residual are
+  stable.
+\item Pass the final state through the unmodified EXHALE residual diagnostic
+  and, as a separate test, a short time-dependent relaxation.
+\end{enumerate}
+
+\subsection{Algorithm B: weak spectral-element solve}
+
+\begin{enumerate}
+\item Start from the converged or best available result of Algorithm A.
+\item Define elements independently of the spline knots.  Place additional
+  element boundaries near rapid thermal or ionization changes.
+\item At Gaussian nodes, evaluate the spline state, conditional or transported
+  chemistry, radiation, heating, cooling, and transport coefficients.
+\item Assemble Eq.~\eqref{eq:weakresidual} for momentum and energy and, when
+  active, Eqs.~\eqref{eq:heweak} and \eqref{eq:ionweak} for composition.  Mass
+  is already exact by construction.
+\item Add boundary and branch-appropriate sonic constraints.
+\item Minimize the scaled weak merit, then repeat with larger \(Q\), more
+  elements, and more spline knots.
+\item Evaluate the continuous differential residual on an independent dense
+  grid and the EXHALE discrete residual after projection onto its mesh.
+\item Attribute differences correctly: quadrature error, basis truncation,
+  continuum-versus-HLLC discretization, or a different boundary condition.
+\end{enumerate}
+
+\subsection{Algorithm C: mode search and posterior sampling}
+
+\begin{enumerate}
+\item Construct the deterministic, scaled objective and verify repeated
+  evaluations first.
+\item Run many inexpensive deterministic starts or an annealed population over
+  the coarsest basis.
+\item Cluster minima by \(\mdot\), sonic radius, temperature structure, and
+  equation-wise residual, not by coefficient distance alone.
+\item Refine every distinct physical mode with Algorithm A or B.
+\item Only then define \(\beta\) or a physical covariance and run MCMC.
+\item Confirm each sampled mode by an independent deterministic solve.
+\end{enumerate}
+
+% =====================================================================
+\section{Relevant public codes and transferable methods}
+\label{sec:relatedcodes}
+% =====================================================================
+
+No public code identified in this survey combines all features proposed here:
+a reduced representation of a stationary astrophysical wind, the existing
+EXHALE radiation and chemistry, conservative species transport, and direct
+solution of the resulting coefficient residual.  There are, however, mature
+public precedents for the important numerical components.  The closest
+reference for the one-dimensional boundary-value algorithm is AUTO-07p.  ESTER
+is the closest astrophysical precedent for a nonlinear spectral solve with
+complex microphysics.  Dedalus and KADATH provide useful independent examples
+of spectral equation assembly, but they are lower-priority implementation
+references for EXHALE.
+
+\begin{center}\small
+\begin{tabular}{@{}p{0.17\textwidth}p{0.35\textwidth}p{0.40\textwidth}@{}}
+\toprule
+code & relevant capability & principal mismatch with EXHALE \\
+\midrule
+AUTO-07p & adaptive piecewise-polynomial collocation for ODE boundary-value
+  problems; boundary and integral constraints; continuation and bifurcation
+  analysis & local ODE interface; no radiation--chemistry model or existing
+  finite-volume fixed point \\
+ESTER & nonlinear Newton solution of rotating-star structure with radial
+  Chebyshev expansions, spherical harmonics, coordinate mappings, and stellar
+  microphysics & smooth two-dimensional stellar structure rather than a
+  transonic irradiated wind \\
+Dedalus & open spectral framework for initial-value, boundary-value, and
+  eigenvalue problems; symbolic equation and boundary-condition assembly &
+  adopting it as the main solver would require a separate implementation of
+  EXHALE physics \\
+KADATH & multidomain spectral representation and nonlinear equation systems in
+  general relativity and theoretical physics & primarily elliptic equilibrium
+  problems rather than conservative advection--diffusion winds \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\subsection{AUTO-07p: the primary numerical reference}
+
+AUTO-07p solves ODE boundary-value problems by orthogonal collocation with
+piecewise polynomials.  Its public manual specifies two to seven collocation
+points in each mesh interval and adapts the mesh to equidistribute a local
+discretization-error estimate.  It also treats boundary conditions, integral
+constraints, parameter continuation, folds, and branch switching
+\cite{Doedel2021}.  These features align directly with the reduced EXHALE
+problem:
+\begin{equation}
+ \vect{y}(r)=
+ \left(\ln v,\ln T,\operatorname{logit}f_{\rm He},N_{\rm HI},
+ N_{\rm HeI},\ldots\right),
+ \label{eq:autostate}
+\end{equation}
+while \(\ln\mdot\), a sonic radius, irradiation strength, or a diffusion
+multiplier can be treated as global continuation parameters.  Nonlocal columns
+become local auxiliary equations through Eq.~\eqref{eq:columnode}.
+
+The most transferable AUTO-07p ideas are:
+\begin{enumerate}
+\item a local polynomial representation rather than one high-degree global
+  polynomial;
+\item an adaptive interval mesh driven by a defect estimate;
+\item simultaneous enforcement of interior equations, physical boundary
+  conditions, and global integral constraints;
+\item pseudo-arclength continuation through parameter folds; and
+\item explicit branch labels and restart states rather than interpreting every
+  converged root as the same physical solution.
+\end{enumerate}
+Continuation is especially relevant to EXHALE.  A solution can first be found
+with frozen heating and composition, then followed as radiation, chemistry,
+conduction, or diffusion is turned on.  This is generally safer than attempting
+the fully coupled root from an arbitrary initial profile.
+
+AUTO-07p cannot accept a singular sonic equation without reformulation.  The
+sonic point must be handled by a regularity condition, a desingularized
+independent coordinate, or domain splitting.  Likewise, calling the complete
+EXHALE finite-volume and nonlocal microphysics path from an AUTO callback would
+obscure which discrete problem is being solved.  The recommended use is to
+adopt its collocation, adaptivity, and continuation design in the EXHALE wrapper,
+and to use the public AUTO code first on simplified Parker and frozen-source
+reference problems.
+
+\subsection{Collocation nodes are not weak-quadrature nodes}
+
+AUTO-07p is a close algorithmic precedent, but it does not implement
+Eq.~\eqref{eq:weakresidual}.  At a collocation node it enforces the strong ODE
+defect,
+\begin{equation}
+ \vect{r}_{q}=\frac{d\vect{y}_h}{dr}(r_q)
+ -\vect{f}(r_q,\vect{y}_h,\boldsymbol{\theta})=0.
+ \label{eq:collocationdefect}
+\end{equation}
+In the weak formulation, Gaussian weights instead approximate an integral after
+integration by parts.  Both methods use polynomial representations and Gaussian
+nodes, but their residuals, conditioning, and conservation properties differ.
+The prototype must label them separately:
+\begin{enumerate}
+\item \emph{strong collocation}: closest to AUTO-07p and simplest for a regular
+  first-order BVP;
+\item \emph{conservative weak residual}: preferred when exact element flux
+  balance and discontinuous source structure dominate; and
+\item \emph{existing finite-volume residual}: required when the target is the
+  current EXHALE discrete fixed point.
+\end{enumerate}
+
+\subsection{ESTER: the primary astrophysical reference}
+
+ESTER computes steady two-dimensional models of rapidly rotating stars with
+spectral expansions and nonlinear iterations.  Its radial representation uses
+Chebyshev polynomials, its angular representation uses spherical harmonics, and
+its coordinate mapping follows the distorted stellar surface.  Newton
+iterations are used when realistic microphysics makes simpler fixed-point
+iterations inadequate \cite{Rieutord2016}.
+
+ESTER demonstrates that a global astrophysical structure calculation can couple
+smooth field coefficients, equation-of-state and opacity tables, radiative
+transport, and large-scale flow without evolving the full transient.  The
+transferable lessons are coefficient and equation scaling, continuation from
+simple stellar models, mapped multidomain coordinates, and separate monitoring
+of each physical equation.  Its direct spectral discretization should not be
+copied blindly for an EXHALE wind: a sonic transition, outward characteristics,
+and localized ionization fronts give the wind a different mathematical
+structure.
+
+\subsection{Dedalus and KADATH as independent design checks}
+
+Dedalus is an open spectral PDE framework developed for astrophysical,
+geophysical, and fluid-dynamical applications \cite{Burns2020}.  Its nonlinear
+boundary-value interface rewrites symbolic equations and constraints as a root
+problem and applies Newton iterations.  It is useful for rapidly testing a
+simplified continuum formulation of advection, diffusion, column equations,
+and boundary conditions.  It is not the recommended production dependency,
+because reimplementing EXHALE chemistry, radiation, tables, and boundary logic
+in a second framework would create a new physical code rather than a reduced
+front end to EXHALE.
+
+KADATH is a public C++ spectral library for nonlinear systems in theoretical
+physics and numerical relativity \cite{Grandclement2010}.  Its multidomain
+representations and equation-system abstraction are relevant if EXHALE later
+requires separate smooth domains around a sonic point or narrow thermal front.
+Its principal applications are elliptic equilibrium systems, so it supplies
+software-structure and spectral-convergence precedents rather than a ready
+advection--diffusion solver.
+
+\subsection{Recommended inheritance for EXHALE}
+
+The codes should be used as references, not combined as dependencies.  The
+recommended inheritance is:
+\begin{enumerate}
+\item retain the EXHALE residual and microphysics ownership from Formulation A;
+\item adopt AUTO-07p's piecewise-polynomial collocation, adaptive defect control,
+  restart metadata, and pseudo-arclength continuation for the continuum phase;
+\item adopt ESTER's scaling, progressive activation of microphysics, and mapped
+  smooth-domain practices;
+\item use Dedalus only for small independent equation and boundary-condition
+  experiments; and
+\item use KADATH as a reference if multidomain spectral geometry becomes
+  necessary.
+\end{enumerate}
+This survey therefore changes no physical acceptance criterion.  It strengthens
+the case for a deterministic adaptive collocation and continuation stage, but
+the final solution must still pass the unmodified EXHALE residual or be labeled
+explicitly as a continuum weak solution.
+
+% =====================================================================
+\section{Implementation plan in the EXHALE tree}\label{sec:implementation}
+% =====================================================================
+
+No production hydrodynamic path should be changed for the first prototype.
+Add an isolated module and driver so that the experiment cannot alter a normal
+EXHALE run.
+
+\begin{center}\small
+\begin{tabular}{@{}p{0.38\textwidth}p{0.56\textwidth}@{}}
+\toprule
+proposed component & responsibility \\
+\midrule
+\code{src/modules/time\_step/}\newline
+\code{reduced\_steady\_state.f90} & spline map,
+  coefficient transforms, exact mass-continuity elimination, residual scaling,
+  and reduced merit \\
+\code{src/utils/reduced\_steady\_driver.f90} & standalone input, initialization,
+  optimization and continuation control, checkpoints, and diagnostics \\
+\code{src/modules/time\_step/}\newline
+\code{steady\_conservation\_residual.f90} & later implementation
+  of element balances, strong collocation defects, and Gaussian weak
+  quadrature; absent from Phase A \\
+\code{src/modules/functions/}\newline
+\code{species\_transport\_flux.f90} & common evaluation of advective,
+  molecular-diffusive, and eddy-diffusive element fluxes, factored from the
+  existing update so that time integration and residual assembly use identical
+  physics \\
+\code{tests/reduced\_steady/} & analytic winds, saved EXHALE states, basis and
+  quadrature refinement gates \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+The existing full residual evaluator currently accepts and mutates a species
+state.  A reduced wrapper should expose a pure logical interface:
+\begin{equation}
+ (\coef,\boldsymbol{\theta})\longmapsto
+ (\vect{r},\text{status},\text{diagnostics}),
+ \label{eq:pureinterface}
+\end{equation}
+where identical inputs produce identical outputs.  The status must distinguish
+invalid state, chemistry nonconvergence, boundary violation, table-range error,
+and a successfully evaluated large residual.  Returning one generic penalty for
+all failures creates flat regions that are difficult for both optimization and
+MCMC.
+
+Useful diagnostic output for every accepted iteration includes
+\begin{itemize}
+\item total and equation-wise scaled norms;
+\item unscaled integrated mass, momentum, and energy imbalance;
+\item element flux variation, separated advective and diffusive contributions,
+  and ion-stage source-sum error when transport is active;
+\item radius and equation of the largest residual;
+\item \(\mdot\), sonic radius, maximum temperature, and outer Mach number;
+\item chemistry iteration counts and fallback events;
+\item minimum density, pressure, temperature, and species fraction; and
+\item basis size, element count, and quadrature order.
+\end{itemize}
+
+Checkpoint coefficient vectors rather than only sampled profiles.  A checkpoint
+must also store knot positions, coordinate mapping, residual scales, active
+physics, boundary configuration, and the source revision.  Coefficients have no
+meaning without that metadata.
+
+% =====================================================================
+\section{Validation program}\label{sec:validation}
+% =====================================================================
+
+\subsection{Gate 1: analytic and semi-analytic problems}
+
+Begin with physics that has a known branch:
+\begin{enumerate}
+\item isothermal Parker wind in a point-mass potential;
+\item hydrostatic isothermal atmosphere with \(\mdot=0\), using a formulation
+  that does not divide by velocity; and
+\item adiabatic wind with prescribed smooth heating.
+\end{enumerate}
+Measure profile error, sonic radius, conservation residual, and convergence
+under basis refinement.  The Parker test is especially important because an
+optimizer can find subsonic breeze and supersonic branches that have small local
+residuals but do not satisfy the intended critical condition.
+
+\subsection{Gate 2: projection of an existing EXHALE state}
+
+Project a trusted full-grid state onto the spline basis without solving.  This
+answers whether the proposed basis can represent the profile at all.  Record
+profile errors and the change in the full EXHALE residual caused only by
+projection.  If projection alone produces a large residual, the knots or
+variables must be changed before optimizer behavior is studied.
+
+\subsection{Gate 3: hydrodynamics with frozen microphysics}
+
+Hold heating, cooling, and composition fixed from a reference state and solve
+only the reduced hydrodynamics.  This isolates basis geometry, scaling, boundary
+conditions, and sonic selection.  It is a numerical gate, not a physically
+self-consistent final result.
+
+\subsection{Gate 4: fully coupled discrete residual}
+
+Enable equilibrium chemistry and radiation in the same path used by the current
+steady solver.  Compare against a full-grid JFNK solution when one exists.
+Acceptance requires agreement in the physical profiles and a small unmodified
+EXHALE residual; agreement in \(\mdot\) alone is insufficient.
+
+\subsection{Gate 5: conservative species transport}
+
+Activate transport processes one at a time before combining them:
+\begin{enumerate}
+\item with diffusion disabled, verify constant elemental fraction and the
+  advective element flux implied by the hydrodynamic solution;
+\item with \(v=0\) and fixed temperature, recover the appropriate diffusive
+  equilibrium or barometric separation profile;
+\item impose the base abundance and verify zero outer diffusive flux without
+  suppressing outward advective escape;
+\item require \(r^2J_X\) to be constant for every conserved element and verify
+  the same result from face fluxes and integrated weak residuals;
+\item compare a reduced simultaneous diffusion solution with the converged
+  production outer iteration, while labeling any changed energy closure;
+\item in ion-advection tests, require the sum of reaction sources to conserve
+  nuclei and the summed stage residual to match the element residual; and
+\item compare conditional outward integration with the guarded
+  \code{post\_process\_adv.f90} result only inside the latter's documented
+  validity region.
+\end{enumerate}
+Repeat the tests in advection-dominated and diffusion-dominated limits.  A
+matching abundance profile without matching total flux is not sufficient.
+
+\subsection{Gate 6: weak formulation}
+
+For Algorithm B, demonstrate independently:
+\begin{enumerate}
+\item quadrature convergence at fixed basis and elements;
+\item element refinement at fixed basis;
+\item basis refinement at fixed element layout;
+\item small held-out strong residual;
+\item stable cumulative columns and heating/cooling integrals; and
+\item convergence toward Algorithm A as both discretizations are refined, or a
+  documented continuum-versus-finite-volume difference.
+\end{enumerate}
+
+\subsection{Gate 7: robustness and branch search}
+
+Use cold, transonic, Wind-AE, and perturbed starts.  A unique physical branch
+should converge to the same state.  Distinct solutions must each satisfy the
+same boundary conditions and residual tolerance before being labeled multiple
+physical branches.  A mode caused by chemistry history, residual weighting, or
+an unconverged quadrature is numerical.
+
+\subsection{Gate 8: short dynamic check}
+
+Map the reduced solution to the production grid and evolve it briefly with the
+ordinary EXHALE time step.  The state should remain stationary within the
+measured residual scale.  This check does not replace the residual test, and it
+must not be extended into an hours-long regeneration merely to reproduce an
+existing product.
+
+% =====================================================================
+\section{Failure modes and safeguards}\label{sec:failures}
+% =====================================================================
+
+\begin{center}\small
+\begin{tabular}{@{}p{0.27\textwidth}p{0.32\textwidth}p{0.34\textwidth}@{}}
+\toprule
+failure & symptom & safeguard \\
+\midrule
+over-smooth basis & low broad merit but a missed heating or ionization layer &
+  held-out residual; adaptive local knots; inspect source profiles \\
+quadrature aliasing & residual small only at fitted nodes & increase \(Q\)
+  without refitting; use independent nodes \\
+bad residual scaling & one equation improves while another remains physically
+  wrong & print equation-wise unscaled balances and largest rows \\
+false Bayesian certainty & narrow coefficient posterior controlled by an
+  arbitrary \(\beta\) & label it a search distribution; vary scale and basis \\
+chemistry memory & repeated identical coefficients give different merit & pure
+  evaluator; restore state; tighten equilibrium convergence \\
+wrong branch & smooth subsonic breeze accepted as a transonic wind & impose and
+  verify both sonic conditions when physically required \\
+incompatible boundary conditions & nonzero residual floor localized at a
+  boundary & analyze characteristics and physical BCs; do not smear the error \\
+global polynomial ringing & oscillations around a narrow transition & local
+  B-splines or spectral elements; knot refinement \\
+coefficient degeneracy & large posterior correlations and slow MCMC & remove
+  redundant basis directions; orthogonalize or whiten coefficients \\
+invalid finite-volume comparison & weak solution differs from HLLC fixed point &
+  report the discretization distinction; refine both formulations \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+Transport introduces three additional failure modes.  First, separately
+discretized advective and diffusive divergences can mimic an elemental source;
+assemble and test one total face flux.  Second, all \(S\) ion-stage equations
+plus an element equation produce a rank-deficient system; retain only \(S-1\)
+independent stage constraints.  Third, setting the outer \emph{total} species
+flux to zero blocks physical escape; set only the diffusive contribution to zero
+when that is the intended boundary condition.  If species enthalpy transport or
+frictional heating is omitted, record the approximation rather than silently
+claiming conservation for a more complete multicomponent model.
+
+A scalar \(\chi^2\) can conceal a physically wrong compromise.  In particular,
+if boundary and interior constraints are incompatible, an optimizer or MCMC
+sampler will distribute error according to the chosen weights.  It cannot make
+the equations compatible.  Physical correctness is determined from the
+individual balances, boundary characteristics, and critical-point topology,
+not from a small scalar merit alone.
+
+% =====================================================================
+\section{Decision points before implementation}\label{sec:decisions}
+% =====================================================================
+
+The following choices materially change the solver and should be fixed before
+production implementation:
+\begin{enumerate}
+\item \textbf{Target equation.} Exact current finite-volume fixed point
+  (Formulation A), continuum weak solution (Formulation B), or both in sequence.
+\item \textbf{Physical branch.} Outward transonic wind, subsonic L1-truncated
+  flow, or hydrostatic atmosphere.  One parameterization should not silently
+  force all three.
+\item \textbf{Chemistry closure.} Local equilibrium eliminated at each trial,
+  or advected ion fractions represented as additional fields.
+\item \textbf{Transport closure.} Production operator splitting with outer
+  co-convergence, or a simultaneous conservative residual for elemental
+  diffusion and ion-stage advection.  Also state whether diffusive enthalpy and
+  frictional heating belong to the target model.
+\item \textbf{Boundary treatment.} Hard constraints built into the basis versus
+  soft residuals with stated scales.
+\item \textbf{Role of probability.} Annealed global search, numerical
+  discretization uncertainty, uncertain physical parameters, or observational
+  inference.  These interpretations require different covariance models.
+\end{enumerate}
+
+For the current EXHALE structure, the recommended first decision is narrow:
+target the discrete residual, solve an outward wind with equilibrium chemistry,
+hard-enforce base temperature and steady mass continuity, retain the production
+boundary routine, and use deterministic trust-region least squares.  This
+prototype directly tests the central hypothesis: that a smooth 20--30 dimensional
+state manifold can reach a fixed point that the full \(3N\)-variable solver has
+difficulty approaching.  Elemental diffusion should then be added first by
+reproducing the production outer co-convergence, followed by a simultaneous
+conservative transport residual.  Self-consistent ion-stage advection is a
+later extension because it changes the chemistry closure and coefficient count.
+Once this discrete prototype is stable, introduce AUTO-style adaptive
+collocation and pseudo-arclength continuation without changing the production
+microphysics implementation.
+
+% =====================================================================
+\section{Acceptance criteria for a successful prototype}\label{sec:acceptance}
+% =====================================================================
+
+The prototype is successful only if all of the following are demonstrated:
+\begin{enumerate}
+\item repeated coefficient evaluations are deterministic to the requested
+  tolerance;
+\item the reduced solution satisfies mass continuity by construction and both
+  momentum and energy residuals under the unmodified production diagnostic;
+\item when species transport is active, total element fluxes satisfy their
+  conservative residuals, transport boundary conditions are met, and ion-stage
+  source sums conserve nuclei;
+\item results are stable under basis refinement and initialization;
+\item the inferred sonic structure and outer characteristic state are physically
+  consistent with the selected domain;
+\item the final profile remains stationary in a short production-code evolution;
+\item any difference from a reference solution is separated into physics,
+  boundary, basis, quadrature, and discretization contributions; and
+\item measured wall-clock cost, residual-call count, and chemistry failures are
+  reported without extrapolating from the hours-long marching runtime.
+\end{enumerate}
+
+MCMC is an optional success criterion.  It becomes useful after the deterministic
+solver works, either because several valid branches exist or because uncertain
+physical inputs and observations define a genuine posterior.  Failure of a
+random-walk chain to mix is not evidence that the reduced steady formulation is
+wrong; failure of the independently evaluated physical residual is.
+
+% =====================================================================
+\section{Summary}\label{sec:summary}
+% =====================================================================
+
+The proposed method replaces the full radial state by smooth spline expansions
+of velocity and temperature plus one mass-loss parameter.  Density is eliminated
+exactly through steady mass continuity, while the existing EXHALE equilibrium
+chemistry determines composition and pressure conditionally.  The first solver
+should minimize the current full-grid finite-volume residual, because it gives
+an unambiguous comparison with the production fixed point.  A later weak
+spectral-element solver can integrate conservative momentum and energy balances
+with Gaussian quadrature and may require far fewer radial evaluations.
+
+Advection and diffusion fit the same framework.  Bulk hydrodynamic advection,
+viscosity, and conduction are already part of the current discrete residual.
+Elemental diffusion requires a small set of additional abundance coefficients
+and a residual for the total advective--diffusive element flux.  Ion-stage
+advection requires either independent softmax spline fields or a conditional
+upstream integration.  The current operator-split diffusion and post-processed
+ion advection must not be described as if they were already simultaneous JFNK
+residual blocks.
+
+The production workflow is more robust to sharp structure, has an unambiguous
+conservative finite-volume fixed point, and provides a fallback when Newton
+fails.  Its main costs are the long transient, the high-dimensional JFNK state,
+and split treatment of composition transport.  The reduced workflow removes
+many redundant search directions and supports direct continuation, but adds
+basis error, explicit sonic-branch responsibility, and a possible distinction
+from the production discretization.  The recommended architecture therefore
+uses the reduced solve to enter the full-grid JFNK basin and retains ordinary
+EXHALE as the final residual diagnostic and short stability test.
+
+Among the surveyed public codes, AUTO-07p is the closest numerical reference
+for the one-dimensional reduced boundary-value problem because it combines
+piecewise-polynomial collocation, adaptive meshes, boundary and integral
+constraints, and continuation.  ESTER supplies the closest astrophysical
+precedent for a nonlinear spectral solve coupled to realistic microphysics.
+Dedalus is useful for independent continuum prototypes, while KADATH becomes
+relevant only if a multidomain spectral representation is required.  These
+precedents support the deterministic solver architecture but do not replace the
+EXHALE conservation and fixed-point validation gates.
+
+The scalar residual may be written in a likelihood form, but nonlinear least
+squares is the appropriate first solver.  Annealed MCMC or sequential Monte
+Carlo can search for multiple branches; posterior MCMC is meaningful when a
+physical error model or observational likelihood is present.  In every case,
+equation-wise conservation, boundary consistency, deterministic chemistry,
+basis refinement, quadrature refinement, and held-out residuals remain the
+acceptance criteria.
+
+\bibliographystyle{plain}
+\bibliography{reduced_basis_mcmc_steady_solver}
+
+\end{document}

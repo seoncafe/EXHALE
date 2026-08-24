@@ -5,7 +5,7 @@
  !   atmosphere (recombination + collisional excitation), read from
  !   ./insitu_emiss.txt (2-col r[R_p], eps_tot; LaRT multiplies by r^2).
  ! Atmosphere structure (n_HI, T, v_radial) from the EXHALE run:
- !   /nfs/mocafe/kiseon/RT_Codes/ExoAtmosphere/EXHALE/benchmarks/hd209
+ !   /nfs/mocafe/kiseon/RT_Codes/ExoAtmosphere/EXHALE_v1.00/benchmarks/hd209
  ! Emission is in the local comoving gas frame (comoving_source default=T).
  ! spectral_type='voigt': intrinsic Voigt line at the local T.
  ! geometry_JPa=1 -> radial P_alpha (Pa_1D). distance2cm = R_p.

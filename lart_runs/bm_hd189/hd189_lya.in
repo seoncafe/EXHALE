@@ -2,7 +2,7 @@
  !=====================================================================
  ! LaRT spherical-illumination Ly-alpha RT for hd189.
  ! Structure (n_HI, T, v_radial) from the EXHALE run:
- !   /nfs/mocafe/kiseon/RT_Codes/ExoAtmosphere/EXHALE/benchmarks/hd189
+ !   /nfs/mocafe/kiseon/RT_Codes/ExoAtmosphere/EXHALE_v1.00/benchmarks/hd189
  ! Incident stellar Ly-alpha: double-Gaussian, peaks +/-74 km/s,
  ! width(sigma) 49 km/s (Huang 2017 / Yan 2022).
  ! distance2cm = R_p, so all radii/lengths are in R_p.

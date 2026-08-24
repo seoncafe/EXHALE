@@ -106,6 +106,90 @@ is $\pm1\%$.}
 \label{fig:resfits}
 \end{figure}
 
+\section{Helium: ground-state collisional excitation}
+\label{sec:helium}
+
+He\,\textsc{i} and He\,\textsc{ii} are fitted with the same
+Eqs.~(\ref{eq:twolevel}--\ref{eq:btups}) as the resonance lines, but the
+quantity fitted is a \emph{sum} over every transition out of the ground
+level rather than one line.  A single two-level form still works because
+the lowest channel sets the temperature dependence: leaving $\Delta E$
+free returns $19.88$~eV for He\,\textsc{i} and $40.76$~eV for
+He\,\textsc{ii}, each within $0.3\%$ of the lowest level of that ion
+($2^3S$ at $19.82$~eV; $n=2$ at $40.81$~eV).
+
+These two coolants were previously represented by expressions inherited
+from the ATES lineage that had never been checked against a line list.
+The check matters only for helium-rich gas: in a hydrogen-rich wind
+Lyman-$\alpha$ exceeds both by orders of magnitude, whereas in a
+helium-dominated wind these are the line cooling
+(\texttt{helium\_cooling\_channels.tex}).  Two results are worth
+recording.  The old He\,\textsc{i} expression,
+$1.1\times10^{-19}T^{0.082}e^{-2.3\times10^5/T}$, is a fair
+representation of the full ground-state sum despite carrying the
+threshold of the lowest channel only --- it is low by $5$--$19\%$ over
+$5\times10^3$--$5\times10^4$~K, whereas it differs from the $2^3S$
+channel by itself by up to a factor $3.4$.  The old He\,\textsc{ii}
+expression is low by a factor of two and gets worse as the temperature
+rises.
+
+\begin{table}[htbp]
+\centering\small
+\caption{Helium ground-state collisional-excitation cooling:
+Eqs.~(\ref{eq:twolevel}--\ref{eq:btups}) fitted to the CHIANTI~v11 sum
+over all transitions out of the ground level.  ``Max err'' is against
+that sum over the fit range; the last column is the error of the
+expression each fit replaces, over the range where that coolant can
+matter ($5\times10^3$--$5\times10^4$~K for He\,\textsc{i},
+$2\times10^4$--$10^5$~K for He\,\textsc{ii}).}
+\label{tab:helium}
+\begin{tabular}{lccccccc}
+\toprule
+channel & $g_l$ & $\Delta E$ [eV] & $a$ & $b$ & $T_0$ [K]
+        & max err & previous \\
+\midrule
+He\,\textsc{i} ground sum  & 1 & 19.8843 & 0.0613017 & 0.419181
+  & 98213.9 & 1.2\% & $-19.4\%$ \\
+He\,\textsc{ii} ground sum & 2 & 40.7562 & 0.437142  & 0.605106
+  & 190558.5 & 0.5\% & $-53.6\%$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Written out with the constants collapsed, so that
+$\Lambda = C\,T^{-1/2}\,[a + b\ln(1+T/T_0)]\,e^{-T_{\rm ex}/T}$:
+%
+\begin{align}
+\Lambda_{\rm He\,I}(T) &= \frac{2.749039\times10^{-16}}{\sqrt{T}}
+  \left[0.0613017 + 0.419181\ln\!\left(1+\frac{T}{9.82139\times10^{4}}\right)\right]
+  e^{-230747.5/T}, \\
+\Lambda_{\rm He\,II}(T) &= \frac{2.817309\times10^{-16}}{\sqrt{T}}
+  \left[0.437142 + 0.605106\ln\!\left(1+\frac{T}{1.90559\times10^{5}}\right)\right]
+  e^{-472956.0/T}.
+\end{align}
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.92\textwidth]{figures/cool_helium_fits.pdf}
+\caption{Helium ground-state collisional-excitation cooling: CHIANTI sum
+(solid black), the fits of Table~\ref{tab:helium} (red dashed) and the
+expressions they replace (blue dotted).  For He\,\textsc{i} the two
+individual channels most often named are shown in grey: the metastable
+$2^3S$ channel that sets the exponent, and the $584$~\AA{} resonance
+line, which stays well below the total at wind temperatures.  Bottom:
+ratio to the CHIANTI sum, with a $\pm1\%$ grey band.}
+\label{fig:helium}
+\end{figure}
+
+Both fits are optically thin and assume the low-density limit, in which
+every collisional excitation is followed by an escaping radiative decay.
+Two effects push the true cooling below them in a helium-rich wind: the
+$584$~\AA{} line belongs to the dominant species and can be optically
+thick, and the $2^3S$ channel feeds a metastable level that the code
+tracks separately when the triplet is switched on.  The ground-to-triplet
+excitation is inside this term, which is why it is left out of the
+triplet system, so that it is not counted twice.
+
 \section{Fe II: sum of effective two-level groups}
 \label{sec:feii}
 

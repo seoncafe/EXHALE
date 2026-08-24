@@ -25,3 +25,4 @@ Domain mode: Spherical
 Outer radius [R_p]: 10.0
 IC mode: windae
 Solver: Newton
+Stellar radius [R_sun]: 1.155

@@ -24,3 +24,4 @@ Force start: False
 Hot Parker IC: 10000
 du_th [PLM,WENO3]: 0.5 1.0e-3
 Solver: Newton
+Stellar radius [R_sun]: 0.765

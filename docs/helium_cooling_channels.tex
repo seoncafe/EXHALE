@@ -1,0 +1,348 @@
+%% EXHALE: radiative cooling of a helium-dominated wind.
+%% What cools a gas that has almost no hydrogen: the line channels available
+%% to He, the thresholds implemented in Cool_coeff.f90, the numerical size of
+%% each against Lyman-alpha, and the one channel the code does not carry.
+%% Written for the LHS 1140b lower-atmosphere extension
+%% (docs/lhs1140b_lower_atmosphere_plan_new.md, Phase C).
+%% Author: Kwang-Il Seon
+\documentclass[english,a4paper]{my_memo}
+\synctex=1
+\usepackage{booktabs}
+\usepackage{amsmath}
+\usepackage{graphicx}
+\usepackage{babel}
+\emergencystretch=3em
+
+\title{Radiative cooling of a helium-dominated wind}
+\author{Kwang-Il Seon}
+\date{Last updated: \docmoddate}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+A helium-dominated escaping atmosphere has almost no line cooling. Every
+line channel available to helium has a high excitation threshold
+($19.8$~eV for the lowest, against $10.2$~eV for Lyman-$\alpha$), so the
+Boltzmann factor suppresses helium line cooling by five to six orders of
+magnitude relative to Lyman-$\alpha$ at $10^4$~K. The energy budget of such
+a wind therefore closes on continuum channels and adiabatic expansion rather
+than on lines, and the gas has no effective thermostat. This memo records
+the channels implemented in \texttt{Cool\_coeff.f90}, their measured
+relative sizes, the one physically real channel the code does not carry
+(the He~\textsc{i} $584$~\AA{} resonance line), and what
+Cherubim et al. (2026) do and do not say about any of this.
+\end{abstract}
+
+\section{Why the question arises}
+
+The metastable helium detection at LHS~1140b \cite{Cherubim2026}
+(hereafter C26) is interpreted as a wind with
+$\mathrm{H\!:\!He} \lesssim 10^{-3}$, that is, a gas in which hydrogen is a
+trace species. Every EXHALE configuration validated to date is
+hydrogen-dominated, and in all of them Lyman-$\alpha$ is the dominant line
+coolant. Removing hydrogen therefore removes the coolant the code has always
+relied on, and the question of what replaces it must be answered before a
+helium-rich wind solution can be trusted. This is the energy-closure item of
+Phase~C in \texttt{lhs1140b\_lower\_atmosphere\_plan\_new.md}.
+
+\section{Line channels available to helium}
+
+\subsection{What the code implements}
+
+The collisional-excitation cooling terms are assembled in
+\texttt{util\_ion\_eq.f90} and their coefficients defined in
+\texttt{Cool\_coeff.f90}. Reading the exponential threshold of each
+coefficient identifies the transition it represents:
+
+\begin{table}[h]
+\centering
+\small
+\begin{tabular}{@{}llll@{}}
+\toprule
+Coefficient & Threshold & Transition & Routine \\
+\midrule
+$7.5\!\times\!10^{-19}(1+\sqrt{T/10^5})^{-1}e^{-118348/T}$
+  & $10.20$~eV & H\,\textsc{i} Ly$\alpha$ $1216$~\AA{}
+  & \texttt{coex\_rate\_HI} \\
+$1.1\!\times\!10^{-19}T^{0.082}e^{-2.3\times10^{5}/T}$
+  & $19.82$~eV & He\,\textsc{i} $1^1S \rightarrow 2^3S$
+  & \texttt{coex\_rate\_HeI} \\
+$5.54\!\times\!10^{-17}T^{-0.397}(1+\sqrt{T/10^5})^{-1}e^{-473638/T}$
+  & $40.81$~eV & He\,\textsc{ii} Ly$\alpha$ $304$~\AA{}
+  & \texttt{coex\_rate\_HeII} \\
+$1.16\!\times\!10^{-20}\sqrt{T}\,e^{-13179/T}$
+  & $1.14$~eV & He\,\textsc{i} $2^3S \rightarrow 2^3P$, $10830$~\AA{}
+  & \texttt{coex\_rate\_HeI23S\_10830} \\
+\bottomrule
+\end{tabular}
+\caption{Collisional-excitation cooling coefficients (cgs, to be multiplied
+by $n_e$ and the population of the lower level). The threshold energies are
+the exponential arguments converted with $k_{\rm B}$; each matches a known
+level to three digits, which is how the transitions above were identified
+rather than assumed.}
+\end{table}
+
+Two further terms act on the metastable population when the triplet is
+tracked: the collisional conversions $2^3S \rightarrow 2^1S$ ($0.80$~eV) and
+$2^3S \rightarrow 2^1P$ ($1.40$~eV), through
+\texttt{coex\_HeI\_23S\_21S} and \texttt{coex\_HeI\_23S\_21P}. The
+ground-to-triplet excitation $q_{13}$ is deliberately excluded there because
+the $19.82$~eV term in the table already includes it; the code comment
+records this to prevent counting it twice.
+
+The $10830$~\AA{} channel and the two conversions scale with the explicitly
+computed $n(2^3S)$. That population is supplied by recombination and is
+small, so these channels track a minority level and cannot act as a bulk
+thermostat, however low their thresholds are.
+
+\subsection{What the single exponential actually represents}
+
+The $584$~\AA{} resonance line ($1^1S \rightarrow 2^1P$, $21.22$~eV) is the
+optically allowed counterpart of Lyman-$\alpha$ and has no term of its own in
+\texttt{Cool\_coeff.f90}. Reading the thresholds alone, one would conclude
+that the code includes only the $19.82$~eV metastable channel and leaves out
+the resonance line. Checking that conclusion against CHIANTI shows it is wrong,
+in both directions, and the correction matters enough to state explicitly.
+
+Summing every transition out of the He\,\textsc{i} ground level in CHIANTI~v11
+(\texttt{cooling\_data/fit\_helium\_cooling.py}) gives the following. First,
+the $584$~\AA{} line is \emph{not} the dominant channel at wind
+temperatures: relative to the $2^3S$ channel it contributes $1\%$ at
+$5000$~K, $6\%$ at $10^4$~K and $52\%$ at $5\times10^4$~K, because its
+$1.4$~eV higher threshold costs more than its larger collision strength
+returns until the gas is very hot. Second, and more usefully, the existing
+coefficient is not a fit to the $2^3S$ line at all: it reproduces the
+\emph{total} ground-state sum to within $5$--$19\%$ over
+$5\times10^3$--$5\times10^4$~K, while departing from the $2^3S$ channel alone
+by up to a factor $3.4$. Its $19.82$~eV exponent gives it the temperature
+dependence of the lowest channel, and its prefactor is large enough to match
+the sum of all of them.
+
+The resonance line is therefore already included in the total this formula
+was fitted to, so the practical question is how accurate that formula is, not
+whether the line is present. Section~\ref{sec:chianti}
+replaces both helium coefficients with CHIANTI fits and reports what that is
+worth; the larger error turns out to be in He\,\textsc{ii}, not He\,\textsc{i}.
+
+\section{How weak the helium channels are}
+
+Evaluating the coefficients of Table~1 directly:
+
+\begin{table}[h]
+\centering
+\begin{tabular}{lllll}
+\toprule
+$T$ [K] & H\,\textsc{i} Ly$\alpha$ & He\,\textsc{i} $19.8$~eV
+        & He\,\textsc{ii} $304$~\AA{} & He\,\textsc{i}/H\,\textsc{i} \\
+\midrule
+5000 & $3.22\times10^{-29}$ & $2.33\times10^{-39}$ & $1.12\times10^{-59}$ & $7.2\times10^{-11}$ \\
+8000 & $2.20\times10^{-25}$ & $7.51\times10^{-32}$ & $2.36\times10^{-44}$ & $3.4\times10^{-7}$ \\
+10000 & $4.13\times10^{-24}$ & $2.40\times10^{-29}$ & $2.93\times10^{-39}$ & $5.8\times10^{-6}$ \\
+15000 & $2.02\times10^{-22}$ & $5.30\times10^{-26}$ & $1.70\times10^{-32}$ & $2.6\times10^{-4}$ \\
+20000 & $1.40\times10^{-21}$ & $2.51\times10^{-24}$ & $3.90\times10^{-29}$ & $1.8\times10^{-3}$ \\
+30000 & $9.38\times10^{-21}$ & $1.20\times10^{-22}$ & $8.31\times10^{-26}$ & $1.3\times10^{-2}$ \\
+50000 & $4.12\times10^{-20}$ & $2.69\times10^{-21}$ & $3.40\times10^{-23}$ & $6.5\times10^{-2}$ \\
+\bottomrule
+\end{tabular}
+\caption{Collisional-excitation cooling coefficients in cgs, evaluated from
+the implemented expressions. The last column is the ratio of the
+He\,\textsc{i} channel to Lyman-$\alpha$ at equal lower-level density.}
+\end{table}
+
+The comparison is per atom of the relevant species, so in a wind where
+helium outnumbers hydrogen by $10^3$ the ratio in the last column is raised
+by that factor; even then the helium channel only reaches parity with what a
+trace hydrogen population would supply near $10^4$~K, and falls behind at
+lower temperature. The He\,\textsc{ii} line is irrelevant below
+$\sim 3\times10^4$~K: at $40.81$~eV it is essentially extinct in a
+photoionized wind at a few thousand kelvin.
+
+\section{What closes the energy budget instead}
+
+With lines suppressed, the terms that survive are the continuum ones already
+in \texttt{util\_ion\_eq.f90} --- recombination cooling of
+H\,\textsc{ii}/He\,\textsc{ii}/He\,\textsc{iii}, collisional-ionization
+cooling, and free-free emission --- together with the $P\,dV$ work of the
+expanding wind, which is not a radiative term at all but is what actually
+carries the energy away in a fast outflow.
+
+The first converged case of the Phase~C sweep already shows the transition.
+At $\mathrm{He/H} = 1$ (the tutorial planet with only the helium ratio
+changed), the channel-resolved output gives heating led by He\,\textsc{i}
+($96\%$ of the total at the base) and cooling led by recombination
+($75\%$ at the base, $91\%$ at the top); Lyman-$\alpha$ leads only in the
+intermediate layer at $1.5\,R_{\rm p}$ ($54\%$, $T = 1.6\times10^4$~K),
+where hydrogen is still half of the nuclei. The remaining cases of the sweep
+($\mathrm{He/H} = 10$, $100$, $1000$) test whether that last
+Lyman-$\alpha$ peak disappears and the budget closes on the continuum
+channels alone, which is the acceptance criterion for this phase.
+
+\section{CHIANTI-based replacement coefficients}
+\label{sec:chianti}
+
+Both helium coefficients were refitted to CHIANTI~v11 with the same method
+already used for the metal coolants
+(\texttt{cooling\_data/chianti\_cooling.py} reads the raw
+\texttt{.elvlc}/\texttt{.wgfa}/\texttt{.scups} files and descales the
+effective collision strengths following Burgess \& Tully 1992; no ChiantiPy).
+The fitted quantity is the sum over all transitions out of the ground level,
+which is what the existing coefficients represent, so the rule of Section~2.1 is unchanged: the
+ground-to-triplet channel stays inside this term, and is still left out of the
+triplet system so that it is not counted twice.
+
+The functional form is the one \texttt{fit\_cooling\_formulas.py} uses, exact
+for a single line and a good effective form for a sum whose shape is set by
+its lowest threshold,
+%
+\begin{equation}
+  \Lambda(T) = \frac{C}{\sqrt{T}}
+               \left[a + b\ln\!\left(1 + \frac{T}{T_0}\right)\right]
+               e^{-T_{\rm ex}/T},
+  \qquad C = \frac{8.629\times10^{-6}\,\Delta E}{g_l},
+  \qquad T_{\rm ex} = \frac{\Delta E}{k_{\rm B}},
+\end{equation}
+%
+with $\Delta E$ left free so the fit recovers the effective threshold of the
+sum rather than assuming the lowest level. It recovers $19.88$~eV for
+He\,\textsc{i} and $40.76$~eV for He\,\textsc{ii}, both within $0.3\%$ of the
+lowest level of each ion, which is the expected behavior for a
+threshold-dominated sum.
+
+\begin{table}[h]
+\centering
+\small
+\begin{tabular}{@{}lllllll@{}}
+\toprule
+Ion & $g_l$ & $C$ & $a$ & $b$ & $T_0$ [K] & $T_{\rm ex}$ [K] \\
+\midrule
+He\,\textsc{i}  & 1 & $2.749039\times10^{-16}$ & $0.0613017$ & $0.4191808$
+                & $9.821387\times10^{4}$ & $230747.5$ \\
+He\,\textsc{ii} & 2 & $2.817309\times10^{-16}$ & $0.4371421$ & $0.6051062$
+                & $1.905585\times10^{5}$ & $472956.0$ \\
+\bottomrule
+\end{tabular}
+\caption{Fitted coefficients, cgs. Fit ranges $3\times10^3$--$10^5$~K
+(He\,\textsc{i}) and $10^4$--$2\times10^5$~K (He\,\textsc{ii}).}
+\end{table}
+
+Table~4 gives the accuracy against the CHIANTI sum, together with the error
+of the coefficients these would replace.
+
+\begin{table}[h]
+\centering
+\small
+\begin{tabular}{@{}lll@{}}
+\toprule
+ & this fit & current \texttt{Cool\_coeff.f90} \\
+\midrule
+He\,\textsc{i}, $5\times10^3$--$5\times10^4$~K
+  & $0.4\%$ & $-19.4\%$ (ratio $0.81$--$0.95$) \\
+He\,\textsc{ii}, $2\times10^4$--$10^5$~K
+  & $0.2\%$ & $-53.6\%$ (ratio $0.46$--$0.73$) \\
+\bottomrule
+\end{tabular}
+\caption{Maximum deviation from the CHIANTI ground-state sum over the range
+where each coolant can matter.}
+\end{table}
+
+The He\,\textsc{i} coefficient is therefore adequate at the tens-of-percent
+level and biased low; the He\,\textsc{ii} coefficient is low by a factor of
+two and degrades with temperature, so it is the one worth replacing on
+physical grounds. Neither error is important in a hydrogen-rich run, where
+Lyman-$\alpha$ exceeds both by orders of magnitude, which is presumably why
+they survived; both act directly on the thermal structure of a
+helium-dominated wind. Fitting scripts, coefficient file
+(\texttt{helium\_cooling\_fits.txt}) and comparison figure
+(\texttt{helium\_cooling\_fits.pdf}) are in \texttt{cooling\_data/}. The
+coefficients are recorded here but not yet installed in the Fortran; doing so
+changes converged solutions and therefore needs its own golden refresh.
+
+A caveat that applies to both, and to the coefficients they replace: this is
+the optically thin, low-density (coronal) limit, in which every collisional
+excitation is followed by a radiative decay that escapes. The $584$~\AA{}
+line is a resonance line of the dominant species in a helium-rich wind, so
+it can be optically thick, and the $2^3S$ channel feeds a metastable level
+that EXHALE tracks explicitly when the triplet is on. Both effects reduce the
+true cooling below the coronal value; the fits above bound it from that side
+rather than resolving it.
+
+\section{Consequence: a wind without a thermostat}
+
+Line cooling is what keeps a hydrogen-rich thermosphere near
+$10^4$~K: Lyman-$\alpha$ switches on sharply once the gas reaches the
+excitation threshold and absorbs further heating at nearly constant
+temperature. A helium-dominated gas has no such switch below several times
+$10^4$~K. It should therefore run hotter for the same heating rate, and its
+temperature should be set by the balance between photoionization heating,
+recombination, and expansion rather than pinned by a line.
+
+This is consistent with what the C26 retrieval requires
+($T_{\rm wind} \simeq 5160$~K, with their grid explored to $6400$~K) and
+with our own p-winds oracle, in which temperature is by far the strongest
+lever on the line depth while the mass-loss rate is weak and saturated
+(\texttt{LHS1140b/pwinds\_oracle/README.md}). It is a consistency argument,
+not yet a demonstration: only a solution with a computed energy equation can
+show that such a temperature is actually maintained.
+
+\section{What C26 says about cooling}
+
+Nothing. The paper contains no radiative-cooling discussion, no energy
+equation, and no heating efficiency. This is structural rather than an
+oversight: p-winds models the outflow as an \emph{isothermal} Parker wind,
+so the outflow temperature is an input. The Supplement states it plainly:
+the code forward models the spectrum ``for given values of the atmospheric
+escape rate, outflow temperature, H:He atomic number ratio, line-of-sight
+wind speed, top-of-atmosphere XUV spectrum, planetary mass and radius'', and
+$T_{\rm wind}$ is then estimated by MCMC alongside the other three
+parameters. The stellar spectrum enters only through the ionization rates
+and the resulting number densities, never as a heating rate.
+
+A full-text search of the article and its Supplement finds the word
+``cool'' in three places, none of them about cooling physics: ``cooler,
+rocky exoplanets'' in the introduction, ``the cool equilibrium temperature''
+in the cold-trap discussion, and a reference title. ``Isothermal'' appears
+twice: once for the wind and once for the APEC model of the stellar corona,
+which concerns the X-ray fit and not the planet. No heating efficiency
+$\eta$ is quoted anywhere.
+
+The two places where energetics do appear are global budget arguments, not
+statements about the interior of the wind:
+
+\begin{enumerate}
+\item an energy-limited estimate of $(6.2\!-\!29)\times10^{7}$~g\,s$^{-1}$,
+      obtained by integrating the scaled SEDs over $10\!-\!1300$~\AA{},
+      which brackets their retrieved
+      $\dot{M} = 2.03^{+0.58}_{-0.67}\times10^{8}$~g\,s$^{-1}$;
+\item the exclusion of core-powered mass loss on the grounds that it
+      predicts a much smaller rate.
+\end{enumerate}
+
+A related check they do report is a composition test rather than an energy
+one: fixing the mean molecular weight at $4$~amu, the theoretical maximum
+for a pure neutral helium wind, leaves the transmission spectra unchanged.
+
+\section{Implication for the extension}
+
+The retrieved $T_{\rm wind}$ is an observational constraint on the line
+profile and the metastable population, not a temperature shown to be
+thermodynamically sustainable. Supplying that missing half is precisely the
+value of running EXHALE on this target: EXHALE computes the temperature from
+a heating--cooling balance, so the question ``does a helium-dominated wind
+settle near $5000\!-\!6400$~K under this irradiation?'' becomes answerable
+rather than assumed. The weakness of helium line cooling documented above
+makes a hot, poorly regulated solution the physically expected outcome, and
+makes the accuracy of the few surviving channels --- including the missing
+$584$~\AA{} line --- more consequential than it would be in any
+hydrogen-rich run.
+
+\begin{thebibliography}{9}
+\bibitem[Cherubim et al.\ (2026)]{Cherubim2026}
+C.~Cherubim et al.,
+\emph{Helium escaping from the atmosphere of a nearby rocky exoplanet
+orbiting in a habitable zone},
+Science, 10.1126/science.aea9708 (2026);
+first release 2026 July 16, with Supplementary Materials.
+\end{thebibliography}
+
+\end{document}

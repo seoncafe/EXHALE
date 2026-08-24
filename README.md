@@ -228,4 +228,4 @@ schemas, convergence recipes, post-processing — is in
 
 Kwang-Il Seon (KASI / UST)
 
-Last updated: 2026-08-19 22:42
+Last updated: 2026-08-24 20:33 KST

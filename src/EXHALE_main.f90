@@ -419,6 +419,7 @@
 
       ! Generate report of the current setup
       call write_setup_report
+      call write_resolved_config
 
 	!---------------------------------------------------!
 

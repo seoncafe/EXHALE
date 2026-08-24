@@ -25,6 +25,15 @@ solver progression. See the user manual (`docs/EXHALE_user_manual.pdf`)
 Sect. "Worked examples" for the corresponding table, and Sect. 2 for what
 each option does.
 
+The metastable helium triplet is on by default in the code, but the ladder
+keeps `Include He23S? False` on purpose: in both bases (`01_legacy_marching`,
+`03_newton`) and in every rung whose signature option is something else
+(`02`, `04`, `05`, `09`-`12`). Atomic helium is the ladder's baseline, which
+is what makes `06_he23s` a one-line diff against `03_newton` instead of a
+configuration that differs in nothing. Everywhere outside the ladder --
+`tutorial/`, `13`-`16`, the planet folders -- the triplet is on, and an
+input file that simply omits the line gets it.
+
 | Folder | Demonstrates | Added / changed lines |
 |---|---|---|
 | `01_legacy_marching` | Classic ATES v2 baseline: PLM marching, H/He only, Roche domain, `du`-based stop | (none — baseline) |
@@ -32,14 +41,14 @@ each option does.
 | `03_newton` | **Recommended default**: two-stage warm-up + JFNK Newton finish to the true steady state | + `Solver: Newton` |
 | `04_newton_from_state` | Newton re-convergence of an existing state (no marching) | `Load IC? True`, `Valve eps: 1.0e-4`, `Resid tol: 1.0e-3`; run with `EXHALE_PTC=1 EXHALE_PTC_JFNK=1 EXHALE_PTC_DTAU0=1.0 ../../EXHALE.x` |
 | `05_metals` | Trace-metal cooling (solar C/N/O/Mg/Ca/Na/Fe) | `metals.inp` present |
-| `06_he23s` | He 2^3S metastable level (He I 10830 line) | `Include He23S? True` |
+| `06_he23s` | He 2^3S metastable level (He I 10830 line) — the one rung that leaves the ladder's atomic-helium baseline | `Include He23S? True` |
 | `07_balmer_lya` | Non-LTE H(n=2) + Ly-alpha pumping (H-alpha/H-beta) | + `Stellar Teff/radius`, `Deexc heat`, `Jlya escape-prob`, `Stellar Lya flux/halfwidth/boost` |
 | `08_full` | Everything on (= the `HD189733b/` planet folder + Newton); feeds `EXHALE_transit.py` | 07 + `metals.inp` |
 | `09_spherical` | Spherical domain instead of the default Roche/L1 truncation | `Domain mode: Spherical`, `Outer radius [R_p]: 10.0` |
 | `10_warm_seed_ic` | Warm-seed (hot Parker overlay) initial condition | `Hot Parker IC: 10000` |
 | `11_windae_ic` | In-process Wind-AE IC for HD189733b — far from the seed, so the **self-consistent-BC continuation** (base-BC re-convergence + molecular-layer turn-off) is exercised; the Wind-AE ramp converges and writes the IC. EXHALE's *own* HD189733b base-breathing instability (separate from the IC) then limits the warm start | `+ IC mode: windae`, `+ Solver: Newton` |
 | `12_windae_ic_hd209` | In-process Wind-AE warm-start IC that **works** — HD209458b (not HD189733b), close to the shipped seed, so the ramp converges and EXHALE warm-starts cleanly (spherical 10 Rp) | HD209458b params `+ Domain mode: Spherical`, `IC mode: windae`, `Solver: Newton` |
-| `13_lower_atmosphere` | **Lower-atmosphere connection** for four planets: an analytic 1-ubar base column plus a `base.inp` handoff (isothermal or Guillot T(p) generator) — see the folder's own README (multi-planet, not the HD189733b baseline) | driver-generated `base_iso.inp` / `base_guillot.inp` (the four `input.inp` files are plain core blocks; add `Lower column: <R_1bar>` by hand for the analytic-column report) |
+| `13_lower_atmosphere` | **Lower-atmosphere connection** for four planets: an analytic 1-ubar base column plus a `base.inp` handoff (isothermal or Guillot T(p) generator) — see the folder's own README (multi-planet, not the HD189733b baseline) | driver-generated `base_iso.inp` / `base_guillot.inp` (the four `input.inp` files are plain core blocks, all four with the triplet on; add `Lower column: <R_1bar>` by hand for the analytic-column report) |
 | `14_diffusion` | **Diffusive separation of He and metals** (HD209458b): the He/H ratio declines with altitude and each trace metal settles independently, reshaping the He 10830 line | HD209458b params `+ Include He23S? True`, `+ He_diffusion: True`, `+ He_metal_diffusion: True`, `+ He_Kzz: 1.0e9`, `+ He_alphaT: 0.0`, `metals.inp` present |
 | `15_molecular` | **Full molecular chemistry** (HD209458b): H2/H2+/H3+/HeH+ in the coupled ionization equilibrium; a sharp H2->H front forms above a thin molecular base, the wind above it essentially atomic. Converges to a residual norm of 6.105e-6 in 89 outer iterations from a cold start with the current code (re-run 2026-08-15; the front sits at r = 1.0097 R_p and the molecular layer between the base and the front collapses to ~400 K) — see the note below | HD209458b params `+ Molecular chemistry: True`, `+ Solver: Newton 5.0e-2`, `+ Resid tol: 1.0e-5`, `+ Max steps: 150000` (no `metals.inp` here, but metals are allowed — see `16_molecular_metals`; `He_diffusion` is still refused) |
 | `16_molecular_metals` | **Molecular chemistry + trace metals in one system** (HD209458b): the H2/H2+/H3+/HeH+ network and the metal ionization stages share the free electron density, which the metals dominate in the shielded molecular base. Converges only from a warm restart off a freshly converged `15`, with `Low-Mach damping` on — the recipe is in the note below | 15 `+ metals.inp` (solar C/N/O), without 15's three convergence keys |

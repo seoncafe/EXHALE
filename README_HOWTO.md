@@ -64,7 +64,8 @@ lines by hand or start from `examples/` (Option B).
 ### Option B — direct (recommended for scripted or repeated runs)
 
 1. Pick or create a run directory containing an `input.inp` (copy one from
-   `examples/`; `examples/tutorial/` is a ready-to-run demo).
+   `examples/`; `examples/tutorial/` is a ready-to-run demo, with the He 2³S
+   triplet already switched on).
 2. If metals are required, place a `metals.inp` in the same directory.
 3. Build once at the repo root, then run the binary from inside the run
    directory:
@@ -285,10 +286,14 @@ its fitted range is the wrong thing to do, not as a tuning knob. `cno_cool 0`
 
 ## He I 2^3S metastable triplet and the 10830 line
 
+The triplet is **on by default** — an `input.inp` that says nothing about it
+gets it, and helium-free gas turns it off on its own. The key exists for the
+opposite direction:
+
 ```
-Include He23S? True
+Include He23S? False     # the atomic-helium limit, for comparison only
 ```
-The metastable triplet joins the coupled solver, with the
+When on, the metastable triplet joins the coupled solver, with the
 temperature-dependent He(2³S)+H Penning-ionization rate of Taylor et al.
 (2025) in place of the classic 5e-10 constant, and a He 2³S photoionization
 cross section extended past 60 eV against TOPbase/Opacity-Project data (two
@@ -772,7 +777,17 @@ diffusion and molecular options are validated; `13` spans four planets.
 | `16_molecular_metals/` | Molecular chemistry **and** trace metals in one system (HD 209458 b): the H2/H2+/H3+/HeH+ network and the metal ionization stages share the free electron density, which the metals dominate in the shielded molecular base |
 
 `examples/tutorial/` (and `examples/tutorial_nometals/`) is the minimal worked
-example for a generic hot Jupiter.
+example for a generic hot Jupiter.  Both carry `Include He23S? True`, so the
+metastable helium triplet is solved and a run is ready for the He 10830
+transit synthesis of `EXHALE_transit.py`; the pair differs only in whether a
+`metals.inp` is present, which is what switches metals on.
+
+`01`--`12` are a ladder: each folder is its base plus exactly one line, so a
+`diff` against the base is the documentation of the option.  Atomic helium is
+the ladder's baseline on purpose, so those folders keep `Include He23S?
+False` unless the triplet is their own signature option (`06`, and `07`/`08`
+which build on it).  Everywhere else — `tutorial/`, `13`--`16`, the planet
+folders — the triplet is on.
 
 ## Regression and hygiene
 
@@ -828,7 +843,9 @@ EXHALE/
 │   ├── README.md          # one-line description of each config folder
 │   ├── exhale_io.py       # Python loaders for all output files
 │   ├── EXHALE_analysis.ipynb
-│   └── tutorial/          # minimal worked example (generic hot Jupiter)
+│   ├── tutorial/          # minimal worked example (generic hot Jupiter,
+│   │                      #   He 2³S on)
+│   └── tutorial_nometals/ # the same config without metals.inp
 ├── docs/                  # user manual, changelog, physics and numerics memos
 ├── observational_data/    # digitized observational comparison data
 ├── benchmarks/            # benchmark runs for the four production planets

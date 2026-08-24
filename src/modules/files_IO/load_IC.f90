@@ -49,6 +49,10 @@
       real*8, dimension(1-Ng:N+Ng)        :: rho_dim
       ! Hydrogen nuclei density of the loaded state (free + bound in molecules)
       real*8, dimension(1-Ng:N+Ng)        :: nH_l
+      ! Helium nuclei density of the loaded state, and the two factors that
+      ! carry the loaded composition onto the input one
+      real*8, dimension(1-Ng:N+Ng)        :: nHe_l, sH_l, sHe_l
+      real*8 :: heh_loaded, heh_dev
       logical :: col_present(n_species), elem_ok
       ! Auxiliary temporary variable
       real*8 :: tmp
@@ -158,6 +162,73 @@
       ! below -- in particular the molecular columns, absent from most IC
       ! files -- are defined.
       f_sp = 0.0d0
+
+      ! ---- carry the loaded H/He onto the input composition ----
+      ! The file holds absolute species densities, so a state written by a run
+      ! at a different "He/H number ratio" would otherwise be used as it
+      ! stands: the restart would run the donor's composition while the setup
+      ! report echoes the input one, and nothing downstream would notice --
+      ! measured, a He/H = 10 restart seeded from a He/H = 1 solution converged
+      ! back to He/H = 1 everywhere. The input file is the authority on
+      ! composition, so the loaded hydrogen and helium are rescaled to it,
+      ! holding each cell's H + He nuclei count and each element's
+      ! ionization-stage split; the trace metals are defined per hydrogen
+      ! nucleus and so follow hydrogen. A restart at the composition it was
+      ! written with leaves every density untouched.
+      !
+      ! HeH+ carries one nucleus of each, so a single factor cannot set both
+      ! counts; a molecular state whose composition disagrees with the input
+      ! is refused rather than approximated.
+      if (thereis_He) then
+         nH_l  = nsp_l(:,isp_HI)  + nsp_l(:,isp_HII)                      &
+               + 2.0d0*(nsp_l(:,isp_H2) + nsp_l(:,isp_H2p))               &
+               + 3.0d0*nsp_l(:,isp_H3p) + nsp_l(:,isp_HeHp)
+         nHe_l = nsp_l(:,isp_HeI) + nsp_l(:,isp_HeII)                     &
+               + nsp_l(:,isp_HeIII) + nsp_l(:,isp_HeHp)
+         heh_dev = 0.0d0
+         do j = 1-Ng, N+Ng
+            if (nH_l(j) .gt. 0.0d0) then
+               heh_loaded = nHe_l(j)/nH_l(j)
+               heh_dev = max(heh_dev, abs(heh_loaded - HeH)/max(HeH,1.0d-30))
+            endif
+         enddo
+         if (heh_dev .gt. 1.0d-6) then
+            if (maxval(nHe_l) .le. 0.0d0) then
+               write(*,'(A,ES11.4,A)')                                    &
+                  ' (load_IC) ERROR: the input asks for He/H =', HeH,     &
+                  ' but the restart file carries no helium at all;'//     &
+                  ' there is nothing to rescale. Start this composition'//&
+                  ' cold, or restart from a helium-bearing state.'
+               error stop 1
+            endif
+            if (maxval(abs(nsp_l(:,isp_HeHp))) .gt. 0.0d0) then
+               write(*,'(A,ES11.4,A,ES11.4,A)')                           &
+                  ' (load_IC) ERROR: the restart file was written at'//   &
+                  ' He/H =', nHe_l(N)/nH_l(N), ', the input asks for',    &
+                  HeH, ', and the state carries HeH+, whose nucleus of'// &
+                  ' each element cannot be rescaled by one factor.'//     &
+                  ' Restart a molecular state at its own composition.'
+               error stop 1
+            endif
+            sH_l  = (nH_l + nHe_l)/(1.0d0 + HeH)/max(nH_l, 1.0d-30)
+            sHe_l = HeH*(nH_l + nHe_l)/(1.0d0 + HeH)/max(nHe_l, 1.0d-30)
+            nsp_l(:,isp_HI)    = nsp_l(:,isp_HI)   *sH_l
+            nsp_l(:,isp_HII)   = nsp_l(:,isp_HII)  *sH_l
+            nsp_l(:,isp_H2)    = nsp_l(:,isp_H2)   *sH_l
+            nsp_l(:,isp_H2p)   = nsp_l(:,isp_H2p)  *sH_l
+            nsp_l(:,isp_H3p)   = nsp_l(:,isp_H3p)  *sH_l
+            nsp_l(:,isp_HeI)   = nsp_l(:,isp_HeI)  *sHe_l
+            nsp_l(:,isp_HeII)  = nsp_l(:,isp_HeII) *sHe_l
+            nsp_l(:,isp_HeIII) = nsp_l(:,isp_HeIII)*sHe_l
+            nsp_l(:,isp_HeTR)  = nsp_l(:,isp_HeTR) *sHe_l
+            do im = 1, n_mion
+               nsp_l(:,mion_fsp(im)) = nsp_l(:,mion_fsp(im))*sH_l
+            enddo
+            write(*,'(A,ES11.4,A,ES11.4)')                                &
+               ' (load_IC) restart file written at He/H =',               &
+               nHe_l(N)/nH_l(N), ' rescaled to the input He/H =', HeH
+         endif
+      endif
 
       ! ---- metals the file does not carry: build them from the abundance ----
       ! Two ways a restart file can fail to carry an element: it has no column

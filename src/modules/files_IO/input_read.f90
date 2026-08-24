@@ -274,9 +274,15 @@
       recon_two_stage = .true.
    endif
 
-   ! Include He23S
-   str = get_word(req('Include He23S'), 3)
-   if (str .eq. 'True')  thereis_HeITR = .true.
+   ! Include He23S -- OPTIONAL.  The triplet defaults to ON (parameters.f90);
+   ! an input.inp that omits the line gets it.  "Include He23S? False" is the
+   ! deliberate opt-out and is what the HeITR-off branch check uses.
+   line = find_lbl('Include He23S', is_known)
+   if (is_known) then
+      str = get_word(line, 3)
+      if (str .eq. 'True'  .or. str .eq. 'true' ) thereis_HeITR = .true.
+      if (str .eq. 'False' .or. str .eq. 'false') thereis_HeITR = .false.
+   endif
 
    ! IC status
    str = get_word(req('Load IC'), 3)

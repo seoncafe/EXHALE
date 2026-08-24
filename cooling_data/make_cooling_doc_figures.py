@@ -224,3 +224,57 @@ fig.tight_layout()
 fig.savefig(os.path.join(OUT, "cool_feii_decomp.pdf"), bbox_inches="tight")
 plt.close(fig)
 print("wrote cool_feii_decomp.pdf")
+
+# ------------------------------------------------------------------ helium
+# He I / He II ground-state collisional excitation (fit_helium_cooling.py).
+# Unlike the metal entries above these are SUMS over every transition out of
+# the ground level, represented by the same two-level form; the fitted dE
+# comes out at the lowest level of each ion because that channel sets the
+# temperature dependence.
+from chianti_cooling import cooling_lambda
+
+HE = [
+    ("He I",  "he", 1, 1.0, (3.0e3, 1.0e5),
+     dict(a=6.130166e-02, b=4.191808e-01, T0=9.821387e+04, dE=19.884285),
+     lambda Tv: 1.1e-19*Tv**0.082*np.exp(-2.3e5/Tv)),
+    ("He II", "he", 2, 2.0, (1.0e4, 2.0e5),
+     dict(a=4.371421e-01, b=6.051062e-01, T0=1.905585e+05, dE=40.756197),
+     lambda Tv: 5.54e-17*Tv**(-0.397)/(1.0 + np.sqrt(Tv/1.0e5))
+                * np.exp(-473638.0/Tv)),
+]
+
+fig, axes = plt.subplots(2, 2, figsize=(9.2, 6.0),
+                         gridspec_kw=dict(height_ratios=[2.1, 1.0]))
+for k, (lab, el, st, g_l, (lo, hi), P, current) in enumerate(HE):
+    Th = np.logspace(np.log10(lo), np.log10(hi), 200)
+    ref, per = cooling_lambda(el, st, Th, lower_levels={1})
+    fit = lam_line(Th, g_l, P["dE"], P["a"], P["b"], P["T0"])
+    cur = current(Th)
+
+    ax = axes[0, k]
+    ax.loglog(Th, ref, "k-", lw=2, label="CHIANTI ground-state sum")
+    ax.loglog(Th, fit, "r--", lw=1.5, label="this fit")
+    ax.loglog(Th, cur, "b:", lw=1.6, label="previous coefficient")
+    if st == 1:
+        ax.loglog(Th, sum(l for ll, ul, l in per if ul == 2), color="0.55",
+                  lw=1.0, label=r"$2^3S$ channel alone")
+        ax.loglog(Th, sum(l for ll, ul, l in per if ul == 7), color="0.55",
+                  ls="-.", lw=1.0, label=r"$2^1P$ (584 $\AA$) alone")
+    ax.set_ylim(1e-40, 1e-18)
+    ax.set_ylabel(r"$\Lambda$ [erg cm$^3$ s$^{-1}$]")
+    ax.set_title(lab)
+    ax.legend(fontsize=7, loc="lower right")
+
+    ax = axes[1, k]
+    ax.semilogx(Th, fit/ref, "r--", lw=1.5, label="this fit")
+    ax.semilogx(Th, cur/ref, "b:", lw=1.6, label="previous")
+    ax.axhspan(0.99, 1.01, color="0.85", zorder=0)
+    ax.axhline(1.0, color="k", lw=0.8)
+    ax.set_ylim(0.3, 1.25)
+    ax.set_xlabel(r"$T$ [K]")
+    ax.set_ylabel("formula / CHIANTI")
+    ax.legend(fontsize=7.5, loc="lower left")
+fig.tight_layout()
+fig.savefig(os.path.join(OUT, "cool_helium_fits.pdf"), bbox_inches="tight")
+plt.close(fig)
+print("wrote cool_helium_fits.pdf")

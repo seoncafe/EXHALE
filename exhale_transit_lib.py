@@ -328,9 +328,42 @@ def read_input_params(path):
 	if appx_ln is not None:
 		appx_mth = appx_ln.split(':')[-1].strip()
 
-	return dict(Rp=Rp, Mp=Mp, T0=T0, a_orb=a_orb, Mstar=Mstar,
-	            LEUV=LEUV, appx_mth=appx_mth,
-	            R_star_Rsun=R_star_Rsun, T_star=T_star)
+	params = dict(Rp=Rp, Mp=Mp, T0=T0, a_orb=a_orb, Mstar=Mstar,
+	              LEUV=LEUV, appx_mth=appx_mth,
+	              R_star_Rsun=R_star_Rsun, T_star=T_star,
+	              resolved=False)
+
+	# Prefer the wind solver's resolved configuration when present.
+	# EXHALE_resolved.out is written by write_setup_report.f90
+	# (write_resolved_config) AFTER the base.inp handoff overrides are
+	# applied, so it is the radius/temperature/He ratio the wind actually
+	# used -- input.inp alone is stale whenever base.inp overrides them.
+	resolved_path = os.path.join(os.path.dirname(os.path.abspath(path)),
+	                             'EXHALE_resolved.out')
+	if os.path.isfile(resolved_path):
+		rv = {}
+		with open(resolved_path, 'r') as f:
+			for ln in f:
+				ln = ln.strip()
+				if not ln or ln.startswith('#'):
+					continue
+				parts = ln.split()
+				if len(parts) >= 2:
+					rv[parts[0]] = parts[1]
+		try:
+			params['Rp']    = float(rv['planet_radius_RJ']) * RJ
+			params['Mp']    = float(rv['planet_mass_MJ']) * MJ
+			params['T0']    = float(rv['equilibrium_temperature_K'])
+			params['a_orb'] = float(rv['orbital_distance_AU']) * AU
+			params['Mstar'] = float(rv['star_mass_Msun']) * M_sun
+			params['HeH']   = float(rv['HeH_number_ratio'])
+			params['resolved'] = True
+		except (KeyError, ValueError) as err:
+			raise ValueError('EXHALE_resolved.out present but unreadable '
+			                 '(%s); refusing to silently fall back to '
+			                 'input.inp' % err)
+
+	return params
 
 
 def orbital_period_days(a_orb, Mstar, Mp):
@@ -398,6 +431,22 @@ def _odd(n):
     n = int(n); return n if n % 2 == 1 else n+1
 
 
+# Optional turbulence broadening, opt-in through EXHALE_TRANSIT_TURB=1.
+# Same definition p_winds.transit uses (after Lampon et al. 2020):
+# v_turb = sqrt(5/6 kT/m), added in quadrature to the thermal width. Off by
+# default, so every spectrum synthesized before this option is unchanged.
+def _turb_factor():
+	"""Multiplier on v_th when turbulence broadening is enabled.
+
+	p_winds widens its Gaussian as sqrt(kT/m + v_turb^2) with
+	v_turb^2 = 5/6 kT/m, i.e. kT/m -> (11/6) kT/m.  This module carries the
+	Doppler b-parameter v_th = sqrt(2kT/m) instead, so the same physics is
+	b -> sqrt(2*(11/6) kT/m) = sqrt(11/6) * v_th.
+	"""
+	if _tenv('TURB', '0') not in ('1', 'True', 'true'):
+		return 1.0
+	return (11.0/6.0)**0.5
+
 def resonance_depth(lam0_A, f_osc, A21, mass, n_lower, instr_res,
                     Grid_Number, r_grid, Rp, data_r, data_v, data_T,
                     A_star, A_atm, A_planet,
@@ -422,7 +471,7 @@ def resonance_depth(lam0_A, f_osc, A21, mass, n_lower, instr_res,
 		r_LOS  = data_r[arg]
 		x_LOS  = np.sqrt(r_LOS**2.0 - r_temp**2.0)*np.sign(r_LOS)
 		dx     = np.abs(x_LOS[1:] - x_LOS[:-1])
-		v_th   = np.sqrt(2.0*kb*data_T[arg]/mass)
+		v_th   = np.sqrt(2.0*kb*data_T[arg]/mass)*_turb_factor()
 		v_x    = x_LOS*data_v[arg]/r_LOS
 		n_lo   = n_lower[arg]
 		Dnu    = nu0*v_th/c_light
@@ -464,7 +513,7 @@ def resonance_spectrum(components, mass, n_lower, instr_res, window_A, nlam,
 		r_LOS  = data_r[arg]
 		x_LOS  = np.sqrt(r_LOS**2.0 - r_temp**2.0)*np.sign(r_LOS)
 		dx     = np.abs(x_LOS[1:] - x_LOS[:-1])
-		v_th   = np.sqrt(2.0*kb*data_T[arg]/mass)
+		v_th   = np.sqrt(2.0*kb*data_T[arg]/mass)*_turb_factor()
 		v_x    = x_LOS*data_v[arg]/r_LOS
 		n_lo   = n_lower[arg]
 		I = np.zeros((arg.size, nlam))

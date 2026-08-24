@@ -1,0 +1,119 @@
+\begin{thebibliography}{10}
+
+\bibitem{Burns2020}
+Keaton~J. Burns, Geoffrey~M. Vasil, Jeffrey~S. Oishi, Daniel Lecoanet, and
+  Benjamin~P. Brown.
+\newblock Dedalus: A flexible framework for numerical simulations with spectral
+  methods.
+\newblock {\em Physical Review Research}, 2(2):023068, 2020.
+
+\bibitem{Caldiroli2021}
+Andrea Caldiroli, Francesco Haardt, Elena Gallo, Riccardo Spinelli, Isaac
+  Malsky, and Emily Rauscher.
+\newblock Irradiation-driven escape of primordial planetary atmospheres. i. the
+  {ATES} photoionization hydrodynamics code.
+\newblock {\em Astronomy \& Astrophysics}, 655:A30, 2021.
+
+\bibitem{Canuto2006}
+Claudio Canuto, M.~Yousuff Hussaini, Alfio Quarteroni, and Thomas~A. Zang.
+\newblock {\em Spectral Methods: Fundamentals in Single Domains}.
+\newblock Springer, Berlin, 2006.
+
+\bibitem{Chkrebtii2016}
+Oksana~A. Chkrebtii, David~A. Campbell, Ben Calderhead, and Mark~A. Girolami.
+\newblock Bayesian solution uncertainty quantification for differential
+  equations.
+\newblock {\em Bayesian Analysis}, 11(4):1239--1267, 2016.
+
+\bibitem{Cotter2013}
+Simon~L. Cotter, Gareth~O. Roberts, Andrew~M. Stuart, and David White.
+\newblock {MCMC} methods for functions: Modifying old algorithms to make them
+  faster.
+\newblock {\em Statistical Science}, 28(3):424--446, 2013.
+
+\bibitem{Doedel2021}
+Eusebius~J. Doedel and Bart~E. Oldeman.
+\newblock {\em {AUTO}-07P: Continuation and Bifurcation Software for Ordinary
+  Differential Equations}.
+\newblock Concordia University and McGill HPC Centre, Montreal, August 2021.
+
+\bibitem{DosSantos2022}
+Leonardo~A. Dos~Santos, Aline~A. Vidotto, Shreyas Vissapragada, Munazza~K.
+  Alam, Romain Allart, Vincent Bourrier, James Kirk, Julia~V. Seidel, and David
+  Ehrenreich.
+\newblock p-winds: An open-source {Python} code to model planetary outflows and
+  upper atmospheres.
+\newblock {\em Astronomy \& Astrophysics}, 659:A62, 2022.
+
+\bibitem{Finlayson1972}
+Bruce~A. Finlayson.
+\newblock {\em The Method of Weighted Residuals and Variational Principles}.
+\newblock Academic Press, New York, 1972.
+
+\bibitem{Goodman2010}
+Jonathan Goodman and Jonathan Weare.
+\newblock Ensemble samplers with affine invariance.
+\newblock {\em Communications in Applied Mathematics and Computational
+  Science}, 5(1):65--80, 2010.
+
+\bibitem{Grandclement2010}
+Philippe Grandcl{\'e}ment.
+\newblock {KADATH}: A spectral solver for theoretical physics.
+\newblock {\em Journal of Computational Physics}, 229(9):3334--3357, 2010.
+
+\bibitem{Koskinen2013a}
+T.~T. Koskinen, M.~J. Harris, R.~V. Yelle, and P.~Lavvas.
+\newblock The escape of heavy atoms from the ionosphere of {HD 209458b}. {I}. a
+  photochemical-dynamical model of the thermosphere.
+\newblock {\em Icarus}, 226(2):1678--1694, 2013.
+
+\bibitem{Kramer2021}
+Nicholas Kr\"amer and Philipp Hennig.
+\newblock Linear-time probabilistic solutions of boundary value problems.
+\newblock In {\em Advances in Neural Information Processing Systems},
+  volume~34, pages 13642--13654, 2021.
+
+\bibitem{Lampon2021}
+M.~Lamp{\'o}n, M.~L{\'o}pez-Puertas, J.~Sanz-Forcada, A.~S{\'a}nchez-L{\'o}pez,
+  K.~Molaverdikhani, S.~Czesla, A.~Quirrenbach, E.~Pall{\'e}, J.~A. Caballero,
+  T.~Henning, et~al.
+\newblock Modelling the {He I} triplet absorption at 10 830 {\aa} in the
+  atmospheres of {HD 189733 b} and {GJ 3470 b}.
+\newblock {\em Astronomy \& Astrophysics}, 647:A129, 2021.
+
+\bibitem{MurrayClay2009}
+Ruth~A. Murray-Clay, Eugene~I. Chiang, and Norman Murray.
+\newblock Atmospheric escape from hot jupiters.
+\newblock {\em The Astrophysical Journal}, 693:23--42, 2009.
+
+\bibitem{Rieutord2016}
+Michel Rieutord, Francisco Espinosa~Lara, and Bertrand Putigny.
+\newblock An algorithm for computing the {2D} structure of fast rotating stars.
+\newblock {\em Journal of Computational Physics}, 318:277--304, 2016.
+
+\bibitem{Taylor2025}
+Anna~Ruth Taylor, Tommi~T. Koskinen, Luca Argenti, Nicholas Lewis, Chenliang
+  Huang, Anthony Arfaux, and Panayotis Lavvas.
+\newblock A multispecies atmospheric escape model with excited hydrogen and
+  helium: Application to {HD 209458b}.
+\newblock {\em The Astrophysical Journal}, 989(1):68, 2025.
+
+\bibitem{Trefethen2000}
+Lloyd~N. Trefethen.
+\newblock {\em Spectral Methods in {MATLAB}}, volume~10 of {\em Software,
+  Environments, and Tools}.
+\newblock Society for Industrial and Applied Mathematics, Philadelphia, 2000.
+
+\bibitem{Xing2023}
+Lei Xing, Dongdong Yan, and Jianheng Guo.
+\newblock The mass fractionation of helium in the escaping atmosphere of {HD
+  209458b}.
+\newblock {\em The Astrophysical Journal}, 953(2):166, 2023.
+
+\bibitem{Yang2021}
+Liu Yang, Xuhui Meng, and George~Em Karniadakis.
+\newblock {B-PINNs}: Bayesian physics-informed neural networks for forward and
+  inverse {PDE} problems with noisy data.
+\newblock {\em Journal of Computational Physics}, 425:109913, 2021.
+
+\end{thebibliography}

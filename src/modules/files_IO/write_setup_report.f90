@@ -199,8 +199,8 @@
 	if (force_start) &
 		write(outfile,*) '- Forcing the simulation for the first 1000 steps'
 	   
-1	format(A16,F5.3,A8,F8.5,A10)
-2	format(A18,F5.3,A8,F8.5,A10)	
+1	format(A16,F7.3,A8,F9.2,A10)
+2	format(A18,F7.3,A8,F9.2,A10)	
 3	format(A21,F6.4,A5)	
 4	format(A28,F6.1,A4)	
 5	format(A29,F7.2)
@@ -209,7 +209,7 @@
 8	format(A25,F6.3,A8)	
 9	format(A40,F5.3,A15)	
 10	format(A33,F5.2,A6)	
-11	format(A36,A15,F8.6)		
+11	format(A36,A15,ES11.4)		
 12	format(A28,A11,F5.2)	
 13 format(A45,F7.2)	
 14	format(A48,F6.3)		
@@ -411,6 +411,36 @@
 	end subroutine put_s
 
 	end subroutine write_parse_dump
+
+	! ------------------------------ !
+
+	subroutine write_resolved_config
+	! Machine-readable record of the configuration the wind actually uses,
+	! written once the input.inp values and the optional base.inp handoff
+	! overrides (r_base/T_base/HeH_base) are resolved.  Consumers
+	! (EXHALE_transit.py) read these values instead of re-parsing input.inp,
+	! so a base.inp override of the radius/temperature/He ratio reaches the
+	! transit geometry as well (docs/lhs1140b_lower_atmosphere_plan_new.md,
+	! Phase B).  Format: '# ' comments, then one 'key  value' pair per line.
+	integer :: u
+	logical :: base_present
+
+	inquire(file='base.inp', exist=base_present)
+	open(newunit=u, file='EXHALE_resolved.out', status='replace',        &
+	     action='write')
+	write(u,'(A)') '# EXHALE resolved configuration (machine-readable).'
+	write(u,'(A)') '# Values in effect after input.inp + base.inp resolution;'
+	write(u,'(A)') '# these are what the wind solver uses, and what'
+	write(u,'(A)') '# EXHALE_transit.py should use instead of input.inp.'
+	write(u,'(A,ES16.8)') 'planet_radius_RJ          ', R0/RJ
+	write(u,'(A,ES16.8)') 'planet_mass_MJ            ', Mp/MJ
+	write(u,'(A,ES16.8)') 'equilibrium_temperature_K ', T0
+	write(u,'(A,ES16.8)') 'HeH_number_ratio          ', HeH
+	write(u,'(A,ES16.8)') 'orbital_distance_AU       ', a_orb/AU
+	write(u,'(A,ES16.8)') 'star_mass_Msun            ', Mstar/Msun
+	write(u,'(A,L1)')     'base_inp_present          ', base_present
+	close(u)
+	end subroutine write_resolved_config
 
 	! End of module
 	end module setup_report
