@@ -135,6 +135,11 @@ row 1) but an audit of the remaining **H-referenced algebra**:
 everywhere, closed charge and energy budgets, documented floors, and
 stability under resolution and floor changes.
 
+Executed 2026-08-24 on the converged LHS 1140 b solutions rather than on a
+separate tutorial-planet series; the acceptance record is
+`LHS1140b/exhale/audit_summary.md`. Not covered by it: resolution
+sensitivity, and the photon-escape bullet above.
+
 ### Phase D — conservative H/He separation (revised WP1)
 
 Replace, not extend, the trace-orientation assumption in

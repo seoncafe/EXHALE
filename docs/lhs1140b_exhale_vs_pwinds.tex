@@ -39,7 +39,10 @@ velocity spread that the solved wind does not produce: its outflow reaches
 $1.2$\,km\,s$^{-1}$ at $20\,R_p$ and its gas cools below $1000$\,K over the
 line-forming region. The shortfall is in the energy and momentum budget,
 not in the composition, and it is a published problem rather than a defect
-of this setup (Sect.~\ref{sec:width}).
+of this setup (Sect.~\ref{sec:width}). The one mechanism that would supply
+width without a free parameter---the adiabatic-cooling metastable bump of
+Schulik \& Owen (2025)---is present in these solutions but sits at
+$0.3$--$1.4$\,km\,s$^{-1}$, so it does not help (Sect.~\ref{sec:bump}).
 
 Repeating the whole scan on the GJ\,699 proxy spectrum --- the second
 stand-in for LHS\,1140's unobserved XUV, $5.1$ times brighter, which the
@@ -624,6 +627,148 @@ All curves are shifted by the same $v_{\rm wind} = +2.26$\,km\,s$^{-1}$.}
 \label{fig:pwbroad}
 \end{figure}
 
+\subsection{The adiabatic-cooling population bump, looked for}
+\label{sec:bump}
+
+Schulik \& Owen (2025) propose that the missing width is already contained
+in the metastable population itself. Writing the steady state of their
+Eq.~(1) as
+%
+\begin{equation}
+n_{2^3S}(T_e) = \frac{\alpha(T_e)}{q(T_e) + t_{\rm ion}/n_e}\,n_{\rm He^+},
+\end{equation}
+%
+they note that as adiabatic expansion drops the temperature ``from $\simeq
+10^4$\,K to $\simeq 10^3$\,K'', ``a change in slope in the population occurs
+as the dominant triplet loss rate $q(T_e)$ drops significantly at lower
+temperatures''---the metastable fraction climbs above the curve computed
+with the rates frozen at the peak temperature. The rise is ``quenched'' where
+the advection timescale overtakes the excitation to $2^1S$, after which
+$\dot m_{2^3S} = 4\pi r^2 v\,n_{2^3S}\,m_{\rm He}$ falls through
+ionization and the $2^3S \rightarrow 1^1S$ decay. They credit Yan et al.\
+(2022) and Biassoni et al.\ (2024) with first identifying the effect, and
+their conclusion states the condition it must satisfy to be observable:
+``The helium triplet population bump must be situated at high velocities to
+help explain anomalous line widths.''
+
+EXHALE carries the temperature dependence the mechanism needs, and carries it
+in exactly the balance above. The metastable row
+(\texttt{tr\_triplet\_row}, \texttt{ion\_residual\_core.f90}:72) is
+%
+\begin{equation}
+\begin{split}
+n_e\bigl(n_{\rm He^+}\alpha_{2^3S} + n_{\rm He\,I(1^1S)}\,q_{13}\bigr)
+ = \; & n_{2^3S}\bigl[\Gamma_{2^3S} + A_{31} + n_{\rm H\,I}Q_{31} \\
+      & + n_e(q_{31a}+q_{31b}+b_{2^3S})\bigr],
+\end{split}
+\end{equation}
+%
+with every coefficient a function of $T$: $\alpha_{2^3S} = 2.10\times
+10^{-13}(T/10^4)^{-0.778}$ (\texttt{Cool\_coeff.f90}:970), the collisional
+losses $q_{31a}$ ($2^3S \rightarrow 2^1S$, $0.80$\,eV) and $q_{31b}$
+($2^3S \rightarrow 2^1P$, $1.40$\,eV) as Bray (2000) collision strengths
+folded with $\exp(-\Delta E/kT)$ (\texttt{Cool\_coeff.f90}:905 and 928), the
+Penning term $Q_{31}$ as the Taylor et al.\ (2025) two-branch fit
+(\texttt{Cool\_coeff.f90}:988), collisional ionization of the metastable
+(\texttt{Cool\_coeff.f90}:1030), and the radiative decay $A_{31} =
+1.272\times10^{-4}$\,s$^{-1}$ (\texttt{util\_ion\_eq.f90}:1192). Between
+$5000$ and $1000$\,K the loss $q_{31a}+q_{31b}$ falls by a factor $1.3\times
+10^{3}$ while $\alpha_{2^3S}$ rises by a factor $3.5$, so the
+ingredients of the bump are present and are not an imposed
+parameterization.
+
+\texttt{LHS1140b/bump\_analysis.py} measures the result. It reconstructs the
+balance above in Python from the solved profiles---reproducing the solved
+$n_{2^3S}$ to a relative $3\times10^{-16}$, which confirms the rate
+transcription and lets the one unresolved term, the $2^3S$ photoionization
+rate $\Gamma_{2^3S}$, be recovered from the solution itself---and then
+recomputes the reference curve with $\alpha$, $q_{13}$, $q_{31a}$, $q_{31b}$
+and $Q_{31}$ frozen at the peak temperature.
+
+\begin{table}[htbp]\centering
+\caption{The metastable bump in the converged solutions. Columns 2--4
+locate the $n_{2^3S}$ maximum in the equilibrium profile and give the
+temperature and outflow speed there; the last three characterize the
+absorber-weighted ($w = n_{2^3S}r^2\,dr$) distribution of $|v_r|$ over the
+advection-corrected $2^3S$ column that the transit tool integrates. The
+He/H\,$=1000$ solutions have no outward density maximum---their $n_{2^3S}$
+peaks at the base---and are marked $\dagger$.}
+\label{tab:bump}
+\begin{tabular}{lrrrrrr}
+\toprule
+case & $r_{\rm peak}$ & $T$ & $v$ & med.\ $|v_r|$ & $>2$ & $>5$ \\
+     & [$R_p$] & [K] & [km\,s$^{-1}$] & [km\,s$^{-1}$] & [\%] & [\%] \\
+\midrule
+\multicolumn{7}{l}{\emph{GJ\,1132 proxy SED}}\\
+He/H\,$=0.55$   & $5.42$ & $1608$ & $0.27$ & $0.38$ & $0.0$ & $0.0$ \\
+solar He/H      & $3.02$ & $1876$ & $0.07$ & $0.41$ & $0.0$ & $0.0$ \\
+He/H\,$=1000$   & $1.05^\dagger$ & $2550$ & $0.00$ & $0.52$ & $0.0$ & $0.0$ \\
+\midrule
+\multicolumn{7}{l}{\emph{GJ\,699 proxy SED}}\\
+He/H\,$=0.06$   & $5.42$ & $1015$ & $1.40$ & $2.53$ & $64.9$ & $0.0$ \\
+solar He/H      & $5.50$ & $1047$ & $1.41$ & $2.51$ & $64.3$ & $0.0$ \\
+He/H\,$=1000$   & $1.05^\dagger$ & $2529$ & $0.00$ & $1.40$ & $11.3$ & $0.0$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The bump is there. In every case the metastable fraction $f_3 =
+n_{2^3S}/n_{\rm He}$ rises monotonically outward across the whole cooling
+leg, from the temperature maximum to a maximum of $f_3$ at
+$8.3$--$16.2\,R_p$---a rise of $1.4$--$4.2\times10^{3}$ in the equilibrium
+profiles and $38$--$1.1\times10^{3}$ in the advection-corrected ones---and the rise is
+attributable to the temperature dependence in the way Schulik \& Owen
+describe: against the same balance with the rates frozen at the peak
+temperature, the solved population stands a factor $1.6$--$31$ high at the
+density maximum and up to $8.8$--$156$ high further out. On the GJ\,1132
+proxy at the equivalent-width-matched composition the maximum sits at
+$5.42\,R_p$ where $T = 1608$\,K, against $T_{\rm max} = 5043$\,K at
+$1.45\,R_p$: the temperature has fallen to $0.32$ of its peak, which is the
+regime the mechanism asks for. The quench is visible too---in the
+advection-corrected profiles the density maximum has moved inward to
+$1.05$--$1.64\,R_p$ and $n_{2^3S}$ then falls monotonically, so the outflow
+appears to be sweeping the metastable out at least as fast as recombination
+resupplies it, and $\dot m_{2^3S}$ drops by up to $41\%$ past the peak.
+
+The velocity condition, however, is not met, and not narrowly. At the bump
+the outflow is moving at $0.27$\,km\,s$^{-1}$ on the GJ\,1132 proxy and
+$1.4$\,km\,s$^{-1}$ on the GJ\,699 proxy. Weighting by absorbers over the
+whole $2^3S$ column, the median $|v_r|$ is $0.4$--$0.5$\,km\,s$^{-1}$ and
+$2.5$\,km\,s$^{-1}$ on the two spectra, and the largest $|v_r|$ anywhere in
+the column is $1.6$ and $3.9$\,km\,s$^{-1}$. No part of the column on
+either spectrum reaches $5$\,km\,s$^{-1}$, against the $\sigma
+= 9.5$\,km\,s$^{-1}$ of extra broadening the measurement demands
+(Sect.~\ref{sec:broadening}). Radial velocity is the generous choice here:
+the line-of-sight projection of a radial field over the transit chord is
+smaller still. Figure~\ref{fig:bump} shows the three statements together.
+
+So the bump exists in these solutions and contributes nothing measurable to
+the width. That is consistent with what Schulik \& Owen themselves report
+for the coolest hosts: for their M2 case they find that ``the transit
+signal probes the same velocity region for both treatments of
+thermodynamics, making the line insensitive to velocity'', and they conclude
+that K stars, not M stars, are the favorable testbeds---G-type hosts
+suppress the bump by photoionizing the triplet, and M-type hosts have weaker
+tidal fields and so rarely drive fast enough outflows. LHS\,1140 is an M4.5
+dwarf, cooler than the M2 they model, and its planet is a temperate
+super-Earth rather than a hot giant. The mechanism appears to be present and
+correctly captured; the host is the wrong one for it to help.
+
+\begin{figure*}[htb]\centering
+\includegraphics[width=0.98\textwidth]{figures/lhs1140b_bump.pdf}
+\caption{The adiabatic-cooling metastable bump in the EXHALE solutions
+(solid: advection-corrected, the profiles the transit integral uses;
+dotted: local equilibrium; faint curves on the right-hand axes). (a) The
+metastable fraction rises outward over the whole region where $T$ falls,
+which is the bump in the sense of Schulik \& Owen (2025). (b) The
+equilibrium $n_{2^3S}$ peaks at $5.4$--$5.5\,R_p$ (markers); advection moves
+the maximum inward and quenches the outer rise. (c) The absorber-weighted
+distribution of $|v_r|$ over the $2^3S$ column: the whole column lies below
+$4$\,km\,s$^{-1}$, far short of the $\sigma = 9.5$\,km\,s$^{-1}$ the
+measured width demands.}
+\label{fig:bump}
+\end{figure*}
+
 \subsection{This is a published shortfall}
 
 Taylor et al.\ (2026), with a model of the same class, reproduce the
@@ -657,9 +802,9 @@ neither. The candidates, in the order they should be tested:
 \item \emph{Geometry.} A line-of-sight velocity field from day--night or
       zonal flow is a 3D effect; Rumenskikh et al.\ reach the observed width
       with $10$--$20$\,km\,s$^{-1}$ jets, which is the right order.
-\item \emph{Adiabatic-cooling population bump.} EXHALE solves the energy
-      equation and should produce Schulik \& Owen's bump if it is present in
-      this regime; it has not been looked for.
+\item \emph{Adiabatic-cooling population bump.} Looked for
+      (Sect.~\ref{sec:bump}): the bump is present in these solutions, but
+      it sits at $0.3$--$1.4$\,km\,s$^{-1}$, so it does not supply width.
 \end{enumerate}
 
 The paper's composition constraint should be read in the same light: it
@@ -855,7 +1000,9 @@ region stays cold. The candidate ``more energy'' is therefore tested and
 rejected as an explanation of the width. It moves $\dot M$ and it moves the
 composition estimate; it does not move the profile. The remaining candidates
 --- heating outside a 1D hydrodynamic energy equation, 3D velocity fields,
-and an adiabatic-cooling metastable bump --- are unaffected by this test.
+and an adiabatic-cooling metastable bump --- are unaffected by this test;
+the last of them has since been looked for on both spectra
+(Sect.~\ref{sec:bump}) and does not help either.
 
 \begin{figure}[htbp]\centering
 \includegraphics[width=\textwidth]{figures/lhs1140b_gj699.pdf}
@@ -884,7 +1031,10 @@ The line is not reproduced. What stands:
       9.5$\,km\,s$^{-1}$), measured in Sect.~\ref{sec:broadening} and
       Fig.~\ref{fig:broadened}; supplied as one Gaussian it puts depth,
       blue depth and red/blue ratio inside the observed $1\sigma$ interval
-      at once, but its physical origin is unidentified.
+      at once, but its physical origin is unidentified. The adiabatic
+      metastable bump, which would have supplied it without a free
+      parameter, is present and measured (Sect.~\ref{sec:bump}) but sits
+      too slow to contribute.
 \item \textbf{Escape rate: an output, not a fit, and SED-set.}
       $\dot M \simeq 6\times10^{7}$\,g\,s$^{-1}$ on the GJ\,1132 proxy, a
       third of the value the retrieval imposes, and nearly independent of
@@ -906,7 +1056,9 @@ The line is not reproduced. What stands:
 \noindent That test has now been run (Sect.~\ref{sec:gj699}), and it
 separated the two questions rather than answering them together: the
 composition estimate moved by an order of magnitude while the width did not
-move at all. The shortfall is therefore not an energy-input problem, and the
-3D, magnetic and adiabatic-bump candidates move to the front.
+move at all. The shortfall is therefore not an energy-input problem. Of the
+remaining candidates the adiabatic bump has since been tested and ruled out
+as a source of width for this host (Sect.~\ref{sec:bump}), which leaves the
+3D and magnetic ones.
 
 \end{document}

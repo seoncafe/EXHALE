@@ -32,4 +32,5 @@ du_th [PLM,WENO3]: 0.5 1.0e-3
 Solver: Newton
 
 He_diffusion: True
+He_Kzz: 1.0e9
 He_metal_diffusion: True

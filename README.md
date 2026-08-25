@@ -49,9 +49,10 @@ ATES model.
   with Draine & Bertoldi (1996) self-shielding
 - Thermal infrared field of the atmosphere below the base, so the molecular
   and fine-structure coolants return the net rate rather than the vacuum limit
-- Diffusive separation of helium and metals: the He/H element ratio is
-  transported with bulk advection plus molecular-diffusion settling, and each
-  trace metal can diffuse independently
+- Diffusive separation of helium and metals: hydrogen and helium are
+  transported as a two-component mixture, with bulk advection, binary
+  molecular-diffusion settling in the computed ambipolar field, and an
+  optional eddy term; each trace metal can diffuse independently
 
 **Hydrodynamics and solvers**
 
@@ -153,7 +154,8 @@ schemas, convergence recipes, post-processing — is in
 - [`docs/lower_atmosphere_coupling.pdf`](docs/lower_atmosphere_coupling.pdf) —
   the lower-atmosphere connection: analytic column, molecular chemistry,
   Lyman-Werner photodissociation, base infrared field, VULCAN handoff
-- [`docs/design_hehe_diffusion.md`](docs/design_hehe_diffusion.md) and
+- [`docs/binary_diffusion_design.md`](docs/binary_diffusion_design.md),
+  [`docs/design_hehe_diffusion.md`](docs/design_hehe_diffusion.md) and
   [`docs/version_compare.pdf`](docs/version_compare.pdf) — diffusive
   separation of He and metals, and its measured effect on He 10830
 - [`docs/transmission_spectrum.pdf`](docs/transmission_spectrum.pdf) — how the
@@ -228,4 +230,4 @@ schemas, convergence recipes, post-processing — is in
 
 Kwang-Il Seon (KASI / UST)
 
-Last updated: 2026-08-24 20:33 KST
+Last updated: 2026-08-25 19:17 KST

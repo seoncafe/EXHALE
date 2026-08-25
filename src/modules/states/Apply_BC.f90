@@ -14,8 +14,10 @@
    real*8, intent(inout) :: u(3,1-Ng:N+Ng)
    real*8 :: W(3,1-Ng:N+Ng)
 
-   ! Convert to primitive variables
-   call U_to_W(u,W)
+   ! Interior cells only: the ghosts are outputs of Apply_BC_W below, never
+   ! inputs, and on entry they can still be zero (first residual evaluation
+   ! of the steady solver).
+   call U_to_W_interior(u,W)
 
    ! Apply bc to W's
    call Apply_BC_W(W)

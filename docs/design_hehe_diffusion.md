@@ -1,5 +1,9 @@
 # Design: He/H diffusive separation in EXHALE (Phase 1 + Phase 2)
 
+> **Transport formulation superseded by `binary_diffusion_design.md` (2026-08-25); this file is the Phase-1/2 record.** The kernel described in sections 2-5 is the trace-helium-in-hydrogen limit of the binary two-component operator now in `src/modules/functions/binary_element_diffusion.f90`; sections 7b-7e remain the record of what was built and measured.
+>
+> **Kernel removed 2026-08-25.** `src/modules/functions/species_diffusion.f90` no longer exists: it was deleted at milestone M3 once the binary operator had been compared against it (T2a in `docs/Update_EXHALE.md` section 68, T2b in section 69). Every code reference in this file is therefore historical; `He_diffusion` runs the binary operator alone.
+
 **Status:** Phase 1 and Phase 2 implemented and validated (2026-07-02). Flag `He_diffusion`
 default OFF (opt-in). See §7d/§7e for results.
 **Scope:** Phase 1 = He element relative to H (§2–§7). Phase 2 = ambipolar-corrected

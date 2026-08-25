@@ -104,3 +104,31 @@ and both reach info=0 (||R|| = 7.9e-4 and 5.0e-4; log10 Mdot = 8.58 and
 1.108 +/- 0.030 %A, and log-log interpolation over the seven GJ 699 cases
 puts the crossing at He/H = 0.060 (0.060 with turbulence on) against 0.550
 on the GJ 1132 spectrum.
+
+## Diffusive separation on three of the cases (2026-08-25)
+
+`heh0p55_diff`, `heh1000_diff` and `heh0p06_gj699_diff` repeat three cases of
+the scan with `He_diffusion: True`, the binary two-component element
+diffusion operator of `docs/binary_diffusion_design.md` (milestone M3;
+results and their reading in `docs/Update_EXHALE.md` section 69).  Each is a
+copy of its seed's `input.inp` with `Planet name:` and that one key changed
+-- `He_Kzz` stays at its default 0 (no eddy term) and `He_ambipolar` at its
+default on -- restarted from the seed's converged output and finished with
+`./finish_case.sh <case> <seed>`.  The seed directories were not modified.
+
+All three converged, info=0 (||R|| = 4.4e-4, 7.9e-4, 8.5e-4).  The wind is
+untouched by the separation: log10 Mdot moves by <= 5e-4 dex from the seed
+(7.7642 -> 7.7645, 7.7442 -> 7.7437, 8.5885 -> 8.5883) and the He 10830 red
+depth by less than 0.1% relative.  The separation itself is small on these
+winds: between the base and 20 R_p the element ratio stays within ~1% of the
+reservoir He/H (helium mildly enriched outward, most at He/H = 1000), and it
+falls to 0.63-0.83 of the reservoir value only in the last cells below the
+30 R_p outer boundary.  These are fast, low-gravity winds whose advection
+time across the domain is short against the diffusion time, so the mixture
+is carried out before it can separate.
+
+Two caveats to carry: the composition outer loop left at its five-pass
+ceiling in all three (final drift 4.7e-2, 5.2e-2, 2.2e-2, dominated by the
+near-base cells), so these are not composition-converged to the loop's own
+1e-3; and the equivalent-width crossings quoted above are from the
+diffusion-off cases and were not recomputed.

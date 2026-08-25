@@ -5736,3 +5736,735 @@ planets.  All four now carry `True`; none of them has stored output.
 
 The runs whose stored output predates the flip are listed in
 `docs/he23s_default_recompute_list.md`; nothing there has been recomputed.
+
+## 66. Primitive conversion of unfilled ghost cells (2026-08-24)
+
+A runtime-checked JFNK run of the LHS 1140 b He/H = 1000 case (Phase C
+audit, `LHS1140b/exhale/audit_summary.md`) ended with gfortran reporting a
+signalling `IEEE_INVALID_FLAG`.  Rebuilt with `-ffpe-trap=invalid,zero,
+overflow`, the solver died in its first residual evaluation at
+`UW_conversions.f90:58`, `W(2,:) = U(2,:)/U(1,:)`: `U_to_W` converts the
+whole array, ghost cells included, and `Apply_BC` called it on a state whose
+ghosts were still zero -- the comment two lines above the call in
+`steady_newton.f90` had already noted that the ghosts are zero at that
+point.  The `0/0` produced NaNs in the ghost primitives that `Apply_BC_W`
+overwrote on the next line, so no result was ever affected; but every
+steady solve tripped an invalid operation, which is what had kept the
+trapping variant of the `-fcheck` regression off the steady-solver path.
+With that site fixed the trap moved to the two line-search trial
+conversions in `steady_newton.f90` (`call U_to_W(utry, Wtry)` in the hybrid
+and JFNK searches), where `unpack_U` fills only the interior of `utry` and
+only `Wtry(1,1:N)` and `Wtry(3,1:N)` are then read.
+
+- `UW_conversions.f90`: new `U_to_W_interior`, converting cells `1..N`
+  through `U_to_W_comp` and zeroing the ghost columns -- one definition
+  for every site that converts a state before its ghosts are set.
+- `Apply_BC.f90`: `U_to_W` -> `U_to_W_interior`; the ghosts are outputs of
+  `Apply_BC_W`, never inputs.
+- `steady_newton.f90`: both line-search trial conversions ->
+  `U_to_W_interior`.
+
+Verified: under `-O1 -g -fcheck=bounds,do,mem -ffpe-trap=invalid,zero,
+overflow` the He/H = 1000 JFNK now completes, `info=0 ||R|| = 7.929E-04`
+(identical to the untrapped run) with no signalling exception, and so does
+the H-rich `solar_gj699` case (`info=0 ||R|| = 6.433E-04`).  `make check`:
+5/5 byte-identical (all five cases), as the discarded ghost values require.
+
+## 67. Element diffusion on the direct-steady route, the element drift metric, and the restart of a diffused state (2026-08-25)
+
+Three defects on the `He_diffusion` path, all of them independent of the
+transport formulation and all of them blocking the Phase-D milestones of
+`docs/binary_diffusion_design.md` (sections 7.3, 7.4).
+
+**The steady solve and the diffusion relaxation are now one routine.**
+The steady residual (`steady_newton.f90`) carries no diffusion: the He/H
+field is moved by the operator-split `he_diffusion_step`, so a single
+steady solve freezes the composition at the state it was handed.  The
+marching hand-off answered that with an outer Picard loop (JFNK -> 500
+relaxation steps -> `ioniz_eq` -> drift test, at most five passes), but
+the direct-steady route -- `EXHALE_PTC=1`, the route the LHS 1140 b cases
+take -- ran a bare `solve_steady_jfnk` / `solve_steady_ptc`, so a diffused
+wind could not be brought to a steady state there at all.  That loop is
+now `steady_wind_with_element_diffusion` (contained in `EXHALE_main`),
+called from both routes; the solver, its iteration budget and its initial
+pseudo-time are its arguments, so the direct-steady route reaches it with
+JFNK or with pseudo-transient continuation.  `dt_loc`, which the
+relaxation step needs, is built by the `eval_dt` that route already
+called.  With `He_diffusion` off the loop runs exactly once and the body
+is the single solve plus the state refresh both sites performed before.
+
+**The drift metric counts elements.**  It read
+`(f_sp(:,3)+f_sp(:,4)+f_sp(:,5))/(f_sp(:,1)+f_sp(:,2))`, which is HeI +
+HeII + HeIII over HI + HII: it omitted the He 2^3S triplet and every
+molecular species, and so did not measure the same quantity that
+`species_diffusion.f90` transports (its own `sumHe` includes the triplet).
+Replaced by `element_ratio_HeH` in `composition.f90`, which counts nuclei
+with the `bsp_nH` / `bsp_nHe` weights of `species_table.f90` over all ten
+base species -- H2 and H2+ two H nuclei, H3+ three, HeH+ one of each.  It
+is the same element count `load_IC` applies to a restart file, and it is
+correct in the molecular region without a second definition.
+
+**A diffused state can be restarted.**  `load_IC.f90` rescaled every cell
+to the global `HeH` whenever the file's composition differed from it by
+more than 1e-6, on the ground that the input file is the authority on
+composition.  With `He_diffusion` on that erases the answer: the
+cell-by-cell split is what the diffusion operator produced.  The rescale
+is now confined to the base cells (`1-Ng` to `1`), where the operator
+itself holds a Dirichlet reservoir composition; every cell above keeps the
+helium fraction it was written with.  With the flag off the whole column
+is rescaled as before, bit for bit.  The HeH+ refusal is unchanged --
+molecular chemistry and `He_diffusion` remain an excluded pair until the
+molecular closure is validated (memo section 5, milestone M4).
+
+No diffusion operator changed; `species_diffusion.f90` is untouched.
+
+Verified.  `make check`: `==> REGRESSION PASS (all cases byte-identical)`,
+5/5, which is the evidence that the `He_diffusion`-off path is unmoved.
+
+The restart was measured against the stored `examples/14_diffusion` output
+under `EXHALE_DUMP_IC=1`, which writes the state as loaded, before the
+first ionization-equilibrium solve.  The loaded He/H profile reproduces the
+file's to 3.3e-16 relative, worst cell, over all 504 cells; the same file
+through the pre-change binary comes back flattened to the input ratio
+(r = 1.05 R_p: file 1.616e-02, loaded 8.333e-02, a factor 5.2).  The
+direct-steady route with `EXHALE_PTC=1 EXHALE_PTC_JFNK=1` now runs the
+outer loop -- five passes, `info=0` on every one, drift falling 9.40e-03,
+7.74e-03, 5.79e-03, 4.64e-03, 4.03e-03.  It reaches the pass limit rather
+than the 1e-3 drift test, which is what a five-pass Picard budget gives
+from a state that was not converged to begin with (the stored output is the
+unconverged JFNK `info=2` one); the same test from a converged state is
+part of the baseline capture below.
+
+The pre-change binary is kept as
+`backup/phase_d_baseline/EXHALE_prephaseD.x`, with the reference runs it
+produces, as the memo's T2 comparison.
+
+## 68. Binary H/He element diffusion replaces the trace-helium kernel (2026-08-25)
+
+The composition operator of `He_diffusion` is rewritten from the
+trace-helium-in-hydrogen kernel to the two-component (binary) formulation
+of `docs/binary_diffusion_design.md`, sections 2-4.  New module
+`src/modules/functions/binary_element_diffusion.f90`, routine
+`element_diffusion_step`; the old module is kept for the duration of
+milestone M2 with its routine renamed `he_diffusion_step_trace` and its
+body untouched, reachable only through `EXHALE_DIFFUSION_KERNEL=trace`,
+so the two can be compared (test T2a).  Both call sites in
+`EXHALE_main.f90` go through one dispatcher, `element_composition_step`.
+
+**What changed in the physics.**
+
+*The transported variable.*  The trace kernel evolved the ratio
+`f = n_He/n_H`, which diverges as hydrogen becomes the minor element --
+exactly the limit a helium-rich atmosphere needs -- and it wrote the
+diffusive flux as `n_H D d(n_He/n_H)/dr`, which divides by a vanishing
+background.  The new operator transports the helium MASS FRACTION
+`X = rho_He/rho` of two components, hydrogen (with the trace metals
+slaved to it) and helium, and is bounded at both ends of the composition
+axis.  The gradient coefficient of the memo, `A = (m_1 m_He n/mbar) D_12
+(dx/dX)`, collapses to `A = rho D_12`, so nothing in the operator divides
+by an element density.  The settling flux carries the prefactor
+`rho X (1-X)`, which switches settling off as either element is
+exhausted, while the gradient flux does not vanish there -- a helium-free
+cell next to a helium-bearing one still receives helium.
+
+*The cap is gone.*  The trace kernel clamped `f <= HeH` over the whole
+domain, and in the stored `examples/14_diffusion` output the profile sat
+exactly on that clamp between 1.2 and 2 R_p.  The clamp existed because
+the trace flux has no reason to vanish when hydrogen runs out; the binary
+flux does.  It is removed, together with the base pile-up limiter.  A
+pile-up, if one appears, is physics for the base boundary condition to
+answer, not something to clamp.  What remains is a round-off assertion
+(`0 <= X <= 1`), and the bounds it asserts are a property of the
+discretization: the backward-Euler matrix is a strictly diagonally
+dominant M-matrix, with the Peclet hybrid on the settling term chosen so
+that it never flips the sign of an off-diagonal.
+
+*The ambipolar field is computed, not assumed.*  The previous effective
+settling mass `3 - 0.5 (Zbar_He - Zbar_H)` is the hydrogen-plasma value
+`eE = m_H g/2` written as a constant; in a fully ionized helium plasma the
+massless-electron balance gives `eE = 4/3 m_H g` instead, and the relative
+settling mass 5/3, not 2.5.  The field is now evaluated from the solved
+electron pressure of the cell, `eE = -(1/n_e) d(n_e k T)/dr`, in its
+logarithmic form `-k T dln(n_e T)/dr` (exact for a barometric
+stratification, the same second-order central difference elsewhere).  The
+three analytic limits are reproduced to round-off (test T9): neutral 3,
+H+ plasma 2.5 -- so the validated helium-trace behaviour is unchanged --
+and He++ plasma 5/3.
+
+*Advection.*  The operator receives only the new `rho`, `v`, `T` and `dt`,
+not the hydro's Runge-Kutta face mass fluxes, so a second conservative
+advection of `rho X` could not be made consistent with the hydro's own
+continuity step.  `X` is therefore transported in the advective form,
+`rho dX/dt + rho v dX/dr = -div(r^2 J)/r^2`, with the velocity divergence
+cancelled analytically in the row assembly rather than formed and
+subtracted (that cancellation is catastrophic whenever the step is long
+compared with the advective crossing time).  A uniform `X` is then
+preserved exactly whatever the hydro does, and at a steady state, where
+`rho v r^2` is constant, the advective and conservative forms are the same
+equation.  In a transient the helium mass is conserved only to the order
+of the hydro's own truncation; this is the stated limitation of the phase.
+
+*Write-back.*  The species vector is projected onto the new element totals
+by a nonnegative projection: helium-only species scaled by
+`r_He`, hydrogen-only species (H2, H2+, H3+ included) and the slaved
+metals by `r_H`, `HeH+` by `min(r_H, r_He)`, and the shortfall of the
+element with the larger factor deposited into its neutral ground species.
+Every operation is a multiplication by a nonnegative factor or an
+addition, so no negative intermediate can arise, and both element totals
+are met exactly.  The old write-back used one factor per element and
+inferred the metal mass as `1 - m_H f_H - m_He f_He`, which counts
+molecular mass as metal.
+
+*Trace metals* keep the previous element-by-element treatment behind
+`He_metal_diffusion` (a trace element cannot feed back on the background
+it moves through); only the background definition is now the nucleus count
+over all species rather than `HI + HII`.
+
+**User-visible change.**  `He_Kzz` now defaults to `0.0` instead of
+`1.0e9 cm^2/s`.  With the old default every diffusion run silently carried
+a constant eddy term; an eddy coefficient is a property of the atmosphere
+being modelled, so it is stated rather than inherited.  An input that
+relied on the default must now say `He_Kzz: 1.0e9`; `examples/14_diffusion`
+already does.  The four stored run directories that carried
+`He_diffusion: True` without the key -- `benchmarks/hd209`,
+`docs/version_compare/v2_diff`, `docs/version_compare/wasp_v2_diff`,
+`scratch_fs/hd189` -- now state `He_Kzz: 1.0e9` explicitly, so each input
+records the eddy coefficient its stored output was produced with; no output
+was regenerated.  `docs/input_schema.md` K19 and `README_HOWTO.md` are
+updated.  `examples/exhale_io.py` gains a derived `Run.heh_profile`, the
+He/H element ratio with the same nucleus weights the operator uses, so the
+analysis reads one definition.
+
+**Verification.**  A standalone driver, `src/tests/diffusion_tests.f90`,
+builds with `make diffusion_tests` and runs the acceptance tests of the
+memo's section 6 on synthetic columns and on a stored wind; all 17 checks
+pass.
+
+| id | measured |
+|---|---|
+| T1a | closed isothermal column relaxes to the barometric separation `dx/dr = -x(1-x)(m_He-m_1)g/kT`: max error of `logit x` 4.56e-06 at N = 400; helium mass drift 2.0e-16 at a step of about the cell diffusion time |
+| T1b | Dirichlet base, integrated boundary flux accounts for the mass change to 2.2e-11 relative |
+| T3 | He/H = 1000 with an outflow: finite, `0 <= X <= 1`, hydrogen rises (X falls below the reservoir value), no cap |
+| T4 | closed column, arbitrary initial `X(r)`, 1e4 steps: helium mass drift 2.4e-14 (`eos_metals` on) and 3.7e-14 (off), metals present in both |
+| T5 | two-component mass closure `m_1 n_H + m_He n_He = rho` after the write-back: 4.0e-15 relative, worst cell over 200 steps |
+| T6 | uniform `X`, `g = 0`, compressing and expanding `v(r)`: 4.4e-14 relative departure after 500 steps |
+| T9 | relative settling mass 3, 2.5, 5/3 to 8.3e-13 in the three analytic limits; finite and continuous across a resolved ionization front |
+| T10 | second order in `dr` (observed 1.998); the steady state is step-size independent to 1.2e-07 over two decades of `dt` |
+| T2a | the operator increment against the trace kernel on a stored LHS 1140 b wind falls off first order in the helium fraction: 2.28e-03, 3.00e-04, 3.04e-05, 3.05e-06 at He/H = 0.0833, 1e-2, 1e-3, 1e-4 -- a factor 10 per decade, and 3.0e-06 at 1e-4 against the memo's 1e-3 gate.  Over 500 relaxation steps the two profiles agree to 4.2e-05, 7.4e-06, 7.8e-07, 7.8e-08 on the same sequence |
+
+T2a is measured with the wind's `rho` and `T` and `v = 0`.  The stored wind
+is not steady below r ~ 1.2 -- its mass flux `rho v r^2` varies by orders of
+magnitude there and the base cell has `v < 0` -- so with that velocity the
+conservative advection of the trace kernel and the advective form differ by
+`X div(r^2 rho v)/r^2`, a difference of the STATE rather than of the trace
+limit, which does not fall off with He/H (the driver reports that column
+too).  The comparison of the transport closure, which is what changed, is
+therefore made at `v = 0`.
+
+The measured helium-mass drift of the closed column grows with `dt`
+(2.0e-16, 6.2e-12, 3.1e-10, 1.1e-07 at `dt_code` = 1e1, 1e3, 1e5, 1e7 over
+1000 steps).  This is the round-off of the tridiagonal solve amplified by
+the conditioning of the implicit step, not a leak: the discretization
+telescopes exactly, and the drift falls to round-off as soon as the step is
+comparable with the cell diffusion time.  The driver prints the table.
+
+T0: `make check` is 5/5 byte-identical, which is the evidence that the
+`He_diffusion`-off path is unmoved by any of this.  T7 (the molecular
+closure) is milestone M4 and T8 (the moving-wind face flux on a converged
+LHS 1140 b run) waits on the baseline capture; neither is claimed here.
+
+---
+
+## 69. Milestone M3: the binary operator on a wind, the LHS 1140 b helium-rich runs, and the removal of the trace kernel (2026-08-25)
+
+Milestone M3 of `docs/binary_diffusion_design.md`: the binary element
+diffusion operator of section 68 is run on converged winds -- the HD 209458 b
+`examples/14_diffusion` configuration against the captured baseline of the
+kernel it replaces (T2b) and the three LHS 1140 b helium-rich cases -- the
+elemental face flux is measured on a moving wind (T8), and the trace kernel
+is then deleted.
+
+### T2b: the binary operator against the trace kernel on HD 209458 b
+
+Both sides are the same configuration (HD 209458 b, He/H = 0.0833,
+`Include He23S? True`, `He_metal_diffusion: True`, PLM+WENO3), Newton
+finished, with the same five-pass diffusion outer loop.  The baseline
+(`backup/phase_d_baseline/kzz0`, `kzz1e9`) was marched from a cold start with
+the pre-Phase-D binary; the binary-operator runs (`new_kzz0`, `new_kzz1e9`)
+restart from those converged states on the direct-steady route
+(`EXHALE_PTC=1 EXHALE_PTC_JFNK=1`), which is the route section 67 gave a
+diffusion loop.  This is a report, not a gate (the memo's section 6): the
+baseline profile sits on the `f_He <= HeH` cap over part of the domain, so a
+difference there is the cap, not a defect of either side.
+
+| quantity | trace, `Kzz=0` | binary, `Kzz=0` | trace, `Kzz=1e9` | binary, `Kzz=1e9` |
+|---|---|---|---|---|
+| JFNK `info` / final `\|\|R\|\|` | 0 / 7.737e-4 | 0 / 8.043e-4 | 0 / 8.017e-4 | 0 / 8.308e-4 |
+| outer passes / final drift | 5 / 1.22e-2 | 5 / 1.29e-1 | 5 / 3.88e-3 | 5 / 3.19e-2 |
+| `log10 Mdot` [g/s] | 9.7882 | 9.7883 | 9.7909 | 9.7910 |
+| He 10830 red depth [%] | 9.7970 | 9.8134 | 9.7958 | 9.8118 |
+| (He/H)/HeH at 1.05 R_p | 0.62354 | 0.62354 | 0.62806 | 0.62808 |
+| at 1.10 R_p | 0.69771 | 0.69744 | 0.70193 | 0.70170 |
+| at 1.20 R_p | 0.95514 | 0.95515 | 0.95536 | 0.95536 |
+| at 1.50 R_p | 0.97542 | 0.97437 | 0.97555 | 0.97447 |
+| at 2.00 R_p | 1.00000 | 1.00111 | 1.00000 | 1.00112 |
+| at 3.00 R_p | 0.98628 | 0.98712 | 0.98643 | 0.98725 |
+| at 4.00 R_p | 0.85734 | 0.85834 | 0.85806 | 0.85922 |
+| cells within 1e-6 of `HeH` | 45 (r = 1.00 .. 2.44) | 3 (the base) | 45 (r = 1.00 .. 2.44) | 3 (the base) |
+
+Three things are worth reading off it.
+
+*The flat stretch was the cap.*  Forty-five cells of the trace profile sat
+exactly on `HeH` between 1.0 and 2.44 R_p.  With the binary operator only
+the three Dirichlet base cells are on that value, and the profile crosses
+*above* it -- 1.0011 at 2 R_p -- which the clamp forbade.  Helium is mildly
+enriched there relative to the reservoir, and the enrichment is small.
+
+*The base depletion is not a cap artifact.*  At 1.05 R_p both kernels give
+0.6235; the two profiles differ by at most 4e-3 anywhere above 1.05 R_p
+after 2500 composition steps of the binary operator.  The depletion of the
+first cells (down to 1e-3 of the reservoir ratio in the cell at 1.0004 R_p,
+in *both* kernels) is not the limiter and not the lag of the trace form.
+
+**Corrected in section 70 (2026-08-25).**  That last depletion was read here
+as settling.  It is not: the barometric He-H separation scale of that base is
+24 cell widths, so a 550-fold drop across one cell cannot be barometric, and
+the settling flux measured at those faces is 2-20% of the gradient flux.  It
+was the face-averaged upwinding of the advective term, which decouples a cell
+whose two face velocities straddle zero.  The two kernels agreed because they
+shared it.  Section 70 also supersedes the drift and profile numbers of the
+tables in this section.
+
+*Neither side is composition-converged.*  Both leave the outer loop at its
+five-pass ceiling, and the binary operator's drift is an order of magnitude
+larger than the trace kernel's.  That drift is the maximum *relative* change
+of He/H over a pass and it is dominated by those near-base cells, where He/H
+is ~1e-3 of the reservoir value: over the same five passes the profile above
+1.05 R_p moved by less than 0.4%.  The observable moved as little: `Mdot` by
+1e-4 dex and the He 10830 red depth by 0.017 percentage points (9.797% ->
+9.813%).  The five-pass ceiling is unchanged by this milestone; making the
+outer loop reach `drift < 1e-3` needs either many more passes or a drift
+metric that is not dominated by a helium-free base cell, and is left open.
+(Answered in section 70: neither -- the relaxation was being stepped at the
+hydro CFL step, four to six orders below the composition time scale, so it
+moved the base by ~1e-6 of the way per step.  With the step taken from the
+composition time scale the `Kzz = 1e9` case converges to 1.2e-4 absolute in
+ten passes of ~30 steps.)
+
+`load_IC` kept the diffused profile across the restart, which is what
+section 67 added: the run reports `top cell He/H = 7.0843E-02` against the
+input `8.3333E-02` and pins only the base cells to the reservoir value.
+
+### T8: the elemental face flux on a moving wind
+
+With `EXHALE_DIFFUSION_CHECK=1` the operator writes
+`diffusion_faceflux.txt` in the run directory at every step (replaced each
+time, so the file holds the state the run ended on): the diffusive face flux
+`J`, the advective face flux, their sum as
+`F_He = 4 pi r^2 (rho X v + J)`, the total mass flux `4 pi r^2 rho v` and
+the relative settling mass, all taken from the same face coefficients the
+implicit solve used -- the file reports the discrete fluxes, not a
+re-derivation of them.
+
+On `new_kzz0` (HD 209458 b, `Kzz = 0`), with the spread measured exactly as
+the code's own `du` is, `(max - min)/|mean|` over a radial window:
+
+| window | spread of `F_He` | spread of `rho v r^2` |
+|---|---|---|
+| r >= 2.0 R_p (the code's escape window `[j_min:N]`) | 5.13e-3 | 7.19e-3 |
+| r >= 1.5 R_p | 1.68e-2 | 7.71e-3 |
+| r >= 1.2 R_p | 5.14e-2 | 1.25e-2 |
+| r >= 1.1 R_p | 3.84e-1 | 7.77e-2 |
+
+**T8 passes**: in the window the code itself uses to declare the wind
+steady, the elemental helium flux is as flat as the mass flux (flatter, in
+fact); over the wider windows the two spreads stay within a factor 5, i.e.
+the same order of magnitude, and both are dominated by the same unsteady
+base region below ~1.1 R_p.  The diffusive part is 12% of the advective part
+at most above 1.2 R_p, so this is a real test of the sum and not of
+advection alone.
+
+### M3-2: LHS 1140 b with diffusion
+
+Three cases in `LHS1140b/exhale/`, each the seed case's `input.inp` plus
+`He_diffusion: True` (`He_Kzz` at its new default 0, `He_ambipolar` at its
+default on), restarted from the seed's converged output and finished on the
+direct-steady route by `finish_case.sh` (JFNK -> post-processing pass ->
+`EXHALE_transit.py`).  All three converged, `info = 0` on every pass.
+
+| | `heh0p55_diff` | `heh1000_diff` | `heh0p06_gj699_diff` |
+|---|---|---|---|
+| seed | `heh0p55` (GJ 1132 SED) | `heh1000` | `heh0p06_gj699` |
+| He/H reservoir | 0.55 | 1000 | 0.06 |
+| JFNK `info` / `\|\|R\|\|` | 0 / 4.439e-4 | 0 / 7.929e-4 | 0 / 8.482e-4 |
+| outer passes / final drift | 5 / 4.73e-2 | 5 / 5.17e-2 | 5 / 2.20e-2 |
+| `log10 Mdot`, seed -> diffused | 7.7642 -> 7.7645 | 7.7442 -> 7.7437 | 8.5885 -> 8.5883 |
+| (He/H)/HeH at 1.05 R_p | 0.9997 | 0.9973 | 0.9996 |
+| at 1.2 R_p | 0.9996 | 1.0020 | 0.9996 |
+| at 2 R_p | 1.0008 | 1.0030 | 1.0010 |
+| at 5 R_p | 1.0048 | 1.0074 | 1.0041 |
+| at 10 R_p | 1.0085 | 1.0101 | 1.0050 |
+| at 20 R_p | 1.0084 | 1.0102 | 1.0034 |
+| profile extremes | 0.683 at 29.0 R_p, 1.009 at 14.5 R_p | 0.626 at 29.0 R_p, 1.195 at 1.03 R_p | 0.827 at 29.0 R_p, 1.004 at 6.7 R_p |
+| H ionization front (x_HII = 0.5) | 9.43 R_p | 1.03 R_p | 5.66 R_p |
+| He 10830 red depth [%], seed -> diffused | 4.2847 -> 4.2875 | 73.389 -> 73.321 | 3.8335 -> 3.8453 |
+
+**The separation is small on these winds.**  Between the base and 20 R_p the
+element ratio departs from the reservoir value by ~1% at most; only in the
+last few cells below the 30 R_p outer boundary does it fall to 0.63-0.83.
+The mass-loss rate and the He 10830 depth move by less than 0.1%.  This is
+the expected ordering rather than a null result: these are fast, low-gravity
+winds, and the advection time across the domain is short against the
+diffusion time, so the wind carries the mixture out before it can separate.
+Whether the residual 5e-2 drift would grow the separation if the outer loop
+were allowed to run to `drift < 1e-3` is not answered here, and the
+five-pass ceiling was not changed for this milestone.
+
+**The ambipolar settling mass on the solved states.**  From the `dmeff`
+column of `diffusion_faceflux.txt`, above 1.05 R_p: 2.56-3.00
+(`heh0p55_diff`), 2.76-3.05 (`heh0p06_gj699_diff`) and 1.65-5.47
+(`heh1000_diff`).  The two hydrogen-rich cases stay near the neutral value 3
+because helium is largely neutral there and the H+ term enters through
+`Zbar_He - Zbar_1`.  The helium-rich case spans the widest range and touches
+1.67 at 1.11 R_p -- the He++ value 5/3 to three digits -- but **it does not
+get there as the He++ limit**: `x(He III)` reaches only 0.28 at the top of
+the domain in that run, so the 5/3 limit of the memo's (3a) is not sampled
+by these winds and remains guarded by the T9 unit test alone.  Below
+1.05 R_p `dmeff` is large and of either sign (down to -43 in the base cell
+at 1.03 R_p), where the electron pressure gradient is steep and the
+diffusive flux itself is negligible.
+
+`LHS1140b/exhale/finish_case.sh` gains one optional variable, `EXHALE_BIN`,
+which pins the executable a case is run with (these three were run with a
+snapshot binary while the tree was being rebuilt).  With it unset the script
+behaves exactly as before.
+
+### The trace kernel is removed
+
+With T2a (section 68) and T2b recorded, `species_diffusion.f90` is deleted,
+with it the `EXHALE_DIFFUSION_KERNEL=trace` selector and the
+`element_composition_step` dispatcher in `EXHALE_main.f90`: both call sites
+now call `element_diffusion_step` directly.  In the test driver T2a can no
+longer be measured -- its comparison partner is gone -- so it prints the
+M2 measurement as a recorded result and counts no verdict; the driver is
+15 checks, all passing.  `make check` stays 5/5 byte-identical (no
+regression case turns diffusion on, so this is the statement that the
+`He_diffusion`-off path is untouched).
+
+Not done in this milestone: T7 and the molecular closure (milestone M4, the
+`error stop` on molecular chemistry + `He_diffusion` stands), and the
+regression case with `He_diffusion: True` that section 7.5 of the memo asks
+for at the end of the series.
+
+---
+
+## 70. The base helium hole, the metal drain beside it, and a composition relaxation that converges (2026-08-25)
+
+Three defects on the element-diffusion path, all found on the milestone-M3
+runs of section 69, all in the same place: the first cells above the base.
+
+### What was measured
+
+On `backup/phase_d_baseline/new_kzz0` (HD 209458 b, `Kzz = 0`, JFNK
+`info = 0`) the helium ratio of the first free cell above the base sat at
+`(He/H)/HeH = 1.8e-3` between two cells at 1.0 -- a 550-fold drop across one
+cell width, where the barometric He-H separation scale of that base is
+`H = kT/(dm g) = 0.0045 R_p`, **24 cell widths**. A 550-fold drop across one
+cell is not barometric physics. Every metal was emptied from the same cell by
+~10^3 (`C I` 2.3e7 cm^-3 against 2.6e10 in its neighbours), and with them the
+metal-line cooling of that cell. The dip sat exactly where the breathing base
+alternates the sign of the velocity: `v = (-796, +63, +28, -8, -9, +5) cm/s`
+over cells 1 to 6.
+
+Rebuilding the operator's face coefficients from the converged state gives
+the row terms of the first free cell (cell 2), per unit `X`, in
+`g cm^-3 s^-1`:
+
+| cell | `(He/H)/HeH` | diffusive `aa` | diffusive `cc` | advective `aa` | advective `cc` |
+|---|---|---|---|---|---|
+| 2 | 2.4e-3 | -2.97e-17 | -2.92e-17 | **0** | **0** |
+| 3 | 4.5e-1 | -2.78e-17 | -3.22e-17 | -4.53e-15 | 0 |
+| 4 | 7.2e-1 | -3.09e-17 | -3.36e-17 | -9.94e-16 | -8.46e-16 |
+
+and the face fluxes it balances, in `g cm^-2 s^-1`:
+
+| face | gradient `J` | settling `J` | total `J` | `rho_f v_f` |
+|---|---|---|---|---|
+| 1/2 | 1.451e-11 | -3.193e-13 | 1.420e-11 | -7.65e-08 |
+| 3/2 | -6.098e-12 | -1.459e-13 | -6.244e-12 | 8.78e-09 |
+| 5/2 | -4.114e-12 | -3.575e-13 | -4.472e-12 | 1.93e-09 |
+| 7/2 | -2.011e-12 | -4.723e-13 | -2.484e-12 | -1.64e-09 |
+
+The settling flux is 2-20% of the gradient flux and the Peclet number of the
+settling hybrid is 0.02 everywhere at the base, so the hybrid is on its
+central branch and the settling is fully resolved: **the depletion is not
+settling**. Both advective off-diagonals of that row are *identically zero*,
+so the cell was held by its diffusive coupling alone -- and that coupling
+gives a relaxation time `rho/(|aa|+|cc|) = 3.3e6 s` against the ~2 s hydro
+step the relaxation was being driven at. Whatever composition the cell
+happened to hold was frozen there.
+
+### (a) The advection was upwinded on face-averaged velocities
+
+`face_coefficients` built the advective coefficients from
+`v_f = 0.5 (v_j + v_{j+1})` and chose the donor per face. A cell whose two
+face velocities straddle zero (`v_f(j-1) < 0 < v_f(j)`, which is what the
+numbers above give: `-366` and `+45` cm/s) then donates at both faces and
+receives at neither, and its advective term vanishes identically -- even
+though its own `v_j = +63 cm/s` is large and its donor, the Dirichlet base
+itself, sits one cell away.
+
+The advective term is now the one-sided upwind difference on the **cell**
+velocity,
+
+```
+rho_j v_j (X_j - X_{j-1})/(r_j - r_{j-1})   for v_j >= 0
+rho_j v_j (X_{j+1} - X_j)/(r_{j+1} - r_j)   for v_j <  0
+```
+
+which contributes `+cadv` to the diagonal and `-cadv` to the donor and to
+nothing else: a uniform `X` stays exact (T6), the row sum of the advective
+part is still zero, the M-matrix argument is unchanged, and the flux-minus-
+divergence construction the old form needed is gone. On the cell above, the
+coupling it restores is `6.43e-15`, **216 times** the diffusive coupling that
+was holding the cell.
+
+New unit test **T11**: a column seeded with the measured 500-fold hole in the
+first free cell and a velocity that alternates in sign cell by cell -- so
+every face average vanishes while the cell velocities do not -- must refill
+the hole. It gives 6.7e-5 relative departure from the reservoir with the new
+form and 2.8e-2 (28 times the 1e-3 tolerance) with the old one. The driver is
+now 16 checks.
+
+### (b) The trace-metal solver drained the same cell
+
+`solve_trace_element_in_hydrogen` transported the metal DENSITY
+conservatively with the same face-averaged velocities. In a conservative form
+the configuration above is not a decoupling but a drain: the cell has an
+outflow term at both faces and an inflow term at neither. That divergence has
+no counterpart in the hydro's own `rho`, whose face fluxes come from the
+Riemann solver.
+
+The solver now transports the **mixing ratio** `f_X = n_X/n_H` in the same
+advective form as helium, so a uniform `f_X` is preserved under any velocity
+field and no spurious divergence can create or destroy the element. The
+`f_X <= f_X(base)` cap in the write-back went with it: settling piles an
+element up as readily as it depletes one, and the cap is the same limiter the
+memo (section 1) rejects for helium. In the runs below no metal exceeds its
+reservoir ratio anywhere, so the cap removal changes nothing in them by
+itself; what changes the metal profile is the transport.
+
+### (c) The relaxation ran on the CFL step, and on a flow with no mass flux
+
+`steady_wind_with_element_diffusion` called the operator 500 times per pass
+with the hydro's local CFL step `dt_loc`. The implicit operator is
+unconditionally stable, so nothing tied its step to a sound-crossing time,
+while the base composition relaxes on `dr^2/D_12 ~ 10^6 s` against
+`dt_loc ~ 2 s`. That is why every case in section 69 left the outer loop at
+its five-pass ceiling with the drift falling by only ~0.75 per pass. The
+drift metric compounded it: `max |dHe/H| / (He/H)` is a *relative* measure,
+and it was dominated by exactly the emptied cells where it means nothing.
+
+The relaxation is now `relax_element_composition` in the diffusion module:
+
+- the step is the composition time scale, `min(dr^2/(D_12 + K_zz),
+  dr/max(|v|, w_s))` per cell with `w_s = D_12 |G|`, grown geometrically
+  (x1.5, capped at 10^12 times the start) so the late steps are direct steady
+  solves, with the coefficients Picard-updated at every step;
+- the measure is absolute, `max_j |X_j^new - X_j^old| / X_base`, for the
+  inner stop (1e-12 per step) and for the outer pass stop (1e-3, at most 20
+  passes);
+- the advecting flow is the wind's **steady mass flux**,
+  `rho v = mdot_steady/r^2` with `mdot_steady` the median of `r^2 rho v` over
+  the escape window `[j_min:N]`. The advective form is the conservative
+  equation only where `rho` and `v` satisfy continuity, and below 1.02 R_p
+  the converged states do not: the spread of `r^2 rho v` there is 4.8e2
+  (`new_kzz0`), 7.4e3 (`new_kzz1e9`) and 7.3e3 (`heh0p55_diff`) times its own
+  median, against 1.7e-2 to 4.6e-1 over `1.1-2 R_p`. Relaxed on that field
+  the operator converges to the composition of a flow that neither conserves
+  mass nor exists. Solving the operator's steady state offline on the M3
+  `new_kzz0` wind: with the cell velocities the base takes a five-fold cliff
+  at the fourth cell and a plateau at 0.10 of the reservoir ratio; with the
+  steady flux the first free cells are flat to 1% and the profile leaves the
+  base on the barometric scale.
+
+The marching call keeps `dt_loc` and the cell velocities: there the wind is
+genuinely transient and both are the consistent choice.
+
+`element_ratio_HeH` is no longer used by the outer loop itself; it is kept
+as the element count of the diagnostic below, which writes one
+profile per pass.
+
+### The runs, re-run from the same restart files
+
+`backup/phase_d_baseline/new_kzz0_fix`, `new_kzz1e9_fix` and
+`LHS1140b/exhale/heh0p55_diff_fix`: the section-69 configurations, the same
+`output/*_IC.txt` restart files, the same direct-steady route
+(`EXHALE_PTC=1 EXHALE_PTC_JFNK=1 EXHALE_PTC_DTAU0=1.0`). The M3 directories
+are untouched.
+
+| | `Kzz=0` M3 | `Kzz=0` now | `Kzz=1e9` M3 | `Kzz=1e9` now | LHS `heh0p55` M3 | LHS now |
+|---|---|---|---|---|---|---|
+| outer passes | 5 (ceiling) | 20 (ceiling) | 5 (ceiling) | **10** | 5 (ceiling) | **6** |
+| final drift | 1.29e-1 rel | 1.71e-1 abs | 3.19e-2 rel | **1.18e-4 abs** | 4.73e-2 rel | **1.67e-4 abs** |
+| relaxation steps per pass | 500 | 24-33 | 500 | 28-31 | 500 | 28-400 |
+| `(He/H)/HeH`, first free cell | 1.51e-4 | 0.9971 | 0.8293 | 1.0000 | 1.0001 | 0.9400 |
+| next four cells | 0.381, 0.662, 0.810, 0.871 | 0.9939, 0.9960, 0.9994, 1.0025 | 0.7146, 0.6549, 0.6371, 0.6385 | 1.0000 x4 | 0.9990, 0.9998, 1.0001, 1.0000 | 0.8818, 0.8510, 0.8143, 0.7695 |
+| at 1.05 R_p | 0.6235 | 0.9085 | 0.6282 | 0.9823 | 0.9997 | 4.9e-4 |
+| at 1.10 / 1.20 R_p | 0.6977 / 0.9551 | 0.8342 / 0.7986 | 0.6967 / 0.9553 | 0.9268 / 0.8962 | 0.9995 / 0.9996 | 9e-5 / 2e-5 |
+| at 1.50 / 2.00 R_p | 0.9744 / 1.0011 | 0.7912 / 0.7974 | 0.9745 / 1.0011 | 0.8903 / 0.8959 | 1.0001 / 1.0008 | ~0 |
+| at 3.00 / 4.00 R_p | 0.9871 / 0.8583 | 0.7935 / 0.7145 | 0.9871 / 0.8603 | 0.8923 / 0.8279 | 1.0021 / 1.0035 | ~0 |
+| `log10 Mdot` [g/s] | 9.7883 | 10.396 | 9.7910 | 9.998 | 7.7645 | 7.6065 |
+| He 10830 red depth [%] | 9.8134 | 6.4032 | 9.8118 | 8.2115 | 4.2875 | 1.0e-4 |
+
+The base is what the fix was for and the base is fixed. On both HD 209458 b
+cases the first free cells now sit within 0.6% of the reservoir ratio and the
+profile leaves them monotonically, instead of the isolated 550-fold hole
+followed by a five-cell recovery. On LHS 1140 b the first free cells fall
+0.940, 0.882, 0.851, 0.814, 0.770 -- ratios of 0.94-0.96 per cell against the
+`exp(-dr/H) = 0.93` of that column's barometric scale, i.e. the base now
+leaves the reservoir on the barometric scale, which is the criterion this
+change was measured against. The metals follow helium: `C/H` in the first
+free cell was 0.57 of the reservoir with `Kzz = 1e9` and is 1.0000 now, and
+above 1.2 R_p it settles to ~0.56 where the removed cap pinned it at 1.0000.
+
+Three things this exposes rather than fixes, and none is claimed here:
+
+- **The separation is much larger than M3 reported** -- 0.80 instead of 0.98
+  of the reservoir ratio at 1.2-3 R_p for `Kzz = 0`, and on LHS 1140 b
+  helium is gone above 1.05 R_p instead of flat at the reservoir. That is
+  what a relaxation that reaches its steady state gives; the M3 profiles were
+  the restart files barely moved. For the LHS 1140 b column it is also the
+  expected physics of `Kzz = 0`: at 226 K and `g = 1.8e3 cm/s^2` the
+  homopause of a hydrogen-helium mixture with no eddy mixing sits *at* the
+  base, and the He 10830 line goes with it (4.29% -> 1e-4%). Those cases
+  need a `He_Kzz` argued from the planet, not the default 0.
+- **The `Kzz = 0` HD 209458 b case does not co-converge.** JFNK returns
+  `info = 0` on every one of the twenty passes, but the pass drift settles
+  into a limit cycle instead of falling, so its `log10 Mdot` of 10.396 is not
+  a converged number -- it is one branch of a period-2 cycle whose other
+  branch is 9.867. The subsection after next shows the cycle is in the wind,
+  not in the composition. The `Kzz = 1e9` case converges (1.18e-4 at pass 10)
+  and moved by +0.21 dex against M3; the next subsection attributes that.
+- The wind itself is better converged than M3's: the spread of `r^2 rho v`
+  over 1.1-2 R_p is 1.15e-2 (`Kzz = 0`) against M3's 1.81e-1.
+
+### Where the +0.21 dex comes from: metal transport, tested directly
+
+`backup/phase_d_baseline/new_kzz1e9_nometdiff` is `new_kzz1e9_fix` with one
+key changed, `He_metal_diffusion: False`, from the same restart files and on
+the same route. It is the control that separates the two halves of the fix:
+helium transport and relaxation on one side, metal transport on the other.
+Note what the flag does and does not do -- with metal diffusion off the
+metals are not reset to the reservoir ratio, they are FROZEN at whatever the
+restart file carried, which here is the M3 profile including its base hole.
+So the control is "the new helium side, the old metal profile".
+
+| | M3 (`new_kzz1e9`) | metal diffusion off | full fix |
+|---|---|---|---|
+| outer passes / final drift | 5 (ceiling) / 3.19e-2 rel | 3 / 1.23e-4 abs | 10 / 1.18e-4 abs |
+| `log10 Mdot` [g/s] | 9.7910 | **9.8160** | 9.9976 |
+| He 10830 red depth [%] | 9.8118 | **9.1081** | 8.2115 |
+
+`C/H` relative to the base cell (`O/H` is the same to four digits in the
+first eight rows), first eight rows and then interpolated:
+
+| | row 1-3 | 4 | 5 | 6 | 7 | 8 | 1.05 | 1.10 | 1.20 | 1.50 | 2.00 | 3.00 | 4.00 |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| M3 | 1.0000 | 0.5694 | 0.6266 | 0.6213 | 0.6255 | 0.6379 | 0.628 | 0.696 | 0.953 | 0.975 | 1.000 | 0.944 | 0.573 |
+| metal diffusion off | 1.0000 | 0.5694 | 0.6266 | 0.6213 | 0.6255 | 0.6379 | 0.628 | 0.696 | 0.953 | 0.975 | 1.000 | 0.944 | 0.573 |
+| full fix | 1.0000 | 1.0000 | 1.0000 | 1.0000 | 0.9999 | 0.9999 | 0.909 | 0.668 | 0.569 | 0.551 | 0.569 | 0.565 | 0.426 |
+
+The metal-diffusion-off column is identical to M3's, which is the check that
+the flag froze the restart profile as intended, and the `(He/H)/HeH` base
+cells of that run are 1.0000 across, which is the check that the helium side
+of the fix is fully active in it.
+
+**The attribution holds.** Switching the metal transport off returns
+`log10 Mdot` to 9.8160 and the He 10830 depth to 9.11%, i.e. essentially back
+to M3's 9.7910 and 9.81% and away from the full fix's 9.9976 and 8.21%. Of
+the +0.207 dex, +0.182 is the metal transport and +0.025 is the helium side.
+(The decision rule as posed had this the other way round: if the metals were
+*not* responsible, switching them off would have left `Mdot` near 9.998. It
+did not.)
+
+One correction to the wording above: the dominant part of that +0.182 dex is
+not the base hole. This control cannot split the metal change into its two
+pieces -- the base drain and the settling above the base that the removed cap
+previously forbade -- but the base hole spans five cells at 1.0004-1.0010 R_p
+while the settling changes `C/H` from ~0.95-1.00 to ~0.55 over 1.2-4 R_p,
+where nearly all of the metal-line cooling column sits. On the size of the
+regions the settling has to be the larger term. It is a reasoned inference,
+not a measurement.
+
+### The `Kzz = 0` non-convergence is the wind, not the composition
+
+The outer Picard loop -- wind at fixed composition, composition at fixed wind
+-- has no damping of its own, so the composition update is now under-relaxed,
+
+```
+X <- X_old + omega (X_relaxed - X_old)
+```
+
+with `omega` starting at 0.5 and halved (floor 0.125) on any pass whose drift
+failed to fall. The blend is projected back onto the species vector by the
+same nonnegative projection `element_diffusion_step` ends on, so both element
+totals are still met exactly. The drift that the convergence test and the
+halving rule read is the UNDAMPED distance `max|X_relaxed - X_old|/X_base`,
+so a small `omega` cannot buy a false convergence by making the applied step
+small. `EXHALE_DIFF_OMEGA=<val>` pins the starting value for experiment, and
+`EXHALE_DIFFUSION_CHECK=1` now also writes
+`output/diffusion_pass_profiles.txt`, one composition and mass-flux profile
+per outer pass -- the question a non-converging loop raises is about the
+profiles, not about the scalar drift.
+
+**It does not converge, and the reason is not the composition.** Two runs from
+the M3 restart files, both `Kzz = 0`:
+
+| | start `omega = 0.5` (`new_kzz0_fix`) | start `omega = 1` (`new_kzz0_undamped`) |
+|---|---|---|
+| drift by pass | 9.97e-1, 4.99e-1, then the pass-3 JFNK stagnates (`info = 2`, line search collapses to `lam = 9.5e-7` at r = 1.009, energy row) and the loop exits on its solver-failure guard | falls to `omega = 0.125` by pass 11 and then holds a period-2 cycle: 7.62e-2, 6.84e-2, 8.10e-2, 7.31e-2, 8.43e-2, 7.60e-2, 8.95e-2, 7.97e-2 (passes 13-20) |
+| final state | not converged, `\|\|R\|\| = 2.4e-3`, `log10 Mdot = 9.838` | 20 passes, every one `info = 0` |
+
+The profiles written each pass say what is cycling. Over passes 3-20 the median
+`r^2 rho v` in the escape window alternates between **2.1-2.2e-7** on odd
+passes and **5.9-6.8e-7** on even ones -- a factor 2.8 in mass flux -- while
+each branch is individually flat to 1e-3 and every JFNK solve returns
+`info = 0` with `||R||` between 9.0e-5 and 9.6e-4, all inside the 1e-3
+target. The composition, meanwhile, barely moves between the two:
+
+| r [R_p] | odd (pass 19) | even (pass 20) |
+|---|---|---|
+| 1.010 | 0.9968 | 0.9974 |
+| 1.05 | 0.9645 | 0.9674 |
+| 1.10 | 0.9065 | 0.9123 |
+| 1.20 | 0.8816 | 0.8893 |
+| 1.50 | 0.8768 | 0.8849 |
+| 2.00 | 0.8815 | 0.8894 |
+| 3.00 | 0.8785 | 0.8865 |
+| 4.00 | 0.8219 | 0.8332 |
+| `log10 Mdot` | **9.867** | **10.376** |
+
+The largest odd-even difference in `(He/H)/HeH` above 1.05 R_p is 0.0117, and
+each parity is nearly stationary from one occurrence to the next (0.0028 odd
+to odd, 0.0024 even to even). So this is not a composition chasing a wind: it
+is **two wind solutions, 2.8x apart in mass flux, that the residual test
+cannot tell apart, sitting on compositions that differ by ~1%.** Damping the
+composition cannot remove it, and the measurement above is the evidence --
+`omega` reached its 0.125 floor and the cycle held at full amplitude.
+
+Two things follow, neither of them settled here. The `Mdot = 10.396` quoted
+for this case in the table above is one branch of that cycle (the other is
+9.867, close to the 9.998 of the converged `Kzz = 1e9` case and to the 9.816
+of the metal-diffusion-off control). And a residual norm that accepts two
+states a factor 2.8 apart in `Mdot` is a weak convergence test for this
+configuration, which is the standing caveat behind the flux-based
+convergence decision of section 19 (`||R||` is reported for reference only)
+rather than anything the diffusion introduced.
+
+### Verification
+
+`diffusion_tests.x`: 16/16 (T11 new; the other 15 unchanged). `make check`:
+5/5 byte-identical -- no regression case turns `He_diffusion` on, and the
+`he_diffusion` guard at the top of the operator means the flag-off path never
+enters any of this.

@@ -212,6 +212,20 @@
             endif
             sH_l  = (nH_l + nHe_l)/(1.0d0 + HeH)/max(nH_l, 1.0d-30)
             sHe_l = HeH*(nH_l + nHe_l)/(1.0d0 + HeH)/max(nHe_l, 1.0d-30)
+            ! With He_diffusion the cell-by-cell element split IS the state
+            ! being restarted: the diffusion operator produced it, and a
+            ! separated profile is the physics, not a defect of the file.
+            ! Only the base cells are set to the reservoir composition --
+            ! that is where the operator itself holds a Dirichlet HeH -- and
+            ! every cell above keeps the helium fraction it was written with.
+            ! Without the flag the input file remains the authority on the
+            ! composition and the whole column is rescaled, as before.
+            if (he_diffusion) then
+               do j = 2, N+Ng
+                  sH_l(j)  = 1.0d0
+                  sHe_l(j) = 1.0d0
+               enddo
+            endif
             nsp_l(:,isp_HI)    = nsp_l(:,isp_HI)   *sH_l
             nsp_l(:,isp_HII)   = nsp_l(:,isp_HII)  *sH_l
             nsp_l(:,isp_H2)    = nsp_l(:,isp_H2)   *sH_l
@@ -224,9 +238,17 @@
             do im = 1, n_mion
                nsp_l(:,mion_fsp(im)) = nsp_l(:,mion_fsp(im))*sH_l
             enddo
-            write(*,'(A,ES11.4,A,ES11.4)')                                &
-               ' (load_IC) restart file written at He/H =',               &
-               nHe_l(N)/nH_l(N), ' rescaled to the input He/H =', HeH
+            if (he_diffusion) then
+               write(*,'(A,ES11.4,A,ES11.4,A)')                           &
+                  ' (load_IC) He_diffusion: the diffused He/H profile of'//&
+                  ' the restart file is kept (top cell He/H =',           &
+                  nHe_l(N)/nH_l(N), '); base cells set to the input He/H =',&
+                  HeH, '.'
+            else
+               write(*,'(A,ES11.4,A,ES11.4)')                             &
+                  ' (load_IC) restart file written at He/H =',            &
+                  nHe_l(N)/nH_l(N), ' rescaled to the input He/H =', HeH
+            endif
          endif
       endif
 

@@ -18,7 +18,8 @@
       use species_table, only: n_mion, mion_fsp,                       &
                                isp_H2, isp_H2p, isp_H3p, isp_HeHp,      &
                                isp_HI, isp_HII, isp_HeI, isp_HeII,      &
-                               isp_HeIII, isp_HeTR, bsp_mass, melem_A
+                               isp_HeIII, isp_HeTR, bsp_mass, melem_A,  &
+                               n_bsp, bsp_fsp, bsp_nH, bsp_nHe
       use utils, only: calc_ne, calc_ntot
       use lower_column, only: q_h2_equilibrium
 
@@ -26,6 +27,8 @@
       private
       public :: get_species_densities, comp_T_from_p, comp_p_from_T
       public :: comp_mass_per_H, comp_ntot_bc, comp_rho_bc
+      public :: mass_per_H_nucleus_without_He
+      public :: element_ratio_HeH
       public :: h2_mixing_ratio_base, h2_bound_fraction
 
       contains
@@ -136,6 +139,25 @@
 
       ! ------------------------------------------------------!
 
+      real*8 function mass_per_H_nucleus_without_He()
+      ! Mass carried by one hydrogen nucleus together with the trace metals
+      ! slaved to it [m_H], i.e. comp_mass_per_H() minus its helium term. This
+      ! is the m_1 of the two-component (H+metals vs He) split used by the
+      ! binary element diffusion: with it, m_1 n_H + m_He n_He = rho exactly,
+      ! under either eos_metals setting, because calc_rho drops the metal mass
+      ! from rho by the same policy that drops it from here.
+      ! comp_mass_per_H keeps its own literal expression rather than calling
+      ! this function: adding the helium term last instead of first would
+      ! reorder the floating-point sum and move the goldens.
+      mass_per_H_nucleus_without_He = bsp_mass(isp_HI)
+      if (eos_include_metals .and. thereis_metals) then
+         mass_per_H_nucleus_without_He =                                 &
+              mass_per_H_nucleus_without_He + sum(melem_ab*melem_A)
+      endif
+      end function mass_per_H_nucleus_without_He
+
+      ! ------------------------------------------------------!
+
       real*8 function comp_ntot_bc()
       ! Total nuclei density at the base in units of n0 (n0 = H+He nuclei).
       ! Legacy H/He-only value is 1; the trace metals add their nuclei when
@@ -182,6 +204,35 @@
       if (x2 .gt. 1.0d0) x2 = 1.0d0
       h2_bound_fraction = 0.5d0*x2/(1.0d0 + HeH)
       end function h2_bound_fraction
+
+      ! ------------------------------------------------------!
+
+      function element_ratio_HeH(f_sp) result(heh_cell)
+      ! Helium-to-hydrogen ELEMENT ratio n_He/n_H per cell: nuclei counted
+      ! over every species that carries them, with the bsp_nH / bsp_nHe
+      ! weights of species_table (H2 and H2+ carry two H nuclei, H3+ three,
+      ! HeH+ one of each).  The metastable He 2^3S triplet and the molecular
+      ! species are therefore inside the count, so the ratio is the same
+      ! physical quantity in the atomic, triplet-helium and molecular
+      ! regions; the columns of the species that a run does not carry are
+      ! zero, so nothing has to be switched on the flags.  This is the same
+      ! element count load_IC applies to a restart file.
+      real*8, dimension(1-Ng:N+Ng,n_species), intent(in) :: f_sp
+      real*8, dimension(1-Ng:N+Ng) :: heh_cell
+      real*8, dimension(1-Ng:N+Ng) :: nuc_H, nuc_He
+      integer :: ib
+
+      nuc_H  = 0.0d0
+      nuc_He = 0.0d0
+      do ib = 1, n_bsp
+         if (bsp_nH(ib)  .gt. 0)                                        &
+            nuc_H  = nuc_H  + dble(bsp_nH(ib)) *f_sp(:,bsp_fsp(ib))
+         if (bsp_nHe(ib) .gt. 0)                                        &
+            nuc_He = nuc_He + dble(bsp_nHe(ib))*f_sp(:,bsp_fsp(ib))
+      enddo
+      heh_cell = nuc_He/max(nuc_H, 1.0d-30)
+
+      end function element_ratio_HeH
 
       ! ------------------------------------------------------!
 

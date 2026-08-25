@@ -72,7 +72,7 @@ SRC := \
   src/modules/functions/UW_conversions.f90 \
   src/modules/functions/utilities.f90 \
   src/modules/functions/composition.f90 \
-  src/modules/functions/species_diffusion.f90 \
+  src/modules/functions/binary_element_diffusion.f90 \
   src/modules/lower_atmosphere/lower_column.f90 \
   src/modules/lower_atmosphere/h3p_cooling.f90 \
   src/modules/lower_atmosphere/mol_rates.f90 \
@@ -153,6 +153,25 @@ WAE_EXE := wind_ae_ic.x
 WAE_DEPFILE := $(OBJDIR)/.deps_wae.mk
 vpath %.f90 $(WAE_DIR)
 
+# ---- diffusion unit tests (standalone; not built by `all`) -----------
+# diffusion_tests.x exercises binary_element_diffusion on synthetic columns
+# (acceptance tests T1a/T1b/T3-T6/T9/T10 of
+# docs/binary_diffusion_design.md).
+# It links only the module and what it uses, so it needs no LAPACK.
+DIFT_SRC := \
+  src/modules/init/parameters.f90 \
+  src/modules/init/species_table.f90 \
+  src/modules/functions/utilities.f90 \
+  src/modules/lower_atmosphere/lower_column.f90 \
+  src/modules/functions/composition.f90 \
+  src/modules/functions/grav_field.f90 \
+  src/modules/functions/binary_element_diffusion.f90 \
+  src/tests/diffusion_tests.f90
+DIFT_OBJ := $(addprefix $(OBJDIR)/,$(notdir $(DIFT_SRC:.f90=.o)))
+DIFT_EXE := diffusion_tests.x
+DIFT_DEPFILE := $(OBJDIR)/.deps_dift.mk
+vpath %.f90 src/tests
+
 # Rebuild everything when the effective build flags change. The stamp file
 # NAME encodes a hash of the full flag string ($(FC) $(FFLAGS) $(MODFLAG)),
 # so a different flag set names a different stamp: the previous one becomes
@@ -166,9 +185,10 @@ FLAGHASH   := $(firstword $(shell printf '%s' '$(BUILDFLAGS)' | cksum))
 FLAGSTAMP  := $(OBJDIR)/.buildflags-$(FLAGHASH)
 
 # ---------------------------------------------------------------------
-.PHONY: all clean distclean ifort ifx wind_ae_ic check
+.PHONY: all clean distclean ifort ifx wind_ae_ic check diffusion_tests
 all: $(EXE)
 wind_ae_ic: $(WAE_EXE)
+diffusion_tests: $(DIFT_EXE)
 
 # Byte-identical regression harness: rebuilds and re-runs the wasp_full /
 # wasp_he23off cases single-thread, comparing against refreshed goldens.
@@ -190,6 +210,12 @@ $(WAE_EXE): $(WAE_OBJ)
 	@echo "built $@"
 $(WAE_OBJ): $(FLAGSTAMP)
 
+# Diffusion unit tests (separate executable; no LAPACK needed)
+$(DIFT_EXE): $(DIFT_OBJ)
+	$(FC) $(FFLAGS) $(MODFLAG) $(DIFT_OBJ) -o $@
+	@echo "built $@"
+$(DIFT_OBJ): $(FLAGSTAMP)
+
 # compile each source to $(OBJDIR)/<base>.o (also writes its .mod there)
 $(OBJDIR)/%.o: %.f90 | $(OBJDIR)
 	$(FC) $(FFLAGS) $(MODFLAG) -c $< -o $@
@@ -210,11 +236,11 @@ ifort: ; @$(MAKE) --no-print-directory FC=ifort
 ifx:   ; @$(MAKE) --no-print-directory FC=ifx
 
 clean:
-	@rm -f $(OBJ) $(WAE_OBJ) $(MODDIR)/*.mod
+	@rm -f $(OBJ) $(WAE_OBJ) $(DIFT_OBJ) $(MODDIR)/*.mod
 	@echo "cleaned objects and .mod files in $(OBJDIR)/ (kept $(EXE), $(WAE_EXE))"
 
 distclean:
-	@rm -rf $(OBJDIR) $(EXE) $(WAE_EXE)
+	@rm -rf $(OBJDIR) $(EXE) $(WAE_EXE) $(DIFT_EXE)
 	@echo "removed $(OBJDIR)/, $(EXE) and $(WAE_EXE)"
 
 # ---- auto-generated module dependencies (skip when only cleaning) ---
@@ -224,9 +250,15 @@ $(DEPFILE): $(SRC) src/utils/fortdep.py | $(OBJDIR)
 $(WAE_DEPFILE): $(WAE_SRC) src/utils/fortdep.py | $(OBJDIR)
 	@python3 src/utils/fortdep.py --objdir $(OBJDIR) $(WAE_SRC) > $@
 
+$(DIFT_DEPFILE): $(DIFT_SRC) src/utils/fortdep.py | $(OBJDIR)
+	@python3 src/utils/fortdep.py --objdir $(OBJDIR) $(DIFT_SRC) > $@
+
 ifeq ($(filter clean distclean,$(MAKECMDGOALS)),)
 -include $(DEPFILE)
 ifneq ($(filter wind_ae_ic wind_ae_ic.x,$(MAKECMDGOALS)),)
 -include $(WAE_DEPFILE)
+endif
+ifneq ($(filter diffusion_tests diffusion_tests.x,$(MAKECMDGOALS)),)
+-include $(DIFT_DEPFILE)
 endif
 endif

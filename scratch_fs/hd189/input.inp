@@ -28,6 +28,7 @@ Stellar Lya flux [erg/cm2/s]: 2.0e4
 Lya stellar halfwidth [km/s]: 70
 Lya stellar boost [-]: 5
 He_diffusion: True
+He_Kzz: 1.0e9
 He_metal_diffusion: True
 du_th [PLM,WENO3]: 0.5 1.0e-3
 Solver: Newton 5.0e-2

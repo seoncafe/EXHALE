@@ -467,3 +467,82 @@ print('GJ 699 crossing (no turbulence): He/H = %.4f  H:He = %.2f  %.2fx solar'
 print('GJ 699 matched kernel (He/H=0.06): %.2f km/s'
       % matched_kernel('heh0p06_gj699'))
 print('wrote lhs1140b_gj699.pdf')
+
+# ====== Figure 9: the adiabatic-cooling He 2^3S population bump ============
+# Schulik & Owen (2025): as adiabatic cooling drops T from ~10^4 to ~10^3 K
+# the collisional de-excitation q(T) collapses and the metastable fraction
+# rises outward. Panels (a) and (b) locate that rise; panel (c) asks at what
+# velocity it sits.
+import bump_analysis as BA
+
+BUMP = [('heh0p55', r'GJ\,1132 SED, He/H\,$=0.55$', 'C3'),
+        ('solar_gj699', r'GJ\,699 SED, solar He/H', 'C0')]
+
+fig, axb = plt.subplots(1, 3, figsize=(7.1, 2.7))
+
+a = axb[0]
+at = a.twinx()
+for tag, lab, c in BUMP:
+    de = BA.load(tag, False)
+    da = BA.load(tag, True)
+    a.semilogy(da['r'], np.maximum(da['f3'], 1e-14), color=c, lw=1.3,
+               label=lab)
+    a.semilogy(de['r'], np.maximum(de['f3'], 1e-14), color=c, lw=1.0, ls=':')
+    at.plot(de['r'], de['T'], color=c, lw=0.8, alpha=0.35)
+a.set_ylabel(r'$f_3 = n(2\,^3S)/n_{\rm He}$')
+a.set_ylim(1e-11, 1e-3)
+at.set_ylabel(r'$T$ [K]', fontsize=8); at.set_ylim(0, 6000)
+at.tick_params(labelsize=7)
+a.legend(fontsize=5.6, loc='lower right')
+a.set_title(r'(a) metastable fraction and $T$', fontsize=8)
+
+a = axb[1]
+at = a.twinx()
+for tag, lab, c in BUMP:
+    de = BA.load(tag, False)
+    da = BA.load(tag, True)
+    a.semilogy(da['r'], np.maximum(da['HeITR'], 1e-4), color=c, lw=1.3)
+    a.semilogy(de['r'], np.maximum(de['HeITR'], 1e-4), color=c, lw=1.0,
+               ls=':')
+    at.plot(de['r'], de['v']/1e5, color=c, lw=0.8, alpha=0.45)
+    b = BA.bump_metrics(de)
+    a.plot([b['r_peak']], [b['n_peak']], 'o', color=c, ms=3.5)
+a.set_ylabel(r'$n(2\,^3S)$ [cm$^{-3}$]'); a.set_ylim(1e-2, 3e2)
+at.set_ylabel(r'$v$ [km\,s$^{-1}$]', fontsize=8); at.set_ylim(0, 4.5)
+at.tick_params(labelsize=7)
+a.set_title(r'(b) population and outflow speed', fontsize=8)
+
+for a in axb[:2]:
+    a.set_xlim(1, 20); a.set_xlabel(r'$r$ [$R_{\rm p}$]')
+    a.grid(alpha=0.2); a.tick_params(labelsize=7)
+    a.yaxis.label.set_size(8); a.xaxis.label.set_size(8)
+
+a = axb[2]
+for tag, lab, c in BUMP:
+    for adv, ls in ((True, '-'), (False, ':')):
+        vd = BA.velocity_distribution(BA.load(tag, adv))
+        a.plot(vd['v'], 100*vd['cum'], color=c, lw=1.3 if adv else 1.0,
+               ls=ls, label=lab if adv else None)
+a.axvline(9.5, color='0.35', ls='--', lw=1.0)
+a.text(9.2, 68, r'$\sigma$ demanded by the line', rotation=90,
+       fontsize=6, ha='right', va='center', color='0.35')
+a.set_xlim(0, 11); a.set_ylim(0, 100)
+a.set_xlabel(r'$|v_r|$ [km\,s$^{-1}$]')
+a.set_ylabel(r'cumulative $2\,^3S$ column [\%]')
+a.grid(alpha=0.2); a.tick_params(labelsize=7)
+a.yaxis.label.set_size(8); a.xaxis.label.set_size(8)
+a.legend(fontsize=5.6, loc='lower right')
+a.set_title(r'(c) the column, in velocity', fontsize=8)
+
+plt.tight_layout()
+plt.savefig(f'{OUT}/lhs1140b_bump.pdf')
+plt.close()
+for tag, lab, _ in BUMP:
+    de, da = BA.load(tag, False), BA.load(tag, True)
+    be, ba_ = BA.bump_metrics(de), BA.bump_metrics(da)
+    vde, vda = BA.velocity_distribution(de), BA.velocity_distribution(da)
+    print('bump %-14s eq: r_peak %.2f T %.0f v %.2f | adv: r(f3 max) %.2f '
+          'v %.2f | adv column: median |v| %.2f, >5 km/s %.2f%%'
+          % (tag, be['r_peak'], be['T_peak'], be['v_peak'], ba_['r_f3'],
+             ba_['v_f3'], vda['q'][0.5], 100*vda['frac'][5.0]))
+print('wrote lhs1140b_bump.pdf')

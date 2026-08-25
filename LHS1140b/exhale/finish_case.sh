@@ -7,6 +7,9 @@
 set -u
 c=$1; seed=${2:-}
 EX=/nfs/mocafe/kiseon/RT_Codes/ExoAtmosphere/EXHALE_v1.00
+# EXHALE_BIN pins the executable: a case launched with a snapshot binary
+# keeps running the code it was launched with while the tree is rebuilt.
+BIN=${EXHALE_BIN:-$EX/EXHALE.x}
 cd "$(dirname "$0")/$c" || exit 1
 export OMP_NUM_THREADS=${OMP_NUM_THREADS:-4}
 
@@ -23,7 +26,7 @@ sed -i 's/^Load IC? False$/Load IC? True/;
         /^IC mode: auto$/d; s/^Do only PP: True$/Do only PP: False/' input.inp
 
 echo "[$c] JFNK START $(date +%H:%M:%S) ${seed:+(seeded from $seed)}"
-EXHALE_PTC=1 EXHALE_PTC_JFNK=1 EXHALE_PTC_DTAU0=1.0 "$EX/EXHALE.x" > run.log 2>&1
+EXHALE_PTC=1 EXHALE_PTC_JFNK=1 EXHALE_PTC_DTAU0=1.0 "$BIN" > run.log 2>&1
 rc=$?
 info=$(grep -o "done info=[0-9]*" run.log | tail -n 1)
 echo "[$c] JFNK DONE rc=$rc $info  $(grep -o '||R||= *[0-9.E+-]*' run.log | tail -n 1)"
@@ -33,7 +36,7 @@ grep -q "done info=0" run.log || { echo "[$c] JFNK FAILED"; exit 1; }
 \cp -f output/Hydro_ioniz.txt output/Hydro_ioniz_IC.txt
 \cp -f output/Ion_species.txt output/Ion_species_IC.txt
 sed -i 's/^Do only PP: False$/Do only PP: True/' input.inp
-"$EX/EXHALE.x" > pp.log 2>&1
+"$BIN" > pp.log 2>&1
 echo "[$c] PP DONE rc=$?  $(grep 'steady-state Mdot' pp.log | tail -n 1)"
 
 MPLBACKEND=Agg PYTHONPATH="$EX" python3 "$EX/EXHALE_transit.py" > transit.log 2>&1

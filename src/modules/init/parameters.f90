@@ -144,12 +144,14 @@
       !  to H.  Off = byte-identical to legacy.
       logical :: he_diffusion = .false.
       ! Eddy (turbulent) diffusion coefficient [cm^2/s] used with he_diffusion.
-      ! Mixes the He/H ratio toward uniform below the homopause (n where the
-      ! molecular D equals he_kzz), preventing runaway molecular settling from
-      ! the dense base; only the higher, tenuous layers separate.  Default
-      ! 1e9 cm^2/s ~ Taylor et al. (2025) K_zz = 1e5 m^2/s.  Set 0 for pure
-      ! molecular diffusion.  Runtime key "He_Kzz: <value>".
-      real*8  :: he_kzz = 1.0d9
+      ! Mixes the composition toward a uniform MASS fraction below the
+      ! homopause (where the molecular D_12 equals he_kzz) and carries no
+      ! settling term of its own; above it the elements separate.  Default 0,
+      ! i.e. pure molecular diffusion: an eddy term is a property of the
+      ! atmosphere being modelled, so it is stated, not inherited.  Taylor et
+      ! al. (2025) use K_zz = 1e5 m^2/s = 1e9 cm^2/s.  Runtime key
+      ! "He_Kzz: <value>"; base.inp may override it.
+      real*8  :: he_kzz = 0.0d0
       ! P2b: ambipolar-corrected effective settling mass (ionized wind lifts
       !  He ions, reducing settling).  Default .true.; .false. = neutral Dm=3.
       logical :: he_ambipolar = .true.

@@ -22,5 +22,6 @@ Load IC? False
 Do only PP: False
 Force start: False
 He_diffusion: True
+He_Kzz: 1.0e9
 He_metal_diffusion: True
 Stellar radius [R_sun]: 1.155

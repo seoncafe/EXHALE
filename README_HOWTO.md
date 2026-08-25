@@ -307,20 +307,28 @@ output — see [Transmission spectra](#transmission-spectra-exhale_transitpy).
 ```
 He_diffusion: True          # He element transported (advection + settling)
 He_metal_diffusion: True    # optional: each metal with its own mass/D
-# He_Kzz: 1.0e9             # eddy-diffusion coefficient [cm^2/s]
+He_Kzz: 1.0e9               # eddy-diffusion coefficient [cm^2/s], default 0
 # He_ambipolar: True        # ambipolar settling correction (default on)
 # He_alphaT: 0.0            # thermal-diffusion factor (default 0 = off)
 ```
 Default off, so standard runs are unchanged: without the key the He/H ratio is
-frozen at the input value at all radii. With it, helium settles against the
-wind drag (Banks & Kockarts binary D, eddy `He_Kzz`, ambipolar-corrected
-settling mass, optional thermal diffusion), so He/H declines with altitude as
-in Taylor et al. (2025) / Xing et al. (2023) and the He 10830 line weakens on
-gentle escapers. With `Solver: Newton` the code co-converges the diffused He/H
-field with the steady wind (outer JFNK <-> diffusion iteration). Physics,
-numerics and validation: `docs/design_hehe_diffusion.md`; quantitative
-before/after comparison on HD 209458 b and WASP-121 b:
-`docs/version_compare.pdf`. -> manual §3.6.
+frozen at the input value at all radii. With it, hydrogen and helium are
+treated as two components of one gas and the helium mass fraction is
+transported with advection, binary molecular diffusion (Banks & Kockarts
+`D_12`), gravitational settling against the computed ambipolar field, optional
+thermal diffusion and an optional eddy term `He_Kzz`. Helium therefore settles
+against the wind drag and He/H declines with altitude as in Taylor et al.
+(2025) / Xing et al. (2023), weakening the He 10830 line on gentle escapers;
+the formulation is equally valid when helium is the MAJOR element, which the
+earlier trace-helium kernel was not. `He_Kzz` defaults to **0** (pure
+molecular diffusion): an eddy coefficient is a property of the atmosphere
+being modelled, so state it if you want one. With `Solver: Newton` the code
+co-converges the diffused composition with the steady wind (outer JFNK <->
+diffusion iteration). Formulation, discretization and acceptance tests:
+`docs/binary_diffusion_design.md` (`make diffusion_tests && ./diffusion_tests.x`
+runs them); `docs/design_hehe_diffusion.md` is the record of the earlier
+trace-helium build; quantitative before/after comparison on HD 209458 b and
+WASP-121 b: `docs/version_compare.pdf`. -> manual §3.6.
 
 ## Legacy atomic-data switch
 

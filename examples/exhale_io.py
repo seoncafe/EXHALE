@@ -69,6 +69,26 @@ class Run:
     def v_kms(self):
         return self.v / 1.0e5
 
+    # He and H nuclei carried by one particle of each species, i.e. the
+    # bsp_nH / bsp_nHe weights of src/modules/init/species_table.f90.  Only
+    # the species with a nonzero count appear.
+    _NUC_H = {'HI': 1, 'HII': 1, 'H2': 2, 'H2p': 2, 'H3p': 3, 'HeHp': 1}
+    _NUC_HE = {'HeI': 1, 'HeII': 1, 'HeIII': 1, 'HeITR': 1, 'HeHp': 1}
+
+    @property
+    def heh_profile(self):
+        """He/H ELEMENT ratio n_He/n_H per radius, nuclei counted over every
+        species that carries them (H2/H2+ two H nuclei, H3+ three, HeH+ one of
+        each; the He 2^3S triplet inside the helium count).  Same definition
+        as composition.f90 element_ratio_HeH and as the diffusion operator, so
+        a run with He_diffusion on can be read against them without a second
+        convention.  Species a run does not track are simply absent."""
+        nuc_h = sum(w * self.ion[s] for s, w in self._NUC_H.items()
+                    if s in self.ion)
+        nuc_he = sum(w * self.ion[s] for s, w in self._NUC_HE.items()
+                     if s in self.ion)
+        return nuc_he / np.where(nuc_h > 0, nuc_h, np.nan)
+
     def x_ion(self, element_stages):
         """Ionization fraction of a given stage, e.g. x_ion(['HI','HII'])['HII']
         returns nHII/(nHI+nHII). Pass the list of stages of one element."""
@@ -208,6 +228,7 @@ def load_run(outdir, inputfile, adv=True):
 # the incident flux by 1/4 during the run (set_energy_vectors.f90), and 'alpha'
 # scales the attenuation, so neither takes an output correction.
 _MDOT_FACTOR = {
+    'Mdot':   1.0,    # full sphere, no 2D approximation: no output correction
     'Mdot/4': 0.25,   # output divided by 4
     'Rate/2': 0.5,    # 'Rate/2 + Mdot/2': output halved
     'Rate/4': 1.0,    # 'Rate/4 + Mdot':  flux already /4, no output correction
@@ -226,7 +247,7 @@ def _mdot_factor(method):
     except KeyError:
         raise ValueError(
             "unrecognized '2D approximate method' value %r; expected one of "
-            "Mdot/4, Rate/2[ + Mdot/2], Rate/4[ + Mdot], alpha" % method)
+            "Mdot, Mdot/4, Rate/2[ + Mdot/2], Rate/4[ + Mdot], alpha" % method)
 
 
 def mdot_log10(run, j_from_top=20):

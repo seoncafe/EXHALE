@@ -138,7 +138,7 @@ by the Python loaders except where noted.
 | K16 | `Molecular base` | word 3 == `True`/`true` | flag | - | `.false.` | `molecular_base` | F393-396. EOS-only molecular base correction to `ntot_bc`. |
 | K17 | `Lower atmosphere` | word 3 (+ optional word 4) | string + real | - / R_J | `lower_atm_mode=0` | `lower_atm_mode`, `lower_atm_r1bar` | F397-404. `none`/`analytic`/`vulcan`. Triggers `run_lower_atm_prestep` (needs `EXHALE_ROOT`). |
 | K18 | `Lower column` | word 3 | real | R_J | `lower_col_r1bar=-1` | `lower_col_r1bar` | F405-407. Analytic lower column 1-bar radius. |
-| K19 | `He_Kzz` | word 2 | real | cm^2/s | `1.0e9` | `he_kzz` | F408-411. Also overridable by `base.inp`. |
+| K19 | `He_Kzz` | word 2 | real | cm^2/s | `0.0` | `he_kzz` | F408-411. Eddy diffusion added to the binary `D_12`; default 0 = pure molecular diffusion (it was `1.0e9` before 2026-08-25). Also overridable by `base.inp`. |
 | K20 | `He_alphaT` | word 2 | real | - | `0.0` | `he_alphaT` | F412-414. Thermal-diffusion factor. |
 | K21 | `He_ambipolar` | word 2 == `False`/`false` | flag | - | `.true.` | `he_ambipolar` | F415-418. Only `False` changes it (default on). |
 | K22 | `He_metal_diffusion` | word 2 == `True`/`true` | flag | - | `.false.` | `he_metal_diffusion` | F419-422. Tested before K23. |

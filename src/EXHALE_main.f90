@@ -8,8 +8,10 @@
       use eval_time_step
       use energy_semi_implicit
       use utils
-      use composition, only: get_species_densities, comp_T_from_p, comp_p_from_T
-      use species_diffusion, only: he_diffusion_step
+      use composition, only: get_species_densities, comp_T_from_p,         &
+                             comp_p_from_T, element_ratio_HeH
+      use binary_element_diffusion, only: element_diffusion_step,          &
+                                          relax_element_composition
       use lower_column, only: lower_column_solve
       use steady_residual_mod, only: assemble_residual, residual_norms, residual_norms_vol
       use viscous_conduction, only: transport_active, viscous_conduction_step
@@ -121,8 +123,7 @@
       ! Newton-diffusion co-convergence (Solver: Newton + He_diffusion):
       ! outer iteration alternating the JFNK steady solve with diffusion
       ! relaxation of the He/H field at the converged wind.
-      real*8, dimension(:), allocatable :: heh_prev, heh_new
-      real*8  :: heh_drift
+      real*8  :: comp_drift, comp_drift_prev, comp_omega
       integer :: it_diff, kd
 
       ! Admissibility record of the low-Mach contact-mode dissipation: how big
@@ -395,20 +396,11 @@
             write(*,'(A,I0,A)') ' (EXHALE_main) frozen-base: first ', k, ' cells anchored'
          endif
          call get_environment_variable('EXHALE_PTC_JFNK', diag_env)
-         if (trim(diag_env) .eq. '1') then
-            call solve_steady_jfnk(u, f_sp, resid_max, 3000, dt, 40, j)
-         else
-            call solve_steady_ptc(u, f_sp, resid_max, 3000, dt, j)
-         endif
-         ! Final consistent state + output
-         call U_to_W(u,W);  rho = W(1,:);  v = W(2,:);  p = W(3,:)
-         call get_species_densities(rho,f_sp,nhi,nhii,nhei,nheii,      &
-                                    nheiii,nheiTR,nm,ne,n_tot)
-         call comp_T_from_p(p,n_tot,ne,T)
-         if (use_excited_H) call excited_H_update(T,rho,f_sp,v,exc_rel)
-         call ioniz_eq(T,rho,f_sp,heat,cool,eta)
-         call get_species_densities(rho,f_sp,nhi,nhii,nhei,nheii,      &
-                                    nheiii,nheiTR,nm,ne,n_tot)
+         ! Same solve-and-diffuse routine as the marching hand-off below, so
+         ! a diffused wind can be brought to a steady state on this route too
+         ! (dt_loc for the relaxation step was built by the eval_dt above).
+         call steady_wind_with_element_diffusion(3000, dt,             &
+                                    trim(diag_env) .eq. '1', j)
          call write_output(rho,v,p,T,heat,cool,eta,                    &
                            nhi,nhii,nhei,nheii,nheiii,nheiTR,nm,'eq')
          write(*,*) '(EXHALE_main) EXHALE_PTC=1: solver done, output written, stopping.'
@@ -598,7 +590,8 @@
             ! ratio (updates the He/H split in f_sp; ionization equilibrium below
             ! then re-solves the stages, conserving the new element amounts).
             ! No-op unless he_diffusion is set (byte-identical when off).
-            if (he_diffusion) call he_diffusion_step(rho,v,T,f_sp,dt_loc)
+            if (he_diffusion)                                         &
+               call element_diffusion_step(rho,v,T,f_sp,dt_loc)
 
             ! Refresh the lagged H(n=2) Balmer source + heating from
             ! the current state before the ionization/energy solve.
@@ -938,41 +931,8 @@
                if (resid_max .le. 0.0d0) resid_max = 1.0d-3
                write(*,'(A,I0,A,ES10.2)') ' (EXHALE_main) Newton finish '// &
                     'at step ', count, ', target ||R|| <', resid_max
-               ! With He_diffusion the JFNK residual does not contain the
-               ! (operator-split) diffusion of the He/H field, so a single
-               ! solve would freeze the composition at the hand-off state.
-               ! Co-converge instead: JFNK -> relax the diffused He/H at the
-               ! converged wind -> repeat until the He/H field stops moving
-               ! (max 5 outer passes; ~ the excited-H outer-iteration pattern).
-               do it_diff = 1, merge(5, 1, he_diffusion)
-               call solve_steady_jfnk(u, f_sp, resid_max, 500, 1.0d0, 40, j)
-               call U_to_W(u,W)
-               rho = W(1,:);  v = W(2,:);  p = W(3,:);  E = u(3,:)
-               call get_species_densities(rho,f_sp,nhi,nhii,nhei,nheii, &
-                                          nheiii,nheiTR,nm,ne,n_tot)
-               call comp_T_from_p(p,n_tot,ne,T)
-               if (use_excited_H) call excited_H_update(T,rho,f_sp,v,exc_rel)
-               call ioniz_eq(T,rho,f_sp,heat,cool,eta)
-               call get_species_densities(rho,f_sp,nhi,nhii,nhei,nheii, &
-                                          nheiii,nheiTR,nm,ne,n_tot)
-               if (j .ne. 0) exit                  ! JFNK failed
-               if (.not. he_diffusion) exit
-               ! Diffusion relaxation of the He element field at fixed wind
-               heh_prev = (f_sp(:,3)+f_sp(:,4)+f_sp(:,5))               &
-                         /max(f_sp(:,1)+f_sp(:,2), 1.0d-30)
-               do kd = 1, 500
-                  call he_diffusion_step(rho,v,T,f_sp,dt_loc)
-               enddo
-               call ioniz_eq(T,rho,f_sp,heat,cool,eta)
-               heh_new = (f_sp(:,3)+f_sp(:,4)+f_sp(:,5))                &
-                        /max(f_sp(:,1)+f_sp(:,2), 1.0d-30)
-               heh_drift = maxval(abs(heh_new(1:N) - heh_prev(1:N))     &
-                                 /max(heh_prev(1:N), 1.0d-10))
-               write(*,'(A,I0,A,ES10.2)') ' (EXHALE_main) Newton-'//    &
-                    'diffusion outer pass ', it_diff, ': He/H drift =', &
-                    heh_drift
-               if (heh_drift .lt. 1.0d-3) exit
-               enddo
+               call steady_wind_with_element_diffusion(500, 1.0d0,      &
+                                                       .true., j)
                if (j .eq. 0) then
                   is_mom_const = .true.       ! exit the marching loop
                   is_stalled   = .false.
@@ -1214,6 +1174,137 @@
 
       contains
 
+
+      subroutine steady_wind_with_element_diffusion(maxit, dtau0,       &
+                                                   use_jfnk, jfnk_info)
+      ! Steady wind that is self-consistent with the diffused element
+      ! composition it carries.
+      !
+      ! The steady residual (steady_newton.f90) contains no diffusion: the
+      ! composition is moved by the operator-split element_diffusion_step,
+      ! so a single steady solve would freeze it at whatever state
+      ! it was handed.  The two are therefore co-converged: solve the wind,
+      ! relax the element composition to ITS steady state at that wind
+      ! (relax_element_composition, which steps on the composition time scale
+      ! and not on the hydro CFL step), repeat until the composition stops
+      ! moving between passes.  The measure is absolute -- the largest change
+      ! of the helium mass fraction over the pass divided by the base value --
+      ! because the relative measure it replaces is meaningless in a cell the
+      ! transport has emptied.  At most 20 outer passes.
+      !
+      ! The loop is damped.  Nothing in a Picard iteration of two solves --
+      ! wind at fixed composition, composition at fixed wind -- keeps the two
+      ! from chasing each other, and on the HD 209458 b Kzz = 0 wind they do:
+      ! the drift settles into a limit cycle instead of falling.  The
+      ! composition update is therefore under-relaxed,
+      ! X <- X_old + omega (X_relaxed - X_old), starting at omega = 0.5 and
+      ! halved (floor 0.125) on any pass whose drift failed to fall.  The
+      ! drift tested here is the UNDAMPED distance to the fixed point, so a
+      ! small omega cannot buy a false convergence.
+      !
+      ! With He_diffusion off the composition never moves and the body is
+      ! one steady solve followed by the state refresh, which is what both
+      ! call sites did before.
+      !
+      ! maxit / dtau0 / use_jfnk select the steady solver and its budget:
+      ! the marching hand-off gives it 500 iterations from dtau0 = 1, the
+      ! direct-steady route 3000 from the CFL dt, and either route may use
+      ! JFNK or pseudo-transient continuation.
+      integer, intent(in)  :: maxit
+      real*8,  intent(in)  :: dtau0
+      logical, intent(in)  :: use_jfnk
+      integer, intent(out) :: jfnk_info
+
+      comp_omega      = 0.5d0
+      ! Diagnostic override (EXHALE_DIFF_OMEGA=<val>): pins the starting
+      ! under-relaxation factor, so the undamped loop (1.0) can be compared
+      ! against the damped one without a rebuild.
+      call get_environment_variable('EXHALE_DIFF_OMEGA', diag_env)
+      if (len_trim(diag_env) .gt. 0) read(diag_env,*) comp_omega
+      comp_drift      = 0.0d0
+      comp_drift_prev = huge(1.0d0)
+
+      do it_diff = 1, merge(20, 1, he_diffusion)
+         if (use_jfnk) then
+            call solve_steady_jfnk(u, f_sp, resid_max, maxit, dtau0,    &
+                                   40, jfnk_info)
+         else
+            call solve_steady_ptc(u, f_sp, resid_max, maxit, dtau0,     &
+                                  jfnk_info)
+         endif
+         call U_to_W(u,W)
+         rho = W(1,:);  v = W(2,:);  p = W(3,:);  E = u(3,:)
+         call get_species_densities(rho,f_sp,nhi,nhii,nhei,nheii,       &
+                                    nheiii,nheiTR,nm,ne,n_tot)
+         call comp_T_from_p(p,n_tot,ne,T)
+         if (use_excited_H) call excited_H_update(T,rho,f_sp,v,exc_rel)
+         call ioniz_eq(T,rho,f_sp,heat,cool,eta)
+         call get_species_densities(rho,f_sp,nhi,nhii,nhei,nheii,       &
+                                    nheiii,nheiTR,nm,ne,n_tot)
+         if (jfnk_info .ne. 0) exit             ! steady solve failed
+         if (.not. he_diffusion) exit
+         ! Element composition relaxed to its steady state at the fixed wind
+         call relax_element_composition(rho,v,T,f_sp,comp_omega,          &
+                                        comp_drift,kd)
+         call ioniz_eq(T,rho,f_sp,heat,cool,eta)
+         write(*,'(A,I0,A,I0,A,F6.3,A,ES10.2)') ' (EXHALE_main) '//      &
+              'steady-wind diffusion outer pass ', it_diff, ': ', kd,   &
+              ' relaxation steps, omega =', comp_omega,                 &
+              ', composition drift =', comp_drift
+         call get_environment_variable('EXHALE_DIFFUSION_CHECK', diag_env)
+         if (trim(diag_env) .eq. '1')                                    &
+            call write_diffusion_pass_profile(it_diff)
+         if (comp_drift .lt. 1.0d-3) exit
+         ! Damp harder whenever the drift failed to fall over the pass.
+         if (comp_drift .ge. comp_drift_prev .and.                       &
+             comp_omega .gt. 0.125d0) then
+            comp_omega = max(0.5d0*comp_omega, 0.125d0)
+            write(*,'(A,F6.3)') '    -> composition drift did not '//    &
+                 'fall; under-relaxation omega =', comp_omega
+         endif
+         comp_drift_prev = comp_drift
+      enddo
+
+      end subroutine steady_wind_with_element_diffusion
+
+      ! ------------------------------------------------!
+
+      subroutine write_diffusion_pass_profile(pass)
+      ! Diagnostic (EXHALE_DIFFUSION_CHECK=1): append the element ratio and
+      ! the mass flux of one outer pass to output/diffusion_pass_profiles.txt.
+      ! Written so that successive passes can be compared directly -- the
+      ! question a non-converging outer loop raises is whether it is cycling
+      ! between two states or wandering, and that is a question about the
+      ! profiles, not about the scalar drift.
+      integer, intent(in) :: pass
+      real*8, dimension(1-Ng:N+Ng) :: heh_l
+      integer :: j, uu
+      logical :: first
+
+      heh_l = element_ratio_HeH(f_sp)
+      uu    = 773
+      first = (pass .eq. 1)
+      if (first) then
+         open(unit=uu, file='output/diffusion_pass_profiles.txt',          &
+              status='replace')
+         write(uu,'(A)') '# outer-pass composition profiles '//            &
+              '(EXHALE_DIFFUSION_CHECK=1)'
+         write(uu,'(A)') '# columns: pass  r[Rp]  (He/H)/HeH  '//          &
+              'r^2 rho v [n0 mH cm/s Rp^2]  T[K]'
+      else
+         open(unit=uu, file='output/diffusion_pass_profiles.txt',          &
+              status='old', position='append')
+      endif
+      do j = 1, N
+         write(uu,'(I5,4ES16.7)') pass, r(j), heh_l(j)/HeH,                &
+              r(j)**2*rho(j)*v(j), T(j)*T0
+      enddo
+      close(uu)
+
+      end subroutine write_diffusion_pass_profile
+
+      ! ------------------------------------------------!
+
       subroutine allocate_state_vectors
       ! Allocate the grid-sized state, flux and diagnostic vectors of the
       ! marching loop, now that the number of computational cells N is known.
@@ -1225,7 +1316,6 @@
       allocate(f_sp_test(1-Ng:N+Ng,n_species))
       allocate(heat0(1-Ng:N+Ng), cool0(1-Ng:N+Ng), npart0(1-Ng:N+Ng))
       allocate(mom(1-Ng:N+Ng))
-      allocate(heh_prev(1-Ng:N+Ng), heh_new(1-Ng:N+Ng))
       allocate(dt_loc(1-Ng:N+Ng))
       allocate(rho(1-Ng:N+Ng), v(1-Ng:N+Ng), E(1-Ng:N+Ng),                &
                p(1-Ng:N+Ng), T(1-Ng:N+Ng), cs(1-Ng:N+Ng))
@@ -1248,8 +1338,6 @@
       cool0     = 0.0d0
       npart0    = 0.0d0
       mom       = 0.0d0
-      heh_prev  = 0.0d0
-      heh_new   = 0.0d0
       dt_loc    = 0.0d0
       rho       = 0.0d0
       v         = 0.0d0

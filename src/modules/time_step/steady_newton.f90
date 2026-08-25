@@ -17,7 +17,7 @@
 
       use global_parameters
       use species_table,  only: n_mion
-      use Conversion,      only: U_to_W
+      use Conversion,      only: U_to_W, U_to_W_interior
       use composition,     only: get_species_densities, comp_T_from_p
       use BC_Apply,        only: Apply_BC
       use ionization_equilibrium, only: ioniz_eq
@@ -635,7 +635,7 @@
          do ls = 1, 20
             Ytry = Y + lam*dY
             call unpack_U(Ytry, utry)
-            call U_to_W(utry, Wtry)
+            call U_to_W_interior(utry, Wtry)   ! ghosts of utry are not set
             if (minval(Wtry(1,1:N)) .gt. 0.0d0 .and.                    &
                 minval(Wtry(3,1:N)) .gt. 0.0d0) then
                f_sp_j = f_sp
@@ -940,7 +940,7 @@
          do ls = 1, 20
             Ytry = Y + lam*dY
             call unpack_U(Ytry, utry)
-            call U_to_W(utry, Wtry)
+            call U_to_W_interior(utry, Wtry)   ! ghosts of utry are not set
             if (minval(Wtry(1,1:N)) .gt. 0.0d0 .and.                    &
                 minval(Wtry(3,1:N)) .gt. 0.0d0) then
                f_sp_j = f_sp
