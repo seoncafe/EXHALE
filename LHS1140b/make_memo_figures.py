@@ -361,28 +361,70 @@ for f in (0.0, 10.0, 15.0, 20.0, f_match_diff, 25.0):
           % (f, d['red_depth'], d['blue_depth'], d['red_blue'], d['fwhm_A'],
              d['ew']))
 
-fig, ax = plt.subplots(figsize=(4.6, 3.2))
-ax.errorbar(o_air, o_flux, yerr=o_fsig, fmt='ko', ms=2.2, lw=0.6, capsize=0,
-            zorder=3, label=r'LHS\,1140\,b, 2024 (GP-corrected)')
-ax.axhline(1.0 - 0.006, color='0.6', ls='--', lw=0.8,
-           label=r'2025 detection limit')
-ax.axhline(1.0, color='0.9', lw=0.6, zorder=0)
-ax.plot(lamd + dlam_air, 1.0 - excd/100, color='C4', lw=1.0, ls=':',
-        label=r'diffusion, $K_{zz}=10^{9}$, $\mathrm{He/H}=2.13$, as solved')
-ax.plot(lamd + dlam_air, 1.0 - broaden(lamd, excd, f_match_diff)/100,
-        color='C4', lw=1.5,
-        label=r'same, $+' + '%.1f' % f_match_diff
-        + r'$\,km\,s$^{-1}$ FWHM Gaussian')
-ax.plot(lam0 + dlam_air, 1.0 - broaden(lam0, exc0, f_match)/100, color='C2',
-        lw=1.0, ls='--', dashes=(4, 2),
-        label=r'diffusion off, $\mathrm{He/H}=0.55$, $+'
-        + '%.1f' % f_match + r'$\,km\,s$^{-1}$')
-ax.set_xlim(10827, 10831.7); ax.set_ylim(0.982, 1.006)
-ax.ticklabel_format(axis='x', useOffset=False, style='plain')
-ax.set_xlabel(r'air wavelength [\AA]')
-ax.set_ylabel(r'normalized flux')
-ax.grid(alpha=0.18)
-ax.legend(fontsize=5.8, loc='lower left', framealpha=0.9)
+fig, axs = plt.subplots(1, 2, figsize=(7.2, 3.2))
+
+# Panel (a): Radial number densities of H and He species under diffusion
+p_ion_diff = os.path.join('exhale', DIFF_TAG, 'output', 'Ion_species.txt')
+cols_diff = [l for l in open(p_ion_diff) if l.startswith('# columns')][0].split()[2:]
+jd = {c: i for i, c in enumerate(cols_diff)}
+data_diff = np.loadtxt(p_ion_diff)
+
+rd = data_diff[:, 0]
+n_HI_d = data_diff[:, jd['HI']]
+n_HII_d = data_diff[:, jd['HII']]
+n_H_tot_d = n_HI_d + n_HII_d
+
+n_HeI_d = data_diff[:, jd['HeI']]
+n_HeII_d = data_diff[:, jd['HeII']]
+n_HeIII_d = data_diff[:, jd['HeIII']]
+n_HeTR_d = data_diff[:, jd['HeITR']]
+n_He_tot_d = n_HeI_d + n_HeII_d + n_HeIII_d + n_HeTR_d
+
+ax = axs[0]
+ax.semilogy(rd, n_H_tot_d, color='royalblue', lw=1.6, label=r'H (total)')
+ax.semilogy(rd, n_HI_d, color='royalblue', lw=1.1, ls='--', label=r'H\,\textsc{i}')
+ax.semilogy(rd, n_HII_d, color='royalblue', lw=1.0, ls=':', label=r'H\,\textsc{ii}')
+
+ax.semilogy(rd, n_He_tot_d, color='crimson', lw=1.6, label=r'He (total)')
+ax.semilogy(rd, n_HeI_d, color='crimson', lw=1.1, ls='--', label=r'He\,\textsc{i}($1^1S$)')
+ax.semilogy(rd, n_HeII_d, color='crimson', lw=1.0, ls=':', label=r'He\,\textsc{ii}')
+ax.semilogy(rd, np.maximum(n_HeTR_d, 1e-6), color='darkmagenta', lw=1.5, ls='-', label=r'He($2\,^3S$)')
+
+ax.axvline(13.6, color='0.7', ls=':', lw=0.8)
+ax.text(13.8, 1e11, r'$R_\star = 13.6\,R_{\rm p}$', fontsize=6.5, color='0.4', rotation=90)
+
+ax.set_xlim(1.0, 20.0)
+ax.set_ylim(1e-4, 3e13)
+ax.set_xlabel(r'radius $r$ [$R_{\rm p}$]')
+ax.set_ylabel(r'number density $n$ [cm$^{-3}$]')
+ax.grid(alpha=0.2, which='both')
+ax.legend(fontsize=6.2, loc='upper right', framealpha=0.9, ncol=2)
+ax.set_title(r'(a) H and He number densities ($K_{zz}=10^9$, $\mathrm{He/H}=2.13$)', fontsize=8)
+
+# Panel (b): Broadened transit profile vs observation
+ax2 = axs[1]
+ax2.errorbar(o_air, o_flux, yerr=o_fsig, fmt='ko', ms=2.0, lw=0.6, capsize=0,
+             zorder=3, label=r'LHS\,1140\,b (2024 GP-corrected)')
+ax2.axhline(1.0 - 0.006, color='0.6', ls='--', lw=0.8, label=r'2025 detection limit')
+ax2.axhline(1.0, color='0.9', lw=0.6, zorder=0)
+
+ax2.plot(lamd + dlam_air, 1.0 - excd/100, color='C4', lw=1.0, ls=':',
+         label=r'diffusion ($K_{zz}=10^{9}$, $\mathrm{He/H}=2.13$), as solved')
+ax2.plot(lamd + dlam_air, 1.0 - broaden(lamd, excd, f_match_diff)/100,
+         color='C4', lw=1.5,
+         label=r'same, $+' + '%.1f' % f_match_diff + r'$\,km\,s$^{-1}$ FWHM Gaussian')
+ax2.plot(lam0 + dlam_air, 1.0 - broaden(lam0, exc0, f_match)/100, color='C2',
+         lw=1.0, ls='--', dashes=(4, 2),
+         label=r'diffusion off ($\mathrm{He/H}=0.55$), $+' + '%.1f' % f_match + r'$\,km\,s$^{-1}$')
+
+ax2.set_xlim(10827, 10831.7); ax2.set_ylim(0.982, 1.006)
+ax2.ticklabel_format(axis='x', useOffset=False, style='plain')
+ax2.set_xlabel(r'air wavelength [\AA]')
+ax2.set_ylabel(r'normalized flux')
+ax2.grid(alpha=0.18)
+ax2.legend(fontsize=5.6, loc='lower left', framealpha=0.9)
+ax2.set_title(r'(b) broadened transit profile vs.\ observation', fontsize=8)
+
 plt.tight_layout()
 plt.savefig(f'{OUT}/lhs1140b_diff_broadened.pdf')
 plt.close()
