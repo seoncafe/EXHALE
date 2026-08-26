@@ -52,7 +52,7 @@
       ! Helium nuclei density of the loaded state, and the two factors that
       ! carry the loaded composition onto the input one
       real*8, dimension(1-Ng:N+Ng)        :: nHe_l, sH_l, sHe_l
-      real*8 :: heh_loaded, heh_dev
+      real*8 :: heh_loaded, heh_dev, gotH_l, gotHe_l
       logical :: col_present(n_species), elem_ok
       ! Auxiliary temporary variable
       real*8 :: tmp
@@ -184,7 +184,8 @@
                + 2.0d0*(nsp_l(:,isp_H2) + nsp_l(:,isp_H2p))               &
                + 3.0d0*nsp_l(:,isp_H3p) + nsp_l(:,isp_HeHp)
          nHe_l = nsp_l(:,isp_HeI) + nsp_l(:,isp_HeII)                     &
-               + nsp_l(:,isp_HeIII) + nsp_l(:,isp_HeHp)
+               + nsp_l(:,isp_HeIII) + nsp_l(:,isp_HeTR)                   &
+               + nsp_l(:,isp_HeHp)
          heh_dev = 0.0d0
          do j = 1-Ng, N+Ng
             if (nH_l(j) .gt. 0.0d0) then
@@ -201,7 +202,8 @@
                   ' cold, or restart from a helium-bearing state.'
                error stop 1
             endif
-            if (maxval(abs(nsp_l(:,isp_HeHp))) .gt. 0.0d0) then
+            if (maxval(abs(nsp_l(:,isp_HeHp))) .gt. 0.0d0 .and.            &
+                .not. he_diffusion) then
                write(*,'(A,ES11.4,A,ES11.4,A)')                           &
                   ' (load_IC) ERROR: the restart file was written at'//   &
                   ' He/H =', nHe_l(N)/nH_l(N), ', the input asks for',    &
@@ -238,6 +240,32 @@
             do im = 1, n_mion
                nsp_l(:,mion_fsp(im)) = nsp_l(:,mion_fsp(im))*sH_l
             enddo
+            ! HeH+ carries a nucleus of each element, so no single factor can
+            ! rescale it. With He_diffusion the only cells rescaled at all are
+            ! the base and its inner ghosts -- the column above keeps the
+            ! diffused split -- so those cells are projected onto their two
+            ! element totals exactly as binary_element_diffusion writes back:
+            ! HeH+ takes the smaller of the two factors and the nuclei that
+            ! leaves short are deposited into the neutral ground species.
+            if (he_diffusion) then
+               do j = 1-Ng, 1
+                  if (nsp_l(j,isp_HeHp) .le. 0.0d0) cycle
+                  nsp_l(j,isp_HeHp) = nsp_l(j,isp_HeHp)                    &
+                                      *min(sH_l(j), sHe_l(j))
+                  gotH_l  = nsp_l(j,isp_HI) + nsp_l(j,isp_HII)             &
+                          + 2.0d0*(nsp_l(j,isp_H2) + nsp_l(j,isp_H2p))     &
+                          + 3.0d0*nsp_l(j,isp_H3p) + nsp_l(j,isp_HeHp)
+                  gotHe_l = nsp_l(j,isp_HeI) + nsp_l(j,isp_HeII)           &
+                          + nsp_l(j,isp_HeIII) + nsp_l(j,isp_HeTR)         &
+                          + nsp_l(j,isp_HeHp)
+                  if (nH_l(j)*sH_l(j) .gt. gotH_l)                         &
+                     nsp_l(j,isp_HI)  = nsp_l(j,isp_HI)                    &
+                                        + (nH_l(j)*sH_l(j) - gotH_l)
+                  if (nHe_l(j)*sHe_l(j) .gt. gotHe_l)                      &
+                     nsp_l(j,isp_HeI) = nsp_l(j,isp_HeI)                   &
+                                        + (nHe_l(j)*sHe_l(j) - gotHe_l)
+               enddo
+            endif
             if (he_diffusion) then
                write(*,'(A,ES11.4,A,ES11.4,A)')                           &
                   ' (load_IC) He_diffusion: the diffused He/H profile of'//&

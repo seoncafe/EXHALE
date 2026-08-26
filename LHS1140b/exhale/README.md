@@ -132,3 +132,162 @@ ceiling in all three (final drift 4.7e-2, 5.2e-2, 2.2e-2, dominated by the
 near-base cells), so these are not composition-converged to the loop's own
 1e-3; and the equivalent-width crossings quoted above are from the
 diffusion-off cases and were not recomputed.
+
+## The eddy-diffusion scan (2026-08-25)
+
+`heh0p55_diff_kzz1e6` ... `heh0p55_diff_kzz1e11` repeat `heh0p55_diff_ctrl`
+with `He_Kzz` set to 1e6 through 1e11 cm^2/s and nothing else changed. The
+question they answer is which eddy coefficient this planet needs: with
+`He_Kzz` at its default 0 the homopause of a 226 K, `g = 1837 cm/s^2` column
+sits below the 1 microbar wind base, helium is gone by 1.05 R_p and the
+He 10830 line goes with it. The proposal built on these runs, with the
+literature at 1 microbar beside them, is `../kzz_decision.md`; the survey it
+rests on is `../kzz_literature.md`; the design memo carries a summary in
+`../../docs/binary_diffusion_design.md` section 9.4.
+
+Read the table with `./kzz_scan_table.py` (no arguments = every case). It
+reports the solver outcome, the homopause radius where the run's own `D_eff`
+equals its `K_zz`, `(He/H)/HeH` on a fixed radius list, `log10 Mdot`, and the
+He 10830 red depth and equivalent width, all out of the run directories.
+
+Two things about how the cases were built, both in the scripts:
+
+- `run_kzz_case.sh <tag> <Kzz>` builds a case from the control and solves it;
+  `continue_kzz_case.sh <tag> [n]` repeats the invocation until the
+  composition drift stops moving; `ladder_kzz.sh <seed> <tag> <Kzz> [n]`
+  restarts a case from the case one decade below it, which is what the rows
+  at 1e8 and above needed -- from the `K_zz = 0` control the wind solver's
+  line search stalls and the composition outer loop stops on its
+  solver-failure guard after one pass. The stalled first attempts are kept in
+  each case's `attempt_seed_ctrl/`.
+- The rows at 1e8 and above also state a looser `Resid tol` (3.0e-3, and
+  5.0e-3 at 1e9): on this wind JFNK settles at `||R||` of 2.7e-3 to 4.7e-3
+  rather than the 1.0e-3 the control reaches. 2.0e-2 was tried and rejected
+  -- there the solver stops responding to the eddy term at all. Every row
+  ends `info = 0` with composition drift under 1.3e-3, and each row's
+  achieved `||R||` is in the table.
+
+## The composition scan under diffusion (2026-08-25)
+
+`He_Kzz = 1.0e9` was adopted for this planet on 2026-08-25
+(`../kzz_decision.md` section 0), so the composition had to be rescanned:
+`heh1_diff_kzz1e9`, `heh2_diff_kzz1e9`, `heh2p13_diff_kzz1e9` and
+`heh4_diff_kzz1e9` join `heh0p55_diff_kzz1e9` and differ from it only in the
+`He/H number ratio` line. The He 10830 equivalent width crosses the measured
+1.108 +/- 0.030 %A at **He/H = 2.09**, bracketed by the runs at 2.00 and
+2.13, against 0.55 with diffusion off. Record: `../kzz_decision.md` section 6.
+
+- `run_heh_diff_case.sh <seed> <tag> <He/H> [n]` builds and solves one point,
+  restarting from the seed case named; `KZZ` and `RESID` override the
+  defaults 1.0e9 and 5.0e-3. No case needed the `K_zz` ladder -- seeded from
+  a diffusion-off solution of the same composition, each reached `info = 0`
+  in its first pass-set.
+- `./heh_diff_scan_table.py [0|1e5|1e6|1e7|1e8|1e9|1e10|1e11|flat|<case>...]`
+  prints the table: it
+  reuses the readers of `kzz_scan_table.py`, takes He/H and `He_Kzz` from
+  each case's `input.inp` instead of assuming them, reports the full
+  He 10830 metric set, and solves for the equivalent-width crossing by
+  Brent's method on a log-log interpolation of the scanned points. No
+  argument = the adopted 1e9 scan; `flat` is the fixed-composition probe
+  below, whose crossing solve is skipped because it holds a single He/H.
+
+## The same scan at the two alternative eddy coefficients (2026-08-25)
+
+The composition scan above was repeated at the 1e8 and 1e10 alternatives of
+`../kzz_decision.md` section 5, so the inferred composition now carries a
+`K_zz` bracket. Nine new cases: `heh2p7_diff_kzz1e8`, `heh3_diff_kzz1e8`,
+`heh3p5_diff_kzz1e8`, `heh4_diff_kzz1e8`, `heh10_diff_kzz1e8`, and
+`heh1_diff_kzz1e10`, `heh1p4_diff_kzz1e10`, `heh1p5_diff_kzz1e10`,
+`heh1p6_diff_kzz1e10`. Same `run_heh_diff_case.sh` with `KZZ` overridden,
+same `Resid tol: 5.0e-3`; all reached `info = 0` with composition drift under
+1.0e-3 in their first pass-set, and none needed the `K_zz` ladder. Seeds and
+achieved `||R||` per case: `../kzz_decision.md` section 6.1.
+
+The measured 1.108 +/- 0.030 %A is crossed at **He/H = 2.87 at `K_zz` = 1e8,
+2.09 at 1e9 and 1.54 at 1e10** -- a shallow, nearly power-law degeneracy,
+`d log(He/H)/d log K_zz = -0.136`. The crossing at 1e8 is reached well before
+the line saturates: the equivalent width is still rising with a local slope
+near 0.73 there.
+
+`heh10_diff_kzz1e8` is kept for the record but is **not usable as a scan
+point**; `heh_diff_scan_table.py` lists it in the table but excludes it from
+the crossing fit through `EXCLUDE_FROM_CROSSING`. At He/H = 10
+the equilibrium solution develops a sharp hydrogen ionization front near
+5.5 R_p; every cell above it trips the advection correction's hydrogen
+Damkohler gate (116 of 503 cells kept at equilibrium against 13-32 elsewhere),
+and since that gate controls the whole species vector it also freezes the much
+slower He 2^3S population, leaving an order-of-magnitude step in the `_adv`
+metastable profile that the transit synthesis then reads. Written up in
+`../kzz_decision.md` section 6.2. Fixed since, in
+`../../docs/Update_EXHALE.md` section 72: the gate now uses the slowest
+relaxation rate of the solved species vector. The stored files of that case
+still carry the old gate and it stays outside the crossing fit.
+
+## Every decade from `K_zz` = 0 to 1e11 (2026-08-26)
+
+The ladder was carried down to `K_zz` = 0 and up to 1e11 by the same route.
+Because the operator adds `K_zz` to the molecular coefficient, and these
+He-rich solutions carry `D_eff` = 1.24-1.32e6 cm^2/s at the base, the low
+decades were first probed at a **fixed** reservoir He/H = 5 -- one wind
+solved at `He_Kzz` = 0, 1e1, 1e2, 1e3, 1e4, 1e5, 1e6 (`heh5_diff_kzz0`
+through `heh5_diff_kzz1e6`) -- rather than rescanned in composition. The red
+EW moves from the `K_zz` = 0 value by 0.00002, 0.0002, 0.002, 0.005, 0.18 and
+1.76 times the 0.030 %A measurement error, so **`K_zz` <= 1e4 is not
+distinguishable from `K_zz` = 0 by this line** and only 1e6 upward is.
+
+The crossing was then bracketed at `K_zz` = 0 (`heh4p5_diff_kzz0` ...
+`heh5_diff_kzz0`), 1e5 (`heh4p5_diff_kzz1e5` ... `heh5_diff_kzz1e5`), 1e6
+(`heh2_diff_kzz1e6`, `heh4p3`, `heh4p4`, `heh4p7`, `heh5`, `heh10`), 1e7
+(`heh3p4_diff_kzz1e7` ... `heh4p2_diff_kzz1e7`) and 1e11
+(`heh1_diff_kzz1e11` ... `heh1p5_diff_kzz1e11`). All reached `info = 0` with
+composition drift under 1.0e-3 in their first pass-set; none needed the
+`K_zz` ladder, and no crossing runs into line saturation (at 1e6 the EW is
+still climbing at He/H = 10). Crossings: **4.68 at `K_zz` <= 1e5, 4.45 at
+1e6, 3.78 at 1e7, 2.87 at 1e8, 2.09 at 1e9, 1.54 at 1e10, 1.11 at 1e11**,
+against 0.55 with the operator off. The `-0.136` power law is the 1e8-1e11
+behaviour only; below 1e7 the curve rolls over onto the `K_zz` = 0 plateau.
+Full tables, seeds and achieved `||R||`: `../kzz_decision.md` section 6.1;
+figure: `../../docs/figures/lhs1140b_heh_vs_kzz.pdf`.
+
+## Re-post-processed under the slowest-species Damkohler gate (2026-08-26)
+
+Every diffusion-off case in this directory -- `solar`, `heh0p25`, `heh0p5`,
+`heh0p55`, `heh0p6`, `heh0p7`, `heh1`, `heh10`, `heh100`, `heh1000`,
+`heh10000` and the seven `_gj699` companions -- was re-post-processed with
+the binary that forms the advection gate from the slowest relaxing population
+rather than from hydrogen alone (`docs/Update_EXHALE.md` section 72). The
+winds were **not** re-solved: each case's JFNK solution of record,
+`output/*_IC.txt`, was left untouched and read as the input of a single
+`Do only PP: True` pass, followed by `EXHALE_transit.py` in both the nominal
+and the `EXHALE_TRANSIT_TURB=1` (`tpm_turb/`) configuration. Everything the
+pass overwrote is preserved beside it in each case's `pre_gate72_adv/`,
+together with the `input.inp` it was produced with.
+
+Five cases were affected, all of them helium-dominated: `heh10`, `heh100`,
+`heh1000`, `heh10000` and `heh1000_gj699`. Their red-pair depth and
+equivalent width fall by 89-93%, e.g. `heh10` from 75.97% and 21.53 %A to
+7.42% and 2.270 %A. The count of cells whose `_adv` metastable density is
+still exactly its equilibrium value falls from 173-437 of 504 to 13-22,
+and the He-rich end of the equivalent-width curve no longer stands an
+order of magnitude above the He/H = 1 case.
+
+The other thirteen cases move by at most 0.06% in depth and equivalent
+width, and their equilibrium-valued cell counts do not move at all (44 and
+45 of 504 for `heh0p55` and `solar`, before and after). That residual is a
+binary-version drift in the equilibrium solve itself (<= 4e-4 relative,
+dating from the ghost-cell primitive conversion of section 66 and the
+changes after it, all of which postdate these outputs), not the gate. The
+equivalent-width crossing does not move: He/H = 0.550 (0.541 with
+turbulence) on the GJ 1132 proxy and 0.060 on the GJ 699 one, unchanged,
+because both are interpolated inside He/H <= 1 where nothing changed.
+
+One artifact survives the fix. In `heh100` the corrected `_adv` metastable
+density jumps from 4.4e2 to 3.0e6 cm^-3 across r = 1.058 -> 1.059 R_p and
+returns to 5.3e3 at 1.068 R_p -- a 3.8 dex step, the largest in any case
+here. It sits on the hydrogen ionization front (`x_HI` collapses from
+3.5e8 to 2.5e-74 cm^-3 over the same cell) where the base velocity is
+still sign-changing at +-1e2 cm/s, so it is the breathing base rather than
+the gate. The shell is 0.008 R_p thick against a stellar radius of
+6.8 R_p, so even fully opaque it can darken at most 0.04% of the disk
+against the case's 5.13% red depth; the other four affected cases keep
+their largest adjacent-cell step under 0.16 dex.

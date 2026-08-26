@@ -6468,3 +6468,534 @@ rather than anything the diffusion introduced.
 5/5 byte-identical -- no regression case turns `He_diffusion` on, and the
 `he_diffusion` guard at the top of the operator means the flag-off path never
 enters any of this.
+
+## 71. The friction the ionized wind actually has: stage-resolved binary diffusion (2026-08-25)
+
+Element diffusion used one coefficient over the whole domain, the neutral
+Banks & Kockarts hard sphere. That is the wrong friction above the
+ionization front and it is wrong in the direction that matters: a helium or
+metal *ion* moving through a proton gas is held by Coulomb collisions, whose
+momentum-transfer cross section at `T ~ 1e4 K` is `~1e-12 cm^2` against the
+`~1e-15 cm^2` of a hard sphere. With a neutral coefficient everywhere the
+solver let helium and every metal keep settling through the ionized wind,
+and once the `f_X <= f_X(base)` limiter went away (section 70) nothing
+stopped them: on the HD 209458 b `Kzz = 1e9` wind iron and calcium reached
+*zero* by 1.1 R_p and magnesium 2.5% of its base ratio by 4 R_p.
+
+Koskinen et al. (2013, section 2.1) solve the same Chapman & Cowling
+equation with collision terms that "account for neutral-neutral, resonant
+and non-resonant ion-neutral, and Coulomb collisions", and report (their
+section 3.2.2) that Coulomb collisions "are much more efficient in
+preventing diffusive separation than collisions with neutral H."
+
+This is a correction to the physics, not an option: there is no input key
+for it.
+
+### What the coefficient is now
+
+Each element is resolved into its ionization stages and the friction is
+built pair by pair, every pair being the Chapman-Enskog first approximation
+`D = 3 k T/(16 n mu Omega^(1,1))` evaluated with the cross section that pair
+actually has (`binary_element_diffusion.f90`):
+
+| pair | routine | coefficient | scaling |
+|---|---|---|---|
+| neutral-neutral | `hard_sphere_pair_diffusion` | `1.52e18 (1/A_s+1/A_t)^(1/2) T^(1/2)/n` | `T^(1/2)/n` |
+| ion-neutral, non-resonant | `ion_neutral_pair_diffusion` | `1/D = 1/D_pol + 1/D_hs`, `D_pol = k T/(2.21 pi e n (alpha_n mu)^(1/2))` | `T/n` then `T^(1/2)/n` |
+| ion-ion | `coulomb_pair_diffusion` | `3 (kT)^(5/2)/(4 (2 pi mu)^(1/2) n (Z_s Z_t e^2)^2 ln Lambda)` | `T^(5/2)/n` |
+
+and the element-element coefficient is the stage-fraction harmonic sum
+(frictions add; Blanc's law across stages)
+
+```
+1/D_eff = sum_{s in element A} sum_{t in element B} y_s y_t / D_st .
+```
+
+Resonant charge exchange `H+ + H` is deliberately absent: both partners
+carry the same element, and a binary diffusion coefficient is driven by the
+friction *between* the two elements, so every ion-neutral pair that appears
+is non-resonant. `HeH+` carries both elements and stays out of both carrier
+lists, as it already was out of the mean charges.
+
+**The ion-neutral pair carries two channels.** The polarization (Langevin)
+coefficient is the long-range limit: it keeps the induced-dipole attraction
+and no repulsive core, so its friction falls as `T^-1` where a rigid core
+would hold it at `T^-1/2`. Taken alone it would make an ion-neutral pair
+*more* mobile than a neutral-neutral one of the same masses above ~1.5e3 K,
+which is unphysical -- opening a second channel cannot make a pair more
+mobile. The two are momentum-transfer cross sections of the same encounter,
+so to first order their `Q^(1)` add, hence their collision integrals add,
+hence their frictions add; and since `D = 3kT/(16 n mu Omega^(1,1))` is
+linear in `1/Omega`, adding frictions is adding inverse coefficients,
+`1/D_in = 1/D_pol + 1/D_hs`. That is the same rule the stage mixture uses.
+Both limits come out exactly: `D_in -> D_pol` where the polarization channel
+dominates and `-> D_hs` where the core does, crossing at **1504 K** for an
+H/He pair. At the 1e4 K of the transition layer `D_pol` is 2.6-4.7 times
+`D_hs` and `D_in` sits at 0.82 of `D_hs`, i.e. 0.18-0.28 of the
+polarization value alone.
+
+**Sources.** The hard-sphere form is the one already in the code
+(Banks & Kockarts 1973). The polarization constant `2.21 pi` is the one
+behind the non-resonant ion-neutral collision frequency of Schunk & Nagy
+(*Ionospheres*, eq. 4.88) and the Coulomb coefficient is the standard
+Chapman-Enskog result (Paquette et al. 1986; Schunk & Nagy eq. 4.142 give
+the equivalent collision frequency). Neither textbook is in `references/`,
+so **both numerical constants were re-derived from the Chapman-Enskog
+collision integral rather than copied**, and the derivation is written into
+the comment beside each routine. The check that the chain is consistent is
+that the rigid-sphere collision integral put through the same
+Chapman-Enskog expression returns the Banks & Kockarts prefactor exactly,
+with a collision diameter of 2.7 Angstrom.
+
+Polarizabilities are the recommended static dipole values of
+Schwerdtfeger & Nagle (2019), in atomic units, with `alpha(H) = 4.5 a_0^3`
+the exact nonrelativistic ground-state value; H and He come out at 0.667 and
+0.205 Angstrom^3, the values Schunk & Nagy tabulate for aeronomy.
+
+**Validity caveat, recorded at the coefficient.** The polarization limit
+keeps the induced-dipole attraction and no repulsive core, so its friction
+falls as `T^-1` where a rigid core would hold it at `T^-1/2`. It is the
+smaller of the two coefficients (stronger friction) below ~1.5e3 K and the
+larger above -- by 2.6 to 4.7 at 1e4 K, where the true coefficient is the
+smaller because the core contribution adds to the collision integral. The
+consequence is confined to the partially ionized transition layer; both
+asymptotic limits are exact.
+
+### Two defects fixed with it
+
+- **The trace-metal loop assumed the hydrogen-plasma ambipolar field.** It
+  built its settling coefficient from `dm_eff = (A_X - 1) - 0.5 (Zbar_X -
+  Zbar_1)`, the constant `eE = m_H g/2` of a pure proton plasma -- the same
+  assumption decision D3 removed for helium at M2, still standing here. The
+  loop now reads the field `settling_coefficient` computes from the electron
+  pressure gradient, so there is one ambipolar field in the module and no
+  second, cruder copy. With `He_ambipolar` off the field is zero and the
+  loop reduces to the pure-gravity form as before.
+- The metal loop also used a single hard-sphere `X`-in-H coefficient; it now
+  runs the same stage mixture, metal stages against hydrogen carriers.
+
+### Tests
+
+`src/tests/diffusion_tests.f90` gains **T12**, the three limits of `D_eff`
+on a prescribed isothermal column at 1e4 K, each against a closed form
+written out independently in the test rather than against the module's own
+pair routines: all neutral reproduces Banks & Kockarts to `1.2e-16`
+relative, fully ionized reproduces the He++/H+ Coulomb coefficient to
+round-off, half ionized reproduces the four-term Blanc average (whose two
+ion-neutral terms are themselves the combined form) to round-off. T12d adds
+the two temperature limits of that combined form: within `2.5e-2` of the
+polarization channel at 1 K, within `1.2e-3` of the hard sphere at 1e9 K,
+and never above either. `./diffusion_tests.x`: **21 passed, 0 failed**.
+`make check`: **5/5 byte-identical** -- the operator is entered only with
+`He_diffusion` on and no regression case sets it.
+
+`EXHALE_DIFFUSION_CHECK=1` adds `D_eff`, the neutral coefficient of the same
+cell, their ratio and the dominant stage pair to
+`diffusion_faceflux.txt`.
+
+### Measured effect
+
+The full tables are `docs/binary_diffusion_design.md` section 9.3. In short,
+on two winds restarted from the same converged state and Newton-finished:
+
+- `D_eff/D_neutral` is 1.00 in the neutral base, 0.16 at the front
+  (1.2 R_p), `9.6e-3` at 1.5 R_p and `7.6e-5` at 4 R_p on HD 209458 b -- the
+  suppression *grows* outward because the Coulomb coefficient carries
+  `T^(5/2)` against the hard sphere's `T^(1/2)`.
+- On HD 209458 b every metal mixing ratio becomes **flat above the front**,
+  which is what a steady wind must do once diffusion loses to advection.
+  Iron goes from 0.000 to 0.107 of its base ratio and calcium from 0.000 to
+  0.019 -- the difference between having and not having Ca II H&K and Fe II
+  in the transmission spectrum. `log10 Mdot` moves 10.0106 -> 10.0561
+  (+0.046 dex) and the He 10830 red depth 8.20% -> 7.85%. The control is a
+  run of the same configuration from the same converged state with a binary
+  built from this commit's parent, so the friction is the only difference.
+- The ion-neutral channel decides how much of that survives. Between 1.0 and
+  1.2 R_p hydrogen and helium are still neutral (measured `x(H+)` = 0.000,
+  0.004, 0.072 at 1.05, 1.10, 1.20 R_p), so the combined form barely touches
+  the *helium* profile -- but the low-ionization-potential metals are already
+  ionized there (Fe 0.999, Mg 0.943, Ca 0.269, C 0.329, Na 0.053, O 0.003
+  ionized at 1.10 R_p), and going from the polarization channel alone to the
+  combined form raises their frozen plateaus in exactly that order: Fe x3.8,
+  Ca x2.3, Mg x1.23, C x1.07, Na x1.00, O x0.97.
+- On LHS 1140 b at `He/H = 0.55` nothing moves: `log10 Mdot` 7.6065 both,
+  the temperature identical to 9e-16 relative, He 10830 within 0.2%, and the
+  composition relaxation exits on its first pass. That wind separates its helium inside the first cell above the base,
+  where the gas is neutral and `D_eff = D_neutral` by construction, and
+  above that there is no helium left for the Coulomb suppression to hold.
+
+---
+
+## 72. The advection correction is gated on the slowest species, not on hydrogen (2026-08-25)
+
+`post_process_adv.f90` replaces the local ionization balance of a cell by the
+steady advection-ionization ODE, and skips cells where that replacement can
+carry no information. One of the three skip conditions is a Damkohler number,
+
+```
+Da = (dr/v) * (P_HI + alpha_HII n_e) > 100   ->   keep the equilibrium state
+```
+
+built from the **hydrogen** ionization/recombination rate. The correction it
+gates, however, carries the whole solved species vector -- H I/H II,
+He I/He II/He III and, when `Include He23S?` is on, the He 2^3S metastable --
+so one species' clock decided the fate of all of them. The metastable relaxes
+orders of magnitude more slowly than hydrogen (`A31 = 1.272e-4 s^-1` alone
+sets a 2.2-hour floor, against sub-second photoionization for H in an
+irradiated wind), so wherever hydrogen was equilibrated and the metastable was
+not, the gate froze `n(2^3S)` at its equilibrium value in cells where it is in
+fact advected.
+
+That is physically wrong independently of how often it bites, and it bit
+visibly on the LHS 1140 b run `heh10_diff_kzz1e8` (He/H = 10), where the
+equilibrium solution has a sharp hydrogen ionization front: 115 of 503 cells
+above the front kept the equilibrium ionization, and the `_adv` metastable
+profile stepped from 5.15 to 223 cm^-3 across the single cell boundary
+r = 6.083 -> 6.172 R_p (1.64 dex). The transit synthesis reads the `_adv`
+profiles, so the run reported a red-pair depth of 83.7% and EW = 23.4 %A -- a
+number set by the discontinuity. The limitation was recorded in
+`LHS1140b/kzz_decision.md` section 6.2 and the run was excluded from that
+memo's crossing fit.
+
+### What the gate is now
+
+The advection systems (`adv_implicit_H`, `adv_implicit_HeH`,
+`adv_implicit_HeH_TR`) solve the whole H/He vector at once, so there is no
+gate to be had one row at a time: the honest statement is that a cell may be pinned to
+equilibrium only when **every** population it solves is equilibrated. The
+Damkohler number is therefore formed with the **slowest** relaxation rate of
+the solved set, each rate being the total rate at which that population is
+destroyed and re-formed:
+
+| population | relaxation rate `nu` |
+|---|---|
+| H I / H II | `P_HI + (a_ion_HI + alpha_HII) n_e` |
+| He I / He II | `P_HeI + (a_ion_HeI + alpha_HeII + alpha_HeI23S) n_e` |
+| He II / He III | `P_HeII + (a_ion_HeII + alpha_HeIII) n_e` |
+| He(2^3S) | `A31 + P_HeITR + (q31a + q31b + a_ion_HeITR) n_e + Q31 n_HI` |
+
+`Da = (dr/v) * min(nu)`, compared with the same threshold of 100. The
+He(2^3S) row is term by term the loss side of `fvec(4)` of
+`adv_implicit_HeH_TR` -- radiative decay, photoionization, collisional
+de-excitation to 2^1S and 2^1P, electron-impact ionization, and Penning
+ionization on neutral H -- and every coefficient is read from the arrays
+`HeITR_coeffs` and `eval_cool` already fill in the same routine. No rate is
+redefined. The He I row now also carries `rcheiTR`, because with the triplet
+on `HeITR_coeffs` overwrites `rcheiiB` with the singlet channel alone and the
+He I row of the residuals adds the two. The two other skip conditions --
+inflow `v <= 0` on either face, and `x_HII,eq < 1e-6` -- are untouched, so the
+breathing-base guard behaves exactly as before.
+
+The hydrogen rate now includes collisional ionization `a_ion_HI n_e`, which
+the old expression omitted, for consistency with the three rows beside it. It
+can only raise `Da_H`, and `Da_H` is no longer the quantity that decides
+anything on its own.
+
+### Measured
+
+Diagnostic build dumping `Da` per cell, LHS 1140 b `heh10_diff_kzz1e8`,
+post-processing pass 10:
+
+| r [R_p] | `Da_H`, H-only gate | `Da_H`, new binary | `Da` of the slowest species |
+|---|---|---|---|
+| 6.083 | 6.1e-4 | 6.1e-4 | 6.1e-4 |
+| 6.172 | 3.2e+2 | 6.0e-4 | 2.8e-3 (H-only run), 6.0e-4 (new) |
+| 6.946 | 7.8e+5 | 4.8e-4 | 2.3e-3 / 4.8e-4 |
+| 7.602 | 4.6e+7 | 1.1e+2 | 2.1e-3 / 1.7e-3 |
+| 7.956 | 1.7e+8 | 7.2e+2 | 1.9e-3 / 1.6e-3 |
+
+The metastable Damkohler number is `~2e-3` throughout that region: the
+He 2^3S population there is advection-dominated by five orders of magnitude,
+in exactly the cells the hydrogen gate pinned to equilibrium. The two `Da_H`
+columns differ because the old gate is self-reinforcing -- a pinned cell holds
+the fully ionized equilibrium state, whose `n_e` and `P_HI` then keep `Da_H`
+above the threshold for the cell above it.
+
+Effect on that run (both binaries run from the same converged state with
+`Do only PP: True`, in scratch copies; the case directory itself was not
+re-run):
+
+| quantity | H-only gate | slowest-species gate |
+|---|---|---|
+| cells kept at equilibrium | 115 of 503 | 15 of 503 |
+| outermost such cell | 30.0 R_p | 1.0034 R_p |
+| max `\|dlog10 n(2^3S)\|` between adjacent cells, r > 1.05 | 1.636 (5.15 -> 223 at 6.13) | 0.386 (4.99 -> 12.1 at 7.43) |
+| He 10830 red depth [%] | 83.69 | 21.52 |
+| red EW [%A] | 23.39 | 5.69 |
+| `log10 Mdot` [g/s] | 7.76 | 7.76 (the wind solution is not re-run) |
+
+The remaining 15 pinned cells all sit at `r <= 1.0034 R_p`, the shielded base
+where conditions (i) and (iii) are meant to act. The largest remaining
+variation in the metastable profile, 0.386 dex over r = 7.38 -> 7.49 R_p, is
+not a switch: it is where the advected hydrogen finally ionizes (`x_HI` falls
+from 0.80 to 5e-4 over three cells as `Da_H` crosses 1) and the Penning loss
+`Q31 n_HI` on the metastable switches off with it. The `_adv` profiles are
+continuous across it, and `hybrd1` returns `info = 1` in every cell of the
+region, including those with `Da_H ~ 1e5`.
+
+The corrected run's EW of 5.69 %A is still above what the He/H = 2.7-4.0
+sequence of `kzz_decision.md` section 6.1 extrapolates (~2.8 %A at He/H = 10
+on that sequence's local log-log slope of 0.73), so the He-rich end appears to
+be leaving the regime that sequence describes for its own reasons; what the
+fix removes is the discontinuity, not the run's distance from the trend.
+
+### Effect on existing results
+
+Three reference cases were re-post-processed with both binaries in scratch
+copies -- `LHS1140b/exhale/heh0p55` (diffusion off), `heh2p13_diff_kzz1e9`
+(one of the crossing brackets), and the H-rich standard
+`backup/phase_d_baseline/new_kzz1e9_d3b` (HD 209458 b, `Kzz = 1e9`, metals
+on). In all three, `Hydro_ioniz_adv.txt` and `Ion_species_adv.txt` come out
+**byte-identical** to the H-only-gate binary, and the number of pinned cells
+is unchanged (42, 30 and 153 respectively): in those runs the pinned cells are
+held by the inflow or `x_HII,eq` condition, which the change does not touch,
+not by the Damkohler condition. He 10830 red depth and EW therefore move by
+0.00%, and no stored result needs regenerating.
+
+`make check` passes 5/5 -- as it must, since the goldens compare
+`Hydro_ioniz.txt` and `Ion_species.txt`, which the post-process never writes;
+running it is the check that the change stays inside the post-process.
+
+### Re-post-processing the stored LHS 1140 b scans (2026-08-26)
+
+The three reference cases above were the wrong sample for the He-rich end.
+All eighteen diffusion-off cases of `LHS1140b/exhale/` -- the eleven of the
+GJ 1132 composition scan and the seven `_gj699` companions -- were therefore
+re-post-processed in place, each from its own untouched JFNK solution of
+record (`output/*_IC.txt`) through one `Do only PP: True` pass and both
+transit syntheses; the pre-fix products are kept beside each case in
+`pre_gate72_adv/`. Five cases changed, all helium-dominated: `heh10`,
+`heh100`, `heh1000`, `heh10000` and `heh1000_gj699` lose 89-93% of their
+red-pair depth and equivalent width (`heh10` 75.97% and 21.53 %A to 7.42%
+and 2.270 %A; `heh1000_gj699` 105.1% and 35.87 %A to 9.53% and 3.479 %A,
+the fitted depth above 100% being the pre-fix saturated trough). The count
+of `_adv` cells still holding exactly the equilibrium metastable density
+falls from 173-437 of 504 to 13-22 in those five. The remaining thirteen
+move by at most 0.06% and keep their cell counts exactly, so the earlier
+sample's conclusion holds wherever the hydrogen front is not sharp; the
+0.06% is a drift in the equilibrium solve between the binary that wrote
+those outputs (2026-08-24) and this one, at most `4e-4` relative, not the
+gate.
+
+Nothing the memo `docs/lhs1140b_exhale_vs_pwinds.tex` concludes moves: the
+equivalent-width crossing stays at He/H = 0.550 (0.541 with turbulence) on
+the GJ 1132 proxy and 0.060 on the GJ 699 one, because both are
+interpolated inside He/H <= 1, and so does the matched broadening kernel,
+22.30 km/s. What moves is the He-rich end of the two composition tables,
+the bump table's He/H = 1000 rows, and the figures built from them.
+`heh10_diff_kzz1e6`, the He-rich bracket of the `K_zz` crossing table, was
+checked in a scratch copy and is unchanged, so `tab:kzzcross` stands as
+published; `heh10_diff_kzz1e8` was already excluded from it.
+
+One artifact is not the gate's and survives it: `heh100` still steps 3.8
+dex in `n(2^3S)` across a single cell at r = 1.059 R_p, on the hydrogen
+ionization front, where the base velocity is still sign-changing. The shell
+is thin enough (0.008 R_p against a 6.8 R_p stellar radius) that it can
+account for at most 0.04% of that case's 5.13% red depth.
+
+## 73. Milestone M4: element diffusion through the molecular region, and the end of the molecular / `He_diffusion` exclusion (2026-08-26)
+
+`input_read.f90` refused `Molecular chemistry: True` together with
+`He_diffusion: True` -- an `error stop` that
+`docs/binary_diffusion_design.md` section 5 put there deliberately, to be
+lifted by a validated closure and not by deleting the check. The closure is
+now built and the check is gone.
+
+### What the molecular region changes, and what it does not
+
+Equation (1) of the memo transports **elements**, and the chemistry moves
+hydrogen between H, H+, H2, H2+ and H3+ without changing the hydrogen
+element's mass, so the transport equation is the same above and below the
+molecular front. What the species set changes is the closure: helium's
+collision partners are then a mixture of carriers, and gravity, the ambipolar
+field and the friction all act on **particles**, not on nuclei. Four things
+follow, three of them already anticipated by section 5 and one not.
+
+1. **Friction: Blanc's law over the carriers.** The stage sum
+   `1/D_eff = sum_s sum_t y_s y_t/D_st` of section 2.6 already ran over the
+   carrier lists `{HI, HII, H2, H2+, H3+}` and `{HeI, HeII, HeIII, HeTR}`,
+   each carrier with its own mass, charge and polarizability (H2 enters at
+   mass 2 and with `alpha(H2) = 5.315 a_0^3 = 0.787 A^3`, the Schwerdtfeger &
+   Nagle 2019 recommended value, alongside the H and He entries that were
+   already there). It reduces to `D(He,H)` in the atomic region and to
+   `D(He,H2)` in a fully molecular one.
+2. **Forces per carrier.** `G` now uses the mean carrier mass
+   `m_c1 = m_1 * mcar` and the mean carrier charge per carrier, where `mcar`
+   is the hydrogen nuclei bound into one collision partner. In the atomic
+   region `mcar = 1` and this is the old nucleus form exactly; in an H2 base
+   the relative settling mass is `4 - 2 = 2` instead of `4 - 1 = 3`. The
+   trace-metal loop settles a metal against the same mean carrier mass.
+3. **The carrier density in the pair coefficients.** `n` in the
+   Chapman-Enskog `D_st = 3kT/(16 n mu Omega^(1,1))` is a density of
+   *colliding particles*. It was the nucleus density; it is now the carrier
+   density, which is the same number wherever the hydrogen is atomic and
+   smaller below a molecular front.
+4. **The mole-fraction driver the chemistry carries** -- the term section 5
+   did not state, and the one that makes the other three a force rather than
+   bookkeeping. The transported variable is the mass fraction `X`; the
+   Chapman-Cowling driving force is the gradient of the **mole** fraction
+   `x` among the carriers. With `psi = n_1c/n_H` (1 atomic, 1/2 fully H2),
+
+   ```
+   logit(x) = logit(X) + ln( m_1/(m_He psi) ),
+   d logit(x)/dr = d logit(X)/dr - dln(psi)/dr
+   ```
+
+   The gradient coefficient is untouched -- `A = (m_1 m_He n/mbar) D (dx/dX)`
+   collapses to `rho D` with the carriers exactly as it does with the nuclei,
+   for any `psi`, the two carrier factors cancelling -- so the whole content
+   of the term is one addition to the settling coefficient,
+   `G -> G - dln(psi)/dr`. The discretization, the Peclet hybrid and the
+   M-matrix argument are unchanged, and the term is identically zero wherever
+   the hydrogen is atomic.
+
+   It is a real driver: where hydrogen turns molecular going down, each
+   nucleus is spread over fewer collision partners, helium's mole fraction
+   rises, and helium diffuses down that gradient -- outward across the
+   molecular front -- even at a uniform mass fraction. Its size is set by the
+   sharpness of the front, and across a front where `psi` runs 1/2 -> 1 it is
+   a factor 2 in the He/H nucleus ratio (test T7d below).
+
+The eddy term carries none of this: eddy mixing transports the mixture as a
+whole and has no preferred species, so it acts on `dX/dr` alone.
+
+### T7, and the gate it closes
+
+Four checks in `src/tests/diffusion_tests.f90`, each against a closed form
+typed out in the test rather than read back from the module:
+
+| id | check | result |
+|---|---|---|
+| T7a | forced atomic column: `D_eff` vs `D(He,H)` | 1.13e-16 relative |
+| T7b | forced fully molecular column: `D_eff` vs `D(He,H2)` | 1.57e-16 relative |
+| T7c | prescribed molecular column, three constant `K_zz`: the homopause read off the relaxed profile vs the radius where `D_eff = K_zz` | 3.4e-3 R_p, about half a cell, at all three |
+| T7d | same column with `g = 0`, where `-dln(psi)/dr` is the only driver left | the **mole** fraction levels out to 6.2e-5 while the He/H nucleus ratio moves by 0.999 |
+
+T7c reads the homopause off the profile without assuming where it is: at the
+zero-flux steady state of a motionless column,
+`rho (D + K) dX/dr = -rho X(1-X) D G`, so `-[d logit(X)/dr]/G` is exactly
+`D/(D+K)` and the radius where it passes 1/2 is the radius where `D = K`. The
+three `K_zz` were chosen to put that radius at 1.5, 2.0 and 2.5 R_p, and the
+measured profile put it at 1.4993, 2.0013 and 2.5010.
+
+T7d is the sharpest statement of the closure: with no gravity, no field and no
+eddy, diffusion levels the **mole** fraction of helium among the collision
+partners, not its mass fraction, so a column that is molecular below and
+atomic above ends with an He/H nucleus ratio that differs by the factor `psi`
+across the front and a mole fraction that is flat.
+
+`make diffusion_tests && ./diffusion_tests.x`: **28 passed, 0 failed** (21
+before this change; the four new ones and T7c three times). Rebuilt with
+`-O1 -g -fcheck=bounds,do,mem -ffpe-trap=invalid,zero,overflow` -- the new
+carrier arrays are new array bounds -- the same 28 pass with no runtime
+error.
+
+### The exclusion, and the restart
+
+`input_read.f90` no longer refuses the pair; the paragraph there now says why
+it does not. `docs/input_schema.md`, `README_HOWTO.md` and
+`docs/oxygen_chemistry_new_plan.md` are corrected where they stated the
+exclusion.
+
+`load_IC.f90` refused to restart *any* molecular state whose composition
+differed from the input `He/H`, because `HeH+` carries a nucleus of each
+element and a single rescaling factor cannot set both counts. With
+`He_diffusion` on the only cells rescaled at all are the base and its inner
+ghosts (the column above keeps its diffused split, section 7.4 of the memo),
+so those cells are now projected onto their two element totals the same way
+`binary_element_diffusion` writes back -- `HeH+` by the smaller of the two
+factors, the shortfall deposited into the neutral ground species. Without
+`He_diffusion` the whole column would have to be rescaled and the refusal
+stands.
+
+Found while reading that block and fixed with it: the helium nucleus count
+`load_IC` builds to decide whether a restart file's composition matches the
+input left **`HeTR` out** (`HeI + HeII + HeIII + HeH+`), while the rescaling a
+line below scales `HeTR` like every other helium species. The metastable
+triplet carries a helium nucleus -- `bsp_nHe(HeTR) = 1`, and every other
+element count in the code includes it -- so a restart of a `He23S` state read
+its own He/H slightly low and rescaled by that error. It is now in the count.
+No golden moves: no regression case restarts.
+
+### End to end
+
+`backup/regression/mol_base_handoff` (the hot Uranus, `Molecular chemistry`
++ a `base.inp` handoff) re-run in a scratch copy with `He_diffusion: True`
+added, `EXHALE_MAXSTEPS=12000` as in the regression:
+
+- runs to completion with no NaN and no negative density;
+- the two-component mass closure `m_1 n_H + m_He n_He = rho` holds to
+  **4.4e-16** relative over the whole grid, read back out of
+  `Ion_species.txt` and `Hydro_ioniz.txt`;
+- `log10 Mdot = 10.58`, the same as the diffusion-off case at the same step
+  count;
+- `(He/H)/HeH` stays within 1.3e-3 of the reservoir everywhere.
+
+The flat composition is the physics of this planet, not an inert operator.
+`He_Kzz = 1e9` comes from the case's own `base.inp` and is three decades above
+the `D_eff ~ 8e5 cm^2/s` of the molecular base, so the column is eddy-mixed;
+but the same run repeated with `He_Kzz = 0` and `Kzz_base 0.0` comes out flat
+as well, within 4e-3 of the reservoir, and the reason is in the diagnostic:
+at the base face the diffusive helium flux is `-3.1e-13 g cm^-2 s^-1` against
+an advective `-3.5e-7`, six orders of magnitude smaller. This is a hot Uranus
+losing `10^10.6 g/s`; the wind sweeps the composition along faster than either
+diffusion or settling can separate it. What the run demonstrates is that the
+operator carries the molecular composition without NaN, without a negative
+density and with the element budget closed to round-off -- the separation
+physics itself is exercised by T7 and by the atomic-region cases of sections
+69-71.
+
+That the molecular carriers are the ones being used is visible in
+`diffusion_faceflux.txt` (`EXHALE_DIFFUSION_CHECK=1`) of the same run, which
+names the stage pair carrying most of the friction:
+
+| r [R_p] | dominant pair | relative settling mass | `D_eff/D_neutral` |
+|---|---|---|---|
+| 1.000 | HeI-H2 | 2.0005 | 0.7747 |
+| 1.107 | HeI-H2 | 2.062 | 0.7855 |
+| 1.169 | HeI-H2 | 2.520 | 0.8775 |
+| 1.196 | HeI-HI | 2.923 | 0.9783 |
+| 1.212 | HeI-HI | 3.000 | 0.9999 |
+| 1.691 | HeII-HII | 3.067 | 2.52e-3 |
+
+The relative settling mass runs from 2 to 3 across the molecular front,
+exactly the carrier weight of point 2 above, and `D_eff/D_neutral` from
+`sqrt(0.75/1.25) = 0.7746` -- the He-H2 hard sphere against the He-H one --
+to 1, before the Coulomb suppression of section 71 takes over above the
+ionization front.
+
+### Regression
+
+`make check`: 5/5 byte-identical at the time of the change. The operator is
+entered only with `He_diffusion` on, which no case set then, and every
+molecular quantity added here (carrier lists, mean carrier mass, carrier
+density, `dln(psi)/dr`) collapses onto its nucleus form identically when the
+molecular columns are zero.
+
+### The diffusion regression case (same day)
+
+Byte-identity of the old cases only shows that the operator stays out of the
+way when it is off; nothing in `make check` ran it at all
+(`docs/binary_diffusion_design.md` section 7.5 had been carrying that as an
+open item since the design was written). The sixth default case,
+`backup/regression/mol_diffusion`, closes it. It is `mol_base_handoff` --
+the Tier-2 hot-Uranus gate with molecular chemistry on and its pinned
+`base.inp` copied unchanged -- plus `He_diffusion: True` and
+`He_Kzz: 1.0e9`, run as the same 12000-step relaxation snapshot. One case
+covers the widest path: molecular carriers below the front, the
+stage-resolved pairs through it, the projection back onto `f_sp`, and the
+Coulomb friction of section 71 above the ionization front, which is why this
+gate was chosen over the atomic HD 209458 b run the design had sketched.
+
+The measured effect is the one the face-flux diagnostic above predicts for
+this planet -- present but small (the same hot Uranus, whose wind sweeps the
+composition along faster than diffusion separates it). Against `mol_base_handoff` at the same step count,
+`Hydro_ioniz.txt` and `Ion_species.txt` both differ, while
+
+```
+mol_base_handoff  final: count=12000  du= 2.6292E+00  dtu= 5.7467E-03   log10 Mdot = 10.58
+mol_diffusion     final: count=12000  du= 2.6290E+00  dtu= 5.7474E-03   log10 Mdot = 10.58
+```
+
+so the golden pins the operator's arithmetic, not a large dynamical
+signature. `make check` is 6/6 with the five existing goldens untouched.

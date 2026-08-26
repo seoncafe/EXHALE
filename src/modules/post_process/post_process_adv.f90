@@ -38,7 +38,11 @@
 	!
 	! Da_local_equilibrium: above this Damkohler number the gas relaxes to the
 	! local ionization equilibrium many times over while it crosses the cell,
-	! so the equilibrium solution already solves the advection ODE.
+	! so the equilibrium solution already solves the advection ODE. The number
+	! is formed with the SLOWEST-relaxing species of the solved system (see
+	! post_process_adv): the advection systems solve all H/He populations at
+	! once, so pinning the cell to equilibrium is legitimate only when every
+	! one of them is locally equilibrated.
 	real*8, parameter :: Da_local_equilibrium = 1.0d2
 	! xHII_adv_min: the residuals carry the NEUTRAL fraction and the ion
 	! density is extracted as (1-x_HI)*n_h, so an equilibrium ion fraction
@@ -163,7 +167,10 @@
 	! Validity of the advection correction, cell by cell (filled by the block
 	! just before the ionization loop, where the three conditions are stated).
 	logical, dimension(1-Ng:N+Ng) :: adv_correction_valid
-	real*8  :: Da_ion         ! Damkohler number of the H ionization balance
+	real*8  :: t_cross        ! residence time of the gas in the cell [s]
+	real*8  :: nu_relax       ! relaxation rate of the slowest species [1/s]
+	real*8  :: rec_HeII_tot   ! total He II -> He I recombination coefficient
+	real*8  :: Da_slowest     ! Damkohler number of that species
 	real*8  :: xHII_eq        ! equilibrium H ionized fraction of the cell
 	integer :: n_adv_eq       ! cells left at the equilibrium ionization
 
@@ -362,14 +369,37 @@
 	!        is not the upstream cell when the gas moves inward (the breathing
 	!        base). The residence time dr/v is then negative as well.
 	!
-	!  (ii)  Da = (dr/v)*(P_HI + alpha_HII*n_e) > Da_local_equilibrium --
-	!        PHYSICAL. The Damkohler number compares the time the gas spends in
-	!        the cell with the H ionization/recombination time. Da >> 1 means
-	!        the ionization state relaxes to local equilibrium many times over
-	!        while the gas crosses the cell, so the equilibrium solution IS the
-	!        solution of the ODE and the correction can only add integration
-	!        error. n_e here is the metal-inclusive electron density, the same
-	!        one the equilibrium solve used.
+	!  (ii)  Da = (dr/v)*nu_relax > Da_local_equilibrium -- PHYSICAL. The
+	!        Damkohler number compares the time the gas spends in the cell with
+	!        the relaxation time of the level populations. Da >> 1 means the
+	!        populations relax to local equilibrium many times over while the
+	!        gas crosses the cell, so the equilibrium solution IS the solution
+	!        of the ODE and the correction can only add integration error.
+	!
+	!        nu_relax is the SLOWEST relaxation rate among the species the
+	!        advection system actually solves, each one being the total rate at
+	!        which its own population is destroyed and re-formed:
+	!           H I/H II      : P_HI + (a_ion_HI + alpha_HII)*n_e
+	!           He I/He II    : P_HeI
+	!                           + (a_ion_HeI + alpha_HeII + alpha_HeI23S)*n_e
+	!           He II/He III  : P_HeII + (a_ion_HeII + alpha_HeIII)*n_e
+	!           He(2^3S)      : A31 + P_HeITR
+	!                           + (q31a + q31b + a_ion_HeITR)*n_e + Q31*n_HI
+	!        (the He(2^3S) row is exactly the loss side of fvec(4) of
+	!        adv_implicit_HeH_TR, with the same rate coefficients from
+	!        HeITR_coeffs / eval_cool -- no rate is redefined here.)
+	!
+	!        Taking the minimum is what makes the gate a statement about the
+	!        cell rather than about one species: the systems solve the whole
+	!        H/He vector at once, so a cell may be pinned to equilibrium only
+	!        if EVERY solved population is equilibrated. He(2^3S) relaxes
+	!        orders of magnitude more slowly than H (A31 = 1.27e-4 s^-1 sets
+	!        the floor), so gating the vector on the H rate alone froze the
+	!        metastable at its equilibrium value in cells where it is in fact
+	!        advected -- an order-of-magnitude step in the _adv 2^3S profile
+	!        wherever a sharp H ionization front crossed the threshold.
+	!        n_e here is the metal-inclusive electron density, the same one the
+	!        equilibrium solve used.
 	!
 	!  (iii) x_HII,eq < xHII_adv_min -- NUMERICAL. The residuals carry the
 	!        neutral fraction x_HI and the ion density is extracted as
@@ -392,10 +422,27 @@
 		if (v(j) <= 0.0d0 .or. v(j-1) <= 0.0d0) then
 			adv_correction_valid(j) = .false.
 		else
-			Da_ion  = (r(j) - r(j-1))*R0/(v(j-1)*v0)                       &
-			          *(P_HI(j) + rchiiB(j)*ne(j))
+			t_cross  = (r(j) - r(j-1))*R0/(v(j-1)*v0)
+			nu_relax = P_HI(j) + (a_ion_HI(j) + rchiiB(j))*ne(j)
+			if (thereis_He) then
+				! He II -> He I recombination: with the triplet on, rcheiiB is
+				! the singlet channel alone (HeITR_coeffs overwrites it) and
+				! rcheiTR is the triplet one, exactly as the He I row of the
+				! residuals adds them.
+				rec_HeII_tot = rcheiiB(j)
+				if (thereis_HeITR) rec_HeII_tot = rec_HeII_tot + rcheiTR(j)
+				nu_relax = min(nu_relax,                                    &
+				     P_HeI(j)  + (a_ion_HeI(j)  + rec_HeII_tot)*ne(j),      &
+				     P_HeII(j) + (a_ion_HeII(j) + rcheiiiB(j) )*ne(j))
+				if (thereis_HeITR)                                          &
+					nu_relax = min(nu_relax, A31 + P_HeITR(j)                &
+					     + (q31a(j) + q31b(j) + a_ion_HeITR(j))*ne(j)        &
+					     + Q31(j)*nhi(j))
+			endif
+			Da_slowest = t_cross*nu_relax
 			xHII_eq = nhii_in(j)/max(nhi_in(j) + nhii_in(j), 1.0d-300)
-			if (Da_ion > Da_local_equilibrium .or. xHII_eq < xHII_adv_min) &
+			if (Da_slowest > Da_local_equilibrium .or.                     &
+			    xHII_eq < xHII_adv_min)                                    &
 				adv_correction_valid(j) = .false.
 		endif
 		if (.not. adv_correction_valid(j)) n_adv_eq = n_adv_eq + 1

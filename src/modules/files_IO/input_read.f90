@@ -813,7 +813,7 @@
 		endif
 		! ----- Low-Mach damping vs the explicit stability bound -----
 		! The 2 dr mode decays at 16 eps4 lambda/dr while the marching step is
-		! dt = CFL dr/lambda, so the per-step damping factor is 16 eps4 CFL and
+		! dt = CFL dr/lambda, so the damping factor per step is 16 eps4 CFL and
 		! the explicit update is unstable beyond 1. Checked here, after the
 		! keyword loop, because "CFL:" may appear on either side of this key.
 		if (lowmach_damp_eps .gt. 0.0d0 .and.                            &
@@ -900,14 +900,12 @@
 
    ! molecular chemistry constraints: requires He. Trace metals are solved
    ! together with the molecular network (System_HeH_mol_metals), so the two
-   ! are no longer exclusive; He/H diffusion still is.
+   ! are not exclusive. Neither is He/H diffusion any more: the element
+   ! transport of binary_element_diffusion closes over the molecular carriers
+   ! (Blanc friction, mean carrier mass and charge, mole-fraction driver),
+   ! validated by test T7 of docs/binary_diffusion_design.md section 6.
    if (thereis_mol .and. .not. thereis_He) then
       write(*,*) '(input_read) ERROR: Molecular chemistry needs He/H>0.'
-      error stop 1
-   endif
-   if (thereis_mol .and. he_diffusion) then
-      write(*,*) '(input_read) ERROR: Molecular chemistry + He_diffusion'//&
-                 ' not supported yet.'
       error stop 1
    endif
 

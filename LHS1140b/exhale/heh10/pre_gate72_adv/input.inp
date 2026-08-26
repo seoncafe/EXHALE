@@ -1,0 +1,29 @@
+Planet name: LHS1140b_heh10
+Log10 lower boundary number density [cm^-3]: 13.506
+Planet radius [R_J]: 0.157692
+Planet mass [M_J]: 0.0176220
+Equilibrium temperature [K]: 226.0
+Orbital distance [AU]: 0.0946
+Escape radius [R_p]: 2.00
+He/H number ratio: 10.0
+2D approximate method: Mdot
+Parent star mass [M_sun]: 0.1844
+Spectrum type: Load from file..
+Spectrum file: ../../sed/lhs1140_sed_gj1132_at_b.txt
+Use only EUV? False
+[E_low,E_mid,E_high] = [ 13.60 , 123.98 , 1.24e3 ]
+Log10 of X-ray luminosity [erg/s]: 26.372
+Log10 of EUV luminosity [erg/s]: 26.404
+Grid type: Mixed
+Numerical flux: HLLC
+Reconstruction scheme: PLM
+Include He23S? True
+Load IC? True
+Do only PP: False
+Force start: False
+Domain mode: Spherical
+Outer radius [R_p]: 30.0
+Stellar radius [R_sun]: 0.2159
+Base BC: pressure 1.0
+Valve eps: 1.0e-4
+Resid tol: 1.0e-3

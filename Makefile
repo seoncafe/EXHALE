@@ -155,7 +155,7 @@ vpath %.f90 $(WAE_DIR)
 
 # ---- diffusion unit tests (standalone; not built by `all`) -----------
 # diffusion_tests.x exercises binary_element_diffusion on synthetic columns
-# (acceptance tests T1a/T1b/T3-T6/T9/T10 of
+# (acceptance tests T1a/T1b/T3-T7/T9/T10/T11/T12 of
 # docs/binary_diffusion_design.md).
 # It links only the module and what it uses, so it needs no LAPACK.
 DIFT_SRC := \

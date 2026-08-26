@@ -97,14 +97,24 @@ condition already existed but was gated on `pp_metal_on`, i.e. it was switched
 on and off by the metal-cooling flag; the discretization does not care about
 metals, so the gate is removed.
 
-**(ii) `Da = (dr/v) (P_HI + alpha_HII n_e) > 100` -- physical.** The Damkohler
-number compares the time the gas spends in the cell with the H
-ionization/recombination time. `Da >> 1` means the ionization state relaxes to
-local equilibrium many times over while the gas crosses the cell, so the
-equilibrium solution *is* the solution of the ODE and the correction can only
-add integration error. `n_e` here is the metal-inclusive electron density, the
-same one the equilibrium solve used. Measured `Da` in the cells that motivated
-this: 350-2900 at the HD 209458 b base, up to 2500 at HD 189733 b.
+**(ii) `Da = (dr/v) min(nu) > 100` -- physical.** The Damkohler number compares
+the time the gas spends in the cell with the relaxation time of the level
+populations. `Da >> 1` means they relax to local equilibrium many times over
+while the gas crosses the cell, so the equilibrium solution *is* the solution
+of the ODE and the correction can only add integration error. `n_e` here is
+the metal-inclusive electron density, the same one the equilibrium solve used.
+Measured `Da` in the cells that motivated this: 350-2900 at the HD 209458 b
+base, up to 2500 at HD 189733 b.
+
+`min(nu)` is the slowest relaxation rate of the species the advection system
+solves -- H I/H II, He I/He II, He II/He III and, with the triplet on,
+He(2^3S) -- each being the total rate at which that population is destroyed
+and re-formed. The systems solve the whole H/He vector at once, so a cell may
+be pinned to equilibrium only when every population it solves is equilibrated.
+This condition originally read `Da = (dr/v) (P_HI + alpha_HII n_e)`, the
+hydrogen rate alone, which froze the far more slowly relaxing He(2^3S)
+metastable at its equilibrium value in cells where it is advected; the rates
+and the measured effect are in `Update_EXHALE.md` section 72.
 
 **(iii) `x_HII,eq < 1e-6` -- numerical.** The residuals carry the *neutral*
 fraction `x_HI` and the ion density is extracted as `(1 - x_HI) n_h`, so the

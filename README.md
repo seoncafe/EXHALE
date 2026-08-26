@@ -51,8 +51,10 @@ ATES model.
   and fine-structure coolants return the net rate rather than the vacuum limit
 - Diffusive separation of helium and metals: hydrogen and helium are
   transported as a two-component mixture, with bulk advection, binary
-  molecular-diffusion settling in the computed ambipolar field, and an
-  optional eddy term; each trace metal can diffuse independently
+  diffusive settling in the computed ambipolar field, and an optional eddy
+  term; each trace metal can diffuse independently. The friction is resolved
+  by ionization stage -- hard sphere, polarization and Coulomb -- so an ion
+  is held to the protons instead of settling at a neutral rate
 
 **Hydrodynamics and solvers**
 
@@ -230,4 +232,4 @@ schemas, convergence recipes, post-processing — is in
 
 Kwang-Il Seon (KASI / UST)
 
-Last updated: 2026-08-25 19:17 KST
+Last updated: 2026-08-26 10:32

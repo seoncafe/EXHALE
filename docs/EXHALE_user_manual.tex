@@ -964,22 +964,26 @@ defaults restore the standard behavior).}\label{tab:inp-opt}\\
   ionization system, independent of \texttt{cx\_full} (which still gates the
   metal groups). \texttt{False} $=$ legacy no-He-CX path, bit-identical. \\
 \texttt{He\_diffusion:} & logical (def.\ \texttt{False}) & Enable diffusive
-  separation of helium: transport the He element ratio $n_{\rm He}/n_{\rm H}$
-  with advection $+$ molecular-diffusion settling, so He/H falls with altitude.
-  Off $=$ He/H frozen at the input \texttt{He/H number ratio}
-  (\S\ref{sec:hediff}). \\
-\texttt{He\_Kzz:} & real (cm$^2$s$^{-1}$, def.\ $10^{9}$) & Eddy-diffusion
-  coefficient used with \texttt{He\_diffusion}: mixes He/H toward uniform below
-  the homopause (Taylor+2025 $K_{zz}$). \\
+  separation of helium: transport the helium \emph{mass fraction} of the
+  two-component H/He gas with advection $+$ molecular-diffusion settling, so
+  He/H falls with altitude. Off $=$ He/H frozen at the input \texttt{He/H
+  number ratio} (\S\ref{sec:hediff}). \\
+\texttt{He\_Kzz:} & real (cm$^2$s$^{-1}$, def.\ 0) & Eddy-diffusion
+  coefficient used with \texttt{He\_diffusion}: mixes the composition toward
+  uniform below the homopause. Default 0 $=$ pure molecular diffusion; an eddy
+  term belongs to the atmosphere being modelled, so it is stated rather than
+  inherited (Taylor+2025 use $10^{9}$). \\
 \texttt{He\_ambipolar:} & logical (def.\ \texttt{True}) & Ambipolar-corrected
-  settling mass --- in the ionized wind the polarization field lifts He ions,
-  reducing settling ($\Delta m_{\rm eff}=3-\tfrac12(\bar Z_{\rm He}-\bar Z_{\rm
-  H})$); \texttt{False} $=$ neutral $\Delta m=3$. \\
+  settling --- in the ionized wind the polarization field lifts He ions,
+  reducing settling. The field is computed from the local electron-pressure
+  gradient, $eE=-kT\,\partial\ln(n_eT)/\partial r$;
+  \texttt{False} $=$ $eE=0$, i.e.\ neutral settling $\Delta m=3$. \\
 \texttt{He\_alphaT:} & real (def.\ 0) & Thermal-diffusion factor $\alpha_T$
   added to the settling drift ($\alpha_T\,\partial\ln T/\partial r$); 0 $=$ off. \\
 \texttt{He\_metal\_diffusion:} & logical (def.\ \texttt{False}) & Also diffuse
-  each trace metal independently against H (own mass and binary $D$); heavier
-  elements settle more. Off $=$ metals frozen to H (\S\ref{sec:hediff}). \\
+  each trace metal against the hydrogen background with its own mass, mean
+  charge and stage-resolved diffusion coefficient; heavier elements settle
+  more. Off $=$ metals frozen to H (\S\ref{sec:hediff}). \\
 \texttt{Molecular chemistry:} & \texttt{True}/\texttt{False}
   (def.\ \texttt{False}) & Add H$_2$, H$_2^+$, H$_3^+$ and HeH$^+$ to the
   coupled ionization equilibrium, with the H$_2$ photoionization opacity and
@@ -1264,23 +1268,32 @@ By default EXHALE is single-fluid: the composition is re-solved each step by
 \emph{local} ionization equilibrium, which conserves the element ratios, so
 $n_{\rm He}/n_{\rm H}$ (and each metal/H) stays frozen at the input value at
 every radius. Setting \texttt{He\_diffusion: True} adds a genuine transport
-equation for the helium element ratio $f=n_{\rm He}/n_{\rm H}$ --- advection at
-the bulk velocity plus a molecular-diffusion \emph{settling} drift of He
-relative to H,
+equation for the helium \emph{mass fraction} $X=\rho_{\rm He}/\rho$ of the
+two-component H/He gas --- advection at the bulk velocity plus a
+molecular-diffusion \emph{settling} drift of He relative to H,
 \[
-  \Phi_{\rm He} = -D\,n_{\rm H}\!\left(\frac{\partial f}{\partial r} + f\,G\right),
-  \quad G=\frac{\Delta m\,g}{k T},
-  \quad D=\frac{1.52\times10^{18}\,(1/m_{\rm H}+1/m_{\rm He})^{1/2}\,T^{1/2}}{n},
+  \Phi_{\rm He} = -\rho\,(D+K_{zz})\,\frac{\partial X}{\partial r}
+                  \;-\; \rho\,X(1-X)\,D\,G,
+  \quad G=\frac{\Delta m_{\rm eff}\,m_{\rm H}\,g}{k T},
 \]
-(Banks \& Kockarts 1973), plus eddy diffusion $K_{zz}$ (\texttt{He\_Kzz}) on the
-gradient term. Helium then settles out relative to the escaping hydrogen and
-He/H \emph{declines with altitude}, as in Taylor et al.\ (2025) and Xing et al.\
+with eddy diffusion $K_{zz}$ (\texttt{He\_Kzz}, default 0) acting on the
+gradient term only. The binary coefficient $D$ is \textbf{stage-resolved}: each
+element is split into its ionization stages and the friction is built pair by
+pair --- hard-sphere for neutral--neutral pairs (Banks \& Kockarts 1973), a
+combined polarization $+$ hard-sphere form for non-resonant ion--neutral pairs,
+and Coulomb for ion--ion pairs --- then mixed over the stage fractions
+(Blanc's law, $1/D_{\rm eff}=\sum_{s,t} y_sy_t/D_{st}$). This matters above the
+ionization front, where Coulomb friction suppresses the separation by orders of
+magnitude relative to the neutral hard sphere and keeps the metal mixing ratios
+flat in the wind. Helium settles out relative to the escaping hydrogen and He/H
+\emph{declines with altitude}, as in Taylor et al.\ (2025) and Xing et al.\
 (2023). The equation is solved conservatively (implicit, tridiagonal) and the
 new split is written back into the composition conserving mass. Physics
 refinements: \texttt{He\_ambipolar} (default on) reduces the settling in the
-ionized wind via the polarization field; \texttt{He\_alphaT} adds thermal
-diffusion; \texttt{He\_metal\_diffusion} extends the same operator to each trace
-metal (heavier elements settle more, so they deplete faster than He).
+ionized wind via the polarization field, computed from the electron-pressure
+gradient; \texttt{He\_alphaT} adds thermal diffusion;
+\texttt{He\_metal\_diffusion} extends the same operator to each trace metal
+(heavier elements settle more, so they deplete faster than He).
 
 The strength of the separation scales as (settling speed)/(wind speed): it is
 suppressed by fast escape and is stronger for heavier species. On a gentle
@@ -1288,8 +1301,11 @@ escaper (HD\,209458b) helium itself separates and the He\,10830 line weakens; on
 a furious escaper (WASP-121b) helium is dragged out almost unfractionated while
 the heavy metals still settle strongly. Full physics, derivation, and a
 two-planet before/after comparison: \texttt{docs/design\_hehe\_diffusion.md} and
-\texttt{docs/version\_compare.\{md,tex,pdf\}}. The flags are \textbf{default
-off}, so standard runs are byte-identical to before.
+\texttt{docs/version\_compare.\{md,tex,pdf\}}; the binary formulation and the
+stage-resolved coefficient are derived and measured in
+\texttt{docs/binary\_diffusion\_design.md} and
+\texttt{docs/Update\_EXHALE.\{md,pdf\}} \S68 and \S71. The flags are
+\textbf{default off}, so standard runs are byte-identical to before.
 
 \subsection{Lower-atmosphere connection (Tier 1--3)}\label{sec:loweratm}
 Three opt-in layers connect EXHALE's 1-$\mu$bar base to the atmosphere below

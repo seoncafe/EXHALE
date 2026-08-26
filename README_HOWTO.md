@@ -314,13 +314,21 @@ He_Kzz: 1.0e9               # eddy-diffusion coefficient [cm^2/s], default 0
 Default off, so standard runs are unchanged: without the key the He/H ratio is
 frozen at the input value at all radii. With it, hydrogen and helium are
 treated as two components of one gas and the helium mass fraction is
-transported with advection, binary molecular diffusion (Banks & Kockarts
-`D_12`), gravitational settling against the computed ambipolar field, optional
-thermal diffusion and an optional eddy term `He_Kzz`. Helium therefore settles
+transported with advection, binary diffusion, gravitational settling against
+the computed ambipolar field, optional thermal diffusion and an optional eddy
+term `He_Kzz`. The binary coefficient is resolved by ionization stage (hard
+sphere for neutral pairs, polarization plus rigid core for ion-neutral,
+Coulomb for ion-ion),
+so settling is suppressed by orders of magnitude above the ionization front. Helium therefore settles
 against the wind drag and He/H declines with altitude as in Taylor et al.
 (2025) / Xing et al. (2023), weakening the He 10830 line on gentle escapers;
 the formulation is equally valid when helium is the MAJOR element, which the
-earlier trace-helium kernel was not. `He_Kzz` defaults to **0** (pure
+earlier trace-helium kernel was not. It may be combined with `Molecular
+chemistry`: below a molecular front the collision partners of helium are a
+mixture of H, H2, H2+ and H3+, and the friction (Blanc's law over the
+carriers), the settling mass and charge (per carrier, so an H2 weighs twice an
+H) and the mole-fraction driver of the front all follow from that.
+`He_Kzz` defaults to **0** (pure
 molecular diffusion): an eddy coefficient is a property of the atmosphere
 being modelled, so state it if you want one. With `Solver: Newton` the code
 co-converges the diffused composition with the steady wind (outer JFNK <->
@@ -366,8 +374,9 @@ Molecular chemistry: True
 ```
 H2/H2+/H3+/HeH+ join the coupled ionization equilibrium; H2 photoionization
 opacity/heating (Yan+1998) and H3+ IR cooling (Miller+2013) are included;
-`Ion_species*.txt` gains `H2 H2p H3p HeHp` columns. Requires He/H > 0;
-`He_diffusion` is refused by the parser. A `metals.inp` may be present — the
+`Ion_species*.txt` gains `H2 H2p H3p HeHp` columns. Requires He/H > 0.
+`He_diffusion` may be on: the element transport closes over the molecular
+carriers (`docs/binary_diffusion_design.md` section 5). A `metals.inp` may be present — the
 metal stages are then solved in the same system as the molecular network,
 which they share the free electron density with (`examples/16_molecular_metals`);
 in the shielded molecular base the metals are the dominant electron donors, so
@@ -808,7 +817,7 @@ The harness lives in `backup/regression/`, which is a working-copy directory
 and is not in the git remote. It rebuilds, re-runs each case single-threaded
 (`OMP_NUM_THREADS=1`, so the results are deterministic), and bitwise-compares
 `output/Hydro_ioniz.txt` and `output/Ion_species.txt` against
-`backup/regression/golden/`. Default matrix (five cases):
+`backup/regression/golden/`. Default matrix (six cases):
 
 | case | what it guards |
 |---|---|
@@ -817,6 +826,7 @@ and is not in the git remote. It rebuilds, re-runs each case single-threaded
 | `mol_base_handoff` | hot-Uranus Tier-2 gate: molecular chemistry + a `base.inp` handoff whose `q_H2_base` drives the photochemical base particle count; 12000-step snapshot |
 | `mol_metals` | the same gate + solar C/N/O/Mg/Ca/Na/Fe: the molecular and metal networks in one system; 12000-step snapshot |
 | `mol_lyman_werner` | the same gate + `Stellar LW flux [erg/cm2/s]: 343.0`: H2 photodissociation and its self-shielding inside the molecular network; 12000-step snapshot |
+| `mol_diffusion` | the same gate + `He_diffusion: True`, `He_Kzz: 1.0e9`: binary H/He element diffusion across the molecular front — molecular-carrier closure, stage-resolved friction pairs, projection back onto `f_sp`, Coulomb friction above the ionization front; 12000-step snapshot |
 
 Any other case directory can be named on the command line. A case that is a
 relaxation snapshot rather than a converged solution pins its step count in

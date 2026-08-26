@@ -342,6 +342,52 @@ plt.savefig(f'{OUT}/lhs1140b_broadened.pdf')
 plt.close()
 print('wrote lhs1140b_broadened.pdf')
 
+# ====== Figure 6b: the same demand, with diffusion and the adopted K_zz ====
+# The EW crossing moves from He/H = 0.55 to 2.09 once binary H/He element
+# diffusion is on at He_Kzz = 1e9 (kzz_decision.md section 6).  Repeat the
+# kernel measurement on the EW-matched diffusive solution and compare the
+# matched kernel with the diffusion-off 22.3 km/s.
+DIFF_TAG = 'heh2p13_diff_kzz1e9'
+lamd, excd = exhale_curve(DIFF_TAG)
+f_match_diff = matched_kernel_curve(lamd, excd)
+print('matched kernel (%s, He/H=2.13, He_Kzz=1e9): %.2f km/s (sigma %.2f), '
+      'diffusion-off He/H=0.55 gives %.2f km/s, difference %.2f km/s'
+      % (DIFF_TAG, f_match_diff, f_match_diff/2.35482, f_match,
+         f_match_diff - f_match))
+print('  scan (f [km/s], red, blue, ratio, FWHM, EW):')
+for f in (0.0, 10.0, 15.0, 20.0, f_match_diff, 25.0):
+    d = broadened_metrics(lamd, excd, f)
+    print('    %6.2f  %.3f  %.3f  %.2f  %.3f  %.3f'
+          % (f, d['red_depth'], d['blue_depth'], d['red_blue'], d['fwhm_A'],
+             d['ew']))
+
+fig, ax = plt.subplots(figsize=(4.6, 3.2))
+ax.errorbar(o_air, o_flux, yerr=o_fsig, fmt='ko', ms=2.2, lw=0.6, capsize=0,
+            zorder=3, label=r'LHS\,1140\,b, 2024 (GP-corrected)')
+ax.axhline(1.0 - 0.006, color='0.6', ls='--', lw=0.8,
+           label=r'2025 detection limit')
+ax.axhline(1.0, color='0.9', lw=0.6, zorder=0)
+ax.plot(lamd + dlam_air, 1.0 - excd/100, color='C4', lw=1.0, ls=':',
+        label=r'diffusion, $K_{zz}=10^{9}$, $\mathrm{He/H}=2.13$, as solved')
+ax.plot(lamd + dlam_air, 1.0 - broaden(lamd, excd, f_match_diff)/100,
+        color='C4', lw=1.5,
+        label=r'same, $+' + '%.1f' % f_match_diff
+        + r'$\,km\,s$^{-1}$ FWHM Gaussian')
+ax.plot(lam0 + dlam_air, 1.0 - broaden(lam0, exc0, f_match)/100, color='C2',
+        lw=1.0, ls='--', dashes=(4, 2),
+        label=r'diffusion off, $\mathrm{He/H}=0.55$, $+'
+        + '%.1f' % f_match + r'$\,km\,s$^{-1}$')
+ax.set_xlim(10827, 10831.7); ax.set_ylim(0.982, 1.006)
+ax.ticklabel_format(axis='x', useOffset=False, style='plain')
+ax.set_xlabel(r'air wavelength [\AA]')
+ax.set_ylabel(r'normalized flux')
+ax.grid(alpha=0.18)
+ax.legend(fontsize=5.8, loc='lower left', framealpha=0.9)
+plt.tight_layout()
+plt.savefig(f'{OUT}/lhs1140b_diff_broadened.pdf')
+plt.close()
+print('wrote lhs1140b_diff_broadened.pdf')
+
 # ====== Figure 7: the same scan applied to the p-winds best fit ============
 # The convolution conserves equivalent width, so whether one kernel can match
 # depth and width at once is decided by the EW the curve already has at f=0.
@@ -546,3 +592,251 @@ for tag, lab, _ in BUMP:
           % (tag, be['r_peak'], be['T_peak'], be['v_peak'], ba_['r_f3'],
              ba_['v_f3'], vda['q'][0.5], 100*vda['frac'][5.0]))
 print('wrote lhs1140b_bump.pdf')
+
+# ====== Figure 9: what K_zz moves, at a fixed reservoir composition ========
+# Four converged runs that differ only in the He_Kzz line: same GJ 1132 SED,
+# same He/H = 0.55 reservoir, He_diffusion on throughout.  The question the
+# figure answers is which parts of the solution the eddy coefficient acts on.
+# Rows and provenance: kzz_decision.md sections 3 and 6.1; the operator
+# itself: ../docs/binary_diffusion_design.md.
+KZZ_RUNS = [('heh0p55_diff_ctrl',    0.0,   r'$K_{zz} = 0$'),
+            ('heh0p55_diff_kzz1e8',  1.0e8, r'$K_{zz} = 10^{8}$'),
+            ('heh0p55_diff_kzz1e9',  1.0e9, r'$K_{zz} = 10^{9}$ (adopted)'),
+            ('heh0p55_diff_kzz1e10', 1.0e10, r'$K_{zz} = 10^{10}$')]
+KZZ_HEH = 0.55
+
+
+def kzz_homopause(d, kzz):
+    """Radius where the run's own molecular D_eff equals its K_zz.
+
+    Same construction as exhale/kzz_scan_table.py: column 8 of
+    diffusion_faceflux.txt is the stage-resolved binary coefficient the
+    operator used, and the eddy term is added to it, so the crossing of
+    D_eff with K_zz is the homopause of that run.
+    """
+    p = os.path.join(d, 'diffusion_faceflux.txt')
+    if kzz <= 0.0 or not os.path.isfile(p):
+        return None
+    a = np.loadtxt(p, usecols=(1, 8))
+    s = a[:, 1] - kzz
+    for j in range(len(s) - 1):
+        if s[j]*s[j + 1] < 0.0:
+            f = s[j]/(s[j] - s[j + 1])
+            return a[j, 0] + f*(a[j + 1, 0] - a[j, 0])
+    return None
+
+
+def kzz_profiles(tag):
+    """Hydrodynamic, elemental and metastable profiles of one K_zz run."""
+    d = os.path.join('exhale', tag)
+    hy = np.loadtxt(os.path.join(d, 'output', 'Hydro_ioniz.txt'))
+    p = os.path.join(d, 'output', 'Ion_species_adv.txt')
+    names = [l for l in open(p) if l.startswith('# columns')][0].split()[2:]
+    a = np.loadtxt(p)
+    j = {n: i for i, n in enumerate(names)}
+    ra = a[:, j['r[Rp]']]
+    nHe = sum(a[:, j[s]] for s in ('HeI', 'HeII', 'HeIII', 'HeITR'))
+    nH = a[:, j['HI']] + a[:, j['HII']]
+    return dict(r=hy[:, 0], n=hy[:, 1], v=hy[:, 2]/1e5, T=hy[:, 4],
+                r_adv=ra, ratio=(nHe/np.maximum(nH, 1e-99))/KZZ_HEH,
+                tr=a[:, j['HeITR']], d=d)
+
+
+KZZ_COL = [plt.cm.viridis(x) for x in (0.02, 0.32, 0.55, 0.76)]
+fig, axg = plt.subplots(2, 3, figsize=(7.1, 4.3))
+ax = axg.ravel()
+kzz_prof, kzz_hp = [], []
+for (tag, kzz, lab), col in zip(KZZ_RUNS, KZZ_COL):
+    P = kzz_profiles(tag)
+    kzz_prof.append((tag, kzz, P))
+    hp = kzz_homopause(P['d'], kzz)
+    kzz_hp.append(hp)
+    ax[0].plot(P['r'], P['T'], color=col, lw=1.3, label=lab)
+    ax[1].plot(P['r'], P['v'], color=col, lw=1.3)
+    ax[2].semilogy(P['r'], P['n'], color=col, lw=1.3)
+    ax[3].semilogy(P['r_adv'], np.maximum(P['ratio'], 1e-6), color=col, lw=1.3)
+    ax[4].semilogy(P['r_adv'], np.maximum(P['tr'], 1e-6), color=col, lw=1.3)
+    ax[5].plot(P['r_adv'], np.maximum(P['ratio'], 1e-6), color=col, lw=1.3)
+    if hp is not None:
+        ax[5].axvline(hp, color=col, ls=':', lw=1.2)
+        ax[5].plot([hp], [np.interp(hp, P['r_adv'], P['ratio'])],
+                   'o', color=col, ms=3.5, zorder=5)
+
+ax[0].set_ylabel(r'$T$ [K]')
+ax[0].set_title(r'(a) temperature', fontsize=8)
+ax[1].set_ylabel(r'$v$ [km\,s$^{-1}$]')
+ax[1].set_title(r'(b) velocity', fontsize=8)
+ax[2].set_ylabel(r'$\rho/m_{\rm H}$ [cm$^{-3}$]')
+ax[2].set_title(r'(c) density', fontsize=8)
+ax[3].set_ylabel(r'$(\mathrm{He/H})/(\mathrm{He/H})_0$')
+ax[3].set_ylim(1e-4, 3.0)
+ax[3].set_title(r'(d) elemental helium, against the reservoir', fontsize=8)
+ax[4].set_ylabel(r'$n(2\,^3S)$ [cm$^{-3}$]')
+ax[4].set_ylim(1e-4, 1e2)
+ax[4].set_title(r'(e) metastable helium', fontsize=8)
+for a in ax[:5]:
+    a.set_xscale('log')
+    a.set_xlim(1, 20)
+    a.set_xticks([1, 2, 5, 10, 20])
+    a.set_xticklabels([r'1', r'2', r'5', r'10', r'20'])
+    a.set_xlabel(r'$r$ [$R_{\rm p}$]')
+
+ax[5].set_xlim(1.0, 1.25)
+ax[5].set_ylim(0.0, 1.05)
+ax[5].set_xlabel(r'$r$ [$R_{\rm p}$]')
+ax[5].set_ylabel(r'$(\mathrm{He/H})/(\mathrm{He/H})_0$')
+ax[5].set_title(r'(f) the same, at the base', fontsize=8)
+for a in ax:
+    a.grid(alpha=0.2)
+    a.tick_params(labelsize=7)
+    a.yaxis.label.set_size(8)
+    a.xaxis.label.set_size(8)
+ax[0].legend(fontsize=5.8, loc='upper right', framealpha=0.9)
+plt.tight_layout()
+plt.savefig(f'{OUT}/lhs1140b_kzz_profiles.pdf')
+plt.close()
+
+for (tag, kzz, P), hp in zip(kzz_prof, kzz_hp):
+    mflux = np.interp(20.0, P['r'], P['n']*P['v']*1e5*P['r']**2)
+    print('kzz %-22s K_zz=%.0e  homopause %s  T(1.5Rp)=%.0f  v(10Rp)=%.3f  '
+          'n(2Rp)=%.3g  rho v r^2(20Rp)=%.3g  (He/H)/HeH: 1.05=%.3f 5=%.3f  '
+          'n(2^3S) peak %.3g at r=%.2f'
+          % (tag, kzz, ('%.4f' % hp) if hp else 'below the base',
+             np.interp(1.5, P['r'], P['T']),
+             np.interp(10.0, P['r'], P['v']),
+             np.interp(2.0, P['r'], P['n']), mflux,
+             np.interp(1.05, P['r_adv'], P['ratio']),
+             np.interp(5.0, P['r_adv'], P['ratio']),
+             P['tr'].max(), P['r_adv'][int(np.argmax(P['tr']))]))
+print('wrote lhs1140b_kzz_profiles.pdf')
+
+
+# ====== Figure: the composition the line implies, against K_zz ==============
+# One point per decade of the eddy coefficient: the He/H reservoir ratio whose
+# red-pair equivalent width equals the measured one.  Same solve as
+# exhale/heh_diff_scan_table.py -- log-log interpolation of the scanned
+# compositions, Brent's method -- but on this file's own red_ew() so the
+# figure and the memo's other panels measure the line the same way.
+# Provenance of the runs: kzz_decision.md section 6.1.
+CROSS_SCANS = [
+    (0.0, ['heh4p5_diff_kzz0', 'heh4p6_diff_kzz0', 'heh4p8_diff_kzz0',
+           'heh4p9_diff_kzz0', 'heh5_diff_kzz0']),
+    (1.0e5, ['heh4p5_diff_kzz1e5', 'heh4p6_diff_kzz1e5',
+             'heh4p8_diff_kzz1e5', 'heh4p9_diff_kzz1e5',
+             'heh5_diff_kzz1e5']),
+    (1.0e6, ['heh2_diff_kzz1e6', 'heh4p3_diff_kzz1e6', 'heh4p4_diff_kzz1e6',
+             'heh4p7_diff_kzz1e6', 'heh5_diff_kzz1e6',
+             'heh10_diff_kzz1e6']),
+    (1.0e7, ['heh3p4_diff_kzz1e7', 'heh3p6_diff_kzz1e7',
+             'heh3p8_diff_kzz1e7', 'heh3p9_diff_kzz1e7',
+             'heh4_diff_kzz1e7', 'heh4p2_diff_kzz1e7']),
+    (1.0e8, ['heh0p55_diff_kzz1e8', 'heh2p7_diff_kzz1e8',
+             'heh3_diff_kzz1e8', 'heh3p5_diff_kzz1e8',
+             'heh4_diff_kzz1e8']),
+    (1.0e9, ['heh0p55_diff_kzz1e9', 'heh1_diff_kzz1e9', 'heh2_diff_kzz1e9',
+             'heh2p13_diff_kzz1e9', 'heh4_diff_kzz1e9']),
+    (1.0e10, ['heh0p55_diff_kzz1e10', 'heh1_diff_kzz1e10',
+              'heh1p4_diff_kzz1e10', 'heh1p5_diff_kzz1e10',
+              'heh1p6_diff_kzz1e10']),
+    (1.0e11, ['heh1_diff_kzz1e11', 'heh1p2_diff_kzz1e11',
+              'heh1p4_diff_kzz1e11', 'heh1p5_diff_kzz1e11']),
+]
+
+# The decades below 1e5 are not scanned in composition.  At the fixed
+# composition He/H = 5 their equivalent width differs from the K_zz = 0 one
+# by far less than the measurement error, which is the measured statement the
+# figure draws as a band rather than as points of their own.
+FLAT_PROBE = [(1.0e1, 'heh5_diff_kzz1e1'), (1.0e2, 'heh5_diff_kzz1e2'),
+              (1.0e3, 'heh5_diff_kzz1e3'), (1.0e4, 'heh5_diff_kzz1e4')]
+FLAT_REF = 'heh5_diff_kzz0'
+HEH_WELLMIXED = 0.55          # crossing with the operator off, section 6
+
+
+def heh_at_ew(cases, target):
+    """He/H whose red EW equals target, log-log through the scanned cases."""
+    h = np.array([key_value(os.path.join('exhale', c, 'input.inp'),
+                            'He/H number ratio') for c in cases])
+    e = np.array([red_ew(c) for c in cases])
+    o = np.argsort(h)
+    h, e = h[o], e[o]
+    if not (e.min() <= target <= e.max()):
+        return np.nan
+    return 10.0**brentq(lambda t: np.interp(t, np.log10(h), np.log10(e))
+                        - np.log10(target), np.log10(h[0]), np.log10(h[-1]))
+
+
+def key_value(path, key):
+    for line in open(path):
+        if line.startswith(key + ':'):
+            return float(line.split(':')[1])
+    raise ValueError('no ' + key + ' in ' + path)
+
+
+kx, kc, klo, khi = [], [], [], []
+for kzz, cases in CROSS_SCANS:
+    c = heh_at_ew(cases, EW_obs)
+    lo = heh_at_ew(cases, EW_obs - EW_err)     # less line -> less helium
+    hi = heh_at_ew(cases, EW_obs + EW_err)
+    kx.append(kzz)
+    kc.append(c)
+    klo.append(lo)
+    khi.append(hi)
+    print('cross K_zz=%-8.0e He/H = %.4f  (1 sigma %.4f - %.4f)'
+          % (kzz, c, lo, hi))
+
+heh_plateau, plateau_lo, plateau_hi = kc[0], klo[0], khi[0]
+ew_ref = red_ew(FLAT_REF)
+for kzz, tag in FLAT_PROBE:
+    print('flat  K_zz=%-8.0e He/H = 5: EW = %.6f, %+.6f vs K_zz = 0 '
+          '(%.3f sigma)' % (kzz, red_ew(tag), red_ew(tag) - ew_ref,
+                            (red_ew(tag) - ew_ref)/EW_err))
+
+fig, ax = plt.subplots(figsize=(4.6, 3.2))
+X0, X1 = 3.0, 3.0e11
+FLAT_X1 = 3.0e5                                # last indistinguishable decade
+
+ax.axhspan(plateau_lo, plateau_hi, xmin=0.0,
+           xmax=(np.log10(FLAT_X1) - np.log10(X0))/(np.log10(X1)
+                                                    - np.log10(X0)),
+           color='0.85', zorder=0)
+ax.plot([X0, FLAT_X1], [heh_plateau]*2, color='0.35', ls='--', lw=1.2,
+        label=r'$K_{zz}=0$ limit, He/H $= %.2f$' % heh_plateau)
+ax.plot([k for k, _ in FLAT_PROBE], [heh_plateau]*len(FLAT_PROBE),
+        marker='o', ls='none', mfc='none', mec='0.35', ms=5, mew=1.0,
+        label=r'EW within $0.2\sigma$ of $K_{zz}=0$')
+
+ax.axhline(HEH_WELLMIXED, color='C3', ls=':', lw=1.2)
+ax.text(6.0, HEH_WELLMIXED*1.08,
+        r'well-mixed limit (operator off), He/H $= 0.55$',
+        fontsize=6.5, color='C3', va='bottom')
+
+ax.axvline(1.0e9, color='C0', ls='-.', lw=1.0, alpha=0.7)
+ax.text(1.0e9/1.5, 0.44, r'adopted', fontsize=6.5, color='C0',
+        rotation=90, va='bottom', ha='right')
+
+kxp = np.array(kx[1:])
+kcp = np.array(kc[1:])
+ax.errorbar(kxp, kcp,
+            yerr=[kcp - np.array(klo[1:]), np.array(khi[1:]) - kcp],
+            fmt='s', color='C0', ms=4, lw=1.0, capsize=2,
+            label=r'EW-matched He/H, $\pm1\sigma$')
+
+pw = np.array([1.0e8, 1.0e11])
+ax.plot(pw, kc[5]*(pw/1.0e9)**(-0.136), color='C1', lw=1.1, alpha=0.8,
+        label=r'$\propto K_{zz}^{-0.136}$')
+
+ax.set_xscale('log')
+ax.set_yscale('log')
+ax.set_xlim(X0, X1)
+ax.set_ylim(0.4, 8.0)
+ax.set_xticks([1e1, 1e3, 1e5, 1e7, 1e9, 1e11])
+ax.set_yticks([0.5, 1, 2, 5])
+ax.set_yticklabels([r'0.5', r'1', r'2', r'5'])
+ax.set_xlabel(r'$K_{zz}$ [cm$^{2}$\,s$^{-1}$]')
+ax.set_ylabel(r'He/H matching the measured EW')
+ax.grid(alpha=0.2)
+ax.legend(fontsize=6.2, loc='upper right', framealpha=0.9)
+plt.tight_layout()
+plt.savefig(f'{OUT}/lhs1140b_heh_vs_kzz.pdf')
+plt.close()
+print('wrote lhs1140b_heh_vs_kzz.pdf')

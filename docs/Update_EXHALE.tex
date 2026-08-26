@@ -7472,6 +7472,193 @@ only) rather than anything the diffusion introduced.
 \texttt{He\_diffusion} on, and the \texttt{he\_diffusion} guard at the top of
 the operator means the flag-off path never enters any of this.
 
+\section{The friction the ionized wind actually has: stage-resolved binary
+diffusion (2026-08-25)}
+% ===================================================================== %
+Element diffusion used one coefficient over the whole domain, the neutral
+Banks \& Kockarts hard sphere. That is the wrong friction above the ionization
+front, and it is wrong in the direction that matters: a helium or metal
+\emph{ion} moving through a proton gas is held by Coulomb collisions, whose
+momentum-transfer cross section at $T\sim10^{4}$\,K is ${\sim}10^{-12}$\,cm$^2$
+against the ${\sim}10^{-15}$\,cm$^2$ of a hard sphere. With a neutral
+coefficient everywhere the solver let helium and every metal keep settling
+through the ionized wind, and once the $f_X \le f_X(\mathrm{base})$ limiter went
+away (section 70) nothing stopped them: on the HD\,209458\,b $K_{zz} = 10^{9}$
+wind iron and calcium reached \emph{zero} by 1.1\,$R_p$ and magnesium 2.5\% of
+its base ratio by 4\,$R_p$.
+
+Koskinen et al.\ (2013, section 2.1) solve the same Chapman \& Cowling equation
+with collision terms that ``account for neutral-neutral, resonant and
+non-resonant ion-neutral, and Coulomb collisions'', and report (their section
+3.2.2) that Coulomb collisions ``are much more efficient in preventing
+diffusive separation than collisions with neutral H.''
+
+This is a correction to the physics, not an option: there is no input key for
+it.
+
+\subsection{What the coefficient is now}
+
+Each element is resolved into its ionization stages and the friction is built
+pair by pair, every pair being the Chapman-Enskog first approximation
+$D = 3kT/(16\,n\,\mu\,\Omega^{(1,1)})$ evaluated with the cross section that
+pair actually has (\texttt{binary\_element\_diffusion.f90}):
+
+\begin{center}\small
+\begin{tabular}{@{}>{\raggedright\arraybackslash}p{2.6cm}>{\raggedright\arraybackslash}p{3.6cm}>{\raggedright\arraybackslash}p{5.4cm}>{\raggedright\arraybackslash}p{2.4cm}@{}}
+\toprule
+pair & routine & coefficient & scaling \\
+\midrule
+neutral-neutral &
+  \texttt{hard\_sphere\_pair\_} \texttt{diffusion} &
+  $1.52\times10^{18}\,(1/A_s+1/A_t)^{1/2}\,T^{1/2}/n$ &
+  $T^{1/2}/n$ \\
+ion-neutral, non-resonant &
+  \texttt{ion\_neutral\_pair\_} \texttt{diffusion} &
+  $1/D = 1/D_{\rm pol} + 1/D_{\rm hs}$,\newline
+  $D_{\rm pol} = kT/\bigl(2.21\,\pi\,e\,n\,(\alpha_n\mu)^{1/2}\bigr)$ &
+  $T/n$ then $T^{1/2}/n$ \\
+ion-ion &
+  \texttt{coulomb\_pair\_} \texttt{diffusion} &
+  $3(kT)^{5/2}/\bigl(4(2\pi\mu)^{1/2} n (Z_sZ_te^2)^2\ln\Lambda\bigr)$ &
+  $T^{5/2}/n$ \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+and the element-element coefficient is the stage-fraction harmonic sum
+(frictions add; Blanc's law across stages)
+\begin{equation}
+\frac{1}{D_{\rm eff}} =
+  \sum_{s\,\in\,\text{element A}}\ \sum_{t\,\in\,\text{element B}}
+  \frac{y_s\,y_t}{D_{st}} .
+\end{equation}
+
+Resonant charge exchange H$^+$\,$+$\,H is deliberately absent: both partners
+carry the same element, and a binary diffusion coefficient is driven by the
+friction \emph{between} the two elements, so every ion-neutral pair that
+appears is non-resonant. HeH$^+$ carries both elements and stays out of both
+carrier lists, as it already was out of the mean charges.
+
+\paragraph{The ion-neutral pair carries two channels.} The polarization
+(Langevin) coefficient is the long-range limit: it keeps the induced-dipole
+attraction and no repulsive core, so its friction falls as $T^{-1}$ where a
+rigid core would hold it at $T^{-1/2}$. Taken alone it would make an
+ion-neutral pair \emph{more} mobile than a neutral-neutral one of the same
+masses above ${\sim}1.5\times10^{3}$\,K, which is unphysical --- opening a
+second channel cannot make a pair more mobile. The two are momentum-transfer
+cross sections of the same encounter, so to first order their $Q^{(1)}$ add,
+hence their collision integrals add, hence their frictions add; and since
+$D = 3kT/(16\,n\,\mu\,\Omega^{(1,1)})$ is linear in $1/\Omega$, adding
+frictions is adding inverse coefficients,
+$1/D_{\rm in} = 1/D_{\rm pol} + 1/D_{\rm hs}$. That is the same rule the stage
+mixture uses. Both limits come out exactly: $D_{\rm in}\to D_{\rm pol}$ where
+the polarization channel dominates and $\to D_{\rm hs}$ where the core does,
+crossing at \textbf{1504\,K} for an H/He pair. At the $10^{4}$\,K of the
+transition layer $D_{\rm pol}$ is 2.6--4.7 times $D_{\rm hs}$ and
+$D_{\rm in}$ sits at 0.82 of $D_{\rm hs}$, i.e.\ 0.18--0.28 of the polarization
+value alone.
+
+\paragraph{Sources.} The hard-sphere form is the one already in the code
+(Banks \& Kockarts 1973). The polarization constant $2.21\,\pi$ is the one
+behind the non-resonant ion-neutral collision frequency of Schunk \& Nagy
+(\emph{Ionospheres}, eq.~4.88) and the Coulomb coefficient is the standard
+Chapman-Enskog result (Paquette et al.\ 1986; Schunk \& Nagy eq.~4.142 give the
+equivalent collision frequency). Neither textbook is in \texttt{references/},
+so \textbf{both numerical constants were re-derived from the Chapman-Enskog
+collision integral rather than copied}, and the derivation is written into the
+comment beside each routine. The check that the chain is consistent is that the
+rigid-sphere collision integral put through the same Chapman-Enskog expression
+returns the Banks \& Kockarts prefactor exactly, with a collision diameter of
+2.7\,\AA.
+
+Polarizabilities are the recommended static dipole values of Schwerdtfeger \&
+Nagle (2019), in atomic units, with $\alpha({\rm H}) = 4.5\,a_0^3$ the exact
+nonrelativistic ground-state value; H and He come out at 0.667 and
+0.205\,\AA$^3$, the values Schunk \& Nagy tabulate for aeronomy.
+
+\paragraph{Validity caveat, recorded at the coefficient.} The polarization
+limit keeps the induced-dipole attraction and no repulsive core, so its
+friction falls as $T^{-1}$ where a rigid core would hold it at $T^{-1/2}$. It
+is the smaller of the two coefficients (stronger friction) below
+${\sim}1.5\times10^{3}$\,K and the larger above --- by 2.6 to 4.7 at
+$10^{4}$\,K, where the true coefficient is the smaller because the core
+contribution adds to the collision integral. The consequence is confined to the
+partially ionized transition layer; both asymptotic limits are exact.
+
+\subsection{Two defects fixed with it}
+
+\begin{itemize}
+\item \textbf{The trace-metal loop assumed the hydrogen-plasma ambipolar
+  field.} It built its settling coefficient from
+  $\Delta m_{\rm eff} = (A_X - 1) - 0.5\,(\bar Z_X - \bar Z_1)$, the constant
+  $eE = m_{\rm H} g/2$ of a pure proton plasma --- the same assumption decision
+  D3 removed for helium at M2, still standing here. The loop now reads the
+  field \texttt{settling\_coefficient} computes from the electron pressure
+  gradient, so there is one ambipolar field in the module and no second, cruder
+  copy. With \texttt{He\_ambipolar} off the field is zero and the loop reduces
+  to the pure-gravity form as before.
+\item The metal loop also used a single hard-sphere $X$-in-H coefficient; it
+  now runs the same stage mixture, metal stages against hydrogen carriers.
+\end{itemize}
+
+\subsection{Tests}
+
+\texttt{src/tests/diffusion\_tests.f90} gains \textbf{T12}, the three limits of
+$D_{\rm eff}$ on a prescribed isothermal column at $10^{4}$\,K, each against a
+closed form written out independently in the test rather than against the
+module's own pair routines: all neutral reproduces Banks \& Kockarts to
+$1.2\times10^{-16}$ relative, fully ionized reproduces the He$^{++}$/H$^+$
+Coulomb coefficient to round-off, half ionized reproduces the four-term Blanc
+average (whose two ion-neutral terms are themselves the combined form) to
+round-off. T12d adds the two temperature limits of that combined form: within
+$2.5\times10^{-2}$ of the polarization channel at 1\,K, within
+$1.2\times10^{-3}$ of the hard sphere at $10^{9}$\,K, and never above either.
+\texttt{./diffusion\_tests.x}: \textbf{21 passed, 0 failed}.
+\texttt{make check}: \textbf{5/5 byte-identical} --- the operator is entered
+only with \texttt{He\_diffusion} on and no regression case sets it.
+
+\texttt{EXHALE\_DIFFUSION\_CHECK=1} adds $D_{\rm eff}$, the neutral coefficient
+of the same cell, their ratio and the dominant stage pair to
+\texttt{diffusion\_faceflux.txt}.
+
+\subsection{Measured effect}
+
+The full tables are \texttt{docs/binary\_diffusion\_design.md} section 9.3. In
+short, on two winds restarted from the same converged state and
+Newton-finished:
+
+\begin{itemize}
+\item $D_{\rm eff}/D_{\rm neutral}$ is 1.00 in the neutral base, 0.16 at the
+  front (1.2\,$R_p$), $9.6\times10^{-3}$ at 1.5\,$R_p$ and
+  $7.6\times10^{-5}$ at 4\,$R_p$ on HD\,209458\,b --- the suppression
+  \emph{grows} outward because the Coulomb coefficient carries $T^{5/2}$
+  against the hard sphere's $T^{1/2}$.
+\item On HD\,209458\,b every metal mixing ratio becomes \textbf{flat above the
+  front}, which is what a steady wind must do once diffusion loses to
+  advection. Iron goes from 0.000 to 0.107 of its base ratio and calcium from
+  0.000 to 0.019 --- the difference between having and not having
+  Ca\,\textsc{ii} H\&K and Fe\,\textsc{ii} in the transmission spectrum.
+  $\log_{10}\dot M$ moves $10.0106 \to 10.0561$ ($+0.046$\,dex) and the
+  He\,10830 red depth $8.20\% \to 7.85\%$. The control is a run of the same
+  configuration from the same converged state with a binary built from this
+  commit's parent, so the friction is the only difference.
+\item The ion-neutral channel decides how much of that survives. Between 1.0
+  and 1.2\,$R_p$ hydrogen and helium are still neutral (measured
+  $x({\rm H}^+) = 0.000$, 0.004, 0.072 at 1.05, 1.10, 1.20\,$R_p$), so the
+  combined form barely touches the \emph{helium} profile --- but the
+  low-ionization-potential metals are already ionized there (Fe 0.999,
+  Mg 0.943, Ca 0.269, C 0.329, Na 0.053, O 0.003 ionized at 1.10\,$R_p$), and
+  going from the polarization channel alone to the combined form raises their
+  frozen plateaus in exactly that order: Fe $\times3.8$, Ca $\times2.3$,
+  Mg $\times1.23$, C $\times1.07$, Na $\times1.00$, O $\times0.97$.
+\item On LHS\,1140\,b at He/H $= 0.55$ nothing moves: $\log_{10}\dot M$ 7.6065
+  both, the temperature identical to $9\times10^{-16}$ relative, He\,10830
+  within 0.2\%, and the composition relaxation exits on its first pass. That
+  wind separates its helium inside the first cell above the base, where the gas
+  is neutral and $D_{\rm eff} = D_{\rm neutral}$ by construction, and above
+  that there is no helium left for the Coulomb suppression to hold.
+\end{itemize}
+
 % ===================================================================== %
 %  APPENDIX --- bookkeeping material, kept separate from the dated update log
 % ===================================================================== %

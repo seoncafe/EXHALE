@@ -28,32 +28,65 @@ imposing it, and to establish what --- if anything --- has to be added to
 the physics for the model to match the observation.
 
 \medskip
-\noindent\textbf{Result.} EXHALE can be made to absorb the right
-\emph{amount}: at $\mathrm{He/H} \simeq 0.55$ its equivalent width equals
-the measured one to well within the observational error. It cannot
-reproduce the \emph{line}. At that composition the profile is $3.4$ times
-too deep and $3.4$ times too narrow, and no composition fixes this, because
-composition changes how much helium absorbs, not how the absorption is
-spread in velocity. Closing the gap needs $\simeq 22$\,km\,s$^{-1}$ FWHM of
-velocity spread that the solved wind does not produce: its outflow reaches
-$1.2$\,km\,s$^{-1}$ at $20\,R_p$ and its gas cools below $1000$\,K over the
-line-forming region. The shortfall is in the energy and momentum budget,
-not in the composition, and it is a published problem rather than a defect
-of this setup (Sect.~\ref{sec:width}). The one mechanism that would supply
-width without a free parameter---the adiabatic-cooling metastable bump of
-Schulik \& Owen (2025)---is present in these solutions but sits at
-$0.3$--$1.4$\,km\,s$^{-1}$, so it does not help (Sect.~\ref{sec:bump}).
+\noindent\textbf{Result.} Two statements carry the memo, and they point in
+opposite directions: the \emph{amount} of absorption can be matched under
+every assumption combination tried, but only at a composition that those
+assumptions move by a factor $80$; the \emph{width} cannot be matched under
+any of them, and the velocity it asks for is the same number every time.
 
-Repeating the whole scan on the GJ\,699 proxy spectrum --- the second
-stand-in for LHS\,1140's unobserved XUV, $5.1$ times brighter, which the
-paper also uses --- separates the two questions (Sect.~\ref{sec:gj699}).
-The escape rate rises sevenfold, to $4.0\times10^{8}$\,g\,s$^{-1}$, within
-$0.04$\,dex of what the paper retrieves on that proxy, and the composition
-the equivalent width implies moves from $\mathrm{He/H} = 0.55$ to $0.060$,
-from helium-rich to below solar. The width gap is untouched: the added
-broadening the measurement demands stays at $22$\,km\,s$^{-1}$. So the
-composition inference is SED-limited, while the missing line width is not an
-energy-input problem.
+\medskip
+\noindent\textbf{(i) The amount is always matchable, so the composition it
+implies is a conditional statement rather than a measurement.} Every
+combination of assumed spectrum and assumed mixing reaches the observed
+red-pair equivalent width at some helium abundance, and the escape rate ---
+an output, not a fit --- barely moves along the way:
+$\log_{10}(\dot M/\mathrm{g\,s^{-1}}) \simeq 7.6$--$7.8$ on the GJ\,1132 proxy
+spectrum across composition, diffusion and eddy coefficient alike, and
+$8.6$ on the GJ\,699 proxy, the second stand-in for LHS\,1140's unobserved
+XUV, $5.1$ times brighter, which the paper also uses --- there within
+$0.04$\,dex of what the paper itself retrieves on that same proxy
+(Sect.~\ref{sec:gj699}). What the assumptions move is where the crossing
+lands. In the well-mixed limit it is $\mathrm{He/H} = 0.55$ on the
+GJ\,1132 proxy and $0.060$, below solar, on the GJ\,699 one. With binary
+H/He element diffusion active --- helium then settles out of the base
+unless an eddy term lifts it --- it rises again, to $4.68$ wherever
+$K_{zz} \le 10^{5}$\,cm$^2$\,s$^{-1}$ does nothing against the molecular
+coefficient, $2.09$ at the adopted $K_{zz} = 10^{9}$ and $1.11$ at
+$10^{11}$ (Sect.~\ref{sec:diffbroad}). End to end that is $0.060$ to
+$4.68$, a factor $80$, over choices this measurement cannot arbitrate:
+strongly conditional on the assumed spectrum, weakly and monotonically on
+the assumed mixing, as $K_{zz}^{-0.14}$ wherever the eddy term acts at all.
+Any composition read off this line --- the paper's
+$\mathrm{H\!:\!He} \lesssim 10^{-3}$ as much as any value here --- inherits
+both conditions.
+
+\medskip
+\noindent\textbf{(ii) The width is not reached on any axis, and the deficit
+is invariant.} At the equivalent-width crossing the profile is about $3.4$
+times too deep and $3.4$ times too narrow, and no composition fixes it,
+because composition changes how much helium absorbs, not how the absorption
+is spread in velocity. Measured directly --- convolving the solved profile
+with a Gaussian and asking which one reproduces the observed line --- the
+missing spread is $22.30$\,km\,s$^{-1}$ FWHM
+($\sigma = 9.5$\,km\,s$^{-1}$) in the well-mixed limit,
+$22.31$\,km\,s$^{-1}$ with diffusion and the adopted $K_{zz}$, and
+$22.08$\,km\,s$^{-1}$ on the $5.1\times$ brighter spectrum
+(Sects.~\ref{sec:broadening}, \ref{sec:diffbroad} and~\ref{sec:gj699}).
+Supplied as one Gaussian it puts depth, blue depth and red/blue ratio
+inside the observed $1\sigma$ interval at once, with nothing tuned to them;
+what produces it is unidentified. It is not thermal --- the solved gas
+cools below $1000$\,K over the line-forming region --- and not bulk
+outflow, which reaches $1.2$\,km\,s$^{-1}$ at $20\,R_p$ on the fainter
+spectrum and $3.6$ on the brighter. Read as turbulence it is
+$\mathcal{M} = 2.4$--$4.2$ against the sound speed these solutions
+themselves carry, supersonic on every convention and well above what the
+literature is willing to assume. The one mechanism that would supply width
+without a free parameter --- the adiabatic-cooling metastable bump of
+Schulik \& Owen (2025) --- is present in these solutions and measured, but
+sits at $0.3$--$1.4$\,km\,s$^{-1}$ (Sect.~\ref{sec:bump}). The shortfall is
+in the energy and momentum budget, not in the composition, and it is a
+published problem rather than a defect of this setup
+(Sect.~\ref{sec:width}).
 
 The paper's own p-winds fit does not reproduce the line either: it carries
 roughly the right width, because its temperature is imposed at
@@ -269,10 +302,17 @@ unjustified. Enabling it here is therefore right for a like-for-like
 comparison and wrong as a default, which is how it is implemented.
 
 \section{Searching for a match: the composition scan}
+\label{sec:scan}
 
-Composition is the one free parameter of the problem once the star, the
-planet and the spectrum are fixed, so it is where a match has to be sought
-first. Eleven compositions were solved, from solar ($\mathrm{He/H} = 0.083$)
+Once the star, the planet and the spectrum are fixed, composition is the
+free parameter a match has to be sought in first. This section takes it in
+the well-mixed limit --- element diffusion off, so the reservoir ratio is
+also the ratio everywhere in the wind. That is the simpler of the two
+mixing assumptions available, and Sect.~\ref{sec:diffbroad} repeats the
+whole exercise with binary H/He diffusion active, where the answer depends
+on the eddy coefficient as well.
+
+Eleven compositions were solved, from solar ($\mathrm{He/H} = 0.083$)
 to $\mathrm{He/H} = 10^{4}$, each a JFNK steady state
 ($\|R\| < 10^{-3}$, \texttt{info}~$=0$; one case, $\mathrm{He/H} = 100$,
 stagnates at $1.18\times10^{-3}$ and is recorded as such). Nothing is
@@ -291,14 +331,26 @@ $0.50$  & $7.76$ & $4.05$  & $3.50$  & $0.242$ & $1.040$ \\
 $0.55$  & $7.76$ & $4.29$  & $3.69$  & $0.244$ & $1.109$ \\
 $0.70$  & $7.78$ & $4.97$  & $4.26$  & $0.248$ & $1.311$ \\
 $1$     & $7.80$ & $5.88$  & $5.01$  & $0.255$ & $1.598$ \\
-$10$    & $7.76$ & $75.97$ & $73.11$ & $0.267$ & $21.53$ \\
-$10^{3}$& $7.74$ & $73.39$ & $70.06$ & $0.269$ & $20.97$ \\
-$10^{4}$& $7.73$ & $72.78$ & $69.44$ & $0.268$ & $20.78$ \\
+$10$    & $7.76$ & $7.42$  & $6.14$  & $0.287$ & $2.270$ \\
+$10^{3}$& $7.74$ & $5.67$  & $4.66$  & $0.304$ & $1.844$ \\
+$10^{4}$& $7.73$ & $5.60$  & $4.60$  & $0.304$ & $1.825$ \\
 \midrule
 observed & --- & $1.254$ & --- & $0.841$ & $1.108 \pm 0.030$ \\
 \bottomrule
 \end{tabular}
 \end{center}
+
+Nine of the eleven runs are listed; $\mathrm{He/H} = 0.6$ falls between two
+tabulated entries and $\mathrm{He/H} = 100$ is the case whose residual
+stagnates. The three helium-dominated rows are corrected values: their
+depths and equivalent widths were an artifact of the old advection gate,
+which pinned the metastable population to its equilibrium value across the
+hydrogen ionization front, and they fell by $89$--$93\%$ when the gate was
+rebuilt on the slowest solved species (\texttt{Update\_EXHALE.md} Sect.~72;
+at $\mathrm{He/H} = 10$, red $75.97\% \rightarrow 7.42\%$ and
+$EW\ 21.53 \rightarrow 2.270$\,\%\,\AA). The crossing of
+Sect.~\ref{sec:ew} is interpolated inside $\mathrm{He/H} \le 1$ and is
+untouched by that correction.
 
 The escape rate is nearly composition-independent,
 $\dot M \simeq 6\times10^{7}$\,g\,s$^{-1}$, about a third of the
@@ -337,6 +389,15 @@ $90\%$ inside                        & $1.59\,R_p$ & $10.2\,R_p$ \\
 \end{tabular}
 \end{center}
 
+Both radii are read from the local-equilibrium metastable profile, which is
+what Fig.~\ref{fig:structure} draws. The advection-corrected profile that
+the transit integral consumes is more concentrated, and for this
+helium-dominated composition it collapses onto the base once the advection
+gate is formed on the metastable's own clock rather than on hydrogen's
+(\texttt{Update\_EXHALE.md} Sect.~72). This section is therefore a
+statement about the two wind solutions; every transit number quoted
+elsewhere in the memo is measured on the advection-corrected profiles.
+
 The star is $13.6\,R_p$ across, so metastable helium spread to $10\,R_p$
 covers most of the disk while a column confined to $1.6\,R_p$ can darken
 only a narrow ring. The distribution difference is the wind structure ---
@@ -356,6 +417,7 @@ two wind structures. Dotted vertical line: the stellar radius, $13.6\,R_p$.}
 \end{figure}
 
 \section{What can be matched: the equivalent width}
+\label{sec:ew}
 
 Depth and width trade against each other under any broadening, but the
 equivalent width does not: it is invariant under the instrument profile, the
@@ -379,6 +441,13 @@ $\mathrm{H\!:\!He} \lesssim 10^{-3}$, and the reason is the structural
 difference of the previous section: a wind that spreads metastable helium
 over most of the stellar disk needs far less helium to absorb as much.
 
+Two assumptions are carried inside that number and are taken up later. It
+is the well-mixed crossing, and it is the crossing on the GJ\,1132 proxy
+spectrum. Sect.~\ref{sec:diffbroad} rescans it with element diffusion
+active at every decade of the eddy coefficient, and Sect.~\ref{sec:gj699}
+rescans it on the brighter proxy; both move it, the spectrum by much the
+larger factor.
+
 \begin{figure}[htbp]\centering
 \includegraphics[width=0.55\textwidth]{figures/lhs1140b_ew_vs_heh.pdf}
 \caption{Red-pair equivalent width against composition, with and without the
@@ -395,8 +464,8 @@ $\mathrm{He/H} = 0.55$ the profile is $3.4$ times too deep ($4.29\%$ against
 $1.254\%$) and $3.4$ times too narrow ($0.244$ against $0.841$\,\AA). The
 equivalent width states how much absorbing power the model has; the profile
 states how that power is spread in velocity, and composition does not act on
-the second. Every solved composition gives $0.22$--$0.27$\,\AA{}, rising
-only to $0.24$--$0.31$\,\AA{} with the turbulence term.
+the second. Every solved composition gives $0.22$--$0.30$\,\AA{}, rising
+only to $0.24$--$0.38$\,\AA{} with the turbulence term.
 
 \subsection{How much is missing, in velocity}
 
@@ -538,6 +607,220 @@ shaded band the C26 $1\sigma$ interval on the depth; the dotted vertical
 marks where the width is matched. Both curves meet the measurement at the
 same kernel.}
 \label{fig:broadened}
+\end{figure}
+
+\subsection{The same demand, under diffusion and the adopted $K_{zz}$}
+\label{sec:diffbroad}
+
+Everything above was solved in the well-mixed limit. With binary H/He
+element diffusion active, helium settles out of the base unless an eddy term
+lifts it, and how much of it reaches the line-forming region is set by the
+eddy coefficient $K_{zz}$, which is not measured for this system. The
+diffusion operator is described in \texttt{binary\_diffusion\_design.md};
+the literature range at the $1\,\mu$bar base of these runs, the ladder of
+solved cases, and the adoption of
+$K_{zz} = 1.0\times10^{9}$\,cm$^2$\,s$^{-1}$ are in
+\texttt{LHS1140b/kzz\_decision.md}.
+
+\subsubsection*{The composition, and how much of it $K_{zz}$ carries}
+
+Turning the operator on moves the equivalent-width crossing of
+Fig.~\ref{fig:ew} away from $\mathrm{He/H} = 0.55$, and by how much depends
+on $K_{zz}$. The composition was therefore rescanned at every decade of the
+eddy coefficient from $K_{zz} = 0$ to $10^{11}$\,cm$^2$\,s$^{-1}$, by the
+same route in every case: the same control input, the same direct-steady
+JFNK solve at $\|R\|_{\rm tol} = 5.0\times10^{-3}$, the same single
+post-processing pass and transit synthesis, and the same red-pair equivalent
+width on the vacuum window $10832.60$--$10834.20$\,\AA.
+Table~\ref{tab:kzzcross} is the result; every crossing is interpolated
+inside a bracket of two solved runs, none extrapolated and none against a
+saturated line --- at $K_{zz} = 10^{6}$, where the crossing sits highest,
+the equivalent width is still climbing at $\mathrm{He/H} = 10$.
+
+\begin{table}[htbp]\centering
+\caption{Where the red-pair equivalent width crosses the measured
+$1.108 \pm 0.030$\,\%\,\AA, at every decade of the eddy coefficient, with
+binary H/He diffusion active throughout. The $1\sigma$ range propagates the
+measurement error alone, within one $K_{zz}$. The decades $10^{1}$--$10^{4}$
+were not scanned in composition: at a fixed $\mathrm{He/H} = 5$ their
+equivalent width differs from the $K_{zz} = 0$ one by $0.00002$ to $0.005$
+of the measurement error, which is the entry they carry. Runs, seeds and
+residuals: \texttt{LHS1140b/kzz\_decision.md}, Sect.~6.1.}
+\label{tab:kzzcross}
+\begin{tabular}{lccl}
+\toprule
+$K_{zz}$ [cm$^2$\,s$^{-1}$] & $\mathrm{He/H}$ at the crossing &
+$1\sigma$ range & bracketing runs [EW in \%\,\AA] \\
+\midrule
+$0$ (molecular only) & $4.68$ & $4.54$--$4.83$ &
+$4.6$ [$1.092$], $4.8$ [$1.134$] \\
+$10^{1}$--$10^{4}$ & \multicolumn{3}{l}{not distinguishable from
+$K_{zz} = 0$ by this line} \\
+$10^{5}$  & $4.68$ & $4.55$--$4.83$ & $4.6$ [$1.092$], $4.8$ [$1.133$] \\
+$10^{6}$  & $4.45$ & $4.33$--$4.59$ & $4.4$ [$1.096$], $4.7$ [$1.161$] \\
+$10^{7}$  & $3.78$ & $3.66$--$3.96$ & $3.6$ [$1.063$], $3.8$ [$1.113$] \\
+$10^{8}$  & $2.87$ & $2.78$--$2.97$ & $2.70$ [$1.050$], $3.00$ [$1.149$] \\
+$10^{9}$ (adopted) & $\mathbf{2.09}$ & $2.03$--$2.16$ &
+$2.00$ [$1.065$], $2.13$ [$1.129$] \\
+$10^{10}$ & $1.54$ & $1.47$--$1.59$ & $1.50$ [$1.087$], $1.60$ [$1.146$] \\
+$10^{11}$ & $1.11$ & $1.07$--$1.15$ & $1.00$ [$1.019$], $1.20$ [$1.180$] \\
+\midrule
+none (well mixed) & $0.550$ & --- & Fig.~\ref{fig:ew} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\textbf{The full ladder is three regimes, not one power law}
+(Fig.~\ref{fig:hehkzz}). Above $10^{7}$ the degeneracy is shallow and very
+nearly a power law,
+$\mathrm{d}\log(\mathrm{He/H})/\mathrm{d}\log K_{zz} = -0.136$
+($-0.139$, $-0.133$ and $-0.141$ across the three decades
+$10^{8}$--$10^{11}$), so $\mathrm{He/H} \propto K_{zz}^{-0.14}$. Below
+$10^{7}$ the curve rolls over ($-0.071$ across $10^{6}$--$10^{7}$, $-0.022$
+across $10^{5}$--$10^{6}$) onto a plateau at $\mathrm{He/H} = 4.68$, the
+value the line implies when the eddy term does nothing. That plateau is
+where it is for a reason that is measured rather than assumed: the operator
+adds $K_{zz}$ to the molecular coefficient, and these helium-rich solutions
+carry $D_{\rm eff} = 1.24$--$1.32\times10^{6}$\,cm$^2$\,s$^{-1}$ at the
+base, so $K_{zz} = 10^{6}$ raises the base coefficient by $77\%$, $10^{5}$
+by $8\%$ and $10^{4}$ by $0.8\%$. At a fixed $\mathrm{He/H} = 5$ the
+resulting equivalent width departs from the $K_{zz} = 0$ one by $0.005$ of
+the measurement error at $10^{4}$, $0.18$ at $10^{5}$ and $1.76$ at
+$10^{6}$: \emph{no eddy coefficient at or below
+$10^{4}$\,cm$^2$\,s$^{-1}$ is distinguishable from none at all by this
+line.} At the other end the operator never reaches the well-mixed limit
+either --- even at $10^{11}$ the inferred reservoir, $1.11$, is twice the
+well-mixed $0.55$.
+
+Over the span the literature leaves open at the base pressure of these runs
+the inferred reservoir ratio moves only from $1.5$ to $2.9$, a factor $1.9$,
+against a factor $9$ in equivalent width across the same two decades at
+fixed composition: the line responds to composition much faster than it
+responds to $K_{zz}$, so a large change in the eddy coefficient is bought
+back by a small change in the reservoir. \emph{The composition inferred
+from this line under diffusion is therefore only weakly conditional on $K_{zz}$, as
+$K_{zz}^{-0.14}$, and strongly conditional on the assumed spectrum} --- the
+SED moves the well-mixed crossing by a factor $9$, from $0.550$ to $0.060$
+(Sect.~\ref{sec:gj699}), which is five times the entire $K_{zz}$ lever.
+
+\begin{figure}[htbp]\centering
+\includegraphics[width=0.72\textwidth]{figures/lhs1140b_heh_vs_kzz.pdf}
+\caption{\textbf{The composition--mixing degeneracy in full.} Each square is
+the $\mathrm{He/H}$ reservoir ratio whose red-pair equivalent width equals
+the measured one, solved at one decade of $K_{zz}$ with binary H/He
+diffusion active (Table~\ref{tab:kzzcross}); the error bars propagate the
+measurement error alone and are smaller than the symbols over most of the
+range. The landscape has three parts. Below $K_{zz}\simeq10^{5}$ the eddy
+term is a small correction to the molecular coefficient the base already
+carries, the inference sits on a plateau at $\mathrm{He/H} = 4.68$ (dashed,
+with its $1\sigma$ band), and the open circles mark the decades whose
+equivalent width differs from the $K_{zz}=0$ one by less than a fifth of the
+measurement error. Between $10^{6}$ and $10^{7}$ the curve rolls off. From
+$10^{8}$ up it is the shallow power law $K_{zz}^{-0.136}$ (orange). Neither
+end of the axis reaches the well-mixed crossing of $0.55$ (dotted): with the
+operator active, helium settles at every eddy coefficient tried, and
+$\mathrm{He/H}$ inferred from this line is a statement about the assumed
+mixing as much as about the planet. The adopted
+$K_{zz} = 10^{9}$\,cm$^2$\,s$^{-1}$ is marked.}
+\label{fig:hehkzz}
+\end{figure}
+
+What $K_{zz}$ does act on strongly is the helium profile itself, and
+Fig.~\ref{fig:kzzprof} separates that from the wind. At a fixed reservoir
+$\mathrm{He/H} = 0.55$, raising $K_{zz}$ from $0$ to $10^{10}$ lifts the
+homopause from below the base to $1.13$\,$R_{\rm p}$ and the metastable
+population by a factor $400$, while the velocity and density profiles move
+by less than $30\%$ and $\dot M$ by $0.23$\,dex. Temperature is the one bulk
+variable that follows, because the helium the eddy term lifts is itself a
+heating agent. Along the equivalent-width-matched sequence of
+Table~\ref{tab:kzzcross}, where each $K_{zz}$ carries its own crossing
+composition, $\log_{10}\dot M = 7.80 \pm 0.01$ in every run: the escape rate
+does not carry the $K_{zz}$ dependence at all.
+
+\begin{figure}[htbp]\centering
+\includegraphics[width=\textwidth]{figures/lhs1140b_kzz_profiles.pdf}
+\caption{Four converged solutions differing only in the eddy coefficient,
+at a fixed reservoir $\mathrm{He/H} = 0.55$ with binary H/He diffusion
+active: $K_{zz} = 0$, $10^{8}$, $10^{9}$ (adopted) and
+$10^{10}$\,cm$^2$\,s$^{-1}$, dark to light. \textbf{The eddy coefficient is
+a composition knob, not a wind knob.} Panels (d)--(f), the elemental helium
+against its base reservoir value and the metastable population, span two to
+four orders of magnitude across the four runs --- at $1.05$\,$R_{\rm p}$ the
+elemental ratio is $0.000$, $0.485$, $0.845$, $0.974$, and the peak
+$n(2\,^3S)$ is $0.046$, $3.5$, $11.8$, $18.1$\,cm$^{-3}$ --- while in panels
+(b) and (c) the velocity at $10$\,$R_{\rm p}$ moves by $16\%$ and the
+density at $2$\,$R_{\rm p}$ by $28\%$, and $\log_{10}\dot M$ by
+$0.23$\,dex. Panel (a) is the exception: $T$ at $1.5$\,$R_{\rm p}$ rises
+from $2412$ to $4276$\,K, because the helium the eddy term lifts is itself
+absorbing. Panel (f) repeats (d) on a linear axis over the base, where the
+dots and dotted lines mark each run's homopause --- the radius at which its
+own molecular coefficient equals its $K_{zz}$ --- at $1.028$, $1.056$ and
+$1.129$\,$R_{\rm p}$, with the $K_{zz} = 0$ homopause below the base.}
+\label{fig:kzzprof}
+\end{figure}
+
+\subsubsection*{The width the data demand, again}
+
+The question that remains is narrower: whether the width the data demand
+moves with the composition.
+
+It does not. Repeating the measurement of Sect.~\ref{sec:broadening} on
+\texttt{heh2p13\_diff\_kzz1e9}, the EW-matched diffusive solution
+($\mathrm{He/H} = 2.13$, red-pair EW $1.129$\,\%\,\AA, red depth $4.396\%$,
+FWHM $0.242$\,\AA), with the same convolution, the same three-Gaussian
+extractor and the same integration window, gives Table~\ref{tab:diffbroad}.
+
+\begin{table}[htbp]\centering
+\caption{The EW-matched diffusive solution
+(\texttt{heh2p13\_diff\_kzz1e9}: $\mathrm{He/H} = 2.13$,
+$K_{zz} = 10^{9}$\,cm$^2$\,s$^{-1}$) convolved with an added Gaussian of
+FWHM $f$, measured exactly as Table~\ref{tab:broadening}.}
+\label{tab:diffbroad}
+\begin{tabular}{lrrrrr}
+\toprule
+$f$ [km\,s$^{-1}$] & red [\%] & blue [\%] & red/blue & FWHM [\AA] &
+EW [\%\,\AA] \\
+\midrule
+$0$   & $4.396$ & $0.643$ & $6.84$ & $0.242$ & $1.129$ \\
+$10$  & $2.441$ & $0.328$ & $7.44$ & $0.434$ & $1.129$ \\
+$15$  & $1.787$ & $0.237$ & $7.55$ & $0.593$ & $1.125$ \\
+$20$  & $1.392$ & $0.183$ & $7.59$ & $0.761$ & $1.108$ \\
+$\mathbf{22.3}$ & $\mathbf{1.260}$ & $\mathbf{0.166}$ & $\mathbf{7.60}$ &
+$\mathbf{0.841}$ & $\mathbf{1.094}$ \\
+$25$  & $1.134$ & $0.149$ & $7.62$ & $0.935$ & $1.073$ \\
+\midrule
+observed & $1.24^{+0.22}_{-0.23}$ & $0.25^{+0.14}_{-0.12}$ &
+$6.7^{+12.7}_{-3.1}$ & $0.841$ & $1.108 \pm 0.030$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The width is reached at $f = 22.31$\,km\,s$^{-1}$ FWHM, against
+$22.30$\,km\,s$^{-1}$ for the diffusion-off $\mathrm{He/H} = 0.55$ solution
+of Sect.~\ref{sec:broadening}: the two differ by $0.01$\,km\,s$^{-1}$, more
+than three orders of magnitude below the number itself. At that kernel the
+depth is
+$1.260\%$ against the measured $1.24^{+0.22}_{-0.23}$, the blue component
+$0.166\%$ against $0.25^{+0.14}_{-0.12}$, the ratio $7.60$ against
+$6.7^{+12.7}_{-3.1}$ and the equivalent width $1.094$ against
+$1.108 \pm 0.030$ --- all four inside the observed $1\sigma$ interval at the
+value fixed by the width alone, as in the well-mixed case. So the velocity
+the profile demands is unchanged by turning diffusion on and by the adopted
+eddy coefficient: those change how much helium is there, not how fast it
+moves. Figure~\ref{fig:diffbroad} shows the two broadened curves lying on
+each other.
+
+\begin{figure}[htbp]\centering
+\includegraphics[width=0.60\textwidth]{figures/lhs1140b_diff_broadened.pdf}
+\caption{The EW-matched diffusive solution as solved (dotted purple, its
+core running below the plotted range) and convolved with the
+$22.3$\,km\,s$^{-1}$ FWHM Gaussian that reproduces the measured width (solid
+purple), against the measurement; the diffusion-off $\mathrm{He/H} = 0.55$
+curve at its own matched kernel (dashed green) is repeated from
+Fig.~\ref{fig:broadened}. The two broadened curves are indistinguishable ---
+their kernels differ by $0.01$\,km\,s$^{-1}$. All curves are shifted by the
+same $v_{\rm wind} = +2.26$\,km\,s$^{-1}$.}
+\label{fig:diffbroad}
 \end{figure}
 
 \subsection{Broadening cannot repair a deficit in equivalent width}
@@ -692,7 +975,10 @@ temperature and outflow speed there; the last three characterize the
 absorber-weighted ($w = n_{2^3S}r^2\,dr$) distribution of $|v_r|$ over the
 advection-corrected $2^3S$ column that the transit tool integrates. The
 He/H\,$=1000$ solutions have no outward density maximum---their $n_{2^3S}$
-peaks at the base---and are marked $\dagger$.}
+peaks at the base---and are marked $\dagger$. Those two rows are corrected
+values, recomputed on the advection-corrected profiles that the gate fix of
+\texttt{Update\_EXHALE.md} Sect.~72 produced; the He/H\,$\le 1$ rows are
+unaffected by it.}
 \label{tab:bump}
 \begin{tabular}{lrrrrrr}
 \toprule
@@ -702,12 +988,12 @@ case & $r_{\rm peak}$ & $T$ & $v$ & med.\ $|v_r|$ & $>2$ & $>5$ \\
 \multicolumn{7}{l}{\emph{GJ\,1132 proxy SED}}\\
 He/H\,$=0.55$   & $5.42$ & $1608$ & $0.27$ & $0.38$ & $0.0$ & $0.0$ \\
 solar He/H      & $3.02$ & $1876$ & $0.07$ & $0.41$ & $0.0$ & $0.0$ \\
-He/H\,$=1000$   & $1.05^\dagger$ & $2550$ & $0.00$ & $0.52$ & $0.0$ & $0.0$ \\
+He/H\,$=1000$   & $1.05^\dagger$ & $2550$ & $0.00$ & $0.00$ & $0.0$ & $0.0$ \\
 \midrule
 \multicolumn{7}{l}{\emph{GJ\,699 proxy SED}}\\
 He/H\,$=0.06$   & $5.42$ & $1015$ & $1.40$ & $2.53$ & $64.9$ & $0.0$ \\
 solar He/H      & $5.50$ & $1047$ & $1.41$ & $2.51$ & $64.3$ & $0.0$ \\
-He/H\,$=1000$   & $1.05^\dagger$ & $2529$ & $0.00$ & $1.40$ & $11.3$ & $0.0$ \\
+He/H\,$=1000$   & $1.05^\dagger$ & $2529$ & $0.00$ & $0.00$ & $0.4$ & $0.0$ \\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -715,8 +1001,8 @@ He/H\,$=1000$   & $1.05^\dagger$ & $2529$ & $0.00$ & $1.40$ & $11.3$ & $0.0$ \\
 The bump is there. In every case the metastable fraction $f_3 =
 n_{2^3S}/n_{\rm He}$ rises monotonically outward across the whole cooling
 leg, from the temperature maximum to a maximum of $f_3$ at
-$8.3$--$16.2\,R_p$---a rise of $1.4$--$4.2\times10^{3}$ in the equilibrium
-profiles and $38$--$1.1\times10^{3}$ in the advection-corrected ones---and the rise is
+$1.1$--$16.2\,R_p$---a rise of $1.4$--$4.2\times10^{3}$ in the equilibrium
+profiles and $22$--$236$ in the advection-corrected ones---and the rise is
 attributable to the temperature dependence in the way Schulik \& Owen
 describe: against the same balance with the rates frozen at the peak
 temperature, the solved population stands a factor $1.6$--$31$ high at the
@@ -728,12 +1014,15 @@ regime the mechanism asks for. The quench is visible too---in the
 advection-corrected profiles the density maximum has moved inward to
 $1.05$--$1.64\,R_p$ and $n_{2^3S}$ then falls monotonically, so the outflow
 appears to be sweeping the metastable out at least as fast as recombination
-resupplies it, and $\dot m_{2^3S}$ drops by up to $41\%$ past the peak.
+resupplies it, and $\dot m_{2^3S}$ drops past the peak by $31\%$ at the
+GJ\,1132 equivalent-width-matched composition and by $98$--$99.9\%$ on the
+helium-dominated He/H\,$=1000$ runs, while the remaining cases carry it
+outward without loss.
 
 The velocity condition, however, is not met, and not narrowly. At the bump
 the outflow is moving at $0.27$\,km\,s$^{-1}$ on the GJ\,1132 proxy and
 $1.4$\,km\,s$^{-1}$ on the GJ\,699 proxy. Weighting by absorbers over the
-whole $2^3S$ column, the median $|v_r|$ is $0.4$--$0.5$\,km\,s$^{-1}$ and
+whole $2^3S$ column, the median $|v_r|$ is at most $0.4$\,km\,s$^{-1}$ and
 $2.5$\,km\,s$^{-1}$ on the two spectra, and the largest $|v_r|$ anywhere in
 the column is $1.6$ and $3.9$\,km\,s$^{-1}$. No part of the column on
 either spectrum reaches $5$\,km\,s$^{-1}$, against the $\sigma
@@ -794,8 +1083,15 @@ neither. The candidates, in the order they should be tested:
       GJ\,1132 proxy used here, and the paper itself runs both. Solving the
       scan again on it raises $\dot M$ sevenfold and moves the composition
       estimate by an order of magnitude, but leaves the required extra
-      broadening at $22.1$\,km\,s$^{-1}$ against $22.3$: the width gap is
+      broadening at $22.08$\,km\,s$^{-1}$ against $22.30$: the width gap is
       not an energy-input problem.
+\item \emph{A different helium distribution} --- tested
+      (Sect.~\ref{sec:diffbroad}), and it does not do it either. Letting
+      helium settle against binary diffusion and lifting it back with an
+      eddy term redistributes the absorber by orders of magnitude and moves
+      the inferred composition with it, but the required broadening stays
+      at $22.31$\,km\,s$^{-1}$: it changes how much helium is there, not
+      how fast it moves.
 \item \emph{Heating the code does not carry.} Taylor et al.'s trapped-ion
       turbulence, or any magnetically mediated dissipation, is outside a
       1D hydrodynamic energy equation by construction.
@@ -809,10 +1105,13 @@ neither. The candidates, in the order they should be tested:
 
 The paper's composition constraint should be read in the same light: it
 inherits the isothermal assumption. Impose a $6100$\,K structure and only
-helium-rich gas absorbs enough; solve the energy balance and the same
-absorption is reached near $\mathrm{He/H} \sim 0.5$. Neither answer is
-secure while the width is unexplained, because the width is what tells us
-whether the line-forming gas is the gas either model thinks it is.
+helium-rich gas absorbs enough; solve the energy balance on this spectrum
+and, in the well-mixed limit, the same absorption is reached near
+$\mathrm{He/H} \sim 0.5$ --- and near $0.06$ on the other proxy spectrum,
+or near $2$ once helium is allowed to settle against the adopted eddy
+coefficient. No answer on that list is secure while the width is
+unexplained, because the width is what tells us whether the line-forming
+gas is the gas either model thinks it is.
 
 \section{The best each model can do}
 
@@ -935,23 +1234,22 @@ $0.25$   & $8.62$ & $3861$ ($1.44$) & $3.21$ & $213$  ($5.9$) & $11.98$ & $0.279
 $0.55$   & $8.60$ & $5079$ ($1.39$) & $2.83$ & $441$  ($6.6$) & $16.64$ & $0.288$ & $5.092$ \\
 $1$      & $8.59$ & $6094$ ($1.38$) & $2.58$ & $616$  ($7.2$) & $17.28$ & $0.298$ & $5.479$ \\
 $10^{3}$ & $8.43$ & $9351$ ($1.38$) & $2.07$ & $1.4\times10^{4}$ ($1.0$)
-         & $105.1^{a}$ & $0.320$ & $35.87$ \\
+         & $9.53$  & $0.342$ & $3.479$ \\
 \midrule
 observed & --- & --- & --- & --- & $1.254$ & $0.841$ & $1.108 \pm 0.030$ \\
 \bottomrule
 \end{tabular}
 \end{center}
 
-\noindent\footnotesize $^{a}$ The three-Gaussian extractor returns the sum
-of its component amplitudes, which exceeds the largest excess actually
-present in the spectrum ($96.9\%$) once the line saturates into a
-flat-topped trough. The entry is the fit value, kept for consistency with
-every other row; it is not a depth the model reaches.\normalsize
-
 The wind is hotter and faster than on the fainter spectrum --- at
 $\mathrm{He/H} = 0.06$ it reaches $3.6$\,km\,s$^{-1}$ at $20\,R_p$ against
 $1.2$ for the equivalent-width-matched GJ\,1132 solution --- and the
-metastable population still peaks far out, near $5.4\,R_p$.
+metastable population still peaks far out, near $5.4\,R_p$. As in
+Sect.~\ref{sec:scan}, the $\mathrm{He/H} = 10^{3}$ row is a corrected value
+(red $105.1\% \rightarrow 9.53\%$, $EW\ 35.87 \rightarrow 3.479$\,\%\,\AA{}
+after the advection-gate fix, \texttt{Update\_EXHALE.md} Sect.~72); the six
+helium-poorer rows, which are the ones the crossing is interpolated in, are
+unaffected.
 
 \subsection{The composition estimate moves by an order of magnitude}
 
@@ -984,13 +1282,14 @@ evidence the composition inference is SED-limited.
 \subsection{The width does not move}
 
 The width is the one thing the extra energy does not fix. Across the whole
-GJ\,699 scan the red-pair FWHM is $0.270$--$0.320$\,\AA{}
-($0.304$--$0.377$ with the turbulence term), against the measured
+GJ\,699 scan the red-pair FWHM is $0.270$--$0.342$\,\AA{}
+($0.304$--$0.427$ with the turbulence term), against the measured
 $0.841$\,\AA. Measuring the deficit the way Sect.~\ref{sec:broadening} does
 --- convolving with a Gaussian and asking which width reproduces the
 observation --- the composition at the crossing needs
-$22.1$\,km\,s$^{-1}$ FWHM of added velocity spread, against
-$22.3$\,km\,s$^{-1}$ for the equivalent-width-matched GJ\,1132 solution. A
+$22.08$\,km\,s$^{-1}$ FWHM of added velocity spread, against
+$22.30$\,km\,s$^{-1}$ for the equivalent-width-matched GJ\,1132 solution and
+$22.31$ for the diffusive one of Sect.~\ref{sec:diffbroad}. A
 factor $5.1$ in XUV input, a factor $7$ in $\dot M$ and a factor $3$ in
 outflow velocity at $20\,R_p$ change the required broadening by $1\%$.
 
@@ -1023,15 +1322,26 @@ implies moves from $0.550$ to $0.060$ when the assumed SED is changed.}
 The line is not reproduced. What stands:
 
 \begin{itemize}
-\item \textbf{Amount of absorption: matched.} $\mathrm{He/H} \simeq 0.55$,
-      insensitive to the broadening treatment at the $2\%$ level.
+\item \textbf{Amount of absorption: matched, under every assumption
+      combination tried} --- $\mathrm{He/H} = 0.55$ well mixed on the
+      GJ\,1132 proxy, $0.060$ well mixed on the GJ\,699 proxy, $2.09$ under
+      diffusion at the adopted $K_{zz} = 10^{9}$\,cm$^2$\,s$^{-1}$ --- and
+      in each case insensitive to the broadening treatment at the $2\%$
+      level. Which is the point of the next-to-last item: the match is
+      always available, so it constrains the composition only as far as the
+      assumptions behind it are secure.
 \item \textbf{Line shape: not matched}, by a factor $3.4$ in both depth and
       width, and not fixable by composition. The missing ingredient is
-      $22.3$\,km\,s$^{-1}$ FWHM of velocity spread ($\sigma =
+      $22.30$\,km\,s$^{-1}$ FWHM of velocity spread ($\sigma =
       9.5$\,km\,s$^{-1}$), measured in Sect.~\ref{sec:broadening} and
       Fig.~\ref{fig:broadened}; supplied as one Gaussian it puts depth,
       blue depth and red/blue ratio inside the observed $1\sigma$ interval
-      at once, but its physical origin is unidentified. The adiabatic
+      at once, but its physical origin is unidentified. The demand is
+      unchanged under diffusion and the adopted $K_{zz}$: measured the same
+      way on the EW-matched diffusive solution it is $22.31$\,km\,s$^{-1}$,
+      $0.01$\,km\,s$^{-1}$ away (Sect.~\ref{sec:diffbroad}), and it is
+      $22.08$\,km\,s$^{-1}$ on the $5.1\times$ brighter proxy spectrum
+      (Sect.~\ref{sec:gj699}). The adiabatic
       metastable bump, which would have supplied it without a free
       parameter, is present and measured (Sect.~\ref{sec:bump}) but sits
       too slow to contribute.
@@ -1042,23 +1352,37 @@ The line is not reproduced. What stands:
       $4.0\times10^{8}$\,g\,s$^{-1}$ --- a factor $7$ higher and within
       $0.04$\,dex of the value the paper retrieves on that same proxy
       (Sect.~\ref{sec:gj699}).
-\item \textbf{Composition: SED-limited.} The equivalent-width crossing is
+\item \textbf{Composition: SED-limited, and weakly $K_{zz}$-limited.} In the
+      well-mixed limit the equivalent-width crossing is
       $\mathrm{He/H} = 0.550$ on one proxy spectrum and $0.060$ on the
       other, helium-rich against helium-poor, with the measurement unable to
-      separate them. Any composition read off this line, the paper's
-      included, is conditional on the assumed XUV spectrum.
+      separate them. With binary H/He diffusion active the crossing rises,
+      and the whole $K_{zz}$ axis has now been walked: $\mathrm{He/H} =
+      4.68$ on the plateau at $K_{zz} \le 10^{5}$, then $4.45$, $3.78$,
+      $2.87$, $2.09$, $1.54$ and $1.11$ at $10^{6}$ through
+      $10^{11}$\,cm$^2$\,s$^{-1}$ (Table~\ref{tab:kzzcross},
+      Fig.~\ref{fig:hehkzz}) --- a factor $1.9$ across the range the
+      literature leaves open, $4.2$ across the entire axis, against the
+      factor $9$ the SED carries. End to end the inference spans $0.060$ to
+      $4.68$, a factor $80$. So any composition read off this line, the
+      paper's included, is strongly conditional on the assumed XUV spectrum
+      and weakly conditional on the eddy coefficient, as $K_{zz}^{-0.14}$
+      wherever the eddy term acts at all.
 \item \textbf{One solution is not converged to tolerance.}
       $\mathrm{He/H} = 100$ stagnates at $\|R\| = 1.18\times10^{-3}$ from
       every seed tried; neighbours bracket it smoothly, so it is retained
       with the residual recorded.
 \end{itemize}
 
-\noindent That test has now been run (Sect.~\ref{sec:gj699}), and it
-separated the two questions rather than answering them together: the
-composition estimate moved by an order of magnitude while the width did not
-move at all. The shortfall is therefore not an energy-input problem. Of the
-remaining candidates the adiabatic bump has since been tested and ruled out
-as a source of width for this host (Sect.~\ref{sec:bump}), which leaves the
-3D and magnetic ones.
+\noindent Three axes have now been walked --- the assumed XUV spectrum, the
+mixing assumption with its eddy coefficient, and composition itself --- and
+each separates the two questions rather than answering them together. Every
+one of them moves the composition the equivalent width implies, two of them
+by a large factor; none of them moves the width. What is left as a possible
+source of the missing $22$\,km\,s$^{-1}$ is therefore what it was: velocity
+fields that are three-dimensional, or heating a 1D hydrodynamic energy
+equation does not carry. The adiabatic-cooling metastable bump, the one
+candidate that would have needed no free parameter, has been looked for on
+both spectra and does not supply it for this host (Sect.~\ref{sec:bump}).
 
 \end{document}
