@@ -115,6 +115,26 @@ $R_\oplus = 6.3725\times10^{8}$\,cm), so the input must be built with those
 and not with IAU equatorial values --- a $2.2\%$ error in radius, $4.4\%$ in
 transit depth, if taken from the wrong pair.
 
+\subsection{Lower boundary condition}
+\label{sec:base_bc}
+EXHALE anchors the lower boundary at the planetary radius $R_p$ using the
+standard CETIMB pressure-anchored condition (\texttt{Base BC: pressure 1.0}),
+fixing the base pressure at
+$P_0 = 1.0\,\mu\mathrm{bar} = 1.0\,\mathrm{dyn\,cm^{-2}} = 1.0\,\mathrm{erg\,cm^{-3}}$
+($0.1$\,Pa). The corresponding base total number density $n_0$ follows
+from the ideal gas law at the equilibrium temperature
+$T_0 = T_{\rm eq} = 226.0$\,K:
+\begin{equation}
+  n_0 = \frac{P_0}{k_B T_0 n_{\rm tot,bc}}
+      = \frac{1.0\,\mathrm{dyn\,cm^{-2}}}{(1.380649\times10^{-16}\,\mathrm{erg\,K^{-1}}) \times 226.0\,\mathrm{K}}
+      = 3.20485\times 10^{13}\,\mathrm{cm^{-3}},
+\end{equation}
+where $n_{\rm tot,bc} = 1.0$ for neutral atomic gas. In logarithmic form,
+$\log_{10}(n_0/\mathrm{cm^{-3}}) = 13.506$, which is entered in
+\texttt{input.inp} as \texttt{Log10 lower boundary number density [cm\textasciicircum-3]: 13.506}.
+When \texttt{Base BC: pressure} is specified, EXHALE dynamically re-evaluates
+and enforces this relation internally (\texttt{input\_read.f90}).
+
 \subsection{Stellar spectrum}
 \label{sec:sed}
 The paper describes its normalization two ways that cannot both hold: the
