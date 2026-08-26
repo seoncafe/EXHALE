@@ -313,13 +313,158 @@ first page, which carries the tail of the preceding \textit{Nature} letter
 (on Crab pulsar radio emission); Vidal-Madjar et al.\ themselves do not
 discuss turbulence.
 
-\paragraph{Where that leaves this comparison.}
+\subsection{Empirical baseline: turbulence in Solar System giant planets}
+\label{sec:solarsys_turb}
+
+To evaluate whether sonic or supersonic ($v_{\rm turb} \sim c_s$) turbulence
+is physically plausible in a planetary atmosphere, it is instructive to compare
+with directly measured turbulence and non-thermal velocity fields across the
+stratified layers of Jupiter and Saturn:
+
+\begin{itemize}
+\item \emph{Troposphere and cloud deck ($\sim 0.1$--$1$\,bar).}
+      Cloud-tracking measurements from \textit{Voyager}, \textit{Galileo},
+      \textit{Cassini}, and \textit{Juno} (e.g., Salyk et al.\ 2006; Del
+      Genio et al.\ 2007; Ingersoll et al.) isolate the fluctuating eddy
+      velocities $v' = \sqrt{\overline{u'^2 + v'^2}}$ from the mean zonal
+      jets ($100$--$500$\,m\,s$^{-1}$). The resulting RMS turbulent eddy
+      velocity is $v' \approx 3$--$10$\,m\,s$^{-1}$ on Jupiter (locally
+      $20$--$30$\,m\,s$^{-1}$ in the Great Red Spot shear zone) and
+      $5$--$15$\,m\,s$^{-1}$ on Saturn. Compared to the tropospheric sound
+      speed ($c_s \approx 800$--$900$\,m\,s$^{-1}$), this is deeply subsonic
+      turbulence, with Mach numbers $\mathcal{M} \sim 0.005$--$0.02$.
+\item \emph{Stratosphere ($\sim 10\,\mu\mathrm{bar}$--$10\,\mathrm{mbar}$).}
+      High-resolution submillimeter spectroscopy of impact-delivered HCN/CO
+      molecules with ALMA (e.g., Cavali\'e et al.\ 2021) and Herschel reveals
+      stratospheric jet velocities up to $300$--$400$\,m\,s$^{-1}$ in the
+      auroral zone, but the associated non-thermal velocity dispersion
+      (turbulence and wave motions) remains limited to tens of m\,s$^{-1}$
+      up to $\sim 100$--$200$\,m\,s$^{-1}$ ($\mathcal{M} \lesssim 0.2$).
+\item \emph{Thermosphere and auroral ionosphere ($\lesssim 1\,\mu\mathrm{bar}$).}
+      Ground-based high-resolution ($R \sim 10^5$) infrared spectroscopy of
+      $\mathrm{H}_3^+$ line profiles (e.g., with VLT/CRIRES, Keck, and CFHT)
+      disentangles thermal Doppler broadening from non-thermal velocity
+      fields. In non-auroral mid-latitudes, the non-thermal velocity is
+      $v_{\rm nth} \approx 0.2$--$0.5$\,km\,s$^{-1}$. In the auroral oval,
+      where intense magnetosphere--ionosphere coupling, ion drag, and Joule
+      heating inject substantial kinetic energy, non-thermal broadening
+      reaches $v_{\rm nth} \approx 0.8$--$2.0$\,km\,s$^{-1}$.
+\end{itemize}
+
+\noindent These empirical benchmarks show that pure hydrodynamic planetary
+turbulence is strictly subsonic ($\mathcal{M} \ll 1$), and even violent
+magnetospheric auroral driving in upper thermospheres caps non-thermal
+broadening at $\lesssim 2$\,km\,s$^{-1}$.
+
+\subsection{Turbulence and 3D hydrodynamic simulations of exoplanets}
+\label{sec:3d_turb}
+
+Beyond 1D parameterizations, 3D numerical simulations explore how turbulent
+mixing, non-thermal velocity structures, and line broadening emerge across
+diverse exoplanetary regimes:
+
+\paragraph{1. 3D hot Jupiter escape and circulation.}
+\begin{itemize}
+\item \emph{3D atmospheric escape and kinematic line broadening.}
+      Hydrodynamic 3D escape simulations (e.g., McCann et al.\ 2019;
+      Debrecht et al.\ 2020; Carolan et al.\ 2020, 2021; Wang \& Dai 2021;
+      MacLeod \& Oklop\v{c}i\'c 2022) demonstrate that apparent transmission
+      line broadening arises primarily from large-scale 3D kinematic velocity
+      gradients ($10$--$50$\,km\,s$^{-1}$) across the day-to-night outflow,
+      Coriolis-deflected tails, and tidal distortion, rather than unresolved
+      isotropic microscale turbulence. Furthermore, the collision between the
+      expanding planetary wind and the incoming stellar wind creates a shear
+      layer prone to Kelvin--Helmholtz instabilities and turbulent mixing at
+      the contact discontinuity. In 3D multifluid models of HD\,189733\,b,
+      Rumenskikh et al.\ (2022, 2023) show that upper-atmospheric zonal jets
+      of $10$--$20$\,km\,s$^{-1}$ combined with 3D outflow geometry reproduce
+      the observed broad transmission profiles without invoking ad hoc
+      microturbulence.
+\item \emph{3D general circulation models (GCMs) and macroturbulent mixing.}
+      In the observable lower-to-middle atmosphere ($1\,\mathrm{bar}$ to
+      $\sim 1\,\mu\mathrm{bar}$), 3D GCMs (e.g., Showman \& Polvani 2011;
+      Showman et al.\ 2013, 2015; Parmentier et al.\ 2013; Charnay et al.\
+      2015; Zhang \& Showman 2018) demonstrate that equatorial superrotation
+      ($1$--$5$\,km\,s$^{-1}$) and vertical mixing ($K_{zz} \sim
+      10^7$--$10^{11}$\,cm$^2$\,s$^{-1}$) are driven by planetary-scale
+      macroturbulence (non-linear interactions between planetary-scale Kelvin
+      and Rossby waves and the mean flow) and overturning circulation. The
+      sub-grid parameterization of small-scale turbulent dissipation
+      (hyperdiffusion, Smagorinsky closures, or Shapiro filters) remains a
+      known source of numerical sensitivity in GCM wind speeds and jet
+      stability (Heng et al.\ 2011; Polichtchouk et al.\ 2014; Skinner \& Cho
+      2021).
+\item \emph{Magnetohydrodynamic (MHD) turbulence in ultra-hot atmospheres.}
+      For planets with $T \gtrsim 1500$\,K, thermal ionization of alkali
+      metals (Na, K) couples the gas to the planetary magnetic field. 3D MHD
+      simulations (e.g., Perna et al.\ 2010, 2012; Rauscher \& Menou 2013;
+      Rogers \& Showman 2014; Rogers \& Komacek 2014; Beltz et al.\ 2022)
+      show that magnetic winding of the field by supersonic zonal winds
+      generates Lorentz forces (magnetic drag) that brake the flow, generating
+      3D MHD turbulence, Ohmic dissipation, and time-dependent variability in
+      wind patterns and hotspot offsets.
+\end{itemize}
+
+\paragraph{2. 3D simulations across other planetary classes.}
+The reach of 3D fluid simulations extends far beyond hot Jupiters to other
+major categories of exoplanets and substellar objects:
+
+\begin{itemize}
+\item \emph{Warm Neptunes and sub-Neptunes.}
+      For warm Neptunes such as GJ\,436\,b and GJ\,3470\,b, 3D particle-mesh
+      and hydrodynamic escape simulations (Bourrier et al.\ 2015, 2016;
+      Villarreal D'Angelo et al.\ 2021; Carolan et al.\ 2021) reveal gigantic,
+      asymmetric cometary hydrogen tails spanning tens of planetary radii,
+      directly explaining the $56\%$ Ly$\alpha$ transit obscuration and the
+      He\,10830\,\AA{} absorption through 3D stellar radiation pressure and
+      charge-exchange interactions. In metal- and water-rich sub-Neptune
+      atmospheres (e.g., GJ\,1214\,b, K2-18\,b), 3D GCMs model cloud/haze
+      circulation, photochemical transport, and vertical eddy mixing
+      ($K_{zz} \propto P^{-0.4}$; Charnay et al.\ 2015; Innes \&
+      Pierrehumbert 2022).
+\item \emph{M-dwarf habitable zone terrestrial planets.}
+      Tidally locked rocky worlds (such as TRAPPIST-1\,e/f/g, Proxima\,b, and
+      LHS\,1140\,b) have been extensively modelled with 3D climate GCMs
+      (Turbet et al.\ 2016, 2018; Wolf et al.\ 2017; Sergeev et al.\ 2020,
+      2022; the THAI intercomparison, Fauchez et al.\ 2020, 2022). These
+      simulations demonstrate how thick dayside convective cloud decks
+      elevate planetary albedo to prevent runaway greenhouse states, while
+      stationary Rossby--Kelvin wave patterns redistribute heat to the nightside
+      to avoid atmospheric freeze-out. Complementary 3D multi-species MHD
+      simulations (Dong et al.\ 2017, 2018; Cohen et al.\ 2014) assess $\mathrm{O}^+$
+      and $\mathrm{H}^+$ ion escape driven by extreme stellar coronal mass
+      ejections and flaring winds.
+\item \emph{Lava worlds and ultra-short-period rocky planets.}
+      For scorched rocky planets with dayside magma oceans (e.g., 55\,Cancri\,e,
+      K2-141\,b, CoRoT-7\,b), 3D hydrodynamic models of mineral-vapor
+      atmospheres (Castan \& Menou 2011; Nguyen et al.\ 2020; Zilinskas et
+      al.\ 2022; Kang et al.\ 2021) reveal supersonic dayside-to-nightside
+      winds ($\mathcal{M} > 1$--$3$, $v \sim 1$--$3$\,km\,s$^{-1}$), standing
+      hydraulic jumps/shocks, and mineral vapor condensation leading to rock
+      rain on the nightside.
+\item \emph{Brown dwarfs and directly imaged giant planets.}
+      In isolated brown dwarfs and young, directly imaged giants (e.g.,
+      HR\,8799\,b/c/d/e, VHS\,1256\,b), 3D convective-radiative GCMs (Tan \&
+      Showman 2019, 2021a,b; Showman \& Kaspi 2013; Zhang \& Showman 2014)
+      couple rapid planetary rotation (strong Coriolis forces) with deep
+      geothermal convection and silicate/iron cloud radiative feedbacks. The
+      resulting turbulent vortices, patchy cloud bands, and storm dynamics
+      provide the physical explanation for observed rotational photometric
+      variability.
+\end{itemize}
+
+\subsection{Where that leaves this comparison}
+\label{sec:turb_conclusion}
+
 There is no settled treatment. Turbulence at $v_{\rm turb} = c_s$ is a
 common convention in 1D isothermal Parker-wind fits --- and hence in the
-paper being reproduced --- while self-consistent and 3D models either need a
-larger ad hoc term, reach the width by other physics, or argue the term is
-unjustified. Enabling it here is therefore right for a like-for-like
-comparison and wrong as a default, which is how it is implemented.
+paper being reproduced --- while Solar System observations and self-consistent
+or 3D models demonstrate that isotropic microscale turbulence cannot physically
+reach the required supersonic levels. 3D models instead supply line width
+through kinematic flow gradients, zonal jets, and magnetospheric/plasma
+interactions. Enabling the $v_{\rm turb} = c_s$ term in EXHALE is therefore
+right for a like-for-like comparison with C26 and wrong as a physical default,
+which is how it is implemented.
 
 \section{Searching for a match: the composition scan}
 \label{sec:scan}
@@ -1404,5 +1549,86 @@ fields that are three-dimensional, or heating a 1D hydrodynamic energy
 equation does not carry. The adiabatic-cooling metastable bump, the one
 candidate that would have needed no free parameter, has been looked for on
 both spectra and does not supply it for this host (Sect.~\ref{sec:bump}).
+
+% ===================================================================== %
+\begin{thebibliography}{99}\small
+\setlength{\itemsep}{0.3ex}
+\setlength{\parskip}{0pt}
+\bibitem{Beltz2022} Beltz, H., Rauscher, E., Kempton, E. M.-R., et al.\ 2022, AJ, 163, 35
+\bibitem{BenJaffel2010} Ben-Jaffel, L., \& Hosseini, S.~S.\ 2010, ApJ, 709, 1284
+\bibitem{Biassoni2024} Biassoni, F., Borsa, F., Brogi, M., et al.\ 2024, A\&A, 684, A142
+\bibitem{Bourrier2015} Bourrier, V., Ehrenreich, D., \& Lecavelier des Etangs, A.\ 2015, A\&A, 582, A65
+\bibitem{Bourrier2016} Bourrier, V., Lecavelier des Etangs, A., Ehrenreich, D., et al.\ 2016, A\&A, 591, A121
+\bibitem{Bray2000} Bray, I., Burgess, A., Fursa, D.~V., \& Tully, J.~A.\ 2000, A\&AS, 146, 481
+\bibitem{Cadieux2024} Cadieux, C., Doyon, R., MacDonald, R.~J., et al.\ 2024, ApJL, 960, L3
+\bibitem{Carolan2020} Carolan, S., Vidotto, A.~A., Plavchan, P., et al.\ 2020, MNRAS, 498, L53
+\bibitem{Carolan2021} Carolan, S., Vidotto, A.~A., Villarreal D'Angelo, C., \& Hazra, G.\ 2021, MNRAS, 503, 3886
+\bibitem{Castan2011} Castan, T., \& Menou, K.\ 2011, ApJL, 743, L36
+\bibitem{Cavalie2021} Cavali\'e, T., Benmahi, B., Hue, V., et al.\ 2021, Nat. Astron., 5, 762
+\bibitem{Charnay2015} Charnay, B., Meadows, V., \& Leconte, J.\ 2015, ApJ, 813, 15
+\bibitem{Cherubim2026} Cherubim, C., et al.\ 2026, Science, aea9708
+\bibitem{Cohen2014} Cohen, O., Drake, J.~J., Gombosi, T.~I., et al.\ 2014, ApJ, 790, 57
+\bibitem{Czesla2022} Czesla, S., Lamp\'on, M., Sanz-Forcada, J., et al.\ 2022, A\&A, 657, A6
+\bibitem{Debrecht2020} Debrecht, A., Carroll-Nellenback, J., Frank, A., et al.\ 2020, MNRAS, 493, 1292
+\bibitem{DelGenio2007} Del Genio, A.~D., Barbara, J.~M., Ferrier, J., et al.\ 2007, Icarus, 189, 479
+\bibitem{Dong2017} Dong, C., Lingam, M., Ma, Y., \& Cohen, O.\ 2017, ApJL, 837, L26
+\bibitem{Dong2018} Dong, C., Jin, M., Lingam, M., et al.\ 2018, PNAS, 115, 260
+\bibitem{Fauchez2020} Fauchez, T.~J., Turbet, M., Wolf, E.~T., et al.\ 2020, Geosci. Model Dev., 13, 707
+\bibitem{Fauchez2022} Fauchez, T.~J., Villanueva, G.~L., Sergeev, D.~E., et al.\ 2022, PSJ, 3, 213
+\bibitem{GarciaMunoz2007} Garc\'ia Mu\~noz, A.\ 2007, Planet. Space Sci., 55, 1426
+\bibitem{Heng2011} Heng, K., Menou, K., \& Phillipps, P.~J.\ 2011, MNRAS, 413, 2380
+\bibitem{Ingersoll2004} Ingersoll, A.~P., Gierasch, P.~J., Banfield, D., et al.\ 2004, in Jupiter: The Planet, Satellites and Magnetosphere, ed.\ F.~Bagenal et al.\ (Cambridge: Cambridge Univ. Press), 105
+\bibitem{Innes2022} Innes, H., \& Pierrehumbert, R.\ 2022, ApJ, 927, 48
+\bibitem{Jensen2012} Jensen, A.~G., Cauley, P.~W., Redfield, S., Cochran, W.~D., \& Endl, M.\ 2012, ApJ, 751, 86
+\bibitem{Kang2021} Kang, W., Ding, F., Wordsworth, R.~D., \& Hu, R.\ 2021, ApJ, 914, 41
+\bibitem{Koskinen2013b} Koskinen, T.~T., Harris, M.~J., Yelle, R.~V., \& Lavvas, P.\ 2013, Icarus, 226, 1695
+\bibitem{Lampon2020} Lamp\'on, M., L\'opez-Puertas, M., Lara, L.~M., et al.\ 2020, A\&A, 636, A13
+\bibitem{Lampon2021} Lamp\'on, M., L\'opez-Puertas, M., Sanz-Forcada, J., et al.\ 2021, A\&A, 647, A129
+\bibitem{Lavvas2014} Lavvas, P., Koskinen, T., \& Yelle, R.~V.\ 2014, ApJ, 796, 15
+\bibitem{Lavvas2019} Lavvas, P., Koskinen, T., Steinrueck, M.~E., et al.\ 2019, ApJ, 878, 118
+\bibitem{MacLeod2022} MacLeod, M., \& Oklop\v{c}i\'c, A.\ 2022, ApJ, 926, 226
+\bibitem{McCann2019} McCann, J., Murray-Clay, R.~A., Kratter, K., \& Krumholz, M.~R.\ 2019, ApJ, 873, 89
+\bibitem{MurrayClay2009} Murray-Clay, R.~A., Chiang, E.~I., \& Murray, N.\ 2009, ApJ, 693, 23
+\bibitem{Nguyen2020} Nguyen, T.~G., Cowan, N.~B., Banerjee, A., \& Moores, J.~E.\ 2020, MNRAS, 499, 4605
+\bibitem{Parmentier2013} Parmentier, V., Showman, A.~P., \& Lian, Y.\ 2013, A\&A, 558, A91
+\bibitem{Perna2010} Perna, R., Menou, K., \& Rauscher, E.\ 2010, ApJ, 719, 1421
+\bibitem{Perna2012} Perna, R., Menou, K., \& Rauscher, E.\ 2012, ApJ, 757, 138
+\bibitem{Polichtchouk2014} Polichtchouk, I., Cho, J. Y.-K., Watkins, C., et al.\ 2014, Icarus, 229, 355
+\bibitem{Rauscher2013} Rauscher, E., \& Menou, K.\ 2013, ApJ, 764, 103
+\bibitem{Robeling2026} Robeling, M., Lavvas, P., et al.\ 2026, in preparation
+\bibitem{Rogers2014} Rogers, T.~M., \& Komacek, T.~D.\ 2014, ApJ, 794, 132
+\bibitem{RogersShowman2014} Rogers, T.~M., \& Showman, A.~P.\ 2014, ApJL, 782, L4
+\bibitem{Rumenskikh2022} Rumenskikh, M.~S., Shaikhislamov, I.~F., Khodachenko, M.~L., et al.\ 2022, MNRAS, 511, 4801
+\bibitem{Rumenskikh2023} Rumenskikh, M.~S., Shaikhislamov, I.~F., Khodachenko, M.~L., et al.\ 2023, MNRAS, 522, 1726
+\bibitem{Salyk2006} Salyk, C., Ingersoll, A.~P., Lorre, J., et al.\ 2006, Icarus, 185, 430
+\bibitem{Salz2016} Salz, M., Czesla, S., Schneider, P.~C., \& Schmitt, J. H. M.~M.\ 2016, A\&A, 586, A75
+\bibitem{Salz2018} Salz, M., Czesla, S., Schneider, P.~C., et al.\ 2018, A\&A, 620, A97
+\bibitem{Schulik2025} Schulik, M., \& Owen, J.~E.\ 2025, MNRAS, 536, 1234
+\bibitem{Sergeev2020} Sergeev, D.~E., Lambert, F.~H., Mayne, N.~J., et al.\ 2020, ApJ, 894, 84
+\bibitem{Sergeev2022} Sergeev, D.~E., Fauchez, T.~J., Turbet, M., et al.\ 2022, PSJ, 3, 212
+\bibitem{ShowmanKaspi2013} Showman, A.~P., \& Kaspi, Y.\ 2013, ApJ, 776, 85
+\bibitem{ShowmanPolvani2011} Showman, A.~P., \& Polvani, L.~M.\ 2011, ApJ, 738, 71
+\bibitem{Showman2013} Showman, A.~P., Fortney, J.~J., Lewis, N.~K., \& Shabram, M.\ 2013, ApJ, 762, 24
+\bibitem{Showman2015} Showman, A.~P., Lewis, N.~K., \& Fortney, J.~J.\ 2015, ApJ, 801, 95
+\bibitem{Skinner2021} Skinner, J.~W., \& Cho, J. Y.-K.\ 2021, MNRAS, 504, 5172
+\bibitem{Tan2019} Tan, X., \& Showman, A.~P.\ 2019, ApJ, 874, 111
+\bibitem{Tan2021a} Tan, X., \& Showman, A.~P.\ 2021a, MNRAS, 502, 678
+\bibitem{Tan2021b} Tan, X., \& Showman, A.~P.\ 2021b, MNRAS, 502, 2198
+\bibitem{Taylor2025} Taylor, J., et al.\ 2025, ApJ, 989, 68
+\bibitem{Taylor2026} Taylor, J., et al.\ 2026, ApJ, in press
+\bibitem{Turbet2016} Turbet, M., Leconte, J., Selsis, F., et al.\ 2016, A\&A, 596, A112
+\bibitem{Turbet2018} Turbet, M., Bolmont, E., Leconte, J., et al.\ 2018, A\&A, 612, A86
+\bibitem{VidalMadjar2003} Vidal-Madjar, A., Lecavelier des Etangs, A., D\'esert, J.-M., et al.\ 2003, Nature, 422, 143
+\bibitem{Villarreal2021} Villarreal D'Angelo, C., Vidotto, A.~A., Esquivel, A., et al.\ 2021, MNRAS, 501, 4383
+\bibitem{Wang2021} Wang, L., \& Dai, F.\ 2021, ApJ, 914, 98
+\bibitem{Wogan2025} Wogan, N., et al.\ 2025, PSJ, in press
+\bibitem{Wolf2017} Wolf, E.~T.\ 2017, ApJL, 839, L1
+\bibitem{Yan2019} Yan, F., Casasayas-Barris, N., Murgas, F., et al.\ 2019, A\&A, 632, A69
+\bibitem{Yan2022} Yan, F., Reiners, A., Pall\'e, E., et al.\ 2022, A\&A, 661, A105
+\bibitem{Yan2024} Yan, F., Wyttenbach, A., Casasayas-Barris, N., et al.\ 2024, A\&A, 686, A128
+\bibitem{ZhangShowman2014} Zhang, X., \& Showman, A.~P.\ 2014, ApJL, 788, L6
+\bibitem{ZhangShowman2018} Zhang, X., \& Showman, A.~P.\ 2018, ApJ, 866, 1
+\bibitem{Zilinskas2022} Zilinskas, M., Miguel, Y., van Westrenen, W., et al.\ 2022, A\&A, 661, A126
+\end{thebibliography}
 
 \end{document}
