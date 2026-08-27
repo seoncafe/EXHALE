@@ -7,7 +7,7 @@ data sources, and footprint. This document compares them side by side.
 * `ATES/ATES_extended/` — earlier work (last edit 2026-04-29), accompanied
   by `docs/aiolos_port_memo.pdf` describing Phase 1 (opacity dispatcher)
   and Phase 2 (trace metals).
-* `EXHALE/` — recent work (this session, 2026-05-28),
+* `EXHALE_v1.00/` — recent work (this session, 2026-05-28),
   documented in `docs/Update_EXHALE_early_phase` (Part II).
 
 ---
@@ -74,10 +74,19 @@ data sources, and footprint. This document compares them side by side.
 | Total | ~1,350 LOC | ~700 LOC |
 
 > [2026-08-15: the file name `System_HeHCO.f90` used in this table and in §1
-> and §4 no longer exists. The coupled ionization system is the `System_HeH_*`
-> family in `src/modules/nonlinear_system_solver/` — `System_HeH_metals.f90`,
+> and §4, and the routine name `ion_system_HeHCO` in §1, no longer exist. The
+> coupled ionization system is the `System_HeH_*` family in
+> `src/modules/nonlinear_system_solver/` — `System_HeH_metals.f90`,
 > `System_HeH_TR_metals.f90`, `System_HeH_mol_metals.f90` and their He-only
-> counterparts.]
+> counterparts. Every `src/...` path in the ATES_extended column of these
+> tables is relative to `ATES/ATES_extended/`; every one in the EXHALE column
+> is relative to `EXHALE_v1.00/`.]
+>
+> [2026-08-27: the §1 sizes are the 2026-05-28 snapshot and have since grown.
+> `species_table.f90` now carries `n_melem = 10` elements over `n_mion = 27`
+> ion stages, and `parameters.f90` has `n_species = 37`; the system solved is
+> H, He, He 2^3S, the molecular carriers and the metal stages together, not a
+> 9-equation C/N/O block.]
 
 ---
 
@@ -104,7 +113,7 @@ data sources, and footprint. This document compares them side by side.
 * - Extending `f_sp` from 6 to 15 columns touches many files; higher
   regression risk.
 * - AIOLOS analytic cooling fits have unclear provenance (see
-  `EXHALE/docs/Update_EXHALE_early_phase`, Part II).
+  `EXHALE_v1.00/docs/Update_EXHALE_early_phase`, Part II).
 
 > [2026-08-15: the bullet above is superseded — the escape probability is now
 > computed from the line optical depth for eight ground-term fine-structure
@@ -139,7 +148,7 @@ omitted):
 
 ### From EXHALE:
 
-See `EXHALE/docs/Update_EXHALE_early_phase`, Part II
+See `EXHALE_v1.00/docs/Update_EXHALE_early_phase`, Part II
 ("Caveats and Verification Items") for the corresponding list. The most
 important verification items are:
 

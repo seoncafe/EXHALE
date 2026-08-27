@@ -102,7 +102,7 @@ at src/modules/radiation/ionization_equilibrium.f90:409
 - `Apply_BC(u,u)`가 `EXHALE_main.f90`, `steady_newton.f90`, `init.f90`에서 반복된다.
 - `Apply_BC` 자체도 `Apply_BC_W(W,W)`를 호출한다.
 - `ioniz_eq(T,rho,f_sp,rho,f_sp,...)`는 입력 `rho/f_sp`와 출력 `rho_out/f_sp_out`에 같은 actual argument를 준다.
-- `post_process.f90`에서는 필요 없는 여러 `intent(out)` 값에 같은 scratch 변수 `dum_v`를 동시에 전달한다.
+- `post_process_adv.f90`에서는 필요 없는 여러 `intent(out)` 값에 같은 scratch 변수 `dum_v`를 동시에 전달한다. [수정됨: 현재 파일은 `dum_v1`~`dum_v6`를 선언해 버리는 출력마다 별도의 지역 변수를 쓴다. 이 줄의 파일 이름은 `post_process.f90`로 적혀 있었으나, 리뷰 시점에도 지금도 파일은 `src/modules/post_process/post_process_adv.f90`이다.]
 
 Fortran에서 한 procedure 호출 중 한 dummy가 정의되는 동안 다른 dummy를 통해 같은 actual object를 참조하는 것은 제한된다. 현재 구현이 우연히 입력을 local로 먼저 복사하더라도 interface 계약 자체가 비정상이며, compiler 최적화가 alias가 없다고 가정할 수 있다.
 
@@ -312,7 +312,7 @@ MINPACK 및 `dgbtrf/dgbtrs` 호출에서 51개의 implicit-interface 경고가 �
 
 ## 7. 테스트 전략 제안
 
-현재 Wind-AE에 standalone test program이 일부 있지만 최상위 `make check`나 CI가 없고, benchmark input/reference가 자동 assertion으로 연결되어 있지 않다. 다음의 작은 test pyramid를 권장한다.
+현재 Wind-AE에 standalone test program이 일부 있지만 최상위 `make check`나 CI가 없고, benchmark input/reference가 자동 assertion으로 연결되어 있지 않다. 다음의 작은 test pyramid를 권장한다. [2026-07-14 (commit `e6a498c`) 부분 구현: `Makefile`에 `check` target이 있고, `backup/regression/run_check.sh`가 7개 케이스를 byte-identical 로 비교한다. `make diffusion_tests` 는 unit driver `src/tests/diffusion_tests.f90` 를 빌드한다. CI 는 아직 없다.]
 
 1. 단위 테스트
    - EOS/composition: H-only, H+He, triplet, molecule, metals

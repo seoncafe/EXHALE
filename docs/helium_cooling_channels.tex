@@ -1,7 +1,7 @@
 %% EXHALE: radiative cooling of a helium-dominated wind.
 %% What cools a gas that has almost no hydrogen: the line channels available
 %% to He, the thresholds implemented in Cool_coeff.f90, the numerical size of
-%% each against Lyman-alpha, and the one channel the code does not carry.
+%% each against Lyman-alpha, and where the 584 A resonance line actually sits.
 %% Written for the LHS 1140b lower-atmosphere extension
 %% (docs/lhs1140b_lower_atmosphere_plan_new.md, Phase C).
 %% Author: Kwang-Il Seon
@@ -29,9 +29,9 @@ magnitude relative to Lyman-$\alpha$ at $10^4$~K. The energy budget of such
 a wind therefore closes on continuum channels and adiabatic expansion rather
 than on lines, and the gas has no effective thermostat. This memo records
 the channels implemented in \texttt{Cool\_coeff.f90}, their measured
-relative sizes, the one physically real channel the code does not carry
-(the He~\textsc{i} $584$~\AA{} resonance line), and what
-Cherubim et al. (2026) do and do not say about any of this.
+relative sizes, why the He~\textsc{i} $584$~\AA{} resonance line is already
+inside the existing coefficient even though no term carries its threshold, and
+what Cherubim et al. (2026) do and do not say about any of this.
 \end{abstract}
 
 \section{Why the question arises}
@@ -121,9 +121,11 @@ the sum of all of them.
 
 The resonance line is therefore already included in the total this formula
 was fitted to, so the practical question is how accurate that formula is, not
-whether the line is present. Section~\ref{sec:chianti}
-replaces both helium coefficients with CHIANTI fits and reports what that is
-worth; the larger error turns out to be in He\,\textsc{ii}, not He\,\textsc{i}.
+whether the line is present. Section~\ref{sec:chianti} refits both helium
+coefficients to CHIANTI and reports what that is worth; the larger error turns
+out to be in He\,\textsc{ii}, not He\,\textsc{i}. Those fits are recorded there,
+not installed: \texttt{Cool\_coeff.f90} still evaluates the two expressions of
+Table~1.
 
 \section{How weak the helium channels are}
 
@@ -332,9 +334,9 @@ a heating--cooling balance, so the question ``does a helium-dominated wind
 settle near $5000\!-\!6400$~K under this irradiation?'' becomes answerable
 rather than assumed. The weakness of helium line cooling documented above
 makes a hot, poorly regulated solution the physically expected outcome, and
-makes the accuracy of the few surviving channels --- including the missing
-$584$~\AA{} line --- more consequential than it would be in any
-hydrogen-rich run.
+makes the accuracy of the few surviving channels --- the He\,\textsc{ii}
+coefficient above all, low by a factor of two --- more consequential than it
+would be in any hydrogen-rich run.
 
 \begin{thebibliography}{9}
 \bibitem[Cherubim et al.\ (2026)]{Cherubim2026}

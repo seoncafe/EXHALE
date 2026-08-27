@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generate Fortran module dependencies for the ATES Makefile.
+"""Generate Fortran module dependencies for the EXHALE Makefile.
 
 Usage:
     fortdep.py [--objdir DIR] file1.f90 file2.f90 ...  >  deps.mk

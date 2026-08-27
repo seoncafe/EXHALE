@@ -1,6 +1,6 @@
 """exhale_io.py -- reusable readers for EXHALE output files.
 
-Every ATES run writes its profiles to an ``output*/`` directory as plain text
+Every EXHALE run writes its profiles to an ``output*/`` directory as plain text
 (columns described in the user manual, docs/EXHALE_user_manual.tex).  This module
 loads those files into named, physical-unit arrays so analysis scripts and the
 example notebook do not have to remember column orders.
@@ -51,7 +51,7 @@ COOL_GAS_CHANNELS = ['rec', 'coll_ion', 'coex_HI', 'coex_HeI', 'coex_HeII',
 
 
 class Run:
-    """Container for one ATES run (one output directory)."""
+    """Container for one EXHALE run (one output directory)."""
 
     def __init__(self):
         self.r = None          # radius [R_p]
@@ -71,15 +71,18 @@ class Run:
 
     # He and H nuclei carried by one particle of each species, i.e. the
     # bsp_nH / bsp_nHe weights of src/modules/init/species_table.f90.  Only
-    # the species with a nonzero count appear.
+    # the species with a nonzero count appear.  HeITR is absent on purpose:
+    # He 2^3S is an excited level of He I and the HeI column is the TOTAL
+    # He I density, triplet included (bsp_is_excited_level), so counting the
+    # triplet column as well would count those nuclei twice.
     _NUC_H = {'HI': 1, 'HII': 1, 'H2': 2, 'H2p': 2, 'H3p': 3, 'HeHp': 1}
-    _NUC_HE = {'HeI': 1, 'HeII': 1, 'HeIII': 1, 'HeITR': 1, 'HeHp': 1}
+    _NUC_HE = {'HeI': 1, 'HeII': 1, 'HeIII': 1, 'HeHp': 1}
 
     @property
     def heh_profile(self):
         """He/H ELEMENT ratio n_He/n_H per radius, nuclei counted over every
         species that carries them (H2/H2+ two H nuclei, H3+ three, HeH+ one of
-        each; the He 2^3S triplet inside the helium count).  Same definition
+        each; the He 2^3S triplet is already inside the HeI column).  Same definition
         as composition.f90 element_ratio_HeH and as the diffusion operator, so
         a run with He_diffusion on can be read against them without a second
         convention.  Species a run does not track are simply absent."""
@@ -165,6 +168,39 @@ def load_lyman_werner(path):
     d = np.loadtxt(path, unpack=True)
     return {name: d[i] for i, name in enumerate(LYMAN_WERNER_COLS)
             if i < d.shape[0]}
+
+
+def load_lower_atmosphere_profile(path):
+    """Read a lower-atmosphere profile file (docs/input_schema.md section 2d).
+
+    Returns (header, columns): `header` maps every `# key value` line to its
+    value string, `columns` maps every name of the `# columns:` line to its
+    column. Columns this file has no consumer for are kept, not dropped, and
+    everything is indexed by name -- the producers order their element list
+    differently from run to run.
+    """
+    header, names = {}, None
+    with open(path) as f:
+        for line in f:
+            if not line.startswith('#'):
+                continue
+            body = line[1:].strip()
+            if not body:
+                continue
+            parts = body.split(None, 1)
+            key = parts[0].rstrip(':')
+            val = parts[1].strip() if len(parts) > 1 else ''
+            if key == 'columns':
+                names = val.split()
+            else:
+                header[key] = val
+    if names is None:
+        raise SystemExit('%s: no "# columns:" header' % path)
+    data = np.loadtxt(path, comments='#', ndmin=2)
+    if data.shape[1] != len(names):
+        raise SystemExit('%s: %d columns, %d names'
+                         % (path, data.shape[1], len(names)))
+    return header, {nm: data[:, i] for i, nm in enumerate(names)}
 
 
 def read_input(path):

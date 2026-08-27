@@ -88,10 +88,20 @@ computed automatically alongside H-alpha (knobs `Instr_res_Hb`,
 optically thick, so their depth ratio is far smaller than the
 optical-depth ratio (~7.3).
 
-**System parameters** come from the `input.inp` of the run directory,
-matched by label exactly as `input_read.f90` does. Besides `Rp`, `Mp`,
+**System parameters** come from the run directory, matched by label exactly as
+`input_read.f90` does. Besides `Rp`, `Mp`,
 `T_eq`, `a`, `Mstar`, `LEUV` and the 2D approximate method, this includes
 `R_star` (`Stellar radius [R_sun]`) and `T_star` (`Stellar Teff [K]`).
+
+*[2026-08-22: `EXHALE_resolved.out` comes first. `Rp`, `Mp`, `T_eq`, `a`,
+`Mstar` and `HeH` are read from `EXHALE_resolved.out` beside `input.inp`
+whenever that file exists, and from `input.inp` only when it does not. The wind
+solver writes it (`write_resolved_config` in `write_setup_report.f90`) *after* a
+`base.inp` handoff or a `Lower atmosphere profile:` has moved the base, so it is
+the geometry the wind actually used; `input.inp` alone is stale in exactly that
+case. The script prints which of the two it took, and a present-but-unreadable
+file raises instead of falling back silently. `R_star` and `T_star` are not in
+that file and keep the precedence below.]*
 The planet spin period has no `input.inp` key: a close-in giant is
 tidally locked, so it defaults to the Keplerian orbital period
 `P_orb = 2 pi sqrt(a^3/[G(Mstar+Mp)])`. Each of the three is resolved as

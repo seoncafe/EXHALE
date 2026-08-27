@@ -17,6 +17,21 @@ on HD\,209458b and WASP-121b}
 \begin{document}
 \maketitle
 
+\begin{quote}\small\itshape
+\textbf{Status note.} The numbers in this memo were measured against the
+\emph{trace} helium kernel, which transported the ratio $f=n_{\rm He}/n_{\rm H}$
+under a cap $f\le({\rm He/H})_{\rm base}$.  That kernel has since been replaced
+by \texttt{src/modules/functions/binary\_element\_diffusion.f90}, which
+transports the helium MASS FRACTION $X=\rho_{\rm He}/\rho$ of a binary H/He
+mixture, carries molecular carriers and stage-resolved friction, and has no cap
+and no base pile-up limiter (its M-matrix keeps $0\le X\le1$ per step without
+clipping).  The measurements below are kept as a record of what the trace kernel
+gave; they have not been re-run under the binary operator, so read the two
+regimes and the sign of each effect, not the digits.  Design of the current
+operator: \texttt{docs/binary\_diffusion\_design.md}.  The trace treatment of
+the metals is carried over unchanged into the new module.
+\end{quote}
+
 \section{Purpose and setup}
 
 Quantify what the new diffusive separation changes in \EXHALE's predictions, by running the
@@ -25,7 +40,7 @@ Quantify what the new diffusive separation changes in \EXHALE's predictions, by 
 \begin{itemize}
   \item \textbf{v1.0} (\texttt{ATES/EXHALE\_v1.0/}): clean GitHub \texttt{main} $+$ the
     temperature-dependent Penning rate. \emph{No} diffusive separation.
-  \item \textbf{current} (\texttt{EXHALE/}): v1.0 physics $+$ He/H and
+  \item \textbf{current} (\texttt{EXHALE\_v1.00/}): v1.0 physics $+$ He/H and
     element-by-element metal diffusion
     (\texttt{He\_diffusion} $+$ \texttt{He\_\allowbreak metal\_\allowbreak diffusion},
     ambipolar on).
@@ -152,7 +167,10 @@ is not strongly separated in the line-forming region.}
     for the stiff heavy-metal settling).
   \item \textbf{Phase-1/2 numerics.} Mild non-monotonic structure from the He/H cap and the
     not-fully-developed wind; see \texttt{design\_hehe\_diffusion.md} \S7d--\S7e. Diffusion
-    flags \textbf{default OFF}.
+    flags \textbf{default OFF}. \emph{The cap is gone in the current operator (status
+    note); the scalar \texttt{He\_Kzz} now defaults to 0 rather than
+    $10^{9}$\,cm$^{2}$\,s$^{-1}$, and a \texttt{Lower atmosphere profile} may supply
+    $K_{zz}(p)$ per cell instead.}
 \end{itemize}
 
 \end{document}

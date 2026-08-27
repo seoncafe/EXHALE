@@ -12,7 +12,7 @@ run.  For each EXHALE benchmark run it writes:
   <run_dir>/insitu_emiss.png : diagnostic 2-panel figure.
 
 Run for all four default benchmarks in one invocation to also emit the combined
-paper figure ATES/paper/figs/fig_lya_insitu.pdf.
+paper figure EXHALE/paper/figs/fig_lya_insitu.pdf.
 
 Physics (matches EXHALE_transit.py::n2_populations exactly):
   t4  = T/1e4  (T clamped to >= 1 K)

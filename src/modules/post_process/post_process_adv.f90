@@ -631,7 +631,7 @@
    ! Total number density (incl. metal nuclei under eos_metals). Molecular
    ! species are excluded -- the post-process does not carry them (see the
    ! module-header composition note).
-   call calc_ntot(nhi,nhii,nhei,nheii,nheiii,nheiTR,n_tot,nm_w)
+   call calc_ntot(nhi,nhii,nhei,nheii,nheiii,n_tot,nm_w)
 
    ! Free electron density (assuming overall neutrality; incl. metal
    ! electrons under eos_metals; molecular-ion electrons excluded, as above)

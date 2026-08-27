@@ -102,9 +102,15 @@ Files touched: `src/modules/init/parameters.f90`, `.../files_IO/input_read.f90`,
 - **PTC/JFNK from the IC** — stall (λ→0), worst at the base cell, with/without the
   filter, frozen-base, or smooth valve.
 
-**Conclusion:** the breathing = (1) sound waves [Shapiro fixes] + (2) the
-dense-base momentum residual + (3) the small-ρv normalization. CETIMB converges
-via the _combination_; EXHALE's biggest gap is **explicit viscosity/conduction**.
+**Conclusion as written (2026-06):** the breathing = (1) sound waves [Shapiro
+fixes] + (2) the dense-base momentum residual + (3) the small-ρv normalization.
+CETIMB converges via the _combination_; EXHALE's biggest gap is **explicit
+viscosity/conduction**.
+
+> [2026-08-15: the last clause did not hold. Viscosity and conduction were
+> implemented and measured, and the viscous force is ~1e-4 of the base momentum
+> residual — see "(b) viscosity" below. Item (2) was the solver's scaling, not
+> the base; item (3) closed with the volume-weighted norm.]
 
 ### Knob-combination sweep on HD209458b (cold IC, tidal) — `backup/HD209458b_test/`
 

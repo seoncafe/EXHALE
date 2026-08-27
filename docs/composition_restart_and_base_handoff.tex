@@ -1,0 +1,847 @@
+%% How EXHALE solves a new composition from a converged wind (restart path),
+%% and what the lower-atmosphere handoff carries: the scalar base.inp against
+%% the profile file. Both parts record implemented behavior read off the
+%% source; Part 2 also keeps the interface decision that led to the profile
+%% route and checks the plan's requirement list against what was built.
+%% Author: Kwang-Il Seon
+\documentclass[english,a4paper]{my_memo}
+\synctex=1
+\usepackage{booktabs}
+\usepackage{amsmath}
+\usepackage{graphicx}
+\usepackage{babel}
+\emergencystretch=3em
+
+\title{Solving a new composition from a converged wind, and\\
+       what the base handoff carries}
+\author{Kwang-Il Seon}
+\date{Last updated: \docmoddate}
+
+\begin{document}
+\maketitle
+
+\section{What this memo records}
+
+Two things that are easy to confuse with each other.
+
+\medskip
+\noindent\textbf{Part 1 --- the composition restart.} How a converged EXHALE
+solution is used as the starting guess for a \emph{different} composition:
+what the run script does, what \verb|load_IC| does to the loaded densities,
+where the seed's information is kept and where it is overwritten, and ---
+the point that matters for how results are quoted --- why the seed sets only
+the path and never the answer. Everything in this part is implemented,
+verified against the source, and in production use in the LHS\,1140\,b
+composition and $K_{zz}$ scans.
+
+\medskip
+\noindent\textbf{Part 2 --- the base handoff.} EXHALE now has two handoff
+routes: the scalar \path{base.inp} and the profile file named by
+\verb|Lower atmosphere profile:|. This part records what each one is in the
+code today, the comparison on which the choice between them was made, and
+--- item by item against the plan's requirement list --- what the profile
+route actually carries, what reads each field, and what is still not
+transmitted.
+
+\medskip
+\noindent\textbf{Decision (2026-08-26), implemented 2026-08-27.} Phase\,E
+goes to a profile file. The scalar \path{base.inp} is not retired: it stays
+as the single-layer route, and its behavior with no profile beside it is
+unchanged. What the decision left to the implementation --- the schema, and
+what happens when both files are present --- is now written: the schema is
+\path{docs/phase_e_flux_closure_design.md} \S2, and a scalar physics key
+beside a profile is refused rather than merged
+(\path{src/modules/files_IO/input_read.f90:1371-1386}).
+
+\bigskip
+\hrule
+
+\part*{Part 1 --- solving a new composition from a converged wind}
+\addcontentsline{toc}{part}{Part 1}
+
+\section{The recipe, as the run script executes it}
+\label{sec:recipe}
+
+The production example is \path{LHS1140b/exhale/run_heh_diff_case.sh}, which
+solves one point of the helium-abundance scan with the binary H/He diffusion
+operator active. In order (line numbers are that file):
+
+\begin{enumerate}
+\item \textbf{Clone the input, change one line.} The control case's
+  \verb|input.inp| is copied with \verb|sed| and exactly the composition
+  line is replaced (lines 27--31):
+  \verb|He/H number ratio:| takes the new value, while the planet tag, the
+  direct-steady switch and the residual target are set for this run and
+  \verb|He_Kzz:| is appended (line 32). Nothing else about the
+  configuration moves --- same spectrum, same domain, same flags --- so the
+  scan is a scan in composition and not in anything else.
+\item \textbf{Hand the converged seed over as the initial condition}
+  (lines 33--34): the seed run's \verb|output/Hydro_ioniz.txt| and
+  \verb|output/Ion_species.txt| are copied into the new run directory as
+  \verb|output/Hydro_ioniz_IC.txt| and \verb|output/Ion_species_IC.txt|,
+  which are the two file names \verb|load_IC| reads
+  (\path{src/modules/files_IO/load_IC.f90:2-4,89,106,126}).
+\item \textbf{Solve the steady state directly.} The binary is run with
+  \verb|EXHALE_PTC=1|, \verb|EXHALE_PTC_JFNK=1| and
+  \verb|EXHALE_PTC_DTAU0=1.0| (line 43), i.e.\ the JFNK direct-steady route
+  rather than a marching relaxation.
+\item \textbf{Feed the output back as the next initial condition}, when the
+  diffusion operator is on (lines 40--41): each further invocation copies
+  the run's own last output over its \verb|*_IC.txt| files. This is the
+  outer Picard loop of composition and wind driven from the outside, one
+  pass-set at a time, and the loop is stopped when the reported composition
+  drift stops falling.
+\item \textbf{Post-processing and transit} (lines 51--57): one
+  \verb|Do only PP: True| pass to write the advection-corrected profiles,
+  then \verb|EXHALE_transit.py| for the He\,\textsc{i} 10830 line.
+\end{enumerate}
+
+Inside a single invocation the same Picard loop runs up to twenty times when
+\verb|He_diffusion| is on and exactly once when it is off
+(\path{src/EXHALE_main.f90:1238}); it exits on a composition drift below
+$10^{-3}$ (line 1268) or on a failed steady solve (line 1254), and the
+composition update is under-relaxed with $\omega$ starting at 0.5 and halved
+down to a floor of 0.125 on any pass whose drift failed to fall (lines
+1229, 1270--1274). The drift tested is the undamped distance to the fixed
+point, so a small $\omega$ cannot buy a false convergence (lines
+1213--1214).
+
+\section{What the restart does to the composition}
+\label{sec:redistribute}
+
+The seed file holds \emph{absolute} species densities. Read as they stand,
+they would silently run the donor's composition while the setup report
+echoed the input one. The input file is the authority, so \verb|load_IC|
+carries the loaded hydrogen and helium onto the requested ratio
+(\path{src/modules/files_IO/load_IC.f90:176-192}).
+
+\subsection{Counting the elements}
+
+In each cell the two element densities are counted over every species that
+carries a nucleus, molecular carriers included
+(\path{load_IC.f90:193-199}):
+%
+\begin{align}
+  n_{\rm H} &= n(\mathrm{H\,\textsc{i}}) + n(\mathrm{H\,\textsc{ii}})
+     + 2\,[\,n(\mathrm{H_2}) + n(\mathrm{H_2^+})\,]
+     + 3\,n(\mathrm{H_3^+}) + n(\mathrm{HeH^+}),
+  \label{eq:nH}\\
+  n_{\rm He} &= n(\mathrm{He\,\textsc{i}}) + n(\mathrm{He\,\textsc{ii}})
+     + n(\mathrm{He\,\textsc{iii}}) + n(\mathrm{HeH^+}).
+  \label{eq:nHe}
+\end{align}
+%
+$\mathrm{HeH^+}$ is inside both counts, because it carries a nucleus of
+each. The metastable $2^3S$ state is \emph{not} a term of its own: the
+\verb|HeI| column the code transports and the file carries is the total
+He\,\textsc{i} population, the triplet included, so its nucleus is already
+counted there and adding it again would count it twice
+(\path{load_IC.f90:196-197}).
+
+These are the integer weights \verb|bsp_nH| and \verb|bsp_nHe| of the
+species table (\path{src/modules/init/species_table.f90:97-103}:
+\verb|bsp_nH| $=$ $1,1,0,0,0,0,2,2,3,1$ and \verb|bsp_nHe| $=$
+$0,0,1,1,1,1,0,0,0,1$ over the ten base species) taken together with
+\verb|bsp_is_excited_level|, \verb|.true.| for \verb|HeTR| alone, which is
+what every budget sum skips
+(\path{species_table.f90:116-118}). The same count is what
+\verb|element_ratio_HeH| applies in the code proper
+(\path{src/modules/functions/composition.f90:211-239}) and what the
+diffusion operator writes back against
+(\path{src/modules/functions/binary_element_diffusion.f90:776-799}). One
+element count, one definition, three call sites --- there is no second
+formula that can drift away from this one. That the triplet had to be
+excluded was measured, not assumed: it was being added a second time in all
+three places and in four more, and the mass, particle, nucleus and
+collision-partner sums were each wrong by that amount until 2026-08-27
+(\path{docs/Update_EXHALE.md} \S75).
+
+\subsection{The redistribution}
+
+Let $\mathrm{HeH}$ be the requested ratio. The deviation of the loaded state
+is measured cell by cell as $|n_{\rm He}/n_{\rm H} - \mathrm{HeH}|/
+\mathrm{HeH}$ and the redistribution is triggered when its maximum over the
+column exceeds $10^{-6}$ (\path{load_IC.f90:200-207}). A restart at the
+composition the file was written with therefore leaves every density
+untouched --- bit for bit --- which is what keeps the same-composition
+restart path exact.
+
+When it does trigger, the two scale factors are
+(\path{load_IC.f90:226-227})
+%
+\begin{equation}
+  s_{\rm H} = \frac{n_{\rm H} + n_{\rm He}}
+                   {(1 + \mathrm{HeH})\, n_{\rm H}},
+  \qquad
+  s_{\rm He} = \mathrm{HeH}\,
+               \frac{n_{\rm H} + n_{\rm He}}
+                    {(1 + \mathrm{HeH})\, n_{\rm He}},
+  \label{eq:scales}
+\end{equation}
+%
+so that the new element densities in that cell are
+%
+\begin{equation}
+  n'_{\rm H} = \frac{n_{\rm H} + n_{\rm He}}{1 + \mathrm{HeH}},
+  \qquad
+  n'_{\rm He} = \mathrm{HeH}\,\frac{n_{\rm H} + n_{\rm He}}
+                                   {1 + \mathrm{HeH}},
+  \qquad
+  n'_{\rm H} + n'_{\rm He} = n_{\rm H} + n_{\rm He}.
+  \label{eq:conserve}
+\end{equation}
+%
+That is the defining property of the operation: \textbf{the total nuclei
+count of each cell is conserved} and only the split between the two elements
+moves. Every hydrogen-bearing column is multiplied by $s_{\rm H}$ and every
+helium-bearing one by $s_{\rm He}$
+(\path{load_IC.f90:242-253}), the trace metals following hydrogen because
+they are defined relative to a hydrogen nucleus, so
+%
+\begin{itemize}
+\item the \textbf{ionization-stage split inside each element} is preserved
+  exactly: $n(\mathrm{H\,\textsc{ii}})/n_{\rm H}$,
+  $n(\mathrm{He\,\textsc{ii}})/n_{\rm He}$ and the $2^3S$ fraction all come
+  through unchanged, since a single factor multiplies every stage of the
+  element;
+\item the \textbf{velocity, pressure and temperature} profiles are the
+  seed's, read straight off \verb|Hydro_ioniz_IC.txt|
+  (\path{load_IC.f90:106-120});
+\item the \textbf{mass density is not} read from the file. It is rebuilt by
+  \verb|calc_rho| from the redistributed densities under the run's own mass
+  policy, He\,$2^3S$, molecular and (under \verb|eos_metals|) metal mass
+  included (\path{load_IC.f90:402-422}). It therefore does move with the
+  composition, as it must: swapping hydrogen for helium at fixed nuclei
+  count changes the mass. The seed supplies the kinematics and the thermal
+  state; the mass follows the new composition.
+\end{itemize}
+
+\subsection{Two refusals, and the diffusion-on exception}
+
+$\mathrm{HeH^+}$ carries one nucleus of each element, so no single factor
+can set both counts. Two cases are therefore refused outright rather than
+approximated (\path{load_IC.f90:207-225}): a file carrying no helium at all
+(nothing to rescale), and a molecular file carrying $\mathrm{HeH^+}$ whose
+composition disagrees with the input while \verb|He_diffusion| is off ---
+such a state must be restarted at its own composition.
+
+With \verb|He_diffusion| on the rule changes, because the cell-by-cell
+element split \emph{is} the state being restarted: the diffusion operator
+produced it, and a separated profile is the physics, not a defect of the
+file. The rescale is then confined to the base cells $1-N_g \ldots 1$,
+which is exactly where the operator itself holds a Dirichlet reservoir
+composition; every cell above keeps the helium fraction it was written with,
+$s_{\rm H} = s_{\rm He} = 1$ (\path{load_IC.f90:228-241}). In those base
+cells $\mathrm{HeH^+}$ is projected onto the two element totals the same way
+\verb|binary_element_diffusion| writes back: it takes the smaller of the two
+factors, $\min(s_{\rm H}, s_{\rm He})$, and whatever nuclei that leaves
+short of $n'_{\rm H}$ and $n'_{\rm He}$ are deposited into the neutral
+ground species $\mathrm{H\,\textsc{i}}$ and $\mathrm{He\,\textsc{i}}$
+(\path{load_IC.f90:254-278}; the same projection at
+\path{binary_element_diffusion.f90:1516-1543}). The projection is
+non-negative by construction --- the smaller factor can only reduce
+$\mathrm{HeH^+}$ --- and it conserves both element totals, at the cost of
+moving a little of the molecular ion into the neutral species.
+
+Either way the run says on stdout which of the two it did, with the loaded
+top-cell ratio and the input ratio printed
+(\path{load_IC.f90:279-289}), so the restart is never silent.
+
+\subsection{Elements the file does not carry}
+
+Separately from the composition, an element whose stages the file does not
+carry --- no column at all, or columns identically zero because the run that
+wrote them had metals off --- is built from its abundance exactly as a cold
+start does, $n_X = \mathrm{ab}_X\, n_{\rm H}$ with everything in the neutral
+stage, and the substitution is reported
+(\path{load_IC.f90:293-343}). The column test alone would accept a
+metals-off file and then run with zero metal density while the base boundary
+condition still counted metals in the mass and particle budget, leaving an
+$O(1)$ residual in the first cells; the zero-sum test is what closes that.
+
+\subsection{Elements whose reservoir the handoff has moved}
+\label{sec:handoff-rescale}
+
+A third case sits between the two above and was added on 2026-08-27: the
+file carries the element, but the \emph{reservoir} has moved since the file
+was written. That is exactly what a flux-closure iteration does --- it
+changes the elemental ratios of the lower atmosphere from one iteration to
+the next --- so the base boundary condition would use the new $\mathrm{El/H}$
+while every cell above the base still held the old one, and the elemental
+budget $n_{\rm El}/n_{\rm H} = (\mathrm{El/H})$ could not close above the
+first cell (\path{docs/Update_EXHALE.md} \S79--80).
+
+The rule is a single factor on the whole column
+(\path{load_IC.f90:345-400}):
+%
+\begin{equation}
+  r_{\rm El} = \frac{(\mathrm{El/H})_{\rm handoff}}
+                    {(\mathrm{El/H})_{\rm loaded,\ base\ cell}},
+  \label{eq:rel}
+\end{equation}
+%
+applied to every ionization stage of that element alike, so the loaded
+ionization split and the radial shape of the profile cancel out of it and
+only the normalization moves. $\mathrm{El/H}$ at the base cell is counted in
+nuclei --- the element summed over its stages against the hydrogen nuclei of
+equation~\eqref{eq:nH} --- which is the convention of
+\verb|element_ratio_HeH| and of \path{src/utils/element_budget.py}, so the
+factor is measured in the units the budget check reads it back in.
+
+Which elements are touched is not a test on the numbers. An element is
+rescaled if and only if the lower-atmosphere handoff \emph{states} its
+reservoir, and what records that is the door the value came in through:
+\verb|set_element_abundance| is the only routine either handoff reader uses
+to set an abundance, and passing through it sets
+\verb|melem_from_handoff(e)| (\path{input_read.f90:1464-1487}, flag
+allocated and cleared at \path{input_read.f90:879-880}). An abundance that
+reached the run from \path{metals.inp} alone never passes through that door,
+so it is not marked and its column is loaded untouched; a restart with no
+handoff at all leaves the loop doing nothing at all, which is what keeps
+every pre-existing restart bit for bit what it was. Three further guards
+skip the element: one already rebuilt from the abundance by the block above
+(it \emph{is} the reservoir already), a zero abundance, and a loaded column
+that sums to zero at the base cell.
+
+Helium is deliberately outside this rule and keeps the older convention of
+sections~\ref{sec:redistribute}: the base cells are set to the input
+$\mathrm{He/H}$ and, with \verb|He_diffusion| on, the column above keeps its
+diffused split.
+
+Each rescaled element prints its own line --- loaded ratio, stated ratio,
+factor, at enough digits that a factor of $1.0001$ is legible, because that
+is the size of the step a converged closure iteration takes
+(\path{load_IC.f90:393-399}).
+
+\section{The seed is a guess; the answer is the new steady state}
+\label{sec:seed}
+
+This is the distinction the whole recipe rests on, and it is worth stating
+plainly because the two are easy to conflate when a scan is quoted as a
+table of restarts.
+
+\medskip
+\noindent The redistribution of section~\ref{sec:redistribute} is
+\emph{arithmetic on a starting guess}. It is not a solution at the new
+composition, and it is not claimed to be one: it holds $(v, p, T)$ and every
+ionization-stage ratio at the donor's values, which are the values that were
+in equilibrium with the \emph{donor's} composition. What makes the result a
+result is what happens afterwards --- the JFNK steady solve, the
+ionization-equilibrium solve, and (with diffusion on) the composition outer
+loop, iterated until the wind residual meets its target and the composition
+drift stops moving. The convergence \emph{path} is what the seed choice
+buys; the converged state is a property of the new configuration alone.
+
+\medskip
+\noindent The operational consequence: a restart chain is legitimate exactly
+as long as each rung is converged on its own terms, and each row of a scan
+must be quoted with its own achieved residual and drift, not with the
+seed's. That is why the LHS\,1140\,b tables carry \verb|info|, $\|R\|$ and
+the composition drift in every row.
+
+\medskip
+\noindent Two measured cases show that the seed choice is a real question of
+path and nothing more.
+
+\paragraph{The helium scan needed no ladder.} In the $K_{zz} = 10^{9}$
+composition scan, every case restarted from the converged
+\emph{diffusion-off} solution of the same composition, or from the
+neighboring composition already solved with diffusion on, and every case
+reached \verb|info = 0| \emph{in its first pass-set} and then stopped moving
+(\path{LHS1140b/kzz_decision.md}, section~6). The recorded reason is
+physical: a diffusion-off solution is well mixed near the base, which is
+where the adopted $K_{zz}$ also mixes, so the step the line search is asked
+to take is small. The same held at $10^{8}$ and $10^{10}$
+(\emph{ibid.}, section~6.1).
+
+\paragraph{The eddy coefficient did need one.} Restarting a case at
+$K_{zz} = 10^{8}$ or above directly from the $K_{zz} = 0$ control asks the
+solver to absorb the whole helium column in one step: the line search stalls
+and the composition outer loop stops on its solver-failure guard after a
+single pass (\emph{ibid.}, section~3). Rebuilding one decade at a time ---
+\path{ladder_kzz.sh} restarts each case from the case one decade below it
+--- fixes the seeding. It does not fix everything: on this wind JFNK settles
+at $\|R\|$ between $2.7\times10^{-3}$ and $4.7\times10^{-3}$ rather than the
+$1.0\times10^{-3}$ the control reaches, so the upper rungs state a looser
+\verb|Resid tol| and quote the achieved $\|R\|$ in the table. A target of
+$2\times10^{-2}$ was tried and rejected, because there the solver stops
+responding to the eddy term altogether.
+
+\medskip
+\noindent Same code, same operation, opposite verdicts on whether a ladder
+is required --- which is the concrete demonstration that seeding is about
+the step the nonlinear solver is asked to take, and that no property of the
+converged answer follows from it.
+
+\section{Evidence that the restart is faithful}
+\label{sec:evidence}
+
+\paragraph{The diffused profile survives a round trip.} Measured against the
+stored \path{examples/14_diffusion} output under \verb|EXHALE_DUMP_IC=1|,
+which writes the state as loaded, before the first ionization-equilibrium
+solve: the loaded He/H profile reproduces the file's to
+$3.3\times10^{-16}$ relative, worst cell, over all 504 cells
+(\path{docs/Update_EXHALE.md} \S67). That is round-off, i.e.\ the
+\verb|He_diffusion| branch of section~\ref{sec:redistribute} leaves the
+column it is meant to leave alone.
+
+\paragraph{The defect it replaced.} The same file through the pre-change
+binary comes back \emph{flattened} to the input ratio: at $r = 1.05\,R_p$
+the file holds $1.616\times10^{-2}$ and the load produced
+$8.333\times10^{-2}$, a factor 5.2 (\emph{ibid.}). The old rule rescaled
+every cell to the global \verb|HeH| whenever the file's composition differed
+from it, on the ground that the input file is the authority --- correct with
+diffusion off, and destructive of the answer with diffusion on. Both
+numbers are quoted from that record and were not re-measured for this memo.
+
+\paragraph{And the composition authority itself was a measured need.} A
+He/H\,$=10$ restart seeded from a He/H\,$=1$ solution was measured to
+converge back to He/H\,$=1$ everywhere before the redistribution existed
+(\path{load_IC.f90:180-182}) --- the donor's composition ran while the setup
+report echoed the input one.
+
+\paragraph{The diffusion-off path is unmoved.} \verb|make check| reported
+byte-identical output on every case of the matrix as it stood on 2026-08-25,
+which is the evidence that confining the rescale to the base cells changed
+nothing outside the \verb|He_diffusion| branch
+(\path{docs/Update_EXHALE.md} \S67, quoted; the matrix has since grown from
+five cases to seven, and was not re-run for this memo).
+
+\bigskip
+\hrule
+
+\part*{Part 2 --- the base handoff: scalars and profiles}
+\addcontentsline{toc}{part}{Part 2}
+
+\section{The scalar handoff}
+\label{sec:scalars}
+
+\verb|read_base_inp| reads an optional \path{base.inp} from the run
+directory (\path{src/modules/files_IO/input_read.f90:1203-1388}). It
+recognizes six named keys and one family of element keys, and every key
+belongs to one of the categories the routine's own header lists, because the
+category is what says what the value is allowed to do to the wind:
+
+\begin{center}
+\begin{tabular}{@{}lllp{5.6cm}@{}}
+\toprule
+key & unit & category & what it sets \\
+\midrule
+\verb|T_base|    & K       & EOS boundary &
+   \verb|T0|, the base temperature \\
+\verb|r_base|    & $R_J$   & EOS boundary &
+   \verb|R0|, the base radius \\
+\verb|p_base|    & bar     & EOS boundary &
+   \verb|p_base_bar|, the level all of the above refer to
+   (default $10^{-6}$) \\
+\verb|q_H2_base| & ratio   & EOS boundary &
+   \verb|q_h2_base|, the H$_2$ volume mixing ratio that sets the base
+   particle count through \verb|comp_ntot_bc|, in place of the
+   chemical-equilibrium fit. An EOS anchor, not a composition pin: nothing
+   holds H$_2$ there and no H$_2$ profile is seeded from it \\
+\verb|HeH_base|  & ratio   & elemental reservoir &
+   \verb|HeH|; a positive value also sets \verb|thereis_He| \\
+\verb|<El>_H_base| & ratio & elemental reservoir &
+   $X_{\rm El}$, the El/H nuclei ratio, through
+   \verb|set_element_abundance|, for any of the ten elements of the species
+   table (e.g.\ \verb|O_H_base 4.90e-4|). Overrides \path{metals.inp} for
+   that element, and switches the metal system on if it is the only nonzero
+   abundance \\
+\verb|Kzz_base|  & cm$^2$\,s$^{-1}$ & boundary constraint &
+   \verb|he_kzz|, the eddy coefficient the element-diffusion operator
+   imposes at the base; inert with \verb|He_diffusion| off \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+Comment lines and unknown keys are ignored, with one comment parsed:
+\verb|# solution_id <hash>|, which is what the pair check of
+section~\ref{sec:profile} reads. The call sits in \verb|input_read| after
+\verb|run_lower_atm_prestep| and \emph{before} the derived constants, so the
+overrides take effect on everything computed from them, and an absent file
+is a no-op (\path{input_read.f90:858-882}). Two consistency messages are
+printed and not enforced: that \verb|q_H2_base| and \verb|HeH_base| must
+come from the same lower-atmosphere solution
+(\path{input_read.f90:1325-1336}), and that a \verb|p_base| away from
+1\,$\mu$bar means the base composition and the equilibrium H$_2$ fit both
+refer to that other level (\path{input_read.f90:1337-1342}). Those two stay
+messages deliberately: an internally inconsistent scalar handoff is the
+user's to judge. What is \emph{not} left to a message is the pair of files
+--- see section~\ref{sec:profile}.
+
+\verb|Kzz_base| deserves a note, because the scalar it writes has changed
+underneath it. \verb|he_kzz| now defaults to $0$, not $10^{9}$: an eddy term
+is a property of the atmosphere being modelled, so it is stated rather than
+inherited (\path{src/modules/init/parameters.f90:146-156}). And
+\verb|he_kzz| is no longer what the diffusion operator reads. Every site in
+\verb|binary_element_diffusion| reads the array \verb|kzz_cell| instead
+(\path{parameters.f90:157-164}; the three sites are
+\path{binary_element_diffusion.f90:679,1380,1597}), filled once the radial
+grid exists by \verb|eddy_diffusion_on_grid|: from the interpolated
+\verb|Kzz| column of a profile when there is one, and from \verb|he_kzz| in
+every cell otherwise
+(\path{src/modules/files_IO/lower_atmosphere_profile.f90:465-529}). The
+uniform case is exactly the old scalar --- for a uniform array the face
+average $\tfrac12(a+a)$ is $a$ in IEEE double --- so a run with no profile
+sees the number it always saw.
+
+A real file, the one the \verb|mol_base_handoff| regression case pins
+(\path{backup/regression/mol_base_handoff/base.inp}, comments elided):
+
+\begin{quote}\ttfamily
+T\_base\ \ \ \ 1140.0\\
+r\_base\ \ \ \ 0.49\\
+HeH\_base\ \ 0.0793\\
+Kzz\_base\ \ 1.000e+09\\
+q\_H2\_base 0.75\\
+p\_base\ \ \ \ 1.000e-05
+\end{quote}
+
+Four of the seven default regression cases carry such a file ---
+\verb|mol_base_handoff|, \verb|mol_metals|, \verb|mol_lyman_werner| and
+\verb|mol_diffusion| (\path{backup/regression/run_check.sh:57}) --- so the
+scalar contract is pinned by the golden comparison and cannot be changed
+silently. Those four goldens were re-snapshotted on 2026-08-27, but for a
+reason that has nothing to do with the handoff: a molecular-network audit
+found the three-body term using a mass density where a number density
+belongs (\path{docs/molecular_chemistry_audit_he_rich.md},
+\path{docs/Update_EXHALE.md} \S82). The scalar contract itself is unchanged.
+
+\section{The profile handoff}
+\label{sec:profile}
+
+The second route is the file named by \verb|Lower atmosphere profile:| in
+\path{input.inp} (\path{input_read.f90:447-455}; user manual \S3.8). It is a
+table over an interval of pressure rather than a single level, and the
+reader is \path{src/modules/files_IO/lower_atmosphere_profile.f90}.
+
+\paragraph{What the file is.} A header of \verb|# key value| lines and then
+one row per level, deep to shallow. The header states the fingerprint
+(\verb|solution_id|, \verb|source_code|, \verb|source_version|,
+\verb|mechanism|, \verb|stellar_flux|, \verb|notes|), the three pressures
+(\verb|p_match_bar|, \verb|p_top_bar|, \verb|p_deep_bar|), the closure
+iteration (\verb|iteration|, \verb|trial_flux_H|, \verb|trial_flux_He|,
+\verb|reached_steady_state|) and the column names
+(\path{lower_atmosphere_profile.f90:185-198}). Nine columns are required ---
+\verb|p|, \verb|r|, \verb|T|, \verb|n_tot|, \verb|rho|, \verb|Kzz|,
+\verb|q_H2|, \verb|q_H|, \verb|X_He| --- and the element columns
+\verb|X_<El>| are found by name, so the producers may order them as they
+like (\path{lower_atmosphere_profile.f90:328-340}).
+
+\paragraph{What is refused.} The reader refuses rather than warns on a
+non-positive or non-monotonic pressure, a table whose top does not reach
+above the matching level (\verb|p_top_bar| $\ge$ \verb|p_match_bar|, i.e.\
+no overlap at all), a matching level outside the pressures the table covers,
+and a missing \verb|solution_id|
+(\path{lower_atmosphere_profile.f90:344-382}). Interpolation is linear in
+$\log p$ and is never extrapolated; a matching level that falls on a node
+returns that node bit for bit, which is what lets a single-level profile
+reproduce the scalar handoff exactly
+(\path{lower_atmosphere_profile.f90:396-434}).
+
+\paragraph{What EXHALE takes from it.} Exactly five kinds of quantity, all
+through the same doors the scalar keys use
+(\verb|apply_lower_atmosphere_profile|, \path{input_read.f90:1392-1460}):
+\verb|T0| and \verb|R0| from the \verb|T| and \verb|r| columns at the match,
+\verb|p_base_bar| from \verb|p_match_bar|, \verb|q_h2_base| from the
+\verb|q_H2| column, \verb|HeH| from \verb|X_He|, and each metal abundance
+from its \verb|X_<El>| column through \verb|set_element_abundance| --- the
+same routine \verb|<El>_H_base| goes through, which is why an element stated
+by either route is marked \verb|melem_from_handoff| and picked up by the
+restart rescale of section~\ref{sec:handoff-rescale}. \verb|K_zz| is taken
+as a profile, interpolated onto the radial grid into \verb|kzz_cell|. The
+\verb|n_tot| and \verb|rho| columns are required of the file but are
+\emph{not} imposed: the base density is \verb|n0| of \path{input.inp}, and
+the base particle count and mass follow from $T_0$, He/H, $q_{\rm H_2}$ and
+the elemental ratios exactly as on the scalar path.
+
+\paragraph{The two files together are enforced, not printed.} With a
+profile in use, every \path{base.inp} key in the three physics categories of
+section~\ref{sec:scalars} --- EOS boundary, elemental reservoir, boundary
+constraint --- is refused with \verb|error stop|, because the profile
+already states that quantity at the matching level and a scalar accepted
+beside it would be a second source of the same number
+(\verb|refuse_scalar_key|, \path{input_read.f90:1371-1386}). What a
+\path{base.inp} beside a profile may still carry is provenance, and there
+the pair is checked: a missing \verb|# solution_id| line, or one that
+differs from the profile's, stops the run
+(\path{input_read.f90:1344-1367}). \verb|He_Kzz:| in \path{input.inp} is a
+different file with a different contract and is not refused, but it is inert
+beside a profile and the run says so
+(\path{input_read.f90:1449-1458}).
+
+\paragraph{What pins it.} The \verb|lower_profile| regression case, one of
+the seven defaults (\path{backup/regression/lower_profile/}): HD 209458 b
+with \verb|He_diffusion: True|, the base state and $q_{\rm H_2}$ taken from
+the table at $p_{\rm match} = 10^{-6}$ bar, the elemental reservoirs
+carried by the profile with \emph{no} \path{metals.inp} in the directory ---
+so the profile is the only source of the metal abundances --- a
+non-constant \verb|Kzz| column interpolated onto the grid in place of the
+inert scalar, and a provenance-only \path{base.inp} whose \verb|solution_id|
+matches, which pins the accepting branch of the pair check. The worked
+example is \path{examples/17_lower_profile/}.
+
+\section{Scalar file against profile file}
+\label{sec:compare}
+
+This is the comparison the choice was made on, brought up to what each route
+is in the code today.
+
+\begin{center}
+\small
+\begin{tabular}{@{}p{2.4cm}p{5.3cm}p{5.7cm}@{}}
+\toprule
+ & scalar \path{base.inp} & profile file \\
+\midrule
+what is transmitted
+ & six named numbers plus one El/H per element, all describing one layer
+ & columns on the lower model's own pressure grid over an interval that
+   reaches above the match \\[2pt]
+relation between the models
+ & a handoff: the lower model's state at one level becomes the upper
+   model's boundary
+ & a matching over an interval both models cover, refused outright when the
+   file does not reach above the match \\[2pt]
+flux continuity
+ & not checkable. One layer's values carry no gradient, so nothing in the
+   file constrains an elemental flux, and \verb|HeH_base| stays a
+   prescribed input while ``the wind returns H:He'' is an assumption
+   dressed as a result
+ & checkable, and measured. The elemental face flux
+   $4\pi r^2 (\rho X v + J)$ is reduced to a median and a relative spread
+   over two radial windows and written to \path{EXHALE_resolved.out}
+   whenever a profile is in use
+   (\path{binary_element_diffusion.f90:1784-1872}); the criterion is the
+   same radial invariance as T8 (\path{docs/Update_EXHALE.md} \S69) \\[2pt]
+eddy coefficient
+ & one constant, \verb|Kzz_base| $\to$ \verb|he_kzz|
+ & the \verb|Kzz| column, interpolated onto every cell as \verb|kzz_cell|
+   \\[2pt]
+molecular composition
+ & one scalar, \verb|q_H2_base|
+ & \verb|q_H2| and \verb|q_H| at their own levels, plus the diagnostic
+   molecules; the ions of the EXHALE network are still not transmitted
+   (section~\ref{sec:carries}) \\[2pt]
+what it costs to produce
+ & a keyword scan, unknown keys ignored
+ & a schema with units and a grid convention, interpolation onto the EXHALE
+   grid, a fingerprint and a stated failure policy --- all written
+   (\path{src/utils/lower_profile_schema.py} and the two adapters beside
+   it) \\[2pt]
+failure mode
+ & a silent mismatch: the two consistency checks are messages, not refusals
+   (\path{input_read.f90:1325-1342}), so a handoff assembled from two
+   different lower-atmosphere solutions runs without complaint --- unless a
+   profile is present, in which case the pair is checked by fingerprint
+ & a stated one: a missing or unmatched \verb|solution_id|, a scalar
+   physics key beside the profile, a table that does not overlap the match
+   --- each an \verb|error stop| with the reason printed \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+Three rows carried the decision.
+
+\paragraph{Flux continuity is the whole point of Phase\,E.} A steady
+lower-atmosphere chemistry solution cannot determine the hydrogen supply
+independently of its upper-boundary flux. Without a flux-continuity
+condition at a matching surface, \verb|HeH_base| remains prescribed and the
+composition is an input wearing the clothes of an output
+(\path{docs/lhs1140b_lower_atmosphere_plan_new.md} \S2). A scalar file
+cannot express the condition, because a single level has no gradient and
+carries no flux. This is not a convenience argument; it is the difference
+between a coupling and an assumption.
+
+\paragraph{A constant $K_{zz}$ is the wrong shape.} The judgment is already
+on record: ``a \emph{constant} $K_{zz}$ is the wrong shape of assumption for
+this problem regardless of its magnitude: the molecular coefficient it
+competes against rises by nearly five decades between the base and
+$1.2\,R_p$, so no single constant can both mix the base and follow the
+molecular coefficient outward, while Lindzen's own result is that the eddy
+coefficient should \emph{turn over} rather than keep growing''
+(\path{docs/eddy_diffusion_kzz.tex}, summary). \verb|Kzz_base| can transmit
+only a constant. The homopause --- the one consequential thing $K_{zz}$
+does --- is set where $K_{zz} = D$, so it is a property of the two profiles
+and not of either number alone.
+
+\paragraph{The molecular scalar has the same defect one level down.}
+\verb|q_H2_base| is a single H$_2$ mixing ratio standing in for a
+composition that the molecular network resolves into H$_2$, H$_2^+$,
+H$_3^+$ and HeH$^+$. It is enough to select a branch of the base particle
+count; it is not enough to hand over a photochemical solution. This is the
+one row of the three the profile route did not close: it transmits
+$q_{\rm H_2}$ and $q_{\rm H}$ at their own levels, but none of the three
+molecular ions (section~\ref{sec:carries}).
+
+\section{The decision, and what was built on it}
+\label{sec:decision}
+
+\subsection{Decided 2026-08-26 (user decision)}
+
+\begin{enumerate}
+\item \textbf{Phase\,E goes to a profile file.} The interface decision the
+  plan left open (``whether this stays a scalar file or becomes a profile
+  file is an interface decision to confirm with the user before
+  implementation'', \path{docs/lhs1140b_lower_atmosphere_plan_new.md}
+  Phase\,E part 1) is settled in favor of profiles, on the flux-continuity
+  row of section~\ref{sec:compare} above all. The plan itself now records
+  the phase as done (milestones E1--E5, 2026-08-27) with its three
+  acceptance criteria and the numbers behind them.
+\item \textbf{The scalar \path{base.inp} is kept}, as the single-layer
+  route rather than a deprecated one. Three reasons, in order: four
+  regression cases pin it and their goldens are the evidence that the
+  molecular base is unmoved; a single-level handoff remains the right
+  description when the lower model genuinely produces one (the analytic
+  column of Tier\,1); and the code path is small and already validated.
+\item \textbf{The profile route is opt-in through a new key}
+  (\verb|Lower atmosphere profile:|), and its
+  absence leaves the previous behavior exactly as it was. This is the
+  standing house rule --- a new physics option defaults to off so old
+  goldens still reproduce.
+\end{enumerate}
+
+\subsection{What was implemented, 2026-08-27}
+
+All three hold, with one qualification on the third. The route is opt-in
+through \verb|Lower atmosphere profile:| and an absent key is a no-op, so
+the diffusion-off and scalar-handoff paths are untouched by any of it. The
+qualification is that the four molecular goldens are \emph{not} the ones
+they were at the time of the decision: they were re-snapshotted at the end
+of the same day for the three-body density fix of
+\path{docs/Update_EXHALE.md} \S82, which is a different change with a
+different reason. The Phase\,E work did not move them.
+
+What the decision left open, and where it now lives:
+
+\begin{center}
+\small
+\begin{tabular}{@{}p{4.0cm}p{9.4cm}@{}}
+\toprule
+piece & where it is \\
+\midrule
+the schema
+ & \path{docs/phase_e_flux_closure_design.md} \S2;
+   \path{docs/input_schema.md} \S2d; user manual \S3.8 \\
+the reader
+ & \path{src/modules/files_IO/lower_atmosphere_profile.f90} \\
+the run key
+ & \verb|Lower atmosphere profile:| (\path{input_read.f90:447-455}) \\
+the producers
+ & \path{src/utils/lower_profile_schema.py} (format, elemental accounting,
+   fingerprint) with \path{photochem_to_lower_profile.py} and
+   \path{vulcan_to_lower_profile.py} behind one command line \\
+the closure loop
+ & \path{src/utils/element_flux_closure.py}, driven from the fluxes EXHALE
+   measures and writes to \path{EXHALE_resolved.out} \\
+the regression
+ & \path{backup/regression/lower_profile/}, one of the seven defaults \\
+the example
+ & \path{examples/17_lower_profile/} \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\subsection{What the profile file carries, against what the plan asked for}
+\label{sec:carries}
+
+The plan's list (\emph{ibid.}, Phase\,E part 1) against the schema, field by
+field. ``read by'' names the code that consumes it; a field the file carries
+and nothing consumes is stated as such rather than counted as met.
+
+\begin{center}
+\small
+\begin{tabular}{@{}p{3.5cm}p{3.4cm}p{6.5cm}@{}}
+\toprule
+asked for & field & read by \\
+\midrule
+matching pressure and radius
+ & header \verb|p_match_bar|; columns \verb|p|, \verb|r|
+ & \verb|p_base_bar| directly; \verb|R0| from \verb|r| at the match
+   (\path{input_read.f90:1418-1424}) \\[2pt]
+temperature and total density
+ & columns \verb|T|, \verb|n_tot|, \verb|rho|
+ & \verb|T0| from \verb|T|. \verb|n_tot| and \verb|rho| are required of the
+   file but not imposed: the base density stays \verb|n0| of
+   \path{input.inp} and the base particle count and mass are built from
+   $T_0$, He/H, $q_{\rm H_2}$ and the elemental ratios, as on the scalar
+   path \\[2pt]
+elemental H and He abundances
+ & columns \verb|X_He|, \verb|X_<El>|
+ & \verb|HeH| and, through \verb|set_element_abundance|, every
+   \verb|melem_ab| (\path{input_read.f90:1430-1443}) \\[2pt]
+\textbf{the upward elemental fluxes}
+ & header \verb|trial_flux_H|, \verb|trial_flux_He|; columns \verb|F_H|,
+   \verb|F_He|
+ & the header pair by \path{element_flux_closure.py}, through
+   \path{EXHALE_resolved.out}. The \verb|F_H|/\verb|F_He| \emph{columns} are
+   written by the adapters and read by no Fortran routine: EXHALE measures
+   its own elemental fluxes instead and reports them, which is the half of
+   the loop it owns \\[2pt]
+molecular/atomic H partition
+ & columns \verb|q_H2|, \verb|q_H|
+ & \verb|q_H2| $\to$ \verb|q_h2_base|, the base particle count.
+   \verb|q_H| is required of the file and read by nothing \\[2pt]
+$K_{zz}$ at the match
+ & column \verb|Kzz|
+ & not the match alone --- the whole column, onto \verb|kzz_cell|
+   (\verb|eddy_diffusion_on_grid|) \\[2pt]
+selected molecular abundances the EXHALE network needs
+ & \verb|q_H2|, plus the diagnostic set (\verb|q_H2O|, \verb|q_CO|,
+   \verb|q_CH4|, \dots)
+ & \emph{not met.} The EXHALE network resolves H$_2$, H$_2^+$, H$_3^+$ and
+   HeH$^+$; the file carries none of the three ions and no molecular
+   profile is seeded from it. The diagnostic columns are metadata ---
+   nothing consumes them --- and the schema says so \\[2pt]
+source fingerprint
+ & header \verb|solution_id|, \verb|source_code|, \verb|source_version|,
+   \verb|mechanism|, \verb|stellar_flux|, \verb|iteration|, \verb|notes|
+ & the reader, and \verb|lap_report_provenance| into
+   \path{EXHALE_resolved.out} \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+The two further requirements the plan states are both met:
+
+\begin{itemize}
+\item \textbf{the same-solution consistency of the handoff pair is
+  enforced}, not printed. With a profile in use a \path{base.inp} without a
+  \verb|# solution_id| line, or with one that differs from the profile's,
+  stops the run, and a scalar physics key beside the profile stops it
+  earlier still (\path{input_read.f90:1344-1367,1371-1386}). Note the scope:
+  this is enforcement of the \emph{pair}. A \path{base.inp} on its own is
+  still checked only by the two printed messages of
+  section~\ref{sec:scalars};
+\item \textbf{the transit tool reads the resolved configuration.}
+  \verb|read_input_parameters| prefers \path{EXHALE_resolved.out} next to
+  \path{input.inp} and takes the planet radius, mass, equilibrium
+  temperature, orbital distance, stellar mass and He/H from it, refusing to
+  fall back silently if the file is present but unreadable
+  (\path{exhale_transit_lib.py:336-364}). \path{EXHALE_resolved.out} is
+  written after both handoff readers have run
+  (\path{src/modules/files_IO/write_setup_report.f90:428-543}), so a handoff
+  that moves the base radius now moves the transit geometry with it ---
+  Phase\,B of the plan.
+\end{itemize}
+
+\subsection{What is still open}
+
+\begin{itemize}
+\item The molecular ions of the network are not part of the handoff, as
+  above. A photochemical H$_2$/H$_2^+$/H$_3^+$/HeH$^+$ solution at the base
+  is still something EXHALE re-derives rather than inherits.
+\item The overlap window the design defines the closure on was measured on
+  LHS\,1140\,b and rejected there: it is $\sim\!0.003\,R_p$ thick and the
+  flux across it spreads by a factor of 13--35, so the driver falls back on
+  the steady-flux window $r \ge r_{\rm esc}$ and records that it did
+  (\path{src/utils/element_flux_closure.py}, header;
+  \path{docs/phase_e_flux_closure_design.md} \S3.4). The fallback is
+  reported rather than silent, but the window the design was written around
+  is not the window the number comes from.
+\item \verb|q_H2_base| and the profile's \verb|q_H2| are EOS anchors in both
+  routes: they set the base particle count and nothing holds H$_2$ at that
+  value. That was true of the scalar handoff and is still true of the
+  profile one.
+\end{itemize}
+
+\end{document}

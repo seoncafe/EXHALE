@@ -183,8 +183,18 @@ The production sequence is:
   each nonlinear residual call;
 \item include viscosity and thermal conduction through the same transport
   operator used by the marching path; and
-\item when helium diffusion is active, alternate a JFNK hydrodynamic solve with
-  500 implicit diffusion relaxation steps for as many as five outer passes.
+\item when helium diffusion is active, alternate a steady hydrodynamic solve
+  (JFNK from the marching hand-off with a budget of 500 iterations, or
+  pseudo-transient continuation) with a relaxation of the element composition
+  at that fixed wind, for at most 20 outer passes.  The composition relaxation
+  (\code{relax\_element\_composition}) steps on the composition time scale
+  \(\min[\Delta r^2/(D_{12}+K_{zz}),\,\Delta r/\max(|v|,w_s)]\) rather than
+  the hydrodynamic CFL step, grows that step geometrically, and takes at most
+  400 steps.  The outer loop is under-relaxed,
+  \(X\leftarrow X_{\rm old}+\omega(X_{\rm relaxed}-X_{\rm old})\), starting
+  at \(\omega=0.5\) and halved to a floor of 0.125 on any pass whose drift
+  failed to fall; it exits when the composition drift over a pass falls below
+  \(10^{-3}\) of the base helium mass fraction.
 \end{enumerate}
 The last operation is an outer co-convergence, not a monolithic
 hydrodynamics--diffusion Newton system.  The JFNK residual contains mass,
@@ -828,9 +838,21 @@ where \(G_{\rm He}\) collects the gravitational and ambipolar separation
 terms, \(D_{\rm He}\) is the molecular diffusion coefficient, and \(K_{zz}\)
 is the eddy diffusion coefficient.  The exact code expression, including its
 effective mass and sign conventions, must be called or factored from
-\code{species\_diffusion.f90}; Eq.~\eqref{eq:heflux} is not a replacement
-implementation.  Multispecies escape and helium fractionation models provide
-the broader physical context for coupled advective--diffusive fluxes
+\code{src/modules/functions/binary\_element\_diffusion.f90};
+Eq.~\eqref{eq:heflux} is not a replacement implementation.  Note that the
+code does not transport the ratio \(f_{\rm He}=n_{\rm He}/n_{\rm H}\) that
+Eq.~\eqref{eq:heflux} is written in: the transported variable is the helium
+MASS FRACTION \(X=\rho_{\rm He}/\rho\) of a binary H/He mixture, and the
+diffusive mass flux is
+\(J=-\rho(D_{12}+K_{zz})\,dX/dr-\rho D_{12}\,G\,X(1-X)\) with
+\(G=[(m_{\rm He}-m_{c1})m_{\rm H}g-(\bar Z_{\rm He}-\bar Z_{c1})eE]/(kT)
++\alpha_T\,d\ln T/dr-d\ln\psi/dr\).  \(X\) is bounded at both ends of the
+composition axis, unlike \(f_{\rm He}\), which diverges in exactly the
+helium-rich limit the module exists for; \(m_{c1}\), \(\bar Z_{c1}\) and
+\(\psi\) are carrier quantities, so the same expression holds in the atomic,
+triplet-helium and molecular regions.  Any reduced formulation must reproduce
+that flux, not Eq.~\eqref{eq:heflux}.  Multispecies escape and helium
+fractionation models provide the broader physical context for coupled advective--diffusive fluxes
 \cite{Koskinen2013a,Xing2023,Taylor2025}.
 
 If chemical reactions conserve helium nuclei, steady elemental conservation is
@@ -1314,6 +1336,13 @@ proposed component & responsibility \\
 \bottomrule
 \end{tabular}
 \end{center}
+
+\noindent None of the components in this table exists in the repository: they
+are the proposal of this memo, not a description of the tree.  The files the
+memo cites elsewhere --- \code{steady\_residual.f90},
+\code{steady\_newton.f90}, \code{post\_process\_adv.f90},
+\code{wae\_difeq.f90}, \code{binary\_element\_diffusion.f90} --- are the
+existing ones.
 
 The existing full residual evaluator currently accepts and mutates a species
 state.  A reduced wrapper should expose a pure logical interface:

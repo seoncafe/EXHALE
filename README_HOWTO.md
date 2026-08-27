@@ -455,7 +455,90 @@ reads it at startup and echoes every override (absent file = strict no-op).
 The VULCAN converter (`src/utils/vulcan_to_base.py`, below) adds `q_H2_base`
 and `p_base`: with `Molecular base: True` the photochemical H2 mixing ratio
 then replaces EXHALE's chemical-equilibrium fit in the base particle count.
+It also writes the elemental reservoirs `C_H_base N_H_base O_H_base S_H_base`
+(El/H nuclei, every carrier counted), which override `metals.inp` for those
+elements; `Mg Si Ca Na K Fe` stay `metals.inp`'s job. Every `base.inp` key,
+and the category that says what it may do to the wind, is tabulated in
+`docs/input_schema.md` section 2c; `src/utils/element_budget.py <run_dir>`
+checks afterwards that the reservoirs held.
 -> `docs/lower_atmosphere_coupling.pdf` §4.4.
+
+## Hand off a lower-atmosphere *profile* (`lower_atmosphere_profile.dat`)
+
+The scalar `base.inp` states the lower atmosphere at one level. A **profile**
+states it over an interval of pressure, which is what lets `K_zz` be a profile
+rather than a constant and what the elemental-flux closure of
+`docs/phase_e_flux_closure_design.md` needs. One opt-in key turns it on:
+
+```
+Lower atmosphere profile: lower_atmosphere_profile.dat
+```
+
+With the key set, the file owns the base state (`T0`, `R0`, `p_base`,
+`q_H2`), the elemental reservoirs (`HeH` and every `X_<El>`) and `K_zz` on
+the grid — and every `base.inp` key of those three categories is **refused**
+beside it, so there is one source and not two. Schema and every refusal:
+`docs/input_schema.md` section 2d. A worked minimal case:
+`examples/17_lower_profile/` (its `make_example_profile.py` writes the
+synthetic column that documents the schema).
+
+### Producing one from a photochemistry model
+
+```bash
+# production arm: Photochem (needs this machine's photochem_cmp environment)
+/home/kiseon/.conda/envs/photochem_cmp/bin/python \
+  src/utils/photochem_to_lower_profile.py <run_dir> \
+      --mp 0.720 --r-ref 1.36 \
+      --tp-file       vulcan_work/hd209_vulcan/atm/atm_HD209_Kzz.txt \
+      --stellar-flux  vulcan_work/hd209_vulcan/atm/stellar_flux/Gueymard_solar.txt \
+      --r-star 1.155 --a-orb 0.0480 \
+      --p-match 1e-6 --toa 1e-2 [--atoms H,He,N,O,C,S]
+
+# cross-check arm: a finished VULCAN run, same options, same schema
+python3 src/utils/vulcan_to_lower_profile.py <run_dir> \
+      --vulfile vulcan_work/hd209_vulcan/output/HD209.vul \
+      --mp 0.720 --r-ref 1.36 --p-match 1e-6
+```
+
+Each writes `<run_dir>/lower_atmosphere_profile.dat` and a `base.inp` that
+carries **only** the matching `solution_id` (a provenance file; any physics
+key in it would stop the run). `--r-ref` is the planet radius at `--p-ref`
+(1 bar by default, the transit radius), from which the radius column is
+integrated hydrostatically; `--p-match` is where EXHALE will place its base;
+`--kzz-const` overrides the eddy profile with one number; `--trial-flux-H`,
+`--trial-flux-He` and `--iteration` are the closure bookkeeping.
+
+Two things the files state about themselves and you should read before using
+one:
+
+- `reached_steady_state`. Nothing is written unless the chemistry converged —
+  a non-steady solution has no elemental flux to hand over.
+- `notes`, `measured_flux_H`, `measured_flux_He`. The Photochem arm **imposes**
+  `--trial-flux-H` and `--trial-flux-He` as a flux upper boundary condition on
+  the carriers at its model top (all of the hydrogen on H2 while atomic H
+  carries under 1% of the hydrogen nuclei there, split by the measured share
+  above that), so the composition it hands over is that of a column losing
+  what the wind takes. A zero trial flux imposes nothing and reproduces the
+  closed-top solution bit for bit. What the solution then carries across its
+  own top is measured with `gas_fluxes()` and written as `measured_flux_H` /
+  `measured_flux_He` [g/s], so you can check that the boundary condition took;
+  on LHS 1140 b an imposed 3.0e7 g/s came back as 3.000e7 g/s. The `F_H` and
+  `F_He` COLUMNS still carry the stated trial value at every level. Measuring
+  the wind's own elemental flux over the overlap and iterating the two models
+  to agreement is the closure driver, which does not exist yet. The VULCAN
+  cross-check arm reads a finished `.vul` file and cannot impose anything, so
+  it stays one-way.
+- `--p-top-bar` (Photochem arm) states the model top in bar directly, in place
+  of `--toa` in dyn/cm^2; the two name the same level and only one may be
+  given. The solution settles within about a factor of three of it, so the
+  table stops near rather than exactly at that pressure.
+
+The same input twice gives the same `solution_id` and a byte-identical file;
+change the configuration, the abundances, the matching level or a trial flux
+and the id changes. That is what makes "these two files are the same
+lower-atmosphere solution" checkable rather than assumed — EXHALE stops if a
+`base.inp` sitting beside a profile carries a different id or none.
+-> `docs/phase_e_flux_closure_design.md` §2, §4; `docs/Update_EXHALE.md` §76-77.
 
 ## Use VULCAN photochemistry for the base state (subroutine-style)
 
@@ -629,8 +712,14 @@ Every file starts with a `# columns …` schema header, so analysis tools adapt
 to the column layout automatically. `EXHALE_setup.out` in the run directory
 echoes the resolved configuration at startup — read it when debugging whether
 a key took effect. When **Load IC** is enabled the previous outputs are copied
-to `*_IC.txt` and read back as initial conditions for a restart run. Full
-column definitions: `docs/EXHALE_user_manual.pdf` §4.
+to `*_IC.txt` and read back as initial conditions for a restart run. One thing
+a restart does *not* take from the file: if a lower-atmosphere handoff states
+an element's reservoir — a `<El>_H_base` key of `base.inp`, or an elemental
+ratio of the file named by `Lower atmosphere profile:` — that element's loaded
+column is renormalized onto the stated `El/H` by a single factor, reported in
+the run log, so a closure iteration restarts on the reservoir it just moved to.
+Elements the handoff does not state, and restarts with no handoff, are loaded
+unchanged. Full column definitions: `docs/EXHALE_user_manual.pdf` §4.
 
 ## Reading output in Python
 
@@ -817,7 +906,7 @@ The harness lives in `backup/regression/`, which is a working-copy directory
 and is not in the git remote. It rebuilds, re-runs each case single-threaded
 (`OMP_NUM_THREADS=1`, so the results are deterministic), and bitwise-compares
 `output/Hydro_ioniz.txt` and `output/Ion_species.txt` against
-`backup/regression/golden/`. Default matrix (six cases):
+`backup/regression/golden/`. Default matrix (seven cases):
 
 | case | what it guards |
 |---|---|
@@ -827,6 +916,7 @@ and is not in the git remote. It rebuilds, re-runs each case single-threaded
 | `mol_metals` | the same gate + solar C/N/O/Mg/Ca/Na/Fe: the molecular and metal networks in one system; 12000-step snapshot |
 | `mol_lyman_werner` | the same gate + `Stellar LW flux [erg/cm2/s]: 343.0`: H2 photodissociation and its self-shielding inside the molecular network; 12000-step snapshot |
 | `mol_diffusion` | the same gate + `He_diffusion: True`, `He_Kzz: 1.0e9`: binary H/He element diffusion across the molecular front — molecular-carrier closure, stage-resolved friction pairs, projection back onto `f_sp`, Coulomb friction above the ionization front; 12000-step snapshot |
+| `lower_profile` | HD 209458 b with the lower atmosphere handed over as a **profile** (`Lower atmosphere profile:`) instead of the scalars of `base.inp`: the profile reader, the matching-level base state, the elemental reservoirs the profile carries (metals-on with no `metals.inp`), `K_zz(p)` interpolated onto the grid in place of the scalar `He_Kzz`, the accepting branch of the profile / `base.inp` `solution_id` pairing, and the elemental flux window statistics; 12000-step snapshot |
 
 Any other case directory can be named on the command line. A case that is a
 relaxation snapshot rather than a converged solution pins its step count in

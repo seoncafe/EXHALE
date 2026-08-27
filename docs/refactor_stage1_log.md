@@ -14,6 +14,9 @@ harness; "PASS" means the gate ran green immediately after the step.
 - Matrix cases (WASP-121b, converges to `du < 1e-3` in ~5 min/case):
   `wasp_full` (He 2^3S on + metals on; exercises the HeITR and metal paths) and
   `wasp_he23off` (He 2^3S off + metals on; exercises the HeITR-off branches).
+  [2026-08-27: the default matrix has grown to seven cases -- the two above
+  plus `mol_base_handoff`, `mol_metals`, `mol_lyman_werner`, `mol_diffusion`
+  and `lower_profile` (`DEFAULT_CASES` in `run_check.sh`).]
 - `test_roundtrip.sh` + `check_roundtrip.py` — restart loader test using the
   `EXHALE_DUMP_IC=1` hook in `EXHALE_main.f90`, which writes the state exactly as
   loaded and stops. The dump happens *before* the first ionization-equilibrium

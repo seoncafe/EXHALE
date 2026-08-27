@@ -9,6 +9,14 @@
 > Table 4 charge exchange in place of Kingdon & Ferland. No `System_HeHCO*.f90`
 > module exists; the names in the plan were never adopted. See
 > `Update_EXHALE_early_phase`, Part II. Kept for historical reference.
+>
+> [2026-08-27] Which tree each file name below belongs to: every
+> `metals*.f90`, `cross_sec_metals.f90` and `write_metals_output.f90` path,
+> and the `coronal_fractions` / `solve_metals_post` routines, are in
+> `ATES/ATES_extended/src/` and have no counterpart in this repository. The
+> `System_HeHCO*.f90` names are the plan's own proposal and exist in neither
+> tree. EXHALE's coupled solver is the `System_HeH_*` family in
+> `src/modules/nonlinear_system_solver/`.
 
 # Plan: integrating trace metals into the MINPACK ionization system
 

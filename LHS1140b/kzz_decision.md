@@ -3,7 +3,8 @@
 **Status: settled. Sections 1-4 lay the two halves of the evidence side by
 side, section 5 makes the recommendation, and the user adopted it on
 2026-08-25 (section 0). Section 6 is what that value does to the composition
-the He 10830 line implies.**
+the He 10830 line implies, section 7 makes that composition an output of the
+flux closure, and section 8 asks the two questions together.**
 
 Prepared 2026-08-25, after Phase D of `../docs/binary_diffusion_design.md`
 (binary H/He element diffusion, through decision D3). Companion documents:
@@ -27,7 +28,9 @@ He_Kzz: 1.0e9
 The consequence is not cosmetic. He/H = 0.55 was calibrated in the well-mixed
 limit, and section 3 shows it cannot reproduce the measured line at any
 `K_zz`. With the adopted value the composition the line implies is
-**He/H = 2.09** instead, measured in section 6. Every composition statement
+**He/H = 2.09** instead, measured in section 6 -- on a scalar H/He base. On
+the photochemical profile the flux closure hands over, which carries C, N
+and O and their cooling, the same line asks for **He/H = 10.7** (section 8). Every composition statement
 about this planet is therefore conditional on the eddy coefficient, the same
 way it is already conditional on the assumed SED.
 
@@ -765,3 +768,219 @@ from the four fixed-composition runs of section 3), and the composition item
 of "Status against the goal" states the `K_zz` conditionality alongside the
 SED one. The well-mixed crossing of 0.55 is still the memo's headline
 number, now labelled as the well-mixed limit.
+
+## 7. The flux-closed composition (2026-08-27): the composition is now an output
+
+Everything above treats `He/H` as an input to be chosen — the value at which
+the modelled He 10830 line meets the measured one, conditional on `K_zz`.
+Milestone E4 of `../docs/phase_e_flux_closure_design.md` removes that framing
+on the lower-atmosphere side: **the matching-level composition is now solved
+for, not stated.** The photochemical column is given the elemental escape
+fluxes as an upper boundary condition, the wind is solved on the profile that
+comes back, its own elemental fluxes are measured, and the two are iterated
+to agreement (`../docs/Update_EXHALE.md` section 79;
+`exhale/flux_closure/`).
+
+The measured answer on this planet, from three starting fluxes spanning a
+factor of ten:
+
+| start | k at convergence | `He/H` at the match | `F_H` [g/s] | `F_He` [g/s] | `log10 Mdot` |
+|---|---|---|---|---|---|
+| `1.0 x` | 0 | 2.0923516 | 1.81433e7 | 1.32040e7 | 7.500 |
+| `0.3 x` | 5 | 2.0923486 | 1.82031e7 | 1.34266e7 | 7.500 |
+| `3.0 x` | 6 | 2.0923602 | 1.82119e7 | 1.34710e7 | 7.500 |
+
+The three agree in `He/H` to 5.5e-6, so the closure is single-valued here.
+
+**What this does and does not change about section 0.** It does not change the
+adopted value or the number the line implies: the closure returns
+`He/H = 2.0923` against the 2.09 the reservoir was started from, a change of
+1.1e-3 and well inside the width of the crossing. What it changes is the
+standing of that number. `He/H = 2.09` is no longer only the value that fits
+the line; it is also the value the coupled lower atmosphere and wind settle
+on, and the two agree.
+
+**And it sharpens the conditionality section 0 already states.** The closure
+says explicitly *why* the composition at the match is what it is, and the
+reason is `K_zz` and not the escape. Of the 1.1e-3 change, only 2e-4 comes
+from the escape flux itself: at `K_zz = 1e9 cm^2/s` eddy mixing homogenizes
+the column all the way to 1 microbar, so a 1.8e7 g/s hydrogen escape imposed
+at the photochemical model top moves `He/H` there by 1.8e-2 and moves it at
+the match by 2e-4. The eddy coefficient sets the composition at the match;
+the escape does not. Section 0's sentence that every composition statement
+about this planet is conditional on the eddy coefficient is therefore not
+weakened by the composition becoming an output — it is the mechanism behind
+it, and the closure measured it.
+
+The fractionation itself is real and lives above the match, where it always
+did: the wind removes helium and hydrogen in the mass ratio 0.73 against the
+base reservoir's 8.31, and `He/H` falls from 2.09 at the base to 0.183 at
+30 R_p. What the closure adds is that this separation does not reach back
+down through the eddy-mixed column to the matching level at the adopted
+`K_zz`. At a much smaller `K_zz` it would, and that is the experiment section
+6.1's decade scan would now be repeated as.
+
+## 8. Composition under flux closure (2026-08-27): the reservoir the line needs
+
+Section 7 closed the loop at one reservoir, `He/H = 2.09`, and found the
+closure single-valued there. It did not ask what that solution's He 10830
+line looks like. It does not reproduce the measurement: the red-pair
+equivalent width of the flux-closed solution is **0.421 %A against the
+measured 1.108 +/- 0.030**, a factor 2.63 low. The scalar-base run at the
+same composition (`exhale/heh2p13_diff_kzz1e9`, section 6) gives 1.129 and
+does reproduce it, so the deficit belongs to the profile the closure hands
+over and not to the composition.
+
+Where it comes from is the elemental C, N and O the Photochem profile
+carries into the wind, and the cooling they add. At the same reservoir,
+measured from the `_adv` profiles:
+
+| | scalar base, `He/H` 2.13 | flux-closed profile, `He/H` 2.09 |
+|---|---|---|
+| max wind `T` [K] | 5330 | 3945 |
+| `T` at 2 `R_p` [K] | 4140 | 2971 |
+| max `n(2^3S)` [cm^-3] | 42.9 | 50.3 |
+| `int n(2^3S) dr` [cm^-3 R_p] | 67.3 | 40.7 |
+| `log10 Mdot` [g/s] | 7.80 | 7.40 |
+| red EW [%A] | 1.129 | 0.421 |
+
+The metastable peak is slightly *higher* in the closed solution but the
+column above it is 1.7 times smaller, and the line is 2.6 times weaker: the
+cooler wind keeps the metastable helium concentrated near the base instead
+of carrying it out through the line-forming region.
+
+### 8.1 The reservoir ladder under closure
+
+So the question section 6 answered for the scalar base is reopened for the
+closed system: **what reservoir `He/H` makes the flux-closed solution
+reproduce the measured line?** The ladder below runs the closure driver
+(`../src/utils/element_flux_closure.py`) at six further reservoirs, each
+started from the converged flux and converged wind of the point below it, so
+every arm begins near its own fixed point. Everything else is the section-7
+configuration: Photochem `clima` + chemistry, `K_zz = 1e9`, `p_match = 1e-6`
+bar, the GJ 1132 proxy SED, `tol = 0.05`, `k_max = 8`. Runs:
+`exhale/flux_closure/heh{3,5,8,9p7,10p3,12}/`, table
+`exhale/flux_closure/closure_heh_table.py`.
+
+| reservoir `He/H` | k | `F_H` [g/s] | `F_He` [g/s] | `He/H` at match | `log10 Mdot` | red depth [%] | blue [%] | FWHM [A] | red EW [%A] | EW / measured | cold-trap `O/H` |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| 2.09 (sec. 7) | 0 | 1.814e7 | 1.320e7 | 2.0924 | 7.500 | 1.699 | 0.246 | 0.2326 | 0.4206 | 0.380 | 4.95e-7 |
+| 3.0 | 3 | 1.369e7 | 1.491e7 | 3.0034 | 7.460 | 2.122 | 0.307 | 0.2386 | 0.5388 | 0.486 | 5.54e-7 |
+| 5.0 | 4 | 8.799e6 | 1.692e7 | 5.0057 | 7.410 | 2.795 | 0.404 | 0.2497 | 0.7433 | 0.671 | 6.43e-7 |
+| 8.0 | 4 | 5.722e6 | 1.894e7 | 8.0090 | 7.390 | 3.388 | 0.487 | 0.2608 | 0.9437 | 0.852 | 7.94e-7 |
+| 9.7 | 3 | 4.768e6 | 2.043e7 | 9.7109 | 7.400 | 3.660 | 0.526 | 0.2664 | 1.0403 | 0.939 | 8.78e-7 |
+| 10.3 | 1 | 4.498e6 | 2.069e7 | 10.3116 | 7.400 | 3.696 | 0.530 | 0.2674 | 1.0563 | 0.953 | 9.09e-7 |
+| 12.0 | 4 | 3.910e6 | 2.238e7 | 12.0135 | 7.420 | 4.630 | 0.663 | 0.2654 | 1.3126 | 1.185 | 1.07e-6 |
+| *measurement* | | | | | | 1.254 | | 0.841 | **1.108 +/- 0.030** | 1 | |
+
+Every arm returns a matching-level `He/H` equal to its reservoir to four
+digits, the same result section 7 reported at 2.09 and for the same reason:
+at `K_zz = 1e9` the eddy-mixed column reaches the microbar match, so the
+escape flux does not set the composition there.
+
+**The crossing.** The runs at 10.31 and 12.01 straddle the measurement, so
+the answer is interpolated inside a bracket rather than extrapolated:
+
+- **central, EW = 1.108 %A: `He/H` = 10.7**;
+- 1 sigma low, 1.078 %A: 10.5; 1 sigma high, 1.138 %A: 10.9
+
+(log-log interpolation of the seven scanned points, solved by Brent's
+method; the quoted range carries the measurement error alone and none of the
+model uncertainty). At the crossing the escape rate is `log10 Mdot` = 7.40
+to 7.42, i.e. 2.5-2.6e7 g/s, against the 2.03 +0.58/-0.67 e8 g/s of the
+Cherubim et al. p-winds retrieval -- a factor 8 below it -- and the
+elemental fluxes are `F_H` ~ 4.3e6 and `F_He` ~ 2.1e7 g/s. The escape rate
+is nearly flat across the whole ladder (7.39 to 7.50 over a factor 5.7 in
+reservoir), so here too the composition is fixed by the line and not by the
+wind.
+
+**So there is a composition that satisfies both conditions, and it is five
+times the section-6 value.** The flux-closure condition by itself does not
+select a reservoir on this planet -- it is satisfied at every rung -- so the
+line is what picks 10.7, and the closure's contribution is that the answer
+is now consistent with a photochemical lower atmosphere carrying its own
+C/N/O rather than with a bare H/He base. The price is a helium fraction of
+91 per cent by number.
+
+**How firmly the crossing is bracketed.** The equivalent width grows
+sublinearly with the reservoir -- local power-law slope 0.69 at the bottom of
+the ladder, 0.51 between 5 and 10 -- so it does *not* saturate before the
+measurement is reached, which is what the He-rich end of the scalar ladder
+(section 6) had made a live possibility. It does not grow smoothly either:
+the slope is 0.25 between 9.71 and 10.31 and 1.42 between 10.31 and 12.01,
+and that wiggle is the width of the bracket. It is not resolved here.
+
+**Convergence quality, arm by arm.** The wind residual the JFNK finish can
+reach degrades as the reservoir grows: the line search stalls on the base
+contact mode and returns its best iterate rather than converging. The target
+was therefore raised per arm, and the achieved values are recorded rather
+than smoothed over:
+
+| arm | wind `Resid tol` | achieved `\|\|R\|\|` | `info` | steady-window `F_H` spread |
+|---|---|---|---|---|
+| 2.09 | 1.0e-4 | 9.81e-5 | 0 | 0.44 % |
+| 3.0 | 2.0e-4 | 1.40e-4 | 0 | 0.64 % |
+| 5.0 | 2.0e-4 | 1.70e-4 | 0 | 0.80 % |
+| 8.0 | 4.0e-4 | 3.35e-4 | 0 | 1.14 % |
+| 9.7 | 4.0e-4 | 2.44e-4 | 0 | 2.14 % |
+| 10.3 | 4.0e-4 | 2.56e-4 | 0 | 2.61 % |
+| 12.0 | 4.0e-4 | 2.53e-4 | 0 | 1.74 % |
+
+The acceptance test the closure actually applies is the last column -- the
+radial spread of the elemental flux over the window it is measured on -- and
+it stays between 0.4 and 2.6 per cent against the 5 per cent tolerance at
+every rung. `Resid tol` became a configuration key of the closure driver in
+the course of this ladder; the default is unchanged at 1.0e-4.
+
+**What the crossing does not fix.** The line is still too narrow: FWHM 0.267
+A at the crossing against the measured 0.841 A, unchanged from section 6 and
+from the diffusion-off solutions, so the modelled red depth (3.7 per cent)
+overshoots the measured 1.254 per cent by the same factor the width falls
+short. The composition is inferred from the equivalent width for that
+reason. And the wind these numbers come from is *unvalidated as a continuum
+solution*: it is subsonic to the 30 `R_p` domain edge and the critical region
+is transitional (`../docs/collisional_validity.md`).
+
+### 8.2 The XUV grid against the 2025 non-detection
+
+Cherubim et al. detect the line in 2024 and not in 2025, with a limit of
+0.6 per cent in depth. The grid below asks what fraction of the fiducial XUV
+reproduces that. The spectrum is the fiducial GJ 1132 proxy with its flux
+column multiplied by the stated factor (`sed/lhs1140_sed_gj1132_at_b_xuv*.txt`;
+`read_sed` recomputes `L_X` and `L_EUV` from the file, so the luminosity
+lines of `input.inp` are provenance only). The lower atmosphere is held
+fixed in every case -- the closure loop is not re-run, and neither is the
+chemistry that made the profile -- so the grid isolates the wind's response.
+
+It is run from both models that reproduce the 2024 equivalent width, because
+neither is the other: the scalar-base solution of section 6 at `He/H` = 2.13
+(EW 1.129), and the flux-closed solution of section 8.1 at `He/H` = 9.71
+(EW 1.040). Runs `exhale/xuv*_heh2p13/` and `exhale/xuv*_closure9p7/`.
+
+| `F_XUV` / fiducial | scalar `He/H` 2.13: red [%] | EW [%A] | `log10 Mdot` | flux-closed `He/H` 9.71: red [%] | EW [%A] | `log10 Mdot` |
+|---|---|---|---|---|---|---|
+| 1.00 | 4.396 | 1.129 | 7.80 | 3.660 | 1.040 | 7.40 |
+| 0.33 | 0.778 | 0.180 | 7.38 | **0.602** | 0.154 | 6.74 |
+| 0.30 | **0.591** | 0.136 | 7.35 | -- | -- | -- |
+| 0.25 | 0.334 | 0.077 | 7.32 | 0.511 | 0.129 | 6.55 |
+| 0.20 | 0.034 | 0.009 | 7.23 | 0.361 | 0.090 | 6.40 |
+| 0.15 | 0.007 | 0.002 | 7.14 | 0.256 | 0.063 | 6.22 |
+| 0.10 | 0.003 | 0.001 | 6.93 | 0.165 | 0.040 | 5.97 |
+| 0.01 | 0.000 | 0.000 | 6.10 | 0.190 | 0.055 | 5.51 |
+
+**The 0.6 per cent limit is met at about 0.3 of the fiducial XUV in both**,
+which is the useful part of the result: the two models disagree by a factor
+4.6 in reservoir and a factor 2.5 in escape rate, and still put the
+non-detection at the same place. In the scalar model the depth crosses 0.6
+between 0.30 (0.591 per cent) and 0.33 (0.778); in the flux-closed model it
+sits at 0.602 per cent at 0.33 and 0.511 at 0.25, so the crossing is just
+under 0.33. Taking the fiducial `F_XUV` = 33 erg/cm^2/s of the paper, the
+2025 epoch would need about 10 erg/cm^2/s or less.
+
+Two caveats belong with that number. The decline is far steeper in the
+scalar model than in the closed one -- a factor 200 in depth between 0.30 and
+0.20 against a factor 1.6 -- so the *shape* of the XUV dependence is a
+property of the model and not a result; only the crossing agrees. And the
+lowest closed-model point (0.01) is not monotonic with the 0.10 one
+(0.190 against 0.165 per cent) at a wind that has dropped to
+`log10 Mdot` = 5.5; that solution is not to be read as a limit.

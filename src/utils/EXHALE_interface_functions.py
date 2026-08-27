@@ -1,4 +1,4 @@
-# Library of callback and other functions for ATES interface
+# Library of callback and other functions for the EXHALE interface
 import numpy as np
 import glob
 import os

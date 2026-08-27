@@ -93,17 +93,14 @@ contains
       ! (nm/n0 = adimensional metal densities; adds the metal electrons and
       ! nuclei under the eos_metals policy)
       call calc_ne(rho*f_sp(:,isp_HII), rho*f_sp(:,isp_HeII), rho*f_sp(:,isp_HeIII), ne_ad, nm/n0, nmol_l)
+      ! The He 2^3S column is inside the HeI column (bsp_is_excited_level),
+      ! so it is not passed and the triplet branch disappears with it.
       if (thereis_He) then
-         if (thereis_HeITR) then
-            call calc_ntot(rho*f_sp(:,isp_HI), rho*f_sp(:,isp_HII), rho*f_sp(:,isp_HeI), &
-                           rho*f_sp(:,isp_HeII), rho*f_sp(:,isp_HeIII), rho*f_sp(:,isp_HeTR), n_tot_ad, nm/n0, nmol_l)
-         else
-            call calc_ntot(rho*f_sp(:,isp_HI), rho*f_sp(:,isp_HII), rho*f_sp(:,isp_HeI), &
-                           rho*f_sp(:,isp_HeII), rho*f_sp(:,isp_HeIII), zero_arr, n_tot_ad, nm/n0, nmol_l)
-         endif
+         call calc_ntot(rho*f_sp(:,isp_HI), rho*f_sp(:,isp_HII), rho*f_sp(:,isp_HeI), &
+                        rho*f_sp(:,isp_HeII), rho*f_sp(:,isp_HeIII), n_tot_ad, nm/n0, nmol_l)
       else
          call calc_ntot(rho*f_sp(:,isp_HI), rho*f_sp(:,isp_HII), zero_arr, &
-                        zero_arr, zero_arr, zero_arr, n_tot_ad, nm/n0, nmol_l)
+                        zero_arr, zero_arr, n_tot_ad, nm/n0, nmol_l)
       endif
 
       ! Old temperature (adimensional)

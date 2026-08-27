@@ -19,6 +19,7 @@
       use composition, only: get_species_densities
       use species_table, only: n_mion
       use wae_exhale_bridge, only: wae_generate_ic
+      use lower_atmosphere_profile, only: eddy_diffusion_on_grid
       
       implicit none 
       
@@ -70,6 +71,12 @@
       ! Construction of radial grid
       write(*,*) '    - Constructing the spatial grid..'
       call define_grid         
+
+      ! Eddy diffusion coefficient of every cell. Needs the grid, and needs
+      ! he_kzz / the lower-atmosphere profile to be final, so it sits here
+      ! rather than in allocate_grid_arrays. Without a profile every cell
+      ! takes the scalar he_kzz.
+      call eddy_diffusion_on_grid
       
       !------------------------------------------------!
       

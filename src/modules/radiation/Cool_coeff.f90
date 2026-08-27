@@ -981,7 +981,13 @@
    ! He(2^3S) + H -> He(1^1S) + H^+ + e^-.
    ! Taylor et al. (2025), ApJ 989:68, Table 2 ("This Work"): a two-branch
    ! power law fitted to the Maxwell-Boltzmann-averaged cross sections of
-   ! Morgner & Niehaus (1979) and Cohen & Lane (1971).  Replaces the older
+   ! Morgner & Niehaus (1979) and Cohen & Lane (1971).  Like the value it
+   ! replaces it is the SUM of Penning and associative ionization (their
+   ! Section 2.4), and EXHALE assigns all of it to the Penning channel
+   ! He(1^1S) + H^+ + e^-, so the part that ends in HeH^+ is counted as a
+   ! proton instead.  The two branches meet at 4000 K with a 1.57x step;
+   ! that is the published fit, not a transcription error.
+   ! Replaces the older
    ! temperature-independent 5e-10 cm^3 s^-1 (Roberge & Dalgarno 1982 sum of
    ! Penning + associative ionization, as used by Oklopcic & Hirata 2018 and
    ! Lampon et al. 2020).  Units: cm^3 s^-1; T in K.
@@ -1006,10 +1012,14 @@
    ! at 500/2000/5000/10000 K (8.94e-11, 6.48e-10, 1.48e-9, 2.54e-9
    ! cm^3 s^-1).  The fit reproduces all four points to <= 0.13% over its
    ! 500-10000 K validity range.  The minor H + HeH^+ associative-ionization
-   ! branch (~10% in Garcia Munoz 2025, Fig. 4) is not resolved: the full
-   ! rate is assigned to the dominant Penning channel He(1^1S)+H2^+ + e^-,
-   ! the same one-line approximation used for the atomic He(2^3S)+H Penning
-   ! term.  Units: cm^3 s^-1; T in K.  Elemental so it serves both the scalar
+   ! branch is not resolved: Garcia Munoz (2025) splits the total ionization
+   ! cross section between Penning and associative ionization with "an
+   ! average 0.9:0.1" (Appendix, the paragraph introducing Table A.5), and
+   ! the full rate is assigned here to the dominant Penning channel
+   ! He(1^1S)+H2^+ + e^-, the same one-line approximation used for the
+   ! atomic He(2^3S)+H Penning term.  In a He-dominated envelope the
+   ! neglected 10% is a HeH^+ source that scales with the He fraction; see
+   ! docs/molecular_chemistry_audit_he_rich.md.  Units: cm^3 s^-1; T in K.  Elemental so it serves both the scalar
    ! calls in System_HeH_mol::set_mol_coeffs and the array
    ! evaluation of the heating term in ionization_equilibrium.
    elemental double precision function penning_HeI23S_H2(T) result(k)
@@ -1039,7 +1049,7 @@
 
    !--------------!
 
-   ! Recombination coefficient of HeII on 23S state
+   ! Recombination coefficient of HeII on the 1^1S singlet ground state
    subroutine rec_HeII_11S(T,coeff_rec_HeII_11S)
    real*8, dimension(1-Ng:N+Ng), intent(in) :: T
    real*8, dimension(1-Ng:N+Ng), intent(out) :: coeff_rec_HeII_11S

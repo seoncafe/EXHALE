@@ -166,6 +166,17 @@ of scope.
 current validated behavior; the incompatibility has a decided, implemented
 resolution.
 
+**Done 2026-08-26 (milestones M1-M4).**  The design is
+`binary_diffusion_design.md`; the operator is
+`src/modules/functions/binary_element_diffusion.f90` and the trace kernel
+`src/modules/functions/species_diffusion.f90` named above is deleted, so the
+row-3 and row-5 code references of section 1 are historical.  The tests are
+`src/tests/diffusion_tests.f90` (`make diffusion_tests`).  The molecular /
+`He_diffusion` exclusion of baseline row 4 is resolved and the `error stop`
+is gone from `input_read.f90`; the changelog record is `Update_EXHALE.md`
+sections 67-69 and 73, and the route is pinned by
+`backup/regression/mol_diffusion`.
+
 ### Phase E — Photochem coupling with flux closure (revised WP2)
 
 Everything here is new code (baseline row 9).  Two parts:
@@ -194,7 +205,58 @@ Everything here is new code (baseline row 9).  Two parts:
 at the match; the cold-trap water abundance is documented; the converged
 H:He is insensitive to the initial trial flux.  Depends on
 `oxygen_chemistry_new_plan.md` phases P1 (matched Photochem comparison) and
-P2 (handoff contract) — this phase is those two exercised on a real target.
+P2 (handoff contract) — this phase is those two exercised on a real target,
+and as of 2026-08-27 it has exercised them.
+
+**Done 2026-08-27 (milestones E1-E5).**  The interface decision of part 1 was
+taken in favor of a profile file, and the handoff pair is enforced rather
+than printed.  The implementation design is
+`phase_e_flux_closure_design.md`; the changelog record is
+`Update_EXHALE.md` sections 76 (the profile and the reader), 77 (the
+Photochem and VULCAN adapters), 78 (the climate step and the cold trap) and
+79 (the closure driver and the LHS 1140 b result).  The three acceptance
+criteria, in the order they are stated above:
+
+1. **The two models agree on the elemental fluxes at the match** — the
+   closure residual `|F_measured - Phi_trial| / |F_measured|` converges to
+   0.015-0.031 across three starts, inside the 0.05 criterion and above
+   neither the flux window's own spread (0.004-0.009) nor the 0.025 dex
+   reproducibility floor.  Test T-E6, `Update_EXHALE.md` section 79.  The
+   flux is flat to 0.44 per cent (H) and 0.46 per cent (He) against the mass
+   flux's own 0.45 per cent, but only in the **steady-flux** window
+   `r >= r_esc`; the overlap window the design first proposed is 0.003 R_p
+   thick and the flux across it spreads by 13-35, so it is measured,
+   rejected on physical grounds, and the substitution is written into
+   `closure.log` and the history table rather than made silently.  That is
+   test T-E5, and the rejection is the result rather than a defect.
+2. **The cold-trap water abundance is documented** — `f_H2O = 1.3e-7` at a
+   1.031 bar, 185.0 K tropopause, 0.13-0.33 ppm over the deep-boundary scan,
+   against the ~7 ppm Cherubim et al. estimate at an assumed 0.1 bar.  The
+   departure is stated and not tuned.  Gas-phase `O/H` falls 6.06e-4 ->
+   4.96e-7 across the trap; C, N and He are untouched.
+   `Update_EXHALE.md` section 78, milestone E3.
+3. **The converged H:He is insensitive to the initial trial flux** — three
+   starts spanning a factor of 10 in the trial fluxes converge to
+   `He/H = 2.09235` within **5.5e-6** and `log10 Mdot = 7.500` within the
+   0.005 the log prints.  Test T-E7, `Update_EXHALE.md` section 79.
+
+Where the numbers live: the closure runs are
+`LHS1140b/exhale/flux_closure/{ref,lo,hi}/` (one `k**` directory per
+iteration, with `closure_history.txt` and `closure.log` per arm), the
+profile and its provenance-only `base.inp` are `LHS1140b/lower_profile/`,
+and the execution board row is `LHS1140b/WORKPLAN.md` step E.  The route is
+pinned in the regression matrix by `backup/regression/lower_profile`
+(milestone E5, test T-E10).
+
+**What the phase does not close.**  The composition at the match is now an
+output, but on this planet the output is the well-mixed value: at
+`K_zz = 1e9 cm^2/s` eddy mixing holds the matching-level `He/H` to within
+2e-4 of it while the wind fractionates strongly above (`He/H` 2.09 at the
+base, 0.183 at 30 R_p).  The answer therefore rests on the adopted eddy
+coefficient (`LHS1140b/kzz_decision.md` section 0), not on the escape flux.
+And the layer's *energy* is still unconstrained — item (G), the missing
+continuum IR coupling, is the other half of the same weakness and is
+untouched here.
 
 ### Phase F — science runs and applicability (revised WP4)
 
@@ -220,6 +282,15 @@ Molecular chemistry audit along the way: R16-R20, R23, the shared H-He
 charge-exchange path, He 2^3S + H2 Penning, and the electron/H-nucleus
 closures in the He-dominated limit (baseline row 10).
 
+[2026-08-27: item 4 is implemented as `src/utils/collisional_validity.py`,
+written up in `docs/collisional_validity.md` and recorded in
+`Update_EXHALE.md` section 81.  The molecular-chemistry audit is
+`docs/molecular_chemistry_audit_he_rich.md`, recorded in section 82; it
+found the three-body third body M was being passed as `rho/m_H` rather than
+the particle density and replaced it with `calc_ntot`.  Items 1-3, the
+science runs themselves, are tracked in `LHS1140b/WORKPLAN.md` and are not
+asserted here.]
+
 ## 4. Explicitly out of scope
 
 - The leading/trailing tail asymmetry, stellar-wind interaction, true
@@ -232,7 +303,11 @@ closures in the He-dominated limit (baseline row 10).
 ## 5. Relation to the oxygen chemistry plan
 
 Unchanged from the first draft in substance: Phase E *is* oxygen-plan
-P1/P2 driven by a real science case, and the diffusion work overlaps the
+P1/P2 driven by a real science case — and since 2026-08-27 it has been run
+as such: P1's Photochem arm is the production adapter
+(`src/utils/photochem_to_lower_profile.py`) with VULCAN as the cross-check
+arm, and P2's handoff contract is what the profile schema and its refusal
+rules replace at the profile level.  The diffusion work overlaps the
 P3 diffusion item — with the correction that neither plan's diffusion step
 yields crossover masses without a multicomponent treatment neither plan
 contains.  The genuinely new physics opened here is the He-dominated limit

@@ -33,8 +33,11 @@ statistical-equilibrium coefficient (2-D) remain tabulated.  Throughout,
 $\Lambda(T)$ denotes the effective cooling coefficient \emph{per}
 $(n_e\,n_{\rm ion})$ in $\mathrm{erg\,cm^3\,s^{-1}}$, in the optically
 thin limit (every collisional excitation is followed by a radiative
-decay); the cooling assembly multiplies by
-$\beta_{\rm esc}\,n_e\,n_{\rm ion}$.  Lower levels are populated in
+decay); the cooling assembly multiplies by $n_e\,n_{\rm ion}$.  Line
+trapping is applied to the ground-term fine-structure lines of C\,I, C\,II,
+N\,II and O\,I only, and there the escape probability enters \emph{inside} the
+level solution rather than as a factor on the result (Sect.~\ref{sec:fs});
+every other ion keeps the thin limit.  Lower levels are populated in
 Boltzmann equilibrium over the ground-term fine structure where one
 exists.  Two practical conventions matter when reproducing the numbers:
 (i) the fits and every number quoted here were made with the rounded
@@ -118,8 +121,12 @@ free returns $19.88$~eV for He\,\textsc{i} and $40.76$~eV for
 He\,\textsc{ii}, each within $0.3\%$ of the lowest level of that ion
 ($2^3S$ at $19.82$~eV; $n=2$ at $40.81$~eV).
 
-These two coolants were previously represented by expressions inherited
-from the ATES lineage that had never been checked against a line list.
+These two coolants are represented in \texttt{Cool\_coeff.f90} by expressions
+inherited from the ATES lineage that had never been checked against a line list.
+The fits of this section are the result of that check; unlike every other
+coefficient in this memo they are \emph{not} installed --- \texttt{coex\_rate\_HeI}
+and \texttt{coex\_rate\_HeII} still evaluate the old expressions, because
+swapping them changes converged solutions and needs its own golden refresh.
 The check matters only for helium-rich gas: in a hydrogen-rich wind
 Lyman-$\alpha$ exceeds both by orders of magnitude, whereas in a
 helium-dominated wind these are the line cooling
@@ -139,14 +146,14 @@ rises.
 Eqs.~(\ref{eq:twolevel}--\ref{eq:btups}) fitted to the CHIANTI~v11 sum
 over all transitions out of the ground level.  ``Max err'' is against
 that sum over the fit range; the last column is the error of the
-expression each fit replaces, over the range where that coolant can
-matter ($5\times10^3$--$5\times10^4$~K for He\,\textsc{i},
+expression each fit would replace --- the one still in the code --- over the
+range where that coolant can matter ($5\times10^3$--$5\times10^4$~K for He\,\textsc{i},
 $2\times10^4$--$10^5$~K for He\,\textsc{ii}).}
 \label{tab:helium}
 \begin{tabular}{lccccccc}
 \toprule
 channel & $g_l$ & $\Delta E$ [eV] & $a$ & $b$ & $T_0$ [K]
-        & max err & previous \\
+        & max err & in code \\
 \midrule
 He\,\textsc{i} ground sum  & 1 & 19.8843 & 0.0613017 & 0.419181
   & 98213.9 & 1.2\% & $-19.4\%$ \\
@@ -173,7 +180,7 @@ $\Lambda = C\,T^{-1/2}\,[a + b\ln(1+T/T_0)]\,e^{-T_{\rm ex}/T}$:
 \includegraphics[width=0.92\textwidth]{figures/cool_helium_fits.pdf}
 \caption{Helium ground-state collisional-excitation cooling: CHIANTI sum
 (solid black), the fits of Table~\ref{tab:helium} (red dashed) and the
-expressions they replace (blue dotted).  For He\,\textsc{i} the two
+expressions still in the code (blue dotted).  For He\,\textsc{i} the two
 individual channels most often named are shown in grey: the metastable
 $2^3S$ channel that sets the exponent, and the $584$~\AA{} resonance
 line, which stays well below the total at wind temperatures.  Bottom:
@@ -521,9 +528,20 @@ $w$: see \texttt{docs/coronal\_cutoff\_width.md}.
 
 \section{Free--free and the remaining tabulated pieces}
 
-Free--free cooling keeps the Huang (2023) Eq.~(9) form,
-$\Lambda_{\rm ff} = 1.9095\times10^{-25}\,Z^2\,(T/10^4)^{0.55}$ per
-$(n_e n_{\rm ion})$.  Two coefficients remain tabulated because they
+Free--free cooling is the standard non-relativistic thermal bremsstrahlung
+form with a thermally averaged Gaunt factor,
+$\Lambda_{\rm ff} = 1.426\times10^{-27}\,Z_{\rm ion}^2\,\sqrt{T}\,
+\bar g_{\rm ff}(T,Z_{\rm ion})$ per $(n_e n_{\rm ion})$, with
+$\bar g_{\rm ff}$ interpolated from the van Hoof et al.\ (2014) 161-point
+table (\texttt{gbar\_ff}, \texttt{Cool\_coeff.f90}; assembled in the
+\texttt{brem} accumulator of \texttt{eval\_cool}). $Z_{\rm ion}$ is the ion
+\emph{net} charge, not the nuclear number, so He\,\textsc{ii} and every
+singly-ionized metal enter with $Z_{\rm ion}=1$. This replaced the earlier
+Huang (2023) Eq.~(9) power law
+$1.9095\times10^{-25}Z^2(T/10^4)^{0.55}$ together with an unattributed
+two-branch Gaunt fit; the two agree to within the Gaunt factor near
+$10^4\,$K, where $\bar g_{\rm ff}(Z_{\rm ion}{=}1)=1.266$
+(\texttt{docs/atomic\_data\_EXHALE\_vs\_MoCHII}, Part~2 items 4--5).  Two coefficients remain tabulated because they
 are not reducible to closed form: Fe\,I (NIST $f$-values + Van
 Regemorter over the even-parity metastable manifold; 1-D in $T$) and
 the Fe\,II multilevel statistical-equilibrium coefficient

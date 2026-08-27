@@ -15,23 +15,30 @@ Reads the VULCAN output (T(p), composition mixing ratios vs pressure) and
 3. writes base.inp: the keys run_lower.py also writes (T_base, r_base,
    HeH_base, Kzz_base) plus the photochemical H2 mixing ratio q_H2_base and
    the handoff level p_base, which EXHALE uses in place of its
-   chemical-equilibrium H2 fit (docs/base_composition_handoff_plan.md).
-   The molecular mixing ratios stay comments.
+   chemical-equilibrium H2 fit (docs/base_composition_handoff_plan.md), and
+   the elemental reservoirs `HeH_base` and `<El>_H_base` for the elements
+   VULCAN's networks carry (C, N, O, S), summed over every carrier.
+   The molecular mixing ratios stay comments: nothing in EXHALE consumes
+   them, so they are diagnostic metadata (docs/input_schema.md section 2c).
 
 What it does NOT provide: atomic-metal release fractions (Na/Mg/Ca/Fe).
 VULCAN's networks are H/C/N/O(/S) -- metal/alkali chemistry and condensation
 are outside its scope (that part of the Lavvas model has no public analogue);
-metals.inp stays user-supplied.
+metals.inp stays user-supplied for those elements.
 
 Usage:
   python3 vulcan_to_base.py <output.vul> <run_dir> --mp <M_J> --r1bar <R_J>
                             [--pbase 1e-6] [--kzz 1e9]
 """
-import argparse, math, os, pickle, sys
+import argparse, math, os, pickle, re, sys
 
-# Same constants as parameters.f90 and run_lower.py (MH is the hydrogen ATOM,
-# multiplying a dimensionless mu; was 1.6726e-24 / 6.67259e-8 until 2026-08-19).
-KB, MH, G = 1.380649e-16, 1.67353284e-24, 6.67430e-8
+# Same constants as parameters.f90 and lower_profile_schema.py.  MAMU is the
+# atomic mass unit: `mu_profile` below is a mean molecular weight in amu, built
+# from the species masses VULCAN uses (H2 = 2.016, He = 4.003, ...), so the mass
+# of one particle is mu * m_amu.  Multiplying it by the hydrogen ATOM mass
+# instead, as this file did until 2026-08-27, makes every particle 0.8% heavier
+# and the scale height 0.8% shorter (G was 6.67259e-8 until 2026-08-19).
+KB, MAMU, G = 1.380649e-16, 1.66053906660e-24, 6.67430e-8
 RJ, MJ = 6.9911e9, 1.898e30
 BAR = 1.0e6  # dyn/cm^2
 
@@ -50,6 +57,50 @@ def profile(species, ymix, name):
     if name in species:
         return ymix[:, species.index(name)]
     return None
+
+
+ELEMENT_RE = re.compile(r'([A-Z][a-z]?)(\d*)')
+
+
+def formula_elements(name):
+    """Element counts of a VULCAN species label, e.g. C2H2 -> {C:2, H:2}.
+
+    VULCAN decorates labels with an ionization sign (`H3+`), an excited-state
+    suffix (`CH2_1`) or the bare electron (`e`); none of them change the
+    nuclei, so they are stripped before the formula is parsed.
+    """
+    core = name.split('_')[0].rstrip('+-')
+    if core in ('e', ''):
+        return {}
+    out = {}
+    pos, n = 0, len(core)
+    while pos < n:
+        m = ELEMENT_RE.match(core, pos)
+        if m is None or m.start() != pos:      # label is not a formula
+            return {}
+        out[m.group(1)] = out.get(m.group(1), 0) + int(m.group(2) or 1)
+        pos = m.end()
+    return out
+
+
+def element_ratios(species, ymix):
+    """El/H nuclei ratio profiles, summed over every species carrying El.
+
+    Photochemistry moves nuclei between molecules without creating or
+    destroying them, so these ratios are the elemental reservoirs the wind
+    inherits -- the quantity EXHALE's `<El>_H_base` keys and `melem_ab` hold.
+    Counting every carrier matters for He/H as well: H bound in H2O, CH4 and
+    NH3 belongs in the hydrogen denominator.
+    """
+    counts = [formula_elements(sp) for sp in species]
+    nuc = {}
+    for j, c in enumerate(counts):
+        for el, k in c.items():
+            nuc[el] = nuc.get(el, 0.0) + k * ymix[:, j]
+    nH = nuc.get('H')
+    if nH is None:
+        raise SystemExit('no hydrogen-bearing species in the VULCAN output')
+    return {el: y / nH for el, y in nuc.items() if el != 'H'}
 
 
 def mu_profile(species, ymix):
@@ -99,7 +150,7 @@ def main():
     for _ in range(n):
         def f(r_, lpq):
             pq = math.exp(lpq)
-            return -KB * interp(T, pq) / (interp(mu, pq) * MH * (G * Mp / r_**2))
+            return -KB * interp(T, pq) / (interp(mu, pq) * MAMU * (G * Mp / r_**2))
         k1 = f(r, x); k2 = f(r + 0.5*dx*k1, x + 0.5*dx)
         k3 = f(r + 0.5*dx*k2, x + 0.5*dx); k4 = f(r + dx*k3, x + dx)
         r += dx * (k1 + 2*k2 + 2*k3 + k4) / 6.0
@@ -110,8 +161,11 @@ def main():
     qh  = interp(profile(species, ymix, 'H'),  a.pbase)
     qhe = interp(profile(species, ymix, 'He'), a.pbase)
     mub = interp(mu, a.pbase)
-    # elemental He/H ratio at the base (nuclei)
-    heh = qhe / max(qh + 2.0*q2, 1e-30)
+    # Elemental reservoirs at the base: El/H nuclei ratios summed over every
+    # carrier (H bound in H2O/CH4/NH3 counts as hydrogen), so they are the
+    # conserved quantities EXHALE's melem_ab holds.
+    elrat = element_ratios(species, ymix)
+    heh = interp(elrat['He'], a.pbase) if 'He' in elrat else 0.0
 
     out = os.path.join(a.run_dir, 'base.inp')
     with open(out, 'w') as f:
@@ -135,6 +189,17 @@ def main():
         # molecular-base particle count, and evaluates that fit at p_base.
         f.write('q_H2_base %.6e\n' % q2)
         f.write('p_base    %.3e\n' % a.pbase)
+        # Elemental reservoirs, for the elements EXHALE solves and VULCAN's
+        # networks carry. They override metals.inp for those elements.
+        # Mg/Si/Ca/Na/K/Fe are NOT written: metal and alkali chemistry (and
+        # condensation) is outside VULCAN's scope, so metals.inp still
+        # supplies them.
+        f.write('# elemental reservoirs at p_base (all carriers counted)\n')
+        for el in ('C', 'N', 'O', 'S'):
+            if el in elrat:
+                x = interp(elrat[el], a.pbase)
+                if x > 0.0:
+                    f.write('%-9s %.6e\n' % (el + '_H_base', x))
     print('wrote %s:  r(%.0e bar) = %.4f R_J,  T_base = %.1f K,  q_H2 = %.3e, q_H = %.3e'
           % (out, a.pbase, r / RJ, Tb, q2, qh))
 

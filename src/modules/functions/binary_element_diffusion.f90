@@ -222,12 +222,24 @@
       use global_parameters
       use grav_func,     only: Dphi
       use species_table, only: n_bsp, bsp_fsp, bsp_nH, bsp_nHe,           &
+                               bsp_is_excited_level,                      &
                                bsp_charge, isp_HI, isp_HeI,               &
                                isp_HII, isp_HeII, isp_HeIII, isp_HeTR,    &
                                isp_H2, isp_H2p, isp_H3p,                  &
                                n_mion, mion_fsp, mion_stage,              &
                                n_melem, melem_i0, melem_top, melem_A
       use composition,   only: mass_per_H_nucleus_without_He
+      use lower_atmosphere_profile, only: lap_in_use, lap_r_top_RJ,       &
+                          lap_flux_measured, lap_flux_window_empty,       &
+                          lap_flux_nface, lap_FH_median, lap_FH_spread,   &
+                          lap_FHe_median, lap_FHe_spread,                 &
+                          lap_Mdot_median, lap_Mdot_spread,               &
+                          lap_flux_r_lo_Rp, lap_flux_r_hi_Rp,             &
+                          lap_flux_r_lo_measured,                         &
+                          lap_steady_r_lo_Rp, lap_steady_nface,           &
+                          lap_steady_FH_median,  lap_steady_FH_spread,    &
+                          lap_steady_FHe_median, lap_steady_FHe_spread,   &
+                          lap_steady_Mdot_median, lap_steady_Mdot_spread
 
       implicit none
       private
@@ -289,19 +301,22 @@
            [ 'HI   ', 'HII  ', 'H2   ', 'H2+  ', 'H3+  ' ]
 
       ! Carriers of the helium component.  The 2^3S triplet is a neutral
-      ! helium atom for the friction, so it shares HeI's charge and
-      ! polarizability.
-      integer, parameter :: n_hecar = 4
+      ! helium atom for the friction -- same mass, same charge, same
+      ! polarizability as a ground-state He I atom -- and it is an EXCITED
+      ! LEVEL of He I, so the HeI column already counts it
+      ! (bsp_is_excited_level).  It is therefore not a list entry of its own:
+      ! a separate HeTR row made every triplet atom two collision partners.
+      integer, parameter :: n_hecar = 3
       integer, parameter :: hecar_isp(n_hecar) =                            &
-           [ isp_HeI, isp_HeII, isp_HeIII, isp_HeTR ]
+           [ isp_HeI, isp_HeII, isp_HeIII ]
       real*8,  parameter :: hecar_Z(n_hecar) =                              &
-           [ 0.0d0, 1.0d0, 2.0d0, 0.0d0 ]
+           [ 0.0d0, 1.0d0, 2.0d0 ]
       real*8,  parameter :: hecar_m(n_hecar) =                              &
-           [ 4.0d0, 4.0d0, 4.0d0, 4.0d0 ]
+           [ 4.0d0, 4.0d0, 4.0d0 ]
       real*8,  parameter :: hecar_alpha(n_hecar) =                          &
-           [ alpha_HeI, 0.0d0, 0.0d0, alpha_HeI ]
+           [ alpha_HeI, 0.0d0, 0.0d0 ]
       character(len=5), parameter :: hecar_name(n_hecar) =                  &
-           [ 'HeI  ', 'HeII ', 'HeIII', 'HeTR ' ]
+           [ 'HeI  ', 'HeII ', 'HeIII' ]
 
       ! Largest number of ionization stages carried for one metal element.
       integer, parameter :: n_mstage = 3
@@ -426,13 +441,17 @@
       Xhe(N+1:N+Ng) = Xhe(N)                       ! zero-gradient outer ghost
 
       ! --- diffusive face flux actually carried by the step (diagnostic)
-      if (present(Jface_out) .or. diffusion_check_on()) then
+      if (present(Jface_out) .or. diffusion_check_on() .or. lap_in_use) then
          do j = 0, N
             Jf(j) = PdL(j)*Xhe(j) + PdR(j)*Xhe(j+1)
          enddo
          if (present(Jface_out)) Jface_out = Jf
       endif
-      if (diffusion_check_on()) then
+      ! Written on demand (EXHALE_DIFFUSION_CHECK=1) and unconditionally
+      ! whenever a lower-atmosphere profile is in use: there the elemental
+      ! fluxes are not a diagnostic but the quantity the two models have to
+      ! agree on, so the run must always leave them behind.
+      if (diffusion_check_on() .or. lap_in_use) then
          call write_element_flux_profile(rep, Jf, Xhe, rho_phys, v, dmeff, &
                                          Dco, Dneut, idom)
       endif
@@ -657,7 +676,7 @@
 
       do j = 1, N
          drj   = max((r_edg(j) - r_edg(j-1))*R0, 1.0d0)
-         tdiff = drj*drj/max(Dcl(j) + he_kzz, 1.0d-30)
+         tdiff = drj*drj/max(Dcl(j) + kzz_cell(j), 1.0d-30)
          wset  = Dcl(j)*abs(Gcl(j))
          tadv  = drj/max(abs(rhov(j))/max(rho_phys(j), 1.0d-30),           &
                          wset, 1.0d-30)
@@ -757,8 +776,10 @@
       subroutine element_nucleus_counts(f_sp, nucH, nucHe)
       ! Element (nucleus) counts per unit mass, over every species that
       ! carries them: n_H/rho = f_HI + f_HII + 2 f_H2 + 2 f_H2+ + 3 f_H3+
-      ! + f_HeH+, n_He/rho = f_HeI + f_HeII + f_HeIII + f_HeTR + f_HeH+.
-      ! Columns a run does not carry are zero, so no flag has to be tested.
+      ! + f_HeH+, n_He/rho = f_HeI + f_HeII + f_HeIII + f_HeH+.  Columns a
+      ! run does not carry are zero, so no flag has to be tested.  He 2^3S
+      ! is skipped: it is an excited level of He I and its nucleus is
+      ! already inside the HeI column (bsp_is_excited_level).
       real*8, dimension(1-Ng:N+Ng,n_species), intent(in)  :: f_sp
       real*8, dimension(1-Ng:N+Ng),           intent(out) :: nucH, nucHe
       integer :: ib
@@ -766,6 +787,7 @@
       nucH  = 0.0d0
       nucHe = 0.0d0
       do ib = 1, n_bsp
+         if (bsp_is_excited_level(ib)) cycle
          if (bsp_nH(ib)  .gt. 0)                                          &
             nucH  = nucH  + dble(bsp_nH(ib)) *f_sp(:,bsp_fsp(ib))
          if (bsp_nHe(ib) .gt. 0)                                          &
@@ -783,7 +805,7 @@
       ! components, and the mean hydrogen mass per carrier of component 1:
       !
       !   carH  = sum_c f_c            over hcar_isp  = HI HII H2 H2+ H3+
-      !   carHe = sum_s f_s            over hecar_isp = HeI HeII HeIII HeTR
+      !   carHe = sum_s f_s            over hecar_isp = HeI HeII HeIII
       !   mcarH = sum_c m_c f_c / carH   [m_H per carrier]
       !
       ! The friction and the force terms of the diffusion equation count
@@ -1181,6 +1203,7 @@
       zbHe   = 0.0d0
       ne_rel = 0.0d0
       do ib = 1, n_bsp
+         if (bsp_is_excited_level(ib)) cycle
          if (bsp_charge(ib) .eq. 0) cycle
          if (bsp_nH(ib) .gt. 0 .and. bsp_nHe(ib) .eq. 0)                  &
             zb1  = zb1  + dble(bsp_charge(ib))*f_sp(:,bsp_fsp(ib))
@@ -1341,7 +1364,7 @@
       real*8, dimension(1-Ng:N+Ng), intent(in)  :: rp
       real*8, dimension(0:N),       intent(out) :: PdL, PdR
 
-      real*8 :: dr_f, rhof, Df, Gf, Xf, Agrad, Wset
+      real*8 :: dr_f, rhof, Df, Gf, Kf, Xf, Agrad, Wset
       integer :: j
 
       PdL = 0.0d0 ; PdR = 0.0d0
@@ -1354,7 +1377,8 @@
          Xf   = 0.5d0*(Xhe(j)+Xhe(j+1))
          if (Xf .lt. 0.0d0) Xf = 0.0d0
          if (Xf .gt. 1.0d0) Xf = 1.0d0
-         Agrad = rhof*(Df + he_kzz)              ! gradient + eddy, A + E >= 0
+         Kf   = 0.5d0*(kzz_cell(j)+kzz_cell(j+1))
+         Agrad = rhof*(Df + Kf)                  ! gradient + eddy, A + E >= 0
          Wset  = rhof*Df*Gf*(1.0d0 - Xf)         ! settling, flux = -Wset*X_f
          ! Peclet hybrid: central where the settling drift is resolved,
          ! upwind toward the settling direction otherwise.  Both branches keep
@@ -1505,6 +1529,7 @@
          gotH  = 0.0d0
          gotHe = 0.0d0
          do ib = 1, n_bsp
+            if (bsp_is_excited_level(ib)) cycle
             if (bsp_nH(ib)  .gt. 0)                                       &
                gotH  = gotH  + dble(bsp_nH(ib)) *f_sp(j,bsp_fsp(ib))
             if (bsp_nHe(ib) .gt. 0)                                       &
@@ -1569,7 +1594,7 @@
          nHf  = 0.5d0*(nHl(j)+nHl(j+1))
          Df   = 0.5d0*(Dco(j)+Dco(j+1))
          Gf   = 0.5d0*(Gco(j)+Gco(j+1))
-         DK   = Df + he_kzz
+         DK   = Df + 0.5d0*(kzz_cell(j)+kzz_cell(j+1))
          ! Peclet hybrid, as in face_coefficients: central where the settling
          ! drift is resolved, upwind toward the settling direction otherwise.
          if (abs(Df*Gf)*dr_f .lt. 2.0d0*DK) then
@@ -1640,24 +1665,52 @@
 
       subroutine write_element_flux_profile(rep, Jf, Xhe, rho_phys, v,     &
                                             dmeff, Dco, Dneut, idom)
-      ! Radial profile of the elemental helium face flux carried by the step
-      ! (EXHALE_DIFFUSION_CHECK=1), written to ./diffusion_faceflux.txt and
-      ! replaced at every call, so that after a run the file holds the state
-      ! the run ended on.  This is the T8 diagnostic of
-      ! docs/binary_diffusion_design.md section 6:
+      ! Radial profile of the elemental face fluxes carried by the step,
+      ! written to ./output/element_flux_profile.txt and replaced at every
+      ! call, so that after a run the file holds the state the run ended on.
+      ! This is the T8 diagnostic of docs/binary_diffusion_design.md
+      ! section 6, and the measurement the Phase-E flux closure reads
+      ! (docs/phase_e_flux_closure_design.md section 3.4):
       !
-      !   F_He(r_f) = 4 pi r_f^2 ( rho X v + J )   [g/s]
+      !   F_He(r_f) = 4 pi r_f^2 ( rho X v + J )         [g/s]
+      !   F_H (r_f) = 4 pi r_f^2 ( rho (1-X) v - J )     [g/s]
       !
-      ! with the advective part rho_f v_f X_upwind (the physical face flux --
-      ! the operator carries the advection as a cell-velocity upwind difference,
-      ! which has no face representation) and J from the diffusive face
-      ! coefficients with the new X, so the diffusive column is the flux the
-      ! step actually used and not a re-derived one.  The total mass flux
-      ! 4 pi r_f^2 rho_f v_f is written beside it: at a steady state both are
-      ! constant with radius, and the comparison of their radial spreads is
-      ! the pass criterion.  dmeff is the face-averaged relative settling
-      ! mass of the ambipolar diagnostic (3 neutral, 2.5 H+ plasma, 5/3 He++
-      ! plasma).
+      ! A binary mixture has ONE independent diffusive flux, so the hydrogen
+      ! element carries -J against the helium element's +J; the two elemental
+      ! fluxes are written from the same X and the same J the step used, and
+      ! neither is reconstructed anywhere else.  The advective part is
+      ! rho_f v_f X_upwind (the physical face flux -- the operator carries the
+      ! advection as a cell-velocity upwind difference, which has no face
+      ! representation).  The total mass flux 4 pi r_f^2 rho_f v_f is written
+      ! beside them: at a steady state all three are constant with radius, and
+      ! the comparison of their radial spreads is the pass criterion.  dmeff
+      ! is the face-averaged relative settling mass of the ambipolar
+      ! diagnostic (3 neutral, 2.5 H+ plasma, 5/3 He++ plasma).
+      !
+      ! With a lower-atmosphere profile in use the routine also reduces each
+      ! elemental flux to ONE number -- its median and its relative radial
+      ! spread -- over each of TWO radial windows, for write_resolved_config
+      ! and the flux closure of docs/phase_e_flux_closure_design.md section 6.
+      !
+      ! (a) The OVERLAP window, the interval both models describe.  Its upper
+      !     edge is the radius the profile reaches, r(p_top).  Its lower edge
+      !     is MEASURED rather than assumed: the first face at which the
+      !     5-face moving spread of r^2 rho v falls below 10 per cent, which
+      !     is where the standing base sound wave stops dominating
+      !     (docs/binary_diffusion_design.md section 7.3, where that spread is
+      !     10^2-10^4 times its own median).  When no face qualifies the edge
+      !     falls back to 1.02 R_p and lap_flux_r_lo_measured says so.  An
+      !     empty window is recorded as empty and never replaced by a number
+      !     from outside it.
+      !
+      ! (b) The STEADY-FLUX window, r >= r_esc, i.e. the [j_min:N] escape
+      !     region the solver uses to declare the wind steady.  At a steady
+      !     state the elemental flux 4 pi r^2 (rho X v + J) is independent of
+      !     radius, so the flux measured there IS the flux through the
+      !     matching level.  That identity is why this window is a legitimate
+      !     statement about the handoff and not a different quantity, and it
+      !     is the only window wide enough on a planet whose lower-atmosphere
+      !     column spans ~0.01 R_p.
       !
       ! The last three columns are the stage-resolved friction of memo 2.6:
       ! the effective coefficient D_eff the step used, the all-neutral
@@ -1668,40 +1721,165 @@
       real*8, dimension(1-Ng:N+Ng), intent(in) :: dmeff, Dco, Dneut
       integer, dimension(1-Ng:N+Ng),intent(in) :: idom
       real*8, dimension(0:N),       intent(in) :: Jf
-      real*8  :: area, adv, rhof, vf, dmf, Df, Dnf
-      integer :: j, uu, is, it
+      real*8  :: area, adv, adv_H, rhof, vf, dmf, Df, Dnf, Xf
+      real*8, dimension(1:N) :: FH_win, FHe_win, M_win, r_win
+      integer :: j, uu, is, it, nwin
+
+      nwin = 0
 
       uu = 771
-      open(unit=uu, file='diffusion_faceflux.txt', status='replace')
-      write(uu,'(A)') '# face flux of the helium element carried by '//    &
-         'binary_element_diffusion (EXHALE_DIFFUSION_CHECK=1)'
-      write(uu,'(A)') '# columns: j  r_face[R_p]  X_face  J_diff'//        &
-         '[g/cm2/s]  F_adv[g/cm2/s]  F_He=4pi r^2 (F_adv+J)[g/s]'//        &
-         '  Mdot_face=4pi r^2 rho v[g/s]  dmeff_face'//                  &
-         '  D_eff[cm2/s]  D_neutral[cm2/s]  D_eff/D_neutral  dominant_pair'
+      open(unit=uu, file='./output/element_flux_profile.txt',             &
+           status='replace')
+      write(uu,'(A)') '# elemental face fluxes carried by '//             &
+         'binary_element_diffusion (T8 / Phase-E closure measurement)'
+      write(uu,'(A)') '#   F_He   = 4 pi r^2 (rho X v + J)      [g/s]'
+      write(uu,'(A)') '#   F_H    = 4 pi r^2 (rho (1-X) v - J)  [g/s]'
+      write(uu,'(A)') '#   Mdot_f = 4 pi r^2 rho v              [g/s]'//  &
+         '   (= F_H + F_He identically)'
+      ! One whitespace-free token per column, so the schema line can be read
+      ! the way every other EXHALE product's is.
+      write(uu,'(A)') '# columns: j r_face[R_p] X_face J_diff'//           &
+         '[g/cm2/s] F_adv[g/cm2/s] F_He[g/s] F_H[g/s]'//                  &
+         ' Mdot_face[g/s] dmeff_face'//                                   &
+         ' D_eff[cm2/s] D_neutral[cm2/s] D_eff/D_neutral dominant_pair'
       do j = 1, N-1
          area = 4.0d0*pi*rep(j)**2
          rhof = 0.5d0*(rho_phys(j) + rho_phys(j+1))
          vf   = 0.5d0*(v(j) + v(j+1))*v0
          if (vf .ge. 0.0d0) then
-            adv = rhof*vf*Xhe(j)
+            Xf = Xhe(j)
          else
-            adv = rhof*vf*Xhe(j+1)
+            Xf = Xhe(j+1)
          endif
+         adv   = rhof*vf*Xf
+         adv_H = rhof*vf*(1.0d0 - Xf)
          dmf  = 0.5d0*(dmeff(j) + dmeff(j+1))
          Df   = 0.5d0*(Dco(j)   + Dco(j+1))
          Dnf  = 0.5d0*(Dneut(j) + Dneut(j+1))
          is   = (idom(j) - 1)/n_hcar + 1
          it   = idom(j) - (is-1)*n_hcar
-         write(uu,'(I6,10ES16.7,2X,A)') j, rep(j)/R0,                     &
+         write(uu,'(I6,11ES16.7,2X,A)') j, rep(j)/R0,                     &
               0.5d0*(Xhe(j)+Xhe(j+1)),                                    &
-              Jf(j), adv, area*(adv + Jf(j)), area*rhof*vf, dmf,          &
+              Jf(j), adv, area*(adv + Jf(j)),                             &
+              area*(adv_H - Jf(j)), area*rhof*vf, dmf,                    &
               Df, Dnf, Df/max(Dnf, 1.0d-99),                              &
               trim(hecar_name(is))//'-'//trim(hcar_name(it))
+         if (lap_in_use) then
+            nwin = nwin + 1
+            r_win(nwin)   = rep(j)
+            FHe_win(nwin) = area*(adv + Jf(j))
+            FH_win(nwin)  = area*(adv_H - Jf(j))
+            M_win(nwin)   = area*rhof*vf
+         endif
       enddo
       close(uu)
 
+      if (lap_in_use) call reduce_element_flux_windows(nwin, r_win, FH_win,&
+                                                       FHe_win, M_win)
+
       end subroutine write_element_flux_profile
+
+      ! ------------------------------------------------------------------ !
+
+      subroutine reduce_element_flux_windows(nf, r_f, FH_f, FHe_f, M_f)
+      ! Reduce the face-resolved elemental fluxes to one median and one
+      ! relative spread over each of the two windows described above, and
+      ! leave them in the lower_atmosphere_profile module for
+      ! write_resolved_config.  Nothing here recomputes a flux: it only
+      ! selects faces and takes order statistics of what the step carried.
+      integer, intent(in) :: nf
+      real*8, dimension(nf), intent(in) :: r_f, FH_f, FHe_f, M_f
+      real*8, dimension(nf) :: a
+      real*8  :: r_lo, r_hi, sprd, med
+      integer :: i, i1, i2, n
+      ! Half-width of the moving window the base-wave test is taken over, and
+      ! the spread below which r^2 rho v is called free of the standing wave.
+      integer, parameter :: nhalf = 2
+      real*8,  parameter :: spread_flat = 0.10d0
+
+      lap_flux_measured = .true.
+
+      ! ---- (a) overlap window ------------------------------------------- !
+      ! Lower edge: the first face whose 5-face moving spread of the mass flux
+      ! is below spread_flat.  r^2 rho v is written here as M_f/(4 pi), and a
+      ! ratio of a max-minus-min to a median is insensitive to that constant,
+      ! so M_f is used directly.
+      r_lo = -1.0d0
+      lap_flux_r_lo_measured = .false.
+      do i = 1 + nhalf, nf - nhalf
+         med  = median_of(M_f(i-nhalf:i+nhalf))
+         sprd = (maxval(M_f(i-nhalf:i+nhalf))                             &
+                 - minval(M_f(i-nhalf:i+nhalf)))                          &
+                /max(abs(med), 1.0d-99)
+         if (sprd .lt. spread_flat) then
+            r_lo = r_f(i)
+            lap_flux_r_lo_measured = .true.
+            exit
+         endif
+      enddo
+      if (.not. lap_flux_r_lo_measured) r_lo = 1.02d0*R0
+
+      r_hi = -1.0d0
+      if (lap_r_top_RJ .gt. 0.0d0) r_hi = lap_r_top_RJ*RJ
+
+      lap_flux_r_lo_Rp = r_lo/R0
+      lap_flux_r_hi_Rp = r_hi/R0
+
+      i1 = 0; i2 = -1
+      do i = 1, nf
+         if (r_f(i) .ge. r_lo .and. r_f(i) .le. r_hi) then
+            if (i1 .eq. 0) i1 = i
+            i2 = i
+         endif
+      enddo
+      n = 0
+      if (i1 .gt. 0) n = i2 - i1 + 1
+      lap_flux_nface        = n
+      lap_flux_window_empty = (n .lt. 1)
+      if (n .ge. 1) then
+         a(1:n) = FH_f(i1:i2)
+         call median_and_spread(a(1:n), lap_FH_median,  lap_FH_spread)
+         a(1:n) = FHe_f(i1:i2)
+         call median_and_spread(a(1:n), lap_FHe_median, lap_FHe_spread)
+         a(1:n) = M_f(i1:i2)
+         call median_and_spread(a(1:n), lap_Mdot_median, lap_Mdot_spread)
+      endif
+
+      ! ---- (b) steady-flux window, r >= r_esc --------------------------- !
+      i1 = 0; i2 = -1
+      do i = 1, nf
+         if (r_f(i) .ge. r_esc*R0) then
+            if (i1 .eq. 0) i1 = i
+            i2 = i
+         endif
+      enddo
+      n = 0
+      if (i1 .gt. 0) n = i2 - i1 + 1
+      lap_steady_nface   = n
+      lap_steady_r_lo_Rp = r_esc
+      if (n .ge. 1) then
+         a(1:n) = FH_f(i1:i2)
+         call median_and_spread(a(1:n), lap_steady_FH_median,             &
+                                        lap_steady_FH_spread)
+         a(1:n) = FHe_f(i1:i2)
+         call median_and_spread(a(1:n), lap_steady_FHe_median,            &
+                                        lap_steady_FHe_spread)
+         a(1:n) = M_f(i1:i2)
+         call median_and_spread(a(1:n), lap_steady_Mdot_median,           &
+                                        lap_steady_Mdot_spread)
+      endif
+
+      end subroutine reduce_element_flux_windows
+
+      ! ------------------------------------------------------------------ !
+
+      subroutine median_and_spread(a, med, sprd)
+      ! Median and relative radial spread (max - min)/|median| of one window.
+      real*8, dimension(:), intent(in)  :: a
+      real*8,               intent(out) :: med, sprd
+      med  = median_of(a)
+      sprd = (maxval(a) - minval(a))/max(abs(med), 1.0d-99)
+      end subroutine median_and_spread
 
       ! ------------------------------------------------------------------ !
 

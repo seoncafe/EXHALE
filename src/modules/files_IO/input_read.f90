@@ -7,9 +7,15 @@
                               he_h_charge_exchange  ! He <-> H pair (group B) switch
    use species_table, only: n_melem, iel_C, iel_O, iel_N, iel_Mg,  &
                             iel_Si, iel_Ca, iel_Na, iel_K, iel_S,  &
-                            iel_Fe, mion_ethr, melem_i0, melem_A
+                            iel_Fe, mion_ethr, melem_i0, melem_A,  &
+                            melem_name
    use composition, only: comp_mass_per_H, comp_ntot_bc, comp_rho_bc,   &
                           h2_mixing_ratio_base
+   use lower_atmosphere_profile, only: lap_file, lap_in_use,             &
+                          lap_solution_id, lap_p_match_bar,              &
+                          lap_source_code, lap_iteration,                &
+                          read_lower_atmosphere_profile,                 &
+                          lap_value_at_match, lap_element_ratio_at_match
 
    implicit none
       
@@ -51,7 +57,7 @@
       'Legacy_HHe_rates', 'Secondary_ionization', 'He_rec_coupling',         &
       'He_H_charge_exchange',                                                &
       'Molecular chemistry', 'Molecular base', 'Stellar LW flux',           &
-      'Lower atmosphere',                                                   &
+      'Lower atmosphere', 'Lower atmosphere profile',                        &
       'Lower column', 'He_Kzz', 'He_alphaT', 'He_ambipolar',                 &
       'He_metal_diffusion', 'He_diffusion', 'Stall', 'Energy solver',        &
       'Time stepping', 'Level tol', 'Solver', 'Valve eps', 'Hydrostatic base',&
@@ -65,9 +71,11 @@
 
    ! ----- Read planetary parameters from input file ----- !
 
-   ! Metal abundances (default: no metals). Overridden at runtime by an
-   ! optional metals.inp file (no recompile); thereis_metals is set from
-   ! the resulting values below.
+   ! Metal abundances (default: no metals). Set at runtime by an optional
+   ! metals.inp file (no recompile) and, for the elements a lower-atmosphere
+   ! handoff carries, overridden afterwards by the "<El>_H_base" keys of
+   ! base.inp. thereis_metals and melem_ab are derived from the final values
+   ! in the composition block near the end of this subroutine.
    X_C  = 0.0d0
    X_N  = 0.0d0
    X_O  = 0.0d0
@@ -132,43 +140,6 @@
    ! He/H number ratio
    str = get_word(req('He/H number ratio'), 4);  read(str,*) HeH
    if (HeH .gt. 0.0e0) thereis_He = .true.
-
-   ! Activate metal species if any metal abundance is set
-   thereis_metals = (X_C .gt. 0.0d0) .or. (X_N .gt. 0.0d0)        &
-                                      .or. (X_O .gt. 0.0d0)        &
-                                      .or. (X_Mg .gt. 0.0d0)       &
-                                      .or. (X_Si .gt. 0.0d0)       &
-                                      .or. (X_Ca .gt. 0.0d0)       &
-                                      .or. (X_Na .gt. 0.0d0)       &
-                                      .or. (X_K  .gt. 0.0d0)       &
-                                      .or. (X_S  .gt. 0.0d0)       &
-                                      .or. (X_Fe .gt. 0.0d0)
-
-   ! Abundances for each element in canonical element order (iel_*), so the
-   ! grid/solver code can index metals by element rather than by named
-   ! scalar. Extend this block (and the metals.inp reader) when adding
-   ! elements.
-   allocate(melem_ab(n_melem))
-   melem_ab(iel_C)  = X_C
-   melem_ab(iel_O)  = X_O
-   melem_ab(iel_N)  = X_N
-   melem_ab(iel_Mg) = X_Mg
-   melem_ab(iel_Si) = X_Si
-   melem_ab(iel_Ca) = X_Ca
-   melem_ab(iel_Na) = X_Na
-   melem_ab(iel_K)  = X_K
-   melem_ab(iel_S)  = X_S
-   melem_ab(iel_Fe) = X_Fe
-
-   ! An active metal whose neutral ionization threshold lies below the
-   ! 13.6 eV HI edge (e.g. Mg I at 7.646 eV) needs the below-threshold
-   ! sub-grid extension in set_energy_vectors (mutually exclusive with
-   ! the HeI triplet). Triggered by any such active element.
-   do im = 1, n_melem
-      if (melem_ab(im) .gt. 0.0d0 .and.                       &
-          mion_ethr(melem_i0(im)) .lt. e_th_HI)               &
-         thereis_lowIP_metal = .true.
-   enddo
 
    ! 2D approximate method
    line = req('2D approximate method')
@@ -473,6 +444,15 @@
 				! EOS-only molecular base (docs/lower_atmosphere_*).
 				str = get_word(line, 3)
 				if (str .eq. 'True' .or. str .eq. 'true') molecular_base = .true.
+			else if (lbl_match(line, 'Lower atmosphere profile')) then
+				! Lower-atmosphere solution handed over as a table over an
+				! interval of pressure instead of the single-level scalars of
+				! base.inp (docs/phase_e_flux_closure_design.md section 2).
+				! "Lower atmosphere profile: lower_atmosphere_profile.dat".
+				! Tested BEFORE 'Lower atmosphere', whose label is a prefix of
+				! this one (longest / most-specific first, as for the two
+				! "Wind-AE seed" keys).
+				lap_file = get_word(line, 4)
 			else if (lbl_match(line, 'Lower atmosphere')) then
 				! Lower-atmosphere pre-step (docs/lower_atmosphere_*).
 				str = get_word(line, 3)
@@ -887,13 +867,74 @@
    ! lower-atmosphere model): overrides the base temperature, base radius
    ! [R_J], He/H ratio and eddy K_zz BEFORE the derived constants below.
    ! Absent file = no-op (byte-identical legacy).
+   ! ---- optional lower-atmosphere PROFILE ("Lower atmosphere profile:").
+   ! Read before base.inp so read_base_inp can refuse the scalar keys the
+   ! profile now owns, and applied after it so nothing scalar can overwrite
+   ! the profile.  Absent key = no-op (byte-identical legacy).
+   ! Which elements the handoff states itself is recorded as the two readers
+   ! run: set_element_abundance is the only door either of them uses, so the
+   ! flag cannot drift from the abundance it belongs to. An element left
+   ! false keeps whatever metals.inp gave it, and a restart of that element
+   ! is not renormalized (load_IC).
+   if (.not. allocated(melem_from_handoff)) allocate(melem_from_handoff(n_melem))
+   melem_from_handoff = .false.
+   call read_lower_atmosphere_profile
    call read_base_inp
+   call apply_lower_atmosphere_profile
 
    ! ---- Composition reconciliation and validation. Placed here so every
    ! flag (thereis_He, HeH, thereis_HeITR, thereis_mol, he_diffusion,
    ! thereis_metals) has its final value: base.inp above can still flip
-   ! thereis_He/HeH, and the trailing keyword scan sets thereis_mol and
-   ! he_diffusion. This is the single authoritative check before N_eq sizing.
+   ! thereis_He/HeH and the elemental abundances X_*, and the trailing
+   ! keyword scan sets thereis_mol and he_diffusion. This is the single
+   ! authoritative check before N_eq sizing.
+
+   ! ---- Elemental reservoirs. The abundances reach this point from
+   ! metals.inp (read at the top of input_read) and, for the elements the
+   ! lower-atmosphere handoff carries, from the "<El>_H_base" keys of
+   ! base.inp, which override metals.inp because they describe the
+   ! composition at the base of THIS wind. Everything derived from the
+   ! elemental reservoirs -- which elements are active, the canonical
+   ! melem_ab array, and the below-threshold energy grid -- is therefore
+   ! derived here, after the handoff, and nowhere else.
+
+   ! Activate metal species if any metal abundance is set
+   thereis_metals = (X_C .gt. 0.0d0) .or. (X_N .gt. 0.0d0)        &
+                                      .or. (X_O .gt. 0.0d0)        &
+                                      .or. (X_Mg .gt. 0.0d0)       &
+                                      .or. (X_Si .gt. 0.0d0)       &
+                                      .or. (X_Ca .gt. 0.0d0)       &
+                                      .or. (X_Na .gt. 0.0d0)       &
+                                      .or. (X_K  .gt. 0.0d0)       &
+                                      .or. (X_S  .gt. 0.0d0)       &
+                                      .or. (X_Fe .gt. 0.0d0)
+
+   ! Abundances for each element in canonical element order (iel_*), so the
+   ! grid/solver code can index metals by element rather than by named
+   ! scalar. Extend this block (and the metals.inp reader) when adding
+   ! elements.
+   allocate(melem_ab(n_melem))
+   melem_ab(iel_C)  = X_C
+   melem_ab(iel_O)  = X_O
+   melem_ab(iel_N)  = X_N
+   melem_ab(iel_Mg) = X_Mg
+   melem_ab(iel_Si) = X_Si
+   melem_ab(iel_Ca) = X_Ca
+   melem_ab(iel_Na) = X_Na
+   melem_ab(iel_K)  = X_K
+   melem_ab(iel_S)  = X_S
+   melem_ab(iel_Fe) = X_Fe
+
+   ! An active metal whose neutral ionization threshold lies below the
+   ! 13.6 eV HI edge (e.g. Mg I at 7.646 eV) needs the below-threshold
+   ! sub-grid extension in set_energy_vectors (mutually exclusive with
+   ! the HeI triplet). Triggered by any such active element.
+   do im = 1, n_melem
+      if (melem_ab(im) .gt. 0.0d0 .and.                       &
+          mion_ethr(melem_i0(im)) .lt. e_th_HI)               &
+         thereis_lowIP_metal = .true.
+   enddo
+
 
    ! Remove HeITR chemistry if He is not included
    if (.not. thereis_He) thereis_HeITR = .false.
@@ -1062,41 +1103,6 @@
 
    contains
 
-   ! --------------------------------------------------------------------- !
-   ! input.inp label matching. A key matches a line ONLY as a label:
-   ! anchored at the start of the left-trimmed line and terminated by a value
-   ! separator (':', '?', whitespace, '=', or end-of-line). This makes line
-   ! order irrelevant and removes the old substring-collision hazards (e.g.
-   ! "Newton solver:" no longer false-matches the "Solver" key). The one
-   ! remaining prefix collision, "Wind-AE seed out" vs "Wind-AE seed" (they
-   ! share a whitespace-separated prefix), is resolved by testing the longer
-   ! key first in the keyword loop above (longest / most-specific first).
-   ! --------------------------------------------------------------------- !
-
-   logical function lbl_match(line, key)
-   ! .true. iff adjustl(line) begins with `key` followed by a value separator.
-   character(len=*), intent(in) :: line, key
-   character(len=250) :: t
-   integer :: lk, lt
-   lbl_match = .false.
-   t  = adjustl(line)
-   lk = len(key)
-   lt = len_trim(t)
-   if (lt .lt. lk) return
-   if (t(1:lk) .ne. key) return
-   if (lk .eq. lt) then
-      lbl_match = .true.                 ! key is the whole trimmed line
-   else
-      lbl_match = is_sep(t(lk+1:lk+1))    ! next char must be a separator
-   endif
-   end function lbl_match
-
-   logical function is_sep(c)
-   character(len=1), intent(in) :: c
-   is_sep = (c .eq. ':' .or. c .eq. '?' .or. c .eq. ' ' .or.   &
-             c .eq. char(9) .or. c .eq. '=')
-   end function is_sep
-
    function find_lbl(key, found) result(res)
    ! Last line matching `key` (last occurrence wins, as in the keyword loop).
    character(len=*), intent(in)  :: key
@@ -1156,53 +1162,162 @@
 
    ! ------------------------------------------------------------------- !
 
+   ! --------------------------------------------------------------------- !
+   ! Label matching, shared by the input.inp reader and read_base_inp.
+   ! A key matches a line ONLY as a label: anchored at the start of the
+   ! left-trimmed line and terminated by a value separator (':', '?',
+   ! whitespace, '=', or end-of-line). This makes line order irrelevant and
+   ! removes the old substring-collision hazards (e.g.
+   ! "Newton solver:" no longer false-matches the "Solver" key). The one
+   ! remaining prefix collision, "Wind-AE seed out" vs "Wind-AE seed" (they
+   ! share a whitespace-separated prefix), is resolved by testing the longer
+   ! key first in the keyword loop above (longest / most-specific first).
+   ! --------------------------------------------------------------------- !
+
+   logical function lbl_match(line, key)
+   ! .true. iff adjustl(line) begins with `key` followed by a value separator.
+   character(len=*), intent(in) :: line, key
+   character(len=250) :: t
+   integer :: lk, lt
+   lbl_match = .false.
+   t  = adjustl(line)
+   lk = len(key)
+   lt = len_trim(t)
+   if (lt .lt. lk) return
+   if (t(1:lk) .ne. key) return
+   if (lk .eq. lt) then
+      lbl_match = .true.                 ! key is the whole trimmed line
+   else
+      lbl_match = is_sep(t(lk+1:lk+1))    ! next char must be a separator
+   endif
+   end function lbl_match
+
+   logical function is_sep(c)
+   character(len=1), intent(in) :: c
+   is_sep = (c .eq. ':' .or. c .eq. '?' .or. c .eq. ' ' .or.   &
+             c .eq. char(9) .or. c .eq. '=')
+   end function is_sep
+
+   ! ------------------------------------------------------------------- !
+
    subroutine read_base_inp
-   ! lower-atmosphere handoff file (optional).  Keyword lines:
-   !   T_base    <K>      -> overrides T0 (base temperature)
-   !   r_base    <R_J>    -> overrides the "Planet radius" (1-ubar radius)
-   !   HeH_base  <ratio>  -> overrides the He/H number ratio
-   !   Kzz_base  <cm2/s>  -> sets he_kzz (used by He_diffusion)
-   !   q_H2_base <ratio>  -> photochemical H2 volume mixing ratio at the base;
-   !                         replaces the chemical-equilibrium fit in the
-   !                         molecular-base particle count
-   !   p_base    <bar>    -> pressure level the handoff describes (default
-   !                         1e-6 bar); the equilibrium fit is evaluated there
-   ! '#' comments and unknown keys are ignored.  Written by
-   ! src/utils/run_lower.py (analytic column) or by an external
-   ! photochemical/RC model; see docs/lower_atmosphere_coupling.*.
+   ! Lower-atmosphere handoff file (optional; a missing file is a no-op).
+   ! One "key value" line per entry, '#' comments and unknown keys ignored,
+   ! keys matched as labels (lbl_match), exactly as in input.inp. Written by
+   ! src/utils/run_lower.py (analytic column) or src/utils/vulcan_to_base.py
+   ! (photochemistry); see docs/lower_atmosphere_coupling.* and
+   ! docs/input_schema.md section 2c, which carries the same table.
+   !
+   ! Every key belongs to one of five categories, and the category says what
+   ! the value is allowed to do to the wind:
+   !
+   !  provenance         which code / network / profile produced the file.
+   !                     Comments only today; no key is parsed (planned as
+   !                     A1a of docs/oxygen_chemistry_new_plan.md).
+   !  EOS boundary       state of the gas at the handoff level:
+   !                     T_base [K]     -> T0
+   !                     r_base [R_J]   -> R0
+   !                     p_base [bar]   -> p_base_bar, the level all of the
+   !                                       above refer to
+   !                     q_H2_base      -> q_h2_base, the H2 volume mixing
+   !                                       ratio that sets the base particle
+   !                                       count through comp_ntot_bc. It is
+   !                                       an EOS anchor, NOT a composition
+   !                                       pin: nothing holds H2 at that value
+   !                                       and no H2 profile is seeded from it.
+   !  elemental          the reservoirs the wind transports and redistributes:
+   !   reservoir         HeH_base       -> HeH (He/H nuclei)
+   !                     <El>_H_base    -> X_<El> (El/H nuclei) for the ten
+   !                                       elements of species_table, e.g.
+   !                                       "O_H_base 4.90e-4". Overrides
+   !                                       metals.inp for that element, and
+   !                                       activates the metal system if it
+   !                                       is the only nonzero abundance.
+   !  initial guess      none today. A key in this category would seed a
+   !                     profile the solver is free to move away from.
+   !  boundary           Kzz_base [cm2/s] -> he_kzz, the eddy diffusion
+   !   constraint        coefficient the element-diffusion operator imposes
+   !                     at the base (inert with He_diffusion off).
+   !
+   ! Species mixing ratios other than q_H2_base (q_H2O, q_CO, ...) stay
+   ! comments: no part of the code consumes them, so they are diagnostic
+   ! metadata and must not be presented as physics.
+   !
+   ! With a lower-atmosphere PROFILE in use ("Lower atmosphere profile:"),
+   ! the EOS-boundary, elemental-reservoir and boundary-constraint keys are
+   ! REFUSED: the profile states all of them at the matching level, and a
+   ! scalar accepted beside it would be a second source of the same
+   ! quantities. What remains to check is then the pair as a whole, and the
+   ! one provenance comment that is parsed, "# solution_id <hash>", is what
+   ! makes "these two files are the same lower-atmosphere solution" a
+   ! statement rather than an assumption.
    character(len=250) :: line
    character(len=:), allocatable :: str
+   character(len=32)  :: key
+   character(len=128) :: id_base
    logical :: ex
-   integer :: ios, ub
+   integer :: ios, ub, ie, ip
+   real*8  :: ab
 
    inquire(file='base.inp', exist=ex)
    if (.not. ex) return
    write(*,*) '(input_read) Reading base.inp (lower-atmosphere handoff)..'
+   id_base = ''
    open(newunit=ub, file='base.inp', status='old')
    do
       read(ub,'(A)',iostat=ios) line
       if (ios .ne. 0) exit
       if (len_trim(line) .eq. 0) cycle
-      if (index(adjustl(line),'#') .eq. 1) cycle
-      if (index(line,'T_base') .gt. 0) then
+      if (index(adjustl(line),'#') .eq. 1) then
+         ! Provenance comments. The one that is parsed is "# solution_id
+         ! <hash>": it is what makes "the profile and the scalar file are the
+         ! same lower-atmosphere solution" a checkable statement rather than
+         ! an assumption.
+         ip = index(line, 'solution_id')
+         if (ip .gt. 0) id_base = adjustl(line(ip+len('solution_id'):))
+         cycle
+      endif
+      if (lbl_match(line,'T_base')) then
+         call refuse_scalar_key('T_base', 'EOS boundary')
          str = get_word(line,2);  read(str,*) T0
          write(*,'(A,F9.1,A)') '   base.inp: T0 -> ', T0, ' K'
-      else if (index(line,'r_base') .gt. 0) then
+      else if (lbl_match(line,'r_base')) then
+         call refuse_scalar_key('r_base', 'EOS boundary')
          str = get_word(line,2);  read(str,*) R0
          write(*,'(A,F8.4,A)') '   base.inp: R0 -> ', R0, ' R_J'
-      else if (index(line,'HeH_base') .gt. 0) then
+      else if (lbl_match(line,'HeH_base')) then
+         call refuse_scalar_key('HeH_base', 'elemental reservoir')
          str = get_word(line,2);  read(str,*) HeH
          if (HeH .gt. 0.0d0) thereis_He = .true.
          write(*,'(A,F8.5)') '   base.inp: He/H -> ', HeH
-      else if (index(line,'Kzz_base') .gt. 0) then
+      else if (lbl_match(line,'Kzz_base')) then
+         call refuse_scalar_key('Kzz_base', 'boundary constraint')
          str = get_word(line,2);  read(str,*) he_kzz
          write(*,'(A,ES9.2,A)') '   base.inp: He_Kzz -> ', he_kzz, ' cm2/s'
-      else if (index(line,'q_H2_base') .gt. 0) then
+      else if (lbl_match(line,'q_H2_base')) then
+         call refuse_scalar_key('q_H2_base', 'EOS boundary')
          str = get_word(line,2);  read(str,*) q_h2_base
          write(*,'(A,F8.5)') '   base.inp: q_H2(base) -> ', q_h2_base
-      else if (index(line,'p_base') .gt. 0) then
+      else if (lbl_match(line,'p_base')) then
+         call refuse_scalar_key('p_base', 'EOS boundary')
          str = get_word(line,2);  read(str,*) p_base_bar
          write(*,'(A,ES9.2,A)') '   base.inp: p_base -> ', p_base_bar, ' bar'
+      else
+         ! Elemental reservoirs "<El>_H_base": El/H nuclei ratio at the
+         ! handoff level, for any element species_table knows. Element
+         ! symbols are unique, so the ten labels cannot collide with each
+         ! other or with the keys above.
+         do ie = 1, n_melem
+            key = trim(melem_name(ie))//'_H_base'
+            if (lbl_match(line, trim(key))) then
+               call refuse_scalar_key(trim(key), 'elemental reservoir')
+               str = get_word(line,2);  read(str,*) ab
+               call set_element_abundance(ie, ab)
+               write(*,'(A,A,A,ES10.3)') '   base.inp: ',                  &
+                  trim(melem_name(ie)), '/H -> ', ab
+               exit
+            endif
+         enddo
       endif
    enddo
    close(ub)
@@ -1225,7 +1340,151 @@
       write(*,*) '     standard 1 microbar; the base composition and the'
       write(*,*) '     chemical-equilibrium H2 fit both refer to that level.'
    endif
+
+   ! ---- the pair must be one solution -------------------------------- !
+   ! A profile and a base.inp side by side describe the same gas at the same
+   ! level. If they came from different lower-atmosphere solutions the run is
+   ! not a model of anything, so this is a refusal and not a message.
+   if (lap_in_use) then
+      if (len_trim(id_base) .eq. 0) then
+         write(*,*) '(input_read) ERROR: base.inp sits beside the lower-'// &
+                    'atmosphere profile'
+         write(*,*) '  '//trim(lap_file)//' but carries no'//              &
+                    ' "# solution_id <hash>" line, so there is no way to'
+         write(*,*) '  tell whether the two describe the same lower-'//    &
+                    'atmosphere solution. Add the'
+         write(*,*) '  line (the adapter writes it), or delete base.inp.'
+         error stop 1
+      endif
+      if (trim(id_base) .ne. trim(lap_solution_id)) then
+         write(*,*) '(input_read) ERROR: the lower-atmosphere profile and'//&
+                    ' base.inp are different solutions.'
+         write(*,*) '  profile  solution_id: '//trim(lap_solution_id)
+         write(*,*) '  base.inp solution_id: '//trim(id_base)
+         error stop 1
+      endif
+      write(*,*) '   base.inp: solution_id matches the profile.'
+   endif
+
+   contains
+
+   subroutine refuse_scalar_key(kname, cat)
+   ! With a profile in use, the three physics categories of base.inp have a
+   ! single source and it is the profile. Accepting a scalar beside it would
+   ! reintroduce exactly the same-solution problem the profile removes by
+   ! construction (docs/phase_e_flux_closure_design.md section 2.4).
+   character(len=*), intent(in) :: kname, cat
+   if (.not. lap_in_use) return
+   write(*,*) '(input_read) ERROR: base.inp key "'//trim(kname)//          &
+              '" ('//trim(cat)//')'
+   write(*,*) '  is refused because the lower-atmosphere profile'
+   write(*,*) '  '//trim(lap_file)//' is in use and already states that'
+   write(*,*) '  quantity at the matching level. Delete the key (or the'
+   write(*,*) '  whole base.inp) and let the profile be the single source;'
+   write(*,*) '  provenance comments and diagnostic keys are still allowed.'
+   error stop 1
+   end subroutine refuse_scalar_key
+
    end subroutine read_base_inp
+
+   ! ------------------------------------------------------------------- !
+
+   subroutine apply_lower_atmosphere_profile
+   ! Set the base state and the elemental reservoirs from the lower-
+   ! atmosphere solution at the matching level.
+   !
+   ! The values go in through exactly the doors the scalar base.inp keys use
+   ! -- direct assignment for the EOS anchors, set_element_abundance for the
+   ! elements -- so comp_mass_per_H, comp_ntot_bc and comp_rho_bc build the
+   ! base EOS from the numbers the lower model reported and nothing in those
+   ! functions changes. n_tot and rho are carried by the file as the lower
+   ! model's own values and are NOT imposed here: the base density is n0 of
+   ! input.inp, and the base particle count and mass follow from T0, HeH,
+   ! q_H2 and the elemental ratios exactly as they do on the scalar path.
+   ! Placed after read_base_inp so nothing scalar can overwrite a profile
+   ! value, and before the composition block so melem_ab, thereis_metals and
+   ! thereis_lowIP_metal are derived from the handoff abundances.
+   real*8  :: val
+   logical :: got
+   integer :: ie
+
+   if (.not. lap_in_use) return
+
+   call lap_value_at_match('T', val, got)
+   if (got) then
+      T0 = val
+      write(*,'(A,F9.1,A)') '   profile: T0 -> ', T0, ' K'
+   endif
+   call lap_value_at_match('r', val, got)
+   if (got) then
+      R0 = val
+      write(*,'(A,F8.4,A)') '   profile: R0 -> ', R0, ' R_J'
+   endif
+   p_base_bar = lap_p_match_bar
+   write(*,'(A,ES9.2,A)') '   profile: p_base -> ', p_base_bar, ' bar'
+   call lap_value_at_match('q_H2', val, got)
+   if (got) then
+      q_h2_base = val
+      write(*,'(A,F8.5)') '   profile: q_H2(base) -> ', q_h2_base
+   endif
+   call lap_element_ratio_at_match('He', val, got)
+   if (got) then
+      HeH = val
+      if (HeH .gt. 0.0d0) thereis_He = .true.
+      write(*,'(A,F8.5)') '   profile: He/H -> ', HeH
+   endif
+   do ie = 1, n_melem
+      call lap_element_ratio_at_match(trim(melem_name(ie)), val, got)
+      if (got) then
+         call set_element_abundance(ie, val)
+         write(*,'(A,A,A,ES10.3)') '   profile: ',                        &
+            trim(melem_name(ie)), '/H -> ', val
+      endif
+   enddo
+
+   write(*,'(A,A,A,I0,A)') '   profile: source ', trim(lap_source_code),  &
+      ', closure iteration ', lap_iteration,                              &
+      ' (solution_id in EXHALE_resolved.out)'
+
+   ! "He_Kzz:" in input.inp is the constant a run states when it has no
+   ! profile. It is not refused -- it is a different file with a different
+   ! contract from base.inp -- but with a profile in use it is inert, and a
+   ! key that looks effective and is not must say so.
+   if (he_kzz .gt. 0.0d0) then
+      write(*,'(A)') ' (input_read) WARNING: "He_Kzz:" is set but the'//   &
+         ' lower-atmosphere profile carries'
+      write(*,'(A)') '   the eddy diffusion coefficient as a profile;'//   &
+         ' the constant is ignored.'
+   endif
+
+   end subroutine apply_lower_atmosphere_profile
+
+   ! ------------------------------------------------------------------- !
+
+   subroutine set_element_abundance(ie, ab)
+   ! Store an El/H nuclei ratio in the named scalar of element index ie
+   ! (canonical iel_* order of species_table). The named scalars are what
+   ! metals.inp writes and what the melem_ab array is built from, so a
+   ! handoff abundance enters through exactly the same door as metals.inp.
+   ! Passing through this door is also what marks the element as stated by the
+   ! handoff (melem_from_handoff), which is what lets a restart column be
+   ! renormalized onto the new reservoir in load_IC.
+   integer, intent(in) :: ie
+   real*8,  intent(in) :: ab
+   if (allocated(melem_from_handoff)) melem_from_handoff(ie) = .true.
+   select case (ie)
+      case (iel_C);  X_C  = ab
+      case (iel_O);  X_O  = ab
+      case (iel_N);  X_N  = ab
+      case (iel_Mg); X_Mg = ab
+      case (iel_Si); X_Si = ab
+      case (iel_Ca); X_Ca = ab
+      case (iel_Na); X_Na = ab
+      case (iel_K);  X_K  = ab
+      case (iel_S);  X_S  = ab
+      case (iel_Fe); X_Fe = ab
+   end select
+   end subroutine set_element_abundance
 
    ! ------------------------------------------------------------------- !
 

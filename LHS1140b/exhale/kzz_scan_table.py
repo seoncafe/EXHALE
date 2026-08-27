@@ -50,16 +50,44 @@ def element_ratio(d):
     return r, (nHe / np.maximum(nH, 1e-99)) / HEH
 
 
+def _face_flux_file(d):
+    """Path and D_eff column of the element face-flux table of a run.
+
+    The file is ./output/element_flux_profile.txt since 2026-08-27 and was
+    ./diffusion_faceflux.txt in the run root before; runs made under either
+    binary are read. The D_eff column is located by name from the
+    "# columns:" schema line, so an added column cannot silently shift it
+    (F_H was added between F_He and Mdot_face).
+    """
+    for rel in ('output/element_flux_profile.txt', 'diffusion_faceflux.txt'):
+        p = os.path.join(d, rel)
+        if os.path.isfile(p):
+            break
+    else:
+        return None, None
+    icol = 8
+    with open(p) as f:
+        for line in f:
+            if not line.startswith('#'):
+                break
+            if 'columns:' in line:
+                toks = line.split('columns:', 1)[1].split()
+                if 'D_eff[cm2/s]' in toks:
+                    icol = toks.index('D_eff[cm2/s]')
+                break
+    return p, icol
+
+
 def homopause(d, kzz):
     """Radius where the molecular coefficient equals K_zz.
 
     D_eff is the stage-resolved binary coefficient the operator used; the
     eddy term is added to it, so the crossing is the homopause of the run.
     """
-    p = os.path.join(d, 'diffusion_faceflux.txt')
-    if kzz <= 0 or not os.path.exists(p):
+    p, icol = _face_flux_file(d)
+    if kzz <= 0 or p is None:
         return None, None
-    a = np.loadtxt(p, usecols=(1, 8))
+    a = np.loadtxt(p, usecols=(1, icol))
     r, D = a[:, 0], a[:, 1]
     s = D - kzz
     for j in range(len(r) - 1):

@@ -102,7 +102,7 @@ Representative cases include:
 - `Apply_BC(u,u)` throughout `EXHALE_main.f90`, `steady_newton.f90`, and `init.f90`.
 - `Apply_BC` itself calls `Apply_BC_W(W,W)`.
 - `ioniz_eq(T,rho,f_sp,rho,f_sp,...)` aliases its input `rho/f_sp` with `rho_out/f_sp_out`.
-- `post_process.f90` passes the same scratch variable `dum_v` to several distinct `intent(out)` arguments in a single call.
+- `post_process_adv.f90` passes the same scratch variable `dum_v` to several distinct `intent(out)` arguments in a single call. [fixed: the file now declares `dum_v1` through `dum_v6` and gives each discarded output its own local. The file name in this line was written as `post_process.f90`; the file is `src/modules/post_process/post_process_adv.f90`, both at the reviewed commit and now.]
 
 Fortran restricts access through one dummy argument while the same actual object is being defined through another dummy. Even if the present implementation happens to copy inputs into locals before producing outputs, the interface contract is nonconforming and an optimizing compiler may assume the arguments do not alias.
 
@@ -310,7 +310,7 @@ Some input failures use plain `stop`, which can appear as successful status to a
 
 ## 7. Proposed test strategy
 
-Wind-AE contains several standalone test programs, but the top-level project has no integrated `make check` or CI target, and benchmark inputs/reference data are not connected to automated assertions. A small test pyramid would provide substantial protection.
+Wind-AE contains several standalone test programs, but the top-level project has no integrated `make check` or CI target, and benchmark inputs/reference data are not connected to automated assertions. A small test pyramid would provide substantial protection. [implemented in part on 2026-07-14 (commit `e6a498c`): the `Makefile` has a `check` target, which runs `backup/regression/run_check.sh` over a seven-case byte-identical matrix; `make diffusion_tests` builds the unit driver `src/tests/diffusion_tests.f90`. There is still no CI.]
 
 1. Unit tests
    - EOS/composition for H-only, H+He, triplet, molecules, and metals

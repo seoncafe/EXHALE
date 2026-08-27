@@ -283,8 +283,11 @@ refresh; the snapshots now carry the `visc_on` / `cond_on` /
 
 ## 7. Verification of the discretization
 
-Four analytic checks on a geometrically stretched 500-cell grid
-(`opcheck.f90`, run against the compiled module):
+Four analytic checks on a geometrically stretched 500-cell grid, run against
+the compiled module from a throwaway driver (`opcheck.f90`). *That driver was
+never committed and is not in the repository; the numbers below are the record
+of the run, and reproducing them means writing the driver again. The only
+committed unit-test source is `src/tests/diffusion_tests.f90`.*
 
 | check | expectation | measured |
 |---|---|---|

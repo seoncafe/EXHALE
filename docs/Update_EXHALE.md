@@ -1634,7 +1634,8 @@ as `R_Huang = 1.25 r`. The Case-A `Ṁ = 0.077 M_p/Gyr` is within ~1.5× of Huan
 Huang's J̄_Lyα is a **plane-parallel Monte Carlo** RT; ours is an analytic
 escape-probability formula, so the two cannot agree quantitatively — a meaningful
 quantitative comparison is only sensible once **all** Phase-3b features (incl. the
-velocity term) are in. Qualitatively (`WASP-121b/lya_caseA_huang11.py`), both show a
+velocity term) are in. Qualitatively (`WASP-121b/lya_caseA_huang11.py`, not in the tree;
+the same Fig. 11 case-A comparison is now `WASP-121b/lya_vs_huang11.py`), both show a
 **significant inner peak** (EXHALE ~0.6 @1.35, Huang ~0.5 @1.6 R_p) and comparable
 magnitude (0.05–0.6). EXHALE has a **dip at ~1.8 R_p** and **rises gently outward**
 where Huang gently declines; the outward rise traces to the **n2s recombination
@@ -2541,7 +2542,8 @@ radii — EXHALE could not represent the diffusive He/H separation seen in Taylo
 (8%→2.5%) and Xing et al. (2023). This is the top recommendation of
 `docs/methodology_aiolos_taylor_xing.md`.
 
-**Method (Phase 1).** New module `species_diffusion.f90` transports the He element ratio
+**Method (Phase 1).** New module `species_diffusion.f90` (deleted 2026-08-25, section 69;
+replaced by `src/modules/functions/binary_element_diffusion.f90`) transports the He element ratio
 `f = n_He/n_H` with bulk advection **and** a molecular-diffusion drift of He relative to H,
 `Φ = −D n_H(∂f/∂r + fG)`, `G = (m_He−m_H)g/(kT)`, `D = 1.52e18(1/m_H+1/m_He)^½ T^½/n`
 (Banks & Kockarts 1973), plus eddy diffusion `K_zz` on the gradient term. Solved as a **fully
@@ -6999,3 +7001,1419 @@ mol_diffusion     final: count=12000  du= 2.6290E+00  dtu= 5.7474E-03   log10 Md
 
 so the golden pins the operator's arithmetic, not a large dynamical
 signature. `make check` is 6/6 with the five existing goldens untouched.
+
+## 74. What a `base.inp` key is allowed to do: five categories, and elemental reservoirs that reach `melem_ab` (2026-08-26)
+
+`base.inp` carried six keys and no statement of what any of them meant for the
+wind. That is P2 of `docs/oxygen_chemistry_new_plan.md`, and the reason it
+matters is not tidiness: `q_H2_base` had been described in places as pinning
+the base composition, when all it does is set the base particle count, and the
+handoff had no way at all to carry an element -- the quantity EXHALE actually
+transports.
+
+### The contract
+
+Every key now belongs to one of five categories, and the category states what
+the value may do. The table lives in three places that must agree:
+`read_base_inp`'s header comment, `docs/input_schema.md` section 2c, and here.
+
+| Key | Category | Reaches |
+|---|---|---|
+| comments only | provenance | nothing (the machine-readable keys are A1a/P0, not yet built) |
+| `T_base`, `r_base`, `p_base`, `q_H2_base` | EOS boundary | `T0`, `R0`, `p_base_bar`, `q_h2_base` |
+| `HeH_base`, `<El>_H_base` | elemental reservoir | `HeH`, `X_<El>` -> `melem_ab` |
+| (none today) | initial guess | - |
+| `Kzz_base` | boundary constraint | `he_kzz` |
+| `q_H2O`, `q_CO`, ... | diagnostic | nothing; metadata, not physics |
+
+`q_H2_base` is an **EOS anchor**: `comp_ntot_bc` removes the H nuclei bound
+into H2 at the base, and that is the whole of its effect. Nothing holds H2 at
+that value, no H2 profile is seeded from it, and the molecular network moves
+away from it in the first cell. The A1c species keys stay comments because no
+part of the code reads them.
+
+### Elemental reservoirs
+
+`<El>_H_base` is new: `C_H_base`, `N_H_base`, `O_H_base`, `S_H_base` and the
+same form for `Mg Si Ca Na K Fe`, each the El/H **nuclei** ratio at the handoff
+level. It overrides `metals.inp` for that element, and it turns the metal
+system on by itself when it is the only nonzero abundance. Hydrogen and helium
+already had this: `HeH_base`.
+
+The change that makes it work is one of order. `thereis_metals`, `melem_ab` and
+`thereis_lowIP_metal` were derived immediately after the core `input.inp`
+block, roughly seven hundred lines before `read_base_inp` ran, so nothing the
+handoff said about an element could have been heard. They are now derived in
+the composition block after `read_base_inp`, beside the `thereis_He` / HeITR /
+molecular reconciliation -- the one place where every composition flag has its
+final value. Nothing between the two points touched any of them, which is why
+the move is a pure reordering.
+
+`read_base_inp` also matches its keys the way the `input.inp` reader does:
+`lbl_match` (anchored, separator-terminated) instead of a bare `index(line,
+key) > 0` substring test anywhere in the line. `lbl_match`/`is_sep` moved out
+of `input_read`'s internal scope to module scope for that. One file, one
+matching rule.
+
+`src/utils/vulcan_to_base.py` now writes the elemental keys it can support:
+C, N, O and S, summed over **every** carrier at the handoff level, since
+photochemistry moves nuclei between molecules without creating or destroying
+them. Mg/Si/Ca/Na/K/Fe are still `metals.inp`'s job -- metal and alkali
+chemistry and condensation are outside VULCAN's networks. The same carrier sum
+corrects `HeH_base`, which used to be `q_He/(q_H + 2 q_H2)` and so lost the
+hydrogen bound in H2O, CH4 and NH3; on the HD 209458 b run that is 0.09698 ->
+0.096915, a 0.07% correction and, at 1 microbar, the whole of the difference.
+
+### The gate: do the reservoirs hold?
+
+`src/utils/element_budget.py <run_dir>` answers it from the output profiles.
+For every element it compares, cell by cell,
+
+```
+n_El / n_H   against   (El/H)_resolved
+```
+
+with `n_H` counting hydrogen nuclei in every carrier (`HI`, `HII`, `2 H2`,
+`2 H2+`, `3 H3+`, `HeH+`), `n_He` counting `HeI` (which already includes the
+triplet), `HeII`, `HeIII`, `HeH+`, and hydrogen itself closing against the mass
+density, `rho = mass_per_H * n_H`. The abundances it compares against are the
+run's own resolved values: `EXHALE_resolved.out` now carries `mass_per_H`,
+`ntot_bc` and one `abundance_<El>` line per element, all of them written to
+full double precision so the check has no round-off floor of its own.
+
+Measured on a copy of the `mol_metals` regression case (hot Uranus, molecular
+chemistry + solar trace metals) whose `base.inp` was given `O_H_base 9.80e-4`
+-- twice the `metals.inp` value -- and `S_H_base 1.32e-5`, an element
+`metals.inp` does not list at all:
+
+```
+# element budget: <scratch>/mol_metals_elem
+# 504 cells, profiles Ion_species.txt, tolerance 1.0e-08 (relative)
+elem        reservoir  max |n_El/n_H     at r[Rp]    verdict
+               (El/H)     - res|/res
+H      rho/mass_per_H      1.982e-04      4.81412       FAIL
+H*      triplet-corr.      3.056e-13      1.11481         ok
+       NOTE: rho - mass_per_H*n_H equals 4*n(He 2^3S) to 0.1%; the triplet mass is counted twice in calc_rho (HeI already includes it). The H* row removes it.
+He       7.930000e-02      1.269e-12      1.11481         ok
+C        2.690000e-04      8.132e-13      1.04248         ok
+Ca       2.190000e-06      7.915e-13      1.04248         ok
+Fe       3.160000e-05      8.177e-13      1.04308         ok
+Mg       3.980000e-05      8.310e-13      1.04248         ok
+N        6.760000e-05      8.037e-13      1.04308         ok
+Na       1.740000e-06      8.091e-13      1.04074         ok
+O        9.800000e-04      1.803e-12      1.04553         ok
+S        1.320000e-05      8.220e-13      1.04074         ok
+
+1 element(s) miss their reservoir by more than 1.0e-08
+```
+
+The nine elemental ratios close to round-off (at most 1.8e-12 relative over
+504 cells). Hydrogen does not, and the reason is not the handoff: the
+mismatch is exactly `4 n(He 2^3S)`, the triplet mass counted a second time in
+`calc_rho`, because `HeI` already contains the triplet (`util_ion_eq` forms
+the singlet as `nhei - nheiTR`). Removing it, hydrogen closes to 3.1e-13 as
+well -- the `H*` row. The double count is a pre-existing defect of the mass
+and particle bookkeeping, not of P2; it is left standing here because fixing
+it moves every `He23S: True` golden, which is a change of its own. Its size
+on this run is 2.0e-4 of `rho` at 4.8 R_p and zero in the molecular base,
+where the triplet population is.
+
+The `EXHALE_resolved.out` of that run shows `abundance_O = 9.80e-4` and
+`abundance_S = 1.32e-5`, i.e. the handoff overrode `metals.inp` for oxygen and
+activated sulfur.
+
+### Legacy
+
+A `base.inp` without an element key behaves exactly as before: `make check` is
+6/6 byte-identical, goldens untouched.
+
+## 75. The He 2^3S double count: an excited level is not a second species (2026-08-27)
+
+Section 74 measured it and left it standing: `rho` carried the mass of every
+metastable helium atom twice. The He I density the code transports, `nhei`
+(`f_sp` column `isp_HeI`), is the **total** He I population -- the solver sets
+it as `nhe*(1 - x_HeII - x_HeIII)` and the photoionization rates recover the
+singlet where they need it as `nheiS = nhei - nheiTR` (`util_ion_eq`). The
+2^3S column is a **level population inside that number**, not a species beside
+it. Every budget sum nevertheless added it a second time with mass 4 m_H, one
+gas particle and one helium nucleus.
+
+### Where the second count was
+
+Seven places, all reading the triplet column as if it were an independent
+species:
+
+| Place | What was counted twice |
+|---|---|
+| `calc_rho` (`utilities.f90`) | 4 m_H of mass -> `rho` |
+| `calc_ntot` (`utilities.f90`) | one gas particle -> `n_tot`, hence `p = (n_tot + n_e) T` |
+| `element_ratio_HeH` (`composition.f90`) | one He nucleus -> the He/H element ratio |
+| `element_nucleus_counts` and the `gotHe` shortfall of `project_elements` (`binary_element_diffusion.f90`) | one He nucleus -> the two element totals the diffusion operator conserves |
+| `hecar_isp` (`binary_element_diffusion.f90`) | one collision partner -> `carHe`, the helium friction |
+| `nHe_l` / `gotHe_l` of `load_IC` | one He nucleus -> the He/H a restart file is judged to carry |
+| `Run._NUC_HE` (`examples/exhale_io.py`) | one He nucleus -> `heh_profile` |
+
+`calc_ne` was never wrong: the triplet is neutral, so its `bsp_charge` is zero
+and the term it contributed was zero.
+
+### The fix
+
+`species_table` gains `bsp_is_excited_level(n_bsp)`, `.true.` only for `HeTR`,
+with the rule written beside it: a flagged column is a sub-population of
+another column, so every budget sum skips it while the transport and the
+scaling of the level itself do not. The nucleus- and charge-counting loops
+(`composition`, `binary_element_diffusion`, `diffusion_tests`) test the flag;
+`hecar_isp` loses its `HeTR` row, whose mass, charge and polarizability were a
+copy of `HeI`'s anyway; `load_IC` and `exhale_io` drop the triplet term from
+their helium sums.
+
+`calc_rho` and `calc_ntot` no longer take `nheiTR` **as an argument at all**.
+Removing the dummy is what makes the defect unrepeatable: there is no longer a
+triplet number in scope to add. The `thereis_HeITR` branch of
+`energy_semi_implicit`'s `calc_ntot` call disappears with it.
+
+### What moved
+
+`make check`: `wasp_he23off` (He 2^3S off) stays byte-identical, as it must --
+nothing else changed. The five `He23S: True` cases move, and the size of the
+move is the triplet mass fraction of each run:
+
+| case | max abs. rel. drho | max abs. rel. dT | dMdot/Mdot | max 4 n(2^3S)/rho |
+|---|---|---|---|---|
+| `wasp_full` | 1.24e-06 | 1.32e-07 | -6.5e-08 | 1.29e-06 |
+| `wasp_he23off` | 0 | 0 | 0 | 0 |
+| `mol_base_handoff` | 4.01e-04 | 1.59e-04 | +3.7e-04 | 1.95e-04 |
+| `mol_metals` | 2.57e-04 | 6.77e-05 | +2.1e-04 | 1.98e-04 |
+| `mol_lyman_werner` | 1.39e-04 | 1.27e-04 | +4.4e-05 | 2.92e-04 |
+| `mol_diffusion` | 5.35e-04 | 2.73e-04 | +5.4e-04 | 1.94e-04 |
+
+WASP-121 b is hot enough that its 2^3S population is a part in 10^6 of the
+mass; the hot-Uranus cases carry a few parts in 10^4. Step counts are
+unchanged in all six. The goldens of the five moved cases were re-snapshotted
+(`check` -> `golden` -> `check`, 6/6 PASS); `wasp_he23off` was left alone.
+
+### The gate
+
+`src/utils/element_budget.py` on the `mol_metals` outputs, before and after,
+same `EXHALE_resolved.out`:
+
+```
+before:  H   rho/mass_per_H   1.979e-04  at 4.81412   FAIL
+after:   H   rho/mass_per_H   2.975e-13  at 1.11481     ok
+```
+
+Hydrogen now closes against the mass density at round-off, like the nine
+elemental ratios beside it, with no correction of any kind. The `H*`
+triplet-corrected row and its NOTE are gone from the script: there is nothing
+left to correct.
+
+### Effect on a converged wind
+
+LHS 1140 b, `heh0p55` (He/H = 0.55, He 2^3S on, metals off), a scratch copy
+re-finished with JFNK from the same seed under both binaries, then the same
+post-processing and transit pass:
+
+| | before | after |
+|---|---|---|
+| JFNK | `info=0`, \|\|R\|\| = 4.326e-04 | `info=0`, \|\|R\|\| = 4.277e-04 |
+| Mdot [g/s] | 6.47929e+07 | 6.48008e+07 (+1.2e-04) |
+| He 10830 red depth [%] | 4.279701 | 4.279674 (-6.3e-06) |
+
+The wind is the same wind: `rho` differs by at most 2.5e-04 (at the base,
+r = 1.0006), the triplet mass fraction of this run peaks at 2.6e-04 near
+11 R_p, and the observable is unmoved at the fifth digit. The stored run
+directories were not regenerated.
+
+## 76. The lower atmosphere as a profile, not six scalars (2026-08-27)
+
+Milestone E1 of `docs/phase_e_flux_closure_design.md`. The lower-atmosphere
+handoff has been a set of single-level scalars in `base.inp` since Tier 3, and
+that shape is what makes the composition an input rather than an output: `HeH`
+is one number, the diffusion operator imposes it as the Dirichlet reservoir at
+the base, and nothing in the handoff carries a gradient, so no flux condition
+between the two models can even be stated. E1 replaces the shape. It does not
+yet close the flux; that is E4.
+
+### The file and the key
+
+One new opt-in key,
+
+```
+Lower atmosphere profile: lower_atmosphere_profile.dat
+```
+
+names a plain-text file: a block of `# key value` header lines, a
+`# columns:` schema line, then a fixed-column table running deep to shallow.
+Same conventions as every other EXHALE product, so `examples/exhale_io.py`
+reads it (`load_lower_atmosphere_profile`) with the loader everything else
+uses. The full schema is `docs/input_schema.md` section 2d; the header of the
+shipped example is
+
+```
+# EXHALE lower-atmosphere profile (docs/phase_e_flux_closure_design.md section 2)
+# solution_id 43902c714fe3462149dfe4e5e259553ff3327e405f2a0039176bb5668ee56770
+# source_code analytic
+# source_version examples/17_lower_profile/make_example_profile.py
+# mechanism none (synthetic H2/H/He column, no reaction network)
+# stellar_flux none (no photochemistry was solved)
+# p_match_bar 9.99999999999999955E-07
+# p_top_bar 1.00000000000000002E-08
+# p_deep_bar 1.00000000000000002E-03
+# trial_flux_H 5.00000000000000000E+10
+# trial_flux_He 0.00000000000000000E+00
+# iteration 0
+# reached_steady_state T
+# notes synthetic example column; T(p) prescribed, no climate solution, no cold trap
+# units p[bar] r[R_J] T[K] n_tot[cm^-3] rho[g/cm^3] Kzz[cm^2/s] q_*[-] X_*[El/H nuclei] F_*[g/s]
+# columns: p r T n_tot rho Kzz q_H2 q_H X_He X_C X_N X_O F_H F_He q_H2O
+```
+
+`p_match_bar` is the producer's statement of where the two models meet, and
+EXHALE puts its base there: `T0`, `R0`, `p_base_bar`, `q_h2_base`, `HeH` and
+every `X_<El>` are the profile's columns interpolated at that pressure, through
+the same doors the scalar keys use (`set_element_abundance` for the elements,
+direct assignment for the rest). `n_tot` and `rho` are carried, not imposed:
+the base density is still `n0` of `input.inp`, and the base particle count and
+mass still follow from `T0`, `HeH` and `q_H2` through `comp_ntot_bc` /
+`comp_mass_per_H`. Nothing in `composition.f90` changed.
+
+Interpolation is linear in `log p` — the variable both models solve on; the two
+codes' radius scales are equal only if their hydrostatic integrations agree —
+and is never extrapolated. A target that falls on a level returns that level's
+value bit for bit.
+
+Columns the reader has no consumer for are kept, not dropped, and every column
+is found by name: a producer's element list is ordered differently from run to
+run.
+
+### K_zz stops being a constant
+
+`he_kzz` was one scalar read at three places inside the diffusion operator: the
+diffusive time scale that sets the relaxation step, the binary operator's
+gradient-plus-eddy face coefficient, and the trace-metal kernel's `D + K`.
+`docs/eddy_diffusion_kzz.tex` and `LHS1140b/kzz_decision.md` had already
+recorded why a constant is the wrong shape — the molecular coefficient rises by
+nearly five decades between the base and 1.2 R_p, and the homopause, the one
+consequential thing K_zz does, is where `K_zz = D`, a property of two profiles.
+
+The operator now reads `kzz_cell(1-Ng:N+Ng)`, filled once by
+`eddy_diffusion_on_grid` after `define_grid`: from the profile's `Kzz` column
+interpolated onto the grid when one is given, and from the scalar `he_kzz` in
+every cell otherwise. The two face sites take `0.5*(kzz_cell(j)+kzz_cell(j+1))`,
+matching how `Df` and `Gf` are already face-averaged beside them.
+
+`he_kzz` and its key `He_Kzz` keep their names: the constant is what a run
+states when it has no profile. With a profile in use the key is inert and a
+warning says so.
+
+### The scalar file is no longer a second source
+
+With a profile in use, every `base.inp` key of the EOS-boundary,
+elemental-reservoir and boundary-constraint categories is refused with an
+`error stop` naming the key and its category; provenance comments and
+diagnostic keys are unchanged. This removes the same-solution problem by
+construction for those keys instead of checking it.
+
+What is left to check is the pair as a whole, and it is now a refusal rather
+than the message it used to be: a `base.inp` beside a profile must carry a
+`# solution_id <hash>` comment, and it must equal the profile's. Either
+condition failing stops the run with both ids printed.
+
+### What the run records
+
+`EXHALE_resolved.out` gains `lower_profile_present` and, with a profile in
+use, the file name, `solution_id`, source and version, `p_match_bar`,
+`p_top_bar`, the trial fluxes, the iteration index and whether the profile is
+iterable at all (a hand-written profile with no `iteration` index runs; it
+just cannot be driven by the closure loop). It is written on the direct steady
+route (`EXHALE_PTC=1`) as well now, which it was not before — `element_budget.py`
+and the closure both read it, and every LHS 1140 b case uses that route.
+
+`write_element_flux_profile` gained the hydrogen element,
+`F_H = 4 pi r^2 (rho (1-X) v - J)`, on the same faces and from the same `X` and
+`J` the step used, so `F_H + F_He` is the face mass flux identically. The file
+moved from `./diffusion_faceflux.txt` to `./output/element_flux_profile.txt`,
+with the other products, and is written unconditionally when a profile is in
+use rather than only under `EXHALE_DIFFUSION_CHECK=1`.
+
+### The overlap window is empty, and that is a finding
+
+Section 3.4 of the design asks for one number per element: the elemental flux
+over the overlap window, as a median and a relative radial spread, measured on
+the escape window `[j_min:N]` intersected with the profile's coverage. That is
+implemented and it works — a run with `Escape radius [R_p]: 1.02` reports
+
+```
+lower_profile_flux_state  measured
+lower_profile_flux_nface  59
+```
+
+— but `j_min` is the first cell with `r >= r_esc`, and `r_esc` is 2 R_p in
+every configuration that carries diffusion, while a profile reaching from the
+microbar match to 1e-8 bar covers about 0.05 R_p above the base. Two decades of
+pressure is a few scale heights, not a radius doubling. On every realistic
+configuration the two intervals do not intersect and the run reports
+
+```
+lower_profile_flux_state  window_empty
+```
+
+which is what section 3.4 requires it to do rather than quote a base-cell
+number. The consequence is for E4, not for E1: the window the closure needs is
+between the base sound-wave region (~1.02 R_p) and the profile top, and its
+lower edge has to be stated as such instead of borrowed from `j_min`. The
+design document now carries this as an open E4 item.
+
+### Tests
+
+| id | what was run | result |
+|---|---|---|
+| T-E1 | `examples/17_lower_profile/lower_atmosphere_profile.dat` read by the Fortran reader (`EXHALE_PARSE_DUMP=1`) and by `exhale_io.load_lower_atmosphere_profile`, then re-emitted | 15 columns carried (including the four the code has no consumer for), re-emission bitwise identical to the file, `max abs` round-trip error 0 over every column. The reader's match values equal the loader's: `T0 = 1.450000000000000E+003`, `R0 = 9.794530965504000E+009` (= 1.401 R_J exactly), `HeH = 8.333333300000000E-002`, `q_h2_base = 1.196136002775885E-001`, `p_base_bar = 1.000000000000000E-006` |
+| T-E2 | `make check`, no `Lower atmosphere profile:` key anywhere | **`==> REGRESSION PASS (all cases byte-identical)`** -- 6/6, 12 file comparisons, goldens untouched |
+| T-E3 | `mol_diffusion` re-run from a scratch copy with `base.inp` deleted, `He_Kzz` removed, and a profile whose `Kzz` column is uniformly `1.0e9`, `EXHALE_MAXSTEPS=12000 OMP_NUM_THREADS=1` | `Hydro_ioniz.txt` and `Ion_species.txt` **byte-identical** to `golden/mol_diffusion`. `K_zz(r) on the grid: 1.000E+09 to 1.000E+09 cm^2/s`; the parse dump differs from the `base.inp` run in exactly one variable, `he_kzz` (0 with the profile, 1e9 from `Kzz_base`), because the operator now reads `kzz_cell` |
+| T-E4 | four refusals and one acceptance, each from a scratch run | `T_base` / `O_H_base` / `Kzz_base` beside a profile stop with the key and its category named; a mismatched `solution_id` stops with both ids printed; a `base.inp` with no `solution_id` stops; a `base.inp` carrying only a matching `solution_id` and diagnostic comments runs |
+| (schema) | six malformed profiles | each refused with its own message: no overlap (`p_top_bar >= p_match_bar`), missing `solution_id`, missing required column, table not strictly decreasing in `p`, `p_match_bar` outside the coverage, a short data row |
+| (unit) | `make diffusion_tests && ./diffusion_tests.x` | 28 passed, 0 failed -- the T7c homopause tests set `he_kzz` and now refill `kzz_cell` through the same routine the code uses |
+
+`make check` was run on the binary built from the state of the tree at the
+time; the edits made after that build are confined to the profile module
+behind its `if (len_trim(lap_file) .eq. 0) return`, to
+`apply_lower_atmosphere_profile` behind `if (.not. lap_in_use) return`, and to
+comments, so none of them is on the path the six cases execute.
+
+### Two things fixed on the way
+
+- The face-flux table's `# columns:` line carried labels with spaces in them
+  (`F_He=4pi r^2 (F_adv+J)[g/s]`), so it could not be split into one token per
+  column the way every other EXHALE product's schema line can. It is now one
+  whitespace-free token per column and the formulas moved to the comment lines
+  above it.
+- `LHS1140b/make_memo_figures.py` and `LHS1140b/exhale/kzz_scan_table.py` read
+  `D_eff` out of that table by fixed position (`usecols=(1, 8)`), which the new
+  `F_H` column would have shifted silently. Both now find the file under either
+  name and the column by name, falling back to position 8 for a table written
+  before the schema line was fixed. Stored run outputs were not regenerated.
+
+---
+
+## 77. Two producers for the profile handoff: the Photochem adapter and its VULCAN cross-check (2026-08-27)
+
+Milestone E2 of `docs/phase_e_flux_closure_design.md`. Section 76 gave EXHALE
+a reader for the lower-atmosphere profile and an example file built by hand;
+what was missing was a producer. E2 supplies two, behind one command line:
+
+- `src/utils/photochem_to_lower_profile.py` — solves a gas-giant
+  photochemistry model to steady state on a prescribed `T(p)`, `K_zz(p)`
+  column and writes the handoff. This is the production path.
+- `src/utils/vulcan_to_lower_profile.py` — the same schema and the same
+  fingerprint from a finished VULCAN `.vul` output. This is the cross-check
+  arm, not a second production path: VULCAN has no climate model, so it can
+  never be the route away from a prescribed `T(p)`
+  (`docs/vulcan_photochem_comparison.md` P1.7).
+- `src/utils/lower_profile_schema.py` — everything that is a property of the
+  FORMAT rather than of either chemistry code: the shared command line, the
+  elemental accounting, the hydrostatic radius, the level insertion that puts
+  an exact node at the matching pressure, the `solution_id` and the two files
+  that carry it. It exists so the two adapters cannot drift apart; a schema
+  written twice is a schema that will be written differently twice.
+
+The scalar generator `src/utils/vulcan_to_base.py` stays. It writes the
+single-level `base.inp` special case that four regression cases pin, and the
+two must not be read into the same run: with a profile in use EXHALE refuses
+every scalar physics key beside it (section 76).
+
+### One way, and the file says so
+
+E2 is the one-way milestone. The trial elemental fluxes are recorded in the
+header and in the fingerprint, and they are **not** imposed as an upper
+boundary condition on the chemistry; imposing them, measuring the wind's own
+elemental flux over the overlap and iterating the pair is E4. The `F_H` and
+`F_He` columns therefore carry the stated trial values, and the header `notes`
+line says so in the file itself, so that no reader can mistake a boundary
+value for a measurement:
+
+```
+# notes one-way E2 handoff: F_H and F_He are the STATED trial fluxes, not
+        measured; no climate step, T(p) prescribed.
+```
+
+### What the fingerprint is over
+
+`solution_id` is a sha256 over the lower model's configuration: the source
+code and version, the mechanism and thermodynamic files by their own sha256,
+the stellar flux file by its sha256 and the dilution applied, the prescribed
+`T(p)` file, the planet mass and reference radius, the zenith angle, the
+top-of-atmosphere pressure, the elemental abundance vector, the matching
+pressure and the two trial fluxes. The closure *iteration index* is
+deliberately outside it: two iterations handed the same configuration and the
+same trial fluxes are the same solution, and the fingerprint is what says so.
+The same id is written into the paired `base.inp`, which carries **no physics
+key at all** — the provenance comment is its whole content, and any scalar
+key in it would stop the run by design.
+
+### Elemental accounting, and the trap that makes it a rule
+
+Element columns are El/H **nuclei** ratios summed over every carrier, the
+lesson `vulcan_to_base.py` already records: photochemistry moves nuclei
+between molecules without creating or destroying them, so the nuclei ratio is
+the conserved quantity the wind inherits and the only one `melem_ab` can hold.
+
+How the carriers are counted differs by code, and it has to. VULCAN labels are
+formulas once the ionization sign and the excited-state suffix are stripped
+(`H3+`, `CH2_1`), so they are parsed. Photochem labels are **not**: `O1D` and
+`N2D` are excited states, and a formula parser reads them as an oxygen with a
+deuterium attached. The Photochem arm therefore takes the composition from the
+model's own matrix (`dat.species_composition`), indexed by name against
+`dat.atoms_names` — which is also the trap P1.8 item 4 records, since that
+atom order changes from run to run. Condensed carriers are excluded by
+default: the gas EXHALE's base inherits is the gas phase, and the difference
+between the two sums is the cold trap, which is E3's subject.
+
+The adapter's own conservation check (design section 4.2) is stated at the
+deepest level, because that is the only level where the elemental ratios are
+still the input ones — transport and the upper boundary move nuclei with
+height, which is the whole point of the closure. The design proposed a
+tolerance of 1e-10. Measured on HD 209458 b, the departure is **1.6e-7** with
+the Zahnle H/He/N/O/C set and **2.7e-5** with the VULCAN NCHO network
+converted through `vulcan2yaml`, i.e. chemistry-solver noise and not a
+miscount, so the default is 1e-4: loose enough not to refuse a converged
+solution, tight enough that a miscounted carrier (an O(1) or percent-level
+error) is still caught. The measured worst departure is printed on every run.
+
+### The radius column
+
+`r` is the adapter's own hydrostatic integration from a stated reference level
+(`--r-ref` at `--p-ref`, 1 bar by default, the transit-radius convention),
+RK4 in `ln p` with radius-dependent gravity, refined 64x per level so the
+answer does not depend on how the chemistry code spaced its grid. The mean
+molecular weight enters as `mu * m_amu`, the mass of a particle of `mu`
+atomic mass units.
+
+### Trap 1 was met and is handled the way P1 handles it
+
+`gasgiants` requires `3*TOA_pressure_avg < P_climate_top`. On the HD 209458 b
+column the supplied `T(p)` stops at 2.152e-2 dyn/cm^2 while the requested TOA
+was 1e-2, so the requirement fails on the file as given. The adapter keeps the
+stated TOA and cuts the climate column back to `3.05*TOA`, which is what
+`read_climate` does in `docs/p1_matched_comparison.py`; the alternative --
+silently lowering the TOA to fit the file — was tried first and rejected,
+because it changes a stated input without saying so. Trap 2 (the
+thermodynamic data capping the temperature) is handled by **truncating** the
+column from the top down, never by clipping `T`, because a clipped `T(p)` is a
+profile nobody solved; the truncation is recorded in `notes`, and if it falls
+below `p_match_bar` the run is refused. HD 209458 b needed no truncation: its
+5891 K top was accepted.
+
+### Failure policy
+
+No profile is written when the handoff would not be one. `reached_steady_state
+= False` or `gave_up = True`, a temperature truncation that reaches below the
+match, a climate cut that leaves fewer than ten levels, `p_top_bar >=
+p_match_bar`, a matching pressure outside the table, fewer than two levels
+after the requested window, and the elemental conservation check are all
+refusals that print the reason and write nothing.
+
+### Measurements
+
+HD 209458 b, the P1 configuration (`M_p = 0.720 M_J`, `r(1 bar) = 1.36 R_J`,
+`R_star = 1.155 R_sun`, `a = 0.0480 AU`, Gueymard solar spectrum diluted,
+zenith 48 deg, TOA 1e-2 dyn/cm^2, VULCAN's own `atm_HD209_Kzz.txt` as the
+prescribed `T(p)`, `K_zz(p)`), matching level 1 microbar. Both Photochem arms
+reached steady state; the VULCAN arm is its stored HD209 output.
+
+| at `p_match = 1e-6` bar | VULCAN / NCHO | Photochem / NCHO | Photochem / Zahnle H,He,N,O,C | PC/VUL, same network |
+|---|---|---|---|---|
+| `T` [K] | 2332.25 | 2332.28 | 2332.43 | 1.0000 |
+| `r` [R_J] | 1.495029 | 1.494127 | 1.494022 | 0.9994 |
+| `n_tot` [cm^-3] | 3.1098e12 | 3.1095e12 | 3.1124e12 | 0.9999 |
+| `rho` [g cm^-3] | 9.4403e-12 | 9.6497e-12 | 9.7202e-12 | 1.0222 |
+| `Kzz` [cm^2 s^-1] | 5.000e11 | 5.000e11 | 5.000e11 | 1.0000 |
+| `q_H2` | 0.42366 | 0.45363 | 0.46266 | 1.0707 |
+| `q_H` | 0.44987 | 0.41710 | 0.40726 | 0.9271 |
+| `X_He` | 9.6915e-2 | 9.6912e-2 | 9.6912e-2 | 1.0000 |
+| `X_C` | 2.7745e-4 | 2.7754e-4 | 2.7754e-4 | 1.0003 |
+| `X_N` | 8.1809e-5 | 8.1831e-5 | 8.1828e-5 | 1.0003 |
+| `X_O` | 5.0329e-4 | 6.0608e-4 | 6.0608e-4 | 1.2042 |
+| `q_H2O` | 2.2073e-4 | 3.4312e-4 | 3.5306e-4 | 1.5545 |
+
+The matched-network hydrogen ratio is `q_H(VULCAN)/q_H(Photochem) = 1.079`,
+which reproduces the **1.08** P1 measured for the code factor on this planet's
+2331 K base (`docs/vulcan_photochem_comparison.md` P1.7) — the adapters carry
+the same disagreement the direct comparison found, and add none of their own.
+`T`, `n_tot` and the two element ratios the codes were given identically agree
+to 1e-4 or better.
+
+`X_O` and `q_H2O` differ by 1.20x and 1.55x for a reason that is not a code
+difference: the stored VULCAN HD209 run was configured with `O/H = 5.03e-4`,
+against the Lodders 2009 `6.06e-4` the Photochem arms were given. That is a
+difference of input, and it is what the `X_<El>` columns are for — it would
+have been invisible in a comparison of molecular mixing ratios alone.
+
+### Fingerprint round trip
+
+| test | result |
+|---|---|
+| the same input twice, VULCAN arm | same `solution_id` (`4f80f048...`), and the profile files are **byte-identical** |
+| the same input twice, Photochem arm (two full chemistry solves) | same `solution_id` (`f6232692...`), and the profile files are **byte-identical**: the chemistry solve reproduces, so the fingerprint and the table agree |
+| `--trial-flux-H 5e10` instead of 0 | `0a4d2051...`, different |
+| `--p-match 2e-6` instead of 1e-6 | `ceed0b58...`, different |
+| `--iteration 3` instead of 0 | unchanged, by design: the iteration index is bookkeeping, not configuration |
+| the paired `base.inp` | carries the same id as the profile, and no physics key |
+
+### EXHALE reads what the adapter wrote
+
+A scratch case built the way `examples/17_lower_profile/` is (the same
+`input.inp`, the Photochem HD 209458 b profile and its paired `base.inp` in
+place of the synthetic ones), run single-threaded with
+`EXHALE_PARSE_DUMP=1` and then with `EXHALE_MAXSTEPS=20`:
+
+```
+(lower_atmosphere_profile) Reading lower_atmosphere_profile.dat ..
+   base.inp: solution_id matches the profile.
+   profile: T0 ->    2332.4 K          profile: q_H2(base) ->  0.46266
+   profile: R0 ->   1.4940 R_J         profile: He/H ->  0.09691
+   profile: p_base ->  1.00E-06 bar    profile: C/H ->  2.775E-04
+   profile: source photochem, closure iteration 0
+(lower_atmosphere_profile) K_zz(r) on the grid:  5.000E+11 to  5.000E+11 cm^2/s
+```
+
+Every echoed value is the profile's own number at the matching level
+(`T = 2332.43 K`, `r = 1.494022 R_J`, `q_H2 = 4.626610e-1`,
+`X_He = 9.691225e-2`, `X_C = 2.775366e-4`), and `EXHALE_resolved.out` carries
+the provenance: `lower_profile_solution_id f6232692...`, `source_code
+photochem`, `p_top_bar 7.44e-9`, `iterable T`, `steady T`. The paired
+`base.inp` — provenance comments only — was accepted, and the id check passed
+rather than being skipped.
+
+The run itself is a 20-step relaxation snapshot and its `Mdot` is not a
+result. One thing it does show: `lower_profile_flux_state window_empty`, the
+same finding E1 recorded — with `Escape radius [R_p]: 2.00` the escape window
+`[j_min:N]` and the profile's coverage do not intersect, so the elemental flux
+has no window to be measured on. That is the open item E4 inherits, restated
+here on a real photochemical profile rather than a synthetic one.
+
+### What is not done
+
+The LHS 1140 b application and T-E8 (`element_budget.py` closing on a profile
+run) are E2's stated gate and neither is done here; the adapters were
+exercised on HD 209458 b because that is where P1's measurement exists to
+check them against. The climate step, the tropopause and the cold-trap water
+are E3, and the flux closure is E4.
+
+---
+
+## 78. The climate step, the cold trap, and LHS 1140 b through the profile (2026-08-27)
+
+Milestone E3 of `docs/phase_e_flux_closure_design.md`, and with it the two
+gates E2 left open: the LHS 1140 b application and T-E8.
+
+Until now the handoff's `T(p)` was an input. `--climate` makes it a solution:
+
+```
+/home/kiseon/.conda/envs/photochem_cmp/bin/python \
+    src/utils/photochem_to_lower_profile.py LHS1140b/lower_profile \
+    --mp 0.0176220 --r-ref 0.157692 --p-match 1e-6 --kzz-const 1.0e9 \
+    --stellar-flux LHS1140b/sed/lhs1140_sed_gj1132_at_b.txt \
+    --flux-at-planet --wavelength-unit A \
+    --atoms H,He,N,O,C --abundances He=2.09 \
+    --climate --climate-p-deep 20.0 --toa 1.0e-2 --boa-pressure-factor 1.0
+```
+
+`src/utils/radiative_convective_column.py` is the new module: Photochem's
+`clima` (`AdiabatClimate`) with `solve_for_T_trop` on, so the stratospheric
+temperature is the skin temperature of the solution and not a number chosen
+for it, and with the background gas picked by abundance rather than by name —
+which is what lets one code path cover both a hydrogen atmosphere and the
+helium-rich one the LHS 1140 b line implies. The elemental vector is
+partitioned into the carriers a cool H/He atmosphere holds in equilibrium (O
+in H2O, C in CH4, N in N2, He atomic, the rest H2) with the validity range
+written at the code and a refusal above 1000 K, because that partition is the
+equilibrium one only below the CO/CH4 and N2/NH3 transitions. Nothing
+downstream inherits it: the photochemistry computes its own composition from
+the same elemental vector.
+
+### What the codes actually do about condensation, measured
+
+The design proposed enabling the mechanism's H2O particle and setting rainout
+to the tropopause. Both halves turned out wrong for a gas giant, in opposite
+directions, and both were measured rather than assumed:
+
+- the H2O particle needs no enabling. The Zahnle set restricted to
+  H/He/N/O/C already carries `H2Oaer`, and asking for
+  `water-condensation: true` is **refused** — *"Either
+  "fix-water-in-troposphere" or "water-condensation" is turned on in the
+  settings file, but the reaction mechanism already implements H2O
+  condensation via a particle."* The cold trap is applied by the chemistry
+  solver already; the settings switch must stay `false`.
+- rainout is a surface process: `gas-rainout: true` is refused for want of a
+  `rainfall-rate`, and a gas-giant model has no surface for rain to fall to.
+  It is not how a hydrogen or helium atmosphere traps its water.
+
+Section 5 of the design now records this correction beside the procedure.
+
+### The tropopause is solid, its pressure is not
+
+Scanned over the one free parameter of the climate solve, its deep boundary:
+
+| deep boundary [bar] | `T_deep` [K] | `P_trop` [bar] | `T_trop` [K] | `f_H2O` above the tropopause |
+|---|---|---|---|---|
+| 1 | 242.4 | 0.488 | 186.0 | 3.33e-7 |
+| 3 | 308.5 | 0.765 | 185.8 | 2.06e-7 |
+| 10 | 439.9 | 0.974 | 185.4 | 1.49e-7 |
+| 20 | 555.9 | 1.031 | 185.0 | 1.32e-7 |
+| 30, 50 | refused: the pseudoadiabat leaves the thermodynamic data | | | |
+
+`T_trop` moves by 1 K over a factor of 20 in the deep boundary, against the
+skin temperature `T_eq/2^(1/4) = 190 K`. `P_trop` moves by a factor of two,
+and the trapped water moves with it, since at fixed `T_trop` the trapped
+mixing ratio is `p_sat(T_trop)/P_trop`.
+
+**Against Cherubim et al. (2026).** Their closed-form estimate is `f_H2O ~ 7
+ppm` at a 0.1 bar tropopause with `T_skin = 194 K`. The climate solution gives
+**0.13–0.33 ppm at a tropopause of 0.5–1.0 bar** — a factor 20–50 less water
+at a tropopause 5–10x deeper. The saturation physics agrees; what differs is
+where the tropopause is put, and ours is a solved level in a helium-dominated
+column (`mu = 3.6` at `He/H = 2.09`) rather than an assumed one. Reported as a
+result about the climate model, not tuned toward the published number.
+
+### What the trap does to the handoff
+
+Gas-phase oxygen falls from `O/H = 6.062e-4` at the deep boundary to
+**4.957e-7** at the matching level, a factor of 1223, while `C/H`, `N/H` and
+`He/H` cross the tropopause unchanged: CH4 and N2 do not condense at 185 K.
+The profile now always computes the elemental sums twice, over the gas phase
+and over every carrier including the condensates, and carries both in the
+header `notes` — at the match the two coincide, because the condensate is left
+behind at the tropopause. In this handoff the cold trap shows as a depletion
+with height, not as a condensed reservoir sitting at the base.
+
+The 20 bar deep boundary is not a physical choice: it is the shallowest one at
+which the photochemical model bottom fits inside the climate column. On an
+atmosphere this cold the chemistry never equilibrates within any column
+`clima` can reach, so `determine_quench_levels` returns the deepest level of
+the grid and Photochem's default `BOA_pressure_factor = 5` then asks for a
+bottom five times deeper than the column it was handed.
+`--boa-pressure-factor` exposes it and the adapter's refusal text names it.
+
+The prescribed-column path of E2 is unchanged where it matters: re-run on the
+HD 209458 b configuration of section 77 it reproduces that section's numbers
+exactly (`T = 2332.43 K`, `r = 1.494022 R_J`, `q_H2 = 4.626610e-1`,
+`X_He = 9.691225e-2`). Its `solution_id` does change, because
+`boa_pressure_factor` is now part of the configuration the fingerprint is
+over, which is the fingerprint doing its job: a profile made with a different
+model bottom is a different solution. Files already on disk are untouched.
+
+### LHS 1140 b through the profile: it converges, and T-E8 closes
+
+`LHS1140b/lower_profile/lower_atmosphere_profile.dat` (102 levels, 16.73 bar
+to 1.10e-8 bar, `solution_id 51302c76...`) drives a direct-steady JFNK run,
+seeded from `exhale/heh2_diff_kzz1e9`, to `info = 0` with the element-
+diffusion outer loop converged (composition drift 9.1e-4 at pass 8). What the
+reader put in agrees digit for digit with what the file says at the match, and
+`EXHALE_resolved.out` carries it:
+
+```
+planet_radius_RJ           1.623994484710662E-001
+equilibrium_temperature_K  1.850492232658783E+002
+HeH_number_ratio           2.092134697681555E+000
+abundance_C                2.777529772010253E-004
+abundance_O                4.956907073555432E-007
+abundance_N                8.187442081270519E-005
+lower_profile_solution_id  51302c7647a319bdfbd142d3b4bf0a367b25d2dc07e2675c8da3cd430dc63177
+```
+
+`lower_profile_notes` is now echoed there too, so the climate record — deep
+boundary, tropopause, cold-trap water, both elemental sums — travels with the
+run and not only with the file (`lap_notes` widened to 1000 characters to hold
+it).
+
+**T-E8.** `src/utils/element_budget.py` closes on every element the profile
+carries: `C 1.44e-14`, `N 1.47e-14`, `O 1.45e-14`, against a `1e-8` tolerance,
+and on H (`0.0`) and He (`2.1e-16`) at the base. *All element budgets close
+within 1.0e-8.*
+
+The H and He rows needed a fix in the checker, not in the run. With
+`He_diffusion` on, He/H is a *solved profile* — 2.0921 at the base, 1.206 at
+1.15 R_p, 0.167 at 30 R_p — and the resolved `HeH_number_ratio` is the
+reservoir the base is held at, not a column invariant. The tool was testing it
+cell by cell and calling the separation the operator exists to produce a
+failure. `EXHALE_resolved.out` now states `he_diffusion`, and with it on the H
+and He rows are checked at the base cell, with the solved separation printed
+beside them. The trace elements are unaffected and stay column-wide: nothing
+diffuses them.
+
+The Fortran side of E3 is two writes and one string length — `lap_notes`
+widened to 1000 characters, echoed into `EXHALE_resolved.out`, and
+`he_diffusion` stated there — none of which any solver reads. `make check` is
+**6/6 byte-identical**, goldens untouched.
+
+### Profile route against the scalar base, and where the difference lives
+
+Beside `exhale/heh2p13_diff_kzz1e9`, the converged scalar-base case at the
+same eddy coefficient. Every row below is a JFNK `info = 0` run finished the
+same way, `red` being the He 10830 red-pair depth from
+`he_line_metrics.py`:
+
+| case | what it adds | log10 Mdot | red |
+|---|---|---|---|
+| `heh2p13_diff_kzz1e9` | scalar base, `He/H = 2.13`, `T0 = 226 K` | 7.80 | 4.396 |
+| control A | `HeH_base = 2.0921` | 7.81 | 4.393 |
+| control B | + `T_base = 185.05 K` | 7.81 | 4.389 |
+| control C | + `r_base = 0.162399`, `q_H2_base = 0.19265` | 7.86 | 4.985 |
+| control D | + `C/N/O_H_base` from the profile | **7.46** | **1.517** |
+| profile route | the profile itself | **7.46** | **1.517** |
+
+Two things fall out. Control D and the profile route agree to every digit
+printed, which is the consistency statement the single-source rule of section
+2.4 is supposed to buy: handed the same base state, the two routes are the
+same run. And the difference from the scalar LHS 1140 b case is **not** the
+base temperature — dropping `T0` from 226 K to the solved 185.05 K moves
+`log10 Mdot` by less than 0.01 dex — but the **elemental carbon, nitrogen and
+oxygen the profile brings with it**, which the scalar runs never had: −0.40
+dex in `Mdot` and a 3.3x shallower helium line, metal-line cooling of a
+185 K base at `C/H = 2.8e-4`. `p_base` is 1 microbar on both sides and is not
+a candidate.
+
+### What is not done
+
+`lower_profile_flux_state window_empty` again: with `Escape radius [R_p]:
+2.00` the escape window and the profile's coverage do not intersect, so T-E5
+still has no window to be measured on. That is E4's, together with the flux
+iteration itself. The composition here remains an input (`He/H = 2.09`, the
+diffusion-limit crossing of `LHS1140b/kzz_decision.md` section 6), not yet an
+output.
+
+### Beside it: a particle is not a hydrogen atom (`vulcan_to_base.py`)
+
+Unrelated to E3 and found while reading the hydrostatic integrations.
+`src/utils/vulcan_to_base.py` integrated `dr/dln p = -kT/(mu m_H g)` with the
+hydrogen ATOM mass, while its `mu_profile` is a mean molecular weight in
+**amu**, built from VULCAN's own species masses (H2 = 2.016, He = 4.003,
+H2O = 18.02). The mass of one particle is `mu * m_amu`; using `m_H` makes
+every particle 0.8% heavier and the scale height 0.8% shorter. Measured on the
+HD 209458 b VULCAN output, `r_base` moves from 1.49388 to **1.49504 R_J** —
+0.078% of the planet radius, 0.86% of the column above 1 bar, which is the
+0.8% arriving where it should. Fixed; `lower_profile_schema.py` already used
+`m_amu` and recorded the discrepancy rather than copying it.
+
+The pinned `base.inp` of the regression cases were deliberately **not**
+regenerated: they are frozen inputs, and the generator's fix does not
+retroactively change a run that was made with the old file.
+
+`run_lower.py` and `lower_column.f90` multiply the same `m_H` by a mean
+molecular weight built from integer mass numbers (`mass = 1 + 4 f_He`), where
+`m_H = 1.008 amu` is the better of the two constants for the H2 that dominates
+that mixture. They are left alone; the mixed convention is noted here so the
+next reader does not "fix" them into being worse.
+
+## 79. The elemental-flux closure: the composition becomes an output (2026-08-27)
+
+Milestone E4 of `docs/phase_e_flux_closure_design.md`, and with it the last
+three of Phase E's tests, T-E5 through T-E7.
+
+Until now the lower model was told what to do and never heard back. E2 and E3
+carried `trial_flux_H` and `trial_flux_He` in the profile header but only as
+statements: nothing imposed them on the chemistry, so the handoff was one-way
+and `He/H` was still an input the wind reproduced. E4 closes the loop in both
+directions.
+
+### The trial flux now reaches the chemistry
+
+`photochem_to_lower_profile.py` imposes each element's trial flux at the
+photochemical model top with `set_upper_bc(species, 'flux', flux=...)`, the
+elemental flux converted at the model's own top radius,
+
+```
+phi_El [nuclei/cm^2/s] = Phi_El [g/s] / m_El / (4 pi r_top^2)
+```
+
+and placed on the dominant carrier: helium on `He`, hydrogen on `H2` at
+`phi_H/2`, two nuclei to the molecule. The dominant-carrier step is measured
+rather than assumed — the atomic-H share of the hydrogen nuclei at the model
+top is 1.0e-4 in the converged LHS 1140 b solution — and the adapter refuses
+a solution in which that share has risen past 1 per cent, because the flux
+would then have been put on the wrong carrier. The sign convention was read
+off Photochem's own right-hand side (`photochem_evoatmosphere_rhs.f90`,
+`rhs(k) = ... - var%upper_flux/dz`): positive is a loss at the model top,
+which is this code's outward. A zero trial flux does not call `set_upper_bc`
+at all, so E2's and E3's one-way profiles stay reproducible; that was checked
+by reproducing `solution_id 51302c76...` bitwise.
+
+That the condition takes is checked every iteration instead of trusted. The
+adapter measures the model's own top-of-atmosphere elemental fluxes with
+`gas_fluxes()` and writes them into the header as `measured_flux_H` and
+`measured_flux_He`. On the reference arm the imposed 1.800000e7 g/s comes
+back as 1.800162e7 g/s, a departure of 9e-5; the closed-top solution's own
+numerical floor is 3.0 g/s in hydrogen and 18.2 g/s in helium, seven decades
+below.
+
+`--p-top-bar` states the shallowest level to carry directly in bar, and
+refuses a top at or above `p_match_bar` (no overlap) or a simultaneous
+`--toa`, which would be the same level said twice in two units.
+
+### The window the closure is measured on, and why the obvious one fails
+
+E1 left an open item: the escape window `[j_min:N]` and the profile's
+coverage never intersect, so `lower_profile_flux_state` was `window_empty` on
+every configuration. E4 replaced the single window with two, and the choice
+between them is a measurement.
+
+**The overlap window** is the interval both models describe. Its upper edge
+is `r(p_top)`; its lower edge is now measured — the first face at which the
+5-face moving spread of `r^2 rho v` falls below 10 per cent, which is where
+the standing base sound wave stops dominating — with a 1.02 R_p fallback that
+`lower_profile_flux_r_lo_source` reports when no face qualifies. Both edges,
+the face count and the reduction go into `EXHALE_resolved.out`.
+
+**On LHS 1140 b that window cannot carry the closure, and extending the
+profile is not the fix.** Where it is empty it misses by 1.6e-4 R_p
+(`r_lo = 1.009 9998`, `r_hi = 1.009 840`); where it is not empty it holds
+12-18 faces between 1.007 and 1.0098 R_p and the flux across them has a
+radial spread of **13 in F_H and 35 in F_He**, with a median of 1.4-1.8e8 g/s
+against the 3.16e7 g/s the wind actually removes. The reason is geometric:
+from the match to the profile top the column covers 1.96 decades of pressure
+in 0.0098 R_p, about 0.005 R_p per decade, while the wind is still 6x above
+its far-field flux at 1.05 R_p and does not settle within 10 per cent until
+~1.5 R_p. Reaching 1.5 R_p on that scale would ask the photochemical column
+for of order 100 further decades of pressure. Mapping `p_top` through
+EXHALE's own `r(p)` rather than the profile's — the two hydrostatic scales
+differ, the wind being hot where the cold column is not — moves the upper
+edge to 1.0734 R_p and makes the window non-empty, but its spread is then 5.6
+to 7.3. Both mappings say the same thing: the interval the two models share
+lies wholly inside the region where the wind's mass flux is not yet its own.
+
+**The steady-flux window**, `r >= r_esc`, is what the closure uses. At a
+steady state the elemental flux `4 pi r^2 (rho X v + J)` does not depend on
+radius, so a flux measured there *is* the flux through the matching level;
+that identity, and not convenience, is what makes it a statement about the
+handoff. On the reference arm it holds 191 faces and gives
+`F_H = 1.8143e7 g/s`, `F_He = 1.3204e7 g/s` with radial spreads of 0.44 and
+0.46 per cent, flat to the same tolerance as the mass flux itself (0.45 per
+cent). That is T-E5, met in the window where it can be met. The driver reads
+the overlap window first every iteration and substitutes the steady one only
+with the reason written into `closure.log` and the window named in the
+history table; it never substitutes silently.
+
+The spread depends on how far the wind was converged, and that was measured
+rather than assumed: at `Resid tol: 1.0e-3`, the value `finish_case.sh` uses,
+the same solution's steady-window spread is **7.4 per cent** (F_H 7.1, F_He
+7.9) and would fail the closure's own validity test; continuing the same
+solution to `1.0e-4` brings it to **0.50 per cent** and moves `log10 Mdot`
+from 7.47 to 7.50. The 7 per cent was under-convergence, not a floor, and the
+closure runs the wind at `1.0e-4`.
+
+### The driver
+
+`src/utils/element_flux_closure.py` owns the loop and nothing else. Damped
+Picard on both elements with `omega = 0.5`, halved to a floor of 0.125 on any
+iteration whose residual fails to fall, the convergence test reading the
+**undamped** residual `|F_measured - Phi_trial| / |F_measured|`, `tol = 0.05`
+and `k_max = 8`. Both hydrogen and helium are iterated: holding helium at
+zero, as the design first proposed, would leave the H:He partition — the
+whole question on this planet — as a diagnostic rather than a condition.
+
+Section 6.2's validity rule is a statement about the *window*, not the
+iterate: a window whose spread exceeds `tol` cannot decide a residual at
+`tol` whatever that residual is, so `spread > tol` stops the run as
+UNRESOLVED with both spreads printed, every iteration and independently of
+how far the iterate is.
+
+Everything that belongs to the planet rather than the iteration lives in one
+JSON configuration (`--print-config-template`), so the driver carries no
+planet constants; `LHS1140b/exhale/flux_closure/lhs1140b_closure.json` is the
+LHS 1140 b one. `closure_history.txt` carries one row per iteration with both
+trial and measured fluxes, both residuals, `omega`, the window used and its
+spreads, `He/H` at the match, `log10 Mdot`, the EXHALE `info`, and the
+profile's `solution_id` — the fingerprint chain, so the sequence is auditable
+after the fact. `--resume` continues from the last completed iteration and
+`--dry-run` exercises the reader against an existing run directory.
+
+Two departures from `finish_case.sh`, both measured. `Resid tol: 1.0e-4`, for
+the reason above. And the post-processing pass runs **without** the
+`EXHALE_PTC*` variables: `finish_case.sh` sets them inline on the JFNK
+command alone, and carried into the second pass they make the binary re-enter
+the steady solver and stop before writing the advection-corrected profiles,
+so `*_adv.txt` and the mass-loss rate never appear. The first LHS 1140 b
+closure run reported `log10 Mdot = nan` and that is what it was.
+
+### LHS 1140 b, closed
+
+Three arms, from `Phi_ref` = (1.8e7, 1.3e7) g/s in (H, He) and from `0.3 x`
+and `3 x` that, all seeded from the same converged wind, all with
+`He/H = 2.09` as the *starting* reservoir.
+
+| start | k | `F_H` [g/s] | `F_He` [g/s] | `He/H` at the match | `log10 Mdot` | He 10830 red depth [%] | EW [mA] |
+|---|---|---|---|---|---|---|---|
+| `1.0 x` | 0 | 1.81433e7 | 1.32040e7 | 2.0923516 | 7.500 | 1.699 | 4.743 |
+| `0.3 x` | 5 | 1.82031e7 | 1.34266e7 | 2.0923486 | 7.500 | 1.721 | 4.804 |
+| `3.0 x` | 6 | 1.82119e7 | 1.34710e7 | 2.0923602 | 7.500 | 1.725 | 4.818 |
+
+The three converged `He/H` agree to 5.5e-6, `log10 Mdot` to better than the
+0.005 the log prints, `F_H` to 3.8e-3 and `F_He` to 2.0e-2 — all far inside
+the 5 per cent criterion, so **T-E7 passes and the closure is single-valued
+on this planet.** `omega` never halved in any arm: the residual fell on every
+iteration, so the map is a plain contraction here and the damping rule was
+not exercised. The iteration counts are exactly what a contraction at
+`omega = 0.5` predicts, the residual halving each step, which also says the
+3x arm used six of its eight allowed iterations with no margin: a start
+further than an order of magnitude out would need a larger `k_max` or a
+secant acceleration.
+
+**The result to read, though, is what the closure returns.** `He/H` at the
+match comes back at 2.09235 against the 2.09 the reservoir was started from —
+a change of 1.1e-3, and only 2e-4 of that from the escape flux itself. The
+composition is now an output, and on this planet the output is the
+*well-mixed* value: at `K_zz = 1e9 cm^2/s` eddy mixing homogenizes the column
+all the way to 1 microbar, so a 1.8e7 g/s hydrogen escape imposed at the
+model top moves the matching-level `He/H` by 2e-4 while moving it by 1.8e-2
+at the model top itself. It is the eddy coefficient, not the escape flux,
+that sets the composition at the match. That is a result about this
+configuration and not a general one, and it makes `LHS1140b/kzz_decision.md`
+section 0's adopted `K_zz` the quantity the answer now rests on.
+
+Above the match the wind fractionates strongly, as it did before: the
+elemental fluxes carry `F_He/F_H = 0.73` by mass against the base reservoir's
+8.31, and `He/H` falls from 2.09 at the base to 0.183 at 30 R_p. The closure
+does not weaken that; it says the separation happens in the wind and not
+below the match.
+
+**The flux budget.** `F_H + F_He` reproduces the mass flux identically —
+exactly, in the two arms whose medians fall on the same face — because the
+binary operator's `X` is the helium mass fraction of the H+He mixture and the
+trace metals ride inside `rho`. So the measured `F_H` is hydrogen *plus*
+metals, overstating elemental hydrogen by the metal mass share, which is
+4.79e-4 here (`mass_per_H = 9.3739 amu`, C/N/O at 2.778e-4, 8.188e-5,
+4.955e-7). That is two decades below `tol` and is stated rather than
+corrected.
+
+### T-E8, and one thing it caught
+
+The element budget closes for helium at the base cell, where the reservoir is
+the boundary condition, to 1.5e-15. Hydrogen, carbon, nitrogen and oxygen
+miss by 5.6e-8, 1.2e-4, 1.2e-4 and 3.3e-4 against the checker's 1e-8, and the
+miss is not noise: **it equals the change in the elemental reservoir between
+the seeding solution and the run.** `load_IC` restores every metal density
+the restart file carries and rebuilds an element from `melem_ab` only when
+the file does not carry it at all (`load_IC.f90:283-334`), so an iteration
+that changes a reservoir keeps the seed's value everywhere above the base and
+`EXHALE_resolved.out` then reports a reservoir the run did not use above the
+base cell. It was seen at full size first: an iteration seeded across a 22 per
+cent change in `O/H` reported exactly 17.8 per cent, which is that change
+expressed on the new reservoir.
+
+This was **not** fixed at the time, because the fix changes restart semantics,
+which is a user-visible behavior and expensive to reverse; it was recorded for
+a decision. Its size on the result reported here is small and measured: the
+closure moves reservoirs by at most 5e-4 between iterations, and the coolant
+that matters here is C I, which carries 94 per cent of the radiated energy and
+is stale by 1.2e-4; oxygen, the worst row at 3.3e-4, carries under 1e-4 of the
+cooling on this planet. The decision was taken and the fix implemented on
+2026-08-27: section 80. The numbers quoted in this section are what the code
+gave **before** it, and are left as they were measured.
+
+### T-E9: not verified, and why
+
+**Not verified: VULCAN did not converge on this cold He-rich column (longdy
+rising 2.65 -> 2.75 against `yconv_cri = 0.01`, `dt` pinned at 1.85e3 s, the
+model clock at 1.42e7 s, limiting cell `nz = 72 and H2O` -- the cold trap --
+exiting on "Maximal allowed steps exceeded (10000)"); stopped 2026-08-27.**
+
+The cross-check arm was built on the production profile's own `T(p)` and
+`K_zz` and never produced a profile, so there is no VULCAN composition at the
+match, no wind run on one, and no cross-code difference to state beside the P1
+spread. `LHS1140b/exhale/flux_closure/vulcan_arm/` holds only an `input.inp`
+and the seeded initial condition; the binary was not launched. The full record,
+including the second run that reached step ~500 of 30000 before being stopped
+and therefore says nothing either way, is
+`LHS1140b/lower_profile_vulcan/vulcan_work/STOPPED.txt`.
+
+Two things found on the way that outlive the attempt. First, a real defect in
+`src/utils/vulcan_to_lower_profile.py`, now fixed: `sch.formula_elements`
+strips the phase suffix, so `H2O_l_s` parsed as a second `H2O` and condensed
+carriers were counted as gas, which made the cold trap invisible in `X_O`
+whatever `--count-condensates` was set to. The gas phase is now selected by the
+`.vul`'s own `atm['gas_indx']`, condensate is excluded from `mu` always as
+VULCAN itself does, and the flag now selects. The Photochem adapter and
+`lower_profile_schema.py` are untouched, so the production arm and its
+`solution_id 5130...` are unaffected. Second, a configuration trap worth
+stating because it silently produces a wrong atmosphere rather than an error:
+`vulcan_cfg.He_H` is NOT read on the FastChem `ini_mix = 'EQ'` path
+(`build_atm.ini_fc` builds the element file from `atom_list` minus H), so
+helium must be in `atom_list` or the run keeps the solar `He 10.9864` and
+integrates at `He/H = 0.097`. The first run did exactly that.
+
+Whether VULCAN can be made to converge here is open. It is not a blocker for
+Phase E: Photochem is the production path precisely because it carries the
+climate model this planet needs, and T-E5 through T-E7 are closed without it.
+
+## 80. A restart onto a reservoir the handoff has moved (2026-08-27)
+
+Section 79 left T-E8 closing for helium and missing for hydrogen, carbon,
+nitrogen and oxygen by 5.6e-8, 1.2e-4, 1.2e-4 and 3.3e-4, and named the cause:
+`load_IC` restores every metal density the restart file carries, so a
+flux-closure iteration that moves an elemental reservoir keeps the seed's value
+everywhere above the base cell while the boundary condition already uses the
+new one. The fix was deferred there because it changes restart semantics, which
+is user-visible. The decision was taken on 2026-08-27; this section is what was
+implemented and what it measures.
+
+### The rule
+
+An element is renormalized as it is loaded if, and only if, the
+lower-atmosphere handoff states its reservoir -- a `<El>_H_base` key of
+`base.inp`, or an elemental ratio of the file named by
+`Lower atmosphere profile:`. For such an element the whole loaded column is
+multiplied by one factor,
+
+```
+r_El = (stated El/H) / (El/H of the loaded state at the base cell),
+```
+
+the same factor for every ionization stage. The normalization moves and
+nothing else does: the ionization split of each cell and the radial shape of
+the loaded profile are preserved exactly, because a factor common to all
+stages and all cells cancels out of every ratio the state is made of. `El/H`
+at the base cell is counted in nuclei -- the element summed over its stages
+against the hydrogen nuclei carried by H I, H II, H2, H2+, H3+ and HeH+ --
+which is the convention of `element_ratio_HeH` and of
+`src/utils/element_budget.py`, so the factor is measured in the same units the
+budget check reads it back in.
+
+Helium is not part of this rule and keeps its own, older convention: the base
+cells are set to the input `He/H`, and with `He_diffusion` on the column above
+keeps the diffused split, because that split is the state being restarted
+rather than a defect of the file.
+
+What decides "the handoff states it" is not a test on the numbers. Both
+readers set an abundance through one routine, `set_element_abundance` in
+`input_read.f90`, and passing through that door is what marks the element in
+the new `melem_from_handoff(n_melem)` of `global_parameters`. An abundance
+that reached the run from `metals.inp` alone never passes through it, so it is
+not marked and its column is loaded untouched. There is no tolerance and no
+`abs(r - 1) > tiny` guard: the branch is entered or it is not, and when it is
+not entered the arithmetic is never performed.
+
+Each rescaled element prints its own line, with the loaded ratio, the stated
+ratio and the factor, so the factor can be compared against the reservoir
+change it is supposed to equal:
+
+```
+ (load_IC) C/H at the base cell: restart file  2.777530E-04, handoff  2.777859E-04; column rescaled by  1.000118E+00
+ (load_IC) O/H at the base cell: restart file  4.956907E-07, handoff  4.955292E-07; column rescaled by  9.996741E-01
+ (load_IC) N/H at the base cell: restart file  8.187442E-05, handoff  8.188411E-05; column rescaled by  1.000118E+00
+```
+
+### What it closes
+
+The test is the last iteration of the LHS 1140 b closure of section 79,
+`LHS1140b/exhale/flux_closure/hi/k06`, re-run from the same seed
+(`k05/output/`) on the same profile, once with the previous binary and once
+with this one. The three factors above are the run's own log. They are the
+measurement, not an illustration: `1.000118` and `0.9996741` are the same
+numbers as the `1.183e-4` and `3.259e-4` the budget was missing by, which is
+what the section 79 diagnosis said they would be.
+
+| element | budget before | budget after |
+|---|---|---|
+| H (against `rho/mass_per_H`) | 5.633e-08 | 1.543e-15 |
+| He | 1.910e-15 | 1.698e-15 |
+| C | 1.183e-04 | 3.688e-14 |
+| N | 1.183e-04 | 3.724e-14 |
+| O | 3.260e-04 | 4.017e-14 |
+
+`element_budget.py` goes from "4 element(s) miss their reservoir by more than
+1.0e-08" to "all element budgets close within 1.0e-08". Hydrogen closes with
+the rest and for the same reason: it is checked against `rho/mass_per_H`, and
+the metal mass a stale reservoir leaves in `rho` is exactly what put it 5.6e-8
+out.
+
+The effect on the physical result is small, as section 79 predicted from the
+size of the reservoir change. The steady mass flux at the top of the domain
+moves by `-2.4e-5` in relative terms (`log10 Mdot = 7.50` either way), and the
+He 10830 line, run through `EXHALE_transit.py` on both solutions, moves by
+`4.7e-5` in relative terms in the red-component depth (1.725492 -> 1.725411)
+and by at most `1.2e-6` in the normalized line profile.
+
+### What is unchanged, checked rather than argued
+
+Two restarts that must not move, both re-run with the two binaries and
+compared bitwise on `output/Hydro_ioniz.txt` and `output/Ion_species.txt`:
+
+- `LHS1140b/exhale/heh0p55` reloaded and advanced one step -- a restart with no
+  handoff of any kind. Identical.
+- `backup/regression/wasp_full` seeded from its own converged output with
+  `Load IC? True` and advanced one step -- a restart that carries a full metal
+  state, from `metals.inp` and not from a handoff, so it exercises the metals
+  block of `load_IC` with every element unmarked. Identical.
+
+The binary the comparison was made against is kept as
+`backup/EXHALE_pre_handoff_restart_rescale.x`.
+
+`make check` is unaffected by construction and by measurement: all seven
+default cases are cold starts (`Load IC? False`), so none of them reaches this
+code at all, and the full matrix -- `wasp_full`, `wasp_he23off`,
+`mol_base_handoff`, `mol_metals`, `mol_lyman_werner`, `mol_diffusion`,
+`lower_profile` -- comes back byte-identical (`==> REGRESSION PASS (all cases
+byte-identical)`, 2026-08-27).
+
+### `r_El = 1` is not an identity, and the reason is worth stating
+
+The gate is the flag, not the value of the factor, and that is deliberate:
+`r_El = 1` does **not** leave the state bitwise where it was. Restarting
+`backup/regression/wasp_full` from its own converged output twice with the
+same binary -- once with the abundances coming from `metals.inp` alone, once
+with a `base.inp` restating those same seven numbers as `<El>_H_base` -- prints
+`1.000000E+00` for every element and still gives a different state after one
+step. The factors are 1 only to about `1e-14`: the seed's base-cell `El/H` is
+what the ionization solver converged to, and it reproduces the reservoir to its
+own tolerance rather than to the last bit. After one step the departure is
+`1.8e-16` in the median and `1.5e-6` at its worst, and the worst cell is
+`O III` at `n = 11 cm^-3` near the base, six orders below that ion's own peak
+in the same column -- the solver's tolerance seen from the other side, not a
+change in the solution.
+
+So the byte-identity claim is exactly the one the flag supports and no wider:
+**an element the handoff does not state, and a restart with no handoff at all,
+never enter the arithmetic**, and those are what were compared bitwise against
+the pre-change binary above. An element the handoff does state is renormalized
+whenever it is loaded, which is the user-visible change of restart semantics
+this section is about.
+
+---
+
+## 81. Is the wind collisional where it is set? A Knudsen diagnostic, and LHS 1140 b's answer (2026-08-27)
+
+Until now the repository had no way to ask whether a converged solution is a
+solution of the physical problem. A hydrodynamic wind is a continuum
+solution, valid only where the gas is collisional on the scale over which
+the flow varies -- above all through the critical point, which is where the
+topology, and with it the mass flux, is fixed. Nothing measured that.
+`src/utils/collisional_validity.py` (new, Python post-processing; it reads an
+existing run directory and changes nothing, and no Fortran source was
+touched) computes it. Definitions, provenance and the full result tables:
+`docs/collisional_validity.md`.
+
+**The collision model is not a new one.** The four momentum-transfer limits
+are the ones the binary element-diffusion operator already uses, in the same
+Chapman-Enskog first approximation: rigid-sphere neutral-neutral (Banks &
+Kockarts 1973), non-resonant ion-neutral with the induced-dipole and
+rigid-core frictions added, and screened Coulomb with the Spitzer
+`ln Lambda` for ion-ion and ion-electron. Python cannot call the Fortran, so
+the four routines are transcribed from
+`src/modules/functions/binary_element_diffusion.f90` with the source line
+cited at each definition and every constant taken from that file rather than
+re-chosen; the two are meant to be read side by side. The step from a
+diffusion coefficient to a collision frequency is the definition of the
+binary coefficient itself,
+`nu_st = n_t k T/(mu_st Dhat_st)` with `Dhat = n D`, in which the total
+carrier density cancels.
+
+Two channels are deliberately missing, and both make the verdict *more*
+conservative by lengthening the mean free path: resonant charge exchange
+(H+ + H, He+ + He), which the element-diffusion operator excludes on the
+grounds that both partners carry the same element, and electron-neutral
+momentum transfer, which no element-transport coefficient needs. The
+electron Knudsen number is therefore quoted only with that caveat, and the
+bulk is built from the heavy particles alone.
+
+**Definitions, all stated.** `lambda_s = vbar_s/nu_s` with the harmonic sum
+over partners; the structure scale `L = min(H_p, L_v, r)` with
+`H_p = |dln p/dr|^-1` measured from the solution and `L_v = |v/(dv/dr)|`
+admitted only above Mach 0.01 (below that it is the distance to a stagnation
+point, and the base sound-wave layer would otherwise drive `Kn` to
+infinity); `Kn_s = lambda_s/L`. The **exobase** is `Kn_bulk = 1`; the
+**critical point** is the sonic point with the code's own sound speed
+(`cs = sqrt(g p/rho)`, `g = 1.666666666667`, `eval_dt.f90:29`,
+`parameters.f90:385`), not a re-definition; the **critical region** runs
+from peak volumetric heating to the sonic point, and "collisional" means
+`max Kn < 0.1` across it. Coupling times `1/nu_s` and the electron-ion
+energy-coupling time are reported against the flow and heating times, with
+the note that they are a *different* test: a strongly subsonic flow gives
+hundreds of collisions per flow time even at `Kn ~ 1`, and it is the Knudsen
+number that decides continuum validity, because the terms the closure drops
+scale with the gradient over a mean free path.
+
+**The result, measured 2026-08-27 on existing outputs.** Three
+representative LHS 1140 b solutions -- `LHS1140b/exhale/heh0p55` (diffusion
+off), `heh2p13_diff_kzz1e9` (diffusion at the adopted `K_zz`), and the
+converged flux closure `flux_closure/hi/k06` -- against the HD 209458 b
+control `backup/phase_d_baseline/new_kzz1e9_d3b`:
+
+| case | critical point | exobase | `Kn = 0.1` at | max Kn, crit. region | verdict |
+|---|---|---|---|---|---|
+| `heh0p55` | none in domain (max Mach 0.540) | 25.22 | 6.42 | 2.2 | unvalidated |
+| `heh2p13_diff_kzz1e9` | none in domain (max Mach 0.565) | 26.66 | 6.79 | 1.9 | unvalidated |
+| `flux_closure/hi/k06` | none in domain (max Mach 0.550) | 19.76 | 5.53 | 3.0 | unvalidated |
+| HD 209458 b `new_kzz1e9_d3b` | 4.085 | above 4.15 | -- | 0.021 | validated |
+
+Radii in `R_p`; the LHS 1140 b domain ends at 30 `R_p`.
+
+**LHS 1140 b's wind never reaches its critical point inside the domain.** It
+is subsonic to 30 `R_p` in all three solutions, so the mass flux is set at
+the outer boundary -- where `Kn_bulk` is already 1.3-2.3. Against the
+p-winds retrieval, which places its isothermal Parker sonic point at 8-9.5
+`R_p`: that radius lies *inside* the exobase computed here (19.8-26.7
+`R_p`), but `Kn_bulk` there is already 0.14-0.30. So the answer is neither
+"the sonic point is outside the exobase" nor "the critical region is
+collisional" -- it is **transitional**. Neutral hydrogen sets the number;
+the ions and electrons are Coulomb-held two to five orders of magnitude more
+tightly. HD 209458 b is the control at a factor of ~100 lower `Kn`, and it
+validates cleanly.
+
+**The kinetic estimate is a scale, not a bound.** Jeans escape through the
+computed exobase (Chamberlain & Hunten 1987 eq. 7.2.5) gives 1.0-2.0e7 g/s,
+a factor about three below the continuum `Mdot` of 10^7.47-10^7.81. But
+`lambda_J(H) = 0.78-1.45` at that exobase: it is barely gravitationally
+bound, the Jeans integral is most of the Maxwellian rather than its tail,
+and the atmosphere is in blow-off, so the number does not bound anything.
+What it does say is that the continuum result is within a factor of a few of
+what a collisionless outer atmosphere at the same density and temperature
+would lose -- the continuum failure is not hiding an order of magnitude. On
+HD 209458 b, `lambda_J = 10.8` and the hydrodynamic rate exceeds Jeans by
+1e4, which is the signature of a driven wind rather than an evaporating one.
+
+The numbers above are read from the advection-corrected profiles, the ones
+the transit tool consumes. Read from the equilibrium pair instead (`--eq`)
+the verdicts are unchanged -- still no critical point in the LHS 1140 b
+domain, still `Kn ~ 1` where the outer boundary sets the flux, still
+collisional through HD 209458 b's critical point -- but the exobase moves
+above 30 `R_p`, because the equilibrium far field is more ionized and
+Coulomb collisions there are far stronger than the neutral ones. An exobase
+radius quoted from this tool has to say which pair it came from.
+
+This closes the plan's baseline row 11 the way that row demanded: an
+uncollisional critical region makes the hydrodynamic `Mdot` **unvalidated,
+not overestimated**, and the tool's `validity_statement` says exactly that,
+with the numbers it rests on. What remains unsettled is the LHS 1140 b rate
+itself, which needs a kinetic or transitional-flow calculation this
+repository does not contain. The He 10830 line-forming layer is not
+implicated: it sits at 1.1-3 `R_p`, where `Kn <= 0.021` in every case.
+
+## 82. The third body was a mass density: a molecular-network audit in the He-dominated limit (2026-08-27)
+
+Phase F of the LHS 1140 b plan asks for an audit of the molecular network
+where it is least tested -- a helium-dominated envelope. R16-R20 and R23,
+the shared H-He charge-exchange path, the two He 2^3S Penning channels, and
+the electron and H-nucleus closures were checked reaction by reaction
+against the publisher PDFs, and the closures were measured on runs spanning
+He/H = 0.079 to 1000. The record, with the full reaction table and the
+numbers quoted below, is `docs/molecular_chemistry_audit_he_rich.md`.
+
+**No rate coefficient was wrong.** All 23 Koskinen et al. (2022) Table-1
+entries are transcribed verbatim and correctly, R16-R20 and R23 included;
+so are the Huang et al. (2023) Table-4 B1/B2 charge-exchange pair, the
+Taylor et al. (2025) He(2^3S)+H fit and the Garcia Munoz (2025)
+He(2^3S)+H2 fit (which reproduces its four tabulated points to 0.13%, remeasured).
+Every one of the eight balance rows of `mol_heh_rows` carries each reaction
+in the rows it belongs to, with the right weight and sign.
+
+**What was wrong was the density handed to the three-body reactions.**
+R12 (H2 + M), R13 (H+ + H2 + M) and R15 (H + H + M) are written as
+two-body coefficients times the third-body density, and the interface that
+carries it, `ion_cell_state%ntot`, says "total particle density". What
+`ionization_equilibrium` actually passed was `n_in_dim` = `rho/m_H`. That
+is a *mass* density in units of m_H -- `calc_rho` weights every species by
+`bsp_mass`, so an H2 molecule contributes 2 and a helium atom 4 -- and it
+over-counts the third bodies by the mean particle mass. At the hot-Uranus
+molecular base the factor is 2.3; in a helium-dominated base it approaches
+4. The error therefore grows along exactly the axis this audit was asked
+to examine. The same `rho/m_H` was also used as the gas pressure of the
+chemical-equilibrium seed that restarts a failed molecular cell, where the
+EOS's own law is `p = (n_tot + n_e) kB T`. Both now use `calc_ntot` (one
+particle per species, electrons excluded) and, for the pressure, that sum
+plus `n_e`.
+
+The consequence is visible where it should be. On the `mol_diffusion`
+configuration re-run at He/H = 1, 10 and 1000 (only `He/H number ratio` and
+the `HeH_base` of the handoff changed, 12000 marching steps,
+`OMP_NUM_THREADS=1`), the He/H = 10 arm no longer aborts on the marching
+loop's NaN detector and completes all 12000 steps, and the number of cells
+whose molecular root leaves the physical simplex and has to be clamped onto
+the element budget falls from 37 to 4 at He/H = 1000 and from 181 to 169 at
+He/H = 10. The He/H = 1 arm still aborts, later (5538 steps against 3402);
+it is not diagnosed here.
+
+**A guard that was not guarding.** The molecular systems close neutral
+helium as `n_He(1 - x2 - x3) - n_HeH+`, but the admissibility test
+`ionization_fractions_physical`, the distance measure
+`element_budget_violation` and the clamp `clamp_fractions_to_element_budget`
+all summed the helium budget as `x2 + x3` (plus the metastable) alone. A
+root with `x2 + x3 = 1` and any HeH+ was accepted although its neutral
+helium is negative. All three now carry the HeH+ nucleus, converted with
+this cell's `n_H/n_He`. Nothing in the measured runs reaches that state --
+HeH+/He stays below 1e-10 at every He/H tested -- so the change moves no
+result; it closes a hole rather than fixing a symptom.
+
+**The closures hold.** With molecules on, charge neutrality
+`n_e = n_H+ + n_H2+ + n_H3+ + n_HeH+ + n_He+ + 2 n_He++` closes against the
+`n_e` the code writes to 4e-16 at every He/H from 0.079 to 1000, the
+H-nucleus/mass closure to 4e-16, and `src/utils/element_budget.py` closes
+both elements to 6e-14 at He/H = 1000. Element conservation is not what
+the helium-dominated limit breaks. What it does break is the solve: the
+molecular `hybrd1` system balances helium in rows of order `n_He^2` and the
+molecules in rows of order `n_H^2`, so at He/H = 1000 the two blocks of one
+residual vector differ by 1e6 with no row scaling applied, and isolated
+cells fall into the atomic basin next to neighbours at `f_H2 = 0.88`. The
+correlation with He/H is measured; the cause is not established.
+
+**Four caveats are recorded rather than patched**, because each would
+replace a published rate with one from a different compilation. (i) The
+identity of M: Koskinen et al. never say what their "n" counts, and a
+monatomic third body is generally less efficient than H2, so R12/R13/R15
+with helium as M are upper bounds. (ii) HeH+ formation: Table 1 has only
+`He+ + H2` (R20), and not `H2+ + He -> HeH+ + H`, which needs no He+ and is
+therefore the route that grows with the helium fraction (Garcia Munoz 2025
+Table A.6 gives 1.0e-11 at 2000 K rising to 1.5e-10 at 1e4 K); the ~10%
+associative branches of both Penning channels end in HeH+ too and are not
+resolved. Against the same tables R16 is 3.4-8.6x low, R18 1.2x high, R19
+1.4-2.6x low, R20 14x high and R17 up to 1.9e4 high. (iii) The H <-> He
+charge-exchange pair does not satisfy detailed balance: `k(H+ + He)/k(He+ + H)`
+should be `4 exp(-127500/T)` and the published fits give 1e2 times that at
+1e4 K, a discrepancy weighted by `n_He/n_H` in the He+ balance. (iv) The
+Taylor two-branch Penning fit steps by 1.57x at its own 4000 K break point,
+which is the published fit and not a transcription error. Each is noted at
+the code site as well.
+
+**Does this move the LHS 1140 b results?** No, and the answer is checked
+rather than assumed: **no LHS 1140 b run in the repository has molecular
+chemistry on.** None of the 170 `input.inp` files under `LHS1140b/` sets
+`Molecular chemistry`, and none of the 193 `Ion_species.txt` files carries an
+H2/H2+/H3+/HeH+ column. Every statement corrected above lives inside a
+`thereis_mol` branch, so the He/H = 2.09 solution, the closure ladder and the
+`heh2p13_diff_kzz1e9` arm are untouched and no re-convergence is needed. What
+*can* be measured on those stored solutions is the size of the factor that
+would have been wrong had they been molecular -- the mis-supplied `rho/m_H`
+against the EOS particle count `p/(kB T) = n_tot + n_e`, at the base cell:
+
+| stored solution | He/H | (rho/m_H)/(n_tot+n_e) at the base |
+|---|---|---|
+| `LHS1140b/exhale/flux_closure/hi/k06` | 2.09 | 3.03 |
+| `LHS1140b/exhale/heh2p13_diff_kzz1e9` | 2.13 | 3.04 |
+| `LHS1140b/exhale/flux_closure/heh9p7/k03` | 9.7 | 3.72 |
+| `backup/regression/golden/mol_diffusion` | 0.0793 | 2.27 |
+
+A molecular LHS 1140 b base would therefore have run its three-body reactions
+with a third body 3.0-3.7 times too dense, against 2.3 times at the
+hot-Uranus base the regression case covers.
+
+**Goldens.** The matrix splits exactly along the `thereis_mol` branch:
+`wasp_full`, `wasp_he23off` and `lower_profile` PASS byte-identical, and the
+four molecular cases move. Their shift on the 12000-step snapshots, largest
+relative difference over the column against the previous golden:
+
+| case | rho | p | T | heat | cool | H2 front (f = 0.5) | log10 Mdot |
+|---|---|---|---|---|---|---|---|
+| `mol_base_handoff` | 1.4% | 2.6% | 1.2% | 1.6% | 3.0% | 1.1597 -> 1.1597 | 10.58 -> 10.58 |
+| `mol_metals` | 3.0% | 5.0% | 2.2% | 3.5% | 6.7% | 1.1617 -> 1.1617 | 10.58 -> 10.58 |
+| `mol_lyman_werner` | 0.34% | 0.53% | 0.21% | 0.44% | 0.71% | 1.1304 -> 1.1304 | 10.58 -> 10.58 |
+| `mol_diffusion` | 1.4% | 2.6% | 1.2% | 1.6% | 3.0% | 1.1597 -> 1.1597 | 10.58 -> 10.58 |
+
+The velocity column moves by more (2.5-8x) but only in the base sound-wave
+layer of these unconverged relaxation snapshots, where `v` is small and
+oscillating. The H2 front does not move at all, and the base H2 fraction
+shifts in the fourth decimal: these are H-rich hot-Uranus bases already at
+`f_H2` ~ 1, and a fraction pinned at unity cannot respond to a 2.3x change in
+the third-body density -- it responds in rho, p and T instead. That is the
+same statement the He-rich scan makes from the other side: the term becomes
+decisive only once helium dilutes the H2. Goldens re-snapshotted for the four
+moved cases at the end of the series, and `make check` re-run after.

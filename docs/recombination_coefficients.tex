@@ -88,9 +88,13 @@ with the coefficient sets given in \texttt{Cool\_coeff.f90}
 (\texttt{rr\_badnell}, \texttt{rr\_mao}). For He\,II$\to$He\,I the Badnell
 three-term dielectronic recombination (\texttt{dr\_HeII\_badnell}; adf48,
 negligible below $\sim$$5\times10^4\,$K) is added to $\alpha^{A}$ before the
-subtraction; He\,III$\to$He\,II is the hydrogenic ($Z=2$) analogue of
-H\,II$\to$H\,I. These are the same coefficients MoCHII uses
-(\texttt{recomb\_mod.f90}); see \texttt{docs/atomic\_data\_EXHALE\_vs\_MoCHII}.
+subtraction. He\,III$\to$He\,II is a hydrogenic ion, but it is \emph{not} built by
+rescaling the H\,II$\to$H\,I coefficient: \texttt{alphaB\_HeIII\_new} evaluates its
+own Badnell RR parameter set and subtracts its own Mao \& Kaastra $n=1$ term.
+Only the legacy branch below uses the explicit $Z=2$ rescaling. These are the
+same coefficients MoCHII uses (\texttt{src/recomb\_mod.f90} of the separate
+MoCHII code at \texttt{/nfs/mocafe/kiseon/MoCHII} --- not a file of this
+repository); see \texttt{docs/atomic\_data\_EXHALE\_vs\_MoCHII}.
 
 \paragraph{Legacy option (Hui \& Gnedin 1997, case B).} Setting the input flag
 \texttt{Legacy\_HHe\_rates: True} reverts the H/He case-B coefficients to the
@@ -130,8 +134,24 @@ triplet terms. The triplet captures the majority of He recombinations,
 $\alpha_3/(\alpha_1+\alpha_3)\simeq0.53$--$0.63$ over
 $5\times10^3$--$2\times10^4\,$K (Table~\ref{tab:he}).
 
-Metals use the modern Badnell radiative + dielectronic recombination
-(RR$+$DR), described in the cooling memo, and are not revisited here.
+One further overwrite follows in the same routine and is on by default. With
+\texttt{He\_rec\_coupling: True} (the default), \texttt{he\_rec\_coupling}
+replaces the singlet coefficient again, by
+$y\,\alpha_1 + 0.25\,\alpha_B$ when the triplet network is on and by
+$\alpha_B + y\,\alpha_1$ when it is off, where $y$ is the fraction of the
+ground-capture continuum that ionizes H rather than He and the $0.25\,\alpha_B$
+term is the singlet-excited capture channel the $2^3S$ network does not carry.
+So the number the ionization balance sees for He\,II$\to$He\,I is that
+combination, not $\alpha_1$ alone; $\alpha_1$ and $\alpha_3$ above are the
+underlying channel data. Setting \texttt{He\_rec\_coupling: False} leaves the
+split of the previous paragraph in place.
+
+Metals are not revisited here. Most of them use the Badnell radiative $+$
+dielectronic recombination (\texttt{alpha\_rec\_metal}); the two exceptions in
+the code are Ca\,I, a Shull \& Van Steenberg (1982) power law, and the two iron
+stages, which take the Huang et al.\ (2023) Eqs.~(5)--(6) fit because the Badnell
+dielectronic project does not reach the Mn-like and Cr-like sequences. See
+\texttt{docs/atomic\_data\_EXHALE\_vs\_MoCHII}.
 
 %=============================================================================
 \section{H$^+\to$ H: case-A vs.\ case-B, not data vintage}\label{sec:H}
@@ -150,7 +170,10 @@ difference is the radiative-transfer treatment.
 
 \begin{table}[h]
 \centering
-\caption{H$^+\to$H recombination coefficient ($10^{-13}\acm$).}
+\caption{H$^+\to$H recombination coefficient ($10^{-13}\acm$). The
+``EXHALE (B)'' column is the legacy (\texttt{Legacy\_HHe\_rates}) Hui \& Gnedin
+fit; the Badnell$-$Mao default now in force gives $4.531$, $2.606$, $1.856$ and
+$1.446$ on the same four rows.}
 \label{tab:H}
 \begin{tabular}{rrrrr}
 \toprule
@@ -304,7 +327,7 @@ $\sim$3\%.
 %=============================================================================
 
 \begin{verbatim}
-cd ATES/EXHALE/docs
+cd EXHALE_v1.00/docs
 python3 compare_recombination.py
 # -> figures/rec_H.pdf, figures/rec_He.pdf
 \end{verbatim}

@@ -16,6 +16,13 @@
       ! column at all, or columns that are identically zero because the run
       ! that wrote them had metals off -- is initialized from the abundance
       ! exactly as a cold start does, and the substitution is reported.
+      !
+      ! An element the file DOES carry, and whose reservoir a lower-atmosphere
+      ! handoff states, has its loaded column renormalized onto that reservoir
+      ! by one factor common to every ionization stage, so a closure iteration
+      ! restarts on the El/H it just moved to. Everything else about the
+      ! restart -- including an element the handoff is silent about -- is
+      ! unchanged.
 
       use global_parameters
       use species_table, only: isp_HI, isp_HII, isp_HeI, isp_HeII,    &
@@ -56,6 +63,9 @@
       logical :: col_present(n_species), elem_ok
       ! Auxiliary temporary variable
       real*8 :: tmp
+      ! Loaded El/H at the base cell, and the single factor that carries the
+      ! loaded metal column onto a handoff reservoir (metals block below)
+      real*8 :: elh_l, r_el
       real*8 :: vals(80)
 
       character(len=8192) :: line
@@ -183,9 +193,10 @@
          nH_l  = nsp_l(:,isp_HI)  + nsp_l(:,isp_HII)                      &
                + 2.0d0*(nsp_l(:,isp_H2) + nsp_l(:,isp_H2p))               &
                + 3.0d0*nsp_l(:,isp_H3p) + nsp_l(:,isp_HeHp)
+         ! The HeI column of an output file is the TOTAL He I density, He
+         ! 2^3S included, so the triplet column is not added again here.
          nHe_l = nsp_l(:,isp_HeI) + nsp_l(:,isp_HeII)                     &
-               + nsp_l(:,isp_HeIII) + nsp_l(:,isp_HeTR)                   &
-               + nsp_l(:,isp_HeHp)
+               + nsp_l(:,isp_HeIII) + nsp_l(:,isp_HeHp)
          heh_dev = 0.0d0
          do j = 1-Ng, N+Ng
             if (nH_l(j) .gt. 0.0d0) then
@@ -256,8 +267,7 @@
                           + 2.0d0*(nsp_l(j,isp_H2) + nsp_l(j,isp_H2p))     &
                           + 3.0d0*nsp_l(j,isp_H3p) + nsp_l(j,isp_HeHp)
                   gotHe_l = nsp_l(j,isp_HeI) + nsp_l(j,isp_HeII)           &
-                          + nsp_l(j,isp_HeIII) + nsp_l(j,isp_HeTR)         &
-                          + nsp_l(j,isp_HeHp)
+                          + nsp_l(j,isp_HeIII) + nsp_l(j,isp_HeHp)
                   if (nH_l(j)*sH_l(j) .gt. gotH_l)                         &
                      nsp_l(j,isp_HI)  = nsp_l(j,isp_HI)                    &
                                         + (nH_l(j)*sH_l(j) - gotH_l)
@@ -332,16 +342,76 @@
          endif
       enddo
 
+      ! ---- elements the handoff states: carry the loaded column onto that
+      ! reservoir --------------------------------------------------------
+      ! A restart file carries the metal densities of the state it was written
+      ! from. When the reservoir itself has moved since -- which is what a
+      ! flux-closure iteration does to the elemental ratios of the lower
+      ! atmosphere -- the base boundary condition uses the new El/H while the
+      ! loaded column above the base still holds the old one, and the elemental
+      ! budget n_El/n_H = (El/H)_resolved cannot close above the first cell.
+      !
+      ! Only an element the handoff itself states is touched: melem_from_handoff
+      ! is set by set_element_abundance, the one door the "<El>_H_base" keys of
+      ! base.inp and the elemental ratios of a "Lower atmosphere profile:" both
+      ! go through. An abundance that came from metals.inp alone, and every
+      ! restart with no handoff at all, leaves this loop doing nothing, so such
+      ! a restart is bit-for-bit the one the previous code produced.
+      !
+      ! The whole column of the element is multiplied by the single factor
+      !    r_El = (handoff El/H) / (loaded El/H at the base cell),
+      ! the same factor for every ionization stage, so the loaded ionization
+      ! split and the settling shape of the profile survive untouched and only
+      ! the reservoir normalization changes. El/H at the base cell is counted in
+      ! nuclei, summing the element over its stages against the hydrogen nuclei
+      ! of nH_l (free plus the H bound in H2, H2+, H3+ and HeH+), which is the
+      ! convention of element_ratio_HeH and of src/utils/element_budget.py.
+      ! Helium keeps its own convention -- the base cells are set to the input
+      ! He/H, the column above may carry a diffused split -- and is not touched
+      ! here.
+      ! (the flag is allocated by input_read; the test keeps the unit tests of
+      !  src/tests, which build a state without it, on the untouched path)
+      do e = 1, n_melem
+         if (.not. allocated(melem_from_handoff)) exit
+         if (.not. melem_from_handoff(e))  cycle
+         ! Rebuilt from the abundance just above: it already IS the reservoir.
+         if (melem_from_abundance(e))      cycle
+         if (melem_ab(e) .le. 0.0d0)       cycle
+         if (nH_l(1)     .le. 0.0d0)       cycle
+         i0 = melem_i0(e)
+         tmp = 0.0d0
+         do k = 0, melem_top(e)
+            tmp = tmp + nsp_l(1,mion_fsp(i0+k))
+         enddo
+         if (tmp .le. 0.0d0) cycle
+         elh_l = tmp/nH_l(1)
+         r_el  = melem_ab(e)/elh_l
+         do k = 0, melem_top(e)
+            c = mion_fsp(i0+k)
+            nsp_l(:,c) = nsp_l(:,c)*r_el
+         enddo
+         ! Enough digits that the factor can be compared with the reservoir
+         ! change it is supposed to equal: a closure iteration moves El/H by
+         ! parts in 1e4, which ES10.3 would print as 1.000E+00.
+         write(*,'(A,ES13.6,A,ES13.6,A,ES13.6)')                           &
+            ' (load_IC) '//trim(melem_name(e))//'/H at the base cell:'//   &
+            ' restart file ', elh_l, ', handoff ', melem_ab(e),            &
+            '; column rescaled by ', r_el
+      enddo
+
       ! Reconstruct the mass density (adimensional) from the LOADED densities
-      ! with the SAME mass policy as the run (calc_rho): the He 2^3S mass, the
-      ! trace-metal mass under the eos_metals policy, and the molecular mass are
-      ! all included, exactly as calc_rho does in the main loop. A restart
-      ! therefore preserves the conserved mass exactly. The old H/He-only
-      ! formula (rho = (nHI+nHII+4*(nHeI+nHeII+nHeIII))/n0) is gone deliberately:
-      ! it dropped the HeITR/metal/molecular mass and left a mass discontinuity
-      ! on reload. Columns absent from the file are zero in nsp_l -- except the
-      ! metals the block above rebuilt from the abundance -- so they add nothing
-      ! (calc_rho honors thereis_He/thereis_HeITR/eos_include_metals).
+      ! with the SAME mass policy as the run (calc_rho): the trace-metal mass
+      ! under the eos_metals policy and the molecular mass are included,
+      ! exactly as calc_rho does in the main loop. He 2^3S is NOT a separate
+      ! mass term -- it is an excited level of He I, whose density (nheiTR)
+      ! is already inside the He I column calc_rho sums (bsp_is_excited_level,
+      ! section 75). A restart therefore preserves the conserved mass exactly.
+      ! The old H/He-only formula (rho = (nHI+nHII+4*(nHeI+nHeII+nHeIII))/n0)
+      ! is gone deliberately: it dropped the metal/molecular mass and left a
+      ! mass discontinuity on reload. Columns absent from the file are zero in
+      ! nsp_l -- except the metals the block above rebuilt from the abundance
+      ! -- so they add nothing (calc_rho honors thereis_He and
+      ! eos_include_metals .and. thereis_metals).
       do im = 1, n_mion
          nm_l(:,im) = nsp_l(:,mion_fsp(im))
       enddo
@@ -350,7 +420,7 @@
       nmol_l(:,3) = nsp_l(:,isp_H3p)
       nmol_l(:,4) = nsp_l(:,isp_HeHp)
       call calc_rho(nsp_l(:,isp_HI),  nsp_l(:,isp_HII),   nsp_l(:,isp_HeI),   &
-                    nsp_l(:,isp_HeII), nsp_l(:,isp_HeIII), nsp_l(:,isp_HeTR),  &
+                    nsp_l(:,isp_HeII), nsp_l(:,isp_HeIII),                    &
                     rho_dim, nm_l, nmol_l)
       rho = rho_dim/n0
 

@@ -119,7 +119,7 @@ def lambda_eff_grid(Tgrid, negrid, nmax=None):
 
 
 # ----------------------------------------------------------------------------
-# Optimized 2-D table generator for the ATES Fortran port.
+# Optimized 2-D table generator for the EXHALE Fortran port.
 #
 # The slow path (lambda_eff_grid) rebuilds a CubicSpline for every transition at
 # every (T, ne) cell.  Here we (i) descale Upsilon for each transition ONCE over
@@ -192,7 +192,7 @@ def lambda_eff_table(Tgrid, negrid, nmax=None):
     return out
 
 
-# ATES cooling grid (Cool_coeff.f90: logT 3.00..5.00, dlogT 0.05 -> 41 points).
+# EXHALE cooling grid (Cool_coeff.f90: logT 3.00..5.00, dlogT 0.05 -> 41 points).
 COOL_LOGT = np.arange(3.0, 5.0 + 1e-9, 0.05)
 # Electron-density axis for the 2-D Fe II table: log10 ne 0..14, dlog 0.5.
 COOL_LOGNE = np.arange(0.0, 14.0 + 1e-9, 0.5)

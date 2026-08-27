@@ -19,17 +19,21 @@
 	! He 2^3S row follows System_HeH_TR plus the He(2^3S)+H2 Penning loss
 	! (Garcia Munoz 2025 Table A.5), the dominant metastable sink toward an
 	! H2-rich base.  Molecular channels are
-	! the Koskinen et al. (2022) Table-1 network via mol_rates (R21/R22
-	! H-He charge exchange excluded to preserve the atomic limit), plus the
+	! the Koskinen et al. (2022) Table-1 network via mol_rates, plus the
 	! Lyman-Werner photodissociation the Table-1 network omits
-	! (lyman_werner.f90; opt-in, see below).
+	! (lyman_werner.f90; opt-in, see below).  H <-> He charge exchange IS
+	! carried, but not from mol_rates: it enters through he_h_cx_fvec, the
+	! Huang et al. (2023) Table-4 B1/B2 pair every system with He shares, so
+	! the molecular-free limit reproduces the atomic systems exactly.  The
+	! Table-1 R21/R22 are therefore transcribed in mol_rates but unused.
 	!
 	! params layout (1-18 identical to System_HeH_TR):
 	!   1 P_HI  2 P_HeI  3 P_HeII  4 rchiiB  5 rcheiiB  6 rcheiiiB
 	!   7 n_h(nuclei)  8 n_he  9 a_ion_HI  10 a_ion_HeI  11 a_ion_HeII
 	!   12 rcheiTR  13 A31  14 P_HeITR  15 q13  16 q31a  17 q31b  18 Q31
 	!   19 P_H2 (photoionization rate coefficient of H2, s^-1)
-	!   20 T [K]   21 n_tot (total particle density, for 3-body M)
+	!   20 T [K]   21 n_tot (total gas-particle density, electrons excluded:
+	!                       the third body M of R12/R13/R15)
 	!
 	! Lyman-Werner photodissociation H2 + hv -> H + H enters row 4 next to
 	! the H2 photoionization, as the self-shielded rate k_LW carried by the

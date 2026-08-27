@@ -90,6 +90,14 @@ not add to the list.
 - **Diffusion minor approximations** — see `design_hehe_diffusion.md` §7e (metal mass not
   returned to H, outflow-only top advection, one-step T lag, `He_metal_diffusion` inert
   without `He_diffusion`).
+  [2026-08-27: the kernel this bullet describes,
+  `src/modules/functions/species_diffusion.f90`, was deleted on 2026-08-25 and
+  replaced by the binary two-component operator
+  `src/modules/functions/binary_element_diffusion.f90`
+  (`docs/binary_diffusion_design.md`), so the list is re-opened against that
+  module rather than carried over. `He_metal_diffusion` is still inert without
+  `He_diffusion`; the top face now carries the outer ghost's composition on an
+  inflowing boundary instead of a silent zero flux.]
 - **Unit-number reuse** (units 1/2/3 across IO modules) — currently safe (sequential
   open/close); prefer `newunit=` in new code.
 - 2512 `-Wtabs` warnings (cosmetic), ~40 unused variables (cosmetic).

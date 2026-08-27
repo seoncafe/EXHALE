@@ -126,7 +126,7 @@ def cooling_FeI(T, e_cut_cm1=ECUT_CM1_DEFAULT):
     return total, int(Ei.size), int(Elev.size)
 
 
-# 41-point ATES cooling grid (Cool_coeff.f90: logT 3.00..5.00, dlogT 0.05).
+# 41-point EXHALE cooling grid (Cool_coeff.f90: logT 3.00..5.00, dlogT 0.05).
 COOL_LOGT = np.arange(3.0, 5.0 + 1e-9, 0.05)
 
 

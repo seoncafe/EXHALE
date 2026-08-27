@@ -1,11 +1,18 @@
 # Features in ATES_extended but NOT in EXHALE
 
 This lists everything present in `ATES/ATES_extended/` that has no
-counterpart in `EXHALE/` (the latter being this session's
+counterpart in `EXHALE_v1.00/` (the latter being this session's
 fully-coupled metal-cooling work). It is the "what would be lost if we
 discarded ATES_extended" inventory.
 
 See also `ATES_versions_diff.md` for the full side-by-side comparison.
+
+> [2026-08-27] Every bare `src/...` path in the sections below is relative to
+> `ATES/ATES_extended/`, not to this repository -- `metals.f90`,
+> `metals_solve.f90`, `metals_drive.f90`, `metals_cool.f90`,
+> `cross_sec_metals.f90` and `write_metals_output.f90` exist only there.
+> EXHALE's metals live in the coupled `System_HeH_*` solvers, the
+> `metals_input_read.f90` parser and the `Ion_species.txt` columns.
 
 ---
 
@@ -116,21 +123,21 @@ folded metals into the existing MINPACK system (`System_HeHCO.f90`):
 
 ## 7. Example/documentation input files
 
-In `ATES_extended/inputdata/`, none of which exist in EXHALE:
+In `ATES/ATES_extended/inputdata/`, none of which exist in EXHALE:
 
 * `metals.inp.example` — annotated abundance template.
 * `opacity.inp.example` — annotated opacity-model key documentation.
 * `HI_sample.opa` — 13-row sample tabulated cross-section table.
 * `README.opacity` — `.opa` / opacity format documentation.
 
-> [2026-08-15: all four now exist in `EXHALE/inputdata/` as well, so this
+> [2026-08-15: all four now exist in `EXHALE_v1.00/inputdata/` as well, so this
 > section no longer describes a difference between the two trees.]
 
 ## 8. Companion design memo
 
-* **`ATES_extended/docs/aiolos_port_memo.pdf`** (and `.tex`) — Phase 1/2/3
+* **`ATES/ATES_extended/docs/aiolos_port_memo.pdf`** (and `.tex`) — Phase 1/2/3
   design and status document. EXHALE's analog is
-  `EXHALE/docs/Update_EXHALE_early_phase` (Part II), but the two cover
+  `EXHALE_v1.00/docs/Update_EXHALE_early_phase` (Part II), but the two cover
   different designs; the ATES_extended memo additionally discusses the
   opacity dispatcher and the explicit Phase 3 (multi-fluid) justification,
   neither of which appears in the EXHALE work.

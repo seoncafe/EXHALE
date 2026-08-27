@@ -148,9 +148,20 @@ metal cooling gives the energy equation a spurious *hot* root, and the upwind
 coupling cascades it (sawtooth + spike).
 
 **Guard.** Where `v <= 0` the advection correction is skipped and the converged
-equilibrium ionization/temperature are kept (gated on `pp_metal_on`; metals-off
-byte-identical), breaking the upwind cascade. §5 makes the same energy solve robust
-by construction (Brent).
+equilibrium ionization/temperature are kept (as first written, gated on
+`pp_metal_on`, so a metals-off run was byte-identical), breaking the upwind cascade.
+§5 makes the same energy solve robust by construction (Brent).
+
+*Since generalized: the validity test in `post_process_adv.f90` is now three
+conditions and none of them is gated on `pp_metal_on` -- (i) inflow `v <= 0` on
+either face, (ii) a Damkohler number `Da = (dr/v)*nu_relax` above
+`Da_local_equilibrium`, with `nu_relax` the SLOWEST relaxation rate among the
+species the advection system solves (the He 2^3S row, `A31 = 1.27e-4` 1/s, usually
+sets it; gating on the hydrogen rate alone froze the metastable at equilibrium in
+cells where it is in fact advected), and (iii) an equilibrium ion fraction below
+`xHII_adv_min`, where the solver's absolute resolution on `x_HI` makes the
+extracted ion density meaningless. Details:
+`docs/postprocess_advection_validity.md`.*
 
 ---
 
@@ -326,6 +337,15 @@ default is byte-identical, regression-gated):
   five ingredients each found via a localized stall: smooth ||D^-1 F||_2
   merit, diagonal scaling, smooth base valve (`Valve eps:`), frozen WENO
   weights, non-monotone (Grippo) line search.
+  *2026-08-15 note: two of the five were replaced on 2026-08-10/11. (i) The
+  diagonal scaling is no longer the global `build_scaling` with its
+  `1e-6*max_j|rho v|` momentum floor but `cell_state_scales`
+  (`steady_newton.f90`), which builds every row scale from the cell's own
+  state (rho, rho(|v|+c_s), E). (ii) The WENO weights are still frozen for
+  the Newton model (`weno_mode = 1/2` around the Jacobian build), but the
+  line-search trials are evaluated with `weno_mode = 0`, i.e. against the
+  true residual the solve is driving to zero; see
+  `docs/newton_scaling_and_base_wall.md` §§3 and 10.*
 - *Production wiring* (`Solver: Newton`): marching warm-up with du-stops
   suspended until the monitored ||R|| < 5e-2, then the JFNK finish to
   `Resid tol` (1e-3), then standard outputs and post-processing. Validated

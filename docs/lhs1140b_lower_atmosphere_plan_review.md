@@ -5,6 +5,15 @@
 - **Review basis:** Current EXHALE, Photochem, and p-winds source trees in this
   workspace
 
+> [2026-08-27] Kept unchanged as the record of what the trees held on
+> 2026-08-22.  Two of the modules it inspects have since moved:
+> `src/modules/functions/species_diffusion.f90` was deleted on 2026-08-25 and
+> replaced by `src/modules/functions/binary_element_diffusion.f90` (Phase D),
+> and the lower-atmosphere handoff gained the profile route of Phase E
+> (`src/modules/files_IO/lower_atmosphere_profile.f90`).  The plan of record
+> is `lhs1140b_lower_atmosphere_plan_new.md`, whose Phase D/E/F entries carry
+> the status of each item.
+
 ## 1. Scope and method
 
 This review evaluates whether the proposed LHS 1140b workflow is supported by

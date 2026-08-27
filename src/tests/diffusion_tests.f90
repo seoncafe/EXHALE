@@ -29,9 +29,11 @@
       use global_parameters
       use species_table, only: isp_HI, isp_HII, isp_HeI, isp_HeII,        &
                                isp_HeIII, n_bsp, bsp_fsp, bsp_nH, bsp_nHe,&
+                               bsp_is_excited_level,                       &
                                n_melem, melem_i0, mion_fsp, melem_A,     &
                                bsp_charge, isp_H2
       use composition,   only: mass_per_H_nucleus_without_He
+      use lower_atmosphere_profile, only: eddy_diffusion_on_grid
       use binary_element_diffusion, only: element_diffusion_step,         &
                                           relative_settling_mass,         &
                                           helium_hydrogen_diffusion,      &
@@ -115,6 +117,7 @@
       eos_include_metals = .true.
       he_diffusion  = .true.
       he_kzz        = 0.0d0
+      call eddy_diffusion_on_grid
       he_ambipolar  = .false.
       he_alphaT     = 0.0d0
       he_metal_diffusion = .false.
@@ -204,6 +207,7 @@
       nH_l  = 0.0d0
       nHe_l = 0.0d0
       do ib = 1, n_bsp
+         if (bsp_is_excited_level(ib)) cycle
          if (bsp_nH(ib)  .gt. 0)                                          &
             nH_l  = nH_l  + dble(bsp_nH(ib)) *f_sp(:,bsp_fsp(ib))
          if (bsp_nHe(ib) .gt. 0)                                          &
@@ -923,6 +927,7 @@
       ntot = (nH_l(N/2) + nHe_l(N/2))*rho_a(N/2)*n0
       ne_l = 0.0d0
       do ib = 1, n_bsp
+         if (bsp_is_excited_level(ib)) cycle
          ne_l = ne_l + dble(bsp_charge(ib))*f_sp(N/2,bsp_fsp(ib))
       enddo
       ne_l = max(ne_l*rho_a(N/2)*n0, 1.0d0)
@@ -1030,6 +1035,7 @@
       do ik = 1, 3
          call set_molecular_composition(f_a, HeH, qmol)
          he_kzz = kk(ik)
+         call eddy_diffusion_on_grid
          do j = 1, 600
             call element_diffusion_step(rho_a, v_a, T_a, f_a, dt_a)
          enddo
@@ -1049,6 +1055,7 @@
       ! the top of the domain, above it, must still be separated.
       call set_molecular_composition(f_a, HeH, qmol)
       he_kzz = kk(3)
+      call eddy_diffusion_on_grid
       do j = 1, 600
          call element_diffusion_step(rho_a, v_a, T_a, f_a, dt_a)
       enddo
@@ -1058,6 +1065,7 @@
                    sep .lt. 0.9d0, abs(flat - 1.0d0), 1.0d-2,              &
            'largest K_zz: mixed below the homopause, |He/H / HeH - 1| = ')
       he_kzz = 0.0d0
+      call eddy_diffusion_on_grid
       deallocate(qmol, Dt, Gt, Sf)
 
       ! ---------------- (d) the chemistry driver on its own ------------ !
@@ -1082,6 +1090,7 @@
       T_a  = 1.0d0
       dt_a = 1.0d9
       he_kzz = 0.0d0
+      call eddy_diffusion_on_grid
       call set_molecular_composition(f_a, HeH, qmol)
       do j = 1, 600
          call element_diffusion_step(rho_a, v_a, T_a, f_a, dt_a)

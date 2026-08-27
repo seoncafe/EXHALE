@@ -101,6 +101,21 @@
       ! arrays; see the calc_rho comment)
       integer, parameter :: bsp_nHe(n_bsp) = &
            [ 0, 0, 1, 1, 1, 1,  0, 0, 0, 1 ]
+      ! .true. where the column is an EXCITED LEVEL of another species, i.e.
+      ! a sub-population already contained in that species' density, not an
+      ! independent chemical species.  He 2^3S is the metastable triplet
+      ! level of He I and the He I density the code carries (nhei, f_sp
+      ! column isp_HeI) is the TOTAL He I population, triplet included --
+      ! the singlet is formed where it is needed as nheiS = nhei - nheiTR
+      ! (util_ion_eq).  Its mass, its gas particle and its helium nucleus
+      ! are therefore already counted through He I, so EVERY BUDGET SUM
+      ! (mass density, particle count, element nuclei, free electrons,
+      ! collision partners) must skip the flagged column.  The level
+      ! populations themselves are still transported and still scale with
+      ! their parent, so only the sums skip them, never the updates.
+      logical, parameter :: bsp_is_excited_level(n_bsp) = &
+           [ .false., .false., .false., .false., .false., .true.,       &
+             .false., .false., .false., .false. ]
       ! human-readable species label (diagnostics only)
       character(len=5), parameter :: bsp_name(n_bsp) = &
            [ 'HI   ', 'HII  ', 'HeI  ', 'HeII ', 'HeIII', 'HeTR ',      &

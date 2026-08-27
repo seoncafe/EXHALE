@@ -178,6 +178,21 @@ PTC / JFNK from the IC &
 \end{itemize}
 
 \section{Conclusion and live options}
+
+\emph{Note added 2026-08-15.} Read this section as of 2026-06-14.  Both halves
+of option~1 below have since been carried out and HD~189733\,b converges: the
+JFNK globalization was repaired (cell-local diagonal scaling, a watchdog on
+consecutive failed line searches, and a line search tested against the true
+residual rather than the frozen-weight model ---
+\code{docs/newton\_scaling\_and\_base\_wall.md} \S\S3, 4, 10), and the residual
+normalization was replaced: the default convergence norm is now the
+volume-weighted one, \code{Resid norm: vol}, which is not inflated by cells
+where $\rho v$ is tiny (\code{Resid norm: Linf} selects the old
+max-over-cells measure).  The base cooling was also repaired the same week
+(\code{docs/hd189\_base\_checkerboard.md} \S10).  The conclusion as written
+below is kept as the record of the 2026-06-14 state.
+
+\medskip
 The HD189733b base breathing is \emph{not} curable by the base boundary
 condition or the IC blend: the obstruction is the Wind-AE$\leftrightarrow$EXHALE
 discretization mismatch at the wind base, amplified by the small-$\rho v$

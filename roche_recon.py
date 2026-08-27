@@ -1,7 +1,7 @@
 """Roche-equipotential 3-D reconstruction for the transit transmission spectrum
 (Phase 5b of the Huang+2023 WASP-121b reproduction).
 
-The 1-D ATES Roche run gives the SUBSTELLAR profile: the state (rho, v, T, ion
+The 1-D EXHALE Roche run gives the SUBSTELLAR profile: the state (rho, v, T, ion
 densities) as a function of radius r along the planet->star axis (+x).  Assuming
 the thermodynamic state is uniform on Roche-equipotential surfaces, the 3-D field
 at any point (x,y,z) equals the substellar state at the "equivalent radius"
@@ -72,7 +72,7 @@ def find_L1(q, a):
 class ReconMap:
     """Equipotential map: phi_3D(x,y,z) -> equivalent substellar radius r_eff.
 
-    Built from the ATES substellar radial grid r_sub (in R_p).  phi_sub is
+    Built from the EXHALE substellar radial grid r_sub (in R_p).  phi_sub is
     monotone increasing on (1, L1), so it inverts cleanly.  Points deeper than
     the base map to r_eff = r_sub[0] (clamped); points above the outermost grid
     radius (or outside the Roche lobe, phi > phi(L1)) are flagged outside

@@ -6,6 +6,17 @@
 	use charge_exchange, only: he_h_charge_exchange
 	use species_table,   only: melem_name
 	use IC_load,         only: melem_from_abundance
+	use lower_atmosphere_profile, only: lap_in_use, lap_report_provenance, &
+	                     lap_flux_measured, lap_flux_window_empty,        &
+	                     lap_flux_nface, lap_FH_median, lap_FH_spread,    &
+	                     lap_FHe_median, lap_FHe_spread,                  &
+	                     lap_Mdot_median, lap_Mdot_spread,                &
+	                     lap_flux_r_lo_Rp, lap_flux_r_hi_Rp,              &
+	                     lap_flux_r_lo_measured,                          &
+	                     lap_steady_r_lo_Rp, lap_steady_nface,            &
+	                     lap_steady_FH_median,  lap_steady_FH_spread,     &
+	                     lap_steady_FHe_median, lap_steady_FHe_spread,    &
+	                     lap_steady_Mdot_median, lap_steady_Mdot_spread
 
 	implicit none
 	contains
@@ -422,7 +433,7 @@
 	! so a base.inp override of the radius/temperature/He ratio reaches the
 	! transit geometry as well (docs/lhs1140b_lower_atmosphere_plan_new.md,
 	! Phase B).  Format: '# ' comments, then one 'key  value' pair per line.
-	integer :: u
+	integer :: u, ie
 	logical :: base_present
 
 	inquire(file='base.inp', exist=base_present)
@@ -432,13 +443,102 @@
 	write(u,'(A)') '# Values in effect after input.inp + base.inp resolution;'
 	write(u,'(A)') '# these are what the wind solver uses, and what'
 	write(u,'(A)') '# EXHALE_transit.py should use instead of input.inp.'
-	write(u,'(A,ES16.8)') 'planet_radius_RJ          ', R0/RJ
-	write(u,'(A,ES16.8)') 'planet_mass_MJ            ', Mp/MJ
-	write(u,'(A,ES16.8)') 'equilibrium_temperature_K ', T0
-	write(u,'(A,ES16.8)') 'HeH_number_ratio          ', HeH
-	write(u,'(A,ES16.8)') 'orbital_distance_AU       ', a_orb/AU
-	write(u,'(A,ES16.8)') 'star_mass_Msun            ', Mstar/Msun
+	write(u,'(A)') '# Reals are written to full double precision so a budget'
+	write(u,'(A)') '# check can use them without a round-off floor.'
+	write(u,'(A,ES23.15E3)') 'planet_radius_RJ          ', R0/RJ
+	write(u,'(A,ES23.15E3)') 'planet_mass_MJ            ', Mp/MJ
+	write(u,'(A,ES23.15E3)') 'equilibrium_temperature_K ', T0
+	write(u,'(A,ES23.15E3)') 'HeH_number_ratio          ', HeH
+	write(u,'(A,ES23.15E3)') 'orbital_distance_AU       ', a_orb/AU
+	write(u,'(A,ES23.15E3)') 'star_mass_Msun            ', Mstar/Msun
 	write(u,'(A,L1)')     'base_inp_present          ', base_present
+	! With element diffusion on, He/H is a solved profile and the number
+	! above is the reservoir the base is held at, not a column invariant.
+	! The budget check has to know which of the two it is testing.
+	write(u,'(A,L1)')     'he_diffusion              ', he_diffusion
+	! Resolved elemental reservoirs and the EOS factors built from them, so
+	! the element-budget check (src/utils/element_budget.py) can compare the
+	! solved profiles against the abundances the run actually used, whether
+	! they came from metals.inp or from the "<El>_H_base" handoff keys.
+	write(u,'(A,ES23.15E3)') 'mass_per_H_amu            ', mass_per_H
+	write(u,'(A,ES23.15E3)') 'ntot_bc_per_H             ', ntot_bc
+	do ie = 1, size(melem_ab)
+		write(u,'(A,A,A,ES23.15E3)') 'abundance_',                          &
+			trim(melem_name(ie)), repeat(' ', 15 - len_trim(melem_name(ie))), &
+			melem_ab(ie)
+	enddo
+	! Provenance of the lower-atmosphere profile, if one is in use, so the
+	! closure driver and element_budget.py read one authority for which
+	! solution the wind was built on.
+	call lap_report_provenance(u)
+	! The elemental fluxes measured over the overlap window (section 3.4 of
+	! docs/phase_e_flux_closure_design.md). Reported only when a diffusion
+	! step has actually produced them: this routine also runs before the wind,
+	! and an unmeasured flux must say so rather than print a zero.
+	if (lap_in_use) then
+		if (.not. lap_flux_measured) then
+			write(u,'(A)') 'lower_profile_flux_state  unmeasured'
+		else
+			! (a) the overlap window: both edges, whether the lower one was
+			! measured or fell back, and the reduction over it.
+			write(u,'(A,ES23.15E3)')  'lower_profile_flux_r_lo_Rp ',        &
+				lap_flux_r_lo_Rp
+			if (lap_flux_r_lo_measured) then
+				write(u,'(A)') 'lower_profile_flux_r_lo_source spread_rule'
+			else
+				write(u,'(A)') 'lower_profile_flux_r_lo_source default_1.02'
+			endif
+			write(u,'(A,ES23.15E3)')  'lower_profile_flux_r_hi_Rp ',        &
+				lap_flux_r_hi_Rp
+			if (lap_flux_window_empty) then
+				write(u,'(A)') 'lower_profile_flux_state  window_empty'
+				write(u,'(A,I0)') 'lower_profile_flux_nface  ', 0
+				write(u,'(A)') '# The overlap window is empty: the profile'//&
+					' stops at or below the radius'
+				write(u,'(A)') '# where the base sound wave leaves the'//    &
+					' mass flux flat, so no face of the'
+				write(u,'(A)') '# interval both models describe carries a'// &
+					' usable elemental flux.  The'
+				write(u,'(A)') '# steady_* window below is then the only'//  &
+					' measurement of the handoff flux.'
+			else
+				write(u,'(A)') 'lower_profile_flux_state  measured'
+				write(u,'(A,I0)')         'lower_profile_flux_nface  ',     &
+					lap_flux_nface
+				write(u,'(A,ES23.15E3)')  'lower_profile_F_H_median  ',     &
+					lap_FH_median
+				write(u,'(A,ES23.15E3)')  'lower_profile_F_H_spread  ',     &
+					lap_FH_spread
+				write(u,'(A,ES23.15E3)')  'lower_profile_F_He_median ',     &
+					lap_FHe_median
+				write(u,'(A,ES23.15E3)')  'lower_profile_F_He_spread ',     &
+					lap_FHe_spread
+				write(u,'(A,ES23.15E3)')  'lower_profile_Mdot_median ',     &
+					lap_Mdot_median
+				write(u,'(A,ES23.15E3)')  'lower_profile_Mdot_spread ',     &
+					lap_Mdot_spread
+			endif
+			! (b) the steady-flux window r >= r_esc.  At a steady state the
+			! elemental flux does not depend on radius, so this IS the flux
+			! through the matching level, measured where the solution is flat.
+			write(u,'(A,ES23.15E3)')  'steady_flux_window_r_lo_Rp ',        &
+				lap_steady_r_lo_Rp
+			write(u,'(A,I0)')         'steady_flux_window_nface  ',         &
+				lap_steady_nface
+			write(u,'(A,ES23.15E3)')  'steady_F_H_median         ',         &
+				lap_steady_FH_median
+			write(u,'(A,ES23.15E3)')  'steady_F_H_spread         ',         &
+				lap_steady_FH_spread
+			write(u,'(A,ES23.15E3)')  'steady_F_He_median        ',         &
+				lap_steady_FHe_median
+			write(u,'(A,ES23.15E3)')  'steady_F_He_spread        ',         &
+				lap_steady_FHe_spread
+			write(u,'(A,ES23.15E3)')  'steady_Mdot_median        ',         &
+				lap_steady_Mdot_median
+			write(u,'(A,ES23.15E3)')  'steady_Mdot_spread        ',         &
+				lap_steady_Mdot_spread
+		endif
+	endif
 	close(u)
 	end subroutine write_resolved_config
 

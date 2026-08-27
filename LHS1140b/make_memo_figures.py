@@ -3,7 +3,7 @@
 
 Run from LHS1140b/. Writes PDF (vector) into ../docs/figures/.
 """
-import csv, os, sys
+import csv, os, re, sys
 import numpy as np
 import matplotlib
 matplotlib.use('Agg')
@@ -648,18 +648,53 @@ KZZ_RUNS = [('heh0p55_diff_ctrl',    0.0,   r'$K_{zz} = 0$'),
 KZZ_HEH = 0.55
 
 
+def _face_flux_file(d):
+    """Path and D_eff column of the element face-flux table of a run.
+
+    The file is ./output/element_flux_profile.txt since 2026-08-27 and was
+    ./diffusion_faceflux.txt in the run root before; runs made under either
+    binary are read. The D_eff column is located by name from the
+    "# columns:" schema line, so an added column cannot silently shift it
+    (F_H was added between F_He and Mdot_face).
+    """
+    for rel in ('output/element_flux_profile.txt', 'diffusion_faceflux.txt'):
+        p = os.path.join(d, rel)
+        if os.path.isfile(p):
+            break
+    else:
+        return None, None
+    icol = 8
+    with open(p) as f:
+        for line in f:
+            if not line.startswith('#'):
+                break
+            if 'columns:' in line:
+                head = line.split('columns:', 1)[1].strip()
+                # The older schema wrote column names that contain spaces
+                # ("F_He=4pi r^2 (F_adv+J)[g/s]") and separated the columns by
+                # two or more spaces; the current one writes single-token names
+                # separated by one space.  Split on whichever the line uses, so
+                # a name is never mistaken for several columns.
+                toks = (re.split(r'\s{2,}', head) if re.search(r'\s{2,}', head)
+                        else head.split())
+                if 'D_eff[cm2/s]' in toks:
+                    icol = toks.index('D_eff[cm2/s]')
+                break
+    return p, icol
+
+
 def kzz_homopause(d, kzz):
     """Radius where the run's own molecular D_eff equals its K_zz.
 
-    Same construction as exhale/kzz_scan_table.py: column 8 of
-    diffusion_faceflux.txt is the stage-resolved binary coefficient the
+    Same construction as exhale/kzz_scan_table.py: the D_eff column of the
+    element face-flux table is the stage-resolved binary coefficient the
     operator used, and the eddy term is added to it, so the crossing of
     D_eff with K_zz is the homopause of that run.
     """
-    p = os.path.join(d, 'diffusion_faceflux.txt')
-    if kzz <= 0.0 or not os.path.isfile(p):
+    p, icol = _face_flux_file(d)
+    if kzz <= 0.0 or p is None:
         return None
-    a = np.loadtxt(p, usecols=(1, 8))
+    a = np.loadtxt(p, usecols=(1, icol))
     s = a[:, 1] - kzz
     for j in range(len(s) - 1):
         if s[j]*s[j + 1] < 0.0:
@@ -882,3 +917,773 @@ plt.tight_layout()
 plt.savefig(f'{OUT}/lhs1140b_heh_vs_kzz.pdf')
 plt.close()
 print('wrote lhs1140b_heh_vs_kzz.pdf')
+
+
+# ====== Figure: the flux-closed solution, and the column it stands on =======
+# The elemental-flux closure of ../docs/phase_e_flux_closure_design.md
+# section 6: the lower atmosphere is a photochemical column (Photochem, with
+# the climate step solved) handed over as a profile, and the elemental fluxes
+# are iterated to continuity across the matching level, so He/H at the match
+# is a solution and not an input.  Runs: exhale/flux_closure/{ref,lo,hi}.
+# Record: ../docs/Update_EXHALE.md section 79.
+CLOSURE_ARMS = [('flux_closure/ref', 'k00', r'$1.0\times$ start'),
+                ('flux_closure/lo', 'k05', r'$0.3\times$ start'),
+                ('flux_closure/hi', 'k06', r'$3.0\times$ start')]
+CLOSURE_MAIN = CLOSURE_ARMS[0]
+
+for tag, sub, lab in CLOSURE_ARMS:
+    c = exhale_curve(tag, sub)
+    if c is None:
+        print('closure %-18s missing' % tag)
+        continue
+    m = broadened_metrics(c[0], c[1], 0.0)
+    print('closure %-18s %-16s red=%.3f blue=%.3f FWHM=%.4f A  EW=%.4f %%A  '
+          'matched kernel %.2f km/s (sigma %.2f)'
+          % (tag, lab.replace('$', '').replace('\\', ''), m['red_depth'],
+             m['blue_depth'], m['fwhm_A'], m['ew'], matched_kernel(tag, sub),
+             matched_kernel(tag, sub)/2.35482))
+
+lamc, excc = exhale_curve(*CLOSURE_MAIN[:2])
+f_clos = matched_kernel_curve(lamc, excc)
+mc = broadened_metrics(lamc, excc, f_clos)
+print('closure at its matched kernel: red=%.3f blue=%.3f ratio=%.2f '
+      'FWHM=%.3f EW=%.3f' % (mc['red_depth'], mc['blue_depth'],
+                             mc['red_blue'], mc['fwhm_A'], mc['ew']))
+
+# The column handed over: T(p) and the elemental oxygen the cold trap removes.
+prof = np.loadtxt('lower_profile/lower_atmosphere_profile.dat')
+pnames = [l for l in open('lower_profile/lower_atmosphere_profile.dat')
+          if l.startswith('# columns')][0].split()[2:]
+pj = {n: i for i, n in enumerate(pnames)}
+p_bar, T_col = prof[:, pj['p']], prof[:, pj['T']]
+XO, XC, XN = (prof[:, pj[k]] for k in ('X_O', 'X_C', 'X_N'))
+qH2O = prof[:, pj['q_H2O']]
+jm = int(np.argmin(np.abs(np.log(p_bar) - np.log(1.0e-6))))   # matching level
+print('column: %d levels, %.3g to %.3g bar; match at %.3g bar; '
+      'O/H %.4g (deep) -> %.4g (match), factor %.0f; C/H %.4g -> %.4g; '
+      'N/H %.4g -> %.4g; q_H2O %.3g (deep) -> %.3g (match)'
+      % (len(p_bar), p_bar[0], p_bar[-1], p_bar[jm], XO[0], XO[jm],
+         XO[0]/XO[jm], XC[0], XC[jm], XN[0], XN[jm], qH2O[0], qH2O[jm]))
+
+fig, axs = plt.subplots(1, 3, figsize=(7.1, 2.9),
+                        gridspec_kw=dict(width_ratios=[1.55, 1.0, 1.15]))
+
+a = axs[0]
+a.errorbar(o_air, o_flux, yerr=o_fsig, fmt='ko', ms=2.0, lw=0.6, capsize=0,
+           zorder=3, label=r'LHS\,1140\,b, 2024 (GP-corrected)')
+a.axhline(1.0, color='0.9', lw=0.6, zorder=0)
+for (tag, sub, lab), col, ls in zip(CLOSURE_ARMS, ('C0', 'C2', 'C1'),
+                                    ('-', '--', ':')):
+    c = exhale_curve(tag, sub)
+    if c is None:
+        continue
+    a.plot(c[0] + dlam_air, 1.0 - c[1]/100, color=col, lw=1.1, ls=ls,
+           label=r'flux-closed, ' + lab)
+a.plot(lamc + dlam_air, 1.0 - broaden(lamc, excc, f_clos)/100, color='C3',
+       lw=1.5, label=r'closed solution, $+' + '%.1f' % f_clos
+       + r'$\,km\,s$^{-1}$ FWHM')
+a.set_xlim(10827, 10831.7); a.set_ylim(0.982, 1.006)
+a.ticklabel_format(axis='x', useOffset=False, style='plain')
+a.set_xlabel(r'air wavelength [\AA]'); a.set_ylabel(r'normalized flux')
+a.grid(alpha=0.18); a.legend(fontsize=5.4, loc='lower right', framealpha=0.9)
+a.set_title(r'(a) the line at the flux-closed composition', fontsize=8)
+
+P_LO, P_HI = p_bar.min()/1.4, p_bar.max()*1.4
+
+a = axs[1]
+a.semilogy(T_col, p_bar, color='C0', lw=1.4)
+a.set_ylim(P_HI, P_LO)
+a.set_xlabel(r'temperature [K]'); a.set_ylabel(r'pressure [bar]')
+a.set_xlim(150, 600)
+a.axhline(1.031, color='0.35', ls='-.', lw=0.9)
+a.text(560, 1.031, r'tropopause', fontsize=6.5, color='0.35', ha='right',
+       va='bottom')
+a.axhline(1.0e-6, color='C3', ls=':', lw=0.9)
+a.text(560, 1.0e-6, r'match', fontsize=6.5, color='C3', ha='right',
+       va='bottom')
+a.grid(alpha=0.18)
+a.set_title(r'(b) the solved climate', fontsize=8)
+
+a = axs[2]
+a.loglog(np.maximum(XO, 1e-12), p_bar, color='C3', lw=1.4, label=r'O/H')
+a.loglog(np.maximum(XC, 1e-12), p_bar, color='C2', lw=1.1, ls='--',
+         label=r'C/H')
+a.loglog(np.maximum(XN, 1e-12), p_bar, color='C1', lw=1.1, ls=':',
+         label=r'N/H')
+a.set_ylim(P_HI, P_LO)
+a.set_xlim(1e-8, 3e-3)
+a.set_xlabel(r'nuclei per H'); a.set_yticklabels([])
+a.axhline(1.031, color='0.35', ls='-.', lw=0.9)
+a.axhline(1.0e-6, color='C3', ls=':', lw=0.9)
+a.grid(alpha=0.18)
+a.legend(fontsize=6, loc='upper left', framealpha=0.9)
+a.set_title(r'(c) what crosses the cold trap', fontsize=8)
+
+plt.tight_layout()
+plt.savefig(f'{OUT}/lhs1140b_closure.pdf')
+plt.close()
+print('wrote lhs1140b_closure.pdf')
+
+
+# ====== Figure: the Knudsen number of the solutions, and where it bites =====
+# Collisional validity of a continuum wind solution: ../docs/collisional_
+# validity.md, tool ../src/utils/collisional_validity.py (it reads existing
+# run directories and changes nothing).  Record: ../docs/Update_EXHALE.md
+# section 81.  The three representative LHS 1140 b solutions against the
+# HD 209458 b control, on the advection-corrected profiles.
+sys.path.insert(0, '../src/utils')
+import collisional_validity as CV
+
+KN_CASES = [('exhale/heh0p55', 'C0', '-',
+             r'well mixed, He/H\,$=0.55$'),
+            ('exhale/heh2p13_diff_kzz1e9', 'C2', '--',
+             r'diffusion, He/H\,$=2.13$'),
+            ('exhale/flux_closure/hi/k06', 'C1', ':',
+             r'flux-closed'),
+            ('../backup/phase_d_baseline/new_kzz1e9_d3b', 'C3', '-.',
+             r'HD\,209458\,b (control)')]
+
+kn_res = []
+for path, col, ls, lab in KN_CASES:
+    try:
+        kn_res.append((CV.collisional_diagnosis(path, adv=True), col, ls, lab))
+    except Exception as exc:                                   # noqa: BLE001
+        print('Kn %-38s unavailable (%s)' % (path, exc))
+
+for res, col, ls, lab in kn_res:
+    print('Kn %-38s sonic %s  exobase %s  Kn=0.1 at %s  max Kn crit %.3g'
+          % (res['case'],
+             'none' if res['r_sonic'] is None else '%.3f' % res['r_sonic'],
+             'above %.2f' % res['r_top'] if res['r_exobase'] is None
+             else '%.3f' % res['r_exobase'],
+             '--' if res['r_kn_threshold'] is None
+             else '%.3f' % res['r_kn_threshold'],
+             res['Kn_crit_max']))
+
+fig, axs = plt.subplots(1, 2, figsize=(7.1, 2.9))
+
+a = axs[0]
+# The two radii the memo argues about: where the He 10830 line forms, and
+# where the p-winds retrieval puts its isothermal Parker sonic point.
+a.axvspan(1.1, 3.0, color='0.85', zorder=0)
+a.text(1.8, 2.6, r'He\,10830', fontsize=6.5, color='0.35', ha='center')
+a.axvspan(8.0, 9.5, color='C4', alpha=0.16, zorder=0)
+a.text(8.7, 2.6, r'p-winds sonic pt.', fontsize=6.5, color='C4',
+       ha='center')
+for res, col, ls, lab in kn_res:
+    a.loglog(res['r'], res['Kn_bulk'], color=col, ls=ls, lw=1.2, label=lab)
+    if res['r_sonic'] is not None:
+        a.plot([res['r_sonic']],
+               [np.interp(res['r_sonic'], res['r'], res['Kn_bulk'])],
+               marker='o', ms=4, color=col, mfc='none', zorder=5)
+a.axhline(0.1, color='0.4', lw=0.8, ls='-')
+a.text(1.15, 0.115, r'$\mathrm{Kn} = 0.1$ (continuum limit)', fontsize=6.5,
+       color='0.35')
+a.axhline(1.0, color='0.4', lw=0.8, ls='--')
+a.text(1.15, 1.15, r'$\mathrm{Kn} = 1$ (exobase)', fontsize=6.5, color='0.35')
+a.set_xlim(1.02, 30); a.set_ylim(2.0e-5, 6.0)
+a.set_xlabel(r'$r/R_p$'); a.set_ylabel(r'$\mathrm{Kn}_{\rm bulk}$')
+a.grid(alpha=0.18, which='both')
+a.legend(fontsize=5.6, loc='lower right', framealpha=0.9)
+a.set_title(r'(a) bulk Knudsen number', fontsize=8)
+
+a = axs[1]
+res0 = kn_res[0][0] if kn_res else None
+if res0 is not None:
+    SPLIT = [('HI', 'C0', '-', r'H\,\textsc{i}'),
+             ('HeI', 'C2', '--', r'He\,\textsc{i}'),
+             ('HII', 'C1', ':', r'H\,\textsc{ii}'),
+             ('HeII', 'C5', '-.', r'He\,\textsc{ii}'),
+             ('e', 'C3', (0, (3, 1, 1, 1)), r'$e^-$')]
+    for s, col, ls, lab in SPLIT:
+        if s in res0['Kn']:
+            a.loglog(res0['r'], res0['Kn'][s], color=col, ls=ls, lw=1.1,
+                     label=lab)
+    a.loglog(res0['r'], res0['Kn_bulk'], color='k', lw=1.6, alpha=0.7,
+             label=r'bulk')
+a.axhline(0.1, color='0.4', lw=0.8)
+a.axhline(1.0, color='0.4', lw=0.8, ls='--')
+a.set_xlim(1.02, 30); a.set_ylim(1.0e-8, 2.0e1)
+a.set_xlabel(r'$r/R_p$'); a.set_ylabel(r'$\mathrm{Kn}_s$')
+a.grid(alpha=0.18, which='both')
+a.legend(fontsize=6, loc='lower right', ncol=2, framealpha=0.9)
+a.set_title(r'(b) by species, well-mixed solution', fontsize=8)
+
+plt.tight_layout()
+plt.savefig(f'{OUT}/lhs1140b_knudsen.pdf')
+plt.close()
+print('wrote lhs1140b_knudsen.pdf')
+
+
+# ====== Figure: the reservoir ladder under closure, and the XUV grid ========
+# (a) The equivalent width of the flux-closed solution against the reservoir
+# He/H it was closed at, and where it crosses the measured line.  Runs
+# exhale/flux_closure/{ref,heh3,heh5,heh8,heh9p7,heh10p3,heh12}, one arm per
+# reservoir, each converged to its own fixed point; the last iterate k of
+# each arm is the converged one.  (b) The red-pair depth against the XUV
+# scaling, from both models that reproduce the 2024 equivalent width: the
+# scalar base at He/H = 2.13 and the flux-closed solution at He/H = 9.71.
+# The lower atmosphere is held fixed across the grid, so it isolates the
+# wind's response.  Record: ../kzz_decision.md section 8.
+CLOSURE_LADDER = ['flux_closure/ref', 'flux_closure/heh3', 'flux_closure/heh5',
+                  'flux_closure/heh8', 'flux_closure/heh9p7',
+                  'flux_closure/heh10p3', 'flux_closure/heh12']
+XUV_LIMIT = 0.6                       # 2025 non-detection, per cent in depth
+XUV_GRID = [0.01, 0.10, 0.15, 0.20, 0.25, 0.30, 0.33]
+XUV_FAMILIES = [('heh2p13', 'heh2p13_diff_kzz1e9', 2.13,
+                 r'scalar base, He/H $= 2.13$', 'C0', 'o', '-'),
+                ('closure9p7', 'flux_closure/heh9p7/k03', 9.71,
+                 r'flux-closed, He/H $= 9.71$', 'C3', 's', '--')]
+
+
+def closure_last_k(tag):
+    """Converged iterate of a closure arm, and the He/H it returns."""
+    rows = [l.split() for l in open(os.path.join('exhale', tag,
+                                                 'closure_history.txt'))
+            if l.strip() and not l.startswith('#')]
+    return 'k%02d' % int(rows[-1][0]), float(rows[-1][11])
+
+
+def red_depth(tag, sub=''):
+    """Red-pair depth [%] of the three-Gaussian fit written by the transit."""
+    p = os.path.join('exhale', tag, sub, 'tpm_He10830_metrics.txt')
+    if not os.path.isfile(p):
+        return np.nan
+    for line in open(p):
+        if line.startswith('red_depth'):
+            return float(line.split()[1])
+    return np.nan
+
+
+lad_h, lad_e = [], []
+for tag in CLOSURE_LADDER:
+    sub, heh = closure_last_k(tag)
+    lad_h.append(heh)
+    lad_e.append(red_ew(tag, sub))
+    print('ladder %-22s %-4s He/H = %8.4f  EW = %.4f %%A'
+          % (tag, sub, heh, lad_e[-1]))
+lad_h, lad_e = np.array(lad_h), np.array(lad_e)
+o = np.argsort(lad_h)
+lad_h, lad_e = lad_h[o], lad_e[o]
+
+
+def heh_at_closed_ew(target):
+    """Reservoir whose flux-closed EW equals target, log-log on the ladder."""
+    if not (lad_e.min() <= target <= lad_e.max()):
+        return np.nan
+    return 10.0**brentq(lambda t: np.interp(t, np.log10(lad_h),
+                                            np.log10(lad_e))
+                        - np.log10(target), np.log10(lad_h[0]),
+                        np.log10(lad_h[-1]))
+
+
+heh_closed = heh_at_closed_ew(EW_obs)
+heh_clo_lo = heh_at_closed_ew(EW_obs - EW_err)
+heh_clo_hi = heh_at_closed_ew(EW_obs + EW_err)
+print('closure ladder crossing: He/H = %.3f (1 sigma %.3f - %.3f)'
+      % (heh_closed, heh_clo_lo, heh_clo_hi))
+for i in range(len(lad_h) - 1):
+    print('  local EW slope %5.2f - %5.2f: %.2f'
+          % (lad_h[i], lad_h[i+1],
+             np.log(lad_e[i+1]/lad_e[i])/np.log(lad_h[i+1]/lad_h[i])))
+
+fig, axs = plt.subplots(1, 2, figsize=(7.1, 2.9))
+
+a = axs[0]
+a.axhspan(EW_obs - EW_err, EW_obs + EW_err, color='0.85', zorder=0)
+a.axhline(EW_obs, color='0.35', lw=1.0, ls='-', zorder=1)
+a.text(2.2, EW_obs*1.03, r'measured, $1.108 \pm 0.030$', fontsize=6.5,
+       color='0.35', va='bottom')
+a.plot(lad_h, lad_e, marker='o', ms=4, lw=1.2, color='C0',
+       label=r'flux-closed ladder')
+a.plot([heh_closed], [EW_obs], marker='*', ms=11, ls='none', color='C3',
+       zorder=4, label=r'crossing, He/H $= %.1f$' % heh_closed)
+a.errorbar([heh_closed], [EW_obs],
+           xerr=[[heh_closed - heh_clo_lo], [heh_clo_hi - heh_closed]],
+           fmt='none', ecolor='C3', lw=1.0, capsize=2, zorder=4)
+a.axvline(2.0924, color='C2', ls=':', lw=1.0)
+a.text(2.0924*0.95, 0.45, r'closure at the well-mixed reservoir',
+       fontsize=6.2, color='C2', rotation=90, va='bottom', ha='right')
+a.set_xscale('log'); a.set_yscale('log')
+a.set_xlim(1.8, 14.0); a.set_ylim(0.35, 1.6)
+a.set_xticks([2, 3, 5, 8, 12])
+a.set_xticklabels([r'2', r'3', r'5', r'8', r'12'])
+a.set_xticks([], minor=True)
+a.set_yticks([0.4, 0.6, 0.8, 1.0, 1.4])
+a.set_yticklabels([r'0.4', r'0.6', r'0.8', r'1.0', r'1.4'])
+a.set_yticks([], minor=True)
+a.set_xlabel(r'reservoir He/H below the match')
+a.set_ylabel(r'red-pair $EW$ [\%\,\AA]')
+a.grid(alpha=0.2, which='both')
+a.legend(fontsize=6.2, loc='lower right', framealpha=0.9)
+a.set_title(r'(a) the composition that closes and matches', fontsize=8)
+
+a = axs[1]
+a.axhline(XUV_LIMIT, color='0.35', lw=1.0)
+a.text(0.0088, XUV_LIMIT*1.12, r'2025 limit, $0.6$\,\%', fontsize=6.5,
+       color='0.35', va='bottom', ha='left')
+for key, fid, heh, lab, col, mk, ls in XUV_FAMILIES:
+    xs, ds = [1.0], [red_depth(*os.path.split(fid)) if '/' in fid
+                     else red_depth(fid)]
+    for f in XUV_GRID:
+        tag = 'xuv%s_%s' % (('%.2f' % f).replace('.', 'p'), key)
+        d = red_depth(tag)
+        if np.isfinite(d):
+            xs.append(f); ds.append(d)
+    xs, ds = np.array(xs), np.array(ds)
+    o = np.argsort(xs)
+    a.plot(xs[o], ds[o], marker=mk, ms=4, lw=1.2, ls=ls, color=col,
+           label=lab)
+    print('xuv %-12s ' % key + '  '.join('%.2f:%.3f' % (x, d)
+                                         for x, d in zip(xs[o], ds[o])))
+a.axvline(0.30, color='C2', ls=':', lw=1.0)
+a.text(0.30*1.06, 4.0e-4, r'$0.3\times$ fiducial', fontsize=6.2, color='C2',
+       rotation=90, va='bottom')
+a.set_xscale('log'); a.set_yscale('log')
+a.set_xlim(0.008, 1.4); a.set_ylim(2.0e-4, 8.0)
+a.set_xticks([0.01, 0.1, 0.3, 1.0])
+a.set_xticklabels([r'0.01', r'0.1', r'0.3', r'1'])
+a.set_xticks([], minor=True)
+a.set_xlabel(r'$F_{\rm XUV}$ / fiducial')
+a.set_ylabel(r'red-pair depth [\%]')
+a.grid(alpha=0.2, which='both')
+a.legend(fontsize=6.2, loc='upper left', framealpha=0.9)
+a.set_title(r'(b) the XUV the 2025 non-detection allows', fontsize=8)
+
+plt.tight_layout()
+plt.savefig(f'{OUT}/lhs1140b_closure_ladder.pdf')
+plt.close()
+print('wrote lhs1140b_closure_ladder.pdf')
+
+# ==== BEGIN thermostat block (docs sec:basemetals, Fig. lhs1140b_thermostat) ==
+# Temperature and metastable density for the three solutions that bracket the
+# lower-boundary axis: the metal-free scalar base at the reservoir that
+# reproduces the line, the flux-closed solution on the photochemical column at
+# essentially the same reservoir, and the closed solution at 10.31 -- the rung
+# just below the crossing. All three carry H/He element diffusion at
+# K_zz = 1e9 cm^2/s. Profiles are the advection-corrected ones the transit
+# tool consumes.
+
+THERMO_CASES = [
+    ('heh2p13_diff_kzz1e9',
+     r'scalar base, no metals, He/H $= 2.13$', 'C0', '-'),
+    ('flux_closure/hi/k06',
+     r'photochemical base, He/H $= 2.09$', 'C1', '--'),
+    ('flux_closure/heh10p3/k01',
+     r'photochemical base, He/H $= 10.31$', 'C3', '-.'),
+]
+
+
+def adv_profile(sub):
+    """r [R_p], T [K] and n(2^3S) [cm^-3] from a run's *_adv.txt outputs.
+
+    Columns are located by the '# columns' schema header rather than by
+    position, so the loader follows the schema the way examples/exhale_io.py
+    does.
+    """
+    def read(path):
+        with open(path) as fh:
+            fh.readline()
+            cols = fh.readline().split()[2:]
+        return cols, np.loadtxt(path)
+
+    hc, hd = read(os.path.join('exhale', sub, 'output', 'Hydro_ioniz_adv.txt'))
+    ic, idd = read(os.path.join('exhale', sub, 'output', 'Ion_species_adv.txt'))
+    return hd[:, 0], hd[:, hc.index('T[K]')], idd[:, ic.index('HeITR')]
+
+
+fig, axs = plt.subplots(1, 2, figsize=(7.1, 2.9))
+
+for ax in axs:
+    ax.axvspan(1.0, 3.0, color='0.90', zorder=0)
+
+for sub, lab, col, ls in THERMO_CASES:
+    r, T, ntr = adv_profile(sub)
+    axs[0].plot(r, T, ls=ls, lw=1.3, color=col, label=lab)
+    axs[1].plot(r, ntr, ls=ls, lw=1.3, color=col, label=lab)
+    m = (r >= 1.0) & (r <= 10.0)
+    m2 = (r >= 1.0) & (r <= 2.0)
+    print('thermostat %-26s Tmax %6.1f K  T(2Rp) %6.1f K  '
+          'max n(2^3S) %7.2f  int 1-10 %7.2f  int 1-2 %7.2f'
+          % (sub, T.max(), np.interp(2.0, r, T), ntr.max(),
+             np.trapz(ntr[m], r[m]), np.trapz(ntr[m2], r[m2])))
+
+a = axs[0]
+a.text(1.75, 0.055, r'He\,10830 line-forming region', fontsize=6.2,
+       color='0.45', rotation=90, va='bottom', ha='center',
+       transform=a.get_xaxis_transform())
+a.set_xscale('log')
+a.set_xlim(1.0, 10.0)
+a.set_ylim(0.0, 6400.0)
+a.set_xticks([1, 1.5, 2, 3, 5, 10])
+a.set_xticklabels([r'1', r'1.5', r'2', r'3', r'5', r'10'])
+a.set_xticks([], minor=True)
+a.set_xlabel(r'$r$ [$R_p$]')
+a.set_ylabel(r'$T$ [K]')
+a.grid(alpha=0.2, which='both')
+a.legend(fontsize=6.2, loc='upper right', framealpha=0.9)
+a.set_title(r'(a) the wind temperature', fontsize=8)
+
+a = axs[1]
+a.text(1.75, 0.055, r'He\,10830 line-forming region', fontsize=6.2,
+       color='0.45', rotation=90, va='bottom', ha='center',
+       transform=a.get_xaxis_transform())
+a.set_xscale('log')
+a.set_yscale('log')
+a.set_xlim(1.0, 10.0)
+a.set_ylim(0.1, 300.0)
+a.set_xticks([1, 1.5, 2, 3, 5, 10])
+a.set_xticklabels([r'1', r'1.5', r'2', r'3', r'5', r'10'])
+a.set_xticks([], minor=True)
+a.set_xlabel(r'$r$ [$R_p$]')
+a.set_ylabel(r'$n(2\,^3S)$ [cm$^{-3}$]')
+a.grid(alpha=0.2, which='both')
+a.legend(fontsize=6.2, loc='upper right', framealpha=0.9)
+a.set_title(r'(b) the metastable population', fontsize=8)
+
+plt.tight_layout()
+plt.savefig(f'{OUT}/lhs1140b_thermostat.pdf')
+plt.close()
+print('wrote lhs1140b_thermostat.pdf')
+# ==== END thermostat block ===================================================
+
+# ==== BEGIN photochem column block (docs sec:photochem) ======================
+# The Photochem solution EXHALE is handed, column by column. Every column of
+# the schema is drawn except the two elemental-flux columns, which are
+# constants carrying the trial fluxes stated in the header.
+
+PC_PROFILE = 'lower_profile/lower_atmosphere_profile.dat'
+PC_TROP_BAR = 1.031          # tropopause, from the header's climate note
+PC_MATCH_BAR = 1.0e-6        # matching level EXHALE reads its base from
+R_JUP_CM = 6.9911e9
+R_EARTH_CM = 6.3725e8
+
+
+def read_lower_profile(path):
+    """Named columns of a lower-atmosphere profile, plus its header notes."""
+    head = [l for l in open(path) if l.startswith('#')]
+    names = [l for l in head if l.startswith('# columns:')][0]
+    names = names.split(':', 1)[1].split()
+    tab = np.loadtxt(path)
+    return {n: tab[:, i] for i, n in enumerate(names)}, head
+
+
+def mark_levels(ax):
+    """Tropopause and matching level on a pressure axis."""
+    ax.axhline(PC_TROP_BAR, color='0.55', lw=0.8, ls=':')
+    ax.axhline(PC_MATCH_BAR, color='C2', lw=0.8, ls='--')
+
+
+def press_axis(ax, lo, hi):
+    ax.set_yscale('log')
+    ax.set_ylim(hi, lo)                      # low pressure at the top
+    ax.set_ylabel(r'$p$ [bar]')
+    ax.grid(alpha=0.2, which='both')
+
+
+PC, PC_HEAD = read_lower_profile(PC_PROFILE)
+pc_p = PC['p']
+PC_LO, PC_HI = pc_p.min(), pc_p.max()
+print('photochem column: %d levels, p %.4g -> %.4g bar, T %.1f -> %.1f K, '
+      'Kzz unique %s'
+      % (len(pc_p), pc_p[0], pc_p[-1], PC['T'][0], PC['T'][-1],
+         np.unique(PC['Kzz'])))
+
+
+def pc_at(name, p_bar, tab=None):
+    """Value of a column at a pressure, linear in log p (deep-to-top table)."""
+    t = PC if tab is None else tab
+    return np.interp(np.log10(p_bar), np.log10(t['p'])[::-1], t[name][::-1])
+
+
+for lab, pv in (('deep', pc_p[0]), ('tropopause', PC_TROP_BAR),
+                ('1 mbar', 1.0e-3), ('match', PC_MATCH_BAR),
+                ('top', pc_p[-1])):
+    print('  %-11s p=%9.3e T=%6.1f q_H2=%.4g q_H=%.3e q_H2O=%.3e '
+          'q_CH4=%.3e q_NH3=%.3e q_CO=%.3e q_N2=%.3e q_HCN=%.3e q_OH=%.3e '
+          'q_C2H2=%.3e q_CO2=%.3e X_He=%.4f X_C=%.4e X_N=%.4e X_O=%.4e'
+          % ((lab, pv) + tuple(pc_at(k, pv) for k in
+             ('T', 'q_H2', 'q_H', 'q_H2O', 'q_CH4', 'q_NH3', 'q_CO', 'q_N2',
+              'q_HCN', 'q_OH', 'q_C2H2', 'q_CO2', 'X_He', 'X_C', 'X_N',
+              'X_O'))))
+
+# Elemental carriers at the match, per hydrogen nucleus. The hydrogen-nucleus
+# fraction of the gas is 2 q_H2 + q_H, so a carrier with n nuclei of element
+# El contributes n q / (2 q_H2 + q_H) to El/H.
+f_H_nuclei = 2.0*pc_at('q_H2', PC_MATCH_BAR) + pc_at('q_H', PC_MATCH_BAR)
+print('  H-nucleus fraction at the match: %.5f' % f_H_nuclei)
+for el, carriers in (('C', (('q_CH4', 1), ('q_CO', 1), ('q_CO2', 1),
+                            ('q_HCN', 1), ('q_C2H2', 2))),
+                     ('N', (('q_NH3', 1), ('q_N2', 2), ('q_HCN', 1))),
+                     ('O', (('q_H2O', 1), ('q_CO', 1), ('q_CO2', 2),
+                            ('q_OH', 1)))):
+    per_H = {k: n*pc_at(k, PC_MATCH_BAR)/f_H_nuclei for k, n in carriers}
+    tot = sum(per_H.values())
+    print('  %s: X_%s = %.5e, carriers sum %.5e (%.1f%% of it)'
+          % (el, el, pc_at('X_'+el, PC_MATCH_BAR), tot,
+             tot/pc_at('X_'+el, PC_MATCH_BAR)*100))
+    for k, _ in carriers:
+        print('       %-8s %.4e per H  (%5.2f%% of the carriers)'
+              % (k, per_H[k], per_H[k]/tot*100))
+
+# ---- page 1: structure, and the carriers that hold the bulk ----
+fig, axs = plt.subplots(2, 3, figsize=(7.1, 5.4))
+
+a = axs[0, 0]
+a.plot(PC['T'], pc_p, lw=1.3, color='C3')
+press_axis(a, PC_LO, PC_HI); mark_levels(a)
+a.set_xlabel(r'$T$ [K]')
+a.set_xlim(160.0, 560.0)
+a.text(540.0, PC_TROP_BAR*0.55, r'tropopause', fontsize=6.0, color='0.45',
+       ha='right')
+a.text(540.0, PC_MATCH_BAR*0.5, r'match', fontsize=6.0, color='C2',
+       ha='right')
+a.set_title(r'(a) temperature', fontsize=8)
+
+a = axs[0, 1]
+a.plot(PC['Kzz'], pc_p, lw=1.3, color='C0')
+press_axis(a, PC_LO, PC_HI); mark_levels(a)
+a.set_xscale('log'); a.set_xlim(1.0e7, 1.0e11)
+a.set_xlabel(r'$K_{zz}$ [cm$^2$\,s$^{-1}$]')
+a.set_title(r'(b) eddy coefficient, constant', fontsize=8)
+
+a = axs[0, 2]
+a.plot(PC['n_tot'], pc_p, lw=1.3, color='C0', label=r'$n_{\rm tot}$')
+press_axis(a, PC_LO, PC_HI); mark_levels(a)
+a.set_xscale('log')
+a.set_xlabel(r'$n_{\rm tot}$ [cm$^{-3}$] \ / \ $\rho$ [g\,cm$^{-3}$]')
+a.plot(PC['rho'], pc_p, lw=1.3, color='C1', ls='--', label=r'$\rho$')
+a.legend(fontsize=6.2, loc='lower left', framealpha=0.9)
+a.set_title(r'(c) number and mass density', fontsize=8)
+
+a = axs[1, 0]
+a.plot((PC['r']*R_JUP_CM - PC['r'][0]*R_JUP_CM)/1.0e5, pc_p, lw=1.3,
+       color='C4')
+press_axis(a, PC_LO, PC_HI); mark_levels(a)
+a.set_xlabel(r'height above the deep boundary [km]')
+a.set_title(r'(d) the radius the column maps to', fontsize=8)
+a.text(0.04, 0.06, r'match at $%.4f\,R_{\rm J} = %.3f\,R_\oplus$'
+       % (pc_at('r', PC_MATCH_BAR),
+          pc_at('r', PC_MATCH_BAR)*R_JUP_CM/R_EARTH_CM),
+       fontsize=6.0, transform=a.transAxes)
+
+a = axs[1, 1]
+q_He = PC['X_He']*(2.0*PC['q_H2'] + PC['q_H'])
+for y, lab, col, ls in ((q_He, r'He', 'C7', '-'),
+                        (PC['q_H2'], r'H$_2$', 'C0', '-'),
+                        (PC['q_CH4'], r'CH$_4$', 'C1', '--'),
+                        (PC['q_NH3'], r'NH$_3$', 'C2', '-.'),
+                        (PC['q_H'], r'H', 'C3', ':')):
+    a.plot(y, pc_p, lw=1.3, color=col, ls=ls, label=lab)
+press_axis(a, PC_LO, PC_HI); mark_levels(a)
+a.set_xscale('log'); a.set_xlim(1.0e-22, 5.0)
+a.set_xlabel(r'mixing ratio $q$')
+a.legend(fontsize=6.0, loc='lower left', ncol=2, framealpha=0.9)
+a.set_title(r'(e) the bulk carriers', fontsize=8)
+
+a = axs[1, 2]
+for k, lab, col, ls in (('X_He', r'He/H', 'C7', '-'),
+                        ('X_C', r'C/H', 'C1', '--'),
+                        ('X_N', r'N/H', 'C2', '-.'),
+                        ('X_O', r'O/H', 'C0', ':')):
+    a.plot(PC[k], pc_p, lw=1.3, color=col, ls=ls, label=lab)
+press_axis(a, PC_LO, PC_HI); mark_levels(a)
+a.set_xscale('log'); a.set_xlim(1.0e-7, 20.0)
+a.set_xlabel(r'nuclei per H nucleus')
+a.legend(fontsize=6.0, loc='lower left', ncol=2, framealpha=0.9)
+a.set_title(r'(f) elemental ratios', fontsize=8)
+
+plt.tight_layout()
+plt.savefig(f'{OUT}/lhs1140b_photochem_column.pdf')
+plt.close()
+print('wrote lhs1140b_photochem_column.pdf')
+
+# ---- page 2: the O, C and N systems, and what the reservoir does to them ----
+LADDER_ARMS = [('flux_closure/hi/k06', r'He/H $= 2.09$', 'C0', '-'),
+               ('flux_closure/heh5/k04', r'He/H $= 5.01$', 'C1', '--'),
+               ('flux_closure/heh10p3/k01', r'He/H $= 10.31$', 'C3', '-.')]
+
+fig, axs = plt.subplots(2, 3, figsize=(7.1, 5.4))
+
+a = axs[0, 0]
+for k, lab, col, ls in (('q_H2O', r'H$_2$O', 'C0', '-'),
+                        ('q_CO', r'CO', 'C1', '--'),
+                        ('q_CO2', r'CO$_2$', 'C2', '-.'),
+                        ('q_OH', r'OH', 'C3', ':')):
+    a.plot(PC[k], pc_p, lw=1.3, color=col, ls=ls, label=lab)
+press_axis(a, PC_LO, PC_HI); mark_levels(a)
+a.set_xscale('log'); a.set_xlim(1.0e-30, 1.0e-2)
+a.set_xlabel(r'mixing ratio $q$')
+a.legend(fontsize=6.0, loc='lower left', ncol=2, framealpha=0.9)
+a.set_title(r'(a) the oxygen system', fontsize=8)
+
+a = axs[0, 1]
+for k, lab, col, ls in (('q_CH4', r'CH$_4$', 'C1', '-'),
+                        ('q_CO', r'CO', 'C0', '--'),
+                        ('q_CO2', r'CO$_2$', 'C2', '-.'),
+                        ('q_HCN', r'HCN', 'C3', ':'),
+                        ('q_C2H2', r'C$_2$H$_2$', 'C4', (0, (3, 1, 1, 1)))):
+    a.plot(PC[k], pc_p, lw=1.3, color=col, ls=ls, label=lab)
+press_axis(a, PC_LO, PC_HI); mark_levels(a)
+a.set_xscale('log'); a.set_xlim(1.0e-36, 1.0e-2)
+a.set_xlabel(r'mixing ratio $q$')
+a.legend(fontsize=6.0, loc='lower left', ncol=2, framealpha=0.9)
+a.set_title(r'(b) the carbon system', fontsize=8)
+
+a = axs[0, 2]
+for k, lab, col, ls in (('q_NH3', r'NH$_3$', 'C2', '-'),
+                        ('q_N2', r'N$_2$', 'C0', '--'),
+                        ('q_HCN', r'HCN', 'C3', ':')):
+    a.plot(PC[k], pc_p, lw=1.3, color=col, ls=ls, label=lab)
+press_axis(a, PC_LO, PC_HI); mark_levels(a)
+a.set_xscale('log'); a.set_xlim(1.0e-24, 1.0e-2)
+a.set_xlabel(r'mixing ratio $q$')
+a.legend(fontsize=6.0, loc='lower left', framealpha=0.9)
+a.set_title(r'(c) the nitrogen system', fontsize=8)
+
+arms = []
+for sub, lab, col, ls in LADDER_ARMS:
+    f = os.path.join('exhale', sub, 'lower_atmosphere_profile.dat')
+    if not os.path.isfile(f):
+        print('  ladder arm missing: %s' % f)
+        continue
+    tab, _ = read_lower_profile(f)
+    arms.append((tab, lab, col, ls))
+    print('  ladder column %-26s T(deep) %6.1f K  q_H2(match) %.5f  '
+          'O/H(match) %.4e' % (sub, tab['T'][0],
+                               pc_at('q_H2', PC_MATCH_BAR, tab),
+                               pc_at('X_O', PC_MATCH_BAR, tab)))
+
+for a, key, xl, xlim, ttl in (
+        (axs[1, 0], 'T', r'$T$ [K]', (160.0, 560.0),
+         r'(d) the column, by reservoir'),
+        (axs[1, 1], 'q_H2', r'$q_{\rm H_2}$', (1.0e-2, 1.0),
+         r'(e) H$_2$, by reservoir'),
+        (axs[1, 2], 'X_O', r'O/H [nuclei per H]', (1.0e-7, 1.0e-2),
+         r'(f) the cold trap, by reservoir')):
+    for tab, lab, col, ls in arms:
+        a.plot(tab[key], tab['p'], lw=1.3, color=col, ls=ls, label=lab)
+    press_axis(a, PC_LO, PC_HI); mark_levels(a)
+    if key != 'T':
+        a.set_xscale('log')
+    a.set_xlim(*xlim)
+    a.set_xlabel(xl)
+    a.legend(fontsize=6.0, loc='lower left', framealpha=0.9)
+    a.set_title(ttl, fontsize=8)
+
+plt.tight_layout()
+plt.savefig(f'{OUT}/lhs1140b_photochem_column_2.pdf')
+plt.close()
+print('wrote lhs1140b_photochem_column_2.pdf')
+# ==== END photochem column block =============================================
+
+# ==== BEGIN composition profiles block (docs sec:basemetals, Fig. lhs1140b_composition_profiles)
+# Elemental number-density fractions and ionization fractions against radius,
+# for the same three solutions as the thermostat figure and from the same
+# advection-corrected outputs. n_tot follows the code's calc_ntot convention:
+# every gas particle counts once (H I, H II, He I, He II, He III and, where
+# present, all metal ion stages), electrons excluded, and He 2^3S is NOT added
+# because it is an excited level inside He I (bsp_is_excited_level).
+
+COMP_CASES = [
+    ('heh2p13_diff_kzz1e9', 2.13,
+     r'scalar base, no metals: $2.13$', 'C0', '-'),
+    ('flux_closure/hi/k06', 2.0924,
+     r'photochemical base: $2.09$', 'C1', '--'),
+    ('flux_closure/heh10p3/k01', 10.3116,
+     r'photochemical base: $10.31$', 'C3', '-.'),
+]
+COMP_METALS = ['C', 'O', 'N', 'Mg', 'Si', 'Ca', 'Na', 'K', 'S', 'Fe']
+
+
+def composition_profile(sub):
+    """Nuclei fractions and ionization fractions of one run, against r."""
+    def read(path):
+        with open(path) as fh:
+            fh.readline()
+            cols = fh.readline().split()[2:]
+        return cols, np.loadtxt(path)
+
+    ic, tab = read(os.path.join('exhale', sub, 'output', 'Ion_species_adv.txt'))
+    r = tab[:, 0]
+    c = {nm: tab[:, k+1] for k, nm in enumerate(ic[1:])}
+    n_H = c['HI'] + c['HII']
+    n_He = c['HeI'] + c['HeII'] + c['HeIII']
+    n_met = np.zeros_like(n_H)
+    for el in COMP_METALS:
+        for stage in (el+'I', el+'II', el+'III'):
+            if stage in c:
+                n_met = n_met + c[stage]
+    n_tot = n_H + n_He + n_met
+    return dict(r=r, fH=n_H/n_tot, fHe=n_He/n_tot, fmet=n_met/n_tot,
+                heh=n_He/n_H, xHII=c['HII']/n_H,
+                xHeII=c['HeII']/n_He, xHeIII=c['HeIII']/n_He)
+
+
+fig, axs = plt.subplots(1, 3, figsize=(7.1, 2.9))
+for ax in axs:
+    ax.axvspan(1.0, 3.0, color='0.90', zorder=0)
+
+for sub, heh0, lab, col, ls in COMP_CASES:
+    P = composition_profile(sub)
+    r = P['r']
+    axs[0].plot(r, P['fH'], ls=ls, lw=1.3, color=col, label=lab)
+    axs[0].plot(r, P['fHe'], ls=ls, lw=1.0, color=col, alpha=0.55)
+    axs[1].plot(r, P['heh'], ls=ls, lw=1.3, color=col, label=lab)
+    axs[1].axhline(heh0, color=col, ls=':', lw=0.8)
+    axs[2].plot(r, P['xHII'], ls=ls, lw=1.3, color=col, label=lab)
+    axs[2].plot(r, P['xHeII'], ls=ls, lw=1.0, color=col, alpha=0.55)
+    axs[2].plot(r, P['xHeIII'], ls=ls, lw=0.8, color=col, alpha=0.35)
+    at = lambda y, q: np.interp(q, r, y)
+    print('composition %-26s @2Rp  nH/ntot %.4f  nHe/ntot %.4f  metals %.3e  '
+          'He/H %.4f (reservoir %.4f)  x(HII) %.4f  x(HeII) %.4f  x(HeIII) %.3e'
+          % (sub, at(P['fH'], 2.0), at(P['fHe'], 2.0), at(P['fmet'], 2.0),
+             at(P['heh'], 2.0), heh0, at(P['xHII'], 2.0), at(P['xHeII'], 2.0),
+             at(P['xHeIII'], 2.0)))
+    print('     metal share of n_tot: max %.3e over 1-30 Rp'
+          % P['fmet'][r >= 1.0].max())
+
+for a in axs:
+    a.set_xscale('log')
+    a.set_xlim(1.0, 10.0)
+    a.set_xticks([1, 1.5, 2, 3, 5, 10])
+    a.set_xticklabels([r'1', r'1.5', r'2', r'3', r'5', r'10'])
+    a.set_xticks([], minor=True)
+    a.set_xlabel(r'$r$ [$R_p$]')
+    a.grid(alpha=0.2, which='both')
+    a.text(1.75, 0.055, r'He\,10830 line-forming region', fontsize=6.0,
+           color='0.45', rotation=90, va='bottom', ha='center',
+           transform=a.get_xaxis_transform())
+
+a = axs[0]
+a.set_ylim(0.0, 1.0)
+a.set_ylabel(r'nuclei fraction of $n_{\rm tot}$')
+a.text(3.15, 0.115, r'heavy: $n_{\rm H}/n_{\rm tot}$', fontsize=6.2)
+a.text(3.15, 0.045, r'light: $n_{\rm He}/n_{\rm tot}$', fontsize=6.2)
+a.legend(fontsize=6.0, loc='upper left', framealpha=0.9,
+         title=r'reservoir He/H', title_fontsize=6.0)
+a.set_title(r'(a) elemental fractions', fontsize=8)
+
+a = axs[1]
+a.set_yscale('log')
+a.set_ylim(0.1, 60.0)
+a.set_ylabel(r'He/H by nuclei')
+a.axhline(1.0, color='0.35', lw=0.8)
+a.text(1.06, 1.10, r'He $=$ H', fontsize=6.2, color='0.35')
+a.text(1.06, 0.125, r'dotted: the reservoir each run was given', fontsize=6.0)
+a.set_title(r'(b) helium against hydrogen', fontsize=8)
+
+a = axs[2]
+a.set_yscale('log')
+a.set_ylim(1.0e-5, 3.0)
+a.set_ylabel(r'ionization fraction')
+a.text(3.05, 6.6e-5, r'heavy: $x({\rm H\,II})$', fontsize=6.0)
+a.text(3.05, 3.4e-5, r'light: $x({\rm He\,II})$', fontsize=6.0)
+a.text(3.05, 1.75e-5, r'faint: $x({\rm He\,III})$', fontsize=6.0)
+a.set_title(r'(c) ionization state', fontsize=8)
+
+plt.tight_layout()
+plt.savefig(f'{OUT}/lhs1140b_composition_profiles.pdf')
+plt.close()
+print('wrote lhs1140b_composition_profiles.pdf')
+# ==== END composition profiles block =========================================

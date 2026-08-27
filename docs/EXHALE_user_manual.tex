@@ -346,7 +346,7 @@ at the price of proportionally more work in every sweep. In practice the
 $2\times$ step
 (\texttt{1.0e-4 100}) is the one to try first: it is where the mode goes, and
 $4\times$ is not reachable to convergence on HD\,189733\,b within the
-compile-time step cap because its time step is $4\times$ smaller. That $2\times$
+step cap (\texttt{Max steps:}) because its time step is $4\times$ smaller. That $2\times$
 setting is what \texttt{HD189733b/input.inp} carries; the other three production
 planets run on the default. The full investigation is
 \texttt{docs/hd189\_base\_checkerboard.md}.
@@ -482,8 +482,9 @@ iteration during the Newton finish, down to \texttt{Resid tol} ($10^{-3}$).}
 A small set of \emph{environment variables} expose diagnostic and expert
 entry points without touching \texttt{input.inp} (Table~\ref{tab:env}). They
 are read once at startup; when unset they have strictly zero effect, so normal
-runs are unaffected. All of them are diagnostics or validation aids --- the only
-one used in a production workflow is the \texttt{EXHALE\_PTC} family, which
+runs are unaffected. All of them are diagnostics or validation aids, apart from
+\texttt{EXHALE\_ROOT}, which the lower-atmosphere pre-step needs --- the only
+other one used in a production workflow is the \texttt{EXHALE\_PTC} family, which
 implements the ``Newton from an existing state'' recipe of \S\ref{sec:newton}
 (and \texttt{examples/04\_newton\_from\_state/}). Typical usage:
 \begin{lstlisting}[style=sh]
@@ -537,11 +538,38 @@ Variable & Effect \\
   use MINPACK \texttt{hybrd1}, skipping the analytic-Jacobian Newton: lets the
   same binary produce both solvers' outputs for an A/B validation
   (\texttt{Update\_EXHALE\_solver.pdf} \S6). \\
+\texttt{EXHALE\_DIFFUSION\_CHECK=1} & Write the face-by-face elemental fluxes
+  of every element-diffusion step to
+  \texttt{output/element\_flux\_profile.txt} (\S\ref{sec:outputs}), and the
+  composition profile of each direct-steady outer pass to
+  \texttt{output/diffusion\_pass\_profiles.txt}. With a lower-atmosphere
+  profile in use the flux file is written anyway. \\
+\texttt{EXHALE\_DIFF\_OMEGA=}$\langle v\rangle$ & Pin the starting
+  under-relaxation factor of the direct-steady composition outer loop
+  (default $0.5$, halved down to $0.125$ on a pass whose drift failed to
+  fall), so the undamped loop can be compared with the damped one without a
+  rebuild. \\
+\midrule
+\texttt{EXHALE\_MAXSTEPS=}$\langle n\rangle$ & Deterministic step cap: leave
+  the marching loop after $n$ steps and write the outputs. Separate from the
+  \texttt{Max steps:} key (\S\ref{sec:convctl}) and only ever earlier; it is
+  what the regression harness uses to pin a relaxation-snapshot case. \\
+\texttt{EXHALE\_PROFILE=1} & Print a timing breakdown: the
+  \texttt{ioniz\_eq} share of the step every 500 steps, and the totals at the
+  end of the run. \\
+\texttt{EXHALE\_PARSE\_DUMP=1} & Write every value \texttt{input\_read}
+  derived from \texttt{input.inp} (plus any \texttt{base.inp} override) to
+  \texttt{parse\_dump.txt} and stop, before any grid/IC/output work. Feeds the
+  parser regression corpus. \\
+\texttt{EXHALE\_ROOT=}$\langle$path$\rangle$ & Install directory for the
+  lower-atmosphere pre-step generators (\S\ref{sec:loweratm}); required when
+  \texttt{Lower atmosphere:} is set on a relocated install. Not a diagnostic. \\
 \bottomrule
 \end{tabular}
 \caption{Environment-variable hooks. All are read once at startup and have
-zero effect when unset. The four diagnostic tests (top block) and
-\texttt{EXHALE\_PTC} runs stop after printing/writing; they do not march.}
+zero effect when unset. The four diagnostic tests (top block),
+\texttt{EXHALE\_PARSE\_DUMP} and \texttt{EXHALE\_PTC} runs stop after
+printing/writing; they do not march.}
 \label{tab:env}
 \end{table}
 
@@ -694,8 +722,10 @@ $(\ast)$ \texttt{Log10 of X-ray luminosity [erg/s]:} & real (log$_{10}$) & Only
 \texttt{Grid type:} & \texttt{Uniform} $|$ \texttt{Stretched} $|$ \texttt{Mixed}
   & Radial grid spacing. \texttt{Mixed} (fine near the base, stretched outward)
   is the usual choice. \\
-\texttt{Numerical flux:} & \texttt{HLLC} $|$ \texttt{ROE} & Riemann solver for
-  the hydrodynamic fluxes. \\
+\texttt{Numerical flux:} & \texttt{HLLC} $|$ \texttt{ROE} $|$ \texttt{LLF} &
+  Riemann solver for the hydrodynamic fluxes (\texttt{Num\_Fluxes.f90}).
+  \texttt{HLLC} is the usual choice; \texttt{LLF} (local Lax--Friedrichs) is
+  the most diffusive and is kept for solver-isolation tests. \\
 \texttt{Reconstruction scheme:} & \texttt{PLM} $|$ \texttt{WENO3} $|$
   \texttt{PLM+WENO3} & Spatial reconstruction order and staging.
   \texttt{PLM} or \texttt{WENO3} runs a single stage (only the first
@@ -988,7 +1018,8 @@ defaults restore the standard behavior).}\label{tab:inp-opt}\\
   (def.\ \texttt{False}) & Add H$_2$, H$_2^+$, H$_3^+$ and HeH$^+$ to the
   coupled ionization equilibrium, with the H$_2$ photoionization opacity and
   heating and the H$_3^+$ infrared cooling. Requires \texttt{He/H number
-  ratio}\,$>0$; \texttt{He\_diffusion} is refused. Turning it on also turns
+  ratio}\,$>0$. \texttt{He\_diffusion} is allowed (since 2026-08-26): the
+  element transport closes over the molecular carriers. Turning it on also turns
   \texttt{Molecular base} on (see there). A \texttt{metals.inp} may be present
   --- the metal stages are then solved in the same system
   (\S\ref{sec:loweratm}). \\
@@ -1017,6 +1048,16 @@ defaults restore the standard behavior).}\label{tab:inp-opt}\\
   1\,$\mu$bar and print the derived base radius, base fractions and $\mu$ next
   to the input \texttt{Planet radius}. Nothing is overridden
   (\S\ref{sec:loweratm}). \\
+\texttt{Lower atmosphere profile:} & path (def.\ none) & Take the lower
+  atmosphere from a \emph{profile} --- the lower model's own solution tabulated
+  over an interval of pressure --- instead of the single-level scalars of
+  \texttt{base.inp}. The named file supplies the base state at its matching
+  pressure ($T_0$, $R_0$, $p_{\rm base}$, the H$_2$ fraction), the elemental
+  reservoirs (He/H and every element column it carries, overriding
+  \texttt{metals.inp}), and the eddy coefficient $K_{zz}(r)$ as a profile,
+  which makes \texttt{He\_Kzz} inert. A missing file, a malformed table, or a
+  \texttt{base.inp} beside it that still states a physics key stops the run
+  (\S\ref{sec:lowerprofile}). \\
 \texttt{Hydrostatic base:} & \texttt{True} (def.\ off) & Momentum-consistent
   base pressure. The legacy ghost pins $p$ to $n_{\rm tot,bc}+\delta p_{\rm bc}$
   at $T_0$, which flattens $dp/dr$ to ${\sim}0$ at the base, whereas steady
@@ -1097,7 +1138,8 @@ stages) for any of C, N, O, Mg, Si, Ca, Na, K, S, Fe. Blank lines and \texttt{\#
 comments are ignored; any non-zero abundance turns metals on. Four control keys
 are also accepted: \texttt{pp\_metals} (metal treatment in the advection
 post-process: \texttt{0}=metal-free, \texttt{1}=frozen at the converged
-equilibrium (default), \texttt{2}=re-solve, not yet implemented),
+equilibrium (default), \texttt{2}=re-solve the metal stages inside the post-process
+iteration, at fixed element totals),
 \texttt{cx\_full} (\texttt{1}=full Huang+2023 charge-exchange network; default
 metal--H only), \texttt{cno\_cool} (C/N/O line-cooling source:
 \texttt{1}=closed-form fits to CHIANTI v11, including N\,I/N\,II cooling
@@ -1346,7 +1388,10 @@ temperature is inflated by the particle-count ratio (${\sim}1.8\times$ for a
 fully molecular base) and thermally dissociates the layer the chemistry just
 built, so the parser couples the two rather than leaving the inconsistent
 combination reachable.
-Requires He; \texttt{He\_diffusion} is refused by the parser. A
+Requires He. \texttt{He\_diffusion} is no longer refused beside it
+(milestone M4, 2026-08-26): the element transport of
+\texttt{binary\_element\_diffusion} closes over the molecular carriers, and
+the \texttt{mol\_diffusion} regression case runs the combination. A
 \texttt{metals.inp} may be present: the trace metals are then solved in the
 same system as the molecular network (\texttt{System\_HeH\_mol\_metals}),
 because the two blocks share the free electron density and the metals are the
@@ -1380,9 +1425,72 @@ no-op):
 \begin{verbatim}
 T_base    1140.0     # [K]      -> overrides T0
 r_base    1.402      # [R_J]    -> overrides "Planet radius" (1-ubar radius)
+p_base    1.0e-6     # [bar]    -> the level every other value refers to
+q_H2_base 0.42       #          -> H2 volume mixing ratio at the base
 HeH_base  0.083      #          -> overrides the He/H number ratio
+O_H_base  4.90e-4    #          -> O/H nuclei ratio, overrides metals.inp
 Kzz_base  1.0e9      # [cm2/s]  -> sets He_Kzz (used by He_diffusion)
 \end{verbatim}
+Keys are matched as labels, by the same anchored rule the \texttt{input.inp}
+reader uses, and every key carries a \textbf{category} that states what the
+value is allowed to do to the wind. There are five, and the same table is
+carried by \texttt{read\_base\_inp}'s header comment and by
+\texttt{docs/input\_schema.md} \S2c:
+
+\begin{center}\small
+\begin{tabular}{@{}>{\raggedright\arraybackslash}p{3.5cm}>{\raggedright\arraybackslash}p{2.6cm}>{\raggedright\arraybackslash}p{7.6cm}@{}}
+\toprule
+Key & Category & What it sets, and where the value is consumed \\
+\midrule
+(comments only) & provenance &
+  Nothing. Which code, network and profile produced the file. The one comment
+  that is parsed is \texttt{\# solution\_id}, and only beside a profile. \\
+\texttt{T\_base}, \texttt{r\_base}, \texttt{p\_base},
+\texttt{q\_H2\_base} & EOS boundary &
+  \texttt{T0}, \texttt{R0}, \texttt{p\_base\_bar}, \texttt{q\_h2\_base}: the
+  state of the gas at the matching level. \texttt{q\_H2\_base} replaces the
+  chemical-equilibrium fit in \texttt{comp\_ntot\_bc}, i.e.\ it sets the base
+  \emph{particle count}. \\
+\texttt{HeH\_base},
+\texttt{<El>\_H\_base} & elemental reservoir &
+  \texttt{HeH}, and \texttt{X\_<El>} hence \texttt{melem\_ab}: the nuclei ratio
+  of an element to hydrogen, which the wind then transports. \\
+(none today) & initial guess &
+  A key here would seed a profile the solver is free to move away from. None
+  exists yet. \\
+\texttt{Kzz\_base} & boundary constraint &
+  \texttt{he\_kzz}: the eddy coefficient the element-diffusion operator imposes
+  at the base; inert with \texttt{He\_diffusion} off. \\
+\texttt{q\_H2O}, \texttt{q\_CO}, \ldots & diagnostic &
+  Nothing; metadata written as comments by the generators. Unknown keys are
+  ignored. \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+The distinction the categories draw is a real one, and \texttt{q\_H2\_base} is
+where it bites: it is an \textbf{EOS anchor}, not a composition pin. Nothing
+holds H$_2$ at that value, no H$_2$ profile is seeded from it, and the
+molecular network moves away from it in the first cell.
+
+\texttt{<El>\_H\_base} is the elemental form: \texttt{C\_H\_base},
+\texttt{N\_H\_base}, \texttt{O\_H\_base}, \texttt{S\_H\_base} and the same
+spelling for \texttt{Mg Si Ca Na K Fe} --- any of the ten element symbols of
+the species table --- each the El/H \emph{nuclei} ratio at the handoff level.
+It overrides \texttt{metals.inp} for that element, it turns the metal system on
+by itself when it is the only nonzero abundance, and on a restart
+(\texttt{Load IC? True}) it renormalizes that element's whole loaded column
+onto the stated ratio, preserving the ionization split and the radial shape.
+An element that reached the run from \texttt{metals.inp} alone is loaded
+untouched.
+
+With a lower-atmosphere profile in use (\S\ref{sec:lowerprofile}) the EOS
+boundary, elemental reservoir and boundary constraint keys of this file are
+\textbf{refused} with an \texttt{error stop} naming the key and its category:
+the profile states all of them at the matching level, and a scalar beside it
+would be the same quantity said twice. Provenance comments and diagnostic keys
+remain allowed.
+
 The pre-step can be invoked \emph{by EXHALE itself}: with
 \begin{verbatim}
 Lower atmosphere: vulcan 1.36     # or: analytic 1.36  (arg = 1-bar radius R_J)
@@ -1423,6 +1531,144 @@ with \texttt{-{}-force}). The code root is taken from \texttt{EXHALE\_ROOT} when
 set (for relocated installs). VULCAN's networks are H/C/N/O(/S): it supplies the
 H$_2$/H state and molecular mixing ratios, \emph{not} the atomic-metal release
 (Na/Mg/Ca/Fe) --- \texttt{metals.inp} stays user-supplied.
+
+% ===================================================================== %
+\subsection{The lower atmosphere as a profile
+(\texttt{Lower atmosphere profile:})}\label{sec:lowerprofile}
+% ===================================================================== %
+The Tier-3 handoff of \S\ref{sec:loweratm} states the lower atmosphere at one
+level, as a handful of scalars in \texttt{base.inp}. A \emph{profile} states it
+over an interval of pressure instead: the lower model (photochemistry, with or
+without a climate solution) is solved on a column that reaches \emph{above} the
+level where EXHALE places its base, and the whole overlap is handed over as one
+table. Point EXHALE at it with
+
+\begin{verbatim}
+Lower atmosphere profile: lower_atmosphere_profile.dat
+\end{verbatim}
+
+in \texttt{input.inp}; the file lives in the run directory and the name is
+free. Two things ask for the interval rather than the level. The first is eddy
+mixing: the homopause is where $K_{zz}$ crosses the molecular diffusion
+coefficient, which rises by nearly five decades between the base and
+$1.2\,R_p$, so a single \texttt{He\_Kzz} cannot state where it lies
+(\S\ref{sec:hediff}). The second is the elemental-flux closure below, in which
+the composition at the base stops being an input and becomes an output.
+
+\paragraph{Schema.} A block of \texttt{\#} header lines of the form
+\texttt{\# key value}, then a fixed-column table in full double precision
+running \textbf{deep to shallow} --- the pressure column must be strictly
+decreasing, and at least two levels must be present. Three header keys and one
+schema line are required:
+\begin{itemize}
+\item \texttt{solution\_id} --- a sha256 fingerprint of the lower model's
+  configuration (code and version, mechanism and thermodynamic data, stellar
+  flux and dilution, planet mass and reference radius, elemental abundances,
+  matching pressure, trial fluxes). It is what makes ``the same
+  lower-atmosphere solution'' a checkable statement.
+\item \texttt{p\_match\_bar} --- the matching pressure, i.e.\ where EXHALE
+  places its base. It must lie inside the pressures the table covers.
+\item \texttt{p\_top\_bar} --- the shallowest level carried. It must be
+  smaller than \texttt{p\_match\_bar} (otherwise the two models never overlap)
+  and must not lie above the shallowest tabulated level.
+\item \texttt{\# columns:} --- the names of the columns, in file order. Every
+  column is found \emph{by name}, because the producers order their element
+  list differently from run to run.
+\end{itemize}
+The remaining header keys are optional and are provenance or metadata:
+\texttt{source\_code}, \texttt{source\_version}, \texttt{mechanism},
+\texttt{stellar\_flux}, \texttt{p\_deep\_bar}, \texttt{trial\_flux\_H},
+\texttt{trial\_flux\_He}, \texttt{iteration}, \texttt{reached\_steady\_state}
+and \texttt{notes}. A profile with no \texttt{iteration} index runs perfectly
+well; it is simply not drivable by the closure iteration, which the run reports
+as \texttt{lower\_profile\_iterable F}. Header keys this version has no
+consumer for are ignored rather than refused.
+
+Nine columns are required: \texttt{p} (bar), \texttt{r} ($R_J$), \texttt{T}
+(K), \texttt{n\_tot} (cm$^{-3}$), \texttt{rho} (g\,cm$^{-3}$), \texttt{Kzz}
+(cm$^2$s$^{-1}$), \texttt{q\_H2}, \texttt{q\_H} and \texttt{X\_He}. Optional
+columns are the other elemental ratios \texttt{X\_C}, \texttt{X\_O},
+\texttt{X\_Mg}, \ldots (El/H \emph{nuclei} ratios, summed over every carrier,
+for any element \texttt{species\_table} knows), the elemental fluxes
+\texttt{F\_H} and \texttt{F\_He} (g\,s$^{-1}$, outward positive), and any
+number of diagnostic mixing ratios such as \texttt{q\_H2O}. Columns the reader
+has no consumer for are \textbf{kept, not dropped}, so a file survives a round
+trip through the tools. A data row that does not carry as many numbers as the
+schema line names stops the run.
+
+Every quantity is interpolated \textbf{linearly in $\log p$} and is never
+extrapolated; a target that falls exactly on a tabulated level returns that
+level's value bit for bit, which is what lets a profile with a node at the
+matching pressure reproduce the scalar handoff exactly. $K_{zz}$ is the one
+quantity taken as a profile rather than at a point: it is mapped onto the
+radial grid through the file's own radius column, and above the shallowest
+level carried each cell takes that level's value, the eddy coefficient being a
+lower-atmosphere property about which the file makes no statement above its
+top.
+
+\paragraph{What it supplies, and what \texttt{base.inp} may no longer say.}
+At the matching level the profile sets the base temperature $T_0$ (column
+\texttt{T}), the base radius $R_0$ (column \texttt{r}), the base pressure
+$p_{\rm base}$ (\texttt{p\_match\_bar}), the base H$_2$ fraction (column
+\texttt{q\_H2}), the He/H ratio (column \texttt{X\_He}) and each elemental
+reservoir it carries, which overrides \texttt{metals.inp}. The columns
+\texttt{n\_tot} and \texttt{rho} are carried but \emph{not} imposed: the base
+density remains the $n_0$ of \texttt{input.inp}, and the base particle count
+and mass follow from $T_0$, He/H, $q_{\rm H_2}$ and the elemental ratios
+exactly as they do on the scalar path.
+
+Because the profile is now the single source of those quantities, a
+\texttt{base.inp} sitting beside it may no longer state them. Three categories
+of key are \textbf{refused}, and each stops the run naming the offending key:
+the EOS boundary (\texttt{T\_base}, \texttt{r\_base}, \texttt{p\_base},
+\texttt{q\_H2\_base}), the elemental reservoirs (\texttt{HeH\_base} and any
+\texttt{El\_H\_base}) and the boundary constraint (\texttt{Kzz\_base}).
+Provenance comments and diagnostic keys are still allowed, and indeed a
+\texttt{base.inp} whose whole content is provenance is what the adapters write.
+Such a file must carry a \texttt{\# solution\_id} comment, and it must match
+the profile's: a \texttt{base.inp} beside a profile with no
+\texttt{solution\_id} line, or with a different one, stops the run, because two
+files describing the same gas at the same level from two different
+lower-atmosphere solutions are not a model of anything.
+
+\texttt{He\_Kzz:} is treated differently, because it belongs to
+\texttt{input.inp} and not to the handoff: it is not refused, but it is
+\emph{inert} while a profile is in use --- the eddy coefficient comes from the
+\texttt{Kzz} column --- and the run prints a warning saying so.
+
+The resolved-configuration report records what was used:
+\texttt{lower\_profile\_present}, and with a profile in use the file name, the
+\texttt{solution\_id}, the source, \texttt{p\_match\_bar},
+\texttt{p\_top\_bar}, the trial fluxes, the iteration index and whether the
+profile is iterable.
+
+\paragraph{Producing a profile.} Three tools in \texttt{src/utils/} do this,
+sharing one command line and one schema module
+(\texttt{lower\_profile\_schema.py}, which also computes the
+\texttt{solution\_id} and writes the paired provenance-only
+\texttt{base.inp}). \texttt{photochem\_to\_lower\_profile.py} is the
+production path: it solves a gas-giant photochemistry model to steady state on
+the column and writes the handoff, with the temperature structure either
+prescribed (\texttt{-{}-tp-file}) or solved for by the radiative--convective
+climate model (\texttt{-{}-climate}), in which case the tropopause, and with it
+the water cold trap, is part of the solution rather than an input.
+\texttt{vulcan\_to\_lower\_profile.py} converts a finished VULCAN
+\texttt{.vul} output into the same format; it is the cross-check arm, not a
+second production path, because VULCAN carries no climate model and so can
+never be the route away from a prescribed $T(p)$. Finally
+\texttt{element\_flux\_closure.py} drives the pair of codes to their fixed
+point: the trial elemental fluxes of the header are imposed on the chemistry's
+upper boundary, the wind's own elemental flux is measured face by face and
+reduced over a radial window, and the two are iterated (under-relaxed) until
+they agree --- at which point the base composition is an output of the coupled
+problem instead of an input to it.
+
+\paragraph{See also.} \texttt{examples/17\_lower\_profile/} is a ready-to-run
+HD209458b case whose \texttt{make\_example\_profile.py} regenerates the
+synthetic column it ships (\S\ref{sec:exinputs}). The authoritative
+column-by-column schema is \texttt{docs/input\_schema.md} section~2d, and the
+design of the handoff and of the closure is
+\texttt{docs/phase\_e\_flux\_closure\_design.md}.
 
 % ===================================================================== %
 \subsection{Obtaining VULCAN and FastChem}\label{sec:vulcan-obtain}
@@ -1651,6 +1897,39 @@ the outer boundary, corrected by the 2-D-approximation factor from
 $M_p$\,Gyr$^{-1}$. The helper \texttt{exhale\_io.mdot\_log10} / \texttt{mdot\_Mp\_per\_Gyr}
 reproduce this.
 
+\subsection{\texttt{EXHALE\_resolved.out} --- the configuration the wind
+actually used}\label{sec:resolvedout}
+A machine-readable record written in the run directory (next to
+\texttt{input.inp}, not inside \texttt{output/}) by
+\texttt{write\_setup\_report.f90} once \texttt{input.inp}, \texttt{metals.inp}
+and any \texttt{base.inp} / lower-atmosphere-profile handoff have been
+resolved. Format: \texttt{\#} comment lines, then one \texttt{key\ value} pair
+per line, reals at full double precision. It carries the base radius, planet
+mass, base temperature, He/H, orbital distance and stellar mass in effect;
+\texttt{base\_inp\_present} and \texttt{he\_diffusion}; the EOS factors
+\texttt{mass\_per\_H\_amu} and \texttt{ntot\_bc\_per\_H}; one
+\texttt{abundance\_<El>} line per element; and, with a profile in use
+(\S\ref{sec:lowerprofile}), the profile's provenance and the measured
+elemental fluxes. It exists so that consumers do not re-parse
+\texttt{input.inp} and inherit a value the handoff has since moved:
+\texttt{EXHALE\_transit.py} reads it in preference to \texttt{input.inp}
+(\S\ref{sec:tpm}), and \texttt{src/utils/element\_budget.py} and
+\texttt{src/utils/element\_flux\_closure.py} read it as the authority on the
+resolved abundances.
+
+\subsection{\texttt{element\_flux\_profile.txt}}
+Face-by-face elemental fluxes carried by the element-diffusion operator,
+written to \texttt{output/} whenever a lower-atmosphere profile is in use ---
+where they are the quantity the two models must agree on, not a diagnostic ---
+and on demand with \texttt{EXHALE\_DIFFUSION\_CHECK=1}. Columns (named by the
+file's own \texttt{\# columns:} line): the face index and radius, the face
+helium mass fraction, the diffusive and advective fluxes, then
+$F_{\rm He}=4\pi r^2(\rho X v + J)$, $F_{\rm H}=4\pi r^2(\rho(1-X)v-J)$ and
+$\dot M_{\rm face}=4\pi r^2\rho v$ in g\,s$^{-1}$, the face
+$\Delta m_{\rm eff}$, the effective and neutral diffusion coefficients with
+their ratio, and the dominant friction pair. Replaced at every diffusion step,
+so it always describes the last one.
+
 % ===================================================================== %
 \section{Analysis tools}
 % ===================================================================== %
@@ -1680,15 +1959,25 @@ geometries via \texttt{geometry = 'spherical'} (Phase~5a) or \texttt{'triaxial'}
 (Phase~5b, the 3-D Roche-equipotential reconstruction in \texttt{roche\_recon.py}).
 
 \paragraph{Where the system parameters come from.} Every planet and star
-parameter is taken from the \texttt{input.inp} of the run directory, so the
-spectra always describe the same system as the simulation. Each is resolved
-with the precedence
+parameter is taken from the run directory, so the spectra always describe the
+same system as the simulation. The labels are matched exactly as
+\texttt{input\_read.f90} does, so line order is irrelevant. Two sources are
+read, in this order:
 \begin{center}
-\texttt{EXHALE\_TRANSIT\_*} environment override $>$ \texttt{./input.inp} $>$
-built-in default,
+\texttt{EXHALE\_TRANSIT\_*} environment override $>$
+\texttt{./EXHALE\_resolved.out} $>$ \texttt{./input.inp} $>$ built-in default,
 \end{center}
-so an explicit override still wins for an experiment. The labels are matched
-exactly as \texttt{input\_read.f90} does, so line order is irrelevant.
+so an explicit override still wins for an experiment. The middle step matters
+whenever a \texttt{base.inp} or a lower-atmosphere profile moved the base:
+\texttt{EXHALE\_resolved.out} (\S\ref{sec:resolvedout}) is written by the wind
+solver \emph{after} those overrides are applied, so it carries the $R_p$,
+$M_p$, $T_0$, $a$, $M_\star$ and He/H the wind actually used, while
+\texttt{input.inp} alone would be stale. When the file is present the script
+says so at startup and takes those six from it; when it is absent it says that
+too and falls back on \texttt{input.inp}. A present-but-unreadable file is a
+hard error, never a silent fallback. The stellar radius and $T_{\rm eff}$ are
+not in that file and come from \texttt{input.inp} (or their environment
+overrides) either way.
 
 \begin{center}
 \begin{tabular}{@{}lll@{}}
@@ -1984,8 +2273,9 @@ For every solver/physics combination there is a ready-to-run folder under
 \texttt{examples/} (paths relative to the \texttt{EXHALE} root). Folders
 \texttt{01}--\texttt{11} are the \emph{same} planet (HD189733b) so that the
 effect of each option can be isolated; \texttt{12} and
-\texttt{14}--\texttt{16} use HD209458b (where the Wind-AE warm start,
-diffusion and molecular chemistry, with and without metals, are validated),
+\texttt{14}--\texttt{17} use HD209458b (where the Wind-AE warm start,
+diffusion, molecular chemistry with and without metals, and the
+lower-atmosphere profile handoff are validated),
 and \texttt{13} spans four planets. Each folder is
 self-contained: \texttt{cd} into it and run the repo-root binary
 (\texttt{../../EXHALE.x}); outputs land in the folder's own \texttt{output/}.
@@ -2012,12 +2302,13 @@ instability (\S\ref{sec:windae}). \texttt{12\_windae\_ic\_hd209} is the
 seed-adjacent HD209458b case. \texttt{14\_diffusion} and \texttt{15\_molecular}
 turn on the He/metal diffusive separation (\S\ref{sec:hediff}) and the full
 molecular network (\S\ref{sec:loweratm}) respectively, on HD209458b, and
-\texttt{16\_molecular\_metals} adds a \texttt{metals.inp} to the latter.
+\texttt{16\_molecular\_metals} adds a \texttt{metals.inp} to the latter. \texttt{17\_lower\_profile} replaces the scalar
+\texttt{base.inp} handoff by the profile of \S\ref{sec:lowerprofile}.
 
 {\small
 \begin{longtable}{@{}lp{4.6cm}p{5.6cm}@{}}
 \caption{Ready-made example configurations under \texttt{examples/}
-(\texttt{01}--\texttt{11} are HD189733b; \texttt{12}, \texttt{14}--\texttt{16}
+(\texttt{01}--\texttt{11} are HD189733b; \texttt{12}, \texttt{14}--\texttt{17}
 are HD209458b; \texttt{13} spans four planets). The Wind-AE IC ramp converges
 for both of the planets that use it --- HD\,189733\,b (\texttt{11}) and
 HD\,209458\,b (\texttt{12}) --- and \texttt{11}, being far from the seed,
@@ -2099,7 +2390,7 @@ included --- that is what \texttt{16\_molecular\_metals} is.}
   HD209458b params $+$ \texttt{Molecular chemistry: True},
   \texttt{Solver: Newton 5.0e-2}, \texttt{Resid tol: 1.0e-5},
   \texttt{Max steps: 150000} (no
-  \texttt{metals.inp} here; \texttt{He\_diffusion} is still refused) \\
+  \texttt{metals.inp} here) \\
 \texttt{16\_molecular\_metals} & molecular chemistry \emph{and} trace metals
   solved in one system (HD209458b): the H$_2$/H$_2^+$/H$_3^+$/HeH$^+$ network
   and the metal ionization stages share the free electron density, which the
@@ -2118,6 +2409,16 @@ included --- that is what \texttt{16\_molecular\_metals} is.}
   \texttt{output/*\_IC.txt} and use \texttt{15}'s three keys $+$
   \texttt{Load IC?\ True} $+$ \texttt{Low-Mach damping: 5.0e-3} (run
   \texttt{1.0e-2} as well and compare --- see the folder \texttt{README}) \\
+\texttt{17\_lower\_profile} & lower-atmosphere \emph{profile} handoff
+(HD209458b; \S\ref{sec:lowerprofile}): the lower atmosphere handed over as a
+table over an interval of pressure instead of the scalars of
+\texttt{base.inp}. The base state ($T_0$, $R_0$, $p_{\rm base}$,
+$q_{\rm H_2}$), the elemental reservoirs (He/H and solar C/N/O) and
+$K_{zz}(r)$ all come from the one file; \texttt{make\_example\_profile.py}
+regenerates it & \texttt{14\_diffusion} $+$ \texttt{Lower atmosphere
+profile: lower\_atmosphere\_profile.dat}, \emph{minus} \texttt{He\_Kzz}
+(the profile carries $K_{zz}$) and \emph{minus} \texttt{metals.inp}
+(the profile carries C/N/O) \\
 \end{longtable}}
 
 % ===================================================================== %
@@ -2244,7 +2545,8 @@ RR + DR & Fe\,I, Fe\,II & Huang et al.\ (2023) analytic fit; the Badnell DR proj
 \midrule
 \multicolumn{3}{@{}l}{\textbf{Charge exchange (charge transfer)}}\\[2pt]
 metal\,$+$\,H/H$^+$ (default) & 23 reactions (Group~A) & Huang et al.\ (2023, ApJ 951, 123) Table~4 \\
-full network (\texttt{cx\_full}) & $+$ He$+$H, metal$+$He, metal$+$metal & Huang et al.\ (2023) Table~4 (Groups B/C/D) \\
+He\,$+$\,H/H$^+$ (default on, \texttt{He\_H\_charge\_exchange}) & 2 reactions (Group~B) & Koskinen et al.\ (2013) rates via Huang et al.\ (2023) Table~4; applied by dedicated routines in every helium-bearing system, \emph{not} gated by \texttt{cx\_full} \\
+full network (\texttt{cx\_full}) & $+$ metal$+$He, metal$+$metal & Huang et al.\ (2023) Table~4 (Groups C/D) \\
 \midrule
 \multicolumn{3}{@{}l}{\textbf{Radiative cooling}}\\[2pt]
 recomb., coll.\ ion./exc., free--free & H, He & Hui \& Gnedin (1997) recomb.\ cooling; Black (1981) collisional; free--free bremsstrahlung with the van Hoof et al.\ (2014) thermal Gaunt factor, weighted by ion net charge \\

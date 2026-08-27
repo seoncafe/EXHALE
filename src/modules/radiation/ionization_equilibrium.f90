@@ -89,7 +89,7 @@
 	real*8, dimension(1-Ng:N+Ng) ::  T_K      ! Dimensional temperature
 	real*8, dimension(1-Ng:N+Ng) ::  nh,nhi,nhii,                   & ! Species densities
 	                                 nhe,nhei,nheii,nheiii,nheiTR,  &
-	                                 ne,n_in_dim
+	                                 ne,n_in_dim,n_tot
 	! Ionized fraction of the H+He nuclei, for the SvS85 secondary ionization.
 	real*8, dimension(1-Ng:N+Ng) ::  xion
    ! Metal ion densities in canonical species_table order (col im maps
@@ -249,6 +249,20 @@
 	! metal electrons under the eos_metals policy, nmol_eq the molecular-ion
 	! electrons -- it is zero for an atomic run, so the sum is unchanged there)
 	call calc_ne(nhii,nheii,nheiii,ne,nm,nmol_eq)
+
+	! Total gas-particle density (electrons excluded), i.e. the density of
+	! third bodies M for the three-body molecular reactions R12/R13/R15, and
+	! -- with the electrons added back -- the gas pressure p = (n_tot+n_e)kT
+	! of the chemical-equilibrium retry seed below.  It is NOT n_in_dim:
+	! n_in_dim = rho/m_H is a MASS density in m_H units (calc_rho weights
+	! each species by bsp_mass), so it over-counts the particles by the mean
+	! particle mass -- 2.3x at an H2-rich base, up to 4x in a He-dominated
+	! one.  Only the molecular path reads it, so an atomic run is unchanged.
+	if (thereis_mol) then
+		call calc_ntot(nhi,nhii,nhei,nheii,nheiii,n_tot,nm,nmol_eq)
+	else
+		n_tot = 0.0d0
+	endif
 
 	! Cell-by-cell pressure-broadening factor for the opacity ('P' model).
 	! opacity_pT_factor returns 1.0 for all other models, so opa_pf=1
@@ -532,7 +546,7 @@
 				ieq_cell%P_H2 = P_H2(j)
 				ieq_cell%k_LW = k_lw_diss(j)   ! 0 without a LW band flux
 				ieq_cell%T_K  = T_K(j)
-				ieq_cell%ntot = n_in_dim(j)      ! M for the 3-body rates
+				ieq_cell%ntot = n_tot(j)        ! M for the 3-body rates
 				! Compute the molecular rate coefficients that are invariant
 				! across this cell's Newton solve (they depend only on T and
 				! n_tot); the residual then reads them, like set_metal_coeffs.
@@ -699,7 +713,9 @@
 				! rather than of the state being evaluated.
 				best_rank = 0
 				viol_best = 0.0d0
-				pbar_loc  = n_in_dim(j)*kb_erg*T_K(j)/1.0d6   ! gas pressure [bar]
+				! Gas pressure p = (n_tot + n_e) kB T [bar], the same ideal-gas
+				! law the EOS uses (comp_p_from_T).
+				pbar_loc  = (n_tot(j) + ne(j))*kb_erg*T_K(j)/1.0d6
 				do iatt = 1,3
 					if (iatt .eq. 2) then
 						call dissociation_ionization_balance_at_fixed_ne(  &
@@ -928,9 +944,9 @@
 	! Density with atomic numbers (nm adds the metal mass under the
 	! eos_metals policy)
    if (thereis_mol) then
-      call calc_rho(nhi,nhii,nhei,nheii,nheiii,nheiTR,n_io,nm,nmol_eq)
+      call calc_rho(nhi,nhii,nhei,nheii,nheiii,n_io,nm,nmol_eq)
    else
-      call calc_rho(nhi,nhii,nhei,nheii,nheiii,nheiTR,n_io,nm)
+      call calc_rho(nhi,nhii,nhei,nheii,nheiii,n_io,nm)
    endif
 
    ! Abundancies profiles
@@ -1031,8 +1047,12 @@
 	endif
 	if (s .gt. 1.0d0 + ftol) return
 
-	! Helium nuclei: He II, He III and the 2^3S metastable, which the systems
-	! carry as a separate level inside the neutral stage.
+	! Helium nuclei: He II, He III, the 2^3S metastable (which the systems
+	! carry as a separate level inside the neutral stage) and, in the
+	! molecular layout, the He nucleus bound in HeH+. The molecular systems
+	! close the neutral He as n_He(1 - x2 - x3) - n_HeH+, so a root leaving
+	! that negative is inadmissible even when x2 + x3 <= 1; x(7) is HeH+ per
+	! H nucleus, hence the n_H/n_He conversion from this cell's state.
 	if (thereis_He) then
 		if (x(2) .lt. -ftol) return
 		if (x(3) .lt. -ftol) return
@@ -1043,6 +1063,8 @@
 			if (x(ix) .lt. -ftol) return
 			s = s + x(ix)
 		endif
+		if (thereis_mol .and. ieq_cell%nhe .gt. 0.0d0)                &
+			s = s + x(7)*ieq_cell%nh/ieq_cell%nhe
 		if (s .gt. 1.0d0 + ftol) return
 	endif
 
@@ -1181,6 +1203,10 @@
 			if (thereis_mol) ix = 8
 			s = s + x(ix)
 		endif
+		! The He nucleus bound in HeH+ (x(7) is per H nucleus), as in
+		! ionization_fractions_physical.
+		if (thereis_mol .and. ieq_cell%nhe .gt. 0.0d0)                &
+			s = s + x(7)*ieq_cell%nh/ieq_cell%nhe
 		viol = max(viol, s - 1.0d0)
 	endif
 
@@ -1216,7 +1242,7 @@
 	integer, intent(in)    :: n, mbase
 	real*8,  intent(inout) :: x(n)
 	integer :: im, ix
-	real*8  :: s
+	real*8  :: s, hehp_he
 
 	do ix = 1,n
 		if (x(ix) .lt. 0.0d0) x(ix) = 0.0d0
@@ -1234,8 +1260,22 @@
 		endif
 	endif
 
-	! Helium nuclei: He II, He III and the 2^3S metastable.
+	! Helium nuclei: He II, He III, the 2^3S metastable and, in the molecular
+	! layout, the He nucleus bound in HeH+. x(7) is HeH+ per H nucleus and
+	! belongs to BOTH element budgets; it has just been capped against the H
+	! nuclei, so it is capped against the He nuclei here as well (which can
+	! only relax the H budget), and the free-He stages are scaled into what
+	! is left. hehp_he is exactly zero without molecules, where the scaling
+	! reduces to the plain x/s of every non-molecular run.
 	if (thereis_He) then
+		hehp_he = 0.0d0
+		if (thereis_mol .and. ieq_cell%nhe .gt. 0.0d0) then
+			hehp_he = x(7)*ieq_cell%nh/ieq_cell%nhe
+			if (hehp_he .gt. 1.0d0) then
+				x(7)    = x(7)/hehp_he
+				hehp_he = 1.0d0
+			endif
+		endif
 		s = x(2) + x(3)
 		ix = 0
 		if (thereis_HeITR) then
@@ -1243,10 +1283,10 @@
 			if (thereis_mol) ix = 8
 			s = s + x(ix)
 		endif
-		if (s .gt. 1.0d0) then
-			x(2) = x(2)/s
-			x(3) = x(3)/s
-			if (ix .gt. 0) x(ix) = x(ix)/s
+		if (s .gt. 1.0d0 - hehp_he) then
+			x(2) = x(2)*(1.0d0 - hehp_he)/s
+			x(3) = x(3)*(1.0d0 - hehp_he)/s
+			if (ix .gt. 0) x(ix) = x(ix)*(1.0d0 - hehp_he)/s
 		endif
 	endif
 

@@ -1,4 +1,4 @@
-"""Export CHIANTI-derived collisional line-cooling tables for ATES.
+"""Export CHIANTI-derived collisional line-cooling tables for EXHALE.
 
 Writes, for each metal coolant available in CHIANTI v11, the effective cooling
 coefficient Lambda(T) per (n_e * n_ion) in erg cm^3 s^-1 on a shared log-T grid.
@@ -46,7 +46,7 @@ def main():
     names = list(cols.keys())
     path = os.path.join(OUTDIR, "metal_cooling_chianti.txt")
     with open(path, "w") as fh:
-        fh.write("# CHIANTI v11.0.2 collisional line-cooling coefficients for ATES\n")
+        fh.write("# CHIANTI v11.0.2 collisional line-cooling coefficients for EXHALE\n")
         fh.write("# Lambda(T) per (n_e * n_ion)  [erg cm^3 s^-1], optically thin\n")
         fh.write("# Source: chianti_cooling.py (Burgess-Tully descaled .scups)\n")
         fh.write("# FeII_coronal = ground-level only; FeII_boltz = Boltzmann over\n")

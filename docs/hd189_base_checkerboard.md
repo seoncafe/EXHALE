@@ -783,9 +783,12 @@ step 11000 and never reached the 1e-2 hand-off, identically for both binaries.
   densities are PRE-EXISTING — they are in the goldens — and are unrelated to
   this change, but they are a physical-correctness defect in their own right
   and are recorded here. **Goldens were not re-snapshotted.**
-  [2026-08-15: they have been since, most recently on 2026-08-15. All five
-  golden `Ion_species.txt` files under `backup/regression/golden/` now carry
-  zero negative densities.]
+  [2026-08-15: they have been since, most recently on 2026-08-15. Every golden
+  `Ion_species.txt` under `backup/regression/golden/` now carries zero negative
+  densities. The matrix was five cases when this was written; it is now the
+  seven of `DEFAULT_CASES` in `backup/regression/run_check.sh` -- `wasp_full`,
+  `wasp_he23off`, `mol_base_handoff`, `mol_metals`, `mol_lyman_werner`,
+  `mol_diffusion`, `lower_profile`.]
 
 ### 10.7 What is still not fixed
 

@@ -3,7 +3,7 @@
 > **Status (dated note added 2026-08-15).** Written before 2026-07; the EXHALE column below
 > predates the metal/molecular/diffusion work. Items since implemented:
 > temperature-dependent Taylor+2025 Penning rate (unconditional default), He/H (+metal)
-> diffusive separation (`species_diffusion.f90`, keys `He_diffusion` / `He_metal_diffusion`,
+> diffusive separation (`binary_element_diffusion.f90`, keys `He_diffusion` / `He_metal_diffusion`,
 > default off), molecular chemistry H2/H2+/H3+/HeH+ + H3+ IR cooling + lower-atmosphere
 > tiers (`lower_atmosphere/`), charge exchange re-sourced to Huang+2023 Table 4
 > (`charge_exchange.f90`), 10 elements / 27 metal ion stages.
@@ -147,9 +147,11 @@ and a transmission-spectrum post-processor (`EXHALE_transit.py`).
 - **EXHALE is strictly single-fluid** with a *fixed* He/H at all radii — it **cannot**
   represent fractionation or diffusive separation at all. This is the largest physical gap
   relative to the modern He 10830 literature.
-  *[2026-08-15: since implemented — see status note. `species_diffusion.f90` adds the
-  Taylor-route molecular + eddy diffusion flux (keys `He_diffusion`, `He_metal_diffusion`),
-  default off, so the gap is now an opt-in rather than an absence.]*
+  *[2026-08-15: since implemented — see status note. `binary_element_diffusion.f90` adds the
+  molecular + eddy diffusion flux (keys `He_diffusion`, `He_metal_diffusion`), default off,
+  so the gap is now an opt-in rather than an absence. The transported variable is the helium
+  mass fraction `X = rho_He/rho` of a binary H/He mixture, bounded at both ends of the
+  composition axis, rather than the trace ratio `n_He/n_H` of Taylor's formulation.]*
 
 ### 4.2 Radiation transport
 - **AIOLOS** is the only one with a full **flux-limited-diffusion** thermal-radiation
@@ -315,5 +317,5 @@ list is kept as the record of what was recommended, not of what is still outstan
   in line with the current state of the art, without abandoning its single-fluid,
   steady-state, metal-aware design.
   *[2026-08-15: both have since been implemented — see status note. The Taylor-style
-  diffusion term is `species_diffusion.f90` (opt-in via `He_diffusion`); the
+  diffusion term is `binary_element_diffusion.f90` (opt-in via `He_diffusion`); the
   temperature-dependent Penning rate is unconditional.]*

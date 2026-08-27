@@ -2,8 +2,8 @@
 
 One folder per solver/physics combination. Folders `01`–`11` are the
 same planet (HD189733b) so the effect of each option can be isolated;
-`12_windae_ic_hd209`, `14_diffusion`, `15_molecular` and `16_molecular_metals`
-use HD209458b, where
+`12_windae_ic_hd209`, `14_diffusion`, `15_molecular`, `16_molecular_metals`
+and `17_lower_profile` use HD209458b, where
 those lower-atmosphere / diffusion options are validated (`11` uses HD189733b
 far from the seed to exercise the self-consistent-BC continuation). Each
 folder is self-contained: `cd` into it and run the repo-root binary,
@@ -31,7 +31,7 @@ keeps `Include He23S? False` on purpose: in both bases (`01_legacy_marching`,
 (`02`, `04`, `05`, `09`-`12`). Atomic helium is the ladder's baseline, which
 is what makes `06_he23s` a one-line diff against `03_newton` instead of a
 configuration that differs in nothing. Everywhere outside the ladder --
-`tutorial/`, `13`-`16`, the planet folders -- the triplet is on, and an
+`tutorial/`, `13`-`17`, the planet folders -- the triplet is on, and an
 input file that simply omits the line gets it.
 
 | Folder | Demonstrates | Added / changed lines |
@@ -52,6 +52,7 @@ input file that simply omits the line gets it.
 | `14_diffusion` | **Diffusive separation of He and metals** (HD209458b): the He/H ratio declines with altitude and each trace metal settles independently, reshaping the He 10830 line | HD209458b params `+ Include He23S? True`, `+ He_diffusion: True`, `+ He_metal_diffusion: True`, `+ He_Kzz: 1.0e9`, `+ He_alphaT: 0.0`, `metals.inp` present |
 | `15_molecular` | **Full molecular chemistry** (HD209458b): H2/H2+/H3+/HeH+ in the coupled ionization equilibrium; a sharp H2->H front forms above a thin molecular base, the wind above it essentially atomic. Converges to a residual norm of 6.105e-6 in 89 outer iterations from a cold start with the current code (re-run 2026-08-15; the front sits at r = 1.0097 R_p and the molecular layer between the base and the front collapses to ~400 K) — see the note below | HD209458b params `+ Molecular chemistry: True`, `+ Solver: Newton 5.0e-2`, `+ Resid tol: 1.0e-5`, `+ Max steps: 150000` (no `metals.inp` here, but metals are allowed — see `16_molecular_metals`; `He_diffusion` is still refused) |
 | `16_molecular_metals` | **Molecular chemistry + trace metals in one system** (HD209458b): the H2/H2+/H3+/HeH+ network and the metal ionization stages share the free electron density, which the metals dominate in the shielded molecular base. Converges only from a warm restart off a freshly converged `15`, with `Low-Mach damping` on — the recipe is in the note below | 15 `+ metals.inp` (solar C/N/O), without 15's three convergence keys |
+| `17_lower_profile` | **Lower-atmosphere profile handoff** (HD209458b): the lower atmosphere handed over as a table over an interval of pressure instead of the scalars of `base.inp`. The base state (`T0`, `R0`, `p_base`, `q_H2`), the elemental reservoirs (He/H and solar C/N/O) and `K_zz(r)` all come from the one file; `make_example_profile.py` regenerates it. See `docs/input_schema.md` section 2d | 14 `+ Lower atmosphere profile: lower_atmosphere_profile.dat`, `- He_Kzz` (the profile carries K_zz), no `metals.inp` (the profile carries C/N/O) |
 
 Notes
 - Wind-AE IC (`11`/`12`, `docs/wind_ae_solver.pdf`): `IC mode: windae`

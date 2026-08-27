@@ -15,6 +15,10 @@ and validation (its sections 7b-7e).
 
 ## 1. Why the present kernel cannot be extended
 
+[2026-08-27: the kernel this section reads is
+`src/modules/functions/species_diffusion.f90`, deleted at milestone M3
+(section 6), so what follows is a record of code that no longer exists.]
+
 `species_diffusion.f90` (read in full for this memo; every statement below
 is from the code, not from its comments) solves one conservative implicit
 tridiagonal step for the helium *number density* `n_He` (`solve_1elem`,
@@ -85,8 +89,13 @@ relation `x(X)` uses `m_1` and `m_He`.
 
 The *element* number densities used for the mass budget and the write-back
 count nuclei over every species: `n_H = n_HI + n_HII + 2 n_H2 + 2 n_H2+ +
-3 n_H3+ + n_HeH+`, `n_He = n_HeI + n_HeII + n_HeIII + n_He(2^3S) + n_HeH+`
-(the `bsp_nH`, `bsp_nHe` weights of `species_table.f90`).
+3 n_H3+ + n_HeH+`, `n_He = n_HeI + n_HeII + n_HeIII + n_HeH+` (the `bsp_nH`,
+`bsp_nHe` weights of `species_table.f90`). He 2^3S carries no term of its
+own: it is a metastable level of He I and the `n_HeI` the code carries is
+the total He I population, triplet included, so its nucleus is already in
+`n_HeI`. Every budget sum skips the flagged column
+(`bsp_is_excited_level` in `species_table.f90`;
+`element_nucleus_counts` in `binary_element_diffusion.f90`).
 
 `X` is the transported variable: it is bounded, smooth at both ends of the
 composition axis, and `rho X` is the helium mass density.
@@ -594,7 +603,7 @@ default-off paths must leave `make check` byte-identical (T0).
 
 | id | test | pass criterion |
 |---|---|---|
-| T0 | regression with `He_diffusion` off | the five off cases byte-identical; since 2026-08-26 the matrix also carries `mol_diffusion` with the flag on (7.5), so `make check` is 6/6 |
+| T0 | regression with `He_diffusion` off | the five off cases byte-identical; since 2026-08-26 the matrix also carries `mol_diffusion` with the flag on (7.5), so `make check` is 6/6 [2026-08-27: 7/7 -- `lower_profile` was added as the seventh default case] |
 | T1a | **diffusive equilibrium**: `v = 0`, isothermal column, no eddy, zero diffusive flux at *both* ends; start uniform | `X(r)` relaxes to the barometric separation `dx/dr = -x(1-x) (m_He - m_1) g/kT` (neutral) to grid order; total He mass constant to round-off (the closed-column version of T4) |
 | T1b | same with the Dirichlet reservoir base of section 4 | the integrated base flux `int 4 pi r_b^2 J_b dt` accounts for the change of total He mass to round-off |
 | T2a | **convergence to the trace equation**: `examples/14_diffusion` configuration (HD 209458 b) at He/H = 0.0833, 1e-2, 1e-3, 1e-4, run with the new operator and with the present kernel | the difference between the two (He/H)/HeH profiles decreases with He/H at the expected first order in `x`; at 1e-4 it is below 0.1% |
@@ -865,7 +874,11 @@ for the composition-match test omitted `HeTR`; it is now in it.*
   cap has no key and is removed. **One user-visible change:** the
   `He_Kzz` default goes from `1e9` to `0` (7.2); an input relying on the
   old default must state it. A radius-dependent `K_zz` profile is not
-  added in this phase (T7 uses the constant).
+  added in this phase (T7 uses the constant). [implemented 2026-08-27 in
+  Phase E: a `Lower atmosphere profile:` file supplies `K_zz(p)`, which
+  `src/modules/files_IO/lower_atmosphere_profile.f90` interpolates onto the
+  grid as `kzz_cell` (`parameters.f90`); `He_Kzz` remains the constant used
+  when no profile is given.]
 - **D6. The direct-steady route and restart** (7.3, 7.4) are in scope:
   both are prerequisites for running the LHS 1140 b cases with diffusion,
   and both are defects of the present code independent of the
@@ -979,7 +992,7 @@ not estimated.
 
 **The coefficient.** `EXHALE_DIFFUSION_CHECK=1` writes `D_eff`, the neutral
 hard-sphere coefficient of the same cell and their ratio into
-`diffusion_faceflux.txt`, with the stage pair carrying the largest share of
+`output/element_flux_profile.txt`, with the stage pair carrying the largest share of
 the friction. On the HD 209458 b `Kzz = 1e9` wind and the LHS 1140 b
 `He/H = 0.55` wind:
 

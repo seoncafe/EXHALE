@@ -735,7 +735,16 @@ $P^{-1/2}$ up to a saturation level and a turnover above it. Implementing
 %
 with $P_0$ the base pressure, is a small change to
 \texttt{binary\_element\_diffusion.f90} and is closer to every published
-parameterization than the present constant is. Two cautions attach to it.
+parameterization than the present constant is. A radially varying $K_{zz}$
+is no longer hypothetical in the code: since Phase~E the operator reads a
+cell array \texttt{kzz\_cell}
+(\path{src/modules/init/parameters.f90}), which a
+\texttt{Lower atmosphere profile:} file fills by interpolating its own
+$K_{zz}(p)$ column onto the grid
+(\path{src/modules/files_IO/lower_atmosphere_profile.f90}) and which is
+filled uniformly from \texttt{He\_Kzz} otherwise. What is still missing is
+this \emph{analytic} $P^{-1/2}$ form: a run that has no profile file has
+only the constant. Two cautions attach to it.
 The ceiling is not optional --- an unbounded $P^{-1/2}$ extrapolated to
 $30\,R_p$ would reach absurd values and would contradict Lindzen's own
 turnover result --- and the profile will not repair
@@ -752,12 +761,14 @@ tracers, which does not currently exist --- or fit $K_{zz}$ jointly with the
 reservoir composition against the measured line, accepting that a single
 observable cannot separate the two (Sect.~\ref{sec:he-constraint}) and that
 the fit would therefore need a second constraint. The Phase-E route is a
-partial version of the second: \texttt{read\_base\_inp} already accepts a
-\texttt{Kzz\_base} key that overrides \texttt{He\_Kzz}
-(\path{src/modules/files_IO/input_read.f90}:1199), so a
-lower-atmosphere handoff could carry both the composition and the eddy
-coefficient at the matching pressure from a photochemical model, replacing
-two hand-set numbers with one coupled calculation.
+partial version of the second, and it is now built: a
+\texttt{Lower atmosphere profile:} file carries the composition
+\emph{and} $K_{zz}(p)$ from the photochemical model, so both reach the wind
+from one calculation instead of two hand-set numbers. The scalar
+\texttt{Kzz\_base} key of \texttt{read\_base\_inp} remains for a run handed
+over by scalars alone, and is refused when a profile is in use
+(\texttt{refuse\_scalar\_key},
+\path{src/modules/files_IO/input_read.f90}).
 
 \medskip
 \noindent None of the three makes $K_{zz}$ a derived quantity of EXHALE.

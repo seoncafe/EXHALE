@@ -7,9 +7,11 @@ disagreement was settled by reading the source again on this date; Section 1
 records each verdict with the code site. The ordering in Section 5 supersedes
 Section 5 of the options document and Section 9 of the review.
 
-Status of every item below: **proposed, nothing implemented.** The scope
-decision itself (item (H) in `TO_BE_DONE.md`) remains a user decision deferred
-until after the paper.
+Status of every item below when this was written: **proposed, nothing
+implemented.** That is no longer the whole picture -- P0, P1 and P2 of the
+Section 5 roadmap have since been run, and each carries its own dated result
+block there; P3 and P4 are still proposed. The scope decision itself (item (H)
+in `TO_BE_DONE.md`) remains a user decision deferred until after the paper.
 
 The two problems, unchanged from the options document:
 
@@ -46,6 +48,14 @@ split (`vulcan_photochem_comparison.md`, 2026-08-09, HD 189733 b); EXHALE's
 Lyman-Werner photodissociation (`TO_BE_DONE.md` item (H)); Photochem's
 15-20x runtime advantage. Photochem is not importable from any Python on this
 machine (checked 2026-08-19 in the previous session).
+
+**Superseded on 2026-08-26 by phase P1** (`vulcan_photochem_comparison.md`,
+section "Phase P1"): the 7.2x is unchanged as a total but splits into
+domain 1.07 / network 3.95 / code 1.70, not 4.0 / 1.8; Photochem *does* import,
+from the dedicated conda environment `photochem_cmp` built for the 2026-08-09
+comparison — the 2026-08-19 check had used the default interpreter. The 7.2x is
+also specific to HD 189733 b's 864 K base: on HD 209458 b's 2331 K base the
+same three arms agree to 1.02x (network) and 1.08x (code).
 
 ---
 
@@ -117,8 +127,10 @@ the residual core (coupled H/O rows), `ionization_equilibrium.f90` (seeding,
 extraction, validation), `mol_rates.f90` or a new oxygen-chemistry module,
 `cross_sec.f90`/`sed_read.f90`/`util_ion_eq.f90` or a new FUV module,
 `composition.f90` (EOS), `set_IC.f90`/`load_IC.f90`/`write_output.f90`
-(schema), `species_diffusion.f90` (one element flux if diffusion is ever
-combined), `EXHALE_transit.py` (atomic vs total O), and the regression matrix.
+(schema), the element-diffusion operator (one element flux if diffusion is
+ever combined; the review named `species_diffusion.f90`, which was deleted on
+2026-08-25 -- it is now
+`src/modules/functions/binary_element_diffusion.f90`), `EXHALE_transit.py` (atomic vs total O), and the regression matrix.
 The existing merged molecular+metal residual is the right starting point; its
 element bookkeeping is generalized, not replaced.
 
@@ -282,7 +294,7 @@ provenance keys and echo them in the setup report; record Photochem's
 gas-giant workflow accurately in `vulcan_photochem_comparison.md`. Gate: a
 legacy six-key `base.inp` reproduces the current goldens byte-for-byte.
 
-**P1 — external photochemistry on equal footing.** Reinstall Photochem (it
+**P1 — external photochemistry on equal footing. GATE MET, 2026-08-26; exercised on a real target 2026-08-27.** Reinstall Photochem (it
 does not import today) with its data package; rerun the HD 189733 b comparison
 with matched network *and* matched vertical domain, adding Photochem's official
 gas-giant H/He/N/O/C(/S) mechanism as a third arm; export the H2O/OH
@@ -293,12 +305,102 @@ not reach steady state in EXHALE, so it cannot be the only case). Gate: the
 artifact removed, and the reaction budget states whether the H2O/OH cycle
 dominates H2 destruction at the handoff level.
 
-**P2 — the handoff contract (A1b).** Classify every `base.inp` key as
-provenance / EOS boundary / elemental reservoir / initial guess / boundary
-constraint; implement the elemental keys against `melem_ab`; keep species keys
-diagnostic (A1c). Gate: element budgets (H, He, C, N, O, S) close after the
-handoff; the legacy file still reproduces the goldens; every key's category is
-in the manual.
+*Result* (full record and run directories:
+`docs/vulcan_photochem_comparison.md`, section "2026-08-26 - Phase P1"; script
+`docs/p1_matched_comparison.py`):
+
+- decomposition at matched model top, HD 189733 b, 1 microbar:
+  **domain 1.07, network 3.95, code 1.70** (product 7.20). The truncation
+  artifact was the smallest of the three, and the domain sensitivity is itself
+  code-dependent - truncating VULCAN instead moves q_H by 1.70x the other way.
+- budget: on HD 189733 b the H2O/OH cycle carries **99% of net H2 destruction**
+  at 1 microbar in all three arms (`OH + H2 -> H2O + H` alone is 57-96% of the
+  gross loss). On HD 209458 b, whose base sits at 2331 K, the same channels run
+  1000x faster than the net but in near-exact balance, and `H2 + M -> H + H + M`
+  carries 70% of the net: **the partition there is thermal, not photochemical.**
+- `tau_chem(H2)/tau_adv ~ 1e-3` at the handoff level (P4 condition 2, met at
+  that level only).
+- EXHALE effect, HD 209458 b, four arms JFNK-converged (`info=0`):
+  **at most 0.035 dex (8.3%) in Mdot** across the arms, 1.5% between the two
+  codes on the same network, +6.6% for the sulfur mechanism. The same
+  measurement at the 1e-4 bar handoff, where the arms differ by 0.1%, still
+  spreads by 0.025 dex, so **0.035 dex is an upper bound, not a resolved
+  signal**: the wind-level consequence of the code choice on this planet is at
+  the level of the configuration's own JFNK-to-JFNK reproducibility. The
+  equilibrium-fit reference at 1 microbar did not converge and is not quoted.
+- the code-choice evidence table (installation, reproducibility, runtime,
+  network flexibility, domain limits, q_H agreement, Mdot effect) is in the same
+  section. **The decision itself is left to the user, as this plan requires.**
+
+**P2 — the handoff contract (A1b). GATE MET, 2026-08-26; superseded at the profile level 2026-08-27.** Classify every
+`base.inp` key as provenance / EOS boundary / elemental reservoir / initial
+guess / boundary constraint; implement the elemental keys against `melem_ab`;
+keep species keys diagnostic (A1c). Gate: element budgets (H, He, C, N, O, S)
+close after the handoff; the legacy file still reproduces the goldens; every
+key's category is in the manual.
+
+*Result* (full record: `docs/Update_EXHALE.md` section 74):
+
+- the five categories are stated in `read_base_inp`'s header and in
+  `docs/input_schema.md` section 2c; provenance is still comments only (its
+  keys are A1a/P0), the initial-guess category is empty by design, and the
+  A1c species mixing ratios stay comments because nothing consumes them.
+- `<El>_H_base` (ten elements) overrides `metals.inp` and reaches `melem_ab`.
+  `thereis_metals`, `melem_ab` and `thereis_lowIP_metal` moved to the
+  composition block after `read_base_inp` -- before that reordering, no
+  handoff element could have been heard. `base.inp` keys are now
+  label-matched like `input.inp` keys.
+- `vulcan_to_base.py` writes C/N/O/S summed over every carrier, and the same
+  carrier sum corrects `HeH_base` (0.09698 -> 0.096915 on HD 209458 b).
+- budgets: `src/utils/element_budget.py` measures them from the output
+  profiles against `EXHALE_resolved.out`. The nine elemental ratios close to
+  round-off (<= 1.8e-12 over 504 cells) on a `mol_metals` copy whose
+  `base.inp` doubles oxygen (`O_H_base 9.80e-4`) and introduces sulfur
+  (`S_H_base 1.32e-5`). Hydrogen closes to 3.1e-13 **once the He 2^3S mass
+  that `calc_rho` counts twice is removed** -- a pre-existing bookkeeping
+  defect of size 2.0e-4 of `rho` in the outer wind, reported and left
+  standing because fixing it moves every `He23S: True` golden. [fixed
+  2026-08-27: He 2^3S is flagged `bsp_is_excited_level` in
+  `src/modules/init/species_table.f90` and every budget sum skips it;
+  `calc_rho` and `calc_ntot` no longer take the triplet density as an
+  argument. `Update_EXHALE.md` section 75; the `He23S: True` goldens were
+  re-snapshotted there.]
+- legacy: `make check` 6/6 byte-identical, goldens untouched.
+- the user manual `.tex` is deliberately untouched; the categories reach it
+  at the next manual pass. **Still open as of 2026-08-27**: the manual pass
+  of that date documented the *profile* route
+  (`EXHALE_user_manual.tex`, "The lower atmosphere as a profile"), including
+  which `base.inp` categories a profile refuses, but the five categories of
+  the scalar file itself are still only in `input_schema.md` section 2c.
+
+**P1 and P2 on a real target (2026-08-27).**  Phase E of
+`lhs1140b_lower_atmosphere_plan_new.md` is these two phases driven by a
+science case, and it has now been run end to end on LHS 1140 b
+(`Update_EXHALE.md` sections 76-79; design
+`phase_e_flux_closure_design.md`).  What that changes about the two results
+above:
+
+- **P1's code choice was taken.**  Photochem is the production chemistry
+  (`src/utils/photochem_to_lower_profile.py`) and VULCAN the cross-check arm
+  (`src/utils/vulcan_to_lower_profile.py`), on the ground P1 itself
+  identified: only Photochem carries a climate model, so only it can be the
+  route away from a prescribed `T(p)`.  P1's network-vs-code split reappears
+  at the profile level unchanged — network 3.95, code 1.70 on an 864 K base,
+  1.02/1.08 on a 2331 K base (test T-E9).
+- **P2's scalar contract is now the special case.**  The five `base.inp`
+  categories still hold and `vulcan_to_base.py` still writes them — four
+  regression cases pin that file — but with a lower-atmosphere *profile* in
+  use every scalar key of the EOS-boundary, elemental-reservoir and
+  boundary-constraint categories is **refused**, and the pair must carry one
+  matching `solution_id`.  The single-source problem P2 could only check is
+  removed by construction for those keys.  Schema and refusals:
+  `input_schema.md` section 2d.
+- **The composition is an output.**  P2 left the elemental reservoirs an
+  input that reached `melem_ab`; the closure driver
+  (`src/utils/element_flux_closure.py`) iterates the elemental fluxes of the
+  two models until they agree, and returns `He/H` at the match rather than
+  taking it.  On LHS 1140 b the returned value is the well-mixed one, so the
+  answer rests on `K_zz` and not on the escape flux.
 
 **P3 — the atomic-oxygen observable.**
 1. B2 as the sensitivity test of the omitted O2+ rate.

@@ -74,7 +74,7 @@ def_check  = dict(font = (def_font,fontsize), anchor = 'w')
 
 # Create window
 window = tk.Tk()
-window.title("ATES - ATmospheric EScape - Input parameters")
+window.title("EXHALE - Input parameters")
 window.geometry("1200x480")
 tk_font = font.nametofont("TkDefaultFont") 
 tk_font.configure(family = def_font, size = 13)

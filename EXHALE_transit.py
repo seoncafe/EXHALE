@@ -34,12 +34,12 @@ start = time.time()
 
 # Fill below here the necessary inputs to calculate the transmission spectra
 #
-# path       = path to the folder where ATES simulation has been performed
-# Input_file = ATES' auto-generated input file
-# Hydro_file = ATES' hydro output (with path)
-# Ioniz_file = ATES' ionization output (with path)
+# path       = path to the folder where the EXHALE simulation has been performed
+# Input_file = EXHALE's auto-generated input file
+# Hydro_file = EXHALE's hydro output (with path)
+# Ioniz_file = EXHALE's ionization output (with path)
 
-path = _tenv('PATH', '.')  # ATES' files destination folder (env override)
+path = _tenv('PATH', '.')  # EXHALE's files destination folder (env override)
 Input_file = path + '/input.inp'
 Hydro_file = path + '/output/Hydro_ioniz_adv.txt'
 Ioniz_file = path + '/output/Ion_species_adv.txt'
@@ -97,7 +97,7 @@ T0    = _par['T0']       # equilibrium temperature [K]
 a_orb = _par['a_orb']    # orbital distance [m]
 Mstar = _par['Mstar']    # parent star mass [kg]
 LEUV     = _par['LEUV']      # log10 of EUV (Lyman-continuum-band) luminosity [erg/s]
-appx_mth = _par['appx_mth']  # ATES 2D flux approximation (sets the day-night xi factor)
+appx_mth = _par['appx_mth']  # EXHALE 2D flux approximation (sets the day-night xi factor)
 
 # ----- Stellar and planet-rotation parameters ----- #
 # The star sets the transit normalization (A_star, and the R_star/Rp cap on
@@ -136,14 +136,14 @@ Instr_res_NaI  = float(_tenv('RES_NAI',  str(Instr_res_Ha)))  # Na I D optical
 # Christie, Arras & Li (2013, ApJ 772, 144), the 2s/2p populations are
 # set by the rate-equilibrium equations (their Eqs. 12-13) including
 # Ly-alpha radiative pumping (1s<->2p). The Ly-alpha mean intensity
-# J_lya(r) is NOT produced by ATES; it is obtained in one of two ways:
+# J_lya(r) is NOT produced by EXHALE; it is obtained in one of two ways:
 #
 #  (1) If Jlya_file is set to an existing two-column text file, J_lya(r)
 #      is read from it:
-#         col 1 = r / R_p   (same radial coordinate as ATES output)
+#         col 1 = r / R_p   (same radial coordinate as EXHALE output)
 #         col 2 = J_lya     = Ly-alpha mean intensity J_nu at line
 #                             center [erg s^-1 cm^-2 Hz^-1 sr^-1]
-#      (linearly interpolated onto the ATES grid, clamped at the ends).
+#      (linearly interpolated onto the EXHALE grid, clamped at the ends).
 #
 #  (2) Otherwise J_lya is estimated with the simple assumption of
 #      Huang et al. (2017, ApJ 851, 150), Eq.(6) and related text:
@@ -161,7 +161,7 @@ Jlya_file  = ''            # path to J_lya(r) file; '' => Huang(2017) estimate
 F_LyC_override = 0.0       # 0 => auto from stellar LyC; >0 => fixed [erg cm^-2 s^-1]
 sigma_LyC      = 6.3e-18   # H photoionization cross section at LyC [cm^2]
 # Day-night / 2D flux dilution (xi) applied to the incident stellar LyC,
-# matching ATES's "2D approximate method": Rate/2 -> 0.5, Rate/4 -> 0.25,
+# matching EXHALE's "2D approximate method": Rate/2 -> 0.5, Rate/4 -> 0.25,
 # else 1.0. This is read from input.inp automatically; set xi_override>0
 # to force a value (cf. the xi factor of Christie+2013 / Huang+2017).
 xi_override    = 0.0       # 0 => auto from input.inp appx_mth
@@ -360,7 +360,7 @@ if do_Ha:
 			F_LyC = F_LyC_override
 			print('(TPM)   F_LyC = %.3e erg/cm2/s (manual override)' % F_LyC)
 		elif LEUV is not None:
-			# Day-night / 2D dilution (xi), matching ATES's appx method
+			# Day-night / 2D dilution (xi), matching EXHALE's appx method
 			if   xi_override > 0.0:        xi = xi_override
 			elif 'Rate/4' in appx_mth:     xi = 0.25
 			elif 'Rate/2' in appx_mth:     xi = 0.5

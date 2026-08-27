@@ -51,6 +51,9 @@
 		! master thread).
 		real*8 :: k_LW
 		real*8 :: T_K
+		! Total gas-particle density [cm^-3], electrons excluded: the third
+		! body M of the three-body molecular reactions R12/R13/R15. It is
+		! calc_ntot's sum (one particle per species), NOT rho/m_H.
 		real*8 :: ntot
 		! He <-> H charge-exchange rate coefficients (Huang Table 4 group B):
 		! kcx_He0_Hp = He0+H+ -> He++H0, kcx_Hep_H0 = He++H0 -> He0+H+.

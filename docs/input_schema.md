@@ -101,8 +101,8 @@ Rows are in the exact order `input_read.f90` reads them.
 | 16 | `Grid type:` | positional, word 3 | string | - | mandatory | F250-251; GUI1021 | `Uniform`, `Mixed`, or `Stretched`. |
 | 17 | `Numerical flux:` | positional, word 3 | string | - | mandatory | F254-255; GUI1025 | `HLLC`, `ROE`, or `LLF`. |
 | 18 | `Reconstruction scheme:` | positional, word 3 | string | - | mandatory | F260-267; GUI1029 | `PLM`, `WENO3`, or `PLM+WENO3` (two-stage, `recon_two_stage`). The GUI list offers only `PLM`/`WENO3`; `PLM+WENO3` is hand-added. This choice governs how the later `du_th` values are used. |
-| 19 | `Include He23S?` | positional, word 3 | bool-ish | - | mandatory | F270-272; GUI1033/1035 | Word 3 `== 'True'` sets `thereis_HeITR`. Forced off later if He is absent (F633). |
-| 20 | `Load IC?` | positional, word 3 | bool-ish | - | mandatory | F275-277; GUI1040/1042 | `True` sets `do_load_IC`. |
+| 19 | `Include He23S?` | positional, word 3 | bool-ish | - | **optional**, default on | F251-256; GUI1033/1035 | The one core-block line that may be omitted: `thereis_HeITR` defaults to `.true.` in `parameters.f90`, so a file without the line gets the triplet. Word 3 `True`/`true` sets it, `False`/`false` clears it (the deliberate opt-out, which the HeITR-off regression case uses); any other word leaves the default. Forced off later if He is absent. |
+| 20 | `Load IC?` | positional, word 3 | bool-ish | - | mandatory | F275-277; GUI1040/1042 | `True` sets `do_load_IC`. A restart restores every species density the file carries, with one exception: an element whose reservoir a lower-atmosphere handoff states (`<El>_H_base`, or an elemental ratio of the `Lower atmosphere profile:` file) has its loaded column renormalized onto that `El/H` by a single factor common to all its ionization stages, reported in the run log. Elements the handoff does not state are loaded unchanged. |
 | 21 | `Do only PP:` | positional, word 4 | bool-ish | - | mandatory | F280-285; GUI1056/1058 | `True` sets `do_only_pp` and clears `force_start`. |
 | 22 | `Force start:` | positional, word 3 | bool-ish | - | mandatory | F288-293; GUI1062/1064 | `True` sets `force_start` and clears `do_only_pp`. Historically the last positional line; with anchored matching its position no longer matters. |
 
@@ -137,8 +137,9 @@ by the Python loaders except where noted.
 | K15b | `Stellar LW flux` | word 5 | real | erg/cm^2/s | `0.0` | `F_LW_star` | Band-integrated stellar flux in the H2 Lyman-Werner bands (912-1110 A) at the planet's orbit. Drives H2 photodissociation in the molecular network (`lyman_werner.f90`): unattenuated rate `1.757e-7 * F_LW` s^-1 times the Draine & Bertoldi (1996) eq. (37) self-shielding factor of the star-ward H2 column, plus 0.4 eV of heating per dissociation. 0 = off (bit-identical to the network without it); a warning is printed if the key is set without `Molecular chemistry`. |
 | K16 | `Molecular base` | word 3 == `True`/`true` | flag | - | `.false.` | `molecular_base` | F393-396. EOS-only molecular base correction to `ntot_bc`. |
 | K17 | `Lower atmosphere` | word 3 (+ optional word 4) | string + real | - / R_J | `lower_atm_mode=0` | `lower_atm_mode`, `lower_atm_r1bar` | F397-404. `none`/`analytic`/`vulcan`. Triggers `run_lower_atm_prestep` (needs `EXHALE_ROOT`). |
+| K17b | `Lower atmosphere profile` | word 4 | string | file name | `''` (off) | `lap_file` (`lower_atmosphere_profile.f90`) | The lower atmosphere handed over as a **table over an interval of pressure** instead of the single-level scalars of `base.inp` (section 2d). Matched BEFORE K17, whose label is a prefix of this one. With the key set the named file must exist. The profile then owns the base state, the elemental reservoirs and `K_zz`, and the `base.inp` keys of those three categories are **refused** (section 2c). Absent key = present behavior, bit for bit. |
 | K18 | `Lower column` | word 3 | real | R_J | `lower_col_r1bar=-1` | `lower_col_r1bar` | F405-407. Analytic lower column 1-bar radius. |
-| K19 | `He_Kzz` | word 2 | real | cm^2/s | `0.0` | `he_kzz` | F408-411. Eddy diffusion added to the binary `D_12`; default 0 = pure molecular diffusion (it was `1.0e9` before 2026-08-25). Also overridable by `base.inp`. |
+| K19 | `He_Kzz` | word 2 | real | cm^2/s | `0.0` | `he_kzz` | F408-411. The constant eddy diffusion coefficient a run states when it has **no** profile; it fills every entry of `kzz_cell`, which is what the element-diffusion operator reads. Default 0 = pure molecular diffusion (it was `1.0e9` before 2026-08-25). Also overridable by `base.inp` (`Kzz_base`). With a lower-atmosphere profile in use the key is inert -- `K_zz` is then a profile -- and a warning says so. |
 | K20 | `He_alphaT` | word 2 | real | - | `0.0` | `he_alphaT` | F412-414. Thermal-diffusion factor. |
 | K21 | `He_ambipolar` | word 2 == `False`/`false` | flag | - | `.true.` | `he_ambipolar` | F415-418. Only `False` changes it (default on). |
 | K22 | `He_metal_diffusion` | word 2 == `True`/`true` | flag | - | `.false.` | `he_metal_diffusion` | F419-422. Tested before K23. |
@@ -173,18 +174,151 @@ by the Python loaders except where noted.
 
 ### 2c. Additional startup file: `base.inp`
 
-Not part of `input.inp`, but read at the same point (`read_base_inp`, F773-812)
-and able to override core values after `input.inp` is parsed. Optional; a
-missing file is a no-op. Format: keyword lines, `#` comments ignored.
+Not part of `input.inp`, but read at the same point (`read_base_inp`,
+`input_read.f90` F1176-1290) and able to override core values after
+`input.inp` is parsed. Optional; a missing file is a no-op. Format: keyword
+lines, `#` comments ignored. Keys are matched as **labels**, by the same
+`lbl_match` the `input.inp` reader uses (anchored at the start of the
+left-trimmed line, terminated by `:`, `?`, `=`, whitespace or end-of-line);
+before P2 they were matched as bare substrings anywhere in the line.
 
-| Key substring | Value word | Overrides | Notes |
+Every key carries a **category**, and the category is the contract: it says
+what the value is allowed to do to the wind. The five categories are the ones
+`docs/oxygen_chemistry_new_plan.md` P2 requires.
+
+| Key | Category | Value word | Sets | Notes |
+|---|---|---|---|---|
+| (comments only) | provenance | - | - | Which code, network and profile produced the file. No key is parsed today; the machine-readable provenance keys are A1a/P0 of `oxygen_chemistry_new_plan.md`. |
+| `T_base` | EOS boundary | word 2 | `T0` [K] | F1234-1236 |
+| `r_base` | EOS boundary | word 2 | `R0` [R_J] | F1237-1239 |
+| `p_base` | EOS boundary | word 2 | `p_base_bar` [bar] | F1250-1252. The level every other value refers to. Default `1e-6`; a value away from 1 microbar is echoed at startup, never rejected. |
+| `q_H2_base` | EOS boundary | word 2 | `q_h2_base` | F1247-1249. H2 volume mixing ratio at the base. With `Molecular base: True` it replaces the chemical-equilibrium fit in `comp_ntot_bc` (`composition.f90`), i.e. it sets the base **particle count**. It is an EOS anchor, not a composition pin: nothing holds H2 at this value, no H2 profile is seeded from it, and the molecular network is free to move away from it. Absent (default `-1`) = fit used, i.e. the historical behavior. |
+| `HeH_base` | elemental reservoir | word 2 | `HeH` (sets `thereis_He` if > 0) | F1240-1243 |
+| `<El>_H_base` | elemental reservoir | word 2 | `X_<El>`, hence `melem_ab(iel_<El>)` | F1254-1268. `El` is any of the ten element symbols of `species_table` (`C N O Mg Si Ca Na K S Fe`), e.g. `O_H_base 4.90e-4`. Nuclei ratio El/H at the handoff level. **Overrides `metals.inp`** for that element, activates the metal system when it is the only nonzero abundance, and, on a restart, renormalizes that element's loaded column onto this ratio (key 20). Since P2, `thereis_metals`, `melem_ab` and `thereis_lowIP_metal` are all derived after the handoff, so a handoff element behaves exactly like a `metals.inp` element. |
+| (none) | initial guess | - | - | No key today. A key here would seed a profile the solver may move away from -- e.g. the A0 improvement of using `q_H2_base` as the base-cell H2 seed in `set_IC`. |
+| `Kzz_base` | boundary constraint | word 2 | `he_kzz` [cm^2/s] | F1244-1246. Eddy diffusion coefficient imposed at the base by the element-diffusion operator; inert with `He_diffusion` off. |
+| `q_H2O`, `q_CO`, ... | diagnostic | - | - | Written as `#` comments by `vulcan_to_base.py`. No consumer in the code (A1c); metadata, not physics. Unknown keys are ignored, so promoting one to a bare line changes nothing. |
+
+**With a lower-atmosphere profile in use (key K17b) the EOS-boundary,
+elemental-reservoir and boundary-constraint keys of this file are refused**
+with an `error stop` naming the key and its category. The profile states all
+of them at the matching level, and accepting a scalar beside it would
+reintroduce the same-solution problem the profile removes by construction.
+Provenance comments and diagnostic keys are still allowed, and the one
+provenance comment that is parsed is `# solution_id <hash>`: if a `base.inp`
+sits beside a profile and either lacks a `solution_id` or the two differ, the
+run stops with both ids printed.
+
+Generators: `src/utils/run_lower.py` writes `T_base`, `r_base`, `HeH_base`,
+`Kzz_base` (analytic chemical-equilibrium column);
+`src/utils/vulcan_to_base.py` writes those four plus `q_H2_base` and `p_base`,
+and the molecular mixing ratios as comments. Neither writes `<El>_H_base` yet:
+VULCAN's networks are H/C/N/O(/S), so the element abundances it could hand
+over are its own input elemental ratios, and metal/alkali release is outside
+its scope.
+
+**Element-budget check.** `src/utils/element_budget.py <run_dir>` verifies
+that the reservoirs actually held: for every element it compares
+`n_El/n_H` per cell against the resolved abundance, hydrogen against
+`rho/mass_per_H`. The resolved abundances, `mass_per_H` and `ntot_bc` are
+written to `EXHALE_resolved.out` for that purpose.
+
+### 2d. Additional startup file: `lower_atmosphere_profile.dat`
+
+Named by the `Lower atmosphere profile:` key (K17b); the name above is only
+the conventional one. It is the lower atmosphere's solution over an interval
+of pressure, and it replaces the single-level scalars of `base.inp`. Read by
+`read_lower_atmosphere_profile` (`src/modules/files_IO/lower_atmosphere_profile.f90`)
+before `read_base_inp`, and applied by `apply_lower_atmosphere_profile` after
+it, so nothing scalar can overwrite a profile value and the elemental
+reservoirs (`melem_ab`, `thereis_metals`, `thereis_lowIP_metal`) are still
+derived after the handoff.
+
+Format: a block of `#` header lines, then a fixed-column table running **deep
+to shallow** (strictly decreasing pressure), full double precision. Header
+lines are `# key value`; the `# columns:` line names the columns and is what
+the reader and `examples/exhale_io.py` index by.
+
+| Header key | Required | Meaning |
+|---|---|---|
+| `solution_id` | yes | sha256 over the lower model's configuration, mechanism, thermodynamic data, stellar flux and elemental abundances. The fingerprint that makes "same solution" checkable. |
+| `source_code` | no | `photochem` / `vulcan` / `analytic` |
+| `source_version` | no | e.g. `photochem 0.8.4` |
+| `mechanism` | no | mechanism file name and its own sha256 |
+| `stellar_flux` | no | flux file name, sha256 and the dilution applied |
+| `p_match_bar` | yes | the matching pressure: where EXHALE places its base |
+| `p_top_bar` | yes | the shallowest level carried; must be `< p_match_bar`, else there is no overlap and the file is refused |
+| `p_deep_bar` | no | the deepest level carried (diagnostic) |
+| `trial_flux_H`, `trial_flux_He` | no | the elemental fluxes imposed at the lower model's upper boundary for this solution, g/s outward positive |
+| `iteration` | no | closure iteration index. Its absence does not stop the run; it makes the profile non-iterable (`lower_profile_iterable F`), which is the right answer for a hand-written one-shot file. |
+| `reached_steady_state` | no | `T`/`F` from the chemistry solver |
+| `notes` | no | free text |
+
+| Column | Required | Unit | Consumed as |
 |---|---|---|---|
-| `T_base` | word 2 | `T0` [K] | F969-971 |
-| `r_base` | word 2 | `R0` [R_J] | F972-974 |
-| `HeH_base` | word 2 | `HeH` (sets `thereis_He` if > 0) | F975-978 |
-| `Kzz_base` | word 2 | `he_kzz` [cm^2/s] | F979-981 |
-| `q_H2_base` | word 2 | `q_h2_base` (H2 volume mixing ratio at the base) | F982-984. Photochemical value from the lower-atmosphere pre-step. With `Molecular base: True` it replaces the chemical-equilibrium fit in `comp_ntot_bc` (`composition.f90`). Absent (default `-1`) = fit used, i.e. the historical behavior. |
-| `p_base` | word 2 | `p_base_bar` [bar] | F985-987. Pressure level the handoff describes; the equilibrium fit is evaluated there. Default `1e-6`. A value away from 1 microbar is echoed at startup, never rejected. |
+| `p` | yes | bar | the interpolation abscissa; strictly decreasing |
+| `r` | yes | R_J | `R0` at the match; the radius axis of the `K_zz` interpolation |
+| `T` | yes | K | `T0` at the match |
+| `n_tot` | yes | cm^-3 | carried, not imposed: the base density is `n0` of `input.inp` and the base particle count follows from `T0`, `HeH`, `q_H2` through `comp_ntot_bc` exactly as on the scalar path |
+| `rho` | yes | g cm^-3 | as `n_tot` |
+| `Kzz` | yes | cm^2 s^-1 | `kzz_cell`, interpolated onto the grid |
+| `q_H2` | yes | - | `q_h2_base` at the match |
+| `q_H` | yes | - | carried |
+| `X_He` | yes | - | `HeH` at the match (He/H **nuclei**, summed over every carrier) |
+| `X_<El>` | no | - | `X_<El>`, hence `melem_ab(iel_<El>)`, for any of the ten element symbols of `species_table`. Overrides `metals.inp`. |
+| `F_H`, `F_<El>` | no | g s^-1 | carried; the closure variable of `docs/phase_e_flux_closure_design.md` section 6 |
+| `q_H2O`, `q_CO`, ... | no | - | carried; diagnostic, no consumer in the code |
+
+Columns the reader has no consumer for are **kept, not dropped**, and columns
+are found by name everywhere: the producers order their element list
+differently from run to run.
+
+Interpolation is linear in `log p`, never extrapolated. A target that falls
+exactly on a level returns that level's value bit for bit. `K_zz` is
+interpolated onto the EXHALE grid through the profile's own radius column
+(the cell radius selects the bracketing levels); above the shallowest level
+the file carries, a cell takes that level's value, because the eddy
+coefficient is a lower-atmosphere property and the file makes no statement
+above its top.
+
+Refusals (all `error stop`): a missing named file; a missing `# columns:`
+line; a missing required column; fewer than two levels in the table; a
+non-positive or non-decreasing `p`; a missing `solution_id`, `p_match_bar` or
+`p_top_bar`; `p_top_bar >= p_match_bar`; a `p_match_bar` outside the table's
+coverage; a `p_top_bar` above the shallowest tabulated level (its deep end
+needs no separate test, `p_top_bar >= p_match_bar` having already been
+refused); a data row that does not carry the number of columns the schema
+line names.
+
+Header keys are label-matched with a trailing colon stripped, so `# columns`
+and `# columns:` are both accepted; the form written by the adapters, and the
+one to write by hand, is `# columns:`.
+
+What the run records: `EXHALE_resolved.out` gains
+`lower_profile_present`, and with a profile in use the file name,
+`solution_id`, source, `p_match_bar`, `p_top_bar`, the trial fluxes, the
+iteration index, `lower_profile_iterable`, `lower_profile_steady`, and -- once
+a diffusion step has measured them -- the elemental fluxes over the overlap
+window (`lower_profile_F_H_median` / `_spread`, `lower_profile_F_He_median` /
+`_spread`, `lower_profile_flux_nface`). `lower_profile_flux_state` is
+`unmeasured`, `window_empty` or `measured`; `window_empty` means the escape
+window `[j_min:N]` and the profile's coverage do not intersect, so the closure
+cannot be measured on that configuration. Alongside the overlap window, and
+under the same `lap_flux_measured` guard, the run also reports the same
+statistics over the steady-flux window `r >= r_esc`, where the elemental flux
+is flat at a steady state: `steady_flux_window_r_lo_Rp`,
+`steady_flux_window_nface`, `steady_F_H_median` / `_spread`,
+`steady_F_He_median` / `_spread` and `steady_Mdot_median` / `_spread`. That is
+the window `src/utils/element_flux_closure.py` falls back on when the overlap
+is unmeasurable or too ragged.
+
+With a profile in use the elemental face fluxes are written unconditionally to
+`output/element_flux_profile.txt` (the same file the `EXHALE_DIFFUSION_CHECK=1`
+diagnostic writes), carrying `F_He` and `F_H` on the same faces from the same
+`X` and `J` the step used.
+
+Example: `examples/17_lower_profile/`, whose
+`make_example_profile.py` regenerates the synthetic column it ships.
 
 ## 3. Parsing semantics
 
@@ -259,8 +393,13 @@ the code does.* The loop tested each line against a chain of
   `else if` chain), so a line never fires two keys. This is unchanged.
 - **Absent key = compiled default.** Every keyword variable is initialized
   before the loop or in `parameters.f90`, so omitting a keyword line leaves the
-  default in place. There is no required *keyword*; the 24 core keys, by
-  contrast, are now mandatory.
+  default in place. There is no required *keyword*. The core block, by
+  contrast, is mandatory: 19 of its keys are read through `req()`
+  unconditionally, and three more (`Spectrum file` / `Power-law index` /
+  `Photon energy`, whichever `Spectrum type` selects; the `[E_low` energy-band
+  line via `req_eband()`; `Log10 of X-ray luminosity`) are mandatory when their
+  condition applies. `Include He23S` is the one core-block line that is
+  optional (row 19).
 
 ### 3.3 Value-word conventions differ by key
 
@@ -302,9 +441,12 @@ files `metals.inp`/`opacity.inp` do skip malformed lines with a warning).
 ## 4. Appendix A: `metals.inp` schema
 
 Reader: `src/modules/files_IO/metals_input_read.f90` (`read_metals_input`,
-called from `input_read` at F40). The mere **presence** of `metals.inp` with any
-positive element abundance turns metals on (`thereis_metals`, F89-97); there is
-no metals switch in `input.inp`. A missing file leaves all `X_*` at zero.
+called from `input_read` at F81). Any positive element abundance turns metals
+on (`thereis_metals`); there is no metals switch in `input.inp`. A missing file
+leaves all `X_*` at zero. The abundances are read here but **consumed later**:
+since P2, `thereis_metals`, `melem_ab` and `thereis_lowIP_metal` are derived in
+the composition block after `read_base_inp`, so a `<El>_H_base` handoff key
+(section 2c) overrides this file for that element.
 
 Format: one entry on each line, `<token> <value>`, split on the first
 whitespace. Blank lines and lines starting with `#` are ignored; malformed lines
@@ -452,15 +594,18 @@ The user manual (`docs/EXHALE_user_manual.tex`, §"input.inp", around lines
 optional keyword block) and the conditional spectrum-property line, so it
 appears broadly consistent with the code. The manual's keyword table is a
 curated subset (it documents `Domain mode`, `Outer radius`, and the headline
-physics options) and does not enumerate every one of the 56 keyword keys; this
+physics options) and does not enumerate every one of the 57 keyword keys; this
 schema is the complete list. No outright contradiction was found; the manual is
 simply less exhaustive than the parser.
 
 ### 6.11 Cross-file coupling and inconsistent case conventions
 
-Whether metals are active is decided by the presence of `metals.inp`, not by any
-`input.inp` key, and `base.inp` can silently override `T0`/`R0`/`HeH`/`he_kzz`
-after `input.inp` is read, as well as set the base H2 mixing ratio
-(`q_H2_base`) and the handoff level (`p_base`). Additionally, `metals.inp` element labels are matched
+Whether metals are active is decided by the presence of `metals.inp` or of a
+`<El>_H_base` handoff key, not by any `input.inp` key, and `base.inp` overrides
+`T0`/`R0`/`HeH`/`he_kzz` and the elemental abundances after `input.inp` is read,
+as well as setting the base H2 mixing ratio (`q_H2_base`) and the handoff level
+(`p_base`). Every override is echoed line by line at startup and the resolved
+result is written to `EXHALE_resolved.out`, so "silently" no longer applies;
+what remains is that the file is picked up by presence alone. Additionally, `metals.inp` element labels are matched
 case-sensitively while `opacity.inp` keys are upper-cased before matching, so the
 two companion readers follow opposite case conventions.

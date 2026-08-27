@@ -30,7 +30,7 @@ and Xing et al. (2023), and Their Adoption Potential for \EXHALE}
 \EXHALE\ column and the adoption assessment predate the metal, molecular and
 diffusion work. Since implemented: the temperature-dependent Taylor et al.\
 (2025) Penning rate (unconditional default), He/H ($+$ metal) diffusive
-separation (\texttt{species\_diffusion.f90}, keys \texttt{He\_diffusion} /
+separation (\texttt{binary\_element\_diffusion.f90}, keys \texttt{He\_diffusion} /
 \texttt{He\_metal\_diffusion}, default off), molecular chemistry
 H$_2$/H$_2^+$/H$_3^+$/HeH$^+$ with H$_3^+$ infrared cooling and the
 lower-atmosphere tiers (\texttt{lower\_atmosphere/}), charge exchange
@@ -194,8 +194,11 @@ Transmission & --- & Ray-traced Voigt & Post-processed & \texttt{EXHALE\_transit
   \item \textbf{\EXHALE\ is strictly single-fluid} with a \emph{fixed} He/H at all radii ---
     it \textbf{cannot} represent fractionation or diffusive separation. This is the largest
     physical gap relative to the modern He 10830 literature. [2026-08-15: since
-    implemented as the Taylor-style diffusion term recommended below
-    (\texttt{species\_diffusion.f90}); see the status note on page 1.]
+    implemented as the molecular $+$ eddy diffusion term recommended below
+    (\texttt{binary\_element\_diffusion.f90}), which transports the helium MASS
+    FRACTION $X=\rho_{\rm He}/\rho$ of a binary H/He mixture rather than the trace
+    ratio $n_{\rm He}/n_{\rm H}$ of Taylor's formulation; see the status note on
+    page 1.]
 \end{itemize}
 
 \subsection{Radiation transport}

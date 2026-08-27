@@ -6,7 +6,10 @@ external review `lhs1140b_lower_atmosphere_plan_review.md`; that file's
 section 1 lists the claims of this draft that were corrected against the
 source (normalization scale, diffusion generalization, crossover-mass
 claim, SED-path history, transit metrics, Photochem adapter status,
-molecular reaction set, fluid-validity wording).  Do not quote this draft.**
+molecular reaction set, fluid-validity wording).  Do not quote this draft.
+The diffusion module it names, `src/modules/functions/species_diffusion.f90`,
+was deleted on 2026-08-25 and replaced by
+`src/modules/functions/binary_element_diffusion.f90`.**
 
 Source papers: `references/Cherubim_2026Science.pdf` and
 `references/Cherubim_2026Science_Supplement.pdf` (C. Cherubim et al., Science,

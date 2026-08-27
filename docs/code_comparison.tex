@@ -20,7 +20,7 @@
 \newcommand{\Mdot}{$\dot M$}
 
 \title{Boundary conditions, initial conditions, and solver:\\
-EXHALE / EXHALE vs.\ ATES, Salz+2016,\\
+EXHALE vs.\ ATES, Salz+2016,\\
 Kubyshkina+2018, and Murray-Clay+2009}
 \author{Kwang-Il Seon}
 \date{2026-06-13}
@@ -30,7 +30,7 @@ Kubyshkina+2018, and Murray-Clay+2009}
 
 \begin{quote}\small\itshape
 A focused comparison of the boundary conditions (BC), initial conditions
-(IC), and steady-state solver of EXHALE / EXHALE against the
+(IC), and steady-state solver of EXHALE against the
 relevant 1-D atmospheric-escape codes: its own parent code ATES
 (Caldiroli et al.\ 2021), the PLUTO--CLOUDY interface (TPCI) of Salz et
 al.\ (2016), the grid code of Kubyshkina et al.\ (2018) (numerical
@@ -58,9 +58,9 @@ Hydro scheme & WENO3 + HLLC + RK3 (Godunov) & McCormack predictor--corrector (fi
 Source term & operator-split forward Euler & in-scheme & semi-implicit energy + Brent $T$-solve \\
 Steady state & time relaxation only & time relaxation & time relaxation \emph{+} JFNK Newton finish \\
 Microphysics & CLOUDY full non-equilibrium photoionization (separate auto grid, 600--1200 cells) & H+H$_2$ network, Ly$\alpha$+H$_3^+$ cooling, $\eta=15\%$ fixed & ionization equilibrium (H/He+metals, MINPACK), CHIANTI metal cooling, He\,2$^3$S, H($n{=}2$)/Ly$\alpha$ RT \\
-Composition & H/He (metals/molecules in CLOUDY only) & pure H; \textbf{H$_2$ molecular at base} & H/He \textbf{+ 10 metals} (self-consistent EOS) \\
-Grid & stretched 500 cells, 1--12/15\,\Rp, base $\Delta r{=}2{\times}10^{-4}$\,\Rp & 1\,\Rp\ $\to$ Roche radius & 500 cells + 2 ghost, 1\,\Rp\ $\to r_{\max}$ \\
-Potential & planet+star+centrifugal (2-body) + radiation pressure + conduction & Roche (Erkaev 2007) + conduction & Roche / spherical \\
+Composition & H/He (metals/molecules in CLOUDY only) & pure H; \textbf{H$_2$ molecular at base} & H/He \textbf{+ 10 metals} (self-consistent EOS); H$_2$/H$_2^+$/H$_3^+$/HeH$^+$ optional \\
+Grid & stretched 500 cells, 1--12/15\,\Rp, base $\Delta r{=}2{\times}10^{-4}$\,\Rp & 1\,\Rp\ $\to$ Roche radius & \texttt{Grid cells:} $N$ (default 500) $+$ 2 ghost, 1\,\Rp\ $\to r_{\max}$ \\
+Potential & planet+star+centrifugal (2-body) + radiation pressure + conduction & Roche (Erkaev 2007) + conduction & Roche / spherical; conduction and viscosity optional (\texttt{Conduction:}, \texttt{Viscosity:}, default off) \\
 \bottomrule
 \end{tabular}
 \caption{High-level comparison. EXHALE and Salz share the same
@@ -81,7 +81,7 @@ rather than a time-relaxation code (\S\ref{sec:mc}).
 \section{Heritage: what EXHALE inherited from ATES (Caldiroli+2021)}
 \label{sec:heritage}
 
-EXHALE / EXHALE is a fork of ATES, so its BC/IC/solver baseline is
+EXHALE is a fork of ATES, so its BC/IC/solver baseline is
 literally Caldiroli et al.\ (2021). Reading that paper makes the
 inheritance explicit and isolates what is genuinely new in EXHALE.
 
@@ -263,7 +263,9 @@ steady state.
 \item \emph{JFNK Newton steady-state finish.} Salz relaxes in time only,
   so its convergence criterion is $\Delta\dot M/\dot M<0.1$ (10\%) with
   residual oscillations handled by time-averaging. EXHALE converges to
-  the fixed point directly ($\|R\|_\infty\to0$), a much stricter
+  the fixed point directly ($\|R\|\to0$; the default norm is the
+  volume-weighted one, \texttt{Resid norm: vol}, with \texttt{Linf}
+  selecting the legacy max-over-cells measure), a much stricter
   standard.
 \item \emph{Metals self-consistent in the hydro EOS} (2026-06-13). Salz's
   published runs keep metals/molecules inside CLOUDY's separate grid and
@@ -281,7 +283,12 @@ steady state.
   radiative-equilibrium base layers.
 \item Very high base resolution ($\Delta r\sim2{\times}10^{-4}$\,\Rp)
   suppresses the pressure-gradient cancellation error that drives
-  low-\Mdot\ oscillations.
+  low-\Mdot\ oscillations. \emph{No longer a difference: EXHALE's
+  \texttt{Grid type: Mixed} stacks \texttt{N\_low\_cells} uniform cells of
+  \texttt{dr\_base} on the base, defaulting to 50 cells of
+  $2\times10^{-4}$\,\Rp\ and settable per run as
+  \texttt{Base grid [dr,cells]}; every \texttt{examples/} configuration uses
+  it.}
 \item Cost: TPCI is expensive and has no steady-state solver.
 \end{itemize}
 
@@ -309,6 +316,16 @@ steady state.
   evolution calculations. EXHALE is more accurate per case but heavier
   and breathing-limited.
 \end{itemize}
+
+\noindent\emph{Both halves of the first bullet have narrowed since this was
+written.} EXHALE now selects the IC family automatically
+(\texttt{IC mode: auto}) and carries an H$_2$/H$_2^+$/H$_3^+$/HeH$^+$
+molecular base (\texttt{Molecular chemistry:}, \texttt{Molecular base:};
+default off, and the molecular base is auto-coupled whenever the chemistry
+is on).  HD~189733\,b itself converges to Newton grade since the JFNK
+line-search fix of 2026-08-11 --- \texttt{docs/newton\_scaling\_and\_base\_wall.md}
+\S10 and \texttt{docs/hd189\_base\_checkerboard.md} \S10.  What remains is
+the cost per case, not the convergence.
 
 The underlying scheme (Erkaev+2016) is a two-step MacCormack
 predictor--corrector, \emph{second-order} and explicitly noted as
@@ -403,8 +420,10 @@ heating geometry — factor-of-a-few agreement is the realistic target):
   metals-off run gives a flat $4\pi r^2\rho v = 10^{10.84}$ and
   $T_{\rm max}=8\,300$\,K --- 15\% / 4\% agreement from a completely
   independent method.
-\item \textbf{HD\,189733b} (the planet where EXHALE's time marching
-  limit-cycles at $du\sim2$ and never converges): the BVP relaxation
+\item \textbf{HD\,189733b} (at the time of writing, the planet where
+  EXHALE's time marching limit-cycled at $du\sim2$ and never converged; it
+  converges to Newton grade since 2026-08-11 ---
+  \texttt{docs/newton\_scaling\_and\_base\_wall.md} \S10): the BVP relaxation
   \emph{converges cleanly} ($T_{\rm max}=11\,300$\,K,
   $r_s=3.83\,R_{\rm pl}$, global $\dot M = 10^{10.2}$ with their 0.33
   substellar-to-global factor). \textbf{A steady transonic solution

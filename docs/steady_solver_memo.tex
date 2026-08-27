@@ -73,7 +73,7 @@ point for $n_e$/$n_{\rm tot}$/EOS; schema-2 output headers and a
 label-mapping \code{load\_IC} that preserves the metal ionization state on
 restart; element-loop abundances; rate dispatch by ion index). Each step was
 a no-physics-change refactor gated by a deterministic regression harness
-(\code{regression/run\_check.sh}: single-threaded WASP-121b runs, golden
+(\code{backup/regression/run\_check.sh}: single-threaded WASP-121b runs, golden
 outputs compared byte-wise excluding \code{\#} header lines; matrix cases
 \code{wasp\_full} = He\,$2^3$S + metals and \code{wasp\_he23off}).
 Details: \code{docs/refactor\_stage1\_log.md}. The same harness gates every
@@ -444,7 +444,7 @@ HD189733b He 11.9\%, Ly$\alpha$ 46\%, H$\alpha$ 1.8\% (consistent in
 magnitude with the Jensen et al.\ 2012 H$\alpha$ detection). Figures and
 numbers are collected in
 \code{backup/regression/steady\_solver\_results.ipynb}; usage is documented in
-the updated user manual (\S\,TPM).
+the updated user manual (\S\,\code{EXHALE\_transit.py}).
 
 \paragraph{Failure containment (a genuine JFNK failure, and two fixes).}
 Re-running the manual's four figure runs through the production pipeline
@@ -507,7 +507,7 @@ economically even where it survives. Practical caveat: when a
 \code{Solver: Newton} run prints \code{JFNK failed}, the fallback
 finishes on the $du$ stop, which can be a premature state (13.34/13.38
 vs.\ 13.71 here) --- re-check such runs with \code{EXHALE\_RESIDUAL=1}.
-Probes preserved in \code{regression/\{jfnk\_cold, newton\_rsw05,
+Probes preserved in \code{backup/regression/\{jfnk\_cold, newton\_rsw05,
 newton\_rsw01\}}.
 
 %====================================================================
@@ -517,7 +517,9 @@ newton\_rsw01\}}.
 \item \textbf{HD189733b residual floor.} Progress floors at
   $\|R\|\sim3.4\times10^{-4}$ (frozen-weight refresh jumps at the
   breathing base); an under-relaxed weight refresh between outer
-  iterations is the natural next step.
+  iterations is the natural next step. \emph{Since addressed from the other
+  side: the line search no longer accepts a step on the frozen-weight measure
+  at all --- item~4 of \S\ref{sec:postscript}.}
 \item \textbf{Non-monotone reference poisoning.} The tutorial-planet
   failure above was \emph{contained}, not prevented: the 5-entry Grippo
   memory can retain a huge early merit and thereby accept a blow-up step.
@@ -556,7 +558,7 @@ file & content\\
  off)\\
 \code{src/modules/files\_IO/input\_read.f90} & option parsing (keyword
  lines after \code{Force start:})\\
-\code{EXHALE\_main.f90} & level/residual monitors and stops; env hooks\\
+\code{src/EXHALE\_main.f90} & level/residual monitors and stops; env hooks\\
 \code{backup/regression/} & harness, goldens, and all probe run directories
  (\code{ptc\_warm}, \code{crit\_cold}, \code{resid\_*}, \dots)\\
 \code{docs/steady\_solver\_design.md} & incremental design notes
@@ -567,11 +569,11 @@ file & content\\
 \end{center}
 
 %====================================================================
-\section{Postscript: what changed after this log (2026-08-10)}
+\section{Postscript: what changed after this log (2026-08-10/11)}
 \label{sec:postscript}
 %====================================================================
 
-Three things recorded above are no longer what the code does.
+Four things recorded above are no longer what the code does.
 
 \begin{enumerate}
 \item \textbf{The hand-off is flux-keyed, not residual-keyed.} The
@@ -593,6 +595,18 @@ Three things recorded above are no longer what the code does.
   Every solve measured needs 27--38 iterations before it first improves on the
   warm-start $\|R\|$, so the old rule fired during the opening pseudo-transient
   in normal operation.
+
+\item \textbf{The line search is tested against the true residual}
+  (2026-08-11). The trial states of the backtracking search in
+  \code{solve\_steady\_jfnk} are evaluated with \code{weno\_mode = 0}, i.e.\
+  with the WENO smoothness weights recomputed at the trial state, so what
+  decides acceptance is the residual the solve is driving to zero rather than
+  the frozen-weight model of the current outer iteration. On the
+  HD~189733\,b hand-off state the two measures differ by a median factor 2.2
+  at $\lambda=1$, and 7 of the 14 steps the frozen test accepted \emph{raised}
+  the true residual, by up to $9\times$. This is the change that attacks the
+  HD~189733\,b residual floor of item~1 of \S\ref{sec:next} from the other
+  side. Numbers: \code{docs/newton\_scaling\_and\_base\_wall.md} \S10.
 \end{enumerate}
 
 The consequence for this memo is that its recurring diagnosis --- that every

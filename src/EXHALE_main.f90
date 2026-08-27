@@ -403,6 +403,11 @@
                                     trim(diag_env) .eq. '1', j)
          call write_output(rho,v,p,T,heat,cool,eta,                    &
                            nhi,nhii,nhei,nheii,nheiii,nheiTR,nm,'eq')
+         ! The direct steady route stops here, so the resolved-configuration
+         ! record is written on this route too -- element_budget.py and the
+         ! Phase-E flux closure both read it, and the elemental fluxes it
+         ! carries only exist once a diffusion step has run.
+         call write_resolved_config
          write(*,*) '(EXHALE_main) EXHALE_PTC=1: solver done, output written, stopping.'
          stop
       endif
@@ -1113,6 +1118,12 @@
       ! Diagnostic: H(n=2) populations, Balmer proton source, and
       ! photoelectric/de-excitation heating vs radius (Huang Figs. 11/27/10/26).
       if (use_excited_H) call write_excited_H
+
+      ! Rewrite the resolved-configuration record now that the wind exists:
+      ! the configuration in it is the same one written before the run, and
+      ! the elemental fluxes over the overlap window only exist once a
+      ! diffusion step has measured them.
+      call write_resolved_config
 
       !---------------------------------------------------!
 

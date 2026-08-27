@@ -5,7 +5,8 @@ These three are the large, high-risk items from the 2026-07-13 code review
 refactor, not a bug fix, and touches validated, paper-critical code. They are
 **not** one-shot changes: each is broken into increments that are individually
 small, and **every increment is gated by the byte-identical regression**
-(`make check`, the wasp_full + wasp_he23off cases) plus, where a molecular or
+(`make check`, then the wasp_full + wasp_he23off cases; seven cases as of
+2026-08-27) plus, where a molecular or
 loaded-SED path is affected, a molecular reference run (`examples/15_molecular`,
 bounded) and a loaded-SED run. Stop and re-validate physics if any gate needs a
 golden re-snapshot.
@@ -203,6 +204,19 @@ parser change affects every run and every shipped `input.inp`.
 **Recommended:** Inc 0 (document) is free and valuable on its own. Inc 1 only
 with the full input-corpus regression; back-compat with positional inputs is the
 gating constraint.
+
+[2026-08-27 status, read off the code: **Inc 0 done** -- the schema table is
+`docs/input_schema.md`. **Inc 1 done** -- the core block of
+`src/modules/files_IO/input_read.f90` is matched by anchored label
+(`lbl_match`, 73 sites), so physical line order no longer matters while
+legacy positional files parse unchanged because their lines are
+self-labeling; the input-corpus regression the increment made mandatory is
+`EXHALE_PARSE_DUMP` / `write_parse_dump` in `EXHALE_main.f90` driven by
+`backup/regression/run_parse_corpus.sh`, which snapshots `parse_dump.txt`
+for every `input.inp` in the tree. **Inc 2 not done** --
+`examples/exhale_io.py:read_input` still parses `input.inp` on its own, and
+`exhale_transit_lib.py` still has its own `get_word`. Inc 3 was not checked
+here.]
 
 ---
 

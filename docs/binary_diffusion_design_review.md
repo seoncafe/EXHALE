@@ -1,5 +1,15 @@
 # Review of the Binary H/He Diffusion Design
 
+> [2026-08-27] This is the external review as written on 2026-08-25, against
+> the design draft and the code of that date. It is kept unchanged as the
+> record. What it describes has since moved: the design was revised against
+> every finding (disposition table in `binary_diffusion_design.md` section 9),
+> the trace kernel `src/modules/functions/species_diffusion.f90` was deleted
+> and replaced by `src/modules/functions/binary_element_diffusion.f90`, the
+> `He_Kzz` default is now `0` (`src/modules/init/parameters.f90`), and the
+> `input_read.f90` rejection of molecular chemistry together with
+> `He_diffusion` is gone.
+
 ## Overall assessment
 
 `binary_diffusion_design.md` has the right high-level direction, but it is

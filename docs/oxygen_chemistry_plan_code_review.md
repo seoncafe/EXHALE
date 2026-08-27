@@ -490,7 +490,7 @@ more accurate and easier to validate.
 | EOS | `composition.f90`, `utilities.f90` | OH/H2O mass and particle counts without double counting |
 | Energy | `util_ion_eq.f90` and cooling/heating diagnostics | Photolysis heating and reaction energetics |
 | IC/restart/output | `set_IC.f90`, `load_IC.f90`, `write_output.f90` | Schema labels and conservation-preserving reload |
-| Diffusion | `species_diffusion.f90` | One element flux for atomic and molecular O if required |
+| Diffusion | `binary_element_diffusion.f90` (this row named `species_diffusion.f90`, deleted 2026-08-25) | One element flux for atomic and molecular O if required |
 | Transit | `EXHALE_transit.py` | Separate total and atomic O, with level populations |
 | Tests and docs | Regression matrix, input schema, setup report | Zero-O limit, old-default identity, and element budgets |
 

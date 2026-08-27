@@ -57,7 +57,7 @@ gets it right:
 
 ```
 He + H+ : 1.75e-11 (T/300)^-0.75 exp(-12.75/T4)
-He+ + H : 1.25e-15 (T/300)^0...        [no exponential]
+He+ + H : 1.25e-15 (T/300)^0.25        [no exponential]
 ```
 
 `IP(He I) - IP(H I) = 24.5874 - 13.5984 = 10.989 eV`, i.e. **12.752** in units
@@ -90,7 +90,8 @@ fits for both directions and assigns them the other way from the printed table:
 Cloudy's pair satisfies detailed balance to 7% across the range, with the
 ionizing direction the **smaller** of the two, as an endothermic channel must be.
 
-**MOCASSIN 3.x**, `source/update_mod.f90:1671`, stores
+**MOCASSIN 3.x** (the external photoionization code, not a file of this
+repository), `source/update_mod.f90:1671`, stores
 `chex(8,1) = (1.04, 3.15e-2, -0.61, -9.73)` with **no Boltzmann factor**, and
 its `chex` comments label the product ion, so that entry is `O+ + H0 -> O0 + H+`
 — the exothermic direction, correctly barrierless. Its rate magnitude is a
@@ -186,8 +187,10 @@ literature, and test them against each other.
    `k_i/k_r = [g(X+) g(H0)]/[g(X0) g(H+)] exp(-dE/kT)`. This audit was done by
    hand and the error had stood undetected; it is cheap to make it automatic.
    MoCHII now runs it as a gate over all its pairs
-   (`tests/charge_exchange/check_detailed_balance.f90`), which fails on the
-   printed oxygen assignment at every temperature from 5000 to 20000 K.
+   (`tests/charge_exchange/check_detailed_balance.f90` in the separate MoCHII
+   code at `/nfs/mocafe/kiseon/MoCHII/MoCHII_v1.00`; EXHALE has no equivalent
+   gate), which fails on the printed oxygen assignment at every temperature
+   from 5000 to 20000 K.
 3. Note that below about 5000 K the Kingdon & Ferland forms are usually
    evaluated with the temperature clamped into their validity range, which
    freezes one direction's Boltzmann factor while the other keeps running.

@@ -28,37 +28,100 @@ imposing it, and to establish what --- if anything --- has to be added to
 the physics for the model to match the observation.
 
 \medskip
-\noindent\textbf{Result.} Two statements carry the memo, and they point in
-opposite directions: the \emph{amount} of absorption can be matched under
-every assumption combination tried, but only at a composition that those
-assumptions move by a factor $80$; the \emph{width} cannot be matched under
-any of them, and the velocity it asks for is the same number every time.
+\noindent\textbf{Result.} The \emph{amount} of absorption can be matched,
+but the composition it takes is not one number: it splits in two according
+to what is placed at the lower boundary. Above a prescribed metal-free
+scalar base the measured equivalent width is reached at
+$\mathrm{He/H} = 2.09$; above a lower atmosphere solved as a photochemical
+column and handed over as a profile, C, N and O included, it is reached at
+$\mathrm{He/H} = 10.7$. Both runs have binary H/He element diffusion active
+and both sit at the same $K_{zz} = 10^{9}$\,cm$^{2}$\,s$^{-1}$, so what
+separates the two values is the base and not the mixing. The \emph{width}
+is not matched over either base, and the velocity it asks for is the same
+number every time. Solving the lower atmosphere instead of prescribing it
+does not remove the match --- it moves it.
 
 \medskip
-\noindent\textbf{(i) The amount is always matchable, so the composition it
-implies is a conditional statement rather than a measurement.} Every
-combination of assumed spectrum and assumed mixing reaches the observed
-red-pair equivalent width at some helium abundance, and the escape rate ---
-an output, not a fit --- barely moves along the way:
-$\log_{10}(\dot M/\mathrm{g\,s^{-1}}) \simeq 7.6$--$7.8$ on the GJ\,1132 proxy
-spectrum across composition, diffusion and eddy coefficient alike, and
-$8.6$ on the GJ\,699 proxy, the second stand-in for LHS\,1140's unobserved
-XUV, $5.1$ times brighter, which the paper also uses --- there within
-$0.04$\,dex of what the paper itself retrieves on that same proxy
-(Sect.~\ref{sec:gj699}). What the assumptions move is where the crossing
-lands. In the well-mixed limit it is $\mathrm{He/H} = 0.55$ on the
-GJ\,1132 proxy and $0.060$, below solar, on the GJ\,699 one. With binary
-H/He element diffusion active --- helium then settles out of the base
-unless an eddy term lifts it --- it rises again, to $4.68$ wherever
+\noindent\textbf{(i) The amount is always matchable, so what the line
+returns is a conditional pair rather than a measurement.}
+
+\smallskip
+\noindent\emph{The prescribed-base branch.} With the base a scalar state
+carrying no metals, every combination of assumed spectrum and assumed mixing
+reaches the observed red-pair equivalent width at some helium abundance, and
+the conditions stack inside this branch. In the well-mixed limit the
+crossing is $\mathrm{He/H} = 0.55$ on the GJ\,1132 proxy spectrum and
+$0.060$, below solar, on the GJ\,699 one --- the second stand-in for
+LHS\,1140's unobserved XUV, $5.1$ times brighter, which the paper also uses.
+With binary H/He element diffusion active --- helium then settles out of the
+base unless an eddy term lifts it --- it rises again, to $4.68$ wherever
 $K_{zz} \le 10^{5}$\,cm$^2$\,s$^{-1}$ does nothing against the molecular
 coefficient, $2.09$ at the adopted $K_{zz} = 10^{9}$ and $1.11$ at
-$10^{11}$ (Sect.~\ref{sec:diffbroad}). End to end that is $0.060$ to
-$4.68$, a factor $80$, over choices this measurement cannot arbitrate:
-strongly conditional on the assumed spectrum, weakly and monotonically on
-the assumed mixing, as $K_{zz}^{-0.14}$ wherever the eddy term acts at all.
-Any composition read off this line --- the paper's
-$\mathrm{H\!:\!He} \lesssim 10^{-3}$ as much as any value here --- inherits
-both conditions.
+$10^{11}$ (Sect.~\ref{sec:diffbroad}). The dependence on the eddy
+coefficient is weak and monotonic, as $K_{zz}^{-0.14}$ wherever the eddy
+term acts at all; the dependence on the assumed spectrum is a factor $9$.
+
+\smallskip
+\noindent\emph{The solved-column branch.} Replacing that base with a
+photochemical column --- Photochem with its climate step solved, handed to
+EXHALE as a profile at a $1\,\mu$bar match, at the same
+$K_{zz} = 10^{9}$ and with the same diffusion active --- brings C, N and O
+into the base, and the same reservoir then absorbs $2.6\times$ less:
+$\mathrm{He/H} = 2.09$ gives $EW = 0.421$\,\%\,\AA{} against the observed
+$1.108 \pm 0.030$, where over the metal-free base it gave $1.129$
+(Sect.~\ref{sec:basemetals}). A ladder of seven solutions on this base,
+each closed on its own elemental fluxes, crosses the measurement at
+$\mathrm{He/H} = 10.7$ ($10.5$--$10.9$ on the measurement's $1\sigma$
+interval), read off the bracket between the $10.31$ and $12.01$ rungs
+(Sect.~\ref{sec:closureladder}).
+
+\smallskip
+\noindent\emph{Neither number is an independent prediction of the model.}
+Each is the reservoir the observed line picks out over its own base, and
+the escape rate --- which is an output, not a fit --- barely moves along the
+way. The flux closure does not change that on the profile branch. It
+returns $\mathrm{He/H} = 2.09235$ at the match from trial fluxes a factor of
+ten apart, single-valued to $5.5\times10^{-6}$ (Sect.~\ref{sec:closure}),
+but at $K_{zz} = 10^{9}$ the eddy term homogenizes the column all the way to
+the microbar match, so only $2\times10^{-4}$ of that answer comes from the
+escape flux: the closure hands back the reservoir it was given. And the
+reservoir it was given, $2.09$, is itself the value fitted to this same line
+over the earlier metal-free scalar base. What the closure adds is that a
+composition is consistent with a photochemical lower atmosphere carrying its
+own C, N and O, not that it is measured. Every rung of the ladder satisfies
+the closure at residual flux spreads of $0.4$--$2.6\%$; the line is what
+selects one.
+
+\smallskip
+\noindent\emph{Why the same helium absorbs differently over the two bases.}
+The base metals are a thermostat setting, and helium is the other half of
+the same thermostat. The photochemical column's C, N and O cool the wind
+--- $T_{\max}$ from $5330$ to $3944$\,K --- and although the metastable peak
+itself rises, $42.9$ to $50.2$\,cm$^{-3}$, the cooler wind does not carry
+the population outward, so the metastable column above $2\,R_p$ falls by
+$2.6$ and the line weakens by the same factor. Raising the reservoir reheats the wind:
+at $\mathrm{He/H} = 10.31$ the mean mass per particle at $2\,R_p$ is
+$2.53\,m_{\rm H}$ against $1.51$, the same deposited energy is shared among
+fewer and heavier particles, the coolant is diluted with the hydrogen it is
+referred to, and $T_{\max}$ returns to $5869$\,K --- past the metal-free
+$5330$. The ladder is therefore closer to a thermal trade between base metal
+content and helium content than to a determination of composition, and this
+one line cannot separate the two (Sect.~\ref{sec:basemetals},
+Fig.~\ref{fig:thermostat}).
+
+\smallskip
+\noindent\emph{The escape rate is flat on every axis, and end to end the
+composition spans a factor $180$.} $\log_{10}(\dot M/\mathrm{g\,s^{-1}})
+\simeq 7.6$--$7.8$ on the GJ\,1132 proxy across composition, diffusion and
+eddy coefficient alike, $7.39$--$7.50$ across the whole closed ladder, and
+$8.6$ on the GJ\,699 proxy --- there within $0.04$\,dex of what the paper
+itself retrieves on that same proxy (Sect.~\ref{sec:gj699}). Against that,
+the composition the line implies runs from $0.060$ to $10.7$ over choices
+this measurement cannot arbitrate: strongly conditional on the assumed
+spectrum and on what is placed at the lower boundary, weakly and
+monotonically on the assumed mixing. Any composition read off this line ---
+the paper's $\mathrm{H\!:\!He} \lesssim 10^{-3}$ as much as any value here
+--- inherits those conditions.
 
 \medskip
 \noindent\textbf{(ii) The width is not reached on any axis, and the deficit
@@ -69,9 +132,11 @@ is spread in velocity. Measured directly --- convolving the solved profile
 with a Gaussian and asking which one reproduces the observed line --- the
 missing spread is $22.30$\,km\,s$^{-1}$ FWHM
 ($\sigma = 9.5$\,km\,s$^{-1}$) in the well-mixed limit,
-$22.31$\,km\,s$^{-1}$ with diffusion and the adopted $K_{zz}$, and
-$22.08$\,km\,s$^{-1}$ on the $5.1\times$ brighter spectrum
-(Sects.~\ref{sec:broadening}, \ref{sec:diffbroad} and~\ref{sec:gj699}).
+$22.31$\,km\,s$^{-1}$ with diffusion and the adopted $K_{zz}$,
+$22.39$\,km\,s$^{-1}$ for the flux-closed solution on the solved
+photochemical column, and $22.08$\,km\,s$^{-1}$ on the $5.1\times$ brighter
+spectrum (Sects.~\ref{sec:broadening}, \ref{sec:diffbroad},
+\ref{sec:closure} and~\ref{sec:gj699}).
 Supplied as one Gaussian it puts depth, blue depth and red/blue ratio
 inside the observed $1\sigma$ interval at once, with nothing tuned to them;
 what produces it is unidentified. It is not thermal --- the solved gas
@@ -94,6 +159,15 @@ $5000$--$6000$\,K where the line forms, but overshoots the blue component
 threefold. Adding broadening does not rescue it: its absorbing power is
 $24\%$ below the measurement, so no convolution can reach the observed
 depth and width at once.
+
+\medskip
+\noindent\textbf{A caveat that attaches to the escape rate alone.} These
+solutions stay subsonic out to $30\,R_p$, so their mass flux is set at the
+outer boundary rather than at a critical point, and the gas is already
+collisionless there ($\mathrm{Kn} = 1.3$--$2.3$): the $\dot M$ quoted
+throughout is \emph{unvalidated in the collisional sense}, while the
+He\,10830 layer at $1.1$--$3\,R_p$ sits at $\mathrm{Kn} \le 0.021$ and the
+line analysis is untouched (Sect.~\ref{sec:validity}).
 
 \medskip
 \noindent Everything below uses inputs verified against the authors' own
@@ -972,11 +1046,10 @@ $1.108 \pm 0.030$ --- all four inside the observed $1\sigma$ interval at the
 value fixed by the width alone, as in the well-mixed case. So the velocity
 the profile demands is unchanged by turning diffusion on and by the adopted
 eddy coefficient: those change how much helium is there, not how fast it
-moves. Figure~\ref{fig:diffbroad} illustrates the structure of this
-diffusive steady state: panel (a) displays the radial number density
-profiles of the individual hydrogen and helium species, panel (b) shows the
-fractional abundance profiles $n_{\rm H}/n_{\rm tot}$ and $n_{\rm He}/n_{\rm
-tot}$, and panel (c) shows the resulting broadened transit spectrum overlay.
+moves. Figure~\ref{fig:diffbroad}(a) displays the radial number density
+profiles of the hydrogen and helium species in this diffusive steady state,
+and Figure~\ref{fig:diffbroad}(b) shows the resulting broadened transit
+spectrum overlay.
 
 \begin{figure}[htbp]\centering
 \includegraphics[width=\textwidth]{figures/lhs1140b_diff_broadened.pdf}
@@ -987,16 +1060,12 @@ $K_{zz} = 10^{9}$\,cm$^2$\,s$^{-1}$).
 $\mathrm{H\,\textsc{i}}$, $\mathrm{H\,\textsc{ii}}$) and helium species
 (total He, $\mathrm{He\,\textsc{i}}(1^1S)$, $\mathrm{He\,\textsc{ii}}$, and
 metastable $\mathrm{He}(2^3S)$) as a function of planetary radius $r$
-[$R_{\rm p}$]. Dotted vertical line marks the stellar disk radius
-($13.6\,R_{\rm p}$).
-\textbf{(b)} Fractional elemental abundances $n_{\rm H}/n_{\rm tot}$ and
-$n_{\rm He}/n_{\rm tot}$ (where $n_{\rm tot} = n_{\rm H} + n_{\rm He}$).
-At the lower boundary ($r = 1.0\,R_{\rm p}$), $\mathrm{He/H} = 2.13$
-corresponds to $68\%$ He and $32\%$ H; binary element diffusion drives
-gravitational settling of helium relative to hydrogen, causing the helium
-fraction to drop to $36\%$ at $2\,R_{\rm p}$ and settle at an asymptotic
-value of $32\%$ ($n_{\rm H}/n_{\rm tot} \approx 68\%$) in the upper outflow.
-\textbf{(c)} The transmission spectrum as solved (dotted purple, its core
+[$R_{\rm p}$]. At the lower boundary ($r = 1.0\,R_{\rm p}$), $\mathrm{He/H} =
+2.13$; binary element diffusion causes helium to settle outward relative to
+hydrogen, with the local abundance falling to $\mathrm{He/H} \approx 0.57$ at
+$2\,R_{\rm p}$ and $0.47$ at $10\,R_{\rm p}$. Dotted vertical line marks the
+stellar disk radius ($13.6\,R_{\rm p}$).
+\textbf{(b)} The transmission spectrum as solved (dotted purple, its core
 running below the plotted range) and convolved with the
 $22.3$\,km\,s$^{-1}$ FWHM Gaussian that reproduces the measured width (solid
 purple), against the measurement; the diffusion-off $\mathrm{He/H} = 0.55$
@@ -1501,19 +1570,1127 @@ implies moves from $0.550$ to $0.060$ when the assumed SED is changed.}
 \label{fig:gj699}
 \end{figure}
 
+\section{Closing the loop: the composition as an output}
+\label{sec:closure}
+
+Every number above took the helium abundance as an input. The scans of
+Sects.~\ref{sec:scan} and~\ref{sec:diffbroad} chose it, solved the wind, and
+asked what the line did; the reservoir at the base was a parameter set by
+hand, and the lower atmosphere below the $1\,\mu$bar matching level was a
+handful of scalars. This section removes that freedom on one axis: the
+lower atmosphere is solved as a photochemical column, handed over as a
+profile, and the elemental fluxes are iterated until they are continuous
+across the matching level. The composition at the match is then a solution
+of the coupled problem rather than a number chosen for it. The
+implementation and its tests are recorded in
+\texttt{docs/phase\_e\_flux\_closure\_design.md} and
+\texttt{docs/Update\_EXHALE.md}, Sects.~76--79; the runs are
+\texttt{LHS1140b/exhale/flux\_closure/}.
+
+\subsection{The setup}
+
+The column below the match is solved with Photochem (Wogan 2025) on the
+Zahnle reaction set restricted to H/He/N/O/C. The temperature is not
+prescribed: \texttt{clima}'s \texttt{AdiabatClimate} is run with
+\texttt{solve\_for\_T\_trop} on, so the stratospheric temperature is the
+skin temperature of the solution, and the background gas is chosen by
+abundance rather than by name --- on this atmosphere that is helium, not
+H$_2$. The climate solve is taken from a deep boundary at $20$\,bar, which
+is the shallowest one at which the photochemical model bottom fits inside
+the climate column. Chemistry and climate are run on the same elemental
+vector, He/H starting at $2.09$ --- the $K_{zz} = 10^{9}$ crossing of
+Table~\ref{tab:kzzcross} --- with Lodders C, N and O, on the GJ\,1132 proxy
+spectrum at the planet's orbit and at the adopted constant
+$K_{zz} = 10^{9}$\,cm$^2$\,s$^{-1}$.
+
+The result is handed to EXHALE as a profile of $102$ levels from
+$16.73$\,bar to $1.10\times10^{-8}$\,bar, carrying $p$, $r$, $T$, $n$,
+$\rho$, $K_{zz}$, the molecular fractions and the elemental reservoirs
+He/H, C/H, N/H and O/H, matched to the wind at $1\,\mu$bar;
+Sect.~\ref{sec:photochem} reads that solution column by column, and says
+which of the columns the wind is actually built from. The loop is then
+closed in the other direction: the elemental escape fluxes EXHALE computes
+are imposed back on the photochemical model at its top ---
+$\phi_{\rm El} = \Phi_{\rm El}/(m_{\rm El}\,4\pi r_{\rm top}^{2})$, helium on
+He and hydrogen on H$_2$ at $\phi_{\rm H}/2$, the dominant carriers, the
+atomic-H share at that level being $10^{-4}$ --- and the pair is iterated by
+damped Picard ($\omega = 0.5$) on the residual
+$|F_{\rm measured} - \Phi_{\rm trial}|/|F_{\rm measured}|$ to a tolerance of
+$5\%$.
+
+Two things about that measurement are worth stating, because they decide
+whether it means anything. The elemental flux is read in the \emph{steady}
+window $r \ge r_{\rm esc}$, not in the interval the two models share: at a
+steady state $4\pi r^2(\rho X v + J)$ does not depend on radius, so a flux
+measured there is the flux through the matching level. The overlap window
+cannot carry it --- from the match to the profile top the column spans
+$1.96$ decades of pressure in $0.0098\,R_p$, entirely inside the region where
+the wind's mass flux is not yet its own, and the flux across it has a radial
+spread of $13$ in $F_{\rm H}$ and $35$ in $F_{\rm He}$. In the steady window
+the same solution holds $191$ faces at spreads of $0.44\%$ and $0.46\%$. And
+that flatness is a statement about how far the wind was converged, which was
+measured rather than assumed: at $\|R\|_{\rm tol} = 10^{-3}$ the same
+solution spreads by $7.4\%$, which would fail the closure's own validity
+test, and continuing it to $10^{-4}$ brings it to $0.50\%$ and moves
+$\log_{10}\dot M$ from $7.47$ to $7.50$. The closure runs the wind at
+$10^{-4}$.
+
+\medskip
+\noindent\emph{Not verified: the cross-check with a second chemistry code.}
+The same handoff was set up with VULCAN (Tsai et al.\ 2017) on the
+production profile's own $T(p)$ and $K_{zz}$, and VULCAN did not converge on
+this cold helium-rich column: its convergence measure rose from $2.65$ to
+$2.75$ against a criterion of $0.01$ with the timestep pinned, the limiting
+cell being H$_2$O at the cold trap, and the run exited on its step limit. No
+VULCAN composition at the match was produced and no wind was run on one, so
+the cross-code spread is not measured here. The record is
+\texttt{LHS1140b/lower\_profile\_vulcan/vulcan\_work/STOPPED.txt}.
+
+\subsection{The column the chemistry returns}
+\label{sec:photochem}
+
+The settings above produce one file, and what EXHALE does on the profile
+branch rests entirely on it, so this section reads the solution itself.
+Figs.~\ref{fig:pccol} and~\ref{fig:pccol2} draw every column of the schema
+except the two elemental-flux columns, which are constants carrying the
+trial fluxes the header states. The file measured here is
+\texttt{LHS1140b/lower\_profile/lower\_atmosphere\_profile.dat}, the one-way
+handoff at iteration $0$; the closed arms of Sect.~\ref{sec:closureladder}
+carry their own copies and are compared at the end of this section.
+
+\medskip
+\noindent\textbf{The grid and the thermal structure.} $102$ levels from
+$16.73$\,bar to $1.098\times10^{-8}$\,bar --- the photochemical model's own
+domain, sitting inside the $20$\,bar column the climate step was taken from.
+Temperature runs from $520.3$\,K at the deep boundary to a floor of
+$185.05$\,K, which it reaches at $0.94$\,bar and holds at every level above:
+the stratosphere is isothermal at the skin temperature, and the tropopause
+the climate solve reports, $1.031$\,bar, is one level below the first
+isothermal level. $K_{zz}$ is $10^{9}$\,cm$^2$\,s$^{-1}$ at all $102$
+levels, so the eddy coefficient the wind runs at and the one the column was
+mixed at are the same constant. The column spans $553.6$\,km in radius,
+$0.15608$ to $0.16400\,R_{\rm J}$, with the $1\,\mu$bar match at
+$0.16240\,R_{\rm J} = 1.782\,R_\oplus$ --- which is what fixes the base
+radius of the wind. Density falls from $n = 2.33\times10^{20}$\,cm$^{-3}$
+($\rho = 1.40\times10^{-3}$\,g\,cm$^{-3}$) to
+$4.30\times10^{11}$\,cm$^{-3}$ ($2.58\times10^{-12}$).
+
+\medskip
+\noindent\textbf{The column is chemically almost frozen.} Between the deep
+boundary and the match, $17$ decades of pressure, $q_{\rm H_2}$ moves from
+$0.19258$ to $0.19264$, $q_{\rm CH_4}$ from $1.072\times10^{-4}$ to
+$1.025\times10^{-4}$ and $q_{\rm NH_3}$ from $3.158\times10^{-5}$ to
+$2.919\times10^{-5}$. What changes at all is water, which condenses, and a
+set of trace photochemical products at the very top. In an eddy-mixed column
+at $K_{zz} = 10^{9}$ that is what one expects, and it is the same statement
+as Sect.~\ref{sec:closure} makes from the other side --- the eddy term
+homogenizes the column all the way to the match.
+
+\medskip
+\noindent\textbf{Hydrogen stays molecular to the top.} $q_{\rm H}$ rises
+from $5.9\times10^{-21}$ at the deep boundary to $6.5\times10^{-6}$ at the
+match and $4.0\times10^{-5}$ at the model top, four to five decades below
+$q_{\rm H_2}$ throughout: there is no level in this column at which atomic
+hydrogen overtakes H$_2$. The base EXHALE is handed is an H$_2$ base in that
+sense. It does not enter the wind that way in these runs --- EXHALE's
+molecular chemistry is off, and $q_{\rm H_2}$ is read but inert (below) ---
+which is worth stating rather than leaving implicit.
+
+\medskip
+\noindent\textbf{The composition is cold and reducing.} At $520$\,K and
+$17$\,bar CO is already negligible, $q_{\rm CO} = 8.1\times10^{-18}$, and
+CO$_2$ smaller still: carbon is CH$_4$ and nitrogen is NH$_3$, the opposite
+of the CO/N$_2$-dominated deep chemistry of a hot Jupiter. Counting carriers
+at the match against the hydrogen-nucleus fraction of the gas,
+$2q_{\rm H_2} + q_{\rm H} = 0.38532$:
+\begin{itemize}\itemsep0.2ex
+\item carbon: CH$_4$ gives $2.661\times10^{-4}$ per H, $99.7\%$ of the
+      carbon the profile's carrier columns hold, with C$_2$H$_2$ and HCN
+      supplying the rest;
+\item nitrogen: NH$_3$ gives $7.576\times10^{-5}$ per H, $96.3\%$, with
+      N$_2$ at $3.4\%$;
+\item oxygen: the water that survived the cold trap gives
+      $4.831\times10^{-7}$ per H, $99.9\%$.
+\end{itemize}
+Those carrier sums come to $96.0$, $96.0$ and $97.6$ per cent of the
+elemental columns ${\rm C/H} = 2.778\times10^{-4}$,
+${\rm N/H} = 8.187\times10^{-5}$ and ${\rm O/H} = 4.957\times10^{-7}$; the
+remainder sits in species the profile does not carry as columns, so the
+carrier accounting here is a decomposition of the elemental ratios and not
+an independent measurement of them.
+
+This is the direct link to Sect.~\ref{sec:basemetals}. The C and N that cool
+the wind and take its line down by $2.6\times$ are held in the column as
+CH$_4$ and NH$_3$, both of which the solution keeps in the gas phase across the trap, so they
+cross the tropopause intact and arrive at the match at essentially their deep
+values.
+Oxygen, whose carrier is water, does not.
+
+\medskip
+\noindent\textbf{Photochemistry acts only in the top decades.} From the
+tropopause to the match, HCN goes $1.3\times10^{-13} \rightarrow
+6.5\times10^{-8}$, N$_2$ $9.2\times10^{-9} \rightarrow 5.2\times10^{-7}$,
+C$_2$H$_2$ $2.5\times10^{-13} \rightarrow 1.1\times10^{-7}$, CO
+$5.2\times10^{-16} \rightarrow 1.8\times10^{-10}$ and OH
+$4.5\times10^{-27} \rightarrow 7.1\times10^{-11}$ --- several decades each,
+and all of them still trace. They do not move the elemental budget: the
+carrier accounting above puts every one of them below $4\%$ of its element.
+
+\medskip
+\noindent\textbf{What EXHALE actually consumes from this file.} Read in the
+code rather than inferred: the reader in
+\texttt{files\_IO/lower\_} \texttt{atmosphere\_profile.f90} requires the
+columns \texttt{p}, \texttt{r}, \texttt{T}, \texttt{n\_tot}, \texttt{rho},
+\texttt{Kzz}, \texttt{q\_H2}, \texttt{q\_H} and \texttt{X\_He} to be
+present, and \texttt{apply\_lower\_atmosphere\_profile}
+(\texttt{input\_read.f90}) then takes, \emph{at the matching level only},
+\texttt{T} into $T_0$, \texttt{r} into $R_0$, \texttt{q\_H2} into
+\texttt{q\_h2\_base}, \texttt{X\_He} into \texttt{HeH}, and \texttt{X\_C},
+\texttt{X\_N}, \texttt{X\_O} (and any other \texttt{X\_<El>} the file
+carries) into the metal abundances, through the same door \texttt{metals.inp}
+uses. \texttt{p\_match\_bar} comes from the header. The \texttt{Kzz} column
+is the one thing read over the whole profile, interpolated onto the radial
+grid through the file's own \texttt{r} column
+(\texttt{eddy\_diffusion\_on\_grid}); a scalar \texttt{He\_Kzz:} in
+\texttt{input.inp} is then announced as inert. Everything else is
+\emph{not} read: \texttt{n\_tot} and \texttt{rho} are required by the schema
+but never consumed --- the base density is $n_0$ of \texttt{input.inp} and
+the base particle count follows from $T_0$, He/H and the elemental ratios ---
+\texttt{q\_H} is required and never consumed, the two flux columns
+\texttt{F\_H} and \texttt{F\_He} are not read by the Fortran at all (the
+closure driver reads them on the Python side), and none of the molecular
+columns beyond \texttt{q\_H2} is read. And \texttt{q\_H2} itself only acts
+when a molecular base is switched on: it reaches the base EOS through
+\texttt{h2\_mixing\_ratio\_base}, which \texttt{comp\_ntot\_bc} calls only
+under \texttt{molecular\_base}. In the runs of this memo that flag is off,
+and the resolved report confirms it --- \texttt{mass\_per\_H} $= 9.37393$
+and \texttt{ntot\_bc} $= 1.000116$ are exactly
+$1 + 4\,{\rm He/H} + \sum X_{\rm El}A_{\rm El}$ and
+$(1 + {\rm He/H} + \sum X_{\rm El})/(1 + {\rm He/H})$ with no H$_2$ term.
+So of the $23$ columns, six numbers at one level plus one full column are
+what the wind is actually built from.
+
+\medskip
+\noindent\textbf{What the reservoir does to the column.} The ladder arms of
+Sect.~\ref{sec:closureladder} each carry their own solved column, and raising
+the reservoir changes it in three measurable ways
+(Fig.~\ref{fig:pccol2}d--f). The deep boundary cools, $520.3 \rightarrow
+439.4 \rightarrow 387.9$\,K at $16.73$\,bar for ${\rm He/H} = 2.09$, $5.01$
+and $10.31$, while the stratosphere stays at $185$\,K. H$_2$ is diluted by
+number, $q_{\rm H_2} = 0.1926 \rightarrow 0.0907 \rightarrow 0.0462$ at the
+match, with C/H and N/H unchanged to four digits because they are stated per
+hydrogen nucleus. And the cold trap loosens: O/H at the match goes
+$4.96\times10^{-7} \rightarrow 6.43\times10^{-7} \rightarrow
+9.09\times10^{-7}$, the column of Table~\ref{tab:closureladder}. Oxygen is
+the only element the reservoir moves here, and it is the one whose carrier
+condenses.
+
+\begin{figure}[htbp]\centering
+\includegraphics[width=\textwidth]{figures/lhs1140b_photochem_column.pdf}
+\caption{\textbf{The photochemical column, structure and bulk carriers.}
+(a) the solved temperature; (b) the eddy coefficient, constant at
+$10^{9}$\,cm$^2$\,s$^{-1}$ over all $102$ levels; (c) number and mass
+density; (d) the radius the pressure grid maps to, which is what fixes the
+base radius of the wind; (e) the carriers that hold the bulk --- helium
+reconstructed as ${\rm He/H}\,(2q_{\rm H_2}+q_{\rm H})$, and atomic H four
+to five decades below H$_2$ everywhere; (f) the elemental ratios the profile
+hands over. The tropopause ($1.031$\,bar, dotted) and the $1\,\mu$bar
+matching level (dashed) are marked on every panel. Fig.~\ref{fig:closure}b,c
+shows the same climate and elemental ratios in the context of the closure;
+this figure is the file itself, column by column.}
+\label{fig:pccol}
+\end{figure}
+
+\begin{figure}[htbp]\centering
+\includegraphics[width=\textwidth]{figures/lhs1140b_photochem_column_2.pdf}
+\caption{\textbf{The molecular systems, and what the reservoir does to
+them.} (a)--(c) the oxygen, carbon and nitrogen carriers of the same file:
+water condenses out at the tropopause while CH$_4$ and NH$_3$ cross it
+unchanged, and the photochemical products (HCN, C$_2$H$_2$, N$_2$, CO, OH)
+climb several decades in the top of the column while staying trace.
+(d)--(f) the same column solved at three reservoirs of the ladder of
+Table~\ref{tab:closureladder}: the deep boundary cools as helium is added,
+H$_2$ is diluted by number, and the cold trap loosens, so oxygen is the one
+element the reservoir moves. Levels marked as in Fig.~\ref{fig:pccol}.}
+\label{fig:pccol2}
+\end{figure}
+
+\subsection{The cold trap the climate solve puts in}
+
+Solving the temperature rather than prescribing it puts a cold trap into the
+handoff, and the trap is where the climate solution says it is rather than
+where a closed form assumes it.
+
+\begin{table}[htbp]\centering
+\caption{The climate solve over its one free parameter, the deep boundary.
+$f_{\rm H2O}$ is the water mixing ratio above the tropopause, i.e.\ what
+crosses into the photochemical column. The stratospheric temperature is the
+robust part; the tropopause pressure is not, and the trapped water follows
+it, since at fixed $T_{\rm trop}$ the trapped ratio is
+$p_{\rm sat}(T_{\rm trop})/P_{\rm trop}$.}
+\label{tab:coldtrap}
+\begin{tabular}{rrrrr}
+\toprule
+deep boundary [bar] & $T_{\rm deep}$ [K] & $P_{\rm trop}$ [bar] &
+$T_{\rm trop}$ [K] & $f_{\rm H2O}$ \\
+\midrule
+$1$  & $242.4$ & $0.488$ & $186.0$ & $3.33\times10^{-7}$ \\
+$3$  & $308.5$ & $0.765$ & $185.8$ & $2.06\times10^{-7}$ \\
+$10$ & $439.9$ & $0.974$ & $185.4$ & $1.49\times10^{-7}$ \\
+$\mathbf{20}$ (adopted) & $\mathbf{555.9}$ & $\mathbf{1.031}$ &
+$\mathbf{185.0}$ & $\mathbf{1.32\times10^{-7}}$ \\
+$30$, $50$ & \multicolumn{4}{l}{refused: the pseudoadiabat leaves the
+thermodynamic data} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+$T_{\rm trop}$ moves by $1$\,K over a factor of $20$ in the deep boundary,
+against the skin temperature $T_{\rm eq}/2^{1/4} = 190$\,K; $P_{\rm trop}$
+moves by a factor of two, and the water moves with it. The sensitivity is
+measurable from the scan itself, since $f_{\rm H2O}P_{\rm trop}$ is
+$p_{\rm sat}(T_{\rm trop})$: across the rows it gives $19\%$ per K at
+$185$\,K, so the trapped water is conditional on the tropopause temperature
+at about a fifth per kelvin and on the tropopause pressure linearly.
+
+\medskip
+\noindent\textbf{Against the published estimate.} Cherubim et al.\ (2026)
+quote $f_{\rm H2O} \sim 7$\,ppm from a closed-form cold trap at a $0.1$\,bar
+tropopause with $T_{\rm skin} = 194$\,K. The climate solution gives
+$0.13$--$0.33$\,ppm at a tropopause of $0.5$--$1.0$\,bar: a factor $20$--$50$
+less water at a tropopause $5$--$10\times$ deeper. The saturation physics
+agrees --- $p_{\rm sat}(185\,{\rm K})/1\,{\rm bar}$ is $1.3\times10^{-7}$ and
+$p_{\rm sat}(194\,{\rm K})/0.1\,{\rm bar}$ about $5\times10^{-6}$, so each
+number follows from its own tropopause --- and what differs is where the
+tropopause is put. Ours is a solved level in a helium-dominated column
+($\mu = 3.6$ at ${\rm He/H} = 2.09$), theirs an assumed one. This is
+reported as a result about the climate model and was not tuned toward the
+published number.
+
+What the trap does to the handoff is a depletion with height, not a
+condensate sitting at the base: gas-phase oxygen falls from
+${\rm O/H} = 6.062\times10^{-4}$ at the deep boundary to
+$4.957\times10^{-7}$ at the match, a factor $1223$, while C/H
+($2.778\times10^{-4}$), N/H ($8.187\times10^{-5}$) and He/H cross the
+tropopause unchanged --- the carriers of carbon and nitrogen in this column
+are CH$_4$ and NH$_3$ (Sect.~\ref{sec:photochem}), and this solution keeps
+both of them in the gas phase across the trap
+(Figs.~\ref{fig:closure}c and~\ref{fig:pccol2}a--c).
+
+\subsection{The closure, and what it returns}
+
+Three arms were run, from the reference trial pair
+$(\Phi_{\rm H},\Phi_{\rm He}) = (1.8, 1.3)\times10^{7}$\,g\,s$^{-1}$ and from
+$0.3\times$ and $3\times$ it, all seeded from the same converged wind and all
+starting from the same ${\rm He/H} = 2.09$ reservoir.
+
+\begin{table}[htbp]\centering
+\caption{The elemental-flux closure on LHS\,1140\,b. $k$ is the iteration at
+which the $5\%$ residual criterion was met. The equivalent width is
+re-measured here on this memo's own red-pair window
+($10832.60$--$10834.20$\,\AA{} vacuum), so it is directly comparable with the
+observed $1.108 \pm 0.030$\,\%\,\AA; the same curves integrated over the
+whole synthesized band, which is how \texttt{Update\_EXHALE.md} Sect.~79
+records them, give $4.74$--$4.82$\,m\AA.}
+\label{tab:closure}
+\begin{tabular}{lrrrrrrr}
+\toprule
+start & $k$ & $F_{\rm H}$ [g\,s$^{-1}$] & $F_{\rm He}$ [g\,s$^{-1}$] &
+He/H at match & $\log_{10}\dot M$ & red [\%] & $EW$ [\%\,\AA] \\
+\midrule
+$1.0\times$ & $0$ & $1.8143\times10^{7}$ & $1.3204\times10^{7}$ &
+$2.09235$ & $7.500$ & $1.699$ & $0.421$ \\
+$0.3\times$ & $5$ & $1.8203\times10^{7}$ & $1.3427\times10^{7}$ &
+$2.09235$ & $7.500$ & $1.721$ & $0.426$ \\
+$3.0\times$ & $6$ & $1.8212\times10^{7}$ & $1.3471\times10^{7}$ &
+$2.09236$ & $7.500$ & $1.725$ & $0.427$ \\
+\midrule
+observed & --- & --- & --- & --- & --- & $1.254^{+0.22}_{-0.23}$ &
+$1.108 \pm 0.030$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\noindent The three arms agree on He/H to $5.5\times10^{-6}$, on
+$\log_{10}\dot M$ to better than the $0.005$ the log prints, and on the
+fluxes to $0.4\%$ and $2\%$, over a factor of ten in where they started: the
+closure is single-valued on this planet. The damping was never exercised ---
+the residual fell on every iteration --- but the $3\times$ arm used six of
+its eight allowed steps, so a start further than an order of magnitude out
+would need a larger iteration budget.
+
+\medskip
+\noindent\textbf{The composition is an output for the first time, and at
+this eddy coefficient it is the well-mixed value.} He/H at the match comes
+back at $2.09235$ against the $2.09$ the reservoir was started from, a change
+of $1.1\times10^{-3}$, of which only $2\times10^{-4}$ comes from the escape
+flux itself. The reason is measured: at
+$K_{zz} = 10^{9}$\,cm$^2$\,s$^{-1}$ eddy mixing homogenizes the column all
+the way to $1\,\mu$bar, so a $1.8\times10^{7}$\,g\,s$^{-1}$ hydrogen escape
+imposed at the model top moves He/H by $1.8\times10^{-2}$ at that top and by
+$2\times10^{-4}$ at the match. \emph{It is the eddy coefficient, not the
+escape flux, that sets the composition at the matching level.} Closing the
+loop therefore does not retire the conditionality of
+Sect.~\ref{sec:diffbroad}; it relocates it, onto the same adopted $K_{zz}$.
+
+Above the match the wind separates the two elements as strongly as before.
+The elemental fluxes carry $F_{\rm He}/F_{\rm H} = 0.73$ by mass against the
+base reservoir's $8.31$, and He/H falls from $2.09$ at the base to $0.183$ at
+$30\,R_p$. The closure does not weaken that: it says the fractionation
+happens in the wind and not below the match. One caveat on the budget, stated
+rather than corrected: the diffusion operator's mass fraction is that of the
+H\,$+$\,He mixture and the trace metals ride inside $\rho$, so the measured
+$F_{\rm H}$ is hydrogen plus metals and overstates elemental hydrogen by
+$4.8\times10^{-4}$, two decades below the tolerance.
+
+\subsection{What the base metals do, and what the closed solution does not
+reproduce}
+\label{sec:basemetals}
+
+The profile brings something the scalar base never had: the carbon, nitrogen
+and oxygen of the photochemical column. Isolating it takes a ladder of
+controls in which the scalar-base run is moved one key at a time onto the
+profile's own base state, every rung a converged solution
+(\texttt{Update\_EXHALE.md} Sect.~78). Setting the base helium ratio to the
+profile's $2.0921$ moves $\log_{10}\dot M$ by $0.01$; setting the base
+temperature to the solved $185.05$\,K, from the $226$\,K the scalar runs
+used, moves it by less than $0.01$ more --- the base temperature is not the
+lever. Adding the base radius and molecular fraction moves it to $7.86$.
+Adding the profile's C/H, N/H and O/H takes it to
+$\mathbf{7.46}$, and the red-pair depth from $4.40\%$ to $\mathbf{1.52\%}$:
+$-0.40$\,dex in $\dot M$ and a $3.3\times$ shallower helium line, from
+metal-line cooling of a $185$\,K base at ${\rm C/H} = 2.8\times10^{-4}$. The
+profile route reproduces that rung to every digit printed, which is the
+consistency check the two routes exist to give.
+
+\medskip
+\noindent\textbf{The consequence for the line is that the flux-closed
+solution does not reproduce the measured equivalent width.} At
+$K_{zz} = 10^{9}$ and a metal-free base, ${\rm He/H} = 2.13$ gives
+$EW = 1.129$\,\%\,\AA, which is why Table~\ref{tab:kzzcross} puts the
+crossing at $2.09$. The flux-closed solution sits at the same eddy
+coefficient and essentially the same reservoir, $2.09235$, and gives
+$0.421$\,\%\,\AA{} --- a factor $2.6$ below the observed
+$1.108 \pm 0.030$, and $23\sigma$ from it. The difference is entirely the
+base metals beneath it.
+
+So closing the elemental fluxes and matching the equivalent width are two
+different constraints, and the solution presented at $2.09$ satisfies the
+first only. Fixing the reservoir by the line, as Sects.~\ref{sec:ew}
+and~\ref{sec:diffbroad} do, was done above a base carrying no metals; with
+the photochemical column beneath it the same reservoir absorbs $2.6\times$
+less, so the composition that satisfies both conditions at once is larger
+than $2.09$. Sect.~\ref{sec:closureladder} solves for it, at the adopted
+$K_{zz}$, and returns $\mathrm{He/H} = 10.7$. So the lower boundary is an
+axis of its own, of the same standing as the assumed spectrum, the assumed
+mixing and composition itself: what is placed beneath the wind is not a free
+parameter once the lower atmosphere is solved, but is set by the elemental
+vector and the cold trap of the column below.
+
+\subsubsection*{The mechanism: helium as a thermostat}
+
+Why the same reservoir absorbs differently over the two bases can be read
+off the solved structures directly. Table~\ref{tab:thermostat} measures the
+three solutions that bracket the question: the metal-free scalar base at
+${\rm He/H} = 2.13$, which reproduces the line
+(\texttt{LHS1140b/exhale/heh2p13\_diff\_kzz1e9/}); the flux-closed solution
+on the photochemical column at $2.09$, which does not
+(\texttt{.../flux\_closure/hi/k06/}); and the closed solution at $10.31$,
+the rung just below the crossing (\texttt{.../flux\_closure/heh10p3/k01/}).
+All three run with H/He element diffusion active at
+$K_{zz} = 10^{9}$\,cm$^{2}$\,s$^{-1}$ --- constant through the profile in
+the two profile runs, the scalar value in the third --- and with EXHALE's
+molecular chemistry off, so no molecular carrier appears in the wind. Mean
+mass per particle is $(n_{\rm H} + 4n_{\rm He})/(n_{\rm H} + n_{\rm He} +
+n_e)$; nuclei are counted as H\,\textsc{i}\,$+$\,H\,\textsc{ii} and
+He\,\textsc{i}\,$+$\,He\,\textsc{ii}\,$+$\,He\,\textsc{iii}. The values are
+from the advection-corrected profiles; the reference arm of the closure
+(\texttt{.../flux\_closure/ref/k00/}) reproduces the $2.09$ column to under
+$1\%$ in every entry.
+
+\begin{table}[htbp]\centering\small
+\caption{The two directions the thermostat runs, measured on the solved
+structures. Columns are the metal-free scalar base, the flux-closed solution
+on the photochemical column at the same reservoir, and the closed solution
+at $10.31$. $EW$ is on this memo's red-pair window against the observed
+$1.108 \pm 0.030$\,\%\,\AA.}
+\label{tab:thermostat}
+\begin{tabular}{lrrr}
+\toprule
+ & scalar base & photochem base & photochem base \\
+ & no metals & C,\,N,\,O & C,\,N,\,O \\
+reservoir ${\rm He/H}$ & $2.13$ & $2.09$ & $10.31$ \\
+\midrule
+$T_{\max}$ [K]                                   & $5330$ & $3944$ & $5869$ \\
+$T(2\,R_p)$ [K]                                  & $4140$ & $2979$ & $5098$ \\
+mean mass per particle at $2\,R_p$ [$m_{\rm H}$] & $2.00$ & $1.51$ & $2.53$ \\
+$n({\rm H\,\textsc{i}})$ at $2\,R_p$ [cm$^{-3}$] & $5.67\times10^{7}$ & $5.37\times10^{7}$ & $1.31\times10^{7}$ \\
+He/H by nuclei at $2\,R_p$                       & $0.570$ & $0.231$ & $1.421$ \\
+$\max n(2\,^3S)$ [cm$^{-3}$]                     & $42.9$ & $50.2$ & $122.5$ \\
+$\int n(2\,^3S)\,dr$, $1$--$10\,R_p$ [cm$^{-3}R_p$] & $65.4$ & $40.5$ & $96.9$ \\
+$\quad$ of which $1$--$2\,R_p$                   & $24.9$ & $25.0$ & $59.2$ \\
+$\quad$ of which $2$--$10\,R_p$                  & $40.5$ & $15.5$ & $37.7$ \\
+$EW$ [\%\,\AA]                                   & $1.129$ & $0.421$ & $1.056$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\medskip
+\noindent\textbf{Adding the base metals cools the wind, and the line loses
+its outer column.} With no metals, radiative cooling is $6$--$9\%$ of the
+heating over $1.2$--$2\,R_p$ and the wind is limited by expansion rather
+than by radiation. With the column's C, N and O beneath it, cooling reaches
+$71\%$ of the heating at $1.2\,R_p$, of which $95\%$ is metal-line cooling
+and the largest single contributor is neutral C\,\textsc{i}; $T_{\max}$
+falls from $5330$ to $3944$\,K. The metastable peak does not fall with it
+--- it rises, $42.9 \rightarrow 50.2$\,cm$^{-3}$ --- and neither does the
+column inside $2\,R_p$, which is the same to $0.4\%$ ($24.9$ against
+$25.0$). What is lost is entirely outside $2\,R_p$: $40.5 \rightarrow
+15.5$\,cm$^{-3}R_p$, a factor $2.6$, matching the factor the equivalent
+width falls by ($1.129 \rightarrow 0.421$\,\%\,\AA). The cooler wind has the
+smaller scale height, so it does not carry the metastable population out to
+where it adds absorbing area.
+
+\medskip
+\noindent\textbf{Raising the reservoir reheats it, by two terms that are
+both measured.} From $2.09$ to $10.31$ on the same base, $T_{\max}$ goes
+$3944 \rightarrow 5869$\,K. Two things change together. First, there are
+fewer particles to share the deposited energy: the mean mass per particle at
+$2\,R_p$ rises from $1.51$ to $2.53\,m_{\rm H}$, a factor $1.68$, and the
+heating rate per particle at $2\,R_p$ rises by $1.88$, while $T(2\,R_p)$
+rises by $1.71$. The three factors agreeing to within $10\%$ is a
+consistency check on that reading, not a proof of it --- the cooling term is
+not held fixed between the two runs. Second, the coolant is diluted along
+with the hydrogen it is referred to: the profile states C, N and O per
+hydrogen nucleus (schema column \texttt{X\_*[El/H nuclei]}, and in the code
+$n_X = \mathtt{melem\_ab}(e)\,n_{\rm H}$), and the two profiles carry the
+same ${\rm C/H} = 2.778\times10^{-4}$ to four digits, so when
+$n({\rm H\,\textsc{i}})$ at $2\,R_p$ falls by $4.1$ the carbon density falls
+with it by the same factor. The volumetric metal cooling nonetheless
+\emph{rises}, $3.79 \rightarrow 6.05\times10^{-10}$\,erg\,cm$^{-3}$\,s$^{-1}$
+at $1.5\,R_p$, because the cooling function is steeply temperature
+dependent; what the dilution does is let the gas settle at the higher
+temperature at which that happens.
+
+\medskip
+\noindent\textbf{What the metastable balance does with that.} The 2\,$^3S$
+population in these solutions is fed almost entirely by recombination and
+drained by Penning ionization on neutral hydrogen and by electron collisional
+de-excitation. Reconstructing the residual EXHALE solves --- source
+$n_e n_{\rm He\,\textsc{ii}}\alpha_{2^3S}$ plus collisional excitation from
+the singlet ground state, against radiative decay $A_{31}$, photoionization,
+Penning on H\,\textsc{i} at the Taylor et al.\ (2025) rate, electron
+collisional de-excitation to $2\,^1S$ and $2\,^1P$, and electron collisional
+ionization (\texttt{ion\_residual\_core.f90}, \texttt{tr\_triplet\_row})
+reproduces the tabulated $n(2\,^3S)$ to five digits, so the budget can be
+apportioned. At the metastable peak, collisional excitation supplies under
+$0.05\%$ of the source, and radiative decay, photoionization and collisional
+ionization together take under $0.1\%$ of the sink. What is left is: at
+${\rm He/H} = 2.09$, Penning $89\%$ and electron de-excitation $11\%$ of the
+loss; at $10.31$, Penning $60\%$ and electron de-excitation $40\%$. Between
+the two, the source rate rises by $1.55$ (more He\,\textsc{ii} and more
+electrons in the hotter gas, against a recombination coefficient that falls
+with temperature) and the metastable lifetime lengthens by $1.57$, from
+$0.47$ to $0.74$\,s: hydrogen has been thinned by $3.2$ at the peak, so
+Penning removes the level more slowly, and the faster electron
+de-excitation of the hotter gas takes back only part of it. The product,
+$2.44$, is the peak ratio $50.2 \rightarrow 122.5$. \emph{There is no
+charge-exchange term on the metastable in this code} --- the He/H charge
+exchange acts on ground-state He and He$^+$ --- so it is not part of this
+balance.
+
+\medskip
+\noindent\textbf{Read as an interpretation}, the thermal structure of the
+$10.31$ solution ($T_{\max} = 5869$\,K, column $96.9$) has recovered and
+slightly passed that of the metal-free $2.09$ solution ($5330$\,K, $65.4$),
+which is why the equivalent width comes back to the measured value there.
+The ladder therefore looks less like a determination of composition than
+like a thermal trade between the metal content of the base and the helium
+content above it, and one line cannot separate the two. Helium in these
+solutions is not only the absorber; it is also the thermostat that sets how
+far the absorber is carried.
+
+\medskip
+\noindent\textbf{What the wind is made of, and how ionized it is.}
+Fig.~\ref{fig:compprof} carries the elemental fractions and the ionization
+state of the same three solutions, on the same advection-corrected profiles
+as Table~\ref{tab:thermostat}. Two things follow from it that the thermostat
+argument rests on.
+
+\smallskip
+\noindent\emph{Diffusion keeps the wind far less helium-rich than the
+reservoir.} On both branches the helium fraction falls steeply through the
+line-forming region and then flattens: ${\rm He/H} = 2.09$ at the base gives
+$0.231$ by nuclei at $2\,R_p$ and $0.186$ beyond $5\,R_p$ on this arm
+($0.183$ on the reference arm quoted in Sect.~\ref{sec:closure}); $10.31$
+gives $1.421$ and $1.156$. That is a factor $9.1$ and $8.9$ between the reservoir
+and the wind, in a solution where the reservoir is an output of the closure
+rather than a choice. The consequence is worth stating in the composition's
+own terms: the flux-closed solution at $2.09$ --- a reservoir that is $68$
+per cent helium by number --- has a \emph{hydrogen-dominated} line-forming
+region, $n_{\rm H}/n_{\rm tot} = 0.81$ against
+$n_{\rm He}/n_{\rm tot} = 0.19$ at $2\,R_p$. At $10.31$ helium still leads
+there, $0.59$ against $0.41$, but by a factor $7$ less than the reservoir
+states. A composition quoted for this planet therefore has to say at which
+level it is quoted; the reservoir and the absorbing layer are not the same
+number, and the memo's crossings are reservoir values.
+
+\smallskip
+\noindent\emph{The hotter solution is also the more ionized one, and it is
+not shielding.} At $2\,R_p$, $x({\rm H\,\textsc{ii}}) = 0.031$ on the
+photochemical base at $2.09$ and $0.106$ at $10.31$ --- a factor $3.4$, in
+the run whose neutral hydrogen density is $4.1$ times lower. The obvious
+reading, that thinner hydrogen shields itself less, is contradicted by the
+outputs: the H\,\textsc{i} column above $2\,R_p$ gives
+$\tau(13.6\,{\rm eV}) = 0.23$ and $0.055$, so both are optically thin there,
+and the H\,\textsc{i} photoelectric heating per neutral hydrogen atom is the
+same in the two, $1.23$ against $1.26\times10^{-18}$\,erg\,s$^{-1}$ per atom.
+The recombination sink barely moves either: $\alpha_B(T)\,n_e$ is
+$2.35$ against $2.13\times10^{-6}$\,s$^{-1}$. What grows is the ionization of
+hydrogen \emph{by helium}. Measured on the equilibrium state at $2\,R_p$, the
+two channels that can be computed in closed form from the outputs are Penning
+ionization He($2\,^3S$)$+$H, which supplies $31\%$ of what case-B
+recombination removes at $2.09$ and $24\%$ at $10.31$ --- a falling share but
+a rate per neutral hydrogen atom $2.8$ times higher --- and the charge
+exchange He$^+ +$H, at $2.3\%$ and $1.5\%$. The rest, $67\%$ and $75\%$, is
+photoionization, and inside it the helium-fed parts are what scale: the
+He-recombination-radiation channel (He\,\textsc{ii} recombining to ground,
+whose $\ge 24.6$\,eV continuum ionizes H) carries $6.4$ times more heating per
+neutral hydrogen atom in the $10.31$ solution, and the energy deposited by
+He\,\textsc{i} photoionization per neutral hydrogen atom, part of which
+secondary ionization turns into hydrogen ionizations, is $7.0$ times higher.
+\emph{What could not be settled from the outputs} is the split inside that
+$67$--$75\%$: the individual rates --- direct $\Gamma_{\rm H\,\textsc{i}}$,
+the He-recombination-driven addition to it, and the secondary-ionization
+yield --- are not written to any output file, and the factors quoted here are
+read off the heating columns on the assumption that the mean photoelectron
+energy is similar between the two runs. The one channel that can be excluded
+outright is $n=2$ photoionization: \texttt{heat\_Hpe[excitedH]} is exactly
+zero at every cell of all three runs. Helium ionization itself tracks the
+temperature more simply --- $x({\rm He\,\textsc{ii}})$ is $0.053$, $0.065$
+and $0.079$ at $2\,R_p$ across the three, and
+$x({\rm He\,\textsc{iii}})$ stays below $2\times10^{-4}$ everywhere inside
+$3\,R_p$.
+
+\smallskip
+\noindent Fig.~\ref{fig:beststruct} shows the same kind of structure for the
+single well-mixed solution that reproduces the line with no diffusion and no
+base metals; Fig.~\ref{fig:compprof} is the set the lower-boundary axis is
+built on, so the two are complementary rather than alternative views.
+
+\begin{figure}[htbp]\centering
+\includegraphics[width=\textwidth]{figures/lhs1140b_composition_profiles.pdf}
+\caption{\textbf{Composition and ionization against radius}, for the three
+solutions of Table~\ref{tab:thermostat}, from the same advection-corrected
+\texttt{Ion\_species\_adv.txt} profiles. \textbf{(a)} the hydrogen and helium
+nuclei fractions of $n_{\rm tot}$; \textbf{(b)} He/H by nuclei, with the
+reservoir each run was given as a dotted line, so the vertical drop from
+dotted line to curve is what element diffusion does; \textbf{(c)} the
+ionization fractions. $n_{\rm tot}$ follows the code's \texttt{calc\_ntot}
+convention --- one particle per species, H\,\textsc{i}, H\,\textsc{ii},
+He\,\textsc{i}, He\,\textsc{ii}, He\,\textsc{iii} and every metal ion stage,
+electrons excluded, and He\,$2\,^3S$ not added because it is an excited level
+inside He\,\textsc{i} --- so (a) does not sum to one on the photochemical
+base. The metals it misses are negligible: their largest share of
+$n_{\rm tot}$ anywhere in $1$--$30\,R_p$ is $3.0\times10^{-4}$ at
+${\rm He/H} = 2.09$ and $1.7\times10^{-4}$ at $10.31$, and zero on the
+metal-free base. Nuclei are counted as
+H\,\textsc{i}\,$+$\,H\,\textsc{ii} and
+He\,\textsc{i}\,$+$\,He\,\textsc{ii}\,$+$\,He\,\textsc{iii}. The $10.31$ run
+is the rung nearest the crossing at $\mathrm{He/H} = 10.7$; no run was made
+at $10.7$ itself (Sect.~\ref{sec:closureladder}). The He\,10830
+line-forming region $1$--$3\,R_p$ is shaded.}
+\label{fig:compprof}
+\end{figure}
+
+
+\begin{figure}[htbp]\centering
+\includegraphics[width=\textwidth]{figures/lhs1140b_thermostat.pdf}
+\caption{The thermostat, on the three solutions of
+Table~\ref{tab:thermostat}. \textbf{(a)} temperature and \textbf{(b)} the
+metastable density, against radius, with the He\,10830 line-forming region
+$1$--$3\,R_p$ shaded. Adding the photochemical column's C, N and O at fixed
+reservoir (solid to dashed) cools the wind and strips the metastable
+population outside $2\,R_p$ while leaving the peak alone; raising the
+reservoir on that same base (dashed to dot-dashed) reheats it past where it
+started and carries the population back out.}
+\label{fig:thermostat}
+\end{figure}
+
+\subsection{The composition the line needs above a photochemical base}
+\label{sec:closureladder}
+
+Sect.~\ref{sec:basemetals} left the composition that closes the fluxes
+\emph{and} reproduces the line unsolved. This section solves for it on the
+composition axis, at the adopted eddy coefficient. What comes out is the
+answer on the solved-column branch alone: it is the counterpart of the
+$2.09$ that the same line returns above a prescribed metal-free base
+(Sect.~\ref{sec:diffbroad}), not a replacement for it, and the two differ
+by the base and not by the mixing, which is $K_{zz} = 10^{9}$ with
+diffusion active in both. The setup: the closure driver is run
+at six further reservoirs, each arm started from the converged flux and the
+converged wind of the rung below it, so every arm begins near its own fixed
+point. Everything else is the configuration of Sect.~\ref{sec:closure} ---
+Photochem with the \texttt{clima} step solved, $K_{zz} = 10^{9}$, a
+$1\,\mu$bar match, the GJ\,1132 proxy spectrum, a $5\%$ residual tolerance
+and $k_{\max} = 8$. The runs are
+\texttt{LHS1140b/exhale/flux\_closure/heh\{3,5,8,9p7,10p3,12\}/}.
+
+\begin{table}[htbp]\centering\small
+\setlength{\tabcolsep}{3.6pt}
+\caption{The reservoir ladder under flux closure. One row per arm, at the
+iteration $k$ where the $5\%$ residual criterion was met; fluxes in
+$10^{7}$\,g\,s$^{-1}$, the cold-trap oxygen in $10^{-7}$ nuclei per H at the
+matching level. The equivalent width is on this memo's red-pair window,
+directly comparable with the observed $1.108 \pm 0.030$\,\%\,\AA.}
+\label{tab:closureladder}
+\begin{tabular}{rrrrrrrrrrr}
+\toprule
+reservoir & $k$ & $F_{\rm H}$ & $F_{\rm He}$ & He/H at match &
+$\log_{10}\dot M$ & red [\%] & FWHM [\AA] & $EW$ [\%\,\AA] & $EW$/obs &
+O/H trap \\
+\midrule
+$2.09$ (Sect.~\ref{sec:closure}) & $0$ & $1.814$ & $1.320$ & $2.0924$ &
+$7.500$ & $1.699$ & $0.2326$ & $0.4206$ & $0.380$ & $4.95$ \\
+$3.0$  & $3$ & $1.369$ & $1.491$ & $3.0034$  & $7.460$ & $2.122$ & $0.2386$ & $0.5388$ & $0.486$ & $5.54$ \\
+$5.0$  & $4$ & $0.880$ & $1.692$ & $5.0057$  & $7.410$ & $2.795$ & $0.2497$ & $0.7433$ & $0.671$ & $6.43$ \\
+$8.0$  & $4$ & $0.572$ & $1.894$ & $8.0090$  & $7.390$ & $3.388$ & $0.2608$ & $0.9437$ & $0.852$ & $7.94$ \\
+$9.7$  & $3$ & $0.477$ & $2.043$ & $9.7109$  & $7.400$ & $3.660$ & $0.2664$ & $1.0403$ & $0.939$ & $8.78$ \\
+$10.3$ & $1$ & $0.450$ & $2.069$ & $10.3116$ & $7.400$ & $3.696$ & $0.2674$ & $1.0563$ & $0.953$ & $9.09$ \\
+$12.0$ & $4$ & $0.391$ & $2.238$ & $12.0135$ & $7.420$ & $4.630$ & $0.2654$ & $1.3126$ & $1.185$ & $10.66$ \\
+\midrule
+observed & --- & --- & --- & --- & --- & $1.254^{+0.22}_{-0.23}$ & $0.841$ &
+$1.108 \pm 0.030$ & $1$ & --- \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Every arm returns a matching-level He/H equal to its reservoir to four
+digits, for the reason Sect.~\ref{sec:closure} measured at $2.09$: at
+$K_{zz} = 10^{9}$ the eddy-mixed column reaches the microbar match, so the
+escape flux does not set the composition there. What the ladder adds is the
+line.
+
+\medskip
+\noindent\textbf{The crossing.} The arms at $10.31$ and $12.01$ straddle the
+measured equivalent width, so the answer is interpolated inside a bracket
+rather than extrapolated off the end of a scan:
+\begin{equation}
+  \mathrm{He/H} = 10.7 \quad (10.5\text{--}10.9 \text{ on the } EW\
+  1\sigma\ \text{interval}),
+\end{equation}
+by log--log interpolation of the seven scanned points solved with Brent's
+method; the range carries the measurement error alone and none of the model
+uncertainty. \emph{No run was made at $10.7$ itself} --- the value is read
+off the bracket, and the bracket has a real width: the equivalent width
+grows sublinearly with the reservoir, at a local power-law slope of $0.69$ at
+the bottom of the ladder and $0.51$ between $5$ and $10$, but the two
+rungs that straddle the measurement do not follow that trend, giving $0.25$
+between $9.71$ and $10.31$ and $1.42$ between $10.31$ and $12.01$. That
+mismatch of local slopes, not the interpolation error, is what the quoted
+width stands on, and it is not resolved here. What the sublinearity does
+settle is that the equivalent width does \emph{not} saturate before the
+measurement is reached, which the helium-rich end of the metal-free ladder
+of Sect.~\ref{sec:diffbroad} had made a live possibility.
+
+At the crossing the escape rate is $\log_{10}\dot M = 7.40$--$7.42$, i.e.\
+$2.5$--$2.6\times10^{7}$\,g\,s$^{-1}$, a factor $8$ below the
+$2.03^{+0.58}_{-0.67}\times10^{8}$\,g\,s$^{-1}$ the p-winds retrieval
+imposes, and the elemental fluxes are $F_{\rm H} \simeq 4.3\times10^{6}$ and
+$F_{\rm He} \simeq 2.1\times10^{7}$\,g\,s$^{-1}$.
+
+\medskip
+\noindent Two statements follow, and they are worth separating.
+
+\begin{itemize}
+\item \textbf{The closure by itself does not select a reservoir on this
+      planet.} Every rung of Table~\ref{tab:closureladder} satisfies it, at
+      residual flux spreads of $0.4$--$2.6\%$ against the $5\%$ tolerance.
+      What selects $10.7$ is the line, exactly as in
+      Sects.~\ref{sec:ew} and~\ref{sec:diffbroad}. What the closure
+      contributes is that the value is now consistent with a photochemical
+      lower atmosphere carrying its own C, N and O, rather than resting on a
+      bare H/He base --- and the price of that consistency is a helium
+      fraction of $91$ per cent by number. Read against the $2.09$ the same
+      line returns above a metal-free base, the pair measures the thermal
+      trade of Sect.~\ref{sec:basemetals} rather than two attempts at one
+      number.
+\item \textbf{The escape rate is flat along the whole ladder}, $7.39$ to
+      $7.50$ in $\log_{10}\dot M$ over a factor $5.7$ in reservoir. So here
+      too the composition is fixed by the line and not by the wind, and the
+      $\dot M$ this memo quotes does not depend on where in the ladder the
+      crossing lands.
+\end{itemize}
+
+The wind residual the JFNK finish reaches degrades as the reservoir grows
+--- the line search stalls on the base contact mode and returns its best
+iterate --- so the target was raised arm by arm and the achieved values
+recorded rather than smoothed over: $\|R\| = 9.8\times10^{-5}$ at $2.09$
+rising to $2.4$--$3.4\times10^{-4}$ at $8$ and above, all at
+\texttt{info} $=0$. The test the closure actually applies is not that
+residual but the radial spread of the elemental flux over the steady window,
+which is what the $0.4$--$2.6\%$ above are.
+
+\medskip
+\noindent\textbf{What the crossing does not fix, and what it inherits.} The
+line is still too narrow: FWHM $0.267$\,\AA{} at the crossing against the
+measured $0.841$, unchanged from Sect.~\ref{sec:diffbroad} and from the
+diffusion-off solutions, so the modelled red depth of $3.7$ per cent
+overshoots the measured $1.254$ per cent by the same factor the width falls
+short --- which is why the composition here is inferred from the equivalent
+width and not from the depth. And the winds these numbers come from carry
+the caveat of Sect.~\ref{sec:validity} in full: they are subsonic to the
+$30\,R_p$ domain edge, their mass flux is set at the outer boundary rather
+than at a critical point, and the critical region is transitional, so the
+$\log_{10}\dot M = 7.40$--$7.42$ quoted above is \emph{unvalidated as a
+continuum solution}. The He\,10830 layer that fixes $10.7$ is not: it sits
+at $\mathrm{Kn} \le 0.021$.
+
+\subsection{The 2025 non-detection}
+\label{sec:xuvgrid}
+
+Cherubim et al.\ detect the line in 2024 and not in 2025, at a limit of
+$0.6$ per cent in depth. The grid below asks what fraction of the fiducial
+XUV reproduces that. The spectrum is the fiducial GJ\,1132 proxy with its
+flux column multiplied by the stated factor
+(\texttt{sed/lhs1140\_sed\_gj1132\_at\_b\_xuv*.txt}; \texttt{read\_sed}
+recomputes $L_{\rm X}$ and $L_{\rm EUV}$ from the file, so the luminosity
+lines of \texttt{input.inp} are provenance only). The lower atmosphere is
+held fixed in every case --- the closure loop is not re-run, and neither is
+the chemistry that made the profile --- so the grid isolates the wind's
+response to the irradiation and nothing else.
+
+It is run from both models that reproduce the 2024 equivalent width, because
+neither is the other: the scalar-base solution of Sect.~\ref{sec:diffbroad}
+at $\mathrm{He/H} = 2.13$ ($EW = 1.129$), and the flux-closed solution of
+Table~\ref{tab:closureladder} at $\mathrm{He/H} = 9.71$ ($EW = 1.040$).
+Runs \texttt{LHS1140b/exhale/xuv*\_heh2p13/} and \texttt{xuv*\_closure9p7/}.
+
+\begin{table}[htbp]\centering
+\caption{The He\,10830 line against the XUV scaling, from the two models
+that reproduce the 2024 measurement. Bold marks the row at which each model
+reaches the $0.6$ per cent depth limit of the 2025 epoch.}
+\label{tab:xuvgrid}
+\begin{tabular}{rrrrrrr}
+\toprule
+& \multicolumn{3}{c}{scalar base, $\mathrm{He/H} = 2.13$} &
+  \multicolumn{3}{c}{flux-closed, $\mathrm{He/H} = 9.71$} \\
+\cmidrule(lr){2-4}\cmidrule(lr){5-7}
+$F_{\rm XUV}$ / fiducial & red [\%] & $EW$ [\%\,\AA] & $\log_{10}\dot M$ &
+red [\%] & $EW$ [\%\,\AA] & $\log_{10}\dot M$ \\
+\midrule
+$1.00$ & $4.396$ & $1.129$ & $7.80$ & $3.660$ & $1.040$ & $7.40$ \\
+$0.33$ & $0.778$ & $0.180$ & $7.38$ & $\mathbf{0.602}$ & $0.153$ & $6.74$ \\
+$0.30$ & $\mathbf{0.591}$ & $0.136$ & $7.35$ & --- & --- & --- \\
+$0.25$ & $0.334$ & $0.077$ & $7.32$ & $0.511$ & $0.129$ & $6.55$ \\
+$0.20$ & $0.034$ & $0.009$ & $7.23$ & $0.361$ & $0.090$ & $6.40$ \\
+$0.15$ & $0.007$ & $0.002$ & $7.14$ & $0.256$ & $0.063$ & $6.22$ \\
+$0.10$ & $0.003$ & $0.001$ & $6.93$ & $0.165$ & $0.040$ & $5.97$ \\
+$0.01$ & $0.0003$ & $0.000$ & $6.10$ & $0.190$ & $0.055$ & $5.51$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\noindent\textbf{The $0.6$ per cent limit is met at about $0.3$ of the
+fiducial XUV in both models}, and that agreement is the useful part of the
+result: the two disagree by a factor $4.6$ in reservoir and a factor $2.5$
+in escape rate, and still put the non-detection at the same place. In the
+scalar model the depth crosses $0.6$ between $0.30$ ($0.591$ per cent) and
+$0.33$ ($0.778$); in the flux-closed model it is $0.602$ at $0.33$ and
+$0.511$ at $0.25$, so the crossing sits just under $0.33$. On the paper's
+fiducial $F_{\rm XUV} = 33$\,erg\,cm$^{-2}$\,s$^{-1}$, the 2025 epoch would
+need about $10$\,erg\,cm$^{-2}$\,s$^{-1}$ or less.
+
+Two caveats belong with that number. The decline is far steeper in the
+scalar model than in the closed one --- a factor $200$ in depth between
+$0.30$ and $0.20$ against a factor $1.6$ --- so the \emph{shape} of the XUV
+dependence is a property of the model rather than a result; only the
+crossing agrees. And the lowest closed-model point, at $0.01$, is not
+monotonic with the $0.10$ one ($0.190$ against $0.165$ per cent) on a wind
+that has fallen to $\log_{10}\dot M = 5.5$; that solution is not to be read
+as a limit on how faint the line can get.
+
+\begin{figure}[htbp]\centering
+\includegraphics[width=\textwidth]{figures/lhs1140b_closure_ladder.pdf}
+\caption{\textbf{The two constraints, and the epoch.} (a) The red-pair
+equivalent width of the flux-closed solution against the reservoir He/H it
+was closed at (Table~\ref{tab:closureladder}), with the measured
+$1.108 \pm 0.030$\,\%\,\AA{} as the band and the interpolated crossing at
+$\mathrm{He/H} = 10.7$ as the star; the dotted line is the reservoir at
+which Sect.~\ref{sec:closure} closed the loop, five times lower. Every point
+on the curve satisfies the flux-closure condition, so it is the band and not
+the closure that picks a reservoir. (b) The red-pair depth against the XUV
+scaling (Table~\ref{tab:xuvgrid}), from the scalar-base and flux-closed
+models that both reproduce the 2024 equivalent width. Both fall below the
+$0.6$ per cent limit of the 2025 non-detection at about $0.3$ of the
+fiducial irradiation, while the slope with which they get there differs by
+two orders of magnitude.}
+\label{fig:closureladder}
+\end{figure}
+
+\subsection{The width, unmoved again}
+
+Measured the way Sect.~\ref{sec:broadening} measures it --- convolve the
+solved profile with a Gaussian and ask which one reproduces the observed
+width --- the flux-closed solution asks for $22.39$\,km\,s$^{-1}$ FWHM
+($\sigma = 9.51$\,km\,s$^{-1}$), against $22.30$ in the well-mixed limit,
+$22.31$ with diffusion at the adopted $K_{zz}$, and $22.08$ on the
+$5.1\times$ brighter proxy. The three arms agree to $0.01$\,km\,s$^{-1}$
+among themselves. As solved, the red-pair FWHM is $0.233$\,\AA{} against the
+measured $0.841$.
+
+The lower-boundary axis therefore behaves like the other three: it moves the
+composition inference and the escape rate, and it does not move the width.
+It differs from them in one respect worth noting. Supplied as one Gaussian
+of $22.4$\,km\,s$^{-1}$, the closed solution reaches the observed width at a
+red depth of $0.469\%$ against the observed $1.254^{+0.22}_{-0.23}$ --- too
+\emph{shallow}, where every earlier solution in this memo was matched in
+equivalent width first and therefore landed inside the observed depth
+interval. That is the same statement as Sect.~\ref{sec:pwbroad} makes about
+the paper's own p-winds fit: a solution short of absorbing power cannot be
+convolved into agreement, because broadening conserves equivalent width.
+
+\begin{figure}[htbp]\centering
+\includegraphics[width=\textwidth]{figures/lhs1140b_closure.pdf}
+\caption{\textbf{The flux-closed solution and the column it stands on.}
+(a) The three closure arms --- started a factor of ten apart in the trial
+escape flux --- are indistinguishable, and all three fall well short of the
+measured line in absorbing power; the thick curve is the reference arm
+convolved with the $22.4$\,km\,s$^{-1}$ FWHM Gaussian that reproduces the
+observed width, which then lands below the observed depth because the
+equivalent width was already short. Model curves are shifted by the fitted
+$v_{\rm wind} = +2.26$\,km\,s$^{-1}$, as elsewhere in this memo. (b) The
+solved climate of the column handed over, with the tropopause at
+$1.031$\,bar and the $1\,\mu$bar matching level marked; the stratosphere sits
+at the skin temperature, $185$\,K. (c) The elemental abundances the profile
+carries. Oxygen is cut by a factor $1223$ at the tropopause by the water cold
+trap, while carbon and nitrogen cross it unchanged --- and it is those two,
+not the helium, that make this solution's line $2.6\times$ weaker than the
+metal-free base at the same reservoir (Sect.~\ref{sec:basemetals}). Panels
+(b) and (c) place the column in the closure; the file itself, every column
+of it, is Figs.~\ref{fig:pccol} and~\ref{fig:pccol2}.}
+\label{fig:closure}
+\end{figure}
+
+\section{Is the wind collisional where it is set?}
+\label{sec:validity}
+
+Everything above reads the solutions as continuum solutions. A hydrodynamic
+wind is one only where the gas is collisional on the scale over which the
+flow varies, and above all through its critical point, which is where the
+topology --- and with it the mass flux --- is fixed. This section measures
+that. The tool is
+\texttt{src/utils/collisional\_validity.py}; it reads an existing run
+directory and changes nothing, and the definitions and full tables are in
+\texttt{docs/collisional\_validity.md} (record:
+\texttt{docs/Update\_EXHALE.md} Sect.~81). The numbers below were measured on
+2026-08-27 on the outputs the rest of this memo uses; nothing was re-run.
+
+\subsection{What is measured}
+
+\paragraph{The collisions.} The four momentum-transfer limits are the ones
+the binary element-diffusion operator of Sect.~\ref{sec:diffbroad} already
+uses, in the same Chapman--Enskog first approximation, so a mean free path
+quoted here and a diffusion coefficient used by the wind cannot drift apart:
+rigid-sphere neutral--neutral, non-resonant ion--neutral with the
+induced-dipole and rigid-core frictions added, and screened Coulomb with the
+Spitzer $\ln\Lambda$ for ion--ion and ion--electron. The step from a binary
+diffusion coefficient to a collision frequency is the definition of that
+coefficient itself, $\nu_{st} = n_t k T/(\mu_{st}\hat D_{st})$ with
+$\hat D = n D$, in which the total carrier density cancels. Species are
+H\,\textsc{i}, H\,\textsc{ii}, He\,\textsc{i}, He\,\textsc{ii},
+He\,\textsc{iii} and $e$, plus the molecular carriers where a run tracks
+them; He\,\textsc{i} $2^3S$ is a level inside the He\,\textsc{i} column and
+is not counted twice, and metals are dropped as trace ($<10^{-3}$ of the
+particles) except in the electron budget. Two channels are deliberately
+absent --- resonant charge exchange and electron--neutral momentum transfer
+--- and both lengthen the mean free path, so the verdict they produce is the
+conservative one.
+
+\paragraph{The numbers.} $\lambda_s = \bar v_s/\nu_s$ with the harmonic sum
+over partners; the local structure scale is
+$L = \min(H_p, L_v, r)$ with $H_p = |\mathrm{d}\ln p/\mathrm{d}r|^{-1}$
+measured from the solution and $L_v = |v/(\mathrm{d}v/\mathrm{d}r)|$
+admitted only above Mach $0.01$, below which it is the distance to a
+stagnation point rather than a structure scale; and
+$\mathrm{Kn}_s = \lambda_s/L$. The \emph{exobase} is the first crossing of
+$\mathrm{Kn}_{\rm bulk} = 1$ from below, never extrapolated beyond the
+domain. The \emph{critical point} is the sonic point taken with the code's
+own sound speed, $c_s = \sqrt{\gamma p/\rho}$ at
+$\gamma = 5/3$, and not a re-definition. The \emph{critical region} runs
+from the peak of volumetric heating to the sonic point. ``Collisional''
+means $\max \mathrm{Kn} < 0.1$ across that region, over the bulk and over
+every species carrying at least $10^{-3}$ of the mass; where it fails the
+solution is reported \textbf{unvalidated}, not overestimated, because which
+way a collisionless critical region moves the answer is not something the
+continuum solution that assumed it away can decide.
+
+\subsection{The result}
+
+\begin{table}[htbp]\centering
+\caption{Collisional validity of three representative LHS\,1140\,b
+solutions and of an HD\,209458\,b control, read from the
+advection-corrected profiles. Radii in $R_p$; the LHS\,1140\,b domain ends
+at $29.05\,R_p$, the HD\,209458\,b one at $4.15\,R_p$. ``Max Kn'' is over
+the critical region, i.e.\ from peak heating to the sonic point, or to the
+outer boundary where there is no sonic point.}
+\label{tab:validity}
+\begin{tabular}{llrrrl}
+\toprule
+case & critical point & exobase & $\mathrm{Kn} = 0.1$ at & max Kn &
+verdict \\
+\midrule
+\texttt{heh0p55} (no diffusion) & none, $\mathcal{M}_{\max} = 0.540$ &
+$25.22$ & $6.42$ & $2.2$ & unvalidated \\
+\texttt{heh2p13\_diff\_kzz1e9} & none, $\mathcal{M}_{\max} = 0.565$ &
+$26.66$ & $6.79$ & $1.9$ & unvalidated \\
+\texttt{flux\_closure/hi/k06} & none, $\mathcal{M}_{\max} = 0.550$ &
+$19.76$ & $5.53$ & $3.0$ & unvalidated \\
+\midrule
+HD\,209458\,b control & $4.085$ & above $4.15$ & --- & $\mathbf{0.021}$ &
+validated \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\noindent\textbf{LHS\,1140\,b's wind never reaches its critical point inside
+the computational domain.} All three solutions stay subsonic out to
+$29\,R_p$, at $\mathcal{M}_{\max} = 0.54$--$0.57$. A subsonic solution is
+not fixed by a critical point: its mass flux is set by the outer boundary
+condition --- and at that boundary $\mathrm{Kn}_{\rm bulk}$ is already
+$1.3$--$2.3$, with the exobase at $19.8$--$26.7\,R_p$, inside the domain.
+The continuum equations were therefore integrated through, and closed at, a
+region in which they do not hold. The escape rates quoted throughout this
+memo, $\log_{10}\dot M \simeq 7.5$--$7.8$, are \textbf{unvalidated in the
+collisional sense}.
+
+Against the p-winds retrieval, whose isothermal Parker solution places its
+sonic point at $8$--$9.5\,R_p$: that radius lies \emph{inside} the exobase
+measured here, but $\mathrm{Kn}_{\rm bulk}$ there is $0.14$--$0.30$, two to
+three times the threshold. So the finding is neither ``the sonic point is
+above the exobase'' nor ``the critical region is collisional'': the critical
+region of LHS\,1140\,b is \emph{transitional}. The scale separation the
+continuum equations need has been lost by the radius at which either code
+sets the mass flux, while the gas is not yet free molecular.
+
+\begin{figure}[htbp]\centering
+\includegraphics[width=\textwidth]{figures/lhs1140b_knudsen.pdf}
+\caption{\textbf{Where the continuum description holds.} (a) The bulk
+Knudsen number of the three representative LHS\,1140\,b solutions and of the
+HD\,209458\,b control (open circle: its sonic point at $4.085\,R_p$). Shaded:
+the He\,10830 line-forming region, $1.1$--$3\,R_p$, and the $8$--$9.5\,R_p$
+at which the p-winds retrieval places its sonic point. The LHS\,1140\,b
+solutions cross $\mathrm{Kn} = 0.1$ at $5.5$--$6.8\,R_p$ and
+$\mathrm{Kn} = 1$ at $19.8$--$26.7\,R_p$, both well inside the domain; the
+control stays below $\mathrm{Kn}_{\rm bulk} = 2.3\times10^{-3}$ everywhere
+and is collisional through its critical point, over which its largest
+$\mathrm{Kn}$ is $0.021$ against $1.9$--$3.0$ for the LHS\,1140\,b
+solutions --- a factor of about $100$. (b) The
+species split of the well-mixed solution: neutral hydrogen and neutral
+helium set the number, while the ions and electrons are held by Coulomb
+collisions two to five orders of magnitude more tightly.}
+\label{fig:knudsen}
+\end{figure}
+
+\paragraph{It is the neutral hydrogen that decides it, and the line does not
+care.} In the critical region of the well-mixed solution the species split
+is H\,\textsc{i} $2.2$, He\,\textsc{i} $1.6$, H\,\textsc{ii}
+$3.6\times10^{-5}$, He\,\textsc{ii} $1.8\times10^{-5}$, He\,\textsc{iii}
+$4.7\times10^{-6}$, $e$ $6.5\times10^{-4}$ (Fig.~\ref{fig:knudsen}b). The
+neutrals carry the mass and the long mean free path; the charged species are
+Coulomb-held. That matters for reading the rest of this memo, because the
+He\,10830 metastable population forms at $1.1$--$3\,R_p$, where
+$\mathrm{Kn}_{\rm bulk}$ is $1.2\times10^{-4}$ at $1.1\,R_p$,
+$0.004$--$0.006$ at $2\,R_p$ and $0.013$--$0.021$ at $3\,R_p$ in every case
+here. \textbf{The line-forming layer is collisional by two orders of
+magnitude.} What is unvalidated is the wind solution's mass flux, not the
+absorption Sects.~\ref{sec:ew}--\ref{sec:width} measure, and not the
+$22$\,km\,s$^{-1}$ of missing width, which is asked for at radii where the
+continuum description is secure.
+
+\paragraph{The single-temperature energy equation is not what fails.}
+Electron--ion energy coupling is fast wherever it matters: the largest
+$\tau^E_{ei}/\tau_{\rm heat}$ over the critical region is $0.030$, $0.023$
+and $0.018$ in the three LHS\,1140\,b solutions and $8.3\times10^{-5}$ in
+the control. Momentum coupling times are likewise short compared with the
+flow time --- $\tau_{\rm H\,I} = 924$\,s at $8\,R_p$ against a flow time of
+$1.9\times10^{5}$\,s --- which is not a contradiction but a different test:
+a strongly subsonic flow gives hundreds of collisions per flow time even at
+$\mathrm{Kn}\sim 1$, and it is the Knudsen number that decides continuum
+validity, because the terms the closure drops (viscous stress, heat flux,
+the non-Maxwellian tail) scale with the gradient over a mean free path
+rather than with the collision count.
+
+\paragraph{The kinetic scale, and why it is not a bound.} Jeans escape
+through the measured exobase (Chamberlain \& Hunten 1987, eq.~7.2.5) gives
+$1.0$--$2.0\times10^{7}$\,g\,s$^{-1}$, a factor about three below the
+continuum $\dot M$. That is a \emph{scale}, not a bound. Jeans escape bounds
+a continuum rate from below only when the exobase is well bound, and here
+$\lambda_J(\mathrm{H}) = 0.78$--$1.45$: the exobase is barely gravitationally
+bound, the Jeans integral is most of the Maxwellian rather than its
+escaping tail, and the atmosphere is in blow-off. What the number does say
+is that the continuum result sits within a factor of a few of what a
+collisionless outer atmosphere at the same density and temperature would
+lose, so the failure of the assumption is not hiding an order of magnitude
+--- it is hiding a factor of a few, in an undetermined direction. On
+HD\,209458\,b, where $\lambda_J = 10.85$ and the solution is validated
+through its critical point, the hydrodynamic rate exceeds Jeans by
+$10^{4}$: the signature of a driven wind rather than an evaporating
+atmosphere.
+
+\paragraph{Which profile pair is read moves the exobase, not the verdict.}
+On the equilibrium profiles instead of the advection-corrected ones the
+LHS\,1140\,b solutions are still subsonic across the domain
+($\mathcal{M}_{\max} = 0.82$), still reach $\mathrm{Kn}\sim 1$ where the
+outer boundary sets the flux, and the control is still collisional through
+its critical point. The exobase, however, moves above $30\,R_p$, because the
+equilibrium far field is more ionized and Coulomb collisions there are far
+stronger than neutral ones. An exobase radius quoted from this diagnostic
+has to state which pair it came from; the numbers above are the
+advection-corrected pair throughout.
+
+\subsection{What this changes, and what it leaves open}
+
+\begin{itemize}
+\item \textbf{The outer boundary condition closes this wind, not a critical
+      point.} For a transonic solution the critical point fixes the mass
+      flux and the outer boundary is passive. Here it is the other way
+      round, and the boundary sits in gas that is already collisionless. Any
+      $\dot M$ quoted for LHS\,1140\,b from these solutions --- including the
+      $\log_{10}\dot M = 7.500$ of the flux closure (Sect.~\ref{sec:closure})
+      and the comparison with the rate the retrieval imposes --- has to carry
+      that warning. The same applies to the p-winds number, whose sonic point
+      sits at $\mathrm{Kn} = 0.14$--$0.30$.
+\item \textbf{The rate itself is not settled here, and cannot be.} What it
+      would take is a kinetic or transitional-flow calculation --- DSMC, or a
+      13-moment closure carried through the transitional region --- and this
+      repository contains neither. It is recorded as open, not estimated.
+\item \textbf{The line analysis stands.} The He\,10830 layer is collisional
+      by two orders of magnitude, so the equivalent-width matching, the
+      composition inference conditional on it, and the invariant
+      $22$\,km\,s$^{-1}$ width deficit are unaffected by this section. It
+      constrains what the escape rate may be quoted as, not what the line
+      says.
+\end{itemize}
+
 \section{Status against the goal}
 
 The line is not reproduced. What stands:
 
 \begin{itemize}
-\item \textbf{Amount of absorption: matched, under every assumption
-      combination tried} --- $\mathrm{He/H} = 0.55$ well mixed on the
-      GJ\,1132 proxy, $0.060$ well mixed on the GJ\,699 proxy, $2.09$ under
-      diffusion at the adopted $K_{zz} = 10^{9}$\,cm$^2$\,s$^{-1}$ --- and
-      in each case insensitive to the broadening treatment at the $2\%$
-      level. Which is the point of the next-to-last item: the match is
-      always available, so it constrains the composition only as far as the
-      assumptions behind it are secure.
+\item \textbf{Amount of absorption: matched, and the composition it takes
+      is a pair set by the lower boundary} --- $\mathrm{He/H} = 2.09$ above
+      a prescribed metal-free scalar base, $10.7$ above a lower atmosphere
+      solved as a photochemical column and handed over as a profile
+      (Sect.~\ref{sec:closureladder}). Both carry H/He element diffusion at
+      the same adopted $K_{zz} = 10^{9}$\,cm$^2$\,s$^{-1}$, so the base is
+      what separates them, not the mixing. Inside the prescribed-base branch
+      the answer is further conditional: $0.060$ well mixed on the GJ\,699
+      proxy, $0.55$ well mixed on the GJ\,1132 proxy, $4.68$ wherever
+      $K_{zz} \le 10^{5}$ leaves the molecular coefficient alone. In each
+      case the crossing is insensitive to the broadening treatment at the
+      $2\%$ level. The match is always available, so it constrains the
+      composition only as far as the assumptions behind it are secure.
 \item \textbf{Line shape: not matched}, by a factor $3.4$ in both depth and
       width, and not fixable by composition. The missing ingredient is
       $22.30$\,km\,s$^{-1}$ FWHM of velocity spread ($\sigma =
@@ -1523,7 +2700,9 @@ The line is not reproduced. What stands:
       at once, but its physical origin is unidentified. The demand is
       unchanged under diffusion and the adopted $K_{zz}$: measured the same
       way on the EW-matched diffusive solution it is $22.31$\,km\,s$^{-1}$,
-      $0.01$\,km\,s$^{-1}$ away (Sect.~\ref{sec:diffbroad}), and it is
+      $0.01$\,km\,s$^{-1}$ away (Sect.~\ref{sec:diffbroad}); it is
+      $22.39$\,km\,s$^{-1}$ on the flux-closed solution
+      (Sect.~\ref{sec:closure}); and it is
       $22.08$\,km\,s$^{-1}$ on the $5.1\times$ brighter proxy spectrum
       (Sect.~\ref{sec:gj699}). The adiabatic
       metastable bump, which would have supplied it without a free
@@ -1536,7 +2715,20 @@ The line is not reproduced. What stands:
       $4.0\times10^{8}$\,g\,s$^{-1}$ --- a factor $7$ higher and within
       $0.04$\,dex of the value the paper retrieves on that same proxy
       (Sect.~\ref{sec:gj699}).
-\item \textbf{Composition: SED-limited, and weakly $K_{zz}$-limited.} In the
+\item \textbf{That escape rate is unvalidated in the collisional sense; the
+      line is not.} All three representative solutions are subsonic to
+      $29\,R_p$ ($\mathcal{M}_{\max} = 0.54$--$0.57$), so the mass flux is
+      set at the outer boundary, where $\mathrm{Kn}_{\rm bulk} = 1.3$--$2.3$;
+      the exobase is at $19.8$--$26.7\,R_p$ and the p-winds sonic point at
+      $8$--$9.5\,R_p$ sits at $\mathrm{Kn} = 0.14$--$0.30$, so the critical
+      region of this planet is transitional for both codes. The He\,10830
+      layer at $1.1$--$3\,R_p$ is collisional by two orders of magnitude
+      ($\mathrm{Kn} \le 0.021$), and an HD\,209458\,b control validates
+      cleanly at a factor $100$ lower $\mathrm{Kn}$
+      (Sect.~\ref{sec:validity}). What the true rate is needs a kinetic or
+      transitional-flow calculation, which this repository does not contain.
+\item \textbf{Composition: base-limited and SED-limited, and weakly
+      $K_{zz}$-limited.} In the
       well-mixed limit the equivalent-width crossing is
       $\mathrm{He/H} = 0.550$ on one proxy spectrum and $0.060$ on the
       other, helium-rich against helium-poor, with the measurement unable to
@@ -1547,20 +2739,102 @@ The line is not reproduced. What stands:
       $10^{11}$\,cm$^2$\,s$^{-1}$ (Table~\ref{tab:kzzcross},
       Fig.~\ref{fig:hehkzz}) --- a factor $1.9$ across the range the
       literature leaves open, $4.2$ across the entire axis, against the
-      factor $9$ the SED carries. End to end the inference spans $0.060$ to
-      $4.68$, a factor $80$. So any composition read off this line, the
-      paper's included, is strongly conditional on the assumed XUV spectrum
-      and weakly conditional on the eddy coefficient, as $K_{zz}^{-0.14}$
-      wherever the eddy term acts at all.
+      factor $9$ the SED carries. Those are all conditions inside the
+      prescribed-base branch. Replacing that base with the solved
+      photochemical column moves the crossing to $10.7$
+      (Sect.~\ref{sec:closureladder}), so end to end the inference spans
+      $0.060$ to $10.7$, a factor $180$. So any composition read off this
+      line, the paper's included, is strongly conditional on the assumed XUV
+      spectrum and on what is placed at the lower boundary, and weakly
+      conditional on the eddy coefficient, as $K_{zz}^{-0.14}$ wherever the
+      eddy term acts at all.
+\item \textbf{Composition as an output, on one axis, and the lower
+      boundary raised to an axis of its own in its place.} With the lower
+      atmosphere solved as a
+      photochemical column and the elemental fluxes iterated to continuity
+      across the $1\,\mu$bar match, He/H at the match is a solution:
+      $2.09235$, single-valued to $5.5\times10^{-6}$ from trial fluxes a
+      factor of ten apart, at $\log_{10}\dot M = 7.500$
+      (Sect.~\ref{sec:closure}). At the adopted
+      $K_{zz} = 10^{9}$\,cm$^2$\,s$^{-1}$ that output is the well-mixed
+      value --- only $2\times10^{-4}$ of it comes from the escape flux --- so
+      the conditionality moves onto $K_{zz}$ rather than away. Above the
+      match the wind still fractionates strongly, $F_{\rm He}/F_{\rm H} =
+      0.73$ by mass against the base reservoir's $8.31$. The handoff also
+      brings the column's C, N and O, which take $\log_{10}\dot M$ from
+      $7.80$ to $7.46$ and the red-pair depth from $4.40\%$ to $1.52\%$;
+      \textbf{at that base the flux-closed solution at $2.09$ no longer
+      reproduces the equivalent width}, $0.421$ against the measured
+      $1.108 \pm 0.030$\,\%\,\AA.
+\item \textbf{The composition the line needs above a photochemical base:
+      $\mathrm{He/H} = 10.7$.} A ladder of seven flux-closed solutions,
+      reservoirs $2.09$ to $12.0$ and each arm converged to its own fixed
+      point, crosses the measured equivalent width between the $10.31$ and
+      $12.01$ rungs: $10.7$, with $10.5$--$10.9$ for the measurement's
+      $1\sigma$ interval, interpolated inside that bracket and not run at
+      the crossing itself (Sect.~\ref{sec:closureladder},
+      Table~\ref{tab:closureladder}). The bracket is wide because the two
+      rungs straddling the measurement have local power-law slopes of $0.25$
+      and $1.42$ against the $0.5$--$0.7$ of the rest of the ladder, and
+      that is not resolved. Two things follow: the closure condition alone
+      does not select a reservoir here --- every rung satisfies it, so the
+      line selects, and what the closure adds is consistency with a
+      photochemical lower atmosphere carrying its own C, N and O --- and
+      $\dot M$ is flat across the whole ladder,
+      $\log_{10}\dot M = 7.39$--$7.50$, i.e.\ an eighth of the retrieval
+      value at the crossing. Both numbers carry the width shortfall
+      (FWHM $0.267$ against $0.841$\,\AA) and the collisional caveat above.
+      This is the answer on the solved-column branch; $2.09$ is the answer
+      to the same question above a prescribed metal-free base, and neither
+      is an independent prediction of the model.
+\item \textbf{Why the same helium absorbs differently over the two bases,
+      measured.} Adding the column's C, N and O at fixed reservoir takes
+      radiative cooling from $6$--$9\%$ of the heating to $71\%$ at
+      $1.2\,R_p$ ($95\%$ of it metal-line cooling, largest single
+      contributor neutral C\,\textsc{i}) and $T_{\max}$ from $5330$ to
+      $3944$\,K; the metastable peak rises and the column inside $2\,R_p$
+      is unchanged to $0.4\%$, but the column outside $2\,R_p$ falls by
+      $2.6$, which is the factor the equivalent width falls by. Raising the
+      reservoir to $10.31$ on that same base returns $T_{\max}$ to $5869$\,K
+      --- past the metal-free $5330$ --- with the mean mass per particle at
+      $2\,R_p$ up by $1.68$ and the heating per particle up by $1.88$, and
+      with the C/N/O density diluted along with the hydrogen it is referred
+      to. In the metastable balance the peak ratio $50.2 \rightarrow 122.5$
+      splits as a source up by $1.55$ against a lifetime up by $1.57$, the
+      latter because Penning ionization on H\,\textsc{i} --- $89\%$ of the
+      sink at $2.09$, $60\%$ at $10.31$ --- slows as hydrogen is thinned
+      (Sect.~\ref{sec:basemetals}, Table~\ref{tab:thermostat},
+      Fig.~\ref{fig:thermostat}). \emph{Read as an interpretation}, the
+      ladder is a thermal trade between the metal content of the base and
+      the helium content above it, and one line cannot separate them.
+\item \textbf{The 2025 non-detection sits at about $0.3$ of the fiducial
+      XUV.} Scaling the irradiation with the lower atmosphere held fixed,
+      the red-pair depth falls below the $0.6$ per cent limit of the 2025
+      epoch at $\simeq\!0.30$ of fiducial in the scalar-base model and just
+      under $0.33$ in the flux-closed one (Sect.~\ref{sec:xuvgrid},
+      Table~\ref{tab:xuvgrid}) --- about
+      $10$\,erg\,cm$^{-2}$\,s$^{-1}$ or less. The two models agree there
+      despite differing by $4.6$ in reservoir and $2.5$ in escape rate; they
+      do not agree on the slope with which they get there, which is a
+      property of each model and not a result.
+\item \textbf{Not verified: the second-chemistry-code cross-check.} VULCAN
+      did not converge on this cold helium-rich column --- its convergence
+      measure rose against the criterion with the timestep pinned, the
+      limiting cell being H$_2$O at the cold trap --- so no composition from
+      a second code, and no cross-code spread, is quoted
+      (Sect.~\ref{sec:closure}).
 \item \textbf{One solution is not converged to tolerance.}
       $\mathrm{He/H} = 100$ stagnates at $\|R\| = 1.18\times10^{-3}$ from
       every seed tried; neighbours bracket it smoothly, so it is retained
       with the residual recorded.
 \end{itemize}
 
-\noindent Three axes have now been walked --- the assumed XUV spectrum, the
-mixing assumption with its eddy coefficient, and composition itself --- and
-each separates the two questions rather than answering them together. Every
+\noindent Four axes have now been walked --- the assumed XUV spectrum, the
+mixing assumption with its eddy coefficient, composition itself, and what is
+placed at the lower boundary --- and each separates the two questions rather
+than answering them together. The last of them is the one that splits the
+answer in two rather than shifting it: $2.09$ above a prescribed metal-free
+base, $10.7$ above a solved photochemical column. Every
 one of them moves the composition the equivalent width implies, two of them
 by a large factor; none of them moves the width. What is left as a possible
 source of the missing $22$\,km\,s$^{-1}$ is therefore what it was: velocity
@@ -1635,6 +2909,7 @@ both spectra and does not supply it for this host (Sect.~\ref{sec:bump}).
 \bibitem{Tan2021b} Tan, X., \& Showman, A.~P.\ 2021b, MNRAS, 502, 2198
 \bibitem{Taylor2025} Taylor, J., et al.\ 2025, ApJ, 989, 68
 \bibitem{Taylor2026} Taylor, J., et al.\ 2026, ApJ, in press
+\bibitem{Tsai2017} Tsai, S.-M., Lyons, J.~R., Grosheintz, L., et al.\ 2017, ApJS, 228, 20
 \bibitem{Turbet2016} Turbet, M., Leconte, J., Selsis, F., et al.\ 2016, A\&A, 596, A112
 \bibitem{Turbet2018} Turbet, M., Bolmont, E., Leconte, J., et al.\ 2018, A\&A, 612, A86
 \bibitem{VidalMadjar2003} Vidal-Madjar, A., Lecavelier des Etangs, A., D\'esert, J.-M., et al.\ 2003, Nature, 422, 143

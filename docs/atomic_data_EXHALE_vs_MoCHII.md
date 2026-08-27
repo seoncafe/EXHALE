@@ -70,9 +70,14 @@ the metal rates were already Voronov (1997) in both codes.
 
 ### Charge exchange
 Both codes transcribe Table 4 of Huang et al. (2023, ApJ 951, 123), which rests
-on Kingdon & Ferland (1996). EXHALE carries 63 reactions: metal charge exchange
-with H is on by default, while He reactions and metal-metal reactions are enabled
-by the `cx_full` option. MoCHII carries the metal reactions only.
+on Kingdon & Ferland (1996). EXHALE carries 63 of its 65 rows (23 in Group A, 2
+in B, 6 in C, 32 in D; the two missing ones are in the metal-metal set). Two
+switches select them. The 23 metal+H reactions of Group A are on by default and
+`cx_full` adds the metal+He (C) and metal+metal (D) reactions. The He<->H pair
+(B1, B2) is separate: it is not in the generic reaction list at all but is
+applied by dedicated routines in every ionization system containing He, gated by
+its own input key `He_H_charge_exchange` (default `True`) and independent of
+`cx_full`. MoCHII carries the metal reactions only.
 
 The printed Table 4 exchanges the reactant labels of its two oxygen rows: the
 `exp(-227/T)` Boltzmann factor appears on `O+ + H0`, but `IP(O I) > IP(H I)`
@@ -145,7 +150,8 @@ Badnell dielectronic recombination added for He II) and alpha_1(Mao) is the Mao 
 Kaastra (2016, A&A 587, A84) ground-state coefficient. The implementation is in
 `Cool_coeff.f90`: `rr_badnell`, `dr_HeII_badnell`, `rr_mao`, and the assembled
 `alphaB_HII_new` / `alphaB_HeII_new` / `alphaB_HeIII_new`. The coefficients
-match those in the MoCHII `recomb_mod.f90`.
+match those in the MoCHII `src/recomb_mod.f90` (a file of the separate MoCHII
+code at `/nfs/mocafe/kiseon/MoCHII`, not of this repository).
 
 ### 2. H/He collisional ionization default
 The default H/He collisional-ionization rates are now the Voronov (1997, ADNDT

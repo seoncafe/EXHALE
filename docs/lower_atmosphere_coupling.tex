@@ -366,12 +366,57 @@ key & unit & overrides & used by \\
 \texttt{Kzz\_base} & cm$^2$/s & \texttt{he\_kzz}               & \texttt{He\_diffusion} homopause \\
 \texttt{q\_H2\_base} & --  & \texttt{q\_h2\_base} ($\qHH$ at the base) & \texttt{Molecular base} particle count \\
 \texttt{p\_base}   & bar   & \texttt{p\_base\_bar}             & level of the handoff; the $\qHH$ fit \\
+\texttt{<El>\_H\_base} & -- & \texttt{X\_<El>}, hence \texttt{melem\_ab} & metal system, EOS budget, base BC \\
 \bottomrule
 \end{tabular}
 \end{center}
 Every override is echoed to stdout; an absent file is a strict no-op. Unknown keys and
 \texttt{\#} comments are ignored, so a richer lower-atmosphere model may carry extra
 metadata in the same file.
+
+\paragraph{Elemental reservoirs in the handoff (2026-08-26).}
+\texttt{<El>\_H\_base} is one key per element, spelled with any of the ten
+element symbols of \texttt{species\_table} (\texttt{C N O Mg Si Ca Na K S Fe}),
+e.g.\ \texttt{O\_H\_base 4.90e-4}; the value is the El/H \emph{nuclei} ratio at
+the handoff level. It overrides \texttt{metals.inp} for that element and turns
+the metal system on by itself when it is the only nonzero abundance ---
+\texttt{thereis\_metals}, \texttt{melem\_ab} and \texttt{thereis\_lowIP\_metal}
+are all derived after the handoff, so a handoff element behaves exactly like a
+\texttt{metals.inp} one. On a restart it also renormalizes that element's whole
+loaded column onto the stated ratio, preserving the ionization split and the
+radial shape (\texttt{load\_IC.f90}). Every key of \texttt{base.inp} now carries
+a \emph{category} --- provenance, EOS boundary, elemental reservoir, initial
+guess, boundary constraint --- which is what states what the value is allowed to
+do to the wind; the full table is \texttt{docs/input\_schema.md} \S2c and the
+user manual's Tier-3 section. Neither \texttt{run\_lower.py} nor
+\texttt{vulcan\_to\_base.py} writes \texttt{<El>\_H\_base}: VULCAN's networks are
+H/C/N/O(/S), so the only element ratios it could hand over are its own inputs,
+and the atomic-metal release is outside its scope.
+
+\paragraph{Tier 3 as a profile, not a level (2026-08-27).}
+The scalars above state the lower atmosphere at one level. The key
+\texttt{Lower atmosphere profile: <file>} states it over an \emph{interval} of
+pressure instead: the lower model's own solution, tabulated deep-to-shallow and
+reaching above the matching level, handed over as one table (reader
+\texttt{src/modules/files\_IO/lower\_atmosphere\_profile.f90}, schema module
+\texttt{src/utils/lower\_profile\_schema.py}). Two things ask for the interval.
+The first is eddy mixing: the homopause is where $K_{zz}$ crosses the molecular
+diffusion coefficient, which a single \texttt{He\_Kzz} cannot locate, so the
+profile supplies $K_{zz}$ as a column interpolated onto the grid. The second is
+the elemental-flux closure of \S\ref{sub:feedback}. At its matching pressure the
+profile sets $T_0$, $R_0$, $p_{\rm base}$, $\qHH$, He/H and each elemental
+reservoir it carries; \texttt{n\_tot} and \texttt{rho} are carried but not
+imposed. Because it is then the single source of those quantities, a
+\texttt{base.inp} beside it may no longer state them: the EOS-boundary,
+elemental-reservoir and boundary-constraint keys are refused by name, only
+provenance comments and diagnostic keys remain allowed, and such a file must
+carry a \texttt{\# solution\_id} matching the profile's or the run stops. Two
+producers write the format: \texttt{src/utils/photochem\_to\_lower\_profile.py}
+(the production path, with the temperature structure either prescribed or solved
+by its radiative--convective climate model) and
+\texttt{src/utils/vulcan\_to\_lower\_profile.py} (the cross-check arm --- VULCAN
+carries no climate model). Column-by-column schema:
+\texttt{docs/input\_schema.md} \S2d; example: \texttt{examples/17\_lower\_profile/}.
 
 \paragraph{The driver.} \texttt{src/utils/run\_lower.py <run\_dir> --r1bar <R\_J>
 [--guillot] [--tint T] [--kzz K]} reads $M_\mathrm{p}$, $T_\mathrm{eq}$, He/H from the run
@@ -592,16 +637,42 @@ metal release $n_X/n_\mathrm{H}$ & (Tier 3, VULCAN) & \texttt{metals.inp} values
 \end{tabular}
 \end{center}
 
-\subsection{Feedback loop (future, with a real lower model)}\label{sub:feedback}
+\subsection{Feedback loop}\label{sub:feedback}
 One-way coupling (lower $\to$ \texttt{base.inp} $\to$ EXHALE, with the Taylor-style
-tolerated composition discontinuity) is the default. For the two-way iteration:
+tolerated composition discontinuity) is the default.
+
+\paragraph{The elemental-flux closure is implemented (2026-08-27).} The two-way
+iteration runs on the elemental fluxes, driven by
+\texttt{src/utils/element\_flux\_closure.py}. The chemistry is told a trial
+elemental flux through its upper boundary
+(\texttt{-{}-trial-flux-H}/\texttt{-{}-trial-flux-He} of
+\texttt{photochem\_to\_lower\_profile.py}, g\,s$^{-1}$ outward positive --- the
+Lavvas et al.\ 2014 prescription in flux form), the resulting profile becomes the
+wind's base state, and the wind's own elemental flux is measured face by face by
+\texttt{write\_element\_flux\_profile} (\texttt{binary\_element\_diffusion.f90}),
+\[
+  F_{\rm He}=4\pi r^2(\rho X v + J),\qquad
+  F_{\rm H}=4\pi r^2(\rho(1-X)v - J),
+\]
+and reduced to one median and one relative spread per element over a radial
+window. The solution is the fixed point $\Phi_{\rm El}=F_{\rm El}(\Phi_{\rm El})$,
+reached by an under-relaxed update $\Phi^{(k+1)}=\Phi^{(k)}+\omega(F^{(k)}-\Phi^{(k)})$
+with $\omega=0.5$ halved (floor $0.125$) whenever the residual fails to fall. The
+convergence test reads the \emph{undamped} residual, so a small $\omega$ cannot
+buy a false convergence, and a residual smaller than the spread of the window it
+was measured on is reported \texttt{UNRESOLVED} rather than converged. The driver
+reads the overlap window first and falls back on the steady window $r\ge r_{\rm esc}$
+when the overlap is unmeasurable or too ragged, recording which window supplied
+the number. Design: \texttt{docs/phase\_e\_flux\_closure\_design.md} \S6.
+
+\paragraph{Still one-way.} The radiation half of the loop is not implemented.
 EXHALE already computes the attenuated stellar spectrum on its energy grid, so the
-\emph{transmitted XUV flux at the base}, $F_\nu(r_0)=F_\nu e^{-\tau_\nu(r_0)}$, can be
-dumped and handed to the photochemical model as its top irradiation; and EXHALE's $\Mdot$
-supplies the lower model's upper BC (``species $<3$\,amu escape at the wind velocity'',
-exactly the Lavvas et al.\ 2014 prescription). Taylor et al.\ found $\sim$3 iterations
-sufficient for the analogous Ly$\alpha$ loop; the same is expected here since the wind is
-insensitive to base details at the $\lesssim$10\% level (Salz et al.\ 2016).
+\emph{transmitted XUV flux at the base}, $F_\nu(r_0)=F_\nu e^{-\tau_\nu(r_0)}$, could be
+dumped and handed to the photochemical model as its top irradiation; today the
+adapters take a stellar flux file and a dilution instead. Taylor et al.\ found
+$\sim$3 iterations sufficient for the analogous Ly$\alpha$ loop; the same is
+expected here since the wind is insensitive to base details at the $\lesssim$10\%
+level (Salz et al.\ 2016).
 
 \subsection{Consistency cautions}
 \begin{itemize}

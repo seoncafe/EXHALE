@@ -4,18 +4,33 @@ Compare the photoionization cross sections used in EXHALE for
 H I, He I, He II, and the metastable He I 2^3 S triplet, and benchmark
 two of them against external references:
 
-  (a) EXHALE sigma_HeI (2-term ATES fit) vs the Verner et al. (1996)
-      single-shell analytic fit (VFKY96), over 24.6-500 eV.
-  (b) EXHALE sigma_HeI23S (broken power-law fit to Norcross 1971) vs the
-      p-winds tabulation of the same Norcross (1971) data, over 4.77-60 eV.
+  (a) EXHALE sigma_HeI -- by default the Verner et al. (1996) single-shell
+      analytic fit (VFKY96); the older ATES two-term fit is still reachable
+      through the input key `ATES_photoionization_rate: True'.  Both are
+      shown against VFKY96 over 24.6-500 eV.
+  (b) EXHALE sigma_HeI23S -- two VFKY96 wings joined by a log-linear
+      bridge, with no high-energy cutoff -- against the p-winds tabulation
+      of the Norcross (1971) data and the TOPbase / Opacity Project
+      R-matrix cross section.
 
-All cross sections are returned in units of 1e-18 cm^2 = 1 Mb, matching the
-convention of src/modules/functions/cross_sec.f90.  Photon energy E is in eV.
+The implemented forms follow src/modules/functions/cross_sec.f90.  All cross
+sections are returned in units of 1e-18 cm^2 = 1 Mb, matching that module.
+Photon energy E is in eV.
 
-Outputs (vector PDF) -> docs/figures/:
-  xsec_overview.pdf            -- all four species on one log-log plot
-  xsec_HeI_vs_Verner.pdf       -- He I: EXHALE vs Verner (+ ratio)
-  xsec_HeI23S_vs_pwinds.pdf    -- He 2^3 S: EXHALE vs p-winds/Norcross (+ ratio)
+Outputs (vector PDF) -> docs/figures/.  The first three show the CURRENT
+implementation; the remaining five are the derivation record of the
+candidates weighed on the way to it, and deliberately keep plotting their
+own candidate curves (the former Norcross broken power law included):
+  xsec_overview.pdf            -- all four implemented species, one log-log plot
+  xsec_HeI_vs_Verner.pdf       -- He I: default (VFKY96) and the ATES two-term
+                                  option, both referred to VFKY96 (+ ratios)
+  xsec_HeI23S_vs_pwinds.pdf    -- He 2^3 S: implemented two-wing form vs
+                                  p-winds/Norcross and TOPbase (+ ratio)
+  xsec_HeI23S_topbase.pdf      -- derivation: Norcross vs TOPbase cross-check
+  xsec_HeI23S_tail.pdf         -- derivation: TOPbase high-energy tail fit
+  xsec_HeI23S_unified.pdf      -- derivation: PCHIP node table (not adopted)
+  xsec_HeI23S_ext.pdf          -- derivation: re-aimed last segment (not adopted)
+  xsec_HeI23S_vfky.pdf         -- derivation: two VFKY96 wings (ADOPTED)
 
 Author: Kwang-Il Seon
 """
@@ -71,17 +86,70 @@ def sigma_hydrogenic(E, Z):
     return out
 
 
+# He I 1^1S: VFKY96 parameters as coded in cross_sec.f90:sigma_HeI
+#   [Eth, E0, sigma0 (Mb), ya, P, yw, y0, y1]
+HEI_VFKY96 = (24.59, 13.61, 949.2, 1.469, 3.188, 2.039, 0.4434, 2.136)
+
+
 def sigma_HeI(E):
-    """He I ground state, 2-term ATES fit.  cross_sec.f90:sigma_HeI."""
+    """He I ground state (1^1S) as EXHALE evaluates it by default: the
+    Verner+1996 (VFKY96) single-shell fit.  cross_sec.f90:sigma_HeI,
+    ates_photoion_rate = .false. branch (the default)."""
+    return sigma_VFKY96(E, *HEI_VFKY96)
+
+
+def sigma_HeI_ates_two_term(E):
+    """He I ground state, ATES two-term fit sigma = 0.6935 /
+    [(E/100)^1.82 + (E/100)^3.23] Mb.  cross_sec.f90:sigma_HeI,
+    ates_photoion_rate = .true. branch, selected by the input key
+    `ATES_photoionization_rate: True' (parameters.f90 default .false.)."""
     E = np.asarray(E, dtype=float)
     eth = 24.6 * 0.999
     s = 0.6935 / ((E * 1.0e-2) ** 1.82 + (E * 1.0e-2) ** 3.23)
     return np.where(E >= eth, s, 0.0)
 
 
+# He I 2^3S: the two VFKY96 wings as coded in cross_sec.f90:sigma_HeI23S
+#   wing A -- threshold to the Cooper minimum (2s-shell channel)
+HE23S_WING_A = (4.78, 2.645, 20.8, 1.0e12, 3.42, 2.681, 1.956, 2.603)
+#   wing B -- resonance-averaged bump to the high-energy tail (He II n=2)
+HE23S_WING_B = (45.59, 49.68, 1052.0, 4.393e-2, 2.941, 1.717, 5.488e-5, 1.118)
+#   bridge node energies (Cooper minimum, bump), from the Norcross wavelengths
+HE23S_E3 = HC_EVA / 357.340        # ~34.70 eV
+HE23S_E4 = HC_EVA / 271.940        # ~45.59 eV
+
+
 def sigma_HeI23S(E):
-    """He I 2^3 S metastable, broken power-law fit to Norcross (1971).
-    cross_sec.f90:sigma_HeI23S."""
+    """He I 2^3 S metastable as EXHALE implements it: two VFKY96 wings
+    joined by a log-linear (power-law) bridge.  cross_sec.f90:sigma_HeI23S.
+
+    Wing A runs from the 4.78 eV threshold to the Cooper minimum at
+    E3 = 34.70 eV, wing B from the bump at E4 = 45.59 eV upward and
+    carries the smooth ~E^-3 tail; between E3 and E4 the two endpoints are
+    joined log-linearly.  There is no hard high-energy cutoff: below
+    threshold and in the tail the wings handle the limits themselves."""
+    E = np.asarray(E, dtype=float)
+    with np.errstate(divide="ignore", invalid="ignore"):
+        logE = np.log10(np.where(E > 0, E, np.nan))
+        x3, x4 = np.log10(HE23S_E3), np.log10(HE23S_E4)
+        y3 = np.log10(sigma_VFKY96(HE23S_E3, *HE23S_WING_A))
+        y4 = np.log10(sigma_VFKY96(HE23S_E4, *HE23S_WING_B))
+        mb = (y4 - y3) / (x4 - x3)
+        bridge = 10.0 ** (mb * (logE - x3) + y3)
+        s = np.where(logE <= x3, sigma_VFKY96(E, *HE23S_WING_A),
+                     np.where(logE >= x4, sigma_VFKY96(E, *HE23S_WING_B),
+                              bridge))
+    return np.where(np.isfinite(s), s, 0.0)
+
+
+def sigma_HeI23S_norcross_broken_pl(E):
+    """He I 2^3 S, five-segment broken power-law fit to Norcross (1971),
+    zero below 4.78 eV and above the 59.2 eV node.  This is the FORMER
+    implementation in its pre-extension form (last-segment slope -3.039,
+    hard cutoff), the variant noted in brackets at the end of the
+    commented-out block of cross_sec.f90.  It is kept here because the
+    derivation figures below compare the candidate extensions against
+    it."""
     E = np.asarray(E, dtype=float)
     x1 = np.log10(HC_EVA / 2593.01) * 0.9999
     x2 = np.log10(HC_EVA / 1655.63)
@@ -198,17 +266,17 @@ def sigma_topbase_smooth(E, E_tb, s_tb, e_max_smooth=23.0):
 
 
 # =====================================================================
-#  Figure 1 -- overview of all four species (EXHALE-adopted curves)
+#  Figure 1 -- overview of the four implemented cross sections
 # =====================================================================
 def fig_overview():
     E = np.logspace(np.log10(1.0), np.log10(1000.0), 2000)
     fig, ax = plt.subplots(figsize=(7.4, 5.2))
     ax.loglog(E, np.clip(sigma_HeI23S(E), 1e-6, None),
-              color="#d62728", label=r"He I $2^3$S (broken PL, Norcross 71)")
+              color="#d62728", label=r"He I $2^3$S (two VFKY96 wings)")
     ax.loglog(E, np.clip(sigma_hydrogenic(E, 1.0), 1e-6, None),
               color="#1f77b4", label=r"H I (hydrogenic)")
     ax.loglog(E, np.clip(sigma_HeI(E), 1e-6, None),
-              color="#2ca02c", label=r"He I (2-term fit)")
+              color="#2ca02c", label=r"He I (Verner+1996)")
     ax.loglog(E, np.clip(sigma_hydrogenic(E, 2.0), 1e-6, None),
               color="#9467bd", label=r"He II (hydrogenic)")
     for Eth, txt, col in [(4.781, r"He I $2^3$S", "#d62728"),
@@ -218,9 +286,9 @@ def fig_overview():
         ax.axvline(Eth, color=col, ls=":", lw=1.0, alpha=0.6)
     ax.set_xlabel(r"photon energy $E$ [eV]")
     ax.set_ylabel(r"$\sigma$ [Mb $=10^{-18}\,$cm$^2$]")
-    ax.set_title("EXHALE photoionization cross sections")
+    ax.set_title("EXHALE photoionization cross sections (as implemented)")
     ax.set_xlim(1, 1000)
-    ax.set_ylim(1e-3, 2e1)
+    ax.set_ylim(1e-4, 2e1)
     ax.grid(True, which="both", alpha=0.25)
     ax.legend(loc="lower left", frameon=True)
     fig.tight_layout()
@@ -229,82 +297,113 @@ def fig_overview():
 
 
 # =====================================================================
-#  Figure 2 -- He I: EXHALE 2-term fit vs Verner (24.6-500 eV)
+#  Figure 2 -- He I: what the ATES_photoionization_rate option changes.
+#  The implemented default IS the VFKY96 fit, so it lies on the reference
+#  by construction; the two-term ATES fit is the alternative the input key
+#  selects.  Both are shown against VFKY96.
 # =====================================================================
 def fig_HeI_vs_verner():
     E = np.logspace(np.log10(24.6), np.log10(500.0), 1500)
-    s_ex = sigma_HeI(E)
+    s_def = sigma_HeI(E)                    # implemented default
+    s_two = sigma_HeI_ates_two_term(E)      # ATES_photoionization_rate: True
     s_ve = sigma_verner("HeI", E)
-    ratio = s_ex / s_ve
+    r_def = s_def / s_ve
+    r_two = s_two / s_ve
 
     fig, (ax1, ax2) = plt.subplots(
         2, 1, figsize=(7.0, 6.2), sharex=True,
         gridspec_kw={"height_ratios": [2.4, 1.0]})
-    ax1.loglog(E, s_ex, color="#2ca02c", label=r"EXHALE sigma_HeI (2-term)")
-    ax1.loglog(E, s_ve, color="k", ls="--", label="Verner+1996 (VFKY96)")
+    ax1.loglog(E, s_ve, color="k", ls="--", lw=3.0,
+               label="Verner+1996 (VFKY96), reference")
+    ax1.loglog(E, s_def, color="#2ca02c", lw=1.6,
+               label="EXHALE default sigma_HeI (VFKY96)")
+    ax1.loglog(E, s_two, color="#ff7f0e", ls="-.", lw=1.8,
+               label="ATES_photoionization_rate: True (2-term)")
     ax1.set_ylabel(r"$\sigma_{\rm He\,I}$ [Mb]")
-    ax1.set_title(r"He I ground-state photoionization: EXHALE vs Verner+1996")
+    ax1.set_title("He I ground state: the default and the ATES two-term option")
     ax1.grid(True, which="both", alpha=0.25)
-    ax1.legend(loc="upper right")
+    ax1.legend(loc="upper right", fontsize=9)
 
-    ax2.semilogx(E, ratio, color="#2ca02c")
+    ax2.semilogx(E, r_def, color="#2ca02c", lw=1.6, label="default / Verner")
+    ax2.semilogx(E, r_two, color="#ff7f0e", ls="-.", lw=1.8,
+                 label="2-term option / Verner")
     ax2.axhline(1.0, color="k", lw=0.8, ls=":")
-    ax2.set_ylabel("EXHALE / Verner")
+    ax2.set_ylabel("ratio to Verner")
     ax2.set_xlabel(r"photon energy $E$ [eV]")
     ax2.set_xlim(24.6, 500)
     ax2.set_ylim(0.6, 1.4)
     ax2.grid(True, which="both", alpha=0.25)
+    ax2.legend(loc="lower right", fontsize=8.5, ncol=2)
     fig.tight_layout()
     fig.savefig(os.path.join(OUTDIR, "xsec_HeI_vs_Verner.pdf"))
     plt.close(fig)
-    return E, s_ex, s_ve, ratio
+    return E, s_def, s_two, s_ve, r_two
 
 
 # =====================================================================
-#  Figure 3 -- He 2^3 S: EXHALE broken-PL vs p-winds/Norcross (4.77-60 eV)
+#  Figure 3 -- He 2^3 S: the implemented two-wing form vs p-winds/Norcross.
+#  The Norcross table stops at 59.2 eV, but the implemented cross section
+#  has no cutoff, so the upper panel runs to 320 eV with the TOPbase
+#  background as the reference there; the ratio panel covers the range the
+#  Norcross table spans.
 # =====================================================================
-def fig_HeI23S_vs_pwinds():
-    E = np.logspace(np.log10(4.781), np.log10(59.0), 1500)
+PW_E_MIN, PW_E_MAX = PW_ENERGY.min(), PW_ENERGY.max()   # 4.78 ... 59.2 eV
+
+
+def fig_HeI23S_vs_pwinds(E_tb, s_tb):
+    E = np.logspace(np.log10(4.781), np.log10(320.0), 2000)
     s_ex = sigma_HeI23S(E)
     s_pw = sigma_pwinds(E)
-    ratio = s_ex / s_pw
+    Er = np.logspace(np.log10(4.781), np.log10(PW_E_MAX * 0.999), 1500)
+    ratio = sigma_HeI23S(Er) / sigma_pwinds(Er)
 
     fig, (ax1, ax2) = plt.subplots(
         2, 1, figsize=(7.0, 6.2), sharex=True,
         gridspec_kw={"height_ratios": [2.4, 1.0]})
+    ax1.loglog(E_tb, np.clip(s_tb, 1e-4, None), color="0.75", lw=0.7,
+               label="TOPbase / OP (with resonances)")
     ax1.loglog(E, s_ex, color="#d62728",
-               label=r"EXHALE sigma_HeI23S (broken PL)")
+               label="EXHALE sigma_HeI23S (two VFKY96 wings)")
     ax1.loglog(E, s_pw, color="#1f77b4", ls="--",
                label="p-winds log-log interp.")
     ax1.loglog(PW_ENERGY, PW_SIGMA_MB, "o", ms=4.5, color="k",
                label="Norcross 1971 (p-winds table)")
+    ax1.axvline(PW_E_MAX, color="0.5", ls=":", lw=1.0)
+    ax1.text(PW_E_MAX * 1.06, 8e-3, "end of the\nNorcross table",
+             fontsize=8, color="0.4")
     ax1.set_ylabel(r"$\sigma_{{\rm He}\,2^3S}$ [Mb]")
     ax1.set_title(r"He I $2^3$S photoionization: EXHALE vs p-winds (Norcross 1971)")
+    ax1.set_ylim(5e-3, 3e1)
     ax1.grid(True, which="both", alpha=0.25)
-    ax1.legend(loc="lower left")
+    ax1.legend(loc="lower left", fontsize=8.5)
 
-    ax2.semilogx(E, ratio, color="#d62728")
+    ax2.semilogx(Er, ratio, color="#d62728")
     ax2.axhline(1.0, color="k", lw=0.8, ls=":")
+    ax2.axvline(PW_E_MAX, color="0.5", ls=":", lw=1.0)
     ax2.set_ylabel("EXHALE / p-winds")
     ax2.set_xlabel(r"photon energy $E$ [eV]")
-    ax2.set_xlim(4.781, 59.0)
+    ax2.set_xlim(4.5, 330)
     ax2.set_ylim(0.5, 1.7)
     ax2.grid(True, which="both", alpha=0.25)
     fig.tight_layout()
     fig.savefig(os.path.join(OUTDIR, "xsec_HeI23S_vs_pwinds.pdf"))
     plt.close(fig)
-    return E, s_ex, s_pw, ratio
+    return Er, sigma_HeI23S(Er), sigma_pwinds(Er), ratio
 
 
 # =====================================================================
-#  Figure 4 -- He 2^3 S: EXHALE + p-winds/Norcross + TOPbase (Opacity Proj.)
+#  Figure 4 -- DERIVATION RECORD.  He 2^3 S: the former Norcross broken
+#  power law + p-winds/Norcross + TOPbase (Opacity Project).  This is the
+#  cross-check that motivated reshaping sigma_HeI23S; the broken power law
+#  is plotted deliberately, as the starting point, not as what the code
+#  now evaluates.
 #  Two panels: (a) full range showing TOPbase autoionizing resonances;
 #              (b) smooth near-threshold region (4.6-25 eV).
 # =====================================================================
 def fig_HeI23S_topbase():
     E_tb, s_tb = load_topbase()
     Efit = np.logspace(np.log10(4.781), np.log10(60.0), 1500)
-    s_ex = sigma_HeI23S(Efit)
+    s_ex = sigma_HeI23S_norcross_broken_pl(Efit)
 
     fig, (axA, axB) = plt.subplots(1, 2, figsize=(11.0, 4.8))
 
@@ -312,7 +411,7 @@ def fig_HeI23S_topbase():
     axA.loglog(E_tb, np.clip(s_tb, 1e-3, None), color="0.45", lw=0.8,
                label="TOPbase / OP (full, with resonances)")
     axA.loglog(Efit, s_ex, color="#d62728", lw=2.0,
-               label="EXHALE sigma_HeI23S (broken PL)")
+               label="former broken PL (Norcross 1971)")
     axA.loglog(PW_ENERGY, PW_SIGMA_MB, "o", ms=4.0, color="#1f77b4",
                label="Norcross 1971 (p-winds)")
     axA.set_xlabel(r"photon energy $E$ [eV]")
@@ -327,7 +426,7 @@ def fig_HeI23S_topbase():
     m = E_tb <= 25.0
     axB.loglog(E_tb[m], s_tb[m], color="0.45", lw=1.4, label="TOPbase / OP")
     axB.loglog(Efit[Efit <= 25], s_ex[Efit <= 25], color="#d62728", lw=2.0,
-               label="EXHALE broken PL")
+               label="former broken PL")
     pm = PW_ENERGY <= 25.0
     axB.loglog(PW_ENERGY[pm], PW_SIGMA_MB[pm], "o", ms=5.0, color="#1f77b4",
                label="Norcross 1971 (p-winds)")
@@ -350,7 +449,7 @@ def fig_HeI23S_topbase():
 #  Fit a power law to the TOPbase resonance-free background above the
 #  He+ n=2 resonance limit (E >= 66 eV) and report the formula.
 # =====================================================================
-HE_CUTOFF_EV = 59.208      # current sigma_HeI23S cutoff (x5 node)
+HE_CUTOFF_EV = 59.208      # cutoff (x5 node) of the FORMER broken PL
 
 
 def fit_he23S_tail(E_tb, s_tb, e_fit_lo=66.0, e_fit_hi=323.0):
@@ -377,14 +476,15 @@ def fig_he23S_tail(E_tb, s_tb):
               label="TOPbase smooth background (fit pts)")
     ax.loglog(Eg, sigma_he23S_tail(Eg, p, c), color="#d62728", lw=2.2,
               label=r"power-law fit $\sigma=10^{%.3f}E^{%.3f}$" % (c, p))
-    # show the current EXHALE broken-PL up to the cutoff (then zero)
+    # the former broken PL up to its cutoff (then zero)
     Eb = np.logspace(np.log10(40), np.log10(HE_CUTOFF_EV), 300)
-    ax.loglog(Eb, sigma_HeI23S(Eb), color="k", ls="--", lw=1.5,
-              label="EXHALE broken PL (=0 above cutoff)")
+    ax.loglog(Eb, sigma_HeI23S_norcross_broken_pl(Eb), color="k", ls="--",
+              lw=1.5, label="former broken PL (=0 above cutoff)")
     ax.axvline(HE_CUTOFF_EV, color="0.5", ls=":", lw=1.0)
     ax.set_xlabel(r"photon energy $E$ [eV]")
     ax.set_ylabel(r"$\sigma_{{\rm He}\,2^3S}$ [Mb]")
-    ax.set_title(r"He I $2^3$S: smooth high-energy extension ($E>59$ eV)")
+    ax.set_title("He I $2^3$S: TOPbase tail fit "
+                 "(derivation step for the candidates)")
     ax.set_xlim(40, 330); ax.set_ylim(5e-3, 3)
     ax.grid(True, which="both", alpha=0.25); ax.legend(loc="lower left", fontsize=9)
     fig.tight_layout()
@@ -396,7 +496,7 @@ def fig_he23S_tail(E_tb, s_tb):
 def print_he23S_tail(E_tb, s_tb):
     p, c, mres = fit_he23S_tail(E_tb, s_tb)
     s100 = 10.0 ** (p * np.log10(100.0) + c)
-    print("\n=== Smooth high-energy extension of sigma_HeI23S (E>59 eV) ===")
+    print("\n=== TOPbase high-energy tail fit (E>59 eV), derivation step ===")
     print(f"fit (E>=66 eV, resonances ignored): sigma = 10^{c:.4f} * E^{p:.4f} Mb")
     print(f"  equivalently sigma = {s100:.4f}*(E/100 eV)^{p:.3f} Mb ; "
           f"max resid {mres:.3f} dex ({(10**mres-1)*100:.0f}%)")
@@ -461,10 +561,11 @@ def fig_he23S_unified(E_tb, s_tb):
     ax1.loglog(HE23S_NODES_EV, HE23S_NODES_MB, "o", ms=4.5, color="k",
                label="node table")
     Eb = np.logspace(np.log10(4.77), np.log10(59.18), 800)
-    ax1.loglog(Eb, sigma_HeI23S(Eb), color="#1f77b4", ls="--", lw=1.4,
-               label="EXHALE broken PL (=0 above 59 eV)")
+    ax1.loglog(Eb, sigma_HeI23S_norcross_broken_pl(Eb), color="#1f77b4",
+               ls="--", lw=1.4, label="former broken PL (=0 above 59 eV)")
     ax1.set_ylabel(r"$\sigma_{{\rm He}\,2^3S}$ [Mb]")
-    ax1.set_title(r"He I $2^3$S: unified full-range smooth representation")
+    ax1.set_title("He I $2^3$S: unified PCHIP node table "
+                  "(candidate -- not adopted)")
     ax1.set_xlim(4.5, 330); ax1.set_ylim(5e-3, 3e1)
     ax1.grid(True, which="both", alpha=0.25); ax1.legend(loc="upper right", fontsize=8.5)
     # ratio of unified to TOPbase smooth points (exclude resonance spikes)
@@ -493,7 +594,7 @@ def fig_he23S_unified(E_tb, s_tb):
 # =====================================================================
 HE_EJ = 70.0   # junction energy where the broken PL meets the TOPbase fit
 
-# original broken-PL nodes/coefficients (cross_sec.f90)
+# former broken-PL nodes/coefficients (now a comment block in cross_sec.f90)
 _HC = 4.135667696e-15 * 2.99792458e10 * 1e8
 _x1 = np.log10(_HC / 2593.01) * 0.9999
 _x2 = np.log10(_HC / 1655.63)
@@ -521,8 +622,9 @@ def he23S_ext_params(E_tb, s_tb, e_fit_lo=70.0):
 
 
 def sigma_HeI23S_ext(E, a3n, c3n, p, c):
-    """Extended sigma_HeI23S (Mb): original broken PL up to x4, re-aimed
-    last segment x4->70 eV, TOPbase tail above 70 eV."""
+    """Candidate (not adopted) extension of the former broken PL (Mb):
+    broken PL up to x4, re-aimed last segment x4->70 eV, TOPbase tail
+    above 70 eV."""
     E = np.asarray(E, dtype=float)
     lo = np.log10(E)
     xJ = np.log10(HE_EJ)
@@ -545,15 +647,16 @@ def fig_he23S_ext(E_tb, s_tb):
     ax.loglog(PW_ENERGY, PW_SIGMA_MB, "s", ms=4.0, mfc="none",
               mec="#2ca02c", mew=1.2, label="Norcross 1971 (p-winds)")
     Eb = np.logspace(np.log10(4.77), np.log10(59.18), 600)
-    ax.loglog(Eb, sigma_HeI23S(Eb), color="#1f77b4", ls="--", lw=1.4,
-              label="original broken PL (=0 above 59 eV)")
+    ax.loglog(Eb, sigma_HeI23S_norcross_broken_pl(Eb), color="#1f77b4",
+              ls="--", lw=1.4, label="former broken PL (=0 above 59 eV)")
     ax.loglog(Eg, sigma_HeI23S_ext(Eg, a3n, c3n, p, c), color="#d62728",
               lw=2.2, label="extended (re-aimed last seg + TOPbase tail)")
     ax.axvline(HE_EJ, color="0.5", ls=":", lw=1.0)
     ax.text(HE_EJ * 1.03, 6e-3, "70 eV", color="0.4", fontsize=9)
     ax.set_xlabel(r"photon energy $E$ [eV]")
     ax.set_ylabel(r"$\sigma_{{\rm He}\,2^3S}$ [Mb]")
-    ax.set_title(r"He I $2^3$S: minimal-change extension to TOPbase tail")
+    ax.set_title("He I $2^3$S: re-aimed last segment "
+                 "(candidate -- not adopted)")
     ax.set_xlim(4.5, 330); ax.set_ylim(5e-3, 1e1)
     ax.grid(True, which="both", alpha=0.25); ax.legend(loc="lower left", fontsize=9)
     fig.tight_layout()
@@ -564,9 +667,12 @@ def fig_he23S_ext(E_tb, s_tb):
 
 def print_he23S_ext(E_tb, s_tb):
     a3n, c3n, p, c = he23S_ext_params(E_tb, s_tb)
-    print("\n=== Minimal-change extension (keep broken PL, re-aim last seg) ===")
+    print("\n=== Candidate (not adopted): keep broken PL, re-aim last seg ===")
     print(f"  modified last segment (x4=45.6 -> 70 eV): slope {a3n:.4f} "
           f"(was {_a3}), intercept {c3n:.4f}")
+    print(f"  for reference, the IMPLEMENTED wing B gives "
+          f"sigma(70 eV)={float(sigma_HeI23S(70.0)):.4f} Mb, "
+          f"sigma(100 eV)={float(sigma_HeI23S(100.0)):.4f} Mb")
     print(f"  TOPbase tail (E>70 eV): sigma = 10^{c:.4f} * E^{p:.4f} Mb")
     print(f"  junction values: sigma(45.6)={10**_y4:.4f} Mb, "
           f"sigma(70)={10**(p*np.log10(70)+c):.4f} Mb (continuous both ends)")
@@ -577,18 +683,11 @@ def print_he23S_ext(E_tb, s_tb):
 #  Fit a single VFKY96 to the low-E part (segments 1-2: threshold -> Cooper
 #  minimum) and another to the high-E part (segments 4-5: bump -> tail).
 # =====================================================================
-def _vfky_free(E, Eth, E0, s0, ya, P, yw, y0, y1):
-    E = np.asarray(E, float)
-    x = E / E0 - y0
-    z = np.sqrt(x * x + y1 * y1)
-    Q = 5.5 - 0.5 * P
-    v = s0 * ((x - 1) ** 2 + yw ** 2) * z ** (-Q) * (1 + np.sqrt(z / ya)) ** (-P)
-    return np.where(E >= Eth, v, 0.0)
-
-
 def fit_he23S_vfky(E_tb, s_tb):
     """Return (paramsA, paramsB, residA, residB): VFKY96 fits to segments
-    1-2 (4.85-34.7 eV) and 4-5 (45.7-320 eV) of the implemented He 2^3S."""
+    1-2 (4.85-34.7 eV) and 4-5 (45.7-320 eV) of the former broken power
+    law and its TOPbase-tail extension.  These fits ARE the wings now
+    coded in cross_sec.f90 (see print_he23S_vfky)."""
     from scipy.optimize import curve_fit
     import warnings
     warnings.filterwarnings("ignore")
@@ -599,12 +698,13 @@ def fit_he23S_vfky(E_tb, s_tb):
     def do(Elo, Ehi, Eth, tgt, p0):
         E = np.logspace(np.log10(Elo), np.log10(Ehi), 400)
         y = np.clip(tgt(E), 1e-10, None)
-        f = lambda E, *P: np.log10(np.clip(_vfky_free(E, Eth, *P), 1e-10, None))
+        f = lambda E, *P: np.log10(np.clip(sigma_VFKY96(E, Eth, *P), 1e-10, None))
         popt, _ = curve_fit(f, E, np.log10(y), p0=p0, bounds=(lo, hi), maxfev=400000)
         r = np.log10(y) - f(E, *popt)
         return (Eth,) + tuple(popt), np.abs(r).max()
 
-    pA, rA = do(4.85, 34.70, 4.78, sigma_HeI23S, [13.6, 5, 2, 3, 2, 0.4, 2])
+    pA, rA = do(4.85, 34.70, 4.78, sigma_HeI23S_norcross_broken_pl,
+                [13.6, 5, 2, 3, 2, 0.4, 2])
     pB, rB = do(45.7, 320.0, 45.59,
                 lambda E: sigma_HeI23S_ext(E, a3n, c3n, p, ct),
                 [50., 3., 1., 3., 0.5, 0.1, 0.1])
@@ -619,17 +719,19 @@ def fig_he23S_vfky(E_tb, s_tb):
     EB = np.logspace(np.log10(45), np.log10(320), 400)
     Ef = np.logspace(np.log10(4.78), np.log10(45.593), 400)
     Eg = np.logspace(np.log10(45.593), np.log10(320), 400)
-    ax.loglog(Ef, sigma_HeI23S(Ef), color="k", lw=2.4, label="implemented broken PL")
+    ax.loglog(Ef, sigma_HeI23S_norcross_broken_pl(Ef), color="k", lw=2.4,
+              label="former broken PL")
     ax.loglog(Eg, sigma_HeI23S_ext(Eg, a3n, c3n, p, ct), color="k", lw=2.4)
-    ax.loglog(EA, _vfky_free(EA, *pA), color="#1f77b4", ls="--", lw=1.8,
+    ax.loglog(EA, sigma_VFKY96(EA, *pA), color="#1f77b4", ls="--", lw=1.8,
               label="VFKY96 fit, seg 1-2 (%.0f%%)" % ((10 ** rA - 1) * 100))
-    ax.loglog(EB, _vfky_free(EB, *pB), color="#d62728", ls="-.", lw=1.8,
+    ax.loglog(EB, sigma_VFKY96(EB, *pB), color="#d62728", ls="-.", lw=1.8,
               label="VFKY96 fit, seg 4-5 (%.0f%%)" % ((10 ** rB - 1) * 100))
     ax.axvspan(34.7, 45.6, color="0.85", alpha=0.5)
     ax.text(39, 4, "transition\n(Cooper min)", ha="center", fontsize=8, color="0.4")
     ax.set_xlabel(r"photon energy $E$ [eV]")
     ax.set_ylabel(r"$\sigma_{{\rm He}\,2^3S}$ [Mb]")
-    ax.set_title(r"He I $2^3$S: two VFKY96 (Verner) fits, used piecewise")
+    ax.set_title("He I $2^3$S: two VFKY96 wings "
+                 "(ADOPTED -- now in cross_sec.f90)")
     ax.set_xlim(4.5, 330); ax.set_ylim(5e-3, 8)
     ax.grid(True, which="both", alpha=0.25); ax.legend(loc="lower left", fontsize=9)
     fig.tight_layout()
@@ -641,15 +743,22 @@ def fig_he23S_vfky(E_tb, s_tb):
 def print_he23S_vfky(E_tb, s_tb):
     pA, pB, rA, rB = fit_he23S_vfky(E_tb, s_tb)
     nm = ['Eth', 'E0', 's0', 'ya', 'P', 'yw', 'y0', 'y1']
-    print("\n=== He 2^3S represented by VFKY96 (Verner) forms ===")
+    print("\n=== He 2^3S represented by VFKY96 (Verner) forms [ADOPTED] ===")
     print("seg 1-2 (4.85-34.7 eV): " + ", ".join(f"{n}={v:.4g}" for n, v in zip(nm, pA)))
     print(f"   max resid {(10**rA-1)*100:.0f}%")
     print("seg 4-5 (45.7-320 eV): " + ", ".join(f"{n}={v:.4g}" for n, v in zip(nm, pB)))
     print(f"   max resid {(10**rB-1)*100:.0f}%")
+    print("--- refit here vs the values coded in cross_sec.f90 ---")
+    print(f"{'wing':>6} {'par':>5} {'refit':>13} {'cross_sec.f90':>15} {'ratio':>9}")
+    for tag, fit, coded in (("A", pA, HE23S_WING_A), ("B", pB, HE23S_WING_B)):
+        for n, vf, vc in zip(nm, fit, coded):
+            r = vf / vc if vc != 0.0 else float("nan")
+            print(f"{tag:>6} {n:>5} {vf:>13.5g} {vc:>15.5g} {r:>9.4f}")
 
 
 def print_topbase_table(E_tb, s_tb):
-    print("\n=== He 2^3 S smooth region: EXHALE vs Norcross/p-winds vs TOPbase (Mb) ===")
+    print("\n=== He 2^3 S smooth region (wing A): EXHALE vs Norcross/p-winds "
+          "vs TOPbase (Mb) ===")
     print(f"{'E[eV]':>8} {'EXHALE':>10} {'p-winds':>10} {'TOPbase':>10} "
           f"{'EX/TB':>8} {'PW/TB':>8}")
     for Eq in [5.0, 6, 8, 10, 12, 16, 20]:
@@ -670,20 +779,20 @@ def print_topbase_table(E_tb, s_tb):
 
 
 # =====================================================================
-#  Impact of the >59 eV truncation on the He 2^3 S photoionization RATE.
-#  Rate ~ INT sigma(E) N(E) dE, with photon-number weight N(E)=J_inc/E and
-#  J_inc ~ E^PLind in the EXHALE power-law SED (EUV band [e_low,e_mid]
-#  normalized to L_EUV, X-ray band [e_mid,e_top] to L_X).  We report the
-#  relative increase of the rate when sigma is extended above 59.18 eV
-#  with the TOPbase tail.
+#  He 2^3 S photoionization RATE: what the implemented two-wing cross
+#  section gives against the former broken power law, which was zero above
+#  59.2 eV.  Rate ~ INT sigma(E) N(E) dE, with photon-number weight
+#  N(E)=J_inc/E and J_inc ~ E^PLind in the EXHALE power-law SED (EUV band
+#  [e_low,e_mid] normalized to L_EUV, X-ray band [e_mid,e_top] to L_X).
 # =====================================================================
 E_LOW_SED, E_MID_SED, E_TOP_SED = 4.80, 124.0, 1240.0  # parameters.f90
+HE23S_CUTOFF_EV = 59.18   # upper node of the former broken power law
 
 
-def rate_increase_above_cutoff(PLind, Lrapp, E_tb, s_tb):
-    """Percent increase of the He 2^3 S photoionization rate if sigma is
-    extended above 59.18 eV with the TOPbase tail, for an EXHALE power-law
-    SED of index PLind and X-ray/EUV luminosity ratio Lrapp."""
+def _sed_photon_weight(PLind, Lrapp):
+    """Photon-number weight N(E) ~ J_inc(E)/E of the EXHALE power-law SED,
+    normalized so that the EUV and X-ray bands carry 1/(1+Lrapp) and
+    Lrapp/(1+Lrapp) of the energy flux."""
     el, em, et = E_LOW_SED, E_MID_SED, E_TOP_SED
     P1 = PLind + 1.0
     if PLind != -1.0:
@@ -695,27 +804,42 @@ def rate_increase_above_cutoff(PLind, Lrapp, E_tb, s_tb):
     jeuv *= 1.0 / (1.0 + Lrapp)
     jx *= Lrapp / (1.0 + Lrapp)
 
-    def Nw(E):  # photon-number weight ~ J_inc/E
+    def Nw(E):
         return np.where(E < em, jeuv * E ** PLind, jx * E ** PLind) / E
-
-    def sig_tb(E):
-        return 10.0 ** np.interp(np.log10(E), np.log10(E_tb),
-                                 np.log10(np.clip(s_tb, 1e-6, None)))
-
-    Ea = np.linspace(4.80, 59.18, 6000)        # current EXHALE coverage
-    Rc = np.trapz(sigma_HeI23S(Ea) * Nw(Ea), Ea)
-    Eb = np.linspace(59.18, 323.0, 8000)       # TOPbase tail
-    dR = np.trapz(sig_tb(Eb) * Nw(Eb), Eb)
-    return dR / Rc * 100.0
+    return Nw
 
 
-def print_rate_impact(E_tb, s_tb):
-    print("\n=== Rate impact of extending sigma_HeI23S above 59 eV (TOPbase tail) ===")
-    print("relative increase [%] of the He 2^3 S photoionization rate")
+def he23S_photoion_rate(sigma_fn, PLind, Lrapp, e_lo=E_LOW_SED,
+                        e_hi=E_TOP_SED, npts=40000):
+    """INT sigma(E) N(E) dE over [e_lo, e_hi] (arbitrary normalization;
+    only ratios of this quantity are used)."""
+    Nw = _sed_photon_weight(PLind, Lrapp)
+    E = np.logspace(np.log10(e_lo), np.log10(e_hi), npts)
+    return np.trapz(sigma_fn(E) * Nw(E), E)
+
+
+def print_rate_impact():
+    print("\n=== He 2^3 S photoionization rate: implemented two-wing form "
+          "vs the former broken PL ===")
+    print("relative change [%] of the rate (SED band 4.8-1240 eV)")
     print(f"{'PLind':>7} {'Lx/Leuv=0.1':>13} {'0.3':>9} {'1.0':>9}")
     for P in [-1.0, -1.3, -1.6, -2.0]:
-        row = [rate_increase_above_cutoff(P, L, E_tb, s_tb)
-               for L in (0.1, 0.3, 1.0)]
+        row = []
+        for L in (0.1, 0.3, 1.0):
+            rn = he23S_photoion_rate(sigma_HeI23S, P, L)
+            ro = he23S_photoion_rate(sigma_HeI23S_norcross_broken_pl, P, L)
+            row.append((rn / ro - 1.0) * 100.0)
+        print(f"{P:>7.1f} {row[0]:>12.2f}% {row[1]:>8.2f}% {row[2]:>8.2f}%")
+    print(f"fraction of the implemented rate coming from E > "
+          f"{HE23S_CUTOFF_EV:.1f} eV (the range the former broken PL zeroed):")
+    print(f"{'PLind':>7} {'Lx/Leuv=0.1':>13} {'0.3':>9} {'1.0':>9}")
+    for P in [-1.0, -1.3, -1.6, -2.0]:
+        row = []
+        for L in (0.1, 0.3, 1.0):
+            tot = he23S_photoion_rate(sigma_HeI23S, P, L)
+            tail = he23S_photoion_rate(sigma_HeI23S, P, L,
+                                       e_lo=HE23S_CUTOFF_EV)
+            row.append(tail / tot * 100.0)
         print(f"{P:>7.1f} {row[0]:>12.2f}% {row[1]:>8.2f}% {row[2]:>8.2f}%")
 
 
@@ -731,7 +855,8 @@ def print_rate_impact(E_tb, s_tb):
 # =====================================================================
 def resonance_impact(E_tb, s_tb, PLind=-1.3):
     """Return the relative change of the He 2^3 S rate from using the full
-    TOPbase (resonances) instead of the EXHALE broken-PL bump, as a
+    TOPbase (resonances) instead of the implemented resonance-averaged
+    bump (bridge + wing B), as a
     function of an upper clip on sigma (to expose the spike sensitivity).
     Photon weight N(E) ~ E^(PLind-1); the 4.8-59 eV range is entirely in
     the EUV band so the EUV/X-ray ratio cancels."""
@@ -740,12 +865,12 @@ def resonance_impact(E_tb, s_tb, PLind=-1.3):
     sel = (Es >= 4.80) & (Es <= 59.18)
     E = Es[sel]
     s_TB = ss[sel]
-    s_BPL = sigma_HeI23S(E)
+    s_ex = sigma_HeI23S(E)
 
     def integ(sig):
         return np.trapz(sig * E ** (PLind - 1.0), E)
 
-    bpl = integ(s_BPL)
+    bpl = integ(s_ex)
     out = []
     for cap in [np.inf, 500.0, 200.0, 100.0, 50.0]:
         out.append((cap, integ(np.minimum(s_TB, cap)) / bpl,
@@ -756,41 +881,59 @@ def resonance_impact(E_tb, s_tb, PLind=-1.3):
 def print_resonance_impact(E_tb, s_tb):
     print("\n=== Autoionizing-resonance impact on the He 2^3 S rate (PLind=-1.3) ===")
     print("TOTAL rate ratio TOPbase/EXHALE vs upper clip on sigma (spike test)")
-    print(f"{'cap[Mb]':>10} {'TB/BPL':>9} {'pts>cap':>9}")
+    print(f"{'cap[Mb]':>10} {'TB/EXHALE':>11} {'pts>cap':>9}")
     for cap, ratio, npts in resonance_impact(E_tb, s_tb, PLind=-1.3):
         cs = "inf" if not np.isfinite(cap) else f"{cap:.0f}"
-        print(f"{cs:>10} {ratio:>9.3f} {npts:>9d}")
+        print(f"{cs:>10} {ratio:>11.3f} {npts:>9d}")
     print("=> the apparent ~13% (no clip) collapses to ~1-2% once the 2-4 "
           "under-resolved peaks are removed: the net resonance effect is small.")
 
 
 def print_tables(heI, he23S):
-    E, s_ex, s_ve, ratio = heI
-    print("\n=== He I: EXHALE 2-term vs Verner+1996 (Mb) ===")
-    print(f"{'E[eV]':>8} {'EXHALE':>10} {'Verner':>10} {'ratio':>8}")
+    E, s_def, s_two, s_ve, r_two = heI
+    print("\n=== He I: default (VFKY96) vs the ATES two-term option (Mb) ===")
+    print("default = sigma_HeI with ates_photoion_rate=.false.; it IS the "
+          "VFKY96 reference,")
+    print("so default/Verner = 1 by construction and only the option moves.")
+    print(f"{'E[eV]':>8} {'default':>10} {'2-term':>10} {'2-term/def':>11}")
     for Eq in [24.6, 30, 50, 100, 200, 300, 500]:
-        a = float(sigma_HeI(Eq)); b = float(sigma_verner("HeI", Eq))
-        print(f"{Eq:>8.1f} {a:>10.4f} {b:>10.4f} {a/b:>8.3f}")
+        a = float(sigma_HeI(Eq)); b = float(sigma_HeI_ates_two_term(Eq))
+        print(f"{Eq:>8.1f} {a:>10.4f} {b:>10.4f} {b/a:>11.3f}")
     m = (E >= 24.6) & (E <= 500)
-    print(f"ratio over 24.6-500 eV: min={ratio[m].min():.3f}, "
-          f"max={ratio[m].max():.3f}, median={np.median(ratio[m]):.3f}")
+    print(f"2-term/default over 24.6-500 eV: min={r_two[m].min():.3f}, "
+          f"max={r_two[m].max():.3f}, median={np.median(r_two[m]):.3f}")
+    dm = np.abs(s_def[m] / s_ve[m] - 1.0).max()
+    print(f"max |default/Verner - 1| over the same range: {dm:.2e}")
 
     E2, e_ex, e_pw, r2 = he23S
-    print("\n=== He 2^3 S: EXHALE broken-PL vs p-winds/Norcross (Mb) ===")
+    print("\n=== He 2^3 S: implemented two-wing form vs p-winds/Norcross (Mb) ===")
+    print("(the Norcross table ends at 59.2 eV; above it only the "
+          "implemented curve exists)")
     print(f"{'E[eV]':>8} {'EXHALE':>10} {'p-winds':>10} {'ratio':>8}")
-    for Eq in [4.781, 6, 8, 12, 20, 30, 45, 55, 59]:
+    for Eq in [4.781, 6, 8, 12, 20, 30, 34.7, 45, 45.59, 55, 59, 70, 100,
+               200, 300]:
         a = float(sigma_HeI23S(Eq)); b = float(sigma_pwinds(Eq))
-        print(f"{Eq:>8.2f} {a:>10.4f} {b:>10.4f} {a/b:>8.3f}")
+        if np.isfinite(b):
+            print(f"{Eq:>8.2f} {a:>10.4f} {b:>10.4f} {a/b:>8.3f}")
+        else:
+            print(f"{Eq:>8.2f} {a:>10.4f} {'-':>10} {'-':>8}")
     mm = np.isfinite(r2)
     print(f"ratio over 4.78-59 eV: min={r2[mm].min():.3f}, "
           f"max={r2[mm].max():.3f}, median={np.median(r2[mm]):.3f}")
+    print("\n--- implemented sigma_HeI23S at the tail check points ---")
+    for Eq in (70.0, 100.0):
+        print(f"    sigma_HeI23S({Eq:.0f} eV) = "
+              f"{float(sigma_HeI23S(Eq)):.4f} Mb")
 
 
 if __name__ == "__main__":
+    E_tb, s_tb = load_topbase()
+    # figures of the current implementation
     fig_overview()
     heI = fig_HeI_vs_verner()
-    he23S = fig_HeI23S_vs_pwinds()
-    E_tb, s_tb = fig_HeI23S_topbase()
+    he23S = fig_HeI23S_vs_pwinds(E_tb, s_tb)
+    # derivation record: candidates weighed on the way to the two wings
+    fig_HeI23S_topbase()
     fig_he23S_tail(E_tb, s_tb)
     fig_he23S_unified(E_tb, s_tb)
     fig_he23S_ext(E_tb, s_tb)
@@ -798,7 +941,7 @@ if __name__ == "__main__":
     print_he23S_vfky(E_tb, s_tb)
     print_tables(heI, he23S)
     print_topbase_table(E_tb, s_tb)
-    print_rate_impact(E_tb, s_tb)
+    print_rate_impact()
     print_resonance_impact(E_tb, s_tb)
     print_he23S_tail(E_tb, s_tb)
     print_he23S_ext(E_tb, s_tb)

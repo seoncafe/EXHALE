@@ -45,6 +45,17 @@ T_base -> T0     r_base -> R0     HeH_base -> HeH     Kzz_base -> he_kzz
 > `comp_ntot_bc`/`h2_mixing_ratio_base` in
 > `src/modules/functions/composition.f90`, which uses `q_H2_base` when it is
 > set and falls back to the `q_h2_equilibrium` fit otherwise.]
+>
+> [2026-08-27: `read_base_inp` also accepts the elemental reservoir keys
+> `<El>_H_base` (ten elements), which override `metals.inp` and reach
+> `melem_ab` (`docs/Update_EXHALE.md` section 74). Beside that, the scalar
+> file is no longer the only handoff: a `Lower atmosphere profile:` file
+> (`src/modules/files_IO/lower_atmosphere_profile.f90`) carries the matching
+> level, `T`, densities, `K_zz(p)` and the elemental reservoirs as columns,
+> and when one is in use every scalar `base.inp` key of the EOS-boundary,
+> elemental-reservoir and boundary-constraint categories is refused and the
+> two files must carry one matching `solution_id`. Design:
+> `docs/phase_e_flux_closure_design.md`; changelog sections 76-79.]
 
 Meanwhile EXHALE *does* use a base H2 fraction. `input_read.f90:779-789`:
 
@@ -451,7 +462,7 @@ photochemistry) and `vulcan_work/hd209_wind_response/{eqfit,photo}/` (the A/B).
 
 ### 11.1 The photochemical pre-step
 
-The VULCAN installation at `EXHALE/VULCAN/` was copied to
+The VULCAN installation at `EXHALE_v1.00/VULCAN/` was copied to
 `vulcan_work/hd209_vulcan/` and run there, so the shared tree keeps the
 configuration and the output of the HD 189733 b comparison. The copy's
 `vulcan_cfg.py` differs from that configuration in exactly seven

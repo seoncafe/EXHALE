@@ -267,9 +267,15 @@ $T = p / [(n_{\rm tot} + n_e)k]$. No $T_e$ anywhere in the source. \\
 Thermal conduction &
 Present in all modes, with separate conductivities for neutrals, ions and electrons; dominant
 near the base of a bound thermosphere. &
-Absent. The conduction slot in the energy source vector is identically zero
-(\texttt{Source.f90}, \texttt{S(3) = 0.0}); the only mentions of conduction in the source are
-comments recording that it is deferred. \\
+Available but off by default. The conduction slot in the hydrodynamic source vector is
+identically zero (\texttt{Source.f90}, \texttt{S(3) = 0.0}); conduction and viscosity are
+instead an operator-split Crank--Nicolson step
+(\texttt{viscous\_conduction.f90}, keys \texttt{Conduction:} and \texttt{Viscosity:},
+both default off), applied in the marching loop and evaluated by the same routine in the
+steady residual so that the two agree. One conductivity for the single fluid,
+$\kappa(T)=4.45\times10^{4}\,(T/1000\,\mathrm{K})^{0.7}$ (Watson et al.\ 1981), with
+$\mu(T)$ tied to it by the monatomic Chapman--Enskog relation
+(\texttt{docs/viscosity\_conduction.md}). \\
 
 Photo-heating and heating efficiency &
 Built from first principles; no heating efficiency parameter anywhere, stated explicitly as a
@@ -340,10 +346,13 @@ Species transport &
 Every species is advected and diffused; molecular diffusion coefficients from Banks \& Kockarts
 with an N$_2$ background, plus eddy diffusion. &
 No species advection in the main loop; an advection-corrected re-solve exists only as a
-post-processing step (\texttt{post\_process\_adv.f90}). He/H element-ratio diffusion with binary
-molecular $D$, eddy $\Kzz$, ambipolar-corrected settling (on by default within the option) and
-optional thermal diffusion (\texttt{species\_diffusion.f90}); each metal may diffuse
-independently. The whole diffusion option is off by default, and there is no eddy diffusion of the
+post-processing step (\texttt{post\_process\_adv.f90}). Binary H/He element transport of the
+helium MASS FRACTION $X=\rho_{\rm He}/\rho$ with molecular $D_{12}$, eddy $\Kzz$,
+ambipolar-corrected settling (on by default within the option), the molecular-carrier
+term $-d\ln\psi/dr$ and optional thermal diffusion
+(\texttt{binary\_element\_diffusion.f90}); each metal may additionally diffuse as a trace
+species against the hydrogen carriers (\texttt{He\_metal\_diffusion}, off by default).
+The whole diffusion option is off by default, and there is no eddy diffusion of the
 bulk gas. \\
 
 Radiative-transfer geometry &
@@ -373,7 +382,9 @@ near the top. \\
 Free parameters &
 Eddy $\Kzz$, described by the authors as the only real free parameter (2019); the Joule total and
 its electric field; the H$_3^+$ non-LTE factor (2026). &
-Eddy $\Kzz$ when diffusion is enabled, and the day--night redistribution factor $\xi$. \\
+Eddy $\Kzz$ when diffusion is enabled (the scalar \texttt{He\_Kzz}, default 0, or a
+$\Kzz(p)$ column of a \texttt{Lower atmosphere profile}), and the day--night redistribution
+factor $\xi$. \\
 
 Outputs and observables &
 Thermal, chemical and ionization structure; exobase state; Jeans or hydrodynamic mass-loss rate;

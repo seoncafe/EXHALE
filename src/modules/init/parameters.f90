@@ -150,8 +150,18 @@
       ! i.e. pure molecular diffusion: an eddy term is a property of the
       ! atmosphere being modelled, so it is stated, not inherited.  Taylor et
       ! al. (2025) use K_zz = 1e5 m^2/s = 1e9 cm^2/s.  Runtime key
-      ! "He_Kzz: <value>"; base.inp may override it.
+      ! "He_Kzz: <value>"; base.inp may override it (Kzz_base).  A run that
+      ! carries a lower-atmosphere profile takes K_zz from the profile
+      ! instead and this scalar is inert.
       real*8  :: he_kzz = 0.0d0
+      ! Eddy diffusion coefficient of every cell [cm^2/s].  This is the array
+      ! the element-diffusion operator reads; he_kzz is only the constant a
+      ! run states when it has no profile.  Filled once the radial grid
+      ! exists (eddy_diffusion_on_grid, lower_atmosphere_profile.f90): from
+      ! the interpolated "Kzz" column of a lower-atmosphere profile when one
+      ! is given, and from he_kzz in every cell otherwise.  The uniform case
+      ! is exactly the old scalar: 0.5*(a+a) = a in IEEE double.
+      real*8, dimension(:), allocatable :: kzz_cell
       ! P2b: ambipolar-corrected effective settling mass (ionized wind lifts
       !  He ions, reducing settling).  Default .true.; .false. = neutral Dm=3.
       logical :: he_ambipolar = .true.
@@ -672,6 +682,14 @@
                                           !  element order (iel_*); set in
                                           !  input_read so metal code can index
                                           !  abundance by element, not by name
+      ! True for an element whose reservoir the lower-atmosphere handoff
+      ! states itself -- a "<El>_H_base" key of base.inp, or an elemental
+      ! ratio of the file named by "Lower atmosphere profile:". Set in
+      ! set_element_abundance, the single door both handoffs go through, and
+      ! false for an abundance that comes from metals.inp alone. load_IC uses
+      ! it to decide whether a restart column may be renormalized onto the
+      ! reservoir the handoff states (see load_IC).
+      logical, allocatable :: melem_from_handoff(:)
       real*8  ::  rho_bc      ! Adimensional number density at origin
       real*8  ::  a_tau       ! Rate correction coefficient
       real*8  ::  PLind       ! Index of spectral power law
@@ -836,8 +854,12 @@
       allocate(Hpe_arr(1-Ng:N+Ng), Hdx_arr(1-Ng:N+Ng))
       allocate(gph_ground_HI(1-Ng:N+Ng), cion_HI(1-Ng:N+Ng))
       allocate(arec_HII(1-Ng:N+Ng))
+      allocate(kzz_cell(1-Ng:N+Ng))
 
       opa_pf        = 1.0d0
+      ! Placeholder until eddy_diffusion_on_grid runs (after the grid exists
+      ! and after any base.inp / profile override of he_kzz).
+      kzz_cell      = 0.0d0
       r             = 0.0d0
       r_edg         = 0.0d0
       dr_j          = 0.0d0

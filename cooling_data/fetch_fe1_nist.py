@@ -35,7 +35,7 @@ WL_LO, WL_HI, WL_STEP = 1500.0, 13000.0, 1000.0
 def _get(url, params):
     q = urllib.parse.urlencode(params)
     req = urllib.request.Request(url + "?" + q,
-                                 headers={"User-Agent": "ATES-FeI-cooling/1.0"})
+                                 headers={"User-Agent": "EXHALE-FeI-cooling/1.0"})
     with urllib.request.urlopen(req, timeout=60) as r:
         return r.read().decode("utf-8", "replace")
 

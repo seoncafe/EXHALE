@@ -34,7 +34,9 @@
 
 	ne = 0.0d0
 
-	! Base H/He electrons (bsp 2,4,5; bsp 1 HI, 3 HeI, 6 HeTR are neutral).
+	! Base H/He electrons (bsp 2,4,5; bsp 1 HI and 3 HeI are neutral, and
+	! bsp 6 HeTR is both neutral and an excited level of HeI, already inside
+	! the HeI column -- see bsp_is_excited_level in species_table).
 	call accum(nhii,   dble(bsp_charge(2)))        ! HII   (bsp 2)
 	if (thereis_He) then
 		call accum(nheii,  dble(bsp_charge(4)))     ! HeII  (bsp 4)
@@ -67,31 +69,34 @@
 	
 	! ------------------------------------------------------!
 
-	subroutine calc_ntot(nhi,nhii,nhei,nheii,nheiii,nheiTR,n_tot,nm,nmol)
+	subroutine calc_ntot(nhi,nhii,nhei,nheii,nheiii,n_tot,nm,nmol)
 	! Calculate the total atomic number density.
 	! Every species counts as ONE gas particle, so the base H/He/molecular
 	! contribution is accumulated with unit weight in the canonical bsp order
 	! of species_table; the optional nm adds the metal nuclei (all stages)
 	! when the eos_metals policy is on.  bsp-order accumulation deliberately
 	! fixes the FP add order (a golden re-snapshot decision, section 5.3 Inc 1).
+	! The He 2^3S column is NOT an argument: it is an excited level of He I
+	! (bsp_is_excited_level), so its gas particle is already the He I particle
+	! counted through nhei, and adding it counted the triplet twice.
 
 	integer :: im
 	real*8, dimension(1-Ng:N+Ng), intent(in)  :: nhi,nhii
-	real*8, dimension(1-Ng:N+Ng), intent(in)  :: nhei,nheii,nheiii,nheiTR
+	real*8, dimension(1-Ng:N+Ng), intent(in)  :: nhei,nheii,nheiii
 	real*8, dimension(1-Ng:N+Ng,n_mion), intent(in), optional :: nm
 	real*8, dimension(1-Ng:N+Ng,4), intent(in), optional :: nmol  ! molecular
 	real*8, dimension(1-Ng:N+Ng), intent(out) :: n_tot
 
 	n_tot = 0.0d0
 
-	! Base H/He particles (bsp 1..6), one particle each.
+	! Base H/He particles (bsp 1..5), one particle each; bsp 6 (HeTR) is an
+	! excited level of bsp 3 (HeI) and is already inside it.
 	call accum(nhi)                     ! HI    (bsp 1)
 	call accum(nhii)                    ! HII   (bsp 2)
 	if (thereis_He) then
-		call accum(nhei)                ! HeI   (bsp 3)
+		call accum(nhei)                ! HeI   (bsp 3, He 2^3S included)
 		call accum(nheii)               ! HeII  (bsp 4)
 		call accum(nheiii)              ! HeIII (bsp 5)
-		if (thereis_HeITR) call accum(nheiTR)   ! HeTR (bsp 6)
 	endif
 
 	if (present(nm) .and. eos_include_metals .and. thereis_metals) then
@@ -119,7 +124,7 @@
 
 	! ------------------------------------------------------!
 	
-	subroutine calc_rho(nhi,nhii,nhei,nheii,nheiii,nheiTR,n_out,nm,nmol)
+	subroutine calc_rho(nhi,nhii,nhei,nheii,nheiii,n_out,nm,nmol)
 	! Calculate the total mass density (adimensional).
 	! The base H/He/molecular mass is accumulated in the canonical bsp order
 	! of species_table, each species weighted by bsp_mass [m_H units]; this
@@ -128,24 +133,27 @@
 	! section 5.3 Inc 1).  The optional nm adds the metal mass (melem_A per
 	! nucleus, all stages) when the eos_metals policy is on.  (HeH+ carries
 	! 5 m_H: its He nucleus is NOT in the nhei..nheiii free-He arrays.)
+	! The He 2^3S column is NOT an argument: it is an excited level of He I
+	! (bsp_is_excited_level), so its 4 m_H are already the He I atom's mass
+	! counted through nhei, and adding it put the triplet mass in rho twice.
 
 	integer :: im
 	real*8, dimension(1-Ng:N+Ng), intent(in)  :: nhi,nhii
-	real*8, dimension(1-Ng:N+Ng), intent(in)  :: nhei,nheii,nheiii,nheiTR
+	real*8, dimension(1-Ng:N+Ng), intent(in)  :: nhei,nheii,nheiii
 	real*8, dimension(1-Ng:N+Ng,n_mion), intent(in), optional :: nm
 	real*8, dimension(1-Ng:N+Ng,4), intent(in), optional :: nmol  ! molecular
 	real*8, dimension(1-Ng:N+Ng), intent(out) :: n_out
 
 	n_out = 0.0d0
 
-	! Base H/He mass (bsp 1..6), weighted by bsp_mass.
+	! Base H/He mass (bsp 1..5), weighted by bsp_mass; bsp 6 (HeTR) is an
+	! excited level of bsp 3 (HeI) and is already inside it.
 	call accum(nhi,    bsp_mass(1))     ! HI    (bsp 1)
 	call accum(nhii,   bsp_mass(2))     ! HII   (bsp 2)
 	if (thereis_He) then
-		call accum(nhei,   bsp_mass(3))     ! HeI   (bsp 3)
+		call accum(nhei,   bsp_mass(3))     ! HeI   (bsp 3, He 2^3S included)
 		call accum(nheii,  bsp_mass(4))     ! HeII  (bsp 4)
 		call accum(nheiii, bsp_mass(5))     ! HeIII (bsp 5)
-		if (thereis_HeITR) call accum(nheiTR, bsp_mass(6))   ! HeTR (bsp 6)
 	endif
 
 	if (present(nm) .and. eos_include_metals .and. thereis_metals) then

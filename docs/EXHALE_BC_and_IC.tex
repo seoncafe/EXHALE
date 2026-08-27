@@ -251,6 +251,29 @@ inside it:
   otherwise evaluates at $(p_{\rm base}, T_0)$; \texttt{input\_read}
   echoes which of the two set $n_{\rm tot,bc}$. Rationale:
   \texttt{docs/base\_composition\_handoff\_plan.md}.
+\item The same handoff can move the \emph{reservoirs} these formulas are
+  built from, not only the particle count: \texttt{HeH\_base} sets $Y$,
+  and one \texttt{<El>\_H\_base} key per element (any of the ten symbols
+  of \texttt{species\_table}, e.g.\ \texttt{O\_H\_base}) sets the
+  corresponding $a_X$, overriding \texttt{metals.inp} for that element
+  and turning the metal system on by itself when it is the only nonzero
+  abundance. \texttt{thereis\_metals}, \texttt{melem\_ab} and
+  \texttt{thereis\_lowIP\_metal} are all derived \emph{after} the handoff,
+  so a handoff element enters $\rho_{\rm bc}$, $m_{\rm gas}/{\rm H}$ and
+  $n_{\rm tot,bc}$ exactly as a \texttt{metals.inp} element does.
+\item A lower-atmosphere \emph{profile} (\texttt{Lower atmosphere
+  profile:}, \texttt{lower\_atmosphere\_profile.f90}) states $T_0$, $R_0$,
+  $p_{\rm base}$, $q_{\rm H_2}$, $Y$ and every elemental ratio it carries
+  at its own matching pressure, and is read before \texttt{read\_base\_inp}
+  and applied after it, so nothing scalar can overwrite a profile value.
+  With one in use the EOS-boundary, elemental-reservoir and
+  boundary-constraint keys of \texttt{base.inp} are refused by name. The
+  columns \texttt{n\_tot} and \texttt{rho} of the profile are carried but
+  \emph{not} imposed: the base density stays the $n_0$ of
+  \texttt{input.inp} and $n_{\rm tot,bc}$ still follows from
+  $T_0$, $Y$, $q_{\rm H_2}$ and the elemental ratios through
+  \texttt{comp\_ntot\_bc}, exactly as on the scalar path. Schema:
+  \texttt{docs/input\_schema.md} \S2d.
 \end{itemize}
 
 \subsection{Pressure: dynamically updated to pin the base temperature}
@@ -1067,6 +1090,32 @@ naming both counts when they disagree, so a mismatched
 \texttt{Grid cells:} and a truncated file are reported rather than
 guessed at. There is no interpolation onto a new grid: a restart requires
 an IC written at the same $N$.
+
+\paragraph{2026-08-27: a restart lands on the reservoir the handoff states.}
+A restart file carries the metal densities of the state it was written from.
+When the reservoir itself has moved since --- which is what a flux-closure
+iteration does to the elemental ratios of the lower atmosphere --- the base
+boundary condition would use the new El/H while the loaded column above it
+still held the old one, and the elemental budget
+$n_{\rm El}/n_{\rm H} = ({\rm El/H})_{\rm resolved}$ could not close above the
+first cell. \texttt{load\_IC} therefore rescales the whole column of an element
+\emph{the handoff itself states} by the single factor
+\begin{equation}
+r_{\rm El} \;=\;
+  \frac{({\rm El/H})_{\rm handoff}}{({\rm El/H})_{\rm loaded,\ base\ cell}} ,
+\end{equation}
+the same factor for every ionization stage, so the loaded ionization split and
+the radial shape survive and only the normalization changes; the factor and
+both ratios are printed. ``States'' means the one door
+\texttt{set\_element\_abundance} guards, which the \texttt{<El>\_H\_base} keys
+of \texttt{base.inp} and the elemental ratios of a lower-atmosphere profile
+both go through, so an abundance that came from \texttt{metals.inp} alone --- and
+every restart with no handoff at all --- leaves the loop doing nothing and is
+bit-for-bit the restart the earlier code produced. El/H at the base cell is
+counted in nuclei, the element summed over its stages against the hydrogen
+nuclei (free plus the H bound in H$_2$, H$_2^+$, H$_3^+$ and HeH$^+$). Helium
+keeps its own convention --- the base cells are set to the input He/H while the
+column above may carry a diffused split --- and is not rescaled here.
 
 \section{Summary}
 

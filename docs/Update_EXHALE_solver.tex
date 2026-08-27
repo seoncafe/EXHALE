@@ -348,8 +348,21 @@ upwind coupling cascades it outward (a sawtooth $+$ overshoot spike in $T$).
 
 \paragraph{Guard.} Where the flow is \emph{not} a clean outflow ($v\le0$) the
 advection correction is skipped and the converged equilibrium ionization and
-temperature are kept (gated on \texttt{pp\_metal\_on}; metals-off byte-identical).
-This breaks the upwind cascade at its source. The remaining genuine 1D limitation
+temperature are kept (as first written, gated on \texttt{pp\_metal\_on}, so a
+metals-off run was byte-identical).
+This breaks the upwind cascade at its source.
+\emph{Since generalized:} the validity test in
+\texttt{post\_process\_adv.f90} is now three conditions and none of them is
+gated on \texttt{pp\_metal\_on} --- (i) inflow $v\le0$ on either face,
+(ii) a Damk\"ohler number $\mathrm{Da}=(\Delta r/v)\,\nu_{\rm relax}$ above
+\texttt{Da\_local\_equilibrium}, with $\nu_{\rm relax}$ the \emph{slowest}
+relaxation rate among the species the advection system solves (the He\,$2^3$S
+row, $A_{31}=1.27\times10^{-4}$\,s$^{-1}$, usually sets it; gating on the
+hydrogen rate alone froze the metastable at equilibrium in cells where it is
+in fact advected), and (iii) an equilibrium ion fraction below
+\texttt{xHII\_adv\_min}, where the solver's absolute resolution on $x_{\rm HI}$
+makes the extracted ion density meaningless. Details:
+\texttt{docs/postprocess\_advection\_validity.md}. The remaining genuine 1D limitation
 (the breathing base itself) is represented there by the smooth equilibrium
 solution. \S\ref{sec:task1} makes the same cell-by-cell energy solve robust by
 construction (Brent), removing the spurious-root failure mode entirely.
@@ -604,9 +617,19 @@ every legacy default is byte-identical, regression-gated):
   unconverged Newton state is never accepted as the final answer.
 \end{itemize}
 
-\paragraph{2026-08-15 note.} Two of the items above have been overtaken by
+\paragraph{2026-08-15 note.} Three of the items above have been overtaken by
 later changes.
 \begin{itemize}
+\item \emph{Preconditioned JFNK steady solver.} Two of the five ingredients
+  were replaced on 2026-08-10/11. The diagonal scaling is no longer the
+  global \texttt{build\_scaling} with its $10^{-6}\max_j|\rho v|$ momentum
+  floor but \texttt{cell\_state\_scales} (\texttt{steady\_newton.f90}), which
+  builds every row scale from the cell's own state ($\rho$,
+  $\rho(|v|+c_s)$, $E$). The WENO weights are still frozen for the Newton
+  model (\texttt{weno\_mode = 1/2} around the Jacobian build), but the
+  line-search trials are evaluated with \texttt{weno\_mode = 0}, i.e.\
+  against the true residual the solve is driving to zero; see
+  \texttt{docs/newton\_scaling\_and\_base\_wall.md}~\S\S3 and 10.
 \item \emph{Production wiring.} The hand-off criterion is the flux metric
   $du$, not $\|R\|$. \texttt{EXHALE\_main.f90} hands over once the warm-up
   has flattened the wind to $du < $ \texttt{newton\_du\_switch}, default

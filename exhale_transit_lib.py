@@ -396,7 +396,7 @@ def _line_halfwidth(lam0_A, m_atom_amu, fosc, A21, N_col_cm2, T, v):
     """Return the physical line half-width [m/s].
 
     ``T`` and ``v`` are the temperature and velocity profiles of the run
-    (v in cm/s, as in the ATES output); passing them explicitly keeps the
+    (v in cm/s, as in the EXHALE output); passing them explicitly keeps the
     function pure so it can be tested without the module globals."""
     T_max = float(np.nanmax(T))
     v_max = float(np.nanmax(np.abs(v)))*1.0e-2                  # m/s

@@ -32,7 +32,7 @@
 H\,I, He\,I, He\,II, and the He\,I\,$2^3$S Triplet,\\
 with Benchmarks against Verner+1996 and Norcross 1971}
 \author{Kwang-Il Seon}
-\date{2026-06-30}
+\date{2026-06-30 (updated 2026-08-27)}
 \maketitle
 
 \tableofcontents
@@ -56,14 +56,21 @@ the metastable He\,I\,$2^3$S triplet --- and (ii) benchmarks the two
 \emph{fitted} helium cross sections against independent references:
 
 \begin{itemize}
-\item \textbf{He\,I ground state}: the EXHALE two-term ATES fit
-  (\texttt{sigma\_HeI}) versus the Verner, Ferland, Korista \& Yakovlev
-  (1996; hereafter VFKY96) single-shell analytic fit, over
-  $24.6$--$500\,$eV.
-\item \textbf{He\,I\,$2^3$S}: the EXHALE broken power-law fit
-  (\texttt{sigma\_HeI23S}) versus the tabulation of Norcross (1971) data
-  shipped with the \texttt{p-winds} code, over $4.77$--$60\,$eV.
+\item \textbf{He\,I ground state}: the two-term ATES fit versus the Verner,
+  Ferland, Korista \& Yakovlev (1996; hereafter VFKY96) single-shell analytic
+  fit, over $24.6$--$500\,$eV.
+\item \textbf{He\,I\,$2^3$S}: the Norcross-1971 broken power-law fit versus the
+  tabulation of Norcross (1971) data shipped with the \texttt{p-winds} code,
+  over $4.77$--$60\,$eV.
 \end{itemize}
+
+Both benchmarks were run against the fits EXHALE carried at the time. They are
+what settled the two current defaults, and in both cases the fit being
+benchmarked is the one that was \emph{replaced}: \texttt{sigma\_HeI} now returns
+VFKY96 (\S\ref{sec:hei}) and \texttt{sigma\_HeI23S} the two-VFKY96-wing form
+(\S\ref{sec:he23svfky}). The legacy He\,I fit is still selectable through
+\texttt{ATES\_photoionization\_rate}; the broken power law is retained only as a
+comment block.
 
 All numbers and figures below are produced by the companion script
 \texttt{docs/compare\_photoion\_cross\_sections.py}
@@ -182,51 +189,64 @@ He\,II & 54.42 & 1.720  & $1.369\times10^4$ & 32.88 & 2.963 & 0.0   & $(0,0)$\\
 \section{Overview comparison}\label{sec:overview}
 %=============================================================================
 
-Figure~\ref{fig:overview} shows the four EXHALE-adopted cross sections on
-a common log--log scale. The ordering of thresholds (He\,$2^3$S at
+Figure~\ref{fig:overview} shows the four cross sections \emph{as the code
+evaluates them}: the hydrogenic form for H\,I and He\,II, VFKY96 for the He\,I
+ground state, and the two-wing VFKY96 construction of Eq.~(\ref{eq:he23s}) for
+He\,$2^3$S. The ordering of thresholds (He\,$2^3$S at
 $4.78$, H\,I at $13.6$, He\,I at $24.6$, He\,II at $54.4\,$eV) and the
 peak magnitudes ($\sim$$5$--$8\,\Mb$ near threshold for H\,I, He\,I and
 He\,$2^3$S; $1.6\,\Mb$ for He\,II) are evident. The He\,$2^3$S curve
-displays the characteristic minimum near $35\,$eV and the rise toward
-$45\,$eV inherited from the Norcross data.
+displays the characteristic Cooper minimum at $34.7\,$eV, the bridge rising to
+the resonance-averaged bump at $45.6\,$eV, and --- with no cutoff --- the
+$\sim E^{-3}$ tail of wing~B, which carries it below the He\,II curve by
+$\sim$$100\,$eV.
 
 \begin{figure}[h]
 \centering
 \includegraphics[width=0.82\textwidth]{figures/xsec_overview.pdf}
-\caption{Photoionization cross sections adopted in EXHALE for H\,I, He\,I,
-He\,II and the metastable He\,I\,$2^3$S triplet. Dotted vertical lines
-mark the ionization thresholds.}
+\caption{Photoionization cross sections as implemented in EXHALE for H\,I,
+He\,I, He\,II and the metastable He\,I\,$2^3$S triplet, i.e.\ with
+\texttt{sigma\_HeI} on its VFKY96 default and \texttt{sigma\_HeI23S} in the
+two-wing form of Eq.~(\ref{eq:he23s}). Dotted vertical lines mark the
+ionization thresholds.}
 \label{fig:overview}
 \end{figure}
 
 %=============================================================================
-\section{He\,I ground state: EXHALE two-term fit vs Verner+1996}
+\section{He\,I ground state: the legacy two-term fit vs Verner+1996}
 \label{sec:hei}
 %=============================================================================
 
-Figure~\ref{fig:hei} and Table~\ref{tab:hei} compare the EXHALE two-term
-fit with the VFKY96 He\,I cross section over $24.6$--$500\,$eV. The two
-agree to within $\sim$$14\%$ everywhere: the fits match within a few
+This comparison is what settled the default. Because the default
+\texttt{sigma\_HeI} \emph{is} the VFKY96 fit, Figure~\ref{fig:hei} and
+Table~\ref{tab:hei} are best read as what switching
+\texttt{ATES\_photoionization\_rate: True} on does: the default lies exactly on
+the VFKY96 reference by construction (the ratio panel is flat at unity), and
+the two-term fit is the curve that moves. The two agree to within
+$\sim$$14\%$ everywhere over $24.6$--$500\,$eV: they match within a few
 percent at threshold and at high energy, with the two-term form running
-$\sim$$12$--$14\%$ \emph{below} VFKY96 in the $50$--$100\,$eV range
+$\sim$$12$--$14\%$ \emph{below} the default in the $50$--$100\,$eV range
 (the band that dominates He photoionization in a typical XUV field). The
 median ratio over the interval is $0.94$.
 
 \begin{table}[h]
 \centering
-\caption{He\,I cross section (Mb): EXHALE two-term fit vs Verner+1996.}
+\caption{He\,I cross section (Mb): the default \texttt{sigma\_HeI}
+(Verner+1996) and the legacy ATES two-term fit selected by
+\texttt{ATES\_photoionization\_rate: True}. The default reproduces the
+VFKY96 reference to machine precision, so only the option's ratio is listed.}
 \label{tab:hei}
 \begin{tabular}{rrrr}
 \toprule
-$E$ [eV] & EXHALE & Verner & ratio\\
+$E$ [eV] & default (VFKY96) & 2-term option & 2-term/default\\
 \midrule
-24.6 & 7.821 & 7.430 & 1.053\\
-30   & 5.244 & 5.361 & 0.978\\
-50   & 1.779 & 2.022 & 0.880\\
-100  & 0.347 & 0.394 & 0.880\\
-200  & 0.054 & 0.055 & 0.973\\
-300  & 0.0165& 0.0160& 1.028\\
-500  & 0.0035& 0.0032& 1.089\\
+24.6 & 7.430 & 7.821 & 1.053\\
+30   & 5.361 & 5.244 & 0.978\\
+50   & 2.022 & 1.779 & 0.880\\
+100  & 0.394 & 0.347 & 0.880\\
+200  & 0.055 & 0.054 & 0.973\\
+300  & 0.0160& 0.0165& 1.028\\
+500  & 0.0032& 0.0035& 1.089\\
 \midrule
 \multicolumn{4}{l}{ratio over $24.6$--$500\,$eV: min $0.861$, max $1.089$, median $0.939$}\\
 \bottomrule
@@ -236,62 +256,92 @@ $E$ [eV] & EXHALE & Verner & ratio\\
 \begin{figure}[h]
 \centering
 \includegraphics[width=0.72\textwidth]{figures/xsec_HeI_vs_Verner.pdf}
-\caption{He\,I ground-state photoionization cross section: EXHALE two-term
-fit (\texttt{sigma\_HeI}, green) vs the Verner+1996 single-shell fit
-(black dashed). Bottom panel: ratio EXHALE/Verner.}
+\caption{He\,I ground-state photoionization cross section. The VFKY96
+reference (black dashed) is what \texttt{sigma\_HeI} returns by default (green,
+lying on it by construction); the legacy ATES two-term fit (orange dash-dot) is
+what \texttt{ATES\_photoionization\_rate: True} substitutes. Bottom panel:
+both ratios to VFKY96, so the flat green line is the default and the orange
+curve is the option's $\pm14\%$ excursion.}
 \label{fig:hei}
 \end{figure}
 
 Because both are accurate fits to the same underlying He\,I data, the
 $\le 14\%$ difference is well within the photoionization-rate uncertainty
-budget. Replacing \texttt{sigma\_HeI} with the VFKY96 He\,I parameters of
-Table~\ref{tab:vfky} (a one-line wrapper around the existing
-\texttt{sigma\_VFKY96}) would unify He\,I with the metal and He\,II
-treatment and slightly improve the $50$--$100\,$eV band, but is not
-required for the ionization balance.
+budget, so this was never a correctness question. It was nevertheless acted on:
+\texttt{sigma\_HeI} now calls \texttt{sigma\_VFKY96} with the He\,I parameters
+of Table~\ref{tab:vfky}, which unifies He\,I with the metal and He\,II
+treatment and slightly improves the $50$--$100\,$eV band. The change moves the
+He\,10830 depth by $\sim$$3\%$ (\texttt{docs/Update\_EXHALE} \S22).
 
 %=============================================================================
-\section{He\,I\,$2^3$S: EXHALE broken power law vs p-winds/Norcross}
+\section{He\,I\,$2^3$S: the implemented cross section vs p-winds/Norcross}
 \label{sec:he23s}
 %=============================================================================
+
+\textbf{Status of this section.} Figure~\ref{fig:he23s} and
+Tables~\ref{tab:he23s}--\ref{tab:resonance} show the \emph{implemented}
+\texttt{sigma\_HeI23S}, i.e.\ the two-VFKY96-wings-plus-bridge construction of
+\S\ref{sec:he23svfky} and Eq.~(\ref{eq:he23s}). The subsections
+\S\S\ref{sec:topbase} and \ref{sec:tail}--\ref{sec:extend} are the
+\emph{derivation record}: their figures deliberately keep plotting the
+\emph{former} Norcross-1971 five-segment broken power law and the candidate
+extensions weighed against it, none of which was adopted --- the code took the
+two-wing form of \S\ref{sec:he23svfky} instead, and the broken power law
+survives only as a comment block in \texttt{cross\_sec.f90}. Where those
+subsections say ``broken PL'', they mean that former form, not what the code
+now evaluates.
 
 The \texttt{p-winds} code (dos Santos et al.\ 2022) ships the He\,$2^3$S
 photoionization cross section as a 23-point table of Norcross (1971),
 converting a differential oscillator strength $df/d\epsilon$ to a cross
 section via $\sig[\mathrm{cm}^2] = 8.0670\times10^{-18}\,(df/d\epsilon)$.
-Crucially, the EXHALE broken-power-law breakpoints coincide \emph{exactly}
-with the Norcross wavelength nodes, confirming that \texttt{sigma\_HeI23S}
-is a fit to this same data set.
+Crucially, the node energies $E_3$, $E_4$ of Eq.~(\ref{eq:he23s}), inherited
+from the breakpoints of the former broken power law, coincide \emph{exactly}
+with Norcross wavelengths, confirming that \texttt{sigma\_HeI23S} descends
+from a fit to this same data set.
 
-Figure~\ref{fig:he23s} overlays the EXHALE curve, the tabulated Norcross
+Figure~\ref{fig:he23s} overlays the implemented curve, the tabulated Norcross
 points, and their log--log interpolation; Table~\ref{tab:he23s} lists the
-comparison. The agreement is excellent: the broken power law reproduces
-the table to within $\sim$$10\%$ across $4.78$--$59\,$eV, with a median
-ratio of $1.00$. The only localized deviation ($\sim$$15\%$) occurs right
-at the Cooper minimum near $30\,$eV, where the cross section is smallest
-and therefore least important for the rate.
+comparison. The agreement is good: the two wings reproduce the table to within
+$\sim$$10\%$ across $4.78$--$59\,$eV, with a median ratio of $1.00$. The one
+localized deviation ($\sim$$15\%$) sits at the Cooper minimum, $34.7\,$eV,
+where the cross section is smallest and therefore least important for the rate.
+Above $59.2\,$eV the Norcross table simply ends, so the upper panel of
+Fig.~\ref{fig:he23s} carries the TOPbase background (\S\ref{sec:topbase}) as
+the reference instead; wing~B follows it to a few percent out to $320\,$eV
+(Table~\ref{tab:he23s}, last rows).
 
 \begin{table}[h]
 \centering
-\caption{He\,I\,$2^3$S cross section (Mb): EXHALE broken PL vs
-p-winds/Norcross. (At threshold $4.78\,$eV the table interpolation is
-undefined; EXHALE gives $4.867\,\Mb$, matching the Norcross threshold
-value $8.0670\times0.605 = 4.881\,\Mb$.)}
+\caption{He\,I\,$2^3$S cross section (Mb): the implemented two-wing
+\texttt{sigma\_HeI23S} vs p-winds/Norcross. (At threshold $4.78\,$eV the table
+interpolation is undefined; the implemented form gives $4.683\,\Mb$ against the
+Norcross threshold value $8.0670\times0.605 = 4.881\,\Mb$. Above $59.2\,$eV the
+Norcross table ends; the last rows are the wing-B tail, against which the
+TOPbase table gives $0.301$, $0.0369$ and $0.0111\,\Mb$ at $100$, $200$ and
+$300\,$eV, and the TOPbase power-law fit of \S\ref{sec:tail} gives
+$0.858\,\Mb$ at $70\,$eV.)}
 \label{tab:he23s}
 \begin{tabular}{rrrr}
 \toprule
 $E$ [eV] & EXHALE & p-winds & ratio\\
 \midrule
-6   & 4.046 & 4.092 & 0.989\\
-8   & 3.006 & 3.110 & 0.966\\
-12  & 1.465 & 1.463 & 1.002\\
-20  & 0.593 & 0.546 & 1.085\\
-30  & 0.289 & 0.277 & 1.042\\
-45  & 2.382 & 2.442 & 0.975\\
-55  & 1.517 & 1.516 & 1.001\\
-59  & 1.226 & 1.251 & 0.980\\
+6    & 4.130 & 4.092 & 1.009\\
+8    & 2.966 & 3.110 & 0.953\\
+12   & 1.466 & 1.463 & 1.002\\
+20   & 0.594 & 0.546 & 1.086\\
+30   & 0.289 & 0.277 & 1.042\\
+34.7 & 0.222 & 0.262 & 0.848\\
+45   & 2.286 & 2.442 & 0.936\\
+55   & 1.650 & 1.515 & 1.089\\
+59   & 1.375 & 1.251 & 1.099\\
 \midrule
-\multicolumn{4}{l}{ratio over $4.78$--$59\,$eV: min $0.853$, max $1.095$, median $1.000$}\\
+70   & 0.855 & --- & ---\\
+100  & 0.294 & --- & ---\\
+200  & 0.0371& --- & ---\\
+300  & 0.0110& --- & ---\\
+\midrule
+\multicolumn{4}{l}{ratio over $4.78$--$59\,$eV: min $0.849$, max $1.100$, median $0.999$}\\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -299,10 +349,12 @@ $E$ [eV] & EXHALE & p-winds & ratio\\
 \begin{figure}[h]
 \centering
 \includegraphics[width=0.72\textwidth]{figures/xsec_HeI23S_vs_pwinds.pdf}
-\caption{He\,I\,$2^3$S photoionization cross section: EXHALE broken power
-law (\texttt{sigma\_HeI23S}, red) vs the p-winds log--log interpolation
-(blue dashed) of the Norcross (1971) table (black points). Bottom panel:
-ratio EXHALE/p-winds.}
+\caption{He\,I\,$2^3$S photoionization cross section as implemented
+(\texttt{sigma\_HeI23S}, two VFKY96 wings joined by a bridge; red) against the
+p-winds log--log interpolation (blue dashed) of the Norcross (1971) table
+(black points), with the TOPbase background (gray) as the reference above
+$59.2\,$eV where the Norcross table ends (dotted line). Bottom panel: ratio
+EXHALE/p-winds over the range the table spans.}
 \label{fig:he23s}
 \end{figure}
 
@@ -332,37 +384,44 @@ background.
 Figure~\ref{fig:topbase}(a) shows the full range with the resonance
 structure; panel~(b) zooms into the smooth near-threshold region
 ($4.6$--$25\,$eV). In that smooth region the three independent
-descriptions agree to within $\sim$$8\%$ (Table~\ref{tab:topbase}):
-EXHALE/TOPbase has min $0.92$, max $1.07$, median $1.00$ over
-$5$--$20\,$eV. This confirms that the EXHALE broken power law --- and the
-Norcross data it is fit to --- reproduces the OP R-matrix background where
+descriptions agree to within $\sim$$10\%$ (Table~\ref{tab:topbase}, which
+lists the \emph{implemented} wing~A): EXHALE/TOPbase has min $0.91$ (at the
+$5\,$eV threshold edge, where the OP threshold offset dominates), max $1.04$,
+median $1.00$ over $5$--$20\,$eV. This confirms that wing~A --- and the
+Norcross data it descends from --- reproduces the OP R-matrix background where
 it matters for the He\,$2^3$S population.
 
-Two caveats remain for completeness: (a) EXHALE sets
+Two caveats applied to the former broken power law: (a) it set
 $\sig_{\rm He\,2^3S}=0$ above $59.2\,$eV, whereas TOPbase shows a smooth
 $\sim$$E^{-3}$ tail continuing to several hundred eV (small in
-magnitude, $\lesssim0.1\,\Mb$); (b) the broken-power-law ``bump'' near
+magnitude, $\lesssim0.1\,\Mb$) --- wing~B of the implemented form supplies that
+tail, and reproduces TOPbase there to a few percent
+($0.855\,\Mb$ at $70\,$eV against $0.858$, and $0.294\,\Mb$ at $100\,$eV);
+(b) its ``bump'' near
 $45\,$eV is a smooth stand-in for the resonance complex and should not be
-read as a true cross section at any single energy there.
+read as a true cross section at any single energy there --- a caveat the
+implemented bridge and wing~B inherit, since they are resonance-averaged in
+the same sense.
 
 \begin{table}[h]
 \centering
 \caption{He\,I\,$2^3$S cross section (Mb) in the smooth near-threshold
-region: EXHALE vs Norcross/p-winds vs TOPbase.}
+region: the implemented \texttt{sigma\_HeI23S} (wing~A there) vs
+Norcross/p-winds vs TOPbase.}
 \label{tab:topbase}
 \begin{tabular}{rrrrrr}
 \toprule
 $E$ [eV] & EXHALE & p-winds & TOPbase & EX/TB & PW/TB\\
 \midrule
-5.0  & 4.693 & 4.671 & 5.081 & 0.924 & 0.919\\
-6.0  & 4.046 & 4.092 & 4.231 & 0.956 & 0.967\\
-8.0  & 3.006 & 3.110 & 2.866 & 1.049 & 1.085\\
-10.0 & 2.024 & 2.069 & 2.025 & 1.000 & 1.022\\
-12.0 & 1.465 & 1.463 & 1.488 & 0.985 & 0.983\\
-16.0 & 0.880 & 0.872 & 0.877 & 1.004 & 0.994\\
-20.0 & 0.593 & 0.546 & 0.574 & 1.033 & 0.952\\
+5.0  & 4.605 & 4.671 & 5.081 & 0.906 & 0.919\\
+6.0  & 4.130 & 4.092 & 4.231 & 0.976 & 0.967\\
+8.0  & 2.966 & 3.110 & 2.866 & 1.035 & 1.085\\
+10.0 & 2.043 & 2.069 & 2.025 & 1.009 & 1.022\\
+12.0 & 1.466 & 1.463 & 1.488 & 0.985 & 0.983\\
+16.0 & 0.877 & 0.872 & 0.877 & 1.000 & 0.994\\
+20.0 & 0.594 & 0.546 & 0.574 & 1.034 & 0.952\\
 \midrule
-\multicolumn{6}{l}{EXHALE/TOPbase over $5$--$20\,$eV: min $0.924$, max $1.066$, median $0.999$}\\
+\multicolumn{6}{l}{EXHALE/TOPbase over $5$--$20\,$eV: min $0.906$, max $1.035$, median $1.002$}\\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -370,16 +429,19 @@ $E$ [eV] & EXHALE & p-winds & TOPbase & EX/TB & PW/TB\\
 \begin{figure}[h]
 \centering
 \includegraphics[width=0.98\textwidth]{figures/xsec_HeI23S_topbase.pdf}
-\caption{He\,I\,$2^3$S photoionization: EXHALE broken power law (red),
-Norcross/p-winds table (blue points), and TOPbase/OP (gray).
+\caption{\textbf{Derivation record.} He\,I\,$2^3$S photoionization: the
+\emph{former} broken power law (red), Norcross/p-winds table (blue points), and
+TOPbase/OP (gray). This is the cross-check that motivated reshaping
+\texttt{sigma\_HeI23S}; the red curve is the starting point, not what the code
+now evaluates (Fig.~\ref{fig:he23s}).
 \textbf{(a)} Full range: TOPbase resolves autoionizing resonances above
 $\sim$$35\,$eV (peaks to $\sim$$3200\,\Mb$) that the smooth fits average
-over; EXHALE is truncated to zero above $59\,$eV. \textbf{(b)} Smooth
-near-threshold region: the three agree to within $\sim$$8\%$.}
+over; the broken power law is truncated to zero above $59\,$eV. \textbf{(b)} Smooth
+near-threshold region: the three agree to within $\sim$$8\%$ there.}
 \label{fig:topbase}
 \end{figure}
 
-\subsection{Does the $>59\,$eV truncation matter for the rate?}
+\subsection{Did the $>59\,$eV truncation matter for the rate?}
 \label{sec:rateimpact}
 
 The relevant quantity for the He\,$2^3$S population (and hence He\,10830)
@@ -394,15 +456,21 @@ steeply, the integrand peaks at the threshold; the rate is dominated by
 the near-threshold UV ($\sim$$4.8$--$15\,$eV), where $\sig$ is largest
 ($1$--$5\,\Mb$) and photons are most numerous.
 
-Table~\ref{tab:rateimpact} gives the relative increase of $\Gamma_{2^3S}$
-when $\sig_{2^3S}$ is extended above $59.18\,$eV with the TOPbase tail
-(integrated to $323\,$eV). The effect is only $0.1$--$1.2\%$ across
-realistic spectral indices ($\mathrm{PLind}=-1$ to $-2$) and X-ray/EUV
+Table~\ref{tab:rateimpact} answers this directly with the implemented cross
+section. Its upper block is the net change of $\Gamma_{2^3S}$ in going from the
+former broken power law to Eq.~(\ref{eq:he23s}), integrated over the whole SED
+band $4.8$--$1240\,$eV; its lower block isolates the share of the implemented
+rate that comes from $E>59.2\,$eV, the range the broken power law set to zero.
+The two blocks agree to a few hundredths of a percent, which is the statement
+that the $\sim$$4\%$ reshaping below the bump very nearly cancels in the rate
+and the tail is the whole of the change. The effect is only $0.1$--$1.2\%$
+across realistic spectral indices ($\mathrm{PLind}=-1$ to $-2$) and X-ray/EUV
 ratios; for the EUV slopes typical of cool stars
 ($\mathrm{PLind}\simeq-1.3$ to $-1.6$) it is $0.3$--$0.6\%$. This is far
 below the $\sim$$10\%$ uncertainty of the cross-section fit itself
-(\S\ref{sec:he23s}) and of the composition/SED. The $35$--$59\,$eV
-resonance ``bump'' likewise carries only $\sim$$2\%$ of the current rate.
+(\S\ref{sec:he23s}) and of the composition/SED. The $34.7$--$59.2\,$eV
+resonance ``bump'' likewise carries only $\sim$$2\%$ of the rate at
+$\mathrm{PLind}=-1.3$ ($3.3\%$ at $-1.0$, $0.5\%$ at $-2.0$).
 
 Moreover, these are \emph{upper bounds}: the power-law SED extrapolates
 the EUV slope down to $4.8\,$eV, whereas a real star has a much larger
@@ -411,24 +479,34 @@ near-threshold region dominates even more and the $>59\,$eV contribution
 shrinks further. (Heating is also unaffected: the $2^3S$ number density
 is negligible compared with the H/He ground states, so its
 photoionization deposits negligible energy regardless of the high-energy
-tail.) We therefore retain the $59\,$eV cutoff; extending it is a
-cosmetic, sub-percent refinement.
+tail.) Removing the cutoff was therefore a cosmetic, sub-percent refinement, which is
+why it could be folded into the reshaping of \S\ref{sec:he23svfky} rather than
+being worth a change of its own.
 
 \begin{table}[h]
 \centering
-\caption{Relative increase (\%) of the He\,$2^3$S photoionization rate
-when $\sig_{2^3S}$ is extended above $59\,$eV with the TOPbase tail, for
-an EXHALE power-law SED of index PLind and X-ray/EUV luminosity ratio
-$L_{\rm X}/L_{\rm EUV}$.}
+\caption{He\,$2^3$S photoionization rate for an EXHALE power-law SED of index
+PLind and X-ray/EUV luminosity ratio $L_{\rm X}/L_{\rm EUV}$. \emph{Upper
+block:} relative change (\%) of the rate from the former broken power law to
+the implemented Eq.~(\ref{eq:he23s}), integrated over $4.8$--$1240\,$eV.
+\emph{Lower block:} share (\%) of the implemented rate carried by $E>59.2\,$eV,
+the range the broken power law truncated to zero.}
 \label{tab:rateimpact}
 \begin{tabular}{rrrr}
 \toprule
 PLind & $L_{\rm X}/L_{\rm EUV}=0.1$ & $0.3$ & $1.0$\\
 \midrule
-$-1.0$ & 1.13\% & 1.15\% & 1.21\%\\
-$-1.3$ & 0.57\% & 0.59\% & 0.65\%\\
-$-1.6$ & 0.29\% & 0.30\% & 0.36\%\\
-$-2.0$ & 0.12\% & 0.13\% & 0.19\%\\
+\multicolumn{4}{l}{\emph{implemented vs former broken power law}}\\
+$-1.0$ & 1.16\% & 1.17\% & 1.24\%\\
+$-1.3$ & 0.55\% & 0.57\% & 0.63\%\\
+$-1.6$ & 0.24\% & 0.25\% & 0.31\%\\
+$-2.0$ & 0.04\% & 0.05\% & 0.11\%\\
+\midrule
+\multicolumn{4}{l}{\emph{share of the implemented rate from $E>59.2\,$eV}}\\
+$-1.0$ & 1.16\% & 1.17\% & 1.24\%\\
+$-1.3$ & 0.59\% & 0.61\% & 0.66\%\\
+$-1.6$ & 0.30\% & 0.31\% & 0.37\%\\
+$-2.0$ & 0.12\% & 0.14\% & 0.19\%\\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -439,9 +517,11 @@ $-2.0$ & 0.12\% & 0.13\% & 0.19\%\\
 Between $\sim$$40$ and $55\,$eV, TOPbase shows a dense forest of
 autoionizing resonances (doubly-excited states converging on the
 He\,II\,$n=2$ threshold at $65.4\,$eV), with peaks reaching
-$\sig\simeq3223\,\Mb$, whereas the EXHALE broken power law represents this
-region by a smooth bump peaking at only $\sim$$2.4\,\Mb$
-(Fig.~\ref{fig:topbase}a). It is tempting to ask whether the resonances,
+$\sig\simeq3223\,\Mb$, whereas \texttt{sigma\_HeI23S} represents this
+region by a smooth, resonance-averaged bump peaking at only
+$\sim$$2.6\,\Mb$ (Fig.~\ref{fig:topbase}a shows the former broken power
+law, whose bump peaked at $\sim$$2.4\,\Mb$; the numbers below use the
+implemented form). It is tempting to ask whether the resonances,
 being so tall, substantially raise the He\,$2^3$S photoionization rate.
 
 \textbf{They do not} --- but the analysis requires care, because
@@ -449,31 +529,32 @@ being so tall, substantially raise the He\,$2^3$S photoionization rate.
 both cross sections on the \emph{same} native TOPbase energy grid (so the
 quadrature is identical) gives the total-rate ratio TOPbase/EXHALE in
 Table~\ref{tab:resonance}. With no clipping the resonances appear to raise
-the rate by $\sim$$13\%$ (at $\mathrm{PLind}=-1.3$); but this increase is
+the rate by $\sim$$14\%$ (at $\mathrm{PLind}=-1.3$); but this increase is
 produced almost entirely by the $2$--$4$ tallest grid points. The
 narrowest resonances ($\Delta E\sim0.01\,$eV) are sampled by only one or
 two points, so the trapezoidal rule assigns them a triangular area fixed
 by the arbitrary mesh spacing rather than by the physical Lorentzian
 width. Clipping $\sig$ at $\gtrsim100\,\Mb$ removes just these few
-unresolved spikes and the ratio collapses to $0.99$--$1.02$: \textbf{the
-robust net effect of the resonances on the rate is only $\sim$$1$--$2\%$.}
+unresolved spikes and the ratio collapses to $0.99$--$1.00$: \textbf{the
+robust net effect of the resonances on the rate is below $1\%$.}
 
 \begin{table}[h]
 \centering
 \caption{Convergence/spike test of the resonance contribution. Total
-He\,$2^3$S rate ratio TOPbase/EXHALE ($\mathrm{PLind}=-1.3$), both
-integrated on the same native grid, as the TOPbase cross section is
-clipped at an upper value; ``pts$>$cap'' counts the grid points removed.}
+He\,$2^3$S rate ratio TOPbase/EXHALE ($\mathrm{PLind}=-1.3$; EXHALE is the
+implemented Eq.~\ref{eq:he23s}), both integrated on the same native grid, as
+the TOPbase cross section is clipped at an upper value; ``pts$>$cap'' counts
+the grid points removed.}
 \label{tab:resonance}
 \begin{tabular}{rrr}
 \toprule
 $\sig$ clip [Mb] & TOPbase/EXHALE & pts $>$ cap\\
 \midrule
-none (raw) & 1.134 & 0\\
-500 & 1.024 & 2\\
-200 & 1.001 & 2\\
-100 & 0.993 & 4\\
-50  & 0.989 & 7\\
+none (raw) & 1.137 & 0\\
+500 & 1.026 & 2\\
+200 & 1.003 & 2\\
+100 & 0.996 & 4\\
+50  & 0.992 & 7\\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -483,8 +564,9 @@ tall, they are extremely narrow and therefore intercept little photon
 flux. The resonance-\emph{averaged} cross section
 $\langle\sig\rangle = \sig_{\rm bg} + \sum_i (\text{resonance area})_i/\Delta E$
 sits only modestly above the smooth background, which the few-Mb
-Norcross/EXHALE values already approximate. The net resonance effect
-($\sim$$1$--$2\%$) is comparable to the $>59\,$eV tail
+Norcross/EXHALE values already approximate (the bridge and wing~B of
+Eq.~\ref{eq:he23s} are exactly such a resonance-averaged representation). The net resonance effect
+($<1\%$) is comparable to the $>59\,$eV tail
 (\S\ref{sec:rateimpact}) and well below the $\sim$$10\%$ fit and
 composition/SED uncertainties, so it does not change the He\,10830
 conclusions.
@@ -499,7 +581,12 @@ illustrates.
 \subsection{A smooth high-energy extension ($E>59\,$eV)}
 \label{sec:tail}
 
-Although the $>59\,$eV truncation is dynamically harmless
+\textbf{Derivation record.} This subsection and the two that follow record the
+candidates weighed for removing the $59\,$eV cutoff. Their figures keep
+plotting those candidates and the former broken power law; the adopted form is
+\S\ref{sec:he23svfky}.
+
+Although the $>59\,$eV truncation was dynamically harmless
 (\S\ref{sec:rateimpact}), a smooth analytic extension is trivial to
 provide and removes the (cosmetic) hard cutoff. Above the He\,II\,$n=2$
 resonance limit ($E\gtrsim66\,$eV) the TOPbase cross section is smooth and
@@ -517,25 +604,31 @@ background by construction: it is fit only to points above the $n=2$
 resonance limit and deliberately ignores the $40$--$55\,$eV resonance
 forest (\S\ref{sec:resonance}).
 
-To splice it into \texttt{sigma\_HeI23S}, replace the ``zero above $x_5$''
-branch with one more log-linear segment of slope $-2.99$. Two variants:
+This is also the number the implemented wing~B reproduces: it returns
+$0.294\,\Mb$ at $100\,$eV, so the boxed normalization is what the code now
+delivers there. Two variants of splicing it onto the former broken power law
+were weighed at the time --- replace the ``zero above $x_5$'' branch with one
+more log-linear segment of slope $-2.99$:
 (i) \emph{data-matched} --- use the boxed normalization, which reproduces
 TOPbase to $5\%$ but sits $\sim$$16\%$ above the broken-PL endpoint at the
 $59.2\,$eV junction (a step at $\sig\sim1.4\,\Mb$, irrelevant to the rate);
 (ii) \emph{continuity-matched} --- anchor at the broken-PL value
 $\sig(59.2)=1.21\,\Mb$, i.e.\ $\sig=1.21\,(E/59.2)^{-2.99}\,\Mb$, which is
-continuous but runs $\sim$$15\%$ below TOPbase. Either is adequate; given
-the $<1\%$ rate impact, the continuity-matched form is the tidier drop-in.
+continuous but runs $\sim$$15\%$ below TOPbase. Either would have been adequate; neither was adopted, because
+\S\ref{sec:he23svfky} replaced the whole construction.
 
 \begin{figure}[h]
 \centering
 \includegraphics[width=0.72\textwidth]{figures/xsec_HeI23S_tail.pdf}
-\caption{Smooth high-energy extension of $\sig_{\rm He\,2^3S}$. The
+\caption{\textbf{Derivation record.} TOPbase tail fit for
+$\sig_{\rm He\,2^3S}$, the input to the candidates of
+\S\S\ref{sec:unified}--\ref{sec:extend}. The
 power-law fit (red) to the resonance-free TOPbase background (blue points,
 $E\ge66\,$eV) follows $\sig\propto E^{-2.99}$ to $\sim$5\% up to
-$320\,$eV. The current EXHALE broken power law (black dashed) rises to a
+$320\,$eV. The former EXHALE broken power law (black dashed) rises to a
 resonance-averaged bump near $45\,$eV and is cut to zero above
-$59.2\,$eV (dotted line).}
+$59.2\,$eV (dotted line); the implemented wing~B follows the red curve
+instead.}
 \label{fig:tail}
 \end{figure}
 
@@ -561,7 +654,7 @@ resonances are deliberately averaged over rather than followed.
 \caption{Node table for the unified He\,$2^3$S photoionization cross
 section (log--log PCHIP interpolation; $\sig=0$ outside the range).}
 \label{tab:unified}
-\small
+\footnotesize
 \begin{tabular}{lrrrrrrrrrrrrrrr}
 \toprule
 $E$ [eV]   & 4.77 & 6 & 8 & 10 & 13.6 & 20 & 30 & 40 & 52 & 63 & 80 & 100 & 150 & 200 & 300\\
@@ -575,7 +668,7 @@ background to within $\sim$$10\%$ across the full range (the residual at
 the very threshold is the $\sim$$0.14\,$eV theoretical-threshold offset,
 \S\ref{sec:topbase}), is $C^1$-continuous by construction, and avoids the
 hard cutoff. Crucially, the He\,$2^3$S photoionization \emph{rate} it
-produces differs from the current broken power law by only $+1.7\%$
+produces differs from the broken power law by only $+1.7\%$
 (PLind $=-1.3$; consistent with \S\ref{sec:rateimpact} and
 \S\ref{sec:resonance}), confirming that the upgrade is a fidelity/
 tidiness improvement rather than a change that moves the He\,10830
@@ -585,11 +678,12 @@ prediction. The $30$--$66\,$eV nodes carry the largest uncertainty
 \begin{figure}[h]
 \centering
 \includegraphics[width=0.82\textwidth]{figures/xsec_HeI23S_unified.pdf}
-\caption{Unified full-range representation (red) of $\sig_{\rm He\,2^3S}$:
+\caption{\textbf{Candidate, not adopted.} Unified full-range representation
+(red) of $\sig_{\rm He\,2^3S}$:
 log--log PCHIP through the node table (black points; Table~\ref{tab:unified})
 following the TOPbase resonance-averaged background (gray, with
 resonances). The Norcross (1971) / p-winds table (green squares) and the
-current EXHALE broken power law (blue dashed; cut to zero above $59\,$eV)
+former EXHALE broken power law (blue dashed; cut to zero above $59\,$eV)
 are overplotted. Bottom: ratio of the unified fit to the TOPbase
 smooth-background points (gray) and to the Norcross points (green); both
 within $\sim$$\pm15\%$, with the larger Norcross scatter at $40$--$55\,$eV
@@ -597,18 +691,18 @@ reflecting its coarse sampling of the resonance region.}
 \label{fig:unified}
 \end{figure}
 
-\textbf{Recommendation.} For a clean, well-connected cross section over
-all energies, adopt the Table~\ref{tab:unified} node set with log--log
-PCHIP in \texttt{sigma\_HeI23S}. It is faithful to the OP R-matrix
-background, smooth everywhere, and changes the rate by $<2\%$. If instead
-only the cutoff is to be removed with minimal code change, the
-continuity-matched power-law tail of \S\ref{sec:tail} suffices --- or,
-better, the minimal-change extension of \S\ref{sec:extend} below.
+\textbf{Not adopted.} This node table was the most faithful of the options
+considered --- smooth everywhere, within $\sim$10\% of the OP R-matrix
+background, $+1.7\%$ in rate --- but it would have introduced an interpolation
+table where every other cross section in \texttt{cross\_sec.f90} is a closed
+form. \S\ref{sec:he23svfky} reaches the same shape analytically and is what the
+code carries; the node table is kept here as the reference the implemented form
+was checked against.
 
-\subsection{Recommended minimal-change extension}\label{sec:extend}
+\subsection{A minimal-change extension of the broken power law}\label{sec:extend}
 
-The tidiest upgrade keeps essentially all of the existing broken power law
-and changes only its \emph{last} segment. The procedure is:
+The tidiest upgrade of the broken power law keeps essentially all of it and
+changes only its \emph{last} segment. The procedure is:
 \begin{enumerate}
 \item Keep the broken power law unchanged up to the resonance-averaged
   bump peak at $x_4$ ($45.6\,$eV; $\sig=2.68\,\Mb$) --- i.e.\ segments
@@ -632,18 +726,20 @@ $0.38$-in-slope change. It reproduces the TOPbase background to
 $\sim$$3\%$ above $70\,$eV and tracks Norcross/p-winds throughout
 (Fig.~\ref{fig:ext}), while changing the He\,$2^3$S photoionization rate
 by only $+0.65\%$ (PLind $=-1.3$) --- the smallest of all the options.
-This is the recommended drop-in: it is a one-line slope change plus a new
-tail branch in \texttt{sigma\_HeI23S}, retains the validated
-threshold-to-bump shape exactly, and removes the unphysical cutoff.
+This was the smallest of the options --- a one-line slope change plus a new
+tail branch --- but it too was superseded: the implemented form of
+\S\ref{sec:he23svfky} lands on the same TOPbase tail
+($0.855\,\Mb$ at $70\,$eV against the $0.858$ this construction was aimed at)
+while replacing the segmented power law with two Verner forms.
 
 \begin{figure}[h]
 \centering
 \includegraphics[width=0.78\textwidth]{figures/xsec_HeI23S_ext.pdf}
-\caption{Recommended minimal-change extension (red): the original broken
-power law up to the $45.6\,$eV bump, a re-aimed last segment (slope
+\caption{\textbf{Candidate, not adopted.} Minimal-change extension (red): the
+former broken power law up to the $45.6\,$eV bump, a re-aimed last segment (slope
 $-3.039\!\to\!-2.658$) reaching the TOPbase fit at $70\,$eV (dotted line),
 and the TOPbase power-law tail above. Norcross/p-winds (green) and TOPbase
-(gray) are overplotted; the original broken power law (blue dashed) cuts
+(gray) are overplotted; the former broken power law (blue dashed) cuts
 to zero at $59\,$eV. The curve is continuous at both joins.}
 \label{fig:ext}
 \end{figure}
@@ -675,7 +771,12 @@ broken power law is retained, commented out, in the code.
 \centering
 \caption{Single-VFKY96 fits to the two smooth parts of He\,$2^3$S (form of
 \S\ref{sec:vfky}; $\sig_0$ in Mb, energies in eV). Each reproduces its
-region to $\sim$4\%.}
+region to $\sim$4\%. These are the parameters coded in
+\texttt{cross\_sec.f90}; re-running the fit reproduces every one of them to
+better than $0.03\%$, except $y_a$ of wing~A, which is degenerate --- at
+$y_a\sim10^{12}$ the factor $(1+\sqrt{z/y_a})^{-P}$ is unity to $10^{-5}$ over
+the fitted range, so the refit's $9.26\times10^{11}$ and the coded $10^{12}$
+give the same cross section.}
 \label{tab:he23svfky}
 \begin{tabular}{lrrrrrrrr}
 \toprule
@@ -690,9 +791,11 @@ seg 4--5 ($45.7$--$320$)   & 45.59 & 49.68 & 1052  & 0.0439 & 2.941 & 1.717 & $5
 \begin{figure}[h]
 \centering
 \includegraphics[width=0.74\textwidth]{figures/xsec_HeI23S_vfky.pdf}
-\caption{He\,$2^3$S (black: implemented broken power law $+$ TOPbase tail)
-with single-VFKY96 fits to segments 1--2 (blue dashed) and 4--5 (red
-dash-dot), each good to $\sim$4\%. The shaded band ($34.7$--$45.6\,$eV) is
+\caption{\textbf{Adopted.} He\,$2^3$S (black: the former broken power law
+$+$ TOPbase tail) with single-VFKY96 fits to segments 1--2 (blue dashed) and
+4--5 (red dash-dot), each good to $\sim$4\%. These two fits are wing~A and
+wing~B of Eq.~(\ref{eq:he23s}) and are what \texttt{cross\_sec.f90} now
+carries. The shaded band ($34.7$--$45.6\,$eV) is
 the Cooper-minimum/rise transition where the two must be spliced piecewise;
 a simple sum fails there.}
 \label{fig:he23svfky}
@@ -709,41 +812,38 @@ a simple sum fails there.}
   and --- for the He\,I\,$2^3$S triplet --- \textbf{two VFKY96 forms joined
   by a power-law bridge} (\S\ref{sec:he23svfky}; formerly a Norcross-1971
   broken power law, retained commented-out in the code).
-\item The He\,I two-term fit agrees with Verner+1996 to within $14\%$
+\item The legacy two-term He\,I fit agrees with Verner+1996 to within $14\%$
   ($24.6$--$500\,$eV; median $0.94$), running slightly low at
-  $50$--$100\,$eV.
-\item The He\,I\,$2^3$S broken power law reproduces its parent
-  Norcross/p-winds table to within $\sim$$10\%$ ($4.78$--$59\,$eV;
-  median $1.00$), including the Cooper minimum and the rise near
-  $45\,$eV.
+  $50$--$100\,$eV. That comparison is why Verner+1996 is now the default.
+\item The implemented two-wing He\,I\,$2^3$S cross section reproduces the
+  Norcross/p-winds table its shape descends from to within $\sim$$10\%$
+  ($4.78$--$59\,$eV; median $1.00$), including the Cooper minimum at
+  $34.7\,$eV --- where the one $\sim$$15\%$ deviation sits --- and the bump near
+  $45\,$eV. It reproduces the former broken power law itself to $\sim$4\%.
 \item An independent check against the \textbf{TOPbase / Opacity Project}
   R-matrix cross section (\S\ref{sec:topbase}) confirms agreement to
-  $\sim$$8\%$ in the smooth near-threshold region ($5$--$20\,$eV; median
+  $\sim$$10\%$ in the smooth near-threshold region ($5$--$20\,$eV; median
   $1.00$). TOPbase additionally shows autoionizing resonances above
   $\sim$$35\,$eV (averaged over by the fits) and a smooth tail above
-  $59\,$eV (where EXHALE truncates to zero).
-\item The $40$--$55\,$eV autoionizing resonances raise the He\,$2^3$S
-  rate by only $\sim$$1$--$2\%$ once the few numerically under-resolved
+  $59\,$eV, which the former broken power law truncated to zero and the
+  implemented wing~B follows to a few percent.
+\item The $40$--$55\,$eV autoionizing resonances change the He\,$2^3$S
+  rate by less than $1\%$ once the few numerically under-resolved
   spikes are excluded (\S\ref{sec:resonance}); the raw TOPbase table must
   not be integrated directly.
-\item A simple power law $\sig_{\rm He\,2^3S}\simeq0.294\,(E/100\,\text{eV})^{-2.99}\,\Mb$
-  reproduces the resonance-free TOPbase background to $\sim$$5\%$ and
-  provides a clean smooth extension above the $59\,$eV cutoff
-  (\S\ref{sec:tail}). For a single well-connected cross section over the
-  \emph{whole} range, a $15$-node log--log PCHIP table
-  (Table~\ref{tab:unified}, \S\ref{sec:unified}) follows the TOPbase
-  resonance-averaged background to $\sim$$10\%$ and changes the rate by
-  only $+1.7\%$. The \emph{recommended} drop-in (\S\ref{sec:extend})
-  keeps the broken power law intact up to the $45.6\,$eV bump and only
-  re-aims its last segment (slope $-3.039\!\to\!-2.658$) to meet the
-  TOPbase tail $10^{5.462}E^{-2.996}\,\Mb$ at $70\,$eV: continuous at both
-  joins, $3\%$ to TOPbase, and $+0.65\%$ in rate.
+\item Three ways of removing the $59\,$eV cutoff were measured and none was
+  adopted on its own: a $E^{-2.99}$ power-law tail (\S\ref{sec:tail}), a
+  $15$-node log--log PCHIP table ($+1.7\%$ in rate, \S\ref{sec:unified}), and a
+  re-aimed last segment meeting $10^{5.462}E^{-2.996}\,\Mb$ at $70\,$eV
+  ($+0.65\%$, \S\ref{sec:extend}). The implemented two-wing form
+  (\S\ref{sec:he23svfky}) delivers the same tail analytically: it returns
+  $0.855\,\Mb$ at $70\,$eV and $0.294\,\Mb$ at $100\,$eV.
 \item Both fitted helium cross sections are adequate for the
   photoionization balance. Extending the He\,$2^3$S fit above $59\,$eV
-  with the TOPbase tail changes its photoionization rate by only
-  $0.1$--$1.2\%$ (\S\ref{sec:rateimpact}), so the cutoff is harmless; the
-  one worthwhile refinement, if any, is to migrate He\,I to the VFKY96
-  form (Table~\ref{tab:vfky}) for internal consistency.
+  changes its photoionization rate by only $0.1$--$1.2\%$
+  (\S\ref{sec:rateimpact}), so the former cutoff was harmless; He\,I has since
+  been migrated to the VFKY96 form (Table~\ref{tab:vfky}) for internal
+  consistency, which moves the He\,10830 depth by $\sim$$3\%$.
 \end{itemize}
 
 %=============================================================================
@@ -754,7 +854,7 @@ All figures and numbers are generated by
 \texttt{docs/compare\_photoion\_cross\_sections.py}:
 
 \begin{verbatim}
-cd EXHALE/docs
+cd EXHALE_v1.00/docs
 python3 compare_photoion_cross_sections.py
 # -> figures/xsec_overview.pdf
 #    figures/xsec_HeI_vs_Verner.pdf
@@ -767,8 +867,9 @@ python3 compare_photoion_cross_sections.py
 # reads: data/topbase_HeI_2_3S_photo.dat
 \end{verbatim}
 
-The TOPbase table was retrieved (once) from the CDS Opacity Project
-server with
+The TOPbase table was retrieved (once) from the CDS Opacity Project server;
+\texttt{topbase.sh} below is that server's CGI endpoint, not a script of this
+repository. The query was
 \begin{verbatim}
 curl -L -G "https://cds.unistra.fr/cgi-bin/topbase/topbase.sh" \
   --data "com=dt" --data "ent=p" \
@@ -780,10 +881,14 @@ curl -L -G "https://cds.unistra.fr/cgi-bin/topbase/topbase.sh" \
 and parsed into \texttt{data/topbase\_HeI\_2\_3S\_photo.dat} (photon
 energy in Ry $\to$ eV; $\sig$ in Mb).
 
-The script ports \texttt{sigma}, \texttt{sigma\_HeI}, \texttt{sigma\_HeI23S}
-and \texttt{sigma\_VFKY96} from \texttt{cross\_sec.f90} (using the same
-constants $h_{\rm eV}$, $c$ from \texttt{parameters.f90}), hard-codes the
-Verner+1996 He\,I/H\,I/He\,II parameters and the 23-point
-p-winds/Norcross table, and emits the three vector-PDF figures.
+The script ports \texttt{sigma} and \texttt{sigma\_VFKY96} from
+\texttt{cross\_sec.f90} (using the same constants $h_{\rm eV}$, $c$ from
+\texttt{parameters.f90}), hard-codes the Verner+1996 He\,I/H\,I/He\,II
+parameters and the 23-point p-winds/Norcross table, and emits the figures listed
+above. Its \texttt{sigma\_HeI} and \texttt{sigma\_HeI23S} are the \emph{former}
+Fortran routines --- the two-term ATES fit and the five-segment broken power law
+--- which is what this memo benchmarks; it has not been re-pointed at the
+current \texttt{cross\_sec.f90}, so re-running it reproduces the tables and
+figures as published rather than the shipped cross sections.
 
 \end{document}

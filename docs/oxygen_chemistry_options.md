@@ -40,7 +40,7 @@ Verified against the source, not the documents.
 | Charge exchange | `charge_exchange.f90` cases 14, 33, 48 | A14 `O+ + H`, C6 `O+ + He`, D17 `Fe + O+` (Huang et al. 2023 Table 4) |
 | Line cooling | `cool_OI_chianti`, `cool_OII_chianti` | closed-form CHIANTI v11 fits |
 | Ground-term fine structure | slots `ifs_OI63`, `ifs_OI145`, `ifs_OI44` | O I $^3$P solved in exact statistical equilibrium, the three lines line-trapped |
-| Diffusive settling | `species_diffusion.f90` | O settles independently when `He_metal_diffusion` is on (never exercised for O specifically) |
+| Diffusive settling | `binary_element_diffusion.f90` (this row named `species_diffusion.f90`, deleted 2026-08-25) | O settles independently when `He_metal_diffusion` is on (never exercised for O specifically) |
 
 Not present:
 

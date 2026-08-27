@@ -62,6 +62,7 @@ SRC := \
   src/modules/radiation/charge_exchange.f90 \
   src/modules/files_IO/metals_input_read.f90 \
   src/modules/files_IO/opacity_input_read.f90 \
+  src/modules/files_IO/lower_atmosphere_profile.f90 \
   src/modules/files_IO/input_read.f90 \
   src/modules/files_IO/load_IC.f90 \
   src/modules/files_IO/write_output.f90 \
@@ -165,6 +166,7 @@ DIFT_SRC := \
   src/modules/lower_atmosphere/lower_column.f90 \
   src/modules/functions/composition.f90 \
   src/modules/functions/grav_field.f90 \
+  src/modules/files_IO/lower_atmosphere_profile.f90 \
   src/modules/functions/binary_element_diffusion.f90 \
   src/tests/diffusion_tests.f90
 DIFT_OBJ := $(addprefix $(OBJDIR)/,$(notdir $(DIFT_SRC:.f90=.o)))

@@ -13,6 +13,42 @@
       ! the existing PH_heat routines (util_ion_eq) once H2 cross sections
       ! are added; they are NOT part of this module.
       !
+      ! THIRD BODY M (R12, R13, R15).  Koskinen et al. (2022) write the
+      ! three-body rates as a two-body coefficient times "n" and do not say
+      ! which particles that n counts; their models are H2/H-dominated
+      ! Jovian and Neptunian envelopes, where M is H2 and H.  EXHALE passes
+      ! the TOTAL gas-particle density (electrons excluded; ion_cell_state
+      ! %ntot from calc_ntot), so every heavy particle is treated as an
+      ! equally efficient third body.  A monatomic third body has no internal
+      ! modes to take up the released energy, so He is in general a less
+      ! efficient third body than H2, and R12/R13/R15 with He as M are then
+      ! upper bounds.  No He-specific efficiency factor is applied because
+      ! none of the sources quoted for these three reactions supplies one;
+      ! the caveat is recorded, with the size of the affected terms
+      ! measured, in docs/molecular_chemistry_audit_he_rich.md.
+      !
+      ! HE-DOMINATED LIMIT.  Two further limits of this network are recorded
+      ! there rather than patched here, because both would replace a
+      ! Koskinen Table-1 entry with a rate from another compilation:
+      !   * HeH+ formation. Table 1 forms HeH+ only through R20
+      !     (He+ + H2, 4.2e-13). It has no H2+ + He -> HeH+ + H channel,
+      !     which Garcia Munoz (2025) Table A.6 (Black 1978) gives as
+      !     1.0e-11 at 2000 K rising to 1.5e-10 at 10^4 K -- a route that
+      !     needs no He+ and is therefore the one that grows with the He
+      !     fraction.  Nor does it carry the ~10% associative branch of
+      !     He(2^3S) + H / + H2 (Garcia Munoz 2025, Appendix), which also
+      !     ends in HeH+.
+      !   * HeH+ destruction and He+ + H2. Against the Garcia Munoz (2025)
+      !     Tables A.6/A.7 values, R16 is 3.4-8.6x smaller, R18 1.2x larger,
+      !     R19 1.4-2.6x smaller, R20 14x larger and R17 larger by up to
+      !     1.9e4 at 10^4 K.  The last two follow from the same choice:
+      !     Garcia Munoz assigns the Schauer et al. (1989) total, 3e-14 and
+      !     T-independent, entirely to the dissociative channel, where
+      !     Table 1 gives that channel the Moses & Bass (2000) Jovian-
+      !     ionosphere fit and the HeH+ channel 4.2e-13 on top of it.  R17
+      !     is the dominant H2 sink and H+ source once He+ is present, so
+      !     the choice matters most exactly in the He-dominated limit.
+      !
       ! NOTE (Koskinen 2022 baseline): neutral H2 photodissociation through
       ! the Lyman-Werner bands is NOT part of their Table 1; their
       ! sensitivity test with a Backx et al. (1976) cross section and
@@ -104,13 +140,16 @@
       end function
 
       ! R12: H2 + M -> H + H + M                (Baulch et al. 1992)
+      ! Two-body-equivalent: multiply by the third-body density n_M (see the
+      ! THIRD BODY M note in the module header).
       double precision function rk_R12_H2_thdis(T) result(k)
       real*8, intent(in) :: T
       k = 1.5d-9*exp(-48350.0d0/T)
       end function
 
       ! R13: H+ + H2 + M -> H3+ + M             (Miller et al. 1968)
-      ! Returns the 2-body-equivalent rate: 3.2e-29 * n  [cm^3 s^-1].
+      ! Returns the 2-body-equivalent rate: 3.2e-29 * n  [cm^3 s^-1], with n
+      ! the third-body density (see the THIRD BODY M note in the header).
       double precision function rk_R13_Hp_H2_M(n) result(k)
       real*8, intent(in) :: n
       k = 3.2d-29*n
@@ -123,19 +162,32 @@
       end function
 
       ! R15: H + H + M -> H2 + M                (Ham et al. 1970)
-      ! Returns the 2-body-equivalent rate: 8e-33 (300/T)^0.6 * n.
+      ! Returns the 2-body-equivalent rate: 8e-33 (300/T)^0.6 * n, with n the
+      ! third-body density (see the THIRD BODY M note in the header).
+      ! Table 1 prints the temperature of this fit as Te; the reaction is a
+      ! neutral three-body recombination with no electron in it, so the
+      ! heavy-particle T is used.  EXHALE carries a single T, so the two
+      ! readings coincide numerically.
       double precision function rk_R15_3body_H2(T, n) result(k)
       real*8, intent(in) :: T, n
       k = 8.0d-33*(300.0d0/T)**0.6d0*n
       end function
 
       ! R16: HeH+ + e -> He + H                 (Yousif & Mitchell 1989)
+      ! 3.4x below the Florescu-Mitchell & Mitchell (2006) values tabulated
+      ! by Garcia Munoz (2025) Table A.6 at 500 K and 8.6x below at 10^4 K:
+      ! both fall with T, this one faster.  See the HE-DOMINATED LIMIT note
+      ! in the header.
       double precision function rk_R16_HeHp_dr(Te) result(k)
       real*8, intent(in) :: Te
       k = 1.0d-8*(300.0d0/Te)**0.6d0
       end function
 
       ! R17: He+ + H2 -> H+ + H + He            (Moses & Bass 2000)
+      ! The largest cross-source discrepancy in this network: Garcia Munoz
+      ! (2025) Table A.7 gives 3e-14, T-independent (the Schauer et al. 1989
+      ! total assigned to this channel), against 5.8e-11 at 2000 K and
+      ! 5.7e-10 at 10^4 K here.  See the HE-DOMINATED LIMIT note above.
       double precision function rk_R17_Hep_H2_diss(T) result(k)
       real*8, intent(in) :: T
       k = 1.0d-9*exp(-5700.0d0/T)
@@ -156,6 +208,18 @@
       k = 4.2d-13
       end function
 
+      ! R21 and R22 are transcribed for completeness but are NOT the rates
+      ! the code uses: the H <-> He charge-exchange pair is applied in every
+      ! system that carries He, from Huang et al. (2023) Table 4 rows B1/B2
+      ! (charge_exchange::he_h_cx_rates), whose values agree with these to
+      ! 4% (R21) and to the rounding of the 128,000 K barrier (R22).
+      ! Neither pair satisfies detailed balance against the other direction:
+      ! k(H+ + He)/k(He+ + H) should be (g_He+ g_H)/(g_He g_H+) exp(-dE/kT)
+      ! = 4 exp(-127,500 K / T), and both give ~10^2 times that at 10^4 K
+      ! (~10^3 at 10^3 K).  The endothermic direction is negligible either
+      ! way below 10^4 K, but the discrepancy is amplified by n_He/n_H, so
+      ! it is recorded in docs/molecular_chemistry_audit_he_rich.md.
+      !
       ! R21: H + He+ -> H+ + He                 (Stancil et al. 1998)
       double precision function rk_R21_H_Hep_cx(T) result(k)
       real*8, intent(in) :: T

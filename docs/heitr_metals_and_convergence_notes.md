@@ -114,6 +114,18 @@ With the two-stage strict-`du_th` pipeline:
   ~2 in a sustained limit cycle and does not reach the threshold. This is the
   problematic case.
 
+[2026-08-27: the marching `du` reading of this subsection is superseded. The
+route to a converged HD 189733 b is the JFNK finish, not a lower marching
+`du`: the base-wall hypothesis of section 2.5 was **refuted** and the actual
+causes were the Newton scaling floor and the watchdog, then the line-search
+merit, which accepted steps measured on a residual with the WENO3 weights
+frozen at the previous iterate. Both are fixed --
+`docs/newton_scaling_and_base_wall.md` sections 1-4 and 10,
+`docs/Update_EXHALE.md` sections 40-41 -- together with the metal-line
+escape probability and the coronal-fit validity floor at a cold base
+(section 42). Anything read off this subsection should be re-measured
+against those.]
+
 A plausible (but unproven) reading is that convergence difficulty tracks how
 weakly driven / strongly bound the wind is, rather than the metal content per se.
 

@@ -19,7 +19,8 @@
                                isp_H2, isp_H2p, isp_H3p, isp_HeHp,      &
                                isp_HI, isp_HII, isp_HeI, isp_HeII,      &
                                isp_HeIII, isp_HeTR, bsp_mass, melem_A,  &
-                               n_bsp, bsp_fsp, bsp_nH, bsp_nHe
+                               n_bsp, bsp_fsp, bsp_nH, bsp_nHe,         &
+                               bsp_is_excited_level
       use utils, only: calc_ne, calc_ntot
       use lower_column, only: q_h2_equilibrium
 
@@ -75,11 +76,11 @@
          nmol_l(:,3) = rho*f_sp(:,isp_H3p)
          nmol_l(:,4) = rho*f_sp(:,isp_HeHp)
          call calc_ne(nhii, nheii, nheiii, ne, nm, nmol_l)
-         call calc_ntot(nhi, nhii, nhei, nheii, nheiii, nheiTR, n_tot,  &
+         call calc_ntot(nhi, nhii, nhei, nheii, nheiii, n_tot,          &
                         nm, nmol_l)
       else
       call calc_ne(nhii, nheii, nheiii, ne, nm)
-      call calc_ntot(nhi, nhii, nhei, nheii, nheiii, nheiTR, n_tot, nm)
+      call calc_ntot(nhi, nhii, nhei, nheii, nheiii, n_tot, nm)
       endif
 
       ! Particle count of the first interior cell, kept where n_tot and n_e are
@@ -211,11 +212,13 @@
       ! Helium-to-hydrogen ELEMENT ratio n_He/n_H per cell: nuclei counted
       ! over every species that carries them, with the bsp_nH / bsp_nHe
       ! weights of species_table (H2 and H2+ carry two H nuclei, H3+ three,
-      ! HeH+ one of each).  The metastable He 2^3S triplet and the molecular
-      ! species are therefore inside the count, so the ratio is the same
-      ! physical quantity in the atomic, triplet-helium and molecular
-      ! regions; the columns of the species that a run does not carry are
-      ! zero, so nothing has to be switched on the flags.  This is the same
+      ! HeH+ one of each).  The molecular species are therefore inside the
+      ! count, so the ratio is the same physical quantity in the atomic and
+      ! molecular regions; the columns of the species that a run does not
+      ! carry are zero, so nothing has to be switched on the flags.  The
+      ! metastable He 2^3S column is skipped, not because its nucleus does
+      ! not count but because it is an excited level of He I and its nucleus
+      ! is already counted there (bsp_is_excited_level).  This is the same
       ! element count load_IC applies to a restart file.
       real*8, dimension(1-Ng:N+Ng,n_species), intent(in) :: f_sp
       real*8, dimension(1-Ng:N+Ng) :: heh_cell
@@ -225,6 +228,7 @@
       nuc_H  = 0.0d0
       nuc_He = 0.0d0
       do ib = 1, n_bsp
+         if (bsp_is_excited_level(ib)) cycle
          if (bsp_nH(ib)  .gt. 0)                                        &
             nuc_H  = nuc_H  + dble(bsp_nH(ib)) *f_sp(:,bsp_fsp(ib))
          if (bsp_nHe(ib) .gt. 0)                                        &

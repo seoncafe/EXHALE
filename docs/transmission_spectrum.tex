@@ -267,9 +267,9 @@ $R_\star,T_\star$ (see the comparison notebook).
 \section{Implementation in \texttt{EXHALE\_transit.py}}
 %=============================================================================
 
-\paragraph{System parameters.} The planet and the star are taken from the
-\texttt{input.inp} of the run directory, matched by label exactly as
-\texttt{input\_read.f90} does. Besides $R_p$, $M_p$, $T_{\rm eq}$, $a$,
+\paragraph{System parameters.} The planet and the star are taken from the run
+directory, matched by label exactly as \texttt{input\_read.f90} does. Besides
+$R_p$, $M_p$, $T_{\rm eq}$, $a$,
 $M_\star$, $L_{\rm EUV}$ and the 2-D approximate method, this includes the
 stellar radius (\texttt{Stellar radius [R\_sun]}) and effective temperature
 (\texttt{Stellar Teff [K]}), which set the transit normalization $A_\star$,
@@ -282,8 +282,21 @@ Each of the three is resolved as \texttt{EXHALE\_TRANSIT\_RSTAR\_RSUN} /
 \texttt{./input.inp} $>$ built-in default, and the resolved values and their
 sources are printed at startup.
 
+\paragraph{\texttt{EXHALE\_resolved.out} comes first (2026-08-22).} $R_p$,
+$M_p$, $T_{\rm eq}$, $a$, $M_\star$ and He/H are read from
+\texttt{EXHALE\_resolved.out} beside \texttt{input.inp} whenever that file
+exists, and only from \texttt{input.inp} when it does not. The wind solver
+writes it (\texttt{write\_resolved\_config} in
+\texttt{write\_setup\_report.f90}) \emph{after} a \texttt{base.inp} handoff or a
+lower-atmosphere profile has moved the base, so it is the geometry the wind
+actually used, while \texttt{input.inp} alone is stale in exactly that case.
+\texttt{read\_input\_params} says at startup which of the two it took, and a
+file that is present but unreadable raises rather than falling back silently.
+The stellar radius and $T_{\rm eff}$ are not in that file and keep the
+precedence above.
+
 \begin{itemize}
-  \item \texttt{n2\_populations(T,n1s,ne,Jlya,G2s,G2p)} solves the
+  \item \texttt{n2\_populations(T,n1s,nHII,ne,Jlya,G2s,G2p)} solves the
     $2\times2$ system above and returns $(n_{2s},n_{2p},n_2)$ in
     cm$^{-3}$. The Ly$\alpha$-pump constants $B_{1s\to2p}$, $B_{2p\to1s}$
     are precomputed.
@@ -301,10 +314,18 @@ sources are printed at startup.
     estimate for $J_{\rm Ly\alpha}$, with $F_{\rm LyC}$ taken as the
     absorbed stellar LyC flux (\S\ref{sec:jlya}).
   \item \textbf{Compatibility fix.} \texttt{Ion\_species.txt} in
-    EXHALE carries trace-metal columns (16 columns total), so the
+    EXHALE carries trace-metal columns, so the
     reader was changed to \texttt{usecols=range(7)} to take only
     $r$ and the six H/He species. This also remains correct for the old
     13-column (C/O-only) and 7-column (H/He-only) outputs.
+    The column count has since grown: \texttt{write\_output.f90} writes $r$,
+    the six H/He species (\texttt{HI HII HeI HeII HeIII HeITR}) and all
+    \texttt{n\_mion} $=27$ metal-ion stages, i.e.\ \textbf{34} columns, and
+    \textbf{38} on a molecular run, which appends \texttt{H2 H2p H3p HeHp}; the
+    metal columns are written whether or not metals are on. The
+    \texttt{usecols=range(7)} slice is unaffected --- the first seven columns
+    are still $r$ plus the six H/He species --- and anything past them is found
+    through the file's own \texttt{\# columns} schema header.
 \end{itemize}
 
 \subsection{Outputs}\label{sec:outputs}
