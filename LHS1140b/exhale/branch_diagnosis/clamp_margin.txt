@@ -1,4 +1,0 @@
-arm                     steps          X max    1 - X max X = 1 hits
-kzz1e9_heh11p1            122 0.977901000000    2.210e-02          0   zero-C cells after: 0
-kzz1e8_heh14p643          273 0.983151500000    1.685e-02          0   zero-C cells after: 0
-kzz1e7_heh3p8             173 0.938054300000    6.195e-02          0   zero-C cells after: 0

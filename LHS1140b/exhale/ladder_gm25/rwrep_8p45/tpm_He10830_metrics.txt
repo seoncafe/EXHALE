@@ -1,8 +1,0 @@
-# He 10830 line metrics (three-Gaussian fit, air frame,
-# instrument-convolved curve; he_line_metrics.py)
-red_depth      3.627727e+00
-blue_depth     5.201875e-01
-red_blue       6.973882e+00
-fwhm_A         2.774659e-01
-shift_A       -6.765784e-04
-sigma_A        1.088996e-01

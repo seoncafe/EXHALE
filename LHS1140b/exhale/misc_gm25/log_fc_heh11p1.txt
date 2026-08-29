@@ -1,5 +1,0 @@
-[fc_heh11p1] pass 1: done info=0 ||R||=  1.125E-04
-[fc_heh11p1] pass 2: done info=0 ||R||=  1.125E-04
-[fc_heh11p1] pass 3: done info=0 ||R||=  1.125E-04
-[fc_heh11p1] pass 4: done info=0 ||R||=  1.125E-04
-[fc_heh11p1] done  ---> Log10 of steady-state Mdot =  7.40 g/s

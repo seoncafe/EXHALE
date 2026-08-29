@@ -1,7 +1,0 @@
-# EXHALE elemental-flux closure history (docs/phase_e_flux_closure_design.md section 6)
-# fluxes [g/s], eps and spreads [-], HeH_match = He/H number ratio at the match
-# window_used: overlap = the match window; steady = the far field, substituted with the reason recorded in closure.log
-# columns: k trial_F_H trial_F_He meas_F_H meas_F_He eps_H eps_He omega window_used window_spread_H window_spread_He HeH_match log10_Mdot solution_id exhale_info
-   0   4.7682069882E+06   2.0433648550E+07   4.2056698230E+06   2.0309826742E+07  1.33757E-01  6.09665E-03   0.5000 steady    8.15820E-03  9.79154E-03  1.1012526E+01    7.390 edad0cb3cbf32b401dae793d28249626f8ef293cc2420538823192acf4239cad 0
-   1   4.4869384056E+06   2.0371737646E+07   4.1917275806E+06   2.0242352330E+07  7.04270E-02  6.39181E-03   0.5000 steady    1.57927E-02  1.74297E-02  1.1012446E+01    7.390 ccf4ca077f90c52fd33945a19d2aec2b4c07d4423b3ce81fd8a42cf72ba76a7c 0
-   2   4.3393329931E+06   2.0307044988E+07   4.1961150061E+06   2.0263587217E+07  3.41311E-02  2.14462E-03   0.5000 steady    1.96149E-02  2.10501E-02  1.1012405E+01    7.390 a764b34d6e64ba5d13f8a97790185ab7c3d338567be2592374ef16933d9629e5 0

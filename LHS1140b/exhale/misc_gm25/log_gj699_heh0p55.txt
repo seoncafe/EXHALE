@@ -1,5 +1,0 @@
-[gj699_heh0p55] pass 1: done info=0 ||R||=  7.920E-04
-[gj699_heh0p55] pass 2: done info=0 ||R||=  3.670E-04
-[gj699_heh0p55] pass 3: done info=0 ||R||=  3.670E-04
-[gj699_heh0p55] pass 4: done info=0 ||R||=  3.670E-04
-[gj699_heh0p55] done  ---> Log10 of steady-state Mdot =  8.57 g/s

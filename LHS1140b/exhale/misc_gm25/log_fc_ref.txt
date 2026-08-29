@@ -1,5 +1,0 @@
-[fc_ref] pass 1: done info=0 ||R||=  7.919E-05
-[fc_ref] pass 2: done info=0 ||R||=  7.843E-05
-[fc_ref] pass 3: done info=0 ||R||=  7.844E-05
-[fc_ref] pass 4: done info=0 ||R||=  7.844E-05
-[fc_ref] done  ---> Log10 of steady-state Mdot =  7.49 g/s

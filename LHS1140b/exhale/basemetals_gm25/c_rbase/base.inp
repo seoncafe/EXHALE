@@ -1,6 +1,0 @@
-# base.inp -- control rung C: rung B plus the base radius and the H2 mixing
-# ratio at the match level.
-HeH_base 2.092134697681555
-T_base 185.04922326587828
-r_base 0.16239944847106622
-q_H2_base 0.19265464926127412

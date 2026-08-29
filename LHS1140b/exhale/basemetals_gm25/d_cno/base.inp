@@ -1,9 +1,0 @@
-# base.inp -- control rung D: rung C plus the elemental C, N and O the
-# photochemical column carries at the match level.
-HeH_base 2.092134697681555
-T_base 185.04922326587828
-r_base 0.16239944847106622
-q_H2_base 0.19265464926127412
-C_H_base 2.777529772010253E-04
-N_H_base 8.187442081270520E-05
-O_H_base 4.956907073555432E-07

@@ -1,5 +1,0 @@
-[solar] pass 1: done info=0 ||R||=  2.602E-04
-[solar] pass 2: done info=0 ||R||=  2.602E-04
-[solar] pass 3: done info=0 ||R||=  2.602E-04
-[solar] pass 4: done info=0 ||R||=  2.602E-04
-[solar] done  ---> Log10 of steady-state Mdot =  7.77 g/s
