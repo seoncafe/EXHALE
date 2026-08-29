@@ -1,0 +1,58 @@
+# EXHALE resolved configuration (machine-readable).
+# Values in effect after input.inp + base.inp resolution;
+# these are what the wind solver uses, and what
+# EXHALE_transit.py should use instead of input.inp.
+# Reals are written to full double precision so a budget
+# check can use them without a round-off floor.
+planet_radius_RJ           1.620643469515552E-001
+planet_mass_MJ             1.762200000000000E-002
+equilibrium_temperature_K  1.854441237124468E+002
+HeH_number_ratio           9.058143154291168E+000
+orbital_distance_AU        9.460000000000000E-002
+star_mass_Msun             1.844000000000000E-001
+base_inp_present          F
+he_diffusion              T
+mass_per_H_amu             3.723707052281018E+001
+ntot_bc_per_H              1.000035849313598E+000
+abundance_C               2.777889644683963E-004
+abundance_O               8.850309914456075E-007
+abundance_N               8.190353269387374E-005
+abundance_Mg              0.000000000000000E+000
+abundance_Si              0.000000000000000E+000
+abundance_Ca              0.000000000000000E+000
+abundance_Na              0.000000000000000E+000
+abundance_K               0.000000000000000E+000
+abundance_S               0.000000000000000E+000
+abundance_Fe              0.000000000000000E+000
+lower_profile_present     T
+lower_profile_file        lower_atmosphere_profile.dat
+lower_profile_solution_id 7c31447a7325ef548e9b8f07481eb5311cf0b2e294fcc8167d1324802b4b349b
+lower_profile_source_code photochem
+lower_profile_source_ver  photochem 0.9.0, photochem_to_lower_profile.py
+lower_profile_p_match_bar  1.000000000000000E-006
+lower_profile_p_top_bar    1.120763170133651E-008
+lower_profile_trial_flux_H  4.907416078047400E+006
+lower_profile_trial_flux_He 2.006907744673123E+007
+lower_profile_iteration   1
+lower_profile_iterable    T
+lower_profile_steady      T
+lower_profile_notes       F_H and F_He columns are the STATED trial fluxes; the header measured_flux_* are what the solution carries across its own top. measured elemental escape at the model top (r_top = 1.143577e+09 cm): H 4.907407e+06 g/s, He 2.006906e+07 g/s; imposed H 4.907416e+06, He 2.006908e+07; atomic-H share of the hydrogen nuclei at the top 9.559e-40 imposed, 1.881e-04 converged. climate solved: deep boundary 20 bar at 424.6 K, background He, tropopause 2.413 bar at 185.4 K, cold-trap f_H2O 6.070e-08 (deep 6.349e-05). cold trap at the match: O/H gas 8.8504e-07 vs all-carrier 8.8504e-07; C/H gas 2.7779e-04 vs all-carrier 2.7779e-04; N/H gas 8.1904e-05 vs all-carrier 8.1904e-05; chemistry q_H2O at the tropopause (2.413 bar) 3.3977e-07, at the match 8.8286e-08.
+lower_profile_flux_r_lo_Rp  1.006940258154104E+000
+lower_profile_flux_r_lo_source spread_rule
+lower_profile_flux_r_hi_Rp  1.009096022125524E+000
+lower_profile_flux_state  measured
+lower_profile_flux_nface  12
+lower_profile_F_H_median   7.596086760937742E+006
+lower_profile_F_H_spread   1.966042608214162E+000
+lower_profile_F_He_median  1.097117837713221E+008
+lower_profile_F_He_spread  4.888407080487907E+000
+lower_profile_Mdot_median  1.173078705322598E+008
+lower_profile_Mdot_spread  4.699173962729038E+000
+steady_flux_window_r_lo_Rp  2.000000000000000E+000
+steady_flux_window_nface  191
+steady_F_H_median          5.041402880211617E+006
+steady_F_H_spread          1.514329719417332E-002
+steady_F_He_median         1.959302343266346E+007
+steady_F_He_spread         1.715893649042764E-002
+steady_Mdot_median         2.463442631287508E+007
+steady_Mdot_spread         1.656169387099099E-002

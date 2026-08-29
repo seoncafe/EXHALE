@@ -1,0 +1,27 @@
+# EXHALE resolved configuration (machine-readable).
+# Values in effect after input.inp + base.inp resolution;
+# these are what the wind solver uses, and what
+# EXHALE_transit.py should use instead of input.inp.
+# Reals are written to full double precision so a budget
+# check can use them without a round-off floor.
+planet_radius_RJ           1.576920000000000E-001
+planet_mass_MJ             1.762200000000000E-002
+equilibrium_temperature_K  2.260000000000000E+002
+HeH_number_ratio           1.626100000000000E+000
+orbital_distance_AU        9.460000000000000E-002
+star_mass_Msun             1.844000000000000E-001
+base_inp_present          F
+he_diffusion              T
+mass_per_H_amu             7.504400000000000E+000
+ntot_bc_per_H              1.000000000000000E+000
+abundance_C               0.000000000000000E+000
+abundance_O               0.000000000000000E+000
+abundance_N               0.000000000000000E+000
+abundance_Mg              0.000000000000000E+000
+abundance_Si              0.000000000000000E+000
+abundance_Ca              0.000000000000000E+000
+abundance_Na              0.000000000000000E+000
+abundance_K               0.000000000000000E+000
+abundance_S               0.000000000000000E+000
+abundance_Fe              0.000000000000000E+000
+lower_profile_present     F

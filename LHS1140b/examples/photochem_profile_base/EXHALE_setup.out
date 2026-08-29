@@ -1,0 +1,47 @@
+ ######## Simulation for LHS1140b_fc_heh9p048 ########
+  
+  ----- Planetary parameters ----- 
+  
+ - Planet mass:   0.018 [M_J],      5.60 [M_earth]
+ - Planet radius:   0.162 [R_J],      1.78 [R_earth]
+ - Orbital distance: 0.0946 [AU]
+ - Equilibrium temperature:  185.4 [K]
+ - Jeans parameter (beta_0):  128.78
+ - Log surface gravitational potential: 12.29 erg/g
+  
+  ----- Stellar parameters ----- 
+  
+ - Star mass: 0.184 [M_sun]
+ - Log EUV luminosity: 26.402 [erg/s]
+ - Log X-ray luminosity: 26.373 [erg/s]
+ - Log XUV flux at the planet distance: 1.288 [erg/(cm^2 s)]
+
+  ----- Simulation setup parameters -----
+
+ - Upper boundary of the domain: 30.00 [R_p]
+ - Domain mode: Spherical (pure planetary potential, tidal/centrifugal dropped, extended to user outer radius)
+ - Simulating a H/He atmosphere with He/H ratio of  9.0581E+00
+ - Including helium triplet chemistry
+ - Including 3 trace metal element(s)
+ - Coupled equilibrium system size: N_eq = 24
+  - Spectrum read from external file: /nfs/mocafe/kiseon/RT_Codes/ExoAtmosphere/EXHALE_v1.00/LHS1140b/sed/lhs1140_sed_gj1132_at_b.txt
+ - 2D approximation used: Mdot
+
+ ----- Numerical parameters -----
+
+ - Grid type: Mixed
+ - Grid cells: 500 computational cells (+ 2 ghost cells on each side)
+ - Base grid:   50  uniform cells of  2.00E-04  R_p (uniform region  1.00E-02  R_p)
+ - Base scale-height resolution: H(T_eq)/dr =     40.8  cells
+ - Numerical flux: HLLC
+ - Reconstruction method: PLM
+ - Low-Mach contact-mode damping: off
+ - Base ghost temperature: isothermal (T_ghost = T0)
+- Coronal cooling cutoff width: w =  0.100
+ - Base IR field: off (fine-structure lines emit into vacuum)
+- Max marching steps: 1000000
+
+ ----- Continuing existing simulation ----- 
+ - Evaluating post processing only
+                                   
+ - Log10 of steady-state Mdot =  7.39 g/s
