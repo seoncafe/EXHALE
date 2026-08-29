@@ -17,6 +17,10 @@
       !        binary coefficient (neutral, fully ionized, half ionized)
       !   T7   molecular closure and homopause: the Blanc carrier mixture in
       !        its two limits, and the homopause radius against K_zz
+      !   T13  a pure-helium band refills with hydrogen and the metals slaved
+      !        to that hydrogen return with it at the reservoir metal/H
+      !   T14  strong settling drives X to 1 and stops there: the bounds read
+      !        BEFORE the range clip, so the clip cannot hide a limiter
       !   T2a  recorded only: the kernel it compared against is gone
       !
       ! T0 (`make check` byte-identical with diffusion off), T2b and T8 are
@@ -30,13 +34,18 @@
       use species_table, only: isp_HI, isp_HII, isp_HeI, isp_HeII,        &
                                isp_HeIII, n_bsp, bsp_fsp, bsp_nH, bsp_nHe,&
                                bsp_is_excited_level,                       &
-                               n_melem, melem_i0, mion_fsp, melem_A,     &
+                               n_melem, melem_i0, melem_top,             &
+                               mion_fsp, melem_A,                        &
                                bsp_charge, isp_H2
       use composition,   only: mass_per_H_nucleus_without_He
       use lower_atmosphere_profile, only: eddy_diffusion_on_grid
       use binary_element_diffusion, only: element_diffusion_step,         &
                                           relative_settling_mass,         &
                                           helium_hydrogen_diffusion,      &
+                                          he_fraction_over_one,           &
+                                          he_fraction_under_zero,         &
+                                          he_fraction_newton_steps,       &
+                                          he_fraction_newton_resid,       &
                                           alpha_HI, alpha_HeI
 
       implicit none
@@ -60,6 +69,8 @@
       call test_T11()
       call test_T12()
       call test_T7()
+      call test_T13()
+      call test_T14()
       call test_T2a()
 
       write(*,'(A)') '===================================================='
@@ -1281,5 +1292,188 @@
       write(*,'(A)') '       (docs/Update_EXHALE.md section 68)'
 
       end subroutine test_T2a
+
+      ! ================================================================= !
+      !  T13  the metals come back with the hydrogen
+      ! ================================================================= !
+
+      subroutine test_T13()
+      ! A cell whose helium mass fraction reaches 1 holds no hydrogen, and the
+      ! metals slaved to that hydrogen are then zero -- which is right while it
+      ! lasts.  What is not right is that they stay zero once hydrogen returns:
+      ! the projection multiplied them by r_H = n_H^new/n_H^old, and with
+      ! n_H^old = 0 that factor carries no information, so the element was
+      ! deleted with no sink and no way back (docs/Update_EXHALE.md section 84).
+      ! The column below is seeded with a band of pure helium in the middle of a
+      ! hydrogen-bearing, metal-bearing column; diffusion refills the band with
+      ! hydrogen, and every cell that holds hydrogen must hold the metals at the
+      ! reservoir metal/H.
+      real*8, allocatable :: heh_l(:), nH_l(:), nHe_l(:)
+      real*8  :: qdev, nX, ab_ref, m_1, Xband, over_max
+      integer :: it, j, ie, k, j1, j2, n_gone, n_band
+
+      write(*,'(A)') ' --- T13: a pure-helium band refills with hydrogen '//&
+                     'and the metals return with it'
+      call setup_column(200, 2.0d0, 1.0d3, 1.0d10, 1.33d0, 1.0d10)
+      thereis_metals     = .true.
+      eos_include_metals = .true.
+      melem_ab = 0.0d0
+      melem_ab(1) = 1.0d-4                     ! one element is enough
+      ab_ref = melem_ab(1)
+      allocate(heh_l(1-Ng:N+Ng), nH_l(1-Ng:N+Ng), nHe_l(1-Ng:N+Ng))
+      HeH = HeH_default()
+      heh_l = HeH
+      call set_composition(f_a, heh_l, 0.0d0, 0)
+      do j = 1-Ng, N+Ng
+         rho_a(j) = exp(-1.5d0*(r(j)-1.0d0))
+      enddo
+      v_a  = 0.0d0
+      T_a  = 1.0d0
+      dt_a = 1.0d1
+
+      ! the band: pure helium, so n_H = 0 exactly and X = 1 to the last bit.
+      ! 4 f(HeI) = 1 keeps the mass normalization sum_s m_s f_s = 1.
+      j1 = 90
+      j2 = 110
+      do j = j1, j2
+         f_a(j,:)         = 0.0d0
+         f_a(j,isp_HeI)   = 0.25d0
+      enddo
+      call nucleus_counts(f_a, nH_l, nHe_l)
+      m_1   = mass_per_H_nucleus_without_He()
+      Xband = 4.0d0*nHe_l(j1+10)                                          &
+              /(m_1*nH_l(j1+10) + 4.0d0*nHe_l(j1+10))
+      write(*,'(A,I0,A,I0,A,ES12.5)') '       band cells ', j1, '-', j2,  &
+           ', X in the band = ', Xband
+      call verdict('T13 ', Xband .eq. 1.0d0, 1.0d0 - Xband, 0.0d0,        &
+                   'the band really is hydrogen-free, 1 - X: ')
+
+      over_max = -1.0d30
+      do it = 1, 200
+         call element_diffusion_step(rho_a, v_a, T_a, f_a, dt_a,          &
+                                     closed_base = .true.)
+         over_max = max(over_max, he_fraction_over_one)
+      enddo
+
+      ! The band starts at X = 1 exactly, so this is the excursion measured
+      ! where the solve sits ON the bound, not merely near it.
+      call verdict('T13 ', over_max .le. 1.0d-14, over_max, 1.0d-14,      &
+                   'max excursion above 1 before the clip: ')
+
+      call nucleus_counts(f_a, nH_l, nHe_l)
+      qdev   = 0.0d0
+      n_gone = 0
+      n_band = 0
+      do j = 1, N
+         if (nH_l(j) .le. 1.0d-30) cycle
+         nX = 0.0d0
+         do ie = 1, n_melem
+            do k = 0, melem_top(ie)
+               nX = nX + f_a(j,mion_fsp(melem_i0(ie)+k))
+            enddo
+         enddo
+         if (nX .le. 0.0d0) n_gone = n_gone + 1
+         if (j .ge. j1 .and. j .le. j2) n_band = n_band + 1
+         qdev = max(qdev, abs(nX/(nH_l(j)*ab_ref) - 1.0d0))
+      enddo
+      write(*,'(A,I0,A,I0,A)') '       ', n_band, ' of the ',             &
+           j2-j1+1, ' band cells hold hydrogen again'
+      call verdict('T13 ', n_gone .eq. 0, dble(n_gone), 0.0d0,            &
+                   'cells with hydrogen but no metals: ')
+      call verdict('T13 ', qdev .lt. 1.0d-12, qdev, 1.0d-12,              &
+                   'max departure of metal/H from the reservoir: ')
+
+      deallocate(heh_l, nH_l, nHe_l)
+
+      end subroutine test_T13
+
+      ! ----------------------------------------------------------------- !
+
+      subroutine test_T14()
+      ! The bounds on X, read BEFORE the range clip.  The drift flux carries
+      ! the factor X(1-X) and vanishes at both ends of the composition axis,
+      ! so a settling column may fill a cell with pure helium but can never
+      ! push it past that; a discretization that lags one of the two factors
+      ! loses the shutoff and overfills the cell instead
+      ! (docs/Update_EXHALE.md sections 84 and 85).  The clipped X cannot see
+      ! the difference -- an overshoot and an exact 1 both read 1.0 -- so the
+      ! test reads he_fraction_over_one / he_fraction_under_zero, which the
+      ! operator sets from the solve itself.
+      !
+      ! The column is driven hard on purpose: a closed, steeply stratified
+      ! column at 20 Jeans parameters and a step 1e6 times the cell diffusion
+      ! time, so the settling drift crosses many cells per step and the base
+      ! cells are driven to pure helium within a few steps.  The run is
+      ! required to REACH the boundary (max X >= 0.99), otherwise the bound it
+      ! asserts would be vacuous.
+      real*8, allocatable :: heh_l(:), Xc(:)
+      real*8  :: over_max, under_max, Xmax, Xmin, res_max
+      integer :: it, j, nit_max, n_capped
+
+      write(*,'(A)') ' --- T14: strong settling drives X to 1 and stops '// &
+                     'there (read before the clip)'
+      call setup_column(120, 2.0d0, 1.0d3, 1.0d10, 2.0d1, 1.0d10)
+      allocate(heh_l(1-Ng:N+Ng), Xc(1-Ng:N+Ng))
+      HeH   = 0.2d0
+      heh_l = HeH
+      call set_composition(f_a, heh_l, 0.0d0, 0)
+      do j = 1-Ng, N+Ng
+         rho_a(j) = exp(-6.0d0*(r(j)-1.0d0))
+      enddo
+      v_a  = 0.0d0
+      T_a  = 1.0d0
+      dt_a = 1.0d6
+
+      over_max  = -1.0d30
+      under_max = -1.0d30
+      Xmax      = 0.0d0
+      Xmin      = 1.0d0
+      nit_max   = 0
+      n_capped  = 0
+      res_max   = 0.0d0
+      do it = 1, 400
+         call element_diffusion_step(rho_a, v_a, T_a, f_a, dt_a,          &
+                                     closed_base = .true.)
+         over_max  = max(over_max,  he_fraction_over_one)
+         under_max = max(under_max, he_fraction_under_zero)
+         nit_max   = max(nit_max, he_fraction_newton_steps)
+         res_max   = max(res_max, he_fraction_newton_resid)
+         if (he_fraction_newton_steps .ge. 30) n_capped = n_capped + 1
+         call mass_fraction_He(f_a, Xc)
+         Xmax = max(Xmax, maxval(Xc(1:N)))
+         Xmin = min(Xmin, minval(Xc(1:N)))
+      enddo
+
+      write(*,'(A,ES12.5,A,ES12.5)') '       X range reached ', Xmin,     &
+           ' to ', Xmax
+      ! Reported, not gated: this column is driven far harder than any wind
+      ! run, so it is where the Newton iteration is worked hardest.  The
+      ! bounds hold in the steps that hit the pass limit as well.
+      write(*,'(A,I0,A,I0,A,ES10.3)') '       Newton: max passes ',       &
+           nit_max, ', steps at the 30-pass limit ', n_capped,            &
+           ', largest relative residual ', res_max
+      call verdict('T14 ', Xmax .ge. 0.99d0, Xmax, 0.99d0,                &
+                   'the run reaches the boundary, max X: ')
+      call verdict('T14 ', over_max .le. 1.0d-12, over_max, 1.0d-12,      &
+                   'max excursion above 1 before the clip: ')
+      call verdict('T14 ', under_max .le. 1.0d-12, under_max, 1.0d-12,    &
+                   'max excursion below 0 before the clip: ')
+
+      deallocate(heh_l, Xc)
+
+      end subroutine test_T14
+
+      ! ----------------------------------------------------------------- !
+
+      subroutine mass_fraction_He(f_sp, Xc)
+      ! X = m_He n_He/(m_1 n_H + m_He n_He), the transported variable.
+      real*8, dimension(1-Ng:N+Ng,n_species), intent(in)  :: f_sp
+      real*8, dimension(1-Ng:N+Ng),           intent(out) :: Xc
+      real*8, dimension(1-Ng:N+Ng) :: nH_l, nHe_l
+      real*8 :: m_1
+      call nucleus_counts(f_sp, nH_l, nHe_l)
+      m_1 = mass_per_H_nucleus_without_He()
+      Xc  = 4.0d0*nHe_l/max(m_1*nH_l + 4.0d0*nHe_l, 1.0d-300)
+      end subroutine mass_fraction_He
 
       end program diffusion_tests

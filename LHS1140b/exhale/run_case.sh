@@ -5,6 +5,7 @@
 set -u
 c=$1
 EX=/nfs/mocafe/kiseon/RT_Codes/ExoAtmosphere/EXHALE_v1.00
+. "$EX/LHS1140b/winered_hires_y.sh"   # He I 10830 at WINERED HIRES-Y, R = 68,000
 cd "$(dirname "$0")" || exit 1
 export OMP_NUM_THREADS=${OMP_NUM_THREADS:-8}
 exec 9>"/tmp/exhale_lhs_${c}.lock"

@@ -44,8 +44,10 @@ def element_ratio(d):
     a = np.loadtxt(p)
     idx = {n: i for i, n in enumerate(names)}
     r = a[:, idx['r[Rp]']]
-    nHe = sum(a[:, idx[s]] for s in ('HeI', 'HeII', 'HeIII', 'HeITR')
-              if s in idx)
+    # He I already contains the 2^3S metastable (a level of He I, not a
+    # separate species -- species_table.f90); adding HeITR here would count
+    # the metastable helium nuclei twice.
+    nHe = sum(a[:, idx[s]] for s in ('HeI', 'HeII', 'HeIII') if s in idx)
     nH = sum(a[:, idx[s]] for s in ('HI', 'HII') if s in idx)
     return r, (nHe / np.maximum(nH, 1e-99)) / HEH
 

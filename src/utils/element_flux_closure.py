@@ -25,7 +25,7 @@ other, so the update is under-relaxed,
 
 with `omega = 0.5` halved (floor 0.125) on any iteration whose residual
 failed to fall.  The convergence test reads the *undamped* residual
-`eps = |F - Phi| / max(|F|, |Phi|)`, so a small `omega` cannot buy a false
+`eps = |F - Phi| / |F|`, so a small `omega` cannot buy a false
 convergence.  Both H and He are iterated here; design section 6.1 held He at
 zero, and that is superseded.
 
@@ -56,6 +56,10 @@ The configuration holds the fixed part of both command lines -- the planet
 constants, the SED, the mechanism, the executable -- so that none of it is
 spelled out inside this file.  Only the iteration-dependent options
 (`--trial-flux-H`, `--trial-flux-He`, `--iteration`) are supplied here.
+Its `python` key is optional: left out, the chemistry runs in the
+repository's own Photochem environment, `env/photochem`, found relative to
+this file.  Set it to reproduce a result made on some other build, and the
+narrative records which of the two supplied the interpreter.
 """
 
 import argparse
@@ -70,13 +74,42 @@ import time
 import numpy as np
 
 # --------------------------------------------------------------------------
+# The interpreter that runs the chemistry
+# --------------------------------------------------------------------------
+
+# Photochem is a compiled extension with a dependency set of its own, so the
+# chemistry step runs in a separate interpreter from this driver.  The
+# repository carries both the source it is built from (`photochem/`) and the
+# environment built from it (`env/photochem/`, README_HOWTO.md section
+# "The Photochem environment"), and the default is resolved from this file's
+# own location so that no absolute path outside the repository is written
+# into it.  A configuration that names "python" explicitly still wins, which
+# is what keeps every stored closure.json -- each of which carries an
+# absolute interpreter path -- reproducing on the interpreter it was run on.
+
+EXHALE_ROOT = os.path.dirname(os.path.dirname(
+    os.path.dirname(os.path.abspath(__file__))))
+REPOSITORY_PYTHON = os.path.join(EXHALE_ROOT, 'env', 'photochem', 'bin',
+                                 'python')
+
+
+def repository_chemistry_python():
+    """`env/photochem/bin/python` where the repository environment has been
+    built, and this driver's own interpreter where it has not -- which is
+    what the driver did before that environment existed."""
+    if os.access(REPOSITORY_PYTHON, os.X_OK):
+        return REPOSITORY_PYTHON
+    return sys.executable
+
+
+# --------------------------------------------------------------------------
 # Configuration
 # --------------------------------------------------------------------------
 
 CONFIG_TEMPLATE = """{
   "comment": "Fixed part of both command lines for one planet. Everything the closure does not vary between iterations lives here (design section 6.4).",
 
-  "python": "/home/kiseon/.conda/envs/photochem_cmp/bin/python",
+  "python_comment": "Optional. Omitted, the chemistry runs in the repository environment env/photochem. Name an interpreter here only to reproduce a result made on a different Photochem build, and say in the comment which one.",
   "adapter": "/nfs/mocafe/kiseon/RT_Codes/ExoAtmosphere/EXHALE_v1.00/src/utils/photochem_to_lower_profile.py",
   "adapter_run_dir": ".",
   "adapter_args": [
@@ -104,7 +137,7 @@ CONFIG_TEMPLATE = """{
 """
 
 CONFIG_DEFAULTS = {
-    'python': sys.executable,
+    'python': repository_chemistry_python(),
     'adapter': os.path.join(os.path.dirname(os.path.abspath(__file__)),
                             'photochem_to_lower_profile.py'),
     'adapter_run_dir': '.',
@@ -117,6 +150,7 @@ CONFIG_DEFAULTS = {
                    'EXHALE_PTC_DTAU0': '1.0'},
     'profile_name': 'lower_atmosphere_profile.dat',
     'resid_tol': '1.0e-4',
+    'python_named_by_config': False,
 }
 
 
@@ -137,7 +171,12 @@ def read_configuration(path):
     if not isinstance(cfg, dict):
         raise SystemExit('config %s must be a mapping' % path)
     merged = dict(CONFIG_DEFAULTS)
-    merged.update({k: v for k, v in cfg.items() if k != 'comment'})
+    merged.update({k: v for k, v in cfg.items()
+                   if not k.endswith('comment')})
+    # Whether the interpreter was named here or defaulted is worth saying in
+    # the narrative: it is the one thing that told the 0.8.4 and the 0.9.0
+    # chemistry apart when both environments existed.
+    merged['python_named_by_config'] = 'python' in cfg
     return merged
 
 
@@ -866,6 +905,10 @@ def main():
         % (a.phi0_H, a.phi0_He, a.omega, a.tol, a.kmax))
     log('config %s; EXHALE %s' % (os.path.abspath(a.config),
                                   cfg['exhale_bin']))
+    log('chemistry interpreter %s (%s)'
+        % (cfg['python'],
+           'named by the config' if cfg['python_named_by_config']
+           else 'the repository default'))
     try:
         rc = run_closure(a.case_dir, cfg, a.phi0_H, a.phi0_He, a.omega,
                          a.tol, a.kmax, a.seed, a.resume, log)

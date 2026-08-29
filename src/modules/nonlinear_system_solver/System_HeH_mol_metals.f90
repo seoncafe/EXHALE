@@ -42,7 +42,7 @@
 	use ion_cell_state,    only: ieq_cell
 	use ion_residual_core, only: metal_fractions, metal_electron_sum,     &
 	                             metal_rows
-	use System_HeH_mol,    only: mol_heh_rows
+	use System_HeH_mol,    only: mol_heh_rows, mol_inv_turnover
 	use System_HeH_metals, only: met_nelem, met_ntot, met_g0, met_g1,     &
 	                             met_b0, met_b1, met_a1, met_a2, met_top
 	use charge_exchange,   only: cx_add_to_fvec, he_h_cx_fvec
@@ -59,6 +59,44 @@
 	metal_row_base = 8
 	if (thereis_HeITR) metal_row_base = 9
 	end function metal_row_base
+
+	! Turnover scale of the metal rows, appended to the molecular ones so that
+	! the whole system reaches hybrd1 equilibrated (see mol_inv_turnover in
+	! System_HeH_mol for what the scale is and why).  A metal row runs as
+	! n_Xe times a rate, and a trace element carries n_Xe ~ 1e-4 n_H, so
+	! without this the metal block sits far below the helium block for the
+	! same reason the molecular one does.  Called once per cell from ioniz_eq
+	! AFTER set_mol_turnover_rates (which resets the array) and after
+	! set_metal_coeffs (which fills met_*).
+	!
+	! The rows of an absent element, and the X++ row of a two-stage element,
+	! are the identity rows fvec = x written by metal_rows: they are already
+	! dimensionless and O(1), so their scale stays 1.  Metal <-> H/He charge
+	! exchange is left out of the bound; it is one contribution among several
+	! to the same row and the scale only has to be right to within a factor.
+	subroutine set_mol_metal_turnover_rates(n_e_ref)
+	real*8, intent(in) :: n_e_ref
+	real*8  :: sc
+	integer :: e, ix, mbase
+
+	mbase = metal_row_base()
+	do e = 1,met_nelem
+		ix = mbase + 2*(e-1)
+		if (met_ntot(e) .le. 1.0d-30) cycle      ! identity rows, scale 1
+		! X0 <-> X+ : photoionization, electron-impact ionization and
+		! radiative recombination of the first stage.
+		sc = met_ntot(e)*(met_g0(e)                                  &
+		                  + (met_b0(e) + met_a1(e))*n_e_ref)
+		if (sc .gt. 0.0d0) mol_inv_turnover(ix) = 1.0d0/sc
+		if (met_top(e) .ge. 2) then
+			! X+ <-> X++ : the same three channels one stage up.
+			sc = met_ntot(e)*(met_g1(e)                          &
+			                  + (met_b1(e) + met_a2(e))*n_e_ref)
+			if (sc .gt. 0.0d0) mol_inv_turnover(ix+1) = 1.0d0/sc
+		endif
+	enddo
+
+	end subroutine set_mol_metal_turnover_rates
 
 	subroutine ion_system_HeH_mol_metals(N_eq,x,fvec,iflag,params)
 
@@ -154,6 +192,10 @@
 	! from cx_act, so it is applied only here (no double counting).
 	call he_h_cx_fvec(fvec, ieq_cell%kcx_He0_Hp, ieq_cell%kcx_Hep_H0,    &
 	                  n_hi, n_hii, n_heiSI, n_heii, 1.0d0)
+
+	! Each row divided by its own turnover rate, molecular block and metal
+	! block alike (set_mol_turnover_rates, set_mol_metal_turnover_rates).
+	fvec(1:N_eq) = fvec(1:N_eq)*mol_inv_turnover(1:N_eq)
 
 	return
 

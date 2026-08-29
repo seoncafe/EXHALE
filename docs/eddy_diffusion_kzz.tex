@@ -724,35 +724,106 @@ strengths. This costs nothing and removes the main criticism of the present
 choice, which is not that the value is wrong but that its provenance is
 invisible.
 
-\paragraph{2. Give $K_{zz}$ a profile instead of a constant.} The physics of
-Sect.~\ref{sec:gw} does not produce a constant; it produces growth as
-$P^{-1/2}$ up to a saturation level and a turnover above it. Implementing
+\paragraph{2. Give $K_{zz}$ a profile instead of a constant --- done for the
+handoff, and measured.} The physics of Sect.~\ref{sec:gw} does not produce a
+constant; it produces growth as
 %
 \begin{equation}
-  K_{zz}(P) = K_0 \left(\frac{P}{P_0}\right)^{-1/2}
-  \quad\text{up to a stated ceiling, constant above it,}
+  K_{zz}(P) = K_{\rm ref} \left(\frac{P}{P_{\rm ref}}\right)^{-\alpha},
+  \qquad \alpha = 1/2 ,
+  \label{eq:kzzpow}
 \end{equation}
 %
-with $P_0$ the base pressure, is a small change to
-\texttt{binary\_element\_diffusion.f90} and is closer to every published
-parameterization than the present constant is. A radially varying $K_{zz}$
-is no longer hypothetical in the code: since Phase~E the operator reads a
-cell array \texttt{kzz\_cell}
+up to a saturation level, and a turnover above it.
+
+A radially varying $K_{zz}$ has not been hypothetical in the code since
+Phase~E: the operator reads a cell array \texttt{kzz\_cell}
 (\path{src/modules/init/parameters.f90}), which a
 \texttt{Lower atmosphere profile:} file fills by interpolating its own
 $K_{zz}(p)$ column onto the grid
 (\path{src/modules/files_IO/lower_atmosphere_profile.f90}) and which is
-filled uniformly from \texttt{He\_Kzz} otherwise. What is still missing is
-this \emph{analytic} $P^{-1/2}$ form: a run that has no profile file has
-only the constant. Two cautions attach to it.
-The ceiling is not optional --- an unbounded $P^{-1/2}$ extrapolated to
-$30\,R_p$ would reach absurd values and would contradict Lindzen's own
-turnover result --- and the profile will not repair
-Sect.~\ref{sec:outer}, because $D_{\rm eff}$ rises faster than $P^{-1/2}$
-in this wind (roughly as $T^{1/2}/n$, and $T$ rises steeply through the
-same interval). The gain is not a stronger line; it is that the base
-region is then described by the physics the literature values were derived
-from.
+filled uniformly from \texttt{He\_Kzz} otherwise. What was missing was a way
+to \emph{state} Eq.~(\ref{eq:kzzpow}); that is now there, on the handoff
+side. \texttt{eddy\_diffusion\_coefficient}
+(\path{src/utils/lower_profile_schema.py}) takes \texttt{-{}-kzz-power}
+$\alpha$ with its amplitude \texttt{-{}-kzz-ref} $K_{\rm ref}$ and the
+pressure that amplitude is stated at, \texttt{-{}-kzz-ref-bar}
+$P_{\rm ref}$, and writes the resulting column into the profile. In
+\texttt{photochem\_to\_lower\_profile.py} the stated coefficient is the one
+the chemistry is \emph{solved} on and not only the one the file reports, so
+the composition handed over is the composition that $K_{zz}(p)$ produces; in
+the VULCAN cross-check arm the chemistry is already finished, so a stated
+coefficient changes only what is handed over. With neither option given
+each adapter keeps whatever $K_{zz}(p)$ its own solution carried, and the
+\texttt{solution\_id} of a constant-$K_{zz}$ run is unchanged.
+
+\paragraph{What the pressure form was then measured to be worth.} On
+LHS\,1140\,b, at the two reservoirs of the flux-closed ladder that straddle
+the measurement, Eq.~(\ref{eq:kzzpow}) with $\alpha = 1/2$ and
+$K_{\rm ref} = 10^{9}$ anchored at the top of the profile
+($1.1\times10^{-8}$\,bar) --- which leaves the value the wind inherits above
+the file unchanged and gives $1.05\times10^{8}$ at the $1\,\mu$bar match,
+$1.05\times10^{5}$ at $1$\,bar and $2.56\times10^{4}$ at the $16.73$\,bar
+deep boundary --- moves the He\,10830 equivalent width by $+0.28\%$ when only
+the chemistry sees it and $+0.10\%$ when the wind sees it too
+(He/H\,$=11.11$ arm), and by $+0.61\%$ and $-0.15\%$ on the He/H\,$=2.09$
+arm. The FWHM and $\log_{10}\dot M$ do not move at all. The reason is
+visible one step earlier: the elemental ratios at the match, which with the
+temperature are what EXHALE consumes from the profile, agree with the
+constant-$K_{zz}$ ones to $1.2\%$ or better ($X_{\rm He}$ $0.9985$,
+$X_{\rm C}$ $0.990$, $X_{\rm N}$ $0.988$, $X_{\rm O}$ $0.982$--$0.989$),
+even though the \emph{carriers} move by up to four decades and nitrogen
+changes carrier outright from NH$_3$ to N$_2$. Re-solving the same profile
+from a different seed moves the equivalent width by $1.5\%$, an order of
+magnitude more than the eddy form does. Measurement and runs:
+\path{LHS1140b/exhale/kzz_power/}, recorded in
+\path{LHS1140b/kzz_decision.md} section~9 and
+\path{docs/lhs1140b_exhale_vs_pwinds.tex}, ``What the constant $K_{zz}$
+carries''.
+
+\paragraph{The real remaining gap is the two-branch law, not the profile.}
+Three things are still absent, in decreasing order of how much they matter.
+
+\emph{(i) There is no convective branch.} Equation~(\ref{eq:kzzpow}) is the
+\emph{stratified} law, and on LHS\,1140\,b the climate solve puts the
+tropopause at $2.636$\,bar; below it the mixing-length form of
+Eq.~(\ref{eq:gc}) applies and $K_{zz}$ should flatten or grow with depth
+rather than collapse. Running the single power law to $16.73$\,bar gives
+$1.05\times10^{5}$\,cm$^2$\,s$^{-1}$ at $1$\,bar, at or below the floor of
+the modelling literature --- one and a half to two and a half decades under
+the $3\times10^{6}$--$3\times10^{7}$ of Charnay et al.\ (2015), $3.7$
+decades under the $5\times10^{8}$ of Parmentier et al.\ (2013), and equal to
+the $10^{5}$ minimum Ackerman \& Marley (2001) impose by hand. What is
+needed is the pair: a wave law above the radiative--convective boundary
+joined to a mixing-length law below it, with the boundary taken from the
+climate solve that is already in the same adapter.
+
+\emph{(ii) There is no ceiling.} An unbounded $P^{-1/2}$ carried far above
+the level its amplitude was set at reaches absurd values and contradicts
+Lindzen's own turnover result. The option is deliberately confined to the
+handoff, where the file's own top bounds it and where EXHALE gives every
+cell above that top the top level's value. That bound is also what limits
+the measurement above on the wind side: the LHS\,1140\,b column reaches only
+$1.0091\,R_p$ past the match, so the coefficient the wind saw was changed in
+a shell shallower than the $1.056\,R_p$ homopause and not where helium
+settles. A caller who anchors the same law at the match instead of at the
+top raises the coefficient over the whole wind domain by the same factor and
+should read that as a change of magnitude, not of form.
+
+\emph{(iii) A run with no profile file still has only the constant}
+\texttt{He\_Kzz}. Nothing about Eq.~(\ref{eq:kzzpow}) has been put into
+\texttt{binary\_element\_diffusion.f90} itself.
+
+None of this repairs Sect.~\ref{sec:outer}: $D_{\rm eff}$ rises faster than
+$P^{-1/2}$ in this wind (roughly as $T^{1/2}/n$, and $T$ rises steeply
+through the same interval), so no pressure form of the eddy coefficient
+reaches the region where most of the line is made. The gain is not a
+stronger line; it is that the base region is described by the physics the
+literature values were derived from. And the measurement above says what the
+gain is worth on the observable, which is very little --- while noting that
+the anchor's own value at the match, $1.05\times10^{8}$, is better founded
+for this planet than the adopted $10^{9}$, since it falls inside the
+$2.8\times10^{7}$--$1.4\times10^{8}$ of Eq.~(\ref{eq:al}).
 
 \paragraph{3. A determination, by GCM or by simultaneous fit.} Either
 measure $K_{zz}$ for this planet the way Sect.~\ref{sec:gcm} describes ---

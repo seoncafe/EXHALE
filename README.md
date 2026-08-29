@@ -145,6 +145,10 @@ schemas, convergence recipes, post-processing — is in
   the original ATES, with a code-size appendix
 - [`examples/README.md`](examples/README.md) — what each of the sixteen
   example configurations demonstrates, and the exact lines it adds
+- [`README_photochem.md`](README_photochem.md) — the Photochem build the
+  lower-atmosphere profile handoff runs on: where the source comes from, the
+  four corrections applied to it, and how the source and its environment are
+  rebuilt. Neither is in this repository
 
 **Physics and numerics notes**
 
@@ -232,4 +236,4 @@ schemas, convergence recipes, post-processing — is in
 
 Kwang-Il Seon (KASI / UST)
 
-Last updated: 2026-08-27 23:20
+Last updated: 2026-08-29 22:02

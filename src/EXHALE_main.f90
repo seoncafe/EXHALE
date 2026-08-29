@@ -1074,6 +1074,18 @@
             ' cell(s) clamped onto the element budget'
       endif
 
+      ! Exit-code histogram of the molecular cell solves: how the MINPACK
+      ! hybrd1 attempts ended (1 = tolerance reached; 2 = iteration limit;
+      ! 3 = xtol too small for the machine; 4/5 = no progress; 0 = improper
+      ! input). Silent for an atomic run.
+      if (sum(ieq_n_mol_info) .gt. 0) then
+         write(*,'(A,6(I0,A))')                                               &
+            '     ioniz-eq molecular hybrd1 info: 1 ', ieq_n_mol_info(1),     &
+            ', 2 ', ieq_n_mol_info(2), ', 3 ', ieq_n_mol_info(3),             &
+            ', 4 ', ieq_n_mol_info(4), ', 5 ', ieq_n_mol_info(5),             &
+            ', 0 ', ieq_n_mol_info(0), ''
+      endif
+
       ! The artificial stress is a numerical dissipation, so it is admissible
       ! only where it is negligible against the physical fluxes. Record on the
       ! final state how big it actually was and where its gate was still open.

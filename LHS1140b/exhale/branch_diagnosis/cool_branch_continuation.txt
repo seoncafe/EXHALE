@@ -1,0 +1,25 @@
+handoff reservoir ratios: C/H 2.6341e-04, N/H 7.7233e-05, O/H 5.8897e-07
+the re-taken 3.8 -> 4.2 step left 157 zero-carbon cells (1.0429 - 1.6716 R_p)
+cells refilled: C 157, N 157, O 157
+  wind: JFNK start 10:55:45
+  wind: JFNK done rc=0 info=0
+  wind: post-processing pass rc=0
+info = 0   log10 Mdot = 7.520   zero-carbon cells 0 
+T max = 4184.4 K at r = 1.358 R_p
+
+for comparison, the cool branch at this K_zz:
+  He/H 3.0  log10 Mdot 7.560   3.4  7.540   3.8  7.520
+the arm as the scan recorded it: He/H 4.2, log10 Mdot 7.860, window spread 0.093, EW unresolved
+cool continuation at He/H = 4.2 : red-pair EW = 0.5287 %A
+  cool branch He/H = 3.0           : 0.3931 %A
+  cool branch He/H = 3.4           : 0.4287 %A
+  cool branch He/H = 3.8           : 0.4661 %A
+
+local slope d(EW)/d(He/H) on the surviving branch at K_zz = 1e7:
+   3.0 -> 3.4 : 0.0890 %A per unit He/H
+   3.4 -> 3.8 : 0.0935 %A per unit He/H
+   3.8 -> 4.2 : 0.1565 %A per unit He/H
+
+the measured 1.108 %A is 0.58 %A above the He/H = 4.2 arm; on the last
+local slope that is about +3.7 in He/H, but the slope is rising and the
+ladder was not continued, so no crossing is quoted here.

@@ -57,6 +57,14 @@
 	! simplex everywhere, and zero for an atomic run.
 	integer, save :: ieq_n_mol_clamped = 0
 
+	! Run-wide histogram of the hybrd1 exit code of the molecular cell solves,
+	! indexed by info (0 = improper input or iflag < 0, 1 = converged to tol,
+	! 2 = iteration limit, 3 = xtol too small, 4/5 = no progress). Every
+	! attempt of every molecular cell is counted, so the total exceeds the
+	! cell count whenever a cell needs its second or third starting point.
+	! Zero for an atomic run.
+	integer, save :: ieq_n_mol_info(0:5) = 0
+
 	contains
 
 	subroutine ioniz_eq_allocate_arrays
@@ -150,6 +158,9 @@
    ! budget, and the local gas pressure [bar] the H2 dissociation
    ! equilibrium of the retry seed is evaluated at.
    integer :: n_mol_clamped
+   ! Per-sweep histogram of the molecular hybrd1 exit code (see
+   ! ieq_n_mol_info above); combined over threads by the reduction below.
+   integer :: n_mol_info(0:5)
    real*8  :: pbar_loc
 
    ! Ionization solve: validation of the returned root.
@@ -373,19 +384,23 @@
 
 	! Penning ionization heating: He(2^3S)+H0 -> He(1^1S)+H+ + e- releases the
 	! electron kinetic energy e_th_HeI - e_th_HeTR - e_th_HI (= 6.2 eV) into the
-	! gas. Lagged (pre-solve) densities, like every other channel above; nheiTR
-	! is the same array he_rec_coupling already consumes.
+	! gas. Q31 is the total ionization rate, so only its Penning branch
+	! (f_penning_HeI23S) carries this exothermicity; the associative branch
+	! ends in HeH+ and has a different one. Lagged (pre-solve) densities, like
+	! every other channel above; nheiTR is the same array he_rec_coupling
+	! already consumes.
 	if (thereis_HeITR) heat = heat                                    &
-	     + nheiTR*nhi*Q31*(e_th_HeI - e_th_HeTR - e_th_HI)/erg2eV
+	     + f_penning_HeI23S*nheiTR*nhi*Q31                             &
+	       *(e_th_HeI - e_th_HeTR - e_th_HI)/erg2eV
 
 	! Molecular Penning ionization heating: He(2^3S)+H2 -> He(1^1S)+H2+ + e-
 	! releases the electron kinetic energy (e_th_HeI - e_th_HeTR) - e_th_H2
 	! (= 24.6 - 4.80 - 15.4 = 4.4 eV) into the gas. Lagged (pre-solve)
-	! densities; nmol_eq(:,1) is the neutral-H2 number density. The rate
-	! coefficient is the Garcia Munoz (2025) Table A.5 fit penning_HeI23S_H2
-	! (Cool_coeff.f90). Zero unless a molecular run also tracks the triplet.
+	! densities; nmol_eq(:,1) is the neutral-H2 number density. ioniz_HeI23S_H2
+	! (Cool_coeff.f90) is the total, scaled here to the Penning branch. Zero
+	! unless a molecular run also tracks the triplet.
 	if (thereis_mol .and. thereis_HeITR) heat = heat                  &
-	     + nheiTR*nmol_eq(:,1)*penning_HeI23S_H2(T_K)                  &
+	     + f_penning_HeI23S*nheiTR*nmol_eq(:,1)*ioniz_HeI23S_H2(T_K)   &
 	       *((e_th_HeI - e_th_HeTR) - e_th_H2)/erg2eV
 
 	! Lyman-Werner photodissociation heating: H2 + hv -> H + H leaves the
@@ -477,6 +492,7 @@
 		! were all outside the physical simplex; the n_ieq_* counters are the
 		! atomic root validation (see the declarations above).
 		n_mol_clamped = 0
+		n_mol_info(:) = 0
 		n_ieq_reseed = 0
 		n_ieq_retry  = 0
 		n_ieq_unphys = 0
@@ -487,8 +503,8 @@
 		!$omp           pbar_loc, viol, viol_best,                                  &
 		!$omp           iatt, info_ieq, ok_rank, best_rank, conv_ieq, phys_ieq,      &
 		!$omp           x_root_best)                                                &
-		!$omp   reduction(+:n_mol_clamped,n_ieq_reseed,n_ieq_retry,n_ieq_unphys, &
-		!$omp               n_ieq_fail) if(count > 0)
+		!$omp   reduction(+:n_mol_clamped,n_mol_info,n_ieq_reseed,n_ieq_retry, &
+		!$omp               n_ieq_unphys,n_ieq_fail) if(count > 0)
 		do j = N+Ng,1-Ng,-1
 
 			! Lazily allocate this thread's threadprivate NL scratch.
@@ -550,7 +566,16 @@
 				! Compute the molecular rate coefficients that are invariant
 				! across this cell's Newton solve (they depend only on T and
 				! n_tot); the residual then reads them, like set_metal_coeffs.
-				call set_mol_coeffs(T_K(j), n_in_dim(j))
+				! n_tot, not n_in_dim: R13 and R15 fold the third body M into
+				! their coefficient, so they need the same particle density
+				! the R12 term of the residual reads (see the n_tot comment
+				! above).
+				call set_mol_coeffs(T_K(j), n_tot(j))
+				! Turnover scale of each balance row, from the coefficients
+				! just built and this cell's densities; the residual divides
+				! by it so the helium and molecular blocks reach hybrd1 with
+				! the same weight.
+				call set_mol_turnover_rates(ne(j))
 			endif
 
 			! Each element's metal coefficients are handed to
@@ -585,6 +610,12 @@
 				call set_metal_coeffs(n_melem, meg_ntot, meg_g0, meg_g1, &
 				                    meg_b0, meg_b1, meg_a1, meg_a2,     &
 				                    meg_top)
+
+				! Metal rows of the molecular system get their turnover
+				! scale too, after set_mol_turnover_rates has reset the
+				! array and set_metal_coeffs has filled met_*.
+				if (thereis_mol)                                     &
+					call set_mol_metal_turnover_rates(ne(j))
 			endif
 
 			! Initial guess
@@ -739,6 +770,8 @@
 						            tol,info,wa,lwa,params)
 					endif
 					conv_ieq = (info .eq. 1)
+					n_mol_info(max(0,min(5,info))) =                     &
+						n_mol_info(max(0,min(5,info))) + 1
 
 					phys_ieq = ionization_fractions_physical(sys_x,N_eq,mbase)
 					if (iatt .eq. 1 .and. .not.phys_ieq)                &
@@ -937,6 +970,7 @@
 		ieq_n_unphys = ieq_n_unphys + n_ieq_unphys
 		ieq_n_noroot = ieq_n_noroot + n_ieq_fail
 		ieq_n_mol_clamped = ieq_n_mol_clamped + n_mol_clamped
+		ieq_n_mol_info(:) = ieq_n_mol_info(:) + n_mol_info(:)
 
 	endif
 

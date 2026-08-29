@@ -7069,7 +7069,7 @@ the memo asks for at the end of the series.
 
 %=============================================================================
 \section{The base helium hole, the metal drain beside it, and a composition
-relaxation that converges (2026-08-25)}
+relaxation that converges (2026-08-25)}\label{sec:base-He-hole}
 % ===================================================================== %
 Three defects on the element-diffusion path, all found on the milestone-M3 runs
 of section 69, all in the same place: the first cells above the base.
@@ -9075,15 +9075,26 @@ profile route & the profile itself & \textbf{7.46} & \textbf{1.517} \\
 \end{tabular}
 \end{center}
 
-Two things fall out. Control D and the profile route agree to every digit
-printed, which is the consistency statement the single-source rule of section
-2.4 is supposed to buy: handed the same base state, the two routes are the same
-run. And the difference from the scalar LHS\,1140\,b case is \textbf{not} the
+Two things fall out. Control D and the profile route agree, which is the
+consistency statement the single-source rule of section 2.4 is supposed to buy:
+handed the same base state, the two routes are the same run. (\emph{They agreed
+to every digit printed here. Re-solved on the section-87 coefficient the
+agreement is $0.01$\,dex in $\log_{10}\dot M$ and $1$ per cent in the line ---
+inside the workflow's own $0.3$--$1.5$ per cent path spread, and the two rungs
+were solved at different residual tolerances. Agreement to every printed digit
+was the tolerance, not the physics.}) And the difference from the scalar LHS\,1140\,b case is \textbf{not} the
 base temperature --- dropping \texttt{T0} from 226\,K to the solved 185.05\,K
 moves $\log_{10}\dot M$ by less than 0.01\,dex --- but the \textbf{elemental
 carbon, nitrogen and oxygen the profile brings with it}, which the scalar runs
 never had: $-0.40$\,dex in $\dot M$ and a 3.3x shallower helium line, metal-line
-cooling of a 185\,K base at \texttt{C/H = 2.8e-4}. \texttt{p\_base} is
+cooling of a 185\,K base at \texttt{C/H = 2.8e-4}. (\emph{Re-measured on the
+Garc\'ia Mu\~noz rate of section 87
+(\texttt{LHS1140b/exhale/basemetals\_gm25/}), that step is $-0.37$\,dex and a
+factor $2.89$ in the red-pair depth at $R = 68{,}000$ ($2.88$ at the
+$R = 80{,}000$ these were read at). The two numbers here also belong to
+different pairs of runs: $-0.40$\,dex is the C\,$\rightarrow$\,D rung, while the
+factor quoted as $2.9$ elsewhere is ms\,$\rightarrow$\,D, the whole ladder,
+which is $2.59$ on the new coefficient.}) \texttt{p\_base} is
 1 microbar on both sides and is not a candidate.
 
 \subsection{What is not done}
@@ -9837,6 +9848,2515 @@ and $T$ instead. That is the same statement the He-rich scan makes from the
 other side: the term becomes decisive only once helium dilutes the H$_2$.
 Goldens re-snapshotted for the four moved cases at the end of the series, and
 \texttt{make check} re-run after.
+
+% ===================================================================== %
+\section{The outer region a converged wind inherits: path dependence beyond
+the exobase (2026-08-27)}\label{sec:outer-inherit}
+% ===================================================================== %
+The LHS\,1140\,b closure ladder (\texttt{LHS1140b/kzz\_decision.md} Sect.~8)
+climbs a reservoir axis by seeding each arm from the converged wind of the arm
+below. One rung was reached by a large jump instead of a step, and it converged
+to a different solution --- different only where the continuum equations no
+longer hold. This section records what separates the two, why neither
+convergence test noticed, and what it means for reading any of these winds.
+
+\subsection{The two solutions}
+
+Both are flux-closure arms at the same reservoir \texttt{He/H} $= 12.0$ over
+the same photochemical lower atmosphere. One,
+\texttt{LHS1140b/exhale/flux\_closure/heh12/}, was seeded from the $8.0$ arm ---
+a $1.50\times$ jump in reservoir --- and closed at $k = 4$. The other,
+\texttt{.../heh12\_ctl/}, was seeded from the $11.1$ arm, a $1.08\times$ step,
+and closed at $k = 2$.
+
+\begin{center}\small
+\begin{tabular}{@{}lrr@{}}
+\toprule
+ & seeded across a $1.50\times$ jump & seeded one $1.08\times$ step \\
+\midrule
+\texttt{He/H} at the $1\,\mu$bar match      & $12.013522$ & $12.013520$ \\
+cold-trap \texttt{O/H} of the column        & $1.0656\times10^{-6}$ & $1.0660\times10^{-6}$ \\
+\texttt{exhale\_info}                       & $0$ & $0$ \\
+achieved wind $\|R\|$                       & $2.529\times10^{-4}$ & $3.864\times10^{-4}$ \\
+steady-window flux spread                   & $1.74\,\%$ & $3.30\,\%$ \\
+$\log_{10}\dot M$ [g/s]                     & $7.420$ & $7.410$ \\
+He\,10830 red depth [\%]                    & $4.630$ & $3.856$ \\
+He\,10830 red-pair $EW$ [\%\,\AA]           & $1.3126$ & $1.1181$ \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+Identical base, identical matching-level composition to seven digits, both
+converged and both inside every tolerance the driver applies --- and a $17$ per
+cent difference in the observable the whole study is fitted to. Neither residual
+separates them: on the coefficient in force when this was written the outlier
+reported the \emph{smaller} of the two, and re-solved on the Garc\'ia Mu\~noz
+rate of section 87 the order reverses (jump-seeded $2.533\times10^{-4}$ against
+the control's $1.249\times10^{-4}$, both \texttt{info = 0}, both inside the
+$4.0\times10^{-4}$ target). Which one reports less is not a property of the
+pair; that $\lVert R\rVert$ does not rank them is
+(\texttt{LHS1140b/exhale/xuvkzz\_gm25/results.txt}).
+
+\subsection{Where they differ}
+
+Nowhere the line window or the closure window looks. Two measures that do not
+depend on any sampling choice locate it. $r_{\rm drop}$ is the first radius
+outside $1.5\,R_p$ at which $T$ falls below half of $T(12\,R_p)$; the other is
+the share of the He\,$2^3$S radial column that lies outside $10\,R_p$. Both are
+monotonic along the ladder, and both single out one point.
+
+\begin{center}\small
+\begin{tabular}{@{}lrrr@{}}
+\toprule
+reservoir \texttt{He/H} & $r_{\rm drop}$ [$R_p$] & $T(12\,R_p)$ [K] &
+He\,$2^3$S column outside $10\,R_p$ \\
+\midrule
+$2.09$ & $30.00$ & $893$  & $0.0119$ \\
+$3.0$  & $27.63$ & $1035$ & $0.0116$ \\
+$5.0$  & $23.76$ & $1310$ & $0.0105$ \\
+$8.0$  & $20.80$ & $1632$ & $0.0104$ \\
+$9.7$  & $19.79$ & $1789$ & $0.0108$ \\
+$10.3$ & $19.79$ & $1834$ & $0.0108$ \\
+$10.7$ & $19.47$ & $1863$ & $0.0109$ \\
+$11.1$ & $19.47$ & $1891$ & $0.0109$ \\
+$12.0$, one step & $19.47$ & $1951$ & $0.0112$ \\
+\midrule
+$\mathbf{12.0}$, \textbf{one jump} & $\mathbf{25.83}$ & $1957$ & $\mathbf{0.0219}$ \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+The wind gets hotter and more compact as the reservoir rises: $r_{\rm drop}$
+moves inward from $30.0$ to $19.5\,R_p$ without a reversal, and the outer share
+of the metastable column stays in $0.0104$--$0.0119$ over a factor $5.7$ in
+composition. The jump-seeded solution sits at $25.8\,R_p$ where its own
+reservoir gives $19.5$, and carries twice the outer column share of any other
+rung, while its $T(12\,R_p)$ matches its control to $0.3$ per cent. It is the
+same wind with a hotter, more extended outer atmosphere on top.
+
+\subsection{The mechanism, read from that pattern}
+
+The outer state is inherited from the seed and the JFNK finish does not
+re-solve it. The density out there contributes almost nothing to the residual
+norm, so $\|R\|$ cannot separate the two states; the elemental-flux spread the
+closure tests is measured on a steady window that is flat in both. He\,10830 is
+optically thick at these columns, so a hot, extended outer region fills the
+line wings and lifts the equivalent width while holding about one per cent of
+the metastable column. Small mass, large opacity, invisible to both convergence
+tests.
+
+\subsection{The physical judgement, stated first}
+
+The $20$--$30\,R_p$ region in which the two solutions differ is where the
+collisional-validity diagnostic of Sect.~\ref{sec:knudsen} places
+the exobase, $19.8$--$26.7\,R_p$, and where $Kn > 1$. \emph{The fluid solution
+is not valid in exactly the region that makes the difference.} Two consequences
+follow, and neither is comfortable.
+
+\begin{itemize}
+\item The ground for discarding the jump-seeded solution is \textbf{continuity
+      of the trend, not a physical criterion}. Nothing in the equations being
+      solved prefers one outer state over the other, because the equations do
+      not apply there.
+\item By the same argument, the absolute equivalent widths of \textbf{every}
+      rung of that ladder carry a systematic error the closure tolerance does
+      not catch. The size is small --- the region outside $10\,R_p$ is about one
+      per cent of the metastable column --- but it is not zero, and it is not
+      bounded by any test currently applied.
+\end{itemize}
+
+\subsection{What this says about the convergence criteria}
+
+\texttt{exhale\_info} $= 0$, a wind residual under target, and a flat elemental
+flux across the steady window are together sufficient to certify the solution
+\emph{inside} the collisional region, and silent outside it. That is not a
+defect of the criteria: a residual norm weighted by density cannot see a region
+that carries no density, and a flux-spread test measured over a window is blind
+to what the window excludes. It is a limit on what ``converged'' means for a
+subsonic wind whose domain extends past its own exobase. Where an observable is
+optically thick and integrates the whole column --- He\,10830 here, Ly-$\alpha$
+more so --- the certified region and the region that sets the observable are not
+the same region.
+
+\subsection{What this says about running a scan}
+
+A ladder scan has to be climbed one step at a time. The step that worked here
+was $1.08\times$ in reservoir; the $1.50\times$ jump did not. There is no way to
+detect the failure from the solver's own output, so the protection is
+procedural: keep the step small, and check a sampling-free outer diagnostic
+($r_{\rm drop}$, or the outer share of whatever column the observable
+integrates) for monotonicity along the scan.
+
+\subsection{What was and was not tested}
+
+Path independence was checked directly at \texttt{He/H} $= 3.0$, from a seed
+$3.7\times$ away in composition and in the downward direction the ladder never
+takes: it returns the same $r_{\rm drop}$ to the digit, with everything else
+inside the closure tolerance. The $5.0$, $8.0$ and $2.09$ arms were not checked
+this way. Determinism was checked separately at $10.31$
+(\texttt{.../heh10p3\_ctl/}, same seed, re-run): \texttt{Hydro\_ioniz\_adv.txt}
+and \texttt{Ion\_species\_adv.txt} reproduce bitwise, which says nothing about
+seed dependence. \textbf{No code was changed by this section}; the ladder table,
+the crossing and the figure were re-derived on the control arm, and the record
+is \texttt{LHS1140b/kzz\_decision.md} Sect.~8.3 and
+\texttt{docs/lhs1140b\_exhale\_vs\_pwinds.tex}, ``The outer region a converged
+wind inherits''.
+
+
+% ===================================================================== %
+\section{Metals had no way back: element projection when the helium mass
+fraction reaches one (2026-08-28)}\label{sec:metal-projection}
+% ===================================================================== %
+\textbf{The judgement first.} The element projection of the binary H/He
+diffusion operator destroyed trace-metal nuclei with no sink and no way back,
+and that is physically wrong whatever it costs. In a cell whose helium mass
+fraction reaches $X = 1$ the hydrogen count $n_{\rm H}^{\rm new} =
+(1-X)\rho/m_1$ is exactly zero and the projection multiplied the metals by
+$r_{\rm H} = n_{\rm H}^{\rm new}/n_{\rm H}^{\rm old} = 0$. Zeroing them
+\emph{at that instant} is right: in this two-component split the metals are
+part of component~1, slaved to hydrogen at a fixed metal/H, so a cell with no
+hydrogen carries no metals and component~1 carries no mass. What is wrong is
+the step after. Hydrogen returns to that cell through the shortfall deposit at
+the end of the same projection; \textbf{the metals do not}, and nothing later
+can lift them, because every writer to the metal columns of \texttt{f\_sp} on
+this path multiplies what is already there. The result is a contiguous band of
+cells holding exactly zero carbon, nitrogen and oxygen between cells at the
+reservoir ratio --- a state these equations cannot produce, since they contain
+no sink for a metal nucleus. The fix is that the metals return \textbf{with}
+the hydrogen.
+
+\subsection{The path, in the code}
+
+\texttt{element\_diffusion\_step} solves for the helium mass fraction $X$ and
+hands the new element totals to \texttt{project\_elements}
+(\texttt{src/modules/functions/binary\_element\_diffusion.f90}). There, per
+cell,
+
+\begin{lstlisting}
+nucH_new  = (1.0d0 - Xhe(j))*msum(j)/m_1
+if (nucH_old(j) .gt. 1.0d-30) then
+   rH = nucH_new/nucH_old(j)
+else
+   rH = 0.0d0
+endif
+...
+do im = 1, n_mion                       ! metals slaved to hydrogen
+   f_sp(j,mion_fsp(im)) = f_sp(j,mion_fsp(im))*rH
+enddo
+...
+if (nucH_new  .gt. gotH)                                         &
+   f_sp(j,isp_HI)  = f_sp(j,isp_HI)  + (nucH_new  - gotH)
+\end{lstlisting}
+
+Step $k$: $X$ reaches 1, so \texttt{nucH\_new} $= 0$, \texttt{rH} $= 0$, and
+every hydrogen species and every metal ion of the cell is multiplied by zero.
+Step $k+1$: \texttt{nucH\_old} is now zero, so \texttt{rH} $= 0$ again for want
+of a ratio to preserve, while \texttt{nucH\_new} $> 0$ --- and the deposit on
+the last line puts the hydrogen back as neutral H. There is no such line for
+the metals. Their zero is final.
+
+\subsection{The symptom that led here}
+
+\texttt{LHS1140b/exhale/branch\_diagnosis/} records the measurement (no code
+was changed by that work). At $K_{zz} = 10^{7}$ the reservoir scan reported two
+converged states at the same reservoir \texttt{He/H}, $\log_{10}\dot M$ 7.54
+against 7.87 and He\,10830 red-pair equivalent width 0.4287 against
+1.3248\,\%\AA, both with \texttt{info}~$=0$. The hot one carries 172 cells,
+1.0333--1.6835\,$R_p$, at exactly zero C, N and O in every stage, with the same
+elements at \texttt{C/H} $= 2.639\times10^{-4}$ immediately above and below. On
+the cool solution the C\,\textsc{i} lines carry 95.6\,\% of the
+volume-integrated cooling over 1.0--1.2\,$R_p$; deleting the carbon drops the
+integrated cooling of that band by a factor 23 at $0.91\times$ the heating and
+lifts $T_{\rm max}$ from 3899\,K to 5879\,K. Refilling C, N and O at the
+handoff's own reservoir ratio and re-solving the wind with the same handoff
+collapsed the hot state onto the cool branch ($\log_{10}\dot M = 7.530$,
+$T_{\rm max} = 3890$\,K, EW $= 0.4065$\,\%\AA). Of the 550
+\texttt{output*/Ion\_species.txt} files in the tree, 130 carry such a band; 128
+are in \texttt{LHS1140b/exhale/kzz\_profile\_scan}, the other two are runs
+already on record as failed. \textbf{No regression golden and no
+\texttt{backup/regression/} case output carries one}, which is why the repair
+below moves nothing.
+
+\subsection{Why \texttt{info}~$=0$ and $\|R\|\sim10^{-4}$ could not see it}
+
+Both states report \texttt{info}~$=0$ and a residual of a few times $10^{-4}$,
+and both are right to. \textbf{The steady residual is a residual of the hydro
+and energy equations}, and their solution with the metals removed is a
+perfectly good solution of the equations as posed: the cooling function simply
+has fewer terms. Nothing in that norm asks whether the composition it was
+evaluated on is a composition the transport equations can reach. The
+elemental-flux closure does test the composition, but on the radial spread of
+the elemental \emph{fluxes} over a window at 2\,$R_p$ and above --- outside the
+band. The handoff's own elemental conservation check
+(\texttt{src/utils/lower\_profile\_schema.py}) is stated on the
+\emph{chemistry} profile at its deepest level, not on the wind.
+\textbf{Elemental conservation was nowhere checked for the wind}, which is the
+gap this section closes.
+
+Sect.~\ref{sec:outer-inherit} is the same shape of failure at a different
+place: there two converged solutions differed only outside the exobase, where
+the residual norm carries no density and the flux window does not reach, and
+He\,10830 saw the difference because it is optically thick and integrates the
+whole column. The statement the two sections share is that \texttt{info}~$=0$
+plus a residual under target plus a flat elemental flux certify the solution
+\textbf{on the quantities and in the region those tests are evaluated on}, and
+are silent elsewhere. What is new here is that the silence is not about a
+region: it is about a \emph{conserved quantity that was never formed into a
+test at all}.
+
+\subsection{A third failure mode, not either of the first two}
+
+\begin{itemize}
+\item \textbf{Sect.~\ref{sec:base-He-hole}} (HD\,209458\,b, $K_{zz} = 0$): two
+  wind solutions a factor 2.8 apart in $\dot M$, both \texttt{info}~$=0$,
+  alternating in a period-2 limit cycle of the outer composition/wind Picard
+  loop, on compositions $\sim1$\,\% apart. Every
+  \texttt{backup/phase\_d\_baseline/} run was checked for the band and
+  \textbf{none has one}, so that bistability is not this defect and stays open.
+  (Caveat: only the final state of each run is on disk; the alternating passes
+  of \texttt{new\_kzz0\_undamped} were not saved with species densities.)
+\item \textbf{Sect.~\ref{sec:outer-inherit}} (LHS\,1140\,b, jump-seeded rung):
+  two solutions that agree below the exobase to seven digits and differ only
+  above it, where the fluid equations do not apply. Here the two states differ
+  from $r = 1.0004\,R_p$ upward --- by 30\,\% in $T$ by $1.0013\,R_p$ --- and
+  the difference is made in the collisional part of the atmosphere
+  ($Kn_{\rm bulk}\sim10^{-3}$ at $T_{\rm max}$).
+\item \textbf{This section}: a state that is not a solution of the equations at
+  all, because an element has been deleted from a band of cells by the
+  discretization and nothing can put it back.
+\end{itemize}
+
+The three should not be merged.
+
+\subsection{The repair, and the abundance it uses}
+
+The metals are a \emph{ratio}, not a density: what the projection has to
+preserve for them is $n_X/n_{\rm H}$. Multiplying by $r_{\rm H}$ does that in a
+cell that had hydrogen, and that branch is untouched. Where
+$n_{\rm H}^{\rm old}$ is zero the ratio is $0/0$ --- the cell carries no
+metal/H of its own --- and the operator supplies one:
+
+\begin{lstlisting}
+if (nucH_old(j) .gt. 1.0d-30) then
+   do im = 1, n_mion
+      f_sp(j,mion_fsp(im)) = f_sp(j,mion_fsp(im))*rH
+   enddo
+else if (thereis_metals) then
+   do ie = 1, n_melem
+      i0e = melem_i0(ie)
+      f_sp(j,mion_fsp(i0e)) = melem_ab(ie)*nucH_new
+      do k = 1, melem_top(ie)
+         f_sp(j,mion_fsp(i0e+k)) = 0.0d0
+      enddo
+   enddo
+endif
+\end{lstlisting}
+
+\texttt{melem\_ab} is not one candidate among several. It is the metal/H that
+\textbf{this operator's own mass budget already assumes}: the mass per hydrogen
+nucleus of component~1 is $m_1 = $
+\texttt{mass\_per\_H\_nucleus\_without\_He()} $= m_{\rm H} + \sum_X
+\texttt{melem\_ab}(X)\,A_X$, so the two-component closure
+$m_1 n_{\rm H} + m_{\rm He} n_{\rm He} = \rho$ that the write-back is required
+to meet is stated at that ratio and no other. It is also the reservoir ratio
+\texttt{set\_IC} builds a cold start from, the one \texttt{load\_IC} rebuilds
+an element the restart file does not carry from, and the one
+Sect.~\ref{sec:restart-rescale} rescales a restart column onto. The
+alternatives were considered and rejected: the cell's own previous ratio is
+exactly what does not exist there, and a neighbour's ratio would make the
+result depend on the grid.
+
+All of it goes into the \textbf{neutral ground stage}, for the same reason the
+hydrogen and helium shortfalls go into H\,\textsc{i} and He\,\textsc{i}: a cell
+that held no hydrogen held no ionization split either, \texttt{ioniz\_eq} owns
+the split within an element and re-solves it from the element total on the next
+call, and this is already the convention of \texttt{set\_IC}, of
+\texttt{load\_IC}, and of the trace-metal re-seed branch of
+\texttt{element\_diffusion\_step} itself.
+
+The repair prevents the band from being \emph{created}. It does not reconstruct
+one that a restart file already carries: there $n_{\rm H}^{\rm old} > 0$ in the
+emptied cells, so the preserving branch is the one that runs, and it faithfully
+preserves a ratio of zero. That is the right behaviour for a restart ---
+silently rewriting loaded data would be worse --- and it is why the census
+below is unconditional.
+
+\subsection{The check the pipeline did not have}
+
+\texttt{metal\_hydrogen\_ratio\_departure} now runs at the end of every
+diffusion step. It measures $\max |(n_X/n_{\rm H})/\texttt{melem\_ab} - 1|$
+over the cells $1..N$ and the elements the reservoir states, and it counts the
+(cell, element) pairs holding no metal nuclei at all while hydrogen is present.
+The departure is a magnitude and not an error --- \texttt{he\_metal\_diffusion}
+moves the metals relative to hydrogen on purpose, and a restart may carry a
+settled column --- so it is only reported, under the existing
+\texttt{EXHALE\_DIFFUSION\_CHECK=1} switch, together with the rest of the step
+diagnostic. The count is different in kind: it is zero on any state these
+equations can reach, so it raises a warning on stdout the first time it is
+nonzero \textbf{whether or not the diagnostic is on}. No new input key was
+added.
+
+\subsection{The clamp is a limiter, and the comment that said otherwise was
+wrong}
+
+The projection was preceded by
+
+\begin{lstlisting}
+! Round-off assertion (NOT a limiter): the M-matrix argument in the
+! header gives 0 <= X <= 1 per step; only round-off can leave the range.
+where (Xhe .lt. 0.0d0) Xhe = 0.0d0
+where (Xhe .gt. 1.0d0) Xhe = 1.0d0
+\end{lstlisting}
+
+That claim had never been measured, because the diagnostic printed the
+\emph{clamped} $X$, which cannot tell an assertion from a limiter --- both
+print 1.0. Measured now, on the reproduction run below: $X$ exceeds 1 before
+the clamp in \textbf{140 of 7962 steps, by up to 0.520} (i.e.\ $X = 1.52$), and
+105 of those excursions exceed 0.1. The lower end holds: $\min X$ stayed above
+0 in every step of both runs. \textbf{The clamp is a limiter on the upper
+side.}
+
+The reason is in the discretization, not in round-off. The settling flux
+$-\rho D_{12} G X (1-X)$ is linearized with the $(1-X)$ factor lagged,
+$W_f = \rho_f D_f G_f (1 - X_f^{\rm lag})$, and entered as $-W_f X$. In all
+three branches of the P\'eclet hybrid the face coefficients satisfy
+$\mathrm{PdL}(f) + \mathrm{PdR}(f) = -W_f$, so the row sum of the
+backward-Euler matrix is
+\[
+   \frac{\rho_j}{\Delta t} \;-\; K_j\left( r_{j+1/2}^2 W_j - r_{j-1/2}^2
+   W_{j-1}\right)
+\]
+and \textbf{not} $\rho_j/\Delta t$. A uniform $X = 1$ is therefore not a fixed
+point of the discrete row unless the lagged settling coefficient is
+divergence-free, and the comparison principle that the header's M-matrix
+argument invokes does not apply --- at either end. What separates the two ends
+here is measurement, not proof: the lower one held in every step of both runs,
+the upper one did not. The header comment
+and the corresponding sentence of \texttt{docs/binary\_diffusion\_design.md}
+Sect.~3 (``a clip at round-off (1e-15) is kept only as an assertion, not as a
+limiter'') are corrected to state the measurement.
+
+\textbf{What is not done here.} Making the upper bound hold by construction
+means changing the linearization of the settling term --- for instance solving
+the $X(1-X)$ product with both factors at the new level, or symmetrizing the
+Picard sweep --- and that changes every diffusion-on result, including two
+regression goldens. It is a formulation decision, it is recorded here, and it
+is left open. What this section does is remove the \emph{consequence} that made
+the clamp destructive: with the metals returning with the hydrogen, a cell that
+touches $X = 1$ recovers instead of being permanently emptied. The $X = 1$
+excursions themselves still happen --- 140 of them in the repaired run, against
+142 in the unrepaired one.
+
+\subsection{What was measured}
+
+The step \texttt{kzz1e7/heh3p8} (clean) $\to$ \texttt{kzz1e7/heh4p2}, re-taken
+with the same binary in both columns, the projection branch being the only
+difference. This is the step
+\texttt{LHS1140b/exhale/branch\_diagnosis/metal\_dropout\_reproduce.py} takes,
+run with \texttt{EXHALE\_DIFFUSION\_CHECK=1} and with the He\,\textsc{i}
+10830 synthesis added; both runs were made outside the repository, so no
+recorded output in it was overwritten.
+
+\begin{center}\small
+\begin{tabular}{@{}lrr@{}}
+\toprule
+ & before & after \\
+\midrule
+zero C/N/O cells, \texttt{Ion\_species.txt}     & 157 (1.0429--1.6716\,$R_p$) & \textbf{0} \\
+zero C/N/O cells, \texttt{Ion\_species\_adv.txt}& 157 & \textbf{0} \\
+\texttt{exhale\_info}                           & 0 & 0 \\
+$\log_{10}\dot M$                               & 7.52 & 7.52 \\
+$T_{\rm max}$                                   & 4182.6\,K at $1.358\,R_p$ & 4185.6\,K at $1.358\,R_p$ \\
+He\,10830 red-pair EW                           & 0.5306\,\%\AA & 0.5249\,\%\AA \\
+diffusion steps                                 & 7916 & 7962 \\
+steps whose $X$ reached 1                       & 142 & 140 \\
+max $X$ before the clamp                        & 1.521 & 1.520 \\
+steps with a vanished (cell, element)           & 7541, up to 471 pairs & \textbf{0} \\
+max metal/H departure from \texttt{melem\_ab}   & 1.0 (an element gone) & $8.1\times10^{-13}$ \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+The unrepaired column reproduces the recorded diagnosis exactly --- 157 cells
+over the same 1.0429--1.6716\,$R_p$, 7916 diffusion steps, 142 of them touching
+$X = 1$ --- so the added diagnostics are numerically inert and the projection
+branch is the sole cause of the difference. The repaired solution matches the
+cool branch continued to this reservoir by refilling and re-solving
+(\texttt{branch\_diagnosis/cool\_branch\_continuation.txt}: $\log_{10}\dot M =
+7.520$, $T_{\rm max} = 4184.4$\,K, EW $= 0.5287$\,\%\AA).
+
+Note what the $T_{\rm max}$ and EW rows do \emph{not} say: in this particular
+step the band happened to cost only 3\,K and 1\,\% of the equivalent width. The
+factor-23 cooling loss and the 3899\,$\to$\,5879\,K jump quoted above belong to
+the recorded scan arms, where the band sits where the C\,\textsc{i} cooling is
+decisive. The band is a defect wherever it appears; how much it moves the
+answer depends on where it lands.
+
+\subsection{Verification}
+
+\begin{itemize}
+\item \texttt{make check}: 7/7 byte-identical. Nothing moves, and the reason is
+  structural rather than lucky: the preserving branch
+  $n_{\rm H}^{\rm old} > 0$ is bitwise the previous code, and no golden state
+  ever empties a cell of hydrogen.
+\item \texttt{make diffusion\_tests}: 31/31 (28 as before, plus 3 assertions of
+  the new T13). \textbf{T13 fails on the pre-fix projection} --- 21 of 21 band
+  cells hold hydrogen and no metals, metal/H departure 1.0 --- which is the
+  point of adding it. It seeds a closed metal-bearing column with a band of
+  pure helium, so $n_{\rm H} = 0$ and $X = 1$ exactly, lets diffusion refill
+  the band, and requires that no cell holding hydrogen holds zero metals and
+  that $n_X/n_{\rm H}$ equals \texttt{melem\_ab} to $10^{-12}$ (measured
+  $5.3\times10^{-15}$).
+\item \texttt{run\_fcheck.sh} (\texttt{-fcheck=bounds,do,mem}) clean. It had
+  to be repaired first, for two reasons that predate this change and are
+  unrelated to it: its repo root was still one level up from
+  \texttt{backup/regression/} (so every \texttt{make} in it failed with ``No
+  rule to make target `distclean'\,''), and it copies
+  \texttt{HD209458b/input.inp} into an empty scratch directory without turning
+  off the \texttt{Load IC? True} that file now carries, so \texttt{load\_IC}
+  stopped on a missing restart and the script reported that \texttt{error stop}
+  backtrace as a runtime check firing. With both fixed the HD\,209458\,b
+  bounded run is clean ($\log_{10}\dot M = 9.60$).
+\item That case runs with element diffusion \textbf{off}, so it does not reach
+  the code this section changes. Two runs were added for that:
+  \texttt{diffusion\_tests.x} built with the same flags (31/31, and T13 is the
+  test that enters the new branch), and the \texttt{lower\_profile} regression
+  case --- element diffusion together with metals --- bounded to 400 steps.
+  Both clean, no trap.
+\end{itemize}
+
+\textbf{Not done, and left to a decision.} The 128 contaminated arms of
+\texttt{LHS1140b/exhale/kzz\_profile\_scan} are unchanged on disk. The repair
+prevents the band from forming; it does not repair a stored state, and
+re-running that scan is a data decision, not a code one.
+
+\textbf{The open item above is closed by section~\ref{sec:drift-bounds}}
+(2026-08-28): the two factors of the drift product $X(1-X)$ are now taken from
+opposite sides of the face and both at the new time level, so the flux shuts
+off at either end of the composition axis as it does in the continuum, and the
+$X > 1$ excursions are gone. The clamp is an assertion at both ends.
+
+
+% ===================================================================== %
+\section{A structure scale that is a scale of the state, not of the
+pressure (2026-08-28)}\label{sec:structure-scale}
+% ===================================================================== %
+\texttt{src/utils/collisional\_validity.py} divides a mean free path by a local
+structure scale $L$ to get the Knudsen number that decides whether a wind
+solution is a continuum solution. Until now $L=\min(H_p, L_v, r)$, and below
+Mach $0.01$ the velocity term switched itself off, so in a subsonic region ---
+LHS\,1140\,b runs at Mach $1.6\times10^{-4}$ near the base --- $L$ was the
+pressure scale height alone.
+
+\textbf{The pressure is the one field that can go flat while the gas does
+not.} $p=nkT$; across a heating front $\rho$ falls and $T$ rises with nearly
+the same logarithmic slope, so $d\ln p/dr$ passes through a broad near-zero
+while the state changes fast. Measured in \texttt{LHS1140b/exhale/heh0p55}:
+$H_p$ runs $9.13\times10^{6}$\,cm at $1.0244\,R_p$, $2.55\times10^{8}$\,cm at
+$1.0453\,R_p$ (its maximum, $3.05\times10^{8}$, is at $1.0486$) and
+$1.41\times10^{8}$\,cm at $1.0648\,R_p$, while at $1.0453\,R_p$ $H_T$ is
+$1.80\times10^{7}$ and $H_\rho$ $1.68\times10^{7}$\,cm --- fifteen times
+shorter --- and
+$\mathrm{Kn}(\mathrm{H\,I})$ showed a hole of $5.4\times$
+($3.67\times10^{-5}$, $6.82\times10^{-6}$, $3.56\times10^{-5}$ at those three
+radii) in a quantity that is monotonic on either side.
+
+\textbf{The fix is the state vector.} The continuum closure expands about a
+local Maxwellian, which is fixed by $(n,T,u)$; those logarithmic gradients
+plus the spherical divergence are the complete set, and the change of the
+state over a distance is a vector whose length is the sum in quadrature,
+%
+\begin{equation}
+\frac{1}{L^{2}}=\left(\frac{d\ln\rho}{dr}\right)^{2}
++\left(\frac{d\ln T}{dr}\right)^{2}
++\left(\frac{|dv/dr|}{c_s}\right)^{2}+\frac{1}{r^{2}},
+\qquad L=\max\!\left(\frac{1}{\sqrt{\cdots}},\ \Delta r_{\rm cell}\right).
+\end{equation}
+%
+Pressure is not in it: it is a derived field, and adding it would count the
+density and temperature gradients twice wherever they do not cancel while
+contributing nothing exactly where they do. The quadrature sum, not a minimum
+over the same lengths, because a minimum jumps discontinuously to the next
+length whenever the field it is taken from flattens --- the failure above in
+general form --- whereas in quadrature a flat field contributes zero and $L$
+still cannot exceed the shortest individual scale. The velocity enters as
+$|dv/dr|/c_s$ and not $|v^{-1}dv/dr|$ because the term the closure drops is
+the viscous stress, whose size relative to the pressure is
+$\sim\lambda\,|dv/dr|/\bar{v}$: a bulk-velocity change distorts the
+distribution function in proportion to the thermal speed, not to the local
+bulk speed. That removes the Mach-number floor --- \texttt{MACH\_FLOOR} is
+gone --- which existed only because normalizing by $v$ diverges wherever the
+base sound-wave layer crosses $v=0$. The floor at the local cell width says a
+gradient claiming structure below one cell is measuring the mesh; it binds in
+3 of 500 cells of one of the four runs, all at $r<1.002\,R_p$, and in no
+critical region.
+
+\textbf{No conclusion moves.} Same runs, same outputs, nothing rebuilt or
+re-run. HD\,209458\,b stays validated through its critical point (sonic point
+$4.085\,R_p$, which $L$ does not enter; max Kn in the critical region
+$0.0214\rightarrow0.0186$), all three LHS\,1140\,b solutions stay unvalidated
+with no critical point in the domain (max Kn $1.9$--$3.0\rightarrow
+2.0$--$3.1$). What moves is at the $10$--$30\,\%$ level and in both
+directions: the exobase $19.8$--$26.7\rightarrow18.8$--$25.4\,R_p$,
+$\mathrm{Kn}_{\rm bulk}$ at the outer boundary
+$1.3$--$2.3\rightarrow1.4$--$2.4$, $\mathrm{Kn}_{\rm bulk}$ at the
+$8$--$9.5\,R_p$ where the p-winds retrieval puts its sonic point
+$0.14$--$0.30\rightarrow0.13$--$0.29$, and the He\,10830 line-forming layer at
+$1.1$--$3\,R_p$ $\mathrm{Kn}\le0.021\rightarrow\le0.019$. The one large change
+is inside $1.1\,R_p$, where the old $H_p$ sat on its isobaric plateau:
+$\mathrm{Kn}_{\rm bulk}$ at $1.1\,R_p$ goes from $4\times10^{-5}$--$1.2\times
+10^{-4}$ to $2.5$--$4.2\times10^{-4}$. Mach maxima, $\log_{10}\dot{M}$ and the
+coupling times are independent of $L$ and unchanged.
+\texttt{docs/collisional\_validity.md} carries the recomputed tables and a
+row-by-row account of what moved; the numbers quoted in
+section~\ref{sec:knudsen} are the ones from the old scale and are superseded
+by it. Figure \texttt{docs/figures/lhs1140b\_knudsen.pdf} regenerated (that
+block of \texttt{LHS1140b/make\_memo\_figures.py} only). Post-processing
+diagnostic, no Fortran touched, goldens untouched.
+
+
+% ===================================================================== %
+\section{The drift flux has to vanish where the composition runs out: the
+discretization of $X(1-X)$ and the bounds on the helium mass fraction
+(2026-08-28)}\label{sec:drift-bounds}
+% ===================================================================== %
+\textbf{The judgement first.} The drift (settling) term of the binary H/He
+transport equation carries the factor $X(1-X)$ and vanishes at both ends of
+the composition axis, because a cell with no helium has none to send and a
+cell with no hydrogen has nothing to send it in exchange. The discretization
+lagged the $(1-X)$ factor at the previous iterate, which throws that shutoff
+away: the discrete flux into a cell already at $X = 1$ was not zero, and the
+step overfilled it. Measured, $X$ reached 1.52. That is not a small
+inaccuracy, it is a discrete operator that does not have the property the
+continuum flux has, and the clamp that hid it was doing the work of a limiter.
+The drift product is now taken with its two factors from \textbf{opposite
+sides of the face} --- helium from the cell it leaves, hydrogen from the cell
+it enters --- and both at the new time level, and the resulting nonlinear step
+is solved by Newton. The excursion outside $[0,1]$ is gone: over every case
+measured the solve now stays strictly inside the range.
+
+Section~\ref{sec:metal-projection} fixed the \emph{consequence} (a cell driven
+to $X = 1$ lost its metals permanently) and left the cause open in as many
+words: ``Making the upper bound hold by construction means changing the
+linearization \ldots\ it is left open.'' This section closes it.
+
+\subsection{Where the old discretization lost the bound}
+
+The flux is (module header of
+\texttt{src/modules/functions/binary\_element\_diffusion.f90})
+\begin{equation}
+J = -\rho\,(D_{12} + K_{zz})\,\frac{dX}{dr} \;-\; \rho\,D_{12}\,G\,X(1-X) ,
+\end{equation}
+and the old face form entered the drift as one lagged coefficient times one
+implicit factor,
+\begin{equation}
+W_f = \rho_f D_f G_f (1 - X_f^{\rm lag}) ,\qquad
+J_{\rm drift}(f) = -W_f\,X(f) ,
+\end{equation}
+with $X(f)$ central or upwind by the P\'eclet switch. Two things follow. The
+row sum of the backward-Euler matrix is $\rho/\Delta t - K (r_R^2 W_j - r_L^2
+W_{j-1})$ and not $\rho/\Delta t$, so no comparison principle applies
+(section~\ref{sec:metal-projection} established this much). More to the point,
+and this is the physical statement: \textbf{a face between two cells both at
+$X = 1$ still carries a drift flux}, $-W_f$, unless the lag already knows that
+$X_f = 1$. The endpoint states of the composition axis are not stationary
+states of the discrete operator, while they are exact stationary states of the
+continuum flux. A cell driven toward pure helium therefore kept receiving
+helium after it had run out of hydrogen to exchange, and the clamp turned the
+overshoot into an exact 1 --- which is where the metal band of
+section~\ref{sec:metal-projection} came from.
+
+\subsection{The discretization that keeps it}
+
+The drift is a \textbf{counter-flow}: the helium mass flux $-B\,X(1-X)$ (with
+$B = \rho D_{12} G$) is matched by an equal and opposite hydrogen flux, since
+the two components close, $J_1 = -J_{\rm He}$. A donor-cell rule for a
+counter-flow has to take each element's mass fraction from the cell
+\textbf{that element} leaves, and the two elements leave from opposite sides.
+With $B \ge 0$ helium drifts inward, so helium is donated by cell $j+1$ and
+hydrogen by cell $j$:
+\begin{align}
+J_{\rm drift}(f) &= -B_f\,X(j{+}1)\,[1 - X(j)]   & &B_f \ge 0 \quad
+\text{(helium inward)},\\
+J_{\rm drift}(f) &= -B_f\,X(j)\,[1 - X(j{+}1)]   & &B_f < 0 \quad
+\text{(helium outward)} .
+\end{align}
+Both factors are at the new time level. A donor at $X = 0$ sends nothing; an
+\textbf{acceptor} at $X = 1$ receives nothing. Those are the two statements
+that bound $X$, and they are the discrete image of the two limits the
+continuum factor $X(1-X)$ expresses.
+
+The P\'eclet hybrid stays, with its switch now on the drift coefficient
+itself, $|B_f| \Delta r \le 2 (A_f + E_f)$, and the central branch evaluates
+the product at the face average, $X_f(1-X_f)$. That branch is inside the bound
+as well, and for a reason worth writing down: with $X(j) = 1$,
+\begin{equation}
+X_f(1-X_f) = \frac{[1 + X(j{+}1)][1 - X(j{+}1)]}{4} \le \frac{1 -
+X(j{+}1)}{2} ,
+\end{equation}
+so the P\'eclet condition $|B_f| \le 2 A_f/\Delta r$ bounds the drift flux by
+the gradient flux $A_f [1 - X(j{+}1)]/\Delta r$ that is carrying helium
+\emph{out} of that cell at the same face. The central branch cannot reverse
+the sign of the total face flux at a cell sitting on the bound. (The switch is
+stricter than the old one by the factor $1-X$, so slightly more faces are
+upwind.)
+
+\textbf{The bounds.} Let $X$ solve the implicit step and suppose it first
+touches 1 in cell $m$, every other cell still inside $[0,1]$. Then the time
+term $\rho (X_m - X_m^{\rm old})/\Delta t \ge 0$; the gradient flux leaves $m$
+at both faces because $X_m$ is the maximum; the upwind advection contributes
+$\rho |v| (X_m - X_{\rm donor})/\Delta r \ge 0$; and the drift flux is an
+outflow or exactly zero at both faces by the rule above. Every term of the row
+has the same sign, and their sum is the row residual, which is zero --- so no
+term can be strictly positive and $X_m > 1$ is impossible. $X \ge 0$ is the
+same statement, because the scheme is \textbf{exactly symmetric} under
+$X \to 1-X$, $B \to -B$: the donor and the acceptor exchange roles and the
+central product is even about $X_f = 1/2$. That symmetry is the binary
+symmetry of the transport equation itself --- there is one independent
+diffusive flux and the two components carry it in opposite directions --- and
+the old lagged form broke it, which is why one end held in practice and the
+other did not.
+
+The row sum is still not $\rho/\Delta t$ and does not need to be: the argument
+is made cell by cell on the residual of the nonlinear step, not from a
+comparison principle for a linear system.
+
+\subsection{Newton, and why not another Picard sweep}
+
+The step is now nonlinear in $X^{\rm new}$, so it is solved by Newton:
+\texttt{composition\_residual} builds the residual and the two face-flux
+slopes, and \texttt{solve\_mass\_fraction} assembles the tridiagonal Jacobian
+and takes the correction. The Jacobian is an M-matrix for any iterate in
+$[0,1]$ --- the slopes are $\partial J/\partial X_{\rm left} \ge 0$ and
+$\partial J/\partial X_{\rm right} \le 0$ in all three branches --- so the
+correction is well posed, and the nonlinearity is quadratic, so the iteration
+converges in one to three passes. A pass that does not reduce the residual is
+halved.
+
+A Picard sweep on a lagged factor was the alternative and is what was there.
+It does not restore the bound, whatever the sweep count: at every sweep the
+flux at a face between two cells at $X = 1$ is $-W_f \ne 0$, and only the
+\emph{converged} fixed point has the shutoff. The two-sweep version in use was
+not converged --- measured below, the LHS\,1140\,b step needs one to three
+Newton passes to reach its residual floor --- and it is the unconverged
+iterate that was clamped. Reducing $\Delta t$ was not considered a fix: the
+bound is a property the operator should have at any step, the implicit
+operator is otherwise unconditionally stable, and the relaxation deliberately
+runs at $10^5$ cell diffusion times to reach the composition's steady state at
+all (section~\ref{sec:diff-detail}).
+
+\textbf{Convergence measure.} The Newton residual is measured \emph{relative
+to the size of the terms of its own row}. At a step long against the cell
+diffusion time the time term and the flux divergence each exceed their
+difference by ${\sim}\Delta t/t_{\rm diff} \sim 10^5$, so an absolute residual
+bottoms out at the round-off of the larger term (measured: ${\sim}10^{-11}$ in
+units of $X$) and cannot be a convergence test. The relative residual reaches
+${\sim}7\times10^{-12}$ on LHS\,1140\,b in one to three passes; below that the
+round-off of the tridiagonal solve, amplified by the same conditioning, is all
+that is left, so an already-small residual that no longer halves is taken as
+converged. The smallness test is not one number: the reachable floor is set
+by the conditioning of the tridiagonal solve, which is $10^{-12}$ in a wind
+and ${\sim}10^{-5}$ in the $K_{zz} = 2\times10^{12}$ homopause column of test
+T7, where the time term is negligible against the eddy term. It is therefore
+either an absolute $10^{-8}$ or a drop of $10^{-6}$ from the residual the step
+started at, whichever is reached first. That floor test is \textbf{not}
+applied while the residual is still large: the bounds belong to the converged step, and stopping early loses them
+--- with the floor test applied unconditionally, T14 fails at an excursion of
+$7\times10^{-3}$.
+
+\subsection{What is measured}
+
+The excursion outside $[0,1]$ \emph{before} the clip, which
+section~\ref{sec:metal-projection} added to the step diagnostic and which is
+now also exposed as the module variables \texttt{he\_fraction\_over\_one} and
+\texttt{he\_fraction\_under\_zero} so a test can read the solve instead of its
+clip:
+
+\begin{center}
+\begin{tabular}{lll}
+\hline
+ & before & after \\
+\hline
+T14, 400 steps, closed column at $b_0 = 20$, $\Delta t = 10^6$
+ & max $X = \mathbf{1.514}$ ($+5.136\times10^{-1}$)
+ & max $X = 0.99908$ ($-9.2\times10^{-4}$) \\
+T13, 200 steps from a band seeded at $X = 1$ exactly
+ & $-8.584\times10^{-3}$ & $-8.587\times10^{-3}$ \\
+LHS\,1140\,b \texttt{heh2p13\_diff\_kzz1e9}, JFNK finish
+ & $-1.050\times10^{-1}$ & $-1.050\times10^{-1}$ \\
+\hline
+\end{tabular}
+\end{center}
+
+\textbf{The excursion is negative in every case now measured, i.e.\ the solve
+stays strictly inside $[0,1]$ and never reaches the clip at all.} It is
+\emph{not} the round-off-sized positive number one would quote if some cell
+sat exactly on the bound: in these runs the solution approaches the bound and
+stops short of it, which is the behaviour the shutoff produces. The clip lines
+are therefore assertions at both ends, and they are kept, with the excursion
+measured every step rather than asserted.
+
+The old code fails T14 by 0.514 --- essentially the 0.520 recorded in
+section~\ref{sec:metal-projection} from a wholly different run, which is the
+reproduction that identifies the mechanism.
+
+\subsection{Golden movement}
+
+The change moves every diffusion-on result, so it moves two of the seven
+regression cases. The other five --- \texttt{wasp\_full},
+\texttt{wasp\_he23off}, \texttt{mol\_base\_handoff}, \texttt{mol\_metals},
+\texttt{mol\_lyman\_werner} --- run with \texttt{He\_diffusion} off, never
+enter the module and stay \textbf{byte-identical}.
+
+Largest relative difference over the column, against the previous golden, on
+the two 12000-step snapshots that do run element diffusion:
+
+\begin{center}
+\begin{tabular}{lccccccc}
+\hline
+case & $\rho$ & $p$ & $T$ & heat & cool & $v$ & $\log_{10}\dot M$ \\
+\hline
+\texttt{mol\_diffusion} & $10^{-11}$\,\% & $2\times10^{-11}$\,\% &
+$9\times10^{-12}$\,\% & $10^{-11}$\,\% & $2\times10^{-11}$\,\% &
+$1.4\times10^{-8}$\,\% & $10.58 \to 10.58$ \\
+\texttt{lower\_profile} & $4\times10^{-9}$\,\% & $5\times10^{-9}$\,\% &
+$3\times10^{-9}$\,\% & $7\times10^{-9}$\,\% & $9\times10^{-9}$\,\% &
+$5.4\times10^{-7}$\,\% & $9.58 \to 9.58$ \\
+\hline
+\end{tabular}
+\end{center}
+
+\noindent The worst-moving species is \texttt{H3+} at $1.9\times10^{-4}$\,\%
+(\texttt{mol\_diffusion}) and \texttt{HeITR} at $1.3\times10^{-8}$\,\%
+(\texttt{lower\_profile}); the H$_2$ front of \texttt{mol\_diffusion} is
+unchanged at $1.16036\,R_p$ and \texttt{lower\_profile} carries no molecular
+column.
+
+\textbf{These two cases do not exercise the bound at all}, and that is why
+they barely move: $X$ stays in $[0.2406, 0.2408]$ through all 12000 steps of
+\texttt{mol\_diffusion} and in $[0.2468, 0.2496]$ of \texttt{lower\_profile},
+both at $K_{zz} = 10^{9}$ where the eddy term dominates the drift, and the
+largest excursion the diagnostic reports is $-0.759$ and $-0.750$ --- $X$ is
+nowhere near either end. What moved them is the second-order difference
+between the old and the new evaluation of the drift product plus the Picard
+sweep's non-convergence, both at round-off amplified by the step conditioning
+here. Goldens re-snapshotted for the two, and \texttt{make check} re-run
+after: 7/7.
+
+Newton cost, measured on the same runs: \texttt{mol\_diffusion} converges in
+one pass in all 12000 steps (largest relative residual $5.9\times10^{-13}$);
+\texttt{lower\_profile} in one pass in 11807 steps and two in 193
+($9.8\times10^{-13}$). The wall time is unchanged within the noise of a shared
+machine.
+
+\subsection{The physical result this was worried about: LHS\,1140\,b does not
+move}
+
+The composition of \texttt{LHS1140b/exhale/heh2p13\_diff\_kzz1e9} is the one
+the He\,I 10830 line is read from, so the fix was re-taken on it: the case
+re-solved from its own converged state, JFNK finish, post-processing pass and
+the He\,I 10830 synthesis at WINERED HIRES-Y ($R = 68{,}000$), once with a
+binary carrying the old linearization and once with this one, both outside the
+repository so that no recorded output was overwritten.
+
+\begin{center}
+\begin{tabular}{lll}
+\hline
+ & old linearization & this section \\
+\hline
+\texttt{exhale\_info} / $\|R\|$ & 0 / 4.285e-3 & 0 / 4.285e-3 \\
+$\log_{10}\dot M$ & 7.80 & 7.80 \\
+He 10830 red-pair EW (10832.60--10834.20\,\AA\ vacuum) & 1.1404754\,\%\AA &
+1.1404754\,\%\AA \\
+red depth & 4.186959\,\% & 4.186959\,\% \\
+FWHM & 0.2557731\,\AA & 0.2557731\,\AA \\
+$X$ range over the run & 0.6503--0.8950 & 0.6504--0.8950 \\
+largest excursion before the clip & $-1.050\times10^{-1}$ &
+$-1.050\times10^{-1}$ \\
+\hline
+\end{tabular}
+\end{center}
+
+The two solutions agree to $1.2\times10^{-9}$ relative in $\rho$, $v$, $p$ and
+$T$ over the whole column (the one exception is He\,III at $1.0103\,R_p$,
+$3.5\times10^{-3}$ relative, on a population that is $6\times10^{-13}$ of the
+helium there). \textbf{This wind never approaches $X = 1$}, so the clamp never
+fired on it and the fix has nothing to remove; what is left is the
+second-order difference in the drift term, and at this $K_{zz}$ it is
+invisible.
+
+On the reservoir crossing: the equivalent width moves by $-4.1\times10^{-13}$
+in relative terms, and with the local slope
+$d\ln {\rm EW}/d\ln({\rm He/H}) = 0.3819$ measured over the upper rungs of the
+closure ladder that is $d\ln({\rm He/H}) = -1.1\times10^{-12}$, i.e.\ the
+crossing stays at ${\rm He/H} = 11.730000$. The adopted result is untouched.
+
+\textbf{What this does not say.} The recorded \texttt{tpm\_He10830.txt} of
+that case gives EW 1.1289\,\%\AA\ against the 1.1405 measured here; the
+difference is \emph{not} this change, it is everything the working tree has
+accumulated since that file was written (section~\ref{sec:metal-projection}
+among it). Both columns of the table above were produced with binaries
+differing only in the drift linearization, which is what makes them a
+controlled comparison.
+
+\subsection{Verification}
+
+\begin{itemize}
+\item \texttt{make check}: five cases byte-identical, \texttt{mol\_diffusion}
+  and \texttt{lower\_profile} moved by the amounts tabled above; goldens
+  re-snapshotted for those two and \texttt{make check} re-run, 7/7.
+\item \texttt{make diffusion\_tests}: 35/35 (31 as before, plus T14's three
+  assertions and one added to T13). \textbf{T14 fails on the old
+  linearization} at an excursion of $+0.514$, which is the point of adding it:
+  it drives a closed column hard enough that the base reaches pure helium,
+  requires that the run actually reach the boundary ($\max X \ge 0.99$, else
+  the assertion is vacuous), and reads \texttt{he\_fraction\_over\_one} /
+  \texttt{he\_fraction\_under\_zero}, the excursions the operator measures
+  \emph{before} its own clip. Reading the clipped $X$ instead would have shown
+  1.0 in both columns and proved nothing.
+\item \texttt{run\_fcheck.sh} (\texttt{-fcheck=bounds,do,mem}) clean. That
+  case runs with element diffusion off, so as in
+  section~\ref{sec:metal-projection} two further bounded runs cover the code
+  this section changes: \texttt{diffusion\_tests.x} built with the same flags,
+  and the \texttt{lower\_profile} regression case bounded to 400 steps. Both
+  clean, no trap.
+\end{itemize}
+
+\subsection{Two more things found in passing, both in the step diagnostic}
+
+\begin{itemize}
+\item The diagnostic printed $\max|J_{\rm He} + J_1|$ as
+  \texttt{max(sumJ, abs(Jf(j) - Jf(j)))} --- an identical zero in the clothes
+  of a measurement. A binary mixture has one independent diffusive flux and
+  the hydrogen component carries $-J_{\rm He}$ by construction, so there is
+  nothing there to measure; the field is removed and the reason is written
+  where it used to be printed.
+\item The trace-metal solver ends on
+  \texttt{where (fX .lt. 0.0d0) fX = 0.0d0} under the comment ``Round-off
+  assertion, not a limiter: the M-matrix keeps fX $\ge$ 0'' --- the same
+  unmeasured claim this section removes from the helium equation. That one is
+  a different case and is left as it is: the trace equation is \emph{linear}
+  in $f_X$ (the trace limit drops the $1-f_X$ factor), and an M-matrix sign
+  pattern with a nonnegative right-hand side is a real argument for
+  $f_X \ge 0$. But it is an argument, so the excursion is now measured too
+  (\texttt{trace\_ratio\_under\_zero}, reported with the step diagnostic)
+  instead of being asserted.
+\end{itemize}
+
+
+
+% ===================================================================== %
+\section{A rate coefficient that jumped by $1.57$ at $4000$\,K: the
+He\,($2^3$S) Penning rate, and the step it put in every figure
+(2026-08-28)}\label{sec:penning-gm25}
+% ===================================================================== %
+\textbf{The judgement first.} A rate coefficient is a continuous function of
+temperature. The He\,($2^3$S)\,$+$\,H Penning rate in
+\texttt{Cool\_coeff.f90} was not:
+\[
+\begin{aligned}
+T \le 4000\,\mathrm{K}: &\quad 1.9\times10^{-9}(300/T)^{0.07}
+  &&\rightarrow\ 1.5849\times10^{-9}\ \mathrm{at}\ 4000\,\mathrm{K}\\
+T > 4000\,\mathrm{K}: &\quad 9.1\times10^{-9}(300/T)^{0.50}
+  &&\rightarrow\ 2.4921\times10^{-9}\ \mathrm{at}\ 4000\,\mathrm{K}
+\end{aligned}
+\]
+a factor $\mathbf{1.5724}$ across the seam. That is Taylor et al.\ (2025),
+ApJ 989:68, Table~2, transcribed correctly --- the code was not wrong about
+what the paper says. The published fit is what cannot be used, and ``it is
+the published value'' is not a defence of an expression that is
+discontinuous in a state variable. It is replaced by the García Muñoz (2025)
+form, which is continuous everywhere.
+
+\textbf{Checking the fit against its own paper made the case decisive.}
+Taylor et al.'s Figure~19 (bottom right) plots the quantity Table~2 is
+supposed to represent: their Maxwell--Boltzmann average of the Cohen \& Lane
+(1971) and Morgner \& Niehaus (1979) cross sections. Digitized here, that
+curve rises to $1.50\times10^{-9}$ near $1400$\,K and falls to
+$1.29\times10^{-9}$ at $4000$\,K. The tabulated low branch decreases
+monotonically from $1.83$ to $1.58\times10^{-9}$ and, being a power law,
+cannot produce a maximum at all:
+
+\begin{center}
+\begin{tabular}{rcccc}
+\toprule
+$T$ [K] & Fig.~19 (their rate) & Table~2 low branch & ratio & new rate\\
+\midrule
+ $500$ & $1.135$ & $1.833$ & $1.62$ & $1.024$\\
+$1000$ & $1.467$ & $1.746$ & $1.19$ & $1.207$\\
+$1400$ & $1.502$ & $1.706$ & $1.14$ & $1.271$\\
+$2000$ & $1.470$ & $1.664$ & $1.13$ & $1.321$\\
+$4000$ & $1.291$ & $1.585$ & $1.23$ & $1.356$\\
+\bottomrule
+\end{tabular}
+\end{center}
+\noindent(all in $10^{-9}$\,cm$^3$\,s$^{-1}$).
+
+Above $4000$\,K the high branch is worse: $2.23\times10^{-9}$ at $5000$\,K,
+above \emph{every} cross-section determination collected in García Muñoz
+(2025) Fig.~5, whose curves lie between about $1.3$ and
+$1.7\times10^{-9}$ there. The appendix of Taylor et al.\ says how this
+happened --- they fitted ``an equation already implemented into our KPP
+routine for simplicity'' with \texttt{scipy.optimize.curve\_fit}, in two
+pieces, with nothing tying the pieces together at the join.
+
+\textbf{The replacement.} García Muñoz (2025), A\&A 698, A199, Fig.~5
+publishes a closed form for the Maxwell--Boltzmann average of the Movre \&
+Meyer (1997) total ionization cross sections,
+\[
+k = 10^{-9}\exp\!\left(c/T + d_1\ln T + d_2(\ln T)^2 + d_3(\ln T)^3\right)
+\quad[\mathrm{cm^3\,s^{-1}}],
+\]
+$c=-8.64804\mathrm{E}{+}01$, $d_1=-2.86766\mathrm{E}{-}01$,
+$d_2=+8.68445\mathrm{E}{-}02$, $d_3=-5.73001\mathrm{E}{-}03$, quoted there as
+accurate to better than $2\%$ from $200$ to $10^4$\,K. It reproduces that
+paper's own Table~A.5 ($1.02$, $1.32$, $1.35$, $1.27\times10^{-9}$ at $500$,
+$2000$, $5000$, $10^4$\,K) to $0.4\%$, measured here. Note the paper's
+network file writes the third term as $\exp(c)$; only the $c/T$ of the
+Fig.~5 caption reproduces Table~A.5, and the code comment records that.
+
+This is not a case of trading one paper's fit for another's. Taylor's
+Figure~19 and the García Muñoz curve agree to $10$--$20\%$; it was the
+\emph{tabulated} fit that was the outlier. Re-digitizing Movre \& Meyer's
+Fig.~10 cross sections independently and Maxwell-averaging them reproduces
+Table~A.5 to $5$--$10\%$, the accuracy of reading a figure. Movre \& Meyer
+give cross sections only, over $0.01$--$1.0$\,eV, and no rate coefficient
+--- the $200$\,K end of the fit leans on García Muñoz's low-energy
+$E^{-0.2}$ extrapolation ($15\%$ of the integral weight at $200$\,K) and the
+$10^4$\,K end on the high-energy $E^{-1}$ one ($40\%$ of the weight at
+$10^4$\,K), which is why the validity range is stated where the expression is
+written.
+
+The older prescriptions are outliers for identifiable reasons and are not
+candidates: Roberge \& Dalgarno (1982)'s temperature-independent
+$5\times10^{-10}$ (what EXHALE used before Taylor) sits far below every
+cross-section calculation, and Fassia et al.\ (1998)'s
+$7.5\times10^{-10}(T/300)^{1/2}$ is Bell (1970)'s single $300$\,K point
+stretched with hard-sphere scaling, which the energy dependence of the
+measured cross section contradicts.
+
+\textbf{The H$_2$ channel and the $0.9$:$0.1$ branching.} Both partners
+ionize the metastable through two channels that share one cross section,
+Penning (He\,($2^3$S)$+$X\,$\rightarrow$\,He\,($1^1$S)$+$X$^+$$+$e$^-$) and
+associative (\,$\rightarrow$\,HeH$^+$ + fragment + e$^-$), and García Muñoz
+splits the total ``an average 0.9:0.1''. The published network file applies
+exactly that split through the amplitudes of two rows per channel
+($0.9\mathrm{e}{-}9$ / $0.1\mathrm{e}{-}9$ for H; $4.86740\mathrm{e}{-}12$ /
+$5.40822\mathrm{e}{-}13$ for H$_2$, summing to $5.408222\mathrm{e}{-}12$),
+which settles what the paper text leaves implicit. EXHALE had charged $100\%$
+of both totals to Penning. It now follows the split, and the distinction
+matters in a way a single scale factor does not:
+\begin{itemize}
+\item the \textbf{total} removes the metastable --- both channels quench it
+  --- so every sink term keeps the sum. Using $0.9$ there would have made the
+  metastable density $10\%$ too high, and the metastable density is the
+  observable;
+\item \texttt{f\_penning\_HeI23S} $=0.9$ scales only the terms that leave a
+  lasting proton or H$_2^+$ behind and that deposit the Penning
+  exothermicity;
+\item the molecular system carries HeH$^+$ with its own balance row, so the
+  remaining $0.1$ is now a real HeH$^+$ source there. The atomic systems have
+  no HeH$^+$ row and drop it, on the stated ground that in an H$_2$-poor gas
+  HeH$^+$ dissociatively recombines back to He\,$+$\,H faster than it reacts
+  onward, so the branch is a metastable sink but not a lasting proton or
+  electron source. Where H$_2$ is abundant that cycle is broken by
+  HeH$^+$$+$H$_2$\,$\rightarrow$\,H$_3^+$$+$He, which is why the molecular
+  system does not take the same shortcut.
+\end{itemize}
+The H$_2$ rate itself is now the published $5.408222\times10^{-12}\,
+T^{0.675388}\exp(-696.275/T)$ rather than a fit made here to the four
+Table~A.5 points. The old fit was accurate ($0.13\%$) but reproduced the
+\emph{total}, so charging all of it to Penning overstated H$_2^+$ production
+from this reaction by $1/0.9$.
+
+\textbf{Naming.} \texttt{penning\_HeI\_23S} and \texttt{penning\_HeI23S\_H2}
+returned totals, not Penning rates, and had inconsistent names for the same
+physics. They are now \texttt{ioniz\_HeI23S\_H} and
+\texttt{ioniz\_HeI23S\_H2}, both \texttt{elemental} functions, named for what
+they compute.
+
+\textbf{This step was the discontinuity in the LHS 1140 b memo figures.} The
+detector in \texttt{LHS1140b/exhale/metastable\_step\_diagnosis} flags a cell
+whose neighbour ratio departs by more than $10\%$ from the geometric mean of
+the ratios on either side. Before and after, on the same three runs:
+
+\begin{center}
+\begin{tabular}{lcc}
+\toprule
+run & flags before (eq / adv) & flags after\\
+\midrule
+\texttt{heh0p55} & $6$ / $6$ & $\mathbf{0}$ / $\mathbf{0}$\\
+\texttt{heh2p13\_diff\_kzz1e9} & $6$ / $6$ & $\mathbf{0}$ / $\mathbf{0}$\\
+\texttt{flux\_closure/heh11p1/k01} & $4$ / $8$ & $0$ / $4$\\
+\bottomrule
+\end{tabular}
+\end{center}
+
+The four that remain in \texttt{k01} are at $r = 19.15$, $19.47$, $28.57$ and
+$29.05\,R_p$, were present before with the same values, and are
+outer-boundary features, not \texttt{Penning T=4000} ones. All three runs do
+cross $4000$\,K, so the test is live: the inner crossing is at $1.1775$,
+$1.1084$ and $1.1123\,R_p$. At the crossing cell of \texttt{heh0p55} the
+neighbour ratio $n(2^3S)_{j+1}/n(2^3S)_j$ went
+\[
+\begin{aligned}
+\text{before:}&\quad 1.0199\ \ 1.0194\ \ \mathbf{0.6651}\ \ 1.0232\ \ 1.0227
+  \qquad\text{(a $33\%$ drop in one cell)}\\
+\text{after:}&\quad 1.0190\ \ 1.0185\ \ 1.0180\ \ 1.0175\ \ 1.0171
+\end{aligned}
+\]
+and the other two runs behave the same way ($0.6681\rightarrow1.0242$,
+$0.6968\rightarrow1.0352$).
+
+\textbf{What moves.} The new coefficient is \emph{lower} than the old one
+everywhere in the wind (ratio new/old $0.69$ at $1000$\,K, $0.86$ just below
+$4000$\,K, $0.54$ just above, $0.81$ at $10^4$\,K), so the metastable lives
+longer and the $10830$ line gets stronger. Removing the step is the small
+part of this; the change in level is the large part.
+
+Regression matrix, current binary against the goldens as they stand
+($\max|{\rm new}-{\rm golden}|/\max|{\rm golden}|$ over the column,
+pointwise relative maximum in parentheses):
+
+\begin{center}\small
+\begin{tabular}{lcccccc}
+\toprule
+case & $\rho$ & $v$ & $p$ & $T$ & heat & $\log_{10}\dot M$\\
+\midrule
+\texttt{wasp\_full} & 8.6e-05 (3.3e-03) & 7.8e-04 (1.8e-02) & 4.2e-05 (1.5e-03) & 6.4e-04 (1.3e-03) & 2.6e-03 (5.8e-03) & $13.23\rightarrow13.23$\\
+\texttt{wasp\_he23off} & $0$ & $0$ & $0$ & $0$ & $0$ & $13.23\rightarrow13.23$\\
+\texttt{mol\_base\_handoff} & 2.2e-06 (2.2e-02) & 1.1e-02 (2.2e+00) & 4.3e-06 (3.9e-02) & 1.5e-02 (1.7e-02) & 6.1e-03 (2.7e-02) & $10.58\rightarrow10.57$\\
+\texttt{mol\_metals} & 1.6e-05 (2.3e-02) & 1.1e-02 (1.4e-01) & 1.3e-06 (4.0e-02) & 1.5e-02 (1.7e-02) & 5.4e-03 (2.7e-02) & $10.58\rightarrow10.58$\\
+\texttt{mol\_lyman\_werner} & 6.3e-05 (2.9e-02) & 1.5e-02 (8.4e-01) & 7.8e-06 (4.8e-02) & 1.8e-02 (2.0e-02) & 7.8e-03 (3.3e-02) & $10.58\rightarrow10.58$\\
+\texttt{mol\_diffusion} & 2.2e-06 (2.2e-02) & 1.1e-02 (1.9e+00) & 4.3e-06 (3.9e-02) & 1.5e-02 (1.7e-02) & 6.1e-03 (2.7e-02) & $10.58\rightarrow10.57$\\
+\texttt{lower\_profile} & 3.2e-06 (2.8e-03) & 2.5e-02 (2.6e+00) & 4.6e-06 (3.5e-03) & 3.0e-02 (3.9e-02) & 3.3e-03 (8.8e-02) & $9.58\rightarrow9.58$\\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\texttt{wasp\_he23off} is byte-identical, which is the control: with the
+metastable off the coefficient is never evaluated. The large pointwise $v$
+ratios are cells where the golden velocity passes through zero, not large
+absolute changes --- the scale-relative column is the one to read. The
+H$_2$ front does not move ($1.0181\,R_p$ before and after in all four
+molecular cases), and $\log_{10}\dot M$ moves by at most $0.01$ dex.
+
+The species that moves is the one the change is about: peak
+$n(\mathrm{He}\,2^3S)$ rises by $3.1\%$ (\texttt{wasp\_full}), $6.9\%$
+(\texttt{lower\_profile}) and $22$--$30\%$ (the molecular cases). Peak
+HeH$^+$ rises by a factor $116$--$710$ in the molecular cases
+($2.6\times10^{-1}\rightarrow3.4\times10^{1}$\,cm$^{-3}$ in
+\texttt{mol\_base\_handoff}), which is the newly resolved associative branch
+--- previously the only HeH$^+$ source in those runs was He$^+$$+$H$_2$, and
+this one is larger.
+
+\textbf{Goldens are NOT refreshed here.} The matrix is measured, not
+re-snapshotted; the refresh belongs at the end of the change series.
+\texttt{make diffusion\_tests} $35/35$ and \texttt{run\_fcheck.sh} CLEAN with
+the change in.
+
+\textbf{The LHS 1140 b numbers move, and the helium-abundance crossings move
+with them.} Re-solving the three reference winds (the flux-closure case with
+the wind re-converged on a fixed profile, no closure iteration) gives:
+
+\begin{center}
+\begin{tabular}{lccccc}
+\toprule
+run & EW before & EW after & FWHM before & after & $\log_{10}\dot M$\\
+\midrule
+\texttt{heh0p55} & $1.10884$ & $1.30991$ ($+18.1\%$) & $0.2573$ & $0.2583$ & $7.76$, unchanged\\
+\texttt{heh2p13\_diff\_kzz1e9} & $1.12887$ & $1.33805$ ($+18.5\%$) & $0.2553$ & $0.2568$ & $7.80$, unchanged\\
+\texttt{flux\_closure/heh11p1/k01} & $1.08532$ & $1.16816$ ($+7.6\%$) & $0.2825$ & $0.2840$ & $7.40$, unchanged\\
+\bottomrule
+\end{tabular}
+\end{center}
+\noindent(red-pair equivalent width in \%\,\AA).
+
+The mass-loss rate is untouched: this is a trace-level population, not an
+energy-budget term. The crossings with the measured equivalent width, solved
+on re-computed composition ladders rather than from the local slope (the
+$+18\%$ shift is well outside the slope's range of validity), move down:
+
+\begin{center}
+\begin{tabular}{lccc}
+\toprule
+ladder & before & after & $1\sigma$\\
+\midrule
+well mixed, diffusion off & $0.55$ & $\mathbf{0.424}$ & $0.409$--$0.440$\\
+$K_{zz}=10^9$ (adopted) & $2.09$ & $\mathbf{1.626}$ & $1.573$--$1.685$\\
+flux closure & $11.73$ & $\mathbf{9.317}$ & $8.792$--$10.050$\\
+\bottomrule
+\end{tabular}
+\end{center}
+
+The local-slope estimate (slopes $0.709$, $0.921$, $0.382$) gives $0.435$,
+$1.738$ and $9.676$ for comparison; the direct ladder solve is the number to
+use. Two caveats stand on the flux-closure entry: $9.317$ is an
+interpolation across existing arms, not a re-run closure, and confirming it
+means solving a closure arm at a reservoir near $9.3$, where the cold-trap
+composition differs arm by arm. The stored He/H grid runs elsewhere in
+\texttt{LHS1140b/exhale} are still on the old coefficient and were not
+re-solved.
+
+\texttt{docs/lhs1140b\_exhale\_vs\_pwinds.tex} is \emph{not} edited here.
+Every quantitative statement in it that depends on $n(2^3S)$ is now stale ---
+the three crossings above, the Penning share of the metastable sink
+($89\%$/$60\%$ at ${\rm He/H}=2.09$/$10.31$) and the lifetimes in its
+Table~4, its EW table, and the two places that name the rate as ``the Taylor
+et al.\ (2025) fit''. Its figures that show the He\,10830 profile or
+$n(2^3S)$ need regenerating, and
+\texttt{figures/lhs1140b\_ew\_vs\_heh.pdf} in particular carries the
+crossing.
+
+\textbf{Files.} \texttt{src/modules/radiation/Cool\_coeff.f90} (both rate
+functions renamed and replaced, \texttt{f\_penning\_HeI23S} added);
+\texttt{ion\_residual\_core.f90} (Penning branch on the H$^+$ row, total kept
+in the triplet row); \texttt{System\_HeH\_mol.f90} (branch on the H$^+$ and
+H$_2^+$ rows, associative branch into the HeH$^+$ row, total on the H$_2$ and
+triplet sinks); \texttt{System\_implicit\_adv\_HeH\_TR.f90};
+\texttt{util\_ion\_eq.f90}; \texttt{ionization\_equilibrium.f90};
+\texttt{post\_process\_adv.f90} (heating terms).
+\texttt{docs/molecular\_chemistry\_audit\_he\_rich.md} section~4.4 updated,
+including the withdrawal of its claim that the step entered the Jacobian ---
+the coefficient is constant within a cell, so it appeared only as a jump in
+the loss rate between neighbouring cells.
+\texttt{references/garcia\_munoz\_2025\_network/} holds the published network
+file the branched amplitudes come from.
+
+
+% ===================================================================== %
+\section{A population solved as a difference, and a post-process that never
+read \texttt{info} (2026-08-29)}
+% ===================================================================== %
+
+\textbf{The judgement first.} Two defects in the advection-corrected
+post-process, both numerical, both fixed here.
+
+\begin{enumerate}
+\item \textbf{The ground-singlet helium population was solved as a
+difference.} \texttt{System\_implicit\_adv\_HeH\_TR} carried the
+\emph{summed} He\,\textsc{i} fraction as $x_2$ and the metastable as $x_4$,
+and formed the singlet as $x_2 - x_4$. Where helium is heavily ionized and
+the little neutral helium left sits mostly in the metastable, that difference
+loses every significant digit and finally evaluates to exactly zero. The
+summed He\,\textsc{i} row then degenerates --- it no longer contains the
+unknown it is supposed to determine --- and \texttt{hybrd1} returns
+\texttt{info = 4} with a residual it cannot reduce. Fixed by solving for the
+two populations, $n(1^1S)/n_{\rm He}$ and $n(2^3S)/n_{\rm He}$, and forming
+the \emph{sum} where the total is wanted. A sum has no such failure mode.
+
+\item \textbf{No return code of the post-process was ever read.}
+\texttt{post\_process\_adv} calls \texttt{hybrd1} three times per cell --- the
+advection ionization system, the metal stage re-solve
+(\texttt{pp\_metals = 2}), the energy equation --- and wrote the returned
+iterate out in every case, converged or not. Fixed: a cell whose solve did
+not converge keeps the equilibrium state it came in with, and the number of
+such cell solves is reported.
+\end{enumerate}
+
+The run that exposed both,
+\texttt{LHS1140b/exhale/heh0p55\_diff\_ctrl}, is \textbf{not made physical by
+either fix}, and the reason is a third thing, left untouched here and written
+up in \S\,88.4: its post-process drives $P_{\rm HeI}$ to
+$7\times10^{15}$\,s$^{-1}$.
+
+\subsection*{88.1 A population, not a difference}
+
+The advection systems integrate the ionization ODE upwind across one cell.
+The triplet system solved for
+$x_1 = n_{\rm HI}/n_{\rm H}$,
+$x_2 = n_{\rm HeI}/n_{\rm He}$ (summed),
+$x_3 = n_{\rm HeIII}/n_{\rm He}$,
+$x_4 = n(2^3S)/n_{\rm He}$,
+and built the singlet, which every rate in rows 2 and 4 needs, as
+$x_2 - x_4$. Nothing keeps the two apart. In the helium-settled control run
+the difference collapses pass by pass until $x_2$ and $x_4$ are the same
+double, at which point the singlet is exactly zero, row 2 reduces to a balance
+between the metastable and He\,\textsc{ii} alone, and the solver stalls.
+Measured on that run, before the change: \textbf{310 of 4660 advection cell
+solves returned \texttt{info = 4}} (ten post-process passes,
+\texttt{OMP\_NUM\_THREADS=1}); the other three runs checked returned
+\texttt{info = 1} everywhere.
+
+The unknowns are now the two populations themselves, and row 2 is the
+ground-singlet balance --- the summed He\,\textsc{i} row minus the metastable
+row of row 4, which is the same system written in different variables:
+%
+\begin{equation}
+f_2 = x_{s,\rm old} - x_s + c_1 \Bigl[
+      x_{\rm HeII}\alpha_{\rm HeII} n_e
+    - x_s\bigl(P_{\rm HeI} + (b_{\rm HeI} + q_{13})n_e\bigr)
+    + x_t\bigl((q_{31a}+q_{31b})n_e + A_{31} + x_{\rm HI}Q_{31}n_{\rm H}\bigr)
+      \Bigr].
+\end{equation}
+%
+Loss of the singlet: photoionization, electron-impact ionization, and
+collisional excitation $q_{13}$ into the metastable. Gain: recombination of
+He\,\textsc{ii} into the singlet ladder ($\alpha_{\rm HeII}$; the
+$\alpha_{2^3S}$ channel feeds the metastable and is charged to row 4), and
+every route by which the metastable comes back to the ground state ---
+collisional de-excitation $q_{31a}+q_{31b}$, the $2^3S \rightarrow 1^1S$ decay
+$A_{31}$, and the $\mathrm{He}(2^3S) + \mathrm{H^0}$ ionizing collisions
+$Q_{31}$, whose Penning branch leaves $\mathrm{He}(1^1S) + \mathrm{H^+} + e^-$
+and whose associative branch makes HeH$^+$ that dissociatively recombines back
+to ground-state helium. The He--H charge-exchange pair stays where it was, on
+rows 1 and 2, with the \emph{summed} He\,\textsc{i} as the reactant density:
+that is the accounting the summed-He\,\textsc{i} form carried and the one the
+equilibrium systems make, neither of which gives the metastable a
+charge-exchange channel of its own.
+
+\texttt{post\_process\_adv} now carries \texttt{nheiS} and \texttt{nheiTR} as
+the two profiles it solves for and forms \texttt{nhei = nheiS + nheiTR}
+wherever a routine wants the total. The difference survives in exactly one
+place, the entry point, where the equilibrium solution hands over a summed
+He\,\textsc{i} and a metastable; it is well conditioned there because the
+equilibrium metastable is bounded by its own balance, whose loss side is
+dominated by $A_{31}$.
+
+\textbf{What the change does to the answer.} The reparameterization is a
+change of variables, so a converged solution must not move. Measured, PP-only
+re-runs at \texttt{OMP\_NUM\_THREADS=1} against a baseline built from the same
+tree without the change:
+
+\begin{center}
+\begin{tabular}{lcc}
+\toprule
+run & \texttt{info}\,$\neq$\,1 solves, before $\rightarrow$ after &
+max relative change of the \texttt{\_adv} species \\
+\midrule
+\texttt{heh2p13\_diff\_kzz1e9} ($K_{zz} = 10^9$) & $0 \rightarrow 0$ &
+$2.6\times10^{-9}$ (He\,\textsc{ii}), median $3\times10^{-14}$ \\
+\texttt{flux\_closure/heh11p1/k01} & $0 \rightarrow 0$ &
+$2.0\times10^{-9}$ (He\,\textsc{ii}), median $3\times10^{-15}$ \\
+\texttt{heh0p55} (no diffusion) & $0 \rightarrow 0$ &
+$9.7\times10^{-4}$ (He\,\textsc{iii}), median $1.3\times10^{-4}$ \\
+\texttt{heh0p55\_diff\_ctrl} ($K_{zz} = 0$) & $\mathbf{310 \rightarrow 0}$ &
+$0.25$ (He\,\textsc{i} and $2^3S$, at $2.7\,R_p$) \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+The first two are roundoff: the solve is the same solve. The
+\texttt{heh0p55} entry is \emph{not} the reparameterization --- it is the new
+\texttt{info} guard of \S\,88.2 firing on one cell of the energy equation in
+passes 5 and 7. The last is the run whose solution was not a solution.
+
+\textbf{Where the cancellation went.} In the control run at
+$r = 2.53\,R_p$, tenth pass, the same cell before and after:
+
+\begin{center}
+\begin{tabular}{lll}
+\toprule
+ & before & after \\
+\midrule
+unknowns & $x_2 = x_4 = 1.089669\times10^{-5}$ (singlet exactly $0$) &
+  $x_s = 2.53\times10^{-22}$, $x_t = 1.098\times10^{-5}$ \\
+ & & ($x_s/x_t = 2.3\times10^{-17}$) \\
+\texttt{info} & 4 & 1 \\
+residual & $(-9.5\text{e-}4,\ 1.22\text{e-}2,\ 7.7\text{e-}6,\ -3.5\text{e-}4)$ &
+  $(4.3\text{e-}17,\ 2.4\text{e-}8,\ -3.3\text{e-}18,\ 9.6\text{e-}18)$ \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+The largest residual falls from $1.2\times10^{-2}$ to $2.4\times10^{-8}$, and
+the singlet keeps its relative accuracy seventeen decades below the
+metastable, where the difference form had nothing left. One-cell steps in the
+\texttt{\_adv} metastable profile of that run, counted with the local-trend
+detector of \S\,87, go from \textbf{9 flagged cells to 1} --- and that one, at
+$r = 29.05$, is the outer-boundary feature the equilibrium profile carries
+too.
+
+Its neighbours are the more instructive record: cells 334 and 335 returned
+\texttt{info = 1} with $f_2 = 1.17\times10^{-2}$ and $1.31\times10^{-2}$.
+\texttt{hybrd1}'s \texttt{info = 1} is a test on the \emph{increment} between
+iterates, not on the residual, so a solver frozen against a degenerate row
+reports success. \textbf{The \texttt{info} check of \S\,88.2 would not have
+caught those cells.} Only the reparameterization does.
+
+\subsection*{88.2 The return code}
+
+\texttt{post\_process\_adv} made three \texttt{hybrd1} calls and read the
+return code of none of them:
+
+\begin{center}
+\begin{tabular}{p{0.32\textwidth}p{0.28\textwidth}p{0.32\textwidth}}
+\toprule
+call & what it solves & on failure, before \\
+\midrule
+\texttt{adv\_implicit\_H} / \texttt{\_HeH} / \texttt{\_HeH\_TR} &
+the advection ionization system of the cell &
+the iterate was written to \texttt{nhi..nheiTR} and fed the upwind cascade of
+the next cell \\
+\texttt{ion\_system\_metals\_pp} &
+the metal stage split at fixed H/He (\texttt{pp\_metals = 2}) &
+the iterate replaced the equilibrium split \\
+\texttt{T\_equation} &
+the advected energy equation (legacy MINPACK path) &
+the iterate became $T_{\rm out}(j)$, subject only to the metal-mode band
+reject \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+A non-converged iterate satisfies neither the advection balance it was asked
+to solve nor the equilibrium balance it started from, so it is not a state of
+the gas. The equilibrium solution of that same cell is, and it is already what
+the three validity conditions of \S\,72 fall back to. Each call now keeps the
+equilibrium state on \texttt{info}\,$\neq$\,1 --- the ionization of the cell,
+the equilibrium metal split, the converged equilibrium temperature --- and
+counts it. The counts are summed over the ten passes, not read off the last
+one: a cell reverted in an early pass feeds that pass's upwind cascade whether
+or not the last pass converges everywhere.
+
+Measured on four LHS\,1140\,b runs, the guard is quiet: the advection system
+fires nowhere once \S\,88.1 is in, and the energy equation on one cell in two
+of the ten passes of \texttt{heh0p55} and of the He\,$2^3S$-off variant of
+\texttt{heh2p13\_diff\_kzz1e9} --- worth $10^{-4}$ to $10^{-3}$ in the
+\texttt{\_adv} profiles of those runs. The metal guard is untested by them:
+\texttt{pp\_metals} defaults to the frozen mode (1), so the re-solve block is
+one those runs never enter.
+
+The guard accepts \texttt{info = 1} and rejects everything else. That is a
+statement about the increment, not about the residual, and \S\,88.1 shows the
+two can disagree. A residual test would be the stronger guard; it needs a
+threshold in the units of the rows (a fraction per cell crossing), which is a
+choice, not a measurement, and it is not made here.
+
+\textbf{A third, smaller thing in the same block.} With helium off
+(\texttt{thereis\_He = .false.}) the post-process left \texttt{nhei},
+\texttt{nheii}, \texttt{nheiii}, \texttt{nheiTR} --- and, with this change,
+\texttt{nheiS} --- undefined until the helium-free branch of the ionization
+loop zeroes them at its \emph{end}. The first pass reads them before that, in
+\texttt{nhe}, in the electron sum and in \texttt{eval\_cool}. They are now
+zeroed where the helium arrays are initialized. Helium-on runs are
+bit-identical across the change (checked on
+\texttt{heh2p13\_diff\_kzz1e9}, all three \texttt{\_adv} files).
+
+\subsection*{88.3 Why nothing caught this}
+
+A run's convergence tests never look at the post-process.
+
+\begin{itemize}
+\item $du$ and the steady residual $\lVert R \rVert$ are momentum and energy
+metrics of the \emph{wind}, evaluated in the time loop. The loop is over
+before \texttt{post\_process\_adv} is called; there is no metric downstream of
+it.
+\item \texttt{ionization\_equilibrium} validates the root it accepts ---
+physical simplex, up to three starting points, \texttt{ok\_rank}, and a
+one-line sweep summary of reseeds, retries, unphysical roots and failures
+(\S\,45). The advection-corrected post-process, solving a system of the same
+size with the same solver, validated nothing.
+\item \texttt{make check} bit-compares \texttt{Hydro\_ioniz.txt} and
+\texttt{Ion\_species.txt}. Those are the \emph{equilibrium} files, written
+before \texttt{post\_process\_adv} runs. \textbf{No golden case compares an
+\texttt{\_adv} file at all}, so nothing in the regression can move when the
+post-process does --- which is also why the change documented here leaves the
+goldens byte-identical (7/7, 14/14 files), and why that result carries no
+information about the \texttt{\_adv} profiles. The A/B tables above are what
+stands in for it.
+\end{itemize}
+
+That leaves the \texttt{\_adv} files checked only by whoever plots them. The
+two defects were found that way: an order-of-magnitude one-cell step in a
+metastable profile.
+
+\subsection*{88.4 What the control run actually shows, and what is not fixed
+here}
+
+With \S\,88.1 in place the solver converges everywhere in
+\texttt{heh0p55\_diff\_ctrl} and still returns a neutral-helium column five
+orders of magnitude below the equilibrium one. The singlet is not being lost
+to cancellation any more; it is being destroyed by the rate the post-process
+hands the solver. Traced pass by pass at $r = 2.53\,R_p$:
+
+\begin{center}
+\begin{tabular}{lccccc}
+\toprule
+pass & 1 & 2 & 3 & 5 & 10 \\
+\midrule
+$P_{\rm HeI}$ [s$^{-1}$] & $2.5$e-4 & $3.7$e-2 & $5.3$e0 & $1.1$e5 &
+$\mathbf{6.9\times10^{15}}$ \\
+$x(1^1S)$ & $6.8$e-3 & $4.7$e-5 & $3.3$e-7 & $1.6$e-11 & $2.5$e-22 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+A photoionization rate of $7\times10^{15}$\,s$^{-1}$ is not a rate. Two things
+produce it, and neither is touched here.
+
+\textbf{(a) A volumetric secondary-ionization rate divided by the density of
+the species it ionizes.} \texttt{util\_ion\_eq.f90} adds the Shull \& van
+Steenberg (1985) secondary channel as
+\texttt{P\_HeI(j) = P\_HeI(j) + R\_secHeI/max(nheiS(j), 1.0d-99)}.
+\texttt{R\_secHeI} is the energy deposited per unit volume times the SvS85
+branching into He\,\textsc{i} ionization: a \emph{volumetric} rate, and one
+carrying SvS85's own fixed helium abundance. Dividing it by the actual
+$n(1^1S)$ gives the right per-atom rate only at that abundance, and diverges
+as the singlet disappears. In this run helium has settled to
+$n_{\rm He}/n_{\rm H} = 6\times10^{-6}$ at $1.36\,R_p$, four decades below the
+SvS85 composition, and the ten post-process passes close the loop: a smaller
+singlet raises its own destruction rate, which shrinks it further. The
+\texttt{max(..., 1e-99)} is what stops the divergence, at a rate of order
+$10^{60}$. The physical scaling is the opposite one --- the secondary
+He\,\textsc{i} ionization rate per unit volume should fall with the helium
+abundance, roughly as
+$n_{\rm HeI}\sigma_{\rm HeI}/\sum_a n_a \sigma_a$, leaving the per-atom rate
+near its solar-composition value.
+
+\textbf{(b) In a \texttt{Do only PP: True} run the equilibrium solve and the
+post-process use different physics.} The SvS85 coupling is staged:
+\texttt{sec\_ion\_active} starts false and is switched on once the wind has
+first converged (\S\,38). \texttt{EXHALE\_main.f90} also sets it
+unconditionally \emph{after} the time loop, so the post-process always runs
+with the full coupling. With \texttt{Do only PP} the loop exits after one
+iteration, so the single \texttt{ionization\_equilibrium} call runs with
+\texttt{sec\_on = F} and all twenty-one \texttt{PH\_heat\_HHe} calls of the
+post-process run with \texttt{sec\_on = T} (printed and counted). The
+equilibrium $P_{\rm HeI}$ at $1.36\,R_p$ of the control run is
+$2.4\times10^{-7}$\,s$^{-1}$; the post-process's first pass, at the same
+densities, $4.3\times10^{-5}$\,s$^{-1}$. The \texttt{\_adv} files of such a run
+are not a correction to the equilibrium files next to them: they are a
+different model.
+
+\textbf{(c) The same difference, in the radiation.}
+\texttt{util\_ion\_eq.f90} builds its own singlet as
+\texttt{nheiS = nhei - nheiTR} and uses it for the He\,\textsc{i} column
+density, the He\,\textsc{i} photoionization integrand and the denominator in
+(a). The state vector of the whole code carries (summed He\,\textsc{i},
+metastable) and reconstructs the singlet wherever it is needed ---
+\texttt{species\_table.f90} says so in as many words. \S\,88.1 fixes the one
+system where the difference was catastrophic; carrying $n(1^1S)$ as the state
+variable throughout would touch the global species vector, the output schema
+and every reader of it, and is not attempted here.
+
+Six of the 354 stored \texttt{LHS1140b} runs carry the signature of (a) ---
+$n_{\rm HeI} \le n(2^3S)$ in the \texttt{\_adv} file above $1.5\,R_p$:
+\texttt{heh0p55\_diff\_ctrl}, \texttt{heh0p55\_diff\_d3},
+\texttt{heh0p55\_diff\_fix} (171 cells of 233 each),
+\texttt{heh0p55\_diff\_kzz1e6} (36), \texttt{xuv0p01\_heh2p13} (25) and
+\texttt{xuv0p10\_heh2p13} (28). All six are helium-settled: $K_{zz} \le 10^6$,
+or a reduced XUV flux. The $K_{zz} = 0$ arm of
+Fig.~\texttt{lhs1140b\_kzz\_profiles.pdf} and its quoted peak
+$n(2^3S) = 0.046$\,cm$^{-3}$ are read from the first of them.
+
+\textbf{Files.}
+\texttt{src/modules/nonlinear\_system\_solver/System\_implicit\_adv\_HeH\_TR.f90}
+(the two populations as unknowns, the ground-singlet row);
+\texttt{System\_implicit\_adv\_HeH.f90} (the same naming, no arithmetic
+change: without the metastable all He\,\textsc{i} is the singlet);
+\texttt{ion\_cell\_state.f90} (\texttt{xhei\_old} $\rightarrow$
+\texttt{xheiS\_old});
+\texttt{src/modules/post\_process/post\_process\_adv.f90} (\texttt{nheiS} and
+\texttt{nheiTR} as the profiles solved for, \texttt{nhei} formed as their sum,
+the three \texttt{info} guards, their counters and reports, and
+\texttt{pin\_cell\_to\_equilibrium}, which the validity conditions and the
+guards share).
+\texttt{docs/postprocess\_advection\_validity.md} carries the same items next
+to the 2026-08-12 pair.
+\texttt{docs/lhs1140b\_exhale\_vs\_pwinds.tex} is \emph{not} edited.
+
+Found in passing and fixed, outside the post-process:
+\texttt{LHS1140b/make\_memo\_figures.py} and
+\texttt{LHS1140b/exhale/kzz\_scan\_table.py} formed the elemental helium
+density as \texttt{HeI + HeII + HeIII + HeITR}, counting the metastable twice
+--- it is a level of He\,\textsc{i} and is already inside the \texttt{HeI}
+column, which \texttt{species\_table.f90} states in capitals. Both now sum the
+three ion stages. Measured on the four $K_{zz}$ arms of the memo figure, the
+quoted elemental ratios move by at most $2\times10^{-6}$ relative
+($0.318246 \rightarrow 0.318244$ at $5\,R_p$, $K_{zz} = 10^{10}$), so nothing
+was regenerated.
+
+
+
+% ===================================================================== %
+\section{A conservation check that could not see conservation: the
+deepest-level elemental test and the reservoir band it refused (2026-08-29)}
+% ===================================================================== %
+
+\textbf{Read with \S\,90.} The diagnosis below stands, but its two decisions
+were superseded the same day. Photochem was corrected at the source, so the
+\texttt{-{}-abundance-tol} default went $10^{-3} \rightarrow 10^{-10}$ and the
+three \texttt{clima} failures noted at the end were fixed (two others
+appeared).
+
+\textbf{The judgement first.} The profile adapter's deepest-level elemental
+check was refusing converged LHS 1140\,b columns on \textbf{the residual of
+Photochem's chemical-equilibrium solver}, not on any error of the
+photochemistry, the transport or this code's carrier summation. At the level
+the check is stated, Photochem pins every gas species of the handed-over
+mixture with \texttt{bc\_type='press'}
+(\texttt{gasgiants.\_initialize\_atmosphere}), so that level carries its
+equilibrium initialization unchanged and \textbf{no photochemical or transport
+leak can reach the check at all}. What it reads instead is how far
+\texttt{composition\_at\_metallicity} got, and that routine states
+\texttt{\# Do not enforce convergence.} The \texttt{-{}-abundance-tol} default
+is raised from $10^{-4}$ to $10^{-3}$ --- an interim value for the solver as it
+then was; \S\,90 tightens it to $10^{-10}$ once the solver is fixed. Full
+diagnosis, with every measurement:
+\texttt{docs/deep\_level\_elemental\_check.md}.
+
+\subsection*{89.1 The symptom}
+
+Reservoir He/H = 8.5, 8.55, 8.6, 8.65 and 8.7 could not be run in the closure
+ladder of \texttt{LHS1140b/exhale/crossings\_gm25/}: the N/H ratio at the
+deepest level departed from the input by $1.02$, $1.22$, $1.43$, $1.67$ and
+$1.94 \times 10^{-4}$ against the $10^{-4}$ tolerance. Two closure lineages
+with different trial escape fluxes give the same numbers to the three digits
+the refusal prints, and a standalone chemistry-only scan reproduces them a
+third time --- as expected, since the trial flux enters only at the upper
+boundary and the refused level is Dirichlet.
+
+\subsection*{89.2 The level is a Dirichlet boundary, and the solver behind it
+is used unconverged}
+
+Measured at He/H = 8.6: chemical equilibrium plus the quench overwrite, the
+photochemical model's initial state, and the converged steady state agree at
+the deepest level to \textbf{all 13 digits printed}
+($X_{\rm N} = 8.185823483630\times10^{-5}$ in all three; deep
+$q_{\rm NH_3} = 8.995632484\times10^{-6}$ converged against
+$8.995632\times10^{-6}$ initial). Called on its own at the same $P$ and $T$,
+\texttt{equilibrate.ChemEquiAnalysis.solve} returns \texttt{converged = True}
+at every reservoir swept while its own \texttt{molfracs\_atoms\_gas} misses
+the requested N/H by up to $1.72\times10^{-4}$.
+
+\subsection*{89.3 Why nitrogen and nothing else}
+
+In all 38 runs of the scan $\mathrm{dev}_{\rm N}/\mathrm{dev}_{\rm He} = 4072$
+(4069--4086 over the whole set, 4072 in 32 of them), against
+$1/(3\,{\rm N/H}) = 1/(3\times8.18465\times10^{-5}) = 4073$. Deep nitrogen is
+essentially all NH$_3$ --- on the He/H = 8.6 profile the N$_2$ nuclei share of
+$X_{\rm N}$ is $1.0\times10^{-5}$ and HCN's is $2.2\times10^{-25}$ --- so
+\textbf{one excess N rides on three excess H}: He, C and O carry the common
+hydrogen error alone, N carries it plus the relative error of the equilibrium
+NH$_3$ mole fraction. The check was testing that one mole fraction 4072 times
+more tightly than anything else, which nobody chose.
+
+\subsection*{89.4 Not a branch change, and not a special band or planet}
+
+Across 8.45 $\rightarrow$ 8.75 the deep H$_2$, H$_2$O, CH$_4$, NH$_3$, N$_2$
+and He all move monotonically by less than 1\,\% with no jump; the residual
+jumps by a factor 38 between 8.71 ($1.99\times10^{-4}$) and 8.72
+($5.2\times10^{-6}$), 1500 between 9.15 and 9.20, and 5800 between 10.25 and
+10.30. At the old tolerance the same scan also refuses He/H = 6.0
+($1.31\times10^{-4}$) and 10.20--10.25 ($1.5$--$2.0\times10^{-4}$); the tree
+already held refusals at He/H = 14.643, 15.090 ($2.12\times10^{-4}$, the
+largest recorded) and 25.0 (\texttt{LHS1140b/exhale/kzz\_profile\_scan/}); and
+at \textbf{solar composition} the same solver misses N/H by
+$1.50\times10^{-4}$ at 800\,K and $1.14\times10^{-4}$ at 1600\,K. The two
+HD 209458\,b departures that fixed the original default
+($1.6\times10^{-7}$, $2.7\times10^{-5}$; \S\,77) were a fortunate sample, not
+a floor.
+
+\subsection*{89.5 No accounting error}
+
+Recomputed from the written profile, the diagnostic columns account for
+\textbf{100.00\,\%} of $X_{\rm N}$ at the deepest level. They account for
+93.9\,\% at the 1\,$\mu$bar match, and any earlier reading of a shortfall in
+the carrier sum refers to \emph{that} level and to the deliberately short
+\texttt{q\_*} diagnostic column set --- the check reads neither.
+
+\subsection*{89.6 The change}
+
+\texttt{src/utils/lower\_profile\_schema.py}: the \texttt{-{}-abundance-tol}
+default goes $10^{-4} \rightarrow 10^{-3}$, and both the option help and the
+comment at the check now state what the level can and cannot test. $10^{-3}$
+leaves a factor 4.7 over the worst departure on record and gives up next to no
+detection power: each element sits in one dominant carrier there, so a real
+miscount is an $O(1)$ error, and the smallest conceivable one --- dropping
+N$_2$ --- is $1.0\times10^{-5}$ of $X_{\rm N}$ in the band at issue and was
+already invisible at $10^{-4}$. Over the 38 profiles the N$_2$ nuclei share
+runs $4.2\times10^{-6}$ (He/H = 12, deep $T = 379$\,K) to $4.0\times10^{-3}$
+(He/H = 1, deep $T = 588$\,K), rising with the deep temperature, so where
+dropping it would be a real loss it stays above $10^{-3}$. Nothing else was
+changed: not the check, not its location, not the refusal policy.
+\textbf{Superseded by \S\,90}: the headroom argument was a statement about how
+far the 0.8.4 equilibrium solver missed, and once that was fixed the default
+went to $10^{-10}$.
+
+\subsection*{89.7 What it means for the LHS 1140\,b crossings}
+
+Against \texttt{crossings\_gm25/results.txt}: the flux-closure crossing at
+He/H = 9.048 is untouched --- the 9.0 and 9.1 arms both ran and bracket it ---
+and so is the $-1\sigma$ end 10.77, bracketed by 10.6 and 11.0. The
+\textbf{$+1\sigma$ end 8.49 was interpolated across the un-runnable band}, a
+3.4\,\% gap in reservoir between the 8.45 and 8.75 arms; with the tolerance
+raised those five rungs can be run and that end replaced by measurement. That
+was done, on the corrected build: \S\,90. Because the refusals at
+6.0, 10.20--10.25, 14.643, 15.090 and 25.0 are the same trap at other
+reservoir values, and nothing in the pattern predicts where the next one
+falls, any future ladder can meet it anywhere.
+
+\subsection*{89.8 Seen in passing, not investigated}
+
+\texttt{clima}'s \texttt{surface\_temperature\_bg\_gas} root solve fails
+outright at three of the 41 reservoir values attempted --- He/H = 0.0969 (with
+\texttt{Failed to compute heat capacity}), 8.1 and 15 --- so those
+compositions produce no column at all. That is a \textbf{different} failure
+from the refusal above (this one happens before a column exists, the refusal
+after), and it is recorded as item (M) of \texttt{TO\_BE\_DONE.md}. All three
+are fixed by the bounded, scaled climate solves of \S\,90; the corrected build
+refuses two other compositions instead, He/H = 9.4 and 9.5, and \S\,91 shows
+that is the same underlying solver defect moving address rather than a new one
+--- 0.8.4 refuses two compositions of its own on the same grid.
+
+\textbf{Files.} \texttt{src/utils/lower\_profile\_schema.py};
+\texttt{docs/deep\_level\_elemental\_check.md} (the diagnosis);
+\texttt{LHS1140b/exhale/nh\_refusal\_diagnosis/} (the measurement record:
+README, four scripts, five tables, 38 adapter runs under \texttt{scan/}). No
+EXHALE run was made for any of it and no golden was touched; the adapter's
+chemistry is unchanged and \texttt{make check} does not exercise this path.
+
+\section{The equilibrium residual removed at its source, and the observable
+that did not move (2026-08-29)}
+% ===================================================================== %
+
+\textbf{The judgement first.} The residual \S\,89 diagnosed was fixed where it
+came from --- in Photochem's chemical-equilibrium path, not by relaxing this
+code's check --- and \textbf{it does not move the observable}. Re-measured end
+to end on the corrected build with 11 arms, the LHS 1140\,b flux-closure
+crossing of the He\,\textsc{i} 10830 equivalent width is at
+He/H = \textbf{9.0484} (chord) / \textbf{9.0461} (quadratic), the same to every
+digit the photochem 0.8.4 ladder printed; on seven like-for-like arms the
+equivalent width moves by at most $1.2\times10^{-6}$ in relative terms and
+$\log_{10}\dot M$ is unchanged in its fourth decimal. The one EXHALE change is
+that \texttt{-{}-abundance-tol} goes back to its design value,
+$10^{-3} \rightarrow 10^{-10}$. Records:
+\texttt{LHS1140b/exhale/crossings\_pc090/results.txt},
+\texttt{docs/photochem\_solver\_modification\_implementation.md}.
+
+\subsection*{90.1 What was changed, and where}
+
+Nothing in the EXHALE Fortran. The corrected chemistry is a modified Photochem
+\texttt{v0.9.0} source tree, built as \texttt{photochem 0.9.0} into
+\texttt{/home/kiseon/.conda/envs/photochem\_090\_fix}:
+
+\begin{itemize}
+\item \textbf{Equilibrate} now tests each positive requested elemental
+abundance against its own relative tolerance
+(\texttt{abs(b\_0(i\_atom))*mass\_tol}) instead of a common absolute threshold
+scaled by \texttt{MAXVAL(b\_0)}, and no longer excludes elements at or below
+$10^{-6}$. This is the actual cause of \S\,89.
+\item \textbf{\texttt{gasgiants.py}} exposes \texttt{equilibrium\_mass\_tol}
+(default $10^{-12}$), assigns it to \texttt{ChemEquiAnalysis.mass\_tol},
+verifies the returned elemental vector against the requested one, raises rather
+than silently keeping the last result when all five temperature retries fail,
+and restores \texttt{use\_prev\_guess} in a \texttt{finally} block.
+\item \textbf{clima} \texttt{v0.7.5} gets a bracketed background-pressure
+solve, a $\log_{10}(T_{\rm surface}-T_{\rm trop})$, $\log_{10} T_{\rm trop}$
+temperature parameterization, and normalized residual acceptance, replacing
+unconstrained MINPACK solves.
+\end{itemize}
+
+Both dependency changes are reproducible patches applied through Photochem's
+CMake configuration. Diagnosis:
+\texttt{docs/photochem\_solver\_modification\_investigation.md}.
+
+\subsection*{90.2 A blocking defect, found only by running a column}
+
+The first version of the strict closure test \textbf{rejected every
+composition}, including ones that ran on 0.8.4. It compared the requested
+elemental vector with \texttt{gas.molfracs\_atoms}, the total over gas and
+condensate, at every level. With \texttt{rainout\_condensed\_atoms=True} the
+vector handed to the next level is the gas-only one, and
+\texttt{gas.molfracs\_atoms} started from the previous level through
+\texttt{use\_prev\_guess} still carries that level's condensate: measured on the
+LHS 1140\,b column at He/H = 9, the total reads $1.1\times10^{2}$ against the
+request where the same state solved from scratch closes to
+$5.7\times10^{-14}$. Identical on 0.8.4 and on the patched build, so it is
+Equilibrate's existing reporting behavior, not something the Fortran patch
+created.
+
+The test now forms the residual \textbf{only at a level whose
+\texttt{molfracs\_atoms\_condensate} is entirely zero} --- which is every level
+deep enough to set an elemental handoff, and where the residual it exists to
+catch appears. Why the defect survived the first round of tests is worth
+recording: those tests ran \textbf{one level for each of the 38 saved deep
+states} and never carried a column, so \texttt{use\_prev\_guess} chaining and
+condensing levels were never reached.
+
+\subsection*{90.3 Measured}
+
+Re-solved standalone, the 38 saved deep states of
+\texttt{LHS1140b/exhale/nh\_refusal\_diagnosis/scan/} give a largest relative
+elemental residual of $3.539391003\times10^{-13}$ and a median of
+$1.915134717\times10^{-14}$, against $2.018197773\times10^{-4}$ for the same
+measure on 0.8.4 --- all 38 converged and independently accepted. Over the 68
+handoff writes the corrected build made under \texttt{LHS1140b/exhale/} (43 in
+\texttt{scan\_pc090/}, 25 in \texttt{crossings\_pc090/}), the largest
+deepest-level departure is $3.28\times10^{-13}$ and the median
+$1.73\times10^{-14}$.
+
+\subsection*{90.4 The tolerance}
+
+\texttt{src/utils/lower\_profile\_schema.py}: \texttt{-{}-abundance-tol}
+default $10^{-3} \rightarrow 10^{-10}$, a factor 305 above the worst handoff
+write measured. Detection power is untouched --- each element sits in one
+dominant carrier at that level, so a genuine miscount is an $O(1)$ error, and
+the smallest conceivable one, dropping N$_2$, is $10^{-5}$ to
+$4\times10^{-3}$ of $X_{\rm N}$. \textbf{A 0.8.4 handoff is refused at this
+default, and that is the intended signal}: over the 43 stored 0.8.4 handoffs of
+\texttt{crossings\_gm25/} the departures run $3.48\times10^{-8}$ (best) to
+$8.50\times10^{-5}$ (worst), so even the best of them misses $10^{-10}$ by a
+factor 348. Reproducing a stored 0.8.4 result needs an explicit
+\texttt{-{}-abundance-tol} on the command line, which is how a deliberate
+reproduction states that it accepts that residual; the scans under
+\texttt{nh\_refusal\_diagnosis/} already pass \texttt{-{}-abundance-tol 1.0}
+and are unaffected.
+
+\subsection*{90.5 What it does to the LHS 1140\,b crossings}
+
+\begin{center}
+\begin{tabular}{@{}lrr@{}}
+\hline
+quantity & 0.8.4, 16 arms & corrected build, 11 arms \\
+\hline
+crossing, chord     & 9.0484 & 9.0484 \\
+crossing, quadratic & 9.0461 & 9.0461 \\
+$1\sigma$ band      & 8.4923--10.7716 & 8.4649--10.7357 \\
+\hline
+\end{tabular}
+\end{center}
+
+The crossing does not move. The handoff profile does: at He/H = 9 the
+deepest-level N/H departure goes from $2.1\times10^{-5}$ to
+$1.2\times10^{-14}$ and trace species such as \texttt{q\_H2O}, \texttt{q\_CO}
+and \texttt{q\_HCN} move by up to $10^{-2}$ relative --- none of which reaches
+He\,\textsc{i} 10830, a line set by H, He and the temperature. \textbf{The
+$1\sigma$ band moves for a different reason than the solver}: its low end used
+to be interpolated across the un-runnable band He/H = 8.5--8.7, which now runs
+(departures $1.4$--$3.2\times10^{-14}$), so real arms at 8.5 and 8.6 carry that
+end and it goes $8.4923 \rightarrow 8.4649$; the high end goes
+$10.7716 \rightarrow 10.7357$ because the 10.6 arm was not seeded the same way
+in the two ladders, a $1.1\times10^{-3}$ seed difference in equivalent width,
+the size of the seed spread the stored ladder already measured.
+
+\textbf{Also opened: solar composition.} He/H = 0.0969 is runnable end to end
+for the first time. It was blocked not by the tolerance but by the climate
+step, which now solves (deep boundary 720.5\,K, against 432.4\,K at
+He/H = 8.1 and 393.1\,K at 15 --- the other two recovered compositions).
+
+\subsection*{90.6 Two compositions the corrected build refuses, and what they
+turned out to be}
+
+He/H = 9.4 and 9.5 raise \texttt{Could not bracket background pressure in
+make\_profile\_bg\_gas} on this build and produce columns on 0.8.4. This
+section first recorded that as a regression of the new bracketing scan, with
+the cause undiagnosed. \textbf{Section 91 measured it and that reading was
+wrong.} The scan is not the cause --- the root lies inside the interval it
+searches, with one monotone sign change in the last scan step --- and the same
+defect is present in 0.8.4, which fails at 9.37 and 9.45 on the same grid where
+this build fails at 9.40 and 9.50. Both builds are tripped by a
+forward-difference Jacobian formed at a step below the flux residual's
+round-off jitter. \textbf{The net accounting of ``three failures removed, one
+introduced'' written here does not hold}: it compared against 0.8.4 columns
+that had not been run at the matching reservoir values, and 9.45 in particular
+fails on 0.8.4. Neither value is a bracket arm of the crossing. Diagnosis,
+repair and status: \S\,91; item (M) of \texttt{TO\_BE\_DONE.md}.
+
+\subsection*{90.7 Scope}
+
+No EXHALE Fortran source or binary changed, no golden was refreshed, and
+\texttt{make check} was not run: this path is not in the regression matrix. Not
+tested: condensate-rich and sulfur-network equilibrium sweeps --- note that
+after the fix of \S\,90.2 a condensing level is accepted on the solver's own
+\texttt{converged} flag, so the closure test does not speak for such a level at
+all. The stored 0.8.4 ladder was not re-run, and He/H = 9.5 cannot be repeated
+on this build. The 0.8.4 environment \texttt{photochem\_cmp} is untouched and
+remains the reproduction path for every profile whose header reads
+\texttt{\# source\_version photochem 0.8.4}.
+
+\textbf{Files.} \texttt{src/utils/lower\_profile\_schema.py} (the default);
+\texttt{docs/photochem\_solver\_modification\_investigation.md} (diagnosis),
+\texttt{docs/photochem\_solver\_modification\_implementation.md} (what was
+built and measured),
+\texttt{docs/deep\_level\_elemental\_check.md} \S\S\,8--10 (the tolerance, the
+crossings, the climate solve);
+\texttt{LHS1140b/exhale/crossings\_pc090/} (the 11-arm re-measurement) and
+\texttt{LHS1140b/exhale/nh\_refusal\_diagnosis/scan\_pc090/} (the 45-point
+reservoir scan on the corrected build). The Photochem changes live outside this
+repository, in the local \texttt{photochem/} tree.
+
+\section{The clima bracket was not the cause: a Jacobian built from round-off,
+and a failure that predates the patch (2026-08-29)}
+% ===================================================================== %
+
+\textbf{The judgement first.} The two compositions \S\,90 reported as a
+regression are not one. \texttt{clima}'s new bracketing scan does not fail to
+find a root at He/H = 9.4 and 9.5 --- the root is inside the scanned interval,
+and the residual crosses zero once, monotonically, inside the last scan step.
+The scan fails because the \emph{outer} \texttt{surface\_temperature\_bg\_gas}
+solve hands it a surface temperature of $6.5\times10^{8}$\,K, where every scan
+point is thermodynamically invalid. That step comes from a forward-difference
+Jacobian whose difference step is smaller than the residual's own round-off
+jitter, and \textbf{the 0.8.4 build has the same defect at the same rate} ---
+it fails at 9.37 and 9.45 where the corrected build fails at 9.40 and 9.50. The
+patch changed which compositions are unlucky, not how many. Record:
+\texttt{LHS1140b/exhale/clima\_bracket\_diagnosis/} (README, 12 scripts, six
+sweep and variant tables), measured 2026-08-29 against both installed builds
+with nothing in \texttt{photochem/} modified.
+
+\subsection*{91.1 The bracket is not the cause}
+
+\texttt{make\_profile\_bg\_gas} scans 49 points over $\log_{10} P$ spanning 12
+decades below the requested surface pressure, so for the LHS 1140\,b ladder's
+20\,bar deep boundary the interval is $\log_{10} P = [-4.6990,\,7.3010]$. At
+He/H = 9.4 the 0.8.4 solution sits at $\log_{10} P_{\rm bg} = 7.278533$, inside
+it. So does every neighbor: over 9.30--9.60 the 0.8.4 background pressure moves
+only from $7.278297$ to $7.278990$, always inside
+(\texttt{sweep\_old\_9p30\_9p60.txt}). Inside one failing call the residual is
+monotone with exactly one sign change, in the last scan step
+(\texttt{scan\_residual.py}) --- a grid of 49 points cannot step over it.
+
+What the scan actually reports is that it had \textbf{no valid point at all}.
+The trial surface temperature it is called with is $6.5\times10^{8}$\,K
+(\texttt{outer\_trace.py}), and at that temperature \texttt{make\_profile}
+refuses all 49 points with \texttt{Failed to compute heat capacity}: the
+thermodynamic polynomials stop at 6000\,K (\texttt{T\_ceiling.py}). With no
+valid point there is no sign change to find, and the message \texttt{Could not
+bracket background pressure in make\_profile\_bg\_gas} is the only thing the
+routine can say.
+
+\subsection*{91.2 The Jacobian is round-off}
+
+\texttt{surface\_temperature\_bg\_gas} solves the two-component system (flux
+closure, skin temperature) with MINPACK \texttt{hybrd1}, which fixes
+\texttt{epsfcn} $=0$; \texttt{fdjac1} then forms
+$\varepsilon = \sqrt{\max(\texttt{epsfcn}, \epsilon_{\rm mach})}$ and steps
+$h = \varepsilon |x|$. At the ladder's start, $T_{\rm surf} = 400$\,K and
+$T_{\rm trop} = 120$\,K, that is $3.6\times10^{-8}$ in the log variable, a
+temperature step of $2.4\times10^{-5}$\,K. Over that step the normalized flux
+residual moves by $3.8\times10^{-8}$, and its own jitter is
+$\sim 3\times10^{-8}$ (\texttt{jacobian\_noise.py}, \texttt{noise\_source.py})
+--- the difference is the noise, not the derivative.
+
+The resulting entries have the wrong magnitude and, at these compositions, the
+wrong \textbf{sign}: at He/H = 9.4 the cross term $\partial f_1/\partial x_2$
+comes out $+52.1$ where a resolved step gives $-0.553$
+(\texttt{first\_step.py}). Because that cross term is tens of times the
+diagonal $\partial f_1/\partial x_1 = -1.21$, an error in the small, noisy
+diagonal is amplified into a first step of several decades in
+$\log_{10} T_{\rm surf}$, which is how a 400\,K guess becomes
+$6.5\times10^{8}$\,K in one iteration.
+
+\subsection*{91.3 The failure predates the patch; only its address changed}
+
+The same measurement on 0.8.4 (\texttt{first\_step\_old.py}) shows the
+identical mechanism at He/H = 9.37: its noisy Jacobian sends the first trial to
+$T_{\rm surf} = 0.10$\,K, which is exactly the \texttt{T\_surf is less than
+T\_trop} refusal that build reports there. The patch reparameterized the solve
+as $\log_{10}(T_{\rm surf} - T_{\rm trop})$, which makes that particular
+refusal unreachable, so the same bad step now surfaces at the other end as a
+bracket message. The failure rates are the same:
+
+\begin{center}
+\begin{tabular}{lll}
+\hline
+grid & 0.9.0 + patch & 0.8.4 \\
+\hline
+He/H 9.30--9.60, step 0.01 (31 points) & 9.40, 9.50 & 9.37, 9.45 \\
+He/H 8.00--11.00, step 0.05 (61 points) & 9.40, 9.50, 10.45 & 8.10, 9.45, 9.85, 10.15 \\
+\hline
+\end{tabular}
+\end{center}
+
+\noindent(\texttt{sweep\_new\_9p30\_9p60.txt},
+\texttt{sweep\_old\_9p30\_9p60.txt}, \texttt{sweep\_new\_wide.txt},
+\texttt{sweep\_old\_wide.txt}.) \textbf{The net accounting of ``three failures
+removed, one introduced'' that \S\S\,89, 90 and
+\texttt{deep\_level\_elemental\_check.md} carried does not hold} --- it counted
+the corrected build's failures against a 0.8.4 column that had not been run at
+the same reservoir values. In particular the 9.45 entry those tables record as
+\texttt{not attempted} on 0.8.4 is a \textbf{failure} on 0.8.4.
+
+Nothing about the composition marks a failing point. The solution is smooth
+across them: the deep temperature falls monotonically from $422.72470$\,K at
+He/H = 9.30 to $420.61128$\,K at 9.60, with the failures at 9.40 and 9.50
+sitting on that trend. The failure is a discrete event of the solve, not a
+boundary in the physics.
+
+\subsection*{91.4 The workaround, before the repair was installed}
+
+\texttt{-{}-climate-t-deep-guess} (default 400.0, in
+\texttt{src/utils/photochem\_to\_lower\_profile.py}) is the only user-facing
+control over where the outer solve starts. At both 9.4 and 9.5, every guess
+tried other than exactly 400\,K --- 300, 350, 380, 420, 450, 500, 600 ---
+solves, and each returns the 0.8.4 answer to five decimals
+(\texttt{tguess\_scan.py}). A composition that refused could therefore be
+recovered without rebuilding. The installed environment no longer refuses any
+composition on either grid (91.5), so the key is a diagnostic rather than a
+workaround.
+
+\subsection*{91.5 The repair, tested in replication and then installed}
+
+\texttt{fix\_variants.py} drives the patched residual through the same MINPACK
+\texttt{hybrd} from Python, reproducing the installed build's converged deep
+temperature to $5\times10^{-5}$\,K wherever it solves, and then varies one
+thing at a time over the 61-point grid:
+
+\begin{center}
+\begin{tabular}{lrl}
+\hline
+variant & solved of 61 & failed or stalled \\
+\hline
+as patched & 54 & 9.40, 9.50, 9.80, 10.05, 10.25, 10.70, 10.80 \\
+initial trust-region factor 1 & 54 & the same seven \\
+trial $T_{\rm surf}$ confined to $(T_{\rm trop}, 6000\,{\rm K})$ & 55 & 8.50, 9.55, 9.80, 9.85, 10.20, 10.35 \\
+\texttt{epsfcn} $=10^{-4}$ & \textbf{61} & none \\
+\hline
+\end{tabular}
+\end{center}
+
+\texttt{epsfcn} is not the step itself: with
+$\varepsilon = \sqrt{\max(\texttt{epsfcn}, \epsilon_{\rm mach})}$ and
+$h = \varepsilon |x|$, $\texttt{epsfcn} = 10^{-4}$ is a relative step of
+$10^{-2}$ in the log variable, $16.2$\,K at the starting point against
+$2.4\times10^{-5}$\,K at the default. The Jacobian it produces is smooth and
+nearly composition-independent,
+$[[-1.21, -0.55], [5.0\times10^{-4}, -3.557]]$ across the whole 9.30--9.55
+range, against entries running from $+52$ to $-42$ at the default step. Applied
+to 0.8.4's own parameterization it also solves all 61 points
+(\texttt{old\_epsfcn.py}), so the repair is independent of what the patch
+changed. The recovered temperatures are $422.00813$\,K (9.40), $421.30374$\,K
+(9.50) and $415.15428$\,K (10.45) --- on the smooth trend, and equal to the
+0.8.4 values at 9.40 and 9.50 to all printed digits.
+
+Confining the trial temperature to the range of the thermodynamic data helps
+but does not fix the solve on its own --- it converts one failure mode into
+another, because the tropopause variable stays unbounded.
+
+\textbf{Installed, and measured there.} In \texttt{clima} the repair is
+\texttt{hybrd} in place of \texttt{hybrd1} in
+\texttt{AdiabatClimate\_simple\_solver}, the routine both
+\texttt{surface\_temperature\_bg\_gas} and \texttt{surface\_temperature}
+drive, so that \texttt{epsfcn} can be set at all;
+$\texttt{epsfcn} = 10^{-8}$, $\texttt{factor} = 100$, every other setting
+\texttt{hybrd1}'s. $10^{-8}$ and not the $10^{-4}$ of the table above: a
+relative step of $10^{-4}$ in the log variable, $0.16$\,K at the start, is
+about $10^{4}$ above the jitter and still reproduces a converged central
+difference to $0.12$ percent on the flux row, where $10^{-4}$ is a $16$\,K
+step whose flux row is $9$ percent off the derivative. Both solve the grid;
+$10^{-8}$ is the middle of the window in which neither error source is
+active. The reasoning is in the patch at the constant's declaration.
+
+\texttt{env/photochem} carries it. Read out of the installed library ---
+\texttt{AdiabatClimate\_simple\_solver} disassembled, the stack arguments of
+its MINPACK call followed to the constants they point at --- it calls
+\texttt{\_\_minpack\_module\_MOD\_hybrd} with $\texttt{epsfcn} = 10^{-8}$ and
+$\texttt{factor} = 100.0$
+(\texttt{LHS1140b/exhale/clima\_epsfcn\_installed/installed\_epsfcn.py}).
+Measured on that build, not in replication:
+
+\begin{center}
+\begin{tabular}{lrr}
+\hline
+grid & installed & as patched, before \\
+\hline
+He/H 8.00--11.00, step 0.05 (61 points) & \textbf{61 / 61} & 54 / 61 \\
+He/H 9.30--9.60, step 0.01 (31 points) & \textbf{31 / 31} & 29 / 31 \\
+\hline
+\end{tabular}
+\end{center}
+
+Every composition either build refused now solves --- 8.10, 9.37, 9.40, 9.45,
+9.50, 9.80, 9.85, 10.05, 10.15, 10.25, 10.45, 10.70, 10.80 --- and the
+temperatures the replication predicted are what the installed build returns:
+$422.00813$\,K at 9.40, $421.30375$ at 9.50 and $415.15429$ at 10.45, against
+$422.00813$, $421.30374$ and $415.15428$ above, agreeing to the last printed
+digit. The deep temperature is monotone in composition across the whole grid,
+$433.26144$\,K at 8.00 falling to $411.97203$\,K at 11.00.
+
+\textbf{What it moves.} Nothing in the observable. The two arms of the
+LHS 1140\,b elemental-flux-closure ladder that bracket the He\,\textsc{i}
+10830 crossing were re-run end to end on the corrected environment against the
+stored arms of \texttt{LHS1140b/exhale/crossings\_pc090}, which are the same
+photochem 0.9.0 source without the repair --- same seed, same parent, same
+binary, same transit configuration. Both closure iterations converge at
+$k = 1$ on residuals equal to the stored ones to all five decimals, and the
+equivalent width moves by $5\times10^{-8}$ in relative terms:
+
+\begin{center}
+\begin{tabular}{lllr l}
+\hline
+arm & EW without the repair & with it & relative & $\log_{10}\dot M$ \\
+\hline
+9.0 & 1.1068538680 & 1.1068539227 & $+4.94\times10^{-8}$ & $7.39 \to 7.39$ \\
+9.1 & 1.1092155021 & 1.1092155563 & $+4.88\times10^{-8}$ & $7.39 \to 7.39$ \\
+\hline
+\end{tabular}
+\end{center}
+
+The crossing moves from $9.0484199298$ to $9.0484176256$ (chord) and from
+$9.0460519944$ to $9.0460494223$ (quadratic), $2.3\times10^{-6}$ and
+$2.6\times10^{-6}$, so the $9.0484$ and $9.0461$ of record stand. Every
+quality indicator of that ladder is unchanged digit for digit. The climate
+solve itself moves a composition that already solved by
+$2.1\times10^{-6}$\,K at He/H = 9.0 ($424.9534068835$ against
+$424.9534089414$\,K). Record:
+\texttt{LHS1140b/exhale/clima\_epsfcn\_installed/results.txt}.
+
+\textbf{The source tree carries the repair; a clone outside this repository
+does not.} \texttt{photochem/src/dependencies/patches/clima-bounded-scaled-solvers.patch}
+holds \texttt{real(dp), parameter :: epsfcn = 1.0e-8\_dp} (md5
+\texttt{3c3c40cc}), which is also what
+\texttt{src/utils/photochem\_exhale.patch} writes, and
+\texttt{src/utils/setup\_photochem.sh} checks that line by name and passes.
+The tree reproduces the installed library. What is a revision behind is the
+separate clone at the workspace level, \texttt{ExoAtmosphere/photochem/} (md5
+\texttt{6734053e}), where the modification was first developed: it still
+writes \texttt{hybrd1} and has no \texttt{epsfcn}. That clone is outside this
+repository and nothing here reads it.
+
+\subsection*{91.6 What is not established}
+
+The $\sim 4\times10^{-7}$ relative jitter in ISR $-$ OLR was not traced to a
+particular part of the radiative transfer. It is not the inner pressure solve:
+the background pressure returned is bit-identical across the steps that produce
+the difference (\texttt{noise\_source.py}). Whether the same trap is reachable
+at other planets, other $K_{zz}$ or other deep pressures was not tested ---
+only LHS 1140\,b's configuration was scanned. No EXHALE Fortran source, binary
+or golden was touched, and \texttt{make check} does not exercise this path.
+
+\textbf{Files.} \texttt{LHS1140b/exhale/clima\_bracket\_diagnosis/} (the
+diagnosis); \texttt{LHS1140b/exhale/clima\_epsfcn\_installed/} (the repair
+measured on the installed environment);
+\texttt{src/utils/photochem\_exhale.patch} (the current Clima patch,
+\texttt{epsfcn} included);
+\texttt{src/utils/photochem\_to\_lower\_profile.py}
+(\texttt{-{}-climate-t-deep-guess}); item (M) of \texttt{TO\_BE\_DONE.md}.
+
+% ===================================================================== %
+\section{A column that came back 2.4\,\% apart in pressure: the grid the
+solver stops on, not the temperature it started from (2026-08-29)}
+% ===================================================================== %
+
+\textbf{The judgement first.} The handoff-profile sensitivity left open at the
+end of \S\,91 --- a deep boundary temperature $2.1\times10^{-6}$\,K apart
+giving a column 2.4\,\% apart in pressure, 15\,\% in one trace species and
+0.5\,\% in the elemental O/H --- is \textbf{the extent of Photochem's altitude
+grid at the instant the run is declared steady, and nothing else}. It is
+numerical, it is not an amplification of $2.1\times10^{-6}$\,K, and it is not
+the chemistry's convergence tolerance. \textbf{It does not limit the closure
+chain}: the base state EXHALE reads at the matching level reproduces to
+$6.5\times10^{-8}$ in the He/H the closure iterates on, against
+\texttt{element\_flux\_closure.py}'s \texttt{tol = 0.05}. One defect was found
+on the way and corrected: \texttt{insert\_level} broke $n = p/(k_B T)$ at
+exactly one level of the table, the matching level. Full diagnosis, with every
+measurement: \texttt{docs/lower\_profile\_deep\_boundary\_sensitivity.md};
+record \texttt{LHS1140b/exhale/deep\_temperature\_sensitivity/}.
+
+\textbf{Reproduced inside one build.} The initial guess handed to the climate
+root solve is not physics --- it is where MINPACK starts --- so ten guesses
+over 300--450\,K are ten solves of the same problem. They return the deep
+boundary temperature over a range of $\mathbf{2.121\times10^{-6}}$\,\textbf{K}
+(424.95340688 to 424.95340876), the tropopause to $2.5\times10^{-8}$ relative
+and the water above it to $6.6\times10^{-8}$; re-run in a fresh process the
+ladder is bit-identical. Seven full adapter runs at seven of those guesses
+reproduce every number the record of \S\,91 left open: the pressure at fixed
+level index spreads by $\mathbf{2.470\times10^{-2}}$, \texttt{q\_OH} by 0.58,
+and the oxygen handed over at the matching level by
+$\mathbf{5.207\times10^{-3}}$. \texttt{g400a} and \texttt{g400b} are the same
+command run twice and write byte-identical files, so none of this is
+run-to-run scatter.
+
+\textbf{Everything is two-valued, and the label is the model top.} Over all
+eleven runs the profile top is either $1.0934\times10^{-8}$\,bar or
+$1.12075\times10^{-8}$\,bar and never between; the oxygen at the match is
+either $8.8461\times10^{-7}$ or $8.8892\times10^{-7}$. Within a group the
+columns agree to $10^{-6}$ or better. The two groups are two grids: with the
+inserted node removed so the indices line up, the pressure difference is
+\emph{zero at the pinned bottom} (16.73098\,bar in both) and grows linearly in
+level index to $2.496\times10^{-2}$ at the top --- the signature of a grid laid
+out uniformly in \emph{altitude}, \texttt{dz = (top\_atmos $-$ bottom)/nz}
+(\texttt{vertical\_grid}, \texttt{photochem/src/photochem\_eqns.f90}), with two
+different \texttt{top\_atmos}. Nothing pins \texttt{top\_atmos} at the exit:
+\texttt{robust\_step} (\texttt{photochem/photochem/extensions/gasgiants.py})
+re-pins it only every \texttt{freq\_update\_TOA = 1000} internal steps and then
+accepts any top pressure within a \textbf{factor 3} of the requested one. The
+$2.1\times10^{-6}$\,K decides which phase of that cycle the integration exits
+on, and no more.
+
+\textbf{Excluded by measurement.} (i) \emph{An amplification of the
+temperature}: sorted by the deep boundary temperature the seven runs interleave
+--- \texttt{g401} at 424.95340782\,K carries the lower model top,
+\texttt{g400\_1em4} at 424.95340736\,K the higher --- and a pair
+$3.0\times10^{-7}$\,K apart within one group agrees to $4.2\times10^{-6}$ in
+O/H while a pair $4.6\times10^{-7}$\,K apart across the groups differs by
+$5.2\times10^{-3}$. (ii) \emph{The photochemical stopping tolerance}: four runs
+repeated with \texttt{conv\_longdy} $10^{-2}\rightarrow10^{-4}$,
+\texttt{conv\_longdydt} $10^{-6}\rightarrow10^{-8}$ and
+\texttt{equilibrium\_time} $10^{17}\rightarrow10^{22}$\,s give the same two
+groups and the same spreads ($2.466\times10^{-2}$ in pressure,
+$5.199\times10^{-3}$ in O/H) and reproduce their loose-tolerance twins to
+$4\times10^{-7}$. (iii) \emph{A second chemical solution}: within a group the
+composition reproduces to $10^{-6}$ across guesses spanning 300--450\,K and a
+factor $10^{5}$ in stopping time. (iv) \emph{A cold-trap cell switching in the
+climate solve}: the climate grid is fixed by its two stated pressures and 60
+layers and does not move at all, and the tropopause reproduces to
+$2.6\times10^{-8}$. (v) \emph{Round-off amplification}: the code is
+bit-deterministic and the outcome is two discrete states.
+
+\textbf{The matching pressure never moved.} It is an exact node inserted by
+\texttt{lower\_profile\_schema.insert\_level} and reads
+$1.000000000000\times10^{-6}$\,bar in every profile written. The 2.4\,\% is a
+comparison at fixed level index; EXHALE reads the file as a table over
+pressure.
+
+\textbf{What the chain actually inherits.} At the matching level, over the
+seven runs: $T$ $2.7\times10^{-9}$, $r$ $4.8\times10^{-9}$, \texttt{q\_H2}
+$5.7\times10^{-8}$, \textbf{He/H} $\mathbf{6.5\times10^{-8}}$, C/H
+$3.1\times10^{-7}$, N/H $3.2\times10^{-7}$, O/H $5.2\times10^{-3}$.
+\texttt{n\_tot} and \texttt{rho} are carried and explicitly not imposed
+(\texttt{input\_read.f90}). The only place the 2.4\,\% reaches EXHALE at all is
+\texttt{lap\_r\_top\_RJ}, the upper edge of the elemental flux window
+(\texttt{binary\_element\_diffusion.f90}), which moves by
+$5.2\times10^{-5}\,R_p$. Against \texttt{tol = 0.05} on
+$|F - \Phi|/|F|$, and against the 0.084--0.085 flux-window spread the two
+LHS 1140\,b arms carry, the handoff's own reproducibility is six orders below
+the tolerance in He/H and does not enter the H residual at all. Worth stating:
+the closure re-runs the adapter in every iteration directory, so the oxygen
+reservoir carries a 0.5\,\% step between iterations of one ladder --- nothing
+in the He\,\textsc{i} 10830 chain reads it, but a result that read the oxygen
+would inherit it.
+
+\textbf{The change.} \texttt{src/utils/lower\_profile\_schema.py}:
+\texttt{insert\_level} interpolated every column linearly in $\log p$,
+including \texttt{n\_tot} and \texttt{rho}, which are not free ---
+$n = p/(k_B T)$ holds at every node the solution was computed on. Measured on
+these columns the identity held at 101 of 102 levels and was violated at
+\textbf{exactly one, the matching level}, by $7.7\times10^{-4}$ and
+$1.24\times10^{-3}$. It now recomputes \texttt{n\_tot} from the inserted
+pressure and temperature and \texttt{rho} from the interpolated mean molecular
+weight. Verified by rerunning one case: exactly two cells of the file change,
+the header and \texttt{solution\_id} are unchanged,
+$n_{\rm tot}/(p/k_B T) - 1$ over the whole table goes from $7.706\times10^{-4}$
+to $2.2\times10^{-16}$, and the run-to-run spread of \texttt{n\_tot} at the
+matching level falls from $4.646\times10^{-4}$ to $4.682\times10^{-10}$. Also
+corrected: the module docstring of \texttt{src/utils/element\_flux\_closure.py}
+stated the convergence test as $|F - \Phi|/\max(|F|,|\Phi|)$ while the function
+implements --- and its own docstring documents --- $|F - \Phi|/|F|$.
+
+\textbf{Not repaired, and proposed instead.} The grid state at the exit is
+Photochem's. Re-pinning the grid and re-testing convergence before
+\texttt{reached\_steady\_state} is set is the right repair and needs a rebuild
+of \texttt{photochem/}; doing the same from the adapter after
+\texttt{photochemical\_steady\_state} returns
+(\texttt{pc.update\_vertical\_grid}, then step to convergence again) needs no
+rebuild but changes the converged answer of every future handoff column,
+against which the stored \texttt{crossings\_gm25} and
+\texttt{crossings\_pc090} ladders were measured. Recorded as a proposal, not
+made.
+
+\textbf{Scope.} No EXHALE Fortran source or binary changed, no golden was
+refreshed and \texttt{make check} was not run: the \texttt{lower\_profile}
+regression case reads a stored profile and never runs the adapter, so the
+schema change cannot reach it. Not measured: another reservoir value, another
+planet, another $K_{zz}$, and whether the two grid groups are the only two.
+
+\textbf{Files.}
+\texttt{docs/lower\_profile\_deep\_boundary\_sensitivity.md} (the diagnosis);
+\texttt{LHS1140b/exhale/deep\_temperature\_sensitivity/} (the record: README,
+six scripts, three tables, thirteen adapter runs);
+\texttt{src/utils/lower\_profile\_schema.py} (\texttt{insert\_level});
+\texttt{src/utils/element\_flux\_closure.py} (the docstring). The observation
+this answers: \texttt{LHS1140b/exhale/crossings\_pc090/results.txt} \S\,7 and
+\S\,91 above.
+
+
+\section{Rows of one residual that differed by a million, and a third body
+corrected only halfway (2026-08-29)}
+% ===================================================================== %
+
+\textbf{The judgement first.} The molecular-network audit of
+2026-08-27 left two items open in the molecular network: a NaN abort at He/H $=1$ that it did not
+diagnose, and the suspicion that the molecular \texttt{hybrd1} system fails at
+high helium because its rows are not scaled. Both are settled here, and they
+are \textbf{not the same problem}.
+
+\begin{itemize}
+\item \textbf{The rows were the problem they were suspected of being, and
+scaling them fixes it.} Every row of the molecular system is now divided by its
+own turnover rate --- the rate at which the species that row balances is
+produced or destroyed in that cell --- so what \texttt{hybrd1} minimizes is the
+\emph{relative} imbalance of each species balance instead of an absolute
+reaction rate. The fraction of solver attempts ending on MINPACK's
+\texttt{info = 4} (``iteration is not making good progress'') falls from
+\textbf{54.6\,\% to 0.01\,\%} at He/H $=1000$, from 41.3\,\% to 0.01\,\% at
+100 and from 36.3\,\% to 0.26\,\% at 10.
+\item \textbf{The third-body fix of the earlier section had reached only one of
+its three reactions.} \texttt{ionization\_equilibrium} set
+\texttt{ieq\_cell\%ntot} from \texttt{calc\_ntot}, which is what the R12 term of
+the residual reads, but still called \texttt{set\_mol\_coeffs(T, n\_in\_dim)} ---
+and R13 and R15 fold the third body into \emph{their coefficient}, so both were
+still evaluated with $\rho/m_{\rm H}$. Corrected; the goldens move a second
+time, for the same reason they moved the first.
+\item \textbf{The He/H $=1$ NaN is in the hydrodynamics, not in the network},
+and it is now located exactly: face $j=232$, $r = 1.1398\,R_{\rm p}$, where the
+reconstructed right state carries $p = -3.65\times10^{-2}$ in code units and the
+first invalid operation of the whole run is
+\texttt{aR = sqrt(g*pR/rhoR)}
+(\texttt{src/modules/flux/Num\_Fluxes.f90:46}). Row scaling does not move it by
+one step. It is recorded as an open item, not patched, because the patch
+belongs outside the molecular branch.
+\end{itemize}
+
+\subsection*{The measurement}
+
+\texttt{backup/regression/mol\_diffusion} (hot Uranus, molecules $+$
+He\,2$^3$S $+$ binary H/He diffusion $+$ a \texttt{base.inp} handoff), copied to
+scratch with \textbf{only} \texttt{He/H number ratio} in \texttt{input.inp} and
+\texttt{HeH\_base} in \texttt{base.inp} changed together,
+\texttt{OMP\_NUM\_THREADS=1}, \texttt{EXHALE\_MAXSTEPS=12000}. Three binaries:
+the tree as found, the tree with the third body corrected, and the tree with
+the third body corrected \textbf{and} the rows scaled. The \texttt{info}
+histogram is a new run-wide diagnostic (\texttt{ieq\_n\_mol\_info}), reported
+next to the clamped-cell count; ``fail'' is \texttt{info = 4} as a fraction of
+all molecular \texttt{hybrd1} attempts.
+
+\begin{center}
+\begin{tabular}{llrlrrrrr}
+\hline
+build & He/H & steps & NaN & clamped & \texttt{info=1} & \texttt{info=4} & fail &
+$\log_{10}\dot M$ \\
+\hline
+as found & 1    & 12000 & no  & 614 & 6031444 & 56627   & 0.93\,\% & 11.06 \\
+as found & 10   & 12000 & no  & 166 & 5405217 & 2169365 & 28.6\,\% & 11.04 \\
+as found & 100  & 12000 & no  & 212 & 4972511 & 3499546 & 41.3\,\% & 11.27 \\
+as found & 1000 & 12000 & no  & 16  & 4360657 & 5242809 & 54.6\,\% & 11.11 \\
+\hline
+$+$ third body & 1    & 3406  & yes & 507 & 1677801 & 148735  & 8.1\,\%  & 8.91 \\
+$+$ third body & 10   & 8827  & yes & 274 & 3754138 & 2139333 & 36.3\,\% & 8.85 \\
+$+$ third body & 100  & 12000 & no  & 216 & 5051123 & 3285000 & 39.4\,\% & 11.26 \\
+$+$ third body & 1000 & 12000 & no  & 7   & 4368719 & 5222557 & 54.5\,\% & 11.11 \\
+\hline
+$+$ row scaling & 1    & 3406  & yes & 337 & 1702668 & 48098 & 2.8\,\%  & 8.91 \\
+$+$ row scaling & 10   & 5474  & yes & 259 & 2758854 & 7098  & 0.26\,\% & 8.87 \\
+$+$ row scaling & 100  & 12000 & no  & 408 & 6048842 & 670   & 0.01\,\% & 11.26 \\
+$+$ row scaling & 1000 & 12000 & no  & 38  & 6048079 & 450   & 0.01\,\% & 11.09 \\
+\hline
+\end{tabular}
+\end{center}
+
+These are relaxation snapshots followed by the steady solver, not a composition
+study; the $\dot M$ column is a diagnostic of where each run went. What it does
+show is that the row scaling is a change of \emph{path}: at He/H $=100$ and
+1000, where every arm completes, $\dot M$ moves by 0.01 and 0.02\,dex while the
+failed-attempt fraction falls by three and a half orders of magnitude. A
+positive diagonal scaling of a residual has exactly the same zeros, so this is
+what should happen.
+
+\textbf{The clamped-cell count does not follow the \texttt{info} count, and
+that is worth saying plainly.} At He/H $=100$ it rises, 216 to 408, and at
+1000, 7 to 38. The clamp counts cells where \emph{no} starting point produced
+an admissible root; with the rows scaled, \texttt{hybrd1} now reaches its
+tolerance on nearly every attempt, and a converged root lying on a face of the
+simplex (a fully dissociated or fully ionized species) is rejected by the
+admissibility test where a non-converged root that happened to sit inside it
+was accepted before. The counts are rare either way --- 408 clamps against
+6.05 million cell solves, $7\times10^{-5}$ --- and the solution does not move
+with them. The suspicion recorded earlier was that row scaling drives the
+simplex failures; the measurement says it drives the \textbf{solver} failures,
+by three and a half orders of magnitude, and that the residual clamps are a
+separate, much smaller population.
+
+\subsection*{What the scale is}
+
+A row of this system is a production--loss balance in cm$^{-3}$\,s$^{-1}$, and
+its magnitude is set by the element that carries it: the helium rows run as
+$n_{\rm He}$ times a rate, the hydrogen and molecular rows as $n_{\rm H}$ times
+a rate, with a second density inside every bilinear term. At He/H $=1000$ the
+two blocks of one residual vector differ by about $10^6$. MINPACK's
+\texttt{hybrd1} scales the \emph{variables} (its internal \texttt{diag}) and
+never the rows: the dogleg step minimizes $\|J\,\delta x + f\|_2$, in which a
+block $10^6$ below the other carries no weight, so the unknowns that block
+determines --- the molecular fractions --- are left wherever the helium block
+puts them.
+
+The scale each row is divided by is \textbf{the sum of the magnitudes its terms
+reach when every species is set to the whole of its element}: each rate
+coefficient of the row times the cell's $n_{\rm H}$, $n_{\rm He}$, $n_e$ and
+$n_{\rm tot}$. It is an upper bound on the row, strictly positive wherever the
+row carries any reaction, and --- this is the part that matters for the solver
+--- \textbf{constant across the cell's solve}, so the scaled residual is the
+same smooth function of $x$ that the finite-difference Jacobian of
+\texttt{hybrd1} assumes. The electron density used is the cell's incoming $n_e$
+and not the neutrality bound $n_{\rm H} + 2 n_{\rm He}$: in the shielded
+molecular base the bound overstates the electron terms by many orders and would
+scale those rows into insignificance, which is the failure this is meant to
+remove.
+
+\texttt{set\_mol\_turnover\_rates} (\texttt{System\_HeH\_mol}) fills rows 1--8
+and \texttt{set\_mol\_metal\_turnover\_rates}
+(\texttt{System\_HeH\_mol\_metals}) the metal rows above them, so the whole
+system reaches the solver equilibrated; a metal row runs as $n_{X}$ times a rate
+and a trace element carries $n_X \sim 10^{-4} n_{\rm H}$, so it sits below the
+helium block for the same reason the molecular one does. The identity rows
+\texttt{metal\_rows} writes for an absent element, and for the X$^{++}$ of a
+two-stage element, are already dimensionless and keep a scale of 1. The routine
+mirrors \texttt{mol\_heh\_rows} term by term and says so at the code site: a
+reaction added to a row has to be added to its scale as well, and a missing
+term only makes the scale a weaker bound --- it cannot make the root wrong.
+
+\subsection*{The third body, the other two reactions}
+
+The earlier account is right about what the third body is and wrong about how
+far the fix reached. R12 takes $n_M$ in the residual, through
+\texttt{ieq\_cell\%ntot}, and that path was corrected. R13 and R15 are written
+in \texttt{mol\_rates} as \emph{two-body-equivalent} coefficients,
+$k = 3.2\times10^{-29} n$ and $k = 8\times10^{-33}(300/T)^{0.6} n$, so the third
+body enters when the coefficient is built --- in \texttt{set\_mol\_coeffs},
+which \texttt{ionization\_equilibrium} still called with
+\texttt{n\_in\_dim} $=\rho/m_{\rm H}$. Both now get \texttt{n\_tot(j)}, the same
+particle density the R12 term reads. R13 is the H$_3^+$ source at the base and
+R15 the H$_2$ source, so this is not a small correction to a small term: it is
+the pair that builds the molecular base, and it was running with a third body
+2.3$\times$ too dense at the hot-Uranus base and up to 4$\times$ in a
+helium-dominated one.
+
+\textbf{The corrected third body is what brings the NaN abort back.} The tree as
+found does not abort at any He/H tested --- the earlier abort at step 5538 is
+absent from it --- and with R13/R15 corrected the He/H $=1$ arm aborts at step
+3406 and the He/H $=10$ arm at 8827. The physically correct third body is kept;
+the abort it exposes is diagnosed below and recorded as an open item.
+
+\subsection*{Where the He/H $=1$ NaN is}
+
+Reproduced in a build with \texttt{-fcheck=bounds,do,mem} and
+\texttt{-ffpe-trap=invalid,zero,overflow} (the detector
+\texttt{backup/regression/run\_fcheck.sh} uses, built to
+\texttt{EXHALE\_fcheck.x} so it does not overwrite the production binary). The
+first invalid operation of the run is at step 3406:
+
+\begin{verbatim}
+Program received signal SIGFPE
+#3  __numerical_fluxes_MOD_num_flux  at src/modules/flux/Num_Fluxes.f90:46
+#4  __rk_integration_MOD_rk_rhs      at src/modules/time_step/RK_rhs.f90:62
+\end{verbatim}
+
+Line 46 is \texttt{aR = sqrt(g*pR/rhoR)}. A second build, instrumented to print
+the face states, names the face and the state that reaches it:
+
+\begin{verbatim}
+face j = 232   r_edg = 1.13983 R_p
+WL (rho,v,p) =  2.9894   26.707   +0.23329
+WR (rho,v,p) =  2.8916   26.816   -0.036499
+cell 231 (rho, rho v, E) = 2.7948   75.246   1013.68
+cell 232                 = 2.8916   77.540   1040.21
+cell 233                 = 5.8744  152.863   1988.84
+\end{verbatim}
+
+The reconstructed right state has a \textbf{negative pressure}, and HLLC takes
+the square root of it. The layer it sits in explains how: below
+$r = 1.139$ the run has developed a cold hypersonic shell --- $T$ about 650\,K,
+$v$ about $10^7$\,cm\,s$^{-1}$, \textbf{Mach 50 to 60} --- riding on a dense hot
+wall at $r = 1.144$ ($\rho$ up by $20\times$, $T$ 9100\,K). At Mach 60 the
+thermal pressure is $2\times10^{-4}$ of the total energy the scheme carries, so
+the pressure recovered as $(\gamma-1)(E - \rho v^2/2)$ is the difference of two
+numbers that agree to four digits, and a reconstruction across the jump at the
+next cell tips it below zero. Nothing between the reconstruction and the Riemann
+solver tests the reconstructed pressure for positivity.
+
+This is a hydrodynamic robustness gap, not a molecular one: it is identical, to
+the step and to the face, with and without the row scaling, and the positivity
+floor that would close it belongs in the reconstruction, outside the
+\texttt{thereis\_mol} branch this series is confined to. Recorded as
+\texttt{TO\_BE\_DONE.md} item (O).
+
+\subsection*{Containment, and the goldens}
+
+Every change is inside \texttt{thereis\_mol} --- the two
+\texttt{set\_mol\_*\_turnover\_rates} calls and the corrected
+\texttt{set\_mol\_coeffs} argument sit in the \texttt{if (thereis\_mol)}
+cell-state block of \texttt{ioniz\_eq}, the scaling is applied only in the two
+molecular residual routines, and the \texttt{info} histogram is counted only in
+the molecular attempt loop. Two measurements say so rather than the code reading
+alone:
+
+\begin{itemize}
+\item \texttt{make check} passes byte-identical on \texttt{wasp\_full},
+\texttt{wasp\_he23off} and \texttt{lower\_profile} --- the three non-molecular
+cases --- against goldens that predate the series.
+\item The LHS\,1140\,b arm
+\texttt{LHS1140b/exhale/crossings\_gm25/rs\_heh0p425}, re-solved in a scratch
+copy from its stored restart with the pre-series binary and with the new one,
+writes \textbf{byte-identical} \texttt{Hydro\_ioniz.txt},
+\texttt{Ion\_species.txt}, both \texttt{\_adv} files, both \texttt{\_IC} files,
+\texttt{Cooling\_breakdown.txt} and \texttt{Heating\_breakdown.txt}. The stored
+run directory was not touched.
+\end{itemize}
+
+\textbf{The four molecular cases move, and the third body is what moves them.}
+Each was also re-run with the third body corrected but the rows \emph{unscaled},
+so the two changes can be told apart. Largest relative difference over the
+column against the previous golden, with the median in brackets (these are
+12000-step relaxation snapshots, so the maximum sits in the base sound-wave
+layer or in the thin outer cells and the median is the better measure of the
+profile):
+
+\begin{center}
+\begin{tabular}{lllllll}
+\hline
+case & $\rho$ & $p$ & $T$ & cool & H$_2$ front & $\log_{10}\dot M$ \\
+\hline
+\texttt{mol\_base\_handoff} & 9.1\,\% (0.20) & 14.9\,\% (0.32) & 6.1\,\% (0.087)
+  & 53.5\,\% (1.8) & 1.1617 $\to$ 1.1577 & 10.57 $\to$ 10.58 \\
+\texttt{mol\_metals} & 6.5\,\% (0.16) & 9.8\,\% (0.34) & 6.2\,\% (0.093)
+  & 68.3\,\% (0.67) & 1.1637 $\to$ 1.1597 & 10.58 $\to$ 10.58 \\
+\texttt{mol\_lyman\_werner} & 27.6\,\% (0.57) & 45.3\,\% (0.71) & 17.4\,\% (0.32)
+  & 59.8\,\% (2.4) & 1.1321 $\to$ 1.1271 & 10.58 $\to$ 10.49 \\
+\texttt{mol\_diffusion} & 9.1\,\% (0.20) & 14.9\,\% (0.32) & 6.1\,\% (0.087)
+  & 53.5\,\% (1.8) & 1.1617 $\to$ 1.1577 & 10.57 $\to$ 10.58 \\
+\hline
+\end{tabular}
+\end{center}
+
+The row scaling contributes almost none of that. Measured on its own --- the
+third-body-corrected build against the third-body-corrected \textbf{and} scaled
+build, same case, same steps --- the largest difference over the column is
+$\rho$ 0.019\,\%, $p$ 0.0066\,\%, $T$ 0.018\,\% on
+\texttt{mol\_base\_handoff}; 0.28\,\%, 0.46\,\%, 0.23\,\% on
+\texttt{mol\_metals}; 0.013\,\%, 0.020\,\%, 0.0079\,\% on
+\texttt{mol\_lyman\_werner}; and 0.017\,\%, 0.0068\,\%, 0.016\,\% on
+\texttt{mol\_diffusion}. The H$_2$ front does not move at all in any of the
+four.
+
+That is the judgement the goldens were refreshed on. The move is the physics
+correction, and it is the correction the earlier audit intended and described:
+R13 builds H$_3^+$ at the base and R15 builds H$_2$, both linearly in the
+third-body density, which was 2.3$\times$ too large at this hot-Uranus base.
+The H$_2$ front shifts by 0.004\,$R_{\rm p}$ and the mass-loss rate by 0.01\,dex
+on three of the four cases and by 0.09\,dex on the Lyman-Werner one, where the
+photodissociation front and the three-body formation front sit on top of each
+other and the base is therefore the most sensitive. The row scaling, in
+contrast, leaves the solution where it was to a few parts in $10^4$ while
+removing the solver failures --- which is what a diagonal rescaling of a
+residual should do, and is the evidence that it is a change of path and not of
+physics.
+
+Goldens re-snapshotted for the four molecular cases at the end of the series
+and \texttt{make check} re-run afterwards.
+
+\subsection*{Files changed}
+
+\begin{itemize}
+\item \texttt{src/modules/nonlinear\_system\_solver/System\_HeH\_mol.f90} ---
+\texttt{mol\_inv\_turnover} and \texttt{set\_mol\_turnover\_rates}; the scaling
+applied at the end of \texttt{ion\_system\_HeH\_mol}.
+\item \texttt{src/modules/nonlinear\_system\_solver/System\_HeH\_mol\_metals.f90}
+--- \texttt{set\_mol\_metal\_turnover\_rates} for the metal block; the scaling
+applied at the end of \texttt{ion\_system\_HeH\_mol\_metals}.
+\item \texttt{src/modules/radiation/ionization\_equilibrium.f90} ---
+\texttt{set\_mol\_coeffs} given \texttt{n\_tot(j)} instead of
+\texttt{n\_in\_dim(j)}; the two turnover-scale calls; \texttt{ieq\_n\_mol\_info},
+the run-wide \texttt{hybrd1} exit-code histogram of the molecular solves.
+\item \texttt{src/EXHALE\_main.f90} --- the \texttt{info} histogram reported at
+the end of a run, next to the clamped-cell count.
+\item \texttt{TO\_BE\_DONE.md} --- new item (O), the negative reconstructed
+pressure.
+\item \texttt{docs/molecular\_chemistry\_audit\_he\_rich.md} --- section 7,
+closing both open items of its section 6.
+\end{itemize}
+
 
 % ===================================================================== %
 %  APPENDIX --- bookkeeping material, kept separate from the dated update log

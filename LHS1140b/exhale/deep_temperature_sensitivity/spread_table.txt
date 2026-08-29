@@ -1,0 +1,83 @@
+# runs
+# run          t_steady[s]  p_top[bar]     exit        
+  g400_1em4    1.144e+11    1.121000e-08   conv_longdy 
+  g400_1em6    1.169e+11    1.121000e-08   conv_longdy 
+  g400a        1.288e+17    1.093000e-08   equilibrium_time
+  g400b        1.288e+17    1.093000e-08   equilibrium_time
+  g401         1.803e+17    1.094000e-08   equilibrium_time
+  g410         1.142e+11    1.121000e-08   conv_longdy 
+  g450         3.765e+11    1.093000e-08   conv_longdy 
+
+# spread over the 7 runs, at fixed LEVEL INDEX (max over levels of max-min / mean)
+  p        2.470e-02
+  r        4.996e-05
+  T        1.099e-03
+  n_tot    2.470e-02
+  rho      2.470e-02
+  Kzz      0.000e+00
+  q_H2     1.961e-04
+  q_H      1.364e-02
+  X_He     2.081e-04
+  X_C      1.130e-03
+  X_N      1.187e-03
+  X_O      2.140e-02
+  F_H      0.000e+00
+  F_He     0.000e+00
+  q_H2O    2.140e-02
+  q_CO     1.111e-02
+  q_CO2    9.789e-03
+  q_CH4    1.879e-03
+  q_NH3    1.757e-03
+  q_HCN    1.627e-02
+  q_N2     1.081e-02
+  q_OH     5.837e-01
+  q_C2H2   1.493e-02
+
+# spread over the 7 runs, at fixed PRESSURE
+  r        3.103e-07  at p = 3.074e+00 bar
+  T        5.061e-04  at p = 2.013e+00 bar
+  n_tot    9.676e-04  at p = 9.569e-07 bar
+  rho      9.676e-04  at p = 9.569e-07 bar
+  Kzz      0.000e+00  at p = 1.121e-08 bar
+  q_H2     1.762e-05  at p = 1.121e-08 bar
+  q_H      3.645e-02  at p = 1.427e+01 bar
+  X_He     1.956e-05  at p = 1.121e-08 bar
+  X_C      1.078e-04  at p = 1.121e-08 bar
+  X_N      1.133e-04  at p = 1.121e-08 bar
+  X_O      1.345e-02  at p = 2.013e+00 bar
+  F_H      0.000e+00  at p = 1.121e-08 bar
+  F_He     0.000e+00  at p = 1.121e-08 bar
+  q_H2O    1.345e-02  at p = 2.013e+00 bar
+  q_CO     2.048e-02  at p = 1.427e+01 bar
+  q_CO2    1.163e-02  at p = 5.789e-06 bar
+  q_CH4    8.602e-04  at p = 1.121e-08 bar
+  q_NH3    7.375e-04  at p = 1.121e-08 bar
+  q_HCN    3.845e-02  at p = 1.427e+01 bar
+  q_N2     1.010e-03  at p = 1.314e-08 bar
+  q_OH     5.765e-01  at p = 1.909e+00 bar
+  q_C2H2   6.514e-02  at p = 1.427e+01 bar
+
+# spread over the 7 runs, at the MATCHING LEVEL (1e-6 bar)
+  p        1.000000000000e-06     0.000e+00
+  r        1.620649255656e-01     4.849e-09
+  T        1.854431857294e+02     2.741e-09
+  n_tot    3.909544995947e+13     4.724e-04
+  rho      2.531047501542e-10     4.724e-04
+  Kzz      1.000000000000e+09     0.000e+00
+  q_H2     5.250713663785e-02     5.694e-08
+  q_H      3.105669700007e-06     3.298e-04
+  X_He     9.010055785735e+00     6.484e-08
+  X_C      2.777880182681e-04     3.072e-07
+  X_N      8.190324923178e-05     3.206e-07
+  X_O      8.865465162437e-07     5.207e-03
+  F_H      4.768206988200e+06     0.000e+00
+  F_He     2.043364855000e+07     0.000e+00
+  q_H2O    8.886645735690e-08     5.199e-03
+  q_CO     1.646261929472e-10     5.760e-03
+  q_CO2    1.977670559891e-15     1.115e-02
+  q_CH4    2.696735884335e-05     3.476e-05
+  q_NH3    7.759971164397e-06     1.242e-05
+  q_HCN    3.020868423025e-08     6.316e-04
+  q_N2     1.454508644728e-07     2.954e-04
+  q_OH     1.242584039750e-10     5.747e-03
+  q_C2H2   5.728425008299e-08     5.451e-04

@@ -19,6 +19,7 @@ seed=$1; tag=$2; heh=$3; nrep=${4:-6}
 kzz=${KZZ:-1.0e9}
 resid=${RESID:-5.0e-3}
 EX=/nfs/mocafe/kiseon/RT_Codes/ExoAtmosphere/EXHALE_v1.00
+. "$EX/LHS1140b/winered_hires_y.sh"   # He I 10830 at WINERED HIRES-Y, R = 68,000
 BIN=${EXHALE_BIN:-$EX/EXHALE.x}
 here=$(dirname "$0"); cd "$here" || exit 1
 ctrl=heh0p55_diff_ctrl

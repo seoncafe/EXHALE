@@ -1,0 +1,31 @@
+{
+  "comment": "LHS 1140 b elemental-flux closure (docs/phase_e_flux_closure_design.md section 6). GJ 1132 proxy SED at the b orbit, K_zz = 1e9 cm^2/s, p_match = 1 microbar, He/H = 8.65 as the STARTING reservoir -- the converged He/H is an output, not this number.",
+
+  "python": "/home/kiseon/.conda/envs/photochem_cmp/bin/python",
+  "adapter": "/nfs/mocafe/kiseon/RT_Codes/ExoAtmosphere/EXHALE_v1.00/src/utils/photochem_to_lower_profile.py",
+  "adapter_run_dir": ".",
+  "adapter_args": [
+    "--mp", "0.0176220",
+    "--r-ref", "0.157692",
+    "--p-ref", "1.0",
+    "--p-match", "1.0e-6",
+    "--climate",
+    "--climate-p-deep", "20.0",
+    "--boa-pressure-factor", "1.0",
+    "--stellar-flux", "/nfs/mocafe/kiseon/RT_Codes/ExoAtmosphere/EXHALE_v1.00/LHS1140b/sed/lhs1140_sed_gj1132_at_b.txt",
+    "--flux-at-planet",
+    "--wavelength-unit", "A",
+    "--toa", "1.0e-2",
+    "--atoms", "H,He,N,O,C",
+    "--abundances", "He=8.65",
+    "--kzz-const", "1.0e9"
+  ],
+  "p_top_bar": null,
+
+  "exhale_bin": "/nfs/mocafe/kiseon/RT_Codes/ExoAtmosphere/EXHALE_v1.00/EXHALE.x",
+  "input_template": "/nfs/mocafe/kiseon/RT_Codes/ExoAtmosphere/EXHALE_v1.00/LHS1140b/exhale/ladder_gm25/fcA_heh8p65/input_template.inp",
+  "omp_num_threads": 4,
+  "resid_tol": "4.0e-4",
+  "exhale_env": {"EXHALE_PTC": "1", "EXHALE_PTC_JFNK": "1",
+                 "EXHALE_PTC_DTAU0": "1.0"}
+}

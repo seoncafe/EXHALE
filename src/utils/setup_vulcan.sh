@@ -13,7 +13,7 @@
 # Sources / citation (please cite in any publication using the pre-step):
 #   VULCAN   https://github.com/exoclime/VULCAN  (mirror shami-EEG/VULCAN)
 #            Tsai et al. 2017 (ApJS 228, 20); Tsai et al. 2021 (ApJ 923, 264)
-#   FastChem https://github.com/NewStrangeWorlds/FastChem  (bundled in VULCAN)
+#   FastChem https://github.com/NewStrangeWorlds/FastChem  (included in VULCAN)
 #            Stock et al. 2018 (MNRAS 479, 865); Stock et al. 2022 (MNRAS 517, 4070)
 set -e
 

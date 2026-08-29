@@ -37,12 +37,17 @@ set restricted to an atom list, the climate grid cut so the photochemical
 grid can sit above it, elemental abundances mapped BY NAME, and the robust
 stepper in blocks.
 
-Environment: this machine's `photochem_cmp` conda environment
-(`/home/kiseon/.conda/envs/photochem_cmp/bin/python`), photochem 0.8.4.
+Environment: the repository's own Photochem, `env/photochem/bin/python`,
+built from the source in `photochem/` (photochem 0.9.0 with the elemental
+closure corrections of `README_photochem.md` section 2).  Photochem
+0.8.4 in `~/.conda/envs/photochem_cmp` is a different code with a different
+elemental closure, and is kept only to reproduce what was measured on it
+before 2026-08-29; every profile this writes records which one made it in its
+`# source_version` header line.
 
 Example (HD 209458 b, the P1 configuration):
 
-  /home/kiseon/.conda/envs/photochem_cmp/bin/python \\
+  env/photochem/bin/python \\
       src/utils/photochem_to_lower_profile.py <run_dir> \\
       --mp 0.720 --r-ref 1.36 \\
       --tp-file vulcan_work/hd209_vulcan/atm/atm_HD209_Kzz.txt \\
@@ -289,11 +294,16 @@ def photochemical_steady_state(args, wdir, flux_file, mech, thermo,
         P, T, Kzz_in = read_tp_file(args.tp_file, args.p_unit)
     else:
         P, T, Kzz_in = column
-    if Kzz_in is None:
-        if args.kzz_const is None:
-            sch.refuse('the T(p) file carries no K_zz column: state '
-                       '--kzz-const')
-        Kzz_in = np.full_like(P, args.kzz_const)
+    Kzz_stated = sch.eddy_diffusion_coefficient(P/sch.BAR, args)
+    if Kzz_stated is not None:
+        # A stated eddy coefficient is the one the chemistry is solved on,
+        # not only the one the file reports: K_zz sets the quench levels, so
+        # a column solved on one profile and handed over with another would
+        # carry a composition nobody's K_zz produced.
+        Kzz_in = Kzz_stated
+    elif Kzz_in is None:
+        sch.refuse('the T(p) file carries no K_zz column: state '
+                   '--kzz-const, or --kzz-power with --kzz-ref')
 
     mp = args.mp*sch.MJ
     rp = args.r_ref*sch.RJ
@@ -659,12 +669,13 @@ def main():
     ratios = ratios_all if args.count_condensates else ratios_gas
     mu = sch.mean_molecular_weight(mixing, counts)
 
-    if args.kzz_const is not None:
-        Kzz = np.full_like(p_bar, args.kzz_const)
-    elif 'Kzz' in sol:
-        Kzz = np.asarray(sol['Kzz'], dtype=float)
-    else:
-        sch.refuse('the solution carries no K_zz: state --kzz-const')
+    Kzz = sch.eddy_diffusion_coefficient(p_bar, args)
+    if Kzz is None:
+        if 'Kzz' in sol:
+            Kzz = np.asarray(sol['Kzz'], dtype=float)
+        else:
+            sch.refuse('the solution carries no K_zz: state --kzz-const, '
+                       'or --kzz-power with --kzz-ref')
 
     n_tot = p_dyn/(sch.KB*T)
     rho = n_tot*mu*sch.MAMU
@@ -710,6 +721,11 @@ def main():
         p_match_bar=args.p_match,
         trial_flux_H=args.trial_flux_H, trial_flux_He=args.trial_flux_He,
     )
+    if args.kzz_power is not None:
+        # Only when it is in use: a fingerprint entry that is always present
+        # would move the solution_id of every constant-K_zz run.
+        fp.update(kzz_power=args.kzz_power, kzz_ref=args.kzz_ref,
+                  kzz_ref_bar=args.kzz_ref_bar)
     if climate is not None:
         # The climate solve is part of the solution the id names, so its
         # configuration and its two answers enter the fingerprint.

@@ -191,30 +191,78 @@
       ! the atomic-region behavior is recovered identically.
       !
       ! DISCRETIZATION (memo section 3).  Finite volume on the existing grid,
-      ! faces carrying r^2 areas, one implicit (backward-Euler, tridiagonal)
-      ! solve per call with the coefficients frozen within the step and one
-      ! Picard sweep on the X-dependent settling prefactor.  The settling term
+      ! faces carrying r^2 areas, one implicit (backward-Euler) step per call
+      ! with the transport COEFFICIENTS frozen within the step.  The step is
+      ! nonlinear in X because the drift flux carries the product X(1-X), and
+      ! it is solved by Newton on the residual with a tridiagonal Jacobian
+      ! (solve_mass_fraction).  The gradient term is central; the drift term
       ! keeps the Peclet-based central/upwind hybrid: central where
-      ! |W| dr < 2 (A + E), upwind toward the settling direction otherwise.
+      ! |B| dr <= 2 (A + E), donor-cell upwind otherwise.
       !
-      ! M-MATRIX CONDITION.  Row j of the backward-Euler matrix has
-      !   off-diagonals   aa = -K r^2 Lf(j-1) <= 0,  cc = K r^2 Rf(j) <= 0
+      ! THE DRIFT FLUX VANISHES AT BOTH ENDS OF THE COMPOSITION AXIS, IN THE
+      ! DISCRETE OPERATOR AS IN THE CONTINUUM.  This is the property that
+      ! bounds X, and it is why the two factors of X(1-X) are taken from
+      ! OPPOSITE sides of the face.  The drift is a counter-flow: the helium
+      ! mass flux -B X(1-X) is matched by an equal and opposite hydrogen flux,
+      ! so a donor-cell rule has to take each element's mass fraction from the
+      ! cell that element leaves.  With B >= 0 the helium drifts inward, so
+      ! helium is donated by cell j+1 and hydrogen by cell j, and the face
+      ! flux is
+      !
+      !    J_drift(f) = -B_f X(j+1) (1 - X(j))          [B_f >= 0, inward]
+      !    J_drift(f) = -B_f X(j)   (1 - X(j+1))        [B_f <  0, outward]
+      !
+      ! Consequences, which the earlier lagged form did not have: a donor at
+      ! X = 0 sends nothing and an ACCEPTOR at X = 1 receives nothing, so a
+      ! cell sitting on either end of the axis cannot be pushed past it.  In
+      ! the central branch the same holds because the Peclet condition makes
+      ! the gradient flux dominate there: with X(j) = 1 the face value
+      ! X_f (1 - X_f) = (1 + X(j+1))(1 - X(j+1))/4 <= (1 - X(j+1))/2, and
+      ! |B_f| <= 2 A_f/dr bounds the drift flux by the gradient flux
+      ! A_f (1 - X(j+1))/dr that carries helium OUT of that cell.
+      !
+      ! BOUNDS 0 <= X <= 1.  Let X be the solution of the implicit step and
+      ! suppose it first touches 1 in cell m, every other cell still inside
+      ! [0,1].  Then (i) the time term rho (X_m - X_m^old)/dt >= 0, (ii) the
+      ! gradient flux leaves m at both faces because X_m is the maximum,
+      ! (iii) the upwind advection contributes rho|v|(X_m - X_donor)/dr >= 0,
+      ! and (iv) the drift flux is an outflow or zero at both faces by the
+      ! rule above.  Every term of the row has the same sign and their sum is
+      ! the row residual, which is zero -- so no term can be strictly
+      ! positive, and X_m > 1 is impossible.  X <= 0 is the same statement:
+      ! the scheme is exactly symmetric under X -> 1 - X, B -> -B (the
+      ! donor/acceptor pair exchanges roles and the central branch is even in
+      ! X_f - 1/2), which is the binary symmetry of the transport equation
+      ! itself.  There is no cap f <= HeH and no base pile-up limiter: a
+      ! pile-up, if one appears, is physics for the base boundary condition to
+      ! answer, and it saturates at pure helium of its own accord.
+      !
+      ! The row sum is NOT rho/dt and the bounds do not need it to be: the
+      ! argument above is made cell by cell on the residual, not from a
+      ! comparison principle for the linear system.  (The lagged linearization
+      ! this replaced entered the drift as [rho D G (1-X_lag)] X, whose flux
+      ! does not vanish at X = 1 unless the lag is already there; measured, it
+      ! let X reach 1.52.  Sections 84 and 86 of docs/Update_EXHALE.md.)
+      !
+      ! M-MATRIX CONDITION.  The Newton Jacobian has
+      !   off-diagonals   aa = -K r^2 dJ/dX(j-1) <= 0,  cc = K r^2 dJ/dX(j+1) <= 0
       !   diagonal        bb = rho/dt + (outflow face terms) > 0
-      ! because (i) the gradient coefficient A + E >= 0 contributes +A/dr to
-      ! Lf and -A/dr to Rf, (ii) the settling hybrid never lets its
-      ! contribution flip the sign of an off-diagonal (that is exactly the
-      ! Peclet switch: in the central branch |W|/2 <= A/dr), and (iii) the
-      ! upwind advection contributes +rho|v|/dr to the diagonal and the same
-      ! amount, negated, to the donor neighbour and to nothing else.  The row sum is
-      ! rho/dt > 0, so the matrix is a strictly diagonally dominant M-matrix:
-      ! its inverse is nonnegative and X^new >= 0 follows from X^old >= 0 and a
-      ! nonnegative boundary value.  The same operator applied to 1-X (the
-      ! hydrogen equation, which is this equation with J -> -J and hence the
-      ! settling direction reversed) gives 1 - X^new >= 0 for a lagged
-      ! prefactor in [0,1].  Hence the bounds hold per step WITHOUT clipping;
-      ! the round-off clip below is an assertion, not a limiter.  There is no
-      ! cap f <= HeH and no base pile-up limiter: a pile-up, if one appears, is
-      ! physics for the base boundary condition to answer.
+      ! for any iterate in [0,1], because (i) the gradient coefficient
+      ! A + E >= 0 contributes +A/dr and -A/dr to the two slopes, (ii) the
+      ! drift slopes are +B X or +|B|(1-X) on the left and -B(1-X) or -|B| X
+      ! on the right in the two upwind branches, and never exceed A/dr in the
+      ! central one (that is exactly the Peclet switch), and (iii) the upwind
+      ! advection contributes +rho|v|/dr to the diagonal and the same amount,
+      ! negated, to the donor neighbour and to nothing else.
+      !
+      ! What is measured, before the clip: the excursion outside [0,1] is
+      ! NEGATIVE in every case tested -- the solve stays strictly inside the
+      ! range and does not reach the clip at all.  -9.2e-4 on the strong-drift
+      ! column of test T14, -8.6e-3 on the pure-helium band of T13, -1.05e-1
+      ! on the LHS 1140 b wind; the lagged form overshot the same T14 column
+      ! by +0.514.  So the clip is an assertion at both ends, and the
+      ! excursions are measured every step and exposed
+      ! (he_fraction_over_one / he_fraction_under_zero) rather than asserted.
       !
       ! Gated on he_diffusion (default .false.); when off the module is never
       ! entered, so flag-off runs are byte-identical to before.
@@ -227,7 +275,8 @@
                                isp_HII, isp_HeII, isp_HeIII, isp_HeTR,    &
                                isp_H2, isp_H2p, isp_H3p,                  &
                                n_mion, mion_fsp, mion_stage,              &
-                               n_melem, melem_i0, melem_top, melem_A
+                               n_melem, melem_i0, melem_top, melem_A,      &
+                               melem_name
       use composition,   only: mass_per_H_nucleus_without_He
       use lower_atmosphere_profile, only: lap_in_use, lap_r_top_RJ,       &
                           lap_flux_measured, lap_flux_window_empty,       &
@@ -252,6 +301,24 @@
       public :: ion_neutral_pair_diffusion
       public :: coulomb_pair_diffusion, coulomb_logarithm
       public :: alpha_HI, alpha_HeI
+      ! How far the last solve left [0,1] BEFORE the range clip, signed so
+      ! that a negative value means it stayed inside.  Exposed because the
+      ! clipped X cannot tell an overshoot from an exact 1 (both read 1.0), so
+      ! an acceptance test that means to check the bounds has to read the
+      ! solve and not its clip.
+      public :: he_fraction_over_one, he_fraction_under_zero
+      real*8, protected :: he_fraction_over_one   = -1.0d0
+      real*8, protected :: he_fraction_under_zero = -1.0d0
+      ! Newton iterations and the residual the last solve stopped at, in units
+      ! of X (the residual is scaled by dt/rho).  Reported by report_step.
+      integer, protected :: he_fraction_newton_steps = 0
+      real*8,  protected :: he_fraction_newton_resid = 0.0d0
+      public :: he_fraction_newton_steps, he_fraction_newton_resid
+      ! The same measurement for the trace-metal mixing ratio, whose clip
+      ! carried the same unmeasured assertion the helium one did.  Reset at
+      ! the start of each step and maximized over the elements.
+      real*8, protected :: trace_ratio_under_zero = -1.0d0
+      public :: trace_ratio_under_zero
 
       ! Species masses in the m_H units the code counts f_sp in (species_table
       ! bsp_mass literals), and the mass of that H = 1 unit in grams (the
@@ -367,13 +434,15 @@
       real*8, dimension(n_mstage)  :: ZXs, mXs, alXs
       integer, dimension(1-Ng:N+Ng):: idom
       integer, dimension(n_mstage) :: ispX
-      real*8, dimension(0:N)       :: PdL, PdR, Jf
+      real*8, dimension(0:N)       :: Agrd, Bdrf, Jf
+      integer, dimension(0:N)      :: updrf
       ! NB: local scalars are checked against global_parameters case-
       ! insensitively.  In particular the time scale is tscale, NOT t0 (a local
       ! t0 would alias the global temperature normalization T0), and nothing
       ! here is named N, Ng, r, g, mu, info, count or du.
-      real*8 :: tscale, X_base, m_1, mX, fXbase, rXsc
-      integer :: j, jlo, im, i0m, top, k
+      real*8 :: tscale, X_base, m_1, mX, fXbase, rXsc, Xover, Xunder, qdep
+      real*8 :: dJl, dJr
+      integer :: j, jlo, im, i0m, top, k, n_vanished
       logical :: shut_base
 
       if (.not. he_diffusion) return
@@ -425,16 +494,28 @@
       ! --- base reservoir composition (Dirichlet), X at the input He/H
       X_base = m_He_amu*HeH/(m_1 + m_He_amu*HeH)
 
-      ! --- implicit solve, with one Picard sweep on the settling prefactor
-      call face_coefficients(Xhe, rho_phys, Dco, Gco, rp, PdL, PdR)
+      ! --- implicit step.  The face coefficients do not depend on X (the
+      ! composition enters only through the drift product X(1-X), which the
+      ! solve carries at the new level), so there is no Picard sweep to make:
+      ! one Newton solve of the nonlinear step is the whole update.
+      call drift_and_gradient_face_coefficients(rho_phys, Dco, Gco, rp,   &
+                                                Agrd, Bdrf, updrf)
       call solve_mass_fraction(Xold, Xhe, rho_phys, dt_phys, rp, rep, rhov,&
-                               PdL, PdR, X_base, jlo, shut_base)
-      call face_coefficients(Xhe, rho_phys, Dco, Gco, rp, PdL, PdR)
-      call solve_mass_fraction(Xold, Xhe, rho_phys, dt_phys, rp, rep, rhov,&
-                               PdL, PdR, X_base, jlo, shut_base)
+                               Agrd, Bdrf, updrf, X_base, jlo, shut_base)
 
-      ! Round-off assertion (NOT a limiter): the M-matrix argument in the
-      ! header gives 0 <= X <= 1 per step; only round-off can leave the range.
+      ! Range clip.  Both lines are assertions: the drift flux vanishes at
+      ! both ends of the composition axis in the discrete operator as in the
+      ! continuum (header), so only round-off can leave [0,1].  How far the
+      ! solve left it is measured and not asserted -- the clipped X cannot
+      ! tell an assertion from a limiter, because both read 1.0 -- and the
+      ! excursions are kept in module variables the acceptance tests read.
+      ! NB a solve returning X = 1 to the last bit needs no clip at all
+      ! (1 - 1e-17 rounds to 1 in double), so X = 1 in the report is not by
+      ! itself evidence that these lines fired.
+      Xover  = maxval(Xhe(1:N)) - 1.0d0
+      Xunder = -minval(Xhe(1:N))
+      he_fraction_over_one   = Xover
+      he_fraction_under_zero = Xunder
       where (Xhe .lt. 0.0d0) Xhe = 0.0d0
       where (Xhe .gt. 1.0d0) Xhe = 1.0d0
       if (.not. shut_base) Xhe(1-Ng:1) = X_base    ! base + inner ghosts
@@ -443,7 +524,8 @@
       ! --- diffusive face flux actually carried by the step (diagnostic)
       if (present(Jface_out) .or. diffusion_check_on() .or. lap_in_use) then
          do j = 0, N
-            Jf(j) = PdL(j)*Xhe(j) + PdR(j)*Xhe(j+1)
+            call element_face_flux(Xhe(j), Xhe(j+1), Agrd(j), Bdrf(j),    &
+                                   updrf(j), Jf(j), dJl, dJr)
          enddo
          if (present(Jface_out)) Jface_out = Jf
       endif
@@ -466,6 +548,7 @@
       ! diffuses through); only the background definition is the element count
       ! above rather than HI+HII.  Default OFF.
       if (he_metal_diffusion .and. thereis_metals) then
+         trace_ratio_under_zero = -1.0d0
          call element_nucleus_counts(f_sp, nucH, nucHe)
          nH_phys = nucH*rho*n0
          where (nH_phys .lt. 1.0d-30) nH_phys = 1.0d-30
@@ -564,14 +647,91 @@
          enddo
       endif
 
+      ! --- elemental census of the metals.  These equations have no sink for a
+      ! metal nucleus: an element that is present in the reservoir and absent
+      ! from a cell that holds hydrogen cannot have got there by physics.  It is
+      ! checked on every step because nothing else in the pipeline can see it --
+      ! the steady residual is a residual of the hydro and energy equations,
+      ! whose solution with the metals removed is a perfectly good solution of
+      ! the equations as posed, and the elemental-flux closure measures a window
+      ! that need not contain the cells concerned (section 84).
+      call metal_hydrogen_ratio_departure(f_sp, qdep, n_vanished)
+
       if (diffusion_check_on()) then
          call element_nucleus_counts(f_sp, nucH, nucHe)
-         call report_step(Xhe, Jf, rho_phys, rp, rep,                     &
+         call report_step(Xhe, rho_phys, rp, rep,                          &
               maxval(abs(m_1*nucH(1:N) + m_He_amu*nucHe(1:N) - msum(1:N)) &
-                     /msum(1:N)))
+                     /msum(1:N)), Xover, Xunder, qdep, n_vanished)
       endif
 
       end subroutine element_diffusion_step
+
+      ! ------------------------------------------------------------------ !
+
+      subroutine metal_hydrogen_ratio_departure(f_sp, qdep, n_vanished)
+      ! Departure of the metal/hydrogen nucleus ratio from the reservoir
+      ! abundance melem_ab, over the cells 1..N and the elements the reservoir
+      ! states.  qdep is max |(n_X/n_H)/melem_ab - 1| and n_vanished counts the
+      ! (cell, element) pairs in which the element has vanished outright while
+      ! hydrogen is present.
+      !
+      ! A nonzero n_vanished is not a tolerance being exceeded, it is an element
+      ! that is gone: the transport equation moves metal nuclei with the
+      ! hydrogen they are slaved to and destroys none, so the count is zero on
+      ! any state these equations can reach.  It is therefore reported as a
+      ! warning the first time it happens, whether or not the step diagnostic is
+      ! on.  qdep is a magnitude and not an error: he_metal_diffusion moves the
+      ! metals relative to hydrogen on purpose, and a restart may carry a
+      ! settled column, so only its report is unconditional -- under
+      ! EXHALE_DIFFUSION_CHECK -- and not any judgement of it.
+      real*8, dimension(1-Ng:N+Ng,n_species), intent(in)  :: f_sp
+      real*8,                                 intent(out) :: qdep
+      integer,                                intent(out) :: n_vanished
+
+      real*8, dimension(1-Ng:N+Ng) :: nucH_l, nucHe_l
+      real*8  :: nX
+      integer :: j, ie, k, jfirst, iefirst
+      logical, save :: warned = .false.
+
+      qdep       = 0.0d0
+      n_vanished = 0
+      if (.not. thereis_metals) return
+      if (.not. allocated(melem_ab)) return
+
+      call element_nucleus_counts(f_sp, nucH_l, nucHe_l)
+      jfirst  = 0
+      iefirst = 0
+      do ie = 1, n_melem
+         if (melem_ab(ie) .le. 0.0d0) cycle
+         do j = 1, N
+            if (nucH_l(j) .le. 1.0d-30) cycle
+            nX = 0.0d0
+            do k = 0, melem_top(ie)
+               nX = nX + f_sp(j,mion_fsp(melem_i0(ie)+k))
+            enddo
+            if (nX .le. 0.0d0) then
+               n_vanished = n_vanished + 1
+               if (jfirst .eq. 0) then
+                  jfirst  = j
+                  iefirst = ie
+               endif
+            endif
+            qdep = max(qdep, abs(nX/(nucH_l(j)*melem_ab(ie)) - 1.0d0))
+         enddo
+      enddo
+
+      if (n_vanished .gt. 0 .and. .not. warned) then
+         warned = .true.
+         write(*,'(A,I0,A)') ' (element diffusion) WARNING: ',            &
+              n_vanished, ' (cell, element) pairs hold no metal nuclei'// &
+              ' at all while hydrogen is present.'
+         write(*,'(A,I0,A,ES12.5,A,A,A)') '   first at cell ', jfirst,    &
+              ', r = ', r(jfirst), ' R_p, element ',                      &
+              trim(melem_name(iefirst)),                                  &
+              '.  These equations have no sink for a metal nucleus.'
+      endif
+
+      end subroutine metal_hydrogen_ratio_departure
 
       ! ------------------------------------------------------------------ !
 
@@ -1350,127 +1510,327 @@
 
       ! ------------------------------------------------------------------ !
 
-      subroutine face_coefficients(Xhe, rho_phys, Dco, Gco, rp, PdL, PdR)
-      ! Face coefficients of the diffusive flux at r_edg(0:N).  The diffusive
-      ! flux at face j is
-      !     J(j) = PdL(j) X(j) + PdR(j) X(j+1)
+      subroutine drift_and_gradient_face_coefficients(rho_phys, Dco, Gco,  &
+                                                      rp, Agrd, Bdrf, updrf)
+      ! Face coefficients of the diffusive flux at r_edg(0:N).  The flux
+      ! (module header) is
+      !
+      !     J(f) = -Agrd(f) (X(j+1) - X(j))  -  Bdrf(f) [X(1-X)](f)
+      !
+      ! with Agrd = rho (D_12 + K_zz)/dr already divided by the face spacing
+      ! and Bdrf = rho D_12 G the drift coefficient.  Neither depends on X:
+      ! the whole composition dependence of the drift sits in the product
+      ! X(1-X), which element_face_flux evaluates at the new level.
+      !
+      ! updrf selects how that product is taken at the face:
+      !    0  central, X_f (1 - X_f) with X_f the face average.  Used where
+      !       the drift is resolved, |Bdrf| dr <= 2 (A + E), which is also
+      !       where the gradient flux dominates it -- the condition that
+      !       keeps the central branch inside the bounds (header).
+      !   -1  Bdrf >= 0: helium drifts INWARD, so cell j+1 donates helium and
+      !       cell j donates the hydrogen that moves the other way.
+      !   +1  Bdrf <  0: helium drifts outward, the roles exchanged.
+      !
       ! Faces 0 and N are the two boundaries and carry zero diffusive flux.
       ! The advection is not a face quantity here -- it is the cell-velocity
       ! upwind difference assembled in solve_mass_fraction (see the header) --
       ! and the outer ghost carries the top cell's own composition, so an
       ! inflowing top boundary brings in gas of the same composition instead of
       ! a silent zero flux.
-      real*8, dimension(1-Ng:N+Ng), intent(in)  :: Xhe, rho_phys, Dco, Gco
+      real*8, dimension(1-Ng:N+Ng), intent(in)  :: rho_phys, Dco, Gco
       real*8, dimension(1-Ng:N+Ng), intent(in)  :: rp
-      real*8, dimension(0:N),       intent(out) :: PdL, PdR
+      real*8, dimension(0:N),       intent(out) :: Agrd, Bdrf
+      integer, dimension(0:N),      intent(out) :: updrf
 
-      real*8 :: dr_f, rhof, Df, Gf, Kf, Xf, Agrad, Wset
+      real*8 :: dr_f, rhof, Df, Gf, Kf
       integer :: j
 
-      PdL = 0.0d0 ; PdR = 0.0d0
+      Agrd  = 0.0d0
+      Bdrf  = 0.0d0
+      updrf = 0
 
       do j = 1, N-1
          dr_f = max(rp(j+1)-rp(j), 1.0d0)
          rhof = 0.5d0*(rho_phys(j)+rho_phys(j+1))
          Df   = 0.5d0*(Dco(j)+Dco(j+1))
          Gf   = 0.5d0*(Gco(j)+Gco(j+1))
-         Xf   = 0.5d0*(Xhe(j)+Xhe(j+1))
-         if (Xf .lt. 0.0d0) Xf = 0.0d0
-         if (Xf .gt. 1.0d0) Xf = 1.0d0
          Kf   = 0.5d0*(kzz_cell(j)+kzz_cell(j+1))
-         Agrad = rhof*(Df + Kf)                  ! gradient + eddy, A + E >= 0
-         Wset  = rhof*Df*Gf*(1.0d0 - Xf)         ! settling, flux = -Wset*X_f
-         ! Peclet hybrid: central where the settling drift is resolved,
-         ! upwind toward the settling direction otherwise.  Both branches keep
-         ! PdL >= 0 and PdR <= 0, which is the M-matrix condition.
-         if (abs(Wset)*dr_f .lt. 2.0d0*Agrad) then
-            PdL(j) =  Agrad/dr_f - 0.5d0*Wset
-            PdR(j) = -Agrad/dr_f - 0.5d0*Wset
-         else if (Wset .ge. 0.0d0) then         ! settles inward: donor is j+1
-            PdL(j) =  Agrad/dr_f
-            PdR(j) = -Agrad/dr_f - Wset
-         else                                   ! rises: donor is j
-            PdL(j) =  Agrad/dr_f - Wset
-            PdR(j) = -Agrad/dr_f
+         Agrd(j) = rhof*(Df + Kf)/dr_f            ! gradient + eddy, >= 0
+         Bdrf(j) = rhof*Df*Gf                     ! drift, either sign
+         if (abs(Bdrf(j))*dr_f .le. 2.0d0*rhof*(Df + Kf)) then
+            updrf(j) = 0
+         else if (Bdrf(j) .ge. 0.0d0) then
+            updrf(j) = -1
+         else
+            updrf(j) = +1
          endif
       enddo
 
-      end subroutine face_coefficients
+      end subroutine drift_and_gradient_face_coefficients
+
+      ! ------------------------------------------------------------------ !
+
+      subroutine element_face_flux(Xl, Xr, Agr, Bst, upw, Jf, dJl, dJr)
+      ! The helium mass flux through one face and its two slopes,
+      !   Jf = -Agr (Xr - Xl) - Bst [X(1-X)](f),
+      !   dJl = dJf/dXl,  dJr = dJf/dXr,
+      ! in the branch drift_and_gradient_face_coefficients selected.  The two
+      ! factors of the drift product come from opposite sides of the face:
+      ! helium from the cell it leaves, hydrogen from the cell it enters,
+      ! which is where the bounds on X come from (module header).
+      !
+      ! Slopes: dJl >= 0 and dJr <= 0 for any Xl, Xr in [0,1], in all three
+      ! branches, which is the M-matrix condition on the Newton Jacobian.
+      real*8,  intent(in)  :: Xl, Xr, Agr, Bst
+      integer, intent(in)  :: upw
+      real*8,  intent(out) :: Jf, dJl, dJr
+
+      real*8 :: Xf
+
+      Jf  = -Agr*(Xr - Xl)
+      dJl =  Agr
+      dJr = -Agr
+      if (upw .eq. 0) then                     ! central, drift resolved
+         Xf  = 0.5d0*(Xl + Xr)
+         Jf  = Jf  - Bst*Xf*(1.0d0 - Xf)
+         dJl = dJl - 0.5d0*Bst*(1.0d0 - 2.0d0*Xf)
+         dJr = dJr - 0.5d0*Bst*(1.0d0 - 2.0d0*Xf)
+      else if (upw .lt. 0) then                ! inward: He from j+1, H from j
+         Jf  = Jf  - Bst*Xr*(1.0d0 - Xl)
+         dJl = dJl + Bst*Xr
+         dJr = dJr - Bst*(1.0d0 - Xl)
+      else                                     ! outward: He from j, H from j+1
+         Jf  = Jf  - Bst*Xl*(1.0d0 - Xr)
+         dJl = dJl - Bst*(1.0d0 - Xr)
+         dJr = dJr + Bst*Xl
+      endif
+
+      end subroutine element_face_flux
 
       ! ------------------------------------------------------------------ !
 
       subroutine solve_mass_fraction(Xold, Xhe, rho_phys, dt_phys, rp, rep, &
-                                     rhov, PdL, PdR, X_base, jlo, shut_base)
-      ! One backward-Euler tridiagonal solve of
+                                     rhov, Agrd, Bdrf, updrf, X_base, jlo,  &
+                                     shut_base)
+      ! One implicit (backward-Euler) step of
       !   rho (X^new - X^old)/dt + div(r^2 J)/r^2 + rho v dX/dr = 0
       ! for rows jlo..N, the advective term entering as the cell-velocity
-      ! upwind difference of the header.  Xold is the state at the start of the
-      ! step (so the routine may be called twice with the same Xold for the
-      ! Picard sweep) and Xhe carries the iterate in and the solution out.
+      ! upwind difference of the header.  The step is NONLINEAR in X^new,
+      ! because the drift flux carries the product X(1-X) at the new level,
+      ! and it is solved by Newton: each iteration assembles the residual and
+      ! its tridiagonal Jacobian and solves for the correction.
+      !
+      ! Newton, not a Picard sweep on a lagged (1-X): the lag is exactly what
+      ! removes the shutoff of the drift at the ends of the composition axis,
+      ! and with it the bounds on X (header, and docs/Update_EXHALE.md
+      ! section 86).  The Jacobian is an M-matrix for any iterate in [0,1],
+      ! and the nonlinearity is quadratic, so the iteration converges in a
+      ! few passes; a step that does not reduce the residual is halved.
+      !
+      ! Xold is the state at the start of the step and Xhe carries the initial
+      ! iterate in and the solution out.
       real*8, dimension(1-Ng:N+Ng), intent(in)    :: Xold, rho_phys, dt_phys
       real*8, dimension(1-Ng:N+Ng), intent(in)    :: rp, rep, rhov
       real*8, dimension(1-Ng:N+Ng), intent(inout) :: Xhe
-      real*8, dimension(0:N),       intent(in)    :: PdL, PdR
+      real*8, dimension(0:N),       intent(in)    :: Agrd, Bdrf
+      integer, dimension(0:N),      intent(in)    :: updrf
       real*8,                       intent(in)    :: X_base
       integer,                      intent(in)    :: jlo
       logical,                      intent(in)    :: shut_base
 
-      real*8, dimension(1-Ng:N+Ng) :: aa, bb, cc, dd, cpv, dpv
-      real*8 :: Kj, mden, sL, sR, cadv
-      integer :: j
+      real*8, dimension(1-Ng:N+Ng) :: aa, bb, cc, dd, cpv, dpv, dX, Xtry
+      real*8, dimension(0:N)       :: Jf, dJl, dJr
+      real*8  :: Kj, mden, sL, sR, cadv, rnorm, rprev, rtry, damp, rstart
+      integer :: j, it, ihalf, nit
+      logical, save :: warned_newton = .false.
+      ! Convergence.  The residual is measured RELATIVE to the size of the
+      ! terms that make it up, because those terms cancel: at the base the
+      ! step is ~1e5 cell diffusion times, so the time term and the flux
+      ! divergence are each ~1e5 times their difference and an absolute
+      ! residual cannot go below the round-off of the larger one.  The
+      ! relative residual reaches ~1e-12 in a few passes; an absolute one in X
+      ! stalls at ~1e-11 and burns the iteration limit for nothing.  Below
+      ! that the round-off of the tridiagonal solve, amplified by the same
+      ! conditioning, is what is left, so an already-small residual that no
+      ! longer halves is taken as converged -- Newton is quadratic here, so a
+      ! pass that does not gain a factor 2 below newton_floor has reached the
+      ! arithmetic floor and further passes only move round-off.  The floor
+      ! stall test fires only once the residual is ALREADY small, in one of
+      ! two senses: below newton_floor, or newton_drop below the residual the
+      ! step started at.  Both are needed because the reachable floor is set
+      ! by the conditioning of the tridiagonal solve and varies by orders of
+      ! magnitude across the cases here -- 1e-12 in a wind, ~1e-5 in the
+      ! K_zz = 2e12 homopause column of test T7, where the time term is
+      ! negligible against the eddy term.  Stopping on stagnation ALONE stops
+      ! too early: the damped passes of the strong-drift column of T14 stall
+      ! twice at a residual of order 1 and then converge, and a step stopped
+      ! there loses the bounds on X, which belong to the CONVERGED step (T14
+      ! then fails at an excursion of 7e-3).
+      integer, parameter :: newton_maxit  = 30
+      real*8,  parameter :: newton_tol    = 1.0d-12
+      real*8,  parameter :: newton_floor  = 1.0d-8
+      real*8,  parameter :: newton_drop   = 1.0d-6
+      integer, parameter :: newton_halves = 8
+      ! A residual this large after every pass is not a conditioning floor,
+      ! it is a step that was not solved; that is what gets announced.
+      real*8,  parameter :: newton_unsolved = 1.0d-4
 
-      do j = jlo, N
-         Kj    = 1.0d0/(rp(j)**2*max(rep(j)-rep(j-1), 1.0d0))
-         sL    = rep(j-1)**2
-         sR    = rep(j)**2
-         aa(j) = -Kj*sL*PdL(j-1)
-         bb(j) =  rho_phys(j)/dt_phys(j)                                   &
-                + Kj*(sR*PdL(j) - sL*PdR(j-1))
-         cc(j) =  Kj*sR*PdR(j)
-         dd(j) =  rho_phys(j)*Xold(j)/dt_phys(j)
-
-         ! Advective term rho v dX/dr, one-sided upwind on the CELL velocity:
-         ! +cadv on the diagonal and -cadv on the donor neighbour, so the
-         ! advective coefficients of the row sum to zero (uniform X exact) and
-         ! the only off-diagonal it creates is <= 0 (M-matrix preserved).
-         if (rhov(j) .ge. 0.0d0) then
-            ! Dropped at a closed inner boundary, which is zero-gradient.
-            if (j .gt. jlo .or. .not. shut_base) then
-               cadv  = rhov(j)/max(rp(j) - rp(j-1), 1.0d0)
-               bb(j) = bb(j) + cadv
-               aa(j) = aa(j) - cadv
-            endif
-         else
-            ! Dropped at the top, whose zero-gradient ghost makes it vanish.
-            if (j .lt. N) then
-               cadv  = rhov(j)/max(rp(j+1) - rp(j), 1.0d0)
-               bb(j) = bb(j) - cadv
-               cc(j) = cc(j) + cadv
-            endif
-         endif
-      enddo
-      cc(N) = 0.0d0
-
-      if (jlo .eq. 2) then
-         dd(2) = dd(2) - aa(2)*X_base
-         aa(2) = 0.0d0
-      endif
-
-      cpv(jlo) = cc(jlo)/bb(jlo)
-      dpv(jlo) = dd(jlo)/bb(jlo)
-      do j = jlo+1, N
-         mden   = bb(j) - aa(j)*cpv(j-1)
-         cpv(j) = cc(j)/mden
-         dpv(j) = (dd(j) - aa(j)*dpv(j-1))/mden
-      enddo
-      Xhe(N) = dpv(N)
-      do j = N-1, jlo, -1
-         Xhe(j) = dpv(j) - cpv(j)*Xhe(j+1)
-      enddo
       if (jlo .eq. 2) Xhe(1-Ng:1) = X_base
       Xhe(N+1:N+Ng) = Xhe(N)
 
+      call composition_residual(Xold, Xhe, rho_phys, dt_phys, rp, rep,    &
+                                rhov, Agrd, Bdrf, updrf, jlo, shut_base,  &
+                                dd, Jf, dJl, dJr, rnorm)
+
+      rstart = rnorm
+      nit    = 0
+      do it = 1, newton_maxit
+         if (rnorm .le. newton_tol) exit
+         ! --- Jacobian of the residual, tridiagonal by construction
+         do j = jlo, N
+            Kj    = 1.0d0/(rp(j)**2*max(rep(j)-rep(j-1), 1.0d0))
+            sL    = rep(j-1)**2
+            sR    = rep(j)**2
+            aa(j) = -Kj*sL*dJl(j-1)
+            bb(j) =  rho_phys(j)/dt_phys(j)                               &
+                   + Kj*(sR*dJl(j) - sL*dJr(j-1))
+            cc(j) =  Kj*sR*dJr(j)
+            ! Advective term rho v dX/dr, one-sided upwind on the CELL
+            ! velocity: +cadv on the diagonal and -cadv on the donor
+            ! neighbour, so the advective coefficients of the row sum to zero
+            ! (uniform X exact) and the only off-diagonal it creates is <= 0.
+            if (rhov(j) .ge. 0.0d0) then
+               ! Dropped at a closed inner boundary, which is zero-gradient.
+               if (j .gt. jlo .or. .not. shut_base) then
+                  cadv  = rhov(j)/max(rp(j) - rp(j-1), 1.0d0)
+                  bb(j) = bb(j) + cadv
+                  aa(j) = aa(j) - cadv
+               endif
+            else
+               ! Dropped at the top, whose zero-gradient ghost makes it vanish.
+               if (j .lt. N) then
+                  cadv  = rhov(j)/max(rp(j+1) - rp(j), 1.0d0)
+                  bb(j) = bb(j) - cadv
+                  cc(j) = cc(j) + cadv
+               endif
+            endif
+         enddo
+         cc(N) = 0.0d0
+         if (jlo .eq. 2) aa(2) = 0.0d0        ! X(1) is the Dirichlet base
+
+         ! --- solve J dX = -residual (dd already carries -residual)
+         cpv(jlo) = cc(jlo)/bb(jlo)
+         dpv(jlo) = dd(jlo)/bb(jlo)
+         do j = jlo+1, N
+            mden   = bb(j) - aa(j)*cpv(j-1)
+            cpv(j) = cc(j)/mden
+            dpv(j) = (dd(j) - aa(j)*dpv(j-1))/mden
+         enddo
+         dX(N) = dpv(N)
+         do j = N-1, jlo, -1
+            dX(j) = dpv(j) - cpv(j)*dX(j+1)
+         enddo
+
+         ! --- accept the step, halving it while it does not reduce the
+         ! residual (the nonlinearity is quadratic, so this is rarely used)
+         damp = 1.0d0
+         do ihalf = 0, newton_halves
+            Xtry = Xhe
+            Xtry(jlo:N) = Xhe(jlo:N) + damp*dX(jlo:N)
+            if (jlo .eq. 2) Xtry(1-Ng:1) = X_base
+            Xtry(N+1:N+Ng) = Xtry(N)
+            call composition_residual(Xold, Xtry, rho_phys, dt_phys, rp,  &
+                                      rep, rhov, Agrd, Bdrf, updrf, jlo,  &
+                                      shut_base, dd, Jf, dJl, dJr, rtry)
+            if (rtry .lt. rnorm .or. ihalf .eq. newton_halves) exit
+            damp = 0.5d0*damp
+         enddo
+         Xhe   = Xtry
+         rprev = rnorm
+         rnorm = rtry
+         nit   = it
+         if (it .ge. 3 .and. rnorm .gt. 0.5d0*rprev .and.                 &
+             (rnorm .le. newton_floor .or.                                &
+              rnorm .le. newton_drop*rstart)) exit
+      enddo
+
+      he_fraction_newton_steps = nit
+      he_fraction_newton_resid = rnorm
+
+      ! The bounds on X belong to the CONVERGED step (header), so a step that
+      ! used up every pass while still making progress -- neither converged
+      ! nor stalled -- is the one case in which the range clip could have work
+      ! to do.  It has not been seen in any run measured; it is announced once
+      ! if it happens, whether or not the step diagnostic is on.
+      if (nit .ge. newton_maxit .and. rnorm .gt. newton_unsolved .and.    &
+          .not. warned_newton) then
+         warned_newton = .true.
+         write(*,'(A,I0,A,ES10.3,A)') ' (element diffusion) WARNING: the'// &
+              ' composition step did not converge in ', newton_maxit,     &
+              ' Newton passes (relative residual ', rnorm,                &
+              '); the bounds on X are not guaranteed for it.'
+      endif
+
       end subroutine solve_mass_fraction
+
+      ! ------------------------------------------------------------------ !
+
+      subroutine composition_residual(Xold, Xhe, rho_phys, dt_phys, rp,   &
+                                      rep, rhov, Agrd, Bdrf, updrf, jlo,  &
+                                      shut_base, mres, Jf, dJl, dJr, rnorm)
+      ! Residual of the implicit composition step, returned NEGATED (mres is
+      ! the right-hand side of the Newton system), together with the face
+      ! fluxes, their slopes, and the residual measured RELATIVE to the size
+      ! of the terms of its own row (dsc, the same terms with their absolute
+      ! values): the terms cancel to many digits at a step long against the
+      ! cell diffusion time, so an absolute residual is a measure of their
+      ! round-off and not of convergence.
+      real*8, dimension(1-Ng:N+Ng), intent(in)  :: Xold, Xhe, rho_phys
+      real*8, dimension(1-Ng:N+Ng), intent(in)  :: dt_phys, rp, rep, rhov
+      real*8, dimension(0:N),       intent(in)  :: Agrd, Bdrf
+      integer, dimension(0:N),      intent(in)  :: updrf
+      integer,                      intent(in)  :: jlo
+      logical,                      intent(in)  :: shut_base
+      real*8, dimension(1-Ng:N+Ng), intent(out) :: mres
+      real*8, dimension(0:N),       intent(out) :: Jf, dJl, dJr
+      real*8,                       intent(out) :: rnorm
+
+      real*8  :: Kj, sL, sR, cadv, res, dsc
+      integer :: j
+
+      do j = 0, N
+         call element_face_flux(Xhe(j), Xhe(j+1), Agrd(j), Bdrf(j),       &
+                                updrf(j), Jf(j), dJl(j), dJr(j))
+      enddo
+
+      mres  = 0.0d0
+      rnorm = 0.0d0
+      do j = jlo, N
+         Kj  = 1.0d0/(rp(j)**2*max(rep(j)-rep(j-1), 1.0d0))
+         sL  = rep(j-1)**2
+         sR  = rep(j)**2
+         res = rho_phys(j)*(Xhe(j) - Xold(j))/dt_phys(j)                  &
+             + Kj*(sR*Jf(j) - sL*Jf(j-1))
+         dsc = rho_phys(j)*max(abs(Xhe(j)), abs(Xold(j)))/dt_phys(j)      &
+             + Kj*(sR*abs(Jf(j)) + sL*abs(Jf(j-1)))
+         if (rhov(j) .ge. 0.0d0) then
+            if (j .gt. jlo .or. .not. shut_base) then
+               cadv = rhov(j)/max(rp(j) - rp(j-1), 1.0d0)
+               res  = res + cadv*(Xhe(j) - Xhe(j-1))
+               dsc  = dsc + abs(cadv)*max(abs(Xhe(j)), abs(Xhe(j-1)))
+            endif
+         else
+            if (j .lt. N) then
+               cadv = rhov(j)/max(rp(j+1) - rp(j), 1.0d0)
+               res  = res + cadv*(Xhe(j+1) - Xhe(j))
+               dsc  = dsc + abs(cadv)*max(abs(Xhe(j)), abs(Xhe(j+1)))
+            endif
+         endif
+         mres(j) = -res
+         rnorm   = max(rnorm, abs(res)/max(dsc, 1.0d-300))
+      enddo
+
+      end subroutine composition_residual
 
       ! ------------------------------------------------------------------ !
 
@@ -1486,6 +1846,26 @@
       ! element totals are met exactly.  The result is the initial guess for
       ! ioniz_eq, which owns the split WITHIN an element; this step owns the
       ! element totals.
+      !
+      ! THE METALS ARE A RATIO, NOT A DENSITY.  Component 1 carries the trace
+      ! metals slaved to hydrogen at a fixed metal/H, so what this projection
+      ! has to preserve for them is n_X/n_H and not n_X.  Multiplying by r_H
+      ! does exactly that -- in a cell that HAD hydrogen.  Where the cell had
+      ! none the ratio it carries is 0/0, and multiplying by r_H = 0 destroys
+      ! it: hydrogen comes back through the shortfall deposit below and the
+      ! metals do not, so the cell keeps zero metals for good (every later call
+      ! multiplies that zero by something).  A cell emptied of carbon between
+      ! two cells at the reservoir C/H is not a state of the atmosphere -- these
+      ! equations have no sink for elemental carbon -- and it removes the C I
+      ! cooling that sets the temperature there.  The metals therefore return
+      ! WITH the hydrogen, at melem_ab: that is the metal/H this operator's own
+      ! mass budget assumes (it is inside m_1 = mass_per_H_nucleus_without_He),
+      ! and the same reservoir ratio set_IC and load_IC build an absent element
+      ! from.  All of it goes into the neutral ground stage, as those two do and
+      ! as the trace-metal re-seed of element_diffusion_step does, because a
+      ! cell that held no hydrogen held no ionization split either and ioniz_eq
+      ! re-solves the split from the element total on the next call.
+      ! Section 84 of docs/Update_EXHALE.md.
       real*8, dimension(1-Ng:N+Ng,n_species), intent(inout) :: f_sp
       real*8, dimension(1-Ng:N+Ng),           intent(in)    :: Xhe, msum
       real*8, dimension(1-Ng:N+Ng),           intent(in)    :: nucH_old
@@ -1493,7 +1873,7 @@
       real*8,                                 intent(in)    :: m_1
 
       real*8  :: nucH_new, nucHe_new, rH, rHe, rBoth, gotH, gotHe
-      integer :: j, ib, im
+      integer :: j, ib, im, ie, i0e, k
 
       do j = 1-Ng, N+Ng
          nucHe_new = Xhe(j)*msum(j)/m_He_amu
@@ -1521,9 +1901,24 @@
                f_sp(j,bsp_fsp(ib)) = f_sp(j,bsp_fsp(ib))*rHe
             endif
          enddo
-         do im = 1, n_mion                       ! metals slaved to hydrogen
-            f_sp(j,mion_fsp(im)) = f_sp(j,mion_fsp(im))*rH
-         enddo
+         ! metals slaved to hydrogen at fixed metal/H (see the header)
+         if (nucH_old(j) .gt. 1.0d-30) then
+            do im = 1, n_mion
+               f_sp(j,mion_fsp(im)) = f_sp(j,mion_fsp(im))*rH
+            enddo
+         else if (thereis_metals) then
+            ! The cell carries no metal/H of its own, so the metals are set
+            ! from the reservoir abundance and the NEW hydrogen count: they
+            ! come back when hydrogen does and stay at zero while it has not.
+            ! (With the metals off every column here is zero on both branches.)
+            do ie = 1, n_melem
+               i0e = melem_i0(ie)
+               f_sp(j,mion_fsp(i0e)) = melem_ab(ie)*nucH_new
+               do k = 1, melem_top(ie)
+                  f_sp(j,mion_fsp(i0e+k)) = 0.0d0
+               enddo
+            enddo
+         endif
 
          ! deposit the shortfall of each element into its neutral ground stage
          gotH  = 0.0d0
@@ -1646,7 +2041,14 @@
       enddo
       fX(1-Ng:1) = fbase
       fX(N+1:N+Ng) = fX(N)
-      ! Round-off assertion, not a limiter: the M-matrix keeps fX >= 0.
+      ! Clip at zero.  Unlike the helium equation this one is linear in fX --
+      ! the trace limit drops the (1 - fX) factor -- and the matrix has the
+      ! M-matrix sign pattern with a nonnegative right-hand side, which is the
+      ! argument for fX >= 0.  It is an argument and not a measurement, so how
+      ! far the solve leaves the range is recorded (trace_ratio_under_zero)
+      ! and reported with the step diagnostic rather than asserted.
+      trace_ratio_under_zero = max(trace_ratio_under_zero,                &
+                                   -minval(fX(1:N)))
       where (fX .lt. 0.0d0) fX = 0.0d0
       nX = fX*nHl
 
@@ -1883,23 +2285,38 @@
 
       ! ------------------------------------------------------------------ !
 
-      subroutine report_step(Xhe, Jf, rho_phys, rp, rep, mass_resid)
+      subroutine report_step(Xhe, rho_phys, rp, rep, mass_resid,           &
+                             Xover, Xunder, qdep, n_vanished)
       ! Diagnostic written each step (EXHALE_DIFFUSION_CHECK=1): the range of X, the
       ! largest |J_He + J_1| over the faces, the largest relative error of the
       ! two-component mass closure m_1 n_H + m_He n_He = rho after the
-      ! write-back, and the total helium mass in the domain.
+      ! write-back, the total helium mass in the domain, how far the solve left
+      ! [0,1] before the clamp, and the metal census.
+      !
+      ! X over / under are the excursions the clamp removed, signed so that a
+      ! negative number means the solve stayed inside the range.  They are the
+      ! measurement behind the claim that the clamp is an assertion: the
+      ! clamped X cannot distinguish a solve that overshot from one that did
+      ! not, because both print 1.0.
+      !
+      ! metal/H dep is max |(n_X/n_H)/melem_ab - 1| over the elements the
+      ! reservoir states, and "gone" counts the (cell, element) pairs in which
+      ! an element has vanished while hydrogen is present -- a state these
+      ! equations cannot reach, since they have no sink for a metal nucleus.
       !
       ! A binary mixture has ONE independent diffusive flux: the operator
-      ! computes J_He and the hydrogen component carries -J_He, so the printed
-      ! |J_He + J_1| is zero by construction and is reported for completeness.
-      ! The quantity that actually guards the discretization is the mass
-      ! closure: it is what keeps rho -- owned by the hydro -- consistent with
+      ! computes J_He and the hydrogen component carries -J_He, so J_He + J_1
+      ! is zero by construction and there is nothing there to measure -- it
+      ! used to be printed as max|Jf - Jf|, which is an identical zero
+      ! wearing the clothes of a measurement, and is gone.  The quantity that
+      ! actually guards the discretization is the mass closure: it is what keeps rho -- owned by the hydro -- consistent with
       ! the composition the operator hands back, and it is nonzero the moment
       ! the write-back stops meeting both element totals exactly.
       real*8, dimension(1-Ng:N+Ng), intent(in) :: Xhe, rho_phys, rp, rep
-      real*8, dimension(0:N),       intent(in) :: Jf
       real*8,                       intent(in) :: mass_resid
-      real*8  :: mHe_tot, sumJ
+      real*8,                       intent(in) :: Xover, Xunder, qdep
+      integer,                      intent(in) :: n_vanished
+      real*8  :: mHe_tot
       integer :: j
 
       mHe_tot = 0.0d0
@@ -1907,14 +2324,17 @@
          mHe_tot = mHe_tot                                                &
                  + rho_phys(j)*Xhe(j)*rp(j)**2*(rep(j)-rep(j-1))
       enddo
-      sumJ = 0.0d0
-      do j = 0, N
-         sumJ = max(sumJ, abs(Jf(j) - Jf(j)))
-      enddo
-      write(0,'(A,ES13.6,A,ES13.6,A,ES9.2,A,ES9.2,A,ES16.9)')             &
+      write(0,'(A,ES13.6,A,ES13.6,A,ES9.2,A,ES16.9)')                     &
          ' (diffusion) X min ', minval(Xhe(1:N)), ' max ',                &
-         maxval(Xhe(1:N)), ' max|J_He+J_1| ', sumJ,                       &
+         maxval(Xhe(1:N)),                                                &
          ' mass closure ', mass_resid, ' He mass ', 4.0d0*pi*mHe_tot
+      write(0,'(A,ES10.3,A,ES10.3,A,ES10.3,A,I0)')                        &
+         ' (diffusion) X over 1 by ', Xover, ' under 0 by ', Xunder,      &
+         ' metal/H dep ', qdep, ' gone ', n_vanished
+      write(0,'(A,I0,A,ES10.3,A,ES10.3)')                                 &
+         ' (diffusion) Newton steps ', he_fraction_newton_steps,          &
+         ' resid ', he_fraction_newton_resid,                             &
+         ' trace fX under 0 by ', trace_ratio_under_zero
 
       end subroutine report_step
 

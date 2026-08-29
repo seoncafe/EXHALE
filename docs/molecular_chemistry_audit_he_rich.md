@@ -108,20 +108,30 @@ The module header of `System_HeH_mol` previously said the H-He exchange was
 
 ### He(2<sup>3</sup>S) Penning channels
 
-| Channel | Code | Source | Verdict |
-|---|---|---|---|
-| He(2<sup>3</sup>S) + H | 1.9e-9 (300/T)<sup>0.07</sup> for T &le; 4000 K, 9.1e-9 (300/T)<sup>0.5</sup> above | Taylor et al. (2025) Table 2 | exact transcription; the 1.57x step at 4000 K is the published fit |
-| He(2<sup>3</sup>S) + H<sub>2</sub> | 5.3791e-12 T<sup>0.676</sup> exp(-695.21/T) | fit to Garc&iacute;a Mu&ntilde;oz (2025) Table A.5 | reproduces the four tabulated points to 0.13% (re-measured here) |
+*Superseded 2026-08-28; see section 4.4 and `docs/Update_EXHALE.md` section 86.*
+Both rate coefficients now come from Garc&iacute;a Mu&ntilde;oz (2025) and both are
+branched:
 
-Both are *totals*: Taylor's Section 2.4 states the fitted cross sections are
-the sum of Penning and associative ionization, and Garc&iacute;a Mu&ntilde;oz partitions
-the same totals "an average 0.9:0.1" between the two.  EXHALE assigns 100%
-to the Penning branch in both cases, so the ~10% that physically ends in
-HeH<sup>+</sup> is booked as a proton (H channel) or as H<sub>2</sub><sup>+</sup> (H<sub>2</sub> channel).  In a
-He-dominated envelope this is the largest HeH<sup>+</sup> source the network omits
-after the one in section 4.2.  The code comment attributing the 0.9:0.1
-split to "Fig. 4" is corrected: it is in the Appendix paragraph that
-introduces Table A.5.
+| Channel | Code (total ionization) | Penning branch | Source |
+|---|---|---|---|
+| He(2<sup>3</sup>S) + H | 1e-9 exp(-86.4804/T - 0.286766 lnT + 0.0868445 (lnT)<sup>2</sup> - 0.00573001 (lnT)<sup>3</sup>) | 0.9 x total | Garc&iacute;a Mu&ntilde;oz (2025) Fig. 5, from the Movre &amp; Meyer (1997) cross sections; network rows 198/199 |
+| He(2<sup>3</sup>S) + H<sub>2</sub> | 5.408222e-12 T<sup>0.675388</sup> exp(-696.275/T) | 0.9 x total | Garc&iacute;a Mu&ntilde;oz (2025) Table A.5, from the Cohen &amp; Lane (1977) cross sections; network rows 202/203 |
+
+Both tabulated values are *totals*, and Garc&iacute;a Mu&ntilde;oz partitions them
+"an average 0.9:0.1" between Penning and associative ionization.  The
+published network file (`references/garcia_munoz_2025_network/`) applies
+that split through the amplitudes of two separate rows per channel, which
+settles what the paper text leaves implicit.  EXHALE now follows it: the
+*total* removes the metastable, and `f_penning_HeI23S` = 0.9 scales the
+terms that create a lasting proton or H<sub>2</sub><sup>+</sup> and that deposit the Penning
+exothermicity.  The molecular system, which carries HeH<sup>+</sup> explicitly, takes
+the remaining 0.1 into its HeH<sup>+</sup> row, so this is no longer an omitted
+HeH<sup>+</sup> source there.  The atomic systems still drop it, on the ground that
+HeH<sup>+</sup> dissociatively recombines back to He + H in an H<sub>2</sub>-poor gas.
+
+Previously the code used Taylor et al. (2025) Table 2 for the H channel and
+a fit made here to the four Table A.5 points for the H<sub>2</sub> channel, and
+charged 100% of both totals to the Penning branch.
 
 The Penning heating term
 (n<sub>HeTR</sub> n<sub>H2</sub> k [E(2<sup>3</sup>S) - IP(H<sub>2</sub>)], with
@@ -179,7 +189,9 @@ Reading:
   helium and carry terms of order n<sub>He</sub><sup>2</sup>, rows 4-7 balance the molecules
   and carry terms of order n<sub>H</sub><sup>2</sup>, so at He/H = 10<sup>3</sup> the two blocks of the
   same residual vector differ by 10<sup>6</sup>.  `hybrd1` is given no row scaling.
-  This was not pursued further here.
+  This was not pursued further here.  **Pursued 2026-08-29 (section 7): the
+  scaling is now applied, and what it removes is the solver failure, not the
+  simplex failure.**
 * **The M fix visibly improves the He-rich end**: He/H = 10 no longer
   aborts on a NaN and runs the full 12000 steps, and the clamped-cell count
   at He/H = 1000 falls from 37 to 4.  He/H = 1 still aborts, later (5538
@@ -261,13 +273,36 @@ It is recorded here and at the code site rather than "corrected", because
 correcting it means overriding one published rate with the detailed-balance
 image of the other, which is a decision for whoever needs the number.
 
-### 4.4 The 4000 K step in the He(2<sup>3</sup>S) + H Penning rate
+### 4.4 The 4000 K step in the He(2<sup>3</sup>S) + H rate (fixed 2026-08-28)
 
 Taylor et al.'s two-branch fit is discontinuous at its own break point: the
-low branch gives 1.585e-9 at 4000 K and the high branch 2.492e-9, a factor
-1.57.  The code reproduces the published fit exactly.  Any cell that
-crosses 4000 K sees that step, which is a small non-smoothness in the
-He 2<sup>3</sup>S balance and in the Jacobian; it is not a transcription error.
+low branch gives 1.5849e-9 at 4000 K and the high branch 2.4921e-9, a
+factor 1.5724.  The code reproduced the published fit exactly, so this was
+never a transcription error, but a rate coefficient is a continuous
+function of temperature and the step is not physical.  It was also visible:
+every cell whose temperature crossed 4000 K carried a discontinuity in the
+He 2<sup>3</sup>S density, and those were the steps seen in the LHS 1140 b memo
+figures.
+
+Two further problems with that fit came out of checking it against its own
+paper.  Figure 19 of Taylor et al. plots their Maxwell-Boltzmann average of
+the Cohen &amp; Lane (1971) and Morgner &amp; Niehaus (1979) cross sections: it
+rises to 1.50e-9 near 1400 K and falls to 1.29e-9 at 4000 K, while the
+tabulated low branch decreases monotonically from 1.83e-9 to 1.58e-9 and
+cannot reproduce a maximum at all.  And above 4000 K the high branch
+exceeds every cross-section determination collected in Garc&iacute;a Mu&ntilde;oz
+(2025) Fig. 5.  Figure 19 itself agrees with the Garc&iacute;a Mu&ntilde;oz curve
+to 10-20%, so the two independent calculations are consistent and it was
+the published fit that was the outlier.
+
+The rate is now the Garc&iacute;a Mu&ntilde;oz (2025) closed form, continuous
+everywhere and stated valid to better than 2% from 200 to 10<sup>4</sup> K.
+
+The earlier claim here that the step entered the Jacobian was wrong and is
+withdrawn: the coefficient is constant within a cell, so it does not enter
+the density Jacobian, and `T_equation` holds the heating fixed while
+varying T, so it does not enter the temperature root-find either.  The step
+appeared only as a jump in the loss rate between neighbouring cells.
 
 ## 4b. Does this move the LHS 1140 b results?
 
@@ -330,11 +365,11 @@ mol_lyman_werner mol_diffusion`), and `make check` re-run afterwards.
 
 | File | Change |
 |---|---|
-| `src/modules/radiation/ionization_equilibrium.f90` | `n_tot` from `calc_ntot` replaces `n_in_dim` as the third body M and as the seed pressure; HeH<sup>+</sup> nucleus added to the He row of `ionization_fractions_physical`, `element_budget_violation`, `clamp_fractions_to_element_budget` |
+| `src/modules/radiation/ionization_equilibrium.f90` | `n_tot` from `calc_ntot` replaces `n_in_dim` as the third body M and as the seed pressure (*the R13/R15 half of this, the argument of `set_mol_coeffs`, was missed and corrected on 2026-08-29; see section 7*); HeH<sup>+</sup> nucleus added to the He row of `ionization_fractions_physical`, `element_budget_violation`, `clamp_fractions_to_element_budget` |
 | `src/modules/nonlinear_system_solver/ion_cell_state.f90` | `ntot` documented as the electron-free gas-particle density, not &rho;/m<sub>H</sub> |
 | `src/modules/nonlinear_system_solver/System_HeH_mol.f90` | header: the H-He exchange is carried (Huang B1/B2), R21/R22 unused; params slot 21 described correctly |
 | `src/modules/lower_atmosphere/mol_rates.f90` | header notes on the third body M and the He-dominated limit; per-reaction notes on R12/R13/R15, R16, R17, R21/R22 |
-| `src/modules/radiation/Cool_coeff.f90` | both Penning fits: the tabulated value is the Penning + associative total, the 0.9:0.1 split is from the Appendix (not Fig. 4), and the 4000 K step is the published fit |
+| `src/modules/radiation/Cool_coeff.f90` | both Penning fits: the tabulated value is the Penning + associative total, the 0.9:0.1 split is from the Appendix (not Fig. 4), and the 4000 K step is the published fit. *Superseded 2026-08-28*: both rates replaced by the Garc&iacute;a Mu&ntilde;oz (2025) continuous forms, renamed `ioniz_HeI23S_H` / `ioniz_HeI23S_H2` because they return the total, and the 0.9:0.1 split applied through `f_penning_HeI23S` |
 
 ## 6. What was not checked
 
@@ -345,7 +380,50 @@ mol_lyman_werner mol_diffusion`), and `make check` re-run afterwards.
 * Convergence.  Every run here is a 12000-step relaxation snapshot with no
   Newton finish, chosen so that the He/H = 0.0793 arm reproduces a golden
   bitwise.  No `Mdot` in this document is a converged mass-loss rate.
-* Whether the row scaling of the molecular system is what drives the
-  simplex failures at high He/H.  The correlation is measured; the cause
-  is not.
-* The He/H = 1 NaN abort.  It survives the fix and is not diagnosed here.
+* ~~Whether the row scaling of the molecular system is what drives the
+  simplex failures at high He/H.~~  **Answered 2026-08-29**, see section 7.
+* ~~The He/H = 1 NaN abort.~~  **Answered 2026-08-29**, see section 7.
+
+## 7. The two open items, closed (2026-08-29)
+
+Both items section 6 left open were taken up on 2026-08-29 and are recorded in
+full in `docs/Update_EXHALE.md` section 93. In short:
+
+**They are not the same problem.** The row scaling is a solver defect and the
+NaN abort is a hydrodynamic one; the abort happens at the same step and the
+same face with the scaling on and off.
+
+**Row scaling is now applied**, and it is applied per row to the row's own
+turnover rate -- the rate at which the species that row balances is produced or
+destroyed in the cell, built from the cell's `n_H`, `n_He`, `n_e` and `n_tot`
+and the rate coefficients, and held constant across the cell's solve so the
+finite-difference Jacobian still sees a smooth function. The fraction of
+`hybrd1` attempts ending on `info = 4` falls from 54.6% to 0.01% at He/H = 1000,
+41.3% to 0.01% at 100, and 36.3% to 0.26% at 10. What section 3 suspected -- a
+correlation between the row spread and the *clamped cells* -- is not what the
+scaling removes: the clamp count is a much rarer population (4e2 against 6e6
+cell solves) and it does not fall with the solver failures. The clamp counts a
+root that no starting point could put inside the simplex, and with the rows
+scaled `hybrd1` reaches its tolerance on nearly every attempt, so a converged
+root sitting on a face of the simplex is now rejected where a non-converged one
+inside it used to be kept.
+
+**The M fix of section 3 had reached only R12.** R13 and R15 are written in
+`mol_rates` as two-body-equivalent coefficients that fold in the third-body
+density, so their M enters through the argument of `set_mol_coeffs` -- which
+`ionization_equilibrium` was still calling with `n_in_dim`. Corrected. Every
+"after the fix" row of the section-3 tables therefore describes a state in which
+the H3+ and H2 three-body sources still carried the wrong M; the tables are left
+as the record of what was measured, and the scan of section 93 supersedes them.
+
+**The He/H = 1 NaN abort is a negative reconstructed pressure.** It reappears
+once R13/R15 have the right third body (it is absent from the tree as found).
+Caught with `-ffpe-trap=invalid,zero,overflow`, the first invalid operation is
+`aR = sqrt(g*pR/rhoR)` at `src/modules/flux/Num_Fluxes.f90:46`, at face j = 232,
+r = 1.1398 R_p, where the reconstructed right state has p = -3.6e-2 in code
+units. Below that face the run carries a cold hypersonic shell -- 650 K,
+1e7 cm/s, Mach 50-60 -- against a dense hot wall at r = 1.144, so the thermal
+pressure is 2e-4 of the total energy and the reconstruction across the jump
+takes it negative. Nothing tests the reconstructed pressure for positivity. It
+is recorded as `TO_BE_DONE.md` item (O) rather than patched, because the fix
+lives in the reconstruction, outside every molecular branch.

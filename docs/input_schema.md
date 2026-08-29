@@ -243,7 +243,7 @@ the reader and `examples/exhale_io.py` index by.
 |---|---|---|
 | `solution_id` | yes | sha256 over the lower model's configuration, mechanism, thermodynamic data, stellar flux and elemental abundances. The fingerprint that makes "same solution" checkable. |
 | `source_code` | no | `photochem` / `vulcan` / `analytic` |
-| `source_version` | no | e.g. `photochem 0.8.4` |
+| `source_version` | no | which build of the producer wrote the file, e.g. `photochem 0.9.0`. Not decoration: `photochem 0.9.0` is the corrected build this repository carries in `photochem/` and runs from `env/photochem` (README_HOWTO.md, "The Photochem environment"), while `photochem 0.8.4` is the conda package, whose equilibrium solver leaves up to `2e-4` in a trace elemental ratio. The two are told apart per file by this line and by nothing else. |
 | `mechanism` | no | mechanism file name and its own sha256 |
 | `stellar_flux` | no | flux file name, sha256 and the dilution applied |
 | `p_match_bar` | yes | the matching pressure: where EXHALE places its base |
@@ -280,6 +280,21 @@ interpolated onto the EXHALE grid through the profile's own radius column
 the file carries, a cell takes that level's value, because the eddy
 coefficient is a lower-atmosphere property and the file makes no statement
 above its top.
+
+How the producers fill the `Kzz` column (`eddy_diffusion_coefficient`,
+`src/utils/lower_profile_schema.py`): with no option stated, whatever
+`K_zz(p)` the underlying solution carried — the default, in which nothing
+changes and the `solution_id` is the one it always was. `--kzz-const K` puts
+one value at every level. `--kzz-power ALPHA`, with the amplitude `--kzz-ref
+K_ref` and the pressure it is stated at `--kzz-ref-bar p_ref` (default 1 bar),
+puts `K_zz(p) = K_ref (p/p_ref)^-ALPHA`, the saturated gravity-wave form;
+`ALPHA = 1/2` is the Lindzen (1981) slope Parmentier et al. (2013) fit and 0.4
+is the Charnay et al. (2015) one. The two forms are mutually exclusive and
+`--kzz-power` without `--kzz-ref` is refused; the power-law settings enter the
+`solution_id` fingerprint only when they are in use. On the Photochem arm a
+stated coefficient is the one the chemistry is **solved** on and not only the
+one written out, so the file never states a composition that no single
+`K_zz(p)` produced.
 
 Refusals (all `error stop`): a missing named file; a missing `# columns:`
 line; a missing required column; fewer than two levels in the table; a

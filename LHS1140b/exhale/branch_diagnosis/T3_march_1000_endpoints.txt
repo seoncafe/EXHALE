@@ -1,0 +1,10 @@
+T3, 1000 RK steps from each state (same handoff, steady solver off)
+state                    T_max[K]    r(Tmax)    lg Mdot    zeroC
+cool reference             3875.7      1.346      7.540        0
+hot reference              5390.9      1.442      7.870      172
+march 1000 from cool       3584.2      1.212      7.540        0
+march 1000 from hot        5318.2      1.231      7.870      172
+
+du and the reference steady residual along the march (both states):
+  from_cool  [diag] step 500  flux rho*v*r^2 spread= 9.101E-01   ||R||(ref)= 5.028E-01; [diag] step 1000  flux rho*v*r^2 spread= 1.732E+00   ||R||(ref)= 5.386E-01 | final: count=1000  du= 2.1377E+00  dtu= 7.7359E-04
+  from_hot   [diag] step 500  flux rho*v*r^2 spread= 8.576E-01   ||R||(ref)= 4.691E-01; [diag] step 1000  flux rho*v*r^2 spread= 1.653E+00   ||R||(ref)= 5.054E-01 | final: count=1000  du= 2.0188E+00  dtu= 7.7612E-04

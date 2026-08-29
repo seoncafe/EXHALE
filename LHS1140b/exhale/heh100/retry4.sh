@@ -1,5 +1,6 @@
 #!/bin/bash
 EX=/nfs/mocafe/kiseon/RT_Codes/ExoAtmosphere/EXHALE_v1.00
+. "$EX/LHS1140b/winered_hires_y.sh"   # He I 10830 at WINERED HIRES-Y, R = 68,000
 cd "$(dirname "$0")"
 export OMP_NUM_THREADS=8
 \cp -f results_constres_fiducialA/Hydro_ioniz.txt output/Hydro_ioniz_IC.txt

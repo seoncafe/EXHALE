@@ -1,0 +1,6 @@
+# base.inp -- control rung A of the one-key-at-a-time ladder
+# (docs/Update_EXHALE.md Sect. 78; docs/lhs1140b_exhale_vs_pwinds.tex
+#  Sect. sec:basemetals).  One key of the photochemical base state, taken
+#  from LHS1140b/lower_profile/lower_atmosphere_profile.dat at the 1 ubar
+#  match level (solution_id 51302c76...).
+HeH_base 2.092134697681555

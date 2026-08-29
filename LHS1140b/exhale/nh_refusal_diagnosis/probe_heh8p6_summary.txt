@@ -1,0 +1,28 @@
+DEEPEST-LEVEL ELEMENTAL RATIOS, He/H = 8.6
+======================================================================
+  (a) equilibrium+quench on the climate grid (level 0):  n_H = 1.098939600e-01
+     He  8.599999697179e+00   dev -3.5212e-08
+     C   2.775879902313e-04   dev -3.5191e-08
+     N   8.185823483630e-05   dev +1.4338e-04
+     O   6.061779786554e-04   dev -3.5212e-08
+  (b) photochemical initial state (level 0):  n_H = 1.098939600e-01
+     He  8.599999697179e+00   dev -3.5212e-08
+     C   2.775879902313e-04   dev -3.5191e-08
+     N   8.185823483630e-05   dev +1.4338e-04
+     O   6.061779786554e-04   dev -3.5212e-08
+  (c) converged steady state, from the written profile:
+     He  8.599999697179e+00   dev -3.5212e-08
+     C   2.775879902313e-04   dev -3.5191e-08
+     N   8.185823483630e-05   dev +1.4338e-04
+     O   6.061779786554e-04   dev -3.5212e-08
+
+  nitrogen carriers at the deepest level (mixing ratio):
+     (a) clima      sum(N nuclei) 8.995725587e-06  ::  NH3 8.995632e-06, N2 9.310380e-11, HCN 1.982709e-30
+     (b) photo init sum(N nuclei) 8.995725587e-06  ::  NH3 8.995632e-06, N2 9.310380e-11, HCN 1.982709e-30
+
+  stoichiometry of the (a)->(b) and (b)->(c) change:
+     dH   (a->b) -1.387779e-17  (relative -1.1102e-16)
+     dHe  (a->b) -1.110223e-16  (relative -1.1102e-16)
+     dC   (a->b) -3.388132e-21  (relative -1.1102e-16)
+     dN   (a->b) -1.694066e-21  (relative -2.2204e-16)
+     dO   (a->b) -1.355253e-20  (relative -2.2204e-16)

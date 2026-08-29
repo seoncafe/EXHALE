@@ -13,10 +13,10 @@
 	
 	integer :: N_eq,iflag
 	real*8  :: x(N_eq),fvec(N_eq)
-	real*8  :: xhi_old,xhei_old,xheiii_old
+	real*8  :: xhi_old,xheiS_old,xheiii_old
 	real*8  :: ghi,ghei,gheii
 	real*8  :: xhi,xhii
-	real*8  :: xhei,xheii,xheiii
+	real*8  :: xheiS,xheii,xheiii
 	real*8  :: xe
 	real*8  :: c1
 	real*8  :: n_h
@@ -29,7 +29,7 @@
 
  	c1         = adv_cell%c1    ! = dr/v
  	xhi_old    = adv_cell%xhi_old    ! = nhi/nh
- 	xhei_old   = adv_cell%xhei_old    ! = nhei/nhe
+ 	xheiS_old  = adv_cell%xheiS_old   ! = nhei/nhe (all He I is the singlet here)
  	xheiii_old = adv_cell%xheiii_old    ! = nheiii/nhe
  	n_h        = adv_cell%nh    ! = nh
  	ghi        = adv_cell%P_HI    ! = P_HI
@@ -50,7 +50,7 @@
 	! Substitutions
 	xhi    = x(1)
 	xhii   = 1.0 - x(1)
-	xhei   = x(2)
+	xheiS  = x(2)
    xheii  = 1.0 - x(2) - x(3)
 	xheiii = x(3)
 
@@ -67,16 +67,17 @@
   	fvec(1) =  xhi_old - xhi   					        		&
   	        + c1*(-(ghi + ionhi*xe*n_h)*xhi    + ahii*xhii*xe*n_h)
 
-  	fvec(2) =  xhei_old - xhei 						  		    &
-  		    + c1*(-(ghei + ionhei*xe*n_h)*xhei  + aheii*xheii*xe*n_h)
+  	fvec(2) =  xheiS_old - xheiS 					  		    &
+  		    + c1*(-(ghei + ionhei*xe*n_h)*xheiS + aheii*xheii*xe*n_h)
 
   	fvec(3) =  xheiii_old - xheiii					  			&
   	        + c1*((gheii + ionheii*xe*n_h)*xheii - aheiii*xheiii*xe*n_h)
 
 	! He <-> H charge exchange (Huang Table 4 group B) on the H (row 1) and
-	! He I (row 2) rows, both written neutral-gain positive here. xhei is the
-	! He I fraction (n_HeI/n_he).
-	call he_h_cx_fvec_adv(fvec, c1, xhi, xhii, xhei, xheii, heh_loc, n_h, &
+	! He I (row 2) rows, both written neutral-gain positive here. Without the
+	! metastable the whole He I population is the ground singlet, so xheiS is
+	! the He I fraction (n_HeI/n_he) the reaction sees.
+	call he_h_cx_fvec_adv(fvec, c1, xhi, xhii, xheiS, xheii, heh_loc, n_h, &
 	                      adv_cell%kcx_He0_Hp, adv_cell%kcx_Hep_H0)
 
 	! End of subroutine

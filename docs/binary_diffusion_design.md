@@ -426,25 +426,80 @@ J_f = -(A_f + E_f) dX/dr|_f  -  B_f                                     (6)
 
 -- with the **minus** on `B_f`, which is what equations (2)-(3) give and
 what the sign check in 2.3 requires (the first draft had `+ B_f`; review
-finding 1). The settling part keeps the Peclet-based central/upwind
-hybrid of P2 (central where `|B_f| dr < 2 (A_f + E_f)`, upwind toward the
-direction of the settling velocity otherwise).
+finding 1). Writing `B_f = beta_f [X(1-X)]_f` with
+`beta_f = rho_f D_12,f G_f`, the settling part keeps the Peclet-based
+central/upwind hybrid of P2 (central where `|beta_f| dr <= 2 (A_f + E_f)`,
+donor-cell upwind otherwise).
 
-**Bounds `0 <= X <= 1`, argued for the whole operator.** Coefficients are
-frozen within a step at the Picard level, so the step is linear in
-`X^{new}`. For each interior row the backward-Euler matrix has diagonal
-`1/dt + (outflow face terms) > 0`, off-diagonals that are `<= 0` for the
-upwind advection, for the gradient term (`A_f + E_f >= 0`), and for the
-settling term whenever the hybrid switches to upwind, while the central
-settling branch is used only when its contribution cannot flip the sign
-of an off-diagonal (that is the Peclet condition above). The matrix is
-therefore an M-matrix: its inverse is nonnegative, and with `X^{old} >=
-0` and boundary values `>= 0` the update gives `X^{new} >= 0`. The same
-operator applied to `1 - X` (the hydrogen equation is (5) with `-J`, and
-`-J` has the identical structure with the settling direction reversed --
-the binary symmetry of (2)) gives `1 - X^{new} >= 0`. Hence the bounds
-hold per step without clipping; a clip at round-off (`1e-15`) is kept
-only as an assertion, not as a limiter.
+**The two factors of `X(1-X)` come from opposite sides of the face**
+(2026-08-28; `docs/Update_EXHALE.md` section 86). The settling flux is a
+counter-flow -- the helium flux is matched by an equal and opposite
+hydrogen flux, since the two components close -- so a donor-cell rule has
+to take each element's mass fraction from the cell *that element* leaves,
+and the two elements leave from opposite sides:
+
+```
+[X(1-X)]_f = X(j+1) (1 - X(j))     beta_f >= 0   (helium drifts inward)
+[X(1-X)]_f = X(j)   (1 - X(j+1))   beta_f <  0   (helium drifts outward)
+```
+
+with both factors at the new time level. In the central branch the
+product is taken at the face average, `X_f (1 - X_f)`. The first draft of
+this section lagged the `(1-X)` factor and solved a step linear in `X`
+with one Picard sweep; that is what lost the upper bound (below). The
+step is now nonlinear in `X^{new}` and is solved by Newton, whose
+tridiagonal Jacobian carries the two face slopes `dJ_f/dX(j) >= 0` and
+`dJ_f/dX(j+1) <= 0` -- the M-matrix condition -- for any iterate in
+`[0,1]`.
+
+**Bounds `0 <= X <= 1`, from the shutoff of the drift flux at both ends
+of the composition axis** (rewritten 2026-08-28; `docs/Update_EXHALE.md`
+section 86 -- the two earlier versions of this paragraph are described at
+the end of it). The continuum drift flux vanishes at `X = 0` and at
+`X = 1`, because a cell with no helium has none to send and a cell with
+no hydrogen has nothing to send it in exchange; the donor/acceptor rule
+above is that statement in the discrete flux. A donor at `X = 0` sends
+nothing and an **acceptor** at `X = 1` receives nothing. In the central
+branch the Peclet condition does the same work: with `X(j) = 1`,
+`X_f (1-X_f) = (1 + X(j+1))(1 - X(j+1))/4 <= (1 - X(j+1))/2`, so
+`|beta_f| <= 2 (A_f + E_f)/dr` bounds the drift flux by the gradient flux
+`(A_f + E_f)(1 - X(j+1))/dr` that carries helium *out* of that cell at
+the same face.
+
+The bound then follows cell by cell. Let `X` solve the implicit step and
+suppose it first touches 1 in cell `m`, every other cell still in
+`[0,1]`. The time term `rho (X_m - X_m^old)/dt >= 0`; the gradient flux
+leaves `m` at both faces because `X_m` is the maximum; the upwind
+advection contributes `rho|v| (X_m - X_donor)/dr >= 0`; and the drift
+flux is an outflow or exactly zero at both faces. Every term of the row
+has the same sign and their sum is the row residual, which is zero, so
+none of them can be strictly positive and `X_m > 1` is impossible.
+`X >= 0` is the same statement, because the scheme is exactly symmetric
+under `X -> 1 - X`, `beta -> -beta`: donor and acceptor exchange roles
+and the central product is even about `X_f = 1/2`. That symmetry is the
+binary symmetry of (2) itself, and it is what the lagged form broke --
+written for `Y = 1 - X` the lagged flux carried the constant `W_f` and
+not a multiple of `Y`, which is why one end held in practice and the
+other did not.
+
+The **row sum is not `rho/dt`**, and the argument above does not need it
+to be: it is made on the residual of the nonlinear step, not from a
+comparison principle for a linear system. The Newton Jacobian is
+nevertheless an M-matrix on `[0,1]`, with diagonal
+`rho/dt + (outflow face terms) > 0` and off-diagonals `<= 0` for the
+upwind advection, for the gradient term (`A_f + E_f >= 0`) and for both
+drift branches; that is what makes the correction well posed.
+
+What is measured, before the clip (`he_fraction_over_one` /
+`he_fraction_under_zero`, exposed so the tests read the solve and not its
+clip): the excursion outside `[0,1]` is **negative in every case tested**,
+i.e. the solve stays strictly inside the range and does not reach the
+clip -- `-9.2e-4` on the strong-drift column of T14, `-8.6e-3` on the
+pure-helium band of T13, `-1.05e-1` on the LHS 1140 b wind. On the lagged
+form the same T14 column overshot by `+0.514` (`X = 1.514`), and an
+8e3-step LHS 1140 b solve exceeded 1 in 140 of 7962 steps by up to 0.520
+(section 84). The clip at 0 and 1 is kept and is now an assertion at both
+ends.
 
    The gradient coefficient looks like `0/0` at the ends of the
    composition axis but is not: with `rho_He = n_He m_He`, `rho_H = n_H
@@ -462,9 +517,12 @@ only as an assertion, not as a limiter.
    gradient flux does **not** vanish there -- a helium-free cell next to
    a helium-bearing one receives helium, as it must -- so only the
    uniform states `X = 0` and `X = 1` over the whole domain are
-   invariant, and the bounds on `X` come from the M-matrix argument
-   below, not from vanishing fluxes. The prefactors are evaluated at the
-   face at the new time level through one Picard sweep.
+   invariant. The bounds on `X` do come from the vanishing of the drift
+   flux, but at the FACE and not over the domain: it is the shutoff of
+   the donor and of the acceptor separately (above) that keeps a cell
+   from being pushed past either end. Both factors of the product are
+   evaluated at the new time level; the Newton iteration is what carries
+   them there.
 **Write-back to the species vector, nonnegative by construction.** After
 the step the cell has new element totals `n_He^new = rho X/m_He` and
 `n_H^new = rho (1 - X)/m_1` (metal nuclei follow at fixed metal/H). The
@@ -481,6 +539,49 @@ finding 7). This projection is the *initial guess* handed to `ioniz_eq`,
 which re-solves the partition from the element totals on the next call
 (`EXHALE_main.f90:609`); the split within an element is what `ioniz_eq`
 owns, the element totals are what the diffusion step owns.
+
+**The metals are a ratio, not a density** (2026-08-28; the defect this
+states is `docs/Update_EXHALE.md` section 84). The metals are part of
+component 1 at a fixed metal/H, so what the projection has to preserve
+for them is `n_X/n_H`, not `n_X`. Multiplying them by `r_H` does that --
+in a cell that *had* hydrogen. Where the cell had none, `r_H` is `0/0`;
+the code took it as `0`, and that is where the metals were lost. The
+sequence is: `X` reaches `1`, so `n_H^new = 0`, so `r_H = 0` and every
+hydrogen species and every metal ion in the cell is multiplied by zero.
+Zeroing them is *correct at that instant* -- no hydrogen, no
+hydrogen-slaved metals, and component 1 carries no mass. What is not
+correct is the step after. Hydrogen returns to the cell through the
+shortfall deposit above; the metals had no such deposit, so they stayed
+at zero while every later call multiplied that zero by something, and a
+band of cells at exactly zero `C`, `N` and `O` sat between cells at the
+reservoir ratio -- a state with no sink for it in these equations.
+
+The metals therefore return **with** the hydrogen. When `n_H^old` is
+zero the cell holds no metal/H of its own, and the ratio is taken from
+`melem_ab`: it is the metal/H this operator's own mass budget already
+assumes, since `m_1 = ` `mass_per_H_nucleus_without_He()` `= m_H + sum_X
+melem_ab_X A_X`, and it is the same reservoir ratio `set_IC` and
+`load_IC` build an absent element from (section 80). All of it goes into
+the neutral ground stage, for the same reason the hydrogen and helium
+shortfalls go into `HI` and `HeI`: a cell that held no hydrogen held no
+ionization split either, and `ioniz_eq` re-solves the split from the
+element total on the next call. Where `n_H^old > 0` nothing changes, so
+a state that never empties a cell of hydrogen is untouched (`make check`
+byte-identical, 7/7). The repair is to the *creation* of such a band;
+it does not reconstruct one that a restart file already carries, which
+is why the operator now also counts them (below).
+
+**The metal census.** No convergence test in this pipeline could see the
+band: the steady residual is a residual of the hydro and energy
+equations, and their solution with the metals removed is a perfectly
+good solution of the equations as posed; the elemental-flux closure
+measures a window that need not contain the cells concerned. The
+operator therefore checks its own elemental bookkeeping on every step
+(`metal_hydrogen_ratio_departure`): the departure of `n_X/n_H` from
+`melem_ab` is reported under `EXHALE_DIFFUSION_CHECK=1`, and a
+`(cell, element)` pair holding no metal nuclei at all while hydrogen is
+present -- which these equations cannot produce -- raises a warning
+whether or not the diagnostic is on. T13 is the acceptance test.
 
 The cap `f <= HeH` and the base pile-up limiter of Phase 1 are
 **removed**; if a pile-up reappears it is physics (helium settling against
@@ -617,6 +718,8 @@ default-off paths must leave `make check` byte-identical (T0).
 | T9 | **ambipolar limits** from (3a) on prescribed states: neutral; fully ionized H+ plasma; fully ionized He++ plasma; a partially ionized front | relative settling mass `3`, `2.5`, `5/3` to round-off in the three limits; finite and continuous through the front |
 | T10 | grid and time-step convergence on T1 | second-order in `dr` for the gradient term, first-order where the settling hybrid upwinds |
 | T12 | **stage-resolved friction** (2.6) on a prescribed isothermal column at three ionization states, plus the two temperature limits of the ion-neutral pair | `D_eff` reproduces, to round-off, the Banks & Kockarts hard sphere when all neutral, the He++/H+ Coulomb coefficient when fully ionized, and the four-term Blanc average when half ionized -- each compared against a closed form written out independently in the test, not against the module's own pair routines. The combined ion-neutral form (9b) reduces to the polarization channel at 1 K and to the hard sphere at 1e9 K and never exceeds either |
+| T13 | **the metals come back with the hydrogen** (2026-08-28): a closed metal-bearing column seeded with a band of pure helium, so `n_H = 0` and `X = 1` exactly in those cells; diffusion refills the band with hydrogen | no cell that holds hydrogen holds zero metals, and `n_X/n_H` equals `melem_ab` to 1e-12 over the whole column. Fails on the pre-fix projection (21 of 21 band cells with hydrogen and no metals, departure 1.0). Also asserts the excursion outside `[0,1]` before the clip, measured where the solve starts ON the bound |
+| T14 | **the bounds, read before the clip** (2026-08-28): a closed column at 20 Jeans parameters, steeply stratified, driven 400 steps at `1e6` cell diffusion times, so the drift crosses many cells per step and the base is driven to pure helium; the test reads `he_fraction_over_one` / `he_fraction_under_zero`, which the operator sets from the solve itself | the run must REACH the boundary (max `X >= 0.99`, else the bound asserted is vacuous) and the excursion outside `[0,1]` must stay at or below `1e-12` at both ends (measured `-9.2e-4` and `-8.2e-11`). Fails on the lagged linearization at `+0.514`, i.e. `X = 1.514` |
 
 T2a is the gate that protects what already works (the old kernel is the
 comparison, not the truth standard); T3 is the one that shows the new

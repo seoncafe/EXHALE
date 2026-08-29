@@ -9,6 +9,7 @@
 set -u
 src=$1; tag=$2; sed_file=$3; nrep=${4:-4}
 EX=/nfs/mocafe/kiseon/RT_Codes/ExoAtmosphere/EXHALE_v1.00
+. "$EX/LHS1140b/winered_hires_y.sh"   # He I 10830 at WINERED HIRES-Y, R = 68,000
 BIN=${EXHALE_BIN:-$EX/EXHALE.x}
 here=$(dirname "$0"); cd "$here" || exit 1
 

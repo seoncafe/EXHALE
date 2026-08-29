@@ -536,6 +536,21 @@
           Ek_NII2, Ek_NII3 - Ek_NII2,                                  &
           Ek_OI2, Ek_OI3 - Ek_OI2, Ek_OI3 ]
 
+   !--- He(2^3S) + neutral: Penning / associative branching -----------!
+   ! Collisional ionization of the He 2^3S metastable by a neutral partner
+   ! runs through two channels that share the same total cross section,
+   !   Penning:     He(2^3S) + X  -> He(1^1S) + X^+ + e^-
+   !   associative: He(2^3S) + X  -> HeH^+ (+ fragment) + e^-,
+   ! and Garcia Munoz (2025), A&A 698, A199, splits the total between them
+   ! with "an average 0.9:0.1" (Sect. 2, the paragraph introducing
+   ! Table A.5). The published network file applies exactly that split
+   ! through the amplitudes of its two rows, for the H and the H2 partner
+   ! alike (references/garcia_munoz_2025_network/SI_networkfile.txt lines
+   ! 198/199 and 202/203). ioniz_HeI23S_H and ioniz_HeI23S_H2 below return
+   ! the TOTAL, which is what removes the metastable; multiply by
+   ! f_penning_HeI23S where a lasting ion and free electron are produced.
+   real*8, parameter :: f_penning_HeI23S = 0.9d0
+
    contains
 
    !---------------------------------------------------!
@@ -977,55 +992,91 @@
 
    !--------------!
 
-   ! Temperature-dependent Penning ionization rate coefficient for
-   ! He(2^3S) + H -> He(1^1S) + H^+ + e^-.
-   ! Taylor et al. (2025), ApJ 989:68, Table 2 ("This Work"): a two-branch
-   ! power law fitted to the Maxwell-Boltzmann-averaged cross sections of
-   ! Morgner & Niehaus (1979) and Cohen & Lane (1971).  Like the value it
-   ! replaces it is the SUM of Penning and associative ionization (their
-   ! Section 2.4), and EXHALE assigns all of it to the Penning channel
-   ! He(1^1S) + H^+ + e^-, so the part that ends in HeH^+ is counted as a
-   ! proton instead.  The two branches meet at 4000 K with a 1.57x step;
-   ! that is the published fit, not a transcription error.
-   ! Replaces the older
-   ! temperature-independent 5e-10 cm^3 s^-1 (Roberge & Dalgarno 1982 sum of
-   ! Penning + associative ionization, as used by Oklopcic & Hirata 2018 and
-   ! Lampon et al. 2020).  Units: cm^3 s^-1; T in K.
-   subroutine penning_HeI_23S(T,coeff_penning_HeI_23S)
-   real*8, dimension(1-Ng:N+Ng), intent(in) :: T
-   real*8, dimension(1-Ng:N+Ng), intent(out) :: coeff_penning_HeI_23S
+   ! TOTAL ionization rate coefficient of the He 2^3S metastable in
+   ! collisions with atomic hydrogen,
+   !   He(2^3S) + H -> He(1^1S) + H^+ + e^-   (Penning, 90%)
+   !                -> HeH^+ + e^-            (associative, 10%),
+   ! as the Maxwell-Boltzmann average of the Movre & Meyer (1997) total
+   ! ionization cross sections.  Closed form published by Garcia Munoz
+   ! (2025), A&A 698, A199, Fig. 5, and carried by that paper's network file
+   ! (references/garcia_munoz_2025_network/SI_networkfile.txt, rows 198 and
+   ! 199, label 'movre97', amplitudes 0.9e-9 and 0.1e-9 summing to the 1e-9
+   ! written here):
+   !   k = 1e-9 exp(c/T + d1 lnT + d2 (lnT)^2 + d3 (lnT)^3)  [cm^3 s^-1].
+   ! NB the header of that network file writes the third term as exp(c), but
+   ! only the exp(c/T) of the Fig. 5 caption reproduces the paper's own
+   ! Table A.5; read c as c/T.
+   !
+   ! Validity: Garcia Munoz quotes errors of <2% against the cross-section
+   ! average "from 200 to 10 000 K", and the expression reproduces the four
+   ! points of Table A.5 (1.02e-9, 1.32e-9, 1.35e-9, 1.27e-9 at 500, 2000,
+   ! 5000 and 10 000 K) to 0.4%.  It is evaluated unclamped outside that
+   ! range: it stays smooth, positive and monotonic on either side of its
+   ! 3.8e3 K maximum (6.93e-10 at 200 K, 1.19e-9 at 1.5e4 K, 1.11e-9 at
+   ! 2e4 K), so clamping would only add a kink, but the <2% accuracy is not
+   ! claimed there.  Below ~200 K it falls off faster than the underlying
+   ! calculation, which Garcia Munoz reports as ~7e-10 cm^3 s^-1 at 100 K
+   ! against 4.1e-10 from this expression; that region is far below the
+   ! temperatures a photoionized wind reaches.
+   !
+   ! Replaces the two-branch power law of Taylor et al. (2025), ApJ 989:68,
+   ! Table 2 (1.9e-9 (300/T)^0.07 for T <= 4000 K, 9.1e-9 (300/T)^0.50
+   ! above), which was transcribed correctly but is not usable: it jumps by
+   ! a factor 1.5724 at 4000 K (1.5849e-9 -> 2.4921e-9), and a rate
+   ! coefficient is a continuous function of temperature.  That fit also
+   ! disagrees with its own paper's Figure 19, where the Maxwell-Boltzmann
+   ! average of the Cohen & Lane (1971) and Morgner & Niehaus (1979) cross
+   ! sections rises to 1.50e-9 near 1400 K and falls to 1.29e-9 at 4000 K,
+   ! while the tabulated branch decreases monotonically from 1.83e-9 to
+   ! 1.58e-9; and above 4000 K it exceeds every cross-section determination
+   ! collected in Garcia Munoz (2025), Fig. 5.  Figure 19 itself agrees with
+   ! the expression used here to 10-20%, so the two independent calculations
+   ! are consistent and it is the published fit that was the outlier.
+   ! Before Taylor et al. the code used the temperature-independent 5e-10
+   ! cm^3 s^-1 of Roberge & Dalgarno (1982), as adopted by Oklopcic & Hirata
+   ! (2018) and Lampon et al. (2020).
+   ! Units: cm^3 s^-1; T in K (gas temperature: this is a neutral-neutral
+   ! collision).
+   elemental double precision function ioniz_HeI23S_H(T) result(k)
+   real*8, intent(in) :: T
+   real*8 :: lnT
 
-   where (T .le. 4.0e3)
-      coeff_penning_HeI_23S = 1.9e-9*(3.0e2/T)**0.07
-   elsewhere
-      coeff_penning_HeI_23S = 9.1e-9*(3.0e2/T)**0.50
-   end where
+   lnT = log(T)
+   k = 1.0d-9*exp(-8.64804d1/T - 2.86766d-1*lnT                       &
+                  + 8.68445d-2*lnT**2 - 5.73001d-3*lnT**3)
 
-   end subroutine penning_HeI_23S
+   end function ioniz_HeI23S_H
 
    !--------------!
 
-   ! Temperature-dependent Penning ionization rate coefficient for
-   ! He(2^3S) + H2 -> He(1^1S) + H2^+ + e^-.  Analytic fit (power law times
-   ! Arrhenius factor) to Garcia Munoz (2025), A&A 698, A199, Table A.5, the
-   ! Maxwell-Boltzmann-averaged Cohen & Lane (1977) cross sections tabulated
-   ! at 500/2000/5000/10000 K (8.94e-11, 6.48e-10, 1.48e-9, 2.54e-9
-   ! cm^3 s^-1).  The fit reproduces all four points to <= 0.13% over its
-   ! 500-10000 K validity range.  The minor H + HeH^+ associative-ionization
-   ! branch is not resolved: Garcia Munoz (2025) splits the total ionization
-   ! cross section between Penning and associative ionization with "an
-   ! average 0.9:0.1" (Appendix, the paragraph introducing Table A.5), and
-   ! the full rate is assigned here to the dominant Penning channel
-   ! He(1^1S)+H2^+ + e^-, the same one-line approximation used for the
-   ! atomic He(2^3S)+H Penning term.  In a He-dominated envelope the
-   ! neglected 10% is a HeH^+ source that scales with the He fraction; see
-   ! docs/molecular_chemistry_audit_he_rich.md.  Units: cm^3 s^-1; T in K.  Elemental so it serves both the scalar
-   ! calls in System_HeH_mol::set_mol_coeffs and the array
+   ! TOTAL ionization rate coefficient of the He 2^3S metastable in
+   ! collisions with molecular hydrogen,
+   !   He(2^3S) + H2 -> He(1^1S) + H2^+ + e^-   (Penning, 90%)
+   !                 -> H + HeH^+ + e^-         (associative, 10%),
+   ! as the Maxwell-Boltzmann average of the Cohen & Lane (1977) cross
+   ! sections.  Coefficients taken from the Garcia Munoz (2025) network file
+   ! (references/garcia_munoz_2025_network/SI_networkfile.txt, rows 202 and
+   ! 203, label 'cohenl77'), whose two amplitudes 4.86740e-12 and
+   ! 5.40822e-13 sum to the total written here and realise the same 0.9:0.1
+   ! split as the atomic channel:
+   !   k = a T^b exp(c/T)  [cm^3 s^-1].
+   ! It reproduces that paper's Table A.5 (8.94e-11, 6.48e-10, 1.48e-9,
+   ! 2.54e-9 cm^3 s^-1 at 500, 2000, 5000 and 10 000 K) to 0.13%.  Validity
+   ! follows the tabulation, 500-10 000 K; it is evaluated unclamped outside
+   ! that range, where it stays smooth and positive but carries no accuracy
+   ! claim.
+   !
+   ! This replaces a fit made here to the four Table A.5 points, which was
+   ! accurate but reproduced the TOTAL while the code then charged all of it
+   ! to the Penning channel, overstating H2^+ production from this reaction
+   ! by 1/0.9 = 1.111.
+   ! Units: cm^3 s^-1; T in K (gas temperature).  Elemental so it serves
+   ! both the scalar calls in System_HeH_mol::set_mol_coeffs and the array
    ! evaluation of the heating term in ionization_equilibrium.
-   elemental double precision function penning_HeI23S_H2(T) result(k)
+   elemental double precision function ioniz_HeI23S_H2(T) result(k)
    real*8, intent(in) :: T
-   k = 5.3791d-12 * T**0.6760d0 * exp(-695.21d0/T)
-   end function penning_HeI23S_H2
+   k = 5.408222d-12 * T**6.75388d-1 * exp(-6.96275d2/T)
+   end function ioniz_HeI23S_H2
 
    !--------------!
 

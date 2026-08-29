@@ -71,10 +71,17 @@
 	! heh_loc is the effective He/H for the electron density (global HeH
 	! normally, the local nhe/nh with He_diffusion). Filled field by field by
 	! post_process_adv before each hybrd1 advection solve.
+	!
+	! xheiS_old is the upstream population of the GROUND SINGLET He(1^1S)
+	! alone, not of the summed He I: the advection systems carry the singlet
+	! and the He(2^3S) metastable as separate unknowns, so that neither is
+	! ever formed as the difference of the other two (a difference that
+	! collapses to zero once the metastable holds most of the neutral He).
+	! Without the triplet the two coincide, all He I being in the singlet.
 	type adv_rates
 		real*8 :: c1
 		real*8 :: xhi_old
-		real*8 :: xhei_old
+		real*8 :: xheiS_old
 		real*8 :: xheiii_old
 		real*8 :: nh
 		real*8 :: P_HI

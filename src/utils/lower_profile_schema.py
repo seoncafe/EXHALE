@@ -232,6 +232,47 @@ def hydrostatic_radius(p_bar, T, mu, mp_MJ, r_ref_RJ, p_ref_bar, nsub=64):
 
 
 # ---- the table --------------------------------------------------------- #
+def eddy_diffusion_coefficient(p_bar, args):
+    """The eddy coefficient the handoff states, on the levels `p_bar` [bar].
+
+    Two forms, and neither is a default: with neither stated this returns
+    None and the caller keeps whatever K_zz(p) the underlying solution
+    carried.
+
+    * `--kzz-const K` -- one value at every level.
+    * `--kzz-power ALPHA` with `--kzz-ref K_ref` and `--kzz-ref-bar p_ref` --
+
+          K_zz(p) = K_ref (p/p_ref)^(-ALPHA),
+
+      the saturated gravity-wave form.  An upward-propagating internal wave
+      conserves its energy flux, so its velocity amplitude grows as
+      rho^(-1/2) ~ p^(-1/2) until it breaks, and the turbulence that holds
+      it at saturation is parameterized as an eddy coefficient rising with
+      height (Lindzen 1981).  The exoplanet literature writes it as
+      K_zz = K_0 P_bar^(-1/2) (Parmentier et al. 2013, HD 209458 b) or
+      P_bar^(-0.4) (Charnay et al. 2015, GJ 1214 b), which is this
+      expression with p_ref = 1 bar.  The theory that produces the slope
+      also bounds it: the wave field is exhausted at some height and the
+      coefficient turns over there (docs/eddy_diffusion_kzz.tex,
+      "Breaking gravity waves"), so extrapolating far above the level the
+      amplitude was set at reads as an upper bound.
+    """
+    p_bar = np.asarray(p_bar, dtype=float)
+    if getattr(args, 'kzz_power', None) is not None:
+        if args.kzz_const is not None:
+            refuse('--kzz-const and --kzz-power state the eddy coefficient '
+                   'two different ways: give one of them')
+        if args.kzz_ref is None:
+            refuse('--kzz-power needs its amplitude --kzz-ref [cm^2/s], the '
+                   'eddy coefficient at --kzz-ref-bar')
+        if not (args.kzz_ref > 0.0 and args.kzz_ref_bar > 0.0):
+            refuse('--kzz-ref and --kzz-ref-bar must both be positive')
+        return args.kzz_ref*(p_bar/args.kzz_ref_bar)**(-args.kzz_power)
+    if args.kzz_const is not None:
+        return np.full(p_bar.shape, float(args.kzz_const))
+    return None
+
+
 def insert_level(cols, p_target):
     """Return `cols` with an exact node at `p_target` [bar].
 
@@ -240,6 +281,14 @@ def insert_level(cols, p_target):
     matching pressure is what makes `value_at_pressure` return the table's
     own number rather than an interpolation of it, so the base state EXHALE
     builds is the state this file states.
+
+    `n_tot` and `rho` are not free columns: the gas is ideal at every node
+    the solution was computed on, `n = p/(k_B T)` and `rho = n mu m_u`, and
+    interpolating the two densities alongside p and T breaks that identity at
+    the inserted node -- the one level a reader takes its base state from.
+    They are therefore recomputed here from the interpolated pressure and
+    temperature, with the mean molecular weight `rho/n` (which is intensive
+    and is the quantity to interpolate) carrying the composition.
     """
     p = cols['p']
     if np.any(p == p_target):
@@ -254,6 +303,15 @@ def insert_level(cols, p_target):
         v = y[j-1] + w*(y[j] - y[j-1])
         out[name] = np.insert(y, j, v)
     out['p'][j] = p_target
+    if 'n_tot' in out and 'T' in out and out['T'][j] > 0.0:
+        mu_m = None
+        if 'rho' in out and cols['n_tot'][j-1] > 0.0 and cols['n_tot'][j] > 0.0:
+            m0 = cols['rho'][j-1]/cols['n_tot'][j-1]
+            m1 = cols['rho'][j]/cols['n_tot'][j]
+            mu_m = m0 + w*(m1 - m0)
+        out['n_tot'][j] = p_target*BAR/(KB*out['T'][j])
+        if mu_m is not None:
+            out['rho'][j] = out['n_tot'][j]*mu_m
     return out
 
 
@@ -390,18 +448,56 @@ def add_common_arguments(ap):
                     help='override the eddy coefficient with one constant'
                          ' [cm^2/s]; default is the profile the chemistry'
                          ' solution used')
+    ap.add_argument('--kzz-power', type=float, default=None,
+                    help='override the eddy coefficient with the saturated'
+                         ' gravity-wave power law K_zz(p) = K_ref'
+                         ' (p/p_ref)^-ALPHA; needs --kzz-ref, and'
+                         ' --kzz-ref-bar fixes p_ref. ALPHA > 0 makes K_zz'
+                         ' rise with height (1/2 for Lindzen 1981'
+                         ' saturation, the value Parmentier et al. 2013 fit;'
+                         ' Charnay et al. 2015 fit 0.4)')
+    ap.add_argument('--kzz-ref', type=float, default=None,
+                    help='the eddy coefficient at --kzz-ref-bar [cm^2/s],'
+                         ' i.e. the amplitude of --kzz-power')
+    ap.add_argument('--kzz-ref-bar', type=float, default=1.0,
+                    help='the pressure --kzz-ref is stated at [bar]'
+                         ' (default 1 bar, the literature normalization)')
     ap.add_argument('--count-condensates', action='store_true',
                     help='count condensed carriers in the El/H ratios;'
                          ' default is the gas phase, which is what the wind'
                          ' inherits')
-    ap.add_argument('--abundance-tol', type=float, default=1.0e-4,
-                    help='relative tolerance of the elemental conservation'
-                         ' check at the deepest level (section 4.2). The'
-                         ' design proposed 1e-10; the measured departure on'
-                         ' HD 209458 b is 1.6e-7 (Zahnle H/He/N/O/C) and'
-                         ' 2.7e-5 (the converted NCHO network), solver noise,'
-                         ' so 1e-4 is the level at which a miscounted'
-                         ' carrier is still caught')
+    ap.add_argument('--abundance-tol', type=float, default=1.0e-10,
+                    help='relative tolerance of the deepest-level elemental'
+                         ' check (section 4.2). What that level can test is'
+                         ' narrower than conservation: Photochem pins every'
+                         ' gas species there with bc_type=press, so the level'
+                         ' carries its equilibrium initialization unchanged'
+                         ' and no photochemical or transport leak reaches it.'
+                         ' The check is therefore a guard on this adapter own'
+                         ' carrier summation, and it also reads out how far'
+                         ' the equilibrium solver got. Where that solver'
+                         ' tests each element against its own abundance, the'
+                         ' second contribution is round-off: over 68 LHS'
+                         ' 1140 b handoffs spanning He/H = 0.0969 to 15 the'
+                         ' largest departure is 3.3e-13 and the median'
+                         ' 1.7e-14, the 13-significant-figure floor of the'
+                         ' carrier summation itself. 1e-10 is the design'
+                         ' value and keeps a factor 305 over that floor,'
+                         ' which leaves a real miscount detectable: each'
+                         ' element sits in one dominant carrier at this'
+                         ' level, so dropping one is an O(1) error, and even'
+                         ' the smallest -- dropping N2 -- is 1.0e-5 of X_N in'
+                         ' the coldest band and 4.0e-3 where the deep column'
+                         ' is hot enough to make N2. A solver that scales'
+                         ' every elemental residual by the largest elemental'
+                         ' abundance does not reach this level: photochem'
+                         ' 0.8.4 leaves up to 2.1e-4 in N/H, and a refusal'
+                         ' against it is the intended signal that the'
+                         ' equilibrium solve was never converged element by'
+                         ' element. Reproducing a result made with such a'
+                         ' build needs an explicit --abundance-tol. See'
+                         ' docs/deep_level_elemental_check.md for the'
+                         ' diagnosis.')
     ap.add_argument('--profile-name', default='lower_atmosphere_profile.dat')
     ap.add_argument('--no-base-inp', action='store_true',
                     help='do not write the paired provenance base.inp')
@@ -436,10 +532,31 @@ def write_handoff(args, cols, header, column_order, element_input=None,
         refuse('p_top_bar >= p_match_bar: the file stops at or below the '
                'match, so the two models never overlap')
 
-    # The adapter's own conservation check (section 4.2).  It is stated at
-    # the deepest level, because that is the only level where the elemental
+    # The adapter's own carrier-summation check (section 4.2).  It is stated
+    # at the deepest level, because that is the only level where the elemental
     # ratios are the input ones: transport and the upper boundary condition
     # move nuclei with height, which is the whole point of the closure.
+    #
+    # What it can and cannot see.  Photochem pins every gas species at the
+    # model bottom with bc_type='press' (gasgiants._initialize_atmosphere), so
+    # that level carries the equilibrium initialization unchanged -- measured
+    # identical to 13 significant figures before and after the photochemical
+    # solve, and independent of the trial escape flux.  A photochemical or
+    # transport leak therefore never reaches this check.  What it does test is
+    # (i) that this adapter sums every carrier of an element, which is the
+    # intent, and (ii) how far the equilibrium solver got.  Where that solver
+    # tests each element against its own abundance, (ii) is round-off and the
+    # tolerance is set by (i): 3.3e-13 worst and 1.7e-14 median over 68 LHS
+    # 1140 b handoff writes, against which the 1e-10 default holds a factor 305.
+    # (The 3.5e-13 / 1.9e-14 pair quoted elsewhere is the 38 saved deep
+    # equilibrium states re-solved directly, a different set.)
+    # Where it instead scales every elemental residual by the largest
+    # elemental abundance, (ii) is the solver's own residual, 4072x more
+    # visible in N than in He, C or O because deep nitrogen sits in NH3 alone
+    # and one excess N rides on three excess H; a refusal then reports that
+    # solver rather than a fault here, and reproducing such a run needs an
+    # explicit --abundance-tol.  docs/deep_level_elemental_check.md is the
+    # diagnosis.
     if element_input and element_measured:
         worst, worst_el = 0.0, ''
         for el, want in element_input.items():

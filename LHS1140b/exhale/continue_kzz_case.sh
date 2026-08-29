@@ -8,6 +8,7 @@
 set -u
 tag=$1; nrep=${2:-4}
 EX=/nfs/mocafe/kiseon/RT_Codes/ExoAtmosphere/EXHALE_v1.00
+. "$EX/LHS1140b/winered_hires_y.sh"   # He I 10830 at WINERED HIRES-Y, R = 68,000
 BIN=${EXHALE_BIN:-$EX/EXHALE.x}
 cd "$(dirname "$0")/$tag" || exit 1
 export OMP_NUM_THREADS=${OMP_NUM_THREADS:-6}

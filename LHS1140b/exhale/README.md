@@ -17,6 +17,27 @@ comparison against `../pwinds_oracle/` and against the 2024 measurement in
 The p-winds scan covers the same set (`../pwinds_oracle/scan_hhe.txt`, listed
 by H:He), so the two models can be read against each other row by row.
 
+## Instrument: WINERED HIRES-Y, R = 68,000
+
+The 2024 He 10830 transit of LHS 1140 b was taken with WINERED in HIRES-Y
+mode, whose resolving power is 68,000 (Cherubim et al. 2026, Supplement).
+`EXHALE_transit.py` carries the CARMENES 8e4 as its He I 10830 default,
+which is right for the other planets in this repository and wrong for this
+one, so every run script here sources `../winered_hires_y.sh` before calling
+the transit tool. Run the tool by hand and you must do the same:
+
+```bash
+. $EX/LHS1140b/winered_hires_y.sh      # EXHALE_TRANSIT_RES_HETR=68000
+MPLBACKEND=Agg python3 $EX/EXHALE_transit.py
+```
+
+`transit.log` echoes the value it used on the `resolving powers` line; it
+must read `He 6.8e+04`. The convolution conserves equivalent width, so the
+resolving power moves the modelled widths and peak depths but not the EW
+crossings. Curves synthesized at the earlier 8e4 are kept beside the current
+ones as `tpm_*_R80k.txt` / `transit_R80k.log`. Background:
+`../../docs/lhs1140b_width_measurement_audit.md`.
+
 ## What differs between the two models, deliberately
 
 p-winds imposes an isothermal Parker wind at the paper's retrieved

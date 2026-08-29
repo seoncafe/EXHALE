@@ -4,6 +4,7 @@
 # before it, so the loop begins near its own fixed point.
 set -u
 EX=/nfs/mocafe/kiseon/RT_Codes/ExoAtmosphere/EXHALE_v1.00
+. "$EX/LHS1140b/winered_hires_y.sh"   # He I 10830 at WINERED HIRES-Y, R = 68,000
 HERE=$EX/LHS1140b/exhale/flux_closure
 DRV=$EX/src/utils/element_flux_closure.py
 

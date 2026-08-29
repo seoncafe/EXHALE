@@ -39,15 +39,25 @@ o_dep  = g('absorption_depth_positive_percent')
 o_sig  = g('uncertainty_1sigma_percent')
 
 mo = (o_vac >= EW_LO) & (o_vac <= EW_HI)
-EW_obs = np.trapz(o_dep[mo], o_vac[mo])
-EW_err = np.sqrt(np.sum((o_sig[mo]*np.median(np.diff(o_vac)))**2))
+EW_digitized = np.trapz(o_dep[mo], o_vac[mo])
+EW_digitized_err = np.sqrt(np.sum((o_sig[mo]*np.median(np.diff(o_vac)))**2))
+
+# Every crossing quoted in the memo, and every one in the results.txt of the
+# run directories the crossings are read from, is solved against the digitized
+# value as it is printed there: 1.108 +/- 0.030 %A.  Use the same two numbers
+# here so that the figures and the tables cross at the same composition.
+EW_obs, EW_err = 1.108, 0.030
+
+def curve_file(path):
+    """Air wavelength and excess absorption [%] of one transit file."""
+    if not os.path.isfile(path):
+        return None
+    s = np.loadtxt(path)
+    return s[:, 0], (s[:, 2].max() - s[:, 2])/s[:, 2].max()*100   # air, %
+
 
 def exhale_curve(tag, sub=''):
-    f = os.path.join('exhale', tag, sub, 'tpm_He10830.txt')
-    if not os.path.isfile(f):
-        return None
-    s = np.loadtxt(f)
-    return s[:, 0], (s[:, 2].max() - s[:, 2])/s[:, 2].max()*100   # air, %
+    return curve_file(os.path.join('exhale', tag, sub, 'tpm_He10830.txt'))
 
 def red_ew(tag, sub=''):
     c = exhale_curve(tag, sub)
@@ -56,6 +66,10 @@ def red_ew(tag, sub=''):
     lam = c[0]*AIR
     m = (lam >= EW_LO) & (lam <= EW_HI)
     return np.trapz(c[1][m], lam[m])
+
+# The arm the memo calls the EW-matched solution: He/H = 0.425, the run on the
+# well-mixed crossing 0.4245, solved on the current Penning coefficient.
+EWMATCH_TAG = 'crossings_gm25/rs_heh0p425'
 
 # ============ Figure 1: Fig-4 style, EXHALE + p-winds vs observation ========
 fig, axs = plt.subplots(1, 2, figsize=(7.1, 3.0), sharey=True)
@@ -87,16 +101,32 @@ axs[0].set_title(r'(a) p-winds at the C26 best fit (MCMC medians)', fontsize=8)
 axs[0].text(0.03, 0.06, r'models shifted by $v_{\rm wind}=+2.26$\,km\,s$^{-1}$',
             transform=axs[0].transAxes, fontsize=5.5, color='0.35')
 
-for tag, col, lab in (('solar', 'C1', r'solar, $\mathrm{He/H}=0.083$'),
-                      ('heh0p55', 'C2', r'$\mathrm{He/H}=0.55$ (EW match)'),
-                      ('heh1', 'C0', r'$\mathrm{He/H}=1$')):
-    c = exhale_curve(tag)
+# Three compositions of the well-mixed ladder of record, crossings_gm25
+# lineage W2 (the same arms Fig. ew reads): the two ends of the ladder and the
+# arm on the crossing.  Both members of each pair are the current Penning
+# coefficient and the current binary; the turbulence run of each arm is
+# crossings_gm25/run_turb.sh, which is regen_turb.sh applied to this ladder.
+# The wide scan solar-to-He/H=1 exists only on the retired coefficient and is
+# not mixed in here; its composition trend is Fig. ew.
+# Drawn deepest first, so that the shallowest arm is not hidden under the
+# other two: over this range the profile hardly moves with composition.
+for fn, fn_turb, col, wid, lab in (
+        ('exhale/crossings_gm25/rs_heh0p46/tpm_He10830.txt',
+         'exhale/crossings_gm25/rs_heh0p46/tpm_turb/tpm_He10830.txt',
+         'C1', 2.6, r'$\mathrm{He/H}=0.46$'),
+        ('exhale/crossings_gm25/rs_heh0p425/tpm_He10830.txt',
+         'exhale/crossings_gm25/rs_heh0p425/tpm_turb/tpm_He10830.txt',
+         'C2', 1.5, r'$\mathrm{He/H}=0.425$ (EW match)'),
+        ('exhale/crossings_gm25/rs_heh0p40/tpm_He10830.txt',
+         'exhale/crossings_gm25/rs_heh0p40/tpm_turb/tpm_He10830.txt',
+         'C0', 0.8, r'$\mathrm{He/H}=0.40$')):
+    c = curve_file(fn)
     if c is not None:
-        axs[1].plot(c[0] + dlam_air, 1.0 - c[1]/100, color=col, lw=0.9,
-                    ls=':', alpha=0.8)
-    ct = exhale_curve(tag, 'tpm_turb')
+        axs[1].plot(c[0] + dlam_air, 1.0 - c[1]/100, color=col,
+                    lw=0.7*wid, ls=':', alpha=0.8)
+    ct = curve_file(fn_turb)
     if ct is not None:
-        axs[1].plot(ct[0] + dlam_air, 1.0 - ct[1]/100, color=col, lw=1.4,
+        axs[1].plot(ct[0] + dlam_air, 1.0 - ct[1]/100, color=col, lw=wid,
                     label=lab)
 axs[1].plot([], [], color='0.4', lw=0.9, ls=':', label=r'(dotted: no turbulence)')
 axs[1].legend(fontsize=6, loc='lower left', framealpha=0.9)
@@ -106,32 +136,114 @@ plt.savefig(f'{OUT}/lhs1140b_fig4style.pdf')
 plt.close()
 
 # ============ Figure 2: equivalent width vs He/H ===========================
-SCAN = [('solar', 0.0833), ('heh0p25', 0.25), ('heh0p5', 0.5),
-        ('heh0p55', 0.55), ('heh0p6', 0.6), ('heh0p7', 0.7),
-        ('heh1', 1.0), ('heh10', 10.0), ('heh100', 100.0),
-        ('heh1000', 1000.0), ('heh10000', 1e4)]
-hh   = np.array([s[1] for s in SCAN])
-ew_n = np.array([red_ew(s[0]) for s in SCAN])
-ew_t = np.array([red_ew(s[0], 'tpm_turb') for s in SCAN])
+# Two ladders, read the same way.  The wide scan of the memo's Sect. sec:scan
+# is the one that carries the turbulence pair, and it is on the retired
+# Penning coefficient throughout; He/H = 0.55 has since been re-solved, so its
+# retired curves are read from the tpm_*_taylor files kept beside the new
+# ones, and the earlier scan stays internally consistent.  The crossing of
+# record is the nine-arm ladder solved on the current coefficient over
+# He/H = 0.40-0.46, exhale/crossings_gm25 (lineage W2, results.txt Sect. 1).
+
+
+def red_ew_file(path):
+    """Red-pair EW [%A] of one synthesized transit file."""
+    lam, exc = curve_file(path)
+    lam = lam*AIR
+    m = (lam >= EW_LO) & (lam <= EW_HI)
+    return np.trapz(exc[m], lam[m])
+
+
+def ew_crossing(h, e, target):
+    """He/H at which the ladder (h, e) reaches target, log-log."""
+    o = np.argsort(h)
+    h, e = np.asarray(h)[o], np.asarray(e)[o]
+    return 10.0**brentq(lambda t: np.interp(t, np.log10(h), np.log10(e))
+                        - np.log10(target), np.log10(h[0]), np.log10(h[-1]))
+
+
+# the earlier scan, retired coefficient, over the range that holds the crossing
+SCAN_EARLIER = [
+    (0.0833, 'exhale/solar/tpm_He10830.txt',
+             'exhale/solar/tpm_turb/tpm_He10830.txt'),
+    (0.25,   'exhale/heh0p25/tpm_He10830.txt',
+             'exhale/heh0p25/tpm_turb/tpm_He10830.txt'),
+    (0.50,   'exhale/heh0p5/tpm_He10830.txt',
+             'exhale/heh0p5/tpm_turb/tpm_He10830.txt'),
+    (0.55,   'exhale/heh0p55/tpm_He10830_taylor.txt',
+             'exhale/heh0p55/tpm_turb_taylor/tpm_He10830.txt'),
+    (0.60,   'exhale/heh0p6/tpm_He10830.txt',
+             'exhale/heh0p6/tpm_turb/tpm_He10830.txt'),
+    (0.70,   'exhale/heh0p7/tpm_He10830.txt',
+             'exhale/heh0p7/tpm_turb/tpm_He10830.txt'),
+    (1.00,   'exhale/heh1/tpm_He10830.txt',
+             'exhale/heh1/tpm_turb/tpm_He10830.txt')]
+
+# the ladder of record, current coefficient (crossings_gm25 lineage W2)
+LADDER_WM = [('crossings_gm25/rs_heh0p40', 0.400),
+             ('crossings_gm25/rs_heh0p41', 0.410),
+             ('crossings_gm25/rs_heh0p42', 0.420),
+             ('crossings_gm25/rs_heh0p425', 0.425),
+             ('crossings_gm25/rs_heh0p43', 0.430),
+             ('crossings_gm25/rs_heh0p435', 0.435),
+             ('crossings_gm25/rs_heh0p44', 0.440),
+             ('crossings_gm25/wm_heh0p45', 0.450),
+             ('crossings_gm25/rs_heh0p46', 0.460)]
+
+hh = np.array([c[0] for c in SCAN_EARLIER])
+ew_n = np.array([red_ew_file(c[1]) for c in SCAN_EARLIER])
+ew_t = np.array([red_ew_file(c[2]) for c in SCAN_EARLIER])
+hw = np.array([c[1] for c in LADDER_WM])
+ew_w = np.array([red_ew(c[0]) for c in LADDER_WM])
+
+cross = {}
+for y, lab in ((ew_n, r'no turbulence'), (ew_t, r'turbulence on')):
+    cross[lab] = ew_crossing(hh, y, EW_obs)
+wm_cross = ew_crossing(hw, ew_w, EW_obs)
+wm_lo = ew_crossing(hw, ew_w, EW_obs - EW_err)
+wm_hi = ew_crossing(hw, ew_w, EW_obs + EW_err)
 
 fig, ax = plt.subplots(figsize=(3.5, 2.8))
-cross = {}
-for y, lab, col in ((ew_n, r'no turbulence', 'C3'),
-                    (ew_t, r'turbulence on', 'C0')):
-    ax.loglog(hh, y, 'o-', color=col, ms=3, lw=1.1, label=lab)
-    sel = hh <= 1.0
-    f = lambda t: np.interp(np.log10(t), np.log10(hh[sel]), y[sel])
-    cross[lab] = brentq(lambda t: f(t) - EW_obs, hh[0], 1.0)
-    ax.axvline(cross[lab], color=col, ls=':', lw=0.8)
 ax.axhspan(EW_obs - EW_err, EW_obs + EW_err, color='0.85', zorder=0,
            label=r'observed')
+ax.axvspan(wm_lo, wm_hi, color='C2', alpha=0.13, zorder=0)
+for y, lab, col, ls in ((ew_n, r'no turbulence', 'C3', '-'),
+                        (ew_t, r'turbulence on', 'C0', '--')):
+    ax.loglog(hh, y, marker='o', ls=ls, color=col, ms=3, lw=1.0, alpha=0.85,
+              label=r'earlier scan, ' + lab)
+    ax.axvline(cross[lab], color=col, ls=':', lw=0.8)
+ax.loglog(hw, ew_w, 's-', color='C2', ms=3.5, lw=1.5,
+          label=r'current coefficient')
+ax.axvline(wm_cross, color='C2', ls=':', lw=1.2)
+ax.plot([wm_cross], [EW_obs], marker='*', ms=10, ls='none', color='C2',
+        zorder=5)
+ax.text(wm_cross*0.95, 0.26, r'$' + '%.4f' % wm_cross + r'$', color='C2',
+        fontsize=6.5, rotation=90, va='bottom', ha='right')
+ax.text(cross[r'turbulence on']*1.06, 0.26,
+        r'$' + '%.3f' % cross[r'no turbulence'] + r'$ / $'
+        + '%.3f' % cross[r'turbulence on'] + r'$', color='0.35',
+        fontsize=6.5, rotation=90, va='bottom', ha='left')
+ax.set_xlim(0.075, 1.2)
+ax.set_ylim(0.24, 1.9)
+ax.set_xticks([0.1, 0.2, 0.4, 0.7, 1.0])
+ax.set_xticklabels([r'0.1', r'0.2', r'0.4', r'0.7', r'1'])
+ax.set_xticks([], minor=True)
+ax.set_yticks([0.3, 0.5, 0.8, 1.1, 1.6])
+ax.set_yticklabels([r'0.3', r'0.5', r'0.8', r'1.1', r'1.6'])
+ax.set_yticks([], minor=True)
 ax.set_xlabel(r'$\mathrm{He/H}$ number ratio')
 ax.set_ylabel(r'red-pair EW [\%\,\AA]')
 ax.grid(alpha=0.22, which='both')
-ax.legend(fontsize=6, loc='lower right')
+ax.legend(fontsize=5.8, loc='upper left', framealpha=0.9)
 plt.tight_layout()
 plt.savefig(f'{OUT}/lhs1140b_ew_vs_heh.pdf')
 plt.close()
+print('well-mixed crossing (current coefficient): He/H = %.4f '
+      '(1 sigma %.4f - %.4f), H:He = %.2f, %.1fx solar'
+      % (wm_cross, wm_lo, wm_hi, 1/wm_cross, wm_cross/0.0833))
+for lab, x in cross.items():
+    print('  earlier scan (%s): He/H = %.4f' % (lab, x))
+print('  earlier scan, turbulence moves the crossing by %.1f per cent'
+      % (100*abs(cross[r'turbulence on']/cross[r'no turbulence'] - 1)))
 
 # ============ Figure 3: the structural difference ==========================
 lab_i = [l for l in open('exhale/heh1000/output/Ion_species.txt')
@@ -161,7 +273,8 @@ plt.tight_layout()
 plt.savefig(f'{OUT}/lhs1140b_structure.pdf')
 plt.close()
 
-print(f'EW_obs = {EW_obs:.4f} +/- {EW_err:.4f}')
+print(f'EW target = {EW_obs:.4f} +/- {EW_err:.4f}  '
+      f'(digitized {EW_digitized:.4f} +/- {EW_digitized_err:.4f})')
 for lab, x in cross.items():
     print(f'  crossing ({lab}): He/H = {x:.3f}  H:He = {1/x:.2f}  '
           f'{x/0.0833:.1f}x solar')
@@ -179,9 +292,11 @@ t = np.loadtxt('pwinds_oracle/tspec_authors_turb.txt')
 ax.plot(t[:, 0]/AIR + dlam_air, 1.0 - t[:, 3]/100, color='mediumpurple',
         lw=1.5, label=r'p-winds, C26 best fit ($\mathrm{H\!:\!He}=1.0\times10^{-3}$)')
 
-c = exhale_curve('heh0p55', 'tpm_turb')
+# the arm on the well-mixed crossing 0.4245, solved on the current Penning
+# coefficient (crossings_gm25 lineage W2); no turbulence run exists for it.
+c = exhale_curve(EWMATCH_TAG)
 ax.plot(c[0] + dlam_air, 1.0 - c[1]/100, color='C2', lw=1.5,
-        label=r'EXHALE, $\mathrm{He/H}=0.55$ (EW-matched)')
+        label=r'EXHALE, $\mathrm{He/H}=0.425$ (EW-matched)')
 
 ax.set_xlim(10827, 10831.7); ax.set_ylim(0.982, 1.006)
 ax.ticklabel_format(axis='x', useOffset=False, style='plain')
@@ -195,11 +310,12 @@ plt.close()
 print('wrote lhs1140b_bestfit.pdf')
 
 # ====== Figure 5: structure of the EW-matched EXHALE solution ==============
-hy = np.loadtxt('exhale/heh0p55/output/Hydro_ioniz.txt')
-lab_i = [l for l in open('exhale/heh0p55/output/Ion_species.txt')
+_EWD = os.path.join('exhale', EWMATCH_TAG, 'output')
+hy = np.loadtxt(os.path.join(_EWD, 'Hydro_ioniz.txt'))
+lab_i = [l for l in open(os.path.join(_EWD, 'Ion_species.txt'))
          if l.startswith('# columns')][0].split()[2:]
 ki = {n: j for j, n in enumerate(lab_i)}
-io = np.loadtxt('exhale/heh0p55/output/Ion_species.txt')
+io = np.loadtxt(os.path.join(_EWD, 'Ion_species.txt'))
 r, n, v, T = hy[:, 0], hy[:, 1], hy[:, 2]/1e5, hy[:, 4]
 
 fig, axg = plt.subplots(2, 3, figsize=(7.1, 3.9))
@@ -228,7 +344,7 @@ plt.tight_layout()
 plt.savefig(f'{OUT}/lhs1140b_bestfit_structure.pdf')
 plt.close()
 k2 = int(np.argmax(io[:, ki['HeITR']]))
-print('EW-matched solution (He/H=0.55): T_max %.0f K at r=%.2f; '
+print('EW-matched solution (He/H=0.425): T_max %.0f K at r=%.2f; '
       'n(2^3S) peak %.3g at r=%.2f; v(20Rp) %.2f km/s'
       % (T.max(), r[int(np.argmax(T))], io[k2, ki['HeITR']], r[k2],
          np.interp(20, r, v)))
@@ -275,13 +391,14 @@ def matched_kernel(tag, sub=''):
         return np.nan
     return matched_kernel_curve(c[0], c[1])
 
-lam0, exc0 = exhale_curve('heh0p55')
-f_match = matched_kernel('heh0p55')
-print('matched kernel (He/H=0.55, no turbulence): %.2f km/s '
+lam0, exc0 = exhale_curve(EWMATCH_TAG)
+f_match = matched_kernel(EWMATCH_TAG)
+print('matched kernel (He/H=0.425, no turbulence): %.2f km/s '
       '(sigma %.2f km/s)' % (f_match, f_match/2.35482))
-for tag, sub, lab in (('heh0p55', 'tpm_turb', 'He/H=0.55, turbulence on'),
-                      ('solar', '', 'solar, no turbulence')):
-    print('  same crossing, %-26s %.2f km/s' % (lab, matched_kernel(tag, sub)))
+for tag, sub, lab in (('crossings_gm25/rs_heh0p40', '', 'He/H=0.40'),
+                      ('crossings_gm25/rs_heh0p46', '', 'He/H=0.46'),
+                      ('solar', '', 'solar, retired coefficient')):
+    print('  same measurement, %-26s %.2f km/s' % (lab, matched_kernel(tag, sub)))
 print('  metrics at matched kernel: ' + ', '.join(
     '%s=%.3f' % (k, broadened_metrics(lam0, exc0, f_match)[k])
     for k in ('red_depth', 'blue_depth', 'red_blue', 'fwhm_A', 'ew')))
@@ -300,7 +417,7 @@ a.axhline(1.0 - 0.006, color='0.6', ls='--', lw=0.8,
           label=r'2025 detection limit')
 a.axhline(1.0, color='0.9', lw=0.6, zorder=0)
 a.plot(lam0 + dlam_air, 1.0 - exc0/100, color='C2', lw=1.0, ls=':',
-       label=r'EXHALE, $\mathrm{He/H}=0.55$, as solved')
+       label=r'EXHALE, $\mathrm{He/H}=0.425$, as solved')
 a.plot(lam0 + dlam_air, 1.0 - broaden(lam0, exc0, f_match)/100, color='C2',
        lw=1.5, label=r'same, $+' + '%.1f' % f_match
        + r'$\,km\,s$^{-1}$ FWHM Gaussian')
@@ -343,16 +460,17 @@ plt.close()
 print('wrote lhs1140b_broadened.pdf')
 
 # ====== Figure 6b: the same demand, with diffusion and the adopted K_zz ====
-# The EW crossing moves from He/H = 0.55 to 2.09 once binary H/He element
-# diffusion is on at He_Kzz = 1e9 (kzz_decision.md section 6).  Repeat the
-# kernel measurement on the EW-matched diffusive solution and compare the
-# matched kernel with the diffusion-off 22.3 km/s.
-DIFF_TAG = 'heh2p13_diff_kzz1e9'
+# The EW crossing moves from He/H = 0.4245 to 1.6261 once binary H/He element
+# diffusion is on at He_Kzz = 1e9 (exhale/crossings_gm25/results.txt Sect. 2).
+# Repeat the kernel measurement on the EW-matched diffusive solution and
+# compare the matched kernel with the diffusion-off one.
+DIFF_TAG = 'crossings_gm25/kz_heh1p65'
+DIFF_HEH = 1.65
 lamd, excd = exhale_curve(DIFF_TAG)
 f_match_diff = matched_kernel_curve(lamd, excd)
-print('matched kernel (%s, He/H=2.13, He_Kzz=1e9): %.2f km/s (sigma %.2f), '
-      'diffusion-off He/H=0.55 gives %.2f km/s, difference %.2f km/s'
-      % (DIFF_TAG, f_match_diff, f_match_diff/2.35482, f_match,
+print('matched kernel (%s, He/H=%.2f, He_Kzz=1e9): %.2f km/s (sigma %.2f), '
+      'diffusion-off He/H=0.425 gives %.2f km/s, difference %.2f km/s'
+      % (DIFF_TAG, DIFF_HEH, f_match_diff, f_match_diff/2.35482, f_match,
          f_match_diff - f_match))
 print('  scan (f [km/s], red, blue, ratio, FWHM, EW):')
 for f in (0.0, 10.0, 15.0, 20.0, f_match_diff, 25.0):
@@ -391,7 +509,7 @@ ax.semilogy(rd, n_HeII_d, color='crimson', lw=1.0, ls=':', label=r'He\,\textsc{i
 ax.semilogy(rd, np.maximum(n_HeTR_d, 1e-6), color='darkmagenta', lw=1.5, ls='-', label=r'He($2\,^3S$)')
 
 ax.axvline(13.6, color='0.7', ls=':', lw=0.8)
-ax.text(13.8, 1e11, r'$R_\star = 13.6\,R_{\rm p}$', fontsize=6.5, color='0.4', rotation=90)
+ax.text(13.8, 1e-2, r'$R_\star = 13.6\,R_{\rm p}$', fontsize=6.5, color='0.4', rotation=90)
 
 ax.set_xlim(1.0, 20.0)
 ax.set_ylim(1e-4, 3e13)
@@ -399,7 +517,7 @@ ax.set_xlabel(r'radius $r$ [$R_{\rm p}$]')
 ax.set_ylabel(r'number density $n$ [cm$^{-3}$]')
 ax.grid(alpha=0.2, which='both')
 ax.legend(fontsize=6.2, loc='upper right', framealpha=0.9, ncol=2)
-ax.set_title(r'(a) H and He number densities ($K_{zz}=10^9$, $\mathrm{He/H}=2.13$)', fontsize=8)
+ax.set_title(r'(a) H and He number densities ($K_{zz}=10^9$, $\mathrm{He/H}=1.65$)', fontsize=8)
 
 # Panel (b): Broadened transit profile vs observation
 ax2 = axs[1]
@@ -409,13 +527,13 @@ ax2.axhline(1.0 - 0.006, color='0.6', ls='--', lw=0.8, label=r'2025 detection li
 ax2.axhline(1.0, color='0.9', lw=0.6, zorder=0)
 
 ax2.plot(lamd + dlam_air, 1.0 - excd/100, color='C4', lw=1.0, ls=':',
-         label=r'diffusion ($K_{zz}=10^{9}$, $\mathrm{He/H}=2.13$), as solved')
+         label=r'diffusion ($K_{zz}=10^{9}$, $\mathrm{He/H}=1.65$), as solved')
 ax2.plot(lamd + dlam_air, 1.0 - broaden(lamd, excd, f_match_diff)/100,
          color='C4', lw=1.5,
          label=r'same, $+' + '%.1f' % f_match_diff + r'$\,km\,s$^{-1}$ FWHM Gaussian')
 ax2.plot(lam0 + dlam_air, 1.0 - broaden(lam0, exc0, f_match)/100, color='C2',
          lw=1.0, ls='--', dashes=(4, 2),
-         label=r'diffusion off ($\mathrm{He/H}=0.55$), $+' + '%.1f' % f_match + r'$\,km\,s$^{-1}$')
+         label=r'diffusion off ($\mathrm{He/H}=0.425$), $+' + '%.1f' % f_match + r'$\,km\,s$^{-1}$')
 
 ax2.set_xlim(10827, 10831.7); ax2.set_ylim(0.982, 1.006)
 ax2.ticklabel_format(axis='x', useOffset=False, style='plain')
@@ -472,7 +590,7 @@ ax.plot(t[:, 0]/AIR + dlam_air,
         color='mediumpurple', lw=1.5, ls='--',
         label=r'same, $+' + '%.1f' % f_pw + r'$\,km\,s$^{-1}$ FWHM Gaussian')
 ax.plot(lam0 + dlam_air, 1.0 - broaden(lam0, exc0, f_match)/100, color='C2',
-        lw=1.0, label=r'EXHALE, $\mathrm{He/H}=0.55$, $+'
+        lw=1.0, label=r'EXHALE, $\mathrm{He/H}=0.425$, $+'
         + '%.1f' % f_match + r'$\,km\,s$^{-1}$')
 
 ax.set_xlim(10827, 10831.7); ax.set_ylim(0.982, 1.006)
@@ -491,17 +609,24 @@ print('wrote lhs1140b_pwinds_broadened.pdf')
 # swapped for the second proxy the paper uses.  Panel (a) puts the two GJ 699
 # lines nearest the measurement on the data; panel (b) shows how the
 # equivalent-width crossing moves between the two SEDs.
-SCAN699 = [('heh0p04_gj699', 0.04), ('heh0p06_gj699', 0.06),
-           ('solar_gj699', 0.0833333), ('heh0p25_gj699', 0.25),
-           ('heh0p55_gj699', 0.55), ('heh1_gj699', 1.0),
-           ('heh1000_gj699', 1000.0)]
-hh9 = np.array([s[1] for s in SCAN699])
-ew9 = np.array([red_ew(s[0]) for s in SCAN699])
-
-sel9 = hh9 <= 1.0
-f9 = lambda t: np.interp(np.log10(t), np.log10(hh9[sel9]),
-                         np.log10(ew9[sel9])) - np.log10(EW_obs)
-cross9 = brentq(f9, hh9[0], 1.0)
+# Panel (b) reads both crossings from ladders solved on the current Penning
+# coefficient: the GJ 1132 well-mixed one of Fig. ew (crossings_gm25 lineage
+# W2) and the GJ 699 one of ladder_gm25 Sect. 3 (lineage G2, of record; its
+# 0.050 arm is the seed g1_heh0p050 both lineages share).  Panel (a) draws
+# the arm of that same ladder nearest the crossing 0.0479, g2_heh0p048, so
+# that both panels stand on the current coefficient.  The two solar curves it
+# carries for contrast are exhale/misc_gm25/{solar,gj699_solar}, the same two
+# runs re-solved on the current coefficient.
+LADDER_699 = [('ladder_gm25/g2_heh0p042', 0.042),
+              ('ladder_gm25/g2_heh0p044', 0.044),
+              ('ladder_gm25/g2_heh0p046', 0.046),
+              ('ladder_gm25/g2_heh0p048', 0.048),
+              ('ladder_gm25/g1_heh0p050', 0.050)]
+hh9 = np.array([c[1] for c in LADDER_699])
+ew9 = np.array([red_ew(c[0]) for c in LADDER_699])
+cross9 = ew_crossing(hh9, ew9, EW_obs)
+cross9_lo = ew_crossing(hh9, ew9, EW_obs - EW_err)
+cross9_hi = ew_crossing(hh9, ew9, EW_obs + EW_err)
 
 fig, axs = plt.subplots(1, 2, figsize=(7.1, 3.0))
 
@@ -511,15 +636,18 @@ a.errorbar(o_air, o_flux, yerr=o_fsig, fmt='ko', ms=2.0, lw=0.6, capsize=0,
 a.axhline(1.0 - 0.006, color='0.6', ls='--', lw=0.8,
           label=r'2025 detection limit')
 a.axhline(1.0, color='0.9', lw=0.6, zorder=0)
-c1132 = exhale_curve('solar')
+c1132 = exhale_curve('misc_gm25/solar')
 a.plot(c1132[0] + dlam_air, 1.0 - c1132[1]/100, color='C1', lw=0.9, ls=':',
        label=r'GJ\,1132 SED, solar (red $'
        + '%.2f' % fit_metrics(c1132[0], c1132[1], frame='air')['red_depth']
        + r'\%$)')
-for tag, col, name in (('heh0p06_gj699', 'C4', r'$\mathrm{He/H}=0.06$ (EW match)'),
-                       ('solar_gj699', 'C1', r'solar, $\mathrm{He/H}=0.083$')):
+# zorder puts the shallower arm on top: the two overlap over the core.
+for tag, col, zo, name in (('ladder_gm25/g2_heh0p048', 'C4', 2.4,
+                            r'$\mathrm{He/H}=0.048$ (EW match)'),
+                           ('misc_gm25/gj699_solar', 'C1', 2.2,
+                            r'solar, $\mathrm{He/H}=0.083$')):
     c = exhale_curve(tag)
-    a.plot(c[0] + dlam_air, 1.0 - c[1]/100, color=col, lw=1.4,
+    a.plot(c[0] + dlam_air, 1.0 - c[1]/100, color=col, lw=1.4, zorder=zo,
            label=r'GJ\,699 SED, ' + name + r' (red $'
            + '%.2f' % fit_metrics(c[0], c[1], frame='air')['red_depth']
            + r'\%$)')
@@ -530,17 +658,24 @@ a.grid(alpha=0.18); a.legend(fontsize=5.8, loc='lower left', framealpha=0.9)
 a.set_title(r'(a) five times the XUV, no turbulence term', fontsize=8)
 
 a = axs[1]
-a.loglog(hh, ew_n, 'o-', color='C0', ms=3, lw=1.1, label=r'GJ\,1132 SED')
-a.loglog(hh9, ew9, 'o-', color='C3', ms=3, lw=1.1, label=r'GJ\,699 SED')
 a.axhspan(EW_obs - EW_err, EW_obs + EW_err, color='0.85', zorder=0,
           label=r'observed')
-a.axvline(cross[r'no turbulence'], color='C0', ls=':', lw=0.9)
+a.plot(hw, ew_w, 's-', color='C0', ms=3.5, lw=1.3, label=r'GJ\,1132 SED')
+a.plot(hh9, ew9, 'o-', color='C3', ms=3.5, lw=1.3, label=r'GJ\,699 SED')
+a.axvline(wm_cross, color='C0', ls=':', lw=0.9)
 a.axvline(cross9, color='C3', ls=':', lw=0.9)
-a.text(cross9*1.06, 0.93, r'$' + '%.3f' % cross9 + r'$', color='C3',
+a.plot([wm_cross, cross9], [EW_obs]*2, marker='*', ms=9, ls='none',
+       color='0.25', zorder=5)
+a.text(cross9*1.07, 0.93, r'$' + '%.4f' % cross9 + r'$', color='C3',
        fontsize=6.5, transform=a.get_xaxis_transform())
-a.text(cross[r'no turbulence']*1.06, 0.93,
-       r'$' + '%.3f' % cross[r'no turbulence'] + r'$', color='C0',
-       fontsize=6.5, transform=a.get_xaxis_transform())
+a.text(wm_cross*0.94, 0.93, r'$' + '%.4f' % wm_cross + r'$', color='C0',
+       fontsize=6.5, ha='right', transform=a.get_xaxis_transform())
+a.set_xscale('log')
+a.set_xlim(0.035, 0.62)
+a.set_ylim(0.95, 1.23)
+a.set_xticks([0.04, 0.06, 0.1, 0.2, 0.4])
+a.set_xticklabels([r'0.04', r'0.06', r'0.1', r'0.2', r'0.4'])
+a.set_xticks([], minor=True)
 a.set_xlabel(r'$\mathrm{He/H}$ number ratio')
 a.set_ylabel(r'red-pair EW [\%\,\AA]')
 a.grid(alpha=0.22, which='both')
@@ -550,10 +685,14 @@ a.set_title(r'(b) the composition estimate follows the SED', fontsize=8)
 plt.tight_layout()
 plt.savefig(f'{OUT}/lhs1140b_gj699.pdf')
 plt.close()
-print('GJ 699 crossing (no turbulence): He/H = %.4f  H:He = %.2f  %.2fx solar'
-      % (cross9, 1/cross9, cross9/0.0833333))
-print('GJ 699 matched kernel (He/H=0.06): %.2f km/s'
+print('GJ 699 crossing (no turbulence): He/H = %.4f (1 sigma %.4f - %.4f)  '
+      'H:He = %.2f  %.2fx solar; GJ 1132 crossing %.4f, ratio %.1f'
+      % (cross9, cross9_lo, cross9_hi, 1/cross9, cross9/0.0833333,
+         wm_cross, wm_cross/cross9))
+print('GJ 699 matched kernel (He/H=0.06, retired coefficient): %.2f km/s'
       % matched_kernel('heh0p06_gj699'))
+print('GJ 699 matched kernel (He/H=0.048, current coefficient): %.2f km/s'
+      % matched_kernel('ladder_gm25/g2_heh0p048'))
 print('wrote lhs1140b_gj699.pdf')
 
 # ====== Figure 9: the adiabatic-cooling He 2^3S population bump ============
@@ -611,8 +750,8 @@ for tag, lab, c in BUMP:
         vd = BA.velocity_distribution(BA.load(tag, adv))
         a.plot(vd['v'], 100*vd['cum'], color=c, lw=1.3 if adv else 1.0,
                ls=ls, label=lab if adv else None)
-a.axvline(9.5, color='0.35', ls='--', lw=1.0)
-a.text(9.2, 68, r'$\sigma$ demanded by the line', rotation=90,
+a.axvline(f_match/2.35482, color='0.35', ls='--', lw=1.0)
+a.text(f_match/2.35482 - 0.3, 68, r'$\sigma$ demanded by the line', rotation=90,
        fontsize=6, ha='right', va='center', color='0.35')
 a.set_xlim(0, 11); a.set_ylim(0, 100)
 a.set_xlabel(r'$|v_r|$ [km\,s$^{-1}$]')
@@ -641,10 +780,14 @@ print('wrote lhs1140b_bump.pdf')
 # figure answers is which parts of the solution the eddy coefficient acts on.
 # Rows and provenance: kzz_decision.md sections 3 and 6.1; the operator
 # itself: ../docs/binary_diffusion_design.md.
-KZZ_RUNS = [('heh0p55_diff_ctrl',    0.0,   r'$K_{zz} = 0$'),
-            ('heh0p55_diff_kzz1e8',  1.0e8, r'$K_{zz} = 10^{8}$'),
-            ('heh0p55_diff_kzz1e9',  1.0e9, r'$K_{zz} = 10^{9}$ (adopted)'),
-            ('heh0p55_diff_kzz1e10', 1.0e10, r'$K_{zz} = 10^{10}$')]
+# The four arms are exhale/misc_gm25/kzz*, the runs of exhale/heh0p55_diff_*
+# re-solved on the current Penning coefficient.  The K_zz = 0 arm still
+# carries the defect of ../docs/Update_EXHALE.md Sect. 88.4(a), so its
+# metastable curve is drawn for the trend and not for its value.
+KZZ_RUNS = [('misc_gm25/kzz0',    0.0,   r'$K_{zz} = 0$'),
+            ('misc_gm25/kzz1e8',  1.0e8, r'$K_{zz} = 10^{8}$'),
+            ('misc_gm25/kzz1e9',  1.0e9, r'$K_{zz} = 10^{9}$ (adopted)'),
+            ('misc_gm25/kzz1e10', 1.0e10, r'$K_{zz} = 10^{10}$')]
 KZZ_HEH = 0.55
 
 
@@ -712,7 +855,10 @@ def kzz_profiles(tag):
     a = np.loadtxt(p)
     j = {n: i for i, n in enumerate(names)}
     ra = a[:, j['r[Rp]']]
-    nHe = sum(a[:, j[s]] for s in ('HeI', 'HeII', 'HeIII', 'HeITR'))
+    # He I already contains the 2^3S metastable (it is a level of He I, not
+    # a separate species -- species_table.f90), so the elemental sum must
+    # NOT add the HeITR column on top of it.
+    nHe = sum(a[:, j[s]] for s in ('HeI', 'HeII', 'HeIII'))
     nH = a[:, j['HI']] + a[:, j['HII']]
     return dict(r=hy[:, 0], n=hy[:, 1], v=hy[:, 2]/1e5, T=hy[:, 4],
                 r_adv=ra, ratio=(nHe/np.maximum(nH, 1e-99))/KZZ_HEH,
@@ -794,39 +940,47 @@ print('wrote lhs1140b_kzz_profiles.pdf')
 # exhale/heh_diff_scan_table.py -- log-log interpolation of the scanned
 # compositions, Brent's method -- but on this file's own red_ew() so the
 # figure and the memo's other panels measure the line the same way.
-# Provenance of the runs: kzz_decision.md section 6.1.
+# Provenance of the runs: exhale/ladder_gm25/results.txt section 2, every
+# decade re-bracketed on the current Penning coefficient; K_zz = 1e9 is the
+# lineage K1 of exhale/crossings_gm25/results.txt section 2.
 CROSS_SCANS = [
-    (0.0, ['heh4p5_diff_kzz0', 'heh4p6_diff_kzz0', 'heh4p8_diff_kzz0',
-           'heh4p9_diff_kzz0', 'heh5_diff_kzz0']),
-    (1.0e5, ['heh4p5_diff_kzz1e5', 'heh4p6_diff_kzz1e5',
-             'heh4p8_diff_kzz1e5', 'heh4p9_diff_kzz1e5',
-             'heh5_diff_kzz1e5']),
-    (1.0e6, ['heh2_diff_kzz1e6', 'heh4p3_diff_kzz1e6', 'heh4p4_diff_kzz1e6',
-             'heh4p7_diff_kzz1e6', 'heh5_diff_kzz1e6',
-             'heh10_diff_kzz1e6']),
-    (1.0e7, ['heh3p4_diff_kzz1e7', 'heh3p6_diff_kzz1e7',
-             'heh3p8_diff_kzz1e7', 'heh3p9_diff_kzz1e7',
-             'heh4_diff_kzz1e7', 'heh4p2_diff_kzz1e7']),
-    (1.0e8, ['heh0p55_diff_kzz1e8', 'heh2p7_diff_kzz1e8',
-             'heh3_diff_kzz1e8', 'heh3p5_diff_kzz1e8',
-             'heh4_diff_kzz1e8']),
-    (1.0e9, ['heh0p55_diff_kzz1e9', 'heh1_diff_kzz1e9', 'heh2_diff_kzz1e9',
-             'heh2p13_diff_kzz1e9', 'heh4_diff_kzz1e9']),
-    (1.0e10, ['heh0p55_diff_kzz1e10', 'heh1_diff_kzz1e10',
-              'heh1p4_diff_kzz1e10', 'heh1p5_diff_kzz1e10',
-              'heh1p6_diff_kzz1e10']),
-    (1.0e11, ['heh1_diff_kzz1e11', 'heh1p2_diff_kzz1e11',
-              'heh1p4_diff_kzz1e11', 'heh1p5_diff_kzz1e11']),
+    (0.0, ['ladder_gm25/kz0_heh3p35', 'ladder_gm25/kz0_heh3p50',
+           'ladder_gm25/kz0_heh3p64', 'ladder_gm25/kz0_heh3p79',
+           'ladder_gm25/kz0_heh3p93']),
+    (1.0e5, ['ladder_gm25/kz1e5_heh3p35', 'ladder_gm25/kz1e5_heh3p50',
+             'ladder_gm25/kz1e5_heh3p64', 'ladder_gm25/kz1e5_heh3p79',
+             'ladder_gm25/kz1e5_heh3p93']),
+    (1.0e6, ['ladder_gm25/kz1e6_heh3p19', 'ladder_gm25/kz1e6_heh3p32',
+             'ladder_gm25/kz1e6_heh3p46', 'ladder_gm25/kz1e6_heh3p60',
+             'ladder_gm25/kz1e6_heh3p74']),
+    (1.0e7, ['ladder_gm25/kz1e7_heh2p70', 'ladder_gm25/kz1e7_heh2p82',
+             'ladder_gm25/kz1e7_heh2p94', 'ladder_gm25/kz1e7_heh3p06',
+             'ladder_gm25/kz1e7_heh3p18']),
+    (1.0e8, ['ladder_gm25/kz1e8_heh2p05', 'ladder_gm25/kz1e8_heh2p15',
+             'ladder_gm25/kz1e8_heh2p23', 'ladder_gm25/kz1e8_heh2p32',
+             'ladder_gm25/kz1e8_heh2p41']),
+    (1.0e9, ['crossings_gm25/kz_heh1p55', 'crossings_gm25/kz_heh1p60',
+             'crossings_gm25/kz_heh1p65', 'crossings_gm25/kz_heh1p70',
+             'crossings_gm25/kz_heh1p75']),
+    (1.0e10, ['ladder_gm25/kz1e10_heh1p06', 'ladder_gm25/kz1e10_heh1p10',
+              'ladder_gm25/kz1e10_heh1p15', 'ladder_gm25/kz1e10_heh1p20',
+              'ladder_gm25/kz1e10_heh1p25', 'ladder_gm25/kz1e10_heh1p29']),
+    (1.0e11, ['ladder_gm25/kz1e11_heh0p795', 'ladder_gm25/kz1e11_heh0p83',
+              'ladder_gm25/kz1e11_heh0p865', 'ladder_gm25/kz1e11_heh0p90',
+              'ladder_gm25/kz1e11_heh0p93']),
 ]
 
 # The decades below 1e5 are not scanned in composition.  At the fixed
-# composition He/H = 5 their equivalent width differs from the K_zz = 0 one
-# by far less than the measurement error, which is the measured statement the
-# figure draws as a band rather than as points of their own.
-FLAT_PROBE = [(1.0e1, 'heh5_diff_kzz1e1'), (1.0e2, 'heh5_diff_kzz1e2'),
-              (1.0e3, 'heh5_diff_kzz1e3'), (1.0e4, 'heh5_diff_kzz1e4')]
-FLAT_REF = 'heh5_diff_kzz0'
-HEH_WELLMIXED = 0.55          # crossing with the operator off, section 6
+# composition He/H = 3.79, the K_zz = 0 crossing, their equivalent width
+# differs from the K_zz = 0 one by far less than the measurement error, which
+# is the measured statement the figure draws as a band rather than as points
+# of their own.
+FLAT_PROBE = [(1.0e1, 'ladder_gm25/probe1e1_heh3p79'),
+              (1.0e2, 'ladder_gm25/probe1e2_heh3p79'),
+              (1.0e3, 'ladder_gm25/probe1e3_heh3p79'),
+              (1.0e4, 'ladder_gm25/probe1e4_heh3p79')]
+FLAT_REF = 'ladder_gm25/probe0_heh3p79'
+HEH_WELLMIXED = 0.4245        # crossing with the operator off, Fig. ew
 
 
 def heh_at_ew(cases, target):
@@ -883,12 +1037,13 @@ ax.plot([k for k, _ in FLAT_PROBE], [heh_plateau]*len(FLAT_PROBE),
         label=r'EW within $0.2\sigma$ of $K_{zz}=0$')
 
 ax.axhline(HEH_WELLMIXED, color='C3', ls=':', lw=1.2)
-ax.text(6.0, HEH_WELLMIXED*1.08,
-        r'well-mixed limit (operator off), He/H $= 0.55$',
+ax.text(6.0, HEH_WELLMIXED*1.06,
+        r'well-mixed limit (operator off), He/H $= '
+        + '%.4f' % HEH_WELLMIXED + r'$',
         fontsize=6.5, color='C3', va='bottom')
 
 ax.axvline(1.0e9, color='C0', ls='-.', lw=1.0, alpha=0.7)
-ax.text(1.0e9/1.5, 0.44, r'adopted', fontsize=6.5, color='C0',
+ax.text(1.0e9/1.5, 0.50, r'adopted', fontsize=6.5, color='C0',
         rotation=90, va='bottom', ha='right')
 
 kxp = np.array(kx[1:])
@@ -899,13 +1054,13 @@ ax.errorbar(kxp, kcp,
             label=r'EW-matched He/H, $\pm1\sigma$')
 
 pw = np.array([1.0e8, 1.0e11])
-ax.plot(pw, kc[5]*(pw/1.0e9)**(-0.136), color='C1', lw=1.1, alpha=0.8,
-        label=r'$\propto K_{zz}^{-0.136}$')
+ax.plot(pw, kc[5]*(pw/1.0e9)**(-0.144), color='C1', lw=1.1, alpha=0.8,
+        label=r'$\propto K_{zz}^{-0.144}$')
 
 ax.set_xscale('log')
 ax.set_yscale('log')
 ax.set_xlim(X0, X1)
-ax.set_ylim(0.4, 8.0)
+ax.set_ylim(0.38, 8.0)
 ax.set_xticks([1e1, 1e3, 1e5, 1e7, 1e9, 1e11])
 ax.set_yticks([0.5, 1, 2, 5])
 ax.set_yticklabels([r'0.5', r'1', r'2', r'5'])
@@ -924,11 +1079,14 @@ print('wrote lhs1140b_heh_vs_kzz.pdf')
 # section 6: the lower atmosphere is a photochemical column (Photochem, with
 # the climate step solved) handed over as a profile, and the elemental fluxes
 # are iterated to continuity across the matching level, so He/H at the match
-# is a solution and not an input.  Runs: exhale/flux_closure/{ref,lo,hi}.
-# Record: ../docs/Update_EXHALE.md section 79.
-CLOSURE_ARMS = [('flux_closure/ref', 'k00', r'$1.0\times$ start'),
-                ('flux_closure/lo', 'k05', r'$0.3\times$ start'),
-                ('flux_closure/hi', 'k06', r'$3.0\times$ start')]
+# is a solution and not an input.  Runs: exhale/misc_gm25/{fc_ref,fc_lo,
+# fc_hi}, the winds of exhale/flux_closure/{ref/k00,lo/k05,hi/k06} re-solved
+# to their own fixed point on the current Penning coefficient with the
+# photochemical columns held fixed.
+# Record: ../docs/Update_EXHALE.md section 79; exhale/misc_gm25/results.txt.
+CLOSURE_ARMS = [('misc_gm25/fc_ref', '', r'$1.0\times$ start'),
+                ('misc_gm25/fc_lo', '', r'$0.3\times$ start'),
+                ('misc_gm25/fc_hi', '', r'$3.0\times$ start')]
 CLOSURE_MAIN = CLOSURE_ARMS[0]
 
 for tag, sub, lab in CLOSURE_ARMS:
@@ -1118,22 +1276,50 @@ print('wrote lhs1140b_knudsen.pdf')
 # ====== Figure: the reservoir ladder under closure, and the XUV grid ========
 # (a) The equivalent width of the flux-closed solution against the reservoir
 # He/H it was closed at, and where it crosses the measured line.  Runs
-# exhale/flux_closure/{ref,heh3,heh5,heh8,heh9p7,heh10p3,heh12}, one arm per
-# reservoir, each converged to its own fixed point; the last iterate k of
-# each arm is the converged one.  (b) The red-pair depth against the XUV
-# scaling, from both models that reproduce the 2024 equivalent width: the
-# scalar base at He/H = 2.13 and the flux-closed solution at He/H = 9.71.
-# The lower atmosphere is held fixed across the grid, so it isolates the
-# wind's response.  Record: ../kzz_decision.md section 8.
-CLOSURE_LADDER = ['flux_closure/ref', 'flux_closure/heh3', 'flux_closure/heh5',
-                  'flux_closure/heh8', 'flux_closure/heh9p7',
-                  'flux_closure/heh10p3', 'flux_closure/heh12']
+# exhale/crossings_pc090: eleven reservoirs, every one closed in full from the
+# same parent and then re-solved on its own output with the profile held
+# fixed, so that arms which stopped at different k are read at their common
+# wind fixed point (the rw_ directories, which is where every number the memo
+# quotes for this ladder is read).  The 9.0 and 9.1 arms straddle the
+# measurement, so the crossing is interpolated inside a measured bracket, and
+# so are both edges of its 1 sigma interval.  Record:
+# exhale/crossings_pc090/results.txt.  exhale/flux_closure/heh12 is from the
+# earlier ladder: the same reservoir reached by a 1.50x jump from the 8.0 arm
+# instead of a 1.08x step, converging to the same base and the same
+# matching-level composition but to a hotter, more extended outer region, and
+# is plotted apart as discarded (docs/Update_EXHALE.md Sect. 83).  (b) The
+# red-pair depth against the XUV scaling, from both models that reproduce the
+# 2024 equivalent width: the scalar base at He/H = 2.13 and the flux-closed
+# solution at He/H = 9.71.  The lower atmosphere is held fixed across the
+# grid, so it isolates the wind's response.  Record: ../kzz_decision.md
+# section 8.
+CLOSURE_LADDER = [('crossings_pc090/rw_8p45', 8.45),
+                  ('crossings_pc090/rw_8p5', 8.50),
+                  ('crossings_pc090/rw_8p6', 8.60),
+                  ('crossings_pc090/rw_8p7', 8.70),
+                  ('crossings_pc090/rw_8p75', 8.75),
+                  ('crossings_pc090/rw_8p9', 8.90),
+                  ('crossings_pc090/rw_9p0', 9.00),
+                  ('crossings_pc090/rw_9p1', 9.10),
+                  ('crossings_pc090/rw_9p3', 9.30),
+                  ('crossings_pc090/rw_10p6', 10.60),
+                  ('crossings_pc090/rw_11p0', 11.00)]
+CLOSURE_DISCARDED = 'flux_closure/heh12'   # seeded across a 1.50x jump
+# He/H at the match is chemistry and stands; the line is read off the same
+# arm re-solved on the current Penning coefficient.
+CLOSURE_DISCARDED_LINE = 'xuvkzz_gm25/L12p0jump'
 XUV_LIMIT = 0.6                       # 2025 non-detection, per cent in depth
+# Both XUV families are exhale/xuvkzz_gm25/{S,C}*, every arm re-solved on the
+# current Penning coefficient (exhale/xuvkzz_gm25/results.txt).  The scaled
+# points are keyed by the fraction; the closed family has no 0.30 arm.
 XUV_GRID = [0.01, 0.10, 0.15, 0.20, 0.25, 0.30, 0.33]
-XUV_FAMILIES = [('heh2p13', 'heh2p13_diff_kzz1e9', 2.13,
+XUV_FAMILIES = [('S', 'xuvkzz_gm25/S1p00', 2.13,
                  r'scalar base, He/H $= 2.13$', 'C0', 'o', '-'),
-                ('closure9p7', 'flux_closure/heh9p7/k03', 9.71,
+                ('C', 'xuvkzz_gm25/C1p00', 9.71,
                  r'flux-closed, He/H $= 9.71$', 'C3', 's', '--')]
+# Where each model's depth crosses the 0.6 per cent limit, read linearly in
+# both variables on the scaled grid alone (exhale/xuvkzz_gm25/results.txt).
+XUV_CROSSINGS = [(0.318, 'C0'), (0.416, 'C3')]
 
 
 def closure_last_k(tag):
@@ -1156,25 +1342,35 @@ def red_depth(tag, sub=''):
 
 
 lad_h, lad_e = [], []
-for tag in CLOSURE_LADDER:
-    sub, heh = closure_last_k(tag)
+for tag, heh in CLOSURE_LADDER:
     lad_h.append(heh)
-    lad_e.append(red_ew(tag, sub))
-    print('ladder %-22s %-4s He/H = %8.4f  EW = %.4f %%A'
-          % (tag, sub, heh, lad_e[-1]))
+    lad_e.append(red_ew(tag))
+    print('ladder %-28s He/H = %8.4f  EW = %.4f %%A'
+          % (tag, heh, lad_e[-1]))
 lad_h, lad_e = np.array(lad_h), np.array(lad_e)
 o = np.argsort(lad_h)
 lad_h, lad_e = lad_h[o], lad_e[o]
 
+dsc_sub, dsc_h = closure_last_k(CLOSURE_DISCARDED)
+dsc_e = red_ew(CLOSURE_DISCARDED_LINE)
+print('discarded %-18s %-4s He/H = %8.4f  EW = %.4f %%A'
+      % (CLOSURE_DISCARDED, dsc_sub, dsc_h, dsc_e))
+
 
 def heh_at_closed_ew(target):
-    """Reservoir whose flux-closed EW equals target, log-log on the ladder."""
-    if not (lad_e.min() <= target <= lad_e.max()):
-        return np.nan
-    return 10.0**brentq(lambda t: np.interp(t, np.log10(lad_h),
-                                            np.log10(lad_e))
-                        - np.log10(target), np.log10(lad_h[0]),
-                        np.log10(lad_h[-1]))
+    """Reservoir whose flux-closed EW equals target, log-log on the ladder.
+
+    Piecewise linear in log-log between the scanned rungs.  The measured EW
+    and both edges of its 1 sigma interval fall between solved rungs, so
+    nothing here is extrapolated; the continuation is kept for the case of a
+    target outside the ladder.
+    """
+    lx, ly, lt = np.log10(lad_h), np.log10(lad_e), np.log10(target)
+    if ly[0] <= lt <= ly[-1]:
+        return 10.0**brentq(lambda t: np.interp(t, lx, ly) - lt,
+                            lx[0], lx[-1])
+    i, j = (-2, -1) if lt > ly[-1] else (0, 1)
+    return 10.0**(lx[i] + (lt - ly[i])*(lx[j] - lx[i])/(ly[j] - ly[i]))
 
 
 heh_closed = heh_at_closed_ew(EW_obs)
@@ -1192,25 +1388,28 @@ fig, axs = plt.subplots(1, 2, figsize=(7.1, 2.9))
 a = axs[0]
 a.axhspan(EW_obs - EW_err, EW_obs + EW_err, color='0.85', zorder=0)
 a.axhline(EW_obs, color='0.35', lw=1.0, ls='-', zorder=1)
-a.text(2.2, EW_obs*1.03, r'measured, $1.108 \pm 0.030$', fontsize=6.5,
+a.text(2.2, EW_obs*1.035, r'measured, $1.108 \pm 0.030$', fontsize=6.5,
        color='0.35', va='bottom')
 a.plot(lad_h, lad_e, marker='o', ms=4, lw=1.2, color='C0',
        label=r'flux-closed ladder')
+a.plot([dsc_h], [dsc_e], marker='o', ms=6, ls='none', mfc='none',
+       mec='0.55', mew=1.2, zorder=3,
+       label=r'discarded, seeded across a jump')
 a.plot([heh_closed], [EW_obs], marker='*', ms=11, ls='none', color='C3',
-       zorder=4, label=r'crossing, He/H $= %.1f$' % heh_closed)
+       zorder=4, label=r'crossing, He/H $= %.2f$' % heh_closed)
 a.errorbar([heh_closed], [EW_obs],
            xerr=[[heh_closed - heh_clo_lo], [heh_clo_hi - heh_closed]],
            fmt='none', ecolor='C3', lw=1.0, capsize=2, zorder=4)
 a.axvline(2.0924, color='C2', ls=':', lw=1.0)
-a.text(2.0924*0.95, 0.45, r'closure at the well-mixed reservoir',
+a.text(2.0924*0.95, 1.01, r'closure at the well-mixed reservoir',
        fontsize=6.2, color='C2', rotation=90, va='bottom', ha='right')
 a.set_xscale('log'); a.set_yscale('log')
-a.set_xlim(1.8, 14.0); a.set_ylim(0.35, 1.6)
-a.set_xticks([2, 3, 5, 8, 12])
-a.set_xticklabels([r'2', r'3', r'5', r'8', r'12'])
+a.set_xlim(1.8, 16.0); a.set_ylim(1.00, 1.45)
+a.set_xticks([2, 3, 5, 8, 9, 11, 14])
+a.set_xticklabels([r'2', r'3', r'5', r'8', r'9', r'11', r'14'])
 a.set_xticks([], minor=True)
-a.set_yticks([0.4, 0.6, 0.8, 1.0, 1.4])
-a.set_yticklabels([r'0.4', r'0.6', r'0.8', r'1.0', r'1.4'])
+a.set_yticks([1.0, 1.1, 1.2, 1.3, 1.4])
+a.set_yticklabels([r'1.0', r'1.1', r'1.2', r'1.3', r'1.4'])
 a.set_yticks([], minor=True)
 a.set_xlabel(r'reservoir He/H below the match')
 a.set_ylabel(r'red-pair $EW$ [\%\,\AA]')
@@ -1223,10 +1422,9 @@ a.axhline(XUV_LIMIT, color='0.35', lw=1.0)
 a.text(0.0088, XUV_LIMIT*1.12, r'2025 limit, $0.6$\,\%', fontsize=6.5,
        color='0.35', va='bottom', ha='left')
 for key, fid, heh, lab, col, mk, ls in XUV_FAMILIES:
-    xs, ds = [1.0], [red_depth(*os.path.split(fid)) if '/' in fid
-                     else red_depth(fid)]
+    xs, ds = [1.0], [red_depth(fid)]
     for f in XUV_GRID:
-        tag = 'xuv%s_%s' % (('%.2f' % f).replace('.', 'p'), key)
+        tag = 'xuvkzz_gm25/%s%s' % (key, ('%.2f' % f).replace('.', 'p'))
         d = red_depth(tag)
         if np.isfinite(d):
             xs.append(f); ds.append(d)
@@ -1236,8 +1434,11 @@ for key, fid, heh, lab, col, mk, ls in XUV_FAMILIES:
            label=lab)
     print('xuv %-12s ' % key + '  '.join('%.2f:%.3f' % (x, d)
                                          for x, d in zip(xs[o], ds[o])))
-a.axvline(0.30, color='C2', ls=':', lw=1.0)
-a.text(0.30*1.06, 4.0e-4, r'$0.3\times$ fiducial', fontsize=6.2, color='C2',
+for xc, cc in XUV_CROSSINGS:
+    a.axvline(xc, color=cc, ls=':', lw=1.0)
+a.text(0.318*0.94, 4.0e-4, r'$0.32\times$', fontsize=6.2, color='C0',
+       rotation=90, va='bottom', ha='right')
+a.text(0.416*1.06, 4.0e-4, r'$0.42\times$', fontsize=6.2, color='C3',
        rotation=90, va='bottom')
 a.set_xscale('log'); a.set_yscale('log')
 a.set_xlim(0.008, 1.4); a.set_ylim(2.0e-4, 8.0)
@@ -1259,17 +1460,20 @@ print('wrote lhs1140b_closure_ladder.pdf')
 # Temperature and metastable density for the three solutions that bracket the
 # lower-boundary axis: the metal-free scalar base at the reservoir that
 # reproduces the line, the flux-closed solution on the photochemical column at
-# essentially the same reservoir, and the closed solution at 10.31 -- the rung
-# just below the crossing. All three carry H/He element diffusion at
+# essentially the same reservoir, and the closed solution at 10.31, a rung of
+# the closure ladder (the crossing later moved to 11.73, straddled by the
+# 11.11 and 12.01 rungs; 10.31 is kept here because the three curves are the
+# ones the thermostat argument was measured on). All three carry H/He
+# element diffusion at
 # K_zz = 1e9 cm^2/s. Profiles are the advection-corrected ones the transit
 # tool consumes.
 
 THERMO_CASES = [
-    ('heh2p13_diff_kzz1e9',
+    ('thermostat_gm25/ms2p13',
      r'scalar base, no metals, He/H $= 2.13$', 'C0', '-'),
-    ('flux_closure/hi/k06',
+    ('thermostat_gm25/fc2p09',
      r'photochemical base, He/H $= 2.09$', 'C1', '--'),
-    ('flux_closure/heh10p3/k01',
+    ('thermostat_gm25/fc10p3',
      r'photochemical base, He/H $= 10.31$', 'C3', '-.'),
 ]
 
@@ -1586,11 +1790,11 @@ print('wrote lhs1140b_photochem_column_2.pdf')
 # because it is an excited level inside He I (bsp_is_excited_level).
 
 COMP_CASES = [
-    ('heh2p13_diff_kzz1e9', 2.13,
+    ('thermostat_gm25/ms2p13', 2.13,
      r'scalar base, no metals: $2.13$', 'C0', '-'),
-    ('flux_closure/hi/k06', 2.0924,
+    ('thermostat_gm25/fc2p09', 2.0924,
      r'photochemical base: $2.09$', 'C1', '--'),
-    ('flux_closure/heh10p3/k01', 10.3116,
+    ('thermostat_gm25/fc10p3', 10.3116,
      r'photochemical base: $10.31$', 'C3', '-.'),
 ]
 COMP_METALS = ['C', 'O', 'N', 'Mg', 'Si', 'Ca', 'Na', 'K', 'S', 'Fe']
@@ -1687,3 +1891,112 @@ plt.savefig(f'{OUT}/lhs1140b_composition_profiles.pdf')
 plt.close()
 print('wrote lhs1140b_composition_profiles.pdf')
 # ==== END composition profiles block =========================================
+
+# ==== Figure: density and hydrogen ionization, EXHALE against p-winds =======
+# The plan's Phase F item 1 asks for five profiles at the prescribed
+# H:He = 1e-3 -- density, velocity, temperature, ionization and metastable
+# helium.  The three-panel structure figure above carries velocity,
+# temperature and the metastable population; this one carries the remaining
+# two, from the same pair of solutions (exhale/heh1000, He/H = 1000, against
+# the matched_gj1132 oracle).  The dotted curve in panel (b) is
+# photoionization equilibrium evaluated on p-winds' own density and
+# temperature, so the gap between it and the solid p-winds curve is how far
+# out of equilibrium the imposed Parker flow holds hydrogen.
+M_H = 1.6726219e-24
+H_PLANCK, C_LIGHT, EV_ERG = 6.62607015e-27, 2.99792458e10, 1.602176634e-12
+R_JUP = 6.9911e9
+
+
+def h_photoionization_rate(sed_file):
+    """Unattenuated H I photoionization rate [1/s] from an SED at the planet.
+
+    Verner et al. (1996) ground-state cross section, integrated against the
+    photon flux below 911.267 A.  Reproduces the rate p-winds computes
+    internally for the same file to 0.1 %.
+    """
+    d = np.loadtxt(sed_file)
+    lam, flx = d[:, 0], d[:, 1]                       # [A], [erg/s/cm2/A]
+    m = (lam > 0.0) & (lam <= 911.267)
+    lam, flx = lam[m], flx[m]
+    e_erg = H_PLANCK*C_LIGHT/(lam*1e-8)
+    e_ev = e_erg/EV_ERG
+    e0, s0, ya, pp = 4.298e-1, 5.475e4, 3.288e1, 2.963
+    x = e_ev/e0
+    fy = (x - 1.0)**2*x**(0.5*pp - 5.5)*(1.0 + np.sqrt(x/ya))**(-pp)
+    sig = np.where(e_ev >= 13.6, s0*fy*1e-18, 0.0)
+    return np.trapz(flx/e_erg*sig, lam)
+
+
+hyd_e = np.loadtxt('exhale/heh1000/output/Hydro_ioniz.txt')
+lab_i = [l for l in open('exhale/heh1000/output/Ion_species.txt')
+         if l.startswith('# columns')][0].split()[2:]
+ki = {n: j for j, n in enumerate(lab_i)}
+ion_e = np.loadtxt('exhale/heh1000/output/Ion_species.txt')
+pw = np.loadtxt('pwinds_oracle/profile_matched_gj1132.txt')
+r_p, v_p, rho_p, fhii_p = pw[:, 0], pw[:, 1], pw[:, 2], pw[:, 3]
+
+r_e = hyd_e[:, 0]
+rho_e = hyd_e[:, 1]*M_H                                # [g/cm3]
+nH_e = ion_e[:, ki['HI']] + ion_e[:, ki['HII']]
+xhii_e = ion_e[:, ki['HII']]/np.maximum(nH_e, 1e-300)
+
+# photoionization equilibrium on the p-winds structure: with electrons from
+# hydrogen alone (p-winds' own closure) phi (1-x) = alpha n_H x^2
+T_PW = 6100.0
+H_FRAC = 1.0e-3/(1.0 + 1.0e-3)
+phi_H = h_photoionization_rate('sed/lhs1140_sed_gj1132_at_b.txt')
+alpha_B = 2.59e-13*(T_PW/1e4)**(-0.7)                  # p-winds' case B
+nH_p = H_FRAC*rho_p/(M_H*(H_FRAC + 4.0*(1.0 - H_FRAC)))
+q = alpha_B*nH_p
+xeq_p = (-phi_H + np.sqrt(phi_H**2 + 4.0*phi_H*q))/(2.0*q)
+
+fig, ax = plt.subplots(1, 2, figsize=(6.6, 2.6))
+ax[0].semilogy(r_e, rho_e, 'C3', lw=1.3, label=r'EXHALE')
+ax[0].semilogy(r_p, rho_p, 'C0', lw=1.3, label=r'p-winds')
+ax[0].set_ylabel(r'$\rho$ [g\,cm$^{-3}$]')
+ax[0].set_ylim(1e-20, 1e-11)
+ax[0].set_title(r'(a) mass density', fontsize=8)
+ax[1].semilogy(r_e, np.maximum(xhii_e, 1e-4), 'C3', lw=1.3, label=r'EXHALE')
+ax[1].semilogy(r_p, fhii_p, 'C0', lw=1.3, label=r'p-winds')
+ax[1].semilogy(r_p, xeq_p, 'C0', lw=1.0, ls=':',
+               label=r'p-winds structure, photoion.\ equilibrium')
+ax[1].set_ylabel(r'$x({\rm H\,II})$')
+ax[1].set_ylim(1e-3, 2.0)
+ax[1].set_title(r'(b) hydrogen ionization', fontsize=8)
+for a in ax:
+    a.set_xlim(1, 20)
+    a.set_xlabel(r'$r$ [$R_{\rm p}$]')
+    a.axvline(13.6, color='0.7', ls=':', lw=0.8)
+    a.grid(alpha=0.2)
+    a.legend(fontsize=6)
+plt.tight_layout()
+plt.savefig(f'{OUT}/lhs1140b_structure_rho_ion.pdf')
+plt.close()
+
+_at = lambda x, y, rr: np.interp(rr, x, y)
+print('EXHALE (He/H = 1000) against p-winds matched_gj1132:')
+print('  phi_H(unattenuated) = %.3e /s  ->  t_ion = %.3e s = %.0f d'
+      % (phi_H, 1.0/phi_H, 1.0/phi_H/86400.0))
+for rr in (1.2, 2.0, 5.0, 10.0, 20.0):
+    print('  r = %5.1f Rp: rho %9.3e / %9.3e = %6.2f ; '
+          'x(HII) %7.4f / %7.4f (equilibrium on the p-winds structure %7.4f)'
+          % (rr, _at(r_e, rho_e, rr), _at(r_p, rho_p, rr),
+             _at(r_e, rho_e, rr)/_at(r_p, rho_p, rr),
+             _at(ion_e[:, 0], xhii_e, rr), _at(r_p, fhii_p, rr),
+             _at(r_p, xeq_p, rr)))
+print('  base cell: rho %9.3e / %9.3e = %6.1f (the two lower boundary '
+      'conditions, not a profile difference)' % (rho_e[0], rho_p[0],
+                                                 rho_e[0]/rho_p[0]))
+sel = (r_p >= 1.05)
+lr = np.log10(np.interp(r_p[sel], r_e, rho_e)/rho_p[sel])
+print('  1.05-20 Rp, log10 rho(EXHALE/p-winds): %+.2f at r = %.2f to '
+      '%+.2f at r = %.2f'
+      % (lr.min(), r_p[sel][np.argmin(lr)], lr.max(), r_p[sel][np.argmax(lr)]))
+m3 = (ion_e[:, 0] >= 1.0) & (ion_e[:, 0] <= 20.0)
+Rp_cm = 0.157692*R_JUP
+col_e = np.trapz(ion_e[m3, ki['HeITR']], ion_e[m3, 0]*Rp_cm)
+col_p = np.trapz(pw[:, 5], r_p*Rp_cm)
+print('  radial He 2^3S column 1-20 Rp: EXHALE %.3e, p-winds %.3e, ratio %.3f'
+      % (col_e, col_p, col_e/col_p))
+print('wrote lhs1140b_structure_rho_ion.pdf')
+# ==== END density / ionization block ========================================

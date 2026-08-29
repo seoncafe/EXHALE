@@ -1,0 +1,5 @@
+cool  heh3p4/k02           red-pair EW = 0.4287 %A
+hot   heh3p399/k03         red-pair EW = 1.3248 %A
+hot with C/N/O restored    red-pair EW = 0.4065 %A
+
+measured (Cherubim et al. 2026): 1.108 +/- 0.030 %A

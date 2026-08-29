@@ -96,22 +96,52 @@ than the textbook 1/(n sigma).  The verdict threshold below (0.1) carries
 that factor with room to spare, and the convention is stated so a number
 quoted from here is not compared against a differently defined one.
 
-Local structure scale, the length over which the flow the continuum
-equations describe actually varies:
+Local structure scale, the length over which the state the continuum
+closure expands about actually varies.  That state is the local Maxwellian,
+and a local Maxwellian is fixed by (n, T, u) -- density, temperature, bulk
+velocity -- so those three logarithmic gradients, and the spherical
+divergence the geometry adds, are the complete set:
 
-    L = min( H_p, L_v, r ),
-    H_p = |d ln p / dr|^-1     (pressure scale height, measured from the
-                                solution, so it needs no separate g and
-                                already contains the wind's acceleration)
-    L_v = |v / (dv/dr)|        (velocity-shear scale) -- included in the
-                                minimum only where |v| >= 0.01 c_s.  Below
-                                that the gas is not flowing and L_v is the
-                                distance to a stagnation point, not a
-                                structure scale of the solution; the base
-                                sound-wave layer of these runs crosses
-                                v = 0 repeatedly and would otherwise drive
-                                L to zero and Kn to infinity there.
-    r                          (spherical divergence scale)
+    1/L^2 = (d ln rho/dr)^2 + (d ln T/dr)^2 + (|dv/dr|/c_s)^2 + (1/r)^2,
+    L     = max( that, dr_cell ).
+
+Why the sum of squares and not a minimum over the individual lengths.  The
+Chapman-Enskog expansion is an expansion in the change of the state over one
+mean free path; the state is a vector, its change over a distance d is the
+vector (d/H_rho, d/H_T, ...), and the length of that vector is the RMS
+above.  Two consequences, both wanted: L is never longer than the shortest
+individual scale (each term enters 1/L^2 with a positive sign), and a field
+that happens to go logarithmically flat contributes zero rather than
+removing itself from a minimum.  A minimum rule has the opposite behaviour
+-- if the field it is currently taken from flattens, L jumps to the next
+one, discontinuously and by whatever factor separates them.  That is not
+hypothetical: the pressure alone was used here until 2026-08-28, and across
+the heating peak of the LHS 1140 b runs d ln p/dr passes through a broad
+near-zero (rho falls and T rises with nearly the same log slope, so the
+front is close to isobaric while the gas state changes fast), H_p ran up to
+3.05e8 cm at 1.0486 R_p, 15x longer than the H_T = 1.80e7 and
+H_rho = 1.68e7 cm of the same layer, and Kn showed a spurious 5x dip at
+1.03-1.07 R_p.  Pressure is not in the list above for the same
+reason it was the wrong list on its own: p = n k T is a derived field, and
+adding it would count the density and temperature gradients a second time
+wherever they do not cancel.
+
+Why the velocity enters as |dv/dr|/c_s and not as |(1/v) dv/dr|.  The
+first-order term the continuum closure drops is the viscous stress, whose
+size relative to the pressure is ~ lambda |dv/dr| / vbar: a change of the
+bulk velocity distorts the distribution function in proportion to the
+THERMAL speed, not to the local bulk speed.  Normalizing by v instead
+diverges at every stagnation point -- the base sound-wave layer of these
+runs crosses v = 0 repeatedly -- which is what an ad-hoc Mach floor was
+patching before.  c_s is used in place of vbar so that L stays one length,
+common to all species; the two differ by an O(1) factor.
+
+The floor at the local cell width dr_cell is a statement about what a
+discrete solution can carry: no structure exists below one cell, so a
+gradient claiming one is measuring the mesh.  It binds only in the base
+sound-wave layer (3 of 500 cells in one of the four runs of
+`docs/collisional_validity.md`, all at r < 1.002 R_p, four orders of
+magnitude below the verdict threshold) and never in a critical region.
 
     Kn_s = lambda_s / L.
 
@@ -263,9 +293,6 @@ N_GHOST = 2                 # parameters.f90:15, Ng
 # A species below this mass fraction is not asked to validate the solution:
 # its Knudsen number is reported but does not enter the verdict.
 TRACE_FRACTION = 1.0e-3
-# Below this Mach number the velocity-shear scale is not a structure scale
-# of the solution (see the module header).
-MACH_FLOOR = 1.0e-2
 
 
 # --------------------------------------------------------------------------
@@ -390,16 +417,32 @@ def energy_equipartition_frequency(TK, ne, dens, s, t):
             * momentum_transfer_frequency(TK, ne, dens, s, t))
 
 
-def structure_scale(r_cm, p, v, cs):
-    """L = min(H_p, L_v, r) with H_p = |dln p/dr|^-1 and L_v = |v/(dv/dr)|,
-    the latter only where |v| >= MACH_FLOOR*c_s (module header).
-    Returns (L, H_p, L_v)."""
-    dlnp = np.gradient(np.log(np.maximum(p, 1.0e-300)), r_cm)
-    H_p = 1.0 / np.maximum(np.abs(dlnp), 1.0e-99)
-    dvdr = np.gradient(v, r_cm)
-    L_v = np.abs(v) / np.maximum(np.abs(dvdr), 1.0e-99)
-    L_v = np.where(np.abs(v) >= MACH_FLOOR * cs, L_v, np.inf)
-    return np.minimum(np.minimum(H_p, L_v), r_cm), H_p, L_v
+def structure_scale(r_cm, rho, T, v, cs):
+    """The length over which the local Maxwellian (n, T, u) varies, plus the
+    spherical divergence, combined as the length of the state-vector
+    gradient and floored at the cell width (module header):
+
+        1/L^2 = (dln rho/dr)^2 + (dln T/dr)^2 + (|dv/dr|/c_s)^2 + (1/r)^2
+        L     = max(1/sqrt(...), dr_cell)
+
+    Returns (L, scales), scales holding the individual lengths for
+    reporting: H_rho, H_T, L_v = c_s/|dv/dr|, r, dr_cell."""
+    def inv_logscale(x):
+        return np.abs(np.gradient(np.log(np.maximum(x, 1.0e-300)), r_cm))
+
+    g_rho = inv_logscale(rho)
+    g_T = inv_logscale(T)
+    g_v = np.abs(np.gradient(v, r_cm)) / cs
+    g_r = 1.0 / r_cm
+    dr_cell = np.gradient(r_cm)
+    L = 1.0 / np.maximum(np.sqrt(g_rho ** 2 + g_T ** 2 + g_v ** 2
+                                 + g_r ** 2), 1.0e-99)
+    L = np.maximum(L, dr_cell)
+    scales = {'H_rho': 1.0 / np.maximum(g_rho, 1.0e-99),
+              'H_T': 1.0 / np.maximum(g_T, 1.0e-99),
+              'L_v': 1.0 / np.maximum(g_v, 1.0e-99),
+              'r': r_cm, 'dr_cell': dr_cell}
+    return L, scales
 
 
 # --------------------------------------------------------------------------
@@ -491,7 +534,7 @@ def collisional_diagnosis(case_dir, adv=True, kn_threshold=0.1,
 
     cs = np.sqrt(gamma_ad * p / rho)
     mach = v / cs
-    L, H_p, L_v = structure_scale(r_cm, p, v, cs)
+    L, scales = structure_scale(r_cm, rho, T, v, cs)
 
     nu, lam, _nu_pair = collision_rates(T, ne, dens)
     Kn = {s: lam[s] / L for s in lam}
@@ -553,7 +596,7 @@ def collisional_diagnosis(case_dir, adv=True, kn_threshold=0.1,
         case=case_dir, adv=adv, kn_threshold=kn_threshold,
         Rp_cm=Rp_cm, Mp_g=Mp_g,
         r=r, T=T, v=v, cs=cs, mach=mach, p=p, rho=rho, ne=ne,
-        L=L, H_p=H_p, L_v=L_v, lam=lam, Kn=Kn,
+        L=L, scales=scales, lam=lam, Kn=Kn,
         lam_bulk=lam_bulk, Kn_bulk=Kn_bulk, nu=nu,
         tau_flow=tau_flow, tau_heat=tau_heat, tau_E_ei=tau_E_ei,
         mass_frac=mass_frac,

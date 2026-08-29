@@ -1,0 +1,62 @@
+# variant = patched
+8.0      OK   T_deep= 433.26144  T_trop=185.42172  nfev=14
+8.05     OK   T_deep= 432.81402  T_trop=185.42289  nfev=17
+8.1      OK   T_deep= 432.37152  T_trop=185.42404  nfev=16
+8.15     OK   T_deep= 431.93389  T_trop=185.42519  nfev=19
+8.2      OK   T_deep= 431.50099  T_trop=185.42633  nfev=14
+8.25     OK   T_deep= 431.07019  T_trop=185.42746  nfev=14
+8.3      OK   T_deep= 430.63845  T_trop=185.42857  nfev=15
+8.35     OK   T_deep= 430.20667  T_trop=185.42967  nfev=13
+8.4      OK   T_deep= 429.77947  T_trop=185.43077  nfev=16
+8.45     OK   T_deep= 429.35672  T_trop=185.43185  nfev=18
+8.5      OK   T_deep= 428.93833  T_trop=185.43293  nfev=24
+8.55     OK   T_deep= 428.52197  T_trop=185.43400  nfev=22
+8.6      OK   T_deep= 428.10984  T_trop=185.43505  nfev=15
+8.65     OK   T_deep= 427.70195  T_trop=185.43610  nfev=13
+8.7      OK   T_deep= 427.29821  T_trop=185.43714  nfev=20
+8.75     OK   T_deep= 426.89856  T_trop=185.43817  nfev=44
+8.8      OK   T_deep= 426.50279  T_trop=185.43919  nfev=17
+8.85     OK   T_deep= 426.11094  T_trop=185.44020  nfev=24
+8.9      OK   T_deep= 425.72289  T_trop=185.44121  nfev=13
+8.95     OK   T_deep= 425.33711  T_trop=185.44220  nfev=12
+9.0      OK   T_deep= 424.95341  T_trop=185.44319  nfev=20
+9.05     OK   T_deep= 424.57329  T_trop=185.44416  nfev=41
+9.1      OK   T_deep= 424.19673  T_trop=185.44513  nfev=12
+9.15     OK   T_deep= 423.82366  T_trop=185.44609  nfev=19
+9.2      OK   T_deep= 423.45402  T_trop=185.44704  nfev=16
+9.25     OK   T_deep= 423.08772  T_trop=185.44799  nfev=26
+9.3      OK   T_deep= 422.72470  T_trop=185.44893  nfev=19
+9.35     OK   T_deep= 422.36490  T_trop=185.44985  nfev=14
+9.4      FAIL  Could not bracket background pressure in make_profile_bg_gas.
+9.45     OK   T_deep= 421.65442  T_trop=185.45169  nfev=17
+9.5      STALL T_deep= 197.04933  T_trop=197.04930  nfev=33
+9.55     OK   T_deep= 420.95602  T_trop=185.45349  nfev=19
+9.6      OK   T_deep= 420.61125  T_trop=185.45438  nfev=19
+9.65     OK   T_deep= 420.26940  T_trop=185.45527  nfev=15
+9.7      OK   T_deep= 419.93036  T_trop=185.45615  nfev=20
+9.75     OK   T_deep= 419.59411  T_trop=185.45701  nfev=13
+9.8      FAIL  Could not bracket background pressure in make_profile_bg_gas.
+9.85     OK   T_deep= 418.92978  T_trop=185.45873  nfev=20
+9.9      OK   T_deep= 418.60160  T_trop=185.45958  nfev=22
+9.95     OK   T_deep= 418.27602  T_trop=185.46042  nfev=19
+10.0     OK   T_deep= 417.95303  T_trop=185.46126  nfev=18
+10.05    FAIL  Could not bracket background pressure in make_profile_bg_gas.
+10.1     OK   T_deep= 417.31449  T_trop=185.46291  nfev=24
+10.15    OK   T_deep= 416.99886  T_trop=185.46372  nfev=23
+10.2     OK   T_deep= 416.68564  T_trop=185.46453  nfev=21
+10.25    FAIL  Could not bracket background pressure in make_profile_bg_gas.
+10.3     OK   T_deep= 416.06628  T_trop=185.46612  nfev=18
+10.35    OK   T_deep= 415.76003  T_trop=185.46691  nfev=19
+10.4     OK   T_deep= 415.45605  T_trop=185.46770  nfev=18
+10.45    OK   T_deep= 415.15430  T_trop=185.46847  nfev=16
+10.5     OK   T_deep= 414.85467  T_trop=185.46924  nfev=20
+10.55    OK   T_deep= 414.55720  T_trop=185.47000  nfev=15
+10.6     OK   T_deep= 414.26187  T_trop=185.47076  nfev=15
+10.65    OK   T_deep= 413.96863  T_trop=185.47151  nfev=13
+10.7     STALL T_deep= 197.09107  T_trop=197.09107  nfev=33
+10.75    OK   T_deep= 413.38831  T_trop=185.47300  nfev=30
+10.8     STALL T_deep= 413.10167  T_trop=185.47376  nfev=23
+10.85    OK   T_deep= 412.81601  T_trop=185.47446  nfev=16
+10.9     OK   T_deep= 412.53277  T_trop=185.47518  nfev=14
+10.95    OK   T_deep= 412.25146  T_trop=185.47590  nfev=23
+11.0     OK   T_deep= 411.97203  T_trop=185.47661  nfev=15

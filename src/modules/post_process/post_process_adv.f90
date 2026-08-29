@@ -77,6 +77,13 @@
 	
 	integer i,j,k
 	integer :: n_pp_reject       ! cell-by-cell T solves rejected as non-physical
+	! Cell solves that did not converge (hybrd1 info /= 1) and therefore kept
+	! the incoming equilibrium state: the advection ionization system, the
+	! metal stage re-solve, and the energy equation. Summed over the passes,
+	! not over the cells of the last one: a cell reverted in an early pass
+	! feeds the upwind cascade of that pass and has to be reported even if the
+	! last pass converges everywhere.
+	integer :: n_adv_noconv, n_metal_noconv, n_T_noconv
 	integer :: Neq_adv,lwa_adv   ! advection system size (metal-independent)
 	integer :: Neq_mpp,lwa_mpp   ! metal re-solve system size (pp_metals=2)
 	 
@@ -138,6 +145,12 @@
       
  	! Updated species densities
    real*8, dimension(1-Ng:N+Ng) :: nhi,nhii
+   ! Neutral helium is carried as its two populations, the ground singlet
+   ! nheiS = n(1^1S) and the metastable nheiTR = n(2^3S); the summed He I
+   ! density nhei is their SUM, formed wherever a routine wants the total.
+   ! The advection systems solve for the two populations directly, so the
+   ! singlet is never obtained as nhei - nheiTR, a difference that loses all
+   ! its digits once the metastable holds most of the neutral helium.
    real*8, dimension(1-Ng:N+Ng) :: nhei,nheii,nheiii,nheiTR,nheiS
    real*8, dimension(1-Ng:N+Ng) :: mmw
    real*8, dimension(1-Ng:N+Ng) :: nhi_w,nhii_w
@@ -230,7 +243,6 @@
    nhi    = nhi_in*n0
 	nhii   = nhii_in*n0
    if (thereis_He) then
-		nhei   = nhei_in*n0
 		nheii  = nheii_in*n0
 		nheiii = nheiii_in*n0
 		! Zero-init the triplet so the innermost ghost cell (1-Ng), which
@@ -238,6 +250,26 @@
 		! not write uninitialized memory to the output column.
 		nheiTR = 0.0
 		if (thereis_HeITR) nheiTR = nheiTR_in*n0
+		! Split the incoming He I into its two populations. The equilibrium
+		! solution reports the summed He I and the metastable, so the singlet
+		! is formed here once and then carried as a population of its own.
+		! The subtraction is well conditioned wherever it is made: the
+		! equilibrium metastable is bounded by its own balance, whose loss
+		! side is dominated by the 2^3S -> 1^1S decay A31, and stays orders of
+		! magnitude below the summed He I.
+		nheiS  = nhei_in*n0
+		if (thereis_HeITR) nheiS = (nhei_in - nheiTR_in)*n0
+		nhei   = nheiS + nheiTR
+	else
+		! Helium off. The helium-free branch of the ionization loop below
+		! zeroes these at its END, but the first pass reads them before that
+		! -- in nhe, in the electron sum and in eval_cool -- so they are
+		! defined here.
+		nheiS  = 0.0
+		nhei   = 0.0
+		nheii  = 0.0
+		nheiii = 0.0
+		nheiTR = 0.0
 	endif
 
 	!----------------------------------!
@@ -275,12 +307,16 @@
 
 	!----------------------------------!
 
+	! Non-converged cell solves, accumulated over every pass (see declaration)
+	n_adv_noconv   = 0
+	n_metal_noconv = 0
+	n_T_noconv     = 0
+
 	! Iterate the post processing
 	do k = 1,10	! Usually 10 gives a good convergence
 	
-	! Use singlet if included
-	nheiS = nhei
-	if (thereis_HeITR) nheiS = nhei - nheiTR
+	! Summed He I from the two populations carried through the pass
+	nhei = nheiS + nheiTR
 	nh  = nhi  + nhii
 	nhe = nheiS + nheii + nheiii
 	if (thereis_HeITR) nhe = nhe + nheiTR
@@ -498,6 +534,15 @@
 			call hybrd1(adv_implicit_H,Neq_adv,sys_x,sys_sol,   &
 						tol,info,wa,lwa_adv,params)
 			
+			! Non-converged cell: keep the equilibrium ionization (see the
+			! H/He branch below for why the returned iterate is discarded).
+			if (info /= 1) then
+				nhi(j)  = nhi_in(j)*n0
+				nhii(j) = nhii_in(j)*n0
+				n_adv_noconv = n_adv_noconv + 1
+				cycle
+			endif
+
 			! Extract solution profiles	
 			nhi(j)    = sys_x(1)*nh(j)
 			nhii(j)   = (1.0 - sys_x(1))*nh(j)
@@ -505,6 +550,7 @@
       	enddo
       	
 		   ! Force condition of zero helium
+		   nheiS  = 0.0
 		   nhei   = 0.0
 		   nheii  = 0.0
 		   nheiii = 0.0			
@@ -517,13 +563,7 @@
 			! information; the cell keeps the converged equilibrium H/He
 			! ionization (see the no-He branch).
 			if (.not. adv_correction_valid(j)) then
-				nhi(j)    = nhi_in(j)*n0
-				nhii(j)   = nhii_in(j)*n0
-				nhei(j)   = nhei_in(j)*n0
-				nheii(j)  = nheii_in(j)*n0
-				nheiii(j) = nheiii_in(j)*n0
-				nheiTR(j) = 0.0
-				if (thereis_HeITR) nheiTR(j) = nheiTR_in(j)*n0
+				call pin_cell_to_equilibrium(j)
 				cycle
 			endif
 
@@ -534,7 +574,7 @@
 			! Advection coeff.
 			adv_cell%c1  = As
 			adv_cell%xhi_old  = nhi(j-1)/nh(j-1)
-			adv_cell%xhei_old  = nhei(j-1)/nhe(j-1)
+			adv_cell%xheiS_old  = nheiS(j-1)/nhe(j-1)
 			adv_cell%xheiii_old  = nheiii(j-1)/nhe(j-1)
 			adv_cell%nh  = nh(j)
 			adv_cell%P_HI  = P_HI(j)
@@ -585,7 +625,7 @@
 			
 			! Initial guess of solution
 			sys_x(1) = nhi(j)/nh(j) 
-			sys_x(2) = nhei(j)/nhe(j)
+			sys_x(2) = nheiS(j)/nhe(j)
 			sys_x(3) = nheiii(j)/nhe(j)
 			if (thereis_HeITR) sys_x(4) = nheiTR(j)/nhe(j) 
 			
@@ -598,17 +638,31 @@
 							tol,info,wa,lwa_adv,params)
 			endif
 				
+			! A cell whose advection system did not converge carries no
+			! correction: the returned iterate satisfies neither the
+			! advection balance it was asked to solve nor the equilibrium
+			! balance it started from, so it is not a state of the gas. The
+			! equilibrium solution of that same cell is, and it is what the
+			! three validity conditions above already fall back to.
+			if (info /= 1) then
+				call pin_cell_to_equilibrium(j)
+				n_adv_noconv = n_adv_noconv + 1
+				cycle
+			endif
+
 			! Extract solution profiles	
 			nhi(j)    = sys_x(1)*nh(j)
 			nhii(j)   = (1.0 - sys_x(1))*nh(j)
-			nhei(j)   = sys_x(2)*nhe(j)
-			nheii(j)  = (1.0 - sys_x(2) - sys_x(3))*nhe(j)
+			nheiS(j)  = sys_x(2)*nhe(j)
 			nheiii(j) = sys_x(3)*nhe(j)
 			if (thereis_HeITR) then
 				nheiTR(j) = sys_x(4)*nhe(j) 
+				nheii(j)  = (1.0 - sys_x(2) - sys_x(3) - sys_x(4))*nhe(j)
 			else
 				nheiTR(j) = 0.0
+				nheii(j)  = (1.0 - sys_x(2) - sys_x(3))*nhe(j)
 			endif
+			nhei(j)   = nheiS(j) + nheiTR(j)
 			
 		enddo
 		
@@ -622,8 +676,7 @@
    !---- Update densities and temperature ----!
 	
 	! Number densities      
-   nheiS = nhei
-	if (thereis_HeITR) nheiS = nhei - nheiTR
+   nhei = nheiS + nheiTR
 	nh  = nhi  + nhii 
 	nhe = nheiS + nheii + nheiii
 	if (thereis_HeITR) nhe = nhe + nheiTR
@@ -711,6 +764,14 @@
 			call hybrd1(ion_system_metals_pp,Neq_mpp,sys_x,sys_sol,   &
 			            tol,info,wa,lwa_mpp,params)
 
+			! A stage split that did not converge is not an ionization
+			! balance of the cell; restore the equilibrium split, which is.
+			if (info /= 1) then
+				nm_w(j,:)      = nm_in(j,:)*n0
+				n_metal_noconv = n_metal_noconv + 1
+				cycle
+			endif
+
 			! Extract the re-solved stage split (element totals conserved).
 			do im = 1,n_melem
 				i0 = melem_i0(im)
@@ -751,11 +812,13 @@
 
 	! Penning ionization heating (mirrors ionization_equilibrium): He(2^3S)+H0
 	! -> He(1^1S)+H+ + e- releases e_th_HeI - e_th_HeTR - e_th_HI (= 6.2 eV).
-	! theat here is the freshly recomputed photoheating (+ he_rec_coupling), so
-	! this term is added once and is not double-counted. Advection-corrected
-	! densities.
+	! Q31 is the total ionization rate, so only its Penning branch carries
+	! this exothermicity. theat here is the freshly recomputed photoheating
+	! (+ he_rec_coupling), so this term is added once and is not
+	! double-counted. Advection-corrected densities.
 	if (thereis_HeITR) theat = theat                                 &
-	     + nheiTR*nhi*Q31*(e_th_HeI - e_th_HeTR - e_th_HI)/erg2eV
+	     + f_penning_HeI23S*nheiTR*nhi*Q31                            &
+	       *(e_th_HeI - e_th_HeTR - e_th_HI)/erg2eV
 
 	! Adimensionalize
 	theat = theat/q0
@@ -850,6 +913,13 @@
 	 		! Legacy MINPACK solve.
 	 		call hybrd1(T_equation,1,sys_x_T,sys_sol_T,   &
 	 		            tol,info,wa_T,8,paramsT)
+	 		! A non-converged solve leaves an iterate that balances neither
+	 		! the advected energy equation nor the equilibrium one; the
+	 		! converged equilibrium temperature is the state to keep.
+	 		if (info /= 1) then
+	 			sys_x_T(1) = T_in(j)
+	 			n_T_noconv = n_T_noconv + 1
+	 		endif
 	 		! With metal cooling, reject a non-physical / out-of-band root (the
 	 		! spurious hot root) and fall back to eq T (the legacy guard).
 	 		if (pp_metal_on) then
@@ -889,6 +959,21 @@
 		   ' cells fell back to eq T (stiff base band).'
 	endif
 
+	! Report the cell solves that did not converge and were therefore left at
+	! the equilibrium state, summed over the passes (see the declaration).
+	if (n_adv_noconv > 0)                                                   &
+		write(*,'(a,i0,a)') ' (post_process_adv) advection system: ',         &
+		   n_adv_noconv, ' cell solves did not converge and kept the'         &
+		   //' equilibrium ionization.'
+	if (n_metal_noconv > 0)                                                 &
+		write(*,'(a,i0,a)') ' (post_process_adv) metal re-solve: ',           &
+		   n_metal_noconv, ' cell solves did not converge and kept the'       &
+		   //' equilibrium stage split.'
+	if (n_T_noconv > 0)                                                     &
+		write(*,'(a,i0,a)') ' (post_process_adv) energy equation: ',          &
+		   n_T_noconv, ' cell solves did not converge and kept the'           &
+		   //' equilibrium temperature.'
+
    ! ---------------------------- !
       
 	!---- Update cooling rates ----!
@@ -923,6 +1008,25 @@
    call write_output(rho,v,p_out,T_out,theat,tcool,eta,                &
                      nhi_w,nhii_w,nhei_w,nheii_w,nheiii_w,              &
                      nheiTR_w,nm_out,'ad')
+
+	contains
+
+	! Ionization state of one cell as the equilibrium solver left it: the
+	! densities this post-process was handed. Both the validity conditions and
+	! a non-converged cell fall back to it, so it is written once.
+	subroutine pin_cell_to_equilibrium(jc)
+	integer, intent(in) :: jc
+
+	nhi(jc)    = nhi_in(jc)*n0
+	nhii(jc)   = nhii_in(jc)*n0
+	nheii(jc)  = nheii_in(jc)*n0
+	nheiii(jc) = nheiii_in(jc)*n0
+	nheiTR(jc) = 0.0
+	if (thereis_HeITR) nheiTR(jc) = nheiTR_in(jc)*n0
+	nheiS(jc)  = nhei_in(jc)*n0 - nheiTR(jc)
+	nhei(jc)   = nheiS(jc) + nheiTR(jc)
+
+	end subroutine pin_cell_to_equilibrium
 
 	! End of subroutine
 	end subroutine post_process_adv

@@ -1,0 +1,217 @@
+======================================================================
+The clima epsfcn repair, measured on the installed environment
+======================================================================
+measured    2026-08-29 17:00-17:20, this directory
+library     EXHALE_v1.00/env/photochem, photochem 0.9.0, Clima 0.7.5,
+            _clima.cpython-311-x86_64-linux-gnu.so installed 14:03
+reference   /home/kiseon/.conda/envs/photochem_090_fix, the same photochem
+            0.9.0 source without the repair -- the build every arm under
+            ../crossings_pc090 was measured with
+binary      EXHALE.x built 2026-08-29 04:56, unchanged and not rebuilt; no
+            Fortran source was touched
+
+`docs/Update_EXHALE.md` section 91 measured the repair in a Python
+replication of the outer solve and left the installed environment
+unverified.  Everything below is the installed environment itself.
+
+----------------------------------------------------------------------
+1. WHAT IS INSTALLED
+----------------------------------------------------------------------
+`installed_epsfcn.py` disassembles `AdiabatClimate_simple_solver` in the
+installed library, follows the stack arguments of the MINPACK call and
+reads the constants they point at (`installed_epsfcn.txt`):
+
+  symbol  __clima_adiabat_MOD_adiabatclimate_simple_solver.constprop.0
+  call    __minpack_module_MOD_hybrd      (not hybrd1)
+  arg 9   epsfcn -> 0x17e638 = 1e-08
+  arg 12  factor -> 0x17e630 = 100.0
+
+So the installed build carries the repair as section 91 specifies it:
+`hybrd` with `epsfcn = 1e-8`, every other setting `hybrd1`'s.  The error
+strings agree -- the library carries `hybrd root solve failed` and
+`Temperature solve returned residuals above the normalized tolerance`,
+neither of which exists in the build ../crossings_pc090 used.
+
+----------------------------------------------------------------------
+2. THE TWO COMPOSITION GRIDS OF SECTION 91
+----------------------------------------------------------------------
+`sweep_installed.py` calls `surface_temperature_bg_gas` on the installed
+build over the two grids section 91 scans, with the climate object built
+by `../clima_bracket_diagnosis/bracket_lib.py` -- the LHS 1140 b ladder's
+configuration, 20 bar deep boundary, TOA 1e-2 dyn/cm^2, 60 layers,
+`solve_for_T_trop` on, T_deep guess 400 K, T_trop guess 120 K.
+
+  grid                                  installed   section 91 records
+  He/H 8.00-11.00, step 0.05 (61 pts)   61 / 61     54 / 61 as patched
+  He/H 9.30-9.60, step 0.01 (31 pts)    31 / 31     29 / 31 as patched
+
+`sweep_installed_wide.txt`, `sweep_installed_9p30_9p60.txt`.  No point on
+either grid fails.
+
+Every composition section 91 records as a failure now solves, and the
+deep boundary it returns is the one the replication predicted:
+
+  He/H   installed T_deep [K]   replication, sec. 91   which build failed
+  8.10   432.37152             --                     0.8.4
+  9.37   422.22186             --                     0.8.4
+  9.40   422.00813             422.00813              0.9.0 + patch
+  9.45   421.65442             --                     0.8.4
+  9.50   421.30375             421.30374              0.9.0 + patch
+  9.80   419.26060             --                     replication, as patched
+  9.85   418.92979             --                     0.8.4
+  10.05  417.63255             --                     replication, as patched
+  10.15  416.99886             --                     0.8.4
+  10.25  416.37480             --                     replication, as patched
+  10.45  415.15429             415.15428              0.9.0 + patch
+  10.70  413.67746             --                     replication, as patched
+  10.80  413.10118             --                     replication, as patched
+
+The three temperatures section 91 quotes agree with the installed build to
+1e-5 K, which is the last digit printed.  The grid stays smooth across
+them: T_deep falls monotonically from 422.72470 K at He/H = 9.30 to
+420.61125 K at 9.60, and from 433.26144 K at 8.00 to 411.97203 K at 11.00.
+
+----------------------------------------------------------------------
+3. WHAT THE REPAIR DOES TO THE CLOSED CROSSING
+----------------------------------------------------------------------
+Nothing that is visible in the observable.
+
+The two arms that bracket the He I 10830 crossing, reservoir He/H = 9.0
+and 9.1, were run end to end on the installed environment and differenced
+against the stored ../crossings_pc090 arms, which are the same source
+without the repair.  Method as ../crossings_pc090/results.txt states it:
+the same single parent ../flux_closure/heh9p7/k03, the same seed and
+starting elemental fluxes, tol 0.05, kmax 8, resid_tol 4.0e-4, the same
+binary, the same transit configuration (R = 68,000, red pair over the
+vacuum window 10832.60-10834.20 A).  `run_arm_installed.sh` differs from
+`../crossings_pc090/run_closure.sh` in two lines only: the "python" entry
+of closure.json points at env/photochem, and `omp_num_threads` is 3 rather
+than 4 because three other jobs shared the machine.  `resolve_wind.sh` is
+that directory's script with three comment lines added and nothing else
+changed, run at three passes as the stored `rw_*` directories were.
+
+Closure iteration -- both arms reproduce the stored path:
+
+  arm   k  eps_H     eps_He    He/H at the match           log10 Mdot
+  9.0   1  0.03111   0.01781   9.010086847 (9.010087401)   7.400
+  9.1   1  0.02567   0.01725   9.110204165 (9.110204167)   7.400
+
+The stored value is in parentheses.  Both iterations converge at k = 1 on
+the same residuals the stored run printed, at both k = 0 and k = 1 and to
+all five decimals: 0.05973/0.03825 then 0.03111/0.01781 at 9.0, and
+0.05022/0.03567 then 0.02567/0.01725 at 9.1.
+
+The elemental fluxes at the match agree to all seven printed digits
+(F_H = 5.077620E+06 and 5.023200E+06 g/s, F_He = 1.970623E+07 and
+1.974121E+07 g/s).
+
+Equivalent width, ten decimals, after the three re-solve passes:
+
+  arm   EW without the repair   EW with it        relative   log10 Mdot
+  9.0   1.1068538680            1.1068539227      +4.94e-08  7.39 -> 7.39
+  9.1   1.1092155021            1.1092155563      +4.88e-08  7.39 -> 7.39
+
+Crossing, the eleven-arm ladder of ../crossings_pc090 with those two arms
+replaced:
+
+  chord      9.0484199298 -> 9.0484176256   (-2.3e-06)
+  quadratic  9.0460519944 -> 9.0460494223   (-2.6e-06)
+
+Every quality indicator of ../crossings_pc090 section 3 is unchanged, digit
+for digit, on both arms: info 0, ||R|| 2.5e-04 and 2.4e-04, flux spread
+8.52e-02 and 8.38e-02, 2 step-flagged cells with T4k = 0, 0/0 metal-drop
+cells, r_drop 20.121 R_p, outer-10 metastable share 0.0094, red depth
+3.7143 and 3.7188 percent, FWHM 0.27948 A.
+
+The crossing does not move at the precision anything is reported to.  The
+memo `docs/lhs1140b_exhale_vs_pwinds.tex` quotes it as 9.0484 and 9.0461;
+both are unchanged to those four decimals, so no line of that memo needs
+changing (see section 7).
+
+----------------------------------------------------------------------
+4. HOW FAR THE REPAIR MOVES A COMPOSITION THAT ALREADY SOLVED
+----------------------------------------------------------------------
+`deep_boundary_two_builds.py`, run once under each interpreter
+(`deep_boundary_two_builds.txt`):
+
+  He/H   with the repair       without it            difference
+  9.0    424.9534068835 K      424.9534089414 K      2.06e-06 K
+  9.1    424.1967332054 K      424.1967343205 K      1.12e-06 K
+  tropopause 185.4431858443 vs 185.4431857221 K (9.0), 1.2e-07 K apart.
+
+The handoff column moves by more than that: at He/H = 9.0 the k01 profile
+the two builds write differ by 2.4 percent in the top pressure
+(1.09359886756e-08 vs 1.12073768744e-08 bar), while at 9.1 they agree to
+1.5e-08 relative.  The line does not see it -- section 3.
+
+----------------------------------------------------------------------
+5. THE SOURCE TREE DOES NOT MATCH THE INSTALLED LIBRARY
+----------------------------------------------------------------------
+Found while checking what was installed, and not repaired here.
+
+`photochem/src/dependencies/patches/clima-bounded-scaled-solvers.patch`
+(written 10:43, md5 6734053e9116fea12f63dd9533d93657) is one revision
+behind: it still writes `use minpack_module, only: hybrd1` and calls
+`hybrd1`, with no `epsfcn`.  The current version of that file is the one
+`EXHALE_v1.00/src/utils/photochem_exhale.patch` carries (written 14:02);
+extracting it from there and differencing against the copy standing in the
+photochem tree shows the `hybrd`/`epsfcn` hunk as the only difference.
+The installed library was built from the newer one (section 1).
+
+So the photochem working tree, if rebuilt as it stands, would produce a
+library without the repair.  It was left alone: the point of this
+directory is to measure what is installed, and other jobs were running.
+Re-running `src/utils/setup_photochem.sh` restores the file; nothing needs
+rebuilding, because the installed environment is already the corrected one.
+
+----------------------------------------------------------------------
+6. WHAT WAS NOT MEASURED
+----------------------------------------------------------------------
+  - Only the two arms that bracket the crossing were re-run.  The other
+    nine arms of ../crossings_pc090, and the 0.8.4 comparison of its
+    section 3, were not repeated.
+  - The 1-sigma ends of the crossing (10.6/11.0 and 8.45/8.5) were not
+    re-run, so the band quoted in ../crossings_pc090 still rests on arms
+    measured without the repair.  The EW shift measured here, 5e-08
+    relative, is far below the spacing of those rungs.
+  - Only LHS 1140 b's configuration was scanned, as in section 91.
+    Whether the same trap is reachable at other planets, other K_zz or
+    other deep pressures is still untested.
+  - The source of the ~4e-7 relative jitter in ISR - OLR is still not
+    isolated; the repair steps over it rather than removing it.
+  - No golden was refreshed and `make check` was not run: no Fortran
+    source and no EXHALE binary changed.
+
+----------------------------------------------------------------------
+7. FOR docs/lhs1140b_exhale_vs_pwinds.tex
+----------------------------------------------------------------------
+That memo is being written elsewhere and was not touched.  Nothing in it
+is falsified by these measurements:
+
+  - line 3293-3296, the crossing "9.0484" and "9.0461": unchanged to the
+    four decimals printed (they move by 2.3e-06 and 2.6e-06).
+  - lines 231 and 3229, "0.9.0 with the local solver corrections": still
+    correct, and now the installed environment carries one more of them.
+
+If a sentence about the solver correction is wanted, the fact to state is
+that the Clima outer temperature solve differences its Jacobian at
+`epsfcn = 1e-8` rather than at machine epsilon, that this makes the
+61-point He/H grid 8.00-11.00 solve at every point, and that it moves the
+He I 10830 equivalent width of a closed arm by 5e-08 relative.
+
+----------------------------------------------------------------------
+8. FILES
+----------------------------------------------------------------------
+  installed_epsfcn.py, .txt          what the installed library calls and
+                                     with which constants
+  sweep_installed.py                 the two grids on the installed build
+  sweep_installed_wide.txt           He/H 8.00-11.00, step 0.05
+  sweep_installed_9p30_9p60.txt      He/H 9.30-9.60, step 0.01
+  run_arm_installed.sh               one closure arm on the installed build
+  resolve_wind.sh                    ../crossings_pc090's script, its body
+                                     unchanged
+  eps_heh9p0/, eps_heh9p1/           the two closure arms
+  eps_heh9p0.closure.log, eps_heh9p1.closure.log
+  arm_9p0.run.log, arm_9p1.run.log
+  rw_9p0/, rw_9p1/, rw_9p0.log, rw_9p1.log   the re-solved winds and lines
+  deep_boundary_two_builds.py, .txt  the deep boundary on both builds

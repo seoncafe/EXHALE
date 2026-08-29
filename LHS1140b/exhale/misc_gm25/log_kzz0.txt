@@ -1,0 +1,5 @@
+[kzz0] pass 1: done info=2 ||R||=  1.006E-03
+[kzz0] pass 2: done info=2 ||R||=  1.006E-03
+[kzz0] pass 3: done info=0 ||R||=  9.982E-04
+[kzz0] pass 4: done info=0 ||R||=  9.982E-04
+[kzz0] done  ---> Log10 of steady-state Mdot =  7.67 g/s

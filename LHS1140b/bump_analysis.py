@@ -3,32 +3,34 @@
 bump in the converged EXHALE solutions for LHS 1140 b, and measure the
 velocity at which the bump sits.
 
-Run from LHS1140b/.  Writes a table to stdout and (with --npz) the per-case
-arrays used by the figure block in make_memo_figures.py.
+Run from LHS1140b/.  Writes a table to stdout.  make_memo_figures.py
+imports this module directly for its bump figure, so a change to RUNDIR or
+to load() below moves that figure with it.
 
 The rate coefficients below are transcribed from the EXHALE source so that
 the reference curves use the code's own temperature dependence:
 
-  alpha(2^3S)  rec_HeII_23S        src/modules/radiation/Cool_coeff.f90:970
-  q13          coex_HeI_1S_23S     src/modules/radiation/Cool_coeff.f90:883
-  q31a         coex_HeI_23S_21S    src/modules/radiation/Cool_coeff.f90:905
-  q31b         coex_HeI_23S_21P    src/modules/radiation/Cool_coeff.f90:928
-  b_23S        ci_HeI23S           src/modules/radiation/Cool_coeff.f90:1030
-  Q31 Penning  penning_HeI_23S     src/modules/radiation/Cool_coeff.f90:988
-  A31 = 1.272e-4 s^-1              src/modules/radiation/util_ion_eq.f90:1192
+  alpha(2^3S)  rec_HeII_23S        src/modules/radiation/Cool_coeff.f90:985
+  q13          coex_HeI_1S_23S     src/modules/radiation/Cool_coeff.f90:898
+  q31a         coex_HeI_23S_21S    src/modules/radiation/Cool_coeff.f90:920
+  q31b         coex_HeI_23S_21P    src/modules/radiation/Cool_coeff.f90:943
+  b_23S        ci_HeI23S           src/modules/radiation/Cool_coeff.f90:1091
+  Q31          ioniz_HeI23S_H      src/modules/radiation/Cool_coeff.f90:1040
+  Q31(H2)      ioniz_HeI23S_H2     src/modules/radiation/Cool_coeff.f90:1076
+  A31 = 1.272e-4 s^-1              src/modules/radiation/util_ion_eq.f90:1235
 
 and the steady-state 2^3S balance they enter is tr_triplet_row,
-src/modules/nonlinear_system_solver/ion_residual_core.f90:72.
+src/modules/nonlinear_system_solver/ion_residual_core.f90:81.
 """
 import os
 import sys
 
 import numpy as np
 
-KB_EV = 8.617333262e-05          # parameters.f90:368
-ERG2EV = 6.241509075e11          # parameters.f90:375
-E_TH_HETR = 4.80                 # eV, parameters.f90:402
-A31 = 1.272e-4                   # s^-1, util_ion_eq.f90:1192
+KB_EV = 8.617333262e-05          # parameters.f90:380
+ERG2EV = 6.241509075e11          # parameters.f90:387
+E_TH_HETR = 4.80                 # eV, parameters.f90:414
+A31 = 1.272e-4                   # s^-1, util_ion_eq.f90:1235
 
 
 def alpha_23S(T):
@@ -58,16 +60,38 @@ def ci_23S(T):
     return 6.41e-21*np.sqrt(T)*np.exp(-55338.0/T)/(E_TH_HETR/ERG2EV)
 
 
-def penning(T):
-    return np.where(T <= 4.0e3, 1.9e-9*(3.0e2/T)**0.07,
-                    9.1e-9*(3.0e2/T)**0.50)
+# Branching of the He(2^3S) + neutral total ionization between the Penning
+# and the associative channel, Garcia Munoz (2025) "an average 0.9:0.1"
+# (Cool_coeff.f90:552).  The metastable balance takes the TOTAL -- both
+# channels quench it -- so the sink below is unscaled; the factor is kept
+# here because it is what the heating and proton-source terms carry.
+F_PENNING_HEI23S = 0.9
+
+
+def ioniz_HeI23S_H(T):
+    """TOTAL He(2^3S) + H ionization rate coefficient [cm^3 s^-1], Penning
+    plus associative, as the Garcia Munoz (2025, A&A 698, A199) closed form
+    of the Movre & Meyer (1997) cross sections.  This is Q31 in
+    tr_triplet_row."""
+    lnT = np.log(T)
+    return 1.0e-9*np.exp(-8.64804e1/T - 2.86766e-1*lnT
+                         + 8.68445e-2*lnT**2 - 5.73001e-3*lnT**3)
+
+
+def ioniz_HeI23S_H2(T):
+    """TOTAL He(2^3S) + H2 ionization rate coefficient [cm^3 s^-1], Cohen &
+    Lane (1977) cross sections through the Garcia Munoz (2025) network file.
+    Not exercised by the LHS 1140 b runs analyzed here, which carry no
+    molecular chemistry, but transcribed with the atomic channel so the two
+    stay together."""
+    return 5.408222e-12 * T**6.75388e-1 * np.exp(-6.96275e2/T)
 
 
 def load(tag, adv):
     """Return a dict of the converged profile.  adv=True reads the
     advection-corrected files that EXHALE_transit.py uses."""
     sfx = '_adv' if adv else ''
-    base = os.path.join('exhale', tag, 'output')
+    base = os.path.join(RUNDIR, tag, 'output')
     hy = np.loadtxt(os.path.join(base, 'Hydro_ioniz%s.txt' % sfx))
     fi = os.path.join(base, 'Ion_species%s.txt' % sfx)
     cols = [l for l in open(fi) if l.startswith('# columns')][0].split()[2:]
@@ -81,7 +105,7 @@ def load(tag, adv):
     d['ne'] = d['HII'] + d['HeII'] + 2.0*d['HeIII']
     d['nHe'] = d['HeI'] + d['HeII'] + d['HeIII']
     # nhei written out is total neutral He including the metastable
-    # (ionization_equilibrium.f90:871), so the ground singlet is the remainder.
+    # (ionization_equilibrium.f90:891), so the ground singlet is the remainder.
     d['HeI_SI'] = np.maximum(d['HeI'] - d['HeITR'], 0.0)
     d['f3'] = d['HeITR']/np.maximum(d['nHe'], 1e-300)
     return d
@@ -93,7 +117,7 @@ def gamma_tr(d):
     the output files, and the equilibrium file satisfies that row."""
     T, ne = d['T'], d['ne']
     src = ne*(d['HeII']*alpha_23S(T) + d['HeI_SI']*q13(T))
-    sink_known = (A31 + d['HI']*penning(T)
+    sink_known = (A31 + d['HI']*ioniz_HeI23S_H(T)
                   + ne*(q31a(T) + q31b(T) + ci_23S(T)))
     with np.errstate(divide='ignore', invalid='ignore'):
         g = src/np.maximum(d['HeITR'], 1e-300) - sink_known
@@ -106,7 +130,7 @@ def n23_reference(d, g_tr, T_q):
     reference when T_q = T_max); the ionization terms are kept local."""
     ne = d['ne']
     src = ne*(d['HeII']*alpha_23S(T_q) + d['HeI_SI']*q13(T_q))
-    sink = (A31 + d['HI']*penning(T_q) + g_tr
+    sink = (A31 + d['HI']*ioniz_HeI23S_H(T_q) + g_tr
             + ne*(q31a(T_q) + q31b(T_q) + ci_23S(T_q)))
     return src/np.maximum(sink, 1e-300)
 
@@ -150,6 +174,11 @@ def velocity_distribution(d, rmin=1.0, rmax=25.0):
     return dict(v=v, cum=cum, frac=frac, vmean=vmean, vrms=vrms, q=q,
                 vmax=float(v.max()))
 
+
+# The six arms re-solved on the current He 2^3S + H ionization coefficient
+# (Update_EXHALE.md Sect. 87) and re-post-processed with the current
+# advection correction (Sect. 88); see exhale/bump_gm25/results.txt.
+RUNDIR = os.path.join('exhale', 'bump_gm25')
 
 CASES = [('heh0p55', 'GJ 1132 SED, He/H = 0.55 (EW-matched)'),
          ('solar', 'GJ 1132 SED, solar He/H'),

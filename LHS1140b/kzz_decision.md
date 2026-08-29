@@ -30,7 +30,7 @@ limit, and section 3 shows it cannot reproduce the measured line at any
 `K_zz`. With the adopted value the composition the line implies is
 **He/H = 2.09** instead, measured in section 6 -- on a scalar H/He base. On
 the photochemical profile the flux closure hands over, which carries C, N
-and O and their cooling, the same line asks for **He/H = 10.7** (section 8). Every composition statement
+and O and their cooling, the same line asks for **He/H = 11.73** (section 8). Every composition statement
 about this planet is therefore conditional on the eddy coefficient, the same
 way it is already conditional on the assumed SED.
 
@@ -854,13 +854,16 @@ of carrying it out through the line-forming region.
 So the question section 6 answered for the scalar base is reopened for the
 closed system: **what reservoir `He/H` makes the flux-closed solution
 reproduce the measured line?** The ladder below runs the closure driver
-(`../src/utils/element_flux_closure.py`) at six further reservoirs, each
+(`../src/utils/element_flux_closure.py`) at eight further reservoirs, each
 started from the converged flux and converged wind of the point below it, so
 every arm begins near its own fixed point. Everything else is the section-7
 configuration: Photochem `clima` + chemistry, `K_zz = 1e9`, `p_match = 1e-6`
 bar, the GJ 1132 proxy SED, `tol = 0.05`, `k_max = 8`. Runs:
-`exhale/flux_closure/heh{3,5,8,9p7,10p3,12}/`, table
-`exhale/flux_closure/closure_heh_table.py`.
+`exhale/flux_closure/heh{3,5,8,9p7,10p3,10p7,11p1,12_ctl}/`, table
+`exhale/flux_closure/closure_heh_table.py`. A ninth arm,
+`exhale/flux_closure/heh12/`, reaches the same 12.01 reservoir in one 1.50x
+jump from the 8.0 arm instead of one step from 11.11; it is a convergence
+artifact and is recorded separately in section 8.3.
 
 | reservoir `He/H` | k | `F_H` [g/s] | `F_He` [g/s] | `He/H` at match | `log10 Mdot` | red depth [%] | blue [%] | FWHM [A] | red EW [%A] | EW / measured | cold-trap `O/H` |
 |---|---|---|---|---|---|---|---|---|---|---|---|
@@ -870,7 +873,10 @@ bar, the GJ 1132 proxy SED, `tol = 0.05`, `k_max = 8`. Runs:
 | 8.0 | 4 | 5.722e6 | 1.894e7 | 8.0090 | 7.390 | 3.388 | 0.487 | 0.2608 | 0.9437 | 0.852 | 7.94e-7 |
 | 9.7 | 3 | 4.768e6 | 2.043e7 | 9.7109 | 7.400 | 3.660 | 0.526 | 0.2664 | 1.0403 | 0.939 | 8.78e-7 |
 | 10.3 | 1 | 4.498e6 | 2.069e7 | 10.3116 | 7.400 | 3.696 | 0.530 | 0.2674 | 1.0563 | 0.953 | 9.09e-7 |
-| 12.0 | 4 | 3.910e6 | 2.238e7 | 12.0135 | 7.420 | 4.630 | 0.663 | 0.2654 | 1.3126 | 1.185 | 1.07e-6 |
+| 10.7 | 1 | 4.338e6 | 2.095e7 | 10.7121 | 7.400 | 3.733 | 0.535 | 0.2684 | 1.0706 | 0.966 | 9.39e-7 |
+| 11.1 | 1 | 4.192e6 | 2.124e7 | 11.1125 | 7.400 | 3.771 | 0.540 | 0.2694 | 1.0853 | 0.980 | 9.74e-7 |
+| 12.0 | 2 | 3.903e6 | 2.200e7 | 12.0135 | 7.410 | 3.856 | 0.552 | 0.2714 | 1.1181 | 1.009 | 1.066e-6 |
+| *12.0, discarded (sec. 8.3)* | 4 | 3.910e6 | 2.238e7 | 12.0135 | 7.420 | 4.630 | 0.663 | 0.2654 | 1.3126 | 1.185 | 1.066e-6 |
 | *measurement* | | | | | | 1.254 | | 0.841 | **1.108 +/- 0.030** | 1 | |
 
 Every arm returns a matching-level `He/H` equal to its reservoir to four
@@ -878,37 +884,48 @@ digits, the same result section 7 reported at 2.09 and for the same reason:
 at `K_zz = 1e9` the eddy-mixed column reaches the microbar match, so the
 escape flux does not set the composition there.
 
-**The crossing.** The runs at 10.31 and 12.01 straddle the measurement, so
-the answer is interpolated inside a bracket rather than extrapolated:
+**The crossing.** The runs at 11.11 (EW 1.0853) and 12.01 (1.1181) straddle
+the measured 1.108 +/- 0.030 %A directly, and both of them lie inside its
+1 sigma band, so the answer is read inside a measured bracket:
 
-- **central, EW = 1.108 %A: `He/H` = 10.7**;
-- 1 sigma low, 1.078 %A: 10.5; 1 sigma high, 1.138 %A: 10.9
+- **central, EW = 1.108 %A: `He/H` = 11.73**;
+- 1 sigma low, 1.078 %A: 10.92; 1 sigma high, 1.138 %A: 12.58
 
-(log-log interpolation of the seven scanned points, solved by Brent's
-method; the quoted range carries the measurement error alone and none of the
-model uncertainty). At the crossing the escape rate is `log10 Mdot` = 7.40
-to 7.42, i.e. 2.5-2.6e7 g/s, against the 2.03 +0.58/-0.67 e8 g/s of the
+Two readings of the same ladder agree. Chord interpolation in log-log
+between the two straddling rungs gives 11.731 (10.918-12.581); a quadratic
+in log-log through the three upper rungs 10.71, 11.11 and 12.01 gives 11.735
+(10.913-12.565). The centers are 0.005 apart. (While the discarded 12.01 of
+section 8.3 was the top rung, the same two methods disagreed by 0.16.) The
+quoted range carries the measurement error alone and none of the model
+uncertainty, and only its upper edge continues the top chord past the
+highest rung. At the crossing the escape rate is `log10 Mdot` = 7.40 to
+7.41, i.e. 2.5-2.6e7 g/s, against the 2.03 +0.58/-0.67 e8 g/s of the
 Cherubim et al. p-winds retrieval -- a factor 8 below it -- and the
-elemental fluxes are `F_H` ~ 4.3e6 and `F_He` ~ 2.1e7 g/s. The escape rate
+elemental fluxes are `F_H` ~ 4.0e6 and `F_He` ~ 2.2e7 g/s. The escape rate
 is nearly flat across the whole ladder (7.39 to 7.50 over a factor 5.7 in
 reservoir), so here too the composition is fixed by the line and not by the
 wind.
 
-**So there is a composition that satisfies both conditions, and it is five
+**So there is a composition that satisfies both conditions, and it is 5.6
 times the section-6 value.** The flux-closure condition by itself does not
 select a reservoir on this planet -- it is satisfied at every rung -- so the
-line is what picks 10.7, and the closure's contribution is that the answer
+line is what picks 11.73, and the closure's contribution is that the answer
 is now consistent with a photochemical lower atmosphere carrying its own
 C/N/O rather than with a bare H/He base. The price is a helium fraction of
-91 per cent by number.
+92 per cent by number.
 
-**How firmly the crossing is bracketed.** The equivalent width grows
-sublinearly with the reservoir -- local power-law slope 0.69 at the bottom of
-the ladder, 0.51 between 5 and 10 -- so it does *not* saturate before the
-measurement is reached, which is what the He-rich end of the scalar ladder
-(section 6) had made a live possibility. It does not grow smoothly either:
-the slope is 0.25 between 9.71 and 10.31 and 1.42 between 10.31 and 12.01,
-and that wiggle is the width of the bracket. It is not resolved here.
+**How firmly the crossing is bracketed.** The center is still an
+interpolation -- no arm was run at 11.73 -- but the bracket around it is
+measured and the local slope no longer jumps across it. The equivalent width
+grows sublinearly with the reservoir along the whole ladder, at
+`d ln EW / d ln (He/H)` = 0.688 (2.09-3.00), 0.630, 0.508, 0.506, 0.254,
+0.353, 0.372, 0.382 over the successive intervals up to 12.01. No interval
+departs from its neighbours, so the flattening near 10 is curvature in the
+relation and not one contaminated rung, and the upper end where the crossing
+is solved has settled to 0.37-0.38. The sublinearity also settles that the
+equivalent width does *not* saturate before the measurement is reached,
+which is what the He-rich end of the scalar ladder (section 6) had made a
+live possibility.
 
 **Convergence quality, arm by arm.** The wind residual the JFNK finish can
 reach degrades as the reservoir grows: the line search stalls on the base
@@ -924,17 +941,22 @@ than smoothed over:
 | 8.0 | 4.0e-4 | 3.35e-4 | 0 | 1.14 % |
 | 9.7 | 4.0e-4 | 2.44e-4 | 0 | 2.14 % |
 | 10.3 | 4.0e-4 | 2.56e-4 | 0 | 2.61 % |
-| 12.0 | 4.0e-4 | 2.53e-4 | 0 | 1.74 % |
+| 10.7 | 4.0e-4 | 2.94e-4 | 0 | 3.03 % |
+| 11.1 | 4.0e-4 | 3.22e-4 | 0 | 3.23 % |
+| 12.0 | 4.0e-4 | 3.86e-4 | 0 | 3.30 % |
+| *12.0, discarded* | 4.0e-4 | 2.53e-4 | 0 | 1.74 % |
 
 The acceptance test the closure actually applies is the last column -- the
 radial spread of the elemental flux over the window it is measured on -- and
-it stays between 0.4 and 2.6 per cent against the 5 per cent tolerance at
-every rung. `Resid tol` became a configuration key of the closure driver in
+it stays between 0.4 and 3.6 per cent (`F_He`, 3.58 % at the top rung)
+against the 5 per cent tolerance at every rung. Section 8.3 is the reason
+that test, and the residual norm beside it, are not sufficient on their
+own. `Resid tol` became a configuration key of the closure driver in
 the course of this ladder; the default is unchanged at 1.0e-4.
 
-**What the crossing does not fix.** The line is still too narrow: FWHM 0.267
+**What the crossing does not fix.** The line is still too narrow: FWHM 0.269
 A at the crossing against the measured 0.841 A, unchanged from section 6 and
-from the diffusion-off solutions, so the modelled red depth (3.7 per cent)
+from the diffusion-off solutions, so the modelled red depth (3.8 per cent)
 overshoots the measured 1.254 per cent by the same factor the width falls
 short. The composition is inferred from the equivalent width for that
 reason. And the wind these numbers come from is *unvalidated as a continuum
@@ -984,3 +1006,225 @@ property of the model and not a result; only the crossing agrees. And the
 lowest closed-model point (0.01) is not monotonic with the 0.10 one
 (0.190 against 0.165 per cent) at a wind that has dropped to
 `log10 Mdot` = 5.5; that solution is not to be read as a limit.
+
+### 8.3 The outer region a converged wind inherits (2026-08-27)
+
+The 12.01 rung was first reached in one step from the 8.0 arm, a 1.50x jump
+in reservoir (`exhale/flux_closure/heh12/`, converged at k = 4). The rung
+kept in the table above reaches the same reservoir from 11.11, a 1.08x step
+(`exhale/flux_closure/heh12_ctl/`, k = 2). The two agree on everything the
+closure and the chemistry set, and disagree on the line:
+
+| | 12.0 discarded (`heh12`) | 12.0 kept (`heh12_ctl`) |
+|---|---|---|
+| `He/H` at match | 12.013522 | 12.013520 |
+| cold-trap `O/H` | 1.0656e-6 | 1.0660e-6 |
+| `exhale_info` | 0 | 0 |
+| achieved `\|\|R\|\|` | 2.529e-4 | 3.864e-4 |
+| `log10 Mdot` | 7.420 | 7.410 |
+| red depth [%] | 4.630 | 3.856 |
+| red EW [%A] | 1.3126 | 1.1181 |
+
+Same base, same matching-level composition to seven digits, both converged,
+and a 17 per cent difference in equivalent width. The difference is in the
+outer wind alone. Two measures that do not depend on where a spectral window
+is placed separate them, and both are monotonic along the ladder except at
+the discarded point (`r_drop` = the first radius outside 1.5 `R_p` where `T`
+falls below half of `T(12 R_p)`; the last column is the share of the
+He 2^3S radial column outside 10 `R_p`):
+
+| reservoir | `r_drop` [`R_p`] | `T(12 R_p)` [K] | He 2^3S column outside 10 `R_p` |
+|---|---|---|---|
+| 2.09 | 30.00 | 893 | 0.0119 |
+| 3.0 | 27.63 | 1035 | 0.0116 |
+| 5.0 | 23.76 | 1310 | 0.0105 |
+| 8.0 | 20.80 | 1632 | 0.0104 |
+| 9.7 | 19.79 | 1789 | 0.0108 |
+| 10.3 | 19.79 | 1834 | 0.0108 |
+| 10.7 | 19.47 | 1863 | 0.0109 |
+| 11.1 | 19.47 | 1891 | 0.0109 |
+| 12.0 kept | 19.47 | 1951 | 0.0112 |
+| **12.0 discarded** | **25.83** | 1957 | **0.0219** |
+
+`r_drop` moves inward monotonically with the reservoir, 30.0 to 19.5 `R_p`,
+and the outer share of the metastable column stays in 0.0104-0.0119 across
+the ladder. The discarded solution departs from both -- 25.8 `R_p` where its
+own reservoir gives 19.5, and twice the outer share of any other rung --
+while its `T(12 R_p)` matches its control to 0.3 per cent. It is a hotter,
+more extended outer atmosphere on an identical base.
+
+*Read as the mechanism*: the outer state is inherited from the seed and the
+JFNK finish does not re-solve it. The density out there contributes almost
+nothing to the residual norm, so `||R||` does not separate the two states --
+both report `info = 0`, and the one that is wrong reports the *smaller*
+residual. He 10830 is optically thick at these columns, so a hot, extended
+outer region fills the line wings and lifts the equivalent width even though
+it holds about one per cent of the metastable column.
+
+**The physical judgement.** The 20-30 `R_p` region in which the two
+solutions differ is where the collisional-validity measurement puts the
+exobase, 19.8-26.7 `R_p`, and where `Kn > 1` (`../docs/collisional_validity.md`).
+*The fluid solution is not valid in exactly the region that makes the
+difference.* The ground for discarding the original 12.01 solution is
+therefore continuity of the trend, not a physical criterion; and by the same
+token the absolute equivalent widths of the whole ladder carry a systematic
+error that the closure tolerance -- a 5 per cent flux spread -- does not
+catch. Its size is small, because the outer region is about one per cent of
+the metastable column, but it is not zero.
+
+**What was and was not tested.** Path independence was checked directly at
+`He/H` = 3.0, from a seed 3.7x away in composition and in the downward
+direction the ladder never takes: it returns the same `r_drop` to the digit,
+with everything else inside the closure tolerance. The 5.0, 8.0 and 2.09
+arms were not checked this way. Separately, `exhale/flux_closure/heh10p3_ctl/`
+re-runs the 10.31 arm from the same seed and reproduces
+`Hydro_ioniz_adv.txt` and `Ion_species_adv.txt` bitwise, which fixes
+determinism but says nothing about seed dependence.
+
+**The practical rule.** A ladder scan is climbed one step at a time; a large
+jump in reservoir can leave an outer region the solver will not revisit and
+no convergence test will flag. Record: `../docs/Update_EXHALE.md` section 83.
+
+---
+
+## 9. Is the pressure form of `K_zz` carried in the answer? (2026-08-28)
+
+Sections 3 and 6.1 measure what the **magnitude** of `K_zz` is worth: a factor
+9 in equivalent width between 1e8 and 1e10, and a `He/H` crossing that moves as
+`K_zz^-0.14` wherever the eddy term acts at all. Everything above, and every
+run of the profile branch (sections 7-8), states the eddy coefficient as a
+**constant** — `--kzz-const 1.0e9` at all 102 levels of the handoff. That form
+is a second assumption sitting on top of the value, and it had never been
+tested. It is now.
+
+### The test
+
+`K_zz(p) = 1.0e9 (p / 1.1e-8 bar)^(-1/2)` — the saturated gravity-wave form,
+`--kzz-power 0.5 --kzz-ref 1.0e9 --kzz-ref-bar 1.1e-8` — **anchored at the top
+of the profile**, not at 1 bar. The anchor is the point: EXHALE gives every
+cell above the shallowest tabulated level that level's value
+(`eddy_diffusion_on_grid`), so anchoring at the top leaves the number the wind
+inherits above the file unchanged and confines the change to the interval the
+file describes. Implied values: **1.05e8 at the 1 microbar match**, 1.05e5 at
+1 bar, 2.56e4 at the 16.73 bar deep boundary — a factor 9.5 under the constant
+at the match and four decades under it at the bottom.
+
+Two arms, because the profile hands over both the composition and the eddy
+coefficient:
+
+- **A, chemistry only.** The column is solved on `K_zz(p)`, then its `Kzz`
+  column alone is written back to 1e9 before the handoff. The wind sees what
+  it saw before; only the composition changes.
+- **B, chemistry and wind.** The profile as produced.
+
+The reference is the constant-`K_zz` profile re-solved with the same seed and
+the same binary. Reservoirs: the `11.11` rung (`flux_closure/heh11p1`, k = 1)
+and the `2.09` one on its high-trial-flux branch (`flux_closure/hi`, k = 6).
+Runs and the measurement script: `exhale/kzz_power/`.
+
+### Result
+
+| run | red [%] | FWHM [A] | EW [%A] | EW/obs | He/H at 2 R_p | `log10 Mdot` |
+|---|---|---|---|---|---|---|
+| **reservoir 11.11** | | | | | | |
+| recorded, other seed | 3.5998 | 0.2825 | 1.0853 | 0.980 | 1.5536 | 7.400 |
+| reference, `K_zz` = 1e9 | 3.6524 | 0.2825 | 1.1019 | 0.994 | 1.5764 | 7.410 |
+| A, chemistry only | 3.6630 | 0.2825 | 1.1050 | 0.997 | 1.5797 | 7.410 |
+| B, chemistry and wind | 3.6591 | 0.2825 | 1.1031 | 0.996 | 1.5630 | 7.410 |
+| **reservoir 2.09** | | | | | | |
+| recorded, other seed | 1.6233 | 0.2467 | 0.4272 | 0.386 | 0.2301 | 7.500 |
+| reference, `K_zz` = 1e9 | 1.6282 | 0.2467 | 0.4285 | 0.387 | 0.2307 | 7.500 |
+| A, chemistry only | 1.6380 | 0.2467 | 0.4311 | 0.389 | 0.2320 | 7.500 |
+| B, chemistry and wind | 1.6265 | 0.2467 | 0.4279 | 0.386 | 0.2299 | 7.500 |
+
+At the 1 microbar match, the ratio `K_zz(p)` / constant:
+
+| quantity | 11.11 arm | 2.09 arm |
+|---|---|---|
+| **consumed by the wind** | | |
+| `X_He` | 0.9985 | 0.9985 |
+| `X_C` | 0.9899 | 0.9903 |
+| `X_N` | 0.9878 | 0.9875 |
+| `X_O` | 0.9894 | 0.9821 |
+| `T` | 1.0000 | 1.0000 |
+| **carried, not consumed** | | |
+| `q_CH4` | 0.443 | 0.665 |
+| `q_CO` | 54.7 | 47.6 |
+| `q_CO2` | 9.3e3 | 4.3e3 |
+| `q_NH3` | 0.0038 | 0.0496 |
+| `q_N2` | 28.7 | 28.1 |
+| `q_HCN` | 0.566 | 2.95 |
+| `q_H2O` | 0.714 | 0.804 |
+| `q_H` | 4.99 | 5.55 |
+
+**What did not move.** The climate is identical — deep boundary 411.4 K,
+tropopause 2.636 bar at 185.5 K, cold-trap `f_H2O` = 5.590e-8, match
+temperature 185.478 K, the same digits — and identical **structurally**: the
+adapter's `--climate` path solves the radiative-convective column with no eddy
+coefficient entering it and hands the photochemistry a (P, T) pair with the
+`K_zz` slot empty. FWHM agrees to four decimals in all six runs; `log10 Mdot`
+does not move at all; the elemental ratios agree to 1.2% or better.
+
+**What did move: the carriers, by up to four decades.** Nitrogen changes
+carrier outright — on the 11.11 arm `q_NH3` at the match falls 6.32e-6 ->
+2.43e-8 while `q_N2` rises 1.21e-7 -> 3.46e-6, so an NH3-dominated column
+becomes N2-dominated. Carbon partly follows (CH4 down 2.3x, CO up 55x, CO2 up
+nearly four decades from a negligible base). Deeper it is worse: at 1 bar the
+ratios are 1.3e5 for CO, 3.0e7 for CO2 and 8.8e3 for N2. Elemental N at the
+match nevertheless moves by -1.2%, because a carrier swap conserves nuclei and
+nuclei are what the handoff transmits.
+
+**The crossing, against the path spread.** Converted with the local slope
+`d ln EW / d ln(He/H)` = 0.382 over the 11.11-12.01 interval (section 8.1),
+the four equivalent widths move the crossing 11.73 -> 11.64 / 11.70 (11.11
+arm) and 11.54 / 11.77 (2.09 arm): **-0.19 to +0.05 in He/H, under a tenth of
+the 10.92-12.58 the measurement's own 1 sigma band allows**. It is also
+smaller than the workflow's own path spread: re-solving the *same* profile
+from a different seed moves the equivalent width by 1.5% (11.11 arm) and 0.31%
+(2.09 arm), against the 0.10-0.61% the eddy form produces.
+
+### Two limits on what this tested
+
+1. **The deep half of the law is wrong, and knowingly so.** `P^-1/2` is the
+   saturated gravity-wave scaling of a *stratified* region (Lindzen 1981), and
+   the climate solve puts the tropopause at 2.636 bar; below it the column is
+   convective, where the Gierasch-Conrath mixing-length form applies and
+   `K_zz` should flatten or grow with depth. The amplitude is not defensible
+   there either: 1.05e5 at 1 bar is at or below the floor of the modelling
+   literature — 1.5-2.5 decades under Charnay et al. (2015) 3e6-3e7 for
+   GJ 1214 b, 3.7 decades under Parmentier et al. (2013) 5e8 for HD 209458 b,
+   and equal to the 1e5 minimum Ackerman & Marley (2001) impose by hand. The
+   correct construction is two-branch, a wave law above the
+   radiative-convective boundary joined to a mixing-length law below it; this
+   test ran one branch to 16.73 bar. *Read as interpretation*: that is very
+   likely why the carriers moved as far as they did, since the over-quenched
+   0.1-10 bar interval is the one that fixes where CH4 and NH3 quench. **The
+   defect does not reach the verdict**: a form this wrong in the deep column
+   still failed to move an elemental ratio at the match by more than 1.2%.
+2. **Arm B is a bounded test of the wind side.** The column reaches only
+   1.0091 R_p above the match, and every cell above that takes the top level's
+   value, so the wind saw a changed coefficient in a shell nine thousandths of
+   a radius deep — 9.5x lower at the base, equal at the top — while the
+   homopause under the constant sits at 1.056 R_p (section 3), outside it.
+   Arm B is not a test of lowering `K_zz` where helium settles; the unbounded
+   version of that is the magnitude scan of section 3. Anchoring the same law
+   at 1 microbar instead would raise the inherited value by 9.5x over the whole
+   domain — a change of magnitude, a separate test, not run.
+
+**One point in the law's favor.** Its value at the match, 1.05e8, falls inside
+the 2.8e7-1.4e8 that the Arfaux & Lavvas homopause scaling gives when it is
+evaluated with *this* planet's `g` and `T` (section 2) — the only
+planet-specific estimate in the survey, and the direction in which section 5
+already records the adopted 1e9 as having no LHS 1140 b basis.
+
+### Verdict
+
+**The constant assumption was carrying a great deal of the lower atmosphere's
+carrier chemistry — up to four decades — and none of the conclusions of this
+document.** EXHALE consumes elemental ratios and thermodynamics from the
+profile; both agree at the match to 1.2% under a form that differs from the
+constant by 9.5x there and four decades at the bottom, because the match is
+still well mixed under either (1.05e8 is 200x the molecular coefficient
+~4.6e5 cm^2/s at the base, section 1). **What the results carry is the
+magnitude of `K_zz` — the 1e8-1e10 bracket, across which the equivalent width
+moves by a factor 9 (section 3) — not its pressure form.**

@@ -79,21 +79,63 @@ particles.
 nu_s     = sum_t nu_st                          total momentum-transfer rate
 lambda_s = vbar_s / nu_s,  vbar_s = sqrt(8kT/(pi m_s))     (harmonic sum:
                                              1/lambda_s = sum_t 1/lambda_st)
-L        = min( H_p, L_v, r )                   local structure scale
-           H_p = |d ln p/dr|^-1     measured from the solution, so it needs
-                                    no separate g and already contains the
-                                    wind's acceleration
-           L_v = |v/(dv/dr)|        included only where |v| >= 0.01 c_s (see
-                                    below)
+1/L^2    = (d ln rho/dr)^2 + (d ln T/dr)^2 + (|dv/dr|/c_s)^2 + (1/r)^2
+L        = max( 1/sqrt(that), dr_cell )         local structure scale
 Kn_s     = lambda_s / L
 lambda_bulk = mass-weighted mean of lambda_s over the heavy species
 ```
 
-`L_v` is admitted to the minimum only where the gas is actually flowing.
-Below Mach 0.01 it is the distance to a stagnation point, not a structure
-scale of the solution; the base sound-wave layer of these runs crosses
-`v = 0` repeatedly and would otherwise drive `L` to zero and `Kn` to
-infinity there.
+**Which fields enter, and why the sum of squares.**  The continuum closure
+expands about a local Maxwellian, and a local Maxwellian is fixed by
+`(n, T, u)`.  Those three gradients -- logarithmic for `n` and `T`, measured
+against the thermal speed for `u`, see below -- plus the spherical
+divergence the geometry adds, are the complete set, and the change of the
+state over a distance `d` is the vector `(d/H_rho, d/H_T, ...)` whose length
+is the RMS above.  Two properties follow, both wanted: `L` is never longer
+than the shortest individual scale, since every term enters `1/L^2` with a
+positive sign; and a field that goes logarithmically flat contributes zero
+instead of removing itself from a minimum.  A minimum rule behaves the
+opposite way -- when the field it is currently taken from flattens, `L`
+jumps to the next one, discontinuously and by whatever factor separates
+them.
+
+**Pressure is not in the list.**  `p = n k T` is a derived field; adding it
+would count the density and temperature gradients a second time wherever
+they do not cancel, and it contributes nothing exactly where they do -- at
+an isobaric front, which is precisely where it fails as a structure scale.
+That failure was in this tool until 2026-08-28, when `L` was
+`min(H_p, L_v, r)`: across the heating peak of the LHS 1140 b runs
+`d ln p/dr` passes through a broad near-zero, because `rho` falls and `T`
+rises with nearly the same log slope.  In `LHS1140b/exhale/heh0p55`, `H_p`
+ran from 9.13e6 cm at 1.0244 `R_p` to **3.05e8 cm** at 1.0486 `R_p`, while
+at 1.0453 `R_p` -- where it is already 2.55e8 -- `H_T` is 1.80e7 and
+`H_rho` 1.68e7 cm, fifteen times shorter; `L` followed the pressure,
+and `Kn` showed a spurious dip -- `Kn(H I)` 3.67e-5 at 1.0244, 6.82e-6 at
+1.0453, 3.56e-5 at 1.0648, a 5.4x hole in a quantity that is monotonic on
+either side of it.  With the definition above `Kn(H I)` rises
+monotonically from 1.02 to 3 `R_p` (4 sign changes of `d Kn/dr` before, 0
+after).
+
+**Velocity enters as `|dv/dr|/c_s`, not as `|(1/v) dv/dr|`.**  The
+first-order term the closure drops is the viscous stress, whose size
+relative to the pressure is `~ lambda |dv/dr| / vbar`: a change of the bulk
+velocity distorts the distribution function in proportion to the *thermal*
+speed, not to the local bulk speed.  Normalizing by `v` diverges at every
+stagnation point -- the base sound-wave layer of these runs crosses `v = 0`
+repeatedly -- which is what an ad-hoc Mach-number floor used to patch; that
+floor is gone.  `c_s` stands in for `vbar` so that `L` remains one length
+common to all species, the two differing by an O(1) factor.
+
+**The floor at the local cell width** is a statement about what a discrete
+solution can carry: no structure exists below one cell, so a gradient
+claiming one is measuring the mesh.  It binds in 3 of 500 cells in one of
+the four runs below, all at `r < 1.002 R_p`, where `Kn ~ 1e-5` -- four
+orders of magnitude below the verdict threshold -- and in no critical
+region.  The residual cell-to-cell scatter of `Kn` at `r < 1.01 R_p` is the
+base sound-wave layer of the solutions themselves, present in `rho`, `T`
+and `p` alike; it is not a defect of the definition and it is far below any
+radius the verdict uses (every critical region here starts at the heating
+peak, 1.05-1.11 `R_p`).
 
 | quantity | definition |
 |---|---|
@@ -128,14 +170,16 @@ elemental-flux window spread of that run is 0.9%).
 
 Run as
 `python3 src/utils/collisional_validity.py <case_dir> [<case_dir> ...]`.
-Measured 2026-08-27 on the existing outputs; nothing was rebuilt or re-run.
+Measured 2026-08-27 on the existing outputs and recomputed 2026-08-28 with
+the structure scale of section 2; nothing was rebuilt or re-run, and no
+verdict moved.
 
 | case | planet | peak heat | T max | critical point | exobase | `Kn = 0.1` at | max Kn in crit. region | verdict |
 |---|---|---|---|---|---|---|---|---|
-| `LHS1140b/exhale/heh0p55` (diffusion off) | LHS 1140 b | 1.053 | 1.490 (4532 K) | **none in domain**, max Mach 0.540 at 29.05 | 25.22 | 6.42 | 2.2 (H I) | **unvalidated** |
-| `LHS1140b/exhale/heh2p13_diff_kzz1e9` | LHS 1140 b | 1.050 | 1.398 (5330 K) | **none in domain**, max Mach 0.565 | 26.66 | 6.79 | 1.9 (H I) | **unvalidated** |
-| `LHS1140b/exhale/flux_closure/hi/k06` (converged closure) | LHS 1140 b | 1.105 | 1.340 (3944 K) | **none in domain**, max Mach 0.550 | 19.76 | 5.53 | 3.0 (H I) | **unvalidated** |
-| `backup/phase_d_baseline/new_kzz1e9_d3b` | HD 209458 b | 1.111 | 1.500 (8353 K) | **4.085** (2574 K) | above 4.15 (`Kn_top = 2.3e-3`) | -- | **0.021** (H I) | **validated** |
+| `LHS1140b/exhale/heh0p55` (diffusion off) | LHS 1140 b | 1.053 | 1.490 (4532 K) | **none in domain**, max Mach 0.540 at 29.05 | 23.73 | 6.72 | 2.3 (H I) | **unvalidated** |
+| `LHS1140b/exhale/heh2p13_diff_kzz1e9` | LHS 1140 b | 1.050 | 1.398 (5330 K) | **none in domain**, max Mach 0.565 | 25.44 | 7.10 | 2.0 (H I) | **unvalidated** |
+| `LHS1140b/exhale/flux_closure/hi/k06` (converged closure) | LHS 1140 b | 1.105 | 1.340 (3944 K) | **none in domain**, max Mach 0.550 | 18.84 | 5.80 | 3.1 (H I) | **unvalidated** |
+| `backup/phase_d_baseline/new_kzz1e9_d3b` | HD 209458 b | 1.111 | 1.500 (8353 K) | **4.085** (2574 K) | above 4.15 (`Kn_top = 2.0e-3`) | -- | **0.019** (H I) | **validated** |
 
 Radii in `R_p`.  The LHS 1140 b domain ends at 30 `R_p`, HD 209458 b's at
 4.15 `R_p`.
@@ -144,21 +188,21 @@ Radii in `R_p`.  The LHS 1140 b domain ends at 30 `R_p`, HD 209458 b's at
 
 | `r/R_p` | 2 | 4 | 6 | 8 | 9.5 | 15 | 20 |
 |---|---|---|---|---|---|---|---|
-| `heh0p55` | 0.0044 | 0.033 | 0.087 | 0.155 | 0.212 | 0.442 | 0.676 |
-| `heh2p13_diff_kzz1e9` | 0.0040 | 0.029 | 0.077 | 0.139 | 0.191 | 0.395 | 0.596 |
-| `flux_closure/hi/k06` | 0.0060 | 0.046 | 0.120 | 0.218 | 0.303 | 0.654 | 1.02 |
-| HD 209458 b `new_kzz1e9_d3b` | 6.9e-4 | 2.2e-3 (at 4.085) | -- | -- | -- | -- | -- |
+| `heh0p55` | 0.0040 | 0.029 | 0.078 | 0.144 | 0.203 | 0.461 | 0.747 |
+| `heh2p13_diff_kzz1e9` | 0.0037 | 0.026 | 0.069 | 0.129 | 0.182 | 0.413 | 0.661 |
+| `flux_closure/hi/k06` | 0.0056 | 0.040 | 0.108 | 0.203 | 0.288 | 0.675 | 1.11 |
+| HD 209458 b `new_kzz1e9_d3b` | 6.4e-4 | 2.0e-3 (at 4.085) | -- | -- | -- | -- | -- |
 
-Species split in the critical region (`heh0p55`): H I 2.2, He I 1.6,
-H II 3.6e-5, He II 1.8e-5, He III 4.7e-6, e 6.5e-4.  The ions and electrons
+Species split in the critical region (`heh0p55`): H I 2.3, He I 1.7,
+H II 3.8e-5, He II 1.9e-5, He III 5.0e-6, e 6.9e-4.  The ions and electrons
 are held by Coulomb collisions two to five orders of magnitude more tightly
 than the neutrals; **the neutral hydrogen sets the Knudsen number**, and it
 is the species the He 10830 diagnostic is about.
 
-Coupling times (`heh0p55`): `tau_HI` = 0.5 s at 1.5 `R_p`, 924 s at 8
+Coupling times (`heh0p55`): `tau_HI` = 0.5 s at 1.5 `R_p`, 942 s at 8
 `R_p`, 1.6e4 s at 20 `R_p`, against a flow time `r/|v|` of 1.3e6, 1.9e5,
 1.8e5 s -- so the gas is still momentum-coupled several hundred times per
-flow time at 8 `R_p` even where `Kn = 0.15`.  Electron-ion energy coupling
+flow time at 8 `R_p` even where `Kn = 0.14`.  Electron-ion energy coupling
 is fast everywhere it matters: `max tau^E_ei/tau_heat` over the critical
 region is 0.030, 0.023, 0.018 (LHS 1140 b cases) and 8.3e-5 (HD 209458 b),
 so the single-temperature energy equation is not what fails.
@@ -169,13 +213,13 @@ so the single-temperature energy equation is not what fails.
 computational domain.**  In all three representative solutions the flow is
 subsonic out to 30 `R_p` (max Mach 0.54-0.57), so the mass flux is set at
 the outer boundary rather than at a critical point -- and by 30 `R_p` the
-gas is already collisionless (`Kn_bulk` = 1.3-2.3 there, exobase at
-19.8-26.7 `R_p`).
+gas is already collisionless (`Kn_bulk` = 1.4-2.4 there, exobase at
+18.8-25.4 `R_p`).
 
 Against the p-winds retrieval, whose isothermal Parker solution places the
 sonic point at 8-9.5 `R_p`: that radius is **inside** the exobase computed
-here (19.8-26.7 `R_p`), but `Kn_bulk` there is already 0.14-0.30, i.e. two
-to three times the collisional threshold.  So the answer is neither "the
+here (18.8-25.4 `R_p`), but `Kn_bulk` there is already 0.13-0.29, i.e. well
+past the collisional threshold.  So the answer is neither "the
 sonic point is outside the exobase" nor "the critical region is
 collisional": the critical region of LHS 1140 b is **transitional**.  The
 scale separation the continuum equations need has been lost by the radius
@@ -183,7 +227,7 @@ where either code sets the mass flux, while the gas is not yet free
 molecular.
 
 HD 209458 b is the control: sonic point at 4.085 `R_p` with `Kn` reaching
-only 0.021 anywhere between the heating peak and the critical point, and no
+only 0.019 anywhere between the heating peak and the critical point, and no
 exobase inside the domain -- a hydrodynamic solution validated through its
 critical point.  The contrast is a factor of ~100 in `Kn`, and it is what
 one expects from the two winds' scales, not a marginal call.
@@ -197,10 +241,10 @@ choice. Read on the equilibrium pair (`--eq`) instead:
 
 | case | critical point | exobase | `Kn = 0.1` at | `Kn_bulk` at the top | max Kn |
 |---|---|---|---|---|---|
-| `heh0p55` | none (max Mach 0.822) | above 30 | 25.72 | 0.110 | 1.11 |
-| `heh2p13_diff_kzz1e9` | none (max Mach 0.824) | above 30 | 17.45 | 0.114 | 0.98 |
-| `flux_closure/hi/k06` | none (max Mach 0.823) | above 30 | 7.10 | 0.217 | 1.41 |
-| HD 209458 b | 3.769 (max Mach 1.342) | above 4.15 | -- | 5.8e-4 | 0.016 |
+| `heh0p55` | none (max Mach 0.822) | above 30 | never (`Kn_bulk < 0.1`) | 0.097 | 0.98 |
+| `heh2p13_diff_kzz1e9` | none (max Mach 0.824) | above 30 | 28.77 | 0.101 | 0.86 |
+| `flux_closure/hi/k06` | none (max Mach 0.823) | above 30 | 7.85 | 0.191 | 1.25 |
+| HD 209458 b | 3.769 (max Mach 1.342) | above 4.15 | -- | 5.2e-4 | 0.013 |
 
 The verdicts do not move: LHS 1140 b has no critical point in the domain on
 either pair and reaches `Kn ~ 1` in the region where the outer boundary sets
@@ -222,9 +266,9 @@ Mdot_Jeans = 4 pi r_exo^2 sum_s m_s Phi_J,s
 
 | case | `r_exo` | `T(r_exo)` | `lambda_J(H)` | `lambda_J(He)` | `Mdot_Jeans` | `Mdot_hydro` | ratio |
 |---|---|---|---|---|---|---|---|
-| `heh0p55` | 25.22 | 1241 K | 0.78 | 3.14 | 1.8e7 g/s | 10^7.764 | 3.2 |
-| `heh2p13_diff_kzz1e9` | 26.66 | 1162 K | 0.79 | 3.17 | 2.0e7 g/s | 10^7.806 | 3.3 |
-| `flux_closure/hi/k06` | 19.76 | 854 K | 1.45 | 5.82 | 1.0e7 g/s | 10^7.474 | 3.0 |
+| `heh0p55` | 23.73 | 1233 K | 0.84 | 3.36 | 1.8e7 g/s | 10^7.764 | 3.2 |
+| `heh2p13_diff_kzz1e9` | 25.44 | 1158 K | 0.83 | 3.33 | 2.0e7 g/s | 10^7.806 | 3.3 |
+| `flux_closure/hi/k06` | 18.84 | 853 K | 1.53 | 6.11 | 1.0e7 g/s | 10^7.474 | 3.0 |
 | HD 209458 b | (no exobase; evaluated at 4.15) | 2508 K | 10.85 | 43.4 | 1.1e6 g/s | 10^10.056 | 1.0e4 |
 
 How this bounds -- and does not bound -- the continuum number.  Jeans escape
@@ -232,7 +276,7 @@ is what a *static* atmosphere loses through a Maxwellian exobase with no
 bulk drift, so it is the floor of the kinetic problem and not its answer; a
 real transitional flow arrives at the exobase already drifting outward and
 escapes faster.  It bounds the continuum result from below **only** when the
-exobase is well bound.  On LHS 1140 b it is not: `lambda_J(H) = 0.78-1.45`
+exobase is well bound.  On LHS 1140 b it is not: `lambda_J(H) = 0.83-1.53`
 means the exobase is barely gravitationally bound, the Jeans integral is no
 longer the small escaping tail of a Maxwellian but most of it, and the
 atmosphere is in hydrodynamic blow-off.  The number is then a **scale**, not
@@ -245,6 +289,34 @@ of a few, in an undetermined direction.  On HD 209458 b, where
 hydrodynamic rate exceeds Jeans by 1e4 -- the expected signature of a wind
 that is genuinely driven, not evaporating.
 
+### What the 2026-08-28 change of `L` moved
+
+Same runs, same outputs, same collision model; only the structure scale of
+section 2 changed, from `min(H_p, L_v, r)` to the state-gradient RMS.
+Nothing that carries a conclusion moved.
+
+| quantity (`_adv` pair) | old `L = min(H_p, L_v, r)` | new `L` |
+|---|---|---|
+| HD 209458 b, max Kn in the critical region | 0.0214 | 0.0186 |
+| HD 209458 b, sonic point | 4.085 `R_p` | 4.085 `R_p` (`L` does not enter) |
+| HD 209458 b, `Kn_bulk` at the outer boundary | 2.28e-3 | 2.01e-3 |
+| LHS 1140 b, max Kn in the critical region (H I) | 1.9-3.0 | 2.0-3.1 |
+| LHS 1140 b, max `Kn_bulk` | 1.3-2.3 | 1.4-2.4 |
+| LHS 1140 b, exobase | 19.8-26.7 `R_p` | 18.8-25.4 `R_p` |
+| LHS 1140 b, `Kn_bulk` at 8-9.5 `R_p` | 0.14-0.30 | 0.13-0.29 |
+| LHS 1140 b, `Kn_bulk` at 1.1 `R_p` | 4e-5 - 1.2e-4 | 2.5e-4 - 4.2e-4 |
+| LHS 1140 b, `Mdot_Jeans` | 1.0-2.0e7 g/s | 1.0-2.0e7 g/s |
+| max Mach, `log10 Mdot`, coupling times | -- | unchanged (independent of `L`) |
+
+Two directions, both expected.  Inside 1.1 `R_p` the new `Kn` is up to 3x
+larger, because that is where the old `H_p` sat on its isobaric plateau.
+Outside the heating peak the new `Kn` is 10-15 % *smaller* on HD 209458 b
+and 5-10 % larger on LHS 1140 b: where `rho` and `T` fall together, as in
+the HD 209458 b outer wind, `|d ln p/dr| = |d ln rho/dr + d ln T/dr|`
+exceeds the RMS of the two, so the old scale was shorter there by up to
+sqrt(2) -- correctly conservative by accident, on a field that is not an
+independent state variable.
+
 ## 5. What this does and does not settle
 
 Settled by measurement: the collision model, the species-resolved Knudsen
@@ -255,7 +327,7 @@ Not settled, and not claimed: what the LHS 1140 b mass-loss rate actually
 is.  That needs a kinetic or transitional-flow calculation (DSMC, or a
 13-moment closure carried through the transitional region), which this
 repository does not contain.  Also untouched: whether the He 10830 line
-metrics -- which are formed at 1.1-3 `R_p`, where `Kn <= 0.021` in every case
-here (0.0001 at 1.1, 0.004-0.006 at 2, 0.014-0.021 at 3) -- are affected at all.  They are formed well inside the collisional
+metrics -- which are formed at 1.1-3 `R_p`, where `Kn <= 0.019` in every case
+here (0.0003 at 1.1, 0.004-0.006 at 2, 0.012-0.019 at 3) -- are affected at all.  They are formed well inside the collisional
 region; what is unvalidated is the *wind solution's mass flux*, not the
 line-forming layer.

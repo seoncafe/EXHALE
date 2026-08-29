@@ -1655,7 +1655,26 @@ the water cold trap, is part of the solution rather than an input.
 \texttt{vulcan\_to\_lower\_profile.py} converts a finished VULCAN
 \texttt{.vul} output into the same format; it is the cross-check arm, not a
 second production path, because VULCAN carries no climate model and so can
-never be the route away from a prescribed $T(p)$. Finally
+never be the route away from a prescribed $T(p)$.
+
+Both take the same statement of the eddy coefficient. By default the
+\texttt{Kzz} column is whatever $K_{zz}(p)$ the underlying solution carried;
+\texttt{-{}-kzz-const} $K$ replaces it with one value at every level, and
+\texttt{-{}-kzz-power} $\alpha$, with its amplitude \texttt{-{}-kzz-ref}
+$K_{\rm ref}$ and the pressure that amplitude is stated at
+\texttt{-{}-kzz-ref-bar} $P_{\rm ref}$ (default $1$\,bar), replaces it with
+the saturated gravity-wave form $K_{zz}(p) = K_{\rm ref}
+(p/P_{\rm ref})^{-\alpha}$ --- $\alpha = 1/2$ being the Lindzen (1981) slope
+fitted by Parmentier et al.\ (2013), $0.4$ that of Charnay et al.\ (2015).
+The two are mutually exclusive, \texttt{-{}-kzz-power} without
+\texttt{-{}-kzz-ref} is refused, and the power-law settings enter the
+\texttt{solution\_id} only when they are in use, so stating neither leaves a
+run and its fingerprint exactly as they were. On the Photochem arm a stated
+coefficient is the profile the chemistry is \emph{solved} on and not only the
+one reported. There is no ceiling on the power law: the file's own top bounds
+it, and EXHALE gives every cell above the shallowest tabulated level that
+level's value, so the level the amplitude is anchored at decides what the wind
+inherits above the profile. Finally
 \texttt{element\_flux\_closure.py} drives the pair of codes to their fixed
 point: the trial elemental fluxes of the header are imposed on the chemistry's
 upper boundary, the wind's own elemental flux is measured face by face and

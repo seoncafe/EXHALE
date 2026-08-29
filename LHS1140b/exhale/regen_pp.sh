@@ -1,5 +1,6 @@
 #!/bin/bash
 EX=/nfs/mocafe/kiseon/RT_Codes/ExoAtmosphere/EXHALE_v1.00
+. "$EX/LHS1140b/winered_hires_y.sh"   # He I 10830 at WINERED HIRES-Y, R = 68,000
 cd "$(dirname "$0")"
 export OMP_NUM_THREADS=6
 for c in solar heh1 heh10 heh100 heh1000 heh10000; do

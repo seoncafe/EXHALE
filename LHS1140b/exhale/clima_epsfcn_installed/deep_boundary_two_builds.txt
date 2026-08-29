@@ -1,0 +1,4 @@
+photochem          9.0    T_deep=424.9534068835  T_trop=185.4431858443
+photochem          9.1    T_deep=424.1967332054  T_trop=185.4451315523
+photochem_090_fix  9.0    T_deep=424.9534089414  T_trop=185.4431857221
+photochem_090_fix  9.1    T_deep=424.1967343205  T_trop=185.4451316070

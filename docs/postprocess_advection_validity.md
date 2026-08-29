@@ -287,3 +287,91 @@ electron budget) under
 
 That tree is scratch and is not part of the repository; the numbers quoted
 above are reproduced by the production runs recorded in this document.
+
+---
+
+# Two more, 2026-08-29: a population solved as a difference, and an unread `info`
+
+Same file, same post-process, found the same way (a one-cell step in an `_adv`
+metastable profile). Full write-up, with the numbers: `Update_EXHALE.md`
+section 88.
+
+## 3. The ground singlet was solved as a difference
+
+`System_implicit_adv_HeH_TR` carried the *summed* He I fraction as `x(2)` and
+the metastable as `x(4)`, and built the ground singlet -- which every rate in
+rows 2 and 4 needs -- as `xheiS = x(2) - x(4)`. Nothing in the system keeps the
+two apart. Where helium is heavily ionized and the little neutral helium left
+sits mostly in the metastable, the difference loses every significant digit and
+finally evaluates to exactly zero; row 2 then no longer contains the unknown it
+determines, and `hybrd1` stalls at `info = 4` with a residual of order `1e-2`.
+
+Fixed by solving for the two populations, `x(2) = n(1^1S)/n_He` and
+`x(4) = n(2^3S)/n_He`, and forming the summed He I as their **sum**. Row 2
+becomes the ground-singlet balance (the summed row minus the metastable row),
+which is the same system in different variables. `post_process_adv` carries
+`nheiS` and `nheiTR` as the profiles it solves for and forms
+`nhei = nheiS + nheiTR` where a routine wants the total; the only subtraction
+left is at the entry point, where the equilibrium solution hands over a summed
+He I and a metastable, and it is well conditioned there.
+
+Measured, PP-only re-runs at `OMP_NUM_THREADS=1` against a baseline built from
+the same tree without the change: `heh0p55_diff_ctrl` (the He-settled control,
+`K_zz = 0`) goes from **310 non-converged advection cell solves of 4660 to 0**,
+and its one-cell steps in `n(2^3S)` from 9 to 1; `heh2p13_diff_kzz1e9` and
+`flux_closure/heh11p1/k01` move by `2e-9` at most, which is the roundoff of a
+change of variables.
+
+The neighbours of the stalled cells returned `info = 1` while carrying
+`fvec(2) = 1.2e-2`: `hybrd1`'s `info = 1` tests the increment between iterates,
+not the residual. The guard of item 4 below would not have caught them.
+
+## 4. Nothing read the solver return code
+
+`post_process_adv` calls `hybrd1` three times per cell -- the advection
+ionization system, the metal stage re-solve (`pp_metals = 2`), the energy
+equation -- and wrote the returned iterate out in every case. A non-converged
+iterate satisfies neither the advection balance it was asked to solve nor the
+equilibrium balance it started from, so it is not a state of the gas; the
+equilibrium solution of that cell is, and it is already what the three validity
+conditions above fall back to. Each call now keeps the equilibrium state on
+`info /= 1` and counts it, summed over the ten passes (a cell reverted in an
+early pass feeds that pass's upwind cascade whether or not the last pass
+converges).
+
+On the four LHS 1140 b runs checked the guard is quiet: nothing in the
+advection system once item 3 is in, and one cell of the energy equation in two
+of the ten passes of `heh0p55`, worth `1e-4` to `1e-3` in that run's `_adv`
+profiles. The metal guard is untested by them -- `pp_metals` defaults to the
+frozen mode, so the re-solve block never runs.
+
+## 5. Undefined helium arrays with helium off
+
+With `thereis_He = .false.` the post-process left `nhei`, `nheii`, `nheiii`,
+`nheiTR` -- and, once the singlet is a profile of its own, `nheiS` -- undefined
+until the helium-free branch of the ionization loop zeroes them at its *end*.
+The first pass reads them before that, in `nhe`, in the electron sum and in
+`eval_cool`. They are now zeroed where the helium arrays are initialized;
+helium-on runs are bit-identical across the change.
+
+## Open, not fixed here
+
+The control run that exposed both is still unphysical after them, for a
+different reason: `P_HeI` in its post-process reaches `7e15 s^-1`. The SvS85
+secondary channel is added as
+`P_HeI = P_HeI + R_secHeI/max(nheiS, 1e-99)` (`util_ion_eq.f90`), a volumetric
+rate carrying SvS85's own helium abundance divided by the actual singlet
+density: it diverges as the singlet disappears, and the ten post-process passes
+close the loop. In a `Do only PP: True` run the equilibrium solve additionally
+runs with the coupling *off* and the post-process with it *on*, because
+`EXHALE_main.f90` flips `sec_ion_active` after the time loop. Both are
+described in `Update_EXHALE.md` section 88.4, with the measurement; neither is
+changed, because both move physics results.
+
+Fixed in passing, outside the post-process: `LHS1140b/make_memo_figures.py` and
+`LHS1140b/exhale/kzz_scan_table.py` formed the elemental helium density as
+`HeI + HeII + HeIII + HeITR`, counting the metastable twice -- it is a level of
+He I and is already inside the `HeI` column (`species_table.f90` says so in
+capitals). Both now sum the three ion stages only. The stored figures and
+tables move by at most `2e-6` relative (measured on the four `K_zz` arms), so
+nothing was regenerated.

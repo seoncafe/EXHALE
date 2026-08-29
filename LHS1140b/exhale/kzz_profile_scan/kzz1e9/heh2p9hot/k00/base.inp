@@ -1,0 +1,9 @@
+# base.inp -- provenance only.
+# The lower-atmosphere PROFILE is the single source of the base state and the
+# elemental reservoirs; every scalar physics key is refused beside it
+# (docs/phase_e_flux_closure_design.md section 2.4).
+# solution_id 89df6ddf5afd31e0c57e13093924578111f633ef475d9ea5c1e30d5c4c026aa8
+# source_code photochem
+# source_version photochem 0.8.4, photochem_to_lower_profile.py
+# p_match_bar 1.000000E-06
+# iteration 0

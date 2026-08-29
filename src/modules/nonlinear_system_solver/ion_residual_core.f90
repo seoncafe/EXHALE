@@ -12,6 +12,11 @@
 	! byte-identical regression (review item 4.1). The arithmetic order is
 	! kept exactly as in the original inline statements.
 
+	! The one imported quantity is the Penning : associative branching of the
+	! He(2^3S) + H total ionization rate, kept in Cool_coeff.f90 next to the
+	! rate coefficient itself so it has a single definition.
+	use Cooling_Coefficients, only: f_penning_HeI23S
+
 	implicit none
 
 	contains
@@ -69,6 +74,10 @@
 	! molecular system. b_heiTR is the He(2^3S) collisional-ionization
 	! coefficient (ci_HeI23S, threshold 4.8 eV): He(2^3S)+e- -> He+ + 2e-
 	! removes the triplet, so it enters as a destruction term -n_e*n_heiTR*b_heiTR.
+	! Q31 is the TOTAL He(2^3S)+H ionization rate coefficient, Penning plus
+	! associative: both channels quench the metastable, so the sink here takes
+	! the sum. Only the terms that create a lasting proton or deposit the
+	! Penning exothermicity are scaled by f_penning_HeI23S.
 	subroutine tr_triplet_row(ftr, n_hi, n_heiSI, n_heiTR, n_heii, n_e,   &
 	                          g_heiTR, a_heiTR, q13, q31a, q31b, Q31, A31, &
 	                          b_heiTR)
@@ -103,13 +112,22 @@
 	real*8, intent(in) :: b_hi, b_hei, b_heii, b_heiTR
 	real*8, intent(in) :: q13, q31a, q31b, Q31, A31
 
-	! Penning ionization source He(2^3S)+H0 -> He(1^1S) + H+ + e- (rate Q31,
-	! Taylor 2025): the same event that removes the triplet in tr_triplet_row
-	! ionizes H0, so it enters here as an H+ production term. All products are
-	! counted as H+; the associative branch (-> HeH+ + e-, ~10%, GM25) is not
-	! resolved here. n_hi*b_hi*n_e is the electron-impact ionization of H0
-	! (Voronov b_hi), restored to match the standard heh_rows.
-	fvec(1) = n_hi*g_hi + n_heiTR*n_hi*Q31 + n_hi*b_hi*n_e - a_hii*n_hii*n_e
+	! Penning ionization source He(2^3S)+H0 -> He(1^1S) + H+ + e-: the same
+	! collision that removes the triplet in tr_triplet_row ionizes H0, so it
+	! enters here as an H+ production term. Q31 is the TOTAL ionization rate,
+	! of which only the Penning branch f_penning_HeI23S leaves a proton behind.
+	! The remaining 10% is associative ionization He(2^3S)+H0 -> HeH+ + e-;
+	! this system carries no HeH+, and in an atomic gas HeH+ dissociatively
+	! recombines back to He + H (1.3e-8 cm^3 s^-1 at 2000 K, faster than any
+	! competing HeH+ reaction there), returning the H atom and consuming the
+	! electron, so that branch is a metastable sink but not a lasting proton
+	! or electron source. Where H2 is abundant that cycle is broken by
+	! HeH+ + H2 -> H3+ + He, and System_HeH_mol therefore does carry the
+	! branch explicitly into its HeH+ row.
+	! n_hi*b_hi*n_e is the electron-impact ionization of H0 (Voronov b_hi),
+	! restored to match the standard heh_rows.
+	fvec(1) = n_hi*g_hi + f_penning_HeI23S*n_heiTR*n_hi*Q31            &
+	        + n_hi*b_hi*n_e - a_hii*n_hii*n_e
 
 	! New equation for hei - sum of the two equations of Oklopcic. The last
 	! two terms are electron-impact ionization of ground-state (b_hei) and

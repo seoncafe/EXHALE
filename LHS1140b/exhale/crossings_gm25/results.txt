@@ -1,0 +1,279 @@
+======================================================================
+LHS 1140 b: the three He/H crossings, re-measured on the current binary
+======================================================================
+binary   EXHALE.x built 2026-08-29 04:56  (Update_EXHALE 84, 86, 87, 88)
+measured 2026-08-29, this directory; the stored arms outside it were read only
+target   red-pair EW = 1.108 +/- 0.030 %A over the vacuum window
+         10832.60-10834.20 A, He I 10830 convolved at R = 68,000
+         (EXHALE_TRANSIT_RES_HETR from ../winered_hires_y.sh)
+
+----------------------------------------------------------------------
+1. WELL MIXED  (He_diffusion off, scalar base, no metals, GJ 1132 SED)
+   configuration of ../heh0p55; W1 seeded from it, W2 from wm_heh0p45
+----------------------------------------------------------------------
+-- lineage W1, seed ../heh0p55 --
+arm                He/H log10Mdot  red[%] blue[%]  FWHM[A]   EW[%A]  EW/obs   info  ||R|| fluxspread   step   T4k   Zdrop  r_drop
+W1_0p40          0.4000    7.7400  3.9941  0.5774  0.25174  1.07089  0.9665      0 7.6e-04  6.58e-02      0     0     off  30.000  outer10=0.0266 T12=1109
+W1_0p41          0.4100    7.7500  4.0783  0.5899  0.25224  1.09497  0.9882      0 7.4e-04  6.58e-02      0     0     off  30.000  outer10=0.0266 T12=1119
+W1_0p42          0.4200    7.7300  4.0409  0.5842  0.25275  1.08775  0.9817      0 7.0e-04  6.69e-02      0     0     off  30.000  outer10=0.0258 T12=1132
+W1_0p425         0.4250    7.7400  4.0965  0.5923  0.25325  1.10396  0.9964      0 6.8e-04  6.68e-02      0     0     off  30.000  outer10=0.0261 T12=1137
+W1_0p43          0.4300    7.7400  4.1364  0.5983  0.25325  1.11526  1.0066      0 6.8e-04  6.61e-02      0     0     off  30.000  outer10=0.0261 T12=1141
+W1_0p435         0.4350    7.7400  4.1824  0.6051  0.25325  1.12841  1.0184      0 7.0e-04  6.60e-02      0     0     off  30.000  outer10=0.0262 T12=1145
+W1_0p44          0.4400    7.7400  4.2070  0.6087  0.25376  1.13608  1.0253      0 6.8e-04  6.61e-02      0     0     off  30.000  outer10=0.0261 T12=1150
+W1_0p45          0.4500    7.7400  4.2327  0.6124  0.25426  1.14530  1.0337      0 6.3e-04  6.67e-02      0     0     off  30.000  outer10=0.0259 T12=1162
+W1_0p46          0.4600    7.7400  4.2907  0.6209  0.25476  1.16300  1.0496      0 6.1e-04  6.65e-02      0     0     off  30.000  outer10=0.0259 T12=1171
+
+-- lineage W2, seed wm_heh0p45 (a solution of the current binary) --
+arm                He/H log10Mdot  red[%] blue[%]  FWHM[A]   EW[%A]  EW/obs   info  ||R|| fluxspread   step   T4k   Zdrop  r_drop
+W2_0p40          0.4000    7.7300  3.9549  0.5716  0.25174  1.06064  0.9573      0 7.3e-04  6.63e-02      0     0     off  30.000  outer10=0.0261 T12=1109
+W2_0p41          0.4100    7.7300  4.0088  0.5795  0.25224  1.07708  0.9721      0 9.1e-04  6.75e-02      0     0     off  30.000  outer10=0.0260 T12=1119
+W2_0p42          0.4200    7.7400  4.0908  0.5917  0.25275  1.10083  0.9935      0 7.1e-04  6.61e-02      0     0     off  30.000  outer10=0.0261 T12=1129
+W2_0p425         0.4250    7.7400  4.1166  0.5954  0.25325  1.10880  1.0007      0 7.0e-04  6.62e-02      0     0     off  30.000  outer10=0.0261 T12=1134
+W2_0p43          0.4300    7.7400  4.1383  0.5986  0.25325  1.11575  1.0070      0 6.9e-04  6.64e-02      0     0     off  30.000  outer10=0.0260 T12=1139
+W2_0p435         0.4350    7.7400  4.1671  0.6028  0.25325  1.12442  1.0148      0 6.7e-04  6.63e-02      0     0     off  30.000  outer10=0.0260 T12=1144
+W2_0p44          0.4400    7.7400  4.2045  0.6084  0.25376  1.13541  1.0247      0 6.6e-04  6.61e-02      0     0     off  30.000  outer10=0.0260 T12=1149
+W2_0p45          0.4500    7.7400  4.2327  0.6124  0.25426  1.14530  1.0337      0 6.3e-04  6.67e-02      0     0     off  30.000  outer10=0.0259 T12=1162
+W2_0p46          0.4600    7.7500  4.3356  0.6276  0.25426  1.17483  1.0603      0 8.9e-04  6.58e-02      0     0     off  30.000  outer10=0.0262 T12=1168
+
+well mixed W2 (of record): 9 arms, He/H 0.4-0.46, EW 1.0606-1.1748 %A
+   crossing  EW=1.108  bracket [0.42, 0.425]  chord 0.4245  quadratic 0.4244  (differ 0.02%)
+   -1sig     EW=1.138  bracket [0.44, 0.45]  chord 0.4426  quadratic 0.4416  (differ 0.24%)
+   +1sig     EW=1.078  bracket [0.41, 0.42]  chord 0.4104  quadratic 0.4105  (differ 0.02%)
+
+well mixed W1 (seed check): 9 arms, He/H 0.4-0.46, EW 1.0709-1.1630 %A
+   NOT monotonic in EW: 0.41->1.095 falls 0.4200->1.0877
+   crossing  EW=1.108  bracket [0.425, 0.43]  chord 0.4268  quadratic 0.4266  (differ 0.05%)
+   -1sig     EW=1.138  bracket [0.44, 0.45]  chord 0.4421  quadratic 0.4415  (differ 0.13%)
+   +1sig     EW=1.078  bracket [0.4, 0.41]  chord 0.4030  quadratic 0.4019  (differ 0.25%)
+
+----------------------------------------------------------------------
+2. K_zz = 1e9, SCALAR BASE  (He_diffusion on, He_Kzz 1.0e9, no metals)
+   configuration of ../heh2p13_diff_kzz1e9; Resid tol 5.0e-3 as there
+----------------------------------------------------------------------
+-- lineage K1, seed ../heh2_diff_kzz1e9 (He/H = 2.0) --
+arm                He/H log10Mdot  red[%] blue[%]  FWHM[A]   EW[%A]  EW/obs   info  ||R|| fluxspread   step   T4k   Zdrop  r_drop
+K1_1p55          1.5500    7.8000  4.0104  0.5799  0.24972  1.06777  0.9637      0 3.1e-03  1.48e-01      0     0     off  30.000  outer10=0.0265 T12=1038
+K1_1p60          1.6000    7.8000  4.0993  0.5930  0.25073  1.09441  0.9877      0 3.1e-03  1.48e-01      0     0     off  30.000  outer10=0.0264 T12=1052
+K1_1p65          1.6500    7.8000  4.1857  0.6057  0.25123  1.12040  1.0112      0 3.1e-03  1.48e-01      0     0     off  30.000  outer10=0.0263 T12=1066
+K1_1p70          1.7000    7.8000  4.2730  0.6185  0.25174  1.14681  1.0350      0 3.1e-03  1.48e-01      0     0     off  30.000  outer10=0.0263 T12=1080
+K1_1p75          1.7500    7.8000  4.3537  0.6304  0.25275  1.17134  1.0572      0 3.0e-03  1.48e-01      0     0     off  30.000  outer10=0.0262 T12=1093
+
+-- the same two bracket arms from the two other seeds --
+arm                He/H log10Mdot  red[%] blue[%]  FWHM[A]   EW[%A]  EW/obs   info  ||R|| fluxspread   step   T4k   Zdrop  r_drop
+K2_1p60          1.6000    7.8000  4.1109  0.5948  0.25073  1.09737  0.9904      0 3.0e-03  1.45e-01      0     0     off  30.000  outer10=0.0264 T12=1048
+K2_1p65          1.6500    7.8000  4.1976  0.6075  0.25123  1.12344  1.0139      0 3.0e-03  1.45e-01      0     0     off  30.000  outer10=0.0263 T12=1061
+K3_1p60          1.6000    7.8000  4.0584  0.5868  0.25073  1.08361  0.9780      0 3.0e-03  1.63e-01      0     0     off  30.000  outer10=0.0265 T12=1057
+K3_1p65          1.6500    7.8000  4.1425  0.5992  0.25123  1.10893  1.0008      0 3.0e-03  1.62e-01      0     0     off  30.000  outer10=0.0264 T12=1071
+   K2 seed ../heh2p13_diff_kzz1e9 (He/H = 2.13), K3 seed ../heh1_diff_kzz1e9 (He/H = 1.0)
+
+K_zz=1e9 K1 (of record): 5 arms, He/H 1.55-1.75, EW 1.0678-1.1713 %A
+   crossing  EW=1.108  bracket [1.6, 1.65]  chord 1.6261  quadratic 1.6260  (differ 0.01%)
+   -1sig     EW=1.138  bracket [1.65, 1.7]  chord 1.6833  quadratic 1.6834  (differ 0.01%)
+   +1sig     EW=1.078  bracket [1.55, 1.6]  chord 1.5692  quadratic 1.5691  (differ 0.01%)
+K_zz=1e9 K2 (seed check, chord only): 2 arms, He/H 1.6-1.65, EW 1.0974-1.1234 %A
+   crossing  EW=1.108  bracket [1.6, 1.65]  chord 1.6203  (fewer than three arms: no quadratic)
+   -1sig     EW=1.138  OUTSIDE the measured arms (no bracket) -- not extrapolated
+   +1sig     EW=1.078  OUTSIDE the measured arms (no bracket) -- not extrapolated
+K_zz=1e9 K3 (seed check, chord only): 2 arms, He/H 1.6-1.65, EW 1.0836-1.1089 %A
+   crossing  EW=1.108  bracket [1.6, 1.65]  chord 1.6482  (fewer than three arms: no quadratic)
+   -1sig     EW=1.138  OUTSIDE the measured arms (no bracket) -- not extrapolated
+   +1sig     EW=1.078  OUTSIDE the measured arms (no bracket) -- not extrapolated
+
+----------------------------------------------------------------------
+3. ELEMENTAL-FLUX CLOSURE  (Photochem --climate, K_zz = 1e9,
+   p_match = 1e-6 bar, tol 0.05, kmax 8, resid_tol 4.0e-4)
+   The closure iteration was run in full at every arm -- chemistry,
+   wind, elemental-flux measurement, under-relaxed update -- not a
+   re-convergence on a frozen profile.  One parent for the whole
+   ladder, ../flux_closure/heh9p7/k03 (reservoir 9.71), so the
+   largest reservoir step is 9.71/8.0 = 1.21x.
+   Each converged iterate's wind was then re-solved on its own output
+   with the profile held fixed, so that arms which stopped at
+   different k are read at the same place, their common wind fixed
+   point; the closure residual stays inside tol 0.05 after that
+   (checked by --dry-run: eps_max 0.042 at 8.75, 0.029 at 9.0,
+   0.024 at 9.1, 0.025 at 9.7).
+----------------------------------------------------------------------
+reservoir  k  eps_H       eps_He      He/H@match
+8.0        2  3.88522E-02  2.69775E-02  8.0089627E+00
+8.3        2  3.16843E-02  2.42355E-02  8.3093043E+00
+8.45       2  2.84350E-02  2.30953E-02  8.4594743E+00
+8.75       1  4.47270E-02  1.93165E-02  8.7597954E+00
+8.8        1  4.20020E-02  1.90037E-02  8.8098537E+00
+8.9        1  3.65538E-02  1.83964E-02  8.9099703E+00
+9.0        1  3.11080E-02  1.78128E-02  9.0100871E+00
+9.1        1  2.56651E-02  1.72510E-02  9.1102043E+00
+9.3        0  2.92686E-02  3.02009E-02  9.3104218E+00
+9.5        0  8.79563E-03  2.51522E-02  9.5106659E+00
+9.7        0  9.43343E-03  2.09039E-02  9.7109111E+00
+10.0       0  3.29307E-02  1.57622E-02  1.0011282E+01
+10.3       0  2.86391E-02  1.85649E-04  1.0311615E+01
+10.6       1  3.47093E-02  3.04475E-03  1.0611954E+01
+11.0       2  3.41311E-02  2.14462E-03  1.1012405E+01
+11.5       2  4.53720E-02  1.17237E-03  1.1512978E+01
+
+arm                He/H log10Mdot  red[%] blue[%]  FWHM[A]   EW[%A]  EW/obs   info  ||R|| fluxspread   step   T4k   Zdrop  r_drop
+C8p0             8.0000    7.3900  3.5790  0.5135  0.27646  1.05477  0.9520      0 1.6e-04  7.45e-02      2     0     0/0  20.799  outer10=0.0090 T12=1641
+C8p3             8.3000    7.3900  3.6121  0.5181  0.27696  1.06794  0.9638      0 1.6e-04  7.36e-02      2     0     0/0  20.457  outer10=0.0091 T12=1669
+C8p45            8.4500    7.3900  3.6277  0.5202  0.27747  1.07435  0.9696      0 1.5e-04  7.35e-02      2     0     0/0  20.457  outer10=0.0091 T12=1683
+C8p75            8.7500    7.4000  3.7000  0.5302  0.27847  1.10013  0.9929      0 3.0e-04  8.90e-02      2     0     0/0  20.457  outer10=0.0094 T12=1718
+C8p8             8.8000    7.4000  3.7027  0.5305  0.27847  1.10145  0.9941      0 2.9e-04  8.82e-02      2     0     0/0  20.457  outer10=0.0094 T12=1722
+C8p9             8.9000    7.4000  3.7078  0.5311  0.27847  1.10401  0.9964      0 2.7e-04  8.67e-02      2     0     0/0  20.457  outer10=0.0094 T12=1731
+C9p0             9.0000    7.3900  3.7143  0.5320  0.27948  1.10685  0.9990      0 2.5e-04  8.52e-02      2     0     0/0  20.121  outer10=0.0094 T12=1739
+C9p1             9.1000    7.3900  3.7188  0.5326  0.27948  1.10922  1.0011      0 2.4e-04  8.38e-02      2     0     0/0  20.121  outer10=0.0094 T12=1747
+C9p3             9.3000    7.4000  3.7430  0.5359  0.27999  1.11867  1.0096      0 2.5e-04  8.45e-02      2     0     0/0  20.121  outer10=0.0095 T12=1764
+C9p5             9.5000    7.3900  3.7482  0.5364  0.28049  1.12220  1.0128      0 2.1e-04  8.18e-02      3     0     0/0  20.121  outer10=0.0095 T12=1780
+C9p7             9.7000    7.3900  3.7538  0.5371  0.28049  1.12557  1.0159      0 1.8e-04  7.98e-02      3     0     0/0  19.790  outer10=0.0095 T12=1795
+C10p0           10.0000    7.3900  3.7587  0.5376  0.28150  1.12954  1.0194      0 2.4e-04  7.75e-02      3     0     0/0  19.790  outer10=0.0095 T12=1814
+C10p3           10.3000    7.3900  3.7534  0.5366  0.28201  1.13027  1.0201      0 2.6e-04  7.18e-02      3     0     0/0  19.790  outer10=0.0094 T12=1832
+C10p6           10.6000    7.3900  3.7584  0.5372  0.28251  1.13421  1.0237      0 1.6e-04  6.79e-02      4     0     0/0  19.465  outer10=0.0094 T12=1853
+C11p0           11.0000    7.3900  3.7771  0.5396  0.28352  1.14297  1.0316      0 2.3e-04  6.74e-02      4     0     0/0  19.465  outer10=0.0095 T12=1876
+C11p5           11.5000    7.3900  3.7908  0.5412  0.28453  1.15110  1.0389      0 3.2e-04  6.71e-02      5     0     0/0  19.146  outer10=0.0095 T12=1909
+
+flux closure (of record): 16 arms, He/H 8-11.5, EW 1.0548-1.1511 %A
+   crossing  EW=1.108  bracket [9, 9.1]  chord 9.0484  quadratic 9.0461  (differ 0.03%)
+   -1sig     EW=1.138  bracket [10.6, 11]  chord 10.7716  quadratic 10.7950  (differ 0.22%)
+   +1sig     EW=1.078  bracket [8.45, 8.75]  chord 8.4923  quadratic 8.5080  (differ 0.18%)
+
+-- three arms re-closed from a different seed (the seed systematic) --
+arm                He/H log10Mdot  red[%] blue[%]  FWHM[A]   EW[%A]  EW/obs   info  ||R|| fluxspread   step   T4k   Zdrop  r_drop
+D8p75            8.7500    7.3900  3.6360  0.5212  0.27847  1.07937  0.9742      0 2.1e-04  6.96e-02      2     0     0/0  20.457  outer10=0.0091 T12=1702
+D9p0             9.0000    7.3900  3.7084  0.5312  0.27898  1.10490  0.9972      0 2.2e-04  8.05e-02      2     0     0/0  20.121  outer10=0.0094 T12=1736
+D9p1             9.1000    7.3900  3.7003  0.5300  0.27948  1.10299  0.9955      0 2.6e-04  7.89e-02      2     0     0/0  20.121  outer10=0.0093 T12=1740
+   D8p75 seed fcA_heh8p45/k02, D9p0 seed fc_heh10p0/k00, D9p1 seed fcA_heh8p9/k01
+   EW against the arms of record: 1.07937 vs 1.10013 (-1.9%),
+                                  1.10490 vs 1.10685 (-0.18%),
+                                  1.10299 vs 1.10922 (-0.56%)
+
+======================================================================
+SUMMARY
+======================================================================
+                     measured bracket        crossing            other-seed  earlier
+  crossing            (EW straddles 1.108)   chord / quadratic   spread      interpolation
+  well mixed          0.42  - 0.425          0.4245 / 0.4244     0.4245-0.4268   0.424
+  K_zz = 1e9          1.60  - 1.65           1.6261 / 1.6260     1.620-1.648     1.626
+  flux closure        9.0   - 9.1            9.0484 / 9.0461     9.05-9.07*      9.317
+  * the closure figure is the least secure of the three.  Of the three
+    arms re-closed from a different seed, the 9.0 one pairs with the 9.1
+    arm of record and gives 9.07; the 9.1 one falls BELOW the target
+    (1.10299 against 1.108), so on that seed the crossing lies above 9.1
+    and the arms run do not bracket it -- it is not extrapolated here.
+    The 8.75 arm moves 1.9 percent in EW between seeds, which is 10
+    percent in reservoir He/H at the local slope d ln EW / d ln (He/H)
+    = 0.19.  So 9.05 is the crossing of the single-parent ladder, and
+    the seed systematic on it is of order half a unit in reservoir He/H,
+    larger than anything the solver's own tests report.
+
+  1-sigma band of the measurement (EW = 1.108 -/+ 0.030), all inside
+  measured arms, nothing extrapolated:
+     well mixed    0.410 - 0.443
+     K_zz = 1e9    1.569 - 1.683
+     flux closure  8.49  - 10.77   (the low end is interpolated across
+                                    the un-runnable 8.5-8.7 band, below)
+
+QUALITY INDICATORS -- every arm in this directory
+  step test    no arm carries a step at the T = 4000 K seam of the
+               retired Taylor Penning fit (T4k = 0 everywhere).  The
+               well-mixed and K_zz arms flag no departure from the
+               local trend at all; the closure arms flag 2-5 cells,
+               all of them at 19.1-20.8 R_p where T falls (the r_drop
+               radius itself) and one at 29.0 R_p, and none at
+               equilibrium.  It is the same two-cell pattern in every
+               closure arm, moving inward with the reservoir.
+  metal test   no cell has C+N+O = 0 in any closure arm (0/0 at every
+               reservoir, equilibrium and advected).  Cases 1 and 2
+               carry no metals at all (no metals.inp, as in their
+               reference cases), so the test does not apply there.
+  r_drop       monotone non-increasing along every scan: 30.00 flat
+               for the well-mixed and K_zz arms (T never falls below
+               half of T(12 R_p) inside the domain), and
+               20.80 -> 19.15 R_p across the closure ladder.
+  outer column the He 2^3S share outside 10 R_p is flat within each
+               scan: 0.0259-0.0262 (well mixed), 0.0262-0.0265
+               (K_zz = 1e9), 0.0090-0.0095 (closure).  No arm stands
+               out the way the jump-seeded arm of Update_EXHALE
+               section 83 does (0.0219 against 0.0112).
+
+ARMS RE-SOLVED FROM A DIFFERENT SEED
+  Two arms deviated and were re-judged, both in the well-mixed scan
+  as first run (lineage W1): He/H = 0.41 and 0.42, whose EW is
+  non-monotonic (1.09497 then 1.08775) and whose outer column share
+  sits at 0.0266 and 0.0258 against 0.0259-0.0262 elsewhere.  The
+  whole scan was re-solved from wm_heh0p45, a solution of the current
+  binary, and is monotone throughout (lineage W2, the one of record);
+  the crossing moves from 0.4268 to 0.4245.
+  In the closure ladder the 8.75 arm deviates the same way and its
+  re-closure from the 8.45 neighbour returns 1.07937 in place of
+  1.10013, which puts it back on the trend of 8.0-8.45.  It is not a
+  bracket arm; the crossing does not move.
+
+WHAT WAS NOT MEASURED
+  - Reservoir He/H in [8.5, 8.7] cannot be run at all: the profile
+    adapter refuses the photochemical column because the deepest-level
+    N/H departs from the input by 1.0e-4 to 1.9e-4 against its 1.0e-4
+    tolerance.  The refusal is identical for three different trial
+    fluxes, so it is a property of the reservoir value, not of the
+    iteration.  The closure curve therefore has a 3.4 percent gap in
+    reservoir between 8.45 and 8.75, and the +1-sigma end (8.49) is
+    interpolated across it.  The crossing itself, 9.05, is not.
+  - Only the nominal transit configuration was synthesized;
+    EXHALE_TRANSIT_TURB was not run for any arm.
+  - The absolute equivalent width of every closure arm still carries
+    the outer-region systematic of Update_EXHALE section 83: the
+    20-30 R_p region that sets part of the line lies outside the
+    collisional domain, no convergence test applied here bounds it,
+    and the 0.2-1.9 percent seed spread measured above is the size of
+    what it moves.
+  - The closure arms stop at tol 0.05 as instructed.  A tighter
+    tolerance cannot be run: at 0.008 the driver's own honesty rule
+    refuses the answer, because the steady window the flux is measured
+    on has a radial spread of 0.011-0.022, larger than the residual
+    that would be decided on it.
+  - Nothing outside this directory was written; no stored arm, golden
+    or document was touched, and make check was not re-run (no code
+    was changed).
+
+======================================================================
+WHICH DIRECTORY IS WHICH
+======================================================================
+  wm_heh*     well mixed, lineage W1 (seed ../heh0p55)
+  rs_heh*     well mixed, lineage W2 (seed wm_heh0p45) -- the record
+  kz_heh*     K_zz = 1e9, lineage K1 (seed ../heh2_diff_kzz1e9) -- the record
+  kzB_heh*    the same two arms from ../heh2p13_diff_kzz1e9
+  kzC_heh*    the same two arms from ../heh1_diff_kzz1e9
+  fcA_heh*,
+  fc_heh8p8, fc_heh9p1, fc_heh9p3, fc_heh9p5, fc_heh9p7, fc_heh10p0,
+  fc_heh10p3, fc_heh10p6
+              closure arms of the single-parent ladder
+  rw_*        their winds re-solved to their own fixed point -- the
+              record; every closure number quoted above is read here
+  fcB_heh*, rwB_*   the three seed-systematic re-closures
+  fc_heh8p0, fc_heh8p3, fc_heh8p4, fc_heh8p45, fc_heh8p75
+              the first, chained low end (each arm seeded from the arm
+              below it rather than from the common parent).  Superseded
+              by the fcA_ arms and NOT part of the crossing: they carry
+              a generation-dependent outer state and their EW is not
+              monotone against the single-parent arms.  Kept because
+              that non-monotonicity is what identified the effect.
+  fcA_heh8p5.log, fcA_heh8p6.log, fcA_heh8p7.log, fc_heh8p5*, fc_heh8p55*,
+  fc_heh8p6*, fc_heh8p65*, fc_heh8p7*
+              logs of the reservoir band the adapter refuses; no run
+              directory survives them
+  fcT_heh*.log  the tol = 0.008 attempt the driver refuses as
+              UNRESOLVED (the window spread exceeds the tolerance)
+
+  <arm>/tpm_turb/
+              the same arm's line re-synthesized with the turbulence
+              term on (EXHALE_TRANSIT_TURB=1, the p-winds setting of
+              Lampon et al. 2020), the wind untouched.  Run for
+              rs_heh0p40, rs_heh0p425 and rs_heh0p46, the three arms
+              the memo's Fig. fig4 draws.  Red-pair EW with the term on
+              1.07147, 1.12058, 1.18793 %A, against 1.06064, 1.10880,
+              1.17483 with it off.
+
+  scripts: run_wellmixed.sh, run_kzz1e9.sh, run_closure.sh,
+           resolve_wind.sh (the runs); run_turb.sh (the turbulence-on
+           re-synthesis); measure.py (one row per arm,
+           including the three quality indicators); crossing.py (the
+           chord and quadratic solves); reproduce.sh (all of it, in
+           order).

@@ -1,0 +1,539 @@
+diff --git a/photochem/extensions/gasgiants.py b/photochem/extensions/gasgiants.py
+index ed475c3..38de24a 100644
+--- a/photochem/extensions/gasgiants.py
++++ b/photochem/extensions/gasgiants.py
+@@ -16,7 +16,8 @@ from ..utils._format import yaml, FormatSettings_main, MyDumper
+ 
+ class GasGiantData():
+     
+-    def __init__(self, planet_radius, planet_mass, P_ref, thermo_file):
++    def __init__(self, planet_radius, planet_mass, P_ref, thermo_file,
++                 equilibrium_mass_tol=1.0e-12):
+         
+         # Save several inputs
+         self.planet_radius = planet_radius
+@@ -25,6 +26,7 @@ class GasGiantData():
+ 
+         # Equilibrium solver
+         self.gas = equilibrate.ChemEquiAnalysis(thermo_file)
++        self.gas.mass_tol = equilibrium_mass_tol
+ 
+         # Parameters using during initialization
+         # The factor of pressure the atmosphere extends
+@@ -63,7 +65,8 @@ class EvoAtmosphereGasGiant(EvoAtmosphere):
+ 
+     def __init__(self, mechanism_file, stellar_flux_file, planet_mass, planet_radius, 
+                  nz=100, photon_scale_factor=1.0, solar_zenith_angle=60.0, P_ref=1.0e6, 
+-                 thermo_file=None, data_dir=None):
++                 thermo_file=None, data_dir=None,
++                 equilibrium_mass_tol=1.0e-12):
+         """Initializes the code
+ 
+         Parameters
+@@ -89,7 +92,13 @@ class EvoAtmosphereGasGiant(EvoAtmosphere):
+         data_dir : str, optional
+             Path to the data directory containing photolysis cross sections and other data
+             needed to run the model
++        equilibrium_mass_tol : float, optional
++            Elemental mass-balance tolerance passed to the equilibrium solver,
++            by default 1e-12.
+         """        
++
++        if not np.isfinite(equilibrium_mass_tol) or equilibrium_mass_tol <= 0.0:
++            raise ValueError('equilibrium_mass_tol must be finite and positive')
+         
+         # Configure the photochemical model. The atmosphere is initialized
+         # later from the supplied pressure-based climate profile.
+@@ -114,7 +123,10 @@ class EvoAtmosphereGasGiant(EvoAtmosphere):
+             thermo_file = mechanism_file
+ 
+         # New data
+-        self.gdat = GasGiantData(planet_radius, planet_mass, P_ref, thermo_file)
++        self.gdat = GasGiantData(
++            planet_radius, planet_mass, P_ref, thermo_file,
++            equilibrium_mass_tol
++        )
+ 
+         # Values in photochem to adjust
+         self.var.verbose = 0
+@@ -861,7 +873,7 @@ def composition_at_metallicity(gas, T, P, CtoO, metal, rainout_condensed_atoms =
+         out[sp] = np.empty(P.shape[0])
+     mubar = np.empty(P.shape[0])
+     
+-    molfracs_atoms = gas.molfracs_atoms_sun
++    molfracs_atoms = gas.molfracs_atoms_sun.copy()
+     for i,sp in enumerate(gas.atoms_names):
+         if sp != 'H' and sp != 'He':
+             molfracs_atoms[i] = gas.molfracs_atoms_sun[i]*metal
+@@ -875,21 +887,68 @@ def composition_at_metallicity(gas, T, P, CtoO, metal, rainout_condensed_atoms =
+     molfracs_atoms[indC] = molfracs_atoms[indC] + a
+     molfracs_atoms[indO] = molfracs_atoms[indO] - a
+ 
+-    # Compute chemical equilibrium at all altitudes
+-    for i in range(P.shape[0]):
+-        if i > 0:
+-            gas.use_prev_guess = True
+-        for eps in [0.0, 1.0e-12, -1.0e-12, 1.0e-8, -1.0e-8]:
+-            converged = gas.solve(P[i], T[i] + T[i]*eps, molfracs_atoms=molfracs_atoms)
+-            if converged:
+-                break
+-        # Do not enforce convergence.
+-        for j,sp in enumerate(gas.gas_names):
+-            out[sp][i] = gas.molfracs_species_gas[j]
+-        mubar[i] = gas.mubar
+-        if rainout_condensed_atoms:
+-            molfracs_atoms = gas.molfracs_atoms_gas
+-    gas.use_prev_guess = False
++    # Equilibrate historically used one absolute mass threshold scaled by the
++    # dominant element. Independently verify every requested element so a
++    # reported success cannot silently retain a large trace-element residual.
++    #
++    # The test is stated on the total elemental vector, gas plus condensate,
++    # and only at a level whose solution has no condensed phase. Where a
++    # condensate is present neither reported vector can be compared with the
++    # request: molfracs_atoms_gas is renormalized over the gas alone, so every
++    # element that stays in the gas rises by the fraction that rained out, and
++    # molfracs_atoms keeps the condensate of the previous level whenever the
++    # solve is started from it (use_prev_guess), which leaves the total
++    # carrying atoms the request no longer contains. Measured on the LHS 1140 b
++    # column at He/H = 9: condensate-free levels close to 2e-14 on the total,
++    # the first condensing level to 2e-14 on the total and 9.9e-1 on the gas,
++    # and every level above it to 1.1e+2 on the total and 6e-14 on the gas.
++    # Every level deep enough to set an elemental handoff is condensate-free,
++    # which is where the residual this test exists to catch appears.
++    closure_rtol = max(1.0e-8, 100.0*gas.mass_tol)
++
++    # Compute chemical equilibrium at all altitudes.
++    try:
++        for i in range(P.shape[0]):
++            gas.use_prev_guess = i > 0
++            accepted = False
++            worst_residual = np.inf
++            for eps in [0.0, 1.0e-12, -1.0e-12, 1.0e-8, -1.0e-8]:
++                converged = gas.solve(
++                    P[i], T[i] + T[i]*eps,
++                    molfracs_atoms=molfracs_atoms
++                )
++                if not converged:
++                    continue
++                condensed = np.asarray(
++                    gas.molfracs_atoms_condensate, dtype=float
++                )
++                if np.any(condensed > 0.0):
++                    worst_residual = 0.0
++                    accepted = True
++                    break
++                atoms_out = np.asarray(gas.molfracs_atoms, dtype=float)
++                positive = molfracs_atoms > 0.0
++                residual = np.abs(
++                    atoms_out[positive]/molfracs_atoms[positive] - 1.0
++                )
++                worst_residual = float(np.max(residual, initial=0.0))
++                if worst_residual <= closure_rtol:
++                    accepted = True
++                    break
++            if not accepted:
++                raise RuntimeError(
++                    'Chemical equilibrium failed elemental closure at '
++                    f'level {i} (P={P[i]:.8e} dyn/cm^2, T={T[i]:.8e} K): '
++                    f'largest relative residual {worst_residual:.3e}, '
++                    f'tolerance {closure_rtol:.3e}'
++                )
++            for j,sp in enumerate(gas.gas_names):
++                out[sp][i] = gas.molfracs_species_gas[j]
++            mubar[i] = gas.mubar
++            if rainout_condensed_atoms:
++                molfracs_atoms = gas.molfracs_atoms_gas
++    finally:
++        gas.use_prev_guess = False
+ 
+     return out, mubar
+ 
+diff --git a/src/dependencies/CMakeLists.txt b/src/dependencies/CMakeLists.txt
+index 692fce3..f4c6411 100644
+--- a/src/dependencies/CMakeLists.txt
++++ b/src/dependencies/CMakeLists.txt
+@@ -49,7 +49,7 @@ CPMAddPackage(
+ 
+ CPMAddPackage(
+   NAME clima 
+-  VERSION 0.7.4
++  VERSION 0.7.5
+   OPTIONS 
+     "BUILD_EXECUTABLE OFF"
+     "BUILD_WITH_OPENMP ${BUILD_WITH_OPENMP}"
+@@ -57,7 +57,8 @@ CPMAddPackage(
+     "BUILD_PYTHON_CLIMA ${BUILD_PYTHON_PHOTOCHEM}"
+     "PYTHON_CLIMA_DESTINATION photochem"
+   GITHUB_REPOSITORY "Nicholaswogan/clima"
+-  GIT_TAG "v0.7.4"
++  GIT_TAG "v0.7.5"
++  PATCHES "${CMAKE_CURRENT_LIST_DIR}/patches/clima-bounded-scaled-solvers.patch"
+   EXCLUDE_FROM_ALL OFF
+ )
+ 
+@@ -81,5 +82,6 @@ CPMAddPackage(
+     "PYTHON_EQUILIBRATE_DESTINATION photochem"
+   GITHUB_REPOSITORY "Nicholaswogan/Equilibrate"
+   GIT_TAG "v0.2.2"
++  PATCHES "${CMAKE_CURRENT_LIST_DIR}/patches/equilibrate-element-relative-mass-closure.patch"
+   EXCLUDE_FROM_ALL OFF
+-)
+\ No newline at end of file
++)
+diff --git a/src/dependencies/patches/clima-bounded-scaled-solvers.patch b/src/dependencies/patches/clima-bounded-scaled-solvers.patch
+new file mode 100644
+index 0000000..9580fd7
+--- /dev/null
++++ b/src/dependencies/patches/clima-bounded-scaled-solvers.patch
+@@ -0,0 +1,265 @@
++--- a/src/adiabat/clima_adiabat.f90
+++++ b/src/adiabat/clima_adiabat.f90
++@@ -584,8 +584,6 @@
++   !> surface pressure. We do a non-linear solve for the background gas pressure
++   !> so that the desired total surface pressure is satisfied.
++   subroutine AdiabatClimate_make_profile_bg_gas(self, T_surf, P_i_surf, P_surf, bg_gas, err)
++-    use minpack_module, only: hybrd1
++-    use clima_useful, only: MinpackHybrd1Vars
++     class(AdiabatClimate), intent(inout) :: self
++     real(dp), intent(in) :: T_surf !! K
++     real(dp), intent(in) :: P_i_surf(:) !! dynes/cm^2
++@@ -594,9 +592,13 @@
++     character(:), allocatable, intent(out) :: err
++ 
++     real(dp), allocatable :: P_i_surf_copy(:)
+++    integer, parameter :: nscan = 49, max_iterations = 100
+++    real(dp), parameter :: log_pressure_span = 12.0_dp
+++    real(dp), parameter :: pressure_tolerance = 1.0e-10_dp
++     integer :: i, ind
++-    type(MinpackHybrd1Vars) :: mv
++-    real(dp), parameter :: scale_factors(*) = [1.0_dp, 0.1_dp]
+++    real(dp) :: x, x_previous, x_lower, x_upper, x_mid
+++    real(dp) :: f, f_previous, f_lower, f_mid
+++    logical :: valid, previous_valid, bracket_found
++ 
++     if (P_surf <= 0.0_dp) then
++       err = 'P_surf must be greater than zero.'
++@@ -612,41 +614,69 @@
++     allocate(P_i_surf_copy(size(P_i_surf)))
++     P_i_surf_copy = P_i_surf
++ 
++-    mv = MinpackHybrd1Vars(1)
++-  
++-    do i = 1,size(scale_factors)
++-      mv%x(1) = log10(P_surf*scale_factors(i))
++-      call hybrd1(fcn, mv%n, mv%x, mv%fvec, mv%tol, mv%info, mv%wa, mv%lwa)
++-      if (mv%info == 1) then
+++    ! The background pressure is positive and cannot exceed the requested
+++    ! total surface pressure. Scan that physical interval in log pressure so
+++    ! an isolated invalid thermodynamic state is rejected instead of
+++    ! terminating an unconstrained local solve.
+++    previous_valid = .false.
+++    bracket_found = .false.
+++    do i = 0,nscan-1
+++      x = log10(P_surf) - log_pressure_span + &
+++          log_pressure_span*real(i,dp)/real(nscan-1,dp)
+++      call pressure_residual(x, f, valid)
+++      if (.not. valid) then
+++        previous_valid = .false.
+++        cycle
+++      endif
+++      if (abs(f) <= pressure_tolerance) return
+++      if (previous_valid .and. f*f_previous < 0.0_dp) then
+++        x_lower = x_previous
+++        f_lower = f_previous
+++        x_upper = x
+++        bracket_found = .true.
++         exit
++       endif
+++      x_previous = x
+++      f_previous = f
+++      previous_valid = .true.
++     enddo
++-    if (mv%info == 0 .or. mv%info > 1) then
++-      err = 'hybrd1 root solve failed in make_profile_bg_gas.'
++-      return
++-    elseif (mv%info < 0) then
++-      err = 'hybrd1 root solve failed in make_profile_bg_gas: '//err
+++    if (.not. bracket_found) then
+++      err = 'Could not bracket background pressure in make_profile_bg_gas.'
++       return
++     endif
++ 
++-    call fcn(mv%n, mv%x, mv%fvec, mv%info)
+++    do i = 1,max_iterations
+++      x_mid = 0.5_dp*(x_lower + x_upper)
+++      call pressure_residual(x_mid, f_mid, valid)
+++      if (.not. valid) then
+++        err = 'Invalid thermodynamic state inside the background-pressure bracket.'
+++        return
+++      endif
+++      if (abs(f_mid) <= pressure_tolerance .or. &
+++          abs(x_upper - x_lower) <= pressure_tolerance) return
+++      if (f_lower*f_mid < 0.0_dp) then
+++        x_upper = x_mid
+++      else
+++        x_lower = x_mid
+++        f_lower = f_mid
+++      endif
+++    enddo
+++    err = 'Background-pressure bisection did not converge.'
++ 
++   contains
++-    subroutine fcn(n_, x_, fvec_, iflag_)
++-      integer, intent(in) :: n_
++-      real(dp), intent(in) :: x_(n_)
++-      real(dp), intent(out) :: fvec_(n_)
++-      integer, intent(inout) :: iflag_
++-
++-      P_i_surf_copy(ind) = 10.0_dp**x_(1)
++-
+++    subroutine pressure_residual(x_, f_, valid_)
+++      real(dp), intent(in) :: x_
+++      real(dp), intent(out) :: f_
+++      logical, intent(out) :: valid_
+++      P_i_surf_copy(ind) = 10.0_dp**x_
++       call self%make_profile(T_surf, P_i_surf_copy, err)
++       if (allocated(err)) then
++-        iflag_ = -1
+++        deallocate(err)
+++        valid_ = .false.
++         return
++       endif
++-
++-      fvec_(1) = self%P_surf - P_surf
+++      f_ = (self%P_surf - P_surf)/P_surf
+++      valid_ = .true.
++     end subroutine
++   end subroutine
++ 
++@@ -880,7 +910,7 @@
++   end subroutine
++ 
++   function AdiabatClimate_simple_solver(self, fcn, T_guess, err) result(T_surf)
++-    use minpack_module, only: hybrd1
+++    use minpack_module, only: hybrd
++     use clima_useful, only: MinpackHybrd1Vars
++     class(AdiabatClimate), intent(inout) :: self
++     procedure(toa_fluxes_fcn) :: fcn
++@@ -888,8 +918,41 @@
++     character(:), allocatable, intent(out) :: err
++     real(dp) :: T_surf
++ 
++-    real(dp) :: T_guess_
+++    real(dp) :: T_guess_, flux_scale
++     type(MinpackHybrd1Vars) :: mv
+++    integer :: maxfev, ml, mu, mode, nprint, nfev, lr, ifjac
+++    ! Forward-difference step for the Jacobian.  MINPACK differences with
+++    ! h = sqrt(max(epsfcn, epsilon))*|x_j| and `hybrd1` fixes epsfcn at
+++    ! zero, so its step is 1.5e-8 relative.  The unknowns are
+++    ! log10(T_surf - T_trop) ~ 2.45 and log10(T_trop), so that is a
+++    ! temperature step of 2e-5 K, over which the normalized flux residual
+++    ! moves by about as much as its own numerical jitter, ~3e-8.  The
+++    ! Jacobian is then noise.  Measured on LHS 1140 b at the 400/120 K
+++    ! start, the flux row differentiated at that step reads -0.98, +0.28
+++    ! and -4.92 at three neighbouring compositions whose true values are
+++    ! -1.21, -1.22 and -1.30, and the small cross entry comes out with the
+++    ! wrong sign.  A first step of several decades in log10 T_surf follows,
+++    ! and the profile is then requested at a temperature the thermodynamic
+++    ! polynomials, which stop at 6000 K, cannot supply.
+++    !
+++    ! epsfcn = 1e-8 differences at 1e-4 relative, a step of 0.16 K: about
+++    ! 1e4 above the jitter, and close enough to the derivative that the
+++    ! forward difference reproduces a converged central difference to
+++    ! 0.12 percent or better on the flux row at every composition tested,
+++    ! and to 0.5 percent on the small cross entry at three of four (9
+++    ! percent at the fourth, where that entry is 1e-4 of the flux row and
+++    ! carries the step accordingly).  Larger steps also solve: epsfcn
+++    ! 1e-10, 1e-6 and 1e-4 each solve the same 61-point He/H grid, so the
+++    ! grid does not choose between them.  Their Jacobians do differ: at
+++    ! 1e-4, a 16 K step, the flux row is 9 percent off the derivative and
+++    ! the cross entry 38 percent off at every composition, and at 1e-12
+++    ! and below the cross entry is back in the noise.  1e-8 is the middle
+++    ! of the window where neither error source is active.
+++    !
+++    ! `hybrd` is `hybrd1`'s own algorithm with this one argument exposed;
+++    ! every other setting below is `hybrd1`'s.
+++    real(dp), parameter :: epsfcn = 1.0e-8_dp
+++    real(dp), parameter :: factor = 100.0_dp
++     
++     if (present(T_guess)) then
++       T_guess_ = T_guess
++@@ -898,24 +961,56 @@
++     endif
++     
++     if (self%solve_for_T_trop) then
+++      if (T_guess_ <= self%T_trop) then
+++        err = 'T_guess must be greater than T_trop.'
+++        return
+++      endif
++       mv = MinpackHybrd1Vars(2)
++-      mv%x(1) = log10(T_guess_)
+++      ! Solve for the positive temperature contrast so every trial remains
+++      ! in the physical domain T_surf > T_trop.
+++      mv%x(1) = log10(T_guess_ - self%T_trop)
++       mv%x(2) = log10(self%T_trop)
++     else
++       mv = MinpackHybrd1Vars(1)
++       mv%x(1) = log10(T_guess_)
++     endif
++-    call hybrd1(fcn_hybrj, mv%n, mv%x, mv%fvec, mv%tol, mv%info, mv%wa, mv%lwa)
+++    ! ISR and OLR are in mW/m^2, while bolometric_flux is in W/m^2.
+++    ! Scaling removes the unit and magnitude imbalance against the
+++    ! temperature residual in the coupled solve.
+++    flux_scale = max(1.0e-6_dp, 1.0e3_dp*abs(self%rad%bolometric_flux()) + &
+++                                   abs(self%surface_heat_flow))
+++    maxfev = 200*(mv%n + 1)
+++    ml = mv%n - 1
+++    mu = mv%n - 1
+++    mode = 2
+++    mv%wa(1:mv%n) = 1.0_dp
+++    nprint = 0
+++    lr = (mv%n*(mv%n + 1))/2
+++    ifjac = 6*mv%n + lr
+++    call hybrd(fcn_hybrj, mv%n, mv%x, mv%fvec, mv%tol, maxfev, ml, mu, epsfcn, &
+++               mv%wa(1), mode, factor, nprint, mv%info, nfev, mv%wa(ifjac+1), mv%n, &
+++               mv%wa(6*mv%n+1), lr, mv%wa(mv%n+1), mv%wa(2*mv%n+1), mv%wa(3*mv%n+1), &
+++               mv%wa(4*mv%n+1), mv%wa(5*mv%n+1))
+++    if (mv%info == 5) mv%info = 4
++     if (mv%info == 0 .or. mv%info > 1) then
++-      err = 'hybrd1 root solve failed.'
+++      err = 'hybrd root solve failed.'
++       return
++     elseif (mv%info < 0) then
++-      err = 'hybrd1 root solve failed: '//err
+++      err = 'hybrd root solve failed: '//err
++       return
++     endif
++     
++-    T_surf = 10.0_dp**mv%x(1)
+++    if (self%solve_for_T_trop) then
+++      T_surf = 10.0_dp**mv%x(2) + 10.0_dp**mv%x(1)
+++    else
+++      T_surf = 10.0_dp**mv%x(1)
+++    endif
++     call fcn_hybrj(mv%n, mv%x, mv%fvec, mv%info)
+++    if (allocated(err)) return
+++    if (maxval(abs(mv%fvec)) > 1.0e-7_dp) then
+++      err = 'Temperature solve returned residuals above the normalized tolerance.'
+++      return
+++    endif
++ 
++   contains
++     subroutine fcn_hybrj(n_, x_, fvec_, iflag_)
++@@ -924,10 +1019,11 @@
++       real(dp), intent(out) :: fvec_(n_)
++       integer, intent(inout) :: iflag_
++       real(dp) :: T, T_trop, ISR, OLR, rad_enhancement
++-      T = 10.0_dp**x_(1)
++       if (self%solve_for_T_trop) then
++         T_trop = 10.0_dp**x_(2)
+++        T = T_trop + 10.0_dp**x_(1)
++       else
+++        T = 10.0_dp**x_(1)
++         T_trop = self%T_trop
++       endif
++       call fcn(T, T_trop, ISR, OLR, err)
++@@ -948,14 +1044,15 @@
++         rad_enhancement = 4.0_dp*f_term
++         call self%rad%apply_radiation_enhancement(rad_enhancement)
++       endblock; endif
++-      fvec_(1) = ISR*rad_enhancement - OLR + self%surface_heat_flow
+++      fvec_(1) = (ISR*rad_enhancement - OLR + self%surface_heat_flow)/flux_scale
++ 
++       if (self%solve_for_T_trop) then; block
++         use clima_eqns, only: skin_temperature
++         real(dp) :: bond_albedo, stellar_radiation
++         bond_albedo = self%rad%wrk_sol%fup_n(self%nz_r+1)/self%rad%wrk_sol%fdn_n(self%nz_r+1)
++         stellar_radiation = self%rad%bolometric_flux()
++-        fvec_(2) = skin_temperature(stellar_radiation*rad_enhancement, bond_albedo) - T_trop
+++        fvec_(2) = (skin_temperature(stellar_radiation*rad_enhancement, bond_albedo) - T_trop) &
+++                   /max(T_trop, 1.0_dp)
++       endblock; endif
++     end subroutine    
++   end function
+diff --git a/src/dependencies/patches/equilibrate-element-relative-mass-closure.patch b/src/dependencies/patches/equilibrate-element-relative-mass-closure.patch
+new file mode 100644
+index 0000000..1a749d3
+--- /dev/null
++++ b/src/dependencies/patches/equilibrate-element-relative-mass-closure.patch
+@@ -0,0 +1,40 @@
++--- a/src/equilibrate_cea.f90
+++++ b/src/equilibrate_cea.f90
++@@ -1786,7 +1786,6 @@
++          call ec_b_0(self,N_atoms_use, molfracs_atoms, b_0_norm, b_0)
++       end if
++ 
++-      mval_mass_good = MAXVAL(b_0)*self%mass_tol
++       DO i_atom = 1, N_atoms_use
++         mass = 0.0_dp
++         do i_reac = 1,self%N_gas
++@@ -1798,7 +1797,9 @@
++           mass = mass + self%a_stoich(solid_indices(i_reac-self%N_gas),i_atom)* &
++                  n_spec(solid_indices(i_reac-self%N_gas))
++         enddo
++-        IF ((abs(b_0(i_atom) - mass) > mval_mass_good) .AND. (b_0(i_atom) > 1d-6)) THEN
+++        mval_mass_good = abs(b_0(i_atom))*self%mass_tol
+++        IF ((b_0(i_atom) > 0.0_dp) .AND. &
+++            (abs(b_0(i_atom) - mass) > mval_mass_good)) THEN
++           mass_good = .FALSE.
++         END IF
++       END DO
++@@ -2226,7 +2227,6 @@
++          END DO
++       END DO
++ 
++-      mval_mass_good = MAXVAL(b_0)*self%mass_tol
++       DO i_atom = 1, N_atoms_use
++         mass = 0.0_dp
++         do i_reac = 1,self%N_gas
++@@ -2235,7 +2235,9 @@
++         do i_reac = self%N_gas+1, N_species
++           mass = mass + a(i_reac,i_atom)*n_spec(solid_indices(i_reac-self%N_gas))
++         enddo
++-        IF ((abs(b_0(i_atom) - mass) > mval_mass_good) .AND. (b_0(i_atom) > 1d-6)) THEN
+++        mval_mass_good = abs(b_0(i_atom))*self%mass_tol
+++        IF ((b_0(i_atom) > 0.0_dp) .AND. &
+++            (abs(b_0(i_atom) - mass) > mval_mass_good)) THEN
++           mass_good = .FALSE.
++         END IF
++       END DO
+diff --git a/tests/test_python.py b/tests/test_python.py
+index 7184977..18f2f08 100644
+--- a/tests/test_python.py
++++ b/tests/test_python.py
+@@ -33,6 +33,26 @@ def test_static_construction():
+     assert pc.atmosphere_initialized
+ 
+ 
++def test_gas_giant_equilibrium_mass_tolerance_validation():
++    from photochem.extensions.gasgiants import EvoAtmosphereGasGiant
++
++    for value in (0.0, -1.0e-12, np.inf, np.nan):
++        try:
++            EvoAtmosphereGasGiant(
++                "unused.yaml",
++                "unused.txt",
++                5.972e27,
++                6.371e8,
++                equilibrium_mass_tol=value,
++            )
++        except ValueError as exc:
++            assert "equilibrium_mass_tol" in str(exc)
++        else:
++            raise AssertionError(
++                "invalid equilibrium_mass_tol was accepted"
++            )
++
++
+ def test_gas_giant_static_construction():
+     from photochem.extensions.gasgiants import EvoAtmosphereGasGiant
+ 
+@@ -46,6 +66,7 @@ def test_gas_giant_static_construction():
+     )
+ 
+     assert not pc.atmosphere_initialized
++    assert pc.gdat.gas.mass_tol == 1.0e-12
+ 
+     pressure = np.array([1.0e6, 1.0e5, 1.0e4, 1.0e2])
+     temperature = np.array([300.0, 260.0, 220.0, 180.0])

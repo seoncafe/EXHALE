@@ -102,8 +102,13 @@ def main():
     ratios, _ = sch.element_ratios(
         mixing if args.count_condensates else gas, counts)
 
-    Kzz = (np.full_like(p_bar, args.kzz_const) if args.kzz_const is not None
-           else Kzz_src)
+    # A stated eddy coefficient (--kzz-const, or --kzz-power with --kzz-ref)
+    # replaces the one the VULCAN run was mixed at; with neither stated the
+    # file keeps VULCAN's own K_zz(p).  This arm cannot re-solve the
+    # chemistry, so a stated profile here changes only what is handed over.
+    Kzz = sch.eddy_diffusion_coefficient(p_bar, args)
+    if Kzz is None:
+        Kzz = Kzz_src
     n_tot = p_dyn/(sch.KB*T)
     rho = n_tot*mu*sch.MAMU
     r_RJ = sch.hydrostatic_radius(p_bar, T, mu, args.mp, args.r_ref,
@@ -144,6 +149,11 @@ def main():
         p_match_bar=args.p_match,
         trial_flux_H=args.trial_flux_H, trial_flux_He=args.trial_flux_He,
     )
+    if args.kzz_power is not None:
+        # Only when it is in use: a fingerprint entry that is always present
+        # would move the solution_id of every constant-K_zz run.
+        fp.update(kzz_power=args.kzz_power, kzz_ref=args.kzz_ref,
+                  kzz_ref_bar=args.kzz_ref_bar)
     version = 'vulcan (output %s)' % os.path.basename(args.vulfile)
     conden = ('; condensed carriers %s counted in the El/H ratios'
               % (', '.join(non_gas) if non_gas else 'none')

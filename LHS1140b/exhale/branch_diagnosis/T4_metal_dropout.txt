@@ -1,0 +1,32 @@
+======================================================================
+profiles: equilibrium
+======================================================================
+--- cool ---
+   C  : no zero cells
+   O  : no zero cells
+   N  : no zero cells
+   Mg : 504 cells with total density exactly 0, r = 0.9998 .. 30.0000 (cell 0..503 of 504)
+--- hot ---
+   C  : 172 cells with total density exactly 0, r = 1.0333 .. 1.6835 (cell 117..288 of 504)
+   O  : 172 cells with total density exactly 0, r = 1.0333 .. 1.6835 (cell 117..288 of 504)
+   N  : 172 cells with total density exactly 0, r = 1.0333 .. 1.6835 (cell 117..288 of 504)
+   Mg : 504 cells with total density exactly 0, r = 0.9998 .. 30.0000 (cell 0..503 of 504)
+   inside the dropout at r=1.154: T=4598  nH=2.116e+09  nHe=2.654e+09  x_HII=0.0084  He/H=1.2542
+   just below   r=1.033: T=1358  C/H=2.6391e-04
+   just above   r=1.696: T=5323  C/H=2.6391e-04
+======================================================================
+profiles: _adv
+======================================================================
+--- cool ---
+   C  : no zero cells
+   O  : no zero cells
+   N  : no zero cells
+   Mg : 504 cells with total density exactly 0, r = 0.9998 .. 30.0000 (cell 0..503 of 504)
+--- hot ---
+   C  : 172 cells with total density exactly 0, r = 1.0333 .. 1.6835 (cell 117..288 of 504)
+   O  : 172 cells with total density exactly 0, r = 1.0333 .. 1.6835 (cell 117..288 of 504)
+   N  : 172 cells with total density exactly 0, r = 1.0333 .. 1.6835 (cell 117..288 of 504)
+   Mg : 504 cells with total density exactly 0, r = 0.9998 .. 30.0000 (cell 0..503 of 504)
+   inside the dropout at r=1.154: T=3421  nH=2.116e+09  nHe=2.654e+09  x_HII=0.0080  He/H=1.2542
+   just below   r=1.033: T=162  C/H=2.6391e-04
+   just above   r=1.696: T=5038  C/H=2.6391e-04

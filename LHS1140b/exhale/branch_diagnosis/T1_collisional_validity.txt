@@ -1,0 +1,40 @@
+==========================================================================
+case: LHS1140b/exhale/kzz_profile_scan/kzz1e7/heh3p4/k02   (_adv profiles)
+==========================================================================
+  peak heating at           1.108 R_p
+  T max                     1.346 R_p   3876 K
+  critical (sonic) point   none in domain (max Mach 0.562)
+  exobase (Kn_bulk = 1)    20.823 R_p
+  Kn_bulk = 0.1 at           5.743 R_p   (collisional below)
+  Kn_bulk at T max           0.000982
+  max Kn in critical region  2.7   (bulk 2.07)
+  Kn by species there: HI 2.7, HII 2.9e-05, HeI 1.8, HeII 1.5e-05, HeIII 3.8e-06, e 0.00053
+  max tau_E(e-ion)/tau_heat in critical region  0.0169
+  log10 Mdot(hydro) = 7.515   Mdot_Jeans = 1.08e+07 g/s (exobase)
+
+  NO CRITICAL POINT IN THE DOMAIN: the solution stays subsonic out to 29.05 R_p (max Mach 0.562), so it is not a transonic wind and its mass flux is set at the outer boundary, where Kn_bulk = 2.07.
+  The exobase at 20.823 R_p; max Kn from peak heating (1.108 R_p) to the outer boundary (29.047 R_p) is 2.7 (threshold 0.1).
+  HYDRODYNAMIC RESULT UNVALIDATED: Kn reaches 2.7 in the heating/acceleration region; the domain holds no critical point. The sign and size of the error are NOT determined by this solution -- it is unvalidated, not overestimated. log10 Mdot = 7.515.
+  Kinetic scale: Jeans escape through the exobase (T = 834 K, lambda_J = 1.41 for the lightest heavy species) gives Mdot_Jeans = 1.08e+07 g/s, a factor 3 below the continuum Mdot.
+  That number is a SCALE, not a bound: at lambda_J = 1.41 the exobase is barely gravitationally bound, the Jeans integral is no longer the small escaping tail of a Maxwellian but most of it, and the atmosphere is in hydrodynamic blow-off. What it does say is that the continuum Mdot is within a factor of a few of what a collisionless outer atmosphere at the same density and temperature would lose, so the failure of the continuum assumption is not hiding an order of magnitude.
+
+==========================================================================
+case: LHS1140b/exhale/kzz_profile_scan/kzz1e7/heh3p399/k03   (_adv profiles)
+==========================================================================
+  peak heating at           1.066 R_p
+  T max                     1.442 R_p   5391 K
+  critical (sonic) point   none in domain (max Mach 0.577)
+  exobase (Kn_bulk = 1)    27.321 R_p
+  Kn_bulk = 0.1 at           6.860 R_p   (collisional below)
+  Kn_bulk at T max           0.00107
+  max Kn in critical region  1.74   (bulk 1.19)
+  Kn by species there: HI 1.7, HII 2.7e-05, HeI 1.2, HeII 1.3e-05, HeIII 3.5e-06, e 0.00048
+  max tau_E(e-ion)/tau_heat in critical region  0.0229
+  log10 Mdot(hydro) = 7.847   Mdot_Jeans = 2.03e+07 g/s (exobase)
+
+  NO CRITICAL POINT IN THE DOMAIN: the solution stays subsonic out to 29.05 R_p (max Mach 0.577), so it is not a transonic wind and its mass flux is set at the outer boundary, where Kn_bulk = 1.19.
+  The exobase at 27.321 R_p; max Kn from peak heating (1.066 R_p) to the outer boundary (29.047 R_p) is 1.74 (threshold 0.1).
+  HYDRODYNAMIC RESULT UNVALIDATED: Kn reaches 1.74 in the heating/acceleration region; the domain holds no critical point. The sign and size of the error are NOT determined by this solution -- it is unvalidated, not overestimated. log10 Mdot = 7.847.
+  Kinetic scale: Jeans escape through the exobase (T = 1177 K, lambda_J = 0.76 for the lightest heavy species) gives Mdot_Jeans = 2.03e+07 g/s, a factor 3.5 below the continuum Mdot.
+  That number is a SCALE, not a bound: at lambda_J = 0.76 the exobase is barely gravitationally bound, the Jeans integral is no longer the small escaping tail of a Maxwellian but most of it, and the atmosphere is in hydrodynamic blow-off. What it does say is that the continuum Mdot is within a factor of a few of what a collisionless outer atmosphere at the same density and temperature would lose, so the failure of the continuum assumption is not hiding an order of magnitude.
+

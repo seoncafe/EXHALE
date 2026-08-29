@@ -3,6 +3,7 @@
 # equivalent width falls. Each case is seeded from heh1's converged solution;
 # load_IC rescales the loaded H/He onto this case's composition.
 EX=/nfs/mocafe/kiseon/RT_Codes/ExoAtmosphere/EXHALE_v1.00
+. "$EX/LHS1140b/winered_hires_y.sh"   # He I 10830 at WINERED HIRES-Y, R = 68,000
 cd "$(dirname "$0")"
 export OMP_NUM_THREADS=6
 for c in heh0p55 heh0p6; do

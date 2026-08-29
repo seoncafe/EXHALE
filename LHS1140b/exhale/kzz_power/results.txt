@@ -1,0 +1,29 @@
+K_zz(p) = 1.0e9 (p / 1.1e-8 bar)^-1/2, against the constant 1.0e9
+anchored at the profile top so the wind inherits the same value above
+the file.  Implied: 1.05e8 at 1 ubar (the match), 1.05e5 at 1 bar,
+2.56e4 at 16.7 bar.
+
+=== reservoir He/H = 11.1 ===
+run                      red[%]  FWHM[A]    EW[%A]   EW/obs  He/H@2Rp He/H@10Rp  Tmax[K]   lgMdot
+recorded (other seed)    3.5998   0.2825    1.0853   0.9795    1.5536    1.2676   5781.0    7.400
+reference K_zz = 1e9     3.6524   0.2825    1.1019   0.9945    1.5764    1.2869   5796.0    7.410
+A chemistry only         3.6630   0.2825    1.1050   0.9973    1.5797    1.2896   5802.4    7.410
+B chemistry + wind       3.6591   0.2825    1.1031   0.9955    1.5630    1.2756   5793.5    7.410
+  same profile, other seed: EW -1.51 % -- the JFNK path spread
+  A chemistry only     EW +0.28 %, crossing 11.73 -> 11.64 (-0.73 %)
+  B chemistry + wind   EW +0.10 %, crossing 11.73 -> 11.70 (-0.27 %)
+  at the match (1 ubar), K_zz(p)/const: X_He 0.9985  X_C 0.9899  X_N 0.9878  X_O 0.9894  
+  carriers at the match, K_zz(p)/const: q_CH4 0.443  q_CO 54.7  q_CO2 9.27E+03  q_NH3 0.00384  q_N2 28.7  q_HCN 0.566  q_H2O 0.714  q_H 4.99  
+
+=== reservoir He/H = 2.09 ===
+run                      red[%]  FWHM[A]    EW[%A]   EW/obs  He/H@2Rp He/H@10Rp  Tmax[K]   lgMdot
+recorded (other seed)    1.6233   0.2467    0.4272   0.3855    0.2301    0.1850   3967.6    7.500
+reference K_zz = 1e9     1.6282   0.2467    0.4285   0.3867    0.2307    0.1854   3966.5    7.500
+A chemistry only         1.6380   0.2467    0.4311   0.3891    0.2320    0.1865   3973.7    7.500
+B chemistry + wind       1.6265   0.2467    0.4279   0.3862    0.2299    0.1848   3963.4    7.500
+  same profile, other seed: EW -0.31 % -- the JFNK path spread
+  A chemistry only     EW +0.61 %, crossing 11.73 -> 11.54 (-1.58 %)
+  B chemistry + wind   EW -0.15 %, crossing 11.73 -> 11.77 (+0.38 %)
+  at the match (1 ubar), K_zz(p)/const: X_He 0.9985  X_C 0.9903  X_N 0.9875  X_O 0.9821  
+  carriers at the match, K_zz(p)/const: q_CH4 0.665  q_CO 47.6  q_CO2 4.32E+03  q_NH3 0.0496  q_N2 28.1  q_HCN 2.95  q_H2O 0.804  q_H 5.55  
+

@@ -1,0 +1,212 @@
+cells with total carbon density exactly zero, per closure iteration
+run                                                         ncell  r band [R_p]
+kzz_profile_scan/kzz1e3/heh11p1/k00                             0  --
+kzz_profile_scan/kzz1e6/heh3/k00                                0  --
+kzz_profile_scan/kzz1e7/heh11p1/k00                           172  1.0333 - 1.6835
+kzz_profile_scan/kzz1e7/heh11p1_attempt_decade_step/k00       147  1.0399 - 1.5259
+kzz_profile_scan/kzz1e7/heh11p1_attempt_from_3p16e7/k00       175  1.0304 - 1.6600
+kzz_profile_scan/kzz1e7/heh11p1_attempt_from_3p16e7/k01       175  1.0304 - 1.6600
+kzz_profile_scan/kzz1e7/heh2p8hot/k00                         172  1.0333 - 1.6835
+kzz_profile_scan/kzz1e7/heh2p9hot/k00                         172  1.0333 - 1.6835
+kzz_profile_scan/kzz1e7/heh3/k00                                0  --
+kzz_profile_scan/kzz1e7/heh3/k01                                0  --
+kzz_profile_scan/kzz1e7/heh3/k02                                0  --
+kzz_profile_scan/kzz1e7/heh3/k03                                0  --
+kzz_profile_scan/kzz1e7/heh3p0hot/k00                         172  1.0333 - 1.6835
+kzz_profile_scan/kzz1e7/heh3p0hot/k01                         172  1.0333 - 1.6835
+kzz_profile_scan/kzz1e7/heh3p399/k00                          172  1.0333 - 1.6835
+kzz_profile_scan/kzz1e7/heh3p399/k01                          172  1.0333 - 1.6835
+kzz_profile_scan/kzz1e7/heh3p399/k02                          172  1.0333 - 1.6835
+kzz_profile_scan/kzz1e7/heh3p399/k03                          172  1.0333 - 1.6835
+kzz_profile_scan/kzz1e7/heh3p4/k00                              0  --
+kzz_profile_scan/kzz1e7/heh3p4/k01                              0  --
+kzz_profile_scan/kzz1e7/heh3p4/k02                              0  --
+kzz_profile_scan/kzz1e7/heh3p8/k00                              0  --
+kzz_profile_scan/kzz1e7/heh3p8/k01                              0  --
+kzz_profile_scan/kzz1e7/heh3p8/k02                              0  --
+kzz_profile_scan/kzz1e7/heh4p2/k00                            157  1.0429 - 1.6716
+kzz_profile_scan/kzz1e7/heh4p2/k01                            157  1.0429 - 1.6716
+kzz_profile_scan/kzz1e7/heh4p500/k00                          190  1.0327 - 1.9197
+kzz_profile_scan/kzz1e7/heh4p500/k01                          190  1.0327 - 1.9197
+kzz_profile_scan/kzz1e7/heh4p500/k02                          190  1.0327 - 1.9197
+kzz_profile_scan/kzz1e7/heh4p500/k03                          190  1.0327 - 1.9197
+kzz_profile_scan/kzz1e7/heh4p500/k04                          190  1.0327 - 1.9197
+kzz_profile_scan/kzz1e7/heh4p933/k00                          172  1.0333 - 1.6835
+kzz_profile_scan/kzz1e7/heh4p933/k01                          172  1.0333 - 1.6835
+kzz_profile_scan/kzz1e7/heh4p933/k02                          172  1.0333 - 1.6835
+kzz_profile_scan/kzz1e7/heh4p933/k03                          172  1.0333 - 1.6835
+kzz_profile_scan/kzz1e7/heh7p400/k00                          172  1.0333 - 1.6835
+kzz_profile_scan/kzz1e7/heh7p400/k01                          172  1.0333 - 1.6835
+kzz_profile_scan/kzz1e7/heh7p400/k02                          172  1.0333 - 1.6835
+kzz_profile_scan/kzz1e7/heh7p400/k03                          172  1.0333 - 1.6835
+kzz_profile_scan/kzz1e8/heh10p0hot/k00                        172  1.0333 - 1.6835
+kzz_profile_scan/kzz1e8/heh10p0hot/k01                        172  1.0333 - 1.6835
+kzz_profile_scan/kzz1e8/heh10p0hot/k02                        172  1.0333 - 1.6835
+kzz_profile_scan/kzz1e8/heh10p0hot/k03                        172  1.0333 - 1.6835
+kzz_profile_scan/kzz1e8/heh11p1/k00                             0  --
+kzz_profile_scan/kzz1e8/heh11p1/k01                             0  --
+kzz_profile_scan/kzz1e8/heh11p1/k02                             0  --
+kzz_profile_scan/kzz1e8/heh11p1/k03                             0  --
+kzz_profile_scan/kzz1e8/heh13p620/k00                           0  --
+kzz_profile_scan/kzz1e8/heh13p620/k01                           0  --
+kzz_profile_scan/kzz1e8/heh13p620/k02                           0  --
+kzz_profile_scan/kzz1e8/heh13p620/k03                           0  --
+kzz_profile_scan/kzz1e8/heh13p875hot/k00                      172  1.0333 - 1.6835
+kzz_profile_scan/kzz1e8/heh13p875hot/k01                      172  1.0333 - 1.6835
+kzz_profile_scan/kzz1e8/heh13p875hot/k02                      172  1.0333 - 1.6835
+kzz_profile_scan/kzz1e8/heh14p643/k00                           0  --
+kzz_profile_scan/kzz1e8/heh14p643/k01                           0  --
+kzz_profile_scan/kzz1e8/heh15p090/k00                           0  --
+kzz_profile_scan/kzz1e8/heh18p0/k00                             0  --
+kzz_profile_scan/kzz1e8/heh18p0/k01                             0  --
+kzz_profile_scan/kzz1e8/heh18p0/k02                             0  --
+kzz_profile_scan/kzz1e8/heh2p3hot/k00                         172  1.0333 - 1.6835
+kzz_profile_scan/kzz1e8/heh2p3hot/k01                         172  1.0333 - 1.6835
+kzz_profile_scan/kzz1e8/heh2p5hot/k00                         172  1.0333 - 1.6835
+kzz_profile_scan/kzz1e8/heh2p5hot/k01                         172  1.0333 - 1.6835
+kzz_profile_scan/kzz1e8/heh2p8hot/k00                         172  1.0333 - 1.6835
+kzz_profile_scan/kzz1e8/heh2p8hot/k01                         172  1.0333 - 1.6835
+kzz_profile_scan/kzz1e8/heh3/k00                                0  --
+kzz_profile_scan/kzz1e8/heh3/k01                                0  --
+kzz_profile_scan/kzz1e8/heh3/k02                                0  --
+kzz_profile_scan/kzz1e8/heh3/k03                                0  --
+kzz_profile_scan/kzz1e8/heh3p1hot/k00                         172  1.0333 - 1.6835
+kzz_profile_scan/kzz1e8/heh3p1hot/k01                         172  1.0333 - 1.6835
+kzz_profile_scan/kzz1e8/heh3p4hot/k00                         172  1.0333 - 1.6835
+kzz_profile_scan/kzz1e8/heh3p4hot/k01                         172  1.0333 - 1.6835
+kzz_profile_scan/kzz1e8/heh3p4hot/k02                         172  1.0333 - 1.6835
+kzz_profile_scan/kzz1e8/heh4p2hot/k00                         172  1.0333 - 1.6835
+kzz_profile_scan/kzz1e8/heh4p2hot/k01                         172  1.0333 - 1.6835
+kzz_profile_scan/kzz1e8/heh4p2hot/k02                         172  1.0333 - 1.6835
+kzz_profile_scan/kzz1e8/heh4p2hot/k03                         172  1.0333 - 1.6835
+kzz_profile_scan/kzz1e8/heh5p6hot/k00                         172  1.0333 - 1.6835
+kzz_profile_scan/kzz1e8/heh5p6hot/k01                         172  1.0333 - 1.6835
+kzz_profile_scan/kzz1e8/heh5p6hot/k02                         172  1.0333 - 1.6835
+kzz_profile_scan/kzz1e8/heh5p6hot/k03                         172  1.0333 - 1.6835
+kzz_profile_scan/kzz1e8/heh7p5hot/k00                         172  1.0333 - 1.6835
+kzz_profile_scan/kzz1e8/heh7p5hot/k01                         172  1.0333 - 1.6835
+kzz_profile_scan/kzz1e8/heh7p5hot/k02                         172  1.0333 - 1.6835
+kzz_profile_scan/kzz1e8/heh7p5hot/k03                         172  1.0333 - 1.6835
+kzz_profile_scan/kzz1e9/heh10p0hot/k00                        172  1.0333 - 1.6835
+kzz_profile_scan/kzz1e9/heh10p0hot/k01                        172  1.0333 - 1.6835
+kzz_profile_scan/kzz1e9/heh10p0hot/k02                        172  1.0333 - 1.6835
+kzz_profile_scan/kzz1e9/heh10p0hot/k03                        172  1.0333 - 1.6835
+kzz_profile_scan/kzz1e9/heh12p58/k00                            0  --
+kzz_profile_scan/kzz1e9/heh13p875hot/k00                      172  1.0333 - 1.6835
+kzz_profile_scan/kzz1e9/heh13p875hot/k01                      172  1.0333 - 1.6835
+kzz_profile_scan/kzz1e9/heh13p875hot/k02                      172  1.0333 - 1.6835
+kzz_profile_scan/kzz1e9/heh13p875hot/k03                      172  1.0333 - 1.6835
+kzz_profile_scan/kzz1e9/heh1p6hot/k00                         172  1.0333 - 1.6835
+kzz_profile_scan/kzz1e9/heh1p6hot/k01                         172  1.0333 - 1.6835
+kzz_profile_scan/kzz1e9/heh1p6hot/k02                         172  1.0333 - 1.6835
+kzz_profile_scan/kzz1e9/heh1p6hot/k03                         172  1.0333 - 1.6835
+kzz_profile_scan/kzz1e9/heh1p6hot/k04                         172  1.0333 - 1.6835
+kzz_profile_scan/kzz1e9/heh1p6hot/k05                         172  1.0333 - 1.6835
+kzz_profile_scan/kzz1e9/heh1p6hot/k06                         172  1.0333 - 1.6835
+kzz_profile_scan/kzz1e9/heh1p6hot/k07                         172  1.0333 - 1.6835
+kzz_profile_scan/kzz1e9/heh1p7hot/k00                         172  1.0333 - 1.6835
+kzz_profile_scan/kzz1e9/heh1p7hot/k01                         172  1.0333 - 1.6835
+kzz_profile_scan/kzz1e9/heh1p7hot/k02                         172  1.0333 - 1.6835
+kzz_profile_scan/kzz1e9/heh2p0hot/k00                         172  1.0333 - 1.6835
+kzz_profile_scan/kzz1e9/heh2p0hot/k01                         172  1.0333 - 1.6835
+kzz_profile_scan/kzz1e9/heh2p0hot/k02                         172  1.0333 - 1.6835
+kzz_profile_scan/kzz1e9/heh2p4hot/k00                         172  1.0333 - 1.6835
+kzz_profile_scan/kzz1e9/heh2p4hot/k01                         172  1.0333 - 1.6835
+kzz_profile_scan/kzz1e9/heh2p6hot/k00                         172  1.0333 - 1.6835
+kzz_profile_scan/kzz1e9/heh2p6hot/k01                         172  1.0333 - 1.6835
+kzz_profile_scan/kzz1e9/heh2p8hot/k00                         172  1.0333 - 1.6835
+kzz_profile_scan/kzz1e9/heh2p9hot/k00                         172  1.0333 - 1.6835
+kzz_profile_scan/kzz1e9/heh2p9hot/k01                         172  1.0333 - 1.6835
+kzz_profile_scan/kzz1e9/heh3p2hot/k00                         172  1.0333 - 1.6835
+kzz_profile_scan/kzz1e9/heh3p2hot/k01                         172  1.0333 - 1.6835
+kzz_profile_scan/kzz1e9/heh3p2hot/k02                         172  1.0333 - 1.6835
+kzz_profile_scan/kzz1e9/heh3p2hot/k03                         172  1.0333 - 1.6835
+kzz_profile_scan/kzz1e9/heh4p2hot/k00                         172  1.0333 - 1.6835
+kzz_profile_scan/kzz1e9/heh4p2hot/k01                         172  1.0333 - 1.6835
+kzz_profile_scan/kzz1e9/heh4p2hot/k02                         172  1.0333 - 1.6835
+kzz_profile_scan/kzz1e9/heh4p2hot/k03                         172  1.0333 - 1.6835
+kzz_profile_scan/kzz1e9/heh5p6hot/k00                         172  1.0333 - 1.6835
+kzz_profile_scan/kzz1e9/heh5p6hot/k01                         172  1.0333 - 1.6835
+kzz_profile_scan/kzz1e9/heh5p6hot/k02                         172  1.0333 - 1.6835
+kzz_profile_scan/kzz1e9/heh5p6hot/k03                         172  1.0333 - 1.6835
+kzz_profile_scan/kzz1e9/heh7p5hot/k00                         172  1.0333 - 1.6835
+kzz_profile_scan/kzz1e9/heh7p5hot/k01                         172  1.0333 - 1.6835
+kzz_profile_scan/kzz1e9/heh7p5hot/k02                         172  1.0333 - 1.6835
+kzz_profile_scan/kzz1e9/heh7p5hot/k03                         172  1.0333 - 1.6835
+kzz_profile_scan/kzz1p33e7/heh11p1/k00                        172  1.0333 - 1.6835
+kzz_profile_scan/kzz1p33e7/heh11p1/k01                        172  1.0333 - 1.6835
+kzz_profile_scan/kzz1p33e7/heh11p1/k02                        172  1.0333 - 1.6835
+kzz_profile_scan/kzz1p33e7/heh11p1/k03                        172  1.0333 - 1.6835
+kzz_profile_scan/kzz1p33e7/heh11p1/k04                        172  1.0333 - 1.6835
+kzz_profile_scan/kzz1p78e7/heh11p1/k00                        172  1.0333 - 1.6835
+kzz_profile_scan/kzz1p78e7/heh13p875/k00                      172  1.0333 - 1.6835
+kzz_profile_scan/kzz1p78e7/heh13p875/k01                      172  1.0333 - 1.6835
+kzz_profile_scan/kzz1p78e7/heh13p875/k02                      172  1.0333 - 1.6835
+kzz_profile_scan/kzz1p78e7/heh13p875/k03                      172  1.0333 - 1.6835
+kzz_profile_scan/kzz1p78e7/heh13p875/k04                      172  1.0333 - 1.6835
+kzz_profile_scan/kzz1p78e7/heh15p383/k00                      172  1.0333 - 1.6835
+kzz_profile_scan/kzz1p78e7/heh15p383/k01                      172  1.0333 - 1.6835
+kzz_profile_scan/kzz1p78e7/heh15p383/k02                      172  1.0333 - 1.6835
+kzz_profile_scan/kzz1p78e7/heh15p383/k03                      172  1.0333 - 1.6835
+kzz_profile_scan/kzz1p78e7/heh15p383/k04                      172  1.0333 - 1.6835
+kzz_profile_scan/kzz3p16e7/heh11p1/k00                          0  --
+kzz_profile_scan/kzz3p16e7/heh11p1/k01                          0  --
+kzz_profile_scan/kzz3p16e7/heh11p1/k02                          0  --
+kzz_profile_scan/kzz3p16e7/heh13p736/k00                      144  1.0445 - 1.5542
+kzz_profile_scan/kzz3p16e7/heh13p736/k01                      144  1.0445 - 1.5542
+kzz_profile_scan/kzz3p16e7/heh13p875/k00                      151  1.0429 - 1.6048
+kzz_profile_scan/kzz3p16e7/heh13p875/k01                      151  1.0429 - 1.6048
+kzz_profile_scan/kzz3p16e7/heh13p875hot/k00                   172  1.0333 - 1.6835
+kzz_profile_scan/kzz3p16e7/heh13p875hot/k01                   172  1.0333 - 1.6835
+kzz_profile_scan/kzz3p16e7/heh14p152/k00                      146  1.0437 - 1.5640
+kzz_profile_scan/kzz3p16e7/heh14p152/k01                      146  1.0437 - 1.5640
+kzz_profile_scan/kzz3p16e7/heh15p734/k00                      154  1.0406 - 1.6048
+kzz_profile_scan/kzz3p16e7/heh15p734/k01                      154  1.0406 - 1.6048
+flux_closure/heh10p3/k00                                        0  --
+flux_closure/heh10p3/k01                                        0  --
+flux_closure/heh10p3_ctl/k00                                    0  --
+flux_closure/heh10p3_ctl/k01                                    0  --
+flux_closure/heh10p7/k00                                        0  --
+flux_closure/heh10p7/k01                                        0  --
+flux_closure/heh11p1/k00                                        0  --
+flux_closure/heh11p1/k01                                        0  --
+flux_closure/heh12/k00                                          0  --
+flux_closure/heh12/k01                                          0  --
+flux_closure/heh12/k02                                          0  --
+flux_closure/heh12/k03                                          0  --
+flux_closure/heh12/k04                                          0  --
+flux_closure/heh12_ctl/k00                                      0  --
+flux_closure/heh12_ctl/k01                                      0  --
+flux_closure/heh12_ctl/k02                                      0  --
+flux_closure/heh3/k00                                           0  --
+flux_closure/heh3/k01                                           0  --
+flux_closure/heh3/k02                                           0  --
+flux_closure/heh3/k03                                           0  --
+flux_closure/heh5/k00                                           0  --
+flux_closure/heh5/k01                                           0  --
+flux_closure/heh5/k02                                           0  --
+flux_closure/heh5/k03                                           0  --
+flux_closure/heh5/k04                                           0  --
+flux_closure/heh8/k00                                           0  --
+flux_closure/heh8/k01                                           0  --
+flux_closure/heh8/k02                                           0  --
+flux_closure/heh8/k03                                           0  --
+flux_closure/heh8/k04                                           0  --
+flux_closure/heh9p7/k00                                         0  --
+flux_closure/heh9p7/k01                                         0  --
+flux_closure/heh9p7/k02                                         0  --
+flux_closure/heh9p7/k03                                         0  --
+flux_closure/hi/k00                                             0  --
+flux_closure/hi/k01                                             0  --
+flux_closure/hi/k02                                             0  --
+flux_closure/hi/k03                                             0  --
+flux_closure/hi/k04                                             0  --
+flux_closure/hi/k05                                             0  --
+flux_closure/hi/k06                                             0  --
+flux_closure/lo/k00                                             0  --
+flux_closure/lo/k01                                             0  --
+flux_closure/lo/k02                                             0  --
+flux_closure/lo/k03                                             0  --
+flux_closure/lo/k04                                             0  --
+flux_closure/lo/k05                                             0  --
+flux_closure/ref/k00                                            0  --

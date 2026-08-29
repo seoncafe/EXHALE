@@ -1,0 +1,616 @@
+======================================================================
+LHS 1140 b: the three thermostat solutions, re-solved on the current
+binary  (docs/lhs1140b_exhale_vs_pwinds.tex, Sect. sec:basemetals,
+Table tab:thermostat, Figs. fig:thermostat and fig:compprof)
+======================================================================
+binary   EXHALE.x built 2026-08-29 04:56  (Update_EXHALE 84, 86, 87, 88)
+measured 2026-08-29, this directory; every stored run outside it was
+         read only -- no output/ outside thermostat_gm25/ was written
+target   red-pair EW = 1.108 +/- 0.030 %A over the vacuum window
+         10832.60-10834.20 A, He I 10830 convolved at R = 68,000
+         (EXHALE_TRANSIT_RES_HETR from ../../winered_hires_y.sh)
+
+WHY THESE THREE WERE STALE
+  The memo marks the thermostat solutions as standing on the retired
+  Taylor et al. (2025) two-branch Penning fit (Update_EXHALE 87).  The
+  stored output/ directories confirm it:
+      ../flux_closure/hi/k06/output        2026-08-27 08:33
+      ../flux_closure/heh10p3/k01/output   2026-08-27 14:42
+      ../flux_closure/ref/k00/output       2026-08-27 08:26
+      ../heh2p13_diff_kzz1e9/output        2026-08-28 17:16 / 19:04
+  all before the binary (2026-08-29 04:56).  An independent check of
+  which coefficient each carries: reconstructing the 2^3S balance of
+  tr_triplet_row with the Garcia Munoz rate closes to 1e-4 of the sink
+  on ../heh2p13_diff_kzz1e9 (that run WAS re-solved on 2026-08-28 19:04,
+  after Update_EXHALE 87) but leaves a 13% and 23% residual on
+  ../flux_closure/hi/k06 and ../flux_closure/heh10p3/k01, which is the
+  signature of the retired coefficient.  So the two profile arms were on
+  Taylor; the scalar arm was already on Garcia Munoz but predates the
+  post-process fix of Update_EXHALE 88, and all four were re-solved here
+  so that the table is read off one binary.
+
+WHAT WAS SEEDED AND HOW
+  ./resolve_wind.sh <src> <tag> 4 -- ../crossings_gm25/resolve_wind.sh
+  with two changes: the lower atmosphere profile is copied only when the
+  source carries one (the scalar arm does not), and the source directory
+  is never written to.  Each arm: input.inp and, where present,
+  lower_atmosphere_profile.dat copied from the source; the source's own
+  Hydro_ioniz.txt / Ion_species.txt as the initial condition; four JFNK
+  passes (EXHALE_PTC=1 EXHALE_PTC_JFNK=1 EXHALE_PTC_DTAU0=1.0), each
+  seeded from the previous pass's output; then one "Do only PP: True"
+  pass and EXHALE_transit.py.  Composition was not changed: the He/H key,
+  the profile and its solution_id are the source's.  base.inp was not
+  copied, as in ../crossings_gm25/resolve_wind.sh and its rw_ arms.
+  OMP_NUM_THREADS=2 per arm, two arms at a time.
+
+      ms2p13   <- ../heh2p13_diff_kzz1e9      scalar base, no metals, He/H 2.13
+      fc2p09   <- ../flux_closure/hi/k06      photochem base C,N,O, He/H 2.09
+      fc10p3   <- ../flux_closure/heh10p3/k01 photochem base C,N,O, He/H 10.31
+      ref2p09  <- ../flux_closure/ref/k00     the reference arm of the closure
+
+----------------------------------------------------------------------
+1. CONVERGENCE, ARM BY ARM  (all four reached info = 0)
+----------------------------------------------------------------------
+arm      pass  info  ||R||       Resid tol   log10 Mdot
+ms2p13     1     0   2.908E-03   5.0e-3      7.80
+           2     0   2.908E-03
+           3     0   2.908E-03
+           4     0   2.908E-03
+fc2p09     1     0   6.302E-05   1.0e-4      7.50
+           2     0   6.146E-05
+           3     0   6.147E-05
+           4     0   6.147E-05
+fc10p3     1     0   2.242E-04   4.0e-4      7.40
+           2     0   2.242E-04
+           3     0   2.242E-04
+           4     0   2.242E-04
+ref2p09    1     0   7.919E-05   4.0e-4      7.49
+           2     0   7.843E-05
+           3     0   7.844E-05
+           4     0   7.844E-05
+
+  No arm failed and none had to be forced.  ||R|| is flat from the second
+  pass on in every arm, so the four passes are a fixed point, not a
+  truncation.  log10 Mdot is unchanged from the stored runs in all four
+  (7.80, 7.50, 7.40, and 7.49 against a stored 7.50 for the reference
+  arm): the Penning replacement moves the line, not the escape rate.
+
+  measure.py rows (../crossings_gm25/measure.py), re-solved then stored:
+
+arm                He/H log10Mdot  red[%] blue[%]  FWHM[A]   EW[%A]  EW/obs   info  ||R|| fluxspread   step   T4k   Zdrop  r_drop
+ms2p13           2.1300    7.8000  4.9013  0.7113  0.25628  1.34021  1.2096      0 2.9e-03  1.45e-01      0     0     off  30.000  outer10=0.0256 T12=1179
+fc2p09           2.0900    7.5000  1.9855  0.2842  0.24669  0.52179  0.4709      0 6.1e-05  6.88e-02      0     0     0/0  30.000  outer10=0.0117 T12=892
+fc10p3          10.3000    7.4000  3.7955  0.5425  0.28251  1.14405  1.0325      0 2.2e-04  7.71e-02      4     0     0/0  19.465  outer10=0.0097 T12=1843
+ref2p09          2.0900    7.4900  1.9380  0.2773  0.24669  0.50893  0.4593      0 7.8e-05  6.87e-02      0     0     0/0  30.000  outer10=0.0115 T12=887
+old_ms           2.1300    7.8000  4.8920  0.7098  0.25678  1.33805  1.2076      0 3.6e-03  1.48e-01      0     0     off  30.000  outer10=0.0257 T12=1184
+old_fc209        2.0900    7.5000  1.6233  0.2310  0.24669  0.42716  0.3855      0 8.6e-05  6.74e-02      0     0     0/0  30.000  outer10=0.0121 T12=892
+old_fc1031      10.3000    7.4000  3.5264  0.5011  0.28049  1.05634  0.9534      0 2.6e-04  6.71e-02      7     2     0/0  19.790  outer10=0.0109 T12=1833
+old_ref          2.0900    7.5000  1.5987  0.2275  0.24669  0.42057  0.3796      0 9.8e-05  7.17e-02      0     0     0/0  30.000  outer10=0.0120 T12=890
+
+  Quality indicators.  No arm has a cell at the T = 4000 K seam of the
+  retired fit any more (T4k = 0 in all four); the 10.31 arm carried two
+  such cells before (old_fc1031, T4k = 2) and they are gone, which is
+  the expected signature of the replacement.  Its four remaining step
+  flags are all at 19.5-29 R_p, at and beyond the radius where T falls
+  (r_drop), the same outer-region pattern every closure arm shows.  No
+  cell loses C+N+O in either profile arm (0/0).
+
+----------------------------------------------------------------------
+2. HOW THE NUMBERS WERE MEASURED
+----------------------------------------------------------------------
+  ./thermostat.py <label>=<dir>   -- the table rows, the composition and
+      ionization fractions, the 2^3S budget and the heating/cooling
+      shares.  Structure quantities from the advection-corrected
+      profiles (output/Hydro_ioniz_adv.txt, output/Ion_species_adv.txt),
+      as the memo states; heating and cooling channels from
+      output/Heating_breakdown.txt and output/Cooling_breakdown.txt,
+      which are the equilibrium files, the only place the code writes
+      the channel split.
+  ./extra.py <label>=<dir>        -- the ionization-budget quantities at
+      2 R_p (tau(13.6 eV), alpha_B n_e, the Penning and charge-exchange
+      shares of case-B removal) and the two candidate definitions of
+      heating per particle.
+  ../crossings_gm25/measure.py    -- the EW, the line metrics and the
+      three quality indicators, unmodified.
+
+  Definitions, all taken from the code rather than assumed:
+   - n_tot is calc_ntot (utilities.f90): one particle per species,
+     electrons excluded, He 2^3S already inside the He I column.
+   - mean mass per particle is the memo's (n_H + 4 n_He)/(n_H + n_He +
+     n_e) with nuclei H I + H II and He I + He II + He III.
+   - the 2^3S budget is tr_triplet_row (ion_residual_core.f90) with the
+     coefficients of Cool_coeff.f90: rec_HeII_23S, coex_HeI_1S_23S,
+     coex_HeI_23S_21S, coex_HeI_23S_21P, ci_HeI23S, ioniz_HeI23S_H and
+     A31 = 1.272e-4.  The metastable photoionization rate is not written
+     to any output file and is obtained as the residual of the balance;
+     on the three re-solved arms that residual is 7-9e-6 s^-1, i.e. the
+     other five terms alone reproduce the tabulated n(2^3S) to about
+     6e-6 relative, which is the check that the reconstruction is right.
+   - alpha_B is rec_HII_B = alphaB_HII_new: Badnell RR minus the
+     Mao & Kaastra n = 1 term (legacy_hhe_rates is .false.).
+   - the He+ + H charge-exchange coefficient is Table-4 row B2,
+     1.25e-15 (T/300)^0.25 (charge_exchange.f90).
+
+----------------------------------------------------------------------
+2b. THE MEASUREMENT CHAIN REPRODUCES THE TABLE AS PRINTED
+----------------------------------------------------------------------
+  Before replacing anything, thermostat.py was pointed at the Taylor-era
+  outputs the memo's table was actually measured on
+  (../heh2p13_diff_kzz1e9/output_penning_taylor_backup/ with
+  tpm_He10830_taylor.txt), and at the two stored profile arms.  It
+  returns the printed column:
+
+    metal-free, Taylor era      measured        Table tab:thermostat
+      T_max                     5330.3          5330
+      T(2 R_p)                  4140.2          4140
+      mean mass per particle    2.0003          2.00
+      n(H I) at 2 R_p           5.6693e7        5.67e7
+      He/H by nuclei            0.5698          0.570
+      max n(2^3S)               42.9149         42.9
+      column 1-10 R_p           65.4967         65.4
+      column 1-2 R_p            25.1533         24.9
+      column 2-10 R_p           40.3434         40.5
+      EW                        1.12887         1.129
+
+    photochem base 2.09, stored (Taylor): 3944.1, 2978.9, 1.5069,
+      5.3673e7, 0.2311, 50.2282, 40.5366, 25.1842, 15.3523, 0.42716
+      against the printed 3944, 2979, 1.51, 5.37e7, 0.231, 50.2, 40.5,
+      25.0, 15.5, 0.421.
+    photochem base 10.31, stored (Taylor): 5868.9, 5098.1, 2.5316,
+      1.3110e7, 1.4208, 122.4593, 96.9378, 59.5033, 37.4345, 1.05634
+      against the printed 5869, 5098, 2.53, 1.31e7, 1.421, 122.5, 96.9,
+      59.2, 37.7, 1.056.
+
+  Every entry reproduces to the printed digits except the split of the
+  metastable column at the 2 R_p boundary, where this script and whatever
+  produced the memo differ by about 1 per cent (the totals agree).  So
+  the replacements below are measured the same way the originals were,
+  and the 1 per cent is the floor on the two split rows.
+
+  This also settles one qualitative change.  On the Taylor-era outputs
+  this script gives the column inside 2 R_p as 25.15 (metal-free) against
+  25.18 (photochem base) -- unchanged to 0.13 per cent, which is what the
+  memo says.  On the re-solved runs it gives 34.61 against 29.07, a
+  16 per cent fall.  The change is in the solutions, not in the method.
+
+----------------------------------------------------------------------
+3. WHAT TO CHANGE IN docs/lhs1140b_exhale_vs_pwinds.tex
+----------------------------------------------------------------------
+Each item: the line, the text that is there now, and what it becomes.
+LINE NUMBERS ARE ADVISORY.  The file is being edited in parallel; between
+the read this record is built on and the time it was written the numbers
+had already drifted by about five lines (the "gave $EW = 1.129$" sentence
+moved from 2939 to 2934).  The quoted text is the authoritative anchor.
+The file as read here: md5 5003b69957383bfa7977cd0d11cf9775, mtime
+2026-08-29 16:02.
+Values are from ms2p13 / fc2p09 / fc10p3 unless said otherwise.
+
+--- Table tab:thermostat (the tabular starting line 2996) -------------
+The three data columns are, in order, ms2p13, fc2p09, fc10p3.
+
+  row                                   old                     new
+  reservoir He/H            2.13   2.09   10.31   unchanged
+  T_max [K]                 5330   3944   5869 -> 5498   3943   5914
+  T(2 R_p) [K]              4140   2979   5098 -> 4276   2979   5169
+  mean mass/particle 2R_p   2.00   1.51   2.53 -> 1.98   1.50   2.53
+  n(H I) 2R_p [cm^-3]  5.67e7 5.37e7 1.31e7 -> 5.81e7 5.41e7 1.32e7
+  He/H by nuclei 2R_p      0.570  0.231  1.421 -> 0.550  0.228  1.415
+  max n(2^3S) [cm^-3]       42.9   50.2  122.5 -> 50.8   57.7  163.4
+  int n(2^3S) dr 1-10 R_p   65.4   40.5   96.9 -> 81.3   47.9  114.6
+     of which 1-2 R_p       24.9   25.0   59.2 -> 34.6   29.1   73.3
+     of which 2-10 R_p      40.5   15.5   37.7 -> 46.7   18.9   41.3
+  EW [%A]                  1.129  0.421  1.056 -> 1.340  0.522  1.144
+
+  Full precision, if more digits are wanted:
+       T_max     5498.4   3943.2   5914.1   (r = 1.4045, 1.3396, 1.4735)
+       T(2R_p)   4276.1   2978.5   5168.9
+       mu(2R_p)  1.9776   1.5021   2.5286
+       n(HI)     5.8090e7 5.4060e7 1.3175e7
+       He/H      0.5504   0.2283   1.4149
+       max n23   50.7651  57.7130  163.3715 (r = 1.2191, 1.2350, 1.1972)
+       col 1-10  81.2721  47.9267  114.6055
+       col 1-2   34.6117  29.0677  73.3262
+       col 2-10  46.6605  18.8589  41.2794
+       EW        1.34021  0.52179  1.14405
+
+--- lines 2988-2992, the table caption -------------------------------
+  DELETE the sentence "\emph{All three solutions predate the Penning
+  replacement of Sect.~\ref{sec:penningrate} and were not re-solved for
+  this revision}, so the last four rows --- the metastable peak, the two
+  column shares and the equivalent width --- are on the retired
+  coefficient and are low by roughly a fifth."  All three are now solved
+  on the current binary.  The measured rise of the last four rows was
+  indeed about a fifth on the two profile arms (max n(2^3S) +15% and
+  +33%, EW +22% and +8%) and larger on the scalar arm's columns (+18% to
+  +39%), so the estimate was in the right direction but not uniform.
+  The rest of the caption (the fixed-reservoir reading, the EW window,
+  the observed value) stands.
+
+--- lines 2979-2981, the sentence just above the table --------------------
+  "the reference arm of the closure (\texttt{.../flux\_closure/ref/k00/})
+  reproduces the $2.09$ column to under $1\%$ in every entry."
+  -> NOT TRUE at 1%, and it was not true before either.  Re-solved
+  (ref2p09 against fc2p09) the entries agree to: T_max 0.10%,
+  T(2R_p) 0.59%, mean mass 0.64%, n(H I) 0.60%, He/H by nuclei 2.2%,
+  max n(2^3S) 0.14%, column 1-10 1.4%, 1-2 0.70%, 2-10 2.5%, EW 2.5%.
+  On the stored runs the same comparison gave up to 1.8% (2-10 R_p) and
+  1.5% (EW).  Suggested replacement bound: "to 2.5% or better in every
+  entry".  ref2p09 full row: T_max 3939.1, T(2R_p) 2960.9, mu 1.4925,
+  n(H I) 5.3738e7, He/H 0.2232, max n23 57.6321, columns 47.2600 /
+  28.8645 / 18.3955, EW 0.50893, log10 Mdot 7.49.
+
+--- line 2939-2952, the equivalent-width paragraph ------------------
+  "${\rm He/H} = 2.13$ gave $EW = 1.129$\,\%\,\AA"          -> $1.340$
+  "gives $0.421$\,\%\,\AA{}"                                -> $0.522$
+  "a factor $2.6$ below the observed $1.108 \pm 0.030$, and $23\sigma$
+   from it"                       -> a factor $2.1$ below, and $19.5\sigma$
+      (1.108/0.52179 = 2.124; (1.108-0.52179)/0.030 = 19.54)
+  DELETE "\emph{Both of those equivalent widths are on the retired
+   Penning coefficient} (Sect.~\ref{sec:penningrate}): re-solved, the
+   metal-free run gives $1.338$ and the ladder rung nearest it rises by
+   $7.6$ per cent, so the factor $2.6$ is the one that was measured and
+   is not re-measured here."
+   Both are now re-measured on the same binary.  The metal-free-to-closed
+   ratio is 1.34021/0.52179 = 2.57, so the "$2.6\times$ less" of the
+   summary (line 93) and of the fig:closure caption (line 3627) SURVIVES
+   unchanged; what changes is the comparison against the measurement.
+   (The stored metal-free run gives 1.33805, so the memo's re-solved
+   $1.338$ was right; the extra 0.16% here is the four JFNK passes.)
+   NOT CHECKED: the "ladder rung nearest it rises by 7.6 per cent" refers
+   to a closure-ladder arm, not to any of these three, and was left alone.
+
+--- line 135 (Sect. 1 summary, "Raising the reservoir reheats the wind") ---
+  "the metastable column above $2\,R_p$ falls by $2.6$ and the line
+   weakens by the same factor"
+   -> the column above 2 R_p falls by $2.5$ (46.66 -> 18.86) and the line
+      weakens by $2.6$ (1.34021 -> 0.52179).  The two factors are no
+      longer equal to the digit quoted; "by about the same factor" is
+      the honest form.
+  "the mean mass per particle at $2\,R_p$ is $2.53\,m_{\rm H}$ against
+   $1.51$"                                   -> $2.53$ against $1.50$
+  "$T_{\max}$ returns to $5869$\,K --- past the metal-free $5330$"
+                                             -> $5914$\,K, past $5498$
+  DELETE "Those three solutions predate the coefficient replacement and
+   were not re-solved for this revision; the mechanism is a comparison at
+   fixed reservoir and is unaffected, but the metastable densities and
+   equivalent widths quoted from them are on the retired coefficient and
+   are marked as such where they appear."
+
+--- lines 3016-3032, "Adding the base metals cools the wind" ---------
+  "radiative cooling is $6$--$9\%$ of the heating over $1.2$--$2\,R_p$"
+     -> $6.6$--$9.6\%$ (measured on ms2p13; the stored run gave the same
+        6.6-9.6%, so the memo's 6-9 was already a rounding).
+  "cooling reaches $71\%$ of the heating at $1.2\,R_p$, of which $95\%$
+   is metal-line cooling and the largest single contributor is neutral
+   C\,\textsc{i}"    -> $71\%$ and $95\%$ stand (0.7104 and 0.9519), and
+        C I is still the largest single coolant (6.412e-9 against
+        6.318e-11 for N I).
+  "$T_{\max}$ falls from $5330$ to $3944$\,K"      -> from $5498$ to $3943$
+  "it rises, $42.9 \rightarrow 50.2$\,cm$^{-3}$"   -> $50.8 \rightarrow 57.7$
+  "neither does the column inside $2\,R_p$, which is the same to $0.4\%$
+   ($24.9$ against $25.0$)"
+   -> NO LONGER TRUE.  The inner column now FALLS by $16\%$, $34.6$
+      against $29.1$.  The scalar arm gained more from the coefficient
+      replacement (+39% inside 2 R_p) than the profile arm (+16%),
+      because it is the hotter of the two and the retired fit
+      over-destroyed the metastable hardest above its 4000 K seam.  The
+      sentence has to be rewritten: the peak still rises (50.8 -> 57.7)
+      but the inner column no longer holds level.
+  "What is lost is entirely outside $2\,R_p$: $40.5 \rightarrow
+   15.5$\,cm$^{-3}R_p$, a factor $2.6$, matching the factor the
+   equivalent width falls by ($1.129 \rightarrow 0.421$\,\%\,\AA)"
+   -> $46.7 \rightarrow 18.9$, a factor $2.5$, against an equivalent
+      width falling by $2.6$ ($1.340 \rightarrow 0.522$).  "Entirely"
+      no longer holds -- see the item above.
+
+--- lines 3033-3050, "Raising the reservoir reheats it" --------------
+  "$T_{\max}$ goes $3944 \rightarrow 5869$\,K"     -> $3943 \rightarrow 5914$
+  "rises from $1.51$ to $2.53\,m_{\rm H}$, a factor $1.68$"
+     -> $1.50$ to $2.53$, a factor $1.68$  (unchanged)
+  line 3038 "the heating rate per particle at $2\,R_p$ rises by $1.88$"
+     -> NOT REPRODUCED, before or after.  Measured on the re-solved arms
+        the ratio is $2.01$ with n_tot as calc_ntot defines it and $1.91$
+        if electrons are counted as particles; on the stored runs the
+        same two definitions give 2.02 and 1.92.  No definition tried
+        returns 1.88, so the memo's number could not be traced to a
+        formula and is replaced by a measured one.  Recommend $2.01$
+        with the calc_ntot convention already stated for the table, and
+        say which convention.
+  "while $T(2\,R_p)$ rises by $1.71$"              -> $1.74$
+  "The three factors agreeing to within $10\%$"
+     -> they now agree to within $20\%$ (1.68, 1.74, 2.01), or $14\%$ on
+        the electrons-included convention (1.68, 1.74, 1.91).  The
+        sentence's own hedge ("a consistency check on that reading, not
+        a proof of it") stands, but the $10\%$ has to go.
+  "when $n({\rm H\,\textsc{i}})$ at $2\,R_p$ falls by $4.1$"
+     -> $4.1$ (5.4060e7/1.3175e7 = 4.10), unchanged.
+  "the volumetric metal cooling nonetheless \emph{rises}, $3.79
+   \rightarrow 6.05\times10^{-10}$ at $1.5\,R_p$"
+     -> $3.72 \rightarrow 5.96\times10^{-10}$\,erg\,cm$^{-3}$\,s$^{-1}$
+  "the two profiles carry the same ${\rm C/H} = 2.778\times10^{-4}$"
+     -> a property of the profiles, not of the wind; not re-measured.
+
+--- line 3065-3084, the metastable-balance paragraph ------------------
+  DELETE "\emph{The three solutions this paragraph is measured on carry
+   the retired Taylor et al.\ (2025) rate}, so the apportionment and the
+   lifetimes below are on that coefficient and were not re-measured. On
+   the Garc\'ia Mu\~noz form the destruction rate is $0.5$--$0.9$ times
+   as large over $2000$--$6000$\,K, so both lifetimes lengthen and both
+   Penning shares fall --- the same direction on both rungs, which is why
+   the comparison they are used for is not expected to reverse."
+   That prediction was correct and can now be replaced by the
+   measurement: both Penning shares fell (89 -> 88 and 60 -> 54 per cent)
+   and both lifetimes lengthened (0.47 -> 0.54 and 0.74 -> 0.87 s).
+
+  "collisional excitation supplies under $0.05\%$ of the source"
+     -> still true and very conservative: measured $1.4\times10^{-20}$ at
+        2.09 and $4.5\times10^{-14}$ at 10.31 of the source.  The
+        19.81 eV threshold of coex_HeI_1S_23S makes the term negligible
+        at 3800-5000 K.  Recommend stating the measured bound, e.g.
+        "supplies less than $10^{-13}$ of the source".
+  "radiative decay, photoionization and collisional ionization together
+   take under $0.1\%$ of the sink"
+     -> still true; measured $0.01\%$ on all three arms.
+  "at ${\rm He/H} = 2.09$, Penning $89\%$ and electron de-excitation
+   $11\%$"                                  -> $88\%$ and $12\%$
+        (0.8768 and 0.1231)
+  "at $10.31$, Penning $60\%$ and electron de-excitation $40\%$"
+                                            -> $54\%$ and $46\%$
+        (0.5402 and 0.4597)
+  "the source rate rises by $1.55$"          -> $1.77$
+        (188.53 against 106.56 cm^-3 s^-1)
+  "the metastable lifetime lengthens by $1.57$, from $0.47$ to $0.74$\,s"
+                                            -> by $1.60$, from $0.54$ to
+        $0.87$\,s  (0.5416 -> 0.8665)
+  "hydrogen has been thinned by $3.2$ at the peak"
+                                            -> by $2.6$
+        (1.1934e9 -> 4.6198e8 at each run's own peak)
+  "The product, $2.44$, is the peak ratio $50.2 \rightarrow 122.5$"
+     -> the product, $2.83$, is the peak ratio $57.7 \rightarrow 163.4$
+        (1.7693 x 1.5999 = 2.8307; 163.3715/57.7130 = 2.8308)
+  "\emph{There is no charge-exchange term on the metastable in this
+   code}" -- still true (charge_exchange.f90 rows B1/B2 act on He I
+   ground and He II); no change.
+
+--- lines 3087-3096, "Read as an interpretation" ---------------------
+  "the $10.31$ solution ($T_{\max} = 5869$\,K, column $96.9$) has
+   recovered and slightly passed that of the metal-free $2.09$ solution
+   ($5330$\,K, $65.4$)"
+     -> ($T_{\max} = 5914$\,K, column $114.6$) against ($5498$\,K,
+        $81.3$).  NB the parenthetical calls the metal-free run "the
+        metal-free $2.09$ solution"; it is at He/H $= 2.13$
+        (Table~\ref{tab:thermostat}, first column).  Pre-existing
+        wording error, flagged, not fixed here.
+  The direction of the statement is unchanged: the 10.31 solution is
+  still hotter and its column still larger than the metal-free one.
+
+--- lines 3098-3157, the composition and ionization paragraphs -------
+  These are measured on the same three solutions and move with them,
+  although the memo does not flag them.
+  "$2.09$ at the base gives $0.231$ by nuclei at $2\,R_p$ and $0.186$
+   beyond $5\,R_p$ on this arm ($0.183$ on the reference arm)"
+     -> $0.228$, $0.184$, and $0.180$ on the reference arm.
+  "$10.31$ gives $1.421$ and $1.156$"       -> $1.415$ and $1.153$
+  "That is a factor $9.1$ and $8.9$ between the reservoir and the wind"
+     -> $9.2$ and $8.9$ ON THE SAME (mixed) READING the memo used: 9.1
+        is reservoir over the 2 R_p value and 8.9 is reservoir over the
+        beyond-5 R_p value.  Measured consistently the pair is 9.2 and
+        7.3 at 2 R_p, or 11.4 and 8.9 beyond 5 R_p.  The inconsistency
+        is pre-existing; flagged, not fixed here.
+  "$n_{\rm H}/n_{\rm tot} = 0.81$ against $n_{\rm He}/n_{\rm tot} = 0.19$
+   at $2\,R_p$"                             -> $0.81$ / $0.19$ unchanged
+        (0.8139 / 0.1858)
+  "At $10.31$ helium still leads there, $0.59$ against $0.41$"
+     -> unchanged (0.5858 / 0.4140)
+  "a reservoir that is $68$ per cent helium by number" -> unchanged
+  "$x({\rm H\,\textsc{ii}}) = 0.031$ ... and $0.106$ ... a factor $3.4$"
+     -> $0.030$ and $0.104$, a factor $3.4$ (0.0303, 0.1035, 3.42)
+  "$\tau(13.6\,{\rm eV}) = 0.23$ and $0.055$"
+     -> $0.23$ and $0.054$ (0.2270, 0.0542; sigma = 6.30e-18 cm^2 on the
+        H I column above 2 R_p)
+  "the H\,\textsc{i} photoelectric heating per neutral hydrogen atom is
+   the same in the two, $1.23$ against $1.26\times10^{-18}$"
+     -> $1.21$ against $1.20\times10^{-18}$ (heat_HI of
+        Heating_breakdown.txt divided by n(H I), both at 2 R_p).  Still
+        "the same in the two"; the memo's pair is not reproduced by this
+        definition on the stored runs either (1.21 and 1.19).
+  line 3132 "$\alpha_B(T)\,n_e$ is $2.35$ against $2.13\times10^{-6}$\,s$^{-1}$"
+     -> $1.70$ against $1.42\times10^{-6}$\,s$^{-1}$ with rec_HII_B as
+        the code defines it (Badnell RR minus Mao & Kaastra n = 1).  The
+        memo's pair is not reproduced by that formula and no other
+        alpha_B in Cool_coeff.f90 gives it either; the statement it
+        supports ("barely moves") is weaker on the measured pair, a
+        factor 1.20 rather than 1.10.  FLAGGED -- the definition behind
+        the memo's numbers could not be identified.
+  "Penning ionization He($2\,^3S$)$+$H, which supplies $31\%$ of what
+   case-B recombination removes at $2.09$ and $24\%$ at $10.31$ --- a
+   falling share but a rate per neutral hydrogen atom $2.8$ times
+   higher --- and the charge exchange He$^+ +$H, at $2.3\%$ and $1.5\%$.
+   The rest, $67\%$ and $75\%$, is photoionization"
+     -> measured with f_penning_HeI23S = 0.9 on the Penning branch:
+        $30\%$ and $20\%$ for Penning, a rate per neutral hydrogen atom
+        $2.0$ times higher (1.617e-8 -> 3.262e-8 s^-1), $3.5\%$ and
+        $2.6\%$ for the charge exchange, and $66\%$ and $77\%$ left for
+        photoionization.  The direction (Penning share falls, rate per
+        atom rises, photoionization takes the rest) is unchanged.
+  "$x({\rm He\,\textsc{ii}})$ is $0.053$, $0.065$ and $0.079$"
+     -> $0.055$, $0.065$ and $0.081$
+  line 3156 "$x({\rm He\,\textsc{iii}})$ stays below $2\times10^{-4}$
+   everywhere inside $3\,R_p$"
+     -> FALSE, and it was false on the stored runs too.  The maximum
+        inside 3 R_p is $3.0\times10^{-4}$, $4.4\times10^{-4}$ and
+        $6.2\times10^{-4}$ (stored: 3.0, 4.3 and 6.0e-4), all at
+        r = 2.98 R_p.  It is below 2e-4 at 2 R_p (9.7e-5, 1.4e-4,
+        2.0e-4).  Either restrict the claim to 2 R_p or raise the bound
+        to $7\times10^{-4}$.  Pre-existing error, flagged, not fixed.
+  "\texttt{heat\_Hpe[excitedH]} is exactly zero at every cell of all
+   three runs" -> still exactly zero in all three (and in ref2p09).
+
+--- line 3184, the fig:compprof caption ------------------------------
+  "their largest share of $n_{\rm tot}$ anywhere in $1$--$30\,R_p$ is
+   $3.0\times10^{-4}$ at ${\rm He/H} = 2.09$ and $1.7\times10^{-4}$ at
+   $10.31$, and zero on the metal-free base"
+     -> UNCHANGED.  Measured 3.044e-4 and 1.679e-4, and exactly zero on
+        the metal-free base.
+  DELETE "All three solutions are on the retired Penning coefficient
+   (Sect.~\ref{sec:penningrate}); the elemental and ionization fractions
+   this figure draws are not set by it."  That reading was right -- the
+   elemental fractions moved by under 2% and the ionization fractions by
+   under 3% -- but the sentence is now stale.
+  "The re-solved ladder crosses the measurement at $\mathrm{He/H} =
+   9.048$ ..., between the two profile runs drawn here." -- not touched;
+   9.048 is the closure ladder of ../crossings_gm25, not one of these.
+
+--- line 3999-4012, the summary bullet on the handoff ----------------
+  "which take $\log_{10}\dot M$ from $7.80$ to $7.46$"
+     -> the 7.46 is the one-key-at-a-time control ladder, not one of
+        these three, and was NOT re-measured here.  For the record the
+        two solutions themselves give 7.80 (ms2p13) and 7.50 (fc2p09),
+        both unchanged from the stored runs.
+  "and the red-pair depth down by a factor $2.9$"
+     -> also a control-ladder number.  Between these two solutions the
+        red-pair depth ratio is now $2.5$ (4.9013 -> 1.9855), against
+        $3.0$ on the stored runs.  Whoever re-measures the ladder should
+        expect the factor to come down to about 2.5.
+  "$0.421$ against the measured $1.108 \pm 0.030$\,\%\,\AA{} (those two
+   equivalent widths are on the retired Penning coefficient and were not
+   re-measured; the comparison is at fixed reservoir)"
+     -> $0.522$, and DELETE the parenthesis.
+
+--- line 4060-4078, the summary bullet on the thermostat -------------
+  "$3944$\,K"                                     -> $3943$\,K
+  "the metastable peak rises and the column inside $2\,R_p$ is unchanged
+   to $0.4\%$"  -> the peak still rises ($50.8 \rightarrow 57.7$) but the
+   column inside 2 R_p now FALLS by $16\%$ ($34.6 \rightarrow 29.1$).
+   Rewrite as above.
+  "the column outside $2\,R_p$ falls by $2.6$, which is the factor the
+   equivalent width falls by"
+     -> falls by $2.5$, close to the $2.6$ the equivalent width falls by.
+  "returns $T_{\max}$ to $5869$\,K --- past the metal-free $5330$"
+     -> $5914$\,K, past $5498$
+  "with the mean mass per particle at $2\,R_p$ up by $1.68$ and the
+   heating per particle up by $1.88$"
+     -> $1.68$ (unchanged) and $2.01$ (see the item at line 3038 -- the
+        1.88 is not reproducible).
+  "the peak ratio $50.2 \rightarrow 122.5$ splits as a source up by
+   $1.55$ against a lifetime up by $1.57$"
+     -> $57.7 \rightarrow 163.4$, a source up by $1.77$ against a
+        lifetime up by $1.60$
+  "$89\%$ of the sink at $2.09$, $60\%$ at $10.31$"  -> $88\%$, $54\%$
+  DELETE "Those three solutions are on the retired Penning coefficient
+   and were not re-solved, so the metastable numbers in this bullet are
+   low by roughly a fifth; the comparison is at fixed reservoir and its
+   direction is not in question."
+
+--- line 93 (Sect. 1 summary) and line 3627 (fig:closure caption) ----
+  Not in this worker's list, but both quote the same factor and both
+  carry a staleness marker that these runs now settle:
+  line 93  "the same reservoir then absorbs about $2.6\times$ less
+            (Sect.~\ref{sec:basemetals}, measured before the coefficient
+            replacement and not re-measured)"
+     -> the factor is $2.6$ re-measured (1.34021/0.52179 = 2.57); the
+        parenthetical qualifier can go.
+  line 3627 "make this solution's line $2.6\times$ weaker than the
+            metal-free base at the same reservoir (...; that factor is
+            on the retired Penning coefficient)"
+     -> same: $2.6$ survives, the qualifier can go.
+
+--- outside this worker's lines, but read off the same runs -----------
+  Three further places quote the scalar arm, ms2p13's source, and are
+  listed only so that whoever owns them has the measured replacement.
+  NOT part of the thermostat set and NOT acted on here.
+  line ~406  "\texttt{heh2p13\_diff\_kzz1e9} from $1.129$ to $1.338$"
+     -> correct as written; that 1.338 is the stored run, and four more
+        JFNK passes here move it to 1.340 (+0.16%).
+  line ~3497 "the scalar-base solution at $\mathrm{He/H} = 2.13$
+             ($EW = 1.129$)"                       -> $1.340$
+  line ~3522 Table tab:xuvgrid, the $F_{\rm XUV}/{\rm fiducial} = 1.00$
+             row of the scalar-base half, $4.152$ and $1.129$
+     -> $4.901$ and $1.340$ (ms2p13).  The stored 4.152 is exactly the
+        red depth in
+        ../heh2p13_diff_kzz1e9/tpm_He10830_metrics_taylor.txt, so that
+        row is a Taylor-era measurement; the rest of the grid
+        (xuv*_heh2p13/, xuv*_closure9p7/) was not re-run here.
+
+----------------------------------------------------------------------
+4. FIGURES THAT GO STALE
+----------------------------------------------------------------------
+NOT REDRAWN, as instructed.  Which figure reads which run, from
+../../make_memo_figures.py:
+
+  lhs1140b_thermostat.pdf            block at line 1440; reads
+     exhale/heh2p13_diff_kzz1e9, exhale/flux_closure/hi/k06,
+     exhale/flux_closure/heh10p3/k01.  This is Fig.~\ref{fig:thermostat}
+     and both its panels (T and n(2^3S) against radius) move: the
+     metastable curves rise by 15-33% and the metal-free temperature
+     curve by ~170 K.  The qualitative statement the caption makes
+     (cooling strips the population outside 2 R_p, raising the reservoir
+     carries it back out) still holds, but panel (b) now also shows the
+     inner column falling, which the caption denies.
+
+  lhs1140b_composition_profiles.pdf  block at line 1765; reads the same
+     three.  This is Fig.~\ref{fig:compprof}.  The elemental and
+     ionization curves move by under 3%, so the figure is stale but not
+     misleading.
+
+  lhs1140b_knudsen.pdf               line 1189-1191; reads
+     exhale/heh2p13_diff_kzz1e9 and exhale/flux_closure/hi/k06.
+
+  lhs1140b_closure.pdf               line 1079 (CLOSURE_ARMS); reads
+     exhale/flux_closure/ref (k00).
+
+  lhs1140b_closure_ladder.pdf        line 1302 (XUV_FAMILIES); reads
+     exhale/heh2p13_diff_kzz1e9 as one of the two XUV families.
+
+  lhs1140b_photochem_column_2.pdf    line 1687-1689 (LADDER_ARMS); reads
+     exhale/flux_closure/hi/k06 and exhale/flux_closure/heh10p3/k01
+     (and exhale/flux_closure/heh5/k04, which was not re-solved here).
+
+  A redraw would have to point make_memo_figures.py at this directory,
+  or the stored runs would have to be re-solved in place; neither was
+  done.  Note that lhs1140b_closure_ladder.pdf and
+  lhs1140b_photochem_column_2.pdf also read arms outside this worker's
+  scope (crossings_pc090/rw_*, flux_closure/heh9p7/k03,
+  flux_closure/heh5/k04, flux_closure/heh12), which were not touched.
+
+----------------------------------------------------------------------
+5. WHAT WAS NOT MEASURED OR NOT SETTLED
+----------------------------------------------------------------------
+  - The one-key-at-a-time control ladder of Sect. sec:basemetals (the
+    7.46 rung and the "factor 2.9" red-pair depth) is a separate set of
+    runs and was not re-solved.  Its endpoints as measured here move
+    (the depth ratio between the two end solutions goes 3.0 -> 2.5), so
+    the ladder needs its own re-solve before those two numbers are
+    quoted again.
+  - The "ladder rung nearest it rises by 7.6 per cent" of line 2946
+    refers to a closure-ladder arm, not to any of these three; not
+    checked.
+  - The heating per particle ratio 1.88 (lines 3038 and 4066) could not
+    be reproduced by any definition tried, on the re-solved runs or on
+    the stored ones.  The value given above is measured, not recovered.
+  - alpha_B n_e = 2.35 / 2.13e-6 (line 3132) is likewise not
+    reproduced by rec_HII_B; the replacement offered is measured with
+    the code's own coefficient.
+  - Only the nominal transit configuration was synthesized;
+    EXHALE_TRANSIT_TURB was not run for any arm.
+  - Nothing outside this directory was written.  No stored run, no
+    golden, no figure and no document was touched; make check was not
+    run (no code was changed) and EXHALE was not rebuilt.
+
+======================================================================
+WHICH DIRECTORY IS WHICH
+======================================================================
+  ms2p13   scalar base, no metals, He/H 2.13, K_zz = 1e9, He diffusion on
+           -- re-solved from ../heh2p13_diff_kzz1e9
+  fc2p09   flux-closed solution on the photochemical column, He/H 2.09
+           -- re-solved from ../flux_closure/hi/k06
+  fc10p3   the same, He/H 10.31
+           -- re-solved from ../flux_closure/heh10p3/k01
+  ref2p09  the reference arm of the closure, He/H 2.09
+           -- re-solved from ../flux_closure/ref/k00
+
+  scripts: resolve_wind.sh (the runs), thermostat.py (the table rows,
+           the 2^3S budget, the composition and heating/cooling shares),
+           extra.py (the ionization budget at 2 R_p and the two heating
+           per particle conventions).  measure.py and crossing.py live
+           in ../crossings_gm25 and were used unmodified.

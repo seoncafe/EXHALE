@@ -118,6 +118,10 @@
 		! Initial integrands
 		int_f = F_XUV*exp(-tauE)/(1.0 + a_tau*tauE)
 		! SvS85 secondary-ionization energy partition (scalars for this cell).
+		! Hydrogen is the only absorber on this path, so the composition
+		! blindness of the fit is confined to the helium content assumed
+		! inside its coefficients; the full statement is in the
+		! validity-range note of the He/metals path below.
 		if (sec_on) then
 			xj   = min(max(xion(j), 0.0d0), 1.0d0)
 			fh   = svs85_fheat(xj)
@@ -227,13 +231,13 @@
    ! Heating rate
 	real*8, dimension(1-Ng:N+Ng),intent(out) ::  heat
 
-	! Optional per-absorber photoheating breakdown (cgs erg cm^-3 s^-1).
+	! Optional photoheating breakdown by absorber (cgs erg cm^-3 s^-1).
 	! Columns: 1 H I, 2 He I (singlet ground), 3 He II, 4 He 2^3S,
 	! 5 H2 (molecular, 0 when absent), 6 metals (sum over photo-ionizable
 	! metal ions). Columns 1-6 sum to `heat` up to rounding; `heat` itself is
 	! computed unchanged, so this is a diagnostic-only add-on.
 	real*8, dimension(1-Ng:N+Ng,6),intent(out),optional :: heat_chan
-	! Frequency-integrand accumulators for the per-absorber split (only used
+	! Frequency-integrand accumulators for the split by absorber (only used
 	! when heat_chan is present).
 	real*8, dimension(Nl) :: acc_HI,acc_HeI,acc_HeII,acc_HeTR,acc_H2,acc_mtl
 
@@ -274,7 +278,7 @@
       PIR_TR  = 0.0
       q_abs   = 0.0
 
-		! Per-absorber photoheating accumulators default to zero so the He 2^3S
+		! The photoheating accumulators default to zero so the He 2^3S
 		! and H2 columns stay 0 in cells/runs where those absorbers are absent.
 		if (present(heat_chan)) then
 			acc_HeTR = 0.0d0
@@ -304,6 +308,42 @@
 		if (thereis_HeITR) int_TR =  int_f*s_heiTR/e_v
 		if (present(nh2)) int_h2 = int_f*s_h2/e_v
 
+		! ------------------------------------------------------------------
+		! Validity range of the SvS85 partition used from here on.
+		!
+		! svs85_fion_HI(x) and svs85_fion_HeI(x) are Shull & van Steenberg
+		! (1985) fits to their Monte Carlo results and are functions of the
+		! ionized fraction x ALONE: the helium content their calculation
+		! assumed is fixed inside the fitted coefficients and cannot be
+		! varied from here. The absorber loops below then apply those same
+		! two coefficients to the photoelectrons of EVERY absorber -- H I,
+		! He I, He II, He I 2^3S, H2 and the metal ions. The amplitudes are
+		! 0.3908 for the H I channel against 0.0554 for the He I one, so
+		! hydrogen is handed about 7 times helium's share of the secondary
+		! ionizations whatever the composition is. In a helium-dominated
+		! envelope the actual abundances say the opposite, by up to three
+		! orders of magnitude, and the H I channel is then fed mostly by
+		! photoelectrons that helium released.
+		!
+		! Measured symptom (2026-08-27, LHS 1140 b, prescribed composition
+		! over a metal-free scalar base): n_HI reaches an exact zero at
+		! He/H >= 10 -- LHS1140b/exhale/heh10 above r = 6.55 R_p, heh100
+		! above 1.06, heh1000 above 1.03 -- because P_HI gains
+		! R_secHI/n_HI, sourced mostly by helium's photoelectrons, faster
+		! than hydrogen recombines.
+		!
+		! The runs the science is quoted from sit inside the valid range and
+		! are unaffected: heh0p55, heh2p13_diff_kzz1e9 and every rung of the
+		! elemental-flux closure ladder up to He/H = 12 contain no fully
+		! ionized cell, with x(H II) at 2 R_p between 0.044 and 0.178.
+		!
+		! Correcting this means renormalizing the partition to the cell's
+		! own composition instead of the one the fit assumed. That moves
+		! every He-rich result and the goldens with them, so it is recorded
+		! here and not done. Record: LHS1140b/WORKPLAN.md row F and
+		! docs/lhs1140b_exhale_vs_pwinds.tex, "Density and ionization, the
+		! same pair".
+		! ------------------------------------------------------------------
 		! SvS85 secondary-ionization energy partition (scalars for this cell).
 		if (sec_on) then
 			xj    = min(max(xion(j), 0.0d0), 1.0d0)
@@ -449,6 +489,8 @@
 			R_secHeI = sum(int_f*acc_secHeI*de_v)*1.0e-18*erg2eV
 			! x -> 1 gives f_ion -> 0, so R_sec -> 0 there; the max() is only a
 			! divide-by-zero guard for an (unphysical) fully depleted cell.
+			! Both rates carry the composition-blind SvS85 split; see the
+			! validity-range note at the fiHI/fiHeI assignment above.
 			P_HI(j)  = P_HI(j)  + R_secHI /max(nhi(j)  , 1.0d-99)
 			P_HeI(j) = P_HeI(j) + R_secHeI/max(nheiS(j), 1.0d-99)
 		endif
@@ -456,7 +498,7 @@
 		P_HeITR(j) = PIR_TR *1.0e-18*erg2eV
 		P_m(j,:)   = Pm_loc(:)
 		heat(j)    = Hea_1*1.0e-18
-		! Per-absorber photoheating split (same 1e-18 factor and int_f weight
+		! Photoheating split by absorber (same 1e-18 factor and int_f weight
 		! as heat above). Columns 1-6 sum to heat(j) up to rounding.
 		if (present(heat_chan)) then
 			heat_chan(j,1) = sum(int_f*acc_HI  *de_v)*1.0e-18
@@ -1113,15 +1155,16 @@
 	endif
 	h_penning = 0.0d0
 	if (thereis_HeITR) h_penning =                                    &
-		nheiTR*nhi*Q31*(e_th_HeI - e_th_HeTR - e_th_HI)/erg2eV
+		f_penning_HeI23S*nheiTR*nhi*Q31                                &
+		*(e_th_HeI - e_th_HeTR - e_th_HI)/erg2eV
 
 	! He(2^3S)+H2 -> He(1^1S)+H2+ + e- Penning ionization heating: the electron
-	! carries away (e_th_HeI - e_th_HeTR) - e_th_H2 = 4.4 eV, with the Garcia
-	! Munoz (2025) rate coefficient penning_HeI23S_H2. Zero unless a molecular
-	! run also tracks the triplet.
+	! carries away (e_th_HeI - e_th_HeTR) - e_th_H2 = 4.4 eV. ioniz_HeI23S_H2
+	! is the total, so the Penning branch alone carries this exothermicity.
+	! Zero unless a molecular run also tracks the triplet.
 	h_penning_h2 = 0.0d0
 	if (thereis_mol .and. thereis_HeITR) h_penning_h2 =               &
-		nheiTR*nmol(:,1)*penning_HeI23S_H2(T_K)                        &
+		f_penning_HeI23S*nheiTR*nmol(:,1)*ioniz_HeI23S_H2(T_K)         &
 		*((e_th_HeI - e_th_HeTR) - e_th_H2)/erg2eV
 
 	! H2 + hv -> H + H Lyman-Werner photodissociation heating: the fragment
@@ -1139,7 +1182,7 @@
 		h_lw = k_lw*nmol(:,1)*e_lw_fragment_erg
 	endif
 
-	! Total heating (independent of the per-channel columns; the residual
+	! Total heating (independent of the channel columns; the residual
 	! below checks the photoheating decomposition against heat_ph).
 	heat_tot = heat_ph + Hpe_arr + Hdx_arr + h_hrc + h_penning        &
 	         + h_penning_h2 + h_lw
@@ -1191,10 +1234,13 @@
 	call coex_HeI_23S_21P(T_K,q31b)
 	A31 = 1.272e-4
 
-	! Penning ionization He(2^3S)+H: temperature-dependent Taylor et al. (2025)
-	! rate, used unconditionally (the legacy temperature-independent 5e-10
-	! constant is no longer selectable).
-	call penning_HeI_23S(T_K,Q31)
+	! He(2^3S)+H total ionization (Penning + associative), Garcia Munoz (2025)
+	! from the Movre & Meyer (1997) cross sections, used unconditionally (the
+	! legacy temperature-independent 5e-10 constant is no longer selectable).
+	! Q31 is the TOTAL: it is what removes the metastable. The consumers that
+	! create a lasting proton or deposit the Penning exothermicity scale it by
+	! f_penning_HeI23S.
+	Q31 = ioniz_HeI23S_H(T_K)
 
    ! End of subroutine
 	end subroutine HeITR_coeffs
