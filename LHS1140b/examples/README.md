@@ -36,7 +36,8 @@ elemental-reservoir keys of `base.inp` (`C_H_base`, `N_H_base`,
   spectrum-file path is rewritten relative to this directory).
 - `output/` — the converged solution: `Hydro_ioniz.txt`, `Ion_species.txt`,
   the advection-corrected `*_adv.txt` profiles, heating/cooling breakdowns,
-  and (diffusion on) `element_flux_profile.txt`.
+  and, where present, `element_flux_profile.txt` (written when a
+  lower-atmosphere profile is in use, or on `EXHALE_DIFFUSION_CHECK=1`).
 - `tpm_*.txt` — transmission spectra synthesized from the `_adv` profiles
   (He I 10830 with its line metrics, H-alpha, H-beta, Ly-alpha).
 - `EXHALE_setup.out`, `EXHALE_resolved.out` — the configuration echo and the
