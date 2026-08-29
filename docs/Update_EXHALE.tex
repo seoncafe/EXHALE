@@ -12364,7 +12364,7 @@ closing both open items of its section 6.
 \clearpage
 \appendix
 
-\section{Code-size summary: EXHALE vs.\ the original ATES (2026-06-07; updated 2026-08-15)}
+\section{Code-size summary: EXHALE vs.\ the original ATES (2026-06-07; updated 2026-08-30)}
 % ===================================================================== %
 A line-by-line comparison of the Fortran source against the pristine upstream code
 (\texttt{ATES/ATES-Code-main}) quantifies the extent of the in-house extension.
@@ -12375,10 +12375,13 @@ reformatting and comment-only edits are \emph{not} counted as changes. The
 measurement script is \texttt{src/utils/codesize.py}, which reprints every
 number of this appendix and the byte-identical list of
 Table~\ref{tab:untouched}. Updated
-2026-08-15, i.e.\ after the molecular chemistry and lower-atmosphere layers
-(sections 40--57), the solver and residual work of sections 58--61, and the
-runtime-$N$/CODATA-$k_{\rm B}$ series of section 62; the \emph{core} rows
-exclude the ported Wind-AE solver (listed separately).
+2026-08-30, i.e.\ after the binary element-diffusion layer and the
+lower-atmosphere profile handoff (sections 64--80) and the defect-fix and
+solver series of sections 81--93; the \emph{core} rows
+exclude the ported Wind-AE solver (listed separately). Relative to the
+2026-08-15 edition, \texttt{species\_diffusion.f90} was deleted with the
+Phase-D rewrite and is superseded by
+\texttt{binary\_element\_diffusion.f90}.
 
 \begin{center}\small
 \begin{tabular}{@{}lcc@{}}
@@ -12386,68 +12389,70 @@ exclude the ported Wind-AE solver (listed separately).
  & Fortran files & code lines (SLOC) \\
 \midrule
 Original ATES (\texttt{ATES-Code-main}) & 47 & 3\,514 \\
-EXHALE core (excl.\ Wind-AE port)       & 73 & 13\,314 \\
+EXHALE core (excl.\ Wind-AE port)       & 75 & 16\,272 \\
 \midrule
-net change (core) & $+26$ & $+9\,800$ ($\approx3.8\times$) \\
+net change (core) & $+28$ & $+12\,758$ ($\approx4.6\times$) \\
 \midrule
 Wind-AE IC-generator port (\texttt{wind\_ae/}) & $+36$ & $+4\,746$ \\
-EXHALE total & 109 & 18\,060 ($\approx5.1\times$) \\
+EXHALE total & 111 & 21\,018 ($\approx6.0\times$) \\
 \bottomrule
 \end{tabular}
 \end{center}
 
 \noindent
 \textbf{Line-by-line diff, core} (comments + blanks excluded; whitespace/case
-normalized): \textbf{10\,466} code lines added in EXHALE (new modules + the new
-side of modified lines) and \textbf{666} removed from the original (deleted + the
-old side of modified lines), for \textbf{11\,132} total changed lines. At the file
+normalized): \textbf{13\,457} code lines added in EXHALE (new modules + the new
+side of modified lines) and \textbf{699} removed from the original (deleted + the
+old side of modified lines), for \textbf{14\,156} total changed lines. At the file
 level, of the 47 original files \textbf{34 were modified} and \textbf{13 are
 unchanged} (none were removed --- the unchanged set is the 10 included MINPACK
 routines plus three small physics/setup pieces; the full list is
-Table~\ref{tab:untouched}), and \textbf{26 new core modules} were added:
+Table~\ref{tab:untouched}), and \textbf{28 new core modules} were added:
 
 \begin{center}\footnotesize
 \begin{tabular}{@{}l p{0.33\linewidth} r@{}}
 \toprule
 New module & Purpose & SLOC \\
 \midrule
-\texttt{time\_step/steady\_newton.f90}    & JFNK steady-state solve (PTC warm-up, line search, below-escape diagnostic) & 636 \\
-\texttt{radiation/charge\_exchange.f90}  & charge-exchange network (Huang Table 4) & 366 \\
+\texttt{functions/binary\_element\_diffusion.f90} & conservative binary H/He element diffusion (stage-resolved pair coefficients, donor-cell drift, metals slaved to H) & 1164 \\
+\texttt{tests/diffusion\_tests.f90} & test driver of the diffusion operator (analytic and conservation checks) & 1025 \\
+\texttt{time\_step/steady\_newton.f90} & JFNK steady-state solve (PTC warm-up, line search, below-escape diagnostic) & 636 \\
+\texttt{files\_IO/lower\_atmosphere\_profile.f90} & lower-atmosphere profile reader: log-$p$ interpolation, elemental reservoirs, $K_{zz}(p)$ & 367 \\
+\texttt{radiation/charge\_exchange.f90} & charge-exchange network (Huang Table 4) & 366 \\
 \texttt{radiation/excited\_hydrogen.f90} & H($n{=}2$) model + Balmer feedback & 288 \\
 \texttt{time\_step/viscous\_conduction.f90} & molecular viscosity $+$ heat conduction (Crank--Nicolson) & 264 \\
-\texttt{functions/species\_diffusion.f90} & He/H ($+$ metal) diffusive separation & 216 \\
-\texttt{radiation/opacity\_models.f90}   & opacity dispatcher (A/C/P/T) & 180 \\
-\texttt{nonlinear\_system\_solver/System\_HeH\_mol.f90} & coupled H/He $+$ molecular (H$_2$/H$_2^+$/H$_3^+$/HeH$^+$) system & 158 \\
+\texttt{nonlinear\_system\_solver/System\_HeH\_mol.f90} & coupled H/He $+$ molecular (H$_2$/H$_2^+$/H$_3^+$/HeH$^+$) system, turnover-scaled rows & 210 \\
+\texttt{radiation/opacity\_models.f90} & opacity dispatcher (A/C/P/T) & 180 \\
 \texttt{nonlinear\_system\_solver/System\_HeH\_metals.f90} & coupled H/He$+$metals ionization ($+$analytic Jacobian) & 150 \\
 \texttt{nonlinear\_system\_solver/newton\_solver.f90} & analytic-Jacobian Newton ($+$\,hybrd1 fallback) & 128 \\
-\texttt{nonlinear\_system\_solver/ion\_residual\_core.f90} & shared ionization-residual assembly of the \texttt{System\_*} family & 125 \\
-\texttt{time\_step/energy\_semi\_implicit.f90} & semi-implicit energy solver & 113 \\
+\texttt{nonlinear\_system\_solver/ion\_residual\_core.f90} & shared ionization-residual assembly of the \texttt{System\_*} family & 127 \\
+\texttt{functions/composition.f90} & single-point species/EOS policy & 119 \\
+\texttt{init/species\_table.f90} & metal $+$ molecular species metadata table & 112 \\
 \texttt{files\_IO/metals\_input\_read.f90} & parse \texttt{metals.inp} & 111 \\
-\texttt{init/species\_table.f90}          & metal $+$ molecular species metadata table & 109 \\
+\texttt{time\_step/energy\_semi\_implicit.f90} & semi-implicit energy solver & 108 \\
+\texttt{nonlinear\_system\_solver/System\_HeH\_mol\_metals.f90} & molecular $+$ metals merged ionization system & 105 \\
 \texttt{lower\_atmosphere/h3p\_cooling.f90} & H$_3^+$ infrared cooling (Miller et al.\ 2013) & 104 \\
 \texttt{lower\_atmosphere/mol\_rates.f90} & molecular reaction rates (Koskinen et al.\ 2022, Table 1) & 103 \\
-\texttt{functions/composition.f90}        & single-point species/EOS policy & 92 \\
 \texttt{lower\_atmosphere/lower\_column.f90} & analytic lower-atmosphere column (Koskinen et al.\ 2022) & 90 \\
-\texttt{radiation/lya\_rt.f90}            & Ly$\alpha$ escape-probability RT ($+$ absorbing-bottom channel) & 88 \\
-\texttt{nonlinear\_system\_solver/System\_HeH\_mol\_metals.f90} & molecular $+$ metals merged ionization system & 86 \\
+\texttt{radiation/lya\_rt.f90} & Ly$\alpha$ escape-probability RT ($+$ absorbing-bottom channel) & 88 \\
 \texttt{files\_IO/opacity\_input\_read.f90} & parse \texttt{opacity.inp} & 85 \\
-\texttt{flux/low\_mach\_dissipation.f90}  & gated fourth-difference contact-mode dissipation & 79 \\
+\texttt{flux/low\_mach\_dissipation.f90} & gated fourth-difference contact-mode dissipation & 79 \\
 \texttt{nonlinear\_system\_solver/ion\_cell\_state.f90} & named-field cell state of the ionization systems & 77 \\
 \texttt{radiation/hydrogen\_n2\_rates.f90} & H($n{=}2$) rate coefficients (single source) & 76 \\
 \texttt{nonlinear\_system\_solver/System\_HeH\_TR\_metals.f90} & merged He\,2$^3$S$+$metals system & 68 \\
-\texttt{time\_step/steady\_residual.f90}  & steady-residual assembly/norms & 57 \\
+\texttt{time\_step/steady\_residual.f90} & steady-residual assembly/norms & 57 \\
 \texttt{lower\_atmosphere/lyman\_werner.f90} & H$_2$ Lyman--Werner photodissociation (Draine \& Bertoldi 1996) & 37 \\
 \midrule
-\multicolumn{2}{r}{new-module total} & 3\,886 \\
+\multicolumn{2}{r}{new-module total} & 6\,324 \\
 \bottomrule
 \end{tabular}
 \end{center}
 
 \noindent
-So the 26 new core modules contribute 3\,886 of the 10\,466 added code lines; the
-remaining $\sim$6\,580 added (and 666 removed) lines are edits spread across the 34
+So the 28 new core modules contribute 6\,324 of the 13\,457 added code lines; the
+remaining $\sim$7\,130 added (and 699 removed) lines are edits spread across the 34
 modified files --- dominated by the cooling module (\texttt{Cool\_coeff.f90}, 442
-$\to$ 3\,209 raw lines: CHIANTI metal-line fits, Fe tables, fine-structure
+$\to$ 3\,277 raw lines: CHIANTI metal-line fits, Fe tables, fine-structure
 statistical equilibrium, Penning and molecular rate coefficients), followed by the
 ionization equilibrium and its diagnostics (\texttt{ionization\_equilibrium.f90},
 \texttt{util\_ion\_eq.f90}), the main driver, parameters/input parsing, IC
@@ -12455,20 +12460,21 @@ construction, cross sections, and the post-processor, which wire the metals,
 molecules, opacity dispatcher, Roche potential, transonic/auto/Wind-AE IC,
 excited-H/Ly$\alpha$ physics, diffusion hooks, and the Brent/Newton solver
 upgrades into the existing solver. In total the EXHALE core is now
-$\approx$3.8$\times$ the original code base (3\,514\,$\to$\,13\,314 SLOC),
-touching most of the original files (34 of 47 modified, none deleted, plus 26
-new); with the ported Wind-AE IC generator the full Fortran tree is 109 files /
-18\,060 SLOC ($\approx$5.1$\times$). Beyond Fortran, the tree also carries the
+$\approx$4.6$\times$ the original code base (3\,514\,$\to$\,16\,272 SLOC),
+touching most of the original files (34 of 47 modified, none deleted, plus 28
+new); with the ported Wind-AE IC generator the full Fortran tree is 111 files /
+21\,018 SLOC ($\approx$6.0$\times$). Beyond Fortran, the tree also carries the
 Python tooling (GUI, the \texttt{EXHALE\_transit.py} transmission post-processor,
-plotting/analysis) and $\approx$40\,000 lines of documentation (44 memos plus the
-manual and this log) under \texttt{docs/}.
+plotting/analysis, the lower-atmosphere adapters and the elemental-flux
+closure driver) and $\approx$71\,000 lines of documentation (94 md/tex files:
+the memos, the manual and this log) under \texttt{docs/}.
 
 
 % ===================================================================== %
 \section{Fortran source inherited unchanged from ATES}\label{sec:untouched}
 % ===================================================================== %
 Of the 47 upstream Fortran files (\texttt{ATES/ATES-Code-main}), \textbf{13 are
-byte-for-byte identical} in EXHALE (re-measured 2026-08-15) --- the numerics
+byte-for-byte identical} in EXHALE (re-measured 2026-08-30) --- the numerics
 EXHALE reuses without touching: the included \textsc{MINPACK} nonlinear solver
 (the \texttt{hybrd} Powell hybrid method and its linear-algebra helpers, called
 by the ionization-equilibrium solver) and three small physics/setup pieces.
@@ -12494,7 +12500,7 @@ in the 2026-07-02 code review, so no original line was altered.
 \begin{table}[h]
 \centering\small
 \caption{The 13 Fortran files byte-identical between the original ATES
-(\texttt{ATES-Code-main}) and EXHALE (measured 2026-08-15), grouped by role.}
+(\texttt{ATES-Code-main}) and EXHALE (measured 2026-08-30), grouped by role.}
 \label{tab:untouched}
 \begin{tabular}{@{}l p{0.60\linewidth}@{}}
 \toprule
