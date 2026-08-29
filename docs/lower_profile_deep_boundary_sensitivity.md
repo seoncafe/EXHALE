@@ -3,9 +3,9 @@
 Written 2026-08-29. Primary measurement record:
 `LHS1140b/exhale/deep_temperature_sensitivity/` (README, six scripts, three
 tables, thirteen adapter runs under `runs/`). Every number quoted here was
-measured for this document on the repository's own interpreter,
-`env/photochem/bin/python` (photochem 0.9.0); nothing is carried over from an
-earlier run except where it says so.
+measured for this document on the corrected Photochem 0.9.0 build
+(`README_photochem.md`); nothing is carried over from an earlier run except
+where it says so.
 
 ---
 
@@ -76,7 +76,7 @@ one build, in section 3, on the environment that carries the repair.
 
 The Fortran quoted below is `photochem/src/` in this repository, the tree that
 reproduces the installed library (section 91 of `docs/Update_EXHALE.md`); the
-Python is the installed copy under `env/photochem/`.
+Python is the installed copy, not the source tree.
 
 ## 2. Where the deep boundary temperature becomes a pressure
 

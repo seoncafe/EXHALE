@@ -174,11 +174,16 @@ trap "" HUP
 
 EXEC={exe}
 
-HOSTS={hosts}
+# Hosts to run on, and the MPI slots each provides.  Both are site-specific:
+# override with LART_HOSTS / LART_SLOTS, or per host as "name:slots".
+HOSTS=${{LART_HOSTS:-{hosts}}}
+SLOTS=${{LART_SLOTS:-{slots}}}
 host_file=/tmp/host_file_$RANDOM
 for host in $(echo $HOSTS | tr "," "\\n"); do
-   [[ $host = "mocafe" ]] && num=88 || num=72
-   echo $host:$num >> $host_file
+   case $host in
+      *:*) echo $host >> $host_file ;;
+      *)   echo $host:$SLOTS >> $host_file ;;
+   esac
 done
 
 echo "Running $EXEC on $HOSTS"
@@ -189,9 +194,17 @@ mpirun -machinefile $host_file $EXEC {infile}
 
 def build(run_dir, outdir, name=None, m_kms=74.0, s_kms=49.0, width_is_fwhm=False,
           rmax=None, ngrid=201, nwav=161, nphotons=1e7, geometry_jpa=2,
-          exe='/home/kiseon/LaRT/combine/LaRT_v2.00/LaRT_calcJPP.x',
-          hosts='lart4,lart3,lart2', distance_pc=174.0, adv=True, write_run_sh=True):
-    """Build a complete LaRT spherical-illumination input set from an EXHALE run."""
+          exe=None, hosts=None, slots=None,
+          distance_pc=174.0, adv=True, write_run_sh=True):
+    """Build a complete LaRT spherical-illumination input set from an EXHALE run.
+
+    LaRT lives outside this repository, so the executable and the MPI hosts are
+    site-specific: they come from --exe/--hosts/--slots, or from the
+    environment variables LART_EXE, LART_HOSTS and LART_SLOTS.
+    """
+    exe = exe or os.environ.get('LART_EXE', 'LaRT_calcJPP.x')
+    hosts = hosts or os.environ.get('LART_HOSTS', 'localhost')
+    slots = slots or os.environ.get('LART_SLOTS', '1')
     run_dir = os.path.abspath(run_dir)
     name = name or os.path.basename(run_dir.rstrip('/'))
     run = aio.load_run(os.path.join(run_dir, 'output'),
@@ -220,7 +233,8 @@ def build(run_dir, outdir, name=None, m_kms=74.0, s_kms=49.0, width_is_fwhm=Fals
     if write_run_sh:
         runp = os.path.join(outdir, 'run.sh')
         with open(runp, 'w') as f:
-            f.write(RUN_SH.format(name=name, exe=exe, hosts=hosts, infile=infile))
+            f.write(RUN_SH.format(name=name, exe=exe, hosts=hosts, slots=slots,
+                                  infile=infile))
         os.chmod(runp, 0o755)
 
     print('EXHALE -> LaRT input written to %s/' % outdir)
@@ -251,15 +265,20 @@ def main():
     p.add_argument('--nphotons', type=float, default=1e7, help='number of MC photons')
     p.add_argument('--geometry_jpa', type=int, default=2, choices=(1, 2, 3),
                    help='P_alpha output geometry: 1 spherical, 2 cylindrical, 3 full 3D')
-    p.add_argument('--exe', default='/home/kiseon/LaRT/combine/LaRT_v2.00/LaRT_calcJPP.x')
-    p.add_argument('--hosts', default='lart4,lart3,lart2')
+    p.add_argument('--exe', default=None,
+                   help='LaRT executable (default: $LART_EXE, else LaRT_calcJPP.x on PATH)')
+    p.add_argument('--hosts', default=None,
+                   help='comma-separated MPI hosts (default: $LART_HOSTS, else localhost)')
+    p.add_argument('--slots', default=None,
+                   help='MPI slots per host (default: $LART_SLOTS, else 1)')
     p.add_argument('--distance_pc', type=float, default=174.0, help='system distance [pc]')
     p.add_argument('--eq', action='store_true', help='use eq (non-_adv) EXHALE files')
     p.add_argument('--no-run-sh', action='store_true', help='do not write run.sh')
     a = p.parse_args()
     build(a.run_dir, a.outdir, name=a.name, m_kms=a.m, s_kms=a.s, width_is_fwhm=a.fwhm,
           rmax=a.rmax, ngrid=a.ngrid, nwav=a.nwav, nphotons=a.nphotons,
-          geometry_jpa=a.geometry_jpa, exe=a.exe, hosts=a.hosts, distance_pc=a.distance_pc,
+          geometry_jpa=a.geometry_jpa, exe=a.exe, hosts=a.hosts, slots=a.slots,
+          distance_pc=a.distance_pc,
           adv=not a.eq, write_run_sh=not a.no_run_sh)
 
 

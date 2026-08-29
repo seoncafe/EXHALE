@@ -37,18 +37,16 @@ set restricted to an atom list, the climate grid cut so the photochemical
 grid can sit above it, elemental abundances mapped BY NAME, and the robust
 stepper in blocks.
 
-Environment: the repository's own Photochem, `env/photochem/bin/python`,
-built from the source in `photochem/` (photochem 0.9.0 with the elemental
-closure corrections of `README_photochem.md` section 2).  Photochem
-0.8.4 in `~/.conda/envs/photochem_cmp` is a different code with a different
-elemental closure, and is kept only to reproduce what was measured on it
-before 2026-08-29; every profile this writes records which one made it in its
-`# source_version` header line.
+Environment: run this under a Python that has Photochem 0.9.0 built from
+the source in `photochem/` -- upstream with the elemental-closure
+corrections of `README_photochem.md` section 4, which says what to download
+and how to build it.  Photochem 0.8.4 is a different code with a different
+elemental closure; every profile this writes records which one made it in
+its `# source_version` header line.
 
 Example (HD 209458 b, the P1 configuration):
 
-  env/photochem/bin/python \\
-      src/utils/photochem_to_lower_profile.py <run_dir> \\
+  python3 src/utils/photochem_to_lower_profile.py <run_dir> \\
       --mp 0.720 --r-ref 1.36 \\
       --tp-file vulcan_work/hd209_vulcan/atm/atm_HD209_Kzz.txt \\
       --stellar-flux vulcan_work/hd209_vulcan/atm/stellar_flux/Gueymard_solar.txt \\

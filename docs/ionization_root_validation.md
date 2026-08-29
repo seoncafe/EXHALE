@@ -1,7 +1,6 @@
 # Ionization-equilibrium roots validated against the physical simplex
 
-*2026-08-11. Diagnosis raw material: the session scratchpad
-`/tmp/claude-1000/-nfs-mocafe-kiseon-RT-Codes-ExoAtmosphere/31dad923-90fb-485a-bbf3-1cf82bd83337/scratchpad/negden_diag/`
+*2026-08-11. Diagnosis raw material: a session scratchpad, `negden_diag/`
 -- negative-density scans of the `wasp_full` golden, a
 secondary-ionization-off control run, and the heating breakdown across the
 affected band. That directory is transient; the numbers it produced are

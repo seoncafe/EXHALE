@@ -38,9 +38,9 @@ CMake 3.31.8. The build selects clima `v0.7.5`, the latest stable clima release
 available on the implementation date, and Equilibrate `v0.2.2`. Reproducible
 patches for both dependencies are applied by Photochem's CMake configuration.
 
-The installed environment is `/home/kiseon/.conda/envs/photochem_090_fix`. The
-0.8.4 environment `photochem_cmp` is untouched and remains the reproduction
-path for everything measured before 2026-08-29 11:30.
+The wheel is installed into a dedicated 0.9.0 environment. The 0.8.4
+environment of the earlier comparisons is untouched and remains the
+reproduction path for everything measured before 2026-08-29 11:30.
 
 ## 2. Implemented changes
 

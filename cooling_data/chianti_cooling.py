@@ -15,9 +15,9 @@ excitation-rate coefficient is
 with the effective collision strength Upsilon obtained by Burgess & Tully (1992)
 descaling of the scaled values stored in the .scups file.
 
-Provenance: CHIANTI v11 database at $XUVTOP (here
-/home/kiseon/RT_Codes/CHIANTI/dbase). This script is the auditable source for
-every cooling coefficient that gets ported into the Fortran (Phase 2).
+Provenance: CHIANTI v11 database, located through the standard $XUVTOP
+environment variable. This script is the auditable source for every cooling
+coefficient that gets ported into the Fortran (Phase 2).
 """
 
 import os
@@ -31,11 +31,13 @@ EV_ERG = 1.602176634e-12      # erg / eV
 KB_OVER_RY = K_B_ERG / RY_ERG  # Rydberg per Kelvin = 6.33363e-6
 COLL_PREF = 8.629e-6          # cm^3 s^-1 K^1/2 (Maxwellian rate prefactor)
 
-DBASE = "/home/kiseon/RT_Codes/CHIANTI/dbase"
+DBASE = os.environ.get("XUVTOP", "")   # CHIANTI database root
 
 
 def ion_dir(elem, ion):
-    """CHIANTI directory for e.g. ('fe', 2) -> .../fe/fe_2."""
+    """CHIANTI directory for e.g. ('fe', 2) -> $XUVTOP/fe/fe_2."""
+    if not DBASE:
+        raise RuntimeError("set XUVTOP to the CHIANTI database root")
     return os.path.join(DBASE, elem, f"{elem}_{ion}")
 
 

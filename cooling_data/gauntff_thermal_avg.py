@@ -34,8 +34,8 @@ src/modules/radiation/Cool_coeff.f90.  A few sanity values are printed to stdout
 import os
 import numpy as np
 
-# van Hoof table (read-only reference copy in MoCHII); override with GAUNTFF_DAT.
-DEFAULT_DAT = "/home/kiseon/RT_Codes/MoCHII/data/gauntff_vh14.dat"
+# van Hoof (2014) free-free Gaunt-factor table; give its path in GAUNTFF_DAT.
+DEFAULT_DAT = "gauntff_vh14.dat"
 
 RY_OVER_K = 157807.0   # Ry / k_B [K]; matches EXHALE's 2*157807 threshold usage
 

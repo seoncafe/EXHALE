@@ -23,7 +23,8 @@ Usage
   python3 docs/p1_matched_comparison.py compare --planet hd189
   python3 docs/p1_matched_comparison.py budget  --planet hd189 --arm ncho --toa 1.0e-2
 
-Requires the Photochem environment (this machine: /home/kiseon/.conda/envs/photochem_cmp).
+Run this with the interpreter of the Photochem 0.8.4 environment built for the
+2026-08-09 comparison; it is not importable from a stock Python.
 Shared helpers come from docs/compare_vulcan_photochem.py so the 2026-08-09
 procedure is not duplicated.
 """

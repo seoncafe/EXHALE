@@ -262,16 +262,19 @@ which imports the shared helpers of `docs/compare_vulcan_photochem.py` so the
 ## P1.0 The Photochem environment
 
 The plan recorded that "Photochem is not importable from any Python on this
-machine". That is true of the default interpreter (`/opt/miniconda3/bin/python3`)
-and false of the conda environment built for the 2026-08-09 comparison, which
-still exists and still works. **No reinstall was needed**; the environment was
+machine". As of 2026-08-26 that was true of the default interpreter and false
+of the conda environment built for the 2026-08-09 comparison, which still
+exists and still works. (It is no longer true of the default interpreter
+either: the corrected photochem 0.9.0 build was installed there on 2026-08-29,
+`README_photochem.md`. That is a *different* build from the 0.8.4 this section
+is about, and the two are not interchangeable.) **No reinstall was needed**; the environment was
 verified by importing the package, the `extensions.gasgiants` and `utils`
 submodules, and by running seven photochemical models to steady state through
 it.
 
 | item | value |
 |---|---|
-| interpreter | `/home/kiseon/.conda/envs/photochem_cmp/bin/python` (Python 3.11.15) |
+| interpreter | a dedicated conda environment, Python 3.11.15 |
 | `photochem` | 0.8.4 (conda-forge, `py311h57bc489_0`) |
 | `photochem_clima_data` | 0.3.1 (`pyhd8ed1ab_0`) |
 | data directory | `.../site-packages/photochem_clima_data/data` |
@@ -279,7 +282,7 @@ it.
 | other | numba 0.66.0, numpy 2.4.6, scipy 1.17.1 |
 
 Reproduction from scratch, if the environment is ever lost:
-`conda create -n photochem_cmp -c conda-forge photochem` (the data package comes
+`conda create -n <name> -c conda-forge photochem` (the data package comes
 in as a dependency). The workspace also carries a source clone at
 `photochem/` (tag `v0.9.0`), which is **not** what is imported and was used only
 as a reference for the gas-giant workflow.

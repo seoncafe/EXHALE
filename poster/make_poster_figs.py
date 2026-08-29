@@ -21,7 +21,9 @@ import tpm_halpha_lart2d as h2d
 import exhale_to_lart as e2l
 
 W = os.path.join(ROOT, 'WASP-52b')
-OBSDIR = '/home/kiseon/Exoplanetary_Atmosphere/WASP-52b'
+# Digitized WASP-52 b transmission spectra.  These are not in the repository;
+# point EXHALE_OBSDATA at the directory that holds them.
+OBSDIR = os.environ.get('EXHALE_OBSDATA', os.path.join(W, 'observations'))
 FIG = 'figs'
 os.makedirs(FIG, exist_ok=True)
 

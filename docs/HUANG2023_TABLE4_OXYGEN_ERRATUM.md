@@ -187,8 +187,8 @@ literature, and test them against each other.
    `k_i/k_r = [g(X+) g(H0)]/[g(X0) g(H+)] exp(-dE/kT)`. This audit was done by
    hand and the error had stood undetected; it is cheap to make it automatic.
    MoCHII now runs it as a gate over all its pairs
-   (`tests/charge_exchange/check_detailed_balance.f90` in the separate MoCHII
-   code at `/nfs/mocafe/kiseon/MoCHII/MoCHII_v1.00`; EXHALE has no equivalent
+   (`tests/charge_exchange/check_detailed_balance.f90` of the separate MoCHII
+   code, not a file of this repository; EXHALE has no equivalent
    gate), which fails on the printed oxygen assignment at every temperature
    from 5000 to 20000 K.
 3. Note that below about 5000 K the Kingdon & Ferland forms are usually

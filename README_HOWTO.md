@@ -12,7 +12,7 @@ the legacy ATES-compatible model. (Reference manual:
 - [Build](#build) · [Run](#run) · [Run a standard converged model](#run-a-standard-converged-model)
 - [Base grid resolution](#base-grid-resolution-base-grid-drcells) · [Base ghost temperature](#base-ghost-temperature-base-ghost-temperature) · [Viscosity and heat conduction](#damp-the-base-with-viscosity-and-heat-conduction)
 - [Trace metals](#add-trace-metals) · [He I 2^3S / 10830](#he-i-23s-metastable-triplet-and-the-10830-line) · [He/H diffusive separation](#heh-and-metal-diffusive-separation) · [Legacy atomic-data switch](#legacy-atomic-data-switch)
-- [Analytic lower column](#check-the-base-radius-analytic-lower-column) · [Molecular chemistry](#molecular-chemistry-warm-neptunes-and-sub-neptunes) · [`base.inp` handoff](#hand-off-a-lower-atmosphere-model-baseinp) · [VULCAN pre-step](#use-vulcan-photochemistry-for-the-base-state-subroutine-style) · [Obtaining VULCAN and FastChem](#obtaining-vulcan-and-fastchem-third-party-not-in-this-repo) · [The Photochem environment](#the-photochem-environment-envphotochem)
+- [Analytic lower column](#check-the-base-radius-analytic-lower-column) · [Molecular chemistry](#molecular-chemistry-warm-neptunes-and-sub-neptunes) · [`base.inp` handoff](#hand-off-a-lower-atmosphere-model-baseinp) · [VULCAN pre-step](#use-vulcan-photochemistry-for-the-base-state-subroutine-style) · [Obtaining VULCAN and FastChem](#obtaining-vulcan-and-fastchem-third-party-not-in-this-repo) · [Obtaining Photochem](#obtaining-photochem-third-party-not-in-this-repo)
 - [Wind-AE warm start](#warm-start-a-hard-planet-wind-ae-ic)
 - [Output files](#output-files) · [Reading output in Python](#reading-output-in-python) · [Live plot](#live-plot-during-a-run) · [Transmission spectra](#transmission-spectra-exhale_transitpy)
 - [Example configurations](#example-configurations) · [Regression and hygiene](#regression-and-hygiene) · [Directory layout](#directory-layout) · [Where results and documents live](#where-results-and-documents-live)
@@ -485,8 +485,8 @@ synthetic column that documents the schema).
 ### Producing one from a photochemistry model
 
 ```bash
-# production arm: Photochem, in the repository environment (see below)
-env/photochem/bin/python \
+# production arm: Photochem, in the Python it is installed into (see below)
+python3 \
   src/utils/photochem_to_lower_profile.py <run_dir> \
       --mp 0.720 --r-ref 1.36 \
       --tp-file       vulcan_work/hd209_vulcan/atm/atm_HD209_Kzz.txt \
@@ -659,194 +659,37 @@ modifications you need to make if you set it up by hand:
 | `src/utils/vulcan_to_base.py` | **added**: `.vul` -> `base.inp` converter |
 | `src/modules/files_IO/input_read.f90`, `src/modules/init/parameters.f90` | **modified**: the `Lower atmosphere: vulcan\|analytic <R_1bar>` key and the `run_lower_atm_prestep` invocation |
 
-## The Photochem environment (`env/photochem`)
+## Obtaining Photochem (third-party, not in this repo)
 
 The Photochem arm of the profile handoff, and the elemental-flux closure that
-drives it (`src/utils/element_flux_closure.py`), do not run in this machine's
-system Python. They run in a Photochem built from the source tree
-`photochem/`, which `src/utils/setup_photochem.sh` puts there:
+drives it (`src/utils/element_flux_closure.py`), need a Photochem that is
+neither the plain release nor the conda-forge package: Equilibrate's elemental
+mass-balance test used one absolute threshold set by the most abundant element
+and skipped everything below `1e-6`, so a trace element could be four orders
+of magnitude out of balance in a solve that reported success; and two of
+Clima's unconstrained `hybrd1` solves are replaced by solves confined to their
+physical domain. On LHS 1140 b the first moves the deepest-level N/H departure
+from `1e-4` to `1e-14`, which is the difference between a handoff the adapter
+refuses and one it accepts.
 
-| | |
-|---|---|
-| source | `photochem/` — Photochem `v0.9.0` (`e1e8725`) with four corrections, all listed in `README_photochem.md` section 2 |
-| environment | `env/photochem/bin/python` — photochem 0.9.0, Equilibrate 0.2.2, Clima 0.7.5 |
-| in the repository? | neither — `photochem/` and `env/` are both git-ignored. Rebuild the source with `src/utils/setup_photochem.sh`, the environment (~1.6 GB) as below |
+**`README_photochem.md` is the whole procedure** — the two GitHub
+repositories and the versions they are pinned to, the compilers and packages
+required, the build command with its traps, what the EXHALE patch changes, and
+the four verification steps. It is not repeated here.
 
-Two corrections are the reason this is not simply `conda install -c
-conda-forge photochem`: Equilibrate's elemental mass-balance test used one
-absolute threshold set by the most abundant element and skipped everything
-below `1e-6`, so a trace element could be four orders of magnitude out of
-balance in a solve that reported success; and two of Clima's unconstrained
-`hybrd1` solves are replaced by solves confined to their physical domain.
-On LHS 1140 b the first moves the deepest-level N/H departure from `1e-4` to
-`1e-14`, which is the difference between a handoff the adapter refuses and one
-it accepts.
+In short: `src/utils/setup_photochem.sh` clones Photochem `v0.9.0`
+(`e1e8725`) into `photochem/` and applies `src/utils/photochem_exhale.patch`;
+`photochem_clima_data` `v0.3.1` is cloned beside it and pip-installed; then
+Photochem is built and installed into the Python that will run the adapter.
+Neither directory is tracked (`.gitignore`), so a fresh clone of EXHALE has
+neither.
 
-`closure.json` needs no `"python"` key: with none, the closure driver resolves
-`env/photochem/bin/python` relative to its own location, and falls back on its
-own interpreter if that environment has not been built. Set the key only to
-reproduce a result made on a different build — the stored LHS 1140 b
-`closure.json` files all name theirs, and reproduce as they always did. Which
-build wrote a given handoff is recorded per file, in the `# source_version`
-line of every `lower_atmosphere_profile.dat`.
-
-### Reproducing it from a clean clone
-
-Five steps. The whole point is that nothing here is a judgement call: the
-commit is pinned, the source changes come out of one patch file, and each step
-has something to check before the next one.
-
-**1. Clone upstream at the pinned commit and apply the EXHALE patch.**
-
-```bash
-src/utils/setup_photochem.sh <dir>     # clone https://github.com/Nicholaswogan/photochem
-                                       #   -> <dir>, check out e1e8725, apply the patch
-src/utils/setup_photochem.sh           # with no <dir>: act on EXHALE/photochem
-```
-
-The script clones, checks out `e1e872528b61e8dd1db891b84869738e219b4f97`
-(tag `v0.9.0`), applies `src/utils/photochem_exhale.patch`, and then checks in
-the files themselves that each of the eleven things the patch is for is
-present.
-The commit is pinned because the patch is cut against it: a tree at any other
-commit is **refused**, not patched approximately. `v0.9.0` is the current
-stable release and is where `origin/main` points; `origin/dev` is not a
-release and still carries the solver behavior the patch corrects. Re-running
-the script on an already-patched tree verifies and changes nothing.
-
-To clone by hand instead:
-
-```bash
-git clone https://github.com/Nicholaswogan/photochem <dir>
-git -C <dir> checkout e1e872528b61e8dd1db891b84869738e219b4f97
-git -C <dir> apply --whitespace=nowarn src/utils/photochem_exhale.patch
-```
-
-The patch touches five files: `photochem/extensions/gasgiants.py`,
-`src/dependencies/CMakeLists.txt`, `tests/test_python.py`, and the two new
-dependency patches under `src/dependencies/patches/` that CPM applies to
-Equilibrate and Clima at configure time. `README_photochem.md` section
-2 says what each one is; `docs/photochem_solver_modification_investigation.md`
-and `docs/photochem_solver_modification_implementation.md` say why they were
-needed and what they measured.
-
-**2. The toolchain.** In a separate environment from the one Photochem will be
-installed into. `~/.conda/envs/photochem_build_tc` on this machine is that
-environment and has all of it; the wheel now in `env/photochem` was built
-with it.
-
-| | |
-|---|---|
-| CMake | **3.31.8** — CMake 4 does not work here: CVODE 5.7, which comes in through the dependency chain, is not compatible with it |
-| Fortran | GNU Fortran **14.4** — Photochem's own `CMakeLists.txt` refuses anything below 14.0 |
-| Python | **3.11** |
-| also | ninja, fypp, scikit-build, Cython |
-
-**3. Build the wheel.** From the patched source tree. CPM downloads the
-dependency tags named in `src/dependencies/CMakeLists.txt` — Clima `v0.7.5`,
-Equilibrate `v0.2.2` — and applies the two patches beside that file during
-configure, so they need no manual step; the build does need network access.
-
-Three traps on this machine, every one of which will otherwise be hit:
-
-- `/usr/include/numpy` is a **broken symlink into a Python 2.7 tree**, and
-  scikit-build's `FindNumPy` picks it up before the environment's own NumPy.
-  Pass the include directory explicitly:
-
-  ```sh
-  -DNumPy_INCLUDE_DIR=$(python -c 'import numpy; print(numpy.get_include())')
-  ```
-
-- a user-site NumPy 1.26.4 in `~/.local/lib/python3.11/site-packages`
-  **shadows the conda NumPy of every environment on this machine**. Build with
-  `PYTHONNOUSERSITE=1`. The two together are why the include directory has to
-  be computed inside the same `PYTHONNOUSERSITE=1` the build runs under: read
-  without it, `numpy.get_include()` answers for the user-site NumPy and points
-  at the wrong headers.
-
-- **putting the toolchain environment first on `PATH` is not enough to select
-  its compiler.** CMake's Fortran search tries `f95` before `gfortran`, and
-  `/usr/bin/f95` on this machine is GNU 13.1.0, so the configure step ends at
-  `Photochem will only work with gfortran >= 14.0.0` even with a 14.4
-  `gfortran` ahead of it on `PATH`. Name both compilers explicitly.
-
-The whole command, run from the patched source tree, with `E` the toolchain
-environment:
-
-```sh
-E=~/.conda/envs/photochem_build_tc
-NPINC=$(PYTHONNOUSERSITE=1 $E/bin/python -c 'import numpy; print(numpy.get_include())')
-PYTHONNOUSERSITE=1 PATH=$E/bin:$PATH $E/bin/python setup.py bdist_wheel -- \
-  -DCMAKE_Fortran_COMPILER=$E/bin/gfortran -DCMAKE_C_COMPILER=$E/bin/gcc \
-  -DNumPy_INCLUDE_DIR=$NPINC
-```
-
-It writes `dist/photochem-0.9.0-cp311-cp311-linux_x86_64.whl` and takes about
-seven minutes from cold, most of it CVODE and the Fortran dependencies.
-
-**4. Install it into `env/photochem`.** Create a Python 3.11 environment at
-that path and `pip install` the wheel into it. The path is not decorative:
-`src/utils/element_flux_closure.py` resolves `env/photochem/bin/python`
-relative to its own location, so a `closure.json` with no `"python"` key finds
-it there and nowhere else.
-
-Cloning an environment that already has the wheel is much cheaper than
-building, and is how the one on this machine was first made:
-
-```bash
-conda create -p env/photochem --clone <an existing photochem 0.9.0 env>
-```
-
-Test a freshly built wheel somewhere else before it goes into `env/photochem`,
-because that path is what every `closure.json` without a `"python"` key
-resolves to:
-
-```bash
-conda create -y -p /tmp/pc_test --clone photochem_090_fix
-PYTHONNOUSERSITE=1 /tmp/pc_test/bin/python -m pip install --no-deps \
-    --force-reinstall <tree>/dist/photochem-0.9.0-cp311-cp311-linux_x86_64.whl
-# run step 5 against /tmp/pc_test, then repeat the pip install against
-# env/photochem/bin/python
-```
-
-`photochem_090_fix` is the clone source and is left alone, so it is also the
-way back: `env/photochem` before the 2026-08-29 rebuild was bit-identical to
-it in all three compiled extensions, and re-cloning restores that state.
-
-**5. Verify.** Two checks, and both matter.
-
-Run them from a directory that is **not** the Photochem source tree: inside
-it, `import photochem` finds the pure-Python sources without their compiled
-extension and tells you nothing about what you built.
-
-```bash
-cd /tmp && PYTHONNOUSERSITE=1 <EXHALE>/env/photochem/bin/python -c "
-import photochem, inspect
-import photochem.extensions.gasgiants as gg
-print(photochem.__version__)                       # 0.9.0
-print(inspect.signature(gg.GasGiantData.__init__)) # equilibrium_mass_tol=1e-12
-print('molfracs_atoms_condensate' in
-      inspect.getsource(gg.composition_at_metallicity))   # True -- the condensate guard
-"
-```
-
-The condensate guard is not optional: without it the closure check fires at
-every level above the first condensing one, and no column with a cold trap can
-be built at all.
-
-Then measure the thing the corrections were made for — elemental closure at
-the deep states a handoff is set from:
-
-```bash
-cd /tmp && PYTHONNOUSERSITE=1 <EXHALE>/env/photochem/bin/python \
-  <EXHALE>/LHS1140b/exhale/nh_refusal_diagnosis/closure_saved_states.py \
-  <EXHALE>/LHS1140b/exhale/nh_refusal_diagnosis/scan
-```
-
-Every state should be accepted with a residual of order `1e-14`. Measured on
-this environment, 2026-08-29: 39 states, largest relative residual
-`3.54e-13`, median `1.90e-14`. On an unpatched Photochem the same script
-reports `1e-4`–`2e-4`, which is what the adapter refuses.
+`closure.json` needs no `"python"` key: with none, the closure driver runs the
+chemistry under its own interpreter, which is expected to be the one Photochem
+was installed into. Set the key only to reproduce a result made on a different
+build — the stored LHS 1140 b `closure.json` files all name theirs, and
+reproduce as they always did. Which build wrote a given handoff is recorded in
+the `# source_version` line of every `lower_atmosphere_profile.dat`.
 
 ## Warm-start a hard planet (Wind-AE IC)
 
@@ -1167,10 +1010,10 @@ EXHALE/
 ├── photochem/             # third-party Photochem v0.9.0 + the EXHALE patch,
 │                          #   NOT in this repo (git-ignored);
 │                          #   src/utils/setup_photochem.sh puts it there
-├── README_photochem.md    # what that patch is, and how the source and the
-│                          #   environment below are built. IS in this repo
-├── env/photochem/         # the conda environment built from it, ~1.6 GB,
-│                          #   NOT in this repo (git-ignored; build it)
+├── photochem_clima_data/  # the data tables Photochem imports (v0.3.1),
+│                          #   NOT in this repo (git-ignored; clone + pip -e)
+├── README_photochem.md    # what to download, what to install, how to build
+│                          #   the two above, and what the patch is
 ├── inputdata/             # opacity / SED table samples (*.opa, Jlya.txt, …)
 ├── cooling_data/          # CHIANTI cooling-formula fit scripts + notebooks
 ├── examples/

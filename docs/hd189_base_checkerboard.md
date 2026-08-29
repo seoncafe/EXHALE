@@ -518,12 +518,12 @@ being the controlling variable rather than the flux or reconstruction choice.
 
 ## 8. Raw data and reproduction
 
-Scratch tree (instrumented builds, all experiment directories, logs)
-(session scratchpad, no longer present):
+Scratch tree (instrumented builds, all experiment directories, logs), a
+session scratchpad that no longer exists. Its layout, since the runs below
+refer to it:
 
 ```
-/tmp/claude-1000/-nfs-mocafe-kiseon-RT-Codes-ExoAtmosphere/
-  31dad923-90fb-485a-bbf3-1cf82bd83337/scratchpad/hd189_diag/
+hd189_diag/
     EXHALE.x                     baseline instrumented build (base_trace.txt writer)
     variants/ghostT/             ghost pressure set to give T_ghost = T_1
     variants/betaesc/            beta_esc = 1.0 override removed

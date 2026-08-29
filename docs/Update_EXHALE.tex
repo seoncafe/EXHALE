@@ -8892,7 +8892,7 @@ Until now the handoff's $T(p)$ was an input. \texttt{--climate} makes it a
 solution:
 
 \begin{lstlisting}[language={},basicstyle=\ttfamily\footnotesize]
-/home/kiseon/.conda/envs/photochem_cmp/bin/python \
+<photochem 0.8.4 env>/bin/python \
     src/utils/photochem_to_lower_profile.py LHS1140b/lower_profile \
     --mp 0.0176220 --r-ref 0.157692 --p-match 1e-6 --kzz-const 1.0e9 \
     --stellar-flux LHS1140b/sed/lhs1140_sed_gj1132_at_b.txt \
@@ -11528,8 +11528,8 @@ $10^{-3} \rightarrow 10^{-10}$. Records:
 \subsection*{90.1 What was changed, and where}
 
 Nothing in the EXHALE Fortran. The corrected chemistry is a modified Photochem
-\texttt{v0.9.0} source tree, built as \texttt{photochem 0.9.0} into
-\texttt{/home/kiseon/.conda/envs/photochem\_090\_fix}:
+\texttt{v0.9.0} source tree, built as \texttt{photochem 0.9.0} into a
+dedicated conda environment:
 
 \begin{itemize}
 \item \textbf{Equilibrate} now tests each positive requested elemental
@@ -11662,7 +11662,7 @@ tested: condensate-rich and sulfur-network equilibrium sweeps --- note that
 after the fix of \S\,90.2 a condensing level is accepted on the solver's own
 \texttt{converged} flag, so the closure test does not speak for such a level at
 all. The stored 0.8.4 ladder was not re-run, and He/H = 9.5 cannot be repeated
-on this build. The 0.8.4 environment \texttt{photochem\_cmp} is untouched and
+on this build. The 0.8.4 environment is untouched and
 remains the reproduction path for every profile whose header reads
 \texttt{\# source\_version photochem 0.8.4}.
 
@@ -11839,7 +11839,7 @@ step whose flux row is $9$ percent off the derivative. Both solve the grid;
 $10^{-8}$ is the middle of the window in which neither error source is
 active. The reasoning is in the patch at the constant's declaration.
 
-\texttt{env/photochem} carries it. Read out of the installed library ---
+The installed library carries it. Read out of it ---
 \texttt{AdiabatClimate\_simple\_solver} disassembled, the stack arguments of
 its MINPACK call followed to the constants they point at --- it calls
 \texttt{\_\_minpack\_module\_MOD\_hybrd} with $\texttt{epsfcn} = 10^{-8}$ and

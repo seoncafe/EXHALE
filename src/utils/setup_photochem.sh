@@ -12,8 +12,8 @@
 # side, and pins Clima v0.7.5.  Why each was needed and what it measured:
 #   docs/photochem_solver_modification_investigation.md
 #   docs/photochem_solver_modification_implementation.md
-# What each change is, and how to build the wheel and the environment:
-#   README_photochem.md      README_HOWTO.md "The Photochem environment"
+# What each change is, what to download, what to install, and how to build:
+#   README_photochem.md
 #
 # Usage:  src/utils/setup_photochem.sh              # act on EXHALE/photochem
 #         src/utils/setup_photochem.sh <dir>        # clone into / patch <dir>
@@ -23,10 +23,10 @@
 # touching a file.  It refuses, rather than half-applying, on a tree that is
 # neither upstream v0.9.0 nor already patched.
 #
-# This only produces the source.  Building the wheel and the environment is a
-# separate step, and its two traps on this machine (the broken
-# /usr/include/numpy symlink, and the user-site NumPy that shadows every conda
-# environment) are in README_HOWTO.md.
+# This only produces the source.  Building and installing it is a separate
+# step; README_photochem.md sections 2 and 3 have it, including the NumPy
+# include directory and the Fortran compiler CMake has to be told about
+# explicitly.
 #
 # Photochem  https://github.com/Nicholaswogan/photochem
 #            Cite, as upstream asks, either Wogan et al. (2023),
@@ -144,5 +144,5 @@ need tests/test_python.py "test_gas_giant_equilibrium_mass_tolerance_validation"
 [ $fail -eq 0 ] || die "the tree is not in the expected state (above)"
 
 say "$DEST is the source EXHALE runs on"
-say "next: build the wheel and the environment -- README_HOWTO.md,"
-say "      \"The Photochem environment\".  This script does not build."
+say "next: build and install it -- README_photochem.md sections 2 and 3."
+say "      This script does not build."

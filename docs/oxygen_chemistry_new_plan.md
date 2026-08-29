@@ -52,7 +52,7 @@ machine (checked 2026-08-19 in the previous session).
 **Superseded on 2026-08-26 by phase P1** (`vulcan_photochem_comparison.md`,
 section "Phase P1"): the 7.2x is unchanged as a total but splits into
 domain 1.07 / network 3.95 / code 1.70, not 4.0 / 1.8; Photochem *does* import,
-from the dedicated conda environment `photochem_cmp` built for the 2026-08-09
+from the dedicated conda environment built for the 2026-08-09
 comparison — the 2026-08-19 check had used the default interpreter. The 7.2x is
 also specific to HD 189733 b's 864 K base: on HD 209458 b's 2331 K base the
 same three arms agree to 1.02x (network) and 1.08x (code).

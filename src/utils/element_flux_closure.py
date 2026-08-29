@@ -57,9 +57,10 @@ constants, the SED, the mechanism, the executable -- so that none of it is
 spelled out inside this file.  Only the iteration-dependent options
 (`--trial-flux-H`, `--trial-flux-He`, `--iteration`) are supplied here.
 Its `python` key is optional: left out, the chemistry runs in the
-repository's own Photochem environment, `env/photochem`, found relative to
-this file.  Set it to reproduce a result made on some other build, and the
-narrative records which of the two supplied the interpreter.
+interpreter this driver is running under, which is expected to be the one
+Photochem is installed into (`README_photochem.md`).  Set it to reproduce a
+result made on some other build, and the narrative records which of the two
+supplied the interpreter.
 """
 
 import argparse
@@ -78,28 +79,12 @@ import numpy as np
 # --------------------------------------------------------------------------
 
 # Photochem is a compiled extension with a dependency set of its own, so the
-# chemistry step runs in a separate interpreter from this driver.  The
-# repository carries both the source it is built from (`photochem/`) and the
-# environment built from it (`env/photochem/`, README_HOWTO.md section
-# "The Photochem environment"), and the default is resolved from this file's
-# own location so that no absolute path outside the repository is written
-# into it.  A configuration that names "python" explicitly still wins, which
-# is what keeps every stored closure.json -- each of which carries an
-# absolute interpreter path -- reproducing on the interpreter it was run on.
-
-EXHALE_ROOT = os.path.dirname(os.path.dirname(
-    os.path.dirname(os.path.abspath(__file__))))
-REPOSITORY_PYTHON = os.path.join(EXHALE_ROOT, 'env', 'photochem', 'bin',
-                                 'python')
-
-
-def repository_chemistry_python():
-    """`env/photochem/bin/python` where the repository environment has been
-    built, and this driver's own interpreter where it has not -- which is
-    what the driver did before that environment existed."""
-    if os.access(REPOSITORY_PYTHON, os.X_OK):
-        return REPOSITORY_PYTHON
-    return sys.executable
+# chemistry step is run as a separate process.  By default it is run by the
+# interpreter running this driver, which is the one Photochem is installed
+# into (README_photochem.md).  A configuration that names "python"
+# explicitly still wins, which is what keeps every stored closure.json --
+# each of which carries an absolute interpreter path -- reproducing on the
+# interpreter it was run on.
 
 
 # --------------------------------------------------------------------------
@@ -109,8 +94,9 @@ def repository_chemistry_python():
 CONFIG_TEMPLATE = """{
   "comment": "Fixed part of both command lines for one planet. Everything the closure does not vary between iterations lives here (design section 6.4).",
 
-  "python_comment": "Optional. Omitted, the chemistry runs in the repository environment env/photochem. Name an interpreter here only to reproduce a result made on a different Photochem build, and say in the comment which one.",
-  "adapter": "/nfs/mocafe/kiseon/RT_Codes/ExoAtmosphere/EXHALE_v1.00/src/utils/photochem_to_lower_profile.py",
+  "python_comment": "Optional. Omitted, the chemistry runs in the interpreter this driver runs under, which is expected to be the one Photochem is installed into (README_photochem.md). Name an interpreter here only to reproduce a result made on a different Photochem build, and say in the comment which one.",
+  "path_comment": "Paths are used as given. <EXHALE> below stands for the absolute path of this repository; substitute it.",
+  "adapter": "<EXHALE>/src/utils/photochem_to_lower_profile.py",
   "adapter_run_dir": ".",
   "adapter_args": [
     "--mp", "0.0176220",
@@ -119,7 +105,7 @@ CONFIG_TEMPLATE = """{
     "--climate",
     "--climate-p-deep", "20.0",
     "--boa-pressure-factor", "1.0",
-    "--stellar-flux", "/nfs/mocafe/kiseon/RT_Codes/ExoAtmosphere/EXHALE_v1.00/LHS1140b/sed/lhs1140_sed_gj1132_at_b.txt",
+    "--stellar-flux", "<EXHALE>/LHS1140b/sed/lhs1140_sed_gj1132_at_b.txt",
     "--flux-at-planet",
     "--atoms", "H,He,N,O,C",
     "--abundances", "He=2.09",
@@ -127,8 +113,8 @@ CONFIG_TEMPLATE = """{
   ],
   "p_top_bar": null,
 
-  "exhale_bin": "/nfs/mocafe/kiseon/RT_Codes/ExoAtmosphere/EXHALE_v1.00/EXHALE.x",
-  "input_template": "/nfs/mocafe/kiseon/RT_Codes/ExoAtmosphere/EXHALE_v1.00/LHS1140b/exhale/input.inp",
+  "exhale_bin": "<EXHALE>/EXHALE.x",
+  "input_template": "<EXHALE>/LHS1140b/exhale/input.inp",
   "omp_num_threads": 4,
   "resid_tol": "1.0e-4",
   "exhale_env": {"EXHALE_PTC": "1", "EXHALE_PTC_JFNK": "1",
@@ -137,7 +123,7 @@ CONFIG_TEMPLATE = """{
 """
 
 CONFIG_DEFAULTS = {
-    'python': repository_chemistry_python(),
+    'python': sys.executable,
     'adapter': os.path.join(os.path.dirname(os.path.abspath(__file__)),
                             'photochem_to_lower_profile.py'),
     'adapter_run_dir': '.',
@@ -908,7 +894,7 @@ def main():
     log('chemistry interpreter %s (%s)'
         % (cfg['python'],
            'named by the config' if cfg['python_named_by_config']
-           else 'the repository default'))
+           else "this driver's own interpreter"))
     try:
         rc = run_closure(a.case_dir, cfg, a.phi0_H, a.phi0_He, a.omega,
                          a.tol, a.kmax, a.seed, a.resume, log)

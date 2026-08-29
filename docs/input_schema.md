@@ -243,7 +243,7 @@ the reader and `examples/exhale_io.py` index by.
 |---|---|---|
 | `solution_id` | yes | sha256 over the lower model's configuration, mechanism, thermodynamic data, stellar flux and elemental abundances. The fingerprint that makes "same solution" checkable. |
 | `source_code` | no | `photochem` / `vulcan` / `analytic` |
-| `source_version` | no | which build of the producer wrote the file, e.g. `photochem 0.9.0`. Not decoration: `photochem 0.9.0` is the corrected build this repository carries in `photochem/` and runs from `env/photochem` (README_HOWTO.md, "The Photochem environment"), while `photochem 0.8.4` is the conda package, whose equilibrium solver leaves up to `2e-4` in a trace elemental ratio. The two are told apart per file by this line and by nothing else. |
+| `source_version` | no | which build of the producer wrote the file, e.g. `photochem 0.9.0`. Not decoration: `photochem 0.9.0` is the corrected build this repository carries in `photochem/` and runs the handoff on (`README_photochem.md`), while `photochem 0.8.4` is the conda package, whose equilibrium solver leaves up to `2e-4` in a trace elemental ratio. The two are told apart per file by this line and by nothing else. |
 | `mechanism` | no | mechanism file name and its own sha256 |
 | `stellar_flux` | no | flux file name, sha256 and the dilution applied |
 | `p_match_bar` | yes | the matching pressure: where EXHALE places its base |

@@ -393,8 +393,8 @@ The driving pattern is already written and validated in
 `docs/p1_matched_comparison.py`; the adapter should reuse it rather than
 re-derive it:
 
-- environment `/home/kiseon/.conda/envs/photochem_cmp/bin/python`, photochem
-  0.8.4, `photochem_clima_data` 0.3.1 (P1.0);
+- the photochem 0.8.4 environment of the 2026-08-09 comparison,
+  `photochem_clima_data` 0.3.1 (P1.0);
 - `photochem.extensions.gasgiants.EvoAtmosphereGasGiant(mech, flux_file, mp,
   rp, solar_zenith_angle=..., thermo_file=..., data_dir=...)`
   (`p1_matched_comparison.py:160-162`);

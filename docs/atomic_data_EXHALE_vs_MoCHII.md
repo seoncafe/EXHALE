@@ -5,7 +5,8 @@ Kwang-Il Seon — 2026-07-17
 ## Purpose and scope
 
 This memo has two parts. Part 1 compares the atomic data that EXHALE and
-MoCHII (`/nfs/mocafe/kiseon/MoCHII`) use for the microphysical processes the
+MoCHII (a separate code, not part of this repository) use for the
+microphysical processes the
 two codes have in common: photoionization cross sections, recombination,
 collisional ionization, charge exchange, cooling, and heating. The conclusion is
 that, where the two codes overlap, they draw on the same lineage of published
@@ -151,7 +152,7 @@ Kaastra (2016, A&A 587, A84) ground-state coefficient. The implementation is in
 `Cool_coeff.f90`: `rr_badnell`, `dr_HeII_badnell`, `rr_mao`, and the assembled
 `alphaB_HII_new` / `alphaB_HeII_new` / `alphaB_HeIII_new`. The coefficients
 match those in the MoCHII `src/recomb_mod.f90` (a file of the separate MoCHII
-code at `/nfs/mocafe/kiseon/MoCHII`, not of this repository).
+code, not of this repository).
 
 ### 2. H/He collisional ionization default
 The default H/He collisional-ionization rates are now the Voronov (1997, ADNDT

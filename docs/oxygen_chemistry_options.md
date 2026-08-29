@@ -226,9 +226,13 @@ argument: it is the only path to replacing the prescribed Guillot T(p) in
 `run_lower.py` with a self-consistent one, and it makes A4 cheap enough to
 iterate.
 
-Practical state: the clone at `../photochem` carries both extensions, but the
-package is **not importable from any Python on this machine** (checked
-2026-08-19), so a switch starts with reinstalling it. The conversion path
+Practical state: the clone at `../photochem` carries both extensions. The
+note here that the package was **not importable from any Python on this
+machine** (checked 2026-08-19) is superseded: it had used the default
+interpreter and not the conda environment holding photochem 0.8.4 (corrected
+2026-08-26), and since 2026-08-29 the corrected photochem 0.9.0 build is
+installed in the default interpreter itself (`README_photochem.md`). No
+reinstall is needed to take this up. The conversion path
 (`photochem.utils.vulcan2yaml`) and its three traps -- the degenerate
 `He <=> He` reaction, the grid-top requirement, and VULCAN's `atom_list` having
 to match the network's atoms -- are already recorded in the comparison memo.

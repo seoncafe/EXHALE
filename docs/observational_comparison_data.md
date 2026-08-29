@@ -15,9 +15,9 @@ each file's own convention before overplotting.**
 Primary model planets: **HD209458b, HD189733b, WASP-52b, WASP-121b**.
 Secondary/validation: GJ1214b, GJ436, HAT-P-11b, WASP-107b (+ off-list WASP-69b).
 
-Root paths: `A = ~/Exoplanetary_Atmosphere`,
-`W = /nfs/mocafe/kiseon/RT_Codes/ExoAtmosphere`,
-`E = W/EXHALE`.
+Root paths: `A` = the local collection of digitized measurements,
+`W` = the workspace holding EXHALE and the reference codes,
+`E = W/EXHALE` = this repository.
 
 ---
 

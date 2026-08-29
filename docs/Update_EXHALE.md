@@ -7610,7 +7610,7 @@ gates E2 left open: the LHS 1140 b application and T-E8.
 Until now the handoff's `T(p)` was an input. `--climate` makes it a solution:
 
 ```
-/home/kiseon/.conda/envs/photochem_cmp/bin/python \
+<photochem 0.8.4 env>/bin/python \
     src/utils/photochem_to_lower_profile.py LHS1140b/lower_profile \
     --mp 0.0176220 --r-ref 0.157692 --p-match 1e-6 --kzz-const 1.0e9 \
     --stellar-flux LHS1140b/sed/lhs1140_sed_gj1132_at_b.txt \
@@ -9828,7 +9828,7 @@ EXHALE change is that `--abundance-tol` goes back to its design value,
 
 **What was changed, and where.** Nothing in the EXHALE Fortran. The corrected
 chemistry is a modified Photochem `v0.9.0` source tree, built as
-`photochem 0.9.0` into `/home/kiseon/.conda/envs/photochem_090_fix`:
+`photochem 0.9.0` into a dedicated conda environment:
 
 - **Equilibrate** now tests each positive requested elemental abundance against
   its own relative tolerance (`abs(b_0(i_atom))*mass_tol`) instead of a common
@@ -9933,7 +9933,7 @@ tested: condensate-rich and sulfur-network equilibrium sweeps -- note that
 after the fix above a condensing level is accepted on the solver's own
 `converged` flag, so the closure test does not speak for such a level at all.
 The stored 0.8.4 ladder was not re-run, and He/H = 9.5 cannot be repeated on
-this build. The 0.8.4 environment `photochem_cmp` is untouched and remains the
+this build. The 0.8.4 environment is untouched and remains the
 reproduction path for every profile whose header reads
 `# source_version photochem 0.8.4`.
 
@@ -10083,7 +10083,7 @@ derivative. Both solve the grid; `1e-8` is the middle of the window in which
 neither error source is active. The reasoning is in the patch at the
 constant's declaration.
 
-`env/photochem` carries it. Read out of the installed library --
+The installed library carries it. Read out of it --
 `AdiabatClimate_simple_solver` disassembled, the stack arguments of its
 MINPACK call followed to the constants they point at -- it calls
 `__minpack_module_MOD_hybrd` with `epsfcn = 1e-08` and `factor = 100.0`
