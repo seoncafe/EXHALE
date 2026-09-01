@@ -61,7 +61,9 @@ coefficient the planet actually has, and what the model does with it.
 
 What competes with `He_Kzz` is the molecular coefficient `D_eff` that the
 diffusion operator computes per cell (stage-resolved, memo section 2.6),
-written by `EXHALE_DIFFUSION_CHECK=1` into `diffusion_faceflux.txt`. Measured
+written by `EXHALE_DIFFUSION_CHECK=1` into
+`output/element_flux_profile.txt` (it was `./diffusion_faceflux.txt` in the
+run root when this section was written). Measured
 on the converged `K_zz = 1e10` state, with the pressure of each radius from
 the control run:
 
@@ -183,7 +185,7 @@ and a composition drift under 1.3e-3. First attempts are kept in each case's
 | *measurement* (Cherubim et al. 2026) | — | — | — | — | — | — | — | 1.24 +0.22/-0.23 | **1.108 +/- 0.030** |
 
 The homopause is the radius where the run's own `D_eff` equals its `K_zz`,
-interpolated from `diffusion_faceflux.txt`.
+interpolated from `output/element_flux_profile.txt`.
 
 Elemental ratio `(He/H)/HeH`, from the `_adv` profiles:
 
@@ -384,6 +386,21 @@ Elemental ratio `(He/H)/HeH` from the `_adv` profiles:
 
 ### The crossing
 
+> **Every He/H number in sections 6 and 6.1 is on the retired Taylor (2025)
+> Penning coefficient and on the pre-section-96 secondary-ionization split,
+> and none of it is current.** The whole ladder has been re-solved twice
+> since: on the Garcia Munoz (2025) coefficient
+> (`exhale/ladder_gm25/results.txt`) and then on the composition-renormalized
+> SvS85 split of `docs/Update_EXHALE.md` section 96
+> (`exhale/crossings_j96/results.txt`). The current values are
+> He/H = 3.8075 on the `K_zz` <= 1e4 plateau, 1.6108 at the adopted
+> `K_zz` = 1e9, 0.8368 at 1e11, 0.4132 well mixed on the GJ 1132 proxy and
+> 0.0483 on the GJ 699 one; `docs/lhs1140b_exhale_vs_pwinds.pdf`
+> Table 2 carries the full ladder. What did not change is the shape: three
+> regimes, and the local exponent d log(He/H)/d log `K_zz` reproduced decade
+> by decade to 0.003. The text below is kept as the record of the scan that
+> was run.
+
 The two runs at He/H = 2.00 and 2.13 straddle the measurement, so the
 crossing is interpolated inside a 6.5% wide bracket rather than extrapolated:
 
@@ -583,7 +600,8 @@ acting at all.
 **Where the eddy term stops acting.** The operator adds `K_zz` to the
 molecular coefficient, so the decade at which the eddy term disappears is
 fixed by `D_eff` at the base, which these He-rich solutions carry at
-1.24-1.32e6 cm^2/s (first face of `diffusion_faceflux.txt`, r = 1.0003 R_p).
+1.24-1.32e6 cm^2/s (first face of `output/element_flux_profile.txt`,
+r = 1.0003 R_p).
 Below that the eddy term is a small correction to a coefficient the wind
 already has. Measured at a fixed reservoir He/H = 5, against the same run
 with `He_Kzz` absent:

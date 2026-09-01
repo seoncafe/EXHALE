@@ -19,6 +19,7 @@
                                isp_H2, isp_H2p, isp_H3p, isp_HeHp,      &
                                isp_HI, isp_HII, isp_HeI, isp_HeII,      &
                                isp_HeIII, isp_HeTR, bsp_mass, melem_A,  &
+                               isp_OH, isp_H2O, isp_CO,                 &
                                n_bsp, bsp_fsp, bsp_nH, bsp_nHe,         &
                                bsp_is_excited_level
       use utils, only: calc_ne, calc_ntot
@@ -31,6 +32,25 @@
       public :: mass_per_H_nucleus_without_He
       public :: element_ratio_HeH
       public :: h2_mixing_ratio_base, h2_bound_fraction
+      public :: h2_mixing_ratio_ceiling
+      public :: base_h2_nuclei_fraction, base_h2_composition_imposed
+      public :: he_ground_singlet_density, n_cells_he_singlet_clamped
+
+      ! Cells at which the ground singlet came out negative and was set to
+      ! its physical floor, zero, summed over the whole run (marching,
+      ! equilibrium diagnostics and the advection post-process alike).
+      ! Reported at the end of a run; zero means the two helium columns never
+      ! crossed and the run is the one an unguarded build would have produced.
+      integer :: n_cells_he_singlet_clamped = 0
+
+      ! n(1^1S) from the summed neutral helium and the metastable. The state
+      ! vector carries n(He I) with the 2^3S population inside it
+      ! (bsp_is_excited_level), so the ground singlet is a difference, and
+      ! this is the only place the difference is taken.
+      interface he_ground_singlet_density
+         module procedure he_ground_singlet_density_cell
+         module procedure he_ground_singlet_density_column
+      end interface he_ground_singlet_density
 
       contains
 
@@ -53,6 +73,7 @@
       real*8, dimension(1-Ng:N+Ng,n_mion),   intent(out)   :: nm
       real*8, dimension(1-Ng:N+Ng),          intent(out)   :: ne, n_tot
       real*8, dimension(1-Ng:N+Ng,4) :: nmol_l   ! molecules
+      real*8, dimension(1-Ng:N+Ng,3) :: nox_l    ! OH H2O CO
       integer :: im
 
       nhi  = rho*f_sp(:,isp_HI)
@@ -76,8 +97,24 @@
          nmol_l(:,3) = rho*f_sp(:,isp_H3p)
          nmol_l(:,4) = rho*f_sp(:,isp_HeHp)
          call calc_ne(nhii, nheii, nheiii, ne, nm, nmol_l)
+         ! The oxygen-chemistry carriers are gas particles too, and the
+         ! oxygen and carbon nuclei they hold have been taken OUT of the
+         ! metal ion columns by the ionization solve -- so leaving them out
+         ! here does not merely lose 5e-4 of the particle count, it makes
+         ! this routine and ioniz_eq (which does pass them) disagree about
+         ! what a particle is for the same state, and the temperature
+         ! T = p/((n_tot + n_e) k) then depends on which of the two last
+         ! wrote it. They are neutral, so calc_ne is unaffected.
+         if (thereis_oxychem) then
+            nox_l(:,1) = rho*f_sp(:,isp_OH)
+            nox_l(:,2) = rho*f_sp(:,isp_H2O)
+            nox_l(:,3) = rho*f_sp(:,isp_CO)
+            call calc_ntot(nhi, nhii, nhei, nheii, nheiii, n_tot,       &
+                           nm, nmol_l, nox_l)
+         else
          call calc_ntot(nhi, nhii, nhei, nheii, nheiii, n_tot,          &
                         nm, nmol_l)
+         endif
       else
       call calc_ne(nhii, nheii, nheiii, ne, nm)
       call calc_ntot(nhi, nhii, nhei, nheii, nheiii, n_tot, nm)
@@ -90,6 +127,60 @@
       n_part_cell1 = n_tot(1) + ne(1)
 
       end subroutine get_species_densities
+
+      ! ------------------------------------------------------!
+
+      real*8 function he_ground_singlet_density_cell(nhei, nheiTR)
+      ! Number density of neutral helium in its ground singlet, n(1^1S), in
+      ! one cell: the summed neutral helium minus the metastable level it
+      ! contains, n(He I) - n(2^3S), floored at zero.
+      !
+      ! Why the floor. Zero is the physical lower bound of a population, and
+      ! the difference can fall below it: where the metastable holds most of
+      ! the neutral helium the two columns share their leading digits, so what
+      ! is left is round-off, and a restart whose two columns were written by
+      ! different solves can put the difference on the wrong side of zero
+      ! outright. Every consumer here is LINEAR in the singlet -- the He I
+      ! opacity, the He I photoelectric heating, the He I secondary-ionization
+      ! source, the absorbed energy in the denominator of q -- so a negative
+      ! value is not an instability but a negative opacity and a negative
+      ! heating rate, both unphysical. Clamping is the enforcement of the
+      ! bound, not an approximation.
+      !
+      ! The test is "less than zero", not the negation of "greater than or
+      ! equal to zero": a NaN handed in must pass through as a NaN so the
+      ! run's NaN detector reports it, rather than be silently turned into a
+      ! zero singlet.
+      !
+      ! The counter is a plain increment. Every call site forms the whole
+      ! column outside the OpenMP region that consumes it (PH_heat_HHe) or
+      ! runs on the serial post-process, so no two threads reach it at once.
+      real*8, intent(in) :: nhei, nheiTR
+
+      he_ground_singlet_density_cell = nhei - nheiTR
+      if (he_ground_singlet_density_cell .lt. 0.0d0) then
+         he_ground_singlet_density_cell = 0.0d0
+         n_cells_he_singlet_clamped = n_cells_he_singlet_clamped + 1
+      endif
+
+      end function he_ground_singlet_density_cell
+
+      ! ------------------------------------------------------!
+
+      function he_ground_singlet_density_column(nhei, nheiTR) result(nheiS)
+      ! n(1^1S) over the whole grid, ghost cells included. Element by element
+      ! this is the cell function above, so it is bitwise the array
+      ! expression nhei - nheiTR wherever that expression is already
+      ! non-negative.
+      real*8, dimension(1-Ng:N+Ng), intent(in) :: nhei, nheiTR
+      real*8, dimension(1-Ng:N+Ng) :: nheiS
+      integer :: j
+
+      do j = 1-Ng, N+Ng
+         nheiS(j) = he_ground_singlet_density_cell(nhei(j), nheiTR(j))
+      enddo
+
+      end function he_ground_singlet_density_column
 
       ! ------------------------------------------------------!
 
@@ -192,19 +283,79 @@
 
       ! ------------------------------------------------------!
 
+      real*8 function h2_mixing_ratio_ceiling()
+      ! Largest H2 volume mixing ratio q_H2 = n_H2/(n_H2+n_H+n_He) a mixture
+      ! can carry at this helium-to-hydrogen ratio, reached when every H
+      ! nucleus is bound into H2.  Two H nuclei then make 0.5 molecules per H
+      ! nucleus against HeH helium atoms, so
+      !
+      !     q_H2,max = 0.5/(0.5 + He/H),
+      !
+      ! which is 0.863 at the solar-like He/H = 0.0793, 1/3 at He/H = 1 and
+      ! 0.048 at He/H = 10.  A requested q_H2 above this is not a large value
+      ! but an impossible one: it asks for more hydrogen than the element
+      ! ratio contains.  input_read refuses such a value at startup, which is
+      ! why h2_bound_fraction below can evaluate its expression unguarded.
+      h2_mixing_ratio_ceiling = 0.5d0/(0.5d0 + HeH)
+      end function h2_mixing_ratio_ceiling
+
+      ! ------------------------------------------------------!
+
       real*8 function h2_bound_fraction()
       ! Particles removed from the base budget, per (H+He) nucleus, by the H
       ! nuclei bound into H2: two H nuclei make one molecule, so a fraction
       ! x2 of the H nuclei costs x2/2 particles.  The fit returns the MIXTURE
       ! mixing ratio, hence x2 = 2 q (1+HeH)/(1+q) per H nucleus (see
-      ! mu_mixture in lower_column.f90), capped at full molecular hydrogen,
-      ! and the result is expressed per (H+He) nucleus.
-      real*8 :: q, x2
-      q  = h2_mixing_ratio_base()
-      x2 = 2.0d0*q*(1.0d0 + HeH)/(1.0d0 + q)
-      if (x2 .gt. 1.0d0) x2 = 1.0d0
-      h2_bound_fraction = 0.5d0*x2/(1.0d0 + HeH)
+      ! mu_mixture in lower_column.f90), and the result is expressed per
+      ! (H+He) nucleus.
+      !
+      ! x2 <= 1 needs no clamp here: q <= h2_mixing_ratio_ceiling() is
+      ! established at startup (input_read, "q_H2_base above the mixture
+      ! ceiling"), and x2 = 1 is exactly that ceiling.  The clamp this
+      ! function used to carry silently turned an impossible request into a
+      ! fully molecular base and let the run continue, so the input error it
+      ! concealed reached the wind as a base state nobody had asked for.
+      h2_bound_fraction = 0.5d0*base_h2_nuclei_fraction()/(1.0d0 + HeH)
       end function h2_bound_fraction
+
+      ! ------------------------------------------------------!
+
+      real*8 function base_h2_nuclei_fraction()
+      ! Fraction x2 of the base HYDROGEN NUCLEI that are bound into H2,
+      !
+      !     x2 = 2 q (1+He/H)/(1+q),   q = h2_mixing_ratio_base(),
+      !
+      ! the same conversion from a mixture mixing ratio to a hydrogen-nucleus
+      ! fraction that mu_mixture uses in lower_column.f90.  x2 = 1 is fully
+      ! molecular hydrogen and is reached exactly at q = q_H2,max, which
+      ! startup has already established this q does not exceed.
+      !
+      ! This is the single definition of "how molecular is the base": the
+      ! equation of state removes x2/2 particles per H nucleus through
+      ! h2_bound_fraction above, and the species state imposes the same x2 on
+      ! the inflowing ghosts (ionization_equilibrium). One number, so the two
+      ! cannot describe different gas.
+      real*8 :: q
+      q = h2_mixing_ratio_base()
+      base_h2_nuclei_fraction = 2.0d0*q*(1.0d0 + HeH)/(1.0d0 + q)
+      end function base_h2_nuclei_fraction
+
+      ! ------------------------------------------------------!
+
+      logical function base_h2_composition_imposed()
+      ! Is the base molecular partition incoming data rather than something
+      ! the base cell derives for itself?
+      !
+      ! True only when a lower-atmosphere handoff stated it (base.inp key
+      ! q_H2_base, or the profile's value at the matching level) AND the
+      ! molecular network is actually solved, so there are H2 species to
+      ! impose it on. Without a handoff the partition comes from the
+      ! chemical-equilibrium fit, which is a local estimate and not upstream
+      ! information; imposing that on the solver would only hand the solver
+      ! back its own answer, so the fit branch leaves the species free and
+      ! reaches consistency the other way, through the particle count.
+      base_h2_composition_imposed = (q_h2_base .gt. 0.0d0) .and. thereis_mol
+      end function base_h2_composition_imposed
 
       ! ------------------------------------------------------!
 

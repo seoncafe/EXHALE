@@ -178,7 +178,7 @@ def velocity_distribution(d, rmin=1.0, rmax=25.0):
 # The six arms re-solved on the current He 2^3S + H ionization coefficient
 # (Update_EXHALE.md Sect. 87) and re-post-processed with the current
 # advection correction (Sect. 88); see exhale/bump_gm25/results.txt.
-RUNDIR = os.path.join('exhale', 'bump_gm25')
+RUNDIR = os.path.join('exhale', 'refresh_j96', 'bump')
 
 CASES = [('heh0p55', 'GJ 1132 SED, He/H = 0.55 (EW-matched)'),
          ('solar', 'GJ 1132 SED, solar He/H'),

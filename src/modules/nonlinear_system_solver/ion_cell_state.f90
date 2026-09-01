@@ -59,6 +59,48 @@
 		! kcx_He0_Hp = He0+H+ -> He++H0, kcx_Hep_H0 = He++H0 -> He0+H+.
 		real*8 :: kcx_He0_Hp
 		real*8 :: kcx_Hep_H0
+		! Oxygen chemistry (the A2 option). n_ofam is the FREE OXYGEN FAMILY
+		! of the cell [cm^-3]: every oxygen nucleus except the one locked in
+		! CO, i.e. the reservoir shared by O I, O II, O III, OH and H2O. The
+		! oxygen unknowns are fractions of it, and its counterpart n_co is
+		! the carbon monoxide density, fixed outside the solve by the
+		! CO <-> C + O equilibrium (oxygen_rates::co_equilibrium_density).
+		! Assigned by ioniz_eq for every cell of an oxygen-chemistry run; no
+		! default initializer, because this type is threadprivate and an
+		! initializer reaches the master thread only.
+		real*8 :: n_ofam
+		real*8 :: n_co
+		! Imposed carrier partitions. Where a partition is not a local root,
+		! the balance row that would have computed it is replaced by the
+		! value, and the other rows keep their balances and are solved
+		! against it -- which is what keeps the ionization stages consistent
+		! with the imposed partition. The fractions are in the same units as
+		! the unknowns they replace:
+		!   x_h2_fix  = 2 n_H2 / n_H(nuclei)      -> x(4)
+		!   x_oh_fix  = n_OH  / n_O(free family)  -> x(iox)
+		!   x_h2o_fix = n_H2O / n_O(free family)  -> x(iox+1)
+		!
+		! Hydrogen and oxygen carry SEPARATE flags because they are imposed
+		! for different physical reasons and do not always occur together:
+		!
+		!   x_h2_fixed   the H2 partition is owned by something other than
+		!                this cell's local balance -- the transported
+		!                carriers (milestone M3, diffusive_photochemistry),
+		!                or the lower-boundary reservoir, whose composition
+		!                is incoming data the shielded base cell cannot
+		!                derive for itself (base_h2_composition_imposed).
+		!   x_ox_fixed   the OH/H2O partition is owned by the transport
+		!                solve. Only carrier transport sets this one.
+		!
+		! One flag for both would tie them together: imposing H2 at the base
+		! ghost would then silently impose OH and H2O as well, at whatever
+		! the oxygen fractions happened to hold, and zero the oxygen
+		! carriers of a run that never asked for it.
+		logical :: x_h2_fixed
+		logical :: x_ox_fixed
+		real*8 :: x_h2_fix
+		real*8 :: x_oh_fix
+		real*8 :: x_h2o_fix
 	end type ion_rates
 
 	type(ion_rates), save :: ieq_cell

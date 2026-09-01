@@ -1,16 +1,21 @@
       program ic_writer_test
       ! Standalone driver for wae_ic_writer: read a windsoln.csv
       ! (dimensionalized via its #scales line) + an EXHALE IC_dump grid,
-      ! write the EXHALE IC files. Mirrors windae_to_exhale_ic.py args so
-      ! the output can be diffed against the Python converter.
+      ! write the EXHALE IC files. Mirrors windae_to_exhale_ic.py args
+      ! (plus the three Roche-geometry values wae_write_ic gained for its
+      ! base blend, which wind_ae_ic passes as Mstar/Mp, a/Rp and the
+      ! tidal-force switch) so the output can be diffed against the
+      ! Python converter.
       !
       ! Usage: ic_writer_test <windsoln.csv> <IC_dump.txt> <outdir> \
-      !                       <lognbase> <T0> <Rp[cm]> <HeH>
+      !                       <lognbase> <T0> <Rp[cm]> <HeH> \
+      !                       <Mstar/Mp> <a/Rp> <tidalforce>
       use wae_ic_writer, only: wae_write_ic
       implicit none
       character(len=4096) :: wfile, gfile, outdir, a4, a5, a6, a7, line
+      character(len=4096) :: a8, a9, a10
       integer :: u, ios, nw, ng, i
-      real*8  :: lognbase, T0, Rp, HeH
+      real*8  :: lognbase, T0, Rp, HeH, Mrapp, atilde, tidalf
       real*8  :: scales(10)
       real*8, allocatable :: rw(:), rhow(:), vw(:), Tw(:), YsHIw(:), YsHeIw(:)
       real*8, allocatable :: rgrid(:), gtmp(:)
@@ -23,6 +28,9 @@
       call get_command_argument(5, a5); read(a5,*) T0
       call get_command_argument(6, a6); read(a6,*) Rp
       call get_command_argument(7, a7); read(a7,*) HeH
+      call get_command_argument(8, a8);  read(a8,*)  Mrapp
+      call get_command_argument(9, a9);  read(a9,*)  atilde
+      call get_command_argument(10,a10); read(a10,*) tidalf
 
       ! --- read windsoln: #scales then data ---
       scales = 1.0d0
@@ -77,7 +85,8 @@
       close(u)
 
       call wae_write_ic(rw, rhow, vw, Tw, YsHIw, YsHeIw, nw,             &
-                        rgrid, ng, lognbase, T0, Rp, HeH, trim(outdir))
+                        rgrid, ng, lognbase, T0, Rp, HeH,                &
+                        Mrapp, atilde, tidalf, trim(outdir))
       write(*,'(A,I0,A,I0)') 'windsoln pts=', nw, ' grid pts=', ng
 
       contains

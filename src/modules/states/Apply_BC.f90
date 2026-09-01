@@ -5,9 +5,90 @@
    use Conversion
 
    implicit none
-   
+
+   ! Number of ghost-cell states whose linear extrapolation left the
+   ! admissible thermodynamic state (rho > 0, p > 0) and was dropped to a
+   ! zero-gradient copy of the last admissible cell, summed over the whole
+   ! run. Reported at the end of a run; zero means every extrapolated ghost
+   ! was admissible and the run is the one an unguarded build would have
+   ! produced.
+   integer :: n_ghost_cells_positivity_limited = 0
+
+   ! Mach number of the gas the lower boundary admits, and whether it ever
+   ! became supersonic.
+   !
+   ! This is a validity check on the boundary condition itself, independent of
+   ! the chemistry. A subsonic inflow carries one outgoing characteristic, so
+   ! one piece of interior information belongs in the ghost and the other two
+   ! are the reservoir's to state. A SUPERSONIC inflow carries none: all three
+   ! characteristics point into the domain, every ghost variable is the
+   ! reservoir's, and a boundary condition that copies an interior velocity
+   ! into it is over-specified -- it is feeding the domain a state the domain
+   ! itself produced. The solution downstream of such a boundary is not a
+   ! solution of the stated problem, whatever the chemistry does.
+   !
+   ! Reported, not enforced: the run continues and says so, because the
+   ! crossing is evidence about the configuration rather than a numerical
+   ! fault to be repaired in place. `Base velocity: massflux` removes the
+   ! copied-velocity feedback and is the usual response, but it does not make
+   ! this check redundant -- a mass-flux base can still go supersonic if the
+   ! reservoir state and the flux constant disagree.
+   integer :: n_base_supersonic_inflow_steps  = 0
+   integer :: base_supersonic_inflow_first_step = -1
+   real*8  :: base_inflow_mach_max = 0.0d0
+
    contains
-   
+
+   !------------------------------------------!
+
+   real*8 function base_inflow_mach_number(W)
+   ! |v|/c of the base ghost the lower boundary condition has just written,
+   ! with the code's own adiabatic sound speed c = sqrt(gamma p/rho) -- the
+   ! same expression eval_dt uses for the CFL condition, so the two agree on
+   ! what "sonic" means.
+   !
+   ! Measured on ghost 0, the cell the first interior face sees. Returns zero
+   ! for a state with no sound speed (a non-positive or NaN rho or p), so a
+   ! broken ghost is reported by the positivity counter above rather than
+   ! twice.
+   real*8, intent(in) :: W(3,1-Ng:N+Ng)
+   real*8 :: cs2
+   cs2 = g*W(3,0)/W(1,0)
+   if (.not. (cs2 .gt. 0.0d0)) then
+      base_inflow_mach_number = 0.0d0
+   else
+      base_inflow_mach_number = abs(W(2,0))/sqrt(cs2)
+   endif
+   end function base_inflow_mach_number
+
+   !------------------------------------------!
+
+   subroutine check_base_inflow_is_subsonic(W,step)
+   ! Record the base Mach number of this step and warn on the FIRST step at
+   ! which the boundary admits supersonic inflow. Inflow is v > 0 here: the
+   ! radial coordinate increases outward, so gas entering the domain at the
+   ! base moves outward. An outflowing (v < 0) base is a different condition
+   ! and is not what this check is about, so it is measured but not warned on.
+   real*8, intent(in)  :: W(3,1-Ng:N+Ng)
+   integer, intent(in) :: step
+   real*8 :: mach
+   mach = base_inflow_mach_number(W)
+   if (mach .gt. base_inflow_mach_max) base_inflow_mach_max = mach
+   if (W(2,0) .gt. 0.0d0 .and. mach .gt. 1.0d0) then
+      n_base_supersonic_inflow_steps = n_base_supersonic_inflow_steps + 1
+      if (base_supersonic_inflow_first_step .lt. 0) then
+         base_supersonic_inflow_first_step = step
+         write(*,'(A,I0,A,ES10.3)')                                       &
+            '     base boundary WARNING: inflow became supersonic at step ',&
+            step, ', Mach = ', mach
+         write(*,*) '       All three characteristics now enter the'//    &
+                    ' domain, so the ghost is over-'
+         write(*,*) '       specified and the interior is not a solution'//&
+                    ' of the stated problem.'
+      endif
+   endif
+   end subroutine check_base_inflow_is_subsonic
+
    subroutine Apply_BC(u)
    ! Boundary conditions for conservative variables (in place)
 
@@ -72,6 +153,17 @@
    if (hydrostatic_base) then
       W_in(3,index) = W_in(3,1) + (W_in(3,2) - W_in(3,1))                 &
                       /(r(2) - r(1))*(r(index) - r(1))
+      ! A pressure gradient steep enough to extrapolate through zero puts the
+      ! ghost outside the admissible state, where the gradient continuity the
+      ! extrapolation buys is worthless: the ghost is read as a real gas state
+      ! by the reconstruction stencil and by eval_dt. Fall back on the
+      ! zero-gradient base pressure, which is the first-order limit of the
+      ! same boundary condition. Density stays pinned at rho_bc above.
+      if (.not. (W_in(3,index) .gt. 0.0d0)) then
+         W_in(3,index) = W_in(3,1)
+         n_ghost_cells_positivity_limited =                               &
+            n_ghost_cells_positivity_limited + 1
+      endif
    else if (base_ghost_T_continuous) then
       W_in(3,index) = (ntot_bc + dp_bc)*W_in(3,1)/n_part_cell1
    else
@@ -94,10 +186,34 @@
       call BC_component_constrho(W,1-k)
    enddo
 
+   ! Upper boundary: free outflow. The zero-gradient copy is the boundary
+   ! condition itself; the linear extrapolation the WENO3 stencil asks for is
+   ! an accuracy device on top of it, valid only where the state it
+   ! extrapolates is smooth.
+   !
+   ! Where it is not -- a cold-start transient, a front crossing the outer
+   ! cells -- the extrapolation can carry rho or p through zero, and the
+   ! result is not a poor approximation but no gas state at all. These ghosts
+   ! are read as real cells further downstream: calc_column_dens starts its
+   ! column integral at N+Ng, the ionization sweep runs over 1-Ng..N+Ng, and
+   ! eval_dt takes a minimum over the same range, so a negative ghost density
+   ! becomes negative nuclei densities and negative stage populations inside
+   ! the photoionization heating. Falling back on the zero-gradient state --
+   ! the first-order limit of the same free-outflow condition -- keeps the
+   ! boundary physical.
+   !
+   ! Written as the negation of "strictly positive", so a NaN ghost -- which
+   ! compares false against everything -- is caught too.
    do k = 1,Ng
-      ! Upper boundary
       W(:,N+k) = W(:,N)
-      if (use_weno3) W(:,N+k) = 2.0*W(:,N+k-1) - W(:,N+k-2)
+      if (use_weno3) then
+         W(:,N+k) = 2.0*W(:,N+k-1) - W(:,N+k-2)
+         if (.not. (W(1,N+k) .gt. 0.0d0 .and. W(3,N+k) .gt. 0.0d0)) then
+            W(:,N+k) = W(:,N+k-1)
+            n_ghost_cells_positivity_limited =                            &
+               n_ghost_cells_positivity_limited + 1
+         endif
+      endif
    enddo
 
    ! End of subroutine
@@ -123,7 +239,9 @@
          call BC_component_constrho(WL_out,1-k)
    enddo
          
-   ! Upper boundary
+   ! Upper boundary. The extrapolations below are left unguarded: these are
+   ! face states, and positivity_limited_faces already drops any face that
+   ! leaves rho > 0, p > 0 back to the cell averages.
    do k = 1,Ng
       WR_out(:,N+k) = WR_out(:,N)
       if (use_weno3) WR_out(:,N+k) = 2.0*WR_out(:,N+k-1) - WR_out(:,N+k-2)

@@ -55,17 +55,58 @@
       ! ------------------------------------------------------------------ !
 
       ! Chemical-equilibrium H2 volume mixing ratio q_H2(p,T) for an H/He gas
-      ! (Koskinen et al. 2022 Eq. 11, from Visscher et al. 2006).
-      ! p in bar, T in K.  Clamped to [0,1] for numerical safety far outside
-      ! the fit range (very cold -> 1, very hot -> 0, as physically expected).
+      ! (Koskinen et al. 2022, ApJ 929, 52, Eq. 11, quoting Visscher et al.
+      ! 2006; read from the published paper). p in bar, T in K.
+      !
+      ! THE LIMITS OF THE FIT ITSELF, which the asymptotic guards must agree
+      ! with. u = -23672/T - log10(p) + 6.2645 runs to -infinity as the gas
+      ! gets COLD and to +infinity as it gets HOT, and the expression
+      !     q = (1.9845 + 10^u - sqrt(10^u (3.9690 + 10^u)))/2.3670
+      ! therefore tends to
+      !     cold, u -> -inf :  1.9845/2.3670 = 0.83840   (fully molecular)
+      !     hot,  u -> +inf :  0                         (fully atomic)
+      ! The cold limit is the fit's approximation of the fully molecular
+      ! solar-composition value 0.5/(0.5 + He/H) = 0.863 at He/H = 0.0793;
+      ! it is a volume mixing ratio n_H2/(n_H2 + n_H + n_He), so it cannot
+      ! reach 1 in a gas that contains helium.
+      !
+      ! VALIDITY IN He/H: THIS FIT IS FOR SOLAR COMPOSITION AND MUST NOT BE
+      ! USED IN A GAS RICHER IN HELIUM THAN ABOUT He/H = 0.1.
+      ! The cold asymptote 1.9845/2.3670 = 0.83840 is a CONSTANT, while the
+      ! attainable ceiling 0.5/(0.5 + He/H) falls as helium is added. They
+      ! cross at
+      !     He/H = 0.5/0.83840 - 0.5 = 0.0964,
+      ! and above that the fit returns a mixing ratio the element ratio
+      ! cannot supply. Solar composition clears the ceiling by only 3%
+      ! (0.8384 against 0.8631); at He/H = 1 the fit returns 0.8384 against a
+      ! ceiling of 0.3333, 2.5x over, and at He/H = 10 it is 17.6x over. The
+      ! whole of the He/H = 1-1000 diagnostic ladder is outside this fit.
+      ! A molecular base there has to state q_H2 explicitly through a
+      ! lower-atmosphere handoff; input_read refuses the fit's value rather
+      ! than capping it (section 117 of docs/Update_EXHALE.*, which is where
+      ! the silent cap that used to hide this was removed).
+      !
+      ! Until 2026-08-31 both guards were INVERTED against those limits:
+      ! u > 30 returned 1.0 ("fully H2") where the fit gives 0, and u < -30
+      ! returned 0.0 ("fully atomic") where the fit gives 0.8384 -- a
+      ! discontinuity of 0.84 in mixing ratio at the guard's own threshold.
+      ! Only the cold branch is reachable (u < -30 is T <~ 529 K at
+      ! 1e-6 bar; u > 30 needs p < 1e-24 bar), and there it handed every
+      ! sub-529 K cell a fully ATOMIC "dense molecular limit" -- the seed of
+      ! the constrained continuation solve and of the molecular-basin retry
+      ! of ioniz_eq, i.e. the two places that choose which basin a cold cell
+      ! is solved from.
+      !
+      ! The cold branch is now left to the expression, which reaches the
+      ! limit on its own: 10^u underflows to zero far below the threshold and
+      ! the formula returns 1.9845/2.3670 exactly. Only the overflow side
+      ! needs a guard, and it returns the fit's hot limit.
       double precision function q_h2_equilibrium(p_bar, T) result(qh2)
       real*8, intent(in) :: p_bar, T
       real*8 :: u, tenu
       u = -23672.0d0/T - log10(max(p_bar, 1.0d-30)) + 6.2645d0
       if (u .gt. 30.0d0) then
-         qh2 = 1.0d0                                          ! -> fully H2
-      else if (u .lt. -30.0d0) then
-         qh2 = 0.0d0                                          ! fully atomic
+         qh2 = 0.0d0                                          ! hot -> atomic
       else
          tenu = 10.0d0**u
          qh2  = (1.9845d0 + tenu - sqrt(tenu*(3.9690d0 + tenu)))/2.3670d0

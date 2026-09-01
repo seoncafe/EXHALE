@@ -300,8 +300,15 @@ as a reference for the gas-giant workflow.
 3. **Reaction budgets** exported (`EvoAtmosphere.production_and_loss`) for H2,
    H2O, OH and H on the model grid.
 4. **A second planet**, HD 209458 b, run through all three Photochem arms
-   against the existing VULCAN solution, because HD 189733 b does not reach a
-   steady state in EXHALE and therefore cannot carry the wind-level measurement.
+   against the existing VULCAN solution, so that the wind-level measurement is
+   made on a planet whose EXHALE run is a molecular-base configuration seeded
+   from the handoff. (This item originally said that HD 189733 b "does not
+   reach a steady state in EXHALE". Corrected 2026-08-30: it does --
+   `HD189733b/run_20260819_const.log` ends with `(JFNK) done info=0`,
+   `||R|| = 8.349e-4`, log10 Mdot = 9.14, and that solution is the one sitting
+   in `HD189733b/output/`. What HD 189733 b lacks is not convergence but a
+   `base.inp` molecular-base run of the four arms; the wind-level arm
+   comparison was never set up for it.)
 5. **VULCAN reruns with a truncated domain**, so the domain sensitivity is
    measured in both codes rather than in one.
 
@@ -430,9 +437,22 @@ Chemical timescales at the handoff, `n_H2 / (net H2 loss)`:
 | HD 209458 b, 1e-4 bar, 1830 K | 2.3e6 s |
 
 Against EXHALE's own advection time at its base cell in the converged
-HD 209458 b run below (`H/v` with `v = 0.52` cm/s, `H = 1.27e8` cm, i.e.
-2.4e8 s), `tau_chem/tau_adv ~ 1e-3`. That is the P4 gate's second condition, and
-it is met at the handoff level — it says nothing about the cells further out.
+HD 209458 b run below, `tau_chem/tau_adv ~ 1e-3`. That is the P4 gate's second
+condition, and it is met at the handoff level — it says nothing about the cells
+further out.
+
+*Corrected and extended 2026-08-30 (phase P3):* the scale height quoted here was
+`H = 1.27e8` cm and the advection time `2.4e8` s. Re-measured from
+`vulcan_work/pc_compare_p1/exhale_hd209/p1e-6_seed/vulcan/output/Hydro_ioniz.txt`
+with `H = p/(rho g)` and `g = G M_p/r^2` from that run's own `input.inp`
+(`M_p = 0.720 M_J`, `R_p = 1.401 R_J`, so `g = 950.75` cm s^-2), the base cell
+(`r/R_p = 1`, `T = 1638.7` K, `v = 0.52315` cm s^-1, `p = 22.642` dyn cm^-2,
+`mu = 1.2751 m_H` measured as `rho/(m_H p/k_B T)`) gives **`H = 1.115e8` cm and
+`tau_adv = H/v = 2.132e8` s**, 14% below the numbers above; the 1.27e8 could not
+be reproduced from the run and no `mu`/`g` was recorded with it. The ratio is
+unchanged in order of magnitude: `tau_chem/tau_adv = 1.05e-3` (arm C'). The full
+re-measurement, including the same ratio on HD 189733 b and its radial profile,
+is in `oxygen_chemistry_new_plan.md` phase P4.
 
 ## P1.5 HD 209458 b: the three arms agree, and why
 

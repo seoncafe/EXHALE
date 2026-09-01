@@ -9,10 +9,16 @@
       use energy_semi_implicit
       use utils
       use composition, only: get_species_densities, comp_T_from_p,         &
-                             comp_p_from_T, element_ratio_HeH
+                             comp_p_from_T, element_ratio_HeH,             &
+                             n_cells_he_singlet_clamped
       use binary_element_diffusion, only: element_diffusion_step,          &
                                           relax_element_composition
+      use diffusive_photochemistry, only: photochemical_transport_step,   &
+                                          relax_photochemical_composition,&
+                                          carrier_transport_diagnostics
       use lower_column, only: lower_column_solve
+      use molecular_infrared_cooling, only: molecular_infrared_init
+      use mol_rates, only: h2_thermochemistry_init
       use steady_residual_mod, only: assemble_residual, residual_norms, residual_norms_vol
       use viscous_conduction, only: transport_active, viscous_conduction_step
       use steady_newton, only: neq_newton, pack_U, unpack_U, newton_residual, &
@@ -68,6 +74,13 @@
       ! anyway (measured du(1) = 0.37 for the WASP regression cases, 7.9 for
       ! mol_base_handoff), so their behavior is unchanged.
       logical :: du_stop_armed   = .false.   ! du < du_th convergence stop
+      ! Set when the JFNK steady solver returned info=0 and its solution is
+      ! what ends the run. It reuses is_mom_const to leave the marching loop,
+      ! so without this flag the stop report would claim the du criterion --
+      ! which a Newton finish does not have to satisfy (it hands over at
+      ! du < newton_du_switch, two decades above du_th, and converges on the
+      ! residual instead).
+      logical :: newton_finished = .false.
       logical :: du_newton_armed = .false.   ! JFNK hand-off, and the secondary-
                                              ! ionization flip sharing its test
 
@@ -124,7 +137,10 @@
       ! outer iteration alternating the JFNK steady solve with diffusion
       ! relaxation of the He/H field at the converged wind.
       real*8  :: comp_drift, comp_drift_prev, comp_omega
-      integer :: it_diff, kd
+      ! Drift and step count of the carrier relaxation, the third
+      ! participant of the same damped Picard iteration.
+      real*8  :: carrier_drift
+      integer :: it_diff, kd, kc
 
       ! Admissibility record of the low-Mach contact-mode dissipation: how big
       ! the artificial stress got against the physical momentum flux it was
@@ -138,7 +154,19 @@
       ! Temporal step (global) and cell-by-cell pseudo-time steps
       real*8 :: dt
       real*8, dimension(:), allocatable :: dt_loc
-      
+
+      ! Positivity step control (see the retry_step loop): bisections taken on
+      ! the current step, bisections over the run, and steps that needed at
+      ! least one. n_dt_halve_max bounds the bisection: 20 halvings is a factor
+      ! 1e-6 on dt, past which no step size repairs the state.
+      integer :: n_dt_halve, n_dt_halvings, n_steps_dt_halved
+      integer, parameter :: n_dt_halve_max = 20
+
+      ! Did the local first-order flux correction restore the admissible set
+      ! for the stage it was applied to? False hands the stage to the dt
+      ! bisection above.
+      logical :: flux_corr_ok
+
       ! Mdot value
       real*8 :: Mdot
       
@@ -181,6 +209,19 @@
       call excited_H_allocate_arrays
       call ioniz_eq_allocate_arrays
       call allocate_state_vectors
+
+      ! Build the H2, H2O and CO infrared emission/absorption tables for this
+      ! run's radiating temperature. Once, here: the cell sweep that reads them
+      ! runs under OpenMP, so they must be finished before it starts.
+      if (mol_ir_bands) call molecular_infrared_init(T0)
+
+      ! Build the H + H <-> H2 equilibrium-constant table that R12 (thermal
+      ! dissociation of H2, obtained by detailed balance of the R15
+      ! recombination) reads. Here, and unconditionally: it depends on
+      ! nothing this run supplies, and the cell sweep that reads it runs
+      ! under OpenMP, so it must be finished before the first parallel
+      ! region opens.
+      call h2_thermochemistry_init
 
       ! Optional parse-dump mode (env EXHALE_PARSE_DUMP=1): write every variable
       ! input_read derived from input.inp (and any base.inp override) to
@@ -449,11 +490,26 @@
       is_stalled   = .false.
       du_prev      = huge(1.0d0)
       stall_count  = 0
+      n_dt_halvings     = 0
+      n_steps_dt_halved = 0
 
       ! Staged secondary ionization: the SvS85 coupling starts applied only if
       ! "Secondary_ionization: Immediate" was set; otherwise it is switched on
       ! after the wind first converges without it (see the stage flip below).
-      sec_ion_active = (use_sec_ion .and. sec_ion_immediate)
+      !
+      ! The staging is a startup device, not a statement about the physics:
+      ! from a cold IC the base feedback of the coupling amplifies the startup
+      ! transient into a runaway, so the wind is first relaxed without it. A
+      ! "Do only PP" run relaxes nothing -- it loads a wind that was itself
+      ! converged WITH the coupling, leaves the loop after one pass, and then
+      ! post-processes it, and post_process_adv runs every PH_heat_HHe call with
+      ! the coupling applied (it is armed unconditionally after the loop). Left
+      ! staged, the one ionization_equilibrium call of such a run would use a
+      ! different photoionization rate than the post-process beside it, and its
+      ! Hydro_ioniz/Ion_species files would not be the equilibrium state the
+      ! _adv files correct. So arm it here, exactly as the env-driven bypass
+      ! modes above do for the same reason (they also skip the time loop).
+      sec_ion_active = (use_sec_ion .and. (sec_ion_immediate .or. do_only_pp))
       sec_flip_step  = -1
 
       ! du triggers start armed only for a state loaded from a previous EXHALE
@@ -522,50 +578,130 @@
 
             ! Save previous step solution
             u_old = u
-            
+
+            ! Positivity of the RK3 + HLLC step.
+            !
+            ! The Euler equations live on the set rho > 0, rho e > 0, and the
+            ! HLLC flux leaves it through sqrt(gamma p/rho). A conservative
+            ! update stays on that set only under a CFL bound -- dt(|v|+c)/dr
+            ! <= 1/2 for the first-order HLL family (Einfeldt et al. 1991;
+            ! Batten et al. 1997), and less than that for a high-order
+            ! reconstruction -- which the run's CFL number (default 0.6) does
+            ! not enforce. Where the bound is violated the update can hand the
+            ! next RK stage a cell whose internal energy E - rho v^2/2 has gone
+            ! negative, and the run dies on the square root, not on anything
+            ! physical: measured at He/H = 1 over the molecular hot-Uranus base,
+            ! where a Mach 38-224 layer forms and cell 233 goes from p = +5.6 to
+            ! p = -3.6e-2 in a single step at CFL 0.6 while the same arm runs
+            ! 12000 steps at CFL 0.2.
+            !
+            ! So each stage is tested, and the violation is answered in two
+            ! steps. First locally: at the offending cells only, the
+            ! high-order interface fluxes are replaced by the first-order
+            ! Lax-Friedrichs flux of the neighboring cell averages and those
+            ! cells' update is rebuilt (positivity_limited_fluxes). That flux
+            ! preserves rho > 0, rho e > 0 for dt(|v|+c)/dr <= 1 (Perthame &
+            ! Shu 1996, Numer. Math. 73, 119; Zhang & Shu 2010, J. Comput.
+            ! Phys. 229, 3091), which the run's CFL number does respect, and
+            ! substituting it at single interfaces instead of everywhere is
+            ! the flux correction of Hu, Adams & Shu (2013, J. Comput. Phys.
+            ! 242, 169), used the same way in Stone et al. (2020, ApJS 249,
+            ! 4). One or two cells then cost one or two first-order
+            ! interfaces instead of costing the whole grid a smaller dt.
+            !
+            ! Second, as the backstop: a stage still outside the set -- the
+            ! source terms, gravity and geometry, are not bounded by any flux
+            ! choice -- is discarded and the step retaken from u_old at half
+            ! dt, the standard remedy and the only one that does not put
+            ! energy into the gas that the equations did not. A run that never
+            ! violates the bound enters neither branch and is the run an
+            ! unguarded build gives.
+            n_dt_halve = 0
+            retry_step: do
+
+            u = u_old
+
             ! FIRST RK STEP
-            
+
             ! Reconstruct u+_{j+1/2}, u-_{j+1/2}
-            call Reconstruct(u,WL,WR) 
-            
+            call Reconstruct(u,WL,WR)
+
             ! Evaluate flux difference and source terms
             call RK_rhs(u,WL,WR,alpha,dF,S)
-            
+
             do k = 1,3
                u1(k,:) = u(k,:) - dt_loc*(dF(k,:) - S(k,:))
             enddo
-             
+
             ! Apply boundary conditions
             call Apply_BC(u1)
-                      
+
+            ! Local repair first (see the note above); the test below then
+            ! decides whether it was enough.
+            if (.not. positive_density_and_internal_energy(u1)) then
+               call positivity_limited_fluxes(1,u,u,S,dt_loc,u1,flux_corr_ok)
+               if (flux_corr_ok) call Apply_BC(u1)
+            endif
+
+            if (.not. positive_density_and_internal_energy(u1)) then
+               if (n_dt_halve .eq. 0) n_steps_dt_halved = n_steps_dt_halved + 1
+               n_dt_halve   = n_dt_halve + 1
+               n_dt_halvings = n_dt_halvings + 1
+               dt     = 0.5d0*dt
+               dt_loc = 0.5d0*dt_loc
+               ! Give up after n_dt_halve_max bisections: the state is then
+               ! inadmissible for a reason no step size repairs, and the NaN
+               ! detector below reports it with the profile.
+               if (n_dt_halve .le. n_dt_halve_max) cycle retry_step
+               exit retry_step
+            endif
+
             !----------------------------
-            
+
             ! SECOND RK STEP
 
             ! Reconstruct u+_{j+1/2}, u-_{j+1/2}
-            call Reconstruct(u1,WL,WR) 
+            call Reconstruct(u1,WL,WR)
 
             ! Evaluate flux difference and source terms
             call RK_rhs(u1,WL,WR,alpha,dF,S)
-                    
+
             ! Advance in time
             do k = 1,3
                u2(k,:) = (3.0*u(k,:) + u1(k,:) - dt_loc*(dF(k,:) - S(k,:)))/4.0
             enddo
 
-            ! Apply boundary conditions            
+            ! Apply boundary conditions
             call Apply_BC(u2)
-            
+
+            if (.not. positive_density_and_internal_energy(u2)) then
+               call positivity_limited_fluxes(2,u,u1,S,dt_loc,u2,flux_corr_ok)
+               if (flux_corr_ok) call Apply_BC(u2)
+            endif
+
+            if (.not. positive_density_and_internal_energy(u2)) then
+               if (n_dt_halve .eq. 0) n_steps_dt_halved = n_steps_dt_halved + 1
+               n_dt_halve   = n_dt_halve + 1
+               n_dt_halvings = n_dt_halvings + 1
+               dt     = 0.5d0*dt
+               dt_loc = 0.5d0*dt_loc
+               ! Give up after n_dt_halve_max bisections: the state is then
+               ! inadmissible for a reason no step size repairs, and the NaN
+               ! detector below reports it with the profile.
+               if (n_dt_halve .le. n_dt_halve_max) cycle retry_step
+               exit retry_step
+            endif
+
             !----------------------------
-            
+
             ! THIRD RK STEP
 
             ! Reconstruct u+_{j+1/2}, u-_{j+1/2}
-            call Reconstruct(u2,WL,WR) 
+            call Reconstruct(u2,WL,WR)
 
             ! Evaluate flux difference and source terms
             call RK_rhs(u2,WL,WR,alpha,dF,S)
-                  
+
             ! Advance in time
             do k = 1,3
                u(k,:) = (u(k,:) + 2.0*(u2(k,:) - dt_loc*(dF(k,:) - S(k,:))))/3.0
@@ -573,7 +709,30 @@
 
             ! Apply boundary conditions
             call Apply_BC(u)
- 		
+
+            ! u_old, not u: this stage overwrites u in place, so the state at
+            ! the beginning of the step is only left in u_old.
+            if (.not. positive_density_and_internal_energy(u)) then
+               call positivity_limited_fluxes(3,u_old,u2,S,dt_loc,u,flux_corr_ok)
+               if (flux_corr_ok) call Apply_BC(u)
+            endif
+
+            if (.not. positive_density_and_internal_energy(u)) then
+               if (n_dt_halve .eq. 0) n_steps_dt_halved = n_steps_dt_halved + 1
+               n_dt_halve   = n_dt_halve + 1
+               n_dt_halvings = n_dt_halvings + 1
+               dt     = 0.5d0*dt
+               dt_loc = 0.5d0*dt_loc
+               ! Give up after n_dt_halve_max bisections: the state is then
+               ! inadmissible for a reason no step size repairs, and the NaN
+               ! detector below reports it with the profile.
+               if (n_dt_halve .le. n_dt_halve_max) cycle retry_step
+               exit retry_step
+            endif
+
+            exit retry_step
+            enddo retry_step
+
 		!------------------------------------------------!
  		
  		!---- Ionization Equilibrium ----!
@@ -597,6 +756,15 @@
             ! No-op unless he_diffusion is set (byte-identical when off).
             if (he_diffusion)                                         &
                call element_diffusion_step(rho,v,T,f_sp,dt_loc)
+
+            ! Vertical transport of the molecular carriers (H2, OH, H2O,
+            ! CO) with their chemistry, in the same operator-split slot the
+            ! element diffusion occupies and for the same reason: after the
+            ! hydro update, before the ionization solve, which then solves
+            ! the remaining stages against the transported partition rather
+            ! than recomputing it. No-op unless the oxygen chemistry is on
+            ! with its transport (byte-identical when off).
+            call photochemical_transport_step(rho,v,T,f_sp,dt_loc)
 
             ! Refresh the lagged H(n=2) Balmer source + heating from
             ! the current state before the ionization/energy solve.
@@ -629,7 +797,7 @@
             !     explicit forward-Euler update ("Energy solver: Explicit")
 
             if (use_semi_implicit_energy) then
-               call solve_energy_semi_implicit(u,W,dt_loc,heat,cool,f_sp)
+               call solve_energy_semi_implicit(u,W,dt_loc,heat,cool,f_sp,count)
             else
                u(3,:) = u(3,:) + dt_loc*(heat - cool)
             endif
@@ -668,6 +836,13 @@
             v   = W(2,:)
             p   = W(3,:)
             E   = u(3,:)
+
+            ! Is the lower boundary still admitting SUBSONIC inflow? Measured
+            ! here because W now holds the state every Apply_BC of this step
+            ! has finished writing. Diagnostic only: it reads W and changes
+            ! nothing, so a run that never crosses is the run an unguarded
+            ! build produces.
+            call check_base_inflow_is_subsonic(W,count)
             
             ! Evaluate ionized densities, ne and n_tot (single policy point)
             call get_species_densities(rho,f_sp,nhi,nhii,nhei,nheii,  &
@@ -939,8 +1114,9 @@
                call steady_wind_with_element_diffusion(500, 1.0d0,      &
                                                        .true., j)
                if (j .eq. 0) then
-                  is_mom_const = .true.       ! exit the marching loop
-                  is_stalled   = .false.
+                  is_mom_const    = .true.    ! exit the marching loop
+                  is_stalled      = .false.
+                  newton_finished = .true.
                else
                   ! JFNK failed; it returned its best iterate. Do NOT
                   ! accept an unconverged state as the answer -- fall back
@@ -1027,7 +1203,9 @@
       endif
 
       ! Report which criterion stopped the loop
-      if (is_mom_const) then
+      if (newton_finished) then
+         write(*,*) '    -> converged: JFNK steady solution (||R|| < resid_th)'
+      else if (is_mom_const) then
          write(*,*) '    -> converged: momentum constant (du < du_th)'
       else if (is_zero_dt) then
          write(*,*) '    -> converged: steady state reached (dtu < dtu_th)'
@@ -1084,6 +1262,126 @@
             ', 2 ', ieq_n_mol_info(2), ', 3 ', ieq_n_mol_info(3),             &
             ', 4 ', ieq_n_mol_info(4), ', 5 ', ieq_n_mol_info(5),             &
             ', 0 ', ieq_n_mol_info(0), ''
+      endif
+
+      ! Acceptance statistics of the He-branch equilibrium solves (section
+      ! 113): how many cell states were accepted as solver-converged roots,
+      ! as roots without solver convergence, as projected/handback states
+      ! that recheck as roots, as roots of the constrained element-conserving
+      ! continuation solve, and as NON-ROOTS under the relaxation amnesty
+      ! (each with the largest normalized reaction residual the class
+      ! carried, and the longest consecutive non-root streak of any cell);
+      ! then the cost of the constrained solve, and the residual-decade
+      ! histograms of the physical iterates, which locate the gap between
+      ! roots and non-roots.
+      if (sum(ieq_acc_n) .gt. 0) then
+         write(*,'(A,I0,A,ES9.2,A,I0,A,ES9.2,A,I0,A,ES9.2,A)')                &
+            '     ioniz-eq acceptance: ', ieq_acc_n(1),                       &
+            ' converged root(s) (max res ', ieq_acc_resmax(1), '), ',         &
+            ieq_acc_n(2), ' root(s) without solver convergence (max res ',    &
+            ieq_acc_resmax(2), '), ', ieq_acc_n(3),                           &
+            ' projected/handback root(s) (max res ', ieq_acc_resmax(3), ')'
+         if (ieq_acc_n(4) .gt. 0)                                             &
+            write(*,'(A,I0,A,ES9.2,A,I0,A)')                                  &
+            '     ioniz-eq acceptance WARNING: ', ieq_acc_n(4),               &
+            ' NON-ROOT state(s) accepted under the relaxation amnesty '//     &
+            '(max res ', ieq_acc_resmax(4), ', longest cell streak ',         &
+            ieq_nonroot_streak_peak, ' sweep(s))'
+         if (ieq_acc_n(5) .gt. 0)                                             &
+            write(*,'(A,I0,A,ES9.2,A)')                                       &
+            '     ioniz-eq acceptance: ', ieq_acc_n(5),                       &
+            ' constrained-continuation root(s) (max res ',                    &
+            ieq_acc_resmax(5), ')'
+         if (ieq_n_cce_attempt .gt. 0)                                        &
+            write(*,'(A,I0,A,I0,A,I0,A,F0.3,A)')                              &
+            '     ioniz-eq constrained solve: ', ieq_n_cce_attempt,           &
+            ' cell(s) promoted, ', ieq_n_cce_root, ' accepted as root(s), ',  &
+            ieq_n_cce_solve, ' field solve(s), ', ieq_cce_seconds, ' s'
+         write(*,'(A,16(I0,1X))')                                             &
+            '     ioniz-eq residual decades (<=1e-16 .. >=1e-1) converged:   ',&
+            ieq_hist_conv
+         if (sum(ieq_hist_uncv) .gt. 0)                                       &
+            write(*,'(A,16(I0,1X))')                                          &
+            '     ioniz-eq residual decades (<=1e-16 .. >=1e-1) unconverged: ',&
+            ieq_hist_uncv
+      endif
+
+      ! Cells whose semi-implicit energy update landed on the temperature
+      ! floor (energy_semi_implicit). A cell on the floor has not converged
+      ! to a physical temperature -- the update overshot and the clamp
+      ! absorbed it -- and at 0.01 T0 the chemical network is frozen, so its
+      ! composition is not constrained by its reaction balance either. Silent
+      ! for a run that never reaches the floor, which is every matrix case.
+      if (n_energy_floor_hits .gt. 0) then
+         write(*,'(A,I0,A,I0,A,I0,A,I0,A)')                                  &
+            '     energy floor WARNING: ', n_energy_floor_hits,              &
+            ' activation(s) in ', n_energy_floor_cells(),      &
+            ' distinct cell(s), steps ', energy_floor_first_step, ' to ',    &
+            energy_floor_last_step, ''
+      endif
+
+      ! Faces at which the high-order reconstruction produced a non-positive
+      ! density or pressure and was dropped to the cell averages
+      ! (positivity_limited_faces). Silent for a run that never needed it --
+      ! which is every run whose solution the reconstruction resolves, and the
+      ! statement that such a run is the one an unguarded build produces.
+      if (n_faces_positivity_limited .gt. 0) then
+         write(*,'(A,I0,A)')                                                  &
+            '     reconstruction: ', n_faces_positivity_limited,              &
+            ' face state(s) dropped to first order for positivity'
+      endif
+
+      ! Boundary ghost cells whose linear extrapolation left rho > 0, p > 0
+      ! and was dropped to the zero-gradient state (the outer free-outflow
+      ! ghosts under WENO3, and the hydrostatic_base pressure ghost). Silent
+      ! for a run whose boundary extrapolations stayed admissible, which is
+      ! the run an unguarded build produces.
+      if (n_ghost_cells_positivity_limited .gt. 0) then
+         write(*,'(A,I0,A)')                                                  &
+            '     boundary: ', n_ghost_cells_positivity_limited,              &
+            ' ghost cell state(s) limited to zero gradient for positivity'
+      endif
+
+      ! The Mach number of the inflow the lower boundary admitted. Always
+      ! reported for a run that had a base inflow at all: the maximum is a
+      ! statement about how close the boundary came to over-specification,
+      ! and it is worth having in the log of a run that never crossed as
+      ! well as one that did.
+      if (base_inflow_mach_max .gt. 0.0d0) then
+         if (base_supersonic_inflow_first_step .ge. 0) then
+            write(*,'(A,I0,A,I0,A,ES10.3)')                                   &
+               '     base boundary WARNING: supersonic inflow on ',           &
+               n_base_supersonic_inflow_steps, ' step(s), first at ',         &
+               base_supersonic_inflow_first_step, ', max Mach ',              &
+               base_inflow_mach_max
+            write(*,*) '       The interior downstream of a supersonic'//     &
+                       ' inflow is not a solution of'
+            write(*,*) '       the stated problem; see section 117 of'//      &
+                       ' docs/Update_EXHALE.'
+         else
+            write(*,'(A,ES10.3)')                                             &
+               '     base boundary: inflow stayed subsonic, max Mach ',       &
+               base_inflow_mach_max
+         endif
+      endif
+
+      ! Interfaces whose flux was dropped to first order to hold an RK stage
+      ! inside rho > 0, rho e > 0 (positivity_limited_fluxes). Silent for a
+      ! run that stayed inside the positivity bound of its CFL number, which
+      ! is the run an unguarded build produces.
+      if (n_faces_flux_positivity_limited .gt. 0) then
+         write(*,'(A,I0,A)')                                                  &
+            '     flux correction: ', n_faces_flux_positivity_limited,        &
+            ' face flux(es) dropped to first order for positivity'
+      endif
+
+      ! Steps retaken at half dt because an RK stage left rho > 0, rho e > 0.
+      ! Silent for a run that stayed inside the positivity bound of its CFL
+      ! number, which is the run an unguarded build produces.
+      if (n_steps_dt_halved .gt. 0) then
+         write(*,'(A,I0,A,I0,A)')                                             &
+            '     positivity step control: ', n_steps_dt_halved,              &
+            ' step(s) retaken, ', n_dt_halvings, ' dt bisection(s)'
       endif
 
       ! The artificial stress is a numerical dissipation, so it is admissible
@@ -1145,7 +1443,21 @@
       call post_process_adv(rho,v,p,T,heat,cool,eta,    &
                             nhi,nhii,nhei,nheii,nheiii,nheiTR,nm)
       
-      write(*,*) '(EXHALE_main.f90) Post processing routine done.'                           
+      write(*,*) '(EXHALE_main.f90) Post processing routine done.'
+
+      ! Cells at which the ground singlet n(1^1S) = n(He I) - n(2^3S) came out
+      ! negative and was floored at zero (he_ground_singlet_density in
+      ! composition.f90). Reported here rather than with the counters above
+      ! because the post-process is one of the consumers, so this is the first
+      ! point at which the count is complete. Silent for a run whose two
+      ! helium columns never crossed -- which is every run in which the
+      ! metastable stays well below the summed He I, and the statement that
+      ! such a run is the one an unguarded build produces.
+      if (n_cells_he_singlet_clamped .gt. 0) then
+         write(*,'(A,I0,A)')                                                  &
+            '     helium ground singlet: ', n_cells_he_singlet_clamped,       &
+            ' cell evaluation(s) floored at zero'
+      endif
       
       !---------------------------------------------------!                            
                                     
@@ -1247,7 +1559,8 @@
       comp_drift      = 0.0d0
       comp_drift_prev = huge(1.0d0)
 
-      do it_diff = 1, merge(20, 1, he_diffusion)
+      do it_diff = 1, merge(20, 1, he_diffusion .or.                    &
+                                  (thereis_oxychem .and. oxygen_transport))
          if (use_jfnk) then
             call solve_steady_jfnk(u, f_sp, resid_max, maxit, dtau0,    &
                                    40, jfnk_info)
@@ -1265,11 +1578,30 @@
          call get_species_densities(rho,f_sp,nhi,nhii,nhei,nheii,       &
                                     nheiii,nheiTR,nm,ne,n_tot)
          if (jfnk_info .ne. 0) exit             ! steady solve failed
-         if (.not. he_diffusion) exit
+         if (.not. he_diffusion .and. .not. (thereis_oxychem .and.        &
+             oxygen_transport)) exit
+         comp_drift = 0.0d0
+         kd = 0
          ! Element composition relaxed to its steady state at the fixed wind
-         call relax_element_composition(rho,v,T,f_sp,comp_omega,          &
-                                        comp_drift,kd)
-         call ioniz_eq(T,rho,f_sp,heat,cool,eta)
+         if (he_diffusion) then
+            call relax_element_composition(rho,v,T,f_sp,comp_omega,       &
+                                           comp_drift,kd)
+            call ioniz_eq(T,rho,f_sp,heat,cool,eta)
+         endif
+         ! The molecular carriers are a THIRD participant in the same Picard
+         ! iteration, relaxed to their own steady state at the same fixed
+         ! wind and under the same damping. The header of this routine
+         ! records why the damping exists -- nothing in a Picard iteration
+         ! of two solves keeps them from chasing each other -- and a third
+         ! makes that risk larger, not smaller, which is why the drift
+         ! reported below is the worst of the two composition drifts.
+         if (thereis_oxychem .and. oxygen_transport) then
+            call relax_photochemical_composition(rho,v,T,f_sp,comp_omega, &
+                                                 carrier_drift,kc)
+            call ioniz_eq(T,rho,f_sp,heat,cool,eta)
+            comp_drift = max(comp_drift, carrier_drift)
+            kd = max(kd, kc)
+         endif
          write(*,'(A,I0,A,I0,A,F6.3,A,ES10.2)') ' (EXHALE_main) '//      &
               'steady-wind diffusion outer pass ', it_diff, ': ', kd,   &
               ' relaxation steps, omega =', comp_omega,                 &

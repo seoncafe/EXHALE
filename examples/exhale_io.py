@@ -41,13 +41,16 @@ METAL_IONS = [
 ION_NAMES = HE_IONS + METAL_IONS
 
 # Cooling_breakdown.txt channels: cols 1-4 are r, T, ne, cool_total; then
-# 6 H/He channels and the H3+ infrared channel, then the 27 metal-ion channels
-# (same order as METAL_IONS).  The collisional-excitation channel is written
-# split by absorber (H I, He I, He II), so there are six H/He channels, not
-# four; see the 'col5 reco ...' header line the writer emits.  'H3p' is zero
-# unless the run tracks the molecular network.
+# 6 H/He channels, the H3+ infrared channel and the three molecular infrared
+# bands, then the 27 metal-ion channels (same order as METAL_IONS).  The
+# collisional-excitation channel is written split by absorber (H I, He I,
+# He II), so there are six H/He channels, not four; see the 'col5 reco ...'
+# header line the writer emits.  'H3p' is zero unless the run tracks the
+# molecular network; 'H2_IR', 'H2O_IR' and 'CO_IR' are zero unless
+# "Molecular IR bands" is on, and are NET rates that go negative wherever the
+# band heats rather than cools.
 COOL_GAS_CHANNELS = ['rec', 'coll_ion', 'coex_HI', 'coex_HeI', 'coex_HeII',
-                     'brems', 'H3p']
+                     'brems', 'H3p', 'H2_IR', 'H2O_IR', 'CO_IR']
 
 
 class Run:
@@ -75,8 +78,14 @@ class Run:
     # He 2^3S is an excited level of He I and the HeI column is the TOTAL
     # He I density, triplet included (bsp_is_excited_level), so counting the
     # triplet column as well would count those nuclei twice.
-    _NUC_H = {'HI': 1, 'HII': 1, 'H2': 2, 'H2p': 2, 'H3p': 3, 'HeHp': 1}
+    _NUC_H = {'HI': 1, 'HII': 1, 'H2': 2, 'H2p': 2, 'H3p': 3, 'HeHp': 1,
+              'OH': 1, 'H2O': 2}
     _NUC_HE = {'HeI': 1, 'HeII': 1, 'HeIII': 1, 'HeHp': 1}
+    # Metal nuclei carried by a molecule. With the oxygen chemistry on the
+    # OI column means FREE ATOMIC oxygen and the CI column the carbon not
+    # locked in CO, so an element total is its ion stages PLUS these.
+    _NUC_METAL = {'O': {'OH': 1, 'H2O': 1, 'CO': 1},
+                  'C': {'CO': 1}}
 
     @property
     def heh_profile(self):
@@ -91,6 +100,18 @@ class Run:
         nuc_he = sum(w * self.ion[s] for s, w in self._NUC_HE.items()
                      if s in self.ion)
         return nuc_he / np.where(nuc_h > 0, nuc_h, np.nan)
+
+    def element_density(self, sym, stages):
+        """Total nuclei density of element `sym` [cm^-3]: its ion `stages`
+        plus every molecule that carries it.  Use this instead of summing the
+        stages when the run has the oxygen chemistry on, where the OI and CI
+        columns are the FREE ATOMIC densities and about half the oxygen sits
+        in OH, H2O and CO."""
+        tot = sum(self.ion[s] for s in stages if s in self.ion)
+        for m, w in self._NUC_METAL.get(sym, {}).items():
+            if m in self.ion:
+                tot = tot + w * self.ion[m]
+        return tot
 
     def x_ion(self, element_stages):
         """Ionization fraction of a given stage, e.g. x_ion(['HI','HII'])['HII']
@@ -110,9 +131,10 @@ def load_hydro(path):
 
 def load_ions(path):
     """Read Ion_species.txt(_adv) -> (r, {ion_name: density[cm^-3]}).
-    Column names come from the '# columns' header, so molecular columns
-    (H2, H2p, H3p, HeHp) are picked up when the run tracks them; a file
-    without the header falls back to the fixed atomic order ION_NAMES."""
+    Column names come from the '# columns' header, so the molecular columns
+    (H2, H2p, H3p, HeHp) and the oxygen-chemistry columns (OH, H2O, CO) are
+    picked up when the run tracks them; a file without the header falls back
+    to the fixed atomic order ION_NAMES."""
     names = None
     with open(path) as f:
         for line in f:
@@ -167,6 +189,27 @@ def load_lyman_werner(path):
     photodissociation rate [1/s] and its heating [erg/cm^3/s]."""
     d = np.loadtxt(path, unpack=True)
     return {name: d[i] for i, name in enumerate(LYMAN_WERNER_COLS)
+            if i < d.shape[0]}
+
+
+# OI_levels.txt columns (write_output.f90), in order.
+OI_LEVEL_COLS = [
+    'r', 'T', 'ne', 'nHI', 'nOI',
+    'f_3P2', 'f_3P1', 'f_3P0', 'n_3P2', 'n_3P1', 'n_3P0',
+]
+
+
+def load_OI_levels(path):
+    """Read OI_levels.txt / OI_levels_adv.txt -> dict keyed by OI_LEVEL_COLS.
+
+    The fractional populations of the three O I 2p4 3P ground-term levels,
+    solved in the same three-level statistical equilibrium as the [O I]
+    63.2/145.5/44.1 um cooling (Cool_coeff.f90), plus the level densities
+    n_3P2 + n_3P1 + n_3P0 = nOI. Written by metal-bearing runs only; the
+    3P2 / 3P1 / 3P0 levels are the lower levels of the O I 1302.168 /
+    1304.858 / 1306.029 A resonance triplet."""
+    d = np.loadtxt(path, unpack=True)
+    return {name: d[i] for i, name in enumerate(OI_LEVEL_COLS)
             if i < d.shape[0]}
 
 

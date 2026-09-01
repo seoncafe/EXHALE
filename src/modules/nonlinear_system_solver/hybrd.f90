@@ -1,10 +1,11 @@
       subroutine hybrd(fcn,n,x,fvec,xtol,maxfev,ml,mu,epsfcn,diag, &
                        mode,factor,nprint,info,nfev,fjac,ldfjac,r,lr,&
-                       qtf,wa1,wa2,wa3,wa4,params)
+                       qtf,wa1,wa2,wa3,wa4,params,unit_step_floor)
       integer n,maxfev,ml,mu,mode,nprint,info,nfev,ldfjac,lr
       double precision xtol,epsfcn,factor
       double precision x(n),fvec(n),diag(n),fjac(ldfjac,n),r(lr), &
-                       qtf(n),wa1(n),wa2(n),wa3(n),wa4(n)
+                       qtf(n),wa1(n),wa2(n),wa3(n),wa4(n),params(*)
+      logical unit_step_floor
       external fcn
       !     **********
       !           
@@ -20,7 +21,8 @@
       
       !       subroutine hybrd(fcn,n,x,fvec,xtol,maxfev,ml,mu,epsfcn,
       !                        diag,mode,factor,nprint,info,nfev,fjac,
-      !                        ldfjac,r,lr,qtf,wa1,wa2,wa3,wa4)
+      !                        ldfjac,r,lr,qtf,wa1,wa2,wa3,wa4,params,
+      !                        unit_step_floor)
       
       !     where
       
@@ -148,7 +150,16 @@
       !         the vector (q transpose)*fvec.
       
       !       wa1, wa2, wa3, and wa4 are work arrays of length n.
-      
+
+      !       params is passed through to fcn untouched. it is not read here.
+
+      !       unit_step_floor is passed through to fdjac1 and selects the
+      !         forward-difference step of the jacobian: .false. is minpack's
+      !         own h = eps*abs(x(j)) with the exact-zero fallback, .true.
+      !         floors it at unit magnitude, h = eps*max(1,abs(x(j))), which
+      !         is the rule for variables already scaled so that unity rather
+      !         than abs(x(j)) is their natural size. see fdjac1.
+
       !     subprograms called
       
       !       user-supplied ...... fcn
@@ -222,7 +233,7 @@
  
          iflag = 2
          call fdjac1(fcn,n,x,fvec,fjac,ldfjac,iflag,ml,mu,epsfcn,wa1, &
-                     wa2,params)
+                     wa2,params,unit_step_floor)
          nfev = nfev + msum
          if (iflag .lt. 0) go to 300
  

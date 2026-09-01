@@ -1,9 +1,10 @@
       subroutine fdjac1(fcn,n,x,fvec,fjac,ldfjac,iflag,ml,mu,epsfcn,&
-                       wa1,wa2,params)
+                       wa1,wa2,params,unit_step_floor)
       integer n,ldfjac,iflag,ml,mu
       double precision epsfcn
       double precision x(n),fvec(n),fjac(ldfjac,n),wa1(n),wa2(n), &
-                       params(11)
+                       params(*)
+      logical unit_step_floor
       !     **********
       
       !     subroutine fdjac1
@@ -17,7 +18,7 @@
       !     the subroutine statement is
       
       !       subroutine fdjac1(fcn,n,x,fvec,fjac,ldfjac,iflag,ml,mu,epsfcn,
-      !                         wa1,wa2)
+      !                         wa1,wa2,params,unit_step_floor)
       
       !     where
       
@@ -78,7 +79,32 @@
       !       wa1 and wa2 are work arrays of length n. if ml + mu + 1 is at
       !         least n, then the jacobian is considered dense, and wa2 is
       !         not referenced.
-      
+
+      !       params is passed through to fcn untouched. it is not read here.
+
+      !       unit_step_floor selects the difference step. it is not part of
+      !         the original minpack routine.
+
+      !         .false. is minpack's own rule,
+      !                 h = eps*abs(x(j)), and h = eps when x(j) is exactly
+      !                 zero. the step is then proportional to the magnitude
+      !                 of the variable, with a fallback that fires only at
+      !                 the single point x(j) = 0. that rule assumes the
+      !                 variable's own magnitude is its natural scale.
+
+      !         .true. floors the step at unit magnitude,
+      !                 h = eps*max(1,abs(x(j))).
+      !                 use this when the variables are already scaled, so
+      !                 that unity, not abs(x(j)), is their natural size --
+      !                 logarithmic variables are the case in hand. the
+      !                 minpack rule has no absolute floor: it collapses
+      !                 continuously as x(j) approaches zero, and the exact
+      !                 zero fallback does not repair a neighbourhood, so a
+      !                 variable passing through zero gets a step of
+      !                 arbitrarily small size and a jacobian column of pure
+      !                 round-off. with the floor the step is never smaller
+      !                 than eps, whatever the iterate does.
+
       !     subprograms called
       
       !       minpack-supplied ... dpmpar
@@ -90,9 +116,9 @@
       
       !     **********
       integer i,j,k,msum
-      double precision eps,epsmch,h,temp,zero
+      double precision eps,epsmch,h,temp,one,zero
       double precision dpmpar
-      data zero /0.0d0/
+      data one,zero /1.0d0,0.0d0/
  
       !epsmch is the machine precision.
  
@@ -106,8 +132,7 @@
  
          do 20 j = 1, n
             temp = x(j)
-            h = eps*dabs(temp)
-            if (h .eq. zero) h = eps
+            h = difference_step(temp)
             x(j) = temp + h
             call fcn(n,x,wa1,iflag,params)
             if (iflag .lt. 0) go to 30
@@ -125,16 +150,14 @@
          do 90 k = 1, msum
             do 60 j = k, n, msum
                wa2(j) = x(j)
-               h = eps*dabs(wa2(j))
-               if (h .eq. zero) h = eps
+               h = difference_step(wa2(j))
                x(j) = wa2(j) + h
    60          continue
             call fcn(n,x,wa1,iflag,params)
             if (iflag .lt. 0) go to 100
             do 80 j = k, n, msum
                x(j) = wa2(j)
-               h = eps*dabs(wa2(j))
-               if (h .eq. zero) h = eps
+               h = difference_step(wa2(j))
                do 70 i = 1, n
                   fjac(i,j) = zero
                   if (i .ge. j - mu .and. i .le. j + ml) &
@@ -145,8 +168,23 @@
   100    continue
   110 continue
       return
- 
+
       !last card of subroutine fdjac1.
- 
+
+      contains
+
+      double precision function difference_step(v) result(h_j)
+      !forward-difference step for the column of the variable whose current
+      !value is v. one definition, used by the dense and by the banded
+      !branch alike, so that the two cannot drift apart.
+      double precision, intent(in) :: v
+      if (unit_step_floor) then
+         h_j = eps*dmax1(one,dabs(v))
+      else
+         h_j = eps*dabs(v)
+         if (h_j .eq. zero) h_j = eps
+      endif
+      end function difference_step
+
       end
 

@@ -55,7 +55,8 @@ MOLECULES = ('H2', 'H2p', 'H3p', 'HeHp')
 # 2^3S metastable terms) and coex_HeII the helium lines.  These are only the
 # fallback names; the loader reads the actual names from the file header.
 COOL_FIXED = ('r', 'T', 'ne', 'cool_total', 'reco', 'coio',
-              'coex_HI', 'coex_HeI', 'coex_HeII', 'brem', 'H3p_IR')
+              'coex_HI', 'coex_HeI', 'coex_HeII', 'brem', 'H3p_IR',
+              'H2_IR', 'H2O_IR', 'CO_IR')
 
 # Fixed channels of Heating_breakdown.txt (all named; no trailing metal
 # columns).  Fallback only -- the loader reads the header when present.
@@ -147,11 +148,21 @@ def _read_matrix(path):
 
 
 def _columns_header(path):
-    """Return the token list of the '# columns ...' header line, or None."""
+    """Return the token list of the '# columns ...' header line, or None.
+
+    The marker has to be the FIRST word after the '#'.  Matching 'columns'
+    anywhere in a comment picked up prose instead: Ion_species_adv.txt opens
+    with a NOTE reading "the molecular columns ... and, when present, the
+    oxygen columns", and returning the tail of that line made load_ions raise
+    on every molecular run (found 2026-08-31).
+    """
     with open(path) as fh:
         for ln in fh:
-            if ln.lstrip().startswith('#') and 'columns' in ln.lower():
-                after = ln.split('columns', 1)[1]
+            if not ln.lstrip().startswith('#'):
+                break
+            body = ln.lstrip().lstrip('#').strip()
+            if body.lower().startswith('columns'):
+                after = body[len('columns'):]
                 return [t for t in after.split() if t not in ('=',)]
     return None
 

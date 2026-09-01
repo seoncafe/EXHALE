@@ -49,24 +49,9 @@
       select case(flux)
       
       case ('LLF') ! Local Lax Friedrichs
-            
-         ! Evaluate physical left and right flux
-         call Phys_flux(WL,FL)
-         call Phys_flux(WR,FR)
-         
-         ! Maximum eigenvalue between adjacent cells
-		   a1 = max(abs(vL+aL),abs(vR+aR))		
-		
-		! Get vector of conservative variables
-		call W_to_U_comp(WL,uL)
-         call W_to_U_comp(WR,uR)
-            
-         ! Evaluate numerical flux
-         NF = 0.5*(FL + FR - a1*(uR-uL))
-         
-         ! Output pressure
-         p_out = 0.5*(pR + pL)
-            
+
+         call lax_friedrichs_flux(WL,WR,NF,p_out)
+
       !----------------------------------------------!
       
       case('HLLC') ! HLLC solver
@@ -227,9 +212,65 @@
 
       ! End of subroutine
       end subroutine Num_flux
-      
+
       !-----------------------------------------------------------!
-      
+
+      ! Local Lax-Friedrichs (Rusanov) flux: the arithmetic average of the
+      ! two physical fluxes plus a jump term carrying the largest signal
+      ! speed of the pair.
+      !
+      ! It is the numerical flux selected by "Numerical flux: LLF", and it is
+      ! also the flux the positivity repair in RK_integration substitutes at a
+      ! single interface: with first-order (cell-average) input states the
+      ! Lax-Friedrichs update maps positive density and positive internal
+      ! energy to positive density and positive internal energy whenever
+      ! dt(|v|+c)/dr <= 1 (Perthame & Shu 1996, Numer. Math. 73, 119; the LF
+      ! lemma restated in Zhang & Shu 2010, J. Comput. Phys. 229, 3091), a
+      ! bound the CFL number of a run (default 0.6) respects.
+      subroutine lax_friedrichs_flux(WL,WR,NF,p_out)
+
+      real*8, intent(in) :: WL(3),WR(3)
+      real*8 :: uL(3),uR(3)
+      real*8 :: FL(3),FR(3)
+      real*8 :: rhoL,vL,pL,aL
+      real*8 :: rhoR,vR,pR,aR
+      real*8 :: a1
+      real*8, intent(out) :: NF(3),p_out
+
+      ! Exctract left state
+      rhoL = WL(1)
+      vL   = WL(2)
+      pL   = WL(3)
+      aL   = sqrt(g*pL/rhoL)
+
+      ! Exctract right state
+      rhoR = WR(1)
+      vR   = WR(2)
+      pR   = WR(3)
+      aR   = sqrt(g*pR/rhoR)
+
+      ! Evaluate physical left and right flux
+      call Phys_flux(WL,FL)
+      call Phys_flux(WR,FR)
+
+      ! Maximum eigenvalue between adjacent cells
+      a1 = max(abs(vL+aL),abs(vR+aR))
+
+      ! Get vector of conservative variables
+      call W_to_U_comp(WL,uL)
+      call W_to_U_comp(WR,uR)
+
+      ! Evaluate numerical flux
+      NF = 0.5*(FL + FR - a1*(uR-uL))
+
+      ! Output pressure
+      p_out = 0.5*(pR + pL)
+
+      ! End of subroutine
+      end subroutine lax_friedrichs_flux
+
+      !-----------------------------------------------------------!
+
       ! Subroutine to compute the physical flux function
       subroutine Phys_flux(W,PF)
       

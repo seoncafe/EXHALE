@@ -10,12 +10,15 @@
                             iel_Fe, mion_ethr, melem_i0, melem_A,  &
                             melem_name
    use composition, only: comp_mass_per_H, comp_ntot_bc, comp_rho_bc,   &
-                          h2_mixing_ratio_base
+                          h2_mixing_ratio_base, h2_mixing_ratio_ceiling
    use lower_atmosphere_profile, only: lap_file, lap_in_use,             &
                           lap_solution_id, lap_p_match_bar,              &
                           lap_source_code, lap_iteration,                &
                           read_lower_atmosphere_profile,                 &
                           lap_value_at_match, lap_element_ratio_at_match
+   ! FUV photolysis thresholds of the oxygen chemistry, filled once here
+   ! (serially) because the OpenMP cell sweep only reads them.
+   use water_photolysis, only: water_photolysis_init
 
    implicit none
       
@@ -33,6 +36,8 @@
       integer                         :: i, nlines
       integer                         :: kk
       logical                         :: is_known
+      ! Resolved base H2 mixing ratio and the ceiling it is checked against
+      real*8                          :: q_h2_resolved, q_h2_max
 
    ! Every label input_read recognizes: the core block followed by the
    ! keyword-extension block, in the same order as the reads below. Used only
@@ -57,6 +62,9 @@
       'Legacy_HHe_rates', 'Secondary_ionization', 'He_rec_coupling',         &
       'He_H_charge_exchange',                                                &
       'Molecular chemistry', 'Molecular base', 'Stellar LW flux',           &
+      'Oxygen chemistry', 'Oxygen transport',                              &
+      'Stellar FUV B1 flux', 'Stellar FUV B3 flux',                        &
+      'Stellar FUV B4 flux',                                               &
       'Lower atmosphere', 'Lower atmosphere profile',                        &
       'Lower column', 'He_Kzz', 'He_alphaT', 'He_ambipolar',                 &
       'He_metal_diffusion', 'He_diffusion', 'Stall', 'Energy solver',        &
@@ -64,7 +72,7 @@
       'Shapiro filter', 'Low-Mach damping',                                  &
       'Base BC', 'Base velocity', 'Viscosity',                               &
       'Base ghost temperature', 'Max steps', 'Coronal cutoff width',         &
-      'Base IR field',                                                       &
+      'Base IR field', 'Molecular IR bands',                                 &
       'Conduction', 'Resid tol',                                             &
       'Resid norm', 'CFL', 'Transonic IC', 'Hot Parker IC', 'IC mode',       &
       'Newton solver', 'Brent solver' ]
@@ -433,11 +441,60 @@
 				! below (after all keys are parsed).
 				str = get_word(line, 3)
 				if (str .eq. 'True' .or. str .eq. 'true') thereis_mol = .true.
+			else if (lbl_match(line, 'Oxygen chemistry')) then
+				! In-code oxygen chemistry (the A2 option): OH / H2O / CO
+				! solved in the coupled molecular ionization equilibrium,
+				! with the H2O and OH photolysis of the FUV bands. It is
+				! what lets the code compute its own base H2/H partition
+				! instead of importing it (docs/a2_oxygen_option_design.md).
+				! Requires the molecular network, helium and oxygen; the
+				! checks are below, after every key is parsed.
+				str = get_word(line, 3)
+				if (str .eq. 'True' .or. str .eq. 'true')                  &
+					thereis_oxychem = .true.
+			else if (lbl_match(line, 'Oxygen transport')) then
+				! "Oxygen transport: True|False" -- vertical transport of
+				! the molecular carriers (H2, OH, H2O, CO) solved implicitly
+				! with their chemistry (diffusive_photochemistry). ON
+				! whenever the oxygen chemistry is on: a local steady state
+				! is the wrong physics at the cool base the option exists
+				! for. False restores the local-kinetics limit of milestone
+				! M2, which isolates the chemistry for testing and is not a
+				! model of a base.
+				str = get_word(line, 3)
+				if (str .eq. 'False' .or. str .eq. 'false')                &
+					oxygen_transport = .false.
+			else if (lbl_match(line, 'Stellar FUV B1 flux')) then
+				! "Stellar FUV B1 flux [erg/cm2/s]: <F>" -- band-integrated
+				! stellar flux over 1110-1201 A at the planet's orbit. The
+				! band starts at 1110 A because 912-1110 A is the H2
+				! Lyman-Werner interval, which is a band of its own carrying
+				! the "Stellar LW flux" below: one wavelength interval, one
+				! incident flux, one beam for all of its absorbers
+				! (water_photolysis.f90).
+				str = get_word(line, 6)
+				read(str,*) F_FUV_B1
+			else if (lbl_match(line, 'Stellar FUV B3 flux')) then
+				! "Stellar FUV B3 flux [erg/cm2/s]: <F>" -- 1231-1450 A.
+				str = get_word(line, 6)
+				read(str,*) F_FUV_B3
+			else if (lbl_match(line, 'Stellar FUV B4 flux')) then
+				! "Stellar FUV B4 flux [erg/cm2/s]: <F>" -- 1451-2304 A.
+				! B2 is the Ly-alpha line and is supplied by "Stellar Lya
+				! flux"; the 912-1110 A band is supplied by "Stellar LW
+				! flux". The edges are fixed by the H2O branching ratios and
+				! by where the H2 Lyman-Werner system ends
+				! (water_photolysis.f90), not chosen.
+				str = get_word(line, 6)
+				read(str,*) F_FUV_B4
 			else if (lbl_match(line, 'Stellar LW flux')) then
 				! "Stellar LW flux [erg/cm2/s]: <F>" -- band-integrated
-				! stellar flux in the H2 Lyman-Werner bands (912-1110 A) at
-				! the planet's orbit. Drives H2 photodissociation in the
-				! molecular network (lyman_werner.f90). 0 = off (default).
+				! stellar flux over 912-1110 A at the planet's orbit. Drives
+				! H2 photodissociation in the molecular network
+				! (lyman_werner.f90) AND, with the oxygen chemistry on, the
+				! H2O and OH photolysis of the same interval: the three
+				! absorbers share one beam, so the interval has one flux.
+				! 0 = off (default).
 				str = get_word(line, 5)
 				read(str,*) F_LW_star
 			else if (lbl_match(line, 'Molecular base')) then
@@ -612,6 +669,22 @@
 				if (str .eq. 'True' .or. str .eq. 'true') base_ir_field = .true.
 				if (base_ir_field) write(*,'(A)') ' (input_read) Base IR '//   &
 				   'field on: infrared coolants see B_nu(T0) from below'
+			else if (lbl_match(line, 'Molecular IR bands')) then
+				! "Molecular IR bands: True|False" adds the infrared coolants a
+				! real H2 atmosphere carries below the H2 -> H front and the
+				! code did not: the H2 quadrupole and magnetic dipole line
+				! spectrum, and the H2O and CO vibration-rotation bands. Each
+				! emits in LTE and absorbs the same diluted B_nu(T0) the
+				! `Base IR field` closure supplies, so each stops cooling at
+				! its own radiative equilibrium temperature instead of running
+				! the layer down (TO_BE_DONE.md item (G)). Default False.
+				! H2O and CO need `Oxygen chemistry: True` to exist at all; H2
+				! needs `Molecular chemistry: True`. See
+				! molecular_infrared_cooling.f90.
+				str = get_word(line, 4)
+				if (str .eq. 'True' .or. str .eq. 'true') mol_ir_bands = .true.
+				if (mol_ir_bands) write(*,'(A)') ' (input_read) Molecular IR'// &
+				   ' bands on: H2 lines + H2O/CO bands exchange with B_nu(T0)'
 			else if (lbl_match(line, 'Base velocity')) then
 				str = get_word(line, 3)
 				if (str .eq. 'valve')    base_v_massflux = .false.
@@ -950,13 +1023,167 @@
       error stop 1
    endif
 
+   ! ---- oxygen chemistry (the A2 option) ----
+   ! Section 4.6 of docs/a2_oxygen_option_design.md: name the key, name the
+   ! other owner of the quantity, name the fix, stop. The option is a third
+   ! producer of the base H2/H partition, so it joins the single-source rule
+   ! that the lower-atmosphere profile and base.inp already follow rather
+   ! than inventing one of its own.
+   if (thereis_oxychem) then
+      if (.not. thereis_mol) then
+         write(*,*) '(input_read) ERROR: "Oxygen chemistry: True" needs'// &
+                    ' "Molecular chemistry: True".'
+         write(*,*) '  The oxygen cycle acts on H2: OH + H2 -> H2O + H is'
+         write(*,*) '  95% of its net rate, and without the molecular'
+         write(*,*) '  network there is no H2 to act on. Turn the'
+         write(*,*) '  molecular chemistry on, or the oxygen chemistry off.'
+         error stop 1
+      endif
+      if (.not. thereis_He) then
+         write(*,*) '(input_read) ERROR: "Oxygen chemistry: True" needs'// &
+                    ' He/H > 0 (it extends the molecular network, which'
+         write(*,*) '  itself needs helium).'
+         error stop 1
+      endif
+      if (melem_ab(iel_O) .le. 0.0d0) then
+         write(*,*) '(input_read) ERROR: "Oxygen chemistry: True" but'//   &
+                    ' the oxygen abundance is zero.'
+         write(*,*) '  The option solves the partition of the oxygen'
+         write(*,*) '  element among O I/II/III, OH, H2O and CO, so there'
+         write(*,*) '  has to be an oxygen element. Set it in metals.inp'
+         write(*,*) '  (X_O) or through the base.inp key "O_H_base", or'
+         write(*,*) '  turn the oxygen chemistry off.'
+         error stop 1
+      endif
+      if (q_h2_base .gt. 0.0d0 .and. lap_in_use) then
+         ! A lower-atmosphere PROFILE is a different case from the scalar
+         ! key, and section 4.6 of the design accepts it: the profile owns
+         ! the region below the matching level, where its q_H2 sets the base
+         ! particle count, and the chemistry owns the partition above it.
+         ! They are not two owners of one quantity, but the reader has to be
+         ! told that both are in play.
+         write(*,'(A,F8.5,A)') ' (input_read) the lower-atmosphere'//      &
+            ' profile states q_H2 =', q_h2_base, ' at the matching level;'
+         write(*,'(A)') '   it sets the base particle count there, and'//  &
+            ' the oxygen chemistry computes the'
+         write(*,'(A)') '   partition above it.'
+      else if (q_h2_base .gt. 0.0d0) then
+         write(*,*) '(input_read) ERROR: base.inp key "q_H2_base" is'//    &
+                    ' refused while "Oxygen chemistry: True".'
+         write(*,*) '  q_H2_base is the imported base H2 fraction, and the'
+         write(*,*) '  oxygen chemistry COMPUTES that partition; accepting'
+         write(*,*) '  both would build the base particle count and the'
+         write(*,*) '  base composition from two different H2 fractions,'
+         write(*,*) '  and would make the comparison against the imported'
+         write(*,*) '  value circular. Delete q_H2_base from base.inp, or'
+         write(*,*) '  turn the oxygen chemistry off.'
+         error stop 1
+      endif
+      ! The H/He element operator is now compatible with the oxygen
+      ! chemistry and no longer refused: project_elements scales every
+      ! H-bearing species by the same rH, and the metal ion columns with it,
+      ! so an element that is partly in OH, H2O or CO keeps its ratio to
+      ! hydrogen and the mass closure m_1 n_H + m_He n_He = rho still holds.
+      !
+      ! What is still refused is the TRACE-METAL arm. It transports each
+      ! metal element's own mixing ratio, so it has to move the element's
+      ! molecular carriers with the ion stages -- and CO carries one oxygen
+      ! AND one carbon, so a step that moves O and C by different factors
+      ! has no single factor to give it. That is the position HeH+ occupies
+      ! for the H/He pair, where the code uses rBoth = min(rH, rHe); writing
+      ! the same rule for a two-element molecule is its own piece of work
+      ! and is not done here.
+      if (he_metal_diffusion) then
+         write(*,*) '(input_read) ERROR: "Oxygen chemistry: True" and'//   &
+                    ' "He_metal_diffusion: True" are not solved together.'
+         write(*,*) '  The trace-metal diffusion arm counts each metal'
+         write(*,*) '  element over its ion stages alone, so with the'
+         write(*,*) '  oxygen chemistry on it would transport an oxygen'
+         write(*,*) '  reservoir missing everything bound into OH, H2O'
+         write(*,*) '  and CO -- about half the element. Moving the'
+         write(*,*) '  carriers with it needs a rule for CO, which'
+         write(*,*) '  carries an oxygen AND a carbon nucleus and so'
+         write(*,*) '  cannot follow two different element factors.'
+         write(*,*) '  "He_diffusion: True" alone is accepted: the'
+         write(*,*) '  molecular carriers already move with hydrogen'
+         write(*,*) '  there. Run one or the other.'
+         error stop 1
+      endif
+      ! A lower-atmosphere PROFILE is accepted beside the option: the
+      ! profile owns the region below the matching level and the option owns
+      ! the region above it, so they are not two owners of one quantity.
+      ! Its solution_id pairing is checked as usual, elsewhere.
+      write(*,'(A)') ' (input_read) Oxygen chemistry on: OH, H2O and CO'// &
+         ' solved with the molecular network.'
+      write(*,'(A,5ES10.3)') '   FUV band fluxes at the planet'//          &
+         ' [erg cm^-2 s^-1] LW/B1/B2(Lya)/B3/B4: ',                       &
+         F_LW_star, F_FUV_B1, F_Lya_star, F_FUV_B3, F_FUV_B4
+      if (F_LW_star + F_FUV_B1 + F_Lya_star + F_FUV_B3 + F_FUV_B4         &
+          .le. 0.0d0) then
+         write(*,'(A)') ' (input_read) WARNING: the oxygen chemistry is'// &
+            ' on but every FUV band flux is zero, so there is no'
+         write(*,'(A)') '   H2O or OH photolysis. The cycle then has no'// &
+            ' way back from H2O and the partition it'
+         write(*,'(A)') '   returns is the chemical equilibrium of the'//  &
+            ' O/OH/H2O family, not a photochemical one.'
+         write(*,'(A)') '   Set "Stellar LW flux", "Stellar FUV'//         &
+            ' B1/B3/B4 flux" and "Stellar Lya flux" for the'//             &
+            ' photochemical result.'
+      else if (F_LW_star .le. 0.0d0 .and. F_FUV_B1 .le. 0.0d0 .and.       &
+               F_FUV_B3 .le. 0.0d0 .and. F_FUV_B4 .le. 0.0d0) then
+         write(*,'(A)') ' (input_read) WARNING: no FUV continuum band'//   &
+            ' flux is set (only Ly-alpha), so the run gets no oxygen'
+         write(*,'(A)') '   photolysis outside the Ly-alpha line -- and'// &
+            ' the continuum bands carry most of the'
+         write(*,'(A)') '   H2O loss. Set "Stellar LW flux" and'//         &
+            ' "Stellar FUV B1 flux" at least.'
+      else if (F_LW_star .le. 0.0d0) then
+         write(*,'(A)') ' (input_read) WARNING: "Stellar LW flux" is'//    &
+            ' zero, so the run gets no H2O or OH photolysis over'
+         write(*,'(A)') '   912-1110 A, where their cross sections'//      &
+            ' peak. That band is entered through the'
+         write(*,'(A)') '   Lyman-Werner key because H2 shares it.'
+      endif
+   else
+      if (F_FUV_B1 + F_FUV_B3 + F_FUV_B4 .gt. 0.0d0)                      &
+         write(*,'(A)') ' (input_read) WARNING: a "Stellar FUV B*'//       &
+            ' flux" is set but "Oxygen chemistry" is off; there is'//      &
+            ' no H2O or OH to photolyse, so the key has no effect.'
+   endif
+
+   ! The molecular infrared bands act on H2, H2O and CO. H2 is a solved
+   ! species only with the molecular network on; H2O and CO only with the
+   ! oxygen chemistry on. Report rather than stop -- the key is then inert on
+   ! the species that are missing.
+   if (mol_ir_bands) then
+      if (.not. thereis_mol) then
+         write(*,'(A)') ' (input_read) WARNING: "Molecular IR bands" is'//  &
+            ' set but "Molecular chemistry" is off; there is no H2, H2O'//  &
+            ' or CO, so the key has no effect.'
+      else
+         if (.not. thereis_oxychem)                                        &
+            write(*,'(A)') ' (input_read) "Molecular IR bands": H2 lines'// &
+               ' only -- H2O and CO exist only with "Oxygen chemistry".'
+         if (.not. base_ir_field) then
+            write(*,'(A)') ' (input_read) WARNING: "Molecular IR bands"'//  &
+               ' is on but "Base IR field" is off, so the new bands emit'
+            write(*,'(A)') '   into vacuum with no incident field. That'//  &
+               ' is the configuration item (G) is ABOUT: it deepens the'
+            write(*,'(A)') '   collapse of the molecular layer instead'//   &
+               ' of holding it. Set "Base IR field: True" as well unless'
+            write(*,'(A)') '   the emission-only limit is what you want.'
+         endif
+      endif
+   endif
+
    ! Lyman-Werner photodissociation acts on H2, which only exists as a
    ! solved species with the molecular network on. Report rather than stop:
    ! the key is then simply inert.
    if (F_LW_star .gt. 0.0d0) then
       if (thereis_mol) then
          write(*,'(A,ES10.3,A)') ' (input_read) Lyman-Werner band flux at'//&
-            ' the planet: ', F_LW_star, ' erg cm^-2 s^-1'
+            ' the planet (912-1110 A; also the first oxygen photolysis'//   &
+            ' band): ', F_LW_star, ' erg cm^-2 s^-1'
       else
          write(*,'(A)') ' (input_read) WARNING: "Stellar LW flux" is set'// &
             ' but "Molecular chemistry" is off; there is no H2 to'//        &
@@ -1015,6 +1242,57 @@
    ! Routed through the composition module (single source of the base
    ! composition policy). comp_* reproduce the legacy expressions bitwise;
    ! eos_metals / metals-present / molecular_base branching lives inside.
+   ! ---- the base H2 fraction must be attainable at this He/H ---------- !
+   ! q_H2 = n_H2/(n_H2+n_H+n_He) cannot exceed 0.5/(0.5+He/H), the value
+   ! reached when every H nucleus is bound into H2. A larger number does not
+   ! describe a more molecular gas; it describes a mixture that the element
+   ! ratio cannot supply, so it is refused here rather than quietly reduced
+   ! to the ceiling further down (which is what h2_bound_fraction used to do,
+   ! leaving the run to march on a base composition nobody requested).
+   !
+   ! Checked on the resolved value, whichever source produced it, so the two
+   ! sources obey one rule. Both can violate it: a handoff q_H2_base is an
+   ! external number, and the Visscher/Koskinen fit is calibrated for
+   ! solar-like composition, so its asymptote (0.8384) lies above the ceiling
+   ! for any He/H >= 0.167.
+   !
+   ! The comparison carries a round-off tolerance only. A handoff written
+   ! from a fully molecular lower-atmosphere column sits just under its own
+   ! ceiling by construction -- LHS1140b/examples/scalar_base_cno passes at
+   ! 99.88% of it -- so anything looser would refuse a legitimate handoff.
+   if (molecular_base .or. q_h2_base .gt. 0.0d0) then
+      q_h2_resolved = h2_mixing_ratio_base()
+      q_h2_max      = h2_mixing_ratio_ceiling()
+      if (q_h2_resolved .gt. q_h2_max*(1.0d0 + 1.0d-12)) then
+         write(*,*) '(input_read) ERROR: the base H2 fraction is not'//     &
+                    ' attainable at this He/H.'
+         if (q_h2_base .gt. 0.0d0) then
+            write(*,*) '  source: lower-atmosphere handoff'//               &
+                       ' (q_H2_base)'
+         else
+            write(*,*) '  source: chemical-equilibrium fit at'//            &
+                       ' (p_base, T_base)'
+         endif
+         write(*,'(A,F10.6)') '   requested q_H2 = ', q_h2_resolved
+         write(*,'(A,F10.6)') '   ceiling  q_H2  = ', q_h2_max
+         write(*,'(A,F10.6)') '   He/H           = ', HeH
+         write(*,*) '  The ceiling is 0.5/(0.5 + He/H): every H nucleus'//  &
+                    ' bound into H2.'
+         if (q_h2_base .gt. 0.0d0) then
+            write(*,*) '  Fix the handoff: q_H2_base and HeH_base must'//   &
+                       ' come from the same'
+            write(*,*) '  lower-atmosphere solution, and this pair'//       &
+                       ' cannot.'
+         else
+            write(*,*) '  The fit is calibrated for solar-like'//           &
+                       ' composition and is out of range'
+            write(*,*) '  here. Supply q_H2_base from a lower-atmosphere'// &
+                       ' solution instead.'
+         endif
+         error stop 1
+      endif
+   endif
+
    mass_per_H = comp_mass_per_H()
    ntot_bc    = comp_ntot_bc()
    rho_bc     = comp_rho_bc()
@@ -1086,6 +1364,10 @@
 	if (thereis_mol) then
 		N_eq = 7
 		if (thereis_HeITR) N_eq = 8
+		! Two more unknowns for the oxygen carriers OH and H2O, between the
+		! molecular block and the metals (System_HeH_mol_metals:
+		! oxygen_row_base / metal_row_base).
+		if (thereis_oxychem) N_eq = N_eq + 2
 		if (thereis_metals) N_eq = N_eq + 2*n_melem
 	endif
 	endif
@@ -1098,6 +1380,11 @@
    ! Build the active charge-exchange reaction set (Huang Table 4). cx_full
    ! was set by read_metals_input; the default is the metal-H group only.
    if (thereis_metals) call cx_init
+
+   ! Fill the FUV photolysis threshold energies from the thermodynamic
+   ! table. Done here, serially, because the cell sweep that reads them runs
+   ! OpenMP-parallel and must find them already written.
+   if (thereis_oxychem) call water_photolysis_init
 
    ! End of subroutine
 
@@ -1220,11 +1507,16 @@
    !                     p_base [bar]   -> p_base_bar, the level all of the
    !                                       above refer to
    !                     q_H2_base      -> q_h2_base, the H2 volume mixing
-   !                                       ratio that sets the base particle
-   !                                       count through comp_ntot_bc. It is
-   !                                       an EOS anchor, NOT a composition
-   !                                       pin: nothing holds H2 at that value
-   !                                       and no H2 profile is seeded from it.
+   !                                       ratio of the base gas. It sets the
+   !                                       base particle count through
+   !                                       comp_ntot_bc AND is imposed on the
+   !                                       H2 partition of the inflowing ghost
+   !                                       species, the particle count then
+   !                                       coming from that same species
+   !                                       state, so the equation of state and
+   !                                       the chemistry describe one gas
+   !                                       (section 117 of Update_EXHALE).
+   !                                       Refused above 0.5/(0.5+He/H).
    !  elemental          the reservoirs the wind transports and redistributes:
    !   reservoir         HeH_base       -> HeH (He/H nuclei)
    !                     <El>_H_base    -> X_<El> (El/H nuclei) for the ten

@@ -88,14 +88,19 @@
       
 	! Substitutions
 	TT = x(1)*T0
-	! With metal cooling active the energy residual is much stiffer, so the
-	! hybrd1 search can transiently overshoot to a negative trial T. Evaluating
-	! brem (sqrt(TT)) or the metal tables there yields NaN, which then poisons
-	! the Newton step. Floor TT to a small positive value while metals are on so
-	! every cooling term stays finite; the physical root sits far above the
-	! floor, so the converged T is unaffected. Mode 0 (pp_metal_on=.false.)
-	! keeps the exact original behaviour.
-	if (pp_metal_on) TT = max(TT, 1.0d0)
+	! The hybrd1 search can transiently overshoot to a negative trial T. Every
+	! cooling rate below is a fit in T that has no value there: brem takes
+	! sqrt(TT), and rec_cool_HII_func raises (2*157807/TT) to the power 1.970,
+	! which is a NaN for TT < 0 and an overflow for TT -> 0+. The NaN then
+	! poisons the Newton step, and under -ffpe-trap=invalid it aborts the run
+	! (measured in the post-process of the He/H = 1 molecular arm, which is
+	! metals-off: rec_cool_HII_func at Cool_coeff.f90:2829, from hybrd1). So
+	! floor the argument of the rate functions at a small positive temperature,
+	! unconditionally: it is the domain of the fits, not an option. The
+	! physical root sits far above the floor -- the coldest base in the
+	! repository is ~200 K -- so the converged T is unaffected, and the residual
+	! stays real and finite where the solver is only passing through.
+	TT = max(TT, 1.0d0)
 
 	!--- Evaluate cooling rates ---!
 			

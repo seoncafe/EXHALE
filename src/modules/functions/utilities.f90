@@ -69,7 +69,7 @@
 	
 	! ------------------------------------------------------!
 
-	subroutine calc_ntot(nhi,nhii,nhei,nheii,nheiii,n_tot,nm,nmol)
+	subroutine calc_ntot(nhi,nhii,nhei,nheii,nheiii,n_tot,nm,nmol,nox)
 	! Calculate the total atomic number density.
 	! Every species counts as ONE gas particle, so the base H/He/molecular
 	! contribution is accumulated with unit weight in the canonical bsp order
@@ -79,12 +79,17 @@
 	! The He 2^3S column is NOT an argument: it is an excited level of He I
 	! (bsp_is_excited_level), so its gas particle is already the He I particle
 	! counted through nhei, and adding it counted the triplet twice.
+	! The optional nox holds the oxygen-chemistry carriers OH, H2O and CO
+	! (bsp 11..13); each is one more gas particle.  Its oxygen and carbon
+	! nuclei have already been removed from nm by the ionization solve, so
+	! nothing is counted twice.
 
 	integer :: im
 	real*8, dimension(1-Ng:N+Ng), intent(in)  :: nhi,nhii
 	real*8, dimension(1-Ng:N+Ng), intent(in)  :: nhei,nheii,nheiii
 	real*8, dimension(1-Ng:N+Ng,n_mion), intent(in), optional :: nm
 	real*8, dimension(1-Ng:N+Ng,4), intent(in), optional :: nmol  ! molecular
+	real*8, dimension(1-Ng:N+Ng,3), intent(in), optional :: nox   ! OH H2O CO
 	real*8, dimension(1-Ng:N+Ng), intent(out) :: n_tot
 
 	n_tot = 0.0d0
@@ -113,6 +118,13 @@
 		call accum(nmol(:,4))           ! HeH+ (bsp 10)
 	endif
 
+	! Oxygen-chemistry carriers, one gas particle each (bsp 11..13).
+	if (present(nox)) then
+		call accum(nox(:,1))            ! OH   (bsp 11)
+		call accum(nox(:,2))            ! H2O  (bsp 12)
+		call accum(nox(:,3))            ! CO   (bsp 13)
+	endif
+
 	contains
 		subroutine accum(vec)
 		! Accumulate vec into n_tot (unit weight; one particle per species).
@@ -124,7 +136,7 @@
 
 	! ------------------------------------------------------!
 	
-	subroutine calc_rho(nhi,nhii,nhei,nheii,nheiii,n_out,nm,nmol)
+	subroutine calc_rho(nhi,nhii,nhei,nheii,nheiii,n_out,nm,nmol,nox)
 	! Calculate the total mass density (adimensional).
 	! The base H/He/molecular mass is accumulated in the canonical bsp order
 	! of species_table, each species weighted by bsp_mass [m_H units]; this
@@ -136,12 +148,18 @@
 	! The He 2^3S column is NOT an argument: it is an excited level of He I
 	! (bsp_is_excited_level), so its 4 m_H are already the He I atom's mass
 	! counted through nhei, and adding it put the triplet mass in rho twice.
+	! The optional nox adds the oxygen-chemistry carriers OH (16.999 m_H),
+	! H2O (17.999) and CO (28.010).  Those weights are the H mass plus the
+	! metal block's own melem_A, and the oxygen and carbon they carry have
+	! been removed from nm by the ionization solve, so the mass per nucleus
+	! is the same either way and none of it is counted twice.
 
 	integer :: im
 	real*8, dimension(1-Ng:N+Ng), intent(in)  :: nhi,nhii
 	real*8, dimension(1-Ng:N+Ng), intent(in)  :: nhei,nheii,nheiii
 	real*8, dimension(1-Ng:N+Ng,n_mion), intent(in), optional :: nm
 	real*8, dimension(1-Ng:N+Ng,4), intent(in), optional :: nmol  ! molecular
+	real*8, dimension(1-Ng:N+Ng,3), intent(in), optional :: nox   ! OH H2O CO
 	real*8, dimension(1-Ng:N+Ng), intent(out) :: n_out
 
 	n_out = 0.0d0
@@ -168,6 +186,13 @@
 		call accum(nmol(:,2), bsp_mass(8))     ! H2+  (bsp 8)
 		call accum(nmol(:,3), bsp_mass(9))     ! H3+  (bsp 9)
 		call accum(nmol(:,4), bsp_mass(10))    ! HeH+ (bsp 10)
+	endif
+
+	! Oxygen-chemistry carriers (bsp 11..13).
+	if (present(nox)) then
+		call accum(nox(:,1), bsp_mass(11))     ! OH   (bsp 11)
+		call accum(nox(:,2), bsp_mass(12))     ! H2O  (bsp 12)
+		call accum(nox(:,3), bsp_mass(13))     ! CO   (bsp 13)
 	endif
 
 	contains

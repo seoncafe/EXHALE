@@ -497,13 +497,50 @@ def resonance_depth(lam0_A, f_osc, A21, mass, n_lower, instr_res,
 	return (1.0 - conv.min())*100.0, (1.0 - conv[band].mean())*100.0, l_plot, conv
 
 
-def resonance_spectrum(components, mass, n_lower, instr_res, window_A, nlam,
+def band_integrated_depth(l_plot_A, transmission, band_A, mask_A=()):
+	"""Mean excess absorption [%] over an EXPLICIT wavelength band.
+
+	l_plot_A     wavelength grid of the model curve [Angstrom]
+	transmission T_lambda on that grid (1 = no absorption)
+	band_A       (lam_lo, lam_hi) integration limits [Angstrom]
+	mask_A       iterable of (lam_lo, lam_hi) sub-intervals to EXCLUDE,
+	             for reproducing a measurement that had to throw pixels
+	             away (interstellar cores, airglow emission).  Excluded
+	             pixels are dropped from the mean, they are not set to
+	             one.
+
+	Returned as (1 - <T>)*100 over the surviving pixels.  This exists as a
+	named function because a resonance line whose components are optically
+	thick has a line-center depth that is a property of the line profile
+	and of the instrument, not of the atmosphere: only a band-integrated
+	quantity can be put next to a published band-integrated measurement.
+	The band and the mask are arguments, never defaults, so that every
+	comparison has to state which band it used."""
+	sel = (l_plot_A >= band_A[0]) & (l_plot_A <= band_A[1])
+	for lo, hi in mask_A:
+		sel &= ~((l_plot_A >= lo) & (l_plot_A <= hi))
+	if not np.any(sel):
+		raise ValueError('band_integrated_depth: the band %s minus the mask '
+		                 '%s contains no wavelength points'
+		                 % (str(band_A), str(mask_A)))
+	return (1.0 - transmission[sel].mean())*100.0
+
+
+def resonance_spectrum(components, mass, instr_res, window_A, nlam,
                        Grid_Number, r_grid, Rp, data_r, data_v, data_T,
                        A_star, A_atm, A_planet, rotate_disk_average):
 	"""Disk-averaged transmission spectrum of a multi-component resonance
 	line: spherical chords, Voigt tau summed over the components, instrument
 	convolution, and planet rotation via the exact projected-disk integral
-	(rotate_disk_average), matching the He/Lya/Balmer pipeline."""
+	(rotate_disk_average), matching the He/Lya/Balmer pipeline.
+
+	Each component carries its OWN lower-level density along the chord,
+	   components = [(lam0_A, f_osc, A21, n_lower), ...]   n_lower in m^-3,
+	because a component is defined by the level it absorbs out of.  For a
+	doublet out of one ion ground state the same array is simply repeated;
+	for the O I 1302/1304/1306 triplet the three arrays are the three
+	ground-term fine-structure populations, which is the whole reason the
+	density belongs to the component and not to the line."""
 	l_onde = np.linspace(window_A[0]*1e-10, window_A[1]*1e-10, nlam)
 	nu_l   = c_light/l_onde
 	exp_tau = np.zeros((Grid_Number, nlam))
@@ -515,9 +552,9 @@ def resonance_spectrum(components, mass, n_lower, instr_res, window_A, nlam,
 		dx     = np.abs(x_LOS[1:] - x_LOS[:-1])
 		v_th   = np.sqrt(2.0*kb*data_T[arg]/mass)*_turb_factor()
 		v_x    = x_LOS*data_v[arg]/r_LOS
-		n_lo   = n_lower[arg]
 		I = np.zeros((arg.size, nlam))
-		for (lam0_A, f_osc, A21) in components:
+		for (lam0_A, f_osc, A21, n_lower) in components:
+			n_lo = n_lower[arg]
 			nu0 = c_light/(lam0_A*1e-10)
 			Dnu = nu0*v_th/c_light
 			a_v = A21/(4.0*np.pi*Dnu)
@@ -539,7 +576,14 @@ def resonance_spectrum(components, mass, n_lower, instr_res, window_A, nlam,
 	# planet rotation: exact projected-disk integral, then instrument LSF
 	avg_rot  = rotate_disk_average(exp_tau, l_onde)
 	conv_rot = convolve(avg_rot, np.exp(-0.5*(vg/sig)**2.0), boundary='extend')
-	return dict(l_plot=l_onde*1e10, avg=avg, conv=conv, conv_rot=conv_rot,
+	# avg_rot is returned as well as conv_rot: it is the transmission with the
+	# physical broadening (wind + rotation) but WITHOUT the instrument LSF,
+	# which is what a band-integrated comparison needs.  Convolution with the
+	# LSF conserves the integral, so it cancels from a ratio taken over a band
+	# wide compared with the LSF; applying it before a weighted band average
+	# with a narrow weight would smear absorption out of where the weight is.
+	return dict(l_plot=l_onde*1e10, avg=avg, avg_rot=avg_rot,
+	            conv=conv, conv_rot=conv_rot,
 	            Tl=(1.0 - avg.min())*100.0,
 	            Tl_conv=(1.0 - conv.min())*100.0,
 	            Tl_conv_rot=(1.0 - conv_rot.min())*100.0)

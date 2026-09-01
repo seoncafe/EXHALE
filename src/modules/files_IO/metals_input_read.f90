@@ -16,7 +16,8 @@
       ! share input files.
 
       use global_parameters
-      use charge_exchange, only: cx_full   ! full-Table-4 toggle
+      use charge_exchange, only: cx_full,  &  ! full-Table-4 toggle
+                                 cx_o2p_h_scale  ! Group-E O2+ + H0 dial
 
       implicit none
 
@@ -83,6 +84,26 @@
             cx_full = (ab > 0.5d0)
             write(*,'(a,l1)') '   charge-exchange full Table 4 mode = ', &
                               cx_full
+            cycle
+         endif
+
+         ! 'cx_O2p_H <scale>' rescales the ONE charge-transfer reaction that
+         ! is absent from Huang Table 4 and whose absence leaves the O III
+         ! profile wrong by decades, O2+ + H0 -> O+ + H+, in units of the
+         ! published Barragan et al. (2006) rate. 1 (default) is that rate;
+         ! 0 reproduces the Table-4-only reaction set exactly; other values
+         ! are bounding experiments. It is deliberately NOT folded into
+         ! cx_full, which means "all of Table 4".
+         if (trim(tok) == 'cx_O2p_H' .or. trim(tok) == 'cx_o2p_h') then
+            cx_o2p_h_scale = max(ab, 0.0d0)
+            if (cx_o2p_h_scale > 0.0d0) then
+               write(*,'(a,es9.2,a)') '   O2+ + H0 -> O+ + H+ charge '     &
+                  // 'transfer ON at ', cx_o2p_h_scale,                    &
+                  ' x Barragan+2006 [default 1]'
+            else
+               write(*,'(a)') '   O2+ + H0 charge transfer OFF '           &
+                  // '(Huang Table 4 only)'
+            endif
             cycle
          endif
 

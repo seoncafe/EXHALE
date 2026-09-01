@@ -31,6 +31,14 @@ particle.  Two elemental sums are reported in that case, one over the gas
 phase and one including the condensed carriers; their difference IS the cold
 trap (`docs/phase_e_flux_closure_design.md` section 5).
 
+THE GRID THE COLUMN IS WRITTEN ON is the solution's own, not the one the
+stepper happened to stop on.  Photochem accepts a steady state on any grid
+whose top is within a factor 3 of the requested one, so an unpinned run comes
+back on one of several grids and the converged column differs with the grid.
+`steady_state_at_stated_model_top` re-pins the grid at `--toa` and re-converges
+the chemistry on it, iterating to the fixed point, and refuses if that will not
+settle (`docs/lower_profile_deep_boundary_sensitivity.md` section 8).
+
 The driving pattern is the one `docs/p1_matched_comparison.py` validated on
 2026-08-26 and is not re-derived here: dilution-only stellar flux, the Zahnle
 set restricted to an atom list, the climate grid cut so the photochemical
@@ -422,7 +430,98 @@ def photochemical_steady_state(args, wdir, flux_file, mech, thermo,
                    '(reached_steady_state = %s, gave_up = %s). A non-steady '
                    'solution has no elemental flux to hand over'
                    % (reached, give_up))
+
+    steady_state_at_stated_model_top(pc, toa, args.blocks)
     return pc, reached, truncation, toa, imposed, r_top_imposed
+
+
+# The grid is the solution's own: two successive re-pinned solves must agree
+# on the model top to this relative tolerance.  It is 2500 times below the
+# 2.5e-02 spread between the two grids an unpinned run stops on, so what is
+# left of the grid dependence is 2e-06 in the elemental O/H at the matching
+# level, against the 5.2e-03 it was.
+TOP_PRESSURE_TOL = 1.0e-5
+TOP_PRESSURE_PASSES = 6
+
+
+def steady_state_at_stated_model_top(pc, toa, blocks,
+                                     tol=TOP_PRESSURE_TOL,
+                                     passes=TOP_PRESSURE_PASSES):
+    """Re-solve the steady state on the grid the stated model top defines.
+
+    Photochem lays its levels out uniformly in ALTITUDE between a pinned
+    bottom and `top_atmos` (`vertical_grid`, `photochem/src/photochem_eqns.f90`),
+    so a single number fixes the pressure of every level.  `robust_step`
+    (`photochem/photochem/extensions/gasgiants.py`) re-pins `top_atmos` to the
+    requested pressure only every `freq_update_TOA = 1000` internal steps, and
+    its exit test accepts any top pressure within a FACTOR 3 of it.  A run is
+    therefore declared steady on whatever grid the last re-pinning happened to
+    leave: measured on LHS 1140 b, two runs of the same problem come back on
+    tops 2.5 % apart, and the converged column differs with the grid -- 2.5 %
+    in pressure at fixed level index and 5.2e-03 in the elemental O/H handed
+    over at the matching level
+    (`docs/lower_profile_deep_boundary_sensitivity.md`).
+
+    The grid is therefore re-pinned here, from the converged solution, and the
+    chemistry re-converged on it.  The two steps are ITERATED: re-pinning
+    perturbs the solution, and the perturbed solution moves `top_atmos` again
+    through the hydrostatic integration.  Their common fixed point --
+    `top_atmos` is the altitude at which the steady state computed on the grid
+    it defines reaches the stated pressure -- is a property of the problem, so
+    the column that comes out no longer records which phase of the re-pinning
+    cycle the integration happened to exit on.  The test is that two
+    successive passes agree on the model top; the offset from the stated
+    pressure is not the test, because the reported top is the top CELL CENTRE
+    while `top_atmos` is the domain edge, and the half cell between them is
+    about 9 % in pressure at this resolution.
+
+    FAILURE IS A REFUSAL, not a fall-back to the unpinned grid.  A column the
+    chemistry could not re-converge on, or one whose grid will not settle, is
+    not a solution of the stated problem; writing it anyway would put back
+    exactly the grid dependence this removes, and put it back invisibly, in a
+    file that carries no record of which grid it stopped on.  A
+    `PhotoException` out of `update_vertical_grid` is reported the same way,
+    with the library's own message, because the adapter has nothing to add to
+    it and nothing to write without it.
+    """
+    from photochem import PhotoException
+
+    previous = None
+    for attempt in range(1, passes + 1):
+        try:
+            pc.update_vertical_grid(TOA_pressure=toa)
+        except PhotoException as exc:
+            sch.refuse('the model top could not be pinned at the stated '
+                       '%.3e dyn/cm^2: %s' % (toa, exc))
+        pc.initialize_robust_stepper(pc.wrk.usol)
+        give_up = reached = False
+        for _ in range(blocks):
+            for _ in range(100):
+                give_up, reached = pc.robust_step()
+                if give_up or reached:
+                    break
+            if give_up or reached:
+                break
+        p_top = float(pc.wrk.pressure_hydro[-1])
+        moved = float('nan') if previous is None else p_top/previous - 1.0
+        print('  pinned pass %d: t = %.3e s, top cell %.6e dyn/cm2, moved '
+              '%s from the previous pass%s%s'
+              % (attempt, pc.wrk.tn, p_top,
+                 'n/a' if previous is None else '%+.3e' % moved,
+                 '  STEADY' if reached else '',
+                 '  GAVE UP' if give_up else ''), flush=True)
+        if give_up or not reached:
+            sch.refuse('the chemistry did not re-reach steady state on the '
+                       'grid pinned at the stated model top %.3e dyn/cm^2 '
+                       '(pass %d of %d, reached_steady_state = %s, gave_up = '
+                       '%s)' % (toa, attempt, passes, reached, give_up))
+        if previous is not None and abs(moved) <= tol:
+            return p_top, attempt
+        previous = p_top
+    sch.refuse('the grid will not settle: after %d re-pinned solves the model '
+               'top still moves by %+.3e between passes, against a tolerance '
+               'of %.1e. The column would be written on a grid that is not '
+               'the solution\'s own' % (passes, moved, tol))
 
 
 def species_element_counts(pc):

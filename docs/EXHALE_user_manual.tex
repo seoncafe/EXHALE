@@ -818,13 +818,38 @@ defaults restore the standard behavior).}\label{tab:inp-opt}\\
   $B_\nu(T_0)$ over the sky fraction $1-\sqrt{1-(R_{\rm p}/r)^2}$, and the
   cooling becomes the net rate, emission minus absorption of that field, so
   each band stops cooling at its own radiative-equilibrium temperature
-  ($576$--$642$\,K for the C\,I/O\,I fine-structure lines and $936$\,K for the
+  ($576$--$642$\,K for the C\,I/O\,I fine-structure lines and $941$\,K for the
   H$_3^+$ bands, at $T_0 = 1140$\,K and half-sky coverage). Applies to the
   eight ground-term fine-structure lines of C\,I, C\,II, N\,II, O\,I and to the
   H$_3^+$ infrared cooling; every other channel keeps the optically thin,
   no-incident-field limit. Off by default, and with no effect on an atomic run,
   where those channels carry no cooling
   (\texttt{docs/lower\_atmosphere\_coupling.md}). \\
+\texttt{Molecular IR bands:} & \texttt{True}/\texttt{False} (def.\ \texttt{False})
+  & Add the infrared coolants an H$_2$ atmosphere carries below the
+  H$_2\to$H front and the atomic channels do not: the H$_2$ quadrupole and
+  magnetic dipole line spectrum (Roueff et al.\ 2019, A\&A 630, A58) and the
+  H$_2$O and CO vibration--rotation bands (HITEMP, through the correlated-$k$
+  coefficients distributed with Photochem). Each is computed in LTE, in the
+  optically thin limit, as the \emph{net} exchange
+  $4\pi n_X\!\int\!\sigma_\nu(T)[B_\nu(T)-W B_\nu(T_0)]\,d\nu$ with the same
+  diluted field \texttt{Base IR field} supplies, so each stops cooling at its
+  own radiative-equilibrium temperature: $889$, $918$ and $984$\,K for H$_2$O,
+  CO and H$_2$ at $T_0=1140$\,K and half-sky coverage. The closure keeps
+  stimulated emission, so the net rate is identically zero for gas at $T_0$
+  with the whole sky black. H$_2$ needs only \texttt{Molecular chemistry};
+  H$_2$O and CO exist only with \texttt{Oxygen chemistry}, and the key is
+  inert on species the run does not carry. Used together with
+  \texttt{Base IR field}: on its own the new bands emit into vacuum, which
+  deepens the collapse of the molecular layer instead of holding it, and
+  \texttt{input\_read} warns. Writes three net columns
+  (\texttt{H2\_IR}, \texttt{H2O\_IR}, \texttt{CO\_IR}, negative where the band
+  heats) and the Planck-mean optical depths of the H$_2$O and CO columns to
+  \texttt{output/Cooling\_breakdown.txt}, and a column-integrated infrared
+  block to \texttt{output/FUV\_bands.txt}. Cross sections tabulated
+  50--2000\,K and clamped outside it
+  (\texttt{src/modules/lower\_atmosphere/molecular\_infrared\_cooling.f90},
+  \texttt{cooling\_data/molecular\_infrared\_bands.py}). \\
 \texttt{Stellar LW flux [erg/cm2/s]:} & real (def.\ 0) & Band-integrated
   stellar flux in the H$_2$ Lyman--Werner bands (912--1110\,\AA, i.e.\
   11.2--13.6\,eV) \emph{at the planet's orbit}. Switches on H$_2$
@@ -839,7 +864,30 @@ defaults restore the standard behavior).}\label{tab:inp-opt}\\
   than a stellar FUV spectrum. 0 (default) = no photodissociation, and the
   key is inert without \texttt{Molecular chemistry: True}. Writes
   \texttt{output/Lyman\_Werner.txt}
-  (\texttt{docs/lower\_atmosphere\_coupling.md}). \\
+  (\texttt{docs/lower\_atmosphere\_coupling.md}). With
+  \texttt{Oxygen chemistry: True} the same key \emph{also} supplies the first
+  photolysis band (band \texttt{LW}): 912--1110\,\AA{} is one wavelength
+  interval with one incident flux, over which H$_2$, H$_2$O and OH absorb out
+  of one beam (\S\ref{sec:oxychem}). \\
+\texttt{Stellar FUV B1 flux [erg/cm2/s]:} & real (def.\ 0) &
+  Band-integrated stellar flux over 1110--1201\,\AA{} \emph{at the planet's
+  orbit} (band \texttt{B1}), one of the five bands that drive the oxygen
+  chemistry (\texttt{Oxygen chemistry}). It starts at 1110\,\AA{} because
+  912--1110\,\AA{} is the Lyman--Werner interval and is entered through
+  \texttt{Stellar LW flux} instead, so a value measured over 912--1201\,\AA{}
+  must be re-split between the two keys. It photodissociates H$_2$O and OH;
+  the branching among $\mathrm{OH+H}$, $\mathrm{H_2+O(^1D)}$ and
+  $\mathrm{O+H+H}$ is 0.89/0.11/0.00 on this band. Inert without
+  \texttt{Oxygen chemistry: True}. \\
+\texttt{Stellar FUV B3 flux [erg/cm2/s]:} & real (def.\ 0) & The same over
+  1231--1450\,\AA{} (band \texttt{B3}, branching 0.89/0.11/0.00). Band
+  \texttt{B2} is the Ly$\alpha$ line and comes from
+  \texttt{Stellar Lya flux}. \\
+\texttt{Stellar FUV B4 flux [erg/cm2/s]:} & real (def.\ 0) & The same over
+  1451--2304\,\AA{} (band \texttt{B4}, branching 1.00/0.00/0.00). \emph{Read
+  the caveat in \S\ref{sec:oxychem}}: the H$_2$O cross section falls three
+  decades across this band, so a single band average misrepresents it by a
+  factor of several for a red spectrum. \\
 \texttt{Stellar Teff [K]:} & real (K) & Stellar $T_{\rm eff}$ for the
   diluted-blackbody Balmer continuum that photoionizes/heats H($n{=}2$). Enables
   the excited-H model when both this \emph{and} \texttt{Stellar radius} are $>0$. \\
@@ -1032,6 +1080,36 @@ defaults restore the standard behavior).}\label{tab:inp-opt}\\
   inflates the base temperature by the particle-count ratio and dissociates the
   layer the chemistry just built --- so with the chemistry on the key is
   redundant (\S\ref{sec:loweratm}). \\
+\texttt{Oxygen chemistry:} & \texttt{True}/\texttt{False}
+  (def.\ \texttt{False}) & Add OH, H$_2$O and CO to the same coupled system,
+  with the FUV photolysis of H$_2$O and OH, so that the code computes its own
+  base H$_2$/H partition instead of importing one. Requires
+  \texttt{Molecular chemistry: True}, He/H\,$>0$ and a non-zero oxygen
+  abundance; refuses \texttt{q\_H2\_base} (it computes that quantity) and
+  \texttt{He\_metal\_diffusion} (that arm counts an element over its ion
+  stages alone, and CO carries an oxygen \emph{and} a carbon nucleus, so it
+  cannot follow two element factors at once). \texttt{He\_diffusion} alone is
+  accepted. Supply the band fluxes with \texttt{Stellar LW flux},
+  \texttt{Stellar FUV B1/B3/B4 flux} and \texttt{Stellar Lya flux}; without
+  them the run returns the chemical equilibrium of the O/OH/H$_2$O family
+  rather than a photochemical partition, and says so at startup. Writes
+  \texttt{output/Oxygen\_chemistry.txt} and \texttt{output/FUV\_bands.txt}
+  and appends \texttt{OH H2O CO} to \texttt{Ion\_species.txt}
+  (\S\ref{sec:oxychem}). \\
+\texttt{Oxygen transport:} & \texttt{True}/\texttt{False}
+  (def.\ \texttt{True} whenever \texttt{Oxygen chemistry} is on) & Transport
+  the molecular carriers H$_2$, OH, H$_2$O and CO vertically instead of
+  closing them by a local steady state: one implicit backward-Euler
+  diffusion-advection step per pass, solved together with the same chemistry
+  rows the local equilibrium uses, with molecular diffusion from Blanc's law
+  over the background carriers, the eddy coefficient $K_{zz}$ of
+  \texttt{He\_Kzz} or of a lower-atmosphere profile, and settling.
+  \texttt{False} restores the local steady state, which isolates the chemistry
+  for testing and is not a model of a base --- at a cool base the H$_2$
+  chemical time and the flow time are comparable. With $K_{zz}=0$ everywhere
+  the transport is pure molecular diffusion, the wrong limit for a lower
+  atmosphere, and the startup report says so. Inert without
+  \texttt{Oxygen chemistry: True} (\S\ref{sec:oxychem}). \\
 \texttt{Lower atmosphere:} & \texttt{none} $|$ \texttt{analytic} $|$
   \texttt{vulcan} [, real ($R_J$)] (def.\ \texttt{none}) & Lower-atmosphere
   pre-step run before the wind: generate the base composition over the 1-bar to
@@ -1135,7 +1213,7 @@ defaults restore the standard behavior).}\label{tab:inp-opt}\\
 only). If present, it lists the total elemental abundance $n_X/n_{\rm H}$ (summed
 over ionization stages; the equilibrium solver distributes each element over its
 stages) for any of C, N, O, Mg, Si, Ca, Na, K, S, Fe. Blank lines and \texttt{\#}
-comments are ignored; any non-zero abundance turns metals on. Four control keys
+comments are ignored; any non-zero abundance turns metals on. Five control keys
 are also accepted: \texttt{pp\_metals} (metal treatment in the advection
 post-process: \texttt{0}=metal-free, \texttt{1}=frozen at the converged
 equilibrium (default), \texttt{2}=re-solve the metal stages inside the post-process
@@ -1151,7 +1229,23 @@ their mass to the gas density and base density, their electrons to the
 free-electron density and the base pressure correction, and their nuclei to
 the total particle density --- a ${\sim}1\%$ mass effect at solar abundances,
 consistent with the charge balance inside the ionization solver (default);
-\texttt{0}=legacy trace approximation, H/He-only gas budget). Solar reference
+\texttt{0}=legacy trace approximation, H/He-only gas budget), and
+\texttt{cx\_O2p\_H} (default \texttt{1} = the published rate).
+Huang+2023 Table~4 has no doubly ionized oxygen row, so re-sourcing the
+charge-exchange network to that paper dropped
+$\rm O^{2+} + H^{0} \rightarrow O^{+} + H^{+}$.
+EXHALE carries it separately at the published
+Barrag\'an et al.\ (2006, ApJ 636, 544) rate --- the calculation CHIANTI\,v11
+and Cloudy both adopt --- and \texttt{cx\_O2p\_H\,<scale>} rescales it, with
+\texttt{0} reproducing the Table-4-only reaction set exactly and other values
+serving as bounding experiments. It is deliberately \emph{not} controlled by
+\texttt{cx\_full}, which means ``all of Table~4''. Measured on HD\,209458\,b,
+carrying the reaction suppresses the O\,\textsc{iii} fraction by 4.7 decades
+at 1.05\,\rp, 3.7 at 1.1 and 2.7 at 1.2, and raises O\,\textsc{i} by 3\% below
+1.2\,\rp\ and 52\% near 2--3\,\rp, while
+$\dot M$ moves by 0.01\,dex (\S103 and \S107 of \texttt{Update\_EXHALE}). The
+reverse direction is not carried: it is endothermic by 21.5\,eV, hence
+Boltzmann suppressed by $10^{-11}$ at $10^4$\,K. Solar reference
 values (Asplund+2009):
 \begin{lstlisting}[style=cfg]
 # metals.inp -- solar n_X/n_H (Asplund+2009)
@@ -1418,6 +1512,173 @@ optional. The converged layer is much colder than the relaxation snapshot
 than a prediction; see \texttt{docs/lower\_atmosphere\_coupling.pdf} \S7--\S9
 and item (G) of \texttt{TO\_BE\_DONE.md}.
 
+\paragraph{Tier 2b --- oxygen chemistry.}\label{sec:oxychem}
+\begin{verbatim}
+Oxygen chemistry: True             # OH, H2O, CO in the same coupled system
+Oxygen transport: True             # the default: carriers transported
+Stellar LW flux [erg/cm2/s]:       600.1  #  912-1110 A at the planet (LW)
+Stellar FUV B1 flux [erg/cm2/s]:   648.4  # 1110-1201 A               (B1)
+Stellar Lya flux [erg/cm2/s]:    14957.2  # 1215.67 A, the Lya line   (B2)
+Stellar FUV B3 flux [erg/cm2/s]:  1374.1  # 1231-1450 A               (B3)
+Stellar FUV B4 flux [erg/cm2/s]: 46294.8  # 1451-2304 A               (B4)
+\end{verbatim}
+Tier 2 can build a molecular base but not \emph{decide} how molecular it is:
+the H$_2$/H partition is either imposed through the \texttt{q\_H2\_base}
+handoff or taken from a chemical-equilibrium fit, neither of which is
+photochemistry. Tier 2b is the layer that computes it, by adding the oxygen
+carriers that the catalytic cycle runs on. Measured on a photochemical model of
+the HD\,189733\,b base, the oxygen family carries 96--99.6\% of the net H$_2$
+destruction there, and the whole of it sits in three reactions and four
+photolysis channels:
+\begin{center}\small
+$\mathrm{OH+H_2\leftrightarrow H_2O+H}$, \quad
+$\mathrm{O+H_2\leftrightarrow OH+H}$, \quad
+$\mathrm{O(^1D)+H_2\to OH+H}$, \\
+$\mathrm{H_2O}+h\nu\to\mathrm{OH+H}\,/\,\mathrm{H_2+O(^1D)}\,/\,\mathrm{O+H+H}$,
+\quad $\mathrm{OH}+h\nu\to\mathrm{O+H}$.
+\end{center}
+Every coefficient is transcribed from a named evaluation with its validity
+range at the code site, and the reverse of each two-body pair is generated by
+detailed balance against a NIST-JANAF Shomate table rather than transcribed
+independently --- the pairs run close to cancellation on a hot base, where an
+inconsistent pair gives an arbitrary net rather than a small error. The audit
+behind the numbers is \texttt{docs/a2\_reaction\_audit.md}; the design is
+\texttt{docs/a2\_oxygen\_option\_design.md}.
+
+\textbf{O($^1D$) is closed by a local steady state}, not carried as a
+transported species: its only sink in this set is
+$\mathrm{O(^1D)+H_2\to OH+H}$, and that gives it a chemical lifetime of
+$1.6\times10^{-3}$\,s at the HD\,189733\,b base --- shorter than every other
+time scale in the problem by many decades --- so the steady state is the
+accurate treatment. Its density is reported as a diagnostic column.
+
+\textbf{CO is an oxygen reservoir, not a reactant.} It locks 45--46\% of the
+oxygen at every measured level, so a network that gave the whole oxygen
+abundance to the water family would over-supply the OH cycle by about a factor
+two. It has no chemical source in this network: with
+\texttt{Oxygen transport: False} it sits at its own
+$\mathrm{CO\leftrightarrow C+O}$ chemical equilibrium, which keeps it
+associated below ${\sim}3000$\,K and dissociates it by ${\sim}4000$\,K, above
+the H$_2\to$H front and below the wind, so the carbon and the oxygen of the
+wind stay atomic. With the transport on it is a transported reservoir, and
+``inert'' would then mean \emph{indestructible}: measured before the ceiling
+below was added, the wind carried CO out to $1.67\,\rp$ and $2\times10^4$\,K,
+where it held 55\% of the oxygen and switched off the O\,\textsc{i} and
+C\,\textsc{ii} cooling of the whole wind. The transported CO is therefore
+capped at the chemical equilibrium of its own $(n,T)$ --- a one-sided
+constraint, inactive through the molecular layer and exact far above the
+turnover, which over-suppresses \emph{quenched} CO in the narrow interval
+around 3000--4000\,K where the dissociation is neither fast nor negligible.
+\textbf{Neither limit is kinetics} --- the truth is quenching, and the audited
+set has no CO rate to give it --- so a run whose \emph{outer} wind is cool can
+hand the transit tool an O\,\textsc{i} column short by whatever fraction is
+still molecular. Every run therefore prints the molecular oxygen fraction at
+the top of its domain, and the number of cells the ceiling touched.
+
+\textbf{The FUV arrives as five bands with named fluxes}, not as an extension
+of the photon energy grid: that grid starts at the 13.6\,eV H\,\textsc{i} edge,
+and a power-law SED below it is an extrapolation of an XUV fit rather than a
+stellar FUV spectrum. Four of the edges are fixed by the H$_2$O branching
+ratios, not chosen --- the three-body channel
+$\mathrm{H_2O}+h\nu\to\mathrm{O+H+H}$ opens only in the interval containing
+Ly$\alpha$, where it is 12\% --- and the fifth, 1110\,\AA, is fixed by the
+absorber: it is where the H$_2$ Lyman--Werner system ends (Draine \& Bertoldi
+1996, footnote 4). H$_2$O and OH absorb these bands as \emph{continua}, so the
+attenuation is $\exp(-\tau)$ on their star-ward columns and no self-shielding
+function is needed (unlike the H$_2$ Lyman--Werner band).
+
+\textbf{One interval, one flux, one beam.} Over 912--1110\,\AA{} the same
+photons are absorbed by H$_2$ in the Lyman and Werner lines and by H$_2$O and
+OH in a continuum. That interval is therefore band \texttt{LW}, entered once
+through \texttt{Stellar LW flux}, and \texttt{Stellar FUV B1 flux} starts at
+1110\,\AA: supplying the interval twice would count its energy twice on the way
+in, and letting each absorber attenuate a private copy of the beam would count
+it twice on the way down. Both are closed. The H$_2$ rate is multiplied by
+$\exp(-\tau_{\rm cont})$, the H$_2$O + OH continuum term of Draine \& Bertoldi
+(1996) eq.~(40) --- identically 1 for a run without this option --- and the
+H$_2$O and OH rates in that band are multiplied by $1-A$, the fraction of the
+band the H$_2$ lines have \emph{not} removed, built from DB96's own
+self-shielding function and their dissociation probability per pump. The split
+is exact cell by cell, so what the three absorbers take is exactly what the beam
+loses, and \texttt{output/FUV\_bands.txt} reports that ledger. A B1 flux
+measured over 912--1201\,\AA{} must accordingly be re-split between the two
+keys: on the HD\,189733\,b spectrum above, the 912--1201\,\AA{} integral
+$1248.5$\,erg\,cm$^{-2}$\,s$^{-1}$ is $600.1 + 648.4$. A run with the oxygen
+chemistry on and \texttt{Stellar LW flux} left at 0 is warned that it gets no
+H$_2$O or OH photolysis over 912--1110\,\AA, where those cross sections peak.
+
+\textbf{Three limitations to read before quoting a result.} (i) The band
+average assumes a flat $F_\lambda$ inside each band. Measured against a real
+stellar spectrum (the HD\,189733\,b flux at the planet), that is good to 3\% for
+H$_2$O and to 18--22\% for OH on \texttt{LW} and \texttt{B1}, and to about 35\%
+on \texttt{B3}, but \textbf{off by a factor 4.6--6.1 on B4}, whose cross section
+falls three decades across the band; a run in which B4 matters is outside the
+treatment. The 1110\,\AA{} split moved that sensitivity rather than creating it:
+nearly all of the earlier 912--1201\,\AA{} band's blackbody sensitivity sat in
+its 912--1110\,\AA{} half, where H$_2$O and OH move in \emph{opposite}
+directions ($-60$\% and $+89$\% for a 3000\,K blackbody), which the merged band
+averaged away. (ii) The Ly$\alpha$ band uses the \emph{incident} stellar flux,
+attenuated only by the H$_2$O and OH continuum: the H\,\textsc{i} resonance
+scattering that actually decides how much Ly$\alpha$ reaches a molecular base is
+not applied, so that band's rate is an upper bound. Note also that setting
+\texttt{Stellar Lya flux} for the H($n{=}2$) pumping therefore drives the
+photolysis as well; the startup report prints all five band fluxes so this is
+visible. (iii) The molecular ions H$_2^+$, H$_3^+$ and HeH$^+$ and O($^1D$) are
+closed by their local balance even with the transport on, and the band average
+applies one transmission to a whole band, so the rates are lower bounds deep in
+the water layer. Every run writes its own chemical, advective and diffusive time
+scales (\texttt{output/Oxygen\_chemistry.txt}), which say where the answer is
+chemistry, where it is flow, and where the two are comparable.
+
+\textbf{The carriers are transported by default}
+(\texttt{Oxygen transport: True}). H$_2$, OH, H$_2$O and CO are advanced by an
+implicit backward-Euler diffusion-advection step solved together with the same
+chemistry rows the local equilibrium uses, so a rate that changes in one changes
+in the other. The molecular coefficients come from Blanc's law over the
+background carriers with the rigid-sphere pair coefficients of Banks \&
+Kockarts (1973) that the element-diffusion operator already carries; the eddy
+coefficient is read from \texttt{He\_Kzz} or from a lower-atmosphere profile and
+from nowhere else; settling uses the same $g$ as the hydrodynamics, with no
+thermal diffusion. Each cell's \emph{element} totals are unchanged by the step
+--- only the partition among an element's carriers moves --- so element
+conservation holds by construction and $\rho$ is untouched; every positivity or
+element limiter that fires is counted and reported in the trailer of
+\texttt{output/Oxygen\_chemistry.txt}. This operator therefore transports
+\emph{speciation} and not elements, which is why it cannot be run together with
+\texttt{He\_metal\_diffusion}: that arm transports elements, and CO carries an
+oxygen and a carbon nucleus and so cannot follow two element factors at once.
+\texttt{Oxygen transport: False}
+restores the earlier local steady state; it isolates the chemistry for testing
+and is not a model of a base, because at the HD\,189733\,b 1\,$\mu$bar level the
+H$_2$ chemical and flow times are comparable. With $K_{zz}=0$ and no profile the
+transport is pure molecular diffusion --- the wrong limit for a lower
+atmosphere, where eddy mixing is what holds the composition well mixed below the
+homopause --- and the run says so at startup rather than refusing.
+
+\textbf{The option removes coolants it does not replace.} Where the oxygen is in
+H$_2$O and CO the [O\,\textsc{i}] 63/145/44\,$\mu$m fine-structure lines and the
+C\,\textsc{i}/C\,\textsc{ii} line cooling correctly stop --- those atoms are not
+there --- but EXHALE carries no H$_2$O or CO infrared bands to put in their
+place, and H$_3^+$ is its only molecular coolant. Measured on the hot-Uranus
+molecular gate, the layer just above the base cools $15\times$ more slowly with
+the option on than with it off, at comparable heating. That is item~(G) of
+\texttt{TO\_BE\_DONE.md} arriving through the composition instead of through the
+temperature, and it is why the resulting molecular-layer temperature is not a
+prediction. Every oxygen-chemistry run reports how much of its oxygen and
+carbon is molecular, where, and that those nuclei no longer cool.
+
+The option is \textbf{default off} and refuses combinations that would give one
+quantity two owners: \texttt{q\_H2\_base} (it computes that partition), and
+\texttt{He\_metal\_diffusion} (the trace-metal arm counts each metal element
+over its ion stages alone, so it would transport an oxygen reservoir missing
+everything bound into OH, H$_2$O and CO --- about half the element --- and
+moving the carriers with it needs a rule for CO, which carries an oxygen
+\emph{and} a carbon nucleus). \texttt{He\_diffusion: True} on its own is
+accepted: the H/He element operator scales every H-bearing species by the same
+factor, so the molecular carriers already move with hydrogen there. A
+lower-atmosphere \emph{profile} is accepted beside it --- the profile owns the
+region below the matching level and the chemistry the region above it.
+
 \paragraph{Tier 3 --- \texttt{base.inp} handoff (and VULCAN).}
 An optional \texttt{base.inp} in the run directory overrides the base state
 before the derived constants are formed (each override is echoed; absent file =
@@ -1450,7 +1711,10 @@ Key & Category & What it sets, and where the value is consumed \\
   \texttt{T0}, \texttt{R0}, \texttt{p\_base\_bar}, \texttt{q\_h2\_base}: the
   state of the gas at the matching level. \texttt{q\_H2\_base} replaces the
   chemical-equilibrium fit in \texttt{comp\_ntot\_bc}, i.e.\ it sets the base
-  \emph{particle count}. \\
+  \emph{particle count}, and it is also imposed on the H$_2$ partition of the
+  inflowing ghost species, the particle count then coming from that same
+  species state. It is refused above the attainable ceiling
+  $0.5/(0.5+\mathrm{He/H})$ rather than capped. \\
 \texttt{HeH\_base},
 \texttt{<El>\_H\_base} & elemental reservoir &
   \texttt{HeH}, and \texttt{X\_<El>} hence \texttt{melem\_ab}: the nuclei ratio
@@ -1842,8 +2106,14 @@ FeIII}
 (HeI$^*$ is the metastable $2\,^3$S triplet.) The ionization fraction of any
 element is the stage density divided by the sum over that element's stages.
 With \texttt{Molecular chemistry: True} four more columns (\texttt{H2 H2p H3p
-HeHp}, cm$^{-3}$) are appended after the metals; the \texttt{\# columns}
-header always names the layout.
+HeHp}, cm$^{-3}$) are appended after the metals, and with
+\texttt{Oxygen chemistry: True} three more after those (\texttt{OH H2O CO},
+cm$^{-3}$); the \texttt{\# columns} header always names the layout. Note that
+with the oxygen chemistry on the \texttt{OI} column means \emph{free atomic}
+neutral oxygen: the element total is
+$n({\rm O\,\textsc{i}})+n({\rm O\,\textsc{ii}})+n({\rm O\,\textsc{iii}})
++n({\rm OH})+n({\rm H_2O})+n({\rm CO})$, and the same holds for carbon with
+CO.
 
 \subsection{\texttt{Cooling\_breakdown.txt}}
 Radiative cooling by channel [erg\,cm$^{-3}$\,s$^{-1}$] vs.\ radius. Columns:
@@ -1872,7 +2142,8 @@ H($n{=}2$), i.e.\ absorbed Ly$\alpha$ thermalized by a collision
 (\texttt{Deexc heat}); \texttt{13}= the He-recombination coupling
 (\texttt{He\_rec\_coupling}); \texttt{14}= He\,$2^3$S\,$+$\,H Penning
 ionization; \texttt{15}= He\,$2^3$S\,$+$\,H$_2$ Penning ionization; and
-\texttt{16}= H$_2$ Lyman--Werner photodissociation. The channels sum to
+\texttt{16}= H$_2$ Lyman--Werner photodissociation; and \texttt{17}= the FUV
+photolysis of H$_2$O and OH (the oxygen chemistry). The channels sum to
 column~4 on a molecular run as well as an atomic one: the molecular terms were
 added on 2026-08-15, and the closure was then measured at
 $\max|\sum_{5}^{16}/\text{heat}_{\rm total}-1| = 2\times10^{-15}$ on the
@@ -1893,6 +2164,107 @@ H$_2$ photodissociation diagnostic, written when a molecular run carries a
 directly how deep the band penetrates: $f_{\rm shield}\to1$ in the thin wind
 above the H$_2\to$H front, collapsing by orders of magnitude inside the
 self-shielded molecular base.
+
+\subsection{\texttt{Oxygen\_chemistry.txt}}
+The solved oxygen partition, written for the equilibrium state of a run with
+\texttt{Oxygen chemistry: True}. 18 columns: \texttt{1}~$r$ [\rp],
+\texttt{2}~$T$ [K], \texttt{3}~$n$(O) --- \emph{free atomic} neutral oxygen ---
+\texttt{4}~$n$(O\,\textsc{ii}), \texttt{5}~$n$(O\,\textsc{iii}),
+\texttt{6}~$n$(OH), \texttt{7}~$n$(H$_2$O), \texttt{8}~$n$(CO),
+\texttt{9}~$n$(O($^1D$)) from its local steady state, \texttt{10}~$x_{\rm H_2}
+= 2n_{\rm H_2}/n_{\rm H}$, \texttt{11}~$\tau_{\rm chem}$ [s],
+\texttt{12}~$\tau_{\rm adv}$ [s], \texttt{13}~the Damk\"ohler number
+$\tau_{\rm adv}/\tau_{\rm chem}$, \texttt{14--15}~the H$_2$O and OH
+photodissociation rates summed over the bands [s$^{-1}$],
+\texttt{16}~$D({\rm H_2})$ [cm$^2$\,s$^{-1}$], \texttt{17}~$K_{zz}$
+[cm$^2$\,s$^{-1}$], and \texttt{18}~$\tau_{\rm diff} = \Delta r^2/(D_{\rm H_2}
++ K_{zz})$ [s]. Columns \texttt{3--8} sum to the oxygen element total.
+
+$\tau_{\rm chem} = 1/(k_{\rm O1}n_{\rm OH}+k_{\rm O2}n_{\rm O})$ is the H$_2$
+lifetime against the oxygen cycle and $\tau_{\rm adv}=r/|v|$ the radial flow
+time. These are a \emph{required} output rather than a diagnostic. With
+\texttt{Oxygen transport: True} a cell whose chemistry is slow is solved rather
+than assumed away, and the time scales say which part of the profile the
+reaction set is responsible for and which part the flow is; with
+\texttt{Oxygen transport: False} they say something stronger, namely where that
+limit is simply wrong.
+
+With the transport on, a trailer at the end of the file records the last
+transport step: \texttt{newton\_steps}, the relative residual
+\texttt{newton\_resid} it stopped at, \texttt{limited\_cells} (cells where a
+carrier would have taken more nuclei than its element has),
+\texttt{worst\_overshoot}, and \texttt{co\_ceiling\_cells}, the cells in
+which the transported CO was cut back to the $\mathrm{CO\leftrightarrow C+O}$
+equilibrium of their own $(n,T)$. A limiter count that is not small is a
+statement about the step and is reported rather than absorbed.
+
+Every run also closes the file with the \textbf{net H$_2$ loss budget at the
+base cell}, decomposed into eleven channels from the same coefficients the
+residual uses and net of its own reverse where a channel has one (so a negative
+entry is a net H$_2$ \emph{source} and a share may exceed 1). The option exists
+to make the oxygen cycle set the base partition, and whether it does is a
+property of the run: on a 2331\,K base the thermal channel
+$\mathrm{H_2+M\to H+H+M}$ carries 70--97\% of the net and the oxygen cycle a
+few percent, while on an 864\,K base the oxygen family carries 96--99.6\%.
+Read that block before reading the partition.
+
+\subsection{\texttt{FUV\_bands.txt}}
+How deep each FUV band penetrates, and the band energy ledger. Written for an
+\texttt{Oxygen chemistry} run. 19 columns: \texttt{1}~$r$ [\rp], \texttt{2--3}
+the star-ward H$_2$O and OH columns [cm$^{-2}$], \texttt{4--8} the five band
+optical depths (\texttt{LW}, \texttt{B1}, \texttt{B2}, \texttt{B3},
+\texttt{B4}), \texttt{9--13} the H$_2$O photodissociation rate in each band
+[s$^{-1}$], \texttt{14--18} the same for OH, and \texttt{19} the total FUV
+photolysis heating [erg\,cm$^{-3}$\,s$^{-1}$]. A header line above the data
+names the flux and the H$_2$O and OH band cross sections of each band.
+
+The trailer of the file carries the energy ledger. For a beam attenuated as
+$\exp(-\tau)$ the photons absorbed over a column are exactly
+$N_b(1-e^{-\tau_b})$ whatever the density profile, and the file reports the
+grid sum against that closed form band by band. They agree to round-off at
+any grid spacing, because each cell's rate is the mean over the cell and not
+its face value; a residual there means the rates and the columns have come
+apart. It also reports the
+absorbed energy split into deposited heat and bond energy, against the incident
+band flux --- the absorbed energy can never exceed it, which is the property
+that keeps the band average from over-heating.
+
+The last block is the shared beam of the \texttt{LW} band. Over
+912--1110\,\AA{} the same photons are absorbed by H$_2$ in the Lyman--Werner
+lines and by H$_2$O and OH in a continuum, so the closed form the band's sum is
+checked against is $N_b\,[1-(1-A)e^{-\tau}]$ with $A$ the line-removed fraction,
+and the H$_2$ share belongs inside it: the H$_2$ photon count is the
+\emph{dissociation} rate divided by the DB96 dissociation probability per pump,
+because the other 86.5\% of the pumps also take a photon out of the band. The
+block reports \texttt{LW\_H2\_absorbed\_en}, \texttt{LW\_cont\_absorbed\_en},
+\texttt{LW\_incident\_en} and \texttt{LW\_line\_removed\_frac}. The run warns if
+the absorbers together take more energy out of the interval than it carries, and
+also if $A$ reaches 1 --- the DB96 self-shielding fit is a fit to a \emph{rate}
+and does not bound the photon budget, so a column that reaches it is outside the
+fit's range.
+
+\subsection{\texttt{OI\_levels.txt} / \texttt{OI\_levels\_adv.txt}}\label{sec:oilevels}
+Populations of the three fine-structure levels of the O\,\textsc{i}
+$2p^4\,^3P$ ground term, written whenever the run carries metals (no key: the
+presence of \texttt{metals.inp}, or of a lower-atmosphere profile with an
+oxygen reservoir, is enough). 11 columns:
+\texttt{1}~$r$ [\rp], \texttt{2}~$T$ [K], \texttt{3}~$n_e$, \texttt{4}~$n_{\rm
+HI}$, \texttt{5}~$n({\rm O\,\textsc{i}})$, \texttt{6--8}~the fractional
+populations $f(^3P_2)$, $f(^3P_1)$, $f(^3P_0)$, and \texttt{9--11}~the same
+three as densities [cm$^{-3}$], which sum to column~5 by construction.
+
+The term is inverted, so $^3P_2$ is the lowest level. These are the lower
+levels of the O\,\textsc{i} $\lambda\lambda1302.168,\,1304.858,\,1306.029$
+resonance triplet, which is why they are an output field: a transit forward
+model that applied the total O\,\textsc{i} density to all three components
+would count the same atoms three times. They are not a second calculation --
+the file is filled by the same three-level statistical equilibrium, with the
+same electron and H-atom collisional rates and the same line escape
+probabilities and incident infrared field, that the [O\,\textsc{i}]
+63.2/145.5/44.1\,$\mu$m cooling is assembled from
+(\texttt{Cool\_coeff.f90}). In the dense base the solution is the Boltzmann
+one to round-off; it departs from it in the thin outer wind, where the levels
+drain radiatively toward $^3P_2$.
 
 \subsection{\texttt{Excited\_H.txt}}
 H($n{=}2$) diagnostic (written when the excited-H model is on, i.e.\ stellar
@@ -1969,11 +2341,44 @@ instrument+rotation-convolved) for \textbf{He\,10830}, \textbf{Ly$\alpha$},
 \textbf{H$\alpha$/H$\beta$} (from the non-LTE $n{=}2$ population, Christie+2013,
 pumped by the Ly$\alpha$ field of \S\ref{sec:jlya}),
 and the metal resonance doublets \textbf{Mg\,II\,h\&k}, \textbf{Ca\,II\,H\&K},
-and \textbf{Na\,I\,D} --- the metals get the same full treatment as the H/He
-lines (both doublet components in one window, theoretical / instrument /
+\textbf{Na\,I\,D} and the \textbf{O\,I\,1302/1304/1306} triplet --- the metals
+get the same full treatment as the H/He
+lines (all components in one window, theoretical / instrument /
 $+$rotation spectra, written under the same \texttt{tpm\_<line>} names), plus
 the validated single-component line-center and 4\,\AA-band depth table; a
-metals-off run skips them automatically. It supports two
+metals-off run skips them automatically.
+
+\paragraph{O\,I 1302: the one line whose components do not share a lower level.}
+The three components of the O\,I resonance triplet absorb out of the three
+\emph{different} fine-structure levels of the $2p^4\,^3P$ ground term, so the
+script reads their populations from \texttt{output/OI\_levels\_adv.txt}
+(\S\ref{sec:oilevels}) rather than applying the total O\,I density three times
+over --- which at the near-statistical populations of these winds would triple
+the column. A run whose output predates that file, like a metals-off run, simply
+skips the line. Because each absorption component owns its own lower-level
+density, the component descriptor is
+\texttt{(lambda0, f, A21, n\_lower)} for every line, not only for this one.
+
+The O\,I line is also the only one compared here against a published
+measurement, and the comparison is written into
+\texttt{tpm\_OI\_band\_depths.txt} together with the conventions that make it
+legitimate: the depth is \emph{band-integrated} over the observers' band
+(1300--1310\,\AA\ for Vidal-Madjar et al.\ 2004, 1299--1310\,\AA\ for
+Ben-Jaffel \& Hosseini 2010), never at line center; the band weight is the
+stellar emission-line profile those authors measured (0.2\,\AA\ FWHM, peak
+ratios 1:1.5:1.17), because what was measured is a flux ratio and essentially
+all the flux in that band is in the three narrow chromospheric lines; the
+interstellar absorption is already inside those measured peak ratios and is
+therefore \emph{not} applied a second time; the instrument LSF is not applied
+either, because a Gaussian LSF conserves the integral and cancels from a ratio
+over a band many LSF widths wide; and the published values, which are
+$(R_{\rm abs}/R_\star)^2$ and include the opaque planetary disk, have each
+paper's own continuum band subtracted before comparison. Overrides:
+\texttt{EXHALE\_TRANSIT\_RES\_OI} (default 1000, HST/STIS G140L),
+\texttt{\_OI\_WEIGHT} (\texttt{star}\,$|$\,\texttt{flat}),
+\texttt{\_OI\_STAR\_FWHM\_A}, \texttt{\_OI\_STAR\_PEAKS}, and
+\texttt{\_OI\_NSCALE}, which multiplies all three level densities at fixed
+ratios so the same code path can be driven up and down the curve of growth. It supports two
 geometries via \texttt{geometry = 'spherical'} (Phase~5a) or \texttt{'triaxial'}
 (Phase~5b, the 3-D Roche-equipotential reconstruction in \texttt{roche\_recon.py}).
 
@@ -2037,7 +2442,7 @@ $4.0\%$.
 
 \paragraph{Outputs.} Every line carries one key --- \texttt{He10830},
 \texttt{Lya}, \texttt{Halpha}, \texttt{Hbeta}, \texttt{MgII}, \texttt{CaII},
-\texttt{NaI} --- and both products of a line are named from that key and land
+\texttt{NaI}, \texttt{OI} --- and both products of a line are named from that key and land
 in the run directory: the model curve \texttt{tpm\_<line>.txt} (always written)
 and, when \texttt{EXHALE\_TRANSIT\_FIG\_PREFIX} is set, the figure
 \texttt{<prefix><line>.png} together with its vector \texttt{.pdf}. A curve

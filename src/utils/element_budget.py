@@ -7,9 +7,10 @@ they never create or destroy them. So in every cell
 
     n_El(cell) / n_H(cell) = (El/H)_resolved,
 
-where n_El sums the ion stages of that element, n_H counts hydrogen NUCLEI
-(atomic, molecular and HeH+ bound), and (El/H)_resolved is the abundance the
-run actually used -- from metals.inp, or from the "<El>_H_base" key of a
+where n_El sums the ion stages of that element PLUS the molecules that carry
+it (OH, H2O and CO for oxygen; CO for carbon, when the oxygen chemistry is
+on), n_H counts hydrogen NUCLEI (atomic, molecular, HeH+ and OH/H2O bound),
+and (El/H)_resolved is the abundance the run actually used -- from metals.inp, or from the "<El>_H_base" key of a
 base.inp handoff, or from the X_<El> column of a lower-atmosphere profile.
 Hydrogen itself closes against the mass density:
 rho [m_H/cm^3] = mass_per_H * n_H.
@@ -52,6 +53,22 @@ MOLECULES = {           # species: (H nuclei, He nuclei)
     'H2p':  (2, 0),
     'H3p':  (3, 0),
     'HeHp': (1, 1),
+    # Oxygen-chemistry carriers. They hold H nuclei that are not atomic H
+    # and are not in any of the ion-stage columns, so leaving them out
+    # would make the hydrogen closure fail by their share of the element.
+    'OH':   (1, 0),
+    'H2O':  (2, 0),
+    'CO':   (0, 0),
+}
+# Nuclei of a METAL element carried by a molecule, by element symbol. With
+# the oxygen chemistry on, the O I column means FREE ATOMIC oxygen and the
+# C I column the carbon not locked in CO, so the element totals are the ion
+# stages PLUS these carriers -- the total-oxygen closure of section 4.1 of
+# docs/a2_oxygen_option_design.md. Without the option the columns are
+# absent and every element is its ion stages alone, as before.
+METAL_CARRIERS = {
+    'O':  {'OH': 1, 'H2O': 1, 'CO': 1},
+    'C':  {'CO': 1},
 }
 ATOMIC_H  = ('HI', 'HII')
 # HeI is the TOTAL He I density, the He 2^3S metastable level included, so
@@ -82,8 +99,13 @@ def read_columns(path):
     with open(path) as f:
         for line in f:
             if line.startswith('#'):
-                if 'columns' in line:
-                    labels = line.split('columns', 1)[1].split()
+                # The marker has to be the first word after the '#': matching
+                # 'columns' anywhere also matches the NOTE prose at the top of
+                # Ion_species_adv.txt.  Keeping the LAST match happened to
+                # recover from that, but only by accident.
+                body = line.lstrip('#').strip()
+                if body.lower().startswith('columns'):
+                    labels = body[len('columns'):].split()
                 continue
             break
     if labels is None:
@@ -183,6 +205,9 @@ def main():
                   % (sym, x, '-', '-', 'no columns'))
             continue
         nEl = sum(col[s] for s in stages)
+        for m, k in METAL_CARRIERS.get(sym, {}).items():
+            if m in col:
+                nEl = nEl + k * col[m]
         dev = np.abs(nEl / nH - x) / x
         j = int(np.argmax(dev))
         ok = dev[j] <= a.tol

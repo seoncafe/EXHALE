@@ -27,6 +27,7 @@
 	use charge_exchange,   only: cx_set_cell, he_h_cx_rates
 	use Cooling_Coefficients
 	use utils_ion_eq
+	use composition, only: he_ground_singlet_density
 	use output_write
 	use equation_T
 	use opacity_models           ! opacity_pT_factor for the 'P' model
@@ -256,9 +257,13 @@
 		! The subtraction is well conditioned wherever it is made: the
 		! equilibrium metastable is bounded by its own balance, whose loss
 		! side is dominated by the 2^3S -> 1^1S decay A31, and stays orders of
-		! magnitude below the summed He I.
+		! magnitude below the summed He I. It is taken through
+		! he_ground_singlet_density all the same, so that a restart whose two
+		! helium columns disagree cannot start the advection from a negative
+		! singlet, and so that the run reports it if one did.
 		nheiS  = nhei_in*n0
-		if (thereis_HeITR) nheiS = (nhei_in - nheiTR_in)*n0
+		if (thereis_HeITR)                                              &
+			nheiS = he_ground_singlet_density(nhei_in, nheiTR_in)*n0
 		nhei   = nheiS + nheiTR
 	else
 		! Helium off. The helium-free branch of the ionization loop below
@@ -920,11 +925,25 @@
 	 			sys_x_T(1) = T_in(j)
 	 			n_T_noconv = n_T_noconv + 1
 	 		endif
-	 		! With metal cooling, reject a non-physical / out-of-band root (the
-	 		! spurious hot root) and fall back to eq T (the legacy guard).
+	 		! A non-positive root is not a temperature, whatever else is in the
+	 		! gas, so this test is not conditional on the metals. It matters
+	 		! because T_out feeds the NEXT post-process pass: eval_cool takes
+	 		! sqrt(T/T0) in the Badnell recombination fit (rr_badnell), so a
+	 		! negative T there is a NaN cooling rate in an ordinary build and an
+	 		! abort under -ffpe-trap=invalid. Measured on the He/H = 1 molecular
+	 		! arm, which is metals-off and so had no test at all: cells 278-280
+	 		! come back at -42, -640 and -2474 K on the second pass. Keep the
+	 		! converged equilibrium temperature -- the same state the
+	 		! non-converged branch above keeps, and for the same reason.
+	 		if (.not. (sys_x_T(1) > 0.0d0)) then
+	 			sys_x_T(1)  = T_in(j)
+	 			n_pp_reject = n_pp_reject + 1
+	 		endif
+	 		! With metal cooling, additionally reject an out-of-band root: the
+	 		! metal-cooled residual is non-monotone and carries a second,
+	 		! spurious HOT root that hybrd1 can land on.
 	 		if (pp_metal_on) then
-	 			if (.not. (sys_x_T(1) > 0.0d0)  .or.   &
-	 			    sys_x_T(1) > 2.0d0*T_in(j)  .or.   &
+	 			if (sys_x_T(1) > 2.0d0*T_in(j)  .or.   &
 	 			    sys_x_T(1) < 0.5d0*T_in(j)) then
 	 				sys_x_T(1)  = T_in(j)
 	 				n_pp_reject = n_pp_reject + 1
@@ -952,11 +971,12 @@
 		   ' cells kept at the equilibrium ionization.'
 	endif
 
-	! Report how many base cells fell back to the eq temperature (metal modes).
-	if (pp_metal_on .and. n_pp_reject > 0) then
-		write(*,'(a,i0,a,i0,a)') ' (post_process_adv) metal-mode T solve: ', &
+	! Report how many cells fell back to the eq temperature: a non-positive
+	! root (any run) or, with metals on, one outside the 0.5-2x band.
+	if (n_pp_reject > 0) then
+		write(*,'(a,i0,a,i0,a)') ' (post_process_adv) T solve: ',            &
 		   n_pp_reject, ' of ', N+2*Ng-2,                                     &
-		   ' cells fell back to eq T (stiff base band).'
+		   ' cells fell back to eq T (non-positive or out-of-band root).'
 	endif
 
 	! Report the cell solves that did not converge and were therefore left at
@@ -1023,7 +1043,7 @@
 	nheiii(jc) = nheiii_in(jc)*n0
 	nheiTR(jc) = 0.0
 	if (thereis_HeITR) nheiTR(jc) = nheiTR_in(jc)*n0
-	nheiS(jc)  = nhei_in(jc)*n0 - nheiTR(jc)
+	nheiS(jc)  = he_ground_singlet_density(nhei_in(jc)*n0, nheiTR(jc))
 	nhei(jc)   = nheiS(jc) + nheiTR(jc)
 
 	end subroutine pin_cell_to_equilibrium

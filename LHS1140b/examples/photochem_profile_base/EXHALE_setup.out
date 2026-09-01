@@ -24,7 +24,7 @@
  - Including helium triplet chemistry
  - Including 3 trace metal element(s)
  - Coupled equilibrium system size: N_eq = 24
-  - Spectrum read from external file: /nfs/mocafe/kiseon/RT_Codes/ExoAtmosphere/EXHALE_v1.00/LHS1140b/sed/lhs1140_sed_gj1132_at_b.txt
+  - Spectrum read from external file: ../../sed/lhs1140_sed_gj1132_at_b.txt
  - 2D approximation used: Mdot
 
  ----- Numerical parameters -----

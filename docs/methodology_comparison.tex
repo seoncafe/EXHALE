@@ -1,0 +1,1503 @@
+%% Methodology comparison of independent models of XUV-driven atmospheric
+%% escape -- AIOLOS, Taylor et al. (2025, 2026), Xing et al. (2023) and
+%% Frelikh & Murray-Clay (2026) -- and what EXHALE has taken from each.  The
+%% EXHALE column and the whole of the adoption assessment were re-checked
+%% against src/ rather than against the documentation; the four external
+%% columns are what those papers say, except where a number is marked as
+%% measured here.  Source PDFs under ../../references/.
+%% Uses the local my_memo document class (docs/my_memo.cls), which auto-loads
+%% graphicx, amsmath, amssymb, hyperref, xcolor, kotex, fancyhdr, sets its own
+%% A4 geometry / boxed title / header-footer, and defaults \date to the
+%% modification date of this file.  booktabs, array, longtable and enumitem
+%% are not provided by the class and are loaded here.
+%% Author: Kwang-Il Seon
+\documentclass[english,a4paper]{my_memo}
+\synctex=1
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage{longtable}
+\usepackage{enumitem}
+\emergencystretch=3em
+
+%% Ragged-right fixed-width column: the comparison table's columns are narrow
+%% enough that justification opens large interword gaps.
+\newcolumntype{L}[1]{>{\raggedright\arraybackslash}p{#1}}
+%% Compact table body: the class sets \linespread{1.5} for running text, which
+%% makes multi-line p-columns unnecessarily tall.
+\newcommand{\tabsetup}{\footnotesize\linespread{1.05}\selectfont
+  \renewcommand{\arraystretch}{1.15}}
+
+\newcommand{\Rp}{R_{\rm p}}
+\newcommand{\Mdot}{\dot{M}}
+\newcommand{\EXHALE}{\textsc{Exhale}}
+\newcommand{\AIOLOS}{\textsc{Aiolos}}
+\newcommand{\Lya}{Ly$\alpha$}
+\newcommand{\Ha}{H$\alpha$}
+\newcommand{\Kzz}{K_{zz}}
+%% Mode-safe: these appear both in running text and inside math expressions.
+\newcommand{\Hth}{\ensuremath{\mathrm{H}_3^+}}
+\newcommand{\Htwo}{\ensuremath{\mathrm{H}_2}}
+
+\title{Methodology comparison: independent models of\\
+XUV-driven atmospheric escape, and what \EXHALE\ took from each}
+\author{Kwang-Il Seon}
+
+\begin{document}
+\maketitle
+
+\section{Purpose, and the verdict first}
+
+This memo compares the methodology of four independent modelling efforts for
+XUV-driven atmospheric escape from close-in exoplanets --- the general-purpose
+1-D radiation-hydrodynamics code \AIOLOS\ (Schulik \& Booth 2023, MNRAS 523,
+286); the dedicated thermosphere--ionosphere escape model of Taylor et al.\
+(2025, 2026), built on the Koskinen et al.\ code; the multi-fluid PLUTO-based
+model of Xing et al.\ (2023); and the photochemical--hydrodynamic model of
+Frelikh \& Murray-Clay (2026) --- and then records, item by item, what
+\EXHALE\ has taken from each and what it has not.
+
+The memo was first written as a forward-looking recommendation list. It is now
+a record of outcomes, so every candidate carries one of three verdicts:
+\textbf{adopted} (and in which module), \textbf{adopted then replaced} (and
+why the first choice did not survive), or \textbf{not adopted} (and whether the
+reason still holds). Of the fifteen items assessed in the adoption assessment
+below, six are adopted, two were adopted and then replaced, and seven are not
+adopted. The two largest gaps the original assessment identified --- no
+radius-dependent He/H separation, and an ad hoc lower boundary --- are both
+closed, and closed further than the recommendation asked for.
+
+Frelikh \& Murray-Clay is the newest of the four and the closest peer to
+\EXHALE's molecular layer, so it is the source of four of the seven
+not-adopted items and of one finding that belongs to neither code alone: the
+thermal-dissociation rate pair that both use is not thermodynamically
+consistent below about 3000~K (Section~\ref{sec:detbal}). Three further points
+where the two codes diverge, and where the judgement went against \EXHALE, are
+the photoelectron partition in a molecular gas (Section~\ref{sec:secion}), the
+absence of a composition boundary condition at the base
+(Section~\ref{sec:lowerbc}), and the sharpness of the modeled
+\Htwo$\rightarrow$H transition (Section~\ref{sec:mollayer}).
+
+Every statement about \EXHALE\ below was checked against \texttt{src/} rather
+than against \EXHALE's own documentation; the file and routine names given are
+the ones in the tree. The \AIOLOS, Taylor, Xing and Frelikh entries are what
+those papers say. Numbers measured here from \EXHALE\ output, rather than
+quoted from a paper, are marked as such at the point of use.
+
+\section{The codes considered}
+
+\begin{itemize}[nosep]
+  \item \textbf{\AIOLOS} --- the general-purpose 1-D multi-species
+    radiation-hydrodynamics code of Schulik \& Booth (2023, MNRAS 523, 286;
+    ``SB23''), distributed at \url{github.com/Schulik/aiolos}.
+  \item \textbf{Taylor et al.\ (2025)}, \emph{ApJ} 989, 68 --- ``A Multispecies
+    Atmospheric Escape Model with Excited Hydrogen and Helium: Application to
+    HD209458b,'' built on the Koskinen et al.\ (2013a,b; 2022)
+    thermosphere--ionosphere code.
+  \item \textbf{Taylor et al.\ (2026)}, \emph{ApJ} 999, 214 --- ``Helium Escape
+    in Context: Comparative Signatures of Four Close-in Exoplanets,'' a direct
+    application and extension of Taylor (2025) to HD~209458\,b,
+    HD~189733\,b, HD~149026\,b and GJ~1214\,b.
+  \item \textbf{Xing et al.\ (2023)}, \emph{ApJ} 953, 166 --- ``The Mass
+    Fractionation of Helium in the Escaping Atmosphere of HD~209458b,'' a
+    \emph{multi-fluid} model built inside PLUTO.
+  \item \textbf{Frelikh \& Murray-Clay (2026)}, \emph{ApJ} 996, 96 ---
+    ``Efficiency of Hydrodynamic Atmospheric Escape in Hot Jupiters and
+    Super-Earths,'' a 1-D photochemical--hydrodynamic model of H--He escape
+    with \Hth\ and \Lya\ cooling, heat conduction, tidal gravity and
+    photoelectron secondary ionization.
+\end{itemize}
+``Taylor'' denotes the shared Koskinen-based framework used in both Taylor
+papers unless a specific paper is named. ``Frelikh'' denotes Frelikh \&
+Murray-Clay (2026).
+
+\section{One-paragraph characterization of each code}
+
+\paragraph{\AIOLOS.} A \emph{general-purpose} radiation-hydrodynamics code, not
+a dedicated escape code. It solves the time-dependent Euler equations (mass,
+momentum, energy) for an arbitrary number of species --- each a
+\textbf{separate fluid} with its own density, momentum and internal energy ---
+coupled by an inter-species \textbf{friction/drag} solver. It uses
+finite-volume \textbf{HLLC} fluxes with \textbf{PLM} reconstruction
+(monotonized-central limiter) and second-order
+\textbf{strong-stability-preserving} Runge--Kutta time stepping, in
+Cartesian, cylindrical or \textbf{spherical} geometry. Radiation is treated
+with \textbf{flux-limited diffusion (FLD)} over arbitrary in/out spectral
+bands, solved implicitly through a block-tridiagonal system. Escape is one of
+many problems it can run.
+
+Two things about \AIOLOS\ have to be attributed to the distributed code rather
+than to SB23, because the paper does not carry them. The paper implements a
+C2Ray-style two-species photoionization scheme and calls a fuller chemical
+solver future work; the code has since acquired a reaction-network class
+(\texttt{c\_reaction}) with selectable photochemistry levels, the Black (1981)
+heating and cooling rates with free-free and H$_3^+$ cooling
+(\texttt{photochem.cpp}, \texttt{chemistry.cpp}), grid spacing that can be
+linear, logarithmic or bi-logarithmic (\texttt{PARI\_GRID\_TYPE}), and a
+tidal-field option (\texttt{USE\_TIDES}). Statements below about \AIOLOS's
+chemistry, cooling, grid or tides refer to the code.
+
+\paragraph{Taylor (2025/2026).} A \emph{dedicated} 1-D spherical
+thermosphere--ionosphere and hydrodynamic-escape model (Koskinen et al.\
+2013/2022), integrated to steady state, with a \textbf{single bulk momentum
+equation} but \textbf{multi-species molecular and eddy diffusion} that
+redistributes species, so He and H can separate diffusively. Its distinguishing
+strengths are in the completeness of the \emph{microphysics}: a full
+He($2^3$S) and H($n{=}2$) non-LTE network solved by the KPP kinetic
+preprocessor, a \textbf{\Lya\ Monte Carlo} radiative-transfer model (Huang et
+al.\ 2017) iterated with the hydro solution for \Ha, a high-resolution
+He($2^3$S) photoionization cross section (B-spline K-matrix),
+temperature-dependent Penning ionization, and self-consistent coupling to a
+photochemical lower and middle atmosphere at the $\mu$bar level.
+
+\paragraph{Xing (2023).} A \emph{dedicated} 1-D spherical escape model whose
+distinguishing feature is that it is genuinely \textbf{multi-fluid}: H, H$^+$,
+He, He$^+$ and e$^-$ each carry their \textbf{own velocity}, coupled by
+resonant and non-resonant collisional drag. It is the only one of the three
+that captures \textbf{He/H mass fractionation} --- heavy He under-dragged by
+escaping H --- in the dynamics itself rather than through a diffusion
+coefficient. It is built on PLUTO (HLL Riemann solver, third-order TVD RK) with
+a Riemann split that carries the electron/electric-field pressure term. The
+He($2^3$S) 10830~\AA\ line is post-processed, not solved in the hydro loop.
+
+\paragraph{Frelikh (2026).} A \emph{dedicated} 1-D spherical escape model
+built around a molecular base, and of the four the closest peer to \EXHALE's
+lower atmosphere. It is \textbf{single-fluid} in velocity --- all species
+travel with the bulk $u$, and the diffusion the code contains is turned off
+for the published H--He runs --- but it carries a mass-conservation equation
+for each of the eight H and He species with a chemical source term. The
+hydrodynamics are unusual for this field: no Riemann problem at all, but the
+\textbf{constrained interpolation profile} (CIP) advection scheme of Yabe \&
+Aoki (1991) on a \textbf{staggered mesh}, operator-split against explicitly
+differenced source terms, with a Landshoff-plus-von~Neumann artificial
+viscosity for stability. The 22-reaction H--He network (their Table~1,
+compiled from Yelle 2004 and Garc\'ia-Mu\~noz 2007) is \textbf{integrated in
+time} as a stiff ODE system by the semi-implicit Euler stepper
+\texttt{StepperSie} of Press et al.\ (2007) with an \textbf{analytic
+Jacobian}. Radiative cooling is \Lya\ (Black 1981) and \Hth\ (Miller et al.\
+2013); heat conduction follows Garc\'ia-Mu\~noz (2007). Photoelectron
+secondary ionization uses Dalgarno et al.\ (1999), including the \Htwo\
+vibrational, triplet-dissociation and Lyman--Werner channels. The published
+result is a three-layer atmosphere: an \Hth-cooled \Htwo\ layer at the base, a
+\Lya-cooled neutral-H layer above it, and a PdV-cooled ionized outflow. There
+is no He metastable, no He$\leftrightarrow$H charge exchange and no metal in
+the network.
+
+\paragraph{\EXHALE.} A 1-D spherical \textbf{single-fluid} escape code of ATES
+heritage. The hydrodynamics are finite-volume, second-order, with PLM or WENO3
+reconstruction (usable as a two-stage PLM$\rightarrow$WENO3 sequence) and a
+selectable LLF/\textbf{HLLC}/Roe numerical flux
+(\texttt{flux/Num\_Fluxes.f90}); reconstructed face states are dropped to the
+piecewise-constant limit wherever they lose positivity
+(\texttt{positivity\_limited\_faces}, \texttt{states/Reconstruction.f90}), and
+a gated fourth-difference dissipation restores the damping of the contact mode
+that HLLC loses as the flow stalls (\texttt{flux/low\_mach\_dissipation.f90},
+key \texttt{Low-Mach damping}, off by default). The steady wind is reached either by explicit marching on the mass-flux
+($\rho v r^2$) spread or by a direct \textbf{Jacobian-free Newton--Krylov}
+solve --- right-preconditioned GMRES($m$) with pseudo-transient continuation
+(\texttt{time\_step/steady\_newton.f90}, key \texttt{Solver: Newton}).
+Ionization of H, He, ten metal elements in 27 ion stages, the He($2^3$S)
+metastable and, when molecular chemistry is on, H$_2$/H$_2^+$/H$_3^+$/HeH$^+$
+is solved as \emph{one} coupled nonlinear algebraic system (analytic-Jacobian
+Newton, MINPACK \texttt{hybrd1} fallback; the \texttt{System\_HeH\_*} family).
+The photoelectron heating fraction is not a free parameter: it follows the
+Shull \& van Steenberg (1985) branching evaluated on each cell's own ionized
+fraction and neutral composition. Helium is transported as the second
+component of a binary mixture with stage-resolved friction
+(\texttt{functions/binary\_element\_diffusion.f90}), the Navier--Stokes viscous
+force and heat conduction are available
+(\texttt{time\_step/viscous\_conduction.f90}), and the base can be handed over
+from a photochemical lower atmosphere as scalars or as a full profile.
+Diagnostics are a non-LTE He($2^3$S) network, a non-LTE H($n{=}2$) population
+(Christie et al.\ 2013), \Lya\ transfer through a Neufeld escape-probability
+closure or an imported field, and the transmission post-processor
+\texttt{EXHALE\_transit.py}. Core size: 75 source files, 16\,568 SLOC excluding
+blank and comment lines (\texttt{src/utils/codesize.py}, measured 2026-08-30),
+of which 6\,404 are in modules that do not exist in upstream ATES.
+
+\section{Side-by-side methodology table}
+\label{sec:table}
+
+A sixth column does not fit across one A4 text block, so the comparison is
+split by axis: Table~\ref{tab:methods-num} carries the numerical method and
+Table~\ref{tab:methods-phys} the physics and the diagnostics.
+
+{\tabsetup
+\begin{longtable}{@{}L{0.12\textwidth} L{0.150\textwidth} L{0.150\textwidth}
+                    L{0.150\textwidth} L{0.150\textwidth} L{0.150\textwidth}@{}}
+\caption{Numerical method. The four external columns are as described in their
+papers; the \EXHALE\ entries were verified in
+\texttt{EXHALE\_v1.00/src/}.}\label{tab:methods-num}\\
+\toprule
+\textbf{Axis} & \textbf{\AIOLOS\ (SB23)} & \textbf{Taylor 2025/2026} &
+\textbf{Xing 2023} & \textbf{Frelikh 2026} & \textbf{\EXHALE} \\
+\midrule
+\endfirsthead
+\multicolumn{6}{@{}l}{\emph{Table \ref{tab:methods-num}, continued}}\\
+\toprule
+\textbf{Axis} & \textbf{\AIOLOS} & \textbf{Taylor} & \textbf{Xing} &
+\textbf{Frelikh} & \textbf{\EXHALE} \\
+\midrule
+\endhead
+\bottomrule
+\endfoot
+Purpose & General multi-species RHD & Dedicated escape $+$ line diagnostics &
+Dedicated escape, He/H fractionation & Dedicated escape; radiative-cooling
+efficiency & Dedicated escape $+$ line diagnostics \\
+Dimensions & 1-D (sph./cyl./cart.) & 1-D spherical & 1-D spherical &
+1-D spherical, substellar ray & 1-D spherical \\
+Route to steady state & Time-dependent $\to$ steady & Time-dependent $\to$
+steady & Time-dependent $\to$ steady & Time-dependent $\to$ steady &
+RK marching on the $\rho v r^2$ spread, optionally finished by a direct JFNK
+solve \\
+Fluid model & \textbf{Multi-fluid} $+$ friction & \textbf{Single bulk} $+$
+multi-species diffusion & \textbf{Multi-fluid} & \textbf{Single fluid}; one
+mass equation per species, all at the bulk $u$ & \textbf{Single fluid} $+$
+binary element diffusion \\
+Advection scheme & PLM $+$ MC limiter & Flux-conservative van Leer advection
+(Koskinen et al.\ 2013a); not restated in the Taylor papers & PLM (PLUTO) &
+\textbf{CIP} cubic interpolation carrying $X$ and $\partial_r X$, on a
+staggered mesh & PLM, WENO3, or two-stage PLM$\to$WENO3, with a face
+positivity guard \\
+Riemann solver & HLLC & --- & HLL ($+$ e$^-$-pressure split) & \textbf{None};
+Landshoff $+$ von~Neumann artificial viscosity & LLF, HLLC or Roe
+(\texttt{Numerical flux}) \\
+Time integrator & Second-order SSP RK & Operator split, semi-implicit
+Crank--Nicholson, forward to steady & Third-order TVD RK & Operator split: CIP
+advection, then explicitly differenced source terms & RK marching;
+GMRES($m$) JFNK with PTC for the steady solve \\
+Grid & Linear, log or bi-log (code) & Radial & 1024 points, stretched,
+1--10\,$\Rp$ & Nonuniform, staggered, 1--8.8\,$\Rp$, ghost cells &
+Uniform, stretched or mixed; cell count set at runtime \\
+\end{longtable}}
+
+{\tabsetup
+\begin{longtable}{@{}L{0.12\textwidth} L{0.150\textwidth} L{0.150\textwidth}
+                    L{0.150\textwidth} L{0.150\textwidth} L{0.150\textwidth}@{}}
+\caption{Physics and diagnostics. Conventions as in
+Table~\ref{tab:methods-num}. \EXHALE\ options marked \emph{opt-in} default to
+off.}\label{tab:methods-phys}\\
+\toprule
+\textbf{Axis} & \textbf{\AIOLOS\ (SB23)} & \textbf{Taylor 2025/2026} &
+\textbf{Xing 2023} & \textbf{Frelikh 2026} & \textbf{\EXHALE} \\
+\midrule
+\endfirsthead
+\multicolumn{6}{@{}l}{\emph{Table \ref{tab:methods-phys}, continued}}\\
+\toprule
+\textbf{Axis} & \textbf{\AIOLOS} & \textbf{Taylor} & \textbf{Xing} &
+\textbf{Frelikh} & \textbf{\EXHALE} \\
+\midrule
+\endhead
+\bottomrule
+\endfoot
+Radiation & \textbf{FLD}, multi-band, implicit & XUV attenuation $+$ \Lya\
+Monte Carlo & Radial XUV attenuation, 53 bins & Radial XUV attenuation, 37
+bins (Richards et al.\ 1994), 12--248\,eV & Radial XUV attenuation on a
+multi-bin energy grid (power law or tabulated SED) $+$ \Lya\ transfer \\
+Photoelectron heating & From the C2Ray energy split & Tuned efficiency,
+20--40\,\% & Tuned frequency-averaged $\eta$, 0.1--0.5 & \textbf{Dalgarno et
+al.\ (1999)} $W_0(1{+}Cx^\alpha)$, with the \Htwo\ vibrational, triplet and
+Lyman--Werner returns added back & Shull \& van Steenberg (1985) branching
+renormalized on the cell's own neutral composition; \textbf{no efficiency
+parameter} \\
+Chemistry solve & C2Ray two-species (paper); reaction network (code) &
+KPP preprocessor over a stiff ODE network & Semi-implicit source terms &
+\textbf{Stiff ODE integrated in time}: semi-implicit Euler
+(\texttt{StepperSie}), \textbf{analytic} Jacobian, LU & \textbf{One coupled
+nonlinear algebraic system} per cell; analytic-Jacobian Newton, or MINPACK
+\texttt{hybrd} under a continuation \\
+He/H separation & Via friction/drag & Molecular $+$ eddy diffusion of the
+trace ratio $n_{\rm He}/n_{\rm H}$ & Via multi-fluid dynamics & Implemented
+but turned off for the published H--He runs & Binary diffusion of the mass
+fraction $X{=}\rho_{\rm He}/\rho$, friction resolved by ionization stage;
+\emph{opt-in} \\
+Metals & Through the code's chemistry & Optional (solar) & None & \textbf{None}
+& \textbf{10 elements, 27 ion stages} in the coupled system, with CHIANTI
+closed-form line cooling \\
+Molecules & Through the code's chemistry & \Htwo, H$_2^+$, \Hth, HeH$^+$
+(2026, for HD~189733\,b and GJ~1214\,b only) & None & Same four species; 22
+reactions (their Table~1) & Same four species inside the coupled system, with
+Lyman--Werner photodissociation; \emph{opt-in} \\
+He$\leftrightarrow$H charge exchange & Through the code's chemistry & Yes &
+Yes & \textbf{Absent from the network} & Huang et al.\ (2023) Table~4, rows
+B1/B2: a non-radiative and a radiative channel, separately \\
+Cooling & Recombination $+$ \Lya\ (paper); Black (1981) line/free-free $+$
+\Hth\ (code) & Recombination $+$ H\,\textsc{i} lines $+$ \Hth\ &
+\textbf{\Lya\ only} & \Lya\ $+$ \Hth\ only; recombination cooling checked and
+left off & \Lya, recombination, free-free, CHIANTI metal lines with
+fine-structure line trapping, \Hth\ infrared \\
+\Hth\ cooling form & Black (1981) (code) & Miller et al.\ (2013) & --- &
+Miller et al.\ (2013), LTE, emission into vacuum; zero above 5000\,K &
+Miller et al.\ (2013) with the non-LTE departure factor; net exchange with a
+diluted base field, \emph{opt-in} \\
+He($2^3$S) 10830 & Not a focus & In-loop non-LTE & Post-processed
+(Yan et al.\ 2022) & \textbf{Not in the network} & In-loop non-LTE (default
+on) $+$ \texttt{EXHALE\_transit.py} \\
+H($n{=}2$)/\Ha & Not a focus & Non-LTE $+$ \Lya\ Monte Carlo & Post-processed &
+Not computed & Non-LTE (Christie et al.\ 2013) $+$ \Lya\ escape probability or
+an imported field \\
+Viscosity / conduction & --- & Molecular $+$ eddy diffusion, conduction &
+Collisional drag & Heat conduction (Garc\'ia-Mu\~noz 2007); no viscosity &
+Navier--Stokes viscosity and heat conduction (Crank--Nicolson); \emph{opt-in}
+\\
+Tidal/Roche & \texttt{USE\_TIDES} (code) & Tested (2025); off (2026) & Stellar
+tidal term & Tidal term (their Appendix~C) & Roche potential, spherical or
+Roche-lobe domain \\
+Lower boundary & Configurable & \textbf{$\mu$bar, coupled to photochemistry} &
+1\,$\Rp$, fixed $n$, $T = 1500$\,K & $\approx$1\,$\mu$bar: \textbf{species
+densities and $p$ imposed}, $u$ extrapolated; Newtonian relaxation to $T_0$
+below $\tau{=}3$ & $\mu$bar base: fixed $T$,$n$; or an analytic column; or a
+scalar \texttt{base.inp}; or a full photochemical profile with $\Kzz(p)$ \\
+Transmission & --- & Ray-traced Voigt & Post-processed 10830 & \Hth\ emission
+spectrum (ExoCross); no transit spectrum &
+\texttt{EXHALE\_transit.py}: 10830, \Lya, \Ha, H$\beta$, metal doublets,
+optional triaxial Roche geometry \\
+\end{longtable}}
+
+\section{What they have in common}
+\label{sec:common}
+
+\begin{enumerate}[nosep]
+  \item \textbf{1-D spherical XUV-driven escape}, with photoionization heating
+    balanced by \Lya/recombination cooling and adiabatic expansion, is the
+    shared physical backbone.
+  \item \textbf{A steady transonic wind is the target.} The four external
+    codes evolve the time-dependent equations forward; \EXHALE\ marches in the
+    same way but can also solve the steady equations directly. The physical end
+    state is the same.
+  \item \textbf{Much of the same core H/He atomic physics.} Voronov collisional
+    ionization, radiative and dielectronic recombination, and
+    H$\leftrightarrow$He charge exchange appear in Xing, Taylor and \EXHALE\
+    with near-identical rate coefficients, differing mainly in the source table
+    (Storey \& Hummer, Badnell, Verner). \EXHALE's charge-exchange network is
+    now Huang et al.\ (2023) Table 4 (\texttt{radiation/charge\_exchange.f90}).
+    Frelikh is the exception on the last of these: its Table~1 has no
+    He$^+ + $H and no He$ + $H$^+$ reaction of any kind, and neither does its
+    text (Section~\ref{sec:network}).
+  \item \textbf{He($2^3$S) as the key observable.} Taylor, Xing and \EXHALE\
+    all target the 10830~\AA\ line through a non-LTE $2^3$S population
+    (recombination, collisions, radiative decay, Penning ionization,
+    photoionization). \AIOLOS\ and Frelikh do not; the He metastable is not a
+    species in either.
+  \item \textbf{Finite-volume, slope-limited, shock-capturing hydrodynamics}
+    underlies \AIOLOS, Xing (PLUTO) and \EXHALE. Two of the five are outliers,
+    and in the same direction: the Koskinen solver beneath Taylor is
+    flux-conservative van Leer advection operator-split against a semi-implicit
+    Crank--Nicholson step (Koskinen et al.\ 2013a), and Frelikh is CIP
+    advection operator-split against explicitly differenced source terms. Both
+    are staggered, both use an added dissipation in place of an upwind flux,
+    and \textbf{neither poses a Riemann problem}. Neither Taylor paper restates
+    its numerical scheme; Frelikh gives its scheme in full in its Appendix~A.
+\end{enumerate}
+
+One item that used to be on this list no longer belongs. It read: none of the
+four derives the photoelectron heating efficiency from first principles, and
+all treat it as the primary free knob. That is no longer true of \EXHALE. Its
+heating rate is the integral of the excess photon energy over the energy grid
+weighted by the Shull \& van Steenberg (1985) heat fraction, and that fraction
+is a function of the local ionized fraction with the ionization branching
+renormalized onto the cell's own neutral H and He
+(\texttt{svs85\_secondary\_branching}, \texttt{radiation/util\_ion\_eq.f90});
+there is no heating-efficiency key in \texttt{input.inp} at all. Taylor and
+Xing still tune theirs, and \AIOLOS\ takes its split from C2Ray.
+
+\section{Where they genuinely differ}
+
+\subsection{Fluid model}
+\label{sec:fluid}
+\begin{itemize}[nosep]
+  \item \textbf{Xing is multi-fluid}, each species carrying its own velocity,
+    which is what reproduces \textbf{He/H mass fractionation}: because He is
+    four times heavier it is under-dragged by the H wind, so the
+    \emph{escaping} He/H is about half the bulk abundance --- a weak 10830 line
+    without a subsolar He abundance.
+  \item \textbf{Taylor keeps a single bulk momentum equation and adds molecular
+    and eddy diffusion}, which produces the same qualitative diffusive
+    separation at far lower cost. Two numbers are quoted in Taylor (2025) and
+    they belong to different models: the best-fit model's elemental He/H falls
+    from 8\,\% at the base of the thermosphere to about 2.5\,\% at high
+    altitude, while the model Taylor sets against Xing's and Schulik \& Owen's
+    (2025) multi-fluid results is Model~B, whose H/He goes from 92/8 at the
+    base to about 96/4.
+  \item \textbf{\AIOLOS\ is multi-fluid but escape-agnostic}: its friction
+    solver would in principle give fractionation, but the code is not tuned for
+    the transonic-wind problem.
+  \item \textbf{\EXHALE\ keeps one bulk velocity and diffuses the composition
+    on top of it}, which is Taylor's choice of architecture but not Taylor's
+    variable. Where Taylor transports the trace ratio $n_{\rm He}/n_{\rm H}$,
+    the binary operator
+    (\texttt{binary\_element\_diffusion.f90}) transports the helium
+    \emph{mass fraction} $X = \rho_{\rm He}/\rho$ of a two-component mixture,
+    which is bounded at both ends of the composition axis and therefore does
+    not break down as helium approaches unity. Hydrogen's carriers are
+    H\,\textsc{i}, H\,\textsc{ii}, H$_2$, H$_2^+$ and H$_3^+$, helium's are
+    He\,\textsc{i}, He\,\textsc{ii} and He\,\textsc{iii}, and the binary
+    coefficient is a Blanc's-law mixture over their stage fractions, with
+    hard-sphere (Banks \& Kockarts 1973), polarization ion--neutral (Schunk \&
+    Nagy) and Coulomb ion--ion (Paquette et al.\ 1986) pair coefficients chosen
+    by charge. That last point is the physical content: an ion is held to the
+    protons by Coulomb friction instead of settling at a neutral rate.
+\end{itemize}
+
+\subsection{Radiation transport}
+\AIOLOS\ is the only one with a full \textbf{FLD} thermal-radiation solver,
+which is necessary for optically-thick interiors and dust and overkill for the
+escaping thermosphere. Taylor is the only one doing \textbf{\Lya\ Monte Carlo}
+transfer iterated with the hydro solution. Xing and \EXHALE\ both use radial
+XUV attenuation --- \EXHALE\ on an energy grid built per run from the
+ionization thresholds, driven by either a power-law XUV spectrum or a
+tabulated SED. On top of that \EXHALE\ closes \Lya\ trapping either with a
+Neufeld/Harrington wing-escape probability evaluated in line every step, or
+with an externally computed $J_{\rm Ly\alpha}(r)$ profile read from file
+(\texttt{radiation/lya\_rt.f90}; keys \texttt{Jlya escape-prob} and
+\texttt{Jlya RT file}). The second of those is how a real Monte Carlo field
+enters: the LaRT scattering-rate field is produced offline
+(\texttt{examples/exhale\_to\_lart.py}) and read back in.
+
+\subsection{Ionization and chemistry solver}
+\label{sec:chemsolver}
+Taylor uses the KPP kinetic preprocessor over a large stiff ODE network;
+\AIOLOS\ uses the C2Ray two-species scheme of SB23, or the reaction network
+its code has since grown; Xing folds
+semi-implicit source terms into the PLUTO RK stages. \EXHALE\ solves a single
+coupled \emph{nonlinear algebraic} system per cell, which is what a steady-state
+code needs, and everything lives in it together: H, He, the He($2^3$S)
+metastable, the ten metal elements, and the four molecular species. Adding
+physics means adding rows to that system rather than a parallel decoupled
+solver. The molecular rows are normalized by a turnover-rate scale before they
+reach the solver, because the He and H blocks otherwise differ in magnitude by
+six orders at He/H\,$=10^3$ and \texttt{hybrd1} does not scale rows itself.
+
+\paragraph{Frelikh integrates the network in time; \EXHALE\ solves it for
+equilibrium.} This is the sharpest methodological split in this memo, and it
+is worth stating precisely because the two codes model the same layer. Frelikh
+splits the fluid equations into an advective part and source terms, and solves
+the chemistry in a substep of its own --- of Equation~(6) they write that the
+chemical source term is one ``which we solve for in a separate substep of our
+routine.'' The network is then a stiff initial-value problem, and their
+Section~2.9 says so:
+\begin{quote}\small
+``As the rates of the reactions vary by several orders of magnitude, the
+reaction network cannot be solved via a straightforward explicit method---the
+set of equations is said to be `stiff.' We implement the semi-implicit method
+of solving stiff systems of equations from W.\ H.\ Press et al.\ (2007), the
+details of which are given in Appendix B.''
+\end{quote}
+Their Appendix~B gives the whole of it: semi-implicit Euler as in Numerical
+Recipes Section 17.5.2, the specific stepper named (\texttt{StepperSie}), the
+linear system solved by LU decomposition with forward and back substitution,
+$\Delta t$ crossed by a sequence of substeps $dt_i$ with Bulirsch--Stoer
+polynomial extrapolation to test each one, and the tolerances quoted
+(\texttt{rtol}~$=10^{-7}$, \texttt{atol}~$=10^{-4}\,$\texttt{rtol},
+$h_1 = 10^{-6}$, \texttt{hmin}~$=0$). The Jacobian is analytic: ``The Jacobian
+$\partial f/\partial y$ is calculated analytically for our problem, as are the
+time derivatives of the concentrations on the left-hand side of
+Equation~(B6).'' Cells are independent, so the network runs in parallel across
+the grid.
+
+Set against that, \EXHALE\ has the more careful \emph{formulation} and the
+weaker \emph{linear algebra}. Its rows are steady-state production--loss
+balances (\texttt{System\_HeH\_mol.f90}); there is no path in the tree that
+integrates the network in time.
+\texttt{nonlinear\_system\_solver/constrained\_chemical\_equilibrium.f90}
+takes the unknowns to be $u_k = \ln n_k$, so no iterate can go negative,
+following the CEA method of Gordon \& McBride (1994); it writes element
+conservation as an explicit residual row per element rather than as a closure,
+so that HeH$^+$ satisfies the H and the He budget simultaneously; and it takes
+$n_e$ from charge neutrality rather than carrying it as an unknown, so
+neutrality holds identically at every iterate. Each rung is then handed to
+MINPACK \texttt{hybrd} with a \emph{forward-difference} Jacobian --- the
+opposite of Frelikh's choice.
+
+The reason \EXHALE\ needs the extra apparatus is stated in that file's own
+header: the molecular cell is bistable, with ``a molecular basin in the dense,
+shielded base and an atomic basin above the \Htwo\ $\rightarrow$ H front,'' so
+a single starting guess either lands in the right basin or does not. The fix
+is a natural-parameter continuation in the radiation field, tracked from six
+decades below the cell's own field --- where the composition is known in
+closed form --- up to the true field, bisecting any rung that fails.
+
+\textbf{The judgement worth recording is that Frelikh does not meet this
+problem at all, and not because its solver is better.} A time-integrated
+network has no uniqueness question in it: the basin is selected by the
+previous step's state, not by a guess. Their only defense against a
+composition leaving the physical domain is a hard floor, stated in their
+Section~2.5 as ``We implement a number density floor of zero for all
+species,'' and they record that the floor leaves a visible mark --- their
+Figure~4 caption attributes a kink in the \Htwo\ density profile to
+``applying the density floor in a region where the profile drops off
+steeply.'' \EXHALE's continuation is, in effect, a reconstruction inside an
+equilibrium formulation of the path that time integration supplies for free.
+Neither approach is wrong; the point is that the bistability is a cost of
+choosing equilibrium, not a fact about the physics.
+
+\subsection{The molecular reaction network}
+\label{sec:network}
+
+Frelikh's Table~1 and \EXHALE's \texttt{lower\_atmosphere/mol\_rates.f90} are
+the only two molecular H--He networks among the five that can be compared
+reaction by reaction, and they largely agree. Frelikh lists 22 reactions
+compiled from Yelle (2004) and Garc\'ia-Mu\~noz (2007); \EXHALE\ carries 23
+transcribed from Koskinen et al.\ (2022) Table~1, which was checked here
+against the published table rather than against the transcription. All 22 of
+Frelikh's arrows are one-directional; there is no reversible pair notation in
+the table.
+
+\textbf{Twelve are identical in value and in source}: H$^+$ and He$^+$
+radiative recombination (Storey \& Hummer 1995), H$_2^+$ dissociative
+recombination (Auerbach et al.\ 1977), H$_2^+ + $\Htwo\ (Theard \& Huntress
+1974), H$_2^+ + $H (Karpas et al.\ 1979), H$^+ + $\Htwo\ (Yelle 2004),
+three-body H$_2$ formation $8.0\times10^{-33}(300/T)^{0.6}$ (Ham et al.\
+1970), He$^+ + $\Htwo\ $\rightarrow$ HeH$^+$ (Schauer et al.\ 1989),
+HeH$^+ + $\Htwo\ (Bohme et al.\ 1980), HeH$^+ + $H (Karpas et al.\ 1979),
+HeH$^+$ dissociative recombination (Yousif \& Mitchell 1989), and the
+three-body \Hth\ association. The last of these is worth naming because it is
+easy to assume it is missing: Frelikh's \textbf{k21},
+H$^+ + $\Htwo$ + $M~$\rightarrow$~\Hth$ + $M at
+$3.2\times10^{-29}$~cm$^6$\,s$^{-1}$ (Miller et al.\ 1968), \textbf{is present
+in \EXHALE} as R13, \texttt{rk\_R13\_Hp\_H2\_M}, at the same value and from
+the same source.
+
+\textbf{Five differ}, and Table~\ref{tab:ratediff} gives the sizes. Four are
+choices of source table. The fifth is not.
+
+{\tabsetup
+\begin{table}[htbp]\centering
+\caption{Rate coefficients that differ between Frelikh's Table~1 and
+\EXHALE's transcription of Koskinen et al.\ (2022) Table~1. Ratios evaluated
+here.}\label{tab:ratediff}
+\begin{tabular}{@{}L{0.20\textwidth} L{0.235\textwidth} L{0.235\textwidth}
+                  L{0.20\textwidth}@{}}
+\toprule
+\textbf{Reaction} & \textbf{Frelikh} & \textbf{\EXHALE} & \textbf{Ratio} \\
+\midrule
+\Hth$+$e$\rightarrow$\Htwo$+$H &
+$2.9{\times}10^{-8}(300/T)^{0.65}$ (Sundstr\"om 1994) &
+$2.16{\times}10^{-8}(300/T)^{0.65}$ (Larsson 2008) & 1.34 \\
+\Hth$+$e$\rightarrow$3H &
+$8.6{\times}10^{-8}(300/T)^{0.65}$ (Datz 1995) &
+$5.04{\times}10^{-8}(300/T)^{0.65}$ (Larsson 2008) & 1.71 \\
+\emph{\Hth\ recombination, total} & $1.15{\times}10^{-7}(300/T)^{0.65}$ &
+$7.20{\times}10^{-8}(300/T)^{0.65}$ & \textbf{1.60 at every $T$} \\
+\Hth$+$H$\rightarrow$H$_2^+ +$\Htwo &
+$2.0{\times}10^{-9}$, \textbf{no barrier} (Yelle 2004) &
+$2.1{\times}10^{-9}e^{-20000/T}$ (Harada 2010) &
+$4.6{\times}10^{8}$ (1000\,K); $4.6{\times}10^{6}$ (1300\,K);
+$2.1{\times}10^{4}$ (2000\,K); 748 (3000\,K) \\
+\Htwo$+$M$\rightarrow$H$+$H$+$M &
+$1.5{\times}10^{-9}e^{-4.8\times10^{4}/T}$ &
+$k_{\rm rec}/K_{\rm eq}$, detailed balance of R15
+(\emph{since 2026-09-01; was $1.5{\times}10^{-9}e^{-48350/T}$, which both
+codes cite from Baulch et al.\ 1992}) &
+\EXHALE/Frelikh $= 0.079$ (1000\,K); 0.19 (1300\,K); 0.51 (2000\,K);
+0.87 (3000\,K). Was 0.705 (1000\,K); 0.839 (2000\,K) \\
+He$^+ +$\Htwo$\rightarrow$H$^+ +$H$+$He &
+$8.8{\times}10^{-14}$ (Schauer 1989) &
+$1.0{\times}10^{-9}e^{-5700/T}$ (Moses \& Bass 2000) &
+38 (1000\,K); 142 (1300\,K); 657 (2000\,K) \\
+\bottomrule
+\end{tabular}
+\end{table}}
+
+\paragraph{\Hth$ + $H is a physics error in Frelikh, not a source choice.}
+The reaction \Hth$ + $H~$\rightarrow$~H$_2^+ + $\Htwo\ is endothermic. From
+the standard enthalpies of formation --- $1488.3$~kJ\,mol$^{-1}$ for H$_2^+$
+(which is $\mathrm{IE}(\Htwo) = 15.426$~eV), $1107$ for \Hth\ and $218.0$ for
+H --- the reaction enthalpy is
+$\Delta H = 1488.3 - 1107 - 218.0 = 163.3$~kJ\,mol$^{-1} = 1.69$~eV, i.e.\ a
+barrier of $19\,600$~K. The Harada et al.\ (2010) form that \EXHALE\ carries,
+$e^{-20000/T}$, matches that endothermicity; a temperature-independent
+$2.0\times10^{-9}$ does not, and there is no $v$-excited label on the entry as
+there is on the neighbouring H$^+ + \Htwo(v{\ge}4)$ row. \textbf{The judgement
+is that \EXHALE\ is right here and Frelikh is not}, at the four to eight
+orders of magnitude the table gives for the molecular layer. The caveat is
+that Yelle (2004) is not in \texttt{references/}, so whether the printed
+constant faithfully transcribes its source could not be checked.
+
+\textbf{Nothing in Frelikh's network is absent from \EXHALE.} Its k1, k3, k4,
+k14 and k22 are photoreactions, and \EXHALE\ has H, He and \Htwo\
+photoionization (\texttt{util\_ion\_eq.f90}) and Lyman--Werner
+photodissociation (\texttt{lyman\_werner.f90}, opt-in) of its own. The one
+unchecked item is whether \EXHALE\ implements the dissociative photoionization
+channel \Htwo$ + h\nu \rightarrow$ H$ + $H$^+ + $e$^-$ separately.
+
+\textbf{Six \EXHALE\ reactions have no counterpart in Frelikh}: collisional
+ionization of H and of He (Voronov 1997), electron-impact dissociation of
+\Htwo\ (Stibbe \& Tennyson 1999), \Htwo$ + $He$^+$ (Barlow 1984), and the two
+He$\leftrightarrow$H charge-exchange channels. The last of these is the one
+that matters. Frelikh's seven helium reactions (k14--k20) cover
+photoionization, two He$^+ + $\Htwo\ channels, two HeH$^+$ channels,
+He$^+$ recombination and HeH$^+$ dissociative recombination, and
+\textbf{contain no charge exchange with hydrogen in either direction}. In
+\EXHALE\ the live definitions are in
+\texttt{radiation/charge\_exchange.f90}, Group~B, and the two are not each
+other's reverse: B1, He$ + $H$^+ \rightarrow$ He$^+ + $H, is the
+non-radiative collisional channel (Kimura et al.\ 1993), while B2,
+He$^+ + $H~$\rightarrow$~He$ + $H$^+ + $photon, is radiative charge transfer
+(Stancil et al.\ 1998). A photon-emitting process has no collisional reverse,
+which is why the module forbids testing the pair against detailed balance.
+
+\subsection{\texorpdfstring{\Hth}{H3+} infrared cooling}
+\label{sec:h3p}
+
+Both codes take the cooling function from Miller, Stallard, Tennyson \& Melin
+(2013), and \EXHALE's 800--1800~K coefficients are the same seven numbers as
+Frelikh's Equation~(13). Three things differ.
+
+First, \textbf{Frelikh radiates into vacuum and \EXHALE\ can exchange with a
+field}. Frelikh's volumetric rate is
+$\Lambda_{\Hth} = 4\pi E(T)\,n_{\Hth}\times10^{7}$~erg\,cm$^{-3}$\,s$^{-1}$,
+with no incident term, no stimulated emission and no optical-depth factor;
+downward emission is treated as lost: ``We treat the radiation that is emitted
+downward (i.e., toward the lower simulation boundary) as having left the
+domain.'' Optical thinness is verified after the fact in their Section~3.4
+against ExoCross cross sections. \EXHALE's
+\texttt{lower\_atmosphere/h3p\_cooling.f90} carries the same emission term but
+its \texttt{h3p\_net\_cooling\_rate} returns
+$\Lambda_{\rm net} = n_{\Hth}\,4\pi\,s(T,n_{\Htwo})\,[\,E(T) - W_{\rm
+dil}E(T_{\rm rad})\,]\times10^{7}$, which is exactly zero when $T = T_{\rm
+rad}$ and $W_{\rm dil} = 1$. \textbf{But $W_{\rm dil}$ is reached only through
+the key \texttt{Base IR field}, which defaults to off}, so \EXHALE's default
+behavior is Frelikh's.
+
+Second, \EXHALE\ carries the \textbf{non-LTE departure factor}
+$s(T, n_{\Htwo})$ of Miller et al.'s Table~6 and all four published
+temperature segments (30--300, 300--800, 800--1800, 1800--5000~K); Frelikh is
+pure LTE and implements only the upper two, so its \Hth\ cooling is undefined
+below 800~K and is set to zero above 5000~K.
+
+Third, and recorded here because it will confuse anyone reading the paper
+against the code: \textbf{Frelikh's Equations~(13) and~(14) are printed
+without their logarithm}, as
+$E(800 < T < 1800\,\mathrm{K}) = -62.7016 + 0.0526104\,T - \ldots$ carrying
+units of W\,sr$^{-1}$\,molecule$^{-1}$. A negative polynomial cannot be a
+power, and the missing operator is a \emph{natural} logarithm, not a common
+one. Two independent checks were run here. The two published segments
+disagree at their 1800~K junction by $-2.35\,\%$ read as $\ln E$ and by
+$-5.34\,\%$ read as $\log_{10}E$, and \EXHALE's transcription of the same
+Table~5 records the mismatch as ``2.4\,\% below'' --- the natural-log value.
+And a two-level estimate for the $\nu_2$ band ($A \approx 100$~s$^{-1}$,
+$E(\nu_2) = 3628$~K, $h\nu$ at 4~$\mu$m) gives
+$1.05\times10^{-20}$~W\,sr$^{-1}$\,molecule$^{-1}$ at 1000~K, against
+$3.34\times10^{-20}$ for the natural-log reading and $1.4\times10^{-45}$ for
+the common-log reading. Their own figures confirm that the code behind the
+paper is right and only the printed equations are wrong: their Figure~5 shows
+$\Lambda_{\Hth}\approx2\times10^{-7}$~erg\,cm$^{-3}$\,s$^{-1}$ where Figure~4
+shows $n_{\Hth}\approx$ a few$\times10^{3}$~cm$^{-3}$, which is the
+natural-log ratio.
+
+\subsection{Photoelectron secondary ionization}
+\label{sec:secion}
+
+Section~\ref{sec:common} records that \EXHALE\ no longer treats the
+photoelectron heating fraction as a free parameter, which separates it from
+Taylor and Xing. Frelikh does not treat it as free either, and it uses a
+different and --- for a molecular gas --- a better prescription.
+
+\EXHALE\ uses \textbf{Shull \& van Steenberg (1985)}, with the branching
+between the H\,\textsc{i} and He\,\textsc{i} secondary channels renormalized
+from the $n(\mathrm{He})/n(\mathrm{H}) = 0.1$ composition their Monte Carlo
+sampled onto the cell's own neutrals (\texttt{svs85\_secondary\_branching},
+\texttt{radiation/util\_ion\_eq.f90}). Frelikh uses \textbf{Dalgarno, Yan \&
+Liu (1999)}: $W = W_0(1 + Cx^{\alpha})$ from their Tables 4 and 5, a secondary
+ionization added to the network as an extra reaction, and --- this is the
+part \EXHALE\ has no equivalent of --- the \Htwo\ channels put back
+explicitly. Their Equations (25)--(35) return the 5.4~eV dissociation heat
+following triplet excitation, the thermalized $\nu = 1$ (0.516~eV) and
+$\nu = 2$ (1.032~eV) vibrational levels with three separate ionization-fraction
+weightings, and the Lyman and Werner electronic states with their
+$\sim$90\,\% fluorescent / $\sim$10\,\% dissociative branching.
+
+Frelikh also states the range of validity and checks it: ``the approximations
+presented in A.\ Dalgarno et al.\ (1999) are only valid for a gas with an
+ionization fraction $<$0.1,'' which they justify by locating the relevant
+$\tau_\nu = 1$ surfaces in the neutral layer, with a stated error of at most
+15\,\%.
+
+\textbf{The judgement is that for a molecular layer Dalgarno et al.\ (1999) is
+the correct prescription and Shull \& van Steenberg (1985) is not.} SvS85 is a
+Monte Carlo fit for a pure atomic H\,$+$\,He plasma; it carries no information
+about where photoelectron energy goes in a gas that is mostly \Htwo. Checked
+here, \texttt{svs85\_secondary\_branching} contains no \Htwo\ term at all ---
+the code carries an \Htwo\ photoabsorption column separately, but the
+photoelectron energy partition has no \Htwo\ vibrational thermalization, no
+dissociation heat return and no \Htwo\ secondary ionization. The two
+prescriptions are complementary rather than competing: SvS85 remains valid to
+high ionization fraction, where Dalgarno's fits are not, and Dalgarno covers
+the molecular gas, where SvS85 has nothing to say. Neither covers the whole
+domain.
+
+The sign of the effect is also worth recording, since it is not the intuitive
+one. Frelikh's Section~6 reports that including secondary ionization raised
+the ionization fraction in the molecular layer, increased electron-impact
+destruction of \Hth, reduced \Hth\ cooling and so \emph{increased} the escape
+rate, ``from $6.4\times10^9$ to $9\times10^9$\,g\,s$^{-1}$\,sr$^{-1}$ for our
+fiducial hot Jupiter run, which is counter to the intuition that secondary
+ionization results in a decreased efficiency of escape.''
+
+\subsection{Metals and cooling}
+\EXHALE\ has the richest \emph{closed-form} metal treatment: ten elements
+(C, O, N, Mg, Si, Ca, Na, K, S, Fe) in 27 ion stages inside the coupled
+system, CHIANTI-fitted line cooling, ground-term fine-structure levels solved
+in statistical equilibrium at the local $(n_e, n_{\rm HI})$ rather than in the
+coronal limit, and line trapping in the eight fine-structure lines of
+C\,\textsc{i}, C\,\textsc{ii}, N\,\textsc{ii} and O\,\textsc{i}. Taylor can
+include solar-abundance metals but treats the structure as H/He-dominated.
+Xing has \textbf{no metals} and \textbf{only \Lya\ cooling}. Frelikh has no
+metals either, and only \Lya\ and \Hth\ cooling; it checked recombination
+cooling in postprocessing against the Osterbrock \& Ferland rate and left it
+off as negligible. Its Section~5.4 names the omission as the main limit on
+extending the model to smaller planets, since \Hth\ is destroyed by H$_2$O and
+CO and metals bring line coolants of their own. SB23 itself
+carries only recombination and \Lya\ cooling; the \AIOLOS\ code adds the Black
+(1981) rates with free-free and H$_3^+$ cooling, but neither is specialized to
+the metal-line escape problem.
+
+\subsection{Line diagnostics}
+Taylor computes 10830 and \Ha\ in loop with the most complete non-LTE
+microphysics. Xing post-processes 10830 only. \EXHALE\ builds the $2^3$S and
+H($n{=}2$) populations in the run --- the metastable is on by default --- and
+produces the transmission spectrum (10830, \Lya, \Ha, H$\beta$, the Mg\,II,
+Ca\,II and Na\,I doublets) in \texttt{EXHALE\_transit.py}, with
+impact-parameter Voigt integration, instrument and rotation convolution and an
+optional triaxial Roche geometry. \AIOLOS\ does not target these lines.
+
+\subsection{Lower boundary}
+\label{sec:lowerbc}
+Taylor couples to a photochemical lower and middle atmosphere at
+$\sim$1~$\mu$bar, which is the most physically motivated boundary of the five.
+Xing uses a fixed-density, fixed-temperature base. \AIOLOS\ leaves the boundary
+configurable. \EXHALE\ now has the same range as Taylor: a fixed base, an
+analytic chemical-equilibrium column, a scalar handoff, or a full profile ---
+item (D) below.
+
+\paragraph{Frelikh imposes the same count as \EXHALE, and one thing more.}
+Its base sits at $P_0 = 0.96$~dyn\,cm$^{-2}$, i.e.\ at ``the region of the
+outflow above the 1~$\mu$bar level, near which molecules such as \Htwo\ are
+present,'' with $T_0 = 1000$~K and $\Rp = 10^{10}$~cm for the fiducial hot
+Jupiter (their Table~2). Their Section~2.8 states what is imposed and why:
+\begin{quote}\small
+``At the inner boundary, the flow is subsonic, so we specify the boundary
+conditions for the number densities of each species and the pressure. We
+extrapolate the velocity from the grid: $u_0 = u_1 - (r_1-r_0)(u_2-u_1)/
+(r_2-r_1)$, a wave can travel from the domain to the inner boundary, as the
+flow is subsonic, so the value of the velocity is part of the solution and
+cannot be imposed as a boundary condition.''
+\end{quote}
+\EXHALE's \texttt{BC\_component\_constrho} pins $\rho$ and $p$ and copies the
+ghost velocity from the first interior cell. \textbf{The count of imposed
+conditions and the choice of which component floats are identical}, and
+Frelikh gives the characteristic argument for that choice explicitly.
+\textbf{The difference is that Frelikh also imposes the composition.} That is
+the one item on \EXHALE's own outstanding list for the base that Frelikh has
+already done; it appears as item~(M) in Section~\ref{sec:adopt}.
+
+Two further points. Frelikh nowhere reports a supersonic base, nor a guard
+against one. Searching the paper for that failure mode returns nothing: the
+subsonic condition is a \emph{premise} of the Section~2.8 argument and the
+possibility of its being violated is not discussed. The structural weakness
+that follows --- once the inflow is supersonic all three characteristics enter
+the domain and an extrapolated velocity stops being a boundary condition ---
+applies to both codes; only \EXHALE\ has found it.
+
+Second, Frelikh's answer to the base thermal problem is not a physical model
+but a deliberate override, and the paper says so. Their Section~2.2 opens by
+naming the symptom --- ``We implement a bolometric heating and cooling term in
+this region, as the EUV heating is insufficient to prevent the gas from
+cooling to unphysically low temperatures'' --- and then applies, below the
+$\tau = 3$ surface of the highest-energy bin,
+$\Gamma_{\rm bol} - \Lambda_{\rm IR} = \kappa\sigma_{\rm SB}(T_0^4 - T^4)$
+with the opacity set by hand:
+\begin{quote}\small
+``where we have set $\kappa_{\rm opt}$ and $\kappa_{\rm IR}$ to a single
+inflated value $\kappa = 1$\,cm$^2$\,g$^{-1}$. In addition, in our
+implementation, we set $T_0^4 = 4T_{\rm eq}^4$, such that Equation~(12) has
+the form of a Newtonian cooling term. \ldots\ our choices effectively force
+the bolometrically heated layer to be isothermal at the temperature given by
+the input parameter $T_0$.''
+\end{quote}
+For the fiducial planet that region is $r < 1.005\,\Rp$. Heat conduction plays
+no part in it: Frelikh's Section~3.5 finds conduction ``subdominant at all
+fluxes in our grid of models,'' worth $\sim$2\,\% in $\Mdot$ at 0.3~au, and
+the only stability remark about it in the paper runs the other way --- their
+Section~2.8 warns that ``conduction makes the choice of outer boundary
+conditions more important, as the conduction term does not explicitly include
+a flux limiter.''
+
+The bearing on \EXHALE\ is that \EXHALE\ already owns a less blunt instrument
+for the same problem. \texttt{Base IR field} gives the \Hth\ band a radiative
+equilibrium fixed point at $T_{\rm rad} = 1140$~K, $W_{\rm dil} = 1/2$, i.e.\
+975.4~K, instead of letting it run the layer down; it is off by default
+(Section~\ref{sec:h3p}). The reservation is that the temperature trough
+measured in the molecular gate cases reaches 865~K, \emph{below} that fixed
+point, so \Hth\ alone does not account for it and the other channels in that
+region have not been separated.
+
+\subsection{The molecular layer, measured side by side}
+\label{sec:mollayer}
+
+Frelikh's fiducial hot Jupiter and \EXHALE's molecular regression cases are
+close enough in irradiation to compare directly. Frelikh quotes
+$F_{\rm EUV} = 2.6\times10^3$~erg\,cm$^{-2}$\,s$^{-1}$ at 0.05~au;
+\texttt{EXHALE\_setup.out} for the gate cases reports
+$\log_{10}F_{\rm XUV} = 3.193$, i.e.\
+$1.56\times10^3$~erg\,cm$^{-2}$\,s$^{-1}$, a factor 1.7. The planets differ
+more: 0.7~$M_{\rm J}$ against a 14.52~$M_\oplus$ hot Uranus
+($\Rp = 0.49\,R_{\rm J}$, $T_{\rm eq} = 1140$~K, $a = 0.048$~au,
+He/H~$= 0.0793$).
+
+All \EXHALE\ numbers in Table~\ref{tab:mollayer} were measured here from
+\texttt{backup/regression/*/output/} by parsing the \texttt{\# columns}
+headers; no case was re-run. Frelikh's numbers are from its Table~2 and its
+Figure~4, 5 and 9 captions, except the $\Lambda_{\Hth}$ plateau, which was
+read off the Figure~5 axis and is therefore approximate.
+
+{\tabsetup
+\begin{table}[htbp]\centering
+\caption{The molecular layer. \EXHALE\ columns measured here; Frelikh columns
+as published.}\label{tab:mollayer}
+\begin{tabular}{@{}L{0.20\textwidth} L{0.17\textwidth} L{0.15\textwidth}
+                  L{0.17\textwidth} L{0.17\textwidth}@{}}
+\toprule
+& \textbf{Frelikh HJ} & \textbf{Frelikh s-Earth} &
+\textbf{\EXHALE\ \texttt{mol\_metals}} &
+\textbf{\EXHALE\ \texttt{mol\_base\_handoff}} \\
+\midrule
+Planet mass & 0.7\,$M_{\rm J}$ & 7.2\,$M_\oplus$ & 14.52\,$M_\oplus$ &
+14.52\,$M_\oplus$ \\
+Base pressure & 0.96\,$\mu$bar & 0.47\,$\mu$bar & 9.0\,$\mu$bar &
+9.0\,$\mu$bar \\
+Base $T$ & 1000\,K (forced) & 1000\,K (forced) & 1213\,K & 1213\,K \\
+Base \Htwo\ fraction of H nuclei & $\approx1$ & $\approx1$ & 0.99989 &
+0.9996 \\
+\Htwo$\rightarrow$H crossover & 1.01\,$\Rp$ & no sharp transition &
+1.158\,$\Rp$ (1166\,K) & 1.158\,$\Rp$ (1155\,K) \\
+Molecular layer cut-off & 1.04\,$\Rp$, sharp & \textbf{none; \Htwo\ survives
+throughout} & 1.19\,$\Rp$, sharp & 1.19\,$\Rp$, sharp \\
+Molecular layer $T$ & 1000$\rightarrow$4000\,K & --- &
+1213$\rightarrow$1319\,K & 1213$\rightarrow$1305\,K \\
+$T$ minimum / maximum & --- / $\sim$9500\,K & --- / 4200\,K &
+\textbf{865\,K} at 1.190 / 2719\,K at 1.910 & 874\,K / 2647\,K \\
+$n(\Hth)$ maximum & $\sim2{\times}10^{5}$\,cm$^{-3}$ & --- &
+46.3\,cm$^{-3}$ at 1.124\,$\Rp$ & $6.7{\times}10^{4}$\,cm$^{-3}$ at
+1.031\,$\Rp$ \\
+$N(\Hth)$ & $1.0{\times}10^{13}$\,cm$^{-2}$ &
+$1.5{\times}10^{13}$\,cm$^{-2}$ & $1.73{\times}10^{10}$\,cm$^{-2}$ &
+$1.79{\times}10^{13}$\,cm$^{-2}$ \\
+$\Lambda_{\Hth}$ maximum & $\sim2{\times}10^{-7}$ (read off Fig.~5) & --- &
+$6.145{\times}10^{-10}$ at 1.113\,$\Rp$ & $8.898{\times}10^{-7}$ at
+1.031\,$\Rp$ \\
+\ldots as a fraction of local cooling & most of it & dominant & 6.8\,\% &
+100\,\% \\
+\ldots as a multiple of local heating & $\lesssim1$ & --- & 0.003 &
+\textbf{6.95} \\
+Sonic point & 3.1\,$\Rp$ & 4.4\,$\Rp$ & 2.878\,$\Rp$ & 2.874\,$\Rp$ \\
+Ionized fraction at sonic point & mostly ionized & mostly neutral & 0.41 &
+0.41 \\
+$\log_{10}\Mdot$ [g\,s$^{-1}$] & 11.05 if integrated over $4\pi$ & --- &
+10.582 & 10.575 \\
+Peak Mach number below 1.35\,$\Rp$ & not reported & --- & 0.017 & 0.014 \\
+\bottomrule
+\end{tabular}
+\end{table}}
+
+Three readings of that table matter.
+
+\textbf{The three-layer structure reproduces, but on the wrong side of a
+qualitative divide.} Frelikh's Section~5.4 sets its own super-Earth against
+Koskinen et al.\ (2022) and finds them alike, and both unlike a hot Jupiter:
+\begin{quote}\small
+``Our super-Earth runs are qualitatively similar to the results of their hot
+Uranus model, in which instead of the sharp transition between the molecular
+hydrogen layer and the atomic layer, as seen in our hot Jupiter simulations
+\ldots\ molecules are present throughout the outflow. Particularly interesting
+is the presence of \Hth\ throughout the outflow, instead of being confined to
+a narrow region at the base.''
+\end{quote}
+\EXHALE's hot Uranus gate does the opposite. Measured here, the \Htwo\
+fraction of H nuclei falls from 0.48 at 1.16\,$\Rp$ to
+$2.7\times10^{-5}$ at 1.30\,$\Rp$, and $n(\Hth)$ from 35 to
+$1.2\times10^{-3}$\,cm$^{-3}$ over the same interval --- four decades each.
+The temperature is also low: 865--2719~K, against the 4000--5000~K Frelikh
+quotes as the Koskinen hot Uranus prediction and the 1000--3800~K of its own
+super-Earth. \textbf{\EXHALE's hot Uranus is behaving like Frelikh's hot
+Jupiter, not like the Koskinen hot Uranus the gate case is meant to
+reproduce.}
+
+\textbf{The two \EXHALE\ gate cases disagree with each other by three orders
+of magnitude} in $N(\Hth)$, $1.73\times10^{10}$ against
+$1.79\times10^{13}$\,cm$^{-2}$, and only the second is in Frelikh's range.
+The difference is the \texttt{base.inp} handoff, whose $q_{\rm H_2,base}$ sets
+the base \Hth. In that case $\Lambda_{\Hth}$ is 6.95 times the local heating
+at 1.031\,$\Rp$ and supplies 100\,\% of the cooling there, which is a net
+cooling excess visible in the numbers.
+
+\textbf{The base flow is not supersonic, and that is not the same as saying it
+is healthy.} The peak Mach number below 1.35\,$\Rp$ is
+$1.4$--$1.7\times10^{-2}$ in every gate case, and the He/H of these runs
+(0.0793) is far outside the composition window where a supersonic base has
+been seen. What the same output does show is described in
+Section~\ref{sec:baseflaws}.
+
+\section{The \Htwo\ thermal-dissociation pair: a defect diagnosed here, and
+since repaired on one side}
+\label{sec:detbal}
+
+\textbf{Repaired on the \EXHALE\ side, 2026-09-01; see
+Section~\ref{sec:detbalfix}.} The diagnosis below is left as it was written,
+because it is what identified the defect and because it still holds for
+Frelikh. The \EXHALE\ column of Table~\ref{tab:detbal} describes the code as it
+was before that date.
+
+Frelikh's k12 and k13 are the forward and reverse of the same process,
+\Htwo$ + $M~$\rightleftharpoons$~H$ + $H$ + $M, taken from two different
+measurements: $1.5\times10^{-9}e^{-4.8\times10^{4}/T}$ from Baulch et al.\
+(1992) for the dissociation and
+$8.0\times10^{-33}(300/T)^{0.6}$ from Ham et al.\ (1970) for the three-body
+recombination. \EXHALE's R12 and R15 were the same pair from the same two
+sources, differing only in that Koskinen et al.\ (2022) print the barrier as
+$48\,350$~K where Frelikh rounds it to $4.8\times10^{4}$~K.
+
+Nothing in Frelikh discusses whether the pair is thermodynamically consistent.
+The paper was searched here for \emph{detailed balance}, \emph{thermodynamic},
+\emph{equilibrium constant}, \emph{reverse reaction}, \emph{reversible},
+\emph{extrapolat} and \emph{range of validity}, across the body, the
+appendices, the footnotes and the table notes. The only hits are the linear
+velocity extrapolation of Section~2.8 and the Bulirsch--Stoer extrapolation of
+Appendix~B, both unrelated. \textbf{There is no statement about the
+consistency of the pair, and none about the temperature range over which
+either fit is valid.} No such record was found on the \EXHALE\ side either;
+the caveats in \texttt{mol\_rates.f90} concern third-body efficiency and the
+helium-rich limit, not forward--reverse consistency.
+
+The ratio $k_{\rm diss}/k_{\rm rec}$ is the equilibrium constant
+$n_{\rm H}^2/n_{\Htwo}$, with the third body cancelling, so it can be checked
+against thermodynamics directly. Table~\ref{tab:detbal} does that.\footnote{%
+$K = (2\pi\mu k_{\rm B}T/h^2)^{3/2}\,g_{\rm H}^2/z_{\rm int}(\Htwo)\;
+e^{-D_0/k_{\rm B}T}$ with $\mu = m_{\rm H}/2$, $g_{\rm H} = 2$ and
+$D_0 = 36\,118.11$~cm$^{-1}$. The internal partition function was summed
+explicitly over $v = 0$--15 and $J = 0$--79 with the Huber \& Herzberg
+constants ($\omega_e = 4401.21$, $\omega_ex_e = 121.33$,
+$\omega_ey_e = 0.812$, $B_e = 60.853$, $\alpha_e = 3.062$~cm$^{-1}$),
+discarding levels above $D_0$, with ortho/para nuclear-spin weights 3 and 1
+divided out by $(2I+1)^2 = 4$ so that the nuclear spin cancels consistently
+against the H atoms. A rigid-rotor harmonic-oscillator evaluation of the same
+expression agrees to 2.8\,\% at 1000~K and 1.7\,\% at 2000~K.}
+
+{\tabsetup
+\begin{table}[htbp]\centering
+\caption{The thermal-dissociation pair against thermodynamic equilibrium.
+Ratios above unity mean the pair drives the gas more atomic than equilibrium
+allows. Computed here. $^{\dagger}$\,\EXHALE\ as it was before 2026-09-01;
+Section~\ref{sec:detbalfix}.}\label{tab:detbal}
+\begin{tabular}{@{}r r r r r r@{}}
+\toprule
+$T$ [K] & $K_{\rm thermo}$ [cm$^{-3}$] & Frelikh $k_{12}/k_{13}$ & ratio &
+\EXHALE\ R12/R15\rlap{$^{\dagger}$} & ratio \\
+\midrule
+ 500 & $7.07\times10^{-22}$ & $5.17\times10^{-19}$ & \textbf{732} &
+       $2.57\times10^{-19}$ & \textbf{363} \\
+ 800 & $7.71\times10^{-5}$ & $2.96\times10^{-3}$ & \textbf{38.4} &
+       $1.91\times10^{-3}$ & \textbf{24.8} \\
+1000 & $3.80\times10^{1}$ & $5.50\times10^{2}$ & \textbf{14.5} &
+       $3.88\times10^{2}$ & \textbf{10.2} \\
+1500 & $1.54\times10^{9}$ & $6.24\times10^{9}$ & 4.05 &
+       $4.94\times10^{9}$ & 3.21 \\
+2000 & $9.96\times10^{12}$ & $2.21\times10^{13}$ & 2.22 &
+       $1.86\times10^{13}$ & 1.86 \\
+3000 & $6.38\times10^{16}$ & $8.40\times10^{16}$ & 1.32 &
+       $7.48\times10^{16}$ & 1.17 \\
+4000 & $4.97\times10^{18}$ & $5.45\times10^{18}$ & 1.10 &
+       $4.97\times10^{18}$ & 1.00 \\
+5000 & $6.62\times10^{19}$ & $6.87\times10^{19}$ & 1.04 &
+       $6.40\times10^{19}$ & 0.97 \\
+\bottomrule
+\end{tabular}
+\end{table}}
+
+\textbf{The judgement is that the pair is thermodynamically consistent only
+above about 3000--4000~K, and that this is a defect of both codes equally.}
+Below that it drives the composition toward atomic hydrogen faster than
+equilibrium permits, by a factor 14.5 in Frelikh and 10.2 in \EXHALE\ at
+1000~K, and by 38 and 25 at 800~K. \EXHALE\ is the less wrong of the two only
+because the higher barrier it transcribes partly compensates; the error is the
+same error. Both codes place their molecular layer in exactly the 1000--1500~K
+band where the inconsistency is largest --- Frelikh forces its base to
+$T_0 = 1000$~K, and the \EXHALE\ gate cases measure 1213--1319~K through the
+layer.
+
+Two qualifications. Neither code sets the \Htwo/H balance from this pair
+alone: photodissociation, the Lyman--Werner channel and the ion chemistry all
+act, so the composition error is smaller than the tabulated factors and is
+confined to wherever thermal dissociation and three-body recombination
+dominate. And this is a statement about the pair, not about either published
+measurement in its own range of validity; the Baulch fit belongs to
+shock-tube temperatures far above the molecular base.
+
+\subsection{The repair, 2026-09-01}
+\label{sec:detbalfix}
+
+\EXHALE\ no longer transcribes the dissociation fit.
+\texttt{rk\_R12\_H2\_thdis} in
+\texttt{src/modules/\allowbreak lower\_atmosphere/\allowbreak mol\_rates.f90}
+now returns \texttt{k3b\_H\_H\_to\_H2(T)\allowbreak\ /\ \allowbreak
+keq\_H\_H\_to\_H2(T)}: the three-body
+recombination coefficient divided by the equilibrium constant the module
+builds from the \Htwo\ spectroscopic constants. R15 moved at the same time
+from the Ham et al.\ (1970) room-temperature measurement to the Cohen \&
+Westberg (1983) recommended $k_1(\Htwo) = 2.8\times10^{-31}T^{-0.6}$, whose
+stated 50--5000~K range covers the molecular layer where Ham's 77--300~K does
+not.
+
+The consequence for Table~\ref{tab:detbal} is that the \EXHALE\ ratio column
+becomes \textbf{1 by construction at every temperature}: R12/R15 is now
+$1/K_{\rm eq}$ exactly, and against the independently computed
+$K_{\rm thermo}$ of the footnote it is 0.998--1.000 over 500--5000~K, the
+residual being the two evaluations' different treatment of the \Htwo\ internal
+partition function. The 363, 24.8, 10.2 and 3.21 of the 500--1500~K rows are
+gone.
+
+Two checks that the construction is right rather than merely self-consistent.
+Against the Baulch fit it replaces, the new $k_{\rm diss}$ is 1.05 at 8000~K,
+1.18 at 5000~K, 0.97 at 3000~K and 0.82 at 2500~K --- agreement inside
+Baulch's own stated 2500--8000~K range --- and departs only below it (0.61 at
+2000~K, 0.11 at 1000~K), which is where the fit is an extrapolation. Against
+the primary shock-tube measurement rather than the evaluation, Breshears \&
+Bird's own M~$=$~\Htwo\ coefficient $5.48\times10^{-9}e^{-52989/T}$, the ratio
+is 1.11 at 3500~K (the bottom of their measured range), 0.99 at 4000~K, 0.82
+at 5000~K and 0.51 at 8000~K.
+
+\textbf{The judgement of this section therefore stands for Frelikh and no
+longer for \EXHALE.} The pair is now thermodynamically exact in \EXHALE\ at
+every temperature, and its molecular layer is no longer driven toward atomic
+hydrogen faster than equilibrium permits. What the detailed-balance route
+assumes instead is the vibrational state the coefficients refer to, which is
+recorded at the code site and in
+\texttt{docs/molecular\_hydrogen\_treatment.tex}.
+
+\section{What the molecular gate cases show}
+\label{sec:baseflaws}
+
+The comparison in Section~\ref{sec:mollayer} required reading \EXHALE's
+molecular regression output closely, and five things turned up in it that are
+not about Frelikh at all. They are recorded here with the method, so that they
+can be re-measured. Every one comes from
+\texttt{backup/regression/\textless case\textgreater/} with no case re-run;
+the profile quantities are from \texttt{output/Hydro\_ioniz.txt} columns
+$r/\Rp$, $\rho$~[$m_{\rm H}$\,cm$^{-3}$] and $v$, and the warnings from
+\texttt{run.log}. All five gate cases are relaxation snapshots pinned at
+\texttt{maxsteps}~$=12\,000$.
+
+\begin{enumerate}[nosep,leftmargin=*]
+  \item \textbf{The mass flux is not flat at the base.} $\rho v r^2$ in
+    \texttt{mol\_metals} runs $1.6563\times10^{16}$ at $r = 1.00019$ and
+    $3.1420\times10^{16}$ at $r = 1.00039$ --- a factor \textbf{1.90 across
+    one cell}, at the second interior cell. Over the molecular layer
+    ($1.0 < r/\Rp < 1.19$) the spread $(\max-\min)/\mathrm{mean}$ is
+    \textbf{1.865}. In \texttt{mol\_lyman\_werner} the first two rows are
+    exactly zero, the third is \textbf{negative}, $-1.6507\times10^{16}$, and
+    the fourth returns to $+1.3357\times10^{15}$: the flux changes sign inside
+    the layer. A converged steady state requires $\rho v r^2$ to be constant
+    in radius, and these are not.
+  \item \textbf{Inflowing cells sit inside the molecular layer in one case.}
+    Counting rows with $v < 0$: \texttt{mol\_metals},
+    \texttt{mol\_base\_handoff} and \texttt{mol\_diffusion} each have 28, all
+    at $r = 1.305$--$1.426\,\Rp$, i.e.\ \emph{outside} the molecular front at
+    1.16--1.19. \texttt{mol\_lyman\_werner} has \textbf{144, at
+    $r = 1.00019$--$1.12394\,\Rp$, inside the layer}, with the first cell's
+    velocity exactly zero --- the one-way valve latched shut.
+  \item \textbf{The accepted chemical states that are not roots sit at the
+    temperature minimum.} \texttt{mol\_metals/run.log} carries 24 lines of
+    \texttt{(ioniz\_eq) NON-ROOT accepted (relaxation amnesty)} and
+    \texttt{mol\_ir\_bands} 11; an example reads \texttt{cell 260 step 1 r
+    1.197620 T[K] 1.197E+03 info 4 viol 1.210E-08 res 1.065E-03}. They cluster
+    at $r \approx 1.19$--$1.20\,\Rp$, which is where the temperature trough
+    bottoms out at 865~K (Table~\ref{tab:mollayer}).
+    \textbf{The direction of causation was not determined.} Whether a runaway
+    in the cooling breaks the chemical solve, or a state that is not a root
+    drives the cooling, or a third cause produces both, is not decided by this
+    measurement, and no inference is drawn here. What the coincidence does put
+    in question is whether the thermal collapse and the non-uniqueness of the
+    chemical solve are two problems or one.
+  \item \textbf{Lyman--Werner self-shielding is being evaluated outside its
+    fit.} \texttt{mol\_lyman\_werner/run.log}: ``\texttt{the H2 Lyman-Werner
+    lines remove 1.01E+00 of the 912-1110 A band, i.e.\ all of it. The Draine
+    \& Bertoldi (1996) self-shielding fit is a fit to a RATE and does not bound
+    the photon budget; the band transmission is floored at zero and this column
+    is outside the fit.}'' The band is 101\,\% removed and the transmission
+    floors at zero. This is the same case as item~2; no connection between the
+    two is asserted.
+  \item \textbf{\texttt{mol\_ir\_bands} exercises one of the three channels its
+    name implies.} With \texttt{Base IR field: True} and
+    \texttt{Molecular IR bands: True}, the H$_2$O and CO infrared columns of
+    \texttt{output/Cooling\_breakdown.txt} (col.\ 13 and 14) are
+    \textbf{exactly zero at every radius}, because \texttt{Oxygen chemistry} is
+    off in that configuration and the carriers do not exist. The only molecular
+    infrared channel actually switched on is the \Htwo\ band, at
+    $8.98\times10^{-9}$ at the \Hth\ peak cell and
+    $2.93\times10^{-7}$~erg\,cm$^{-3}$\,s$^{-1}$ at its own maximum. As a
+    regression gate the case does not protect the H$_2$O and CO paths.
+\end{enumerate}
+
+A note on quoting $\Mdot$ from these cases, since it is easy to get wrong.
+\texttt{src/EXHALE\_main.f90} evaluates it at $j = N - 20$, i.e.\ at
+$r = 3.9231\,\Rp$, and halves it under
+\texttt{2D approximate method: Rate/2 + Mdot/2}. Recomputing
+$4\pi\rho m_{\rm H} v r^2$ at that index and halving reproduces the
+$\log_{10}\Mdot = 10.58$ that \texttt{EXHALE\_setup.out} prints. Evaluating at
+the outer edge instead, or omitting the factor of two, gives 10.94 and is not
+the quantity the code reports. In any case the mass-flux spread above means
+none of these numbers should be quoted as a converged $\Mdot$.
+
+For completeness: the temperature floor these cases could have hit is
+$0.01\,T_0 = 11.4$~K, because \texttt{T\_trial} in
+\texttt{energy\_semi\_implicit.f90} is dimensionless. No case activated it
+(\texttt{grep -c floor} over \texttt{run.log} returns zero in all five), and
+the measured minima --- 865, 874, 946 and 970~K --- differ case by case rather
+than resting on a common constant.
+
+\section{Adoption assessment}
+\label{sec:adopt}
+
+Each candidate is given one of three verdicts. \textbf{Adopted} names the
+module that implements it. \textbf{Adopted then replaced} records that the
+element entered the code and was later superseded, and by what. \textbf{Not
+adopted} states whether the original reason still holds.
+
+\subsection{Adopted}
+
+\paragraph{(A) He/H diffusive separation --- adopted, in a stronger form than
+recommended.} The recommendation was Taylor's route: a molecular-plus-eddy
+diffusion term on top of a single bulk momentum solve. That is what
+\texttt{functions/binary\_element\_diffusion.f90} does, with the two departures
+described in Section~\ref{sec:fluid} --- the transported variable is the helium mass
+fraction of a binary mixture rather than a trace ratio, and the binary
+coefficient is resolved by ionization stage rather than taken at a neutral
+rate. The eddy term comes from the scalar key \texttt{He\_Kzz} or, when a
+lower-atmosphere profile is in use, from that profile's $\Kzz(p)$ interpolated
+onto the grid. One implicit backward-Euler step is taken per hydro step and
+converged by Newton on a tridiagonal Jacobian, with a P\'eclet-switched
+donor-cell treatment of the $X(1-X)$ drift product so the flux vanishes where
+either component runs out. Metals ride with hydrogen at fixed metal/H unless
+\texttt{He\_metal\_diffusion} is set, in which case each metal additionally
+diffuses as a trace species through the solved hydrogen background. The
+operator is available both inside the marching loop and, through an outer
+composition relaxation, on the direct steady route. Default off
+(\texttt{He\_diffusion}).
+
+\paragraph{(D) Whole-atmosphere lower boundary --- adopted, and carried past
+Taylor.} \EXHALE\ now has three routes below the base, in increasing order of
+what they carry. An analytic isothermal column from the 1-bar level to the
+$\mu$bar base using the Koskinen et al.\ (2022, Eqs.~11--13) chemical-equilibrium
+H$_2$/H/He partition (\texttt{lower\_atmosphere/lower\_column.f90}). A scalar
+handoff file \texttt{base.inp}, generated analytically or from a VULCAN run,
+which carries the EOS boundary ($T$, $r$, $p$, $q_{\rm H_2}$), the elemental
+reservoirs (He/H and a \texttt{<El>\_H\_base} key for each of the ten
+elements, which is what \texttt{melem\_ab} is then built from) and the eddy
+coefficient. And a full \emph{profile} named by
+\texttt{Lower atmosphere profile:}
+(\texttt{files\_IO/lower\_atmosphere\_profile.f90}), which carries
+$p$, $r$, $T$, $n_{\rm tot}$, $\rho$, $\Kzz$, $q_{\rm H_2}$, $q_{\rm H}$,
+$X_{\rm He}$ and a mixing-ratio column per element, interpolated in $\log p$.
+A scalar physics key sitting beside a profile is refused rather than merged,
+and the two files must agree on a \texttt{solution\_id}.
+
+The part that goes beyond Taylor is the closure. Taylor's coupling is one-way:
+the photochemistry sets the base and the wind reads it. \EXHALE\ closes the
+loop on the elemental fluxes. \texttt{binary\_element\_diffusion.f90} measures
+$F_{\rm H}$ and $F_{\rm He}$ face by face and reduces them to a median and a
+spread over a radial window, and \texttt{src/utils/element\_flux\_closure.py}
+iterates $\Phi_{\rm El} = F_{\rm El}(\Phi_{\rm El})$ to a fixed point with
+under-relaxation, the chemistry taking $\Phi$ as its upper boundary condition
+and the wind returning $F$. The elemental composition of the wind is then an
+output of the coupled pair rather than an input to either.
+\texttt{photochem\_to\_lower\_profile.py} and
+\texttt{vulcan\_to\_lower\_profile.py} produce the profile file; a residual
+smaller than the spread of the window it was measured on is reported as
+unresolved rather than as converged.
+
+\paragraph{(E) Molecular chemistry and H$_3^+$ cooling --- adopted.}
+H$_2$, H$_2^+$, H$_3^+$ and HeH$^+$ are unknowns of the same coupled system as
+H, He and the metals (\texttt{System\_HeH\_mol.f90},
+\texttt{System\_HeH\_mol\_metals.f90}), so the molecular and metal blocks share
+one electron density. H$_3^+$ infrared cooling follows Miller et al.\ (2013),
+in LTE with the non-LTE departure factor and with absorption of the ambient
+infrared field so the rate returned is the net one
+(\texttt{lower\_atmosphere/h3p\_cooling.f90}). H$_2$ photodissociation in the
+Lyman--Werner bands uses Draine \& Bertoldi (1996) self-shielding
+(\texttt{lower\_atmosphere/lyman\_werner.f90}, key
+\texttt{Stellar LW flux}, zero by default). The three-body density $M$ of the
+association reactions is the total gas-particle density from
+\texttt{calc\_ntot}, not a mass density. Default off
+(\texttt{Molecular chemistry}); turning it on requires helium and forces the
+molecular particle count at the base.
+
+\paragraph{(F) \Lya\ Monte Carlo --- adopted as an option, not as the default.}
+The recommendation was to keep the escape-probability closure and use Taylor's
+Monte Carlo only as a validation benchmark, because a WASP-121\,b column with
+$\tau_0 \sim 5\times10^7$ makes an acceleration-free Monte Carlo intractable
+and forbids core skipping. That still stands for the in-loop field: the default
+is the in-line Neufeld/Harrington closure. But \EXHALE\ also accepts a
+tabulated $J_{\rm Ly\alpha}(r)$ from any external solver
+(\texttt{Jlya RT file}), and that path is used with the LaRT Monte Carlo code,
+including the \Lya\ emitted in situ within the wind. The Monte Carlo is
+therefore available where it is affordable, without being in the iteration.
+
+\paragraph{(I) Navier--Stokes viscosity and heat conduction --- adopted (from
+Koskinen, i.e.\ Taylor's own hydro heritage).} This was not on the original
+list. \texttt{time\_step/viscous\_conduction.f90} adds the viscous momentum
+force, its dissipation and thermal conduction --- the Navier--Stokes level that
+CETIMB solves and that an inviscid HLLC scheme lacks --- integrated
+Crank--Nicolson and entering the steady residual through the same operator.
+Both are opt-in (\texttt{Viscosity}, \texttt{Conduction}). Note that the module
+does \emph{not} implement Koskinen et al.\ (2022) Eqs.~(B5) and (B6) as
+printed: for a radial flow with the Newtonian stress
+$\tau_{ij} = \mu(\partial_i w_j + \partial_j w_i) - \frac{2}{3}\mu
+\delta_{ij}\nabla\!\cdot\!\mathbf{w}$, the viscous force and the dissipation
+are
+\[
+  F_\mu = \frac{4}{3}\frac{1}{r^2}\frac{\partial}{\partial r}
+          \!\left(r^2 \mu \frac{\partial w}{\partial r}\right)
+        - \frac{4}{3}\frac{\partial \mu}{\partial r}\frac{w}{r}
+        - \frac{8}{3}\frac{\mu w}{r^2},
+  \qquad
+  q_\mu = \frac{4}{3}\mu\!\left(\frac{\partial w}{\partial r}
+          - \frac{w}{r}\right)^{\!2},
+\]
+and the code carries these rather than the printed forms; the derivation is in
+the module header.
+
+\paragraph{(J) \AIOLOS's opacity-model dispatcher --- adopted.} Also not on the
+original list, which treated \AIOLOS\ as a cross-check only.
+\texttt{radiation/opacity\_models.f90} is an \AIOLOS-style dispatcher over
+photoionization opacity models --- analytic, constant, constant with
+Robinson \& Catling pressure broadening, and tabulated from a two-column
+\texttt{.opa} file --- selected at runtime by the presence of
+\texttt{opacity.inp}. The pressure factor that was a deferred hook in the
+version it came through is applied cell by cell here.
+
+\subsection{Adopted, then replaced}
+
+\paragraph{(B) Temperature-dependent Penning ionization --- adopted from Taylor
+(2025), then retired.} The original recommendation was the cheapest item on the
+list, and it was taken: the constant $5\times10^{-10}$~cm$^3$\,s$^{-1}$ of
+Roberge \& Dalgarno (1982) was replaced by the two-branch power law of Taylor
+et al.\ (2025) Table 2, unconditionally. It has since been withdrawn. The fit
+was transcribed correctly but is not usable: it \textbf{jumps by a factor
+1.5724 at 4000~K} ($1.5849\times10^{-9} \to 2.4921\times10^{-9}$), and a rate
+coefficient is a continuous function of temperature. It also disagrees with its
+own paper's Figure~19, where the Maxwell--Boltzmann average of the Cohen \&
+Lane (1971) and Morgner \& Niehaus (1979) cross sections rises to
+$1.50\times10^{-9}$ near 1400~K and falls to $1.29\times10^{-9}$ at 4000~K
+while the tabulated branch decreases monotonically, and above 4000~K it exceeds
+every cross-section determination collected by Garc\'ia Mu\~noz (2025).
+
+What is in the code now is the continuous closed form of Garc\'ia Mu\~noz
+(2025), \emph{A\&A} 698, A199 --- the Maxwell--Boltzmann average of the Movre \&
+Meyer (1997) total ionization cross sections for the atomic partner
+(\texttt{ioniz\_HeI23S\_H}) and of Cohen \& Lane (1977) for the molecular one
+(\texttt{ioniz\_HeI23S\_H2}), both in \texttt{radiation/Cool\_coeff.f90}.
+Both return the \emph{total} rate that removes the metastable; the 0.9/0.1
+split between the Penning channel, which leaves a lasting ion and a free
+electron, and the associative channel, which makes HeH$^+$, is carried by
+\texttt{f\_penning\_HeI23S} at the points where the products matter. Taylor's
+own Figure~19 agrees with the adopted expression to 10--20\,\%, so the two
+independent calculations are consistent and it was the published fit that was
+the outlier.
+
+\paragraph{(K) \AIOLOS's C/N/O line-cooling fits --- adopted, then replaced by
+CHIANTI.} The analytic C/N/O metal-cooling fits of \AIOLOS's
+\texttt{photochem.cpp} --- code, not paper --- were ported into
+\texttt{Cool\_coeff.f90} and were the default for a time. They are now the legacy branch (\texttt{cno\_cool 0}) and
+the default is a set of closed-form fits to CHIANTI, accurate to 0.2--2.1\,\%
+over $10^3$--$10^5$~K. The reason is physical, not stylistic: the \AIOLOS\
+fits contain no nitrogen cooling at all, and their O\,\textsc{i}/O\,\textsc{ii}
+rates deviate from CHIANTI by 40--70\,\%. The \AIOLOS\ branch is kept so old
+results remain reproducible, and its remaining tuning constants are flagged in
+place.
+
+\subsection{Not adopted}
+
+\paragraph{(C) The B-spline K-matrix He($2^3$S) cross section --- not adopted;
+the reason still holds, but the earlier statement of it was too generous.} It
+was claimed that \EXHALE\ was ``already most of the way there.'' What
+\texttt{functions/cross\_sec.f90} actually has is a smooth background: two
+Verner et al.\ (1996) single-shell forms joined by a log-linear bridge, fitted
+at the few-percent level to the Norcross (1971) / TOPbase background, with the
+autoionization region represented by a \emph{resonance-averaged} bump. Taylor's
+cross section resolves the individual EUV resonances, which \EXHALE's does not
+and cannot. The case for adopting it is unchanged --- low cost, a data swap;
+moderate value, since whether the resonances matter depends on where the
+star's coronal lines fall --- but it should be stated as a missing capability
+rather than as a finished job.
+
+\paragraph{(G) \AIOLOS's FLD radiation and general reaction network --- not
+adopted; the reason still holds, with one clause of it withdrawn.} FLD matters
+for optically-thick interiors and dust, not for an optically-thin thermosphere,
+and a general implicit reaction matrix is the wrong shape for a steady-state
+code whose ionization system is one algebraic solve. Both still stand. The
+third clause of the old argument --- that HLLC would be no improvement on
+\EXHALE's ``approximate Riemann solver'' --- was simply wrong about the code:
+\EXHALE\ has had HLLC since ATES, alongside LLF and Roe, and HLLC is what every
+example configuration uses. There was nothing to adopt there.
+
+\paragraph{(H) Xing's electron-pressure Riemann split and full multi-fluid ---
+not adopted; the reason is now stronger.} Converting \EXHALE\ to genuine
+multi-fluid means velocities per species, collisional drag and the
+electron-pressure split, which is a rewrite of the hydro core and hard to
+reconcile with a single coupled algebraic ionization solve. The original
+argument was that Taylor's diffusion approximation captures most of the same
+effect far more cheaply. That argument is now backed by what was built: the
+stage-resolved binary operator reproduces the friction physics --- an ion held
+to the protons by Coulomb collisions, a neutral settling at a hard-sphere rate
+--- that motivated the multi-fluid treatment in the first place. Xing remains a
+validation reference for the fractionation itself.
+
+\paragraph{(L) The Dalgarno et al.\ (1999) photoelectron partition in a
+molecular gas --- not adopted; this one is a real gap.} Unlike (C), (G) and
+(H), the reason here does \emph{not} still hold. \EXHALE\ uses Shull \& van
+Steenberg (1985) throughout, and its branching routine contains no \Htwo\ term
+of any kind (Section~\ref{sec:secion}): no vibrational thermalization, no
+dissociation heat returned, no \Htwo\ secondary ionization. That was harmless
+while the code had no molecular layer. It is not harmless now that
+\texttt{Molecular chemistry} exists, because the layer it omits the physics
+from is exactly the layer where the highest-energy photons deposit. The
+prescriptions are complementary --- SvS85 stays valid where Dalgarno's fits do
+not, above an ionization fraction of 0.1 --- so the shape of the fix is a
+composition switch between the two rather than a replacement. Cost: moderate,
+a set of closed-form fits from Dalgarno et al.\ (1999) Tables 4 and 5 plus
+their Equations~(25)--(35). Value: it changes the energy budget of the
+molecular layer, and Frelikh reports the effect running counter to intuition,
+raising $\Mdot$ rather than lowering it.
+
+\paragraph{(M) A composition boundary condition at the base --- not adopted;
+recommended.} Frelikh imposes the number density of every species at the inner
+boundary along with the pressure (Section~\ref{sec:lowerbc}); \EXHALE\ pins
+$\rho$ and $p$ and lets the interior chemistry decide what the gas at the base
+is made of. The imposed-condition count is the same either way, so this is not
+a well-posedness question --- it is a question of whether an inflowing
+molecular reservoir is allowed to arrive with a composition of its own.
+\EXHALE's own outstanding list already carries this item; the point worth
+recording is that a peer code does it and reports no difficulty from it.
+
+\paragraph{(N) Time integration of the network in molecular cells --- not
+adopted; recorded as an option rather than a recommendation.} The bistability
+that forces the radiation-field continuation in
+\texttt{constrained\_chemical\_\allowbreak equilibrium.f90} is a cost of
+solving for
+equilibrium, and a short time integration of the same network does not have
+it (Section~\ref{sec:chemsolver}). Frelikh's stepper is an off-the-shelf
+semi-implicit Euler with an analytic Jacobian, which is not expensive. Against
+that: \EXHALE\ is a steady-state code, its molecular rows share one electron
+density with the metal and He($2^3$S) rows, and splitting the molecular block
+out into a time-integrated substep would break the single-system architecture
+that the rest of this memo records as the right one. The honest statement is
+that the continuation and the substep solve the same difficulty and neither
+has been measured against the other here.
+
+\paragraph{(O) Post-hoc verification of the radiative-transfer approximations
+--- not adopted; cheap, and worth doing.} Frelikh does two checks that
+\EXHALE\ asserts rather than measures. Their Appendix~D runs a Monte Carlo of
+1000 \Lya\ photons through the converged profile and reports 78\,\% escaping
+to space, 11\,\% lost downward into the bolometric region and 11\,\%
+thermalized, which is what licenses the optically thin \Lya\ cooling rate;
+repeating it from deeper in the molecular layer gives 36/27/37 and they say so.
+Their Section~3.4 checks \Hth\ optical thinness against ExoCross cross
+sections at the computed column. \EXHALE\ has the ingredients for both --- the
+LaRT coupling for the first, the Miller et al.\ data for the second --- and
+uses neither as a check on its own closures.
+
+\section{What was not verified}
+\label{sec:unverified}
+
+The Frelikh comparison rests in places on sources that were not available, and
+on \EXHALE\ paths that were not followed to the end. Six items are open, and
+are listed so that nothing above is read as more settled than it is.
+
+\begin{enumerate}[nosep,leftmargin=*]
+  \item \textbf{Yelle (2004) is not in \texttt{references/}}, so whether
+    Frelikh's barrier-free \Hth$ + $H constant faithfully transcribes its
+    stated source could not be checked. The thermochemical argument in
+    Section~\ref{sec:network} stands on its own, but it convicts the printed
+    rate, not necessarily the transcription.
+  \item \textbf{Larsson et al.\ (2008) and Baulch et al.\ (1992) are likewise
+    not held}, so the \Hth\ recombination factor of 1.60 and the $48\,350$
+    versus $4.8\times10^{4}$~K barrier were compared between the two secondary
+    sources, not against the primary measurements.
+  \item \textbf{Whether \EXHALE\ implements the dissociative photoionization
+    channel} \Htwo$ + h\nu \rightarrow$ H$ + $H$^+ + $e$^-$ was not
+    established. \texttt{PIR\_H2} exists in \texttt{util\_ion\_eq.f90}; the
+    branching among the \Htwo\ photo-channels was not traced.
+  \item \textbf{The temperature clamp reported elsewhere was not reproduced.}
+    The five molecular gate cases do not activate the 11.4~K floor, and their
+    minima differ case by case (Section~\ref{sec:baseflaws}). Whatever run
+    exhibited a clamped cell, it is not one of these.
+  \item \textbf{The direction of causation between the temperature trough and
+    the non-root chemical states} at $r \approx 1.19\,\Rp$ is undetermined
+    (Section~\ref{sec:baseflaws}, item 3).
+  \item \textbf{Frelikh contradicts itself on the number of evolved species},
+    and the memo does not adjudicate. Its Section~2.9 says ``the seven
+    atomic/molecular species ($+$electrons)''; its Appendix~A says ``the eight
+    component species''; its Table~1 contains eight neutral and ionic species
+    (H, H$^+$, \Htwo, H$_2^+$, \Hth, He, He$^+$, HeH$^+$).
+\end{enumerate}
+
+One further observation is recorded as an observation only. In Frelikh's own
+molecular layer, reading $n(\mathrm{H}) \approx 10^{11}$ and
+$n_e \approx 3\times10^{8}$~cm$^{-3}$ off its Figure~4, the barrier-free
+\Hth$ + $H channel gives $\approx200$~s$^{-1}$ against $\approx12$~s$^{-1}$
+for dissociative recombination, which would make it the dominant \Hth\ sink.
+That sits awkwardly against their Section~2.3, which says of the
+recombination channels that ``we verify post facto that they do indeed
+dominate in our results.'' The numbers behind this were read off a published
+figure, so it is not asserted as a finding.
+
+\section{Summary}
+
+\begin{itemize}[nosep]
+  \item \textbf{\AIOLOS} is a general-purpose, multi-fluid RHD code with the
+    most sophisticated \emph{numerics} and the least specialization to the
+    He/\Ha\ escape-diagnostic problem. It has contributed less than Taylor to
+    \EXHALE, but not nothing: the opacity-model dispatcher came from it, and
+    its C/N/O cooling fits were \EXHALE's default until CHIANTI replaced them.
+  \item \textbf{Taylor (2025/2026)} was and remains the closest match to
+    \EXHALE's goals and its richest source of upgrades. Four of the six adopted
+    items come from Taylor or from the Koskinen code beneath it: diffusive He/H
+    separation, molecular chemistry with H$_3^+$ cooling, the whole-atmosphere
+    lower boundary, and Navier--Stokes viscosity and conduction. The one
+    Taylor item that did not survive is the Penning rate, and it failed on its
+    own internal inconsistency rather than on anything about \EXHALE.
+  \item \textbf{Xing (2023)} still provides the physically purest treatment of
+    He/H mass fractionation, and is still not something to import. It is a
+    validation reference.
+  \item \textbf{Frelikh (2026)} is the closest peer to \EXHALE's molecular
+    layer and, unlike the other three, it is a code \EXHALE\ can be checked
+    \emph{against} rather than borrowed from: twelve of its 22 reactions are
+    identical to \EXHALE's in value and source, and where the two differ
+    \EXHALE\ is ahead on the network (it has the He$\leftrightarrow$H charge
+    exchange Frelikh lacks, and the endothermic barrier on \Hth$ + $H that
+    Frelikh's constant rate is missing), ahead on \Hth\ cooling (non-LTE
+    departure factor, four temperature segments, an optional exchange with the
+    base field), and behind on exactly two things: the photoelectron partition
+    in a molecular gas, and a composition boundary condition at the base.
+  \item \textbf{One finding belonged to no single code, and has since been
+    repaired on one side.} The thermal-dissociation pair both codes took from
+    Baulch (1992) and Ham (1970) is off thermodynamic equilibrium by a factor
+    10--15 at 1000~K in the sense of over-dissociating
+    (Section~\ref{sec:detbal}); \EXHALE\ now builds the dissociation from the
+    recombination through the equilibrium constant and is exact
+    (Section~\ref{sec:detbalfix}), and the finding stands for Frelikh only.
+    The extrapolated-velocity inner boundary
+    both codes use stops being a boundary condition if the inflow ever goes
+    supersonic, a weakness only \EXHALE\ has so far found in itself, belongs
+    to both.
+  \item \textbf{The two gaps this memo was written to name are closed.}
+    \EXHALE\ has radius-dependent He/H separation, and it has a lower boundary
+    that a photochemical model sets rather than the user. What is left of the
+    original list is one data swap (the resolved He($2^3$S) cross section) and
+    two architectural items that were correctly declined. The Frelikh
+    comparison has since opened four more, of which one --- the missing \Htwo\
+    channels in the photoelectron partition --- is a genuine gap rather than a
+    declined option.
+\end{itemize}
+
+\end{document}

@@ -354,19 +354,26 @@ The first pass reads them before that, in `nhe`, in the electron sum and in
 `eval_cool`. They are now zeroed where the helium arrays are initialized;
 helium-on runs are bit-identical across the change.
 
-## Open, not fixed here
+## The two that were left open, and are now closed
 
-The control run that exposed both is still unphysical after them, for a
-different reason: `P_HeI` in its post-process reaches `7e15 s^-1`. The SvS85
-secondary channel is added as
+The control run that exposed both was still unphysical after them, for a
+different reason: `P_HeI` in its post-process reached `7e15 s^-1`. The SvS85
+secondary channel was added as
 `P_HeI = P_HeI + R_secHeI/max(nheiS, 1e-99)` (`util_ion_eq.f90`), a volumetric
 rate carrying SvS85's own helium abundance divided by the actual singlet
-density: it diverges as the singlet disappears, and the ten post-process passes
-close the loop. In a `Do only PP: True` run the equilibrium solve additionally
-runs with the coupling *off* and the post-process with it *on*, because
-`EXHALE_main.f90` flips `sec_ion_active` after the time loop. Both are
-described in `Update_EXHALE.md` section 88.4, with the measurement; neither is
-changed, because both move physics results.
+density: it diverged as the singlet disappeared, and the ten post-process passes
+closed the loop. In a `Do only PP: True` run the equilibrium solve additionally
+ran with the coupling *off* and the post-process with it *on*, because
+`EXHALE_main.f90` flips `sec_ion_active` after the time loop.
+
+Both are fixed (2026-08-30). The branching is now resolved on the cell's own
+neutral He/H ratio and returned per target atom, so nothing divides by a
+vanishing density (`svs85_secondary_branching`; `Update_EXHALE.md` section 96,
+`TO_BE_DONE.md` item (J)), and `sec_ion_active` is armed before the loop when
+`do_only_pp` is set, so the one equilibrium solve of a PP-only run uses the same
+physics as the post-process beside it (`Update_EXHALE.md` section 94,
+`TO_BE_DONE.md` item (K)). On the control run the cells above 1.5 R_p with a
+collapsed ground singlet go from 171 of 233 to none.
 
 Fixed in passing, outside the post-process: `LHS1140b/make_memo_figures.py` and
 `LHS1140b/exhale/kzz_scan_table.py` formed the elemental helium density as

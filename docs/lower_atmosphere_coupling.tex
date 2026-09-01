@@ -937,10 +937,19 @@ stops cooling at its own radiative equilibrium temperature, 575.8\,K (C\,I
 coverage, and heats below it.
 
 For H$_3^+$ there is no line list --- Miller et al.\ (2013) fit the \emph{total}
-emission --- so the same exchange is closed on one effective band, the $\nu_2$
-fundamental at 2521.3\,cm$^{-1}$ ($E/k=3627.5$\,K), which carries most of the
-emission: $\Lambda_\mathrm{net}=\Lambda_\mathrm{emit}(T)\,[1-\bar n\,e^{E/kT}]$.
-Its radiative equilibrium temperature is 936.1\,K at the base for $T_0=1140$\,K.
+emission --- so the absorption is taken from that fit at the radiating
+temperature, which is what Kirchhoff's law makes of an emission integral:
+$\Lambda_\mathrm{net}=n(\mathrm{H_3^+})\,4\pi\,s(T,n_{\mathrm{H_2}})
+\,[E(T)-W\,E(T_0)]$. This is the same net-exchange form the H$_2$, H$_2$O and CO
+channels use (\S\ref{sec:molir}), and it is bounded at every temperature. Its
+radiative equilibrium temperature is 975.4\,K at the base for $T_0=1140$\,K.
+Between 2026-08-13 and 2026-08-31 the exchange was instead closed on one
+effective band, the $\nu_2$ fundamental at 2521.3\,cm$^{-1}$ ($E/k=3627.5$\,K),
+as $\Lambda_\mathrm{net}=\Lambda_\mathrm{emit}(T)\,[1+\bar n-\bar n\,e^{E/kT}]$,
+with equilibrium temperatures of 936.1\,K and then 941.2\,K. Pairing a total
+emission fit with the Boltzmann factor of one of its transitions diverges below
+about 150\,K and is wrong by a factor 1.5--1.9 over 400--1000\,K; \S112 of
+\texttt{docs/Update\_EXHALE.pdf} measures it and records what moved.
 The approximations and where they break are written at
 \texttt{h3p\_net\_cooling\_rate}
 (\texttt{src/modules/lower\_atmosphere/h3p\_cooling.f90}) and at
@@ -974,6 +983,15 @@ mass-flux spread, $r>1.2$ & $2.4\!\times\!10^{-3}$ & $2.4\!\times\!10^{-3}$ & $2
 \bottomrule
 \end{tabular}
 \end{center}
+
+\noindent\textbf{Stale, and not re-measurable from here: the field-on columns
+and the predicted floors below were computed with the single-band H$_3^+$
+closure, which was replaced on 2026-08-31 (\S112 of
+\texttt{docs/Update\_EXHALE.pdf}).} The converged solutions they restart from no
+longer exist as run directories, so the table is left as the record of what that
+closure gave. The same four-way comparison re-measured with the current closure,
+at the 12000-step protocol of the \texttt{mol\_ir\_bands} regression case, is in
+\S112.
 
 \noindent The metals-off layer stops collapsing and settles \emph{on} the
 H$_3^+$ radiative equilibrium curve: the predicted floor with the local sky
@@ -1083,8 +1101,33 @@ calculation \emph{including line overlap},
 with $b_5=b/10^{5}$\,cm\,s$^{-1}$, and their eq.~(40),
 $\zeta_\mathrm{diss}=f_\mathrm{shield}\,e^{-\tau_\mathrm{dust}}\,
 \zeta_\mathrm{diss}(0)$. It reproduces the exact self-shielding function over
-$10^{14}<N_\mathrm{H_2}<3\times10^{21}$\,cm$^{-2}$ (their Figs.~1--5), which covers
-the whole molecular layer of a hot-Neptune or hot-Jupiter base. $b$ is the H$_2$
+$10^{14}<N_\mathrm{H_2}<3\times10^{21}$\,cm$^{-2}$ (their Figs.~1--5).
+
+\textbf{The rate no longer uses that $f_\mathrm{shield}$.} DB96's fit is
+calibrated for cold gas in which only the lowest rotational states of H$_2$ are
+populated; Richings, Schaye \& Oppenheimer (2014), MNRAS 442, 2780, compared it
+against a level-resolved \textsc{cloudy} calculation and found that it
+overestimates the shielding factor by a factor ${\sim}3$. Our molecular layer
+runs at 945--1307\,K, where the overestimate measured with our own columns is
+2.8--5.4$\times$. The photodissociation rate therefore uses their
+temperature-dependent eqs.~(3.12)--(3.15),
+\begin{equation}
+  S_\mathrm{self}(N_\mathrm{H_2},T) =
+    \frac{1-w(T)}{(1+x/b_5)^{\alpha(T)}}\,e^{-5\times10^{-7}(1+x)}
+  + \frac{w(T)}{(1+x)^{1/2}}\,e^{-8.5\times10^{-4}(1+x)^{1/2}},
+  \qquad x=\frac{N_\mathrm{H_2}}{N_\mathrm{crit}(T)},
+\end{equation}
+with $w(T)$, $\alpha(T)$ and $N_\mathrm{crit}(T)$ their eqs.~(3.13)--(3.15) and
+the same thermal Doppler parameter: their fit was made for purely thermal
+broadening, and their Fig.~B1 caption states that the agreement with
+\textsc{cloudy} is poorer once turbulence is included, so no turbulent term is
+added. DB96 eq.~(37) is kept, and is still used, for the \emph{band equivalent
+width} of the shared 912--1110\,\AA\ beam: their eq.~(39) is the closed-form
+integral of eq.~(37) and of nothing else, and Richings publishes no
+corresponding equivalent width. \texttt{lyman\_werner.f90} \S2 sets out why the
+two coexist and which quantity each owns.
+
+$b$ is the H$_2$
 Doppler parameter, taken thermal, $b=(2kT/m_\mathrm{H_2})^{1/2}$ ---
 3.07\,km\,s$^{-1}$ at 1140\,K, next to the 3\,km\,s$^{-1}$ of DB96's own figures.
 $N_\mathrm{H_2}$ is the star-ward column, built by the same
@@ -1266,6 +1309,226 @@ photochemistry would give less still; the network sits at 0.851 with the band on
 as without it.
 
 % ===================================================================== %
+\section{The molecular infrared bands (\texttt{Molecular IR bands}, 2026-08-31)}
+\label{sec:molir}
+% ===================================================================== %
+The \texttt{Base IR field} closure of \S\ref{sec:baseir} gave the infrared
+coolants the code already had --- the eight ground-term fine-structure lines and
+the H$_3^+$ bands --- the field they sit in, and stopped there. Its own closing
+paragraph named what was left: past the H$_2\to$H front there are no molecular
+coolants in the model at all, and holding that gas needs the coolants a real
+H$_2$ atmosphere carries. This section supplies three of them. Item~(G) of
+\texttt{TO\_BE\_DONE.md}.
+
+\paragraph{Which coolants, and why these three.}
+\textbf{H$_2$ quadrupole and magnetic dipole lines} (Roueff et al.\ 2019, table 2,
+VizieR J/A+A/630/A58). H$_2$ is the bulk gas: its transition probabilities are
+$10^{-10}$--$10^{-6}$\,s$^{-1}$, but it outnumbers every other molecule by
+$10^{3}$--$10^{4}$, and the two cancel. At $n(\mathrm{H_2})=5\times10^{13}$\,cm$^{-3}$
+and $1000$\,K it radiates $1.4\times10^{-7}$\,erg\,cm$^{-3}$\,s$^{-1}$, four times
+the local photoheating (the pure rotational part alone is
+$4.8\times10^{-8}$; above about 600\,K the vibrational bands carry most of it). It is the only one of the three that exists in a
+Tier-2 run without the oxygen option.
+\textbf{H$_2$O} (HITEMP 2010) is the strongest infrared coolant of a
+solar-composition H$_2$ atmosphere below ${\sim}2000$\,K, and the one the oxygen
+option switches the [O\,\textsc{i}] fine-structure lines off in favour of.
+\textbf{CO} (HITEMP 2019) holds essentially all the carbon at the base; its
+4.7\,$\mu$m fundamental carries four to five orders of magnitude more than
+its pure rotational lines above 300\,K.
+
+H$_2$--H$_2$ and H$_2$--He collision-induced absorption is deliberately \emph{not}
+a channel, and that is a measurement rather than a scope decision. It scales as
+$n^2$, and on the CIA tables shipped with Photochem its optical depth over a
+pressure scale height at the $1\,\mu$bar base is $8\times10^{-9}$ (hot Uranus) to
+$2\times10^{-9}$ (HD\,189733\,b), with unit optical depth reached only near
+0.2--0.4\,bar --- consistent with Lavvas \& Arfaux (2021), who put CIA's onset at
+$p>1$\,bar. It is what makes the reservoir \emph{below} the base black in the
+windows between the bands --- the assumption \texttt{Base IR field} already
+encodes --- not a local coolant of the modelled domain.
+
+\paragraph{The closure.}
+For each species the net radiative loss per unit volume is the optically thin,
+LTE exchange with the diluted field of the lower atmosphere,
+\begin{equation}
+\Lambda_{\rm net} = n_X\left[E_X(T) - W\,E_X^{\rm abs}(T;T_0)\right],
+\end{equation}
+with, for a band absorber,
+\begin{equation}
+E_X(T) = 4\pi\sum_b \sigma_b(T)\!\int_b\! B_\nu(T)\,d\nu, \qquad
+E_X^{\rm abs}(T;T_0) = 4\pi\sum_b \sigma_b(T)\!\int_b\! B_\nu(T_0)\,d\nu,
+\end{equation}
+and, for the H$_2$ line sum, the same quantity assembled transition by
+transition with the full two-level net factor
+$1+\bar n-\bar n\,e^{\Delta E/T}$. $W$ is the dilution the H$_3^+$ closure uses,
+$\tfrac12[1-\sqrt{1-(\Rp/r)^2}]$, and it is zero when \texttt{Base IR field} is
+off.
+
+Keeping the stimulated-emission term is not decoration: it is what makes the
+bracket vanish identically at $T=T_0$, $W=1$ --- gas buried in a blackbody at its
+own temperature neither cools nor heats. For the band absorbers that property is
+automatic, because the HITRAN line intensities the cross sections are built from
+already carry the $1-e^{-h\nu/kT}$ factor, so $\sigma_b$ is the coefficient that
+pairs with $B_\nu$. For a line sum it has to be written down. The H$_3^+$
+closure of \S\ref{sec:baseir} had dropped it; it was put back the same day, and
+because $E_k(\nu_2)/T_0$ is large that cost only 2.2\% of the emission and 5\,K of
+equilibrium temperature there ($936\to941$\,K at $T_0=1140$\,K). On a
+far-infrared band the same omission would be an order-unity error. The
+single-band H$_3^+$ form the 941\,K belongs to was itself replaced the same day
+--- a total emission fit cannot be paired with the Boltzmann factor of one
+transition at all temperatures --- and the H$_3^+$ column below is the
+replacement's (\S112 of \texttt{docs/Update\_EXHALE.pdf}).
+
+Each channel therefore has its own radiative equilibrium temperature, and it is
+the fixed point rather than the magnitude that answers item~(G):
+
+\begin{center}\small
+\begin{tabular}{lcccc}
+\toprule
+$T_0$ & H$_2$O & CO & H$_2$ & (H$_3^+$) \\
+\midrule
+ 900\,K & 705\,K & 752\,K & 783\,K  & 780.9\,K \\
+1140\,K & 889\,K & 918\,K & 984\,K  & 975.4\,K \\
+1183\,K & 922\,K & 947\,K & 1019\,K & 1010.7\,K \\
+1450\,K & 1120\,K & 1120\,K & 1226\,K & 1231.6\,K \\
+1800\,K & 1369\,K & 1338\,K & 1486\,K & 1517.6\,K \\
+2358\,K & 1749\,K & 1668\,K & 1883\,K & 1938.6\,K \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\noindent (half-sky coverage, $W=\tfrac12$). How much rests on that assumption
+is measurable: for H$_2$O at $T_0=1183$\,K the equilibrium temperature is
+726.5 / 922.1 / 1065.0 / 1183.0\,K at $W=0.25/0.5/0.75/1$, and CO 784.7 /
+946.5 / 1073.1 / 1183.0\,K --- at $W=1$ both are exactly $T_0$, the closure's
+fixed point recovered numerically. Because $W$ multiplies only the
+absorption, these temperatures are insensitive to first order to any grey escape
+probability applied to both terms --- which is why the optically thin limit is
+enough to fix the \emph{temperature} even where a band is marginally thick.
+
+\paragraph{Optical depth, and why the thin limit is used.}
+At a 1\,$\mu$bar base with solar oxygen the band-mean optical depth of the
+H$_2$O rotational bands over a scale height is a few times $10^{-2}$; the
+strongest $g$-points inside a band reach order unity. The H$_2$ lines are
+thinner still: the line-centre opacity of 0--0 S(1) at 17\,$\mu$m gives
+$\tau\approx3\times10^{-4}$ over a scale height at
+$n(\mathrm{H_2})=5\times10^{13}$\,cm$^{-3}$ and $1000$\,K. No escape probability
+is applied, and the Planck-mean optical depths of the H$_2$O and CO columns to
+the top of the domain are written to \texttt{output/Cooling\_breakdown.txt} so
+the assumption is measured rather than asserted.
+\texttt{output/FUV\_bands.txt} carries the same statement as a conservation
+check: the column-integrated absorbed power of the three bands against the
+incident infrared flux $W\sigma T_0^4$, with a warning if it is exceeded.
+
+\paragraph{Where the numbers come from, and three independent checks.}
+The band-mean cross sections are $\sum_g w_g k_g$ of the correlated-$k$ tables,
+which is exactly the bin-mean cross section. Line strengths do not depend on the
+broadening, only the line shape does, so this mean is pressure independent to
+better than 2\% from $10^{-6}$ to 1\,bar --- measured --- and the whole EXHALE
+domain uses the $10^{-6}$\,bar slice, which is also the lowest tabulated
+pressure. The tables run 50--2000\,K and are clamped outside; the H$_2$ line sum
+has no such limit. Three checks, against sources that share none of that line
+processing:
+\begin{itemize}\itemsep2pt
+\item the Planck-mean H$_2$O cross section agrees with the independent table
+  \texttt{aiolos/inputdata/1H2-16O\_T400.aiopa} to within 11\% over
+  600--2000\,K (ratio 0.889--1.111 on the 14 shared grid temperatures); below
+  600\,K that table is not monotonic in $T$ and the comparison is not
+  meaningful, the low-temperature end being covered by the Neufeld \& Kaufman
+  comparison instead;
+\item restricted to $\lambda>9$\,$\mu$m, i.e.\ to the pure rotational band, the
+  H$_2$O emission agrees with the optically thin LTE rate of Neufeld \& Kaufman
+  (1993) table~2 to a factor 0.70 (100\,K), 0.81 (200\,K), 0.90 (400\,K), 1.02
+  (1000\,K); the same cut on CO against their table~3 gives 0.81--0.93 over
+  300--2000\,K. At 100\,K the CO ratio falls to 0.10, most likely the
+  eight-point $g$-quadrature resolving the linear bin mean poorly for CO's
+  sparse rotational ladder rather than the coarse long-wavelength binning
+  (97\% of the 100\,K emission lands in the eighteen 9--250\,$\mu$m bins); CO
+  radiates $1.6\times10^{-20}$\,erg\,s$^{-1}$ per molecule there against
+  $1.8\times10^{-15}$ for H$_2$O, so it does not matter;
+\item the H$_2$ line sum agrees with the LTE rates of Hollenbach \& McKee (1979)
+  eqs.~(6.37) and (6.38) to 1--11\% over 200--2000\,K.
+\end{itemize}
+Two numbers from those comparisons are the reason the whole band system is
+integrated instead of a published \emph{rotational} cooling function being
+adopted: above 300\,K CO's total emission is four to five orders of magnitude
+above its rotational part, and H$_2$O's is $3.2\times$ its rotational part at
+1000\,K. Neufeld \& Kaufman's tables also stop at an optical depth parameter of
+$10^{19}$\,cm$^{-2}$\,(km/s)$^{-1}$, a ceiling set by hydrostatic equilibrium in
+a self-gravitating cloud, which does not apply to a planetary atmosphere and
+which a base column exceeds.
+
+\paragraph{What it does.}
+Four converged solutions of the hot-Uranus gate (\texttt{data\_g2} restarted
+with \texttt{Load IC? True}, \texttt{Solver: Newton 5.0e-2},
+\texttt{Resid tol: 1.0e-5}, \texttt{Max steps: 150000}), all with
+\texttt{Base IR field: True}, so each pair differs only in
+\texttt{Molecular IR bands}. This configuration has no oxygen chemistry, so the
+only new channel is the H$_2$ line sum. The bands-off members reproduce the
+field-on solutions of \S\ref{sec:baseir} to 1--3\,K (metals on) and 5--30\,K
+(metals off, the difference being the H$_3^+$ stimulated-emission fix).
+
+\begin{center}\small
+\begin{tabular}{lcc@{\qquad}cc}
+\toprule
+ & \multicolumn{2}{c}{metals OFF} & \multicolumn{2}{c}{metals ON} \\
+\cmidrule(r){2-3}\cmidrule(l){4-5}
+ & off & \textbf{on} & off & \textbf{on} \\
+\midrule
+JFNK iterations         & 89 & \textbf{21} & 25 & 26 \\
+residual norm at exit   & 8.77e-6 & 8.39e-6 & 2.00e-6 & 2.82e-6 \\
+$T(r=1.005)$            & 940.5\,K & 912.1\,K & 1097.0\,K & 1044.1\,K \\
+$T(r=1.02)$             & 878.6\,K & 857.6\,K & 926.1\,K  & 887.0\,K \\
+$T(r=1.05)$             & 750.3\,K & 721.9\,K & 572.2\,K  & 588.7\,K \\
+$T(r=1.08)$             & 420.9\,K & 345.4\,K & 215.1\,K  & 236.1\,K \\
+coldest cell below 1.3  & 245.6\,K @1.0972 & 225.4\,K @1.0923 & 190.4\,K @1.0842 & 198.2\,K @1.0853 \\
+H$_2\to$H front         & 1.08817 & 1.08532 & 1.07916 & 1.07970 \\
+$\log_{10}\Mdot$ reported & 10.32 & 10.31 & 10.29 & 10.30 \\
+mass-flux spread, $r>1.2$ & 2.39e-3 & 2.38e-3 & 2.38e-3 & 2.38e-3 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\noindent The solution's own zero crossing lands on the predicted equilibrium
+temperature: in the metals-on solution the H$_2$ channel changes sign at
+$r=1.0122$, where the gas is at 951.7\,K and the sky dilution is $W=0.423$, and
+the closure evaluated at that dilution gives 951.5\,K; the second crossing
+($r=1.1239$, $T=850.6$\,K, $W=0.272$) is predicted at 872.7\,K. Nothing was
+fitted.
+
+\noindent The H$_2$ channel is \emph{first order and does not repair the
+collapse}, and those are not in tension. In the metals-on solution H$_2$ carries
+56\% of the whole radiative rate at $r=1.002$--$1.005$ --- cooling there, since
+$T=1044$--$1124$\,K is above its radiative equilibrium temperature --- and
+essentially all of the net at $r=1.02$--$1.05$, heating. The layer's radiative
+time falls with it: $t_{\rm rad}/t_{\rm flow}$ at $r=1.05$ goes from
+\textbf{8.22 to 0.263}. But the coldest cell sits \emph{at or beyond} the
+H$_2\to$H front in every run, where there is no H$_2$ to absorb anything and
+$t_{\rm rad}/t_{\rm flow}$ is 0.7--1.9; that gas is expansion-dominated and no
+molecular coolant can reach it.
+
+With the oxygen chemistry on, where H$_2$O and CO exist, the magnitudes differ
+by five orders: on HD\,189733\,b the two bands carry $4.8\times10^{-5}$ and
+$2.7\times10^{-5}$\,erg\,cm$^{-3}$\,s$^{-1}$ at $r=1.005$ against a total of
+$7.5\times10^{-5}$, and a 12000-step A/B moves the base from 760.2 to 829.1\,K
+and $x_{\rm H_2}$ from 0.330 to 0.483 --- both toward the photochemical
+reference (864\,K, 0.910). Neither of those runs is converged;
+\texttt{docs/Update\_EXHALE.md} \S110 carries the full statement and its
+caveats.
+
+\paragraph{What is assumed.}
+LTE level populations (the rotational levels thermalize far below the densities
+of this layer; $n_{\rm crit}(\mathrm{H_2}\,v{=}1)$ is $10^{9}$--$10^{11}$\,cm$^{-3}$
+against $10^{13}$--$10^{14}$\,cm$^{-3}$ at the base, and the vibrational bands
+are only 0.7\% of the H$_2$ emission at 400\,K, 5.7\% at 500\,K and 18\% at
+600\,K, so the overestimate is confined to the warm, dense part of the layer). The incident field is
+not attenuated by the intervening molecular column of the domain itself, the
+same approximation \texttt{Base IR field} makes for H$_3^+$. OH is left out: it
+has no cross-section table here and carries a few percent of the oxygen where
+the water carries most of it. The atomic advection post-process
+(\texttt{T\_equation}) does not carry these channels, exactly as it does not
+carry H$_3^+$.
+
+% ===================================================================== %
 \begin{thebibliography}{99}\small
 \bibitem{banks} Banks, P.~M., \& Kockarts, G.\ 1973, Aeronomy (New York: Academic Press)
 \bibitem{black77} Black, J.~H., \& Dalgarno, A.\ 1977, ApJS, 34, 405
@@ -1280,6 +1543,18 @@ as without it.
 \bibitem{kosk22} Koskinen, T.~T., Lavvas, P., Huang, C., et al.\ 2022, ApJ, 929, 52
 \bibitem{larsson} Larsson, M., McCall, B.~J., \& Orel, A.~E.\ 2008, Chem.\ Phys.\ Lett.,
   462, 145
+\bibitem{richings14} Richings, A.~J., Schaye, J., \& Oppenheimer, B.~D.\ 2014,
+  MNRAS, 442, 2780
+\bibitem{roueff19} Roueff, E., Abgrall, H., Czachorowski, P., Pachucki, K.,
+  Puchalski, M., \& Komasa, J.\ 2019, A\&A, 630, A58
+\bibitem{nk93} Neufeld, D.~A., \& Kaufman, M.~J.\ 1993, ApJ, 418, 263
+\bibitem{hm79} Hollenbach, D., \& McKee, C.~F.\ 1979, ApJS, 41, 555
+\bibitem{rothman10} Rothman, L.~S., Gordon, I.~E., Barber, R.~J., et al.\ 2010,
+  JQSRT, 111, 2139
+\bibitem{li15} Li, G., Gordon, I.~E., Rothman, L.~S., et al.\ 2015, ApJS, 216, 15
+\bibitem{grimm15} Grimm, S.~L., \& Heng, K.\ 2015, ApJ, 808, 182
+\bibitem{wogan25} Wogan, N.~F., Catling, D.~C., Zahnle, K.~J., \& Kopparapu, R.~K.\
+  2025, PSJ, 6, 256
 \bibitem{lavvas14} Lavvas, P., Koskinen, T., \& Yelle, R.~V.\ 2014, ApJ, 796, 15
 \bibitem{lavvas19} Lavvas, P., Koskinen, T., Steinrueck, M.~E., Garc\'ia Mu\~noz, A.,
   \& Showman, A.~P.\ 2019, ApJ, 878, 118

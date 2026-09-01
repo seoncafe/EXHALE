@@ -22,8 +22,10 @@
       !  31-33 FeI,FeII,FeIII
       !  34-37 H2,H2+,H3+,HeH+   (molecular extension; zero unless
       !                           thereis_mol)
+      !  38-40 OH,H2O,CO         (oxygen chemistry; zero unless
+      !                           thereis_oxychem)
       ! (Si/Ca/Fe carry three stages like Mg; Na/K/S carry two stages.)
-      integer, parameter :: n_species = 37
+      integer, parameter :: n_species = 40
       integer :: Nl, NlTR                 ! Number of points for energy integrations
       integer :: N_eq                     ! Numbers of equations in NL solver
       integer :: lwa                      ! Working array length for NL solver
@@ -199,12 +201,23 @@
       logical :: molecular_base = .false.
       ! H2 volume mixing ratio q_H2 = n_H2/(n_H2+n_H+n_He) at the base, as
       ! determined by the lower-atmosphere photochemistry and carried by the
-      ! "q_H2_base" key of base.inp.  This is the same quantity the
-      ! chemical-equilibrium fit q_h2_equilibrium returns, so no conversion
-      ! is involved: when supplied it REPLACES the fit in the molecular-base
-      ! particle count (docs/base_composition_handoff_plan.md).  Negative
-      ! (default) = no photochemical value, the fit is used, so a base.inp
-      ! without the key behaves exactly as before.
+      ! "q_H2_base" key of base.inp (or by the profile at its matching
+      ! level).  This is the same quantity the chemical-equilibrium fit
+      ! q_h2_equilibrium returns, so no conversion is involved.
+      !
+      ! It is the COMPOSITION OF THE INFLOWING GAS, not only an equation-of-
+      ! state anchor (section 117 of docs/Update_EXHALE.*): when supplied it
+      ! replaces the fit in the molecular-base particle count AND is imposed
+      ! on the H2 partition of the lower ghost species, with the base
+      ! particle count then taken from that same species state.  The two
+      ! therefore describe one gas.  The value is upstream information: the
+      ! lower atmosphere is where photodissociation and mixing set the
+      ! partition, and the shielded base cell cannot derive it.
+      !
+      ! Must not exceed 0.5/(0.5 + HeH), the fully molecular limit; startup
+      ! refuses a larger value instead of capping it.  Negative (default) =
+      ! no handoff value, the fit is used and the species partition is left
+      ! free, so a base.inp without the key behaves as before.
       real*8  :: q_h2_base  = -1.0d0
       ! Pressure level of the lower-atmosphere handoff [bar] ("p_base" in
       ! base.inp; --pbase of src/utils/vulcan_to_base.py).  The
@@ -229,6 +242,42 @@
       ! network as it was before this key existed, bit for bit.
       ! See src/modules/lower_atmosphere/lyman_werner.f90.
       real*8  :: F_LW_star = 0.0d0
+      ! Oxygen chemistry (the A2 option, docs/a2_oxygen_option_design.md):
+      ! OH / H2O / CO added to the coupled molecular ionization equilibrium,
+      ! with the H2O and OH photolysis of the FUV bands.  It is what lets
+      ! EXHALE compute its own base H2/H partition instead of importing it
+      ! through q_H2_base or taking it from the chemical-equilibrium fit.
+      ! Key "Oxygen chemistry: True". Requires the molecular network, helium
+      ! and a non-zero oxygen abundance (input_read refuses otherwise).
+      ! Default off = byte-identical to a run without the key.
+      logical :: thereis_oxychem = .false.
+      ! Vertical transport of the molecular carriers (H2, OH, H2O, CO) with
+      ! their chemistry, solved implicitly by diffusive_photochemistry.
+      ! Key "Oxygen transport: True|False"; ON whenever the oxygen chemistry
+      ! is on, because a local steady state is the WRONG physics at the cool
+      ! base the option exists for -- tau_chem(H2)/tau_adv is of order unity
+      ! there (docs/a2_oxygen_option_design.md sec. 3.1). Setting it False
+      ! restores the local-kinetics limit of milestone M2, which is a test
+      ! of the chemistry alone and not a model of a base.
+      logical :: oxygen_transport = .true.
+      ! Band-integrated stellar flux AT THE PLANET'S ORBIT in the three FUV
+      ! continuum bands of the oxygen chemistry [erg cm^-2 s^-1]:
+      !   B1 1110-1201 A   "Stellar FUV B1 flux [erg/cm2/s]: <F>"
+      !   B3 1231-1450 A   "Stellar FUV B3 flux [erg/cm2/s]: <F>"
+      !   B4 1451-2304 A   "Stellar FUV B4 flux [erg/cm2/s]: <F>"
+      ! B2 is the Ly-alpha line, supplied by the existing F_Lya_star, and
+      ! the 912-1110 A band is supplied by F_LW_star, which the H2
+      ! Lyman-Werner absorber shares with H2O and OH -- one wavelength
+      ! interval, one incident flux, one beam. Separate keys rather than one
+      ! flux plus an assumed shape: decision D1 of the design, taken because
+      ! the single-key form is weakest exactly on the line-dominated FUV of
+      ! an M dwarf. The band edges are fixed by the H2O branching ratios and
+      ! by where the Lyman-Werner system ends, not chosen; see
+      ! src/modules/lower_atmosphere/water_photolysis.f90.
+      ! 0 (default) = no photolysis in that band.
+      real*8  :: F_FUV_B1 = 0.0d0
+      real*8  :: F_FUV_B3 = 0.0d0
+      real*8  :: F_FUV_B4 = 0.0d0
       logical :: thereis_metals = .false. ! Include trace-metal species
                                           !  (C/N/O/Mg/Si/Ca/Na/K/S/Fe)
       ! EOS mass/electron/particle policy. .true. (default) = metals enter
@@ -283,6 +332,15 @@
       ! the temperature where B_nu(T) = W B_nu(T0). See
       ! fine_structure_line_transfer in Cool_coeff.f90.
       logical :: base_ir_field  = .false.
+      ! Molecular infrared bands (`Molecular IR bands`). .false. is the state
+      ! before 2026-08-30: the only infrared coolants below the H2 -> H front
+      ! were H3+ and the ground-term fine-structure lines, so a converged
+      ! molecular layer had nothing holding it and collapsed to 190-400 K
+      ! (TO_BE_DONE.md item (G)). .true. adds the H2 quadrupole and magnetic
+      ! dipole line spectrum and the H2O and CO bands, each exchanging with the
+      ! same diluted B_nu(T0) `Base IR field` supplies, so each stops at its own
+      ! radiative equilibrium temperature. See molecular_infrared_cooling.f90.
+      logical :: mol_ir_bands   = .false.
       integer :: pp_metal_mode  = 1       ! Metal treatment in the advection
                                           !  post-process (post_process_adv):
                                           !  0 = metal-free (legacy: metals
@@ -371,7 +429,7 @@
       !------- Global constants -------!
       
       ! Physical constants
-      real*8,parameter ::  pi      = 3.1415926536     ! pi   
+      real*8,parameter ::  pi      = 3.1415926536d0   ! pi
       ! Boltzmann constant in CGS units (CODATA/SI exact value 1.380649e-16;
       ! updated 2026-08-15 from the truncated ATES literal 1.38e-16, a 4.7e-4
       ! relative change that moves every thermal quantity -- goldens were
@@ -382,22 +440,25 @@
       ! This is the mass unit of the density normalization, so it also sets
       ! m_H2 in lyman_werner.f90 -- keep the two in step.
       real*8,parameter ::  mu      = 1.67353284d-24   ! Hydrogen atom mass (g)
-      real*8,parameter ::  g       = 1.666666666667   ! Polytropic index
+      ! Adiabatic index of a monatomic gas, written as the exact rational so
+      ! that the value is 5/3 to full double precision rather than to the
+      ! digits a literal happens to carry.
+      real*8,parameter ::  g       = 5.0d0/3.0d0      ! Polytropic index
       real*8,parameter ::  Gc      = 6.67430d-8       ! Gravitational constant (CGS), CODATA 2018
-      real*8,parameter ::  erg2eV  = 6.241509075e11   ! 1 erg measured in eV
+      real*8,parameter ::  erg2eV  = 6.241509075d11   ! 1 erg measured in eV
       real*8,parameter ::  hp_erg  = 6.62607015d-27   ! Planck constant (CGS), CODATA exact
       real*8,parameter ::  hp_eV   = 4.135667696d-15  ! Planck constant (eV*s), CODATA exact
-      real*8,parameter ::  c_light = 2.99792458e10    ! Speed of light in cm/s
-      real*8,parameter ::  parsec  = 3.08567758147e18 ! 1 pc in cm
-      real*8,parameter ::  AU      = 1.495978707e13   ! Astronomical unit
-      real*8,parameter ::  RJ      = 6.9911e9         ! Jupiter radius (cm)
-      real*8,parameter ::  MJ      = 1.898e30         ! Jupiter mass (g)
-      real*8,parameter ::  Msun    = 1.989e33         ! Sun mass (g)
-      real*8,parameter ::  Rsun    = 6.957e10         ! Sun radius (cm)
-      real*8,parameter ::  R_earth = 6.3725e8         ! Earth radius (cm)
-      real*8,parameter ::  M_earth = 5.9726e27        ! Earth mass (g)
-      real*8,parameter ::  ih      = 1.0              ! Atomic number of Hydrogen
-      real*8,parameter ::  ihe     = 2.0              ! Atomic number of Helium
+      real*8,parameter ::  c_light = 2.99792458d10    ! Speed of light in cm/s
+      real*8,parameter ::  parsec  = 3.08567758147d18 ! 1 pc in cm
+      real*8,parameter ::  AU      = 1.495978707d13   ! Astronomical unit
+      real*8,parameter ::  RJ      = 6.9911d9         ! Jupiter radius (cm)
+      real*8,parameter ::  MJ      = 1.898d30         ! Jupiter mass (g)
+      real*8,parameter ::  Msun    = 1.989d33         ! Sun mass (g)
+      real*8,parameter ::  Rsun    = 6.957d10         ! Sun radius (cm)
+      real*8,parameter ::  R_earth = 6.3725d8         ! Earth radius (cm)
+      real*8,parameter ::  M_earth = 5.9726d27        ! Earth mass (g)
+      real*8,parameter ::  ih      = 1.0d0            ! Atomic number of Hydrogen
+      real*8,parameter ::  ihe     = 2.0d0            ! Atomic number of Helium
 	
 	   ! -- - Energy constants
 
@@ -407,18 +468,18 @@
       real*8 ::  e_low
       
       ! Threshold energies
-      real*8,parameter ::  e_th_HI   = 13.6      ! Threshold for HI ionization
+      real*8,parameter ::  e_th_HI   = 13.6d0    ! Threshold for HI ionization
       real*8, parameter ::  e_th_H2  = 15.4d0  ! H2 photoionization threshold [eV]
-      real*8,parameter ::  e_th_HeI  = 24.6      ! Threshold for HeI ionization
-      real*8,parameter ::  e_th_HeII = 54.4      ! Threshold for HeII ionization
-      real*8,parameter ::  e_th_HeTR = 4.80      ! Threshold for HeI triplet ionization
+      real*8,parameter ::  e_th_HeI  = 24.6d0    ! Threshold for HeI ionization
+      real*8,parameter ::  e_th_HeII = 54.4d0    ! Threshold for HeII ionization
+      real*8,parameter ::  e_th_HeTR = 4.80d0    ! Threshold for HeI triplet ionization
       ! Photoelectron energy threshold above which the SvS85 secondary-ionization
       ! partition is applied (40 eV, matching the wind_ae X-ray cutoff). Below it a
       ! photoelectron thermalizes fully. Note SvS85 is strictly an E0 >~ 100 eV
       ! asymptotic fit; using it down to 40 eV is a deliberate approximation.
       real*8, parameter :: E_sec_ion = 40.0d0
-      real*8,parameter ::  e_th_MgI  = 7.646     ! Threshold for MgI ionization
-      real*8,parameter ::  e_th_MgII = 15.035    ! Threshold for MgII ionization
+      real*8,parameter ::  e_th_MgI  = 7.646d0   ! Threshold for MgI ionization
+      real*8,parameter ::  e_th_MgII = 15.035d0  ! Threshold for MgII ionization
 
 	   ! Numerical constants
       real*8 ::  CFL    = 0.6         ! CFL number; settable in input.inp via "CFL:" (lower = smaller dt, may damp a numerical limit cycle)

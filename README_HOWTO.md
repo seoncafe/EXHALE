@@ -12,7 +12,7 @@ the legacy ATES-compatible model. (Reference manual:
 - [Build](#build) · [Run](#run) · [Run a standard converged model](#run-a-standard-converged-model)
 - [Base grid resolution](#base-grid-resolution-base-grid-drcells) · [Base ghost temperature](#base-ghost-temperature-base-ghost-temperature) · [Viscosity and heat conduction](#damp-the-base-with-viscosity-and-heat-conduction)
 - [Trace metals](#add-trace-metals) · [He I 2^3S / 10830](#he-i-23s-metastable-triplet-and-the-10830-line) · [He/H diffusive separation](#heh-and-metal-diffusive-separation) · [Legacy atomic-data switch](#legacy-atomic-data-switch)
-- [Analytic lower column](#check-the-base-radius-analytic-lower-column) · [Molecular chemistry](#molecular-chemistry-warm-neptunes-and-sub-neptunes) · [`base.inp` handoff](#hand-off-a-lower-atmosphere-model-baseinp) · [VULCAN pre-step](#use-vulcan-photochemistry-for-the-base-state-subroutine-style) · [Obtaining VULCAN and FastChem](#obtaining-vulcan-and-fastchem-third-party-not-in-this-repo) · [Obtaining Photochem](#obtaining-photochem-third-party-not-in-this-repo)
+- [Analytic lower column](#check-the-base-radius-analytic-lower-column) · [Molecular chemistry](#molecular-chemistry-warm-neptunes-and-sub-neptunes) · [Oxygen chemistry](#compute-the-base-h2h-partition-instead-of-importing-it-oxygen-chemistry) · [`base.inp` handoff](#hand-off-a-lower-atmosphere-model-baseinp) · [VULCAN pre-step](#use-vulcan-photochemistry-for-the-base-state-subroutine-style) · [Obtaining VULCAN and FastChem](#obtaining-vulcan-and-fastchem-third-party-not-in-this-repo) · [Obtaining Photochem](#obtaining-photochem-third-party-not-in-this-repo)
 - [Wind-AE warm start](#warm-start-a-hard-planet-wind-ae-ic)
 - [Output files](#output-files) · [Reading output in Python](#reading-output-in-python) · [Live plot](#live-plot-during-a-run) · [Transmission spectra](#transmission-spectra-exhale_transitpy)
 - [Example configurations](#example-configurations) · [Regression and hygiene](#regression-and-hygiene) · [Directory layout](#directory-layout) · [Where results and documents live](#where-results-and-documents-live)
@@ -271,6 +271,7 @@ Optional control keys, also written inside `metals.inp`:
 | `pp_metals 0\|1\|2` | metal treatment in the advection post-process |
 | `cx_full 0\|1` | full Huang+2023 charge-exchange network |
 | `cno_cool 0\|1` | C/N/O cooling source: `1` = CHIANTI fits including N I/N II (default), `0` = legacy AIOLOS fits |
+| `cx_O2p_H <scale>` | rescales `O2+ + H0 -> O+ + H+`, which Huang+2023 Table 4 does not have, in units of the published Barragán+2006 rate (default `1`; `0` reproduces the Table-4-only set). Not controlled by `cx_full`. On HD 209458 b carrying it suppresses O III by 4.7 decades at 1.05 R_p, 3.7 at 1.1 and 2.7 at 1.2 |
 | `eos_metals 0\|1` | metals in the bulk-gas mass/electron/particle budget (default `1`) |
 
 The CHIANTI coronal fits are cut off below their 10^3 K validity floor by a
@@ -384,6 +385,8 @@ the two cannot be solved apart. Hot Jupiters: thin molecular base, sharp
 H2->H front, atomic wind above (the atomic assumption becomes a result).
 Caveat: local equilibrium, no molecular advection — the advection-corrected
 `*_adv` profiles remain molecule-free (see the header of `post_process_adv.f90`).
+The oxygen chemistry below is what lifts the first half of that caveat: with
+`Oxygen transport: True` the carriers H2, OH, H2O and CO are transported.
 -> `docs/lower_atmosphere_coupling.pdf` §4.3.
 
 **Converging a molecular run needs three more keys than an atomic one:**
@@ -427,10 +430,35 @@ radiate `B_nu(T0)` over the sky fraction `1 - sqrt(1 - (R_p/r)^2)` it subtends,
 so the eight ground-term fine-structure lines of C I, C II, N II, O I and the
 H3+ bands return the *net* rate, emission minus absorption of that field, and
 each stops cooling at its own radiative-equilibrium temperature (576–642 K for
-the C I/O I lines, 936 K for the H3+ bands at `T0 = 1140 K` and half-sky
+the C I/O I lines, 975 K for the H3+ bands at `T0 = 1140 K` and half-sky
 coverage). Every other cooling channel keeps the optically thin, no-incident-field
 limit, so an atomic run is unaffected — those channels carry no cooling there.
 -> `docs/lower_atmosphere_coupling.pdf` §8.
+
+That closure hands a field to the coolants the code already had. Below the
+H2 → H front a real H2 atmosphere carries three more that it did not, and
+they are what actually hold the layer:
+
+```
+Molecular IR bands: True    # default False; use together with Base IR field
+Base IR field: True
+```
+This adds the H2 quadrupole and magnetic dipole line spectrum (Roueff et al.
+2019) and the H2O and CO vibration-rotation bands (HITEMP), each in LTE and
+each exchanging with the same diluted `B_nu(T0)`. H2 needs only
+`Molecular chemistry`; H2O and CO exist only with `Oxygen chemistry`, and the
+key is silently inert on whichever species the run does not carry. Their
+radiative equilibrium temperatures at half-sky coverage are 889 K (H2O),
+918 K (CO) and 984 K (H2) for `T0 = 1140 K`, and 922 / 947 / 1019 K for
+`T0 = 1183 K`.
+
+Three NET columns appear in `output/Cooling_breakdown.txt` (`H2_IR`, `H2O_IR`,
+`CO_IR`; negative where the band heats), together with the Planck-mean optical
+depths that say whether the optically thin closure still holds, and a
+column-integrated infrared block is appended to `output/FUV_bands.txt`. With
+`Base IR field` off the new bands emit into vacuum, which deepens the collapse
+instead of holding the layer; `input_read` warns about that combination.
+-> `docs/lower_atmosphere_coupling.pdf` §10.
 
 Lyman-Werner photodissociation of H2 is opt-in and needs the band flux at the
 planet, which the code's own XUV grid does not carry:
@@ -438,11 +466,82 @@ planet, which the code's own XUV grid does not carry:
 ```
 Stellar LW flux [erg/cm2/s]: 343.0   # 912-1110 A, integrated, at the planet
 ```
-It adds `H2 + hv -> H + H` to the network with Draine & Bertoldi (1996)
-self-shielding of the star-ward H2 column and 0.4 eV of heating per
+It adds `H2 + hv -> H + H` to the network with the temperature-dependent
+self-shielding of the star-ward H2 column from Richings, Schaye & Oppenheimer
+(2014) and 0.4 eV of heating per
 dissociation, and writes `output/Lyman_Werner.txt` (column, shielding factor,
-rate, heating). Default 0 = off.
+rate, heating). Default 0 = off. With `Oxygen chemistry: True` the same key
+also supplies the first photolysis band, because 912-1110 A is one wavelength
+interval that H2, H2O and OH all absorb out of one beam (see below).
 -> `docs/lower_atmosphere_coupling.pdf` §9.
+
+## Compute the base H2/H partition instead of importing it (oxygen chemistry)
+
+Molecular chemistry can build a molecular base but cannot decide how molecular
+it is: `q_H2` comes either from a `base.inp` handoff or from a
+chemical-equilibrium fit, and neither is photochemistry. The oxygen chemistry
+is what computes it — on the HD 189733 b base the oxygen family carries
+96–99.6% of the net H2 destruction, through `OH + H2 <-> H2O + H` and the
+photolysis that returns the water to OH.
+
+```
+Oxygen chemistry: True
+Stellar LW flux [erg/cm2/s]:      600.1    #  912-1110 A at the planet (band LW)
+Stellar FUV B1 flux [erg/cm2/s]:  648.4    # 1110-1201 A               (band B1)
+Stellar Lya flux [erg/cm2/s]:   14957.2    # 1215.67 A, the Lya line   (band B2)
+Stellar FUV B3 flux [erg/cm2/s]: 1374.1    # 1231-1450 A               (band B3)
+Stellar FUV B4 flux [erg/cm2/s]: 46294.8   # 1451-2304 A               (band B4)
+```
+(those five numbers are the HD 189733 b flux at the planet, integrated over the
+bands). It adds OH, H2O and CO to the coupled system, closes O(1D) by a local
+steady state, carries CO as an oxygen reservoir capped at the
+`CO <-> C + O` equilibrium of its own (n, T) so that a transported reservoir
+cannot survive into the hot wind, and writes
+`output/Oxygen_chemistry.txt` and `output/FUV_bands.txt` plus three columns in
+`Ion_species.txt`. **With it on, the `OI` column means free atomic oxygen**: the
+element total is the three ion stages plus OH, H2O and CO.
+
+**The first band is the Lyman-Werner interval, and its flux is `Stellar LW
+flux`.** 912-1110 A is one wavelength interval with one incident flux, over
+which H2 (in the Lyman and Werner lines) and H2O and OH (in continua) absorb out
+of the *same* beam: the H2 rate is attenuated by the H2O + OH continuum — the
+continuum term of Draine & Bertoldi (1996) eq. (40), which is identically 1
+without this option — and the H2O and OH rates there are attenuated by the
+fraction of the band the H2 lines have already removed. That is why `Stellar FUV
+B1 flux` starts at 1110 A rather than at 912 A. A B1 value measured over
+912-1201 A must therefore be re-split between the two keys; on the HD 189733 b
+spectrum above, the 912-1201 A integral 1248.5 erg cm^-2 s^-1 is 600.1 + 648.4.
+With the oxygen chemistry on and `Stellar LW flux` left at 0 the run warns that
+it gets no H2O or OH photolysis over 912-1110 A, where those cross sections
+peak.
+
+**The molecular carriers are transported by default.**
+
+```
+Oxygen transport: True      # default whenever the oxygen chemistry is on
+```
+H2, OH, H2O and CO are then solved with an implicit diffusion-advection step
+coupled to the same chemistry rows the local solve uses (molecular diffusion by
+Blanc's law plus the eddy coefficient `K_zz` of `He_Kzz` or of a
+lower-atmosphere profile, plus settling). `False` restores the earlier local
+steady state, which isolates the chemistry for testing and is not a model of a
+base: at the HD 189733 b 1-microbar level the H2 chemical time and the flow time
+are comparable, so a local partition there is a solution to the wrong problem.
+With `K_zz = 0` and no profile the transport is pure molecular diffusion, the
+wrong limit for a lower atmosphere, and the startup report says so.
+
+It requires `Molecular chemistry: True`, helium and a non-zero oxygen
+abundance, and it refuses `q_H2_base` (it computes that quantity) and
+`He_metal_diffusion` (the trace-metal arm would transport an oxygen reservoir
+missing everything bound into OH, H2O and CO, and CO carries an oxygen *and* a
+carbon nucleus, so it cannot follow two element factors at once).
+`He_diffusion: True` alone is accepted — the molecular carriers already move
+with hydrogen there. Three things to know before quoting a number: the B4 band
+average is off by a factor 4.6–6.1 for a real stellar spectrum, the Ly-alpha
+band uses the incident flux with no H I resonance scattering so it is an upper
+bound, and the Damköhler and diffusive-time columns of `Oxygen_chemistry.txt`
+say where the answer is chemistry and where it is transport. Default off.
+-> `docs/a2_oxygen_option_design.md`, `docs/a2_reaction_audit.md`.
 
 ## Hand off a lower-atmosphere model (`base.inp`)
 
@@ -770,6 +869,9 @@ All output is written to `output/` in the run directory.
 | `Heating_breakdown.txt` | Volumetric heating by channel vs. radius: the photoheating split by absorber (H I, He I, He II, He 2³S, H2, metals), then the excited-H, He-recombination, Penning (He 2³S + H and + H2) and Lyman-Werner channels; the channel sum reproduces the total, molecular runs included |
 | `Excited_H.txt` | Non-LTE H(n=2) populations (when the Balmer/Ly-alpha physics is on) |
 | `Lyman_Werner.txt` | H2 photodissociation diagnostics (only when a molecular run carries a `Stellar LW flux`): radius, temperature, H2 fraction and density, star-ward H2 column, self-shielding factor, rate, heating |
+| `Oxygen_chemistry.txt` | the solved oxygen partition (only with `Oxygen chemistry: True`): free atomic O, O II, O III, OH, H2O, CO, O(1D), x_H2, the chemical against the advection time scale with their Damköhler ratio, the H2O and OH photolysis rates, and the H2 diffusion coefficient, `K_zz` and diffusive time of each cell (18 columns); with `Oxygen transport: True` a trailer carries the last transport step's Newton count, residual, limiter count, worst overshoot and the number of cells where the transported CO was cut back to its chemical equilibrium; every run also closes the file with the net H2 loss budget at the base cell, decomposed into eleven channels, which says whether the oxygen cycle or the thermal channel is running that run's partition |
+| `FUV_bands.txt` | how deep each FUV band penetrates (only with `Oxygen chemistry: True`): the H2O and OH columns, the five band optical depths, the band-resolved photodissociation rates, the photolysis heating, and a trailer carrying the band energy ledger and the shared-beam split of the 912-1110 A band |
+| `OI_levels.txt` / `OI_levels_adv.txt` | O I `2p4 3P` ground-term level populations (metal-bearing runs only): radius, T, n_e, n(H I), n(O I), then f(3P2)/f(3P1)/f(3P0) and the same three as densities. Same three-level statistical equilibrium as the [O I] 63/145/44um cooling; these are the lower levels of the O I 1302.168/1304.858/1306.029 A triplet, which `EXHALE_transit.py` reads |
 
 Every file starts with a `# columns …` schema header, so analysis tools adapt
 to the column layout automatically. `EXHALE_setup.out` in the run directory
@@ -823,9 +925,9 @@ MPLBACKEND=Agg python3 EXHALE_transit.py
 It reads `input.inp` and the `*_adv.txt` profiles in `output/` and produces the
 model transmission curves — theoretical, instrument-convolved, and
 instrument+rotation-convolved — for **He I 10830 Å, Ly-alpha, H-alpha,
-H-beta** and the metal resonance doublets **Mg II h&k, Ca II H&K, Na I D**
-(the metal doublets appear automatically for a metals-on run and are skipped
-otherwise). A 3-D Roche-equipotential geometry is available via
+H-beta**, the metal resonance doublets **Mg II h&k, Ca II H&K, Na I D** and
+the **O I 1302/1304/1306** triplet (all of these appear automatically for a
+metals-on run and are skipped otherwise). A 3-D Roche-equipotential geometry is available via
 `geometry = 'triaxial'` (`roche_recon.py`).
 -> manual §5.2, `docs/transmission_spectrum.pdf`.
 
@@ -862,6 +964,7 @@ The resolving powers default to the instrument that actually observes each line:
 | H-alpha, H-beta | 1.15e5 | `..._RES_HA`, `..._RES_HB` | HARPS / CARMENES-VIS |
 | Mg II h&k | 3e4 | `..._RES_MGII` | HST/STIS NUV |
 | Ca II H&K, Na I D | 1.15e5 | `..._RES_CAII`, `..._RES_NAI` | optical, same class as H-alpha |
+| O I 1302 triplet | 1e3 | `..._RES_OI` | HST/STIS G140L |
 
 **Trap.** Ca II and Na I default to *whatever `Instr_res_Ha` currently is*, not
 to the literal 1.15e5, so setting `EXHALE_TRANSIT_RES_HA` alone silently moves
@@ -871,7 +974,7 @@ whenever you override the H-alpha resolution.
 ### Where the spectra go
 
 Every line carries one key — `He10830`, `Lya`, `Halpha`, `Hbeta`, `MgII`,
-`CaII`, `NaI` — and both products of a line are named from it, in the run
+`CaII`, `NaI`, `OI` — and both products of a line are named from it, in the run
 directory:
 
 | Product | Name | Default |
@@ -944,6 +1047,7 @@ diffusion and molecular options are validated; `13` spans four planets.
 | `14_diffusion/` | Diffusive separation of He and metals (HD 209458 b): He/H declines with altitude, each metal settles independently, reshaping He 10830 |
 | `15_molecular/` | Full molecular chemistry (HD 209458 b): H2/H2+/H3+/HeH+ coupled equilibrium; sharp H2->H front above a thin molecular base (metals/diffusion off) |
 | `16_molecular_metals/` | Molecular chemistry **and** trace metals in one system (HD 209458 b): the H2/H2+/H3+/HeH+ network and the metal ionization stages share the free electron density, which the metals dominate in the shielded molecular base |
+| `18_oxygen_chemistry/` | Oxygen chemistry on top of `16` (HD 209458 b): OH, H2O and CO in the same coupled system with the FUV photolysis in five bands and the carriers transported, band fluxes from the HD 209458 b spectrum at the planet (the 912-1110 A band is the `Stellar LW flux: 343.0` the Lyman-Werner cases already use) |
 
 `examples/tutorial/` (and `examples/tutorial_nometals/`) is the minimal worked
 example for a generic hot Jupiter.  Both carry `Include He23S? True`, so the
@@ -969,7 +1073,7 @@ The harness lives in `backup/regression/`, which is a working-copy directory
 and is not in the git remote. It rebuilds, re-runs each case single-threaded
 (`OMP_NUM_THREADS=1`, so the results are deterministic), and bitwise-compares
 `output/Hydro_ioniz.txt` and `output/Ion_species.txt` against
-`backup/regression/golden/`. Default matrix (seven cases):
+`backup/regression/golden/`. Default matrix (eight cases):
 
 | case | what it guards |
 |---|---|
@@ -979,6 +1083,7 @@ and is not in the git remote. It rebuilds, re-runs each case single-threaded
 | `mol_metals` | the same gate + solar C/N/O/Mg/Ca/Na/Fe: the molecular and metal networks in one system; 12000-step snapshot |
 | `mol_lyman_werner` | the same gate + `Stellar LW flux [erg/cm2/s]: 343.0`: H2 photodissociation and its self-shielding inside the molecular network; 12000-step snapshot |
 | `mol_diffusion` | the same gate + `He_diffusion: True`, `He_Kzz: 1.0e9`: binary H/He element diffusion across the molecular front — molecular-carrier closure, stage-resolved friction pairs, projection back onto `f_sp`, Coulomb friction above the ionization front; 12000-step snapshot |
+| `mol_ir_bands` | the same gate + solar metals + `Base IR field: True` and `Molecular IR bands: True`: the H2 quadrupole and magnetic dipole line spectrum and the H2O/CO bands as a NET exchange with the diluted `B_nu(T0)`, together with the two-sided fine-structure escape and the H3+ net rate the same field drives; 12000-step snapshot |
 | `lower_profile` | HD 209458 b with the lower atmosphere handed over as a **profile** (`Lower atmosphere profile:`) instead of the scalars of `base.inp`: the profile reader, the matching-level base state, the elemental reservoirs the profile carries (metals-on with no `metals.inp`), `K_zz(p)` interpolated onto the grid in place of the scalar `He_Kzz`, the accepting branch of the profile / `base.inp` `solution_id` pairing, and the elemental flux window statistics; 12000-step snapshot |
 
 Any other case directory can be named on the command line. A case that is a
@@ -1050,6 +1155,9 @@ while keeping `EXHALE.x`. The planet directories `HD209458b/`, `HD189733b/`,
   implementation, 4-planet examples, figures; §7 the converged Tier-2
   solutions and the recipe that reaches them, §8 `Base IR field`, §9
   Lyman-Werner photodissociation
+- `docs/molecular_hydrogen_treatment.pdf` — H2 as a single species with no
+  (v,J) resolution: where the level distribution is assumed, on what evidence,
+  and over what range each fit holds
 - `docs/design_hehe_diffusion.md`, `docs/version_compare.pdf` — He/H and metal
   diffusive separation, and its effect on He 10830
 - `docs/transmission_spectrum.pdf` — the transit spectrum calculation
@@ -1063,7 +1171,7 @@ while keeping `EXHALE.x`. The planet directories `HD209458b/`, `HD189733b/`,
 - `docs/viscosity_conduction.md`, `docs/coronal_cutoff_width.md` — molecular
   transport, and the coronal-fit validity floor
 - `docs/wind_ae_solver.pdf` — the included Wind-AE solver
-- `docs/code_comparison.pdf`, `docs/methodology_aiolos_taylor_xing.pdf` —
+- `docs/code_comparison.pdf`, `docs/methodology_comparison.pdf` —
   comparison with other escape codes
 - `docs/code_review_20260702.md` — full-code review report (fixes and
   recommendations)

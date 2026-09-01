@@ -3,15 +3,48 @@ module energy_semi_implicit
    use species_table, only: n_mion, mion_fsp,                        &
                             isp_HI, isp_HII, isp_HeI, isp_HeII,       &
                             isp_HeIII, isp_HeTR,                      &
-                            isp_H2, isp_H2p, isp_H3p, isp_HeHp
+                            isp_H2, isp_H2p, isp_H3p, isp_HeHp,       &
+                            isp_OH, isp_H2O, isp_CO
    use utils
    use utils_ion_eq
 
    implicit none
 
+   ! Activations of the temperature floor of the semi-implicit energy update
+   ! (the clamp in the Newton loop below). A cell that lands on the floor has
+   ! NOT converged to a physical temperature: the update overshot and the
+   ! clamp absorbed it, and at 0.01 T0 the chemical network is frozen, so
+   ! almost any composition satisfies its reaction balance there
+   ! (docs/Update_EXHALE.md section 113). Left silent, a run resting on the
+   ! floor looks exactly like a run that resolved a cold layer, which is why
+   ! these are counted and reported at the end of every run, as the
+   ! non-root acceptances of section 113 are.
+   !   hits        total activations over the run
+   !   first/last  first and last step on which the floor was reached
+   !   cell_hits   activations of each cell, so the number of DISTINCT cells
+   !               that ever touched the floor can be reported
+   integer, save :: n_energy_floor_hits = 0
+   integer, save :: energy_floor_first_step = -1
+   integer, save :: energy_floor_last_step  = -1
+   integer, allocatable, save :: energy_floor_cell_hits(:)
+
 contains
 
-   subroutine solve_energy_semi_implicit(u, W, dt, heat, cool, f_sp)
+   integer function n_energy_floor_cells()
+   ! Number of DISTINCT cells that have reached the temperature floor of the
+   ! energy update at least once. Written as a module function because the
+   ! marching loop of EXHALE_main carries a local integer named "count",
+   ! which shadows the Fortran intrinsic of the same name at that call site.
+   integer :: j
+   n_energy_floor_cells = 0
+   if (.not. allocated(energy_floor_cell_hits)) return
+   do j = lbound(energy_floor_cell_hits,1), ubound(energy_floor_cell_hits,1)
+      if (energy_floor_cell_hits(j) .gt. 0)                                &
+         n_energy_floor_cells = n_energy_floor_cells + 1
+   enddo
+   end function n_energy_floor_cells
+
+   subroutine solve_energy_semi_implicit(u, W, dt, heat, cool, f_sp, step)
       ! Input/Output variables
       real*8, dimension(3,1-Ng:N+Ng), intent(inout) :: u
       real*8, dimension(3,1-Ng:N+Ng), intent(inout) :: W
@@ -21,6 +54,8 @@ contains
       real*8, dimension(1-Ng:N+Ng), intent(in) :: heat
       real*8, dimension(1-Ng:N+Ng), intent(inout) :: cool
       real*8, dimension(1-Ng:N+Ng,n_species), intent(in) :: f_sp
+      ! Marching step index, for the temperature-floor report only.
+      integer, intent(in) :: step
 
       ! Local arrays for dimensional calculations
       real*8, dimension(1-Ng:N+Ng) :: T_K, T_trial, T_perturbed, T_old
@@ -31,6 +66,12 @@ contains
       ! units calc_ne is called with here) and cgs (nmol_dim, the units
       ! eval_cool takes alongside nhi..nm)
       real*8, dimension(1-Ng:N+Ng,4) :: nmol_l, nmol_dim
+      ! Oxygen-chemistry carriers OH, H2O, CO -- adimensional; zero without
+      ! the option, so the particle count is then unchanged.
+      ! Oxygen carriers OH, H2O, CO -- adimensional (nox_l, the units
+      ! calc_ntot is called with here) and cgs (nox_dim, the units eval_cool
+      ! needs for the H2O and CO infrared bands)
+      real*8, dimension(1-Ng:N+Ng,3) :: nox_l, nox_dim
       real*8, dimension(1-Ng:N+Ng) :: rchiiB, rcheiiB, rcheiiiB
       real*8, dimension(1-Ng:N+Ng) :: a_ion_HI, a_ion_HeI, a_ion_HeII
       ! Metal rates for each ion returned by eval_cool but unused here
@@ -93,11 +134,28 @@ contains
       ! (nm/n0 = adimensional metal densities; adds the metal electrons and
       ! nuclei under the eos_metals policy)
       call calc_ne(rho*f_sp(:,isp_HII), rho*f_sp(:,isp_HeII), rho*f_sp(:,isp_HeIII), ne_ad, nm/n0, nmol_l)
+      ! The oxygen-chemistry carriers are gas particles as well, and their
+      ! oxygen and carbon nuclei have been removed from the metal ion
+      ! columns by the ionization solve; leaving them out would make this
+      ! energy solve and ioniz_eq disagree about the particle count of the
+      ! same state. They are neutral, so calc_ne is unaffected.
+      nox_l = 0.0d0
+      if (thereis_oxychem) then
+         nox_l(:,1) = rho*f_sp(:,isp_OH)
+         nox_l(:,2) = rho*f_sp(:,isp_H2O)
+         nox_l(:,3) = rho*f_sp(:,isp_CO)
+      endif
+      nox_dim = nox_l*n0
       ! The He 2^3S column is inside the HeI column (bsp_is_excited_level),
       ! so it is not passed and the triplet branch disappears with it.
       if (thereis_He) then
+         if (thereis_oxychem) then
+            call calc_ntot(rho*f_sp(:,isp_HI), rho*f_sp(:,isp_HII), rho*f_sp(:,isp_HeI), &
+                        rho*f_sp(:,isp_HeII), rho*f_sp(:,isp_HeIII), n_tot_ad, nm/n0, nmol_l, nox_l)
+         else
          call calc_ntot(rho*f_sp(:,isp_HI), rho*f_sp(:,isp_HII), rho*f_sp(:,isp_HeI), &
                         rho*f_sp(:,isp_HeII), rho*f_sp(:,isp_HeIII), n_tot_ad, nm/n0, nmol_l)
+         endif
       else
          call calc_ntot(rho*f_sp(:,isp_HI), rho*f_sp(:,isp_HII), zero_arr, &
                         zero_arr, zero_arr, n_tot_ad, nm/n0, nmol_l)
@@ -119,7 +177,8 @@ contains
       call eval_cool(T_K, nhi, nhii, nhei, nheii, nheiii, nm, &
                      rchiiB, rcheiiB, rcheiiiB, rec_m, &
                      a_ion_HI, a_ion_HeI, a_ion_HeII, aion_m, &
-                     cool_dim, nheiTR = nheiTR, nmol = nmol_dim)
+                     cool_dim, nheiTR = nheiTR, nmol = nmol_dim,   &
+                     nox = nox_dim)
       cool_trial = cool_dim / q0
 
       ! 2. Evaluate cooling at perturbed temperature to get derivative
@@ -129,7 +188,8 @@ contains
       call eval_cool(T_K, nhi, nhii, nhei, nheii, nheiii, nm, &
                      rchiiB, rcheiiB, rcheiiiB, rec_m, &
                      a_ion_HI, a_ion_HeI, a_ion_HeII, aion_m, &
-                     cool_dim, nheiTR = nheiTR, nmol = nmol_dim)
+                     cool_dim, nheiTR = nheiTR, nmol = nmol_dim,   &
+                     nox = nox_dim)
       cool_perturbed = cool_dim / q0
 
       dC_dT = (cool_perturbed - cool_trial) / delta_T
@@ -158,8 +218,21 @@ contains
             ! Newton-Raphson step
             T_trial(j) = T_trial(j) - F(j) / dF_dT(j)
 
-            ! Apply temperature floor (guarding against negative values)
-            if (T_trial(j) .lt. 0.01d0) T_trial(j) = 0.01d0
+            ! Apply temperature floor (guarding against negative values).
+            ! Counted: reaching it means this cell's energy update did not
+            ! land on a physical temperature (see the counters above).
+            if (T_trial(j) .lt. 0.01d0) then
+               T_trial(j) = 0.01d0
+               if (.not. allocated(energy_floor_cell_hits)) then
+                  allocate(energy_floor_cell_hits(1-Ng:N+Ng))
+                  energy_floor_cell_hits = 0
+               endif
+               n_energy_floor_hits = n_energy_floor_hits + 1
+               energy_floor_cell_hits(j) = energy_floor_cell_hits(j) + 1
+               if (energy_floor_first_step .lt. 0)                        &
+                  energy_floor_first_step = step
+               energy_floor_last_step = step
+            endif
          end do
 
          ! Update cool_trial for the second iteration
@@ -168,7 +241,8 @@ contains
             call eval_cool(T_K, nhi, nhii, nhei, nheii, nheiii, nm, &
                            rchiiB, rcheiiB, rcheiiiB, rec_m, &
                            a_ion_HI, a_ion_HeI, a_ion_HeII, aion_m, &
-                           cool_dim, nheiTR = nheiTR, nmol = nmol_dim)
+                           cool_dim, nheiTR = nheiTR, nmol = nmol_dim,   &
+                     nox = nox_dim)
             cool_trial = cool_dim / q0
          end if
       end do

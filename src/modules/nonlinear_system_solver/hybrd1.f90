@@ -1,7 +1,7 @@
       subroutine hybrd1(fcn,n,x,fvec,tol,info,wa,lwa,params)
       integer n,info,lwa
       double precision tol
-      double precision x(n),fvec(n),wa(lwa),params(25)
+      double precision x(n),fvec(n),wa(lwa),params(*)
       external fcn
       !     **********
       
@@ -111,9 +111,15 @@
       nprint = 0
       lr = (n*(n + 1))/2
       index = 6*n + lr
+      !the final .false. keeps minpack's own difference step,
+      !h = eps*abs(x(j)) with the exact-zero fallback. the unknowns of every
+      !system reached through this wrapper are stage fractions of order
+      !unity, whose own magnitude is their natural scale, so the floored
+      !rule has nothing to add here. see fdjac1.
       call hybrd(fcn,n,x,fvec,xtol,maxfev,ml,mu,epsfcn,wa(1),mode, &
                  factor,nprint,info,nfev,wa(index+1),n,wa(6*n+1),lr, &
-                 wa(n+1),wa(2*n+1),wa(3*n+1),wa(4*n+1),wa(5*n+1),params)
+                 wa(n+1),wa(2*n+1),wa(3*n+1),wa(4*n+1),wa(5*n+1),params, &
+                 .false.)
       if (info .eq. 5) info = 4
    20 continue
       return

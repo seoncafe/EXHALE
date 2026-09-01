@@ -1,13 +1,28 @@
       module RK_integration
       ! Evaluate RK right hand side (convection + source)
-      
+
       use global_parameters
       use Numerical_Fluxes
+      use Conversion
       use source_func
       use low_mach_dissipation, only: low_mach_damping_active,          &
                                       contact_mode_dissipation_flux
 
       implicit none
+
+      ! Numerical flux and face pressure at every interface j -- the interface
+      ! at r_edg(j), between cells j and j+1 -- as last assembled by RK_rhs.
+      ! They are kept so that positivity_limited_fluxes can rebuild the update
+      ! of a single cell from a mixture of these fluxes and a first-order
+      ! replacement, without re-running the whole right-hand side.
+      real*8, dimension(:,:), allocatable :: face_flux
+      real*8, dimension(:),   allocatable :: face_p
+
+      ! Number of interfaces whose flux was dropped to first order to keep an
+      ! RK stage inside rho > 0, rho e > 0, summed over the whole run.
+      ! Reported at the end of a run; zero means the high-order fluxes were
+      ! admissible everywhere and the run is the one an unguarded build gives.
+      integer :: n_faces_flux_positivity_limited = 0
 
       contains
 
@@ -33,11 +48,17 @@
       real*8, dimension(3,1-Ng:N+Ng), intent(out) :: dF
       real*8, dimension(3,1-Ng:N+Ng), intent(out) :: S
 
+      if (.not. allocated(face_flux)) then
+         allocate(face_flux(3,1-Ng:N+Ng), face_p(1-Ng:N+Ng))
+         face_flux = 0.0d0
+         face_p    = 0.0d0
+      endif
+
       damp_lowmach = low_mach_damping_active()
       if (damp_lowmach) call contact_mode_dissipation_flux(u_in,Ddis)
 
       do j = 2-Ng,N+Ng
-      
+
          ! Substitutions
          dr = dr_j(j)
          rp = r_edg(j)
@@ -45,13 +66,15 @@
          dAp = rp*rp
          dAm = rm*rm
          dV = (dAp*rp - dAm*rm)/3.0
-            
+
          ! Evaluate numerical fluxes
          if (j.eq.(2-Ng)) then
-         
+
                ! Use flux from previous step
                call Num_flux(WL(:,j-1),WR(:,j-1),Fm,alpha,pL)
                if (damp_lowmach) Fm = Fm + Ddis(:,j-1)
+               face_flux(:,j-1) = Fm
+               face_p(j-1)      = pL
          else
 
                Fm = Fp
@@ -61,26 +84,209 @@
          ! Evaluate flux at the right interface
          call Num_flux(WL(:,j),WR(:,j),Fp,alpha,pR)
          if (damp_lowmach) Fp = Fp + Ddis(:,j)
+         face_flux(:,j) = Fp
+         face_p(j)      = pR
 
          ! Evaluate source
          call source(j,dr,dAp,dAm,dV,    &
                      u_in(:,j),WR(:,j-1),WL(:,j),S(:,j))
-      
+
          ! Evaluate flux differences
          dF(1,j) = (dAp*Fp(1) - dAm*Fm(1))/dV
-         dF(2,j) = (dAp*Fp(2) - dAm*Fm(2))/dV 
-         
+         dF(2,j) = (dAp*Fp(2) - dAm*Fm(2))/dV
+
          ! Correct for WENO3 discretization
          if (use_weno3)  dF(2,j) = dF(2,j) + (pR - pL)/dr
-         
+
          dF3p  = dAp*Fp(1)*(Gphi_i(j) - Gphi_c(j))         &
                - dAm*Fm(1)*(Gphi_i(j-1) - Gphi_c(j))
-         dF(3,j) = (dAp*Fp(3) - dAm*Fm(3) + dF3p)/dV 
-      
+         dF(3,j) = (dAp*Fp(3) - dAm*Fm(3) + dF3p)/dV
+
       enddo
-      
+
       ! End of subroutine
       end subroutine RK_rhs
-      
+
+      !-----------------------------------------------------------!
+
+      ! Repair an RK stage that left the admissible set rho > 0, rho e > 0 by
+      ! replacing, at the offending cells only, the high-order interface
+      ! fluxes with the first-order Lax-Friedrichs flux of the neighboring
+      ! cell averages, and rebuilding those cells' update from the mixture.
+      !
+      ! The first-order Lax-Friedrichs update of cell averages is positivity
+      ! preserving under dt(|v|+c)/dr <= 1 (Perthame & Shu 1996, Numer. Math.
+      ! 73, 119; the LF lemma of Zhang & Shu 2010, J. Comput. Phys. 229,
+      ! 3091), and each stage of SSP-RK3 is a convex combination of forward
+      ! Euler steps, so it inherits the property. Replacing the flux at a
+      ! single interface rather than everywhere is the flux correction of Hu,
+      ! Adams & Shu (2013, J. Comput. Phys. 242, 169); the same first-order
+      ! interface substitution is standard practice in astrophysical codes
+      ! (Stone et al. 2020, ApJS 249, 4, sec. 4.6).
+      !
+      ! Arguments: stage = 1, 2, 3 of SSP-RK3; u_n = state at the beginning of
+      ! the step; u_stage = state this stage was built from (u_n for stage 1);
+      ! S = the source term RK_rhs returned for this stage; u_new = the stage
+      ! output, repaired in place. repaired is false when the cell averages
+      ! themselves are inadmissible or when both interfaces of a cell are
+      ! already first order and it is still inadmissible -- no flux choice
+      ! repairs that, and the caller falls back on halving dt.
+      !
+      ! Only cells that are rebuilt are written: every other cell keeps the
+      ! bit pattern the uncorrected update gave it.
+      !
+      ! S is not recomputed. The source depends on the cell state and on the
+      ! reconstructed interface states, which positivity_limited_faces has
+      ! already made admissible; the correction here changes fluxes only.
+      subroutine positivity_limited_fluxes(stage,u_n,u_stage,S,dt_loc,   &
+                                           u_new,repaired)
+
+      integer, intent(in) :: stage
+      real*8, dimension(3,1-Ng:N+Ng), intent(in) :: u_n,u_stage,S
+      real*8, dimension(1-Ng:N+Ng), intent(in) :: dt_loc
+      real*8, dimension(3,1-Ng:N+Ng), intent(inout) :: u_new
+      logical, intent(out) :: repaired
+
+      real*8, dimension(3,1-Ng:N+Ng) :: W_avg
+      real*8, dimension(3,1-Ng:N+Ng) :: flux_lo
+      real*8, dimension(1-Ng:N+Ng)   :: p_lo
+      logical, dimension(1-Ng:N+Ng)  :: is_first_order
+      logical, dimension(1-Ng:N+Ng)  :: rebuild_cell
+      integer :: j,jf,sweep,n_new_faces,n_repl
+      real*8  :: dr,rp,rm,dAp,dAm,dV,dF3p
+      real*8, dimension(3) :: Fp,Fm,dFc
+      real*8  :: pL,pR,rho_e
+
+      repaired       = .false.
+      is_first_order = .false.
+      flux_lo        = 0.0d0
+      p_lo           = 0.0d0
+      n_repl         = 0
+
+      ! Cell averages of the state this stage was built from. Their two-cell
+      ! pairs are the input of the first-order flux, so the update it produces
+      ! is the positivity-preserving one of the references above.
+      call U_to_W(u_stage,W_avg)
+
+      ! A sweep marks at least one new interface or finds nothing left to
+      ! repair, and there are at most N+1 interfaces bounding cells 1..N, so
+      ! the repeat terminates.
+      do sweep = 1,N+2
+
+         n_new_faces  = 0
+         rebuild_cell = .false.
+
+         ! Locate the cells still outside rho > 0, rho e > 0 and mark their
+         ! two interfaces. Each test is the negation of "strictly positive",
+         ! so a NaN -- which compares false against everything -- is caught.
+         do j = 1,N
+
+            if (u_new(1,j) .gt. 0.0d0) then
+               rho_e = u_new(3,j) - 0.5d0*u_new(2,j)*u_new(2,j)/u_new(1,j)
+               if (rho_e .gt. 0.0d0) cycle
+            endif
+
+            ! Both interfaces already first order: the violation does not come
+            ! from the flux discretization (a source term, or a time step past
+            ! the positivity bound), and halving dt is the remedy.
+            if (is_first_order(j-1) .and. is_first_order(j)) return
+
+            do jf = j-1,j
+
+               if (is_first_order(jf)) cycle
+
+               ! The first-order flux is only positivity preserving if its own
+               ! input states are admissible; when they are not, no interface
+               ! choice repairs this stage.
+               if (.not. (W_avg(1,jf)   .gt. 0.0d0 .and.                &
+                          W_avg(3,jf)   .gt. 0.0d0 .and.                &
+                          W_avg(1,jf+1) .gt. 0.0d0 .and.                &
+                          W_avg(3,jf+1) .gt. 0.0d0)) return
+
+               ! No low-Mach damping term is added on a replaced interface:
+               ! the purpose here is to restore positivity, not to put further
+               ! numerical dissipation into a cell that already lost it.
+               call lax_friedrichs_flux(W_avg(:,jf),W_avg(:,jf+1),      &
+                                        flux_lo(:,jf),p_lo(jf))
+               is_first_order(jf) = .true.
+               n_new_faces = n_new_faces + 1
+
+               if (jf   .ge. 1 .and. jf   .le. N) rebuild_cell(jf)   = .true.
+               if (jf+1 .ge. 1 .and. jf+1 .le. N) rebuild_cell(jf+1) = .true.
+
+            enddo
+
+         enddo
+
+         ! Nothing marked means no cell is inadmissible any more.
+         if (n_new_faces .eq. 0) then
+            repaired = .true.
+            exit
+         endif
+         n_repl = n_repl + n_new_faces
+
+         ! Rebuild the cells that touch a newly replaced interface. The flux
+         ! differences below mirror those of RK_rhs above, term by term, with
+         ! the replaced interfaces substituted; keep the two in step.
+         do j = 1,N
+
+            if (.not. rebuild_cell(j)) cycle
+
+            dr = dr_j(j)
+            rp = r_edg(j)
+            rm = r_edg(j-1)
+            dAp = rp*rp
+            dAm = rm*rm
+            dV = (dAp*rp - dAm*rm)/3.0
+
+            if (is_first_order(j-1)) then
+               Fm = flux_lo(:,j-1)
+               pL = p_lo(j-1)
+            else
+               Fm = face_flux(:,j-1)
+               pL = face_p(j-1)
+            endif
+
+            if (is_first_order(j)) then
+               Fp = flux_lo(:,j)
+               pR = p_lo(j)
+            else
+               Fp = face_flux(:,j)
+               pR = face_p(j)
+            endif
+
+            dFc(1) = (dAp*Fp(1) - dAm*Fm(1))/dV
+            dFc(2) = (dAp*Fp(2) - dAm*Fm(2))/dV
+
+            ! Correct for WENO3 discretization
+            if (use_weno3)  dFc(2) = dFc(2) + (pR - pL)/dr
+
+            dF3p  = dAp*Fp(1)*(Gphi_i(j) - Gphi_c(j))         &
+                  - dAm*Fm(1)*(Gphi_i(j-1) - Gphi_c(j))
+            dFc(3) = (dAp*Fp(3) - dAm*Fm(3) + dF3p)/dV
+
+            ! Same stage updates as the marching loop in EXHALE_main
+            select case (stage)
+            case (1)
+               u_new(:,j) = u_n(:,j) - dt_loc(j)*(dFc - S(:,j))
+            case (2)
+               u_new(:,j) = (3.0*u_n(:,j) + u_stage(:,j)                &
+                            - dt_loc(j)*(dFc - S(:,j)))/4.0
+            case (3)
+               u_new(:,j) = (u_n(:,j) + 2.0*(u_stage(:,j)               &
+                            - dt_loc(j)*(dFc - S(:,j))))/3.0
+            end select
+
+         enddo
+
+      enddo
+
+      if (repaired)                                                     &
+         n_faces_flux_positivity_limited =                              &
+            n_faces_flux_positivity_limited + n_repl
+
+      ! End of subroutine
+      end subroutine positivity_limited_fluxes
+
       ! End of module
       end module RK_integration

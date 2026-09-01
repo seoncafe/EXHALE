@@ -27,7 +27,7 @@
    !   alpha_RR = A / [ sqrt(T/T0) (1+sqrt(T/T0))^(1-b)
    !                                (1+sqrt(T/T1))^(1+b) ],
    !   b = B + C*exp(-T2/T)
-   ! DR: Badnell adf48 total ground-level fit
+   ! DR: Badnell adf09 total ground-level fit
    !   alpha_DR = T^(-3/2) * sum_i dr_c(i) exp(-dr_e(i)/T)
    ! Source tables (clist_K): https://amdpp.phys.strath.ac.uk/tamoc/{RR,DR}
    !
@@ -571,7 +571,7 @@
    rr_badnell = A/( tt*(1.0d0+tt)**(1.0d0-bp)*(1.0d0+sqrt(T/T1))**(1.0d0+bp) )
    end function rr_badnell
 
-   ! Badnell dielectronic recombination He II -> He I (adf48 three-term sum;
+   ! Badnell dielectronic recombination He II -> He I (adf09 three-term sum;
    ! negligible below ~5e4 K).
    elemental double precision function dr_HeII_badnell(T)
    real*8, intent(in) :: T
@@ -1345,19 +1345,25 @@
    ! de-excitation rates [s^-1], b_ul the escape probabilities and nb_ul the
    ! photon occupation numbers of the incident field at each line frequency
    ! (0 = vacuum). The radiative rates are b A (1 + nb) down and
-   ! b A (g_u/g_l) nb up, so the returned power is the NET one, emission
-   ! minus absorption of that field (see the two-level routine above).
+   ! b A (g_u/g_l) nb up (see the two-level routine above).
    ! Eliminating f_1 = 1 - f_2 - f_3 from the two level-balance equations
    ! leaves a 2x2 system, solved by Cramer's rule:
    !   f_2 (R12+R21+R23) + f_3 (R12-R32) = R12
    !   f_2 (R13-R23) + f_3 (R13+R31+R32) = R13
-   pure double precision function fine_structure_cooling_3level          &
+   ! This is the ONE definition of that equilibrium in the code. The cooling
+   ! power below is assembled from what it returns, and the exported O I
+   ! level field (oxygen_ground_term_populations) calls it with the same
+   ! rates, so the populations a transit forward model reads are by
+   ! construction the populations the cooling was computed from.
+   ! f1 + f2 + f3 = 1 identically.
+   pure subroutine fine_structure_populations_3level                     &
                                     (T,g1,g2,g3,E2,E3,A21,A31,A32,      &
                                      C21,C31,C32,b21,b31,b32,           &
-                                     nb21,nb31,nb32) result(W)
-   real*8, intent(in) :: T,g1,g2,g3,E2,E3,A21,A31,A32
-   real*8, intent(in) :: C21,C31,C32,b21,b31,b32,nb21,nb31,nb32
-   real*8 :: R12,R13,R23,R21,R31,R32, m11,m12,m21,m22, det, f1,f2,f3
+                                     nb21,nb31,nb32, f1,f2,f3)
+   real*8, intent(in)  :: T,g1,g2,g3,E2,E3,A21,A31,A32
+   real*8, intent(in)  :: C21,C31,C32,b21,b31,b32,nb21,nb31,nb32
+   real*8, intent(out) :: f1,f2,f3
+   real*8 :: R12,R13,R23,R21,R31,R32, m11,m12,m21,m22, det
    R21 = C21 + b21*A21*(1.0d0 + nb21)
    R31 = C31 + b31*A31*(1.0d0 + nb31)
    R32 = C32 + b32*A32*(1.0d0 + nb32)
@@ -1380,6 +1386,20 @@
       f3 = 0.0d0
    endif
    f1 = 1.0d0 - f2 - f3
+   end subroutine fine_structure_populations_3level
+
+   ! NET escaping power per ion [erg/s] of the same three-level term:
+   ! emission minus absorption of the incident field.
+   pure double precision function fine_structure_cooling_3level          &
+                                    (T,g1,g2,g3,E2,E3,A21,A31,A32,      &
+                                     C21,C31,C32,b21,b31,b32,           &
+                                     nb21,nb31,nb32) result(W)
+   real*8, intent(in) :: T,g1,g2,g3,E2,E3,A21,A31,A32
+   real*8, intent(in) :: C21,C31,C32,b21,b31,b32,nb21,nb31,nb32
+   real*8 :: f1,f2,f3
+   call fine_structure_populations_3level(T,g1,g2,g3,E2,E3,A21,A31,A32, &
+                                          C21,C31,C32,b21,b31,b32,      &
+                                          nb21,nb31,nb32, f1,f2,f3)
    ! Each line contributes f_u b A (1 + nb) - f_l b A (g_u/g_l) nb; the
    ! emission terms are written exactly as in the vacuum expression so that
    ! nb = 0 reproduces it bit for bit.
@@ -1482,11 +1502,17 @@
    ! O I: the term is inverted (3P2 lowest), so level 1 is 3P2 and the
    ! lines are [O I] 63.2um (3P1-3P2), 145.5um (3P0-3P1) and the very weak
    ! 44.1um (3P0-3P2).
-   elemental double precision function cool_OI_ne_func                   &
-                                         (T,ne,nHI,b63,b145,b44,        &
-                                          n63,n145,n44)
-   real*8, intent(in) :: T, ne, nHI, b63, b145, b44, n63, n145, n44
-   real*8 :: Ts, C21, C31, C32, W
+   !
+   ! Total collisional de-excitation rates [s^-1] of the three couplings,
+   ! electrons plus H atoms. Written once here because two consumers need
+   ! exactly these rates: the cooling coefficient below and the exported
+   ! level populations (oxygen_ground_term_populations). T is expected
+   ! already clamped away from zero; the clamp is repeated for safety and
+   ! is idempotent.
+   pure subroutine oxygen_ground_term_collisions(T,ne,nHI,C21,C31,C32)
+   real*8, intent(in)  :: T, ne, nHI
+   real*8, intent(out) :: C21, C31, C32
+   real*8 :: Ts
    Ts  = max(T, 1.0d0)
    C21 = ne*electron_impact_deexcitation(fine_structure_upsilon(        &
             -2.085627d0, 0.19632883d0, -0.19604793d0,                   &
@@ -1503,6 +1529,37 @@
              0.10285117d0, 0.015703868d0, Ts), 1.0d0, Ts)               &
        + nHI*h_impact_deexcitation(-8.9724741d0, 0.034669741d0,         &
             -0.35264943d0, 5.0d1, 1.0d3, Ts)
+   end subroutine oxygen_ground_term_collisions
+
+   ! Fractional populations of the three O I ground-term levels, in the
+   ! same statistical equilibrium the cooling solves and with the same
+   ! rates: f_3P2 + f_3P1 + f_3P0 = 1. These are the lower levels of the
+   ! O I 1302.168 / 1304.858 / 1306.029 A resonance triplet respectively,
+   ! which is what makes them an output field and not just an internal of
+   ! the cooling: a transit forward model that applied the total O I
+   ! density to all three components would count the same atoms three
+   ! times.
+   elemental subroutine oxygen_ground_term_populations                   &
+                           (T,ne,nHI,b63,b145,b44,n63,n145,n44,          &
+                            f_3P2,f_3P1,f_3P0)
+   real*8, intent(in)  :: T, ne, nHI, b63, b145, b44, n63, n145, n44
+   real*8, intent(out) :: f_3P2, f_3P1, f_3P0
+   real*8 :: Ts, C21, C31, C32
+   Ts = max(T, 1.0d0)
+   call oxygen_ground_term_collisions(Ts,ne,nHI,C21,C31,C32)
+   call fine_structure_populations_3level(Ts, 5.0d0, 3.0d0, 1.0d0,      &
+          Ek_OI2, Ek_OI3, A_OI63, A_OI44, A_OI145,                      &
+          C21, C31, C32, b63, b44, b145, n63, n44, n145,                &
+          f_3P2, f_3P1, f_3P0)
+   end subroutine oxygen_ground_term_populations
+
+   elemental double precision function cool_OI_ne_func                   &
+                                         (T,ne,nHI,b63,b145,b44,        &
+                                          n63,n145,n44)
+   real*8, intent(in) :: T, ne, nHI, b63, b145, b44, n63, n145, n44
+   real*8 :: Ts, C21, C31, C32, W
+   Ts  = max(T, 1.0d0)
+   call oxygen_ground_term_collisions(Ts,ne,nHI,C21,C31,C32)
    W = fine_structure_cooling_3level(Ts, 5.0d0, 3.0d0, 1.0d0,           &
           Ek_OI2, Ek_OI3, A_OI63, A_OI44, A_OI145,                      &
           C21, C31, C32, b63, b44, b145, n63, n44, n145)
@@ -1551,6 +1608,21 @@
                          nbar_fs(:,ifs_OI63),nbar_fs(:,ifs_OI145),      &
                          nbar_fs(:,ifs_OI44))
    end subroutine cool_OI_ne
+
+   ! Grid version of the exported O I level fractions. Same signature
+   ! convention as cool_OI_ne, so both are fed by the same beta_fs /
+   ! nbar_fs that fine_structure_line_transfer produced.
+   subroutine oxygen_ground_term_levels(T,ne,nHI,beta_fs,nbar_fs,       &
+                                        f_3P2,f_3P1,f_3P0)
+   real*8, dimension(1-Ng:N+Ng), intent(in)  :: T, ne, nHI
+   real*8, dimension(1-Ng:N+Ng,n_fsline), intent(in) :: beta_fs, nbar_fs
+   real*8, dimension(1-Ng:N+Ng), intent(out) :: f_3P2, f_3P1, f_3P0
+   call oxygen_ground_term_populations(T,ne,nHI,beta_fs(:,ifs_OI63),    &
+                        beta_fs(:,ifs_OI145),beta_fs(:,ifs_OI44),       &
+                        nbar_fs(:,ifs_OI63),nbar_fs(:,ifs_OI145),       &
+                        nbar_fs(:,ifs_OI44),                            &
+                        f_3P2,f_3P1,f_3P0)
+   end subroutine oxygen_ground_term_levels
 
    !--------------!
 
@@ -2028,9 +2100,10 @@
    !     either -- but its 3-4 um bands ARE within reach of a 1.2e3 K
    !     blackbody, and with metals off it carries 100% of the cooling of
    !     the molecular base, so leaving it emitting into vacuum is not a
-   !     small omission. It is treated with a one-band net-exchange form
-   !     under the same switch; the approximation and its range are written
-   !     at h3p_net_cooling_rate.
+   !     small omission. Under the same switch its absorption is taken from
+   !     the emission fit itself, at the radiating temperature, which is
+   !     what Kirchhoff's law makes of a total emission integral; the
+   !     approximation and its range are written at h3p_net_cooling_rate.
    !
    ! VALIDITY for the PERMITTED RESONANCE lines (Mg I 2853, Mg II h&k,
    ! Ca II H&K, Na I D, the Fe II UV multiplets). Those lines DO reach
@@ -2284,7 +2357,7 @@
 
    !---------------------------------------------------!
 
-   !--- Metal recombination rates (Badnell 2006 RR + adf48 DR) ---!
+   !--- Metal recombination rates (Badnell 2006 RR + adf09 DR) ---!
    ! Total (RR+DR) recombination, replacing the Aldrovandi & Pequignot
    ! (1973) power-law fits (which had no dielectronic term). The fit
    ! constants bad_* are declared at module scope above.
@@ -2351,7 +2424,7 @@
         / ( sT0*(1.0d0+sT0)**(1.0d0-b)*(1.0d0+sT1)**(1.0d0+b) )
    end function alpha_rr_metal
 
-   ! Dielectronic recombination only [cm^3/s] (Badnell adf48 form)
+   ! Dielectronic recombination only [cm^3/s] (Badnell adf09 form)
    double precision function alpha_dr_metal(daughter,T)
    character(len=*), intent(in) :: daughter
    real*8,           intent(in) :: T

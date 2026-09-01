@@ -13,6 +13,18 @@
 	! Neutral atomic H and neutral He close the element budgets (the He
 	! budget includes the He nucleus carried by HeH+).
 	!
+	! With the oxygen chemistry on (thereis_oxychem) two more unknowns sit
+	! above those, at oxygen_row_base() of System_HeH_mol_metals:
+	!   x(iox)   = n_OH  / n_O(free family)
+	!   x(iox+1) = n_H2O / n_O(free family)
+	! and free atomic oxygen closes the oxygen budget the way atomic H
+	! closes the hydrogen one. The carriers also hold H nuclei (OH one, H2O
+	! two), so the atomic-H closure gains them; that is done at the call
+	! site, where n_H is known. The rows themselves are oxygen_carrier_rows
+	! below. Oxygen is a metal element here, so the option is only ever
+	! solved by System_HeH_mol_metals; the metals-free system below cannot
+	! reach it (input_read refuses the key without oxygen).
+	!
 	! Rows are steady-state production-loss balances.  The atomic rows
 	! use EXHALE's own rate arrays (P_HI/rchiiB/Voronov...) so the
 	! molecular-free limit reproduces the atomic systems' solution; the
@@ -47,8 +59,17 @@
 	! routine with a metal-inclusive n_e, so the molecular network is written
 	! once (the rate coefficients mk5..mk23 likewise stay in this module).
 
-	use global_parameters, only: thereis_HeITR
+	use global_parameters, only: thereis_HeITR, thereis_oxychem
 	use mol_rates
+	! Oxygen-chemistry coefficients (the A2 option): the three rate
+	! coefficients of the audited set, their thermodynamic reverses and the
+	! photolysis channels. Read only when thereis_oxychem.
+	use oxygen_rates, only: rk_O1_OH_H2_water, rk_O2_O_H2_hydroxyl,       &
+	                        rk_O6_O1D_H2_hydroxyl,                        &
+	                        rate_from_detailed_balance,                   &
+	                        ith_H, ith_H2, ith_O, ith_OH, ith_H2O,        &
+	                        n_fuv_band, qy_H2O_OH_H, qy_H2O_H2_O1D,       &
+	                        qy_H2O_O_H_H
 	use ion_residual_core, only: tr_triplet_row
 	use ion_cell_state, only: ieq_cell
 	use charge_exchange, only: he_h_cx_fvec
@@ -66,6 +87,38 @@
 	! (Garcia Munoz 2025 Table A.5); depends only on T. Zero-effect unless the
 	! triplet is present.
 	real*8, save :: mk_ion_H2
+
+	! ---------------------------------------------------------------
+	! Oxygen chemistry (the A2 option, docs/a2_oxygen_option_design.md).
+	! Cell-invariant coefficients, hoisted once per cell by
+	! set_oxygen_coeffs exactly as the molecular ones are, and read by
+	! oxygen_carrier_rows. All zero, and never read, without the option.
+	!
+	!   ok1  O1   OH + H2  -> H2O + H        Baulch et al. (2005) p. 1029
+	!   ok1r O1r  H2O + H  -> OH + H2        detailed balance of ok1
+	!   ok2  O2   O + H2   -> OH + H         Baulch et al. (2005) p. 804
+	!   ok2r O2r  OH + H   -> O + H2         detailed balance of ok2
+	!   ok6  O6   O(1D)+H2 -> OH + H         Atkinson et al. (2004) I.A2.18
+	!   oj3  O3   H2O + hv -> OH + H         summed over the FUV bands
+	!   oj4  O4   H2O + hv -> H2 + O(1D)     summed over the FUV bands
+	!   oj5  O5   H2O + hv -> O + H + H      summed over the FUV bands
+	!   oj7  O7   OH  + hv -> O + H          summed over the FUV bands
+	!
+	! ok1r and ok2r are NOT transcribed: O1 and O2 run close to cancellation
+	! on a hot base, so an independently transcribed reverse produces an
+	! arbitrary net rather than a small error. Detailed balance against the
+	! module's Shomate table makes the pair exact by construction and makes
+	! the hot limit reduce to chemical equilibrium (decision D2; the measured
+	! validation against a published reverse rate is
+	! docs/a2_reaction_audit.md sec. 5).
+	!
+	! ok6 is used ONLY for the O(1D) number-density diagnostic. O(1D)'s only
+	! sink in the audited set is O6 itself, so in steady state the O6 flux
+	! equals the O(1D) production rate oj4*n_H2O whatever the H2 density is,
+	! and the network never divides by n_H2. That is why O4 and O6 enter the
+	! rows as one combined channel; see oxygen_carrier_rows.
+	real*8, save :: ok1, ok1r, ok2, ok2r, ok6
+	real*8, save :: oj3, oj4, oj5, oj7
 
 	! Reciprocal turnover scale of each balance row.  A row of this system is
 	! a production-loss balance in cm^-3 s^-1; its turnover scale is the rate
@@ -110,6 +163,7 @@
 	real*8, save :: mol_inv_turnover(n_mol_rows_max)
 	!$omp threadprivate(mk5,mk6,mk7,mk8,mk9,mk10,mk11,mk12,mk13,mk14,mk15, &
 	!$omp                mk16,mk17,mk18,mk19,mk20,mk23,mk_ion_H2,          &
+	!$omp                ok1,ok1r,ok2,ok2r,ok6,oj3,oj4,oj5,oj7,            &
 	!$omp                mol_inv_turnover)
 
 	contains
@@ -148,8 +202,16 @@
 	! density the row terms actually see, not the neutrality bound
 	! n_H + 2 n_He, which in the shielded molecular base overstates them by
 	! many orders and would scale those rows into insignificance.
-	subroutine set_mol_turnover_rates(n_e_ref)
-	real*8, intent(in) :: n_e_ref
+	!
+	! photo_scale multiplies every RADIATION-DRIVEN rate of the bound
+	! (P_HI, P_HeI, P_HeII, P_HeITR, P_H2 and the Lyman-Werner k_LW) and
+	! nothing else, so that a solve run at a scaled radiation field is
+	! judged against the turnover its own rows carry. The cell solve passes
+	! 1, which is exact in IEEE arithmetic and leaves the term order
+	! untouched; the radiation-field continuation of
+	! constrained_chemical_equilibrium passes its lambda.
+	subroutine set_mol_turnover_rates(n_e_ref, photo_scale)
+	real*8, intent(in) :: n_e_ref, photo_scale
 	real*8 :: nH, nHe, ne, ntot, s(8)
 	integer :: i, nrow
 
@@ -161,7 +223,8 @@
 	! (1) H+ : photo- and collisional ionization of H0, radiative
 	!     recombination, the H2 channels R9/R10/R13, R17, Penning, and the
 	!     H <-> He charge exchange of both directions.
-	s(1) = (ieq_cell%P_HI + (ieq_cell%a_ion_HI + ieq_cell%rchiiB)*ne)*nH  &
+	s(1) = (photo_scale*ieq_cell%P_HI                                     &
+	        + (ieq_cell%a_ion_HI + ieq_cell%rchiiB)*ne)*nH               &
 	     + (mk9 + mk10 + mk13)*nH*nH                                      &
 	     + (mk17 + ieq_cell%Q31                                           &
 	        + ieq_cell%kcx_He0_Hp + ieq_cell%kcx_Hep_H0)*nHe*nH
@@ -169,7 +232,8 @@
 	! (2) He+ : the He I and He II photo/collisional/recombination channels
 	!     of the summed helium balance, the molecular sinks R17/R20/R23 and
 	!     the H <-> He charge exchange.
-	s(2) = (ieq_cell%P_HeI + ieq_cell%P_HeII + ieq_cell%P_HeITR           &
+	s(2) = (photo_scale*ieq_cell%P_HeI + photo_scale*ieq_cell%P_HeII      &
+	        + photo_scale*ieq_cell%P_HeITR                                &
 	        + (ieq_cell%a_ion_HeI + ieq_cell%a_ion_HeII                   &
 	           + ieq_cell%a_ion_HeITR + ieq_cell%rcheiiB                  &
 	           + ieq_cell%rcheiiiB + ieq_cell%rcheiTR)*ne)*nHe            &
@@ -177,20 +241,20 @@
 	        + ieq_cell%kcx_He0_Hp + ieq_cell%kcx_Hep_H0)*nHe*nH
 
 	! (3) He++ : He II ionization and He III recombination.
-	s(3) = (ieq_cell%P_HeII + (ieq_cell%a_ion_HeII                        &
+	s(3) = (photo_scale*ieq_cell%P_HeII + (ieq_cell%a_ion_HeII            &
 	                           + ieq_cell%rcheiiiB)*ne)*nHe
 
 	! (4) H2 : formation by R6/R9/R11/R15 and every destruction channel
 	!     (photoionization, Lyman-Werner, R8/R10/R12/R13/R14, He+ and HeH+
 	!     reactions, He(2^3S) ionization).
 	s(4) = ((mk6 + mk14)*ne + (mk9 + mk11 + mk15)*nH)*nH                  &
-	     + (ieq_cell%P_H2 + ieq_cell%k_LW                                 &
+	     + (photo_scale*ieq_cell%P_H2 + photo_scale*ieq_cell%k_LW         &
 	        + (mk8 + mk10 + mk13 + mk18)*nH + mk12*ntot                   &
 	        + (mk17 + mk20 + mk23 + mk_ion_H2)*nHe)*nH
 
 	! (5) H2+ : R10/R11/R19/R23, H2 photoionization and the Penning branch of
 	!     He(2^3S)+H2, against R5/R8/R9.
-	s(5) = (ieq_cell%P_H2 + (mk10 + mk11 + mk19)*nH                       &
+	s(5) = (photo_scale*ieq_cell%P_H2 + (mk10 + mk11 + mk19)*nH           &
 	        + (mk23 + f_penning_HeI23S*mk_ion_H2)*nHe)*nH                 &
 	     + (mk5*ne + (mk8 + mk9)*nH)*nH
 
@@ -208,7 +272,7 @@
 	!     depopulated by photoionization, A31, de-excitation, electron-impact
 	!     ionization and the two Penning collisions.
 	if (thereis_HeITR) then
-		s(8) = (ieq_cell%P_HeITR + ieq_cell%A31                       &
+		s(8) = (photo_scale*ieq_cell%P_HeITR + ieq_cell%A31           &
 		        + (ieq_cell%rcheiTR + ieq_cell%q13 + ieq_cell%q31a    &
 		           + ieq_cell%q31b + ieq_cell%a_ion_HeITR)*ne)*nHe    &
 		     + (ieq_cell%Q31 + mk_ion_H2)*nHe*nH
@@ -223,6 +287,172 @@
 	enddo
 
 	end subroutine set_mol_turnover_rates
+
+	! ===============================================================
+	!  Oxygen chemistry (the A2 option)
+	! ===============================================================
+
+	! Rate coefficients and photolysis rates of the oxygen carriers that are
+	! invariant across a cell's Newton solve. Called once per cell from
+	! ioniz_eq, next to set_mol_coeffs. j_h2o_band and j_oh_band are the
+	! band-resolved photodissociation rates [s^-1] already carrying the
+	! star-ward attenuation (water_photolysis.f90); they are summed onto the
+	! four channels with the quantum yields of oxygen_rates here, so the
+	! residual sees one number per channel.
+	subroutine set_oxygen_coeffs(T, j_h2o_band, j_oh_band)
+	real*8, intent(in) :: T
+	real*8, intent(in) :: j_h2o_band(n_fuv_band), j_oh_band(n_fuv_band)
+	integer :: ib
+
+	ok1  = rk_O1_OH_H2_water(T)
+	ok1r = rate_from_detailed_balance(ok1, (/ ith_OH, ith_H2 /),          &
+	                                       (/ ith_H2O, ith_H /), T)
+	ok2  = rk_O2_O_H2_hydroxyl(T)
+	ok2r = rate_from_detailed_balance(ok2, (/ ith_O, ith_H2 /),           &
+	                                       (/ ith_OH, ith_H /), T)
+	ok6  = rk_O6_O1D_H2_hydroxyl()
+
+	oj3 = 0.0d0
+	oj4 = 0.0d0
+	oj5 = 0.0d0
+	oj7 = 0.0d0
+	do ib = 1, n_fuv_band
+		oj3 = oj3 + qy_H2O_OH_H(ib)  *j_h2o_band(ib)
+		oj4 = oj4 + qy_H2O_H2_O1D(ib)*j_h2o_band(ib)
+		oj5 = oj5 + qy_H2O_O_H_H(ib) *j_h2o_band(ib)
+		oj7 = oj7 + j_oh_band(ib)
+	enddo
+
+	end subroutine set_oxygen_coeffs
+
+	! Turnover scale of the two oxygen-carrier rows, appended to the
+	! molecular ones (see mol_inv_turnover for what the scale is and why the
+	! system needs one). An oxygen row runs as n_O times a rate and the
+	! oxygen family is ~1e-4 of the hydrogen, so without this the block sits
+	! far below the helium one for the same reason the molecular block does.
+	! Called once per cell from ioniz_eq AFTER set_mol_turnover_rates, which
+	! resets the whole array. Mirrors oxygen_carrier_rows term by term, with
+	! every carrier set to the whole oxygen family and every H partner to the
+	! whole hydrogen.
+	! photo_scale multiplies the four photolysis channels oj3/oj4/oj5/oj7
+	! and nothing else, with the same meaning and the same exactness at 1 as
+	! in set_mol_turnover_rates above.
+	subroutine set_oxygen_turnover_rates(iox, photo_scale)
+	integer, intent(in) :: iox
+	real*8,  intent(in) :: photo_scale
+	real*8 :: nH, nO, sc
+
+	nH = ieq_cell%nh
+	nO = ieq_cell%n_ofam
+
+	! (iox) OH: made by O1 reverse, O2 and the H2O photolysis channels that
+	!       end in OH; destroyed by O1, O2 reverse and O7.
+	sc = nO*((ok1r + ok2 + ok1 + ok2r)*nH + photo_scale*oj3               &
+	         + photo_scale*oj4 + photo_scale*oj7)
+	if (sc .gt. 0.0d0) mol_inv_turnover(iox) = 1.0d0/sc
+
+	! (iox+1) H2O: made by O1, destroyed by O1 reverse and by all three
+	!       photolysis channels.
+	sc = nO*((ok1 + ok1r)*nH + photo_scale*oj3 + photo_scale*oj4          &
+	         + photo_scale*oj5)
+	if (sc .gt. 0.0d0) mol_inv_turnover(iox+1) = 1.0d0/sc
+
+	! Row 4 (H2) gains the oxygen exchange terms, so its bound gains them
+	! too. They are far below the hydrogen terms already in it, so this can
+	! only tighten the bound slightly; a missing term would make the scale a
+	! weaker bound, never the root wrong.
+	sc = (ok1 + ok2 + ok1r + ok2r)*nO*nH
+	if (sc .gt. 0.0d0 .and. mol_inv_turnover(4) .gt. 0.0d0)               &
+		mol_inv_turnover(4) = 1.0d0/(1.0d0/mol_inv_turnover(4) + sc)
+
+	end subroutine set_oxygen_turnover_rates
+
+	! The two oxygen-carrier balance rows, plus the oxygen cycle's exchange
+	! with the H2 row. Shares the sign convention of mol_heh_rows (production
+	! positive) and is called AFTER it, so fvec(4) already holds the
+	! molecular H2 balance and is added to here.
+	!
+	! Reactions (docs/a2_reaction_audit.md sec. 2; ids as in that table):
+	!   O1   OH  + H2  -> H2O + H      O1r  H2O + H  -> OH + H2
+	!   O2   O   + H2  -> OH  + H      O2r  OH  + H  -> O  + H2
+	!   O3   H2O + hv  -> OH  + H
+	!   O4   H2O + hv  -> H2  + O(1D)  followed by
+	!   O6   O(1D)+ H2 -> OH  + H
+	!   O5   H2O + hv  -> O   + H + H
+	!   O7   OH  + hv  -> O   + H
+	!
+	! O4 AND O6 ENTER AS ONE CHANNEL, and that is the accurate treatment, not
+	! a shortcut. O(1D) has exactly one sink in the audited set, O6, and a
+	! chemical lifetime of 1.6e-3 s at the HD 189733 b base -- shorter than
+	! every other time scale in the problem by many decades -- so its local
+	! steady state is exact and the flux through O6 EQUALS the O(1D)
+	! production rate oj4*n_H2O. Writing the pair as one channel therefore
+	! adds no approximation and removes the division by n_H2 that the
+	! explicit steady-state density would need. Their net effect on the H2
+	! budget cancels exactly (O4 makes an H2, O6 consumes it), which is why
+	! only O1 and O2 appear in the H2 row below; the measured budget of the
+	! design's section 2.2 shows the same cancellation, -7.8% against +7.8%.
+	!
+	! WHAT THIS FORCES, AND WHERE IT STOPS BEING TRUE. Because O6 is the only
+	! sink, every O(1D) is sent to OH + H however little H2 there is. In a
+	! gas with no H2 the true fate would be radiative decay to O(3P) (the
+	! [O I] 6300/6364 A pair) or collisional quenching, and the branch would
+	! end in atomic O instead. Neither rate is in the audited set, so neither
+	! is used. The regime is self-limiting rather than dangerous: O(1D) is
+	! made only out of H2O, and H2O is made only by OH + H2, so where H2 is
+	! gone the source of the channel is gone with it.
+	!
+	! n_o0 is the FREE ATOMIC oxygen of the cell -- the O I column with the
+	! oxygen bound in OH, H2O and CO removed. That redefinition of O I is
+	! section 4.2 of the design and is made by the caller.
+	!
+	! The four photolysis channels enter as DUMMY ARGUMENTS pj3/pj4/pj5/pj7
+	! rather than being read from the module state oj3/oj4/oj5/oj7 that
+	! set_oxygen_coeffs fills. The cell solves pass exactly that state, so
+	! their arithmetic is unchanged; the radiation-field continuation of
+	! constrained_chemical_equilibrium passes the same rates scaled by its
+	! lambda, which is what lets one definition of these rows serve a solve
+	! at any field strength.
+	subroutine oxygen_carrier_rows(fvec, iox, n_hi, n_h2, n_oh, n_h2o,    &
+	                               n_o0, pj3, pj4, pj5, pj7)
+	real*8 :: fvec(*)
+	integer, intent(in) :: iox
+	real*8, intent(in)  :: n_hi, n_h2, n_oh, n_h2o, n_o0
+	real*8, intent(in)  :: pj3, pj4, pj5, pj7
+
+	! (iox) OH balance
+	fvec(iox)   = ok1r*n_h2o*n_hi + ok2*n_o0*n_h2                        &
+	            + (pj3 + pj4)*n_h2o                                      &
+	            - ok1*n_oh*n_h2 - ok2r*n_oh*n_hi - pj7*n_oh
+
+	! (iox+1) H2O balance
+	fvec(iox+1) = ok1*n_oh*n_h2                                          &
+	            - ok1r*n_h2o*n_hi - (pj3 + pj4 + pj5)*n_h2o
+
+	! H2 exchange with the oxygen cycle, added to the molecular H2 balance.
+	! O1 and O2 consume an H2 each; their reverses give one back. O3, O5 and
+	! O7 do not touch H2, and the O4/O6 pair cancels (see above).
+	fvec(4) = fvec(4)                                                    &
+	        - (ok1*n_oh + ok2*n_o0)*n_h2                                 &
+	        + (ok1r*n_h2o + ok2r*n_oh)*n_hi
+
+	end subroutine oxygen_carrier_rows
+
+	! O(1D) number density [cm^-3] from its local steady state, for the
+	! diagnostic output only: production oj4*n_H2O against the single sink
+	! O6. Nothing in the network reads it (see oxygen_carrier_rows), so the
+	! floor on n_H2 below cannot feed back into the solution.
+	double precision function excited_oxygen_density(n_h2, n_h2o)         &
+	                          result(n_o1d)
+	real*8, intent(in) :: n_h2, n_h2o
+	real*8 :: sink
+	sink = ok6*max(n_h2, 0.0d0)
+	if (sink .le. 0.0d0) then
+		n_o1d = 0.0d0
+	else
+		n_o1d = oj4*max(n_h2o, 0.0d0)/sink
+	endif
+	end function excited_oxygen_density
 
 	subroutine ion_system_HeH_mol(Neq,x,fvec,iflag,params)
 
@@ -297,6 +527,14 @@
 	! Each row divided by its own turnover rate (set_mol_turnover_rates), so
 	! the helium and molecular blocks reach hybrd1 with the same weight.
 	fvec(1:Neq) = fvec(1:Neq)*mol_inv_turnover(1:Neq)
+
+	! Where the H2 partition is imposed rather than solved -- transported
+	! carriers, or the lower-boundary reservoir composition -- this row is
+	! handed the answer (see the same block in System_HeH_mol_metals, which
+	! is the system the oxygen chemistry actually reaches -- oxygen is a
+	! metal element, so a run without metals is refused). Applied after the
+	! turnover scaling so the row is exactly x - x_fix.
+	if (ieq_cell%x_h2_fixed) fvec(4) = x(4) - ieq_cell%x_h2_fix
 
 	return
 	end subroutine ion_system_HeH_mol

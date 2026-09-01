@@ -7,6 +7,11 @@ measured for this document on the corrected Photochem 0.9.0 build
 (`README_photochem.md`); nothing is carried over from an earlier run except
 where it says so.
 
+**Repaired 2026-08-30, section 8.** The diagnosis of sections 1-7 stands
+unchanged and is left as it was written; what section 8 said was not repaired
+now is, in the adapter, and the two discrete outcomes are gone. Sections 6 and
+9 carry the numbers the repair replaces, and say so where they do.
+
 ---
 
 ## The judgement first
@@ -279,7 +284,9 @@ in every iteration directory (`solve_photochemical_lower_profile`), so each
 iterate lands in one grid group or the other independently. The oxygen the
 profile hands over therefore carries a 0.5 % step between iterations of the
 same ladder. Nothing in the He I 10830 chain reads it, but a result that did
-read the oxygen reservoir would inherit that step.
+read the oxygen reservoir would inherit that step. (Measured on one rung and
+removed by the repair: 1.55e-03 over three iterates before, 8.04e-06 after.
+Section 8.3.)
 
 ## 7. A defect found on the way: an ideal gas that is not one, at one level
 
@@ -313,35 +320,183 @@ with the corrected schema (`runs/fix_g400`):
 reads a stored `lower_atmosphere_profile.dat` and never runs the adapter -- so
 no golden is affected and no EXHALE source or binary changed.
 
-## 8. Not repaired, and why
+## 8. The repair (2026-08-30), and what it removes
 
-The grid state at the exit is Photochem's, in `robust_step`. Two repairs are
-possible and neither was made:
+Section 8 as written on 2026-08-29 recorded two possible repairs and made
+neither. The second of them was made on 2026-08-30, in the adapter, and this
+section is what it is and what it measures. The first -- re-pinning and
+re-testing convergence inside Photochem, before `reached_steady_state` is set
+-- is still the tidier place for it and still needs a rebuild of `photochem/`;
+it was not done, and nothing in `photochem/` was touched.
 
-- **In Photochem.** Re-pin the grid once more, and re-test convergence, before
-  setting `reached_steady_state`. This is the right place for it, and it needs
-  a rebuild of `photochem/`.
-- **In the adapter.** After `photochemical_steady_state` returns, call
-  `pc.update_vertical_grid(TOA_pressure=args.toa)` and step to convergence
-  again on the pinned grid. This needs no rebuild and is in code this
-  repository owns.
+### 8.1 What the adapter now does
 
-The second changes the converged answer of every future handoff column, which
-is a change to a production path against which stored ladders (`crossings_gm25`
-on photochem 0.8.4, `crossings_pc090` on 0.9.0) were measured. It is recorded
-here as a proposal rather than made.
+`steady_state_at_stated_model_top` in
+`src/utils/photochem_to_lower_profile.py` runs after
+`photochemical_steady_state` has reached a steady state. It calls
+`pc.update_vertical_grid(TOA_pressure=args.toa)`, which re-lays the altitude
+grid so that `top_atmos` is the altitude at which the current solution's own
+hydrostatic pressure equals the stated top, re-initializes the robust stepper
+and runs the chemistry to steady state again.
 
-Also not done: the same measurement at another reservoir value, another planet
-or another `K_zz`; whether the two grid groups are the only two, or the two the
-seven guesses happened to find; and any re-run of an EXHALE wind for this
-document.
+The two steps are **iterated**, not done once. Re-pinning perturbs the
+solution, the perturbed solution moves `top_atmos` again through the
+hydrostatic integration, and what the column is written on is their common
+fixed point: `top_atmos` is the altitude at which the steady state computed on
+the grid it defines reaches the stated pressure. That is a property of the
+problem, so the written column no longer records which phase of Photochem's
+`freq_update_TOA` cycle the integration happened to exit on.
+
+**The acceptance test is that two successive passes agree on the model top**,
+to 1e-05 relative, and not that the model top equals the stated pressure. The
+reported top is the top CELL CENTRE while `top_atmos` is the domain edge, and
+the half cell between them is about 9 % in pressure at this resolution --
+which is also why an unpinned run's top sits 9-12 % above the `--toa` it was
+given, in both grid groups, and why the file's `p_top_bar` header has always
+read about 1.09e-08 bar for `--toa 1.0e-2`. 1e-05 is 2500 times below the
+2.5e-02 that separates the two grids, so what is left of the grid dependence
+is about 2e-06 in the elemental O/H at the matching level.
+
+**Failure is a refusal.** If the chemistry does not re-reach steady state on
+the pinned grid, or the model top will not settle within six passes, or
+`update_vertical_grid` raises, the adapter refuses through `sch.refuse` and
+writes no file -- the same class as every other unmet condition it checks. The
+alternative, falling back to the unpinned grid, would put back exactly the
+dependence this removes, and put it back invisibly: nothing in the written file
+records which grid the chemistry stopped on. A `PhotoException` out of
+`update_vertical_grid` is reported with the library's own message rather than
+re-raised bare, because the adapter can say what it was trying to do and has
+nothing to write without it.
+
+### 8.2 The two discrete outcomes are gone
+
+The guess ladder of section 3 re-run through the pinned adapter, seven runs at
+the same seven initial guesses (record
+`LHS1140b/exhale/deep_temperature_sensitivity/runs/pin_g4*`,
+`spread_table_pinned.txt`, written by the unmodified `run_guess.sh` and
+`spread_table.py`):
+
+| quantity | unpinned (section 3) | pinned | factor |
+|---|---:|---:|---:|
+| p, at fixed level index | 2.470e-02 | 2.149e-08 | 1.1e+06 |
+| `n_tot`, `rho`, at fixed index | 2.470e-02 | 2.415e-08 | 1.0e+06 |
+| `q_OH`, at fixed index | 5.837e-01 | 7.431e-05 | 7.9e+03 |
+| T, at the matching level | 2.741e-09 | 2.741e-09 | 1 |
+| He/H, at the matching level | 6.484e-08 | 4.791e-13 | 1.4e+05 |
+| **O/H, at the matching level** | **5.207e-03** | **2.996e-08** | **1.7e+05** |
+| `q_CO2`, at the matching level | 1.115e-02 | 8.384e-05 | 1.3e+02 |
+
+All seven runs now stop on the same grid -- top cell 1.093596e-02 dyn/cm^2 in
+every one of them, where the unpinned ladder gave 1.0934-1.0936e-08 bar or
+1.12075e-08 bar and nothing between. The two-valuedness of section 4 is not
+reduced, it is absent: every column of the profile is single-valued to 1e-07
+or better except the trace species, whose worst case is 1.2e-04 (`q_CO2`) where
+it was 1.1e-02.
+
+The pinned fixed point is close to, but not identical with, the lower of the
+two former groups: against `runs/fix_g400` it moves the top by 1.3e-04 and the
+matching-level O/H by 2.5e-05; against the upper group (`runs/fix_g400_1em6`)
+by 2.4e-02 and 5.2e-03. The pin cost two passes at every one of the seven
+guesses -- the second pass moved the top by 4.2e-08 to 7.6e-06, all inside the
+1e-05 test -- each pass a full re-convergence, and about ten per cent of the
+adapter's wall time.
+
+### 8.3 What it does to an observable, measured end to end
+
+One elemental-flux closure rung was re-run through the pinned adapter: the
+crossing arm of `LHS1140b/exhale/crossings_j96` section 6, reservoir 8.2117,
+same binary, same seed, same `closure.json`, same trial fluxes, same tolerance,
+same wind protocol -- the adapter is the only difference. Record
+`LHS1140b/exhale/adapter_grid_fix/` (the stored ladder was read only).
+
+The column moved by the full size of the effect. The stored rung's last
+iterate had stopped on the upper grid (`p_top = 1.121744e-08` bar) and the
+pinned one lands at `1.093866e-08`: 2.485e-02 in pressure at fixed level index,
+1.543e-03 in the elemental O/H at the matching level. **The line moves by
++1.5e-06 relative:**
+
+| | EW, red pair [%A] |
+|---|---:|
+| `crossings_j96/rw_cf8p2117`, unpinned adapter | 1.107774992 |
+| `adapter_grid_fix/rw_cf8p2117`, pinned adapter | 1.107776648 |
+| difference | +1.656e-06 (+1.495e-06 relative) |
+
+and `log10 Mdot` 7.40, `||R||` 3.3e-04, the flux spread 8.63e-02, two
+metastable step flags, no metal dropout, `r_drop` 20.799, `outer10` 0.0088 and
+`T12` 1679 are the same in both to the precision they are quoted at. This is
+the prediction of section 6 measured rather than argued: what the He I 10830
+chain reads at the matching level -- T, r, `q_H2`, He/H -- moves by 0, 1.6e-08,
+1.6e-07 and 1.6e-07 across the largest grid step there is.
+
+**Against the +0.73 % of `crossings_j96` section 5.** That section split the
++1.96 % the reservoir-9.0 arm moved into +1.22 % from the section-96
+secondary-ionization branching and +0.73 % from the adapter, and attributed the
+adapter's share to the `insert_level` correction of section 7. The two arms
+compared here differ only in the grid, and by the largest grid step there is,
+and the line moves by +0.00015 %. The grid is 2.0e-04 of the +0.73 %, so the
++0.73 % is not the grid: the attribution in `crossings_j96` section 5 stands.
+
+**The oxygen step between iterations of one ladder is gone too**, which is the
+caveat section 6 ends on. Over the three iterates of this rung, at the matching
+level:
+
+| iterate | unpinned `p_top` [bar] | unpinned O/H | pinned `p_top` [bar] | pinned O/H |
+|---|---:|---:|---:|---:|
+| k00 | 1.093718e-08 | 8.1109417e-07 | 1.093843e-08 | 8.1108833e-07 |
+| k01 | 1.093620e-08 | 8.1110377e-07 | 1.093858e-08 | 8.1109268e-07 |
+| k02 | 1.121744e-08 | 8.0984548e-07 | 1.093866e-08 | 8.1109486e-07 |
+| spread | | **1.552e-03** | | **8.044e-06** |
+
+The He/H at the match marches by 1.2e-05 over the three iterates in both runs
+alike -- that is the composition change the closure is making, and it is
+untouched. The closure itself is unchanged: the same three iterations, the same
+residuals to five digits, the same converged He/H.
+
+### 8.4 What this breaks, and by how much
+
+**Every future handoff column is a different column from the stored ones.**
+The `crossings_gm25` ladder (photochem 0.8.4), `crossings_pc090` (0.9.0),
+`flux_closure`, `ladder_gm25` and the arms `crossings_j96` re-measured were all
+written by an adapter that accepted whatever grid the chemistry stopped on. A
+column written now is on the pinned grid, so a stored arm and a re-run of the
+same command are no longer comparable at the level of the file. The size of the
+break is measured above and is bounded by the two grid groups:
+
+- at most **2.5e-02** in pressure, `n_tot` and `rho` at fixed level index, and
+  **1.5e-03 to 5.2e-03** in the elemental O/H handed over at the matching
+  level -- everything else at the matching level moves by 1.6e-07 or less;
+- **+1.5e-06** in the He I 10830 equivalent width of a closed rung, i.e.
+  5.0e-05 %A against a measurement error of 0.030 %A, and, on the closure
+  ladder's own slope of EW proportional to (He/H) to the 0.20, about 7.5e-06 in
+  the reservoir He/H a crossing is read at -- 6e-05 on a crossing of 8.21.
+
+So no stored result changes at its quoted precision, and none was re-run: the
+break is in the file, not in what any published number was read from.
+
+### 8.5 Not done
+
+The Photochem-side repair (section 8, first bullet) -- nothing in `photochem/`
+was touched and no rebuild was made. The same measurement at another reservoir
+value, another planet, another `K_zz` or another `--toa`; whether the pinned
+fixed point is unique, which the seven guesses are consistent with but do not
+prove. No EXHALE Fortran source or binary changed and `make check` was not
+re-run: the `lower_profile` regression case reads a stored
+`lower_atmosphere_profile.dat` and never runs the adapter, so no golden can see
+this.
 
 ## 9. To carry into `docs/lhs1140b_exhale_vs_pwinds.tex` (not edited here)
 
-- The handoff column's reproducibility floor is 6.5e-08 in the He/H it hands
-  over and 5.2e-03 in the oxygen reservoir, both at the 1 microbar matching
-  level; the 2.4 % figure recorded earlier is a fixed-level-index comparison
-  and is not what a consumer of the file sees.
+- The handoff column's reproducibility floor **before the repair of section 8**
+  was 6.5e-08 in the He/H it hands over and 5.2e-03 in the oxygen reservoir,
+  both at the 1 microbar matching level; the 2.4 % figure recorded earlier is a
+  fixed-level-index comparison and is not what a consumer of the file sees.
+- **After the repair** the same floor is 4.8e-13 in He/H and 3.0e-08 in the
+  oxygen reservoir, and the column at fixed level index reproduces to 2.1e-08.
+  Columns written from 2026-08-30 on are not comparable, at the level of the
+  file, with the stored `crossings_gm25`, `crossings_pc090`, `flux_closure` and
+  `crossings_j96` arms; the He I 10830 equivalent width of a closed rung moves
+  by +1.5e-06 relative between the two, so nothing quoted from those ladders
+  changes at its printed precision (section 8.4).
 - The deep boundary temperature of the LHS 1140 b He/H = 9.0 climate solution
   is reproducible to 2.1e-06 K, its tropopause to 2.6e-08 relative.
 
@@ -358,9 +513,18 @@ Measurement record, `LHS1140b/exhale/deep_temperature_sensitivity/`:
 | `runs/fix_g400`, `runs/fix_g400_1em6` | two of them repeated after the `insert_level` correction |
 | `compare_columns.py` | two columns, at fixed index, at fixed pressure and at the match |
 | `spread_table.py`, `spread_table.txt`, `spread_table_tightened.txt` | the spread over a set of runs, the same three ways |
+| `runs/pin_g4*`, `spread_table_pinned.txt` | the same seven guesses through the pinned adapter (2026-08-30, section 8.2), written by the same two scripts unchanged |
+
+Second measurement record, `LHS1140b/exhale/adapter_grid_fix/` (2026-08-30,
+section 8.3): one elemental-flux closure rung at reservoir 8.2117 re-run
+through the pinned adapter, its wind re-solved, and the line measured --
+`results.txt`, `reproduce.sh`, `cf_C8p2117/`, `rw_cf8p2117/`, with
+`run_closure.sh`, `resolve_wind.sh` and `measure.py` copied unchanged from
+`LHS1140b/exhale/crossings_j96/`.
 
 Code: `src/utils/lower_profile_schema.py` (`insert_level`),
-`src/utils/photochem_to_lower_profile.py`,
+`src/utils/photochem_to_lower_profile.py`
+(`steady_state_at_stated_model_top`),
 `src/utils/radiative_convective_column.py`,
 `src/modules/files_IO/lower_atmosphere_profile.f90`,
 `src/modules/files_IO/input_read.f90`,

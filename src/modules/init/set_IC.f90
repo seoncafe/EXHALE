@@ -4,8 +4,12 @@
 	use global_parameters
 	use species_table, only: isp_HI, isp_HII, isp_HeI, isp_HeII,      &
 	                         isp_HeIII, isp_HeTR, isp_H2,             &
+	                         isp_OH, isp_H2O, isp_CO, iel_O, iel_C,   &
 	                         n_melem, melem_i0, melem_top, mion_fsp
 	use lower_column, only: q_h2_equilibrium
+	! Oxygen-chemistry IC seed (see the block near the end of set_IC).
+	use oxygen_rates, only: co_equilibrium_density,                   &
+	                        oxygen_chemical_equilibrium_fractions
 	use grav_func
 
 	implicit none
@@ -22,6 +26,9 @@
 	real*8 :: c2, cs, xi
 	! Molecular IC seed (thereis_mol): local pressure and H2 fraction scalars.
 	real*8 :: pbar_ic, qh2_ic, x2_ic, dfHI_ic
+	! Oxygen-chemistry IC seed (thereis_oxychem).
+	real*8 :: nO_ic, nC_ic, nden_ic, nCO_ic, nOH_ic, nH2O_ic
+	real*8 :: f_oh_ic, f_h2o_ic, sO_ic
 	logical :: wind_ok
 	! Hot-Parker warm-seed IC: Parker velocity head-start kept in temp arrays
 	! while the density is the (stable, balanced) cold hydrostatic profile.
@@ -196,6 +203,57 @@
          endif
       enddo
    enddo
+
+	! Oxygen-chemistry IC seed, for the same reason the H2 seed above
+	! exists: zero is a root of the water cycle, so a zero start puts the
+	! base solve in the empty basin. The partition is the chemical
+	! equilibrium of the local (T0, H2/H) that the seed above just built,
+	! with CO taken first at its own CO <-> C + O equilibrium; the oxygen
+	! and carbon it uses come out of the neutral stage of the same element,
+	! and its H nuclei out of the neutral atomic H, so both budgets close.
+	! The fractions are per unit mass (f = n/(rho n0)), like every other
+	! column here, and mass is conserved because bsp_mass(OH/H2O/CO) is the
+	! sum of the masses the code already assigns to the nuclei they take.
+	if (thereis_oxychem) then
+		do j = 1-Ng, N+Ng
+			! Element totals as the metal loop above just set them
+			! (everything neutral, n_X = melem_ab n_H).
+			nO_ic = melem_ab(iel_O)/mass_per_H
+			nC_ic = melem_ab(iel_C)/mass_per_H
+			if (nO_ic .le. 0.0d0) cycle
+			! co_equilibrium_density is written in number densities; the
+			! fractions here differ from them by the single factor rho*n0,
+			! which the equilibrium constant does NOT scale with, so the
+			! densities have to be formed before the partition is taken.
+			nden_ic = W(1,j)*n0
+			nCO_ic  = co_equilibrium_density(nC_ic*nden_ic,               &
+			                                 nO_ic*nden_ic, T0)/nden_ic
+			call oxygen_chemical_equilibrium_fractions(T0,                &
+			         f_sp(j,isp_H2)*nden_ic, f_sp(j,isp_HI)*nden_ic,      &
+			         f_oh_ic, f_h2o_ic)
+			nOH_ic  = f_oh_ic *(nO_ic - nCO_ic)
+			nH2O_ic = f_h2o_ic*(nO_ic - nCO_ic)
+			! H nuclei: take them from neutral atomic H, and cap the whole
+			! seed if there are not enough (a fully ionized outer cell).
+			dfHI_ic = nOH_ic + 2.0d0*nH2O_ic
+			if (dfHI_ic .gt. f_sp(j,isp_HI)) then
+				sO_ic   = f_sp(j,isp_HI)/max(dfHI_ic, 1.0d-99)
+				nOH_ic  = nOH_ic *sO_ic
+				nH2O_ic = nH2O_ic*sO_ic
+				dfHI_ic = f_sp(j,isp_HI)
+			endif
+			f_sp(j,isp_HI) = f_sp(j,isp_HI) - dfHI_ic
+			f_sp(j,isp_OH)  = nOH_ic
+			f_sp(j,isp_H2O) = nH2O_ic
+			f_sp(j,isp_CO)  = nCO_ic
+			! and out of the neutral stage of each element
+			f_sp(j,mion_fsp(melem_i0(iel_O))) =                           &
+			     max(f_sp(j,mion_fsp(melem_i0(iel_O)))                    &
+			         - nOH_ic - nH2O_ic - nCO_ic, 0.0d0)
+			f_sp(j,mion_fsp(melem_i0(iel_C))) =                           &
+			     max(f_sp(j,mion_fsp(melem_i0(iel_C))) - nCO_ic, 0.0d0)
+		enddo
+	endif
 
 	! Dump the initial condition (dimensional) for inspection / IC benchmarking.
 	open(unit = 77, file = 'output/IC_dump.txt', status = 'replace')

@@ -76,8 +76,13 @@ SRC := \
   src/modules/functions/binary_element_diffusion.f90 \
   src/modules/lower_atmosphere/lower_column.f90 \
   src/modules/lower_atmosphere/h3p_cooling.f90 \
+  src/modules/lower_atmosphere/molecular_infrared_data.f90 \
+  src/modules/lower_atmosphere/molecular_infrared_cooling.f90 \
   src/modules/lower_atmosphere/mol_rates.f90 \
   src/modules/lower_atmosphere/lyman_werner.f90 \
+  src/modules/lower_atmosphere/oxygen_rates.f90 \
+  src/modules/lower_atmosphere/water_photolysis.f90 \
+  src/modules/lower_atmosphere/diffusive_photochemistry.f90 \
   src/modules/time_step/viscous_conduction.f90 \
   src/modules/time_step/steady_residual.f90 \
   src/modules/time_step/steady_newton.f90 \
@@ -93,6 +98,7 @@ SRC := \
   src/modules/nonlinear_system_solver/System_HeH_metals.f90 \
   src/modules/nonlinear_system_solver/System_HeH_mol.f90 \
   src/modules/nonlinear_system_solver/System_HeH_mol_metals.f90 \
+  src/modules/nonlinear_system_solver/constrained_chemical_equilibrium.f90 \
   src/modules/nonlinear_system_solver/System_HeH_TR.f90 \
   src/modules/nonlinear_system_solver/System_HeH_TR_metals.f90 \
   src/modules/nonlinear_system_solver/System_implicit_adv_HeH.f90 \
@@ -174,6 +180,21 @@ DIFT_EXE := diffusion_tests.x
 DIFT_DEPFILE := $(OBJDIR)/.deps_dift.mk
 vpath %.f90 src/tests
 
+# ---------------------------------------------------------------------
+# cce_probe.x re-evaluates ONE saved constrained-equilibrium cell state
+# without the hydrodynamics, for the derivative and conditioning diagnostics
+# of docs/charge_exchange_cancellation_limit.md. The state is written by a
+# normal run with EXHALE_CCE_DUMP set to a file name. Not part of the
+# default build; build it with:  make cce_probe
+# It links the same modules the equilibrium sweep uses (everything but the
+# main program), so the coefficients it evaluates are the production ones,
+# and it needs LAPACK for the singular values.
+CCE_SRC := $(filter-out src/EXHALE_main.f90,$(SRC)) \
+  src/modules/nonlinear_system_solver/constrained_equilibrium_probe.f90
+CCE_OBJ := $(addprefix $(OBJDIR)/,$(notdir $(CCE_SRC:.f90=.o)))
+CCE_EXE := cce_probe.x
+CCE_DEPFILE := $(OBJDIR)/.deps_cce.mk
+
 # Rebuild everything when the effective build flags change. The stamp file
 # NAME encodes a hash of the full flag string ($(FC) $(FFLAGS) $(MODFLAG)),
 # so a different flag set names a different stamp: the previous one becomes
@@ -187,10 +208,11 @@ FLAGHASH   := $(firstword $(shell printf '%s' '$(BUILDFLAGS)' | cksum))
 FLAGSTAMP  := $(OBJDIR)/.buildflags-$(FLAGHASH)
 
 # ---------------------------------------------------------------------
-.PHONY: all clean distclean ifort ifx wind_ae_ic check diffusion_tests
+.PHONY: all clean distclean ifort ifx wind_ae_ic check diffusion_tests cce_probe
 all: $(EXE)
 wind_ae_ic: $(WAE_EXE)
 diffusion_tests: $(DIFT_EXE)
+cce_probe: $(CCE_EXE)
 
 # Byte-identical regression harness: rebuilds and re-runs the wasp_full /
 # wasp_he23off cases single-thread, comparing against refreshed goldens.
@@ -218,6 +240,13 @@ $(DIFT_EXE): $(DIFT_OBJ)
 	@echo "built $@"
 $(DIFT_OBJ): $(FLAGSTAMP)
 
+# Constrained-equilibrium probe (separate executable; needs LAPACK for the
+# singular values).
+$(CCE_EXE): $(CCE_OBJ)
+	$(FC) $(FFLAGS) $(MODFLAG) $(CCE_OBJ) -o $@ $(LDLIBS)
+	@echo "built $@"
+$(CCE_OBJ): $(FLAGSTAMP)
+
 # compile each source to $(OBJDIR)/<base>.o (also writes its .mod there)
 $(OBJDIR)/%.o: %.f90 | $(OBJDIR)
 	$(FC) $(FFLAGS) $(MODFLAG) -c $< -o $@
@@ -238,11 +267,11 @@ ifort: ; @$(MAKE) --no-print-directory FC=ifort
 ifx:   ; @$(MAKE) --no-print-directory FC=ifx
 
 clean:
-	@rm -f $(OBJ) $(WAE_OBJ) $(DIFT_OBJ) $(MODDIR)/*.mod
+	@rm -f $(OBJ) $(WAE_OBJ) $(DIFT_OBJ) $(CCE_OBJ) $(MODDIR)/*.mod
 	@echo "cleaned objects and .mod files in $(OBJDIR)/ (kept $(EXE), $(WAE_EXE))"
 
 distclean:
-	@rm -rf $(OBJDIR) $(EXE) $(WAE_EXE) $(DIFT_EXE)
+	@rm -rf $(OBJDIR) $(EXE) $(WAE_EXE) $(DIFT_EXE) $(CCE_EXE)
 	@echo "removed $(OBJDIR)/, $(EXE) and $(WAE_EXE)"
 
 # ---- auto-generated module dependencies (skip when only cleaning) ---
@@ -255,6 +284,9 @@ $(WAE_DEPFILE): $(WAE_SRC) src/utils/fortdep.py | $(OBJDIR)
 $(DIFT_DEPFILE): $(DIFT_SRC) src/utils/fortdep.py | $(OBJDIR)
 	@python3 src/utils/fortdep.py --objdir $(OBJDIR) $(DIFT_SRC) > $@
 
+$(CCE_DEPFILE): $(CCE_SRC) src/utils/fortdep.py | $(OBJDIR)
+	@python3 src/utils/fortdep.py --objdir $(OBJDIR) $(CCE_SRC) > $@
+
 ifeq ($(filter clean distclean,$(MAKECMDGOALS)),)
 -include $(DEPFILE)
 ifneq ($(filter wind_ae_ic wind_ae_ic.x,$(MAKECMDGOALS)),)
@@ -262,5 +294,8 @@ ifneq ($(filter wind_ae_ic wind_ae_ic.x,$(MAKECMDGOALS)),)
 endif
 ifneq ($(filter diffusion_tests diffusion_tests.x,$(MAKECMDGOALS)),)
 -include $(DIFT_DEPFILE)
+endif
+ifneq ($(filter cce_probe cce_probe.x,$(MAKECMDGOALS)),)
+-include $(CCE_DEPFILE)
 endif
 endif

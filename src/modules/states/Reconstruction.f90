@@ -12,8 +12,15 @@
       ! (weno_mode in global_parameters; 0 = off/default, byte-identical).
       real*8, allocatable :: S0sav(:,:), S1sav(:,:)
 
+      ! Number of faces at which the reconstruction left the admissible
+      ! thermodynamic state (rho > 0, p > 0) and was dropped to first order,
+      ! summed over the whole run. Reported at the end of a run; zero means the
+      ! high-order reconstruction was admissible everywhere and the run is the
+      ! one an unguarded build would have produced.
+      integer :: n_faces_positivity_limited = 0
+
       contains
-      
+
       subroutine Reconstruct(u_in,WL_out,WR_out) 
       
       integer :: j,k
@@ -36,10 +43,7 @@
          
          case ('PLM')      ! Piecewise linear reconstruction
 
-            call PLM_rec(u_in,WL,WR) 
-         
-            ! Apply BC to reconstructed variables
-            call Rec_BC(WL,WR,WL_out,WR_out)
+            call PLM_rec(u_in,WL,WR)
 
          case ('WENO3')    ! ESWENO3 Reconstruction
 			
@@ -108,9 +112,6 @@
                   - (D2(j)*S0*C2(j)*dWp + S1*C2(j-1)*dWm) &
                   /(D2(j)*S0 + S1)
             enddo
-            
-            ! Apply BC to reconstructed variables
-            call Rec_BC(WL,WR,WL_out,WR_out)
 
          case default
 
@@ -119,9 +120,91 @@
             error stop 1
 
       end select
-  
+
+      ! Apply BC to reconstructed variables
+      call Rec_BC(WL,WR,WL_out,WR_out)
+
+      ! Last step before the Riemann solver sees the face states: restore
+      ! rho > 0 and p > 0 wherever the reconstruction lost them.
+      call positivity_limited_faces(u_in,WL_out,WR_out)
+
       ! End of subroutine
       end subroutine Reconstruct
-      
+
+      !-----------------------------------------------!
+
+      subroutine positivity_limited_faces(u_in,WL,WR)
+
+      ! Drop a face pair to the piecewise-constant (first-order) limit of the
+      ! same reconstruction wherever the higher-order face state has left the
+      ! admissible thermodynamic state, rho > 0 and p > 0.
+      !
+      ! Validity of the reconstruction, and why the test is needed. PLM and
+      ! ESWENO3 both extrapolate the PRIMITIVE variables (rho, v, p) to a face
+      ! with slopes taken from the neighbouring cells, which is a valid
+      ! approximation only while the solution varies smoothly across the
+      ! stencil. It has no positivity property of its own: a face value can
+      ! cross zero while every cell average on the stencil is positive. The
+      ! state that does it here is a hypersonic layer, where the pressure the
+      ! scheme recovers as p = (gamma-1)(E - rho v^2/2) is the difference of two
+      ! nearly equal numbers -- at Mach 60 the thermal pressure is 2e-4 of the
+      ! total energy density -- so a reconstruction across the neighbouring jump
+      ! tips it negative and the HLLC sound speed sqrt(gamma p/rho) takes the
+      ! square root of it (Num_Fluxes.f90; the abort of TO_BE_DONE item (O)).
+      !
+      ! The cell averages are the only states the update guarantees admissible,
+      ! so the repair is to use them: WL(face j) = W(cell j), WR(face j) =
+      ! W(cell j+1). That is the same scheme at first order, so it is a local
+      ! loss of accuracy at an under-resolved face, not a change of the
+      ! equations. It is the standard positivity guard of a high-resolution
+      ! finite-volume scheme.
+      !
+      ! Outermost face: there is no cell j+1, so the right state falls back on
+      ! the last cell average -- the zero-gradient state the outer BC
+      ! reconstructs to in any case.
+      !
+      ! If a CELL AVERAGE is itself non-positive the state is unphysical before
+      ! any reconstruction and nothing here can repair it; that face is left as
+      ! it is, and the NaN detector of the marching loop reports it.
+
+      real*8, dimension(3,1-Ng:N+Ng), intent(in)    :: u_in
+      real*8, dimension(3,1-Ng:N+Ng), intent(inout) :: WL,WR
+      real*8, dimension(3,1-Ng:N+Ng) :: W_avg
+      logical :: any_bad
+      integer :: j,jr
+
+      ! Scan first: the conversion to cell-average primitives is only needed
+      ! when a face has actually failed, which on an admissible run is never.
+      ! The tests are written as the NEGATION of "strictly positive" so that a
+      ! NaN face state -- which compares false against everything -- is caught
+      ! too; it can only come from the reconstruction arithmetic when the cell
+      ! averages below are finite, and the same repair applies.
+      any_bad = .false.
+      do j = 1-Ng,N+Ng
+         if (.not. (WL(1,j) .gt. 0.0d0 .and. WL(3,j) .gt. 0.0d0 .and.   &
+                    WR(1,j) .gt. 0.0d0 .and. WR(3,j) .gt. 0.0d0)) then
+            any_bad = .true.
+            exit
+         endif
+      enddo
+      if (.not. any_bad) return
+
+      call U_to_W(u_in,W_avg)
+
+      do j = 1-Ng,N+Ng
+         if (WL(1,j) .gt. 0.0d0 .and. WL(3,j) .gt. 0.0d0 .and.          &
+             WR(1,j) .gt. 0.0d0 .and. WR(3,j) .gt. 0.0d0) cycle
+         jr = min(j+1, N+Ng)
+         if (.not. (W_avg(1,j)  .gt. 0.0d0 .and. W_avg(3,j)  .gt. 0.0d0 &
+              .and. W_avg(1,jr) .gt. 0.0d0 .and. W_avg(3,jr) .gt. 0.0d0)) cycle
+         WL(:,j) = W_avg(:,j)
+         WR(:,j) = W_avg(:,jr)
+         n_faces_positivity_limited = n_faces_positivity_limited + 1
+      enddo
+
+      ! End of subroutine
+      end subroutine positivity_limited_faces
+
+
       ! End of module
       end module Reconstruction_step

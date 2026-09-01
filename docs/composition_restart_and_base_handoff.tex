@@ -838,10 +838,13 @@ The two further requirements the plan states are both met:
   \path{docs/phase_e_flux_closure_design.md} \S3.4). The fallback is
   reported rather than silent, but the window the design was written around
   is not the window the number comes from.
-\item \verb|q_H2_base| and the profile's \verb|q_H2| are EOS anchors in both
-  routes: they set the base particle count and nothing holds H$_2$ at that
-  value. That was true of the scalar handoff and is still true of the
-  profile one.
+\item \verb|q_H2_base| and the profile's \verb|q_H2| are the composition of
+  the inflowing gas in both routes, no longer EOS anchors alone (\S117 of
+  \path{docs/Update_EXHALE.tex}, 2026-09-01). They set the base particle
+  count \emph{and} are imposed on the H$_2$ partition of the lower ghost
+  species, the particle count then coming from that same species state.
+  Before that change the two disagreed by 6.4\% and the base ran 73~K above
+  the $T_0$ the boundary condition claimed to impose.
 \end{itemize}
 
 \end{document}

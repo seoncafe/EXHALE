@@ -6,15 +6,33 @@
                             mion_z2, mion_elem, mion_iscool,          &
                             mion_stage, mion_name, mion_fsp,          &
                             melem_Z, melem_top, im_FeII,              &
-                            isp_H2, isp_H2p, isp_H3p, isp_HeHp
+                            isp_H2, isp_H2p, isp_H3p, isp_HeHp,          &
+                            isp_OH, isp_H2O, isp_CO
    use utils
    use Cooling_Coefficients      ! Various functions for cooling coefficients
    ! Miller+2013 H3+ infrared cooling, emitted and net of the lower-atmosphere field
    use h3p_cooling, only: h3p_cooling_rate, h3p_net_cooling_rate
+   ! H2 quadrupole/magnetic-dipole lines and the H2O and CO bands, net of the
+   ! infrared field of the lower atmosphere (`Molecular IR bands`)
+   use molecular_infrared_cooling, only: h2_line_net_cooling_rate,     &
+                            h2o_band_net_cooling_rate,                 &
+                            co_band_net_cooling_rate,                  &
+                            molecular_planck_cross_section
    use Cross_sections, only: sigma, sigma_HeI  ! sigma_H(E,Z), sigma_HeI(E)
+   use composition, only: he_ground_singlet_density
    ! H2 Lyman-Werner photodissociation, for the heating breakdown diagnostic
+   use water_photolysis, only: n_fuv_band, ib_LW, ib_B1, ib_B2,      &
+                       ib_B3, ib_B4,                                    &
+                       water_photolysis_rate, hydroxyl_photolysis_rate, &
+                       fuv_band_optical_depth,                          &
+                       heat_per_water_dissociation,                     &
+                       heat_per_hydroxyl_dissociation
    use lyman_werner_photodissociation, only:                          &
-                            lyman_werner_dissociation_rate, e_lw_fragment_erg
+                            lyman_werner_dissociation_rate,             &
+                            e_lw_fragment_erg,                          &
+                            h2_self_shielding_richings,                 &
+                            h2_band_equivalent_width,                   &
+                            h2_doppler_parameter
    use omp_lib                   ! OMP libraries
 	
 	! Move here photoionization and photoheating
@@ -47,23 +65,233 @@
 	real*8, parameter :: Ee_casc_HeI = 0.75d0*6.2d0 + 0.17d0*Ee_584_HeI     &
 	                                   + 0.08d0*Ee_2q_HeI
 
+	! ----- Composition the SvS85 secondary-ionization fits carry ----- !
+	! Shull & van Steenberg (1985, ApJ 298, 268), section II: "We assume that
+	! n(He)/n(H) = 0.1, and that the hydrogen and helium ionization fractions
+	! are equal: n(H+)/n(Htot) = n(He+)/n(Hetot)." Equal ionization fractions
+	! make the NEUTRAL ratio their Monte Carlo sampled equal to the elemental
+	! one at every x, so the branching between the H I and He I secondary
+	! channels that their coefficients carry is the one belonging to
+	! n(He I)/n(H I) = 0.1. That is the reference the composition-resolved
+	! split below renormalizes from (svs85_secondary_branching).
+	real*8, parameter :: heh_neutral_svs85 = 0.1d0
+
 	contains
+
+	! Incident stellar flux of FUV band ib at the planet [erg cm^-2 s^-1],
+	! in the band order of water_photolysis (LW, B1, B2 = Ly-alpha, B3, B4).
+	! Single definition, read by the equilibrium solve and by write_output.
+	!
+	! THE FIRST BAND IS THE LYMAN-WERNER INTERVAL and carries the flux of the
+	! existing "Stellar LW flux" key, because 912-1110 A is one interval with
+	! one incident flux whether the absorber is H2 in lines or H2O and OH in
+	! a continuum. Supplying it twice -- once for H2, once inside a band
+	! reaching across it -- would count the energy of the interval twice, and
+	! that is what B1 starting at 1110 A removes.
+	!
+	! B2 IS THE INCIDENT STELLAR LY-ALPHA FLUX, NOT A SOLVED FIELD, and that
+	! is the weakest part of the band treatment. The H2O and OH attenuation
+	! applied to it is their own continuum, as for every other band; what is
+	! NOT applied is the H I resonance scattering that actually decides how
+	! much Ly-alpha reaches a molecular base under an ionized wind. lya_rt.f90
+	! solves that field for the n = 2 pumping, and section 2.6 of
+	! docs/a2_oxygen_option_design.md says the solved J_Lya(r) is the field
+	! B2 should use; wiring it is not done here, because the conversion of a
+	! mean intensity into a photodissociation rate is a different quantity
+	! from the one lya_rt returns and getting it wrong is worse than leaving
+	! it out. So B2's photolysis rate is an UPPER BOUND, and a run that finds
+	! B2 dominating its oxygen chemistry should say so. The band is reported
+	! separately in output/FUV_bands.txt precisely so that it can be read off.
+	!
+	! Note that setting "Stellar Lya flux" for the n = 2 pumping therefore
+	! also drives B2, and setting "Stellar LW flux" for the H2 network also
+	! drives the oxygen photolysis of the LW band; the setup report states
+	! all five band fluxes at startup so this is visible rather than implicit.
+	double precision function fuv_band_flux(ib) result(F)
+	integer, intent(in) :: ib
+	select case (ib)
+	case (ib_LW)
+		F = F_LW_star
+	case (ib_B1)
+		F = F_FUV_B1
+	case (ib_B2)
+		F = F_Lya_star
+	case (ib_B3)
+		F = F_FUV_B3
+	case (ib_B4)
+		F = F_FUV_B4
+	case default
+		F = 0.0d0
+	end select
+	end function fuv_band_flux
+
+	! ------------------------------------------------------------- !
+
+	! The 912-2304 A photon field of the molecular layer, solved once for
+	! ALL of its absorbers: H2 in the Lyman and Werner lines, H2O and OH in
+	! their continua.  Single definition, called by the equilibrium sweep
+	! and by the heating-breakdown dump, so the two cannot drift apart.
+	!
+	! WHY ONE ROUTINE.  Over 912-1110 A the three absorbers share one beam.
+	! An H2O molecule cannot absorb a photon an H2 line has already taken,
+	! and the H2 pumping rate is reduced by whatever continuum sits above
+	! it -- that continuum term is the exp(-tau) of Draine & Bertoldi (1996)
+	! eq. (40), identically 1 before this option existed and not 1 now.
+	! Solving the two sides in two places is how the energy of the interval
+	! comes to be counted twice, so they are solved here together.
+	!
+	! The beam's transmission down to a face is
+	!
+	!     T = (1 - A) exp(-tau_c) ,
+	!     A(j) = int_j^top sigma_lw_pump f_shield(N_H2) n_H2 dr ,
+	!
+	! and across one cell the identity
+	!
+	!   T_out - T_in = e^{-tau_out} [ (1-A_out)(1 - e^{-dtau}) + dA e^{-dtau} ]
+	!
+	! is exact, so the photons the cell removes split into a continuum share
+	! and a line share with nothing left over (water_photolysis.f90 sec. 3).
+	! The continuum share is (1-A_out) times what it would be alone, and the
+	! line share is exp(-tau_c at the cell's own depth) times what IT would
+	! be alone -- which is why the two factors below are evaluated at
+	! different faces and that is not an inconsistency.
+	!
+	! Every output is zero, or the neutral value 1, for a run that does not
+	! carry the absorber in question, so a molecular run without the oxygen
+	! chemistry gets exactly the rate it got before.
+	subroutine fuv_lw_photon_field(nH2, nH2O, nOH, T_K,                   &
+	                               NH2col, NH2Ocol, NOHcol,               &
+	                               f_shield, tr_lines, tau_b,             &
+	                               k_lw, j_h2o, j_oh, a_lines_max)
+	real*8, dimension(1-Ng:N+Ng), intent(in)  :: nH2, nH2O, nOH, T_K
+	real*8, dimension(1-Ng:N+Ng), intent(out) :: NH2col, NH2Ocol, NOHcol
+	real*8, dimension(1-Ng:N+Ng), intent(out) :: f_shield, tr_lines, k_lw
+	real*8, dimension(1-Ng:N+Ng,n_fuv_band), intent(out) :: tau_b
+	real*8, dimension(1-Ng:N+Ng,n_fuv_band), intent(out) :: j_h2o, j_oh
+	real*8, intent(out) :: a_lines_max
+	real*8, dimension(1-Ng:N+Ng) :: a_lines
+	real*8  :: tau_out, dtau, tr_out
+	integer :: j, ib
+
+	NH2col   = 0.0d0
+	NH2Ocol  = 0.0d0
+	NOHcol   = 0.0d0
+	f_shield = 0.0d0
+	tr_lines = 1.0d0
+	k_lw     = 0.0d0
+	tau_b    = 0.0d0
+	j_h2o    = 0.0d0
+	j_oh     = 0.0d0
+	a_lines_max = 0.0d0
+
+	! ---- H2 lines: self-shielding and the fraction of the LW band they
+	! take out of the shared beam.  Both are functions of the H2 column
+	! alone, so they exist whether or not the oxygen chemistry is on.
+	!
+	! A is the summed dimensionless equivalent width of the pumping lines,
+	! int_0^N sigma_lw_pump f_shield dN', which Draine & Bertoldi (1996)
+	! give in closed form as their eq. (39) -- h2_band_equivalent_width.
+	! Taking it from there rather than re-integrating on the radial grid
+	! makes the line transmission independent of the grid and exactly
+	! consistent with the fit whose integral it is.  A is an equivalent
+	! width and not an optical depth, so the transmission of the beam is
+	! 1 - A, not exp(-A).  The clamp is a floor on that transmission:
+	! eq. (39) has an asymptote slightly above 1 (lyman_werner.f90), which
+	! is fit slack, not physics.
+	!
+	! THE TWO LINES BELOW DELIBERATELY USE DIFFERENT FITS, and that is the
+	! point of lyman_werner.f90 sec. 2: f_shield is the suppression of the
+	! photodissociation RATE, which Richings, Schaye & Oppenheimer (2014)
+	! fitted to a level-resolved CLOUDY calculation and which is
+	! temperature dependent through the H2 level populations; A is the
+	! SHARE of the band the lines remove, which exists in closed form only
+	! as the integral of DB96's own eq. (37).  DB96's fit is calibrated for
+	! cold gas and overestimates the rate by 2.8-5.4x in this layer, so the
+	! rate is not on it; R14 publish no equivalent width, so the band share
+	! cannot move to theirs.  f_shield is what the run reports in
+	! output/Lyman_Werner.txt, i.e. the factor the rate actually carries.
+	if (thereis_mol .and. F_LW_star .gt. 0.0d0) then
+		call calc_column_dens_one(nH2, NH2col)
+		do j = 1-Ng,N+Ng
+			f_shield(j) = h2_self_shielding_richings(NH2col(j), T_K(j),   &
+			                            h2_doppler_parameter(T_K(j)))
+			a_lines(j) = min(h2_band_equivalent_width(NH2col(j),          &
+			                 h2_doppler_parameter(T_K(j))), 1.0d0)
+			tr_lines(j) = 1.0d0 - a_lines(j)
+		enddo
+		a_lines_max = maxval(a_lines)
+	endif
+
+	! ---- H2O and OH continua, on every band.
+	if (thereis_oxychem) then
+		call calc_column_dens_one(nH2O, NH2Ocol)
+		call calc_column_dens_one(nOH,  NOHcol)
+		do ib = 1,n_fuv_band
+			do j = 1-Ng,N+Ng
+				tau_b(j,ib) = fuv_band_optical_depth(ib, NH2Ocol(j),      &
+				                                     NOHcol(j))
+			enddo
+		enddo
+	endif
+
+	! ---- H2 photodissociation, with the continuum of the SAME interval
+	! attenuating it: DB96 eq. (40) in structure, R14 self-shielding in it.
+	if (thereis_mol .and. F_LW_star .gt. 0.0d0) then
+		do j = 1-Ng,N+Ng
+			k_lw(j) = lyman_werner_dissociation_rate(F_LW_star,           &
+			                     NH2col(j), T_K(j), tau_b(j,ib_LW))
+		enddo
+	endif
+
+	! ---- H2O and OH photodissociation, band by band.  tau_b(j,ib) is the
+	! depth at the INNER face of cell j (the column at j already contains
+	! cell j), so the star-ward face of cell j carries tau_b(j+1,ib) and the
+	! line transmission tr_lines(j+1).  The rate is the MEAN over the cell,
+	! which makes the photons the model absorbs exactly the photons the beam
+	! loses at any grid spacing (water_photolysis.f90).
+	if (thereis_oxychem) then
+		do ib = 1,n_fuv_band
+			do j = 1-Ng,N+Ng
+				if (j .lt. N+Ng) then
+					tau_out = tau_b(j+1,ib)
+					tr_out  = tr_lines(j+1)
+				else
+					tau_out = 0.0d0   ! nothing above the top cell
+					tr_out  = 1.0d0
+				endif
+				if (ib .ne. ib_LW) tr_out = 1.0d0
+				dtau = max(tau_b(j,ib) - tau_out, 0.0d0)
+				j_h2o(j,ib) = water_photolysis_rate(fuv_band_flux(ib),    &
+				                            ib, tau_out, dtau, tr_out)
+				j_oh(j,ib)  = hydroxyl_photolysis_rate(fuv_band_flux(ib), &
+				                            ib, tau_out, dtau, tr_out)
+			enddo
+		enddo
+	endif
+
+	end subroutine fuv_lw_photon_field
+
 	
 	! ------------------------------------------------------------- !
 
 	subroutine PH_heat_H(nhi, xion, P_HI,heat,q)
-	! Computes photoionization rates and heating rates for
-	!	an atmosphere composed of H and He
+	! Computes photoionization rates and heating rates for a PURE HYDROGEN
+	! atmosphere (thereis_He = .false.); the He/H+metals path is PH_heat_HHe.
+	! The helium column densities below are held at zero so that the shared
+	! calc_column_dens can be called unchanged.
 
-	integer :: i,j
+	integer :: j
 
 	real*8, dimension(1-Ng:N+Ng),intent(in) :: nhi
 	! Ionized fraction of the H+He nuclei, for the SvS85 secondary ionization.
 	real*8, dimension(1-Ng:N+Ng),intent(in) :: xion
 
 	! SvS85 secondary-ionization scratch (H-only: no He I secondary channel).
+	! fiHI is the branching per H I atom [cm^3] and Psec_HI the rate it gives
+	! [1/s]; fiHeI is returned by the branching routine and not used, there
+	! being no helium on this path.
 	real*8, dimension(Nl) :: acc_secHI, fhv
-	real*8 :: xj, fh, fiHI, R_secHI
+	real*8 :: fh, fiHI, fiHeI, Psec_HI
 	! SvS85 coupling applied only when enabled AND staged on (see EXHALE_main).
 	logical :: sec_on
 
@@ -72,7 +300,6 @@
 	real*8, dimension(1-Ng:N+Ng) :: nhei, nheii, nheiii, nheiTR
 	real*8, dimension(1-Ng:N+Ng) :: N15, N2, NTR
 
-   real*8 :: dr	                ! Grid spacing
    real*8 :: PIR_1		            ! Photoionization rates
    real*8 :: Hea_1 		        ! Heating rates  
 	real*8 :: q_abs           	! Absorbed energy
@@ -118,14 +345,12 @@
 		! Initial integrands
 		int_f = F_XUV*exp(-tauE)/(1.0 + a_tau*tauE)
 		! SvS85 secondary-ionization energy partition (scalars for this cell).
-		! Hydrogen is the only absorber on this path, so the composition
-		! blindness of the fit is confined to the helium content assumed
-		! inside its coefficients; the full statement is in the
-		! validity-range note of the He/metals path below.
+		! Hydrogen is the only target on this path, so this is the n_HeI -> 0
+		! limit of svs85_secondary_branching: the whole SvS85 ionization energy
+		! goes to hydrogen, and fiHI comes back per H I atom [cm^3].
 		if (sec_on) then
-			xj   = min(max(xion(j), 0.0d0), 1.0d0)
-			fh   = svs85_fheat(xj)
-			fiHI = svs85_fion_HI(xj)
+			call svs85_secondary_branching(xion(j), nhi(j), 0.0d0,        &
+			                               fh, fiHI, fiHeI)
 		else
 			fh = 1.0d0; fiHI = 0.0d0
 		endif
@@ -147,11 +372,12 @@
 		heat(j)   = Hea_1*1.0e-18
 		P_HI(j)   = PIR_1*1.0e-18*erg2eV
 		! Add the H I secondary-ionization rate from fast photoelectrons.
+		! fiHI is per H I atom, so the integral is already a rate [1/s].
 		if (sec_on) then
 			acc_secHI = int_f*s_hi*nhi(j)/e_v * &
 			     merge(fiHI*(e_v-e_th_HI)/e_th_HI, 0.0d0, e_v > e_th_HI + E_sec_ion)
-			R_secHI = sum(acc_secHI*de_v)*1.0e-18*erg2eV
-			P_HI(j) = P_HI(j) + R_secHI/max(nhi(j), 1.0d-99)
+			Psec_HI = sum(acc_secHI*de_v)*1.0e-18*erg2eV
+			P_HI(j) = P_HI(j) + Psec_HI
 		endif
 		! q_abs = int F sigma n_HI dE is the energy absorbed per unit volume
 		! and time: it is non-negative for any physical state, and it vanishes
@@ -214,9 +440,11 @@
 	real*8, dimension(Nl) :: int_f,int_1,int_15,int_2,int_TR
 	real*8, dimension(Nl) :: int_m
 	real*8, dimension(Nl) :: int_q,int_H,acc_H,acc_q
-	! SvS85 secondary-ionization scratch.
+	! SvS85 secondary-ionization scratch. fiHI/fiHeI are the branchings per
+	! target atom [cm^3] (svs85_secondary_branching) and Psec_HI/Psec_HeI the
+	! rates they give [1/s].
 	real*8, dimension(Nl) :: acc_secHI,acc_secHeI,fhv
-	real*8 :: xj,fh,fiHI,fiHeI,R_secHI,R_secHeI
+	real*8 :: fh,fiHI,fiHeI,Psec_HI,Psec_HeI
 	! SvS85 coupling applied only when enabled AND staged on (see EXHALE_main).
 	logical :: sec_on
 
@@ -243,9 +471,11 @@
 
 	!----------------------------------!
 
-	! Use nheiS as variable
+	! Ground singlet n(1^1S): the summed neutral helium when the metastable
+	! is not tracked, and the clamped difference n(He I) - n(2^3S) when it
+	! is. composition.f90 is the only place that difference is taken.
 	nheiS = nhei
-	if (thereis_HeITR) nheiS = nhei - nheiTR
+	if (thereis_HeITR) nheiS = he_ground_singlet_density(nhei, nheiTR)
 
 	! Evaluate the column density
 	call calc_column_dens(nhi,nheiS,nheii,nheiTR,N1,N15,N2,NTR)
@@ -265,7 +495,7 @@
 	!$OMP PRIVATE ( Hea_1,PIR_1,PIR_15,PIR_2,PIR_TR,PIR_H2,int_h2,               &
 	!$OMP           Pm_loc,                                                      &
 	!$OMP           int_1,int_15,int_2,int_TR,int_m,                            &
-	!$OMP           acc_secHI,acc_secHeI,fhv,xj,fh,fiHI,fiHeI,R_secHI,R_secHeI, &
+	!$OMP           acc_secHI,acc_secHeI,fhv,fh,fiHI,fiHeI,Psec_HI,Psec_HeI,   &
 	!$OMP           acc_HI,acc_HeI,acc_HeII,acc_HeTR,acc_H2,acc_mtl,            &
 	!$OMP           int_f,int_H,int_q,acc_H,acc_q,tauE,tau_m,q_abs,i,k,j)
 
@@ -308,48 +538,16 @@
 		if (thereis_HeITR) int_TR =  int_f*s_heiTR/e_v
 		if (present(nh2)) int_h2 = int_f*s_h2/e_v
 
-		! ------------------------------------------------------------------
-		! Validity range of the SvS85 partition used from here on.
-		!
-		! svs85_fion_HI(x) and svs85_fion_HeI(x) are Shull & van Steenberg
-		! (1985) fits to their Monte Carlo results and are functions of the
-		! ionized fraction x ALONE: the helium content their calculation
-		! assumed is fixed inside the fitted coefficients and cannot be
-		! varied from here. The absorber loops below then apply those same
-		! two coefficients to the photoelectrons of EVERY absorber -- H I,
-		! He I, He II, He I 2^3S, H2 and the metal ions. The amplitudes are
-		! 0.3908 for the H I channel against 0.0554 for the He I one, so
-		! hydrogen is handed about 7 times helium's share of the secondary
-		! ionizations whatever the composition is. In a helium-dominated
-		! envelope the actual abundances say the opposite, by up to three
-		! orders of magnitude, and the H I channel is then fed mostly by
-		! photoelectrons that helium released.
-		!
-		! Measured symptom (2026-08-27, LHS 1140 b, prescribed composition
-		! over a metal-free scalar base): n_HI reaches an exact zero at
-		! He/H >= 10 -- LHS1140b/exhale/heh10 above r = 6.55 R_p, heh100
-		! above 1.06, heh1000 above 1.03 -- because P_HI gains
-		! R_secHI/n_HI, sourced mostly by helium's photoelectrons, faster
-		! than hydrogen recombines.
-		!
-		! The runs the science is quoted from sit inside the valid range and
-		! are unaffected: heh0p55, heh2p13_diff_kzz1e9 and every rung of the
-		! elemental-flux closure ladder up to He/H = 12 contain no fully
-		! ionized cell, with x(H II) at 2 R_p between 0.044 and 0.178.
-		!
-		! Correcting this means renormalizing the partition to the cell's
-		! own composition instead of the one the fit assumed. That moves
-		! every He-rich result and the goldens with them, so it is recorded
-		! here and not done. Record: LHS1140b/WORKPLAN.md row F and
-		! docs/lhs1140b_exhale_vs_pwinds.tex, "Density and ionization, the
-		! same pair".
-		! ------------------------------------------------------------------
 		! SvS85 secondary-ionization energy partition (scalars for this cell).
+		! The split between the H I and He I channels is renormalized onto the
+		! cell's own neutral ratio n(He I)/n(H I) -- the fits carry SvS85's
+		! own 0.1 -- and comes back per target atom, so the absorber loops
+		! below build rates in [1/s] directly and nothing is divided by a
+		! vanishing neutral density. Derivation, limits and the parts of the
+		! partition that are still composition-blind: svs85_secondary_branching.
 		if (sec_on) then
-			xj    = min(max(xion(j), 0.0d0), 1.0d0)
-			fh    = svs85_fheat(xj)
-			fiHI  = svs85_fion_HI(xj)
-			fiHeI = svs85_fion_HeI(xj)
+			call svs85_secondary_branching(xion(j), nhi(j), nheiS(j),      &
+			                               fh, fiHI, fiHeI)
 		else
 			fh = 1.0d0; fiHI = 0.0d0; fiHeI = 0.0d0
 		endif
@@ -484,15 +682,14 @@
 		if (present(P_H2)) P_H2(j) = PIR_H2*1.0e-18*erg2eV
     	P_HeI(j)   = PIR_15 *1.0e-18*erg2eV
 		! Add the H I / He I secondary-ionization rates from fast photoelectrons.
+		! fiHI and fiHeI are per target atom, so both integrals are already
+		! rates [1/s]: no division by a neutral density, and both stay finite
+		! as their own target vanishes (svs85_secondary_branching).
 		if (sec_on) then
-			R_secHI  = sum(int_f*acc_secHI *de_v)*1.0e-18*erg2eV
-			R_secHeI = sum(int_f*acc_secHeI*de_v)*1.0e-18*erg2eV
-			! x -> 1 gives f_ion -> 0, so R_sec -> 0 there; the max() is only a
-			! divide-by-zero guard for an (unphysical) fully depleted cell.
-			! Both rates carry the composition-blind SvS85 split; see the
-			! validity-range note at the fiHI/fiHeI assignment above.
-			P_HI(j)  = P_HI(j)  + R_secHI /max(nhi(j)  , 1.0d-99)
-			P_HeI(j) = P_HeI(j) + R_secHeI/max(nheiS(j), 1.0d-99)
+			Psec_HI  = sum(int_f*acc_secHI *de_v)*1.0e-18*erg2eV
+			Psec_HeI = sum(int_f*acc_secHeI*de_v)*1.0e-18*erg2eV
+			P_HI(j)  = P_HI(j)  + Psec_HI
+			P_HeI(j) = P_HeI(j) + Psec_HeI
 		endif
 		P_HeII(j)  = PIR_2  *1.0e-18*erg2eV
 		P_HeITR(j) = PIR_TR *1.0e-18*erg2eV
@@ -527,7 +724,7 @@
 	subroutine eval_cool(T_K,nhi,nhii,nhei,nheii,nheiii, nm,        &
 				   rchiiB,rcheiiB,rcheiiiB, rec_m,             &
 				   a_ion_HI,a_ion_HeI,a_ion_HeII, aion_m,      &
-				   cool, cool_chan, nheiTR, a_ion_HeITR, nmol)
+				   cool, cool_chan, nheiTR, a_ion_HeITR, nmol, nox)
 
 	! Evaluate the cooling rate contributions to energy and
 	!	rate equations. Includes H, He, and metal channels. Metals are
@@ -535,7 +732,7 @@
 	!	rec_m and aion_m carry the densities and rates for each ion, so the
 	!	argument list no longer grows when a metal is added.
 
-	integer :: i,j,e
+	integer :: i,j
 
 	real*8, dimension(1-Ng:N+Ng),intent(in)  :: nhi,nhii,           &
 	                                            nhei,nheii,nheiii
@@ -548,6 +745,8 @@
    real*8, dimension(1-Ng:N+Ng) :: brem,coex,coio,reco  ! Cooling rates
    real*8, dimension(1-Ng:N+Ng) :: cool_M               ! Metal cooling
    real*8, dimension(1-Ng:N+Ng) :: cool_H3p             ! H3+ infrared cooling
+   real*8, dimension(1-Ng:N+Ng) :: cool_H2, cool_H2O, cool_CO ! molecular bands
+   real*8 :: w_ir                                       ! incident-field dilution
    real*8, dimension(1-Ng:N+Ng) :: brem_acc,coolm_acc   ! sum accumulators
    real*8, dimension(1-Ng:N+Ng) :: metal_col            ! dispatcher scratch
    real*8, dimension(1-Ng:N+Ng,n_mion)  :: c_metal      ! metal line-cool coeffs
@@ -598,13 +797,17 @@
 	! three absorbers -- H I (the Lyman-alpha-dominated H-line cooling),
 	! He I, He II -- and finally bremsstrahlung (incl. metal-ion charges);
 	! column 7 = H3+ infrared cooling (0 unless the caller supplies nmol);
-	! columns 7+i = metal ion i line cooling (0 for non-coolant ions).
+	! columns 8-10 = the molecular infrared bands under `Molecular IR bands`
+	! -- H2 lines (needs nmol), H2O and CO bands (need nox) -- each the NET
+	! rate, emission minus absorption of the field from below, so a column is
+	! negative wherever that channel heats;
+	! columns 10+i = metal ion i line cooling (0 for non-coolant ions).
 	! The He I column also carries the He 2^3S metastable collisional cooling
 	! (10830 A + singlet-conversion terms), so columns 3-5 sum exactly to
 	! ne*coex. This is an exact decomposition of `cool` in the default
 	! (.not.use_2lev_cool) branch; in the two-level branch the metal terms for
 	! each ion are the resonance-line approximation and need not sum to cool_M.
-	real*8, dimension(1-Ng:N+Ng,7+n_mion),intent(out),optional :: cool_chan
+	real*8, dimension(1-Ng:N+Ng,10+n_mion),intent(out),optional :: cool_chan
 
 	! He 2^3S metastable density [cm^-3], present only for the triplet-tracking
 	! callers. When supplied it adds the collisional-ionization cooling of the
@@ -622,6 +825,13 @@
 	! `cool` every caller gets. Omitted only by callers that model a
 	! molecule-free gas (see the note at calc_ne below).
 	real*8, dimension(1-Ng:N+Ng,4),intent(in),optional :: nmol
+
+	! Oxygen-carrier densities [cm^-3], canonical order OH, H2O, CO (the
+	! layout nox_eq uses). Present only when the oxygen chemistry is on, which
+	! is the only configuration in which H2O and CO exist at all. Used for the
+	! H2O and CO infrared bands; OH has no cross-section table and is left out
+	! (it carries a few percent of the oxygen where the water does the rest).
+	real*8, dimension(1-Ng:N+Ng,3),intent(in),optional :: nox
 
 	! He 2^3S collisional-ionization rate coefficient (always computed; only
 	! exported / applied through the optional arguments above).
@@ -905,8 +1115,46 @@
 		enddo
 	endif
 
+	!-- Molecular infrared bands (H2 lines, H2O and CO bands) --!
+
+	! The infrared coolants a real H2 atmosphere carries below the H2 -> H
+	! front and this code did not: the H2 quadrupole plus magnetic dipole line
+	! spectrum (Roueff et al. 2019) and the H2O and CO vibration-rotation bands
+	! (HITEMP through the Photochem k-coefficients). Each is the NET rate --
+	! LTE emission minus absorption of the diluted B_nu(T0) the lower
+	! atmosphere presents -- so each vanishes at its own radiative equilibrium
+	! temperature instead of running the layer down to nothing. That fixed
+	! point is what TO_BE_DONE.md item (G) asks for; the emission magnitudes
+	! alone would only deepen the collapse.
+	! Off by default (`Molecular IR bands`). The dilution is the same
+	! 0.5*base_sky_fraction the H3+ closure uses, and it is zero when
+	! `Base IR field` is off, which reduces the channels to pure emitters --
+	! the configuration input_read warns about.
+	! Physics, validity range and sources: molecular_infrared_cooling.f90.
+	cool_H2  = 0.0d0
+	cool_H2O = 0.0d0
+	cool_CO  = 0.0d0
+	if (mol_ir_bands) then
+		do j = 1-Ng,N+Ng
+			if (base_ir_field) then
+				w_ir = 0.5d0*base_sky_fraction(r(j),1.0d0)
+			else
+				w_ir = 0.0d0
+			endif
+			if (present(nmol)) cool_H2(j) =                            &
+				h2_line_net_cooling_rate(T_K(j), nmol(j,1), w_ir)
+			if (present(nox)) then
+				cool_H2O(j) = h2o_band_net_cooling_rate(T_K(j),        &
+				                                        nox(j,2), w_ir)
+				cool_CO(j)  = co_band_net_cooling_rate(T_K(j),         &
+				                                       nox(j,3), w_ir)
+			endif
+		enddo
+	endif
+
 	! Total cooling rate
-	cool = ne*(brem + coex + reco + coio) + cool_M + cool_H3p
+	cool = ne*(brem + coex + reco + coio) + cool_M + cool_H3p          &
+	       + cool_H2 + cool_H2O + cool_CO
 
 	! Breakdown by channel for the diagnostic (Huang Fig. 10).
 	! Read straight from the arrays already computed above, so the sum of
@@ -923,12 +1171,15 @@
 		cool_chan(:,5) = ne*(coeff_coex_rate_HeII*nheii)  ! coex_HeII
 		cool_chan(:,4) = ne*coex - cool_chan(:,3) - cool_chan(:,5)  ! coex_HeI
 		cool_chan(:,6) = ne*brem
-		cool_chan(:,7) = cool_H3p
+		cool_chan(:,7)  = cool_H3p
+		cool_chan(:,8)  = cool_H2
+		cool_chan(:,9)  = cool_H2O
+		cool_chan(:,10) = cool_CO
 		do i = 1,n_mion
 			if (mion_iscool(i)) then
-				cool_chan(:,7+i) = ne*nm(:,i)*c_metal(:,i)
+				cool_chan(:,10+i) = ne*nm(:,i)*c_metal(:,i)
 			else
-				cool_chan(:,7+i) = 0.0d0
+				cool_chan(:,10+i) = 0.0d0
 			endif
 		enddo
 	endif
@@ -959,8 +1210,12 @@
 	real*8, dimension(1-Ng:N+Ng,n_mion) :: nm
 	! Molecular densities [cm^-3] (H2, H2+, H3+, HeH+); zero for an atomic run
 	real*8, dimension(1-Ng:N+Ng,4) :: nmol
+	! Oxygen carriers [cm^-3] (OH, H2O, CO); zero without the oxygen chemistry
+	real*8, dimension(1-Ng:N+Ng,3) :: nox
+	! Planck-mean optical depth of the H2O and CO columns above each cell
+	real*8, dimension(1-Ng:N+Ng) :: tau_h2o,tau_co
 	real*8, dimension(1-Ng:N+Ng) :: cool,csum,rel
-	real*8, dimension(1-Ng:N+Ng,7+n_mion) :: chan
+	real*8, dimension(1-Ng:N+Ng,10+n_mion) :: chan
 	! Throwaway eval_cool rate outputs (not needed for the dump)
 	real*8, dimension(1-Ng:N+Ng) :: rchiiB,rcheiiB,rcheiiiB
 	real*8, dimension(1-Ng:N+Ng) :: a_ion_HI,a_ion_HeI,a_ion_HeII
@@ -998,17 +1253,25 @@
 		nmol(:,3) = f_sp_in(:,isp_H3p) *n_dim
 		nmol(:,4) = f_sp_in(:,isp_HeHp)*n_dim
 	endif
+	! Oxygen carriers, so the H2O and CO infrared columns are the ones
+	! ioniz_eq itself used (all zero without the oxygen chemistry).
+	nox = 0.0d0
+	if (thereis_oxychem) then
+		nox(:,1) = f_sp_in(:,isp_OH) *n_dim
+		nox(:,2) = f_sp_in(:,isp_H2O)*n_dim
+		nox(:,3) = f_sp_in(:,isp_CO) *n_dim
+	endif
 	call calc_ne(nhii,nheii,nheiii,ne,nm,nmol)
 
 	call eval_cool(T_K,nhi,nhii,nhei,nheii,nheiii, nm,            &
 				   rchiiB,rcheiiB,rcheiiiB, rec_m,                &
 				   a_ion_HI,a_ion_HeI,a_ion_HeII, aion_m,         &
 				   cool, cool_chan = chan, nheiTR = nheiTR,       &
-				   nmol = nmol)
+				   nmol = nmol, nox = nox)
 
 	! Internal consistency: channel sum vs total cool (default branch -> ~eps)
 	csum = 0.0d0
-	do i = 1,7+n_mion
+	do i = 1,10+n_mion
 		csum = csum + chan(:,i)
 	enddo
 	rel    = abs(csum - cool)/max(abs(cool),1.0d-99)
@@ -1021,7 +1284,12 @@
 	write(71,'(a)') '# Channel sum reproduces the Hydro_ioniz.txt cool column.'
 	write(71,'(a)') '# col1 r/Rp  col2 T[K]  col3 ne  col4 cool_total  col5 reco'  &
 	             // '  col6 coio  col7 coex_HI[Lya]  col8 coex_HeI  col9 coex_HeII'  &
-	             // '  col10 brem  col11 H3p_IR  then one col per metal ion:'
+	             // '  col10 brem  col11 H3p_IR  col12 H2_IR  col13 H2O_IR'          &
+	             // '  col14 CO_IR  then one col per metal ion:'
+	write(71,'(a)') '#   the three molecular-band columns are NET rates'          &
+	             // ' (emission minus absorption of the field from below), so'
+	write(71,'(a)') '#   a negative value is that band heating the gas; they'     &
+	             // ' are identically zero unless "Molecular IR bands" is on.'
 	write(71,'(a)',advance='no') '#   metal-ion columns (canonical order):'
 	do i = 1,n_mion
 		write(71,'(1x,a)',advance='no') trim(mion_name(i))
@@ -1030,9 +1298,36 @@
 	do j = 1-Ng,N+Ng
 		write(71,*) r(j), T_K(j), ne(j), cool(j),                        &
 		            chan(j,1), chan(j,2), chan(j,3), chan(j,4),           &
-		            chan(j,5), chan(j,6), chan(j,7),                      &
-		            (chan(j,7+i), i = 1,n_mion)
+		            chan(j,5), chan(j,6), chan(j,7), chan(j,8),           &
+		            chan(j,9), chan(j,10),                                &
+		            (chan(j,10+i), i = 1,n_mion)
 	enddo
+	! Whether the optically thin limit the molecular bands are computed in is
+	! actually where the run sits: the Planck-mean optical depth of the H2O
+	! and CO columns, integrated from each cell to the top of the domain, and
+	! its maximum over the wind. This is a measurement of the approximation
+	! stated at molecular_infrared_cooling.f90, not an input to it.
+	if (mol_ir_bands .and. thereis_oxychem) then
+		tau_h2o = 0.0d0
+		tau_co  = 0.0d0
+		do j = N+Ng-1,1-Ng,-1
+			tau_h2o(j) = tau_h2o(j+1)                                    &
+			  + molecular_planck_cross_section(1, T_K(j))*nox(j,2)        &
+			    *(r(j+1) - r(j))*R0
+			tau_co(j)  = tau_co(j+1)                                     &
+			  + molecular_planck_cross_section(2, T_K(j))*nox(j,3)        &
+			    *(r(j+1) - r(j))*R0
+		enddo
+		write(71,'(a,es10.3,a,f9.5)') '# max Planck-mean tau(H2O) to the'     &
+		   // ' top of the domain = ', maxval(tau_h2o(1:N)),                  &
+		   ' at r/Rp = ', r(maxloc(tau_h2o(1:N),1))
+		write(71,'(a,es10.3,a,f9.5)') '# max Planck-mean tau(CO)  to the'     &
+		   // ' top of the domain = ', maxval(tau_co(1:N)),                   &
+		   ' at r/Rp = ', r(maxloc(tau_co(1:N),1))
+		write(*,'(a,2es10.3)') ' (write_cool_breakdown_eq) max Planck-mean'   &
+		   // ' tau(H2O), tau(CO) upward = ', maxval(tau_h2o(1:N)),           &
+		   maxval(tau_co(1:N))
+	endif
 	close(71)
 
 	end subroutine write_cool_breakdown_eq
@@ -1056,7 +1351,7 @@
 	! relative residual is the internal consistency check on the photoheating
 	! split.
 
-	integer :: j,i,im
+	integer :: j,im
 	real*8, dimension(1-Ng:N+Ng), intent(in) :: T_in,n_in
 	real*8, dimension(1-Ng:N+Ng,n_species), intent(in) :: f_sp_in
 
@@ -1069,6 +1364,16 @@
 	real*8, dimension(1-Ng:N+Ng,6) :: hchan
 	real*8, dimension(1-Ng:N+Ng) :: heat_ph,heat_tot,csum,rel
 	real*8, dimension(1-Ng:N+Ng) :: h_hrc,h_penning,h_penning_h2,h_lw
+	! Oxygen-chemistry carriers [cm^-3] (OH, H2O, CO; zero without the
+	! option), their star-ward FUV columns and the photolysis heating.
+	real*8, dimension(1-Ng:N+Ng,3) :: nox
+	real*8, dimension(1-Ng:N+Ng) :: NH2Oc,NOHc,h_fuv
+	! Scratch for the shared-beam field routine: this dump needs only the
+	! two heating terms out of it, but the routine solves the whole field.
+	real*8, dimension(1-Ng:N+Ng) :: fsh_dump, trl_dump
+	real*8, dimension(1-Ng:N+Ng,n_fuv_band) :: tau_dump, jh2o_dump, joh_dump
+	real*8 :: a_dump
+	integer :: ib
 	! Throwaway PH_heat_HHe rate outputs (not needed for the dump)
 	real*8, dimension(1-Ng:N+Ng) :: P_HI,P_HeI,P_HeII,P_HeITR,q,P_H2
 	real*8, dimension(1-Ng:N+Ng,n_mion) :: P_m
@@ -1099,6 +1404,14 @@
 	do im = 1,n_mion
 		nm(:,im) = f_sp_in(:,mion_fsp(im))*n_dim
 	enddo
+	! Oxygen carriers, so the FUV photolysis heating channel is the one
+	! ioniz_eq itself applies (all zero without the oxygen chemistry).
+	nox = 0.0d0
+	if (thereis_oxychem) then
+		nox(:,1) = f_sp_in(:,isp_OH) *n_dim
+		nox(:,2) = f_sp_in(:,isp_H2O)*n_dim
+		nox(:,3) = f_sp_in(:,isp_CO) *n_dim
+	endif
 	! Molecular ions, so the dumped ne and the molecular heating channels are
 	! the ones ioniz_eq itself uses (all zero for an atomic run).
 	nmol = 0.0d0
@@ -1169,23 +1482,33 @@
 
 	! H2 + hv -> H + H Lyman-Werner photodissociation heating: the fragment
 	! pair keeps about 0.4 eV of kinetic energy (the 4.48 eV bond energy is
-	! paid by the photon, not by the gas). The star-ward H2 column uses the
-	! same radial integration and opa_pf weighting as every other absorber
-	! column, as in ionization_equilibrium.
-	h_lw = 0.0d0
-	if (thereis_mol .and. F_LW_star .gt. 0.0d0) then
-		call calc_column_dens_one(nmol(:,1), NH2col)
-		do j = 1-Ng,N+Ng
-			k_lw(j) = lyman_werner_dissociation_rate(F_LW_star,       &
-			                                    NH2col(j), T_K(j))
-		enddo
+	! paid by the photon, not by the gas). And the FUV photolysis heating of
+	! H2O and OH (the oxygen chemistry), whose ledger is the same: the
+	! excess of the absorbed photon over the bond energy. Both come from the
+	! ONE shared-beam field routine the equilibrium solve uses, rebuilt here
+	! from f_sp_in because this dump must be a function of the state it is
+	! given rather than of the last state solved.
+	h_lw  = 0.0d0
+	h_fuv = 0.0d0
+	if (thereis_mol .or. thereis_oxychem) then
+		call fuv_lw_photon_field(nmol(:,1), nox(:,2), nox(:,1), T_K,   &
+		                         NH2col, NH2Oc, NOHc,                  &
+		                         fsh_dump, trl_dump, tau_dump,         &
+		                         k_lw, jh2o_dump, joh_dump, a_dump)
 		h_lw = k_lw*nmol(:,1)*e_lw_fragment_erg
+		do ib = 1,n_fuv_band
+			h_fuv = h_fuv                                              &
+			  + jh2o_dump(:,ib)*nox(:,2)                               &
+			    *heat_per_water_dissociation(ib)                       &
+			  + joh_dump(:,ib)*nox(:,1)                                &
+			    *heat_per_hydroxyl_dissociation(ib)
+		enddo
 	endif
 
 	! Total heating (independent of the channel columns; the residual
 	! below checks the photoheating decomposition against heat_ph).
 	heat_tot = heat_ph + Hpe_arr + Hdx_arr + h_hrc + h_penning        &
-	         + h_penning_h2 + h_lw
+	         + h_penning_h2 + h_lw + h_fuv
 
 	! Internal consistency of the photoheating split.
 	csum   = hchan(:,1) + hchan(:,2) + hchan(:,3) + hchan(:,4)        &
@@ -1203,13 +1526,14 @@
 	             // '  col6 heat_HeI  col7 heat_HeII  col8 heat_He23S  col9 heat_H2'  &
 	             // '  col10 heat_metals  col11 heat_Hpe[excitedH]'                    &
 	             // '  col12 heat_Hdx[Lya-deexc]  col13 heat_He_recomb  col14 heat_He23S_Penning'  &
-	             // '  col15 heat_He23S_H2_Penning  col16 heat_H2_LW'
+	             // '  col15 heat_He23S_H2_Penning  col16 heat_H2_LW'   &
+	             // '  col17 heat_FUV_photolysis'
 	do j = 1-Ng,N+Ng
 		write(72,*) r(j), T_K(j), ne(j), heat_tot(j),                    &
 		            hchan(j,1), hchan(j,2), hchan(j,3), hchan(j,4),       &
 		            hchan(j,5), hchan(j,6),                               &
 		            Hpe_arr(j), Hdx_arr(j), h_hrc(j), h_penning(j),       &
-		            h_penning_h2(j), h_lw(j)
+		            h_penning_h2(j), h_lw(j), h_fuv(j)
 	enddo
 	close(72)
 
@@ -1375,6 +1699,93 @@
 		real*8 :: f
 		f = 0.0554d0*(1.0d0 - x**0.4614d0)**1.6660d0
 	end function svs85_fion_HeI
+
+	! ------------------------------------------------------------- !
+
+	pure subroutine svs85_secondary_branching(x, n_HI, n_HeI,               &
+	                                          f_heat, c_ion_HI, c_ion_HeI)
+
+	! Branching of a fast photoelectron's energy between heat, H I secondary
+	! ionization and He I secondary ionization, resolved on the cell's own
+	! composition. The two ionization channels are returned PER TARGET ATOM
+	! [cm^3], so the caller multiplies them by the deposited-energy integrand
+	! and adds the result straight to the photoionization rate, with no
+	! division by a neutral density anywhere.
+	!
+	! What SvS85 gives. svs85_fion_HI(x) and svs85_fion_HeI(x) are the
+	! fractions of the primary energy E0 that end as H I and He I ionization
+	! energy. They are functions of the ionized fraction x alone: the
+	! composition is fixed inside the fitted coefficients at
+	! n(He I)/n(H I) = heh_neutral_svs85 = 0.1, and the amplitudes -- 0.3908
+	! against 0.0554 -- are the branching belonging to THAT gas.
+	!
+	! Why they cannot be used as they stand. The branching between the two
+	! channels is a collision probability: the fast electron ionizes species s
+	! at a rate proportional to n_s times the energy-averaged ionization cross
+	! section, so the ratio of the two energy shares scales linearly with
+	! n(He I)/n(H I). Used unrescaled, the fits assert a fixed share for helium
+	! however little helium is there; the volumetric He I rate stays finite as
+	! n(He I) -> 0 and the rate per atom, which is what the ionization system
+	! needs, diverges. The mirror case is worse in practice: in a
+	! helium-dominated gas the H I channel is fed almost entirely by helium's
+	! photoelectrons, and P_HI += R_sec/n_HI drove n_HI to an exact zero above
+	! He/H = 10.
+	!
+	! What is done instead. The total energy the primary spends ionizing H and
+	! He, f_ion = f_HI + f_HeI, is left at the SvS85 value -- it is fixed by the
+	! same Monte Carlo that fixes f_heat, which is returned unchanged, so the
+	! cell's energy budget does not move -- and only its SPLIT is renormalized
+	! onto the cell's own neutral ratio:
+	!
+	!    w_HI  = n_HI*heh_neutral_svs85*f_HI ,   w_HeI = n_HeI*f_HeI
+	!    c_ion_HI  = f_ion*heh_neutral_svs85*f_HI/(w_HI + w_HeI)
+	!    c_ion_HeI = f_ion*f_HeI/(w_HI + w_HeI)
+	!
+	! No electron-impact cross sections are needed: their ratio cancels,
+	! because the reference the factor heh_neutral_svs85 calibrates against is
+	! SvS85's own branching at their own composition.
+	!
+	! Limits, which are the requirements this form was written to meet:
+	!  * n_HeI/n_HI = 0.1, SvS85's gas: c_ion_HI = f_HI/n_HI and
+	!    c_ion_HeI = f_HeI/n_HeI exactly -- the rates per atom the unrescaled
+	!    expression gave, so the fits are reproduced where they were measured.
+	!  * n_HeI -> 0: the He I rate per atom stays finite, the volumetric one
+	!    vanishes with n_HeI, and all of f_ion goes to hydrogen, raising that
+	!    channel by f_ion/f_HI = 1.14 at most.
+	!  * n_HI -> 0: the mirror image, the He I channel raised by f_ion/f_HeI at
+	!    most, and the volumetric H I rate vanishing with n_HI.
+	!
+	! Validity range, i.e. what is still SvS85's composition and not the
+	! cell's. f_heat, and with it the total f_ion, keep the helium content of
+	! the Monte Carlo, as does the excitation channel the code discards; only
+	! the split between the two ionization channels is corrected. Molecular
+	! hydrogen is a source of photoelectrons in the caller but never a target,
+	! since SvS85 has no H2 channel, so in a molecular layer the energy that
+	! would ionize H2 is handed to H I. Both are accurate while the ionizing
+	! collisions are shared between H and He in roughly the proportions SvS85
+	! sampled, and are approximations away from that.
+
+	real*8, intent(in)  :: x, n_HI, n_HeI
+	real*8, intent(out) :: f_heat, c_ion_HI, c_ion_HeI
+	real*8 :: xc, f_HI, f_HeI, w_tot
+
+	xc     = min(max(x, 0.0d0), 1.0d0)
+	f_heat = svs85_fheat(xc)
+	f_HI   = svs85_fion_HI(xc)
+	f_HeI  = svs85_fion_HeI(xc)
+
+	w_tot = n_HI*heh_neutral_svs85*f_HI + n_HeI*f_HeI
+	if (w_tot .gt. 0.0d0) then
+		c_ion_HI  = (f_HI + f_HeI)*heh_neutral_svs85*f_HI/w_tot
+		c_ion_HeI = (f_HI + f_HeI)*f_HeI/w_tot
+	else
+		! Either no neutral target is left, or x = 1 has sent both fits to
+		! zero: there is no secondary ionization to distribute.
+		c_ion_HI  = 0.0d0
+		c_ion_HeI = 0.0d0
+	endif
+
+	end subroutine svs85_secondary_branching
 
 	! End of module
 	end module utils_ion_eq

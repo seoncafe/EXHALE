@@ -1,7 +1,7 @@
       module species_table
       ! Canonical metadata table for the trace-metal ion stages, plus
-      ! composition metadata (mass/charge/nuclei) for the base H/He and
-      ! molecular species (bsp_* below).
+      ! composition metadata (mass/charge/nuclei) for the base H/He, the
+      ! molecular and the oxygen-chemistry species (bsp_* below).
       !
       ! This module exists so that adding a metal becomes "add rows to a
       ! table" rather than "thread N new arguments through M subroutines."
@@ -71,6 +71,10 @@
       integer, parameter :: isp_H2p   = 35
       integer, parameter :: isp_H3p   = 36
       integer, parameter :: isp_HeHp  = 37
+      ! ---- oxygen-chemistry columns (zero unless thereis_oxychem) ----
+      integer, parameter :: isp_OH    = 38
+      integer, parameter :: isp_H2O   = 39
+      integer, parameter :: isp_CO    = 40
 
       ! ---- metadata for each base (H/He/molecular) species ----
       ! Composition metadata for the non-metal species, so the EOS helpers
@@ -81,33 +85,57 @@
       ! not 4.0026; H2/H2+ = 2, H3+ = 3, HeH+ = 5 m_H), so a future
       ! metadata-driven rewrite can stay byte-identical. Every species counts
       ! as ONE gas particle in the pressure/EOS particle sum.
-      integer, parameter :: n_bsp = 10   ! HI HII HeI HeII HeIII HeTR H2 H2+ H3+ HeH+
+      ! Rows 11-13 (OH, H2O, CO) are the oxygen-chemistry carriers. Their
+      ! masses are the H mass the code uses (1 m_H) plus the ATOMIC WEIGHT
+      ! the metal block already assigns to the element (melem_A: 15.999 for
+      ! O, 12.011 for C), so the same nucleus weighs the same whether it is
+      ! counted through the metal ion columns or through a molecule, and
+      ! calc_rho cannot count it twice. The oxygen and carbon bound in these
+      ! molecules is removed from the metal ion totals by the ionization
+      ! solve (the O I column means FREE ATOMIC oxygen when the oxygen
+      ! chemistry is on), which is where that non-double-counting is made.
+      integer, parameter :: n_bsp = 13   ! HI HII HeI HeII HeIII HeTR H2 H2+ H3+ HeH+ OH H2O CO
       ! f_sp species column for each base species
       integer, parameter :: bsp_fsp(n_bsp) = &
            [ isp_HI, isp_HII, isp_HeI, isp_HeII, isp_HeIII, isp_HeTR,   &
-             isp_H2, isp_H2p, isp_H3p, isp_HeHp ]
+             isp_H2, isp_H2p, isp_H3p, isp_HeHp,                        &
+             isp_OH, isp_H2O, isp_CO ]
       ! mass [m_H units] as used by calc_rho (code values, see note above)
       real*8,  parameter :: bsp_mass(n_bsp) = &
            [ 1.0d0, 1.0d0, 4.0d0, 4.0d0, 4.0d0, 4.0d0,                  &
-             2.0d0, 2.0d0, 3.0d0, 5.0d0 ]
+             2.0d0, 2.0d0, 3.0d0, 5.0d0,                                &
+             16.999d0, 17.999d0, 28.010d0 ]
       ! net charge = free electrons contributed (calc_ne: each molecular
-      ! ion carries +1; the He 2^3S triplet is neutral)
+      ! ion carries +1; the He 2^3S triplet is neutral; OH, H2O and CO are
+      ! neutral)
       integer, parameter :: bsp_charge(n_bsp) = &
-           [ 0, 1, 0, 1, 2, 0,  0, 1, 1, 1 ]
+           [ 0, 1, 0, 1, 2, 0,  0, 1, 1, 1,  0, 0, 0 ]
       ! H nuclei carried by one particle of the species
       integer, parameter :: bsp_nH(n_bsp) = &
-           [ 1, 1, 0, 0, 0, 0,  2, 2, 3, 1 ]
+           [ 1, 1, 0, 0, 0, 0,  2, 2, 3, 1,  1, 2, 0 ]
       ! He nuclei carried (the He nucleus in HeH+ is NOT in the free-He
       ! arrays; see the calc_rho comment)
       integer, parameter :: bsp_nHe(n_bsp) = &
-           [ 0, 0, 1, 1, 1, 1,  0, 0, 0, 1 ]
+           [ 0, 0, 1, 1, 1, 1,  0, 0, 0, 1,  0, 0, 0 ]
+      ! O nuclei carried. The counterpart of bsp_nH for the oxygen element:
+      ! without it every O nucleus bound in OH, H2O or CO disappears from
+      ! the element total, and the total-oxygen closure
+      !   n_O,tot = n(OI) + n(OII) + n(OIII) + n(OH) + n(H2O) + n(CO)
+      ! silently loses half the element (docs/a2_oxygen_option_design.md
+      ! sec. 4.1). Zero for every species that predates the oxygen option,
+      ! so it is inert for a run without it.
+      integer, parameter :: bsp_nO(n_bsp) = &
+           [ 0, 0, 0, 0, 0, 0,  0, 0, 0, 0,  1, 1, 1 ]
+      ! C nuclei carried; only CO has any.
+      integer, parameter :: bsp_nC(n_bsp) = &
+           [ 0, 0, 0, 0, 0, 0,  0, 0, 0, 0,  0, 0, 1 ]
       ! .true. where the column is an EXCITED LEVEL of another species, i.e.
       ! a sub-population already contained in that species' density, not an
       ! independent chemical species.  He 2^3S is the metastable triplet
       ! level of He I and the He I density the code carries (nhei, f_sp
       ! column isp_HeI) is the TOTAL He I population, triplet included --
-      ! the singlet is formed where it is needed as nheiS = nhei - nheiTR
-      ! (util_ion_eq).  Its mass, its gas particle and its helium nucleus
+      ! the singlet is formed by he_ground_singlet_density (composition),
+      ! which is the one place that difference is taken and floored at zero.  Its mass, its gas particle and its helium nucleus
       ! are therefore already counted through He I, so EVERY BUDGET SUM
       ! (mass density, particle count, element nuclei, free electrons,
       ! collision partners) must skip the flagged column.  The level
@@ -115,11 +143,13 @@
       ! their parent, so only the sums skip them, never the updates.
       logical, parameter :: bsp_is_excited_level(n_bsp) = &
            [ .false., .false., .false., .false., .false., .true.,       &
-             .false., .false., .false., .false. ]
+             .false., .false., .false., .false.,                        &
+             .false., .false., .false. ]
       ! human-readable species label (diagnostics only)
       character(len=5), parameter :: bsp_name(n_bsp) = &
            [ 'HI   ', 'HII  ', 'HeI  ', 'HeII ', 'HeIII', 'HeTR ',      &
-             'H2   ', 'H2+  ', 'H3+  ', 'HeH+ ' ]
+             'H2   ', 'H2+  ', 'H3+  ', 'HeH+ ',                        &
+             'OH   ', 'H2O  ', 'CO   ' ]
 
       ! ---- indices for each ion (canonical mion order; see table above) ----
       ! Used for index-based rate dispatch (rec/ion/cool_coeff_by_ion), so

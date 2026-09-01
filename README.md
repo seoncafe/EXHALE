@@ -23,7 +23,10 @@ ATES model.
   inside the coupled ionization system, with Badnell RR+DR recombination
   (Huang et al. 2023 fits for Fe I/II and Shull & Van Steenberg for Ca I, whose
   isoelectronic sequences the Badnell project does not reach), Voronov
-  collisional ionization, and Huang et al. (2023) charge exchange
+  collisional ionization, and Huang et al. (2023) charge exchange, extended by
+  the `O2+ + H0 -> O+ + H+` electron capture of Barragan et al. (2006) that
+  Table 4 omits (on by default; `metals.inp: cx_O2p_H 0` restores the
+  Table-4-only reaction set)
 - Metal-line cooling as closed-form analytic fits to CHIANTI v11 (C I/II,
   N I/II, O I/II, Mg I/II, Ca II, Na I, Fe II; 0.1–3% accuracy), with
   the split ground terms of C I, C II, N II and O I solved in exact statistical
@@ -35,8 +38,10 @@ ATES model.
   cell enters the statistical-equilibrium solution as `A_ul -> beta*A_ul`),
   and a smooth cutoff of the coronal fits below their
   10^3 K validity floor, leaving only the explicit fine-structure terms
-- He I 2³S metastable triplet in the coupled solver, with a
-  temperature-dependent He(2³S)+H Penning-ionization rate (Taylor et al. 2025)
+- He I 2³S metastable triplet in the coupled solver, with
+  temperature-dependent He(2³S)+H and +H₂ destruction rates
+  (García Muñoz 2025, continuous closed forms with a 0.9/0.1
+  Penning/associative branching)
 - Updated photoionization data: He I ground state from Verner et al. (1996),
   and a He I 2³S cross section extended past 60 eV against TOPbase
 - Secondary ionization by fast photoelectrons (Shull & van Steenberg 1985)
@@ -46,9 +51,25 @@ ATES model.
 - Molecular chemistry: H2, H2+, H3+ and HeH+ in the coupled ionization
   equilibrium, with H2 photoionization opacity/heating, Miller et al. (2013)
   H3+ infrared cooling, and H2 photodissociation in the Lyman-Werner bands
-  with Draine & Bertoldi (1996) self-shielding
+  with the temperature-dependent self-shielding of Richings, Schaye &
+  Oppenheimer (2014)
+- Oxygen chemistry: OH, H2O and CO in the same coupled system, with the FUV
+  photolysis of H2O and OH in five bands, so the base H2/H partition is
+  computed rather than imported. Rates from Baulch et al. (2005) and the IUPAC
+  evaluations, reverse rates by detailed balance against a NIST-JANAF Shomate
+  table, CO carried as an oxygen reservoir. The first band is the 912-1110 A
+  Lyman-Werner interval, where H2, H2O and OH share one beam: the H2 lines and
+  the H2O/OH continuum each attenuate what the other sees, so the interval has
+  one incident flux (`Stellar LW flux`). The molecular carriers H2, OH, H2O and
+  CO are transported by default (`Oxygen transport`), an implicit
+  diffusion-advection solve coupled to their chemistry
 - Thermal infrared field of the atmosphere below the base, so the molecular
   and fine-structure coolants return the net rate rather than the vacuum limit
+- Molecular infrared bands (`Molecular IR bands`): the H2 quadrupole and
+  magnetic dipole line spectrum (Roueff et al. 2019) and the H2O and CO
+  vibration-rotation bands (HITEMP), in LTE and exchanging with that same
+  field, so the layer below the H2 -> H front settles on a radiative
+  equilibrium temperature instead of radiating itself away
 - Diffusive separation of helium and metals: hydrogen and helium are
   transported as a two-component mixture, with bulk advection, binary
   diffusive settling in the computed ambipolar field, and an optional eddy
@@ -85,12 +106,13 @@ ATES model.
 - Runtime grid size: `Grid cells: <N>` in `input.inp` (default 500), so
   base-refinement studies run without a rebuild
 - `EXHALE_transit.py` transmission post-processor: He I 10830 Å, Ly-alpha,
-  H-alpha, H-beta, and the metal resonance doublets Mg II h&k, Ca II H&K and
-  Na I D, with impact-parameter Voigt integration, instrument and rotation
-  convolution, and an optional triaxial Roche geometry
+  H-alpha, H-beta, the metal resonance doublets Mg II h&k, Ca II H&K and
+  Na I D, and the O I 1302/1304/1306 triplet out of its three resolved
+  ground-term fine-structure levels, with impact-parameter Voigt integration,
+  instrument and rotation convolution, and an optional triaxial Roche geometry
 - Python loaders (`examples/exhale_io.py`) driven by the `# columns` schema
   header every output file carries, and a bitwise regression harness over a
-  five-case physics matrix
+  seven-case physics matrix
 
 ---
 
@@ -159,7 +181,12 @@ schemas, convergence recipes, post-processing — is in
   — the H/He/He 2³S atomic data and its benchmarks
 - [`docs/lower_atmosphere_coupling.pdf`](docs/lower_atmosphere_coupling.pdf) —
   the lower-atmosphere connection: analytic column, molecular chemistry,
-  Lyman-Werner photodissociation, base infrared field, VULCAN handoff
+  Lyman-Werner photodissociation, base infrared field, the H2/H2O/CO infrared
+  bands, VULCAN handoff
+- [`docs/molecular_hydrogen_treatment.pdf`](docs/molecular_hydrogen_treatment.pdf)
+  — how H2 is treated: it is one species with no (v,J) resolution, so every
+  level distribution is an assumption; the assumptions, their sources and
+  their validity ranges collected in one place
 - [`docs/binary_diffusion_design.md`](docs/binary_diffusion_design.md),
   [`docs/design_hehe_diffusion.md`](docs/design_hehe_diffusion.md) and
   [`docs/version_compare.pdf`](docs/version_compare.pdf) — diffusive
@@ -174,7 +201,7 @@ schemas, convergence recipes, post-processing — is in
 - [`docs/viscosity_conduction.md`](docs/viscosity_conduction.md) — molecular
   viscosity and heat conduction: derivation and where they matter
 - [`docs/code_comparison.pdf`](docs/code_comparison.pdf) and
-  [`docs/methodology_aiolos_taylor_xing.pdf`](docs/methodology_aiolos_taylor_xing.pdf)
+  [`docs/methodology_comparison.pdf`](docs/methodology_comparison.pdf)
   — comparison with ATES, Salz, Kubyshkina, Murray-Clay, AIOLOS, Taylor, Xing
 
 `docs/` holds roughly forty further memos on individual investigations;
@@ -236,4 +263,4 @@ schemas, convergence recipes, post-processing — is in
 
 Kwang-Il Seon (KASI / UST)
 
-Last updated: 2026-08-30 00:31
+Last updated: 2026-09-02 00:44 KST

@@ -3,9 +3,10 @@
 	!	simulation to file
 	
 	use global_parameters
-	use charge_exchange, only: he_h_charge_exchange
+	use charge_exchange, only: he_h_charge_exchange, cx_o2p_h_scale
 	use species_table,   only: melem_name
 	use IC_load,         only: melem_from_abundance
+	use composition,     only: h2_mixing_ratio_base, h2_mixing_ratio_ceiling
 	use lower_atmosphere_profile, only: lap_in_use, lap_report_provenance, &
 	                     lap_flux_measured, lap_flux_window_empty,        &
 	                     lap_flux_nface, lap_FH_median, lap_FH_spread,    &
@@ -99,6 +100,41 @@
       '- H2 Lyman-Werner photodissociation off ("Stellar LW flux" unset)'
 		endif
 	endif
+	if (thereis_oxychem) then
+		write(outfile,*) &
+      '- Including oxygen chemistry (OH, H2O, CO) in the same system'
+		if (oxygen_transport) then
+			write(outfile,*) &
+      '- Molecular carriers (H2, OH, H2O, CO) are TRANSPORTED: implicit'// &
+      ' diffusion-advection solved with their chemistry'
+			if (maxval(kzz_cell) .le. 0.0d0) write(outfile,*) &
+      '  WARNING K_zz = 0 everywhere, so the transport is pure molecular'//&
+      ' diffusion -- the wrong limit for a lower atmosphere,'
+			if (maxval(kzz_cell) .le. 0.0d0) write(outfile,*) &
+      '  where eddy mixing is what holds the composition well mixed'//     &
+      ' below the homopause. Set "He_Kzz:" or a profile.'
+		else
+			write(outfile,*) &
+      '- Molecular carriers are a LOCAL steady state ("Oxygen transport:'//&
+      ' False"): the chemistry alone, not a model of a base'
+		endif
+		write(outfile,'(A,5ES10.3)') &
+      ' - FUV band fluxes at the planet [erg cm^-2 s^-1]'//               &
+      ' LW/B1/B2(Lya)/B3/B4: ', F_LW_star, F_FUV_B1, F_Lya_star,          &
+      F_FUV_B3, F_FUV_B4
+		write(outfile,*) &
+      '- The 912-1110 A band is the Lyman-Werner interval and carries'//  &
+      ' "Stellar LW flux": H2, H2O and OH share that beam'
+		write(outfile,*) &
+      '- B2 is the INCIDENT stellar Ly-alpha flux: only the H2O/OH'//     &
+      ' continuum attenuates it, not H I resonance scattering,'
+		write(outfile,*) &
+      '  so the Ly-alpha photolysis rate is an upper bound'//             &
+      ' (see output/FUV_bands.txt)'
+		write(outfile,*) &
+      '- Base H2/H partition: COMPUTED by the oxygen chemistry'//         &
+      ' (q_H2_base is refused)'
+	endif
 	if (thereis_metals) write(outfile,'(A,I0,A)') &
       ' - Including ', n_met_active, ' trace metal element(s)'
 	if (thereis_mol .and. thereis_metals) write(outfile,*) &
@@ -176,6 +212,15 @@
 	else
 		write(outfile,*) '- Base IR field: off (fine-structure lines '//      &
 			'emit into vacuum)'
+	endif
+	if (mol_ir_bands) then
+		write(outfile,*) '- Molecular IR bands: on (H2 quadrupole and '//     &
+			'magnetic dipole lines, H2O and CO bands, in LTE, exchanging'
+		write(outfile,*) '    with the same diluted B_nu(T0); each stops '//  &
+			'at its own radiative equilibrium temperature)'
+	else
+		write(outfile,*) '- Molecular IR bands: off (no H2, H2O or CO '//     &
+			'infrared channel below the H2 -> H front)'
 	endif
 	write(outfile,19) '- Max marching steps: ', count_max
 	write(outfile,*) 
@@ -328,8 +373,14 @@
 	call put_l('use_sec_ion', use_sec_ion)
 	call put_l('use_he_rec_coupling', use_he_rec_coupling)
 	call put_l('he_h_charge_exchange', he_h_charge_exchange)
+	call put_r('cx_o2p_h_scale', cx_o2p_h_scale)
 	call put_l('thereis_mol', thereis_mol)
 	call put_r('F_LW_star', F_LW_star)
+	call put_l('thereis_oxychem', thereis_oxychem)
+	call put_l('oxygen_transport', oxygen_transport)
+	call put_r('F_FUV_B1', F_FUV_B1)
+	call put_r('F_FUV_B3', F_FUV_B3)
+	call put_r('F_FUV_B4', F_FUV_B4)
 	call put_l('molecular_base', molecular_base)
 	call put_r('q_h2_base', q_h2_base)
 	call put_r('p_base_bar', p_base_bar)
@@ -358,6 +409,7 @@
 	call put_i('count_max', count_max)
 	call put_r('coronal_cutoff_width', coronal_cutoff_width)
 	call put_l('base_ir_field', base_ir_field)
+	call put_l('mol_ir_bands', mol_ir_bands)
 	call put_i('base_bc_mode', base_bc_mode)
 	call put_r('base_p_ubar', base_p_ubar)
 	call put_l('base_v_massflux', base_v_massflux)
@@ -456,12 +508,53 @@
 	! above is the reservoir the base is held at, not a column invariant.
 	! The budget check has to know which of the two it is testing.
 	write(u,'(A,L1)')     'he_diffusion              ', he_diffusion
+	! Oxygen chemistry (the A2 option). oxygen_chemistry says whether the
+	! O I column means FREE ATOMIC oxygen (it does when this is T) and
+	! whether the OH / H2O / CO columns of Ion_species.txt exist;
+	! oxygen_base_partition is the provenance of the base H2/H partition,
+	! which is the whole point of the option. The five band fluxes are the
+	! photon input the oxygen photochemistry actually ran on; the first of
+	! them, fuv_band_LW_flux, is the 912-1110 A interval shared with the H2
+	! Lyman-Werner absorber.
+	write(u,'(A,L1)')     'mol_ir_bands              ', mol_ir_bands
+	write(u,'(A,L1)')     'oxygen_chemistry          ', thereis_oxychem
+	if (thereis_oxychem) then
+		write(u,'(A)')     'oxygen_reaction_set       a2_v1'
+		write(u,'(A,L1)')  'oxygen_transport          ', oxygen_transport
+		write(u,'(A,ES23.15E3)') 'fuv_band_B1_flux          ', F_FUV_B1
+		write(u,'(A,ES23.15E3)') 'fuv_band_Lya_flux         ', F_Lya_star
+		write(u,'(A,ES23.15E3)') 'fuv_band_B3_flux          ', F_FUV_B3
+		write(u,'(A,ES23.15E3)') 'fuv_band_B4_flux          ', F_FUV_B4
+		write(u,'(A,ES23.15E3)') 'fuv_band_LW_flux          ', F_LW_star
+		write(u,'(A)')     'oxygen_base_partition     computed'
+	else if (q_h2_base .gt. 0.0d0) then
+		write(u,'(A)')     'oxygen_base_partition     handoff'
+	else if (thereis_mol) then
+		write(u,'(A)')     'oxygen_base_partition     equilibrium_fit'
+	endif
 	! Resolved elemental reservoirs and the EOS factors built from them, so
 	! the element-budget check (src/utils/element_budget.py) can compare the
 	! solved profiles against the abundances the run actually used, whether
 	! they came from metals.inp or from the "<El>_H_base" handoff keys.
 	write(u,'(A,ES23.15E3)') 'mass_per_H_amu            ', mass_per_H
 	write(u,'(A,ES23.15E3)') 'ntot_bc_per_H             ', ntot_bc
+	! The base H2 fraction the run resolved, the ceiling the element ratio
+	! allows, and what the pair implies for the hydrogen nuclei. The mixing
+	! ratio alone does not say how molecular the base is -- the same q_H2
+	! means different things at different He/H -- so the implied fraction of
+	! H nuclei bound into H2 is written beside it. Startup refuses a
+	! requested value above the ceiling, so these two always satisfy
+	! q_H2 <= ceiling; they are recorded because the margin between them is
+	! what a lower-atmosphere handoff has to be read against.
+	if (molecular_base .or. q_h2_base .gt. 0.0d0) then
+		write(u,'(A,ES23.15E3)') 'q_H2_base_resolved        ',              &
+			h2_mixing_ratio_base()
+		write(u,'(A,ES23.15E3)') 'q_H2_base_ceiling         ',              &
+			h2_mixing_ratio_ceiling()
+		write(u,'(A,ES23.15E3)') 'H_nuclei_in_H2_fraction   ',              &
+			2.0d0*h2_mixing_ratio_base()*(1.0d0 + HeH)                     &
+			/(1.0d0 + h2_mixing_ratio_base())
+	endif
 	do ie = 1, size(melem_ab)
 		write(u,'(A,A,A,ES23.15E3)') 'abundance_',                          &
 			trim(melem_name(ie)), repeat(' ', 15 - len_trim(melem_name(ie))), &

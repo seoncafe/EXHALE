@@ -25,7 +25,7 @@ from exhale_transit_lib import (
     n2_populations, gamma_n2_balmer, get_word, read_input_params,
     orbital_period_days, parameter_with_source,
     _line_halfwidth, _apply_window, _odd,
-    resonance_depth, resonance_spectrum, _turb_factor,
+    resonance_depth, resonance_spectrum, band_integrated_depth, _turb_factor,
 )
 
 start = time.time()
@@ -76,6 +76,7 @@ fig_name_hb   = _fig_name('Hbeta')
 fig_name_mgii = _fig_name('MgII')
 fig_name_caii = _fig_name('CaII')
 fig_name_nai  = _fig_name('NaI')
+fig_name_oi   = _fig_name('OI')
 
 # ----- Parameters read from input.inp ----- #
 # Every read is matched by LABEL (read_input_params -> input_read.f90
@@ -136,6 +137,13 @@ Instr_res_Hb   = float(_tenv('RES_HB',   '1.15e5'))  # H-beta 4861.35
 Instr_res_MgII = float(_tenv('RES_MGII', '3e4'))  # Mg II h&k 2796/2803 NUV: HST/STIS ~ 3e4
 Instr_res_CaII = float(_tenv('RES_CAII', str(Instr_res_Ha)))  # Ca II H&K optical
 Instr_res_NaI  = float(_tenv('RES_NAI',  str(Instr_res_Ha)))  # Na I D optical
+# O I 1302/1304/1306 FUV. The published HD 209458 b measurement (Vidal-Madjar
+# et al. 2004, ApJ 604, L69) used HST/STIS G140L, for which that paper quotes
+# only a resolution of "~2.5 A" (R ~ 520 at 1302 A) while Ballester &
+# Ben-Jaffel (2015, ApJ 804, 116) give R ~ 1000 for the same grating. R = 1000
+# is the default here; the band-integrated depth this is compared against is
+# insensitive to the choice (the band is 10 A wide, four instrument elements).
+Instr_res_OI   = float(_tenv('RES_OI',   '1.0e3'))
 
 # ----- H-alpha (n=2 -> n=3) inputs ----- #
 # H-alpha absorption arises from the n=2 hydrogen population. Following
@@ -823,6 +831,7 @@ if do_Ha:
 # the triaxial Roche reconstruction is added in Phase 5b (roche_recon.py).
 amu = 1.66053907e-27
 mMg, mCa, mNa = 24.305*amu, 40.078*amu, 22.990*amu
+mO = 15.999*amu
 
 # Metals-off runs write only the H/He columns (<=16): skip the metal
 # resonance lines automatically (He/Lya/Ha/Hb above are unaffected).
@@ -841,6 +850,65 @@ else:
 data_nMgII = np.concatenate((np.flip(nMgII_cm), nMgII_cm))*1.0e6
 data_nCaII = np.concatenate((np.flip(nCaII_cm), nCaII_cm))*1.0e6
 data_nNaI  = np.concatenate((np.flip(nNaI_cm),  nNaI_cm ))*1.0e6
+
+# ----- O I 1302/1304/1306: the three ground-term fine-structure levels ----- #
+# The O I resonance triplet does NOT come out of one lower level: 1302.168,
+# 1304.858 and 1306.029 A absorb out of the 3P2, 3P1 and 3P0 levels of the
+# 2p4 3P ground term respectively.  Applying the total O I density to all
+# three components would count the same atoms three times over -- at the
+# near-statistical populations these winds carry that is a factor 3 in the
+# total column and a factor 1.8 / 3.1 / 9.3 in the three components.
+# So the populations are read from the wind solver, which writes them out of
+# the same three-level statistical equilibrium its [O I] 63/145/44um cooling
+# is built on (OI_levels_adv.txt, Cool_coeff.f90).  A run whose output
+# predates that file, or a metals-off run that never wrote it, simply skips
+# the line the way the other metal lines are skipped.
+OI_file = path + '/output/OI_levels_adv.txt'
+do_OI = do_metals and os.path.exists(OI_file)
+if do_OI:
+	# cols 8,9,10 (0-indexed) = n(3P2), n(3P1), n(3P0) in cm^-3
+	n3P2_cm, n3P1_cm, n3P0_cm = np.loadtxt(OI_file, usecols=(8, 9, 10),
+	                                       unpack=True)
+	_nOI_file = np.loadtxt(OI_file, usecols=(4,))
+	if n3P2_cm.size != nMgII_cm.size:
+		raise ValueError('(EXHALE_transit) %s has %d rows but %s has %d; '
+		                 'they must be the same grid'
+		                 % (OI_file, n3P2_cm.size, Ioniz_file, nMgII_cm.size))
+	# Gate, re-checked here rather than trusted: the three level densities
+	# must add up to the total O I of the same file.
+	_lvl_sum = n3P2_cm + n3P1_cm + n3P0_cm
+	_lvl_err = np.max(np.abs(_lvl_sum - _nOI_file)
+	                  /np.maximum(_nOI_file, 1e-99))
+	print('(TPM) O I ground-term levels: max |sum(levels)/n(O I) - 1| = %.2e'
+	      % _lvl_err)
+	if _lvl_err > 1.0e-10:
+		raise ValueError('(EXHALE_transit) O I level densities do not sum to '
+		                 'the total O I in %s (max rel. error %.3e)'
+		                 % (OI_file, _lvl_err))
+	# Column-regime knob. The O I triplet is a resonance line whose three
+	# components span a factor 6.6 in gf and are optically thick in the
+	# launch region, so the forward model has to be exercised in BOTH
+	# regimes: EXHALE_TRANSIT_OI_NSCALE multiplies all three level
+	# densities, leaving their ratios (and therefore the level physics)
+	# alone. 1e-4 puts every component on the linear part of the curve of
+	# growth, 1e4 saturates all three. Default 1.0 = the run's own densities.
+	_oi_nscale = float(_tenv('OI_NSCALE', '1.0'))
+	if _oi_nscale != 1.0:
+		print('(TPM) O I level densities scaled by %.3e '
+		      '(EXHALE_TRANSIT_OI_NSCALE): a curve-of-growth test, not a '
+		      'physical model' % _oi_nscale)
+	data_n3P2 = np.concatenate((np.flip(n3P2_cm), n3P2_cm))*1.0e6*_oi_nscale
+	data_n3P1 = np.concatenate((np.flip(n3P1_cm), n3P1_cm))*1.0e6*_oi_nscale
+	data_n3P0 = np.concatenate((np.flip(n3P0_cm), n3P0_cm))*1.0e6*_oi_nscale
+else:
+	_r0col_oi = np.loadtxt(Ioniz_file, usecols=(0,))
+	_zero_oi = np.zeros(2*_r0col_oi.size)
+	data_n3P2 = _zero_oi
+	data_n3P1 = _zero_oi
+	data_n3P0 = _zero_oi
+	if do_metals:
+		print('(TPM) no %s (run predates the O I level output): skipping '
+		      'the O I 1302 triplet.' % OI_file)
 
 
 # resonance_depth is imported from exhale_transit_lib; the compute-specific
@@ -878,17 +946,36 @@ print('')
 # (all-zero ion columns). NIST atomic data (Kramida 2020).
 
 METAL_DOUBLETS = [
-	# key, label, components (lam0_A, f, A21), mass, chord density,
-	#   instrument R, window [A], nlam
+	# key, label, components (lam0_A, f, A21, lower-level chord density
+	#   [m^-3]), mass, instrument R, window [A], nlam, figure name.
+	# The lower-level density belongs to the COMPONENT: for these doublets
+	# both components absorb out of the ion ground state, so the same array
+	# appears twice; the O I triplet below is where that stops being true.
 	('MgII', 'Mg II h&k',
-	 [(2796.352, 0.608, 2.60e8), (2803.531, 0.303, 2.57e8)],
-	 mMg, data_nMgII, Instr_res_MgII, (2790.0, 2810.0), 601, fig_name_mgii),
+	 [(2796.352, 0.608, 2.60e8, data_nMgII),
+	  (2803.531, 0.303, 2.57e8, data_nMgII)],
+	 mMg, Instr_res_MgII, (2790.0, 2810.0), 601, fig_name_mgii),
 	('CaII', 'Ca II H&K',
-	 [(3933.663, 0.6267, 1.47e8), (3968.469, 0.3116, 1.40e8)],
-	 mCa, data_nCaII, Instr_res_CaII, (3927.0, 3975.0), 961, fig_name_caii),
+	 [(3933.663, 0.6267, 1.47e8, data_nCaII),
+	  (3968.469, 0.3116, 1.40e8, data_nCaII)],
+	 mCa, Instr_res_CaII, (3927.0, 3975.0), 961, fig_name_caii),
 	('NaI', 'Na I D',
-	 [(5889.951, 0.641, 6.16e7), (5895.924, 0.320, 6.14e7)],
-	 mNa, data_nNaI, Instr_res_NaI, (5884.0, 5902.0), 541, fig_name_nai),
+	 [(5889.951, 0.641, 6.16e7, data_nNaI),
+	  (5895.924, 0.320, 6.14e7, data_nNaI)],
+	 mNa, Instr_res_NaI, (5884.0, 5902.0), 541, fig_name_nai),
+	# O I 2p4 3P -> 3s 3S resonance triplet.  One upper level (3S1, g = 3,
+	# E = 76794.978 cm^-1), three lower levels: the 3P2 / 3P1 / 3P0 ground-term
+	# fine-structure levels at 0 / 158.265 / 226.977 cm^-1 (g = 5, 3, 1).
+	# Vacuum wavelengths, A_ul and f_lu from NIST ASD (accuracy A), retrieved
+	# 2026-08-30.  Each component therefore carries ITS OWN lower level.
+	# Window 1296-1312 A at 0.02 A brackets the observers' 1300-1310 A band
+	# with room for the instrument convolution to be applied before the band
+	# average is taken.
+	('OI', 'O I 1302 triplet',
+	 [(1302.168, 0.0520, 3.41e8, data_n3P2),
+	  (1304.858, 0.0518, 2.03e8, data_n3P1),
+	  (1306.029, 0.0519, 6.76e7, data_n3P0)],
+	 mO, Instr_res_OI, (1296.0, 1312.0), 801, fig_name_oi),
 ]
 
 
@@ -897,17 +984,140 @@ METAL_DOUBLETS = [
 # the call site below.
 
 metal_spec = {}
-for key_m, lbl_m, comps_m, m_m, ncol_m, R_m, win_m, nl_m, fnm_m 		in METAL_DOUBLETS:
-	if ncol_m.max() <= 0.0:
-		print('(TPM)   %s: ion column is zero (metals off?); skipped'
+for key_m, lbl_m, comps_m, m_m, R_m, win_m, nl_m, fnm_m 		in METAL_DOUBLETS:
+	if max(co[3].max() for co in comps_m) <= 0.0:
+		print('(TPM)   %s: lower-level column is zero (metals off?); skipped'
 		      % lbl_m)
 		continue
-	metal_spec[key_m] = resonance_spectrum(comps_m, m_m, ncol_m, R_m,
+	metal_spec[key_m] = resonance_spectrum(comps_m, m_m, R_m,
 	                                       win_m, nl_m,
 	                                       Grid_Number, r_grid, Rp, data_r,
 	                                       data_v, data_T, A_star, A_atm,
 	                                       A_planet, _rotate_disk_average)
 	metal_spec[key_m].update(label=lbl_m, comps=comps_m, fig=fnm_m)
+
+
+# --------------------------------------------------------------------- #
+# O I 1302 triplet: the band-integrated comparison with the published
+# HD 209458 b measurement.
+# --------------------------------------------------------------------- #
+# The two published depths come from the SAME four HST/STIS G140L transits:
+#
+#   Vidal-Madjar et al. 2004, ApJ 604, L69, Table 1:
+#       O I / O I* / O I**, 1300-1310 A, 12.8 (+4.5/-4.5) %
+#   Ben-Jaffel & Hosseini 2010, ApJ 709, 1284, Table 2:
+#       O I, 1299-1310 A, 10.5 +/- 4.4 %
+#
+# Four things have to be right for the comparison to mean anything, and all
+# four are recorded in the metadata written beside the curve.
+#
+# 1. BAND, NOT LINE CENTER.  STIS G140L does not resolve the triplet -- "the
+#    low resolution (~2.5 A) does not allow the stellar emission lines to be
+#    resolved" (VM04) -- and both papers quote a depth over a ~10 A window.
+#    The line-center depth of an optically thick resonance line is a property
+#    of the line profile and the instrument, not of the atmosphere; it is
+#    printed here but is never the comparison quantity.  Same trap as Mg II.
+#
+# 2. THE WEIGHT INSIDE THAT BAND IS THE STELLAR LINE PROFILE, NOT A FLAT
+#    AVERAGE.  What was measured is a ratio of fluxes, and essentially all the
+#    flux in 1300-1310 A of a G0 V star is in the three narrow chromospheric
+#    O I emission lines: Ben-Jaffel & Hosseini measured their "average FWHM
+#    ... ~0.2 A (or ~45 km/s)" and their relative peaks, "the lines' peaks in
+#    the ratio 1:1.5:1.17, respectively, for the O i (1302.17 A, 1304.86 A,
+#    and 1306.03 A) lines".  Averaging the model flatly over 10 A instead
+#    dilutes the absorption by the ratio of the band width to the line widths,
+#    a factor of order 20.  The stellar-profile weight is therefore the
+#    default; EXHALE_TRANSIT_OI_WEIGHT=flat gives the flat average, and both
+#    numbers are always reported so the difference is never hidden.
+#
+# 3. THE INTERSTELLAR MEDIUM is inside those peak ratios and must not be
+#    applied twice.  Neither paper removed the ISM.  VM04 argued from it:
+#    "The O i ground-level line is strongly absorbed by the interstellar
+#    medium.  Therefore the ~13% absorption observed during the transit in the
+#    full O i triplet must be due to the presence of O i* and O i** ...".
+#    The 1:1.5:1.17 ratios are measured from the observed HD 209458 spectrum,
+#    i.e. after the ISM has already eaten into 1302.17 A -- which is exactly
+#    why the ground-level component is the WEAKEST of the three there.  So no
+#    separate ISM screen is applied here.  The ISM never multiplies the
+#    planet's transmission in any case: it absorbs in and out of transit alike
+#    and cancels from the ratio; it only reweights which wavelengths the
+#    measurement is sensitive to.
+#
+# 4. THE CONTINUUM.  Both papers quote (R_abs/R_*)^2 from an occultation-curve
+#    fit, which includes the opaque planetary disk: their own continuum bands
+#    give 2.0 (+0.5/-0.7) % (VM04, 1350-1700 A) and 1.96 +/- 0.42 % (BJ10,
+#    1400-1700 A).  This script's T_lambda is normalized so that T = 1 is the
+#    planet's disk alone, so (1 - T) is the excess over that continuum, and
+#    each published value below has that paper's own continuum subtracted.
+OI_BANDS = [
+	# label, (lam_lo, lam_hi) [A], published excess-of-continuum depth [%],
+	#   its uncertainty [%], source
+	('VM04  1300-1310 A', (1300.0, 1310.0), 12.8 - 2.0, 4.5,
+	 'Vidal-Madjar et al. 2004, ApJ 604, L69, Table 1 '
+	 '(12.8 +/- 4.5 % total, minus their 2.0 % continuum)'),
+	('BJ10  1299-1310 A', (1299.0, 1310.0), 10.5 - 1.96, 4.4,
+	 'Ben-Jaffel & Hosseini 2010, ApJ 709, 1284, Table 2 '
+	 '(10.5 +/- 4.4 % total, minus their 1.96 % continuum)'),
+]
+
+# Stellar O I emission-line profile used as the band weight (Ben-Jaffel &
+# Hosseini 2010, section 3.2): three Gaussians at the triplet wavelengths with
+# this FWHM [A] and these relative peak heights.
+OI_STAR_FWHM_A  = float(_tenv('OI_STAR_FWHM_A', '0.2'))
+OI_STAR_PEAKS   = [float(x) for x in
+                   _tenv('OI_STAR_PEAKS', '1.0,1.5,1.17').split(',')]
+OI_WEIGHT_MODE  = _tenv('OI_WEIGHT', 'star').lower()
+
+oi_result = {}
+if 'OI' in metal_spec:
+	_sp = metal_spec['OI']
+	_lam = _sp['l_plot']
+	_lam0s = [co[0] for co in _sp['comps']]
+	# The curve to integrate is the one WITHOUT the instrument LSF. A Gaussian
+	# LSF conserves the integral, so it cancels from a ratio taken over a band
+	# many LSF widths wide -- which is what both papers measured. Convolving
+	# first and then weighting with the 0.2 A stellar profile would smear the
+	# absorption out of the wavelengths that carry the weight and understate
+	# the depth by the LSF-to-line width ratio. The wind and rotation
+	# broadening IS kept (avg_rot), because that is the atmosphere.
+	_Tcmp = _sp['avg_rot']
+	_sig = OI_STAR_FWHM_A/(2.0*np.sqrt(2.0*np.log(2.0)))
+	_wstar = np.zeros_like(_lam)
+	for _l0, _pk in zip(_lam0s, OI_STAR_PEAKS):
+		_wstar += _pk*np.exp(-0.5*((_lam - _l0)/_sig)**2.0)
+	if OI_WEIGHT_MODE == 'flat':
+		_wgt = np.ones_like(_lam)
+		_wnote = ('weight = FLAT over the band (EXHALE_TRANSIT_OI_WEIGHT=flat). '
+		          'This dilutes the model by the band-to-line width ratio and '
+		          'is not what the published depths measure.')
+	else:
+		_wgt = _wstar
+		_wnote = ('weight = stellar O I emission profile, three Gaussians of '
+		          'FWHM %.3f A with peak ratios %s (Ben-Jaffel & Hosseini '
+		          '2010, ApJ 709, 1284, section 3.2; those ratios already '
+		          'carry the interstellar absorption of the 1302.17 A '
+		          'component, so no separate ISM screen is applied)'
+		          % (OI_STAR_FWHM_A,
+		             ':'.join('%g' % p for p in OI_STAR_PEAKS)))
+	print('')
+	print('(TPM) ===== O I 1302 triplet vs. the published HD 209458 b depth =====')
+	print('(TPM)   %s' % _wnote)
+	print('(TPM)   band                 model [%]  (flat)   published [%]')
+	for _lbl, _bnd, _obs, _err, _src in OI_BANDS:
+		_sel = (_lam >= _bnd[0]) & (_lam <= _bnd[1])
+		_d_flat = band_integrated_depth(_lam, _Tcmp, _bnd)
+		_d_w = (1.0 - np.sum(_wgt[_sel]*_Tcmp[_sel])
+		              /np.sum(_wgt[_sel]))*100.0
+		oi_result[_lbl] = dict(band=_bnd, model_flat=_d_flat,
+		                       model_weighted=_d_w, obs=_obs, obs_err=_err,
+		                       source=_src)
+		print('(TPM)   %-20s %10.4e (%10.4e)  %6.2f +/- %.2f   %s'
+		      % (_lbl, _d_w, _d_flat, _obs, _err,
+		         'consistent' if abs(_d_w - _obs) <= _err else 'DISCREPANT'))
+	print('(TPM)   line-center depth (NOT the comparison quantity): %.4e %%'
+	      % _sp['Tl_conv'])
+	print('')
+	_sp.update(bands=oi_result, weight_note=_wnote)
 
 
 # ===================================================================== #
@@ -1042,6 +1252,59 @@ for _key, _lbl, _lam, _t0, _t1, _t2 in _curves:
 	           header='lambda[A]  T_theo  T_instr  T_rot+instr  (%s)' % _lbl)
 print('(TPM) saved model curves: %stpm_{%s}.txt'
       % (_save_prefix, ','.join(k for k, _, _, _, _, _ in _curves)))
+
+# ----- O I 1302: the validation record, with its treatment stated ----- #
+# Written next to the curve so that the number and the conditions under which
+# it may be compared with the published measurement never travel separately.
+if 'OI' in metal_spec and len(oi_result) > 0:
+	with open(_save_prefix + 'tpm_OI_band_depths.txt', 'w') as _fh:
+		_fh.write('# O I 1302.168/1304.858/1306.029 A band-integrated transit '
+		          'depths, HD 209458 b comparison\n')
+		_fh.write('# Lower levels: the 3P2/3P1/3P0 ground-term fine-structure '
+		          'populations from OI_levels_adv.txt,\n')
+		_fh.write('#   i.e. the same three-level statistical equilibrium the '
+		          '[O I] 63/145/44um cooling uses.\n')
+		_fh.write('# Atomic data: NIST ASD (accuracy A), vacuum wavelengths.\n')
+		_fh.write('# Instrument: Gaussian LSF at R = %.4g (HST/STIS G140L; '
+		          'EXHALE_TRANSIT_RES_OI). The band-integrated depths below '
+		          'are taken\n' % Instr_res_OI)
+		_fh.write('#   from the curve WITHOUT that LSF: a Gaussian LSF '
+		          'conserves the integral, so it cancels from\n')
+		_fh.write('#   a ratio over a band many LSF widths wide. The wind and '
+		          'rotation broadening is kept.\n')
+		_fh.write('# Normalization: T = 1 is the opaque planetary disk, so '
+		          '(1-T) is the EXCESS over the\n')
+		_fh.write('#   continuum. The published depths are (R_abs/R_*)^2 and '
+		          'INCLUDE the disk, so each\n')
+		_fh.write('#   published value below has that paper\'s own continuum '
+		          'band subtracted.\n')
+		_fh.write('# Geocoronal O I 1302: subtracted by both papers in the '
+		          'cross-dispersion direction, with\n')
+		_fh.write('#   no spectral pixels masked, so no wavelength is excluded '
+		          'from the band here either.\n')
+		_fh.write('# Band weight: %s\n' % _sp['weight_note'])
+		_fh.write('# Not included in the model: Ly-beta pumping of O I '
+		          '1025.76 A (Bowen 1947, PASP 59, 196),\n')
+		_fh.write('#   which feeds 3d 3D and cascades through 11287 and '
+		          '8446 A onto the 3s 3S upper level of\n')
+		_fh.write('#   this triplet and back onto all three 3P levels. Its '
+		          'size is bracketed by the two\n')
+		_fh.write('#   published regimes and by nothing closer: ~10% of direct '
+		          '1304 excitation in the Earth\n')
+		_fh.write('#   dayglow (Meier 1991, SSRv 58, 1, p. 99) but ~20x '
+		          'collisional excitation in the solar\n')
+		_fh.write('#   chromosphere (Skelton & Shine 1982, ApJ 259, 869). No '
+		          'published calculation exists for\n')
+		_fh.write('#   an escaping exoplanet atmosphere.\n')
+		_fh.write('# columns: band_lo[A] band_hi[A] model_weighted[%] '
+		          'model_flat[%] published[%] published_err[%] label\n')
+		for _lbl, _r in oi_result.items():
+			_fh.write('%9.3f %9.3f %14.6e %14.6e %10.3f %10.3f   %s | %s\n'
+			          % (_r['band'][0], _r['band'][1], _r['model_weighted'],
+			             _r['model_flat'], _r['obs'], _r['obs_err'],
+			             _lbl, _r['source']))
+	print('(TPM) saved O I band comparison: %stpm_OI_band_depths.txt'
+	      % _save_prefix)
 
 # ----- He 10830 line metrics (three-Gaussian, Cherubim et al. 2026) ----- #
 # Astrophysical metrics of the modeled He triplet: blended-red depth, blue
@@ -1229,8 +1492,8 @@ if do_Ha:
 ##### Figures: metal resonance doublets #####
 for key_m, sp in metal_spec.items():
 	plt.figure(figsize=(8, 7))
-	for (lam0_A, f_osc, A21) in sp['comps']:
-		plt.plot([lam0_A, lam0_A], [0.0, 1.2], '--', color=gray)
+	for co in sp['comps']:
+		plt.plot([co[0], co[0]], [0.0, 1.2], '--', color=gray)
 	plt.plot(sp['l_plot'], sp['avg'], '--',
 	         label='Theoretical T$_{{\lambda}}$ = {} $\%$'.format(
 	               round(sp['Tl'], 2)))

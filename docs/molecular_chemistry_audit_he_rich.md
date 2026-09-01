@@ -75,10 +75,10 @@ are listed for completeness of the balance check.
 | R9 | H<sub>2</sub><sup>+</sup> + H &rarr; H<sup>+</sup> + H<sub>2</sub> | 6.4e-10 | same | ok | |
 | R10 | H<sup>+</sup> + H<sub>2</sub>(v&ge;4) &rarr; H<sub>2</sub><sup>+</sup> + H | 1e-9 exp(-21900/T) | same | ok | Table 1 misprints the products as "H<sup>+</sup> + H<sub>2</sub>"; the code has the Yelle (2004) reaction |
 | R11 | H<sub>3</sub><sup>+</sup> + H &rarr; H<sub>2</sub><sup>+</sup> + H<sub>2</sub> | 2.1e-9 exp(-20000/T) | same | ok | |
-| R12 | H<sub>2</sub> + M &rarr; H + H + M | 1.5e-9 exp(-48350/T), &times; n<sub>M</sub> | same | ok | M identity: sec. 4.1 |
+| R12 | H<sub>2</sub> + M &rarr; H + H + M | 1.5e-9 exp(-48350/T), &times; n<sub>M</sub> | **superseded 2026-09-01**: the code now builds this rate by detailed balance of R15, `k3b_H_H_to_H2(T)/keq_H_H_to_H2(T)` | ok | M identity: sec. 4.1. The Table-1 fit is valid only over 2500-8000 K, above the molecular layer; the argument, the sources and the verification numbers are at the R12 comment in `mol_rates.f90` |
 | R13 | H<sup>+</sup> + H<sub>2</sub> + M &rarr; H<sub>3</sub><sup>+</sup> + M | 3.2e-29 n<sub>M</sub> | same | ok | M identity: sec. 4.1 |
 | R14 | H<sub>2</sub> + e &rarr; H + H + e | 1.33e-6 (300/T)<sup>0.91</sup> exp(-55800/T) | same | ok | |
-| R15 | H + H + M &rarr; H<sub>2</sub> + M | 8e-33 (300/T)<sup>0.6</sup> n<sub>M</sub> | same, but printed with T<sub>e</sub> | ok | a neutral three-body recombination has no electron in it; the heavy-particle T is used, and the two readings coincide in EXHALE |
+| R15 | H + H + M &rarr; H<sub>2</sub> + M | 8e-33 (300/T)<sup>0.6</sup> n<sub>M</sub> | **changed 2026-09-01**: 2.8e-31 T<sup>-0.6</sup> n<sub>M</sub>, the Cohen &amp; Westberg (1983) recommendation (50-5000 K), 14% above the Ham et al. value the table carries | ok | a neutral three-body recombination has no electron in it; the heavy-particle T is used, and the two readings coincide in EXHALE. Ham et al. measured 77-300 K only, so the Table-1 value is extrapolated across the molecular layer; see the R15 comment in `mol_rates.f90` |
 | R16 | HeH<sup>+</sup> + e &rarr; He + H | 1e-8 (300/T)<sup>0.6</sup> | same | transcription ok | 3.4x below Garc&iacute;a Mu&ntilde;oz Table A.6 at 500 K and 8.6x below at 10<sup>4</sup> K (both fall with T, this one faster): sec. 4.2 |
 | R17 | He<sup>+</sup> + H<sub>2</sub> &rarr; H<sup>+</sup> + H + He | 1e-9 exp(-5700/T) | same | transcription ok | up to 1.9e4 above Garc&iacute;a Mu&ntilde;oz Table A.7: sec. 4.2. Dominant H<sub>2</sub> sink and H<sup>+</sup> source once He<sup>+</sup> exists |
 | R18 | HeH<sup>+</sup> + H<sub>2</sub> &rarr; H<sub>3</sub><sup>+</sup> + He | 1.5e-9 | same | ok | 1.2x above Table A.6 (Orient 1977) |
@@ -253,25 +253,137 @@ He/H tested, so nothing observable rests on it today.  **If HeH<sup>+</sup> or t
 He<sup>+</sup> + H<sub>2</sub> branching is ever quoted as a result, this paragraph is the
 thing to resolve first.**
 
-### 4.3 The H &harr; He charge-exchange pair does not satisfy detailed balance
+One HeH<sup>+</sup> formation path the network does not carry, recorded so that its
+absence is a choice rather than an oversight: **radiative association**,
+He<sup>+</sup> + H &rarr; HeH<sup>+</sup> + &nu;, which is reaction 7 of Courtney, Forrey, McArdle,
+Stancil &amp; Babb (2021), ApJ 919, 70. Read from their Figure 3, its rate
+coefficient is about 2.5e-16 cm<sup>3</sup> s<sup>-1</sup> near 10<sup>3</sup> K - roughly 7x below the
+radiative charge-transfer channel in the same figure, and emphatically not the
+vanishing number it is sometimes assumed to be. It is nonetheless negligible
+*here*, for a specific reason: against R20 (He<sup>+</sup> + H<sub>2</sub> &rarr; HeH<sup>+</sup> + H,
+4.2e-13 cm<sup>3</sup> s<sup>-1</sup>) it contributes only where n(H I)/n(H<sub>2</sub>) exceeds about 1700,
+i.e. only where H<sub>2</sub> has already gone - and there HeH<sup>+</sup> itself is negligible.
+Not adopted.
 
-For H<sup>+</sup> + He &harr; He<sup>+</sup> + H the equilibrium constant is fixed by the
-statistical weights and the 10.98 eV (127,500 K) endothermicity:
+### 4.3 The two H &harr; He charge-exchange rates are different channels (revised 2026-08-31)
 
-    k(H+ + He) / k(He+ + H) = (g_He+ g_H)/(g_He g_H+) exp(-127500/T) = 4 exp(-127500/T).
+**This section previously reported the pair as violating detailed balance and
+weighed "correcting" it by overriding one published rate with the
+detailed-balance image of the other. That framing was wrong, and so was its
+title.** The two rates describe two different physical processes, between
+which no detailed-balance relation holds. The measured ratios below are
+unchanged and correct; only their interpretation is.
 
-The Huang B1/B2 pair gives 105x that at 10<sup>4</sup> K, 210x at 5000 K and 3500x at
-300 K; the Koskinen R22/R21 pair, from the same underlying fits, gives
-104x, 198x and 689x.  The two published fits come from different
-calculations covering different temperature ranges, and neither pair was
-constructed to be mutually consistent.  The endothermic direction is
-negligible either way below 10<sup>4</sup> K - at 8000 K, k(H<sup>+</sup> + He) = 1.8e-19
-against k(He<sup>+</sup> + H) = 2.8e-15 - but the forward term carries n<sub>He</sub> and the
-reverse carries n<sub>H</sub>, so its weight in the He<sup>+</sup> balance scales as
-n<sub>He</sub>/n<sub>H</sub>: a 10<sup>2</sup> inconsistency at 10<sup>4</sup> K is amplified by 10<sup>3</sup> at He/H = 10<sup>3</sup>.
-It is recorded here and at the code site rather than "corrected", because
-correcting it means overriding one published rate with the detailed-balance
-image of the other, which is a decision for whoever needs the number.
+Tracing each direction to its primary source:
+
+* **B1**, He + H<sup>+</sup> &rarr; He<sup>+</sup> + H, is **non-radiative** collisional charge
+  transfer, from Kimura, Lane, Dalgarno &amp; Dixson (1993), ApJ 405, 801,
+  whose Table 3 tabulates it from 6000 K to 10<sup>5</sup> K only.
+* **B2**, He<sup>+</sup> + H &rarr; He + H<sup>+</sup> + &nu;, is **radiative** charge transfer,
+  printed with the photon in the exit channel as row (19) of Table 1 of
+  Stancil, Lepp &amp; Dalgarno (1998), ApJ 509, 1, from Zygelman et al. (1989)
+  and already carrying a 0.25 approach-probability factor.
+
+The photon is the whole point: a photon-emitting channel has no collisional
+reverse, so the equilibrium relation fixed by the statistical weights and the
+10.98 eV (127,500 K) endothermicity,
+
+    k(H+ + He) / k(He+ + H) = (g_He+ g_H)/(g_He g_H+) exp(-127500/T) = 4 exp(-127500/T),
+
+was never binding on this pair. Both coded fits share the same exponential, so
+the departure from it is exactly `1.05e6/T`: measured, **939x at 1140 K, 211x
+at 5000 K and 105x at 10<sup>4</sup> K** (3500x at 300 K, and the Koskinen R22/R21
+pair, from the same underlying fits, gives 104x, 198x and 689x). Those factors
+measure the separation of two channels, not an error in either fit. The
+label in Huang et al. (2023) Table 4, which both this audit and the code
+followed, had dropped the `+ &nu;` and with it the reason.
+
+The endothermic direction remains negligible below 10<sup>4</sup> K either way - at
+8000 K, k(H<sup>+</sup> + He) = 1.8e-19 against k(He<sup>+</sup> + H) = 2.8e-15 - and B1 falls to
+1.7e-60 at 1140 K, so in the shielded molecular base the pair acts in one
+direction only.
+
+**Independent corroboration that this pairing is normal practice.** Ziegler, U.
+(2018), A&amp;A 620, A81, a 121-species / 426-reaction chemistry and cooling module
+for NIRVANA, lists in its Table A.1
+
+    7   He+ + H -> He + H+     ref 5
+    8   He + H+ -> He+ + H     ref 6
+
+with its reference list giving `5: Zygelman et al. (1989), 6: Kimura et al.
+(1993)` - exactly the two sources behind EXHALE's B2 and B1. An independent
+network built five years before ours therefore pairs the same two calculations
+for the same two directions. That is outside confirmation that carrying two
+independently computed rates here reflects the two channels, and is not a
+defect anyone has been overlooking.
+
+Ziegler carries He<sup>+</sup> + H as a **single** reaction row from the Zygelman
+calculation rather than splitting it into radiative and non-radiative parts,
+which is the same shape as the treatment adopted in section 4.3.1 below (one
+summed removal rate). The comparison stops there: his numerical coefficients
+are not printed in the paper, so **whether he actually included both channels
+cannot be decided from it**, and nothing further is claimed. What can be said
+is that EXHALE is now the more explicit of the two about what went into the
+sum.
+
+His section 2.1 also supplies a published precedent for bounding a Kingdon &amp;
+Ferland fit outside its stated range - see section 4.3.1.
+
+What the old framing did obscure is a real omission, now closed in section
+4.3.1: the **non-radiative** He<sup>+</sup> + H channel was absent from the network
+altogether.
+
+#### 4.3.1 The missing non-radiative He<sup>+</sup> + H channel (adopted 2026-08-31)
+
+Zygelman, Dalgarno, Kimura &amp; Lane (1989), Phys. Rev. A 40, 2340 - the common
+source behind both coded rates, read here from the published pages - computes
+the two channels separately and keeps them apart. Its Table I is captioned
+"Rate coefficients for direct radiative charge transfer and for total
+radiative decay in units of 10<sup>-15</sup> cm<sup>3</sup> sec<sup>-1</sup>" and tabulates only the
+**radiative** processes, over T = 1 to 1000 K:
+
+| T (K) | 1 | 10 | 100 | 200 | 400 | 1000 |
+|---|---|---|---|---|---|---|
+| Direct | 5.36 | 4.21 | 4.41 | 4.50 | 4.83 | 5.99 |
+| Total | 15.4 | 11.7 | 8.34 | 7.49 | 7.16 | 7.71 |
+
+The "Direct" column is their process (2), radiative charge transfer, and it is
+what the code's B2 carries: Stancil, Lepp &amp; Dalgarno (1998) multiply it by the
+0.25 approach-probability factor, and interpolating Direct to 300 K gives
+4.67e-15, of which 0.25 is 1.17e-15 - the 1.25e-15 of the coded fit, to the
+rounding. The 0.25 applies to **Direct**, not to "Total", which additionally
+contains radiative association to HeH<sup>+</sup>.
+
+The **non-radiative** channel appears in that paper only as cross sections
+over 1-100 eV (their Fig. 8, "Comparison between nonradiative (direct) charge
+transfer cross sections (circles) and radiative charge transfer cross sections
+(triangles)"), which is the collision-energy range that maps onto the
+6e3-1e5 K validity range of the Kingdon &amp; Ferland (1996) fit. The two are
+therefore different parts of the same calculation and are **additive**; the
+code now sums them. Zygelman et al. also supply the physical reason it matters
+in a wind: the radiative processes dominate at low collision energy, while
+above a few eV the direct process becomes the faster removal mechanism, the
+two cross sections being comparable at about 1e-20 cm<sup>2</sup> in the 5-8 eV range.
+
+Measured sizes of the added channel relative to the radiative one: **0.36x at
+1140 K, 1.16x at 3020 K, 2.99x at 10<sup>4</sup> K**, so total He<sup>+</sup> + H removal rises by
+1.36x, 2.16x and 3.99x. Note this is *not* uniformly the "4x" that the 10<sup>4</sup> K
+figure alone suggests - at the molecular base the correction is under 40%.
+
+**Extrapolation policy, and its precedent.** The Kingdon &amp; Ferland fit is valid
+over 6e3-1e5 K, while the molecular base of interest sits near 1140 K. The code
+evaluates it as fitted below the range - it decays as t<sub>4</sub><sup>2.06</sup> there, so
+downward extrapolation under-weights the channel and cannot make it spuriously
+large - and caps the temperature at the published ceiling above it, where the
+fit grows without bound. Clamping to the 6000 K value instead was rejected: it
+would freeze the rate at 5.1e-15 and overstate the channel at the base by about
+a factor 8. Ziegler (2018) section 2.1 does the same kind of thing to a
+coefficient from the same Kingdon &amp; Ferland table, requiring that rate
+coefficients not show "unphysical behavior or unboundedness ... in the
+asymptotic limits" and, for their C<sup>+</sup> + H rate, setting it to zero below the
+5390 K at which it turns negative and imposing an upper floor at 1e9 K. The
+precedent is for the practice, not the specific action: that fit goes negative
+and is zeroed, whereas this one stays positive and is evaluated.
 
 ### 4.4 The 4000 K step in the He(2<sup>3</sup>S) + H rate (fixed 2026-08-28)
 
@@ -416,14 +528,22 @@ density, so their M enters through the argument of `set_mol_coeffs` -- which
 the H3+ and H2 three-body sources still carried the wrong M; the tables are left
 as the record of what was measured, and the scan of section 93 supersedes them.
 
-**The He/H = 1 NaN abort is a negative reconstructed pressure.** It reappears
+**The He/H = 1 NaN abort is a negative pressure at face j = 232.** It reappears
 once R13/R15 have the right third body (it is absent from the tree as found).
 Caught with `-ffpe-trap=invalid,zero,overflow`, the first invalid operation is
 `aR = sqrt(g*pR/rhoR)` at `src/modules/flux/Num_Fluxes.f90:46`, at face j = 232,
-r = 1.1398 R_p, where the reconstructed right state has p = -3.6e-2 in code
-units. Below that face the run carries a cold hypersonic shell -- 650 K,
-1e7 cm/s, Mach 50-60 -- against a dense hot wall at r = 1.144, so the thermal
-pressure is 2e-4 of the total energy and the reconstruction across the jump
-takes it negative. Nothing tests the reconstructed pressure for positivity. It
-is recorded as `TO_BE_DONE.md` item (O) rather than patched, because the fix
-lives in the reconstruction, outside every molecular branch.
+r = 1.1398 R_p, where the right state has p = -3.6e-2 in code units. Below that
+face the run carries a cold hypersonic shell -- 650 K, 1e7 cm/s -- against a
+dense hot wall at r = 1.144.
+
+**Corrected 2026-08-30** (`Update_EXHALE.md` section 95, `TO_BE_DONE.md` items
+(O) and (P)): the negative pressure is **not** made by the reconstruction. The
+cell average of cell 233 already carries the identical `-3.64985e-2`, its
+pressure slope limited to zero, so both of its face states are its own average;
+the conservative update takes that cell from p = +5.58 to negative in one step,
+in a base region running at Mach 38 to 224. The same arm at `CFL: 0.2` completes
+12000 steps with no NaN. The repair is a positivity test on each RK stage with a
+dt bisection when it fails, plus a positivity guard on the reconstructed face
+states -- which was a real and separate gap, firing 1164 times in `wasp_full`
+and feeding negative pressures to HLLC, whose NaN sound speed the wave-speed
+`min`/`max` was silently discarding.

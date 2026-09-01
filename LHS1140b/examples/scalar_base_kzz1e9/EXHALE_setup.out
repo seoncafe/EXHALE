@@ -23,7 +23,7 @@
  - Simulating a H/He atmosphere with He/H ratio of  1.6261E+00
  - Including helium triplet chemistry
  - Coupled equilibrium system size: N_eq = 4
-  - Spectrum read from external file: ../../../sed/lhs1140_sed_gj1132_at_b.txt
+  - Spectrum read from external file: ../../sed/lhs1140_sed_gj1132_at_b.txt
  - 2D approximation used: Mdot
 
  ----- Numerical parameters -----

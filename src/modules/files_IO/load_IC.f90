@@ -30,8 +30,13 @@
                                isp_HeIII, isp_HeTR,                    &
                                n_mion, n_melem, mion_fsp, mion_name,   &
                                mion_elem, melem_i0, melem_top,         &
-                               melem_name
+                               melem_name, isp_OH, isp_H2O, isp_CO,     &
+                               iel_O, iel_C
       use utils, only: calc_rho
+      ! Oxygen-chemistry seed for a restart file written before the option
+      ! existed (see the block near the end of load_IC).
+      use oxygen_rates, only: co_equilibrium_density,                   &
+                              oxygen_chemical_equilibrium_fractions
 
       implicit none
 
@@ -53,6 +58,14 @@
       ! Metal and molecular densities assembled for the calc_rho mass policy
       real*8, dimension(1-Ng:N+Ng,n_mion) :: nm_l
       real*8, dimension(1-Ng:N+Ng,4)      :: nmol_l
+      ! Oxygen carriers of the loaded state (OH, H2O, CO); zero for a file
+      ! written before the oxygen chemistry existed.
+      real*8, dimension(1-Ng:N+Ng,3)      :: nox_l
+      ! Oxygen-chemistry seeding of a restart file that predates the option.
+      logical :: ox_seeded
+      integer :: ic0
+      real*8  :: T_K_l, nOtot, nCtot, nCO_l, nOfam, nOH_l, nH2O_l
+      real*8  :: f_oh_l, f_h2o_l, sO_l, sC_l, dH_l
       real*8, dimension(1-Ng:N+Ng)        :: rho_dim
       ! Hydrogen nuclei density of the loaded state (free + bound in molecules)
       real*8, dimension(1-Ng:N+Ng)        :: nH_l
@@ -192,7 +205,8 @@
       if (thereis_He) then
          nH_l  = nsp_l(:,isp_HI)  + nsp_l(:,isp_HII)                      &
                + 2.0d0*(nsp_l(:,isp_H2) + nsp_l(:,isp_H2p))               &
-               + 3.0d0*nsp_l(:,isp_H3p) + nsp_l(:,isp_HeHp)
+               + 3.0d0*nsp_l(:,isp_H3p) + nsp_l(:,isp_HeHp)               &
+               + nsp_l(:,isp_OH) + 2.0d0*nsp_l(:,isp_H2O)
          ! The HeI column of an output file is the TOTAL He I density, He
          ! 2^3S included, so the triplet column is not added again here.
          nHe_l = nsp_l(:,isp_HeI) + nsp_l(:,isp_HeII)                     &
@@ -244,6 +258,12 @@
             nsp_l(:,isp_H2)    = nsp_l(:,isp_H2)   *sH_l
             nsp_l(:,isp_H2p)   = nsp_l(:,isp_H2p)  *sH_l
             nsp_l(:,isp_H3p)   = nsp_l(:,isp_H3p)  *sH_l
+            ! OH and H2O carry only H among the two elements being rescaled
+            ! (their oxygen follows hydrogen through melem_ab, like every
+            ! trace metal), so they scale with the hydrogen factor.
+            nsp_l(:,isp_OH)    = nsp_l(:,isp_OH)   *sH_l
+            nsp_l(:,isp_H2O)   = nsp_l(:,isp_H2O)  *sH_l
+            nsp_l(:,isp_CO)    = nsp_l(:,isp_CO)   *sH_l
             nsp_l(:,isp_HeI)   = nsp_l(:,isp_HeI)  *sHe_l
             nsp_l(:,isp_HeII)  = nsp_l(:,isp_HeII) *sHe_l
             nsp_l(:,isp_HeIII) = nsp_l(:,isp_HeIII)*sHe_l
@@ -265,7 +285,8 @@
                                       *min(sH_l(j), sHe_l(j))
                   gotH_l  = nsp_l(j,isp_HI) + nsp_l(j,isp_HII)             &
                           + 2.0d0*(nsp_l(j,isp_H2) + nsp_l(j,isp_H2p))     &
-                          + 3.0d0*nsp_l(j,isp_H3p) + nsp_l(j,isp_HeHp)
+                          + 3.0d0*nsp_l(j,isp_H3p) + nsp_l(j,isp_HeHp)     &
+                          + nsp_l(j,isp_OH) + 2.0d0*nsp_l(j,isp_H2O)
                   gotHe_l = nsp_l(j,isp_HeI) + nsp_l(j,isp_HeII)           &
                           + nsp_l(j,isp_HeIII) + nsp_l(j,isp_HeHp)
                   if (nH_l(j)*sH_l(j) .gt. gotH_l)                         &
@@ -308,7 +329,8 @@
       ! sum_i f_i A_i = 1 that the cold start has by construction.
       nH_l = nsp_l(:,isp_HI)  + nsp_l(:,isp_HII)                         &
            + 2.0d0*(nsp_l(:,isp_H2) + nsp_l(:,isp_H2p))                  &
-           + 3.0d0*nsp_l(:,isp_H3p) + nsp_l(:,isp_HeHp)
+           + 3.0d0*nsp_l(:,isp_H3p) + nsp_l(:,isp_HeHp)                  &
+           + nsp_l(:,isp_OH) + 2.0d0*nsp_l(:,isp_H2O)
       if (.not. allocated(melem_from_abundance))                         &
          allocate(melem_from_abundance(n_melem))
       melem_from_abundance = .false.
@@ -323,6 +345,14 @@
             do k = 0, melem_top(e)
                tmp = tmp + sum(abs(nsp_l(1:N,mion_fsp(i0+k))))
             enddo
+            ! An oxygen-chemistry state can hold nearly all of its oxygen and
+            ! all of its carbon in OH, H2O and CO, with the ion stages at
+            ! zero. Counting only the stages would call the element absent
+            ! and rebuild it from the abundance, doubling it.
+            if (e .eq. iel_O) tmp = tmp                                    &
+               + sum(abs(nsp_l(1:N,isp_OH))) + sum(abs(nsp_l(1:N,isp_H2O))) &
+               + sum(abs(nsp_l(1:N,isp_CO)))
+            if (e .eq. iel_C) tmp = tmp + sum(abs(nsp_l(1:N,isp_CO)))
             if (tmp .le. 0.0d0) elem_ok = .false.
          endif
          if (elem_ok) cycle
@@ -399,6 +429,76 @@
             '; column rescaled by ', r_el
       enddo
 
+      ! ---- an oxygen-chemistry run restarted from a state without it ----
+      ! A pre-oxygen-chemistry file has no OH / H2O / CO columns, so the
+      ! loader leaves them at zero. Starting the option from zero is not
+      ! neutral: zero is itself a root of the water cycle, and hybrd1 is
+      ! already known to be bistable from a zero molecular seed
+      ! (ionization_equilibrium), so the run would sit in the empty basin.
+      ! The state is therefore seeded with the CHEMICAL EQUILIBRIUM of the
+      ! loaded (T, H2/H) and the loaded oxygen and carbon totals -- the same
+      ! partition the molecular-basin retry of the cell solve uses -- and the
+      ! seeding is printed, never silent.
+      !
+      ! Both elements stay conserved: what goes into the carriers is taken
+      ! out of the ion stages of the SAME element, in proportion, and the H
+      ! nuclei the carriers hold are taken out of atomic H (and out of H2 if
+      ! atomic H runs short). A file that already carries the columns is left
+      ! alone.
+      if (thereis_oxychem) then
+         ox_seeded = (sum(abs(nsp_l(1:N,isp_OH)))                          &
+                    + sum(abs(nsp_l(1:N,isp_H2O)))                         &
+                    + sum(abs(nsp_l(1:N,isp_CO)))) .le. 0.0d0
+         if (ox_seeded) then
+            i0 = melem_i0(iel_O)
+            ic0 = melem_i0(iel_C)
+            do j = 1-Ng, N+Ng
+               T_K_l  = T(j)*T0
+               nOtot  = nsp_l(j,mion_fsp(i0))   + nsp_l(j,mion_fsp(i0+1))  &
+                      + nsp_l(j,mion_fsp(i0+2))
+               nCtot  = nsp_l(j,mion_fsp(ic0))  + nsp_l(j,mion_fsp(ic0+1)) &
+                      + nsp_l(j,mion_fsp(ic0+2))
+               if (nOtot .le. 0.0d0) cycle
+               nCO_l  = co_equilibrium_density(nCtot, nOtot, T_K_l)
+               nOfam  = nOtot - nCO_l
+               call oxygen_chemical_equilibrium_fractions(T_K_l,           &
+                       nsp_l(j,isp_H2), nsp_l(j,isp_HI), f_oh_l, f_h2o_l)
+               nOH_l  = f_oh_l *nOfam
+               nH2O_l = f_h2o_l*nOfam
+               ! Take the carriers out of the ion stages of their element.
+               sO_l = max(nOtot - nOH_l - nH2O_l - nCO_l, 0.0d0)/nOtot
+               do k = 0, melem_top(iel_O)
+                  nsp_l(j,mion_fsp(i0+k)) = nsp_l(j,mion_fsp(i0+k))*sO_l
+               enddo
+               if (nCtot .gt. 0.0d0) then
+                  sC_l = max(nCtot - nCO_l, 0.0d0)/nCtot
+                  do k = 0, melem_top(iel_C)
+                     nsp_l(j,mion_fsp(ic0+k)) = nsp_l(j,mion_fsp(ic0+k))   &
+                                                *sC_l
+                  enddo
+               endif
+               ! Take the H nuclei of the carriers out of atomic H, then out
+               ! of H2 if atomic H cannot supply them.
+               dH_l = nOH_l + 2.0d0*nH2O_l
+               if (nsp_l(j,isp_HI) .ge. dH_l) then
+                  nsp_l(j,isp_HI) = nsp_l(j,isp_HI) - dH_l
+               else
+                  dH_l = dH_l - nsp_l(j,isp_HI)
+                  nsp_l(j,isp_HI) = 0.0d0
+                  nsp_l(j,isp_H2) = max(nsp_l(j,isp_H2) - 0.5d0*dH_l,      &
+                                        0.0d0)
+               endif
+               nsp_l(j,isp_OH)  = nOH_l
+               nsp_l(j,isp_H2O) = nH2O_l
+               nsp_l(j,isp_CO)  = nCO_l
+            enddo
+            write(*,'(A)') ' (load_IC) the restart file carries no OH /'// &
+               ' H2O / CO columns; seeding them from the chemical'
+            write(*,'(A)') '   equilibrium of the loaded (T, H2/H) and'//  &
+               ' the loaded oxygen and carbon totals.'
+         endif
+      endif
+
       ! Reconstruct the mass density (adimensional) from the LOADED densities
       ! with the SAME mass policy as the run (calc_rho): the trace-metal mass
       ! under the eos_metals policy and the molecular mass are included,
@@ -419,9 +519,12 @@
       nmol_l(:,2) = nsp_l(:,isp_H2p)
       nmol_l(:,3) = nsp_l(:,isp_H3p)
       nmol_l(:,4) = nsp_l(:,isp_HeHp)
+      nox_l(:,1)  = nsp_l(:,isp_OH)
+      nox_l(:,2)  = nsp_l(:,isp_H2O)
+      nox_l(:,3)  = nsp_l(:,isp_CO)
       call calc_rho(nsp_l(:,isp_HI),  nsp_l(:,isp_HII),   nsp_l(:,isp_HeI),   &
                     nsp_l(:,isp_HeII), nsp_l(:,isp_HeIII),                    &
-                    rho_dim, nm_l, nmol_l)
+                    rho_dim, nm_l, nmol_l, nox_l)
       rho = rho_dim/n0
 
       ! H/He(+HeITR) and molecular fractions (f = n/(rho*n0)).
@@ -435,6 +538,9 @@
       f_sp(:,isp_H2p)   = nsp_l(:,isp_H2p)/(rho*n0)
       f_sp(:,isp_H3p)   = nsp_l(:,isp_H3p)/(rho*n0)
       f_sp(:,isp_HeHp)  = nsp_l(:,isp_HeHp)/(rho*n0)
+      f_sp(:,isp_OH)    = nsp_l(:,isp_OH)/(rho*n0)
+      f_sp(:,isp_H2O)   = nsp_l(:,isp_H2O)/(rho*n0)
+      f_sp(:,isp_CO)    = nsp_l(:,isp_CO)/(rho*n0)
 
       ! Metal fractions. One rule for every element: the density array holds
       ! either the loaded state or the abundance-built one from the block
@@ -515,6 +621,10 @@
          case ('H2p');   species_column = isp_H2p
          case ('H3p');   species_column = isp_H3p
          case ('HeHp');  species_column = isp_HeHp
+         ! oxygen-chemistry columns
+         case ('OH');    species_column = isp_OH
+         case ('H2O');   species_column = isp_H2O
+         case ('CO');    species_column = isp_CO
          case default
             species_column = 0
             do i = 1, n_mion

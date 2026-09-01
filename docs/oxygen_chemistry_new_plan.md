@@ -10,7 +10,8 @@ Section 5 of the options document and Section 9 of the review.
 Status of every item below when this was written: **proposed, nothing
 implemented.** That is no longer the whole picture -- P0, P1 and P2 of the
 Section 5 roadmap have since been run, and each carries its own dated result
-block there; P3 and P4 are still proposed. The scope decision itself (item (H)
+block there; P3 has since been run and carries its own dated result block,
+and P4's measurable conditions (1) and (2) are filled in. The scope decision itself (item (H)
 in `TO_BE_DONE.md`) remains a user decision deferred until after the paper.
 
 The two problems, unchanged from the options document:
@@ -414,6 +415,66 @@ above:
 Gates: the three lower-level populations sum to total O I; optically thin and
 saturated columns both tested; comparison band-integrated, never line-center.
 
+*Result, 2026-08-30* (full record: `Update_EXHALE.md` sections 101-105; run
+directories `HD209458b/oi1302`, `..._cxO2p_1`, `..._cxO2p_3`,
+`..._diffusion`, all JFNK-converged with the current executable). All four
+sub-items were run; the gates are met; the validation against the published
+depth does **not** reproduce it.
+
+**Gates.** The three lower-level populations sum to the total O I to round-off
+(`2.9e-16`), measured by the writer and re-measured by the transit tool, which
+refuses the line above `1e-10`. Both column regimes were tested by scaling the
+level densities in the real code path: at `1e-9` and `1e-8` the depth is linear
+in the column to 1.3% (optically thin), and a further `1e4` in column buys only
+12.8x in depth (saturated). Every comparison is band-integrated; the
+line-center depth is printed but never compared.
+
+1. **B2 (the omitted O2+ rate) is material.** `O2+ + H0 -> O+ + H+`, absent
+   from Huang Table 4, is carried at the published Barragan et al. (2006) rate
+   with a scale dial (`metals.inp: cx_O2p_H <scale>`), the reverse direction
+   excluded by detailed balance (endothermic by 21.5 eV).
+   Switching it on suppresses the O III fraction on HD 209458 b by **4.7
+   decades at 1.05 Rp, 3.7 at 1.1, 2.7 at 1.2, 1.7 at 1.5**, converging on the
+   Table-4-only answer only past ~3 Rp. Neutral O rises 3% below 1.2 Rp and 52%
+   near 2-3 Rp; `log10 Mdot` moves 9.47 -> 9.48. It was a default-off dial when
+   this was written; on 2026-08-30 it became the default (scale 1) and the
+   metals-bearing goldens were refreshed (`Update_EXHALE.md` section 107).
+2. **The O I ground-term populations are an output field**, from the same
+   three-level statistical equilibrium the `[O I]` 63/145/44um cooling is built
+   on -- one definition, two consumers, no second calculation.
+   `output/OI_levels.txt` / `_adv.txt`, metal-bearing runs only.
+3. **B1 is implemented and under-predicts the published depth by a factor of
+   30.** Model 0.359% against Vidal-Madjar et al. (2004) 10.8 +/- 4.5% and
+   Ben-Jaffel & Hosseini (2010) 8.54 +/- 4.4% (both continuum-subtracted, since
+   the published values are `(R_abs/R_*)^2` and include the planetary disk).
+   Setting the comparison up correctly was most of the work and changed the
+   answer by a factor of 12: the band weight is the *stellar emission-line
+   profile* (0.2 A FWHM, peaks 1:1.5:1.17, BJ10), not a flat 10 A average; the
+   ISM is inside those measured peak ratios and must not be applied a second
+   time; and the instrument LSF cancels from a band ratio, so convolving before
+   weighting loses another factor of 5. All of it is written into
+   `tpm_OI_band_depths.txt` beside the number. The shortfall is consistent with
+   what the observational literature says about every model of this line -- BJ10
+   measure stellar FWHMs "far larger than the thermal Doppler width in the
+   HD209458b atmosphere" and their own scaled model reaches only 3.9% -- and
+   Ly-beta pumping of O I 1025.76 A, which feeds this triplet's upper level, is
+   recorded as an explicit omission whose size the literature brackets between
+   ~10% of direct excitation (Earth dayglow) and ~20x collisional excitation
+   (solar chromosphere), with no published calculation for an escaping
+   exoplanet atmosphere.
+4. **B4: oxygen fractionates by 5.55x, the observable moves 18%.** With
+   `He_diffusion` + `He_metal_diffusion` + `K_zz = 1e9`, O/H falls from the
+   solar 4.90e-4 to 8.82e-5 above 1.2 Rp (He/H only 1.25x), but the same
+   operator raises `log10 Mdot` by 0.48 dex, and the denser wind refills most of
+   what settling removes: the O I 1302 band depth goes 0.359 -> 0.294%. The two
+   effects are not separable in this experiment and the fractionation scales
+   with `K_zz`.
+
+`make check` 7/7 byte-identical and `run_fcheck.sh` CLEAN throughout: nothing
+in P3 changes the wind. The `Update_EXHALE` sections also record two false
+labels found and fixed on the way (a run log that claimed the du convergence
+criterion after a JFNK finish, and `adf48` on the dielectronic data class).
+
 **P4 — A2 go/no-go.** Start in-code oxygen chemistry only if all four hold:
 (1) P1's reaction budget shows the H2O/OH cycle dominating H2 destruction near
 1 microbar; (2) `tau_chem << tau_adv` there, from the P1 profiles; (3) a
@@ -426,9 +487,122 @@ matches when the FUV opacity is widened; IC write/read round-trips H and O;
 the `_adv` limitation is either lifted or made loud; the regression matrix
 passes with the new physics default off.
 
+*Conditions (1) and (2) measured, 2026-08-30.* Both were re-measured from the
+stored P1 solutions rather than quoted: the Photochem budgets from
+`vulcan_work/pc_compare_p1/{hd189_toa1e-2,hd209_toa1e-2}/pc_*_budget.pkl`, the
+VULCAN arm reconstructed from `VULCAN/output/HD189.vul` and
+`vulcan_work/hd209_vulcan/output/HD209.vul` with the rate recipe of
+`VULCAN/diagnose.py`, and every advection time computed from an EXHALE
+`Hydro_ioniz.txt` with that run's own `mu` and `g`. Every number in the P1.4
+table was reproduced; two numbers of `vulcan_photochem_comparison.md` were
+corrected in the process (see that document).
+
+**Condition (1) — does the H2O/OH cycle dominate H2 destruction near 1 microbar?
+The two planets do not give the same answer.**
+
+| planet, level | O family, gross loss | **O family, net loss** | largest single channel |
+|---|---|---|---|
+| HD 189733 b, 1 ubar, 864 K (4 arms) | 59.0-99.2% | **96.3-99.6%** | `OH + H2 -> H2O + H`, 57.2-91.9% of gross |
+| HD 209458 b, 1 ubar, 2331 K (4 arms) | 95.3-99.9% | **20.3-41.7%** | `OH + H2 -> H2O + H`, 50.2-65.0% of gross |
+| HD 209458 b, 1e-4 bar, 1830 K (4 arms) | 43.9-100.0% | **1.3-4.2%** | `OH + H2` 98%, or `S + H2` 48% in the sulfur arm |
+
+- **HD 189733 b: condition (1) is met**, in all four arms and independently of
+  the network.
+- **HD 209458 b: condition (1) is not met.** The oxygen channels are the fastest
+  ones there, but they run in near-exact balance in both directions, and the net
+  is carried by thermal dissociation `H2 + M -> H + H + M` (58-96% of the net,
+  the higher figure at the deeper level). **At 1e-4 bar — where the production
+  configuration actually hands off — the oxygen cycle carries 2.6% of the net
+  (arm C').** That is the sharpest failure of condition (1) anywhere in the
+  measurement, and it is at the level the code uses.
+
+**Condition (2) — is `tau_chem << tau_adv` there? Again the two planets differ,
+and on HD 189733 b the verdict depends on which advection time is meant.**
+
+`tau_chem(H2) = n_H2/(net H2 loss)` from the same solutions;
+`tau_adv = H/|v|` with `H = p/(rho g)` at the EXHALE base cell, and `r/|v|` given
+alongside because the two differ by two decades in this flow.
+
+| planet | level | tau_chem [s] | EXHALE run | tau_adv = H/v [s] | ratio | ratio with r/v |
+|---|---|---|---|---|---|---|
+| HD 209458 b | 1 ubar | 1.81e5 - 2.39e5 | `pc_compare_p1/exhale_hd209/p1e-6_seed/vulcan` | 2.132e8 | **8.5e-4 - 1.2e-3** | 1.0e-5 - 1.3e-5 |
+| HD 209458 b | 1e-4 bar | 1.33e6 - 2.44e6 | `.../p1e-4_seed/vulcan` | 1.965e8 | **6.8e-3 - 1.2e-2** | 4.8e-5 - 8.9e-5 |
+| HD 189733 b | 1 ubar | 2.99e5 - 2.51e6 | `HD189733b/output` (JFNK info=0, 2026-08-19) | 1.498e6 | **0.20 - 1.67** | 4.0e-4 - 3.3e-3 |
+
+Compared at the *same pressure* rather than at each model's own handoff level,
+HD 209458 b gives `tau_chem/tau_adv = 1.8e-3` at the EXHALE base pressure
+(22.6 dyn cm^-2) and HD 189733 b gives **16.4** at its base pressure
+(7.8 dyn cm^-2).
+
+- **HD 209458 b: condition (2) is met**, and not only at the base cell. Over the
+  whole pressure range where the two grids overlap (22.6 down to 1e-2 dyn cm^-2,
+  `r/R_p = 1.000` to `1.087`) the pressure-matched ratio stays at or below 0.1,
+  mostly 1e-3 to 3e-2; the single exception is one breathing-base inflow cell at
+  `r/R_p = 1.0004`. Further out, `tau_adv` falls below the measured `tau_chem`
+  beyond `r/R_p ~ 1.17` (`H/v`) or `~1.65` (`r/v`) — i.e. a local-equilibrium
+  oxygen chemistry would stop being defensible in the launch region itself, well
+  inside the transit-relevant radii.
+- **HD 189733 b: condition (2) is not met on `H/v`** (16.4 pressure-matched, and
+  0.20-1.67 when the 1 microbar `tau_chem` is set against the base-cell
+  `tau_adv`); it is met on `r/v`. The verdict on this planet therefore rests on
+  which advection time the local-equilibrium assumption has to beat, which is a
+  physics choice this measurement cannot make for us.
+
+**Caveat that pushes both verdicts the same way.** Every `tau_chem` above is
+evaluated on the *chemistry model's own* T(p), which is hotter than EXHALE's at
+the same pressure (HD 209458 b: 2021 K vs 1429 K at 21.9 dyn cm^-2;
+HD 189733 b: 883 K vs 566 K at 7.8 dyn cm^-2). In-code chemistry would run on
+EXHALE's temperature, so the true `tau_chem` is *longer* than quoted: HD 189733 b
+fails condition (2) by more, and HD 209458 b's factor of 1e-3 margin shrinks.
+Measuring how much needs the chemistry re-run on EXHALE's T(p), which was not
+done.
+
+**What conditions (1) and (2) together say.** The two conditions are met on
+*different planets*: HD 189733 b has the photochemistry (1) but not the
+timescale separation (2); HD 209458 b has the timescale separation (2) but its
+base partition is thermal, not photochemical, so (1) fails — and fails hardest
+at the 1e-4 bar level the production configuration hands off at. **No planet
+measured here meets both.** A2 built to fix HD 189733 b's partition would be a
+local-equilibrium solve in a regime where the chemistry is not fast compared to
+the flow; A2 built for HD 209458 b would be solving for a cycle that carries a
+few percent of the net.
+
+**Conditions (3) and (4) are the user's, and this is what they are deciding
+between.** What is at stake: A2 buys a base H2/H partition that is *computed*
+rather than imposed, which is the only thing that turns item (H) from an
+unbounded uncertainty into a modeling result, and it is the only route to a
+lower atmosphere that does not carry an external code in the production path.
+What it costs is not the two species: it is one total-oxygen closure spanning
+the metal block and the molecular block, H-nuclei bookkeeping against the same
+budget, an FUV band treatment with OH/H2O columns and self-shielding (the XUV
+grid starts at 13.6 eV and water photolysis lives below it), photolysis
+energetics in the EOS and the energy equation, and the seven acceptance gates
+listed above — against a measured wind-level payoff on the one converged planet
+of **at most 0.035 dex in Mdot**, itself an upper bound at the level of the
+configuration's own JFNK-to-JFNK reproducibility (P1.6). Item (G), the missing
+molecular IR coupling, sits in the same layer with a *measured* -0.34 dex, and
+section 4.1 ranks it first for that reason. The P1 decision already taken —
+Photochem as the production chemistry, with a climate model — means the
+external-dependency argument for A2 is weaker than when this plan was written.
+
 If P4 says no-go, the terminal state is A0/A1 with honest semantics plus the
 P3 observable — which is a publishable position, provided the network
 provenance of every handoff is recorded (P0).
+
+*P4 decision, 2026-08-30 (user).* **A2 proceeds as a runtime option, default
+off.** The four conditions resolve as: (1) and (2) measured above — no planet
+meets both, and where the chemistry matters (cool bases) `tau_chem > tau_adv`,
+so any in-code network valid there must include vertical transport; (3) is met
+by **self-containedness**: EXHALE able to stand up a molecular base without
+the external Photochem stack, the same code-uniformity motivation as the
+Wind-AE port; (4) accepted with the build. Two conditions attach to the
+decision: (a) the scope is *local kinetics plus vertical diffusive transport*
+from the start — a transport-free network would be wrong exactly where it is
+needed; (b) the first gate is an A/B against the Photochem handoff on the
+HD 189733 b base (`q_H2` agreement within a stated tolerance), run as a
+regression so the two owners of the oxygen physics cannot drift apart
+silently. The A2 design document comes first and is reviewed before any
+implementation; item (H) of `TO_BE_DONE.md` tracks it.
 
 ---
 
@@ -441,6 +615,40 @@ provenance of every handoff is recorded (P0).
 - Documents record what a change *does* (the `q_H2_base` lesson: the interface
   existed for nine days before its actual semantics were written down
   correctly).
+
+## 6b. What A2 measured, and how it changes this plan (2026-08-30)
+
+**Milestone M3 of `docs/a2_oxygen_option_design.md` is implemented, and it
+contradicts one premise of section 5's roadmap: transport is not the term that
+sets the base partition in EXHALE's own structure.**
+
+The P4 condition that made vertical transport mandatory was
+`tau_chem(H2)/tau_adv = 0.20-1.67` at the HD 189733 b 1-microbar level. That
+ratio was `H/v` on the PHOTOCHEMICAL model's scale height and velocity at that
+pressure. Measured on an EXHALE run of the same planet with the option on, the
+base cell has `v = 0` exactly -- the lower boundary condition puts it there --
+the flow time in the cells above it is 1e8-2e8 s against `tau_chem(H2)` of
+178-552 s, and the diffusive time of the base cell is 4500 chemical times at
+`K_zz = 0` (3.6 at `K_zz = 1e9`). In this code's structure the base partition
+is a local quantity.
+
+The A/B gate accordingly did not enter its band, and moved away from it:
+`x_H2 = 0.769` without transport, 0.608 with it at `K_zz = 0` and 0.581 at
+`K_zz = 1e9`, against 0.910 for the reference and a pass band of 0.847-0.947.
+What transport does change is CO, which has no chemistry and whose mixing ratio
+is therefore set by the column rather than by the local equilibrium; the oxygen
+it frees raises OH and destroys more H2.
+
+**The blocker moves to item (G).** The base of these runs sits at 1191-1403 K
+against the reference's 864 K, and the run's own net H2 budget puts the thermal
+channel and the oxygen cycle at +2.4 and -1.4 of the net there -- the hot-base
+regime the design places outside A2's validity range. The base is hot because
+the option removes the [O I] and C I/C II coolants and the code has no H2O or CO
+infrared bands to replace them. Section 4.1 of this plan already ranked item (G)
+above this work; the M3 measurement is the quantitative reason.
+
+Full record: `Update_EXHALE.md` section 109, the M3 result block of
+`docs/a2_oxygen_option_design.md` section 7, and item (H) of `TO_BE_DONE.md`.
 
 ## 7. Document ownership after this plan
 
