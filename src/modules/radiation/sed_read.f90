@@ -209,6 +209,63 @@
 	
 	! End of module
 	
+      double precision function lyman_werner_band_flux_from_sed()         &
+                                result(F_band)
+      ! Band-integrated flux over 912-1110 A of the numerical SED, at the
+      ! planet [erg cm^-2 s^-1] -- the quantity "Stellar LW flux" states.
+      !
+      ! THIS IS THE PRESCRIPTION THE BAND FLUX HAS ALWAYS BEEN BUILT BY, now
+      ! carried out by the code instead of by hand: integrate the stellar
+      ! spectrum over 91.2-111.0 nm and take it at the planet's orbit
+      ! (docs/Update_EXHALE.md section 109). No dilution is applied here
+      ! because EXHALE's own SED file is already AT THE PLANET, which is what
+      ! read_sed's header states; the (R_star/a)^2 step belongs to the
+      ! stellar-surface files the value used to be produced from. Checked
+      ! against that route: Gueymard's solar spectrum integrated over the band
+      ! at the stellar surface and diluted to 0.048 AU behind a 1.155 R_sun
+      ! star gives 329 erg cm^-2 s^-1 against the 343 the molecular cases
+      ! carry, i.e. the two agree to 4%.
+      !
+      ! The interval is OUTSIDE the ionizing range read_sed retains (912 A is
+      ! 13.6 eV, the H I edge, and everything longward is below it), so the
+      ! file is re-read here rather than taken from the selected arrays.
+      ! Trapezoid on the bin centres; rows outside the band are skipped, and
+      ! the two rows bracketing each edge are kept so a coarse grid does not
+      ! lose the ends.
+      real*8, parameter :: w_lo = 912.0d0, w_hi = 1110.0d0
+      real*8  :: w, f, w_prev, f_prev, wa, wb
+      integer :: io, nin
+      logical :: have_prev
+      F_band    = 0.0d0
+      nin       = 0
+      have_prev = .false.
+      w_prev    = 0.0d0
+      f_prev    = 0.0d0
+      open(unit = 71, file = sed_file, status = 'old', iostat = io)
+      if (io .ne. 0) return
+      do
+         if (.not. sed_next_row(71, w, f, io)) exit
+         if (io .ne. 0) exit
+         if (have_prev .and. w .gt. w_prev) then
+            wa = max(w_prev, w_lo)
+            wb = min(w,      w_hi)
+            if (wb .gt. wa) then
+               ! trapezoid of the segment, clipped to the band
+               F_band = F_band + 0.5d0*(f_prev + f)*(wb - wa)
+               nin    = nin + 1
+            endif
+         endif
+         w_prev    = w
+         f_prev    = f
+         have_prev = .true.
+         if (w .gt. w_hi) exit
+      enddo
+      close(71)
+      if (nin .lt. 2) F_band = 0.0d0
+      end function lyman_werner_band_flux_from_sed
+
+      ! ------------------------------------------------------------- !
+
       logical function sed_next_row(unit, w, f, io)
       ! Next data row of an SED file: blank lines and lines whose first
       ! non-blank character is '#' are skipped, so a file may carry a

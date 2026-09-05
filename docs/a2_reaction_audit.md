@@ -345,20 +345,61 @@ p. 913, recommends three collider-resolved low-pressure limits over
 | H2O | `3.9e-25 T^-2.0` | ±0.5 |
 
 **VULCAN's id 659, `k0 = 3.89e-25 T^-2`, is Baulch's H2O-collider value.**
-Photochem's `1.050748e-26 T^-2.1` is a single shock-tube measurement, Javoy
-et al. (2003), whose published validity range is 2790-3200 K (NIST Chemical
-Kinetics Database record `2003JAV/NAU371-377:10`; the paper itself is
-paywalled and was not read) and which sits about a factor 10 below Baulch's N2
-value at 300 K and 13 below at 3000 K.
 
-The 66-81x ratio the two networks show is therefore **6.4x of collider times
-about 11x of source**, and neither network is using a value appropriate to an
-H2/He bath. This module adopts Baulch's N2 value, N2 being the diatomic
-collider of the three and the closest published analogue to H2; Ar is the
-monatomic analogue for He, a factor 2.7 below it. Photochem's high-pressure
-limit, `2.7e-10 exp(-75/T)`, is Cobos & Troe (1985) transition-state theory
-over 300-2100 K per the same NIST database (`1985COB/TRO1010-1015:15`, also
-paywalled and not read); Baulch recommends no `k_inf` at all.
+Photochem's `1.050748e-26 T^-2.1` is Javoy et al. (2003), section 3.4, which
+has now been read. The abstract lists the recombination as reaction (5),
+`H + OH + Ar -> H2O + Ar (2790-3200 K)`; section 3.4 numbers the measured
+dissociation (5) and the recombination (-5). Section 3.4 reports
+
+> "The rate constant of the water decomposition reaction has been studied in
+> the temperature range 2790-3200 K at total pressure of about 250 kPa and
+> using mixtures containing 1200-4500 ppm of H2O diluted in Ar. The rate
+> constant of the termolecular recombination reaction between H, OH and Ar as
+> collision partner was calculated from H2O dissociation rate constant
+> measurements and the equilibrium constant."
+
+with `k_-5 = 3.75e21 T(K)^-2.1 cm^6 mol^-2 s^-1`, quoted at ±25%, and a
+water-collider value `k_-6 = 6.75e22 T(K)^-2.1 cm^6 mol^-2 s^-1` at ±30%
+obtained from it by assuming a relative collision efficiency of 18 for H2O
+with respect to argon. Dividing by `N_A^2 = 3.6266e47` puts the argon value at
+`1.034e-26 T^-2.1 cm^6 molecule^-2 s^-1`; the coefficient Photochem carries is
+1.6% above that, far inside the paper's own ±25%. So the NIST transcription
+(`2003JAV/NAU371-377:10`) is confirmed in coefficient, exponent and the
+2790-3200 K range — and it adds one thing the transcription in this document
+did not carry: **the collider is argon**, not a generic third body.
+
+That changes the comparison. The two networks are quoting different colliders,
+VULCAN H2O and Photochem Ar, on top of a source disagreement. Like for like
+against Baulch's own argon value, Javoy is 3.9x low at 300 K and 5.0x low at
+3000 K; against the N2 value adopted here it is 10.4x low at 300 K and 13.1x
+low at 3000 K, which is what the earlier "about 10 and 13" said. The 66-81x
+between the two networks over 300-2500 K is therefore **about 17x of collider
+times 3.9-4.9x of source** — Baulch's own H2O/Ar ratio is 17.0 and Javoy's
+assumed efficiency is 18 — and neither network is using a value appropriate to
+an H2/He bath.
+
+This module adopts Baulch's N2 value, N2 being the diatomic collider of the
+three and the closest published analogue to H2; Ar is the monatomic analogue
+for He, a factor 2.7 below it. Reading Javoy narrows the source disagreement
+from a decade to a factor of 4-5 but does not move that choice: the measurement
+is argon, and its 2790-3200 K validity range begins well above the molecular
+layer this module is written for.
+
+Photochem's high-pressure limit, `2.7e-10 exp(-75/T)`, is Cobos & Troe (1985),
+Table I entry (14) `H + OH -> H2O`, which has also now been read. It is one of
+26 systems in that survey, so the paper does apply to this reaction, but it
+prints no Arrhenius form: it tabulates `k_rec,inf = 2.1e-10` at 300 K and
+`2.6e-10` at 2100 K in `cm^3 molecule^-1 s^-1`, and `2.7e-10 exp(-75/T)` is
+simply the two-point fit through them (2.10e-10 and 2.61e-10). That is where
+the "300-2100 K" of the NIST record (`1985COB/TRO1010-1015:15`) comes from —
+the two tabulated temperatures, not a stated validity range. Two details the
+transcription loses: the method is the simplified statistical adiabatic channel
+model of the paper's Part I, with the looseness parameter fitted (`alpha = 1.0
+A^-1`, `beta = 2.1 A^-1`, `alpha/beta = 0.48`), not transition-state theory as
+the NIST record labels it; and the 300 K experimental anchor cited in the
+table's footnote 14 is the isotope exchange `OH + D -> OD + H` (Margitan,
+Kaufman & Anderson 1975; Howard & Smith 1982), not a direct measurement of
+`H + OH` association. Baulch recommends no `k_inf` at all.
 
 The reaction stays out of the minimal set — it is 9.7e-8 of O1 — so none of
 this changes a number the option uses. It is recorded because a promotion of
@@ -645,13 +686,16 @@ Two further corrections that are not source discrepancies:
 
 ## 9. What M1 does not settle
 
-- **Three publications could not be obtained** and their values enter this
-  audit only through a database transcription, which is said at each place:
-  Tully (1975) for O6's alternative value, Javoy et al. (2003) for O9's
-  Photochem value, and Cobos & Troe (1985) for O9's high-pressure limit. None
-  of the three supplies a coefficient that the adopted set uses. Slanger &
-  Black (1982) could not be obtained either; its Ly-alpha yields enter through
-  the JPL 19-5 entry that quotes them, which was read.
+- **One publication could not be obtained** and its value enters this audit
+  only through a database transcription, which is said at the place it is
+  used: Tully (1975) for O6's alternative value. It supplies no coefficient
+  that the adopted set uses. Javoy et al. (2003) and Cobos & Troe (1985), for
+  O9's Photochem low- and high-pressure limits, were obtained after the first
+  pass and are now quoted from the published papers in section 3; both NIST
+  transcriptions held, and reading them added the argon collider of the Javoy
+  measurement and the tabulated, rather than fitted, form of the Cobos & Troe
+  value. Slanger & Black (1982) could not be obtained either; its Ly-alpha
+  yields enter through the JPL 19-5 entry that quotes them, which was read.
 - **O6's factor 2.6 is the open physics.** It is 2-6% of the net H2 loss on the
   one planet the option exists for, and it should be an M2 sensitivity rather
   than a fixed number.

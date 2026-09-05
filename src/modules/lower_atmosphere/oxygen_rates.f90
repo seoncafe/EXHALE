@@ -574,20 +574,44 @@
       ! THIS RESOLVES THE APPARENT TWO-DECADE DISAGREEMENT between the
       ! reference networks, which is not a disagreement about the reaction.
       ! VULCAN's id 659, k0 = 3.89e-25 T^-2, IS Baulch's H2O-collider value.
-      ! Photochem's 1.050748e-26 T^-2.1 is a single shock-tube measurement,
-      ! Javoy et al. (2003), Exp. Therm. Fluid Sci. 27, 371, whose published
-      ! validity range is 2790-3200 K (NIST Chemical Kinetics Database
-      ! record 2003JAV/NAU371-377:10; the paper itself is behind a paywall
-      ! and was not read) and which sits about 10x below Baulch's N2 value
-      ! at 300 K and 13x below at 3000 K.  The 66-81x ratio between the two
-      ! networks is 6.4x of collider times about 11x of source.  Neither
-      ! network is using a value appropriate to an H2/He bath.
+      ! Photochem's 1.050748e-26 T^-2.1 is Javoy et al. (2003), Exp. Therm.
+      ! Fluid Sci. 27, 371, section 3.4, read here.  It is their ARGON
+      ! value, k = 3.75e21 T^-2.1 cm^6 mol^-2 s^-1 = 1.034e-26 cm^6
+      ! molecule^-2 s^-1 after division by N_A^2 = 3.6266e47, over
+      ! 2790-3200 K at about 250 kPa total in 1200-4500 ppm H2O diluted in
+      ! Ar, quoted at +-25%.  It is not a direct measurement of the
+      ! association: they measured the H2O dissociation rate behind
+      ! reflected shock waves and inverted it through the equilibrium
+      ! constant.  The coefficient Photochem carries is 1.6% above that
+      ! conversion, far inside the paper's own +-25%, so the NIST record
+      ! 2003JAV/NAU371-377:10 is confirmed; what the record does not say is
+      ! that the collider is Ar.
       !
-      ! Photochem's high-pressure limit, 2.7e-10 exp(-75/T), is Cobos & Troe
-      ! (1985), J. Chem. Phys. 83, 1010, over 300-2100 K -- transition-state
-      ! theory, per the same NIST record (1985COB/TRO1010-1015:15); the
-      ! paper is paywalled and was not read.  Baulch recommends no k_inf for
-      ! this reaction.
+      ! The two networks therefore quote DIFFERENT COLLIDERS, VULCAN H2O
+      ! and Photochem Ar, on top of a source disagreement.  Like for like
+      ! against Baulch's own Ar value, Javoy is 3.9x low at 300 K and 5.0x
+      ! low at 3000 K; against the N2 value adopted here it is 10.4x low at
+      ! 300 K and 13.1x low at 3000 K.  The 66-81x between the networks
+      ! over 300-2500 K is about 17x of collider (Baulch's own H2O/Ar ratio
+      ! is 17.0, Javoy's assumed efficiency 18) times 3.9-4.9x of source.
+      ! Neither network is using a value appropriate to an H2/He bath, and
+      ! Javoy's validity range begins well above the molecular layer, so
+      ! the Baulch N2 value stands.
+      !
+      ! Photochem's high-pressure limit, 2.7e-10 exp(-75/T), is Cobos &
+      ! Troe (1985), J. Chem. Phys. 83, 1010, Table I entry (14)
+      ! H + OH -> H2O, read here.  The paper prints no Arrhenius form: it
+      ! tabulates k_rec,inf = 2.1e-10 at 300 K and 2.6e-10 at 2100 K in
+      ! cm^3 molecule^-1 s^-1, and 2.7e-10 exp(-75/T) is the two-point fit
+      ! through them (2.10e-10, 2.61e-10) -- which is where the 300-2100 K
+      ! of the NIST record 1985COB/TRO1010-1015:15 comes from.  The method
+      ! is the simplified statistical adiabatic channel model of that
+      ! paper's Part I with the looseness parameter fitted (alpha = 1.0
+      ! A^-1, beta = 2.1 A^-1, alpha/beta = 0.48), not transition-state
+      ! theory as the record labels it, and its 300 K experimental anchor
+      ! is the isotope exchange OH + D -> OD + H, not a direct H + OH
+      ! association measurement.  Baulch recommends no k_inf for this
+      ! reaction.
       !
       ! NOT IN THE MINIMAL SET: measured at 1.1e-7 of O1 at the HD 189733 b
       ! base with the N2 value adopted here.

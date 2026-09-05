@@ -15,7 +15,14 @@ Typical use
 
 All densities are cm^-3, velocity cm/s (``v_kms`` is km/s), pressure erg/cm^3,
 temperature K, heating/cooling erg/cm^3/s, radius in units of the base R_p.
+
+The readers return the PHYSICAL cells only; the ghost rows the files carry at
+both ends are dropped.  Pass ``ghost=True`` to any of them (or to
+``load_run``) for the file exactly as written.  See ``physical_cell_rows``.
 """
+
+import re
+import warnings
 
 import numpy as np
 
@@ -51,6 +58,86 @@ ION_NAMES = HE_IONS + METAL_IONS
 # band heats rather than cools.
 COOL_GAS_CHANNELS = ['rec', 'coll_ion', 'coex_HI', 'coex_HeI', 'coex_HeII',
                      'brems', 'H3p', 'H2_IR', 'H2O_IR', 'CO_IR']
+
+
+# --- ghost cells ---------------------------------------------------------
+# Every radial profile EXHALE writes -- Hydro_ioniz, Ion_species,
+# Cooling_breakdown, Heating_breakdown, Excited_H, Lyman_Werner, OI_levels,
+# and their _adv twins -- is written by a `do j = 1-Ng, N+Ng` loop with
+# Ng = 2 fixed in parameters.f90, so the file has N + 4 rows and the first
+# two and the last two are GHOST cells: the lower pair is the fixed base
+# state and the upper pair a zero-gradient / WENO3 extrapolation, both filled
+# by Apply_BC.  They are boundary values, not solution cells.  Taking a
+# measure over the raw file counts them: the radial spread of rho*v*r^2 over
+# r >= 1.2 R_p of one converged HD 189733 b state is 1.05e-2 with the ghost
+# rows and 4.65e-3 without, a factor 2.3, and the factor is state-dependent
+# (1.25 on WASP-121b, 1.00 on a hot Uranus), so a consumer cannot assume it
+# is small.  Section 133.6 / 137 of docs/Update_EXHALE.md.
+NGHOST = 2
+
+_ROWS_HEADER = re.compile(r'physical cells are rows\s+(\d+)\s+to\s+(\d+)')
+
+
+def physical_cell_rows(path):
+    """0-based half-open row range ``(i0, i1)`` of the physical cells.
+
+    Two ways of knowing, tried in this order.
+
+    1. THE HEADER, which is the contract.  Since section 133.6 the writer
+       emits ``# rows 504: 2 ghost cells at each end; physical cells are
+       rows 3 to 502`` (1-based, inclusive).  It is a comment, so it costs
+       no numeric parse.  Only ``Hydro_ioniz(_adv).txt`` carries it today;
+       the other profile files fall through to rule 2.
+
+    2. THE LAYOUT, for every file written before that header existed --
+       the regression goldens and every saved ``output*/`` directory.
+       ``Ng = 2`` is a Fortran ``parameter`` and every writer loops
+       ``1-Ng..N+Ng``, so two rows at each end are ghosts unconditionally,
+       for every grid type.  What the file can still be asked is whether it
+       has that layout at all, and the base radius answers: ``define_grid``
+       puts a cell center exactly at ``r = 1`` and it is a GHOST center --
+       ``r(1-Ng) = 1`` for the Uniform and Stretched grids, ``r(2-Ng) = 1``
+       for Mixed -- so ``r = 1`` lands on row 1 or row 2 and never later.
+       A file whose radius column increases monotonically and equals 1 to
+       roundoff at row 1 or row 2 therefore has the ghost layout, and two
+       rows come off each end.  Every one of the 9214 profile files in this
+       working copy satisfies it.
+
+    A file that satisfies neither is returned whole with a warning: that is
+    the pre-2026-09 behavior, and it is what a reader handed something else
+    should do rather than silently cutting four rows off it.
+    """
+    with open(path) as fh:
+        for line in fh:
+            if not line.startswith('#'):
+                break
+            m = _ROWS_HEADER.search(line)
+            if m:
+                return int(m.group(1)) - 1, int(m.group(2))
+    r = np.atleast_1d(np.loadtxt(path, usecols=0))
+    n = r.size
+    at_base = any(abs(r[i] - 1.0) <= 1.0e-12 for i in range(min(NGHOST, n)))
+    if n > 2*NGHOST + 1 and at_base and bool(np.all(np.diff(r) > 0.0)):
+        return NGHOST, n - NGHOST
+    warnings.warn('%s: no "physical cells are rows" header and the radius '
+                  'column does not have the ghost-cell layout; returning all '
+                  '%d rows' % (path, n))
+    return 0, n
+
+
+def loadtxt_cells(path, ghost=False, **kw):
+    """``np.loadtxt`` on an EXHALE profile file, ghost rows dropped.
+
+    Every ``np.loadtxt`` keyword is passed through.  ``unpack`` is applied
+    after the row selection, so a caller still gets the column-first result
+    it asked for.  ``ghost=True`` returns the file as written.
+    """
+    unpack = kw.pop('unpack', False)
+    d = np.asarray(np.loadtxt(path, **kw))
+    if not ghost:
+        i0, i1 = physical_cell_rows(path)
+        d = d[i0:i1]
+    return d.T if unpack else d
 
 
 class Run:
@@ -121,16 +208,18 @@ class Run:
         return {s: self.ion[s] / tot for s in element_stages}
 
 
-def load_hydro(path):
+def load_hydro(path, ghost=False):
     """Read Hydro_ioniz.txt or Hydro_ioniz_adv.txt -> dict of physical arrays.
     Columns: r[R_p], n[m_H/cm^3] (mass density = rho/m_H, metals included),
-    v[cm/s], p[erg/cm^3], T[K], heat, cool."""
-    r, n, v, p, T, heat, cool = np.loadtxt(path, unpack=True)
+    v[cm/s], p[erg/cm^3], T[K], heat, cool.
+    Physical cells only unless ghost=True."""
+    r, n, v, p, T, heat, cool = loadtxt_cells(path, ghost, unpack=True)
     return dict(r=r, n=n, v=v, p=p, T=T, heat=heat, cool=cool)
 
 
-def load_ions(path):
+def load_ions(path, ghost=False):
     """Read Ion_species.txt(_adv) -> (r, {ion_name: density[cm^-3]}).
+    Physical cells only unless ghost=True.
     Column names come from the '# columns' header, so the molecular columns
     (H2, H2p, H3p, HeHp) and the oxygen-chemistry columns (OH, H2O, CO) are
     picked up when the run tracks them; a file without the header falls back
@@ -144,16 +233,17 @@ def load_ions(path):
                 names = line.split()[3:]   # drop '#', 'columns', 'r[Rp]'
     if names is None:
         names = ION_NAMES
-    d = np.loadtxt(path, unpack=True)
+    d = loadtxt_cells(path, ghost, unpack=True)
     r = d[0]
     ion = {name: d[i + 1] for i, name in enumerate(names) if i + 1 < d.shape[0]}
     return r, ion
 
 
-def load_cooling(path):
+def load_cooling(path, ghost=False):
     """Read Cooling_breakdown.txt -> dict with r, T, ne, cool_total, and a
-    'chan' dict of cooling in each channel [erg/cm^3/s] (H/He + metal lines)."""
-    d = np.loadtxt(path, unpack=True)
+    'chan' dict of cooling in each channel [erg/cm^3/s] (H/He + metal lines).
+    Physical cells only unless ghost=True."""
+    d = loadtxt_cells(path, ghost, unpack=True)
     out = dict(r=d[0], T=d[1], ne=d[2], cool_total=d[3], chan={})
     names = COOL_GAS_CHANNELS + METAL_IONS
     for i, name in enumerate(names):
@@ -170,9 +260,10 @@ EXCITED_H_COLS = [
 ]
 
 
-def load_excited_H(path):
-    """Read Excited_H.txt -> dict keyed by EXCITED_H_COLS (only present cols)."""
-    d = np.loadtxt(path, unpack=True)
+def load_excited_H(path, ghost=False):
+    """Read Excited_H.txt -> dict keyed by EXCITED_H_COLS (only present cols).
+    Physical cells only unless ghost=True."""
+    d = loadtxt_cells(path, ghost, unpack=True)
     return {name: d[i] for i, name in enumerate(EXCITED_H_COLS) if i < d.shape[0]}
 
 
@@ -182,12 +273,13 @@ LYMAN_WERNER_COLS = [
 ]
 
 
-def load_lyman_werner(path):
-    """Read Lyman_Werner.txt -> dict keyed by LYMAN_WERNER_COLS. Written only
+def load_lyman_werner(path, ghost=False):
+    """Read Lyman_Werner.txt -> dict keyed by LYMAN_WERNER_COLS (physical
+    cells only unless ghost=True). Written only
     by a molecular run that carries a "Stellar LW flux": the star-ward H2
     column, the Draine & Bertoldi (1996) self-shielding factor, the
     photodissociation rate [1/s] and its heating [erg/cm^3/s]."""
-    d = np.loadtxt(path, unpack=True)
+    d = loadtxt_cells(path, ghost, unpack=True)
     return {name: d[i] for i, name in enumerate(LYMAN_WERNER_COLS)
             if i < d.shape[0]}
 
@@ -199,8 +291,9 @@ OI_LEVEL_COLS = [
 ]
 
 
-def load_OI_levels(path):
-    """Read OI_levels.txt / OI_levels_adv.txt -> dict keyed by OI_LEVEL_COLS.
+def load_OI_levels(path, ghost=False):
+    """Read OI_levels.txt / OI_levels_adv.txt -> dict keyed by OI_LEVEL_COLS
+    (physical cells only unless ghost=True).
 
     The fractional populations of the three O I 2p4 3P ground-term levels,
     solved in the same three-level statistical equilibrium as the [O I]
@@ -208,7 +301,7 @@ def load_OI_levels(path):
     n_3P2 + n_3P1 + n_3P0 = nOI. Written by metal-bearing runs only; the
     3P2 / 3P1 / 3P0 levels are the lower levels of the O I 1302.168 /
     1304.858 / 1306.029 A resonance triplet."""
-    d = np.loadtxt(path, unpack=True)
+    d = loadtxt_cells(path, ghost, unpack=True)
     return {name: d[i] for i, name in enumerate(OI_LEVEL_COLS)
             if i < d.shape[0]}
 
@@ -239,6 +332,10 @@ def load_lower_atmosphere_profile(path):
                 header[key] = val
     if names is None:
         raise SystemExit('%s: no "# columns:" header' % path)
+    # Plain np.loadtxt, not loadtxt_cells: this is an INPUT file handed to a
+    # run (written by run_lower.py / a photochemistry code), not one of the
+    # profiles write_output.f90 emits, so it has no ghost rows to drop and
+    # its first column is a pressure, not a radius.
     data = np.loadtxt(path, comments='#', ndmin=2)
     if data.shape[1] != len(names):
         raise SystemExit('%s: %d columns, %d names'
@@ -283,16 +380,18 @@ def read_input(path):
     )
 
 
-def load_run(outdir, inputfile, adv=True):
+def load_run(outdir, inputfile, adv=True, ghost=False):
     """Load a full run: hydro + ions (+ parsed input). Uses the _adv
-    (advection-corrected) files by default; set adv=False for the eq files."""
+    (advection-corrected) files by default; set adv=False for the eq files.
+    Physical cells only unless ghost=True."""
     import os
     suf = '_adv' if adv else ''
     run = Run()
-    h = load_hydro(os.path.join(outdir, 'Hydro_ioniz%s.txt' % suf))
+    h = load_hydro(os.path.join(outdir, 'Hydro_ioniz%s.txt' % suf), ghost)
     run.r, run.n, run.v = h['r'], h['n'], h['v']
     run.p, run.T, run.heat, run.cool = h['p'], h['T'], h['heat'], h['cool']
-    _, run.ion = load_ions(os.path.join(outdir, 'Ion_species%s.txt' % suf))
+    _, run.ion = load_ions(os.path.join(outdir, 'Ion_species%s.txt' % suf),
+                           ghost)
     if inputfile:
         run.inp = read_input(inputfile)
     return run
@@ -332,9 +431,13 @@ def _mdot_factor(method):
 def mdot_log10(run, j_from_top=20):
     """log10 of the steady-state mass-loss rate [g/s], 4*pi*rho*v*r^2 evaluated
     near the outer boundary, with the 2D-approximation factor from input.inp's
-    '2D approximate method'. Mirrors EXHALE_main.f90."""
+    '2D approximate method'. Mirrors EXHALE_main.f90, which evaluates it at the
+    PHYSICAL cell j = N - j_from_top (EXHALE_main.f90:1514) -- 0-based index
+    len(r) - 1 - j_from_top of a ghost-free array. It used to be indexed
+    len(r) - j_from_top on an array that still carried the ghost rows, i.e.
+    three cells further out than the run's own Mdot."""
     Rp = run.inp.get('Rp_RJ', 1.0) * RJ
-    j = len(run.r) - j_from_top
+    j = len(run.r) - 1 - j_from_top
     mdot = 4.0 * np.pi * run.n[j] * mu * run.v[j] * (run.r[j] * Rp) ** 2
     method = run.inp.get('raw', {}).get('2D approximate method', '')
     mdot *= _mdot_factor(method)

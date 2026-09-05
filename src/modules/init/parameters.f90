@@ -31,6 +31,10 @@
       integer :: lwa                      ! Working array length for NL solver
       integer :: info                     ! Output info variable of NL solver
       integer :: j_min
+      ! First cell of the FLUX window: the innermost cell with r >= r_flux,
+      ! over which the flux gate measures the spread of the face mass flux
+      ! (flux_spread_of_state, steady_residual.f90). Set in define_grid.
+      integer :: j_flux
       integer :: count
       
       character(len = 9), parameter   :: inp_file = 'input.inp'
@@ -81,8 +85,20 @@
       character(len = :), allocatable :: windae_seed_file
       character(len = :), allocatable :: windae_seed_out
 
-      logical :: is_mom_const  = .false.  ! Is momentum constant within tolerance
-      logical :: is_zero_dt    = .false.  ! Is time derivative really zero 
+      ! ---- What stopped the marching loop -----------------------------!
+      ! One flag per stop CONDITION, each true only when the condition it
+      ! names actually held, so the loop's exit and the line the run prints
+      ! are the same statement. The residual/flux pair is one flag because
+      ! steady_gates_met is one test (steady_residual.f90).
+      logical :: mass_flux_converged    = .false. ! du  < du_th: the radial
+                                          !  spread of the face mass flux
+      logical :: step_change_converged  = .false. ! dtu < dtu_th: the largest
+                                          !  relative change of u in one step
+      logical :: du_plateaued           = .false. ! du settled on a plateau
+                                          !  (stall net), target NOT reached
+      logical :: steady_gates_converged = .false. ! "Resid tol:": BOTH gates
+                                          !  met on the marched state
+      logical :: hit_max_steps          = .false. ! env EXHALE_MAXSTEPS cap
       logical :: force_start   = .false.  ! Force to do first 1000 iterations
       logical :: do_only_pp    = .false.  ! Do only the post processing
       logical :: do_load_IC    = .false.  ! Load existing IC
@@ -109,6 +125,45 @@
       !   Abel+1997/HG97 collisional ionization).  Free-free always uses the
       !   van Hoof et al. 2014 Gaunt table regardless of this flag.
       logical :: legacy_hhe_rates = .false.
+      ! Atomic H/He rate set for the four reactions Koskinen et al. (2022,
+      ! ApJ 929, 52) list in their Table 1 as R1-R4: radiative recombination
+      ! of H+ and He+, and electron-impact ionization of H and He.
+      !  .false. (default) = whichever set legacy_hhe_rates selects above.
+      !  .true. ("Atomic rate set: Koskinen2022") = their Table 1 entries,
+      !   so that a run can be compared like for like with their Model A.
+      !   Their recombination is the Storey & Hummer (1995) power law
+      !   4.0e-12 (300/T)^0.64 (H+) and 4.6e-12 (300/T)^0.64 (He+), in place
+      !   of the default Badnell RR minus Mao & Kaastra alpha_1 case B; their
+      !   collisional ionization is the same Voronov (1997) fit EXHALE
+      !   already uses by default, so R3/R4 move nothing unless
+      !   legacy_hhe_rates is set as well. The default set is the physically
+      !   preferred one here (case B, the Lyman continuum being optically
+      !   thick), so this key exists to reproduce their choice, not to
+      !   replace ours. It swaps the RATE coefficients only: the
+      !   recombination COOLING rates are untouched.
+      logical :: atomic_rate_set_k22 = .false.
+      ! "Caloric EOS: monatomic" -- every particle, H2 included, stores
+      ! (3/2) k T (gamma = 5/3 everywhere), the state of the code before the
+      ! H2 rovibrational ladder of section P53. A COMPARISON option: a model
+      ! whose energy equation is u = c_v T with a monatomic c_v cannot be
+      ! matched with the ladder on. Default .false. = the ladder.
+      logical :: caloric_eos_monatomic = .false.
+      ! "Photoelectron heating: full" -- every photoionization deposits the
+      ! WHOLE photon energy h nu as heat instead of the photoelectron's
+      ! h nu - I (the ionization energy I is then counted twice: once here
+      ! and once when it is radiated away by recombination). Unphysical, and
+      ! a COMPARISON option only: Koskinen et al. (2022) Figure 9 shows a
+      ! stellar heating rate 2.5-3 times what h nu - I gives for their own
+      ! ionization rate and spectrum, and this option tests whether that
+      ! accounting reproduces their profile. Default .false. = h nu - I.
+      logical :: photoheat_full_photon_energy = .false.
+      ! "Photoelectron heating: <f>" -- a stated FRACTION f of the photon
+      ! energy per ionization is deposited as heat (f = 1 is "full"; the
+      ! physical accounting h nu - I is f < 0, the default). Comparison only:
+      ! the Koskinen et al. (2022) Model A heating profile sits between the
+      ! two accountings, at about f = 0.65, and this reproduces it without
+      ! claiming a physics.
+      real*8  :: photoheat_photon_fraction = -1.0d0
       ! Secondary ionization by fast photoelectrons (Shull & van Steenberg 1985).
       !  .true. (default) = high-energy photoelectrons (E0 > 40 eV) partition their
       !   excess energy into heating f_heat(x), H I secondary ionization, and He I
@@ -122,6 +177,10 @@
       ! after the wind has first converged without it (set in serial code only --
       ! no threadprivate).
       logical :: sec_ion_active = .false.
+      ! Step at which sec_ion_active was last switched on (-1 = it was never
+      ! staged in, i.e. it is either off or was on from step 0). Written into
+      ! the restart file's coupling header and read back from it.
+      integer :: sec_ion_armed_step = -1
       ! Input override "Secondary_ionization: Immediate": apply the coupling from
       ! step 0 (pre-staging behavior), for A/B tests only.
       logical :: sec_ion_immediate = .false.
@@ -240,8 +299,23 @@
       ! of the XUV law, which has nothing to do with a star's FUV.
       ! 0 (default) = no Lyman-Werner photodissociation, i.e. the molecular
       ! network as it was before this key existed, bit for bit.
+      !
+      ! THE KEY IS THE FLUX AT THE PLANET, NOT THE FLUX THE MOLECULES SEE.
+      ! The run-wide dayside convention of "2D approximate method" is applied
+      ! to it where the beam is used, by dayside_dilution() in fuv_band_flux,
+      ! exactly as it is to the XUV grid and to the stellar Ly-alpha beam.
+      ! State the band flux at the orbit and let the run dilute it; do not
+      ! pre-divide it here (Update_EXHALE section 150).
       ! See src/modules/lower_atmosphere/lyman_werner.f90.
       real*8  :: F_LW_star = 0.0d0
+      ! Whether input.inp STATED "Stellar LW flux" (any value, zero
+      ! included). A stated zero switches the band off even when a spectrum
+      ! file could supply it -- the comparison with a published model that
+      ! excludes H2 photodissociation needs exactly that.
+      logical :: lw_flux_stated = .false.
+      ! Was F_LW_star computed from the numerical spectrum rather than
+      ! stated by the run?  Reported, so the source of the number is visible.
+      logical :: lw_from_spectrum = .false.
       ! Oxygen chemistry (the A2 option, docs/a2_oxygen_option_design.md):
       ! OH / H2O / CO added to the coupled molecular ionization equilibrium,
       ! with the H2O and OH photolysis of the FUV bands.  It is what lets
@@ -251,15 +325,66 @@
       ! and a non-zero oxygen abundance (input_read refuses otherwise).
       ! Default off = byte-identical to a run without the key.
       logical :: thereis_oxychem = .false.
-      ! Vertical transport of the molecular carriers (H2, OH, H2O, CO) with
-      ! their chemistry, solved implicitly by diffusive_photochemistry.
-      ! Key "Oxygen transport: True|False"; ON whenever the oxygen chemistry
-      ! is on, because a local steady state is the WRONG physics at the cool
-      ! base the option exists for -- tau_chem(H2)/tau_adv is of order unity
-      ! there (docs/a2_oxygen_option_design.md sec. 3.1). Setting it False
-      ! restores the local-kinetics limit of milestone M2, which is a test
-      ! of the chemistry alone and not a model of a base.
-      logical :: oxygen_transport = .true.
+      ! Vertical transport of the molecular carriers -- H2 always, plus OH,
+      ! H2O and CO when the oxygen cycle is on -- solved implicitly with
+      ! their chemistry by diffusive_photochemistry.
+      !
+      ! Key "Molecular carrier transport: True|False". Its DEFAULT is not a
+      ! constant: it is on whenever the oxygen chemistry is on, because a
+      ! local steady state is the wrong physics at the cool base that option
+      ! exists for -- tau_chem(H2)/tau_adv is of order unity there
+      ! (docs/a2_oxygen_option_design.md sec. 3.1). Resolved in input_read
+      ! once every key is parsed; carrier_transport_stated records whether
+      ! the run said so itself, so the default can change without silently
+      ! overriding a stated value.
+      !
+      ! False restores the local-kinetics limit of milestone M2, which is a
+      ! test of the chemistry alone and not a model of a base.
+      logical :: carrier_transport = .false.
+      ! Solve the carrier continuity equation TOGETHER with the wind, as a
+      ! fourth Newton unknown per cell, instead of alternating the two
+      ! (section 139). Meaningless without carrier_transport, and default
+      ! off: the coupled route changes the size and the band geometry of the
+      ! steady system, so a run that does not ask for it must not pay for it.
+      logical :: carrier_in_newton = .false.
+      ! THE CARRIER GATE. When the carrier row counts as steady: 0.1 per cent
+      ! of the row's own largest terms, volume-weighted over the layer and
+      ! the wind separately (carrier_steady_residual). It is a THIRD gate
+      ! beside the residual and the flux gate of section 133, and not part of
+      ! ||R||, for the reason section 133 gives for keeping those two apart:
+      ! the numbers are not commensurable. `Resid tol` was renormalized in
+      ! section 133 against a row scale that BOUNDS each hydrodynamic row's
+      ! largest term rather than being it, and converged states sit at 1e-6
+      ! on it; the carrier row is measured against the terms themselves, so
+      ! a converged carrier row sits near 1e-3. One threshold cannot serve
+      ! both. Read by the Picard loop and by steady_gates_met.
+      real*8  ::  carrier_resid_th = 1.0d-3
+      logical :: carrier_transport_stated = .false.
+      ! TRANSPORT THE HYDROGEN IONIZATION STATE: H+ carried with the flow as
+      ! a fifth transported species, instead of being re-solved every step
+      ! as a local photoionization/recombination equilibrium.
+      !
+      ! Key "Ionization transport: True|False", DEFAULT FALSE.
+      !
+      ! WHY IT EXISTS, AND WHERE THE LOCAL EQUILIBRIUM IS WRONG. The local
+      ! partition is the right answer only where a parcel is ionized faster
+      ! than it leaves the shell it sits in, P r/|v| >> 1. Measured on the
+      ! Koskinen 2022 Model A comparison (a 0.0457 M_J planet at 0.048 au
+      ! with the flux quartered, docs/k22_electron_density_excess.md sec. 7)
+      ! that number is 0.15-0.35 above 1.5 r_base: the gas leaves each shell
+      ! three to seven times faster than it can be photoionized, so the
+      ! ionization fraction is not the local root but whatever the parcel
+      ! accumulated on the way up. The local equilibrium then gives
+      ! x(H+) = 0.129/0.327/0.585 at 2.0/2.4/3.0 r_base where integrating
+      ! dx/dt along the same flow gives 0.057/0.078/0.106 and Model A, which
+      ! advects every species, has 0.020/0.055/0.080.
+      !
+      ! It is OFF by default because for the hot Jupiters the local closure
+      ! was built for P r/|v| is large and the equilibrium holds, and because
+      ! turning it on changes every ionization-dependent number of a run.
+      ! Requires "Molecular carrier transport: True": the operator that
+      ! carries it is the molecular carrier solve.
+      logical :: ionization_transport = .false.
       ! Band-integrated stellar flux AT THE PLANET'S ORBIT in the three FUV
       ! continuum bands of the oxygen chemistry [erg cm^-2 s^-1]:
       !   B1 1110-1201 A   "Stellar FUV B1 flux [erg/cm2/s]: <F>"
@@ -275,6 +400,8 @@
       ! by where the Lyman-Werner system ends, not chosen; see
       ! src/modules/lower_atmosphere/water_photolysis.f90.
       ! 0 (default) = no photolysis in that band.
+      ! Like F_LW_star, these are the fluxes AT THE ORBIT; the dayside
+      ! convention is applied in fuv_band_flux (section 150).
       real*8  :: F_FUV_B1 = 0.0d0
       real*8  :: F_FUV_B3 = 0.0d0
       real*8  :: F_FUV_B4 = 0.0d0
@@ -341,6 +468,79 @@
       ! same diluted B_nu(T0) `Base IR field` supplies, so each stops at its own
       ! radiative equilibrium temperature. See molecular_infrared_cooling.f90.
       logical :: mol_ir_bands   = .false.
+      ! H2 photoabsorption channels beyond the single dissociative one.
+      ! Both default to the pre-E1 arithmetic, which is why an old run
+      ! reproduces bit for bit.
+      !
+      ! h2_double_ionization selects the model for the share of the
+      ! photo-released protons that comes from H2 + hv -> H+ + H+ + 2e-,
+      ! a channel with a vertical threshold of 51.4 eV (Yan, Sadeghpour &
+      ! Dalgarno 1998, sec. 4). Accepted values:
+      !   'chung80'  DEFAULT. Chung, Lee, Masuoka & Samson (1993),
+      !              discussion of their Fig. 4: "by 80 eV about 20% of
+      !              sigma(H+) comes from double ionization. This
+      !              percentage remains fairly constant towards higher
+      !              energies", ramped from the 51.4 eV threshold.
+      !   'yan_rho'  built from the double-to-single ionization ratio of
+      !              Yan et al. (1998) sec. 4 (0.038 at 110 eV, asymptotic
+      !              0.0225 from Sadeghpour & Dalgarno 1993).
+      !   'off'      the channel is folded back into the single
+      !              dissociative one, d(E) = 0, which is what the code did
+      !              before this channel existed. Use it to reproduce a
+      !              pre-E1 result, not as a physical statement: the
+      !              reaction happens.
+      !
+      ! WHY 'chung80' IS THE DEFAULT. The reaction is real and measured;
+      ! what is not measured as a function of energy is d(E) itself. The
+      ! 20 percent is the number the source states outright, so it is the
+      ! one that carries. RANGE: the ramp between 51.4 and 80 eV is NOT in
+      ! the source, which says only that the contribution is "small" near
+      ! threshold. UNCERTAINTY: 'yan_rho' rests on different published
+      ! numbers and gives a double-to-single ratio 1.6 times larger at
+      ! 110 eV (0.038 against 0.023); running both is how that is reported,
+      ! and it moves n(H2+) by 25 percent of the channel's own effect.
+      character(len=16) :: h2_double_ionization = 'chung80'
+      ! h2_neutral_dissociation resolves H2 + hv -> H + H, the absorptions
+      ! that leave no ion. It is nonzero ONLY over the 33-41 eV window of
+      ! Chung et al. (1993) Table 1, where the measured photoionization
+      ! yield falls below unity; outside that window the source ASSUMES a
+      ! unit yield rather than measuring one, so the channel is set to
+      ! zero there.
+      !
+      ! DEFAULT True: sigma_n is a MEASUREMENT (Chung et al. Table 1,
+      ! twelve rows), and without it up to 7.4 percent of the absorptions
+      ! at 37.5 eV are given an H2+ and an electron that the event does not
+      ! make. Setting it False folds that share back into the ionizing
+      ! channels in their own proportion, which is what the code did before
+      ! this channel existed; use it to reproduce a pre-E1 result, not as a
+      ! physical statement.
+      logical :: h2_neutral_dissociation = .true.
+      ! `Molecular reaction heat: True|False`.  The energy the COLLISIONAL
+      ! reactions of the H2/He network release into the gas -- above all the
+      ! dissociative recombination of H3+ and H2+, which returns the H2
+      ! ionization energy to the gas instead of to a photon as radiative
+      ! recombination does in an atomic gas.
+      !
+      ! DEFAULT ON, because leaving it out is physically wrong rather than
+      ! approximate.  Follow the closed cycle a photon drives:
+      !     H2 + hv -> H2+ + e        (photon pays I(H2) = 15.43 eV; the
+      !                                photoelectron keeps hv - I(H2), which
+      !                                PH_heat_HHe already deposits)
+      !     H2+ + H2 -> H3+ + H       (+1.70 eV)
+      !     H3+ + e  -> H2 + H        (+9.25 eV)
+      ! The cycle returns to H2 having converted one H2 into H + H and left
+      ! I(H2) - D0(H2) = 15.43 - 4.48 = 10.95 eV in the gas as kinetic energy
+      ! of the fragments -- NOT as a photon, which is what makes this
+      ! different from the atomic case, where radiative recombination carries
+      ! the ionization energy out of the gas.  Measured on the converged
+      ! He/H = 0.0793 hot Uranus, that sum is 81 percent of the total heating
+      ! rate at 1.02 r_base, so omitting it is not a small error in the
+      ! molecular layer's energy budget; it is most of it.
+      !
+      ! An atomic run is untouched: the term is gated on thereis_mol as well,
+      ! so every non-molecular golden is byte-identical either way.
+      ! See molecular_reaction_heat.f90.
+      logical :: mol_reaction_heat = .true.
       integer :: pp_metal_mode  = 1       ! Metal treatment in the advection
                                           !  post-process (post_process_adv):
                                           !  0 = metal-free (legacy: metals
@@ -361,7 +561,40 @@
       logical :: use_weno3     = .false.  ! Use WENO3 reconstruction
       logical :: use_plm       = .false.  ! Use PLM reconstruction
       logical :: recon_two_stage = .false.  ! "Reconstruction scheme: PLM+WENO3": run PLM (stage 1) then WENO3 (stage 2), using BOTH du_th values. PLM/WENO3 alone are single-stage and use only the first du_th value.
-      logical :: is_stalled    = .false.  ! Convergence stalled at a du plateau
+      ! ---- PLM -> WENO3 continuation ("Reconstruction continuation:") ----
+      ! The two-stage recipe changes the discrete operator in ONE step: the
+      ! face reconstruction, the form of the momentum equation (pressure
+      ! inside the flux plus a geometric source, versus a face-pressure
+      ! difference) and the outer free-outflow ghost all change together, and
+      ! the state marched to that point under PLM is handed to WENO3 as if it
+      ! were a solution of it. Measured at the hand-off of the hot-Uranus
+      ! molecular case, the two operators' steady residuals differ by 6.7
+      ! times the largest PLM residual in the mass row at the base and by 62
+      ! percent in the momentum row at the outer boundary, while agreeing to
+      ! a part in 1e2 to 1e4 through the wind.
+      !
+      ! The continuation replaces the jump by a homotopy between the two
+      ! discretizations,
+      !
+      !     R_lambda(u) = (1 - lambda) R_PLM(u) + lambda R_WENO3(u),
+      !
+      ! assembled by reconstruction_continuation_rhs (steady_residual.f90) and
+      ! walked from lambda = 0 to lambda = 1 with step control. The
+      ! conservative ghost fill (Apply_BC_W) is blended by the same lambda, so
+      ! lambda = 0 reproduces the pure PLM operator and lambda = 1 the pure
+      ! WENO3 operator to the bit, and the endpoints cost one right-hand side
+      ! rather than two. Once lambda = 1 is reached the continuation disarms
+      ! itself and the flags are set to WENO3, so the JFNK finish and every
+      ! acceptance gate see the production operator with no blending in it.
+      !
+      ! recon_lambda_step0 <= 0 (the default, and what an absent key leaves)
+      ! is the shipped one-step switch. See docs/input_schema.md.
+      logical :: recon_lambda_on   = .false. ! continuation armed for this run
+      real*8  :: recon_lambda      = 0.0d0   ! current lambda in [0,1]
+      real*8  :: recon_lambda_step = 0.0d0   ! current step in lambda
+      real*8  :: recon_lambda_step0 = 0.0d0  ! "Reconstruction continuation:" dlambda; <= 0 = off
+      real*8  :: recon_lambda_dtu_tol = 1.2d0 ! lambda advances while dtu <= tol * dtu at the ramp start
+      logical :: recon_lambda_adaptive = .true. ! .false. = ramp with no step control
       logical :: spherical_domain = .false. ! Domain mode (set via input.inp):
                                           !  .false. = full Roche potential
                                           !   truncated at the Hill/L1 radius
@@ -442,8 +675,12 @@
       real*8,parameter ::  mu      = 1.67353284d-24   ! Hydrogen atom mass (g)
       ! Adiabatic index of a monatomic gas, written as the exact rational so
       ! that the value is 5/3 to full double precision rather than to the
-      ! digits a literal happens to carry.
-      real*8,parameter ::  g       = 5.0d0/3.0d0      ! Polytropic index
+      ! digits a literal happens to carry.  This is the reference value: where
+      ! molecules are present the caloric EOS uses the mixture value
+      ! gamma_eff(T, composition) of module caloric_eos instead, and this
+      ! constant is what that module returns, verbatim, for a molecule-free
+      ! cell.
+      real*8,parameter ::  gamma_ad = 5.0d0/3.0d0      ! monatomic reference
       real*8,parameter ::  Gc      = 6.67430d-8       ! Gravitational constant (CGS), CODATA 2018
       real*8,parameter ::  erg2eV  = 6.241509075d11   ! 1 erg measured in eV
       real*8,parameter ::  hp_erg  = 6.62607015d-27   ! Planck constant (CGS), CODATA exact
@@ -470,14 +707,55 @@
       ! Threshold energies
       real*8,parameter ::  e_th_HI   = 13.6d0    ! Threshold for HI ionization
       real*8, parameter ::  e_th_H2  = 15.4d0  ! H2 photoionization threshold [eV]
+      ! Threshold of the DISSOCIATIVE H2 photoionization channel,
+      ! H2 + hv -> H + H+ + e- (Chung, Lee, Masuoka & Samson 1993,
+      ! J. Chem. Phys. 99, 885, Table II, whose first row is the
+      ! threshold 18.076 eV). The non-dissociative channel above
+      ! it keeps e_th_H2; the two share one cross section, split by
+      ! frac_H2_dissociative_ionization.
+      real*8, parameter ::  e_th_H2_di = 18.076d0
+      ! Threshold of the DOUBLE ionization channel,
+      ! H2 + hv -> H+ + H+ + 2e- . Yan, Sadeghpour & Dalgarno (1998)
+      ! sec. 4: the channel "has a vertical threshold of 51.4 eV".
+      ! Charged against that threshold the same way every other channel
+      ! is charged its own ionization potential.
+      real*8, parameter ::  e_th_H2_dd = 51.400d0
       real*8,parameter ::  e_th_HeI  = 24.6d0    ! Threshold for HeI ionization
       real*8,parameter ::  e_th_HeII = 54.4d0    ! Threshold for HeII ionization
       real*8,parameter ::  e_th_HeTR = 4.80d0    ! Threshold for HeI triplet ionization
-      ! Photoelectron energy threshold above which the SvS85 secondary-ionization
-      ! partition is applied (40 eV, matching the wind_ae X-ray cutoff). Below it a
-      ! photoelectron thermalizes fully. Note SvS85 is strictly an E0 >~ 100 eV
-      ! asymptotic fit; using it down to 40 eV is a deliberate approximation.
-      real*8, parameter :: E_sec_ion = 40.0d0
+      ! He II ground-state ionization energy IN ERG -- the energy the electron
+      ! gas loses per He II collisional ionization. ONE definition: the cooling
+      ! assembly (eval_cool) and the cell-by-cell temperature root of the
+      ! advection post-process (T_equation) both use it. Until 2026-09-05 those
+      ! two carried the literal 8.715e-11 and kb_erg*631515 separately, 0.046
+      ! per cent apart for the same quantity. 631515 K is 54.4 eV written as a
+      ! temperature, and it is the same threshold the Hui & Gnedin (1997,
+      ! MNRAS 292, 27) collisional-ionization fit carries as 2*631515/T -- so
+      ! this form ties the energy removed to the threshold of the rate that
+      ! removes it, which the free literal did not. Value 8.719006e-11 erg.
+      ! The measured potential is 54.41776 eV = 8.718686e-11 erg (NIST ASD),
+      ! so this constant sits 0.0037 per cent above it and the retired
+      ! 8.715e-11 sat 0.042 per cent below it.
+      real*8,parameter ::  e_th_HeII_erg = kb_erg*631515.0d0
+      ! Photoelectron energy above which the energy partition of
+      ! electron_energy_degradation is applied; below it the photoelectron is
+      ! taken to deposit all of its energy as heat.
+      !
+      ! 30 eV is the LOWEST PRIMARY ENERGY AT WHICH ANY COEFFICIENT OF THAT
+      ! PARTITION IS PUBLISHED: Dalgarno, Yan & Liu (1999) tabulate 30, 50,
+      ! 100, 200, 500 and 1000 eV, so below 30 eV every coefficient would be
+      ! an extrapolation off the end of their tables. (It was 40 eV, carried
+      ! over from the wind_ae X-ray cutoff -- a numerical convention of
+      ! another code, not a physical threshold, and it sat between the two
+      ! sources rather than on either.)
+      !
+      ! WHAT IS STILL DISCARDED, AND WHY. A photoelectron of 13.6-30 eV can
+      ! ionize hydrogen, and in the hot-Uranus band those photons carry 18%
+      ! of the incident XUV energy; here they are still treated as depositing
+      ! all of their energy as heat. That is a limit of the tables, not a
+      ! physical threshold: no source consulted resolves the partition below
+      ! 30 eV, and extrapolating into it would be unsupported.
+      real*8, parameter :: E_sec_ion = 30.0d0
       real*8,parameter ::  e_th_MgI  = 7.646d0   ! Threshold for MgI ionization
       real*8,parameter ::  e_th_MgII = 15.035d0  ! Threshold for MgII ionization
 
@@ -543,68 +821,58 @@
       !       inner Newton problem is mildly nonlinear; refreshed per outer
       !       iteration by a mode-1 evaluation)
       integer :: weno_mode = 0
+      ! ACCEPTANCE IS MEASURED AT THE STATE'S OWN COMPOSITION (section 155).
+      ! At hand-back the residual is re-evaluated from the composition the
+      ! RETURNED state carries -- iterating the sweep at fixed Y until it stops
+      ! moving -- and the gate is applied to that.
+      !
+      ! WHY THIS IS THE DEFAULT. `eval_residual` is a function of two things,
+      ! the unknowns and the composition the equilibrium sweep starts from
+      ! (section 147 made that explicit in its interface). The line search
+      ! measures a trial with the PREVIOUS iterate's composition, which is the
+      ! right thing to do while comparing trials; but the number then reported
+      ! as the accepted root's residual is a residual the returned state does
+      ! not have. Measured: at its own composition it is 4 to 56 times larger
+      ! (hot Uranus 2.2e-6 -> 1.3e-5; WASP-121b 6.3e-6 -> 3.9e-5; and 8.9e-6 ->
+      ! 1.9e-4 on `wasp_full_newton` before section 152). A state that is
+      ! accepted must satisfy its own residual, so this is not an option to be
+      ! opted into -- turning it OFF is what needs a reason, and the only one
+      ! is reproducing a pre-section-155 number.
+      !
+      ! WHAT IT COSTS. One extra sweep sequence at hand-back, 3 iterations on
+      ! the hot Uranus and 9 on WASP-121b, once per solve. `Resid tol` values
+      ! calibrated against the old measure are correspondingly loose under this
+      ! one; the flux gate is unaffected, reading conserved face fluxes that do
+      ! not depend on the composition at all.
+      logical :: resid_at_own_composition = .true.
+      ! Cap on the fixed-Y sweep iteration. It converges in 3 to 9; the cap is
+      ! a guard against a composition that cycles, not a working limit.
+      integer :: n_selfconsistent_max = 25
 
-      ! Base-valve smoothing ("Valve eps: <v_eps>", code velocity units).
-      ! The lower-BC ghost velocity is v_g = max(v_1, 0) (one-way valve); the
-      ! kink at v_1 = 0 sits exactly where the breathing base lives (steady
-      ! states hug v_1 -> 0+), making the steady residual non-differentiable
-      ! there and blocking Newton line searches. With valve_eps > 0 the valve
-      ! becomes the softplus 0.5*(v + sqrt(v^2 + eps^2)) - 0.5*eps, which is
-      ! smooth, -> max(v,0) as eps -> 0, and = v - O(eps^2/v) for v >> eps.
-      ! Default <= 0 keeps the exact legacy valve (byte-identical).
-      real*8  :: valve_eps = -1.0d0
-
-      ! Momentum-consistent base pressure ("Hydrostatic base: True"). The
-      ! legacy lower BC pins the ghost pressure to ntot_bc+dp_bc (T=T0), so
-      ! dp/dr is flattened to ~0 at the base -- but steady momentum balance
-      ! needs dp/dr = -rho g. For strongly bound planets (large b0, e.g.
-      ! HD189733b) the resulting base-face momentum residual is O(10-100) and
-      ! drives the breathing limit cycle. With this flag the ghost pressure is
-      ! instead a linear extrapolation of the interior pressure gradient
-      ! (cells 1,2), so dp/dr stays CONTINUOUS through the base and can balance
-      ! gravity; rho stays anchored at rho_bc and T_base floats slightly off
-      ! T0. Default off = byte-identical legacy behavior.
-      logical :: hydrostatic_base = .false.
-
-      ! Base ghost temperature closure
-      ! ("Base ghost temperature: isothermal | continuous").
-      !   isothermal (DEFAULT, legacy): the ghost pressure is pinned to
-      !            ntot_bc + dp_bc at the pinned density rho_bc, i.e. the ghost
-      !            is held at T = T0 (the equilibrium temperature).
-      !   continuous: dT/dr = 0 at the base face -- the ghost pressure is set to
-      !            (ntot_bc + dp_bc)*T(cell 1), so the ghost carries the SAME
-      !            temperature as the first interior cell at the same pinned
-      !            density. The T0 pin has no physical backing (the lower
-      !            atmosphere's radiative equilibrium is outside the model), and
-      !            when the first cell cools far below T0 the pin becomes a
-      !            contact discontinuity sitting on the boundary: on HD 189733 b
-      !            with the CHIANTI metal cooling, T(cell 1) ~ 490 K against
-      !            T0 = 1183 K, and removing that jump cut the alternating base
-      !            density amplitude by 18x (docs/hd189_base_checkerboard.md
-      !            §4.2 E2). The rho_bc anchor is untouched either way.
-      ! Ignored when hydrostatic_base is on (that key sets the ghost pressure
-      ! from the interior gradient instead, so it fixes neither T nor p).
-      logical :: base_ghost_T_continuous = .false.
       ! Particle density (n_tot + n_e) of the first interior cell in units of
       ! n0, refreshed by the composition solve (get_species_densities, the
-      ! single policy point). The continuous-T ghost needs it to convert the
-      ! cell-1 pressure into a temperature, T(1) = p(1)/n_part(1), without
-      ! duplicating the electron/nuclei bookkeeping. Initialized in input_read
-      ! to the base value ntot_bc + dp_bc.
+      ! single policy point). The lower boundary needs it to turn cell 1's
+      ! pressure into a temperature and a particle count per unit mass,
+      ! T(1) = p(1)/n_part(1) and nhat(1) = n_part(1)/rho(1), without
+      ! duplicating the electron/nuclei bookkeeping (base_boundary.f90).
+      ! Initialized in input_read to the base value ntot_bc + dp_bc.
       real*8  :: n_part_cell1 = 1.0d0
 
       ! Base boundary-condition anchor ("Base BC: density" / "pressure [<p_ubar>]").
       !   density  (0, default, legacy): the base number density is fixed at n0
-      !            ( = 10^"Log10 lower boundary number density" ), so the ghost
-      !            pins rho = rho_bc and p = ntot_bc + dp_bc (=> T = T0).
+      !            ( = 10^"Log10 lower boundary number density" ), and the
+      !            reservoir of base_boundary is the isentrope through
+      !            (p = ntot_bc + dp_bc, T = T0) at that density.
       !   pressure (1, CETIMB-style): the base is anchored by PRESSURE instead.
       !            n0 is derived so the base pressure n0*kb*T0*ntot_bc equals
-      !            base_p_ubar [microbar] (1 microbar = 1 erg/cm^3). The same
-      !            isothermal ghost then pins p (= base_p_ubar) + T0 and derives
-      !            rho. Because the base is over-determined isothermal, this is a
-      !            re-parameterization of the SAME ghost: its physical effect is a
-      !            much less dense base (1 microbar ~ 20x below n0=1e14), shrinking
-      !            the dense-base gravity source rho*g that drives the breathing.
+      !            base_p_ubar [microbar] (1 microbar = 1 erg/cm^3). The
+      !            reservoir pressure is then base_p_ubar and its temperature
+      !            T0, at the base LEVEL r = 1 -- not at the first face, which
+      !            base_boundary reaches by continuing the reservoir isentrope,
+      !            so the level a user states does not move with the grid.
+      !            Its physical effect is a much less dense base (1 microbar
+      !            ~ 20x below n0 = 1e14), shrinking the dense-base gravity
+      !            source rho*g that drives the breathing.
       integer :: base_bc_mode = 0
       real*8  :: base_p_ubar   = 1.0d0   ! target base pressure [microbar] (mode 1)
 
@@ -640,20 +908,6 @@
       real*8  :: lowmach_damp_eps     = -1.0d0
       real*8  :: lowmach_damp_mach_th =  1.0d-3
 
-      ! CETIMB-style base velocity ("Base velocity: massflux" / "valve"). The
-      ! legacy lower BC valves v (max(v1,0)); CETIMB (Koskinen 2013a) instead sets
-      ! the base velocity from the steady mass-flux continuity rho0*v0*r0^2 = F_c,
-      ! with F_c the wind's flux constant. Here F_c = mean(rho*v*r^2) over
-      ! [j_min:N] (the escape / constant-momentum region, NOT the base where
-      ! rho*v*r^2 is not yet flat), updated each step, and v_ghost = F_c/(rho_bc
-      ! r^2). OFF BY DEFAULT (opt-in). It is physically benign (never causes
-      ! infall on its own) and gives the cleanest base (suppresses the +-m/s base
-      ! oscillation), but it slows convergence ~5x (554k vs 107k steps on the
-      ! HD209458b cold IC), so the fast legacy valve stays the default. Enable
-      ! with "Base velocity: massflux".
-      logical :: base_v_massflux = .false.
-      real*8  :: base_flux_const = -1.0d0   ! F_c [code units], updated each step
-
       ! Molecular transport (Navier-Stokes level), the physical damping of
       ! the near-base momentum imbalance that CETIMB carries and EXHALE's
       ! inviscid HLLC scheme lacks. Full derivation, discretization and
@@ -688,15 +942,6 @@
       ! Default <= 0 disables (legacy du-based stop, byte-identical).
       real*8  :: resid_th = -1.0d0
       integer :: N_resid  = 500
-      ! Residual NORM used for the convergence / Newton-trigger test.
-      ! .true. (DEFAULT) = volume-weighted  sum_j|R(j,k)|V_j / sum_j|u(j,k)|V_j
-      !   (V_j = r_j^2 dr_j): the fractional drift rate of the volume-integrated
-      !   conserved quantity. This is the physically meaningful steady measure
-      !   and, unlike the L-inf max, is NOT inflated by isolated small near-base
-      !   cells on the non-uniform grid (where R ~ 1/dr).
-      ! .false. = legacy L-inf  max_j|R(j,k)| / max_j|u(:,k)|.
-      ! Set "Resid norm: Linf" in input.inp to revert.
-      logical :: resid_vol = .true.
 
       ! Energy source-term integrator: .true. = semi-implicit backward-Euler
       ! cell solve (EXHALE default); .false. = original explicit forward
@@ -725,6 +970,32 @@
       real*8  ::  Mrapp       ! Ratio M_star/M_p
       real*8  ::  atilde      ! Orbital radius in unit of R0 (a/R0)
       real*8  ::  r_esc       ! Escape radius for constant momentum
+      ! Flux gate (docs/Update_EXHALE.md section 133). The steady solve is
+      ! accepted only when BOTH the residual ||R|| < resid_tol AND the radial
+      ! spread of the Riemann FACE mass flux over r >= r_flux is below
+      ! flux_spread_th (section 145). The two
+      ! say different things: the residual that nothing is changing, the flux
+      ! that the wind carries one mass flux at every altitude.
+      !   flux_spread_th  "Flux spread tol: <tol> [<r_flux>]"; <=0 disables.
+      !   r_flux          inner edge of the window, in R_p.
+      ! Defaults are measured (section 133): every converged state in hand is
+      ! flat to 2.4e-3 - 4.8e-4 over r >= 1.2 R_p, while the state section
+      ! 126.6 showed the old measure could not reject reads 7.6e-2 there.
+      ! RE-DERIVED for the face-flux definition of section 145. The old
+      ! 5.0e-3 was calibrated against the CELL-CENTRED product; on the
+      ! conserved face flux it is not a gate at all. Measured face spread at
+      ! r >= r_flux over every state available on 2026-09-03:
+      !   accepted by the JFNK   1.0e-10 (the section 143 hot-Uranus root),
+      !                          3.9e-08, 4.0e-06, 3.8e-06
+      !   stopped on du only     1.1e-04, 1.0e-03, 3.2e-02, 3.2e-02
+      !   marching, 600 steps    4.0 to 1.4e+01
+      ! The two populations are separated by the interval 4e-6 to 1.1e-4;
+      ! 2e-5 is its geometric middle to one digit -- five times above the
+      ! loosest accepted state and six times below the tightest du stop --
+      ! and is not fitted to any one of them.
+      real*8, parameter :: flux_spread_th_default = 2.0d-5
+      real*8  ::  flux_spread_th = flux_spread_th_default
+      real*8  ::  r_flux         = 1.2d0
       real*8  ::  a_orb       ! Orbital distance
       real*8  ::  r_max       ! Maximum radius = Roche Lobe dimension
       real*8  ::  r_out_user  ! User-set outer radius [R_p], spherical mode only
@@ -771,6 +1042,23 @@
       ! H2 photoionization cross section on the energy grid (molecular;
       ! Yan+1998 fit, filled in set_energy_vectors)
       real*8, dimension(:), allocatable :: s_h2
+      ! The DISSOCIATIVE part of that cross section, s_h2 times the
+      ! branching of frac_H2_dissociative_ionization: the sub-channel that
+      ! leaves H + H+ instead of H2+. It is a share of s_h2, not an
+      ! addition to it, so the H2 opacity is unchanged.
+      real*8, dimension(:), allocatable :: s_h2_di
+      ! The DOUBLE-ionization part, H2 + hv -> H+ + H+ + 2e- (threshold
+      ! 51.4 eV): the sub-channel that leaves TWO protons and no bound
+      ! fragment. Like s_h2_di it is a share of s_h2, not an addition to
+      ! it, so the H2 opacity is unchanged; it is zero unless
+      ! h2_double_ionization selects a model for it.
+      real*8, dimension(:), allocatable :: s_h2_dd
+      ! The NEUTRAL-dissociation part, H2 + hv -> H + H: the share of the
+      ! absorptions that make no ion at all, i.e. the sub-unity
+      ! photoionization yield measured over 33-41 eV. Again a share of
+      ! s_h2 and not an addition to it, so the H2 opacity is unchanged;
+      ! it is zero unless h2_neutral_dissociation is set.
+      real*8, dimension(:), allocatable :: s_h2_nd
       ! Metal photoionization cross sections, one column per photo-ionizable
       ! metal ion in species_table iphot order (1=CI,2=CII,3=OI,4=OII,
       ! 5=NI,6=NII,7=MgI,8=MgII,9=SiI,10=SiII,11=CaI,12=CaII,13=NaI,14=KI,
@@ -896,6 +1184,60 @@
       !$omp threadprivate(sys_x, sys_sol, wa, info)
 
       contains
+
+      ! Dayside dilution of the stellar beams -- the ATES "2D approximate
+      ! method", which is the run's one statement about how a 1-D radial
+      ! model stands in for an irradiated sphere.  Rate/4 -> 1/4,
+      ! Rate/2 -> 1/2, anything else -> 1.
+      !
+      ! ONE DEFINITION.  Every band the star supplies is diluted through this
+      ! function and nowhere else: the XUV grid (set_energy_vectors), the
+      ! stellar Ly-alpha beam (lya_rt, excited_hydrogen) and the five FUV
+      ! bands (fuv_band_flux).  Before section 150 the XUV used an exact
+      ! string match while the Ly-alpha beam used a substring test and the
+      ! FUV bands used neither, so one run could carry three conventions at
+      ! once; the substring form is kept because it is the one that survives
+      ! a keyword the input normalization does not rewrite.
+      !
+      ! THE STATED FLUXES KEEP THEIR MEANING.  F_LW_star, F_FUV_B1/B3/B4 and
+      ! F_Lya_star are the band flux AT THE PLANET'S ORBIT, whether stated by
+      ! a key or integrated from the spectrum file; the dilution is a
+      ! run-wide convention applied where the beam is USED, so the setup
+      ! report and the resolved dump still state the flux the run was given.
+      !
+      ! RANGE.  1/2 is the illuminated hemisphere seen by an optically thin
+      ! absorber.  Where the band is shielded the true shell average is
+      ! lower, because the slant columns away from the substellar point are
+      ! longer: 0.20-0.33 for the Lyman-Werner band over a hot-Uranus
+      ! molecular layer (docs/e2_lw_geometry.md sec. 5.3).  That refinement
+      ! is the separate, default-off "FUV shell average" key; this function
+      ! is the convention it replaces when asked for.
+      double precision function dayside_dilution() result(xi)
+      if      (index(appx_mth,'Rate/4') .gt. 0) then
+         xi = 0.25d0
+      else if (index(appx_mth,'Rate/2') .gt. 0) then
+         xi = 0.5d0
+      else
+         xi = 1.0d0
+      endif
+      end function dayside_dilution
+
+      function reconstruction_operator_label() result(lbl)
+      ! THE NAME OF THE DISCRETE OPERATOR THE RUN IS CURRENTLY SOLVING WITH.
+      !
+      ! rec_method alone is not that name. While the PLM -> WENO3 continuation
+      ! is armed the run marches R_lambda, a combination of both operators,
+      ! and rec_method is left on 'PLM' -- so a file header built from
+      ! rec_method would say PLM of a state produced by neither scheme. Every
+      ! writer that records the discretization calls this instead, and it is
+      ! defined here once because there is one such name.
+      character(len=32) :: lbl
+      if (recon_lambda_on) then
+         write(lbl,'(A,F6.4,A)') 'PLM+WENO3(lambda=', recon_lambda, ')'
+      else
+         lbl = rec_method
+      endif
+      end function reconstruction_operator_label
 
       subroutine allocate_grid_arrays
       ! Allocate the grid-sized module arrays once N is known (called from

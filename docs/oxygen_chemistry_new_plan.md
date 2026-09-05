@@ -523,6 +523,13 @@ and on HD 189733 b the verdict depends on which advection time is meant.**
 `tau_adv = H/|v|` with `H = p/(rho g)` at the EXHALE base cell, and `r/|v|` given
 alongside because the two differ by two decades in this flow.
 
+> **STALE (P35, 2026-09-02).** The `vulcan_work` EXHALE run directories
+> cited here carry `Molecular base: True` with the molecular network off, so
+> their base ghost sat at `ntot_bc x T0` -- between 0.555 and 0.994 of the
+> requested `T0` -- and startup now refuses the combination. The values are
+> kept as recorded but stand on that base; see `INVALID_BASE_TEMPERATURE.md`
+> in each run directory and item P35 of `TO_BE_DONE.md`.
+
 | planet | level | tau_chem [s] | EXHALE run | tau_adv = H/v [s] | ratio | ratio with r/v |
 |---|---|---|---|---|---|---|
 | HD 209458 b | 1 ubar | 1.81e5 - 2.39e5 | `pc_compare_p1/exhale_hd209/p1e-6_seed/vulcan` | 2.132e8 | **8.5e-4 - 1.2e-3** | 1.0e-5 - 1.3e-5 |

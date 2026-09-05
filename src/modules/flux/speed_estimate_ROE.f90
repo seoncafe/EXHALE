@@ -8,8 +8,15 @@
       
       contains
       
-      subroutine speed_estimate_ROE(WL,WR,u_star,cL_star,cR_star)
+      ! gam is the SINGLE adiabatic index this estimate is entitled to.
+      ! Toro's two-rarefaction and two-shock p_star estimates below are
+      ! derived for one ideal gas on both sides, so the caller passes the
+      ! mean of the two face gammas rather than two of them; see the note
+      ! in Num_flux.  For a molecule-free face that mean is the monatomic
+      ! constant exactly.
+      subroutine speed_estimate_ROE(WL,WR,u_star,cL_star,cR_star,gam)
       real*8, intent(in) :: WL(3), WR(3)
+      real*8, intent(in) :: gam
       real*8 :: rhoL,uL,pL,cL            
       real*8 :: rhoR,uR,pR,cR            
       real*8 :: rho_bar,c_bar            
@@ -31,8 +38,8 @@
       pR = WR(3)
       
       ! Sound speed
-      cL = sqrt(g*pL/rhoL)
-      cR = sqrt(g*pR/rhoR)
+      cL = sqrt(gam*pL/rhoL)
+      cR = sqrt(gam*pR/rhoR)
       
       ! Average density and sound speed
       rho_bar = 0.5*(rhoL+rhoR)
@@ -63,25 +70,25 @@
          if(p_star.le.p_min) then      ! TRRS
                
             ! Subs
-            z = 0.5*(g-1.0)/g
+            z = 0.5*(gam-1.0)/gam
             pLR = (pL/pR)**z
             
-            p_star = sqrt((cL+cR-0.5*(g-1.0)*(uR-uL))/ &
+            p_star = sqrt((cL+cR-0.5*(gam-1.0)*(uR-uL))/ &
                            (cL/pL**z + cR/pR**z)) 
             u_star = (pLR*uL/cL+uR/cR                      &
-                        +2.0*(pLR-1.0)/(g-1.0))/     &
+                        +2.0*(pLR-1.0)/(gam-1.0))/     &
                      (pLR/cL+1.0/cR)
             
-            rhoL_star = rhoL*(p_star/pL)**(1.0/g)
-            rhoR_star = rhoR*(p_star/pR)**(1.0/g)
+            rhoL_star = rhoL*(p_star/pL)**(1.0/gam)
+            rhoR_star = rhoR*(p_star/pR)**(1.0/gam)
                
          elseif(p_star.ge.p_max) then  ! TSRS
                
             ! Subs
-            AL = 2.0/((g+1.0)*rhoL)
-            BL = (g-1.0)/(g+1.0)*pL
-            AR = 2.0/((g+1.0)*rhoR)
-            BR = (g-1.0)/(g+1.0)*pR
+            AL = 2.0/((gam+1.0)*rhoL)
+            BL = (gam-1.0)/(gam+1.0)*pL
+            AR = 2.0/((gam+1.0)*rhoR)
+            BR = (gam-1.0)/(gam+1.0)*pR
             
             p_star = max(0.0, p_star)
             gL = sqrt(AL/(p_star + BL))
@@ -91,10 +98,10 @@
             u_star = 0.5*(uL+uR)+ &
                      0.5*((p_star-pR)*gR-(p_star-pL)*gL)
             
-            rhoL_star = (p_star/pL + (g-1.0)/(g+1.0))/      &
-                        ((g-1.0)/(g+1.0)*p_star/pL+1.0)
-            rhoR_star = (p_star/pR + (g-1.0)/(g+1.0))/      &
-                        ((g-1.0)/(g+1.0)*p_star/pR+1.0)
+            rhoL_star = (p_star/pL + (gam-1.0)/(gam+1.0))/      &
+                        ((gam-1.0)/(gam+1.0)*p_star/pL+1.0)
+            rhoR_star = (p_star/pR + (gam-1.0)/(gam+1.0))/      &
+                        ((gam-1.0)/(gam+1.0)*p_star/pR+1.0)
                
          endif
       endif
@@ -102,8 +109,8 @@
       !-------------------------------------------------------------!
       
       ! Construct sound speed estimates      
-      cL_star = sqrt(g*p_star/rhoL_star)
-      cR_star = sqrt(g*p_star/rhoR_star)
+      cL_star = sqrt(gam*p_star/rhoL_star)
+      cR_star = sqrt(gam*p_star/rhoR_star)
       
       ! End of subroutine
       end subroutine speed_estimate_ROE

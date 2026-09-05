@@ -134,7 +134,7 @@
       write(*,'(a)') '    same source, M = Ar                                     2.3e-26 T^-2.0'
       write(*,'(a)') '    same source, M = H2O                                    3.9e-25 T^-2.0'
       write(*,'(a)') '    check A  VULCAN id 659   = Baulch M = H2O               3.89e-25 T^-2.0'
-      write(*,'(a)') '    check B  zahnle_earth.yaml, Javoy et al. (2003), published range 2790-3200 K'
+      write(*,'(a)') '    check B  zahnle_earth.yaml = Javoy et al. (2003) sec 3.4, M = Ar, 2790-3200 K'
       write(*,'(a)') '       T[K]      adopted(N2)        Ar            H2O         VULCAN      Photochem   VUL/ad  PC/ad'
       do i = 1, 7
         T = tgrid(i)

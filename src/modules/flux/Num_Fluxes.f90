@@ -3,17 +3,43 @@
       
       use global_parameters
       use Conversion
-      use S_estimate_HLLC
+      ! S_estimate_HLLC (Toro's adaptive p_star estimate) used to be `use`d
+      ! here and never called: the HLLC branch below builds its own
+      ! Davis/Einfeldt speeds inline.  The module has been removed.
       use S_estimate_ROE
+      use caloric_eos, only: energy_density_from_pressure,             &
+                            adiabatic_index_from_state
   
       implicit none
       
       contains
       
-      ! Subroutine for the numerical flux
-      subroutine Num_flux(WL,WR,NF,alpha,p_out)
+      ! Subroutine for the numerical flux.
+      !
+      ! jL and jR name the cells the two face states were reconstructed
+      ! from.  Each side's total energy and sound speed are then built with
+      ! ITS OWN heat capacity, which is what the caloric EOS makes different
+      ! across a face inside the H2 front.
+      !
+      ! The one place a SINGLE gamma is still needed is the Roe average:
+      ! a_avg = sqrt((gamma-1)(H_avg - v_avg^2/2)) and the p_star estimate of
+      ! speed_estimate_ROE are both derived for one ideal gas on both sides
+      ! (a two-gamma Roe average needs the Vinokur-Montagne/Glaister
+      ! extension).  Feeding those two gammas would produce a wave speed
+      ! with no bound property, so they are given the arithmetic mean of the
+      ! two.  This is a WAVE-SPEED ESTIMATE, not a definition of the steady
+      ! state: the converged solution is the root of a residual built from
+      ! the conservative fluxes, and those carry each side's own EOS above.
+      ! Where the two sides agree -- every face of an atomic gas -- the mean
+      ! is that value exactly, (a + a)/2 = a being exact in binary
+      ! floating point, so nothing moves off the constant-gamma arithmetic.
+      ! The HLLC branch needs no such average: its Davis/Einfeldt speeds
+      ! min(v-c) / max(v+c) already take one sound speed per side.
+      subroutine Num_flux(WL,WR,NF,alpha,p_out,jL,jR)
       
       real*8,intent(in) :: WL(3),WR(3),alpha
+      integer,intent(in) :: jL,jR
+      real*8 :: gam_L,gam_R,gam_face
       real*8 :: uL(3),uR(3)
       real*8 :: FL(3),FR(3)
       real*8 :: rhoL,vL,pL,aL,EL,HL,SL,phiL
@@ -33,31 +59,34 @@
       rhoL = WL(1)
       vL   = WL(2)
       pL   = WL(3)
-      EL   = 0.5*rhoL*vL*vL + pL/(g-1.0)
+      EL   = 0.5*rhoL*vL*vL + energy_density_from_pressure(jL,rhoL,pL)
       HL   = (EL+pL)/rhoL
-      aL   = sqrt(g*pL/rhoL)   
+      gam_L = adiabatic_index_from_state(jL,rhoL,pL)
+      aL   = sqrt(gam_L*pL/rhoL)   
       
       ! Exctract right state
       rhoR = WR(1)
       vR   = WR(2)
       pR   = WR(3)
-      ER   = 0.5*rhoR*vR*vR + pR/(g-1.0)
+      ER   = 0.5*rhoR*vR*vR + energy_density_from_pressure(jR,rhoR,pR)
       HR   = (ER+pR)/rhoR
-      aR   = sqrt(g*pR/rhoR)
+      gam_R = adiabatic_index_from_state(jR,rhoR,pR)
+      aR   = sqrt(gam_R*pR/rhoR)
+      gam_face = 0.5*(gam_L + gam_R)
             
       ! Evaluate numerical flux      
       select case(flux)
       
       case ('LLF') ! Local Lax Friedrichs
 
-         call lax_friedrichs_flux(WL,WR,NF,p_out)
+         call lax_friedrichs_flux(WL,WR,NF,p_out,jL,jR)
 
       !----------------------------------------------!
       
       case('HLLC') ! HLLC solver
             
-         call W_to_U_comp(WL,uL)
-         call W_to_U_comp(WR,uR)
+         call W_to_U_comp(WL,uL,jL)
+         call W_to_U_comp(WR,uR,jR)
    
          ! Speed estimates
          SL = min(0.0,min(vL-aL, vR-aR))
@@ -84,22 +113,22 @@
          
          if(SL.ge.(0.0)) then
                
-            call Phys_flux(WL,NF)
+            call Phys_flux(WL,NF,jL)
             p_out = pL
                
          elseif(SL.lt.(0.0).and.S_star.ge.(0.0)) then
          
-            call Phys_flux(WL,NF)
+            call Phys_flux(WL,NF,jL)
             NF = NF + SL * (usL-uL)
             p_out = pL
                
          elseif(S_star.lt.(0.0).and.SR.ge.(0.0)) then
          
-            call Phys_flux(WR,NF)
+            call Phys_flux(WR,NF,jR)
             NF = NF + SR * (usR-uR)
             p_out = pR
          else
-            call Phys_flux(WR,NF)
+            call Phys_flux(WR,NF,jR)
             p_out = pR
                
          endif
@@ -123,7 +152,7 @@
          H_avg = s*HL + (1.0-s)*HR
          
          ! Sound speed
-         a_avg = sqrt((g-1.0)*(H_avg-0.5*v_avg*v_avg))
+         a_avg = sqrt((gam_face-1.0)*(H_avg-0.5*v_avg*v_avg))
       
       	!---------------------------------!
       	
@@ -138,7 +167,7 @@
          ! Entropy correction
          
          ! Evaluate the approximate velocities
-         call speed_estimate_ROE(WL,WR,v_star,aL_star,aR_star)
+         call speed_estimate_ROE(WL,WR,v_star,aL_star,aR_star,gam_face)
 
          ! Intermediate eigenvalues
          l1L = vL - aL
@@ -192,8 +221,8 @@
          !---------------------------------!
       
       	! Evaluate the left and right fluxes      	
-      	call Phys_flux(WL,FL)
-      	call Phys_flux(WR,FR)
+      	call Phys_flux(WL,FL,jL)
+      	call Phys_flux(WR,FR,jR)
 
          ! Evaluate the flux at interface ( eq.[11.29] Toro )
          NF = 0.5*(FR+FL)   &
@@ -227,9 +256,10 @@
       ! dt(|v|+c)/dr <= 1 (Perthame & Shu 1996, Numer. Math. 73, 119; the LF
       ! lemma restated in Zhang & Shu 2010, J. Comput. Phys. 229, 3091), a
       ! bound the CFL number of a run (default 0.6) respects.
-      subroutine lax_friedrichs_flux(WL,WR,NF,p_out)
+      subroutine lax_friedrichs_flux(WL,WR,NF,p_out,jL,jR)
 
       real*8, intent(in) :: WL(3),WR(3)
+      integer, intent(in) :: jL,jR
       real*8 :: uL(3),uR(3)
       real*8 :: FL(3),FR(3)
       real*8 :: rhoL,vL,pL,aL
@@ -241,24 +271,24 @@
       rhoL = WL(1)
       vL   = WL(2)
       pL   = WL(3)
-      aL   = sqrt(g*pL/rhoL)
+      aL   = sqrt(adiabatic_index_from_state(jL,rhoL,pL)*pL/rhoL)
 
       ! Exctract right state
       rhoR = WR(1)
       vR   = WR(2)
       pR   = WR(3)
-      aR   = sqrt(g*pR/rhoR)
+      aR   = sqrt(adiabatic_index_from_state(jR,rhoR,pR)*pR/rhoR)
 
       ! Evaluate physical left and right flux
-      call Phys_flux(WL,FL)
-      call Phys_flux(WR,FR)
+      call Phys_flux(WL,FL,jL)
+      call Phys_flux(WR,FR,jR)
 
       ! Maximum eigenvalue between adjacent cells
       a1 = max(abs(vL+aL),abs(vR+aR))
 
       ! Get vector of conservative variables
-      call W_to_U_comp(WL,uL)
-      call W_to_U_comp(WR,uR)
+      call W_to_U_comp(WL,uL,jL)
+      call W_to_U_comp(WR,uR,jR)
 
       ! Evaluate numerical flux
       NF = 0.5*(FL + FR - a1*(uR-uL))
@@ -272,9 +302,10 @@
       !-----------------------------------------------------------!
 
       ! Subroutine to compute the physical flux function
-      subroutine Phys_flux(W,PF)
+      subroutine Phys_flux(W,PF,jcell)
       
       real*8, intent(in)  :: W(3)
+      integer, intent(in) :: jcell
       real*8 :: rho,v,p,E
       real*8, intent(out) :: PF(3)
       
@@ -282,7 +313,7 @@
       rho = W(1)
       v   = W(2)
       p   = W(3)
-      E   = 0.5*rho*v*v + p/(g-1.0)
+      E   = 0.5*rho*v*v + energy_density_from_pressure(jcell,rho,p)
             
       ! Output exact flux vector
       PF(1) = rho*v

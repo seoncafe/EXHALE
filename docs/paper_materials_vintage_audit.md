@@ -470,3 +470,52 @@ recorded so they are not discovered mid-campaign.
 - **`paper/figs/fig_lya_insitu.pdf` is an orphan.** Dated 2026-08-19 17:02
   and produced by `examples/lya_insitu_emissivity.py`, it is referenced by
   no `\includegraphics` in `ms.tex` (checked: 0 matches).
+
+---
+
+## 9. Addendum 2026-09-03: a seventh reason, and it is not a vintage
+
+**stale: computed with ghost rows included (P48, Update_EXHALE section 137);
+depths move 0.2-3.8%; regeneration awaits instruction.**
+
+The six gates above are physics changes that a re-convergence would answer.
+This one is not: until 2026-09-03 every Python reader of an EXHALE profile
+returned the file's **ghost rows** -- the two boundary rows at each end of
+every `Hydro_ioniz*.txt` / `Ion_species*.txt`, a fixed base state below and a
+zero-gradient / WENO3 extrapolation above -- as if the solver had converged
+them, and `EXHALE_transit.py` and `EXHALE_plots.py` had the same trap
+independently. So every stored transit curve was integrated over a domain two
+cells too tall, and every stored profile figure carries one boundary point at
+each end of every curve. Re-solving does not fix it; re-running the readers
+does, and they are fixed now.
+
+**Measured** on three converged states (section 137.2 of the changelog):
+line-center depths move by -3.81 per cent (hot Uranus Ly-alpha, the largest
+single move), -2.55 per cent (HD 189733 b Ly-alpha), -1.95 per cent (hot
+Uranus He 10830), -1.69 to -1.62 per cent (WASP-121b He 10830 / Ly-alpha /
+Mg II / Ca II), and by less than 0.2 per cent on the weak lines; 4 A band
+depths by -2.5 to +0.5 per cent.
+
+**Marked in place, values untouched, nothing regenerated:**
+
+- `paper/ms.tex` -- eight `%% STALE` comments: the abstract's depth range, the
+  four per-planet results paragraphs that quote depths, and the three transit
+  figures (`fig_transit_He10830/Halpha/Lya.pdf`).
+- `poster/WASP-52b_poster.tex` -- appended to the existing `%% Model vintage:`
+  block as a second, independent reason.
+- `poster/make_poster_figs.py`, `examples/make_figures.py`,
+  `python/make_transit_figures.py` -- docstring notes; all three are producers
+  of stale figures.
+- `docs/transmission_spectrum.tex` -- three sites (the H-alpha/H-beta depth
+  example, the validation section, the metal-doublet figure).
+- `docs/EXHALE_user_manual.tex` -- the He 10830 stellar-radius example and the
+  `tpmspec` transit figure.
+- `docs/figures/README_STALE_P48.md` -- the affected figure files, split into
+  those whose depths move and those where it is the plotted range.
+- `HD209458b/`, `HD189733b/`, `WASP-52b/`, `WASP-121b/`, `LHS1140b/` --
+  `STALE_P48.md` in each, naming the count of saved `tpm_*` files and the
+  notebooks whose stored outputs are affected.
+
+**Not in scope of the marking:** `benchmarks/`, `backup/`, and the
+`output_pre_*` / `tpm_*_<date>` archive snapshots, which exist to record a
+previous state and must not be regenerated.

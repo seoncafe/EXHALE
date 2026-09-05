@@ -43,6 +43,22 @@
 		real*8 :: q31b
 		real*8 :: Q31
 		real*8 :: P_H2
+		! The dissociative part of P_H2 [s^-1]: the sub-rate of it that
+		! leaves H + H+ + e- instead of H2+ + e- (threshold 18.08 eV against
+		! 15.4). A SUBSET of P_H2, so P_H2 is still the whole H2 destruction
+		! rate and P_H2 - P_H2_di is what makes H2+.
+		real*8 :: P_H2_di
+		! The double-ionization part of P_H2 [s^-1]: the sub-rate that
+		! leaves H+ + H+ + 2e- (threshold 51.4 eV). A SUBSET of P_H2, like
+		! P_H2_di and disjoint from it, so P_H2 is still the whole H2
+		! destruction rate. One event makes TWO protons.
+		! Zero unless a double-ionization model is selected.
+		real*8 :: P_H2_dd
+		! The neutral-dissociation part of P_H2 [s^-1]: the sub-rate that
+		! leaves H + H and no ion at all (the sub-unity photoionization
+		! yield over 33-41 eV). A SUBSET of P_H2, like the two above and
+		! disjoint from both. Zero unless h2_neutral_dissociation.
+		real*8 :: P_H2_nd
 		! Lyman-Werner photodissociation rate of H2 [s^-1], already carrying
 		! the self-shielding of the star-ward H2 column (lyman_werner.f90).
 		! Zero unless the run supplies a Lyman-Werner band flux. Assigned by
@@ -96,11 +112,23 @@
 		! ghost would then silently impose OH and H2O as well, at whatever
 		! the oxygen fractions happened to hold, and zero the oxygen
 		! carriers of a run that never asked for it.
+		!   x_hp_fixed   the H/H+ partition is owned by the transported
+		!                proton (Ionization transport: True), not by this
+		!                cell's local photoionization/recombination
+		!                balance. A THIRD flag, for the same reason the
+		!                first two are separate: it is imposed for a
+		!                different physical reason (the ionization time
+		!                exceeds the flow time) and in a different set of
+		!                runs, and tying it to x_h2_fixed would impose an
+		!                ionization fraction on every run that carries H2.
+		!                x_hp_fix = n_H+ / n_H(nuclei)        -> x(1)
 		logical :: x_h2_fixed
 		logical :: x_ox_fixed
+		logical :: x_hp_fixed
 		real*8 :: x_h2_fix
 		real*8 :: x_oh_fix
 		real*8 :: x_h2o_fix
+		real*8 :: x_hp_fix
 	end type ion_rates
 
 	type(ion_rates), save :: ieq_cell
@@ -178,6 +206,9 @@
 		real*8 :: dr
 		real*8 :: Told
 		real*8 :: heaold
+		! n(H2)/(n_tot + n_e) of the cell, for the caloric EOS of the energy
+		! residual. Zero for an atomic gas, which is the monatomic case.
+		real*8 :: x_h2
 	end type teq_state
 
 	type(teq_state), save :: teq_cell

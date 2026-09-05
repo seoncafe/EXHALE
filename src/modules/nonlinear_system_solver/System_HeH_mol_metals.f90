@@ -126,7 +126,8 @@
 	real*8  :: x(N_eq),fvec(N_eq)
 	real*8  :: params(60)
 
-	real*8  :: g_hi,g_hei,g_heii,g_heiTR,g_h2   ! photoionization
+	real*8  :: g_hi,g_hei,g_heii,g_heiTR,g_h2,g_h2_di  ! photoionization
+	real*8  :: g_h2_dd,g_h2_nd                  ! the other two H2 channels
 	real*8  :: g_lw                             ! LW photodissociation
 	real*8  :: b_hi,b_hei,b_heii,b_heiTR        ! collisional ionization
 	real*8  :: a_hii,a_heii,a_heiii,a_heiTR     ! recombination
@@ -161,6 +162,9 @@
 	q31b    = ieq_cell%q31b
 	Q31     = ieq_cell%Q31
 	g_h2    = ieq_cell%P_H2
+	g_h2_di = ieq_cell%P_H2_di
+	g_h2_dd = ieq_cell%P_H2_dd   ! double ionization (0 unless a model is on)
+	g_h2_nd = ieq_cell%P_H2_nd   ! neutral dissociation (0 unless on)
 	g_lw    = ieq_cell%k_LW      ! Lyman-Werner photodissociation (0 if off)
 	ntot    = ieq_cell%ntot
 
@@ -225,7 +229,8 @@
 	! --- Molecular network rows (System_HeH_mol, metal-inclusive n_e) ---
 	call mol_heh_rows(fvec, n_hi, n_hii, n_h2, n_h2p, n_h3p, n_hehp,   &
 	                  n_heiSI, n_heiTR, n_heii, n_heiii, n_e, ntot,     &
-	                  g_hi, g_hei, g_heii, g_heiTR, g_h2, g_lw,         &
+	                  g_hi, g_hei, g_heii, g_heiTR, g_h2, g_h2_di,      &
+	                  g_h2_dd, g_h2_nd, g_lw,                           &
 	                  a_hii, a_heii, a_heiii, a_heiTR,                  &
 	                  b_hi, b_hei, b_heii, b_heiTR,                     &
 	                  q13, q31a, q31b, Q31, A31)
@@ -274,6 +279,15 @@
 	! carrier transport OR by the lower-boundary reservoir composition, the
 	! oxygen carriers only by carrier transport.
 	if (ieq_cell%x_h2_fixed) fvec(4) = x(4) - ieq_cell%x_h2_fix
+	! THE TRANSPORTED PROTON. Same construction, same reason: where the
+	! ionization state is carried with the flow, the H+ fraction of this cell
+	! is not a local root and the balance row that would have computed it is
+	! replaced by the transported value, AFTER the turnover scaling so the
+	! row is exactly x - x_fix with an identity Jacobian. Every other row --
+	! helium, the molecular ions, the metals -- keeps its balance and is
+	! solved against it, which is what keeps those stages consistent with the
+	! ionization fraction the transport produced.
+	if (ieq_cell%x_hp_fixed) fvec(1) = x(1) - ieq_cell%x_hp_fix
 	if (ieq_cell%x_ox_fixed .and. thereis_oxychem) then
 		fvec(iox)   = x(iox)   - ieq_cell%x_oh_fix
 		fvec(iox+1) = x(iox+1) - ieq_cell%x_h2o_fix

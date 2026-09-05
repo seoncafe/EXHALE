@@ -10,7 +10,7 @@ the legacy ATES-compatible model. (Reference manual:
 **Contents**
 
 - [Build](#build) · [Run](#run) · [Run a standard converged model](#run-a-standard-converged-model)
-- [Base grid resolution](#base-grid-resolution-base-grid-drcells) · [Base ghost temperature](#base-ghost-temperature-base-ghost-temperature) · [Viscosity and heat conduction](#damp-the-base-with-viscosity-and-heat-conduction)
+- [Base grid resolution](#base-grid-resolution-base-grid-drcells) · [The lower boundary](#the-lower-boundary-base-bc) · [Viscosity and heat conduction](#damp-the-base-with-viscosity-and-heat-conduction)
 - [Trace metals](#add-trace-metals) · [He I 2^3S / 10830](#he-i-23s-metastable-triplet-and-the-10830-line) · [He/H diffusive separation](#heh-and-metal-diffusive-separation) · [Legacy atomic-data switch](#legacy-atomic-data-switch)
 - [Analytic lower column](#check-the-base-radius-analytic-lower-column) · [Molecular chemistry](#molecular-chemistry-warm-neptunes-and-sub-neptunes) · [Oxygen chemistry](#compute-the-base-h2h-partition-instead-of-importing-it-oxygen-chemistry) · [`base.inp` handoff](#hand-off-a-lower-atmosphere-model-baseinp) · [VULCAN pre-step](#use-vulcan-photochemistry-for-the-base-state-subroutine-style) · [Obtaining VULCAN and FastChem](#obtaining-vulcan-and-fastchem-third-party-not-in-this-repo) · [Obtaining Photochem](#obtaining-photochem-third-party-not-in-this-repo)
 - [Wind-AE warm start](#warm-start-a-hard-planet-wind-ae-ic)
@@ -84,6 +84,7 @@ parallel results are bitwise identical.
 # input.inp
 Reconstruction scheme:    PLM+WENO3    # two-stage; PLM (or WENO3) alone is single-stage
 du_th [PLM,WENO3]:        0.5 1.0e-3   # PLM until du<0.5, then WENO3 until du<1e-3
+# Reconstruction continuation: 0.02    # OFF by default; walks the hand-off
 Solver: Newton                         # optional residual-tightening finish
 # Shapiro filter:  -1                  # OFF by default; opt-in only for breathing cases
 # Low-Mach damping:  2.0e-2            # OFF by default; for a cooling-stalled shell
@@ -124,7 +125,13 @@ adjustable with an optional third token on the key: `Solver: Newton 5e-3` hands
 off later; bare `Solver: Newton` keeps the `1e-2` default. `||R||` is otherwise
 computed and reported **for reference only** (volume-weighted by default, since
 the L-inf max is dominated by the small near-base cells) and gates the stop
-only if you set `Resid tol:`. A run that stops on `du` without reaching
+only if you set `Resid tol:`. **Both tolerances changed meaning on
+2026-09-03** (`Update_EXHALE.md` section 133): the residual rows are now
+divided by a bound on their own largest term instead of by `|u|`, so every
+`Resid tol` is 1e-2 times its old equivalent (the default is 1e-5, was 1e-3),
+and a second gate `Flux spread tol:` (default 5e-3 over `r >= 1.2 R_p`) must
+be met as well before a steady solve is accepted. A run that stops on `du`
+without reaching
 `||R|| < 1e-3` is still flux-converged by the reference standard; it is not a
 failure, but the Mdot then carries the `du`-stop path dependence of a few
 percent, so quote a Newton-converged value where one is available.
@@ -188,44 +195,21 @@ more work in every sweep. A restart must load an IC written at the same `N`
 (the row count is checked). Full investigation:
 `docs/hd189_base_checkerboard.md`.
 
-## Base ghost temperature (`Base ghost temperature`)
+## The lower boundary (`Base BC`)
 
-The lower ghost cells always pin the density to the base value `rho_bc`. Their
-*temperature* is a separate choice:
+The lower boundary is a **characteristic condition at the first cell face**
+`r_edg(0)`. There is nothing to select: no ghost velocity, pressure or
+temperature closure, and no valve.
 
-```
-# input.inp -- optional; `isothermal` IS the default
-Base ghost temperature:  isothermal   # legacy: ghost pressure = ntot_bc + dp_bc, i.e. T_ghost = T0
-Base ghost temperature:  continuous   # dT/dr = 0: ghost carries T(cell 1) at the same pinned density
-```
+Two characteristics enter a subsonic inflow face and one leaves, so the lower
+atmosphere states two conditions and the interior supplies one. The two are the
+**pressure and the specific entropy** of the lower atmosphere at the base level
+`r = 1`; the one is the outgoing acoustic invariant of the first interior cell.
+The ghost cells are the volume averages of the same hydrostatic isentrope
+continued below the face -- not copies of the face state, which is the half-cell
+error the previous ghost-cell closure carried.
 
-Nothing in the model backs the `T0` pin — the radiative equilibrium of the
-lower atmosphere is outside the domain — and it becomes harmful when the first
-interior cell settles far below `T0`: on HD 189733 b with the CHIANTI metal
-cooling, cell 1 sits at 494 K against `T0 = 1183 K`, so a factor-2.4 contact
-discontinuity (plus a density inversion `rho_1/rho_ghost = 2.3`) is held
-permanently on the boundary. With `continuous` the ghost keeps the base
-composition (`ntot_bc` nuclei + `dp_bc` electrons at `rho_bc`, the same
-particle count the isothermal pin uses) but carries the cell-1 temperature,
-`p_ghost = (ntot_bc + dp_bc) * T_1`.
-
-Measured on HD 189733 b (production configuration, Newton-finished): the
-boundary jump disappears (`T_ghost = 540 K` vs `T_1 = 540 K`,
-`rho_1/rho_ghost = 0.95`), the alternating `ln rho` amplitude over cells 1–12
-falls 0.0264 -> 0.0092, the steady residual 5.4e-4 -> 2.8e-4, and beyond cell 7
-the alternation drops by one to two orders of magnitude, at the cost of a
-stronger 3-cell disturbance in cells 2–4; `log10 Mdot` moves +0.01 dex
-(9.04 -> 9.05). `HD189733b/` has since been re-converged with the key on
-together with the ionization-root validation, and that state read lower still
-(`T_ghost/T_1 = 529.4/529.6 K`, cells 1–12 amplitude `1.9e-3`,
-`||R|| = 1.7e-4`); with the later cooling and H(n=2) corrections the folder now
-converges at a 551 K base and `log10 Mdot = 9.14`, which is what `paper/`
-carries.
-
-The key is ignored when `Hydrostatic base: True` is set (that key sets the same
-ghost pressure from the interior gradient); with `Base BC: pressure` only the
-base *density* stays anchored, since the microbar target is imposed at `T0`
-when `n0` is derived. Full investigation: `docs/hd189_base_checkerboard.md`.
+The only key is the base **level**:
 
 ## Damp the base with viscosity and heat conduction
 
@@ -386,19 +370,31 @@ H2->H front, atomic wind above (the atomic assumption becomes a result).
 Caveat: local equilibrium, no molecular advection — the advection-corrected
 `*_adv` profiles remain molecule-free (see the header of `post_process_adv.f90`).
 The oxygen chemistry below is what lifts the first half of that caveat: with
-`Oxygen transport: True` the carriers H2, OH, H2O and CO are transported.
+`Molecular carrier transport: True` the carriers H2, OH, H2O and CO are
+transported; without the oxygen chemistry the carrier is H2 alone.
 -> `docs/lower_atmosphere_coupling.pdf` §4.3.
+
+The second half of the caveat, the H/H+ partition, has its own key:
+`Ionization transport: True` (default off) carries H+ as a fifth carrier of
+the same operator and pins the sweep's proton row to the transported fraction
+in the interior cells (the lower ghosts stay the reservoir). Use it where the
+wind leaves a shell faster than it ionizes -- on the hot-Uranus Koskinen 2022
+gate `P r/|v|` is 0.15-0.35 above 1.5 r_base and the local root over-ionizes
+by 2-5x (`docs/k22_electron_density_excess.md` sec. 7). It needs `Molecular
+carrier transport: True` and is refused with `Solver: Newton` and with
+`Coupled carrier solve`; marching only.
 
 **Converging a molecular run needs three more keys than an atomic one:**
 
 ```
 Solver:     Newton 5.0e-2
-Resid tol:  1.0e-5
+Resid tol:  1.0e-7
 Max steps:  150000
 ```
 `Solver: Newton 5.0e-2` raises the hand-off threshold, because the `du` descent
 of a molecular run is not monotonic and the run can spend its whole step budget
-above the `1e-2` default. `Resid tol: 1.0e-5` is what converges the molecular
+above the `1e-2` default. `Resid tol: 1.0e-7` (renormalized 2026-09-03 from
+`1.0e-5`, section 133) is what converges the molecular
 layer itself: `||R||` is set by the two or three cells just above the base, so a
 run stopped at the `1e-3` default leaves the layer still cooling (HD 209458 b
 with the Lyman-Werner band on needs `2.0e-5`, where the base-adjacent momentum
@@ -466,11 +462,15 @@ planet, which the code's own XUV grid does not carry:
 ```
 Stellar LW flux [erg/cm2/s]: 343.0   # 912-1110 A, integrated, at the planet
 ```
-It adds `H2 + hv -> H + H` to the network with the temperature-dependent
-self-shielding of the star-ward H2 column from Richings, Schaye & Oppenheimer
-(2014) and 0.4 eV of heating per
-dissociation, and writes `output/Lyman_Werner.txt` (column, shielding factor,
-rate, heating). Default 0 = off. With `Oxygen chemistry: True` the same key
+It adds `H2 + hv -> H + H` to the network. The rate is the dissociation cross
+section per incident band photon, read off a level-resolved CLOUDY calculation
+tabulated on `(T, n_H, N_H2)`, so the self-shielding of the star-ward H2
+column and the trapping of the fluorescent decay photons are both inside it.
+The heat is 0.4 eV per dissociation from the fragment pair plus the much
+larger fluorescence return of the pumps that do not dissociate, and both
+branching ratios come from the same table. The run writes
+`output/Lyman_Werner.txt` (column, shielding factor, rate, heating).
+Default 0 = off. With `Oxygen chemistry: True` the same key
 also supplies the first photolysis band, because 912-1110 A is one wavelength
 interval that H2, H2O and OH all absorb out of one beam (see below).
 -> `docs/lower_atmosphere_coupling.pdf` §9.
@@ -518,7 +518,7 @@ peak.
 **The molecular carriers are transported by default.**
 
 ```
-Oxygen transport: True      # default whenever the oxygen chemistry is on
+Molecular carrier transport: True   # default whenever oxygen chemistry is on
 ```
 H2, OH, H2O and CO are then solved with an implicit diffusion-advection step
 coupled to the same chemistry rows the local solve uses (molecular diffusion by
@@ -554,6 +554,11 @@ reads it at startup and echoes every override (absent file = strict no-op).
 The VULCAN converter (`src/utils/vulcan_to_base.py`, below) adds `q_H2_base`
 and `p_base`: with `Molecular base: True` the photochemical H2 mixing ratio
 then replaces EXHALE's chemical-equilibrium fit in the base particle count.
+**`p_base` also fixes the base level** (since 2026-09-03): the handoff was
+written at that pressure, so EXHALE puts its lower boundary there and derives
+`n0 = p_base/(k_B T0 ntot_bc)`. Drop `Log10 lower boundary number density`
+from `input.inp` when you supply a `base.inp` with `p_base`; if you leave it in,
+the two levels must agree to 1% or startup refuses the pair and names both.
 It also writes the elemental reservoirs `C_H_base N_H_base O_H_base S_H_base`
 (El/H nuclei, every carrier counted), which override `metals.inp` for those
 elements; `Mg Si Ca Na K Fe` stay `metals.inp`'s job. Every `base.inp` key,
@@ -866,10 +871,10 @@ All output is written to `output/` in the run directory.
 | `Hydro_ioniz_adv.txt` | Post-processed (advection-corrected) version of `Hydro_ioniz.txt` |
 | `Ion_species_adv.txt` | Post-processed version of `Ion_species.txt` |
 | `Cooling_breakdown.txt` | Radiative cooling by channel vs. radius: six H/He channels, the H3+ infrared channel, then one column for each metal ion |
-| `Heating_breakdown.txt` | Volumetric heating by channel vs. radius: the photoheating split by absorber (H I, He I, He II, He 2³S, H2, metals), then the excited-H, He-recombination, Penning (He 2³S + H and + H2) and Lyman-Werner channels; the channel sum reproduces the total, molecular runs included |
+| `Heating_breakdown.txt` | Volumetric heating by channel vs. radius: the photoheating split by absorber (H I, He I, He II, He 2³S, H2, metals), then the excited-H, He-recombination, Penning (He 2³S + H and + H2), Lyman-Werner and FUV-photolysis (H2O, OH) channels; the channel sum reproduces the total, molecular runs included |
 | `Excited_H.txt` | Non-LTE H(n=2) populations (when the Balmer/Ly-alpha physics is on) |
 | `Lyman_Werner.txt` | H2 photodissociation diagnostics (only when a molecular run carries a `Stellar LW flux`): radius, temperature, H2 fraction and density, star-ward H2 column, self-shielding factor, rate, heating |
-| `Oxygen_chemistry.txt` | the solved oxygen partition (only with `Oxygen chemistry: True`): free atomic O, O II, O III, OH, H2O, CO, O(1D), x_H2, the chemical against the advection time scale with their Damköhler ratio, the H2O and OH photolysis rates, and the H2 diffusion coefficient, `K_zz` and diffusive time of each cell (18 columns); with `Oxygen transport: True` a trailer carries the last transport step's Newton count, residual, limiter count, worst overshoot and the number of cells where the transported CO was cut back to its chemical equilibrium; every run also closes the file with the net H2 loss budget at the base cell, decomposed into eleven channels, which says whether the oxygen cycle or the thermal channel is running that run's partition |
+| `Oxygen_chemistry.txt` | the solved oxygen partition (only with `Oxygen chemistry: True`): free atomic O, O II, O III, OH, H2O, CO, O(1D), x_H2, the chemical against the advection time scale with their Damköhler ratio, the H2O and OH photolysis rates, and the H2 diffusion coefficient, `K_zz` and diffusive time of each cell (18 columns); with `Molecular carrier transport: True` a trailer carries the last transport step's Newton count, residual, limiter count, worst overshoot and the number of cells where the transported CO was cut back to its chemical equilibrium; every run also closes the file with the net H2 loss budget at the base cell, decomposed into eleven channels, which says whether the oxygen cycle or the thermal channel is running that run's partition |
 | `FUV_bands.txt` | how deep each FUV band penetrates (only with `Oxygen chemistry: True`): the H2O and OH columns, the five band optical depths, the band-resolved photodissociation rates, the photolysis heating, and a trailer carrying the band energy ledger and the shared-beam split of the 912-1110 A band |
 | `OI_levels.txt` / `OI_levels_adv.txt` | O I `2p4 3P` ground-term level populations (metal-bearing runs only): radius, T, n_e, n(H I), n(O I), then f(3P2)/f(3P1)/f(3P0) and the same three as densities. Same three-level statistical equilibrium as the [O I] 63/145/44um cooling; these are the lower levels of the O I 1302.168/1304.858/1306.029 A triplet, which `EXHALE_transit.py` reads |
 
@@ -893,15 +898,25 @@ import sys
 sys.path.insert(0, 'examples/')
 import exhale_io
 
-run = exhale_io.Run('output/')   # load all output files
-print(run.r)        # radius [Rp]
-print(run.T)        # temperature [K]
-print(run.Mdot)     # mass-loss rate [g/s]
+run = exhale_io.load_run('output/', 'input.inp')   # hydro + ions + input.inp
+print(run.r)                      # radius [Rp]
+print(run.T)                      # temperature [K]
+print(exhale_io.mdot_log10(run))  # log10 mass-loss rate [g/s]
 ```
 
 Use these loaders rather than writing new column parsers — they read the
 `# columns` header. See `examples/exhale_io.py` for the full API and
 `examples/EXHALE_analysis.ipynb` for a worked example.
+
+**They return the physical cells only.** Every profile file carries two ghost
+rows at each end — the fixed base state below, a boundary extrapolation above —
+and they are not part of the solution; including them roughly doubled the
+offline flux spread of one HD 189733 b state. Pass `ghost=True` to any loader
+(`load_hydro`, `load_ions`, `load_cooling`, `load_excited_H`,
+`load_lyman_werner`, `load_OI_levels`, `load_run`, `loadtxt_cells`) for the
+file exactly as written. Read a profile file that has no loader of its own with
+`exhale_io.loadtxt_cells(path, **np_loadtxt_kwargs)`, not with `np.loadtxt`,
+so the same rule applies.
 
 ## Live plot during a run
 
@@ -919,8 +934,15 @@ automatically for a metals-on run.
 After a converged run, in the run directory:
 
 ```bash
-MPLBACKEND=Agg python3 EXHALE_transit.py
+MPLBACKEND=Agg python3 /path/to/EXHALE_v1.00/EXHALE_transit.py
 ```
+
+Name the repository's own file, by absolute path or through a symlink placed
+in the run directory — the script then finds its three companion modules
+(`exhale_transit_lib.py`, `roche_recon.py`, `he_line_metrics.py`), which live
+beside it and not beside the run. **Do not copy the script into the run
+directory**: a copy has no companions, and the He 10830 metric fit is the one
+whose absence is reported as a skipped fit rather than as an error.
 
 It reads `input.inp` and the `*_adv.txt` profiles in `output/` and produces the
 model transmission curves — theoretical, instrument-convolved, and
@@ -1166,8 +1188,9 @@ while keeping `EXHALE.x`. The planet directories `HD209458b/`, `HD189733b/`,
 - `docs/newton_scaling_and_base_wall.md` — JFNK diagonal scaling, line-search
   merit and stagnation watchdog; why the base momentum row is not the blocker
 - `docs/hd189_base_checkerboard.md`, `docs/hd209_metal_stagnation.md` — the two
-  base-layer investigations behind `Base grid`, `Base ghost temperature` and
-  `Low-Mach damping`
+  base-layer investigations behind `Base grid`, `Low-Mach damping` and the
+  since-retired `Base ghost temperature` (the closure those investigations
+  were choosing among is gone: `docs/phaseC_characteristic_base_bc.md`)
 - `docs/viscosity_conduction.md`, `docs/coronal_cutoff_width.md` — molecular
   transport, and the coronal-fit validity floor
 - `docs/wind_ae_solver.pdf` — the included Wind-AE solver

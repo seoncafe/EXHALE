@@ -11,6 +11,10 @@ header line is parsed, so the plot adapts to the actual column layout
 original fixed 7-column format.  Legacy headerless files still load
 (first 7 columns).  If metals are present (any nonzero metal column) a
 third figure shows the leading metal ion densities.
+
+Only the physical cells are plotted: the two ghost rows at each end of every
+profile file are boundary values written by Apply_BC, not solution cells
+(exhale_io.physical_cell_rows).
 """
 
 import os
@@ -18,6 +22,20 @@ import sys
 import time
 import numpy as np
 import matplotlib.pyplot as plt
+
+# The plotter runs in a RUN directory, so its own directory (and the
+# examples/ directory beside it) has to be named explicitly for the import
+# to resolve.  exhale_io is the one reader that knows which rows of a
+# profile file are solution cells and which are the ghost cells Apply_BC
+# fills; plotting the ghost rows drew the boundary extrapolation as if it
+# were part of the wind.  `__file__` is absent under exec(), hence the
+# guard.
+try:
+    _HERE = os.path.dirname(os.path.realpath(__file__))
+except NameError:
+    _HERE = os.getcwd()
+sys.path.insert(0, os.path.join(_HERE, 'examples'))
+from exhale_io import loadtxt_cells
 
 # ---------------------------------------------------------------- options
 animate = False
@@ -52,7 +70,7 @@ def load_ion(path):
     """Load an Ion_species(.adv) file as {name: column}, name as in the
     header ('HI', 'HII', ..., 'FeIII'); 'r' is the radius column."""
     cols = read_columns_header(path)
-    data = np.loadtxt(path, comments='#', unpack=True)
+    data = loadtxt_cells(path, comments='#', unpack=True)
     if cols is None:                       # legacy: r + 5 species (+HeITR)
         cols = ['r[Rp]', 'HI', 'HII', 'HeI', 'HeII', 'HeIII',
                 'HeITR'][:len(data)]
@@ -63,8 +81,8 @@ def load_ion(path):
 
 
 def load_hydro(path):
-    r, n, v, p, T = np.loadtxt(path, comments='#', unpack=True,
-                               usecols=(0, 1, 2, 3, 4))
+    r, n, v, p, T = loadtxt_cells(path, comments='#', unpack=True,
+                                  usecols=(0, 1, 2, 3, 4))
     return r, n*mu, v, p, T
 
 

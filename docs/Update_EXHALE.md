@@ -3082,6 +3082,19 @@ unchanged, while the base 2^3S drops ~11% (the TR-mode 1^1S channel coefficient
 change feeds directly into `n_HeII`). The temperature response is small in both
 modes.
 
+**STALE (2026-09-02).** The table above, the two figures and the ~17% / ~10%
+rate numbers were measured on the 2026-07-17 form of `he_rec_coupling`. That
+routine has been rewritten twice since: section 120 gave the photons a
+competing absorber (H2 above 15.4 eV, He I above 24.6 eV, where before every
+photon went to H I), and section 125 replaced the on-the-spot assumption with
+the cell's own absorption probability, which removes most of the coupling in
+any cell thinner than tau ~ 1. **Nothing in this subsection has been
+re-measured**; the four HD 209458 b runs it rests on no longer exist and
+re-running them is a separate instruction. The qualitative statements -- the
+atomic branch carries the larger change, the 10830-forming region is barely
+touched -- are the ones most likely to survive; the numbers are not to be
+quoted.
+
 ### Effect on existing results
 
 Default off is bit-identical to the pre-update path; existing goldens and gates
@@ -14729,6 +14742,19 @@ beforehand were not, and were mostly wrong.
 
 ## 116. H2 self-shielding: the fit we were using is calibrated for cold gas, and our molecular layer is not cold (2026-09-01)
 
+> **Superseded in part by section 132 (2026-09-02).** The rate no longer
+> multiplies a constant cross section by a shielding factor: the level-resolved
+> cross section itself is tabulated, and `sigma_lw`, `p_diss_lw` and
+> `sigma_lw_pump` have been removed from the module.
+
+> **[SUPERSEDED 2026-09-02 by section 122.]** The replacement of DB96 by
+> Richings, decided here on the authors' 100 K comparison, was measured
+> against a level-resolved CLOUDY calculation at the temperature of our own
+> layer and did not survive it: the rate now reads a table of that
+> calculation and neither fit sets it. What this section establishes and
+> section 122 keeps -- the 100 K premise itself, the thermal-only Doppler
+> width, and the band share `A` staying on DB96 -- all stand.
+
 **The judgement first.** `h2_self_shielding_factor` implemented Draine &
 Bertoldi (1996) eq. (37), which is calibrated for gas in which only the
 lowest rotational states of H2 are populated. Our molecular layer runs at
@@ -14953,7 +14979,9 @@ field determines; its molecular partition was set lower down, where
 photodissociation and mixing act and where the base cell cannot see. The
 measurement that shows this is in the tree already: the same VULCAN network,
 cut at two handoff levels, gives q_H2 = 0.4237 at 1e-6 bar and 0.8020 at
-1e-4 bar (`vulcan_work/pc_compare_p1/exhale_hd209/`). The shallower level is
+1e-4 bar (`vulcan_work/pc_compare_p1/exhale_hd209/`; the EXHALE runs in that
+tree are marked invalid by item P35, but the two numbers quoted here are the
+VULCAN handoff inputs and are unaffected). The shallower level is
 far more dissociated. A shielded base cell solving its own local balance
 knows none of that, and drives H2 to the fully molecular limit -- which is
 exactly the 99.97% measured above. Upstream information therefore has to win,
@@ -15187,3 +15215,10872 @@ block.
 * **The arm is refused as configured**, which is the intended outcome and not
   a failure: `q_H2_base 0.75` at `HeH_base 1.0` against a ceiling of 0.3333.
   Its re-specified value is `0.300861`.
+
+## 118. Secondary ionization in a molecular gas: the H2 target the prescription never had, and the two things the seam between the two sources is not (2026-09-02)
+
+**The judgement first.** EXHALE's photoelectron partition is the Shull &
+van Steenberg (1985, ApJ 298, 268) prescription, and **it has no H2 term in
+either direction**: molecular hydrogen was a source of photoelectrons in
+`PH_heat_HHe` but never a target, so in a layer where 92% of the hydrogen
+nuclei are bound into H2 the energy that should ionize H2 was handed to H I,
+and the heat that comes back when a photoelectron dissociates H2 was not
+returned at all. The routine's own docstring said so. That is missing
+physics, not a missing option, and this section closes the first part of it.
+
+The source is Dalgarno, Yan & Liu (1999, ApJS 125, 237), *Electron Energy
+Deposition in a Gas Mixture of Atomic and Molecular Hydrogen and Helium*
+(`references/Dalgarno_1999_ApJS_125_237.pdf`). Every coefficient below was
+read from the published paper, and the two tables the change stands on
+(their Tables 5 and 7) and their equations (9) and (10) were checked against
+the rendered pages rather than against a text extraction, because the
+extraction of this paper turns `+` and `x` into the same character. One
+formula, their eq. (17), reads `a(x) = 0.5 + (x/10^4)^0.15` in the extracted
+text and `a(x) = 0.5 x (x/10^4)^0.15` on the page.
+
+### 118.1 What was missing, and how large it is
+
+Three separate defects, of which this section repairs the first.
+
+1. **No H2 ionization channel.** The hydrogenic share of the secondary
+   ionization energy went entirely to H I.
+2. **No molecular heat return.** A photoelectron in H2 loses energy to
+   rotational excitation, to dissociation through the triplet states, to
+   vibrational excitation and to the Lyman and Werner bands. In a gas dense
+   enough to quench the internal excitation, most of that comes back as
+   heat. None of it was carried.
+3. **The heating amplitude is evaluated far outside its own stated range.**
+   Shull & van Steenberg state their fits for `0.0001 < x < 1.0` -- "the fit
+   to the heating curve, which is reproduced to ~2% over the range
+   0.0001 < x < 1.0" -- and their heating form goes to **zero** as x goes to
+   zero. Our molecular layer sits at x = 1e-16 to 5e-5, i.e. up to twelve
+   decades below the range they state, and the true heating fraction of a
+   neutral gas is not zero but 0.11-0.26 (Dalgarno et al. Table 7; Shull &
+   van Steenberg's own Monte Carlo gives 0.1358 +- 0.0088 at their lowest
+   x = 1e-4, against 0.1114 for their fit at the same point). Repairing that
+   amplitude moves every run, molecular or not.
+
+**All three are now repaired**, in that order and measured one at a time;
+sections 118.5 to 118.10 record each. The paragraphs below were written when
+only the first was done and are kept as the statement of what each defect
+was.
+
+The size of these is best given as a property of the prescription evaluated
+on a composition, not as the movement of an answer -- the molecular gates are
+fixed-step relaxation snapshots and their movement is admissible only as a
+bit-identity test. Taking the composition of `mol_base_handoff` and a 100 eV
+photoelectron, the heat fraction at the base of the molecular layer is
+
+| | at the base | mid-layer | top of the layer |
+|---|---|---|---|
+| n(H2)/n(H I) | 6.2 | 31 | 0.011 |
+| before | 0.0015 | 0.0105 | 0.0910 |
+| after this change | 0.0720 | 0.0812 | 0.0916 |
+| with defects 2 and 3 also repaired | 0.259 | 0.268 | 0.164 |
+
+so the H2 target carries about a third of the total and the other two
+repairs carry the rest. The last column is a cell with almost no H2 left,
+where the whole remaining difference is defect (3). **The last row was a
+prediction when it was written and is now the code's own answer**: evaluated
+on the finished module at the same three compositions and 100 eV it gives
+0.258, 0.268 and 0.158, against the 0.259, 0.268 and 0.164 predicted.
+
+### 118.2 One collision weight in place of two mean energies
+
+Dalgarno et al. give the three-species mixture as two separate statements.
+Their eq. (9) raises the mean energy per H+ ion,
+
+    W_m(H+)  = W_q(H+) [1 + 1.89 n(H2)/n(H)] eV,
+
+and their eq. (10) raises the mean energy per H2+ ion,
+
+    W_m(H2+) = W_q(H2+) [1 + 0.53 n(H)/n(H2)] eV.
+
+**The product of the two coefficients is 1.89 x 0.53 = 1.0017.** The two
+statements are therefore, to 0.17%, a single one: the hydrogenic ionization
+energy divides between the two targets in the ratio n(H) : 1.89 n(H2), with
+H2 counted 1.89 times per molecule. That identification is **not made in the
+paper**; it is read off here from the two published coefficients, and it is
+recorded as ours in `electron_energy_degradation.f90` and here.
+
+It is worth having rather than being a curiosity. Written as the two mean
+energies, each expression divides by a density that vanishes at one end of
+the composition range; written as the weight
+
+    u(r) = 1.89 n(H2) / (n(H) + 1.89 n(H2)),
+
+the same physics is bounded in [0,1], is exact at both ends, and needs no
+guard. It is also what makes the whole change collapse to nothing when
+n(H2) = 0.
+
+**Frelikh & Murray-Clay (2026, ApJ 996, 96) weight by `n(H2)/(n(H) + n(H2))`,
+citing Glassgold, Galli & Padovani (2012) eq. (11); read at the source, that
+equation is a statement about a different quantity and is not a rival
+prescription for THIS split.** Glassgold et al.'s eq. (11) is the dissociation
+heating per ion pair, `Q_diss = [x(H2)/(x(H) + x(H2))] D0/(1 + C x_e^a)` with
+D0 = 2.14 eV, one term of the heat budget of their eq. (3) and taken from
+Dalgarno et al.'s Table 5; they apply the same plain number fraction to their
+vibrational heating in eqs. (13) and (14). Frelikh & Murray-Clay's eqs. (27),
+(28) and (35) apply it to exactly those heating terms, so the attribution is
+accurate, and neither paper restates the ionization-energy split of Dalgarno
+et al.'s eqs. (9) and (10).
+
+**Where the two weights do meet is the dissociation heat**, which
+`photoelectron_energy_partition` also weights by `u` (`f_diss` and `f_fluor`,
+sections 118.4 and 118.6). There the difference is real -- 0.65 against 0.50
+at n(H2)/n(H) = 1, and 0.159 against 0.091 at 0.1 -- and we follow Dalgarno et
+al., whose Figure 20 states the dissociation yield as a number of
+dissociations PER H2+ ION: it tracks the H2+ production that eq. (10) weights,
+rather than the number fraction of molecules. Their own eq. (11) is a third
+thing again -- the vibrational yield `Y = Y_HeH2 r/(r + a)`, which is what
+`f_vib` uses.
+
+### 118.3 The ionization channels
+
+`svs85_secondary_branching` already renormalized the H/He split onto the
+cell's own neutral ratio, leaving the total ionization energy at the Shull &
+van Steenberg value. The generalization adds a third target to the same
+construction, with H2 entering the weight at 1.89 per molecule:
+
+    n_Hw      = n_HI + 1.89 n_H2
+    w_tot     = n_Hw * 0.1 * f_HI + n_HeI * f_HeI
+    c_ion_HI  = f_ion *        0.1*f_HI / w_tot
+    c_ion_H2  = f_ion * 1.89 * 0.1*f_HI / w_tot
+    c_ion_HeI = f_ion *            f_HeI / w_tot
+
+The construction conserves energy identically:
+
+    n_HI c_ion_HI + n_H2 c_ion_H2 + n_HeI c_ion_HeI = f_ion
+
+for every composition. That is the property that makes it safe to move
+energy between the channels: the H2 channel is fed by taking from H I, not
+by inventing.
+
+**Checked against its source.** In a neutral, fully molecular gas the
+construction implies a mean energy per H2+ ion of
+`e_th_H2 / f_HI(0) = 15.4/0.3908 = 39.4 eV`, against the **41.9 eV** of
+Dalgarno et al. Table 4 (H2 and He mixture, 1 keV). The 6% is the same size
+as the disagreement between the two sources' own mean energy per H+
+(Dalgarno et al. section 6 quote 37.2 eV for Shull & van Steenberg against
+their own 39.5 eV) and is well inside Dalgarno et al.'s stated 15%.
+
+An arithmetic aside worth recording, because it explains that 37.2 eV.
+Shull & van Steenberg's fitted amplitude gives `13.598/0.3908 = 34.8 eV` at
+x = 0, not 37.2. Their Monte Carlo at their lowest tabulated point,
+x = 1e-4, gives phi(H I) = 0.3656, i.e. `13.598/0.3656 = 37.2 eV` exactly.
+Dalgarno et al. quoted the **data**, not the fit; the fit's extrapolation to
+x = 0 overshoots its own Monte Carlo by 7%.
+
+The rate enters the chemistry through `P_H2`, the channel that already
+drives both the H2 destruction row and the H2+ production row of
+`System_HeH_mol` -- the same route the primary photoionization takes -- so
+no parallel path was added.
+
+**How much energy the new channel actually takes.** This is exact and needs
+no run: the split is a function of the cell's neutral densities alone.
+Evaluated on the composition of `mol_base_handoff`, as fractions of the
+Shull & van Steenberg ionization budget `f_ion`:
+
+| n(H2)/n(H I) | H I | He I | **H2** | sum/f_ion |
+|---|---|---|---|---|
+| 736 | 0.0006 | 0.1063 | **0.8930** | 1.0000000 |
+| 347 | 0.0014 | 0.1063 | **0.8923** | 1.0000000 |
+| 85 | 0.0056 | 0.1063 | **0.8881** | 1.0000000 |
+| 6.8 | 0.0648 | 0.1061 | **0.8291** | 1.0000000 |
+| 6.2 (base) | 0.0705 | 0.1059 | **0.8236** | 1.0000000 |
+| 0.011 (top) | 0.8793 | 0.1024 | **0.0183** | 1.0000000 |
+
+**Through the molecular layer, 82-89% of the secondary ionization energy now
+goes to H2 rather than to H I.** Before this change all of it went to H I --
+the docstring of the routine it replaces said so in as many words. The last
+column is the energy identity holding to every printed digit at every
+composition.
+
+### 118.4 The dissociation heat, and where Frelikh's version overshoots
+
+Dalgarno et al. section 5.3 gives the kinetic energy released when H2 is
+dissociated through a triplet state as a mean of **5.4 eV** ("cannot be much
+different from a mean of 5.4 eV corresponding to a vertical transition").
+Frelikh & Murray-Clay apply that 5.4 eV to the whole `Dissociation` yield of
+Table 5. But that yield is the total, and its footnote b says so: it excludes
+only the dissociative excitation channel, not the singlet predissociation.
+The singlet route releases about 0.4 eV, not 5.4, and its share is fixed by
+the same paper -- section 5.3 gives radiative dissociation probabilities of
+**0.27 for B1Sigma_u+ and 0.036 for C1Pi_u**.
+
+Separating the two reproduces the answer Dalgarno et al. state directly (the
+dissociation heat per H2+ ion, 11 eV at 30 eV and 1.7 eV at 1 keV, their
+sections 5.3 and 6) far better than not separating them:
+
+| E0 | Frelikh 5.4 E/W_diss | with the singlet split | Dalgarno's own value |
+|---|---|---|---|
+| 30 eV | 4.67 eV | **4.31 eV** | 4.23 eV |
+| 1 keV | 58.3 eV | **45.4 eV** | 40.6 eV |
+
+10% and 44% against 2% and 12%. The split is what the code does.
+
+The dissociation heat carries **no critical-density factor, and should not**:
+the 5.4 eV and the 0.4 eV are translational from the moment they are
+released. The vibrational and Lyman-Werner returns are internal excitation
+and do need one; they are not in this change (section 118.6).
+
+### 118.5 The seam between the two sources is an energy axis, not a disagreement
+
+The H2 target channel of section 118.3 was staged behind the heating
+amplitude, so that the first step could be checked by bit-identity on the
+atomic cases. In that step the heating fraction was carried as a **ratio**,
+
+    f_heat = f_SvS85(x) * eta_mix(x,E0,r)/eta_HHe(x,E0) + u(r) * f_diss(x,E0),
+
+with `eta_mix` from Dalgarno et al. eq. (12): the ratio keeps Shull & van
+Steenberg as the amplitude and is exactly 1 in a gas without H2. Repairing
+the amplitude, defect (3), is what this section decides and section 118.6
+implements.
+
+The first design considered was to use Dalgarno's eta below x = 0.1, where
+his fits are stated, and Shull & van Steenberg's above it, and to join them.
+The offset at the join was measured before committing to that plan, and it
+is recorded here because it did not come out where it was expected to:
+
+| E0 | eta_Dalgarno(0.1) | f_SvS85(0.1) | offset |
+|---|---|---|---|
+| 30 eV | 0.9625 | 0.6400 | +33.5% |
+| 50 eV | 0.9078 | " | +29.5% |
+| 100 eV | 0.8384 | " | +23.7% |
+| 200 eV | 0.7749 | " | +17.4% |
+| 500 eV | 0.7075 | " | +9.5% |
+| 1000 eV | 0.6691 | " | +4.4% |
+
+**Read as two determinations of one quantity, that is a disagreement far
+larger than either source's stated error. It is not one.** The footnote to
+Shull & van Steenberg's Table 1 says their fractional energy depositions are
+"of a **3 keV** primary electron", and their Figure 4, from which Table 2 is
+fitted, is captioned "Limiting values (E0 > 100 eV)". Their fit is therefore
+a single high-energy asymptote with no E0 axis at all, while Dalgarno et
+al.'s Table 7 resolves E0 and finds eta at x = 0.1 changing by 25% between
+100 eV and 1 keV -- 0.8384 to 0.6691. (The 44% figure that stood here is the
+30 eV to 1 keV range. 30 eV is outside the E0 > 100 eV range Shull & van
+Steenberg claim, so it cannot be used to argue against them; 25% is enough,
+and it is the honest number.) **The column above is not two calculations
+disagreeing; it
+is one E-resolved calculation compared against the other's 3 keV asymptote.**
+At the one energy where the two describe the same thing -- Dalgarno's highest
+row, 1 keV -- the offset is 4.4%, and Shull & van Steenberg's own Monte Carlo
+at x = 0.1 is 0.6524 +- 0.0421, which contains it.
+
+The right test is therefore against the **data** rather than against the
+other fit. Judged on Shull & van Steenberg's Table 1, over x > 0.1:
+
+| prescription | max relative deviation | max deviation / 1 sigma |
+|---|---|---|
+| Shull & van Steenberg's own fit | 3.9% (x=0.2) | 1.05 (x=0.3) |
+| Dalgarno eq. (14) at 1 keV, extrapolated | 9.2% (x=0.95) | 8.45 (x=0.95) |
+| Dalgarno + the neutral-fraction closure of 118.6 | 5.6% (x=0.15) | 1.01 (x=0.15) |
+
+and below x = 0.1 the Dalgarno branch stays within 0.90 sigma everywhere
+while Shull & van Steenberg's fit reaches 2.77 sigma at x = 1e-4 and
+collapses below it. **The right design is therefore one expression over the
+whole range: Dalgarno's eta everywhere, extrapolated above x = 0.1, with a
+closure that supplies the x = 1 endpoint his fitting form does not have.**
+It tracks Shull & van Steenberg's own Monte Carlo about as well as their fit
+does over the range where the fit was made, and much better outside it.
+
+*A note on the third row.* It was first recorded here as 6.8% and 1.89
+sigma, for a closure that was described in words but preserved neither in
+code nor in a script. That closure could not be reconstructed and the row
+now carries the measurement of the closure that was actually implemented,
+which is the better of the two on both measures. The first two rows are
+reproduced exactly by evaluating the two published fits against Table 1, and
+the point-by-point table that produces all three is in section 118.6.
+
+### 118.6 The heating amplitude, and the closure that supplies the endpoint
+
+**The judgement: Shull & van Steenberg's heating fit is the wrong function
+in a weakly ionized gas, and it is not a matter of degree.** Their Form 1,
+`C[1 - (1 - x^a)^b]`, was chosen "because of their appropriate limits at
+x = 0 and x = 1" -- and its x = 0 limit is **zero**. A neutral gas does not
+convert none of a photoelectron's energy to heat: it converts 0.117 of a
+1 keV primary and 0.259 of a 30 eV one (Dalgarno et al. Table 7), and Shull
+& van Steenberg's own Monte Carlo says 0.1358 +- 0.0088 at their lowest
+tabulated point. In our molecular layer, at x = 1e-16 to 5e-5, their fit was
+returning 0.1% to 1.5%.
+
+The heating fraction is now Dalgarno et al.'s, at every x:
+
+    f_heat(x, E0) = 1 - [1 - eta_mix(x, E0, r)] * (1 - x)
+                    + f_diss + f_vib + f_fluor
+
+with `eta_mix` their eq. (12) and the three molecular terms of sections
+118.4 and 118.10. Shull & van Steenberg's heating fit is no longer called.
+
+**The `(1 - x)` factor is a closure and is ours.** Dalgarno et al. state
+eq. (14) "for x <= 0.1", and its form leaves `(1 - eta0)/(1 + c)` of the
+primary energy unthermalized at x = 1 -- 10% of it at 1 keV -- which is
+impossible in a gas with no neutral left to ionize or excite. The factor
+says that the channels competing with heat need a neutral to act on, so
+their share must fall in proportion to the neutral fraction of the H and He
+nuclei, which is exactly `1 - x` when x is the electron density over those
+nuclei. It has no free parameter, it is 1 to within 1e-4 over the whole
+molecular layer, and it forces `f_heat(1) = 1` exactly.
+
+**What this does NOT justify.** Evaluating eq. (14) above x = 0.1 is
+extrapolation beyond the range its authors state, and forcing the endpoint
+is not the same as the fit being right in between. The extrapolation is
+accepted on a measurement instead, against Shull & van Steenberg's Table 1 --
+their Monte Carlo, 18 points with 1 sigma widths, not their fit:
+
+| x | Table 1 heat | 1 sigma | SvS85 fit | dev | eta_D (1 keV) | dev | closed | dev |
+|---|---|---|---|---|---|---|---|---|
+| 0.95 | 0.9895 | 0.0108 | 0.9936 | +0.4% | 0.8983 | -9.2% | 0.9949 | +0.5% |
+| 0.90 | 0.9847 | 0.0123 | 0.9882 | +0.4% | 0.8949 | -9.1% | 0.9895 | +0.5% |
+| 0.80 | 0.9726 | 0.0138 | 0.9738 | +0.1% | 0.8873 | -8.8% | 0.9775 | +0.5% |
+| 0.70 | 0.9592 | 0.0161 | 0.9548 | -0.5% | 0.8781 | -8.5% | 0.9634 | +0.4% |
+| 0.50 | 0.9196 | 0.0211 | 0.9014 | -2.0% | 0.8521 | -7.3% | 0.9260 | +0.7% |
+| 0.30 | 0.8459 | 0.0291 | 0.8154 | -3.6% | 0.8044 | -4.9% | 0.8631 | +2.0% |
+| 0.20 | 0.7784 | 0.0355 | 0.7481 | -3.9% | 0.7594 | -2.4% | 0.8075 | +3.7% |
+| 0.15 | 0.7247 | 0.0401 | 0.7019 | -3.1% | 0.7238 | -0.1% | 0.7652 | +5.6% |
+| 0.10 | 0.6524 | 0.0421 | 0.6400 | -1.9% | 0.6691 | +2.6% | 0.7022 | +7.6% |
+| 0.05 | 0.5296 | 0.0426 | 0.5435 | +2.6% | 0.5678 | +7.2% | 0.5894 | +11.3% |
+| 0.02 | 0.4015 | 0.0369 | 0.4348 | +8.3% | 0.4341 | +8.1% | 0.4454 | +10.9% |
+| 0.01 | 0.3256 | 0.0297 | 0.3658 | +12.3% | 0.3460 | +6.3% | 0.3526 | +8.3% |
+| 0.005 | 0.2696 | 0.0249 | 0.3070 | +13.9% | 0.2756 | +2.2% | 0.2792 | +3.6% |
+| 0.002 | 0.2148 | 0.0166 | 0.2429 | +13.1% | 0.2099 | -2.3% | 0.2115 | -1.5% |
+| 0.001 | 0.1852 | 0.0140 | 0.2031 | +9.7% | 0.1775 | -4.2% | 0.1783 | -3.7% |
+| 5e-4 | 0.1642 | 0.0120 | 0.1697 | +3.3% | 0.1558 | -5.1% | 0.1562 | -4.9% |
+| 2e-4 | 0.1441 | 0.0098 | 0.1336 | -7.3% | 0.1383 | -4.0% | 0.1384 | -3.9% |
+| 1e-4 | 0.1358 | 0.0088 | 0.1114 | **-18.0%** | 0.1304 | -4.0% | 0.1305 | -3.9% |
+
+("closed" is the prescription now in the code, at Dalgarno's 1 keV row --
+his highest, since Table 1 is a 3 keV calculation and no closer comparison
+exists.) Summarized: over x > 0.1 the closure is 5.6% and 1.01 sigma at
+worst against 3.9% and 1.05 sigma for Shull & van Steenberg's own fit; over
+x <= 0.1 it is 11.3% and 1.40 sigma against their 18.0% and 2.77 sigma, and
+their fit keeps falling below that while ours does not. The one place the
+closure costs something is x = 0.02-0.1, where it adds up to 4 points to
+Dalgarno's bare 8.1% / 0.90 sigma; that band is a thin transition in the
+wind and is not where either the molecular layer or the ionized flow sits.
+
+**There is no seam.** One expression covers the whole domain, so the
+question of where to join the two sources -- which section 118.5 shows has
+no answer, because Shull & van Steenberg have no E0 axis to join at -- does
+not arise.
+
+**Measured.** On the two converged cases that actually fire the coupling
+(`wasp_full_newton`, `wasp_he23off_newton`; see 118.9 for why only those):
+the escaping mass flux rises 3.6%, log10 Mdot goes 13.20 to 13.22,
+photoheating rises 22% at r = 1.075 and the temperature 9% at r = 1.086.
+The change is concentrated exactly where the old fit was collapsing --
+the weakly ionized shell just above the base -- and is under 0.5% above
+r = 1.6, where x is already 0.99.
+
+### 118.7 `E_sec_ion`: 40 eV was another code's number
+
+`E_sec_ion` is the photoelectron energy above which the partition is applied
+at all; below it the electron is taken to thermalize in full. It was 40 eV,
+and the code site said where that came from: "matching the wind_ae X-ray
+cutoff". That is a numerical convention of a different code, not a physical
+threshold, and it sat between the two sources rather than on either.
+
+It is now **30 eV**, the lowest primary energy at which any coefficient of
+the partition is *published* -- Dalgarno et al. tabulate 30, 50, 100, 200,
+500 and 1000 eV, and below 30 eV every coefficient would be an extrapolation
+off the end of their tables.
+
+What is still discarded, and why, is written at the code site: a 13.6-30 eV
+photoelectron can ionize hydrogen, and in the hot-Uranus band those photons
+carry 18% of the incident XUV energy, but no source consulted resolves the
+partition there and extrapolating into it would be unsupported.
+
+**Measured**, on its own build: escaping mass flux -0.17% and -0.13%, log10
+Mdot unchanged at 13.22, photoheating -1.6% at r = 1.3, temperature -0.9% at
+r = 1.17. The sign is right -- those photoelectrons now spend part of their
+energy ionizing instead of all of it heating -- and the size is what
+`TO_BE_DONE.md` (P32) predicted from the band shares: the 30-40 eV
+photoelectrons come from photons whose H I cross section is 2% of the
+threshold value, so they are absorbed high, where the heating fraction is
+already near 1.
+
+### 118.8 The ionization channels get the energy axis they were missing
+
+Shull & van Steenberg's `phi(H I)` and `phi(He I)` have no E0 dependence:
+their Table 2 footnote says "These formulae are only accurate for
+E0 > 100 eV" and Table 1 is a 3 keV calculation. We were applying them from
+`E_sec_ion` upwards, i.e. from 30 eV.
+
+Dalgarno et al.'s Table 4 supplies what is missing -- the mean energy per
+ion pair `W = W0(1 + C x^a)` at each of the six energies -- so the amplitude
+is now theirs in E and Shull & van Steenberg's in x:
+
+    f_HI (x,E0) = phi_HI (x) * W_H+ (x, 1 keV) / W_H+ (x, E0)
+    f_HeI(x,E0) = phi_HeI(x) * W_He+(x, 1 keV) / W_He+(x, E0)
+
+**The ratio is 1 at the top of the table**, so the high-energy limit is
+exactly Shull & van Steenberg's, which is what their fits are. Below it a
+photoelectron makes fewer ion pairs per unit energy, and for helium the
+effect is large: `W_He+` rises from 487 eV at 1 keV to 6740 eV at 30 eV, so
+a 30 eV photoelectron puts 14 times less of its energy into He I ionization
+than the unresolved fit asserts. That is physical -- 30 eV is barely above
+helium's 24.6 eV threshold. For hydrogen the factor is 1.51 (39.8 against
+60.0 eV).
+
+The collision weight 1.89 of section 118.2 is deliberately **not** given an
+energy dependence: Dalgarno et al. state their eqs. (9) and (10) coefficients
+once, not per energy.
+
+**Plumbing.** Everything in the partition is now resolved on the six
+tabulated energies, so the interpolation runs per absorber and per spectral
+bin. E0 = hv - E_th depends only on the bin and on the absorber's own
+threshold, both fixed for a run, so the bracket index and the interpolation
+weight are built once at startup (`photoelectron_energy_grid`, called from
+`set_energy_vectors`) and each cell then costs one gather and one linear
+interpolation per bin. Without that, section 118.6 alone cost 49% in run
+time (3 m 40 s to 5 m 27 s on `wasp_full_newton`); with it the same case
+runs in 3 m 51 s, 5% above the original while doing strictly more work.
+
+**Measured**: escaping mass flux +0.64% and +0.53%, log10 Mdot unchanged at
+13.22, temperature +3.8% at r = 1.13, photoheating +3.3% to +5.2% at
+r = 1.25. The clearest signature is the ionization it removes:
+`n(HII)/n(H)` falls 13% at r = 1.10, which is the weakly ionized shell fed
+by the softest photoelectrons.
+
+### 118.9 `xion` was not the electron fraction
+
+Dalgarno et al. section 7 defines the ionization fraction of the H-H2-He
+mixture as "the number density ratio of the electrons to the hydrogen and
+helium nuclei". EXHALE built it at three sites --
+`ionization_equilibrium.f90`, `util_ion_eq.f90`, `post_process_adv.f90` --
+as `(n_HII + n_HeII + n_HeIII)/(n_H + n_He)`, which is a count of H and He
+IONS: it omitted every molecular-ion electron and every metal electron, and
+counted He III once although it releases two. In the metals-on molecular
+gate the two differ by up to nine decades.
+
+The numerator is now the total free-electron density, `calc_ne`'s own value.
+The denominator stays `n_H + n_He`, the nuclei, as Dalgarno defines it.
+
+**The metal electrons are an extension beyond both sources' composition**
+and are marked as such at the code site. Neither Monte Carlo had a metal in
+it. The reason for including them anyway is that what degrades a
+photoelectron is Coulomb scattering off free electrons, and an electron
+released by a metal does that work as well as one released by hydrogen. It
+also lets the ratio exceed one, which is why every entry point clamps into
+[0,1].
+
+One asymmetry is recorded rather than removed: on the post-process path the
+molecular-ion electrons are still absent, because that path does not carry
+the molecular densities at all. The equilibrium pass, which does, has them.
+
+**Measured**: escaping mass flux +0.94% and +0.81%, log10 Mdot unchanged at
+13.22, photoheating +8.6% at the base itself (r = 1.000) and the base
+temperature +2.1% at r = 1.02. That is where the metal electrons dominate
+the free-electron budget of the shielded gas, so it is where raising x
+raises the heating efficiency most.
+
+### 118.10 The two heat returns that were blocked on constants, and their sources
+
+Section 118.6's `f_heat` carries three molecular terms. The first, `f_diss`,
+is section 118.4. The other two were held out of the earlier step because
+their constants had no source; both now have one.
+
+**What Dalgarno et al.'s heating efficiency is NOT.** Their section 5.3
+defines it as "the heating efficiency, defined as the fraction of the
+primary energy that is converted into heat from elastic scattering and
+rotational excitations". Vibrational excitation is outside it, explicitly:
+"The fraction of the energy E lost in vibrational excitation is illustrated
+in Figure 11. If the vibrationally excited H2 radiates the excitation energy
+is lost. However, if it is collisionally quenched, the excitation energy is
+converted into heat." So `eta` alone under-counts the heat of a molecular
+gas, and by how much is now measurable rather than assumed.
+
+**(a) Direct vibrational excitation, v = 1 and v = 2.** Table 5's own rows
+for those levels give the mean energy per excitation in the H2-He mixture;
+the energies are the Roueff et al. (2019) term values the code already
+carries for the infrared lines, 0.51592 eV for (v=1,J=0) and **1.00266 eV**
+for (v=2,J=0) -- not the harmonic twice-0.516, which is 2.8% high. The yield
+is transferred to a mixture containing atomic hydrogen by Dalgarno et al.'s
+eqs. (11), (16) and (17), which are one expression, `Y = Y_HeH2 r/(r + a)`
+with `r = n(H2)/n(H)`.
+
+*A typographical correction, made and stated.* The paper prints
+`a(x) = 0.5 x (x/10^4)^0.15` for the middle range. With the exponent as
+printed, eq. (17) gives `a = 0.0316` at x = 1e-4 where eq. (16) requires
+0.5, and `a = 0.0112` at x = 1e-7 where eq. (11) requires 0.177 -- two
+discontinuities, **both by the same factor 15.85**. With `10^-4` in place of
+`10^4` the expression meets eq. (16) exactly at x = 1e-4 and eq. (11) to
+three digits at x = 1e-7 (0.1774 against their 0.177). Since
+`15.85 = (10^8)^0.15` is exactly the ratio between the two readings, the
+sign of the exponent is the whole discrepancy, and the minus sign is taken
+to have been lost in typesetting. The same page prints a multiplication sign
+that the text extraction of this paper renders as a plus.
+
+**(b) The fluorescence return.** Of the B and C excitations, 0.27 and 0.036
+dissociate (section 118.4); the rest fluoresce back into **bound**,
+vibrationally excited levels of the ground state. Black & van Dishoeck
+(1987), pp. 412-413: "The initial absorptions are followed by fluorescence
+to the vibrational continuum of the ground state with a typical average
+probability of 0.10. ... The remaining 90% of the fluorescent transitions
+populate various bound excited vibration-rotation levels of the ground
+state." The energy left behind per pump is **2.0 eV**, from Burton,
+Hollenbach & Tielens (1990), Appendix A, p. 635: "The process is
+approximated as per Paper I, except that the effective heating per pump,
+E_*, has been taken as 2.0 eV." Their eq. (1) prefactor 3.2e-12 erg is
+exactly that value.
+
+Two things about that number are recorded because they are limits, not
+details. It is an **adopted** value in Burton et al., revised from their
+Paper I without a derivation; and **Black & van Dishoeck do not state it**,
+contrary to how it is usually attributed -- what they supply is the
+branching above and a line-by-line intensity table, not a mean energy.
+Frelikh & Murray-Clay (2026) use 2 eV with no attribution at all. Applying
+it to *electron-impact* excitation of B and C, as well as to photon
+pumping, is a further assumption: the upper states and the cascade are the
+same, the distribution over upper vibrational levels is not.
+
+**(c) The collisional-quench fraction, which is where the critical density
+enters.** Hollenbach & McKee (1979), p. 586: "The term `(1 + n_cr/n)^-1`
+expresses the fraction of the excitation energy going into heat via
+collisional de-excitation rather than into radiation." `n_cr = A/gamma`
+(their p. 576) with `A_10 = 8.3e-7 s^-1` (p. 583, J-averaged, from Turner,
+Kirby-Docken & Dalgarno 1977) and the rate coefficients of their eq. (6.29):
+
+    gamma_10^H  = 1.0e-12 T^1/2 exp[-(1000/T)]
+    gamma_10^H2 = 1.4e-12 T^1/2 exp{-[12000/(T + 1200)]}
+
+The code carries the ratio in the form that stays finite as either collider
+vanishes, `f = q/(q + A_10)` with `q = gamma_H n_HI + gamma_H2 n_H2`, in
+`h2_vibrational_relaxation.f90` -- one file, so the electron-driven and the
+photon-driven channel cannot drift apart.
+
+**Note the direction: this factor is not a suppression.** It is the
+statement that at high density the excitation energy *does* become heat. In
+our layer it is 1.0000 to four digits everywhere, because `n_cr(v=1)` is
+5.0e4 cm^-3 against atomic H and 1.1e6 cm^-3 against H2 at 950-1300 K,
+while the layer carries n(H2) = 4.4e9 to 4.6e13 cm^-3. It is written out
+anyway, because a shallower base or a thinner layer would not be.
+
+*This also fixes an uncited number elsewhere in the tree.* Both
+`molecular_infrared_cooling.f90` and `docs/molecular_hydrogen_treatment.tex`
+used "`n_crit(H2 v=1) ~ 1e9-1e11 cm^-3`" as a validity argument for LTE
+level populations, with no citation anywhere. Evaluated from Hollenbach &
+McKee it is 2e6-6e6 cm^-3 (H2 collider) or 5e4-8e4 cm^-3 (H collider) over
+900-1350 K -- three to five decades lower, which *widens* the LTE margin
+rather than narrowing it. Both sites now carry the sourced value. Neither
+Hollenbach & McKee nor Burton et al. gives a **helium** collision rate for
+H2 v = 1, so a helium-dominated gas is outside both; helium is left out of
+the collider sum rather than given a borrowed rate, which errs towards
+radiating the energy away rather than towards claiming it as heat.
+
+**How large the two returns are.** Exact, and needing no run -- the
+partition is a function of composition and energy alone. On the
+`mol_base_handoff` layer:
+
+| | base | mid-layer | top |
+|---|---|---|---|
+| n(H2)/n(H I) | 6.2 | 31 | 0.011 |
+| f_heat at 30 eV, without (a) and (b) | 0.235 | 0.244 | 0.264 |
+| f_heat at 30 eV, with them | **0.394** | **0.407** | 0.265 |
+| f_heat at 1 keV, without (a) and (b) | 0.098 | 0.103 | 0.125 |
+| f_heat at 1 keV, with them | **0.196** | **0.204** | 0.126 |
+
+**The two returns roughly double the molecular heat fraction**, and they
+vanish where the H2 does, as they must.
+
+**(d) The photon-driven half of the same physics.** `lyman_werner.f90`
+already knew that only 13.5% of Lyman-Werner pumps dissociate, and
+`ionization_equilibrium.f90` deposited the 0.4 eV those dissociations give
+the fragment pair. The other 86.5% were accounted as energy that does not
+come back. At the density of a molecular base that is wrong, for exactly the
+reason above, and the missing term is
+
+    (k_lw/p_diss) * (1 - p_diss) * n(H2) * E_* * f_quench ,
+
+whose prefactor is `(0.865/0.135) x (2.0/0.4) = 32` times the fragment term
+that was there. It uses the same two constants from the same file as the
+electron-driven channel.
+
+**And it is not a correction, it is the channel.** Measured on
+`mol_lyman_werner`, the only default case that carries a stellar
+Lyman-Werner field, from its own `Heating_breakdown.txt`:
+
+| | value |
+|---|---|
+| Lyman-Werner heating at the base cell | 1.216e-8 erg cm^-3 s^-1 |
+| total photoheating at the base cell | 2.492e-8 erg cm^-3 s^-1 |
+| **Lyman-Werner share at the base** | **48.8%** |
+| Lyman-Werner share over r = 1.0-1.2 | 66.2% |
+| peak Lyman-Werner heating | 3.568e-8 at r = 1.078 |
+
+With only the 0.4 eV fragment term the same cell would carry 3.685e-10 in
+that channel and a total of 1.313e-8: **the base photoheating of a molecular
+layer under a Lyman-Werner field was low by a factor of 1.9.** The
+column-integrated FUV ledger of `write_output.f90` moves with it -- the
+86.5% of pumped photon energy it used to book as `bond_col`, energy that
+never returns, is now the largest single heating term of the layer -- and
+the run's mean photoheating over r < 1.2 rises 20.5% once the wind relaxes
+to it. (`mol_lyman_werner` is a 12000-step snapshot, so that last number is
+a direction and an order, not a converged answer.)
+
+### 118.11 What is still not here
+
+* **Dissociative ionization of H2**, `H2 -> H + H+`, for which Dalgarno et
+  al. give a mean energy of 22 W_m(H2+): about 4.5% of the H2 ionizations.
+  It was absent from the primary photoionization as well. **Both sides are
+  now carried; see section 130**, which also corrects the branching the
+  primary side would have used.
+* **The Ly-alpha excitation channel.** Shull & van Steenberg's
+  `f_exc,Lya = 0.4766(1 - x^0.2735)^1.5221` is still treated as escaping
+  line radiation rather than being coupled to the Ly-alpha field of the
+  excited-hydrogen model.
+* **Electrons as a collider** for the H2 vibrational quench. Burton et al.'s
+  Table 7 gives an `e-H2` rate about two orders above the H2-H2 one, but the
+  molecular layer runs at an electron fraction of 1e-16 to 5e-5, so
+  electrons are a part in 1e3 or less of the collider sum there.
+* **A helium-dominated gas.** Neither degradation source samples one, and
+  neither vibrational-quench source gives a helium rate. This is the
+  validity limit that matters most for the He/H = 1-10 arms, and it is in
+  the header of both new modules.
+
+### 118.12 Structure and verification
+
+`svs85_secondary_branching` computed a partition that was blind to both the
+molecular content and the photoelectron energy, and its name named a source
+rather than a physical quantity. It is replaced by
+`src/modules/radiation/electron_energy_degradation.f90`, holding both
+sources' fits and three entry points: `photoelectron_energy_grid` (once at
+startup), `photoelectron_energy_partition` (once per cell) and
+`photoelectron_shares` (once per absorber). The leaf functions keep their
+source names (`svs85_fion_HI`, ...) in the convention `rr_badnell` and
+`h2_self_shielding_richings` already set. `h2_vibrational_relaxation.f90`
+holds the two constants and the quench fraction that the electron-driven and
+the photon-driven vibrational channels share.
+
+Naming, since two of these were corrected during the block:
+`photoelectron_partition_cell` became `photoelectron_energy_partition`
+(`_cell` names a place in the code, not a physical quantity), and
+`dal_eta_node` / `dal_W_node` became `dalgarno_heating_efficiency` /
+`dalgarno_mean_energy_per_ion_pair`. The rename alone was verified
+byte-identical on all eight regression cases before anything else was
+touched.
+
+The split into a per-cell part and a per-energy part is what keeps the cost
+down: the powers `x^a` are evaluated once per cell at the six tabulated
+energies, and each absorber then costs one gather and one interpolation per
+spectral bin, on **its own** excess energy `hv - E_th` rather than on a
+single shared one, with the bracket and weight built once at startup.
+
+**Verification.**
+
+* The module was compiled standalone against an independent Python
+  implementation of the same equations and agrees **to every printed digit**
+  over 24 combinations of ionized fraction (0, 1e-8, 1e-5, 1e-2) and
+  n(H2)/n(H) (0, 0.1, 1, 1e3) at all six tabulated energies. Re-run after
+  each of the four changes.
+* Energy conservation, `n_HI c_HI + n_H2 c_H2 + n_HeI c_HeI = f_ion`, holds
+  **exactly** at every one of those points and at every tabulated energy.
+* At 1 keV and n(H2) = 0 the partition reduces to Shull & van Steenberg's
+  own per-atom values, `c_ion_HI = 0.3908` and `c_ion_HeI = 0.554` at
+  n(He I)/n(H I) = 0.1, which is the check that the energy ratios of
+  section 118.8 are normalized where they should be.
+* The vibrational and fluorescence channels of section 118.10 leave the two
+  converged atomic cases **byte-identical**, which is the evidence that the
+  H2 terms are zero when they should be rather than merely small.
+* Rebuilt with `-fcheck=bounds,do,mem` and run bounded on three cases --
+  HD 209458 b (1500 steps), `mol_sec_ion` and `mol_lyman_werner` (800 each,
+  so that both the new molecular paths are entered) -- with **no trap**.
+  That matters here because the interpolation table `sec_kE`/`sec_wE` is
+  indexed by an absorber number that runs past the five fixed edges into the
+  metal ions.
+* `make check` on the refreshed goldens is **byte-identical on all nine
+  cases**, re-run once more after the optimized rebuild that followed the
+  runtime-checked one.
+
+**And the molecular gates could not test any of it, which is a finding in
+its own right.** `Secondary_ionization` defaults to STAGED: the coupling is
+switched on only after the wind first converges without it. Every molecular
+regression case is a fixed-`maxsteps` relaxation snapshot that never
+converges -- `mol_base_handoff` ends at `du = 2.48` -- so `sec_ion_active`
+never flips, `sec_on` is false for the whole run, and the entire partition
+path, old and new, is bypassed. A sweep of every case's `run.log` found the
+line "secondary ionization activated" in exactly four: `wasp_full`,
+`wasp_full_newton`, `wasp_he23off`, `wasp_he23off_newton`. None of the
+molecular gates, and not `lower_profile`.
+
+So a molecular gate coming back byte-identical under a change to this
+physics is **not** evidence that the H2 channel is small. It is evidence
+that the channel is switched off in that case, and that **the regression
+matrix had never exercised secondary ionization in a molecular gas at all**
+-- which is also where the staged activation was most likely to misbehave.
+
+**`mol_sec_ion` closes that hole and is now a default case.** It is
+`mol_base_handoff` with `Secondary_ionization: Immediate` and nothing else
+changed, at the same 12000 steps, so it isolates the switch. It is the only
+case in the matrix in which a photoelectron is partitioned in molecular gas,
+and it is what guards the H2 target of 118.3, the dissociation heat of
+118.4, and the two vibrational returns of 118.10. It was recorded as (P28)
+in `TO_BE_DONE.md`, which this closes.
+
+Two consequences for how the rest of this section reads. **Quantitative
+movement is quoted only from `wasp_full_newton` and `wasp_he23off_newton`**,
+the two converged cases in which the coupling actually fires; the molecular
+gates are relaxation snapshots and are used only for bit-identity and for
+the sign and order of a change. And every "measured" line in 118.6 to 118.9
+comes from its own build: the four changes were made and measured one at a
+time, because all four move the same integral and measuring them together
+would have made the diagnosis impossible.
+
+**A case that does exercise the path.** `mol_base_handoff` was re-run with
+`Secondary_ionization: Immediate` added and nothing else changed, at the same
+12000 steps, so the comparison is the switch and not the code version. (This
+A/B was taken on the code of section 118.3, i.e. with the H2 target in and
+the three later repairs not yet made; `mol_sec_ion` on the finished code ends
+at du = 2.46, the same order again.) It
+completes with no NaN: `du` rises through a transient peak near step 2900 and
+relaxes back to 2.56 at step 12000, against 2.48 for the staged run, i.e. to
+the same order. **Both are relaxation snapshots, not converged solutions, and
+nothing quantitative should be read off them** -- what they establish is that
+the path is live and stable, and the direction:
+
+| | secondary off (staged, never fires) | secondary on |
+|---|---|---|
+| max n_e/n_H in the molecular layer | 5.0e-5 | 9.7e-5 |
+| peak n(H3+) [cm^-3] | 6.69e4 at r = 1.032 | 2.84e5 at r = 1.016 |
+| H2 front, f(H2) = 0.5 | r = 1.158 | r = 1.143 |
+| layer temperature range [K] | 873-1309 | 905-1304 |
+
+The electron fraction roughly doubles and H3+ rises rather than falls.
+**That is the opposite of the direction Frelikh & Murray-Clay report**, where
+the extra electrons destroy H3+ faster than it forms. The two are consistent
+if the difference is the weighting: our H2 channel takes 82-89% of the
+ionization energy in this layer and feeds H2+, which converts to H3+ through
+R8, while their Glassgold weighting gives H2 about half that share. Whether
+that is the whole explanation is not settled here, and the comparison it
+belongs to is (P23), which requires a converged solution.
+
+### 118.13 The whole block, end to end
+
+Four changes, each built and measured on its own, on the two converged cases
+that fire the coupling. Escaping mass flux `rho v r^2` at the escape radius,
+`wasp_full_newton` first:
+
+| step | mass flux | log10 Mdot | largest local change |
+|---|---|---|---|
+| starting point (rename only, byte-identical) | 6.3388e15 | 13.20 | -- |
+| 118.6 heating amplitude + closure | 6.5682e15 (+3.62%) | 13.22 | heat +22% at r = 1.075 |
+| 118.7 `E_sec_ion` 40 -> 30 eV | 6.5567e15 (-0.17%) | 13.22 | heat -1.6% at r = 1.31 |
+| 118.8 ionization channels resolved in E0 | 6.5986e15 (+0.64%) | 13.22 | T +3.8% at r = 1.13 |
+| 118.9 `xion` = electron fraction | 6.6604e15 (+0.94%) | 13.22 | heat +8.6% at r = 1.000 |
+| 118.10 vibrational and fluorescence returns | 6.6604e15 (0.00%) | 13.22 | byte-identical (no H2) |
+
+**Cumulative: +5.07% in the escaping mass flux, +0.02 dex in log10 Mdot**,
+with `wasp_he23off_newton` giving +4.91% and the same 13.20 -> 13.22. The
+mass flux moves by five percent while the reported Mdot moves by two
+hundredths of a dex, which is the usual reminder that a two-decimal Mdot is
+not the quantity to judge a change by.
+
+The signature is where the changes land, not their size in the total: every
+one of them is concentrated between r = 1.0 and r = 1.3, the weakly ionized
+shell just above the base, and every one of them is under half a percent
+above r = 1.6 where x is already 0.99. That is the region where Shull & van
+Steenberg's fit was being evaluated eight to twelve decades outside its
+stated range, and it is the region the molecular layer sits in.
+
+**The regression matrix, and what its pass/fail pattern proves.** The
+goldens were refreshed once, at the end of the block, with the previous set
+preserved in `backup/regression/golden_blockL_20260902/`. Which cases moved
+is itself the evidence for (P28):
+
+| case | verdict | why |
+|---|---|---|
+| `wasp_full` | moved | fires the coupling; Mdot 13.23 -> 13.26, 14091 -> 11590 steps |
+| `wasp_he23off` | moved | fires the coupling; Mdot 13.23 -> 13.26, 14068 -> 11269 steps |
+| `mol_lyman_werner` | moved | carries a stellar Lyman-Werner field, so 118.10(d) acts |
+| `mol_sec_ion` | new | the only case that partitions a photoelectron in molecular gas |
+| `mol_base_handoff` | **byte-identical** | staged coupling never fires, no LW field |
+| `mol_metals` | **byte-identical** | same |
+| `mol_diffusion` | **byte-identical** | same |
+| `mol_ir_bands` | **byte-identical** | same |
+| `lower_profile` | **byte-identical** | same |
+
+Five of the nine cases came back bit for bit unchanged under a block that
+rewrote the heating fraction, the ionization channels, the ionized fraction
+and two heat returns. **That is not a statement about the size of the
+change; it is the demonstration that the staged default was keeping this
+physics switched off in every one of them.** `wasp_full`'s Mdot is quoted
+here only because it is the golden's own number: it is a du-stop rather than
+a Newton finish, and the du-stop's path dependence is several percent, which
+is why every quantitative line above uses the `_newton` pair instead.
+
+## 119. A segmentation fault that only appeared on more than one thread: a residual histogram indexed by log10 of a NaN (2026-09-02)
+
+**The defect.** A molecular run with `Solver: Newton` died with SIGSEGV as
+soon as the steady solver was entered, at the first residual evaluation
+after the `(JFNK) below r_esc` line, whenever `OMP_NUM_THREADS` was greater
+than one. The identical run on one thread did not crash.
+`OMP_STACKSIZE=1G` changed nothing, so it was not the size of a thread
+stack. Reproduced on `backup/regression/armD_D2_newton` (8 threads), on the
+same case with the large stack, and on `armD_D2_LW_newton` (6 threads).
+
+**The cause is one bin selector: `src/modules/radiation/ionization_equilibrium.f90`,
+the `residual_decade` expression at line 2195 as it stood.** Rebuilt with
+`-g -fcheck=bounds,do,mem`, the fault is a bounds violation rather than a
+stack overflow, and it names its own line:
+
+```
+At line 1267 of file src/modules/radiation/ionization_equilibrium.f90
+Fortran runtime error: Index '-2147483633' of dimension 1 of array 'hist_uncv' below lower bound of 0
+```
+
+`residual_decade(res)` returned `min(15, 16 + int(floor(log10(res))))`.
+NaN fails every comparison, so a NaN residual reached that expression;
+`int()` of NaN is the integer indefinite value -2^31, and the whole
+expression then evaluates to exactly -2147483633 on this compiler (checked
+with a standalone program). The value is used directly as the index of
+`hist_conv` / `hist_uncv` at lines 1264/1267 and 1494/1497, both inside the
+OpenMP-parallel cell sweep, so the increment writes about 8.6 GB below the
+array.
+
+*Why the residual is NaN, and only under the steady solver.* `jv_product`
+(`src/modules/time_step/steady_newton.f90:679-700`) forms `J*v` by
+evaluating the full residual at `Y + eps*v` with no admissibility test on
+that state at all, and the line-search trial test
+(`steady_newton.f90:944-945`) covers only density and pressure positivity.
+A probe state can therefore drive a balance row of the molecular network to
+NaN, and `normalized_reaction_residual` returns it. In the marching phase
+of this arm it never happens: the `-fcheck` build runs 2002 marching steps
+and trips on the first JFNK residual evaluation.
+
+*Why the thread count decides whether it crashes.* `hist_conv` and
+`hist_uncv` are `reduction(+:...)` arrays of the parallel sweep, so each
+thread increments its own private copy. On a worker thread that copy sits
+on an 8 MB pthread stack, and the address 8.6 GB below it is unmapped, so
+the write faults; on the master thread the same wild write does not fault.
+Measured with one and the same `-O3` binary: `OMP_NUM_THREADS=1` completes
+the JFNK attempt (`info=2`) and resumes marching, `OMP_NUM_THREADS=8` dies
+in `__ionization_equilibrium_MOD_ioniz_eq._omp_fn.1`.
+
+**The fix.** `residual_decade` now selects the top bin from the bracket
+instead of clamping a computed index, so `log10` is never evaluated on a
+residual that is not finite:
+
+```fortran
+if (res .le. 1.0d-16) then
+	ib = 0
+else if (res .lt. 1.0d-1) then
+	ib = 16 + int(floor(log10(res)))
+else
+	ib = 15
+endif
+```
+
+For every finite residual this returns exactly what the old expression
+returned: below 1e-1 the `min(15,...)` was never binding, and at or above
+1e-1 it always returned 15. NaN and an overflowed residual now land in the
+top bin, which is where a residual that large belongs. The bins are
+diagnostic counters; no physics reads them.
+
+**Verification, three things.**
+
+1. *The reproduction, 8 threads.* `armD_D2_newton` now enters the steady
+   solver, runs its JFNK iterations to the no-descent abort, exits
+   `info=2` (this arm does not converge; the criterion here is the absence
+   of the crash) and finishes the run.
+2. *Serial versus parallel byte-identity*, re-checked after the change on
+   the two cases that exercise the atomic and the molecular equilibrium
+   path: `wasp_full_newton` and `mol_sec_ion`, each run at
+   `OMP_NUM_THREADS=1` and `=8`. `Hydro_ioniz.txt` and `Ion_species.txt`
+   are identical in both pairs, and `mol_sec_ion` also reproduces its
+   golden.
+3. *The regression matrix.* `make check`, all nine cases byte-identical.
+   A thread-safety repair cannot move a single-threaded result, so any
+   movement here would have meant the repair was wrong.
+
+**Two things this section does not repair, recorded where they were found.**
+
+*The steady solver's probe states reach run-level accumulators.* The species
+fractions do not leak -- `jv_product` and `build_banded_jac_full` restore
+`f_sp` from a base copy before every probe, and the line search adopts
+`f_sp_j` only for an accepted trial (`steady_newton.f90:959`). But
+`ieq_nonroot_streak` (`ionization_equilibrium.f90:189`, written at 2223 and
+2227) is module state that no probe path saves or restores, and its limit
+`error stop`s the run at 1000 consecutive sweeps. Its meaning during a JFNK
+phase is not "consecutive marching sweeps on a non-root": probe sweeps both
+increment it and reset it. The acceptance statistics (`ieq_acc_n`,
+`ieq_acc_resmax`, `ieq_hist_conv` / `ieq_hist_uncv`, the constrained-solve
+totals and the print budget, lines 203-210 and 1655-1664) are accumulated
+the same way, so the end-of-run report is dominated by states the run never
+adopted. Measured on `armD_D2_newton`: not one non-root
+acceptance in the 2002 marching steps before the hand-off, and 18339 over
+the JFNK phase and the eight marching steps that followed it, largest
+residual 1.74e+97, with 18373 cells promoted to the constrained
+continuation solve of which 34 were accepted.
+
+*The pathological arm is not serial-versus-parallel byte-identical in its
+marching phase either.* `armD_D2_newton` at 1 and at 8 threads diverges in
+the last bit at step 1267, well before the steady solver is reached. It is
+reproducible at each thread count and it is present in the code as it stood
+before this section (built with the same default flags), so it is not
+introduced here; the `-O3 -g` build of the same source does not show it,
+which makes it a marginal decision flipping on a rounding difference rather
+than a data race. It is not diagnosed here. The regression cases stay
+byte-identical, as verification 2 and 3 above show.
+
+---
+
+## 120. He recombination photons had no competing absorber, and an initial condition that clipped H2 at 1 handed them a cell with no hydrogen (2026-09-02)
+
+**Judgment first.** Two expressions were physically wrong, independently of
+each other, and they combined into a runaway.
+
+1. `he_rec_coupling` implements Draine's (2011) on-the-spot treatment: a He II
+   recombination photon above 13.6 eV is absorbed inside the cell that emitted
+   it and ionizes hydrogen. Only the >= 24.6 eV ground-capture continuum asked
+   *who* absorbs the photon. Every other channel -- four of them in the He 2^3S
+   branch, the case-B cascade in the atomic one -- gave every photon to H I
+   unconditionally and then divided by `max(n_HI, 1e-99)`. In a molecular gas that is wrong on the
+   physics before it is wrong on the arithmetic: H2 photoionizes from 15.4 eV
+   with a cross section 1.2 to 3.7 times that of H I over the 16-25 eV band
+   these photons occupy, so in a molecular layer H2 takes essentially all of
+   them, and the share it takes belongs in the H2 photoionization rate.
+2. `set_IC` clipped the initial H2 nucleus fraction at `x2 = 1` rather than at
+   the element-ratio ceiling `q_H2 <= 0.5/(0.5 + He/H)` -- the same silent cap
+   section 117 removed from the base particle count, left behind in the initial
+   condition. Above He/H = 0.0964, where the solar-composition fit exceeds that
+   ceiling (item P26), the clip produced `f_sp(H I) = 0` *exactly*, which is
+   the one input that makes (1) diverge.
+
+The rate is now split among the absorbers present, at each channel's own photon
+energy, and the H2 share is returned as an H2 photoionization rate; the initial
+condition takes its H2 fraction from the same source the inflowing ghost does.
+A third defect the same audit turned up -- an EOS-only molecular base whose
+ghost silently sits at `ntot_bc x T0` -- is refused at startup from this section
+on; it is its own subsection below because the refusal invalidates existing
+runs and the decision to write it was the user's.
+The measured consequence is that the "molecular base runs supersonic near
+He/H ~ 1-10" window of `docs/supersonic_molecular_base.md` is not a physical
+phenomenon: the same arm now relaxes to a subsonic, warm, fully molecular base.
+
+### What the defect did
+
+In the He/H = 1 hot-Uranus arm the first physical cell was fully ionized
+(`f(H II) = 1`) after the single `ioniz_eq` pass of step 0. With
+`n_HI = 0` the photon production rate `P_add ~ 1.5e-5 cm^-3 s^-1` became a
+rate coefficient of `1.5e+94 s^-1`, and `x(H II) = 1` is then the exact root
+of the hydrogen balance row -- not a failed solve. The energy solve of the same
+step took that cell from 1169 K to the 11.4 K floor on the recombination and
+free-free cooling of the false electron reservoir, the particle count and hence
+the pressure jumped by a factor 54, and the legacy velocity boundary copied the
+resulting interior velocity: supersonic base inflow by step 6.
+
+Three properties made this survive every guard built in sections 113-117:
+
+* **the residual test cannot see it.** The acceptance test of section 113
+  normalizes each balance row by its own turnover, and the hydrogen row's
+  turnover (`s(1)` in `System_HeH_mol.f90`) is built from the same `P_HI`.
+  Numerator and denominator both carried the 1e+94: normalized residual
+  2.7e-17, raw residual -1.3e+16;
+* **the rate and the heat of one channel disagreed structurally.** The heating
+  of the same photons is `n_HeII n_e alpha` times an energy, a volumetric rate,
+  and stayed at a perfectly ordinary 2.6e-10 erg cm^-3 s^-1. A channel whose
+  rate diverges while its heat does not is not a physical channel;
+* **no regression case can reach it.** The five molecular cases run at
+  He/H = 0.0793, where the fit gives `x2_ic = 0.984 < 1`, the clip never
+  engages, and `n_HI` never reaches zero.
+
+### The correction
+
+For each channel c the photon of energy `E_c` is divided among the absorbers
+whose threshold lies below `E_c`,
+
+    w_s(E_c) = n_s sigma_s(E_c) / sum_s' n_s' sigma_s'(E_c),
+
+with s over H I (13.6 eV), H2 (15.4 eV) and, for the >= 24.6 eV ground-capture
+continuum only, He I. Five channels, each with its own energy:
+
+| channel | E_c [eV] | absorbers | sigma_H2/sigma_HI |
+|---|---:|---|---:|
+| ground capture continuum | 24.6 | H I, H2, He I | 3.66 |
+| 2^1P -> 1^1S 584 A resonance | 21.2 | H I, H2 | 3.54 |
+| 2^3S -> 1^1S line | 19.8 | H I, H2 | 3.46 |
+| 2^1S two-photon continuum | 16.110 | H I, H2 | 1.20 |
+| case-B cascade (atomic branch, lumped) | 19.741 | H I, H2 | 3.45 |
+
+The H I share becomes `dP_HI`, the H2 share a new output `dP_H2` that the
+callers add to `P_H2` (which already drives the H2 destruction row and the H2+
+formation row of the molecular system), and the He I share is excluded from the
+effective He II recombination coefficient, which generalizes from
+`alpha_B + y alpha_1` to `alpha_B + (w_HI + w_H2) alpha_1`. The photoelectron
+of each share is deposited at its own threshold, 13.6 eV for H I and 15.4 eV
+for H2. Where the cell holds no absorber for a channel the photon leaves and
+that channel returns zero, so the He II recombination reverts to its uncoupled
+value instead of dividing by the floor.
+
+Two properties of the implementation are worth recording because they are not
+free choices:
+
+* **the shares are written in the ratio form** `w_HI = 1/(1 + R_He n_HeI/n_HI +
+  R_H2 n_H2/n_HI)`, not as `n_HI sigma_HI / sum`. With `n_H2 = 0` the added
+  term is exactly `0.0` and `w_HI` is exactly `1.0`, so multiplying an atomic
+  run's channel by it is the identity and the three atomic regression cases stay
+  byte-identical. Rearranging to the algebraically equivalent
+  `P_c sigma_HI/sum` would not have been;
+* **the rates stay finite as n_HI -> 0.** Dividing the H I share by `n_HI`
+  cancels the `n_HI` in `w_HI`, leaving the trace-particle limit -- the rate a
+  lone H I atom would see in a sea of H2 -- rather than a divergence. The same
+  cancellation gives `dP_H2` without dividing by `n_H2`. This is the property
+  the earlier form lacked, and it is a consequence of writing the physics
+  correctly, not a guard bolted on top.
+
+**Approximations, stated at the code site.** The on-the-spot assumption itself
+is unchanged and its optical depth is not tested, so a cell thin to these
+photons keeps them in the local budget and both the ionization and the heating
+are overestimated. The trace metals are not in the absorber competition
+(item P34; they were added in section 129, where the share they take is
+measured). Each
+channel is collapsed onto one representative photon energy; for the 2^1S
+two-photon continuum, which is not a line, that energy is the mean of the
+in-band photons, 13.598 + `Ee_2q_HeI` = 16.110 eV. Its H2-ionizing photon
+*count* should be the integral of the Drake, Victor & Dalgarno (1969) shape
+over 15.4-20.62 eV rather than the 13.598-20.62 eV integral `f_2q_HeI` =
+0.5564 the code carries; that shape is not in the code, only its two integrals,
+so it cannot be re-integrated and `f_2q_HeI` is used for H2 as well. This
+overestimates one third of one of five channels, on the channel with the
+smallest H2/H I cross-section ratio.
+
+### The initial condition
+
+`set_IC`'s molecular seed now has one rule: **the initial x2 comes from the same
+source the ghost does.** When a lower-atmosphere handoff states the partition
+(`base.inp` key `q_H2_base`, or a profile's value at the matching level),
+`base_h2_nuclei_fraction()` -- the section 117 ghost value -- is used for the
+whole column. Otherwise the chemical-equilibrium fit gives the local
+`q_H2(p, T0)`, clipped at `h2_mixing_ratio_ceiling()` with a one-line startup
+notice rather than silently at `x2 = 1`. Clipping at the ceiling still gives
+`x2 = 1`, which is what a fully molecular mixture means, and with the coupling
+corrected that is harmless.
+
+This moves the five molecular regression cases: all five carry a handoff, so
+their IC H2 fraction changes from the fit's 0.984 to the handoff's own value,
+and their goldens were refreshed for it. `lower_profile` does not solve the
+molecular network at all, so its seed block never runs and it stays
+byte-identical.
+
+### A third defect the same audit found, and the decision it needed
+
+`Molecular base: True` with `Molecular chemistry: False` is an EOS-only
+molecular base: the H nuclei bound into H2 leave the base particle count
+(`comp_ntot_bc`) while the species arrays stay atomic. The `ntot_bc`
+recomputation at the end of `ioniz_eq` that reconciles the two is gated on the
+network being solved, so with the network off it never fires and the base ghost
+pressure `(ntot_bc + dp_bc) T0` sits on gas that counts one particle per
+nucleus. **The isothermal lower boundary is then not isothermal: it sits at
+`ntot_bc x T0`.** Measured on `backup/regression/armD_D1`, `ntot_bc = 0.768722`
+and the ghost is at 876.34 K where `Equilibrium temperature: 1140.0` was asked
+for. Section 11.5-C of `docs/supersonic_molecular_base.md` had already written
+down the required response -- *"the code must instead refuse a mismatch between
+that EOS state and the species state used at the same ghost"*.
+
+It was not written immediately, because a startup stop changes what an existing
+input file means and the grep said 31 run directories use the combination.
+**The user chose refusal on 2026-09-02**, and `input_read` now stops with the
+resolved `q_H2`, `x2`, `ntot_bc`, the implied ghost temperature against the
+requested `T0`, and the two ways out: turn the network on so the H2 the particle
+count assumes is actually carried, or drop `Molecular base: True` and
+`q_H2_base` if the base is meant to be atomic.
+
+**What the refusal invalidates.** `backup/regression/armD_D1` (a diagnostic arm,
+input deliberately left as it was so the refusal reproduces there) and 30
+HD 209458 b VULCAN handoff runs under `vulcan_work/`, all at `T0 = 1450` K:
+
+| group | `ntot_bc` range | base ghost [K] |
+|---|---|---|
+| `hd209_wind_response/` (10 runs) | 0.556-0.994 | 806.2-1441.3 |
+| `pc_compare_p1/exhale_hd209/` (20 runs) | 0.555-0.994 | 804.8-1441.3 |
+
+The lowest values come from the deep 1e-4 bar handoffs (`q_H2_base ~ 0.80`,
+`x2 = 0.977`) and the highest from the two shallow chemical-equilibrium-fit
+arms (`q_H2 = 0.006`). None has been re-run -- that is a separate instruction.
+Each run directory carries an `INVALID_BASE_TEMPERATURE.md` with its own
+numbers, the two parent directories carry the summary tables above, and the
+seven documents that quote these runs carry a stale marker at the quoting
+passage (`base_composition_handoff_plan.md` section 11,
+`newton_scaling_and_base_wall.md`, `viscosity_conduction.md` G3,
+`oxygen_chemistry_new_plan.md`, `vulcan_photochem_comparison.md` in two places,
+`TO_BE_DONE.md` item (A), and the section 117 passage above, whose two quoted
+q_H2 values are VULCAN handoff *inputs* and are unaffected).
+
+### A diagnostic for the failure mode
+
+`n_cells_he_rec_photoionization_dominant` counts cell-steps in which the
+coupling's `dP_HI` exceeds the direct stellar photoionization integral `P_HI`
+by more than 1000. The coupling is a *correction* to that integral, so three
+decades of dominance is a statement that the local photon budget has run away.
+It is reported at the end of a run only when it is nonzero, like the positivity
+counters, and it is zero on every case measured here.
+
+### Verification
+
+1. **Byte-identical** on the three cases with no molecular hydrogen, which are
+   the ones the bitwise property above is designed to protect:
+   `wasp_full` (He 2^3S on, the TR branch of the routine), `wasp_he23off` (the
+   atomic branch) and `lower_profile`. `Hydro_ioniz.txt` and `Ion_species.txt`
+   identical to the goldens in all three.
+2. **The arm, 12000 steps** (`backup/regression/armD_D2`, the hot Uranus at
+   He/H = 1 with `q_H2_base 0.300861`, `OMP_NUM_THREADS=1`): base inflow
+   subsonic throughout at max Mach 8.64e-2, zero energy-floor activations, zero
+   activations of the new counter, `log10 Mdot = 10.91`. The first physical cell
+   at r = 1.000193 R_p holds `n(H2) = 2.49e13`, `n(H I) = 2.28e10`,
+   `n(H II) = 1.4e3 cm^-3` at 1165.7 K, against `n(H I) = 0`,
+   `n(H II) = 5.0e13`, 132.1 K before. Two controlled runs, each cutting one
+   defect alone, reach the same solution: `He_rec_coupling: False` gives max
+   Mach 8.76e-2 and `log10 Mdot = 10.89`, and the IC clip alone gives 8.64e-2
+   and 10.91.
+3. **The H2 share is real.** In the molecular base of `mol_diffusion`, where
+   `n_H2/n_HI = 1.7e3`, the returned rates are `dP_HI = 3.65e-23` and
+   `dP_H2 = 1.10e-22 s^-1` per particle, so H2 absorbs
+   `n_H2 dP_H2 / (n_HI dP_HI) = 5.2e3` times as many of these photons as H I
+   does: 99.98% of them. All of that used to go to H I.
+4. `make check`, 9 of 9. `wasp_full`, `wasp_he23off` and `lower_profile`
+   pass against the existing goldens; the five molecular cases move, for the
+   two reasons above, and their goldens were refreshed at the end of this
+   block. **How far they move**, measured against the old goldens before the
+   refresh: `log10 Mdot` falls by 0.00 to 0.02 dex in every case (10.57 ->
+   10.56, 10.58 -> 10.58, 10.58 -> 10.56, 10.57 -> 10.56, 10.58 -> 10.57, and
+   10.54 -> 10.52 for `mol_sec_ion`), the sign being the same everywhere. In
+   the molecular layer, r < 1.3 R_p, the largest relative changes are 4-7% in
+   T, 9-14% in density, and up to 80% in n(H2) at the H2 front itself, which
+   moves OUTWARD by 0.0003 R_p (1.0178 -> 1.0181). The outer wind of these
+   12000-step snapshots moves more, but they are relaxation snapshots at
+   du ~ 3 rather than converged solutions, and their outer cells are still in
+   the cold-start transient.
+5. `run_fcheck.sh` (bounds/do/mem checking build, one bounded HD 209458 b
+   run): clean, no runtime check fired. It needed two repairs to run at all,
+   neither related to this section's physics and both in the script: it is the
+   only harness that compiles from scratch, so it was picking up whichever
+   gfortran the PATH resolved to (a conda toolchain here, whose LAPACK links
+   against a different libgfortran and fails with undefined
+   `_gfortran_*@GFORTRAN_1.0`), and its `-g` build hit a linker that cannot
+   read gfortran 13's compressed `.debug_info`. It now prefers
+   `/usr/bin/gfortran` when there is one and passes `-gz=none`, and it prints
+   the tail of the build log when the build fails instead of only
+   "BUILD FAILED".
+
+## 121. What the steady solver's probe states were allowed to write, and what they were allowed to be (2026-09-02)
+
+**Two defects, both found while diagnosing the segmentation fault of section
+119 and neither repaired there.** They are numerical hygiene of the steady
+(JFNK / PTC) solver, not physics: no rate, cross section or balance is
+touched, and the marching path is unchanged.
+
+**(a) The equilibrium sweeps of probe states wrote the run's own counters.**
+`ioniz_eq` keeps run-wide totals -- the acceptance classes of section 113 and
+their largest normalized reaction residual, the residual-decade histograms,
+the root-validation counters, the constrained-solve totals, the print budget
+-- and one array with authority over the run, `ieq_nonroot_streak`, whose
+limit `error stop`s it. The steady solver calls `ioniz_eq` on three different
+kinds of state: its current iterate; the finite-difference and Krylov probes
+`Y + eps*v` that build the Newton model; and line-search trials, which are
+candidates until one is adopted. All three wrote the same counters as the
+marching loop.
+
+The species fractions did *not* leak -- `jv_product` and
+`build_banded_jac_full` restore `f_sp` from a base copy before every probe,
+and the line search adopts `f_sp_j` only for an accepted trial. The counters
+did. Measured on `backup/regression/armD_D2_newton` at 8 threads: not one
+non-root acceptance in the 2002 marching steps before the hand-off, and
+18,339 over the JFNK phase and the eight marching steps after it, largest
+residual 1.74e+97 -- an end-of-run report dominated by states the run never
+adopted. `ieq_nonroot_streak` was worse than noisy: probe sweeps both raised
+it and cleared it, so "consecutive sweeps resting on a non-root", the quantity
+the stop is defined on, counted evaluations that were thrown away in the next
+statement.
+
+**(b) Nothing tested whether a probe state could be described at all.** The
+line-search trial test was density and pressure positivity
+(`steady_newton.f90`, `minval(Wtry(1,1:N)) > 0 .and. minval(Wtry(3,1:N)) >
+0`). `jv_product` evaluated the full residual at `Y + eps*v` unconditionally,
+with `v` a Krylov direction of no physical meaning and `gm = 40` such probes
+per outer iteration; `build_banded_jac_full` probed `Y + sqeps*D` the same
+way. A probe state can drive a balance row of the molecular network to NaN or
+to overflow, `normalized_reaction_residual` returns it, and that residual then
+entered the Jacobian, the Arnoldi recursion and the merit comparison. The
+SIGSEGV of section 119 was one symptom; the residual itself was the disease.
+
+### The design
+
+**Three ledgers, tagged at the call site.** Each equilibrium sweep is tagged
+`ieq_state_marching`, `ieq_state_steady_iterate` or
+`ieq_state_steady_candidate` (`set_ioniz_eq_sweep_state_kind`, called from
+outside any parallel region), and its totals go to the ledger of that tag.
+The counters that used to be a dozen separate module variables are now the
+fields of one derived type, `ioniz_eq_ledger`, held in three instances; the
+end-of-run report prints one block per instance and stays silent for an
+instance nothing was recorded in, so an ordinary marching run prints exactly
+what it printed before.
+
+The tag also decides two things that are not statistics. A candidate sweep
+does not touch `ieq_nonroot_streak` -- it neither increments nor resets it,
+and the stop is not evaluated -- so the streak once again counts consecutive
+sweeps of a state the run holds. And a candidate sweep's non-root acceptances
+are not reported cell by cell and do not spend the print budget: a probe
+acceptance is a property of a state the solver invented to differentiate at,
+and 18,339 of them bury the events that matter. They are not lost; they are in
+the third ledger, with the class populations and the largest residual of each.
+
+The line-search trial that IS adopted was evaluated as a candidate, so its
+sweep is counted in the candidate ledger; the next outer iteration re-evaluates
+the same state as the iterate and counts it there. The one state this leaves
+in the candidate ledger only is the final accepted trial of a converged solve,
+which is never re-evaluated.
+
+**Admissibility, in two layers.**
+
+*The signal.* `ioniz_eq` takes an optional `sweep_ledger` argument and returns
+this sweep's own totals in it, including three new fields: the number of cells
+whose accepted state carries a normalized reaction residual that is **not a
+finite number**, the number of cells at which no starting point stayed inside
+the element simplex, and the largest element-budget violation of any iterate
+that left the simplex (whether or not a later starting point of the same cell
+then found a root). Two related repairs went in with it, both consequences of NaN failing
+every comparison: a non-finite `acc_res` used to pass the class-3 recheck
+(`acc_res > ieq_res_tol` is false for a NaN) and be recorded as a *root*, and
+it used to enter `acc_resmax`, where a single occurrence would have destroyed
+the largest-residual statistic of the whole run. A non-finite residual is now
+class 4 by construction and is kept out of the maximum. The atomic branch also
+measures the element violation of the iterate it rejects, which it previously
+reported as zero.
+
+`eval_residual` combines that signal with a scan of the assembled residual
+vector and returns one logical, `admissible`. Two independent statements are
+required because they catch different things: the sweep count names the cell
+whose chemistry broke, which is where the diagnosis is; the row scan catches
+anything non-finite that reached the residual by another route. The argument is
+optional, so the marching path never asks and is not affected.
+
+*The line search.* A trial that is not admissible is rejected -- `lambda` is
+halved -- exactly as a negative density is, in both `solve_steady_jfnk` and
+`solve_steady_ptc`. This is not only explicitness: a non-finite merit failed
+the Armijo test by accident of IEEE ordering rather than by decision, and a
+trial whose chemistry broke in a few cells can still produce a finite, smaller
+merit and be adopted.
+
+*The temperature band was considered and not added.* The only temperature
+limit in the code is the `0.01 T0` clamp inside the Newton iteration of
+`energy_semi_implicit`, which belongs to the marching energy update and has no
+upper counterpart; there is no band in the steady path. The brief for this
+work was to use a band if one existed and not to invent one, and none exists.
+Positivity of the pressure already excludes a non-positive trial temperature,
+and a temperature that breaks the network shows up in the admissibility signal.
+
+*The element-budget violation is measured and reported, and does not reject.*
+The accepted state of every acceptance class is inside the simplex by
+construction -- the molecular branch clamps, the atomic branch hands back the
+uncoupled balance -- so the violation describes the iterate that was rejected,
+not the state returned. Whether a large one should disqualify a trial cannot be
+decided without measuring where healthy solves sit, and the healthy cold start
+of section 113 legitimately clamps. It is therefore carried in the ledgers and
+printed, and no threshold is asserted on it.
+
+**The probes: sample closer, and never invent the derivative.** A Jacobian
+column and a Krylov product are directional derivatives *of the residual at
+Y*. The point `Y + h*v` at which they are sampled is not physics: `h` is ours
+to choose and `v` has no physical meaning. So when the sample point leaves the
+set of states the code can describe, the honest answer is to sample closer to
+`Y` -- the step is halved and the probe repeated, at most
+`n_probe_step_halvings = 6` times, over which the finite-difference step falls
+by 64 and stays far above the round-off floor of the residual.
+
+If even the smallest of those steps is inadmissible, the boundary runs through
+`Y` itself along `v` and there is no derivative to sample. Then none is
+invented:
+
+- `pgmres` stops the cycle at the directions it did build and returns the step
+  from that subspace. A shorter GMRES cycle is a valid approximate solve, and
+  the line search judges the step it produces.
+- If not one direction could be sampled, the step is zero and there is no
+  Newton model at all for that outer iteration. The zero step is then kept
+  **out of the line search**, and the iteration is recorded as a no-descent
+  iteration. This is not cosmetic: the non-monotone test compares a trial
+  against the *worst* merit of the last five iterates, so `Ytry = Y` passes it
+  whenever the current iterate is not that worst one -- measured on
+  `armD_D2_newton`, consecutive outer iterations with `gm = 0` were being
+  recorded as accepted steps at `lam = 1`, resetting the no-descent counter and
+  letting the solve spin to `maxit` instead of aborting. With the zero step
+  rejected the solve reaches its stagnation abort, which is the honest
+  outcome.
+- `build_banded_jac_full` leaves the columns of an unresolvable color at zero.
+  Those columns are a *preconditioner*; zeroing them degrades the treatment of
+  those unknowns to plain relaxation and costs iterations, not correctness. If
+  the base point `Y` itself is inadmissible no column is built at all.
+
+Both events are counted and printed, per solve. Nothing non-finite can reach
+the Arnoldi recursion or the band matrix: `jv_product` returns `Jv = 0` with
+`ok = .false.` and the caller is required to stop using `v` rather than use the
+value.
+
+### What the code now says, measured
+
+The verification arms are two builds of the **same source tree** -- the tree as
+it stood after section 120 went in -- one of them with this change and one
+without, so the comparison isolates it. Single thread unless stated.
+
+**The regression matrix and the two Newton cases are byte-identical.** All nine
+matrix cases plus `wasp_full_newton` and `wasp_he23off_newton`: the data lines
+of `Hydro_ioniz.txt` and `Ion_species.txt` agree in all 22 file pairs, and the
+nine matrix cases reproduce `backup/regression/golden/` exactly in both arms.
+`wasp_full_newton` is one of the two cases that runs the JFNK to convergence
+(`info = 0`, `||R|| = 5.615e-4` in 18 outer iterations), so its identity is the
+statement that matters: **no line-search trial that the new rule rejects was
+ever adopted by the old code in that solve.** Its new ledger reads 4241
+marching sweeps, 19 steady-solver iterate sweeps, 388 probe sweeps.
+
+**Serial versus parallel.** `wasp_full_newton` with the final build at
+`OMP_NUM_THREADS = 1` and `= 8`: both output files identical.
+
+**The He/H = 1 arm, restarted from a healthy state and forced through the
+JFNK.** The arm of section 120 (`hotUranus_diffusion`, `He/H = 1`, molecular
+chemistry and He/H diffusion on) was restarted from its step-168,550 state --
+`du = 1.735e-2`, monotonically converging -- with `Load IC? True`,
+`du_th [PLM,WENO3]: 1.0e9 1.0e-3` and `Solver: Newton 100.0`, which puts the
+solver into the JFNK immediately. This is a healthy state, so the criterion is
+the opposite of a failure report: **the solve has to converge, and the new
+hygiene must not be what stops it.** (The restart was necessary: that marching
+run does not reach `du_th` by itself -- its `du` bottoms out at 9.96e-3 at step
+251,287 and then rises again.)
+
+At one thread the two arms are **byte-identical**, output files and JFNK trace
+alike. The run marches 2002 steps to `du = 3.1094e-2`, enters the JFNK three
+times, and every one of them returns `info = 0`; the last leaves
+`||R|| = 3.264e-4` and the run closes as *converged: JFNK steady solution*, at
+
+> **log10 Mdot = 10.32 g/s**
+
+which is the first quotable quantitative He/H = 1 value since P17. Not one
+hygiene event fired in the whole run: no GMRES cycle truncated, no Jacobian
+color zeroed, no trial rejected as inadmissible. The three ledgers are clean
+throughout -- marching 2007 sweeps with 1,011,495 converged roots, 15 roots
+without solver convergence and 18 constrained-continuation roots and **no
+non-root acceptance at all**; 22 iterate sweeps, all roots; 396 probe sweeps,
+199,584 converged roots and again no non-root, no non-finite residual and no
+off-simplex cell in any of the three.
+
+At 8 threads both arms also converged, `info = 0`, but at
+`log10 Mdot = 10.35` (old) and `10.33` (new) against the serial `10.32`. The
+traces separated at the very first JFNK line -- the starting `||Fs||2` differed
+in its third digit, before any hygiene decision can act -- so that spread was
+not this change; the serial identity above is what settles it.
+
+**It was a defect of its own, and it is now repaired** (item (P37) of
+`TO_BE_DONE.md`, `docs/supersonic_molecular_base.md` section 12.6). Traced to
+the constrained element-conserving continuation: its seed floored the species
+listed in `n_unknown` / `species_of_unknown`, which are rung-partition state
+built later in the same solve, so on entry to a cell they still described
+whichever cell that thread had handled last -- and on a thread's first cell
+they were never initialized at all. A cell's chemical equilibrium has to be a
+function of that cell's state, so the serial answer was order-contaminated in
+the same way rather than correct. The seed now uses the cell's own species set
+and the rung context is cleared on entry; `heh1_jfnk`, `mol_sec_ion` and
+`mol_metals` are byte-identical at 1 and 8 threads under `static`, `static,1`
+and `dynamic,8`, and the He/H = 1 rate is `log10 Mdot = 10.32` at every thread
+count. The six molecular matrix cases that promote a cell to the continuation
+move with it (the three that do not -- `wasp_full`, `wasp_he23off` and
+`lower_profile` -- stay bit for bit); `log10 Mdot` is unchanged to two decimals
+in all six and the largest relative profile change is 2.0e-2. Their goldens are
+refreshed at the end of the block, not here.
+
+**The contamination itself, measured on the old pathological restart.** The
+`backup/regression/armD_D2_newton` state -- the pre-section-120 pathology, a
+state that the code no longer produces -- is what defect (a) was measured on,
+at 8 threads. Old code, one report for the whole run: 20,704 non-root
+acceptances under the relaxation amnesty, largest residual 1.01e+02, longest
+cell streak 17 sweeps, and 17,156 molecular clamps. New code, the same run
+split by state kind:
+
+| ledger | sweeps | non-root acceptances (max res) | off-simplex cells | non-finite residual |
+|---|---|---|---|---|
+| marching states | 46,047 | **0** | 0 | 0 |
+| steady-solver iterates | 22 | 0 | 0 | 0 |
+| steady-solver probes | 1,254 | 21,789 (2.14e+02) | 12,695 | 9,093 |
+
+The entire non-root population, and every non-finite reaction residual,
+belonged to states the run never adopted; the marching phase it actually walked
+is clean, which the merged report had made impossible to see. The JFNK on that
+state fails in both arms (`info = 2` after the 12 no-descent iterations, then
+marching resumes and the run ends at the same `log10 Mdot = 17.68`), and the
+new code says why: `probe states without an admissible residual: 0 Jacobian
+color(s) zeroed, 14 GMRES cycle(s) truncated`. (That arm is not
+thread-reproducible in its marching phase, so its counter totals differ from
+run to run; the JFNK block and the final mass-loss rate do not.)
+
+**Why the element-budget violation is not a rejection criterion, measured.**
+The healthy matrix cases carry off-simplex iterates of order unity in their
+cold start: `mol_metals` 27 cells with a largest violation of **9.55**, and
+`mol_ir_bands` 3 cells at **0.423**, both reproducing their goldens. There is
+no threshold that separates those from a probe excursion -- the same finding,
+in the same direction, that section 113 made for the residual severity of a
+cold start -- so the violation is measured and printed and nothing is decided
+on it.
+
+### The boundary of this section
+
+- **Marching is untouched.** Every new argument is optional or is set only
+  from the steady solver, and the two default paths of a marching run are the
+  ones it had. The marching ledger prints the same lines, word for word, that
+  the old counters printed.
+- **The state the solver hands back is now consistent in the frozen background
+  too.** `f_sp` is restored with the best iterate and `nmol_eq` / `nox_eq` are
+  rebuilt from `f_sp` at the top of every sweep, so those were always
+  consistent. `bg_cell` -- the copy of each cell's coefficients that the
+  carrier transport (`diffusive_photochemistry`) reads -- was not: it is
+  written by every molecular sweep, including probe sweeps, so on return it
+  described whatever state was evaluated last, which is a *rejected*
+  line-search trial whenever the final iteration found no descent, and the
+  best-iterate restore could move the returned state further still. Both
+  solvers now keep a copy of it at each state they adopt (`bg_cell_adopted`,
+  `bg_cell_best` in `ionization_equilibrium`) and install the right one before
+  returning, so the invariant is that every cell state derived from the
+  returned state was evaluated at the returned state.
+
+  **Measured, and the scope is narrower than it looks.** On the converging
+  He/H = 1 solve the repair is a no-op: all three JFNK phases end on an
+  accepted trial with no best-iterate restore, so the background the solver was
+  already leaving matched the adopted state in all 504 cells. On the failing
+  path it is not: restarted on the old `armD_D2_newton` state, which ends
+  `info = 2` after the twelve no-descent iterations, the background the old
+  code left differed from the adopted state in **all 504 cells, by up to a
+  factor 4 in temperature** (largest relative `T_K` difference 3.01, sum over
+  cells 6.90e5 against 7.32e5). *No consumer saw it*, however: `EXHALE_main`
+  calls `ioniz_eq` at the returned state immediately after the solver returns
+  and before the carrier transport or any resumed marching step, which
+  overwrites `bg_cell` in every cell -- measured, the post-solver sweep and the
+  newly installed background agree to 3.4e-5 relative. The repair is therefore
+  a correctness invariant of the solver's own boundary, not a change of any
+  result; an earlier draft of this section asserted that a molecular run
+  resumed its transport from the rejected trial, and that was wrong.
+- **What "admissible" covers.** A non-finite normalized reaction residual in
+  the equilibrium sweep, and a non-finite row of the assembled residual
+  vector. It does not cover a state that is finite everywhere and physically
+  absurd; positivity of density and pressure is still the only other filter,
+  and no temperature band was added because the code has none to use.
+- **The six halvings are a bound, not a measurement.** Nothing here measures
+  how often a probe becomes admissible on the second or third halving; the
+  counters record only how often all six failed. On the healthy He/H = 1 arm
+  that was never; on the old pathological restart it was 14 GMRES cycles and no
+  Jacobian color.
+
+## 122. H2 self-shielding: the fits were measured against a level-resolved calculation, and the rate is now a table of it (2026-09-02)
+
+> **Superseded in part by section 132 (2026-09-02).** The rate no longer
+> multiplies a constant cross section by a shielding factor: the level-resolved
+> cross section itself is tabulated, and `sigma_lw`, `p_diss_lw` and
+> `sigma_lw_pump` have been removed from the module.
+
+> **Superseded by section 135 (2026-09-03).** The tabulated rate was CLOUDY's
+> H2g sub-reservoir and line overlap was absent; both are fixed there.
+
+**The judgement first.** Neither closed-form fit reproduces a level-resolved
+CLOUDY calculation at the temperature of our molecular layer, and the failure
+is not an offset that a rescaling would fix: the calculated `f_shield(N_H2)`
+has a trough near `1e16-1e17` and a shoulder near `1e19` that a two-term
+algebraic form of this kind cannot carry. Draine & Bertoldi (1996) runs from
+1.85x high at 900 K to 2.3x low at 2700 K over `1e18 <= N_H2 <= 5e20`;
+Richings, Schaye & Oppenheimer (2014), which section 116 adopted, is low by
+3.3-4.3x at every temperature of the layer. The physically correct quantity
+is the level-resolved calculation, so it is tabulated and the rate reads the
+table. **This reverses section 116's choice, and it does so on measurement
+rather than on a re-reading of the papers.**
+
+### 122.1 The premise of section 116 is not what failed
+
+Richings et al. adopted their fit because DB96 overestimates the shielding
+factor by about 3 at `T = 100 K` for `N_H2 >~ 1e17 cm^-2`. That is reproduced
+here from our own deck -- DB96/CLOUDY = 2.27-3.38 over
+`1e17 <= N_H2 <= 5e20` at 100 K in interstellar-like conditions -- so the
+premise stands and the pipeline is calibrated against the very comparison
+that motivated the change. What section 116 could not know is that **the sign
+of the DB96 error reverses between 100 K and 900 K**: a fit built to remove
+the 100 K excess keeps removing it after it has gone, and our layer runs at
+865-2724 K.
+
+### 122.2 What was calculated
+
+CLOUDY c25.00, `DATABASE H2`, plane-parallel slab irradiated on one face:
+pure H + He at He/H = 0.0793, no dust, no metals, cosmic-ray background as
+the only ionization source, constant temperature, thermal Doppler width. The
+incident field is flat `F_lambda` (`f_nu ~ nu^-2`), DB96's own eq. (24)
+spectrum, normalized to `F = 343 erg cm^-2 s^-1` over 912-1110 A, i.e. our
+`mol_lyman_werner` field and `G_0 = 1.25e6` Habing.
+
+27 runs, `T = 700, 900, 1100, 1300, 1600, 1800, 2200, 2700, 3200 K` at
+`n_H = 1e12, 1e13, 1e14 cm^-3`, each carried to `N_H2 = 5.01e21 cm^-2`.
+`f_shield` is the ground-state Solomon dissociation rate divided by the
+band-integrated field, normalized to its own value at the illuminated face of
+the same run.
+
+Two independent checks of the setup, both in
+`docs/h2_self_shielding_cloudy.md`: CLOUDY's own `G(TH85)` at the face is
+1.25e6, matching the Habing conversion done by hand, and its band photon flux
+agrees with `F/<hv>` as `lyman_werner.f90` forms it to 0.3%.
+
+### 122.3 The table
+
+`src/modules/lower_atmosphere/h2_self_shielding_table.f90`, generated by
+`src/utils/h2_shielding_table_from_cloudy.py` from the decks in
+`src/utils/h2_shielding_cloudy_decks/`: `log10 f_shield` on
+39 columns x 9 temperatures x 3 densities = **1053 doubles**, trilinear in
+`(log10 T, log10 n_H, log10 N_H2)`, every axis clamped rather than
+extrapolated.
+
+**The column axis starts at 1e12 cm^-2, not at 1e16.** The plan was 1e16 with
+`f = 1` below it; the calculation says `f_shield(1e16)` is 0.067 at 700 K and
+0.24 at 3200 K, so a table starting there would have needed an invented rule
+underneath it. At 1e12 the measured factor is 1.000 in every run (0.9989 in
+the worst), which is the optically thin limit, so the bottom clamp asserts
+only what the runs show. The cost is 432 extra doubles.
+
+### 122.4 Where the table stops being a value
+
+CLOUDY shields one line at a time -- `RT_continuum_shield_fcn` applies the
+Federman, Glassgold & Kwan (1979) function per transition -- so overlap
+between distinct H2 lines is absent from it, and overlap is what DB96 sec. 5.2
+say produces "the rapid falloff ... for N2 > 1e20 cm^-2", suppressing the
+pumping rates by a factor ~10 at 3e21.
+
+The size of that gap is measured inside the runs rather than assumed. Build
+the summed equivalent width of the pumping lines from CLOUDY's own curve with
+DB96's eq. (38) construction, `A(N) = sigma_lw_pump * int_0^N f_shield dN'`,
+using the `sigma_lw_pump` the module already carries. `A` is a fraction of the
+band and cannot exceed 1. It does, and the column where it reaches 1 is
+`h2_shielding_overlap_column(T, n_H)`: 1.4-1.8e21 cm^-2 at 700 K falling
+monotonically to 2.5e20 at 3200 K -- the hotter the gas, the more lines share
+the band and the earlier the un-overlapped sum breaks down. **Above that
+column the table is an upper bound on the shielding, hence a lower bound on
+the rate. No correction is applied there**: inventing the missing transfer
+would be worse than recording its absence. The run reports the crossing once,
+through the warning that used to quote the two fits' published ranges.
+
+Our base sits at `N_H2 = 4.4e21`, i.e. above it, so the deepest cells of a
+molecular run carry that bound. Extending the grid with a code that treats
+line overlap is an open item.
+
+### 122.5 What the band share keeps, and why
+
+`A` stays on DB96 eq. (39), and the same calculation is now the reason rather
+than the absence of an alternative. Measured off the 1300 K run, the
+band-removal cross section is `sigma_pump = 2.610e-17 cm^2` against the
+`sigma_lw_pump = 2.557e-17` the module carries -- **2 per cent**. The two
+departures behind it cancel: CLOUDY's dissociation cross section is 34% above
+`sigma_lw` and its `<p_diss> = 0.177` is 31% above the coded 0.135. So the
+normalization the equivalent width rests on is confirmed at our temperature,
+and section 116.4's decision is now measured instead of argued.
+
+Two constants are recorded as measured but NOT changed, because changing
+either alters the unattenuated rate rather than its shielding and belongs
+with its own verification: `sigma_lw = 3.452e-18 cm^2` is 23-60% low against
+CLOUDY over 900-2700 K (mostly a line-data difference, not temperature -- it
+is already 37% low at 100 K), and `p_diss_lw` is not constant with depth
+(0.177 at the face, 0.217 at `N_H2 = 5e21`).
+
+### 122.6 Two axes closed by measurement
+
+**Density.** The table carries `n_H` because it can, but the axis is nearly
+flat: `f_shield` moves 3-7% over `n_H = 1e12-1e14` below `N_H2 = 1e19` and by
+at most 40% at 1e21. The absence of a density argument in either fit is not
+what is wrong with them.
+
+**Radiation field, i.e. the Elwert axis.** Dropping `F_LW` by four decades
+(`G_0` from 1.25e6 to 125) moves `f_shield` by at most 9% anywhere and by
+under 5% below `N_H2 = 1e20`. Section 116.3 rejected the Elwert exponent by
+arithmetic; this is the same conclusion by measurement, and it is why the
+table has no radiation-field axis.
+
+**H Lyman lines inside the band**, checked while there: running with
+`Database H-like Lyman pumping off` moves `f_shield` by 2-11%, always upward.
+`lyman_werner.f90` sec. 4 flags their neglect as the least controlled of the
+three absorbers it drops; it is a few per cent.
+
+### 122.7 What changed in the code
+
+* `h2_self_shielding_table.f90` is new and generated;
+  `h2_shielding_table_from_cloudy.py` and the 27 decks are in `src/utils/`
+  so the table can be rebuilt.
+* `lyman_werner_dissociation_rate` takes `n_H` and reads the table.
+  `h2_self_shielding_richings` and `h2_self_shielding_draine_bertoldi` are
+  **kept and are no longer called by the rate**; the header says so. The
+  second is still live for the band share.
+* `fuv_lw_photon_field` takes the total hydrogen nucleus density and returns
+  the largest ratio of the star-ward column to
+  `h2_shielding_overlap_column`; the `f_shield` column of
+  `output/Lyman_Werner.txt` is the table's value, i.e. still the factor the
+  rate actually carries.
+* The extrapolation warning in `ionization_equilibrium` and `write_output` no
+  longer quotes the Richings range, which is no longer used; it reports the
+  crossing of `N_overlap` and the DB96 range that the band share still rests
+  on. `NH2_richings_max` is gone, `NH2_db96_max` stays.
+
+### Verification
+
+**Two changes share this refresh, and they are separable.** The section-121
+constrained-continuation seed fix landed in the tree first and had already
+moved the six molecular cases off their goldens; this section's table moves
+one of them further. Which case moved for which reason was measured, not
+inferred: the current tree source was built a second time with this section's
+patch reverse-applied, and the six molecular cases were re-run against it.
+
+| case | Lyman-Werner field | moved by the seed fix | moved by the table |
+|---|---|---|---|
+| `wasp_full`, `wasp_he23off`, `lower_profile` | no | no (PASS throughout) | no |
+| `mol_base_handoff`, `mol_metals`, `mol_diffusion`, `mol_ir_bands`, `mol_sec_ion` | no | yes | **no -- byte-identical with and without the table** |
+| `mol_lyman_werner` | **343 erg/cm2/s** | yes | **yes** |
+
+That is the structural statement this change should make: `F_LW_star` defaults
+to zero and exactly one matrix case supplies it, so exactly one matrix case can
+reach the new code at all.
+
+**The size of the table's own move**, from the pair above (same source, same
+12000 steps, shielding the only difference; per item P17 these are relaxation
+snapshots, so these are not converged change sizes):
+
+| quantity | Richings | table |
+|---|---|---|
+| H2 front, largest r with n_H2 > 1e10 | 1.165804 R_p | 1.149903 R_p |
+| minimum T over the molecular cells | 837.4 K | 806.1 K |
+| n(H2) over those cells, table/Richings | -- | 0.0040 to 1.0714 |
+| `final` | count=12000, du=3.1452 | count=12000, du=2.5958 |
+
+The sign is the one the measurement predicts. Over the columns the layer
+occupies the table shields *less* than Richings, so the rate is higher, so the
+front is pushed inward and the outermost molecular cells lose H2 by up to a
+factor 250.
+
+* **Matrix before the refresh**: the three no-LW cases PASS byte-identical, the
+  six molecular cases FAIL -- exactly the split the two changes predict.
+* **Goldens refreshed once**, the previous set preserved at
+  `backup/regression/golden_blockD_20260902/` beforehand. **`make check`
+  returns PASS, all cases byte-identical, 9/9, EXIT 0.**
+* **`run_fcheck.sh`: CLEAN**, production build restored, and the matrix
+  re-run on that restored binary returns **PASS 9/9** again.
+* **The runtime-checked build was additionally run on `mol_lyman_werner`**,
+  which the fcheck case (HD 209458 b, atomic) does not reach: the same
+  `-O1 -fcheck=bounds,do,mem` binary, 1500 steps, **no runtime check fired**.
+  That is the only run in which the new table is traversed under bounds
+  checking.
+* **Unit check of the table against what generated it**: a probe program
+  linked against `h2_self_shielding_table.o` reproduces the Python-side value
+  at all 1053 grid points to 1.2e-9 relative, and `N_overlap` at all 27 to the
+  same, i.e. the Fortran interpolation returns the CLOUDY numbers themselves at
+  the nodes. Off the nodes, at the mid-points of the 1300 K column axis, the
+  table reproduces the underlying run to 0.6-1.9%.
+* **The warning fires and says the right thing**: `mol_lyman_werner` reports
+  the star-ward column reaching 4.99e21 cm^-2, 3.30 times the column at which
+  the table becomes an upper bound.
+* **Not verified**: nothing was re-run outside the matrix. The stored results
+  of `examples/18_oxygen_chemistry/` and `examples/19_molecular_ir_bands/`
+  carry a Lyman-Werner flux and now predate this change as well as the earlier
+  one.
+
+## 123. The heating dump left the oxygen carriers' hydrogen out of the ionized fraction, and the H/He nucleus totals are now one routine (2026-09-02)
+
+Section 118.9 fixed what the ionized fraction handed to the photoelectron
+partition is -- the *total* free electron density over the hydrogen and helium
+**nuclei**, the quantity Dalgarno, Yan & Liu (1999) section 7 define -- and
+made the sites that build it agree. The oxygen chemistry of sections 108-109
+then introduced two further carriers of hydrogen nuclei, OH and H2O, and one of
+those sites was not taught about them.
+
+### 123.1 What was different
+
+`ionization_equilibrium` builds the nucleus totals as
+
+    nh  = n(HI) + n(HII)
+        + 2 [n(H2) + n(H2+)] + 3 n(H3+) + n(HeH+)     (molecular carriers)
+        + n(OH) + 2 n(H2O)                            (oxygen carriers)
+    nhe = n(HeI) + n(HeII) + n(HeIII) + n(HeH+)
+
+while `write_heat_breakdown_eq`, the diagnostic that writes
+`output/Heating_breakdown.txt`, stopped at the molecular line: OH and H2O were
+absent from its `nh`. The dump is not short of the information -- it fills its
+`nox` array from `f_sp_in` twenty lines earlier, because it needs those
+densities for the FUV photolysis heating channel -- it simply did not count
+their nuclei. So its `nh` was too small in exactly the cells the oxygen
+chemistry populates, which is the molecular base.
+
+Two quantities inside the dump read that `nh`, and neither of them is part of
+the solved state:
+
+* `xion = n_e / (nh + nhe)`, which the photoelectron partition of every
+  photoheating channel reads, so every `heat_*` column of the dump carries it;
+* the hydrogen nucleus density handed to `fuv_lw_photon_field`, which is the
+  density argument of the H2 self-shielding table of section 122, so the
+  `heat_H2_LW` column carries it as well.
+
+### 123.2 One definition, not one more copy
+
+The remedy is the standing rule that a quantity is defined in exactly one
+place. `hydrogen_helium_nuclei_density` is new in `utils`
+(`src/modules/functions/utilities.f90`), beside `calc_ne` and `calc_ntot`, and
+every carrier is counted with its nucleus multiplicity: H2 and H2+ two H, H3+
+three, HeH+ one H and one He, OH one H, H2O two, CO none. Its molecular and
+oxygen arguments are optional, so a caller that does not track those carriers
+omits them rather than writing a shorter sum of its own.
+
+Four sites now call it and no site builds the totals itself:
+
+| site | carriers passed |
+|---|---|
+| `ionization_equilibrium` | molecular, oxygen |
+| `write_heat_breakdown_eq` (`util_ion_eq.f90`) | molecular, oxygen |
+| `post_process_adv`, before the advection sweep | none |
+| `post_process_adv`, after it | none |
+
+The two post-process sites pass neither, which is the composition that pass
+already had and its module header already states: the advection correction
+carries only the H/He columns, so the molecular and oxygen carriers are not
+available to it. What they gain is the same statement order as the other two.
+
+### Verification
+
+**Byte-identity, and where it deliberately stops.** The four sites now
+evaluate the same statements in the same order, so the change is arithmetically
+inert everywhere except the two places it is meant to move.
+
+* **`make check`: PASS, 9/9, all cases byte-identical.** No matrix case runs
+  the oxygen chemistry, so no matrix case can reach the corrected term at all;
+  what the matrix proves is that the refactor of the other three sites did not
+  move anything.
+* **The oxygen case was run explicitly**, since the matrix does not cover it:
+  `examples/18_oxygen_chemistry/` (HD 209458 b, molecular + oxygen chemistry +
+  Lyman-Werner), 2000 steps, single-threaded, the same source built with and
+  without the patch. `Hydro_ioniz.txt` and `Ion_species.txt` are
+  **byte-identical** and the marching trace agrees step for step, i.e. the
+  solved state does not see this.
+* **What did move, in that run** (all of it inside the diagnostic):
+
+  | quantity | change |
+  |---|---|
+  | `nh` at the base, `r = 1.0002` | too low by `2.55e-4`, corrected upward |
+  | `xion` there | too high by `2.35e-4`, corrected downward |
+  | `heat_HI`, `heat_HeI`, `heat_HeII`, `heat_H2` columns | up to `9.4e-6` relative, downward |
+  | `heat_H2_LW` column | up to `1.27e-5` relative |
+  | `heat_metals` column | up to `1.9e-7` relative |
+  | `heat_total` column | up to `1.1e-9` relative |
+
+  The sign is the one the correction predicts: adding hydrogen nuclei lowers
+  the ionized fraction, and a less ionized gas gives the photoelectron less of
+  its energy as heat. The size is set by how much hydrogen the oxygen carriers
+  hold at a solar oxygen abundance, which is `2.5e-4` of the nuclei even where
+  H2O peaks -- this is a diagnostic reading corrected by a fraction of a per
+  mil, not a physics change waiting to be found.
+* **`Cooling_breakdown.txt` and `Lyman_Werner.txt` are byte-identical** in the
+  same run; neither builds the nucleus totals.
+* **The `_adv` files move at round-off**, by at most `1.8e-14` relative
+  (`Ion_species_adv.txt`), because the post-process previously summed
+  `n(HeI singlet) + n(HeII) + n(HeIII)` and added the triplet last, and now
+  adds the two He I populations first, as the other three sites do. The two
+  orders are the same sum; nothing else about that pass changed.
+
+## 124. The ladder, converged: He/H from 0.0793 to 30 on one hot Uranus (2026-09-02)
+
+**Judgment first. Every rung of the He/H ladder has a Newton-converged
+solution, the JFNK returns `info = 0` on all of them, and the ladder is
+monotonic and undramatic: raising He/H from 0.0793 to 30 thins the molecular
+layer, pulls the hydrogen ionization front inward, heats the wind and leaves
+the mass-loss rate almost unchanged. There is no window and no crossing
+anywhere on the ladder, which is what section 120 predicted when it removed the
+two defects that had made the He/H ~ 1 arm look supersonic. The full account, with the convergence recipe and the run ledger of
+each rung, is `docs/supersonic_molecular_base.md` section 13; this section is
+its record here.**
+
+The planet is the hot Uranus of the Tier-2 gate (0.0457 M_J, 0.49 R_J,
+T_eq = 1140 K, 0.048 au, power-law spectrum), metals off, no `opacity.inp`,
+`Secondary_ionization` at its STAGED default, `He_diffusion: True` except where
+noted. Each rung changes `He/H number ratio` and the `base.inp` `HeH_base` /
+`q_H2_base` and nothing else, `q_H2_base` being set to hold the H2 nucleus
+fraction at `x2 = 0.9251143` on every rung so that the ladder varies He/H
+alone. Every `q_H2_base` is below its element-ratio ceiling `0.5/(0.5 + He/H)`,
+by 8 to 13%.
+
+### 124.1 The rungs
+
+Seven `info = 0` states (the six rungs plus the second He/H = 0.0793 rung that
+carries the arm's `He_diffusion`), `OMP_NUM_THREADS=8`:
+
+| He/H | 0.0793 | 0.0793 (diff.) | 0.3 | 1 | 3 | 10 | 30 |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| **log10 Mdot [g/s]** | **10.42** | **10.49** | **10.35** | **10.32** | **10.36** | **10.42** | **10.39** |
+| final JFNK residual | 9.89e-4 | 9.16e-4 | 7.97e-4 | 6.57e-4 | 6.02e-4 | 9.21e-4 | 4.95e-4 |
+| H2 front `f_H2 = 0.5` [R_p] | 1.1012 | 1.1200 | 1.0681 | 1.0469 | 1.0467 | 1.0357 | 1.0250 |
+| H3+ peak [R_p] | 1.0226 | 1.0200 | 1.0167 | 1.0014 | 1.0017 | 1.0015 | 1.0027 |
+| ionization front `x_HII = 0.5` [R_p] | 2.573 | 2.755 | 2.040 | 1.593 | 1.396* | 1.333* | 1.241* |
+| T maximum [K] | 2751 | 2698 | 3642 | 4967 | 5864 | 6328 | 6660 |
+| outflow speed at the boundary [km/s] | 8.97 | 8.97 | 8.28 | 7.34 | 6.85 | 6.74 | 6.61 |
+
+\* measured before the coupling repair of section 125; the corrected values are
+in section 125.3.
+
+Read across, the structure is monotonic in everything: more helium means a
+thinner molecular layer, a hotter wind, an ionization front closer to the
+planet and a slower outflow, which is the sign helium's extra opacity and its
+24.6 eV photoelectrons predict.
+
+**The rate is the exception: it is flat.** `log10 Mdot` spans 10.32 to 10.49
+over a factor 378 in He/H, and it is not even monotonic -- it has a shallow
+minimum at He/H = 1. The 0.17 dex spread includes the 0.07 dex the
+`He_diffusion` switch alone moves the 0.0793 rung, so the He/H dependence of
+the rate over this range is at most a factor 1.5 and probably less.
+
+**What converges the rungs** is not the marching. Every rung reaches
+`du = 2e-2` on its own and the staged secondary ionization fires there, so the
+wind has to cross the switch a second time; the JFNK entered at that second
+crossing fails (`info = 2`) on every rung that got there inside 250,000 steps,
+and three rungs never got there. What converges all six is a restart of the
+marched state with `Load IC? True`, `du_th [PLM,WENO3]: 1.0e9 1.0e-3` and
+`Solver: Newton 100.0`, which arms the hand-off immediately and gives the
+solver the state instead of making it march to the state. Five of six converge
+on the first such restart, in under two minutes each, against hours of
+marching.
+
+### 124.2 Marching does not leave the converged solution
+
+The He/H = 1 state was restarted with the JFNK hand-off put out of reach
+(`Solver: Newton 1.0e-30`) and marched **50,000 steps with no steady solve at
+all**. `du` has one excursion -- from 2.58e-4 up by a factor 20 at step 3968
+and back -- and then holds between 2.58e-4 and 2.63e-4 for the last 30,000
+steps. **The steady residual ends below where the JFNK left it**, 2.07e-4
+against 6.57e-4, `log10 Mdot` is 10.32 at step 50,000, and handing the marched
+state back to the JFNK closes it immediately at `info = 0`. The cells that move
+during the excursion are at r = 2.12-2.19 R_p, not at the base; below 1.1 R_p
+nothing moves by more than 0.5%.
+
+This answers the two-solution question of item (P17) for this arm: the marching
+branch and the JFNK branch are not two steady solutions. It does not show that
+no second solution exists elsewhere.
+
+### 124.3 The P23 gate does not pass
+
+Compared against Koskinen et al. (2022) Model A -- whose mass, gravity at the
+escape base, orbital distance, base temperature and XUV flux all match ours to
+within a few percent -- and Frelikh & Murray-Clay (2026), both read from the
+publisher PDFs in `references/`:
+
+* **agreeing**: the rate (10.42 against their 10.28, a factor 1.4), the outflow
+  speed (8.97 against 9.8 km/s), and the wind being mostly neutral -- n(H I)
+  exceeds n(H II) out to 2.57 R_p, which is the property both papers single
+  out;
+* **disagreeing**: our H2 is truncated (four decades between 1.10 and
+  1.27 R_p) where theirs "remains significant at all altitudes"; our H3+ is
+  base-confined, nine decades over half a planetary radius, where theirs is
+  present throughout; and we are colder, 2751 K peak against their 4400 K at
+  3 R_p.
+
+**The explanation P23 proposed for the disagreement is refuted by this
+measurement.** P23 reasoned that the difference from an H-and-He-only model was
+most likely the metal electrons our metals-on gates carry. This ladder is
+metals-off and converged, and H3+ is still base-confined, so composition is not
+the explanation. Nor is temperature, which is the mechanism Frelikh give for
+their own result: our H2 front sits at 765 K against the 48,350 K barrier of
+the thermal-dissociation reaction both codes take from Baulch et al. (1992), so
+**our H2 is not being thermally dissociated; it is being removed by something
+else, at a temperature where their argument says it should survive.** Which
+channel that is -- H2 photoionization at 15.4 eV, the
+H2+ -> H3+ -> dissociative-recombination route, or charge exchange with H+ --
+is the next measurement, and it is not one this campaign made. Lyman-Werner
+photodissociation is not a candidate: it is off in these runs and Koskinen's
+Table 1 does not carry it either.
+
+### 124.4 Ledger
+
+None of the six converging runs admitted any base inflow -- the
+`base boundary:` line, printed whenever a run has one, is absent from all six
+logs -- and none activated the energy floor. Root acceptance is clean for
+He/H <= 10: zero non-root acceptances, zero non-finite reaction residuals, zero
+projected or handback roots. **He/H = 30 is not clean**: 34 non-root states
+accepted under the relaxation amnesty, 153 + 6 + 52 projected/handback roots,
+and 165 cells with no in-simplex starting point. Every printed non-root cell
+sits at r = 2.12-2.22 R_p at 5700-5820 K -- the ionized outer wind, which is
+where the defect of section 125 lived. The largest element-budget violation
+grows along the ladder: none at 0.0793, 1.2e-3 at 0.3, 2.1e-1 at 1, 1.5e-1 at
+3, 2.8 at 10, 1.1e1 at 30.
+
+Item (P17) may be lifted for the six converged states, with the asterisked
+front and `x_HII` entries taken from section 125.3 and the He/H = 30 row
+carrying its ledger.
+
+
+## 125. The He recombination photons are now only as absorbed as the cell is thick (2026-09-02)
+
+**Judgment first. The expression was physically wrong, and the divergence
+item (P40) reported is that wrongness showing itself rather than a numerical
+accident. The on-the-spot assumption of section 120 -- every He recombination
+photon above 13.6 eV is absorbed inside the cell that emitted it -- is a
+statement that the cell is optically thick to those photons. It was never
+tested, and in the thin outer wind of a helium-rich run it is false by 160
+orders of magnitude: a cell holding no hydrogen and 2.1e-151 H2 molecules per
+cm^3 has a cell optical depth of 1e-160 at 16-21 eV and keeps none of its
+photons, while the code handed all of them to the H2 residue and returned a
+photoionization rate of 2.6e100 s^-1. The repair is not a floor on the absorber
+density. It is the closure the assumption was standing in for: the cell keeps
+the fraction 1 - exp(-tau_c) of each channel's photons and the rest leave.**
+
+Opened as items (P33) (the untested optical depth) and (P40) (the divergence it
+produces); both are closed here. Item (P34), the trace metals missing from the
+absorber competition, is untouched here and is closed in section 129.
+
+### 125.1 The closure
+
+For each channel c, emitting at its representative energy E_c into the
+absorbers whose threshold lies below E_c,
+
+    tau_c   = (sum_s n_s sigma_s(E_c)) dr_j          cell optical depth
+    f_abs   = 1 - exp(-tau_c)                        photons the cell keeps
+    w_s     = n_s sigma_s(E_c) / sum_s' n_s' sigma_s'(E_c)
+
+and the rate per particle of absorber s, its heating, and the effective He II
+recombination coefficient become
+
+    dP_s    = P_c f_abs w_s / n_s
+            = P_c sigma_s(E_c) dr_j [1 - exp(-tau_c)]/tau_c
+    H_c     = P_c f_abs sum_s w_s (E_c - E_th,s)
+    alpha_eff = alpha_B + alpha_1 (1 - f_abs w_HeI)
+              [TR branch: alpha_1 (1 - f_abs w_HeI) + 0.25 alpha_B]
+
+**The second form of `dP_s` is the one that shows there is no singularity
+anywhere.** The bracket is 1 at tau -> 0 and 1/tau at tau -> infinity, so the
+rate runs from the optically thin limit `P_c sigma_s dr_j` -- what a single
+absorber in a transparent cell sees, which is finite whether that absorber
+exists or not -- to the thick limit `P_c sigma_s / sum n sigma`, which is
+exactly the expression section 120 wrote. **The thick limit is the old
+expression, so the correction is a physical closure of it, not a replacement
+of it.**
+
+The He recombination coefficient changes for the same reason the rates do: a
+ground-capture photon that leaves the cell does not re-ionize helium either, so
+only the He I share of the photons that *stay* is excluded from the net
+recombination. In the thick limit `f_abs = 1` and the formula returns section
+120's `alpha_B + (w_HI + w_H2) alpha_1`.
+
+**Implementation.** `he_rec_coupling` in `src/modules/radiation/util_ion_eq.f90`
+keeps section 120's ratio form for the shares `w` and multiplies each channel
+by its own `f_abs`; the five channels have five different optical depths,
+because they have five different energies and (for the >= 24.6 eV
+ground-capture continuum alone) different absorber sets. `f_abs` comes from a
+new module function `absorbed_photon_fraction(tau)`, which uses the series
+`tau (1 - tau/2 (1 - tau/3))` below `tau = 1e-4`, where `1 - exp(-tau)` loses
+all but a few digits to cancellation, and returns zero for a non-positive
+`tau` (the ionization solve can hand it a small negative trace density). The
+recombination coefficient is written `(1 - f_abs) + f_abs (w_HI + w_H2)` rather
+than `1 - f_abs w_HeI` so that `f_abs = 1` reproduces section 120 bit for bit.
+`dr_j` is the cell width of the code's own grid, defined on the ghost cells as
+well, and `sigma` returns 1e-18 cm^2, the unit the stellar optical depth of
+`PH_heat_HHe` also carries.
+
+**Where the two forms actually differ.** `f_abs` is exactly 1.0 in double
+precision for `tau > 37`, so wherever the cell is that thick the returned
+numbers are unchanged to the last bit. Measured on the existing goldens:
+
+| case | tau at the base cell (gnd / casc) | f_abs < 1 from | f_abs at the outer boundary |
+|---|---|---:|---:|
+| `wasp_full`, `wasp_he23off` (WASP-121b, atomic) | 16.5 / 20.2 | the base cell | 2.0e-3 / 2.4e-3 |
+| `mol_sec_ion` (hot Uranus, molecular) | 174 / 240 | r = 1.102 / 1.116 R_p | 7.0e-4 / 7.7e-4 |
+| `mol_base_handoff` | 174 / 240 | r = 1.106 / 1.119 R_p | 8.1e-4 / 8.9e-4 |
+| `lower_profile` (HD 209458 b, profile handoff) | 327 / 403 | r = 1.037 / 1.041 R_p | 7.6e-7 / 1.1e-6 |
+
+**The molecular base is thick and is not touched; the atomic base is not
+thick.** The hot Uranus keeps its photons out to 1.10-1.12 R_p and HD 209458 b
+to 1.04 R_p, but WASP-121b's base cell has `tau = 16.5` in the ground-capture
+channel, so no cell of the two atomic cases was ever optically thick to these
+photons and the coupling there was overestimated everywhere -- by a factor 2 at
+1.15 R_p, 10 at 1.25 R_p and 500 at 1.5 R_p.
+
+### 125.2 The atomic cases: converged, and how far they moved
+
+`wasp_full_newton` and `wasp_he23off_newton` (WASP-121b, He 2^3S on and off,
+metals on, Newton finish), each run before and after with the same binary
+except for this change, `OMP_NUM_THREADS=1`:
+
+| | `wasp_full_newton` | `wasp_he23off_newton` |
+|---|---|---|
+| JFNK | `info = 0` before and after | `info = 0` before and after |
+| `log10 Mdot` (run report) | 13.22 -> 13.21 | 13.22 -> 13.22 |
+| `log10 Mdot` (re-measured) | 13.2414 -> 13.2338 | 13.2422 -> 13.2342 |
+| largest T change | 0.96% at r = 1.087 | 0.94% at r = 1.087 |
+| largest n(H I) change | 26% at r = 1.231 | 27% at r = 1.230 |
+| largest n(He I) change | 18% at r = 1.218 | 18% at r = 1.217 |
+| largest n(He 2^3S) change | 9.1% at r = 1.163 | -- |
+| largest heating change | 11% at r = 1.180 | 12% at r = 1.178 |
+
+The rate moves by 0.008 dex and the structure moves at the ionization front,
+1.15-1.25 R_p, which is where `f_abs` falls from 0.5 to 0.1. Below 1.05 R_p
+nothing moves by more than a few times 1e-3.
+
+### 125.3 The ladder rungs the defect contaminated
+
+The three states item (P40) measured, each restarted from its converged rung
+and re-converged with the corrected coupling (`info = 0` in all three), against
+the `He_rec_coupling: False` controls the item reported. The controls are not
+the target: a corrected channel still ionizes something, so the fixed run
+should land *between* the contaminated run and the control, near the control.
+
+| | He/H = 1 | He/H = 3 | He/H = 30 |
+|---|---|---|---|
+| `n_cells_he_rec_photoionization_dominant` before / after | 0 / 0 | 1.50e5 / **0** | 3.03e5 / **0** |
+| ionization front, contaminated | 1.586 | 1.394 | 1.238 |
+| ionization front, coupling off (control) | -- | 1.641 | 1.500 |
+| **ionization front, corrected** | **1.758** | **1.618** | **1.444** |
+| `x_HII` at the boundary, contaminated | 0.9499 | **1.0000** | **1.0000** |
+| `x_HII` at the boundary, control | -- | 0.9112 | 0.9197 |
+| **`x_HII` at the boundary, corrected** | **0.9008** | **0.9138** | **0.9236** |
+| `log10 Mdot` before / after | 10.32 / 10.29 | 10.35 / 10.35 | 10.39 / 10.37 |
+| H2 front [R_p] before / after | 1.047 / 1.047 | 1.046 / 1.046 | 1.025 / 1.025 |
+
+**The saturation is gone.** `x_HII = 1.000 exactly`, the signature the item
+identified, becomes 0.914 and 0.924, within 0.003 and 0.004 of the
+coupling-off controls, and the front lands 0.023 and 0.056 R_p inside them --
+the size of the channel that is left once the escaped photons are removed. The
+diagnostic counter, which counted 150,000 and 303,000 cell-steps of runaway,
+is silent on both.
+
+**The He/H = 1 rung moves too, and it never fired the counter.** Its front goes
+from 1.586 to 1.758 R_p and its boundary `x_HII` from 0.950 to 0.901, a larger
+move than the He/H = 3 rung's. That is the point of the correction and not a
+surprise: the counter only sees a *runaway*, and the ordinary overestimate of a
+thin cell -- a factor of a few hundred in the outer wind, where `f_abs` is
+1e-3 -- never trips a threshold written at 1000 times the stellar rate. Item
+(P40) was one visible symptom of item (P33), not the whole of it.
+
+The molecular layer is untouched on all three rungs: the H2 front does not move
+at the fourth decimal, and `log10 Mdot` moves by at most 0.03 dex.
+
+### 125.4 Goldens
+
+`make check` is 9 of 9 against goldens refreshed at the end of this block. All
+nine move, and the two reasons are the two rows of the table in section 125.1:
+the atomic cases have no optically thick cell at all, so they move from the
+base outward, and the molecular cases are thick below 1.10 R_p (1.04 for
+`lower_profile`), so their molecular layer does not move and their wind does.
+**How far, measured against the goldens before the refresh:**
+
+| case | `log10 Mdot` golden -> new | molecular layer, T / n(H I) | wind above it, T / n(H I) |
+|---|---|---|---|
+| `wasp_full` | 13.2807 -> 13.2744 (-0.006) | no optically thick cell | 2.1% / 33% |
+| `wasp_he23off` | 13.2829 -> 13.2745 (-0.008) | no optically thick cell | 0.46% / 27% |
+| `mol_base_handoff` | 10.6110 -> 10.6001 (-0.011) | 5.2e-5 / 6.2e-5 | 12% / 19% |
+| `mol_metals` | 10.6226 -> 10.6127 (-0.010) | 6.4e-4 / 1.2e-2 | 13% / 21% |
+| `mol_lyman_werner` | 10.6153 -> 10.5971 (-0.018) | 3.5e-5 / 2.0e-5 | 13% / 23% |
+| `mol_diffusion` | 10.6110 -> 10.6001 (-0.011) | 5.2e-5 / 6.1e-5 | 12% / 19% |
+| `mol_ir_bands` | 10.6226 -> 10.6126 (-0.010) | 6.1e-5 / 6.6e-4 | 12% / 19% |
+| `mol_sec_ion` | 10.5728 -> 10.5607 (-0.012) | 3.4e-4 / 1.3e-4 | 9.5% / 16% |
+| `lower_profile` | 9.7334 -> 9.7204 (-0.013) | 1.2e-5 / 3.4e-5 | 65% / 74% |
+
+The "molecular layer" column is the largest relative change below the radius at
+which `f_abs` leaves 1.0 for that case (1.10 R_p for the six hot-Uranus cases,
+1.04 R_p for `lower_profile`), and the "wind" column is the largest above it.
+`log10 Mdot` is re-measured from the profiles, not the two-decimal run report.
+
+The molecular cases are 12000-step relaxation snapshots rather than converged
+solutions, so their outer cells are still in the cold-start transient and move
+more than a converged wind would. What is worth reading in them is the split:
+in `mol_base_handoff` the whole molecular layer below 1.10 R_p moves by at most
+`7.5e-4` relative in every quantity, against 11-35% above it, and in
+`mol_sec_ion` by at most `1.9e-3` against 9-51%. The one exception is the
+velocity of the base cells, which goes from -0.72 to -9.7 cm/s at 1.048 R_p in
+`mol_sec_ion` -- the base breathing this code has always had, five orders of
+magnitude below the 11 km/s wind and not a change in the solution.
+
+**Why the molecular layer moves at all.** The coupling term itself is bit for
+bit unchanged there, because `f_abs` is exactly 1.0. What reaches it is the
+star-ward column: the outer cells' neutral densities change, so the attenuated
+stellar field at the base changes. Measured on a one-step run of
+`mol_base_handoff`, the base cells differ by `1e-7` relative after the single
+`ioniz_eq` pass of step 0 -- and the ghost and the first physical cell, whose
+state the boundary condition pins, are identical.
+
+The previous goldens are kept at
+`backup/regression/golden_blockP40_20260902/`.
+
+`run_fcheck.sh` (bounds/do/mem checking build, one bounded HD 209458 b run):
+clean, no runtime check fired, `log10 Mdot = 9.60`. It was run after the
+9-of-9 `check`; it rebuilds from the same sources with the same flags and
+restores the production build, so the check was not repeated after it.
+
+## 126. The Newton direction at the hand-off state points uphill, and the solver had no direction that uses the gradient (2026-09-02)
+
+**Judgment first. The suspected cause was wrong and the real one is simple.
+The WENO3 smoothness weights are not what makes the JFNK hand-off fail on the
+He/H = 0.3 arm: the inner Newton model already freezes them, and freezing them
+in the line search too changes the merit at the rejected step by seven parts in
+ten thousand -- the step still ascends. What ascends is the Newton/PTC
+direction itself, at every damping including the `dtau -> 0` limit, because the
+scaled Jacobian is indefinite there (`s^T A s < 0`); and `solve_steady_jfnk`
+had only that one direction, so backtracking shortened an uphill step twenty
+times, the pseudo-time floor made the next iteration identical, and the solve
+counted to twelve and gave up. The merit gradient is not zero there --
+`||A^T s|| = 12.6` -- and the damped Gauss-Newton (Levenberg-Marquardt) step
+built from the transpose of the banded Jacobian, which is a descent direction
+for every damping by construction, cuts the merit in half in one step. With
+that escape the hand-off closes at `info = 0` where it used to abort. What it
+does NOT do is reproduce the state the restart trick reaches, and section 126.6
+says so with numbers: the two `info = 0` states differ by 24% in the L2 norm of
+(rho, v, p) and by 0.22 dex in the rate, and the code's convergence measure
+rates the worse one better. That is a defect of the measure, and it is left
+open, not papered over.**
+
+Opened as item (P41) of `TO_BE_DONE.md`, which is closed here except for the
+part promoted to a new item.
+
+### 126.1 The state, and how it is reached in ten seconds
+
+The hot Uranus of the Tier-2 gate at He/H = 0.3 with `He_diffusion: True` and
+`Secondary_ionization: Immediate`, restarted from its own archived output with
+`Load IC? True`. The failing hand-off is reproduced with no marching at all by
+the direct steady route,
+
+    EXHALE_PTC=1 EXHALE_PTC_JFNK=1 EXHALE_PTC_DTAU0=1.0 ./EXHALE.x
+
+which lands on `||R|| = 1.259e-2`, merit `||F/D||_2 = 5.140363464e-1`, worst
+cell `j = 304` at `r = 1.3412` in the mass row, and returns `info = 2` -- the
+in-run failure to every printed digit. Every measurement in section 126.2 is
+made at that point, on the first outer iteration.
+
+### 126.2 The direction report
+
+The merit is `f2 = ||F/D||_2` over the whole domain, the quantity the line
+search minimizes. `weno_mode = 0` recomputes the smoothness weights at the
+trial state (what the line search does); `weno_mode = 2` reuses the weights
+stored at `Y` (what the Jacobian probes and the Krylov products do). Entries
+are `(f2_trial - f2)/f2`, so **positive is uphill**.
+
+| direction | step | weights recomputed | weights frozen at Y |
+|---|---:|---:|---:|
+| Newton/PTC (GMRES, `dtau0 = 1`) | `lam = 1` | **+2.2249e-2** | **+2.2242e-2** |
+| | `lam = 0.5` | +9.1531e-3 | +9.1528e-3 |
+| | `lam = 0.1` | +1.5086e-3 | +1.5091e-3 |
+| | `lam = 1e-2` | +1.4355e-4 | +1.4361e-4 |
+| | `lam = 1e-4` | +1.4275e-6 | +1.4281e-6 |
+| | `lam = 1e-6` | +1.4274e-8 | +1.4280e-8 |
+| scaled steepest descent, Cauchy point | `lam = 1` | **-3.1886e-5** | -2.6393e-5 |
+| | `lam = 0.5` | -2.0839e-5 | -1.9783e-5 |
+| | `lam = 1e-2` | -5.1275e-7 | -5.2475e-7 |
+| | `lam = 1e-6` | -5.1471e-11 | -5.2735e-11 |
+| | `lam = 10` | +1.4369e-3 | |
+| | `lam = 100` | +1.7001e-1 | |
+
+Auxiliary numbers at the same point: `||A^T s|| = 1.2563e1` (the merit gradient
+in the scaled space, from the banded Jacobian), Cauchy step length
+`t = ||g||^2/||A g||^2 = 8.8215e-8`, `|dY_newton|/|Y| = 1.5322e-3`,
+`|dY_Cauchy|/|Y| = 4.1409e-8`.
+
+**Three things follow, and the first one kills the hypothesis this section was
+opened to test.**
+
+1. **The WENO weights are not involved.** The two columns agree to four
+   significant figures at every `lam`. The suspicion was that the nonlinear
+   weights make `F` non-smooth at the fixed point and that the
+   finite-difference directional derivatives cross the kink; they do not, and
+   in any case the inner model has frozen weights already (`weno_mode = 1`
+   stores them at `Y`, the Jacobian colors and the Krylov products reuse them
+   at `weno_mode = 2`; section 121 and `newton_scaling_and_base_wall.md`
+   section 10 record why the line search deliberately does not). Freezing the
+   line search too, the one part that was still free, moves the rejected step
+   by 7e-4 relative and leaves it uphill.
+
+2. **The Newton direction is uphill in the limit, not merely overshooting.**
+   The excess merit falls linearly with `lam` over six decades and never
+   changes sign, so the directional derivative is strictly positive.
+   Backtracking cannot fix a direction; it can only make an uphill step short.
+
+3. **A descent direction exists.** The scaled steepest-descent direction
+   `-A^T s` descends, its measured directional derivative (-2.65e-5 at
+   `lam = 1e-6`, per unit `lam`) matches the value `-t ||g||^2/||s||` the
+   banded Jacobian predicts to 2%, and the Cauchy point is close to the minimum
+   along that ray (`lam = 10` is already back uphill). The gradient is
+   therefore accurate and nonzero, and the solve simply never built anything
+   from it.
+
+### 126.3 Why the Newton/PTC direction can point uphill at all
+
+The solve minimizes `m(x) = 1/2 ||s||^2` with `s = F/D` and `Y = D x`; its
+gradient is `A^T s` with `A = D^-1 J D`. The step it takes solves
+`(I/dtau + A) dZ = -s`, which is an implicit Euler step of the pseudo-transient
+continuation and is not a minimizer of `m`. In the `dtau -> 0` limit that step
+is `dZ = -s`, whose directional derivative is `-s^T A s`; the heavily damped
+step at `dtau0 = 1.36e-4` (the CFL value) raises the merit, so `s^T A s < 0` at
+this state and even the shortest pseudo-time step climbs. Tightening the GMRES
+tolerance from 1e-1 to 1e-4 (`gm` 1 -> 4) gives a better-resolved solution of
+the same wrong problem and still climbs, to +1.771e-2. Nothing in the family
+`(I/dtau + A) dZ = -s`, over any `dtau`, is guaranteed to descend when `A` is
+indefinite.
+
+The damped Gauss-Newton (Levenberg-Marquardt) step is:
+
+    (A^T A + mu diag(A^T A)) dZ = -A^T s
+
+The matrix is symmetric positive definite for every `mu > 0`, so
+`grad(m)^T dZ = -g^T (.)^-1 g < 0` **for any damping** -- descent is a property
+of the family, not of a lucky parameter. `mu -> infinity` recovers the Cauchy
+direction and `mu -> 0` the Gauss-Newton step, so `mu` is the trust parameter,
+and choosing it is a one-dimensional search along a curve rather than along a
+ray. Measured on this state (relative merit change, weights recomputed):
+
+| `mu` | 1e2 | 1e1 | 1e0 | 1e-1 | 1e-2 | 1e-3 | **1e-4** | 1e-6 |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| `(f2-f2_0)/f2_0` | -4.69e-5 | -3.64e-4 | -1.88e-3 | -1.15e-2 | -7.65e-2 | -3.21e-1 | **-4.93e-1** | +4.25e-2 |
+| `\|dY\|/\|Y\|` | 2.7e-8 | 2.4e-7 | 1.3e-6 | 4.5e-6 | 1.5e-5 | 3.0e-5 | **7.5e-4** | 4.7e-3 |
+
+One step at `mu = 1e-4` takes the merit from 0.514 to 0.260. The curve falls
+monotonically to that point and rises again below it, which is what a trust
+parameter passing through its optimum looks like.
+
+### 126.4 What changed
+
+All of it in `src/modules/time_step/steady_newton.f90` except the last item.
+
+**(a) The transpose the solver never had.** `band_matvec_transpose` computes
+`J^T x` from the band-stored Jacobian, and `normal_equations_band` forms
+`J^T J` (half-bandwidth `2*kl_jac = 16`, LAPACK general-band layout, leading
+dimension `ldab_normal = 49`). Both act on the ALREADY SCALED band `ab` that
+the outer iteration builds, so what they return is `A^T s` and `A^T A` in the
+scaled space with no further bookkeeping. `levenberg_marquardt_step` adds
+`mu diag` and solves by one banded LU. The cost is one factorization of a
+16-wide band per `mu`, against 17 full residual evaluations for the Jacobian
+itself, so the escape is cheap next to the iteration that calls it.
+
+**(b) The escape.** `levenberg_marquardt_descent` sweeps `mu` down by decades
+from 1e2, measures every candidate with the TRUE residual (weights recomputed,
+exactly as the line search does), stops when the merit turns back up, and
+returns the best step. It is called from `solve_steady_jfnk` when the
+pseudo-time step is at its floor -- `dtau <= dtau0` -- and either the
+backtracking search rejected every step, or it accepted one that did not lower
+the true merit. The second case is the non-monotone window: the test compares a
+trial against the WORST of the last five iterates, so a sideways step passes it,
+and on this state 487 of 500 iterations were such acceptances before the escape
+covered them. The `dtau <= dtau0` guard is what makes the escape a repair
+rather than a change of algorithm: while the pseudo-time step is still above
+its floor, reducing it does change the next iteration, and the PTC ramp is left
+alone.
+
+**(c) The bit-identical repetitions are gone.** When the line search fails at
+`dtau = dtau0`, `dtau = max(dtau*0.25, dtau0)` returns `dtau0`, so the
+preconditioner, the Krylov direction and the search repeat exactly -- eleven
+times, before `n_no_descent_max = 12` fired. Now the escape is taken at the
+first such iteration, and if it too finds nothing the solve stops there and
+prints `||grad merit||`, which is the number that says whether the point is
+stationary or the model is wrong. That path was exercised during development,
+when a band-layout error made every LM solve fail: the solve aborted at
+iteration 1 reporting `||grad merit|| = 1.256e1` instead of repeating eleven
+identical iterations.
+
+**(d) The hand-off is no longer given up for the rest of the run.**
+`src/EXHALE_main.f90`: a failed hand-off records the step, holds the next
+attempt for `N_stall` steps of further marching, and disables the Newton finish
+only after `n_newton_attempt_max = 3` attempts. The failure is a property of
+the state the solver was handed, not of the run. No input key is added.
+
+### 126.5 What was measured
+
+Everything single-threaded where byte-identity is claimed, `OMP_NUM_THREADS=8`
+otherwise.
+
+**Which source each item was run on.** The archived hand-off states of items 1,
+2, 5 and 6 are fixed points of the source that produced them, which is this
+tree minus the two files section 125 changed (`util_ion_eq.f90`,
+`ionization_equilibrium.f90`); loaded into the current code they are no longer
+near-steady and the failure this section repairs cannot be posed. Those four
+items were therefore run on that snapshot plus this change, with the same
+before/after comparison on both sides. Items 3 and 4, which are the
+byte-identity claims, were run on the current tree, and `make check` on the
+tree passes 9 of 9 against the goldens refreshed for section 125.
+
+1. **The control that reproduced the failure now converges.** The He/H = 0.3
+   arm restarted single-stage (`Reconstruction scheme: WENO3`, no PLM step),
+   marching to the hand-off at step 105: before, `info = 2` at
+   `||R|| = 1.258e-2` after eleven bit-identical iterations at
+   `lam = 9.54e-7`; after, `info = 0` at `||R|| = 5.614e-4` in 38 outer
+   iterations, 36 of which took the escape, in 16 s.
+2. **The two rungs whose hand-off never engaged converge, and the escape is
+   not what does it.** The He/H = 3 and He/H = 30 marched states (250,000
+   steps, ended at `du = 3.9e-2` and 4.4e-2 with the hand-off never fired),
+   restarted single-stage: `info = 0` at `||R|| = 6.042e-4` and 3.157e-4,
+   `log10 Mdot` 10.35 and 10.40 against the ladder's 10.36 and 10.39. Before
+   and after are byte-identical and the escape never fires -- those rungs were
+   never blocked by an ascending direction, only by a `du` that stayed above
+   the switch.
+3. **The two atomic Newton cases are byte-identical.**
+   `wasp_full_newton` and `wasp_he23off_newton`, `OMP_NUM_THREADS=1`:
+   `Hydro_ioniz.txt` and `Ion_species.txt` identical to the same tree without
+   this change, `info = 0` at `||R|| = 5.536e-4` and 6.341e-4,
+   `log10 Mdot` 13.21 and 13.22, escape count 0.
+4. **The regression matrix of nine is byte-identical** to the goldens, and the
+   escape fires in none of them. **Note what that does and does not guard:**
+   `wasp_full` and `wasp_he23off` carry no `Solver:` key -- they stop on
+   `du < du_th` and never reach the JFNK at all -- and the seven molecular
+   cases are fixed-step relaxation snapshots that do not reach it either. The
+   Newton guards for this change are the two `*_newton` cases of item 3 and the
+   restarts of items 2 and 5.
+5. **The He/H = 1 reference is unmoved**: `log10 Mdot = 10.32`, output
+   byte-identical, escape count 0.
+6. **The retry of (d) works, and it is what shows the escape has not stalled.**
+   The same control run with `Resid tol: 1.0e-8`, a target it cannot meet,
+   makes three hand-offs 2000 marching steps apart and reaches
+   `||R|| = 2.324e-5`, 1.271e-5 and 7.697e-6 before the finish is given up,
+   against 1.258e-2 where the old code aborted. So the escape does not merely
+   move the iterate off the repeat: it goes on reducing the residual by three
+   further decades. What that does NOT buy is section 126.6.
+
+### 126.6 What is NOT repaired: two `info = 0` states the convergence measure cannot tell apart
+
+The other half of item (P41) was that the restarts of the ladder converge only
+because `in_plm_stage = (du_th_plm > du_th)` is evaluated without reference to
+`do_load_IC`, so every two-stage restart takes one PLM step before switching to
+WENO3, and that step is what unblocks the solve. Making the restart honest --
+letting a loaded state whose flux spread is already below `du_th_plm` continue
+in WENO3 -- was implemented, measured, and **held back**, because the
+measurement says the accident is doing something the escape does not.
+
+On the same arm, from the same wind:
+
+| | one PLM step (restart as it is today) | no PLM step, escape only | the same, driven to `||R|| = 7.7e-6` |
+|---|---:|---:|---:|
+| final `||R||` | 8.818e-4 | 5.614e-4 | 7.697e-6 |
+| `log10 Mdot` | **10.34** | **10.56** | 10.46 |
+| flux spread of `rho v r^2`, `r > 1.2 R_p` | **1.134e-2** | **1.132e-1** | **1.203e-1** |
+| flux spread, `r > 2 R_p` | 3.540e-3 | 2.521e-3 | 2.470e-3 |
+| `T` maximum [K] | 3650 | 3398 | 3492 |
+
+The state handed to the solver has a flux spread of 1.129 over `r > 1.2 R_p`
+and 2.0e-2 over `r > 2 R_p`: the marching flattened the escaping wind and left
+the region between 1.2 and 2 `R_p` an order of magnitude from steady. The
+PLM-kicked solve flattens that region by a factor 100; the escape flattens it
+by a factor 10 and stops, because it has reached the floor of the merit basin
+it started in and `||R||`, which is measured over `[j_min:N]`, i.e. `r > r_esc`
+only, is by then 5.6e-4 and the run is declared converged. The two solutions
+differ by 24% in the L2 norm of `(rho, v, p)` (20% for the third column), and
+the ladder's own value for this rung, 10.35, is the PLM-kicked one.
+
+**The third column is the decisive one.** Driving `||R||` down by a further
+factor 73, through three hand-offs, moves the inner flux spread not at all --
+it ends at 1.20e-1, no better than the 1.13e-1 the loose tolerance reached.
+`||R||` and the state of the wind between 1.2 and 2 `R_p` are simply not
+measuring the same thing, and no amount of the former fixes the latter.
+
+**So the convergence measure is the next defect, not the restart rule.** A
+descent method cannot leave a merit basin, and the PLM step is a perturbation
+that leaves it; removing the perturbation before `||R||` can see the region it
+repairs would silently replace the ladder's rates with the rates of a state
+that is not a steady wind between 1.2 and 2 `R_p`. The restart rule is
+therefore left as it is and the pair is recorded as a new open item.
+
+## 127. The convergence measure now covers the whole column: what the wind does below the escape radius is part of ||R|| (2026-09-02)
+
+**Judgment first. The measure was wrong, and it was wrong in the one way that
+matters for a steady wind: it did not look at most of the wind. `||R||` was a
+relative residual over `[j_min:N]` alone, i.e. over `r > r_esc`, so the column
+between the base and the escape radius -- for the hot Uranus of the ladder,
+everything below 2 `R_p`, which is 391 of 500 cells and where the molecular
+layer, the H2 front and the transonic acceleration all live -- was controlled
+by nothing. A steady state is steady in every physical cell or it is not a
+steady state; measuring it in a fifth of them is not a tolerance choice, it is
+the wrong quantity. `||R||` is now the larger of two relative residuals, one
+over the wind and one over the layer below the escape radius, each taken on the
+scale that region's own physics sets. The two solves of section 126.6 that the
+old measure could not tell apart are now separated by a factor 5.7 in `||R||`,
+in the right direction: re-scored on the same converged states, the one with a
+flux spread of 7.6e-2 above 1.2 `R_p` goes from 4.93e-4 to 4.00e-3, while the
+one with a spread of 3.0e-3 stays at 6.97e-4. The nine-case matrix is
+byte-identical, `run_fcheck.sh` is clean, and both WASP-121b Newton cases still
+converge -- one of them from a state whose layer the old measure had left at
+12% of `rho g` while reporting `||R|| = 6.9e-4`.**
+
+This closes item (P42).
+
+### 127.1 Where the window came from: it was inherited, not chosen
+
+`j_min` is upstream ATES's: `define_grid.f90` sets it to the first cell with
+`r >= r_esc`, and `ATES/ATES-Code-main/ATES_main.f90` lines 286-298 use
+`mom(j_min:N)` for the marching `du` and `dtu` monitors, because `r_esc` is
+where ATES expects `rho v r^2` to have become constant. The steady residual
+inherited that range on the day it was written: `git show
+10c248a:src/modules/time_step/steady_residual.f90` (2026-06-11, the commit that
+introduced it) already reads
+
+    ! Per-component max relative residual rate over the wind [j_min:N]
+
+and `resid_relnorm` in `steady_newton.f90` says in its own header that it uses
+"the same definition the marching monitor uses". So the window is not a repair
+of anything; it is the marching monitor's range, adopted without the question
+being asked.
+
+**It was asked once, on 2026-08-15, and answered on a scale that has since been
+replaced.** Section 61 measured the layer's residual on `|u|` for all three
+rows, found converged states reading 0.2 to 10 there, and concluded that
+"widening the window on this norm would report `info = 2` for every
+configuration that converges today". That conclusion was correct for that norm
+and is void for this one: section 62.3, the same series, replaced the momentum
+row's `|rho v|` -- which collapses in a layer moving at 10 cm/s -- by the
+gravitational force density, and re-measured the same converged states at 1e-5
+to 1.4e-4 of `rho g`. The obstacle was removed and the criterion was never
+revisited.
+
+**What was NOT the reason: a base null mode.** The 2026-08-11 and 2026-08-13
+experiments recorded in `solve_steady_jfnk` went the other way -- they narrowed
+the line-search MERIT to `[j_min:N]` and broke two solves that converge with
+the whole-domain merit. The merit has covered every physical cell `1..N` since
+it was written; it was never windowed in space, and nothing in it was a
+work-around for the base. The counter printed as `window-only accepts` was
+about the Grippo non-monotone window in TIME -- acceptances that beat the worst
+merit of the last five iterates without beating the current one -- and had
+nothing to do with a spatial range. It is now printed as `non-monotone
+accepts`, so the name cannot be read as the other thing.
+
+### 127.2 The change
+
+**(a) One definition of the row scale.** `residual_row_scale(k, j, u)` in
+`src/modules/time_step/steady_residual.f90` is now the only place in the code
+that says how a residual row is made dimensionless:
+
+* mass and energy rows, everywhere: `|u(k,j)|`. Both are positive definite and
+  collapse nowhere, so `|R|/|u|` is that cell's fractional drift rate, in
+  `1/t_s`.
+* momentum row at `r >= r_esc`: `|u(2,j)| = |rho v|`, the momentum density the
+  row transports.
+* momentum row at `r < r_esc`: `|u(1,j)| |Gphi_i(j) - Gphi_i(j-1)| / dr_j(j)`,
+  the gravitational force density discretized exactly as the momentum source
+  term is (`Source.f90` line 33). The layer is quasi-hydrostatic, so this is
+  the balance the row expresses there and the ratio is the fractional violation
+  of hydrostatic balance.
+
+This is the expression section 62.3 introduced for the below-escape print. It
+is not a new scale; it moved from a print-only routine into the measure, and
+`resid_relnorm_below_escape` now reads it from the same place instead of
+carrying its own copy.
+
+**(b) One norm, evaluated on two regions.** `relnorm_over_cells(Res, u, ja, jb,
+volume_weighted, rc)` computes the relative residual of each row over a cell
+range, volume-weighted (`V = r^2 dr`, the default) or as a ratio of maxima.
+`residual_norms`, `residual_norms_vol` (both in `steady_residual.f90`) and
+`resid_relnorm` (the steady solver's convergence measure, `steady_newton.f90`)
+each call it twice -- once on `[j_min:N]`, once on `[1:j_min-1]` -- and return
+the componentwise **maximum** of the two.
+
+**Why the maximum and not a sum.** The two regions' rows are made dimensionless
+by different physics, so their numbers are not addends of one quantity. Each is
+already a dimensionless statement whose target is "small", and the maximum says
+that every part of the column is steady on the scale its own physics sets. A
+volume- or cell-count-weighted sum would not: on the ladder grid the region
+above 2 `R_p` carries most of `sum r^2 dr`, which is exactly how a wind an
+order of magnitude from steady between 1.2 and 2 `R_p` came to be scored better
+than one that was not.
+
+**One number to read with care.** The criterion is stated on the
+volume-weighted form, which is the default (`resid_vol`) and the one the JFNK
+tests. The legacy L-inf form -- a ratio of maxima -- is selected by its own
+key, `Resid norm: Linf` (`Resid norm: vol` is the default); it is NOT a fourth
+word of `Resid tol:`, whose parser reads only the number and silently drops
+anything after it. Over the layer the L-inf form inherits the 1/dr bias its own
+header already warns about: the smallest cells sit at the base, so on the hot
+Uranus of the ladder a converged state reads 1.3e-2 on it against 7.0e-4
+volume-weighted. **How much that costs is planet-dependent**, because it
+depends on whether the L-inf maximum falls in the layer or in the wind: on
+WASP-121b the layer carries it and the two forms differ by about a factor 20
+(4.66e-1 L-inf against 2.30e-2 volume-weighted on the `wasp_full_newton`
+state), while on HD 189733 b the wind carries it and the L-inf number is the
+SMALLER of the two (7.50e-3 against 2.63e-2 on the `jfnk_hd189` state, both
+re-read in PLM, the scheme that state was converged in). Neither ratio is a
+property of the state; both are properties of the L-inf norm on that grid, and
+they are why the volume-weighted form is the default.
+
+**(c) Everything else is comments and one diagnostic.** The
+`EXHALE_NEWTON_TEST=1` self-test compared `max|F|/max|u|` over `[j_min:N]`
+against the `EXHALE_RESIDUAL=1` numbers by open-coding the old formula; it now
+packs `F` into the residual array and calls `residual_norms`, so the two sides
+of the self-test cannot drift apart again. The stale comments in
+`solve_steady_jfnk` that explained the merit/`rnorm` region mismatch are
+rewritten: the two now cover the same cells and remain different functionals
+(a 2-norm of `F/D` with `D` the cell's own signal scale, against a maximum of
+volume-weighted ratios on the physical scales), which is still why the iterate
+with the smallest `||R||` need not be the last one.
+
+**What is deliberately NOT changed.** The marching `du` is still the flux
+spread of `rho v r^2` over `[j_min:N]`. It is ATES's and CETIMB's flux-based
+stop, its threshold is calibrated against that range, and every golden case
+stops on it; moving it is a separate change with its own rebaseline. The
+consequence is recorded here: a run that stops on `du` alone still says nothing
+about the column below `r_esc`, and only the Newton finish does.
+
+### 127.3 The two states of section 126.6, re-scored
+
+Both states re-read with `EXHALE_RESIDUAL=1` (volume-weighted, the default),
+same binary for the row, so the only difference is the measure:
+
+| state (He/H = 0.3 arm) | flux spread, `r > 1.2 R_p` | old `||R||` | new `||R||` |
+|---|---:|---:|---:|
+| two-stage restart (one PLM step) | 3.02e-3 | 6.97e-4 | 6.97e-4 |
+| single-stage restart (no PLM step) | 7.59e-2 | **4.93e-4** | **4.00e-3** |
+
+The old measure rated the second state the better of the two while its inner
+wind was 25 times less flat. The new measure rates it 5.7 times worse, and the
+row that carries it is the layer's energy row. On the state that is flat inside,
+the wind row is the larger half and the number does not move at all.
+
+### 127.4 What the two paths do under the new measure
+
+The hand-off state of section 126.6, restarted the two ways, on the current
+tree before and after this change (`OMP_NUM_THREADS=8`). The `before` column is
+not identical to section 126.6's, because that measurement was made before
+sections 125 and the `q_H2_base` ghost-composition change and the archived
+state is no longer the same fixed point; the defect reproduces at 0.16 dex
+instead of 0.22.
+
+| | two-stage, before | two-stage, after | single-stage, before | single-stage, after |
+|---|---:|---:|---:|---:|
+| `info` of the finish | 0 | **0** | 0 | **1, three attempts** |
+| final `||R||` | 4.540e-4 | 5.642e-4 | 4.927e-4 | 1.601e-3 (best) |
+| `log10 Mdot` | 10.31 | **10.27** | 10.47 | 10.43 (marched stop) |
+| flux spread, `r > 1.2 R_p` | 3.02e-3 | **2.456e-3** | 7.59e-2 | 5.115e-3 |
+| flux spread, `r > 2 R_p` | 2.76e-3 | 2.455e-3 | 2.53e-3 | 2.510e-3 |
+| `T` maximum [K] | 3641 | 3707 | 3439 | 3475 |
+
+**The measure now does its job, and it exposes a second thing that it is not.**
+The two-stage path converges and its solution is flat over the whole column --
+the spread above 1.2 `R_p` equals the spread above 2 `R_p` to three digits,
+which is what a steady wind looks like. The single-stage path no longer
+converges: all three Newton attempts return `info = 1` (2.076e-3, 1.677e-3,
+1.601e-3 against a target of 1e-3), the run falls back to the `du` stop, and it
+reports a marched state at 10.43. That is the honest outcome -- the state is
+not steady and the code now says so instead of reporting `info = 0` on it --
+but it is not convergence, and the two paths still do not meet: they differ by
+33% in the `L2` norm of `(rho, v, p)`, against 22% before.
+
+**What blocks the single-stage solve is measured, and it is not the base.** The
+term the merit is dominated by -- the largest `|F/D|` over the whole column,
+which `solve_steady_jfnk` prints on every outer iteration -- is the **energy
+row** in 493 of the 500 iterations of the third attempt, and it sits at
+**`j = 198` or 199, `r = 1.090`** in 485 of them; the base cell `j = 1` holds it
+7 times. Driving the same state directly with `EXHALE_PTC=1 EXHALE_PTC_JFNK=1`
+and 3000 iterations instead of 500 does not change the answer: `||R||` falls
+4.00e-3 (start) -> 2.27e-3 (201) -> 1.89e-3 (601) -> 1.74e-3 (1001) -> 1.62e-3
+(1601) and ends at `info = 1`, 1.437e-3, after 3000 iterations of which 2994
+were non-monotone acceptances -- each damped Gauss-Newton step buying about one
+part in ten thousand of the merit, and the worst cell walks slowly down from `r = 1.134` to `r = 1.066`
+-- i.e. onto the H2 front of this arm, which sits at 1.0681 `R_p`. It is a slow mode of the energy equation at the molecular
+front, not a null mode of the base contact or of the ghost temperature, and it
+is asymptotic rather than budget-limited: no practical iteration count reaches
+1e-3 from there. Repairing it is solver work in the line of item (P41), and the
+measure is not what stands in its way.
+
+The restart rule of (P41)(c) -- letting a loaded state whose flux spread is
+already below `du_th_plm` continue in WENO3 instead of silently taking one PLM
+step -- is still not applied. The reason for holding it back has changed: it is
+no longer that nothing would notice, because the measure now does; it is that
+the path it would take is the one that does not converge.
+
+### 127.5 The atomic Newton cases: the rate does not move, the layer moves by orders
+
+`wasp_full_newton` and `wasp_he23off_newton`, `OMP_NUM_THREADS=1`, before and
+after. The three layer numbers are the volume-weighted mass, momentum/`rho g`
+and energy rows of `[1:473]` at the end of the solve.
+
+| | `wasp_full_newton` before | after | `wasp_he23off_newton` before | after |
+|---|---:|---:|---:|---:|
+| `info` | 0 | 0 | 0 | 0 |
+| final `||R||` | 9.847e-4 | 8.006e-4 | 6.861e-4 | 4.763e-4 |
+| layer mass row | 1.51e-3 | **1.65e-6** | 9.70e-2 | **4.37e-5** |
+| layer momentum / `rho g` | 8.32e-5 | **1.51e-7** | 6.33e-3 | **6.78e-6** |
+| layer energy row | 4.38e-3 | **8.01e-4** | 1.23e-1 | **4.76e-4** |
+| `log10 Mdot` | 13.21 | 13.21 | 13.22 | 13.22 |
+| `L2` change of `(rho,v,p)` | -- | 1.0e-4 | -- | 1.05e-2 |
+| largest local change | -- | 1.2% in `v` at `r = 1.0002` | -- | 46% in `v` at `r = 1.0002`, 3.1% in `rho` at 1.0008 |
+
+`wasp_he23off_newton` is the case that shows what the old criterion was
+accepting: it returned `info = 0` at `||R|| = 6.9e-4` on a state whose
+below-escape layer was **12% out of energy balance and 0.6% out of hydrostatic
+balance**, because the measure was not looking. With the layer in the measure
+the same case converges to 4.8e-4 with the layer three orders lower, the
+mass-loss rate is unchanged to the printed digit, and what moves is the base:
+half the base velocity, 3% of the base density, 3.4% of the base temperature.
+Both cases converge with the layer inside the measure; neither oscillates, and
+the layer's rows fall monotonically from the 1.1-1.3 they start at.
+
+### 127.6 The ladder, re-measured on the new criterion
+
+Three rungs of the section 124 ladder, restarted from their own marched states
+the way section 124.1 prescribes, before and after, `OMP_NUM_THREADS=8`. All
+six solves return `info = 0`.
+
+| He/H | 0.0793 | 1 | 30 |
+|---|---:|---:|---:|
+| `log10 Mdot`, section 124 (earlier source) | 10.42 | 10.32 | 10.39 |
+| `log10 Mdot`, current tree, old measure | 10.33 | 10.29 | 10.37 |
+| **`log10 Mdot`, current tree, new measure** | **10.28** | **10.29** | **10.37** |
+| final `||R||`, old measure | 8.557e-4 | 2.156e-4 | 3.890e-4 |
+| final `||R||`, new measure | 8.925e-4 | 7.579e-4 | 5.362e-4 |
+| flux spread `r > 1.2 R_p`, old | 9.267e-3 | 2.579e-3 | 1.192e-2 |
+| **flux spread `r > 1.2 R_p`, new** | **2.386e-3** | **2.588e-3** | **2.858e-3** |
+| flux spread `r > 2 R_p`, new | 2.386e-3 | 2.588e-3 | 2.812e-3 |
+| `L2` change of `(rho,v,p)` | 27% | 14% | 4.4% |
+
+**The signature of the repair is the last two rows.** Under the new criterion
+the spread below 2 `R_p` equals the spread above it on every rung: the column
+is flat everywhere to the same 2.4-2.9e-3, where before the inner region was 4
+to 5 times worse than the outer one on two of the three rungs. The rate moves
+by at most 0.05 dex and the structure below `r_esc` moves by 4 to 27% in `L2`,
+which is the part of the solution the old criterion did not determine. The
+section 124 rates were obtained under the old measure AND on an earlier source;
+the current-tree numbers in the last of the three rate rows are the ones to
+quote.
+
+### 127.7 What was checked
+
+* `make check`, nine cases, `OMP_NUM_THREADS=1`: **9/9 byte-identical**.
+  `wasp_full` and `wasp_he23off` carry no `Solver:` key and stop on `du`, and
+  the seven molecular/profile cases are fixed-step snapshots, so none of them
+  enters the JFNK -- which is the point: the change touches the steady solver's
+  acceptance and nothing on the marching path.
+* `backup/regression/run_fcheck.sh`: `-fcheck=bounds,do,mem` rebuild and the
+  bounded HD 209458 b case, **CLEAN**.
+* The two `*_newton` cases, the three ladder rungs and the two restarts of
+  section 127.4 above, all measured.
+* NOT checked: the cases that set `Resid tol:` (`jfnk_*`, `ptc_*`, `tpm_*`,
+  `resid_on` in `backup/regression/`) are not in the nine-case matrix and were
+  not re-run. `residual_norms`/`residual_norms_vol` now measure the whole
+  column, so the marching `Resid tol` gate and the `[diag] ||R||(ref)` line are
+  stricter for those cases in exactly the way described here.
+
+Files: `src/modules/time_step/steady_residual.f90`,
+`src/modules/time_step/steady_newton.f90`, `src/EXHALE_main.f90`.
+Documentation: `TO_BE_DONE.md` item (P42),
+`docs/supersonic_molecular_base.md` section 13.2.
+
+## 128. The molecular carriers are transported without the oxygen chemistry, and H2 is the only one that needs to be (2026-09-02)
+
+**Judgment: EXHALE solved H2 in local chemical equilibrium, and section 13.6 of
+`docs/supersonic_molecular_base.md` measured that closure to be violated on its
+own solution -- across the H2 front of the converged He/H = 0.0793 hot Uranus
+the omitted advection term is 44 to 117 times the whole net chemical rate. The
+transport operator that closes that gap existed, but only ran with the oxygen
+chemistry on, which the case does not have. It now runs on the molecular
+network alone, with H2 as its one carrier. It is DEFAULT OFF for a
+molecular-only run: the transported problem has a front that is still
+propagating when the steady solver is handed it, so whether a steady
+transported solution exists on that planet is not yet answered, and the default
+does not change until it is.**
+
+Both comparison papers carry the term. Koskinen et al. (2022) Appendix B
+equation (B1) is a continuity equation for each species, with an advection
+and a diffusion velocity, and they attribute their H2-at-all-altitudes to it:
+"outflow brings fresh H2 up from deeper layers of the atmosphere and primarily
+balances the total loss rate". Frelikh & Murray-Clay (2026) plot "advection of
+H2" as a term of their Figure 7. Neither balances H2 chemically; we did,
+because that was all the closure could do.
+
+### 128.1 H2 is the only carrier that needs transporting, and that is measured
+
+The transported set is a property of the run, so the question "which species"
+has to be answered with numbers rather than with a convention. Evaluated on the
+converged He/H = 0.0793 state, against the flow time `r/|v|`:
+
+| r [R_p] | tau(H2+) [s] | tau(H3+) [s] | tau(HeH+) [s] | r/v [s] | tau(H3+)/(r/v) | 3n(H3+)/n_H |
+|---|---:|---:|---:|---:|---:|---:|
+| 1.02 | 2.1e-5 | 9.1e+1 | 2.7e-5 | 7.5e+8 | 1.2e-7 | 1.9e-8 |
+| 1.10 | 9.1e-4 | 7.9e-1 | 9.1e-4 | 1.2e+8 | 6.9e-9 | 2.5e-9 |
+| 1.15 | 6.1e-3 | 2.8e-1 | 4.4e-3 | 1.1e+7 | 2.7e-8 | 1.7e-10 |
+| 1.25 | 1.3e-1 | 4.8e-1 | 1.2e-1 | 4.0e+5 | 1.2e-6 | 5.1e-12 |
+| 2.00 | 1.1e+0 | 1.3e+0 | 4.8e+0 | 2.5e+4 | 5.1e-5 | 3.7e-13 |
+
+The three molecular ions are local by four to seven decades everywhere in the
+domain, and they hold at most 2e-8 of the H nuclei. H2's own ratio, from the
+section 13.6 table, is 0.02 to 1.3 over the same radii. So the carrier is H2,
+and the molecular ions stay local -- which is the same statement the module
+header already made for HD 209458 b, now measured on the planet the gate is
+about.
+
+`n_carrier` is therefore a run-time count (1, or 4 with the oxygen cycle) set
+once by `carrier_set_init`, with `n_carrier_max` dimensioning the arrays. The
+oxygen path is unchanged and byte-identical.
+
+### 128.2 The key was named for the wrong thing
+
+`Oxygen transport` switched an operator whose first carrier is H2 and which
+runs with or without the oxygen cycle. It is **renamed
+`Molecular carrier transport: True|False`**, and the old key is **refused at
+startup with a message**, not silently aliased: a stored input file that says
+`Oxygen transport` describes a switch that no longer exists, and reading it as
+if it did would hide that. No `input.inp` in the repository carried the key and
+no regression case sets it, so nothing stored breaks.
+
+The default is not a constant. Left unstated it is `thereis_oxychem`: the
+oxygen cycle exists to compute a base partition a local steady state cannot
+produce, so it turns the transport on, exactly as before; a molecular run
+without it keeps the closure it has always had.
+
+### 128.3 The base face of an inflowing carrier
+
+Design decision D6 gave the carrier partition a zero-flux base, on the argument
+that the split of an element among its carriers is what the oxygen option
+exists to compute and imposing it would make that option's own gate circular.
+That argument holds exactly when nothing upstream states the partition. When a
+handoff does -- `base.inp`'s `q_H2_base`, or a profile at the matching level --
+the partition is incoming data, and section 117 already pins it on the ghosts
+of the ionization sweep; leaving the base cell free while the ghost below it is
+pinned puts the defect section 117 removed one cell higher up.
+
+So where the handoff speaks and the base face is an INFLOW, the advective term
+at that face carries the ghost's composition. Only the advective term: face 0
+still carries no diffusive flux, because the handoff supplies the composition
+of the gas that flows in, not a mixing rate across a boundary whose gradient is
+set by the ghost spacing and by a `K_zz` that describes an unresolved region.
+The two branches cannot both apply -- decision D7 refuses `q_H2_base` while the
+oxygen chemistry is on.
+
+Measured on `mol_base_handoff` (HD 209458 b, 12000-step snapshot, `v` = +97.7
+cm/s at the base, `q_H2_base = 0.75`):
+
+| | x2 at the ghost | x2 at base cell 1 | jump | `f(H2) = 0.5` at | log10 Mdot |
+|---|---:|---:|---:|---:|---:|
+| transport off | 0.925114 | 0.999674 | 0.0746 | 1.15467 | 10.56 |
+| on, D6 zero flux | 0.925114 | 0.999052 | 0.0739 | 1.15862 | 10.55 |
+| **on, handoff Dirichlet** | 0.925114 | **0.939813** | **0.0147** | 1.15813 | 10.57 |
+
+**It closes 80% of the jump and it does not pin the cell, and it cannot.** This
+is a condition on the FACE, not on the cell: the remaining 0.0147 is the cell's
+own chemistry rebuilding H2 faster than the inflow sweeps it out. Pinning cell
+1 itself would take a physical cell out of the solution. Both numbers are
+reported by every run, so the size of the remaining jump is visible rather than
+assumed.
+
+**Whether the base face is an inflow is decided by the MASS FLUX THE WIND
+CARRIES, not by the base cell's velocity, and that distinction was forced by a
+measurement.** On the converged hot Uranus the base cell's `v` is -250 cm/s and
+its cell-centred `rho v r^2` is 196 times the wind's flux inward -- while the
+face flux the scheme actually transports there, reconstructed by integrating
+its own steady mass residual down from the smooth wind, is **+0.36 to +0.98
+times the wind flux, outward**, in every converged configuration measured
+(`docs/p44_base_sawtooth.md`). The cell-centred velocity at that base is a
+collocated odd-even mode, not infall: `rho`, `p` and `T` are monotone through
+the same cells, the layer carries 288 cells per scale height, and no
+dissipative remedy tried -- Shapiro filter, Low-Mach damping, `Base velocity:
+massflux`, a continuous ghost temperature -- changes `v(1)` by more than
+3 cm/s. A condition gated on `sign(ntv(1))` reads the mode; one gated on the
+wind's flux reads the state. The ghost velocity is not usable either: the
++0.94 cm/s it carries in the converged state is exactly the softplus floor of
+the smooth valve.
+
+So `carrier_base_state` computes `sum(rho v r^2)` over `[j_min:N]` -- the same
+constant and the same average `Base velocity: massflux` uses for the ghost
+velocity, seeded in `init.f90` and updated each step in `EXHALE_main.f90` -- and
+its sign decides both the composition condition and the advective direction of
+cell 1. In a steady spherical wind that flux is one number at every face, so
+using it at the base face states the steady state rather than approximating it.
+The interior keeps the cell-velocity upwind, for the reason its own header
+gives (the element operator's frozen helium hole); only cell 1 is decided on
+the face, and only because the measurement says the cell velocity there is not
+a flux.
+
+**What that changes, measured.**
+
+| 20000 marching steps, He/H = 0.0793 hot Uranus | x2 ghost | x2 base cell 1 | jump | `f(H2)=0.5` | `1e-4` |
+|---|---:|---:|---:|---:|---:|
+| transport off | 0.925114 | 0.998668 | 0.0736 | 1.1008 | 1.2698 |
+| on, condition on `sign(ntv(1))` | 0.925114 | 0.998518 | 0.0734 | 1.1016 | 1.3072 |
+| **on, condition on the wind flux** | 0.925114 | **0.957446** | **0.0323** | 1.1017 | 1.3073 |
+
+The condition now fires on this planet, where the cell-centred test left it
+permanently off, and it closes 56% of the composition jump. It does not move
+the front (1.1016 -> 1.1017), which is the right outcome: this is a boundary
+condition on the partition, not on the wind.
+
+On `mol_base_handoff`, where the cell-centred velocity happens to agree in
+sign, the arm is nearly unchanged and slightly better -- the jump goes from
+0.0147 to 0.0090 and the front by 3e-5 R_p -- because the cell-centred test
+also flipped transiently during the run and the flux test does not.
+
+**On the oxygen option it is not a no-op, and that is the point.** With the
+transport on and no handoff, cell 1's advective term used to be taken from cell
+2 whenever `ntv(1) < 0`, and on `examples/18_oxygen_chemistry` `ntv(1)` is 1.5e6
+times the wind flux inward -- the same mode, worse. With the direction taken
+from the face the base cell's H2 partition moves from 0.2593 to 0.3411 of the H
+nuclei (+32%), base H2O by +120%, and `log10 Mdot` by +0.02 dex over a
+2000-step snapshot. The base partition is what A2 exists to compute, so the
+correction lands on its own subject. Both states are 2000-step snapshots from a
+cold start, so this is a direction and an order of magnitude, not a result.
+
+The base cell's own velocity, and what it is, are `TO_BE_DONE.md` item (V).
+
+### 128.4 A defect the transported problem found: two definitions of the same budget
+
+`carrier_source` closed atomic H by sharing the element with the frozen ion
+stages,
+
+    n_HI = nH_free - n_HII - 2 n_H2+ - 3 n_H3+ - (what the carriers hold),
+
+while `limit_to_element_budget` let the carriers take the whole of `nH_free`.
+The two disagreed by exactly the H sitting in the frozen ions, and that gap is
+what the transported hot Uranus walked into: 80 of 500 cells between 1.032 and
+1.156 R_p reached `2 n(H2)/n_H = 1`, the write-back's remainder for H I, H II,
+H2+ and H3+ went to zero, `n_e` collapsed to 3.7 cm^-3, and the next ionization
+sweep stopped with "persistent non-root chemical equilibrium" at r = 1.112.
+
+The two sites now call one function, `hydrogen_available_to_carriers`. The
+comment that permitted the looser bound has been corrected where it stood: "the
+next sweep re-solves the stages" is true of the sweep and false of the step in
+between, because this step's write-back does not re-solve H I, H II, H2+ and
+H3+ -- it rescales them in proportion to what they already held.
+
+**Measured effect on the oxygen option: none, and the reason is measured too.**
+On `examples/18_oxygen_chemistry` (2000 steps) all twelve output files are
+byte-identical, because the carriers there reach only 0.358 of the hydrogen
+available to them and no cell has `n(H3+) = 0`. The fix bites only where the
+transported H2 approaches the whole hydrogen budget, which on that planet it
+does not. On the hot Uranus it removes the electron collapse (`n_e` 3.7 ->
+1.8e4 cm^-3) and cuts the saturated cells from 80 to 54.
+
+### 128.5 A scale for the carrier row, beside the others
+
+The steady solver never sees the carrier equation: it holds the partition fixed
+and solves the wind, and an outer Picard iteration relaxes the carriers at that
+wind. Their common fixed point is a steady state of both, but only the
+hydrodynamic half of it is in `||R||`. `carrier_steady_residual` reports the
+other half -- the same residual the transport step assembles, with the time
+term switched off -- and it is made dimensionless by `carrier_row_scale`, which
+lives beside `residual_row_scale` in `steady_residual.f90` so that every row
+scale in the code has one definition site.
+
+The scale is `n_H (|v| + c_s)/dr`, the flux divergence a cell would carry if its
+whole hydrogen inventory moved at its own fastest signal speed. The unknown
+`n(H2)` cannot be its own scale for the same reason `|rho v|` cannot be the
+momentum row's in the quasi-hydrostatic layer: it falls four decades across the
+front, and `|R|/n(H2)` would then be large wherever the carrier is scarce
+whether or not the state is right.
+
+### 128.6 What the steady route does with it, and why the default is off
+
+On the converged He/H = 0.0793 state with the transport on, the outer loop
+does not converge, and the measurements say why.
+
+* **The wind solve is not the blocker.** The first JFNK converges, `info = 0`,
+  `||R|| = 8.7e-4` -- the same grade as with the transport off.
+* **The relaxation then moves the composition by order unity, at the front.**
+  Outer drift 0.536, worst at cell 247, r = 1.168; carrier steady residual
+  1.06e-2 at r = 1.129. That is not a numerical artefact: it is the size of the
+  correction the closure was missing.
+* **Bounding the pass does not bound the move.** Capping how far one pass may
+  advance the carriers at 1.0 and at 0.1 of a cell flow time gave drifts of
+  0.536 and 0.533. At the front, one tenth of a flow time is about sixty cell
+  crossings; the front is advected, and advection is not slow on any scale such
+  a bound can be written in. The bound was therefore NOT kept -- a bound that
+  controls nothing reads as a control to the next person.
+* **The front propagates outward at the gas speed, pass after pass.**
+
+  | outer pass | `f(H2)=0.5` | `1e-2` | `1e-4` | `n(H3+)>1` to | cells with `n(H3+)=0` | x2 at 1.5 R_p |
+  |---|---:|---:|---:|---:|---:|---:|
+  | 1 | 1.1664 | 1.2257 | 1.2921 | 1.2211 | 52 | 2.44e-5 |
+  | 2 | 1.2482 | 1.3122 | 1.4051 | 1.3053 | 33 | 1.89e-5 |
+
+  0.082 R_p per pass of 0.1 flow times is about 2050 cm/s against a gas speed
+  of 3000 cm/s there. The far wind (1.5, 2.0 R_p) does not move, and the
+  saturated cell count FALLS as the front leaves them. This is a front filling
+  a region, not a runaway.
+* **A real feedback reinforces it, and the frozen background is the
+  conservative side of it.** Within one relaxation pass He+, `n_e`, `T` and the
+  photoionization rates are frozen -- `relax_photochemical_composition` never
+  calls `ioniz_eq` and `carrier_write_back` never writes a helium index -- so
+  the pass advances the front using the OLD, larger He+. Between passes the
+  sweep re-solves it, and where H2 has arrived it collapses:
+
+  | r [R_p] | n(He II) entry | after pass 1 | after pass 2 |
+  |---|---:|---:|---:|
+  | 1.100 | 1.23e+3 | 9.56e+4 | 1.05e+4 |
+  | 1.150 | 1.77e+6 | 2.25e+6 | **1.85e+4** |
+  | 1.200 | 1.07e+7 | 8.35e+6 | **1.99e+5** |
+  | 1.250 | 1.32e+7 | 1.11e+7 | 2.85e+6 |
+
+  A factor 50 to 100 at 1.15-1.20 R_p, where section 13.6 measured He+ + H2 to
+  be 95% of the whole net H2 loss. So the sink that would stop the front is
+  removed by the front itself. Whether that makes two steady states or one slow
+  approach is NOT settled here: the front had not stopped after two passes.
+* **The blocking mode is the front's energy row, and it moves with the front.**
+  Over all JFNK iterations after the first relaxation the worst row is the
+  energy row in 674 to 765 of about 1030, at r = 1.113-1.137 when the front is
+  at 1.15-1.28 and at 1.162-1.195 when the front is at 1.17-1.25. With the
+  transport off that mode is not the worst cell at all -- the base is, row k=2,
+  r = 1.000 -- and the solve converges. This is the slow mode of section 127.6,
+  enlarged by the transport and no longer at a fixed radius.
+* **Marching does not fail.** 20000 marching steps with the transport on, from
+  the same state, run clean (no `ERROR STOP`) and move the front outward
+  monotonically: `f(H2) = 1e-4` from 1.2698 to 1.3072 R_p, `n(H3+) > 1` from
+  1.1810 to 1.1976 R_p, `log10 Mdot` 10.40 either way. What fails is asking a
+  steady-state routine to follow a propagating front.
+
+**Hence the default.** `Molecular carrier transport` stays off for a
+molecular-only run until a marching run long enough to stop the front says
+where it stops, and a steady solve started from that state returns `info = 0`.
+Nothing above is a converged solution and nothing above is quoted as a rate.
+
+### 128.7 What was checked
+
+* `make check`, nine cases, `OMP_NUM_THREADS=1`: **9/9 byte-identical**. The
+  transport is off in all of them, which is what the default says.
+* `examples/18_oxygen_chemistry`, 2000 steps, the transport ON: byte-identical
+  against the pre-change binary through the headroom change (128.4), and then
+  deliberately MOVED by the base-face condition (128.3), by +32% in the base H2
+  partition and +0.02 dex in the rate. The two were measured separately so that
+  each is attributable.
+* `backup/regression/run_fcheck.sh`: `-fcheck=bounds,do,mem` rebuild and the
+  bounded HD 209458 b case.
+* The six molecular regression cases were additionally run pairwise against the
+  pre-change binary outside the harness, at four separate stages of this change
+  (carrier-count, gates and key, base condition, headroom): identical every
+  time.
+* NOT checked: `mol_diffusion` with the transport ON, i.e. the helium element
+  operator and the carrier operator in the same split step. They are ordered
+  `element_diffusion_step` then `photochemical_transport_step`, and the second
+  reads `ntot`, `T_K` and the rate coefficients from the `bg_cell` the sweep
+  BEFORE the diffusion left, so it lags by one operation on the marching path
+  (not on the Picard path, where `ioniz_eq` runs between them). Nothing
+  measures the size of that lag yet.
+
+Files: `src/modules/lower_atmosphere/diffusive_photochemistry.f90`,
+`src/modules/radiation/ionization_equilibrium.f90`,
+`src/modules/time_step/steady_residual.f90`,
+`src/modules/files_IO/input_read.f90`,
+`src/modules/files_IO/write_setup_report.f90`,
+`src/modules/files_IO/write_output.f90`,
+`src/modules/init/parameters.f90`, `src/EXHALE_main.f90`.
+Documentation: `docs/supersonic_molecular_base.md` sections 13.6 and 13.7,
+`docs/a2_oxygen_option_design.md`, `TO_BE_DONE.md` items (P43) and (V).
+
+## 129. The trace metals now compete for the He recombination photons, and nitrogen at depth notices (2026-09-02)
+
+**Judgment first. The expression was physically incomplete, and the size of
+what it left out was never measured. A He recombination photon of energy E_c
+is absorbed by every species whose ionization threshold lies below E_c, in
+proportion to n_s sigma_s(E_c). Sections 120 and 125 wrote that competition
+with H I, H2 and (above 24.6 eV) He I in it, and gave the metals' share to
+hydrogen. The metals are 1e-4 to 1e-3 of the gas by number, but their cross
+sections in the 16-25 eV band are LARGER than hydrogen's -- 11.9 (O I), 12.2
+(N I) and 4.9 (C II) against 1.24 for H I at 24.6 eV -- and in the ionized
+wind the H I that used to take those photons is itself a trace. Measured
+before the change: the metal share of the absorption coefficient runs from
+3e-3 at the base to 2.8e-2 at 2.8 R_p. That is a share of the photons,
+and it was going to hydrogen.** Item (P34), opened with section 120, is closed
+here.
+
+### 129.1 The size, measured first
+
+For each channel c the metal share of the absorption coefficient is
+
+    sum_m n_m sigma_m(E_c) / (n_HI sigma_HI + n_H2 sigma_H2 + n_HeI sigma_HeI)
+
+evaluated on the pre-change solutions with the same `sigma_*` functions the
+code uses. The five channels are the ground-capture continuum (24.6 eV), the
+584 A resonance (21.2), the 2^3S line (19.8), the 2^1S two-photon continuum
+(16.110) and the case-B cascade average (19.741).
+
+| case | 24.6 | 21.2 | 19.8 | 16.11 | 19.74 | where, and who |
+|---|---:|---:|---:|---:|---:|---|
+| `wasp_full_newton` base (1.00 R_p) | 4.4e-3 | 3.6e-3 | 2.8e-3 | 1.1e-3 | 2.8e-3 | O I, 84% of the metal term |
+| `wasp_full_newton` outer (1.61 R_p) | **2.2e-2** | 2.3e-3 | 1.7e-3 | 6.9e-4 | 1.7e-3 | C II, 89% |
+| `wasp_he23off_newton` outer (1.61 R_p) | **2.2e-2** | 2.3e-3 | 1.7e-3 | 6.9e-4 | 1.7e-3 | C II, 89% |
+| `mol_metals` molecular layer (1.00 R_p) | 3.2e-3 | 2.9e-3 | 2.4e-3 | 3.2e-3 | 2.4e-3 | O I; C I at 16.11 eV |
+| `mol_metals` wind (4.81 R_p) | 6.0e-3 | 4.4e-3 | 3.5e-3 | 1.4e-3 | 3.4e-3 | O I, 54% |
+| `lower_profile` base (1.00 R_p) | 4.7e-3 | 4.8e-3 | 4.0e-3 | 2.0e-3 | 3.9e-3 | O I |
+| `lower_profile` outer (2.82 R_p) | **2.8e-2** | 5.8e-4 | 4.7e-4 | 2.1e-4 | 4.6e-4 | C II, 98% |
+
+**It is above 1e-3 everywhere, in every channel, in every metals-on case.**
+The threshold the measurement was to be judged against was 1e-3, so the
+metals belong in the competition and were implemented.
+
+Two features of the table are worth reading. The ground-capture channel is
+the one that grows outward, because it is the only channel whose H I
+competitor thins out while a metal ion that can still absorb at 24.6 eV --
+C II, threshold 24.38 eV -- does not. And the two-photon channel at 16.110 eV
+is the one the molecular cases pick out, because C I (threshold 11.26 eV,
+sigma 13.4 there against H I's 4.0) is neutral in a molecular layer.
+
+### 129.2 The change
+
+`he_rec_coupling` (`src/modules/radiation/util_ion_eq.f90`) now runs the
+competition over H I, H2, He I *and* every photo-ionizable metal ion of
+`species_table` whose `mion_ethr` lies below the channel energy:
+
+    tau_c  = (n_HI s_HI + n_H2 s_H2 [+ n_HeI s_HeI] + sum_m n_m s_m) dr_j
+    w_s    = n_s sigma_s(E_c) / sum_s' n_s' sigma_s'(E_c)
+    dP_m   = P_c f_abs w_m / n_m  = P_c sigma_m(E_c) dr_j [1-exp(-tau_c)]/tau_c
+    H_c    = P_c f_abs sum_s w_s (E_c - E_th,s),   E_th,m = mion_ethr(m)
+    alpha_eff = alpha_B + alpha_1 [(1 - f_abs) + f_abs (w_HI + w_H2 + sum_m w_m)]
+
+The metals enter in four places and each one is the same statement: they take
+a share of the photons. They add opacity to the cell optical depth, so the
+cell keeps more of them; they take a share out of the H I and H2 shares; the
+share they take ionizes them, and is returned in a new output `dP_m` that the
+callers add to the metal photoionization rate `P_m`; and the share they take
+is not available to re-ionize helium, so it enters the effective He II
+recombination coefficient with the other absorbed shares.
+
+**The shares stay in the ratio form of section 120**, `w_HI = 1/(1 + R_He
+n_HeI/n_HI + R_H2 n_H2/n_HI + sum_m R_m n_m/n_HI)` with `R_m =
+sigma_m(E_c)/sigma_HI(E_c)` evaluated once at entry, and the metal rate is
+`P_c f_abs w_HI R_m/n_HI` so that the metal density of the share cancels
+rather than appearing in a denominator -- the same property that makes `dP_H2`
+finite as `n_H2 -> 0`. A run with no metals adds **exactly 0.0** to every one
+of those sums, which is why it is bitwise unchanged; and `metal_photoion_sigma`
+returns zero below an ion's own threshold, so an ion that cannot absorb a
+channel drops out of it with no test.
+
+The ions that participate are the 17 photo-ionizable stages, i.e. every stage
+but the inert top one of each element. At 24.6 eV that is 15 of them (O II at
+35.12 eV and N II at 29.60 eV are above the edge); at 16.110 eV it is 12.
+
+### 129.3 One place that says what column of the cross-section table is which
+
+Adding the metals meant evaluating their cross sections at the five channel
+energies, which are not on the `e_v` grid the `sigma_tab` table lives on. The
+17 fits were listed once, by hand, in `set_energy_vectors`. A second hand-kept
+list in `he_rec_coupling` would be a copy that can drift, so the ordering was
+moved into one function instead: `metal_photoion_sigma(k,E)` in
+`Cross_sections` dispatches on the photo-table column index k, and
+`set_energy_vectors` fills `sigma_tab` through it in a loop. The ordering now
+exists in one place, and the coupling reads the same function the table does.
+
+This is a refactor with no intended physics change, and it is byte-identical
+on a metals-ON case: `wasp_full` run with this change alone reproduces its
+golden `Hydro_ioniz.txt` and `Ion_species.txt` exactly.
+
+### 129.4 What moved
+
+`make check`, nine cases, `OMP_NUM_THREADS=1`: **the four metals-off cases are
+byte-identical** (`mol_base_handoff`, `mol_lyman_werner`, `mol_diffusion`,
+`mol_sec_ion`) and the five metals-on cases move.
+
+| case | dlog10 Mdot | max dT/T | at r | max dn(H I)/n | at r | largest ion move |
+|---|---:|---:|---:|---:|---:|---|
+| `wasp_full` | -0.00001 | 2.0e-4 | 1.144 | 1.4e-3 | 1.258 | N II 5.4e-2 at 1.110 |
+| `wasp_he23off` | -0.00002 | 2.8e-4 | 1.133 | 1.8e-3 | 1.257 | N II 8.3e-2 at 1.095 |
+| `mol_metals` | +0.00001 | 2.1e-3 | 1.193 | 1.8e-3 | 1.193 | H3+ 4.8e-2 at 1.193 |
+| `mol_ir_bands` | -0.00016 | 5.4e-2 | 1.193 | 4.7e-2 | 1.193 | H3+ 6.9e-1 at 1.190 |
+| `lower_profile` | -0.00000 | 1.5e-3 | 2.797 | 4.3e-3 | 2.797 | N II 1.7e-2 at 1.097 |
+
+`dlog10 Mdot` is the outer-cell mass flux `r^2 rho v`, re-measured from the
+profiles. The molecular layer is again not touched, for the reason section
+125.1 gives -- it is optically thick to these photons, `f_abs` is exactly 1.0
+below 1.10 R_p, and only the star-ward column reaches it: below 1.10 R_p the
+temperature moves by 2.1e-5 in `mol_metals` and 8.0e-4 in `mol_ir_bands`,
+against 2.1e-3 and 5.4e-2 above it. `mol_ir_bands` moves the most of the nine
+because its infrared cooling channels sit exactly where the change lands, and
+because all six molecular cases are 12000-step relaxation snapshots at
+`du ~ 4` rather than converged solutions.
+
+**The converged cases, before and after with the same binary except for this
+change** (`wasp_full_newton` and `wasp_he23off_newton`, WASP-121b, metals on,
+JFNK `info = 0` before and after):
+
+| | `wasp_full_newton` | `wasp_he23off_newton` |
+|---|---|---|
+| `log10 Mdot` shift | +1e-5 dex | -6e-5 dex |
+| largest T change | 0.02% at 1.317 | 0.03% at 1.113 |
+| largest heating change | 0.19% at 1.245 | 0.14% at 1.228 |
+| largest n(H I) change | 0.22% at 1.315 | 0.20% at 1.274 |
+| largest n(He 2^3S) change | 0.11% at 1.333 | -- |
+| largest n(C II) change | 0.16% at 1.217 | 0.14% at 1.212 |
+| **largest n(N II) change** | **5.2% at 1.085** | **8.4% at 1.074** |
+
+**The wind does not move and the nitrogen ionization balance does.** That is
+the correction doing what the cross sections said it would: N I has
+sigma = 12.2 at 24.6 eV, ten times H I's 1.24, so at 1.085 R_p -- deep enough
+that the stellar field above 24.6 eV is attenuated but the He recombination
+photons are produced locally -- the He recombination channel is a 5% addition
+to the N I photoionization rate. There n(N II) is 3% of n(N I) and rises from
+1.447e5 to 1.522e5 cm^-3, with n(N I) falling by 0.17% to pay for it. No other
+element moves by more than 0.25%: carbon and oxygen are already ionized by the
+stellar field at that depth, and iron and magnesium have small cross sections
+at these energies.
+
+### 129.5 What was checked, and what was not
+
+1. **Byte-identical without metals**, which is the property the ratio form is
+   written for, checked on both branches of the routine and on the molecular
+   path: the four metals-off molecular regression cases in `make check`, plus
+   `wasp_full` and `wasp_he23off` re-run without their `metals.inp` (the TR
+   and the atomic branch of `he_rec_coupling`, respectively) against a binary
+   built from the pre-change sources. Identical in `Hydro_ioniz.txt` and
+   `Ion_species.txt` in all six.
+2. **Byte-identical with metals for the cross-section-table refactor alone**
+   (section 129.3), `wasp_full`.
+3. `make check`: 4 of 9 byte-identical, 5 metals-on cases move as tabulated.
+   The goldens are refreshed at the end of the block this change belongs to.
+4. The two converged WASP-121b cases, before and after, `info = 0` both times.
+5. `n_cells_he_rec_photoionization_dominant` is zero on every case measured
+   here, as it was in sections 120 and 125.
+6. **A bounds/do/mem-checking build**, the flags `run_fcheck.sh` uses
+   (`-O1 -fopenmp -g -gz=none -fcheck=bounds,do,mem`), on three bounded
+   1500-step METALS-ON runs, because `run_fcheck.sh`'s own case is HD 209458 b
+   and the arrays this change adds are only touched when metals are on:
+   `wasp_full` (TR branch), `mol_metals` (molecular branch) and `wasp_full`
+   with `pp_metals 2`, which is the only configuration that exercises the
+   metal rate correction in the `*_adv` post-process. Clean, no runtime check
+   fired, and each produced its `*_adv.txt` files. It was run in a scratch
+   copy of the tree rather than through `run_fcheck.sh`, which begins with a
+   `make distclean` in the repository.
+7. **NOT checked.** How much the `*_adv.txt` profiles themselves move: the
+   regression compares only `Hydro_ioniz.txt` and `Ion_species.txt`, so the
+   post-process correction is exercised but its size is not measured.
+
+**Approximations, unchanged or newly stated at the code site.** The
+photoelectron of a metal share is deposited entirely as heat, at
+`E_c - mion_ethr(m)`, without passing through the Shull & van Steenberg
+secondary-ionization partition the stellar photoelectrons go through -- the
+same treatment the H I and H2 shares of these photons already had. The ions
+that actually carry the metal share leave 11.0 eV (O I), 10.1 (N I), 8.4
+(Fe II) and 0.2 (C II) at the ground-capture channel and 4.9 (C I) at the
+two-photon one; the largest of the set, 20.3 eV for K I, belongs to an ion
+whose cross section there is 0.048 against H I's 1.24 and which therefore
+carries almost none of it. The `sigma_m` are the same single-shell Verner et al. (1996)
+fits `sigma_tab` carries, with the Fe I caveat already recorded at
+`sigma_FeI`. The metal cross sections are evaluated at the channel energy with
+their (small) kT dependence neglected, as the H I, H2 and He I ones already
+were.
+
+Files: `src/modules/radiation/util_ion_eq.f90`,
+`src/modules/functions/cross_sec.f90`,
+`src/modules/init/set_energy_vectors.f90`,
+`src/modules/radiation/ionization_equilibrium.f90`,
+`src/modules/post_process/post_process_adv.f90`.
+Documentation: `TO_BE_DONE.md` item (P34).
+
+## 130. Dissociative photoionization of H2 is the second product channel of a cross section the code already had, and the branching comes from the measurement rather than from a summary of it (2026-09-02)
+
+**Judgment first. The photon channel `H2 + hv -> H + H+ + e-` (threshold
+18.076 eV) was missing, and it was missing on both sides: from the primary
+photoionization and from the secondary-electron partition of section 118.
+That is not a small omission dressed up as a large one, and it is not a new
+opacity either. `sigma_H2` is the TOTAL photoionization cross section, so the
+channel was already inside the H2 destruction rate the code applied -- it was
+simply all being credited to H2+. In the shielded molecular base that is the
+wrong ion: the dissociative channel makes a proton and an H atom, does not
+feed the H3+ chain (R8), and is the dominant photon-driven proton source
+there, 39 times the H I photoionization at 1.004 R_p on the converged
+He/H = 0.0793 hot Uranus.** Item (P31), opened with section 118.11, is closed
+here.
+
+### 130.1 The two channels
+
+    (a)  H2 + hv -> H2+ + e-          E_th = 15.4   eV
+    (b)  H2 + hv -> H  + H+ + e-      E_th = 18.076 eV
+
+Both consume one H2. Since (b) is a share of the same `sigma_H2`, the H2
+destruction rate, the opacity and the absorbed energy are all unchanged; what
+moves is the product and the threshold each channel is charged. The code
+carries the whole rate as `P_H2` and the dissociative part as `P_H2_di`, a
+SUBSET of it, and the coupled molecular system reads
+
+  * row (4), H2:   the whole `P_H2`, as before;
+  * row (5), H2+:  `P_H2 - P_H2_di`;
+  * row (1), H+:   `+ P_H2_di * n_H2`.
+
+The H atom of the pair is supplied by the H-nucleus closure
+`n_HI = (1 - x1 - x4 - x5 - x6 - x7) n_H`, exactly as the two Lyman-Werner
+fragments are, so no row was added.
+
+The photoelectron of (b) carries `hv - 18.076 eV`, not `hv - 15.4`: the
+2.68 eV between the thresholds goes into breaking the bond and is not
+available as heat, the same rule every other absorber in `PH_heat_HHe`
+follows. It is therefore its own absorber in the secondary-ionization energy
+grid (`iabs_H2_di`, `n_abs_fixed` 5 -> 6), because its photoelectron lands
+elsewhere in the Dalgarno energy table and thermalizes a different share.
+
+### 130.2 The secondary side is one sentence of the source
+
+Dalgarno, Yan & Liu (1999), the paragraph after their eq. (10):
+
+> The production of H+ ions from dissociative ionization of H2 is given by a
+> mean energy per ion of 22W_m(H2+). The harmonic mean of 22W_m(H2+) and
+> W_m(H+) is the mean energy for the production of H+ ions in the gas
+> mixture.
+
+A mean energy 22 times larger is a yield 22 times smaller, and the harmonic
+mean makes the two H+ sources ADD rather than share, so the fast electrons
+make one dissociative proton for every 22 H2+ ions they make:
+`Psec_H2_di = Psec_H2/22`. The 4.5% is not deducted from the Shull & van
+Steenberg amplitude the module borrows for the ionization budget, because
+Dalgarno et al.'s W is the primary energy divided by the number of ions and
+already contains every loss of the degradation; deducting it would
+double-count.
+
+### 130.3 The branching, and a correction to the summary we would otherwise have used
+
+The obvious source is the paper the cross section itself comes from. Yan,
+Sadeghpour & Dalgarno (1998), ApJ 496, 1044, section 4:
+
+> The cross section for dissociative ionization, H2 + hv -> H + H+ + e-, is
+> complicated by the contribution of resonance states (He at al. 1995). It has
+> been measured by Browning & Fryar (1973), Strathdee & Browning (1976, 1979),
+> Ito et al. (1988), Chung et al. (1993), Latimer et al. (1995), and Ito,
+> Hall, & Ukai (1996) for energies up to 124 eV. Its ratio to the total
+> photoionization cross section increases from zero at the threshold of
+> 18.08 eV to 0.284 at 76 eV and then decreases slowly to 0.258 at 124 eV.
+
+**Those two numbers are not the ratio to the total.** They are the H+/H2+
+column of Chung, Lee, Masuoka & Samson (1993), J. Chem. Phys. 99, 885,
+Table II, whose caption reads "The partial cross sections sigma(H+),
+sigma(H2+), and the ratio H+/H2+ for dissociative photoionization of H2":
+a ratio to the H2+ PARTIAL cross section. The ratio to the total is
+`r/(1+r)`, which is 0.221 at 76 eV and 0.205 at 124 eV. An implementation
+built on the quoted sentence -- which is what this work first built, and ran
+-- overstates the channel by a factor 1.26-1.28 above 70 eV; and because the
+real curve rises to a 0.02 plateau within 0.03 eV of threshold instead of
+ramping linearly from it, the same implementation understates it by up to a
+factor 20 below 20 eV, and misses the Q1 Rydberg autoionization resonance
+entirely.
+
+The code therefore reads Chung et al.'s Table II directly, as
+
+    f_di(E) = sigma(H+) / [ sigma(H+) + sigma(H2+) ]
+
+at their 69 energies from 18.076 to 124 eV, linearly interpolated. Two checks
+were run on the transcription: their two partial columns reproduce their own
+ratio column to better than 0.5% at every row, and the partial columns sum to
+their sigma(abs) column exactly except at the ten rows carrying their
+footnote b (33-41 eV), where the photoionization yield is below unity and the
+deficit is their Table I neutral cross section (1.29 - 1.20 = 0.09 against
+their 0.092 at 37 eV).
+
+What the two versions give:
+
+| E [eV] | Chung Table II | the Yan-quoted 3-point ramp | ramp / Chung |
+|---|---|---|---|
+| 18.1 | 0.0022 | 0.0001 | 0.045 |
+| 19   | 0.0161 | 0.0045 | 0.28 |
+| 20   | 0.0196 | 0.0094 | 0.48 |
+| 22   | 0.0216 | 0.0192 | 0.89 |
+| 25   | 0.0237 | 0.0339 | 1.43 |
+| 30   | 0.0483 | 0.0584 | 1.21 |
+| 34   | 0.0995 | 0.0781 | 0.79 |
+| 35   | 0.1084 | 0.0830 | 0.77 |
+| 37.5 | 0.0909 | 0.0952 | 1.05 |
+| 40   | 0.1089 | 0.1075 | 0.99 |
+| 45   | 0.1342 | 0.1320 | 0.98 |
+| 50   | 0.1537 | 0.1565 | 1.02 |
+| 60   | 0.1982 | 0.2055 | 1.04 |
+| 74   | 0.2219 | 0.2742 | 1.24 |
+| 76   | 0.2212 | 0.2840 | 1.28 |
+| 110  | 0.2096 | 0.2656 | 1.27 |
+| 124  | 0.2048 | 0.2580 | 1.26 |
+| >124 | 0.2048 | 0.2580 | 1.26 |
+
+The flux-weighted branching of an unattenuated `E^-1` power law over
+15.5-1240 eV is 0.0239 against the ramp's 0.0224 -- the two agree in the mean
+and disagree everywhere in detail, which is exactly the case in which a
+mean-preserving error survives a coarse test.
+
+**Uncertainty, as the source states it.** "An estimate of the total
+uncertainty in the data is about +/-4%-5%"; the ionization yields used over
+18-28 eV are unity "within an accuracy of about +/-5%". Against other
+determinations Chung et al.'s H+ data lie 0%-5% below Backx, Wight & van der
+Wiel over 18-33 eV, growing to 26% at 70 eV; they agree within 5% with
+Kossmann et al. over 25-75 eV and lie 11%-20% below them over 75-110 eV.
+
+**Above 124 eV**, the top of the measured range, `f_di` is held at its 124 eV
+value, 0.2048. The source quotes no higher-energy data. The curve is nearly
+flat over its last 50 eV (0.2219 at 74 eV to 0.2048 at 124 eV), so this is a
+mild extrapolation -- but it is an extrapolation, and it is the value the
+whole X-ray grid uses.
+
+### 130.4 Two things the branching carries that its name does not
+
+Both are stated by the source, both are recorded at the code site, and both
+are carried as open items -- (P31b) and (P31c) of `TO_BE_DONE.md`, which give
+the size of each and what removing it would take.
+
+1. **Double ionization.** Chung et al.'s eqs. (3)-(4) note that "the branching
+   ratio H+/(H+ + H2+) is understood to include both single and double
+   ionization where appropriate", and their discussion of Fig. 4 that "by
+   80 eV about 20% of sigma(H+) comes from double ionization. This percentage
+   remains fairly constant towards higher energies." Their sigma(H+) counts
+   PROTONS, and a double ionization yields two, so using `f_di` as a share of
+   the H2 ionization rate gives the PROTON source rate correctly; what it
+   mis-assigns is the co-product, since those events leave no H atom and no
+   H2+. Above 80 eV that is about 4% of the H2 ionizations, in a band where
+   `sigma_H2` is already two decades below its threshold value.
+2. **Neutral dissociation over 33-41 eV.** `sigma_H2` follows Samson &
+   Haddad's ABSORPTION cross section there -- it is 1.76 against Chung et
+   al.'s sigma(abs) 1.74 and their ionization sum 1.699 at 34 eV -- so the H2
+   destruction rate the code applies in that band includes `H2 + hv -> H + H`,
+   up to 7% of it at 37.5 eV, and the `1 - f_di` branch hands that share to
+   H2+. This is a property of the cross-section fit, which predates this
+   change, not of the branching.
+
+**Not split, deliberately: the He recombination photons.** `dP_H2_hrc`
+(`he_rec_coupling`) sits at 19.8-24.6 eV, where `f_di` is 1.9-2.3%. Splitting
+off that much of a channel that is itself a correction would be well inside
+the +/-4-5% the branching carries, so the whole of it still makes H2+, and the
+code says so where it is applied.
+
+### 130.5 What moved
+
+**The three atomic cases are byte-identical.** `wasp_full`, `wasp_he23off`
+and `lower_profile` carry no H2, so `nh2` is never passed, `s_h2_di` is
+allocated and never read, and every H2 term is identically zero. Their
+`Hydro_ioniz.txt` and `Ion_species.txt` reproduce the pre-change tree
+bit-for-bit. (They do NOT reproduce the goldens, and neither did the tree
+before this change: sections 128 and 129 moved five of the nine cases, and the
+goldens are refreshed once at the end of the series. The comparison that means
+anything here is against the tree's own output immediately before the change,
+which is what the table below is.)
+
+The six molecular cases move. Each is a fixed-step relaxation snapshot, not a
+converged solution, so a per-cell extreme is noisy; the entry below is the
+largest relative change over the cells where that species is within three
+decades of its own peak.
+
+| case | H2 front [R_p] | H+ | H2+ | H3+ | H2 | max abs(dT)/T |
+|---|---|---|---|---|---|---|
+| `mol_base_handoff` | 1.15471 -> 1.15462 | +13.8% | -16.7% | -10.9% | -1.25% | 9.4e-03 |
+| `mol_metals`       | 1.15628 -> 1.15622 | -13.3% | -21.5% | -48.0% | -0.65% | 2.8e-02 |
+| `mol_lyman_werner` | 1.12886 -> 1.12886 | +12.9% | -15.4% |  -9.0% | +0.19% | 5.7e-04 |
+| `mol_diffusion`    | 1.15471 -> 1.15462 | +13.8% | -16.7% | -10.9% | -1.25% | 9.4e-03 |
+| `mol_ir_bands`     | 1.15626 -> 1.15618 | +37.2% | +42.6% | +150.7% | -1.30% | 4.2e-02 |
+| `mol_sec_ion`      | 1.14036 -> 1.14007 | +38.7% |  -6.1% | -12.3% | +3.17% | 1.7e-02 |
+
+The signature is the one the physics predicts: **H2 barely moves** (the total
+destruction rate is unchanged by construction), **H2+ falls**, **H3+ falls
+with it** because R8 is fed by H2+, and **H+ rises**. The H2 front moves
+inward in the fifth decimal, i.e. not at all. `mol_ir_bands` and `mol_metals`
+carry the opposite sign at their extreme cell; both are the same hot-Uranus
+gate at 12000 fixed steps with a base that is still breathing, and neither
+case is converged.
+
+**Where the channel actually matters, measured with the diagnostic build.**
+On `mol_sec_ion`, `P_H2_di/P_H2` is 4.67% in the shielded base and rises to
+6.5% at the top of the molecular layer as the surviving spectrum hardens
+(8.5% on the He/H = 0.0793 run) -- the 4.5% order the
+secondary side of Dalgarno et al. predicts, arrived at independently through
+the photon branching. The proton source ratio
+`P_H2_di n_H2 / (P_HI n_HI)` is 20.5 at 1.004 R_p, 3.1 at 1.04, and falls
+through unity at 1.064 R_p; on the converged He/H = 0.0793 run the same ratio
+is 38.9 at 1.004 R_p and crosses unity at 1.036. Inside the molecular layer
+this channel, not the H I photoionization, is what the protons come from.
+
+**On a converged solution.** The He/H = 0.0793 hot Uranus of section 117,
+re-converged from its own restart, JFNK `info=0` in every arm:
+
+| | log10 Mdot | H2 front [R_p] | max n(H3+) [cm^-3] | base n(H+) [cm^-3] |
+|---|---|---|---|---|
+| before | 10.5984 | 1.05388 | 3.703e5 @ 1.0234 | 6.471e3 |
+| P31, Chung Table II | 10.5991 | 1.05388 | 3.684e5 @ 1.0193 | 7.720e3 |
+| P31, the Yan-quoted ramp (rejected) | 10.5891 | 1.05780 | 3.597e5 @ 1.0190 | 7.735e3 |
+
+The escaping flux does not care (+0.16%), the H2 front does not move, the
+H3+ peak loses 0.5% and shifts inward by 0.004 R_p, and **the base proton
+density rises by 19%**. The third row is worth keeping because it is the
+measurement of what the mis-read branching would have cost: a 2.1% error in
+Mdot and a spurious 0.004 R_p outward shift of the H2 front, both from a
+curve that is 1.28x too high in the band that heats the wind.
+
+### 130.6 What was checked, and what was not
+
+1. **Byte-identity of the atomic path**, against the tree's own pre-change
+   output: `wasp_full`, `wasp_he23off`, `lower_profile`, both files. This is
+   the guard that `n_abs_fixed` going 5 -> 6 did not shift the metal
+   absorbers in the secondary-ionization energy grid, which it would have
+   done silently.
+2. **The six molecular cases**, table above.
+3. **Runtime checks.** A `-O1 -g -fcheck=bounds,do,mem` build run on
+   `mol_sec_ion` for 1200 steps: clean, no trap. Run in a scratch copy of the
+   tree rather than through `run_fcheck.sh`, which begins with a
+   `make distclean` in the repository and would have collided with the other
+   work in flight; and `run_fcheck.sh`'s own case is HD 209458 b, which is
+   atomic and would not have entered this code at all.
+4. **Thread determinism.** `mol_sec_ion` at `OMP_NUM_THREADS=8` reproduces the
+   single-threaded run bit-for-bit, which is what the three new
+   `!$OMP PRIVATE` entries are for.
+5. **The transcription of Chung et al.'s Table II**, by their own two
+   redundant columns (section 130.3).
+6. **NOT checked: the `*_adv` post-process.** `post_process_adv` calls
+   `PH_heat_HHe` without the new optional argument and does not re-solve the
+   molecular network, so the channel reaches the `*_adv` profiles only through
+   the equilibrium state they are built on. Unchanged in kind from every other
+   molecular channel; not measured.
+7. **NOT checked: any planet run outside the matrix.** The paper and poster
+   figures predate this change, along with sections 128 and 129.
+
+Files: `src/modules/functions/cross_sec.f90`,
+`src/modules/init/parameters.f90`,
+`src/modules/init/set_energy_vectors.f90`,
+`src/modules/radiation/electron_energy_degradation.f90`,
+`src/modules/radiation/util_ion_eq.f90`,
+`src/modules/radiation/ionization_equilibrium.f90`,
+`src/modules/nonlinear_system_solver/ion_cell_state.f90`,
+`src/modules/nonlinear_system_solver/System_HeH_mol.f90`,
+`src/modules/nonlinear_system_solver/System_HeH_mol_metals.f90`,
+`src/modules/nonlinear_system_solver/constrained_chemical_equilibrium.f90`,
+`src/modules/lower_atmosphere/diffusive_photochemistry.f90`.
+Documentation: `TO_BE_DONE.md` items (P31), (P31a), (P31b), (P31c);
+`docs/molecular_hydrogen_treatment.tex`.
+
+**One correction made on the way, unrelated to the physics.** The
+`params layout (1-18 ...)` comment block at the head of `System_HeH_mol.f90`
+documented a numbered argument array the module has not read since
+`ion_cell_state` replaced it: `ion_system_HeH_mol`'s `params(40)` is the
+MINPACK callback signature and no element of it is touched. The block now says
+where the cell state comes from. Comment only; the binary is unchanged.
+
+---
+
+
+## 131. What the below-escape rows are measured against, a "PLM+WENO3" that could not reconstruct, and a residual gate that switched off every other stop (2026-09-02)
+
+**Judgment first, in three parts.**
+
+**(1) The layer's energy and mass rows are measured against the wrong thing,
+and neither of the two proposed replacements survives measurement.** The claim
+this item was opened on -- that `|u(3,j)|` collapses in the quasi-hydrostatic
+layer the way `|rho v|` does -- is **refuted**: `u(3,j)` is the energy DENSITY,
+not an energy flux, and it collapses nowhere (in the layer it is 0.16 of
+`|heat|+|cool|` on WASP-121b and 69 times it on HD 189733 b). What is
+nevertheless wrong is real: `|R|/|u|` is a fractional drift RATE in units of
+the code's global time `t_s`, and near the base the cell's own timescale is
+three to four orders shorter than `t_s`, so a layer that is steady to one part
+in 10^7 of its own terms reads 1e-3 on that rate. Measured on the converged
+`jfnk_hd189` state, the layer holds `||R||` at 9.915e-4 while the wind is at
+1.836e-6 -- a factor 540 -- and 806 of the solve's outer iterations go into the
+layer alone. **Candidate (a), `|heat| + |cool|`, is disqualified**: on the hot
+Uranus the radiative terms are not the dominant balance (layer `|heat|+|cool|`
+= 9.4e-5 against `|dF3|` = 8.7e-5), and converged states read 2.3e-2 to 5.4e-1
+on it. **Candidate (b), `|p div v| + |rho v g|`, is disqualified**: both terms
+carry `v` and collapse in the layer exactly as `|rho v|` does; converged states
+read 1.8e-1 to 1.9 on it. **The one scale that survives** is the signal-speed
+transport bound `|u(k,j)| (|v_j| + c_s,j)/dr_j`, the same construction
+`cell_state_scales` uses for the momentum unknown and `carrier_row_scale` for
+the carriers; on it every converged state above reads 7e-9 to 4e-6 in both
+regions and both rows.
+**It is not applied, because applying it is a re-calibration of a user-facing
+tolerance and, measured, it costs section 127.** With the layer's mass and
+energy rows on that bound, `jfnk_hd189_tight` reaches `info = 0` easily (its
+binding row becomes the layer momentum row at 1.8e-7) -- and the two hot-Uranus
+states of section 127.4 swap places again: the wind rows become the maximum, and
+the state whose inner flux spread is 7.6e-2 scores 4.8e-4 against 7.0e-4 for the
+one whose spread is 3.0e-3. The discrimination itself is scale-independent (the
+bad state is 5.7 times worse than the good one in the layer energy row on EVERY
+candidate); what the re-scaling changes is whether the layer is ever the larger
+half. **So the two goals cannot both be met by one max-combined residual with
+one threshold, and the resolution is a design decision, proposed in 131.4 and
+not taken here.**
+
+**(2) `PLM+WENO3` with an empty PLM stage crashed on the first step. Fixed.**
+The parser left `rec_method` at the input word `'PLM+WENO3'`, which is the name
+of a two-stage recipe and not of a reconstruction; when the stage-1 threshold
+did not exceed the stage-2 one, `EXHALE_main`'s `in_plm_stage` was false, the
+string was never normalized, and the first `Reconstruct` fell through to
+`case default` and aborted with `unknown reconstruction scheme: PLM+WENO3`.
+`rec_method` is now always `'PLM'` or `'WENO3'`; the two-stage intent travels
+in `recon_two_stage` alone; and an empty PLM stage resolves to single-stage
+WENO3 with a message saying so. Three regression cases were affected --
+`wasp_hybrid_finish` and `wasp_localdt_cont` (and `crit_warm`, the same case as
+`wasp_hybrid_finish`; that directory was deleted 2026-09-03), all with
+`du_th [PLM,WENO3]: -1.0 ...` -- and all three now run.
+
+**(3) A `Resid tol` gate switched off every other stop, including the stall
+net. Fixed.** With `resid_th > 0` the marching loop set `is_stalled = .false.`
+unconditionally, so a run that could not reach its residual gate marched to
+`count_max = 1e6`. Measured: `jfnk_cold` reaches `du = 1.5e-4` and `ptc_warm`
+`du = 5.5e-5` -- flux-converged by any ordinary standard -- and neither crossed
+its gate in 40,000 steps. A residual gate is one more stop condition, not a
+licence to remove the others; the plateau detector now stays live under
+`Resid tol`, and the stop it produces is reported as what it is, a stall with
+the residual target unmet.
+
+### 131.1 What the layer rows actually measure
+
+`R(3,j) = dF(3,j) - (heat_j - cool_j)` -- the momentum source `S(3,:)` is
+identically zero, the gravity work being folded into the energy flux
+(`RK_rhs.f90`) -- so the energy row has exactly two terms. Volume-weighted sums
+over the layer, in code units, on four states (`EXHALE_RESIDUAL=1` on the
+converged output, WENO3 except HD 189733 b which is re-read in the PLM it was
+converged in):
+
+| layer sums | WASP-121b | HD 189733 b | hot U, two-stage | hot U, single-stage |
+|---|---:|---:|---:|---:|
+| `\|dF3\|` | 1.404e-1 | 1.964e-4 | 8.720e-5 | 1.349e-4 |
+| `\|heat\|` | 1.054 | 1.083e-3 | 8.141e-5 | 9.384e-5 |
+| `\|cool\|` | 9.138e-1 | 1.522e-3 | 1.302e-5 | 7.488e-5 |
+| `\|heat - cool\|` | 1.399e-1 | 5.310e-4 | 8.416e-5 | 1.577e-4 |
+| `\|R3\|` | 1.161e-3 | 5.664e-4 | 1.015e-5 | 9.130e-5 |
+
+**Which term dominates is planet-dependent.** On WASP-121b the radiative pair
+is an order above the flux divergence; on the hot Uranus it is not
+(`|heat|+|cool|` = 9.4e-5 against `|dF3|` = 8.7e-5). That is why
+`|heat| + |cool|` cannot serve as the scale: it is not a bound on the row's
+terms where the layer is cold and shielded. The ratio
+`(|heat|+|cool|)/(E (|v|+c_s)/dr)` over the layer has median 5.1e-3 (WASP),
+7.1e-5 (HD 189733 b), 1.1e-4 and 3.4e-6 (hot Uranus) and never exceeds 0.15, so
+the radiative pair never dominates the signal-speed transport bound either.
+
+### 131.2 The candidates, side by side
+
+Volume-weighted, per region, on the states the solver itself holds (printed by
+the JFNK at the end of the solve; the hot-Uranus single-stage row is the
+`EXHALE_RESIDUAL=1` re-read of its section 127.4 output).
+
+| state / region | mass `/\|u\|` | mass `/rho·dyn` | energy `/\|u\|` | energy `/(h+c)` | energy `/(h+c+E·dyn)` |
+|---|---:|---:|---:|---:|---:|
+| `jfnk_hd189` layer | 7.183e-4 | 9.07e-8 | **9.915e-4** | 9.736e-3 | 1.344e-7 |
+| `jfnk_hd189` wind | 3.907e-6 | 1.62e-8 | 1.836e-6 | 4.760e-6 | 6.772e-9 |
+| `wasp_full_newton` layer | 6.766e-7 | 1.516e-10 | **9.886e-4** | 2.541e-5 | 2.534e-7 |
+| `wasp_full_newton` wind | 1.501e-8 | 8.681e-12 | 7.666e-4 | 1.651e-5 | 4.321e-7 |
+| hot U two-stage layer | 1.779e-4 | 7.087e-8 | 1.761e-4 | 2.315e-2 | 6.629e-8 |
+| hot U two-stage wind | 1.362e-4 | 8.894e-7 | **5.642e-4** | 7.937e-4 | 3.772e-6 |
+| hot U single-stage layer | 1.064e-3 | 3.871e-7 | 4.001e-3 | 5.411e-1 | 1.464e-6 |
+| hot U single-stage wind | 4.757e-4 | 3.116e-6 | 1.264e-4 | 1.522e-4 | 8.582e-7 |
+
+Read down the columns: `/(h+c)` ranges over four decades and is worst on the
+states that are converged, so it is not a criterion. `/|u|` is what the code
+uses and is 1e-3 to 1e-4 on every converged layer, i.e. it saturates the
+default tolerance by construction. `/(h+c+E·dyn)` is 7e-9 to 4e-6 everywhere,
+on both planets and in both regions, which is what a scale that bounds its own
+row looks like.
+
+### 131.3 Why this cannot simply be adopted
+
+`jfnk_hd189_tight` (`Resid tol: 1.0e-4`) is blocked by the layer, and by both
+rows, not only the energy one: at convergence of the 1e-3 run the layer reads
+mass 7.183e-4, momentum/`rho g` 1.845e-7 and energy 9.915e-4, so re-scaling the
+energy row alone leaves the mass row at 7.2e-4 and the 1e-4 target still out of
+reach. Re-scaling both makes the layer's binding row the momentum one at
+1.8e-7, and the target is met with room to spare.
+
+But the same re-scaling removes what section 127 was written for. The
+discrimination between the two hot-Uranus states is present on every candidate
+-- the single-stage state is 5.7 times worse than the two-stage one in the layer
+energy row and 2.4 times worse in the layer mass row, on `|u|` and on the
+signal-speed bound alike -- yet `||R||` is a maximum, so what decides the
+verdict is which half is larger:
+
+| policy | hot U two-stage | hot U single-stage | ordering |
+|---|---:|---:|---|
+| section 127 as it stands | 6.97e-4 | 4.00e-3 | correct |
+| energy row re-scaled in the layer only | 6.97e-4 | 1.06e-3 | correct |
+| mass and energy re-scaled in the layer | 6.97e-4 | 4.76e-4 | **inverted** |
+| every row re-scaled, both regions | 4.68e-6 | 3.12e-6 | **inverted** |
+
+### 131.4 The proposal, not implemented
+
+Separate the two statements the one number is being asked to make.
+
+1. **Steadiness of the equations** -> `||R||` on the signal-speed bound in both
+   regions and all three rows, with the layer's momentum row keeping the
+   gravitational force density of section 62.3 (it is that row's dominant-term
+   bound). Every row is then divided by a bound on its own largest term, the
+   number is dimensionless everywhere, and the two regions become commensurable
+   -- which would also retire the "not addends of a common quantity" caveat
+   that section 127 had to make for the maximum. `Resid tol` would need a new
+   default: converged states measure 7e-9 to 4e-6, so 1e-5 is the natural
+   equivalent of today's 1e-3, and every existing `Resid tol` in the repository
+   changes meaning.
+2. **Constancy of the mass flux** -> a separate gate on the radial spread of
+   `rho v r^2` over the WHOLE column rather than over `[j_min:N]`, which is the
+   quantity that actually separates the two hot-Uranus states (3.0e-3 against
+   7.6e-2, a factor 25, against 1.9 to 5.7 in any residual norm) and which item
+   (P42) named in the first place.
+
+That is a change to the meaning of a user input, so it is proposed and not
+taken.
+
+### 131.5 What was checked
+
+* **The nine regression cases are byte-identical to what the tree produced
+  before this change.** The comparison is against a snapshot of the tree's own
+  current outputs (`treeC`), not against the goldens, because the goldens
+  predate sections 128-132 and every case failed them until the refresh below.
+  All nine match `treeC` bit for bit in both `Hydro_ioniz.txt` and
+  `Ion_species.txt`, which is what the two fixes predict: none of the nine
+  carries a `Resid tol:` key, and the three cases the reconstruction crash hit
+  are not in the matrix.
+* **The three cases that could not start now run**, each printing the new
+  "the PLM stage is empty -> single-stage WENO3" line. **Corrected 2026-09-03
+  (section 140.6): the rates quoted here were 30-step probes, and they were
+  written as though they were the cases' results.** Run to their own stopping
+  criteria the three give `log10 Mdot = 13.23` for `wasp_hybrid_finish` and
+  `crit_warm` (the same case under two names, and the directory deleted
+  2026-09-03; `du = 9.9997e-4 < du_th` at step
+  22935) and 13.36 for `wasp_localdt_cont` (at a 40,000-step cap, `du =
+  4.97e-5`, so not a converged rate). The probe values were 13.40, 13.40 and
+  13.24.
+* **The `A_10` provenance comment is comment-only**: the `-O3` object of
+  `h2_vibrational_relaxation.f90` has the same md5 before and after.
+* NOT checked: whether the `README_HOWTO.md` molecular prescription
+  (`Solver: Newton 5.0e-2` + `Resid tol: 1.0e-5`) is reachable. That question
+  depends on the decision of section 131.4; under the measure as it stands the
+  answer is set by the layer's energy row, which saturates 1e-3 on every
+  converged state measured here, so a 1e-5 target is not reachable through it
+  -- and the prescription's own text ("`||R||` is set by the two or three cells
+  just above the base") is describing exactly that saturation. The
+  150,000-step run was started and stopped at step 27,746 (`du = 0.28`) when
+  the tree regression needed the cores.
+* NOT checked: the `Resid tol` cases themselves (`jfnk_*`, `ptc_*`, `tpm_*`,
+  `resid_on`) are not in the nine-case matrix and were not re-run after the
+  stall-net change; by construction they can now stop earlier than
+  `count_max`, which is the intent.
+
+
+### 131.6 The block-end golden refresh
+
+The goldens carried the state of the tree before sections 128-132 and every one
+of the nine cases failed against them. They are refreshed here, at the end of
+the block; the previous set is preserved as
+`backup/regression/golden_blockE_20260903`.
+
+**What the refresh carries, and what moved.** The movement is measured as the
+largest relative change of each field between the old and the new golden, over
+the physical cells. Attribution is by SCOPE -- which cases a section's physics
+can reach -- and not by an A/B of each section separately, except for the one
+row that was measured that way.
+
+| section | what it changes | cases it can reach | measured |
+|---|---|---|---|
+| 128 | molecular carriers transported without the oxygen chemistry (default-off gate, face flux BC) | the seven molecular / profile cases | scope |
+| 129 | trace metals compete for the He recombination photons | metals-on: `wasp_full`, `wasp_he23off`, `mol_metals`, `lower_profile` | scope |
+| 130 | dissociative photoionization of H2 as a second product channel | the seven molecular / profile cases | scope |
+| **131** | **this section (the two fixes)** | **none** | **A/B: all nine byte-identical against the pre-change tree** |
+| 132 | level-resolved Lyman-Werner rate, two branching ratios, computed `E_bound` | `mol_lyman_werner` (the only case with a LW flux) | scope |
+
+| case | `log10 Mdot` old -> new | max `\|drho/rho\|` | max `\|dT/T\|` | at `r` [R_p] |
+|---|---|---:|---:|---:|
+| `wasp_full` | 13.26 -> 13.26 | 5.12e-4 | 2.04e-4 | 1.246 |
+| `wasp_he23off` | 13.26 -> 13.26 | 6.49e-4 | 2.77e-4 | 1.244 |
+| `mol_base_handoff` | 10.56 -> 10.56 | 1.26e-2 | 9.36e-3 | 2.003 |
+| `mol_metals` | 10.57 -> 10.57 | 2.53e-2 | 2.58e-2 | 1.193 |
+| `mol_lyman_werner` | 10.55 -> 10.55 | 2.61e-1 | 1.69e-1 | 4.423 |
+| `mol_diffusion` | 10.56 -> 10.56 | 1.27e-2 | 9.37e-3 | 2.003 |
+| `mol_ir_bands` | 10.57 -> 10.57 | 1.08e-2 | 9.88e-3 | 1.193 |
+| `mol_sec_ion` | 10.51 -> 10.51 | 2.38e-2 | 1.75e-2 | 1.193 |
+| `lower_profile` | 9.56 -> 9.56 | 1.60e-3 | 1.54e-3 | 2.797 |
+
+**No rate moves at the printed digits**, and the two converged WASP-121b cases
+move by 5-6e-4 in density. The molecular rows move by 1-26%, and per item (P17)
+those are 12,000-step relaxation snapshots whose magnitudes are transient
+amplification, not physical change: the largest velocity ratios in the same
+comparison run to 7e3 at near-zero-velocity cells. Read the molecular rows as
+"this case moved", not as a size.
+
+**The parse corpus is re-snapshotted with it.** `write_setup_report` dumps
+`rec_method`, and the parser now resolves it to `PLM` or `WENO3` where it used
+to echo the input word `PLM+WENO3`, so `backup/regression/run_parse_corpus.sh`
+reported a diff for every two-stage case. The corpus was re-snapshotted
+(`run_parse_corpus.sh golden`, then `check`: **1092 cases, 0 diff, PARSE CORPUS
+CHECK OK**); the previous set is preserved as
+`backup/regression/parse_golden_blockE_20260903` with its
+`parse_skip_blockE_20260903.txt`. **What the refresh carries is mostly not this
+section**: of the 1076 changed dumps, 956 change only in variables this section
+does not touch (`R0`, `Mp`, `Mstar`, `a_orb`, `t_s`, `q0`, `b0`, `atilde`,
+`Mrapp`, `R_star`, `r_max`, and the new `carrier_transport` /
+`oxygen_transport` keys of section 128), and 120 additionally carry
+`rec_method`. An A/B against a binary with only this section's parser change
+reverted isolates the contribution exactly: `rec_method` goes `PLM+WENO3` ->
+`PLM` on the 120 two-stage cases, and on the three empty-PLM-stage cases
+(`wasp_hybrid_finish`, `wasp_localdt_cont`; and `crit_warm`, the same case as
+the first, deleted 2026-09-03) it goes to `WENO3`
+with `use_plm`/`use_weno3` flipped with it. Nothing else in any dump is this
+section's. Sixteen dumps are new cases that post-date the previous snapshot,
+and none was lost.
+**One thing the re-snapshot exposes and does not fix**: the corpus skip list
+grows from 2 to 33. The 31 added cases (`backup/regression/armD_D1` and 30
+`vulcan_work/` directories) all stop in the parser with `ERROR: a molecular
+base particle count with an atomic species state` -- the section 117
+validation, reached because their `input.inp` carries a molecular base with
+`Molecular chemistry` off. That is a property of those stored inputs, not of
+this change, and they are recorded as skipped rather than repaired here.
+
+**Verification of the refresh.** `run_check.sh golden`, then
+`run_check.sh check`: **9/9 PASS, byte-identical**. Then
+`backup/regression/run_fcheck.sh` (a `-fcheck=bounds,do,mem` rebuild from
+scratch and a 1500-step bounded HD 209458 b run): **CLEAN**, `log10 Mdot` 9.60.
+`run_fcheck.sh` restores the production build, and `run_check.sh check` on that
+restored binary is **9/9 PASS** again.
+
+Files: `src/modules/files_IO/input_read.f90`, `src/EXHALE_main.f90`,
+`src/modules/lower_atmosphere/h2_vibrational_relaxation.f90` (comment only).
+
+
+## 132. The Lyman-Werner rate is now the level-resolved cross section itself, one pump has two branching ratios, and the 2.0 eV of the heat return is computed instead of adopted (2026-09-02)
+
+> **Superseded in part by section 135 (2026-09-03).** The tabulated rate was
+> CLOUDY's H2g sub-reservoir and line overlap was absent; both are fixed there.
+> The absolute cross section, the two branching ratios and the computed heat
+> return all stand; the table they are read from was rebuilt.
+
+**Judgment first. The two Lyman-Werner band constants did not disagree with
+the CLOUDY calculation of section 122 for the reason the note recorded. The
+line data agree: rebuilt from CLOUDY's own Abgrall, Roueff & Drira (2000)
+files, the band-averaged dissociation cross section for a thermal H2
+population at 100 K is `3.479e-18 cm^2` against the `3.4520e-18 cm^2` the
+module took from Draine & Bertoldi (1996) -- 0.8 per cent -- and the pump
+cross section agrees to 0.02 per cent. The factor 1.15-1.37 between them is
+LINE TRAPPING of the fluorescent decay photons, which CLOUDY's converged pass
+carries and DB96's unshielded tables do not. The defect was the mixture: an
+untrapped constant multiplied by a shielding factor whose own normalization is
+trapped. The rate now comes from the absolute cross section, tabulated.** Item
+(P39) is closed here.
+
+### 132.1 What the measurement was
+
+CLOUDY does not write the untrapped branching out -- its Solomon rate carries
+the escape probability inside `D/(D + sum A_ul Ploss)`
+(`mole_h2_etc.cpp`, `mole_h2.cpp`). A four-line diagnostic was added to a
+scratch build of c25.00 to print, at full precision, the fresh pump rate of
+the H2g population, the dissociation rate that pump gives with
+`D/(D + sum A_ul)`, the rate it gives with CLOUDY's own branching, and the
+band field. The patch is in `src/utils/h2_shielding_cloudy_decks/` and it is
+inert: the 27 decks re-run with it reproduce the unpatched `f_shield` curve
+with a maximum relative difference of exactly zero, and the table built from
+them is byte-identical to the one section 122 installed.
+
+With it the attribution is a measurement, not an inference. At the illuminated
+face of the 1300 K run the single-pump branching is **0.1466 on both passes**
+-- there is no escape probability in it, so it cannot move -- while the
+effective one goes 0.1466 -> 0.1771 between the first pass and the converged
+one. Two further facts point the same way: at fixed `T = 1300 K` the converged
+face cross section moves 13 per cent between `n_H = 1e12` and `1e14` while the
+untrapped value is identical to five digits, and atomic data cannot depend on
+density.
+
+### 132.2 One absorption, three counts
+
+    sigma_diss   dissociations per unit INCIDENT band photon fluence [cm^2];
+                 self-shielding and trapping both inside it -- the RATE.
+    p_single     dissociations per PUMP with every fluorescent photon free to
+                 escape, D/(D + sum A_ul) -- the HEAT RETURN.
+    p_eff        dissociations per photon REMOVED FROM THE BEAM, i.e. per
+                 fresh pump, D/(D + sum A_ul Ploss) -- the PHOTON LEDGER.
+
+`p_single` and not `p_eff` is what the fluorescence heat needs, and the reason
+is that the trapping cancels out of that count exactly. Per fresh pump the
+chain ends in dissociation with probability `p_eff` and contains
+`(D + A)/(D + A Ploss)` pump events, so
+
+    pumps per dissociation = (D + A)/D = 1/p_single ,
+
+independent of `Ploss`; the decays per dissociation are
+`(1 - p_single)/p_single`. Physically, a trapped decay and the re-absorption
+that follows it move one molecule down and another up and deposit nothing.
+CLOUDY's own bookkeeping says the same: the return flux into `X(v'', J'')` is
+`Pop_up A_ul Ploss` and the excited-state population is
+`rate_in/(D + sum A_ul Ploss)`, so the arrivals in vibrationally excited X per
+dissociation are `A_+/D`, with no escape probability in them. The beam photon
+count is the other one: only fresh pumps take photons out of the stellar beam,
+so `write_output`'s `ph_lw` divides by `p_eff`. The two differ by 20-40 per
+cent through the layer.
+
+### 132.3 What the table carries now
+
+`h2_self_shielding_table.f90` holds three cubes on the same
+39 x 9 x 3 grid in `(log N_H2, log T, log n_H)` -- `log10 sigma_diss`,
+`log10 p_single`, `log10 p_eff` -- generated by the same script from the same
+27 decks. `h2_self_shielding_level_resolved` survives as the ratio
+`sigma_diss(N)/sigma_diss(N_min)`, a diagnostic, which is what
+`output/Lyman_Werner.txt` reports. Measured values at `n_H = 1e13 cm^-3`:
+
+| N(H2) [cm^-2] | sigma_diss (1300 K) | p_single | p_eff |
+|---|---|---|---|
+| 1e12 | 4.630e-18 | 0.147 | 0.177 |
+| 1e17 | 3.806e-20 | 0.225 | 0.293 |
+| 4.3e18 | 1.060e-21 | 0.175 | 0.238 |
+| 4.8e20 | 9.844e-23 | 0.147 | 0.220 |
+| 5.0e21 | 3.105e-23 | 0.151 | 0.215 |
+
+### 132.4 The 2.0 eV of the heat return is now computed
+
+Burton, Hollenbach & Tielens (1990) Appendix A read: "the effective heating
+per pump, `E_*`, has been taken as 2.0 eV", an adopted value with no
+derivation, and their eq. (A1) multiplies it by the collisional de-excitation
+rate of a UV-excited pseudolevel, not by the pump rate and not by the
+dissociation rate. Black & van Dishoeck (1987) pp. 412-413 supply only the
+branching -- "fluorescence to the vibrational continuum of the ground state
+with a typical average probability of 0.10 ... The remaining 90% of the
+fluorescent transitions populate various bound excited vibration-rotation
+levels of the ground state" -- not a mean energy.
+
+The same quantity is computable. Summing the Abgrall, Roueff & Drira (2000)
+transition probabilities over every decay of every in-band pump, weighted by
+the `X(v'', J'')` energy the decay lands on, gives the mean landing energy per
+BOUND fluorescence:
+
+| T [K] | 700 | 1300 | 1800 | 2700 | 3200 |
+|---|---|---|---|---|---|
+| `E_bound` [eV] | 2.060 | 2.085 | 2.102 | 2.121 | 2.129 |
+| per pump [eV] | 1.769 | 1.779 | 1.786 | 1.795 | 1.799 |
+| against 2.0 eV | +3.0% | +4.3% | +5.1% | +6.1% | +6.4% |
+
+`h2_energy_per_bound_fluorescence_eV(T)` replaces the constant, a quadratic
+reproducing the nine points to 0.03 per cent and clamped at 700-3200 K. The
+form stored is per BOUND fluorescence, not per pump, because it then belongs
+to the cascade alone and not to the branching of whatever excited the
+molecule: the Lyman-Werner path multiplies by `(1 - p_single)`, the
+photoelectron path by its own state-resolved `(1 - p_diss_B)`, `(1 - p_diss_C)`
+(0.27, 0.036). The sixth of the bound fluorescences that land back on
+`v'' = 0` and leave only rotational energy is already inside these means and
+must not be discounted a second time.
+
+### 132.5 Three constants removed
+
+With the rate and both branchings on the table, `sigma_lw`, `p_diss_lw` and
+`sigma_lw_pump` entered no number the code produced. They are gone from
+`lyman_werner.f90`; the values (DB96 Table 1-2, `chi = 1`, the `T_r = 100 K`
+row: `F = 1.208e7 cm^-2 s^-1`, `zeta_pump = 3.09e-10 s^-1`,
+`<p_diss> = 0.135`, hence `sigma_diss = 3.452e-18` and
+`sigma_pump = 2.557e-17 cm^2`) are stated in the `h2_band_equivalent_width`
+header as what DB96's eq. (39) is normalized to, since that fit is still what
+computes the band share `A(N)` the H2O and OH continua see. The band share
+itself is unchanged.
+
+### 132.6 What moved
+
+Nine matrix cases, single-threaded, against the same tree without this change:
+**seven byte-identical**; `mol_lyman_werner` and `mol_sec_ion` move, and
+nothing else does. In `mol_lyman_werner` the unattenuated rate rises by
+**1.274** at the base (1.15-1.37 was the predicted band), the H2
+half-abundance radius moves inward from 1.13116 to 1.12652 R_p, and
+`heat_H2_LW` integrates 1.16 times higher from the rate and a further 1.040
+from `E_bound`; `heat_total` moves by 3 per cent. `mol_sec_ion` is the only
+case in which the photoelectron fluorescence channel is live, and there
+`E_bound` moves `heat_total` by 0.05 per cent integrated.
+
+### 132.7 Where it stops being a value
+
+* **The trapping inside `sigma_diss` and `p_eff` is slab geometry.** CLOUDY
+  computes it from escape probabilities in a plane-parallel slab illuminated
+  on one face and closed on the other. Our layer has the same thick-inward
+  side, which is the side that matters, but it is spherical and open outward,
+  and the size of the enhancement depends on the column BEHIND the point --
+  a property of the run, not of H2. `p_single` is free of this.
+* **`E_bound` is an unshielded average.** With shielded weights the same sum
+  gives 2.17-2.25 eV at `N(H2) = 1e18-1e21`, +4 to +9 per cent, because
+  self-shielding removes the strongest lines first and the survivors land
+  higher. The face value is used, so the term is a lower bound inside the
+  shielded layer by about as much as the correction it applies.
+* **Above `h2_shielding_overlap_column` everything here is an upper bound**,
+  for the line-overlap reason section 122 gives. That item is unchanged.
+* Sources and arithmetic: `docs/p39_lw_cross_section_sources.md`.
+
+## 133. Two gates: the residual on each row's own largest term, and the mass flux on the wind (2026-09-03)
+
+**Judgment first. One number was being asked to say two things, and it could
+say neither well. `||R||` is a statement that nothing is changing; the constancy
+of `rho v r^2` is a statement that the wind carries one mass flux at every
+altitude. They are not the same statement -- the two solves of section 126.6
+differ by a factor 25 in the flux spread and by only 1.9 to 5.7 in every
+residual norm that was tried -- and section 131 measured that no single
+max-combined residual with one threshold can make both. They are now two gates,
+and a steady solve is accepted only when BOTH are met. The residual's row
+scale becomes, at every cell and in every row, a bound on that row's own
+largest term: the cell's state scale times the rate at which a signal crosses
+the cell, `D_k(j) (|v_j| + c_s,j)/dr_j`. That is the same `D_k` the line-search
+merit uses, so the merit and the acceptance test are now the same scaling of
+the same residual, differing only by each cell's signal-crossing time.
+`Resid tol` therefore changes meaning by a measured factor 1e-2 and every value
+in the repository is renormalized. The result is what the pair was for:
+the two restarts of section 126.6 now land on the same wind -- `log10 Mdot`
+10.30 and 10.32 against 10.47 and 10.27 -- and `jfnk_hd189`, which used to
+spend 806 iterations on a layer that the measure was mis-scaling, converges on
+both gates.**
+
+This closes item (P42).
+
+### 133.1 The residual row scale, and what the measurement chose
+
+Section 131 left one candidate standing, `|u(k,j)| (|v|+c_s)/dr_j`, and one
+question: whether the momentum row's gravitational scale of section 62.3
+should be replaced by it or combined with it. The question is settled by
+measuring which of the two collapses, on the four converged states of section
+131, volume-weighted, in each region:
+
+| momentum-row candidate | layer, four states | wind, four states |
+|---|---|---|
+| `\|R2\| / rho\|dPhi/dr\|` (section 62.3) | 1.5e-6 - 2.5e-4 | 9.0e-7 - 1.3e-2 |
+| `\|R2\| / \|rho v\|(\|v\|+c_s)/dr` | 4.4e-5 - 2.5e-3 | 5.2e-10 - 6.8e-5 |
+| `\|R2\| / rho(\|v\|+c_s)^2/dr` | **1.9e-8 - 1.5e-6** | **2.5e-10 - 1.0e-5** |
+
+The literal reading of `|u(2,j)| = |rho v|` collapses in the layer exactly as it
+always did -- it is 40 to 120 times smaller than the gravitational scale there
+-- so it cannot be the bound. What does not collapse anywhere is `rho(|v|+c_s)`,
+which is `cell_state_scales`' own momentum scale, times the signal-crossing
+rate. **Measured, it exceeds the gravitational scale at every cell of every
+state: by a factor 20.8 at the tightest cell and 21 to 3600 in the
+volume-weighted sums.** So gravity never wins, and the max is kept only so that
+the bound is a bound by construction rather than by measurement on four states.
+
+The row scale is therefore, with no region switch at all:
+
+```
+   s_k(j) = D_k(j) ( |v_j| + c_s,j ) / dr_j ,   D = (rho, rho(|v|+c_s), E)
+   s_2(j) = max( that , rho_j |Gphi_i(j) - Gphi_i(j-1)| / dr_j )
+```
+
+`D_k` now lives in one place, `state_scales_of_cell` in
+`src/modules/time_step/steady_residual.f90`, and `cell_state_scales` in the
+solver calls it. The convergence measure is the merit's own scaling of the same
+residual, multiplied by the cell's signal-crossing time: the merit is a rate,
+the acceptance test the dimensionless fraction of the row's largest term.
+
+The two-region maximum of section 127 stays, but its justification changes. It
+was there because the wind's and the layer's numbers were not commensurable;
+they are now. It is kept because the outer region carries almost all of
+`sum r^2 dr`, so any single volume-weighted norm would let it average the inner
+column away.
+
+### 133.2 The flux gate
+
+New key, parsed in `input_read.f90`, defaulted in `parameters.f90`:
+
+```
+Flux spread tol: <tol> [<r_flux [R_p]>]      default 5.0e-3, 1.2
+```
+
+`flux_spread_of_state` (`steady_residual.f90`) returns
+`(max F - min F)/|mean F|` with `F = rho v r^2` over `[j_flux:N]`, i.e. over
+`r >= r_flux`; `j_flux` is set in `define_grid` beside `j_min` and carries the
+same empty-window guard. `steady_gates_met` in `steady_newton.f90` is the only
+acceptance test either solver uses, and it is `||R|| < resid_tol` AND
+`spread < flux_spread_th`. A tolerance `<= 0` disables the flux gate. When a
+solve ends unaccepted the log names the gate that is left:
+
+```
+ (JFNK) the residual gate is met; the FLUX gate is the one left: spread 1.874E-02 >= 5.000E-03
+```
+
+**Why the window is not `[1:N]`, measured.** Mass conservation does make
+`rho v r^2` constant everywhere in a steady state, but the base boundary
+condition deliberately admits a small inflow through the smooth valve, and just
+above it the wind is still being launched at `|v| ~ 1-10 cm/s`, eight orders
+below the wind speed. On a hot Uranus state that is flat everywhere else, the
+spread over all cells is **9.9e2** and `F` changes sign, so `max/min` is not
+even defined; over `r >= 1.03` it is 7.5e-2, over 1.05 4.6e-2, over 1.10 3.3e-3
+and over 1.20 2.5e-3. Including the launch region would measure the base
+boundary condition, not the wind.
+
+**Why the defaults are 5e-3 and 1.2 R_p.** Over `r >= 1.2` every converged
+state in hand is flat: 2.4e-3 (hot Uranus, two-stage restart), 2.4e-3
+(He/H = 0.0793), 2.6e-3 (He/H = 1), 2.9e-3 (He/H = 30), 4.8e-4 (WASP-121b, both
+Newton cases). The state section 126.6 showed the old measure could not reject
+reads 7.6e-2 there. A threshold of 5e-3 clears the worst converged state by 1.7
+and rejects the bad one by 15. 1.2 R_p is the smallest fixed radius at which
+all of them are flat -- at 1.10 the He/H = 30 rung reads 2.1e-2 -- and it is the
+inner edge of the region sections 126.6 and 127 identified as the one the old
+measure could not see.
+
+### 133.3 The renormalization of `Resid tol`
+
+The scale changed, so the number does. Measured on the same states, in the
+solver, before and after:
+
+| state | old `\|\|R\|\|` (section 131 scale) | new `\|\|R\|\|` | ratio |
+|---|---:|---:|---:|
+| `jfnk_hd189` (JFNK solution) | 9.915e-4 | 9.340e-7 | 1060 |
+| `wasp_full_newton` | 9.886e-4 | 9.337e-6 | 106 |
+| `wasp_he23off_newton` | 9.024e-6 (new) | 9.024e-6 | - |
+| hot Uranus, two-stage restart | 5.642e-4 | 9.092e-6 | 62 |
+| He/H = 1 reference | 3.264e-4 | 6.729e-6 | 49 |
+
+The ratio is not one number -- it is 50 to 1000, because which row bound the
+old measure differed by planet. What IS one number is where converged states
+now sit: **9.3e-7 to 9.3e-6**, where they used to sit at 4.9e-4 to 9.9e-4. The
+old default 1e-3 stood a factor 1 to 2 above that band; **1e-5 stands in the
+same relation to the new one**, so every tolerance is multiplied by 1e-2:
+
+| was | now | where |
+|---|---|---|
+| 1.0e-2 | 1.0e-4 | `resid_on` (and the deleted `ptc_wasp`, the same case) |
+| 1.0e-3 | 1.0e-5 | `jfnk_cold`, `jfnk_hd189`, `ptc_warm`, `tpm_hd189`, `tpm_wasp`, `valve_sens/eps5`, `examples/04_newton_from_state`, and the built-in default in `EXHALE_main.f90` |
+| 5.0e-3 | 5.0e-5 | `LHS1140b/examples/scalar_base_kzz1e9` |
+| 4.0e-4 | 4.0e-6 | `LHS1140b/examples/photochem_profile_base`, `scalar_base_cno` |
+| 1.0e-4 | 1.0e-6 | `jfnk_hd189_tight`, `valve_sens/eps5` |
+| 1.0e-5 | 1.0e-7 | `examples/15_molecular`, and the molecular prescription of `README_HOWTO.md` and the manual |
+
+Fifteen lines in fourteen canonical files, each with a
+`# Resid tol renormalized 2026-09-03, Update_EXHALE.md section 133 (was ...)`
+line above it, plus the two built-in defaults in `EXHALE_main.f90`, the
+`input_schema.md` entry and eleven places in `docs/EXHALE_user_manual.tex`.
+**932 further `input.inp` files under `LHS1140b/exhale/` were NOT changed**:
+they are stored records of past runs, paired with the outputs those tolerances
+produced, and rewriting them would make each directory inconsistent with its
+own result. Re-running one of them now asks for a tolerance 100 times looser
+than intended, which is recorded here rather than repaired silently.
+
+### 133.4 What was measured
+
+Every steady solve below is the JFNK with both gates; the flux spread quoted is
+the gate's own, at the accepted iterate.
+
+**1. `jfnk_hd189` reaches both gates.** `Resid tol: 1.0e-5` (renormalized),
+direct PTC/JFNK route: `info = 0` at `||R|| = 9.340e-7` and flux spread
+4.645e-3, in 520 outer iterations. Under section 131 the same state took 806
+iterations to reach 9.915e-4 and its flux spread was 2.1e-2 -- the solve now
+keeps working until the flux is flat, and the extra work is what flattens it.
+
+**2. `jfnk_hd189_tight` reaches the residual gate and not the flux gate.**
+`Resid tol: 1.0e-6`: `||R||` falls to 2.830e-7, a factor 3.5 inside the target,
+and stops improving at iteration ~1500; the flux spread ends at 1.874e-2 and
+the solve returns `info = 1` with the log naming the flux gate. **The two gates
+pull apart at that depth on this planet**: the state that satisfies the residual
+to 2.8e-7 is four times LESS flux-flat than the one that satisfies it to
+9.3e-7. That is a property of HD 189733 b's solve, not of the gates, and it is
+the first thing the split makes visible.
+
+**3. The two restarts of section 126.6 land on the same wind.**
+
+| | two-stage restart | single-stage restart |
+|---|---:|---:|
+| `info` | 0 | **0** |
+| `\|\|R\|\|` | 9.092e-6 | 5.610e-6 |
+| flux spread (gate) | 1.535e-3 | 2.825e-3 |
+| `log10 Mdot` | **10.32** | **10.30** |
+| `L2` difference of `(rho,v,p)` | 4.8% | 4.8% |
+
+Against section 127's 10.27 and 10.43 (and section 126.6's 10.34 and 10.56)
+with an `L2` difference of 36%. The single-stage path was expected to be
+REJECTED by the flux gate; what it does instead is converge, because the gate
+keeps the solver working on the region the residual alone was satisfied with.
+That is a better outcome than the one the split was designed for.
+
+**4. The atomic Newton cases.** `wasp_full_newton`: `info = 0`,
+`||R|| = 9.337e-6`, flux spread 1.858e-3, `log10 Mdot = 13.21` (unchanged).
+`wasp_he23off_newton`: `info = 0`, `||R|| = 9.024e-6`, flux spread 7.457e-4,
+`log10 Mdot = 13.21` against 13.22 -- one in the last printed digit.
+
+**5. The He/H = 1 reference.** `info = 0`, `||R|| = 6.729e-6`, flux spread
+3.543e-3, `log10 Mdot = 10.31` against 10.32.
+
+**6. `make check`, nine cases, single-threaded: 9/9 byte-identical.** None of
+the nine enters the JFNK -- `wasp_full` and `wasp_he23off` stop on `du` and the
+seven molecular / profile cases are fixed-step snapshots -- which is the point:
+everything here is inside the steady solver's acceptance.
+
+### 133.5 What was not checked
+
+* Whether `examples/15_molecular` reaches its renormalized `Resid tol: 1.0e-7`.
+  Converged states measure 9.3e-7 to 9.3e-6, so 1e-7 is below the band; the old
+  1e-5 was equally far below the old band and was reported as reachable for that
+  configuration (section 61), so the renormalization is consistent, but it is
+  not re-measured here. It is a 150,000-step run.
+* The `Resid tol` cases other than `jfnk_hd189*` (`jfnk_cold`, `ptc_*`,
+  `tpm_*`, `resid_on`, `valve_sens`) were renormalized but not re-run.
+* The 932 stored `LHS1140b/exhale/` inputs, as above.
+
+### 133.6 The state the gates accept is the state that is written; the file's ghost rows are what differed
+
+Section 133.5 recorded that the flux spread the solve accepted (4.6e-3 on
+HD 189733 b) did not match the spread computed from the written
+`Hydro_ioniz.txt` (1.0e-2), and left it open. **The cause is not a state
+change. It is that the output file carries ghost cells and the offline
+measurement counted them.**
+
+**Nothing between the solve's return and the write touches `u`.** Traced,
+file:line:
+
+| step | what it does to `u` |
+|---|---|
+| `EXHALE_main.f90:1593` `solve_steady_jfnk` (or `:1596` `solve_steady_ptc`) | returns the accepted `u` |
+| `:1599` `U_to_W(u,W)`; `:1600` `rho,v,p,E` re-read | reads `u`; `rho`, `v` are *derived from it* |
+| `:1601` `get_species_densities`, `:1603` `comp_T_from_p`, `:1604` `excited_H_update`, `:1605` `ioniz_eq`, `:1606` `get_species_densities` | composition, `heat`, `cool`, `T`, `eta` only |
+| `:1608`/`:1609` exit (no diffusion, no carriers) | -- |
+| `:1169`-`:1171` `is_mom_const`, `newton_finished` | -- |
+| rest of the marching-loop body to `:1260` | only the NaN scan reads `u(k,j)` |
+| `:1262`-`:1449` (`contact_mode_dissipation_magnitude`, `excited_H_update`, ...) | read `u`; no assignment |
+| `:1445` `write_output(rho,v,p,...)` | writes what `U_to_W(u)` gave |
+
+There is no hydro step after the Newton finish -- the RK stages are at
+`:592`-`:760`, before it -- so `rho v r^2` cannot move, which is what the
+physics says too.
+
+**What did differ.** `write_output.f90:101` writes `do j = 1-Ng, N+Ng`: the
+file has `N + 4` rows with `Ng = 2` **ghost cells at each end**. The upper two
+are filled by `Apply_BC` from a zero-gradient / WENO3 extrapolation, so their
+`rho v r^2` is a boundary value, not part of the solution, and an offline
+`r >= 1.2` selection over the raw file picks them up. Dropping them reproduces
+the gate exactly:
+
+| state | spread over all file rows, `r >= 1.2` | over the physical cells | the gate's value |
+|---|---:|---:|---:|
+| `jfnk_hd189` | 1.0486e-2 | **4.6447e-3** | 4.6447e-3 |
+| `wasp_full_newton` | 2.3148e-3 | **1.8581e-3** | 1.8581e-3 |
+| He/H = 1 reference | 3.5434e-3 | **3.5434e-3** | 3.5434e-3 |
+
+The factor is state-dependent -- 2.3 on HD 189733 b, 1.25 on WASP-121b, 1.00 on
+the hot Uranus -- which is why it looked like a state change on the one case it
+was first noticed on. `examples/exhale_io.py` has no ghost handling either, so
+every Python consumer of these files has the same trap.
+
+**Both halves are closed, in the two places they belong.**
+
+*The file now says which rows are physical.* `write_output` emits a third `#`
+header line,
+
+```
+# rows 504: 2 ghost cells at each end; physical cells are rows 3 to 502
+```
+
+It is a comment, so no numeric parse and no golden changes
+(`run_check.sh` compares with `grep -v '^ *#'`).
+
+*The run now asserts that the written state is the accepted one.*
+`assert_written_state_is_the_accepted_one` (`EXHALE_main.f90:1545`) is called
+immediately after both final `write_output` calls -- `:475` on the direct
+steady route and `:1450` on the marching route -- and re-measures the flux gate
+on the state as written, printing it beside the value the solve accepted and
+warning loudly if they differ:
+
+```
+ (EXHALE_main) flux gate: accepted 4.6447E-03   as written 4.6447E-03
+```
+
+The table above is that line on the three states; none of them raised the
+warning. The check is an assertion rather than a correction: the trace says the
+two are the same object, and the line is what makes that a measured statement
+on every run instead of a claim in a document. It costs one pass over the wind
+window.
+
+**What is asserted and what is not.** The flux gate is a function of `u` alone,
+so the assertion is exact. `||R||` is not: it depends on `u` *and* on the
+equilibrium composition, and `ioniz_eq` is called once more at `:1605` after
+the solve returns. That call re-solves the same equilibrium at the same
+`(T, rho)`, so the residual of the written state is the accepted one to the
+ionization solver's own tolerance rather than bit for bit. It is not
+re-evaluated here, because doing so costs a full extra residual evaluation and
+would mutate `f_sp` after the state has been written.
+
+**Checked.** `make check`, nine cases, single-threaded: 9/9 byte-identical --
+the header line is a comment and the assertion is output only. The three
+reference solves above were re-run end to end on this build:
+`jfnk_hd189` `info = 0`, `wasp_full_newton` `log10 Mdot = 13.21`, He/H = 1
+reference `log10 Mdot = 10.31`, all unchanged from section 133.4.
+**Not changed:** `examples/exhale_io.py` still returns the ghost rows to its
+callers. Fixing it would change what every notebook and the transit tool see,
+which is its own change with its own verification.
+
+Files: `src/modules/time_step/steady_residual.f90`,
+`src/modules/time_step/steady_newton.f90`, `src/modules/init/parameters.f90`,
+`src/modules/init/define_grid.f90`, `src/modules/files_IO/input_read.f90`,
+`src/modules/files_IO/write_setup_report.f90`,
+`src/modules/files_IO/write_output.f90`, `src/EXHALE_main.f90`.
+Documentation: `docs/input_schema.md`, `README_HOWTO.md`,
+`docs/EXHALE_user_manual.tex`, `TO_BE_DONE.md` item (P42).
+
+
+## 134. The transported H2 front was being carried by the scheme: second-order limited advection, and a Lyman-Werner flux the run computes for itself (2026-09-03)
+
+**Judgment: the runaway H2 front of section 128 had two causes and the larger
+one was ours. First-order donor-cell advection gave the carrier operator a
+numerical diffusivity 8 to 22 times the molecular one at the front, and it was
+pushing the front outward; second-order limited advection removes it and buys,
+on a 500-cell grid, what doubling the grid bought. The missing Lyman-Werner
+sink is real and is the second cause -- it is the DOMINANT sink where the front
+now sits -- and it is no longer optional to know it: a run with a numerical
+spectrum integrates its own band flux. With both fixed the front is
+grid-converged to 0.2% and nearly stationary. It is NOT a steady state yet, and
+the carrier transport stays default off until it is.**
+
+### 134.1 What was measured before anything was changed
+
+Section 128 left the transported problem with a front that decelerated and then
+ran away, on the He/H = 0.0793 hot Uranus and on the same planet from a cold
+start. Two candidates were separated by controlled runs.
+
+**The grid.** Two refinements were tried and only one of them is a test. The
+base region (`Base grid [dr,cells]: 1.0e-4 100`) halves the smallest cell,
+which halves the global CFL step -- measured, `min dr/(|v|+c_s)` goes from
+2.382 s to 1.180 s, a ratio 0.495 -- so equal step counts are no longer equal
+physical times, and the apparent slowdown of that arm is what a halved step
+predicts. Doubling the TOTAL cell count instead (`Grid cells: 1000`) leaves the
+base spacing alone: 2.428 s against 2.382 s, a ratio 1.019, so step counts ARE
+comparable. That is the test, and it says the grid matters:
+
+| 100000 marching steps, cold start, LW off | `f(H2)=0.5` | `1e-2` | `1e-4` | `n(H3+)>1` |
+|---|---:|---:|---:|---:|
+| first order, 500 cells | 1.1658 | 1.2979 | **1.3967** | 1.2979 |
+| first order, 1000 cells | 1.1594 | 1.2211 | **1.2689** | 1.2252 |
+| **second order, 500 cells** | 1.1641 | 1.2269 | **1.2468** | 1.2267 |
+
+The first-order 500-cell front sits 0.15 R_p outside the resolved one, and the
+second-order scheme on the coarse grid lands where the fine grid does. The
+mechanism is not inferred: donor-cell carries `D_num = |v| dr/2`, and against
+the molecular diffusivity of H2 that is
+
+| | r = 1.15 | 1.30 | 1.50 |
+|---|---:|---:|---:|
+| `D_num/D_H2`, 500 cells | 8.5 | 20 | 22 |
+| `D_num/D_H2`, 1000 cells | 0.74 | 5.3 | 7.5 |
+
+with `K_zz = 0` in these runs, so the molecular value is the whole of the
+physical transport coefficient.
+
+**Lyman-Werner.** It was off in every section-128 run (`F_LW_star` unset), and
+Frelikh & Murray-Clay carry it always on. Switched on at 343 erg cm^-2 s^-1 it
+roughly halves the advance and delays the re-acceleration, but on the
+first-order grid it does not stop it. Its size depends on where the front is,
+and that is why the first measurement of it was misleading: in the RUNAWAY
+states LW is 25-34% of the He+ channels, because the front has reached low
+density where He+ is abundant; in the states where the front holds at 1.22 R_p
+it is the dominant sink by 4 to 12 times.
+
+### 134.2 Second-order limited advection, by deferred correction
+
+The residual now carries, for `v >= 0`,
+
+    df/dr|_j = (f_j - f_{j-1})/h + (sigma_j - sigma_{j-1})/2
+
+and its mirror image for `v < 0`, with `sigma` a limited slope. On a linear
+profile the two slopes cancel; on a quadratic they cancel the donor-cell
+truncation term exactly. **With `sigma = 0` this is EXACTLY the first-order
+operator the module had**, on the same non-uniform spacing, so the correction
+is attributable on its own and the first-order limit is not approximated.
+
+`sigma` is **van Leer**, `2ab/(a+b)`, zero when the one-sided differences
+disagree in sign. Not minmod, and the reason is about this solver rather than
+about accuracy in general: minmod has a kink wherever `|a| = |b|`, and a kink
+in the source of a Newton residual is the defect section 126 spent a campaign
+on, while van Leer is differentiable except at the sign change -- and it is the
+less diffusive of the two, which is the property the measurement above says is
+scarce here.
+
+**The correction is deferred**: `sigma` is frozen over one Newton solve and
+refreshed at every transport step. That is what keeps the Jacobian
+block-tridiagonal -- the correction reaches `j-2` and `j+2`, which
+`block_thomas` cannot carry -- and what keeps the residual smooth inside a
+solve. At the fixed point of the marching loop, and of the fixed-wind
+relaxation, consecutive steps agree, so the state the code converges to is the
+second-order one. `block_thomas` is untouched. Cell 1 keeps the face-flux
+upwind of section 128 and carries no correction.
+
+**Order of accuracy, measured.** A Gaussian mixing ratio on the code's own
+spacing convention, the discrete derivative against the analytic one in L1 over
+the pulse, using the module's own `carrier_slope`:
+
+| N | L1, first order | L1, with the correction |
+|---:|---:|---:|
+| 100 | 1.070e-1 | 1.834e-2 |
+| 200 | 5.356e-2 | 4.786e-3 |
+| 400 | 2.679e-2 | 1.229e-3 |
+| 800 | 1.340e-2 | 3.122e-4 |
+| 1600 | 6.699e-3 | 7.886e-5 |
+
+giving observed orders `p = log2(err(N)/err(2N))` of 0.998, 0.999, 1.000, 1.000
+for the first-order operator and **1.938, 1.962, 1.976, 1.985** for the
+corrected one. The test lives in the campaign scratch directory as
+`unit/adv_order.f90`; it is written in CENTIMETRES because `carrier_slope`
+floors its spacing at 1 cm, the code's own units, and a test on a unit-length
+grid measures the floor instead of the scheme.
+
+### 134.3 The Lyman-Werner band flux is now computed, not remembered
+
+H2 photodissociation is not an option of the physics: the band exists whenever
+the star does. What was optional was our knowing the number, and a run with a
+numerical spectrum knows it. `lyman_werner_band_flux_from_sed` integrates the
+SED over 912-1110 A and `input_read` uses it when the run carries a spectrum
+and states no `Stellar LW flux`. **A stated key always wins**: it is the more
+specific statement, and a band-integrated measurement can be better than a
+trapezoid over whatever grid the file happens to have.
+
+**No dilution is applied, and that is not an omission.** EXHALE's own SED file
+is at the planet -- `read_sed`'s header says so -- while the `(R_star/a)^2`
+step of the documented prescription belongs to the stellar-surface files the
+value used to be produced from by hand. Both routes were checked against each
+other: Gueymard's solar spectrum integrated over 91.2-111.0 nm at the stellar
+surface and diluted to 0.048 AU behind a 1.155 R_sun star gives 328.96
+erg cm^-2 s^-1 against the 343.0 the molecular cases carry, i.e. **the
+prescription reproduces its own number to 4%**. And the new routine against an
+independent integral of the LHS 1140 b spectrum: 5.980e-1 from the code against
+5.9796e-1, four significant figures.
+
+With neither a key nor a spectrum the flux stays zero and the setup report says
+what that means, because a silently absent channel is what section 128's
+runaway was partly made of:
+
+    - WARNING H2 Lyman-Werner photodissociation OFF: no "Stellar LW flux" key
+      and no spectrum to integrate one from.
+      The band exists whenever the star does, so this is a MISSING CHANNEL,
+      not a modelling choice: H2 keeps a sink it should not.
+
+### 134.4 The two together, and what is left
+
+Cold start on the hot Uranus, the H2 front at `f(H2) = 1e-4`, with the advance
+per 20000 steps in brackets:
+
+| step | second order, LW off | second order, LW on, 500 cells | second order, LW on, 1000 cells |
+|---:|---:|---:|---:|
+| 20000 | 1.2186 (0.0092) | 1.2134 (-0.0141) | 1.2157 (-0.0065) |
+| 60000 | 1.2304 (0.0052) | 1.2168 (0.0034) | 1.2148 (0.0025) |
+| 100000 | 1.2458 (0.0091) | 1.2223 (0.0024) | 1.2199 (0.0023) |
+| 150000 | -- | **1.2300 (0.0034)** | **1.2275 (0.0033)** |
+
+**The front is grid-converged.** At 150000 steps the two grids put it at 1.2300
+and 1.2275 R_p, 0.2% apart, and they drift at the same physical rate, 0.0034
+against 0.0033 R_p per 20000 steps. A residual motion that does not change when
+the grid is halved is not a discretization artefact; it is the state still
+relaxing, which `du` agrees with at 3.1-3.3e-2 and falling. LW's own share of
+that: at 100000 steps it holds the front 0.024 R_p further in and cuts the
+advance rate by 3.8.
+
+The sinks where the front now sits, on the final states:
+
+| run | r | T [K] | n(H2) | R17 | R20 | LW | f_shield | LW/(R17+R20) |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| LW on, 500 | 1.15 | 1029 | 1.93e11 | 2.62e2 | 2.80e1 | 1.75e3 | 1.06e-4 | 6.0 |
+| LW on, 500 | 1.22 | 986 | 5.18e8 | 5.49e2 | 7.46e1 | 5.26e3 | 1.19e-1 | 8.4 |
+| LW on, 1000 | 1.22 | 1046 | 3.45e8 | 5.40e2 | 5.27e1 | 7.00e3 | 2.35e-1 | 11.8 |
+| LW on, 500 | 1.30 | 925 | 5.38e5 | 7.74e0 | 1.54e0 | 3.72e1 | 8.17e-1 | 4.0 |
+
+**What is NOT closed, and why the option stays off.** The front is nearly
+stationary at about 1.23 R_p but it is not stationary: 0.85 to 1.26 cells per
+20000 steps on the coarse grid, which is at the stopping criterion rather than
+below it. The wind is not steady either, and the steady solver cannot finish
+it: restarted from the 150000-step state with `Secondary_ionization: Immediate`
+(the STAGED default reloads a different state -- `du` jumps from 0.03 to 9), the
+JFNK stalls at `||R|| = 2.78e-2` and exits `info = 2` with no descent along
+either the Newton or the damped Gauss-Newton direction, and its worst cell is
+**the energy row at r = 1.186, inside the H2 front**. That is the slow mode of
+section 127.6, and neither the second-order advection nor the Lyman-Werner
+channel removes it. It is now `TO_BE_DONE.md` item (Y).
+
+So `Molecular carrier transport` remains default off for a molecular-only run.
+The default was to flip once a marching run stopped the front and a steady
+solve from that state returned `info = 0`; the first half is nearly done and
+the second is blocked.
+
+### 134.5 What was checked
+
+* `make check`, nine cases: byte-identical. The carrier transport is off in all
+  of them, and no regression case carries a `Spectrum file`, so neither change
+  can reach them -- which is why the new case below exists.
+* `examples/18_oxygen_chemistry`, 2000 steps, the transport ON: moved, as it
+  must be. The base cell's H2 partition goes from 0.5634 to 0.3634 of the H
+  nuclei, base H2O falls by about half, and `log10 Mdot` moves +0.03 dex.
+  Eleven of twelve output files change; `IC_dump.txt` does not.
+* The order-of-accuracy test of 134.2, and the two independent checks of the
+  band integral in 134.3.
+* NOT checked: the second-order operator on a CONVERGED oxygen state. The
+  `examples/18` comparison is a 2000-step snapshot from a cold start, so it is a
+  direction and an order of magnitude.
+
+**One line that belongs to every profile file, carried in one place.** The
+row-layout header of section 133.6 -- `# rows N: Ng ghost cells at each end;
+physical cells are rows a to b` -- was written by `Hydro_ioniz(_adv).txt`
+alone, which made it a property of one file rather than of the convention,
+while `Ion_species`, the cooling and heating breakdowns, `Excited_H`,
+`Lyman_Werner`, `OI_levels`, `Oxygen_chemistry` and `FUV_bands` span the same
+ghost rows and said nothing. It is now `write_row_layout_header` in `utils`,
+called by all nine writers and defined once. `residual_profile.txt` and
+`diffusion_pass_profiles.txt` do NOT get it, because they write `1:N` and the
+sentence would be false there. The regression strips `#` lines, so this is
+byte-identical by construction and measured to be.
+
+Files: `src/modules/lower_atmosphere/diffusive_photochemistry.f90`,
+`src/modules/radiation/sed_read.f90`,
+`src/modules/files_IO/input_read.f90`,
+`src/modules/files_IO/write_setup_report.f90`,
+`src/modules/init/parameters.f90`, `src/modules/functions/utilities.f90`,
+`src/modules/files_IO/write_output.f90`,
+`src/modules/radiation/util_ion_eq.f90`,
+`src/modules/radiation/excited_hydrogen.f90`.
+Regression: `backup/regression/mol_carrier`.
+Documentation: `docs/molecular_hydrogen_treatment.tex`,
+`docs/input_schema.md`, `TO_BE_DONE.md` items (P43) and (Y).
+## 135. The H2 Lyman-Werner table was a rate for a sub-reservoir of H2 and it left out line overlap; the two errors had opposite signs and hid each other (2026-09-03)
+
+**The judgement first.** Two independent errors sat in the H2 photodissociation
+rate. The first made it too small, the second too large, they crossed near
+`N_H2 = 2e20 cm^-2`, and below that column they very nearly cancelled -- which
+is why neither showed up when the table was built (section 122) or when it was
+turned into an absolute cross section (section 132). Both are now gone: the
+table is rebuilt from a line-by-line calculation in which every Lyman and
+Werner line absorbs every other line's beam, and it is a rate for **all** H2
+rather than for the part of it CLOUDY calls H2g.
+
+### 135.1 Error one: the tabulated rate belonged to a sub-reservoir
+
+CLOUDY splits H2 into two chemical species at `ENERGY_H2_STAR`, set to
+**4100 cm^-1** (5899 K) where the H2 model is constructed (`h2.cpp:10`,
+`diatomics h2("h2", 4100., ...)`): **H2g** is `v = 0, J <= 8` -- the top of it,
+`(0,8)`, is at 4051.9 cm^-1 -- and **H2s** is every level above.
+`H2_Solomon_rate` accumulates the dissociation of the two separately and
+divides each by its **own** density (`mole_h2_etc.cpp:60-92`,
+`Solomon_dissoc_rate_g /= SDIV(H2_den_g)`), and the `Shield(H2)` column that
+section 122 tabulated is `Solomon_dissoc_rate_g/G(TH85)`
+(`mole_h2_io.cpp:1580`). EXHALE carries one H2 species and applied that rate to
+all of it.
+
+The two are not interchangeable at depth. The H2s lines start from levels 100
+to 1000 times less populated, are therefore far less saturated, and keep
+dissociating long after the H2g lines have gone black:
+`Solomon_dissoc_rate_s/Solomon_dissoc_rate_g` reaches **165 (1300 K) and 615
+(900 K) at `N_H2 = 1e19`**. Weighting the two by their densities -- read from
+the runs, not assumed -- raises the tabulated factor by
+
+| `N_H2` [cm^-2] | 900 K | 1300 K | 1800 K | 2700 K |
+|---|---|---|---|---|
+| 1e17 | 1.24 | 1.94 | 2.98 | 4.16 |
+| 1e18 | 2.15 | 3.94 | 6.16 | 9.27 |
+| 1e19 | 2.43 | 4.15 | 6.89 | 11.10 |
+| 1e20 | 1.60 | 2.42 | 3.51 | 5.34 |
+| 1e21 | 1.23 | 1.49 | 1.78 | 2.34 |
+| 4.4e21 | 1.12 | 1.27 | 1.42 | 1.73 |
+
+**At the illuminated face the correction is +0.02 per cent (700 K) rising to
++12.7 per cent (3200 K)**, so the 0.5 per cent agreement with Draine &
+Bertoldi's Table 1-2 normalization that section 132 rests on -- measured at
+100 K, where H2s is empty to five digits -- is untouched. It is the depth
+dependence that was wrong.
+
+**How it was found.** Two calculations that shield one line at a time, the
+Meudon PDR code with `f_ShieldAlgo = 0` and a line-by-line calculation written
+for the purpose, agreed with each other to 15-35 per cent at 100 K and at
+1300 K and both sat 5-9x **above** the table over `1e19 <= N_H2 <= 1e21`. The
+reservoir split accounts for essentially all of it: with the weighting undone
+the table reproduces the line-by-line no-overlap branch to **1-4 per cent up to
+`N_H2 = 1e17`** and 28-36 per cent at `1e18`.
+
+### 135.2 Error two: line overlap, which is the dominant term at our columns
+
+CLOUDY applies the Federman, Glassgold & Kwan (1979) shielding function to each
+transition using that transition's own optical depth; nothing couples one line
+to another. Draine & Bertoldi's sec. 5.2 say overlap is what produces "the
+rapid falloff ... for N2 > 1e20 cm^-2", and at the columns of a molecular base
+it is not a correction. Two calculations differing **only** in whether the
+lines absorb each other's beam give
+
+| `N_H2` [cm^-2] | 900 K | 1300 K | 1800 K | 2700 K |
+|---|---|---|---|---|
+| 1e19 | 0.73 | 0.62 | 0.47 | 0.30 |
+| 1e20 | 0.45 | 0.33 | 0.22 | 0.096 |
+| 1e21 | 0.080 | 0.042 | 0.019 | 0.0040 |
+| 4.4e21 | 0.0047 | 0.0016 | 0.00056 | 0.000048 |
+
+i.e. a factor 24 at `1e21` and 630 at the `4.4e21` of the base, at 1300 K.
+Section 122 knew the table was an upper bound above
+`h2_shielding_overlap_column` and said so; what it could not know is that the
+boundary was about a decade optimistic -- at the column that function returned,
+the table already stood 7 to 10 times above the overlapping-line answer.
+
+### 135.3 What the table is now
+
+`src/modules/lower_atmosphere/h2_self_shielding_table.f90`, generated by the
+new `src/utils/h2_shielding_table_line_by_line.py`. Same three quantities on
+the same grid (39 columns x 9 temperatures x 3 densities), same axes, same
+accessors -- `h2_lw_dissociation_cross_section`,
+`h2_lw_dissociation_per_pump`, `h2_lw_dissociation_per_absorbed_photon`,
+`h2_self_shielding_level_resolved`. The physics behind each number changed:
+
+* **`sigma_pump` and `p_single` are line-by-line, with overlap.** Plane-parallel
+  slab, normally incident beam, flat `F_lambda` normalized to
+  `F = 343 erg cm^-2 s^-1` over 912-1110 A, `tau(nu, N) = N sum_i x_i
+  sigma_i(nu)` summed over every Lyman and Werner transition between 911.75 and
+  1200 A on a 4e5-point frequency grid, Voigt profiles with
+  `b = sqrt(2kT/m_H2)`, LTE populations. The line data are Abgrall, Roueff &
+  Drira (2000) -- the same measurements CLOUDY's `dissprob_*`/`transprob_*`
+  files and the Meudon PDR code carry, so no line-list difference enters.
+* **The fluorescent trapping is still CLOUDY's.** `p_eff/p_single` is read node
+  by node from the same 27 runs and multiplied in. Reimplementing CLOUDY's
+  escape probabilities would be a second, unvalidated version of the same
+  thing. **Its geometry is plane-parallel, illuminated on one face and closed
+  on the other**; our layer has the same thick-inward side, which is the side
+  that matters, but it is spherical and open outward. That is the one
+  ingredient of the table carrying a geometry our layer does not have, and it
+  is a new item of `TO_BE_DONE.md`.
+* **`h2_shielding_overlap_column` is gone**, and with it the
+  `h2_shield_log_col_overlap` plane. There is no longer a column above which
+  the value stops meaning anything, because overlap is inside it.
+  `h2_shield_max_column()` replaces it: the top of the tabulated column axis,
+  `5.0e21 cm^-2`, above which the edge value is returned. The two run-time
+  warnings that quoted the old boundary now report that extrapolation instead.
+
+### Verification
+
+* **The line-by-line calculation against a published overlap-including curve.**
+  At 100 K it reproduces the Draine & Bertoldi (1996) self-shielding function
+  to **2-9 per cent over `1e16 <= N_H2 <= 1e21`**, and its no-overlap branch
+  departs from DB96 exactly where DB96 say overlap sets in (3.3x at `1e21`,
+  12x at `4.4e21`).
+* **Against a second code that carries overlap.** The Meudon PDR code
+  (Le Petit et al. 2006) run with `f_ShieldAlgo = 1`, its exact UV line
+  transfer -- 30 H2 levels in full transfer, 20 global iterations, pure H/He at
+  `n_H = 1e13 cm^-3` -- agrees to **5-22 per cent over
+  `1e19 <= N_H2 <= 1e21`** at 900, 1300 and 1800 K.
+* **Absolute quantities.** `sigma_pump` at the bottom of the column axis is
+  2.59e-17 (700 K) to 2.88e-17 cm^2 (3200 K) against DB96's own
+  `3.4520e-18/0.135 = 2.557e-17` (1-13 per cent); `p_single` there is 0.1425 to
+  0.1592, and at 1300 K it is 0.1475 against **0.1465** from the CLOUDY runs
+  (0.7 per cent); `sigma_diss` there agrees with the H2g-corrected CLOUDY table
+  to **1.3-3.6 per cent**, which is the statement that the two differ in the
+  shielding and not in the normalization.
+* **The trapping factor that came from CLOUDY** is 1.13-1.38 at the *bottom*
+  of the column axis (`N_H2 = 1e12 cm^-2`, the optically thin end) across the
+  whole grid, reproducing the 1.15-1.37 section 132 records at the illuminated
+  face, and it rises to 1.25-3.07 at the top of the axis, `5e21 cm^-2`.
+* **Fortran against Python** at all 1053 grid points: max relative difference
+  **3.1e-9** on `sigma_diss`, 8.4e-10 on `p_single`, 9.6e-10 on `p_eff`.
+* **Regression, both stages, in a scratch copy of the tree first.** The
+  baseline reproduces the goldens 9/9 byte-identical. With the H2g weighting
+  alone, and again with the overlapping-line table, **exactly one case moves,
+  `mol_lyman_werner`, and the other eight are byte-identical** -- which is the
+  structural statement the change should make, since `F_LW_star` defaults to
+  zero and one matrix case supplies it. Sizes (12000-step relaxation
+  snapshots, so not converged change sizes):
+
+| quantity | golden | H2g weighting | + overlapping lines |
+|---|---|---|---|
+| H2 front, largest r with n_H2 > 1e10 | 1.146163 R_p | 1.142513 | 1.144327 |
+| `f_shield` at the deepest cell | -- | 8.165e-06 | 1.716e-07 |
+| n(H2) over the golden molecular cells | 1 | 0.150-1.0005 | 0.147-1.013 |
+| `final` du | 2.6075 | 2.7629 | 2.7689 |
+
+  The front barely moves while the deepest cell's shielding falls 48x, because
+  the front sits at moderate columns where the two errors nearly cancel and the
+  deep cells are already almost fully molecular.
+
+  **Which gate these were measured on.** The four rows above are the 9 microbar
+  hot-Uranus gate, the one the goldens were written against. Re-running the
+  matrix in the tree afterwards gives a larger move -- H2 front 1.064744 R_p,
+  `N_H2` reaching 2.877e20 rather than 4.296e21 -- and none of that difference
+  is the table: section 136 re-pinned the `base.inp` of the six hot-Uranus
+  cases to `p_base 1.0e-06`, `q_H2_base 0.84`, i.e. a 1 microbar base, and the
+  molecular layer above a 1 microbar gate is an order of magnitude thinner to
+  begin with. The two sets of numbers are therefore not to be compared with
+  each other, and neither needs re-running: this section's are the change in
+  the table at fixed gate, and the tree's are the same table on the gate
+  section 136 installed.
+* **Goldens were NOT refreshed.** `make check` reports FAIL on
+  `mol_lyman_werner` by design; the refresh is a separate decision.
+* **CLOUDY was patched a second time** to make the reservoir weighting possible:
+  four more columns of `save h2 rates` (`pump_s`, `diss_single_s`, `den_g`,
+  `den_s`), the H2s counterparts of the four section 132 added. The 27 decks
+  were re-run with it; nothing else about them changed.
+
+Files: `src/modules/lower_atmosphere/h2_self_shielding_table.f90`,
+`src/modules/lower_atmosphere/lyman_werner.f90`,
+`src/modules/radiation/util_ion_eq.f90`,
+`src/modules/radiation/ionization_equilibrium.f90`,
+`src/modules/files_IO/write_output.f90`,
+`src/utils/h2_shielding_table_from_cloudy.py`,
+`src/utils/h2_shielding_table_line_by_line.py`.
+Documentation: `docs/p38_line_overlap_shielding.md`,
+`docs/h2_self_shielding_cloudy.md`, `docs/molecular_hydrogen_treatment.tex`,
+`TO_BE_DONE.md` (P38 closed, one new item).
+
+## 136. The base level was stated twice and the two statements disagreed everywhere; `p_base` now fixes it, and the hot-Uranus gate moves to 1 microbar (2026-09-03)
+
+**The judgement first.** The lower boundary is one level, and EXHALE let two
+inputs state it independently: `Log10 lower boundary number density` in
+`input.inp`, and `p_base` in a `base.inp` handoff. Nothing compared them. Every
+one of the 52 `base.inp` files in this tree that carries `p_base` disagreed with
+its own density key -- the hot-Uranus gate by 10%, the He/H ladder by 1.4-55%,
+the `vulcan_work` HD 209458 b runs by factors of 7 to 32. The key had never
+actually located the base level anywhere. `p_base` now fixes the level, the pair
+is refused when it disagrees by more than 1%, and the hot-Uranus gate moves to
+the 1 microbar level its own base radius already corresponded to.
+
+### 136.1 What was wrong
+
+`docs/p44_base_sawtooth.md` sections 8 and 9 arrived at this from the other end.
+The hot-Uranus gate carries a base velocity artifact at cell 1 (`v(1)` about
+-250 cm/s, a first-order-in-`dr` boundary discretization error) whose effect on
+the base-face mass flux scales with the base density: -21, -203 and -589 times
+the wind flux at base pressures of 1, 9 and 28 microbar. On the default 9
+microbar base the converged molecular layer is not even reproducible across
+restart cycles -- three `info = 0` states of the same configuration put the H2
+front anywhere in 1.053-1.089 `R_p`. At 1 microbar the same configuration
+reproduces the front to five digits, converges from a cold start in 27 minutes
+where the 9 microbar base did not converge in 1 h 41 m, and leaves `log10 Mdot`
+where it was.
+
+And 1 microbar is where that gate's boundary belongs. Koskinen et al. (2022,
+ApJ 929, 52, section 3.2) state their lower boundary as
+
+> "The lower boundary of the model is at r0 = 1.34Rp (p0 = 10-6 bar, T0 = 1,140 K)
+> where the boundary conditions are consistent with our models of the lower and
+> middle atmosphere"
+
+and `1.34 R_1bar` = 3.425e9 cm with their `R_1bar` = 2.5559e9 cm is the gate's
+own `Planet radius: 0.49 R_J` = 3.4256e9 cm, to 0.2%. The gate had the right
+radius and the wrong pressure at it, because `n0 = 1e14` was chosen by hand.
+
+(The earlier reading, that `T0 = 1140 K` was a 1 microbar value applied nine
+times deeper along a falling profile, is **withdrawn**: the same paper's section
+2.2 says their lower and middle atmosphere is isothermal at the effective
+temperature, so 1140 K is their number at any depth below their boundary. The
+inconsistency was never the temperature. See `docs/p44_base_sawtooth.md`
+section 9.1.)
+
+### 136.2 What changed
+
+**`input_read.f90`.** A `base.inp` carrying `p_base` is a handoff written AT that
+pressure -- its composition, its `q_H2` and its temperature all refer to that
+level -- so the level is the handoff's to state, and
+
+```
+n0 = p_base/(k_B T0 ntot_bc)
+```
+
+the relation `Base BC: pressure` already used. Three refusals go with it:
+
+* `Log10 lower boundary number density` is now **optional**. Given alongside
+  `p_base`, the two must agree to 1%; otherwise startup stops and prints both
+  pressures, the ratio, the `n0` each implies, `ntot_bc`, and the two ways to fix
+  it (delete one or the other).
+* `p_base` and `Base BC: pressure` together must name the same level to
+  round-off, or startup stops.
+* Neither given: startup stops and lists the three keys that can state it.
+
+A lower-atmosphere **profile** sets `p_base_bar` from its own matching pressure,
+so a profile run owns the level itself and is outside the rule
+(`lower_profile` stays byte-identical).
+
+**`write_setup_report.f90`** gained one line naming the source and both numbers:
+
+```
+ - Base level: p =  1.0000E-06 bar (from base.inp p_base) -> n0 =  1.1690E+13 cm^-3
+ - Base level: n0 =  3.0903E+12 cm^-3 (from the density key) -> p =  1.0069E-06 bar
+```
+
+**The gate and the arms.** The six molecular regression cases and the sixteen
+diagnostic arms now carry `p_base 1.000e-06` with the density key deleted from
+`input.inp`, and the gate's `q_H2_base` becomes **0.84** -- the same paper's
+value at the same level (section 3.2: "The volume mixing ratio of H2 at the
+lower boundary is about q0 = 0.84 while H is a minor species with q0 = 0.026"),
+which sits at 97.3% of the ceiling `0.5/(0.5 + He/H)` = 0.863110651 this He/H can
+supply. The He/H ladder keeps its own rule -- hold the fraction of H nuclei bound
+into H2 fixed and vary only He/H -- so its values were recomputed from
+`x2 = 2 q (1+He/H)/(1+q) = 0.985447826` (it was 0.925114286):
+
+| He/H | `q_H2_base` | ceiling | fraction of ceiling |
+|---|---|---|---|
+| 0.0793 (gate) | 0.840000000 | 0.863110651 | 97.3% |
+| 0.3 | 0.610353658 | 0.625000000 | 97.7% |
+| 1.0 | 0.326896922 | 0.333333333 | 98.1% |
+| 3.0 | 0.140486207 | 0.142857143 | 98.3% |
+| 10.0 | 0.046893592 | 0.047619048 | 98.5% |
+| 30.0 | 0.016151029 | 0.016393443 | 98.5% |
+
+### 136.3 What it moves
+
+`make check`: `wasp_full`, `wasp_he23off` and `lower_profile` **PASS, data
+identical** -- they carry no `p_base`, so the code path is untouched, and this was
+also confirmed directly by building the same source snapshot with and without
+the change and running all three cases with both binaries. The six molecular
+cases **FAIL, i.e. move**, which is the point; the row count is unchanged (504),
+so the goldens are re-snapshotted rather than restructured, and there is no NaN
+in any of them.
+
+| case | `rho_bc` old -> new | `r_front` | peak `n(H3+)` | `N(H2)` new/old | `log10 Mdot` |
+|---|---|---|---|---|---|
+| `mol_base_handoff` | 1.220e14 -> 1.427e13 | 1.1546 -> 1.0741 | 6.68e4 -> 4.40e4 | 0.094 | 10.56 -> 10.42 |
+| `mol_metals` | 1.234e14 -> 1.441e13 | 1.1562 -> 1.0748 | 3.89e1 -> 4.66e1 | 0.095 | 10.57 -> 10.41 |
+| `mol_lyman_werner` | 1.220e14 -> 1.427e13 | 1.1243 -> 1.0350 | 6.67e4 -> 4.42e4 | 0.067 | 10.55 -> 10.51 |
+| `mol_diffusion` | 1.220e14 -> 1.427e13 | 1.1546 -> 1.0741 | 6.68e4 -> 4.40e4 | 0.094 | 10.56 -> 10.42 |
+| `mol_ir_bands` | 1.234e14 -> 1.441e13 | 1.1562 -> 1.0748 | 3.89e1 -> 4.66e1 | 0.095 | 10.57 -> 10.41 |
+| `mol_sec_ion` | 1.220e14 -> 1.427e13 | 1.1401 -> 1.0622 | 2.89e5 -> 1.68e5 | 0.085 | 10.51 -> 10.39 |
+
+The base is 8.6 times lighter, the H2 column falls to 7-10% of what it was, the
+front moves in by 0.08-0.09 `R_p`, and `Mdot` falls by 0.04-0.16 dex. All of it
+follows from putting the base nine times higher; no physics changed.
+
+The 12000-step snapshot convention survives the move: at the same 12000 steps
+the retargeted gate reaches a *smaller* `du` (2.56 against 3.75 on
+`mol_base_handoff`, 2.23 against 4.68 on `mol_sec_ion`) and runs faster (5 m 35 s
+against 6 m 59 s single-threaded), so the lighter base costs it no physical time.
+
+### 136.4 What this does not fix, and one thing it exposes
+
+The cell-1 velocity artifact itself is unchanged in magnitude -- it is a
+first-order-in-`dr` discretization error and only base refinement removes it
+(`docs/p44_base_sawtooth.md` section 7.2). What the lighter base removes is its
+*consequence*: the base-face mass-flux error falls with `rho_bc`, from 203 to 21
+times the wind flux.
+
+The 30 `base.inp` files under `vulcan_work/` were **not** retargeted -- they are
+records of past VULCAN comparison runs, not part of the matrix -- but each of
+them states a `p_base` that is wrong by a factor of 7 to 32 against the level its
+density key actually used, and each will now be refused if it is re-run. That is
+a finding about those runs.
+
+## 137. The output readers returned the file's ghost rows as solution cells; the transit depths move by up to 3.8 per cent (2026-09-03)
+
+**The judgement first.** Every Python consumer of an EXHALE profile was reading
+the file's boundary rows as if the solver had converged them, and that is wrong
+whatever it costs: the two rows at each end are a fixed base state below and a
+zero-gradient / WENO3 extrapolation above, both written by `Apply_BC`. Section
+133.6 closed the Fortran half of this by making the file say which rows are
+physical; this closes the Python half. `examples/exhale_io.py` now returns the
+physical cells and takes `ghost=True` for the file as written, and
+`EXHALE_transit.py` and `EXHALE_plots.py`, which bypassed the reader with their
+own `np.loadtxt` calls, go through it. Item (P48) of `TO_BE_DONE.md` closes
+with this.
+
+### 137.1 The rule, and why the fallback is not a legacy path
+
+`exhale_io.physical_cell_rows` has two ways of knowing, in order.
+
+1. **The header, which is the contract.** Since section 133.6 the writer emits
+   `# rows 504: 2 ghost cells at each end; physical cells are rows 3 to 502`
+   (1-based, inclusive). It is a comment, so no numeric parse changes.
+2. **The layout**, for a file written before that header existed -- the
+   regression goldens and every saved `output*/` directory. `Ng = 2` is a
+   Fortran `parameter` and every writer loops `1-Ng..N+Ng`, so two rows at each
+   end are ghosts unconditionally, for every grid type. What the file can still
+   be asked is whether it has that layout at all, and the base radius answers
+   it: `define_grid` puts a cell center exactly at `r = 1` and that center is a
+   GHOST -- `r(1-Ng) = 1` for the `Uniform` and `Stretched` grids,
+   `r(2-Ng) = 1` for `Mixed` -- so `r = 1` falls on row 1 or row 2 and never
+   later. A file whose radius column increases monotonically and equals 1 to
+   roundoff at row 1 or row 2 has the ghost layout, and two rows come off each
+   end. Checked against all **9214** profile files in this working copy: every
+   one satisfies it. A file that satisfies neither rule is returned whole with
+   a warning, which is the pre-2026-09 behavior.
+
+The two routes were checked against each other on
+`backup/regression/mol_diffusion/output/Hydro_ioniz.txt`, which has the header:
+with the header line removed the layout rule returns the same `(2, 502)` and
+the same 500 rows.
+
+**The fallback is not a legacy path.** `write_output` emits the `# rows` header
+for `Hydro_ioniz(_adv).txt` **only**; `Ion_species`, `Cooling_breakdown`,
+`Heating_breakdown`, `Excited_H`, `Lyman_Werner` and `OI_levels` carry no such
+line even in a run made today, so they take rule 2 on every read. Giving the
+other writers the same header is a one-line change per file in
+`write_output.f90` / `util_ion_eq.f90` / `excited_hydrogen.f90` and is left as
+an open item -- the Fortran was not touched here.
+
+### 137.2 What it changes, measured
+
+The mechanism is at the top of the domain. The transit integrates chords out to
+`Rib = min(r[-1], R_star/R_p)`, so dropping the two upper ghost rows shrinks the
+outermost annulus, and a line that is optically thick out to the boundary loses
+exactly that area: `(r_top,phys/r_top,ghost)^2 - 1` is `-1.04` per cent on
+WASP-121b, `-4.6` per cent on HD 189733 b and `-3.6` per cent on the hot Uranus.
+That is the size of the effect, not a prediction of it: a line opaque all the
+way to the boundary loses the whole annulus, one that is not loses part of it,
+and the lower-level column densities change with the same two rows.
+
+| state | rows | first r | last r |
+|---|---|---|---|
+| WASP-121b (`backup/regression/wasp_full_newton`) | 504 -> 500 | 0.999804 -> 1.000196 | 1.60976 -> 1.60138 |
+| HD 189733 b (`HD189733b/output`) | 504 -> 500 | 0.999904 -> 1.000096 | 4.42773 -> 4.32553 |
+| hot Uranus (molecular base, He/H = 0.0793) | 504 -> 500 | 0.999807 -> 1.000193 | 4.81412 -> 4.72534 |
+
+`MPLBACKEND=Agg python3 EXHALE_transit.py` on each of the three states, before
+and after, from a copy directory with `output/` symlinked and the repository's
+own script named through a symlink. Excess absorption in per cent, from the
+theoretical curve of `tpm_<line>.txt`: line center by interpolation at the
+laboratory wavelength, band as the mean over `lambda0 +/- 2 A` clipped to the
+model window.
+
+**WASP-121b** (metals on, He 2^3S, Newton-finished)
+
+| line | line center before | after | rel. | 4 A band before | after | rel. |
+|---|---:|---:|---:|---:|---:|---:|
+| He I 10830 | 3.7248 | 3.6639 | -1.64% | 1.6046 | 1.5741 | -1.90% |
+| Ly-alpha | 3.7531 | 3.6897 | -1.69% | 1.6464 | 1.6377 | -0.53% |
+| H-alpha | 3.4571 | 3.4144 | -1.23% | 1.0071 | 1.0014 | -0.56% |
+| H-beta | 2.5042 | 2.4912 | -0.52% | 0.4524 | 0.4478 | -1.03% |
+| Mg II 2796 | 3.7531 | 3.6897 | -1.69% | 0.3216 | 0.3164 | -1.64% |
+| Ca II K 3934 | 3.7246 | 3.6641 | -1.62% | 0.2480 | 0.2425 | -2.22% |
+| Na I D2 5890 | 1.0135 | 1.0127 | -0.07% | 0.0568 | 0.0567 | -0.17% |
+| O I 1302 | 3.1800 | 3.1577 | -0.70% | 0.0765 | 0.0760 | -0.71% |
+
+**HD 189733 b** (`backup/regression/jfnk_hd189` was the state section 133.6
+measured, but it holds no `*_adv.txt` pair and the transit tool reads only
+those, so the converged `HD189733b/output` is used instead)
+
+| line | line center before | after | rel. | 4 A band before | after | rel. |
+|---|---:|---:|---:|---:|---:|---:|
+| He I 10830 | 2.8387 | 2.8333 | -0.19% | 0.3989 | 0.3987 | -0.06% |
+| Ly-alpha | 37.9394 | 36.9732 | -2.55% | 1.6858 | 1.6746 | -0.66% |
+| H-alpha | 0.6053 | 0.6053 | -0.01% | 0.1008 | 0.1013 | +0.48% |
+| H-beta | 0.3661 | 0.3660 | -0.01% | 0.0368 | 0.0370 | +0.54% |
+| Mg II 2796 | 0.5060 | 0.4985 | -1.48% | 0.0374 | 0.0371 | -0.72% |
+| Ca II K 3934 | 0.3104 | 0.3112 | +0.25% | 0.0114 | 0.0113 | -0.16% |
+| Na I D2 5890 | 0.3736 | 0.3740 | +0.10% | 0.0283 | 0.0282 | -0.31% |
+
+**hot Uranus** (molecular base; metals off, so only the H/He lines are written)
+
+| line | line center before | after | rel. | 4 A band before | after | rel. |
+|---|---:|---:|---:|---:|---:|---:|
+| He I 10830 | 9.2358 | 9.0559 | -1.95% | 1.1888 | 1.1592 | -2.49% |
+| Ly-alpha | 27.8690 | 26.8069 | -3.81% | 3.8440 | 3.7534 | -2.36% |
+| H-alpha | 1.0801 | 1.0782 | -0.18% | 0.0823 | 0.0822 | -0.14% |
+| H-beta | 0.6203 | 0.6200 | -0.05% | 0.0388 | 0.0388 | -0.01% |
+
+The H-beta band on the hot Uranus and, less severely, its H-alpha band are
+clipped by the auto-sized model window (70 and 95 per cent of the 4 A width);
+they are means over what the window holds.
+
+**Largest single move: the hot Uranus Ly-alpha line center, -3.81 per cent.**
+Two further numbers the run prints move by more than the depths do: the peak
+`n=2` hydrogen density of the hot Uranus falls from `1.794e5` to
+`2.693e4 cm^-3` (a factor 6.7 -- the maximum sat in the lower ghost row, in the
+fixed base state, behind the planetary disk, which is why the H-alpha depth
+barely notices), and the He 10830 red-peak depth of the same state goes from
+8.989 to 8.812 per cent. `EXHALE_plots.py` on the same states shows the change
+as an axis range: the radial axis now starts at the first physical cell, and on
+the hot Uranus the ion-density panel loses the two decades of empty base ghost
+that used to set the bottom of its logarithmic scale. The curves themselves lie
+on top of each other.
+
+`mdot_log10` was fixed at the same time and for the same reason. The Fortran
+evaluates the mass-loss rate at the physical cell `j = N - 20`
+(`EXHALE_main.f90:1514`); the reader evaluated it at index `len(r) - 20` of an
+array that still held the ghost rows, i.e. three cells further out. It is now
+`len(r) - 1 - j_from_top` of the ghost-free array, which is the same cell the
+run reports. On the WASP-121b state both give `log10 Mdot = 13.2224` -- the
+mass flux is flat there, which is what the convergence gate asserts -- so this
+is a correctness fix with no measured effect on that state.
+
+### 137.3 Every consumer, and the two that would have double-counted the fix
+
+Eighteen files besides the reader itself name `exhale_io`; seventeen import it
+(`LHS1140b/make_memo_figures.py` only mentions it in a comment). Going through
+the reader, they pick the change up automatically -- but two of them cut the
+ghost rows a second time and one mixed the two conventions:
+
+* `src/utils/collisional_validity.py` held its own `N_GHOST = 2` and applied
+  `slice(N_GHOST, -N_GHOST)` to what `load_run` returned. Both the constant and
+  the slice are gone; the Knudsen diagnosis now runs on the 500 cells it meant
+  to. Its `log10 Mdot` for the WASP-121b state reads 13.222, the run's own
+  value.
+* `LHS1140b/exhale/metastable_step_diagnosis/knudsen_scale.py` sliced with
+  `CV.N_GHOST` for the same reason; removed.
+* `LHS1140b/heh_series/audit_checks.py` read `Hydro_ioniz`, `Ion_species` and
+  the two breakdown files with a bare `np.loadtxt` and compared them column by
+  column with the ion densities `exhale_io.load_ions` returned. After the change
+  those are 504 rows against 500 and its charge-neutrality check raises
+  `IndexError`; it now reads all four through `exhale_io.loadtxt_cells`, and
+  runs.
+* `poster/make_poster_figs.py` read one `Hydro_ioniz_adv.txt` directly while
+  importing the reader for everything else; it goes through `loadtxt_cells`.
+
+Not changed, deliberately: `LHS1140b/make_memo_figures.py` reads profiles with
+about twenty bare `np.loadtxt` calls and never imports the reader, so nothing
+there breaks and nothing there is corrected either -- its figures still include
+the ghost rows. Whether to convert it is tied to re-making the LHS 1140 b memo
+figures, which is its own decision.
+
+### 137.4 What was checked, and what was not
+
+Checked: the two selection routes against each other and against all 9214
+profile files in the working copy; the three transit runs above, end to end,
+before and after; `EXHALE_plots.py` on two of them;
+`src/utils/collisional_validity.py` and `LHS1140b/heh_series/audit_checks.py`
+run to completion after the fix.
+
+Not checked, and not run: `examples/make_figures.py` and the figures under
+`docs/figures/`, every notebook, and the paper and poster figure scripts. All
+of them read through the reader (`make_poster_figs.py` now included), so their
+output *will* move by the amounts tabulated above the next time they are made;
+nothing under `docs/figures/` was regenerated here. No Fortran source was
+touched, so `make check` and the goldens are untouched by this change.
+
+Files: `examples/exhale_io.py`, `EXHALE_transit.py`, `EXHALE_plots.py`,
+`src/utils/collisional_validity.py`,
+`LHS1140b/exhale/metastable_step_diagnosis/knudsen_scale.py`,
+`LHS1140b/heh_series/audit_checks.py`, `poster/make_poster_figs.py`.
+Documentation: `README_HOWTO.md`, `TO_BE_DONE.md` ((P48) closed, one new item).
+
+## 138. The Newton direction at the H2 front pointed uphill because the residual is discontinuous there: the positivity guard was a switch, and it is now a limiter (2026-09-03)
+
+**Judgment first, and it retires item (Y) by contradicting both of the causes
+that item proposed. The energy row at the front is smooth in the temperature:
+its finite-difference directional derivative converges to six digits over four
+decades of step size, a two-sided scan of it is antisymmetric down to `h = 1e-9`,
+and the residual's effective `d ln cool / d ln T` there is 0.26, not an
+exponential. What has no descent direction is the state as a whole, because
+`F(Y)` is genuinely DISCONTINUOUS at the iterate. The WENO3 reconstruction at
+the face of cell 273 (`r = 1.2324 R_p`) returned a left density of `2.50e-15`
+against cell averages of `1e-4` -- eleven orders below, and still positive by a
+hair -- so the iterate sat exactly on the switching surface of
+`positivity_limited_faces`. Raising the density of the neighbouring cell by one
+part in `1e9` tipped that face through zero, the guard replaced the whole face
+pair by the first-order cell averages, the face density jumped by a factor
+`1.7e9`, and the merit jumped from 202.5 to 945.1 -- by the SAME factor 4.67 at
+every step size from `1e-2` to `1e-9`, which is what a jump looks like and what
+a slope does not. Every direction the solver could build put its largest scaled
+component at that face, so every one of them ascended: the Newton/PTC step at
+all six decades of damping and all ten damped Gauss-Newton steps, by factors
+4.7 to 27.8. The section 126 escape was not defeated by an indefinite Jacobian;
+it was asked to descend a function that is not continuous. The guard is now the
+continuous limiter of Zhang & Shu (2010), and a trial state whose chemistry the
+equilibrium sweep could not certify is refused the way section 121 refuses one
+it cannot describe at all. On the reproduction case the abort is gone: it is
+printed once in a whole run instead of ending every hand-off, and the solve
+that used to stop at `||R|| = 2.775e-2` having excavated a 65,000 K hole in the
+layer now meets the residual gate at 2.95e-6 and is held only by the flux gate.**
+
+This closes item (Y) of `TO_BE_DONE.md`. The full measurement is
+`docs/p49_front_energy_mode.md`.
+
+### 138.1 What the measurement found, and what it ruled out
+
+Everything below is on the hot Uranus of the section 134 gate -- 500 cells,
+second-order carrier advection, `Stellar LW flux: 343.0`, 150,000 marching
+steps, restarted with `Secondary_ionization: Immediate` and `Solver: Newton
+4.0e-2` -- reproduced to every printed digit of item (Y): `info = 2` at
+`||R|| = 2.775e-2`, worst cell `j = 255`, `||grad merit|| = 4.583e11`, 46
+non-monotone accepts.
+
+**The blocking row, term by term.** At the abort the worst SCALED energy
+residual is cell 259, `r = 1.1952`, at `|R|/D = 67.6`. Its row is
+`R3 = dF_E - (heat - cool)` with `cool` at 97.7% of `|R3|`; from
+`Cooling_breakdown.txt` at that state, 93% of that cooling is **H3+ infrared
+emission at 65,173 K**, from an `f(H3+) = 4.5e-3` the chemical solve did not
+certify (acceptance class 4, reaction residual 2.4e-3). H3+ does not survive at
+65,000 K. Cells 256-259 sit exactly at the radiative/advective transition,
+`E/|heat-cool|` over `dr/|v|` = 0.75, 0.65, 0.97, 0.63; from cell 260 outward
+the class-4 acceptance sets `n(H3+) = x(HII) = 0` exactly, the cooling collapses
+by five orders and the ratio is 715 to 2319.
+
+**Candidate (a) of item (Y), the temperature entering through `n_tot`: real,
+and not the blocker.** Scanning the energy unknown of cell 259 alone in steps of
+`1e-3` relative, the accepted composition does jump between two branches at
+isolated points -- `x(HII) = 0` exactly, `f(H3+)` a factor 38 lower, the
+reaction residual from 3.2e-3 to 1.4e-5 -- and returns in between, which is
+seed-dependent root selection rather than a threshold. The energy row does not
+notice: `cool` reads 1.0859e-2 on the jumped points against 1.0857e-2 on the
+trend.
+
+**Candidate (b), the H3+ and H2 rates: measured, and it is the residual that
+cannot see them.** On the same scan `cool` has `d ln cool/d ln T = 0.263` while
+the composition's own `f(H3+)` has 1.728. Both cannot belong to a rate that is
+exactly proportional to `n(H3+)`, and they do not: within one `ioniz_eq` the
+molecular densities the cooling uses are built at the top of the routine from
+the composition handed IN (`ionization_equilibrium.f90:570-573`), `eval_cool` is
+called with them, and the per-cell sweep that changes the composition runs
+afterwards. So the residual's temperature derivative carries the emissivity's
+0.26 and none of the density's 1.728 -- about one seventh of the
+self-consistent response. **That lag is not a defect and is not corrected**
+(section 138.5).
+
+**Candidate (c), the frozen-radiation Jacobian: not the blocker either.** The
+matrix-free `J*v` of the FULL residual along the energy unknown of cell 259
+converges to six digits from `h = 1e-4` to `1e-10`, and a two-sided merit scan
+on cells 255, 259 and 260 is antisymmetric to nine digits with the WENO weights
+recomputed and frozen alike. Descent directions along the front's energy rows
+exist.
+
+**What does block it.** A forward-difference gradient of the merit itself over
+cells 244-274 has one component that IS the whole norm -- cell 272, the mass
+row, `7.43e8` against 1e0-1e3 everywhere else. Stepping along `+g` changes the
+merit by `+3.6668` at every step size from `1e-2` to `1e-9`, constant to seven
+digits. Dumping both sides at `h = 1e-9`: every cell's temperature, class,
+heating, cooling and composition is identical to every printed digit, and what
+changes is the reconstruction -- faces dropped to first order 2 -> 3, the
+left density at face 273 `2.50e-15` -> `4.16758e-6`, the mass-row residual of
+cell 273 `|R|/D` 9.50 -> 918.3.
+
+### 138.2 (i) The positivity repair is continuous
+
+`positivity_limited_faces` (`src/modules/states/Reconstruction.f90`) no longer
+swaps a face pair between two schemes. Each face state is scaled toward ITS OWN
+cell average by the largest factor that keeps `rho` and `p` above a floor,
+
+```
+   W_face  <-  W_avg + theta ( W_rec - W_avg )
+   theta    =  min over rho and p of  (q_avg - eps)/(q_avg - q_rec)
+```
+
+which is the positivity-preserving limiter of Zhang & Shu (2010,
+J. Comput. Phys., 229, 8918; doi:10.1016/j.jcp.2010.08.016). The publisher PDF
+is not in `references/`, so only the bibliography is recorded. Two functions
+carry the arithmetic, `positivity_scaling` and `positive_variable_scaling`.
+
+**The floor.** The switch this replaces tested `q > 0`, so its own floor was
+zero, and zero is what the change was asked to keep. **It cannot be**: with
+`eps = 0` the scaling puts the face value at exactly zero and hands
+`Num_Fluxes` a `sqrt(gamma p/0)`. The floor used is the smallest one that is
+not a chosen number -- one unit in the last place of the cell average,
+`eps = epsilon(1.0d0)*q_avg`. No dimensional constant and no tuning enter, and
+the residual jump that survives at the crossing is `2.2e-16` of the cell
+average against the factor `1.7e9` the switch made.
+
+**Byte-identity.** A face with `theta = 1` is left untouched rather than
+rewritten as `W_avg + 1*(W - W_avg)`, which is not bitwise `W`. Every run in
+which the guard never fires is therefore unchanged to the bit, and section
+138.4 measures that on eight of the ten matrix cases.
+
+The counter now counts face STATES, not face pairs, because the limiter scales
+the offending side only; `EXHALE_main.f90`'s end-of-run line says so.
+
+### 138.3 (ii) A trial whose chemistry is not certified is refused
+
+`eval_residual` (`src/modules/time_step/steady_newton.f90`), inside the section
+121 admissibility. A state whose equilibrium sweep accepted a cell as class 4
+(the relaxation amnesty) or class 5 (the constrained continuation) is a
+residual computed on a composition the chemistry does not describe, and its
+value says nothing about how far the hydro is from steady. The count and the
+worst reaction residual are reported by the solve, separately from the
+`ioniz_eq` ledgers:
+
+```
+ (JFNK) trial states refused for an uncertified composition: 37; worst cell count 4, worst reaction residual  1.330E-06
+```
+
+**Two properties of the test, both forced by measurement rather than chosen.**
+
+1. **It is a comparison, not a threshold.** Refusing any trial with an
+   uncertified cell was written first and measured: on this state the ITERATE
+   carries 11 such cells, so all 17 Jacobian colors and every Krylov direction
+   were refused, the solve had no Newton model at all
+   (`||grad merit|| = 0.000E+00`) and aborted at iteration 1 with `||R||`
+   unchanged. A rule that rejects the neighbourhood of the point it stands on
+   cannot be used to leave that point. The test is
+   `n_uncertified(trial) <= n_uncertified(iterate)`, the reference refreshed
+   from the iterate at the top of every outer iteration; at a fully certified
+   iterate it is the same rule as the absolute one.
+2. **It applies to states that could be ADOPTED, not to derivative samples.**
+   With the comparison in place the solve ran 18 iterations and stopped again
+   with 13 of 17 colors zeroed: the refusal had moved onto the
+   finite-difference probes. A Jacobian color and a `J*v` sample are points
+   where the residual is read, never states anyone keeps, and a model built
+   from an imperfect derivative is still a model. `eval_residual` takes
+   `may_be_adopted` (default `.true.`); `build_banded_jac_full` and
+   `jv_product` pass `.false.`
+
+### 138.4 The regression, and which section moved which case
+
+The matrix is now ten cases: `mol_carrier` (added by section 134) gets its
+first golden here. Attribution was measured by building the tree as it stood
+before this change (`EXHALE_pre.x`) and running all ten plus the two
+`*_newton` cases on both binaries, single-threaded, comparing the numeric
+content:
+
+| case | pre vs new | guard firings, pre -> new | trials refused |
+|---|---|---:|---:|
+| `mol_base_handoff` | **byte-identical** | 0 -> 0 | 0 |
+| `mol_metals` | **byte-identical** | 0 -> 0 | 0 |
+| `mol_lyman_werner` | **byte-identical** | 0 -> 0 | 0 |
+| `mol_diffusion` | **byte-identical** | 0 -> 0 | 0 |
+| `mol_ir_bands` | **byte-identical** | 0 -> 0 | 0 |
+| `mol_sec_ion` | **byte-identical** | 0 -> 0 | 0 |
+| `mol_carrier` | **byte-identical** | 0 -> 0 | 0 |
+| `lower_profile` | **byte-identical** | 0 -> 0 | 0 |
+| `wasp_full` | moves | 1195 -> 1300 | 0 |
+| `wasp_he23off` | moves | 1208 -> 1302 | 0 |
+| `wasp_full_newton` | moves | 1195 -> 1300 | 0 |
+| `wasp_he23off_newton` | moves | 1208 -> 1302 | 0 |
+
+(The two counts are not directly comparable: the old one counted face pairs,
+the new one face states.) `refused = 0` everywhere, so **the whole move is the
+limiter; the chemistry refusal changes nothing outside the molecular arm.**
+Only the two WASP-121b cases fire the guard at all, which is why only they move.
+
+How far they moved, and what did not:
+
+| case | `log10 Mdot` pre -> new | `info`, `\|\|R\|\|`, flux spread pre -> new | max relative change, `r > 1.2 R_p` |
+|---|---|---|---|
+| `wasp_full` | 13.26 -> **13.26** | stops on `du` | rho 4.6e-5, v 4.8e-5, p 2.0e-5, T 5.9e-6 |
+| `wasp_he23off` | 13.26 -> **13.26** | stops on `du` | rho 2.2e-5, v 2.4e-5, p 9.8e-6, T 2.9e-6 |
+| `wasp_full_newton` | 13.21 -> **13.21** | 0, 9.337e-6, 1.858e-3 -> **0, 7.398e-6, 1.357e-3** | rho 1.7e-2, v 1.7e-2, p 6.7e-3, T 2.1e-3 |
+| `wasp_he23off_newton` | 13.21 -> **13.21** | 0, 9.024e-6, 7.457e-4 -> **0, 5.353e-6, 1.226e-3** | rho 6.5e-3, v 4.0e-3, p 3.6e-3, T 5.8e-4 |
+| `mol_carrier` | 10.41 -> 10.41 | -- | byte-identical |
+| `lower_profile` | 9.56 -> 9.56 | -- | byte-identical |
+
+The rate is unchanged to the printed digit in every case, both Newton solves
+still meet BOTH gates and reach a smaller residual than before. The largest
+single relative change anywhere in `wasp_full` is 2.4e-1 in the velocity of the
+base cell at `r = 1.00235`, where `v = -1.9 cm s^-1`: that is the collocated
+odd-even mode of `docs/p44_base_sawtooth.md`, not a change in the wind.
+
+**Block-F golden refresh.** The previous goldens are preserved at
+`backup/regression/golden_blockF_20260903`. The refresh carries six changes and
+each one's cases were isolated by the worker that made it:
+
+| section | change | cases it moves |
+|---|---|---|
+| 133 | the two gates, and the signal-speed row scale | none -- no matrix case enters the JFNK |
+| 134 | second-order carrier advection, the computed Lyman-Werner flux, the row header | none (the carrier transport is off in all nine); ADDS `mol_carrier` |
+| 135 | the level-resolved H2 self-shielding table | `mol_lyman_werner` |
+| 136 | the base level stated once, hot-Uranus gate at 1 microbar | the six `mol_*` cases |
+| 137 | the output readers | none (Python only) |
+| **138** | **the continuous positivity limiter** | **`wasp_full`, `wasp_he23off`** |
+
+`lower_profile` is moved by none of them and passed against the OLD goldens
+throughout. Verification, in the order the harness requires: `check` before the
+refresh reports 9 FAIL and `lower_profile` PASS; `golden` re-snapshots the ten;
+`check` again is **10/10 byte-identical**; `run_fcheck.sh`
+(`-fcheck=bounds,do,mem` rebuild plus the bounded HD 209458 b case) is
+**CLEAN**; and `check` on the restored production binary is 10/10 again.
+
+### 138.5 What this does to the reproduction case, and what is still open
+
+On the tree, with the two gates of section 133 and both changes above, the same
+hot Uranus (its `base.inp` `p_base` removed, so the base level is the density
+key the archived initial condition was built at -- section 136 refuses the two
+statements together):
+
+| | first solve | after the carrier pass |
+|---|---|---|
+| `\|\|R\|\|` | 1.273e-4 -> **2.369e-6** | 2.664e-5 -> **2.950e-6** |
+| flux spread | -- -> **5.391e-4** | -- -> 7.594e-3 |
+| `info` | **0, both gates** | 1, residual gate met, FLUX gate left |
+| trials refused | 0 | 37 (worst 4 cells, worst residual 1.33e-6) |
+
+**"no descent direction exists" is not printed at all**, where before it ended
+the hand-off. What holds the second solve is the flux gate at 7.6e-3 against a
+threshold of 5e-3, a factor 1.5 -- and that is the propagating front of
+`docs/supersonic_molecular_base.md` section 13.7, not a solver failure: the
+carrier pass moves the composition by 0.553 and leaves a carrier steady
+residual of 3.92e-2 at `r = 1.203`, and over the marching that follows the flux
+spread grows monotonically from 1.24e-1 at step 14,000 to 4.29e-1 at step
+21,500, where the run stops on the section 113 persistent-non-root guard.
+
+**The three-layer table is NOT produced and nothing is quoted for it.** The
+first solve's state meets both gates, but the carrier pass overwrites it before
+anything is written, and there is no key that caps the Picard outer passes --
+the bound is `merge(20, 1, ...)` at `EXHALE_main.f90:1628`. Capturing it needs
+either an output write at the accepted return or that bound made settable, and
+both are changes of their own. Until then the rule of item (Y) still applies to
+the CARRIER-relaxed molecular wind: it is quoted on the marching criterion, and
+the fact is stated where it is quoted. What HAS changed is that the wind solve
+itself is no longer the obstacle.
+
+**The lagged cooling is judged, not corrected.** At the fixed point the
+composition the cooling uses and the composition the sweep returns are the same
+object, so the lag is a property of the iteration and not of the solution, and
+re-evaluating `eval_cool` after the sweep would change no converged answer.
+What it costs is the Newton model -- the factor 7 of section 138.1 -- and
+adding the analytic `d ln cool/d ln T` of the dominant channel to the banded
+Jacobian's energy diagonal is the repair for that. It is NOT done here; it is
+held until the two changes above are shown to be insufficient.
+
+### 138.6 What was not checked
+
+* The three-layer table, as above.
+* The He/H = 1 reference and the ladder rungs were not re-run; they carry
+  molecular chemistry with the carrier transport off, so the guard does not
+  fire in them, but that is an inference from the matrix rather than a
+  measurement on those cases.
+* Whether the reproduction case reaches both gates after the carrier
+  alternation converges. It does not converge (0.553 then a growing flux
+  spread), and that is section 13.7's open question, untouched here.
+* The `Resid tol` cases outside the ten (`jfnk_*`, `ptc_*`, `tpm_*`,
+  `resid_on`, `valve_sens`) were not re-run.
+
+Files: `src/modules/states/Reconstruction.f90`,
+`src/modules/time_step/steady_newton.f90`, `src/EXHALE_main.f90`.
+Documentation: `docs/p49_front_energy_mode.md`, `TO_BE_DONE.md` ((Y) closed).
+
+## 139. The carrier/wind alternation was pointing the wrong way, its convergence measure understated the imbalance by 64, and the two are now solved together (2026-09-03)
+
+**Judgment first, in three parts.**
+
+**(a) The alternation of section 128.6 does not converge because it cannot.**
+Its drift gate of 1e-3 stands BELOW the smallest move the transport operator
+can make: one step at a cell's own crossing time moves the largest H2 mixing
+ratio by 1.1e-2, measured. A gate that cannot fire reads as a control to the
+next person, so it is gone. What it is replaced by is the test the wind is
+already held to -- is the row steady on the scale of its own largest terms.
+
+**(b) That test could not be applied, because the carrier row's scale was not
+its own largest term.** `carrier_row_scale`, `n_H(|v|+c_s)/dr`, is a bound on
+the row; measured against the sum of the terms the row actually balances it is
+10^2.7 to 10^6.4 too large. A wind the steady solver accepted at `info = 0`
+reported a carrier residual of 1.6e-4 while carrying **0.60 of its own terms**
+at the H2 front and 1.07e-2 volume-weighted -- a factor 64 on the
+volume-weighted measure and 1850 on the worst cell. Section 133 already made
+"a bound on that row's own largest term" the principle for every hydrodynamic
+row; the carrier row now follows it, using the quantity `carrier_residual` has
+always computed for its own Newton.
+
+**(c) The splitting was not merely slow -- it had the sign wrong.** The
+alternation moves the H2 front OUTWARD about one cell in each pass, at 83 per
+cent of the local gas speed. Solving the carriers and the wind TOGETHER, from
+the same state, moves it **INWARD**: `f(H2) = 0.5` from 1.1421 to 1.0618 R_p,
+`f(H2) = 1e-2` from 1.2192 to 1.1488. The reason is a feedback a fixed wind
+cannot see, and it closes exactly: H2 costs particles, fewer particles at the
+wind's own pressure means a hotter cell, and a hotter cell destroys H2. At the
+front the predicted temperature from the particle count alone is 1915 K
+against 1915 K measured, and 1958 against 1961.
+
+`Molecular carrier transport` and `Coupled carrier solve` both stay DEFAULT
+OFF. Nothing below is a converged solution and nothing below is quoted as a
+rate.
+
+### 139.1 What was measured, before anything was changed
+
+Reproduction is cheap and that is worth recording: the alternation's failure
+does not need the 64,000-step hand-off of section 138. The FIRST steady solve
+of that run, at marching step 2, already returns `info = 0`, and the carrier
+pass that follows it throws `||R||` from 5.0e-4 to 8.2e-2. Dumping that
+accepted wind and restarting from it reproduces the failure in three seconds.
+
+On that state, one fixed-wind carrier pass, undamped:
+
+| r [R_p] | x2 entry | x2 exit | fc(H2) entry | fc(H2) exit |
+|---|---:|---:|---:|---:|
+| 1.050 | 0.9425 | **1.0000** | 7.75e-1 | 8.22e-1 |
+| 1.150 | 0.4447 | **1.0000** | 2.60e-1 | 5.84e-1 |
+| 1.200 | 0.0963 | **1.0000** | 4.67e-2 | 4.85e-1 |
+| 1.227 | 6.3e-4 | **1.0000** | 2.90e-4 | 4.63e-1 |
+| 1.400 | 5.9e-5 | 4.4e-5 | 2.75e-5 | 2.05e-5 |
+| 1.835 | 2.7e-5 | 1.1e-5 | 1.24e-5 | 5.07e-6 |
+
+`x2 = 1.0000` is not a rounding: **123 of 500 cells between 1.047 and 1.227
+R_p sit exactly on the hydrogen element ceiling** that `limit_to_element_budget`
+imposes (entry: none). The state the pass returns is pinned by the limiter over
+a quarter of the grid, which is a solution of nothing. The far wind moves by
+7e-6 in fc, four decades below.
+
+**The drift measure was not the problem, and that was checked.** It normalizes
+by the largest H2 mixing ratio anywhere on the grid -- one number, not the
+cell's own value -- so it is already absolute. On the LATE hand-off, where
+section 138's note reported the worst drift "in the wind" at 1.795 R_p, the
+H2 mixing ratio there goes from 0.252 to 0.507: a quarter of the gas to a half.
+There is no trace-species artefact; the wind is molecular to the top of the
+domain, which is the runaway itself.
+
+### 139.2 The alternation, repaired as far as it can be
+
+Two changes, both to what the outer loop does with a pass.
+
+**The under-relaxation blend is gone.** It is measurably worse than either
+state it interpolates: carrier steady residual 1.6e-4 at entry, 2.2e-3 at the
+relaxed exit, **8.6e-3 for the omega = 0.5 blend**, which then threw `||R||`
+to 6.7e-2 against 1.9e-2 for the relaxed state handed over whole. A blend of
+two states solves neither equation. Reducing omega does not help and is
+measured to hurt (omega = 1.8e-3 gave 2.0e-1).
+
+**A composition trust region replaces it.** The pass advances the carriers and
+stops as soon as it has moved the composition by `carrier_trust`, and that
+state is handed over whole. Section 128 tried a bound in FLOW TIMES and
+measured that it controls nothing; a bound on the COMPOSITION does, because
+the operator's smallest step is already 1.1e-2 of it. Where the boundary is,
+measured on the same hand-off:
+
+| bound on one pass | passes returning `info = 0` | `\|\|R\|\|` handed on |
+|---|---:|---|
+| the full relaxation, blended at omega = 0.5 (old) | 0 | 6.7e-2, abort |
+| the full relaxation, whole | 0 | 1.9e-2, abort |
+| 0.4 | 1 | 6.7e-4 then 8.2e-3, abort |
+| 0.2 | 8+ | 2.8e-4 |
+| 0.05 | 19 | 2.4e-4 |
+| **1e-2 (adopted)** | **20 of 20** | **2.4e-4 to 3.1e-4** |
+
+So `carrier_trust = 1e-2` stands a factor 20 inside the measured boundary.
+**And the alternation still does not reach a fixed point**: with it, the drift
+creeps 1.13e-2 to 1.34e-2 over 20 passes while the front walks from 1.203 to
+1.250 R_p, one cell in each pass. Each pass is one transport step at the cell's
+own advective crossing time -- `dt_phys` equals `dr/|v|` exactly there, 799 s
+at 1.227 R_p -- and 0.047 R_p in 20 such steps is 1.03e4 cm/s against a gas
+speed of 1.24e4. The alternation is time integration wearing a fixed point's
+clothes.
+
+### 139.3 The measure, and the floor that a steady evaluation had killed
+
+`carrier_steady_residual` now divides by `row_terms`, the sum of the row's own
+term magnitudes, and reports the volume-weighted ratio of sums over the layer
+and the wind separately, combined by the larger -- the same construction
+`relnorm_over_cells` uses for the hydrodynamic rows. The retired scale is still
+computed and printed beside it while the two are being compared.
+
+**A defect found on the way.** `carrier_residual`'s absolute floor, 1e-20 of
+the element, was converted to the row's units by dividing by the step. The
+steady evaluation substitutes `dt = 1e30` to kill the time term, and the floor
+went with it: the far wind was being measured with no floor at all. It is now
+converted by `max(1/dt, (|v|+c_s)/dr)` -- the same statement written without a
+step, so it survives `dt -> infinity` and agrees with the step form whenever
+the step is the cell's own crossing time, which is what the relaxation uses.
+
+**The gate is `carrier_resid_tol = 1e-3` and it is NOT `Resid tol`.** Section
+133 renormalized `Resid tol` against a row scale that BOUNDS each hydrodynamic
+row's largest term rather than being it, so the two numbers are not on the same
+footing. What this one says is the plain statement: the carrier row balances to
+a thousandth of the terms it is made of.
+
+### 139.4 The coupled solve: n(H2) as a fourth Newton unknown
+
+`Coupled carrier solve: True|False`, default false, meaningless without
+`Molecular carrier transport: True`.
+
+* **Unknowns** are four per cell, `(rho, rho v, E, n(H2)/n0)`, the last in the
+  code's own density units and not in cm^-3: the Krylov step size is
+  `sqrt(eps)(1 + ||Y||)/||v||`, a norm of the whole vector, so a component
+  thirteen decades from the others would set that step by itself.
+* **The chemistry coupling already existed.** With the carrier transport on,
+  `ioniz_eq` holds H2 fixed at the partition it is handed and solves everything
+  else around it -- that is what made the splitting possible. The coupled solve
+  changes only where that number comes from: the Newton unknown instead of the
+  last transport step. So the particle count, the temperature that follows from
+  it, and every heating and cooling term are functions of the carrier unknown,
+  and the Jacobian sees it. **No new chemistry was written.**
+* **The limited slope is frozen inside the model**, on `weno_mode` -- the
+  switch section 121 already uses for the WENO3 weights, and for the same
+  reason: it reaches `j-2` and `j+2`, which the banded stencil does not carry.
+* **The element budget is a CONSTRAINT, not a row.** A trial whose `n(H2)`
+  leaves the hydrogen its cell has is refused where `admissible` is asked for,
+  the way the positivity of rho and p is refused in the line search. It is not
+  clamped: a clamp puts a kink in the residual, which is the defect section 138
+  removed, and it is exactly what made the fixed-wind relaxation return a state
+  pinned on the ceiling. The test is a COMPARISON against how many cells the
+  ITERATE leaves outside, for section 138's reason: a rule that rejects the
+  neighbourhood of the point it stands on cannot be used to leave that point.
+* **Band geometry** is set at run time: `|row-col| <= 4*2 + 3 = 11`, so
+  `kl = ku = 11` and 23 colors against 8 and 17. The carrier row itself reaches
+  only +/-1 -- its second-order correction is a frozen source -- so the WENO3
+  reach still sets the bandwidth and the fourth variable only widens the stride.
+* **Acceptance is a THIRD GATE, not a row of `||R||`**, and that is section
+  133's own judgment applied again: one number cannot say two things.
+  `Resid tol` was renormalized in section 133 against a row scale that BOUNDS
+  each hydrodynamic row's largest term, and converged states sit at 1e-6 on
+  it; the carrier row is measured against the terms THEMSELVES, where a
+  converged row sits near 1e-3. Folding it into `||R||` was tried first and
+  holds the carrier row to a tolerance meant for a different scale -- on the
+  1 microbar gate the solve then works against a target it cannot reach. So a
+  steady solve is accepted on three gates: `||R|| < Resid tol`, the flux
+  spread, and the carrier row below `carrier_resid_th` (1e-3), and the log
+  names whichever is left. `carrier_resid_th` lives in `parameters.f90` and
+  the outer loop reads the same number.
+* `solve_steady_ptc` **refuses** the coupled unknown and says so: it builds its
+  Jacobian from `frozen_residual`, which does no equilibrium sweep and so has no
+  carrier row.
+
+### 139.5 Three defects of the coupled formulation, each found by measurement
+
+**(i) One scale vector cannot scale both the carrier row and its unknown.**
+The solver scales rows and columns with the same `D`, which is right when the
+residual has the units of the unknown over a time -- true of every row here.
+It is still not enough, because the carrier row is STIFF: its natural rate is
+the chemical one, about 1e3 per code time at the front against the
+hydrodynamic rows' 1e-6.
+
+| carrier scale used for both | merit at the hand-off | outcome |
+|---|---:|---|
+| `n(H2) + row_terms/((\|v\|+c_s)/dr)` (state-like) | **89.8** | abort at iteration 2 |
+| `row_terms * (R0/v0)` (the row's own terms) | 2.51 | abort at iteration 2 |
+| **row terms for the ROW, state-like for the COLUMN** | 2.51 | runs |
+
+With the state-like scale on the row the line search sees nothing but the
+carrier and lands on a state whose chemistry cannot be certified; with the row
+scale on the column the Newton proposes carrier steps **84 times the cell's own
+`n(H2)`** and the line search cuts to `lam = 4.9e-4`. The fix is a two-sided
+scaling, `cell_row_scales` beside `cell_state_scales`.
+
+**(ii) The constraint was moving with the trial it constrained.** The element
+headroom depends on the very unknown it bounds (`n_H_free` counts H2's own two
+nuclei). Refreshed at every state that is not a Jacobian probe, the last
+line-search trial leaves its own headroom behind and the Gauss-Newton escape
+then finds the ITERATE outside it: every backtracked step is refused down to
+`lam = 5e-4` and the solve aborts holding a descent direction. It is now frozen
+at the outer iterate.
+
+**(iii) The Gauss-Newton escape had no line search, and with the carrier row it
+needs one.** The escape used to evaluate the full step and nothing else, which
+suffices while the only way it can fail is to ascend. With the carrier unknown
+a second failure mode appears: the full step LOWERS the merit (2.28 -> 1.50)
+and puts 73 cells' molecular equilibrium outside the physical simplex, so the
+trial is refused and the solve aborts with a descent direction in hand. It now
+backtracks up to 12 times. **The three-unknown route keeps the single
+evaluation it has always had.**
+
+### 139.6 P51: the best iterate stops moving, and the search keeps accepting
+
+The non-monotone (Grippo) line search compares a trial against the WORST merit
+of the last five iterates, so it accepts sideways steps. That is what lets the
+solve leave a bad neighbourhood, and it is also what lets it circle: on the
+coupled hand-off the best iterate is reached at outer iteration 10 and **490
+further iterations produce no improvement at all** while the search accepts 61
+sideways steps.
+
+So when the best iterate has not improved for `n_stall_best` iterations the
+solve GOES BACK TO IT and switches to a monotone Armijo acceptance; if that
+buys nothing in another `n_stall_best`, it stops and says it STAGNATED, which
+is a different statement from "no descent direction exists".
+
+**Where 20 comes from.** Over every solve of this campaign that ended
+`info = 0` on a configuration that survived measurement, the largest gap
+between two improvements of the best iterate is **6** outer iterations (both
+WASP-121b Newton cases); on the coupled hot Uranus it is 3. Two accepted solves
+show gaps of 68 and 85 and both are configurations that were measured and
+rejected. So 20 stands a factor 3.3 above anything a surviving route has
+needed, and 40 -- where the solve gives up -- stands a factor 6.7 above it and
+below every stall observed (tails of 278 to 729).
+
+Measured effect on the coupled hand-off: the solve now stops at **49
+iterations** instead of running to its 500-iteration limit, with the same best
+iterate and an explicit reason.
+
+### 139.7 What the coupled solve does, and where it stops
+
+From the accepted wind (`||R|| = 1.454e-4` on three rows), with the carrier row
+in the unknowns and in `||R||`, and both gates:
+
+| | at entry | at exit |
+|---|---:|---:|
+| `\|\|R\|\|` with the carrier row folded in (the form first tried) | 1.221e-2 | **4.073e-3** |
+| carrier row, worst cell / own terms | 6.04e-1 | **1.36e-1** |
+| carrier row, volume-weighted | 7.72e-3 | 4.07e-3 |
+| `info` | -- | 2, STAGNATED at 49 iterations |
+
+`||R||` at entry is 1.221e-2 rather than 1.454e-4 because the carrier row is
+now in it: the wind that solve accepted was steady in three rows and not in the
+fourth.
+
+**It does not converge, and where it stops is not where the alternation
+stopped.** The binding row is the carrier row, and resolving its
+volume-weighted sum by radius says the imbalance is **spread through the
+molecular layer**, not concentrated at the front the alternation could not
+move: the wind above 2 R_p reads 1.17e-4, the layer 6.5e-3, and the single
+largest contributor is the BASE cell at r = 1.000 with 19 per cent of the
+layer's numerator. Excluding the launch region the way the flux gate does makes
+the number worse, not better (1.97e-2 over `r >= 1.03`), because the denominator
+is dominated by the same cells: the layer is 0.6 to 4 per cent out of carrier
+balance throughout, against a 0.1 per cent gate.
+
+The front, and the three layers, against the state the solve was handed. **The
+returned state is four times the carrier tolerance, so this is a direction and
+a size, not a result:**
+
+| | hand-off | coupled solve |
+|---|---:|---:|
+| `f(H2) = 0.5` at | 1.1421 | **1.0618** |
+| `f(H2) = 1e-2` at | 1.2192 | **1.1488** |
+| `f(H2) = 1e-4` at | 1.2300 | 1.2327 |
+| `log10 Mdot` | 10.413 | 10.412 |
+
+| r [R_p] | T [K] hand-off -> coupled | f(H2) | n(H3+) | n_e |
+|---|---|---|---|---|
+| 1.05 | 711 -> 867 | 0.943 -> 0.886 | 9.7e4 -> 3.7e4 | 1.18e6 -> 2.60e6 |
+| 1.15 | 871 -> 766 | 0.445 -> **9.8e-3** | 8.5e2 -> 6.6e0 | 7.17e7 -> 8.29e7 |
+| 1.25 | 1567 -> 1562 | 8.1e-6 -> 5.9e-5 | 7.9e-4 -> 5.7e-3 | 6.74e7 -> 6.74e7 |
+| 1.50 | 2538 -> 2538 | 5.4e-5 -> 2.5e-5 | 1.3e-3 -> 6.2e-4 | 6.47e7 -> 6.48e7 |
+| 2.00 | 2691 -> 2693 | 1.8e-5 -> 7.6e-6 | 4.7e-5 -> 1.9e-5 | 4.43e7 -> 4.43e7 |
+| 3.01 | 2206 -> 2211 | 4.1e-6 -> 2.4e-6 | 1.8e-6 -> 1.1e-6 | 1.87e7 -> 1.87e7 |
+
+The wind above 1.25 R_p barely moves and the rate does not move at all
+(10.413 -> 10.412). Everything happens between 1.05 and 1.20 R_p, and it
+happens in the direction the alternation could not go.
+
+### 139.8 Cost
+
+Both from the same hand-off, 20 outer iterations, `OMP_NUM_THREADS=8`:
+
+| | 3 unknowns | 4 unknowns |
+|---|---:|---:|
+| colors | 17 | 23 |
+| full residual evaluations | 64 (converged in 6) | 778 |
+| wall | 1.00 s | 14.51 s |
+
+Per outer iteration, 11 residual evaluations against 39. Six of the extra come
+from the wider colouring; the rest are the damped Gauss-Newton escape, which
+now backtracks and fires in almost every iteration. **Section 128's cost
+objection is not what stands in the way**: the alternation spends about 1 s in
+each of 20 passes and does not converge; the coupled solve spends 14.5 s and
+reaches a residual four times the tolerance with a qualitatively different
+front.
+
+### 139.9 What was checked
+
+* `make check`, **10 of 10 byte-identical** -- `wasp_full`, `wasp_he23off`,
+  `mol_base_handoff`, `mol_metals`, `mol_lyman_werner`, `mol_diffusion`,
+  `mol_ir_bands`, `mol_sec_ion`, `mol_carrier`, `lower_profile` -- run twice,
+  once with the alternation change alone and once with the coupled route on
+  top of it. **And that had to be worked for.** The two-sided row scaling is
+  the SAME arithmetic when there is no carrier row -- `Drow` holds exactly
+  `D`'s values -- but not the same instruction sequence, and a reduction
+  summed in a different order differs in its last bits: without a branch,
+  `wasp_full_newton` and `wasp_he23off_newton` moved by 1.2e-9 and 4.0e-8
+  relative, with `log10 Mdot` unchanged to six decimals and, on the first, an
+  identical iteration log. **The run-time band geometry is not the cause and
+  that was tested**: a build with `kl_jac` and the rest back at compile time
+  is bit-identical to the run-time one. Every site that divides by the row
+  scale therefore branches on `nvar_jac`, with the ORIGINAL expression
+  character for character in the three-unknown branch.
+* The carrier arrays are allocated only when the coupled route is on, and
+  `Drow` last and on its own, so every array the three-unknown solve has always
+  had keeps the address it has always had.
+* NOT checked: the coupled route on any planet but the He/H = 0.0793 hot
+  Uranus, on any state but that hand-off, or with helium diffusion also on.
+* NOT checked: whether the band half-width 11 is exact rather than sufficient.
+  It is derived, and no column-by-column comparison against a dense Jacobian
+  was made.
+* **The 1 microbar gate (`mol_carrier`) was run, and it does not produce a
+  quotable steady state either -- for a reason that is about the case, not
+  about the solver.** That case is a 12000-step relaxation SNAPSHOT, not a
+  converged wind: restarted from its own output with the coupled solve on,
+  the marching takes 21,000 further steps to reach the JFNK hand-off and the
+  solve then stagnates at `||R|| = 2.30e-3` with the carrier row binding at
+  2.30e-3 and, decisively, a **flux spread of 0.244 against a gate of
+  5e-3**. The wind is not carrying one mass flux at every altitude, so no
+  gate can be met and no three-layer table from it would describe a steady
+  state. A quotable coupled solution needs a converged wind on that planet
+  first, which is the same thing item (P43) has been waiting for.
+* NOT checked: the E1d hand-off in the tree. It is a 9 microbar state whose
+  `base.inp` and `Log10 lower boundary` disagree, and section 136 made
+  `p_base` authoritative, so the tree would set up a different base than the
+  campaign's pre-136 working copy did; the comparison would not be
+  like-for-like.
+
+Files: `src/modules/lower_atmosphere/diffusive_photochemistry.f90`,
+`src/modules/time_step/steady_newton.f90`, `src/EXHALE_main.f90`,
+`src/modules/init/parameters.f90`, `src/modules/files_IO/input_read.f90`.
+Documentation: `docs/p50_carrier_wind_alternation.md`, `docs/input_schema.md`,
+`docs/molecular_hydrogen_treatment.tex`, `TO_BE_DONE.md` ((P43) closed for the
+alternation; P51 recorded).
+
+## 140. Six ways a run could not say why it stopped, and an acceptance test that existed in two versions (2026-09-03)
+
+**Judgment first, and it is one sentence in three parts. (1) The marching
+loop's `Resid tol` stop wrote its verdict into the du flag, so a run that
+stopped on the residual printed `converged: momentum constant (du < du_th)` at
+`du = 3.156e-3` with `du_th = 1.0e-3` -- the reported reason and the reason
+that fired were different statements, and only one of them was true.
+(2) There were two definitions of an accepted steady state: `steady_gates_met`
+(residual AND mass-flux flatness) inside the JFNK, and the residual alone in
+the marching loop, so for the SAME `Resid tol` key the marching accepted a
+WASP-121b state whose flux spread was 9.879e-2 -- twenty times the default
+threshold -- while the JFNK was refusing 1.874e-2. (3) A key stated twice was
+resolved by file order and nothing said so, and one file in the repository was
+stated twice. All three are fixed; the acceptance test now exists once, in
+`steady_residual.f90`, and both routes call it.**
+
+This closes item (P52).
+
+### 140.1 The stop that was reported was not the stop that fired
+
+`EXHALE_main.f90` carried three stop flags -- `is_mom_const`, `is_zero_dt`,
+`is_stalled` -- and the report at the end of the loop printed a fixed sentence
+for each. The `Resid tol` branch had no flag of its own and borrowed the first:
+
+```fortran
+            else if (resid_th .gt. 0.0d0) then
+               is_mom_const = is_resid_ok
+```
+
+so the run's own log said `du < du_th` about a stop that had nothing to do
+with `du`. Measured on `resid_on` (WASP-121b, `Resid tol: 1.0e-4`,
+`du_th [PLM,WENO3]: 0.5 1.0e-3`) before the change: the loop stopped at step
+14000 printing
+
+```
+     -> converged: momentum constant (du < du_th)
+     final: count=14000  du= 3.1560E-03  dtu= 2.4942E-05
+```
+
+with `du` three times its own threshold, because what had actually happened
+was `||R|| = 8.066e-5 < 1.0e-4`.
+
+**Every stop condition now has its own flag and its own line**, and the flags
+are named for what they measure rather than for the order they were added in:
+
+| flag (`parameters.f90`) | the condition it holds |
+|---|---|
+| `mass_flux_converged` | `du < du_th`: the radial spread of `rho v r^2` over the wind |
+| `step_change_converged` | `dtu < dtu_th`: the largest relative change of `u` in one step |
+| `du_plateaued` | `du` settled on a plateau (the stall net) |
+| `steady_gates_converged` | BOTH steady gates met on the marched state |
+| `hit_max_steps` | the `EXHALE_MAXSTEPS` cap |
+| `newton_finished` | the JFNK finish returned `info = 0` |
+
+`newton_finished` used to set `is_mom_const` to leave the loop; it is now a
+stop condition of the loop in its own right, so nothing has to borrow a flag
+to exit. The report tests the flags in the order the loop leaves on them, with
+the NaN scan first because a NaN invalidates any convergence a flag may also
+be carrying.
+
+### 140.2 One acceptance test, in one place
+
+`steady_gates_met` -- `||R|| < resid_tol` AND the mass-flux spread over
+`r >= r_flux` below `flux_spread_th`, section 133 -- was a private function of
+`steady_newton.f90`, so only the steady solvers could call it. The marching
+loop's `Resid tol` stop therefore tested the residual alone. **The two routes
+were reading the same user key and applying different acceptance criteria**,
+and the gap is not academic: on `resid_on` the state the marching accepted at
+step 14000 had a gate-window flux spread of 9.879e-2 (the diagnostic line was
+already printing it), against a default `Flux spread tol` of 5.0e-3 and
+against the 1.874e-2 that section 133.4 records the JFNK REFUSING on
+`jfnk_hd189_tight`.
+
+The function moves to `steady_residual_mod` (`steady_residual.f90`), beside the
+residual and the flux functional it combines, because neither solver owns the
+definition. `steady_newton.f90` imports it; the marching monitor calls it at
+the same `N_resid` cadence it already used, in place of its bare
+`flux_spread_of_state` call, and `steady_gates_converged` is what it returns.
+Where a `Resid tol` run stops without meeting them, the log now names the gate
+that is left, in the same terms the JFNK uses:
+
+```
+     -> stopped: du plateau detected (stalled 500 steps) with the steady gates NOT met
+        the residual gate is met: ||R|| 7.153E-05 < 1.000E-04
+        the FLUX gate is the one left: spread 4.218E-02 >= 5.000E-03
+```
+
+### 140.3 The step cap is a stop, and now says so
+
+`EXHALE_MAXSTEPS=N` leaves the loop from inside the body, so none of the three
+flags was set and the `count_max` branch tested only the hard 1e6 cap: a run
+that ended on the cap printed no stop line at all, going straight from
+`Time integration done.` to `final: count=...`. Every fixed-step case in the
+regression matrix ends this way, and so does `wasp_localdt_cont`. The exit now
+sets `hit_max_steps` and the report prints
+
+```
+     -> stopped: reached EXHALE_MAXSTEPS = 12000 steps WITHOUT convergence
+```
+
+with the unmet gates listed after it when the run asked for `Resid tol`. The
+`Do only PP` exit and the NaN exit likewise now name themselves.
+
+### 140.4 A key states one quantity
+
+The parser resolved a repeated key to its LAST occurrence. That is a rule
+about file order, not about intent: the run proceeds on a value nobody chose
+and nothing in its log says a choice was made.
+`backup/regression/valve_sens/eps5/input.inp` carried `Resid tol` twice, and
+its own stored `run.log` shows the parser echoing both and the solve taking the
+second:
+
+```
+ (input_read) Residual-based convergence, tol = 1.00E-03
+ (input_read) Smooth base valve, eps = 1.00E-05
+ (input_read) Residual-based convergence, tol = 1.00E-04
+```
+
+`refuse_duplicate_keys` (`input_read.f90`) now stops the run before any line is
+consumed, printing both line numbers and both values. Each non-blank, non-`#`
+line is attributed to the LONGEST key it matches, because the key set is not
+prefix-free (`Lower atmosphere` is a prefix of `Lower atmosphere profile`,
+`Wind-AE seed` of `Wind-AE seed out`) and the longest match is the key the
+parser itself consumes. The same routine covers `base.inp`. `metals.inp` gets
+its own check, keyed on the QUANTITY rather than on the token, because there
+the labels alias: `C` and `CI` both set `X_C`, so a token-level test would miss
+the pair that matters.
+
+**The repository was swept for the same defect.** All 1889 settings files under
+the repository were attributed key by key with the parser's own matching rule
+(1126 `input.inp`, 650 `base.inp`, 113 `metals.inp`, including the 942 stored
+`LHS1140b/` inputs and the 32 under `vulcan_work/`). **Exactly one file
+carried a duplicate**, the `valve_sens/eps5` above, and it is repaired here.
+Which of its two values was meant is settled by its own run log, not by
+preference: the solve ran on the second, `1.0e-4` on the pre-section-133 scale,
+which the renormalization of section 133.3 makes `1.0e-6`. The superseded pair
+is deleted; the surviving line keeps its renormalization comment.
+
+### 140.5 The direct steady route printed none of the run's counters
+
+`EXHALE_PTC=1` solves from the initial condition and stops. The run-counter
+ledger -- the ionization-solver acceptance report, the energy-floor,
+positivity-limiter and `dt`-bisection counts, the base-inflow Mach, the
+He-recombination coupling warning, the low-Mach damping magnitude -- sat inline
+in the marching route below its stop line, so this route reported none of it.
+It is now one contained routine, `write_run_counter_report`, and both routes
+call it: the marching loop where the block used to be, and the direct route
+before its `stop`. Measured on a WASP-121b PTC/JFNK solve from the `ptc_warm`
+initial condition, the same build with and without the call: the outputs are
+byte-identical and the run gains 846 equilibrium sweeps' worth of acceptance
+statistics it was discarding.
+
+**A second diagnostic-only defect travels with it.**
+`write_heat_breakdown_eq` (`util_ion_eq.f90`) called `PH_heat_HHe` without
+`f_vibq` / `e_vibq`, the two arrays that carry the collisional quench fraction
+of an H2 vibrational excitation and the internal energy a B/C fluorescence
+leaves behind. They are optional arguments, so their absence switched the two
+H2 vibrational heat channels off silently and only in the dump -- the solver's
+own call in `ionization_equilibrium.f90` has always passed them. The dump now
+takes the same arguments. Measured on `mol_base_handoff`, the dump's
+photoheating total rises by up to a factor **1.97** (at `r = 1.0002 R_p`), with
+`heat_H2` nearly doubling there (largest change 7.19e-9 against a pre-fix
+maximum of 7.41e-9 in that column), and by 0.49 per cent volume-integrated.
+`Hydro_ioniz.txt` and `Ion_species.txt` are untouched: nothing but the
+`Heating_breakdown.txt` dump reads these arrays.
+
+### 140.6 Regression-directory hygiene, and the section 131.5 numbers
+
+`backup/regression/valve_sens/eps4` holds two output files and no `input.inp`,
+so it is not a case any harness can run; nothing in `run_check.sh` or in
+`docs/` refers to it. It is left as found with a `NOTE.txt` recording that,
+checked 2026-09-03. Three pairs of case directories are the same case under two
+names, with byte-identical `input.inp` and `metals.inp`:
+
+| pair | `input.inp` md5 |
+|---|---|
+| `crit_warm` = `wasp_hybrid_finish` | `848618fdd1e37a19a55dfecd92ffb2ee` |
+| `ptc_wasp` = `resid_on` | `e678ce27902aa72921e860fdefd18867` |
+| `solver_newton_cold` = `wasp_full_newton` | `14930836c06c6213d949d6f98581bf68` |
+
+Each of the six directories gets a `NOTE.txt` recording the identity. None is
+deleted or merged: which name to keep is a judgment about what the stored
+outputs are records of, and it is the user's.
+
+> **Decided 2026-09-03.** The first name of each pair was DELETED --
+> `crit_warm`, `ptc_wasp`, `solver_newton_cold` -- after the md5 equality above
+> was re-checked immediately beforehand; `wasp_hybrid_finish`, `resid_on` and
+> `wasp_full_newton` are kept and their `NOTE.txt` files now name the deleted
+> duplicate and repeat the md5. None of the three was in `DEFAULT_CASES` or in
+> any `golden*/` directory, so no golden entry was removed. Every table in this
+> document that quotes a measurement under a deleted name is quoting the same
+> case; the measurement stands and only the directory is gone.
+> `TO_BE_DONE.md` (P53) carries the record.
+
+**Section 131.5 is corrected.** It quoted `wasp_hybrid_finish` and `crit_warm`
+at `log10 Mdot = 13.40` and `wasp_localdt_cont` at 13.24, which were 30-step
+probes reported as though they were the cases' results. Run to their own
+stopping criteria they give:
+
+| case | stop | `log10 Mdot` |
+|---|---|---|
+| `wasp_hybrid_finish` (same case as the deleted `crit_warm`) | `du = 9.9997e-4 < du_th` at step 22935 | **13.23** |
+| `wasp_localdt_cont` | the 40,000-step cap, `du = 4.97e-5` | **13.36** |
+
+The `wasp_localdt_cont` row is not a converged rate, and until this section its
+run printed no line saying so.
+
+### 140.7 What was checked
+
+**1. The ten regression cases are byte-identical, and to two references.**
+The tree is being edited concurrently, so the comparison is an A/B between two
+builds made from ONE frozen snapshot of it: the snapshot as it stood, and the
+same snapshot with the six files of this section changed and nothing else
+(verified file by file). Both ran the matrix single-threaded, each case in its
+own directory. All ten agree with the control bit for bit in `Hydro_ioniz.txt`
+and `Ion_species.txt`, and all ten agree with `backup/regression/golden/` as
+well, so the change is invisible to the data and the goldens still stand.
+The stop lines are what changed:
+
+| case | before | after |
+|---|---|---|
+| `wasp_full` | `converged: momentum constant (du < du_th)` | `converged: mass flux rho*v*r^2 constant over the wind (du= 9.999E-04 < du_th 1.000E-03)` |
+| `wasp_he23off` | the same sentence | the same form, `du= 9.887E-04` |
+| the eight fixed-step cases | *(no stop line at all)* | `stopped: reached EXHALE_MAXSTEPS = 12000 steps WITHOUT convergence` |
+
+**2. `resid_on` no longer stops at step 14000, and what it does instead is
+worth having.** Under the residual alone it stopped there calling itself
+converged. With both gates it marches on, and the staged secondary-ionization
+flip -- which fires on the first stop condition the loop reaches -- now fires
+on a state that meets BOTH gates instead of one that meets neither:
+
+| | before | after |
+|---|---|---|
+| SvS85 flip | step 9500, `du = 2.42e-3` | step 37500, `\|\|R\|\| = 3.808e-6`, flux spread 4.793e-3 |
+| stop | step 14000, reported `converged: momentum constant` | step 40000, the `EXHALE_MAXSTEPS` cap, reported as the cap |
+| gate state at the stop | `\|\|R\|\| = 8.066e-5`, flux spread **9.879e-2** | `\|\|R\|\| = 6.616e-4`, flux spread 6.758e-1, both named in the log |
+| `log10 Mdot` | 13.26 | 13.26 |
+
+Over the 80 monitor evaluations of the new run the residual gate is met at 52
+of them and the pair at exactly one (step 37500). The flux spread at the 52 is
+4.793e-3 to 1.290e-1: **the residual gate on this planet says nothing about
+whether the mass flux is flat**, which is the whole content of section 133 and
+is what the marching loop was missing. The rate is the same either way, so the
+premature stop was not costing accuracy here -- it was costing the statement.
+
+**3. The other two `Resid tol` cases, both under a 40,000-step cap.**
+
+| case | stop | gates at the stop | `log10 Mdot` |
+|---|---|---|---|
+| `ptc_warm` (WASP-121b, `Resid tol: 1.0e-5`) | the cap; SvS85 flip at step 17500 | `\|\|R\|\| = 1.653e-5 >= 1.0e-5`, spread 1.070e-2 >= 5.0e-3 | 13.23 |
+| `jfnk_hd189` (`Resid tol: 1.0e-5`) | the cap | `\|\|R\|\| = 3.865e-5 >= 1.0e-5`, spread 2.304e-1 >= 5.0e-3 | 9.93 |
+
+Neither reaches both gates by marching alone in 40,000 steps, and both now say
+so in one line each instead of ending silently.
+
+**4. The duplicate-key refusal, on all three file kinds.** `input.inp`: the
+unrepaired `valve_sens/eps5` stops with both lines named (33 and 36).
+`base.inp`: a second `T_base` appended to `mol_base_handoff/base.inp` stops
+naming lines 32 and 38. `metals.inp`: a `CI` line added beside an existing `C`
+line stops on `X_C`, which is the alias case a token-level check would miss.
+The repaired `eps5` parses and reports `Residual-based convergence,
+tol = 1.00E-06`.
+
+**5. The direct steady route prints the counters.** The same WASP-121b
+PTC/JFNK solve on both builds: the control's log goes from the JFNK verdict
+straight to `write_output`, and the changed build prints the three
+ionization-solver ledgers (846 equilibrium sweeps between them) in between.
+`Hydro_ioniz.txt` and `Ion_species.txt` are byte-identical between the two.
+
+**6. The heat-breakdown dump, and what it does NOT close.** With `f_vibq` /
+`e_vibq` passed, the dump's own closure is unchanged and exact
+(`max |sum(photo channels)/heat_photo - 1| = 1.8e-15`), and its photoheating
+total rises as above. **What it does not do is make the dump agree with the
+`Hydro_ioniz.txt` heat column on the molecular gates**: that ratio is 0.23 on
+`mol_base_handoff` before AND after. The reason is not this defect -- it is that
+those cases are 12,000-step relaxation snapshots, and `write_heat_breakdown_eq`
+re-solves the equilibrium at the final `(T, rho)` while the heat column is the
+marching state's own. On the converged `wasp_full` the same measurement gives
+1.0000 at every cell, which is what the dump's header already claims ("up to
+convergence"). A 1.000 closure on a molecular case therefore has to be measured
+on a converged one.
+
+**7. Runtime checks.** A `-fcheck=bounds,do,mem` rebuild of the changed tree
+and a 1500-step bounded HD 209458 b run: **clean**, `log10 Mdot = 9.60`, and the
+run now prints `stopped: reached EXHALE_MAXSTEPS = 1500 steps WITHOUT
+convergence`.
+
+**NOT checked.**
+* Whether any `Resid tol` case reaches both gates given more than 40,000
+  marching steps. All three were capped.
+* The remaining `Resid tol` cases (`jfnk_cold`, `jfnk_hd189_tight`, `tpm_*`,
+  `valve_sens/eps5`) were not re-run.
+* `ifort` / `ifx` builds.
+* The 932 stored `LHS1140b/exhale/` inputs were scanned for duplicate keys and
+  have none, but they were not re-run.
+
+Files: `src/modules/time_step/steady_residual.f90`,
+`src/modules/time_step/steady_newton.f90`, `src/EXHALE_main.f90`,
+`src/modules/init/parameters.f90`, `src/modules/files_IO/input_read.f90`,
+`src/modules/files_IO/metals_input_read.f90`,
+`src/modules/radiation/util_ion_eq.f90`,
+`backup/regression/valve_sens/eps5/input.inp`.
+Documentation: `docs/input_schema.md`, `TO_BE_DONE.md` ((P52) closed, (P53)
+recorded), section 131.5 corrected, and a `NOTE.txt` in each of the seven
+regression directories of section 140.6.
+
+## 141. The adiabatic index of the molecular layer, and the chemical heat the network releases (P53)
+
+*Built and verified against the tree as it stood after section 140 (P52)
+landed; the converged physics measurement of section 141.4 was made on the
+state immediately before it, which P52 leaves byte-identical.*
+
+### 141.1 What was wrong
+
+*The typeset version in `Update_EXHALE.tex` folds this subsection into the
+opening paragraph, so its subsections run one lower than the numbering here;
+the content is the same and in the same order.*
+
+The code carried a two-part equation of state whose halves disagreed. The
+THERMAL half has been composition-exact for a long time --
+`composition.f90` computes `p = (n_tot + n_e) k T` from the species count of
+the cell -- but the CALORIC half, `e = p/(gamma - 1)`, used the monatomic
+`gamma = 5/3` everywhere. That says every particle stores `(3/2) kT`.
+Molecular hydrogen does not. At the 400-1300 K the molecular layer runs, the
+H2 rotational ladder is fully excited (the `J = 1` level sits at 170 K), so an
+H2 molecule stores about `(5/2) kT`, and the vibrational ladder adds to that
+above ~800 K. Where the gas is 80 percent H2 the specific heat was wrong by a
+factor 1.67.
+
+The shell where it was wrong is thin in radius and not in anything else. In the
+converged He/H = 0.0793 hot Uranus the composition-weighted `gamma_eff` is 1.42
+at the base and reaches 5/3 only above 1.066 `r_base`; that inner shell carries
+96 percent of the mass, 92 percent of `int p dV` and 49 percent of the volume
+integral of `|p div v|`. The census of every place `gamma` entered the code, the
+sizing experiment and the design are in `docs/p53_h2_adiabatic_index.md`.
+
+### 141.2 The rename
+
+The polytropic index was the single-letter global `g` (`parameters.f90`), in a
+module almost every other module `use`s whole, and five routines already
+declared a local or dummy `g` that shadowed it: the merit gradient of
+`levenberg_marquardt_step` (whose `mu` shadowed the global hydrogen-atom mass
+as well), a Jacobian entry in `charge_exchange`, the local gravitational
+acceleration and mean molecular weight in `lower_column`, a rate-coefficient
+function result in `h2_vibrational_relaxation` and a table abscissa in
+`h2_self_shielding_table`. None was a bug, but this is the shadowing class that
+cost hours twice before (`t0`/`T0`, `G2s`/`g2s`).
+
+The global is now `gamma_ad` and the five locals are named for what they hold:
+`grad_merit`, `mu_damp`, `dR_dn`, `grav_accel`, `mu_mean`, `gamma_deex`, `axis`.
+The rename is mechanical and the whole regression matrix is byte-identical
+across it.
+
+### 141.3 The caloric equation of state
+
+`src/modules/states/caloric_eos.f90` holds the map between internal energy
+density, pressure and temperature for a mixture in which every atom, ion and
+free electron carries `(3/2) k` and H2 carries its own rovibrational heat
+capacity:
+
+```
+e         = (3/2)(n_tot + n_e) k T + n(H2) k u_rv(T)
+gamma_eff = 1 + (n_tot + n_e)/[(3/2)(n_tot + n_e) + n(H2) c_rv(T)]
+```
+
+`u_rv` and `c_rv` are evaluated from the COMPLETE bound rovibrational ladder of
+H2 `X 1Sigma_g+` -- 302 levels up to 51966 K, the 4.478 eV dissociation limit --
+which the code already carried in `molecular_infrared_data` (Roueff et al. 2019,
+A&A 630, A58, table 2, via VizieR J/A+A/630/A58). Using the observed ladder is
+not a refinement for its own sake: it is the only H2 level data in the tree, so
+there is no second copy of the spectroscopic constants to drift, and it is more
+accurate than a rigid rotor plus a harmonic oscillator, which gives `c_v(H2)/k`
+smaller by 1.4 percent at 200-900 K, 2.3 percent at 1300 K and 7.3 percent at
+3000 K.
+
+Because the sum runs over one partition function with the nuclear-spin weights
+inside it, this is the ortho/para EQUILIBRIUM mixture. A frozen 3:1 mixture
+gives the same `c_rv` to four decimals at and above 300 K and differs only below
+~250 K, colder than the layer reaches, so the distinction does not arise.
+
+H2+, H3+ and HeH+ are counted with `(3/2) k` each, as if monatomic. Measured on
+the same state, over every cell where H2 is more than 1e-3 of the particle count
+(r = 1.000 to 1.101 `r_base`), `n(H2+)/n(H2) = 1.7e-7`, `n(HeH+)/n(H2) = 1.2e-7`
+and `n(H3+)/n(H2) = 3.2e-8`, so giving all three the full H2 heat capacity would
+move `C_V` by less than 1e-6.
+
+**Cost.** The 302-level sum is one exponential per level per evaluation and the
+energy-to-temperature inverse evaluates it several times per cell per
+conversion, so `u_rv` is tabulated once on a 4096-point logarithmic grid from
+1 K to 50000 K and interpolated by a CUBIC HERMITE in `ln T` built on exact
+nodal values of both `u_rv` and `du_rv/dlnT`. The interpolant is therefore C1
+and its own derivative -- which the Newton inverse differentiates -- is exact at
+the nodes. Measured against the direct sum over 200-5000 K, the largest relative
+error is 1.0e-12 in `u_rv` and 8.8e-10 in `c_rv`; the interpolant's derivative
+matches its own central difference to 1e-8.
+
+**The inverse is solved, not lagged.** With the vibrational ladder in `c_v` the
+map from internal energy to temperature is a genuinely nonlinear scalar
+equation. It is solved to full precision at every conversion by a
+bisection-safeguarded Newton on the bracket `0 < T <= u/1.5` (which holds
+because `u_rv >= 0` and is increasing), rather than by freezing `c_v` at a
+previous temperature: a residual that depended on the previous state would blur
+the fixed point of the steady solver and its finite-difference Jacobian alike.
+
+**Where it is applied.** Every `E <-> p` conversion: `UW_conversions`
+(`U_to_W_comp`, `W_to_U_comp`, `U_to_W`, `W_to_U`), `Source`, the HLLC and
+Lax-Friedrichs total energies and the physical flux in `Num_Fluxes`, the
+low-Mach dissipation pressure, the heating/cooling temperature update in
+`energy_semi_implicit`, the heat capacity of the conduction tridiagonal and the
+two energy rebuilds in `viscous_conduction`, the JFNK state scales in
+`steady_residual`, and the post-process energy equation `T_equation`. The sound
+speeds of `eval_dt`, the base Mach diagnostic of `Apply_BC` and the carrier-row
+signal rate of `diffusive_photochemistry` use each cell's own `gamma_eff`.
+
+**Face plumbing.** The reconstruction works in primitive variables and needs no
+`gamma`; each face state's energy and sound speed are built with the heat
+capacity of the CELL IT WAS RECONSTRUCTED FROM, which the composition ratios
+this module stores make well defined (both stored quantities are ratios of
+number densities to `rho`, i.e. functions of the mass fractions alone, so they
+are unchanged by the density difference between a cell average and its face
+value). The one place a single `gamma` is still needed is the Roe average
+`a_avg = sqrt((gamma-1)(H_avg - v_avg^2/2))` and the Toro `p_star` estimate of
+`speed_estimate_ROE`, both derived for one ideal gas on both sides; they are
+given the arithmetic mean of the two face values. That is a WAVE-SPEED
+ESTIMATE, not a definition of the steady state -- the converged solution is the
+root of a residual built from the conservative fluxes, and those carry each
+side's own EOS. The HLLC branch needs no such average: its Davis/Einfeldt
+speeds already take one sound speed per side.
+
+**Byte identity is structural, never a limit of the formula.** With `n(H2) = 0`
+the mixture expression gives `1 + 1/1.5`, which is not the same double as
+`5.0d0/3.0d0`. Two gates: a run with molecular chemistry off leaves every map on
+the legacy expression verbatim, and inside a molecular run a cell with exactly
+zero H2 takes the same legacy expression. `wasp_full`, `wasp_he23off` and
+`lower_profile` are byte-identical across the change on both output files; the
+seven `mol_*` cases move and their goldens were refreshed at the end of the
+change, the previous block preserved as
+`backup/regression/golden_blockG_20260903` (section 141.7 has the numbers).
+`lower_profile` stays identical because it never sets
+`Molecular chemistry: True`: it is a metals-on run with a lower-atmosphere
+profile, so the module-level gate never opens.
+
+**One module was deleted on the way.** `speed_estimate_HLLC` (Toro's adaptive
+`p_star` estimate) was `use`d by `Num_Fluxes` and never called: the HLLC branch
+builds its own Davis/Einfeldt speeds inline. It has been removed, together with
+the `use` and its line in the Makefile's `SRC`. Nothing links to it, so the
+change is byte-identical, and the matrix run that proves it is described below.
+
+**The Roe and Lax-Friedrichs branches are not in the regression matrix** -- all
+fifty cases in `backup/regression/` run HLLC -- so both were run by hand on
+`wasp_full` for 300 steps against the control build and are byte-identical, and
+the Roe branch, which is the only site that needs a single index for both sides,
+was run for 400 steps on `mol_base_handoff`, where the two face values genuinely
+differ.
+
+### 141.4 What it does to the answer
+
+The measurement is the converged He/H = 0.0793 hot Uranus rung
+(`p_base = 1e-6` bar, `q_H2_base = 0.84`, molecular chemistry on, metals off),
+restarted from its own converged output with `Load IC? True`,
+`Solver: Newton 100.0`, `du_th [PLM,WENO3]: 1.0e9 1.0e-3`,
+`Secondary_ionization: Immediate`. **All three runs reached `info = 0`**;
+nothing below comes from a relaxation snapshot.
+
+| | A: `gamma = 5/3` | B: caloric EOS | C: B + reaction heat |
+|---|---|---|---|
+| JFNK `info` | 0 | 0 | 0 |
+| `\|\|R\|\|` | 1.494e-6 | 6.572e-6 | 2.031e-6 |
+| flux spread (r > 1.2) | 2.966e-3 | 4.638e-3 | 2.106e-3 |
+| **`log10 Mdot` [g/s]** | **10.30** | **10.30** | **10.34** |
+| `d log10 Mdot` vs A | -- | **+0.003** | **+0.046** |
+| layer `T` minimum [K] | 410.2 | 417.5 | **525.2** |
+| its radius [`r_base`] | 1.0622 | 1.0639 | 1.0701 |
+| H2 front, `f2 = 0.5` | 1.0418 | 1.0420 | 1.0429 |
+| H2 front, `f2 = 0.1` | 1.0590 | 1.0598 | 1.0633 |
+| `T` at the `f2 = 0.5` front [K] | 532.0 | 545.6 | 632.4 |
+| H3+ peak radius | 1.0048 | 1.0048 | 1.0029 |
+| H3+ peak density [cm^-3] | 1.771e5 | 1.755e5 | 1.469e5 |
+
+Temperature, against A:
+
+| `r/r_base` | 1.05 | 1.10 | 1.15 | 1.20 | 1.30 | 1.50 | 2.00 | 3.00 |
+|---|---|---|---|---|---|---|---|---|
+| `T` (A) [K] | 457 | 667 | 1250 | 1722 | 2320 | 2766 | 2668 | 2120 |
+| `dT` (B - A) [K] | **+16.5** | -13.9 | -17.7 | -15.3 | -10.7 | -5.3 | -2.1 | -1.9 |
+| `dT` (C - A) [K] | **+130.7** | -43.9 | -193.2 | -211.7 | -172.4 | -74.3 | +19.0 | +43.2 |
+| `gamma_eff` (B) | 1.601 | 1.6661 | 1.6666 | 1.6666 | 1.6667 | 1.6667 | 1.6667 | 1.6667 |
+
+`gamma_eff` and the two hydrodynamic terms, cell by cell (`p div v` and
+`(1/r^2) d(r^2 rho u v)/dr` with `u` the caloric internal energy per unit mass,
+both in erg cm^-3 s^-1, evaluated from the profile the way
+`docs/p23_thermal_budget.md` section 6 evaluates them):
+
+| `r/r_base` | `gamma_eff` (B) | `p div v` A | `p div v` B | advection A | advection B |
+|---|---|---|---|---|---|
+| 1.001 | 1.414 | -1.60e-6 | -7.42e-7 | -2.61e-6 | -2.05e-6 |
+| 1.010 | 1.432 | 6.79e-8 | 8.59e-8 | -5.96e-8 | -1.14e-7 |
+| 1.020 | 1.454 | 8.56e-8 | 1.02e-7 | -2.36e-9 | -3.25e-8 |
+| 1.030 | 1.492 | 8.51e-8 | 1.02e-7 | +4.68e-9 | -2.14e-8 |
+| 1.040 | 1.542 | 8.56e-8 | 1.03e-7 | +4.74e-9 | -2.49e-8 |
+| 1.050 | 1.602 | 9.20e-8 | 1.04e-7 | +1.06e-8 | -1.99e-8 |
+| 1.060 | 1.645 | 1.03e-7 | 1.08e-7 | +2.24e-8 | -9.0e-10 |
+| 1.080 | 1.665 | 1.25e-7 | 1.25e-7 | +5.32e-8 | +4.49e-8 |
+| 1.100 | 1.666 | 1.36e-7 | 1.36e-7 | +7.44e-8 | +7.14e-8 |
+| 1.500 | 1.6667 | 3.20e-8 | 3.23e-8 | +8.21e-9 | +8.25e-9 |
+
+**Reading.** The change is confined to the layer and it is small. `Mdot` moves
+by +0.003 dex (0.7 percent) and the temperature by at most 18 K, warmer at the
+base and cooler by 1.4 percent through 1.10-1.30 `r_base`. The H2 front does
+not move measurably (0.02 percent). **This is the term that responds, and it is
+the advection term**, exactly as `TO_BE_DONE.md` item (Z) predicted: `p div v`
+rises by 5 percent at 1.06 to 26 percent at 1.01, while the advection term,
+which carries `u = e/rho`, changes SIGN over 1.03-1.06 (at 1.04, from
++4.7e-9 to -2.5e-8).
+Above the front, where `gamma_eff` is 5/3 to four decimals, nothing moves.
+
+**Against the sizing experiment.** `docs/p53_h2_adiabatic_index.md` section 4
+put a whole-domain `gamma = 7/5` at `log10 Mdot` 10.30 -> 10.23 (a factor 0.85)
+and `T` down by up to 97 K, and called that an upper bound. The local treatment
+is **inside that bound by a factor 20 in `Mdot` and 5 in `T`, and it does not
+even share its sign for `Mdot`** (+0.7 percent, not -15). The bound held; the
+extrapolation from it did not, and the reason is section 2 of that document:
+the wind's energetics are set at and above the sonic transition, where
+`gamma_eff` is exactly 5/3, so a global hack moves a region the correct
+treatment leaves alone.
+
+**Neither the caloric EOS nor the reaction heat is a candidate for the
+Koskinen temperature gap in the direction it needs.** The caloric EOS moves the
+layer minimum by +7 K. The reaction heat moves it by +115 K (410 -> 525 K),
+which is the sign `TO_BE_DONE.md` item (X) is looking for and about a quarter
+of the smaller end of its 100-450 K deficit, but it takes 1.15-1.50 `r_base`
+DOWN by 74-212 K at the same time, so it is a redistribution rather than a
+closing of the gap.
+
+### 141.5 The chemical heat the molecular network releases
+
+Looking for the thermal H2 dissociation-energy sink that `lyman_werner.f90`
+records as an open item turned up something larger, and the census that found it
+is worth stating.
+
+**What the code already deposits.** `ionization_equilibrium` adds, in this
+order: the photoelectric heating of H I, He I, He II, He(2^3S), H2 and the
+metals (`PH_heat_HHe`); the Balmer photoelectric heating of H(n=2); the
+He-recombination coupling; the He(2^3S)+H Penning exothermicity (6.2 eV); the
+He(2^3S)+H2 Penning exothermicity (4.4 eV); the Lyman-Werner fragment kinetic
+energy (0.4 eV per pair) and the fluorescence heat; and the FUV photolysis heat
+of H2O and OH. `eval_cool` carries the radiative-recombination and
+collisional-ionization sinks. **No collisional reaction of the molecular network
+deposits anything.**
+
+**Why that is not a small omission.** In an atomic gas the ionization energy is
+not a heating channel: the photoelectron carries away `hv - I(H)`, which is
+deposited, and `I(H)` comes back as a Lyman photon when H+ recombines
+radiatively and leaves the gas. In a molecular gas the return path is different.
+An H2 ionized at 15.43 eV becomes H2+, which reacts on to H3+, and `H3+ + e` is
+a DISSOCIATIVE recombination: its 9.25 eV goes into the fragments, not into a
+photon. The ionization energy comes back to the GAS.
+
+Sized on the converged constant-gamma state (column A of section 141.4), the
+sum of the collisional reaction heats is **2.37 times the whole photoelectric
+heating rate** over 1.00-1.05 `r_base`, crossing 1 at 1.053 and falling to 1
+percent by 1.10. The argument above makes that ratio I(H2)/(hv - I(H2)), so
+2.37 corresponds to a mean absorbed photon of 22 eV -- a plausible place for
+this spectrum's absorbed energy to sit, which is a consistency check on the
+sum rather than an independent derivation of it. Solved
+self-consistently (column C), the run's own `Heating_breakdown.txt` puts the new
+`heat_mol_chem` column at **81 percent of the total heating rate** at 1.02
+`r_base`, 55 percent at 1.05, 5 percent at 1.10 and 1 percent above.
+
+**The 4.478 eV term alone would not have been right.** Sized on the same state,
+`D0(H2) x (three-body formation - collisional dissociation)` is 1.06 times the
+whole photoelectric heating in the molecular base, and every one of the other
+molecular channels is 4 to 45 percent of it by rate:
+
+| channel | rate / \|net 3-body\| | heat released [eV] |
+|---|---|---|
+| R8 H2+ + H2 -> H3+ + H | 0.45 | 1.698 |
+| R7 H3+ + e -> 3H | 0.44 | 4.772 |
+| R6 H3+ + e -> H2 + H | 0.19 | 9.250 |
+| R9 H2+ + H -> H+ + H2 | 0.17 | 1.828 |
+| R20 He+ + H2 -> HeH+ + H | 0.15 | 8.355 |
+| R13 H+ + H2 + M -> H3+ + M | 0.13 | 4.349 |
+| R19 HeH+ + H -> H2+ + He | 0.12 | 0.806 |
+| R18 HeH+ + H2 -> H3+ + He | 0.046 | 2.505 |
+| R17 He+ + H2 -> H+ + H + He | 0.039 | 6.511 |
+| R5 H2+ + e -> H + H | 0.0039 | 10.948 |
+| R23 H2 + He+ -> H2+ + He | 0.0026 | 9.162 |
+| R16 HeH+ + e -> He + H | 0.0018 | 11.754 |
+| R10, R11 | < 1e-4 | endothermic |
+
+So the term the open item asks for is not separable from the rest of the
+network, and depositing it alone would put an unbalanced source into the base.
+
+**How it is built.** `src/modules/lower_atmosphere/molecular_reaction_heat.f90`
+computes the heat from ONE table of species enthalpies -- the energy to build
+each species out of ground-state H, ground-state He and free electrons at rest --
+so that the heat of `A + B -> C + D` is `h(A) + h(B) - h(C) - h(D)` and a cycle
+that returns to its starting species releases exactly zero. A
+reaction-by-reaction list has no such property. Five constants set the table, and what was checked for each is written at the
+declaration:
+
+| constant | value | checked against |
+|---|---|---|
+| `D0(H2)` | 36118.11 cm^-1 | not repeated: read through `mol_rates`, the code's single definition (Huber & Herzberg 1979) |
+| `I(H)` | 13.598434599702(12) eV | **read from the NIST Atomic Spectra Database** |
+| `I(He)` | 24.587389011(25) eV | **read from the NIST Atomic Spectra Database** |
+| `I(H2)` | 15.42593(5) eV | **read from the NIST Chemistry WebBook** |
+| `D0(H3+ -> H2 + H+)` | 35076 +/- 2 cm^-1 = 4.3489 eV | **read in the published text** of Mizus, Polyansky, McKemmish & Tennyson (2019), Mol. Phys. 117, 1663 (`references/Mizus_2019MP_117_1663.pdf`) |
+| `D0(HeH+ -> He + H+)` | 14882.16 cm^-1 | **derived from the published text** of Coxon & Hajigeorgiou (1999), J. Mol. Spectrosc. 193, 306 (`references/Coxon_1999JMS_193_306.pdf`): their Table 9 `De(4HeH+) = 16448.84` minus their Table 8 `G_0(4HeH+) = 1566.6764` |
+
+`D0(H3+)` is a 0 K dissociation energy and deliberately NOT the proton affinity
+of H2, which NIST gives as 422.3 kJ/mol = 4.377 eV at 298 K (Hunter & Lias
+1998) -- the wrong quantity for a 0 K enthalpy ledger, and 0.028 eV away from
+the right one. Mizus et al. place their value between the earlier theoretical
+4.337 +/- 0.002 eV of Lie and Frye and the experimental 4.381 +/- 0.021 eV of
+Cosby and Helm, and they state the channel themselves: "The new BOPES75K can be
+used to give the dissociation limit into `H3+ -> H2 + H+`".
+
+**The HeH+ constant had to be corrected, and the correction is the reason the
+citation matters.** Coxon & Hajigeorgiou determine a **`De`**, never a `D0`:
+16456.24 +/- 0.1 cm^-1 for the Born-Oppenheimer potential and 16448.84 for the
+`4HeH+` isotopomer (their Table 9, "Dissociation Energies and Be Values (cm^-1)
+for Isotopomers of HeH+"). The value 14874.215 cm^-1 that the secondary
+literature attributes to them appears nowhere in the paper. What the paper does
+support is `D0 = De - G_0` with `G_0(4HeH+) = 1566.6764 cm^-1` from their
+Table 8, i.e. **14882.16 cm^-1**, and their own sentence fixes the channel:
+"Since the dissociation limit of the ground state of HeH+ is He + H+". The
+difference from the quoted number is 7.95 cm^-1 (9.9e-4 eV, 0.053 percent); it
+moves `h(HeH+)` by 1e-3 eV out of 11.75 and the four HeH+ reaction heats by the
+same, which is bitwise visible and was folded in before the golden refresh.
+The converged measurement of section 141.4 was re-run with the corrected
+constant and did not move: `info = 0`, the same `||R||`, flux spread,
+`log10 Mdot`, layer temperature minimum and H2 front, and the same `dT`
+against the control to 0.1 K at every radius in the table.
+
+Excluded from the sum, so that nothing is counted twice: the photon-driven
+reactions (H2 photoionization and its dissociative branch, Lyman-Werner
+photodissociation, the H and He photoionizations), the radiative recombinations
+of H+ and He+, the collisional ionizations of H and He, the Penning channels,
+and the H/He charge exchange. The three-body association carries Hollenbach &
+McKee's (1979, ApJS 41, 555, p. 586) collisional branching `(1 + n_cr/n)^-1`,
+evaluated by the module that owns `n_cr`; in this layer that factor is 1 to a
+part in 1e3, so it is carried for correctness at the top of a thinner layer, not
+because it changes the number here.
+
+**Default ON**, because leaving it out is wrong rather than approximate.
+Follow one closed cycle that a photon drives:
+
+```
+H2 + hv  -> H2+ + e     the photon pays I(H2) = 15.43 eV; the photoelectron
+                        keeps hv - I(H2), which PH_heat_HHe already deposits
+H2+ + H2 -> H3+ + H     + 1.70 eV
+H3+ + e  -> H2 + H      + 9.25 eV, DISSOCIATIVE: into the fragments, not a
+                        photon
+```
+
+The cycle returns to H2 having turned one H2 into H + H and left
+`I(H2) - D0(H2) = 15.43 - 4.48 = 10.95 eV` in the gas. There is no photon
+anywhere in it to carry that away. This is precisely what is different from the
+atomic case, where the ionization energy leaves as the Lyman photon of a
+radiative recombination and is therefore correctly absent from the heating.
+A code that deposits only the photoelectron loses 10.95 eV per cycle, and on
+the converged rung that loss is 81 percent of the total heating rate at 1.02
+`r_base`. So the key exists to turn the term OFF, for A/B work against the
+state the code was in before it; an atomic run is gated out and is
+byte-identical either way.
+
+**What it does, on the converged rung of section 141.4** (column C there).
+The photoheating rate at 1.02 `r_base` goes from 5.6e-8 to 1.9e-7 erg cm^-3
+s^-1, a factor 3.3; the layer temperature minimum rises 410 -> 525 K; 1.15 to
+1.50 `r_base` falls by 74 to 212 K; `log10 Mdot` rises by 0.046 dex (11
+percent); the H2 front moves out from 1.0418 to 1.0429 `r_base` and the H3+
+peak density falls by 17 percent. The run converges to `info = 0` with a
+FLUX SPREAD BETTER than the control's (2.1e-3 against 3.0e-3).
+
+### 141.6 A lag the constant index was hiding
+
+The steady residual fills the ghosts (`Apply_BC`) BEFORE its ionization sweep
+runs, so the ghost conservative state it writes carries the composition of the
+previous sweep while the fluxes assembled afterwards carry this one. Under a
+constant index the primitive-to-conservative round trip returns the pressure the
+boundary condition asked for and the two cannot disagree; under the caloric EOS
+they can, by as much as the ghost composition moved in one sweep. The gap
+vanishes at the fixed point and is largest during relaxation.
+
+It is not repaired here. The obvious fix -- a second `Apply_BC(u)` after the
+last composition refresh -- is not free, because `Apply_BC` is not idempotent
+even today: its interior round trip evaluates `0.5*W(1)*W(2)**2` where the input
+was `0.5*u(2)*u(2)/u(1)`, and those are not the same double, so a second call
+perturbs every interior cell at the last bit and moves the whole atomic
+regression matrix -- the byte-identity gate this change is accepted on. The lag
+is stated at the head of `caloric_eos.f90` and recorded as its own
+`TO_BE_DONE.md` item, (AB). `n_part_cell1` already had the same lag and the code
+already said so; what changed is that it now reaches the ghost pressure itself.
+The marching loop does not have it: there `Apply_BC` follows the refresh.
+
+### 141.7 The golden refresh
+
+Both columns below come from the SAME binary: the right-hand one is the
+default, the left-hand one is that binary with `Molecular reaction heat: False`
+appended to each input, i.e. stage 2 alone. Each entry is
+`d log10 Mdot` / max `|dT|/T` over the physical cells / the largest `dT` below
+1.2 `r_base`, against the goldens that were in place before this change
+(preserved as `backup/regression/golden_blockG_20260903`).
+
+| case | stage 2 only | default (stage 2 + reaction heat) |
+|---|---|---|
+| `wasp_full` | **byte-identical** | **byte-identical** |
+| `wasp_he23off` | **byte-identical** | **byte-identical** |
+| `lower_profile` | **byte-identical** | **byte-identical** |
+| `mol_base_handoff` | +0.0143 / 3.5e-1 / -65 K | +0.0168 / 3.7e-1 / -65 K |
+| `mol_metals` | +0.0159 / 1.9e-1 / -73 K | +0.0183 / 2.0e-1 / -73 K |
+| `mol_lyman_werner` | -0.0349 / 4.4e-1 / -40 K | -0.0323 / 4.5e-1 / -39 K |
+| `mol_diffusion` | +0.0143 / 3.5e-1 / -65 K | +0.0168 / 3.7e-1 / -65 K |
+| `mol_ir_bands` | +0.0159 / 1.9e-1 / -73 K | +0.0183 / 2.0e-1 / -73 K |
+| `mol_sec_ion` | -0.0003 / 4.4e-1 / -57 K | +0.0025 / 4.4e-1 / -57 K |
+| `mol_carrier` | +0.0082 / 4.6e-1 / -68 K | +0.0111 / 4.7e-1 / -68 K |
+
+The largest relative temperature change always falls at the OUTERMOST cells,
+where the two builds sit at different points of the same transient; the layer
+column is the one that means something.
+
+**The two columns are close only because of what these cases are.** Every
+`mol_*` case is a pinned-step relaxation snapshot (`EXHALE_MAXSTEPS` from its
+own `maxsteps` file), so it stops long before a change in the heating rate can
+restructure the layer. The reaction heat is 81 percent of the base heating rate
+on a CONVERGED state and moves that state's layer temperature minimum by
++115 K (section 141.4); here it adds about +0.003 dex and no measurable `dT`.
+**These numbers are the golden refresh, not the physics.**
+
+### 141.8 What is still open
+
+* Nothing on the constants: both dissociation energies were read in the
+  publisher PDFs and are recorded above. The one residual is that
+  `D0(HeH+) = 14882.16 cm^-1` is DERIVED from the paper (`De - G_0`) rather
+  than printed in it, so if a later determination supersedes it the derivation
+  is what has to be redone.
+* The associative branch of the He(2^3S) ionizations, `He(2^3S) + H -> HeH+ + e`
+  (8.1 eV) and its H2 analogue, which nothing deposits. Left out because the
+  metastable density in the molecular layer is 2e-7 cm^-3, which makes the
+  channel 1e-13 of the sum; it belongs with the other He(2^3S) terms if it is
+  ever added.
+* The `O(1D) + H2 -> OH + H` exothermicity, already recorded as an omission in
+  `ionization_equilibrium`, is of the same kind and is not in this module either.
+* Whether a two-`gamma` Roe wave-speed estimate is worth having. It is not
+  needed for the answer (section 141.3) and would require the Davis/Einfeldt
+  bound to replace Toro's `p_star` first. `speed_estimate_HLLC`, which carried
+  the other copy of that construction and was never called, has been deleted.
+* Item (AB) of section 141.6 above: the base-ghost composition lag.
+
+## 142. P51: the coupled solve's step ascends because the pseudo-transient term puts it there, and the flux gate cannot see how far the non-flatness reaches (2026-09-03)
+
+**Judgment first, in four parts.**
+
+**(1) Of the three things item (P51) left open, two are excluded by
+measurement.** The banded model's missing non-local column coupling is REAL --
+perturbing `n(H2)` in one front cell changes the residual of every cell BELOW
+it, 215 of them, far outside the band half-width 11 -- and it is not the
+obstruction: that tail carries 0.53 per cent of the response, its largest entry
+outside the band is 3.5e-4 of the diagonal one, and the matrix-free `J*v` has
+it already. The Krylov cycle reaches its tolerance in 1 to 2 directions at
+`rtol = 1e-1` and 2 to 4 at `1e-3`, never truncating; tightening it to
+`rtol = 1e-3, m = 120` changes neither the direction nor where the solve stops.
+The frozen limited slope is not the obstruction either: refreshing it at every
+residual evaluation leaves the same sign change at the same outer iteration,
+and along the Newton ray the inner model's residual and the true one agree to
+5 to 6 significant figures.
+
+**(2) The stagnating iterates are not stationary points.** The merit falls
+along `-dY` -- 0.9287 to 0.8717 at `t = -0.1` -- and the merit along the ray is
+smooth over eight decades of `t` with no kink and no noise, so this is not the
+non-differentiable residual of section 138 either. What fails is the direction
+the solve builds.
+
+**(3) The pseudo-transient term is what makes it ascend.** An exactly solved
+Newton system gives `slope = -f2` whatever the Jacobian is. This solver solves
+`(I/dtau + J) dY = -F` under the two-sided scaling of section 139.5(i), and
+
+```
+    g = F/Drow ,  x the scaled step,  dY = D x
+    d f2/dt|_0 = -f2 - (1/dtau) ( sum_k g_k (D_k/Drow_k) x_k ) / f2
+```
+
+whose second term carries no fixed sign once `D` and `Drow` differ.
+
+**(4) A rule that raises `dtau` until the slope is negative was built, measured
+and NOT adopted.** It does what it is specified to do -- every predicted ascent
+became a predicted descent, `0 still ascending at the Newton limit` in every
+run -- and it converges neither solve. **The controlling quantity is the step
+LENGTH, not the pseudo-time.** What DID go into the tree is one reporting line:
+the mass-flux spread over `r >= 1.03` and `r >= 1.10` printed beside the gate's
+own window. It changes no number and it immediately found two things sections
+142.4 and 142.5 record.
+
+The full measurement is `docs/p51_coupled_stagnation.md` and
+`docs/p23_transport_on_state.md`. `Molecular carrier transport` and
+`Coupled carrier solve` stay default off and nothing here is quoted as a rate.
+
+### 142.1 What everything was measured on
+
+Section 139.9 records that the E1d hand-off cannot be reproduced in the tree:
+it is a 9 microbar state whose `base.inp` and `Log10 lower boundary` disagree,
+and section 136 made `p_base` authoritative. So the measurement moved to the
+1 microbar gate -- `mol_carrier` plus `Coupled carrier solve: True`,
+`Secondary_ionization: Immediate`, `Solver: Newton 4.0e-2` -- from a state
+marched 36,001 steps past the golden snapshot. Every arm starts from that one
+state, so the marching is identical and the only difference is what the steady
+solve is told to do.
+
+### 142.2 The three candidates, closed
+
+| candidate | test | verdict |
+|---|---|---|
+| the band model's missing non-local coupling | one cell's carrier unknown perturbed, the whole residual vector recorded; and the Krylov tolerance tightened from 1e-1 to 1e-3 with `m` 40 -> 120 | real, reaches the whole layer inward, 0.53 per cent of the response; the cycle converges in 1 to 4 directions either way and the stopping point does not move |
+| the frozen limited slope | refreshed at every residual evaluation | same sign change, same stopping point; the two evaluation modes agree to 5-6 digits along the ray |
+| the state | the merit scanned along `+/- dY` over eight decades of `t` | not a stationary point: `-dY` descends |
+
+The directional derivative of the merit along the Newton step, in units of
+`-f2` (an exact Newton direction gives -1):
+
+| outer iteration | 1 | 2 | 3 | 4 | 5 | 6 | 8 | 10 | 12 |
+|---|---|---|---|---|---|---|---|---|---|
+| the code's own cycle, `rtol = 1e-1` | -0.502 | -0.120 | -0.019 | -0.003 | **+0.018** | +0.043 | +0.487 | +0.631 | +0.858 |
+| tightened, `rtol = 1e-3`, `m = 120` | -0.503 | -0.118 | -0.016 | **+0.001** | +0.021 | +0.042 | +0.494 | +0.604 | +0.817 |
+| the limited slope refreshed | -0.506 | -0.119 | -0.017 | **+0.001** | +0.025 | +0.009 | +0.065 | +0.280 | +0.908 |
+
+Two things at once: the direction is never a good Newton direction -- it
+delivers half the descent an exact one would even at iteration 1 -- and it
+changes sign at iteration 4 or 5 in every arm regardless of how the Krylov step
+is solved or whether the limiter is frozen. All three end at the same place,
+carrier row 1.02e-2 to 1.03e-2 against a 1e-3 gate.
+
+### 142.3 The pseudo-time step, measured
+
+The slope the linear model itself predicts, from the same `J*v` the Krylov
+space is built from, beside the `dtau` the SER ramp was holding:
+
+| outer iteration | 1 | 2 | 3 | 4 | 5 | 8 | 10 | 12 |
+|---|---|---|---|---|---|---|---|---|
+| `dtau0 = 1` (the hand-off's own), `dtau` | 1.00 | 1.17 | 1.21 | 1.17 | 1.12 | 1.54 | 0.498 | 0.856 |
+| model slope | -0.928 | -0.210 | -0.031 | -0.004 | **+0.025** | +0.552 | +0.657 | **+0.797** |
+| measured slope | -0.928 | -0.211 | -0.031 | -0.004 | +0.025 | +0.547 | +0.657 | +0.797 |
+| `dtau0 = 1e6`, model slope | **-35.9** | -29.1 | -2.88 | -8.96 | -13.7 | | | |
+| `dtau0 = 1e12`, model slope | **-36.1** | -30.3 | -3.00 | -9.00 | -15.3 | | | |
+
+The model slope and the measured slope agree to three or four digits at every
+iteration -- the model is right about the function and wrong about the
+direction -- and the `dtau0` rows say why: with the pseudo-transient term made
+negligible the SAME Jacobian, the SAME preconditioner and the SAME frozen model
+give a descent direction at every one of those iterations.
+
+**The escalation rule, measured and not adopted.** Raise `dtau` by 100 and
+re-solve whenever the model says the step ascends, until the slope is negative
+or `dtau` reaches the ramp's own ceiling `1e14 dtau0`. The directional
+derivative for it is free: `pgmres` can return `A_z x` from its own Arnoldi
+relation, `A_z M^-1 V_k = V_{k+1} Hbar_k`, so no residual is evaluated.
+
+| | section 139 hand-off | | the P23 marching stop | |
+|---|---:|---:|---:|---:|
+| | baseline | with the rule | baseline | with the rule |
+| best iterate `\|\|R\|\|` | 1.147e-4 | **9.570e-5** | **1.582e-5** | 3.502e-5 |
+| carrier row, worst cell | 0.983 | **0.123** | **2.30e-2** | 1.96e-1 |
+| flux spread | 2.550e-1 | 2.471e-1 | **1.071e-1** | 1.674e-1 |
+| trials refused for the element budget | 274 | **53** | 0 | 0 |
+| residual evaluations | 2470 | 2472 | 21,344 | 1,050 |
+| raises | -- | 19 it., 22 raises, 0 unresolved | -- | 10 it., 10 raises, 0 unresolved |
+| `info` | 2 | 2 | 1 (budget) | 2 (12 no-descent) |
+
+It helps one state and loses the other, and the reason is measured: after a
+raise the line search still cuts to `lam = 9.5e-7`, because the arc over which
+the raised direction descends is far shorter than the step. Capping the raised
+step at the ascending one's length is necessary and not sufficient. **So the
+repair belongs at the step length -- a trust region sized by the arc the ray
+scan measures -- and that is `TO_BE_DONE.md` item (P51 continuation).**
+
+### 142.4 What went into the tree: the spread at three radii, not one
+
+The gate is the mass-flux spread over `r >= r_flux`, 1.2 `R_p` by default
+(section 133.2), and it cannot show how far the non-flatness reaches.
+`flux_spread_above_radius` takes the same spread over any inner radius, FOR
+REPORTING ONLY; `flux_spread_of_state` and `steady_gates_met` are untouched, so
+the acceptance test is the same test and no golden can move on this. The two
+extra windows print in the marching loop's `[diag]` line, after the JFNK's
+`done` line, and after the flux-gate report:
+
+```
+   [diag] step 153000  flux rho*v*r^2 spread= 3.291E-03 (gate window  3.102E-02;
+          r>=1.03  6.960E-01, r>=1.10  2.536E-01)   ||R||(ref)= 1.339E-05
+ (JFNK) flux spread by window: r>=1.03 6.366E-01   r>=1.10 3.223E-01
+          r>=r_flux 2.447E-02  (only the last is the gate)
+```
+
+**It earned itself immediately.** On the 1 microbar hot Uranus the gate's whole
+1.70e-1 comes from its own window's inner edge -- every cell above 1.4 `R_p` is
+flat to 1 per cent. Run past its du plateau stop, that run then
+
+* falls to a gate-window minimum of **1.015e-2 at 180,500 further steps** and
+  **turns around**, reaching 4.417e-2 by the time it converges;
+* converges on its own criterion at 212,706 further steps, `du = 9.9998e-4`
+  against `du_th = 1e-3`, with `||R||` at 3.5e-6, below its own gate;
+* while `r >= 1.10` moves only 3.1e-1 -> 2.5e-1 -> 2.9e-1 and `r >= 1.03`
+  7.8e-1 -> 6.9e-1 -> 7.3e-1.
+
+So on this planet the marching's own convergence criterion and the flux gate
+are anti-correlated over the last third of the trajectory: **the state the run
+calls converged is not the flattest one it passed through, and neither meets
+the flux gate.** Without the two inner windows there is no way to read from a
+report whether a falling gate number means the wind is flattening or the
+non-flatness is moving inward past the window's edge. This is a finding about
+the du plateau detector and the `du` stop, not a proposal to move `r_flux`;
+what that radius should be on this planet is not settled here.
+
+### 142.5 A reporting defect the same measurement exposed
+
+The coupled Newton from either of those states meets the residual gate for the
+first time -- `||R||` = 1.547e-6 and 1.383e-6 against 1e-5 -- and returns
+`info = 2` on the other two. The old report then printed
+
+```
+ (JFNK) the CARRIER gate is the one left: carrier row 7.535E-03 >= 1.000E-03
+```
+
+which is **wrong**: the flux gate was also unmet, at 2.447e-2 against 5e-3. The
+chain tested the residual and the flux gate TOGETHER first ("NEITHER gate met")
+and only then fell through to the carrier row, so a state that met the residual
+gate and missed the other two named one of the two it missed. Nothing before
+had met the residual gate with the carrier row in the unknowns, which is why it
+had not shown. It is now one line per unmet gate, each asked separately:
+
+```
+ (JFNK) gate NOT met: flux spread 2.447E-02 >= 5.000E-03
+ (JFNK) gate NOT met: carrier row 7.535E-03 >= 1.000E-03
+```
+
+### 142.6 What was checked
+
+* **`make check`, 10 of 10 byte-identical**, against the goldens as refreshed
+  for section 141. Only log lines change, and no golden carries them.
+* Four `Solver: Newton` cases -- `wasp_full_newton`, `wasp_he23off_newton`,
+  `wasp_full_newton` (then recorded as `solver_newton_cold`), `newton_rsw01`
+  -- byte-identical to the same cases run
+  with the unpatched binary. The escalation rule, measured on the same fourteen
+  before it was set aside, never once predicted an ascent in them.
+* The Arnoldi slope against a direct `J*v` along the same step: **54 of 56
+  comparisons agree in sign**, 1.5e-7 relative at iteration 1. The two that
+  disagree are where the merit turns over inside the probe step -- the same
+  curvature as 142.3, not a defect of either formula.
+* NOT checked: any planet but the He/H = 0.0793 hot Uranus and the WASP-121b of
+  the matrix; whether the band half-width 11 is exact rather than sufficient
+  (142.2 measures the true column's reach, not the assembled band); whether
+  `r_flux = 1.2` is the right window edge on this planet.
+
+Files: `src/modules/time_step/steady_residual.f90`,
+`src/modules/time_step/steady_newton.f90`, `src/EXHALE_main.f90`.
+Documentation: `docs/p51_coupled_stagnation.md`,
+`docs/p23_transport_on_state.md`, `TO_BE_DONE.md` (item (P51) closed for the
+diagnosis, (P51 continuation) opened for the trust region).
+
+## 143. Every conservation row is measured against the largest term it contains (2026-09-03)
+
+**Judgment first. The residual's row scale was a bound on the wrong quantity,
+and the error is exactly quantifiable on each row. Dividing the mass residual
+by `rho(|v|+c_s)/dr` gives identically the fractional change of the mass flux
+across the cell TIMES the local Mach number -- verified to one percent at ten
+radii -- so a quasi-hydrostatic layer at Mach 5e-5 was invisible by a factor
+2e4. The momentum row's two terms are a near-cancellation that is 4.4e5 times
+the wind's mass flux in the same layer, so a row reading 1e-8 on that scale was
+still displacing the wind measurably per crossing time. The energy row of the
+layer was out by one part in a thousand of the terms it balances, and cell 1 by
+99 percent, while both read 1e-8 to 1e-4. Each row is now divided by the
+largest term it itself contains -- the flux it differences, the source it is
+balanced against, and for the energy row the two radiative terms it is the
+difference of -- all of which `RK_rhs` and the ionization sweep already
+produce. The 1 microbar hot-Uranus gate rung, accepted before at `||R|| =
+2.9e-6` with a mass flux 30 percent out at 1.03 `R_p`, now converges to a flux
+flat to 1.0e-4 from 1.01 `R_p` outward and to residuals of 5e-9 to 5e-6 on
+every row above the first cell, in 14 JFNK iterations against 5, with `log10
+Mdot` unchanged at 10.34. The Newton system and the line-search merit keep the
+state scales, deliberately.**
+
+Full measurement: `docs/p54_base_layer_mass_flux.md` (the mass row and the
+census), `docs/p55_base_mode.md` (the momentum row and the marching
+departure), `docs/p54g23_row_scale_scan.md` (all three rows compared). This
+closes item (AA) for the mass flux and opens (AD) and (AE) in `TO_BE_DONE.md`.
+
+### 143.1 What the old scale measured
+
+Section 133 made every row's scale a bound on that row's own largest term, the
+cell's state scale times the rate at which a signal crosses the cell,
+`D_k(j)(|v_j|+c_s,j)/dr_j`. It is a bound, but on the wrong quantity: nothing
+in any of these rows moves at `c_s`.
+
+**Mass.** The row has no source (`Source.f90`, `S(1) = 0`), so it is
+`R_1(j) = [F_{j+1/2} r^2 - F_{j-1/2} r^2]/dV_j` and nothing else. Writing
+`dV_j ~ r_j^2 dr_j` and `F ~ rho v r^2`,
+
+```
+   R_1/s_1  ~  [ D(F r^2)/F ] * |v|/(|v| + c_s)  ~  (dF/F) * Mach .
+```
+
+**Measured** on the converged 1 microbar hot Uranus, the ratio of `|R_1|/s_1`
+to `(dF/F) * Mach` is 1.109, 1.004, 1.015, 1.007, 1.008, 1.010, 1.006, 0.979,
+0.908, 0.656 at `r` = 1.001, 1.004, 1.010, 1.023, 1.032, 1.048, 1.093, 1.177,
+1.329, 2.119 -- one percent everywhere the flow is subsonic. The flux change
+per cell a tolerance of 1e-5 still passed:
+
+| `r` | Mach | `dF/F_0` the state carried | `dF/F_0` still passed at `1e-5` |
+|---|---|---|---|
+| 1.001 | 3.9e-05 | 1.5e-02 | 2.6e-01 |
+| 1.010 | 5.2e-05 | 3.8e-03 | 1.9e-01 |
+| 1.031 | 1.5e-04 | 9.9e-04 | 6.7e-02 |
+| 1.093 | 4.5e-03 | 1.9e-03 | 2.2e-03 |
+| 1.329 | 1.1e-01 | 2.1e-05 | 8.7e-05 |
+| 2.119 | 5.4e-01 | 4.5e-06 | 1.9e-05 |
+
+**Momentum.** In a quasi-hydrostatic layer the row is the near-cancellation of
+a flux divergence and gravity, both enormous beside the wind's mass flux:
+`max(|dF_2|,|S_2|)/F_0` is 4.41e5 at 1.005 `R_p`, 1.12e5 at 1.03, 4.46e3 at
+1.10 and 1.92e2 at 1.20 on the hot Uranus (7.69e3, 2.24e3, 1.08e2, 1.71e1 on
+WASP-121b). A residual `epsilon` of that row therefore displaces the mass flux
+by `epsilon (|dF_2|/F_0)` of the wind per crossing time, and
+`docs/p55_base_mode.md` section 4 predicts the measured departure rate of an
+accepted state from exactly that product to **9 percent**.
+
+**Energy.** Same construction, and the same result: the accepted state's row
+reads 1.72e-3 at 1.03 `R_p` and 4.68e-3 at 1.05 against its own terms while
+reading 3e-9 to 4e-8 against `E(|v|+c_s)/dr`.
+
+### 143.2 It is not a diagnostic artifact
+
+Before changing the measure, the obvious alternative was checked: that the
+cell-centred `rho v r^2` the diagnostics print is not what the finite-volume
+scheme conserves, and that the scheme's own face flux is flat. It is not.
+
+| `r >=` | spread, cell centre | spread, Riemann face |
+|---|---|---|
+| 1.002 | 3.247e-01 | 3.282e-01 |
+| 1.030 | 3.105e-01 | 3.137e-01 |
+| 1.100 | 2.920e-02 | 3.041e-02 |
+| 1.200 | 2.460e-03 | 2.513e-03 |
+
+The two agree to within one to four percent at every window above 1.002 `R_p`.
+The one place they differ is cell 1, where the centred product is `-21 F_0` --
+negative, 21 times the wind flux -- while both of its faces carry `+1.75` and
+`+1.92 F_0`; that is the odd-even mode of `docs/p44_base_sawtooth.md`, and it is
+why the face flux is single signed over the whole column where the cell-centred
+one changes sign. There is no mass source that could produce the rest:
+`S(1) = 0`, and the Shapiro filter, the low-Mach damping, the element
+diffusion, the carrier transport, the viscous and conduction operators and the
+semi-implicit energy step were each checked and none writes `u(1,:)`.
+
+### 143.3 The change
+
+`residual_row_scale` now dispatches to three functions, each named for the
+physics it scales:
+
+```
+   mass_flux_row_scale(j)  s_1 = max( |F_{j-1/2}| r^2 , |F_{j+1/2}| r^2 ) / dV_j
+   momentum_row_scale(j)   s_2 = max( |dF_2(j)| , |S_2(j)| )
+   energy_row_scale(j)     s_3 = max( |dF_3(j)| , |S_3(j)| , heat(j) , cool(j) )
+```
+
+plus the operator-split viscous and conduction sources where those are active.
+`dV_j` is the volume `RK_rhs` divides the flux difference by, so `R_1/s_1` is
+exactly the fractional change of the mass flux across the cell. There is no
+fallback and no second definition: the terms are those `assemble_residual` has
+just had `RK_rhs` and the sweep produce, and a caller asking about a state they
+do not describe gets the Riemann solve done on the spot (`refresh_row_terms`).
+That path cannot rebuild `heat`/`cool`, which do not come from `u`; the states
+that reach it are the solver's trial and finite-difference probes -- **measured,
+15 of order 1e5 scale requests on the hot Uranus and 45 on WASP-121b, none of
+them a state the run adopts** -- and the code says so where it happens. The
+face-limiter ledger is restored across such a rebuild, because a measurement of
+a state is not a step of the run.
+
+**The section 62.3 gravitational bound is no longer a special case.** It existed
+because the old momentum scale could not see gravity; `s_2` now takes gravity
+from `S_2`, the same expression the residual subtracts, so the two are one term
+and not two.
+
+**The Newton system is NOT rescaled with any of this.** `cell_state_scales`
+keeps `D_k`. Rescaling the merit and the scaled Jacobian by these quantities as
+well was tried on the mass row -- it varies by a factor 9 across the first two
+cells -- and the hot-Uranus solve then ground from 2.2e-2 to a plateau at
+7.8e-4, spent most of 179 iterations in damped Gauss-Newton escapes, and
+aborted on `no descent direction exists for the banded model at this state` at
+8238 residual evaluations against 115 for the baseline. So section 133's
+statement that the merit and the acceptance test are one expression apart now
+holds for neither, and that is the measured choice.
+
+`Resid tol` changes meaning on all three rows, in the direction that makes it
+stricter: on the states measured the rows read 58 to 4000 times larger than
+before. No repository value is renormalized -- the states that pass the new
+measure pass at the existing 1e-5 -- but **every golden that runs a steady solve
+or a residual gate moves**, and that is a deliberate refresh, not a byte-identical
+change. A run that stops on `du` alone is byte-identical: verified on
+`wasp_full`, `wasp_he23off` and every `armD_*`/`armHeH_*` snapshot case.
+
+### 143.4 What it does to the cases
+
+**All 34 named cases were run under both binaries** -- the 10-case `run_check.sh`
+matrix, every `backup/regression/` case carrying `Solver: Newton`, and the three
+`Resid tol` cases -- from copies of their inputs, each keeping its own
+`maxsteps` and otherwise capped at 60000 steps. Full table:
+`docs/p54g23_census.md`.
+
+**Seven goldens move; twenty-seven are byte-identical.**
+
+| | cases |
+|---|---|
+| output moves | `arm_heh1_x2matched`, `newton_rsw01`, `newton_rsw05`, `ptc_warm`, `wasp_full_newton` (recorded then under both its names, `solver_newton_cold` and `wasp_full_newton`; the first was deleted 2026-09-03), `wasp_he23off_newton` |
+| byte-identical | the other 27, including every `armA_*`/`armD_*`/`armHeH_*`/`mol_*` snapshot, `lower_profile`, `wasp_full`, `wasp_he23off`, `jfnk_hd189`, `jfnk_hd189_tight` |
+
+The seven are exactly the cases that reach their answer through a steady solve
+or the residual gate. A run that stops on `du`, on `maxsteps`, or on a JFNK that
+aborts before its first accepted step never reads a row scale, and is
+unchanged: that is the check on the patch.
+
+**The rate does not move.** `|d log10 Mdot| <= 0.01` on every case that
+converged under both. The single exception is `arm_heh1_x2matched` at -0.19,
+and it is an improvement, not a discrepancy: **that case does not converge at
+all under the old measure** -- 60000 steps and no acceptance -- and under this
+one it converges, in 106 iterations against 40 and at 89 residual evaluations
+against 1127, i.e. **twelve times cheaper**. Its A number was an unconverged
+state's rate.
+
+**No case that converged stops converging.** Three cases fail under this
+measure -- `armD_D2_LW_newton`, `armD_D2_newton`, `armD_D2_newton_bigstack` --
+and all three fail under the old one too, at the same iteration and for the
+same reason (`no descent direction exists for the banded model at this state`,
+at flux spreads of 21 to 34, i.e. states nowhere near steady). The failure list
+is a strict subset of the old one. `docs/p54g23_nonconvergent.md` records which
+row and which cell blocks each.
+
+**The cost.** On the cases that converge under both:
+
+| case | iterations | residual evaluations | ratio |
+|---|---|---|---|
+| `newton_rsw01` | 9 -> 76 | 205 -> 1679 | 8.2 |
+| `newton_rsw05` | 20 -> 71 | 471 -> 1594 | 3.4 |
+| `wasp_full_newton` (same case as the deleted `solver_newton_cold`) | 14 -> 44 | 338 -> 1000 | 3.0 |
+| `wasp_he23off_newton` | 11 -> 31 | 281 -> 722 | 2.6 |
+| `arm_heh1_x2matched` | did not converge -> 106 | 1127 -> 89 | **0.08** |
+| the hot-Uranus gate rung | 5 -> 14 | 115 -> 321 | 2.8 |
+
+Two and a half to eight times the residual evaluations where the old measure
+already converged, and the whole cost of a case it could not. In wall time the
+worst of these is a WASP-121b cold start at three minutes against two.
+
+**What the accepted states look like.** Every case that converges under this
+measure ends with its mass flux flat to `5e-5` to `9e-5` over `r >= 1.20` --
+against `1.2e-4` to `1.4e-3` before -- and to `6.8e-5` to `7.7e-5` over
+`r >= 1.03`, where before it was `2.0e-4` to `5.5e-2`. On `wasp_full_newton`
+(recorded then as `solver_newton_cold`, the same case; that directory was
+deleted 2026-09-03)
+that last figure is `5.469e-02 -> 6.751e-05`, a factor **810**.
+
+The two flagship cases, same start and same procedure, measured with each
+build's own gate:
+
+| | hot Uranus, before | hot Uranus, **now** | WASP-121b, before | WASP-121b, **now** |
+|---|---|---|---|---|
+| JFNK `info` | 0 | 0 | 0 | 0 |
+| `\|\|R\|\|` at the start, in its own units | 2.805e-05 | **4.134e-01** | 5.777e-04 | **1.248e+00** |
+| `\|\|R\|\|` accepted | 2.031e-06 | 5.208e-06 | 7.398e-06 | 8.369e-06 |
+| iterations | 5 | 14 | 14 | 44 |
+| residual evaluations | 115 | 321 | 338 | 1000 |
+| flux spread at the gate | 2.106e-03 | **2.501e-04** | 1.357e-03 | **5.242e-05** |
+| `log10 Mdot` | 10.34 | 10.34 | 13.21 | 13.21 |
+
+The states the old measure accepted would now be refused by four orders of
+magnitude, which is the point. The cost is 2.8x and 3.0x the residual
+evaluations, and the rate does not move on either planet.
+
+Row by row on the accepted roots, every root measured with the same instrument:
+
+| hot U, `r` | before: R1 / R2 / R3 | **now**: R1 / R2 / R3 |
+|---|---|---|
+| 1.00019 (cell 1) | -2.15e-01 / 1.42e-01 / **-9.94e-01** | -2.16e-01 / 1.43e-01 / **-9.94e-01** |
+| 1.01005 | 9.70e-04 / -1.54e-04 / -1.89e-01 | -3.13e-10 / -1.53e-08 / -3.89e-06 |
+| 1.03016 | -6.68e-04 / -1.30e-05 / -5.53e-02 | 4.67e-09 / 8.68e-09 / 4.70e-06 |
+| 1.05012 | -2.70e-04 / -2.90e-04 / -3.88e-02 | -1.36e-09 / 5.00e-08 / -4.20e-06 |
+| 1.20011 | -5.26e-05 / 4.17e-07 / 2.11e-02 | -3.15e-12 / -8.93e-12 / -7.63e-06 |
+
+| WASP, `r` | before | **now** |
+|---|---|---|
+| 1.00020 (cell 1) | 6.86e-03 / 1.38e-03 / **8.03e-01** | -4.60e-03 / 2.02e-02 / **-8.78e-01** |
+| 1.01000 | -5.95e-04 / 1.17e-05 / -4.43e-02 | 8.04e-12 / -2.17e-12 / 3.02e-06 |
+| 1.10007 | -1.01e-04 / -2.65e-04 / 2.81e-04 | -4.94e-12 / 3.66e-10 / 1.26e-05 |
+| 1.19951 | -4.03e-05 / 3.87e-04 / 3.80e-03 | 1.96e-12 / 3.88e-09 / 4.28e-04 |
+
+**Cell 1 does not move, on either planet, under any variant tried.** Its energy
+row is out by 99 percent on the hot Uranus and 78 to 88 percent on WASP-121b
+whichever measure is used, and the state passes only because the norm is volume
+weighted and that cell's volume is negligible. That is item (V), and these are
+the sharpest numbers it has.
+
+### 143.5 The marching stop and the flux gate measure the same quantity through different windows (DECISION PENDING -- not implemented)
+
+This is a separate finding of the census and it is **not implemented**: the
+tree keeps `du` as it is. It is recorded because the census makes it
+unavoidable.
+
+| | marching `du` (`EXHALE_main.f90`) | flux gate (`flux_spread_of_state`) |
+|---|---|---|
+| window | `[j_min:N]`, i.e. `r >= r_esc` | `[j_flux:N]`, i.e. `r >= r_flux = 1.2` |
+| functional | `(max\|F\| - min\|F\|)/min\|F\|` | `(max F - min F)/\|mean F\|` |
+| sign | absolute value | signed |
+| threshold | `du_th`, `1e-3` by default | `flux_spread_th`, `5e-3` |
+| what stops on it | the marching loop, and the JFNK hand-off | the acceptance of a steady solve |
+
+`r_esc` is 2.0 `R_p` on the hot Uranus and 1.5 on WASP-121b, so `du` is a
+statement about the outer wind only and says nothing about `1.2 <= r <= r_esc`
+-- a region the flux gate does cover. Not hypothetical: **`wasp_full`, a matrix
+golden, stops as "converged" on `du = 9.999e-4 < 1e-3` at an `r >= 1.2` spread
+of 3.13e-2**, six times the flux gate's own threshold and 1.37 at `r >= 1.01`;
+P51's transport-on hot Uranus stopped the same way at 4.4e-2.
+
+The census makes the same point on the other side: `du(r >= r_esc)` and the
+gate's `sp(r >= 1.2)` are uncorrelated on the states these cases stop at. Every
+`armD_*`/`armHeH_*` snapshot ends with `du` between 1.1 and 28 and a gate spread
+between 0.77 and 35; `wasp_full` ends at `du = 1.0e-3` and gate spread
+`3.1e-2`. Both columns are in `docs/p54g23_census.md`.
+
+A build with the `du` window moved to `[j_flux:N]` was prepared
+(`censusU/`) but the measurement was not completed -- the machine was carrying
+another worker's regression matrix all session and the A and G23 censuses had
+priority. The recommendation below rests on the two windows' definitions and on
+the `wasp_full` measurement, not on that scan.
+
+**Recommendation, physics first (a decision, not a change).** A steady state
+has one mass flux at every altitude, not one mass flux above 2 `R_p`. Two definitions of the same
+statement, differing in window and in functional, is what the naming rule
+forbids: one kind of quantity, one rule. The `du` window should become the
+gate's window and the functional the gate's functional, so that `du_th` and
+`flux_spread_th` become one number.
+
+**This is a user decision and it is not in the tree.** It is a different change
+with a different blast radius: it moves where every marching run stops, hence
+every golden that stops on `du` -- which is most of them -- for a reason
+independent of the row scale. Section 143 changes what a converged state must
+satisfy; this would change where an unconverged run may stop.
+
+### 143.6 What is not settled
+
+* **The first two cells.** No measure change moves them; they pass because the
+  norm is volume weighted. Item (V).
+* **The marching attractor.** A state this measure accepts is a zero of the
+  steady residual and is not a fixed point of the marching loop. Reloaded and
+  marched 5000 steps, the hot Uranus's departure is halved by the mass row's
+  scale alone (peak-to-peak of `F(1.03)/F_0` 1.127 -> 0.509) and then moves only
+  to 0.495 when the momentum and energy rows are added, while WASP-121b's three
+  roots -- residuals spanning four orders of magnitude -- all depart identically
+  (4.277, 4.291, 4.292). **The departure is not controlled by the part of the
+  residual this section removes**; it is a restart kick and a cell-1 problem
+  (`docs/p55_base_mode.md` sections 7(2) and 7(3)). New item (AD).
+* **The energy half of (AA)**, the factor-2 gap in
+  `heating = cooling + p div v + advection` below 1.08 `r_base`. This section is
+  a statement about how a row is measured, not about what it contains.
+
+Files: `src/modules/time_step/steady_residual.f90` (new `mass_flux_row_scale`,
+`momentum_row_scale`, `energy_row_scale`, `store_row_terms`,
+`refresh_row_terms`; `residual_row_scale` dispatches),
+`src/modules/time_step/steady_newton.f90` (comment only).
+Documentation: `docs/p54_base_layer_mass_flux.md`, `docs/p55_base_mode.md`,
+`docs/p54g23_row_scale_scan.md`, `docs/input_schema.md` (K35, K35b),
+`docs/newton_scaling_and_base_wall.md` (sections 2 and 3), `TO_BE_DONE.md`
+((AA) closed for the mass flux, (V) extended, (AD) and (AE)
+opened).
+
+## 144. P55: the accepted root, the marching fixed point, and what a restart must carry (2026-09-03)
+
+**Judgement first. A state the steady solver accepts is not a fixed point of
+the marching loop, and the reason is mostly in the STATE, not in the operator.**
+The spatial operator is the same by construction -- `assemble_residual` calls
+the same `Reconstruct` and `RK_rhs` the marching calls -- and the departure is
+not an instability: it starts at step 1 at a finite size and grows *linearly*
+in step number, at a rate the accepted state's own residual predicts to nine
+percent. Two things produce it, both measured; one is now fixed, and the other
+is what section 143's item (AD) is about.
+
+Full account and figures: `docs/p55_base_mode.md`, `docs/p55_base_mode.png`,
+`docs/p55_operator_terms.png`, `docs/p55_reload.png`.
+
+### 144.1 The departure is a residual being integrated, not a mode growing
+
+On the two `EXHALE_CONT_SCALE=gate` solutions of section 143 (the 1 microbar
+hot Uranus and WASP-121b), reloaded and marched with `Solver:` removed:
+
+* the flux at `r = 1.03` moves **linearly in step number** for the first twenty
+  steps -- 4.71e-04 of `F_0` per step on the hot Uranus, against a state the
+  solve left flat to 1.04e-04 over `r >= 1.01`. **One step undoes 4.5 times the
+  flatness the solve achieved.**
+* the state's own momentum-row residual there predicts 4.31e-04 per step. Nine
+  percent agreement, no free parameter. In a quasi-hydrostatic layer the
+  momentum row is the near-cancellation of two terms worth `1.1e5` times the
+  wind's mass flux, so one part in `1e5` of that row displaces the mass flux by
+  order the wind itself.
+* judged by its own largest term instead of by `rho(|v|+c_s)/dr`, the accepted
+  hot-Uranus state's energy row is out by 1.2e-03 at `r = 1.03` and 6.0e-03 at
+  1.05, its momentum row by 2.5e-05, and cell 1 by 1.4e-01 and 9.9e-01. That is
+  what section 143's row scales are for, and section 143 fixes the measure.
+
+**Not a discrete instability**: quartering the time step changes the excursion
+by 3 percent at equal model time; first-order reconstruction at the base leaves
+WASP-121b unchanged and makes the hot Uranus 12 times worse; the Shapiro filter
+removes 8 percent on WASP-121b and multiplies the hot Uranus by **42**; freezing
+the first 20 cells does nothing on WASP-121b. **Not a physical instability**
+either: the rise is linear, and the same operator started from a state the
+marching itself produced departs 3 to 41 times less.
+
+### 144.2 A restart did not run the physics its state was converged under
+
+WASP-121b's input sets no `Secondary_ionization:` key, so the SvS85/Dalgarno
+coupling is STAGED. The run that WROTE the state armed it at step 2242 and the
+JFNK finished with it on -- and every written state is a coupling-on state,
+because the post-loop arming precedes `write_output`. The run that RESTARTED it
+re-staged it, and the flip never fired again in 3000 steps. **Every marching
+experiment on WASP-121b in this series was therefore run at a photoionization
+rate the state was not converged under.** The first ionization sweep moved the
+particle count by 8.1e-03 instead of 2.6e-04.
+
+The state cannot carry that by itself, so the file now says it.
+`write_coupling_state_header` (`utilities.f90`) adds one `#` line to
+`Hydro_ioniz.txt`, which is the file a restart is fed as `Hydro_ioniz_IC.txt`:
+
+```
+# coupling: sec_ion=T sec_ion_step=2242 valve= 1.00000E-04 recon=WENO3 fluxconst=-1.00000E+00
+```
+
+It is the census of every switch `EXHALE_main` changes *inside* the marching
+loop, so a reader of the line knows the whole run state:
+
+| switch | what changes it | field |
+|---|---|---|
+| `sec_ion_active` and the step it was armed at | the du-convergence flip, the pre-hand-off flip, the unconditional post-loop arming | `sec_ion`, `sec_ion_step` |
+| `valve_eps` | the JFNK hand-off adopts 1e-4 when the input left the valve off | `valve` |
+| `rec_method` / `use_plm` / `use_weno3` | the `PLM+WENO3` stage switch at `du < du_th_plm` | `recon` |
+| `base_flux_const` | the 100-step average behind `Base velocity: massflux` | `fluxconst` |
+| `du_stop_armed`, `du_newton_armed` | the first descending du crossing | not needed: already keyed to `do_load_IC` |
+| `weno_mode` | frozen inside the JFNK, restored on exit | not run state outside the solver |
+| `viscosity_active`, `conduction_active`, `transport_active`, `low_mach_damping_active`, `caloric_mixture_active`, `cx_row_is_active` | nothing -- all are pure functions of input parameters | not run state |
+
+`load_IC` parses the line and the run starts the coupling where the file says it
+was; `valve` and `recon` are properties of the run, which `input.inp` states, so
+they are reported when they disagree and never overridden. **A file with no
+`# coupling:` line starts staged exactly as it did before**, because nothing
+else can be inferred about it -- and that is not a formality: on `jfnk_hd189`,
+whose IC predates the line, arming it blindly makes the composition mismatch
+*worse* (4.12e-03 -> 6.26e-03) and produces a `du = 1.0e+02` transient by step
+5500. `write_setup_report` prints which of the three cases the run is in.
+
+Measured, 3000 steps from the WASP-121b solution, peak-to-peak of
+`Delta(F r^2)/F_0`:
+
+| | r=1.005 | 1.03 | 1.10 | 1.20 | v(1) end | du end |
+|---|---|---|---|---|---|---|
+| before | 7.9689 | 4.2961 | 1.1976 | 0.6349 | 5.766e-03 | 1.178e-02 |
+| composition equilibrated (144.3) | 8.0041 | 4.3197 | 1.1970 | 0.6341 | 5.880e-03 | 1.130e-02 |
+| **with the coupling header** | **0.0382** | **0.0174** | **0.0051** | **0.0040** | **3.150e-03** | **5.187e-05** |
+
+`du` ends at 5.187e-05 against the 5.03e-05 the accepted state carries: **with
+the restart running the physics the state was converged under, the JFNK root IS
+a fixed point of the marching on WASP-121b**, to one part in 250 of what the
+re-staged run does. The hot Uranus is unchanged to five digits, as it must be:
+its input sets `Secondary_ionization: Immediate`, so it never had the
+discontinuity.
+
+### 144.3 A restart did not start from its own equilibrium composition
+
+The marching step ends with
+
+```
+   hydro RK3 -> T = p/(n_tot+n_e) -> ioniz_eq -> p = (n_tot+n_e) T
+```
+
+whose last stage rewrites the pressure at the particle count the sweep just
+produced. On any step of a relaxed run that is a rate. On the FIRST step of a
+restart it is a **projection of fixed size**, because the composition it
+corrects came from the file rather than from the previous step. The same first
+step at CFL 0.6, 0.06, 0.006, 0.0006, as `dE_chem/E`:
+
+| | CFL 0.6 | 0.06 | 0.006 | 0.0006 |
+|---|---|---|---|---|
+| WASP-121b `r=1.10`, before | -6.2295e-03 | -6.2297e-03 | -6.2297e-03 | -6.2297e-03 |
+| WASP-121b `r=1.10`, after | **-3.2041e-06** | -3.2067e-07 | -3.2070e-08 | -3.2072e-09 |
+| hot Uranus `r=1.03`, before | 5.4549e-07 | 5.5078e-07 | 5.5131e-07 | 5.5136e-07 |
+| hot Uranus `r=1.03`, after | **-5.8808e-09** | -5.8712e-10 | -5.8546e-11 | -5.6966e-12 |
+
+Four decades of `dt` and four identical values is a projection; one factor of
+ten per decade is a rate. Before the fix the jump reaches 6.2e-03 of the cell
+energy in one step, twelve times that step's entire hydro contribution.
+
+`equilibrate_loaded_composition` (`EXHALE_main.f90`) holds `rho`, `v` and `p` --
+the primitive state the file carries -- and iterates the composition to the
+fixed point of `f_sp <- ioniz_eq(rho, T)` with `T = p/(n_tot+n_e)`, using the
+same sweep the marching loop and the steady residual call, with the same
+secondary-ionization arming. At that fixed point the first step's own sweep
+returns the composition it was given and the projection is the identity. It runs
+on the marching route and on the `EXHALE_RESIDUAL` route, capped at 64 sweeps,
+stopping at 1e-10 (the floor the cell solve's own `xtol` sets, not a target).
+`EXHALE_RELOAD_EQ=0` reproduces a run of the previous code bit for bit.
+
+**Writing the files with more digits would not have helped.** They are written
+with list-directed output, i.e. full double precision already
+(`0.99980405732338939`, `3859742702877.8877`), and the written triple is
+self-consistent to 1e-08 at most radii. The gap is four to five orders above
+anything the format could cause.
+
+Every named Load-IC case starts more than four parts in a thousand from the
+equilibrium of its own state, and two start far further:
+
+| restart file | mismatch the first sweep removes |
+|---|---|
+| `armD_D2_newton` | **7.127e-01** |
+| `armD_D2_LW_newton` | **5.000e-01** (contracts at only 0.69 per sweep; needs 54) |
+| `tpm_wasp`, `resid_golden` | 1.400e-02, 9.268e-03 |
+| `wasp_hybrid_finish` (then also recorded as `crit_warm`, the same case; deleted 2026-09-03), `ptc_warm`, `resid_*`, `tpm_hd189`, `wasp_localdt_cont`, `jfnk_hd189(_tight)` | 4.1e-03 to 6.9e-03 |
+
+The bytes move; the answer does not. `armD_D2_LW_newton` at its 2100-step cap,
+after a 50 percent composition correction: `du` 1.5463e+01 -> 1.5493e+01,
+`log10 Mdot` 8.88 both. At a matched step 40000, `armD_D2_newton` is 1.2 percent
+apart and `jfnk_hd189` 0.34 percent.
+
+### 144.4 The temperature column belonged to a composition one sweep behind it
+
+The refresh after the steady solve computed `T` from the particle count BEFORE
+its final `ioniz_eq` and never recomputed it, so the `T` column of a file
+written from there was not the temperature of the species columns beside it. One
+line closes it (`call comp_T_from_p(p,n_tot,ne,T)`); `p` is untouched, so
+`(p, T, f_sp)` becomes a consistent triple. Isolated on a converging hot-Uranus
+JFNK run, **only the `T` column moves, by at most 1.770e-05** (at `r = 1.0488`;
+1.9e-07 at 1.001, 4.8e-07 at 1.03, 5.5e-06 at 2.0); `r`, `rho`, `v`, `p`,
+`heat`, `cool` and all of `Ion_species.txt` are bit-identical and `log10 Mdot`
+is 10.34 either way. It cannot touch the ten default goldens: that code is
+reached only from the JFNK hand-off, and **none of the ten ever reaches one** --
+every case stops on `EXHALE_MAXSTEPS` or `du` and their logs carry no `(JFNK)`
+line.
+
+### 144.5 Does section 143's root fix the departure? No
+
+The hot Uranus was re-solved with the tree as it now stands (section 143's row
+scales plus this section's restart handling), giving `info = 0`,
+`||R|| = 9.958e-06`, gate flux spread 2.501e-04, `log10 Mdot` 10.34 -- and the
+new root's own flux is still **3.433e-03** out over `r >= 1.03`, fourteen times
+the gate's number. Marched 3000 steps from it with the tree binary:
+
+| root | p2p at 1.005 | 1.03 | 1.10 | 1.20 | du end |
+|---|---|---|---|---|---|
+| pre-143 (mass row only) | 1.5476 | 0.5336 | 0.0710 | 0.0125 | 6.387e-04 |
+| pre-143 + this section's restart handling | 1.5473 | 0.5296 | 0.0705 | 0.0126 | 6.389e-04 |
+| **section 143 root, tree binary** | 1.5481 | **0.5333** | 0.0719 | 0.0132 | **3.363e-04** |
+
+**The departure is unchanged to 0.06 percent.** Making the momentum and energy
+rows honest halves `du` at the end (6.39e-04 -> 3.36e-04) and moves the
+excursion not at all. So on the hot Uranus the two remaining causes of item (AD)
+are neither the restart (144.2, 144.3, fixed) nor the row measure (section 143):
+what is left is the layer's own imbalance in the terms those rows contain, and
+cell 1.
+
+### What is not settled
+
+* **The hot Uranus root is still not a fixed point of the marching**, by the
+  same excursion as before either change. Item (AD) stands, narrowed: it is not
+  the restart and not the row scale.
+* **The first two cells.** Untouched here; item (V).
+* **The reloaded WASP-121b residual** improves 14 to 17 times in the hydro rows
+  (mass L-inf 4.406e-05 -> 2.604e-06, momentum 1.023e-04 -> 7.295e-06) but its
+  energy row still reads 1.0e-05 against the 3.138e-06 the solve accepted. Not
+  chased.
+* **`heat` and `cool` are now one sweep behind the corrected `T`** in a file
+  written from the steady solve; they are diagnostic columns, and running the
+  full composition fixed point in that refresh -- which would make all five
+  mutually consistent -- was not done.
+* **The `du` window** is measured over `r >= r_esc` while the flux gate measures
+  `r >= r_flux`; the census of that mismatch is section 143.5 and its
+  measurement is `docs/p55_du_window_census.md` in the P55 scratch tree.
+
+Files: `src/EXHALE_main.f90` (new `equilibrate_loaded_composition`; the arming
+rule reads the restart header; `comp_T_from_p` after the post-solve sweep;
+`sec_ion_armed_step` bookkeeping), `src/modules/functions/utilities.f90` (new
+`write_coupling_state_header`), `src/modules/files_IO/load_IC.f90` (new
+`parse_coupling_header` and the parsed state),
+`src/modules/files_IO/write_output.f90` (emits the line),
+`src/modules/files_IO/write_setup_report.f90` (reports the restore),
+`src/modules/init/parameters.f90` (`sec_ion_armed_step`).
+Documentation: `docs/p55_base_mode.md` (+ `p55_base_mode.png`,
+`p55_operator_terms.png`, `p55_reload.png`), `docs/input_schema.md` (the output
+header), `docs/EXHALE_user_manual.tex` (output file schema),
+`TO_BE_DONE.md` ((AD) narrowed, the `roundtrip` broken IC opened).
+Regression: 10/10 data identical (the `# coupling:` line is a comment and the
+harness compares with `grep -v '^ *#'`); `run_fcheck.sh` CLEAN.
+
+## 145. Acceptance measures what the code conserves: face mass flux, cellwise residual, one marching-stop label, the update-map diagnostic, provenance (2026-09-03)
+
+**Judgement first. Both halves of the acceptance test were measuring something
+other than what they were described as measuring.** The flux gate read the
+cell-centred `rho v r^2`, which is not the quantity the finite-volume scheme
+conserves; on a state whose conserved face flux is a single double-precision
+number over three hundred cells it reported `2.5e-04`. The residual norm was
+either a volume-weighted ratio of sums or a ratio of two maxima taken in
+different cells; neither is `max_j |R_j|/s_j`, which is what the routine's own
+comment says it is, and under it two accepted states carried cells 218 times
+above the tolerance. Both are now what they say. Neither change moves a
+mass-loss rate.
+
+Two things follow that are not acceptance changes: the marching loop now says
+when a stop is a marching stop rather than an accepted steady state (and the
+`du` window is deliberately NOT unified with the gate's), and a diagnostic
+applies the production step itself and compares it with the steady residual.
+That diagnostic settles the open question of section 144.5.
+
+Measurements: `docs/p55_base_mode.md` section 11, `docs/p55_update_map.md`,
+`docs/p55_du_window_census.md`.
+
+### 145.1 The flux gate reads the Riemann face mass flux
+
+`flux_spread_of_state` and `flux_spread_above_radius` now both call one
+implementation, `flux_spread_over_faces`, which takes the spread of
+`F_{j+1/2} r^2` -- SIGNED, so a window in which the flow reverses is a large
+spread and not a small one -- over the interior faces bounding the window's
+cells. The cached face flux is the one G23's `refresh_row_terms` maintains, so
+there is no second staleness rule and no second Riemann solve; that array is now
+signed and `mass_flux_row_scale` takes its magnitude where it needs one.
+
+**Why.** `R_1/s_1` is exactly the fractional change of the face flux across a
+cell (`mass_flux_row_scale`), so summing it bounds that flux's total variation.
+On the hot-Uranus root of section 144.5:
+
+| window | face-flux spread | `sum R_1/s_1` (bound) | cell-centred (what the gate read) |
+|---|---|---|---|
+| `r >= 1.03` | 1.21e-08 | 9.33e-08 | **3.433e-03** |
+| `r >= 1.10` | 0 (one unique value over 300 cells) | 4.38e-09 | 2.375e-03 |
+| `r >= 1.20` | 0 | 3.17e-10 | 2.501e-04 |
+
+The wind carries one mass flux to the last bit and the gate was reporting
+`2.5e-04`: the number was the difference between two functionals, not a failure
+of conservation, and it was wrong by six orders. The change also removes the
+cell-1 artifact for free -- the centred product there is `-21` times the wind
+flux and changes sign, while both of that cell's faces carry inflow of order the
+wind flux (`docs/p54_base_layer_mass_flux.md` section 2).
+
+**This also settles a comparison section 144.5 got wrong.** The `1.043e-04` of
+P54b section 10.4 and the `3.433e-03` of section 144.5 are the same state
+measured by the two different functionals, not a change between P53 and now: the
+pre-P53 root's cell-centred spread is `3.523e-03`, within 3 percent of the
+current root's. On the conserved functional the newer root is better by four
+orders (`1.043e-04 -> 1.213e-08` at `r >= 1.03`).
+
+### 145.2 The threshold, re-derived for that definition
+
+`flux_spread_th` was `5.0e-3`, calibrated against the cell-centred product. On
+the face flux it is not a gate: every state that stops on `du` alone is already
+below it. Face spread at `r >= r_flux`, over every state available:
+
+| population | measured |
+|---|---|
+| accepted by the JFNK | 1.02e-10 (the section 143 hot-Uranus root), 3.89e-08, 3.97e-06, 3.83e-06 |
+| stopped on `du` only | 1.14e-04, 1.04e-03, 3.17e-02, 3.18e-02 |
+| marching, 600 steps | 4.00 to 1.38e+01 |
+
+The two populations are separated by the interval `4e-6` to `1.1e-4`. The new
+default is its geometric middle to one digit, **`2.0e-5`** -- five times above
+the loosest accepted state and six times below the tightest `du` stop -- and it
+is not fitted to any one of them. **No canonical input sets `Flux spread tol`**
+(checked over every `input.inp` in the tree outside `LHS1140b/exhale/`, which
+section 133 excludes), so the default is the whole change and no input file
+needed editing. A value `>= 1e-3` now draws a warning, not a refusal: it is a
+pre-145 number and admits states the gate exists to refuse.
+
+One case is refused that used to be accepted, and it is meant to be:
+`arm_heh1_x2matched` sits at `1.14e-04` on the conserved flux.
+
+### 145.3 The residual norm is the maximum over cells of a cell's own scaled residual
+
+`relnorm_over_cells` had two forms and neither was the local relative infinity
+norm the comments describe:
+
+```
+   volume weighted (default)   sum_j |R_kj| V_j / sum_j s_kj V_j
+   ratio of maxima             max_j |R_kj|     / max_j s_kj
+```
+
+The first lets a cell be paid for by the volume of the others; the second takes
+the two maxima independently, and they are not in the same cell, since
+`s ~ 1/dr` is largest in the smallest cells at the base. There is now one form,
+
+```
+   rc(k) = max_j |R_kj| / s_kj ,
+```
+
+and `resid_vol`, the `Resid norm` key and `residual_norms_vol` are gone with the
+second form they selected. The key is still matched and warns that it is retired
+rather than failing the unknown-key check.
+
+**What the old norm was hiding**, measured on the two section 144.5 roots, both
+accepted at `||R|| ~ 1e-5`:
+
+| state | cells above `1e-5`, by row | where |
+|---|---|---|
+| hot Uranus | 1 mass, 0 momentum, 6 energy | all in cells 1-3; mass `3.10e-05`, energy `2.17e-03` -- 218 times the accepted number |
+| WASP-121b | 0, 0, 70 | 50 of them in the WIND, `r = 1.30-2.00`; 18 in `1.10-1.30`; 2 at the base |
+
+**It is not the layer that was hidden.** Between `r = 1.03` and `1.30` not one
+cell of either row exceeds `1e-5` on the hot Uranus. On WASP-121b the dilution
+was of a wind, not of a layer.
+
+**Cost, and what does not move.** Both solves converge with no cell of any row
+above the tolerance:
+
+| | hot Uranus, old norm | new | WASP-121b, old | new |
+|---|---|---|---|---|
+| JFNK `info` | 0 | 0 | 0 | 0 |
+| iterations | 7 | 9 | 8 | 12 |
+| cell-max, mass | 3.100e-05 | **2.021e-07** | 3.232e-07 | **4.374e-08** |
+| cell-max, energy | 2.174e-03 | **2.002e-06** | 6.397e-05 | **9.764e-06** |
+| cells above `1e-5` | 7 | **0** | 70 | **0** |
+| `log10 Mdot` | 10.34 | 10.34 | 13.21 | 13.21 |
+| 3000-step departure, p2p at `r=1.03` | 0.5333 | 0.5334 | 0.0103 | 0.0104 |
+
+`Resid tol` keeps its value. The norm is not what makes a root leave the
+marching loop either: the departure is the same to 0.2 percent.
+
+### 145.4 Both numbers, every time a residual is reported
+
+Acceptance is the cellwise maximum, because that is the statement "no cell of
+any row is out". It is not the statement "the column's budget is closed", which
+is what the integrated norm says, and the external review of 2026-09-03
+(section 4) asks for both to be visible before either is used alone.
+`write_residual_breakdown` now prints, wherever a residual is reported -- the
+`EXHALE_RESIDUAL` diagnostic, the JFNK hand-back, and every marching stop --
+
+* per row: `max_j |R_j|/s_j` with its cell index and radius, and the integrated
+  ratio with its numerator and denominator;
+* the numerator and denominator contributions of `r < 1.03`, `1.03-1.10`,
+  `1.10-1.20`, `r >= 1.20`;
+* for the worst cell of the table, the SIGNED dimensional residual and every
+  term its row differences, plus `heat`, `cool` and the row scale.
+
+### 145.5 A marching stop says that it is one, and the `du` window is not unified
+
+The review (section 5, item 7) judges the marching `du` stop, the JFNK hand-off
+threshold and the acceptance gates to be three concepts with three roles and says
+they should not be forced onto one threshold. **The proposal to unify the `du`
+window with the flux gate's window is withdrawn**, and the census that measured
+the cost of it is kept as the reason: unifying changes no answer
+(`log10 Mdot` within 0.01-0.02 dex wherever both builds stop) but costs three
+WASP-121b Newton cases a factor 13.2 in steps and stops three other cases
+converging at all within 60000 steps (`docs/p55_du_window_census.md`).
+
+What went in instead: every `du`, `dtu`, plateau and step-cap stop now prints
+
+```
+   THIS IS A MARCHING STOP, NOT AN ACCEPTED STEADY STATE. The three gates on
+   this state:  residual ... flux spread ... carrier ...
+```
+
+with the three gates MEASURED on the state being stopped at, not read from the
+in-loop monitor, which is not evaluated at all without `Resid tol:`. Measured on
+a hot-Uranus run that used to print "converged: mass flux constant" at
+`du = 1.454e-04`: its cellwise residual is **1.282** in the energy row of cell 7.
+Three `du`/`dtu` branches that said "converged" now say "stopped".
+
+### 145.6 The complete update-map diagnostic, and what it decides
+
+Review B2 asks for a diagnostic that applies one production step and compares
+`G_dt = [Phi_dt(q) - q]/dt` with the steady residual at three decreasing time
+steps, broken down by stage, and says "this test decides item 3".
+
+`EXHALE_UPDATE_MAP=<f1,f2,...>` (env, `=1` means 1, 0.1, 0.01) does it. `Phi_dt`
+is the marching loop's own body, not a copy: the diagnostic caps the loop,
+restores the state at the top of each step and snapshots `u` at the stage
+boundaries. `|G_dt + R|`, max over cells:
+
+| `dt/dt_CFL` | hot U mass | momentum | energy | WASP mass | momentum |
+|---|---|---|---|---|---|
+| 1 | 6.52e-01 | 5.33e-01 | 9.60e-01 | 9.63e-02 | 1.33e-01 |
+| 0.1 | 8.93e-02 | 5.27e-02 | 1.40e-01 | 1.09e-02 | 1.69e-02 |
+| 0.01 | 9.23e-03 | 5.17e-03 | 2.34e-02 | 1.10e-03 | 1.73e-03 |
+
+**`G_dt` approaches the steady residual at first order in `dt` on both planets.
+The production map and the residual share a fixed point, and the 42 percent
+discrepancy section 144.1 measured at a CFL step is the splitting truncation
+error of an explicit step, not an operator mismatch.** The stage breakdown says
+where the rest is: `Apply_BC`'s conservative-primitive round trip moves the
+interior by a relative `4.2e-16` (review item 10 is not a source of motion here),
+the semi-implicit energy step is a rate to five digits, and the composition
+pressure projection is a rate that converges on the hot Uranus and is `1.124`
+against a residual of `1.133` on WASP-121b -- the one term the residual has no
+counterpart for, and on that planet it is not small.
+
+**With the Shapiro filter on, the two provably cannot share a fixed point, and
+the diagnostic gives the number.** With `Shapiro filter: 0.5 1`, the filter's
+contribution to `dU` is the same at every time step -- it is applied per STEP,
+not per unit time -- so as a rate it is `1.187e+01`, `1.189e+02`, `1.188e+03` at
+the three `dt`, and `|G_dt + R|` follows it exactly instead of converging.
+Either the filter's steady operator goes into the residual or the filter is
+prohibited in steady-root validation; the diagnostic now measures which a given
+run needs.
+
+Two traps the diagnostic had to avoid, recorded in the code so they are not
+repeated: the state must be restored BEFORE `u_old = u`, because the positivity
+retry restarts every attempt from `u_old`; and the run must be held in ONE
+reconstruction, because a `PLM+WENO3` run takes its first step in PLM and would
+otherwise compare two spatial operators.
+
+A third trap cost the regression outright, and it is worth its own subsection: the snapshots were first placed between the STATEMENTS of one
+RK3 stage. Section 145.8.
+
+### 145.7 Provenance: what produced a profile file
+
+Every profile file now carries three `#` lines beside the schema and coupling
+headers:
+
+```
+# provenance: git=6d07d48afd41 tree=dirty run=2026-09-03T20:19:09
+# provenance: ck_input=... ck_base=... ck_metals=...
+# provenance: recon=WENO3 base_bc=isothermal carrier=local restart_schema=3 resid_def=145 N=500
+```
+
+The revision and dirty flag are stamped in by the Makefile into a generated
+`build/build_stamp.f90`; **the run never calls git**. The time reported is the
+RUN time, from `date_and_time`, not a build time: a timestamp compiled into the
+executable would make two builds of the same source different files, and the
+md5 of the binary is how a bitwise verdict is tied to a revision. The Makefile
+writes the stamp at parse time and only when its content changes, so `make` has
+a fixed point and `make -q` is meaningful; `run_check.sh` now runs `make -q`
+after its `make` and refuses the matrix if anything is still out of date, so a
+bitwise verdict can no longer be taken from a binary the sources have moved
+past. The checksums
+are of the input files as read, by `file_rolling_checksum` -- two modular rolling
+sums, exact in `integer(8)` on every compiler, and deliberately not called a
+digest. The rest is the discretization, the lower boundary model, the carrier
+model, the restart file's own layout version and the version of the residual
+definition the gates used. Review section 5, item 12.11 asks for exactly this.
+
+### 145.8 The regression failed for a reason that was not the code
+
+The tree binary built at 19:01 failed all ten regression cases at a relative
+`3e-14` to `9e-11`, with `du` and `dtu` at the stop agreeing to every printed
+digit. The first hypothesis was a stale object linked by an incremental build.
+It was not: `make distclean && make` reproduced the failure exactly. A bisect
+over clean builds -- the pre-145 tree, the norm and gate group, the provenance
+group, and all of section 145 without the update map -- reproduced the goldens
+bitwise in every case, leaving one patch.
+
+**The arithmetic.** The update-map snapshots were placed between the statements
+of one RK3 stage:
+
+```fortran
+u1(k,:) = u(k,:) - dt_loc*(dF(k,:) - S(k,:))
+if (upmap_n .gt. 0) u_umBCin = u1        ! <- here
+call Apply_BC(u1)
+```
+
+`a - b*c` is a fused multiply-add candidate and `-ffp-contract=fast` is
+gfortran's default, so inserting a statement changes the scheduling and with it
+whether the FMA is taken. An FMA rounds once where a multiply and a subtract
+round twice: one ulp per step, `1e-11` over eleven thousand. **Every inserted
+statement was inside `if (upmap_n .gt. 0)` and did nothing with the diagnostic
+off.** The contraction setting is not being changed -- it is the default the
+goldens were made under, and it is the faster and the more accurate of the two.
+What changes is where instrumentation may go: the boundary contribution is now
+taken once, out of line, in `update_map_begin_step`, the remaining snapshots sit
+between operator-split stages and never between the statements of one, and a
+comment at the first of them in `EXHALE_main.f90` says why. **Instrumentation
+that has to sit inside a stage must be measured out of line; an `if` that does
+nothing at run time is not guaranteed to leave the floating-point result alone,
+and the bitwise regression is what says so.**
+
+**The binary had stopped being a function of its source.** Section 145's first
+build stamp compiled the BUILD TIME into a constant, so two `make distclean &&
+make` of identical source produced different executables, differing in exactly
+one object (`utilities.o`) in exactly that string. Three workers comparing md5s
+therefore read "different program" from what was the same program. The stamp now
+carries the git revision and dirty flag only, and the run time is reported from
+`date_and_time` in the provenance header instead. Two clean builds of one source
+now give one binary.
+
+**And nothing checked that the binary matched the sources.** The stamp had been
+generated by a rule with a phony prerequisite, so `make` never reached a fixed
+point and `make -q` reported "out of date" immediately after a successful `make`
+-- the one cheap check that would catch a stale binary was useless. The Makefile
+now writes the stamp at parse time and only when its content changes, and
+`run_check.sh` runs `make -q` after its own `make` and refuses the matrix with
+exit code 2 if anything is still out of date. A bitwise verdict can no longer be
+taken from a binary the sources have moved past.
+
+**What an md5 of the binary identifies.** Two measurements, because the guard
+leans on them. A comment does not change the code: same file name, one added
+comment line, the `-S` output is identical apart from the `.file` directive and
+the object bytes match. But a SHIFTED LINE NUMBER does change the object, because
+every I/O statement carries its own source line as an immediate for runtime error
+reporting -- adding one comment line above a `write` turns `movl $0x4` into
+`movl $0x5`. The eight-line comment added to `EXHALE_main.f90` at the end of this
+work moved the binary from `e83b4ab4` to `62cc6c64` with no numerical change at
+all; both are bitwise identical to the goldens. **The md5 is a fingerprint of one
+source text, which is what the `make -q` guard and the `# provenance:` header
+need. It is not a semantic fingerprint, and two binaries with different md5s are
+not thereby different programs.**
+
+**Not established.** Whether `fortdep.py` and the Makefile could ever have missed
+a rebuild before section 145. Reading them found no mechanism: no duplicate
+source basenames, no module provided by two files, the dependency file remade
+whenever any source or `fortdep.py` changes, and a flag change forcing a full
+rebuild through the flag stamp. A recurrence test -- a module-signature edit, an
+incremental build, then a clean build of the same source -- gives identical
+binaries. No instance has been demonstrated, and because no earlier build
+recorded what it was built from (which is what the provenance header now fixes),
+the earlier builds of 2026-09-03 cannot be reconstructed either way.
+
+### What is not settled
+
+* **The hot Uranus root is still not a fixed point of the marching**, by the same
+  excursion as before any of this. What section 145 removes is the possibility
+  that the measure was hiding it: the layer's scaled residual is genuinely
+  `1e-11` to `5e-6` and the conserved flux is genuinely flat. Item (AD), now
+  pointing at the base boundary (review Phase C).
+* **Cells 1-3.** The cellwise norm forces the solve to bring them below `1e-5`
+  and it succeeds on both cases, which is new; nothing here says the state it
+  reaches there is physical. Item (V).
+* **The accepted state's residual is not reproducible.** Re-running the
+  ionization sweep on the same conserved state moves cells 1 and 2 from `1e-5`
+  to order unity, in the MASS row, which reads no radiative term: what moves is
+  `rho`, which `ioniz_eq` rewrites through `calc_rho`. Every number above is
+  therefore taken from the solver's own residual vector. This is the next thing
+  to diagnose.
+* **The energy row of the update map on WASP-121b**, where the composition
+  pressure projection is a rate as large as the residual itself.
+* Goldens are NOT refreshed here and `run_fcheck.sh` is not run: items (AB) and
+  (AF) follow immediately and do both once.
+
+Files: `src/modules/time_step/steady_residual.f90` (one `relnorm_over_cells`,
+`residual_norms_vol` removed, new `flux_spread_over_faces` and
+`write_residual_breakdown`, the cached face flux signed),
+`src/modules/time_step/steady_newton.f90` (the dual report at hand-back),
+`src/EXHALE_main.f90` (`report_marching_stop`, the update-map diagnostic, the
+single-norm reporting), `src/modules/init/parameters.f90` (`flux_spread_th`
+default and its derivation, `resid_vol` removed),
+`src/modules/files_IO/input_read.f90` (the pre-145 flux warning, `Resid norm`
+retired), `src/modules/functions/utilities.f90` (`write_provenance_header`,
+`file_rolling_checksum`), `src/modules/files_IO/write_output.f90`,
+`src/modules/files_IO/write_setup_report.f90`, `Makefile` (the build stamp).
+Documentation: `docs/p55_base_mode.md` section 11, `docs/p55_update_map.md`,
+`docs/p55_du_window_census.md`, `docs/input_schema.md`,
+`docs/EXHALE_user_manual.tex`, `TO_BE_DONE.md`.
+
+## 146. The boundary condition writes the boundary, and the residual is a state function (2026-09-03)
+
+**Judgement first, in three parts. (1) `Apply_BC` was rewriting the interior it
+was called to leave alone.** Its round trip -- primitive out, boundary
+condition, conservative back over the WHOLE array -- recomputed every interior
+cell's energy as `0.5*W(1)*W(2)**2` where the input held
+`0.5*u(2)*u(2)/u(1)`. In an atomic gas that costs the last bit; in a molecular
+one the two conversions use different heat capacities and the projection is
+real: **measured, one step of `mol_metals` moves the interior pressure by
+`1.26e-03`** while the density it does not touch moves by `8.4e-16`. It now
+writes the ghost indices and returns the interior bit for bit. **(2) The steady
+residual filled the ghosts before its ionization sweep**, so the conservative
+ghost state the fluxes read carried the previous evaluation's composition
+(section 141.6, item (AB)). It now fills them after, which is the order the
+marching loop has always had -- state, then that state's composition, then the
+ghosts, then the fluxes -- and the two are the same discrete operator, which
+section 144.1 requires of them. This was only possible once (1) made a second
+call free. **(3) Neither of those is what makes the residual a state function,
+and the measurement that says so is new**: evaluate `F` at a state, at another
+state, then at the first again through one shared composition workspace and
+**1406 of 1500 entries differ, by `3.0e-03` of the row scale -- 300 times the
+acceptance tolerance**. Seed the sweep from one composition instead and the
+three evaluations are **bitwise identical**. The equilibrium sweep's starting
+guess is the whole of it, every call site in the solver already resets it, and
+what was missing is a test that says so.
+
+On the 1 microbar hot-Uranus root the ordering fix moves the 3000-step marching
+departure at `r = 1.03` from **0.4526 to 0.2517**, and at `r = 1.005` from
+1.6384 to 0.4443 -- the first change in this campaign that moves item (AD) at
+all. `log10 Mdot` does not move on any case measured.
+
+**A note on which flatness number is quoted where.** The departure figures above
+and in section 146.5 were measured before section 145 made the flux gate read
+the signed Riemann face flux; they are peak-to-peak excursions of that same face
+flux, so they carry over unchanged. The steady-state spreads in section 146.4
+are quoted in BOTH measures, because the gate's meaning changed under this work
+and item (AA) is written in the older one.
+
+### 146.1 `Apply_BC` writes the ghosts
+
+```
+   call U_to_W_interior(u,W)      ! interior only; ghosts are outputs, not inputs
+   call Apply_BC_W(W)             ! the boundary condition, in primitive variables
+   do k = 1,Ng                    ! WAS: call W_to_U(W,u), the whole array
+      call W_to_U_comp(W(:,1-k), u(:,1-k), 1-k)
+      call W_to_U_comp(W(:,N+k), u(:,N+k), N+k)
+   enddo
+```
+
+`W_to_U_comp` is the arithmetic `W_to_U` performs cell by cell, and for a gas
+with no molecules in it `energy_density_from_pressure` returns
+`p/(gamma_ad - 1)` verbatim, so an atomic ghost is the double it always was.
+
+Two things follow. `Apply_BC` is **idempotent**, which is what item (AB)
+recorded as the obstruction to fixing the ghost lag. And the interior of a
+state stops changing under a routine whose subject is the boundary -- a
+property nothing should have had to reason about, and one the caloric EOS of
+section 141 turned from a rounding curiosity into a `1.26e-03` projection.
+
+### 146.2 The residual's order
+
+```
+   unpack Y -> u(1:N)
+   get_species_densities            ! interior composition of Y (n_part_cell1)
+   Apply_BC(u)                      ! provisional ghosts: U_to_W needs a density
+   U_to_W; get_species_densities; comp_T_from_p; excited_H; ioniz_eq
+   get_species_densities            ! the composition the residual will use
+   Apply_BC(u)                      ! NEW: the ghosts, with THAT composition
+   assemble_residual                ! Reconstruct + RK_rhs read those ghosts
+```
+
+What is still one sweep behind, and deliberately: the ghost cells' own
+composition was solved at the pressure the first `Apply_BC` wrote, not at the
+one the second writes. Iterating that pair to a ghost fixed point would make
+the residual something the marching loop is not, and being the same operator is
+the stronger requirement (section 144.1). No extra ionization sweep is needed;
+the cost is one call.
+
+### 146.3 Is the residual a state function? Only because every call site is careful
+
+`EXHALE_RESID_DETERMINISM=1` evaluates `F(Y0)`, then `F(Y1)`, then `F(Y0)`
+again, then `F(Y2)`, then `F(Y0)` again, and compares the three `F(Y0)`.
+
+| how the sweep is seeded | entries differing (of 1500) | max, in row-scale units |
+|---|---|---|
+| one shared workspace, as `newton_residual`'s interface allows | 1406 and 1400 | **2.968e-03**, 2.973e-03 |
+| the same, with this section's ordering fix | 1412 and 1399 | 4.239e-03, 4.280e-03 |
+| **seeded from one composition every time** | **0 and 0** | **0** |
+
+Measured on the converged 1 microbar hot Uranus, single-threaded. The tolerance
+these residuals are judged against is `1e-5`.
+
+**So the carrier is the equilibrium sweep's starting composition, and nothing
+else.** That is a strong statement and the third row is what makes it: with the
+seed held fixed the residual reproduces to the bit, so no other module is
+holding state between evaluations.
+
+**The solver is already correct, by convention.** Every one of the five places
+that call `eval_residual` copies the adopted composition into a workspace first
+(`f_sp_j = f_sp` in the line searches, `fwork = f_sp_base` in the banded
+Jacobian, the Gauss-Newton escape and the Krylov directional derivative), so
+what a solve compares are residuals seeded alike. The invariant holds and
+nothing about it is written down or tested. `src/tests/residual_determinism/`
+is the test that pins it; it is what stops the sixth call site from being
+written without the reset.
+
+**What it does not license.** `newton_residual(Y, f_sp, F)` still takes the
+composition as `intent(inout)`, so the invariant is a property of the callers
+and not of the routine. Making it structural -- the residual seeds from an
+adopted composition it owns, and returns the new one separately -- is a change
+to a public interface and is left as item (AF).
+
+### 146.4 What it does to the cases
+
+The ten-case matrix, single-threaded, each case against the same case built
+without this section:
+
+| case | max relative difference, rho / v / p / T | stop step and `du` | `log10 Mdot` |
+|---|---|---|---|
+| `wasp_full` | 1.4e-13 / 4.8e-10 / 1.1e-13 / 1.6e-13 | 11289, 9.9989e-04 both | 13.26 both |
+| `wasp_he23off` | 1.4e-13 / 4.1e-10 / 9.5e-14 / 1.6e-13 | 11276, 9.8873e-04 both | 13.26 both |
+| `mol_carrier` | 4.1e-13 / 4.3e-11 / 5.3e-13 / 4.4e-13 | 12000, 5.9036e-01 both | 10.42 both |
+| `lower_profile` | 4.4e-12 / 6.1e-09 / 4.7e-12 / 4.2e-12 | 12000, 2.8228e+01 both | 9.56 both |
+| `mol_diffusion` | 9.8e-06 / 8.6e-06 / 8.3e-07 / 9.3e-06 | 12000, 1.1470e+00 both | 10.43 both |
+| `mol_base_handoff` | 1.9e-05 / 1.1e-05 / 2.8e-06 / 1.8e-05 | 12000, 1.1472e+00 both | 10.43 both |
+| `mol_sec_ion` | 4.7e-05 / 2.0e-04 / 8.5e-06 / 4.5e-05 | 12000, 4.0963e-01 both | 10.38 both |
+| `mol_lyman_werner` | 7.1e-05 / 8.0e-05 / 1.1e-04 / 4.4e-05 | 12000, 5.5044e-01 / 5.5038e-01 | 10.47 both |
+| `mol_ir_bands` | 4.8e-04 / 2.8e-04 / 2.1e-04 / 3.3e-04 | 12000, 1.2756e+00 / 1.2753e+00 | 10.43 both |
+| `mol_metals` | 8.2e-04 / 3.3e-04 / 4.1e-05 / 5.4e-04 | 12000, 1.2754e+00 both | 10.43 both |
+
+**All ten move and none of them changes an answer.** The two atomic cases stop
+on `du` at the same step with the same `du` to five digits and the same rate:
+their trajectory changes only at the last bit, and after 11,289 steps that has
+grown to `1e-13`. `mol_carrier` and `lower_profile` are the same story. The six
+molecular cases with the caloric EOS live move by `1e-6` to `8e-4`, which is
+not rounding: it is the projection of section 146.1 removed.
+
+That the molecular numbers are not monotone in step count is worth stating,
+because it says which they are. On `mol_metals` from its cold start:
+
+| steps | rho | v | p | T |
+|---|---|---|---|---|
+| 1 | 8.4e-16 | 1.8e-12 | **1.3e-03** | 5.4e-10 |
+| 10 | 8.9e-03 | 3.9e-01 | 2.7e-02 | 5.2e-03 |
+| 100 | 7.8e-03 | 7.1e-01 | 1.0e-02 | 4.1e-03 |
+| 1000 | 1.3e+00 | 2.1e+01 | 1.6e+00 | 4.2e-01 |
+| 12000 (the case) | 8.2e-04 | 3.3e-04 | 4.1e-05 | 5.4e-04 |
+
+The first row is the size of the defect: one step, one pressure, `1.3e-03`. The
+middle rows are a cold-start transient amplifying it, and the last is the
+relaxation contracting it again. A golden refresh is required and no quoted
+number moves.
+
+**The named Newton cases.** Both re-solve and both converge, at a cost:
+
+| | hot Uranus gate rung | WASP-121b (`wasp_full_newton`) |
+|---|---|---|
+| `info` | 0 -> 0 | 0 -> 0 |
+| iterations | 17 -> 25 | 57 -> 109 |
+| `\|\|R\|\|` accepted | 9.835e-06 -> **3.176e-06** | 7.587e-06 -> 8.138e-06 |
+| gate flux spread (`r >= 1.2`) | 5.970e-13 -> **2.466e-14** | 1.352e-11 -> 1.153e-11 |
+| face-flux spread over `r >= 1.03` | 1.228e-10 -> **2.494e-12** | 2.225e-11 -> 2.535e-11 |
+| cell-centred `rho v r^2` over `r >= 1.03` | 3.433e-03 -> 3.432e-03 | 6.751e-05 -> 6.751e-05 |
+| `log10 Mdot` | 10.34 -> 10.34 | 13.21 -> 13.21 |
+| `v(1)` | -15.014 cm/s -> **-251.875 cm/s** | 1372.504 -> 1372.494 cm/s |
+
+**Two different flatness measures appear in that table and both belong there.**
+The gate is the signed Riemann face flux (section 145); on the hot Uranus this
+section improves it by a factor 49 at `r >= 1.03` and 24 at the gate window.
+The cell-centred product does not move, because it is not what the solve is
+driving -- and it is the quantity item (AA) was written about, so it is quoted
+beside the gate rather than instead of it.
+
+The hot-Uranus accepted residual falls by a factor 3.1 when the ghosts are
+consistent with the composition, which is the lag being removed. The iteration
+count rises by 47 percent there and by 91 percent on WASP-121b.
+
+### 146.5 Does it move item (AD)? On the hot Uranus, yes
+
+Each root reloaded and marched 3000 steps with the JFNK hand-off removed.
+Peak-to-peak excursion of the face mass flux, in units of the root's own `F_0`:
+
+| root marched with | 1.005 | 1.03 | 1.10 | 1.20 | `du` at 3000 |
+|---|---|---|---|---|---|
+| pre-146 root, pre-146 binary | 1.6384 | 0.4526 | 0.1010 | 0.0190 | 3.2256e-04 |
+| pre-146 root, this section's binary | 1.6384 | 0.4526 | 0.1010 | 0.0190 | 3.2256e-04 |
+| **this section's root**, pre-146 binary | 0.4443 | 0.2517 | 0.0403 | 0.0084 | 3.2250e-04 |
+| **this section's root**, this section's binary | 0.4443 | 0.2517 | 0.0403 | 0.0084 | 3.2250e-04 |
+
+Read the rows in pairs: **the departure is a property of the root and not of
+the marching binary**, to four digits. The root this section produces departs
+**44 percent less at `r = 1.03` and 73 percent less at 1.005**. Section 144.5
+measured section 143's row scales at 0.06 percent and P55's restart handling at
+0.7 percent on the same quantity; this is the first change that moves it.
+
+**What the two roots differ by is cell 1, and almost nothing else.** Every
+column agrees to `1e-3` or better except the base cell's velocity, `-15.0` cm/s
+before and `-251.9` cm/s after; the flux spread over `r >= 1.03` is the same to
+five digits and `log10 Mdot` is the same. So the solve is landing at a different
+point along the near-null direction item (V) owns, and that point is the one
+whose ghosts the marching loop would have written anyway -- which is what the
+ordering fix is for. **Whether the 44 percent is that consistency or the cell-1
+displacement is not separated here**, and the honest statement is that the two
+arrived together.
+
+On WASP-121b there is nothing left to move: 0.0102 -> 0.0099 at `r = 1.03`, a 3
+percent change on an excursion that P55's restart handling had already reduced
+to one percent of the hot Uranus's.
+
+### 146.6 What is not settled
+
+* **The interface, not the invariant.** `newton_residual` still takes the
+  composition as `intent(inout)`; the state-function property is a discipline
+  its five callers keep. Item (AF).
+* **The banded Jacobian's directional derivative** disagrees with the
+  finite-difference ray by `1.0261e-01` on the hot-Uranus hand-off, unchanged
+  by this section (`EXHALE_JAC_TEST=1`, identical in both builds). It is a
+  property of the banded model, and section 142 is where it belongs.
+* **The ghost cells' own composition** is still solved at the pressure the
+  provisional `Apply_BC` writes, not at the final one. Deliberate; 146.2.
+* **Which half of the hot-Uranus improvement is the consistency and which is
+  cell 1** (146.5).
+* **The cost.** 36 percent more iterations on the hot Uranus and 118 percent on
+  WASP-121b, not investigated. The residual is a different function now, so a
+  different iteration count is expected; whether the extra iterations are the
+  solve doing more work or the line search being handed a harder problem was
+  not measured.
+
+Files: `src/modules/states/Apply_BC.f90` (`Apply_BC` writes the ghosts),
+`src/modules/time_step/steady_newton.f90` (`eval_residual` re-fills the ghosts
+after its sweep). Test: `src/tests/residual_determinism/`.
+Documentation: `docs/p_ab_ghost_order.md`, `TO_BE_DONE.md` ((AB) closed, (AF)
+opened, (AD) narrowed again).
+
+## 147. The equilibrium sweep's seed is an argument (2026-09-03)
+
+**Judgement first. The steady residual was a function of its argument only
+because five call sites remembered to make it one.** `eval_residual` took the
+composition as one `intent(inout)` array that was both the seed the
+equilibrium sweep starts from in each cell and the place its answer is written,
+so whatever the caller's workspace last held became the next evaluation's
+initial guess.
+Measured (section 146.3): evaluate `F` at a state, at two others, then at the
+first again through one shared workspace and **1406 of 1500 entries differ, by
+`3.0e-03` of the row scale against an acceptance tolerance of `1e-5`**. Every
+call site in the solver defended against that by copying the adopted
+composition into a workspace first -- `f_sp_j = f_sp`, `fwork = f_sp_base`,
+five times -- and nothing said so, tested it, or stopped a sixth call site from
+being written without it. **The seed is now an argument.** `eval_residual(Y,
+f_sp_seed, f_sp, ...)` takes the seed `intent(in)` and writes the swept
+composition to a separate `intent(out)` dummy; the copy happens once, inside;
+and because the two may not be the same array a caller cannot hand the sweep
+its own previous answer even by accident. The five copies are deleted. **The
+test now passes structurally**, the residual moving no more when another state
+is evaluated in between than it moves when nothing is (section 147.3), and the
+solve is bitwise unchanged on every case measured -- the convention was being
+kept, and it is now kept by the interface.
+
+It is the same rule the chemistry of a single cell already states one level
+down: a cell's root may not depend on the cell solved before it
+(`seed_species_of_cell`, `constrained_chemical_equilibrium.f90`). This raises
+it from the cell to the sweep, and does not define it a second time.
+
+### 147.1 The interface
+
+```
+   subroutine eval_residual(Y, f_sp_seed, f_sp, Fvec, heat, cool, n_part, ...)
+      real*8, ..., intent(in)  :: f_sp_seed     ! where the sweep starts
+      real*8, ..., intent(out) :: f_sp          ! where its answer goes
+      ...
+      f_sp = f_sp_seed                          ! the first thing it does
+```
+
+`newton_residual` takes the same pair. Fortran forbids aliasing an `intent(in)`
+dummy with an `intent(out)` one, so the failure mode the measurement found is
+not expressible.
+
+**What the call sites look like now.** The three that evaluate the iterate the
+solve is standing on read
+
+```
+   call eval_residual(Y, f_sp, f_sp_j, F, heat0, cool0)
+   f_sp = f_sp_j
+```
+
+and that copy is an **adoption**, not a seeding convention: the seed is named
+in the call, and the assignment afterwards says the solve has taken the result
+as its new composition. The line searches and the damped Gauss-Newton escape
+pass `(Ytry, f_sp, f_sp_j, ...)` -- seed from what is adopted, write somewhere
+else -- and adopt only when the step is accepted, which they already did. The
+banded Jacobian, the Levenberg-Marquardt descent and the Krylov directional
+derivative pass `(Y, f_sp_base, fwork, ...)`: those three already declared
+their seed `intent(in)` and copied it by hand, and now they simply hand it over.
+
+### 147.2 What it changes: nothing numerical
+
+| | hot Uranus gate rung | WASP-121b `wasp_full_newton` |
+|---|---|---|
+| `info` | 0 -> 0 | 0 -> 0 |
+| iterations | 25 -> 25 | 109 -> 109 |
+| `\|\|R\|\|` accepted | 3.176e-06 -> 3.176e-06 | 8.138e-06 -> 8.138e-06 |
+| gate flux spread | 2.466e-14 -> 2.466e-14 | 1.153e-11 -> 1.153e-11 |
+| `log10 Mdot` | 10.34 -> 10.34 | 13.21 -> 13.21 |
+| `Hydro_ioniz.txt`, `Ion_species.txt` | **byte identical** | **byte identical** |
+
+and the ten-case matrix is byte identical as well. That is the expected
+outcome and it is the point: the solver was keeping the convention, so moving
+it into the interface can only remove a way to break it.
+
+### 147.3 The test
+
+`src/tests/residual_determinism/` drives `EXHALE_RESID_DETERMINISM=1`, which
+evaluates `F(Y0)` twice with nothing in between (the control), then `F(Y0)`, a
+trial, `F(Y0)`, another trial, `F(Y0)`, **reusing one output workspace
+throughout** so that it carries each evaluation's composition into the next
+call, and compares the three `F(Y0)` bit for bit.
+
+| | entries differing (of 1500) | max, row-scale units |
+|---|---|---|
+| before section 147, one shared workspace | 1406 and 1400 | 2.968e-03, 2.973e-03 |
+| before, with section 146's ghost ordering | 1412 and 1399 | 4.239e-03, 4.280e-03 |
+| **section 147** | **6 and 3, within the control** | **1.374e-12, 6.253e-14** |
+| the control itself (nothing in between) | 6 | 1.624e-12 |
+
+**The test is judged against its control, and that took a correction.** As
+first written it demanded bitwise agreement, and on the tree it was installed
+in it therefore failed while the invariant held. The control -- `F(Y0)` twice
+with nothing in between -- differs in **6 entries, all in cells 1 and 2, row-scale
+max `1.62e-12`**: the first call through a run builds tables the later ones
+reuse, the H2 rovibrational table among them, and that is a one-time cost of
+the first evaluation rather than history passing between states. Re-evaluating
+`F(Y0)` after each of two trial states then differs by `1.37e-12` and
+`6.25e-14` -- no more than the control, and seven orders below the `1e-5` the
+solver accepts at. So the test asks the question it exists to ask: does `F`
+move MORE because another state was evaluated in between than it moves when
+nothing is? A `1e-9` floor keeps that comparison meaningful when the control
+comes out clean, and the control line is printed rather than absorbed so that
+a future change which makes the first evaluation differ for a different reason
+stays visible.
+
+### 147.4 What is not settled
+
+* **The marching loop's `ioniz_eq` call is untouched**, and correctly so: there
+  the seed IS the run's stored composition, which is what the sweep should
+  start from, and `f_sp_io` being both is the honest contract. What section 147
+  removes is a caller passing a workspace and getting the last state's answer
+  as its guess.
+* **The 6-entry control difference** is attributed to first-call table building
+  by its signature -- cells 1 and 2 only, `1e-11`, identical after the first
+  evaluation -- but the specific table was not identified.
+* **Nothing here makes the sweep's root seed-independent.** A Newton solve
+  in one cell, started from a different guess, may land on different bits, and the
+  invariant this section establishes is that the guess is a stated function of
+  the caller's argument, not that the root is independent of it. How far the
+  root moves with the seed is not measured.
+
+Files: `src/modules/time_step/steady_newton.f90` (`eval_residual` and
+`newton_residual` take the seed as an argument; the five copies deleted),
+`src/EXHALE_main.f90` (two call sites).
+Test: `src/tests/residual_determinism/`.
+Documentation: `TO_BE_DONE.md` ((AF) closed).
+
+## 148. The PLM to WENO3 hand-off is a continuation between two discrete problems, not a switch (2026-09-03)
+
+**Judgement first, and it is two-sided.** On the two cases that could be
+measured, the shipped one-step hand-off is a **harmless transient**, and that
+is a measurement rather than an assumption: the `dtu` excursion it causes is
+quantitatively the fixed-state operator difference (1.83 predicted against
+1.71 measured on the first step), it decays below its pre-hand-off value
+within about fifty steps, `du` never stops descending, and no positivity guard
+fires. **But the two discretizations do not share a solution near the
+boundaries**, which is the part that matters for the physics: over the wind
+PLM and WENO3 agree to a part in `10^2` to `10^4`, while in the first two or
+three cells above the base the WENO3 mass-row residual is **6.7 times the
+largest PLM residual anywhere on the grid**, and in the outermost cells the
+momentum rows differ by 62 percent. A `wasp_full` run held on PLM does not
+converge in 15,000 steps and settles on a base 400-700 K hotter and up to 2.4
+times denser, with the opposite sign of base velocity and `log10 Mdot` 0.08
+higher. So the two-stage recipe is a continuation between two different
+discrete problems, and treating it as one is right even where the transient it
+produces is benign. The continuation is implemented and **default off**;
+`lambda = 1` reproduces the shipped code to the bit.
+
+### 148.1 The instrument: an operator difference on a fixed state
+
+`EXHALE_OPDIFF` assembles the PLM residual and the WENO3 residual for the same
+interior cells, each with its own ghosts and pressure split, and stops. On
+`mol_sec_ion` at the hand-off step (11,861):
+
+| row | max PLM / s | max WENO3 / s | max difference / s | at | difference / PLM |
+|---|---|---|---|---|---|
+| mass | 1.519 | 10.245 | 10.232 | `r = 1.00019` | 6.74 |
+| momentum | 1.678 | 2.379 | 1.036 | `r = 4.681` | 0.618 |
+| energy | 1.924 | 1.925 | 1.202 | `r = 1.00077` | 0.625 |
+
+The difference lives at the two boundaries and nowhere else, so its origin is
+the base ghost and pressure split at one end and the outer extrapolated ghost
+at the other, not the reconstruction over the wind. Predicted against measured
+across the hand-off, on the `dtu` window (`r >= r_esc`):
+
+| | predicted | measured |
+|---|---|---|
+| PLM step `dtu` | 5.979e-4 | 5.948e-4 (step 11,861) |
+| WENO3 step `dtu` | 1.095e-3 | 1.015e-3 (step 11,862) |
+| ratio | 1.831 | 1.706 |
+
+### 148.2 The continuation
+
+`reconstruction_continuation_rhs` assembles the whole right-hand side under
+each flag and combines them, `R_lambda = (1 - lambda) R_PLM + lambda
+R_WENO3`, blending the outer ghosts of `Apply_BC_W` with the same lambda. Both
+the three-stage marching step and `assemble_residual` go through it, so the
+marching map and the residual continue together. At `lambda = 0` and
+`lambda = 1` it is a single evaluation and bitwise equal to the pure scheme;
+on reaching `lambda = 1` it disarms itself and hands the flag to WENO3, **so
+the final gates are evaluated with the pure WENO3 operator**.
+
+Input key, refused rather than ignored where it cannot apply:
+
+```
+Reconstruction continuation: <dlambda> [<dtu_tol>] [fixed|adaptive]
+```
+
+`dlambda <= 0` or an absent key is the shipped one-step hand-off; `dtu_tol`
+(default 1.2) halves the lambda step instead of advancing when a step exceeds
+that multiple of the `dtu` at the start of the ramp; `fixed` turns that
+control off. The two optional fields are told apart by content rather than
+position, the mode being a word and the tolerance a number. Resolved at the
+end of `input_read` once `Reconstruction scheme:` and both `du_th` values are
+known: a run that is not two-stage, or whose PLM stage is empty
+(`du_th_plm <= du_th`), gets the key cleared and a WARNING. The four
+`EXHALE_RECON_LAMBDA_*` environment variables of the measurement build are
+gone; `EXHALE_OPDIFF` stays one, with the other diagnostic probes that measure
+a state and change no result.
+
+### 148.3 What the ramp does to the transient
+
+`mol_sec_ion`, whose `dtu` before the hand-off is 5.948e-4:
+
+| run | ramp steps | lambda = 1 at | back-offs | `dtu` peak | vs before |
+|---|---|---|---|---|---|
+| shipped, one step | -- | 11,861 | -- | 1.060e-3 | 1.763 |
+| `dlambda = 1` | -- | 11,861 | -- | 1.060e-3 | 1.763 |
+| `0.02`, fixed | 49 | 11,910 | 0 | 7.501e-4 | 1.248 |
+| `0.02`, adaptive | 58 | 11,919 | 2 | 7.213e-4 | 1.200 |
+| `0.002`, adaptive | 499 | 12,360 | 0 | 5.948e-4 | 0.990 |
+
+A 500-step ramp removes the excursion entirely, and the cost is below the
+scatter of a shared machine (14,000 steps: 10 m 37 s shipped, 9 m 36 s with
+the ramp).
+
+### 148.4 Why it is default off, and what would justify turning it on
+
+Adopting a default ramp is not justified by these two cases: it buys a 20-25
+percent smaller `dtu` excursion that decays on its own within fifty steps. It
+would be justified by the configuration item (S) reports -- HD 189733 b with
+molecular and oxygen chemistry, transport and IR bands, where the same
+hand-off is recorded as taking `du` to `~1e5` within 2000 steps -- and that
+case was out of reach here (it is not in the matrix and one trajectory to it
+costs tens of thousands of steps). What this work supplies is the instrument
+to settle it in one run: `EXHALE_OPDIFF=2` on that state measures
+`R_WENO3 - R_PLM`, and if the ratio is the `~7.5` its reported `dtu` jump
+implies then the hand-off is the cause, while `~1.8` like here would mean a
+WENO3 instability the hand-off merely uncovers, which a continuation will not
+fix.
+
+### 148.5 A provenance defect, fixed at its single definition
+
+The tree wrote `recon=trim(rec_method)` in two places, the coupling header and
+the provenance header, so a run stopped inside a ramp would have reported
+`recon=PLM` while its equations were part WENO3. `reconstruction_operator_label()`
+in `parameters.f90` is now the one definition and both headers call it:
+
+```
+# coupling: sec_ion=T sec_ion_step=0 valve=-1.00000E+00 recon=PLM+WENO3(lambda=0.0400) fluxconst=-1.00000E+00
+# provenance: recon=PLM+WENO3(lambda=0.0400) base_bc=isothermal carrier=local restart_schema=3 resid_def=145 N=500
+```
+
+Snapshots before the hand-off read `recon=PLM` and after the ramp
+`recon=WENO3`, in the same run.
+
+### 148.6 Verification
+
+`dlambda = 1` is the stronger equivalence test than an absent key, since it
+drives the blended right-hand side, the blended ghosts, the lambda-weighted
+face-pressure term, the controller and the disarm and still lands on the
+shipped result: `wasp_full` and `mol_sec_ion` are byte-identical to the
+unpatched control with the `du`/`dtu` traces agreeing digit for digit, and so
+is an absent key. The parse dump gains the three values **only when the key is
+used**, following the `if (do_read_sed)` precedent in the same file, so the
+1122 files of `parse_golden/` do not move. The ten-case matrix is
+byte-identical: the key is off, and six of the ten never leave the PLM stage
+in the first place.
+
+**Files.** `src/modules/init/parameters.f90` (the continuation state and
+`reconstruction_operator_label`), `src/modules/files_IO/input_read.f90` (the
+key and its refusal), `src/modules/files_IO/write_setup_report.f90`,
+`src/modules/functions/utilities.f90` (both headers, one label),
+`src/modules/states/Apply_BC.f90` (the blended outer ghost),
+`src/modules/time_step/RK_rhs.f90`, `src/modules/time_step/steady_residual.f90`
+(`reconstruction_continuation_rhs`), `src/EXHALE_main.f90` (the controller).
+Documentation: `docs/f_plm_weno_continuation.md`, `docs/input_schema.md`.
+
+## 149. One routine counts the elements, and it is asserted around every refresh that moves them (2026-09-03)
+
+**Judgment: the code had no single statement of how many nuclei of each element
+a composition holds. `utilities.f90::hydrogen_helium_nuclei_density` covers H
+and He; C, N, O and the other metals had no counterpart, and their closure
+existed only in `src/utils/element_budget.py`, which reads a finished run. A
+run could therefore break an element budget in one refresh and only be found
+out several thousand steps later, by a post-processor that says a run failed
+but not which refresh failed it. `element_census.f90` is that statement, and
+the assertions built on it name the refresh.**
+
+### 149.1 What the routine counts, and from where
+
+`element_nuclei_and_charge(rho, f_sp, n_nuc, n_chg, rho_comp)` returns the
+nucleus density of H, He and the ten metal elements, the positive charge
+density (the free electron density under neutrality), and the mass density the
+composition implies through `calc_rho`'s own weights.
+
+No multiplicity is written in the module. It reads `bsp_nH`, `bsp_nHe`,
+`bsp_nO`, `bsp_nC`, `bsp_charge`, `bsp_mass`, `bsp_is_excited_level`,
+`mion_elem`, `mion_stage` and `melem_A` from `species_table`, so H2 and H2+
+carry two H nuclei, H3+ three, HeH+ one H and one He, OH one H and one O, H2O
+two H and one O, CO one C and one O, each metal ion stage one nucleus of its
+element, and the He 2^3S column is skipped because it is a level of He I and
+not an independent species. Adding a carrier is adding a row to
+`species_table`; this module follows without being edited.
+
+`hydrogen_helium_nuclei_density` is left where it is. Its statement order is
+the floating-point add order the goldens were snapshotted with, and it is
+called from three places that must not disagree. The new routine is the metal
+counterpart it never had, and the two are held together by test E1, which
+requires the charge the census returns to equal `calc_ne` on the same state.
+
+### 149.2 Where it is asserted, and what the statement is at each site
+
+Off unless `EXHALE_ELEMENT_ASSERT` is `1` (report and continue) or `2` (report
+and stop), the convention `EXHALE_CARRIER_DEBUG` and `EXHALE_DIFFUSION_CHECK`
+already use. When off, nothing is allocated and nothing is computed.
+
+| site | statement |
+|---|---|
+| around `carrier_write_back` | absolute nucleus density of every element, per cell |
+| around `photochemical_transport_step` | the same: the write-back restores the entry element totals cell by cell, so the whole step is element-neutral |
+| around every `ioniz_eq` sweep, tagged marching / steady iterate / steady candidate | every ratio `n_El/n_H` |
+| around `relax_photochemical_composition` | absolute nucleus density of every element |
+| around the restart equilibration | every ratio `n_El/n_H` |
+| the accepted state of each steady outer pass, and immediately before each final `write_output` | against the reservoirs the run resolved |
+
+**Why the ratio and not the density across `ioniz_eq`.** `n_io` is
+`intent(inout)` and the sweep rewrites it from its own `calc_rho`, so every
+density it returns may move by one common mass-closure factor. That factor is
+reported separately -- and the distinction matters, because "every element off
+by the same amount" is a moved `n_H` denominator while "one or two elements
+off" is a repartition defect. The failure report prints the per-element worst
+departure for all twelve elements so the two read differently at a glance.
+
+**The tolerance is round-off, not abundance.** Default `1.0e-9`
+(`EXHALE_ELEMENT_ASSERT_TOL` overrides). These are exact bookkeeping
+identities: the operators rescale stage populations onto element totals, so the
+only error is floating point. Measured on `mol_carrier` at 300 steps, every
+operator closes at 3.5e-16 to 6.2e-16; the accumulated round-off of a finished
+marching state is `<= 1e-12`; the cell solver's own `xtol = sqrt(eps) = 1.5e-8`
+is the largest departure a converged cell solve can leave. `1e-9` sits between
+the two.
+
+On failure it prints the element, the cell, its radius, the before/after
+element and hydrogen totals, `rho*n0` and `rho(composition)` before and after,
+and every species carrying that element in that cell with its multiplicity.
+
+Cost, `mol_carrier` at 300 steps single-threaded: 11.96 s with the assertions
+off against 11.77 s with them on and fatal (898 checks). Within noise.
+
+### 149.3 Item 12.8 does not reproduce on the path it was reported on
+
+`TO_BE_DONE.md` item (T) records the first converged A2 wind failing its
+element budgets near `r = 1.003-1.006`, carbon by +90.6% and oxygen by +49.0%,
+with the carrier nuclei counted once inside the carriers and once inside the
+free-stage columns "somewhere in the JFNK/Picard state refresh".
+
+Run with the assertions on, the A2 oxygen configuration restarted into the
+steady solver -- 42 steady-iterate sweeps, 1230 probe sweeps, and, with the
+outer loop forced to take its carrier pass from an unconverged solve, 20 passes
+of `relax_photochemical_composition` -- **breaks no element budget**. Every
+sweep, every write-back, every transport step and the restart equilibration
+close inside `1e-9`, and the finished output closes H, He, C, N and O at
+`1.77e-10`.
+
+This is not the state item (T) was measured on: that state is a converged A2
+wind reached from a ~25000-step march plus a JFNK finish at `info = 0`, and it
+does not exist in the tree. So this is a *not reproduced on the same code
+path*, not a *fixed*. The likeliest reading is that the carrier rework of
+section 128 removed it: that section is dated after item (T) was opened, it is
+in the same two routines, and what it repaired was exactly two disagreeing
+definitions of the element budget the carriers are held against.
+
+What does survive: the steady/Picard path closes at `1.77e-10` where the
+marching path closes at `2.6e-13`, and the departure is the same number for all
+five elements -- the hydrogen denominator, not the elements. Three decades
+inside the gate; reported, not chased.
+
+### 149.4 A restart dump reported a molecular run as atomic, and under the wrong coupling
+
+Both found by the new restart round-trip fixture, both in the `EXHALE_DUMP_IC`
+diagnostic rather than in `load_IC`:
+
+* `write_output` takes the H2 / H2+ / H3+ / HeH+ / OH / H2O / CO columns from
+  `nmol_eq` and `nox_eq`, which only the equilibrium sweep fills. The dump hook
+  runs before the first sweep, so on `mol_base_handoff` all four molecular
+  columns came out **exactly zero** against the 5.34e12 cm^-3 of H2 the restart
+  file carried. `molecular_carrier_densities_from_state(rho, f_sp)` fills them
+  from the loaded composition first: a state a diagnostic writes has to be the
+  state it was given.
+* The rule that adopts the file's `# coupling:` state runs about 280 lines
+  after the dump hook, so the dump wrote `sec_ion=F sec_ion_step=-1` over a file
+  that stated `sec_ion=T sec_ion_step=40`. The same rule is now applied inside
+  the dump block.
+
+Neither touches a production path: both are inside the `EXHALE_DUMP_IC` block,
+which ends in `stop`.
+
+### 149.5 Tests
+
+`make element_census_tests` builds `element_census_tests.x`, on the
+`diffusion_tests.x` pattern: synthetic columns the driver sets itself, no
+`input.inp`, `stop 1` on failure. 20 tests, 20 passing.
+
+* E1 -- the census reproduces the species-table stoichiometry on a hand-computed
+  state, and its charge equals `calc_ne` on the same state.
+* E2 -- element closure through one carrier write-back: `0.0` for a generic
+  perturbation and `1.9e-16` for the configuration item 12.8 reports, a cell
+  whose transported CO collapses by 2.5 decades and hands its carbon back to
+  the free stages.
+* E3 -- the H2 photoevent ledger. Over 15-200 eV of the Chung et al. (1993)
+  branching, every final state the code applies carries two H nuclei and zero
+  net charge once its electron is counted. The two channels the branching does
+  **not** resolve are measured rather than assumed small and printed beside the
+  result: double ionization is inside `f_di` and is about 4.3% of the H2
+  ionizations above 80 eV with its co-product mis-assigned, and neutral
+  dissociation over 33-41 eV (up to 7% of `sigma_H2` at 37.5 eV) is handed to
+  the H2+ branch by `1 - f_di`, which creates one H2+ and one electron the event
+  does not make. Both are item 12.1's stated approximation; the gate for them
+  belongs with explicit per-channel cross sections.
+* E4 -- the chemical-equilibrium branch of the base H2 fraction (item 12.6): with
+  no handoff, `q_H2 = 0.838401` from the fit at `(p_base, T0)` and the ghost H2
+  nucleus fraction is `0.984428` at He/H = 0.0793; with a handoff, the handoff
+  value and an imposed base composition; and the fit exceeds the attainable
+  ceiling `0.5/(0.5 + He/H)` at He/H = 0.2, which `input_read` refuses.
+
+The restart round trip is a shell fixture rather than a Fortran test, because
+it needs two runs of the binary. `backup/regression/roundtrip` is rebuilt in
+place around it (item 12.4). The case that carried this name could not run at
+all -- `output/Hydro_ioniz_IC.txt` was zero bytes, there was no
+`Ion_species_IC.txt`, `Load IC? True` made it abort in `load_IC`, its logs were
+from the ATES era, and it was in no `DEFAULT_CASES` list -- because it had been
+built from a converged product that no longer exists.
+
+It now builds its own state, in two halves that need no coordination:
+
+* **stage A is an ordinary named case.** 40 deterministic steps of the
+  hot-Uranus molecular gate (`input.inp`, `base.inp`, `maxsteps`), so
+  `run_check.sh check roundtrip` bitwise-compares it exactly like a matrix
+  case. 40 steps is short enough to run in seconds and long enough that the
+  state is not the initial condition: the molecular network has solved and the
+  `# coupling:` line carries `sec_ion=T sec_ion_step=40` rather than its
+  default.
+* **stages B and C are `roundtrip/roundtrip_check.sh`,** run after that. It
+  hands the stage-A outputs back as the `_IC` pair, reloads with
+  `EXHALE_DUMP_IC=1`, and requires every species column -- matched BY LABEL, so
+  a schema change reports a missing column instead of a numeric mismatch --
+  together with `rho`, `v`, `p` and the `# coupling:` header to round-trip to
+  `1e-12`. It restores `input.inp` and the stage-A outputs on exit, so
+  `run_check.sh golden roundtrip` still snapshots the right state.
+
+The case stays OUT of `DEFAULT_CASES` and is described in the `run_check.sh`
+header, because its second half is not a bitwise comparison and needs its own
+invocation. `check_roundtrip_state.py` replaces `check_roundtrip.py`, which
+compared columns by POSITION and had this case as its only consumer; the
+retired contents are kept in `roundtrip/.superseded_20260903/` rather than
+deleted, since `backup/` is not in the git remote.
+
+Measured: the rebuilt case FAILS on a binary without 149.4 (all four molecular
+columns zero, and the coupling header written as `sec_ion=F sec_ion_step=-1`)
+and PASSES with it, so it guards exactly the two defects it found.
+
+### Verification
+
+- Byte-identical `output/Hydro_ioniz.txt` and `output/Ion_species.txt` against a
+  build of the unmodified tree on `mol_base_handoff`, `mol_carrier` and
+  `wasp_full`, 300 steps each single-threaded. The new module is inert unless
+  the environment variable is set; the two restart fixes are inside a block that
+  ends in `stop`.
+- `element_census_tests.x`: 20/20.
+- The rebuilt `backup/regression/roundtrip`: `run_check.sh check roundtrip`
+  byte-identical against its own golden, and `roundtrip_check.sh` passing every
+  species column, `rho`, `v`, `p` and the `# coupling:` header at `1e-12`,
+  leaving the case directory unchanged. The same case fails on a binary without
+  149.4.
+- The A2 steady/Picard runs of 149.3, with `EXHALE_ELEMENT_ASSERT=1`.
+
+## 150. E2: the Lyman-Werner geometry measured, and the one dayside factor a run is allowed to have (2026-09-03)
+
+**Judgement first, in two parts.** (i) The plane-parallel trapping inside the
+H2 self-shielding table is **physically wrong for a spherical layer, in a
+known direction and by a known amount: it over-traps.** Measured against a
+matched spherical calculation on the same line data, it over-predicts `p_eff`
+by 0.2 per cent at `r/H = 41` and by up to 20 per cent at `r/H = 16`,
+one-signed, 6.5 per cent weighted by the dissociation rate over a hot-Uranus
+molecular layer. It is **not** rebuilt, because two escape-probability methods
+in the *same* slab differ by 20-40 per cent and not with one sign, so the
+method is the leading term and the geometry is not. The headers now carry the
+number instead of the words "an open item of TO_BE_DONE.md", and the trapping
+carries the provenance name `slab_surrogate`. (ii) A separate defect found
+while measuring it: **a run could carry three dayside conventions at once.**
+`set_energy_vectors` halved `F_XUV` on an exact string match, `lya_rt` and
+`excited_hydrogen` halved the stellar Ly-alpha beam on a substring test, and
+`fuv_band_flux` halved none of the five FUV bands -- and the H2 dissociation
+rate did not even read that function, taking `F_LW_star` directly. Under
+`Rate/2 + Mdot/2`, the setting of the whole molecular matrix, the
+Lyman-Werner rate stood **a factor 2 above the run's own convention.** That is
+fixed: one definition, `global_parameters dayside_dilution()`, read by every
+stellar beam the code has.
+
+Full account, design and figures: `docs/e2_lw_geometry.md`,
+`docs/e2_lw_geometry_factors.png`, `docs/e2_lw_geometry_rays.png`.
+
+### 150.1 What the table's geometry is, read out of the code
+
+`sigma_pump` and `p_single` come from `lbl_table.absolute_curves` through
+`src/utils/h2_shielding_table_line_by_line.py`: a plane-parallel slab with one
+normally incident beam, `tau(nu,N) = N sum_i x_i sigma_i(nu)`, with `N` the
+column between the illuminated face and the point. `p_eff/p_single` is read
+node by node from the 27 CLOUDY decks, whose geometry is plane-parallel and
+illuminated on one face. The column the code hands the table,
+`calc_column_dens_one(nH2, NH2col)`, is **purely radial** -- accumulated from
+the outermost cell inward, no stellar zenith angle anywhere in the path.
+
+**That last identification is exact, not an approximation.** For a parallel
+beam the substellar ray column *is* the radial column, in a sphere as in a
+slab. The slab table is therefore right for the substellar ray, and the
+geometry question is only about (a) the fluorescent trapping and (b) which
+ray a 1-D shell should carry.
+
+### 150.2 The matched calculation
+
+Slab and sphere are evaluated from one kernel built on the Abgrall, Roueff &
+Drira (2000) line list, LTE populations and the Voigt profiles that generated
+the installed table -- `lbl.py` is imported directly, so no molecular datum
+can differ. An escape probability averaged over directions is linear in the
+transmission, so with
+
+```text
+sum_l A_ul <P_ul>_Omega = sum_k w_k Aesc[u, N_k]
+```
+
+the two geometries differ **only** in the set of ray columns `{N_k, w_k}`.
+`P_ul` is a single-flight escape probability under complete redistribution
+against the full overlapping-line opacity.
+
+Slab limit: `sigma_pump` and `p_single` reproduce
+`lbl_table.absolute_curves` to **seven significant digits**, and the installed
+Fortran table's `p_single` to 0.1-0.5 per cent from `1e16` to `2e21` at
+700-2700 K. Resolution: angle 8 to 96 Gauss-Legendre points, `< 1e-4`; path
+sampling 500 to 16000, `< 3e-5`; frequency window 2000 to 20000 Doppler
+widths, `< 2e-5`; frequency grid 4e5 to 8e5 points, `< 1e-5`.
+
+### 150.3 The numbers
+
+| `r/R_p` | `N(H2)` | `p_eff` slab | sphere | `f_trap` | `f_curv` | `f_shell` |
+|---|---|---|---|---|---|---|
+| 1.0002 | 3.90e20 | 0.2092 | 0.2088 | 0.998 | 1.058 | 0.204 |
+| 1.0544 | 8.29e18 | 0.2540 | 0.2321 | 0.914 | 0.993 | 0.295 |
+| 1.0710 | 1.21e18 | 0.2453 | 0.2210 | 0.901 | 0.992 | 0.320 |
+| 1.1288 | 3.38e15 | 0.3016 | 0.2648 | 0.878 | 0.994 | 0.261 |
+| 1.3629 | 9.91e12 | 0.2163 | 0.1728 | 0.799 | 1.201 | 0.589 |
+
+H2-column weighted / dissociation-rate weighted over the layer: `f_trap`
+0.968 / 0.935, `f_curv` 1.034 / 1.013, `f_shell` 0.229 / 0.261.
+
+The mechanism: escape is dominated by the near-radial directions, where the
+two geometries have the **same** column -- which is why the effect is small --
+and the difference is the near-tangential rays, which a sphere caps at
+`sqrt(pi r / 2H) = 8-12` times the radial column where a slab lets them
+diverge, plus the lit sliver past the terminator. The controlling parameter is
+`r/H`, not the column, which is why the effect vanishes at the base (`r/H =
+41`, the escape hemisphere closes exactly at `mu = 0`) and is largest at the
+top of the layer (`r/H = 16`) where H2 is already negligible.
+
+`f_shell = 0.20-0.33` is **not** a slab error. It is the ratio of the shell
+average a 1-D spherically symmetric H2 budget needs to the substellar value
+the code evaluates. Its optically thin limit is 1/2, because the night side is
+dark; it falls below that because the slant columns away from the substellar
+point shield.
+
+### 150.4 One dayside factor
+
+`global_parameters` gains `dayside_dilution()`. `set_energy_vectors`,
+`lya_rt`, `excited_hydrogen` and `fuv_band_flux` all read it, and
+`lyman_werner_dissociation_rate` is called with `fuv_band_flux(ib_LW)`
+instead of `F_LW_star`, so the band has one owner again. The keys keep their
+meaning -- the flux **at the planet's orbit**, whether stated or integrated
+from the spectrum file -- and the dilution is applied where the beam is used,
+so the setup report and the resolved dump still state the number the run was
+given. The setup report gains one line naming the factor, and
+`output/Lyman_Werner.txt` a header line giving the beam that actually drove
+`k_LW`.
+
+Two stale statements found in the same files and corrected: `write_output`
+described the `f_shield` column as "the Richings, Schaye & Oppenheimer (2014)
+temperature-dependent fit", which section 122 replaced by the level-resolved
+table; and the generator's docstring used a forbidden naming form.
+
+### 150.5 What moved
+
+**Nothing that does not carry an FUV band flux.** `wasp_full` (He 2^3S,
+metals, `Stellar Lya flux: 1.0e5`, `Rate/2 + Mdot/2`, 400 steps) and
+`mol_base_handoff` (the molecular gate with no FUV band flux, 12000 steps) are
+**byte-identical** in every output file, `Excited_H.txt` and the `_adv`
+profiles included. The XUV refactor, the two `xi` call sites and the new
+Ly-alpha B2 dilution therefore cost nothing: `fuv_band_flux` reaches the
+solution only through the oxygen photolysis, which those runs do not have, and
+`F_XUV = xi_day*...` reproduces the old literals exactly. The only change in
+those runs is one line of the setup report.
+
+**`mol_lyman_werner`** is the one matrix case that moves, and it moves by more
+than the factor 2 on the rate suggests, because the H2 front is where the rate
+and the chemistry balance:
+
+| quantity | before | after | ratio |
+|---|---|---|---|
+| H2 front, `x(H2) = 0.1` | 1.04763 R_p | 1.05546 R_p | 1.0075 |
+| H2 front, `x(H2) = 1e-3` | 1.07299 R_p | 1.08122 R_p | 1.0077 |
+| `N(H2)` through the layer | 2.857e20 | 3.241e20 | 1.134 |
+| `x(H2)` at the base | 0.4715 | 0.4808 | 1.020 |
+| `T` at the base | 1124.5 K | 1134.4 K | 1.009 |
+| `Mdot` at 2 R_p | 8.252e10 g/s | 7.917e10 g/s | 0.959 |
+| `log10 Mdot` (run report) | 10.47 | 10.44 | -0.03 dex |
+
+`x(H2)` rises by 1.02 at the base, 1.41 at `r = 1.039` and **4.28 at
+`r = 1.081`**, right through the front, and falls back to 1.04-1.38 in the
+wind above it. Halving the beam moves the front out by 0.8 per cent of `R_p`
+and puts 13 per cent more H2 under it, and the extra molecular cooling and
+mass in the layer takes 4 per cent off the mass-loss rate.
+
+**The SED-derived branch moves the same way** and by much less, for a reason
+that is about the star and not about the code. A hot-Uranus gate rerun with
+`Spectrum type: Load from file..` and the LHS 1140 SED (no `Stellar LW flux`
+key) integrates `F_LW = 0.598 erg cm^-2 s^-1` out of the spectrum -- 570 times
+weaker than the 343 of the regression case -- so Lyman-Werner is a minor H2
+sink there: after 3000 steps the front moves by 0.04 per cent and `N(H2)` by
+0.18 per cent. What the case establishes is that the stated key and the
+integrated value take the **same** path: `input_read` assigns the SED value to
+`F_LW_star` and the dilution is applied downstream in `fuv_band_flux`, so
+neither can drift from the other. **The matrix has no case that exercises this
+branch**; the one above is a scratch construction.
+
+**The gate rung's converged state is not re-established here.**
+`mol_lyman_werner` is a fixed-step relaxation snapshot (`maxsteps 12000`), and
+uncapped runs of it from both binaries are still marching toward the JFNK
+hand-off at `du < 1e-2`: the baseline is at `du = 0.090` after 30171 steps and
+the patched run at `du = 0.199` after 15830, both falling at about `8.5e-6` per
+step. On that trend the hand-off is thousands of steps away for the baseline
+and tens of thousands for the patched run. **The front and `Mdot` above are
+therefore snapshot values at a common step count, not converged ones**, and a
+quantitative `Mdot` for this case still needs the Newton finish.
+
+### 150.6 Not done, deliberately
+
+The trapping cube is not rebuilt in spherical geometry (150.0). No `r/H` axis
+is added: over the H2-bearing layer it would span 0.90-1.00. The shell average
+is available as a **default-off** closure and is not the default, because it
+is calibrated on one planet and changes the meaning of a converged solution.
+
+### 150.7 The golden refresh
+
+Measured on the eleven-case matrix with the change in: **ten cases
+byte-identical, `mol_lyman_werner` alone moved**, which is the case list the
+grep of section 150.5 predicts, since it is the only one carrying an FUV band
+flux. Re-measured against the golden it replaces: `rho` 7.3 per cent and `T`
+4.5 per cent at their worst cells, `p` 10.8 per cent, `log10 Mdot`
+10.47 -> 10.44. The two large relative changes in velocity are both at
+velocity zeros and are not what they look like: at `r = 1.0093` the old value
+is 63.9 cm/s, which is 5.7e-5 of the domain maximum and the 46th smallest of
+500 cells, and the change of 851 cm/s is 7.6e-4 of the wind speed; the other,
+at `r = 1.200`, sits on the flux-gate window edge. Away from those, the wind
+above 1.5 R_p moves by 7 per cent in `rho`, 11 per cent in `v` and 4 per cent
+in `T`, all of it at `r ~ 2.8`.
+
+These are positions along a transient, not converged physics: the case is a
+fixed-step snapshot, so what the numbers establish is the sign and the reach
+of the change, not its value at a steady state. The previous eleven goldens
+are preserved as `backup/regression/golden_blockI_20260904/`.
+
+## 151. H2 photoabsorption is a sum of four mutually exclusive channels, and the cross section they share is the measurement rather than a fit that does not meet itself (E1, E1b) (2026-09-03)
+
+**Judgment first. The code carried one H2 photoabsorption cross section and
+split it with one branching fraction, and three different reactions were inside
+that split. Written as four mutually exclusive channels with one stoichiometric
+table, the H2 destruction rate is unchanged -- it always was right, because
+absorption destroys the molecule whatever it leaves behind -- and the FRAGMENTS
+change: above 51.4 eV a double ionization makes two protons, two electrons and
+no H atom where the code made one proton, one electron and one H atom, and over
+33-41 eV up to 7.4 percent of the absorptions make two neutral H atoms and no
+ion at all where the code made an H2+ and an electron. Both new channels
+default ON, because both reactions are measured and the code was making
+fragments that the events do not make. The channel split leaves the opacity
+untouched by construction -- the four cross sections sum to `sigma_H2` to
+4.4e-16, machine precision, at every energy and under every model.
+
+**E1b is the second half and it is the larger one. `sigma_H2` itself did not
+meet itself**: the three-piece Yan fit steps by a factor 1.719 at 18 eV and
+0.619 at 85 eV, a 72 per cent discontinuity in an opacity that the JFNK
+residual differentiates. It is now a MEASUREMENT everywhere the wind absorbs --
+Backx, Wight & Van der Wiel (1976) Table 1 over 15.4-18 eV and Samson & Haddad
+(1994) Table 1 over 18-300 eV -- and no piece of the analytic fit survives
+below 300 eV. The worst of it was at the ionization threshold, where the fit
+fell to 0.17 against a measured 14.2, a factor 85. Three independent
+experiments now bound the cross section: they agree to a few per cent below
+30 eV and diverge by 10 to 20 per cent above it, which is the real uncertainty
+and is wider than any one paper quotes.
+**The molecular goldens move and the atomic ones do not.**
+
+### 151.1 What was wrong
+
+`sigma_H2` (Yan, Sadeghpour & Dalgarno 1998, Eqs. 17-19) is one number per
+photon energy, and `set_energy_vectors` split it in two:
+
+```
+s_h2_di = sigma_H2(E) * frac_H2_dissociative_ionization(E)   ! H + H+ + e-
+s_h2    - s_h2_di                                            ! H2+ + e-
+```
+
+with `frac_H2_dissociative_ionization` the Chung, Lee, Masuoka & Samson (1993)
+Table II ratio. Three reactions were folded into those two branches.
+
+* **Double ionization**, `H2 + hv -> H+ + H+ + 2e-`, threshold 51.4 eV. Chung
+  et al.'s eqs. (3)-(4) state it: "The branching ratio H+/(H++Ht) is understood
+  to include both single and double ionization where appropriate", and their
+  Fig. 4 discussion: "by 80 eV about 20% of a(H+) comes from double ionization.
+  This percentage remains fairly constant towards higher energies." Their
+  `sigma(H+)` is a PROTON count and a double event yields two, so the single
+  dissociative branch was standing in for two reactions. Catalog item 12.2,
+  `TO_BE_DONE.md` (P31b).
+* **Neutral dissociation**, `H2 + hv -> H + H`, over 33-41 eV. `sigma_H2` there
+  follows Samson & Haddad's ABSORPTION cross section, whose photoionization
+  yield drops to 0.926 at 37.5 eV, so the `1 - f_di` branch handed the neutral
+  share to H2+. Catalog item 12.3, (P31c).
+* **The extrapolation above 124 eV**, where Chung et al.'s table stops and
+  `f_di` was held flat. Catalog item 12.1, (P31a). This one is not closed here;
+  it is now NAMED instead of silent (section 151.5).
+
+### 151.2 The four channels
+
+`src/modules/functions/h2_photo_channels.f90`. One routine returns all four
+cross sections at a photon energy, and one table gives what each event does to
+the species counts. Nothing downstream writes those numbers out by hand.
+
+| | channel | threshold | H2 | H2+ | H | H+ | e- |
+|---|---|---:|---:|---:|---:|---:|---:|
+| M | `H2 + hv -> H2+ + e-` | 15.4 eV | -1 | +1 | 0 | 0 | +1 |
+| S | `H2 + hv -> H + H+ + e-` | 18.076 eV | -1 | 0 | +1 | +1 | +1 |
+| D | `H2 + hv -> H+ + H+ + 2e-` | 51.4 eV | -1 | 0 | 0 | +2 | +2 |
+| N | `H2 + hv -> H + H` | 33 eV (window) | -1 | 0 | +2 | 0 | 0 |
+
+Every row conserves H nuclei (`2 dH2 + 2 dH2+ + dH + dH+ = 0`) and charge
+(`dH2+ + dH+ - de = 0`); that is the ledger test of review item A3, and it is
+checked for all four channels in `src/tests/e1_h2/`.
+
+**How the split is built.** With `f_n(E)` the neutral share and `r_pm(E)` the
+Chung Table II proton-to-H2+ ratio, and `d(E)` the share of the released
+protons that comes from the double channel,
+
+```
+sigma_N   = f_n sigma_H2
+sigma_ion = (1 - f_n) sigma_H2
+sigma_M   = sigma_ion / [1 + r_pm (1 - d/2)]
+P         = r_pm sigma_M            (the proton count)
+sigma_S   = (1 - d) P
+sigma_D   = d P / 2
+```
+
+With `d = 0` and `f_n = 0` this collapses to `sigma_S = f_di sigma_H2` and
+`sigma_M = (1 - f_di) sigma_H2`, the previous arithmetic exactly, which is why
+the default build does not move.
+
+**A note on Chung et al.'s own normalization, because it does not close.**
+Their Eqs. (3)-(5) set `sigma(H+) + sigma(H2+) = sigma_i = Y sigma(abs)`, which
+equates `(N_s + 2 N_d) + N_m` to an event count `N_m + N_s + N_d` and so
+over-counts by `N_d`. This module does not adopt that identification: it takes
+their RATIO column as the measurement and imposes the event count separately.
+That is the only way four mutually exclusive channels can sum to the
+absorption.
+
+**Cross-check against the size bound `TO_BE_DONE.md` (P31b) predicted.** That
+entry worked out, for `N_d/N_i = 0.0225` above 80 eV, that the old arithmetic
+was low by 2.2 percent in protons, H2+ and free electrons and high by 22 percent
+in H atoms. Measured on the new construction at 500 eV with the `chung80`
+model: protons +2.1 percent, H2+ +2.1 percent, H atoms -18.3 percent. Same
+signs, same size.
+
+### 151.3 The channel cross sections
+
+`sigma_H2` and the four channels, in units of 1e-18 cm^2. The last column is
+the construction's own closure: the four channels sum to the total absorption
+cross section at machine precision, so no consumer of the opacity changes.
+
+**Both channels off** (`H2 double ionization: off`)
+| E [eV] | sigma_H2 | M: H2+ +e | S: H+H+ +e | D: H+ +H+ +2e | N: H+H | sum/sigma-1 |
+|---:|---:|---:|---:|---:|---:|---:|
+|    16.0 |  1.311E+01 |  1.311E+01 |  0.000E+00 |  0.000E+00 |  0.000E+00 |   0.0E+00 |
+|    18.0 |  9.850E+00 |  9.850E+00 |  0.000E+00 |  0.000E+00 |  0.000E+00 |   0.0E+00 |
+|    18.5 |  9.239E+00 |  9.134E+00 |  1.047E-01 |  0.000E+00 |  0.000E+00 |   0.0E+00 |
+|    20.0 |  7.650E+00 |  7.500E+00 |  1.500E-01 |  0.000E+00 |  0.000E+00 |   2.2E-16 |
+|    25.0 |  4.310E+00 |  4.208E+00 |  1.019E-01 |  0.000E+00 |  0.000E+00 |   0.0E+00 |
+|    30.0 |  2.710E+00 |  2.579E+00 |  1.309E-01 |  0.000E+00 |  0.000E+00 |   0.0E+00 |
+|    34.0 |  1.740E+00 |  1.533E+00 |  1.693E-01 |  0.000E+00 |  3.800E-02 |   0.0E+00 |
+|    37.5 |  1.228E+00 |  1.034E+00 |  1.034E-01 |  0.000E+00 |  9.086E-02 |   0.0E+00 |
+|    41.0 |  9.110E-01 |  7.988E-01 |  1.052E-01 |  0.000E+00 |  7.008E-03 |   0.0E+00 |
+|    50.0 |  4.770E-01 |  4.037E-01 |  7.334E-02 |  0.000E+00 |  0.000E+00 |   0.0E+00 |
+|    60.0 |  2.620E-01 |  2.101E-01 |  5.192E-02 |  0.000E+00 |  0.000E+00 |   0.0E+00 |
+|    80.0 |  9.800E-02 |  7.640E-02 |  2.160E-02 |  0.000E+00 |  0.000E+00 |   2.2E-16 |
+|   100.0 |  4.790E-02 |  3.770E-02 |  1.020E-02 |  0.000E+00 |  0.000E+00 |   0.0E+00 |
+|   124.0 |  2.442E-02 |  1.942E-02 |  5.000E-03 |  0.000E+00 |  0.000E+00 |   0.0E+00 |
+|   200.0 |  5.450E-03 |  4.334E-03 |  1.116E-03 |  0.000E+00 |  0.000E+00 |   0.0E+00 |
+|   500.0 |  2.958E-04 |  2.352E-04 |  6.057E-05 |  0.000E+00 |  0.000E+00 |   0.0E+00 |
+
+**Default: chung80** (`H2 double ionization: chung80`)
+| E [eV] | sigma_H2 | M: H2+ +e | S: H+H+ +e | D: H+ +H+ +2e | N: H+H | sum/sigma-1 |
+|---:|---:|---:|---:|---:|---:|---:|
+|    16.0 |  1.311E+01 |  1.311E+01 |  0.000E+00 |  0.000E+00 |  0.000E+00 |   0.0E+00 |
+|    18.0 |  9.850E+00 |  9.850E+00 |  0.000E+00 |  0.000E+00 |  0.000E+00 |   0.0E+00 |
+|    18.5 |  9.239E+00 |  9.134E+00 |  1.047E-01 |  0.000E+00 |  0.000E+00 |   0.0E+00 |
+|    20.0 |  7.650E+00 |  7.500E+00 |  1.500E-01 |  0.000E+00 |  0.000E+00 |   2.2E-16 |
+|    25.0 |  4.310E+00 |  4.208E+00 |  1.019E-01 |  0.000E+00 |  0.000E+00 |   0.0E+00 |
+|    30.0 |  2.710E+00 |  2.579E+00 |  1.309E-01 |  0.000E+00 |  0.000E+00 |   0.0E+00 |
+|    34.0 |  1.740E+00 |  1.533E+00 |  1.693E-01 |  0.000E+00 |  3.800E-02 |   0.0E+00 |
+|    37.5 |  1.228E+00 |  1.034E+00 |  1.034E-01 |  0.000E+00 |  9.086E-02 |   0.0E+00 |
+|    41.0 |  9.110E-01 |  7.988E-01 |  1.052E-01 |  0.000E+00 |  7.008E-03 |   0.0E+00 |
+|    50.0 |  4.770E-01 |  4.037E-01 |  7.334E-02 |  0.000E+00 |  0.000E+00 |   0.0E+00 |
+|    60.0 |  2.620E-01 |  2.113E-01 |  4.909E-02 |  1.571E-03 |  0.000E+00 |   2.2E-16 |
+|    80.0 |  9.800E-02 |  7.812E-02 |  1.767E-02 |  2.209E-03 |  0.000E+00 |   2.2E-16 |
+|   100.0 |  4.790E-02 |  3.852E-02 |  8.337E-03 |  1.042E-03 |  0.000E+00 |  -1.1E-16 |
+|   124.0 |  2.442E-02 |  1.982E-02 |  4.083E-03 |  5.104E-04 |  0.000E+00 |   0.0E+00 |
+|   200.0 |  5.450E-03 |  4.425E-03 |  9.115E-04 |  1.139E-04 |  0.000E+00 |   0.0E+00 |
+|   500.0 |  2.958E-04 |  2.402E-04 |  4.947E-05 |  6.184E-06 |  0.000E+00 |   0.0E+00 |
+
+**Alternative: yan_rho** (`H2 double ionization: yan_rho`)
+| E [eV] | sigma_H2 | M: H2+ +e | S: H+H+ +e | D: H+ +H+ +2e | N: H+H | sum/sigma-1 |
+|---:|---:|---:|---:|---:|---:|---:|
+|    16.0 |  1.311E+01 |  1.311E+01 |  0.000E+00 |  0.000E+00 |  0.000E+00 |   0.0E+00 |
+|    18.0 |  9.850E+00 |  9.850E+00 |  0.000E+00 |  0.000E+00 |  0.000E+00 |   0.0E+00 |
+|    18.5 |  9.239E+00 |  9.134E+00 |  1.047E-01 |  0.000E+00 |  0.000E+00 |   0.0E+00 |
+|    20.0 |  7.650E+00 |  7.500E+00 |  1.500E-01 |  0.000E+00 |  0.000E+00 |   2.2E-16 |
+|    25.0 |  4.310E+00 |  4.208E+00 |  1.019E-01 |  0.000E+00 |  0.000E+00 |   0.0E+00 |
+|    30.0 |  2.710E+00 |  2.579E+00 |  1.309E-01 |  0.000E+00 |  0.000E+00 |   0.0E+00 |
+|    34.0 |  1.740E+00 |  1.533E+00 |  1.693E-01 |  0.000E+00 |  3.800E-02 |   0.0E+00 |
+|    37.5 |  1.228E+00 |  1.034E+00 |  1.034E-01 |  0.000E+00 |  9.086E-02 |   0.0E+00 |
+|    41.0 |  9.110E-01 |  7.988E-01 |  1.052E-01 |  0.000E+00 |  7.008E-03 |   0.0E+00 |
+|    50.0 |  4.770E-01 |  4.037E-01 |  7.334E-02 |  0.000E+00 |  0.000E+00 |   0.0E+00 |
+|    60.0 |  2.620E-01 |  2.112E-01 |  4.930E-02 |  1.453E-03 |  0.000E+00 |   0.0E+00 |
+|    80.0 |  9.800E-02 |  7.779E-02 |  1.842E-02 |  1.784E-03 |  0.000E+00 |   0.0E+00 |
+|   100.0 |  4.790E-02 |  3.885E-02 |  7.585E-03 |  1.463E-03 |  0.000E+00 |   2.2E-16 |
+|   124.0 |  2.442E-02 |  2.011E-02 |  3.442E-03 |  8.679E-04 |  0.000E+00 |   0.0E+00 |
+|   200.0 |  5.450E-03 |  4.463E-03 |  8.250E-04 |  1.621E-04 |  0.000E+00 |   0.0E+00 |
+|   500.0 |  2.958E-04 |  2.404E-04 |  4.889E-05 |  6.509E-06 |  0.000E+00 |   2.2E-16 |
+
+
+### 151.4 Against the Phase A photoevent ledger
+
+Item A3 of the review asks for "an H2 photoevent ledger, requiring conservation
+of H nuclei and charge for every final-state channel". Phase A implements it as
+test E3 on the TWO-way branching, and its own comment defers the gate here:
+"These are REPORTED, not gated: they are the known approximation of item 12.1,
+and the gate belongs with the explicit-channel cross sections of phase E1, not
+here." So the two tests are a pair, not a duplicate -- E3 sizes the two
+unresolved channels on the old branching, and `src/tests/e1_h2/` gates them once
+they are resolved. The invariants are E3's; this section does not restate them.
+
+E3 prints two numbers. Both are reproduced by the channel construction, and one
+of them needs its weighting said out loud.
+
+| | Phase A E3 | E1 channels | note |
+|---|---:|---:|---|
+| double ionization at 100 eV | 0.04259 | 0.02176 | E3's is PROTON-weighted, `0.20 f_di`; E1's is the EVENT share |
+| the same, as an event share | 0.02129 | 0.02176 | `0.10 f_di` against `sigma_D/sigma_H2`; +2.2 percent |
+| double ionization, proton share | 0.20 (stated) | **0.20000** | E1 reproduces Chung's 20 percent exactly |
+| neutral dissociation at 37.5 eV | "up to 7%" | 0.07398 | `sigma_N/sigma_H2` |
+
+**The factor 2 between the first two rows is the defect itself, not a
+disagreement.** Chung et al.'s 20 percent is a share of `sigma(H+)`, which
+counts PROTONS, and a double event yields two of them; the share of the EVENTS
+is therefore half of it. E3 prints the proton-weighted figure because that is
+the form the source states; E1 has to carry the event form because its four
+channels are mutually exclusive events. The residual +2.2 percent between
+0.02129 and 0.02176 is the renormalization of the H2+ channel that appears once
+the event count is imposed separately from Chung et al.'s own closure
+(section 151.2), and it is the same 2.2 percent `TO_BE_DONE.md` (P31b)
+predicted for H2+.
+
+Under `yan_rho` instead, the double channel is 0.03055 of the events at 100 eV
+and 0.278 of the protons -- against 0.02176 and 0.200 under `chung80`. That
+factor 1.4 is the model spread of section 151.6.
+
+### 151.5 What each channel is charged, and where its electrons go
+
+The rows are only half of a channel; the other half is the energy. Each of the
+four is charged its own threshold and partitioned according to whether it makes
+a photoelectron.
+
+| channel | charged | photoelectron? | secondary ionization |
+|---|---|---|---|
+| M | 15.4 eV | yes, one | yes, `iabs_H2` partition |
+| S | 18.076 eV | yes, one | yes, `iabs_H2_di` partition |
+| D | 51.4 eV | yes, **two** sharing the excess | yes, `iabs_H2_di` partition (see below) |
+| N | `D0(H2)` = 4.478 eV | **no** | none |
+
+* **N carries no `fhv` factor and no secondary term.** It is not an ionization.
+  The bond energy is spent breaking the molecule and the whole remainder of the
+  photon becomes kinetic energy of two H atoms, i.e. heat. This makes the
+  33-41 eV band heat MORE than it did before, because that share used to be
+  charged the 15.4 eV ionization potential and then reduced by `fhv`.
+* **D is partitioned like the other two ionizing channels, and it must be.**
+  The channel exists only above 51.4 eV, which is where the
+  secondary-ionization share is largest; charging its excess whole as local
+  heat would overstate the heating and lose the ionizations its fast electrons
+  make. `D0(H2)` is taken from `mol_rates`, not redefined here.
+
+**The approximation in D, stated with its range.** `photoelectron_shares` is
+indexed by absorber and returns the partition of ONE electron carrying the
+whole excess; D makes TWO that share it. The dissociative absorber's shares are
+used at that photon energy -- the closest tabulated one, same molecular target,
+adjacent threshold. Because the partition varies slowly with electron energy
+above `E_sec_ion` = 30 eV, the error is second order in the difference between
+the mean electron energy and the full excess. **It is not zero**, and it biases
+toward too little heating and too much ionization, since a slower electron
+heats more. Removing it needs a partition evaluated at `(E - 51.4)/2`, which
+needs its own absorber row in `electron_energy_degradation`. That is not done
+here.
+
+### 151.6 The double-ionization branching is a MODEL, and it is named as one
+
+Nothing in the code's sources measures `d(E)`. Two published statements bracket
+it and they disagree, so both are implemented and neither is the default.
+
+* `chung80` -- Chung et al. (1993), discussion of their Fig. 4: 20 percent of
+  `sigma(H+)` above 80 eV, ramped from zero at the 51.4 eV threshold, held
+  above 80 eV. The ramp is NOT in the source; "small" near threshold is all it
+  says.
+* `yan_rho` -- Yan et al. (1998) section 4: "At 110 eV, the measured ratio of
+  double to single ionization is 0.038. The asymptotic ratio is predicted to be
+  0.0225 (Sadeghpour & Dalgarno 1993)." The ratio is ramped from zero at
+  51.4 eV to 0.038 at 110 eV and relaxed to 0.0225 by 300 eV, then inverted to
+  `d` at that energy's measured `r_pm`. Both the ramp and the relaxation are
+  interpolations between two published numbers.
+
+**They differ by a factor 1.6 at 110 eV** (`chung80` gives a double-to-single
+ratio of 0.023 there, `yan_rho` 0.038). That is the uncertainty, and running
+both is how it gets reported. The review's requirement was to "either obtain a
+defensible model or expose the constant branching as an uncertainty option; do
+not silently present it as measured"; this is the second of those.
+
+**Above 124 eV** the ratio `r_pm` is still held at its 124 eV value, 0.2048,
+because Chung et al. stop there. That extrapolation is unchanged by this work
+and remains catalog item 12.1 (P31a). What has changed is that it is now one
+named input to a documented construction instead of a property of an
+undifferentiated branching fraction.
+
+
+### 151.7 What the channels are worth, measured with both switches
+
+Both channels default ON, so the A/B is run by switching each OFF.
+`mol_base_handoff` at its pinned 12,000 steps, `OMP_NUM_THREADS=1`, on the
+final `sigma_H2`. **All five configurations print `log10 Mdot = 10.43`**, so
+the table is the profile. Maximum relative difference against the default over
+the physical cells:
+
+| switched off | rho | v | T | heat | H2 | H2+ | H+ | HI |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| double ionization off | 2.2e-4 | 1.0e-3 | 1.1e-4 | 7.1e-4 | 3.0e-3 | **2.0e-2** | 2.7e-3 | 1.6e-3 |
+| neutral dissociation off | 3.5e-5 | 2.5e-5 | 2.7e-5 | 4.0e-5 | 8.3e-4 | 2.2e-4 | 6.5e-6 | 2.7e-5 |
+| both off (the pre-E1 split) | 2.2e-4 | 1.0e-3 | 8.7e-5 | 7.1e-4 | 3.3e-3 | **2.0e-2** | 2.7e-3 | 1.6e-3 |
+| `yan_rho` instead of `chung80` | 8.3e-5 | 1.6e-4 | 4.8e-5 | 3.2e-4 | 2.2e-3 | 8.2e-3 | 7.8e-4 | 3.1e-4 |
+
+**The double channel carries the effect and it lands on H2+.** Turning it off
+moves `n(H2+)` by 2.0e-2 at the base, and turning the neutral channel off as
+well adds nothing to that (3.3e-3 against 3.0e-3 in `n(H2)` is the only visible
+change). The sign is the one the construction requires: resolving the double
+channel makes the H2+ share LARGER, because the event count is imposed
+separately from Chung et al.'s own closure (section 151.2), and it is the same
+2.2 per cent `TO_BE_DONE.md` (P31b) predicted.
+
+| | r = 1.00 | 1.02 | 1.05 | 1.10 | 1.20 |
+|---|---:|---:|---:|---:|---:|
+| `n(H2+)`, both off vs default | -1.95e-2 | -1.57e-2 | -1.39e-2 | -8.0e-4 | +5.6e-5 |
+| `n(H+)` | -2.44e-3 | -2.57e-3 | -2.32e-3 | +7.2e-6 | +5.2e-6 |
+| `n(HI)` | -1.56e-3 | -1.44e-3 | -8.6e-4 | -8.1e-5 | -4.4e-5 |
+
+**The proton source moves by 0.26 per cent**, against the "at most 0.5 per cent"
+bound `TO_BE_DONE.md` (P31b) derived for the shielded molecular base. The bound
+holds and the measurement is inside it.
+
+**The neutral channel is small here and that is a property of this atmosphere,
+not of the channel.** It lives only over 33-41 eV, and in the shielded base that
+band carries little flux; its largest effect is 8.3e-4 in `n(H2)`. It would
+matter more where the 33-41 eV band is not shielded.
+
+**The model choice is worth 41 per cent of the double channel's own effect.**
+`yan_rho` against `chung80` moves `n(H2+)` by 8.2e-3 where switching the channel
+off entirely moves it by 2.0e-2. That is the uncertainty of section 151.6,
+measured on a run rather than on a cross section.
+
+**Everything is below 1.10 `r_base`**: `T` moves by under 1.1e-4, `v` by under
+1.0e-3, and `log10 Mdot` not at all to the printed digit.
+### 151.8 Range of validity, stated at the code site
+
+* `f_n` is measured over 33-41 eV only, twelve rows of Chung et al. Table 1,
+  whose yields come from Backx, Wight & van der Wiel. It is set to zero outside
+  that window. **That zero is the source's assumption, not a measurement**:
+  "No yield measurements were made above 28 eV because it was assumed that the
+  ionization yield would be unity at higher energies."
+* A zero anchor is carried at 32.0 and 41.5 eV so `f_n` is continuous. Those
+  two points are continuity anchors resting on the source's own sentence that
+  the Backx et al. yields "drop from 100% to 92%" between 32 and 41 eV; they
+  are not measurements. Without them `f_n` would step from 0 to 0.0078 at 33 eV,
+  and a discontinuous cross section is differentiated by the JFNK residual.
+* `r_pm`, the proton-to-H2+ ratio, is measured over 18.076-124 eV (Chung
+  et al. Table II) and held flat above. That extrapolation is item 12.1 (P31a)
+  and is unchanged by this work. It IS independently confirmed over 20-30 eV by
+  Backx et al.'s own H2+ column, to 0.1-0.5 per cent (section 151.10).
+* `d`, the double-ionization share of the protons, is a MODEL. Default
+  `chung80`; the two implementations disagree by a factor 1.6 at 110 eV
+  (section 151.6) and by 41 per cent of the channel's own effect on a run
+  (section 151.7).
+* `sigma_H2` is a measurement over 15.4-300 eV and a rescaled sum-rule tail
+  above it (section 151.10). Its real uncertainty is the spread between three
+  experiments: a few per cent below 30 eV, 10 to 20 per cent above.
+* The uncertainty Chung et al. quote on their own data: "An estimate of the
+  total uncertainty in the data is about +/-4%-5%."
+
+### 151.9 A separate defect this work measured, and then fixed (E1b)
+
+Building the continuity test exposed something that is not E1 and is larger
+than E1: **`sigma_H2` itself is discontinuous at two of the three joins of the
+published piecewise fit.**
+
+| join | below | above | ratio |
+|---|---:|---:|---:|
+| 18 eV (Eq. 17 / Eq. 18) | 5.693 | 9.787 | **1.719** |
+| 85 eV (Eq. 18 / Eq. 19) | 0.1281 | 0.0793 | **0.619** |
+
+Both formulas were re-derived by hand from the coefficients in
+`references/Yan_1998_ApJ_496_1044.pdf` and both are transcribed correctly, so
+this is a property of the published fit as published, not a transcription
+error. Against Chung et al.'s Table II absorption column, Eq. 18 is right at
+its lower end (9.665 against their 9.75 at 18.1 eV, 7.659 against 7.65 at
+20 eV) and drifts high toward its upper end, while Eq. 19 is right at 85 eV
+(0.0793 against their 0.08). So the 72 percent step at 18 eV is Eq. 17
+undershooting, and the 38 percent step at 85 eV is Eq. 18 overshooting.
+
+It changes the H2 opacity directly and moves every molecular result, so it was
+first reported here as its own item. **Section 151.10 fixes it**: over the
+range Chung et al. measured, the measurement replaces the fit.
+
+### 151.10 E1b: sigma_H2 is a measurement everywhere it is absorbed
+
+**Section 151.9 reported two joins in `sigma_H2` as a defect. This subsection
+removes them, and it does so by reading the sources. No piece of the Yan
+analytic fit survives below 300 eV.**
+
+```
+15.4 <= E < 18 eV : k_bx * Backx, Wight & Van der Wiel (1976) Table 1
+18 <= E <= 300 eV : Samson & Haddad (1994) Table 1
+E > 300 eV        : k_hi * Yan Eq. 19    (E^-7/2 sum-rule tail)
+
+all tables interpolated in log sigma against log E
+k_bx = 9.85    / Backx(18) = 1.016415
+k_hi = 0.00154 / Eq19(300) = 0.885805
+```
+
+#### 18-300 eV: Samson & Haddad (1994) Table 1
+
+"Recommended Total Photoabsorption Cross Sections of H2 from 18 eV to 300 eV",
+72 rows. Stated accuracy **+/-2 to +/-3 per cent over 18-113 eV**, the measured
+range, and **+/-3 to +/-4 per cent from 113 to 300 eV**. Yan Eq. 18 is not used
+at all.
+
+The first version of E1b took this column from Chung et al. (1993) Table II.
+It is the same data -- Chung's text says "Values for a(abs) were taken from the
+data of Samson and Haddad", his reference 31 being this paper as "submitted".
+**At the 50 energies the two tables share, 49 agree exactly and one differs in
+its last digit** (62 eV, 0.237 against 0.236). The original is used because it
+reaches 300 eV where Chung's stops at 124. It also settles the earlier draft's
+113 eV question: Chung's rows at 115, 120 and 124 eV are Samson & Haddad's own
+recommended values, not his extrapolation.
+
+#### 15.4-18 eV: Backx, Wight & Van der Wiel (1976) Table 1
+
+J. Phys. B, 9, 315, "Oscillator strengths (10-70 eV) for absorption, ionization
+and dissociation in H2, HD and D2, obtained by an electron-ion coincidence
+method", their Table 1, column `f^0(E)`. This is the experiment the other two
+normalize to: Chan et al. (1992) place their own spectrum "on an absolute scale
+by normalization at 18 eV" to it, and Chung et al. (1993) take the
+photoionization yields of their Table 1 -- which set the neutral channel of
+section 151.2 -- from it.
+
+**Units and normalization, from the paper.** Their Fig. 2 plots `f^0(E)` in
+eV^-1 with a x10^-1 axis multiplier and the table is in 10^-2 eV^-1; the
+absolute scale is the TRK sum rule, "normalized on an integral value of two
+(TRK sum rule) with a 1% correction for energies beyond 80 eV". The conversion
+is the standard `sigma[Mb] = 109.75 df/dE[1/eV]`, and it is **confirmed against
+the other measurement rather than assumed**: it puts Backx at 7.628 Mb at 20 eV
+and 2.700 at 30 eV against Samson & Haddad's 7.650 and 2.710, i.e. 0.3 and
+0.4 per cent. A factor 100 instead would put them 9 per cent low.
+
+**The join.** Backx gives 9.691 Mb at 18 eV where Samson & Haddad give 9.850,
+so the branch is scaled by 1.0164. **That 1.6 per cent is a measured difference
+between two independent experiments**, inside both quoted accuracies, and not a
+fitted constant.
+
+| E [eV] | 15.4 | 15.5 | 16.0 | 16.5 | 17.0 | 17.5 | 18.0 |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| sigma [1e-18 cm^2] | 14.20 | 14.06 | 13.05 | 12.05 | 11.27 | 10.69 | 9.85 |
+
+**How big the correction is.** The branch this replaced was Yan Eq. 17 scaled by
+a continuity constant. **Eq. 17 falls to 0.10 (0.17 after scaling) at 15.4 eV,
+where the measurement is 14.2**: the analytic fit went to zero at the ionization
+threshold, which no photoionization cross section does. The error ran from
+**a factor 85 at threshold** to 1.7 at 18 eV.
+
+#### The digitization, kept as a check and not used
+
+Before Backx et al. arrived, this branch was digitized from Fig. 1 of Chan,
+Cooper & Brion (1992) -- whose Tables 1-4 give only the discrete Lyman and
+Werner transitions, the continuum being in that figure alone. Method: page
+rendered at 600 dpi, energy axis calibrated on the 11, 17 and 19 eV ticks
+(residuals 0.3-1.2 px, 1 px = 0.0046 eV), trace height read per column outside
+the legend box and the H2+ threshold marker, **the read repeated 18 times**
+over three binarization thresholds, two search windows and three averaging
+widths.
+
+| E [eV] | 16.0 | 16.5 | 17.0 | 17.5 | 18.0 |
+|---|---:|---:|---:|---:|---:|
+| digitized from Chan Fig. 1 | 13.11 | ~10.9 | 10.38 | ~10.3 | 9.85 (anchored) |
+| Backx et al. Table 1 | 13.05 | 12.05 | 11.27 | 10.69 | 9.85 |
+| digitized / table | 1.005 | 0.90 | 0.921 | 0.96 | 1.000 |
+
+**The digitization was good to 0.5 per cent at 16 eV and 8 per cent at 17 eV**,
+against a quoted reproducibility of 1-4 per cent, so its stated error was
+optimistic in the middle of the band -- a figure read cannot see a systematic
+tilt in its own axis calibration. It is recorded here because it was the
+evidence before the table existed, and it is not in the code. **A table beats a
+figure.**
+
+#### The spread between experiments is the real uncertainty
+
+Three independent measurements at the energies they share (Mb):
+
+| E [eV] | 18 | 20 | 22 | 25 | 28 | 30 | 33 | 35 | 38 | 40 | 44 | 50 | 56 | 60 | 66 |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| Samson & Haddad 1994 | 9.850 | 7.650 | 6.030 | 4.310 | 3.200 | 2.710 | 1.930 | 1.570 | 1.170 | 0.990 | 0.722 | 0.477 | 0.331 | 0.262 | 0.191 |
+| Backx et al. 1976 | 9.691 | 7.628 | 6.047 | 4.302 | 3.172 | 2.700 | 2.085 | 1.701 | 1.416 | 1.087 | 0.779 | 0.527 | 0.351 | 0.263 | 0.230 |
+| Lee et al. 1976 | 9.072 | 7.298 | 5.771 | 4.018 | 3.055 | 2.533 | 2.000 | 1.582 | 1.222 | 1.000 | 0.792 | 0.515 | 0.365 | 0.323 | 0.273 |
+| **Backx / S&H** | 0.984 | 0.997 | 1.003 | 0.998 | 0.991 | 0.996 | 1.080 | 1.084 | 1.210 | 1.098 | 1.079 | 1.104 | 1.061 | 1.005 | 1.207 |
+| **Lee / S&H** | 0.921 | 0.954 | 0.957 | 0.932 | 0.955 | 0.935 | 1.036 | 1.008 | 1.045 | 1.010 | 1.097 | 1.080 | 1.104 | 1.234 | 1.431 |
+
+Read the last two rows. **Below about 31 eV the three agree to a few per cent**
+-- Backx within 1.6 per cent of Samson & Haddad, Lee 4 to 8 per cent low.
+**Above 32 eV they diverge**: Backx runs 6 to 21 per cent high, Lee 1 to
+43 per cent high, and the disagreement grows with energy as the cross section
+falls. So `sigma_H2` is good to a few per cent below 30 eV and to 10-20 per cent
+above it, **whatever any single paper's quoted accuracy says**. Samson &
+Haddad's +/-2 to +/-3 per cent is the accuracy of one experiment, not of the
+quantity.
+
+#### An independent check on the branching, from the same table
+
+Backx et al. tabulate a second column, `f^(i)(H2+)`, the oscillator strength for
+producing H2+ specifically. Where the photoionization yield is unity, that
+column divided by the absorption column must be `1 - f_di`, and `f_di` in this
+code comes from an entirely different experiment (Chung et al. Table II).
+
+| E [eV] | 20 | 22 | 24 | 25 | 26 | 28 | 30 |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| Backx `f(H2+)/f_abs` | 0.9813 | 0.9800 | 0.9817 | 0.9770 | 0.9799 | 0.9723 | 0.9553 |
+| `1 - f_di` (Chung) | 0.9804 | 0.9785 | 0.9770 | 0.9764 | 0.9754 | 0.9678 | 0.9517 |
+| ratio | 1.0009 | 1.0016 | 1.0048 | 1.0007 | 1.0046 | 1.0047 | 1.0038 |
+
+**The two experiments agree on the dissociative branching to 0.1-0.5 per cent
+over 20-30 eV.** That is an independent confirmation of `f_di`, which section
+151.2 uses to split three of the four channels. Above 32 eV the yield falls
+below unity and the identity no longer holds, and below 20 eV Backx's ionization
+column carries their superexcitation feature, so the check is quoted only where
+it is valid.
+
+**What could NOT be checked this way.** Chung's Table 1 photoionization YIELDS,
+which set the neutral-dissociation channel, come from Backx's ionization
+efficiency curve -- their Fig. 4, which is not tabulated. So the neutral
+fraction `f_n` still rests on Chung's transcription of a figure of Backx's, and
+this work could not go behind it.
+
+#### The high join is a real tension between a measurement and a sum rule
+
+Eq. 19 agrees with Samson & Haddad to **0.33 per cent at 113 eV** (0.033270
+against 0.033160), so over the measured range the sum-rule tail and the
+measurement are the same curve. They part above it: at 300 eV the table reads
+0.00154 and Eq. 19 gives 0.00174. Yan et al. say why in their section 4 -- they
+**raised** the 300 eV point from 1.54e-21 to 1.75e-21 cm^2 "to achieve agreement
+with the sum rules". So `k_hi = 0.886` carries the measured normalization into
+the tail and gives up 12 per cent of their correction. **Continuity is chosen
+over the sum rule** because a step in an opacity is what this change exists to
+remove, and because `sigma_H2(300)` is 1.5e-3 against 14.2 at threshold. The
+12 per cent is recorded, not resolved.
+
+#### The cross section, before and after
+
+| E [eV] | new (measured) | old (Yan 3-piece) | new/old |
+|---:|---:|---:|---:|
+|    16.0 |   1.3052E+01 |   4.2997E+00 |    3.035 |
+|    17.0 |   1.1267E+01 |   6.3080E+00 |    1.786 |
+|    17.9 |   1.0010E+01 |   5.7539E+00 |    1.740 |
+|    18.1 |   9.7232E+00 |   9.6653E+00 |    1.006 |
+|    20.0 |   7.6500E+00 |   7.6592E+00 |    0.999 |
+|    25.0 |   4.3100E+00 |   4.3344E+00 |    0.994 |
+|    30.0 |   2.7100E+00 |   2.5847E+00 |    1.048 |
+|    40.0 |   9.9000E-01 |   1.0291E+00 |    0.962 |
+|    60.0 |   2.6200E-01 |   2.3855E-01 |    1.098 |
+|    84.9 |   7.9528E-02 |   1.2803E-01 |    0.621 |
+|    85.1 |   7.8899E-02 |   7.8989E-02 |    0.999 |
+|   100.0 |   4.7900E-02 |   4.7613E-02 |    1.006 |
+|   124.0 |   2.4416E-02 |   2.5435E-02 |    0.960 |
+|   300.0 |   1.5400E-03 |   1.7385E-03 |    0.886 |
+
+Read down the last column: **+204 per cent at 16 eV and +74 to +79 per cent
+over 17-18 eV** (the measured continuum against a fit that collapsed toward
+threshold), within 5 per cent over most of 18-85 eV, **-37.9 per cent in the
+last few eV below 85**, and -11.4 per cent at 300 eV. The large numbers are the
+two joins being removed; the small ones are the measurement disagreeing with
+the fit inside its own range by about its stated +/-2 to +/-3 per cent.
+
+#### Continuity, gated
+
+`src/tests/e1_h2/` scans `sigma_H2` from 15.5 to 2000 eV in 1e-3 eV steps and
+reports the largest fractional step. It is **1.7e-4, at 17.501 eV**, i.e. a
+smooth cross section; either surviving join would have shown 4e-1 or 6e-1, the
+scaled-shape version of this branch showed 8.6e-3 and the digitized one
+6.1e-4. The 15.4 eV ionization threshold itself is now a real step from 0 to
+**14.20**, as an ionization threshold must be -- the fit stepped to 0.17 and
+then climbed, which was the wrong shape as well as the wrong size.
+
+#### What this does not address
+
+* The log-log interpolation between table rows is an assumption about the
+  shape between measured points, not a measurement. Backx's grid is 0.5 eV
+  below 20 eV; Samson & Haddad's is 1 eV to 40 eV and coarser above.
+* Nothing here revisits the 33-41 eV window as an ABSORPTION cross section. It
+  still is one; that is what makes the neutral channel of section 151.2
+  necessary, and the two changes are consistent because the neutral share is
+  taken as a fraction of whatever `sigma_H2` is.
+* Above 124 eV the proton/H2+ ratio is still held flat (item 12.1, P31a). E1b
+  changes the cross section there but does not touch the branching.
+* Chung's Table 1 photoionization yields, which set the neutral channel, come
+  from a FIGURE of Backx's (their Fig. 4) that is not tabulated, so `f_n` was
+  not checked against the original.
+* The 12 per cent measurement/sum-rule tension above 300 eV is recorded, not
+  resolved.
+
+### 151.11 Regression: the molecular cases move, the atomic ones do not
+
+Nine cases at their pinned step counts, `OMP_NUM_THREADS=1`, against the
+goldens in the tree. Maximum relative difference over the physical cells.
+
+| case | rho | v | T | heat | H2 | H2+ | H+ | HI |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| mol_base_handoff | 4.4e-3 | 3.5e-3 | 2.7e-3 | 2.1e-2 | 4.8e-2 | **2.4e-1** | 6.1e-3 | 4.3e-2 |
+| mol_lyman_werner | 7.3e-4 | 9.6e-4 | 8.3e-4 | 6.6e-3 | 7.0e-2 | 8.3e-2 | 7.3e-4 | 2.6e-2 |
+| mol_metals | 4.7e-3 | 3.4e-3 | 2.9e-3 | 1.4e-2 | 6.8e-2 | **2.4e-1** | 6.5e-3 | 4.5e-2 |
+| mol_carrier | 2.9e-3 | 5.1e-3 | 1.7e-3 | 2.0e-2 | **1.3e-1** | 1.5e-1 | 3.9e-3 | 4.2e-2 |
+| mol_diffusion | 4.4e-3 | 3.5e-3 | 2.7e-3 | 2.1e-2 | 4.8e-2 | **2.4e-1** | 6.1e-3 | 4.3e-2 |
+| mol_ir_bands | 4.7e-3 | 3.6e-3 | 2.9e-3 | 1.4e-2 | 6.8e-2 | **2.4e-1** | 6.5e-3 | 4.5e-2 |
+| mol_sec_ion | 1.4e-3 | see below | 5.6e-4 | 1.3e-2 | 1.8e-2 | **2.3e-1** | 1.4e-3 | 1.5e-2 |
+| **wasp_full** | **0** | **0** | **0** | **0** | -- | -- | **0** | **0** |
+| **wasp_he23off** | **0** | **0** | **0** | **0** | -- | -- | **0** | **0** |
+
+**The two atomic cases are bitwise identical**, which is the acceptance test for
+them: `sigma_H2` is only evaluated where there is H2. The molecular cases move,
+and this is not a default-off change -- E1b changes the cross section itself, so
+their goldens are refreshed rather than defended.
+
+**Where the movement lands.** `n(H2+)` moves the most, up to 24 per cent, which
+is the same place the channel A/B of section 151.7 puts it and the same place
+the cross section changed most (the 15.4-18 eV band, where H2+ is made). `n(H2)`
+moves 2 to 13 per cent, `n(HI)` 1.5 to 4.5 per cent, the heating up to 2 per
+cent, and `rho`, `v` and `T` by under 0.5 per cent. **The wind barely notices;
+the molecular layer does.**
+
+**The one entry that needs a word.** `mol_sec_ion` shows a maximum relative
+change in `v` of 3.35, at `r = 1.181` -- which is the velocity ZERO of that
+snapshot, the smallest `|v|` of all 500 cells (14 cm/s, against 2.9e5 cm/s at
+2 `R_p`). A relative measure at a zero crossing is not informative. Over the
+wind window `r >= 1.2` the same case moves `v` by 9.9e-2, and its `rho` and `T`
+move by 1.4e-3 and 5.6e-4 like every other case.
+
+## 152. The lower boundary is a characteristic condition at the face (2026-09-03)
+
+**Judgement first. The ghost-cell closure was not inaccurate, it was
+inconsistent: it left a momentum imbalance at cell 1 that does not go away when
+the grid is refined.** It wrote three primitive components into a ghost CELL
+and `Rec_BC` then reused the same three numbers as the state at the FACE, half
+a cell higher. That half cell is `dr/(2H)` of hydrostatic stratification --
+`3.8e-3` on the hot-Uranus base grid -- and a state error of `dr` divided by
+`dr` to make a flux difference is a fixed fraction of the local weight at every
+resolution. **Measured, on an isolated Euler-plus-gravity probe that links the
+production grid, reconstruction, Riemann flux, source and boundary modules
+verbatim: `R_mom(1)/(rho g)` reads 0.2514, 0.2507, 0.2503, 0.2502 over an 8x
+refinement, against an interior truncation error of `4.9e-6`.** The velocity it
+drives is first order in `dr`: `-247.1, -123.2, -61.3, -30.5 cm/s`, which is
+`docs/p44_base_sawtooth.md` section 7's production ladder (`-248.3, -122.2,
+-60.0`) reproduced to within 1-2 percent **with no chemistry, no radiation, no
+molecules and no wind**. The base sawtooth was never a molecular-layer
+phenomenon; it was this boundary.
+
+**The replacement states two conditions at the face and takes one from the
+interior**, which is the characteristic count for a subsonic inflow. The two
+are the lower atmosphere's pressure and specific entropy at the base level; the
+one is the outgoing acoustic invariant of cell 1,
+`p_b - rho_i c_i v_b = p_i - rho_i c_i v_i`, with `c_i` at cell 1's own
+`gamma_eff`. The ghost cells become the volume averages of the hydrostatic
+isentrope through the face state continued below it. **On the same probe
+`R_mom(1)/(rho g)` falls to `1.75e-4` and becomes first order in `dr`, and
+`v(1)` falls from `-247 cm/s` to `-0.28 cm/s` and converges away.**
+
+**Four keys are retired and now REFUSED at startup**: `Valve eps`,
+`Hydrostatic base`, `Base ghost temperature`, `Base velocity`. Each selected
+one component of a closure that no longer exists. `Base BC: density|pressure`
+is kept -- it states the base LEVEL, not the closure -- and its level is now
+carried to the face by the boundary itself, so refining the grid no longer
+moves the level the user stated.
+
+Design note, every measurement, and the decisions:
+`docs/phaseC_characteristic_base_bc.md`. Patch: `docs/phaseC_base_bc.diff`.
+
+### 152.1 What the count is, and what the code had
+
+At `r_edg(0)` the speeds are `v-c`, `v`, `v+c`, and a wave enters when its speed
+is positive (radius increases outward, so base inflow is `v > 0`).
+
+| base state | entering | reservoir conditions | interior relations |
+|---|---|---|---|
+| subsonic inflow `0 < v < c` | 2 | 2 | 1 |
+| flow reversal `-c < v < 0` | 1 | 1 | 2 |
+| supersonic inflow `v > c` | 3 | 3 | 0 |
+| supersonic outflow `v < -c` | 0 | 0 | 3 |
+
+The old default branch pinned `rho` and `p` and valved the velocity, so its
+count was right; `Base velocity: massflux` pinned all three, which for subsonic
+inflow is one too many and is the combination Carlson (2011,
+NASA/TM-2011-217181, Table 1 footnote) names as inadmissible. What the code had
+none of was the reversal row: `max(v_1, 0)` clips a velocity, it does not
+change how many conditions are imposed.
+
+### 152.2 The two defects were independent, and only one of them was the valve
+
+Two probe measurements separate them, and they separate cleanly.
+
+* **Hydrostatic maintenance is the pinned numbers.** Holding the same pair
+  `(rho_bc, p_bc)` with the interior-velocity copy REMOVED reproduces the
+  legacy `R_mom(1)`, `R_mass(1)` and `v(1)` to six digits. The valve
+  contributes nothing.
+* **Acoustic reflection is the velocity.** The legacy boundary reflects
+  `|R| = 0.953` of a pulse leaving through it; freezing the ghost velocity
+  gives `0.031`.
+
+`docs/p44_base_sawtooth.md` section 9 reached the same separation from the
+other side (raising `T0` closes the thermal gap and leaves the flux error
+untouched), and `TO_BE_DONE.md` item (W) records it.
+
+### 152.3 What was built
+
+One new module, `src/modules/states/base_boundary.f90`, with one entry point.
+`base_boundary_states` takes the first interior CELL AVERAGE and returns the
+face state, the ghost cell averages and the state at the face below the ghost,
+all at once; `Apply_BC_W` calls it and writes the ghosts, `Rec_BC` reads the
+face state. **That is the whole of the "one kind, one rule" repair**: the old
+code called `BC_component_constrho` from both paths, and the two paths handed it
+different data -- the valve read the cell-1 average in `Apply_BC_W` and the
+velocity reconstructed at `r_edg(1)`, a full cell higher, in `Rec_BC`.
+
+The interior state at the face is cell 1 continued along **cell 1's own
+hydrostatic isentrope**, not extrapolated linearly and not taken from the
+reconstruction stencil, which reaches into the ghost and would make the
+boundary read its own output. Continuing along the isentrope is what makes the
+condition well balanced: at rest the interior face pressure equals the
+reservoir's and the compatibility relation returns `v_b = 0` exactly, at any
+resolution.
+
+The reversal handover is a cubic smoothstep of width
+`base_face_mach_blend = 1e-6` in face Mach number -- the one designed-in
+constant, justified at its declaration by the physical base Mach number of the
+gate (`rho_b v_b r^2 = F_wind` gives `v_b ~ 1.6 cm/s` against `c ~ 2.6e5`, i.e.
+`6e-6`), so every intended operating point lies wholly inside the inflow
+branch. There is no `valve_eps` to arm: the residual is differentiable because
+the branch is a blend, not because a kink was rounded off.
+
+Supersonic inflow is **reported, not repaired**. It would need three reservoir
+conditions and a `(p, s)` reservoir states two; the model has no
+lower-atmosphere velocity, so `check_base_inflow_is_subsonic` says the state is
+outside the stated problem rather than a velocity being invented for it.
+
+### 152.4 Validation
+
+Three tests on the probe, all new. (a) and (b) have baselines for the closure
+this replaces; (c) is new.
+
+| test | old closure | Phase C |
+|---|---|---|
+| (a) `R_mom(1)/(rho g)` at rest, `drc = 2e-4` | 2.5135e-1, **zeroth order** | 1.749e-4, **first order** |
+| (a) `v(1)` at rest, `drc = 2e-4` | -247.1 cm/s | -0.278 cm/s |
+| (a) ladder `drc = 2e-4 … 2.5e-5` | -247, -123, -61, -30 cm/s | -0.28, -0.04, -0.007, -0.0001 |
+| (b) acoustic `\|R\|` | 0.953 | 0.956 |
+| (c) manufactured steady inflow, cell 1 vs interior | not run | mass 1.8x, momentum 0.68x |
+
+**(c) is the test that earned its place.** It drives an EXACT steady spherical
+isentropic solution (`rho v r^2 = F`, `v^2/2 + h + phi = B`, a solution of the
+Euler equations with gravity, so nothing is forced) through the boundary at base
+Mach `1e-3` and reads the residual of that exact solution: cell 1 comes out at
+1.8 times the interior truncation error in the mass row and 0.68 of it in the
+momentum row. The boundary is no longer a distinguished cell.
+
+**(b) did not improve, and section 7.3 of the design note shows it could not.**
+Two characteristics enter a subsonic inflow face; if the reservoir states two
+STATIC quantities then the incoming acoustic amplitude is pinned and a wave
+arriving from inside is reflected. That is true of `(p, s)`, `(rho, s)` and
+`(rho, p)` alike -- the pair does not matter, the staticness does. The
+alternative was implemented and measured
+(`base_incoming_invariant_weight`, state `p + rho c v = p_res` instead of `p`):
+`|R|` falls to `0.0024`, but on test (c) the cell-1 momentum residual rises to
+`1.32e-1`, **460 times the interior**, because `p + rho c v = p_res` puts the
+face pressure below the reservoir's by a fraction `M` of the pressure where a
+real reservoir's Bernoulli drop is `M^2`. It buys transparency by corrupting the
+steady state and is rejected; the constant stays at 0 with the measurement
+recorded at its declaration. A boundary that is transparent to sound without
+that cost needs a relaxation form, which is not a function of the instantaneous
+state and so has no fixed point the steady residual can express. That is an open
+item, in the design note as D6.
+
+`-fcheck=bounds,do,mem` on the bounded HD 209458 b case: clean,
+`log10 Mdot = 9.61`.
+
+### 152.5 Production
+
+**The hot-Uranus gate rung, reloaded** -- the case (AB) measured, so the one
+comparison with a baseline. `info = 0` both; **19 JFNK iterations -> 14**;
+`||R||` `8.961e-06 -> 7.848e-06`; the flux gate `2.501e-04` unchanged to four
+figures, `r >= 1.03` `3.432e-03 -> 3.402e-03`, `r >= 1.10`
+`2.375e-03 -> 2.372e-03`; `log10 Mdot` `10.34 -> 10.34`; H2 front `1.0449 R_p`
+unchanged; H3+ column `-0.9%`; `T(cell 1)` `1116.68 -> 1116.72 K`. And
+**`v(cell 1)` `-251.88 -> +14.40 cm/s`**: the sawtooth is gone in the
+production code, and what replaces it is outward and of the size the wind's own
+mass flux through the base density gives.
+
+**The same rung from a cold start** reaches the same root: `info = 0` at
+`||R|| = 1.405e-06`, the same three gate numbers to four figures, the same
+`log10 Mdot`, and a state agreeing with the reloaded root to **3.9e-5 in
+`rho`, 1.9e-4 in `v`, 1.3e-5 in `T`**, `v(1) = +14.393` against `+14.395`, and
+`T` at `r - R_p = 8e-3` equal to `818.01 K` in both. **That repairs the
+reproducibility defect of `docs/p44_base_sawtooth.md` section 8.4**, which
+measured three `info = 0` states of this configuration on this same default
+base grid putting the H2 front anywhere in 1.053-1.089 `R_p` and that
+temperature anywhere in 583-949 K. The cold start costs 820 JFNK iterations
+across three attempts against the reload's 14; whether that is worse than the
+same cold start under (AB) is **not established**, because (AB) did not run
+one.
+
+**WASP-121b `wasp_full_newton`**: `info = 0` both, `||R||`
+`9.026e-06 -> 9.910e-06`, flux gate `5.242e-05 -> 5.238e-05`, `log10 Mdot`
+`13.21 -> 13.21`, state moving by `5.9e-3` in `rho` and `3.2e-3` in `T`,
+`v(cell 1)` `1372.5 -> 1705.9 cm/s`, 96 -> 108 iterations. Base Mach stayed
+subsonic at 0.331.
+
+**The reload-and-march departure is the negative result, and it is the one to
+read first.** Peak-to-peak face mass flux over 3000 steps, in units of the
+root's own `F_0`:
+
+| root, binary | 1.005 | 1.03 | 1.10 | 1.20 | `du` at 3000 |
+|---|---|---|---|---|---|
+| (AB), rerun here as a control | 0.4443 | 0.2517 | 0.0403 | 0.0084 | 3.2250e-04 |
+| **Phase C** | **0.9284** | **0.3074** | **0.0473** | **0.0096** | 3.2904e-04 |
+
+The control reproduces section 145.5 exactly, so the harness is the same one.
+**Phase C does not repair item (AD) and makes it worse**, 2.09x at `r = 1.005`
+and 1.22x at 1.03. That is consistent with 152.4 (b): the boundary still
+reflects what the base layer launches at it. One mechanism for the increase is
+that the retired one-way valve, by clipping `v` at zero, was also a nonlinear
+amplitude limiter on that oscillation; **that is a hypothesis, not a
+measurement.**
+
+**The complete update map says what the increase actually is, and it is not the
+boundary.** On each build's own root (`EXHALE_UPDATE_MAP=1`, three steps at 1,
+0.1, 0.01 of the CFL step): the accepted root's residual falls
+`9.916e-3 -> 6.067e-6` (mass), `7.473e-3 -> 5.453e-6` (momentum),
+`1.486e-2 -> 8.462e-6` (energy) -- **the base-cell residual floor, three orders
+of magnitude, measured on the production root** -- while the defect
+`|G_dt + R|` at `dt/100` moves only `2.460e-5 -> 1.351e-5`,
+`2.643e-5 -> 9.840e-6`, and **`1.892e-4 -> 1.891e-4`: the energy row does not
+move at all**, and it stops falling with `dt` in both builds, in the
+operator-split chemistry/energy columns. The root became 1600x more accurate
+and the splitting error did not, so it now dominates: defect over residual at
+`dt/100` goes from `2.5e-3, 3.5e-3, 1.3e-2` to `2.2, 1.8, 22`. The departure
+grew because the residual shrank, and what is left is Phase B's B2.
+`Apply_BC` moves the interior by a relative `0.000E+00` in both builds.
+
+**Regression matrix**, ten cases against (AB), single-threaded, same caps: all
+ten move, and all ten flip the sign of `v(cell 1)` -- `-726, -756, -139, -139,
+-114, -139, -139, -601, -140, -582 cm/s` become `+2383, +2380, +49, +54, +43,
++49, +54, +7, +30, +543`. Read the rest of that table with three
+qualifications: the eight molecular rows are step-12000 snapshots of a
+relaxation (`du` 0.4-1.3 in both builds), so their `log10 Mdot`
+`10.43 -> 10.52` is a different point in a transient and not a rate; the two
+WASP rows are `du`-stops, whose several-percent path dependence covers
+`13.26 -> 13.24` and whose Newton-finished sibling gives `13.21 -> 13.21`,
+though their 60 percent longer march (11289 -> 18026) is a real cost; and
+`lower_profile` is not converged in either build (`du` 28.2 and 819) so its row
+compares two transients. Full table:
+docs/phaseC_characteristic_base_bc.md section 7.4.
+
+### 152.6 What this does not do
+
+**This is a boundary repair, and the scope is exactly that.** What it removes
+is the base cells' residual floor -- the place every coupled finish has been
+stopping at `||R|| ~ 1` -- together with the hydrostatic inconsistency that put
+it there. What it does NOT touch:
+
+* **The H2 front creep.** P51 measured, on the 200k-step marching state of the
+  new physics, that FREEZING cells 1-5 at every step leaves the front's creep
+  (1-3 cells per 20000 steps) unchanged to the fourth decimal
+  (`.../scratchpad/p51/docs/p23_transport_on_state.md` section 9, read only,
+  not remeasured here). The creep is therefore not driven by the base cells and
+  no boundary condition addresses it; whether it is a numerical bias or
+  physical is under separate diagnosis.
+* It does not damp the base-layer ringing of item (AA): section 152.4 (b), and
+  the marching departure of 152.5 gets worse, not better.
+* It does not change PLM's base layer, whose density drift is set by the
+  second-order reconstruction and not by the boundary (`6.5e-3` against the old
+  closure's `9.7e-3`, and growing with refinement in both).
+* It does not give the model a supersonic-inflow base.
+* Goldens are not byte-identical, for any case. This is a model change.
+
+## 153-154. Reserved: the coupled solve's step control (measured, not landed)
+
+Two sections are reserved rather than written, so that the numbering matches
+the drafts they belong to. Both are step-control work on the COUPLED carrier
+solve, both are measured, and neither is in the tree:
+
+* **153** -- a scaled trust region (Powell dogleg on the Krylov and Cauchy
+  legs, predicted reduction from the same Arnoldi relation the solve already
+  builds, admissibility enforced inside the step). It works as a method: the
+  ratio of actual to predicted reduction has median 0.93 with 42 of 47
+  iterations in [0.5, 2], the finite-difference ray test refuses no model, and
+  it never violates the element budget where the line search does 18 times.
+* **154** -- the merit and the predicted reduction measured in the ACCEPTANCE
+  measure (the row scales of section 143) rather than in the state scales, at
+  which the model becomes exact to three or four digits on the first
+  iterations.
+
+Neither closes the coupled solve, and the reason is why they are reserved and
+not applied: with both in place the two controls bottom out at the same place
+and the same number, `||R|| = 1.00` in BASE CELL j = 1, which is one cell's row
+off by 100 per cent of its own terms. That is the boundary imposing a cell
+instead of solving it, so the obstruction had left the solver before either
+section was written, and section 152 is where it went. They are kept
+default-off pending a re-measurement on top of the characteristic boundary.
+Drafts and every measurement: the P51 notes under `docs/`.
+
+## 155. The base cells reproduce, and the residual is not a function of the state alone (2026-09-03)
+
+Measured 2026-09-03 on two builds:
+
+* **Phase C** -- `.../scratchpad/phaseC/src` copied read-only into
+  `.../p55base/pc155` and rebuilt; the clean build reproduces Phase C's own
+  binary bit for bit (`583aaa98`), so the boundary being measured is theirs.
+  Roots: `phaseC/hotU_root` and `phaseC/wasp_newton`, restarted from their own
+  output.
+* **Pre-Phase-C** -- the tree as of section 145, copied into `.../base123`.
+  Roots: the two accepted states of section 144.5 (`s11/hotU_cellmax`,
+  `s11/WASP_cellmax`).
+
+Probes (scratch only, both env-gated, both off by default):
+`EXHALE_SWEEP_CONSERVE` reports what one sweep does to `rho`, `n_H` and `n_He`;
+`EXHALE_RESID_REPRO=<n>` repeats `eval_residual` on one accepted `Y` (negative
+`n` restores the composition before each repetition). Patch:
+`p155_selfconsistent.diff`.
+
+---
+
+### 155.1 The premise of item (4) does not reproduce
+
+Section 11.6 recorded that re-running the ionization sweep on an accepted state
+moves the mass residual of cells 1 and 2 from `9e-6` to `2.7e-1` and `8.6e-1`,
+and attributed it to `ioniz_eq` rewriting `rho` through `calc_rho`.
+**Neither half of that survives measurement.**
+
+**`calc_rho` does not move `rho`.** Over every sweep of both roots on both
+builds, the density the sweep writes back and the density it was handed differ
+by at most:
+
+| build | state | max abs `drho/rho` | max abs `dn_H/n_H` | max abs `dn_He/n_He` | sweeps |
+|---|---|---|---|---|---|
+| Phase C  | hot Uranus | 8.13e-16 | 4.67e-16 | 4.32e-16 | 57 |
+| Phase C  | WASP-121b  | 1.71e-15 | 2.22e-16 | 3.04e-16 | 86 |
+| pre-C    | hot Uranus | 9.68e-16 | 3.64e-16 | 4.42e-16 | 346 |
+
+This is roundoff, and it is roundoff for a reason: the sweep's unknowns are
+fractions of the element totals `n_H`, `n_He` and `n_M,tot` that it computes
+from the state it is handed, and every write-back is one of those totals times a
+fraction. Because the code's masses are the nucleus counts exactly
+(H2 = 2 m_H with 2 H nuclei, H3+ = 3 with 3, HeH+ = 5 = 4 + 1), conserving
+nuclei conserves mass identically. The `max(...,0.0d0)` clamps on `nhi` and
+`nhei` in the molecular write-back CAN break this -- they are the one place the
+element budget is not closed by construction -- but on these states they do not
+bite.
+
+**The base cells' residuals are not O(1).** Repeating `eval_residual` on one
+accepted `Y`, cells 1-3, first evaluation against the twentieth:
+
+| build | state | cell | mass row, eval 1 | eval 20 | ratio |
+|---|---|---|---|---|---|
+| Phase C | hot Uranus | 1 | 7.904e-05 | 7.765e-05 | 0.982 |
+| Phase C | hot Uranus | 2 | 2.521e-05 | 2.470e-05 | 0.980 |
+| Phase C | WASP-121b  | 1 | 1.1725e-07 | 1.1725e-07 | **1.000** |
+| Phase C | WASP-121b  | 2 | 1.6359e-07 | 1.6359e-07 | **1.000** |
+| pre-C   | hot Uranus | 1 | 2.553e-07 | 2.491e-07 | 0.976 |
+| pre-C   | hot Uranus | 2 | 8.154e-08 | 7.762e-08 | 0.952 |
+| pre-C   | WASP-121b  | 1 | 9.476e-09 | 5.163e-09 | **0.545** |
+| pre-C   | WASP-121b  | 2 | 2.177e-08 | 2.010e-08 | 0.923 |
+
+The largest excursion anywhere is a factor two, at WASP-121b cell 1 before
+Phase C. **Under Phase C that same cell is reproducible to four significant
+figures.** The base cells are not the problem, and to the extent they were one,
+Phase C's boundary closed it: it is the prescription that removed the base
+cell's dependence on the previous sweep's composition (no `n_part_cell1`, no
+valve).
+
+---
+
+### 155.2 What is real: the residual is a function of (state, composition)
+
+`f_sp` is `intent(inout)` in `ioniz_eq` and the residual mutates it. It is not
+part of the Newton unknown `Y`. So `eval_residual(Y, f_sp)` is a function of
+two arguments, only one of which the state carries.
+
+**It is deterministic in both.** With the composition restored before every
+repetition (`EXHALE_RESID_REPRO=-4`), all four states give bitwise identical
+residuals on every repetition. Nothing else -- not the frozen chemical
+background, not the excited-hydrogen populations, not the stored WENO
+smoothness factors -- contributes anything at all. That was worth establishing
+before looking further.
+
+**But the number reported at acceptance is evaluated at the WRONG composition.**
+In the line search the accepted trial is evaluated as
+`eval_residual(Ytry, f_sp_j)` with `f_sp_j` copied from the PREVIOUS iterate, and
+`rnorm` is taken from that `F`. The state handed back and written to disk carries
+the composition the accepted trial LEFT. Evaluating the same `Y` at its own
+composition, and iterating the sweep at fixed `Y` until it stops moving:
+
+| build | state | reported `\|\|R\|\|` | own composition, 1 sweep | at the composition fixed point | sweeps | factor |
+|---|---|---|---|---|---|---|
+| Phase C | hot Uranus | 2.211e-06 | 1.283e-05 | 1.257e-05 | 3 | **5.7** |
+| Phase C | WASP-121b  | 6.287e-06 | 3.865e-05 | 3.593e-05 | 9 | **5.7** |
+| pre-C   | hot Uranus | 4.141e-06 | 1.762e-05 | 1.722e-05 | ~10 | **4.2** |
+| pre-C   | WASP-121b  | 6.264e-06 | 1.737e-04 | 3.539e-04 | ~14 | **56** |
+| pre-C   | `wasp_full_newton` | 8.873e-06 | 1.851e-04 | 3.412e-04 | ~10 | **38** |
+
+The composition at fixed `Y` has its own fixed point and reaches it in 3 to 14
+sweeps; one evaluation is still short of it by up to a factor two. **Phase C cuts
+the WASP-121b factor from 56 to 5.7 and leaves the hot Uranus at about 5.7.**
+
+**What this does and does not change about acceptance**
+
+It does not, today, change which states are accepted. Only 7 of the 63
+regression cases set `Resid tol` at all; without it `resid_th = -1`, the
+residual gate is off (`||R|| < -1.000E+00` in the acceptance line), and every one
+of the roots measured here was accepted on the FLUX GATE alone. The flux gate
+reads the conserved face mass flux of `u` and is composition-independent, so it
+is untouched by all of this.
+
+What it changes is what the reported number means. `||R||` is quoted in run
+logs, in `docs/`, and in item (AD)'s own measurements, and on these states it
+understates the residual of the state that was written by 4 to 56 times. Every
+one of the five states above is above `1e-5` at its own composition, so a run
+that DID set `Resid tol: 1.0e-5` would be accepting a state that does not meet
+it.
+
+---
+
+### 155.3 Prescription
+
+**(a) The gate and the report read the residual of the state that is written, at
+the composition that state carries.** `p155_selfconsistent.diff` adds
+`resid_at_own_composition` (default `.false.`, `n_selfconsistent_max = 25`): at
+hand-back, re-evaluate at `(Y, f_sp)` and iterate the sweep at fixed `Y` until
+`||R||` changes by less than `1e-3` relative. Measured cost: 3 sweeps on the hot
+Uranus, 9 on WASP-121b, one-off. The coupled route already does a single
+re-evaluation for its carrier half (`nvar_jac >= 4`); this is the same idea taken
+to the fixed point and applied to all routes.
+
+Default off because turning it on makes every root accepted under `Resid tol`
+report a residual 4 to 56 times larger, which is a physics decision about what
+"converged" means, not a refactor. The recommendation is to turn it on: a steady
+state is a joint fixed point of the hydrodynamic balance and the chemical
+equilibrium, and a measure that reads the hydro balance under last iterate's
+chemistry is not measuring that.
+
+**(b) `rho` should be an input to the sweep, not an output.** The measurement
+says this changes no number today -- the write-back is element-conserving on
+every state tested, to 1e-15. It is still the right shape: the sweep determines
+the composition at a given `(rho, T)` and the particle count that follows; mass
+is the hydrodynamics' variable. Making `n_io` `intent(in)` and normalizing
+`f_sp` by the input density would make that structural instead of accidental,
+and it would turn the `max(...,0.0d0)` clamps in the molecular write-back --
+the one place the element budget is NOT closed by construction -- into a
+detectable condition rather than a silent mass adjustment. It is a
+golden-refreshing change at the 1e-15 level, so it belongs in a change series
+that is refreshing them anyway.
+
+**Not adopted here:** anything that would make the composition part of `Y`. That
+is the coupled route's design and it exists (`nvar_jac >= 4`, the carrier
+unknown); extending it to the full composition is a much larger question than
+this measurement supports.
+
+---
+
+### 155.4 Contact with Phase C
+
+The patch touches `src/modules/time_step/steady_newton.f90` (the hand-back
+block, after `unpack_carrier`/`Apply_BC` and before `steady_gates_met`) and adds
+two parameters in `src/modules/init/parameters.f90`. **No boundary code is
+touched**: `Apply_BC.f90`, the new `base_boundary.f90`, `init.f90` and
+`utilities.f90` are exactly Phase C's. The one place the two meet is the
+hand-back `Apply_BC(u)` call, which Phase C rewrites and this patch only calls;
+if Phase C changes the call signature there, this patch follows it and nothing
+else.
+
+The probes are separable and belong in scratch: `EXHALE_SWEEP_CONSERVE` in
+`ionization_equilibrium.f90` and `EXHALE_RESID_REPRO` in `steady_newton.f90`.
+The conservation probe is worth keeping in some form -- as a cheap assertion
+that the sweep's write-back closed the element budget, reported once per run
+rather than printed per sweep.
+
+---
+
+### 155.5 What is not established
+
+* One accepted state per planet per build, all with the residual gate off. A
+  case that actually sets `Resid tol` and converges under it has not been
+  re-measured at its own composition.
+* Whether the composition fixed point at fixed `Y` always exists and is unique.
+  It was reached in 3 to 14 sweeps on all five states, monotonically on the two
+  that start below it and with one overshoot on the three that do not
+  (WASP-121b under Phase C: 3.86, 4.36, 3.79, ... 3.59e-05), but nothing here
+  proves existence or uniqueness.
+* Whether accepting on the self-consistent residual changes the mass-loss rate.
+  It cannot change the state that is written -- the patch only measures -- but a
+  run that keeps solving instead of stopping will end somewhere else.
+* The `max(...,0.0d0)` clamps: shown not to bite on these five states, not shown
+  never to bite. The conservation probe is what would say.
+
+### 155.6 What landed, and what the measure did to the one case that tests it
+
+**The own-composition residual is the DEFAULT** (`resid_at_own_composition`),
+not an option to be opted into: the burden of a reason is on turning it off,
+and the only reason is reproducing a pre-section-155 number. The fixed point is
+iterated explicitly through a separate output array, because section 147
+forbids the seed and the result of `eval_residual` being the same array -- the
+patch as drafted assumed the older five-argument signature and did not build.
+
+**Two halves of the drafted patch were deliberately not taken**, both being a
+second copy of a facility that had landed in the meantime: the
+`EXHALE_SWEEP_CONSERVE` probe in `ionization_equilibrium.f90`, which measures
+element conservation through the sweep that section 149's `element_census`
+assertions already measure at every refresh that moves nuclei; and
+`residual_reproducibility_probe` (51 lines in `steady_newton.f90`), which asks
+the question `src/tests/residual_determinism/` answers as a test with a
+verdict. One facility, one rule.
+
+**Measured on `wasp_full_newton`, the only default case that runs a steady
+solve.** It is the only one of the eleven that moves, which is the case list
+this change predicts:
+
+| | before | after |
+|---|---|---|
+| reported `\|\|R\|\|` at hand-back | 9.927e-06 | **5.677e-04** |
+| sweeps to the composition fixed point | -- | 7 |
+| flux spread (the gate that accepted it) | 1.961e-11 | 1.961e-11 |
+| `log10 Mdot` | 13.21 | 13.21 |
+| state: `rho` / `v` / `T` max relative change | -- | 1.4e-15 / 0 / 4.2e-5 |
+
+So the number the solver reports as the accepted root's residual was **57 times
+too small**, and the state itself is untouched to roundoff -- which is what
+this section claims: it does not move the solution, it stops misreporting it.
+The case still converges because it sets no `Resid tol` (`||R|| < -1.000E+00`
+in its log), so the residual gate was never tested and the flux gate accepted
+it; a run that does set one will now fail a tolerance it used to pass, and that
+is the intended consequence rather than a regression.
+
+**Not done.** The other half of the prescription -- making `rho` an
+`intent(in)` of the sweep so that element conservation is structural rather
+than a property the arithmetic happens to have -- is not implemented. It is
+worth doing and it changes no number (the sweep's rewritten `rho` differs from
+the one it was handed by 1.7e-15 over 489 sweeps), so it belongs with the next
+change that refreshes goldens rather than on its own.
+
+## 156. The ladder re-finished under the block-I physics, and what that settles about P23 (2026-09-04)
+
+**Judgement first, in three parts. (1) The wind is unchanged and the base is
+repaired.** All seven rungs of the 1 microbar hot-Uranus ladder re-converge
+(`info = 0`, both gates) and `log10 Mdot` reproduces sections 14.8's values to
+the printed digit -- 10.34 / 10.32 / 10.31 / 10.30 / 10.30 / 10.30, and 10.32
+on the 2x base grid. Every profile quantity reproduces as well: the H2 front to
+0.0004 R_p, the layer temperature minimum to 1 K, the ionization front to
+1e-4, `gamma_eff` to four decimals. **(2) What did change is the base, and it
+changed the way section 152 says it should.** The cell-1 velocity flips sign on
+every rung, from `-15, -37, -104, -298, -801, -1089` cm/s to `+14, +13, +10,
++8, +8, +7`, and the mass-flux deficit immediately above the base closes: the
+minimum of `rho v r^2` over the wind value, cell 1 excluded, goes from
+`0.73, 0.50, 0.13, -0.10, -0.02, 0.66, 0.86` to `0.95` through `0.99`. Two
+rungs -- He/H = 3 and 10 -- had a **flow reversal at 1.0006 R_p** in the states
+this campaign replaces. **(3) P23 is still not passed, and block I does not
+move it**: the temperature deficit against Koskinen et al. (2022) Model A is
+unchanged to within 3 K at every radius, `+550, +973, +731, +450, +150, +187,
++1434, +2578` K at 1.05 to 3.0 r_base.
+
+### 156.1 Why the two channels that could have moved P23 did not
+
+The reasons are of two different kinds, and the distinction is the useful part
+of this section.
+
+**Section 150 could not act, because the channel is off in this
+configuration.** The gate rung takes a power-law spectrum and states no
+`Stellar LW flux`, so there is no Lyman-Werner band flux to halve; the run says
+so itself, and says what kind of statement that is:
+
+```
+ - WARNING H2 Lyman-Werner photodissociation OFF: no "Stellar LW flux" key and
+   no spectrum to integrate one from.
+   The band exists whenever the star does, so this is a MISSING CHANNEL, not a
+   modelling choice: H2 keeps a sink it should not.
+```
+
+`heat_H2_LW` is `0.00e+00` at every radius before and after. **So section 150
+is not measured by this ladder rather than measured and found small**, and
+testing it needs a rung that states an LW flux or reads a spectrum file. That
+is a separate campaign.
+
+**Section 151 did act, is resolved by the energy grid, and is small.** This
+had to be checked rather than assumed, because a threshold change is worthless
+if the grid averages over it. It does not: the power-law branch of
+`set_energy_vectors` lays 50 logarithmic points between `e_th_HI` and
+`e_th_HeI`, of which **13 fall inside the 15.4-18.0 eV window Backx et al.
+(1976) measured, spaced 0.185 to 0.211 eV**. The 85-fold threshold correction
+is therefore carried at full resolution, and `heat_H2` still moves only from
+`7.84e-9` to `7.29e-9` at 1.05 r_base, about `-7` per cent of a channel that is
+itself 7.6 per cent of the local photoheating. That the correction does not
+become a large change is a statement about this planet's budget, where H2 is
+nearly gone by 1.05 r_base, and not about the energy grid.
+
+### 156.2 The one place the new acceptance measure changed an outcome
+
+Section 155's own-composition residual raised the reported norm by 3 to 16
+times across the rungs, and because none of these inputs sets `Resid tol` the
+residual gate is disabled (`resid_th = -1`) and the flux gate is the only
+binding one -- so on six rungs the change is in the reporting alone. On
+He/H = 10 it changed the run: round 8 satisfied the flux gate
+(`1.51e-5 < 2e-5`) and was still refused, the solve having stalled and returned
+its best iterate at an own-composition residual of `8.3e-2`. The outcome was
+not a rejected solution but a slower one -- round 9 converged at `||R||`
+`3.47e-5` with the flux spread at `4.57e-12`. That is the intended behaviour of
+a measure that reads the state it hands back.
+
+### 156.3 What this leaves open
+
+* **The two flatness measures still disagree by six to nine orders.** The face
+  mass flux is flat to `1e-13` through `1e-9` on the gate window while the
+  cell-centred `rho v r^2` spread above 1.03 r_base is `3.4e-3` to `1.4e-2`,
+  unchanged from section 14.8. Section 152 closed the hole in cells 2 to 4 and
+  left the few-parts-in-a-thousand structure between 1.03 and 1.2 exactly where
+  it was. Which of the two is the measure of physical steadiness is item (AA)
+  and is not settled here.
+* **`ntot_bc_per_H` rose by 0.55 to 0.82 per cent** on every rung
+  (0.5434782 -> 0.5464827 and so on) with `q_H2_base` and
+  `H_nuclei_in_H2_fraction` unchanged. `n0` falls by the same ratio, so the
+  effect on the rate is 0.002 to 0.004 dex, below the printed digit -- but
+  which section of block I did it was not identified.
+* **The blocks were not separated.** Sections 150, 151, 152 and 155 arrived
+  together and this campaign measured their sum; only sections 150 and 151
+  could be attributed individually, and only because the setup report and the
+  energy grid settle them without a control run.
+* Carrier transport is off on every rung, and the
+  `Molecular reaction heat: False` control of section 14.8.5 was not repeated,
+  so the channel separation of that section stands on the pre-block-I states.
+
+**Files.** `docs/supersonic_molecular_base.md` section 14.9,
+`docs/p23_thermal_budget.md` section 13,
+`docs/lower_atmosphere_figs/fig_ladder_blockI.png`.
+
+## 157. The coupled transport solve after the characteristic boundary: the obstruction moved, and where it moved to says what is wrong (2026-09-04)
+
+**Judgement first. Section 152 did what the diagnosis said it would, and the
+coupled solve still does not converge -- but it now fails somewhere else, and
+the new place is not a step-control problem at all.** Through section 154 both
+step controls bottomed at `||R|| = 1.00` in BASE CELL j = 1, which is why they
+were reserved rather than landed: the obstruction was the boundary imposing a
+cell instead of solving it. With the characteristic boundary in, the base
+momentum row of the hand-off state is `4.85e-4` against an energy row of
+`1.44e0` -- three orders down, from `7.24e-3` when section 154 measured it --
+and the solve's worst row is no longer there. **111 of 120 JFNK iterations now
+have their worst row at the CARRIER row (k = 4) in cells j = 221-240,
+`r = 1.121-1.154`**, which is the H2 front: the same state has `f(H2) = 1e-2`
+at `r = 1.1333`.
+
+**The control arm is what makes this conclusive.** Solving the same hand-off
+state with the carrier partition relaxed by Picard alternation instead of
+carried as a fourth unknown also fails (`info = 2`) -- but at `||R|| = 0.37`
+and a flux spread of `2.5e-2`, three to four times better than the coupled path
+-- and its worst cell is also in the molecular layer, on the ENERGY row at
+`r = 1.012-1.049`, with the carrier residual at `7.45e-3` against a `1e-3`
+target. **So the molecular layer is not a steady state on either path.** A
+difficulty that survives removing the unknowns whose step control was suspected
+is not a difficulty of that step control.
+
+### 157.1 What was run
+
+`mol_carrier` with `Secondary_ionization: Immediate` and the plateau stop
+disabled (`Stall [tol,N]: 0.0 2000`), marched 200,000 steps (1 h 37 m,
+`OMP_NUM_THREADS = 8`) to `du = 5.89e-3` and `log10 Mdot = 10.43`, then handed
+to the coupled Newton three times. Every attempt returned `info = 2`,
+"STAGNATED: 40 iterations without improving the best iterate", with all three
+gates unmet:
+
+```
+||R||        1.065E+00  >= 1.000E-05
+flux spread  9.514E-02  >= 2.000E-05
+carrier row  6.367E-03  >= 1.000E-03
+```
+
+The gate window fell monotonically over the trajectory, `3.15e-1` at 40k to
+`9.70e-2` at 200k, and **had not reached a minimum**. The earlier campaign's
+reversal -- a minimum of `1.50e-2` near 200k followed by a 4.7-fold rise -- did
+not reproduce, but the two runs differ in more than one setting, so this is
+"not reproduced" and not "does not happen".
+
+### 157.2 The front still creeps, exactly as before
+
+The `f(H2) = 0.5` front advances `0.0018` per 40,000 steps (1.0586 to 1.0656
+over 160k), against `0.0019` measured before the characteristic boundary.
+Section 152 was never expected to stop it -- the freeze experiment had already
+shown the creep does not respond to the base cells -- and it does not.
+
+### 157.3 P23 on a transport-on marching state
+
+Not a converged state, so this is direction and order of magnitude only.
+Transport keeps H2 far further out than the block-I ladder does: `f(H2)` at
+1.10 r_base is **0.215** against `3.1e-3` without transport, seventy times
+more, and `n(H3+)` is up by a hundred and forty. It is still not the published
+structure: Koskinen et al. (2022) Model A has `0.976` at that radius, and at
+1.15 r_base ours is `9e-4` against their `0.963`. The temperature deficit keeps
+its character (700-1000 K through the molecular layer, 2489 K at 3 r_base) and
+`n(H3+)` still has the opposite shape, peaking in the first cells and falling
+outward where Model A rises. **The gate does not pass.**
+
+### 157.4 What this changes about the two reserved sections
+
+* **Section 153 (the scaled trust region) is worth re-measuring, and the reason
+  it was held is now void.** It was reserved because both controls bottomed at
+  the same number in the same base cell; that is no longer where they bottom.
+  And the failure mode now on show is the one thing section 153 won robustly:
+  this campaign's line search rejects **78 to 102 trials per attempt** on the
+  element budget or an uncertified composition, with the step collapsing to
+  `lam = 9.54e-7`, while the trust region enforced admissibility inside the
+  step and refused none. The patch applies to the current tree with no fuzz.
+* **Section 154 (the acceptance-measure merit) should not be adopted.** Head to
+  head under the same merit the line search beat the trust region two to three
+  times, and swapping the merit made `mol_carrier` worse. Section 154's patch
+  is a superset of section 153's, so section 153 must be applied on its own.
+* **Both are downstream of the operator question.** The Picard arm carries no
+  carrier unknowns and stalls in the same layer, so the carrier marching step
+  disagreeing with the carrier steady residual as `dt -> 0` -- measured, and
+  narrowed to the base inflow Dirichlet -- is upstream of either control and
+  is the thing to fix first.
+
+**Files.** `docs/coupled_after_152.md` (gate values, the worst-row histogram,
+the ledgers, the three-layer table and the P23 comparison).
+
+## 158. The carrier row is transported in the variable the mass row conserves (2026-09-04)
+
+Section 10 of `docs/p23_transport_on_state.md` measured that the marching
+loop's carrier stage does not converge to the carrier steady residual as the
+step is refined: `|G_dt + R|` held to four figures while `dt` fell four
+decades, where every hydrodynamic row falls first order.  The candidates the
+measurement was set up to separate — the deferred second-order correction, the
+frozen limiter, the element clamp — were each switched off and each left the
+number bitwise unchanged, so the operator itself was the suspect.
+
+**It was not an inconsistency between the two paths.**
+`photochemical_transport_step` and `carrier_steady_residual` already call one
+assembly, in the same order and with the same arguments, down to the base
+inflow condition, which is built in exactly one place (`carrier_base_state`,
+reading `wind_mass_flux` for the direction and the lower ghost for the value)
+and applied in exactly one place (`carrier_residual` at `j = 1`).  A probe that
+evaluates the residual on the entry state with the very coefficients the step
+is about to use, and compares it with the rate of change the step produces,
+measures the two as first-order consistent over four decades of `dt`:
+9.5e-5, 7.1e-6, 8.2e-7, 8.3e-8 of the row's own terms, with the element clamp
+and the write-back adding nothing.
+
+**The dt-independent term is the hydrodynamic stage, and it is a physical
+defect.**  Section 10's `G` was the rate of change of the carrier DENSITY
+`n(H2)`.  Split by stage at the cell carrying it, the transport stage returns
+`-R` to three digits and the hydrodynamic stage carries the rest: it moves
+`rho` at frozen `f_sp`, so the carrier density changes by `n_c d(ln rho)/dt`,
+which no carrier row contains and which is a hydrodynamic rate, not a
+discretization error.
+
+Writing the two stages out, the composed map is
+
+    dn_c = -dt div(n_c v) + dt S  -  dt n_c v dln(mbar)/dr ,
+
+the conservation law plus a spurious advective term.  Its origin is the choice
+of transported variable: the carriers were advected as the PARTICLE mixing
+ratio `n_c/n_tot`, and `n_tot` is not conserved — ionization and dissociation
+create particles — so a ratio formed against it does not ride with the flow.
+`rho` is conserved, being the hydrodynamic mass row, so the scalar that does is
+the fraction per unit mass `n_c/(rho n0)`, which is the variable `f_sp` already
+stores and the variable the hydrodynamic stage leaves alone.  The spurious term
+is supported by the gradient of the mean mass per particle, so it lives exactly
+across the dissociation and ionization fronts, which is the region the carriers
+exist in at all.
+
+The carrier operator is therefore written on the fraction per unit mass.
+Molecular diffusion is unchanged and stays per particle, which is what it
+physically is: `carrier_face_flux` takes the two face values of
+`wfac = rho n0/n_tot` and forms the diffusive and drift fluxes on
+`X = wfac y`.
+
+Two further things came out of the same reading:
+
+- **The carrier operator no longer writes the lower ghosts.**  `solve_carriers`
+  had been mirroring the base cell into them on every Newton trial and
+  `carrier_write_back` had been writing that mirror into `f_sp`, so the base
+  Dirichlet value the next step read was the base cell's own H2 rather than the
+  handoff's.  The marching loop hid it, its ionization sweep re-pinning the
+  ghost every step; `relax_photochemical_composition`, which takes many
+  transport steps between two sweeps, did not, and from its second pass on it
+  was relaxing against the wrong boundary.
+- **`EXHALE_UPDATE_MAP` indexed its step list with the marching counter**,
+  which is 0 on a cold start, so `upmap_f(0)` was read out of bounds and the
+  first mapped step ran at `dt = 0`.  The tool only ever worked from a loaded
+  state.  The block index now comes from the diagnostic's own counter.
+
+Measured, on the hot-Uranus carrier gate marched 12 000 steps and restarted,
+the production map in the row's own unknown against the carrier steady residual
+of the state it started from — largest over cells of `|G + R|` divided by the
+row's own terms:
+
+| `dt/dt_CFL` | base cell | `r = 1.0984` | `r = 1.16` | max |
+|---|---|---|---|---|
+| 1     | 2.0e-5 | 3.836e-3 | 1.10e-5 | 3.836e-3 |
+| 0.1   | 1.8e-5 | 3.838e-4 | 1.67e-6 | 3.838e-4 |
+| 0.01  | 2.9e-6 | 3.838e-5 | 1.67e-7 | 3.838e-5 |
+| 0.001 | 3.1e-7 | 3.838e-6 | 1.67e-8 | 3.838e-6 |
+
+First order everywhere, including the base cell, which before the change had no
+trend at all (1.9e-5, 3.7e-4, 5.9e-5, 3.1e-4): the old row imposed the ghost's
+carrier density divided by the ghost's particle density, and the particle count
+of a cell outside the domain is a derived quantity; the new row imposes the
+mass fraction the handoff states directly.
+
+Ten of the eleven regression cases are byte-identical — the operator is a no-op
+wherever `Molecular carrier transport` is off.  `mol_carrier` moves, as it must:
+log10 Mdot 10.50 to 10.52 at its pinned 12 000 steps, which is a relaxation
+snapshot and not a converged state.
+
+**The section 157 wall is not this.**  Both operators, restarted from the same
+12 000-step state with the JFNK hand-off at `du < 1e-2`, march to a `du`
+plateau at 3.7e-2 with `dtu` at 4.3e-6 — the state has stopped moving while the
+mass flux keeps a 3.7% radial spread — and neither is ever offered to the
+coupled Newton.  The plateau is the same to two figures in both arms, so the
+variable change closes the operator question and leaves that one open.
+
+Full account, with the derivation and every measured number:
+`docs/carrier_operator_consistency.md`.
+
+### 158.5 A premise this work overturned, and how the old measurement misled
+
+This section was commissioned on the strength of a diagnosis that turned out to
+be wrong, and the way it was wrong is worth keeping. Section 10 of
+`docs/p23_transport_on_state.md` reported `|G + R|` for the carrier row as
+**independent of `dt` over four decades**, which for a consistent map is
+impossible, and narrowed the cause to the base inflow Dirichlet on the grounds
+that the marching step and the steady residual might construct it differently.
+
+**They do not.** `photochemical_transport_step` and `carrier_steady_residual`
+call the same assembly sequence in the same order with the same arguments, and
+the base inflow condition is built in exactly one place -- `carrier_base_state`
+takes its direction from `wind_mass_flux` and its value from the lower ghost,
+and `carrier_residual` applies it at `j = 1` for both callers. The three
+differences between the paths are the time term (`dt_code` against the steady
+limit), the Newton and element clamp, and the write-back, and a probe that
+evaluates the steady residual inside the step with the step's own coefficients
+shows the step converging on it **cleanly at first order**: `9.5e-5`, `7.2e-6`,
+`8.2e-7`, `8.3e-8` as `dt` falls by four decades, with the clamp and the
+write-back contributing nothing.
+
+**What section 10 measured was its own choice of variable.** It formed `G` in
+the carrier DENSITY `n(H2) = f_sp * rho * n0`, and splitting the composite map
+by stage shows the whole `dt`-independent part sitting in the HYDRO stage, not
+the carrier stage: at the worst cell the hydro term is `+7.154e-1` while the
+transport term is `-5.470e-2` against a residual of `-5.474e-2`, agreeing to
+three digits. A diagnostic that attributes a hydrodynamic term to the operator
+it is measuring will report an inconsistency that the operator does not have.
+
+The defect the work found instead is upstream of that and is a physics one --
+the advected variable -- and it is what the rest of this section is about. The
+lesson for the diagnostic is narrower: measure the update-map defect of a row
+**in the variable that row's residual is written in**, or the other stages'
+terms arrive as a constant.
+
+## 159. The scaled trust region re-measured, and the obstruction that section 158 did not move (2026-09-04)
+
+**Judgement first. The trust region of the reserved section 153 is the
+better-behaved control by every measure that section claimed for it, and it is
+not what is stopping the coupled carrier solve.** It is now in the tree,
+environment-gated and default off. Both controls stall on the same row in the
+same cells: the carrier row at the H2 dissociation front, `r = 1.126-1.143` --
+where section 157 found the obstruction before the carrier operator was fixed.
+
+Section 157.4 held that section 153 was worth re-measuring because the reason
+it was reserved had become void: through section 154 both controls bottomed at
+`||R|| = 1.00` in base cell `j = 1`, and the characteristic boundary of section
+152 moved that. It also named the carrier operator as upstream of either
+control and said to fix that first, which section 158 did. This is the
+measurement those two sections set up.
+
+### 159.1 One march, two arms, one binary
+
+The arms differ by the environment variable `EXHALE_TRUST_REGION` and by
+nothing else -- same executable, same input, same restart files -- so a
+difference between them is the step control and not the state, the physics or
+the build. The acceptance criteria were fixed before the arms ran.
+
+The shared hand-off state is `mol_carrier` physics with `Coupled carrier solve:
+True` and `Secondary_ionization: Immediate`, marched 200,000 steps (1 h 36 m
+41 s) to `du = 6.51e-3` and `log10 Mdot = 10.43`. Section 157.1 marched the
+same case on the pre-158 tree to `du = 5.89e-3` and the same `10.43` in 1 h
+37 m: **the hand-off state reproduces.** Section 158 changed where a
+12,000-step snapshot lands without changing where a 200,000-step march
+arrives.
+
+### 159.2 What the ledgers say
+
+Per JFNK attempt, three attempts each:
+
+| | line search | trust region |
+|---|---|---|
+| `info` | 2, 2, 2 | 2, 1, 2 |
+| best `\|\|R\|\|` | 1.345, 1.110, 1.095 | 1.462, 0.916, 1.117 |
+| **trials refused, element budget** | **78, 167, 148** | **0, 0, 0** |
+| **trials refused, uncertified composition** | **78, 167, 148** | **0, 0, 0** |
+| steps rejected / models refused by the ray test | -- | 0, 0, 0 |
+| iterations with `lam <= 1e-6` | 25 | 0 |
+| residual evaluations | 2010, 2085, 2082 | 1307, 16258, 1371 |
+
+* **The refusal claim is confirmed by a wider margin than the draft claimed.**
+  The line search refuses 78 to 167 trial states per attempt and collapses to
+  `lam = 9.54e-7` on 25 iterations, the exact signature section 157 recorded.
+  The trust region refuses nothing at all in 582 accepted steps.
+* **Its model is better than the draft measured**: `ratio = 1.000` with the
+  predicted and the actual reduction equal to four digits, against the draft's
+  median 0.93.
+* **Both stall at the same row.** The worst row is the carrier row in 115 of
+  120 line-search iterations and in 580 of 580 trust-region iterations, at
+  `j = 224-234`.
+
+**So section 158 fixed a defect that was not the obstruction.** The carrier row
+was being transported in a variable the mass row does not conserve; that was
+physically wrong and is fixed; and the coupled solve fails in the same cells as
+before. Both are results, and neither implies the other.
+
+Per P17 no magnitude is quoted as physics: neither arm reached `info = 0`.
+
+### 159.3 Why the trust radius contracts: the leg belongs to a different model (measured twice, the first diagnosis refuted)
+
+**The cause is the pseudo-transient shift, and the first diagnosis -- the
+Krylov tolerance -- was wrong.** The trail, in the order it was walked:
+
+**(a) The mechanism, traced.** `EXHALE_TR_TRACE=1` prints every dogleg trial
+and every non-positive predicted reduction. One iteration takes two trials:
+the first, at the current radius, returns `pred < 0` -- the model predicts the
+residual will RISE -- and the safeguard shrinks the region to `0.25*snorm`;
+the second succeeds on the boundary of the smaller region and the
+`ratio > 0.75` rule doubles it. Net `delta_out = delta_in/2`. 297 of 582
+iterations had a `pred <= 0` first trial. The per-iteration line hid all of
+it: the surviving trial's ray test overwrote `model_ok`, `theta` never
+backtracked so `cuts` stayed 0, and the printed `pred`/`ratio`/`snorm` belong
+to the survivor.
+
+**(b) The first diagnosis, refuted by its own ladder.** The obvious suspect
+was the Newton leg's Krylov tolerance, `gm_rtol = 0.1`, satisfied in one GMRES
+iteration. Measured on four rungs from one hand-off state
+(`EXHALE_TR_GMRTOL` = 1e-1, 1e-2, 1e-3, 1e-4): the mean GMRES iteration count
+rises 1.0 -> 5.0, so the leg really is a thousand times tighter, and the
+`pred <= 0` rate (22 of 40), the radius trajectory
+(`3.96e-2 -> 1.24e-3`) and the finishing `||R|| = 1.462` do not move at all.
+**Leg accuracy is not the cause.**
+
+**(c) What the arithmetic then leaves.** The leg solves the SHIFTED system
+`(idtau I + A) sN = -r0`, and the predicted reduction is measured in the
+UNSHIFTED model. For an exact leg the model residual at full length is exactly
+the shift term, `r0 + A sN = -idtau (D/Drow) sN`, so
+`pred = (||r0||^2 - idtau^2 ||(D/Drow) sN||^2)/2` -- a sign that no Krylov
+tolerance can change. Traced directly:
+
+```
+[TR-trace] ||r0||= 8.684E-01  idtau*||(D/Drow)sN||= 1.101E+00  ||r0+AsN||= 1.100E+00
+```
+
+The identity holds to three digits, and the shift term sits just above
+`||r0||`, which is why the sign flipped on roughly half the iterations rather
+than all of them.
+
+**(d) The fix, measured.** With the leg solved unshifted (`A sN = -r0`; the
+banded preconditioner keeps its shift, a preconditioner need not be exact) the
+dogleg's premise -- the leg is the minimizer of the model being predicted --
+is restored, and on the same hand-off state:
+
+* `pred <= 0`: **0 of 40** (was 22 of 40);
+* the radius GROWS, `3.96e-2 -> 1.98`, doubling along accepted boundary steps;
+* one clean textbook rejection (`ratio = -0.73` at a long step, radius cut);
+* `ratio` departs from 1.000 at long steps -- the model is now probing real
+  nonlinearity instead of re-measuring its own shift.
+
+The unshifted leg is now the trust region's default;
+`EXHALE_TR_SHIFTED_LEG=1` restores the old leg for measurement. The
+within-iteration shrink-then-double compounding of (a) is only reachable
+through the `pred <= 0` path, so it goes dormant with the cause removed; the
+ledger still counts no refused first trials outside the trace, which is left
+as a known gap.
+
+**(e) What does not change.** The first unshifted attempt still ends
+`info = 2` with best `||R|| = 1.462`: the merit `||F/Drow||` falls at every
+accepted step while the acceptance norm's best iterate does not improve. A
+third, differently-repaired step control stalling at the same carrier row is
+further confirmation that the obstruction is the molecular layer itself
+(section 157), not the step control.
+
+### 159.4 Interface and regression
+
+Environment-gated, default off, **no input key**. With it off the regression is
+11 of 11 byte-identical, so no existing run changes. The patch predated section
+147, which split `eval_residual`'s composition seed from its result; its five
+call sites were translated onto the current interface following the idiom the
+neighbouring line search uses, with the accepted evaluation writing its result
+to `f_sp_acc` so the accepted composition still reaches the caller.
+
+**Files.** `docs/p153_trust_region_remeasured.md`.
+
+## 160. A run directory without ./output no longer dies nameless (2026-09-04)
+
+Every output of a run goes to `./output`, and nothing created it: a fresh run
+directory died at the first write (`set_IC.f90`'s IC dump) with a bare Fortran
+runtime error and a hex backtrace that named neither the directory nor the
+cure. Every working run directory had `./output` only because it was copied
+from one that did. `init` now creates the directory at startup (the
+`execute_command_line` idiom already used by the lower-atmosphere prestep) and
+stops with a message naming it if creation fails. Regression: 11 of 11
+byte-identical (the guard runs before any physics and writes nothing when the
+directory exists).
+
+## 161. The marching departure from the steady root, re-measured on the characteristic boundary: an O(dt) kick plus a CFL-0.6 limit cycle, and neither is physics (2026-09-04)
+
+**Judgement first. On the current tree the hot-Uranus steady root is the
+physical steady state, and the marching's departure from it -- item (AD)'s
+open half -- decomposes into two numerical components: a first-step velocity
+displacement proportional to dt, and a self-sustained oscillation that is
+ACTIVE at CFL 0.6 and ABSENT at CFL 0.15.** The pre-152 finding that
+"quartering dt changes the excursion by 3 percent" does not reproduce on this
+tree: quartering dt reduces the layer's excursion 750-fold.
+
+All states, logs and the analysis are in `.../scratchpad/p54ad/`; the sampling
+probe is `EXHALE_P54_TS=<interval>` (section 161.5).
+
+### 161.1 The root, and the restart
+
+The ladder2 accepted state re-solved on the current tree (sections 143 + 146 +
+152 + 155 + 158) gives `info = 0` with a Riemann face-flux spread of
+**1.85e-9** over `r >= 1.03` -- five orders flatter than the flattest state of
+the P54b campaign (1.04e-4, variant G) -- at the same `log10 Mdot = 10.34`.
+The restart is exonerated completely: `EXHALE_DUMP_IC` reproduces the written
+root bitwise (max relative difference 3.9e-16, i.e. one ulp of the text
+round-trip).
+
+### 161.2 What one marching step does to the root
+
+Restart plus ONE step at CFL 0.6 adds a nearly UNIFORM velocity increment
+`dv ~ +9 cm/s` over the whole column -- v moves 24 -> 33 at `r = 1.02`,
+43 -> 52 at 1.03, 112 -> 121 at 1.05, 837 -> 845 at 1.10, 13580 -> 13587 at
+1.20 -- while rho, p and T move by at most 9e-5. A simultaneous whole-column
+increment in one step is a local source term, not a wave. Read as a flux
+error it is `dv/v(r)`: +38 percent of F_0 at 1.02, +21 percent at 1.03, +1
+percent at 1.10. **The "30 percent mass-flux deficit in the layer" of item
+(AD) is this: a velocity-scale truncation error of order 10 cm/s, read against
+a layer whose own wind velocity is tens of cm/s.** It never was a separate
+physical imbalance.
+
+### 161.3 The update map on this root
+
+`EXHALE_UPDATE_MAP=1` (dt = 1, 0.1, 0.01 x CFL), max over cells, code units:
+
+| row | `\|R\|` | `\|G_dt\|` at CFL | at CFL/10 | at CFL/100 |
+|---|---|---|---|---|
+| mass | 2.6e-6 | 9.7e-4 | 1.1e-4 | 1.1e-5 |
+| momentum | 2.7e-6 | 7.3e-4 | 8.5e-5 | 7.1e-6 |
+| energy | 3.9e-6 | 1.4e-3 | 1.5e-4 | 1.9e-4 |
+
+Mass and momentum are clean first order -- the map and the residual share the
+fixed point, confirming section 145.6 on the new root. The energy row floors
+at `1.9e-4` (48 `|R|`) through the chemistry stage: the sweep moves the
+composition by a fixed ~4e-6 per CALL, which as a rate diverges as `1/dt`.
+That is the same per-step sweep floor section 145.6 measured, 300 times
+smaller here (the old chem stage was 9.9e-3), and it is the one term through
+which the two operators still disagree as `dt -> 0`.
+
+### 161.4 The dt ladder: a kick proportional to dt, and a cycle with a threshold
+
+The root reloaded and marched with nothing able to stop it, same model time
+in every rung (3000 steps at CFL 0.6):
+
+| | CFL 0.60 | CFL 0.30 | CFL 0.15 |
+|---|---|---|---|
+| p2p of `rho v r^2 / F_0` at r = 1.005 | 0.927 | 0.464 | 0.156 |
+| at r = 1.03 | 0.373 | 0.187 | **0.0005** |
+| at r = 1.10 | 0.047 | 0.022 | 0.0001 |
+| at r = 1.20 | 0.0095 | 0.0038 | 0.0000 |
+| first-kick `dv` at 1.03 | ~9 cm/s | ~4.5 cm/s | ~2.3 cm/s |
+
+The first-step kick scales as dt (9 -> 2.3 cm/s for dt/4, a factor 3.9), and
+what remains at CFL 0.15 is that O(dt) static displacement alone: a
+quasi-steady +5.4 percent flux offset at the bottom edge of the window, formed
+in the first 50 steps and constant thereafter, with NO oscillation on top
+(p2p 5e-4 over 12000 steps). At CFL 0.6 the same root sustains a non-decaying
+oscillation of p2p 0.37 F_0 at r = 1.03 for at least 8000 steps -- 1.5 times
+the pre-152 baseline -- without migrating anywhere: the mean flux level stays
+F_0 and the rate stays 10.34 (the pre-152 WASP-121b attractor shift of 0.14
+dex does not occur here).
+
+**The cycle's amplitude is proportional to dt while it is active (0.373 ->
+0.187 from CFL 0.60 to 0.30, and the same factor two at every radius), and it
+switches OFF between CFL 0.30 and 0.15** -- from 0.187 the ladder's next rung
+would be 0.093 if the proportionality continued, and the measured value is
+0.0005. That is a threshold, not truncation scaling. The oscillation is a
+numerical limit cycle of the explicit marching at standard CFL -- the
+possibility the CFL key's own comment has always stated ("lower = smaller dt,
+may damp a numerical limit cycle") -- and the characteristic boundary neither
+causes nor removes it.
+
+### 161.5 What this closes and what it opens
+
+* **(AD), hot-Uranus half: the physics question is CLOSED.** The steady root
+  is the physical steady state; the marching's departure from it is O(dt)
+  displacement plus a finite-dt limit cycle, both numerical, both vanishing
+  with dt. "Converged" by the steady gates means what it says.
+* The probe `EXHALE_P54_TS=<N>` (default off, regression 11/11 with it off)
+  writes `output/p54_flux_ts.txt`: face and cell mass flux at r = 1.005,
+  1.03, 1.10, 1.20 plus the two window spreads, every N steps.
+* The switch-on sits between CFL 0.15 and 0.30; the practical consequence
+  is for hand-off states: a state marched
+  at CFL 0.6 is handed to the JFNK mid-cycle, with the cycle's amplitude
+  written into its layer. Whether the coupled-carrier stall of sections 157
+  and 159 is fed by that is the next measurement.
+
+## 162. The coupled carrier solve from a cycle-free hand-off: the fourth control, and what the front is doing (2026-09-04)
+
+**Judgement first. Removing the CFL-0.6 limit cycle from the hand-off state
+does not let the coupled carrier solve converge.** Both step controls, handed
+the same state settled at CFL 0.15 (section 161), end all three attempts at
+`info = 2` with the carrier row worst -- 119 of 121 line-search iterations and
+846 of 846 trust-region iterations, `j = 231-250`, `r = 1.14-1.17`. Together
+with the two arms of section 159 that is four differently-conditioned solves
+stalling on the same row at the same front, and section 157.4's judgement
+("not a step-control problem") stands for the fourth time.
+
+**What was run.** The section 159 hand-off state (CFL 0.6, 200,000 steps)
+was marched a further 18,311 steps at CFL 0.15 with the section 161 probe on;
+over its last 4,000 steps the flux at every sampled radius is quiet to
+`p2p = 2e-3` (it was 0.3-0.9 at CFL 0.6), so the cycle is gone from the state.
+That state, `Solver: Newton 1.0`, CFL kept at 0.15, two arms as in section
+159.1, 7200 s wall each (both hit the cap in their third attempt).
+
+| | line search | trust region (unshifted leg, section 159.3) |
+|---|---|---|
+| `info` | 2, 2, 2 | 2, 2, 2 |
+| best `\|\|R\|\|` | 1.035, 1.717, 1.641 | **0.899**, 1.065, 0.923 |
+| carrier row, worst cell | 0.19, 0.26, 0.25 at j = 231-233 | 0.86, 0.90, 0.94 at j = 250 |
+| trials refused, element budget | 117, 133, 105 | **2164, 8001, 5270** |
+| steps accepted / rejected | -- | 134/5, 424/0, 274/12 |
+| final trust radius | -- | 3.8e-6, 4.2e-6, 8.7e-6 |
+
+**Two things this run adds.**
+
+1. **The repaired trust region now refuses thousands of trials on the element
+   budget and its radius still collapses**, to `4e-6`, through the theta
+   backtrack rather than the ratio rule. With the shifted leg (section 159)
+   its steps were so short that nothing was ever refused; with the leg
+   unshifted the radius grows, the steps reach the front, and the element
+   budget refuses them. **The admissible region around this state, in the
+   direction the linear model points, is minuscule at the front.** A Newton
+   direction that leaves the element budget within a step of `1e-5` in the
+   scaled variables is a linearization the constraint does not admit -- the
+   carrier row's model at the front is not consistent with the budget the
+   state must satisfy.
+
+2. **The front creeps monotonically through the whole chain**: the
+   `f(H2) = 1e-2` radius is 1.1338 after the CFL-0.6 march, 1.1355 after the
+   CFL-0.15 settle, 1.1443 and 1.1557 after the two arms' attempts and their
+   inter-attempt marches. Nothing turns it around; every operator pushes it
+   outward and none of them reaches a place where it stops. Section 157.3
+   recorded the published structure (Koskinen et al. 2022 Model A) with
+   `f(H2) = 0.976` at 1.10 r_base against our 0.20-0.25: **the steady front
+   is far outside where any hand-off state has it**, and at the layer's
+   transport speed the marching approaches it at 0.002 r_base per 40,000
+   steps.
+
+**Reading.** The hand-off state is not near the steady state in the carrier
+variable -- the front is in the wrong place by a large fraction of a planetary
+radius -- so a Newton solve from it fails for the legitimate reason that no
+linear model at the current front describes a solution with the front
+elsewhere, and the element budget refuses the steps that try. That is
+consistent with every measurement since section 157 and inconsistent with none.
+
+**What would test it.** A steady solve of the carrier transport alone at
+frozen hydrodynamics -- the advection-diffusion-reaction boundary-value
+problem for the H2 carrier with the wind, temperature and radiation held --
+placing the front where the carrier equation says it belongs before the
+coupled solve is attempted. If the coupled JFNK then converges from that
+state, the obstruction was the front's position; if the front the carrier BVP
+places is still far short of the published one, the missing piece is in the
+carrier physics (P23). Not started: it is a new solver stage and a design
+decision.
+
+**Files.** `.../scratchpad/p54ad/{carrier_nc,nc_ls,nc_tr}/`.
+
+## 163. Where the H2 front belongs, what the layer's energy budget is missing, and why no hand-off state has been a starting point (2026-09-04)
+
+**Judgement first.** Three things were established today about the coupled
+molecular layer of the 1 microbar hot Uranus, and they change what the carrier
+campaign has been testing:
+
+1. **The steady H2 front with transport is far outside every hand-off state,
+   and that was already measured.** The frozen-wind carrier relaxation of
+   `docs/p50_carrier_wind_alternation.md` (its state A0, LW = 343 on) puts
+   `x_H2 = 0.963` at `r = 1.10` and `0.47` at `1.8`, pinned on the element
+   ceiling from 1.047 to 1.227 R_p. Koskinen et al. (2022) Model A has 0.976 at
+   1.10. That state was recorded as "not a solution of anything" because the
+   wind solve handed it whole aborted; **physically it is the published
+   structure.** Every hand-off state of sections 157-162 has the front at
+   1.13-1.16 and creeping outward -- so those solves were asked to find a root
+   from a state whose front is a large fraction of a planetary radius from
+   where the carrier equation puts it. The stall is the distance, not the
+   solver (fourth and fifth confirmations: section 162, and the LW-on arms of
+   163.3 below).
+
+2. **LW photodissociation heating dominates the layer's energy budget where
+   EUV cannot reach, and the LW-off configuration every carrier run used has
+   no such term.** `Lyman_Werner.txt` of the hot-Uranus root with LW = 343:
+   at `r = 1.0035`, `f_shield = 2.3e-5`, `k_LW = 8.7e-10 s^-1`, and still
+   `n(H2) k_LW x 0.4 eV = 2.8e-9 erg cm^-3 s^-1`, because the layer is dense.
+   Turning the key on at the LW-off root sends the base energy row from
+   `1e-5` to `1.59` (`j = 1`), and the wind solve fails (`info = 2`,
+   `||R|| = 0.22`) with or without transport. Section 134's A/B that reached
+   `info = 0` with LW on had `Base IR field: True` -- the channel through
+   which a shielded, LW-heated layer radiates. **A physically complete
+   hot-Uranus run is LW + base IR field + molecular IR bands together**, and
+   the carrier campaign has been running with none of the three.
+
+3. **A marched hand-off state with transport on is not near steady in the
+   layer, whatever the `du` window says.** The complete-physics march
+   (163.4), stopped at `du = 2.9e-3` after 40,000 steps, carries
+   `F/F_0 = 1.62` at `r = 1.02`, `1.45` at 1.03, `1.24` at 1.048 -- a layer
+   redistributing 24-62 percent of the wind's mass flux as the front moves.
+   Handed to the wind JFNK (Picard mode, `x_H2` held per cell) it fails on
+   the MASS row at the front (220 of 220 iterations `k = 1`, `j = 113` and
+   `229-230`); handed to the coupled solve it fails on the carrier row (162).
+   Same place, the row that is free to move.
+
+### 163.1 The frozen-wind carrier state, re-read
+
+The p50 campaign's inputs carried `Stellar LW flux: 343.0` (45 of 104 inputs
+across `picard/` and `frontmode/`, including A0/A1/B1/C1/cap/D1). So the
+ceiling-pinned column is what LW-limited transport gives at that irradiation:
+LW does not anchor the front near 1.1. The first hypothesis of the day -- that
+the front creeps because the LW channel was missing -- is refuted by that
+record; what the missing channel does is remove the layer's dominant heating
+term (163.2), which is a different defect of the same configuration.
+
+### 163.2 The LW heating term
+
+| r | T [K] | x_H2 | f_shield | k_LW [1/s] | heat_LW [erg cm^-3 s^-1] |
+|---|---|---|---|---|---|
+| 1.0035 | 1114 | 0.944 | 2.3e-5 | 8.7e-10 | 2.8e-9 |
+| 1.0206 | 918 | 0.818 | 9.5e-5 | 3.8e-9 | 5.0e-9 |
+| 1.0431 | 751 | 0.354 | 5.2e-4 | 2.2e-8 | 3.8e-9 |
+| 1.0842 | -- | 0.000 | 0.22 | 9.0e-6 | 3.3e-10 |
+| 1.2184 | -- | 0.000 | 0.98 | 4.5e-5 | 5.9e-12 |
+
+(`solve_lw`, the LW-off root with the key added; the run failed, the table is
+the field on its first evaluation.) The heating peaks INSIDE the shielded
+layer, where the product of a tiny rate and a huge density wins.
+
+### 163.3 The LW-on coupled arms (fifth confirmation)
+
+The section 162 state with LW = 343 added, marched 40,000 more steps (front
+`1.1355 -> 1.1499`; the CFL-0.6 cycle of section 161 present for the first
+8,000 steps and gone by the last 8,000), then both step controls:
+
+| | line search | trust region |
+|---|---|---|
+| `info` | 2, 2, 2 | 2, 2, (cap) |
+| best `\|\|R\|\|` | 1.52, 1.64, 1.60 | 1.33, **0.45** |
+| worst rows | k=3 (42), k=4 (69), k=1 (15) | k=4 at j = 241-243 |
+| trials refused, element budget | 58, 24, 13 | 0, 0 |
+
+The trust region with the unshifted leg holds a healthy radius here (`0.30`
+at the end of its second attempt, 31 accepted / 9 rejected) and reaches the
+lowest residual of any coupled attempt today, and the carrier row at
+`r = 1.16` still blocks.
+
+### 163.4 The continuation, and why it has not started
+
+The alternation loop of `steady_wind_with_element_diffusion` (wind JFNK at
+frozen carriers -> bounded carrier pass -> repeat) is the continuation the
+distance of 163(1) calls for. Two diagnostics open it: `EXHALE_CARRIER_TRUST`
+(the per-pass bound, default 1e-2; p50 measured acceptance up to 0.2) and
+`EXHALE_OUTER_PASSES` (the pass cap, default 20); a per-pass H2-front line is
+printed beside the carrier residual. Defaults unchanged; regression 11 of 11.
+
+Three starting points were tried and none got past pass 1, because pass 1 is
+a wind solve that must converge first:
+
+| start | wind solve, pass 1 | worst row |
+|---|---|---|
+| LW-off root + LW + transport (`cont`) | `info = 2`, 0.18 / 0.16 / 0.14 | k=1 at r = 1.04 (start `\|\|R\|\|` 1.33, energy at j = 53) |
+| LW-on transport-off 30k march (`solve_lw0`) | `info = 2` x3, 0.22 | k=2 (95 of 123) at r = 1.05 |
+| LW + IR field + IR bands + transport, 40k march (`cont_full`) | `info = 2`, 0.36 / 0.29 / 0.21 | k=1 (220 of 220) at j = 113, 229 |
+
+The sequencing error is the same in all three: the wind solve is handed a
+state whose layer is moving. **The right first step is a transport-OFF root
+of the complete physics**, whose fixed `x_H2` is its own equilibrium, so that
+pass 1 starts at a root and the carrier pass is the only thing that moves.
+That chain (`march_full_nt` -> `solve_full_nt` -> `cont_full2`) is running at
+the time of writing; its outcome is section 163.5.
+
+### 163.5 Outcome of the sequenced continuation: no root of the complete physics exists yet, and the reason is the layer's energy row
+
+The sequenced chain did not reach its continuation, because its first stage
+-- a transport-OFF root of the complete physics (LW + base IR field + IR
+bands) -- does not exist yet:
+
+| stage | result |
+|---|---|
+| `march_full_nt`: complete physics, transport off, 30,000 steps from the LW-off root | `du = 3.6e-4` |
+| `solve_full_nt`: JFNK from that state | start `\|\|R\|\| = 1.26`, ENERGY row at `j = 53`, `r = 1.010`; three attempts `info = 2` (1.84, 0.75) |
+| `ptc_full_nt`: PTC from the same state | `\|\|R\|\| = 0.678`, energy row at `r = 1.056`; `dtau` never grows past `dtau_0`, `lam -> 9.5e-7` |
+
+**Why the marched state is far from a root: the layer's thermal time.** The
+energy budget of the marched state at `r = 1.0097` (T = 812 K):
+
+| heating [erg cm^-3 s^-1] | | cooling channels | |
+|---|---|---|---|
+| H2 Lyman-Werner | 1.23e-7 | H3+ IR | **-1.39e-7** (absorption: net HEATING) |
+| molecular reaction heat | 1.63e-7 | H2 IR | -4.9e-9 (same) |
+| He I photo | 3.1e-8 | everything else | < 1e-12 |
+| H2 photo | 1.7e-8 | | |
+| **total** | **3.35e-7** | **total** | **-1.44e-7** |
+
+At 812 K the gas is colder than the base radiation field it sees
+(`B_nu(T_0 = 1140 K)`, diluted), so the IR channels ABSORB, and the layer has
+a net energy input of `4.8e-7 erg cm^-3 s^-1` with no channel that cools.
+Its thermal energy is `1.5 n k T = 2.0 erg cm^-3`, so the relaxation time is
+`~4e6 s` (1.2e7 s at the base, 1e6 s at 1.05). The marching step at CFL 0.6
+is `1.46e-4` code units of `R_0/v_0`; with `v_0 = sqrt(k T_0 / mu)` and
+`mu ~ 2 m_H` that is `~2 s`, so **30,000 steps cover `~7e4 s`, fifteen to a
+hundred and seventy times short of the layer's thermal relaxation.** No
+marched hand-off of this physics can be near thermal equilibrium in the
+layer, whatever `du` reports, and the steady solvers are then asked to close
+an energy row that is O(1) off from a state O(1) away -- which they do not.
+
+The local-time-stepping variant (`Time stepping: Local`, `march_full_nt_loc`,
+30,000 steps) changes the layer's temperature by 0 to 36 K (T at
+r = 1.003 / 1.01 / 1.03 / 1.05: 948 / 789 / 694 / 570 K globally stepped,
+944 / 792 / 714 / 606 K locally stepped) and the JFNK from it fails the same
+way (start `||R|| = 1.33` at `r = 1.007`, `info = 2` at 0.59). The layer's
+cells are the finest on the grid, so local stepping accelerates everything
+except the layer -- as expected, and now measured.
+
+**What this closes.** The coupled-carrier question of sections 157-163 is
+now known to have been posed on a configuration missing the layer's dominant
+heating term, and on states whose layer was neither compositionally nor
+thermally steady. Every solver result of those sections stands as measured,
+and none of them is a statement about the complete physics.
+
+**What is open, and is a design question.** The layer's temperature with LW
+heating and base-field IR exchange is set by a slow radiative balance the
+hydro marching cannot reach and the JFNK/PTC cannot jump to from the marched
+state. The candidates, in order of what they would settle:
+
+1. **A layer thermal preprocessor**: solve the energy balance of the layer at
+   fixed hydro and composition (one Newton per cell, or a thermal BVP), so the
+   hand-off state is thermally steady before the wind solve. The same idea as
+   the carrier BVP, for T; the carrier one already exists as the frozen-wind
+   relaxation.
+2. **The H3+ IR absorption term's sign and dilution**: `-1.39e-7` is the
+   largest energy term in the layer and it is an absorption of a diluted base
+   blackbody by H3+ at 812 K. Whether the dilution W and the assumption that
+   the base radiates `B_nu(T_0)` are right for a 1 microbar level is a
+   physics question the layer's temperature now hinges on.
+3. **Whether the complete-physics hot Uranus has a steady state at all** in
+   this column model, or whether the LW-heated layer warms until the front
+   itself moves -- which would make the "front creep" of 157-162 the same
+   phenomenon seen from the composition side.
+
+## 164. A marching step spent half its time on metals that were not there (2026-09-04)
+
+**Judgement first.** Profiled on the H/He hot-Uranus molecular run
+(`EXHALE_PROFILE=1`, 300 steps), the marching step at 16 threads was 27 ms,
+and 14 ms of it was the semi-implicit energy update -- serial, three calls of
+`eval_cool` per step -- while the three hydrodynamic stages took 2 ms. Inside
+`eval_cool`, 79 percent of the time was the metal recombination / ionization /
+cooling table interpolation, the fine-structure line transfer and the CNO
+cooling, evaluated for `n_mion` ions whose density is identically zero in
+every cell of a metals-off run. **The step was not hydro-bound and not
+thread-bound; it was computing the cooling of absent species four times per
+step.**
+
+**Change.** `eval_cool` now gates those blocks on `thereis_metals`, the flag
+the ionization sweep already gates its own metal solve on, and sets the
+outputs a caller could read to what they would have multiplied into
+(`rec_m`, `aion_m`, `c_metal`, `cool_M` = 0; `beta_fs` = 1; `nbar_fs` = 0).
+For a metals-off run every skipped term was a product with a zero density,
+so the result is bitwise identical; for a metals-on run nothing changes.
+
+**Measured** (300 steps, same case; `eval_cool` totals over all four calls):
+
+| | before | after |
+|---|---|---|
+| whole step, 1 thread | 19.0 s | 14.6 s |
+| whole step, 16 threads | 8.2 s | **3.84 s** (2.1x) |
+| energy update, 16 threads | 4.3 s | 0.99 s |
+| `eval_cool` metal tables | 3.71 s | 0.000 s |
+| `eval_cool` fine-structure + CNO | 1.09 s | 0.03 s |
+
+Verification: the 300-step outputs are bitwise identical to the pre-change
+run at 1 thread; `make check` 11 of 11 byte-identical (the metals-on WASP
+cases are the control that nothing physical moved); `run_fcheck.sh` CLEAN.
+Phase timers for the three RK stages, the carrier transport and the energy
+update, and five sub-block timers inside `eval_cool`, are now part of the
+`EXHALE_PROFILE=1` report. The plan this is step 0 of, with the measurements
+behind it, is `docs/marching_step_performance_plan.md`.
+
+## 165. The cooling evaluation runs over cell blocks, and the coefficient routines gained an index-range form (2026-09-04)
+
+**What changed.** `eval_cool` is now a driver plus a cell kernel. The driver
+does the work that is not cell-local -- the electron density, and the
+fine-structure line transfer, which integrates optical-depth columns above
+and below each cell and is therefore the one routine in the family that
+couples cells -- and then runs `eval_cool_cells(j_lo, j_hi, ...)` over
+contiguous blocks inside one `!$omp parallel do`. Every whole-grid local of
+the old body (the H/He rate fits, the Gaunt factors, the metal coefficient
+arrays, the molecular infrared terms, the accumulators) is a kernel-local
+automatic array, so blocks share no scratch.
+
+Seventy-three routines in `Cool_coeff.f90` gained an index-range form
+`X_range(..., j_lo, j_hi)` that loops over the range while keeping the
+full-array explicit-shape dummies; the old names remain as one-line wrappers
+`call X_range(..., 1-Ng, N+Ng)`, so every other caller is untouched. Keeping
+the explicit shape is deliberate: section 145 measured that turning these
+dummies into assumed-shape moves the `-O3` arithmetic and breaks byte
+identity. Measured here again -- after the mechanical split of the 73
+routines and before `eval_cool` itself was restructured, the run was already
+byte-identical.
+
+**Why it is bitwise safe.** Everything the kernel computes is a function of
+the cell's own temperature and densities, with no reduction, so any partition
+over cells gives the same arithmetic per cell. That is the same property the
+ionization sweep's parallel loop already rests on.
+
+**Measured** (300 steps of the H/He hot-Uranus molecular case,
+`EXHALE_PROFILE=1`; the "before" column is section 164's state):
+
+| | 1 thread | 16 threads |
+|---|---|---|
+| whole step, before | 14.57 s | 3.84 s |
+| whole step, after | 13.82 s | **2.83 s** |
+| energy update (three `eval_cool` calls), before | 0.98 s | 0.99 s |
+| energy update, after | 0.95 s | **0.17 s** (5.8x) |
+
+With section 164 the 16-thread step is 8.2 -> 2.83 s, **2.9 times faster**,
+and what remains is the ionization sweep (1.17 s), the hydrodynamic stages
+(0.60 s) and the carrier Newton (0.71 s).
+
+Verification: the 300-step outputs are bitwise identical to the pre-change
+serial reference at 1, 8 and 16 threads; `make check` 11 of 11
+byte-identical, the four metals-on cases being what exercises the new metal
+range path; `run_fcheck.sh` CLEAN. The sub-block timers inside `eval_cool`
+are preserved, and under threads they report thread time rather than wall
+time, which the code says at the site.
+
+**A duplication this exposed.** `Cool_coeff.f90` also carries scalar
+duplicates of the same fits (`rec_cool_HII_func`, `ion_coeff_HI_func`,
+`coex_rate_HI_func`, `GF_func`, `cool_CI_func`,
+`cool_coeff_by_ion_scalar`, `interp_cool_table_scalar`,
+`interp_cool_table_2d_scalar`), called from `T_equation.f90` and
+`input_read.f90`. Two definitions of one coefficient cannot be kept in step
+by the compiler, which is the hazard the project's own guidance names; the
+index-range forms make the scalar callers expressible as `X_range(T, out,
+j, j)`, so the duplicates are removable. Being done as its own change with
+its own byte-identity check.
+
+## 166. One definition per coefficient, and a cooling-table interpolation that had drifted apart (2026-09-05)
+
+**What was wrong.** `Cool_coeff.f90` defined twenty coefficients twice: once
+in the routine the grid path calls and once in a scalar copy the
+post-process temperature root calls. Nineteen pairs agreed; one had drifted.
+`interp_cool_table` interpolates log10(Lambda) with monotonicity-preserving
+piecewise-cubic Hermite, adopted deliberately because linear interpolation is
+only C0 and the semi-implicit energy solver finite-differences the cooling to
+get dC/dT; its scalar copy still interpolated the same table **linearly**,
+while its own header claimed "The algorithm is bit-identical to
+`interp_cool_table`". Measured on the 41-node Fe I table, the two disagree by
+up to **2.83 per cent** near T = 1681 K, median 0.39 per cent. This is the
+hazard the project guidance names: two definitions of one coefficient cannot
+be kept in step by the compiler.
+
+**What was done.** Each formula now exists once, as an `elemental` or `pure`
+function that both the grid path and the cell-by-cell path call, named for the
+quantity it computes (`alpha_rec_HeII_B`, `lambda_rec_HII`, `ci_rate_HI`,
+`lambda_coex_HI`, `lambda_line_CI`, `cool_table_value`,
+`cool_coeff_of_ion`, `cool_table_value_2d`, `cool_FeII_ne_value`). The
+retired copies, the false comment and two dead routines are gone. The
+interpolation the post-process now uses is the PCHIP one, so the temperature
+root reads the same cooling curve the marching solution was converged under.
+
+**A second duplicated constant, also unified.** The He II collisional
+ionization energy was `kb_erg*631515.0` in `T_equation.f90` and the literal
+`8.715e-11` in `eval_cool`. Against the measured 54.41776 eV (8.718686e-11
+erg) the adopted form is **+0.0037 per cent** and the retired literal was
+**-0.0423 per cent**, so the two differed by 0.046 per cent and the accurate
+one won. It is now the named `e_th_HeII_erg` in `parameters.f90`, used by
+both. (H I and He I carry the same literal in both files, so they are not
+drifted and were left alone; the values sit 0.0018 and 0.034 per cent from
+the named eV constants, listed for a later decision.)
+
+**Movement.** Seven of the eleven matrix cases stay bitwise identical; the
+four that move do so by at most **1.6e-9 relative** (`wasp_full_newton`),
+i.e. 1.6e-7 per cent, with `log10 Mdot` and the step counts unchanged at
+printed precision. The post-process files, which the matrix does not compare,
+move by at most 1.35e-6. Per the standing rule below no golden was
+refreshed. The 300-step hot-Uranus case is bitwise identical at 1 and 16
+threads even so, and the reason is quantifiable: at its peak 3498 K the
+Boltzmann factor puts the He II collisional-ionization term at ~1e-79 of the
+cooling.
+
+**The rule this rests on, and the harness now enforcing it (2026-09-05).**
+A numerical or technical method difference below 0.1 per cent counts as
+identical: a compiler or LAPACK change, a unified constant, a reordered
+reduction, a parallelized loop. No golden is refreshed for such a change,
+because a refresh destroys the reference the whole matrix is measured
+against. `run_check.sh` now measures rather than assumes: when the bitwise
+comparison fails it calls `compare_within_tolerance.py`, which reports the
+worst relative difference and the row, column and pair of values carrying
+it, and a case within `REGRESSION_REL_TOL` (default 1e-3) passes with that
+number printed beside it. `REGRESSION_REL_TOL=0` restores strict bitwise
+agreement. A real physics change lands far above the threshold and still
+fails.
+
+## 167. The marching step, four times faster (2026-09-05)
+
+Three changes, each verified on its own, took the 16-thread marching step of
+the H/He hot-Uranus molecular case from **8.20 s to 1.98 s over 300 steps**.
+Sections 164 and 165 are the first two; this section is the third and the
+summary.
+
+**Third change: the hydrodynamic stages and the carrier Jacobian.** `RK_rhs`
+is now a face loop (Riemann flux, low-Mach term) and a cell loop (source, the
+three flux differences) inside one parallel region with a barrier between, so
+each RK stage forks once. The only sequential coupling was the reuse of the
+previous cell's right flux, and it was removable at no arithmetic cost
+because every flux is already stored for the positivity repair. The ESWENO3
+and PLM slope loops are parallel. In `solve_carriers` the finite-difference
+Jacobian assembly and the residual row loop are parallel; the
+block-tridiagonal Thomas sweep stays serial, being sequential in space.
+`eval_dt`'s CFL minimum, `Apply_BC`, both positivity repair paths and the
+low-Mach argmax stay serial, each for a stated reason.
+
+The worst-cell diagnostic needed care: `pct_worst_j` / `pct_worst_ic` used to
+be written inside the loop, which would have made them thread-order
+dependent. They now come from a `reduction(max:)` on the value plus a short
+serial scan that reproduces the sequential tie-break exactly -- the first row
+in (j, then carrier) order attaining the maximum.
+
+| phase, 16 threads, 300 steps | before (164) | after |
+|---|---|---|
+| whole step | 8.20 s | **1.98 s** |
+| ionization sweep | 2.50 | 1.19 |
+| energy update | 4.30 | 0.17 |
+| carrier Newton | 0.71 | **0.13** |
+| hydrodynamic stages | 0.60 | **0.33** |
+
+Verification: bitwise identical at 1, 8 and 16 threads, and a 16-thread run
+reproduces itself bitwise -- the relaxation allowing reductions to reorder was
+granted but not needed, so threading costs nothing in reproducibility. The
+four-carrier oxygen path is also 1-vs-16 identical, and a
+`-fcheck=bounds,do,mem` build is clean on both the one-carrier and
+four-carrier paths.
+
+**The last hydrodynamic block, done.** The 28 per cent of stage time that sat
+in the molecular branch of `U_to_W` (`functions/UW_conversions.f90`) -- one
+Newton inversion of the caloric EOS per molecular cell -- is now parallel,
+along with the matching branch of `W_to_U`. The atomic runs' array-statement
+branches are untouched, and no call site of either routine is inside an
+existing parallel region (all seventeen were checked), so there is no nesting.
+The stages went **0.331 -> 0.212 s** at 16 threads, landing on the estimate,
+with one thread unchanged.
+
+**Where the step stands.** 16 threads, 300 steps: whole step **2.12 s**, of
+which the ionization sweep is **1.44 s (68 per cent)**, the hydrodynamic
+stages 0.21 s, the carrier Newton 0.17 s and the energy update 0.17 s. The
+sweep is already parallel and gains 8.3x over its own serial 12.0 s, so it is
+the next question rather than the next easy win. From 8.20 s this morning the
+step is **3.9 times faster**, every stage bitwise identical at 1, 8 and 16
+threads, and a 16-thread run reproduces itself bitwise.
+
+**Verification of the whole series.** Matrix: 14 file comparisons bitwise
+identical, 9 within tolerance (worst 1.6e-9, from section 166's constant
+unification, not from any parallel change), no failures; `run_fcheck.sh`
+CLEAN; goldens untouched.
+
+**A harness defect this series exposed, and fixed.** `run_check.sh` had no
+guard against two of its own invocations running at once. Every case runs in
+its own case directory and writes its outputs and its `check.log` there, so
+two runs overwrite each other's executable and interleave their log lines --
+and on 2026-09-05 an overlapping strict-mode run left a
+`FAIL ... EXCEEDS 0.0e+00` line inside a log the tolerance run was writing,
+so the matrix reported a failure on a case that had passed. The script now
+takes a lock and refuses to start while another run holds it, naming the PID
+that holds it and, for a stale lock, saying so and how to clear it.
+
+**What per-step speed does not buy.** The hot-Uranus layer needs 1e6-1e7 s of
+model time to relax thermally at about 2 s per step (section 163.5), so a
+four-fold step turns days into a day and no per-step gain turns it into an
+hour. The step is otherwise dominated by the
+ionization sweep at 1.19 s.
+
+**Files.** `docs/marching_step_performance_plan.md` carries the profile the
+plan was built on and the step-by-step order.
+
+## 168. The hot-Uranus electron density against Koskinen et al. (2022): a convention, a feedback, and the ionization state that must be advected (2026-09-05)
+
+**Judgement first.** The 3-12x excess of n_e over Model A is entirely H+, and
+it decomposes into three things, each measured: (i) a **geometric
+convention** -- Model A divides the stellar XUV flux by 4 ("uniform
+redistribution of energy around the planet", their section 3; defined in
+Koskinen et al. 2013a as "we divided the incident stellar flux by a factor of
+4"), while every hot-Uranus run here used `Rate/2`; (ii) the **feedback** that
+convention drives -- in an H2-bearing wind the proton sink is charge exchange
+with hot H2 (R10, 70x radiative recombination in Model A's outer wind), so
+more ionization burns more H2, which weakens both the R10 sink and the H3+
+cooling, which heats and ionizes further; and (iii) a **method difference** --
+in the outer wind P r/v = 0.15-0.35, the gas leaves each shell three to seven
+times faster than it can be ionized, and EXHALE's local-equilibrium H/H+
+partition therefore over-ionizes by 6-7x where Model A, which advects every
+species, does not. The full record with every test is
+`docs/k22_electron_density_excess.md`.
+
+**What was ruled out, with the test.** Secondary ionization (Model A: "100
+percent of this energy heats the atmosphere"; switched off here: 1.2-1.5x in
+the deep layer, exactly 1.00 beyond 1.3 r_base). Spectral hardness (index
+-2: the deep layer improves, the outer wind gets WORSE -- sigma ~ E^-3, so a
+softer spectrum ionizes 3.7x more per erg). The recombination coefficient
+(theirs 1.2-1.5x larger; 10-20 percent, in their favour). Non-steadiness
+(x(2.0), x(3.0), x(4.0) constant to under 1 percent over the last 190,000
+steps). And a first reading of "uniform redistribution" that was about the
+Bond albedo and effective temperature, not the XUV -- withdrawn and replaced
+by the two quotations above.
+
+**With the Model-A convention** (`2D approximate method: Rate/4 + Mdot`,
+Koskinen composition, transport on, ~690,000 steps): the full-sphere mass-loss
+rate is **2.1e10 g/s (log 10.32) against 1.9e10 (10.28)** -- the earlier
+"agreement" of 10.34 vs 10.28 was `Rate/2` with a halved report, a
+coincidence of conventions; the layer temperature over 1.15-1.30 r_base is
+within 60 K of Model A; the outer n_e excess halves (5.9 -> 3.2x at 2.0,
+11.7 -> 6.7x at 3.0); at 2.0 r_base the two photoionization rates are equal
+(9.3e-6 vs 8.3e-6 s^-1) and the R10 sink per proton is within 1.6x.
+
+**The remainder is the ionization state.** Integrating
+`dx/dt = P(1-x) - (k_R10 n_H2 + alpha n_e) x` along OUR flow with OUR rates,
+velocities, temperatures and H2, from our own value at 1.5 r_base:
+
+| r/r_base | x, local equilibrium (ours) | x, advected | x, Model A |
+|---|---|---|---|
+| 2.0 | 0.129 | 0.057 | 0.020 |
+| 2.4 | 0.327 | 0.078 | 0.055 |
+| 3.0 | 0.585 | 0.106 | 0.080 |
+
+The advected fraction lands within 1.3-1.4x of Model A; the equilibrium
+misses by six to seven. The same over-ionization is why the outer wind is
+1500 K too cold (already-ionized gas cannot absorb the photons still heating
+theirs) and why H3+ is 100x low there. The change this asks for -- H+ carried
+with the flow, as H2 already is -- is under way as a default-off option
+(`Ionization transport: True`, beside `Molecular carrier transport`), and
+its gates are: bitwise identity with the key off,
+recovery of the local equilibrium where P r/v >> 1, and the outer wind
+landing near the advected estimate.
+
+The deep-layer comparison (1.05-1.10 r_base, our n_e 3.6-8x) is not usable:
+the digitized Model-A electron density there violates the paper's own charge
+balance (e- = 5.1e6 against H+ = 6.9e4 at 1.045), and those rows were flagged
+uncertain when they were read.
+
+## 169. The ionization state carried with the flow, and the restart file that described its ghost cells at two densities (2026-09-05)
+
+### 169.1 `Ionization transport: True`
+
+Section 168 ended with the statement that the H/H+ partition must be advected
+where a parcel leaves its shell faster than it ionizes. That option now
+exists, default off. H+ is a fifth carrier of the operator that carries H2
+(`ic_Hp`, `n_carrier_max = 5`, `diffusive_photochemistry.f90`), transported
+as a fraction per unit mass (section 158), with zero molecular diffusion --
+an ion in a neutral gas is ambipolar/Coulomb-limited, and the term the option
+exists for is the bulk advection -- and the eddy coefficient `kzz_cell`. Its
+source is row 1 of the molecular system (`mol_heh_rows`), the sweep is handed
+the transported fraction in the interior cells (`x_hp_fixed`, replacing row 1
+the way `x_h2_fixed` replaces row 4), and the two lower ghosts stay with the
+sweep: no handoff states an ionization fraction. Inside the proton row the
+electron density is the background's less its own protons plus the trial's
+(`cbg_ne - cbg_nhii + n_hii`). The restart header carries `iontrans=T`. The
+key is refused with `Solver: Newton`, `EXHALE_PTC`, `Coupled carrier solve`,
+and without `Molecular carrier transport` or `Molecular chemistry`
+(`docs/input_schema.md` K15f; README and README_HOWTO carry the key).
+
+Verification. Key off: bitwise on 1 and 16 threads; the matrix passed (14
+files identical, 9 within the section-166 tolerance); fcheck clean. Key on,
+100,000 steps of the Koskinen gate of section 168 (16 threads):
+
+| r/r_base | x(H+) transported | advected estimate (168.7) | Model A |
+|---:|---:|---:|---:|
+| 1.4 | 0.030 | 0.037 | -- |
+| 2.0 | 0.056 | 0.057 | 0.020 |
+| 2.4 | 0.078 | 0.078 | 0.055 |
+| 2.8 | 0.109 | 0.106 | -- |
+| 3.0 | 0.147 | 0.142 | 0.080 |
+
+n_e at 2.0 r_base 2.66e6 (Model A 1.8e6), at 3.0 1.08e6 (7.8e5); T(3.0)
+4399 K (4740); H3+(3.0) 650 (1900); f(H2)(2.0) 0.417 (0.508); log Mdot 10.21.
+The local-equilibrium excess of 5-10x is now 1.4-1.5x. Limit test on
+`examples/18_oxygen_chemistry`, where P r/|v| = 18-28: the transported
+fraction recovers the local root to about 1 per cent, and the element census
+closes to 2.8e-11.
+
+### 169.2 A carrier-transport state could not be restarted at its own composition
+
+`load_IC` measures the file's He/H against the input's and, when they differ,
+enters a rescale branch that the HeH+ clause refuses. It measured over the
+ghost rows too, and a carrier-transport snapshot carried its lower ghost
+with He/H 2.1e-5 off the input while every physical cell agreed to 1e-6 --
+so no such state could be restarted. The check now runs over the physical
+cells: the ghosts are boundary data, rebuilt on the first step, and a check
+on the input's He/H has nothing to say about them. The ghost itself turned
+out to be the defect of 169.3.
+
+### 169.3 The writer described the ghost cells at two densities
+
+`write_output` formed the atomic columns from `f_sp*rho` at the write and the
+molecular columns from the sweep's `nmol_eq`, which the sweep fills at its
+entry and nobody refreshes. Between the sweep and the write the interior
+does not move, but `Apply_BC` re-extrapolates the lower ghosts' rho after
+the energy step, so a snapshot of a base that is still breathing carries two
+ghost rows whose H2 belongs to one density and whose H I belongs to
+another. Measured on the roundtrip case (hot-Uranus gate, 40 steps) as
+(sum_i m_i n_i - rho)/rho over the written rows:
+
+| steps | ghost row 0 | ghost row 1 | physical cells |
+|---:|---:|---:|---:|
+| 39 | +3.12e-7 | +3.10e-7 | 4e-16 |
+| 40 | +3.21e-7 | +3.20e-7 | 5e-16 |
+| 200 | +1.51e-6 | +1.50e-6 | 4e-16 |
+| 1000 | +2.18e-6 | +2.17e-6 | 4e-16 |
+| 3000 | +3.80e-7 | +3.78e-7 | 4e-16 |
+| 12000 (settled) | 1e-16 | 1e-16 | 1e-16 |
+
+The excess is in the H nuclei alone (per unit mass +4.2e-7 at 40 steps,
++2.9e-6 at 1000; He to 1e-15), it is not a one-step lag (the ghost rho
+moves 1.9e-5 per step at step 40), it follows the base breathing, and it is
+gone once the base has settled -- which is why the 12,000-step matrix cases
+never showed it and the 40-step round trip failed on rho in exactly those
+two rows (the reload rebuilds rho from the species). The dump path already
+called `molecular_carrier_densities_from_state(rho, f_sp)` before writing,
+for a different reason (a state written before any sweep); every write now
+calls it, so one row is one state. `nmol_eq` has no reader outside the sweep
+and the writer, so nothing else moves: `Hydro_ioniz.txt` is bitwise
+unchanged in every case, `Ion_species.txt` of the molecular cases moves by
+at most 1.1e-15 (the product `f_sp*rho*n0` against the sweep's own), within
+the section-166 rule, and the round trip is the identity to 1e-12 on the
+roundtrip case and on a carrier-transport state (mol_carrier). Files
+written before this carry such ghosts; they restart, since 169.2, and their
+ghost rows are not to be compared.
+
+### 169.4 The regression harness
+
+* `compare_within_tolerance.py` exits 2 with a message on a file it cannot
+  read, instead of a traceback.
+* `test_roundtrip.sh` (the loader identity test of the ATES era) was stale
+  three ways: `ROOT` one level short of the tree, the env name
+  `ATES_DUMP_IC` the code no longer reads, and a working directory that was
+  the named case `roundtrip` itself, which it wipes with `rm -rf`. Running
+  it destroyed that case; the case was restored from the day's isolated
+  copy, the loader test now works in `roundtrip_loader/`, and a leftover
+  `metals.inp` the loader had put beside the case input was removed before
+  the case was run again.
+* `roundtrip`'s golden dated from 2026-09-03 23:20, before section 151.11
+  refreshed the molecular goldens (the cross-section change moved every
+  molecular case; this case is outside `DEFAULT_CASES` and was missed).
+  Every binary since, from the gfortran-13 baseline to today's, reproduces
+  today's numbers to the digit and none the old golden. Re-snapshotted
+  today under the 151.11 decision; `check roundtrip` is identical again,
+  and its second half (`roundtrip/roundtrip_check.sh`) passes.
+* Full matrix after the change: 11 default cases PASS, fcheck CLEAN.
+
+### 169.5 What this leaves
+
+The `_adv` files' molecular columns are still the equilibrium sweep's (the
+post-process has no molecular state of its own; option (a) of the
+post-process design). The instruction-gated items, the second step of the
+marching-step plan (three cooling evaluations instead of four), and the
+compiler switch are unchanged.
+
+## 170. The heating and cooling a sweep returns belong to the composition it returns; the toolchain moves to gfortran 16 (2026-09-05)
+
+### 170.1 What a reading of step 2 found
+
+Step 2 of `docs/marching_step_performance_plan.md` claimed that the
+energy update's first `eval_cool` repeats the one at the end of `ioniz_eq`.
+It does not, and the reason is a defect. `ioniz_eq` evaluated its one
+`eval_cool` -- and assembled every heating term -- BEFORE the cell sweep,
+from the entry densities, because the sweep needs the rates and
+coefficients those calls produce. The sweep then replaced the densities and
+`rho`, and the routine returned the heating and cooling of the composition
+it had just discarded. The written `heat`/`cool` columns of a snapshot
+therefore described a different composition than the species columns of
+the same row (the same fault as section 169.3, one layer up), the explicit
+energy path advanced the energy with that pair, the steady residual read
+it, and the semi-implicit energy update recomputed the cooling at the new
+composition while keeping the old heating.
+
+### 170.2 The rule, and what moved
+
+Rates and coefficients are properties of the radiation field and of T:
+computed once, before the sweep, from the entry columns and the entry
+photoelectron partition -- unchanged. Heating and cooling are contractions
+of those rates with the composition: assembled after the sweep, from the
+post-sweep densities, electron and particle counts. `PH_heat_HHe` and
+`PH_heat_H` now return the heating rate of ONE particle of each absorber
+(the frequency integrals with the density divided out) beside the
+photoionization rates, and `photoheating_of_composition` (util_ion_eq.f90)
+is the one place the contraction is written; the six-channel breakdown is
+the same products and sums to `heat` exactly (its residual line reads
+0.00E+00 where it used to read round-off). After the sweep, in order: the
+photoheating contraction; `heat_balmer` as it stands (the documented
+one-pass lag); the He-recombination photoelectron heating, from a second
+`he_rec_coupling` call whose rate outputs are discarded (one definition of
+each formula); the two Penning channels; the Lyman-Werner dissociation and
+fluorescence heating; the collisional reaction heat; the FUV photolysis
+heat; and the cooling sum from a second `eval_cool` at the post-sweep
+composition, its coefficients discarded. The sweep itself never read
+`heat` or `cool` and is untouched.
+
+That makes the returned `cool` the cooling of the state the energy update
+starts from, so `solve_energy_semi_implicit` now takes it as its
+`cool_trial` and its first `eval_cool` is gone: four evaluations per step,
+as before, each at a state that is one state. The energy phase fell 31 per
+cent and the whole 1-thread step rose 5 per cent for the second traversal
+(300-step hot-Uranus case: 12.44 -> 13.09 s; `ioniz_eq` 10.53 -> 11.35 s).
+
+### 170.3 Measured effect
+
+The difference is a marching-transient one: at a fixed point the entry and
+the returned composition coincide and nothing changes. On the 300-step
+hot-Uranus snapshot (far from stationary) T moves by up to 9.4e-5, `heat`
+by 1.7e-3 and `cool` by 6.9e-4 relative; log Mdot 10.34 in both. On
+`wasp_full_newton` run to its Newton finish, rho/v/T move by at most
+1.8e-4/2.2e-4/6.8e-5 and log Mdot by 1.7e-5 -- below the residual both runs
+actually reach (`||R||` 5.7e-4 before, 4.5e-4 after; the case does not
+reach its 1e-5 target either way) and consistent with the two marches
+handing the solver different starting states (stop at step 4493 vs 4531).
+An exact fixed-point invariance test would need a case driven to
+`||R||` of order 1e-6, which none of the matrix cases is. A pure-hydrogen
+60-step snapshot moves more (v 0.11, T 0.02), as a state that far from
+stationary should.
+
+### 170.4 The toolchain
+
+The build now takes the gfortran on PATH -- the conda-forge 16.2 of this
+machine -- and, when that compiler's prefix carries an OpenBLAS, links the
+LAPACK of the same prefix with an rpath, so the binary and its LAPACK share
+one libgfortran runtime (the system LAPACK, built for libgfortran.so.4,
+had both .so.4 and .so.5 mapped into one process). The compiler's resolved
+path and version are part of the rebuild stamp, so objects of one gfortran
+are never linked by another. `run_fcheck.sh` no longer prefers
+`/usr/bin`. Against the gfortran-13 goldens the change alone moves the
+atomic cases by 1e-12 to 1e-9 (section 166's rule: identical). README,
+CLAUDE.md and the shell-quirks note say so.
+
+### 170.5 Regression, run once for the combined change
+
+One matrix run for sections 170.2 and 170.4 together (12 cases: the 11
+defaults and `roundtrip`), against the goldens of section 169. Every log
+Mdot is unchanged to two decimals (13.24/13.24/13.21, 10.52/10.52/10.50/
+10.52/10.52/10.47/10.52, 8.44, 7.99). What moved is the transient state
+of the fixed-step snapshots: species densities by up to 2.2 per cent
+(`mol_metals`, `mol_ir_bands`, `lower_profile`), `heat` by up to 0.6 per
+cent, the base ghost velocity of the atomic cases by 0.2 per cent, and the
+near-zero velocities of the settling molecular bases by large relative
+amounts (`mol_sec_ion` -0.016 -> -0.040 cm/s, `lower_profile` -19.8 ->
+-10.7 cm/s). `wasp_full_newton`, the one Newton-finished case, moves by
+4.2e-4 at most. The goldens are to be refreshed for all twelve cases (a
+physical fix, not a technical one: the section-166 rule does not apply);
+the restart round trip is the identity to 1e-12 and the fcheck regression
+is clean on the new build.
+
+### 170.6 ifx
+
+The same sources build with ifx 2026.1 (`make FC=ifx OBJDIR=build_ifx
+EXE=EXHALE_ifx.x`; the Intel compilers now default to `-qmkl=sequential`,
+the LAPACK of their own prefix, by the same rule as 170.4). Two things the
+build exposed were fixed: (1) every ifx run stopped at startup with
+"cannot create the ./output directory" while the directory was present --
+`inquire(file='output/.', exist=)` is not defined by the standard for a
+directory, gfortran answers .true. and ifx .false.; the test is now
+whether a file can be created inside it (`output_directory_writable`);
+(2) four edit descriptors narrower than the sign needs (ES16.10 in the
+Wind-AE IC writer, where the velocity column can be negative and would
+have printed asterisks; ES9.3 and ES9.2/ES7.1 on stdout) were widened to
+W >= D+7. The harness gained `REGRESSION_EXE=<binary>`, which runs the
+matrix with that binary and skips the rebuild and `make -q` (the log names
+the binary and its md5).
+
+### 170.7 The Koskinen gate after the fix
+
+The transported state of section 169.1 was continued for 2e5 steps (16
+threads) with the fixed binary and is now `benchmarks/koskinen2022_model_a/`
+(inputs, final state, the pre-fix state beside it). Against Model A: log
+Mdot 10.22 vs 10.28; T at 1.15/1.20/1.30/1.50/2.00 = 1752/1937/2207/2999/4135
+K vs 1720/1900/2270/2870/4120; n_e at 2.0 = 2.7e6 (A 1.8e6), at 3.0 = 1.1e6
+(7.8e5); f(H2) at 2.0 = 0.416 (0.508); n(H3+) at 2.0 = 3.0e3 (7.2e3); T at
+3.0 = 4399 (4740). The fix moved nothing here that is steady: against the
+pre-fix state T changed by at most 2 per cent (base cells), f(H2) by 0.6 per
+cent, H3+ by 3 per cent, and the flux spread near the base by 14 per cent
+of F0. The memo `docs/koskinen2022_model_a_comparison.tex` records the
+inputs, the method differences, the figures (`docs/k22_model_a_figures.py`)
+and the next steps; `docs/session_handoff_20260905.md` is the handoff.
+
+## 171. The Koskinen Model A comparison made like for like: every condition checked, and what the residual is (2026-09-05)
+
+### 171.1 The conditions, one by one
+
+The user's rule of 2026-09-05 (now in the global CLAUDE.md): a comparison
+with a published result starts by checking every input condition, states
+why any that cannot be matched cannot, and ends with the profiles plotted
+over each other, not with two representative numbers. Applied to Koskinen
+et al. (2022) Model A from the published text (sections 2.5, 3.2, Appendix
+B, Table 1; the 2013a paper for the spectrum; Ribas et al. 2005 Table 4 for
+the band fluxes behind its 1.6 W m^-2). The full table is section 2.1 of
+`docs/koskinen2022_model_a_comparison.tex`. What the check changed:
+
+* **Gravity.** The run of section 170.7 used the default Roche domain
+  (stellar tidal term, domain truncated at L1 = 4.8 R_p). Model A is
+  spherical to 9.7 R_p. `Domain mode: Spherical`, `Outer radius [R_p]:
+  7.24`. This was the largest single difference: the Roche sonic point sat
+  at 2.9 R_p against their 4.7 (isothermal), the velocity was 1.3-2.2 times
+  theirs and the density 0.4-0.7 times. With spherical gravity the velocity
+  and the neutral densities fell onto their curves.
+* **Planet, orbit, star.** 0.045739 M_J, 0.4899 R_J, 0.05 au, 1 M_sun.
+* **Spectrum.** A mean solar XUV spectrum file
+  (`benchmarks/koskinen2022_model_a/solar_ribas2005_bands_0p05au.txt`):
+  the Gueymard composite of VULCAN (a solar-SURFACE flux; /46250 for 1 au)
+  rescaled band by band to the Ribas et al. (2005) Sun values (1-20, 20-100,
+  100-360, 360-920, 920-1180 A: 0.15, 0.70, 2.05, 1.00, 0.74 erg cm^-2
+  s^-1 at 1 au; the composite was 2.4-3.1x low in 1-100 A and 1.5x high in
+  100-360 A) and normalized to 1.6e3 erg cm^-2 s^-1 over 5-911 A at 0.05
+  au. Intra-band shape moves the thin heating per particle by 7 per cent
+  (checked against the p-winds solar file).
+* **Photoelectrons.** Model A: 100 per cent of h nu - I heats, I is lost in
+  recombination or chemistry. `Secondary_ionization: False`,
+  `He_rec_coupling: False`, `Molecular reaction heat: False`.
+* **Species and rates.** `Include He23S? False`; `Atomic rate set:
+  Koskinen2022` (new key, 171.2); R5-R23 were already their Table 1.
+* **H2 photodissociation.** Not in Model A: `Stellar LW flux: 0.0`, which
+  now wins over the band a loaded spectrum would supply (171.2).
+* **Conduction** on (`Conduction: True`); viscosity off (coefficient not
+  stated, negligible in the wind).
+* **Cannot be matched:** their diffusion of every species (ours carries H2
+  and H+; He, He+, H2+, H3+, HeH+ are local equilibrium); their K_zz (not
+  stated; 1e9 kept); their c_v (not stated; tested, see 171.3); their
+  H3+ non-LTE factor (Koskinen et al. 2009 detailed balance; ours Miller
+  et al. 2013 Table 6); their numerics.
+
+### 171.2 Code changes the matching needed
+
+* `Atomic rate set: Koskinen2022` (K14f): R1, R2 (Storey & Hummer 1995
+  H+ and He+ recombination, 1.25-1.6x our Badnell case B over 1000-10000 K)
+  and R3, R4 (Voronov 1997, already our default). One definition each: the
+  `mol_rates.f90` transcriptions, until now dead code, are what
+  `Cool_coeff.f90` now calls under the switch. Default off; bitwise
+  identity of the default path verified on `mol_carrier`, 300 steps.
+* `Caloric EOS: monatomic` (K34c): H2 stores 3/2 kT, gamma = 5/3
+  everywhere (the state before P53), a comparison option.
+* `Photoelectron heating: full` (K34d): the whole photon energy per
+  ionization instead of h nu - I; unphysical (I is counted twice), a
+  comparison option, see 171.3. One elemental `photoelectron_share`
+  routes all nine channel factors.
+* `Stellar LW flux` stated as zero now switches the band off even with a
+  spectrum file (`lw_flux_stated`); before, any value <= 0 fell back to
+  the integral of the file, so the band could not be turned off for a
+  comparison with a model that has none.
+* **Defect fixed:** a molecular run with a LOADED spectrum stopped at
+  startup with a bounds error -- the H2 dissociative-ionization cross
+  section vector was allocated in the power-law and monochromatic
+  branches but not in the SED branch (`set_energy_vectors.f90`). All
+  cross-section vectors are now allocated once, after Nl is known.
+* **Defect fixed:** `inquire(file='output/.', exist=)` answers .false.
+  under ifx for a directory, so every ifx run stopped at the section-160
+  check; replaced by a writable-file probe (`output_directory_writable`).
+* Restart onto a different grid: `interp_ic.py` (session scratch, to be
+  moved under `src/utils/` if it is wanted again) interpolates a state
+  onto a new grid, extrapolates beyond the old boundary with power laws
+  in r for the densities and rho v r^2 = const for v, fixes He/H exactly in
+  every cell and rebuilds rho and p from the species; `load_IC` refuses a
+  He/H drift of 1e-6, which species-by-species interpolation produces.
+
+### 171.3 What the matched run gives, and what is left
+
+`benchmarks/koskinen2022_model_a/matched_hnu_minus_I/` (2e5 steps with
+the Gueymard-shaped spectrum from the interpolated Roche state, then 4e5
+with the Ribas-band spectrum). Velocity and the neutral densities inside
+the size of the plotted points; log Mdot 10.09 (Model A 10.28); the
+layer's T within 100 K at 1.05-1.30 (the 1.05 trough 1090 K against 1180
+after 4e5 steps, from 841 with the first spectrum; the base mass flux is
+still 1.9 times the wind's, n(H2) at 1.10 went 3.3 -> 4.8e10 over the
+first 2e5 steps, Model A 7.2e10). The outer wind: T 3470 K at 2.0 and 3.0
+against 4120 and 4740; n_e 2.5x and 2.3x theirs; H3+ 8x and 12x low.
+
+The residual was traced to the heating rate. Their Figure 9 (digitized,
+`benchmarks/koskinen2022_model_a/model_a_fig9_digitized.txt`) has the
+same peak as ours (1.8e-8 vs 1.9e-8 W m^-3) but 2.5-3x our heating from
+1.5 r_base outward and 2.3x in the deep layer, at the same ionization rate
+(their Figure 15: 8e-6 s^-1 per H atom at 2.0; ours 1.0e-5) and a larger
+neutral column above the point. With a spectrum of the Ribas band fluxes
+h nu - I gives 3.2 eV per H ionization; theirs deposit 2.5-3x that. The
+steady energy balance with their own digitized T and v needs 8-10e-17 erg
+s^-1 per particle at 2-3 r_base where our heating is 7e-17: neither the
+heat capacity (`Caloric EOS: monatomic` moved the outer T by 20 K) nor the
+H3+ cooling (10-25 per cent of the heating in both) enters that sign.
+
+`matched_full_hnu/` (`Photoelectron heating: full`, 6e4 steps from the
+matched state) brackets it from above: heating 1.5x theirs, T 4830/6389 K
+at 2.0/3.0 -- but n_e 1.9e6/8.2e5 against their 1.8e6/7.8e5, H3+
+7.3e3/1.8e3 against 7.2e3/1.9e3, and the radiative-cooling curve on
+theirs. Model A sits at about 0.65 of the photon energy per ionization,
+a number nothing in the paper produces. What would settle it: their
+spectrum file and the heating their code deposits per ionization (or the
+Figure 9 curves in numbers). Until then the comparison is the bracket.
+
+### 171.4 Regression
+
+Every key of 171.2 is default-off or preserves the default path; the
+twelve cases were re-run with the new binary in scratch copies against
+the section-170 outputs kept in the case directories (the goldens are
+still the pre-170 ones, their refresh awaiting the user's command).
+Result: all twelve cases, both files, BITWISE identical to the section-170
+outputs (the elemental `photoelectron_share` in place of the inline factor,
+the rate-set switch, the caloric and photoelectron options, the LW rule and
+the two portability fixes leave the default path untouched to the last
+bit). The goldens themselves remain to be refreshed for section 170.
+
+### 171.5 The stated-fraction comparison run, and every difference listed
+
+At the user's instruction the `Photoelectron heating` key also takes a
+fraction f of the photon energy per ionization (`photoheat_photon_fraction`;
+`full` = 1, `excess` = the physical h nu - I). Runs from the 4e5-step
+matched state: f = 0.65 (1.2e5 steps; outer T 175-465 K above Model A, the
+same at 6e4 and 1.2e5 steps, which measures the outer wind's settling time
+at under 6e4 steps) and f = 0.55 (`benchmarks/koskinen2022_model_a/
+matched_fraction_0p55/`, 1.2e5 steps): the stellar heating on their Figure 9
+from 1.5 r_base outward, T 4119/4840/5600 K at 2.0/3.0/7 against
+4120/4740/5527, v 10 per cent high at 3-6; n_e still 1.4-1.6x, H3+ 0.35-0.5x,
+He+ 3x, f(H2) 0.06-0.08 low. log Mdot 10.10 / 10.17 / 10.26 for h nu - I /
+0.55 / full against 10.28. The memo's section 4.1 lists every difference
+that keeps the results from being identical, with its size: (1) the heat
+per ionization (decisive, a property of their code); (2) their transport of
+every species against our local He+/H2+/H3+/HeH+ (He+ 3x); (3) the layer's
+steady state, unreachable by marching (base flux 1.9x the wind's, layer H2
+0.7x theirs, Mdot 0.66-0.78x); (4) the wind's H2 fraction, a supply
+deficit from (3); (5) the H3+ non-LTE factor (their per-molecule cooling
+0.3x ours); (6) spectrum shape inside the Ribas bands (7 per cent) and no
+flux below 5 A; (7) cross sections; (8) K_zz, viscosity, c_v (20 K);
+(9) numerics; (10) the digitization (0.1 dex, 100 K). The benchmark inputs
+carry no `Solver` key (marching only; the earlier `du_th ... 1.0e-30` was
+an unneeded way of disabling a stop that only ends a march) and now use
+`du_th [PLM,WENO3]: 1.0e9 1.0e-3`.

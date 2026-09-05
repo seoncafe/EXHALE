@@ -163,6 +163,8 @@
       ! without the key is byte-identical to the code without this module.
 
       use global_parameters
+      use caloric_eos, only: pressure_from_energy_density,             &
+                            adiabatic_index_from_state
 
       implicit none
       private
@@ -207,8 +209,10 @@
       do j = 0, N+1
          dens(j) = max(u(1,j), tiny(1.0d0))
          vel(j)  = u(2,j)/dens(j)
-         pres    = (g - 1.0d0)*(u(3,j) - 0.5d0*u(2,j)*vel(j))
-         cs2     = max(g*pres/dens(j), cs2_floor)
+         pres    = pressure_from_energy_density(j, dens(j),             &
+                      u(3,j) - 0.5d0*u(2,j)*vel(j))
+         cs2     = max(adiabatic_index_from_state(j, dens(j), pres)     &
+                       *pres/dens(j), cs2_floor)
          lam(j)   = abs(vel(j)) + sqrt(cs2)
          mach2(j) = vel(j)*vel(j)/cs2
       enddo
@@ -262,10 +266,14 @@
          rho_f = 0.5d0*(u(1,j) + u(1,j+1))
          v_f   = 0.5d0*(u(2,j)/max(u(1,j),  tiny(1.0d0))                 &
                       + u(2,j+1)/max(u(1,j+1),tiny(1.0d0)))
-         p_f   = 0.5d0*( (g - 1.0d0)*(u(3,j)   - 0.5d0*u(2,j)**2         &
-                                                /max(u(1,j),  tiny(1.0d0)))  &
-                       + (g - 1.0d0)*(u(3,j+1) - 0.5d0*u(2,j+1)**2       &
-                                                /max(u(1,j+1),tiny(1.0d0))) )
+         p_f   = 0.5d0*( pressure_from_energy_density(j,                &
+                            max(u(1,j),  tiny(1.0d0)),                  &
+                            u(3,j)   - 0.5d0*u(2,j)**2                  &
+                                       /max(u(1,j),  tiny(1.0d0)))      &
+                       + pressure_from_energy_density(j+1,              &
+                            max(u(1,j+1),tiny(1.0d0)),                  &
+                            u(3,j+1) - 0.5d0*u(2,j+1)**2                &
+                                       /max(u(1,j+1),tiny(1.0d0))) )
          phys  = abs(rho_f*v_f*v_f + p_f)
          if (phys .le. 0.0d0) cycle
          ratio = abs(Dflux(2,j))/phys

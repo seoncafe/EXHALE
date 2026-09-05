@@ -3,9 +3,14 @@
 	!	simulation to file
 	
 	use global_parameters
+	use base_boundary, only: r_base_level, base_reservoir_p,           &
+                            base_reservoir_T, base_face_mach_blend
 	use charge_exchange, only: he_h_charge_exchange, cx_o2p_h_scale
+	use caloric_eos,     only: caloric_eos_state_line
 	use species_table,   only: melem_name
-	use IC_load,         only: melem_from_abundance
+	use IC_load,         only: melem_from_abundance,                    &
+	                     ic_coupling_present, ic_sec_ion_active
+	use Read_input,      only: base_level_from_base_inp
 	use composition,     only: h2_mixing_ratio_base, h2_mixing_ratio_ceiling
 	use lower_atmosphere_profile, only: lap_in_use, lap_report_provenance, &
 	                     lap_flux_measured, lap_flux_window_empty,        &
@@ -95,18 +100,83 @@
 			write(outfile,'(A,ES10.3,A)') &
       ' - H2 Lyman-Werner photodissociation on: band flux ', F_LW_star,   &
       ' erg cm^-2 s^-1 (912-1110 A, at the planet)'
+			if (lw_from_spectrum) write(outfile,*) &
+      '  (integrated from the numerical spectrum, not stated by the run)'
+		else if (lw_flux_stated) then
+			write(outfile,*) &
+      '- H2 Lyman-Werner photodissociation OFF: "Stellar LW flux" stated'//&
+      ' as zero (a comparison with a model that has no H2 photodissociation).'
 		else
 			write(outfile,*) &
-      '- H2 Lyman-Werner photodissociation off ("Stellar LW flux" unset)'
+      '- WARNING H2 Lyman-Werner photodissociation OFF: no "Stellar LW'//  &
+      ' flux" key and no spectrum to integrate one from.'
+			write(outfile,*) &
+      '  The band exists whenever the star does, so this is a MISSING'//   &
+      ' CHANNEL, not a modelling choice: H2 keeps a sink it should not.'
 		endif
 	endif
-	if (thereis_oxychem) then
-		write(outfile,*) &
-      '- Including oxygen chemistry (OH, H2O, CO) in the same system'
-		if (oxygen_transport) then
+	! The final-state channels of the H2 photoabsorption. Which of them are
+	! resolved changes the fragments, never the opacity: all four are shares
+	! of one cross section (h2_photo_channels.f90).
+	if (thereis_mol) then
+		if (h2_double_ionization .ne. 'off') then
 			write(outfile,*) &
+      '- H2 double ionization RESOLVED (model '//                          &
+      trim(h2_double_ionization)//'): H2 + hv -> H+ + H+ + 2e- above'//    &
+      ' 51.4 eV, two protons per event'
+		else
+			write(outfile,*) &
+      '- WARNING H2 double ionization NOT resolved (P31b): the protons'//  &
+      ' it would release stay inside the single dissociative channel,'
+			write(outfile,*) &
+      '  which counts one proton per event instead of two above 51.4 eV'//&
+      ' and adds an H atom the event does not make. This is the'
+			write(outfile,*) &
+      '  pre-E1 behavior and is kept only for reproducing an older run.'
+		endif
+		if (h2_neutral_dissociation) then
+			write(outfile,*) &
+      '- H2 neutral dissociation RESOLVED: H2 + hv -> H + H over the'//    &
+      ' 33-41 eV window, no ion and no photoelectron'
+		else
+			write(outfile,*) &
+      '- WARNING H2 neutral dissociation NOT resolved (P31c): the'//       &
+      ' 33-41 eV photoionization yield is taken to be unity, as before,'
+			write(outfile,*) &
+      '  so up to 7.4 per cent of the absorptions at 37.5 eV are counted'//&
+      ' as ionizations rather than as two neutral H atoms. This is'
+			write(outfile,*) &
+      '  the pre-E1 behavior and is kept only for reproducing an'//        &
+      ' older run.'
+		endif
+	endif
+	! Whether the carriers are transported is a property of the molecular
+	! network, not of the oxygen cycle: H2 is carrier 1 in both.
+	if (thereis_mol) then
+		if (carrier_transport) then
+			if (thereis_oxychem) then
+				write(outfile,*) &
       '- Molecular carriers (H2, OH, H2O, CO) are TRANSPORTED: implicit'// &
       ' diffusion-advection solved with their chemistry'
+			else
+				write(outfile,*) &
+      '- The molecular carrier H2 is TRANSPORTED: implicit diffusion'//    &
+      '-advection solved with the H2 balance of the same network'
+			endif
+			if (ionization_transport) then
+				write(outfile,*) &
+      '- The HYDROGEN IONIZATION STATE is TRANSPORTED too: H+ is'//        &
+      ' carried by the same operator, so the H/H+ partition is what'//     &
+      ' the flow accumulated and not the local equilibrium'
+				write(outfile,*) &
+      '  (for a wind in which P r/|v| < 1 the local root over-ionizes;'//  &
+      ' docs/k22_electron_density_excess.md sec. 7)'
+			endif
+			if (carrier_in_newton) then
+				write(outfile,*) &
+      '  and n(H2) is a FOURTH NEWTON UNKNOWN per cell: the wind and'//    &
+      ' the carriers are solved together, not alternated (sec. 139)'
+			endif
 			if (maxval(kzz_cell) .le. 0.0d0) write(outfile,*) &
       '  WARNING K_zz = 0 everywhere, so the transport is pure molecular'//&
       ' diffusion -- the wrong limit for a lower atmosphere,'
@@ -115,9 +185,13 @@
       ' below the homopause. Set "He_Kzz:" or a profile.'
 		else
 			write(outfile,*) &
-      '- Molecular carriers are a LOCAL steady state ("Oxygen transport:'//&
-      ' False"): the chemistry alone, not a model of a base'
+      '- Molecular carriers are a LOCAL steady state ("Molecular carrier'//&
+      ' transport: False"): the chemistry alone, not a model of a base'
 		endif
+	endif
+	if (thereis_oxychem) then
+		write(outfile,*) &
+      '- Including oxygen chemistry (OH, H2O, CO) in the same system'
 		write(outfile,'(A,5ES10.3)') &
       ' - FUV band fluxes at the planet [erg cm^-2 s^-1]'//               &
       ' LW/B1/B2(Lya)/B3/B4: ', F_LW_star, F_FUV_B1, F_Lya_star,          &
@@ -141,6 +215,63 @@
       '- Molecules and metals solved in one system (shared electron density)'
 	write(outfile,'(A,I0)') &
       ' - Coupled equilibrium system size: N_eq = ', N_eq
+	! Photoelectron secondary ionization. The STAGED default is reported
+	! explicitly because it is not a synonym for "on": the coupling is
+	! applied only after the wind first converges without it, so a run that
+	! is stopped at a fixed step count before converging never applies it at
+	! all. That is what silently excluded every molecular regression case
+	! from this physics until 2026-09-02.
+	if (.not. use_sec_ion) then
+		write(outfile,*) &
+         ' - Photoelectron secondary ionization: off'
+	else if (sec_ion_immediate) then
+		write(outfile,*) &
+         ' - Photoelectron secondary ionization: on from step 0 (Immediate)'
+	else
+		write(outfile,*) &
+         ' - Photoelectron secondary ionization: STAGED -- applied only'// &
+         ' after the first du convergence, so a run stopped before that'// &
+         ' never applies it'
+	endif
+	! Whether the staging was overruled by the restart file. A file written
+	! by a run that had already armed the coupling restarts with it armed;
+	! the line says so, and says when the file could not be asked.
+	if (do_load_IC .and. use_sec_ion .and. .not. sec_ion_immediate) then
+		if (ic_coupling_present) then
+			if (ic_sec_ion_active) then
+				write(outfile,*) &
+            ' - Restart coupling header: the file states secondary'// &
+            ' ionization ON; the staging is overruled and it is applied'// &
+            ' from step 0'
+			else
+				write(outfile,*) &
+            ' - Restart coupling header: the file states secondary'// &
+            ' ionization OFF; the run starts staged'
+			endif
+		else
+			write(outfile,*) &
+         ' - Restart coupling header: absent (the IC predates it);'// &
+         ' the run starts staged, as it did before'
+		endif
+	endif
+	! Atomic H/He rate set. Reported only when the published set is in
+	! force: it is the statement that this run is not on EXHALE's own rates.
+	if (photoheat_photon_fraction .gt. 0.0d0) then
+		write(outfile,'(A,F6.3,A)') '  - Photoelectron heating: a fraction ',      &
+			photoheat_photon_fraction, ' of the photon energy h nu per '//      &
+			'ionization (comparison option; the physical default is h nu - I)'
+	endif
+	if (atomic_rate_set_k22) then
+		write(outfile,*) &
+         ' - Atomic H/He rate set: Koskinen et al. (2022) Table 1 R1-R4.'// &
+         ' H+ and He+ radiative recombination are the Storey & Hummer'
+		write(outfile,*) &
+         '   (1995) power laws 4.0e-12 and 4.6e-12 (300/T)^0.64 in place'// &
+         ' of the Badnell/Mao case B; H and He collisional ionization are'
+		write(outfile,*) &
+         '   the Voronov (1997) fit, which is the default set as well.'//   &
+         ' Recombination COOLING is unchanged.'
+	endif
 	if (do_read_sed) &
 		write(outfile,*) & 
          ' - Spectrum read from external file: ', sed_file
@@ -155,6 +286,12 @@
 	else
 		write(outfile,*) '- 2D approximation used: ', appx_mth
 	endif
+	! The one number that convention turns into, stated once: every stellar
+	! beam of the run -- XUV grid, Ly-alpha, and the five FUV bands -- is
+	! multiplied by it (global_parameters dayside_dilution).
+	write(outfile,'(A,F6.3)') &
+      ' - Dayside dilution applied to every stellar beam: ',              &
+      dayside_dilution()
 	write(outfile,*) 
 	write(outfile,*) '----- Numerical parameters -----'	
 	write(outfile,*)
@@ -178,6 +315,41 @@
 	if (1.0d0/(b0*dr_j(1)) .lt. 10.0d0)                                     &
 		write(outfile,*) '  WARNING: base scale height spans < 10 cells;'//&
 			' expect a stationary cell-to-cell entropy mode at the base.'
+	! Which input fixed the lower boundary, and where it put it. n0 and the
+	! base pressure are the same statement, so the report names the one the
+	! run was given and the one derived from it.
+	if (base_level_from_base_inp) then
+		write(outfile,71) '- Base level: p = ', p_base_bar,                 &
+			' bar (from base.inp p_base) -> n0 = ', n0, ' cm^-3'
+	else if (base_bc_mode .eq. 1) then
+		write(outfile,71) '- Base level: p = ', base_p_ubar*1.0d-6,         &
+			' bar (from "Base BC: pressure") -> n0 = ', n0, ' cm^-3'
+	else
+		write(outfile,71) '- Base level: n0 = ', n0,                        &
+			' cm^-3 (from the density key) -> p = ',                        &
+			n0*kb_erg*T0*ntot_bc*1.0d-6, ' bar'
+	endif
+71	format(1X,A,ES11.4,A,ES11.4,A)
+	write(outfile,*) '- Caloric EOS (energy <-> pressure): ',              &
+		trim(caloric_eos_state_line())
+	if (thereis_mol) then
+		if (mol_reaction_heat) then
+			write(outfile,*) &
+      '- Molecular reaction heat ON: the collisional H2/He network'//     &
+      ' deposits its chemical energy (I(H2) - D0(H2) = 10.95 eV per'//    &
+      ' photon-driven cycle, via H3+/H2+ dissociative recombination)'
+		else
+			write(outfile,*) &
+      '- WARNING Molecular reaction heat OFF: the ionization energy the'//&
+      ' H2 photoabsorption spends is returned to the gas by dissociative'
+			write(outfile,*) &
+      '  recombination, not to a photon, and with this off the code'//    &
+      ' keeps none of it. Measured at 81 percent of the total heating'
+			write(outfile,*) &
+      '  rate at 1.02 r_base on the He/H = 0.0793 rung, so this is a'//   &
+      ' MISSING CHANNEL, not a modelling choice.'
+		endif
+	endif
 	write(outfile,*) '- Numerical flux: ', flux
 	write(outfile,*) '- Reconstruction method: ', rec_method
 	! Artificial dissipation of the 2*dr contact/entropy mode that the
@@ -193,16 +365,20 @@
 	else
 		write(outfile,*) '- Low-Mach contact-mode damping: off'
 	endif
-	! Lower boundary: which closure sets the ghost pressure, and the hard cap
-	! on marching steps.
-	if (hydrostatic_base) then
-		write(outfile,*) '- Base ghost pressure: interior gradient '//       &
-			'extrapolation (Hydrostatic base)'
-	else if (base_ghost_T_continuous) then
-		write(outfile,*) '- Base ghost temperature: continuous '//           &
-			'(dT/dr = 0, T_ghost = T_1)'
+	! Lower boundary: one characteristic condition at the face, so the report
+	! states WHERE it is and WHAT the reservoir says, not which ghost closure
+	! is selected -- there is no longer a choice of closure to report.
+	write(outfile,*) '- Base boundary: characteristic condition at the'//   &
+		' face r_edg(0)'
+	write(outfile,23) '    reservoir (p, s) at r = ', r_base_level,         &
+		': p = ', base_reservoir_p, ' p0, T = ', base_reservoir_T, ' T0'
+	write(outfile,21) '    entropy-branch blend window, face Mach = ',      &
+		base_face_mach_blend
+	if (shapiro_eps .gt. 0.0d0) then
+		write(outfile,22) '- Shapiro filter: on, eps = ', shapiro_eps,       &
+			', applied every ', shapiro_every, ' steps'
 	else
-		write(outfile,*) '- Base ghost temperature: isothermal (T_ghost = T0)'
+		write(outfile,*) '- Shapiro filter: off (opt-in key "Shapiro filter")'
 	endif
 	write(outfile,18) '- Coronal cooling cutoff width: w = ',                &
 		coronal_cutoff_width
@@ -275,6 +451,9 @@
 18 format(A,F6.3)
 19 format(A,I0)
 20 format(A,ES9.2,A,ES9.2)
+21 format(A,ES10.3)
+22 format(A,ES10.3,A,I0,A)
+23 format(A,F8.4,A,ES11.4,A,F8.4,A)
 
 	write(*,*) '(write_setup_report.f90) Done.'
 
@@ -347,6 +526,15 @@
 	call put_l('use_weno3', use_weno3)
 	call put_l('use_plm', use_plm)
 	call put_l('recon_two_stage', recon_two_stage)
+	! Only when the PLM -> WENO3 continuation is actually asked for.
+	! An absent key leaves the shipped one-step hand-off, which has no
+	! continuation settings to resolve, and every parse-corpus case
+	! that does not use it dumps exactly what it dumped before.
+	if (recon_lambda_step0 .gt. 0.0d0) then
+		call put_r('recon_lambda_step0', recon_lambda_step0)
+		call put_r('recon_lambda_dtu_tol', recon_lambda_dtu_tol)
+		call put_l('recon_lambda_adaptive', recon_lambda_adaptive)
+	endif
 	call put_l('thereis_HeITR', thereis_HeITR)
 	call put_l('do_load_IC', do_load_IC)
 	call put_l('do_only_pp', do_only_pp)
@@ -370,14 +558,19 @@
 	call put_r('du_th_plm', du_th_plm)
 	call put_l('ates_photoion_rate', ates_photoion_rate)
 	call put_l('legacy_hhe_rates', legacy_hhe_rates)
+	call put_l('atomic_rate_set_k22', atomic_rate_set_k22)
 	call put_l('use_sec_ion', use_sec_ion)
 	call put_l('use_he_rec_coupling', use_he_rec_coupling)
 	call put_l('he_h_charge_exchange', he_h_charge_exchange)
 	call put_r('cx_o2p_h_scale', cx_o2p_h_scale)
 	call put_l('thereis_mol', thereis_mol)
+	call put_s('h2_double_ionization', h2_double_ionization)
+	call put_l('h2_neutral_dissociation', h2_neutral_dissociation)
 	call put_r('F_LW_star', F_LW_star)
 	call put_l('thereis_oxychem', thereis_oxychem)
-	call put_l('oxygen_transport', oxygen_transport)
+	call put_l('carrier_transport', carrier_transport)
+	call put_l('carrier_in_newton', carrier_in_newton)
+	call put_l('ionization_transport', ionization_transport)
 	call put_r('F_FUV_B1', F_FUV_B1)
 	call put_r('F_FUV_B3', F_FUV_B3)
 	call put_r('F_FUV_B4', F_FUV_B4)
@@ -399,26 +592,25 @@
 	call put_r('lev_th', lev_th)
 	call put_l('use_newton_solver', use_newton_solver)
 	call put_r('newton_du_switch', newton_du_switch)
-	call put_r('valve_eps', valve_eps)
-	call put_l('hydrostatic_base', hydrostatic_base)
 	call put_r('shapiro_eps', shapiro_eps)
 	call put_i('shapiro_every', shapiro_every)
 	call put_r('lowmach_damp_eps', lowmach_damp_eps)
 	call put_r('lowmach_damp_mach_th', lowmach_damp_mach_th)
-	call put_l('base_ghost_T_continuous', base_ghost_T_continuous)
 	call put_i('count_max', count_max)
 	call put_r('coronal_cutoff_width', coronal_cutoff_width)
 	call put_l('base_ir_field', base_ir_field)
 	call put_l('mol_ir_bands', mol_ir_bands)
 	call put_i('base_bc_mode', base_bc_mode)
 	call put_r('base_p_ubar', base_p_ubar)
-	call put_l('base_v_massflux', base_v_massflux)
+	call put_r('base_reservoir_p', base_reservoir_p)
+	call put_r('base_reservoir_T', base_reservoir_T)
 	call put_l('visc_on', visc_on)
 	call put_l('cond_on', cond_on)
 	call put_r('visc_mu0', visc_mu0)
 	call put_r('visc_s', visc_s)
 	call put_r('resid_th', resid_th)
-	call put_l('resid_vol', resid_vol)
+	call put_r('flux_spread_th', flux_spread_th)
+	call put_r('r_flux', r_flux)
 	call put_r('CFL', CFL)
 	call put_l('transonic_ic', transonic_ic)
 	call put_r('T_wind_ic', T_wind_ic)
@@ -508,6 +700,21 @@
 	! above is the reservoir the base is held at, not a column invariant.
 	! The budget check has to know which of the two it is testing.
 	write(u,'(A,L1)')     'he_diffusion              ', he_diffusion
+	! Which set of atomic H/He rate coefficients the run used: 'K22' = the
+	! four Koskinen et al. (2022) Table 1 entries R1-R4 selected by "Atomic
+	! rate set:", 'default' = EXHALE's own (Badnell/Mao case B, or the
+	! legacy ATES fits under Legacy_HHe_rates). Recombination cooling is
+	! unaffected either way.
+	if (atomic_rate_set_k22) then
+		write(u,'(A)')     'atomic_rate_set           K22'
+	else
+		write(u,'(A)')     'atomic_rate_set           default'
+	endif
+		if (photoheat_photon_fraction .gt. 0.0d0) then
+			write(u,'(A,F8.4)') 'photoelectron_heating     ', photoheat_photon_fraction
+		else
+			write(u,'(A)')     'photoelectron_heating     excess'
+		endif
 	! Oxygen chemistry (the A2 option). oxygen_chemistry says whether the
 	! O I column means FREE ATOMIC oxygen (it does when this is T) and
 	! whether the OH / H2O / CO columns of Ion_species.txt exist;
@@ -517,10 +724,12 @@
 	! them, fuv_band_LW_flux, is the 912-1110 A interval shared with the H2
 	! Lyman-Werner absorber.
 	write(u,'(A,L1)')     'mol_ir_bands              ', mol_ir_bands
+	write(u,'(A,L1)')     'carrier_transport         ', carrier_transport
+	write(u,'(A,L1)')     'carrier_in_newton         ', carrier_in_newton
+	write(u,'(A,L1)')     'ionization_transport      ', ionization_transport
 	write(u,'(A,L1)')     'oxygen_chemistry          ', thereis_oxychem
 	if (thereis_oxychem) then
 		write(u,'(A)')     'oxygen_reaction_set       a2_v1'
-		write(u,'(A,L1)')  'oxygen_transport          ', oxygen_transport
 		write(u,'(A,ES23.15E3)') 'fuv_band_B1_flux          ', F_FUV_B1
 		write(u,'(A,ES23.15E3)') 'fuv_band_Lya_flux         ', F_Lya_star
 		write(u,'(A,ES23.15E3)') 'fuv_band_B3_flux          ', F_FUV_B3

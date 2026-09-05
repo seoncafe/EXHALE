@@ -3,12 +3,19 @@
 	!      contributions and radiative equilibrium
       
    use global_parameters
-   use species_table, only: n_mphot, n_melem, mion_ethr, melem_i0
+   use species_table, only: n_mphot, n_melem, n_mion, mion_ethr, melem_i0
+   use electron_energy_degradation, only: photoelectron_energy_grid,      &
+                                          n_abs_fixed
    use sed_reader
    use J_incident
    use Cross_sections
    use opacity_input            ! opacity.inp reader
    use opacity_models           ! A/C/P/T dispatcher
+   ! The four mutually exclusive final-state channels of the H2 absorption
+   ! cross section, and the switch that selects the double-ionization model.
+   use h2_photo_channels, only: h2_channel_cross_sections, n_h2_channels,  &
+                                h2_double_ionization_model,                &
+                                ICH_M, ICH_S, ICH_D, ICH_N
 
    implicit none
       
@@ -17,7 +24,11 @@
    subroutine set_energy_vectors
 	! Subroutine to construct the energy grid
 
-   integer :: i,j
+   integer :: i,j,k
+   real*8  :: xi_day
+	! Ionization threshold of every absorber that produces a photoelectron,
+	! in the order electron_energy_degradation indexes them.
+	real*8, dimension(n_abs_fixed + n_mion) :: eth_abs
 	integer, parameter :: num_HI = 50
 	integer, parameter :: num_HeI = 50
 	integer, parameter :: num_HeII = 50
@@ -27,6 +38,9 @@
 	real*8, dimension(:), allocatable :: dum_E,dum_F,dum_dE
 	real*8 :: temp1,temp2
 	real*8 :: e_sub_low    ! lower edge of the below-13.6 eV sub-grid
+	! The four H2 channel cross sections at one energy, and their ionizing
+	! part (channels M + S + D).
+	real*8 :: sig4(n_h2_channels), sig_ion
 
 	! Set the energy band of the spectrum
 	if (is_PL_sed) then
@@ -57,7 +71,6 @@
 
 		! Allocate vectors
 		allocate(e_v(Nl),de_v(Nl))
-		allocate(s_hi(Nl), s_hei(Nl),s_heii(Nl), s_h2(Nl))
 		allocate(F_XUV(Nl))
 
 		! --- Construct energy grid --- !
@@ -114,7 +127,6 @@
 		
 		! Allocate vectors
 		allocate(e_v(Nl),de_v(Nl))
-		allocate(s_hi(Nl), s_hei(Nl),s_heii(Nl), s_h2(Nl))
 		allocate(F_XUV(Nl))
 
 		! Define the only energy value according to the input
@@ -167,64 +179,111 @@
 	! HeI triplet photoioiniz. cross section
 	s_heiTR = (/ (photoion_sigma('HeITR', e_v(i)), i = 1,Nl) /)
 
-	! H2 photoionization cross section (molecular extension;
-	! Yan, Sadeghpour & Dalgarno 1998 fit, zero below 15.4 eV)
+	! H2 TOTAL photoabsorption cross section (molecular extension; the
+	! Backx et al. 1976 and Samson & Haddad 1994 tables below 300 eV and
+	! the Yan et al. 1998 Eq. 19 sum-rule tail above it, zero below
+	! 15.4 eV -- see sigma_H2 in cross_sec.f90)
 	s_h2 = (/ (sigma_H2(e_v(i)), i = 1,Nl) /)
+	! The cross-section vectors are allocated HERE, once, for every branch
+	! above (power law, monochromatic, loaded SED): Nl is known only now.
+	! Until 2026-09-05 the two spectral branches allocated them and the SED
+	! branch did not; s_hi..s_h2 survived by assignment reallocation, the two
+	! channel vectors by a guard here, and s_h2_di by nothing -- every
+	! molecular run with a loaded spectrum stopped at its first element
+	! assignment below.
+	if (.not. allocated(s_h2_di)) allocate(s_h2_di(Nl))
+	if (.not. allocated(s_h2_dd)) allocate(s_h2_dd(Nl))
+	if (.not. allocated(s_h2_nd)) allocate(s_h2_nd(Nl))
+
+	! The final-state channels of that same absorption. Every one of them
+	! destroys one H2, and each is a SHARE of s_h2 rather than an addition
+	! to it, so s_h2 -- the opacity and the total H2 destruction rate -- is
+	! the same in every branch below. What differs is which fragments the
+	! source terms of the molecular system are told to make:
+	!   s_h2_di  H2 + hv -> H  + H+ + e-    (threshold 18.08 eV)
+	!   s_h2_dd  H2 + hv -> H+ + H+ + 2e-   (threshold 51.4  eV)
+	!   s_h2_nd  H2 + hv -> H  + H          (33-41 eV window, no ion)
+	! and s_h2 minus the three of them drives the H2+ row.
+	h2_double_ionization_model = h2_double_ionization
+	if (.not. h2_neutral_dissociation .and.                              &
+	    trim(h2_double_ionization) .eq. 'off') then
+		! Neither of the two channels beyond the single dissociative one is
+		! resolved. The split is then the single branching
+		! frac_H2_dissociative_ionization, evaluated exactly as it was
+		! before the channels existed, so this default reproduces the
+		! previous arithmetic bit for bit.
+		s_h2_di = (/ (sigma_H2(e_v(i))                                   &
+		              *frac_H2_dissociative_ionization(e_v(i)), i = 1,Nl) /)
+		s_h2_dd = 0.0d0
+		s_h2_nd = 0.0d0
+	else
+		do i = 1,Nl
+			call h2_channel_cross_sections(e_v(i), s_h2(i), sig4)
+			if (.not. h2_neutral_dissociation) then
+				! Fold the neutral share back into the three ionizing
+				! channels in their own proportion, i.e. restore the unit
+				! photoionization yield the pre-E1 code assumed. Each of
+				! the three is linear in the ionizing part of the cross
+				! section, so rescaling them is the same as evaluating
+				! them with a neutral fraction of zero.
+				sig_ion = sig4(ICH_M) + sig4(ICH_S) + sig4(ICH_D)
+				if (sig_ion .gt. 0.0d0) then
+					sig4(ICH_M) = sig4(ICH_M)*s_h2(i)/sig_ion
+					sig4(ICH_S) = sig4(ICH_S)*s_h2(i)/sig_ion
+					sig4(ICH_D) = sig4(ICH_D)*s_h2(i)/sig_ion
+				endif
+				sig4(ICH_N) = 0.0d0
+			endif
+			s_h2_di(i) = sig4(ICH_S)
+			s_h2_dd(i) = sig4(ICH_D)
+			s_h2_nd(i) = sig4(ICH_N)
+		enddo
+	endif
 
 	! Metal photoionization cross sections (Verner+1996), stored in the
 	! photo cross-section table in species_table iphot order.
+	! The column order is metal_photoion_sigma's own (Cross_sections), which
+	! is also what he_rec_coupling evaluates off this grid, so the ordering
+	! of the photo cross-section table is written down in exactly one place.
 	allocate(sigma_tab(Nl, n_mphot))
-	sigma_tab(:,1)  = (/ (sigma_CI  (e_v(i)), i = 1,Nl) /) ! CI
-	sigma_tab(:,2)  = (/ (sigma_CII (e_v(i)), i = 1,Nl) /) ! CII
-	sigma_tab(:,3)  = (/ (sigma_OI  (e_v(i)), i = 1,Nl) /) ! OI
-	sigma_tab(:,4)  = (/ (sigma_OII (e_v(i)), i = 1,Nl) /) ! OII
-	sigma_tab(:,5)  = (/ (sigma_NI  (e_v(i)), i = 1,Nl) /) ! NI
-	sigma_tab(:,6)  = (/ (sigma_NII (e_v(i)), i = 1,Nl) /) ! NII
-	sigma_tab(:,7)  = (/ (sigma_MgI (e_v(i)), i = 1,Nl) /) ! MgI
-	sigma_tab(:,8)  = (/ (sigma_MgII(e_v(i)), i = 1,Nl) /) ! MgII
-	sigma_tab(:,9)  = (/ (sigma_SiI (e_v(i)), i = 1,Nl) /) ! SiI
-	sigma_tab(:,10) = (/ (sigma_SiII(e_v(i)), i = 1,Nl) /) ! SiII
-	sigma_tab(:,11) = (/ (sigma_CaI (e_v(i)), i = 1,Nl) /) ! CaI
-	sigma_tab(:,12) = (/ (sigma_CaII(e_v(i)), i = 1,Nl) /) ! CaII
-	sigma_tab(:,13) = (/ (sigma_NaI (e_v(i)), i = 1,Nl) /) ! NaI
-	sigma_tab(:,14) = (/ (sigma_KI  (e_v(i)), i = 1,Nl) /) ! KI
-	sigma_tab(:,15) = (/ (sigma_SI  (e_v(i)), i = 1,Nl) /) ! SI
-	sigma_tab(:,16) = (/ (sigma_FeI (e_v(i)), i = 1,Nl) /) ! FeI
-	sigma_tab(:,17) = (/ (sigma_FeII(e_v(i)), i = 1,Nl) /) ! FeII
+	do k = 1,n_mphot
+		sigma_tab(:,k) = (/ (metal_photoion_sigma(k, e_v(i)), i = 1,Nl) /)
+	enddo
 
 	! --------------------------------------------------
 
-	! Incident flux    
+	! Incident flux.  The dayside dilution is global_parameters'
+	! dayside_dilution(), the single definition every stellar beam uses
+	! (its header, and Update_EXHALE section 150).
+	xi_day = dayside_dilution()
 	if (is_PL_sed) then 
 
-		if (appx_mth.eq.'Rate/2 + Mdot/2') then
-
-			F_XUV  = (/ (0.5e0*J_inc(e_v(i)), i = 1,Nl) /)
-
-		elseif (appx_mth.eq.'Rate/4 + Mdot') then
-
-			F_XUV  = (/ (0.25e0*J_inc(e_v(i)), i = 1,Nl) /)
-
-		else
-
-			F_XUV  = (/ (J_inc(e_v(i)), i = 1,Nl) /)
-
-		endif      
+		F_XUV  = (/ (xi_day*J_inc(e_v(i)), i = 1,Nl) /)
 		
 	else 
 	
-		if (appx_mth.eq.'Rate/2 + Mdot/2') then
-
-			F_XUV  = 0.5e0*F_XUV
-
-		elseif (appx_mth.eq.'Rate/4 + Mdot') then
-
-			F_XUV  = 0.25e0*F_XUV
-
-		endif 
+		F_XUV  = xi_day*F_XUV
 	
 	endif      
 	
+	! --------------------------------------------------
+
+	! Where each absorber's photoelectron energy E0 = hv - E_th falls in the
+	! Dalgarno energy grid of the secondary-ionization partition. Both e_v
+	! and the thresholds are fixed for the run, so the bracket index and the
+	! interpolation weight are built once here instead of once per cell and
+	! per absorber.
+	eth_abs(1) = e_th_HI
+	eth_abs(2) = e_th_HeI
+	eth_abs(3) = e_th_HeII
+	eth_abs(4) = e_th_HeTR
+	eth_abs(5) = e_th_H2
+	eth_abs(6) = e_th_H2_di
+	do i = 1,n_mion
+		eth_abs(n_abs_fixed+i) = mion_ethr(i)
+	enddo
+	call photoelectron_energy_grid(e_v, eth_abs)
+
 	! End of subroutine 
     end subroutine set_energy_vectors
       

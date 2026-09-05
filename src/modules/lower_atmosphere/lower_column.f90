@@ -206,18 +206,18 @@
 
          double precision function drdx(rr, p_bar)
          real*8, intent(in) :: rr, p_bar
-         real*8 :: g, mu
-         g    = Gcgs*Mp/(rr*rr)
-         mu   = mu_mixture(p_bar, T, fhe)
-         drdx = -kbol*T/(mu*mh_g*g)
+         real*8 :: grav_accel, mu_mean
+         grav_accel    = Gcgs*Mp/(rr*rr)
+         mu_mean   = mu_mixture(p_bar, T, fhe)
+         drdx = -kbol*T/(mu_mean*mh_g*grav_accel)
          end function drdx
 
          double precision function drdx_atomic(rr)
          real*8, intent(in) :: rr
-         real*8 :: g, mu
-         g    = Gcgs*Mp/(rr*rr)
-         mu   = (1.0d0 + 4.0d0*fhe)/(1.0d0 + fhe)
-         drdx_atomic = -kbol*T/(mu*mh_g*g)
+         real*8 :: grav_accel, mu_mean
+         grav_accel    = Gcgs*Mp/(rr*rr)
+         mu_mean   = (1.0d0 + 4.0d0*fhe)/(1.0d0 + fhe)
+         drdx_atomic = -kbol*T/(mu_mean*mh_g*grav_accel)
          end function drdx_atomic
 
       end subroutine lower_column_solve

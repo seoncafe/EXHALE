@@ -37,6 +37,19 @@
       integer :: sp_pos
       real*8  :: ab
       logical :: file_exists
+      ! One line per QUANTITY. Aliases mean the check cannot be on the token
+      ! ('C' and 'CI' both set X_C), so each recognized line is attributed to
+      ! the quantity it writes and the line number of the first statement of
+      ! that quantity is kept. A second statement stops the run: two
+      ! abundances for one element are two answers to one question, and
+      ! last-line-wins would silently pick one.
+      integer, parameter :: n_quantity = 15
+      character(len=12), parameter :: quantity_name(n_quantity) =            &
+         [ character(len=12) :: 'X_C', 'X_N', 'X_O', 'X_Mg', 'X_Si',         &
+           'X_Ca', 'X_Na', 'X_K', 'X_S', 'X_Fe',                             &
+           'cx_full', 'cx_O2p_H', 'cno_cool', 'eos_metals', 'pp_metals' ]
+      integer :: quantity_line(n_quantity)
+      integer :: iline, iq
 
       inquire(file = met_inp_file, exist = file_exists)
       if (.not. file_exists) then
@@ -49,9 +62,12 @@
       open(unit = 36, file = met_inp_file, status = 'old', action = 'read')
 
       n_set = 0
+      quantity_line = 0
+      iline = 0
       do
          read(36, '(A)', iostat = io) line
          if (io /= 0) exit
+         iline = iline + 1
 
          trimmed = trim(adjustl(line))
          if (len(trimmed) == 0) cycle
@@ -81,6 +97,7 @@
          ! 'cx_full <0|1>' toggles the full Huang Table 4 (He-H and
          ! metal-metal charge exchange) instead of the metal-H default.
          if (trim(tok) == 'cx_full' .or. trim(tok) == 'CX_FULL') then
+            call refuse_second_statement('cx_full', iline, trimmed)
             cx_full = (ab > 0.5d0)
             write(*,'(a,l1)') '   charge-exchange full Table 4 mode = ', &
                               cx_full
@@ -95,6 +112,7 @@
          ! are bounding experiments. It is deliberately NOT folded into
          ! cx_full, which means "all of Table 4".
          if (trim(tok) == 'cx_O2p_H' .or. trim(tok) == 'cx_o2p_h') then
+            call refuse_second_statement('cx_O2p_H', iline, trimmed)
             cx_o2p_h_scale = max(ab, 0.0d0)
             if (cx_o2p_h_scale > 0.0d0) then
                write(*,'(a,es9.2,a)') '   O2+ + H0 -> O+ + H+ charge '     &
@@ -112,6 +130,7 @@
          ! 0 = legacy AIOLOS analytic fits (no N cooling; O deviates
          !     40-70% from CHIANTI in the wind region).
          if (trim(tok) == 'cno_cool' .or. trim(tok) == 'CNO_COOL') then
+            call refuse_second_statement('cno_cool', iline, trimmed)
             cno_chianti = (ab > 0.5d0)
             if (cno_chianti) then
                write(*,'(a)') '   C/N/O cooling source = CHIANTI v11' &
@@ -129,6 +148,7 @@
          !     (calc_ntot, ghost pressure) to the gas budget;
          ! 0 = legacy trace approximation (H/He-only budget).
          if (trim(tok) == 'eos_metals' .or. trim(tok) == 'EOS_METALS') then
+            call refuse_second_statement('eos_metals', iline, trimmed)
             eos_include_metals = (ab > 0.5d0)
             if (eos_include_metals) then
                write(*,'(a)') '   EOS metal policy = metals in mass/'   &
@@ -145,6 +165,7 @@
          ! 1 frozen eq metals (default), 2 re-solve. 'pp_metal_mode' is
          ! accepted as a synonym.
          if (trim(tok) == 'pp_metals' .or. trim(tok) == 'pp_metal_mode') then
+            call refuse_second_statement('pp_metals', iline, trimmed)
             pp_metal_mode = nint(ab)
             if (pp_metal_mode < 0 .or. pp_metal_mode > 2) then
                write(*,'(a,i0,a)') '  WARN: pp_metals = ', pp_metal_mode, &
@@ -158,21 +179,35 @@
          endif
 
          select case (trim(tok))
-            case ('CI',  'C');   X_C  = ab
-            case ('NI',  'N');   X_N  = ab
-            case ('OI',  'O');   X_O  = ab
-            case ('MgI', 'Mg');  X_Mg = ab
-            case ('SiI', 'Si');  X_Si = ab
-            case ('CaI', 'Ca');  X_Ca = ab
-            case ('NaI', 'Na');  X_Na = ab
-            case ('KI',  'K');   X_K  = ab
-            case ('SI',  'S');   X_S  = ab
-            case ('FeI', 'Fe');  X_Fe = ab
+            case ('CI',  'C');   iq = 1
+            case ('NI',  'N');   iq = 2
+            case ('OI',  'O');   iq = 3
+            case ('MgI', 'Mg');  iq = 4
+            case ('SiI', 'Si');  iq = 5
+            case ('CaI', 'Ca');  iq = 6
+            case ('NaI', 'Na');  iq = 7
+            case ('KI',  'K');   iq = 8
+            case ('SI',  'S');   iq = 9
+            case ('FeI', 'Fe');  iq = 10
             case default
                write(*,*) '  WARN: unrecognized ion ', &
                           '(only C/N/O/Mg/Si/Ca/Na/K/S/Fe, case sensitive): ', &
                           trim(tok)
                cycle
+         end select
+         call refuse_second_statement(trim(quantity_name(iq)), iline,   &
+                                      trimmed)
+         select case (iq)
+            case ( 1);  X_C  = ab
+            case ( 2);  X_N  = ab
+            case ( 3);  X_O  = ab
+            case ( 4);  X_Mg = ab
+            case ( 5);  X_Si = ab
+            case ( 6);  X_Ca = ab
+            case ( 7);  X_Na = ab
+            case ( 8);  X_K  = ab
+            case ( 9);  X_S  = ab
+            case (10);  X_Fe = ab
          end select
 
          n_set = n_set + 1
@@ -187,6 +222,33 @@
       write(*,'(a,5es11.3)') '   X_Si, X_Ca, X_Na, X_K, X_S = ', &
                              X_Si, X_Ca, X_Na, X_K, X_S
       write(*,'(a,es11.3)')  '   X_Fe                     = ', X_Fe
+
+      contains
+
+      subroutine refuse_second_statement(qname, iline_in, text)
+      ! Stop if the named quantity has already been stated, naming both lines.
+      character(len=*), intent(in) :: qname
+      integer,          intent(in) :: iline_in
+      character(len=*), intent(in) :: text
+      integer :: iq_in, k
+      iq_in = 0
+      do k = 1, n_quantity
+         if (trim(quantity_name(k)) .eq. qname) iq_in = k
+      enddo
+      if (iq_in .eq. 0) return          ! not a tracked quantity
+      if (quantity_line(iq_in) .eq. 0) then
+         quantity_line(iq_in) = iline_in
+         return
+      endif
+      write(*,*) '(metals_input) ERROR: "'//qname//                         &
+         '" is stated twice in '//trim(met_inp_file)//':'
+      write(*,'(A,I0)')  '     first at line ', quantity_line(iq_in)
+      write(*,'(A,I0,A)')'     again at line ', iline_in, ': '//trim(text)
+      write(*,*) '   One quantity, one line. Delete the statement that'//   &
+                 ' is not meant (a superseded value'
+      write(*,*) '   belongs in a "#" comment, which is not parsed).'
+      error stop 1
+      end subroutine refuse_second_statement
 
       end subroutine read_metals_input
 

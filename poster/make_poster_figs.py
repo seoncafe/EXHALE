@@ -1,7 +1,13 @@
 #!/usr/bin/env python3
 """Generate the WASP-52b poster figures as vector PDFs (negative/transit-depth
 convention).  Run from the poster/ directory:  python make_poster_figs.py
-Outputs to poster/figs/*.pdf."""
+Outputs to poster/figs/*.pdf.
+
+STALE (P48; Update_EXHALE section 137): the PDFs currently in poster/figs/ and
+the tpm_*.txt curves they are drawn from were made while the readers returned
+the profile files' GHOST rows as solution cells.  This script now reads through
+exhale_io.loadtxt_cells, so re-running it will move the depths by 0.2-3.8 per
+cent.  Nothing was regenerated; regeneration awaits instruction."""
 import os, sys
 import numpy as np
 import matplotlib
@@ -48,7 +54,8 @@ def fig_profiles():
     cases = [('fxuv0p25_he98_L1', 'He 98/2', 'C1', '-'),
              ('fxuv0p25_solar_L1', 'solar 92/8', 'C0', '--')]
     for fol, lab, c, s in cases:
-        d = np.loadtxt(os.path.join(W, fol, 'output', 'Hydro_ioniz_adv.txt'))
+        d = aio.loadtxt_cells(os.path.join(W, fol, 'output',
+                                          'Hydro_ioniz_adv.txt'))
         r, n, v, T = d[:, 0], d[:, 1], d[:, 2], d[:, 4]
         kw = dict(color=c, ls=s, label=lab)
         ax[0].plot(r, T, **kw); ax[1].plot(r, v/1e5, **kw); ax[2].semilogy(r, n, **kw)

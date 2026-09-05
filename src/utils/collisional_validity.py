@@ -288,7 +288,6 @@ for _m in eio.METAL_IONS:
         _m[len(_m.rstrip('I')):] or 'I']
 
 gamma_ad = 1.666666666667   # parameters.f90:385, the code's polytropic index
-N_GHOST = 2                 # parameters.f90:15, Ng
 
 # A species below this mass fraction is not asked to validate the solution:
 # its Knudsen number is reported but does not enter the verdict.
@@ -506,19 +505,20 @@ def collisional_diagnosis(case_dir, adv=True, kn_threshold=0.1,
     inp_path = os.path.join(case_dir, 'input.inp')
     run = eio.load_run(os.path.join(case_dir, outdir), inp_path, adv=adv)
 
-    # Drop the Ng ghost cells at each end (parameters.f90:15).
-    sl = slice(N_GHOST, -N_GHOST)
+    # The ghost rows are already gone: exhale_io returns the physical cells
+    # (exhale_io.physical_cell_rows).  Cutting them again here would take
+    # four more solution cells off each end.
     Rp_cm = run.inp['Rp_RJ'] * eio.RJ
     Mp_g = run.inp['Mp_MJ'] * eio.MJ
-    r = run.r[sl]
+    r = run.r
     r_cm = r * Rp_cm
-    T = run.T[sl]
-    v = run.v[sl]
-    p = run.p[sl]
-    rho = run.n[sl] * m_H_g
-    heat = run.heat[sl]
+    T = run.T
+    v = run.v
+    p = run.p
+    rho = run.n * m_H_g
+    heat = run.heat
 
-    ion = {k: a[sl] for k, a in run.ion.items()}
+    ion = dict(run.ion)
     dens = {s: ion[s] for s in COLLIDERS if s in ion and s != 'e'}
     # Electron density from charge neutrality over EVERY tracked ion, metals
     # included: the collisions treat the metals as trace, the charge budget

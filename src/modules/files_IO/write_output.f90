@@ -2,12 +2,16 @@
       ! Write the output to the standard output files
 
       use global_parameters
+      use utils, only: write_row_layout_header,                        &
+                       write_coupling_state_header,                      &
+                       write_provenance_header
       use species_table, only: n_mion, mion_name, im_OI, melem_i0,       &
                                iel_O, iel_C
       use ionization_equilibrium, only: nmol_eq,   &  ! molecular columns
                                        NH2_col_lw, f_shield_lw, k_lw_diss, &
+                                       p_lw_single, p_lw_absorbed,         &
                                        tr_lines_lw, a_lines_lw, P_H2_eq,   &
-                                       NH2_db96_max, NH2_richings_max,     &
+                                       NH2_db96_max, lw_col_over_overlap,  &
                                        nox_eq, n_o1d_eq,                   &
                                        NH2O_col, NOH_col,                  &
                                        j_h2o_fuv, j_oh_fuv, tau_fuv,       &
@@ -19,8 +23,10 @@
                             h2_line_net_cooling_rate,                     &
                             h2o_band_net_cooling_rate,                    &
                             co_band_net_cooling_rate
+      use h2_vibrational_relaxation, only: h2_vibrational_heat_fraction,   &
+                                          h2_energy_per_bound_fluorescence_erg
       use lyman_werner_photodissociation, only: e_lw_fragment_erg,         &
-                                       e_lw_photon_erg, p_diss_lw
+                                       e_lw_photon_erg
       use water_photolysis, only: n_fuv_band, fuv_band_name,               &
                                        sigma_H2O_band, sigma_OH_band,      &
                                        e_photon_H2O_band, e_photon_OH_band,&
@@ -94,7 +100,22 @@
       write(2,'(A)') '# EXHALE schema 2'
       write(2,'(A)') '# columns r[Rp] rho[mH/cm3] v[cm/s] p[cgs] T[K] '//   &
                      'heat[erg/cm3/s] cool[erg/cm3/s]'
+      ! Which rows are physical. The loop below writes 1-Ng..N+Ng, so the
+      ! first Ng and the last Ng rows are GHOST cells, filled by Apply_BC
+      ! from the interior (lower: fixed base state; upper: zero-gradient /
+      ! WENO3 extrapolation). Their rho*v*r^2 is a boundary extrapolation,
+      ! not part of the solution, and including them in a flux-spread or
+      ! residual measure doubles it: the accepted flux spread of the
+      ! HD 189733 b solve is 4.64e-3 over the physical cells and 1.05e-2 if
+      ! the two upper ghost rows are counted (section 133.6). The line is a
+      ! '#' comment, so no reader's numeric parse and no golden changes.
 
+         call write_row_layout_header(2)
+         ! What the state in this file was produced under (see the routine).
+         ! Hydro_ioniz.txt is what a restart is fed as Hydro_ioniz_IC.txt, so
+         ! this is the file the line has to travel in.
+         call write_coupling_state_header(2)
+         call write_provenance_header(2)
          do j = 1-Ng,N+Ng
             write(2,*) r(j),        &     ! Rad. dist.
                      rho(j)*n0,     &     ! Density
@@ -143,6 +164,7 @@
       if (thereis_oxychem) write(3,'(A)', advance='no') ' OH H2O CO'
       write(3,'(A)') ''
 
+      call write_row_layout_header(3)
       do j = 1-Ng,N+Ng
 
          if (thereis_oxychem) then
@@ -176,8 +198,9 @@
       ! It is the record of how deep the band penetrates: f_shield -> 1 in
       ! the thin wind above the H2 -> H front and collapses in the
       ! self-shielded molecular base.  The f_shield column is the factor
-      ! the RATE carries, i.e. the Richings, Schaye & Oppenheimer (2014)
-      ! temperature-dependent fit; the band share the H2 lines take from
+      ! the RATE carries, i.e. the level-resolved overlapping-line table of
+      ! h2_self_shielding_table -- NEITHER published fit is called by the
+      ! rate any more (lyman_werner.f90 sec. 2); the band share the H2 lines take from
       ! the shared FUV beam is a separate quantity on a separate fit
       ! (lyman_werner.f90 sec. 2); it matters only when the oxygen
       ! chemistry shares the band, and is reported in output/FUV_bands.txt
@@ -187,9 +210,13 @@
          write(4,'(A)') '# EXHALE schema 2'
          write(4,'(A,ES12.5,A)') '# Lyman-Werner band flux at the planet: ', &
                         F_LW_star, ' erg cm^-2 s^-1 (912-1110 A)'
+         write(4,'(A,F6.3,A,ES12.5)') '# dayside dilution applied: ',      &
+                        dayside_dilution(), '  -> beam driving k_LW: ',    &
+                        fuv_band_flux(ib_LW)
          write(4,'(A)') '# columns r[Rp] T[K] x_H2[2nH2/nH] nH2[cm^-3] '//  &
                         'NH2_star[cm^-2] f_shield k_LW[1/s] '//             &
                         'heat_LW[erg/cm3/s]'
+         call write_row_layout_header(4)
          do j = 1-Ng,N+Ng
             nh_lw = (nhi(j) + nhii(j))*n0                                  &
                   + 2.0d0*(nmol_eq(j,1) + nmol_eq(j,2))                    &
@@ -265,6 +292,7 @@
          write(73,'(A)') '# columns r[Rp] T[K] ne[cm^-3] nHI[cm^-3] '//        &
                         'nOI[cm^-3] f_3P2 f_3P1 f_3P0 '//                     &
                         'n_3P2[cm^-3] n_3P1[cm^-3] n_3P0[cm^-3]'
+         call write_row_layout_header(73)
          do j = 1-Ng,N+Ng
             write(73,*) r(j), T_K_oi(j), ne_oi(j), nhi(j)*n0,           &
                        nm_oi(j,im_OI),                                 &
@@ -292,13 +320,13 @@
       !       and the band-by-band energy ledger of gate G4.
       !
       ! WHY THE TIME SCALES ARE A REQUIRED OUTPUT AND NOT A DIAGNOSTIC.
-      ! With "Oxygen transport: True" -- the default of the option -- the
+      ! With "Molecular carrier transport: True" -- the default of the option -- the
       ! carriers are transported, so a cell in which the chemistry is slow
       ! is SOLVED rather than assumed away. The time scales stay a required
       ! output for the other direction: they say where the answer is
       ! chemistry, where it is flow, and where the two are comparable, and
       ! that is what tells a reader which part of the profile the reaction
-      ! set is responsible for. With "Oxygen transport: False" they say
+      ! set is responsible for. With "Molecular carrier transport: False" they say
       ! something stronger -- where that limit is simply wrong.
       !
       !   tau_chem  the H2 lifetime against the oxygen cycle,
@@ -366,17 +394,18 @@
                      '-equilibrium limit; Da <~ 1 means transport sets'
       write(74,'(A)') '# the partition. tau_diff = dr^2/(D_H2 + K_zz) is'//&
                      ' the diffusive time of the cell for H2.'
-      if (oxygen_transport) then
+      if (carrier_transport) then
          write(74,'(A)') '# The carriers ARE transported (implicit'//      &
                      ' diffusion-advection with the chemistry).'
       else
          write(74,'(A)') '# The carriers are a LOCAL steady state'//       &
-                     ' ("Oxygen transport: False"): the chemistry alone.'
+                     ' ("Molecular carrier transport: False"): chemistry alone.'
       endif
       write(74,'(A)') '# columns r[Rp] T[K] n_O n_OII n_OIII n_OH n_H2O'//  &
                      ' n_CO n_O1D x_H2[2nH2/nH] tau_chem[s] tau_adv[s]'//   &
                      ' Da j_H2O[1/s] j_OH[1/s] D_H2[cm2/s] Kzz[cm2/s]'//    &
                      ' tau_diff[s]'
+      call write_row_layout_header(74)
       do j = 1-Ng,N+Ng
          nh_ox = (nhi(j) + nhii(j))*n0                                     &
                + 2.0d0*(nmol_eq(j,1) + nmol_eq(j,2))                       &
@@ -412,7 +441,7 @@
                     sum(j_h2o_fuv(j,:)), sum(j_oh_fuv(j,:)),               &
                     d_h2_cell, kzz_cell(j), tau_dif
       enddo
-      if (oxygen_transport) then
+      if (carrier_transport) then
          call carrier_transport_diagnostics(ct_steps, ct_resid, ct_nlim,  &
                                             ct_worst)
          write(74,'(A)') '#'
@@ -651,16 +680,33 @@
                          *heat_per_hydroxyl_dissociation(ib))*dr_cm
          enddo
          if (F_LW_star .gt. 0.0d0) then
-            ph_lw    = k_lw_diss(j)/p_diss_lw*nmol_eq(j,1)*dr_cm
-            e_lw_abs = e_lw_abs + ph_lw*e_lw_photon_erg
             ! The H2 share of the shared LW beam, on the same ledger as the
-            ! continuum absorbers: every pumped photon leaves the beam, and
-            ! p_diss of them end in a dissociation that gives the fragment
-            ! pair e_lw_fragment_erg.
+            ! continuum absorbers. Two DIFFERENT branchings are needed and
+            ! they are not the same number (lyman_werner.f90, and
+            ! docs/p39_lw_cross_section_sources.md):
+            !   p_lw_absorbed  how many dissociations the beam buys per
+            !                  photon it loses, so the photon count of the
+            !                  band divides by it;
+            !   p_lw_single    how many fluorescent decays accompany each
+            !                  dissociation, (1 - p)/p, which is the term the
+            !                  energy equation carries.
+            ! Both terms are in the energy equation, so both belong here;
+            ! before the second was carried, bond_col counted it as energy
+            ! that never comes back.
+            ph_lw    = k_lw_diss(j)/max(p_lw_absorbed(j), 1.0d-30)         &
+                       *nmol_eq(j,1)*dr_cm
+            e_lw_abs = e_lw_abs + ph_lw*e_lw_photon_erg
             absph(ib_LW)    = absph(ib_LW)    + ph_lw
             absen(ib_LW)    = absen(ib_LW)    + ph_lw*e_lw_photon_erg
             heat_col(ib_LW) = heat_col(ib_LW)                              &
-                            + ph_lw*p_diss_lw*e_lw_fragment_erg
+                            + k_lw_diss(j)*nmol_eq(j,1)*dr_cm              &
+                              *e_lw_fragment_erg                           &
+                            + k_lw_diss(j)*nmol_eq(j,1)*dr_cm              &
+                              *(1.0d0 - p_lw_single(j))                    &
+                              /max(p_lw_single(j), 1.0d-30)                &
+                              *h2_energy_per_bound_fluorescence_erg(T(j)*T0)&
+                              *h2_vibrational_heat_fraction(T(j)*T0,        &
+                                       nhi(j)*n0, nmol_eq(j,1))
          endif
       enddo
       bond_col = absen - heat_col
@@ -731,6 +777,7 @@
       enddo
       colhdr = trim(colhdr)//' heat_FUV[erg/cm3/s]'
       write(75,'(A)') trim(colhdr)
+      call write_row_layout_header(75)
       do j = 1-Ng,N+Ng
          write(75,*) r(j), NH2O_col(j), NOH_col(j),                        &
                     (tau_fuv(j,ib), ib = 1,n_fuv_band),                    &
@@ -822,16 +869,16 @@
               ' validity range (absorbed, bound): ',                       &
               ir_abs(1) + ir_abs(2) + ir_abs(3), ir_bound
       endif
-      if (maxval(NH2_col_lw) .gt. NH2_richings_max)                        &
-         write(*,'(a,es9.2,a,es9.2,a,es9.2,a)') ' (write_output/eq)'//     &
+      if (lw_col_over_overlap .gt. 1.0d0 .or.                             &
+          maxval(NH2_col_lw) .gt. NH2_db96_max)                            &
+         write(*,'(a,es9.2,a,f6.2,a,es9.2,a)') ' (write_output/eq)'//      &
            ' WARNING: the star-ward H2 column reaches ',                   &
-           maxval(NH2_col_lw), ' cm^-2. The self-shielding fits are'//     &
-           ' checked only to ', NH2_richings_max,                          &
-           ' cm^-2 (Richings, Schaye & Oppenheimer 2014, which sets the'// &
-           ' photodissociation rate) and ', NH2_db96_max,                  &
-           ' cm^-2 (Draine & Bertoldi 1996, which sets the band fraction'//&
-           ' the H2 lines remove), so the deepest cells are'//             &
-           ' extrapolating at least the first of the two.'
+           maxval(NH2_col_lw), ' cm^-2, which is ',                        &
+           lw_col_over_overlap, ' times the top of the column axis of'//  &
+           ' the overlapping-line self-shielding table, above which its'//&
+           ' edge value is returned rather than a calculated one, and'//   &
+           ' the band share the H2 lines remove is on a fit demonstrated'//&
+           ' only to ', NH2_db96_max, ' cm^-2 (Draine & Bertoldi 1996).'
 
       end subroutine write_oxygen_chemistry
 

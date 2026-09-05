@@ -16,6 +16,12 @@
    real*8, dimension(3) :: sp,sm,sd,sc
    real*8, dimension(3,1-Ng:N+Ng), intent(out) :: WL_rec,WR_rec
    
+   ! Cell-local: the limited slope of cell j is built from the three cell
+   ! averages j-1, j, j+1 and written into that cell's own two face states.
+   ! No reduction, so a cell's arithmetic is unchanged and the result is
+   ! bitwise identical at any number of threads.
+   !$omp parallel do default(shared) schedule(static)                   &
+   !$omp   private(j,k,x,W,sp,sm,sd,sc)
    do j = 2-Ng,N+Ng-1
    
       ! Extract stencil grid
@@ -23,7 +29,7 @@
       
       ! Convert to local primitive variables (2nd order conversion)
       do k = j-1,j+1           
-            call U_to_W_comp(u_in(:,k),W(:,k-j))
+            call U_to_W_comp(u_in(:,k),W(:,k-j),k)
       enddo
 
       ! Compute derivative approximations
@@ -39,6 +45,7 @@
       WR_rec(:,j-1) = W(:,0) - 0.5*sc*(x(0)-x(-1))
    
    enddo
+   !$omp end parallel do
    
    ! End of subroutine
    end subroutine PLM_rec

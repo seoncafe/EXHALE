@@ -222,6 +222,27 @@
                     ' R_p). Set a smaller "Escape radius [R_p]:" in input.inp.'
       endif
 
+
+      ! Inner edge of the FLUX window: first cell with r >= r_flux, over which
+      ! the flux gate measures the spread of rho*v*r^2 (section 133). Same
+      ! guard as j_min: if r_flux lies outside the domain the window would be
+      ! empty, so clamp it to mid-domain and warn.
+      do j = 1-Ng,N+Ng
+         if (r(j) .ge. r_flux) goto 121
+      enddo
+121   j_flux = j
+      if (j_flux .gt. N) then
+         do j = 1-Ng,N+Ng
+            if (r(j) .ge. (1.0d0 + 0.5d0*(r_max-1.0d0))) goto 122
+         enddo
+122      j_flux = j
+         write(*,'(A,F6.3,A,F6.3,A)')                                       &
+            '    (define_grid.f90) WARNING: flux-window radius r_flux = ',   &
+            r_flux, ' R_p >= domain r_max = ', r_max,                        &
+            ' R_p; clamping the flux gate window to mid-domain.'
+      endif
+      j_flux = max(j_flux, 1)
+
       ! End of subroutine
       end subroutine define_grid
       

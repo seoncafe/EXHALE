@@ -99,8 +99,8 @@
                y(j, k) = y(j, k) - fac*c(jv, 1, k)
             end do
          end do
-         write(*,'(/,A7,2X,A9,2X,A9)') 'Iter.', 'Error', 'FAC'
-         write(*,'(I7,2X,ES9.3,2X,ES9.3)') it, err, fac
+         write(*,'(/,A7,2X,A10,1X,A10)') 'Iter.', 'Error', 'FAC'
+         write(*,'(I7,2X,ES10.3,1X,ES10.3)') it, err, fac
          if (err .lt. conv) return
       end do
       wae_err = 4   ! too many iterations -- graceful fail for continuation

@@ -34,4 +34,3 @@ du_th [PLM,WENO3]: 0.5 1.0e-3
 Solver: Newton 5.0e-2
 CFL: 0.3
 Base grid [dr,cells]: 1.0e-4 100
-Base ghost temperature: continuous

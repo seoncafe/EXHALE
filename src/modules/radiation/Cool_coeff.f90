@@ -9,6 +9,10 @@
    !	coefficients
    
    use global_parameters
+   ! Koskinen et al. (2022, ApJ 929, 52) Table 1 R1-R4, transcribed once in
+   ! mol_rates and selected here by "Atomic rate set: Koskinen2022".
+   use mol_rates,     only: rk_R1_Hp_rec, rk_R2_Hep_rec,               &
+        rk_R3_H_cion, rk_R4_He_cion
    use species_table, only: n_mion, mion_name,                         &
         im_CI, im_CII, im_CIII, im_OI, im_OII, im_OIII,                &
         im_NI, im_NII, im_NIII, im_MgI, im_MgII, im_MgIII,             &
@@ -558,7 +562,10 @@
    ! =============================================================== !
    !  Default H/He recombination and collisional-ionization rates.   !
    !  Used unless legacy_hhe_rates = .true. (then the legacy HG97 /   !
-   !  Abel fits below are taken instead).                             !
+   !  Abel fits below are taken instead) or atomic_rate_set_k22 =     !
+   !  .true. (then the Koskinen et al. 2022 Table 1 fits of           !
+   !  mol_rates are taken; the accessors near the end of this module  !
+   !  are where all three sets meet).                                 !
    ! =============================================================== !
 
    ! Badnell radiative recombination fit (2023 update of Badnell 2006,
@@ -676,54 +683,60 @@
    ! Case B recombination coefficient of HII
    subroutine rec_HII_B(T,coeff_rec_HII_B)
    real*8, dimension(1-Ng:N+Ng), intent(in) :: T
-   real*8, dimension(1-Ng:N+Ng) :: xl
    real*8, dimension(1-Ng:N+Ng), intent(out) :: coeff_rec_HII_B
-
-   if (legacy_hhe_rates) then
-      ! Hui & Gnedin 1997, MNRAS 292, 27, case-B fit
-      xl        = 2.0*157807.0/T
-      coeff_rec_HII_B = 2.753e-14*xl**1.5/(1.0+(xl/2.740)**0.407)**2.242
-   else
-      coeff_rec_HII_B = alphaB_HII_new(T)
-   endif
-
+   call rec_HII_B_range(T,coeff_rec_HII_B,1-Ng,N+Ng)
    end subroutine rec_HII_B
+
+   subroutine rec_HII_B_range(T,coeff_rec_HII_B,j_lo,j_hi)
+   integer, intent(in) :: j_lo,j_hi
+   real*8, dimension(1-Ng:N+Ng), intent(in) :: T
+   real*8, dimension(1-Ng:N+Ng), intent(inout) :: coeff_rec_HII_B
+   coeff_rec_HII_B(j_lo:j_hi) = alpha_rec_HII_B(T(j_lo:j_hi))
+   end subroutine rec_HII_B_range
+
 
    !--------------!
 
    ! Case B recombination coefficient of HeII
    subroutine rec_HeII_B(T,coeff_rec_HeII_B)
    real*8, dimension(1-Ng:N+Ng), intent(in) :: T
-   real*8, dimension(1-Ng:N+Ng) :: xl
    real*8, dimension(1-Ng:N+Ng), intent(out) :: coeff_rec_HeII_B
-
-   if (legacy_hhe_rates) then
-      ! Hui & Gnedin 1997, MNRAS 292, 27, case-B fit
-      xl         = 2.0*285335.0/T
-      coeff_rec_HeII_B = 1.26e-14*xl**0.750
-   else
-      coeff_rec_HeII_B = alphaB_HeII_new(T)
-   endif
-
+   call rec_HeII_B_range(T,coeff_rec_HeII_B,1-Ng,N+Ng)
    end subroutine rec_HeII_B
+
+   subroutine rec_HeII_B_range(T,coeff_rec_HeII_B,j_lo,j_hi)
+   integer, intent(in) :: j_lo,j_hi
+   real*8, dimension(1-Ng:N+Ng), intent(in) :: T
+   real*8, dimension(1-Ng:N+Ng), intent(inout) :: coeff_rec_HeII_B
+   coeff_rec_HeII_B(j_lo:j_hi) = alpha_rec_HeII_B(T(j_lo:j_hi))
+   end subroutine rec_HeII_B_range
+
 
    !--------------!
 
    ! Case B recombination coefficient of HeIII
    subroutine rec_HeIII_B(T,coeff_rec_HeIII_B)
    real*8, dimension(1-Ng:N+Ng), intent(in) :: T
-   real*8, dimension(1-Ng:N+Ng) :: xl
    real*8, dimension(1-Ng:N+Ng), intent(out) :: coeff_rec_HeIII_B
+   call rec_HeIII_B_range(T,coeff_rec_HeIII_B,1-Ng,N+Ng)
+   end subroutine rec_HeIII_B
+
+   subroutine rec_HeIII_B_range(T,coeff_rec_HeIII_B,j_lo,j_hi)
+   integer, intent(in) :: j_lo,j_hi
+   real*8, dimension(1-Ng:N+Ng), intent(in) :: T
+   real*8, dimension(1-Ng:N+Ng) :: xl
+   real*8, dimension(1-Ng:N+Ng), intent(inout) :: coeff_rec_HeIII_B
 
    if (legacy_hhe_rates) then
       ! Hui & Gnedin 1997, MNRAS 292, 27, case-B fit
-      xl          = 2.0*631515.0/T
-      coeff_rec_HeIII_B = 2.0*2.753e-14*xl**1.5/(1.0+(xl/2.740)**0.407)**2.242
+      xl(j_lo:j_hi)          = 2.0*631515.0/T(j_lo:j_hi)
+      coeff_rec_HeIII_B(j_lo:j_hi) = 2.0*2.753e-14*xl(j_lo:j_hi)**1.5/(1.0+(xl(j_lo:j_hi)/2.740)**0.407)**2.242
    else
-      coeff_rec_HeIII_B = alphaB_HeIII_new(T)
+      coeff_rec_HeIII_B(j_lo:j_hi) = alphaB_HeIII_new(T(j_lo:j_hi))
    endif
 
-   end subroutine rec_HeIII_B
+   end subroutine rec_HeIII_B_range
+
          
    !--------------!
    
@@ -733,14 +746,17 @@
    !  matching cooling fit.)
    subroutine rec_cool_HII(T,coeff_rec_cool_HII)
    real*8, dimension(1-Ng:N+Ng), intent(in) :: T
-   real*8, dimension(1-Ng:N+Ng) :: xl
    real*8, dimension(1-Ng:N+Ng), intent(out) :: coeff_rec_cool_HII
-
-   xl = 2.0*157807.0/T
-   coeff_rec_cool_HII = 3.435e-30*T*xl**1.970/           &
-                  (1.0+(xl/2.250)**0.376)**3.720
-   
+   call rec_cool_HII_range(T,coeff_rec_cool_HII,1-Ng,N+Ng)
    end subroutine rec_cool_HII
+
+   subroutine rec_cool_HII_range(T,coeff_rec_cool_HII,j_lo,j_hi)
+   integer, intent(in) :: j_lo,j_hi
+   real*8, dimension(1-Ng:N+Ng), intent(in) :: T
+   real*8, dimension(1-Ng:N+Ng), intent(inout) :: coeff_rec_cool_HII
+   coeff_rec_cool_HII(j_lo:j_hi) = lambda_rec_HII(T(j_lo:j_hi))
+   end subroutine rec_cool_HII_range
+
    
    !--------------!
    
@@ -749,30 +765,34 @@
    !  rec_HeII_B returns.)
    subroutine rec_cool_HeII(T,coeff_rec_cool_HeII)
    real*8, dimension(1-Ng:N+Ng), intent(in) :: T
-   real*8, dimension(1-Ng:N+Ng) :: coeff_rec_HeII_B
    real*8, dimension(1-Ng:N+Ng), intent(out) :: coeff_rec_cool_HeII
-
-   call rec_HeII_B(T,coeff_rec_HeII_B)
-   ! k_B T alpha_B. The literal 1.38e-16 inherited from ATES was replaced by
-   ! kb_erg on 2026-08-19 -- the two local copies here were missed when the
-   ! global constant went to CODATA (a 4.7e-4 shift in this coefficient).
-   coeff_rec_cool_HeII = kb_erg*T*coeff_rec_HeII_B
-   
+   call rec_cool_HeII_range(T,coeff_rec_cool_HeII,1-Ng,N+Ng)
    end subroutine rec_cool_HeII
+
+   subroutine rec_cool_HeII_range(T,coeff_rec_cool_HeII,j_lo,j_hi)
+   integer, intent(in) :: j_lo,j_hi
+   real*8, dimension(1-Ng:N+Ng), intent(in) :: T
+   real*8, dimension(1-Ng:N+Ng), intent(inout) :: coeff_rec_cool_HeII
+   coeff_rec_cool_HeII(j_lo:j_hi) = lambda_rec_HeII(T(j_lo:j_hi))
+   end subroutine rec_cool_HeII_range
+
    
    !--------------!
    
    ! Recombination cooling rate for HeIII
    subroutine rec_cool_HeIII(T,coeff_rec_cool_HeIII)
    real*8, dimension(1-Ng:N+Ng), intent(in) :: T
-   real*8, dimension(1-Ng:N+Ng) :: xl
    real*8, dimension(1-Ng:N+Ng), intent(out) :: coeff_rec_cool_HeIII
-
-   xl = 2.0*631515.0/T
-   coeff_rec_cool_HeIII = 8.0*3.435e-30*T*xl**1.970/      &
-                           (1.0+(xl/2.250)**0.376)**3.720
-   
+   call rec_cool_HeIII_range(T,coeff_rec_cool_HeIII,1-Ng,N+Ng)
    end subroutine rec_cool_HeIII
+
+   subroutine rec_cool_HeIII_range(T,coeff_rec_cool_HeIII,j_lo,j_hi)
+   integer, intent(in) :: j_lo,j_hi
+   real*8, dimension(1-Ng:N+Ng), intent(in) :: T
+   real*8, dimension(1-Ng:N+Ng), intent(inout) :: coeff_rec_cool_HeIII
+   coeff_rec_cool_HeIII(j_lo:j_hi) = lambda_rec_HeIII(T(j_lo:j_hi))
+   end subroutine rec_cool_HeIII_range
+
    
    !---------------------------------------------------!
    
@@ -781,65 +801,51 @@
    ! Collisional ionization rate for HI
    subroutine ion_coeff_HI(T,a_ion_coeff_HI)
    real*8, dimension(1-Ng:N+Ng), intent(in) :: T
-   real*8, dimension(1-Ng:N+Ng) :: th
    real*8, dimension(1-Ng:N+Ng), intent(out) :: a_ion_coeff_HI
-
-   if (legacy_hhe_rates) then
-      ! Abel, Anninos, Zhang & Norman 1997, New Astronomy 2, 181
-      !   (fit to Janev et al. 1987)
-      th = log(T*8.61733e-5)
-      a_ion_coeff_HI = exp(-3.271396786e1 + 1.35365560e1*th       &
-               -5.73932875*th**2.0    + 1.56315498*th**3.0        &
-               -2.87705600e-1*th**4.0 + 3.48255977e-2*th**5.0     &
-               -2.63197617e-3*th**6.0 + 1.11954395e-4*th**7.0     &
-               -2.03914985e-6*th**8.0)
-   else
-      a_ion_coeff_HI = ci_HI_new(T)
-   endif
-
+   call ion_coeff_HI_range(T,a_ion_coeff_HI,1-Ng,N+Ng)
    end subroutine ion_coeff_HI
+
+   subroutine ion_coeff_HI_range(T,a_ion_coeff_HI,j_lo,j_hi)
+   integer, intent(in) :: j_lo,j_hi
+   real*8, dimension(1-Ng:N+Ng), intent(in) :: T
+   real*8, dimension(1-Ng:N+Ng), intent(inout) :: a_ion_coeff_HI
+   a_ion_coeff_HI(j_lo:j_hi) = ci_rate_HI(T(j_lo:j_hi))
+   end subroutine ion_coeff_HI_range
+
 
    !--------------!
 
    ! Collisional ionization rate for HeI
    subroutine ion_coeff_HeI(T,a_ion_coeff_HeI)
    real*8, dimension(1-Ng:N+Ng), intent(in) :: T
-   real*8, dimension(1-Ng:N+Ng) :: th
    real*8, dimension(1-Ng:N+Ng), intent(out) :: a_ion_coeff_HeI
-
-   if (legacy_hhe_rates) then
-      ! Abel, Anninos, Zhang & Norman 1997, New Astronomy 2, 181
-      !   (fit to Janev et al. 1987)
-      th = log(T*8.61733e-5)
-      a_ion_coeff_HeI = exp(-4.409864886e1 + 2.391596563e1*th    &
-            -1.07532302e1*th**2.0 + 3.05803875*th**3.0           &
-            -5.6851189e-1*th**4.0 + 6.79539123e-2*th**5.0        &
-            -5.0090561e-3*th**6.0 + 2.06723616e-4*th**7.0        &
-            -3.64916141e-6*th**8.0)
-   else
-      a_ion_coeff_HeI = ci_HeI_new(T)
-   endif
-
+   call ion_coeff_HeI_range(T,a_ion_coeff_HeI,1-Ng,N+Ng)
    end subroutine ion_coeff_HeI
+
+   subroutine ion_coeff_HeI_range(T,a_ion_coeff_HeI,j_lo,j_hi)
+   integer, intent(in) :: j_lo,j_hi
+   real*8, dimension(1-Ng:N+Ng), intent(in) :: T
+   real*8, dimension(1-Ng:N+Ng), intent(inout) :: a_ion_coeff_HeI
+   a_ion_coeff_HeI(j_lo:j_hi) = ci_rate_HeI(T(j_lo:j_hi))
+   end subroutine ion_coeff_HeI_range
+
 
    !--------------!
 
    ! Collisional ionization rate for HeII
    subroutine ion_coeff_HeII(T,a_ion_coeff_HeII)
    real*8, dimension(1-Ng:N+Ng), intent(in) :: T
-   real*8, dimension(1-Ng:N+Ng) :: xl
    real*8, dimension(1-Ng:N+Ng), intent(out) :: a_ion_coeff_HeII
-
-   if (legacy_hhe_rates) then
-      ! Hui & Gnedin 1997, MNRAS 292, 27, collisional-ionization fit
-      xl = 2.0*631515.0/T
-      a_ion_coeff_HeII =  19.95*exp(-xl/2.0)*T**(-1.5)*                &
-                        xl**(-1.089)/(1.0+(xl/0.553)**0.735)**1.275
-   else
-      a_ion_coeff_HeII = ci_HeII_new(T)
-   endif
-
+   call ion_coeff_HeII_range(T,a_ion_coeff_HeII,1-Ng,N+Ng)
    end subroutine ion_coeff_HeII
+
+   subroutine ion_coeff_HeII_range(T,a_ion_coeff_HeII,j_lo,j_hi)
+   integer, intent(in) :: j_lo,j_hi
+   real*8, dimension(1-Ng:N+Ng), intent(in) :: T
+   real*8, dimension(1-Ng:N+Ng), intent(inout) :: a_ion_coeff_HeII
+   a_ion_coeff_HeII(j_lo:j_hi) = ci_rate_HeII(T(j_lo:j_hi))
+   end subroutine ion_coeff_HeII_range
+
    
    !---------------------------------------------------!
    
@@ -851,10 +857,19 @@
    real*8, dimension(1-Ng:N+Ng), intent(in) :: T
    real*8, intent(in) :: Z
    real*8, dimension(1-Ng:N+Ng), intent(out) :: GF_out
-
-   GF_out = gbar_ff(T,Z)
-
+   call GF_range(T,Z,GF_out,1-Ng,N+Ng)
    end subroutine GF
+
+   subroutine GF_range(T,Z,GF_out,j_lo,j_hi)
+   integer, intent(in) :: j_lo,j_hi
+   real*8, dimension(1-Ng:N+Ng), intent(in) :: T
+   real*8, intent(in) :: Z
+   real*8, dimension(1-Ng:N+Ng), intent(inout) :: GF_out
+
+   GF_out(j_lo:j_hi) = gbar_ff(T(j_lo:j_hi),Z)
+
+   end subroutine GF_range
+
    
    !---------------------------------------------------!
    
@@ -864,10 +879,16 @@
    subroutine coex_rate_HI(T,coeff_coex_rate_HI)
    real*8, dimension(1-Ng:N+Ng), intent(in)  :: T
    real*8, dimension(1-Ng:N+Ng), intent(out) :: coeff_coex_rate_HI
-
-   coeff_coex_rate_HI = 7.5e-19/(1.0+sqrt(T/1.0e5))*exp(-118348.0/T)
-   
+   call coex_rate_HI_range(T,coeff_coex_rate_HI,1-Ng,N+Ng)
    end subroutine coex_rate_HI
+
+   subroutine coex_rate_HI_range(T,coeff_coex_rate_HI,j_lo,j_hi)
+   integer, intent(in) :: j_lo,j_hi
+   real*8, dimension(1-Ng:N+Ng), intent(in) :: T
+   real*8, dimension(1-Ng:N+Ng), intent(inout) :: coeff_coex_rate_HI
+   coeff_coex_rate_HI(j_lo:j_hi) = lambda_coex_HI(T(j_lo:j_hi))
+   end subroutine coex_rate_HI_range
+
    
    !--------------!
    
@@ -875,10 +896,16 @@
    subroutine coex_rate_HeI(T,coeff_coex_rate_HeI)
    real*8, dimension(1-Ng:N+Ng), intent(in) :: T
    real*8, dimension(1-Ng:N+Ng), intent(out) :: coeff_coex_rate_HeI
-
-   coeff_coex_rate_HeI = 1.1e-19*T**0.082*exp(-2.3e5/T)
-   
+   call coex_rate_HeI_range(T,coeff_coex_rate_HeI,1-Ng,N+Ng)
    end subroutine coex_rate_HeI
+
+   subroutine coex_rate_HeI_range(T,coeff_coex_rate_HeI,j_lo,j_hi)
+   integer, intent(in) :: j_lo,j_hi
+   real*8, dimension(1-Ng:N+Ng), intent(in) :: T
+   real*8, dimension(1-Ng:N+Ng), intent(inout) :: coeff_coex_rate_HeI
+   coeff_coex_rate_HeI(j_lo:j_hi) = lambda_coex_HeI(T(j_lo:j_hi))
+   end subroutine coex_rate_HeI_range
+
    
    !--------------!
    
@@ -886,11 +913,16 @@
    subroutine coex_rate_HeII(T,coeff_coex_rate_HeII)
    real*8, dimension(1-Ng:N+Ng), intent(in) :: T
    real*8, dimension(1-Ng:N+Ng), intent(out) :: coeff_coex_rate_HeII
-   
-   coeff_coex_rate_HeII = 5.54e-17*T**(-0.397)/(1.0+sqrt(T/1.0e5))     &
-                           *exp(-473638.0/T)
-   
+   call coex_rate_HeII_range(T,coeff_coex_rate_HeII,1-Ng,N+Ng)
    end subroutine coex_rate_HeII
+
+   subroutine coex_rate_HeII_range(T,coeff_coex_rate_HeII,j_lo,j_hi)
+   integer, intent(in) :: j_lo,j_hi
+   real*8, dimension(1-Ng:N+Ng), intent(in) :: T
+   real*8, dimension(1-Ng:N+Ng), intent(inout) :: coeff_coex_rate_HeII
+   coeff_coex_rate_HeII(j_lo:j_hi) = lambda_coex_HeII(T(j_lo:j_hi))
+   end subroutine coex_rate_HeII_range
+
    
    !---------------------------------------------------!
    
@@ -919,46 +951,62 @@
    ! Collisional excitation from HeI(23S) to HeI(21S) [q_31a]
    subroutine coex_HeI_23S_21S(T,coeff_coex_HeI_23S_21S)
    real*8, dimension(1-Ng:N+Ng), intent(in) :: T
+   real*8, dimension(1-Ng:N+Ng), intent(out) :: coeff_coex_HeI_23S_21S
+   call coex_HeI_23S_21S_range(T,coeff_coex_HeI_23S_21S,1-Ng,N+Ng)
+   end subroutine coex_HeI_23S_21S
+
+   subroutine coex_HeI_23S_21S_range(T,coeff_coex_HeI_23S_21S,j_lo,j_hi)
+   integer, intent(in) :: j_lo,j_hi
+   real*8, dimension(1-Ng:N+Ng), intent(in) :: T
    real*8 :: a,b,c,d
    real*8, dimension(1-Ng:N+Ng) :: ups
-   real*8, dimension(1-Ng:N+Ng), intent(out) :: coeff_coex_HeI_23S_21S
+   real*8, dimension(1-Ng:N+Ng), intent(inout) :: coeff_coex_HeI_23S_21S
 
    ! Collision strengths from fit of Bray (2000) 
    a =  2.847
    b = -1.252e-5 
    c = -1.953
    d = -3.558e-4
-   ups = a*exp(b*T) + c*exp(d*T)
+   ups(j_lo:j_hi) = a*exp(b*T(j_lo:j_hi)) + c*exp(d*T(j_lo:j_hi))
    
    ! Value of rate coefficient (from Oklopcic (2018) & Lampon (2020))
-   coeff_coex_HeI_23S_21S = 2.10e-8*sqrt(13.60/(kb_eV*T))	&
-                        *exp(-0.80/(kb_eV*T))		&
-                        *ups/3.0
+   coeff_coex_HeI_23S_21S(j_lo:j_hi) = 2.10e-8*sqrt(13.60/(kb_eV*T(j_lo:j_hi)))	&
+                        *exp(-0.80/(kb_eV*T(j_lo:j_hi)))		&
+                        *ups(j_lo:j_hi)/3.0
    
-   end subroutine coex_HeI_23S_21S
+   end subroutine coex_HeI_23S_21S_range
+
    
    !--------------!
    
    ! Collisional excitation from HeI(23S) to HeI(21P) [q_31b]
    subroutine coex_HeI_23S_21P(T,coeff_coex_HeI_23S_21P)
    real*8, dimension(1-Ng:N+Ng), intent(in) :: T
+   real*8, dimension(1-Ng:N+Ng), intent(out) :: coeff_coex_HeI_23S_21P
+   call coex_HeI_23S_21P_range(T,coeff_coex_HeI_23S_21P,1-Ng,N+Ng)
+   end subroutine coex_HeI_23S_21P
+
+   subroutine coex_HeI_23S_21P_range(T,coeff_coex_HeI_23S_21P,j_lo,j_hi)
+   integer, intent(in) :: j_lo,j_hi
+   real*8, dimension(1-Ng:N+Ng), intent(in) :: T
    real*8 :: a,b,c,d
    real*8, dimension(1-Ng:N+Ng) :: ups
-   real*8, dimension(1-Ng:N+Ng), intent(out) :: coeff_coex_HeI_23S_21P
+   real*8, dimension(1-Ng:N+Ng), intent(inout) :: coeff_coex_HeI_23S_21P
 
    ! Collision strengths from fit of Bray (2000) 
    a =  1.185
    b = -4.749e-6 
    c = -0.9131
    d = -1.669e-4
-   ups = a*exp(b*T) + c*exp(d*T)
+   ups(j_lo:j_hi) = a*exp(b*T(j_lo:j_hi)) + c*exp(d*T(j_lo:j_hi))
    
    ! Value of rate coefficient (from Oklopcic (2018) & Lampon (2020))
-   coeff_coex_HeI_23S_21P = 2.10e-8*sqrt(13.60/(kb_eV*T))	&
-                        *exp(-1.40/(kb_eV*T))		&
-                        *ups/3.0
+   coeff_coex_HeI_23S_21P(j_lo:j_hi) = 2.10e-8*sqrt(13.60/(kb_eV*T(j_lo:j_hi)))	&
+                        *exp(-1.40/(kb_eV*T(j_lo:j_hi)))		&
+                        *ups(j_lo:j_hi)/3.0
    
-   end subroutine coex_HeI_23S_21P
+   end subroutine coex_HeI_23S_21P_range
+
 
    !--------------!
 
@@ -974,10 +1022,18 @@
    subroutine coex_rate_HeI23S_10830(T,coeff_coex_rate_HeI23S_10830)
    real*8, dimension(1-Ng:N+Ng), intent(in)  :: T
    real*8, dimension(1-Ng:N+Ng), intent(out) :: coeff_coex_rate_HeI23S_10830
-
-   coeff_coex_rate_HeI23S_10830 = 1.16e-20*sqrt(T)*exp(-13179.0/T)
-
+   call coex_rate_HeI23S_10830_range(T,coeff_coex_rate_HeI23S_10830,1-Ng,N+Ng)
    end subroutine coex_rate_HeI23S_10830
+
+   subroutine coex_rate_HeI23S_10830_range(T,coeff_coex_rate_HeI23S_10830,j_lo,j_hi)
+   integer, intent(in) :: j_lo,j_hi
+   real*8, dimension(1-Ng:N+Ng), intent(in)  :: T
+   real*8, dimension(1-Ng:N+Ng), intent(inout) :: coeff_coex_rate_HeI23S_10830
+
+   coeff_coex_rate_HeI23S_10830(j_lo:j_hi) = 1.16e-20*sqrt(T(j_lo:j_hi))*exp(-13179.0/T(j_lo:j_hi))
+
+   end subroutine coex_rate_HeI23S_10830_range
+
 
    !--------------!
 
@@ -1091,12 +1147,20 @@
    subroutine ci_HeI23S(T,coeff_ci_HeI23S)
    real*8, dimension(1-Ng:N+Ng), intent(in) :: T
    real*8, dimension(1-Ng:N+Ng), intent(out) :: coeff_ci_HeI23S
+   call ci_HeI23S_range(T,coeff_ci_HeI23S,1-Ng,N+Ng)
+   end subroutine ci_HeI23S
+
+   subroutine ci_HeI23S_range(T,coeff_ci_HeI23S,j_lo,j_hi)
+   integer, intent(in) :: j_lo,j_hi
+   real*8, dimension(1-Ng:N+Ng), intent(in) :: T
+   real*8, dimension(1-Ng:N+Ng), intent(inout) :: coeff_ci_HeI23S
    real*8 :: e_ion_23S_erg
 
    e_ion_23S_erg = e_th_HeTR/erg2eV                 ! 4.8 eV in erg
-   coeff_ci_HeI23S = 6.41e-21*sqrt(T)*exp(-55338.0/T)/e_ion_23S_erg
+   coeff_ci_HeI23S(j_lo:j_hi) = 6.41e-21*sqrt(T(j_lo:j_hi))*exp(-55338.0/T(j_lo:j_hi))/e_ion_23S_erg
 
-   end subroutine ci_HeI23S
+   end subroutine ci_HeI23S_range
+
 
    !--------------!
 
@@ -1578,36 +1642,76 @@
    real*8, dimension(1-Ng:N+Ng), intent(in)  :: T, ne, nHI
    real*8, dimension(1-Ng:N+Ng,n_fsline), intent(in) :: beta_fs, nbar_fs
    real*8, dimension(1-Ng:N+Ng), intent(out) :: out
-   out = cool_CI_ne_func(T,ne,nHI,beta_fs(:,ifs_CI609),beta_fs(:,ifs_CI370), &
-                         nbar_fs(:,ifs_CI609),nbar_fs(:,ifs_CI370))
+   call cool_CI_ne_range(T,ne,nHI,beta_fs,nbar_fs,out,1-Ng,N+Ng)
    end subroutine cool_CI_ne
+
+   subroutine cool_CI_ne_range(T,ne,nHI,beta_fs,nbar_fs,out,j_lo,j_hi)
+   integer, intent(in) :: j_lo,j_hi
+   real*8, dimension(1-Ng:N+Ng), intent(in)  :: T, ne, nHI
+   real*8, dimension(1-Ng:N+Ng,n_fsline), intent(in) :: beta_fs, nbar_fs
+   real*8, dimension(1-Ng:N+Ng), intent(inout) :: out
+   out(j_lo:j_hi) = cool_CI_ne_func(T(j_lo:j_hi),ne(j_lo:j_hi),           &
+                         nHI(j_lo:j_hi),                                 &
+                         beta_fs(j_lo:j_hi,ifs_CI609),                   &
+                         beta_fs(j_lo:j_hi,ifs_CI370),                   &
+                         nbar_fs(j_lo:j_hi,ifs_CI609),                   &
+                         nbar_fs(j_lo:j_hi,ifs_CI370))
+   end subroutine cool_CI_ne_range
+
 
    subroutine cool_CII_ne(T,ne,nHI,beta_fs,nbar_fs,out)
    real*8, dimension(1-Ng:N+Ng), intent(in)  :: T, ne, nHI
    real*8, dimension(1-Ng:N+Ng,n_fsline), intent(in) :: beta_fs, nbar_fs
    real*8, dimension(1-Ng:N+Ng), intent(out) :: out
-   out = cool_CII_ne_func(T,ne,nHI,beta_fs(:,ifs_CII158),               &
-                          nbar_fs(:,ifs_CII158))
+   call cool_CII_ne_range(T,ne,nHI,beta_fs,nbar_fs,out,1-Ng,N+Ng)
    end subroutine cool_CII_ne
+
+   subroutine cool_CII_ne_range(T,ne,nHI,beta_fs,nbar_fs,out,j_lo,j_hi)
+   integer, intent(in) :: j_lo,j_hi
+   real*8, dimension(1-Ng:N+Ng), intent(in)  :: T, ne, nHI
+   real*8, dimension(1-Ng:N+Ng,n_fsline), intent(in) :: beta_fs, nbar_fs
+   real*8, dimension(1-Ng:N+Ng), intent(inout) :: out
+   out(j_lo:j_hi) = cool_CII_ne_func(T(j_lo:j_hi),ne(j_lo:j_hi),nHI(j_lo:j_hi),beta_fs(j_lo:j_hi,ifs_CII158),               &
+                          nbar_fs(j_lo:j_hi,ifs_CII158))
+   end subroutine cool_CII_ne_range
+
 
    subroutine cool_NII_ne(T,ne,nHI,beta_fs,nbar_fs,out)
    real*8, dimension(1-Ng:N+Ng), intent(in)  :: T, ne, nHI
    real*8, dimension(1-Ng:N+Ng,n_fsline), intent(in) :: beta_fs, nbar_fs
    real*8, dimension(1-Ng:N+Ng), intent(out) :: out
-   out = cool_NII_ne_func(T,ne,nHI,beta_fs(:,ifs_NII205),               &
-                          beta_fs(:,ifs_NII122),                        &
-                          nbar_fs(:,ifs_NII205),nbar_fs(:,ifs_NII122))
+   call cool_NII_ne_range(T,ne,nHI,beta_fs,nbar_fs,out,1-Ng,N+Ng)
    end subroutine cool_NII_ne
+
+   subroutine cool_NII_ne_range(T,ne,nHI,beta_fs,nbar_fs,out,j_lo,j_hi)
+   integer, intent(in) :: j_lo,j_hi
+   real*8, dimension(1-Ng:N+Ng), intent(in)  :: T, ne, nHI
+   real*8, dimension(1-Ng:N+Ng,n_fsline), intent(in) :: beta_fs, nbar_fs
+   real*8, dimension(1-Ng:N+Ng), intent(inout) :: out
+   out(j_lo:j_hi) = cool_NII_ne_func(T(j_lo:j_hi),ne(j_lo:j_hi),nHI(j_lo:j_hi),beta_fs(j_lo:j_hi,ifs_NII205),               &
+                          beta_fs(j_lo:j_hi,ifs_NII122),                        &
+                          nbar_fs(j_lo:j_hi,ifs_NII205),nbar_fs(j_lo:j_hi,ifs_NII122))
+   end subroutine cool_NII_ne_range
+
 
    subroutine cool_OI_ne(T,ne,nHI,beta_fs,nbar_fs,out)
    real*8, dimension(1-Ng:N+Ng), intent(in)  :: T, ne, nHI
    real*8, dimension(1-Ng:N+Ng,n_fsline), intent(in) :: beta_fs, nbar_fs
    real*8, dimension(1-Ng:N+Ng), intent(out) :: out
-   out = cool_OI_ne_func(T,ne,nHI,beta_fs(:,ifs_OI63),                  &
-                         beta_fs(:,ifs_OI145),beta_fs(:,ifs_OI44),      &
-                         nbar_fs(:,ifs_OI63),nbar_fs(:,ifs_OI145),      &
-                         nbar_fs(:,ifs_OI44))
+   call cool_OI_ne_range(T,ne,nHI,beta_fs,nbar_fs,out,1-Ng,N+Ng)
    end subroutine cool_OI_ne
+
+   subroutine cool_OI_ne_range(T,ne,nHI,beta_fs,nbar_fs,out,j_lo,j_hi)
+   integer, intent(in) :: j_lo,j_hi
+   real*8, dimension(1-Ng:N+Ng), intent(in)  :: T, ne, nHI
+   real*8, dimension(1-Ng:N+Ng,n_fsline), intent(in) :: beta_fs, nbar_fs
+   real*8, dimension(1-Ng:N+Ng), intent(inout) :: out
+   out(j_lo:j_hi) = cool_OI_ne_func(T(j_lo:j_hi),ne(j_lo:j_hi),nHI(j_lo:j_hi),beta_fs(j_lo:j_hi,ifs_OI63),                  &
+                         beta_fs(j_lo:j_hi,ifs_OI145),beta_fs(j_lo:j_hi,ifs_OI44),      &
+                         nbar_fs(j_lo:j_hi,ifs_OI63),nbar_fs(j_lo:j_hi,ifs_OI145),      &
+                         nbar_fs(j_lo:j_hi,ifs_OI44))
+   end subroutine cool_OI_ne_range
+
 
    ! Grid version of the exported O I level fractions. Same signature
    ! convention as cool_OI_ne, so both are fed by the same beta_fs /
@@ -1630,15 +1734,16 @@
    subroutine cool_CI(T,coeff_cool_CI)
    real*8, dimension(1-Ng:N+Ng), intent(in) :: T
    real*8, dimension(1-Ng:N+Ng), intent(out) :: coeff_cool_CI
-
-   if (cno_chianti) then
-      coeff_cool_CI = cool_CI_chianti(T)
-   else
-      coeff_cool_CI = 1.0e-24 + 3.1e-20*exp(-15162.0/T)            &
-                               *(1.0 + (T/2.0e4)**1.5)
-   endif
-
+   call cool_CI_range(T,coeff_cool_CI,1-Ng,N+Ng)
    end subroutine cool_CI
+
+   subroutine cool_CI_range(T,coeff_cool_CI,j_lo,j_hi)
+   integer, intent(in) :: j_lo,j_hi
+   real*8, dimension(1-Ng:N+Ng), intent(in) :: T
+   real*8, dimension(1-Ng:N+Ng), intent(inout) :: coeff_cool_CI
+   coeff_cool_CI(j_lo:j_hi) = lambda_line_CI(T(j_lo:j_hi))
+   end subroutine cool_CI_range
+
 
    !--------------!
 
@@ -1646,15 +1751,16 @@
    subroutine cool_CII(T,coeff_cool_CII)
    real*8, dimension(1-Ng:N+Ng), intent(in) :: T
    real*8, dimension(1-Ng:N+Ng), intent(out) :: coeff_cool_CII
-
-   if (cno_chianti) then
-      coeff_cool_CII = cool_CII_chianti(T)
-   else
-      coeff_cool_CII = 1.5e-23 + 3.1e-20*exp(-45162.0/T)           &
-                                *(1.0 + (T/0.75e4)**1.5)
-   endif
-
+   call cool_CII_range(T,coeff_cool_CII,1-Ng,N+Ng)
    end subroutine cool_CII
+
+   subroutine cool_CII_range(T,coeff_cool_CII,j_lo,j_hi)
+   integer, intent(in) :: j_lo,j_hi
+   real*8, dimension(1-Ng:N+Ng), intent(in) :: T
+   real*8, dimension(1-Ng:N+Ng), intent(inout) :: coeff_cool_CII
+   coeff_cool_CII(j_lo:j_hi) = lambda_line_CII(T(j_lo:j_hi))
+   end subroutine cool_CII_range
+
 
    !--------------!
 
@@ -1662,15 +1768,16 @@
    subroutine cool_OI(T,coeff_cool_OI)
    real*8, dimension(1-Ng:N+Ng), intent(in) :: T
    real*8, dimension(1-Ng:N+Ng), intent(out) :: coeff_cool_OI
-
-   if (cno_chianti) then
-      coeff_cool_OI = cool_OI_chianti(T)
-   else
-      coeff_cool_OI = 5.5e-24 + 1.1e-20*exp(-30162.0/T)            &
-                               *(1.0 + (T/0.75e4)**0.5)
-   endif
-
+   call cool_OI_range(T,coeff_cool_OI,1-Ng,N+Ng)
    end subroutine cool_OI
+
+   subroutine cool_OI_range(T,coeff_cool_OI,j_lo,j_hi)
+   integer, intent(in) :: j_lo,j_hi
+   real*8, dimension(1-Ng:N+Ng), intent(in) :: T
+   real*8, dimension(1-Ng:N+Ng), intent(inout) :: coeff_cool_OI
+   coeff_cool_OI(j_lo:j_hi) = lambda_line_OI(T(j_lo:j_hi))
+   end subroutine cool_OI_range
+
 
    !--------------!
 
@@ -1678,15 +1785,16 @@
    subroutine cool_OII(T,coeff_cool_OII)
    real*8, dimension(1-Ng:N+Ng), intent(in) :: T
    real*8, dimension(1-Ng:N+Ng), intent(out) :: coeff_cool_OII
-
-   if (cno_chianti) then
-      coeff_cool_OII = cool_OII_chianti(T)
-   else
-      coeff_cool_OII = 5.1e-20*exp(-35162.0/T)                     &
-                             *(1.0 + (T/0.75e4)**0.5)
-   endif
-
+   call cool_OII_range(T,coeff_cool_OII,1-Ng,N+Ng)
    end subroutine cool_OII
+
+   subroutine cool_OII_range(T,coeff_cool_OII,j_lo,j_hi)
+   integer, intent(in) :: j_lo,j_hi
+   real*8, dimension(1-Ng:N+Ng), intent(in) :: T
+   real*8, dimension(1-Ng:N+Ng), intent(inout) :: coeff_cool_OII
+   coeff_cool_OII(j_lo:j_hi) = lambda_line_OII(T(j_lo:j_hi))
+   end subroutine cool_OII_range
+
 
    !--------------!
 
@@ -1698,81 +1806,127 @@
    subroutine cool_NI(T,coeff_cool_NI)
    real*8, dimension(1-Ng:N+Ng), intent(in)  :: T
    real*8, dimension(1-Ng:N+Ng), intent(out) :: coeff_cool_NI
+   call cool_NI_range(T,coeff_cool_NI,1-Ng,N+Ng)
+   end subroutine cool_NI
+
+   subroutine cool_NI_range(T,coeff_cool_NI,j_lo,j_hi)
+   integer, intent(in) :: j_lo,j_hi
+   real*8, dimension(1-Ng:N+Ng), intent(in)  :: T
+   real*8, dimension(1-Ng:N+Ng), intent(inout) :: coeff_cool_NI
    if (cno_chianti) then
-      coeff_cool_NI = cool_NI_chianti(T)
+      coeff_cool_NI(j_lo:j_hi) = cool_NI_chianti(T(j_lo:j_hi))
    else
       !To Be Checked/AIOLOS tuning?
-      coeff_cool_NI = 0.0d0
+      coeff_cool_NI(j_lo:j_hi) = 0.0d0
    endif
-   end subroutine cool_NI
+   end subroutine cool_NI_range
+
 
    subroutine cool_NII(T,coeff_cool_NII)
    real*8, dimension(1-Ng:N+Ng), intent(in)  :: T
    real*8, dimension(1-Ng:N+Ng), intent(out) :: coeff_cool_NII
+   call cool_NII_range(T,coeff_cool_NII,1-Ng,N+Ng)
+   end subroutine cool_NII
+
+   subroutine cool_NII_range(T,coeff_cool_NII,j_lo,j_hi)
+   integer, intent(in) :: j_lo,j_hi
+   real*8, dimension(1-Ng:N+Ng), intent(in)  :: T
+   real*8, dimension(1-Ng:N+Ng), intent(inout) :: coeff_cool_NII
    if (cno_chianti) then
-      coeff_cool_NII = cool_NII_chianti(T)
+      coeff_cool_NII(j_lo:j_hi) = cool_NII_chianti(T(j_lo:j_hi))
    else
       !To Be Checked/AIOLOS tuning?
-      coeff_cool_NII = 0.0d0
+      coeff_cool_NII(j_lo:j_hi) = 0.0d0
    endif
-   end subroutine cool_NII
+   end subroutine cool_NII_range
+
 
    !--------------!
 
-   ! Smooth (C1) interpolation of a CHIANTI cooling table onto the T grid.
-   ! cool_logT is uniform (dlogT, 3.0..5.0 in log10 K); outside the table the
-   ! nearest endpoint is held. Returns Lambda(T) per (n_e * n_ion) [erg cm^3 s^-1].
-   !
-   ! Uses monotonicity-preserving piecewise-cubic Hermite (PCHIP) on log10(Lambda)
-   ! vs log10(T) instead of plain linear interpolation. Linear interpolation is
-   ! only C0: dLambda/dT jumps at every table node, and the semi-implicit energy
-   ! solver finite-differences the cooling to get dC/dT -- so those slope jumps
-   ! inject non-smooth derivatives that can destabilize the energy update for the
-   ! metal-rich wind (the analytic C/N/O cooling is C-infinity and does not).
-   ! PCHIP is C1 (continuous slope) and introduces no new extrema/overshoot, so
-   ! it removes the interpolation kinks while staying monotone where the table is.
+   ! Whole-grid form of the cooling-table interpolation; the algorithm and its
+   ! reasons are at cool_table_value below.
    subroutine interp_cool_table(logL,T,out)
    real*8, dimension(NCOOLT),    intent(in)  :: logL
    real*8, dimension(1-Ng:N+Ng), intent(in)  :: T
    real*8, dimension(1-Ng:N+Ng), intent(out) :: out
-   integer :: j, k
-   real*8  :: lt, pos, frac, m0, m1, h00, h10, h01, h11
-   do j = 1-Ng,N+Ng
-      lt  = log10(max(T(j), 1.0d0))
-      pos = (lt - cool_logT(1))/cool_dlogT + 1.0d0
-      ! NB: the first branch is written .not.(pos>1) rather than (pos<=1) so a
-      ! non-finite pos (transient NaN temperature during relaxation) lands on
-      ! the table edge instead of reaching int(pos) -> huge negative index ->
-      ! out-of-bounds read (caught by -fcheck=bounds on WASP-121b).
-      if (.not. (pos .gt. 1.0d0)) then
-         out(j) = 10.0d0**logL(1)
-      else if (pos .ge. dble(NCOOLT)) then
-         out(j) = 10.0d0**logL(NCOOLT)
-      else
-         k    = int(pos)
-         frac = pos - dble(k)                 ! in [0,1), interval [k, k+1]
-         ! PCHIP node slopes (d log10(Lambda) per unit index; grid spacing = 1).
-         m0 = pchip_slope(logL, k)
-         m1 = pchip_slope(logL, k+1)
-         ! cubic Hermite basis on the unit interval
-         h00 = (1.0d0 + 2.0d0*frac)*(1.0d0 - frac)**2
-         h10 = frac*(1.0d0 - frac)**2
-         h01 = frac**2*(3.0d0 - 2.0d0*frac)
-         h11 = frac**2*(frac - 1.0d0)
-         out(j) = 10.0d0**( h00*logL(k)   + h10*m0          &
-                          + h01*logL(k+1) + h11*m1 )
-      endif
-      ! Below the 1e3 K table edge the value above is the held endpoint,
-      ! which is an unconstrained clamp rather than a cooling rate.
-      out(j) = out(j)*coronal_excitation_cutoff(T(j))
-   enddo
+   call interp_cool_table_range(logL,T,out,1-Ng,N+Ng)
    end subroutine interp_cool_table
+
+   subroutine interp_cool_table_range(logL,T,out,j_lo,j_hi)
+   integer, intent(in) :: j_lo,j_hi
+   real*8, dimension(NCOOLT),    intent(in)  :: logL
+   real*8, dimension(1-Ng:N+Ng), intent(in)  :: T
+   real*8, dimension(1-Ng:N+Ng), intent(inout) :: out
+   integer :: j
+   do j = j_lo,j_hi
+      out(j) = cool_table_value(logL, T(j))
+   enddo
+   end subroutine interp_cool_table_range
+
+   ! Value of a CHIANTI cooling table at one temperature -- the ONE definition
+   ! of this interpolation. The grid routine above loops over it and the
+   ! cell-by-cell temperature root of the advection post-process (T_equation,
+   ! through cool_coeff_of_ion) calls it directly, so the T that solve
+   ! converges to balances the same Lambda(T) eval_cool reports. Until
+   ! 2026-09-05 the post-process had its own copy that interpolated the same
+   ! table LINEARLY while claiming to be bit-identical to this one; on the
+   ! Fe I table the two disagreed by up to 2.8 per cent between nodes
+   ! (median 0.4 per cent).
+   !
+   ! cool_logT is uniform (dlogT, 3.0..5.0 in log10 K); outside the table the
+   ! nearest endpoint is held. Returns Lambda(T) per (n_e * n_ion)
+   ! [erg cm^3 s^-1].
+   !
+   ! Monotonicity-preserving piecewise-cubic Hermite (PCHIP) on log10(Lambda)
+   ! vs log10(T), not plain linear interpolation. Linear interpolation is only
+   ! C0: dLambda/dT jumps at every table node, and the semi-implicit energy
+   ! solver finite-differences the cooling to get dC/dT -- so those slope jumps
+   ! inject non-smooth derivatives that can destabilize the energy update for
+   ! the metal-rich wind (the analytic C/N/O cooling is C-infinity and does
+   ! not). PCHIP is C1 (continuous slope) and introduces no new
+   ! extrema/overshoot, so it removes the interpolation kinks while staying
+   ! monotone where the table is.
+   pure double precision function cool_table_value(logL,Ts)
+   real*8, dimension(NCOOLT), intent(in) :: logL
+   real*8, intent(in) :: Ts
+   integer :: k
+   real*8  :: lt, pos, frac, m0, m1, h00, h10, h01, h11
+   lt  = log10(max(Ts, 1.0d0))
+   pos = (lt - cool_logT(1))/cool_dlogT + 1.0d0
+   ! NB: the first branch is written .not.(pos>1) rather than (pos<=1) so a
+   ! non-finite pos (transient NaN temperature during relaxation, or a NaN
+   ! trial T from the post-process root finder) lands on the table edge
+   ! instead of reaching int(pos) -> huge negative index -> out-of-bounds
+   ! read (caught by -fcheck=bounds on WASP-121b).
+   if (.not. (pos .gt. 1.0d0)) then
+      cool_table_value = 10.0d0**logL(1)
+   else if (pos .ge. dble(NCOOLT)) then
+      cool_table_value = 10.0d0**logL(NCOOLT)
+   else
+      k    = int(pos)
+      frac = pos - dble(k)                 ! in [0,1), interval [k, k+1]
+      ! PCHIP node slopes (d log10(Lambda) per unit index; grid spacing = 1).
+      m0 = pchip_slope(logL, k)
+      m1 = pchip_slope(logL, k+1)
+      ! cubic Hermite basis on the unit interval
+      h00 = (1.0d0 + 2.0d0*frac)*(1.0d0 - frac)**2
+      h10 = frac*(1.0d0 - frac)**2
+      h01 = frac**2*(3.0d0 - 2.0d0*frac)
+      h11 = frac**2*(frac - 1.0d0)
+      cool_table_value = 10.0d0**( h00*logL(k)   + h10*m0          &
+                                 + h01*logL(k+1) + h11*m1 )
+   endif
+   ! Below the 1e3 K table edge the value above is the held endpoint,
+   ! which is an unconstrained clamp rather than a cooling rate.
+   cool_table_value = cool_table_value*coronal_excitation_cutoff(Ts)
+   end function cool_table_value
+
 
    ! Monotonicity-preserving (PCHIP / Fritsch-Carlson) node slope at index i,
    ! in units of d(logL) per unit index (the grid is uniform in index). At a
    ! local extremum (secants of opposite sign) the slope is set to zero so the
    ! cubic neither overshoots nor introduces a new extremum.
-   real*8 function pchip_slope(L, i)
+   pure real*8 function pchip_slope(L, i)
    real*8, dimension(NCOOLT), intent(in) :: L
    integer, intent(in) :: i
    real*8 :: sL, sR
@@ -1802,43 +1956,20 @@
    real*8, dimension(NCOOLT,NCOOLNE), intent(in)  :: logL2d
    real*8, dimension(1-Ng:N+Ng),      intent(in)  :: T, ne
    real*8, dimension(1-Ng:N+Ng),      intent(out) :: out
-   real*8, parameter :: dlogne = 0.5d0
-   integer :: j, kt, ke
-   real*8  :: lt, ln, post, posn, ft, fn
-   real*8  :: f00, f10, f01, f11, l0, l1
-   do j = 1-Ng,N+Ng
-      ! position on the (uniform) log10 T axis
-      lt   = log10(max(T(j), 1.0d0))
-      post = (lt - cool_logT(1))/cool_dlogT + 1.0d0
-      ! .not.(post > 1) also catches a NaN post (transient NaN T), so
-      ! int(post) can never index out of bounds (as in the scalar mirror).
-      if (.not. (post .gt. 1.0d0)) then
-         kt = 1;          ft = 0.0d0
-      else if (post .ge. dble(NCOOLT)) then
-         kt = NCOOLT - 1; ft = 1.0d0
-      else
-         kt = int(post);  ft = post - dble(kt)
-      endif
-      ! position on the (uniform) log10 ne axis
-      ln   = log10(max(ne(j), 1.0d0))
-      posn = (ln - cool_logne(1))/dlogne + 1.0d0
-      if (.not. (posn .gt. 1.0d0)) then
-         ke = 1;          fn = 0.0d0
-      else if (posn .ge. dble(NCOOLNE)) then
-         ke = NCOOLNE - 1; fn = 1.0d0
-      else
-         ke = int(posn);  fn = posn - dble(ke)
-      endif
-      ! bilinear blend of the four surrounding log10(Lambda) nodes
-      f00 = logL2d(kt,   ke  )
-      f10 = logL2d(kt+1, ke  )
-      f01 = logL2d(kt,   ke+1)
-      f11 = logL2d(kt+1, ke+1)
-      l0  = f00 + ft*(f10 - f00)
-      l1  = f01 + ft*(f11 - f01)
-      out(j) = 10.0d0**( l0 + fn*(l1 - l0) )*coronal_excitation_cutoff(T(j))
-   enddo
+   call interp_cool_table_2d_range(logL2d,T,ne,out,1-Ng,N+Ng)
    end subroutine interp_cool_table_2d
+
+   subroutine interp_cool_table_2d_range(logL2d,T,ne,out,j_lo,j_hi)
+   integer, intent(in) :: j_lo,j_hi
+   real*8, dimension(NCOOLT,NCOOLNE), intent(in)  :: logL2d
+   real*8, dimension(1-Ng:N+Ng),      intent(in)  :: T, ne
+   real*8, dimension(1-Ng:N+Ng),      intent(inout) :: out
+   integer :: j
+   do j = j_lo,j_hi
+      out(j) = cool_table_value_2d(logL2d, T(j), ne(j))
+   enddo
+   end subroutine interp_cool_table_2d_range
+
 
    !--------------!
 
@@ -1912,32 +2043,72 @@
    subroutine cool_MgI(T,coeff_cool_MgI)
    real*8, dimension(1-Ng:N+Ng), intent(in)  :: T
    real*8, dimension(1-Ng:N+Ng), intent(out) :: coeff_cool_MgI
-   coeff_cool_MgI = cool_MgI_func(T)
+   call cool_MgI_range(T,coeff_cool_MgI,1-Ng,N+Ng)
    end subroutine cool_MgI
+
+   subroutine cool_MgI_range(T,coeff_cool_MgI,j_lo,j_hi)
+   integer, intent(in) :: j_lo,j_hi
+   real*8, dimension(1-Ng:N+Ng), intent(in)  :: T
+   real*8, dimension(1-Ng:N+Ng), intent(inout) :: coeff_cool_MgI
+   coeff_cool_MgI(j_lo:j_hi) = cool_MgI_func(T(j_lo:j_hi))
+   end subroutine cool_MgI_range
+
 
    subroutine cool_MgII(T,coeff_cool_MgII)
    real*8, dimension(1-Ng:N+Ng), intent(in)  :: T
    real*8, dimension(1-Ng:N+Ng), intent(out) :: coeff_cool_MgII
-   coeff_cool_MgII = cool_MgII_func(T)
+   call cool_MgII_range(T,coeff_cool_MgII,1-Ng,N+Ng)
    end subroutine cool_MgII
+
+   subroutine cool_MgII_range(T,coeff_cool_MgII,j_lo,j_hi)
+   integer, intent(in) :: j_lo,j_hi
+   real*8, dimension(1-Ng:N+Ng), intent(in)  :: T
+   real*8, dimension(1-Ng:N+Ng), intent(inout) :: coeff_cool_MgII
+   coeff_cool_MgII(j_lo:j_hi) = cool_MgII_func(T(j_lo:j_hi))
+   end subroutine cool_MgII_range
+
 
    subroutine cool_CaII(T,coeff_cool_CaII)
    real*8, dimension(1-Ng:N+Ng), intent(in)  :: T
    real*8, dimension(1-Ng:N+Ng), intent(out) :: coeff_cool_CaII
-   coeff_cool_CaII = cool_CaII_func(T)
+   call cool_CaII_range(T,coeff_cool_CaII,1-Ng,N+Ng)
    end subroutine cool_CaII
+
+   subroutine cool_CaII_range(T,coeff_cool_CaII,j_lo,j_hi)
+   integer, intent(in) :: j_lo,j_hi
+   real*8, dimension(1-Ng:N+Ng), intent(in)  :: T
+   real*8, dimension(1-Ng:N+Ng), intent(inout) :: coeff_cool_CaII
+   coeff_cool_CaII(j_lo:j_hi) = cool_CaII_func(T(j_lo:j_hi))
+   end subroutine cool_CaII_range
+
 
    subroutine cool_NaI(T,coeff_cool_NaI)
    real*8, dimension(1-Ng:N+Ng), intent(in)  :: T
    real*8, dimension(1-Ng:N+Ng), intent(out) :: coeff_cool_NaI
-   coeff_cool_NaI = cool_NaI_func(T)
+   call cool_NaI_range(T,coeff_cool_NaI,1-Ng,N+Ng)
    end subroutine cool_NaI
+
+   subroutine cool_NaI_range(T,coeff_cool_NaI,j_lo,j_hi)
+   integer, intent(in) :: j_lo,j_hi
+   real*8, dimension(1-Ng:N+Ng), intent(in)  :: T
+   real*8, dimension(1-Ng:N+Ng), intent(inout) :: coeff_cool_NaI
+   coeff_cool_NaI(j_lo:j_hi) = cool_NaI_func(T(j_lo:j_hi))
+   end subroutine cool_NaI_range
+
 
    subroutine cool_FeII(T,coeff_cool_FeII)
    real*8, dimension(1-Ng:N+Ng), intent(in)  :: T
    real*8, dimension(1-Ng:N+Ng), intent(out) :: coeff_cool_FeII
-   coeff_cool_FeII = cool_FeII_func(T)
+   call cool_FeII_range(T,coeff_cool_FeII,1-Ng,N+Ng)
    end subroutine cool_FeII
+
+   subroutine cool_FeII_range(T,coeff_cool_FeII,j_lo,j_hi)
+   integer, intent(in) :: j_lo,j_hi
+   real*8, dimension(1-Ng:N+Ng), intent(in)  :: T
+   real*8, dimension(1-Ng:N+Ng), intent(inout) :: coeff_cool_FeII
+   coeff_cool_FeII(j_lo:j_hi) = cool_FeII_func(T(j_lo:j_hi))
+   end subroutine cool_FeII_range
+
 
    ! Fe II density-dependent line cooling: multilevel statistical-equilibrium
    ! coefficient Lambda_eff(T,ne) per (n_e n_FeII), bilinearly interpolated from
@@ -1947,16 +2118,35 @@
    subroutine cool_FeII_ne(T,ne,coeff_cool_FeII)
    real*8, dimension(1-Ng:N+Ng), intent(in)  :: T, ne
    real*8, dimension(1-Ng:N+Ng), intent(out) :: coeff_cool_FeII
-   call interp_cool_table_2d(cool_logL_FeII_ne, T, ne, coeff_cool_FeII)
+   call cool_FeII_ne_range(T,ne,coeff_cool_FeII,1-Ng,N+Ng)
    end subroutine cool_FeII_ne
+
+   subroutine cool_FeII_ne_range(T,ne,coeff_cool_FeII,j_lo,j_hi)
+   integer, intent(in) :: j_lo,j_hi
+   real*8, dimension(1-Ng:N+Ng), intent(in)  :: T, ne
+   real*8, dimension(1-Ng:N+Ng), intent(inout) :: coeff_cool_FeII
+   integer :: j
+   do j = j_lo,j_hi
+      coeff_cool_FeII(j) = cool_FeII_ne_value(T(j), ne(j))
+   enddo
+   end subroutine cool_FeII_ne_range
+
 
    ! Fe I line cooling (NIST f-values + Van Regemorter, Boltzmann metastable
    ! manifold; Huang 2023 Fig. 5). Per (n_e n_FeI).
    subroutine cool_FeI(T,coeff_cool_FeI)
    real*8, dimension(1-Ng:N+Ng), intent(in)  :: T
    real*8, dimension(1-Ng:N+Ng), intent(out) :: coeff_cool_FeI
-   call interp_cool_table(cool_logL_FeI, T, coeff_cool_FeI)
+   call cool_FeI_range(T,coeff_cool_FeI,1-Ng,N+Ng)
    end subroutine cool_FeI
+
+   subroutine cool_FeI_range(T,coeff_cool_FeI,j_lo,j_hi)
+   integer, intent(in) :: j_lo,j_hi
+   real*8, dimension(1-Ng:N+Ng), intent(in)  :: T
+   real*8, dimension(1-Ng:N+Ng), intent(inout) :: coeff_cool_FeI
+   call interp_cool_table_range(cool_logL_FeI, T, coeff_cool_FeI,j_lo,j_hi)
+   end subroutine cool_FeI_range
+
 
    !--------------!
 
@@ -2458,151 +2648,271 @@
    subroutine rec_CII(T,coeff_rec_CII)
    real*8, dimension(1-Ng:N+Ng), intent(in)  :: T
    real*8, dimension(1-Ng:N+Ng), intent(out) :: coeff_rec_CII
+   call rec_CII_range(T,coeff_rec_CII,1-Ng,N+Ng)
+   end subroutine rec_CII
+
+   subroutine rec_CII_range(T,coeff_rec_CII,j_lo,j_hi)
+   integer, intent(in) :: j_lo,j_hi
+   real*8, dimension(1-Ng:N+Ng), intent(in)  :: T
+   real*8, dimension(1-Ng:N+Ng), intent(inout) :: coeff_rec_CII
    integer :: j
-   do j = 1-Ng,N+Ng
+   do j = j_lo,j_hi
       coeff_rec_CII(j) = alpha_rec_metal('CI',T(j))
    enddo
-   end subroutine rec_CII
+   end subroutine rec_CII_range
+
 
    ! C III + e -> C II
    subroutine rec_CIII(T,coeff_rec_CIII)
    real*8, dimension(1-Ng:N+Ng), intent(in)  :: T
    real*8, dimension(1-Ng:N+Ng), intent(out) :: coeff_rec_CIII
+   call rec_CIII_range(T,coeff_rec_CIII,1-Ng,N+Ng)
+   end subroutine rec_CIII
+
+   subroutine rec_CIII_range(T,coeff_rec_CIII,j_lo,j_hi)
+   integer, intent(in) :: j_lo,j_hi
+   real*8, dimension(1-Ng:N+Ng), intent(in)  :: T
+   real*8, dimension(1-Ng:N+Ng), intent(inout) :: coeff_rec_CIII
    integer :: j
-   do j = 1-Ng,N+Ng
+   do j = j_lo,j_hi
       coeff_rec_CIII(j) = alpha_rec_metal('CII',T(j))
    enddo
-   end subroutine rec_CIII
+   end subroutine rec_CIII_range
+
 
    ! N II + e -> N I
    subroutine rec_NII(T,coeff_rec_NII)
    real*8, dimension(1-Ng:N+Ng), intent(in)  :: T
    real*8, dimension(1-Ng:N+Ng), intent(out) :: coeff_rec_NII
+   call rec_NII_range(T,coeff_rec_NII,1-Ng,N+Ng)
+   end subroutine rec_NII
+
+   subroutine rec_NII_range(T,coeff_rec_NII,j_lo,j_hi)
+   integer, intent(in) :: j_lo,j_hi
+   real*8, dimension(1-Ng:N+Ng), intent(in)  :: T
+   real*8, dimension(1-Ng:N+Ng), intent(inout) :: coeff_rec_NII
    integer :: j
-   do j = 1-Ng,N+Ng
+   do j = j_lo,j_hi
       coeff_rec_NII(j) = alpha_rec_metal('NI',T(j))
    enddo
-   end subroutine rec_NII
+   end subroutine rec_NII_range
+
 
    ! N III + e -> N II
    subroutine rec_NIII(T,coeff_rec_NIII)
    real*8, dimension(1-Ng:N+Ng), intent(in)  :: T
    real*8, dimension(1-Ng:N+Ng), intent(out) :: coeff_rec_NIII
+   call rec_NIII_range(T,coeff_rec_NIII,1-Ng,N+Ng)
+   end subroutine rec_NIII
+
+   subroutine rec_NIII_range(T,coeff_rec_NIII,j_lo,j_hi)
+   integer, intent(in) :: j_lo,j_hi
+   real*8, dimension(1-Ng:N+Ng), intent(in)  :: T
+   real*8, dimension(1-Ng:N+Ng), intent(inout) :: coeff_rec_NIII
    integer :: j
-   do j = 1-Ng,N+Ng
+   do j = j_lo,j_hi
       coeff_rec_NIII(j) = alpha_rec_metal('NII',T(j))
    enddo
-   end subroutine rec_NIII
+   end subroutine rec_NIII_range
+
 
    ! O II + e -> O I
    subroutine rec_OII(T,coeff_rec_OII)
    real*8, dimension(1-Ng:N+Ng), intent(in)  :: T
    real*8, dimension(1-Ng:N+Ng), intent(out) :: coeff_rec_OII
+   call rec_OII_range(T,coeff_rec_OII,1-Ng,N+Ng)
+   end subroutine rec_OII
+
+   subroutine rec_OII_range(T,coeff_rec_OII,j_lo,j_hi)
+   integer, intent(in) :: j_lo,j_hi
+   real*8, dimension(1-Ng:N+Ng), intent(in)  :: T
+   real*8, dimension(1-Ng:N+Ng), intent(inout) :: coeff_rec_OII
    integer :: j
-   do j = 1-Ng,N+Ng
+   do j = j_lo,j_hi
       coeff_rec_OII(j) = alpha_rec_metal('OI',T(j))
    enddo
-   end subroutine rec_OII
+   end subroutine rec_OII_range
+
 
    ! O III + e -> O II
    subroutine rec_OIII(T,coeff_rec_OIII)
    real*8, dimension(1-Ng:N+Ng), intent(in)  :: T
    real*8, dimension(1-Ng:N+Ng), intent(out) :: coeff_rec_OIII
+   call rec_OIII_range(T,coeff_rec_OIII,1-Ng,N+Ng)
+   end subroutine rec_OIII
+
+   subroutine rec_OIII_range(T,coeff_rec_OIII,j_lo,j_hi)
+   integer, intent(in) :: j_lo,j_hi
+   real*8, dimension(1-Ng:N+Ng), intent(in)  :: T
+   real*8, dimension(1-Ng:N+Ng), intent(inout) :: coeff_rec_OIII
    integer :: j
-   do j = 1-Ng,N+Ng
+   do j = j_lo,j_hi
       coeff_rec_OIII(j) = alpha_rec_metal('OII',T(j))
    enddo
-   end subroutine rec_OIII
+   end subroutine rec_OIII_range
+
 
    ! Mg II + e -> Mg I
    subroutine rec_MgII(T,coeff_rec_MgII)
    real*8, dimension(1-Ng:N+Ng), intent(in)  :: T
    real*8, dimension(1-Ng:N+Ng), intent(out) :: coeff_rec_MgII
+   call rec_MgII_range(T,coeff_rec_MgII,1-Ng,N+Ng)
+   end subroutine rec_MgII
+
+   subroutine rec_MgII_range(T,coeff_rec_MgII,j_lo,j_hi)
+   integer, intent(in) :: j_lo,j_hi
+   real*8, dimension(1-Ng:N+Ng), intent(in)  :: T
+   real*8, dimension(1-Ng:N+Ng), intent(inout) :: coeff_rec_MgII
    integer :: j
-   do j = 1-Ng,N+Ng
+   do j = j_lo,j_hi
       coeff_rec_MgII(j) = alpha_rec_metal('MgI',T(j))
    enddo
-   end subroutine rec_MgII
+   end subroutine rec_MgII_range
+
 
    ! Mg III + e -> Mg II
    subroutine rec_MgIII(T,coeff_rec_MgIII)
    real*8, dimension(1-Ng:N+Ng), intent(in)  :: T
    real*8, dimension(1-Ng:N+Ng), intent(out) :: coeff_rec_MgIII
+   call rec_MgIII_range(T,coeff_rec_MgIII,1-Ng,N+Ng)
+   end subroutine rec_MgIII
+
+   subroutine rec_MgIII_range(T,coeff_rec_MgIII,j_lo,j_hi)
+   integer, intent(in) :: j_lo,j_hi
+   real*8, dimension(1-Ng:N+Ng), intent(in)  :: T
+   real*8, dimension(1-Ng:N+Ng), intent(inout) :: coeff_rec_MgIII
    integer :: j
-   do j = 1-Ng,N+Ng
+   do j = j_lo,j_hi
       coeff_rec_MgIII(j) = alpha_rec_metal('MgII',T(j))
    enddo
-   end subroutine rec_MgIII
+   end subroutine rec_MgIII_range
+
 
    ! Si II + e -> Si I
    subroutine rec_SiII(T,coeff_rec_SiII)
    real*8, dimension(1-Ng:N+Ng), intent(in)  :: T
    real*8, dimension(1-Ng:N+Ng), intent(out) :: coeff_rec_SiII
+   call rec_SiII_range(T,coeff_rec_SiII,1-Ng,N+Ng)
+   end subroutine rec_SiII
+
+   subroutine rec_SiII_range(T,coeff_rec_SiII,j_lo,j_hi)
+   integer, intent(in) :: j_lo,j_hi
+   real*8, dimension(1-Ng:N+Ng), intent(in)  :: T
+   real*8, dimension(1-Ng:N+Ng), intent(inout) :: coeff_rec_SiII
    integer :: j
-   do j = 1-Ng,N+Ng
+   do j = j_lo,j_hi
       coeff_rec_SiII(j) = alpha_rec_metal('SiI',T(j))
    enddo
-   end subroutine rec_SiII
+   end subroutine rec_SiII_range
+
 
    ! Si III + e -> Si II
    subroutine rec_SiIII(T,coeff_rec_SiIII)
    real*8, dimension(1-Ng:N+Ng), intent(in)  :: T
    real*8, dimension(1-Ng:N+Ng), intent(out) :: coeff_rec_SiIII
+   call rec_SiIII_range(T,coeff_rec_SiIII,1-Ng,N+Ng)
+   end subroutine rec_SiIII
+
+   subroutine rec_SiIII_range(T,coeff_rec_SiIII,j_lo,j_hi)
+   integer, intent(in) :: j_lo,j_hi
+   real*8, dimension(1-Ng:N+Ng), intent(in)  :: T
+   real*8, dimension(1-Ng:N+Ng), intent(inout) :: coeff_rec_SiIII
    integer :: j
-   do j = 1-Ng,N+Ng
+   do j = j_lo,j_hi
       coeff_rec_SiIII(j) = alpha_rec_metal('SiII',T(j))
    enddo
-   end subroutine rec_SiIII
+   end subroutine rec_SiIII_range
+
 
    ! Ca II + e -> Ca I (Shull & Van Steenberg 1982, via alpha_rr_metal)
    subroutine rec_CaII(T,coeff_rec_CaII)
    real*8, dimension(1-Ng:N+Ng), intent(in)  :: T
    real*8, dimension(1-Ng:N+Ng), intent(out) :: coeff_rec_CaII
+   call rec_CaII_range(T,coeff_rec_CaII,1-Ng,N+Ng)
+   end subroutine rec_CaII
+
+   subroutine rec_CaII_range(T,coeff_rec_CaII,j_lo,j_hi)
+   integer, intent(in) :: j_lo,j_hi
+   real*8, dimension(1-Ng:N+Ng), intent(in)  :: T
+   real*8, dimension(1-Ng:N+Ng), intent(inout) :: coeff_rec_CaII
    integer :: j
-   do j = 1-Ng,N+Ng
+   do j = j_lo,j_hi
       coeff_rec_CaII(j) = alpha_rec_metal('CaI',T(j))
    enddo
-   end subroutine rec_CaII
+   end subroutine rec_CaII_range
+
 
    ! Ca III + e -> Ca II
    subroutine rec_CaIII(T,coeff_rec_CaIII)
    real*8, dimension(1-Ng:N+Ng), intent(in)  :: T
    real*8, dimension(1-Ng:N+Ng), intent(out) :: coeff_rec_CaIII
+   call rec_CaIII_range(T,coeff_rec_CaIII,1-Ng,N+Ng)
+   end subroutine rec_CaIII
+
+   subroutine rec_CaIII_range(T,coeff_rec_CaIII,j_lo,j_hi)
+   integer, intent(in) :: j_lo,j_hi
+   real*8, dimension(1-Ng:N+Ng), intent(in)  :: T
+   real*8, dimension(1-Ng:N+Ng), intent(inout) :: coeff_rec_CaIII
    integer :: j
-   do j = 1-Ng,N+Ng
+   do j = j_lo,j_hi
       coeff_rec_CaIII(j) = alpha_rec_metal('CaII',T(j))
    enddo
-   end subroutine rec_CaIII
+   end subroutine rec_CaIII_range
+
 
    ! Na II + e -> Na I
    subroutine rec_NaII(T,coeff_rec_NaII)
    real*8, dimension(1-Ng:N+Ng), intent(in)  :: T
    real*8, dimension(1-Ng:N+Ng), intent(out) :: coeff_rec_NaII
+   call rec_NaII_range(T,coeff_rec_NaII,1-Ng,N+Ng)
+   end subroutine rec_NaII
+
+   subroutine rec_NaII_range(T,coeff_rec_NaII,j_lo,j_hi)
+   integer, intent(in) :: j_lo,j_hi
+   real*8, dimension(1-Ng:N+Ng), intent(in)  :: T
+   real*8, dimension(1-Ng:N+Ng), intent(inout) :: coeff_rec_NaII
    integer :: j
-   do j = 1-Ng,N+Ng
+   do j = j_lo,j_hi
       coeff_rec_NaII(j) = alpha_rec_metal('NaI',T(j))
    enddo
-   end subroutine rec_NaII
+   end subroutine rec_NaII_range
+
 
    ! K II + e -> K I
    subroutine rec_KII(T,coeff_rec_KII)
    real*8, dimension(1-Ng:N+Ng), intent(in)  :: T
    real*8, dimension(1-Ng:N+Ng), intent(out) :: coeff_rec_KII
+   call rec_KII_range(T,coeff_rec_KII,1-Ng,N+Ng)
+   end subroutine rec_KII
+
+   subroutine rec_KII_range(T,coeff_rec_KII,j_lo,j_hi)
+   integer, intent(in) :: j_lo,j_hi
+   real*8, dimension(1-Ng:N+Ng), intent(in)  :: T
+   real*8, dimension(1-Ng:N+Ng), intent(inout) :: coeff_rec_KII
    integer :: j
-   do j = 1-Ng,N+Ng
+   do j = j_lo,j_hi
       coeff_rec_KII(j) = alpha_rec_metal('KI',T(j))
    enddo
-   end subroutine rec_KII
+   end subroutine rec_KII_range
+
 
    ! S II + e -> S I
    subroutine rec_SII(T,coeff_rec_SII)
    real*8, dimension(1-Ng:N+Ng), intent(in)  :: T
    real*8, dimension(1-Ng:N+Ng), intent(out) :: coeff_rec_SII
+   call rec_SII_range(T,coeff_rec_SII,1-Ng,N+Ng)
+   end subroutine rec_SII
+
+   subroutine rec_SII_range(T,coeff_rec_SII,j_lo,j_hi)
+   integer, intent(in) :: j_lo,j_hi
+   real*8, dimension(1-Ng:N+Ng), intent(in)  :: T
+   real*8, dimension(1-Ng:N+Ng), intent(inout) :: coeff_rec_SII
    integer :: j
-   do j = 1-Ng,N+Ng
+   do j = j_lo,j_hi
       coeff_rec_SII(j) = alpha_rec_metal('SI',T(j))
    enddo
-   end subroutine rec_SII
+   end subroutine rec_SII_range
+
 
    !--------------!
 
@@ -2640,21 +2950,37 @@
    subroutine rec_FeII(T,coeff_rec_FeII)
    real*8, dimension(1-Ng:N+Ng), intent(in)  :: T
    real*8, dimension(1-Ng:N+Ng), intent(out) :: coeff_rec_FeII
+   call rec_FeII_range(T,coeff_rec_FeII,1-Ng,N+Ng)
+   end subroutine rec_FeII
+
+   subroutine rec_FeII_range(T,coeff_rec_FeII,j_lo,j_hi)
+   integer, intent(in) :: j_lo,j_hi
+   real*8, dimension(1-Ng:N+Ng), intent(in)  :: T
+   real*8, dimension(1-Ng:N+Ng), intent(inout) :: coeff_rec_FeII
    integer :: j
-   do j = 1-Ng,N+Ng
+   do j = j_lo,j_hi
       coeff_rec_FeII(j) = alpha_rec_FeI_Huang(T(j))
    enddo
-   end subroutine rec_FeII
+   end subroutine rec_FeII_range
+
 
    ! Fe III + e -> Fe II
    subroutine rec_FeIII(T,coeff_rec_FeIII)
    real*8, dimension(1-Ng:N+Ng), intent(in)  :: T
    real*8, dimension(1-Ng:N+Ng), intent(out) :: coeff_rec_FeIII
+   call rec_FeIII_range(T,coeff_rec_FeIII,1-Ng,N+Ng)
+   end subroutine rec_FeIII
+
+   subroutine rec_FeIII_range(T,coeff_rec_FeIII,j_lo,j_hi)
+   integer, intent(in) :: j_lo,j_hi
+   real*8, dimension(1-Ng:N+Ng), intent(in)  :: T
+   real*8, dimension(1-Ng:N+Ng), intent(inout) :: coeff_rec_FeIII
    integer :: j
-   do j = 1-Ng,N+Ng
+   do j = j_lo,j_hi
       coeff_rec_FeIII(j) = alpha_rec_FeII_Huang(T(j))
    enddo
-   end subroutine rec_FeIII
+   end subroutine rec_FeIII_range
+
 
    !---------------------------------------------------!
 
@@ -2666,431 +2992,605 @@
    ! C I -> C II
    subroutine ion_coeff_CI(T,a_ion_coeff_CI)
    real*8, dimension(1-Ng:N+Ng), intent(in)  :: T
-   real*8, dimension(1-Ng:N+Ng) :: U
    real*8, dimension(1-Ng:N+Ng), intent(out) :: a_ion_coeff_CI
+   call ion_coeff_CI_range(T,a_ion_coeff_CI,1-Ng,N+Ng)
+   end subroutine ion_coeff_CI
+
+   subroutine ion_coeff_CI_range(T,a_ion_coeff_CI,j_lo,j_hi)
+   integer, intent(in) :: j_lo,j_hi
+   real*8, dimension(1-Ng:N+Ng), intent(in)  :: T
+   real*8, dimension(1-Ng:N+Ng) :: U
+   real*8, dimension(1-Ng:N+Ng), intent(inout) :: a_ion_coeff_CI
    real*8, parameter :: dE = 11.26, A = 6.85e-8, P = 0.193,        &
                         X = 0.25,   K = 0.25
-   U = dE/(kb_eV*T)
-   a_ion_coeff_CI = A*(1.0+P*sqrt(U))/(X+U)*U**K*exp(-U)
+   U(j_lo:j_hi) = dE/(kb_eV*T(j_lo:j_hi))
+   a_ion_coeff_CI(j_lo:j_hi) = A*(1.0+P*sqrt(U(j_lo:j_hi)))/(X+U(j_lo:j_hi))*U(j_lo:j_hi)**K*exp(-U(j_lo:j_hi))
 
-   end subroutine ion_coeff_CI
+   end subroutine ion_coeff_CI_range
+
 
    ! C II -> C III
    subroutine ion_coeff_CII(T,a_ion_coeff_CII)
    real*8, dimension(1-Ng:N+Ng), intent(in)  :: T
-   real*8, dimension(1-Ng:N+Ng) :: U
    real*8, dimension(1-Ng:N+Ng), intent(out) :: a_ion_coeff_CII
+   call ion_coeff_CII_range(T,a_ion_coeff_CII,1-Ng,N+Ng)
+   end subroutine ion_coeff_CII
+
+   subroutine ion_coeff_CII_range(T,a_ion_coeff_CII,j_lo,j_hi)
+   integer, intent(in) :: j_lo,j_hi
+   real*8, dimension(1-Ng:N+Ng), intent(in)  :: T
+   real*8, dimension(1-Ng:N+Ng) :: U
+   real*8, dimension(1-Ng:N+Ng), intent(inout) :: a_ion_coeff_CII
    real*8, parameter :: dE = 24.38, A = 1.86e-8, P = 1.0,          &
                         X = 0.286,  K = 0.24
-   U = dE/(kb_eV*T)
-   a_ion_coeff_CII = A*(1.0+P*sqrt(U))/(X+U)*U**K*exp(-U)
+   U(j_lo:j_hi) = dE/(kb_eV*T(j_lo:j_hi))
+   a_ion_coeff_CII(j_lo:j_hi) = A*(1.0+P*sqrt(U(j_lo:j_hi)))/(X+U(j_lo:j_hi))*U(j_lo:j_hi)**K*exp(-U(j_lo:j_hi))
 
-   end subroutine ion_coeff_CII
+   end subroutine ion_coeff_CII_range
+
 
    ! O I -> O II
    subroutine ion_coeff_OI(T,a_ion_coeff_OI)
    real*8, dimension(1-Ng:N+Ng), intent(in)  :: T
-   real*8, dimension(1-Ng:N+Ng) :: U
    real*8, dimension(1-Ng:N+Ng), intent(out) :: a_ion_coeff_OI
+   call ion_coeff_OI_range(T,a_ion_coeff_OI,1-Ng,N+Ng)
+   end subroutine ion_coeff_OI
+
+   subroutine ion_coeff_OI_range(T,a_ion_coeff_OI,j_lo,j_hi)
+   integer, intent(in) :: j_lo,j_hi
+   real*8, dimension(1-Ng:N+Ng), intent(in)  :: T
+   real*8, dimension(1-Ng:N+Ng) :: U
+   real*8, dimension(1-Ng:N+Ng), intent(inout) :: a_ion_coeff_OI
    real*8, parameter :: dE = 13.62, A = 3.59e-8, P = 0.0,          &
                         X = 0.073,  K = 0.34
-   U = dE/(kb_eV*T)
-   a_ion_coeff_OI = A*(1.0+P*sqrt(U))/(X+U)*U**K*exp(-U)
+   U(j_lo:j_hi) = dE/(kb_eV*T(j_lo:j_hi))
+   a_ion_coeff_OI(j_lo:j_hi) = A*(1.0+P*sqrt(U(j_lo:j_hi)))/(X+U(j_lo:j_hi))*U(j_lo:j_hi)**K*exp(-U(j_lo:j_hi))
 
-   end subroutine ion_coeff_OI
+   end subroutine ion_coeff_OI_range
+
 
    ! O II -> O III
    subroutine ion_coeff_OII(T,a_ion_coeff_OII)
    real*8, dimension(1-Ng:N+Ng), intent(in)  :: T
-   real*8, dimension(1-Ng:N+Ng) :: U
    real*8, dimension(1-Ng:N+Ng), intent(out) :: a_ion_coeff_OII
+   call ion_coeff_OII_range(T,a_ion_coeff_OII,1-Ng,N+Ng)
+   end subroutine ion_coeff_OII
+
+   subroutine ion_coeff_OII_range(T,a_ion_coeff_OII,j_lo,j_hi)
+   integer, intent(in) :: j_lo,j_hi
+   real*8, dimension(1-Ng:N+Ng), intent(in)  :: T
+   real*8, dimension(1-Ng:N+Ng) :: U
+   real*8, dimension(1-Ng:N+Ng), intent(inout) :: a_ion_coeff_OII
    real*8, parameter :: dE = 35.12, A = 1.39e-8, P = 1.0,          &
                         X = 0.212,  K = 0.22
-   U = dE/(kb_eV*T)
-   a_ion_coeff_OII = A*(1.0+P*sqrt(U))/(X+U)*U**K*exp(-U)
+   U(j_lo:j_hi) = dE/(kb_eV*T(j_lo:j_hi))
+   a_ion_coeff_OII(j_lo:j_hi) = A*(1.0+P*sqrt(U(j_lo:j_hi)))/(X+U(j_lo:j_hi))*U(j_lo:j_hi)**K*exp(-U(j_lo:j_hi))
 
-   end subroutine ion_coeff_OII
+   end subroutine ion_coeff_OII_range
+
 
    ! N I -> N II  (Voronov 1997, Table 1)
    subroutine ion_coeff_NI(T,a_ion_coeff_NI)
    real*8, dimension(1-Ng:N+Ng), intent(in)  :: T
-   real*8, dimension(1-Ng:N+Ng) :: U
    real*8, dimension(1-Ng:N+Ng), intent(out) :: a_ion_coeff_NI
+   call ion_coeff_NI_range(T,a_ion_coeff_NI,1-Ng,N+Ng)
+   end subroutine ion_coeff_NI
+
+   subroutine ion_coeff_NI_range(T,a_ion_coeff_NI,j_lo,j_hi)
+   integer, intent(in) :: j_lo,j_hi
+   real*8, dimension(1-Ng:N+Ng), intent(in)  :: T
+   real*8, dimension(1-Ng:N+Ng) :: U
+   real*8, dimension(1-Ng:N+Ng), intent(inout) :: a_ion_coeff_NI
    real*8, parameter :: dE = 14.53, A = 4.82e-8, P = 0.0,          &
                         X = 0.0652, K = 0.42
-   U = dE/(kb_eV*T)
-   a_ion_coeff_NI = A*(1.0+P*sqrt(U))/(X+U)*U**K*exp(-U)
+   U(j_lo:j_hi) = dE/(kb_eV*T(j_lo:j_hi))
+   a_ion_coeff_NI(j_lo:j_hi) = A*(1.0+P*sqrt(U(j_lo:j_hi)))/(X+U(j_lo:j_hi))*U(j_lo:j_hi)**K*exp(-U(j_lo:j_hi))
 
-   end subroutine ion_coeff_NI
+   end subroutine ion_coeff_NI_range
+
 
    ! N II -> N III  (Voronov 1997, Table 1)
    subroutine ion_coeff_NII(T,a_ion_coeff_NII)
    real*8, dimension(1-Ng:N+Ng), intent(in)  :: T
-   real*8, dimension(1-Ng:N+Ng) :: U
    real*8, dimension(1-Ng:N+Ng), intent(out) :: a_ion_coeff_NII
+   call ion_coeff_NII_range(T,a_ion_coeff_NII,1-Ng,N+Ng)
+   end subroutine ion_coeff_NII
+
+   subroutine ion_coeff_NII_range(T,a_ion_coeff_NII,j_lo,j_hi)
+   integer, intent(in) :: j_lo,j_hi
+   real*8, dimension(1-Ng:N+Ng), intent(in)  :: T
+   real*8, dimension(1-Ng:N+Ng) :: U
+   real*8, dimension(1-Ng:N+Ng), intent(inout) :: a_ion_coeff_NII
    real*8, parameter :: dE = 29.60, A = 2.98e-8, P = 0.0,          &
                         X = 0.310,  K = 0.30
-   U = dE/(kb_eV*T)
-   a_ion_coeff_NII = A*(1.0+P*sqrt(U))/(X+U)*U**K*exp(-U)
+   U(j_lo:j_hi) = dE/(kb_eV*T(j_lo:j_hi))
+   a_ion_coeff_NII(j_lo:j_hi) = A*(1.0+P*sqrt(U(j_lo:j_hi)))/(X+U(j_lo:j_hi))*U(j_lo:j_hi)**K*exp(-U(j_lo:j_hi))
 
-   end subroutine ion_coeff_NII
+   end subroutine ion_coeff_NII_range
+
 
    ! Mg I -> Mg II  (Voronov 1997, Table 1; dE = ionization potential)
    subroutine ion_coeff_MgI(T,a_ion_coeff_MgI)
    real*8, dimension(1-Ng:N+Ng), intent(in)  :: T
-   real*8, dimension(1-Ng:N+Ng) :: U
    real*8, dimension(1-Ng:N+Ng), intent(out) :: a_ion_coeff_MgI
+   call ion_coeff_MgI_range(T,a_ion_coeff_MgI,1-Ng,N+Ng)
+   end subroutine ion_coeff_MgI
+
+   subroutine ion_coeff_MgI_range(T,a_ion_coeff_MgI,j_lo,j_hi)
+   integer, intent(in) :: j_lo,j_hi
+   real*8, dimension(1-Ng:N+Ng), intent(in)  :: T
+   real*8, dimension(1-Ng:N+Ng) :: U
+   real*8, dimension(1-Ng:N+Ng), intent(inout) :: a_ion_coeff_MgI
    real*8, parameter :: dE = 7.646, A = 6.21e-7, P = 0.0,         &
                         X = 0.592,  K = 0.39
-   U = dE/(kb_eV*T)
-   a_ion_coeff_MgI = A*(1.0+P*sqrt(U))/(X+U)*U**K*exp(-U)
+   U(j_lo:j_hi) = dE/(kb_eV*T(j_lo:j_hi))
+   a_ion_coeff_MgI(j_lo:j_hi) = A*(1.0+P*sqrt(U(j_lo:j_hi)))/(X+U(j_lo:j_hi))*U(j_lo:j_hi)**K*exp(-U(j_lo:j_hi))
 
-   end subroutine ion_coeff_MgI
+   end subroutine ion_coeff_MgI_range
+
 
    ! Mg II -> Mg III  (Voronov 1997, Table 1; dE = ionization potential)
    subroutine ion_coeff_MgII(T,a_ion_coeff_MgII)
    real*8, dimension(1-Ng:N+Ng), intent(in)  :: T
-   real*8, dimension(1-Ng:N+Ng) :: U
    real*8, dimension(1-Ng:N+Ng), intent(out) :: a_ion_coeff_MgII
+   call ion_coeff_MgII_range(T,a_ion_coeff_MgII,1-Ng,N+Ng)
+   end subroutine ion_coeff_MgII
+
+   subroutine ion_coeff_MgII_range(T,a_ion_coeff_MgII,j_lo,j_hi)
+   integer, intent(in) :: j_lo,j_hi
+   real*8, dimension(1-Ng:N+Ng), intent(in)  :: T
+   real*8, dimension(1-Ng:N+Ng) :: U
+   real*8, dimension(1-Ng:N+Ng), intent(inout) :: a_ion_coeff_MgII
    real*8, parameter :: dE = 15.035, A = 1.92e-8, P = 0.0,        &
                         X = 0.0027,  K = 0.85
-   U = dE/(kb_eV*T)
-   a_ion_coeff_MgII = A*(1.0+P*sqrt(U))/(X+U)*U**K*exp(-U)
+   U(j_lo:j_hi) = dE/(kb_eV*T(j_lo:j_hi))
+   a_ion_coeff_MgII(j_lo:j_hi) = A*(1.0+P*sqrt(U(j_lo:j_hi)))/(X+U(j_lo:j_hi))*U(j_lo:j_hi)**K*exp(-U(j_lo:j_hi))
 
-   end subroutine ion_coeff_MgII
+   end subroutine ion_coeff_MgII_range
+
 
    ! Si I -> Si II  (Voronov 1997, cfit 14,14; dE = Voronov fit energy)
    subroutine ion_coeff_SiI(T,a_ion_coeff_SiI)
    real*8, dimension(1-Ng:N+Ng), intent(in)  :: T
-   real*8, dimension(1-Ng:N+Ng) :: U
    real*8, dimension(1-Ng:N+Ng), intent(out) :: a_ion_coeff_SiI
+   call ion_coeff_SiI_range(T,a_ion_coeff_SiI,1-Ng,N+Ng)
+   end subroutine ion_coeff_SiI
+
+   subroutine ion_coeff_SiI_range(T,a_ion_coeff_SiI,j_lo,j_hi)
+   integer, intent(in) :: j_lo,j_hi
+   real*8, dimension(1-Ng:N+Ng), intent(in)  :: T
+   real*8, dimension(1-Ng:N+Ng) :: U
+   real*8, dimension(1-Ng:N+Ng), intent(inout) :: a_ion_coeff_SiI
    real*8, parameter :: dE = 8.2, A = 1.88e-7, P = 1.0,           &
                         X = 0.376, K = 0.25
-   U = dE/(kb_eV*T)
-   a_ion_coeff_SiI = A*(1.0+P*sqrt(U))/(X+U)*U**K*exp(-U)
+   U(j_lo:j_hi) = dE/(kb_eV*T(j_lo:j_hi))
+   a_ion_coeff_SiI(j_lo:j_hi) = A*(1.0+P*sqrt(U(j_lo:j_hi)))/(X+U(j_lo:j_hi))*U(j_lo:j_hi)**K*exp(-U(j_lo:j_hi))
 
-   end subroutine ion_coeff_SiI
+   end subroutine ion_coeff_SiI_range
+
 
    ! Si II -> Si III  (Voronov 1997, cfit 14,13)
    subroutine ion_coeff_SiII(T,a_ion_coeff_SiII)
    real*8, dimension(1-Ng:N+Ng), intent(in)  :: T
-   real*8, dimension(1-Ng:N+Ng) :: U
    real*8, dimension(1-Ng:N+Ng), intent(out) :: a_ion_coeff_SiII
+   call ion_coeff_SiII_range(T,a_ion_coeff_SiII,1-Ng,N+Ng)
+   end subroutine ion_coeff_SiII
+
+   subroutine ion_coeff_SiII_range(T,a_ion_coeff_SiII,j_lo,j_hi)
+   integer, intent(in) :: j_lo,j_hi
+   real*8, dimension(1-Ng:N+Ng), intent(in)  :: T
+   real*8, dimension(1-Ng:N+Ng) :: U
+   real*8, dimension(1-Ng:N+Ng), intent(inout) :: a_ion_coeff_SiII
    real*8, parameter :: dE = 16.4, A = 6.43e-8, P = 1.0,          &
                         X = 0.632, K = 0.20
-   U = dE/(kb_eV*T)
-   a_ion_coeff_SiII = A*(1.0+P*sqrt(U))/(X+U)*U**K*exp(-U)
+   U(j_lo:j_hi) = dE/(kb_eV*T(j_lo:j_hi))
+   a_ion_coeff_SiII(j_lo:j_hi) = A*(1.0+P*sqrt(U(j_lo:j_hi)))/(X+U(j_lo:j_hi))*U(j_lo:j_hi)**K*exp(-U(j_lo:j_hi))
 
-   end subroutine ion_coeff_SiII
+   end subroutine ion_coeff_SiII_range
+
 
    ! Ca I -> Ca II  (Voronov 1997, cfit 20,20)
    subroutine ion_coeff_CaI(T,a_ion_coeff_CaI)
    real*8, dimension(1-Ng:N+Ng), intent(in)  :: T
-   real*8, dimension(1-Ng:N+Ng) :: U
    real*8, dimension(1-Ng:N+Ng), intent(out) :: a_ion_coeff_CaI
+   call ion_coeff_CaI_range(T,a_ion_coeff_CaI,1-Ng,N+Ng)
+   end subroutine ion_coeff_CaI
+
+   subroutine ion_coeff_CaI_range(T,a_ion_coeff_CaI,j_lo,j_hi)
+   integer, intent(in) :: j_lo,j_hi
+   real*8, dimension(1-Ng:N+Ng), intent(in)  :: T
+   real*8, dimension(1-Ng:N+Ng) :: U
+   real*8, dimension(1-Ng:N+Ng), intent(inout) :: a_ion_coeff_CaI
    real*8, parameter :: dE = 6.1, A = 4.40e-7, P = 0.0,           &
                         X = 0.848, K = 0.33
-   U = dE/(kb_eV*T)
-   a_ion_coeff_CaI = A*(1.0+P*sqrt(U))/(X+U)*U**K*exp(-U)
+   U(j_lo:j_hi) = dE/(kb_eV*T(j_lo:j_hi))
+   a_ion_coeff_CaI(j_lo:j_hi) = A*(1.0+P*sqrt(U(j_lo:j_hi)))/(X+U(j_lo:j_hi))*U(j_lo:j_hi)**K*exp(-U(j_lo:j_hi))
 
-   end subroutine ion_coeff_CaI
+   end subroutine ion_coeff_CaI_range
+
 
    ! Ca II -> Ca III  (Voronov 1997, cfit 20,19)
    subroutine ion_coeff_CaII(T,a_ion_coeff_CaII)
    real*8, dimension(1-Ng:N+Ng), intent(in)  :: T
-   real*8, dimension(1-Ng:N+Ng) :: U
    real*8, dimension(1-Ng:N+Ng), intent(out) :: a_ion_coeff_CaII
+   call ion_coeff_CaII_range(T,a_ion_coeff_CaII,1-Ng,N+Ng)
+   end subroutine ion_coeff_CaII
+
+   subroutine ion_coeff_CaII_range(T,a_ion_coeff_CaII,j_lo,j_hi)
+   integer, intent(in) :: j_lo,j_hi
+   real*8, dimension(1-Ng:N+Ng), intent(in)  :: T
+   real*8, dimension(1-Ng:N+Ng) :: U
+   real*8, dimension(1-Ng:N+Ng), intent(inout) :: a_ion_coeff_CaII
    real*8, parameter :: dE = 11.9, A = 5.22e-8, P = 0.0,          &
                         X = 0.151, K = 0.34
-   U = dE/(kb_eV*T)
-   a_ion_coeff_CaII = A*(1.0+P*sqrt(U))/(X+U)*U**K*exp(-U)
+   U(j_lo:j_hi) = dE/(kb_eV*T(j_lo:j_hi))
+   a_ion_coeff_CaII(j_lo:j_hi) = A*(1.0+P*sqrt(U(j_lo:j_hi)))/(X+U(j_lo:j_hi))*U(j_lo:j_hi)**K*exp(-U(j_lo:j_hi))
 
-   end subroutine ion_coeff_CaII
+   end subroutine ion_coeff_CaII_range
+
 
    ! Na I -> Na II  (Voronov 1997, cfit 11,11)
    subroutine ion_coeff_NaI(T,a_ion_coeff_NaI)
    real*8, dimension(1-Ng:N+Ng), intent(in)  :: T
-   real*8, dimension(1-Ng:N+Ng) :: U
    real*8, dimension(1-Ng:N+Ng), intent(out) :: a_ion_coeff_NaI
+   call ion_coeff_NaI_range(T,a_ion_coeff_NaI,1-Ng,N+Ng)
+   end subroutine ion_coeff_NaI
+
+   subroutine ion_coeff_NaI_range(T,a_ion_coeff_NaI,j_lo,j_hi)
+   integer, intent(in) :: j_lo,j_hi
+   real*8, dimension(1-Ng:N+Ng), intent(in)  :: T
+   real*8, dimension(1-Ng:N+Ng) :: U
+   real*8, dimension(1-Ng:N+Ng), intent(inout) :: a_ion_coeff_NaI
    real*8, parameter :: dE = 5.1, A = 1.01e-7, P = 1.0,           &
                         X = 0.275, K = 0.23
-   U = dE/(kb_eV*T)
-   a_ion_coeff_NaI = A*(1.0+P*sqrt(U))/(X+U)*U**K*exp(-U)
+   U(j_lo:j_hi) = dE/(kb_eV*T(j_lo:j_hi))
+   a_ion_coeff_NaI(j_lo:j_hi) = A*(1.0+P*sqrt(U(j_lo:j_hi)))/(X+U(j_lo:j_hi))*U(j_lo:j_hi)**K*exp(-U(j_lo:j_hi))
 
-   end subroutine ion_coeff_NaI
+   end subroutine ion_coeff_NaI_range
+
 
    ! K I -> K II  (Voronov 1997, cfit 19,19)
    subroutine ion_coeff_KI(T,a_ion_coeff_KI)
    real*8, dimension(1-Ng:N+Ng), intent(in)  :: T
-   real*8, dimension(1-Ng:N+Ng) :: U
    real*8, dimension(1-Ng:N+Ng), intent(out) :: a_ion_coeff_KI
+   call ion_coeff_KI_range(T,a_ion_coeff_KI,1-Ng,N+Ng)
+   end subroutine ion_coeff_KI
+
+   subroutine ion_coeff_KI_range(T,a_ion_coeff_KI,j_lo,j_hi)
+   integer, intent(in) :: j_lo,j_hi
+   real*8, dimension(1-Ng:N+Ng), intent(in)  :: T
+   real*8, dimension(1-Ng:N+Ng) :: U
+   real*8, dimension(1-Ng:N+Ng), intent(inout) :: a_ion_coeff_KI
    real*8, parameter :: dE = 4.3, A = 2.02e-7, P = 1.0,           &
                         X = 0.272, K = 0.31
-   U = dE/(kb_eV*T)
-   a_ion_coeff_KI = A*(1.0+P*sqrt(U))/(X+U)*U**K*exp(-U)
+   U(j_lo:j_hi) = dE/(kb_eV*T(j_lo:j_hi))
+   a_ion_coeff_KI(j_lo:j_hi) = A*(1.0+P*sqrt(U(j_lo:j_hi)))/(X+U(j_lo:j_hi))*U(j_lo:j_hi)**K*exp(-U(j_lo:j_hi))
 
-   end subroutine ion_coeff_KI
+   end subroutine ion_coeff_KI_range
+
 
    ! S I -> S II  (Voronov 1997, cfit 16,16)
    subroutine ion_coeff_SI(T,a_ion_coeff_SI)
    real*8, dimension(1-Ng:N+Ng), intent(in)  :: T
-   real*8, dimension(1-Ng:N+Ng) :: U
    real*8, dimension(1-Ng:N+Ng), intent(out) :: a_ion_coeff_SI
+   call ion_coeff_SI_range(T,a_ion_coeff_SI,1-Ng,N+Ng)
+   end subroutine ion_coeff_SI
+
+   subroutine ion_coeff_SI_range(T,a_ion_coeff_SI,j_lo,j_hi)
+   integer, intent(in) :: j_lo,j_hi
+   real*8, dimension(1-Ng:N+Ng), intent(in)  :: T
+   real*8, dimension(1-Ng:N+Ng) :: U
+   real*8, dimension(1-Ng:N+Ng), intent(inout) :: a_ion_coeff_SI
    real*8, parameter :: dE = 10.4, A = 5.49e-8, P = 1.0,          &
                         X = 0.100, K = 0.25
-   U = dE/(kb_eV*T)
-   a_ion_coeff_SI = A*(1.0+P*sqrt(U))/(X+U)*U**K*exp(-U)
+   U(j_lo:j_hi) = dE/(kb_eV*T(j_lo:j_hi))
+   a_ion_coeff_SI(j_lo:j_hi) = A*(1.0+P*sqrt(U(j_lo:j_hi)))/(X+U(j_lo:j_hi))*U(j_lo:j_hi)**K*exp(-U(j_lo:j_hi))
 
-   end subroutine ion_coeff_SI
+   end subroutine ion_coeff_SI_range
+
 
    ! Fe I -> Fe II  (Voronov 1997, cfit.dat row "Fe   26 26":
    !   dE=7.9, P=0, A=2.52e-7, X=0.7010, K=0.25). Verified against the
    !   machine-readable Voronov table.
    subroutine ion_coeff_FeI(T,a_ion_coeff_FeI)
    real*8, dimension(1-Ng:N+Ng), intent(in)  :: T
-   real*8, dimension(1-Ng:N+Ng) :: U
    real*8, dimension(1-Ng:N+Ng), intent(out) :: a_ion_coeff_FeI
+   call ion_coeff_FeI_range(T,a_ion_coeff_FeI,1-Ng,N+Ng)
+   end subroutine ion_coeff_FeI
+
+   subroutine ion_coeff_FeI_range(T,a_ion_coeff_FeI,j_lo,j_hi)
+   integer, intent(in) :: j_lo,j_hi
+   real*8, dimension(1-Ng:N+Ng), intent(in)  :: T
+   real*8, dimension(1-Ng:N+Ng) :: U
+   real*8, dimension(1-Ng:N+Ng), intent(inout) :: a_ion_coeff_FeI
    real*8, parameter :: dE = 7.9, A = 2.52e-7, P = 0.0,           &
                         X = 0.701, K = 0.25
-   U = dE/(kb_eV*T)
-   a_ion_coeff_FeI = A*(1.0+P*sqrt(U))/(X+U)*U**K*exp(-U)
+   U(j_lo:j_hi) = dE/(kb_eV*T(j_lo:j_hi))
+   a_ion_coeff_FeI(j_lo:j_hi) = A*(1.0+P*sqrt(U(j_lo:j_hi)))/(X+U(j_lo:j_hi))*U(j_lo:j_hi)**K*exp(-U(j_lo:j_hi))
 
-   end subroutine ion_coeff_FeI
+   end subroutine ion_coeff_FeI_range
+
 
    ! Fe II -> Fe III  (Voronov 1997, cfit.dat row "Fe 1+ 26 25":
    !   dE=16.2, P=1, A=2.21e-8, X=0.0330, K=0.45).
    subroutine ion_coeff_FeII(T,a_ion_coeff_FeII)
    real*8, dimension(1-Ng:N+Ng), intent(in)  :: T
-   real*8, dimension(1-Ng:N+Ng) :: U
    real*8, dimension(1-Ng:N+Ng), intent(out) :: a_ion_coeff_FeII
+   call ion_coeff_FeII_range(T,a_ion_coeff_FeII,1-Ng,N+Ng)
+   end subroutine ion_coeff_FeII
+
+   subroutine ion_coeff_FeII_range(T,a_ion_coeff_FeII,j_lo,j_hi)
+   integer, intent(in) :: j_lo,j_hi
+   real*8, dimension(1-Ng:N+Ng), intent(in)  :: T
+   real*8, dimension(1-Ng:N+Ng) :: U
+   real*8, dimension(1-Ng:N+Ng), intent(inout) :: a_ion_coeff_FeII
    real*8, parameter :: dE = 16.2, A = 2.21e-8, P = 1.0,          &
                         X = 0.033, K = 0.45
-   U = dE/(kb_eV*T)
-   a_ion_coeff_FeII = A*(1.0+P*sqrt(U))/(X+U)*U**K*exp(-U)
+   U(j_lo:j_hi) = dE/(kb_eV*T(j_lo:j_hi))
+   a_ion_coeff_FeII(j_lo:j_hi) = A*(1.0+P*sqrt(U(j_lo:j_hi)))/(X+U(j_lo:j_hi))*U(j_lo:j_hi)**K*exp(-U(j_lo:j_hi))
 
-   end subroutine ion_coeff_FeII
+   end subroutine ion_coeff_FeII_range
+
 
    ! ---------------------------------------------------------------- !
 
-   ! In the following there are some copies of the previous routines
-   !   coded as functions - to use in calls in T_equation
+   ! The coefficients below are the ONE definition of each rate: the grid
+   ! routines above evaluate these same elemental functions over their cell
+   ! range, and the cell-by-cell temperature solve (T_equation) calls them
+   ! directly. Until 2026-09-05 each formula was written out twice, once here
+   ! and once in the grid routine, which is exactly the drift the guidance
+   ! forbids -- and one such pair (the cooling-table interpolation, below)
+   ! had already drifted.
 
-   ! Case B recombination coefficient of HeII
-   double precision function rec_HeII_B_func(T)
+   ! Recombination coefficient of HII: case B, or the published set the
+   ! "Atomic rate set:" key selects.
+   elemental double precision function alpha_rec_HII_B(T)
    real*8, intent(in) :: T
    real*8 :: xl
 
-   if (legacy_hhe_rates) then
+   if (atomic_rate_set_k22) then
+      ! Koskinen et al. 2022, Table 1 R1 (Storey & Hummer 1995 power law)
+      alpha_rec_HII_B = rk_R1_Hp_rec(T)
+   else if (legacy_hhe_rates) then
       ! Hui & Gnedin 1997, MNRAS 292, 27, case-B fit
-      xl         = 2.0*285335.0/T
-      rec_HeII_B_func = 1.26e-14*xl**0.750
+      xl = 2.0*157807.0/T
+      alpha_rec_HII_B = 2.753e-14*xl**1.5/(1.0+(xl/2.740)**0.407)**2.242
    else
-      rec_HeII_B_func = alphaB_HeII_new(T)
+      alpha_rec_HII_B = alphaB_HII_new(T)
    endif
 
-   end function rec_HeII_B_func
+   end function alpha_rec_HII_B
+
+   !--------------!
+
+   ! Case B recombination coefficient of HeII
+   elemental double precision function alpha_rec_HeII_B(T)
+   real*8, intent(in) :: T
+   real*8 :: xl
+
+   if (atomic_rate_set_k22) then
+      ! Koskinen et al. 2022, Table 1 R2 (Storey & Hummer 1995 power law).
+      ! With He_rec_coupling on, the ground-capture alpha_1 added on top of
+      ! this stays the Mao & Kaastra fit -- Table 1 carries no such split --
+      ! so the closest like-for-like run also sets "He_rec_coupling: False".
+      alpha_rec_HeII_B = rk_R2_Hep_rec(T)
+   else if (legacy_hhe_rates) then
+      ! Hui & Gnedin 1997, MNRAS 292, 27, case-B fit
+      xl         = 2.0*285335.0/T
+      alpha_rec_HeII_B = 1.26e-14*xl**0.750
+   else
+      alpha_rec_HeII_B = alphaB_HeII_new(T)
+   endif
+
+   end function alpha_rec_HeII_B
 
    !--------------!
 
    ! Recombination cooling rate for HII
-   double precision function rec_cool_HII_func(T)
+   elemental double precision function lambda_rec_HII(T)
    real*8, intent(in) :: T
    real*8 :: xl
    
    xl = 2.0*157807.0/T
-   rec_cool_HII_func = 3.435e-30*T*xl**1.970/           &
+   lambda_rec_HII = 3.435e-30*T*xl**1.970/           &
                   (1.0+(xl/2.250)**0.376)**3.720
    
-   end function rec_cool_HII_func
+   end function lambda_rec_HII
    
    !--------------!
    
-   ! Recombination cooling rate for HeII
-   double precision function rec_cool_HeII_func(T)
+   ! Recombination cooling rate for HeII.  This is kT times the SAME
+   ! recombination coefficient the ionization balance runs on, i.e. the
+   ! electron thermal energy carried away per recombination, so it follows
+   ! whichever coefficient "Atomic rate set:" selects -- decoupling the two
+   ! would remove electrons at one rate and charge the gas at another.
+   ! The H II counterpart, lambda_rec_HII above, is an independent fit of
+   ! its own (Hui & Gnedin 1997) and is NOT switched by that key.
+   elemental double precision function lambda_rec_HeII(T)
    real*8, intent(in) :: T
          
-   rec_cool_HeII_func = kb_erg*T*rec_HeII_B_func(T)
+   lambda_rec_HeII = kb_erg*T*alpha_rec_HeII_B(T)
    
-   end function rec_cool_HeII_func
+   end function lambda_rec_HeII
    
    !--------------!
    
    ! Recombination cooling rate for HeIII
-   double precision function rec_cool_HeIII_func(T)
+   elemental double precision function lambda_rec_HeIII(T)
    real*8, intent(in) :: T
    real*8 :: xl
    
    xl = 2.0*631515.0/T
-   rec_cool_HeIII_func = 8.0*3.435e-30*T*xl**1.970/      &
+   lambda_rec_HeIII = 8.0*3.435e-30*T*xl**1.970/      &
                      (1.0+(xl/2.250)**0.376)**3.720
    
-   end function rec_cool_HeIII_func
+   end function lambda_rec_HeIII
    
    !--------------!
 
    ! Collisional ionization rate for HI
-   double precision function ion_coeff_HI_func(T)
+   elemental double precision function ci_rate_HI(T)
    real*8, intent(in) :: T
    real*8 :: th
 
-   if (legacy_hhe_rates) then
+   if (atomic_rate_set_k22) then
+      ! Koskinen et al. 2022, Table 1 R3. This is the same Voronov (1997)
+      ! fit, with the same parameters, that ci_HI_new evaluates by default;
+      ! the branch is what pins it when legacy_hhe_rates would otherwise
+      ! take the Abel et al. fit below.
+      ci_rate_HI = rk_R3_H_cion(T)
+   else if (legacy_hhe_rates) then
       ! Abel, Anninos, Zhang & Norman 1997, New Astronomy 2, 181
       !   (fit to Janev et al. 1987)
       th = log(T*8.61733e-5)
-      ion_coeff_HI_func = exp(-3.271396786e1 + 1.35365560e1*th &
+      ci_rate_HI = exp(-3.271396786e1 + 1.35365560e1*th &
                -5.73932875*th**2.0    + 1.56315498*th**3.0       &
                -2.87705600e-1*th**4.0 + 3.48255977e-2*th**5.0    &
                -2.63197617e-3*th**6.0 + 1.11954395e-4*th**7.0    &
                -2.03914985e-6*th**8.0)
    else
-      ion_coeff_HI_func = ci_HI_new(T)
+      ci_rate_HI = ci_HI_new(T)
    endif
 
-   end function ion_coeff_HI_func
+   end function ci_rate_HI
 
    !--------------!
 
    ! Collisional ionization rate for HeI
-   double precision function ion_coeff_HeI_func(T)
+   elemental double precision function ci_rate_HeI(T)
    real*8, intent(in) :: T
    real*8 :: th
 
-   if (legacy_hhe_rates) then
+   if (atomic_rate_set_k22) then
+      ! Koskinen et al. 2022, Table 1 R4 -- again the Voronov (1997) fit
+      ! ci_HeI_new already evaluates by default (see ci_rate_HI).
+      ci_rate_HeI = rk_R4_He_cion(T)
+   else if (legacy_hhe_rates) then
       ! Abel, Anninos, Zhang & Norman 1997, New Astronomy 2, 181
       !   (fit to Janev et al. 1987)
       th = log(T*8.61733e-5)
-      ion_coeff_HeI_func = exp(-4.409864886e1 + 2.391596563e1*th &
+      ci_rate_HeI = exp(-4.409864886e1 + 2.391596563e1*th &
             -1.07532302e1*th**2.0 + 3.05803875*th**3.0           &
             -5.6851189e-1*th**4.0 + 6.79539123e-2*th**5.0        &
             -5.0090561e-3*th**6.0 + 2.06723616e-4*th**7.0        &
             -3.64916141e-6*th**8.0)
    else
-      ion_coeff_HeI_func = ci_HeI_new(T)
+      ci_rate_HeI = ci_HeI_new(T)
    endif
 
-   end function ion_coeff_HeI_func
+   end function ci_rate_HeI
 
    !--------------!
 
    ! Collisional ionization rate for HeII
-   double precision function ion_coeff_HeII_func(T)
+   elemental double precision function ci_rate_HeII(T)
    real*8, intent(in) :: T
    real*8 :: xl
 
    if (legacy_hhe_rates) then
       ! Hui & Gnedin 1997, MNRAS 292, 27, collisional-ionization fit
       xl = 2.0*631515.0/T
-      ion_coeff_HeII_func = 19.95*exp(-xl/2.0)*T**(-1.5)*                &
+      ci_rate_HeII = 19.95*exp(-xl/2.0)*T**(-1.5)*                &
                            xl**(-1.089)/(1.0+(xl/0.553)**0.735)**1.275
    else
-      ion_coeff_HeII_func = ci_HeII_new(T)
+      ci_rate_HeII = ci_HeII_new(T)
    endif
 
-   end function ion_coeff_HeII_func
+   end function ci_rate_HeII
 
-   !--------------!
-
-   ! Gaunt factor: thermally-averaged free-free <g_ff>(T) at ion net charge Z,
-   ! from the van Hoof et al. (2014, MNRAS 444, 420) table (see gbar_ff).
-   double precision function GF_func(T,Z)
-   real*8,intent(in) :: T,Z
-
-   GF_func = gbar_ff(T,Z)
-
-   end function GF_func
 
    !--------------!
 
    ! Collisional excitation rate for HI
-   double precision function coex_rate_HI_func(T)
+   elemental double precision function lambda_coex_HI(T)
    real*8, intent(in) :: T
    
-   coex_rate_HI_func = 7.5e-19/(1.0+sqrt(T/1.0e5))*exp(-118348.0/T)
+   lambda_coex_HI = 7.5e-19/(1.0+sqrt(T/1.0e5))*exp(-118348.0/T)
    
-   end function coex_rate_HI_func
+   end function lambda_coex_HI
    
    !--------------!
    
    ! Collisional excitation rate for HeI
-   double precision function coex_rate_HeI_func(T)
+   elemental double precision function lambda_coex_HeI(T)
    real*8, intent(in) :: T
    
-   coex_rate_HeI_func = 1.1e-19*T**0.082*exp(-2.3e5/T)
+   lambda_coex_HeI = 1.1e-19*T**0.082*exp(-2.3e5/T)
    
-   end function coex_rate_HeI_func
+   end function lambda_coex_HeI
    
    !--------------!
    
    ! Collisional excitation rate for HeII
-   double precision function coex_rate_HeII_func(T)
+   elemental double precision function lambda_coex_HeII(T)
    real*8, intent(in) :: T
    
-   coex_rate_HeII_func = 5.54e-17*T**(-0.397)/(1.0+sqrt(T/1.0e5))     &
+   lambda_coex_HeII = 5.54e-17*T**(-0.397)/(1.0+sqrt(T/1.0e5))     &
                            *exp(-473638.0/T)
    
-   end function coex_rate_HeII_func
+   end function lambda_coex_HeII
 
    !--------------!
 
    ! Metal cooling (scalar versions for use in T_equation)
 
    ! C I cooling rate
-   double precision function cool_CI_func(T)
+   elemental double precision function lambda_line_CI(T)
    real*8, intent(in) :: T
 
    if (cno_chianti) then
-      cool_CI_func = cool_CI_chianti(T)
+      lambda_line_CI = cool_CI_chianti(T)
    else
-      cool_CI_func = 1.0e-24 + 3.1e-20*exp(-15162.0/T)            &
+      lambda_line_CI = 1.0e-24 + 3.1e-20*exp(-15162.0/T)            &
                               *(1.0 + (T/2.0e4)**1.5)
    endif
 
-   end function cool_CI_func
+   end function lambda_line_CI
 
    !--------------!
 
    ! C II cooling rate
-   double precision function cool_CII_func(T)
+   elemental double precision function lambda_line_CII(T)
    real*8, intent(in) :: T
 
    if (cno_chianti) then
-      cool_CII_func = cool_CII_chianti(T)
+      lambda_line_CII = cool_CII_chianti(T)
    else
-      cool_CII_func = 1.5e-23 + 3.1e-20*exp(-45162.0/T)           &
+      lambda_line_CII = 1.5e-23 + 3.1e-20*exp(-45162.0/T)           &
                                *(1.0 + (T/0.75e4)**1.5)
    endif
 
-   end function cool_CII_func
+   end function lambda_line_CII
 
    !--------------!
 
    ! O I cooling rate
-   double precision function cool_OI_func(T)
+   elemental double precision function lambda_line_OI(T)
    real*8, intent(in) :: T
 
    if (cno_chianti) then
-      cool_OI_func = cool_OI_chianti(T)
+      lambda_line_OI = cool_OI_chianti(T)
    else
-      cool_OI_func = 5.5e-24 + 1.1e-20*exp(-30162.0/T)            &
+      lambda_line_OI = 5.5e-24 + 1.1e-20*exp(-30162.0/T)            &
                               *(1.0 + (T/0.75e4)**0.5)
    endif
 
-   end function cool_OI_func
+   end function lambda_line_OI
 
    !--------------!
 
    ! O II cooling rate
-   double precision function cool_OII_func(T)
+   elemental double precision function lambda_line_OII(T)
    real*8, intent(in) :: T
 
    if (cno_chianti) then
-      cool_OII_func = cool_OII_chianti(T)
+      lambda_line_OII = cool_OII_chianti(T)
    else
-      cool_OII_func = 5.1e-20*exp(-35162.0/T)                     &
+      lambda_line_OII = 5.1e-20*exp(-35162.0/T)                     &
                             *(1.0 + (T/0.75e4)**0.5)
    endif
 
-   end function cool_OII_func
+   end function lambda_line_OII
 
    !--------------!
 
@@ -3106,27 +3606,36 @@
    integer, intent(in) :: i
    real*8, dimension(1-Ng:N+Ng), intent(in)  :: T
    real*8, dimension(1-Ng:N+Ng), intent(out) :: out
-   select case (i)
-      case (im_CII);   call rec_CII  (T,out)
-      case (im_CIII);  call rec_CIII (T,out)
-      case (im_OII);   call rec_OII  (T,out)
-      case (im_OIII);  call rec_OIII (T,out)
-      case (im_NII);   call rec_NII  (T,out)
-      case (im_NIII);  call rec_NIII (T,out)
-      case (im_MgII);  call rec_MgII (T,out)
-      case (im_MgIII); call rec_MgIII(T,out)
-      case (im_SiII);  call rec_SiII (T,out)
-      case (im_SiIII); call rec_SiIII(T,out)
-      case (im_CaII);  call rec_CaII (T,out)
-      case (im_CaIII); call rec_CaIII(T,out)
-      case (im_NaII);  call rec_NaII (T,out)
-      case (im_KII);   call rec_KII  (T,out)
-      case (im_S_II);  call rec_SII  (T,out)
-      case (im_FeII);  call rec_FeII (T,out)
-      case (im_FeIII); call rec_FeIII(T,out)
-      case default;    out = 0.0d0
-   end select
+   call rec_coeff_by_ion_range(i,T,out,1-Ng,N+Ng)
    end subroutine rec_coeff_by_ion
+
+   subroutine rec_coeff_by_ion_range(i,T,out,j_lo,j_hi)
+   integer, intent(in) :: j_lo,j_hi
+   integer, intent(in) :: i
+   real*8, dimension(1-Ng:N+Ng), intent(in)  :: T
+   real*8, dimension(1-Ng:N+Ng), intent(inout) :: out
+   select case (i)
+      case (im_CII);   call rec_CII_range(T,out,j_lo,j_hi)
+      case (im_CIII);  call rec_CIII_range(T,out,j_lo,j_hi)
+      case (im_OII);   call rec_OII_range(T,out,j_lo,j_hi)
+      case (im_OIII);  call rec_OIII_range(T,out,j_lo,j_hi)
+      case (im_NII);   call rec_NII_range(T,out,j_lo,j_hi)
+      case (im_NIII);  call rec_NIII_range(T,out,j_lo,j_hi)
+      case (im_MgII);  call rec_MgII_range(T,out,j_lo,j_hi)
+      case (im_MgIII); call rec_MgIII_range(T,out,j_lo,j_hi)
+      case (im_SiII);  call rec_SiII_range(T,out,j_lo,j_hi)
+      case (im_SiIII); call rec_SiIII_range(T,out,j_lo,j_hi)
+      case (im_CaII);  call rec_CaII_range(T,out,j_lo,j_hi)
+      case (im_CaIII); call rec_CaIII_range(T,out,j_lo,j_hi)
+      case (im_NaII);  call rec_NaII_range(T,out,j_lo,j_hi)
+      case (im_KII);   call rec_KII_range(T,out,j_lo,j_hi)
+      case (im_S_II);  call rec_SII_range(T,out,j_lo,j_hi)
+      case (im_FeII);  call rec_FeII_range(T,out,j_lo,j_hi)
+      case (im_FeIII); call rec_FeIII_range(T,out,j_lo,j_hi)
+      case default;    out(j_lo:j_hi) = 0.0d0
+   end select
+   end subroutine rec_coeff_by_ion_range
+
 
    !--------------!
 
@@ -3135,27 +3644,36 @@
    integer, intent(in) :: i
    real*8, dimension(1-Ng:N+Ng), intent(in)  :: T
    real*8, dimension(1-Ng:N+Ng), intent(out) :: out
-   select case (i)
-      case (im_CI);   call ion_coeff_CI  (T,out)
-      case (im_CII);  call ion_coeff_CII (T,out)
-      case (im_OI);   call ion_coeff_OI  (T,out)
-      case (im_OII);  call ion_coeff_OII (T,out)
-      case (im_NI);   call ion_coeff_NI  (T,out)
-      case (im_NII);  call ion_coeff_NII (T,out)
-      case (im_MgI);  call ion_coeff_MgI (T,out)
-      case (im_MgII); call ion_coeff_MgII(T,out)
-      case (im_SiI);  call ion_coeff_SiI (T,out)
-      case (im_SiII); call ion_coeff_SiII(T,out)
-      case (im_CaI);  call ion_coeff_CaI (T,out)
-      case (im_CaII); call ion_coeff_CaII(T,out)
-      case (im_NaI);  call ion_coeff_NaI (T,out)
-      case (im_KI);   call ion_coeff_KI  (T,out)
-      case (im_S_I);  call ion_coeff_SI  (T,out)
-      case (im_FeI);  call ion_coeff_FeI (T,out)
-      case (im_FeII); call ion_coeff_FeII(T,out)
-      case default;   out = 0.0d0
-   end select
+   call ion_coeff_by_ion_range(i,T,out,1-Ng,N+Ng)
    end subroutine ion_coeff_by_ion
+
+   subroutine ion_coeff_by_ion_range(i,T,out,j_lo,j_hi)
+   integer, intent(in) :: j_lo,j_hi
+   integer, intent(in) :: i
+   real*8, dimension(1-Ng:N+Ng), intent(in)  :: T
+   real*8, dimension(1-Ng:N+Ng), intent(inout) :: out
+   select case (i)
+      case (im_CI);   call ion_coeff_CI_range(T,out,j_lo,j_hi)
+      case (im_CII);  call ion_coeff_CII_range(T,out,j_lo,j_hi)
+      case (im_OI);   call ion_coeff_OI_range(T,out,j_lo,j_hi)
+      case (im_OII);  call ion_coeff_OII_range(T,out,j_lo,j_hi)
+      case (im_NI);   call ion_coeff_NI_range(T,out,j_lo,j_hi)
+      case (im_NII);  call ion_coeff_NII_range(T,out,j_lo,j_hi)
+      case (im_MgI);  call ion_coeff_MgI_range(T,out,j_lo,j_hi)
+      case (im_MgII); call ion_coeff_MgII_range(T,out,j_lo,j_hi)
+      case (im_SiI);  call ion_coeff_SiI_range(T,out,j_lo,j_hi)
+      case (im_SiII); call ion_coeff_SiII_range(T,out,j_lo,j_hi)
+      case (im_CaI);  call ion_coeff_CaI_range(T,out,j_lo,j_hi)
+      case (im_CaII); call ion_coeff_CaII_range(T,out,j_lo,j_hi)
+      case (im_NaI);  call ion_coeff_NaI_range(T,out,j_lo,j_hi)
+      case (im_KI);   call ion_coeff_KI_range(T,out,j_lo,j_hi)
+      case (im_S_I);  call ion_coeff_SI_range(T,out,j_lo,j_hi)
+      case (im_FeI);  call ion_coeff_FeI_range(T,out,j_lo,j_hi)
+      case (im_FeII); call ion_coeff_FeII_range(T,out,j_lo,j_hi)
+      case default;   out(j_lo:j_hi) = 0.0d0
+   end select
+   end subroutine ion_coeff_by_ion_range
+
 
    !--------------!
 
@@ -3164,22 +3682,60 @@
    integer, intent(in) :: i
    real*8, dimension(1-Ng:N+Ng), intent(in)  :: T
    real*8, dimension(1-Ng:N+Ng), intent(out) :: out
-   select case (i)
-      case (im_CI);   call cool_CI  (T,out)
-      case (im_CII);  call cool_CII (T,out)
-      case (im_OI);   call cool_OI  (T,out)
-      case (im_OII);  call cool_OII (T,out)
-      case (im_NI);   call cool_NI  (T,out)
-      case (im_NII);  call cool_NII (T,out)
-      case (im_MgI);  call cool_MgI (T,out)
-      case (im_MgII); call cool_MgII(T,out)
-      case (im_CaII); call cool_CaII(T,out)
-      case (im_NaI);  call cool_NaI (T,out)
-      case (im_FeI);  call cool_FeI (T,out)
-      case (im_FeII); call cool_FeII(T,out)
-      case default;   out = 0.0d0
-   end select
+   call cool_coeff_by_ion_range(i,T,out,1-Ng,N+Ng)
    end subroutine cool_coeff_by_ion
+
+   subroutine cool_coeff_by_ion_range(i,T,out,j_lo,j_hi)
+   integer, intent(in) :: j_lo,j_hi
+   integer, intent(in) :: i
+   real*8, dimension(1-Ng:N+Ng), intent(in)  :: T
+   real*8, dimension(1-Ng:N+Ng), intent(inout) :: out
+   integer :: j
+   do j = j_lo,j_hi
+      out(j) = cool_coeff_of_ion(i, T(j))
+   enddo
+   end subroutine cool_coeff_by_ion_range
+
+   ! Radiative (forbidden/fine-structure) line-cooling coefficient Lambda(T)
+   ! [erg cm^3 s^-1] per (n_e n_ion) of one ion, keyed by its canonical
+   ! species_table index. THE CASE LIST LIVES HERE ONLY: the grid routine
+   ! above loops over this function and the cell-by-cell temperature root of
+   ! the advection post-process calls it directly, so both paths take the same
+   ! coefficient for the same ion. C/N/O use the analytic Black fits or the
+   ! CHIANTI fits under cno_chianti, Mg/Ca/Na/Fe II the analytic CHIANTI fits;
+   ! only Fe I interpolates a table. Ions with no entry (non-coolant) return 0.
+   pure double precision function cool_coeff_of_ion(i,Ts)
+   integer, intent(in) :: i
+   real*8, intent(in) :: Ts
+   select case (i)
+      case (im_CI);   cool_coeff_of_ion = lambda_line_CI  (Ts)
+      case (im_CII);  cool_coeff_of_ion = lambda_line_CII (Ts)
+      case (im_OI);   cool_coeff_of_ion = lambda_line_OI  (Ts)
+      case (im_OII);  cool_coeff_of_ion = lambda_line_OII (Ts)
+      case (im_NI)
+         if (cno_chianti) then
+            cool_coeff_of_ion = cool_NI_chianti(Ts)
+         else
+            !To Be Checked/AIOLOS tuning?
+            cool_coeff_of_ion = 0.0d0
+         endif
+      case (im_NII)
+         if (cno_chianti) then
+            cool_coeff_of_ion = cool_NII_chianti(Ts)
+         else
+            !To Be Checked/AIOLOS tuning?
+            cool_coeff_of_ion = 0.0d0
+         endif
+      case (im_MgI);  cool_coeff_of_ion = cool_MgI_func (Ts)
+      case (im_MgII); cool_coeff_of_ion = cool_MgII_func(Ts)
+      case (im_CaII); cool_coeff_of_ion = cool_CaII_func(Ts)
+      case (im_NaI);  cool_coeff_of_ion = cool_NaI_func (Ts)
+      case (im_FeI);  cool_coeff_of_ion = cool_table_value(cool_logL_FeI, Ts)
+      case (im_FeII); cool_coeff_of_ion = cool_FeII_func(Ts)
+      case default;   cool_coeff_of_ion = 0.0d0
+   end select
+   end function cool_coeff_of_ion
+
 
    !--------------!
 
@@ -3223,38 +3779,14 @@
 
    !--------------!
 
-   ! Scalar (single-T) mirror of interp_cool_table, used by the cell-by-cell
-   ! temperature solve (T_equation) inside the advection post-process. The
-   ! algorithm is bit-identical to interp_cool_table so the temperature the
-   ! solver converges to is consistent with the cooling eval_cool reports.
-   double precision function interp_cool_table_scalar(logL,Ts)
-   real*8, dimension(NCOOLT), intent(in) :: logL
-   real*8, intent(in) :: Ts
-   integer :: k
-   real*8  :: lt, pos, frac
-   lt  = log10(max(Ts, 1.0d0))
-   pos = (lt - cool_logT(1))/cool_dlogT + 1.0d0
-   ! .not.(pos > 1) also catches a NaN pos (e.g. a NaN trial T from the
-   ! post-process hybrd1 search), so int(pos) can never index out of bounds.
-   if (.not. (pos > 1.0d0)) then
-      interp_cool_table_scalar = 10.0d0**logL(1)
-   else if (pos .ge. dble(NCOOLT)) then
-      interp_cool_table_scalar = 10.0d0**logL(NCOOLT)
-   else
-      k    = int(pos)
-      frac = pos - dble(k)
-      interp_cool_table_scalar = 10.0d0**( logL(k) + frac*(logL(k+1) - logL(k)) )
-   endif
-   interp_cool_table_scalar = interp_cool_table_scalar                &
-                              *coronal_excitation_cutoff(Ts)
-   end function interp_cool_table_scalar
 
    !--------------!
 
-   ! Scalar (single T, single ne) mirror of interp_cool_table_2d, for the
-   ! cell-by-cell post-process temperature solve. Bit-identical algorithm to the
-   ! vectorized routine so the converged T is consistent with eval_cool.
-   double precision function interp_cool_table_2d_scalar(logL2d,Ts,nes)
+   ! Bilinear value of a 2-D (T, ne) cooling table at one cell. This is the
+   ! ONE definition: interp_cool_table_2d evaluates it over the grid and the
+   ! cell-by-cell temperature solve calls it directly, so the converged T
+   ! balances the cooling eval_cool reports.
+   pure double precision function cool_table_value_2d(logL2d,Ts,nes)
    real*8, dimension(NCOOLT,NCOOLNE), intent(in) :: logL2d
    real*8, intent(in) :: Ts, nes
    real*8, parameter :: dlogne = 0.5d0
@@ -3285,66 +3817,22 @@
    f11 = logL2d(kt+1, ke+1)
    l0  = f00 + ft*(f10 - f00)
    l1  = f01 + ft*(f11 - f01)
-   interp_cool_table_2d_scalar = 10.0d0**( l0 + fn*(l1 - l0) )           &
+   cool_table_value_2d = 10.0d0**( l0 + fn*(l1 - l0) )           &
                                  *coronal_excitation_cutoff(Ts)
-   end function interp_cool_table_2d_scalar
+   end function cool_table_value_2d
 
    !--------------!
 
-   ! Scalar density-dependent Fe II coefficient Lambda_eff(T,ne) per
-   ! (n_e n_FeII): post-process twin of cool_FeII_ne, used by T_equation so
-   ! the converged cell-by-cell T balances the same Fe II cooling eval_cool applies.
-   double precision function cool_FeII_ne_scalar(Ts,nes)
+   ! Density-dependent Fe II coefficient Lambda_eff(T,ne) per (n_e n_FeII).
+   ! The table is selected here and nowhere else: cool_FeII_ne fills the grid
+   ! from this function and T_equation calls it for one cell.
+   pure double precision function cool_FeII_ne_value(Ts,nes)
    real*8, intent(in) :: Ts, nes
-   cool_FeII_ne_scalar = interp_cool_table_2d_scalar(cool_logL_FeII_ne, Ts, nes)
-   end function cool_FeII_ne_scalar
+   cool_FeII_ne_value = cool_table_value_2d(cool_logL_FeII_ne, Ts, nes)
+   end function cool_FeII_ne_value
 
    !--------------!
 
-   ! Scalar (single-T) metal line-cooling coefficient Lambda(T)
-   ! [erg cm^3 s^-1] per (n_e n_ion), dispatched by canonical ion index.
-   ! Mirrors cool_coeff_by_ion exactly: C/N/O use the analytic Black fits,
-   ! Mg/Ca/Na/Fe II the analytic CHIANTI fits (same elemental functions as
-   ! the vectorized cool_*); only Fe I interpolates its table. Provided so
-   ! the post-process temperature solve can include the full metal coolant
-   ! set.
-   double precision function cool_coeff_by_ion_scalar(i,Ts)
-   integer, intent(in) :: i
-   real*8, intent(in) :: Ts
-   select case (i)
-      case (im_CI);   cool_coeff_by_ion_scalar = cool_CI_func  (Ts)
-      case (im_CII);  cool_coeff_by_ion_scalar = cool_CII_func (Ts)
-      case (im_OI);   cool_coeff_by_ion_scalar = cool_OI_func  (Ts)
-      case (im_OII);  cool_coeff_by_ion_scalar = cool_OII_func (Ts)
-      case (im_NI)
-         if (cno_chianti) then
-            cool_coeff_by_ion_scalar = cool_NI_chianti(Ts)
-         else
-            cool_coeff_by_ion_scalar = 0.0d0
-         endif
-      case (im_NII)
-         if (cno_chianti) then
-            cool_coeff_by_ion_scalar = cool_NII_chianti(Ts)
-         else
-            cool_coeff_by_ion_scalar = 0.0d0
-         endif
-      case (im_MgI);  cool_coeff_by_ion_scalar = cool_MgI_func (Ts)
-      case (im_MgII); cool_coeff_by_ion_scalar = cool_MgII_func(Ts)
-      case (im_CaII); cool_coeff_by_ion_scalar = cool_CaII_func(Ts)
-      case (im_NaI);  cool_coeff_by_ion_scalar = cool_NaI_func (Ts)
-      case (im_FeI);  cool_coeff_by_ion_scalar = &
-                        interp_cool_table_scalar(cool_logL_FeI,  Ts)
-      case (im_FeII); cool_coeff_by_ion_scalar = cool_FeII_func(Ts)
-      case default;   cool_coeff_by_ion_scalar = 0.0d0
-   end select
-   end function cool_coeff_by_ion_scalar
-
-   ! Legacy name-keyed wrapper.
-   double precision function cool_coeff_metal_scalar(name,Ts)
-   character(len=*), intent(in) :: name
-   real*8, intent(in) :: Ts
-   cool_coeff_metal_scalar = cool_coeff_by_ion_scalar(ion_index_of(name), Ts)
-   end function cool_coeff_metal_scalar
 
    ! End of module
    end module Cooling_Coefficients

@@ -38,8 +38,34 @@
       real*8, dimension(1-Ng:N+Ng,n_mion) :: nm
       real*8, dimension(1-Ng:N+Ng,n_species),intent(out) :: f_sp
       real*8, dimension(3,1-Ng:N+Ng),intent(out) :: W,u
+      logical :: ex_outdir
+      integer :: rc_outdir
       
       write(*,*) '(init.f90) Initializing the simulation..'
+
+      ! Every output of the run -- from the IC dump a few calls below to the
+      ! final profiles -- goes to ./output, and nothing else creates it, so a
+      ! fresh run directory used to die at the first write with a bare
+      ! Fortran runtime error that named neither the directory nor the cure.
+      ! Create it here; if that fails (permissions, a FILE named output),
+      ! stop and say what is missing.
+      !
+      ! The test is "can a file be created inside it", not an INQUIRE on
+      ! the directory: the standard does not define INQUIRE for a
+      ! directory, gfortran answers .true. for 'output/.' and ifx answers
+      ! .false. (measured 2026-09-05: every ifx run stopped here with the
+      ! directory present), and a writable directory is what the run needs.
+      ex_outdir = output_directory_writable()
+      if (.not. ex_outdir) then
+         call execute_command_line('mkdir -p output', exitstat=rc_outdir)
+         ex_outdir = output_directory_writable()
+         if (rc_outdir .ne. 0 .or. .not. ex_outdir) then
+            write(*,*) '(init.f90) ERROR: cannot create the ./output '//  &
+                       'directory the run writes to; create it and rerun.'
+            error stop 1
+         endif
+         write(*,*) '(init.f90) Created the ./output directory.'
+      endif
 
       !---- Global options ----!
       
@@ -125,34 +151,22 @@
       !------------------------------------------------!
 
       ! Evaluate the composition of the initial state BEFORE the ghosts are
-      ! filled. Apply_BC reads n_part_cell1 (the cell-1 particle count) for the
-      ! continuous-temperature base ghost, T(1) = p(1)/n_part_cell1; that global
-      ! is written by get_species_densities, so without this call the first
-      ! Apply_BC of a run uses the input_read placeholder n_part_cell1 =
-      ! ntot_bc + dp_bc, i.e. a ghost built from a DIFFERENT state than the one
+      ! filled. The lower boundary reads n_part_cell1 (the cell-1 particle
+      ! count) to turn cell 1's pressure into the temperature and the particle
+      ! count per unit mass its compatibility relation needs; that global is
+      ! written by get_species_densities, so without this call the first
+      ! Apply_BC of a run builds a face state from the input_read placeholder
+      ! n_part_cell1 = ntot_bc + dp_bc, i.e. from a DIFFERENT state than the one
       ! it bounds. Every later Apply_BC in the marching loop is preceded by a
       ! composition solve, so this is the one entry point where the value can be
       ! stale, and it is the value the standalone residual/Newton diagnostics
       ! (which stop right after init) see. On HD 189733 b the placeholder made
-      ! the ghost pressure disagree with the interior by 4.4%, which the base
-      ! face reads as a contact discontinuity (docs/hd189_base_checkerboard.md
-      ! section 15). Runs that do not set "Base ghost temperature: continuous"
-      ! never read n_part_cell1, so they are unaffected.
+      ! the old ghost pressure disagree with the interior by 4.4%, which the
+      ! base face read as a contact discontinuity
+      ! (docs/hd189_base_checkerboard.md section 15).
       nhei = 0.0d0;  nheii = 0.0d0;  nheiii = 0.0d0;  nheiTR = 0.0d0
       call get_species_densities(W(1,:),f_sp,nhi,nhii,nhei,nheii,           &
                                  nheiii,nheiTR,nm,ne,n_tot)
-
-      ! Same rule for the other state-dependent quantity the lower BC reads:
-      ! with "Base velocity: massflux" the ghost velocity is F_c/(rho_bc r^2),
-      ! and F_c is the wind mass-flux constant that the marching loop updates
-      ! each step. It starts at -1, which Apply_BC reads as "not available yet"
-      ! and silently falls back to the valve -- so the first step, and any
-      ! diagnostic that stops right after init, evaluate a DIFFERENT velocity
-      ! boundary condition than the run uses. Seed it from the initial state,
-      ! by the same average over the escape region the loop takes.
-      if (base_v_massflux .and. j_min .le. N)                                &
-         base_flux_const = sum(W(1,j_min:N)*W(2,j_min:N)                     &
-                               *r(j_min:N)*r(j_min:N))/dble(N - j_min + 1)
 
       ! Apply BC to initial condition
       call W_to_U(W,u)
@@ -162,6 +176,19 @@
       
       ! End of subroutine
       end subroutine init
+
+      !----------------------------------!
+
+      logical function output_directory_writable()
+      ! Whether a file can be created in ./output: a probe file is opened
+      ! with status='replace' and deleted on close. Portable where an
+      ! INQUIRE on the directory itself is not (see the caller).
+      integer :: u, ios
+      open(newunit=u, file='output/.writable_probe', status='replace',   &
+           action='write', iostat=ios)
+      output_directory_writable = (ios .eq. 0)
+      if (ios .eq. 0) close(u, status='delete')
+      end function output_directory_writable
       
       ! End of module
       end module Initialization

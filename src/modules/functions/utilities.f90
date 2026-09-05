@@ -2,6 +2,7 @@
 	! Collection of auxiliary subroutines
 
    use global_parameters
+   use build_stamp, only: build_git, build_dirty
    use species_table, only: n_mion, n_mphot, mion_isphot, mion_iphot,  &
 	                         mion_stage, mion_elem, melem_A,  &
 	                         bsp_charge, bsp_mass
@@ -10,6 +11,191 @@
 
 	contains
 
+
+   ! ------------------------------------------------------------------ !
+
+   subroutine write_row_layout_header(unit)
+   ! The one line every profile file carries to say what its rows ARE.
+   !
+   ! Every output written on the full 1-Ng:N+Ng range begins with Ng ghost
+   ! rows and ends with Ng more, and they are not part of the solution:
+   ! including them in a flux-spread or a residual measure doubles it (the
+   ! accepted flux spread of the HD 189733 b solve is 4.64e-3 over the
+   ! physical cells and 1.05e-2 with the two upper ghost rows counted,
+   ! section 133.6 of docs/Update_EXHALE.md).  A reader that does not know
+   ! this silently averages two rows of boundary data into every profile.
+   !
+   ! It was written by Hydro_ioniz(_adv).txt alone, which made it a property
+   ! of one file rather than of the convention; it is now written from here
+   ! by every profile writer, so the sentence has one author.  The line is a
+   ! '#' comment, so no numeric parse and no golden changes.
+      integer, intent(in) :: unit
+   write(unit,'(A,I0,A,I0,A,I0,A,I0)') '# rows ', N+2*Ng, ': ', Ng,       &
+        ' ghost cells at each end; physical cells are rows ', Ng+1,       &
+        ' to ', Ng+N
+   end subroutine write_row_layout_header
+
+   ! ------------------------------------------------------------------ !
+
+   ! ------------------------------------------------------------------ !
+
+   integer(8) function file_rolling_checksum(fname) result(ck)
+   ! A CHECKSUM OF A FILE'S BYTES, for provenance only.
+   !
+   ! It is NOT a cryptographic digest and is deliberately not called one: two
+   ! independent modular rolling sums,
+   !     h_i <- mod( h_i * a_i + byte, 2^31 - 1 ),   a = (131, 8191),
+   ! packed into one 62-bit integer. Both moduli are prime and every
+   ! intermediate stays below 2^38, so the arithmetic is exact in integer(8)
+   ! on every compiler -- which a 64-bit FNV or CRC written in standard
+   ! Fortran is not, since they rely on unsigned wraparound the language does
+   ! not define.
+   !
+   ! Returns -1 for a file that cannot be opened, which is how an absent
+   ! metals.inp or base.inp is reported.
+   character(len=*), intent(in) :: fname
+   integer, parameter :: m = 2147483647            ! 2^31 - 1
+   integer(8) :: h1, h2
+   integer :: u, ios
+   integer(1) :: b
+   logical :: there
+   ck = -1_8
+   inquire(file=fname, exist=there)
+   if (.not. there) return
+   open(newunit=u, file=fname, access='stream', form='unformatted',       &
+        status='old', action='read', iostat=ios)
+   if (ios .ne. 0) return
+   h1 = 1_8;  h2 = 1_8
+   do
+      read(u, iostat=ios) b
+      if (ios .ne. 0) exit
+      h1 = mod(h1*131_8   + int(iand(int(b,4), 255), 8), int(m,8))
+      h2 = mod(h2*8191_8  + int(iand(int(b,4), 255), 8), int(m,8))
+   enddo
+   close(u)
+   ck = h1*int(m,8) + h2
+   end function file_rolling_checksum
+
+   ! ------------------------------------------------------------------ !
+
+   subroutine write_provenance_header(unit)
+   ! WHAT PRODUCED THIS FILE, so that a profile found on disk in a year can
+   ! be tied to an executable, an input and a set of physics options without
+   ! asking anyone. The external review of 2026-09-03 (section 5, item 12.11)
+   ! asks for exactly this: scientific products marked with the executable
+   ! and source revision and the physics options they were made under.
+   !
+   !   git / dirty           the revision the EXECUTABLE was built from and
+   !                         whether the working tree carried uncommitted
+   !                         changes at that moment. Stamped in by the
+   !                         Makefile; the run never calls git. NO BUILD TIME
+   !                         is compiled in: a timestamp in a constant makes
+   !                         two builds of one source differ, which destroys
+   !                         the only cheap test for a stale object.
+   !   run                   when THIS run wrote the file, from date_and_time.
+   !   ck_input / ck_base / ck_metals
+   !                         checksums of the input files AS READ, computed
+   !                         now (file_rolling_checksum above; -1 = absent).
+   !   recon / base_bc / carrier / restart_schema / resid_def / N
+   !                         the discretization, the lower boundary model,
+   !                         the molecular-carrier model, the version of the
+   !                         restart file's own layout, the version of the
+   !                         residual definition the gates used, and the grid.
+   !
+   ! It is a '#' comment, so no numeric parse and no golden changes: the
+   ! regression compares with grep -v '^ *#'.
+      integer, intent(in) :: unit
+      character(len=16) :: bmod, cmod
+      character(len=8)  :: d_ymd
+      character(len=10) :: d_hms
+      ! THERE IS ONE LOWER BOUNDARY, so this field names it rather than
+      ! selecting among options. Section 152 replaced the three component-wise
+      ! ghost closures this used to distinguish -- `hydrostatic_base`,
+      ! `Base ghost temperature: continuous` and the isothermal default -- with
+      ! a characteristic condition imposed at the face, and retired their keys.
+      ! The field is kept, and kept in this position, so that a reader of an
+      ! older profile can still tell which boundary produced it.
+      bmod = 'characteristic'
+      if (.not. thereis_mol) then
+         cmod = 'none'
+      else if (carrier_transport) then
+         cmod = 'transported'
+      else
+         cmod = 'local'
+      endif
+      call date_and_time(date=d_ymd, time=d_hms)
+      write(unit,'(A)') '# provenance: git='//trim(build_git)//             &
+           ' tree='//trim(build_dirty)//                                    &
+           ' run='//d_ymd(1:4)//'-'//d_ymd(5:6)//'-'//d_ymd(7:8)//'T'//     &
+           d_hms(1:2)//':'//d_hms(3:4)//':'//d_hms(5:6)
+      write(unit,'(A,I0,A,I0,A,I0)') '# provenance: ck_input=',             &
+           file_rolling_checksum('input.inp'),                              &
+           ' ck_base=',   file_rolling_checksum('base.inp'),                &
+           ' ck_metals=', file_rolling_checksum('metals.inp')
+      write(unit,'(A,I0)') '# provenance: recon='//                        &
+           trim(reconstruction_operator_label())//                          &
+           ' base_bc='//trim(bmod)//' carrier='//trim(cmod)//              &
+           ' restart_schema=3 resid_def=145 N=', N
+   end subroutine write_provenance_header
+
+   subroutine write_coupling_state_header(unit)
+   ! THE LINE THAT SAYS WHAT PHYSICS THE STATE IN THIS FILE WAS PRODUCED
+   ! UNDER, for every switch of the run that is NOT fixed by input.inp but
+   ! changes while the run converges.
+   !
+   ! WHY. A restart re-reads the state but re-derives the switches from
+   ! input.inp, and for a STAGED switch that is a different setting from the
+   ! one the state was converged under. Measured (docs/p55_base_mode.md
+   ! section 10): the WASP-121b steady solution was reached with the SvS85
+   ! secondary ionization armed at step 2242, the restart re-staged it, the
+   ! first ionization sweep moved the particle count by 8.1e-3 rather than
+   ! 2.6e-4, and the layer left the root by a peak-to-peak 4.3 times the wind
+   ! mass flux instead of 0.017.
+   !
+   ! WHAT IS IN IT. The census of every switch EXHALE_main changes inside the
+   ! marching loop, so a reader of this line knows the whole run state and not
+   ! just the part today's load_IC acts on:
+   !
+   !   sec_ion    the SvS85/Dalgarno photoelectron secondary-ionization
+   !              coupling, as applied when the file was written (T/F), and
+   !              the step it was armed at (-1 = never staged in)
+   !   recon      the discrete reconstruction operator in force, which is not
+   !              rec_method alone while the PLM -> WENO3 continuation of
+   !              section 148 is armed: the label comes from
+   !              reconstruction_operator_label() so that a file written
+   !              inside a ramp says so
+   !
+   ! WHAT LEFT IT, section 152. `valve` (valve_eps) and `fluxconst`
+   ! (base_flux_const) were the two switches the OLD base boundary chose for
+   ! itself, and the characteristic boundary has neither: there is no one-way
+   ! valve to smooth and no moving average standing in for a mass flux, so a
+   ! header that reported them would be reporting settings the run cannot
+   ! have. `load_IC`'s parser reads the fields it recognizes one at a time and
+   ! ignores the rest, so a file written before section 152 still restores its
+   ! sec_ion state and an older reader still finds `sec_ion` in a file written
+   ! after it.
+   !
+   ! It is a '#' comment, so no numeric parse and no golden changes: the
+   ! regression compares with grep -v '^ *#'.
+      integer, intent(in) :: unit
+      character(len=1) :: s
+      character(len=16) :: ptr
+      s = 'F';  if (sec_ion_active) s = 'T'
+      ! iontrans: the state in this file was produced with the hydrogen
+      ! ionization state CARRIED (Ionization transport), so its H+ column is a
+      ! transported quantity and not the local root of its own cell. A
+      ! reader that restarts it with the option off will overwrite that
+      ! column on the first sweep, which is a real change of physics and
+      ! worth saying out loud. Written only when the option is on, so every
+      ! file a run without it produces is unchanged, byte for byte.
+      ptr = ''
+      if (ionization_transport) ptr = ' iontrans=T'
+      write(unit,'(A,A1,A,I0,A,A,A)')                                     &
+           '# coupling: sec_ion=', s,                                     &
+           ' sec_ion_step=', sec_ion_armed_step,                          &
+           ' recon=', trim(reconstruction_operator_label()),              &
+           trim(ptr)
+   end subroutine write_coupling_state_header
 	! ------------------------------------------------------!
 
 	subroutine calc_ne(nhii,nheii,nheiii,ne,nm,nmol)
@@ -133,6 +319,53 @@
 		end subroutine accum
 
 	end subroutine calc_ntot
+
+	! ------------------------------------------------------!
+
+	subroutine hydrogen_helium_nuclei_density(nhi,nhii,nhei,nheii,nheiii,   &
+	                                          nh,nhe,nmol,nox)
+	! Total hydrogen and helium NUCLEI densities [same units as the inputs].
+	! Every carrier of an H or He nucleus is counted with its nucleus
+	! multiplicity, so nh and nhe are conserved by the chemistry: H2 and H2+
+	! carry two H nuclei, H3+ three, HeH+ one H and one He, OH one H and H2O
+	! two.  CO carries none and is absent from the sum.  The He 2^3S column is
+	! not an argument -- it is an excited level of He I (bsp_is_excited_level),
+	! already inside nhei.
+	! This is the ONE definition of the H/He nucleus totals: the ionization
+	! equilibrium solve, its heating dump and the advection-corrected
+	! post-process all call it, so the ionized fraction
+	!   xion = n_e/(nh + nhe)
+	! that Dalgarno, Yan & Liu (1999) section 7 define ("the number density
+	! ratio of the electrons to the hydrogen and helium nuclei") and the H
+	! nucleus density that scales the FUV/Lyman-Werner beam cannot drift apart
+	! between them.
+	! The optional nmol (cols 1 H2, 2 H2+, 3 H3+, 4 HeH+) and nox (cols 1 OH,
+	! 2 H2O, 3 CO) are ignored unless the run carries that chemistry; a caller
+	! that does not track those carriers simply omits them.  The statement
+	! order is fixed: it is the FP add order the goldens were snapshotted with.
+
+	real*8, dimension(1-Ng:N+Ng), intent(in)  :: nhi,nhii
+	real*8, dimension(1-Ng:N+Ng), intent(in)  :: nhei,nheii,nheiii
+	real*8, dimension(1-Ng:N+Ng,4), intent(in), optional :: nmol  ! molecular
+	real*8, dimension(1-Ng:N+Ng,3), intent(in), optional :: nox   ! OH H2O CO
+	real*8, dimension(1-Ng:N+Ng), intent(out) :: nh,nhe
+
+	nh  = nhi  + nhii
+	nhe = nhei + nheii + nheiii
+
+	if (present(nmol) .and. thereis_mol) then
+		nh  = nh  + 2.0d0*(nmol(:,1) + nmol(:,2))                        &
+		          + 3.0d0*nmol(:,3) + nmol(:,4)
+		nhe = nhe + nmol(:,4)
+	endif
+
+	! OH carries one H nucleus and H2O two (bsp_nH of the species table).
+	! Written as its own statement so the sum above stays bit-for-bit the one
+	! a run without the oxygen chemistry evaluates.
+	if (present(nox) .and. thereis_oxychem)                               &
+		nh = nh + nox(:,1) + 2.0d0*nox(:,2)
+
+	end subroutine hydrogen_helium_nuclei_density
 
 	! ------------------------------------------------------!
 	

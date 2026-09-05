@@ -39,13 +39,11 @@
 	! the molecular-free limit reproduces the atomic systems exactly.  The
 	! Table-1 R21/R22 are therefore transcribed in mol_rates but unused.
 	!
-	! params layout (1-18 identical to System_HeH_TR):
-	!   1 P_HI  2 P_HeI  3 P_HeII  4 rchiiB  5 rcheiiB  6 rcheiiiB
-	!   7 n_h(nuclei)  8 n_he  9 a_ion_HI  10 a_ion_HeI  11 a_ion_HeII
-	!   12 rcheiTR  13 A31  14 P_HeITR  15 q13  16 q31a  17 q31b  18 Q31
-	!   19 P_H2 (photoionization rate coefficient of H2, s^-1)
-	!   20 T [K]   21 n_tot (total gas-particle density, electrons excluded:
-	!                       the third body M of R12/R13/R15)
+	! Where the cell state comes from: ieq_cell (ion_cell_state.f90), one
+	! named field per quantity, P_H2 and P_H2_di among them.  The
+	! params(40) argument ion_system_HeH_mol still carries is the MINPACK
+	! callback signature and nothing else -- no element of it is read here
+	! -- so there is no numbered layout to keep in step.
 	!
 	! Lyman-Werner photodissociation H2 + hv -> H + H enters row 4 next to
 	! the H2 photoionization, as the self-shielded rate k_LW carried by the
@@ -53,6 +51,26 @@
 	! Lyman-Werner band flux, so the molecular network without it is
 	! unchanged.  Both products are neutral H, which the H-nucleus closure
 	! (1 - x1 - x4 - x5 - x6 - x7) supplies automatically; no other row moves.
+
+	! THE FOUR PRODUCT CHANNELS of the H2 photoabsorption
+	! (h2_photo_channels.f90) are carried as three SUBSETS of the total rate
+	! P_H2: P_H2_di for H + H+ + e- (18.08 eV), P_H2_dd for H+ + H+ + 2e-
+	! (51.4 eV) and P_H2_nd for the neutral H + H (33-41 eV window), the
+	! remainder being the channel that leaves H2+.  Each destroys one H2, so
+	! the H2 destruction row (4) sees P_H2 unchanged; the H2+ production row
+	! (5) sees P_H2 minus the three of them; and row (1) gains
+	! P_H2_di + 2 P_H2_dd as a proton source, the factor 2 because the
+	! double channel releases two protons in one event.  The H atoms of
+	! every channel are supplied by the H-nucleus closure, as the
+	! Lyman-Werner fragments are: each channel conserves H nuclei, so the
+	! closure needs no term of its own.  Both options are ON by default;
+	! switching both off zeroes P_H2_dd and P_H2_nd and reproduces the
+	! two-channel arithmetic exactly.  The dissociative
+	! channel therefore removes H2 without feeding the H3+ chain (R8), which
+	! is what makes it worth resolving in a layer whose proton budget and
+	! H3+ cooling are the quantities of interest.  Yan, Sadeghpour &
+	! Dalgarno (1998) sec. 4 for the photon branching, Dalgarno, Yan & Liu
+	! (1999) after their eq. (10) for the secondary-electron one.
 	!
 	! The eight balance rows live in mol_heh_rows below, which takes the free
 	! electron density as an INPUT. System_HeH_mol_metals calls the same
@@ -220,10 +238,12 @@
 	ne   = n_e_ref
 	ntot = ieq_cell%ntot
 
-	! (1) H+ : photo- and collisional ionization of H0, radiative
-	!     recombination, the H2 channels R9/R10/R13, R17, Penning, and the
-	!     H <-> He charge exchange of both directions.
-	s(1) = (photo_scale*ieq_cell%P_HI                                     &
+	! (1) H+ : photo- and collisional ionization of H0, the dissociative H2
+	!     photoionization, radiative recombination, the H2 channels
+	!     R9/R10/R13, R17, Penning, and the H <-> He charge exchange of both
+	!     directions.
+	s(1) = (photo_scale*ieq_cell%P_HI + photo_scale*ieq_cell%P_H2_di       &
+	        + photo_scale*2.0d0*ieq_cell%P_H2_dd                          &
 	        + (ieq_cell%a_ion_HI + ieq_cell%rchiiB)*ne)*nH               &
 	     + (mk9 + mk10 + mk13)*nH*nH                                      &
 	     + (mk17 + ieq_cell%Q31                                           &
@@ -253,8 +273,12 @@
 	        + (mk17 + mk20 + mk23 + mk_ion_H2)*nHe)*nH
 
 	! (5) H2+ : R10/R11/R19/R23, H2 photoionization and the Penning branch of
-	!     He(2^3S)+H2, against R5/R8/R9.
-	s(5) = (photo_scale*ieq_cell%P_H2 + (mk10 + mk11 + mk19)*nH           &
+	!     He(2^3S)+H2, against R5/R8/R9.  Only the channel that leaves the
+	!     molecule intact makes H2+, i.e. the total less the dissociative,
+	!     double-ionization and neutral-dissociation parts.
+	s(5) = (photo_scale*(ieq_cell%P_H2 - ieq_cell%P_H2_di                 &
+	                     - ieq_cell%P_H2_dd - ieq_cell%P_H2_nd)           &
+	        + (mk10 + mk11 + mk19)*nH                                     &
 	        + (mk23 + f_penning_HeI23S*mk_ion_H2)*nHe)*nH                 &
 	     + (mk5*ne + (mk8 + mk9)*nH)*nH
 
@@ -459,7 +483,7 @@
 	integer :: Neq,iflag
 	real*8  :: x(Neq),fvec(Neq)
 	real*8  :: params(40)
-	real*8  :: g_hi,g_hei,g_heii,g_heiTR,g_h2,g_lw
+	real*8  :: g_hi,g_hei,g_heii,g_heiTR,g_h2,g_h2_di,g_h2_dd,g_h2_nd,g_lw
 	real*8  :: b_hi,b_hei,b_heii,b_heiTR
 	real*8  :: a_hii,a_heii,a_heiii,a_heiTR
 	real*8  :: A31,q13,q31a,q31b,Q31
@@ -487,6 +511,9 @@
 	q31b    = ieq_cell%q31b
 	Q31     = ieq_cell%Q31
 	g_h2    = ieq_cell%P_H2
+	g_h2_di = ieq_cell%P_H2_di
+	g_h2_dd = ieq_cell%P_H2_dd   ! double ionization (0 unless a model is on)
+	g_h2_nd = ieq_cell%P_H2_nd   ! neutral dissociation (0 unless on)
 	g_lw    = ieq_cell%k_LW      ! Lyman-Werner photodissociation (0 if off)
 	T       = ieq_cell%T_K
 	ntot    = ieq_cell%ntot
@@ -513,7 +540,8 @@
 
 	call mol_heh_rows(fvec, n_hi, n_hii, n_h2, n_h2p, n_h3p, n_hehp,   &
 	                  n_heiSI, n_heiTR, n_heii, n_heiii, n_e, ntot,     &
-	                  g_hi, g_hei, g_heii, g_heiTR, g_h2, g_lw,         &
+	                  g_hi, g_hei, g_heii, g_heiTR, g_h2, g_h2_di,      &
+	                  g_h2_dd, g_h2_nd, g_lw,                           &
 	                  a_hii, a_heii, a_heiii, a_heiTR,                  &
 	                  b_hi, b_hei, b_heii, b_heiTR,                     &
 	                  q13, q31a, q31b, Q31, A31)
@@ -535,6 +563,15 @@
 	! metal element, so a run without metals is refused). Applied after the
 	! turnover scaling so the row is exactly x - x_fix.
 	if (ieq_cell%x_h2_fixed) fvec(4) = x(4) - ieq_cell%x_h2_fix
+	! THE TRANSPORTED PROTON. Same construction, same reason: where the
+	! ionization state is carried with the flow, the H+ fraction of this cell
+	! is not a local root and the balance row that would have computed it is
+	! replaced by the transported value, AFTER the turnover scaling so the
+	! row is exactly x - x_fix with an identity Jacobian. Every other row --
+	! helium, the molecular ions, the metals -- keeps its balance and is
+	! solved against it, which is what keeps those stages consistent with the
+	! ionization fraction the transport produced.
+	if (ieq_cell%x_hp_fixed) fvec(1) = x(1) - ieq_cell%x_hp_fix
 
 	return
 	end subroutine ion_system_HeH_mol
@@ -550,7 +587,8 @@
 	! are used, as in ion_residual_core.
 	subroutine mol_heh_rows(fvec, n_hi, n_hii, n_h2, n_h2p, n_h3p, n_hehp,  &
 	                        n_heiSI, n_heiTR, n_heii, n_heiii, n_e, ntot,    &
-	                        g_hi, g_hei, g_heii, g_heiTR, g_h2, g_lw,        &
+	                        g_hi, g_hei, g_heii, g_heiTR, g_h2, g_h2_di,     &
+	                        g_h2_dd, g_h2_nd, g_lw,                          &
 	                        a_hii, a_heii, a_heiii, a_heiTR,                 &
 	                        b_hi, b_hei, b_heii, b_heiTR,                    &
 	                        q13, q31a, q31b, Q31, A31)
@@ -559,6 +597,13 @@
 	real*8, intent(in) :: n_hi,n_hii,n_h2,n_h2p,n_h3p,n_hehp
 	real*8, intent(in) :: n_heiSI,n_heiTR,n_heii,n_heiii,n_e,ntot
 	real*8, intent(in) :: g_hi,g_hei,g_heii,g_heiTR,g_h2,g_lw
+	! The three resolved product channels of g_h2, each a SUBSET of it and
+	! disjoint from the other two: g_h2_di leaves H + H+ + e-, g_h2_dd
+	! leaves H+ + H+ + 2e- and g_h2_nd leaves H + H with no ion. g_h2 stays
+	! the whole H2 destruction rate, and what is left of it after the three
+	! are removed is the channel that makes H2+. g_h2_dd and g_h2_nd are
+	! zero unless their options are on.
+	real*8, intent(in) :: g_h2_di, g_h2_dd, g_h2_nd
 	real*8, intent(in) :: a_hii,a_heii,a_heiii,a_heiTR
 	real*8, intent(in) :: b_hi,b_hei,b_heii,b_heiTR
 	real*8, intent(in) :: q13,q31a,q31b,Q31,A31
@@ -588,12 +633,22 @@
 	k_ion_H2 = mk_ion_H2
 
 	! (1) H+ balance
+	! g_h2_di*n_h2: the dissociative branch of the H2 photoionization,
+	! H2 + hv -> H + H+ + e-. Its H atom is supplied by the H-nucleus
+	! closure, and the H2 it consumes is already in row (4) through g_h2,
+	! of which g_h2_di is a part.
+	! 2*g_h2_dd*n_h2: the double branch, H2 + hv -> H+ + H+ + 2e-. The
+	! factor 2 is the stoichiometry, TWO protons out of one event -- while
+	! the H2 destroyed is still one per event, which is why row (4) is not
+	! doubled with it. It leaves no H atom, so the closure again needs no
+	! term. Zero unless a double-ionization model is selected.
 	! f_penning_HeI23S*Q31*n_heiTR*n_hi: Penning ionization
 	! He(2^3S)+H0 -> He(1^1S)+H+ + e-. Q31 is the TOTAL He(2^3S)+H ionization
 	! rate; the associative 10% makes HeH+ instead of a proton and is carried
 	! by row (7). (n_heiTR is 0 when thereis_HeITR is false, so the term is
 	! unconditional.)
 	fvec(1) = (g_hi + b_hi*n_e)*n_hi                                  &
+	        + (g_h2_di + 2.0d0*g_h2_dd)*n_h2                          &
 	        + k9*n_h2p*n_hi + k17*n_heii*n_h2                         &
 	        + f_penning_HeI23S*Q31*n_heiTR*n_hi                       &
 	        - a_hii*n_e*n_hii - (k10 + k13)*n_hii*n_h2
@@ -617,6 +672,9 @@
 	! (n_heiTR is 0 when thereis_HeITR is false, so the term is unconditional).
 	! g_lw: Lyman-Werner photodissociation H2 + hv -> H + H, already
 	! self-shielded (lyman_werner.f90); 0 when the run supplies no band flux.
+	! g_h2 is the TOTAL H2 destruction rate and already contains all four
+	! product channels, the neutral dissociation among them, so this row is
+	! the same whichever of them are resolved.
 	fvec(4) = k6*n_e*n_h3p + k9*n_h2p*n_hi + k11*n_h3p*n_hi           &
 	        + k15*n_hi*n_hi                                           &
 	        - ( g_h2 + g_lw + (k10 + k13)*n_hii + k12*ntot + k14*n_e  &
@@ -624,10 +682,15 @@
 	          + k_ion_H2*n_heiTR )*n_h2
 
 	! (5) H2+ balance
+	! (g_h2 - g_h2_di - g_h2_dd - g_h2_nd): only the branch that leaves the
+	! molecule bound makes an H2+ ion. The two ionizing branches removed
+	! here are proton sources in row (1); the neutral one makes no ion at
+	! all. Both of the latter two are zero unless their options are on.
 	! f_penning_HeI23S*k_ion_H2*n_heiTR*n_h2: H2+ produced by the Penning
 	! branch of He(2^3S)+H2 ionization. The associative branch of the same
 	! collision gives H + HeH+ + e- and appears in row (7) instead.
-	fvec(5) = g_h2*n_h2 + k10*n_hii*n_h2 + k11*n_h3p*n_hi             &
+	fvec(5) = (g_h2 - g_h2_di - g_h2_dd - g_h2_nd)*n_h2               &
+	        + k10*n_hii*n_h2 + k11*n_h3p*n_hi                         &
 	        + k19*n_hehp*n_hi + k23*n_heii*n_h2                       &
 	        + f_penning_HeI23S*k_ion_H2*n_heiTR*n_h2                  &
 	        - (k5*n_e + k8*n_h2 + k9*n_hi)*n_h2p

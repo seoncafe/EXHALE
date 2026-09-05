@@ -27,7 +27,7 @@
 
    use global_parameters
    use species_table, only: n_mion, mion_fsp
-   use utils, only: calc_ne
+   use utils, only: calc_ne, write_row_layout_header
    use lya_rt, only: jlya_escape_prob, jint_arr, jstar_arr,                  &
                      lya_line_center_optical_depth
    ! n=2 / Ly-alpha atomic data and collisional rate coefficients
@@ -121,15 +121,10 @@
    call calc_ne(nhii, nheii, nheiii, ne, nm)
 
    ! ----- Day-night / 2D dilution factor xi ----- !
-   ! Same factor the code applies to ground-state EUV photoionization (the ATES
-   ! "2D approximate method"): Rate/4 -> 1/4, Rate/2 -> 1/2, else full.
-   if      (index(appx_mth,'Rate/4') .gt. 0) then
-      xi = 0.25d0
-   else if (index(appx_mth,'Rate/2') .gt. 0) then
-      xi = 0.5d0
-   else
-      xi = 1.0d0
-   endif
+   ! global_parameters' dayside_dilution(), the single definition the ATES
+   ! "2D approximate method" has; the ground-state EUV grid and the five FUV
+   ! bands read the same one.
+   xi = dayside_dilution()
 
    ! ----- Scalar Balmer-continuum rates (depend only on T_star, R_star/a) ----- !
    ! Computed once per update; reduced by xi for the dayside hemisphere average,
@@ -450,6 +445,7 @@
                 // '  col12 Sgrnd_photoion[cm-3 s-1]'                       &
                 // '  col13 Scoll_ion[cm-3 s-1]  col14 Srecomb[cm-3 s-1]'   &
                 // '  col15 Jint[cgs]  col16 Jstar[cgs]'
+   call write_row_layout_header(72)
    do j = 1-Ng, N+Ng
       write(72,*) r(j), Tdiag(j), nhidiag(j), nediag(j),                    &
                   Jlya_arr(j), n2s_arr(j), n2p_arr(j),                      &

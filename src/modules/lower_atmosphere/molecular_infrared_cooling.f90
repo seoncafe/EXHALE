@@ -69,8 +69,18 @@
 !    so would barely move the equilibrium temperature, only the rate.
 !  * LTE level populations.  The rotational levels of all three species
 !    thermalize far below the densities of this layer.  The H2 and H2O
-!    VIBRATIONAL levels are the constraint: n_crit(H2 v=1) is 1e9-1e11 cm^-3
-!    against 1e13-1e14 cm^-3 at the base.  Above the base the density falls,
+!    VIBRATIONAL levels are the constraint, and for H2 the margin is large:
+!    the critical density of v = 1, n_crit = A_10/gamma_10 (Hollenbach &
+!    McKee 1979, ApJS 41, 555, p. 576), is 2e6 to 6e6 cm^-3 over 900-1350 K
+!    with H2 as the collider and 5e4 to 8e4 cm^-3 with atomic H, from their
+!    A_10 = 8.3e-7 s^-1 (p. 583, J-averaged, Turner, Kirby-Docken & Dalgarno
+!    1977) and their eq. (6.29) rate coefficients.  The base carries
+!    1e13-1e14 cm^-3, seven to nine decades above it.  (Neither Hollenbach &
+!    McKee nor Burton, Hollenbach & Tielens 1990 gives a HELIUM collision
+!    rate for H2 v = 1, so a helium-dominated gas is outside both; leaving
+!    helium out of the collider sum understates the de-excitation rate,
+!    which errs on the side of NOT claiming LTE.)  Above the base the
+!    density falls,
 !    but so does the temperature, and the vibrational bands are a small share
 !    of the H2 emission there: 0.7% at 400 K, 5.7% at 500 K, 18% at 600 K and
 !    66% at 1000 K.  The LTE overestimate is therefore confined to the warm,

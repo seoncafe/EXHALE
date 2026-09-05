@@ -1,0 +1,21 @@
+# Koskinen et al. (2022) Figure 9, Model A at 0.05 au, digitized 2026-09-05 by pixel reading of the
+# published PDF (page 10, 300 dpi; axes: r/R_p 1-10 linear, rate 1e-13 to 1e-7 W m^-3 log).
+# Curves: stellar heating (red solid); the blue curves top to bottom at each radius are, from the
+# legend and their ordering beyond 2 R_p, adiabatic (dash-dot), radiative cooling (dashed), advection
+# (dotted). Near the peak (1.4-2 R_p) the ordering of the blue curves is not resolved by this reading.
+# Reading uncertainty about 0.1 dex. r/r_base = (r/R_p)/1.34. Units W m^-3 (1 W m^-3 = 10 erg cm^-3 s^-1).
+# columns: r/R_p  r/r_base  heating  blue1  blue2  blue3
+1.40  1.045  1.52e-08  5.5e-09  3.2e-09  2.7e-09
+1.50  1.119  1.29e-08  7.1e-09  4.5e-09  9.1e-10
+1.66  1.239  1.87e-08  1.4e-08  3.2e-09  8.2e-10
+2.00  1.493  6.98e-09  4.6e-09  3.8e-09  1.7e-09
+2.30  1.716  2.60e-09  1.1e-09  9.1e-10  3.4e-10
+2.70  2.015  1.03e-09  5.5e-10  2.9e-10  1.3e-10
+3.00  2.239  6.39e-10  3.7e-10  1.7e-10  6.0e-11
+3.20  2.388  4.81e-10  2.9e-10  1.3e-10  3.8e-11
+4.00  2.985  2.11e-10  1.4e-10  5.4e-11  1.2e-11
+5.00  3.731  1.00e-10  6.8e-11  2.3e-11  nan
+6.00  4.478  5.75e-11  4.0e-11  1.3e-11  nan
+7.00  5.224  3.62e-11  2.5e-11  7.8e-12  nan
+8.00  5.970  2.45e-11  1.7e-11  5.2e-12  nan
+9.00  6.716  1.74e-11  1.2e-11  3.8e-12  1.1e-12

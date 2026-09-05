@@ -23,6 +23,7 @@
                                n_bsp, bsp_fsp, bsp_nH, bsp_nHe,         &
                                bsp_is_excited_level
       use utils, only: calc_ne, calc_ntot
+      use caloric_eos, only: caloric_state_from_composition
       use lower_column, only: q_h2_equilibrium
 
       implicit none
@@ -125,6 +126,13 @@
       ! particle is. Read by the continuous-temperature base ghost (Apply_BC),
       ! which needs T(1) = p(1)/n_part_cell1; unused otherwise.
       n_part_cell1 = n_tot(1) + ne(1)
+
+      ! Caloric half of the equation of state.  It reads the same
+      ! (rho, f_sp, n_e, n_tot) as the thermal half above, from here, so the
+      ! two cannot describe different gas -- and, being refreshed only where
+      ! the composition is refreshed, the map from energy to pressure never
+      ! depends on a previous state.
+      call caloric_state_from_composition(rho, f_sp, ne, n_tot)
 
       end subroutine get_species_densities
 

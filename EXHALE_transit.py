@@ -3,12 +3,43 @@ import matplotlib.pyplot as plt
 from scipy.special import wofz
 from astropy.convolution import convolve
 import os
+import sys
 import time
+
+# WHERE THIS SCRIPT'S OWN MODULES COME FROM.  Three siblings are imported by
+# name -- exhale_transit_lib just below, roche_recon for the triaxial geometry
+# and he_line_metrics for the He 10830 fit -- and they live next to THIS file,
+# not next to the run: a run directory holds `input.inp` and `output/`, and the
+# script is started from there.  Started as `python3 <path>/EXHALE_transit.py`,
+# CPython puts this script's own directory (symlinks resolved) first on
+# sys.path and all three resolve, so that route was never broken.  Through
+# `runpy.run_path`, IPython's `%run`, or `exec(open(...).read())` it does not:
+# sys.path[0] is then the run directory, the siblings are not there, and the
+# he_line_metrics failure surfaces only as a skipped He 10830 fit because that
+# one import is wrapped in a try.  Naming this file's directory explicitly
+# makes every one of those routes resolve the same three modules.  `__file__`
+# does not exist under `exec()`, hence the guard.  A physical COPY of this
+# script into a run directory is the one case nothing can repair: a copy has
+# no siblings, and its own directory is all it can know.
+try:
+	_HERE = os.path.dirname(os.path.realpath(__file__))
+except NameError:
+	_HERE = os.getcwd()
+if _HERE not in sys.path:
+	sys.path.insert(0, _HERE)
+# examples/ holds exhale_io, the ONE reader of EXHALE's output files: it is
+# what knows which rows of a profile are solution cells and which are ghosts
+# (loadtxt_cells / physical_cell_rows).  This script used to call np.loadtxt
+# on those files itself and so carried the ghost rows into every column
+# density, chord integral and depth; it now goes through that reader instead,
+# so the rule lives in one place.
+sys.path.insert(0, os.path.join(_HERE, 'examples'))
+from exhale_io import loadtxt_cells
 
 # Pure constants, line metadata, and physics/utility functions live in the
 # importable library so they can be tested without a simulation.  The
-# orchestration (file reading, density prep, per-line loops, convolution,
-# plotting, saving) stays in this script.
+# orchestration (file reading, density prep, the loop over each line,
+# convolution, plotting, saving) stays in this script.
 from exhale_transit_lib import (
     _tenv, _tenv_set,
     kb, G, mp, me, mD, c_light, AU, E0, h, ht, e, mHe, RJ, MJ,
@@ -256,12 +287,12 @@ number_lambda_Hb = 201
 # ------------------------- #
 
 # Load profiles
-r,rho,v,p,T,heat,cool = np.loadtxt(Hydro_file, unpack = True)
+r,rho,v,p,T,heat,cool = loadtxt_cells(Hydro_file, unpack = True)
 # Ion_species.txt: read only the first 7 columns (r + H/He). In EXHALE
 # this file also carries trace-metal columns (C/N/O), so we slice rather
 # than unpack all of them.
 r,nhi,nhii,nhei,nheii,nheiii,nheiTR = \
-    np.loadtxt(Ioniz_file, usecols = range(7), unpack = True)
+    loadtxt_cells(Ioniz_file, usecols = range(7), unpack = True)
 
 # Metal- (and molecular-) ion electron donors, so the free-electron density
 # below is not metal-blind. Ion_species.txt carries the 27 trace-metal ion
@@ -282,15 +313,15 @@ _metal_charge = [0, 1, 2,  0, 1, 2,  0, 1, 2,  0, 1, 2,  0, 1, 2,  0, 1, 2,
                  0, 1,     0, 1,     0, 1,     0, 1, 2]
 ne_metal_cm = np.zeros_like(nhi)
 if _ncol_ion >= 7 + len(_metal_charge):
-    _nm = np.loadtxt(Ioniz_file,
-                     usecols = range(7, 7 + len(_metal_charge)), unpack = True)
+    _nm = loadtxt_cells(Ioniz_file,
+                        usecols = range(7, 7 + len(_metal_charge)), unpack = True)
     for _ic, _z in enumerate(_metal_charge):
         if _z > 0:
             ne_metal_cm = ne_metal_cm + _z*_nm[_ic]
     # Molecular ions (H2+, H3+, HeH+ each release one electron), if present.
     if _ncol_ion >= 7 + len(_metal_charge) + 4:
         _c0 = 7 + len(_metal_charge)
-        _h2p, _h3p, _hehp = np.loadtxt(
+        _h2p, _h3p, _hehp = loadtxt_cells(
             Ioniz_file, usecols = (_c0 + 1, _c0 + 2, _c0 + 3), unpack = True)
         ne_metal_cm = ne_metal_cm + _h2p + _h3p + _hehp
 
@@ -357,7 +388,10 @@ n1s_cm = nhi
 do_Ha = True   # H-alpha is always computed (J_lya from file or estimate)
 if do_Ha:
 	if (len(Jlya_file) > 0) and os.path.exists(Jlya_file):
-		# (1) Read J_lya(r) from file
+		# (1) Read J_lya(r) from file.  Plain np.loadtxt: this is an
+		#     externally computed J_lya(r) table (the LaRT Monte Carlo
+		#     coupling), not a profile write_output.f90 emitted, so it has
+		#     no ghost rows; it is interpolated onto r anyway.
 		rj, Jlya_in = np.loadtxt(Jlya_file, usecols = (0,1), unpack = True)
 		Jlya = np.interp(r, rj, Jlya_in)      # clamps to endpoints outside range
 		jlya_src = 'file ' + Jlya_file
@@ -835,13 +869,17 @@ mO = 15.999*amu
 
 # Metals-off runs write only the H/He columns (<=16): skip the metal
 # resonance lines automatically (He/Lya/Ha/Hb above are unaffected).
+# Plain np.loadtxt: this reads ONE row for its width, not for its content,
+# so there are no ghost rows to drop (max_rows=1 and a row selection would
+# fight each other).
 _ncol_ion = np.loadtxt(Ioniz_file, max_rows=1).size
 do_metals = (_ncol_ion >= 26)
 if do_metals:
-	nMgII_cm, nCaII_cm, nNaI_cm = np.loadtxt(Ioniz_file, usecols=(17, 23, 25),
-	                                         unpack=True)              # cm^-3
+	nMgII_cm, nCaII_cm, nNaI_cm = loadtxt_cells(Ioniz_file,
+	                                            usecols=(17, 23, 25),
+	                                            unpack=True)          # cm^-3
 else:
-	_r0col = np.loadtxt(Ioniz_file, usecols=(0,))
+	_r0col = loadtxt_cells(Ioniz_file, usecols=(0,))
 	nMgII_cm = np.zeros_like(_r0col)   # metals-off: zero metal absorption,
 	nCaII_cm = np.zeros_like(_r0col)   # so the metal lines are flat and the
 	nNaI_cm  = np.zeros_like(_r0col)   # He/Lya/Ha output still saves.
@@ -867,9 +905,9 @@ OI_file = path + '/output/OI_levels_adv.txt'
 do_OI = do_metals and os.path.exists(OI_file)
 if do_OI:
 	# cols 8,9,10 (0-indexed) = n(3P2), n(3P1), n(3P0) in cm^-3
-	n3P2_cm, n3P1_cm, n3P0_cm = np.loadtxt(OI_file, usecols=(8, 9, 10),
-	                                       unpack=True)
-	_nOI_file = np.loadtxt(OI_file, usecols=(4,))
+	n3P2_cm, n3P1_cm, n3P0_cm = loadtxt_cells(OI_file, usecols=(8, 9, 10),
+	                                          unpack=True)
+	_nOI_file = loadtxt_cells(OI_file, usecols=(4,))
 	if n3P2_cm.size != nMgII_cm.size:
 		raise ValueError('(EXHALE_transit) %s has %d rows but %s has %d; '
 		                 'they must be the same grid'
@@ -901,7 +939,7 @@ if do_OI:
 	data_n3P1 = np.concatenate((np.flip(n3P1_cm), n3P1_cm))*1.0e6*_oi_nscale
 	data_n3P0 = np.concatenate((np.flip(n3P0_cm), n3P0_cm))*1.0e6*_oi_nscale
 else:
-	_r0col_oi = np.loadtxt(Ioniz_file, usecols=(0,))
+	_r0col_oi = loadtxt_cells(Ioniz_file, usecols=(0,))
 	_zero_oi = np.zeros(2*_r0col_oi.size)
 	data_n3P2 = _zero_oi
 	data_n3P1 = _zero_oi

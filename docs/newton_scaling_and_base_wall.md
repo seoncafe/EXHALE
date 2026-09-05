@@ -1,5 +1,14 @@
 # Newton scaling, the line-search merit, and the "base wall" (2026-08-10)
 
+> **STALE (P35, 2026-09-02).** The `vulcan_work` run directories cited
+> here carry `Molecular base: True` with the molecular network off. The base
+> particle count was molecular while the species state was atomic, so the
+> base ghost sat at `ntot_bc x T0` -- between 0.555 and 0.994 of the
+> requested `T0`, depending on the directory -- and startup now refuses the
+> combination. The numbers below are kept as recorded but stand on that
+> base; see `INVALID_BASE_TEMPERATURE.md` in each run directory and item
+> P35 of `TO_BE_DONE.md`.
+
 ## Summary
 
 The steady-state JFNK solve had been floored around `||R|| ~ 2.8e-3` against a
@@ -70,8 +79,14 @@ of freedom the Newton solve already has. The reason it kept appearing as the
 
 The JFNK line search minimizes `||F/D||_2` over the whole domain, with `D` the
 diagonal scaling. Convergence, on the other hand, is declared on
-`resid_relnorm`: the volume-weighted relative residual over the wind window
-`[j_min:N]` (here `r >= 1.992`).
+`resid_relnorm`: the volume-weighted relative residual, evaluated separately
+over the wind `[j_min:N]` and the layer below the escape radius and combined by
+the larger of the two (§127 of `Update_EXHALE.md`; at the time of this memo it
+was the wind window alone, here `r >= 1.992`). The scale each row is divided by
+is `residual_row_scale`, which since §133 is a bound on that row's own largest
+term and since §143 is that term itself, taken from what the row contains. At
+the time of this memo it was `max(|Y_i|, 1e-6 max_j |Y(:,k)|)`, which is what
+the numbers below are measured against.
 
 *Measured* at the hand-off state, with the old `build_scaling`
 (`D_i = max(|Y_i|, 1e-6 max_j |Y(:,k)|)`):
@@ -122,6 +137,29 @@ is the entire sub-sonic region. The quantity that does not vanish there is
 — the momentum density the cell carries when moved at its own signal speed.
 That choice is parameter-free (there is no floor fraction to pick) and local
 (no cell can set the scale of another).
+
+**Still current after §143, with one boundary drawn.** These three numbers are
+the scaling of the Newton system and of the line-search merit, and §143 does
+not touch them. What it changes is the CONVERGENCE MEASURE: each residual row
+is now divided by the largest term that row itself contains — the face mass
+flux for the mass row, `max(|dF_2|,|S_2|)` for the momentum row,
+`max(|dF_3|,|S_3|,heat,cool)` for the energy row (`mass_flux_row_scale`,
+`momentum_row_scale`, `energy_row_scale` in `steady_residual.f90`) — so the
+merit and the acceptance test are no longer one expression apart on any row.
+That separation is deliberate and it was measured: a build that rescaled this
+system by those quantities as well, the mass row's varying by a factor 9 across
+the first two cells, left the molecular hot-Uranus solve with no descent
+direction after 179 iterations and 8238 residual evaluations, against 14
+iterations and 321 for the build that changes the measure alone
+(`docs/p54_base_layer_mass_flux.md` §10.4, `docs/p54g23_row_scale_scan.md`).
+
+One measurement in §1 is worth re-reading beside it. This memo records that
+cell 1's momentum row is a four-order cancellation whose remainder is 6.5e-5 of
+the gravity term, and that a 2.9 ppm ghost-pressure change drives it to zero.
+§143's momentum scale measures exactly that remainder against exactly that
+gravity term, and on the molecular hot Uranus cell 1 still reads 0.14 on it
+after a converged solve — so the "one degree of freedom away" reading holds for
+HD 209458 b and does not carry to that planet.
 
 The intermediate forms `|rho v| + f rho c_s` with `f < 1` were tried and are
 reported in §5; `f = 1` is both the principled choice and the best-performing

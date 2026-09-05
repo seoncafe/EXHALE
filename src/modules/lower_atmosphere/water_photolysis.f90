@@ -211,10 +211,10 @@
       ! with tau_c the H2O + OH continuum depth and A the fraction of the
       ! band the H2 lines have removed,
       !
-      !     A(r) = int_r^top sigma_lw_pump f_shield_DB96(N_H2) n_H2 dr' ,
+      !     A(r) = int_r^top sigma_pump f_shield_DB96(N_H2) n_H2 dr' ,
       !
       ! built from DB96's own self-shielding function and their dissociation
-      ! probability per pump (lyman_werner.f90, sigma_lw_pump).  It stays on
+      ! probability per pump (h2_band_equivalent_width header).  It stays on
       ! DB96 even though the H2 dissociation RATE has moved to the Richings,
       ! Schaye & Oppenheimer (2014) fit, because this integral has a closed
       ! form only for DB96's function and its normalization against their

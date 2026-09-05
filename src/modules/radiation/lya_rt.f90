@@ -129,14 +129,9 @@
    ! Top-down line-center optical depth to the outer surface.
    call lya_line_center_optical_depth(T_K, nhi, tau)
 
-   ! Dayside dilution for the stellar beam (same factor as ground-state EUV).
-   if      (index(appx_mth,'Rate/4') .gt. 0) then
-      xi = 0.25d0
-   else if (index(appx_mth,'Rate/2') .gt. 0) then
-      xi = 0.5d0
-   else
-      xi = 1.0d0
-   endif
+   ! Dayside dilution for the stellar beam: global_parameters'
+   ! dayside_dilution(), the same factor every other stellar band uses.
+   xi = dayside_dilution()
 
    Jpref = 2.0d0*hp_erg*nu_lya**3.0d0/c_light**2.0d0     ! 2 h nu^3 / c^2
    ! Stellar Ly-alpha line width [Hz]: the BROAD stellar profile sets the

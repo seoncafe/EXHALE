@@ -3,6 +3,8 @@
 
    use global_parameters
    use Conversion
+   use caloric_eos, only: adiabatic_index_from_state
+   use base_boundary, only: base_boundary_states
 
    implicit none
 
@@ -29,13 +31,21 @@
    !
    ! Reported, not enforced: the run continues and says so, because the
    ! crossing is evidence about the configuration rather than a numerical
-   ! fault to be repaired in place. `Base velocity: massflux` removes the
-   ! copied-velocity feedback and is the usual response, but it does not make
-   ! this check redundant -- a mass-flux base can still go supersonic if the
-   ! reservoir state and the flux constant disagree.
+   ! fault to be repaired in place. The (p, s) reservoir of base_boundary
+   ! states two conditions and this model has no third to state, so a
+   ! supersonic base is a configuration to change, not a branch to add.
    integer :: n_base_supersonic_inflow_steps  = 0
    integer :: base_supersonic_inflow_first_step = -1
    real*8  :: base_inflow_mach_max = 0.0d0
+
+   ! What the lower boundary states, as base_boundary last derived it: the
+   ! primitive state AT THE FACE r_edg(0), the ghost CELL AVERAGES, and the
+   ! point state at the next face down. Apply_BC_W fills them from the
+   ! interior cell averages and Rec_BC reads them, so both paths use one
+   ! answer from one function.
+   real*8 :: base_face_W(3)        = 0.0d0
+   real*8 :: base_ghost_W(3,1-Ng:0) = 0.0d0
+   real*8 :: base_face_lower_W(3)  = 0.0d0
 
    contains
 
@@ -53,7 +63,7 @@
    ! twice.
    real*8, intent(in) :: W(3,1-Ng:N+Ng)
    real*8 :: cs2
-   cs2 = g*W(3,0)/W(1,0)
+   cs2 = adiabatic_index_from_state(0,W(1,0),W(3,0))*W(3,0)/W(1,0)
    if (.not. (cs2 .gt. 0.0d0)) then
       base_inflow_mach_number = 0.0d0
    else
@@ -90,10 +100,29 @@
    end subroutine check_base_inflow_is_subsonic
 
    subroutine Apply_BC(u)
-   ! Boundary conditions for conservative variables (in place)
-
+   ! Boundary conditions for conservative variables (in place).
+   !
+   ! WRITES THE GHOSTS AND NOTHING ELSE. A boundary condition states the cells
+   ! outside the domain; the interior is the caller's, and this routine hands
+   ! it back unchanged, bit for bit.
+   !
+   ! It used to round-trip the interior as well -- U_to_W_interior, then
+   ! W_to_U over the whole array -- and that round trip is not the identity in
+   ! floating point: it recomputes the kinetic energy as 0.5*W(1)*W(2)**2
+   ! where the input held 0.5*u(2)*u(2)/u(1), and those are not the same
+   ! double. Two consequences, both real. (i) Apply_BC was not idempotent, so
+   ! calling it twice moved every interior cell at the last bit; that is what
+   ! blocked the repair of the ghost composition lag of section 141.6, since
+   ! the repair is a second call. (ii) The interior of a state was changing
+   ! under a routine whose subject is the boundary, which is not a property
+   ! anything should have to reason about.
+   !
+   ! Writing only the ghosts removes both. It is not byte-identical to what it
+   ! replaced -- it is the last bit of every interior cell of every call -- and
+   ! the goldens are refreshed for it.
    real*8, intent(inout) :: u(3,1-Ng:N+Ng)
    real*8 :: W(3,1-Ng:N+Ng)
+   integer :: k
 
    ! Interior cells only: the ghosts are outputs of Apply_BC_W below, never
    ! inputs, and on entry they can still be zero (first residual evaluation
@@ -103,75 +132,18 @@
    ! Apply bc to W's
    call Apply_BC_W(W)
 
-   ! Return to conservaive variables
-   call W_to_U(W,u)
+   ! Return to conservative variables -- the ghosts only. W_to_U_comp is the
+   ! same arithmetic W_to_U performs cell by cell, and for a gas with no
+   ! molecules in it energy_density_from_pressure returns
+   ! p/(gamma_ad - 1) verbatim, so an atomic ghost is the double it always was.
+   do k = 1,Ng
+      call W_to_U_comp(W(:,1-k), u(:,1-k), 1-k)
+      call W_to_U_comp(W(:,N+k), u(:,N+k), N+k)
+   enddo
 
    ! End of subroutine
    end subroutine Apply_BC
    
-   !------------------------------------------!
-   
-   subroutine BC_component_constrho(W_in,index)
-   ! Component-wise BC in case of zero-velocity gradient
-   !     at the lower boundary
-
-   real*8, intent(inout)  :: W_in(3,1-Ng:N+Ng)
-   integer, intent(in)    :: index
-
-   ! Density: always the base anchor rho_bc (the mass reservoir).
-   W_in(1,index) = rho_bc
-   ! Velocity. base_v_massflux: CETIMB-style v0 = F_c/(rho_bc r^2) with F_c the
-   ! mass-flux constant from the [j_min:N] constant-momentum region (NOT the
-   ! base, where rho*v*r^2 is not yet flat). Else the legacy one-way valve.
-   if (base_v_massflux .and. base_flux_const .gt. 0.0d0) then
-      W_in(2,index) = base_flux_const/(rho_bc*r(index)**2)
-   else if (valve_eps .gt. 0.0d0) then
-      ! Smooth one-way valve 0.5*(v + sqrt(v^2 + eps^2)): differentiable at
-      ! v=0, -> 0 as v -> -inf, -> v for v >> eps (bias +eps/2 only near
-      ! v ~ 0). Needed by the steady-state Newton solver, whose line search
-      ! cannot cross the hard-max kink the breathing base sits on.
-      W_in(2,index) = 0.5d0*(W_in(2,1)                                   &
-                      + sqrt(W_in(2,1)**2 + valve_eps**2))
-   else
-      W_in(2,index) = max(W_in(2,1),0.0)
-   endif
-   ! Pressure. Legacy: fixed ntot_bc + dp_bc (-> T = T0 isothermal base).
-   ! hydrostatic_base (momentum-consistent): extrapolate the interior pressure
-   ! gradient (cells 1,2) into the ghost so dp/dr is CONTINUOUS at the base
-   ! rather than flattened to 0; the base-face pressure gradient can then
-   ! balance gravity (the source of the breathing momentum residual). With
-   ! rho pinned to rho_bc, T_base floats slightly off T0.
-   ! base_ghost_T_continuous: dT/dr = 0 instead of T = T0. The ghost keeps the
-   ! base composition (ntot_bc nuclei + dp_bc electrons at rho_bc, the same
-   ! particle count the isothermal pin uses) but carries the temperature of
-   ! the first interior cell, T(1) = W(3,1)/n_part_cell1 in units of T0:
-   !    p_ghost = (ntot_bc + dp_bc)*T(1).
-   ! n_part_cell1 = n_tot(1) + n_e(1) comes from the composition solve, so the
-   ! ghost pressure stays a differentiable function of the interior pressure
-   ! (what the JFNK line search needs) while the ionization state it divides by
-   ! is lagged exactly like every other composition quantity in a hydro step.
-   if (hydrostatic_base) then
-      W_in(3,index) = W_in(3,1) + (W_in(3,2) - W_in(3,1))                 &
-                      /(r(2) - r(1))*(r(index) - r(1))
-      ! A pressure gradient steep enough to extrapolate through zero puts the
-      ! ghost outside the admissible state, where the gradient continuity the
-      ! extrapolation buys is worthless: the ghost is read as a real gas state
-      ! by the reconstruction stencil and by eval_dt. Fall back on the
-      ! zero-gradient base pressure, which is the first-order limit of the
-      ! same boundary condition. Density stays pinned at rho_bc above.
-      if (.not. (W_in(3,index) .gt. 0.0d0)) then
-         W_in(3,index) = W_in(3,1)
-         n_ghost_cells_positivity_limited =                               &
-            n_ghost_cells_positivity_limited + 1
-      endif
-   else if (base_ghost_T_continuous) then
-      W_in(3,index) = (ntot_bc + dp_bc)*W_in(3,1)/n_part_cell1
-   else
-      W_in(3,index) = ntot_bc + dp_bc
-   endif
-
-   ! End of subroutine
-   end subroutine BC_component_constrho
 
    !------------------------------------------!
 
@@ -180,10 +152,18 @@
 
    real*8, intent(inout) :: W(3,1-Ng:N+Ng)
    integer :: k
+   real*8  :: Wzg(3), Wex(3)
 
-   ! BC with constant rho at lower boundary
+   ! Lower boundary: the characteristic face condition. base_boundary_states
+   ! derives the face state, the ghost cell averages and the state at the next
+   ! face down from the first interior CELL AVERAGE, all at once, and stores
+   ! them for Rec_BC. The ghosts written here are the volume averages of the
+   ! hydrostatic isentrope through the face state, NOT copies of it: the two
+   ! differ by half a cell of stratification, and writing the face value into
+   ! a cell average is the defect this replaces.
+   call base_boundary_states(W, base_face_W, base_ghost_W, base_face_lower_W)
    do k = 1,Ng
-      call BC_component_constrho(W,1-k)
+      W(:,1-k) = base_ghost_W(:,1-k)
    enddo
 
    ! Upper boundary: free outflow. The zero-gradient copy is the boundary
@@ -204,14 +184,34 @@
    !
    ! Written as the negation of "strictly positive", so a NaN ghost -- which
    ! compares false against everything -- is caught too.
+   ! While the PLM -> WENO3 continuation is running, the two free-outflow
+   ! ghosts -- the zero-gradient copy the PLM stage uses and the linear
+   ! extrapolation the WENO3 stencil asks for -- are combined under the same
+   ! lambda the right-hand side is combined under, so that the boundary
+   ! operator travels the same homotopy the interior does. The positivity
+   ! guard is applied to the extrapolated state BEFORE the blend, so a
+   ! repaired extrapolation is what enters the combination and the counter
+   ! means what it meant. At lambda = 1 this is the WENO3 ghost to the bit;
+   ! at lambda = 0 the branch is not taken at all.
    do k = 1,Ng
-      W(:,N+k) = W(:,N)
-      if (use_weno3) then
-         W(:,N+k) = 2.0*W(:,N+k-1) - W(:,N+k-2)
-         if (.not. (W(1,N+k) .gt. 0.0d0 .and. W(3,N+k) .gt. 0.0d0)) then
-            W(:,N+k) = W(:,N+k-1)
+      if (recon_lambda_on .and. recon_lambda .gt. 0.0d0) then
+         Wzg = W(:,N)
+         Wex = 2.0*W(:,N+k-1) - W(:,N+k-2)
+         if (.not. (Wex(1) .gt. 0.0d0 .and. Wex(3) .gt. 0.0d0)) then
+            Wex = W(:,N+k-1)
             n_ghost_cells_positivity_limited =                            &
                n_ghost_cells_positivity_limited + 1
+         endif
+         W(:,N+k) = (1.0d0 - recon_lambda)*Wzg + recon_lambda*Wex
+      else
+         W(:,N+k) = W(:,N)
+         if (use_weno3) then
+            W(:,N+k) = 2.0*W(:,N+k-1) - W(:,N+k-2)
+            if (.not. (W(1,N+k) .gt. 0.0d0 .and. W(3,N+k) .gt. 0.0d0)) then
+               W(:,N+k) = W(:,N+k-1)
+               n_ghost_cells_positivity_limited =                         &
+                  n_ghost_cells_positivity_limited + 1
+            endif
          endif
       endif
    enddo
@@ -231,12 +231,25 @@
    WL_out = WL_in
    WR_out = WR_in
    
-   ! Lower boundary
-   call BC_component_constrho(WR_out,1-Ng)
-   
-   ! BC with constant density at lower boundary
-   do k = 1,Ng
-         call BC_component_constrho(WL_out,1-k)
+   ! Lower boundary. The left state of the base face IS the boundary
+   ! condition, and it is read here from the same call that wrote the ghost
+   ! cell averages -- Apply_BC_W always runs on this state first, in the
+   ! marching loop, in the residual and in init. The right state of that face,
+   ! WR_out(:,0), is the interior's reconstruction of cell 1 down to it and is
+   ! deliberately left alone: the Riemann solver is what mediates the two.
+   !
+   ! The face below the ghost carries the same continuation on both sides, so
+   ! it is jump free; its flux lies outside the cells the update writes.
+   !
+   ! With Ng = 2 the lower boundary has exactly two faces to state, r_edg(0)
+   ! and r_edg(-1), and base_boundary returns one state for each. A larger Ng
+   ! would add faces between them, and base_ghost_averages would have to return
+   ! the continuation at each; the loop below would then be over them rather
+   ! than over the single lower face.
+   WL_out(:,0)    = base_face_W
+   do k = 2,Ng
+      WL_out(:,1-k) = base_face_lower_W
+      WR_out(:,1-k) = base_face_lower_W
    enddo
          
    ! Upper boundary. The extrapolations below are left unguarded: these are

@@ -4,12 +4,26 @@ notebook). Loads converged runs with exhale_io and writes PNGs to docs/figures/.
 
 Run from the examples/ directory:  python3 make_figures.py
 Each figure is wrapped in try/except so a missing run is skipped, not fatal.
+
+STALE (P48; Update_EXHALE section 137): the figures currently in docs/figures/
+were made while exhale_io returned the profile files' GHOST rows as solution
+cells. The reader now drops them, so re-running this script moves the transit
+depths by 0.2-3.8 per cent and trims one point from each end of every radial
+curve. Nothing was regenerated; regeneration awaits instruction. The affected
+files are listed in docs/figures/README_STALE_P48.md.
 """
 import os
+import sys
 import numpy as np
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
+
+# make exhale_io importable regardless of cwd (same guard as
+# lya_insitu_emissivity.py, exhale_to_lart.py and tpm_halpha_lart2d.py)
+_HERE = os.path.dirname(os.path.abspath(__file__))
+if _HERE not in sys.path:
+    sys.path.insert(0, _HERE)
 import exhale_io as aio
 
 ROOT = os.path.join(os.path.dirname(__file__), '..')

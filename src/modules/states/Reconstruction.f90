@@ -12,11 +12,13 @@
       ! (weno_mode in global_parameters; 0 = off/default, byte-identical).
       real*8, allocatable :: S0sav(:,:), S1sav(:,:)
 
-      ! Number of faces at which the reconstruction left the admissible
-      ! thermodynamic state (rho > 0, p > 0) and was dropped to first order,
-      ! summed over the whole run. Reported at the end of a run; zero means the
-      ! high-order reconstruction was admissible everywhere and the run is the
-      ! one an unguarded build would have produced.
+      ! Number of FACE STATES whose reconstruction left the admissible
+      ! thermodynamic state (rho > 0, p > 0) and was scaled back toward its own
+      ! cell average, summed over the whole run. Counts one per face state, not
+      ! one per face pair: the limiter scales the offending side only.
+      ! Reported at the end of a run; zero means the high-order reconstruction
+      ! was admissible everywhere and the run is the one an unguarded build
+      ! would have produced, to the bit.
       integer :: n_faces_positivity_limited = 0
 
       contains
@@ -82,6 +84,13 @@
                allocate(S0sav(0:N+1,3), S1sav(0:N+1,3))
                S0sav = 1.0d0;  S1sav = 1.0d0
             endif
+            ! Cell-local: the reconstruction of cell j reads the two
+            ! interface jumps that bound it and writes its own two face
+            ! states, WL at face j and WR at face j-1.  No reduction, so
+            ! the arithmetic of a cell is unchanged and the result is
+            ! bitwise identical at any number of threads.
+            !$omp parallel do default(shared) schedule(static)          &
+            !$omp   private(j,k,dWp,dWm,b0,b1,tau,S0,S1)
             do j = 0,N+1
 
                dWp = dW(:,j)
@@ -112,6 +121,7 @@
                   - (D2(j)*S0*C2(j)*dWp + S1*C2(j-1)*dWm) &
                   /(D2(j)*S0 + S1)
             enddo
+            !$omp end parallel do
 
          case default
 
@@ -135,11 +145,54 @@
 
       subroutine positivity_limited_faces(u_in,WL,WR)
 
-      ! Drop a face pair to the piecewise-constant (first-order) limit of the
-      ! same reconstruction wherever the higher-order face state has left the
-      ! admissible thermodynamic state, rho > 0 and p > 0.
+      ! Scale each face state CONTINUOUSLY toward its own cell average, by the
+      ! largest factor that keeps rho > 0 and p > 0 there.
       !
-      ! Validity of the reconstruction, and why the test is needed. PLM and
+      !     W_face  <-  W_avg + theta ( W_rec - W_avg ),   theta in [0,1]
+      !     theta   =   min over rho and p of  (q_avg - eps)/(q_avg - q_rec)
+      !
+      ! This is the positivity-preserving limiter of Zhang & Shu (2010,
+      ! J. Comput. Phys., 229, 8918; doi:10.1016/j.jcp.2010.08.016), in the
+      ! form that scales the reconstruction increment of one cell toward that
+      ! cell's admissible mean. The publisher PDF is not in references/, so
+      ! only the bibliography is given here.
+      !
+      ! WHY IT IS CONTINUOUS AND WHY THAT IS THE POINT (docs/Update_EXHALE.md
+      ! section 138; the measurement is P49). This routine used to be a hard
+      ! switch: as soon as a reconstructed rho or p crossed zero, the WHOLE
+      ! face pair was replaced by the two cell averages. That is a STEP
+      ! DISCONTINUITY of the residual F(Y), and it is what stopped the
+      ! molecular arm's steady solve. Measured on the hot Uranus hand-off:
+      ! the WENO3 left density at the face of cell 273 (r = 1.2324 R_p) sat at
+      ! 2.50e-15 against cell averages of 1e-4 -- eleven orders below and
+      ! positive by a hair -- so the iterate sat exactly on the switching
+      ! surface. Raising the neighbouring cell's density by one part in 1e9
+      ! tipped it through zero, the face density jumped to 4.17e-6, the mass
+      ! residual of cell 273 jumped by a factor 97, and the merit jumped from
+      ! 202.5 to 945.1 -- BY THE SAME FACTOR 4.67 at every step size from 1e-2
+      ! to 1e-9, which is a jump and not a slope. Every direction the solver
+      ! could build put its largest scaled component at that face, so all of
+      ! them ascended: the Newton/PTC step at every damping over six decades
+      ! and all ten damped Gauss-Newton steps, by factors 4.7 to 27.8. With
+      ! the scaling above the face value crosses zero continuously instead,
+      ! and the merit has a slope there rather than a step.
+      !
+      ! THE FLOOR eps. The switch this replaces tested q > 0, so its floor was
+      ! zero; eps = 0 here would scale the face value to EXACTLY zero and hand
+      ! the HLLC solver sqrt(gamma p/0). The floor used is therefore the
+      ! smallest one that is not a chosen number: one unit in the last place of
+      ! the cell average, eps = epsilon(1.0d0)*q_avg. It introduces no
+      ! dimensional constant and no tuning, and the residual jump that survives
+      ! at the crossing is 2.2e-16 of the cell average -- round-off, against
+      ! the factor 1.7e9 the hard switch made.
+      !
+      ! BYTE-IDENTITY. A face whose reconstruction is admissible has theta = 1
+      ! and is NOT rewritten (W_avg + 1*(W - W_avg) is not bitwise W), so every
+      ! run in which the guard never fired is unchanged to the bit. Runs in
+      ! which it did fire move, and by more than the floor: the old switch
+      ! replaced both states of a face and this scales only the offending one.
+      !
+      ! Validity of the reconstruction, and why the limiter is needed. PLM and
       ! ESWENO3 both extrapolate the PRIMITIVE variables (rho, v, p) to a face
       ! with slopes taken from the neighbouring cells, which is a valid
       ! approximation only while the solution varies smoothly across the
@@ -153,15 +206,15 @@
       ! square root of it (Num_Fluxes.f90; the abort of TO_BE_DONE item (O)).
       !
       ! The cell averages are the only states the update guarantees admissible,
-      ! so the repair is to use them: WL(face j) = W(cell j), WR(face j) =
-      ! W(cell j+1). That is the same scheme at first order, so it is a local
-      ! loss of accuracy at an under-resolved face, not a change of the
-      ! equations. It is the standard positivity guard of a high-resolution
-      ! finite-volume scheme.
+      ! so the repair is built from them. Scaling the whole increment keeps the
+      ! face state a convex combination of the reconstruction and an admissible
+      ! state, so it is the same scheme at reduced order, not a change of the
+      ! equations.
       !
-      ! Outermost face: there is no cell j+1, so the right state falls back on
-      ! the last cell average -- the zero-gradient state the outer BC
-      ! reconstructs to in any case.
+      ! Face j takes its left state from cell j and its right state from cell
+      ! j+1, which is the pairing the two loops below use. The outermost face
+      ! has no cell j+1, so it falls back on the last cell average -- the
+      ! zero-gradient state the outer BC reconstructs to in any case.
       !
       ! If a CELL AVERAGE is itself non-positive the state is unphysical before
       ! any reconstruction and nothing here can repair it; that face is left as
@@ -172,9 +225,12 @@
       real*8, dimension(3,1-Ng:N+Ng) :: W_avg
       logical :: any_bad
       integer :: j,jr
+      real*8  :: th
 
       ! Scan first: the conversion to cell-average primitives is only needed
-      ! when a face has actually failed, which on an admissible run is never.
+      ! when a face has actually left rho > 0, p > 0, which on an admissible
+      ! run is never. A face value inside (0, eps] would be missed by this
+      ! test, and is left alone deliberately: its theta would be 1 - 2.2e-16.
       ! The tests are written as the NEGATION of "strictly positive" so that a
       ! NaN face state -- which compares false against everything -- is caught
       ! too; it can only come from the reconstruction arithmetic when the cell
@@ -192,18 +248,61 @@
       call U_to_W(u_in,W_avg)
 
       do j = 1-Ng,N+Ng
-         if (WL(1,j) .gt. 0.0d0 .and. WL(3,j) .gt. 0.0d0 .and.          &
-             WR(1,j) .gt. 0.0d0 .and. WR(3,j) .gt. 0.0d0) cycle
          jr = min(j+1, N+Ng)
-         if (.not. (W_avg(1,j)  .gt. 0.0d0 .and. W_avg(3,j)  .gt. 0.0d0 &
-              .and. W_avg(1,jr) .gt. 0.0d0 .and. W_avg(3,jr) .gt. 0.0d0)) cycle
-         WL(:,j) = W_avg(:,j)
-         WR(:,j) = W_avg(:,jr)
-         n_faces_positivity_limited = n_faces_positivity_limited + 1
+         th = positivity_scaling(WL(1,j), WL(3,j), W_avg(1,j), W_avg(3,j))
+         if (th .lt. 1.0d0) then
+            WL(:,j) = W_avg(:,j) + th*(WL(:,j) - W_avg(:,j))
+            n_faces_positivity_limited = n_faces_positivity_limited + 1
+         endif
+         th = positivity_scaling(WR(1,j), WR(3,j), W_avg(1,jr), W_avg(3,jr))
+         if (th .lt. 1.0d0) then
+            WR(:,j) = W_avg(:,jr) + th*(WR(:,j) - W_avg(:,jr))
+            n_faces_positivity_limited = n_faces_positivity_limited + 1
+         endif
       enddo
 
       ! End of subroutine
       end subroutine positivity_limited_faces
+
+
+      !-----------------------------------------------!
+
+      double precision function positivity_scaling(rho_f, p_f, rho_a, p_a)  &
+                                                                 result(th)
+      ! The largest theta in [0,1] for which rho and p of
+      ! W_avg + theta (W_face - W_avg) both stay at or above their floors.
+      ! theta = 1 whenever the face state is already admissible, so the caller
+      ! can leave such a face untouched and keep it bitwise unchanged.
+      real*8, intent(in) :: rho_f, p_f, rho_a, p_a
+      th = 1.0d0
+      ! A cell average that is not itself admissible cannot be the anchor of a
+      ! convex combination; that face is left as it is (see the header).
+      if (.not. (rho_a .gt. 0.0d0 .and. p_a .gt. 0.0d0)) return
+      th = min(th, positive_variable_scaling(rho_f, rho_a))
+      th = min(th, positive_variable_scaling(p_f,   p_a))
+      end function positivity_scaling
+
+      !-----------------------------------------------!
+
+      double precision function positive_variable_scaling(q_f, q_a) result(th)
+      ! One variable's share of the scaling: the theta that puts
+      ! q_a + theta (q_f - q_a) exactly on the floor eps = epsilon*q_a when the
+      ! reconstruction went below it, and 1 when it did not. q_a > 0 is the
+      ! caller's precondition.
+      real*8, intent(in) :: q_f, q_a
+      real*8 :: qeps
+      th = 1.0d0
+      ! A face value that is not a number carries no scaling; the cell average
+      ! is the only admissible state left, which is theta = 0.
+      if (q_f .ne. q_f) then
+         th = 0.0d0
+         return
+      endif
+      qeps = epsilon(1.0d0)*q_a
+      if (q_f .ge. qeps) return
+      th = (q_a - qeps)/(q_a - q_f)
+      th = max(0.0d0, min(1.0d0, th))
+      end function positive_variable_scaling
 
 
       ! End of module

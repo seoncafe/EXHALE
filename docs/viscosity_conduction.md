@@ -366,6 +366,15 @@ ghost-pressure change nulls it), and the `j = 1` "worst cell" was an artifact of
 a diagnostic that normalized momentum by the base cell's own `|rho v|`. See
 `docs/newton_scaling_and_base_wall.md`.
 
+> **STALE (P35, 2026-09-02).** The `vulcan_work` run directories cited
+> here carry `Molecular base: True` with the molecular network off. The base
+> particle count was molecular while the species state was atomic, so the
+> base ghost sat at `ntot_bc x T0` -- between 0.555 and 0.994 of the
+> requested `T0`, depending on the directory -- and startup now refuses the
+> combination. The numbers below are kept as recorded but stand on that
+> base; see `INVALID_BASE_TEMPERATURE.md` in each run directory and item
+> P35 of `TO_BE_DONE.md`.
+
 **G3 — the full-physics continuation**
 (`vulcan_work/hd209_wind_response/photo_deep_secion_cont/`, HD 209458 b with a
 `base.inp` handoff and a molecular base), re-run in a scratch copy with both

@@ -27,7 +27,10 @@
   frame=single,
   breaklines=true,
 }
-\newcommand{\rp}{$R_p$}
+\newcommand{\rp}{\ensuremath{R_p}}   % \ensuremath, not $R_p$: the bare
+                                     % form opened its own math mode and broke
+                                     % every use INSIDE math, e.g. $1.67\,\rp$,
+                                     % which stopped the whole document building
 \newcommand{\msun}{$M_\odot$}
 \newcommand{\Rp}{R_{\rm p}}   % planet radius, for use inside math mode
 
@@ -81,9 +84,11 @@ $\mathcal{C}$ the radiative cooling. Coupled to the hydrodynamics, at every step
 \emph{ionization equilibrium} of H, He, and the trace metals (C, N, O, Mg, Si,
 Ca, Na, K, S, Fe) with a Newton (MINPACK) solver, including photoionization,
 collisional ionization, radiative + dielectronic recombination, and charge
-exchange. The photoelectron energy budget carries Shull \& van Steenberg (1985)
-secondary ionization (a fast photoelectron drives further H\,I / He\,I
-ionizations instead of thermalizing fully), the He\,II\,$\to$\,He\,I
+exchange. The photoelectron energy budget carries secondary ionization (a fast
+photoelectron drives further H\,I / He\,I / H$_2$ ionizations instead of
+thermalizing fully) on the Shull \& van Steenberg (1985) ionization budget
+with the Dalgarno, Yan \& Liu (1999) heating fraction and molecular channels,
+the He\,II\,$\to$\,He\,I
 recombination radiation is coupled to H\,I ionization on the spot (Draine 2011
 $y$/$z$), and the He\,$\leftrightarrow$\,H charge-exchange pair (Koskinen 2013)
 acts in every helium-bearing ionization system. When the metastable He\,$2\,^3$S
@@ -294,8 +299,8 @@ $\sim$30). For production answers use the residual-based stop
 \S\ref{sec:newton}); details in \texttt{steady\_solver\_memo}.
 
 \paragraph{Staged secondary ionization.} With
-\texttt{Secondary\_ionization: True} (the default) the Shull \& van Steenberg
-(1985) coupling is \emph{not} applied from step~0. From a cold initial condition
+\texttt{Secondary\_ionization: True} (the default) the photoelectron coupling
+is \emph{not} applied from step~0. From a cold initial condition
 it would deepen the base cooling valley and amplify the base acoustic mode into
 a NaN runaway on high-gravity cases. Instead the wind first relaxes without the
 coupling; the moment that first relaxation converges (or stalls) the coupling
@@ -306,6 +311,13 @@ which the run re-converges with the full physics. Expect roughly double the step
 count on high-gravity cases. \texttt{Secondary\_ionization: False} disables the
 coupling entirely; \texttt{Immediate} applies it from step~0 (for A/B tests
 only --- it reproduces the cold-start crash on high-gravity cases).
+
+\textbf{A consequence worth knowing before reading a short run.} Staged is not
+a synonym for on. A run that never reaches its first convergence --- one
+stopped at a fixed step count, or one left at a du plateau --- never switches
+the coupling on, and its answer carries no secondary ionization at all. The
+startup report (\texttt{EXHALE\_setup.out}) says which of the three states the
+run is in, and the terminal prints the activation line only when it happens.
 
 \subsection{Base grid resolution (\texttt{Base grid [dr,cells]})}
 \label{sec:basegrid}
@@ -351,52 +363,48 @@ setting is what \texttt{HD189733b/input.inp} carries; the other three production
 planets run on the default. The full investigation is
 \texttt{docs/hd189\_base\_checkerboard.md}.
 
-\subsection{The base ghost temperature
-(\texttt{Base ghost temperature})}\label{sec:baseghostT}
-The lower ghost cells always pin the density to its base value $\rho_{\rm bc}$
-(the mass reservoir). Their \emph{temperature} is a separate choice, and the
-legacy one is to pin it as well: the ghost pressure is fixed at
-$n_{\rm tot,bc}+\delta p_{\rm bc}$, which at the pinned density is
-$T_{\rm ghost}=T_0$, the equilibrium temperature. Nothing in the model supports
-that value --- the radiative equilibrium of the lower atmosphere is outside the
-domain --- and it becomes actively harmful when the first interior cell settles
-far below $T_0$: with the CHIANTI metal-line cooling, cell~1 on HD\,189733\,b
-sits at $494$\,K against $T_0=1183$\,K, so a factor-2.4 contact discontinuity is
-held permanently on the boundary, together with a density inversion
-($\rho_1/\rho_{\rm ghost}=2.3$).
+\subsection{The lower boundary: a characteristic condition at the face}
+\label{sec:basebc}
+The lower boundary is imposed at the first cell \emph{face} $r_{\rm edg}(0)$,
+not in a ghost cell. At that face the characteristic speeds are $v-c$, $v$ and
+$v+c$, and a wave enters the domain when its speed is positive; in EXHALE the
+radius increases outward, so gas entering the base moves outward and inflow is
+$v>0$. For the subsonic inflow a wind rests on, two characteristics enter and
+one leaves, so the lower atmosphere states \emph{two} conditions and the
+interior supplies \emph{one}.
 
-\texttt{Base ghost temperature: continuous} replaces the pin with
-$dT/dr=0$ at the base face: the ghost keeps the base composition
-($n_{\rm tot,bc}$ nuclei and $\delta p_{\rm bc}$ electrons at $\rho_{\rm bc}$,
-exactly the particle count the isothermal pin uses) but carries the temperature
-of the first interior cell,
+The two the lower atmosphere states are its \textbf{pressure} and its
+\textbf{specific entropy} at the base level $r=1$, carried as the isentrope
+through $(p_0, T_0)$ at the base composition. The one the interior supplies is
+the outgoing acoustic invariant of the first cell,
 \begin{equation}
-p_{\rm ghost} = (n_{\rm tot,bc}+\delta p_{\rm bc})\,T_1 ,\qquad
-T_1 = p_1/(n_{\rm tot}+n_e)_1 ,
+  p_b - \rho_i c_i\, v_b \;=\; p_i - \rho_i c_i\, v_i ,
 \end{equation}
-in the code's $T_0$ units. The default is \texttt{isothermal} (the legacy pin),
-so runs without the key are unchanged. The key is ignored when
-\texttt{Hydrostatic base: True} is set, which sets the same ghost pressure from
-the interior gradient instead; with \texttt{Base BC: pressure} the microbar
-target is imposed at $T_0$ when $n_0$ is derived, so under a continuous-$T$
-ghost only the base \emph{density} stays anchored.
+where the subscript $i$ is cell~1 continued to the face along its own
+hydrostatic isentrope and $c_i$ uses cell~1's own $\gamma_{\rm eff}$. The
+closed-form invariant $v-2c/(\gamma-1)$ is deliberately not used: the caloric
+equation of state gives every cell its own $\gamma_{\rm eff}(x_{\rm H_2},T)$,
+and that invariant assumes one constant $\gamma$.
 
-Measured on HD\,189733\,b (production configuration, restarted from the
-converged isothermal-ghost state and Newton-finished): the boundary jump
-disappears ($T_{\rm ghost}=540$\,K against $T_1=540$\,K, $\rho_1/\rho_{\rm
-ghost}=0.95$), the alternating $\ln\rho$ amplitude over cells 1--12 falls from
-$2.6\times10^{-2}$ to $9.2\times10^{-3}$, the steady residual from
-$5.4\times10^{-4}$ to $2.8\times10^{-4}$, and beyond cell~7 the alternation
-drops by one to two orders of magnitude; $\log_{10}\dot M$ moves by $+0.01$~dex
-(9.04 to 9.05). What remains in that A/B is a stronger 3-cell disturbance in
-cells 2--4; it is much reduced in the production state that
-\texttt{HD189733b/} has carried since, where the key is combined with the
-ionization-root validation ($T_{\rm ghost}/T_1=529.4/529.6$\,K, cells 1--12
-amplitude $1.9\times10^{-3}$). With the later cooling and H($n{=}2$)
-corrections that folder now converges at a 551\,K base and
-$\log_{10}\dot M = 9.14$, the value \texttt{paper/} carries. Details and the
-full window sweep:
-\texttt{docs/hd189\_base\_checkerboard.md}.
+The ghost cells are then the volume averages of the same hydrostatic isentrope
+continued \emph{below} the face, with the velocity carrying a constant
+$\rho v r^2$. They are not copies of the face state: the two differ by half a
+cell of stratification, and that half cell is what the previous ghost-cell
+closure left as a resolution-independent momentum imbalance of $25\%$ of the
+weight of cell~1.
+
+Where the flow reverses ($-c<v<0$) only one characteristic enters, so the
+reservoir states the pressure alone and the entropy at the face is the
+interior's, advected out. The handover between the two is a smooth blend of
+width $10^{-6}$ in face Mach number, far below the $\sim\!10^{-5}$ a wind's own
+base carries. Supersonic outflow prescribes nothing. Supersonic \emph{inflow}
+would need three reservoir conditions and a $(p,s)$ reservoir has two, so it is
+reported as a configuration outside the model rather than repaired.
+
+Nothing in this is selectable. There is no ghost velocity, pressure or
+temperature closure to choose, and the four keys that used to choose them are
+refused at startup (\S\ref{sec:retiredbase}). The one key that remains is
+\texttt{Base BC:}, which states \emph{where} the boundary is, not what it does.
 
 \subsection{The steady-state Newton solver (\texttt{Solver: Newton})}
 \label{sec:newton}
@@ -404,7 +412,8 @@ The finite-volume steady state can be solved directly --- $F(Y)=0$ for the hydro
 state, with the ionization equilibrium eliminated locally inside the residual ---
 by a preconditioned Jacobian-free Newton--Krylov method (banded LAPACK
 preconditioner, frozen WENO weights, diagonal scaling, non-monotone line search;
-the smooth base valve \texttt{Valve eps:} is required and auto-adopted). Each
+the boundary is differentiable of its own accord, the branch handover being a
+blend rather than a kink, so nothing has to be smoothed for it). Each
 unknown is scaled by its own cell's state --- $\rho$, $\rho(|v|+c_s)$, $E$ ---
 so that no cell sets another's scale; the momentum scale uses the fastest
 signal speed because $\rho v$ itself vanishes wherever the flow reverses. This
@@ -421,15 +430,14 @@ Two ways to use it:
   metric $du$ (the radial spread of $\rho v r^2$) drops below the hand-off
   threshold \texttt{newton\_du\_switch} (default $10^{-2}$; the $du$-based
   \emph{convergence} stops are suspended), then the Newton solve finishes to
-  \texttt{Resid tol} (default $10^{-3}$), and the standard outputs and
+  \texttt{Resid tol} (default $10^{-5}$), and the standard outputs and
   post-processing follow. The hand-off point is adjustable through an optional
   third token on the key, \texttt{Solver: Newton <du\_switch>} (e.g.\
   \texttt{Solver: Newton 5e-3} hands off later); a bare \texttt{Solver: Newton}
   keeps the $10^{-2}$ default.
 \item \textbf{From an existing state} (recommended for re-converging old runs):
-  put the state in \texttt{output/*\_IC.txt}, set \texttt{Load IC?\ True},
-  \texttt{Valve eps:\ 1.0e-4}, \texttt{Resid tol:\ 1.0e-3}, and run with the
-  environment hook
+  put the state in \texttt{output/*\_IC.txt}, set \texttt{Load IC?\ True} and
+  \texttt{Resid tol:\ 1.0e-5}, and run with the environment hook
 \begin{lstlisting}[style=sh]
 EXHALE_PTC=1 EXHALE_PTC_JFNK=1 EXHALE_PTC_DTAU0=1.0 ./EXHALE.x
 \end{lstlisting}
@@ -473,7 +481,7 @@ PLM+WENO3}) marching warm-up; the dashed line is the
 legacy residual hand-off threshold $R_{\rm switch}=5\times10^{-2}$ used when this
 figure was produced (the current default keys the hand-off on $du<10^{-2}$
 instead, at a comparable point on the warm-up). Right: residual vs.\ JFNK outer
-iteration during the Newton finish, down to \texttt{Resid tol} ($10^{-3}$).}
+iteration during the Newton finish, down to \texttt{Resid tol} ($10^{-5}$).}
 \label{fig:newton}
 \end{figure}
 
@@ -517,8 +525,8 @@ Variable & Effect \\
 \midrule
 \texttt{EXHALE\_PTC=1} & Solve the \emph{loaded} state directly with the steady
   solver (no marching), write \texttt{output/}, and stop. Requires
-  \texttt{Load IC?\ True}; set \texttt{Valve eps:\ 1.0e-4} and
-  \texttt{Resid tol:\ 1.0e-3} (\S\ref{sec:newton}). Default engine: banded
+  \texttt{Load IC?\ True}; set \texttt{Resid tol:\ 1.0e-5}
+  (\S\ref{sec:newton}). Default engine: banded
   PTC. \\
 \texttt{EXHALE\_PTC\_JFNK=1} & With \texttt{EXHALE\_PTC=1}: use the full JFNK
   solver (GMRES on the matrix-free $J$) instead of the banded PTC ---
@@ -684,7 +692,10 @@ marked $(\ast)$.}\label{tab:inp-core}\\
 \endfoot
 \texttt{Planet name:} & string & Label for the run (cosmetic). \\
 \texttt{Log10 lower boundary number density [cm\^{}-3]:} & real (log$_{10}$) &
-  $\log_{10} n_0$, the H number density at the $1\,\mu$bar base. \\
+  $\log_{10} n_0$, the H number density at the base. \emph{Optional since
+  2026-09-03}: a \texttt{base.inp} carrying \texttt{p\_base} states the base
+  level itself and $n_0$ follows from it. Give one or the other; if both are
+  given they must agree to $1\%$ or startup refuses the pair. \\
 \texttt{Planet radius [R\_J]:} & real ($R_J$) & Base radius $R_p$ (the $1\,\mu$bar
   level); the grid radius $r$ is in units of this. \\
 \texttt{Planet mass [M\_J]:} & real ($M_J$) & Planet mass $M_p$ (sets gravity /
@@ -785,15 +796,6 @@ defaults restore the standard behavior).}\label{tab:inp-opt}\\
   used to be compiled in, so an \texttt{input.inp} without the key is
   unchanged. A restart (\texttt{Load IC? True}) must load an IC written at the
   same $N$; the row count is checked and a mismatch is reported as such. \\
-\texttt{Base ghost temperature:} & \texttt{isothermal} $|$ \texttt{continuous}
-  (def.\ \texttt{isothermal}) & Temperature closure of the lower ghost cells
-  (the density anchor $\rho_{\rm bc}$ is unaffected either way).
-  \texttt{isothermal} pins $T_{\rm ghost}=T_0$ through the fixed ghost pressure
-  $n_{\rm tot,bc}+\delta p_{\rm bc}$ (legacy). \texttt{continuous} imposes
-  $dT/dr=0$: the ghost keeps the base composition but carries $T_1$, the
-  temperature of the first interior cell. Use it when the base cools well below
-  $T_{\rm eq}$, where the pin becomes a permanent contact discontinuity on the
-  boundary (\S\ref{sec:baseghostT}). Ignored if \texttt{Hydrostatic base: True}. \\
 \texttt{Max steps:} & int (def.\ $10^{6}$) & Hard cap on marching iterations
   (\texttt{count\_max}); the run reports that it stopped without converging when
   the cap is reached. Lower it to bound an exploratory run, raise it for a
@@ -850,13 +852,36 @@ defaults restore the standard behavior).}\label{tab:inp-opt}\\
   50--2000\,K and clamped outside it
   (\texttt{src/modules/lower\_atmosphere/molecular\_infrared\_cooling.f90},
   \texttt{cooling\_data/molecular\_infrared\_bands.py}). \\
+\texttt{Molecular reaction heat:} & \texttt{True}/\texttt{False}
+  (def.\ \texttt{True}) & Deposit the energy the \emph{collisional} reactions
+  of the H$_2$/He network release into the gas. \textbf{On by default; the key
+  exists to turn it off.} In an atomic gas the ionization energy a photon spends
+  comes back as the Lyman photon of a radiative recombination and leaves, so it
+  is correctly absent from the heating. In a molecular gas it does not: the
+  cycle H$_2+h\nu\to$H$_2^++e$ (the photon pays $I({\rm H_2})=15.43$\,eV and
+  the photoelectron keeps the rest, which the photoheating already deposits),
+  H$_2^++$H$_2\to$H$_3^++$H ($+1.70$\,eV), H$_3^++e\to$H$_2+$H
+  ($+9.25$\,eV, \emph{dissociative}) returns to H$_2$ having turned one H$_2$
+  into H\,+\,H and left $I({\rm H_2})-D_0({\rm H_2})=10.95$\,eV in the gas
+  with no photon to carry it away. Measured at 81 per cent of the total heating
+  rate at $1.02\,r_{\rm base}$ on the converged He/H\,=\,0.0793 hot Uranus.
+  The heat is built from one table of species enthalpies, so a closed chemical
+  cycle releases exactly zero; the photon-driven reactions, the radiative
+  recombinations, the collisional ionizations, the Penning channels and the
+  H/He charge exchange are excluded because their energy is already in the
+  ledger. Needs \texttt{Molecular chemistry}, so an atomic run is unaffected
+  to the bit. Writes the column \texttt{heat\_mol\_chem} to
+  \texttt{output/Heating\_breakdown.txt}
+  (\texttt{src/modules/lower\_atmosphere/molecular\_reaction\_heat.f90},
+  \texttt{Update\_EXHALE.md} Sec.~141). \\
 \texttt{Stellar LW flux [erg/cm2/s]:} & real (def.\ 0) & Band-integrated
   stellar flux in the H$_2$ Lyman--Werner bands (912--1110\,\AA, i.e.\
   11.2--13.6\,eV) \emph{at the planet's orbit}. Switches on H$_2$
   photodissociation, $\mathrm{H_2}+h\nu\to\mathrm{H}+\mathrm{H}$, in the
   molecular network: an unattenuated rate $k_0 = 1.757\times10^{-7}\,
-  F_{\rm LW}$\,s$^{-1}$ (Draine \& Bertoldi 1996 calibration) times their
-  eq.~(37) self-shielding factor of the star-ward H$_2$ column, plus
+  F_{\rm LW}$\,s$^{-1}$ (Draine \& Bertoldi 1996 calibration) times a
+  self-shielding factor of the star-ward H$_2$ column read from a
+  level-resolved \textsc{Cloudy} table in $(T, n_{\rm H}, N_{\rm H_2})$, plus
   $0.4$\,eV of heating per dissociation (Black \& Dalgarno 1977). The band
   is a separate input because the code's own energy grid does not carry it:
   a numerical SED is read only down to the 13.6\,eV H\,\textsc{i} edge, and a
@@ -965,6 +990,10 @@ defaults restore the standard behavior).}\label{tab:inp-opt}\\
   wind window to change by less than this (relative) across the last
   \texttt{N\_stall} steps. Guards against stopping on a transient $du$ dip while
   the flux level still drifts ($\le0$ = off, default; \S\ref{sec:newton}). \\
+\texttt{Flux spread tol:} & real [real] & FLUX gate (\S133): a steady solve is
+  accepted only when the radial spread of $\rho v r^2$ over $r\ge r_{\rm flux}$
+  is below this tolerance AND the residual is below \texttt{Resid tol}.
+  Defaults $5\times10^{-3}$ and $r_{\rm flux}=1.2\,R_p$; $\le0$ disables it. \\
 \texttt{Resid tol:} & real & Residual-based convergence: stop when the steady
   residual $\max_k\max_j |R_{j,k}|/\max_j|u_k|$ falls below the value (monitored
   every 500 steps), \emph{replacing} the $du$ test ($\le0$ = off, default).
@@ -974,18 +1003,12 @@ defaults restore the standard behavior).}\label{tab:inp-opt}\\
   leaves residuals in each cell; pair with a Newton finish. \\
 \texttt{Energy solver:} & \texttt{Explicit} & Revert to the original
   forward-Euler source update (solver-isolation tests). \\
-\texttt{Valve eps:} & real (code $v$) & Smooth base valve: ghost velocity
-  $\tfrac12\,(v+\sqrt{v^2+\varepsilon^2})$ instead of $\max(v,0)$.
-  Differentiable at $v=0$ (required by the Newton solver); the converged answer
-  is insensitive to $\varepsilon$ ($10^{-4}$ vs.\ $10^{-5}$ tested identical).
-  $\le0$ = exact legacy valve (default). \\
 \texttt{Solver:} & \texttt{Newton} [real] & Production steady-state solve:
   marching warm-up until the flux metric $du$ (the radial spread of
   $\rho v r^2$) drops below the optional value
   \texttt{newton\_du\_switch} (default $10^{-2}$), then the JFNK Newton finish to
-  \texttt{Resid tol} (default $10^{-3}$), then the standard final outputs and
-  post-processing. Adopts \texttt{Valve eps:} $10^{-4}$ automatically if unset.
-  See \S\ref{sec:newton}. \\
+  \texttt{Resid tol} (default $10^{-5}$), then the standard final outputs and
+  post-processing. See \S\ref{sec:newton}. \\
 \texttt{Low-Mach damping:} & real $\varepsilon_4$ [, real $M_{\rm th}$]
   (def.\ $-1$, i.e.\ off; $M_{\rm th}=10^{-3}$) & Artificial dissipation of the
   $2\Delta r$ contact/entropy mode. The HLLC flux carries the middle wave at
@@ -1015,11 +1038,14 @@ defaults restore the standard behavior).}\label{tab:inp-opt}\\
   net-charge weighting are always the van Hoof et al.\ (2014) form,
   independent of this switch. \\
 \texttt{Secondary\_ionization:} & \texttt{False} $|$ \texttt{True} $|$
-  \texttt{Immediate} (def.\ \texttt{True}, staged) & Shull \& van
-  Steenberg (1985) secondary ionization by fast photoelectrons in the main
-  loop: a photoelectron ejected with $E_0>40\,$eV deposits only $f_{\rm
-  heat}(x)$ of its excess as heat and drives further H\,I / He\,I ionizations,
-  where $x$ is the ionized fraction of the H$+$He nuclei. The default is
+  \texttt{Immediate} (def.\ \texttt{True}, staged) & Secondary ionization by
+  fast photoelectrons in the main loop: a photoelectron ejected with
+  $E_0>30\,$eV deposits only $f_{\rm heat}(x,E_0)$ of its excess as heat and
+  drives further H\,I / He\,I / H$_2$ ionizations, where $x$ is the free
+  electron density over the H$+$He nuclei. The ionization budget is Shull \&
+  van Steenberg's (1985) with the energy dependence of Dalgarno, Yan \& Liu
+  (1999); the heating fraction, the H$_2$ target and the molecular heat
+  returns are Dalgarno et al.'s. The default is
   \emph{staged} (\S\ref{sec:convctl}): the coupling switches on only after the
   wind first converges without it, then the run re-converges. \texttt{False}
   restores full photoelectron thermalization, bit-identical to the legacy
@@ -1096,7 +1122,7 @@ defaults restore the standard behavior).}\label{tab:inp-opt}\\
   \texttt{output/Oxygen\_chemistry.txt} and \texttt{output/FUV\_bands.txt}
   and appends \texttt{OH H2O CO} to \texttt{Ion\_species.txt}
   (\S\ref{sec:oxychem}). \\
-\texttt{Oxygen transport:} & \texttt{True}/\texttt{False}
+\texttt{Molecular carrier transport:} & \texttt{True}/\texttt{False}
   (def.\ \texttt{True} whenever \texttt{Oxygen chemistry} is on) & Transport
   the molecular carriers H$_2$, OH, H$_2$O and CO vertically instead of
   closing them by a local steady state: one implicit backward-Euler
@@ -1136,17 +1162,6 @@ defaults restore the standard behavior).}\label{tab:inp-opt}\\
   which makes \texttt{He\_Kzz} inert. A missing file, a malformed table, or a
   \texttt{base.inp} beside it that still states a physics key stops the run
   (\S\ref{sec:lowerprofile}). \\
-\texttt{Hydrostatic base:} & \texttt{True} (def.\ off) & Momentum-consistent
-  base pressure. The legacy ghost pins $p$ to $n_{\rm tot,bc}+\delta p_{\rm bc}$
-  at $T_0$, which flattens $dp/dr$ to ${\sim}0$ at the base, whereas steady
-  momentum balance needs $dp/dr=-\rho g$; on a strongly bound planet the
-  resulting base-face momentum residual drives the breathing limit cycle. With
-  this key the ghost pressure is a linear extrapolation of the interior
-  gradient (cells 1 and 2), so $dp/dr$ stays continuous through the base and can
-  balance gravity; $\rho$ stays anchored at $\rho_{\rm bc}$ and the base
-  temperature floats slightly off $T_0$. It fixes neither $T$ nor $p$, so
-  \texttt{Base ghost temperature} is ignored while it is on. Off $=$
-  byte-identical legacy behavior. \\
 \texttt{Base BC:} & \texttt{density} $|$ \texttt{pressure} [, real ($\mu$bar)]
   (def.\ \texttt{density}) & What the lower boundary anchors.
   \texttt{density} (legacy) fixes the base number density at the $n_0$ of the
@@ -1155,15 +1170,6 @@ defaults restore the standard behavior).}\label{tab:inp-opt}\\
   $n_0$ from $n_0k_BT_0n_{\rm tot,bc}=p_{\rm base}$; the same isothermal ghost
   then pins $p$ and $T_0$ and derives $\rho$. It is a re-parameterization of
   the same ghost, whose physical effect is a much less dense base. \\
-\texttt{Base velocity:} & \texttt{valve} $|$ \texttt{massflux}
-  (def.\ \texttt{valve}) & Velocity closure of the lower ghost.
-  \texttt{valve} (legacy) one-way-valves the first interior velocity,
-  $\max(v_1,0)$ or its smooth form (\texttt{Valve eps}). \texttt{massflux}
-  sets it from steady continuity instead, $v_{\rm ghost}=F_c/(\rho_{\rm
-  bc}r^2)$ with $F_c$ the wind's mass-flux constant, as CETIMB (Koskinen et
-  al.\ 2013) does. It gives the cleanest base (the $\pm$m\,s$^{-1}$ base
-  oscillation disappears) but converges ${\sim}5\times$ slower, which is why
-  the valve stays the default. \\
 \texttt{Shapiro filter:} & real $\varepsilon$ [, int $n$]
   (def.\ $-1$, i.e.\ off; $n=4$) & Apply a weak Shapiro (1970) 1--2--1 low-pass
   filter $u_j \mathrel{+}= (\varepsilon/4)(u_{j-1}-2u_j+u_{j+1})$ to the
@@ -1498,11 +1504,11 @@ H$_2\to$H front with an atomic wind above --- the atomic assumption becomes a
 result rather than an input.
 
 \textbf{Converging a molecular run takes three keys an atomic run does not
-need:} \texttt{Solver: Newton 5.0e-2}, \texttt{Resid tol: 1.0e-5} and
+need:} \texttt{Solver: Newton 5.0e-2}, \texttt{Resid tol: 1.0e-7} and
 \texttt{Max steps: 150000}. The $du$ descent of a molecular run is not
 monotonic, so the default $10^{-2}$ hand-off threshold can consume the whole
 step budget; and $\|R\|$ is set by the two or three cells just above the base,
-so a run stopped at the default \texttt{Resid tol: 1.0e-3} leaves the molecular
+so a run stopped at the default \texttt{Resid tol: 1.0e-5} leaves the molecular
 layer still cooling (its energy residual there is still $0.7\times$ the local
 H$_3^+$ cooling rate). Marching alone never reaches that layer --- its H$_3^+$
 cooling time is ${\sim}10^{7}$ CFL steps --- so the Newton finish is not
@@ -1515,7 +1521,7 @@ and item (G) of \texttt{TO\_BE\_DONE.md}.
 \paragraph{Tier 2b --- oxygen chemistry.}\label{sec:oxychem}
 \begin{verbatim}
 Oxygen chemistry: True             # OH, H2O, CO in the same coupled system
-Oxygen transport: True             # the default: carriers transported
+Molecular carrier transport: True  # the default: carriers transported
 Stellar LW flux [erg/cm2/s]:       600.1  #  912-1110 A at the planet (LW)
 Stellar FUV B1 flux [erg/cm2/s]:   648.4  # 1110-1201 A               (B1)
 Stellar Lya flux [erg/cm2/s]:    14957.2  # 1215.67 A, the Lya line   (B2)
@@ -1556,7 +1562,7 @@ accurate treatment. Its density is reported as a diagnostic column.
 oxygen at every measured level, so a network that gave the whole oxygen
 abundance to the water family would over-supply the OH cycle by about a factor
 two. It has no chemical source in this network: with
-\texttt{Oxygen transport: False} it sits at its own
+\texttt{Molecular carrier transport: False} it sits at its own
 $\mathrm{CO\leftrightarrow C+O}$ chemical equilibrium, which keeps it
 associated below ${\sim}3000$\,K and dissociates it by ${\sim}4000$\,K, above
 the H$_2\to$H front and below the wind, so the carbon and the oxygen of the
@@ -1597,8 +1603,13 @@ it twice on the way down. Both are closed. The H$_2$ rate is multiplied by
 $\exp(-\tau_{\rm cont})$, the H$_2$O + OH continuum term of Draine \& Bertoldi
 (1996) eq.~(40) --- identically 1 for a run without this option --- and the
 H$_2$O and OH rates in that band are multiplied by $1-A$, the fraction of the
-band the H$_2$ lines have \emph{not} removed, built from DB96's own
-self-shielding function and their dissociation probability per pump. The split
+band the H$_2$ lines have \emph{not} removed. $A$ is DB96 eq.~(39), the
+closed-form integral of their own self-shielding function --- the one place
+DB96 still sets a number, and the one the level-resolved calculation confirms
+to 2 per cent, because the quantity it is normalized to is the \emph{pump}
+cross section, which no line transfer touches. Everything else in the
+Lyman--Werner channel --- the rate and both branching ratios --- now comes
+from the level-resolved table. The split
 is exact cell by cell, so what the three absorbers take is exactly what the beam
 loses, and \texttt{output/FUV\_bands.txt} reports that ledger. A B1 flux
 measured over 912--1201\,\AA{} must accordingly be re-split between the two
@@ -1631,7 +1642,7 @@ scales (\texttt{output/Oxygen\_chemistry.txt}), which say where the answer is
 chemistry, where it is flow, and where the two are comparable.
 
 \textbf{The carriers are transported by default}
-(\texttt{Oxygen transport: True}). H$_2$, OH, H$_2$O and CO are advanced by an
+(\texttt{Molecular carrier transport: True}). H$_2$, OH, H$_2$O and CO are advanced by an
 implicit backward-Euler diffusion-advection step solved together with the same
 chemistry rows the local equilibrium uses, so a rate that changes in one changes
 in the other. The molecular coefficients come from Blanc's law over the
@@ -1647,7 +1658,7 @@ element limiter that fires is counted and reported in the trailer of
 \emph{speciation} and not elements, which is why it cannot be run together with
 \texttt{He\_metal\_diffusion}: that arm transports elements, and CO carries an
 oxygen and a carbon nucleus and so cannot follow two element factors at once.
-\texttt{Oxygen transport: False}
+\texttt{Molecular carrier transport: False}
 restores the earlier local steady state; it isolates the chemistry for testing
 and is not a model of a base, because at the HD\,189733\,b 1\,$\mu$bar level the
 H$_2$ chemical and flow times are comparable. With $K_{zz}=0$ and no profile the
@@ -1709,7 +1720,10 @@ Key & Category & What it sets, and where the value is consumed \\
 \texttt{T\_base}, \texttt{r\_base}, \texttt{p\_base},
 \texttt{q\_H2\_base} & EOS boundary &
   \texttt{T0}, \texttt{R0}, \texttt{p\_base\_bar}, \texttt{q\_h2\_base}: the
-  state of the gas at the matching level. \texttt{q\_H2\_base} replaces the
+  state of the gas at the matching level. \texttt{p\_base} also \emph{fixes}
+  that level: $n_0 = p_{\rm base}/(k_{\rm B} T_0 n_{\rm tot,bc})$, so
+  \texttt{Log10 lower boundary number density} is redundant beside it and is
+  refused if it disagrees by more than $1\%$. \texttt{q\_H2\_base} replaces the
   chemical-equilibrium fit in \texttt{comp\_ntot\_bc}, i.e.\ it sets the base
   \emph{particle count}, and it is also imposed on the H$_2$ partition of the
   inflowing ghost species, the particle count then coming from that same
@@ -2095,6 +2109,59 @@ Col & Quantity & Unit & Note \\
 cm$^3$ (metals included under the \texttt{eos\_metals} policy), not a number
 density; multiply by $m_{\rm H}$ to get g\,cm$^{-3}$.
 
+\paragraph{Header lines.} The file opens with \texttt{\#} comment lines that
+every loader skips: the schema tag, the \texttt{\# columns} list, the
+\texttt{\# rows} line saying which rows are ghost cells, and
+
+\begin{quote}\ttfamily\small
+\# coupling: sec\_ion=T sec\_ion\_step=2242 valve= 1.00000E-04 recon=WENO3
+fluxconst=-1.00000E+00
+\end{quote}
+
+\noindent which records the run state the profile was produced under --- every
+switch that changes \emph{while} a run converges rather than being fixed by
+\texttt{input.inp}: whether the SvS85 photoelectron secondary ionization was
+being applied and at which step it was armed, the base one-way-valve smoothing
+and the discrete reconstruction operator in force, which is not
+\texttt{rec\_method} alone while the PLM\,$\to$\,WENO3 continuation is armed.
+The two fields that used to follow it, \texttt{valve} and \texttt{fluxconst},
+were the switches the old base closure chose for itself and are gone with it
+(\S\ref{sec:basebc}); a reader of an older file still finds them there, and
+the parser takes the fields it recognizes one at a time.
+
+This matters because the file is also the restart input: copied to
+\texttt{Hydro\_ioniz\_IC.txt} and read back under \texttt{Load IC? True}, its
+\texttt{sec\_ion} field tells the new run to start the coupling where the old
+one left it, instead of re-running the staging on a state that no longer needs
+it (\S144 of \texttt{docs/Update\_EXHALE.md}). A file written before this line
+existed simply has no such line, and such a restart starts staged exactly as it
+did before. The other fields are reported, never imposed:
+\texttt{input.inp} states them for the new run.
+
+\paragraph{Provenance.} Three further \texttt{\#} lines say what produced the
+file, so that a profile found on disk in a year can be tied to an executable and
+an input without asking anyone:
+
+\begin{quote}\ttfamily\small
+\# provenance: git=6d07d48afd41 tree=dirty run=2026-09-03T20:19:09\\
+\# provenance: ck\_input=1260237361560544917 ck\_base=-1
+ck\_metals=4583919659595562347\\
+\# provenance: recon=WENO3 base\_bc=isothermal carrier=none
+restart\_schema=3 resid\_def=145 N=500
+\end{quote}
+
+\noindent\texttt{git} and \texttt{tree} are the revision the \emph{executable}
+was built from and whether the working tree carried uncommitted changes at that
+moment; the Makefile stamps them in and the run never calls \texttt{git}. No
+build time is compiled in --- a timestamp in a constant would make two builds of
+one source different files, and the md5 of the binary is what ties a bitwise
+regression verdict to a revision --- so the time shown is the \emph{run} time,
+from \texttt{date\_and\_time}. The \texttt{ck\_} fields are checksums of the
+input files as they were read ($-1$ means the file was absent), and the last line
+records the discretization, the lower boundary model, the molecular carrier
+model, the version of the restart layout, the version of the residual definition
+the acceptance gates used, and the grid size.
+
 \subsection{\texttt{Ion\_species.txt} / \texttt{Ion\_species\_adv.txt}}
 Ion number densities [cm$^{-3}$] (34 columns). Column~1 is $r$; columns 2--7 are
 the H/He ions; columns 8--34 are the 27 metal-ion stages, in this order:
@@ -2158,7 +2225,7 @@ H$_2$ photodissociation diagnostic, written when a molecular run carries a
 \texttt{Stellar LW flux}. 8 columns: \texttt{1}~$r$ [\rp], \texttt{2}~$T$ [K],
 \texttt{3}~$x_{\rm H_2}=2n_{\rm H_2}/n_{\rm H}$, \texttt{4}~$n_{\rm H_2}$
 [cm$^{-3}$], \texttt{5}~the star-ward H$_2$ column $N_{\rm H_2}$ [cm$^{-2}$],
-\texttt{6}~the Draine \& Bertoldi (1996) self-shielding factor $f_{\rm shield}$,
+\texttt{6}~the level-resolved self-shielding factor $f_{\rm shield}$,
 \texttt{7}~the resulting dissociation rate $k_{\rm LW}$ [s$^{-1}$], and
 \texttt{8}~the photodissociation heating [erg\,cm$^{-3}$\,s$^{-1}$]. It shows
 directly how deep the band penetrates: $f_{\rm shield}\to1$ in the thin wind
@@ -2183,10 +2250,10 @@ photodissociation rates summed over the bands [s$^{-1}$],
 $\tau_{\rm chem} = 1/(k_{\rm O1}n_{\rm OH}+k_{\rm O2}n_{\rm O})$ is the H$_2$
 lifetime against the oxygen cycle and $\tau_{\rm adv}=r/|v|$ the radial flow
 time. These are a \emph{required} output rather than a diagnostic. With
-\texttt{Oxygen transport: True} a cell whose chemistry is slow is solved rather
+\texttt{Molecular carrier transport: True} a cell whose chemistry is slow is solved rather
 than assumed away, and the time scales say which part of the profile the
 reaction set is responsible for and which part the flow is; with
-\texttt{Oxygen transport: False} they say something stronger, namely where that
+\texttt{Molecular carrier transport: False} they say something stronger, namely where that
 limit is simply wrong.
 
 With the transport on, a trailer at the end of the file records the last
@@ -2239,9 +2306,11 @@ because the other 86.5\% of the pumps also take a photon out of the band. The
 block reports \texttt{LW\_H2\_absorbed\_en}, \texttt{LW\_cont\_absorbed\_en},
 \texttt{LW\_incident\_en} and \texttt{LW\_line\_removed\_frac}. The run warns if
 the absorbers together take more energy out of the interval than it carries, and
-also if $A$ reaches 1 --- the DB96 self-shielding fit is a fit to a \emph{rate}
-and does not bound the photon budget, so a column that reaches it is outside the
-fit's range.
+also if $A$ reaches 1 --- the DB96 equivalent width $A$ rests on is built from
+a \emph{rate} and does not bound the photon budget, so a column that reaches it
+is outside its range. A separate warning fires where the star-ward column
+passes the point at which the self-shielding table stops being a value and
+becomes an upper bound.
 
 \subsection{\texttt{OI\_levels.txt} / \texttt{OI\_levels\_adv.txt}}\label{sec:oilevels}
 Populations of the three fine-structure levels of the O\,\textsc{i}
@@ -2437,6 +2506,11 @@ else: transit depths are normalized by $\pi R_\star^2$ and the chord
 integration stops at $R_\star/R_p$, so the built-in fallback shifts every
 depth, and not by a single factor. Measured on the tutorial planet (a
 $1.13\,M_\odot$ star, so $R_\star \simeq 1.155\,R_\odot$), the fallback
+%% STALE (P48; Update_EXHALE section 137): computed with the profile files' GHOST
+%% rows included -- the two boundary rows at each end of every Hydro_ioniz /
+%% Ion_species file, which the Python readers now drop. Measured shift on three
+%% states: 0.2--3.8 per cent on the line-center and 4 A band depths. Values left
+%% exactly as measured; regeneration awaits instruction.
 returned a He\,10830 depth of $22.8\%$ where the correct radius gives
 $4.0\%$.
 
@@ -2482,6 +2556,11 @@ Worked examples (the converged Newton solutions of WASP-121b and HD189733b, with
 all four H/He spectra and the metal lines): \texttt{backup/regression/tpm\_wasp/} and
 \texttt{backup/regression/tpm\_hd189/}, collected in the notebook
 \texttt{backup/regression/}\allowbreak\texttt{steady\_solver\_results.ipynb}.
+%% STALE (P48; Update_EXHALE section 137): computed with the profile files' GHOST
+%% rows included -- the two boundary rows at each end of every Hydro_ioniz /
+%% Ion_species file, which the Python readers now drop. Measured shift on three
+%% states: 0.2--3.8 per cent on the line-center and 4 A band depths. Values left
+%% exactly as measured; regeneration awaits instruction.
 Figure~\ref{fig:tpmspec} shows the four H/He spectra \texttt{EXHALE\_transit.py} saves for
 the WASP-121b Newton solution of \texttt{backup/regression/tpm\_wasp/} (run with
 \texttt{Include He23S? True}, so the He\,I\,10830 line is populated).
@@ -2761,8 +2840,8 @@ included --- that is what \texttt{16\_molecular\_metals} is.}
   Newton finish (\S\ref{sec:newton}) & $+$ \texttt{Solver: Newton} \\
 \texttt{04\_newton\_from\_state} & Newton re-convergence of an existing state
   (no marching; needs \texttt{output/*\_IC.txt}, see the folder
-  \texttt{README}) & \texttt{Load IC? True}, \texttt{Valve eps: 1.0e-4},
-  \texttt{Resid tol: 1.0e-3}; run via the \texttt{EXHALE\_PTC} hook \\
+  \texttt{README}) & \texttt{Load IC? True},
+  \texttt{Resid tol: 1.0e-5}; run via the \texttt{EXHALE\_PTC} hook \\
 \texttt{05\_metals} & trace-metal cooling, solar C/N/O/Mg/Ca/Na/Fe
   (\S\ref{sec:inputs}) & \texttt{metals.inp} present \\
 \texttt{06\_he23s} & He~$2^3$S metastable level (He\,I~10830); the one rung
@@ -2812,7 +2891,7 @@ included --- that is what \texttt{16\_molecular\_metals} is.}
   6.105\times10^{-6}$ in 89 outer iterations): the front sits at
   $r=1.0097\,R_p$ and the molecular layer below it collapses to ${\sim}400$\,K &
   HD209458b params $+$ \texttt{Molecular chemistry: True},
-  \texttt{Solver: Newton 5.0e-2}, \texttt{Resid tol: 1.0e-5},
+  \texttt{Solver: Newton 5.0e-2}, \texttt{Resid tol: 1.0e-7},
   \texttt{Max steps: 150000} (no
   \texttt{metals.inp} here) \\
 \texttt{16\_molecular\_metals} & molecular chemistry \emph{and} trace metals
@@ -2822,7 +2901,7 @@ included --- that is what \texttt{16\_molecular\_metals} is.}
   restart, and the seed matters: seed it with a \texttt{15} converged by
   \emph{the same binary} (a state left by an older binary is a different seed
   and fails, \texttt{info = 2}), then expect \texttt{info = 0} at
-  \texttt{Resid tol: 1.0e-5} and $\log_{10}\dot M = 9.65$--$9.67$. The cold path
+  \texttt{Resid tol: 1.0e-7} and $\log_{10}\dot M = 9.65$--$9.67$. The cold path
   is closed: with metals on, the JFNK line search bottoms near
   $\|R\|\sim10^{-3}$ (worst cell $r=1.021$, momentum) and falls back to
   marching at every \texttt{Low-Mach damping} coefficient tried --- off,
@@ -2983,7 +3062,7 @@ line trapping & the eight ground-term fine-structure lines & line-center escape 
 validity floor of the coronal fits & all CHIANTI-derived coefficients & the coronal part is cut off smoothly below $10^{3}$\,K (the lower end of the fitted range), continuous in value and $dT$-slope and bit-identical above it; only the explicitly solved ground-term fine-structure terms survive below. The roll-off is $\exp(-x^2)$ with $x=(T_{\rm floor}/T-1)/w$ and $w=0.1$ by default, settable as \texttt{Coronal cutoff width:}. With the C/N/O ground-term fine-structure floors saturated no coronal cooling survives below the floor for the guard to remove, and the base-cell balance temperature of all four paper planets is identical over $w = 0.02$--$1.2$. Not applied to the legacy AIOLOS branch (\texttt{cno\_cool 0}) \\
 \midrule
 \multicolumn{3}{@{}l}{\textbf{Photoelectric heating}}\\[2pt]
-secondary ionization (def.\ on, \texttt{Secondary\_ionization}) & H\,I, He\,I & Shull \& van Steenberg (1985) $f_{\rm heat}(x)$, $f_{\rm ion}(x)$ fits; photoelectrons with $E_0>40\,$eV drive secondary H\,I / He\,I ionizations, heating scaled to $f_{\rm heat}$; the He\,$2^3$S photoelectron feeds the same heating and secondary-source budget \\
+secondary ionization (def.\ on, \texttt{Secondary\_ionization}) & H\,I, He\,I, H$_2$ & Shull \& van Steenberg (1985) $f_{\rm ion}(x)$ fits with the Dalgarno, Yan \& Liu (1999) energy dependence, and Dalgarno et al.'s heating fraction $f_{\rm heat}(x,E_0)$, H$_2$ target channel and molecular heat returns; photoelectrons with $E_0>30\,$eV drive secondary H\,I / He\,I / H$_2$ ionizations, heating scaled to $f_{\rm heat}$; the He\,$2^3$S photoelectron feeds the same heating and secondary-source budget \\
 \midrule
 \multicolumn{3}{@{}l}{\textbf{Excited hydrogen H($n{=}2$) and Ly$\alpha$}}\\[2pt]
 $2s/2p$ rate equilibrium & H($n{=}2$) & Christie, Arras \& Li (2013) Table~2 \\

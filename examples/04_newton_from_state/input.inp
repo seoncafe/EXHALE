@@ -21,6 +21,6 @@ Include He23S? False
 Load IC? True
 Do only PP: False
 Force start: False
-Valve eps: 1.0e-4
-Resid tol: 1.0e-3
+# Resid tol renormalized 2026-09-03, Update_EXHALE.md section 133 (was 1.0e-3)
+Resid tol: 1.0e-5
 Stellar radius [R_sun]: 0.765

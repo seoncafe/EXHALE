@@ -2,6 +2,14 @@
 """Figures for docs/lhs1140b_exhale_vs_pwinds.tex.
 
 Run from LHS1140b/. Writes PDF (vector) into ../docs/figures/.
+
+STALE (P48; Update_EXHALE section 137): the lhs1140b_*.pdf figures currently in
+../docs/figures/ were made while this script read the profile files' GHOST rows
+as solution cells. It now reads through exhale_io.loadtxt_cells, so re-running
+it moves the He 10830 depths and equivalent widths (0.2-3.8 per cent on the
+depths measured elsewhere) and trims one point from each end of every radial
+curve. Nothing was regenerated; regeneration awaits instruction. Affected
+files: ../docs/figures/README_STALE_P48.md.
 """
 import csv, os, re, sys
 import numpy as np
@@ -11,6 +19,16 @@ import matplotlib.pyplot as plt
 from scipy.optimize import brentq
 
 sys.path.insert(0, '..')
+# The EXHALE profile files carry two GHOST rows at each end -- a fixed base
+# state below, a zero-gradient / WENO3 extrapolation above -- and they are not
+# solution cells. exhale_io.loadtxt_cells drops them; every read of a
+# Hydro_ioniz / Ion_species file below goes through it. The p-winds oracle
+# profiles, the tpm_*.txt transit curves, the SED, the lower-atmosphere
+# profiles and output/element_flux_profile.txt (written over the faces
+# j = 1..N-1) have no ghost rows and keep plain np.loadtxt.
+sys.path.insert(0, os.path.join('..', 'examples'))
+from exhale_io import loadtxt_cells
+
 plt.rcParams.update({'text.usetex': True, 'font.family': 'serif',
                      'font.size': 9, 'axes.labelsize': 10})
 
@@ -243,8 +261,8 @@ print('  wide scan, turbulence moves the crossing by %.1f per cent'
 lab_i = [l for l in open('exhale/heh1000/output/Ion_species.txt')
          if l.startswith('# columns')][0].split()[2:]
 k = {n: j for j, n in enumerate(lab_i)}
-ion = np.loadtxt('exhale/heh1000/output/Ion_species.txt')
-hyd = np.loadtxt('exhale/heh1000/output/Hydro_ioniz.txt')
+ion = loadtxt_cells('exhale/heh1000/output/Ion_species.txt')
+hyd = loadtxt_cells('exhale/heh1000/output/Hydro_ioniz.txt')
 pw  = np.loadtxt('pwinds_oracle/profile_matched_gj1132.txt')
 rp_, vp_, rhop_, fHIIp_, fHe3p_, n3p_ = pw.T
 
@@ -305,11 +323,11 @@ print('wrote lhs1140b_bestfit.pdf')
 
 # ====== Figure 5: structure of the EW-matched EXHALE solution ==============
 _EWD = os.path.join('exhale', EWMATCH_TAG, 'output')
-hy = np.loadtxt(os.path.join(_EWD, 'Hydro_ioniz.txt'))
+hy = loadtxt_cells(os.path.join(_EWD, 'Hydro_ioniz.txt'))
 lab_i = [l for l in open(os.path.join(_EWD, 'Ion_species.txt'))
          if l.startswith('# columns')][0].split()[2:]
 ki = {n: j for j, n in enumerate(lab_i)}
-io = np.loadtxt(os.path.join(_EWD, 'Ion_species.txt'))
+io = loadtxt_cells(os.path.join(_EWD, 'Ion_species.txt'))
 r, n, v, T = hy[:, 0], hy[:, 1], hy[:, 2]/1e5, hy[:, 4]
 
 fig, axg = plt.subplots(2, 3, figsize=(7.1, 3.9))
@@ -479,7 +497,7 @@ fig, axs = plt.subplots(1, 2, figsize=(7.2, 3.2))
 p_ion_diff = os.path.join('exhale', DIFF_TAG, 'output', 'Ion_species.txt')
 cols_diff = [l for l in open(p_ion_diff) if l.startswith('# columns')][0].split()[2:]
 jd = {c: i for i, c in enumerate(cols_diff)}
-data_diff = np.loadtxt(p_ion_diff)
+data_diff = loadtxt_cells(p_ion_diff)
 
 rd = data_diff[:, 0]
 n_HI_d = data_diff[:, jd['HI']]
@@ -848,10 +866,10 @@ def kzz_homopause(d, kzz):
 def kzz_profiles(tag):
     """Hydrodynamic, elemental and metastable profiles of one K_zz run."""
     d = os.path.join('exhale', tag)
-    hy = np.loadtxt(os.path.join(d, 'output', 'Hydro_ioniz.txt'))
+    hy = loadtxt_cells(os.path.join(d, 'output', 'Hydro_ioniz.txt'))
     p = os.path.join(d, 'output', 'Ion_species_adv.txt')
     names = [l for l in open(p) if l.startswith('# columns')][0].split()[2:]
-    a = np.loadtxt(p)
+    a = loadtxt_cells(p)
     j = {n: i for i, n in enumerate(names)}
     ra = a[:, j['r[Rp]']]
     # He I already contains the 2^3S metastable (it is a level of He I, not
@@ -1507,7 +1525,7 @@ def adv_profile(sub):
         with open(path) as fh:
             fh.readline()
             cols = fh.readline().split()[2:]
-        return cols, np.loadtxt(path)
+        return cols, loadtxt_cells(path)
 
     hc, hd = read(os.path.join('exhale', sub, 'output', 'Hydro_ioniz_adv.txt'))
     ic, idd = read(os.path.join('exhale', sub, 'output', 'Ion_species_adv.txt'))
@@ -1824,7 +1842,7 @@ def composition_profile(sub):
         with open(path) as fh:
             fh.readline()
             cols = fh.readline().split()[2:]
-        return cols, np.loadtxt(path)
+        return cols, loadtxt_cells(path)
 
     ic, tab = read(os.path.join('exhale', sub, 'output', 'Ion_species_adv.txt'))
     r = tab[:, 0]
@@ -1945,11 +1963,11 @@ def h_photoionization_rate(sed_file):
     return np.trapz(flx/e_erg*sig, lam)
 
 
-hyd_e = np.loadtxt('exhale/heh1000/output/Hydro_ioniz.txt')
+hyd_e = loadtxt_cells('exhale/heh1000/output/Hydro_ioniz.txt')
 lab_i = [l for l in open('exhale/heh1000/output/Ion_species.txt')
          if l.startswith('# columns')][0].split()[2:]
 ki = {n: j for j, n in enumerate(lab_i)}
-ion_e = np.loadtxt('exhale/heh1000/output/Ion_species.txt')
+ion_e = loadtxt_cells('exhale/heh1000/output/Ion_species.txt')
 pw = np.loadtxt('pwinds_oracle/profile_matched_gj1132.txt')
 r_p, v_p, rho_p, fhii_p = pw[:, 0], pw[:, 1], pw[:, 2], pw[:, 3]
 

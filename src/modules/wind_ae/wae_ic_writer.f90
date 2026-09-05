@@ -149,7 +149,7 @@
            ntot = nH + nHe
            p = (ntot + ne)*ICW_kB*T(jj)
            nmass = nHI + nHII + 4.0d0*(nHeI + nHeII)
-           write(u,'(1X,7(ES16.10,1X))') r(jj), nmass, v(jj), p, T(jj), 0.0d0, 0.0d0
+           write(u,'(1X,7(ES17.10,1X))') r(jj), nmass, v(jj), p, T(jj), 0.0d0, 0.0d0
         end do
       end block
       close(u)
@@ -166,7 +166,7 @@
            fhe = min(max(fHeI(jj), 0.0d0), 1.0d0)
            nn  = 10.0d0**lognnuc(jj)
            nH  = nn/(1.0d0+HeH); nHe = nH*HeH
-           write(u,'(1X,7(ES16.10,1X))') r(jj), fh*nH, (1.0d0-fh)*nH,     &
+           write(u,'(1X,7(ES17.10,1X))') r(jj), fh*nH, (1.0d0-fh)*nH,     &
                  fhe*nHe, (1.0d0-fhe)*nHe, 0.0d0, 0.0d0
         end do
       end block

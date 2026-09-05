@@ -257,6 +257,11 @@ convolution reuse the existing code paths.
 produces H$\beta$ at $\lambda_{\rm H\beta}=4861.35\,$\AA{} ($f_{24}=0.119$,
 $A_{4\to2}=8.42\times10^{6}\,$s$^{-1}$). It is computed with an identical
 LOS loop and plotted/printed alongside H$\alpha$. Because both lines are
+%% STALE (P48; Update_EXHALE section 137): computed with the profile files' GHOST
+%% rows included -- the two boundary rows at each end of every Hydro_ioniz /
+%% Ion_species file, which the Python readers now drop. Measured shift on three
+%% states: 0.2--3.8 per cent on the line-center and 4 A band depths. Values left
+%% exactly as measured; regeneration awaits instruction.
 optically thick (saturated), the H$\alpha$/H$\beta$ depth ratio is much
 smaller than the optical-depth ratio ($\sim7.3$): e.g.\ on the converged
 HD\,209458b run, H$\alpha\simeq3.2\%$ and H$\beta\simeq2.0\%$ with TPM's
@@ -360,6 +365,11 @@ writes elsewhere and nothing depends on the working directory.
 \section{Validation}
 %=============================================================================
 
+%% STALE (P48; Update_EXHALE section 137): computed with the profile files' GHOST
+%% rows included -- the two boundary rows at each end of every Hydro_ioniz /
+%% Ion_species file, which the Python readers now drop. Measured shift on three
+%% states: 0.2--3.8 per cent on the line-center and 4 A band depths. Values left
+%% exactly as measured; regeneration awaits instruction.
 Run end-to-end on the converged HD\,209458b EXHALE output
 (\texttt{output/*\_adv.txt}), the module is stable and \texttt{NaN}-free
 and yields clean H$\alpha$ and H$\beta$ absorption lines at $6562.8$ and
@@ -444,6 +454,11 @@ rotation) and reports the same depth table.
 
 \subsection{Example spectra}
 
+%% STALE (P48; Update_EXHALE section 137): computed with the profile files' GHOST
+%% rows included -- the two boundary rows at each end of every Hydro_ioniz /
+%% Ion_species file, which the Python readers now drop. Measured shift on three
+%% states: 0.2--3.8 per cent on the line-center and 4 A band depths. Values left
+%% exactly as measured; regeneration awaits instruction.
 Figure~\ref{fig:metalspec} shows the three doublet spectra for the
 WASP-121b worked example (\texttt{backup/regression/tpm\_wasp/}, Roche Newton
 solution, metals on). The optically thick cores saturate, so the two

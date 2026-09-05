@@ -1,0 +1,5 @@
+Mean solar XUV spectrum at 0.05 au for the Koskinen et al. (2022) Model A comparison.
+Source: Gueymard (2003/2004) synthetic composite extraterrestrial spectrum (VULCAN/atm/stellar_flux/Gueymard_solar.txt),
+converted to erg cm^-2 s^-1 A^-1, moved to 0.05 au (x400) and scaled by 1.9419e-05 so that the 0.1-91.1 nm integral
+is 1.6e3 erg cm^-2 s^-1 (Koskinen et al. 2022 section 2.5, 'mean solar XUV flux of 1.6 W m-2 at 0.05 au ... 0.1-91.1 nm').
+columns: wavelength [A]  flux at the planet [erg cm^-2 s^-1 A^-1]

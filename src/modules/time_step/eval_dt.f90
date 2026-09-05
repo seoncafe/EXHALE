@@ -1,6 +1,8 @@
    module eval_time_step
     
    use global_parameters
+   use caloric_eos, only: caloric_mixture_active,                     &
+                         adiabatic_index_from_state
 
    implicit none
 
@@ -17,6 +19,7 @@
    !          update arithmetic bit-identical to the original scalar form.
    real*8, dimension(3,1-Ng:N+Ng), intent(in) :: W
    real*8, dimension(1-Ng:N+Ng) :: rho,v,p,cs
+   integer :: j
    real*8, intent(out) :: dt
    real*8, dimension(1-Ng:N+Ng), intent(out) :: dt_loc
 
@@ -26,7 +29,14 @@
    p   = W(3,:)
 
    ! Evaluate sound speed
-   cs = sqrt(g*p/rho)
+   if (caloric_mixture_active) then
+      do j = 1-Ng, N+Ng
+         cs(j) = sqrt(adiabatic_index_from_state(j,rho(j),p(j))         &
+                      *p(j)/rho(j))
+      enddo
+   else
+   cs = sqrt(gamma_ad*p/rho)
+   endif
 
    ! Evaluate time step according to CFL condition
    dt = CFL*minval(dr_j/(abs(v) + cs))

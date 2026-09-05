@@ -65,9 +65,9 @@
 
       ! Physical constants and the hydrogen-atom mass, from the one place
       ! that owns them.  Nothing else of global_parameters is in scope here,
-      ! so the local names of this module are checked against these five and
+      ! so the local names of this module are checked against these six and
       ! against the module's own declarations only.
-      use global_parameters, only: kb_erg, hp_erg, c_light, mu, pi
+      use global_parameters, only: kb_erg, kb_eV, hp_erg, c_light, mu, pi
 
       implicit none
       private
@@ -84,7 +84,7 @@
       ! into the other, its rovibrational partition function, and the table
       ! builder.  See the H2 THERMOCHEMISTRY block below.
       public :: k3b_H_H_to_H2, keq_H_H_to_H2, q_rovib_H2,                 &
-                h2_thermochemistry_init
+                h2_thermochemistry_init, h2_dissociation_energy_eV
 
       ! ------------------------------------------------------------------ !
       ! H2 THERMOCHEMISTRY
@@ -144,32 +144,48 @@
 
       contains
 
+      ! D0(H2) in eV.  The bond energy has ONE definition in this code, the
+      ! spectroscopic D0_H2_cm above; anything that needs it as an energy
+      ! reads it through here rather than writing 4.478 of its own.
+      double precision function h2_dissociation_energy_eV() result(e)
+      e = D0_H2_cm*1.239841984d-4
+      end function
+
+      ! R1-R4 are the atomic H/He reactions of Table 1.  They are also the
+      ! set the input key "Atomic rate set: Koskinen2022" puts in front of
+      ! EXHALE's own atomic rates: Cool_coeff calls these four functions in
+      ! that mode, so the published coefficients have one definition, here,
+      ! whether the run is molecular or atomic.  They are elemental for that
+      ! caller, whose accessors are elemental themselves.
+
       ! R1: H+ + e -> H + hv                    (Storey & Hummer 1995)
-      double precision function rk_R1_Hp_rec(Te) result(k)
+      elemental double precision function rk_R1_Hp_rec(Te) result(k)
       real*8, intent(in) :: Te
       k = 4.0d-12*(300.0d0/Te)**0.64d0
       end function
 
       ! R2: He+ + e -> He + hv                  (Storey & Hummer 1995)
-      double precision function rk_R2_Hep_rec(Te) result(k)
+      elemental double precision function rk_R2_Hep_rec(Te) result(k)
       real*8, intent(in) :: Te
       k = 4.6d-12*(300.0d0/Te)**0.64d0
       end function
 
       ! R3: H + e -> H+ + 2e                    (Voronov 1997)
-      ! U = 13.6 eV / E_e;  E_e = kB Te in eV.
-      double precision function rk_R3_H_cion(Te) result(k)
+      ! U = 13.6 eV / E_e;  E_e = kB Te in eV.  The eV Boltzmann constant is
+      ! the CODATA value owned by global_parameters, not a rounded local
+      ! copy: it is not part of the published fit.
+      elemental double precision function rk_R3_H_cion(Te) result(k)
       real*8, intent(in) :: Te
       real*8 :: U
-      U = 13.6d0/(8.6173d-5*Te)
+      U = 13.6d0/(kb_eV*Te)
       k = 2.91d-8*U**0.39d0*exp(-U)/(0.232d0 + U)
       end function
 
       ! R4: He + e -> He+ + 2e                  (Voronov 1997)
-      double precision function rk_R4_He_cion(Te) result(k)
+      elemental double precision function rk_R4_He_cion(Te) result(k)
       real*8, intent(in) :: Te
       real*8 :: U
-      U = 24.6d0/(8.6173d-5*Te)
+      U = 24.6d0/(kb_eV*Te)
       k = 1.75d-8*U**0.35d0*exp(-U)/(0.180d0 + U)
       end function
 

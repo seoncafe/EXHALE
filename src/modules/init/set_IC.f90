@@ -7,6 +7,13 @@
 	                         isp_OH, isp_H2O, isp_CO, iel_O, iel_C,   &
 	                         n_melem, melem_i0, melem_top, mion_fsp
 	use lower_column, only: q_h2_equilibrium
+	! The base molecular partition and its element-ratio ceiling. The IC takes
+	! its H2 fraction from the same two functions the inflowing ghost does, so
+	! the column the run starts on and the boundary it is driven through cannot
+	! describe different gas.
+	use composition, only: base_h2_nuclei_fraction,                   &
+	                       base_h2_composition_imposed,               &
+	                       h2_mixing_ratio_ceiling
 	! Oxygen-chemistry IC seed (see the block near the end of set_IC).
 	use oxygen_rates, only: co_equilibrium_density,                   &
 	                        oxygen_chemical_equilibrium_fractions
@@ -25,7 +32,9 @@
 	real*8 :: b0_eff
 	real*8 :: c2, cs, xi
 	! Molecular IC seed (thereis_mol): local pressure and H2 fraction scalars.
-	real*8 :: pbar_ic, qh2_ic, x2_ic, dfHI_ic
+	real*8 :: pbar_ic, qh2_ic, x2_ic, dfHI_ic, qh2_max_ic
+	integer :: n_qh2_ceiling_ic
+	logical :: handoff_ic
 	! Oxygen-chemistry IC seed (thereis_oxychem).
 	real*8 :: nO_ic, nC_ic, nden_ic, nCO_ic, nOH_ic, nH2O_ic
 	real*8 :: f_oh_ic, f_h2o_ic, sO_ic
@@ -168,25 +177,57 @@
 		f_sp(:,isp_HeTR)  = 0.0
 	endif
 
-	! Molecular IC seed: fill the H2 column from the chemical-equilibrium fit
-	! instead of leaving it zero, so the interior base starts in the molecular
-	! basin (the dark, optically-thick base equilibrium is strongly molecular;
-	! a zero-H2 start makes the base solve land on / fail into the spurious
-	! atomic root). The H-nucleus fraction bound in H2 is x2(local p, T0) from
-	! the same Koskinen 2022 / Visscher 2006 fit used for the molecular base BC.
+	! Molecular IC seed: fill the H2 column instead of leaving it zero, so the
+	! interior base starts in the molecular basin (the dark, optically-thick
+	! base equilibrium is strongly molecular; a zero-H2 start makes the base
+	! solve land on / fail into the spurious atomic root).
+	!
+	! WHERE x2 COMES FROM. The fraction of H nuclei bound into H2 has one
+	! source, the same one the inflowing ghost uses:
+	!   - a lower-atmosphere handoff (base.inp q_H2_base, or the profile value
+	!     at the matching level) states it, and then base_h2_nuclei_fraction()
+	!     is that number and the whole column starts on it;
+	!   - otherwise the Visscher/Koskinen chemical-equilibrium fit gives the
+	!     local q_H2(p, T0), converted with the same x2 = 2 q (1+He/H)/(1+q).
+	! The fit is calibrated for solar-like composition and its asymptote lies
+	! above the element-ratio ceiling 0.5/(0.5+He/H) for any He/H >= 0.167, so
+	! the fit branch is clipped AT THE CEILING and says so once, rather than
+	! clipping x2 at 1 silently -- which is where the earlier form produced an
+	! exactly zero neutral-H column at helium-rich He/H and left nothing for
+	! the He recombination photons to ionize (docs/supersonic_molecular_base.md
+	! section 12). Clipping at the ceiling gives x2 = 1, fully molecular
+	! hydrogen, which is the physical statement the ceiling makes.
+	!
 	! 2 H -> 1 H2 (H2 mass = 2 m_H) conserves both H nuclei and mass; the
 	! transfer is capped by the available neutral HI so warm/ionized layers
 	! stay atomic. thereis_mol only -> atomic runs are unchanged.
 	if (thereis_mol) then
+		n_qh2_ceiling_ic = 0
+		qh2_max_ic       = h2_mixing_ratio_ceiling()
+		handoff_ic       = base_h2_composition_imposed()
+		if (handoff_ic) x2_ic = base_h2_nuclei_fraction()
 		do j = 1-Ng, N+Ng
-			pbar_ic = W(3,j)*p0/1.0d6            ! local gas pressure [bar]
-			qh2_ic  = q_h2_equilibrium(pbar_ic, T0)
-			x2_ic   = 2.0d0*qh2_ic*(1.0d0 + HeH)/(1.0d0 + qh2_ic)
-			if (x2_ic .gt. 1.0d0) x2_ic = 1.0d0
+			if (.not. handoff_ic) then
+				pbar_ic = W(3,j)*p0/1.0d6         ! local gas pressure [bar]
+				qh2_ic  = q_h2_equilibrium(pbar_ic, T0)
+				if (qh2_ic .gt. qh2_max_ic) then
+					qh2_ic = qh2_max_ic
+					n_qh2_ceiling_ic = n_qh2_ceiling_ic + 1
+				endif
+				x2_ic = 2.0d0*qh2_ic*(1.0d0 + HeH)/(1.0d0 + qh2_ic)
+			endif
 			dfHI_ic = min(x2_ic/mass_per_H, f_sp(j,isp_HI))
 			f_sp(j,isp_H2) = 0.5d0*dfHI_ic
 			f_sp(j,isp_HI) = f_sp(j,isp_HI) - dfHI_ic
 		enddo
+		if (n_qh2_ceiling_ic .gt. 0) then
+			write(*,'(A,I0,A,F7.4,A,F6.3,A)') ' (set_IC) chemical-'//      &
+				'equilibrium H2 fit clipped to the element-ratio '//        &
+				'ceiling in ', n_qh2_ceiling_ic, ' cell(s): q_H2,max =',    &
+				qh2_max_ic, ' at He/H =', HeH,                              &
+				'. The fit is calibrated for solar-like composition;'//     &
+				' those cells start fully molecular.'
+		endif
 	endif
 
    ! Metals: start mostly neutral, element by element from the abundance

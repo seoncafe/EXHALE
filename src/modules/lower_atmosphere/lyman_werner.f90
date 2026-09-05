@@ -64,125 +64,97 @@
       ! (a single dominant emission line) is outside that range.
       !
       ! ---------------------------------------------------------------
-      ! 2. Self-shielding: TWO fits, deliberately, each used only where it
-      !    was calibrated
+      ! 2. Self-shielding: A TABLE, not a fit
       !
       ! The pumping lines saturate, so the rate falls far faster than any
-      ! continuum opacity would give.  This module carries TWO fits to that
-      ! suppression, and that is not an accident to be tidied away:
+      ! continuum opacity would give.  The suppression factor is taken from
+      ! h2_self_shielding_table, which tabulates a LEVEL-RESOLVED CLOUDY
+      ! c25.00 calculation on our own (T, n_H, N_H2) grid.  That module's
+      ! header states what was calculated, over what range it is valid, and
+      ! the one place where it is an upper bound rather than a value.
       !
-      !   h2_self_shielding_richings         -> the dissociation RATE
-      !                                         (sec. 2a below)
-      !   h2_self_shielding_draine_bertoldi  -> the band SHARE, through the
-      !                                         equivalent width of sec. 3
+      ! WHY NEITHER PUBLISHED FIT IS USED FOR THE RATE ANY MORE.  Both were
+      ! measured against that calculation (docs/h2_self_shielding_cloudy.md,
+      ! 2026-09-02).  Over 1e18 <= N_H2 <= 5e20 -- the columns where our H2
+      ! sits, and where the CLOUDY run is still self-consistent -- Draine &
+      ! Bertoldi (1996) eq. (37) runs from 1.85x high at 900 K to 2.3x low at
+      ! 2700 K, and Richings, Schaye & Oppenheimer (2014) is low by 3.3-4.3x
+      ! at every temperature of the layer.  Neither follows the SHAPE of the
+      ! level-resolved curve either: it has a trough near 1e16-1e17 and a
+      ! shoulder near 1e19 that no two-term algebraic form of this kind
+      ! carries.  Replacing one fit by the other would swap one wrong curve
+      ! for another, so the calculation itself is tabulated instead.
       !
-      ! They are not two settings of one switch, and neither is a spare for
-      ! the other.  Each is the fit that the quantity it feeds was itself
-      ! fitted to.  Richings, Schaye & Oppenheimer (2014), MNRAS 442, 2780
-      ! (hereafter R14) fitted their function to the ratio of the optically
-      ! thick to the optically thin H2 photodissociation rate of a
-      ! level-resolved CLOUDY model -- which IS the dissociation rate
-      ! suppression, so the rate uses it.  The band share is DB96 eq. (39),
-      ! the closed-form integral of DB96's OWN eq. (37); R14 publish no
-      ! corresponding equivalent width, so putting their function into
-      ! eq. (39) would leave that expression the integral of nothing.  The
-      ! DB96 normalization the band share rests on is exact --
-      ! sigma_lw_pump = sigma_lw/p_diss_lw = 2.557e-17 cm^2 reproduces
-      ! DB96's Tables 1 and 2 to 0.03% -- and substituting there would
-      ! break a calibration that currently holds to that precision.  The
-      ! band share is read only by water_photolysis.f90, i.e. only when
-      ! "Oxygen chemistry" is on, which no regression case enables.
+      ! THIS REVERSES A DECISION.  Update_EXHALE sec. 116 moved the rate from
+      ! DB96 to R14 on the strength of R14's own finding that DB96
+      ! overestimates the shielding factor by about 3 at T = 100 K.  That
+      ! finding is not in doubt -- it is reproduced from our own CLOUDY deck,
+      ! DB96/CLOUDY = 2.27-3.38 for 1e17 <= N_H2 <= 5e20 at 100 K.  What the
+      ! measurement adds is that the sign of the DB96 error reverses between
+      ! 100 K and 900 K, so a fit built to remove the 100 K excess keeps
+      ! removing it after it has gone.  Our layer runs at 865-2724 K.
       !
-      ! 2a. THE DISSOCIATION RATE: R14 eqs. (3.12)-(3.15).
+      ! 2a. THE TWO FITS ARE STILL HERE, and are deliberately not deleted:
+      ! h2_self_shielding_richings and h2_self_shielding_draine_bertoldi are
+      ! kept so that the comparison in docs/h2_self_shielding_cloudy.md can be
+      ! reproduced from this tree, and because the SECOND of them is still
+      ! live for a different quantity (sec. 3).  NEITHER IS CALLED BY THE
+      ! DISSOCIATION RATE.
       !
-      !   S_self(N_H2,T) = [1 - w(T)]/(1 + x/b5)^alpha(T)
-      !                        * exp[-5e-7 (1 + x)]
-      !                  + w(T)/(1 + x)^(1/2)
-      !                        * exp[-8.5e-4 (1 + x)^(1/2)] ,
-      !   x = N_H2/N_crit(T) ,   b5 = b/1e5 cm s^-1 ,
+      ! 2b. DOPPLER PARAMETER: THERMAL ONLY, and now only for the band share.
+      ! h2_doppler_parameter returns b = (2kT/m_H2)^(1/2) with no turbulent
+      ! term.  The table needs no b argument -- b is thermal, hence a
+      ! function of T, which is already one of its axes -- so b is read only
+      ! by h2_band_equivalent_width and by the two retained fits.  CLOUDY's
+      ! own Doppler width is sqrt(2kT/m + v_turb^2) with v_turb = 0 for the
+      ! decks the table was built from, i.e. the same definition, so the
+      ! table and this function are consistent.
       !
-      !   w(T)     = 0.013 [1 + (T/2700 K)^1.3]^(1/1.3)
-      !                    * exp[-(T/3900 K)^14.6]
-      !   alpha(T) = 1.4                     T < 3000 K
-      !            = (T/4500 K)^-0.8         3000 <= T < 4000 K
-      !            = 1.1                     T >= 4000 K
-      !   N_crit(T)/1e14 cm^-2
-      !            = 1.3 [1 + (T/600 K)^0.8]    T < 3000 K
-      !            = (T/4760 K)^-3.8            3000 <= T < 4000 K
-      !            = 2.0                        T >= 4000 K .
+      ! 2c. NO ELWERT/CLOUDY RADIATION-FIELD EXPONENT, and now measured
+      ! rather than argued.  Dropping the incident band flux by four decades
+      ! (G_0 from 1.25e6 to 125) moves the level-resolved factor by at most
+      ! 9 per cent anywhere on the grid and by under 5 per cent below
+      ! N_H2 = 1e20.  There is no radiation-field axis to carry.
       !
-      ! WHY THE RATE IS NOT ON DB96 ANY MORE.  DB96 eq. (37) is
+      ! 2d. LINE OVERLAP IS INSIDE THE TABLE.  It has to be: overlap is what
+      ! DB96 sec. 5.2 say produces "the rapid falloff ... for
+      ! N2 > 1e20 cm^-2", and at the columns of a molecular base it is the
+      ! dominant term, not a correction -- letting the lines absorb each
+      ! other's beam lowers the surviving pumping by 24x at N_H2 = 1e21 and
+      ! 630x at 4.4e21 (1300 K, n_H = 1e13).  The table is therefore built
+      ! from a line-by-line calculation that carries every Lyman and Werner
+      ! transition on one frequency grid, checked against the Meudon PDR code
+      ! (Le Petit et al. 2006) with its exact UV line transfer to 5-22 per
+      ! cent over 1e19 <= N_H2 <= 1e21.  There is no column above which the
+      ! tabulated value becomes an upper bound; the only limit is the top of
+      ! the column axis, h2_shield_max_column(), above which the edge value
+      ! is returned.  docs/p38_line_overlap_shielding.md is the measurement.
       !
-      !   f_shield(N_H2) = 0.965/(1 + x/b5)^2
-      !                  + 0.035/(1+x)^0.5 * exp[-8.5e-4 (1+x)^0.5] ,
-      !   x = N_H2/5e14 cm^-2 ,   b5 = b/1e5 cm s^-1 ,
+      ! 2e. THE TRAPPING INSIDE THE TABLE IS A SLAB QUANTITY, AND THE PRICE
+      ! IS MEASURED.  sigma_diss carries the re-absorption of the fluorescent
+      ! decay photons, and that factor alone is computed in a plane-parallel
+      ! slab (h2_self_shielding_table header).  A matched slab/sphere
+      ! calculation on the same line list gives the size and the sign: the
+      ! slab OVER-TRAPS, so this module's rate is high, by 0.2 per cent at
+      ! r/H = 41, by 7-10 per cent through an H2-bearing layer, by up to 20
+      ! per cent where H2 is already negligible, and by 6.5 per cent weighted
+      ! by the dissociation rate.  It is one-signed and it is smaller than
+      ! the spread between escape-probability methods in the same slab.
+      ! docs/e2_lw_geometry.md.
       !
-      ! i.e. the same algebraic form with w = 0.035, alpha = 2 and a fixed
-      ! N_crit = 5e14 cm^-2 (R14 write it that way as their eq. 3.11).  It
-      ! is a COLD-gas fit.  R14 sec. 3.2 give the reason, reporting the
-      ! argument of Wolcott-Green et al. (2011): "the assumptions made in
-      ! Draine & Bertoldi (1996) are only accurate for cold gas in which
-      ! only the lowest rotational states of H2 are populated".  R14 then
-      ! tested DB96 -- and the Wolcott-Green modification of it -- against
-      ! CLOUDY themselves and rejected both: "both overestimate S_self^H2
-      ! compared to CLOUDY by a factor of ~3 at H2 column densities
-      ! NH2 >~ 10^17 cm^-2 in gas with a temperature T = 100 K" (sec. 3.2;
-      ! their Fig. B1).  Our molecular layer runs at T = 945-1307 K, hot
-      ! enough that higher rotational levels carry a real share of the
-      ! population, and sits four decades above 1e17 cm^-2.  That is
-      ! squarely the regime they rejected.
-      !
-      ! Measured with our own numbers (thermal b, sec. 2b), at the
-      ! hot-Uranus base column N_H2 = 4.36e21 cm^-2, DB96 gives 9.632e-7
-      ! against R14's 1.785e-7 at 945 K, 2.242e-7 at 1140 K and 2.669e-7 at
-      ! 1307 K: DB96 overestimates the shielding factor -- and therefore
-      ! the photodissociation rate -- by 5.4x, 4.3x and 3.6x over the
-      ! temperature range of our layer.  At the thinner N_H2 = 1e20 cm^-2
-      ! and 1140 K the two are 5.351e-5 and 1.917e-5, a factor 2.8.
-      !
-      ! This is why the R14 form is the DEFAULT and not an opt-in: it is
-      ! not new physics laid on top of a working expression, it replaces an
-      ! expression that is wrong at our conditions for a stated physical
-      ! reason -- and a reason that gets worse with temperature, not
-      ! better.
-      !
-      ! 2b. DOPPLER PARAMETER: THERMAL ONLY.  Both fits take b from
-      ! h2_doppler_parameter, b = (2kT/m_H2)^(1/2), with NO turbulent term.
-      ! R14 themselves add b_turb = 7.1 km s^-1 for interstellar gas (their
-      ! sec. 3.2, eqs. 3.16-3.17), but their own Fig. B1 caption states:
-      ! "The agreement between our best-fitting self-shielding function and
-      ! CLOUDY is poorer when turbulence is included, as it was fitted to
-      ! the purely thermal Doppler broadening case."  Thermal-only is
-      ! therefore INSIDE the calibration of the fit and a turbulent term
-      ! would take us out of it -- quite apart from the fact that this
-      ! model has no sub-grid velocity field to set b_turb from.
-      !
-      ! 2c. NO ELWERT/CLOUDY RADIATION-FIELD EXPONENT.  A variant exponent
-      ! on the first term is sometimes carried alongside these fits.  It is
-      ! deliberately not implemented, and the reason is arithmetic rather
-      ! than taste: it modifies ONLY the first term, and in our layer that
-      ! term has already vanished.  At N_H2 = 1e14 cm^-2 the first term is
-      ! 96 per cent of DB96's total; at our 4.36e21 cm^-2 it is 1.2e-7 of
-      ! it.  So at our columns the ratio of the modified form to DB96 is
-      ! 1.00000, and the largest effect the exponent has at ANY column is
-      ! 2.4 per cent, near N_H2 = 1e16 cm^-2.  It is not an alternative to
-      ! the R14 correction and does not overlap with it: the two act on
-      ! different terms of the same expression, in different column
-      ! regimes.  Nothing here is waiting on it.
-      !
-      ! 2d. VALIDITY -- AND THE FACT THAT WE ARE OUTSIDE IT.  R14 sec. 3.2
-      ! state that the fit "agrees with CLOUDY to within 30 per cent at
-      ! 100 K for NH2 < 10^21 cm^-2, and to within 60 per cent at 5000 K
-      ! for NH2 < 10^20 cm^-2"; their Appendix B and the Fig. B1 caption
-      ! repeat the same two bounds in slightly different words.  OUR
-      ! CONDITIONS ARE OUTSIDE BOTH OF THOSE
-      ! RANGES: T = 945-1307 K with N_H2 reaching 4.36e21 cm^-2, i.e. above
-      ! the column bound at either end of their temperature grid.  We adopt
-      ! the fit anyway, and the justification is NOT that it has been
-      ! verified at our columns -- it has not -- but that DB96 has been
-      ! verified to be WRONG there, by a factor of 3 and more, for a
-      ! physical reason.  Neither fit is validated at our columns; only one
-      ! of them is known to be biased, and in a known direction.
+      ! 2f. WHICH COLUMN, AND WHICH FLUX.  N_H2 below is the column toward
+      ! the star, and the caller supplies the RADIAL column
+      ! (calc_column_dens_one) -- which for a parallel beam is the substellar
+      ! ray exactly, in a sphere as in a slab, so the table is not
+      ! approximated by that choice.  What the choice does mean is that the
+      ! rate returned here is the SUBSTELLAR rate.  The run-wide dayside
+      ! convention that turns it into a shell average is applied to F_LW by
+      ! the caller, through fuv_band_flux and global_parameters
+      ! dayside_dilution (Update_EXHALE section 150).  The shell average of a
+      ! SHIELDED band is not 1/2 but 0.20-0.33 over a hot-Uranus molecular
+      ! layer, because the slant columns away from the substellar point are
+      ! longer; that refinement is the separate, default-off shell-average
+      ! key.
       !
       ! ---------------------------------------------------------------
       ! 3. The DB96 fit, which still owns the band share
@@ -270,7 +242,7 @@
       !    existed.  The photons the H2 lines take out of the band are
       !    removed from what H2O and OH see by the same token; the other
       !    half of that bookkeeping is water_photolysis.f90 sec. 3, and
-      !    sigma_lw_pump below is what it needs from here.
+      !    h2_band_equivalent_width below is what it needs from here.
       !  - Trace-metal continuum: the neutral low-IP metals (Mg I, Fe I,
       !    Si I, Ca I, Na I, K I) do photoionize inside the band, but at
       !    solar abundance and sigma ~ 1e-18 cm^2 their optical depth is
@@ -300,67 +272,42 @@
       ! dissociation-energy sink for R12/R14 is a separate open item.)
       !
       ! ---------------------------------------------------------------
-      ! References: Draine & Bertoldi (1996) ApJ 468, 269 (published
+      ! References: h2_self_shielding_table.f90 and
+      ! docs/h2_self_shielding_cloudy.md (the level-resolved calculation the
+      ! rate now uses, and the measurement that put it there);
+      ! Draine & Bertoldi (1996) ApJ 468, 269 (published
       ! version, eqs. 20, 21, 24, 37, 39, 40, Tables 1-2, Fig. 7 caption);
       ! Richings, Schaye & Oppenheimer (2014) MNRAS 442, 2780 (published
       ! version, sec. 3.2 eqs. 3.11-3.17, Appendix B and the Fig. B1
       ! caption); Wolcott-Green, Haiman & Bryan (2011) MNRAS 418, 838, as
       ! quoted by R14; Black & Dalgarno (1977) ApJS 34, 405, p. 418.
 
+      use h2_self_shielding_table, only:                                 &
+                h2_lw_dissociation_cross_section,                        &
+                h2_lw_dissociation_per_pump,                             &
+                h2_lw_dissociation_per_absorbed_photon,                  &
+                h2_self_shielding_level_resolved,                        &
+                h2_shield_max_column
+
       implicit none
       private
+      ! Re-exported from h2_self_shielding_table so that a caller of the
+      ! Lyman-Werner rate needs one use statement, not two.
+      public :: h2_self_shielding_level_resolved,                        &
+                h2_shield_max_column
       public :: h2_doppler_parameter,                                    &
                 h2_self_shielding_richings,                              &
                 h2_self_shielding_draine_bertoldi,                       &
                 h2_band_equivalent_width,                                &
                 lyman_werner_dissociation_rate, e_lw_fragment_erg,       &
-                e_lw_photon_erg, p_diss_lw, sigma_lw_pump
-
-      ! Effective H2 dissociation cross section per band photon [cm^2],
-      ! DB96 flat-F_lam (u_nu ~ nu^-2) calibration; see sec. 1 above.
-      real*8, parameter :: sigma_lw = 3.4520d-18
+                e_lw_photon_erg,                                         &
+                h2_lw_dissociation_cross_section,                        &
+                h2_lw_dissociation_per_pump,                             &
+                h2_lw_dissociation_per_absorbed_photon
 
       ! Mean photon energy of a flat-F_lam 912-1110 A band [erg]:
       ! 2hc/(912+1110 A) = 12.2635 eV.
       real*8, parameter :: e_lw_photon_erg = 1.96483d-11
-
-      ! Unattenuated dissociation rate per unit band energy flux
-      ! [s^-1 / (erg cm^-2 s^-1)] = [cm^2 erg^-1].
-      real*8, parameter :: k_lw_per_flux = sigma_lw/e_lw_photon_erg
-
-      ! Dissociation probability per Lyman-Werner PUMP, <p_diss> = 0.135 for
-      ! the flat-F_lam field of DB96 Table 2 (sec. 1 above).  The rate this
-      ! module returns is the DISSOCIATION rate, so the number of band
-      ! photons the H2 actually absorbs is larger by 1/<p_diss>: the other
-      ! 86.5% of the pumps fluoresce back into the bound X state.  Exported
-      ! so that the FUV band energy ledger can ask how much of the
-      ! 912-1110 A energy the H2 takes out of the band that H2O and OH
-      ! share with it.
-      real*8, parameter :: p_diss_lw = 0.135d0
-
-      ! Effective cross section for the REMOVAL of a band photon by H2
-      ! [cm^2], i.e. per pump rather than per dissociation: sigma_lw is a
-      ! dissociation cross section and only <p_diss> of the pumps end in
-      ! dissociation, so the photon budget of the band needs the larger
-      ! number.  This is what makes the H2 lines an absorber the continuum
-      ! absorbers of the same interval have to see: the fraction of the band
-      ! removed by H2 down to a column N_H2 is
-      !
-      !     A(N) = int_0^N sigma_lw_pump f_shield_DB96(N') dN' ,
-      !
-      ! which water_photolysis.f90 sec. 3 turns into the line transmission
-      ! (1 - A) that H2O and OH multiply their own exp(-tau) by.  That
-      ! integral is DB96 eq. (38) and they give it in closed form as their
-      ! eq. (39); h2_band_equivalent_width below evaluates it, so the
-      ! constant here is the differential form of the same statement and is
-      ! kept for that reading.  The f_shield inside the integral is DB96's
-      ! own -- h2_self_shielding_draine_bertoldi -- and not the R14 fit the
-      ! dissociation rate uses; header sec. 2 says why the two coexist.
-      ! Note what this quantity is NOT: it is not a measured H2
-      ! photoabsorption cross section, it is the equivalent width of the
-      ! pumping lines implied by DB96's own f_shield, and it inherits that
-      ! fit's range and derivation conditions (sec. 3 above).
-      real*8, parameter :: sigma_lw_pump = sigma_lw/p_diss_lw
 
       ! Kinetic energy released to the H + H pair, 0.4 eV in erg
       ! (Black & Dalgarno 1977, p. 418).
@@ -398,15 +345,18 @@
       b = sqrt(2.0d0*kb_lw*max(T, 1.0d0)/m_h2)
       end function h2_doppler_parameter
 
-      ! Richings, Schaye & Oppenheimer (2014) eqs. (3.12)-(3.15): H2
-      ! self-shielding factor of the PHOTODISSOCIATION RATE, for a star-ward
-      ! H2 column N_H2 [cm^-2] at gas temperature T [K] and Doppler
-      ! parameter b [cm s^-1].  This is the function the rate uses; see
-      ! sec. 2a of the header for why it replaced DB96 eq. (37) here, and
-      ! sec. 3 for why DB96 still owns the band equivalent width.
+      ! Richings, Schaye & Oppenheimer (2014) eqs. (3.12)-(3.15): their fitted
+      ! H2 self-shielding factor for a star-ward H2 column N_H2 [cm^-2] at gas
+      ! temperature T [K] and Doppler parameter b [cm s^-1].
+      !
+      ! NOT CALLED BY THE RATE.  It is retained so that the comparison against
+      ! the level-resolved calculation (docs/h2_self_shielding_cloudy.md) can
+      ! be reproduced from this tree; header sec. 2 gives the measurement that
+      ! took the rate off it.  Over 1e18 <= N_H2 <= 5e20 it is low by 3.3-4.3x
+      ! against that calculation at 900-2700 K.
       !
       ! b is the caller's, so that the thermal-only choice (header sec. 2b)
-      ! is made in one place, h2_doppler_parameter, for both fits.
+      ! is made in one place, h2_doppler_parameter.
       !
       ! T enters TWICE and the two are physically distinct: through b, the
       ! Doppler width of one line, and through w/alpha/N_crit, the
@@ -416,7 +366,7 @@
       !
       ! Validity as published (R14 sec. 3.2): within 30 per cent at 100 K
       ! for N_H2 < 10^21 cm^-2, within 60 per cent at 5000 K for
-      ! N_H2 < 10^20 cm^-2.  OUR LAYER IS OUTSIDE BOTH (header sec. 2d).
+      ! N_H2 < 10^20 cm^-2.  Our layer is outside both.
       double precision function h2_self_shielding_richings(N_H2, T, b)    &
                                 result(S_self)
       real*8, intent(in) :: N_H2, T, b
@@ -476,10 +426,13 @@
       ! THIS IS NOT THE RATE'S SHIELDING FUNCTION.  It is retained because
       ! h2_band_equivalent_width below is the closed-form integral of THIS
       ! expression and of no other, and because that integral's
-      ! normalization is exact against DB96's own tables.  For the
-      ! dissociation rate it overestimates the shielding by 2.8-5.4x over
-      ! the conditions of our molecular layer; use
-      ! h2_self_shielding_richings there (header sec. 2).
+      ! normalization is exact against DB96's own tables -- and is confirmed
+      ! independently by the same level-resolved calculation the rate now
+      ! uses: sigma_pump measured off it at 1300 K is 2.610e-17 cm^2 against
+      ! the 2.557e-17 that DB96's own tables give (the normalization is set
+      ! out in the h2_band_equivalent_width header below), a 2 per cent
+      ! agreement.  The rate is on h2_lw_dissociation_cross_section
+      ! (header sec. 2).
       double precision function h2_self_shielding_draine_bertoldi(N_H2, b)&
                                 result(f_shield)
       real*8, intent(in) :: N_H2, b
@@ -506,7 +459,26 @@
       !
       ! Dln_nu = ln(1110/912) = 0.1964753 is the logarithmic width of the
       ! band, so W is a width in ln(nu) and W/Dln_nu -- what this function
-      ! returns -- is the fraction of the band the lines occupy.  Because it
+      ! returns -- is the fraction of the band the lines occupy.
+      !
+      ! WHAT THE FIT IS NORMALIZED TO.  DB96 built eq. (39) on their own
+      ! Table 1 and Table 2 at the flat-F_lam spectrum of their eq. (24),
+      ! chi = 1, and the T_r = 100 K row: band photon flux
+      ! F = 1.208e7 cm^-2 s^-1, pump rate zeta_pump = 3.09e-10 s^-1, and
+      ! <p_diss> = 0.135, so that the dissociation cross section is
+      ! 3.452e-18 cm^2 and the PUMP cross section -- the one this equivalent
+      ! width is a statement about, since every pump removes a photon
+      ! whether or not it dissociates -- is
+      !
+      !     sigma_pump = 3.452e-18/0.135 = 2.557e-17 cm^2 .
+      !
+      ! THESE NUMBERS ARE NOT COMPUTED WITH ANYWHERE.  They are the source
+      ! of the fit evaluated below and the check on it: the level-resolved
+      ! CLOUDY calculation gives 2.610e-17 cm^2 for the same quantity at
+      ! 1300 K, 2 per cent away, and reproduces the 3.452e-18 to 0.5 per
+      ! cent in its untrapped limit (docs/p39_lw_cross_section_sources.md).
+      ! The photodissociation RATE and both branching ratios come from
+      ! h2_self_shielding_table, not from here.  Because it
       ! is a summed equivalent width and not an optical depth, the beam's
       ! line transmission is 1 - A -- exactly, for non-overlapping lines
       ! across a flat band; exp(-A) would be wrong.
@@ -544,25 +516,32 @@
 
       ! Photodissociation rate of H2 [s^-1] for a band-integrated stellar
       ! energy flux F_LW [erg cm^-2 s^-1] at the planet, a star-ward H2
-      ! column N_H2 [cm^-2], a gas temperature T [K] and the star-ward
-      ! CONTINUUM optical depth tau_cont of the same 912-1110 A interval.
+      ! column N_H2 [cm^-2], a gas temperature T [K], a total hydrogen
+      ! nucleus density n_H [cm^-3] and the star-ward CONTINUUM optical depth
+      ! tau_cont of the same 912-1110 A interval.
+      !
       ! This is DB96 eq. (40) in structure -- a line self-shielding factor,
-      ! exp(-tau) for the continuum, no dust term -- with the R14
-      ! temperature-dependent self-shielding in place of DB96's own, which
-      ! is calibrated for cold gas and overestimates the rate by 2.8-5.4x
-      ! at our conditions (header sec. 2a).  tau_cont is the H2O + OH
-      ! continuum of the oxygen chemistry (water_photolysis.f90) and is
-      ! identically zero for a run without it, so a molecular run with no
-      ! oxygen chemistry sees only the shielding change.
+      ! exp(-tau) for the continuum, no dust term -- with the level-resolved
+      ! CLOUDY table in place of a closed-form fit (header sec. 2).  n_H
+      ! enters only through that table, which carries a density axis because
+      ! it can; the measured density dependence is 3-7 per cent per two
+      ! decades below N_H2 = 1e19 and 40 per cent at 1e21.
+      !
+      ! tau_cont is the H2O + OH continuum of the oxygen chemistry
+      ! (water_photolysis.f90) and is identically zero for a run without it,
+      ! so a molecular run with no oxygen chemistry sees only the shielding.
       double precision function lyman_werner_dissociation_rate(F_LW,     &
-                                N_H2, T, tau_cont) result(k)
-      real*8, intent(in) :: F_LW, N_H2, T, tau_cont
+                                N_H2, T, n_H, tau_cont) result(k)
+      real*8, intent(in) :: F_LW, N_H2, T, n_H, tau_cont
       if (F_LW .le. 0.0d0) then
          k = 0.0d0
          return
       endif
-      k = k_lw_per_flux*F_LW                                             &
-        * h2_self_shielding_richings(N_H2, T, h2_doppler_parameter(T))
+      ! The cross section is per INCIDENT band photon and already carries the
+      ! self-shielding of the lines and the trapping of the fluorescent decay
+      ! photons; the continuum of the same interval is the caller's tau_cont.
+      k = F_LW/e_lw_photon_erg                                           &
+        * h2_lw_dissociation_cross_section(N_H2, T, n_H)
       if (tau_cont .gt. 0.0d0) k = k*exp(-tau_cont)
       end function lyman_werner_dissociation_rate
 

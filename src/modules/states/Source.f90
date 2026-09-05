@@ -5,6 +5,7 @@
    use global_parameters
    use Conversion
    use grav_func
+   use caloric_eos, only: pressure_from_energy_density
    
    implicit none
    
@@ -25,7 +26,7 @@
    rhoR = WL(1)       
    
    ! Central ressure
-   pC = (g-1.0)*(u(3)-0.5*u(2)*u(2)/u(1))
+   pC = pressure_from_energy_density(j, u(1), u(3)-0.5*u(2)*u(2)/u(1))
    
    !--- Evaluare source term ---!
    

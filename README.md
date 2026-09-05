@@ -51,8 +51,10 @@ ATES model.
 - Molecular chemistry: H2, H2+, H3+ and HeH+ in the coupled ionization
   equilibrium, with H2 photoionization opacity/heating, Miller et al. (2013)
   H3+ infrared cooling, and H2 photodissociation in the Lyman-Werner bands
-  with the temperature-dependent self-shielding of Richings, Schaye &
-  Oppenheimer (2014)
+  from a level-resolved CLOUDY calculation tabulated on our own (T, n_H,
+  N_H2) grid -- the dissociation cross section itself, with the line
+  self-shielding and the trapping of the fluorescent decay photons inside it,
+  rather than a published closed-form fit
 - Oxygen chemistry: OH, H2O and CO in the same coupled system, with the FUV
   photolysis of H2O and OH in five bands, so the base H2/H partition is
   computed rather than imported. Rates from Baulch et al. (2005) and the IUPAC
@@ -61,8 +63,13 @@ ATES model.
   Lyman-Werner interval, where H2, H2O and OH share one beam: the H2 lines and
   the H2O/OH continuum each attenuate what the other sees, so the interval has
   one incident flux (`Stellar LW flux`). The molecular carriers H2, OH, H2O and
-  CO are transported by default (`Oxygen transport`), an implicit
-  diffusion-advection solve coupled to their chemistry
+  CO are transported by default (`Molecular carrier transport`), an
+  implicit diffusion-advection solve coupled to their chemistry. The
+  hydrogen ionization state can ride the same operator (`Ionization
+  transport: True`, default off): H+ becomes a fifth carrier and the sweep is
+  handed the transported fraction where a parcel leaves its shell faster
+  than it ionizes (`P r/|v| < 1`), which is what the Koskinen et al. (2022)
+  comparison of `docs/k22_electron_density_excess.md` needed
 - Thermal infrared field of the atmosphere below the base, so the molecular
   and fine-structure coolants return the net rate rather than the vacuum limit
 - Molecular infrared bands (`Molecular IR bands`): the H2 quadrupole and
@@ -70,6 +77,17 @@ ATES model.
   vibration-rotation bands (HITEMP), in LTE and exchanging with that same
   field, so the layer below the H2 -> H front settles on a radiative
   equilibrium temperature instead of radiating itself away
+- Composition-dependent caloric equation of state: below the H2 -> H front the
+  gas stores its energy in the H2 rotational and vibrational ladder as well as
+  in translation, so the internal energy is built from the observed 302-level
+  H2 ladder (Roueff et al. 2019) rather than from a constant gamma = 5/3. An
+  atomic run is byte-identical
+- Chemical heat of the molecular network (`Molecular reaction heat`, default
+  on; the key exists to turn it off): in a molecular gas the ionization energy
+  a photon spends comes back to the GAS through the dissociative recombination
+  of H3+ and H2+, not out of it as the Lyman photon of a radiative
+  recombination, and the code now deposits it -- 81 per cent of the total
+  heating rate at the base of a converged hot Uranus
 - Diffusive separation of helium and metals: hydrogen and helium are
   transported as a two-component mixture, with bulk advection, binary
   diffusive settling in the computed ambipolar field, and an optional eddy
@@ -95,7 +113,10 @@ ATES model.
 - Lower-atmosphere connection: an analytic Koskinen et al. (2022) column, an
   EOS-only molecular-base correction, and a `base.inp` handoff generated
   either analytically or from a VULCAN photochemistry run that EXHALE launches
-  itself
+  itself. A handoff that states its own level (`p_base`) fixes the base level
+  of the run, `n0 = p_base/(k_B T0 ntot_bc)`, so `Log10 lower boundary number
+  density` is then unnecessary — and a pair that disagrees by more than 1% is
+  refused at startup rather than one of the two silently winning
 - OpenMP parallelization of the cell ionization sweep, bitwise identical to
   the serial result
 
@@ -130,6 +151,17 @@ There is no installation step beyond cloning.
 git clone https://github.com/seoncafe/EXHALE
 cd EXHALE
 make                                    # gfortran; make FC=ifort or FC=ifx
+```
+The Makefile takes the compiler from `PATH` and, when that compiler's prefix
+carries an OpenBLAS (the conda-forge gfortran 16.2 of this machine does), links
+that prefix's LAPACK and records it in the rpath -- so the binary and its
+LAPACK share one libgfortran runtime; otherwise it links the system `-llapack`
+(`make LAPACK_LIBS='...'` overrides). The compiler's path and version are part
+of the rebuild stamp: objects of one gfortran are never linked by another.
+The Intel compilers (`make FC=ifx`, `FC=ifort`) link MKL (`-qmkl=sequential`)
+by the same rule; `make FC=ifx OBJDIR=build_ifx EXE=EXHALE_ifx.x` builds a
+second binary beside the gfortran one.
+```
 cd examples/tutorial && ../../EXHALE.x  # reads ./input.inp, writes ./output/
 ```
 
@@ -263,4 +295,4 @@ schemas, convergence recipes, post-processing — is in
 
 Kwang-Il Seon (KASI / UST)
 
-Last updated: 2026-09-02 00:44 KST
+Last updated: 2026-09-05 14:57 KST

@@ -24,6 +24,7 @@ Force start: False
 Molecular chemistry: True
 du_th [PLM,WENO3]: 0.5 1.0e-3
 Solver: Newton 5.0e-2
-Resid tol: 1.0e-5
+# Resid tol renormalized 2026-09-03, Update_EXHALE.md section 133 (was 1.0e-5)
+Resid tol: 1.0e-7
 Max steps: 150000
 Stellar radius [R_sun]: 1.155

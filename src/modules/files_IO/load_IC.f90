@@ -46,6 +46,22 @@
       ! report tests for that.
       logical, allocatable :: melem_from_abundance(:)
 
+   ! What the restart file says it was produced under, parsed from its
+   ! '# coupling:' line (write_coupling_state_header, utilities.f90).
+   ! ic_coupling_present is .false. for a file written before that line
+   ! existed, and then every field below is meaningless and no caller may act
+   ! on it -- such a file restarts exactly as it did before.
+   logical :: ic_coupling_present   = .false.
+   logical :: ic_sec_ion_active     = .false.
+   integer :: ic_sec_ion_armed_step = -1
+   real*8  :: ic_valve_eps          = -1.0d0
+   character(len=8) :: ic_rec_method = ''
+   ! Was the state in the restart file produced with the hydrogen ionization
+   ! state carried? Absent from the header means no, which is what every
+   ! file written before the option existed means as well.
+   logical :: ic_ionization_transport = .false.
+   real*8  :: ic_base_flux_const    = -1.0d0
+
       contains
 
       subroutine load_IC(rho,v,p,T,f_sp,W)
@@ -99,13 +115,39 @@
       ! N would otherwise die below with a bare end-of-file error; count the
       ! data records first and state the actual mismatch.
       nrec = 0
+      ic_coupling_present = .false.
       open(unit = 1, file = 'output/Hydro_ioniz_IC.txt')
       do
          read(1,'(A)',iostat=ios) line
          if (ios .ne. 0) exit
-         if (.not. is_comment(line)) nrec = nrec + 1
+         if (is_comment(line)) then
+            if (index(line,'coupling:') .gt. 0) call parse_coupling_header(line)
+         else
+            nrec = nrec + 1
+         endif
       enddo
       close(1)
+      ! WHAT THE STATE WAS PRODUCED UNDER, AGAINST WHAT THIS RUN WILL DO TO
+      ! IT. The H+ column of a file written with the ionization state
+      ! carried is a transported quantity; restarted with the option off,
+      ! the first sweep replaces it by the local root of its own cell, which
+      ! for the wind this option exists for is a factor of several. That is
+      ! a legitimate thing to ask for and it is not refused -- but it is not
+      ! something to discover afterwards from the profile.
+      if (ic_ionization_transport .and. .not. ionization_transport) then
+         write(*,*) ' (load_IC) NOTE: this state was written with'
+         write(*,*) '   "Ionization transport: True" and is being restarted'
+         write(*,*) '   without it. Its H+ column is a transported'
+         write(*,*) '   ionization state and the first sweep will replace'
+         write(*,*) '   it by the local equilibrium of each cell.'
+      endif
+      if (ionization_transport .and. ic_coupling_present .and.               &
+          .not. ic_ionization_transport) then
+         write(*,*) ' (load_IC) NOTE: "Ionization transport: True", but the'
+         write(*,*) '   state being restarted was produced without it, so'
+         write(*,*) '   its H+ column is a local equilibrium. The transport'
+         write(*,*) '   starts from it and relaxes over the ionization time.'
+      endif
       if (nrec .ne. N + 2*Ng) then
          write(*,'(A,I0,A,I0,A)')                                            &
             ' (load_IC) ERROR: output/Hydro_ioniz_IC.txt has ', nrec,        &
@@ -211,8 +253,24 @@
          ! 2^3S included, so the triplet column is not added again here.
          nHe_l = nsp_l(:,isp_HeI) + nsp_l(:,isp_HeII)                     &
                + nsp_l(:,isp_HeIII) + nsp_l(:,isp_HeHp)
+         ! OVER THE PHYSICAL CELLS ONLY.  The ghosts are boundary data: the
+         ! lower pair is the inflow reservoir, whose molecular partition the
+         ! handoff imposes and the sweep re-pins every step, and the upper
+         ! pair mirrors the top cell.  They are rebuilt on the first step of
+         ! the restart, and the input's He/H is the authority on the
+         ! atmosphere, not on them.  How this was found (2026-09-05): a
+         ! carrier-transport snapshot carried its lower ghost with He/H 2.1e-5
+         ! off the input while every physical cell agreed to 1e-6, and that
+         ! ghost alone sent the restart into the rescale branch, which the
+         ! HeH+ clause below then refuses.  The ghost itself was a writer
+         ! defect -- the molecular columns came from the sweep's arrays while
+         ! the atomic ones were f_sp*rho at the write, and the ghost's rho
+         ! had moved in between (fixed the same day, docs/Update_EXHALE.md
+         ! section 169; files written before it still carry such ghosts).
+         ! The range stays physical either way: a check on the input's He/H
+         ! has nothing to say about boundary data.
          heh_dev = 0.0d0
-         do j = 1-Ng, N+Ng
+         do j = 1, N
             if (nH_l(j) .gt. 0.0d0) then
                heh_loaded = nHe_l(j)/nH_l(j)
                heh_dev = max(heh_dev, abs(heh_loaded - HeH)/max(HeH,1.0d-30))
@@ -562,6 +620,50 @@
 
       ! End of subroutine
       end subroutine load_IC
+
+      !-------------------------------------!
+
+      subroutine parse_coupling_header(line)
+      ! Read the '# coupling: key=value ...' line of a restart file. Unknown
+      ! keys are skipped, so a file written by a later version that carries
+      ! more of them is still readable; a key this version knows but the file
+      ! omits keeps its "not stated" default.
+      character(len=*), intent(in) :: line
+      character(len=len(line)) :: rest
+      character(len=64) :: tok
+      character(len=64) :: key, val
+      integer :: pos, l, ieq
+      rest = adjustl(line)
+      do
+         l = len_trim(rest)
+         if (l .eq. 0) exit
+         pos = index(rest, ' ')
+         if (pos .le. 1) then
+            tok = rest(1:min(l,len(tok)));  rest = ''
+         else
+            tok = rest(1:min(pos-1,len(tok)));  rest = adjustl(rest(pos:))
+         endif
+         ieq = index(tok, '=')
+         if (ieq .le. 1) cycle
+         key = tok(1:ieq-1)
+         val = tok(ieq+1:)
+         select case (trim(key))
+         case ('sec_ion')
+            ic_sec_ion_active   = (trim(val) .eq. 'T')
+            ic_coupling_present = .true.
+         case ('sec_ion_step')
+            read(val,*,iostat=pos) ic_sec_ion_armed_step
+         case ('valve')
+            read(val,*,iostat=pos) ic_valve_eps
+         case ('recon')
+            ic_rec_method = trim(val)
+         case ('iontrans')
+            ic_ionization_transport = (trim(val) .eq. 'T')
+         case ('fluxconst')
+            read(val,*,iostat=pos) ic_base_flux_const
+         end select
+      enddo
+      end subroutine parse_coupling_header
 
       !-------------------------------------!
 

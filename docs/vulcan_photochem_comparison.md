@@ -441,6 +441,13 @@ HD 209458 b run below, `tau_chem/tau_adv ~ 1e-3`. That is the P4 gate's second
 condition, and it is met at the handoff level — it says nothing about the cells
 further out.
 
+> **STALE (P35, 2026-09-02).** The `vulcan_work` EXHALE run directories
+> cited here carry `Molecular base: True` with the molecular network off, so
+> their base ghost sat at `ntot_bc x T0` -- between 0.555 and 0.994 of the
+> requested `T0` -- and startup now refuses the combination. The values are
+> kept as recorded but stand on that base; see `INVALID_BASE_TEMPERATURE.md`
+> in each run directory and item P35 of `TO_BE_DONE.md`.
+
 *Corrected and extended 2026-08-30 (phase P3):* the scale height quoted here was
 `H = 1.27e8` cm and the advection time `2.4e8` s. Re-measured from
 `vulcan_work/pc_compare_p1/exhale_hd209/p1e-6_seed/vulcan/output/Hydro_ioniz.txt`
@@ -475,6 +482,13 @@ it moves q_H2 by 17% at 1e-6 bar and 3% at 1e-4 bar, in the direction of *less*
 H2.
 
 ## P1.6 The EXHALE-level effect on a converged planet
+
+> **STALE (P35, 2026-09-02).** The `vulcan_work` EXHALE run directories
+> cited here carry `Molecular base: True` with the molecular network off, so
+> their base ghost sat at `ntot_bc x T0` -- between 0.555 and 0.994 of the
+> requested `T0` -- and startup now refuses the combination. The values are
+> kept as recorded but stand on that base; see `INVALID_BASE_TEMPERATURE.md`
+> in each run directory and item P35 of `TO_BE_DONE.md`.
 
 Run directories `vulcan_work/pc_compare_p1/exhale_hd209/p1e-6_seed/<arm>/`. All
 five runs are the same `HD209458b/input.inp` with `Molecular base: True`,

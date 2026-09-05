@@ -57,6 +57,39 @@
       damp_lowmach = low_mach_damping_active()
       if (damp_lowmach) call contact_mode_dissipation_flux(u_in,Ddis)
 
+      ! TWO LOOPS, ONE OVER FACES AND ONE OVER CELLS, AND WHY.  The Riemann
+      ! problem at a face is a function of that face's own two reconstructed
+      ! states, and the flux difference of a cell is a function of its own
+      ! two faces: both are local, and the only thing that tied them into a
+      ! single sequential loop was the reuse of the previous cell's
+      ! right-hand flux as this cell's left-hand one.  Every flux is stored
+      ! in face_flux / face_p in any case -- the positivity repair below
+      ! rebuilds a cell from them -- so the face loop writes exactly what the
+      ! cell loop reads and the reuse buys nothing.  Split that way both
+      ! loops run over independent indices, in ONE parallel region: the
+      ! barrier that closes the first !$omp do is what makes every face flux
+      ! visible to the cell loop.
+      !
+      ! BITWISE IDENTICAL TO THE SEQUENTIAL FORM, at any number of threads.
+      ! Each face carries the same Num_flux call with the same arguments --
+      ! face j lies between cells j and j+1, and the outermost face of the
+      ! ghost range has no cell j+1 and so takes the composition of the last
+      ! cell that exists -- and each cell the same flux differences of the
+      ! same two stored fluxes.  Neither loop contains a reduction, so no
+      ! sum changes order.
+      !$omp parallel default(shared)                                    &
+      !$omp   private(j,dr,rp,rm,dAp,dAm,dV,Fp,Fm,pL,pR,dF3p)
+
+      !$omp do schedule(static)
+      do j = 1-Ng,N+Ng
+         call Num_flux(WL(:,j),WR(:,j),Fp,alpha,pR,j,min(j+1,N+Ng))
+         if (damp_lowmach) Fp = Fp + Ddis(:,j)
+         face_flux(:,j) = Fp
+         face_p(j)      = pR
+      enddo
+      !$omp end do
+
+      !$omp do schedule(static)
       do j = 2-Ng,N+Ng
 
          ! Substitutions
@@ -67,25 +100,12 @@
          dAm = rm*rm
          dV = (dAp*rp - dAm*rm)/3.0
 
-         ! Evaluate numerical fluxes
-         if (j.eq.(2-Ng)) then
-
-               ! Use flux from previous step
-               call Num_flux(WL(:,j-1),WR(:,j-1),Fm,alpha,pL)
-               if (damp_lowmach) Fm = Fm + Ddis(:,j-1)
-               face_flux(:,j-1) = Fm
-               face_p(j-1)      = pL
-         else
-
-               Fm = Fp
-               pL = pR
-         endif
-
-         ! Evaluate flux at the right interface
-         call Num_flux(WL(:,j),WR(:,j),Fp,alpha,pR)
-         if (damp_lowmach) Fp = Fp + Ddis(:,j)
-         face_flux(:,j) = Fp
-         face_p(j)      = pR
+         ! The two interface fluxes of this cell, as the face loop assembled
+         ! them
+         Fm = face_flux(:,j-1)
+         pL = face_p(j-1)
+         Fp = face_flux(:,j)
+         pR = face_p(j)
 
          ! Evaluate source
          call source(j,dr,dAp,dAm,dV,    &
@@ -103,6 +123,9 @@
          dF(3,j) = (dAp*Fp(3) - dAm*Fm(3) + dF3p)/dV
 
       enddo
+      !$omp end do
+
+      !$omp end parallel
 
       ! End of subroutine
       end subroutine RK_rhs
@@ -207,7 +230,8 @@
                ! the purpose here is to restore positivity, not to put further
                ! numerical dissipation into a cell that already lost it.
                call lax_friedrichs_flux(W_avg(:,jf),W_avg(:,jf+1),      &
-                                        flux_lo(:,jf),p_lo(jf))
+                                        flux_lo(:,jf),p_lo(jf),         &
+                                        jf,min(jf+1,N+Ng))
                is_first_order(jf) = .true.
                n_new_faces = n_new_faces + 1
 
@@ -258,8 +282,18 @@
             dFc(1) = (dAp*Fp(1) - dAm*Fm(1))/dV
             dFc(2) = (dAp*Fp(2) - dAm*Fm(2))/dV
 
-            ! Correct for WENO3 discretization
-            if (use_weno3)  dFc(2) = dFc(2) + (pR - pL)/dr
+            ! Correct for WENO3 discretization. Under the PLM -> WENO3
+            ! continuation the stored interface fluxes are already on the
+            ! homotopy, so the face-pressure term carries the same weight.
+            ! (The first-order replacement flux itself is built with the
+            ! flags currently set, i.e. the PLM form; it is reached only on
+            ! cells the correction actually repairs, and the counter
+            ! n_faces_flux_positivity_limited reports how many those were.)
+            if (recon_lambda_on) then
+               dFc(2) = dFc(2) + recon_lambda*(pR - pL)/dr
+            else if (use_weno3) then
+               dFc(2) = dFc(2) + (pR - pL)/dr
+            endif
 
             dF3p  = dAp*Fp(1)*(Gphi_i(j) - Gphi_c(j))         &
                   - dAm*Fm(1)*(Gphi_i(j-1) - Gphi_c(j))

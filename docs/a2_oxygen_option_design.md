@@ -1133,7 +1133,9 @@ What was built. `src/modules/lower_atmosphere/diffusive_photochemistry.f90`
 diffusion-advection step solved together with the chemistry, block-tridiagonal
 in space with 4x4 blocks (D5), zero diffusive flux and no imposed partition at
 the base (D6), `kzz_cell` read and no eddy coefficient of its own (section 3.5).
-The key is `Oxygen transport`, default True whenever the option is on; `False`
+The key is `Molecular carrier transport` (renamed from `Oxygen transport` on
+2026-09-02, `Update_EXHALE.md` section 128), default True whenever the option
+is on; `False`
 restores M2's local steady state. `P_i - L_i` comes from calling `mol_heh_rows`
 row 4 and `oxygen_carrier_rows` at the trial densities rather than from
 rewriting them, so the transport and the local solve cannot drift apart; the
@@ -1191,7 +1193,7 @@ cold, none of them a converged wind:**
 
 | run | base T | `x_H2` | O partition at the base (O / OH / H2O / CO) |
 |---|---|---|---|
-| `Oxygen transport: False` (the M2 limit) | 1402.7 K | **0.769** | 0.003 / 0.006 / 0.443 / 0.549 |
+| `Molecular carrier transport: False` (the M2 limit) | 1402.7 K | **0.769** | 0.003 / 0.006 / 0.443 / 0.549 |
 | transport, `K_zz = 0` | 1214.3 K | **0.608** | 0.026 / 0.025 / 0.478 / 0.471 |
 | transport, `K_zz = 1e9` | 1191.3 K | **0.581** | 0.032 / 0.028 / 0.475 / 0.465 |
 
@@ -1300,7 +1302,7 @@ each as the NET exchange with the same diluted `B_nu(T0)` the `Base IR field`
 closure supplies. Default off, and used together with `Base IR field`.
 
 Measured on an HD 189733 b configuration rebuilt from the keys section 109
-records -- two 12000-step relaxations from cold, `Oxygen transport: True`,
+records -- two 12000-step relaxations from cold, the carrier transport on,
 `K_zz = 1e9`, the same five band fluxes, differing only in the new key:
 
 | | bands off | **bands on** |
@@ -1354,7 +1356,7 @@ M1's deliverables are `docs/a2_reaction_audit.md`,
 `src/tests/a2_m1/` (the coefficient module is in `SRC` since M2). M2 added the
 local kinetics and the FUV bands; M3 added the transport module
 `src/modules/lower_atmosphere/diffusive_photochemistry.f90`, the
-`Oxygen transport` key and the shared-beam FUV field. What M3 measured moves the
+`Molecular carrier transport` key and the shared-beam FUV field. What M3 measured moves the
 remaining work: **M4's A/B gate is blocked on item (G), not on M3**, because the
 base cell has no advection in EXHALE's own structure and the base sits 330-540 K
 above the reference's 864 K until the H2O and CO infrared bands exist. M5's

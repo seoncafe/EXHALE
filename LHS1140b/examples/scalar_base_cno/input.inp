@@ -26,6 +26,6 @@ Domain mode: Spherical
 Outer radius [R_p]: 30.0
 Stellar radius [R_sun]: 0.2159
 Base BC: pressure 1.0
-Valve eps: 1.0e-4
-Resid tol: 4.0e-4
+# Resid tol renormalized 2026-09-03, Update_EXHALE.md section 133 (was 4.0e-4)
+Resid tol: 4.0e-6
 He_Kzz: 1.0e9

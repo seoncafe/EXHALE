@@ -456,6 +456,15 @@ condition on it.
 
 ## 11. Step 5: wind response on HD 209458 b (2026-08-10)
 
+> **STALE (P35, 2026-09-02).** The `vulcan_work` run directories cited
+> here carry `Molecular base: True` with the molecular network off. The base
+> particle count was molecular while the species state was atomic, so the
+> base ghost sat at `ntot_bc x T0` -- between 0.555 and 0.994 of the
+> requested `T0`, depending on the directory -- and startup now refuses the
+> combination. The numbers below are kept as recorded but stand on that
+> base; see `INVALID_BASE_TEMPERATURE.md` in each run directory and item
+> P35 of `TO_BE_DONE.md`.
+
 Everything below is measured in this working copy unless it is labeled as a
 choice or a reading. Run directories: `vulcan_work/hd209_vulcan/` (the
 photochemistry) and `vulcan_work/hd209_wind_response/{eqfit,photo}/` (the A/B).
@@ -949,7 +958,9 @@ specific to this configuration: across the eight JFNK runs archived in
 iteration reports `k=2` in all eight, at `j=1, r=1.000` in six, `j=2` in one
 and `j=21, r=1.004` in one, and it does so in the three that *converged*
 (`jfnk_hd189` info=0 at 9.46e-4, `ptc_warm/tight` info=0 at 6.04e-5,
-`solver_newton_cold` info=0 at 5.42e-4) as well as in the five that did not.
+`solver_newton_cold` info=0 at 5.42e-4 -- that directory was deleted on
+2026-09-03 as a byte-identical duplicate of `wasp_full_newton`, which is the
+same case; `TO_BE_DONE.md` (P53)) as well as in the five that did not.
 The base momentum is the terminal residual of every EXHALE steady solve;
 whether JFNK reports info=0 or info=2 is whether it gets that residual under
 the target. This is `TO_BE_DONE.md` item (A), quantified there on WASP-121 b at

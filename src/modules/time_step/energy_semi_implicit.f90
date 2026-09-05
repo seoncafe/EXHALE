@@ -7,6 +7,10 @@ module energy_semi_implicit
                             isp_OH, isp_H2O, isp_CO
    use utils
    use utils_ion_eq
+   use caloric_eos, only: caloric_mixture_active,                      &
+                          internal_energy_per_particle,                &
+                          heat_capacity_per_particle,                  &
+                          energy_density_from_pressure
 
    implicit none
 
@@ -51,7 +55,15 @@ contains
       ! Cell-by-cell pseudo-time steps (uniform = global dt unless
       ! "Time stepping: Local"; the cell solve below is local anyway).
       real*8, dimension(1-Ng:N+Ng), intent(in) :: dt
+      ! Heating of the state this step starts from, from ioniz_eq. It is
+      ! held fixed across the temperature update (the photoheating rates do
+      ! not follow T within one step).
       real*8, dimension(1-Ng:N+Ng), intent(in) :: heat
+      ! On entry: the cooling ioniz_eq evaluated at T_old and at the
+      ! post-sweep composition -- the same composition and the same
+      ! temperature this routine would evaluate it at, so it is taken as the
+      ! first cooling of the Newton iteration instead of being recomputed.
+      ! On exit: the cooling at the temperature this step lands on.
       real*8, dimension(1-Ng:N+Ng), intent(inout) :: cool
       real*8, dimension(1-Ng:N+Ng,n_species), intent(in) :: f_sp
       ! Marching step index, for the temperature-floor report only.
@@ -83,10 +95,10 @@ contains
 
       ! Adimensional number densities
       real*8, dimension(1-Ng:N+Ng) :: ne_ad, n_tot_ad
-      real*8 :: c_factor
+      real*8 :: c_factor, c_energy
       integer :: j, iter, im
 
-      ! Initialize helper zero array
+      ! Zero array for the calls that take no metal ions
       zero_arr = 0.0d0
 
       ! Extract primitive variables
@@ -161,27 +173,28 @@ contains
                         zero_arr, zero_arr, n_tot_ad, nm/n0, nmol_l)
       endif
 
-      ! Old temperature (adimensional)
+      ! Old temperature (adimensional). The pressure was formed as
+      ! (n_tot + n_e) T from the state ioniz_eq returned and the same T it
+      ! was evaluated at, and the particle counts here come from that same
+      ! state through the same calc_ne/calc_ntot, so this reproduces the
+      ! ioniz_eq temperature to round-off.
       T_old = p / (n_tot_ad + ne_ad)
 
       ! Initial guess for Newton-Raphson is the old temperature
       T_trial = T_old
 
-      ! 1. Evaluate cooling at T_old (initial guess T_trial is T_old)
+      ! 1. Cooling at T_old. This is exactly what ioniz_eq returned: it
+      ! evaluates the cooling after its cell sweep, at the composition it
+      ! hands over -- the composition f_sp carries here -- and at T_old.
+      ! Re-evaluating it would repeat that traversal for the same number.
+      cool_trial = cool
+
+      ! 2. Evaluate cooling at perturbed temperature to get derivative.
       ! nheiTR adds the He 2^3S channels (collisional ionization, 10830 A
       ! excitation, 2^3S -> 2^1S/2^1P conversion) to the cooling that acts on
       ! the temperature update; the array is zero when the triplet is off.
       ! nmol_dim gives eval_cool the same electron density the equilibrium
       ! solver uses (molecular ions included); zero for an atomic run.
-      T_K = T_trial * T0
-      call eval_cool(T_K, nhi, nhii, nhei, nheii, nheiii, nm, &
-                     rchiiB, rcheiiB, rcheiiiB, rec_m, &
-                     a_ion_HI, a_ion_HeI, a_ion_HeII, aion_m, &
-                     cool_dim, nheiTR = nheiTR, nmol = nmol_dim,   &
-                     nox = nox_dim)
-      cool_trial = cool_dim / q0
-
-      ! 2. Evaluate cooling at perturbed temperature to get derivative
       delta_T = max(1.0d-5, 1.0d-5 * T_trial)
       T_perturbed = T_trial + delta_T
       T_K = T_perturbed * T0
@@ -198,8 +211,22 @@ contains
       do iter = 1, 2
          ! 3. Compute residual F and derivative dF/dT, then update T_trial
          do j = 1-Ng, N+Ng
-            c_factor = dt(j) * (g - 1.0d0) / (n_tot_ad(j) + ne_ad(j))
+            ! The equation being solved is the ENERGY balance,
+            !    e(T_new) - e(T_old) = dt (heat - cool(T_new)) ,
+            ! per (n_tot + n_e).  With a constant heat capacity that is the
+            ! temperature form below, rescaled by (gamma - 1); with the
+            ! caloric EOS the internal energy is not proportional to T and
+            ! only the energy form is the balance.  The atomic branch keeps
+            ! the temperature form verbatim so its arithmetic is unchanged.
+            if (caloric_mixture_active) then
+               c_energy = dt(j) / (n_tot_ad(j) + ne_ad(j))
+               F(j) = internal_energy_per_particle(j, T_trial(j))       &
+                    - internal_energy_per_particle(j, T_old(j))         &
+                    - c_energy * (heat(j) - cool_trial(j))
+            else
+            c_factor = dt(j) * (gamma_ad - 1.0d0) / (n_tot_ad(j) + ne_ad(j))
             F(j) = T_trial(j) - T_old(j) - c_factor * (heat(j) - cool_trial(j))
+            endif
             ! Both-branch-stable damping derivative. The exact Newton derivative
             ! is dF/dT = 1 + c_factor*dC_dT; on the FALLING cooling branch
             ! (dC_dT < 0, i.e. T past the ~2e4 K cooling peak) that can drop
@@ -213,7 +240,12 @@ contains
             ! for any model whose T never crosses the cooling peak. Damping only
             ! affects the iteration path, not the fixed point F = 0, so the
             ! converged steady state is unchanged.
+            if (caloric_mixture_active) then
+               dF_dT(j) = heat_capacity_per_particle(j, T_trial(j))      &
+                        + c_energy * abs(dC_dT(j))
+            else
             dF_dT(j) = 1.0d0 + c_factor * abs(dC_dT(j))
+            endif
 
             ! Newton-Raphson step
             T_trial(j) = T_trial(j) - F(j) / dF_dT(j)
@@ -250,7 +282,14 @@ contains
       ! Update the primitive pressure and conservative energy density
       p = (n_tot_ad + ne_ad) * T_trial
       W(3,:) = p
-      u(3,:) = 0.5d0 * rho * v**2.0 + p / (g - 1.0d0)
+      if (caloric_mixture_active) then
+         do j = 1-Ng, N+Ng
+            u(3,j) = 0.5d0*rho(j)*v(j)**2.0                             &
+                   + energy_density_from_pressure(j, rho(j), p(j))
+         enddo
+      else
+      u(3,:) = 0.5d0 * rho * v**2.0 + p / (gamma_ad - 1.0d0)
+      endif
 
       ! Set the output cool array (adimensional)
       cool = cool_trial

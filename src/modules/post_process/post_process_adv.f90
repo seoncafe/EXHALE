@@ -6,10 +6,12 @@
 	! gas as H/He + trace metals and EXCLUDES the molecular species (H2, H2+,
 	! H3+, HeH+). The advection correction receives only the H/He (nhi..nheiTR)
 	! and metal (nm_in) densities; the molecular densities are not passed in and
-	! are not re-solved here, so calc_ne / calc_ntot below are called WITHOUT the
-	! nmol argument. In a molecular run this omits the neutral-H2 particle count
-	! and the molecular-ion electrons from the _adv n_tot/ne, and nh = nhi+nhii
-	! counts only the free H nuclei. This is acceptable where the _adv
+	! are not re-solved here, so calc_ne, calc_ntot and
+	! hydrogen_helium_nuclei_density below are called WITHOUT the nmol argument
+	! (and, for the last, without the oxygen carriers either). In a molecular
+	! run this omits the neutral-H2 particle count and the molecular-ion
+	! electrons from the _adv n_tot/ne, and nh = nhi+nhii counts only the free
+	! H nuclei. This is acceptable where the _adv
 	! post-process is used (atomic/ionized escape flow); a molecular base needs
 	! a molecular-aware post-process instead. Trace metals may now be solved
 	! together with the molecular network, and pp_metal_mode carries the metal
@@ -29,6 +31,7 @@
 	use utils_ion_eq
 	use composition, only: he_ground_singlet_density
 	use output_write
+	use caloric_eos, only: h2_particle_fraction
 	use equation_T
 	use opacity_models           ! opacity_pT_factor for the 'P' model
 
@@ -121,6 +124,13 @@
    ! He recombination radiation -> H ionization coupling scratch
    ! (use_he_rec_coupling; zero-effect when off).
    real*8, dimension(1-Ng:N+Ng) ::  rcheiiB_hrc,dP_HI_hrc,dheat_hrc
+   ! H2 density seen by the He-recombination coupling. The _adv reconstruction
+   ! is molecule-free (module-header composition note), so it is identically
+   ! zero here and the coupling reduces to the H I / He I competition; the H2
+   ! rate it returns is discarded for the same reason.
+   real*8, dimension(1-Ng:N+Ng) ::  nh2_pp, dP_H2_hrc
+   ! Metal share of the He recombination photons (item P34), added to P_m
+   real*8, dimension(1-Ng:N+Ng,n_mion) ::  dP_m_hrc
    ! Metal recombination/ionization rates for each ion returned by eval_cool.
    ! In the re-solve mode (pp_metals=2) they feed the cell-by-cell metal
    ! ionization-balance solve; in the frozen mode they are discarded.
@@ -320,22 +330,29 @@
 	! Iterate the post processing
 	do k = 1,10	! Usually 10 gives a good convergence
 	
-	! Summed He I from the two populations carried through the pass
+	! Summed He I from the two populations carried through the pass, then the
+	! H and He NUCLEI totals from the one shared definition (utils).  The
+	! molecular and oxygen carriers are omitted because this pass does not
+	! carry them (see the module-header composition note); the He 2^3S
+	! nuclei enter through nhei, which already sums the two populations.
 	nhei = nheiS + nheiTR
-	nh  = nhi  + nhii
-	nhe = nheiS + nheii + nheiii
-	if (thereis_HeITR) nhe = nhe + nheiTR
-
-	! Ionized fraction of the H+He nuclei, for the SvS85 secondary-ionization
-	! partition (metals excluded; nheiTR is neutral and not in the numerator).
-	! Reused for both PH_heat calls below (nhi/nheii/nheiii unchanged between them).
-	xion = min(max((nhii + nheii + nheiii)/max(nh + nhe, 1.0d-99), 0.0d0), 1.0d0)
+	call hydrogen_helium_nuclei_density(nhi,nhii,nhei,nheii,nheiii,nh,nhe)
 
 	! Free electron density (assuming overall neutrality; nm_w adds the
 	! metal electrons under the eos_metals policy). Molecular-ion electrons are
 	! excluded here -- the post-process does not carry the molecular densities
 	! (see the module-header composition note).
 	call calc_ne(nhii,nheii,nheiii,ne,nm_w)
+
+	! Ionized fraction handed to the photoelectron partition: the TOTAL free
+	! electron density over the H and He nuclei, the quantity Dalgarno, Yan &
+	! Liu (1999) section 7 define ("the number density ratio of the electrons
+	! to the hydrogen and helium nuclei").  Reused for both PH_heat calls
+	! below (nhi/nheii/nheiii unchanged between them).  On this path the
+	! molecular-ion electrons are missing from ne for the reason just given,
+	! so a molecular run's post-process carries a slightly low ratio; the
+	! equilibrium pass, which does have them, does not.
+	xion = min(max(ne/max(nh + nhe, 1.0d-99), 0.0d0), 1.0d0)
 
 	! Metal electrons alone, for the electron density inside the advection
 	! residuals. Same definition as calc_ne above and as the equilibrium
@@ -389,11 +406,16 @@
 	! rate driving the advection ODE (the heating correction is applied later,
 	! to theat). Mirrors ionization_equilibrium.
 	if (use_he_rec_coupling .and. thereis_He) then
-		call he_rec_coupling(T_K, nhi, nhei, nheii, nheiTR, ne,           &
-		                     A31, q31a, q31b,                             &
-		                     rcheiiB_hrc, dP_HI_hrc, dheat_hrc)
+		nh2_pp = 0.0d0
+		call he_rec_coupling(T_K, nhi, nh2_pp, nhei, nheii, nheiTR,       &
+		                     ne, nm_w, A31, q31a, q31b,                    &
+		                     rcheiiB_hrc, dP_HI_hrc, dP_H2_hrc,            &
+		                     dP_m_hrc, dheat_hrc)
 		rcheiiB = rcheiiB_hrc
 		P_HI    = P_HI + dP_HI_hrc
+		! The metal share of the same photons feeds the metal re-solve
+		! (pp_metals=2) exactly as it feeds the equilibrium solve.
+		if (thereis_metals) P_m = P_m + dP_m_hrc
 	endif
 
    !----------------------------------!
@@ -682,9 +704,7 @@
 	
 	! Number densities      
    nhei = nheiS + nheiTR
-	nh  = nhi  + nhii 
-	nhe = nheiS + nheii + nheiii
-	if (thereis_HeITR) nhe = nhe + nheiTR
+	call hydrogen_helium_nuclei_density(nhi,nhii,nhei,nheii,nheiii,nh,nhe)
 
    ! Total number density (incl. metal nuclei under eos_metals). Molecular
    ! species are excluded -- the post-process does not carry them (see the
@@ -809,9 +829,11 @@
 	! advection-corrected densities (the rate/coefficient corrections were
 	! applied to P_HI/rcheiiB before the advection solve above).
 	if (use_he_rec_coupling .and. thereis_He) then
-		call he_rec_coupling(T_K, nhi, nhei, nheii, nheiTR, ne,           &
-		                     A31, q31a, q31b,                             &
-		                     rcheiiB_hrc, dP_HI_hrc, dheat_hrc)
+		nh2_pp = 0.0d0
+		call he_rec_coupling(T_K, nhi, nh2_pp, nhei, nheii, nheiTR,       &
+		                     ne, nm_w, A31, q31a, q31b,                    &
+		                     rcheiiB_hrc, dP_HI_hrc, dP_H2_hrc,            &
+		                     dP_m_hrc, dheat_hrc)
 		theat = theat + dheat_hrc
 	endif
 
@@ -889,6 +911,9 @@
 	 	teq_cell%dr = dr
 	 	teq_cell%Told = T_out(j-1)
 	 	teq_cell%heaold = theat(j)
+	 	! Composition entry of the caloric EOS: the H2 share of this cell's
+	 	! particle-plus-electron count, as the equilibrium solve left it.
+	 	teq_cell%x_h2 = h2_particle_fraction(j)
 	 	! Metal densities for this cell [cgs] go through the equation_T module
 	 	! array (the 27-ion vector does not fit params). pp_metal_on gates
 	 	! whether T_equation adds the metal cooling/brem/n_e terms.

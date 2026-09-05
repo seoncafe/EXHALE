@@ -668,7 +668,7 @@
       real*8,  intent(in)    :: nm0(:), nm1(:), nm2(:)
       real*8,  intent(in)    :: n_hi, n_hii, n_hei, n_heii, n_heiii
       real*8,  intent(in)    :: n_X(:), n_h, n_he
-      real*8  :: dens(12,0:2), D, A, kc, g
+      real*8  :: dens(12,0:2), D, A, kc, dR_dn
       integer :: i, r, de, ds, ae, as, idon, iacc, m
       integer :: nD, nA, kD(2), kA(2)
       real*8  :: cD(2), cA(2)
@@ -693,16 +693,16 @@
          ! donor-density derivatives: dR = kc * (dD) * A
          call cx_dens_lin(de, ds, n_X, n_h, n_he, nD, kD, cD)
          do m = 1, nD
-            g = kc*cD(m)*A
-            fjac(idon,kD(m)) = fjac(idon,kD(m)) + g
-            fjac(iacc,kD(m)) = fjac(iacc,kD(m)) - g
+            dR_dn = kc*cD(m)*A
+            fjac(idon,kD(m)) = fjac(idon,kD(m)) + dR_dn
+            fjac(iacc,kD(m)) = fjac(iacc,kD(m)) - dR_dn
          enddo
          ! acceptor-density derivatives: dR = kc * D * (dA)
          call cx_dens_lin(ae, as, n_X, n_h, n_he, nA, kA, cA)
          do m = 1, nA
-            g = kc*D*cA(m)
-            fjac(idon,kA(m)) = fjac(idon,kA(m)) + g
-            fjac(iacc,kA(m)) = fjac(iacc,kA(m)) - g
+            dR_dn = kc*D*cA(m)
+            fjac(idon,kA(m)) = fjac(idon,kA(m)) + dR_dn
+            fjac(iacc,kA(m)) = fjac(iacc,kA(m)) - dR_dn
          enddo
       enddo
       end subroutine cx_add_to_jac

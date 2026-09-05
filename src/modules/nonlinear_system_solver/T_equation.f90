@@ -3,6 +3,7 @@
 
 	use global_parameters
 	use ion_cell_state, only: teq_cell
+	use caloric_eos, only: internal_energy_of_mixture
 	use utils, only : calc_ne
 	use Cooling_Coefficients
 	use species_table, only : n_mion, mion_iscool, mion_name,           &
@@ -48,6 +49,7 @@
 	real*8  :: coeff
 	real*8  :: dr
 	real*8  :: Told,heaold
+	real*8  :: x_h2
 	real*8  :: reco,coio,brem,coex,cool,cool_M
 	real*8  :: TT
 	real*8  :: GF_z1,GF_z2   ! free-free Gaunt at ion net charge Z_ion = 1, 2
@@ -68,6 +70,7 @@
    dr	   = teq_cell%dr
    Told   = teq_cell%Told
    heaold = teq_cell%heaold
+   x_h2   = teq_cell%x_h2
    ! Metal densities are supplied cell-by-cell through the module array
    ! pp_nm_cell (cgs), set by post_process_adv; pp_metal_on gates whether
    ! metals contribute.
@@ -90,11 +93,11 @@
 	TT = x(1)*T0
 	! The hybrd1 search can transiently overshoot to a negative trial T. Every
 	! cooling rate below is a fit in T that has no value there: brem takes
-	! sqrt(TT), and rec_cool_HII_func raises (2*157807/TT) to the power 1.970,
+	! sqrt(TT), and lambda_rec_HII raises (2*157807/TT) to the power 1.970,
 	! which is a NaN for TT < 0 and an overflow for TT -> 0+. The NaN then
 	! poisons the Newton step, and under -ffpe-trap=invalid it aborts the run
 	! (measured in the post-process of the He/H = 1 molecular arm, which is
-	! metals-off: rec_cool_HII_func at Cool_coeff.f90:2829, from hybrd1). So
+	! metals-off: lambda_rec_HII in Cool_coeff.f90, from hybrd1). So
 	! floor the argument of the rate functions at a small positive temperature,
 	! unconditionally: it is the domain of the fits, not an option. The
 	! physical root sits far above the floor -- the coldest base in the
@@ -105,16 +108,16 @@
 	!--- Evaluate cooling rates ---!
 			
     ! Cooling rate
-   reco  =  rec_cool_HII_func(TT)*nhii     & ! HII
-         +  rec_cool_HeII_func(TT)*nheii   & ! HeII
-         +  rec_cool_HeIII_func(TT)*nheiii   ! HeIII
+   reco  =  lambda_rec_HII(TT)*nhii     & ! HII
+         +  lambda_rec_HeII(TT)*nheii   & ! HeII
+         +  lambda_rec_HeIII(TT)*nheiii   ! HeIII
 
    !-- Collisional ionization --!
       
    ! Cooling rate
-   coio =  2.179e-11*ion_coeff_HI_func(TT)*nhi  	         & ! HI
-           + 3.940e-11*ion_coeff_HeI_func(TT)*nhei 		   & ! HeI
-	  		  + kb_erg*631515.0*ion_coeff_HeII_func(TT)*nheii    ! HeII
+   coio =  2.179e-11*ci_rate_HI(TT)*nhi  	         & ! HI
+           + 3.940e-11*ci_rate_HeI(TT)*nhei 		   & ! HeI
+	  		  + e_th_HeII_erg*ci_rate_HeII(TT)*nheii      ! HeII
 
    !-- Bremsstrahlung --!
 
@@ -122,8 +125,8 @@
    ! the ion NET charge Z_ion: H II, He II and singly-ionized metals are
    ! Z_ion = 1; He III and doubly-ionized metals are Z_ion = 2. The Gaunt
    ! factor is evaluated at Z_ion. Matches the brem accumulator in eval_cool.
-   GF_z1 = GF_func(TT, 1.0d0)
-   GF_z2 = GF_func(TT, 2.0d0)
+   GF_z1 = gbar_ff(TT, 1.0d0)
+   GF_z2 = gbar_ff(TT, 2.0d0)
    brem = GF_z1*nhii + GF_z1*nheii + 4.0d0*GF_z2*nheiii   ! HII, HeII, HeIII
    if (pp_metal_on) then
       do im = 1,n_mion
@@ -140,9 +143,9 @@
    !-- Collisional excitation --!
 
    ! Collisional excitation
-   coex = coex_rate_HI_func(TT)*nhi       &    ! HI
-        + coex_rate_HeI_func(TT)*nhei     &    ! HeI
-        + coex_rate_HeII_func(TT)*nheii        ! HeII
+   coex = lambda_coex_HI(TT)*nhi       &    ! HI
+        + lambda_coex_HeI(TT)*nhei     &    ! HeI
+        + lambda_coex_HeII(TT)*nheii        ! HeII
 
    !-- Metal line cooling. Sum the same mion_iscool coolants eval_cool
    ! sums, using the scalar coefficient dispatcher so the converged T
@@ -156,7 +159,7 @@
          if (im .eq. im_FeII) then
             ! density-dependent Fe II (matches eval_cool's c_metal override:
             ! the local ne selects the coronal->LTE-saturated coefficient)
-            cool_M = cool_M + pp_nm_cell(im)*cool_FeII_ne_scalar(TT, ne)
+            cool_M = cool_M + pp_nm_cell(im)*cool_FeII_ne_value(TT, ne)
          else if (cno_chianti .and. im .eq. im_CI) then
             ! saturated [C I] 609/370um ground term (matches eval_cool)
             cool_M = cool_M + pp_nm_cell(im)                          &
@@ -191,7 +194,7 @@
                                  pp_nbar_fs(ifs_OI44))
          else
             cool_M = cool_M + pp_nm_cell(im)                          &
-                              *cool_coeff_by_ion_scalar(im, TT)
+                              *cool_coeff_of_ion(im, TT)
          endif
       enddo
    endif
@@ -200,8 +203,26 @@
  	cool = (ne*(brem + coex + reco + coio) + ne*cool_M)/q0
 
 	! Equation
+   ! Advected energy balance. What the first two terms carry is the
+   ! INTERNAL ENERGY per particle, which is T/(gamma - 1) only for a
+   ! monatomic gas; with H2 in the cell it is the caloric energy
+   ! e(T) = (3/2) T + x_H2 u_rv(T), and the pressure-work and
+   ! heating/cooling terms on the right are unchanged. Dividing the legacy
+   ! form by (gamma - 1) and replacing T/(gamma - 1) by e(T) is exactly
+   ! that generalization.
+   !
+   ! The upstream term uses THIS cell's composition, as the upstream
+   ! temperature Told is already this cell's own upwind value; the H2
+   ! fraction changes across a cell only where the front does, and the
+   ! post-process is a first-order upwind reconstruction there anyway.
+   if (x_h2 .gt. 0.0d0) then
+      fvec(1) = mum*rhov*internal_energy_of_mixture(x_h2, x(1))          &
+              - mup*rhov*internal_energy_of_mixture(x_h2, Told)          &
+              - (coeff*x(1) + mup*mum*dr*(heaold - cool))
+   else
    fvec(1) = mum*rhov*x(1) - mup*rhov*Told 		&
-           - (g-1.0)*(coeff*x(1) + mup*mum*dr*(heaold - cool))
+           - (gamma_ad-1.0)*(coeff*x(1) + mup*mum*dr*(heaold - cool))
+   endif
       
    ! End of subroutine
 	end subroutine T_equation

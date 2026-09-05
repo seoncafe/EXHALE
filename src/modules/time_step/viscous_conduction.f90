@@ -135,6 +135,9 @@
 
       use global_parameters
       use Conversion, only: U_to_W
+      use caloric_eos, only: caloric_mixture_active,                    &
+                             energy_density_from_pressure,              &
+                             heat_capacity_per_particle
 
       implicit none
       private
@@ -437,7 +440,7 @@
       !        d(rho w^2/2) = w_avg rho (w* - w) = dt w_avg F_mu_avg exactly,
       !        which is what holding p fixed and rebuilding E accomplishes.
       !   (ii) temperature  C (T* - T)/dt = (1/2)[Q(T) + Q(T*)] + q_mu,
-      !        C = n_part/(g-1) the internal energy per unit temperature,
+      !        C = n_part c_v/k the internal energy per unit temperature,
       !        q_mu evaluated at the updated velocity.
       !
       ! The spatial operators are the SAME tridiagonal triplets that
@@ -485,7 +488,8 @@
          do j = 1, N
             W(2,j) = vnew(j)
             u(2,j) = W(1,j)*vnew(j)
-            u(3,j) = 0.5d0*W(1,j)*vnew(j)**2 + W(3,j)/(g - 1.0d0)
+            u(3,j) = 0.5d0*W(1,j)*vnew(j)**2                            &
+                   + energy_density_from_pressure(j, W(1,j), W(3,j))
          enddo
       endif
 
@@ -499,7 +503,18 @@
          endif
          do j = 1, N
             Lold   = blo(j)*Tcell(j-1) + bdi(j)*Tcell(j) + bup(j)*Tcell(j+1)
-            cap    = n_part(j)/((g - 1.0d0)*dt(j))
+            ! Heat capacity of the cell, frozen at the stage temperature
+            ! exactly as the conductivity above it is.  This is a
+            ! linearization of the implicit step, not of the answer: at the
+            ! fixed point Tnew = Tcell the cap terms cancel and what remains
+            ! is Lold + qv = 0, which is the zero of
+            ! viscous_conduction_sources whatever cap was.
+            if (caloric_mixture_active) then
+               cap = n_part(j)*heat_capacity_per_particle(j, Tcell(j))   &
+                     /dt(j)
+            else
+            cap    = n_part(j)/((gamma_ad - 1.0d0)*dt(j))
+            endif
             dlo(j) = -half*blo(j)
             ddi(j) = cap - half*bdi(j)
             dup(j) = -half*bup(j)
@@ -512,7 +527,8 @@
          do j = 1, N
             Tnew(j) = max(sol(j), 1.0d-2)
             W(3,j)  = n_part(j)*Tnew(j)
-            u(3,j)  = 0.5d0*W(1,j)*W(2,j)**2 + W(3,j)/(g - 1.0d0)
+            u(3,j)  = 0.5d0*W(1,j)*W(2,j)**2                            &
+                    + energy_density_from_pressure(j, W(1,j), W(3,j))
          enddo
       endif
 

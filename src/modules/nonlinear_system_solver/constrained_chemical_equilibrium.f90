@@ -405,7 +405,6 @@
 	real*8,  save :: field_scale            ! lambda of the rung being solved
 	logical, save :: h2_is_fixed, oxygen_carriers_are_fixed
 	real*8,  save :: nuclei_H, nuclei_He, nuclei_O
-	real*8,  save :: n_H2_fixed, n_OH_fixed, n_H2O_fixed
 	logical, save :: element_carried(n_melem)
 	! Does the cell carry this species at all (an absent element, the pinned
 	! X++ of a two-stage element and the oxygen carriers of a run without the
@@ -460,7 +459,6 @@
 	!$omp               metal_base, oxygen_base, field_scale,              &
 	!$omp               h2_is_fixed, oxygen_carriers_are_fixed,            &
 	!$omp               nuclei_H, nuclei_He, nuclei_O,                     &
-	!$omp               n_H2_fixed, n_OH_fixed, n_H2O_fixed,               &
 	!$omp               species_exists, species_fixed, row_of_species,     &
 	!$omp               species_held,                                      &
 	!$omp               species_of_unknown, fraction_row_of_reaction,      &
@@ -536,6 +534,23 @@
 	if (ieq_cell%nh .le. 0.0d0 .or. ieq_cell%nhe .le. 0.0d0) return
 
 	call set_molecular_network_layout(nx, mbase, iox)
+
+	! NO RUNG EXISTS YET FOR THIS CELL. Everything below the cell layout --
+	! the holdout, the unknown and row lists, the reference composition the
+	! logarithmic unknowns are measured against, the row scales and the
+	! field of the rung -- is built per rung by the loop that follows. Until
+	! it is, it must not still describe the previous cell this thread
+	! solved: a cell's equilibrium is a function of that cell's state, not
+	! of the order the sweep handed cells to threads
+	! (docs/Update_EXHALE.md section 121).
+	species_held(:)             = .false.
+	n_unknown                   = 0
+	n_reaction_row              = 0
+	species_of_unknown(:)       = 0
+	fraction_row_of_reaction(:) = 0
+	reference_density(:)        = 0.0d0
+	row_scale(:)                = 0.0d0
+	field_scale                 = 0.0d0
 
 	par(:)     = 0.0d0         ! MINPACK transport argument only, unread
 	xtol       = sqrt(dpmpar(1))
@@ -870,6 +885,18 @@
 
 	!----------------------------------!
 
+	logical function seed_species_of_cell(isp)
+	! Whether the SEED has to start this species positive: a species the
+	! cell carries and whose partition this solve owns. It is the rung
+	! partition's unknown set with the holdout test removed -- no rung
+	! exists when the seed is built -- and it is a function of the cell's
+	! own layout alone, which is what the seed has to be.
+	integer, intent(in) :: isp
+	seed_species_of_cell = species_exists(isp) .and. .not. species_fixed(isp)
+	end function seed_species_of_cell
+
+	!----------------------------------!
+
 	subroutine set_rung_partition(sden)
 	! Split the cell's species into the ones the Newton system iterates on
 	! and the ones held out of it as trace, at the composition sden, and
@@ -1062,7 +1089,9 @@
 	                  sden(is_HeIII), n_e, ieq_cell%ntot,                 &
 	                  lam*ieq_cell%P_HI, lam*ieq_cell%P_HeI,              &
 	                  lam*ieq_cell%P_HeII, lam*ieq_cell%P_HeITR,          &
-	                  lam*ieq_cell%P_H2, lam*ieq_cell%k_LW,               &
+	                  lam*ieq_cell%P_H2, lam*ieq_cell%P_H2_di,             &
+	                  lam*ieq_cell%P_H2_dd, lam*ieq_cell%P_H2_nd,          &
+	                  lam*ieq_cell%k_LW,                                  &
 	                  ieq_cell%rchiiB, ieq_cell%rcheiiB,                  &
 	                  ieq_cell%rcheiiiB, ieq_cell%rcheiTR,                &
 	                  ieq_cell%a_ion_HI, ieq_cell%a_ion_HeI,              &
@@ -1352,8 +1381,6 @@
 		endif
 		sden(is_OH)  = f_oh*nuclei_O
 		sden(is_H2O) = f_h2o*nuclei_O
-		n_OH_fixed   = sden(is_OH)
-		n_H2O_fixed  = sden(is_H2O)
 		! The carriers and the atomic/ionized oxygen share one budget: the
 		! stages just written are scaled into what the carriers leave.
 		s_free = max(1.0d0 - f_oh - f_h2o, 0.0d0)
@@ -1366,15 +1393,24 @@
 	! Probe-only: displace the closed-form start, to test that the solve
 	! reaches the same root from a nearby seed rather than from this one.
 	if (seed_perturb_on) then
-		do k = 1,n_unknown
-			isp = species_of_unknown(k)
+		do isp = 1,n_species_max
+			if (.not. seed_species_of_cell(isp)) cycle
 			sden(isp) = sden(isp)*seed_perturb(isp)
 		enddo
 	endif
 
 	! --- seed floors: a logarithmic unknown needs a positive start ---
-	do k = 1,n_unknown
-		isp        = species_of_unknown(k)
+	!
+	! The set floored here is the CELL's, not a rung's. This routine builds
+	! the seed, so it runs before set_rung_partition has chosen any rung for
+	! this cell: n_unknown and species_of_unknown still describe whichever
+	! cell this thread solved last. Reading them here made a cell's seed --
+	! which species are floored, and, through the return below, whether the
+	! continuation is seeded at all -- a function of the order the cells
+	! happened to be handed to threads, and with it the accepted state of
+	! every class-5 cell (docs/Update_EXHALE.md section 121).
+	do isp = 1,n_species_max
+		if (.not. seed_species_of_cell(isp)) cycle
 		sden_floor = seed_floor_fraction*element_nuclei_of_species(isp)
 		if (sden(isp) .lt. sden_floor) sden(isp) = sden_floor
 		if (sden(isp) .le. 0.0d0) return
@@ -1416,13 +1452,26 @@
 	x_atomic = 1.0d0 - x_h2
 
 	sden(is_H2) = 0.5d0*x_h2*nuclei_H
-	n_H2_fixed  = sden(is_H2)
 
+	! WHERE THE IONIZATION STATE IS TRANSPORTED THE SEED USES IT. This
+	! routine builds the starting point, and the row that will be solved for
+	! x(1) is then not a balance but the constraint x(1) = x_hp_fix, so a
+	! seed placed on the local balance instead starts the solve off its own
+	! constraint surface and closes the seed's charge neutrality at an
+	! electron density belonging to a different ionization state. Both are
+	! avoided by seeding at the transported fraction; the H2 partition above
+	! is handled the same way for the same reason.
+	if (ieq_cell%x_hp_fixed) then
+		f1 = min(max(ieq_cell%x_hp_fix, 0.0d0), x_atomic)
+		sden(is_HII) = f1*nuclei_H
+		sden(is_HI)  = max(x_atomic*nuclei_H - sden(is_HII), 0.0d0)
+	else
 	u0 = photo_scale*ieq_cell%P_HI + ieq_cell%a_ion_HI*n_e
 	d1 = ieq_cell%rchiiB*n_e
 	call ionization_stage_fractions(u0, 0.0d0, d1, 0.0d0, 1, f0, f1, f2)
 	sden(is_HI)  = f0*x_atomic*nuclei_H
 	sden(is_HII) = f1*x_atomic*nuclei_H
+	endif
 
 	! --- helium: the three stages, then the metastable inside the neutral ---
 	u0 = photo_scale*ieq_cell%P_HeI + ieq_cell%a_ion_HeI*n_e
@@ -1636,13 +1685,16 @@
 			            ieq_cell%P_HeITR
 			write(iu,*) ieq_cell%q13, ieq_cell%q31a,               &
 			            ieq_cell%q31b, ieq_cell%Q31
-			write(iu,*) ieq_cell%P_H2, ieq_cell%k_LW,              &
+			write(iu,*) ieq_cell%P_H2, ieq_cell%P_H2_di,           &
+			            ieq_cell%P_H2_dd, ieq_cell%P_H2_nd,         &
+			            ieq_cell%k_LW,                              &
 			            ieq_cell%T_K, ieq_cell%ntot
 			write(iu,*) ieq_cell%kcx_He0_Hp, ieq_cell%kcx_Hep_H0
 			write(iu,*) ieq_cell%n_ofam, ieq_cell%n_co
 			write(iu,*) ieq_cell%x_h2_fixed, ieq_cell%x_ox_fixed,   &
 			            ieq_cell%x_h2_fix,                          &
 			            ieq_cell%x_oh_fix, ieq_cell%x_h2o_fix
+			write(iu,*) ieq_cell%x_hp_fixed, ieq_cell%x_hp_fix
 			write(iu,*) met_nelem
 			do e = 1,met_nelem
 				write(iu,*) met_ntot(e), met_g0(e), met_g1(e),     &
@@ -1715,6 +1767,12 @@
 			lam*ieq_cell%P_HI*sden(is_HI))
 		call add_term(lbl, val, nt, 'collion H0',                      &
 			ieq_cell%a_ion_HI*n_e*sden(is_HI))
+		call add_term(lbl, val, nt, 'dissoc photoion H2',              &
+			lam*ieq_cell%P_H2_di*sden(is_H2))
+		! Two protons per event, which is why this term carries a 2 and
+		! the H2 row does not.
+		call add_term(lbl, val, nt, 'double photoion H2',             &
+			2.0d0*lam*ieq_cell%P_H2_dd*sden(is_H2))
 		call add_term(lbl, val, nt, 'R9  H2+ + H0',                    &
 			mk9*sden(is_H2p)*sden(is_HI))
 		call add_term(lbl, val, nt, 'R17 He+ + H2',                    &
@@ -1888,12 +1946,19 @@
 	           ieq_cell%a_ion_HeII, ieq_cell%a_ion_HeITR
 	read(iu,*) ieq_cell%rcheiTR, ieq_cell%A31, ieq_cell%P_HeITR
 	read(iu,*) ieq_cell%q13, ieq_cell%q31a, ieq_cell%q31b, ieq_cell%Q31
-	read(iu,*) ieq_cell%P_H2, ieq_cell%k_LW, ieq_cell%T_K, ieq_cell%ntot
+	read(iu,*) ieq_cell%P_H2, ieq_cell%P_H2_di,                           &
+	           ieq_cell%P_H2_dd, ieq_cell%P_H2_nd, ieq_cell%k_LW,         &
+	           ieq_cell%T_K, ieq_cell%ntot
 	read(iu,*) ieq_cell%kcx_He0_Hp, ieq_cell%kcx_Hep_H0
 	read(iu,*) ieq_cell%n_ofam, ieq_cell%n_co
 	read(iu,*) ieq_cell%x_h2_fixed, ieq_cell%x_ox_fixed,                  &
 	           ieq_cell%x_h2_fix,                                         &
 	           ieq_cell%x_oh_fix, ieq_cell%x_h2o_fix
+	! The transported-proton constraint, on its own record so that a dump
+	! written before the proton option is still read by the lines above and
+	! only this one fails -- the dump is a debug artifact of one cell, not a
+	! restart format, so it is versioned by being appended to.
+	read(iu,*) ieq_cell%x_hp_fixed, ieq_cell%x_hp_fix
 	read(iu,*) nel
 	do e = 1,nel
 		read(iu,*) mg_ntot(e), mg_g0(e), mg_g1(e), mg_b0(e), mg_b1(e), &

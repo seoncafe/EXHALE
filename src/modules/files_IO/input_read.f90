@@ -10,7 +10,8 @@
                             iel_Fe, mion_ethr, melem_i0, melem_A,  &
                             melem_name
    use composition, only: comp_mass_per_H, comp_ntot_bc, comp_rho_bc,   &
-                          h2_mixing_ratio_base, h2_mixing_ratio_ceiling
+                          h2_mixing_ratio_base, h2_mixing_ratio_ceiling, &
+                          base_h2_nuclei_fraction
    use lower_atmosphere_profile, only: lap_file, lap_in_use,             &
                           lap_solution_id, lap_p_match_bar,              &
                           lap_source_code, lap_iteration,                &
@@ -19,9 +20,22 @@
    ! FUV photolysis thresholds of the oxygen chemistry, filled once here
    ! (serially) because the OpenMP cell sweep only reads them.
    use water_photolysis, only: water_photolysis_init
+   use sed_reader, only: lyman_werner_band_flux_from_sed
+   use diffusive_photochemistry, only: carrier_set_init
+   use base_boundary, only: set_base_reservoir
 
    implicit none
-      
+
+   ! ---- who fixes the base level ------------------------------------- !
+   ! The lower boundary is one level, so exactly one input states it. A
+   ! base.inp that carries "p_base" is a lower-atmosphere handoff written AT
+   ! that pressure, so when it is present that pressure IS the base level and
+   ! n0 follows from it; otherwise the legacy density key states it. These
+   ! two record which of them spoke, so the pair can be checked against each
+   ! other instead of one silently winning.
+   logical, save, public :: base_level_from_base_inp = .false.
+   logical, save, public :: base_density_key_given   = .false.
+
    contains
       
    subroutine input_read
@@ -33,11 +47,14 @@
       character(len = 250), allocatable :: filelines(:)
       integer                         :: ios
       integer                         :: im
-      integer                         :: i, nlines
+      integer                         :: i, ios_pe, nlines
       integer                         :: kk
       logical                         :: is_known
       ! Resolved base H2 mixing ratio and the ceiling it is checked against
       real*8                          :: q_h2_resolved, q_h2_max
+      real*8                          :: p_base_cgs, n0_from_p_base
+      real*8                          :: p_from_density_key
+      integer                         :: iw
 
    ! Every label input_read recognizes: the core block followed by the
    ! keyword-extension block, in the same order as the reads below. Used only
@@ -52,17 +69,22 @@
       'Spectrum type', 'Spectrum file', 'Power-law index', 'Photon energy',  &
       'Use only EUV', 'Log10 of X-ray luminosity', 'Log10 of EUV luminosity',&
       'Grid type', 'Base grid', 'Grid cells',                                &
+      'Reconstruction continuation',                                         &
       'Numerical flux', 'Reconstruction scheme', 'Include He23S',            &
       'Load IC', 'Do only PP', 'Force start',                                &
       'Domain mode', 'Outer radius', 'Stellar Teff', 'Stellar radius',       &
+      'Caloric EOS', 'Photoelectron heating',                               &
       'Deexc heat', 'Wind-AE seed out', 'Wind-AE seed', 'Jlya RT file',      &
       'Jlya escape-prob', 'Stellar Lya flux', 'Lya stellar halfwidth',       &
       'Lya stellar boost', 'Lya absorbing bottom',                           &
       'du_th', 'ATES_photoionization_rate',                                  &
       'Legacy_HHe_rates', 'Secondary_ionization', 'He_rec_coupling',         &
-      'He_H_charge_exchange',                                                &
+      'He_H_charge_exchange', 'Atomic rate set',                             &
       'Molecular chemistry', 'Molecular base', 'Stellar LW flux',           &
-      'Oxygen chemistry', 'Oxygen transport',                              &
+      'Oxygen chemistry', 'Molecular carrier transport',                   &
+      'Ionization transport',                                                  &
+      'Coupled carrier solve',                                             &
+      'Oxygen transport',                                                  &
       'Stellar FUV B1 flux', 'Stellar FUV B3 flux',                        &
       'Stellar FUV B4 flux',                                               &
       'Lower atmosphere', 'Lower atmosphere profile',                        &
@@ -72,9 +94,11 @@
       'Shapiro filter', 'Low-Mach damping',                                  &
       'Base BC', 'Base velocity', 'Viscosity',                               &
       'Base ghost temperature', 'Max steps', 'Coronal cutoff width',         &
-      'Base IR field', 'Molecular IR bands',                                 &
+      'Base IR field', 'Molecular IR bands', 'Molecular reaction heat',       &
+      'H2 double ionization', 'H2 neutral dissociation',                     &
       'Conduction', 'Resid tol',                                             &
-      'Resid norm', 'CFL', 'Transonic IC', 'Hot Parker IC', 'IC mode',       &
+      'Resid norm', 'Flux spread tol', 'CFL', 'Transonic IC',            &
+      'Hot Parker IC', 'IC mode',                                            &
       'Newton solver', 'Brent solver' ]
 
    ! ----- Read planetary parameters from input file ----- !
@@ -104,9 +128,12 @@
    ! files parse unchanged because their lines are self-labeling (e.g.
    ! "Planet radius [R_J]: 1.401"); within a line the value is still taken by
    ! word position with get_word, exactly as before. The optional keyword-
-   ! extension block that follows uses the same anchored matching. A
-   ! duplicated key resolves to its LAST occurrence (find_lbl below), matching
-   ! the keyword loop, which overwrites on each match.
+   ! extension block that follows uses the same anchored matching. A KEY MAY
+   ! APPEAR ONLY ONCE: two lines stating the same quantity are two answers to
+   ! one question, and silently keeping the last of them is how a run acquires
+   ! a tolerance nobody chose (measured: valve_sens/eps5 carried "Resid tol"
+   ! twice and ran on the second). refuse_duplicate_keys below stops the run
+   ! and names both lines.
    write(*,*) '(input_read.f90) Reading the input.inp file..'
    open(unit = 11, file = inp_file)
    nlines = 0
@@ -122,13 +149,27 @@
    enddo
    close(11)
 
+   ! ----- One line per key -----
+   ! Checked BEFORE anything is consumed, so a file that states a quantity
+   ! twice never gets as far as producing a run with one of the two values.
+   call refuse_duplicate_keys(inp_file, filelines, nlines,                &
+                              known_keys, size(known_keys))
+
    ! ----- Core block (label-matched; order-independent) -----
 
    ! Planet name (single token at word 3)
    p_name = get_word(req('Planet name'), 3)
 
-   ! Log10 of n0
-   str = get_word(req('Log10 lower boundary'), 7);  read(str,*) n0
+   ! Log10 of n0. Optional: a base.inp that states p_base fixes the base
+   ! level instead, and then this key is redundant (and is refused if it
+   ! disagrees -- see "the base level has one source" below). n0 is left
+   ! non-positive here so that a run stating neither is caught there.
+   line = find_lbl('Log10 lower boundary', base_density_key_given)
+   if (base_density_key_given) then
+      str = get_word(line, 7);  read(str,*) n0
+   else
+      n0 = -1.0d0
+   endif
 
    ! Planet radius
    str = get_word(req('Planet radius'), 4);  read(str,*) R0
@@ -245,12 +286,25 @@
    ! Reconstruction scheme. "PLM" and "WENO3" are single-stage and use only
    ! the FIRST du_th value; "PLM+WENO3" is two-stage (PLM then WENO3) and
    ! uses BOTH du_th values (see the du_th parsing below).
-   rec_method = get_word(req('Reconstruction scheme'), 3)
-   if (rec_method.eq.'WENO3') use_weno3 = .true.
-   if (rec_method.eq.'PLM')   use_plm = .true.
-   if (rec_method.eq.'PLM+WENO3') then
-      use_plm         = .true.    ! start in PLM; switch to WENO3 mid-run
+   !
+   ! rec_method is the scheme Reconstruct() dispatches on, and it is ALWAYS
+   ! left as 'PLM' or 'WENO3' -- never the input word 'PLM+WENO3', which
+   ! names a two-stage RECIPE and not a reconstruction. Which stage the run
+   ! starts in is decided once both du_th values are known, at the end of
+   ! this routine; the two-stage intent travels in recon_two_stage.
+   str = get_word(req('Reconstruction scheme'), 3)
+   if (str .eq. 'WENO3') then
+      rec_method = 'WENO3';  use_weno3 = .true.
+   else if (str .eq. 'PLM') then
+      rec_method = 'PLM';    use_plm   = .true.
+   else if (str .eq. 'PLM+WENO3') then
+      rec_method      = 'PLM'     ! provisional; resolved at the end
+      use_plm         = .true.
       recon_two_stage = .true.
+   else
+      write(*,*) '(input_read) ERROR: unknown "Reconstruction scheme": ',   &
+                 trim(str), '  (expected PLM, WENO3 or PLM+WENO3)'
+      error stop 1
    endif
 
    ! Include He23S -- OPTIONAL.  The triplet defaults to ON (parameters.f90);
@@ -310,14 +364,13 @@
 		use_brent_tsolve = .true.
 		windae_seed_file = 'inputdata/windae_seed.csv'
 		windae_seed_out  = ''
-		hydrostatic_base = .false.
 		dr_base          = 2.0e-4     ! uniform base cell size [R_p] (Mixed grid);
 		                              ! default-real literal on purpose, see parameters.f90
 		N_low_cells      = 50         ! number of uniform base cells
 		base_bc_mode     = 0          ! density-anchored base (legacy) by default
-		resid_vol        = .true.     ! volume-weighted residual norm by default
 		ates_photoion_rate = .false.  ! default: Verner+1996 He I (1^1S) photoion.
 		legacy_hhe_rates   = .false.  ! default: Badnell/Mao + Voronov H/He rates
+		atomic_rate_set_k22 = .false. ! default: EXHALE's own atomic H/He rates
 		use_sec_ion        = .true.   ! default: SvS85 secondary ionization ON
 		sec_ion_immediate  = .false.  ! default: staged (applied after 1st converge)
 		use_he_rec_coupling = .true.  ! default: He rec. photons ionize/heat H
@@ -382,13 +435,45 @@
 					else
 						write(*,*) '(input_read) WARNING: "Reconstruction scheme:'//&
 						   ' PLM+WENO3" needs two du_th values; only one given'//&
-						   ' -> single-stage PLM.'
+						   ' -> the PLM stage is empty, running single-stage'//  &
+						   ' WENO3 at that threshold.'
 						du_th_plm = -1.0d0
 					endif
 				else
 					! PLM or WENO3: single-stage; ignore any second du_th value.
 					du_th_plm = -1.0d0
 				endif
+			else if (lbl_match(line, 'Reconstruction continuation')) then
+				! "Reconstruction continuation: <dlambda> [<dtu_tol>] [fixed]"
+				! Walk the PLM -> WENO3 hand-off along the homotopy
+				! R_lambda = (1-lambda) R_PLM + lambda R_WENO3 instead of changing
+				! the discrete operator in one step (see recon_lambda_step0 in
+				! parameters.f90 and docs/input_schema.md). Only "Reconstruction
+				! scheme: PLM+WENO3" has a hand-off to walk.
+				!   dlambda   step in lambda per marching step; <= 0 disables,
+				!             1.0 is the one-step switch this replaces
+				!   dtu_tol   lambda advances while dtu <= tol * dtu at the start
+				!             of the ramp (default 1.2)
+				!   fixed     ramp unconditionally, with no step control
+				! The two optional fields are told apart by content, not position:
+				! 'fixed'/'adaptive' is the mode, anything else is the tolerance.
+				str = get_word(line, 3);  read(str,*) recon_lambda_step0
+				do iw = 4, 5
+					str = get_word(line, iw)
+					if (len_trim(str) .eq. 0) cycle
+					if (str .eq. 'fixed') then
+						recon_lambda_adaptive = .false.
+					else if (str .eq. 'adaptive') then
+						recon_lambda_adaptive = .true.
+					else
+						read(str,*) recon_lambda_dtu_tol
+					endif
+				enddo
+				if (recon_lambda_step0 .gt. 0.0d0)                             &
+					write(*,'(A,ES9.2,A,ES9.2,A,A)') ' (input_read) PLM -> '//  &
+						'WENO3 continuation: dlambda =', recon_lambda_step0,     &
+						', dtu tolerance =', recon_lambda_dtu_tol, ', ',         &
+						trim(merge('adaptive', 'fixed   ', recon_lambda_adaptive))
 			else if (lbl_match(line, 'ATES_photoionization_rate')) then
 				! Revert He I (1^1S) photoionization to the legacy ATES 2-term fit
 				! (default is Verner+1996). "ATES_photoionization_rate: True"
@@ -400,6 +485,32 @@
 				! "Legacy_HHe_rates: True"
 				str = get_word(line, 2)
 				if (str .eq. 'True' .or. str .eq. 'true') legacy_hhe_rates = .true.
+			else if (lbl_match(line, 'Atomic rate set')) then
+				! Swap the four atomic H/He rate coefficients Koskinen et al.
+				! (2022, ApJ 929, 52) list in their Table 1 as R1-R4 --
+				! radiative recombination of H+ and He+, electron-impact
+				! ionization of H and He -- for the published fits, so that a
+				! run can be compared like for like with their Model A. Only
+				! those four move: the recombination COOLING rates, the metal
+				! rates and every other coefficient stay as they are. The
+				! default set is the physically preferred one here (case B,
+				! the Lyman continuum being optically thick), so the key is
+				! for reproducing their choice, not for replacing ours.
+				! "Atomic rate set: Koskinen2022" (value at word 4).
+				str = get_word(line, 4)
+				if (str .eq. 'Koskinen2022' .or. str .eq. 'koskinen2022') then
+					atomic_rate_set_k22 = .true.
+					write(*,'(A)') ' (input_read) Atomic rate set:'//         &
+					   ' Koskinen et al. (2022) Table 1 R1-R4 (H+/He+'//      &
+					   ' recombination 4.0e-12/4.6e-12 (300/T)^0.64,'//       &
+					   ' Voronov 1997 collisional ionization)'
+				else if (str .eq. 'default' .or. str .eq. 'Default') then
+					atomic_rate_set_k22 = .false.
+				else
+					write(*,*) '(input_read) ERROR: "Atomic rate set" must'
+					write(*,*) '  be Koskinen2022 or default. Got: '//trim(str)
+					error stop 1
+				endif
 			else if (lbl_match(line, 'Secondary_ionization')) then
 				! SvS85 secondary ionization (default ON, staged: applied only
 				! after the wind first converges without the coupling).
@@ -452,18 +563,54 @@
 				str = get_word(line, 3)
 				if (str .eq. 'True' .or. str .eq. 'true')                  &
 					thereis_oxychem = .true.
-			else if (lbl_match(line, 'Oxygen transport')) then
-				! "Oxygen transport: True|False" -- vertical transport of
-				! the molecular carriers (H2, OH, H2O, CO) solved implicitly
-				! with their chemistry (diffusive_photochemistry). ON
-				! whenever the oxygen chemistry is on: a local steady state
-				! is the wrong physics at the cool base the option exists
-				! for. False restores the local-kinetics limit of milestone
-				! M2, which isolates the chemistry for testing and is not a
-				! model of a base.
+			else if (lbl_match(line, 'Molecular carrier transport')) then
+				! "Molecular carrier transport: True|False" -- vertical
+				! transport of the molecular carriers, solved implicitly
+				! with their chemistry (diffusive_photochemistry). The set
+				! is H2 alone, or H2 with OH, H2O and CO when the oxygen
+				! cycle is on. False restores the local-kinetics limit of
+				! milestone M2, which isolates the chemistry for testing and
+				! is not a model of a base. Left unstated, the default is
+				! resolved below from the chemistry the run carries.
+				str = get_word(line, 4)
+				carrier_transport_stated = .true.
+				carrier_transport = (str .eq. 'True' .or. str .eq. 'true')
+			else if (lbl_match(line, 'Ionization transport')) then
+				! "Ionization transport: True|False" -- carry the hydrogen
+				! ionization state with the flow, H+ as a transported
+				! species of the same operator that carries H2, instead of
+				! re-solving the H/H+ partition as a local equilibrium every
+				! step. Default False. The requirements are checked below,
+				! after every key is parsed.
 				str = get_word(line, 3)
-				if (str .eq. 'False' .or. str .eq. 'false')                &
-					oxygen_transport = .false.
+				ionization_transport = (str .eq. 'True' .or. str .eq. 'true')
+			else if (lbl_match(line, 'Coupled carrier solve')) then
+				! "Coupled carrier solve: True|False" -- solve n(H2) as a
+				! fourth Newton unknown per cell instead of alternating a
+				! wind solve with a fixed-wind carrier relaxation. The
+				! alternation was measured not to converge and not to be
+				! able to: the two halves are coupled through the particle
+				! count, which sets the temperature, so a splitting that
+				! evaluates each at the other's old state is outside the
+				! radius where that is reasonable, and it gets the SIGN of
+				! the front's motion wrong (section 139). Requires
+				! "Molecular carrier transport: True"; checked below.
+				str = get_word(line, 4)
+				carrier_in_newton = (str .eq. 'True' .or. str .eq. 'true')
+			else if (lbl_match(line, 'Oxygen transport')) then
+				! RETIRED 2026-09-02. The operator this key switched was
+				! never about oxygen: H2 is its first carrier and is
+				! transported with or without the oxygen cycle, so the name
+				! stated something the code does not do. Refused rather than
+				! aliased, because a silent alias would leave stored input
+				! files describing a switch that no longer exists.
+				write(*,*) '(input_read) ERROR: "Oxygen transport" is no'
+				write(*,*) '  longer a key. It was renamed to "Molecular'
+				write(*,*) '  carrier transport: True|False": the operator'
+				write(*,*) '  transports H2 whether or not the oxygen cycle'
+				write(*,*) '  is on, so the old name named the wrong thing.'
+				write(*,*) '  Replace the line in input.inp. Aborting.'
+				error stop 1
 			else if (lbl_match(line, 'Stellar FUV B1 flux')) then
 				! "Stellar FUV B1 flux [erg/cm2/s]: <F>" -- band-integrated
 				! stellar flux over 1110-1201 A at the planet's orbit. The
@@ -497,6 +644,7 @@
 				! 0 = off (default).
 				str = get_word(line, 5)
 				read(str,*) F_LW_star
+				lw_flux_stated = .true.
 			else if (lbl_match(line, 'Molecular base')) then
 				! EOS-only molecular base (docs/lower_atmosphere_*).
 				str = get_word(line, 3)
@@ -582,15 +730,9 @@
 						'JFNK hand-off at du <', newton_du_switch
 				endif
 			else if (lbl_match(line, 'Valve eps')) then
-				! "Valve eps: <v_eps>" smooths the base one-way valve
-				! (softplus; <= 0 keeps the exact legacy max(v,0)).
-				str = get_word(line, 3);  read(str,*) valve_eps
-				write(*,'(A,ES9.2)') ' (input_read) Smooth base valve, eps =', valve_eps
+				call retired_base_key('Valve eps')
 			else if (lbl_match(line, 'Hydrostatic base')) then
-				str = get_word(line, 3)
-				if (str .eq. 'True') hydrostatic_base = .true.
-				if (hydrostatic_base) write(*,'(A)') ' (input_read) '//   &
-				   'Hydrostatic base ghost cells enabled'
+				call retired_base_key('Hydrostatic base')
 			else if (lbl_match(line, 'Shapiro filter')) then
 				str = get_word(line, 3);  read(str,*) shapiro_eps
 				str = get_word(line, 4)
@@ -629,20 +771,7 @@
 					   '(legacy, n0 from input)'
 				endif
 			else if (lbl_match(line, 'Base ghost temperature')) then
-				! "Base ghost temperature: isothermal|continuous" selects the
-				! temperature closure of the lower ghost cells (the density
-				! anchor rho_bc is unaffected). isothermal (default) pins
-				! T = T0; continuous imposes dT/dr = 0 at the base face, so the
-				! ghost carries T(cell 1). See parameters.f90 and
-				! docs/hd189_base_checkerboard.md sec. 4.2 and 13.
-				str = get_word(line, 4)
-				if (str .eq. 'continuous') base_ghost_T_continuous = .true.
-				if (str .eq. 'isothermal') base_ghost_T_continuous = .false.
-				if (str .ne. 'continuous' .and. str .ne. 'isothermal')       &
-					write(*,*) '(input_read.f90) WARNING: unknown "Base '//  &
-					   'ghost temperature: ', trim(str), '"; keeping isothermal.'
-				if (base_ghost_T_continuous) write(*,'(A)') ' (input_read) '// &
-				   'Base ghost temperature: continuous (dT/dr = 0, T_ghost = T_1)'
+				call retired_base_key('Base ghost temperature')
 			else if (lbl_match(line, 'Max steps')) then
 				! "Max steps: <N>" overrides the hard cap on marching
 				! iterations (default 1000000).
@@ -685,16 +814,83 @@
 				if (str .eq. 'True' .or. str .eq. 'true') mol_ir_bands = .true.
 				if (mol_ir_bands) write(*,'(A)') ' (input_read) Molecular IR'// &
 				   ' bands on: H2 lines + H2O/CO bands exchange with B_nu(T0)'
-			else if (lbl_match(line, 'Base velocity')) then
-				str = get_word(line, 3)
-				if (str .eq. 'valve')    base_v_massflux = .false.
-				if (str .eq. 'massflux') base_v_massflux = .true.
-				if (base_v_massflux) then
-					write(*,'(A)') ' (input_read) Base velocity from '//  &
-					   'mass-flux F_c (CETIMB-style)'
+			else if (lbl_match(line, 'Molecular reaction heat')) then
+				! "Molecular reaction heat: True|False" deposits the energy
+				! the collisional reactions of the H2/He network release,
+				! built from one species-enthalpy table so that a closed
+				! chemical cycle releases exactly zero. The photon-driven
+				! reactions, the radiative recombinations and the collisional
+				! ionizations are excluded: their energy is already in the
+				! ledger. Needs `Molecular chemistry: True`. DEFAULT True --
+				! the reason is at the declaration in parameters.f90 -- so
+				! this key exists to turn the term OFF, for A/B work against
+				! the state the code had before it.
+				str = get_word(line, 4)
+				mol_reaction_heat = (str .eq. 'True' .or. str .eq. 'true')
+				if (.not. mol_reaction_heat) write(*,'(A)') ' (input_read)'//&
+				   ' Molecular reaction heat OFF: the collisional network'// &
+				   ' chemical heating is NOT deposited'
+			else if (lbl_match(line, 'H2 double ionization')) then
+				! "H2 double ionization: off|chung80|yan_rho" resolves
+				! H2 + hv -> H+ + H+ + 2e- as a channel of its own. It has a
+				! vertical threshold of 51.4 eV (Yan, Sadeghpour & Dalgarno
+				! 1998 sec. 4) and releases TWO protons per event, where the
+				! single dissociative channel that would otherwise
+				! absorb it releases one. DEFAULT 'chung80', the 20 percent the
+				! source states outright; the key exists to SELECT THE
+				! MODEL or to TURN THE CHANNEL OFF, not to turn it on.
+				! 'off' reproduces a pre-E1 result and is not a physical
+				! statement -- the reaction happens. Neither model is a
+				! measurement of the branching itself; 'chung80' and
+				! 'yan_rho' rest on different published numbers and
+				! disagree by a factor 1.6 at 110 eV, so running both is
+				! how the uncertainty is reported. See the model list in
+				! h2_photo_channels.f90.
+				str = get_word(line, 4)
+				if (str .eq. 'off' .or. str .eq. 'chung80' .or.            &
+				    str .eq. 'yan_rho') then
+					h2_double_ionization = str
 				else
-					write(*,'(A)') ' (input_read) Base velocity: legacy valve'
+					write(*,*) '(input_read) ERROR: "H2 double'
+					write(*,*) '  ionization" must be one of off,'
+					write(*,*) '  chung80, yan_rho. Got: '//trim(str)
+					error stop 1
 				endif
+				if (h2_double_ionization .ne. 'off') then
+					write(*,'(A)') ' (input_read) H2 double ionization'//   &
+					   ' model '//trim(h2_double_ionization)//': H+ + H+'// &
+					   ' + 2e- resolved above 51.4 eV'
+				else
+					write(*,'(A)') ' (input_read) WARNING H2 double'//      &
+					   ' ionization OFF: the channel is folded back into'
+					write(*,'(A)') '   the single dissociative one, which'//&
+					   ' gives each event one proton where it makes two'
+					write(*,'(A)') '   and an H atom it does not make.'//   &
+					   ' Pre-E1 behavior, kept for reproduction only.'
+				endif
+			else if (lbl_match(line, 'H2 neutral dissociation')) then
+				! "H2 neutral dissociation: True|False" resolves
+				! H2 + hv -> H + H, the absorptions that make no ion. It is
+				! nonzero ONLY over 33-41 eV, the window in which Chung,
+				! Lee, Masuoka & Samson (1993) Table 1 measures a
+				! photoionization yield below unity; outside it their source
+				! ASSUMES unit yield rather than measuring it, so the
+				! channel is set to zero there. DEFAULT True: sigma_n is a
+				! measurement. The key exists to TURN THE CHANNEL OFF, and
+				! False folds that share back into the ionizing channels in
+				! their own proportion -- the unit yield the code assumed
+				! before, kept for reproducing a pre-E1 result.
+				str = get_word(line, 4)
+				h2_neutral_dissociation =                                  &
+					(str .eq. 'True' .or. str .eq. 'true')
+				if (.not. h2_neutral_dissociation) then
+					write(*,'(A)') ' (input_read) WARNING H2 neutral'//     &
+					   ' dissociation OFF: over 33-41 eV up to 7.4 per'
+					write(*,'(A)') '   cent of the absorptions are given'// &
+					   ' an H2+ and an electron the event does not make.'
+				endif
+			else if (lbl_match(line, 'Base velocity')) then
+				call retired_base_key('Base velocity')
 			else if (lbl_match(line, 'Base grid')) then
 				! "Base grid [dr,cells]: <dr_base> [<N_low_cells>]" sets the
 				! resolution of the uniform region of the Mixed grid: N_low_cells
@@ -755,6 +951,33 @@
 					   ' (input_read) Viscosity power-law override mu0 =',  &
 					   visc_mu0, ', s =', visc_s
 				endif
+			else if (lbl_match(line, 'Photoelectron heating')) then
+				str = get_word(line, 3)
+				if (str .eq. 'full') then
+					photoheat_full_photon_energy = .true.
+					photoheat_photon_fraction    = 1.0d0
+				else if (str .eq. 'excess') then
+					photoheat_full_photon_energy = .false.
+					photoheat_photon_fraction    = -1.0d0
+				else
+					read(str,*,iostat=ios_pe) photoheat_photon_fraction
+					if (ios_pe .ne. 0 .or. photoheat_photon_fraction .le. 0.0d0  &
+					    .or. photoheat_photon_fraction .gt. 1.0d0) then
+						write(*,*) '(input_read.f90) ERROR: "Photoelectron heating" takes excess, full or a fraction in (0,1], not "'//trim(str)//'"'
+						error stop 1
+					endif
+					photoheat_full_photon_energy = (photoheat_photon_fraction .ge. 1.0d0)
+				endif
+			else if (lbl_match(line, 'Caloric EOS')) then
+				str = get_word(line, 3)
+				if (str .eq. 'monatomic') then
+					caloric_eos_monatomic = .true.
+				else if (str .eq. 'ladder') then
+					caloric_eos_monatomic = .false.
+				else
+					write(*,*) '(input_read.f90) ERROR: "Caloric EOS" takes ladder or monatomic, not "'//trim(str)//'"'
+					error stop 1
+				endif
 			else if (lbl_match(line, 'Conduction')) then
 				! "Conduction: True" enables heat conduction with the
 				! Watson et al. (1981) atomic-hydrogen kappa(T).
@@ -769,13 +992,50 @@
 				str = get_word(line, 3);  read(str,*) resid_th
 				write(*,'(A,ES9.2)') ' (input_read) Residual-based convergence, tol =', resid_th
 			else if (lbl_match(line, 'Resid norm')) then
-				! "Resid norm: vol|Linf" -- residual norm for convergence.
-				! vol (default) = volume-weighted; Linf = legacy max-over-cells.
-				str = get_word(line, 3)
-				if (str .eq. 'Linf' .or. str .eq. 'linf' .or. str .eq. 'LINF') &
-					resid_vol = .false.
-				if (str .eq. 'vol' .or. str .eq. 'volume') resid_vol = .true.
-				write(*,'(A,L1)') ' (input_read) Volume-weighted residual norm: ', resid_vol
+				! RETIRED (section 145). The residual norm is the maximum over
+				! cells of a cell's own scaled residual and has no second
+				! form, so this key selects nothing. It is still matched, and
+				! warned about, so that an input file carrying it says so
+				! instead of failing the unknown-key check.
+				write(*,'(A)') ' (input_read) WARNING: "Resid norm" is'//    &
+				   ' retired and ignored -- the residual norm is the'//      &
+				   ' maximum over cells of a'
+				write(*,'(A)') '     cell''s own scaled residual, and there'//&
+				   ' is no other form (Update_EXHALE.md section 145).'
+			else if (lbl_match(line, 'Flux spread tol')) then
+				! "Flux spread tol: <tol> [<r_flux [R_p]>]" -- the FLUX gate
+				! (section 133). The steady solve is accepted only when the
+				! radial spread of the Riemann FACE mass flux over
+				! r >= r_flux is below <tol> (section 145)
+				! AND the residual is below "Resid tol". <tol> <= 0 disables
+				! the flux gate and leaves the residual alone in charge.
+				str = get_word(line, 4);  read(str,*) flux_spread_th
+				! A pre-section-145 value. The gate used to measure the
+				! CELL-CENTRED rho*v*r^2 and its tolerance was 5e-3; it now
+				! measures the Riemann face flux, on which every state that
+				! stops on du alone is already below 5e-3. Warned, not
+				! refused: the value may be deliberate.
+				if (flux_spread_th .ge. 1.0d-3) then
+					write(*,'(A,ES9.2,A)') ' (input_read) WARNING: "Flux'//  &
+					   ' spread tol" =', flux_spread_th, ' is a pre-145'//  &
+					   ' value. The gate now measures the'
+					write(*,'(A)') '     Riemann FACE mass flux, on which'//&
+					   ' converged states sit at 1e-10 to 4e-6 and states'//&
+					   ' that stopped on du'
+					write(*,'(A,ES9.2,A)') '     alone sit at 1e-4 to'//    &
+					   ' 3e-2, so this admits states the gate is meant'//   &
+					   ' to refuse (default', flux_spread_th_default, ').'
+				endif
+				str = get_word(line, 5)
+				if (len_trim(str) .gt. 0) read(str,*) r_flux
+				if (flux_spread_th .gt. 0.0d0) then
+					write(*,'(A,ES9.2,A,F6.3,A)') ' (input_read) Flux gate: '// &
+					   'spread of the face mass flux <', flux_spread_th,        &
+					   ' over r >=', r_flux, ' R_p'
+				else
+					write(*,'(A)') ' (input_read) Flux gate disabled '//        &
+					   '(Flux spread tol <= 0)'
+				endif
 			else if (lbl_match(line, 'CFL')) then
 				! Override the CFL number ("CFL: <value>"); lower = smaller dt.
 				str = get_word(line, 2);  read(str,*) CFL
@@ -846,24 +1106,6 @@
 				   'line (matches no known key): '//trim(line)
 		enddo
 
-		! ----- Base ghost-pressure closures are mutually exclusive -----
-		! Both keys set the SAME quantity, the ghost pressure: hydrostatic_base
-		! extrapolates the interior gradient (fixing neither T nor p), while
-		! base_ghost_T_continuous fixes T_ghost = T_1. hydrostatic_base is
-		! tested first in BC_component_constrho, so say so rather than let the
-		! continuous-T key look effective.
-		if (hydrostatic_base .and. base_ghost_T_continuous) then
-			write(*,*) '(input_read.f90) WARNING: "Hydrostatic base: True" '// &
-			   'and "Base ghost temperature: continuous" both set; the'
-			write(*,*) '  hydrostatic ghost pressure wins and the temperature'//&
-			   ' closure is ignored.'
-		endif
-		if (base_bc_mode .eq. 1 .and. base_ghost_T_continuous) then
-			write(*,*) '(input_read.f90) NOTE: "Base BC: pressure" derives n0'//&
-			   ' from the target base pressure AT T0; with a continuous-T'
-			write(*,*) '  ghost the base pressure then floats with T(cell 1),'//&
-			   ' so only the base DENSITY stays anchored.'
-		endif
 		! ----- Low-Mach damping vs the explicit stability bound -----
 		! The 2 dr mode decays at 16 eps4 lambda/dr while the marching step is
 		! dt = CFL dr/lambda, so the damping factor per step is 16 eps4 CFL and
@@ -928,7 +1170,7 @@
 
    !------ Definition of physical parameters ------!
       
-   n0     = 10.0**(n0)
+   if (base_density_key_given) n0 = 10.0**(n0)
    ! ---- Lower-atmosphere pre-step ("Lower atmosphere: vulcan|analytic").
    ! If requested and no base.inp exists yet, generate it now by invoking
    ! the generator (VULCAN photochemistry or the analytic column).
@@ -1008,6 +1250,35 @@
          thereis_lowIP_metal = .true.
    enddo
 
+
+   ! Resolve which stage a two-stage run starts in, now that both du_th
+   ! values are known. "PLM+WENO3" with a stage-1 threshold that does not
+   ! exceed the stage-2 one has an EMPTY PLM stage -- the marching loop's
+   ! in_plm_stage = (du_th_plm > du_th) is false from step 0 -- so the run is
+   ! single-stage WENO3 and must be dispatched as WENO3. Leaving rec_method
+   ! at the input word made the first Reconstruct() fall through to
+   ! `case default` and abort with "unknown reconstruction scheme:
+   ! PLM+WENO3" (Reconstruction.f90); "du_th [PLM,WENO3]: -1.0 1.0e-3" is
+   ! the form that hit it (wasp_hybrid_finish, wasp_localdt_cont).
+   if (recon_two_stage .and. du_th_plm .le. du_th) then
+      rec_method = 'WENO3';  use_plm = .false.;  use_weno3 = .true.
+      write(*,'(A,ES9.2,A,ES9.2,A)') ' (input_read) "PLM+WENO3" with a '//  &
+           'stage-1 threshold ', du_th_plm, ' not above the stage-2 one ',  &
+           du_th, ': the PLM stage is empty -> single-stage WENO3.'
+   endif
+
+   ! The continuation walks the PLM -> WENO3 hand-off; a run that has no
+   ! hand-off has nothing for it to walk. Said rather than silently ignored,
+   ! because a key that is present and inert is the kind of thing a reader of
+   ! the input file has no way to notice.
+   if (recon_lambda_step0 .gt. 0.0d0 .and.                                 &
+       .not. (recon_two_stage .and. du_th_plm .gt. du_th)) then
+      recon_lambda_step0 = 0.0d0
+      write(*,'(A)') ' (input_read) WARNING: "Reconstruction continuation"'//&
+           ' needs a two-stage run with a non-empty PLM stage'//            &
+           ' ("Reconstruction scheme: PLM+WENO3" and two du_th values):'//  &
+           ' ignored.'
+   endif
 
    ! Remove HeITR chemistry if He is not included
    if (.not. thereis_He) thereis_HeITR = .false.
@@ -1311,6 +1582,132 @@
       endif
    endif
 
+   ! ---- an EOS-only molecular base describes gas the species state does not -!
+   ! "Molecular base: True" removes the H nuclei bound into H2 from the base
+   ! particle count (comp_ntot_bc above). Without the molecular network the
+   ! species arrays stay atomic, and the ntot_bc recomputation that reconciles
+   ! the two (end of ioniz_eq) is gated on the network being solved, so it
+   ! never fires. The base ghost pressure is then (ntot_bc + dp_bc)*T0 at the
+   ! pinned density while the gas in it counts one particle per nucleus, and
+   ! the isothermal base boundary silently sits at ntot_bc*T0 instead of T0.
+   !
+   ! Section 11.5-C of docs/supersonic_molecular_base.md asked for exactly this
+   ! refusal ("If the intended quantity remains EOS-only, the code must instead
+   ! refuse a mismatch between that EOS state and the species state used at the
+   ! same ghost"); it is item P35, decided 2026-09-02 and recorded in section
+   ! 120 of docs/Update_EXHALE. Measured before the refusal existed: the
+   ! HD 209458 b VULCAN handoff runs ran at ntot_bc = 0.555-0.994, i.e. base
+   ! ghosts from 0.555 to 0.994 of the temperature their input.inp asked for.
+   if (molecular_base .and. .not. thereis_mol) then
+      write(*,*) '(input_read) ERROR: a molecular base particle count with'// &
+                 ' an atomic species state.'
+      write(*,*) '  Molecular base: True removes the H nuclei bound into'//   &
+                 ' H2 from the base'
+      write(*,*) '  particle count, but Molecular chemistry is off, so'//     &
+                 ' there are no H2 species'
+      write(*,*) '  to hold them and the base ghost carries one particle'//   &
+                 ' per nucleus. The'
+      write(*,*) '  isothermal base boundary is then not isothermal:'
+      write(*,'(A,F10.6)') '   base H2 mixing ratio q_H2 = ',                 &
+                           h2_mixing_ratio_base()
+      write(*,'(A,F10.6)') '   H nuclei bound into H2  x2 = ',                &
+                           base_h2_nuclei_fraction()
+      write(*,'(A,F10.6)') '   base particle count ntot_bc = ', ntot_bc
+      write(*,'(A,F10.6,A,F10.3,A)') '   ghost temperature = ', ntot_bc,      &
+                           ' x T0 = ', ntot_bc*T0, ' K'
+      write(*,'(A,F10.3,A)') '   requested base temperature T0 = ', T0, ' K'
+      write(*,*) '  Two ways to fix it, and which one is right depends on'//  &
+                 ' what the base is:'
+      write(*,*) '   (1) the base IS molecular -- set'//                      &
+                 ' "Molecular chemistry: True" so the'
+      write(*,*) '       network carries the H2 the particle count'//         &
+                 ' already assumes;'
+      write(*,*) '   (2) the base is ATOMIC -- remove'//                      &
+                 ' "Molecular base: True" from input.inp'
+      write(*,*) '       and q_H2_base from base.inp, so neither the'//       &
+                 ' particle count nor the'
+      write(*,*) '       ghost composition claims molecules.'
+      error stop 1
+   endif
+
+   ! ---- the base level has one source -------------------------------- !
+   ! A base.inp carrying "p_base" is a lower-atmosphere handoff written AT
+   ! that pressure: its composition, its q_H2 and its temperature all refer
+   ! to that level, so the level is the handoff's to state and n0 follows,
+   !
+   !     n0 = p_base/(k_B T0 ntot_bc),
+   !
+   ! the same relation "Base BC: pressure" uses (1 bar = 1e6 erg/cm^3, and
+   ! the small electron term dp_bc is added later by the ghost BC).  The
+   ! legacy density key then says the same thing twice, and the two can
+   ! disagree -- which is what put the hot-Uranus gate at 9 microbar while
+   ! its handoff and its base radius both said 1 (docs/p44_base_sawtooth.md
+   ! sections 9.1 and 9.3).  So: if both are given they must agree, and if
+   ! they do not the run stops here rather than marching on a base level
+   ! nobody chose.  1% is the tolerance; a handoff and a density key that
+   ! describe one level agree far better than that.
+   !
+   ! A lower-atmosphere PROFILE owns the level itself (it sets p_base_bar
+   ! from its own matching pressure), so a profile run is outside this rule.
+   if (base_level_from_base_inp .and. .not. lap_in_use) then
+      p_base_cgs     = p_base_bar*1.0d6
+      n0_from_p_base = p_base_cgs/(kb_erg*T0*ntot_bc)
+      if (base_bc_mode .eq. 1) then
+         if (abs(base_p_ubar/(p_base_bar*1.0d6) - 1.0d0) .gt. 1.0d-6) then
+            write(*,*) '(input_read) ERROR: two different base levels were'//&
+                       ' given.'
+            write(*,'(A,ES12.4,A)') '   base.inp p_base       = ',          &
+               p_base_bar, ' bar'
+            write(*,'(A,ES12.4,A)') '   "Base BC: pressure"   = ',          &
+               base_p_ubar*1.0d-6, ' bar'
+            write(*,*) '  The lower boundary is one level, so one input'//  &
+                       ' states it. Fix by deleting'
+            write(*,*) '  the "Base BC: pressure" line from '//             &
+               trim(inp_file)//' (base.inp already'
+            write(*,*) '  fixes the level), or by making the two numbers'// &
+                       ' the same.'
+            error stop 1
+         endif
+      endif
+      if (base_density_key_given) then
+         p_from_density_key = n0*kb_erg*T0*ntot_bc
+         if (abs(p_from_density_key/p_base_cgs - 1.0d0) .gt. 1.0d-2) then
+            write(*,*) '(input_read) ERROR: the base level stated by'//     &
+                       ' base.inp and the one implied'
+            write(*,*) '  by "Log10 lower boundary number density"'//       &
+                       ' disagree by more than 1%.'
+            write(*,'(A,ES12.4,A)') '   base.inp p_base                = ', &
+               p_base_bar, ' bar'
+            write(*,'(A,ES12.4,A)') '   density key implies p          = ', &
+               p_from_density_key*1.0d-6, ' bar'
+            write(*,'(A,F10.4)')    '   ratio (density key / p_base)   = ', &
+               p_from_density_key/p_base_cgs
+            write(*,'(A,ES12.4,A)') '   n0 given                       = ', &
+               n0, ' cm^-3'
+            write(*,'(A,ES12.4,A)') '   n0 implied by p_base           = ', &
+               n0_from_p_base, ' cm^-3'
+            write(*,'(A,F10.6)')    '   base particle count ntot_bc    = ', &
+               ntot_bc
+            write(*,*) '  The lower boundary is one level and these two'//  &
+                       ' put it in different places.'
+            write(*,*) '  Fix by deleting ONE of them:'
+            write(*,*) '   - delete "Log10 lower boundary number'//         &
+                       ' density" from '//trim(inp_file)//','
+            write(*,*) '     and the handoff level p_base fixes the'//      &
+                       ' base (the usual choice: the'
+            write(*,*) '     handoff composition refers to that level);'
+            write(*,*) '   - or delete "p_base" from base.inp, and the'//   &
+                       ' density key fixes it, with'
+            write(*,*) '     the handoff composition then referring to'//   &
+                       ' whatever level that is.'
+            error stop 1
+         endif
+      endif
+      n0 = n0_from_p_base
+      write(*,'(A,ES12.4,A,ES12.4,A)') ' (input_read) base level from'//    &
+         ' base.inp p_base =', p_base_bar, ' bar -> n0 =', n0, ' cm^-3'
+   endif
+
    ! Pressure-anchored base (Base BC: pressure): override n0 so that the base
    ! pressure n0*kb*T0*ntot_bc matches the target base_p_ubar [microbar].
    ! 1 microbar = 1 erg/cm^3. (dp_bc, the small electron term, is negligible
@@ -1322,17 +1719,40 @@
          'derived n0 =', n0, ' cm^-3'
    endif
 
+   ! Neither source stated the base level.
+   if (.not. (n0 .gt. 0.0d0)) then
+      write(*,*) '(input_read) ERROR: no base level was given.'
+      write(*,*) '  Supply exactly one of:'
+      write(*,*) '   - "Log10 lower boundary number density [cm^-3]:'//    &
+                 ' <log10 n0>" in '//trim(inp_file)//','
+      write(*,*) '   - "p_base <bar>" in base.inp (a lower-atmosphere'//   &
+                 ' handoff states its own level),'
+      write(*,*) '   - "Base BC: pressure <microbar>" in '//               &
+                 trim(inp_file)//'.'
+      error stop 1
+   endif
+
    v0     = sqrt(kb_erg*T0/mu)
    t_s    = R0/v0
    p0     = n0*mu*v0*v0
    q0     = n0*mu*v0*v0*v0/R0
    b0     = (Gc*Mp*mu)/(kb_erg*T0*R0)
    dp_bc  = 1.0e-10
-   ! Base particle count seen by the continuous-temperature ghost before the
-   ! first composition solve refreshes it (Apply_BC can run first, e.g. in the
-   ! IC/residual paths). With the base value the ghost then simply copies the
-   ! cell-1 pressure, which is the T_ghost = T_1 statement for base composition.
+   ! Cell-1 particle count seen by the lower boundary before the first
+   ! composition solve refreshes it (Apply_BC can run first, e.g. in the
+   ! IC/residual paths). The base value makes cell 1 start at the base
+   ! composition, which is the only statement available before a solve.
    n_part_cell1 = ntot_bc + dp_bc
+
+   ! ----- The lower-boundary reservoir -----
+   ! (p, s) at the base LEVEL r = 1, carried as the isentrope through
+   ! (p = ntot_bc + dp_bc, T = T0) at the base composition. base_boundary
+   ! continues it to the first face itself, so the level the user states does
+   ! not move when the grid does. "Base BC: pressure" has already set n0 so
+   ! that this pressure is the requested one; "Base BC: density" states n0 and
+   ! the pressure follows.
+   call set_base_reservoir(ntot_bc + dp_bc, 1.0d0,                        &
+                           (ntot_bc + dp_bc)/rho_bc, 1.0d0)
 
    !------ Allocations ------!
 
@@ -1385,6 +1805,84 @@
    ! table. Done here, serially, because the cell sweep that reads them runs
    ! OpenMP-parallel and must find them already written.
    if (thereis_oxychem) call water_photolysis_init
+
+   ! Whether the carriers are transported, when the run did not say.
+   !
+   ! The oxygen cycle brings its own answer: it exists to compute a base
+   ! partition that a local steady state cannot produce, so it turns the
+   ! transport on. A molecular run without it keeps the local-equilibrium
+   ! closure it has always had; that closure is violated on its own solution
+   ! across the H2 front (docs/supersonic_molecular_base.md sec. 13.6), and
+   ! changing this default is a deliberate step with a golden refresh, not a
+   ! side effect of adding the operator.
+   if (.not. carrier_transport_stated) carrier_transport = thereis_oxychem
+
+   ! The Lyman-Werner band flux, when the run did not state one and a
+   ! numerical spectrum is available.
+   !
+   ! H2 photodissociation is not an option of the physics: the band exists
+   ! whenever the star does. What was optional was our knowing the number,
+   ! and a run with a spectrum file knows it -- so it is computed by the
+   ! documented prescription (912-1110 A of the SED, at the planet) instead
+   ! of being left at zero and silently switching the channel off. A stated
+   ! "Stellar LW flux" always wins: it is the more specific statement, and a
+   ! band-integrated measurement can be better than our trapezoid over
+   ! whatever grid the file happens to have -- and a stated ZERO wins too:
+   ! it is the run saying the band is not to be used (a comparison with a
+   ! model that has no H2 photodissociation), not the run not knowing.
+   if (thereis_mol .and. .not. lw_flux_stated .and. do_read_sed) then
+      F_LW_star = lyman_werner_band_flux_from_sed()
+      if (F_LW_star .gt. 0.0d0) then
+         write(*,'(A,ES10.3,A)') ' (input_read) Stellar LW flux from the'// &
+              ' spectrum file: ', F_LW_star, ' erg cm^-2 s^-1 (912-1110 A)'
+         lw_from_spectrum = .true.
+      endif
+   endif
+
+   ! WHAT "Ionization transport: True" REQUIRES, refused rather than repaired.
+   ! Each of these is a configuration in which the option would silently
+   ! mean something other than what it says.
+   if (ionization_transport) then
+      if (.not. thereis_mol) then
+         write(*,*) '(input_read) ERROR: "Ionization transport: True" needs'
+         write(*,*) '  "Molecular chemistry: True". The operator that'
+         write(*,*) '  carries the proton is the molecular carrier solve,'
+         write(*,*) '  which does not run in an atomic gas. Aborting.'
+         error stop 1
+      endif
+      if (.not. carrier_transport) then
+         write(*,*) '(input_read) ERROR: "Ionization transport: True" needs'
+         write(*,*) '  "Molecular carrier transport: True". The proton is'
+         write(*,*) '  a carrier of that operator; with the operator off'
+         write(*,*) '  there is nothing to transport it. Set both keys,'
+         write(*,*) '  or neither. Aborting.'
+         error stop 1
+      endif
+      if (carrier_in_newton) then
+         write(*,*) '(input_read) ERROR: "Ionization transport: True" and'
+         write(*,*) '  "Coupled carrier solve: True" cannot both be set.'
+         write(*,*) '  The coupled route solves ONE carrier as a Newton'
+         write(*,*) '  unknown per cell; it has no proton row, so it would'
+         write(*,*) '  solve a system that is not the one asked for.'
+         write(*,*) '  Aborting.'
+         error stop 1
+      endif
+      if (use_newton_solver) then
+         write(*,*) '(input_read) ERROR: "Ionization transport: True" and'
+         write(*,*) '  "Solver: Newton" cannot both be set. The steady'
+         write(*,*) '  JFNK solve holds the composition at its own local'
+         write(*,*) '  root, so it would undo on the last iteration exactly'
+         write(*,*) '  the departure from local equilibrium this option'
+         write(*,*) '  exists to compute. Marching is the path for it.'
+         write(*,*) '  Aborting.'
+         error stop 1
+      endif
+   endif
+
+   ! Fix the transported molecular carrier set (H2 alone, or H2 with the
+   ! three oxygen carriers, plus H+ when the ionization state is carried).
+   ! One owner, evaluated after every key is parsed.
+   call carrier_set_init
 
    ! End of subroutine
 
@@ -1487,6 +1985,87 @@
 
    ! ------------------------------------------------------------------- !
 
+   subroutine refuse_duplicate_keys(fname, lines, nl, keys, nk)
+   ! Refuse a settings file that states the same key twice.
+   !
+   ! One key is one quantity, so two lines carrying it are two answers to one
+   ! question and the file does not say which is meant. Every reader here
+   ! resolves such a pair by letting the LAST line win, which is a rule about
+   ! file order rather than about intent -- the run then proceeds on a value
+   ! nobody chose and nothing in its log says a choice was made. This stops
+   ! instead, and prints both line numbers and both values so the file can be
+   ! repaired by whoever knows which was meant.
+   !
+   ! Each non-blank, non-comment line is attributed to the LONGEST key that
+   ! matches it, because the key set is not prefix-free ("Lower atmosphere" is
+   ! a prefix of "Lower atmosphere profile", "Wind-AE seed" of "Wind-AE seed
+   ! out"): the longest match is the key the parser itself consumes, since the
+   ! keyword loop tests the longer label first. A line matching no key is left
+   ! to the unknown-line warning.
+   character(len=*), intent(in) :: fname
+   character(len=*), intent(in) :: lines(:)
+   integer,          intent(in) :: nl, nk
+   character(len=*), intent(in) :: keys(:)
+   character(len=250) :: t
+   integer :: i, kk, lbest, kbest, first_i, n_dup, n_bad
+   n_bad = 0
+   do kk = 1, nk
+      first_i = 0
+      n_dup   = 0
+      do i = 1, nl
+         if (len_trim(lines(i)) .eq. 0) cycle
+         t = adjustl(lines(i))
+         if (t(1:1) .eq. '#') cycle
+         ! longest matching key for this line
+         call longest_key_of_line(lines(i), keys, nk, kbest, lbest)
+         if (kbest .ne. kk) cycle
+         n_dup = n_dup + 1
+         if (n_dup .eq. 1) then
+            first_i = i
+         else
+            if (n_dup .eq. 2) then
+               write(*,*) '(input_read.f90) ERROR: "'//trim(keys(kk))//     &
+                  '" appears more than once in '//trim(fname)//':'
+               write(*,'(A,I0,A)') '     line ', first_i, ': '//            &
+                  trim(adjustl(lines(first_i)))
+            endif
+            write(*,'(A,I0,A)') '     line ', i, ': '//                     &
+               trim(adjustl(lines(i)))
+            n_bad = n_bad + 1
+         endif
+      enddo
+   enddo
+   if (n_bad .gt. 0) then
+      write(*,*) '   A key states one quantity, so it may appear only'//    &
+                 ' once. Delete the line that is not meant'
+      write(*,*) '   (a superseded value belongs in a "#" comment, which'// &
+                 ' is not parsed).'
+      error stop 1
+   endif
+   end subroutine refuse_duplicate_keys
+
+   ! ------------------------------------------------------------------ !
+
+   subroutine longest_key_of_line(line, keys, nk, kbest, lbest)
+   ! Index and length of the LONGEST key in `keys` that matches `line` as a
+   ! label; kbest = 0 if none does.
+   character(len=*), intent(in)  :: line
+   character(len=*), intent(in)  :: keys(:)
+   integer,          intent(in)  :: nk
+   integer,          intent(out) :: kbest, lbest
+   integer :: kk
+   kbest = 0;  lbest = 0
+   do kk = 1, nk
+      if (lbl_match(line, trim(keys(kk)))) then
+         if (len_trim(keys(kk)) .gt. lbest) then
+            lbest = len_trim(keys(kk));  kbest = kk
+         endif
+      endif
+   enddo
+   end subroutine longest_key_of_line
+
+   ! ------------------------------------------------------------------ !
+
    subroutine read_base_inp
    ! Lower-atmosphere handoff file (optional; a missing file is a no-op).
    ! One "key value" line per entry, '#' comments and unknown keys ignored,
@@ -1549,11 +2128,42 @@
    character(len=128) :: id_base
    logical :: ex
    integer :: ios, ub, ie, ip
+   integer :: nb, ib, nkb
    real*8  :: ab
+   character(len=250), allocatable :: baselines(:)
+   character(len=32),  allocatable :: base_keys(:)
 
    inquire(file='base.inp', exist=ex)
    if (.not. ex) return
    write(*,*) '(input_read) Reading base.inp (lower-atmosphere handoff)..'
+
+   ! ----- One line per key, here too -----
+   ! Same rule and same routine as input.inp: a handoff that states the base
+   ! temperature (or pressure, or an elemental ratio) twice does not say
+   ! which level it was written at, and last-line-wins would pick one.
+   nkb = 6 + n_melem
+   allocate(base_keys(nkb))
+   base_keys(1) = 'T_base';     base_keys(2) = 'r_base'
+   base_keys(3) = 'HeH_base';   base_keys(4) = 'Kzz_base'
+   base_keys(5) = 'q_H2_base';  base_keys(6) = 'p_base'
+   do ie = 1, n_melem
+      base_keys(6+ie) = trim(melem_name(ie))//'_H_base'
+   enddo
+   open(newunit=ub, file='base.inp', status='old')
+   nb = 0
+   do
+      read(ub,'(A)',iostat=ios) line
+      if (ios .ne. 0) exit
+      nb = nb + 1
+   enddo
+   allocate(character(len=250) :: baselines(nb))
+   rewind(ub)
+   do ib = 1, nb
+      read(ub,'(A)') baselines(ib)
+   enddo
+   close(ub)
+   call refuse_duplicate_keys('base.inp', baselines, nb, base_keys, nkb)
+   deallocate(baselines, base_keys)
    id_base = ''
    open(newunit=ub, file='base.inp', status='old')
    do
@@ -1593,6 +2203,7 @@
       else if (lbl_match(line,'p_base')) then
          call refuse_scalar_key('p_base', 'EOS boundary')
          str = get_word(line,2);  read(str,*) p_base_bar
+         base_level_from_base_inp = .true.
          write(*,'(A,ES9.2,A)') '   base.inp: p_base -> ', p_base_bar, ' bar'
       else
          ! Elemental reservoirs "<El>_H_base": El/H nuclei ratio at the
@@ -1933,5 +2544,46 @@
 	! End of get_word function
 	end function
       
+	!------------------------------------------!
+
+	subroutine retired_base_key(key)
+	! A lower-boundary key that no longer exists is an ERROR, not a warning.
+	!
+	! Every one of these named a component of the ghost-cell closure that the
+	! characteristic face condition replaced: a ghost velocity copied from the
+	! interior and smoothed (Valve eps), a ghost pressure extrapolated from the
+	! interior gradient (Hydrostatic base), a ghost temperature copied from
+	! cell 1 (Base ghost temperature: continuous), a ghost velocity taken from
+	! the wind's flux constant (Base velocity: massflux). None of them has a
+	! meaning in a boundary condition that states a reservoir at the face and
+	! takes one relation from the interior, and a run that silently ignored one
+	! would answer a question the input did not ask. So it stops.
+	!
+	! The base LEVEL is unaffected: "Base BC: density|pressure" still states
+	! where the boundary is, and it is the key that carries over.
+	character(len=*), intent(in) :: key
+	write(*,*)
+	write(*,'(A)') ' (input_read.f90) ERROR: "'//trim(key)//':" is no'//   &
+	   ' longer a key of this code.'
+	write(*,'(A)') '   The lower boundary is now a characteristic'//       &
+	   ' condition imposed at the face r_edg(0):'
+	write(*,'(A)') '   the reservoir states the pressure and the entropy'//&
+	   ' of the lower atmosphere at the'
+	write(*,'(A)') '   base level, and the outgoing acoustic invariant of'//&
+	   ' the first interior cell states'
+	write(*,'(A)') '   the velocity. The ghost cells are the volume'//     &
+	   ' averages of that face state continued'
+	write(*,'(A)') '   below it, so there is no separate ghost velocity,'//&
+	   ' pressure or temperature closure'
+	write(*,'(A)') '   left to select.'
+	write(*,'(A)') '   Remove the line. Use "Base BC: pressure'//          &
+	   ' [<p_ubar>]" to state the base LEVEL, and'
+	write(*,'(A)') '   base.inp / "Lower atmosphere profile:" to state'//  &
+	   ' the base temperature and composition.'
+	write(*,'(A)') '   Background: docs/phaseC_characteristic_base_bc.md.'
+	write(*,*)
+	error stop 1
+	end subroutine retired_base_key
+
     ! End of module
 	end module Read_input

@@ -1,0 +1,10 @@
+Mean solar XUV spectrum at 0.05 au for the Koskinen et al. (2022) Model A comparison,
+with the band fluxes of Ribas et al. (2005, ApJ 622, 680) Table 4, Sun (4.56 Gyr).
+Shape within each band: Gueymard (2003/2004) composite (VULCAN/atm/stellar_flux/Gueymard_solar.txt,
+a flux at the solar surface; /46250 = (1 au/R_sun)^2 gives 1 au). Each Ribas band (1-20, 20-100,
+100-360, 360-920, 920-1180 A) is rescaled to the tabulated flux; the composite's 1-100 A was 2.5-3
+times below Ribas and its 100-360 A 1.5 times above. The whole is then moved to 0.05 au (x400) and
+normalized so the 1-911 A integral is 1.6e3 erg cm^-2 s^-1 (Koskinen et al. 2022 section 2.5, which
+cites Ribas et al. 2005 for that number). The file starts at 5 A (the composite has nothing below);
+the 1-20 A band flux is carried by 5-20 A.
+columns: wavelength [A]  flux at the planet [erg cm^-2 s^-1 A^-1]
