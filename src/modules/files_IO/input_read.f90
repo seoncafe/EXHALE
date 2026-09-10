@@ -146,7 +146,7 @@
       'Lower column', 'He_Kzz', 'He_alphaT', 'He_ambipolar',                 &
       'He_metal_diffusion', 'He_diffusion', 'Stall', 'Energy solver',        &
       'Time stepping', 'Level tol', 'Solver', 'Valve eps', 'Hydrostatic base',&
-      'Shapiro filter', 'Low-Mach damping',                                  &
+      'Shapiro filter', 'Low-Mach damping', 'Well balanced',                 &
       'Base BC', 'Base velocity', 'Viscosity',                               &
       'Base ghost temperature', 'Max steps', 'Coronal cutoff width',         &
       'Base IR field', 'Molecular IR bands', 'Molecular reaction heat',       &
@@ -916,6 +916,18 @@
 				call retired_base_key('Valve eps')
 			else if (lbl_match(line, 'Hydrostatic base')) then
 				call retired_base_key('Hydrostatic base')
+			else if (lbl_match(line, 'Well balanced')) then
+				! "Well balanced: True|False" (default False) -- carry the
+				! DEPARTURE from the cell's own hydrostatic equilibrium
+				! through the reconstruction, the Riemann jumps and the
+				! pressure force, so that the equilibrium's flux difference
+				! and its source cancel in the algebra instead of in
+				! floating point (Kaeppeli and Mishra 2016, A&A 587, A94;
+				! docs/well_balanced_flux_difference_design_20260910.md).
+				! Exact preservation needs a flux that resolves a stationary
+				! contact, which ROE and HLLC do and LLF does not.
+				str = get_word(line, 3)
+				well_balanced = (str .eq. 'True' .or. str .eq. 'true')
 			else if (lbl_match(line, 'Shapiro filter')) then
 				str = get_word(line, 3);  read(str,*) shapiro_eps
 				str = get_word(line, 4)

@@ -251,6 +251,49 @@ if [ "$n2" = "2" ] && \
         "$WORK/rung2/output/Hydro_ioniz.txt"; then ok=yes; fi
 verdict option_change_history_inherited_by_the_next_rung "$ok" yes
 
+# ---- the 21st token: the well-balanced pressure/gravity pair ----------
+# "Well balanced:" (K46) changes the discretization of the pressure/gravity
+# pair and not how many unknowns the state has, so it is a token of the
+# options field that a restart may be allowed to change by name.
+make_run wbnamed "$H0" "$I0" 'Well balanced: True' \
+         'Restart option change: wellbal' \
+         'Restart intent: stationary evaluate'
+run_it wbnamed
+rc_wbnamed=$RC_LAST
+
+make_run wbunnamed "$H0" "$I0" 'Well balanced: True' \
+         'Restart intent: stationary evaluate'
+run_it wbunnamed
+rc_wbunnamed=$RC_LAST
+
+echo "---- the well-balanced token ----"
+grep -E 'wellbal' "$WORK/wbnamed/run.log" | sed 's/^/    named /' || true
+grep -E 'wellbal' "$WORK/wbunnamed/run.log" | sed 's/^/    unnamed /' || true
+ok=no
+if { [ $rc_wbnamed -eq 0 ] || [ $rc_wbnamed -eq 2 ]; } && \
+   grep -q 'the restart CHANGES the physics options' \
+        "$WORK/wbnamed/run.log" && \
+   ! grep -q 'load_IC) ERROR' "$WORK/wbnamed/run.log" && \
+   grep -q '^# option_change wellbal=F -> wellbal=T at restart of ' \
+        "$WORK/wbnamed/output/Hydro_ioniz.txt"; then ok=yes; fi
+verdict option_change_well_balanced_token_loads "$ok" yes
+ok=no
+if [ $rc_wbunnamed -ne 0 ] && \
+   grep -q 'wellbal: F -> T' "$WORK/wbunnamed/run.log"; then ok=yes; fi
+verdict option_change_well_balanced_unnamed_refused_by_name "$ok" yes
+ok=no
+if grep -q 'Well balanced: on' "$WORK/wbnamed/EXHALE_setup.out" && \
+   grep -q 'Well balanced: off' "$WORK/rung0/EXHALE_setup.out"; then
+   ok=yes
+fi
+verdict well_balanced_key_is_stated_in_the_setup_report "$ok" yes
+ok=no
+if grep -q '^well_balanced  *T' "$WORK/wbnamed/EXHALE_resolved.out" && \
+   grep -q '^well_balanced  *F' "$WORK/rung0/EXHALE_resolved.out"; then
+   ok=yes
+fi
+verdict well_balanced_key_is_in_the_resolved_input "$ok" yes
+
 echo "---- the setup report ----"
 grep -E 'Restart (provenance|option change)' "$WORK/rung0/EXHALE_setup.out" \
    | sed 's/^/    rung0 /' || true

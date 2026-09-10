@@ -4,7 +4,7 @@ Written to restart from in a fresh session. Read this first; then
 `docs/ISSUES_20260909.md` (the problem-centered account of stage 2: what was
 done, every problem resolved, every problem open with its evidence),
 `docs/PLAN_20260909_rev1.md` (the plan those items belong to),
-`docs/session_handoff_20260908.md` (the last handoff), and
+`docs/session_handoff_20260910.md` (the last handoff), and
 `docs/Update_EXHALE.md` section 7 (the dated record of items B5e to N30).
 This document replaces `docs/code_status_20260905.md`, which is kept as the
 state at the opening of stage 2; every row below is the state after item N30.
@@ -260,8 +260,24 @@ at the last bits of the residual (N26c); and, for the layer, the element
 flux, conserved to 2.6e-2 in the wind and not at all below (memo section 9.8).
 The consequence for acceptance, stated by N26c: **the arm's `||R||` at a fixed
 iteration is not an acceptance quantity**; named outcomes are (binding rows,
-refusals, flux spread). The untried freedom is the column preconditioner (the
-row scaling is fixed by decision 20 a).
+refusals, flux spread). UPDATE 2026-09-10 evening (N31 to N36): the linear
+algebra is exhausted as a lever. The Arnoldi gap is a ROUNDING FLOOR of the
+residual, not curvature: the flux difference over a base cell amplified by
+the near-hydrostatic cancellation at the face (N33; bound `epsilon x face
+state x r^2/dV`), following no inner tolerance (N32); a quadruple-precision
+evaluation of the hydrodynamic rows brings the image within 3.8e-3 of the
+operator and the cycle still stalls (N34). The banded preconditioner misses
+no coupling; the preconditioned operator is near-singular ON THE SPECIES
+ROWS (Ritz ratio 6.6e5 carrier, 1.1e4 atomic; the binding carrier row's
+diagonal 3.3e3 below its coupling to the hydrodynamic unknowns of its own
+stencil) and a longer Krylov cycle returns a WORSE true step (N35); the
+linear model's row scaling and a true-residual cycle are measured and both
+fail acceptance (N36). N37 put the well-balanced flux difference in as the default-off key
+`Well balanced:` (exact on the discrete equilibrium; the rounding floor does
+not move; a prerequisite in `store_row_terms` before any default-on), and
+N38 showed the binding row's small diagonal is a column-scale reading, not
+physics. The program is CLOSED (2026-09-10 evening, user); the analysis of
+a different approach is `docs/solver_approach_analysis_20260910.md`.
 
 ## 4. Where the problems begin (ordered by size and depth)
 
@@ -332,12 +348,21 @@ The full account of each, with its evidence and its next item, is
 
 ## 5. Tasks, in priority order, with acceptance criteria
 
-1. **The column preconditioner of the species-row linear solve.** The row
-   scaling is fixed by decision 20 a and the Krylov budget is measured not to
-   be the limit (`gm_m` 40 / 80 / 160 give the same 0.6 of the right-hand
-   side). Acceptance: the linear solve reaches its 0.1 on the two reload
-   fixtures, reported as an achieved relative residual and a product count,
-   not as an iteration count.
+1. ~~The column preconditioner of the species-row linear solve~~ DONE and
+   REFUTED as a lever (N31 to N36, 2026-09-10): probe rule, inner
+   tolerances, extended precision, band coverage, row scaling of the linear
+   model and cycle length are all measured; none frees the species-row
+   linear solve. Replaced by: **decision 23** (a well-balanced flux
+   difference in the near-hydrostatic base layer, the physically right
+   discretization; not by itself the cure) and **the discretization of the
+   species rows that bind** (the carrier row of the front cell whose own
+   diagonal is 3.3e3 below its hydrodynamic coupling; the element rows of
+   the front cells): a statement of the discretized element and carrier
+   equations at the front, their Peclet number and what makes the row
+   nearly independent of its own unknown. DONE by N38 (the term is the
+   advective coupling to the momentum column, scaled by the sound speed);
+   the program is CLOSED by the user. If reopened: the one discriminating
+   measurement of `docs/solver_approach_analysis_20260910.md` section 7.
 2. **The layer's element flux conservation** (memo section 9.8): conserved to
    2.6e-2 in the wind and not at all in the layer (39). Acceptance: a stated
    conservation measure of the element operator in the layer, and, if it does

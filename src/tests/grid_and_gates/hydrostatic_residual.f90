@@ -119,6 +119,7 @@
       integer, parameter :: n_scheme = 4
       character(len=12), dimension(n_scheme) :: scheme_name
       character(len=*), parameter :: ladder_file = 'hydrostatic_ladder.dat'
+      character(len=*), parameter :: wb_file = 'hydrostatic_wellbalanced.dat'
 
       ! Particles per unit mass of the neutral atomic He/H mixture, in units
       ! of one particle per hydrogen atom mass: (1 + He/H)/(1 + m_He He/H).
@@ -354,9 +355,18 @@
          b0 = b0_case
          call set_gravity_grid
 
-         do j = 1-Ng,N+Ng
+         ! The lowest ghost has no lower face (r_edg does not reach below
+         ! r_edg(1-Ng)), so its volume average is not defined and is not
+         ! taken: Apply_BC writes that column, and RK_rhs forms no row for
+         ! it.  It carries the neighboring average here so that nothing
+         ! reads an undefined double.
+         do j = 2-Ng,N+Ng
             rho_a(j) = cell_average(rho_column, j)
             p_a(j)   = cell_average(p_column,   j)
+         enddo
+         rho_a(1-Ng) = rho_a(2-Ng)
+         p_a(1-Ng)   = p_a(2-Ng)
+         do j = 1-Ng,N+Ng
             u(1,j)   = rho_a(j)
             u(2,j)   = 0.0d0
             u(3,j)   = p_a(j)/(gamma_ad - 1.0d0)
@@ -427,9 +437,153 @@
       enddo
 
       close(iu)
+
+      ! ---- the well-balanced arm, on the same grid ----
+      call measure_well_balanced(u, WL, WR, dF, S, rho_a, p_a, Rn, b0_case)
+
       deallocate(u, W, WL, WR, dF, S, dt_loc, rho_a, p_a, Rn)
 
       end subroutine measure_one_grid
+
+      ! ------------------------------------------------------------------ !
+
+      subroutine measure_well_balanced(u, WL, WR, dF, S, rho_a, p_a, Rn,  &
+                                       b0_case)
+      ! WHAT IS MEASURED, AND WHY TWO COLUMNS.  The well-balanced arm
+      ! ("Well balanced:", default off) preserves the equilibrium ITS OWN
+      ! discretization defines, which is the state whose two neighboring
+      ! equilibrium extrapolations agree at every shared face,
+      !
+      !   p_j+1 + rho_j+1 (phi_c(j+1) - phi_i(j))
+      !         = p_j - rho_j (phi_i(j) - phi_c(j)),
+      !
+      ! the spherical form of Kaeppeli and Mishra (2016, A&A 587, A94,
+      ! their eq. 18).  That is the column measured here as `discrete`, built
+      ! by integrating the relation outward from the innermost ghost with the
+      ! analytic density averages; on it the momentum, mass and energy rows
+      ! must fall to the rounding level at every N and for both
+      ! reconstructions.  The ANALYTIC column of the ladder above is measured
+      ! as well (`analytic`): it satisfies the CONTINUUM balance and departs
+      ! from the discrete one by the truncation error of the equilibrium
+      ! extrapolation, so on it the arm is second order like the base scheme
+      ! and the two columns together say which part of the residual is the
+      ! discretization of gravity and which is the floating-point assembly.
+      ! Their paper measures the same pair: their initial data is the
+      ! DISCRETE equilibrium solved for by a Newton iteration (their eq. 42),
+      ! and their fig. 2 is the rounding-level line that follows.
+      !
+      ! The rows are normalized by the size of the terms they are built from:
+      ! the momentum row by max_j rho_j |dphi/dr|, the weight the pressure
+      ! gradient has to carry; the mass row by max_j (A+ + A-) rho_j c_j/dV
+      ! and the energy row by the same with c_j^3, the size of an interface
+      ! flux over a cell.  The window is the interior, cells 3 to N-2, whose
+      ! stencils and faces read no ghost: the base face carries the
+      ! characteristic boundary condition and the top the free-outflow
+      ! extrapolation, neither of which is the interior pair.
+      real*8, dimension(3,1-Ng:N+Ng), intent(inout) :: u, WL, WR, dF, S
+      real*8, dimension(1-Ng:N+Ng),   intent(inout) :: rho_a, p_a, Rn
+      real*8, intent(in) :: b0_case
+
+      real*8, dimension(1-Ng:N+Ng) :: p_d, rho_d
+      real*8  :: mom_ref, mass_ref, ene_ref, sc, cs, dVj
+      real*8  :: mom_mx, mass_mx, ene_mx
+      integer :: j, iw, icol, iwb, iu2
+      logical :: sav_wb
+
+      sav_wb = well_balanced
+
+      b0 = b0_case
+      call set_gravity_grid
+
+      do j = 2-Ng,N+Ng
+         rho_a(j) = cell_average(rho_column, j)
+         p_a(j)   = cell_average(p_column,   j)
+      enddo
+      rho_a(1-Ng) = rho_a(2-Ng)
+      p_a(1-Ng)   = p_a(2-Ng)
+
+      ! The discrete equilibrium of the scheme, at the column's own
+      ! temperature T = 1: with p = nhat rho T the face-matching condition
+      !   p_j+1 + rho_j+1 (phi_c(j+1) - phi_i(j))
+      !         = p_j - rho_j (phi_i(j) - phi_c(j))
+      ! is a two-term recursion for the density,
+      !   rho_j+1 = rho_j (nhat - a_j)/(nhat + b_j),
+      ! with a_j and b_j the two half-cell potential differences.  It is
+      ! solved outward from the innermost ghost of the analytic column, which
+      ! is the isothermal case of the Newton solve Kaeppeli and Mishra use to
+      ! initialize their exactness test (2016, A&A 587, A94, their eq. 42).
+      ! Integrating the PRESSURE instead with the analytic densities is not
+      ! the same state and leaves the outer cells at negative pressure: that
+      ! density profile has no positive discrete equilibrium on this grid.
+      rho_d(1) = rho_a(1)
+      do j = 1,N+Ng-1
+         rho_d(j+1) = rho_d(j)                                           &
+            *(nhat - (Gphi_i(j)   - Gphi_c(j)))                          &
+            /(nhat + (Gphi_c(j+1) - Gphi_i(j)))
+      enddo
+      do j = 1,2-Ng,-1
+         rho_d(j-1) = rho_d(j)                                           &
+            *(nhat + (Gphi_c(j)   - Gphi_i(j-1)))                        &
+            /(nhat - (Gphi_i(j-1) - Gphi_c(j-1)))
+      enddo
+      p_d = nhat*rho_d
+
+      open(newunit=iu2, file=wb_file, position='append', status='unknown')
+
+      do is = 1,n_scheme
+      do iwb = 0,1
+      do icol = 1,2
+
+         call set_scheme(is)
+         well_balanced = (iwb .eq. 1)
+
+         do j = 1-Ng,N+Ng
+            u(2,j) = 0.0d0
+            if (icol .eq. 1) then
+               u(1,j) = rho_a(j)
+               u(3,j) = p_a(j)/(gamma_ad - 1.0d0)
+            else
+               u(1,j) = rho_d(j)
+               u(3,j) = p_d(j)/(gamma_ad - 1.0d0)
+            endif
+         enddo
+
+         call set_base_reservoir(p_column(1.0d0), 1.0d0, nhat, 1.0d0)
+         n_part_cell1 = nhat*rho_a(1)
+
+         call Apply_BC(u)
+         call Reconstruct(u, WL, WR)
+         call RK_rhs(u, WL, WR, dF, S)
+
+         mom_ref  = 0.0d0
+         mass_ref = 0.0d0
+         ene_ref  = 0.0d0
+         mom_mx   = 0.0d0
+         mass_mx  = 0.0d0
+         ene_mx   = 0.0d0
+         do j = 3,N-2
+            dVj = (r_edg(j)**3 - r_edg(j-1)**3)/3.0d0
+            sc  = (r_edg(j)*r_edg(j) + r_edg(j-1)*r_edg(j-1))/dVj
+            cs  = sqrt(gamma_ad*u(3,j)*(gamma_ad - 1.0d0)/u(1,j))
+            mom_ref  = max(mom_ref,  u(1,j)*Dphi(r(j)))
+            mass_ref = max(mass_ref, sc*u(1,j)*cs)
+            ene_ref  = max(ene_ref,  sc*u(1,j)*cs*cs*cs)
+            mom_mx   = max(mom_mx,  abs(dF(2,j) - S(2,j)))
+            mass_mx  = max(mass_mx, abs(dF(1,j) - S(1,j)))
+            ene_mx   = max(ene_mx,  abs(dF(3,j) - S(3,j)))
+         enddo
+
+         write(iu2,'(I8,3I3,3ES24.16)') N, is, iwb, icol,                 &
+            mom_mx/mom_ref, mass_mx/mass_ref, ene_mx/ene_ref
+
+      enddo
+      enddo
+      enddo
+
+      close(iu2)
+      well_balanced = sav_wb
+
+      end subroutine measure_well_balanced
 
       ! ------------------------------------------------------------------ !
 
@@ -549,7 +703,85 @@
                             nfail)
       enddo
 
+      call report_well_balanced(nfail)
+
       end subroutine report_ladder
+
+      ! ------------------------------------------------------------------ !
+
+      subroutine report_well_balanced(nfail)
+      ! The well-balanced table, both ways: the discrete equilibrium of the
+      ! scheme, on which the arm must return the rounding level, and the
+      ! analytic column, on which both arms carry the truncation error of the
+      ! discretization of gravity.
+      integer, intent(inout) :: nfail
+
+      integer, parameter :: mxw = 512
+      integer :: Nv(mxw), sv(mxw), wv(mxw), cv(mxw)
+      real*8  :: mom(mxw), mas(mxw), ene(mxw)
+      integer :: nrec, iu, ios, i, is
+      real*8  :: wmom, wmas, wene
+      character(len=10) :: colname(2)
+
+      colname(1) = 'analytic'
+      colname(2) = 'discrete'
+
+      nrec = 0
+      open(newunit=iu, file=wb_file, status='old', iostat=ios)
+      if (ios .ne. 0) then
+         write(*,'(A)') 'FAIL hydrostatic_wellbalanced_file '//           &
+              'measured=missing reference='//wb_file//' tol=0'
+         nfail = nfail + 1
+         return
+      endif
+      do
+         if (nrec .ge. mxw) exit
+         read(iu,*,iostat=ios) Nv(nrec+1), sv(nrec+1), wv(nrec+1),        &
+              cv(nrec+1), mom(nrec+1), mas(nrec+1), ene(nrec+1)
+         if (ios .ne. 0) exit
+         nrec = nrec + 1
+      enddo
+      close(iu)
+
+      write(*,'(A)') ''
+      write(*,'(A)') '  DIAGNOSTIC well-balanced rows, normalized by the'//&
+           ' size of their own terms, interior cells 3..N-2'
+      write(*,'(A)') '        N  scheme        column    Well balanced'// &
+           '     momentum         mass          energy'
+      do i = 1,nrec
+         write(*,'(A,I8,2X,A10,2X,A8,4X,L1,7X,3ES15.4)')                  &
+            '     ', Nv(i), trim(scheme_name(sv(i))), trim(colname(cv(i))),&
+            wv(i) .eq. 1, mom(i), mas(i), ene(i)
+      enddo
+
+      ! THE ASSERTION.  On the discrete equilibrium of the scheme the arm
+      ! must leave the rounding level in every row, at every N and for both
+      ! reconstructions.  1e-13 is not a tolerance chosen to pass: the
+      ! arithmetic bound of a row assembled from cell pressures is
+      ! epsilon x p x r^2/dV, which on this grid is 1e-12 of the momentum
+      ! weight at the base and far below it in the interior.
+      do is = 1,n_scheme
+         wmom = 0.0d0
+         wmas = 0.0d0
+         wene = 0.0d0
+         do i = 1,nrec
+            if (sv(i) .ne. is .or. wv(i) .ne. 1 .or. cv(i) .ne. 2) cycle
+            wmom = max(wmom, mom(i))
+            wmas = max(wmas, mas(i))
+            wene = max(wene, ene(i))
+         enddo
+         call verdict_below('well_balanced_momentum_row_at_rounding['//   &
+                            trim(scheme_name(is))//']', wmom, 1.0d-13,    &
+                            nfail)
+         call verdict_below('well_balanced_mass_row_at_rounding['//       &
+                            trim(scheme_name(is))//']', wmas, 1.0d-13,    &
+                            nfail)
+         call verdict_below('well_balanced_energy_row_at_rounding['//     &
+                            trim(scheme_name(is))//']', wene, 1.0d-13,    &
+                            nfail)
+      enddo
+
+      end subroutine report_well_balanced
 
       ! ------------------------------------------------------------------ !
 

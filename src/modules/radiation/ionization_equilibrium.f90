@@ -494,6 +494,23 @@
 	! as a non-root rather than stretching the root band to cover it.
 	real*8, parameter :: ieq_res_tol = 1.0d-6
 
+	! THE STOPPING TOLERANCE OF THE COMPOSITION'S INNER SOLVE, and the hook
+	! that replaces it for a whole run (EXHALE_IEQ_TOL=<x>, default off).
+	! The value the sweep uses is sqrt(dpmpar(1)) = 1.49e-8, MINPACK's own
+	! scale: hybrd1 reads it as xtol, a RELATIVE STEP criterion, and
+	! newton_dense reads it as ftol, a criterion on the residual norm of the
+	! cell's network (newton_solver.f90 lines 84 to 140), so on either route
+	! the returned composition is pinned only to about that, and the number
+	! of inner iterations changes with the state. The composition is
+	! therefore a PIECEWISE map of the state and the residual assembled from
+	! it carries a non-smoothness floor far above its own rounding, which is
+	! what the finite-difference Jacobian action of the stationary solve
+	! divides by its probe arc (item N31). The hook exists to measure which
+	! tolerance that floor follows; a non-positive or unreadable value
+	! leaves the sweep at sqrt(dpmpar(1)).
+	real*8,  save :: ieq_inner_tol      = 0.0d0
+	logical, save :: ieq_inner_tol_read = .false.
+
 	! Relaxation amnesty and its limit. The cold-start relaxation of a
 	! healthy run genuinely passes through non-root acceptances and
 	! recovers: measured on the regression matrix, the metals-on molecular
@@ -576,6 +593,25 @@
 	integer, parameter :: ieq_acc_nprint_max = 2000
 
 	contains
+
+	! THE STOPPING TOLERANCE THE COMPOSITION'S INNER SOLVE IS ASKED FOR.
+	! Returns what EXHALE_IEQ_TOL names, or the argument when the variable
+	! is unset, unreadable or non-positive. Pure of module state, so a
+	! caller may cache the answer and a test may ask it twice with two
+	! environments.
+	real*8 function composition_solve_tolerance(tol_minpack)
+	real*8, intent(in) :: tol_minpack
+	character(len=32)  :: env_ieq
+	real*8             :: tol_asked
+	composition_solve_tolerance = tol_minpack
+	call get_environment_variable('EXHALE_IEQ_TOL', env_ieq)
+	if (len_trim(env_ieq) .eq. 0) return
+	tol_asked = 0.0d0
+	read(env_ieq,*,err=971,end=971) tol_asked
+  971	continue
+	if (tol_asked .gt. 0.0d0) composition_solve_tolerance = tol_asked
+	end function composition_solve_tolerance
+
 
 	subroutine ioniz_eq_allocate_arrays
 	! Allocate the grid-sized module arrays once the number of cells N is
@@ -967,6 +1003,17 @@
       
    ! Numerical tolerance for system solution
    tol = sqrt(dpmpar(1))
+   ! Read once for the run, and announced only when it is armed, so that a
+   ! run without the hook is the run without the code.
+   if (.not. ieq_inner_tol_read) then
+      ieq_inner_tol      = composition_solve_tolerance(tol)
+      ieq_inner_tol_read = .true.
+      if (ieq_inner_tol .ne. tol)                                         &
+         write(*,'(A,ES11.3,A,ES11.3)') ' (ioniz_eq) EXHALE_IEQ_TOL:'//   &
+              ' the inner composition solve stops at ', ieq_inner_tol,    &
+              ' in place of ', tol
+   endif
+   tol = ieq_inner_tol
 
 	! A1 element-budget assertion around the whole sweep.  The sweep moves
 	! nuclei between stages and carriers and creates none, so every ratio

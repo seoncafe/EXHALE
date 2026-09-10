@@ -34,7 +34,27 @@
                  molecular_decay_rate_of_the_cell,                     &
                  set_molecular_decay_cells
       use excited_hydrogen,       only: excited_H_update
+      ! The face states and interface fluxes the flux assembly last built,
+      ! and the count of reconstructions the positivity limiter scaled back.
+      ! Read by the jump scan only, to say WHICH operator of the pipeline
+      ! state -> ghosts -> face states -> flux -> row is the first that
+      ! jumps; the counter is saved and restored around the scan's own
+      ! reconstruction so a measurement never enters the run's ledger.
+      use RK_integration,         only: face_flux, face_p
+      use Reconstruction_step,    only: n_faces_positivity_limited
+      ! The two counters that say whether a DISCRETE BRANCH of the flux
+      ! assembly fired: the faces where no admissible star state existed
+      ! and the Roe flux gave way to HLLE, and the face states the
+      ! positivity limiter scaled back. A branch that flips between two
+      ! nearby states is a step of the map; one that never fires is not.
+      use Numerical_Fluxes,       only: n_faces_roe_hlle
+      ! The census of the composition's inner cell solve: how many the
+      ! analytic-Jacobian Newton handled and how many fell through to
+      ! MINPACK hybrd1. Read by the additivity hook only, to say what a
+      ! stopping tolerance costs the inner solve.
+      use newton_solver,          only: nt_calls, nt_fallback
       use steady_residual_mod,    only: assemble_residual,             &
+                                        reconstruction_continuation_rhs, &
                                         face_mass_flux_of_state,       &
                                         residual_row_scale,            &
                                         state_scales_of_cell,          &
@@ -46,6 +66,7 @@
       use binary_element_diffusion, only: element_transport_residual,  &
                                         element_mass_fractions,         &
                                         project_element_mass_fractions, &
+                                        mixture_mass_sum,               &
                                         trace_row_terms_diag,           &
                                         trace_row_terms_from
       use species_table,          only: n_melem, melem_name
@@ -73,6 +94,10 @@
                                         carrier_module_state,          &
                                         save_carrier_module_state,     &
                                         restore_carrier_module_state,  &
+                                        carrier_state,                 &
+                                        carrier_source,                &
+                                        carrier_mass_amu,              &
+                                        carrier_advective_divergence,  &
                                         carrier_diffusion_coefficient
       ! The acceptance contexts of docs/a2_certification_contract_20260906.md
       ! section 3. The probe and the trial decisions are taken there, on the
@@ -123,6 +148,7 @@
                 linear_operator_set_for_test,                             &
                 linear_operator_clear_for_test, lin_test_dense,           &
                 lin_test_dense_preconditioner_fails,                      &
+                lin_test_dense_action_drifts, lin_test_drift_after,       &
                 gm_tolerance_reached, gm_subspace_exhausted,              &
                 gm_no_direction_sampled, gm_jacobian_action_unusable,     &
                 gm_preconditioner_failed, gm_reduced_system_singular,     &
@@ -154,6 +180,18 @@
                 row_condition_number, row_rounding_floor_in_the_measure,  &
                 species_row_base_equation,                                &
                 element_unknown_column_scale,                             &
+                ritz_values_of_a_matrix_free_operator,                    &
+                column_split_against_the_band,                            &
+                unknown_mask_of_the_row_class,                            &
+                row_class_shares_of_a_vector,                             &
+                precond_spectrum_on, krylov_size_scan_on,                 &
+                band_difference_on, gm_residual_history_on,               &
+                front_row_on, the_binding_species_row,                    &
+                terms_of_a_transported_species_row,                       &
+                species_row_term_set, species_row_from_its_terms,         &
+                attributed_jacobian_entry,                                &
+                value_of_the_species_unknown,                             &
+                n_ritz_step,                                              &
                 element_column_scale_floor,                               &
                 base_row_control_volume_balance,                          &
                 base_row_reservoir_condition,                             &
@@ -193,10 +231,25 @@
                 gm_restart_cycles_from, pgmres_with_restarts,              &
                 gm_stopped_on_the_trust_ball,                              &
                 krylov_truncated_on_the_trust_ball,                        &
+                model_row_equilibration_on, model_row_equilibration,       &
+                model_rows_equilibrated,                                   &
+                unit_infinity_norm_row_scaling_of_the_band,                &
+                gm_step_by_its_true_residual, gm_true_residual_turned,     &
+                gm_true_residual_first, gm_true_residual_stride,           &
                 gm_reorthogonalize, gm_measure_orthogonality,              &
                 gm_orthogonality_loss_cycle,                               &
                 gm_reorthogonalization_loss_level,                         &
                 gm_verify_the_arnoldi_image,                               &
+                jv_additivity_on, jv_additivity_here,                      &
+                resid_jump_scan_on, resid_jump_scan_here,                  &
+                scan_the_residual_along_a_direction,                       &
+                median_of_the_magnitudes, steps_in_a_sampled_row,          &
+                jv_probe_on_the_column_scales, state_column_scale,         &
+                jv_probe_arc_scale,                                        &
+                jacobian_action_of_direction,                              &
+                probe_step_on_the_column_scales,                           &
+                jv_probe_length_factor,                                    &
+                measure_the_additivity_of_the_jacobian_action,             &
                 the_point_where_the_step_leaves_the_ball,                  &
                 name_of_unknown
 
@@ -361,6 +414,80 @@
       ! nobody chose. Zero or absent means the caller's value. TEST ONLY:
       ! nothing about the step depends on it.
       integer :: jfnk_maxit_wanted = 0
+
+      ! WHETHER THE FINITE-DIFFERENCE ACTION IS A LINEAR MAP OF THE
+      ! DIRECTION, off unless EXHALE_JV_ADDITIVITY is set. The Arnoldi
+      ! relation, the predicted decrease read from it and the least-squares
+      ! problem GMRES solves are all relations of a LINEAR operator, while
+      ! the action jv_product returns is a secant of the residual over an
+      ! arc of fixed length: homogeneous in the direction by construction
+      ! but not additive across directions unless the residual is affine on
+      ! the arc and the arc is the same one on both sides. The hook
+      ! measures the departure and separates its three possible sources:
+      ! the curvature of a smooth residual over the arc (the defect falls
+      ! with the arc as the arc), rounding or a non-smooth residual (it
+      ! rises as the reciprocal of the arc), and a direction-dependent
+      ! feasible-set decision inside jv_product itself (it does neither).
+      ! TEST ONLY: it decides nothing and every product it takes is thrown
+      ! away.
+      ! WHETHER THE PROBE DISPLACES EVERY UNKNOWN BY THE SAME FRACTION OF
+      ! ITS OWN SCALE (probe_step_on_the_column_scales) instead of fixing
+      ! the LENGTH of the displacement in the unknowns themselves
+      ! (probe_length_of_the_jacobian_action). Default off, arm
+      ! EXHALE_JV_COLUMN_SCALE=1.
+      logical :: jv_probe_on_the_column_scales = .false.
+      logical :: jv_additivity_on   = .false.
+      ! Whether THIS outer iteration is one the hook speaks at.
+      logical :: jv_additivity_here = .false.
+      ! A MULTIPLIER OF THE PROBE ARC, exactly one everywhere but inside the
+      ! hook's length scan, where the same three products are taken at a
+      ! tenth and at ten times the standard arc. At one the arithmetic of
+      ! probe_length_of_the_jacobian_action is untouched.
+      real*8  :: jv_probe_length_factor = 1.0d0
+      ! A STANDING MULTIPLIER OF THE PROBE ARC (EXHALE_JV_PROBE_ARC=<x>,
+      ! default 1). The arc sqrt(epsilon)(1 + ||Y||) balances the rounding
+      ! of the residual against the curvature of it only where the
+      ! residual's spread is its own last bit. MEASURED (item N31, atomic
+      ! element reload): along the PRECONDITIONED Krylov directions the
+      ! residual carries a floor five to seven decades above that, the
+      ! additivity defect is that floor divided by the increment the probe
+      ! produces, and it falls as the reciprocal of the arc over two
+      ! decades either side of the standard one with no crossover, so a
+      ! longer arc buys accuracy in proportion until the curvature term
+      ! meets it. This is the arm that measures where that is.
+      real*8  :: jv_probe_arc_scale = 1.0d0
+      ! WHAT THE LAST PROBE OF jv_product ACTUALLY DID, so that a defect can
+      ! be attributed to a decision of the feasible set rather than to the
+      ! residual. Written by every product; read only by a print.
+      real*8  :: jv_probe_step_nominal_last = 0.0d0
+      real*8  :: jv_probe_step_last         = 0.0d0
+      integer :: jv_probe_blocked_last      = 0
+      logical :: jv_probe_backward_last     = .false.
+
+      ! IS THE RESIDUAL CONTINUOUS ALONG THE PROBE ARC, AND IF NOT, WHICH
+      ! OPERATOR BREAKS IT (EXHALE_RESID_JUMP_SCAN=1). A second difference
+      ! that does not fall with the square of the spacing but sits on a
+      ! floor says F itself steps somewhere inside the arc; where the step
+      ! is, and which piece of the pipeline
+      !     unknowns -> ghosts -> face states -> interface flux -> row
+      ! takes it, is a matter of sampling F densely along one direction and
+      ! reading the pipeline on either side of the step. Default off; the
+      ! scan takes about seventy residual evaluations at the one outer
+      ! iteration it speaks at and decides nothing.
+      logical :: resid_jump_scan_on   = .false.
+      ! Whether THIS outer iteration is one the scan speaks at.
+      logical :: resid_jump_scan_here = .false.
+      ! THE STATE THE FLUX ASSEMBLY SAW, kept by eval_residual while the
+      ! scan asks for it: the conserved variables INCLUDING the ghost cells
+      ! Apply_BC wrote, the temperature the sweep last formed and the
+      ! particle count n_tot + n_e the residual divides the pressure by.
+      ! The ghosts are the point of it: they are not unknowns, they are a
+      ! construction of the boundary condition, and no caller of
+      ! eval_residual can otherwise see what that construction produced.
+      logical :: resid_capture_operator_state = .false.
+      real*8, dimension(:,:), allocatable :: captured_state_with_ghosts
+      real*8, dimension(:),   allocatable :: captured_temperature
+      real*8, dimension(:),   allocatable :: captured_particle_count
 
       ! WHAT ONE RESIDUAL EVALUATION LEAVES IN THE MODULES IT CALLS, AND A
       ! LATER READER CONSUMES.
@@ -909,7 +1036,14 @@
       ! what comes back: a cycle stopped by the region, not by its subspace
       ! or by its arithmetic (krylov_truncated_on_the_trust_ball).
       integer, parameter :: gm_stopped_on_the_trust_ball = 7
-      integer, parameter :: n_gm_outcome_kind           = 7
+      ! The cycle was stopped because the TRUE residual of the step it would
+      ! return has risen at two consecutive checks
+      ! (gm_step_by_its_true_residual): the reduced least-squares residual
+      ! keeps falling, the residual the step reaches against the operator
+      ! does not, and the step handed back is the best true residual the
+      ! cycle saw. Only this arm can name it.
+      integer, parameter :: gm_true_residual_turned      = 8
+      integer, parameter :: n_gm_outcome_kind           = 8
       ! The reduced problem's rank, and an Arnoldi breakdown, are decided
       ! RELATIVE to the size of the numbers they are read from: a triangular
       ! diagonal entry this far below the largest one carries no information
@@ -1050,6 +1184,120 @@
       ! a matrix-free action which is not reproducible is told apart from a
       ! basis that has lost orthogonality.
       logical :: gm_verify_the_arnoldi_image = .false.
+      ! WHETHER THE KRYLOV CYCLE PRINTS ITS RESIDUAL HISTORY
+      ! (gm_residual_history_on, EXHALE_GM_HISTORY=1). The reduced
+      ! least-squares residual after every product, and every
+      ! gm_history_stride products the TRUE residual ||b - A_z x_j||/||b||
+      ! of the iterate that subspace gives, which costs one product of the
+      ! operator and one triangular solve. The two separate a cycle whose
+      ! reduced problem is converging while the operator's residual is not
+      ! (a basis that has lost orthogonality, or a rank-deficient reduced
+      ! problem) from a cycle that is simply stagnating.
+      logical :: gm_residual_history_on   = .false.
+      ! Armed only at the outer iteration the element diagnostic speaks at,
+      ! and disarmed inside the subspace-size scan so that the scan's own
+      ! cycles do not print two histories at once.
+      logical :: gm_residual_history_here = .false.
+      integer, parameter :: gm_history_stride = 20
+      ! WHETHER THE CYCLE IS REPEATED AT SEVERAL SUBSPACE SIZES AT THE SAME
+      ! ITERATE (krylov_size_scan_on, EXHALE_KRYLOV_SIZE_SCAN=1). A cycle
+      ! that reaches its tolerance once the subspace is large enough is a
+      ! conditioning that GMRES beats by size; one that stagnates at every
+      ! size has a part of the operator the preconditioner does not touch.
+      ! The scan does not adopt any of its steps: the solve's own cycle has
+      ! already run and the trajectory is unchanged.
+      logical :: krylov_size_scan_on = .false.
+      ! THE SUBSPACE SIZES THE SCAN RUNS, and whether the last two are
+      ! repeated with the basis orthogonalized twice.
+      integer, parameter :: n_krylov_scan_size = 4
+      integer, parameter, dimension(n_krylov_scan_size) ::               &
+                          krylov_scan_size = (/ 40, 80, 160, 320 /)
+      ! WHETHER THE RITZ VALUES OF THE PRECONDITIONED OPERATOR ARE MEASURED
+      ! (precond_spectrum_on, EXHALE_PRECOND_SPECTRUM=1). An Arnoldi
+      ! recursion of n_ritz_step products from a deterministic start, whose
+      ! Hessenberg is diagonalized densely: the Ritz values approximate the
+      ! spectrum of A_z M^-1, and a cluster of them near zero is the part of
+      ! the operator the band leaves behind. Run on the whole operator and
+      ! on its compressions onto the species rows and onto the hydrodynamic
+      ! rows, so that the cluster can be attributed to a row class.
+      logical :: precond_spectrum_on = .false.
+      integer, parameter :: n_ritz_step = 200
+      ! The Ritz vectors of the three smallest-magnitude Ritz values of the
+      ! whole operator, kept so that the band-difference measurement below
+      ! can be taken on the directions the spectrum names. Empty until the
+      ! spectrum hook has run at this iterate.
+      real*8, allocatable :: ritz_vector_of_the_smallest(:,:)
+      real*8, allocatable :: ritz_value_of_the_smallest(:)
+      ! WHETHER THE BAND IS COMPARED WITH THE FULL JACOBIAN ACTION
+      ! (band_difference_on, EXHALE_BAND_DIFFERENCE=1). On the directions
+      ! the spectrum named and on the first two Arnoldi directions of the
+      ! solve's own right-hand side: the difference (A - A_band) v split by
+      ! row class and by cell, and, on the columns those directions live on,
+      ! the split of the true column into the part inside the band and the
+      ! part outside it, with the radiation frozen and with it live.
+      logical :: band_difference_on = .false.
+      ! WHETHER THE ROW THAT BINDS IS READ TERM BY TERM AND ITS JACOBIAN
+      ! ENTRIES ATTRIBUTED TO THOSE TERMS (front_row_on,
+      ! EXHALE_FRONT_ROW=1, off by default).
+      !
+      ! The species row that carries the largest scaled residual at the
+      ! selected outer iteration is a control-volume balance of a
+      ! transported species: an advective divergence of the face mass flux,
+      ! a diffusive or settling divergence, and, for a carrier, a chemical
+      ! source and sink. Its diagonal in the banded model is its response
+      ! to its OWN unknown, and at a front that diagonal was measured three
+      ! decades below the row's response to the hydrodynamic unknowns of the
+      ! same stencil. Which TERM of the row carries each of those responses
+      ! is not readable off the assembled row, so it is measured: every
+      ! term of the row is re-formed at the state and at a state displaced
+      ! along one column, and the difference quotient of each term is
+      ! reported beside the band's entry for that column, which their sum
+      ! reproduces.
+      !
+      ! The measurement costs one residual evaluation for each column
+      ! probed, four unknowns in each of five cells, and adopts nothing.
+      logical :: front_row_on = .false.
+      ! The half width in cells of the column stencil the attribution
+      ! probes, around the binding cell: the band reaches one cell either
+      ! side of a row, and the two neighbor rows reported beside the
+      ! binding one reach one cell further.
+      integer, parameter :: n_front_row_halfwidth = 2
+      ! EVERY TERM OF ONE TRANSPORTED SPECIES ROW, in the row's own
+      ! physical units, together with the two face quantities its advective
+      ! term is built from.  A transported species row is a control-volume
+      ! balance,
+      !
+      !     div(J_diffusive) + div(F_rho Y^face) - S_chemical = 0 ,
+      !
+      ! so the three terms below sum to the row and the two face
+      ! contributions sum to the advective one.  to_code is the factor that
+      ! writes the row per code time in code density units, the one the
+      ! residual vector carries.
+      type species_row_term_set
+         real*8  :: row          = 0.0d0
+         real*8  :: diffusive    = 0.0d0
+         real*8  :: adv_total    = 0.0d0
+         real*8  :: adv_left     = 0.0d0
+         real*8  :: adv_right    = 0.0d0
+         ! The same advective divergence with both faces carrying the donor
+         ! cell's own average instead of the reconstructed face value: the
+         ! first-order upwind term the limited reconstruction sits on.
+         real*8  :: adv_donor    = 0.0d0
+         real*8  :: chemical     = 0.0d0
+         real*8  :: row_scale    = 0.0d0
+         real*8  :: frho_left    = 0.0d0
+         real*8  :: frho_right   = 0.0d0
+         real*8  :: yface_left   = 0.0d0
+         real*8  :: yface_right  = 0.0d0
+         real*8  :: ydonor_left  = 0.0d0
+         real*8  :: ydonor_right = 0.0d0
+         ! The unknown of the row in the code's units, and the physical
+         ! density it names.
+         real*8  :: unknown      = 0.0d0
+         real*8  :: density      = 0.0d0
+         real*8  :: to_code      = 1.0d0
+         logical :: ok           = .false.
+      end type species_row_term_set
       ! WHETHER THE CYCLE STOPS ON THE TRUST BALL (Steihaug-Toint
       ! truncation, EXHALE_KRYLOV_ON_THE_BALL=1, off by default).
       !
@@ -1070,6 +1318,71 @@
       ! the point returned and costs no further product.
       logical :: krylov_truncated_on_the_trust_ball = .false.
 
+      ! ROW EQUILIBRATION OF THE LINEAR MODEL ONLY
+      ! (model_row_equilibration_on, EXHALE_MODEL_ROW_EQUIL=1, off by
+      ! default).
+      !
+      ! WHAT IS FREE AND WHAT IS NOT. The merit, the gate, the trust
+      ! region's predicted decrease and the certification all read the
+      ! residual on the certification row scales (decision 20 a,
+      ! merit_row_scale_from_certification), and that fixes r0 = F/Drow.
+      ! It does not fix the row scaling of the LINEAR MODEL: solving
+      ! (E A) s = E r0 with E diagonal and positive is the same linear
+      ! system, and its exact solution is the same step. What E changes is
+      ! the norm the truncated Krylov cycle minimizes, and with it the
+      ! meaning of "relative residual 1e-1" and the subspace the cycle
+      ! selects. THIS ARM CHANGES THE LINEAR MODEL'S INNER PRODUCT AND
+      ! NOTHING THE SOLVE IS JUDGED BY: the step comes back in the same
+      ! coordinates, its image A s is mapped back to the certification
+      ! scales before it leaves the cycle, and the relative residual the
+      ! caller reads is the certification one.
+      !
+      ! E IS UNIT INFINITY NORM PER ROW OF THE BANDED MODEL, not unit
+      ! diagonal. The row that binds on the carrier fixture carries a
+      ! diagonal 3.3e3 below its coupling to the hydrodynamic unknowns of
+      ! its own stencil (section N35), so a scaling to unit diagonal would
+      ! multiply that row by three decades against the rest of the system
+      ! and equilibrate nothing; and a row scaling of either kind leaves
+      ! the diagonal-to-off-diagonal ratio WITHIN a row exactly where it
+      ! was, which is the reason neither cures that row.
+      !
+      ! The factor is a power of two, so the rescaling of the band and of
+      ! the right-hand side is exact in binary floating point.
+      logical :: model_row_equilibration_on = .false.
+      ! E, and whether the array describes the band currently factored.
+      real*8, allocatable :: model_row_equilibration(:)
+      logical :: model_rows_equilibrated = .false.
+      ! The extremes of E at the last outer iteration, for the diagnostic.
+      real*8  :: model_row_equil_min = 1.0d0, model_row_equil_max = 1.0d0
+
+      ! THE STEP THE CYCLE RETURNS CHOSEN BY ITS TRUE RESIDUAL
+      ! (gm_step_by_its_true_residual, EXHALE_GM_TRUE_RESIDUAL=1, off by
+      ! default).
+      !
+      ! The reduced least-squares residual |gg(j+1)| is the residual of the
+      ! step only while the Arnoldi relation is a statement about the
+      ! operator. The action here is the secant of a NONLINEAR residual
+      ! over a fixed probe arc, and MEASURED at the binding iterate of both
+      ! fixtures (section N35) the reduced residual falls monotonically
+      ! with the subspace size while the residual the returned step reaches
+      ! against the operator stops falling at 60 to 80 products and rises.
+      ! With this arm the cycle forms its candidate step every
+      ! gm_true_residual_stride products from gm_true_residual_first on,
+      ! and at every point where the cycle would otherwise end -- its last
+      ! product, an Arnoldi breakdown, the reduced problem reaching the
+      ! tolerance -- measures ||b - A x_k||/||b|| against the operator at
+      ! one product per check, keeps the best it has seen, and stops when
+      ! that residual has risen at gm_true_residual_rises consecutive
+      ! checks or has reached the tolerance asked for IN THE TRUE NORM.
+      ! The reduced residual then ends no cycle by itself. What comes back
+      ! is that best step, its own image from the product the check took,
+      ! and the true relative residual as gm_resid_rel, so the step control
+      ! reads a residual and a model image that mean what they say.
+      logical :: gm_step_by_its_true_residual = .false.
+      integer, parameter :: gm_true_residual_first  = 20
+      integer, parameter :: gm_true_residual_stride = 10
+      integer, parameter :: gm_true_residual_rises  = 2
+
       ! THE OPERATOR THE LINEAR SOLVE IS MEASURED ON.
       !
       ! src/tests/krylov_and_dogleg drives the production Krylov cycle with
@@ -1089,7 +1402,20 @@
       ! The dense operator with a preconditioner that reports a LAPACK
       ! failure: the vector is returned untouched and the status is nonzero.
       integer, parameter :: lin_test_dense_preconditioner_fails = 2
+      ! The dense operator whose action STOPS BEING THE SAME LINEAR MAP
+      ! after lin_test_drift_after products: from there on the action is
+      ! (A + c (k - lin_test_drift_after) I) v with k the number of
+      ! products taken. It states, in the small, what the matrix-free
+      ! action does in the large -- the secant of a nonlinear residual is
+      ! not one operator over a whole cycle (section N35) -- so that a
+      ! cycle whose reduced residual keeps falling while the residual its
+      ! step reaches against the current action rises can be exercised
+      ! without a reload.
+      integer, parameter :: lin_test_dense_action_drifts = 3
+      integer, parameter :: lin_test_drift_after = 40
+      real*8,  parameter :: lin_test_drift_per_product = 1.0d0
       integer :: lin_test_kind = lin_test_absent
+      integer :: lin_test_n_product = 0
       real*8, allocatable :: lin_test_A(:,:)
 
       ! WHETHER A TRIAL IS WRITTEN ONTO THE FACES OF THE SPECIES BOX before
@@ -1517,6 +1843,20 @@
             integer,          intent(out)   :: iwork(*)
             integer,          intent(out)   :: info
          end subroutine dgbcon
+         ! Dense eigenvalues (and right eigenvectors) of the small
+         ! Hessenberg the Arnoldi recursion of the spectrum hook leaves;
+         ! the Ritz values of the preconditioned operator are exactly its
+         ! eigenvalues.
+         subroutine dgeev(jobvl, jobvr, n, a, lda, wr, wi, vl, ldvl,     &
+                          vr, ldvr, work, lwork, info)
+         character*1, intent(in) :: jobvl, jobvr
+         integer, intent(in)     :: n, lda, ldvl, ldvr, lwork
+         double precision, intent(inout) :: a(lda,*)
+         double precision, intent(out)   :: wr(*), wi(*)
+         double precision, intent(out)   :: vl(ldvl,*), vr(ldvr,*)
+         double precision, intent(out)   :: work(*)
+         integer, intent(out)    :: info
+         end subroutine dgeev
       end interface
 
       contains
@@ -2094,6 +2434,72 @@
       enddo
       preconditioner_equilibrated = .true.
       end subroutine equilibrate_the_preconditioner
+
+      ! ------------------------------------------------------!
+
+      subroutine unit_infinity_norm_row_scaling_of_the_band(ab)
+      ! THE DIAGONAL E THAT BRINGS EVERY ROW OF THE BANDED MODEL TO UNIT
+      ! INFINITY NORM, as a power of two, formed and kept but NOT applied
+      ! to ab.
+      !
+      ! ab is left where it is because the merit's gradient is read from
+      ! it (band_matvec_transpose on r0 = F/Drow) and that gradient belongs
+      ! to the certification scales. What E is applied to is the band the
+      ! preconditioner is factored from and, inside the Krylov cycle, the
+      ! right-hand side and the operator's action: the cycle then solves
+      ! (E A) s = E r0, the same linear system in a different norm.
+      !
+      ! A row with no finite positive entry keeps E = 1: an unresolved
+      ! color leaves its column at exactly zero (build_banded_jac_full) and
+      ! a row of zeros has no size to equilibrate.
+      real*8, dimension(2*kl_jac+ku_jac+1,nvar_jac*N), intent(in) :: ab
+      integer :: neq, jcol, irow, ilo, ihi
+      real*8  :: aij
+      real*8, dimension(nvar_jac*N) :: rmax
+      neq = nvar_jac*N
+      if (.not. allocated(model_row_equilibration)) then
+         allocate(model_row_equilibration(neq))
+      else if (size(model_row_equilibration) .ne. neq) then
+         deallocate(model_row_equilibration)
+         allocate(model_row_equilibration(neq))
+      endif
+      rmax = 0.0d0
+      do jcol = 1, neq
+         ilo = max(1,   jcol - ku_jac)
+         ihi = min(neq, jcol + kl_jac)
+         do irow = ilo, ihi
+            aij = ab(kl_jac+ku_jac+1 + irow - jcol, jcol)
+            if (finite_real(aij)) rmax(irow) = max(rmax(irow), abs(aij))
+         enddo
+      enddo
+      model_row_equil_min = huge(1.0d0);  model_row_equil_max = 0.0d0
+      do irow = 1, neq
+         if (rmax(irow) .gt. 0.0d0) then
+            model_row_equilibration(irow) =                              &
+               2.0d0**(-nint(log(rmax(irow))/log(2.0d0)))
+         else
+            model_row_equilibration(irow) = 1.0d0
+         endif
+         model_row_equil_min = min(model_row_equil_min,                  &
+                                   model_row_equilibration(irow))
+         model_row_equil_max = max(model_row_equil_max,                  &
+                                   model_row_equilibration(irow))
+      enddo
+      model_rows_equilibrated = .true.
+      end subroutine unit_infinity_norm_row_scaling_of_the_band
+
+      ! ------------------------------------------------------!
+
+      logical function the_linear_model_rows_are_equilibrated(neq)       &
+               result(yes)
+      ! Whether the Krylov cycle is to work in the equilibrated rows: the
+      ! arm is on, a scaling was formed for the band currently factored,
+      ! and it is a scaling of this many rows.
+      integer, intent(in) :: neq
+      yes = model_row_equilibration_on .and. model_rows_equilibrated
+      if (yes) yes = allocated(model_row_equilibration)
+      if (yes) yes = (size(model_row_equilibration) .eq. neq)
+      end function the_linear_model_rows_are_equilibrated
 
       ! ------------------------------------------------------!
 
@@ -3037,6 +3443,17 @@
       enddo
       n_eq_sweeps_tot = n_eq_sweeps_tot + n_eq_sweeps_last
 
+      if (resid_capture_operator_state) then
+         ! The pipeline's own inputs, kept for the jump scan before the
+         ! flux assembly consumes them.
+         if (.not. allocated(captured_state_with_ghosts))                &
+            allocate(captured_state_with_ghosts(3,1-Ng:N+Ng),            &
+                     captured_temperature(1-Ng:N+Ng),                    &
+                     captured_particle_count(1-Ng:N+Ng))
+         captured_state_with_ghosts = u
+         captured_temperature       = T
+         captured_particle_count    = n_tot + ne
+      endif
       call assemble_residual(u, n_tot + ne, heat, cool, R)
       call pack_R(R, Fvec)
       ! The carrier row of the same state: the steady continuity equation of
@@ -5607,6 +6024,7 @@
       !                                    2026-09-08).
       character(len=32) :: env
       integer :: iselect
+      real*8  :: xselect
       project_species_trial = .true.
       call get_environment_variable('EXHALE_SPECIES_BOUND_PROJECT', env)
       if (trim(env) .eq. '0') project_species_trial = .false.
@@ -5656,6 +6074,102 @@
       gm_verify_the_arnoldi_image = .false.
       call get_environment_variable('EXHALE_GM_IMAGE_CHECK', env)
       if (trim(env) .eq. '1') gm_verify_the_arnoldi_image = .true.
+      !   EXHALE_GM_HISTORY=1            print the Krylov cycle's residual
+      !                                  history: the reduced problem's
+      !                                  residual after every product and
+      !                                  the true one every twenty
+      !                                  (gm_residual_history_on).
+      gm_residual_history_on = .false.
+      call get_environment_variable('EXHALE_GM_HISTORY', env)
+      if (trim(env) .eq. '1') gm_residual_history_on = .true.
+      gm_residual_history_here = .false.
+      !   EXHALE_KRYLOV_SIZE_SCAN=1      repeat the Krylov cycle of the
+      !                                  selected outer iteration at 40,
+      !                                  80, 160 and 320 products, and the
+      !                                  last two again with the basis
+      !                                  orthogonalized twice, adopting
+      !                                  none of the steps
+      !                                  (krylov_size_scan_on).
+      krylov_size_scan_on = .false.
+      call get_environment_variable('EXHALE_KRYLOV_SIZE_SCAN', env)
+      if (trim(env) .eq. '1') krylov_size_scan_on = .true.
+      !   EXHALE_PRECOND_SPECTRUM=1      the Ritz values of the
+      !                                  preconditioned operator at the
+      !                                  selected outer iteration, on the
+      !                                  whole operator and on its
+      !                                  compressions onto the species and
+      !                                  the hydrodynamic rows
+      !                                  (precond_spectrum_on).
+      precond_spectrum_on = .false.
+      call get_environment_variable('EXHALE_PRECOND_SPECTRUM', env)
+      if (trim(env) .eq. '1') precond_spectrum_on = .true.
+      if (allocated(ritz_vector_of_the_smallest))                        &
+         deallocate(ritz_vector_of_the_smallest)
+      if (allocated(ritz_value_of_the_smallest))                         &
+         deallocate(ritz_value_of_the_smallest)
+      !   EXHALE_BAND_DIFFERENCE=1       the difference between the full
+      !                                  Jacobian action and the banded
+      !                                  one, on the directions the
+      !                                  spectrum named and on the first
+      !                                  two Arnoldi directions
+      !                                  (band_difference_on).
+      band_difference_on = .false.
+      call get_environment_variable('EXHALE_BAND_DIFFERENCE', env)
+      if (trim(env) .eq. '1') band_difference_on = .true.
+      !   EXHALE_FRONT_ROW=1             the species row that binds at the
+      !                                  selected outer iteration and its
+      !                                  two neighbors, term by term, with
+      !                                  the band's entries attributed to
+      !                                  those terms (front_row_on).
+      front_row_on = .false.
+      call get_environment_variable('EXHALE_FRONT_ROW', env)
+      if (trim(env) .eq. '1') front_row_on = .true.
+      !   EXHALE_JV_ADDITIVITY=1         measure whether the
+      !                                  finite-difference action is
+      !                                  additive across directions, and
+      !                                  where and why it is not
+      !                                  (jv_additivity_on). Costs about
+      !                                  twenty residual evaluations at
+      !                                  each of three outer iterations.
+      jv_additivity_on = .false.
+      call get_environment_variable('EXHALE_JV_ADDITIVITY', env)
+      if (trim(env) .eq. '1') jv_additivity_on = .true.
+      !   EXHALE_JV_COLUMN_SCALE=1       take the probe step of the
+      !                                  matrix-free action on the column
+      !                                  scales, so that every unknown is
+      !                                  displaced by the same fraction of
+      !                                  its own magnitude
+      !                                  (probe_step_on_the_column_scales).
+      jv_probe_on_the_column_scales = .false.
+      call get_environment_variable('EXHALE_JV_COLUMN_SCALE', env)
+      if (trim(env) .eq. '1') jv_probe_on_the_column_scales = .true.
+      !   EXHALE_JV_PROBE_ARC=<x>        multiply the probe arc of the
+      !                                  matrix-free action by x
+      !                                  (jv_probe_arc_scale). A
+      !                                  non-positive or unreadable value
+      !                                  leaves it at one.
+      jv_probe_arc_scale = 1.0d0
+      call get_environment_variable('EXHALE_JV_PROBE_ARC', env)
+      if (len_trim(env) .gt. 0) then
+         xselect = 0.0d0
+         read(env,*,err=193,end=193) xselect
+  193    continue
+         if (xselect .gt. 0.0d0) jv_probe_arc_scale = xselect
+      endif
+      !   EXHALE_RESID_JUMP_SCAN=1       sample the residual densely along
+      !                                  one direction and say where it
+      !                                  JUMPS, in which term of the row
+      !                                  and in which operator of the flux
+      !                                  pipeline (resid_jump_scan_on).
+      !                                  About seventy residual
+      !                                  evaluations at one outer
+      !                                  iteration.
+      resid_jump_scan_on = .false.
+      call get_environment_variable('EXHALE_RESID_JUMP_SCAN', env)
+      if (trim(env) .eq. '1') resid_jump_scan_on = .true.
+      resid_jump_scan_here   = .false.
+      jv_additivity_here     = .false.
+      jv_probe_length_factor = 1.0d0
       !   EXHALE_KRYLOV_ON_THE_BALL=1    stop the Krylov cycle where the
       !                                  iterate leaves the trust ball and
       !                                  return the point on its boundary
@@ -5663,6 +6177,28 @@
       krylov_truncated_on_the_trust_ball = .false.
       call get_environment_variable('EXHALE_KRYLOV_ON_THE_BALL', env)
       if (trim(env) .eq. '1') krylov_truncated_on_the_trust_ball = .true.
+      !   EXHALE_MODEL_ROW_EQUIL=1       equilibrate the rows of the
+      !                                  LINEAR MODEL to unit infinity
+      !                                  norm for the Krylov solve alone,
+      !                                  the merit, the gate, the trust
+      !                                  region and the certification
+      !                                  keeping the certification row
+      !                                  scales (model_row_equilibration_on).
+      model_row_equilibration_on = .false.
+      call get_environment_variable('EXHALE_MODEL_ROW_EQUIL', env)
+      if (trim(env) .eq. '1') model_row_equilibration_on = .true.
+      model_rows_equilibrated = .false.
+      !   EXHALE_GM_TRUE_RESIDUAL=1      let the Krylov cycle return the
+      !                                  step its TRUE residual chooses
+      !                                  and stop where that residual
+      !                                  turns upward
+      !                                  (gm_step_by_its_true_residual).
+      !                                  One product of the operator every
+      !                                  gm_true_residual_stride products
+      !                                  past gm_true_residual_first.
+      gm_step_by_its_true_residual = .false.
+      call get_environment_variable('EXHALE_GM_TRUE_RESIDUAL', env)
+      if (trim(env) .eq. '1') gm_step_by_its_true_residual = .true.
       !   EXHALE_ELEM_DIAG=1             the ordered element-row diagnostic
       !                                  at outer iterations 1, 2 and 60;
       !                                  an integer above 1 replaces 60.
@@ -8636,9 +9172,82 @@
       ! 151 the step itself is ||D s|| = 5.0e-10, which is 2.7e-3 of the
       ! arc, so the model of that step is a secant over an arc the step
       ! does not reach. Shortening the step cannot shorten the arc.
+      !
+      ! THE ARC IS SCALED BY jv_probe_length_factor, which is exactly one
+      ! outside the additivity hook's length scan, so the standard arc is
+      ! the expression above unchanged.
       real*8, dimension(nvar_jac*N), intent(in) :: Y
       probe_length = sqrt(epsilon(1.0d0))*(1.0d0 + sqrt(sum(Y*Y)))
+      if (jv_probe_arc_scale .ne. 1.0d0)                                  &
+         probe_length = probe_length*jv_probe_arc_scale
+      if (jv_probe_length_factor .ne. 1.0d0)                              &
+         probe_length = probe_length*jv_probe_length_factor
       end function probe_length_of_the_jacobian_action
+
+      ! ------------------------------------------------------!
+
+      real*8 function probe_step_on_the_column_scales(Y, v) result(eps0)
+      ! THE PROBE STEP THAT DISPLACES EVERY UNKNOWN BY THE SAME FRACTION OF
+      ! ITS OWN SCALE.
+      !
+      !   eps0 = sqrt(epsilon) (1 + ||Dc^-1 Y||) / ||Dc^-1 v||,
+      !
+      ! Dc the state column scale (state_column_scale, the characteristic
+      ! magnitude of each unknown). Written in the coordinates Dc^-1 Y, in
+      ! which every unknown is of order one, this is the same rule
+      ! probe_length_of_the_jacobian_action states in the unknowns
+      ! themselves: the displacement Dc^-1 (eps0 v) has the norm
+      ! sqrt(epsilon)(1 + ||Dc^-1 Y||), so a direction spread over the n
+      ! unknowns moves each of them by about sqrt(epsilon) of its own
+      ! scale, which is the interval at which the truncation of a forward
+      ! difference and the rounding of the residual contribute equally.
+      !
+      ! WHY THE UNSCALED RULE IS NOT THAT. It fixes the length of the
+      ! displacement at sqrt(epsilon)(1 + ||Y||) with ||Y|| the norm of the
+      ! MIXED vector, so the length is set by whichever unknowns are
+      ! largest and every unknown below them is displaced by a smaller
+      ! fraction of itself. MEASURED on the atomic element reload at outer
+      ! iteration 1 (item N31, EXHALE_JV_ADDITIVITY): ||Y|| = 11.4 is
+      ! carried by the innermost cells, whose mass unknown is then
+      ! displaced by 2.2e-8 of itself, about sqrt(epsilon); the unknowns of
+      ! the outer cells are displaced by 2e-10 to 6e-10 of themselves, one
+      ! to two decades short of it, and the difference quotient along the
+      ! preconditioned Krylov directions is then rounding and not a
+      ! derivative (the additivity defect rises as the reciprocal of the
+      ! arc, exponent -1.03, and the second difference of the residual sits
+      ! on a floor instead of scaling as the square of the step).
+      !
+      ! VALIDITY. It needs a column scale that is a magnitude of the
+      ! unknown; where none has been formed yet the unscaled rule stands.
+      ! It says nothing about a residual that is non-smooth for a reason
+      ! other than a displacement too short to resolve: a longer step
+      ! raises the truncation error of the forward difference in
+      ! proportion, so this trades one error for the other at their
+      ! balance point and no further.
+      real*8, dimension(nvar_jac*N), intent(in) :: Y, v
+      real*8  :: yn, vn
+      ! NOT n: that name is the grid size N of global_parameters, and
+      ! Fortran does not distinguish the case.
+      integer :: nunk
+      nunk = nvar_jac*N
+      if (.not. allocated(state_column_scale)) then
+         eps0 = probe_length_of_the_jacobian_action(Y)                    &
+                /max(sqrt(sum(v*v)), 1.0d-300)
+         return
+      endif
+      if (size(state_column_scale) .ne. nunk) then
+         eps0 = probe_length_of_the_jacobian_action(Y)                    &
+                /max(sqrt(sum(v*v)), 1.0d-300)
+         return
+      endif
+      yn = sqrt(sum((Y/state_column_scale)**2))
+      vn = sqrt(sum((v/state_column_scale)**2))
+      eps0 = sqrt(epsilon(1.0d0))*(1.0d0 + yn)/max(vn, 1.0d-300)
+      if (jv_probe_arc_scale .ne. 1.0d0)                                  &
+         eps0 = eps0*jv_probe_arc_scale
+      if (jv_probe_length_factor .ne. 1.0d0)                              &
+         eps0 = eps0*jv_probe_length_factor
+      end function probe_step_on_the_column_scales
 
       ! ------------------------------------------------------!
 
@@ -8683,7 +9292,17 @@
       call hold_the_active_bounds_of(vh)
       vn = sqrt(sum(vh*vh))
       if (vn .le. 0.0d0) return
-      eps0 = probe_length_of_the_jacobian_action(Y)/vn
+      if (jv_probe_on_the_column_scales) then
+         eps0 = probe_step_on_the_column_scales(Y, vh)
+      else
+         eps0 = probe_length_of_the_jacobian_action(Y)/vn
+      endif
+      ! WHAT THIS PROBE DOES, for the additivity hook to read afterwards.
+      ! Written by every product and read by nothing that decides.
+      jv_probe_step_nominal_last = eps0
+      jv_probe_step_last         = eps0
+      jv_probe_blocked_last      = 0
+      jv_probe_backward_last     = .false.
       ! THE STEP IS CUT TO THE BOX BEFORE IT IS TAKEN, on whichever side of
       ! the direction has more room inside it.
       !
@@ -8757,14 +9376,18 @@
             eps0 = min(eps0, step_bwd)
             n_probe_blocked_components =                                  &
                n_probe_blocked_components + n_blk_bwd
+            jv_probe_blocked_last = n_blk_bwd
          else
             call zero_the_blocked_components_of(Y, vh)
             eps0 = min(eps0, step_fwd)
             n_probe_blocked_components =                                  &
                n_probe_blocked_components + n_blk_fwd
+            jv_probe_blocked_last = n_blk_fwd
          endif
       endif
       vn = sqrt(sum(vh*vh))
+      jv_probe_step_last     = eps0
+      jv_probe_backward_last = take_backward
       if (eps0 .le. 0.0d0 .or. vn .le. 0.0d0) then
          ok = .false.;  return
       endif
@@ -8789,6 +9412,7 @@
          eps = 0.5d0*eps
       enddo
       if (ok) then
+         jv_probe_step_last = eps
          Jv = (Fp - F0)/eps
          return
       endif
@@ -8886,6 +9510,9 @@
       case (gm_stopped_on_the_trust_ball)
          txt = 'the iterate left the trust ball and its boundary point'//  &
                ' was returned'
+      case (gm_true_residual_turned)
+         txt = 'the true residual of the step turned upward and the'//     &
+               ' best one seen was returned'
       case default
          txt = 'unnamed'
       end select
@@ -8930,6 +9557,7 @@
       allocate(lin_test_A(size(A,1),size(A,2)))
       lin_test_A    = A
       lin_test_kind = kind
+      lin_test_n_product = 0
       end subroutine linear_operator_set_for_test
 
       ! ------------------------------------------------------!
@@ -8987,9 +9615,1100 @@
          call jv_product(Y, F0, f_sp_base, v, Jv, ok)
          return
       endif
+      lin_test_n_product = lin_test_n_product + 1
       Jv = matmul(lin_test_A, v)
+      if (lin_test_kind .eq. lin_test_dense_action_drifts .and.          &
+          lin_test_n_product .gt. lin_test_drift_after)                  &
+         Jv = Jv + lin_test_drift_per_product                            &
+                  *dble(lin_test_n_product - lin_test_drift_after)*v
       ok = .true.
       end subroutine jacobian_action_of_direction
+
+      ! ------------------------------------------------------!
+
+      subroutine deterministic_unit_direction(seed, v)
+      ! A REPRODUCIBLE DIRECTION OF UNIT LENGTH. The additivity measurement
+      ! needs a pair of directions that are not the Krylov basis's, and it
+      ! has to measure the same pair in two runs of one binary, so the
+      ! entries come from a linear congruential recurrence of the seed
+      ! (the Numerical Recipes ranqd1 multiplier and increment, reduced to
+      ! 32 bits) mapped onto [-1,1) and normalized. Nothing here depends on
+      ! the quality of the sequence; it is a direction.
+      integer,              intent(in)  :: seed
+      real*8, dimension(:), intent(out) :: v
+      integer*8 :: st
+      integer   :: i
+      real*8    :: vn
+      st = int(seed, 8)
+      do i = 1, size(v)
+         st   = iand(1664525_8*st + 1013904223_8, 4294967295_8)
+         v(i) = 2.0d0*(real(st, 8)/4294967296.0d0) - 1.0d0
+      enddo
+      vn = sqrt(sum(v*v))
+      if (vn .gt. 0.0d0) v = v/vn
+      end subroutine deterministic_unit_direction
+
+      ! ------------------------------------------------------!
+
+      subroutine measure_the_additivity_of_the_jacobian_action(Y, F0,     &
+                     f_sp_base, D, u1, u2, pair_name)
+      ! IS THE FINITE-DIFFERENCE ACTION A LINEAR MAP OF THE DIRECTION?
+      !
+      ! GMRES, the Arnoldi relation and the predicted decrease the trust
+      ! region reads from it are relations of a LINEAR operator. What
+      ! jv_product returns is
+      !     A(v) = [ F(Y + eps(v) v) - F(Y) ] / eps(v),
+      !     eps(v) = L / ||P(v) v||,   L = probe_length_of_the_jacobian_action,
+      ! P the hold of the active bounds and eps further cut to the species
+      ! box and the element constraints. A(v) is homogeneous of degree one
+      ! in v by construction, but additivity is a separate property and it
+      ! can fail in exactly three ways:
+      !
+      !   CURVATURE OF A SMOOTH RESIDUAL. Expanding to second order,
+      !   A(v) = J v + (L/2) (v^T H v)/||v|| + O(L^2), so the defect
+      !   A(v1+v2) - A(v1) - A(v2) is proportional to L: it FALLS WITH THE
+      !   ARC as the arc.
+      !
+      !   ROUNDING, or a residual that is not smooth on the arc (a branch, a
+      !   clamp, a max, a table lookup, an inner iteration stopped on a
+      !   tolerance). The quotient carries the residual's own irreducible
+      !   spread divided by eps, so the defect RISES AS THE RECIPROCAL OF
+      !   THE ARC.
+      !
+      !   A DECISION OF THE FEASIBLE SET INSIDE jv_product. The side taken
+      !   (forward or backward), the components zeroed where both sides are
+      !   blocked, and the cut of eps to the box are all functions of the
+      !   DIRECTION, so the map sampled along v1 + v2 need not be the map
+      !   sampled along v1 and along v2. A forward and a backward quotient
+      !   of one direction differ in the SIGN of the curvature term, and a
+      !   zeroed component removes a column of the operator outright. This
+      !   source is discrete: the defect then does NEITHER of the above.
+      !
+      ! The three prints below are that separation, and the fourth reads
+      ! the residual's own smoothness on the arc directly, by second
+      ! differences along the sum direction: a smooth residual gives a
+      ! second difference proportional to the square of the step, and an
+      ! inner solve stopped on a tolerance gives a floor instead.
+      !
+      ! TEST ONLY. Every product taken here is discarded, the probe-length
+      ! multiplier is restored before returning, and nothing outside the
+      ! prints reads any of it.
+      real*8, dimension(nvar_jac*N),          intent(in) :: Y, F0, D
+      real*8, dimension(1-Ng:N+Ng,n_species), intent(in) :: f_sp_base
+      ! The two directions, in the unknowns themselves (what jv_product is
+      ! handed, that is D times a direction of the scaled space).
+      real*8, dimension(nvar_jac*N),          intent(in) :: u1, u2
+      character(len=*),                       intent(in) :: pair_name
+      real*8, dimension(:), allocatable :: a1, a2, as, g, vs, Fh1, Fh2, Fh4
+      ! The defect and the two actions AT THE STANDARD ARC, kept while the
+      ! length scan overwrites the work vectors with the other two arcs.
+      real*8, dimension(:), allocatable :: gs, sum_of_the_two_actions
+      real*8, dimension(:), allocatable :: cellsum
+      real*8, dimension(1-Ng:N+Ng,n_species) :: fwork
+      real*8, dimension(1-Ng:N+Ng) :: heat, cool
+      real*8  :: gtot, rel(3), fac(3), q, epsz, vn, cum
+      real*8  :: d2a, d2b, d2c, dnom, room_lo, room_hi
+      real*8  :: step_side_fwd, step_side_bwd, disp
+      integer :: neq, i, j, k, ic, nc90, jhi, jlo, itop(3), ntop, ib
+      integer :: n_blk_a, n_blk_b
+      logical :: ok1, ok2, oks, okr, bwd1, bwd2
+      real*8  :: f_on_those_rows, rounding_of_those_rows
+      ! The energy source term at the four probe spacings and at the state,
+      ! and the two terms it is the difference of, kept so that the floor
+      ! can be read against the CANCELLATION of the row and not against
+      ! the row itself.
+      real*8, dimension(1-Ng:N+Ng,0:4) :: src
+      real*8, dimension(1-Ng:N+Ng) :: heat_at_the_state, cool_at_the_state
+      real*8  :: s2a, s2b, s2c, term_largest, cancellation_of_the_row
+      character(len=40) :: what
+      ! WHAT THE PROBE EVALUATIONS OF THIS HOOK COST, and how the inner
+      ! composition solve behaved inside them: the number of full residual
+      ! evaluations the hook spends, the wall time of one of them, how many
+      ! cell solves the analytic-Jacobian Newton handled and how many fell
+      ! through to MINPACK hybrd1. A stopping tolerance too tight for the
+      ! Newton shows up as a fallback fraction, and a fallback is where a
+      ! hybrd1 exit code other than 1 can appear.
+      integer :: n_eval_at_entry, nt_calls_at_entry, nt_fall_at_entry
+      integer :: n_eval_here, nt_calls_here, nt_fall_here
+      integer(kind=8) :: clock_at_entry, clock_now, clock_rate
+      neq = nvar_jac*N
+      n_eval_at_entry   = n_resid_eval
+      nt_calls_at_entry = nt_calls
+      nt_fall_at_entry  = nt_fallback
+      call system_clock(clock_at_entry, clock_rate)
+      allocate(a1(neq), a2(neq), as(neq), g(neq), vs(neq))
+      allocate(gs(neq), sum_of_the_two_actions(neq))
+      allocate(Fh1(neq), Fh2(neq), Fh4(neq), cellsum(N))
+      gs = 0.0d0;  sum_of_the_two_actions = 0.0d0;  gtot = 0.0d0
+      vs = u1 + u2
+      fac = (/ 0.1d0, 1.0d0, 10.0d0 /)
+      rel = -1.0d0
+
+      ! --- (b) the defect against the length of the arc ---
+      do ib = 1, 3
+         jv_probe_length_factor = fac(ib)
+         call jacobian_action_of_direction(Y, F0, f_sp_base, u1, a1, ok1)
+         call jacobian_action_of_direction(Y, F0, f_sp_base, u2, a2, ok2)
+         call jacobian_action_of_direction(Y, F0, f_sp_base, vs, as, oks)
+         if (.not. (ok1 .and. ok2 .and. oks)) cycle
+         g    = as - a1 - a2
+         dnom = sqrt(sum((a1 + a2)**2))
+         rel(ib) = sqrt(sum(g*g))/max(dnom, 1.0d-300)
+         if (ib .eq. 2) then
+            ! the standard arc: this is the defect the Arnoldi relation
+            ! carries, and the vector localized below.
+            gs   = g
+            sum_of_the_two_actions = a1 + a2
+            gtot = sum(gs*gs)
+         endif
+      enddo
+      jv_probe_length_factor = 1.0d0
+      if (rel(2) .lt. 0.0d0) then
+         write(*,'(A,A,A)') ' (JFNK) [diag 13] ', trim(pair_name),        &
+              ': no admissible sample of one of the three directions'
+         deallocate(a1,a2,as,g,gs,sum_of_the_two_actions,vs,              &
+                    Fh1,Fh2,Fh4,cellsum)
+         return
+      endif
+
+      ! --- (a) the defect at the standard arc, and where it sits ---
+      write(*,'(A,A,A,ES11.3,A,ES11.3,A,ES11.3)')                         &
+           ' (JFNK) [diag 13] ', trim(pair_name),                         &
+           ': additivity defect (relative) ', rel(2),                     &
+           ', ||J v1 + J v2|| ', sqrt(sum(sum_of_the_two_actions**2)),    &
+           ', ||defect|| ', sqrt(gtot)
+      ! by the kind of unknown the row belongs to
+      do k = 1, nvar_jac
+         q = 0.0d0
+         do j = 1, N
+            q = q + gs(nvar_jac*(j-1)+k)**2
+         enddo
+         if (q .le. 0.0d0) cycle
+         call name_of_row_kind(k, what)
+         write(*,'(A,A,A,F8.4)') ' (JFNK) [diag 13]   ', trim(what),      &
+              ' rows hold a share of the squared defect of ',             &
+              q/max(gtot, 1.0d-300)
+      enddo
+      ! and by cell: how few cells carry nine tenths of it
+      do j = 1, N
+         q = 0.0d0
+         do k = 1, nvar_jac
+            q = q + gs(nvar_jac*(j-1)+k)**2
+         enddo
+         cellsum(j) = q
+      enddo
+      cum = 0.0d0;  nc90 = 0;  jlo = N + 1;  jhi = 0;  ntop = 0
+      itop = 0
+      do while (cum .lt. 0.9d0*gtot .and. nc90 .lt. N)
+         ic = 1
+         do j = 2, N
+            if (cellsum(j) .gt. cellsum(ic)) ic = j
+         enddo
+         if (cellsum(ic) .le. 0.0d0) exit
+         cum  = cum + cellsum(ic)
+         nc90 = nc90 + 1
+         jlo  = min(jlo, ic);  jhi = max(jhi, ic)
+         if (ntop .lt. 3) then
+            ntop = ntop + 1;  itop(ntop) = ic
+         endif
+         cellsum(ic) = 0.0d0
+      enddo
+      write(*,'(A,I0,A,I0,A,I0,A,I0)') ' (JFNK) [diag 13]   nine tenths'//&
+           ' of the squared defect sits in ', nc90, ' of ', N,            &
+           ' cells, between cell ', jlo, ' and cell ', jhi
+      do i = 1, ntop
+         j = itop(i)
+         ! the largest row of that cell
+         k = 1
+         do ic = 2, nvar_jac
+            if (abs(gs(nvar_jac*(j-1)+ic)) .gt.                           &
+                abs(gs(nvar_jac*(j-1)+k))) k = ic
+         enddo
+         call name_of_row_kind(k, what)
+         write(*,'(A,I0,A,A,A,ES11.3)') ' (JFNK) [diag 13]   cell ', j,   &
+              ': largest defect row is ', trim(what), ' at ',             &
+              gs(nvar_jac*(j-1)+k)
+      enddo
+
+      ! --- (b) printed: the exponent of the arc ---
+      if (rel(1) .gt. 0.0d0 .and. rel(3) .gt. 0.0d0) then
+         q = log10(rel(3)/rel(1))/2.0d0
+      else
+         q = 0.0d0
+      endif
+      write(*,'(A,ES11.3,A,ES11.3,A,ES11.3)')                             &
+           ' (JFNK) [diag 13]   defect at a tenth of the arc ', rel(1),   &
+           ', at the arc ', rel(2), ', at ten times it ', rel(3)
+      write(*,'(A,F7.3,A)') ' (JFNK) [diag 13]   the defect scales as'//  &
+           ' the arc to the power ', q,                                   &
+           '  (+1 curvature, -1 rounding or a non-smooth residual,'//     &
+           ' 0 a decision of the feasible set)'
+      ! WHAT THE PROBE OF THE SUM DIRECTION ACTUALLY DID, which is the
+      ! measurement that names the third source outright.
+      call jacobian_action_of_direction(Y, F0, f_sp_base, vs, as, oks)
+      write(*,'(A,ES11.3,A,ES11.3,A,I0,A,L1)')                            &
+           ' (JFNK) [diag 13]   the probe of the sum: nominal step ',     &
+           jv_probe_step_nominal_last, ', step taken ',                   &
+           jv_probe_step_last, ', components blocked ',                   &
+           jv_probe_blocked_last, ', backward side ',                     &
+           jv_probe_backward_last
+      call jacobian_action_of_direction(Y, F0, f_sp_base, u1, a1, ok1)
+      step_side_fwd = jv_probe_step_last
+      n_blk_a       = jv_probe_blocked_last
+      bwd1          = jv_probe_backward_last
+      call jacobian_action_of_direction(Y, F0, f_sp_base, u2, a2, ok2)
+      step_side_bwd = jv_probe_step_last
+      n_blk_b       = jv_probe_blocked_last
+      bwd2          = jv_probe_backward_last
+      write(*,'(A,ES11.3,A,I0,A,L1,A,ES11.3,A,I0,A,L1)')                  &
+           ' (JFNK) [diag 13]   the probe of v1: step ', step_side_fwd,   &
+           ', blocked ', n_blk_a, ', backward ', bwd1,                    &
+           ';  of v2: step ', step_side_bwd, ', blocked ', n_blk_b,       &
+           ', backward ', bwd2
+
+      ! --- (c) the displacement at the defect-holding unknowns ---
+      ! The arc is a length of the WHOLE vector; what a single unknown is
+      ! displaced by is eps times that unknown's own component, and a
+      ! displacement that is a large fraction of the unknown itself, or of
+      ! its room inside the box, is not a derivative of anything.
+      vn = sqrt(sum(vs*vs))
+      epsz = 0.0d0
+      if (vn .gt. 0.0d0) then
+         if (jv_probe_on_the_column_scales) then
+            epsz = probe_step_on_the_column_scales(Y, vs)
+         else
+            epsz = probe_length_of_the_jacobian_action(Y)/vn
+         endif
+      endif
+      do i = 1, ntop
+         j = itop(i)
+         do k = 1, nvar_jac
+            ic   = nvar_jac*(j-1) + k
+            disp = epsz*abs(vs(ic))
+            if (disp .le. 0.0d0) cycle
+            room_lo = huge(1.0d0);  room_hi = huge(1.0d0)
+            if (allocated(species_box_lo) .and. k .gt. 3) then
+               room_lo = Y(ic) - species_box_lo(ic)
+               room_hi = species_box_hi(ic) - Y(ic)
+            endif
+            call name_of_row_kind(k, what)
+            write(*,'(A,I0,A,A,A,ES11.3,A,ES11.3,A,ES11.3,A,ES11.3)')     &
+                 ' (JFNK) [diag 13]   cell ', j, ' ', trim(what),         &
+                 ': displacement ', disp, ', unknown ', Y(ic),            &
+                 ', column scale ', D(ic),                                &
+                 ', displacement over the column scale ',                 &
+                 disp/max(abs(D(ic)), 1.0d-300)
+            if (room_lo .lt. huge(1.0d0))                                 &
+               write(*,'(A,ES11.3,A,ES11.3)')                             &
+                    ' (JFNK) [diag 13]     room below ', room_lo,         &
+                    ', room above ', room_hi
+         enddo
+      enddo
+
+      ! --- (d) is the residual smooth on the arc? ---
+      ! One-sided second differences along the sum direction at three
+      ! spacings, read on the rows that hold the defect. F(Y) - 2 F(Y+h v)
+      ! + F(Y+2h v) is h^2 v^T H v + O(h^3) for a smooth residual, so the
+      ! three norms below stand in the ratio 1 : 4 : 16. A ratio near one
+      ! is a floor: the residual is not smooth at this spacing.
+      if (epsz .gt. 0.0d0) then
+         ! THE SOURCE TERM OF THE ENERGY ROW AT THE SAME FOUR SPACINGS.
+         ! An energy row is heat - cool plus a flux divergence, and heat
+         ! and cool are each far larger than their difference in the
+         ! photoionized layer, so the row's OWN rounding is epsilon times
+         ! the largest term it cancels, not epsilon times the row. The
+         ! captures below let the floor be compared against that.
+         call eval_residual(Y, f_sp_base, fwork, Fh1,                     &
+                            heat, cool, admissible=okr,                   &
+                            may_be_adopted=.false.,                       &
+                            state_is_discarded=.true.,                    &
+                            n_eq_sweeps_fixed=n_eq_sweeps_model)
+         src(:,0) = heat - cool
+         heat_at_the_state = heat
+         cool_at_the_state = cool
+         call eval_residual(Y + 0.5d0*epsz*vs, f_sp_base, fwork, Fh1,     &
+                            heat, cool, admissible=okr,                   &
+                            may_be_adopted=.false.,                       &
+                            state_is_discarded=.true.,                    &
+                            n_eq_sweeps_fixed=n_eq_sweeps_model)
+         src(:,1) = heat - cool
+         if (okr) then
+            call eval_residual(Y + epsz*vs, f_sp_base, fwork, Fh2,        &
+                               heat, cool, admissible=okr,                &
+                               may_be_adopted=.false.,                    &
+                               state_is_discarded=.true.,                 &
+                               n_eq_sweeps_fixed=n_eq_sweeps_model)
+            src(:,2) = heat - cool
+         endif
+         if (okr) then
+            call eval_residual(Y + 2.0d0*epsz*vs, f_sp_base, fwork, as,   &
+                               heat, cool, admissible=okr,                &
+                               may_be_adopted=.false.,                    &
+                               state_is_discarded=.true.,                 &
+                               n_eq_sweeps_fixed=n_eq_sweeps_model)
+            src(:,3) = heat - cool
+         endif
+         if (okr) then
+            call eval_residual(Y + 4.0d0*epsz*vs, f_sp_base, fwork, Fh4,  &
+                               heat, cool, admissible=okr,                &
+                               may_be_adopted=.false.,                    &
+                               state_is_discarded=.true.,                 &
+                               n_eq_sweeps_fixed=n_eq_sweeps_model)
+            src(:,4) = heat - cool
+         endif
+         if (okr) then
+            d2a = 0.0d0;  d2b = 0.0d0;  d2c = 0.0d0
+            do i = 1, ntop
+               j = itop(i)
+               do k = 1, nvar_jac
+                  ic  = nvar_jac*(j-1) + k
+                  d2a = d2a + (F0(ic) - 2.0d0*Fh1(ic) + Fh2(ic))**2
+                  d2b = d2b + (F0(ic) - 2.0d0*Fh2(ic) + as(ic))**2
+                  d2c = d2c + (F0(ic) - 2.0d0*as(ic)  + Fh4(ic))**2
+               enddo
+            enddo
+            d2a = sqrt(d2a);  d2b = sqrt(d2b);  d2c = sqrt(d2c)
+            write(*,'(A,ES11.3,A,ES11.3,A,ES11.3)')                       &
+                 ' (JFNK) [diag 13]   second difference of the residual'//&
+                 ' on those rows: at half the arc ', d2a,                 &
+                 ', at the arc ', d2b, ', at twice it ', d2c
+            write(*,'(A,F9.3,A,F9.3,A)')                                  &
+                 ' (JFNK) [diag 13]     ratios ', d2b/max(d2a,1.0d-300),  &
+                 ' and ', d2c/max(d2b,1.0d-300),                          &
+                 ' (4 and 4 for a residual smooth on the arc, 1 and 1'//  &
+                 ' for a floor)'
+            ! WHAT SIZE OF FLOOR THE ASSEMBLY OF THE RESIDUAL ITSELF CAN
+            ! EXPLAIN. Double precision leaves the rows of F reproducible
+            ! to about epsilon times their own size; a floor far above
+            ! that is not the arithmetic of the assembly but something
+            ! inside the evaluation that stops on a tolerance of its own.
+            f_on_those_rows = 0.0d0
+            do i = 1, ntop
+               j = itop(i)
+               do k = 1, nvar_jac
+                  ic = nvar_jac*(j-1) + k
+                  f_on_those_rows = f_on_those_rows + F0(ic)**2
+               enddo
+            enddo
+            f_on_those_rows        = sqrt(f_on_those_rows)
+            rounding_of_those_rows = epsilon(1.0d0)*f_on_those_rows
+            write(*,'(A,ES11.3,A,ES11.3,A,ES11.3)')                       &
+                 ' (JFNK) [diag 13]     ||F|| on those rows ',            &
+                 f_on_those_rows, ', epsilon times it ',                  &
+                 rounding_of_those_rows,                                  &
+                 ', the floor over that rounding ',                       &
+                 d2b/max(rounding_of_those_rows, 1.0d-300)
+            ! THE SAME FLOOR READ AGAINST THE CANCELLATION OF THE ROW.
+            ! The second difference of the energy source term alone, and
+            ! the largest of heat and cool on the same cells: a row that
+            ! is the difference of two terms 1/x of its own size carries
+            ! a rounding floor x times its own epsilon.
+            s2a = 0.0d0;  s2b = 0.0d0;  s2c = 0.0d0
+            term_largest = 0.0d0
+            do i = 1, ntop
+               j = itop(i)
+               s2a = s2a + (src(j,0) - 2.0d0*src(j,1) + src(j,2))**2
+               s2b = s2b + (src(j,0) - 2.0d0*src(j,2) + src(j,3))**2
+               s2c = s2c + (src(j,0) - 2.0d0*src(j,3) + src(j,4))**2
+               term_largest = max(term_largest, abs(heat_at_the_state(j)),&
+                                  abs(cool_at_the_state(j)))
+            enddo
+            s2a = sqrt(s2a);  s2b = sqrt(s2b);  s2c = sqrt(s2c)
+            cancellation_of_the_row = 0.0d0
+            if (f_on_those_rows .gt. 0.0d0)                               &
+               cancellation_of_the_row = term_largest/f_on_those_rows
+            write(*,'(A,ES11.3,A,ES11.3,A,ES11.3)')                       &
+                 ' (JFNK) [diag 13]     second difference of the energy'//&
+                 ' source alone: at half the arc ', s2a,                  &
+                 ', at the arc ', s2b, ', at twice it ', s2c
+            write(*,'(A,ES11.3,A,ES11.3,A,ES11.3)')                       &
+                 ' (JFNK) [diag 13]     largest of heat and cool on'//    &
+                 ' those cells ', term_largest,                           &
+                 ', epsilon times it ', epsilon(1.0d0)*term_largest,      &
+                 ', the floor over THAT rounding ',                       &
+                 d2b/max(epsilon(1.0d0)*term_largest, 1.0d-300)
+            write(*,'(A,ES11.3)')                                         &
+                 ' (JFNK) [diag 13]     the row cancels its largest'//    &
+                 ' term by a factor ', cancellation_of_the_row
+            ! WHICH ROW CLASS AND WHICH CELL HOLD THE FLOOR. The source
+            ! is one term of the energy row only; a floor that sits in the
+            ! mass row is in the flux assembly and cannot be the
+            ! chemistry.
+            do k = 1, nvar_jac
+               q = 0.0d0
+               do j = 1, N
+                  ic = nvar_jac*(j-1) + k
+                  q  = q + (F0(ic) - 2.0d0*Fh2(ic) + as(ic))**2
+               enddo
+               call name_of_row_kind(k, what)
+               write(*,'(A,A,A,ES11.3)')                                  &
+                    ' (JFNK) [diag 13]     second difference over the'//  &
+                    ' whole column, ', trim(what), ' rows ', sqrt(q)
+            enddo
+            ! AND WHERE ALONG THE COLUMN IT SITS. A floor confined to the
+            ! first cells is a boundary construction; one spread over the
+            ! column is the interior scheme.
+            do j = 1, N
+               q = 0.0d0
+               do k = 1, nvar_jac
+                  ic = nvar_jac*(j-1) + k
+                  q  = q + (F0(ic) - 2.0d0*Fh2(ic) + as(ic))**2
+               enddo
+               cellsum(j) = q
+            enddo
+            q   = sum(cellsum)
+            cum = 0.0d0
+            nc90 = 0;  jlo = N;  jhi = 1
+            do i = 1, N
+               k = maxloc(cellsum(1:N), 1)
+               cum = cum + cellsum(k)
+               nc90 = nc90 + 1
+               jlo = min(jlo, k);  jhi = max(jhi, k)
+               cellsum(k) = -1.0d0
+               if (cum .ge. 0.9d0*q) exit
+            enddo
+            write(*,'(A,I0,A,I0,A,I0,A,I0)')                              &
+                 ' (JFNK) [diag 13]     nine tenths of the squared'//     &
+                 ' second difference sits in ', nc90, ' of ', N,          &
+                 ' cells, between cell ', jlo, ' and cell ', jhi
+         else
+            write(*,'(A)') ' (JFNK) [diag 13]   the residual is not'//    &
+                 ' admissible at one of the four spacings'
+         endif
+      endif
+      call system_clock(clock_now, clock_rate)
+      n_eval_here   = n_resid_eval - n_eval_at_entry
+      nt_calls_here = nt_calls     - nt_calls_at_entry
+      nt_fall_here  = nt_fallback  - nt_fall_at_entry
+      if (n_eval_here .gt. 0 .and. clock_rate .gt. 0)                     &
+         write(*,'(A,I0,A,ES11.3,A,I0,A,I0,A,F7.3,A)')                    &
+              ' (JFNK) [diag 13]   cost: ', n_eval_here,                  &
+              ' residual evaluations at ',                                &
+              real(clock_now - clock_at_entry,8)                          &
+              /real(clock_rate,8)/real(n_eval_here,8),                    &
+              ' s each; inner cell solves ', nt_calls,                    &
+              ', of them fell back to hybrd1 ', nt_fall_here, ' (',       &
+              100.0d0*real(nt_fall_here,8)                                &
+              /real(max(nt_calls_here,1),8), '%)'
+      deallocate(a1,a2,as,g,gs,sum_of_the_two_actions,vs,              &
+                 Fh1,Fh2,Fh4,cellsum)
+      end subroutine measure_the_additivity_of_the_jacobian_action
+
+      ! ------------------------------------------------------!
+
+      subroutine pipeline_of_the_residual_at_a_point(Y, f_sp_base, jcell, &
+                     q, qname, nq, ok)
+      ! EVERY QUANTITY THE ROW OF ONE CELL IS BUILT FROM, in the order the
+      ! evaluation builds them:
+      !
+      !   unknowns -> ghost cells (Apply_BC and the base boundary)
+      !            -> temperature and particle count of the sweep
+      !            -> reconstructed face states WL, WR of the cell's two
+      !               faces
+      !            -> interface flux and face pressure there
+      !            -> the flux difference dF, the geometric source S and
+      !               the radiative source heat - cool of the row.
+      !
+      ! Read in that order, the FIRST entry that steps between two nearby
+      ! states names the operator that is not continuous; everything after
+      ! it is downstream of the step and steps with it.
+      !
+      ! The reconstruction is re-run here on the captured state, which is
+      ! the same call assemble_residual makes on the same input, so WL, WR
+      ! and the interface fluxes are the ones the row was assembled from.
+      ! The positivity-limiter ledger is restored afterwards: this is a
+      ! measurement of a state, not a step of the run.
+      real*8, dimension(nvar_jac*N),          intent(in)  :: Y
+      real*8, dimension(1-Ng:N+Ng,n_species), intent(in)  :: f_sp_base
+      integer,                                intent(in)  :: jcell
+      real*8, dimension(:),                   intent(out) :: q
+      character(len=32), dimension(:),        intent(out) :: qname
+      integer,                                intent(out) :: nq
+      logical,                                intent(out) :: ok
+      real*8, dimension(1-Ng:N+Ng,n_species) :: fwork
+      real*8, dimension(nvar_jac*N)  :: Fv
+      real*8, dimension(1-Ng:N+Ng)   :: heat, cool
+      real*8, dimension(3,1-Ng:N+Ng) :: WL, WR, dFa, Sa
+      integer :: g, i, n_limited_before, n_roe_hlle_before
+      integer :: n_limited_at_entry, n_roe_hlle_at_entry
+      character(len=8) :: cname(3)
+      cname = (/ 'rho     ', 'rho v   ', 'E       ' /)
+      n_limited_at_entry  = n_faces_positivity_limited
+      n_roe_hlle_at_entry = n_faces_roe_hlle
+      resid_capture_operator_state = .true.
+      call eval_residual(Y, f_sp_base, fwork, Fv, heat, cool,             &
+                         admissible=ok, may_be_adopted=.false.,           &
+                         state_is_discarded=.true.,                       &
+                         n_eq_sweeps_fixed=n_eq_sweeps_model)
+      resid_capture_operator_state = .false.
+      if (.not. ok) then
+         nq = 0
+         return
+      endif
+      n_limited_before  = n_faces_positivity_limited
+      n_roe_hlle_before = n_faces_roe_hlle
+      call reconstruction_continuation_rhs(captured_state_with_ghosts,    &
+                                           WL, WR, dFa, Sa)
+      nq = 0
+      ! the ghost cells, lower then upper
+      do g = 1, Ng
+         do i = 1, 3
+            nq = nq + 1
+            q(nq) = captured_state_with_ghosts(i,1-g)
+            write(qname(nq),'(A,I0,A,A)') 'ghost cell ', 1-g, ' ',        &
+                 trim(cname(i))
+         enddo
+      enddo
+      do g = 1, Ng
+         do i = 1, 3
+            nq = nq + 1
+            q(nq) = captured_state_with_ghosts(i,N+g)
+            write(qname(nq),'(A,I0,A,A)') 'ghost cell ', N+g, ' ',        &
+                 trim(cname(i))
+         enddo
+      enddo
+      nq = nq + 1;  q(nq) = captured_temperature(jcell)
+      qname(nq) = 'T of the cell'
+      nq = nq + 1;  q(nq) = captured_particle_count(jcell)
+      qname(nq) = 'n_tot + n_e of the cell'
+      ! the two faces of the cell: face jcell-1 below, face jcell above
+      do i = 1, 3
+         nq = nq + 1;  q(nq) = WL(i,jcell-1)
+         qname(nq) = 'WL at the lower face, '//trim(cname(i))
+      enddo
+      do i = 1, 3
+         nq = nq + 1;  q(nq) = WR(i,jcell-1)
+         qname(nq) = 'WR at the lower face, '//trim(cname(i))
+      enddo
+      do i = 1, 3
+         nq = nq + 1;  q(nq) = WL(i,jcell)
+         qname(nq) = 'WL at the upper face, '//trim(cname(i))
+      enddo
+      do i = 1, 3
+         nq = nq + 1;  q(nq) = WR(i,jcell)
+         qname(nq) = 'WR at the upper face, '//trim(cname(i))
+      enddo
+      do i = 1, 3
+         nq = nq + 1;  q(nq) = face_flux(i,jcell-1)
+         qname(nq) = 'flux at the lower face, '//trim(cname(i))
+      enddo
+      do i = 1, 3
+         nq = nq + 1;  q(nq) = face_flux(i,jcell)
+         qname(nq) = 'flux at the upper face, '//trim(cname(i))
+      enddo
+      nq = nq + 1;  q(nq) = face_p(jcell-1)
+      qname(nq) = 'face pressure below'
+      nq = nq + 1;  q(nq) = face_p(jcell)
+      qname(nq) = 'face pressure above'
+      do i = 1, 3
+         nq = nq + 1;  q(nq) = dFa(i,jcell)
+         qname(nq) = 'dF of the row, '//trim(cname(i))
+      enddo
+      do i = 1, 3
+         nq = nq + 1;  q(nq) = Sa(i,jcell)
+         qname(nq) = 'S of the row, '//trim(cname(i))
+      enddo
+      nq = nq + 1;  q(nq) = heat(jcell)
+      qname(nq) = 'heat of the cell'
+      nq = nq + 1;  q(nq) = cool(jcell)
+      qname(nq) = 'cool of the cell'
+      ! WHETHER A DISCRETE BRANCH OF THE ASSEMBLY FIRED, as a count. A
+      ! counter that changes between two nearby states names the branch;
+      ! one that stands still says the assembly took the same code path
+      ! on both sides of the step and the step is arithmetic.
+      nq = nq + 1;  q(nq) = real(n_faces_roe_hlle - n_roe_hlle_before, 8)
+      qname(nq) = 'faces that fell back to HLLE'
+      nq = nq + 1
+      q(nq) = real(n_faces_positivity_limited - n_limited_before, 8)
+      qname(nq) = 'face states the limiter scaled'
+      ! THE GEOMETRY THAT AMPLIFIES WHATEVER THE FACES CARRY. The row is
+      ! a flux difference divided by the cell volume, so an error of the
+      ! interface flux enters the row multiplied by r^2/dV, which is
+      ! about one over the cell width.
+      nq = nq + 1;  q(nq) = dr_j(jcell)
+      qname(nq) = 'width of the cell'
+      nq = nq + 1
+      q(nq) = r_edg(jcell)**2                                            &
+              /((r_edg(jcell)**3 - r_edg(jcell-1)**3)/3.0d0)
+      qname(nq) = 'r^2 over the cell volume'
+      ! AND THE CANCELLATION AT THE FACE. The Roe flux is built from the
+      ! DIFFERENCES of the two reconstructed states, and in a nearly
+      ! hydrostatic layer those differences are decades below the states
+      ! themselves, so the flux carries the rounding of the states and
+      ! not of its own value.
+      nq = nq + 1;  q(nq) = WR(3,jcell-1) - WL(3,jcell-1)
+      qname(nq) = 'pressure jump, lower face'
+      nq = nq + 1;  q(nq) = WR(1,jcell-1) - WL(1,jcell-1)
+      qname(nq) = 'density jump, lower face'
+      nq = nq + 1;  q(nq) = WR(3,jcell) - WL(3,jcell)
+      qname(nq) = 'pressure jump, upper face'
+      nq = nq + 1;  q(nq) = WR(1,jcell) - WL(1,jcell)
+      qname(nq) = 'density jump, upper face'
+      ! The ledgers are restored: this is a measurement of a state, not a
+      ! step of the run, and the counts the run reports must stay the
+      ! counts of its own updates.
+      n_faces_positivity_limited = n_limited_at_entry
+      n_faces_roe_hlle           = n_roe_hlle_at_entry
+      end subroutine pipeline_of_the_residual_at_a_point
+
+      ! ------------------------------------------------------!
+
+      real*8 function median_of_the_magnitudes(x)
+      ! Median of |x|, by insertion sort of a copy. The scan needs a
+      ! measure of how large a difference of F between two neighboring
+      ! samples USUALLY is, and the mean is not it: one step of the map
+      ! inside the sampled interval would raise the mean it is compared
+      ! against. Half the samples lie below the median whatever the other
+      ! half do.
+      real*8, dimension(:), intent(in) :: x
+      real*8, dimension(size(x)) :: a
+      real*8  :: t
+      integer :: i, k, m
+      m = size(x)
+      a = abs(x)
+      do i = 2, m
+         t = a(i)
+         k = i - 1
+         do while (k .ge. 1)
+            if (a(k) .le. t) exit
+            a(k+1) = a(k)
+            k = k - 1
+         enddo
+         a(k+1) = t
+      enddo
+      if (mod(m,2) .eq. 0) then
+         median_of_the_magnitudes = 0.5d0*(a(m/2) + a(m/2+1))
+      else
+         median_of_the_magnitudes = a((m+1)/2)
+      endif
+      end function median_of_the_magnitudes
+
+      ! ------------------------------------------------------!
+
+      subroutine steps_in_a_sampled_row(f, factor, nstep, marked)
+      ! WHICH INTERVALS OF A UNIFORMLY SAMPLED ROW HOLD A STEP OF THE MAP.
+      !
+      ! For a map that is continuous and sampled finely enough, the
+      ! successive differences f(k+1) - f(k) are its derivative times the
+      ! spacing and vary slowly with k: over a window of a few dozen
+      ! samples they stay within a small factor of their own median. A
+      ! STEP of the map lands entirely in one interval and makes that one
+      ! difference stand far above the median, whatever the derivative
+      ! does. The test is therefore a comparison against the row's own
+      ! median difference and carries no absolute scale of its own, so it
+      ! reads a row of any size and any units.
+      !
+      ! factor is how far above the median counts as a step. A row whose
+      ! differences are all zero has no median to compare against and is
+      ! reported as having none.
+      real*8,  dimension(:), intent(in)  :: f
+      real*8,                intent(in)  :: factor
+      integer,               intent(out) :: nstep
+      logical, dimension(:), intent(out) :: marked
+      real*8, dimension(size(f)-1) :: dd
+      real*8  :: med
+      integer :: k
+      nstep  = 0
+      marked = .false.
+      do k = 1, size(f) - 1
+         dd(k) = f(k+1) - f(k)
+      enddo
+      med = median_of_the_magnitudes(dd)
+      if (.not. (med .gt. 0.0d0)) return
+      do k = 1, size(f) - 1
+         if (abs(dd(k)) .gt. factor*med) then
+            marked(k) = .true.
+            nstep     = nstep + 1
+         endif
+      enddo
+      end subroutine steps_in_a_sampled_row
+
+      ! ------------------------------------------------------!
+
+      subroutine scan_the_residual_along_a_direction(Y, F0, f_sp_base,    &
+                     v, dir_name)
+      ! WHERE THE RESIDUAL STEPS ALONG ONE DIRECTION, AT WHAT SCALE, AND IN
+      ! WHICH OPERATOR.
+      !
+      ! A second difference of F that stands on a FLOOR instead of falling
+      ! with the square of the spacing (N31, N32) says F is not smooth on
+      ! the probe arc: a kink gives a second difference proportional to the
+      ! spacing, curvature gives its square, and a floor is what a map that
+      ! STEPS somewhere inside the arc gives. This routine finds the steps.
+      !
+      ! F is sampled at 65 equally spaced points of Y + t v over a window
+      ! [-h, +h], and the window is then shrunk by a factor four, five
+      ! times over, from two probe arcs down to two arcs divided by 256.
+      ! ONE WIDTH IS NOT ENOUGH: a window that holds many steps has no
+      ! interval standing above its neighbors, because every interval
+      ! holds a step, and a window narrower than one step is smooth. Three
+      ! measures separate the two, taken on each row of each window:
+      !
+      !   the TOTAL VARIATION of the row over the window against the NET
+      !   change across it. A map with a derivative gives them equal; a
+      !   dither of steps gives a total variation that stays where it is
+      !   as the window shrinks while the net change falls with the width.
+      !
+      !   the MEDIAN successive difference. For a smooth row it falls in
+      !   proportion to the spacing; for a dither of steps it stops
+      !   falling at the size of one step.
+      !
+      !   an interval whose difference stands a hundred times above the
+      !   row's own median difference: an ISOLATED step, which appears
+      !   once the window is narrow enough to hold few of them.
+      !
+      ! At the largest isolated step the row is split by TERM and by
+      ! OPERATOR (pipeline_of_the_residual_at_a_point) over three
+      ! consecutive intervals, the middle one holding the step: the
+      ! earliest quantity of the pipeline whose change over the stepping
+      ! interval stands far above its change over the two neighboring
+      ! intervals is the one that steps, and it names the operator.
+      !
+      ! TEST ONLY. Every evaluation is discarded and nothing outside the
+      ! prints reads any of it.
+      real*8, dimension(nvar_jac*N),          intent(in) :: Y, F0
+      real*8, dimension(1-Ng:N+Ng,n_species), intent(in) :: f_sp_base
+      real*8, dimension(nvar_jac*N),          intent(in) :: v
+      character(len=*),                       intent(in) :: dir_name
+      integer, parameter :: n_scan = 65
+      integer, parameter :: n_win  = 10
+      ! How far above the row's own median difference a difference has to
+      ! stand to be called an isolated step.
+      real*8,  parameter :: step_factor = 1.0d2
+      real*8, dimension(:,:), allocatable :: Fs
+      real*8, dimension(:),   allocatable :: heat, cool, Fv
+      real*8, dimension(1-Ng:N+Ng,n_species) :: fwork
+      integer, dimension(:), allocatable :: n_steps_at_k
+      real*8, dimension(n_scan-1) :: dd
+      logical, dimension(n_scan-1) :: marked
+      real*8  :: eps0, dt, vn, big, relbig, tk, hw, med, tv, net
+      real*8  :: med_track, tv_track, net_track, relmed, d2_track
+      real*8  :: d2_first, geo, wmax, pjmp, pface
+      real*8, dimension(N) :: cellwork
+      real*8  :: q
+      integer :: j_track
+      real*8  :: q_at(4,200), dq(3), dmid, dnb
+      character(len=32) :: qname(200)
+      character(len=40) :: what
+      integer :: neq, i, j, k, kk, ib, nqk, n_row_steps, n_k_with_step
+      integer :: kbig, ibig, jbig, kindbig, jlo, jhi, nq_at, nzero
+      integer :: n_by_kind(nvar_jac), n_bad, nstep, iw
+      integer :: i_track, n_sign_changes
+      integer :: kstep_at, iw_step, nq_here
+      real*8  :: hw_step, dt_step
+      logical :: okr, ok4(4)
+      neq = nvar_jac*N
+      vn  = sqrt(sum(v*v))
+      if (vn .le. 0.0d0) return
+      eps0 = probe_length_of_the_jacobian_action(Y)/vn
+      if (.not. (eps0 .gt. 0.0d0)) return
+      allocate(Fs(neq,n_scan), Fv(neq))
+      allocate(heat(1-Ng:N+Ng), cool(1-Ng:N+Ng), n_steps_at_k(n_scan-1))
+      write(*,'(A,A,A,ES11.3,A,I0,A,I0,A)')                               &
+           ' (JFNK) [diag 14] ', trim(dir_name),                          &
+           ': the probe arc along it is ', eps0, '; ', n_scan,            &
+           ' samples of F on each of ', n_win,                            &
+           ' windows, each a quarter of the one before'
+      i_track  = 0
+      kstep_at = 0;  iw_step = 0;  hw_step = 0.0d0;  dt_step = 0.0d0
+      ibig = 0;  kbig = 0
+      do iw = 1, n_win
+         hw = 2.0d0*eps0/4.0d0**(iw-1)
+         dt = 2.0d0*hw/real(n_scan-1, 8)
+         n_bad = 0
+         do k = 1, n_scan
+            tk = -hw + real(k-1,8)*dt
+            call eval_residual(Y + tk*v, f_sp_base, fwork, Fv, heat,      &
+                               cool, admissible=okr,                      &
+                               may_be_adopted=.false.,                    &
+                               state_is_discarded=.true.,                 &
+                               n_eq_sweeps_fixed=n_eq_sweeps_model)
+            Fs(:,k) = Fv
+            if (.not. okr) n_bad = n_bad + 1
+         enddo
+         ! THE ROW THIS WINDOW IS READ ON. Chosen once, on the widest
+         ! window, as the row whose successive differences are the largest
+         ! fraction of the row itself: the row along which this direction
+         ! moves the residual most, which is where a floor of the map
+         ! reaches the difference quotient first.
+         if (iw .eq. 1) then
+            ! THE ROW THAT CARRIES THE FLOOR, which is the row this whole
+            ! measurement is about: the largest second difference of F
+            ! along the direction. A smooth row's second difference is
+            ! the curvature times the square of the spacing and is
+            ! negligible here; a row that carries a step of the map has a
+            ! second difference of the size of the step.
+            relmed = 0.0d0
+            do i = 1, neq
+               med = 0.0d0
+               do k = 1, n_scan-2
+                  med = max(med, abs(Fs(i,k) - 2.0d0*Fs(i,k+1)           &
+                                     + Fs(i,k+2)))
+               enddo
+               if (med .gt. relmed) then
+                  relmed  = med
+                  i_track = i
+               endif
+            enddo
+            if (i_track .le. 0) i_track = 1
+            j       = (i_track-1)/nvar_jac + 1
+            kindbig = mod(i_track-1, nvar_jac) + 1
+            call name_of_row_kind(kindbig, what)
+            write(*,'(A,I0,A,A,A,ES11.3,A,ES11.3)')                       &
+                 ' (JFNK) [diag 14]   read on cell ', j, ', the ',        &
+                 trim(what), ' row, whose value at the state is ',        &
+                 F0(i_track), ' and whose largest second difference'//    &
+                 ' over the widest window is ', relmed
+         endif
+         ! the tracked row's three measures on this window
+         do k = 1, n_scan-1
+            dd(k) = Fs(i_track,k+1) - Fs(i_track,k)
+         enddo
+         med_track = median_of_the_magnitudes(dd)
+         d2_track  = 0.0d0
+         do k = 1, n_scan-2
+            d2_track = max(d2_track, abs(Fs(i_track,k)                    &
+                           - 2.0d0*Fs(i_track,k+1) + Fs(i_track,k+2)))
+         enddo
+         if (iw .eq. 1) d2_first = d2_track
+         tv_track  = sum(abs(dd))
+         net_track = abs(Fs(i_track,n_scan) - Fs(i_track,1))
+         nzero     = 0
+         n_sign_changes = 0
+         do k = 1, n_scan-1
+            if (dd(k) .eq. 0.0d0) nzero = nzero + 1
+            if (k .gt. 1) then
+               if (dd(k)*dd(k-1) .lt. 0.0d0)                              &
+                  n_sign_changes = n_sign_changes + 1
+            endif
+         enddo
+         ! isolated steps, over every row of the column
+         n_steps_at_k = 0;  n_by_kind = 0;  n_row_steps = 0
+         big = 0.0d0;  relbig = 0.0d0
+         jlo = N + 1;  jhi = 0
+         do i = 1, neq
+            call steps_in_a_sampled_row(Fs(i,:), step_factor, nstep,      &
+                                        marked)
+            if (nstep .eq. 0) cycle
+            j   = (i-1)/nvar_jac + 1
+            jlo = min(jlo, j);  jhi = max(jhi, j)
+            kk  = mod(i-1, nvar_jac) + 1
+            n_by_kind(kk) = n_by_kind(kk) + nstep
+            n_row_steps   = n_row_steps + nstep
+            do k = 1, n_scan-1
+               if (.not. marked(k)) cycle
+               n_steps_at_k(k) = n_steps_at_k(k) + 1
+               if (abs(Fs(i,k+1) - Fs(i,k)) .gt. big) then
+                  big    = abs(Fs(i,k+1) - Fs(i,k))
+                  relbig = big/max(abs(F0(i)), 1.0d-300)
+                  kbig   = k
+                  ibig   = i
+               endif
+            enddo
+         enddo
+         n_k_with_step = 0
+         do k = 1, n_scan-1
+            if (n_steps_at_k(k) .gt. 0) n_k_with_step = n_k_with_step + 1
+         enddo
+         write(*,'(A,ES10.3,A,ES10.3,A,ES10.3,A,ES10.3,A,F7.4)')          &
+              ' (JFNK) [diag 14]   window +-', hw, ' (', hw/eps0,         &
+              ' arcs), spacing ', dt, ': median difference ', med_track,  &
+              ', total variation over the net change ',                   &
+              tv_track/max(net_track, 1.0d-300)
+         write(*,'(A,ES10.3,A,ES10.3,A,I0,A,I0,A,I0)')                    &
+              ' (JFNK) [diag 14]     total variation ', tv_track,         &
+              ', net change ', net_track, ', differences that are'//      &
+              ' exactly zero ', nzero, ' of ', n_scan-1,                  &
+              ', sign changes ', n_sign_changes
+         write(*,'(A,ES10.3,A,ES10.3,A,I0,A,I0,A,I0)')                    &
+              ' (JFNK) [diag 14]     largest second difference ',         &
+              d2_track, ', over the median difference ',                  &
+              d2_track/max(med_track, 1.0d-300),                          &
+              ', differences that are exactly zero ', nzero,              &
+              ' of ', n_scan-1, ', sign changes ', n_sign_changes
+         if (n_bad .gt. 0)                                                &
+            write(*,'(A,I0,A)') ' (JFNK) [diag 14]     ', n_bad,          &
+                 ' of the samples are not admissible states'
+         if (n_row_steps .gt. 0) then
+            write(*,'(A,I0,A,I0,A,I0,A,I0)')                              &
+                 ' (JFNK) [diag 14]     isolated steps: ', n_row_steps,   &
+                 ' (row, interval) pairs in ', n_k_with_step, ' of ',     &
+                 n_scan-1, ' intervals, in cells ', jlo
+            write(*,'(A,I0,A,ES11.3,A,ES11.3)')                           &
+                 ' (JFNK) [diag 14]     to cell ', jhi,                   &
+                 '; the largest moves its row by ', big, ', which is ',   &
+                 relbig
+            do kk = 1, nvar_jac
+               if (n_by_kind(kk) .eq. 0) cycle
+               call name_of_row_kind(kk, what)
+               write(*,'(A,A,A,I0)') ' (JFNK) [diag 14]       ',          &
+                    trim(what), ' rows step ', n_by_kind(kk), ' times'
+            enddo
+            ! keep the FINEST window that isolates a step: that is where
+            ! the pipeline on either side of it differs by the step alone.
+            kstep_at = kbig;  iw_step = iw
+            hw_step  = hw;    dt_step = dt
+            jbig     = (ibig-1)/nvar_jac + 1
+         else
+            write(*,'(A)') ' (JFNK) [diag 14]     no isolated step on'//  &
+                 ' this window'
+         endif
+      enddo
+      ! --- WHAT SIZE OF FLOOR THE ARITHMETIC OF THE ASSEMBLY EXPLAINS ---
+      ! The row is a flux difference divided by the cell volume, and the
+      ! interface flux is built from the DIFFERENCES of two reconstructed
+      ! states that a nearly hydrostatic layer makes decades smaller than
+      ! the states themselves. The flux therefore carries the last bit of
+      ! those O(1) states, not of its own value, and the row carries it
+      ! multiplied by r^2 over the cell volume, which is about one over
+      ! the cell width. That product is the floor a correctly rounded
+      ! assembly cannot go below, and it is the number to compare the
+      ! measured floor against; epsilon times the row itself is not.
+      j_track = (i_track-1)/nvar_jac + 1
+      call pipeline_of_the_residual_at_a_point(Y, f_sp_base, j_track,     &
+               q_at(1,:), qname, nqk, okr)
+      if (okr) then
+         geo  = 0.0d0
+         wmax = 0.0d0
+         pjmp = 0.0d0;  pface = 0.0d0
+         do i = 1, nqk
+            if (qname(i) .eq. 'r^2 over the cell volume')                 &
+               geo = q_at(1,i)
+            if (qname(i)(1:2) .eq. 'WL' .or. qname(i)(1:2) .eq. 'WR')     &
+               wmax = max(wmax, abs(q_at(1,i)))
+            if (qname(i)(1:13) .eq. 'pressure jump')                      &
+               pjmp = max(pjmp, abs(q_at(1,i)))
+            if (qname(i) .eq. 'WL at the upper face, E')                  &
+               pface = abs(q_at(1,i))
+         enddo
+         write(*,'(A,ES11.3,A,ES11.3,A,ES11.3)')                          &
+              ' (JFNK) [diag 14]   the row of that cell stands on'//      &
+              ' r^2 over the cell volume ', geo,                          &
+              ', its largest face state is ', wmax,                       &
+              ', and the largest pressure jump across a face of it is ',  &
+              pjmp
+         write(*,'(A,ES11.3,A,ES11.3,A,ES11.3)')                          &
+              ' (JFNK) [diag 14]     the face pressure cancels by a'//    &
+              ' factor ', pface/max(pjmp, 1.0d-300),                      &
+              '; epsilon times the face state, divided by the cell'//     &
+              ' width, is ', epsilon(1.0d0)*wmax*geo,                     &
+              ', against the measured floor ', d2_first
+         write(*,'(A,F9.3)')                                              &
+              ' (JFNK) [diag 14]     the measured floor over that'//      &
+              ' arithmetic bound ',                                       &
+              d2_first/max(epsilon(1.0d0)*wmax*geo, 1.0d-300)
+      ! AND THE SAME COMPARISON CELL BY CELL. If the floor is the
+      ! rounding of the assembly then it follows the cell's own geometry
+      ! and state and not the size of its row, so the ratio below stays
+      ! near one order of magnitude over the whole column, across the
+      ! decade the cell width spans. A branch, which fires in one place
+      ! and not another, would not.
+      if (allocated(captured_state_with_ghosts)) then
+         write(*,'(A)') ' (JFNK) [diag 14]   cell by cell, the'//         &
+              ' largest second difference of the cell against'//          &
+              ' epsilon times its own state over its width:'
+         do i = 1, N
+            cellwork(i) = 0.0d0
+            do k = 1, n_scan-2
+               do kk = 1, nvar_jac
+                  cellwork(i) = max(cellwork(i),                          &
+                     abs(Fs(nvar_jac*(i-1)+kk,k)                          &
+                         - 2.0d0*Fs(nvar_jac*(i-1)+kk,k+1)                &
+                         + Fs(nvar_jac*(i-1)+kk,k+2)))
+               enddo
+            enddo
+         enddo
+         do ib = 1, 10
+            j = 1
+            do i = 2, N
+               if (cellwork(i) .gt. cellwork(j)) j = i
+            enddo
+            if (.not. (cellwork(j) .gt. 0.0d0)) exit
+            geo  = r_edg(j)**2                                            &
+                   /((r_edg(j)**3 - r_edg(j-1)**3)/3.0d0)
+            wmax = max(abs(captured_state_with_ghosts(1,j)),              &
+                       abs(captured_state_with_ghosts(3,j)))
+            write(*,'(A,I0,A,ES11.3,A,ES11.3,A,ES11.3,A,F9.3)')           &
+                 ' (JFNK) [diag 14]     cell ', j,                        &
+                 ': second difference ', cellwork(j), ', width ',         &
+                 dr_j(j), ', arithmetic bound ',                          &
+                 epsilon(1.0d0)*wmax*geo, ', the ratio ',                 &
+                 cellwork(j)/max(epsilon(1.0d0)*wmax*geo, 1.0d-300)
+            cellwork(j) = -1.0d0
+         enddo
+         ! AND ALONG THE COLUMN, where the cell width spans a decade or
+         ! more: the bound is a floor and not an equality, so a cell
+         ! whose residual has real curvature stands above it, but no
+         ! cell may stand below it.
+         do ib = 1, 7
+            j = min(N, 1 + (ib-1)*N/6)
+            geo  = r_edg(j)**2                                            &
+                   /((r_edg(j)**3 - r_edg(j-1)**3)/3.0d0)
+            wmax = max(abs(captured_state_with_ghosts(1,j)),              &
+                       abs(captured_state_with_ghosts(3,j)))
+            q = 0.0d0
+            do k = 1, n_scan-2
+               do kk = 1, nvar_jac
+                  q = max(q, abs(Fs(nvar_jac*(j-1)+kk,k)                  &
+                                 - 2.0d0*Fs(nvar_jac*(j-1)+kk,k+1)        &
+                                 + Fs(nvar_jac*(j-1)+kk,k+2)))
+               enddo
+            enddo
+            write(*,'(A,I0,A,ES11.3,A,ES11.3,A,ES11.3,A,ES10.3)')         &
+                 ' (JFNK) [diag 14]     cell ', j,                        &
+                 ' of the column: second difference ', q, ', width ',     &
+                 dr_j(j), ', arithmetic bound ',                          &
+                 epsilon(1.0d0)*wmax*geo, ', the ratio ',                 &
+                 q/max(epsilon(1.0d0)*wmax*geo, 1.0d-300)
+         enddo
+      endif
+      endif
+      if (iw_step .eq. 0) then
+         write(*,'(A)') ' (JFNK) [diag 14]   no window isolates a'//      &
+              ' step; no operator split'
+         deallocate(Fs, Fv, heat, cool, n_steps_at_k)
+         return
+      endif
+      ! --- the term and the operator that step ---
+      kindbig = mod(ibig-1, nvar_jac) + 1
+      call name_of_row_kind(kindbig, what)
+      tk = -hw_step + real(kstep_at-1,8)*dt_step
+      write(*,'(A,I0,A,A,A,ES11.3,A,ES11.3,A)')                           &
+           ' (JFNK) [diag 14]   splitting the step of cell ', jbig,       &
+           ', the ', trim(what), ' row, at t ', tk, ' (',                 &
+           tk/eps0, ' arcs from the state)'
+      do ib = 1, 4
+         k  = min(max(kstep_at - 1 + ib - 1, 1), n_scan)
+         tk = -hw_step + real(k-1,8)*dt_step
+         call pipeline_of_the_residual_at_a_point(Y + tk*v, f_sp_base,    &
+                  jbig, q_at(ib,:), qname, nqk, ok4(ib))
+         if (ib .eq. 1) nq_at = nqk
+      enddo
+      if (.not. all(ok4)) then
+         write(*,'(A)') ' (JFNK) [diag 14]   one of the four states'//    &
+              ' around the step is not admissible; no operator split'
+         deallocate(Fs, Fv, heat, cool, n_steps_at_k)
+         return
+      endif
+      write(*,'(A)') ' (JFNK) [diag 14]   the pipeline across the'//      &
+           ' step, in the order the row is built (value, then the'//      &
+           ' change over the interval before the step, over the'//        &
+           ' stepping interval, and over the one after):'
+      nq_here = nq_at
+      do i = 1, nq_here
+         dq(1) = q_at(2,i) - q_at(1,i)
+         dq(2) = q_at(3,i) - q_at(2,i)
+         dq(3) = q_at(4,i) - q_at(3,i)
+         dmid  = abs(dq(2))
+         dnb   = max(abs(dq(1)), abs(dq(3)))
+         write(*,'(A,A,A,ES23.15,A,ES11.3,A,ES11.3,A,ES11.3,A,ES9.2)')    &
+              ' (JFNK) [diag 14]     ', qname(i), ' = ', q_at(2,i),       &
+              ', changes by ', dq(1), ' | ', dq(2), ' | ', dq(3),         &
+              ', the stepping interval over its neighbors ',             &
+              dmid/max(dnb, 1.0d-300)
+      enddo
+      deallocate(Fs, Fv, heat, cool, n_steps_at_k)
+      end subroutine scan_the_residual_along_a_direction
 
       ! ------------------------------------------------------!
 
@@ -9052,10 +10771,39 @@
       ! the subspace built so far, that iterate, its image, and the last
       ! pair that was still inside the ball.
       real*8, allocatable :: yb(:), xb(:), Axb(:), xb_in(:), Axb_in(:)
+      ! The additivity hook's two directions that are not the basis's.
+      real*8, allocatable :: rv1(:), rv2(:)
       real*8 :: beta, denom, tmp, res_now, hcol, hmax, tball, hmin_diag
       real*8 :: gap_col, gap_worst, repro
       logical :: jv_ok, arnoldi_breakdown, verify_true_residual
       logical :: on_the_ball, stopped_on_the_ball
+      ! The residual history's own work space and its running quantities
+      ! (gm_residual_history_on): the coefficients of the iterate of the
+      ! subspace built so far, that iterate, and the true relative residual
+      ! it reaches against the operator.
+      real*8, allocatable :: yh(:), xh(:)
+      real*8  :: res_true_now
+      logical :: history_here
+      ! WHETHER THIS CYCLE WORKS IN THE EQUILIBRATED ROWS OF THE LINEAR
+      ! MODEL (model_row_equilibration_on), and the norm of the right-hand
+      ! side on the CERTIFICATION scales, which is what the relative
+      ! residual handed back is measured against whether the arm is on or
+      ! off.
+      logical :: row_equil_here
+      real*8  :: beta_cert
+      ! The true-residual arm's work space (gm_step_by_its_true_residual):
+      ! the best step its residual against the operator has seen, that
+      ! step's image, its residual, the residual of the check before, how
+      ! many consecutive checks have risen and at which product the best
+      ! was found.
+      real*8, allocatable :: xbest(:), Axbest(:), yh2(:)
+      real*8  :: res_true_best, res_true_last
+      integer :: n_true_rise, j_true_best
+      logical :: true_resid_here, have_a_best_step, check_here
+      ! Whether the reduced problem reaching the tolerance ends the cycle.
+      ! It always does without the true-residual arm; with it, only where
+      ! the iterate could not be measured against the operator.
+      logical :: reduced_tolerance_stops
 
       neq = nvar_jac*N
       allocate(V(neq,m+1), Hs(m+1,m), gg(m+1), cs(m), sn(m), yy(m))
@@ -9087,6 +10835,30 @@
          ! inside every ball of positive radius, and its image is zero.
          xb_in = 0.0d0;  Axb_in = 0.0d0
       endif
+      history_here = gm_residual_history_on .and. gm_residual_history_here
+      if (history_here) then
+         allocate(yh(m), xh(neq))
+         yh = 0.0d0
+         write(*,'(A,I0,A,ES11.3)') ' (JFNK) [diag 16] residual history'//&
+              ' of a cycle of ', m, ' products, tolerance asked ', rtol
+      endif
+      ! THE ROW SCALING OF THE LINEAR MODEL, and the arm that lets the
+      ! cycle keep the step its true residual chooses. Both are read once
+      ! here, so that a cycle works in one model from its first product to
+      ! its last.
+      row_equil_here  = the_linear_model_rows_are_equilibrated(neq)
+      true_resid_here = gm_step_by_its_true_residual
+      res_true_best   = huge(1.0d0)
+      res_true_last   = huge(1.0d0)
+      n_true_rise     = 0
+      j_true_best     = 0
+      have_a_best_step = .false.
+      if (true_resid_here) then
+         ! Allocated after everything the cycle has always had, for the
+         ! reason V is not zeroed.
+         allocate(xbest(neq), Axbest(neq), yh2(m))
+         xbest = 0.0d0;  Axbest = 0.0d0;  yh2 = 0.0d0
+      endif
       gm_orthogonality_loss_cycle = 0.0d0
       gm_outcome   = gm_tolerance_reached
       gm_resid_rel = 0.0d0
@@ -9094,8 +10866,15 @@
       arnoldi_breakdown    = .false.
       verify_true_residual = .false.
 
-      ! r0 = b - A*0 = b
-      beta = sqrt(sum(b*b))
+      ! r0 = b - A*0 = b, in the rows the cycle works in. beta_cert is the
+      ! same quantity on the certification scales, and the two are one
+      ! number wherever the row equilibration is off.
+      if (row_equil_here) then
+         beta = sqrt(sum((b*model_row_equilibration)**2))
+      else
+         beta = sqrt(sum(b*b))
+      endif
+      beta_cert = sqrt(sum(b*b))
       gm_iters = 0
       if (.not. every_component_is_finite(b)) then
          ! There is no linear system here to solve.
@@ -9116,7 +10895,11 @@
       endif
       ! The residual of the empty subspace is the right-hand side itself.
       res_now = beta
-      V(:,1) = b/beta
+      if (row_equil_here) then
+         V(:,1) = b*model_row_equilibration/beta
+      else
+         V(:,1) = b/beta
+      endif
       gg(1)  = beta
 
       do j = 1, m
@@ -9171,6 +10954,11 @@
          else
             w = w/D + idtau*z
          endif
+         ! AND THE ROW SCALING OF THE LINEAR MODEL, where the arm is on:
+         ! the operator the cycle works with is E A_z and the band it is
+         ! preconditioned by is E times the same band, so the two agree
+         ! (unit_infinity_norm_row_scaling_of_the_band).
+         if (row_equil_here) w = w*model_row_equilibration
          if (.not. every_component_is_finite(w)) then
             ! The action returned a value that is not a number. The subspace
             ! built so far is still a subspace; this direction is not.
@@ -9261,6 +11049,190 @@
          ! |gg(j+1)| is the residual norm of the least-squares problem the
          ! rotations have reduced, i.e. of the step this subspace gives.
          res_now = abs(gg(j+1))
+         ! --- THE RESIDUAL OF THIS SUBSPACE, REDUCED AND TRUE ---
+         ! The reduced problem's residual after every product; every
+         ! gm_history_stride products, and at the last one, the residual
+         ! the iterate of this subspace actually reaches against the
+         ! operator, which costs one triangular solve and one product. The
+         ! two part company exactly where the recursion has stopped being a
+         ! statement about the operator.
+         if (history_here) then
+            res_true_now = -1.0d0
+            if (mod(j, gm_history_stride) .eq. 0 .or. j .eq. m) then
+               hmin_diag = huge(1.0d0)
+               do i = 1, j
+                  hmin_diag = min(hmin_diag, abs(Hs(i,i)))
+               enddo
+               if (hmin_diag .gt. 0.0d0) then
+                  yh(1:j) = 0.0d0
+                  do i = j, 1, -1
+                     tmp = gg(i)
+                     do ib = i+1, j
+                        tmp = tmp - Hs(i,ib)*yh(ib)
+                     enddo
+                     yh(i) = tmp/Hs(i,i)
+                  enddo
+                  xh = 0.0d0
+                  do i = 1, j
+                     xh = xh + yh(i)*V(:,i)
+                  enddo
+                  call banded_preconditioner_solve(abf, ipiv, neq, xh,   &
+                                                   lpinfo)
+                  if (lpinfo .eq. 0 .and.                                &
+                      every_component_is_finite(xh)) then
+                     call project_out_of_the_active_element_constraints( &
+                                                                     xh)
+                     call jacobian_action_of_direction(Y, F0, f_sp_base, &
+                                                       D*xh, u, jv_ok)
+                     if (jv_ok) then
+                        if (nspec_row .gt. 0) then
+                           u = u/Drow + idtau*(D/Drow)*xh
+                        else
+                           u = u/D + idtau*xh
+                        endif
+                        ! AND THE ROW SCALING OF THE LINEAR MODEL, where the arm is on:
+                        ! the operator the cycle works with is E A_z and the band it is
+                        ! preconditioned by is E times the same band, so the two agree
+                        ! (unit_infinity_norm_row_scaling_of_the_band).
+                        if (row_equil_here) u = u*model_row_equilibration
+                        if (every_component_is_finite(u)) then
+                           if (row_equil_here) then
+                              res_true_now = sqrt(sum((b                 &
+                                   *model_row_equilibration - u)**2))/beta
+                           else
+                              res_true_now = sqrt(sum((b - u)**2))/beta
+                           endif
+                        endif
+                     endif
+                  endif
+               endif
+            endif
+            if (res_true_now .ge. 0.0d0) then
+               write(*,'(A,I4,A,ES12.5,A,ES12.5)')                       &
+                    ' (JFNK) [diag 16]   product ', j,                   &
+                    ': reduced ', res_now/beta, ', TRUE ', res_true_now
+            else
+               write(*,'(A,I4,A,ES12.5)')                                &
+                    ' (JFNK) [diag 16]   product ', j,                   &
+                    ': reduced ', res_now/beta
+            endif
+         endif
+         ! --- THE STEP THIS SUBSPACE GIVES, AND WHAT IT REALLY REACHES ---
+         ! (gm_step_by_its_true_residual). From gm_true_residual_first
+         ! products on, every gm_true_residual_stride and at the last
+         ! product of the cycle: the iterate of the subspace built so far,
+         ! and the residual it reaches AGAINST THE OPERATOR, at one
+         ! triangular solve and one product. The best of them is kept with
+         ! its own image, so the step that comes back and the model image
+         ! the trust region reads on it are both the operator's and not the
+         ! reduced problem's. The cycle stops where that residual has risen
+         ! at gm_true_residual_rises consecutive checks, which is where the
+         ! subspace has stopped buying anything the nonlinear action can
+         ! deliver (section N35: the optimum lies at 60 to 80 products
+         ! while the reduced residual keeps falling to 320).
+         reduced_tolerance_stops = .true.
+         if (true_resid_here) then
+            ! THE CHECK POINTS ARE THE PERIODIC ONES AND EVERY POINT AT
+            ! WHICH THE CYCLE WOULD OTHERWISE END: the last product of the
+            ! subspace, an Arnoldi breakdown, and the reduced problem
+            ! reaching the tolerance. With this arm the reduced residual
+            ! stops nothing on its own -- it is the quantity the arm
+            ! exists to stop trusting -- so where it reaches the tolerance
+            ! the iterate is measured against the operator and the cycle
+            ! ends only if the TRUE residual reached it too. Measuring the
+            ! last iterate of every exit is also what keeps the step that
+            ! comes back from being worse than the one the cycle had in
+            ! its hand.
+            res_true_now = -1.0d0
+            check_here = ((j .ge. gm_true_residual_first) .and.          &
+                          mod(j - gm_true_residual_first,                &
+                              gm_true_residual_stride) .eq. 0)           &
+                         .or. j .eq. m .or. arnoldi_breakdown            &
+                         .or. (res_now .le. rtol*beta)
+            if (check_here) then
+               hmin_diag = huge(1.0d0)
+               do i = 1, j
+                  hmin_diag = min(hmin_diag, abs(Hs(i,i)))
+               enddo
+               if (hmin_diag .gt. 0.0d0) then
+                  yh2(1:j) = 0.0d0
+                  do i = j, 1, -1
+                     tmp = gg(i)
+                     do ib = i+1, j
+                        tmp = tmp - Hs(i,ib)*yh2(ib)
+                     enddo
+                     yh2(i) = tmp/Hs(i,i)
+                  enddo
+                  u = 0.0d0
+                  do i = 1, j
+                     u = u + yh2(i)*V(:,i)
+                  enddo
+                  call banded_preconditioner_solve(abf, ipiv, neq, u,    &
+                                                   lpinfo)
+                  if (lpinfo .eq. 0 .and.                                &
+                      every_component_is_finite(u)) then
+                     call project_out_of_the_active_element_constraints( &
+                                                                      u)
+                     z = u
+                     call jacobian_action_of_direction(Y, F0, f_sp_base, &
+                                                       D*z, w, jv_ok)
+                     if (jv_ok) then
+                        if (nspec_row .gt. 0) then
+                           w = w/Drow + idtau*(D/Drow)*z
+                        else
+                           w = w/D + idtau*z
+                        endif
+                        if (row_equil_here)                              &
+                           w = w*model_row_equilibration
+                        if (every_component_is_finite(w)) then
+                           if (row_equil_here) then
+                              res_true_now = sqrt(sum((b                 &
+                                   *model_row_equilibration - w)**2))/beta
+                           else
+                              res_true_now = sqrt(sum((b - w)**2))/beta
+                           endif
+                           ! A CANDIDATE OUTSIDE THE TRUST BALL IS NOT AN
+                           ! ADMISSIBLE STEP, and the ball's own truncation
+                           ! below is what returns the boundary point.
+                           if (on_the_ball) then
+                              if (sqrt(sum(z*z)) .gt. delta_ball)        &
+                                 res_true_now = -1.0d0
+                           endif
+                           if (res_true_now .ge. 0.0d0) then
+                              if (res_true_now .lt. res_true_best) then
+                                 res_true_best = res_true_now
+                                 xbest  = z
+                                 Axbest = w
+                                 j_true_best = j
+                                 have_a_best_step = .true.
+                              endif
+                              if (res_true_now .gt. res_true_last) then
+                                 n_true_rise = n_true_rise + 1
+                              else
+                                 n_true_rise = 0
+                              endif
+                              res_true_last = res_true_now
+                              if (res_true_now .le. rtol) then
+                                 gm_outcome = gm_tolerance_reached
+                                 exit
+                              endif
+                              if (n_true_rise .ge. gm_true_residual_rises) &
+                                 then
+                                 gm_outcome = gm_true_residual_turned
+                                 exit
+                              endif
+                              ! The iterate was measured and it has not
+                              ! reached the tolerance: the reduced
+                              ! problem's claim that it has does not end
+                              ! the cycle.
+                              reduced_tolerance_stops = .false.
+                           endif
+                        endif
+                     endif
+                  endif
+               endif
+            endif
+         endif
          ! --- HAS THE ITERATE LEFT THE TRUST BALL? (Steihaug-Toint) ---
          ! The iterate of the subspace built so far, and its image, are
          ! formed here from the rotated system and the Arnoldi columns: no
@@ -9316,7 +11288,7 @@
                endif
             endif
          endif
-         if (res_now .le. rtol*beta) then
+         if (res_now .le. rtol*beta .and. reduced_tolerance_stops) then
             ! CONVERGENCE CLAIMED AT A BREAKDOWN IS A CLAIM ABOUT THE
             ! REDUCED PROBLEM ONLY. Verified against the operator below.
             verify_true_residual = arnoldi_breakdown
@@ -9361,6 +11333,11 @@
             else
                w = w/D + idtau*z
             endif
+            ! AND THE ROW SCALING OF THE LINEAR MODEL, where the arm is on:
+            ! the operator the cycle works with is E A_z and the band it is
+            ! preconditioned by is E times the same band, so the two agree
+            ! (unit_infinity_norm_row_scaling_of_the_band).
+            if (row_equil_here) w = w*model_row_equilibration
             u = 0.0d0
             do ib = 1, min(jb+1, kv_set)
                u = u + Hb(ib,jb)*V(:,ib)
@@ -9383,6 +11360,11 @@
                   else
                      u = u/D + idtau*z
                   endif
+                  ! AND THE ROW SCALING OF THE LINEAR MODEL, where the arm is on:
+                  ! the operator the cycle works with is E A_z and the band it is
+                  ! preconditioned by is E times the same band, so the two agree
+                  ! (unit_infinity_norm_row_scaling_of_the_band).
+                  if (row_equil_here) u = u*model_row_equilibration
                   repro = sqrt(sum((u - w)**2))                           &
                         / max(sqrt(sum(w*w)), 1.0d-300)
                   write(*,'(A,ES11.3)') ' (JFNK) [image]   two products'//&
@@ -9418,6 +11400,11 @@
                   else
                      w = w/D + idtau*u
                   endif
+                  ! AND THE ROW SCALING OF THE LINEAR MODEL, where the arm is on:
+                  ! the operator the cycle works with is E A_z and the band it is
+                  ! preconditioned by is E times the same band, so the two agree
+                  ! (unit_infinity_norm_row_scaling_of_the_band).
+                  if (row_equil_here) w = w*model_row_equilibration
                   ! The sum of the two columns' own images, from the
                   ! Hessenberg the recursion wrote.
                   z = 0.0d0
@@ -9441,13 +11428,71 @@
          endif
       endif
 
+      ! --- IS THE ACTION ADDITIVE ACROSS DIRECTIONS? (jv_additivity_on) ---
+      ! Measured on the first two directions of the basis, which is the
+      ! pair the assembled step is built from, and on a pair that owes
+      ! nothing to the basis or to the preconditioner, so that a defect of
+      ! the operator is told from a defect the recursion selected for.
+      if (jv_additivity_on .and. jv_additivity_here .and.                 &
+          gm_iters .ge. 2) then
+         z = V(:,1)
+         call banded_preconditioner_solve(abf, ipiv, neq, z, lpinfo)
+         if (lpinfo .eq. 0) then
+            u = V(:,2)
+            call banded_preconditioner_solve(abf, ipiv, neq, u, lpinfo)
+         endif
+         if (lpinfo .eq. 0) then
+            call project_out_of_the_active_element_constraints(z)
+            call project_out_of_the_active_element_constraints(u)
+            call measure_the_additivity_of_the_jacobian_action(Y, F0,     &
+                 f_sp_base, D, D*z, D*u,                                  &
+                 'the first two directions of the basis')
+         endif
+         allocate(rv1(neq), rv2(neq))
+         call deterministic_unit_direction(20260910, rv1)
+         call deterministic_unit_direction(20260911, rv2)
+         call measure_the_additivity_of_the_jacobian_action(Y, F0,        &
+              f_sp_base, D, D*rv1, D*rv2, 'two directions off the basis')
+         deallocate(rv1, rv2)
+      endif
+
+      ! --- WHERE DOES THE RESIDUAL STEP? (resid_jump_scan_on) ---
+      ! Along the first direction of the basis, which is the one the
+      ! Arnoldi relation is built on and the one whose probe arc is short
+      ! enough for the floor to reach the quotient, and along one that
+      ! owes nothing to the basis, so that the density of steps in an arc
+      ! can be compared between the two.
+      if (resid_jump_scan_on .and. resid_jump_scan_here .and.             &
+          gm_iters .ge. 1) then
+         z = V(:,1)
+         call banded_preconditioner_solve(abf, ipiv, neq, z, lpinfo)
+         if (lpinfo .eq. 0) then
+            call project_out_of_the_active_element_constraints(z)
+            call scan_the_residual_along_a_direction(Y, F0, f_sp_base,    &
+                 D*z, 'the first direction of the basis')
+         endif
+         allocate(rv1(neq))
+         call deterministic_unit_direction(20260910, rv1)
+         call scan_the_residual_along_a_direction(Y, F0, f_sp_base,       &
+              D*rv1, 'a direction off the basis')
+         deallocate(rv1)
+         ! Once for the solve: a restart cycle of the same iteration is
+         ! the same state.
+         resid_jump_scan_here = .false.
+      endif
+
       ! --- the boundary point, where the cycle stopped on the ball ---
       ! The step and its image are already the point's; what is reported is
       ! the residual of THAT point, taken from the image the Arnoldi
       ! relation gives and so at no further product.
       if (stopped_on_the_ball) then
          if (every_component_is_finite(x)) then
-            gm_resid_rel = scaled_two_norm(b - Ax)/beta
+            ! THE IMAGE LEAVES THE CYCLE ON THE CERTIFICATION SCALES, and
+            ! so does the relative residual read from it, whatever rows
+            ! the cycle itself worked in.
+            if (row_equil_here) Ax = Ax/model_row_equilibration
+            gm_resid_rel = scaled_two_norm(b - Ax)                        &
+                         /max(beta_cert, 1.0d-300)
             gm_snorm     = scaled_two_norm(x)
          else
             x = 0.0d0;  Ax = 0.0d0
@@ -9455,6 +11500,44 @@
             gm_resid_rel = 1.0d0
             gm_snorm     = 0.0d0
          endif
+         call release_the_cycle_work_space(V,Hs,Hb,gg,cs,sn,yy,z,w,u,     &
+                                           yb,xb,Axb,xb_in,Axb_in)
+         return
+      endif
+
+      ! --- the step the TRUE residual chose (gm_step_by_its_true_residual)
+      ! What comes back is the candidate whose residual against the
+      ! operator was smallest, its own image from the product that measured
+      ! it, and that residual on the CERTIFICATION scales, which is the
+      ! norm every reader of gm_resid_rel works in. The reduced problem's
+      ! residual is not consulted: it is the quantity this arm exists to
+      ! stop trusting.
+      if (true_resid_here .and. have_a_best_step) then
+         x = xbest
+         if (row_equil_here) then
+            if (present(Ax)) Ax = Axbest/model_row_equilibration
+            gm_resid_rel = scaled_two_norm(b                             &
+                 - Axbest/model_row_equilibration)                        &
+                 /max(beta_cert, 1.0d-300)
+         else
+            if (present(Ax)) Ax = Axbest
+            gm_resid_rel = scaled_two_norm(b - Axbest)                   &
+                 /max(beta_cert, 1.0d-300)
+         endif
+         gm_snorm = scaled_two_norm(x)
+         if (gm_outcome .ne. gm_true_residual_turned) then
+            if (res_true_best .le. rtol) then
+               gm_outcome = gm_tolerance_reached
+            else
+               gm_outcome = gm_subspace_exhausted
+            endif
+         endif
+         if (gm_residual_history_on .and. gm_residual_history_here)      &
+            write(*,'(A,I4,A,ES12.5,A,ES12.5)') ' (JFNK) [diag 16] the'//&
+                 ' step of product ', j_true_best,                        &
+                 ' was kept: true residual in the cycle norm ',           &
+                 res_true_best, ', on the certification scales ',         &
+                 gm_resid_rel
          call release_the_cycle_work_space(V,Hs,Hb,gg,cs,sn,yy,z,w,u,     &
                                            yb,xb,Axb,xb_in,Axb_in)
          return
@@ -9536,6 +11619,33 @@
             enddo
          enddo
       endif
+      ! --- BACK TO THE CERTIFICATION SCALES, where the cycle worked in
+      ! the equilibrated rows. The image is divided by E, and the relative
+      ! residual handed back is read from THAT image against the
+      ! certification right-hand side: the reduced problem's residual
+      ! res_now/beta is a number in the cycle's own norm and no reader of
+      ! gm_resid_rel works in it. Neither costs a product. Where the
+      ! caller did not ask for the image, the same combination is assembled
+      ! into the work vector w for the residual alone.
+      if (row_equil_here) then
+         if (present(Ax)) then
+            Ax = Ax/model_row_equilibration
+            gm_resid_rel = scaled_two_norm(b - Ax)/max(beta_cert,1.0d-300)
+         else
+            w = 0.0d0
+            do j = 1, kk
+               do i = 1, min(j+1, kv_set)
+                  if (Hb(i,j) .ne. 0.0d0) w = w + (Hb(i,j)*yy(j))*V(:,i)
+               enddo
+            enddo
+            gm_resid_rel = scaled_two_norm(b - w/model_row_equilibration) &
+                         /max(beta_cert, 1.0d-300)
+         endif
+         if (elem_diag_here)                                             &
+            write(*,'(A,ES12.5,A,ES12.5)') ' (JFNK) [row equil] the'//   &
+                 ' cycle reached (equilibrated rows) ', res_now/beta,     &
+                 ', on the certification scales ', gm_resid_rel
+      endif
 
       ! --- what the step achieves against the operator itself ---
       ! One product of the scaled operator, taken only where the reduced
@@ -9552,8 +11662,20 @@
             else
                w = w/D + idtau*x
             endif
-            if (every_component_is_finite(w))                             &
-               gm_resid_rel = scaled_two_norm(b - w)/beta
+            ! AND THE ROW SCALING OF THE LINEAR MODEL, where the arm is on:
+            ! the operator the cycle works with is E A_z and the band it is
+            ! preconditioned by is E times the same band, so the two agree
+            ! (unit_infinity_norm_row_scaling_of_the_band).
+            if (row_equil_here) w = w*model_row_equilibration
+            if (every_component_is_finite(w)) then
+               if (row_equil_here) then
+                  gm_resid_rel = scaled_two_norm(b                       &
+                       - w/model_row_equilibration)                       &
+                       /max(beta_cert, 1.0d-300)
+               else
+                  gm_resid_rel = scaled_two_norm(b - w)/beta
+               endif
+            endif
          endif
       endif
 
@@ -9701,6 +11823,1234 @@
       Ax = Ax_sum
       if (gm_resid_rel .le. rtol) gm_outcome = gm_tolerance_reached
       end subroutine pgmres_with_restarts
+
+      ! ------------------------------------------------------!
+
+      subroutine krylov_cycle_over_subspace_sizes(Y, F0, f_sp_base, D,   &
+                        Drow, abf, ipiv, idtau, b, rtol)
+      ! IS IT THE SUBSPACE OR THE OPERATOR? The same cycle, at the same
+      ! iterate, over a ladder of subspace sizes (krylov_scan_size), and
+      ! the last two sizes again with the basis orthogonalized twice.
+      !
+      ! GMRES over a Krylov space of growing dimension reaches the exact
+      ! solution in at most neq products, and it reaches a given relative
+      ! residual in a number of products set by the clustering of the
+      ! spectrum of the preconditioned operator: a cycle that converges once
+      ! the subspace is large enough is an operator whose eigenvalues are
+      ! merely spread, which the size of the space can beat. A cycle that
+      ! stagnates at every size is an operator with a part the
+      ! preconditioner does not touch, and no amount of subspace removes it.
+      !
+      ! None of these steps is adopted: the solve's own cycle has already
+      ! run and returned the leg the trust region uses, and this scan is a
+      ! measurement of the same linear system with a different truncation.
+      ! Its residual samples are therefore held out of the solve's counts.
+      real*8, dimension(nvar_jac*N),  intent(in) :: Y, F0, b, D, Drow
+      real*8, dimension(1-Ng:N+Ng,n_species), intent(in) :: f_sp_base
+      real*8, dimension(2*kl_jac+ku_jac+1,nvar_jac*N), intent(in) :: abf
+      integer, dimension(nvar_jac*N), intent(in) :: ipiv
+      real*8,  intent(in) :: idtau, rtol
+      real*8, allocatable :: xs(:), w(:)
+      integer :: neq, is, msize, gmit, outcome, ipass
+      real*8  :: resid_rel, snorm, resid_true
+      logical :: jv_ok, reortho_at_entry
+      character(len=64) :: why_txt
+      type(residual_evaluation_products) :: products_at_entry
+      type(solve_refusal_statistics)     :: statistics_at_entry
+
+      neq = nvar_jac*N
+      allocate(xs(neq), w(neq))
+      call hold_residual_evaluation_products(products_at_entry)
+      call hold_solve_refusal_statistics(statistics_at_entry)
+      reortho_at_entry = gm_reorthogonalize
+      write(*,'(A,ES11.3)') ' (JFNK) [diag 16] the same linear system'// &
+           ' over a ladder of subspace sizes, ||b|| ', sqrt(sum(b*b))
+      ! Two passes: the basis orthogonalized once, then twice on the two
+      ! largest sizes, which is where a single Gram-Schmidt pass has had the
+      ! most room to lose the orthogonality the reduced problem assumes.
+      do ipass = 1, 2
+         gm_reorthogonalize = (ipass .eq. 2)
+         do is = 1, n_krylov_scan_size
+            msize = krylov_scan_size(is)
+            if (msize .gt. neq) cycle
+            if (ipass .eq. 2 .and. is .le. 2) cycle
+            gm_residual_history_here = .true.
+            call pgmres(Y, F0, f_sp_base, D, Drow, abf, ipiv, idtau, b,  &
+                        xs, msize, rtol, gmit, outcome, resid_rel, snorm)
+            gm_residual_history_here = .false.
+            ! WHAT THE RETURNED STEP REACHES AGAINST THE OPERATOR, not
+            ! against the reduced problem: one product of the operator on
+            ! the step the cycle hands back.
+            resid_true = -1.0d0
+            if (snorm .gt. 0.0d0) then
+               call jacobian_action_of_direction(Y, F0, f_sp_base, D*xs, &
+                                                 w, jv_ok)
+               if (jv_ok) then
+                  if (nspec_row .gt. 0) then
+                     w = w/Drow + idtau*(D/Drow)*xs
+                  else
+                     w = w/D + idtau*xs
+                  endif
+                  if (every_component_is_finite(w))                      &
+                     resid_true = sqrt(sum((b - w)**2))                  &
+                                / max(sqrt(sum(b*b)), 1.0d-300)
+               endif
+            endif
+            call gm_outcome_text(outcome, why_txt)
+            write(*,'(A,I4,A,L1,A,I4,A,ES12.5,A,ES12.5,A,ES11.3)')       &
+                 ' (JFNK) [diag 16] size ', msize,                       &
+                 ', orthogonalized twice ', gm_reorthogonalize,          &
+                 ': products ', gmit, ', reduced ', resid_rel,           &
+                 ', TRUE ', resid_true, ', ||x|| ', snorm
+            write(*,'(A,A)') ' (JFNK) [diag 16]   outcome: ',            &
+                 trim(why_txt)
+         enddo
+      enddo
+      gm_reorthogonalize = reortho_at_entry
+      call put_back_solve_refusal_statistics(statistics_at_entry)
+      call put_back_residual_evaluation_products(products_at_entry)
+      deallocate(xs, w)
+      end subroutine krylov_cycle_over_subspace_sizes
+
+      ! ------------------------------------------------------!
+
+      subroutine unknown_mask_of_the_row_class(kind_wanted, mask)
+      ! ONE OF THE THREE SETS OF UNKNOWNS the spectrum is compressed onto:
+      ! every unknown (0), the species rows, element and carrier alike (1),
+      ! and the three hydrodynamic rows (2). The mask is the diagonal of an
+      ! orthogonal projection, so a recursion that applies it after every
+      ! product builds the spectrum of the COMPRESSION P A P restricted to
+      ! the range of P, which is what "the operator on those rows" means.
+      integer,                       intent(in)  :: kind_wanted
+      real*8, dimension(nvar_jac*N), intent(out) :: mask
+      integer :: i, j, k
+      do i = 1, nvar_jac*N
+         j = (i - 1)/nvar_jac + 1
+         k = i - nvar_jac*(j - 1)
+         select case (kind_wanted)
+         case (1);  mask(i) = merge(1.0d0, 0.0d0, k .gt. 3)
+         case (2);  mask(i) = merge(1.0d0, 0.0d0, k .le. 3)
+         case default;  mask(i) = 1.0d0
+         end select
+      enddo
+      end subroutine unknown_mask_of_the_row_class
+
+      ! ------------------------------------------------------!
+
+      subroutine row_class_shares_of_a_vector(v, share, jcell, ncell_hit)
+      ! WHERE A VECTOR LIVES: the share of its squared norm carried by each
+      ! of the five row classes (mass, momentum, energy, element, carrier),
+      ! and the smallest set of CELLS that carries nine tenths of it, which
+      ! is what says whether a direction is a localized front feature or a
+      ! mode spread over the domain.
+      real*8, dimension(nvar_jac*N), intent(in)  :: v
+      real*8, dimension(5),          intent(out) :: share
+      integer, dimension(10),        intent(out) :: jcell
+      integer,                       intent(out) :: ncell_hit
+      real*8, dimension(N) :: wcell
+      real*8  :: total, running, wmax
+      integer :: i, j, k, ic, jmax
+      logical, dimension(N) :: taken
+      share = 0.0d0;  wcell = 0.0d0
+      do i = 1, nvar_jac*N
+         j = (i - 1)/nvar_jac + 1
+         k = i - nvar_jac*(j - 1)
+         if (k .le. 3) then
+            ic = k
+         else if (srow_kind(k-3) .eq. srow_carrier) then
+            ic = 5
+         else
+            ic = 4
+         endif
+         share(ic) = share(ic) + v(i)*v(i)
+         wcell(j)  = wcell(j)  + v(i)*v(i)
+      enddo
+      total = sum(share)
+      if (total .gt. 0.0d0) share = share/total
+      ! The cells taken in order of the weight they carry, until nine
+      ! tenths of the squared norm is accounted for.
+      taken = .false.;  running = 0.0d0;  ncell_hit = 0;  jcell = 0
+      do while (running .lt. 0.9d0*total .and. ncell_hit .lt. N)
+         wmax = -1.0d0;  jmax = 0
+         do j = 1, N
+            if (taken(j)) cycle
+            if (wcell(j) .gt. wmax) then
+               wmax = wcell(j);  jmax = j
+            endif
+         enddo
+         if (jmax .eq. 0 .or. wmax .le. 0.0d0) exit
+         taken(jmax) = .true.
+         running     = running + wmax
+         ncell_hit   = ncell_hit + 1
+         if (ncell_hit .le. 10) jcell(ncell_hit) = jmax
+      enddo
+      end subroutine row_class_shares_of_a_vector
+
+      ! ------------------------------------------------------!
+
+      subroutine ritz_values_of_a_matrix_free_operator(Y, F0, f_sp_base,&
+                        D, Drow, abf, ipiv, idtau, mask, kmax, V, wr, wi,&
+                        VR, ldvr, kdone, info)
+      ! THE RITZ VALUES OF A_z M^-1 COMPRESSED ONTO THE RANGE OF A MASK.
+      !
+      ! An Arnoldi recursion of at most kmax products from a deterministic
+      ! start inside the range of the mask, the mask applied after every
+      ! product so that the recursion stays there, and the basis
+      ! orthogonalized twice so that the Hessenberg is the operator's
+      ! compression and not the recursion's rounding. The Ritz values are
+      ! the eigenvalues of that Hessenberg (dgeev), and where kmax reaches
+      ! the dimension of the space they are the eigenvalues of the operator
+      ! itself.
+      !
+      ! The basis and the eigenvectors of the Hessenberg are handed back so
+      ! that the caller can form Ritz vectors from them; info is dgeev's,
+      ! and kdone the number of products the recursion managed.
+      real*8, dimension(nvar_jac*N),  intent(in) :: Y, F0, D, Drow, mask
+      real*8, dimension(1-Ng:N+Ng,n_species), intent(in) :: f_sp_base
+      real*8, dimension(2*kl_jac+ku_jac+1,nvar_jac*N), intent(in) :: abf
+      integer, dimension(nvar_jac*N), intent(in) :: ipiv
+      real*8,  intent(in) :: idtau
+      integer, intent(in) :: kmax, ldvr
+      real*8, dimension(nvar_jac*N,kmax+1), intent(out) :: V
+      real*8, dimension(kmax),      intent(out) :: wr, wi
+      real*8, dimension(ldvr,kmax), intent(out) :: VR
+      integer, intent(out) :: kdone, info
+      real*8, allocatable :: Hs(:,:), Hd(:,:), z(:), w(:), work(:), VL(:,:)
+      real*8  :: hnext, tmp
+      integer :: neq, i, j, kk, lpinfo, lwork
+      logical :: jv_ok, row_equil_here
+      neq   = nvar_jac*N
+      ! The spectrum measured is that of the operator the CYCLE runs, so
+      ! it carries the row scaling of the linear model where that arm is
+      ! on (the_linear_model_rows_are_equilibrated).
+      row_equil_here = the_linear_model_rows_are_equilibrated(neq)
+      kdone = 0;  info = 0
+      wr = 0.0d0;  wi = 0.0d0;  VR = 0.0d0
+      allocate(Hs(kmax+1,kmax), z(neq), w(neq))
+      Hs = 0.0d0
+      call deterministic_unit_direction(20260911, V(:,1))
+      V(:,1) = mask*V(:,1)
+      tmp = sqrt(sum(V(:,1)**2))
+      if (tmp .le. 0.0d0) then
+         deallocate(Hs, z, w)
+         return
+      endif
+      V(:,1) = V(:,1)/tmp
+      do j = 1, kmax
+         z = V(:,j)
+         call banded_preconditioner_solve(abf, ipiv, neq, z, lpinfo)
+         if (lpinfo .ne. 0 .or. .not. every_component_is_finite(z)) exit
+         call project_out_of_the_active_element_constraints(z)
+         call jacobian_action_of_direction(Y, F0, f_sp_base, D*z, w,     &
+                                           jv_ok)
+         if (.not. jv_ok) exit
+         if (nspec_row .gt. 0) then
+            w = w/Drow + idtau*(D/Drow)*z
+         else
+            w = w/D + idtau*z
+         endif
+         ! AND THE ROW SCALING OF THE LINEAR MODEL, where the arm is on:
+         ! the operator the cycle works with is E A_z and the band it is
+         ! preconditioned by is E times the same band, so the two agree
+         ! (unit_infinity_norm_row_scaling_of_the_band).
+         if (row_equil_here) w = w*model_row_equilibration
+         if (.not. every_component_is_finite(w)) exit
+         w = mask*w
+         do kk = 1, 2
+            do i = 1, j
+               tmp     = sum(w*V(:,i))
+               w       = w - tmp*V(:,i)
+               Hs(i,j) = Hs(i,j) + tmp
+            enddo
+         enddo
+         hnext = sqrt(sum(w*w))
+         kdone = j
+         if (hnext .le. 1.0d2*epsilon(1.0d0)*max(maxval(abs(Hs(1:j,j))), &
+                                                 1.0d-300)) exit
+         if (j .eq. kmax) exit
+         Hs(j+1,j) = hnext
+         V(:,j+1)  = w/hnext
+      enddo
+      if (kdone .lt. 1) then
+         deallocate(Hs, z, w)
+         return
+      endif
+      lwork = max(8*kdone, 16)
+      allocate(Hd(kdone,kdone), work(lwork), VL(1,1))
+      Hd = Hs(1:kdone,1:kdone)
+      call dgeev('N', 'V', kdone, Hd, kdone, wr, wi, VL, 1, VR, ldvr,    &
+                 work, lwork, info)
+      deallocate(Hd, work, VL, Hs, z, w)
+      end subroutine ritz_values_of_a_matrix_free_operator
+
+      ! ------------------------------------------------------!
+
+      subroutine ritz_values_of_the_preconditioned_operator(Y, F0,       &
+                        f_sp_base, D, Drow, abf, ipiv, idtau)
+      ! THE SPECTRUM OF THE PRECONDITIONED OPERATOR A_z M^-1, measured.
+      !
+      ! GMRES over a subspace of dimension k reduces the residual by a
+      ! factor bounded by the smallest value a polynomial of degree k that
+      ! is one at the origin can take on the spectrum. A spectrum clustered
+      ! away from the origin is beaten by a low-degree polynomial and the
+      ! cycle converges in a few products; eigenvalues arbitrarily close to
+      ! the origin force such a polynomial to stay near one there and no
+      ! subspace of moderate size reduces anything. So the question the
+      ! stalling cycle asks is answered by the eigenvalues near zero: how
+      ! many there are and which unknowns their eigenvectors live on.
+      !
+      ! Run three times: on the whole operator, and on its compressions
+      ! onto the species rows and onto the hydrodynamic rows, so that a
+      ! cluster near zero can be attributed to a class of unknowns.
+      real*8, dimension(nvar_jac*N),  intent(in) :: Y, F0, D, Drow
+      real*8, dimension(1-Ng:N+Ng,n_species), intent(in) :: f_sp_base
+      real*8, dimension(2*kl_jac+ku_jac+1,nvar_jac*N), intent(in) :: abf
+      integer, dimension(nvar_jac*N), intent(in) :: ipiv
+      real*8,  intent(in) :: idtau
+      real*8, allocatable :: V(:,:), mask(:), yritz(:)
+      real*8, allocatable :: wr(:), wi(:), VR(:,:)
+      integer, allocatable :: iorder(:)
+      real*8  :: tmp, amag, amin, amax
+      real*8  :: share(5)
+      integer :: neq, kdone, i, j, kk, ievinfo, iwhich, kmax
+      integer :: n_below_2, n_below_4, n_complex, ipick, jpick
+      integer :: jcell(10), ncell_hit, ic
+      character(len=24) :: what
+      type(residual_evaluation_products) :: products_at_entry
+      type(solve_refusal_statistics)     :: statistics_at_entry
+
+      neq  = nvar_jac*N
+      kmax = min(n_ritz_step, neq)
+      if (kmax .lt. 2) return
+      call hold_residual_evaluation_products(products_at_entry)
+      call hold_solve_refusal_statistics(statistics_at_entry)
+      allocate(V(neq,kmax+1), mask(neq), yritz(neq))
+      allocate(wr(kmax), wi(kmax), VR(kmax,kmax), iorder(kmax))
+
+      do iwhich = 0, 2
+         call unknown_mask_of_the_row_class(iwhich, mask)
+         select case (iwhich)
+         case (1);  what = 'the species rows'
+         case (2);  what = 'the hydrodynamic rows'
+         case default;  what = 'every row'
+         end select
+         if (iwhich .eq. 1 .and. nspec_row .le. 0) cycle
+         call ritz_values_of_a_matrix_free_operator(Y, F0, f_sp_base, D, &
+                   Drow, abf, ipiv, idtau, mask, kmax, V, wr, wi, VR,    &
+                   kmax, kdone, ievinfo)
+         if (kdone .lt. 2 .or. ievinfo .ne. 0) then
+            write(*,'(A,A,A,I0,A,I0)') ' (JFNK) [diag 15] ', trim(what), &
+                 ': the recursion managed ', kdone, ' products, dgeev'// &
+                 ' info ', ievinfo
+            cycle
+         endif
+         ! The Ritz values ordered by magnitude, smallest first.
+         do i = 1, kdone
+            iorder(i) = i
+         enddo
+         do i = 1, kdone-1
+            do j = i+1, kdone
+               if (hypot(wr(iorder(j)), wi(iorder(j))) .lt.              &
+                   hypot(wr(iorder(i)), wi(iorder(i)))) then
+                  kk = iorder(i);  iorder(i) = iorder(j);  iorder(j) = kk
+               endif
+            enddo
+         enddo
+         amin = hypot(wr(iorder(1)), wi(iorder(1)))
+         amax = hypot(wr(iorder(kdone)), wi(iorder(kdone)))
+         n_below_2 = 0;  n_below_4 = 0;  n_complex = 0
+         do i = 1, kdone
+            amag = hypot(wr(i), wi(i))
+            if (amag .lt. 1.0d-2) n_below_2 = n_below_2 + 1
+            if (amag .lt. 1.0d-4) n_below_4 = n_below_4 + 1
+            if (wi(i) .ne. 0.0d0) n_complex = n_complex + 1
+         enddo
+         write(*,'(A,A,A,I0,A)') ' (JFNK) [diag 15] the Ritz values'//   &
+              ' of the preconditioned operator on ', trim(what), ' (',   &
+              kdone, ' products):'
+         write(*,'(A,ES12.5,A,ES12.5,A,ES12.5)')                         &
+              ' (JFNK) [diag 15]   largest magnitude ', amax,            &
+              ', smallest ', amin, ', their ratio ',                     &
+              amax/max(amin, 1.0d-300)
+         write(*,'(A,I0,A,I0,A,I0,A,I0)')                                &
+              ' (JFNK) [diag 15]   below 1e-2: ', n_below_2,             &
+              ', below 1e-4: ', n_below_4, ', in complex pairs: ',       &
+              n_complex, ' of ', kdone
+         do i = 1, min(6, kdone)
+            write(*,'(A,I2,A,ES12.5,A,ES12.5,A,ES12.5)')                 &
+                 ' (JFNK) [diag 15]   smallest ', i, ': real ',          &
+                 wr(iorder(i)), ', imaginary ', wi(iorder(i)),           &
+                 ', magnitude ', hypot(wr(iorder(i)), wi(iorder(i)))
+         enddo
+         ! --- where the smallest Ritz vectors live ---
+         ! Only for the whole operator: the compressions' vectors live on
+         ! their own class by construction and say nothing new.
+         if (iwhich .ne. 0) cycle
+         if (allocated(ritz_vector_of_the_smallest))                     &
+            deallocate(ritz_vector_of_the_smallest)
+         if (allocated(ritz_value_of_the_smallest))                      &
+            deallocate(ritz_value_of_the_smallest)
+         allocate(ritz_vector_of_the_smallest(neq,3))
+         allocate(ritz_value_of_the_smallest(3))
+         ritz_vector_of_the_smallest = 0.0d0
+         ritz_value_of_the_smallest  = 0.0d0
+         do ipick = 1, min(3, kdone)
+            jpick = iorder(ipick)
+            ! A complex pair is stored by dgeev as two consecutive columns
+            ! holding the real and the imaginary part of one eigenvector;
+            ! the column indexed here is a vector of the two-dimensional
+            ! invariant subspace, which is the direction wanted.
+            yritz = 0.0d0
+            do i = 1, kdone
+               yritz = yritz + VR(i,jpick)*V(:,i)
+            enddo
+            tmp = sqrt(sum(yritz*yritz))
+            if (tmp .gt. 0.0d0) yritz = yritz/tmp
+            ritz_vector_of_the_smallest(:,ipick) = yritz
+            ritz_value_of_the_smallest(ipick)    =                       &
+                 hypot(wr(jpick), wi(jpick))
+            call row_class_shares_of_a_vector(yritz, share, jcell,       &
+                                              ncell_hit)
+            write(*,'(A,I2,A,ES12.5,A)') ' (JFNK) [diag 15]   the Ritz'//&
+                 ' vector of the smallest ', ipick, ' (magnitude ',      &
+                 ritz_value_of_the_smallest(ipick), '):'
+            do ic = 1, 5
+               if (share(ic) .lt. 1.0d-3) cycle
+               select case (ic)
+               case (1);  what = 'mass'
+               case (2);  what = 'momentum'
+               case (3);  what = 'energy'
+               case (4);  what = 'element'
+               case default;  what = 'carrier'
+               end select
+               write(*,'(A,A,A,F8.4)') ' (JFNK) [diag 15]     ',         &
+                    trim(what), ' rows carry a share ', share(ic)
+            enddo
+            write(*,'(A,I0,A,10(1X,I0))') ' (JFNK) [diag 15]     nine'// &
+                 ' tenths of it sits in ', ncell_hit, ' cells, the'//    &
+                 ' largest of them', (jcell(i), i = 1, min(10,           &
+                 ncell_hit))
+         enddo
+      enddo
+
+      deallocate(V, mask, yritz, wr, wi, VR, iorder)
+      call put_back_solve_refusal_statistics(statistics_at_entry)
+      call put_back_residual_evaluation_products(products_at_entry)
+      end subroutine ritz_values_of_the_preconditioned_operator
+
+      ! ------------------------------------------------------!
+
+      pure subroutine column_split_against_the_band(col, icol, ab,       &
+                        s_inside, s_band, s_outside, s_whole)
+      ! ONE COLUMN OF THE SCALED JACOBIAN SPLIT AGAINST THE BAND, in
+      ! squared norms: the part inside the band (s_inside), how far the
+      ! band's own entries there are from it (s_band), the part outside
+      ! the band, which the storage cannot hold (s_outside), and the whole
+      ! difference between the column and the band's padded column
+      ! (s_whole). The band is zero outside its half-width, so
+      ! s_whole = s_band + s_outside identically, and reporting both is
+      ! what makes the split a decomposition rather than two numbers.
+      real*8, dimension(nvar_jac*N), intent(in)  :: col
+      integer,                       intent(in)  :: icol
+      real*8, dimension(2*kl_jac+ku_jac+1,nvar_jac*N), intent(in) :: ab
+      real*8, intent(out) :: s_inside, s_band, s_outside, s_whole
+      integer :: irow
+      real*8  :: bandv
+      s_inside = 0.0d0;  s_band = 0.0d0;  s_outside = 0.0d0
+      s_whole  = 0.0d0
+      do irow = 1, nvar_jac*N
+         if (abs(irow - icol) .le. kl_jac) then
+            bandv    = ab(kl_jac+ku_jac+1 + irow - icol, icol)
+            s_inside = s_inside + col(irow)*col(irow)
+            s_band   = s_band   + (col(irow) - bandv)**2
+            s_whole  = s_whole  + (col(irow) - bandv)**2
+         else
+            s_outside = s_outside + col(irow)*col(irow)
+            s_whole   = s_whole   + col(irow)*col(irow)
+         endif
+      enddo
+      end subroutine column_split_against_the_band
+
+      ! ------------------------------------------------------!
+
+      subroutine what_the_band_omits_of_the_jacobian(Y, F0, f_sp_base,   &
+                        D, Drow, ab, abf, ipiv, idtau, r0)
+      ! WHAT THE BANDED PRECONDITIONER MISSES, measured against the full
+      ! finite-difference action at the same iterate.
+      !
+      ! The band holds |row - col| <= kl_jac, the stencil of the local
+      ! operator, and its entries are a colored finite difference of the
+      ! FULL residual (build_banded_jac_full), so two things separate it
+      ! from the operator the Krylov cycle samples: the entries OUTSIDE the
+      ! band, which the storage cannot hold at all and which are where the
+      ! radiation's column coupling and the elemental budget's reach live,
+      ! and the entries INSIDE it, which the coloring contaminates because
+      ! columns of one color are not in fact disjoint once the residual is
+      ! non-local.
+      !
+      ! Both are measured here. On the directions the spectrum named and on
+      ! the first two Arnoldi directions of the solve's own right-hand side:
+      ! the difference (A - A_band) v by row class and by cell. On the
+      ! columns those directions live on: the true scaled column, split into
+      ! the part inside the band, which is compared with the band's own
+      ! entries, and the part outside it, which the band does not have; and
+      ! the same column of the FROZEN-radiation residual, which is exactly
+      ! banded by construction, so that whatever the full column carries
+      ! outside the band is the non-local response and not the stencil.
+      real*8, dimension(nvar_jac*N),  intent(in) :: Y, F0, D, Drow, r0
+      real*8, dimension(1-Ng:N+Ng,n_species), intent(in) :: f_sp_base
+      real*8, dimension(2*kl_jac+ku_jac+1,nvar_jac*N), intent(in) :: ab
+      real*8, dimension(2*kl_jac+ku_jac+1,nvar_jac*N), intent(in) :: abf
+      integer, dimension(nvar_jac*N), intent(in) :: ipiv
+      real*8,  intent(in) :: idtau
+      real*8, allocatable :: v(:), Av(:), Abv(:), dif(:), z(:), w(:)
+      real*8, allocatable :: Fa(:), Fp(:), Yp(:), acol(:), fcol(:)
+      real*8, dimension(1-Ng:N+Ng,n_species) :: fwork
+      real*8, dimension(1-Ng:N+Ng) :: heatw, coolw, npartw
+      real*8  :: share(5), sh_dif(5)
+      integer :: jcell(10), ncell_hit
+      integer :: neq, i, j, k, iv, n_vec, lpinfo, icol, ncol_hit
+      integer :: irow, ic, jbind, kbind
+      integer, dimension(6) :: colpick
+      real*8  :: tmp, nrm_full, nrm_dif, s_in, s_out, s_band, s_all
+      real*8  :: s_whole
+      real*8  :: hstep, worst, diag_here, off_hydro, off_elem, off_carr
+      logical :: jv_ok, okp
+      character(len=48) :: txt
+      character(len=24) :: what
+      type(residual_evaluation_products) :: products_at_entry
+      type(solve_refusal_statistics)     :: statistics_at_entry
+
+      neq = nvar_jac*N
+      call hold_residual_evaluation_products(products_at_entry)
+      call hold_solve_refusal_statistics(statistics_at_entry)
+      allocate(v(neq), Av(neq), Abv(neq), dif(neq), z(neq), w(neq))
+      allocate(Fa(neq), Fp(neq), Yp(neq), acol(neq), fcol(neq))
+
+      ! --- the directions this is measured on ---
+      ! Three Ritz vectors of the smallest Ritz values, where the spectrum
+      ! hook has run at this iterate, and the first two Arnoldi directions
+      ! of the cycle's own right-hand side, which are the pair the assembled
+      ! step is mostly built from.
+      n_vec = 2
+      if (allocated(ritz_vector_of_the_smallest)) n_vec = 5
+
+      do iv = 1, n_vec
+         if (iv .le. 3 .and. allocated(ritz_vector_of_the_smallest)) then
+            v = ritz_vector_of_the_smallest(:,iv)
+            write(txt,'(A,I0)') 'the Ritz vector of the smallest ', iv
+         else
+            ! The Arnoldi directions, formed here: V1 is the normalized
+            ! right-hand side, V2 the part of A_z M^-1 V1 orthogonal to it.
+            tmp = sqrt(sum(r0*r0))
+            if (tmp .le. 0.0d0) cycle
+            v = -r0/tmp
+            if (iv .eq. n_vec) then
+               z = v
+               call banded_preconditioner_solve(abf, ipiv, neq, z,       &
+                                                lpinfo)
+               if (lpinfo .ne. 0) cycle
+               call project_out_of_the_active_element_constraints(z)
+               call jacobian_action_of_direction(Y, F0, f_sp_base, D*z,  &
+                                                 w, jv_ok)
+               if (.not. jv_ok) cycle
+               if (nspec_row .gt. 0) then
+                  w = w/Drow + idtau*(D/Drow)*z
+               else
+                  w = w/D + idtau*z
+               endif
+               w = w - sum(w*v)*v
+               tmp = sqrt(sum(w*w))
+               if (tmp .le. 0.0d0) cycle
+               v = w/tmp
+               txt = 'the second Arnoldi direction'
+            else
+               txt = 'the first Arnoldi direction'
+            endif
+         endif
+         if (sqrt(sum(v*v)) .le. 0.0d0) cycle
+         ! --- (A - A_band) v ---
+         call jacobian_action_of_direction(Y, F0, f_sp_base, D*v, Av,    &
+                                           jv_ok)
+         if (.not. jv_ok) cycle
+         Av = Av/Drow
+         call band_matvec(ab, v, Abv)
+         dif = Av - Abv
+         nrm_full = sqrt(sum(Av*Av))
+         nrm_dif  = sqrt(sum(dif*dif))
+         write(*,'(A,A)') ' (JFNK) [diag 17] ', trim(txt)
+         call row_class_shares_of_a_vector(v, share, jcell, ncell_hit)
+         call row_class_shares_of_a_vector(dif, sh_dif, jcell, ncell_hit)
+         write(*,'(A,ES12.5,A,ES12.5,A,ES12.5)')                         &
+              ' (JFNK) [diag 17]   ||A v|| ', nrm_full,                  &
+              ', ||(A - A_band) v|| ', nrm_dif, ', their ratio ',        &
+              nrm_dif/max(nrm_full, 1.0d-300)
+         do ic = 1, 5
+            if (sh_dif(ic) .lt. 1.0d-3 .and. share(ic) .lt. 1.0d-3) cycle
+            select case (ic)
+            case (1);  what = 'mass'
+            case (2);  what = 'momentum'
+            case (3);  what = 'energy'
+            case (4);  what = 'element'
+            case default;  what = 'carrier'
+            end select
+            write(*,'(A,A,A,F8.4,A,F8.4)') ' (JFNK) [diag 17]     ',     &
+                 trim(what), ' rows: share of the direction ', share(ic),&
+                 ', share of the difference ', sh_dif(ic)
+         enddo
+         write(*,'(A,I0,A,10(1X,I0))') ' (JFNK) [diag 17]     nine'//    &
+              ' tenths of the difference sits in ', ncell_hit,           &
+              ' cells, the largest of them',                             &
+              (jcell(i), i = 1, min(10, ncell_hit))
+
+         ! --- the columns the direction lives on ---
+         ! Up to six unknowns of largest weight in v: for each, the true
+         ! scaled column against the band's own, inside and outside.
+         colpick = 0;  ncol_hit = 0
+         do k = 1, 6
+            worst = -1.0d0;  icol = 0
+            do i = 1, neq
+               if (any(colpick(1:k-1) .eq. i)) cycle
+               if (abs(v(i)) .gt. worst) then
+                  worst = abs(v(i));  icol = i
+               endif
+            enddo
+            if (icol .eq. 0 .or. worst .le. 0.0d0) exit
+            colpick(k) = icol;  ncol_hit = k
+         enddo
+         if (iv .gt. 1) cycle
+         ! The base point of the differences, and the heat, cool and
+         ! particle count the frozen residual needs, from one evaluation of
+         ! the iterate.
+         call eval_residual(Y, f_sp_base, fwork, Fa, heatw, coolw,       &
+                            npartw, admissible=okp,                      &
+                            may_be_adopted=.false.,                      &
+                            state_is_discarded=.true.,                   &
+                            n_eq_sweeps_fixed=n_eq_sweeps_model)
+         if (.not. okp) cycle
+         call frozen_residual(Y, npartw, heatw, coolw, fcol)
+         hstep = sqrt(epsilon(1.0d0))
+         do k = 1, ncol_hit
+            icol = colpick(k)
+            Yp = Y
+            Yp(icol) = Y(icol) + hstep*D(icol)
+            call eval_residual(Yp, f_sp_base, fwork, Fp, heatw, coolw,   &
+                               admissible=okp, may_be_adopted=.false.,   &
+                               state_is_discarded=.true.,                &
+                               n_eq_sweeps_fixed=n_eq_sweeps_model)
+            call name_of_unknown(icol, txt)
+            if (.not. okp) then
+               write(*,'(A,A,A)') ' (JFNK) [diag 17]   ', trim(txt),     &
+                    ': the probe state is not describable, no column'
+               cycle
+            endif
+            ! The SCALED column A(:,icol) = Drow^-1 (dF/dY) D, and the
+            ! step was taken on D, so the column scale cancels the step
+            ! and what is left is the difference over the step alone.
+            acol = (Fp - Fa)/hstep/Drow
+            ! The same column with the radiation held fixed, which is
+            ! exactly banded: whatever the full column carries beyond the
+            ! stencil and this one does not is the non-local response.
+            call frozen_residual(Yp, npartw, heatw, coolw, Fp)
+            w = (Fp - fcol)/hstep/Drow
+            call column_split_against_the_band(acol, icol, ab, s_in,     &
+                                               s_band, s_out, s_whole)
+            s_all = s_in + s_out
+            tmp = 0.0d0
+            do irow = 1, neq
+               if (abs(irow - icol) .gt. kl_jac) tmp = tmp + w(irow)**2
+            enddo
+            write(*,'(A,A)') ' (JFNK) [diag 17]   the column of ',       &
+                 trim(txt)
+            write(*,'(A,ES11.3,A,F9.5,A,F9.5)')                          &
+                 ' (JFNK) [diag 17]     ||column|| ', sqrt(s_all),       &
+                 ', outside the band ', sqrt(s_out)/max(sqrt(s_all),     &
+                 1.0d-300), ', inside it, against the band''s entries ', &
+                 sqrt(s_band)/max(sqrt(s_all), 1.0d-300)
+            write(*,'(A,ES11.3,A,ES11.3)')                               &
+                 ' (JFNK) [diag 17]     the frozen-radiation column'//   &
+                 ' outside the band ', sqrt(tmp), ', of ',               &
+                 sqrt(sum(w*w))
+            ! THE SPLIT ACCOUNTS FOR THE WHOLE DIFFERENCE. Reported so that
+            ! the two parts are read as a decomposition and not as two
+            ! unrelated numbers.
+            write(*,'(A,ES11.3,A,ES11.3)')                               &
+                 ' (JFNK) [diag 17]     the two parts sum to ',          &
+                 sqrt(s_band + s_out),                                   &
+                 ' against the whole difference ', sqrt(s_whole)
+         enddo
+      enddo
+
+      ! --- (c) THE BAND ROW OF THE ROW THAT BINDS ---
+      ! Which unknowns the model believes the binding row responds to,
+      ! grouped by class and read against the row's own diagonal: an element
+      ! row whose coupling to the hydrodynamic rows of its own cell is a
+      ! large multiple of its diagonal is a row the preconditioner cannot
+      ! solve one unknown at a time.
+      worst = -1.0d0;  irow = 1
+      do i = 1, neq
+         if (abs(r0(i)) .gt. worst) then
+            worst = abs(r0(i));  irow = i
+         endif
+      enddo
+      jbind = (irow - 1)/nvar_jac + 1
+      kbind = irow - nvar_jac*(jbind - 1)
+      call name_of_unknown(irow, txt)
+      diag_here = ab(kl_jac+ku_jac+1, irow)
+      off_hydro = 0.0d0;  off_elem = 0.0d0;  off_carr = 0.0d0
+      do i = max(1, irow - kl_jac), min(neq, irow + ku_jac)
+         if (i .eq. irow) cycle
+         tmp = abs(ab(kl_jac+ku_jac+1 + irow - i, i))
+         j = (i - 1)/nvar_jac + 1
+         k = i - nvar_jac*(j - 1)
+         if (k .le. 3) then
+            off_hydro = off_hydro + tmp
+         else if (srow_kind(k-3) .eq. srow_carrier) then
+            off_carr = off_carr + tmp
+         else
+            off_elem = off_elem + tmp
+         endif
+      enddo
+      write(*,'(A,A)') ' (JFNK) [diag 17] the band row of the row the'// &
+           ' merit is largest on: ', trim(txt)
+      write(*,'(A,ES12.5,A,ES12.5)') ' (JFNK) [diag 17]   diagonal ',    &
+           diag_here, ', sum of the off-diagonal magnitudes ',           &
+           off_hydro + off_elem + off_carr
+      write(*,'(A,ES11.3,A,ES11.3,A,ES11.3)')                            &
+           ' (JFNK) [diag 17]   as a fraction of the diagonal:'//        &
+           ' hydrodynamic ', off_hydro/max(abs(diag_here), 1.0d-300),    &
+           ', element ', off_elem/max(abs(diag_here), 1.0d-300),         &
+           ', carrier ', off_carr/max(abs(diag_here), 1.0d-300)
+
+      deallocate(v, Av, Abv, dif, z, w)
+      deallocate(Fa, Fp, Yp, acol, fcol)
+      call put_back_solve_refusal_statistics(statistics_at_entry)
+      call put_back_residual_evaluation_products(products_at_entry)
+      end subroutine what_the_band_omits_of_the_jacobian
+
+      ! ------------------------------------------------------!
+
+      double precision function value_of_the_species_unknown(yv, isrow,   &
+                                                    jcell) result(x)
+      ! THE QUANTITY A SPECIES UNKNOWN NAMES, whichever variable the solve
+      ! carries it in: the carrier density in code units, through the
+      ! exponential where the carrier is carried in logarithm
+      ! (carrier_density_from_unknown), and the element mass fraction or
+      ! mixing ratio itself for an element row.
+      real*8,  intent(in) :: yv
+      integer, intent(in) :: isrow, jcell
+      x = yv
+      if (isrow .lt. 1 .or. isrow .gt. nspec_row) return
+      if (srow_kind(isrow) .eq. srow_carrier)                             &
+         x = carrier_density_from_unknown(yv, jcell)
+      end function value_of_the_species_unknown
+
+      ! ------------------------------------------------------!
+
+      double precision function species_row_from_its_terms(t) result(rw)
+      ! THE ROW ITS TERMS COMPOSE.  A transported species row is
+      !     div(J_diffusive) + div(F_rho Y^face) - S_chemical ,
+      ! so the three terms of a term set sum to the row with the chemical
+      ! one carrying the minus sign.  It is stated once, here, so that the
+      ! measurement and the test read one expression.
+      type(species_row_term_set), intent(in) :: t
+      rw = t%diffusive + t%adv_total - t%chemical
+      end function species_row_from_its_terms
+
+      ! ------------------------------------------------------!
+
+      double precision function attributed_jacobian_entry(term_at_step,   &
+                          term_at_base, hstep, to_code, dcol, drow)       &
+                          result(a)
+      ! ONE TERM'S CONTRIBUTION TO ONE ENTRY OF THE SCALED BANDED MODEL.
+      !
+      ! The band holds Drow^-1 J D, and the residual row is the operator's
+      ! row written per code time in code density units (to_code), so the
+      ! entry a term contributes to column jcol of row irow is the term's
+      ! own one-sided difference quotient along that column, in the same
+      ! two-sided scaling:
+      !
+      !     (term(Y + h e_jcol) - term(Y)) / h  x  to_code x D(jcol)
+      !                                          / Drow(irow) .
+      !
+      ! With the step h that built the column (sqrt(eps) D(jcol)) the sum
+      ! of the terms' quotients is the row's own, which is the band entry
+      ! up to the contamination a coloured probe suffers from the other
+      ! columns of its colour.
+      real*8, intent(in) :: term_at_step, term_at_base, hstep, to_code
+      real*8, intent(in) :: dcol, drow
+      a = 0.0d0
+      if (hstep .eq. 0.0d0 .or. drow .eq. 0.0d0) return
+      a = (term_at_step - term_at_base)/hstep*to_code*dcol/drow
+      end function attributed_jacobian_entry
+
+      ! ------------------------------------------------------!
+
+      subroutine terms_of_a_transported_species_row(isrow, jcell, rho,   &
+                                                    Tst, f_sp, t)
+      ! EVERY TERM OF ONE TRANSPORTED SPECIES ROW, on the state whose
+      ! residual was evaluated last.
+      !
+      ! The operator that owns a row returns its terms summed.  They are
+      ! separated here the way write_element_row_terms separates two of
+      ! them: the SAME operator is evaluated again on the SAME state with
+      ! the face mass flux MASKED, and the divergence of a face species
+      ! flux is exactly zero wherever the mass flux it multiplies is
+      ! (species_face_flux, species_flux_divergence).  Masking every face
+      ! but one leaves that face's contribution standing alone, so the two
+      ! faces of the cell are read separately and nothing is approximated.
+      !
+      ! The chemical source of a carrier is the same evaluation the row
+      ! made, at the cell's own frozen background (carrier_source).  An
+      ! element row has none: no reaction makes or destroys a nucleus, so
+      ! the row is transport against transport.
+      !
+      ! WHAT THE CALLER MUST HAVE DONE.  The row values and their scales
+      ! are the products of the last residual evaluation (crow_res_last,
+      ! erow_he, erow_tr), and the face mass flux is the stored one of that
+      ! same assembly, which face_mass_flux_of_state refuses to hand over
+      ! for another state.  So this reads the state the caller evaluated
+      ! and cannot silently read a different one.
+      integer,                                intent(in)  :: isrow, jcell
+      real*8, dimension(1-Ng:N+Ng),           intent(in)  :: rho, Tst
+      real*8, dimension(1-Ng:N+Ng,n_species), intent(in)  :: f_sp
+      type(species_row_term_set),             intent(out) :: t
+
+      real*8, dimension(1-Ng:N+Ng) :: Frho, Fmask, msum
+      real*8, dimension(1-Ng:N+Ng) :: ntot_c, nrho_c, wfac_c, TK_c
+      real*8, dimension(1-Ng:N+Ng) :: mbar_c, nH_free, nO_free, nC_free
+      real*8, dimension(1-Ng:N+Ng,n_carrier_max) :: fc
+      real*8, dimension(1:N,n_carrier_max) :: adv, advmag
+      real*8, dimension(1:N)         :: rhe_d, she_d
+      real*8, dimension(1:N,n_melem) :: rtr_d, str_d
+      logical, dimension(n_melem)    :: carried_d
+      real*8  :: nc(n_carrier_max), src(n_carrier_max)
+      real*8  :: fr_rp, fr_rm, fr_ap, fr_am, fr_dv, fr_tconv, fr_mc
+      real*8  :: fr_cf
+      logical :: ok_he_d, ok_tr_d
+      integer :: ic, im, jd
+
+      t%ok = .false.
+      if (isrow .lt. 1 .or. isrow .gt. nspec_row) return
+      if (jcell .lt. 1 .or. jcell .gt. N) return
+
+      call face_mass_flux_of_state(rho, Frho)
+      t%frho_left  = Frho(jcell-1)
+      t%frho_right = Frho(jcell)
+      fr_rp = r_edg(jcell)
+      fr_rm = r_edg(jcell-1)
+      fr_ap = fr_rp*fr_rp
+      fr_am = fr_rm*fr_rm
+      fr_dv = (fr_ap*fr_rp - fr_am*fr_rm)/3.0d0
+
+      if (srow_kind(isrow) .eq. srow_carrier) then
+         if (.not. allocated(crow_res_last)) return
+         ic = srow_idx(isrow)
+         call carrier_state(rho, f_sp, fc, ntot_c, nrho_c, wfac_c, TK_c, &
+                            mbar_c, nH_free, nO_free, nC_free)
+         call mixture_mass_sum(f_sp, msum)
+         call carrier_advective_divergence(fc, msum, Frho, adv, advmag)
+         t%adv_total = adv(jcell,ic)
+         Fmask = 0.0d0;  Fmask(jcell) = Frho(jcell)
+         call carrier_advective_divergence(fc, msum, Fmask, adv, advmag)
+         t%adv_right = adv(jcell,ic)
+         Fmask = 0.0d0;  Fmask(jcell-1) = Frho(jcell-1)
+         call carrier_advective_divergence(fc, msum, Fmask, adv, advmag)
+         t%adv_left = adv(jcell,ic)
+         ! The face mass fraction each masked evaluation carried, read back
+         ! out of its own divergence: the term is A F_rho Y^face / dV times
+         ! the conversion, so dividing by everything but Y^face returns it.
+         fr_tconv = n0*v0/R0
+         fr_mc    = carrier_mass_amu(ic)
+         fr_cf    = msum(jcell)/fr_mc*fr_tconv
+         if (Frho(jcell) .ne. 0.0d0)                                     &
+            t%yface_right = t%adv_right*fr_dv/(fr_ap*Frho(jcell)*fr_cf)
+         if (Frho(jcell-1) .ne. 0.0d0)                                   &
+            t%yface_left = -t%adv_left*fr_dv/(fr_am*Frho(jcell-1)*fr_cf)
+         ! The donor cell of each face is the side the face MASS FLUX
+         ! selects, which is the rule species_face_fraction upwinds on.
+         jd = jcell;  if (Frho(jcell)   .lt. 0.0d0) jd = jcell+1
+         t%ydonor_right = fr_mc*fc(min(jd,N+Ng),ic)/msum(min(jd,N+Ng))
+         jd = jcell-1;  if (Frho(jcell-1) .lt. 0.0d0) jd = jcell
+         t%ydonor_left  = fr_mc*fc(max(jd,1-Ng),ic)/msum(max(jd,1-Ng))
+         t%adv_donor = (fr_ap*Frho(jcell)*t%ydonor_right                 &
+                      - fr_am*Frho(jcell-1)*t%ydonor_left)/fr_dv*fr_cf
+         nc = fc(jcell,:)*nrho_c(jcell)
+         call carrier_source(jcell, nc, nH_free(jcell), nO_free(jcell),  &
+                             src)
+         t%chemical  = src(ic)
+         t%row       = crow_res_last(jcell,ic)
+         t%row_scale = crow_terms_last(jcell,ic)
+         t%diffusive = t%row - t%adv_total + t%chemical
+         t%density   = nc(ic)
+         t%to_code   = R0/(v0*n0)
+         t%ok        = .true.
+         return
+      endif
+
+      ! --- an element row: transport against transport ---
+      if (.not. allocated(erow_he)) return
+      Fmask = 0.0d0
+      call element_transport_residual(rho, Tst, f_sp, Fmask, rhe_d,      &
+               she_d, ok_he_d, rtr_d, str_d, ok_tr_d, tr_carried=carried_d)
+      if (.not. ok_he_d) return
+      if (srow_kind(isrow) .eq. srow_element_he) then
+         t%diffusive = rhe_d(jcell)
+         t%row       = erow_he(jcell)
+         t%row_scale = escale_he(jcell)
+         t%to_code   = elem_he_to_code()
+      else
+         im = srow_idx(isrow)
+         if (.not. ok_tr_d) return
+         if (.not. erow_tr_carried(im)) return
+         t%diffusive = rtr_d(jcell,im)
+         t%row       = erow_tr(jcell,im)
+         t%row_scale = escale_tr(jcell,im)
+         t%to_code   = elem_tr_to_code()
+      endif
+      t%adv_total = t%row - t%diffusive
+      Fmask = 0.0d0;  Fmask(jcell) = Frho(jcell)
+      call element_transport_residual(rho, Tst, f_sp, Fmask, rhe_d,      &
+               she_d, ok_he_d, rtr_d, str_d, ok_tr_d, tr_carried=carried_d)
+      if (srow_kind(isrow) .eq. srow_element_he) then
+         t%adv_right = rhe_d(jcell) - t%diffusive
+      else
+         t%adv_right = rtr_d(jcell,srow_idx(isrow)) - t%diffusive
+      endif
+      Fmask = 0.0d0;  Fmask(jcell-1) = Frho(jcell-1)
+      call element_transport_residual(rho, Tst, f_sp, Fmask, rhe_d,      &
+               she_d, ok_he_d, rtr_d, str_d, ok_tr_d, tr_carried=carried_d)
+      if (srow_kind(isrow) .eq. srow_element_he) then
+         t%adv_left = rhe_d(jcell) - t%diffusive
+      else
+         t%adv_left = rtr_d(jcell,srow_idx(isrow)) - t%diffusive
+      endif
+      t%chemical = 0.0d0
+      t%ok       = .true.
+
+      end subroutine terms_of_a_transported_species_row
+
+      ! ------------------------------------------------------!
+
+      subroutine the_binding_species_row(Y, f_sp, D, Drow, ab, r0)
+      ! THE SPECIES ROW THAT BINDS, TERM BY TERM, AND ITS JACOBIAN ENTRIES
+      ! ATTRIBUTED TO THOSE TERMS (front_row_on, EXHALE_FRONT_ROW=1).
+      !
+      ! The band row of the binding species row was measured to have a
+      ! diagonal three decades below its coupling to the hydrodynamic
+      ! unknowns of its own stencil.  A diagonal is the row's response to
+      ! its own unknown; the row is a sum of terms; so the question is
+      ! which term carries which response, and it is answered by the only
+      ! device that can answer it, re-forming every term at a displaced
+      ! state.
+      !
+      ! WHAT IS MEASURED.  For the binding species row and its two
+      ! neighbors in the same species:
+      !   (a) every term of the row on its certification scale, the two
+      !       advective faces separately with the upwind side and the
+      !       reconstructed face value beside the donor cell's own;
+      !   (b) the band's entries for that row, to its own unknown, to the
+      !       same unknown in the two neighbors and to the three
+      !       hydrodynamic unknowns of the three cells, each as a number
+      !       and as a multiple of the diagonal;
+      !   (c) the same entries split by TERM: each term of the row is
+      !       re-formed at Y and at Y displaced along one column by the
+      !       step build_banded_jac_full uses for that column, and the
+      !       difference quotients are reported.  Their sum is the row's
+      !       own difference quotient, which is what the band entry is up
+      !       to the contamination one coloured probe suffers from the
+      !       other columns of its colour;
+      !   (d) the local cell Peclet number of the row (its advective term
+      !       against its diffusive one), the logarithmic gradient of the
+      !       unknown across the cell, and, for a carrier, the ratio of
+      !       the chemical time scale to the advective one.
+      !
+      ! COST: one residual evaluation for each column probed, four
+      ! unknowns in each of 2*n_front_row_halfwidth+1 cells.  It adopts
+      ! nothing: the products of every evaluation are held at entry and put
+      ! back at exit, as the other measurements of this iterate do.
+      real*8, dimension(nvar_jac*N),                   intent(in) :: Y
+      real*8, dimension(1-Ng:N+Ng,n_species),          intent(in) :: f_sp
+      real*8, dimension(nvar_jac*N),                   intent(in) :: D
+      real*8, dimension(nvar_jac*N),                   intent(in) :: Drow
+      real*8, dimension(2*kl_jac+ku_jac+1,nvar_jac*N), intent(in) :: ab
+      real*8, dimension(nvar_jac*N),                   intent(in) :: r0
+
+      type(residual_evaluation_products) :: products_at_entry
+      type(species_row_term_set) :: t0(3), tp(3)
+      real*8, dimension(:), allocatable :: Yp, Fvec, heat, cool
+      real*8, dimension(:,:), allocatable :: fwork
+      real*8, dimension(:),   allocatable :: rho_s, T_s
+      real*8, dimension(:,:), allocatable :: f_s
+      character(len=64) :: txt, cname
+      real*8  :: sqeps, hstep, band, dq_row, dq_adv, dq_dif, dq_chm
+      real*8  :: dq_donor, diag_here, dscale, xm, xp, gradln
+      real*8  :: tau_chem, tau_adv, peclet, worst
+      integer :: fr_neq, i, k, jj, irow, ibind, jbind, isrow, ir
+      integer :: jlo, jhi, jc, jcol, kk, m, nrows, jrow(3)
+      logical :: cap_saved, ok_p
+
+      if (.not. front_row_on) return
+      if (nspec_row .le. 0) return
+      fr_neq = nvar_jac*N
+
+      ! --- the row that binds among the SPECIES rows ---
+      ! The largest scaled row of the whole vector may be hydrodynamic
+      ! (measured, the atomic reload), and this item is about the species
+      ! rows, so the two are reported separately and the species one is
+      ! the subject.
+      worst = -1.0d0;  ibind = 0
+      do i = 1, fr_neq
+         jj = (i - 1)/nvar_jac + 1
+         k  = i - nvar_jac*(jj - 1)
+         if (k .le. 3) cycle
+         if (abs(r0(i)) .gt. worst) then
+            worst = abs(r0(i));  ibind = i
+         endif
+      enddo
+      if (ibind .le. 0) return
+      jbind = (ibind - 1)/nvar_jac + 1
+      isrow = ibind - nvar_jac*(jbind - 1) - 3
+      if (isrow .lt. 1 .or. isrow .gt. nspec_row) return
+      call name_of_unknown(ibind, txt)
+      worst = -1.0d0;  irow = 1
+      do i = 1, fr_neq
+         if (abs(r0(i)) .gt. worst) then
+            worst = abs(r0(i));  irow = i
+         endif
+      enddo
+      call name_of_unknown(irow, cname)
+      write(*,'(A,A,A,ES12.5)') ' (JFNK) [diag 18] the species row that'//&
+           ' binds: ', trim(txt), ', scaled residual ',                  &
+           abs(r0(ibind))
+      write(*,'(A,A,A,ES12.5)') ' (JFNK) [diag 18]   the largest scaled'//&
+           ' row of the whole vector: ', trim(cname), ', ',              &
+           abs(r0(irow))
+
+      nrows = 0
+      do m = -1, 1
+         jc = jbind + m
+         if (jc .lt. 1 .or. jc .gt. N) cycle
+         nrows = nrows + 1
+         jrow(nrows) = jc
+      enddo
+
+      allocate(Yp(fr_neq), Fvec(fr_neq))
+      allocate(heat(1-Ng:N+Ng), cool(1-Ng:N+Ng))
+      allocate(fwork(1-Ng:N+Ng,n_species))
+      allocate(rho_s(1-Ng:N+Ng), T_s(1-Ng:N+Ng))
+      allocate(f_s(1-Ng:N+Ng,n_species))
+
+      call hold_residual_evaluation_products(products_at_entry)
+      cap_saved = resid_capture_operator_state
+      resid_capture_operator_state = .true.
+
+      ! --- (a) the terms of the three rows at the iterate ---
+      call eval_residual(Y, f_sp, fwork, Fvec, heat, cool,               &
+                         n_eq_sweeps_fixed=n_eq_sweeps_model)
+      rho_s = captured_state_with_ghosts(1,:)
+      T_s   = captured_temperature
+      f_s   = fwork
+      do ir = 1, nrows
+         call terms_of_a_transported_species_row(isrow, jrow(ir), rho_s, &
+                                                 T_s, f_s, t0(ir))
+         t0(ir)%unknown = Y(nvar_jac*(jrow(ir)-1)+3+isrow)
+      enddo
+
+      do ir = 1, nrows
+         jc = jrow(ir)
+         i  = nvar_jac*(jc-1) + 3 + isrow
+         call name_of_unknown(i, txt)
+         if (.not. t0(ir)%ok) then
+            write(*,'(A,A,A)') ' (JFNK) [diag 18] ', trim(txt),          &
+                 ': the operator posed no row here'
+            cycle
+         endif
+         dscale = max(t0(ir)%row_scale, cert_scale_floor)
+         write(*,'(A,A,A,F9.6,A,ES13.6,A,ES12.5)')                       &
+              ' (JFNK) [diag 18] ', trim(txt), ': r ', r(jc),            &
+              ', unknown ', t0(ir)%unknown, ', row scale ',              &
+              t0(ir)%row_scale
+         write(*,'(A,ES12.5,A,ES12.5,A,ES12.5,A,ES12.5)')                &
+              ' (JFNK) [diag 18]   on the certification scale: row ',    &
+              t0(ir)%row/dscale, ', diffusive ',                         &
+              t0(ir)%diffusive/dscale, ', advective ',                   &
+              t0(ir)%adv_total/dscale, ', chemical ',                    &
+              -t0(ir)%chemical/dscale
+         ! The first-order upwind form of the advective term is formed
+         ! for a CARRIER row only: it is the reconstruction of the face
+         ! composition that the limiter acts on, and the carrier row is
+         ! the one whose limiter is in question here.
+         if (srow_kind(isrow) .eq. srow_carrier) then
+            write(*,'(A,ES12.5,A,ES12.5,A,ES12.5)')                      &
+                 ' (JFNK) [diag 18]   advective faces: inner ',          &
+                 t0(ir)%adv_left/dscale, ', outer ',                     &
+                 t0(ir)%adv_right/dscale, ', first-order upwind total ', &
+                 t0(ir)%adv_donor/dscale
+         else
+            write(*,'(A,ES12.5,A,ES12.5)')                               &
+                 ' (JFNK) [diag 18]   advective faces: inner ',          &
+                 t0(ir)%adv_left/dscale, ', outer ',                     &
+                 t0(ir)%adv_right/dscale
+         endif
+         write(*,'(A,ES12.5,A,ES12.5)')                                  &
+              ' (JFNK) [diag 18]   face mass flux: inner ',              &
+              t0(ir)%frho_left, ', outer ', t0(ir)%frho_right
+         if (srow_kind(isrow) .eq. srow_carrier) then
+            write(*,'(A,ES12.5,A,ES12.5,A,ES12.5,A,ES12.5)')             &
+                 ' (JFNK) [diag 18]   face fraction reconstructed:'//    &
+                 ' inner ', t0(ir)%yface_left, ' against donor ',        &
+                 t0(ir)%ydonor_left, ', outer ', t0(ir)%yface_right,     &
+                 ' against donor ', t0(ir)%ydonor_right
+            tau_chem = 0.0d0;  tau_adv = 0.0d0
+            if (t0(ir)%chemical .ne. 0.0d0)                              &
+               tau_chem = t0(ir)%density/abs(t0(ir)%chemical)
+            if (t0(ir)%adv_total .ne. 0.0d0)                             &
+               tau_adv = t0(ir)%density/abs(t0(ir)%adv_total)
+            write(*,'(A,ES12.5,A,ES12.5,A,ES12.5)')                      &
+                 ' (JFNK) [diag 18]   time scales [s]: chemical ',       &
+                 tau_chem, ', advective ', tau_adv, ', ratio ',          &
+                 tau_chem/max(tau_adv, 1.0d-300)
+         endif
+         peclet = abs(t0(ir)%adv_total)/max(abs(t0(ir)%diffusive),       &
+                                            1.0d-300)
+         ! The logarithmic gradient of the unknown across the cell, taken
+         ! on the DENSITY the unknown names, so that it is one number
+         ! whether the carrier is carried as n or as ln n.
+         xm = 0.0d0;  xp = 0.0d0;  gradln = 0.0d0
+         if (jc .gt. 1)  xm = value_of_the_species_unknown(               &
+                                 Y(nvar_jac*(jc-2)+3+isrow), isrow, jc-1)
+         if (jc .lt. N)  xp = value_of_the_species_unknown(               &
+                                 Y(nvar_jac*jc+3+isrow), isrow, jc+1)
+         if (xm .gt. 0.0d0 .and. xp .gt. 0.0d0)                          &
+            gradln = (log(xp) - log(xm))                                 &
+                    /max(log(r(min(jc+1,N))) - log(r(max(jc-1,1))),      &
+                         1.0d-300)
+         write(*,'(A,ES12.5,A,ES12.5)')                                  &
+              ' (JFNK) [diag 18]   cell Peclet (advective over'//        &
+              ' diffusive) ', peclet, ', dln(unknown)/dlnr ', gradln
+         ! The two identities the split has to satisfy on the state, and
+         ! they are printed rather than asserted: the terms compose the
+         ! row, and the two masked faces compose the advective term.
+         write(*,'(A,ES11.3,A,ES11.3)')                                  &
+              ' (JFNK) [diag 18]   the terms compose the row to ',       &
+              (species_row_from_its_terms(t0(ir)) - t0(ir)%row)/dscale,  &
+              ', the two faces compose the advective term to ',          &
+              (t0(ir)%adv_left + t0(ir)%adv_right                        &
+               - t0(ir)%adv_total)/dscale
+      enddo
+
+      ! --- (b) and (c): the band's entries and their term split ---
+      jlo = max(1, jbind - n_front_row_halfwidth)
+      jhi = min(N, jbind + n_front_row_halfwidth)
+      sqeps = sqrt(epsilon(1.0d0))
+      do jc = jlo, jhi
+         do kk = 1, 4
+            k = kk
+            if (kk .eq. 4) k = 3 + isrow
+            jcol  = nvar_jac*(jc-1) + k
+            hstep = sqeps*D(jcol)
+            if (hstep .eq. 0.0d0) cycle
+            Yp = Y
+            Yp(jcol) = Y(jcol) + hstep
+            call eval_residual(Yp, f_sp, fwork, Fvec, heat, cool,        &
+                               admissible=ok_p, may_be_adopted=.false.,  &
+                               n_eq_sweeps_fixed=n_eq_sweeps_model)
+            do ir = 1, nrows
+               call terms_of_a_transported_species_row(isrow, jrow(ir),  &
+                        captured_state_with_ghosts(1,:),                 &
+                        captured_temperature, fwork, tp(ir))
+            enddo
+            call name_of_unknown(jcol, cname)
+            do ir = 1, nrows
+               i = nvar_jac*(jrow(ir)-1) + 3 + isrow
+               if (i - jcol .gt. kl_jac .or. jcol - i .gt. ku_jac) cycle
+               if (.not. (t0(ir)%ok .and. tp(ir)%ok)) cycle
+               band = ab(kl_jac+ku_jac+1 + i - jcol, jcol)
+               diag_here = ab(kl_jac+ku_jac+1, i)
+               dq_row   = attributed_jacobian_entry(tp(ir)%row,          &
+                             t0(ir)%row, hstep, t0(ir)%to_code, D(jcol), &
+                             Drow(i))
+               dq_dif   = attributed_jacobian_entry(tp(ir)%diffusive,    &
+                             t0(ir)%diffusive, hstep, t0(ir)%to_code,    &
+                             D(jcol), Drow(i))
+               dq_adv   = attributed_jacobian_entry(tp(ir)%adv_total,    &
+                             t0(ir)%adv_total, hstep, t0(ir)%to_code,    &
+                             D(jcol), Drow(i))
+               dq_chm   = attributed_jacobian_entry(tp(ir)%chemical,     &
+                             t0(ir)%chemical, hstep, t0(ir)%to_code,     &
+                             D(jcol), Drow(i))
+               dq_donor = attributed_jacobian_entry(tp(ir)%adv_donor,    &
+                             t0(ir)%adv_donor, hstep, t0(ir)%to_code,    &
+                             D(jcol), Drow(i))
+               call name_of_unknown(i, txt)
+               write(*,'(A,A,A,A)') ' (JFNK) [diag 18] row ', trim(txt), &
+                    ' against the column of ', trim(cname)
+               write(*,'(A,ES12.5,A,ES11.3,A,ES12.5)')                   &
+                    ' (JFNK) [diag 18]   band entry ', band,             &
+                    ', as a multiple of the diagonal ',                  &
+                    band/max(abs(diag_here), 1.0d-300),                  &
+                    ', the row re-formed ', dq_row
+               write(*,'(A,ES12.5,A,ES12.5,A,ES12.5,A,ES12.5)')          &
+                    ' (JFNK) [diag 18]   by term: diffusive ', dq_dif,   &
+                    ', advective ', dq_adv, ', chemical ', -dq_chm,      &
+                    ', their sum ', dq_dif + dq_adv - dq_chm
+               if (srow_kind(isrow) .eq. srow_carrier)                   &
+                  write(*,'(A,ES12.5,A,ES12.5)')                         &
+                       ' (JFNK) [diag 18]   the advective term with'//   &
+                       ' the reconstruction frozen at first order ',     &
+                       dq_donor, ', against the limited one ', dq_adv
+            enddo
+         enddo
+      enddo
+
+      ! --- what the diagonal would be on another column scale ---
+      ! The diagonal is dF/dY times D(column)/Drow(row), so a column scale
+      ! raised or lowered by a decade moves it by the same decade while
+      ! every entry of the row to ANOTHER column stands where it was: the
+      ! ratio the preconditioner has to stand on is a choice of scale and
+      ! not a property of the operator.  What the row's response to its own
+      ! unknown is per unit of the PHYSICAL density is the number that does
+      ! not move, and it is reported beside it.
+      i = nvar_jac*(jbind-1) + 3 + isrow
+      diag_here = ab(kl_jac+ku_jac+1, i)
+      write(*,'(A,ES12.5,A,ES12.5,A,ES12.5)')                            &
+           ' (JFNK) [diag 18] the diagonal of the binding row ',         &
+           diag_here, ', a decade of column scale up ', diag_here*10.0d0,&
+           ', down ', diag_here*0.1d0
+      write(*,'(A,ES12.5,A,ES12.5)')                                     &
+           ' (JFNK) [diag 18]   its column scale ', D(i),                &
+           ', its row scale ', Drow(i)
+      if (D(i) .gt. 0.0d0)                                               &
+         write(*,'(A,ES12.5)')                                           &
+              ' (JFNK) [diag 18]   the same response per unit of the'//  &
+              ' unknown in code units ', diag_here/D(i)
+      ! THE COLUMN SCALE OF EVERY UNKNOWN OF THE BINDING CELL BESIDE THE
+      ! UNKNOWN ITSELF.  An entry of the scaled band is the row's response
+      ! to a displacement of one COLUMN SCALE of its unknown, so a column
+      ! whose scale stands far above the unknown it scales is read at a
+      ! displacement the state does not have: the momentum unknown's scale
+      ! is |rho v| + rho c_s (state_scales_of_cell), which in a deeply
+      ! subsonic layer is the sound speed and not the wind, so it exceeds
+      ! the momentum itself by one over the Mach number.
+      do kk = 1, 4
+         k = kk
+         if (kk .eq. 4) k = 3 + isrow
+         jcol = nvar_jac*(jbind-1) + k
+         call name_of_unknown(jcol, cname)
+         write(*,'(A,A,A,ES12.5,A,ES12.5,A,ES11.3,A,ES12.5)')            &
+              ' (JFNK) [diag 18]   ', trim(cname), ': unknown ',         &
+              Y(jcol), ', column scale ', D(jcol),                       &
+              ', scale over unknown ',                                   &
+              D(jcol)/max(abs(Y(jcol)), 1.0d-300),                       &
+              ', row scale ', Drow(jcol)
+      enddo
+
+      resid_capture_operator_state = cap_saved
+      call put_back_residual_evaluation_products(products_at_entry)
+      deallocate(Yp, Fvec, heat, cool, fwork, rho_s, T_s, f_s)
+
+      end subroutine the_binding_species_row
 
       ! ------------------------------------------------------!
 
@@ -10610,6 +13960,28 @@
                  gm_orthogonality_loss_cycle,                             &
                  ', orthogonalized twice ', gm_reorthogonalize
       endif
+
+      ! --- WHAT HOLDS THE CYCLE ON THIS SYSTEM ---
+      ! Three measurements of the SAME linear system the leg above was
+      ! taken from, at this iterate, adopting nothing: the cycle over a
+      ! ladder of subspace sizes, the Ritz values of the preconditioned
+      ! operator, and the difference between the full Jacobian action and
+      ! the banded one on the directions the spectrum names. Each is off by
+      ! default and each costs products of the operator, so all three speak
+      ! only where the element diagnostic does.
+      if (elem_diag_here .and. krylov_size_scan_on)                      &
+         call krylov_cycle_over_subspace_sizes(Y, F_jac, f_sp, D, Drow,  &
+                   abf, ipiv, idtau_leg, -r0, gm_rtol)
+      if (elem_diag_here .and. precond_spectrum_on)                      &
+         call ritz_values_of_the_preconditioned_operator(Y, F_jac, f_sp, &
+                   D, Drow, abf, ipiv, idtau_leg)
+      if (elem_diag_here .and. band_difference_on)                       &
+         call what_the_band_omits_of_the_jacobian(Y, F_jac, f_sp, D,     &
+                   Drow, ab, abf, ipiv, idtau_leg, r0)
+      ! And the row that binds read term by term, with the band's entries
+      ! for it attributed to those terms (front_row_on).
+      if (elem_diag_here .and. front_row_on)                             &
+         call the_binding_species_row(Y, f_sp, D, Drow, ab, r0)
 
       ! --- the Cauchy point, from the gradient formed above ---
       gnorm = sqrt(sum(g*g))
@@ -11680,6 +15052,17 @@
          ! solve settles into.
          elem_diag_here = elem_diag_on .and. (iter .le. 2 .or.            &
                                               iter .eq. elem_diag_third)
+         ! AND WHETHER THIS ONE IS AN ITERATION THE ADDITIVITY HOOK
+         ! SPEAKS AT: the first, one well inside whatever the solve
+         ! settles into, and the last of a capped run, so that a defect
+         ! measured at the entry state can be told from the one at the
+         ! iterate the solve stops on.
+         jv_additivity_here = jv_additivity_on .and.                     &
+                              (iter .eq. 1 .or. iter .eq. 20 .or.        &
+                               iter .eq. maxit_used)
+         ! AND WHETHER THIS ONE IS THE ITERATION THE JUMP SCAN SPEAKS AT:
+         ! the first, the state at which the floor was measured (N31, N32).
+         if (iter .eq. 1) resid_jump_scan_here = resid_jump_scan_on
          ! AND WHETHER EVERY TRIAL OF IT STATES ITS OWN MODEL: from the
          ! selected iteration onward, so that consecutive iterations at one
          ! state can be compared step against step.
@@ -11848,11 +15231,31 @@
             ! coordinates. The merit is not touched: it holds no D.
             if (column_equilibration_on)                                 &
                call equilibrate_the_scaled_columns(ab, D)
+            ! AND THE ROW SCALING OF THE LINEAR MODEL, which decision 20 a
+            ! left free: formed from ab and applied to the band that is
+            ! factored and, inside the cycle, to the right-hand side and
+            ! the action. ab itself is untouched, so the merit's gradient
+            ! and the trust-region model stay on the certification scales
+            ! (unit_infinity_norm_row_scaling_of_the_band).
+            model_rows_equilibrated = .false.
+            if (model_row_equilibration_on)                              &
+               call unit_infinity_norm_row_scaling_of_the_band(ab)
             abf = ab
             do jc = 1, neq
                abf(kl_jac+ku_jac+1, jc) = abf(kl_jac+ku_jac+1, jc)       &
                                         + idtau*D(jc)/Drow(jc)
             enddo
+            if (model_rows_equilibrated) then
+               do jc = 1, neq
+                  ilo = max(1,   jc - ku_jac)
+                  ihi = min(neq, jc + kl_jac)
+                  do irow = ilo, ihi
+                     abf(kl_jac+ku_jac+1 + irow - jc, jc) =              &
+                          abf(kl_jac+ku_jac+1 + irow - jc, jc)           &
+                          *model_row_equilibration(irow)
+                  enddo
+               enddo
+            endif
             ! AND THE BAND THAT IS FACTORIZED IS EQUILIBRATED, the model
             ! above it is not. The two rescalings are undone inside the
             ! preconditioner solve, so the Krylov cycle sees the same
@@ -11875,6 +15278,19 @@
                abf(kl_jac+ku_jac+1, jc) = abf(kl_jac+ku_jac+1, jc) + idtau
             enddo
             preconditioner_equilibrated = .false.
+            model_rows_equilibrated = .false.
+            if (model_row_equilibration_on) then
+               call unit_infinity_norm_row_scaling_of_the_band(ab)
+               do jc = 1, neq
+                  ilo = max(1,   jc - ku_jac)
+                  ihi = min(neq, jc + kl_jac)
+                  do irow = ilo, ihi
+                     abf(kl_jac+ku_jac+1 + irow - jc, jc) =              &
+                          abf(kl_jac+ku_jac+1 + irow - jc, jc)           &
+                          *model_row_equilibration(irow)
+                  enddo
+               enddo
+            endif
          endif
          call dgbtrf(neq, neq, kl_jac, ku_jac, abf, ldab, ipiv, lpinfo)
          call banded_model_conditioning(ab, abf, D, Drow, ' (JFNK)')

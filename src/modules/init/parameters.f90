@@ -43,7 +43,7 @@
       ! Three different things share one marching loop: reaching an
       ! admissible state from a guess, relaxing to a stationary one, and
       ! advancing a state in time. Only the third has an elapsed time. Local
-      ! pseudo-time (use_local_dt) advances neighbouring cells by different
+      ! pseudo-time (use_local_dt) advances neighboring cells by different
       ! intervals, so the material sum across an internal face is not
       ! conserved and the update is a relaxation iterate rather than one
       ! physical step; the same holds for the PTC route and for a stationary
@@ -133,7 +133,7 @@
       ! HD 189733 b against 102.3 for WASP-121 b.
       ! The default is written with a DEFAULT-REAL literal (2.0e-4, not 2.0d-4)
       ! because that is what the hardcoded local in define_grid.f90 was: the
-      ! value stored is the single-precision neighbour of 2e-4, 2.5e-8 relative
+      ! value stored is the single-precision neighbor of 2e-4, 2.5e-8 relative
       ! below it. Writing 2.0d-4 here moves every base cell by that amount and
       ! changes the last few digits of a converged solution. The literal is kept
       ! as-is so that an input.inp without the key reproduces earlier runs
@@ -417,7 +417,7 @@
       ! off: the coupled route changes the size and the band geometry of the
       ! steady system, so a run that does not ask for it must not pay for it.
       logical :: carrier_in_newton = .false.
-      ! THE CARRIER GATE. When the carrier row counts as steady: 0.1 per cent
+      ! THE CARRIER GATE. When the carrier row counts as steady: 0.1 percent
       ! of the row's own largest terms, volume-weighted over the layer and
       ! the wind separately (carrier_steady_residual). It is a THIRD gate
       ! beside the residual and the flux gate of section 133, and not part of
@@ -634,6 +634,25 @@
                                           !  are off (nm = 0 either way).
       logical :: use_weno3     = .false.  ! Use WENO3 reconstruction
       logical :: use_plm       = .false.  ! Use PLM reconstruction
+      ! ---- well-balanced pressure/gravity pair ("Well balanced:") ----
+      ! .true. carries the DEPARTURE from a local hydrostatic equilibrium
+      ! through the reconstruction, the Riemann jumps and the pressure force,
+      ! instead of the state itself: within cell j the equilibrium is the one
+      ! of constant density,
+      !     p_eq,j(r) = p_j - rho_j (phi(r) - phi(r_j)),
+      ! which is the mechanical balance dp/dr = -rho dphi/dr to second order
+      ! in the cell width and assumes NO thermal stratification, so an
+      ! arbitrary entropy and composition profile is preserved (Kaeppeli and
+      ! Mishra 2016, A&A 587, A94, their sections 2.1.1 and 2.1.3; the
+      ! face-pressure-difference form of the momentum source is their 2014
+      ! paper's eq. 2.26, J. Comput. Phys. 259, 199).  The equilibrium's flux
+      ! difference and its source then cancel ANALYTICALLY rather than in
+      ! floating point, and the Riemann dissipation acts on the departure.
+      ! Exact preservation needs a numerical flux that resolves a stationary
+      ! contact discontinuity (ROE and HLLC do; LLF does not).
+      ! Default .false.: with it the operator is the one every golden was
+      ! taken with, to the bit.
+      logical :: well_balanced = .false.
       logical :: recon_two_stage = .false.  ! "Reconstruction scheme: PLM+WENO3": run PLM (stage 1) then WENO3 (stage 2), using BOTH du_th values. PLM/WENO3 alone are single-stage and use only the first du_th value.
       ! ---- PLM -> WENO3 continuation ("Reconstruction continuation:") ----
       ! The two-stage recipe changes the discrete operator in ONE step: the
@@ -751,7 +770,7 @@
       ! MASS UNIT of the code is the hydrogen ATOM mu: the adimensional
       ! density rho is a number of hydrogen atoms per unit volume times n0,
       ! so a species mass entering rho is m_species/mu and NOT its atomic
-      ! weight in u.  The two differ by 0.78 per cent (amu_over_m_H), which
+      ! weight in u.  The two differ by 0.78 percent (amu_over_m_H), which
       ! is why the conversion is written here once instead of being carried
       ! implicitly by whichever unit a table happened to be transcribed in.
       !
@@ -832,7 +851,7 @@
       ! sections themselves (cross_sec).  A cross section that turned on at
       ! its own copy of the threshold left the band between the two copies
       ! integrated as zero: with e_th_HeI = 24.6 against the He I fit's own
-      ! 24.59, the band [24.59, 24.60] eV, 0.115 per cent of the He I
+      ! 24.59, the band [24.59, 24.60] eV, 0.115 percent of the He I
       ! photoionization rate of the default power law, was lost.
       !
       ! The values are the measured ionization energies, NIST Atomic Spectra
@@ -873,7 +892,7 @@
       ! (The Hui & Gnedin 1997, MNRAS 292, 27 collisional-ionization fit for
       ! He II carries the same threshold in its exponent as 2*631515/T; that
       ! fit parameter stays as published in Cool_coeff, and 631515 K is
-      ! 0.0037 per cent above the measured potential.)
+      ! 0.0037 percent above the measured potential.)
       real*8,parameter ::  e_th_HI_erg   = e_th_HI/erg2eV
       real*8,parameter ::  e_th_HeI_erg  = e_th_HeI/erg2eV
       real*8,parameter ::  e_th_HeII_erg = e_th_HeII/erg2eV

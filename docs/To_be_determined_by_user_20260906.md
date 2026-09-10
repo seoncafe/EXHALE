@@ -263,20 +263,20 @@ complex and the 1995 row is 4s only; with the subshells in the sum those
 steps are 1.23 and 1.13, while the genuine K edges rise (C I 21x at 291 eV).
 Impact, bounded snapshots on scratch copies with `OMP_NUM_THREADS=1`:
 `mol_base_handoff` (metals off) byte-identical; `wasp_full` 300 steps
-T +9.5 per cent at most inside the wind and base heating +26 per cent;
-`mol_metals` 400 steps base heating +26 per cent, T within 0.14 per cent;
-`lower_profile` 200 steps base heating +21 per cent, T within 2e-5; log10
+T +9.5 percent at most inside the wind and base heating +26 percent;
+`mol_metals` 400 steps base heating +26 percent, T within 0.14 percent;
+`lower_profile` 200 steps base heating +21 percent, T within 2e-5; log10
 Mdot unchanged to the printed 0.01 dex in all four (7.21, 7.94, 8.38, 7.95).
 The metal share of the 100-1240 eV absorption at fixed composition goes from
-2.23 to 3.49 per cent in `wasp_full` (2.20 to 3.63 in `mol_metals`, 2.30 to
-2.67 in `lower_profile`), and that band is 0.38 per cent of the whole. The
+2.23 to 3.49 percent in `wasp_full` (2.20 to 3.63 in `mol_metals`, 2.30 to
+2.67 in `lower_profile`), and that band is 0.38 percent of the whole. The
 charge-state under-count, the one-electron cascade and the neglected
 fluorescence are stated at the table in `cross_sec.f90` and in
 `docs/photoion_cross_sections.tex`. The fluorescence neglect is now
 quantified from the user-supplied Krause 1979 scan: with `e_top` = 1240 eV
 only C, N, O and Na I can have a K hole and their omega_K are 0.28, 0.52,
-0.83 and 2.3 per cent (his Table 3, p. 315), while every reachable L-shell
-event is radiationless to better than 0.7 per cent (effective yields, his
+0.83 and 2.3 percent (his Table 3, p. 315), while every reachable L-shell
+event is radiationless to better than 0.7 percent (effective yields, his
 Table 5, p. 320, and omega_3 of Table 3). Goldens NOT refreshed: `wasp_full`,
 `mol_metals` and `lower_profile` will move when they are.
 
@@ -293,8 +293,8 @@ distance to the fixed point, is |theta/(1 - theta)| times the last
 increment: one to two decades BELOW the 1e-8 the test names. The loop is
 therefore one to two decades stricter than its tolerances say, and it pays
 for that in passes: COST6 ESTIMATED 1.6 passes of 7 on `mol_base_handoff`
-and 1.0 to 1.5 of 10 on `wasp_full` (the sweep is 84 per cent of marching
-time, so that is 15 to 23 per cent of it), against the 6.3 per cent COST6's
+and 1.0 to 1.5 of 10 on `wasp_full` (the sweep is 84 percent of marching
+time, so that is 15 to 23 percent of it), against the 6.3 percent COST6's
 extrapolation, which keeps the present test, could take on the same case.
 
 **The options.**
@@ -319,7 +319,7 @@ accident that the geometric decay, now measured, lets us correct without a
 model of the physics. (c) is the conservative alternative if the 1e-8
 movement of every golden is unwelcome now. Under (a) the COST6 extrapolation
 (default off, `EXHALE_CSM_EXTRAP=1`) is the only remaining lever and buys
-6.3 per cent on the molecular gate.
+6.3 percent on the molecular gate.
 
 ## 9. The advection post-process on a state that is not stationary (ADV-ENERGY, 2026-09-08)
 
@@ -396,7 +396,7 @@ which is exactly why the code imposes it at the ghosts.
 - (b) Turn the carrier transport on for that combination automatically and
   say so in the setup report.
 - (c) Leave it: accept states at `Resid tol` on a residual whose seed
-  dependence is 3.2e5 times that tolerance (the present behaviour; what
+  dependence is 3.2e5 times that tolerance (the present behavior; what
   must not stay, in B5h's words).
 
 **Recommendation: (a).** The rule elsewhere in this code is that a
@@ -470,7 +470,7 @@ one.
   printed and the state is marked as bound-constrained. Applies only to
   species rows (the hydrodynamic rows have no bounds).
 - (b) Treat any active bound as a failure to certify (the present
-  behaviour): a stationary state may not have a carrier at zero. Under (a)
+  behavior): a stationary state may not have a carrier at zero. Under (a)
   of item 11 the bound is never reached, so (b) then costs nothing and
   says the physics: a wind carries a positive density of every carrier.
 - (c) Reformulate so no bound exists (item 11 (a)) and leave the
@@ -594,3 +594,133 @@ about the wind. (b) remains honest if the user prefers a gate that claims
 nothing.
 
 **DECIDED 2026-09-10: (a)**. Implemented as item N30.
+
+## 23. The rounding floor of the flux difference in the base layer (N33, 2026-09-10)
+
+N31 to N33 traced why the species-row stationary solves are held by their
+linear solve (40 of 40 Krylov products at a true relative residual 0.99
+against 0.1 at the binding iterate, N27). The finite-difference Jacobian
+action is not additive along the preconditioned Krylov directions because
+the residual carries a non-smoothness floor (N31); the floor follows no
+inner tolerance and is not in the chemistry (N32); and N33 MEASURED what
+it is: the ROUNDING of the flux assembly, raised above the last bit of the
+row by two cancellations. In the nearly hydrostatic base layer the Roe
+flux is built from jumps of the reconstructed states 3e5 to 6e6 times
+smaller than the states themselves, so the interface flux carries the last
+bit of O(1) quantities; the row then divides the flux difference by the
+cell volume, `r^2/dV` = 5.1e3 for a base cell of width 1.955e-4 (`Base
+grid` key K33b, `dr_base = 2.0e-4`). The bound `epsilon x (face state) x
+r^2/dV` is what a correctly rounded assembly cannot go below, and the
+measured floor follows it over 4.6 decades along the column at a ratio of
+5.5 to 12, on both fixtures (atomic reload and carrier reload), with no
+branch, no fallback and no inner iteration flipping anywhere. The floor is
+irreducible in this discretization: no probe rule (N31), no inner
+tolerance (N32) and no arm inside the solver can lower it. Its consequence
+is confined to the stationary solves with species rows (the three-unknown
+route certifies; the marching path is unaffected, its steps never divide
+by the cell width at this precision). Options:
+
+(a) **Well-balanced flux differencing in the base layer** (RECOMMENDED):
+assemble the hydrodynamic rows from the DEPARTURE of the face states from
+the local hydrostatic isentrope, which `base_boundary.f90` already
+integrates for the ghost construction, so the balance that now cancels in
+floating point cancels analytically (hydrostatic reconstruction in the
+sense of Kappeli and Mishra 2016, A&A 587, A94; LeVeque 1998, JCP 146,
+346; the published references are to be read in full before the design is
+fixed; `docs/b4_spatial_operator_design_20260906.md` sections on the
+well-balanced pressure-gravity form are the in-house starting point). A change to `Num_Fluxes.f90`, `RK_rhs.f90` and `Source.f90`, so it
+touches the MARCHING path too: built as a default-off arm, measured on both
+reload fixtures by named outcomes (the floor must fall to the epsilon level,
+the additivity defect's exponent must turn positive, the Krylov cycle must
+reach 0.1 within 40 products at the binding iterate) and on the regression
+matrix for its movement, then adopted as default only at a gate with the
+goldens refreshed and the movement reported. This is the physically right
+discretization of a layer in near-hydrostatic balance regardless of the
+solver, which is why it is recommended over (b) and (c).
+
+(b) **Extended precision for the hydrodynamic rows of the stationary
+residual alone**: evaluate reconstruction, Riemann flux, geometric and
+gravitational sources and the flux difference in `real(kind=16)` (quad)
+from the double-precision state, inside the stationary solve only (the
+face-state jumps already carry the rounding, so the whole pipeline from the
+state to the row has to be in quad, not the difference alone). Lowers the
+floor by about eighteen decades at a cost of roughly ten in wall time on
+those lines, leaves the marching path and the goldens untouched, and treats
+the symptom: the discretization stays as it is. As the CONTROL experiment
+of (a) it is run first (N34) regardless of the choice.
+
+(c) **Coarser base cells**: the floor is proportional to one over the cell
+width, so a wider `dr_base` lowers it in proportion (and a finer one, the
+opposite: the 2x base-grid key that fixed the HD 189733 b base wall makes
+this floor twice as high). Trades resolution of the layer for a lower
+floor; the base sound-wave physics of the layer (P44, P54) set the present
+width, so this is a measurement, not a remedy.
+
+(d) **Accept the floor** and judge the species-row solves by the
+certification only, which the anchored tolerances already do (decision 22):
+the Krylov cycle stays at 0.99, the arms stay chaotic at the last bit
+(N26c), and no species-row configuration will certify below the floor's
+reach in the layer. Honest, and it closes the program at "not converged".
+
+Recommendation: (a), with (b) as the quick control experiment inside the
+same item (if quad accumulation of the flux difference restores the Krylov
+cycle's convergence, the diagnosis is confirmed before the discretization
+is changed; if it does not, something else is still in the way and (a) is
+not yet justified).
+
+**N34 (the control experiment, 2026-09-10) changes the weighing.** With the
+hydrodynamic rows of the stationary residual evaluated in quadruple
+precision (default-off arm `EXHALE_RESID_QUAD=1`), the floor fell only by a
+factor 2.1 and landed on `epsilon_double x face state x r^2/dV` exactly
+(ratio 0.93 to 1.4): four fifths of the floor was the assembly's own
+arithmetic, the rest is the double representation of what the assembly is
+handed (the ghosts, the sweep's temperature and particle count) and of the
+row itself, amplified by the same face cancellation and the same `r^2/dV`.
+So N33's amplifier is confirmed a second way, and ONLY removing the
+amplifier (a well-balanced form, option (a)) or widening the whole state
+reaches the floor; option (b) cannot. But the Krylov stall is NOT held by
+the floor alone: where the binding row is hydrodynamic (atomic reload, cap
+40) the arm makes the Arnoldi image faithful (gap 1.19e-1 to 3.81e-3) and
+the cycle still exhausts 40 products at 0.21 against 0.10; at cap 250 the
+binding rows are the element Fe rows of the front cells (atomic) and the H2
+carrier row of cell 205 (carrier), which do not pass through the flux
+assembly, and their cycles stand at 0.98 to 0.99 with the arm on. What
+holds them is the CONDITIONING of the preconditioned operator on the
+species rows, not measured yet.
+
+Revised recommendation: (a) remains the physically right discretization of
+the near-hydrostatic layer and is still recommended, but it will not by
+itself make the species-row solves converge, so it should not be sold as
+that. The item that decides the species-row program is a measurement of the
+preconditioned operator's conditioning on the element and carrier rows at
+the binding iterate (the spectrum or a few singular values of the
+preconditioned Jacobian restricted to those rows, and what in the banded
+preconditioner misses their coupling: the diffusion coupling across cells,
+the coupling of an element row to the hydrodynamic rows through
+`mass_per_H`, the front). That measurement (N35) runs without a decision;
+(a) waits for this one. Option (b) is retired as a remedy (kept as the
+measured arm it is); (c) and (d) stand as written.
+
+**N35/N36 (2026-09-10 evening) close the linear-algebra branch.** The band
+misses no coupling; the preconditioned operator is near-singular on the
+species rows themselves (Ritz ratio 6.6e5 carrier, 1.1e4 atomic), the
+binding carrier row's diagonal is 3.3e3 below its coupling to the
+hydrodynamic unknowns of its own stencil, a longer Krylov cycle returns a
+worse true step, and neither a different row scaling of the linear model
+nor a true-residual cycle passes acceptance. So (a) stands as the right
+discretization of the layer, and the question that decides the species-row
+program is now the discretized element and carrier equations at the front
+(what makes a row nearly independent of its own unknown). Recommended
+order: the user decides 23; the advisor then briefs the front-row
+diagnosis (a measurement item, no default changed) whatever the choice.
+
+**DECIDED 2026-09-10 (user: "(1)", read as the recommendation (a)): (a)**, a
+well-balanced flux difference in the near-hydrostatic layer, built as a
+default-off option and measured by named outcomes before any gate.
+Implemented as item N37.
+
+OUTCOME (N37, 2026-09-10): implemented as `Well balanced:` (K46), default
+off, exact on the discrete equilibrium; the rounding floor of N33 does not
+move under it (the cell pressure is a rounded double); the key stays off,
+with the momentum-row scale of `store_row_terms` as the prerequisite of any
+gate decision. The program is closed.

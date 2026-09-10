@@ -34,7 +34,35 @@
 	! value used when metals are off or "Base IR field" is off.
 	real*8  :: pp_nbar_fs(n_fsline) = 0.0d0
 
+	! THE BRACKET TOLERANCE OF THE TEMPERATURE ROOT (brent_root), and the
+	! hook that replaces it for a whole run (EXHALE_TEQ_TOL=<x>, default
+	! off). Brent stops when the bracket has shrunk to
+	! 2*epsilon*|b| + tol/2 in x = T/T0, so 1e-10 pins the root to about
+	! 1e-10*T0 ~ 1e-6 K and the root is a piecewise map of the state at that
+	! size. A non-positive or unreadable value leaves it at 1e-10.
+	real*8,  save :: teq_bracket_tol      = 1.0d-10
+	logical, save :: teq_bracket_tol_read = .false.
+
 	contains
+
+	! THE BRACKET TOLERANCE THE TEMPERATURE ROOT IS ASKED FOR. Returns
+	! what EXHALE_TEQ_TOL names, or the argument when the variable is
+	! unset, unreadable or non-positive. Pure of module state, so a caller
+	! may cache the answer and a test may ask it twice with two
+	! environments.
+	real*8 function temperature_bracket_tolerance(tol_default)
+	real*8, intent(in) :: tol_default
+	character(len=32)  :: env_teq
+	real*8             :: tol_asked
+	temperature_bracket_tolerance = tol_default
+	call get_environment_variable('EXHALE_TEQ_TOL', env_teq)
+	if (len_trim(env_teq) .eq. 0) return
+	tol_asked = 0.0d0
+	read(env_teq,*,err=311,end=311) tol_asked
+  311	continue
+	if (tol_asked .gt. 0.0d0) temperature_bracket_tolerance = tol_asked
+	end function temperature_bracket_tolerance
+
 	
 	subroutine T_equation(N_T_eq,x,fvec,iflag,params)
 	
@@ -355,10 +383,20 @@
    subroutine brent_root(a_in, b_in, fa_in, fb_in, params, root)
    real*8, intent(in)  :: a_in, b_in, fa_in, fb_in, params(40)
    real*8, intent(out) :: root
-   real*8, parameter   :: tol = 1.0d-10
    integer, parameter  :: itmax = 100
-   real*8  :: a, b, c, d, e, fa, fb, fc, p, q, r, s, tol1, xm, eps
+   real*8  :: a, b, c, d, e, fa, fb, fc, p, q, r, s, tol1, xm, eps, tol
    integer :: it
+
+   ! Read once for the run, and announced only when it is armed, so that a
+   ! run without the hook is the run without the code.
+   if (.not. teq_bracket_tol_read) then
+      teq_bracket_tol      = temperature_bracket_tolerance(teq_bracket_tol)
+      teq_bracket_tol_read = .true.
+      if (teq_bracket_tol .ne. 1.0d-10)                                   &
+         write(*,'(A,ES11.3)') ' (T_equation) EXHALE_TEQ_TOL: the'//      &
+              ' temperature bracket closes at ', teq_bracket_tol
+   endif
+   tol = teq_bracket_tol
 
    eps = epsilon(1.0d0)
    a = a_in; b = b_in; fa = fa_in; fb = fb_in

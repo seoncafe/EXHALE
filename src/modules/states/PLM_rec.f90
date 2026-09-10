@@ -8,14 +8,32 @@
    
    contains
    
-   subroutine PLM_rec(u_in,WL_rec,WR_rec) 
+   subroutine PLM_rec(u_in,WL_rec,WR_rec,P_up,P_dn,dev_L,dev_R)
+   ! WELL-BALANCED ARM.  With the four optional arrays present (the caller
+   ! passes them when "Well balanced:" is set) the PRESSURE is reconstructed
+   ! in the coordinate of the departure from the cell's own local hydrostatic
+   ! equilibrium: the stencil data becomes the neighboring cell's pressure
+   ! measured against that equilibrium continued through the face between
+   ! them (this cell's density up to the face, the neighbor's beyond it),
+   ! with the value at the cell's own centre identically zero, the limiter
+   ! acts on that unchanged, and the equilibrium face value P_up / P_dn is
+   ! added back at the end.  The departure itself is returned so that the
+   ! Riemann jump and the pressure force can be formed from small numbers.
+   ! Density and velocity are reconstructed as they are without the arm
+   ! (Kaeppeli and Mishra 2016, A&A 587, A94, section 2.1.3).
    integer :: j,k
    real*8, dimension(3,1-Ng:N+Ng),intent(in) :: u_in
    real*8 :: x(-1:1)
    real*8 :: W(3,-1:1)
    real*8, dimension(3) :: sp,sm,sd,sc
    real*8, dimension(3,1-Ng:N+Ng), intent(out) :: WL_rec,WR_rec
-   
+   real*8, dimension(1-Ng:N+Ng), intent(in),  optional :: P_up,P_dn
+   real*8, dimension(1-Ng:N+Ng), intent(out), optional :: dev_L,dev_R
+   logical :: wb
+
+   wb = present(P_up) .and. present(P_dn) .and.                          &
+        present(dev_L) .and. present(dev_R)
+
    ! Cell-local: the limited slope of cell j is built from the three cell
    ! averages j-1, j, j+1 and written into that cell's own two face states.
    ! No reduction, so a cell's arithmetic is unchanged and the result is
@@ -23,14 +41,40 @@
    !$omp parallel do default(shared) schedule(static)                   &
    !$omp   private(j,k,x,W,sp,sm,sd,sc)
    do j = 2-Ng,N+Ng-1
-   
+
       ! Extract stencil grid
       x = r(j-1:j+1)
-      
+
       ! Convert to local primitive variables (2nd order conversion)
-      do k = j-1,j+1           
+      do k = j-1,j+1
             call U_to_W_comp(u_in(:,k),W(:,k-j),k)
       enddo
+
+      ! WELL-BALANCED ARM: the pressure stencil in departure coordinates.
+      ! The departure at a neighboring cell centre is measured against the
+      ! equilibrium continued to it through the face, that is with THIS
+      ! cell's density up to the face and the NEIGHBOUR's beyond it, which is
+      ! what makes the data vanish exactly on the discrete equilibrium the
+      ! scheme preserves (the two neighboring face extrapolations agree
+      ! there; Kaeppeli and Mishra 2016, A&A 587, A94, their eqs. 18 and 26,
+      ! where the same construction appears as the average density of a
+      ! uniform mesh).  Continuing the cell's own constant density over the
+      ! whole gap instead would leave data of the size (rho_j - rho_j+1) x
+      ! (potential difference), and the arm would be second order and not
+      ! exact.
+      ! The difference of the two cell pressures is taken FIRST, while it is
+      ! still an exact floating-point operation, and the hydrostatic terms
+      ! are added to it afterwards; the reverse order would bury the small
+      ! terms in the rounding of an O(1) sum.
+      if (wb) then
+         W(3,1)  = (W(3,1)  - W(3,0))                                    &
+                 + W(1,0)*(Gphi_i(j)   - Gphi_c(j))                      &
+                 + W(1,1)*(Gphi_c(j+1) - Gphi_i(j))
+         W(3,-1) = (W(3,-1) - W(3,0))                                    &
+                 - W(1,0) *(Gphi_c(j)   - Gphi_i(j-1))                   &
+                 - W(1,-1)*(Gphi_i(j-1) - Gphi_c(j-1))
+         W(3,0)  = 0.0d0
+      endif
 
       ! Compute derivative approximations
       sp = (W(:,1) - W(:,0))/(x(1)-x(0))
@@ -43,7 +87,16 @@
       ! Compute recontructed boundary values
       WL_rec(:,j)   = W(:,0) + 0.5*sc*(x(1)-x(0))
       WR_rec(:,j-1) = W(:,0) - 0.5*sc*(x(0)-x(-1))
-   
+
+      ! The departure the limited slope returned, and the face pressure it
+      ! belongs to
+      if (wb) then
+         dev_L(j)        = WL_rec(3,j)
+         dev_R(j-1)      = WR_rec(3,j-1)
+         WL_rec(3,j)     = P_up(j) + dev_L(j)
+         WR_rec(3,j-1)   = P_dn(j) + dev_R(j-1)
+      endif
+
    enddo
    !$omp end parallel do
    
@@ -80,7 +133,7 @@
    ! (Kappeli 2016).  theta = 2 is the least diffusive value for which the
    ! scheme stays total-variation diminishing.  The slope is zero whenever
    ! the three arguments do not all share a sign, which is what keeps a
-   ! reconstructed face value between the neighbouring cell averages.
+   ! reconstructed face value between the neighboring cell averages.
    real*8, intent(in) :: a,b,c
    real*8 :: v_arg(3)
    real*8 :: theta = 2.0

@@ -119,6 +119,13 @@ ATES model.
   a non-monotone (Grippo) line search and a scaled trust region. The
   stationary system carries a row and an unknown for every transported
   balance the configuration activates, not only the hydrodynamic triple
+- `Well balanced: True` (default False) carries the departure from each
+  cell's own local hydrostatic equilibrium through the reconstruction, the
+  Riemann jumps and the pressure force, so a discrete hydrostatic
+  equilibrium is preserved to rounding (Kappeli and Mishra 2014, 2016). A
+  measurement option: turning it on moves every result, and the
+  species-row stationary solves do not improve under it
+  (`docs/well_balanced_flux_difference_design_20260910.md`)
 - A steady state is not "converged", it is CERTIFIED: one evaluator states
   one condition per active balance and the run prints, and the state file
   records, which conditions were met and which row and cell refused. The
@@ -381,4 +388,4 @@ schemas, convergence recipes, post-processing) is in
 
 Kwang-Il Seon (KASI / UST)
 
-Last updated: 2026-09-10 12:06 KST
+Last updated: 2026-09-10 23:30 KST

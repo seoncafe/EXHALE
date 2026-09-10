@@ -7,6 +7,11 @@
       use source_func
       use low_mach_dissipation, only: low_mach_damping_active,          &
                                       contact_mode_dissipation_flux
+      ! The well-balanced face data of the reconstruction that produced the
+      ! face states this right-hand side is built from ("Well balanced:",
+      ! default off; docs/well_balanced_flux_difference_design_20260910.md).
+      use Reconstruction_step, only: wb_dev_L, wb_dev_R, wb_dp_eq,      &
+                                     wb_P_up, wb_P_dn
 
       implicit none
 
@@ -17,6 +22,17 @@
       ! replacement, without re-running the whole right-hand side.
       real*8, dimension(:,:), allocatable :: face_flux
       real*8, dimension(:),   allocatable :: face_p
+
+      ! WELL-BALANCED ARM.  The face pressure of every interface measured
+      ! from the hydrostatic equilibrium of the cell on each side,
+      !   face_q_up(f) = face_p(f) - P_up(f),
+      !   face_q_dn(f) = face_p(f) - P_dn(f+1),
+      ! both of the size of the departure from equilibrium.  They are what
+      ! the momentum row is assembled from when the arm is on: the O(1)
+      ! pressure of the cell and the gravitational source cancel in the
+      ! ALGEBRA (see the header of the cell loop) instead of in floating
+      ! point.  Filled only when well_balanced is set.
+      real*8, dimension(:),   allocatable :: face_q_up, face_q_dn
 
       ! Number of interfaces whose flux was dropped to first order to keep an
       ! RK stage inside rho > 0, rho e > 0, summed over the whole run, over
@@ -57,6 +73,7 @@
       real*8, dimension(3) ::  Fp,Fm
       real*8 :: dF3p
       real*8 :: pL,pR
+      real*8 :: qp,qm
       ! Gated fourth-difference dissipation of the stagnant-layer contact
       ! mode, added to the numerical flux below so that the marching RHS and
       ! the steady residual (which reaches this routine through
@@ -68,9 +85,12 @@
       real*8, dimension(3,1-Ng:N+Ng), intent(out) :: S
 
       if (.not. allocated(face_flux)) then
-         allocate(face_flux(3,1-Ng:N+Ng), face_p(1-Ng:N+Ng))
+         allocate(face_flux(3,1-Ng:N+Ng), face_p(1-Ng:N+Ng),            &
+                  face_q_up(1-Ng:N+Ng),   face_q_dn(1-Ng:N+Ng))
          face_flux = 0.0d0
          face_p    = 0.0d0
+         face_q_up = 0.0d0
+         face_q_dn = 0.0d0
       endif
 
       ! THE LOWEST GHOST CELL HAS NO LOWER FACE, so no flux difference and
@@ -107,11 +127,18 @@
       ! same two stored fluxes.  Neither loop contains a reduction, so no
       ! sum changes order.
       !$omp parallel default(shared)                                    &
-      !$omp   private(j,dr,rp,rm,dAp,dAm,dV,Fp,Fm,pL,pR,dF3p)
+      !$omp   private(j,dr,rp,rm,dAp,dAm,dV,Fp,Fm,pL,pR,qp,qm,dF3p)
 
       !$omp do schedule(static)
       do j = 1-Ng,N+Ng
-         call Num_flux(WL(:,j),WR(:,j),Fp,pR,j,min(j+1,N+Ng))
+         if (well_balanced) then
+            call Num_flux(WL(:,j),WR(:,j),Fp,pR,j,min(j+1,N+Ng),        &
+                          wb_dev_L(j),wb_dev_R(j),wb_dp_eq(j),qp,qm)
+            face_q_up(j) = qp
+            face_q_dn(j) = qm
+         else
+            call Num_flux(WL(:,j),WR(:,j),Fp,pR,j,min(j+1,N+Ng))
+         endif
          if (damp_lowmach) Fp = Fp + Ddis(:,j)
          face_flux(:,j) = Fp
          face_p(j)      = pR
@@ -146,6 +173,37 @@
 
          ! Correct for WENO3 discretization
          if (use_weno3)  dF(2,j) = dF(2,j) + (pR - pL)/dr
+
+         ! THE MOMENTUM ROW UNDER THE WELL-BALANCED ARM.  The pressure is
+         ! not in Fp(2)/Fm(2) here (Phys_flux leaves it out), and what
+         ! replaces it is the face pressure measured from THIS cell's own
+         ! hydrostatic equilibrium.  The two identities that make the
+         ! substitution exact, with P_up = p_j - rho_j (phi_i(j) - phi_c(j))
+         ! and P_dn = p_j + rho_j (phi_c(j) - phi_i(j-1)):
+         !
+         !   A+ P_up - A- P_dn - (A+ - A-) p_j
+         !        = -rho_j [ A+ (phi_i(j) - phi_c(j))
+         !                 + A- (phi_c(j) - phi_i(j-1)) ]        (PLM form)
+         !   P_up - P_dn = -rho_j (phi_i(j) - phi_i(j-1))        (WENO3 form)
+         !
+         ! The left-hand sides are the equilibrium part of the pressure
+         ! terms the row carries (the flux difference and, under PLM, the
+         ! geometric source); the right-hand sides are the discrete
+         ! gravitational source of the well-balanced scheme.  They cancel
+         ! here in the algebra, cell by cell, with the cell's own O(1)
+         ! pressure never appearing, so `source` returns S(2,j) = 0, NEITHER
+         ! side is evaluated, and what is left is the departure alone.  This
+         ! is the momentum source of Kaeppeli and Mishra (2014, J. Comput.
+         ! Phys. 259, 199, their eq. 2.26) in spherical geometry.
+         if (well_balanced) then
+            if (use_plm) then
+               dF(2,j) = (dAp*(Fp(2) + face_q_up(j))                    &
+                        - dAm*(Fm(2) + face_q_dn(j-1)))/dV
+            else
+               dF(2,j) = (dAp*Fp(2) - dAm*Fm(2))/dV                     &
+                       + (face_q_up(j) - face_q_dn(j-1))/dr
+            endif
+         endif
 
          dF3p  = dAp*Fp(1)*(Gphi_i(j) - Gphi_c(j))         &
                - dAm*Fm(1)*(Gphi_i(j-1) - Gphi_c(j))
@@ -202,12 +260,14 @@
       real*8, dimension(3,1-Ng:N+Ng) :: W_avg
       real*8, dimension(3,1-Ng:N+Ng) :: flux_lo
       real*8, dimension(1-Ng:N+Ng)   :: p_lo
+      real*8, dimension(1-Ng:N+Ng)   :: q_up_lo,q_dn_lo
       logical, dimension(1-Ng:N+Ng)  :: is_first_order
       logical, dimension(1-Ng:N+Ng)  :: rebuild_cell
       integer :: j,jf,sweep,n_new_faces,n_repl
       real*8  :: dr,rp,rm,dAp,dAm,dV,dF3p
       real*8, dimension(3) :: Fp,Fm,dFc
       real*8  :: pL,pR,rho_e
+      real*8  :: qp,qm
 
       n_calls_flux_positivity_repair = n_calls_flux_positivity_repair + 1
 
@@ -215,6 +275,8 @@
       is_first_order = .false.
       flux_lo        = 0.0d0
       p_lo           = 0.0d0
+      q_up_lo        = 0.0d0
+      q_dn_lo        = 0.0d0
       n_repl         = 0
 
       ! Cell averages of the state this stage was built from. Their two-cell
@@ -263,6 +325,17 @@
                call lax_friedrichs_flux(W_avg(:,jf),W_avg(:,jf+1),      &
                                         flux_lo(:,jf),p_lo(jf),         &
                                         jf,min(jf+1,N+Ng))
+               ! Under the well-balanced arm the row is assembled from the
+               ! face pressure measured against each side's equilibrium, so
+               ! a replaced face needs its own pair.  It is formed here by
+               ! subtracting two O(1) numbers, which is what the arm avoids
+               ! everywhere else: a repaired face is not well balanced, as a
+               ! first-order Lax-Friedrichs face cannot be (it resolves no
+               ! stationary contact).
+               if (well_balanced) then
+                  q_up_lo(jf) = p_lo(jf) - wb_P_up(jf)
+                  q_dn_lo(jf) = p_lo(jf) - wb_P_dn(min(jf+1,N+Ng))
+               endif
                is_first_order(jf) = .true.
                n_new_faces = n_new_faces + 1
 
@@ -297,17 +370,21 @@
             if (is_first_order(j-1)) then
                Fm = flux_lo(:,j-1)
                pL = p_lo(j-1)
+               qm = q_dn_lo(j-1)
             else
                Fm = face_flux(:,j-1)
                pL = face_p(j-1)
+               qm = face_q_dn(j-1)
             endif
 
             if (is_first_order(j)) then
                Fp = flux_lo(:,j)
                pR = p_lo(j)
+               qp = q_up_lo(j)
             else
                Fp = face_flux(:,j)
                pR = face_p(j)
+               qp = face_q_up(j)
             endif
 
             dFc(1) = (dAp*Fp(1) - dAm*Fm(1))/dV
@@ -324,6 +401,24 @@
                dFc(2) = dFc(2) + recon_lambda*(pR - pL)/dr
             else if (use_weno3) then
                dFc(2) = dFc(2) + (pR - pL)/dr
+            endif
+
+            ! The well-balanced momentum row, as the cell loop of RK_rhs
+            ! assembles it; keep the two in step.  Under the PLM to WENO3
+            ! continuation the face departures stored here are those of the
+            ! LAST of the two evaluations and not their blend (the blend is
+            ! formed in reconstruction_continuation_rhs on dF, S, face_flux
+            ! and face_p), so a face this repair replaces inside a
+            ! continuation ramp carries that arm's pressure force rather
+            ! than the homotopy's.  A replaced face is not well balanced in
+            ! any case (see above), and the repair runs only on a stage that
+            ! left rho > 0, rho e > 0.
+            if (well_balanced) then
+               if (use_plm) then
+                  dFc(2) = (dAp*(Fp(2) + qp) - dAm*(Fm(2) + qm))/dV
+               else
+                  dFc(2) = (dAp*Fp(2) - dAm*Fm(2))/dV + (qp - qm)/dr
+               endif
             endif
 
             dF3p  = dAp*Fp(1)*(Gphi_i(j) - Gphi_c(j))         &
@@ -358,6 +453,10 @@
          if (is_first_order(jf)) then
             face_flux(:,jf) = flux_lo(:,jf)
             face_p(jf)      = p_lo(jf)
+            if (well_balanced) then
+               face_q_up(jf) = q_up_lo(jf)
+               face_q_dn(jf) = q_dn_lo(jf)
+            endif
          endif
       enddo
 

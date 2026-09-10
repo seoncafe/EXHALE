@@ -36,6 +36,12 @@
       use RK_integration
       use viscous_conduction, only: transport_active,                   &
                                     viscous_conduction_sources
+      use hydrodynamic_rows, only: generic_precision_rows_arm,          &
+                                   ARM_QUADRUPLE, ARM_GENERIC_DOUBLE,   &
+                                   hydrodynamic_rows_in_quadruple_precision, &
+                                   hydrodynamic_rows_in_double_precision
+      use ionization_equilibrium, only: ieq_sweep_state_kind,           &
+                                        ieq_state_marching
 
       implicit none
       private
@@ -172,8 +178,29 @@
       ! Local scratch so callers' own WL/WR/dF/S are untouched
       real*8, dimension(3,1-Ng:N+Ng) :: WL, WR, dF, S, W
       real*8, dimension(1-Ng:N+Ng)   :: Tc, Smom, Sene
+      integer :: arm
 
-      call reconstruction_continuation_rhs(u, WL, WR, dF, S)
+      ! THE ARITHMETIC THE HYDRODYNAMIC ROWS ARE ASSEMBLED IN.  Normally the
+      ! production routines, in double.  EXHALE_RESID_QUAD=1 sends the
+      ! STATIONARY evaluations -- and only those; the marching stages reach
+      ! RK_rhs directly and never come here -- through the
+      ! quadruple-precision instantiation of the same kind-generic text, as
+      ! the control experiment of where the residual's non-smoothness floor
+      ! comes from: that floor is the rounding of this flux assembly, and an
+      ! arm that lowers the rounding by eighteen decades and nothing else
+      ! separates the rounding from every other candidate. Default off, and
+      ! nothing is adopted from it; see the header of module
+      ! hydrodynamic_rows.
+      arm = 0
+      if (ieq_sweep_state_kind .ne. ieq_state_marching)                  &
+         arm = generic_precision_rows_arm()
+      if (arm .eq. ARM_QUADRUPLE) then
+         call hydrodynamic_rows_in_quadruple_precision(u, WL, WR, dF, S)
+      else if (arm .eq. ARM_GENERIC_DOUBLE) then
+         call hydrodynamic_rows_in_double_precision(u, WL, WR, dF, S)
+      else
+         call reconstruction_continuation_rhs(u, WL, WR, dF, S)
+      endif
       R(1,:) = dF(1,:) - S(1,:)
       R(2,:) = dF(2,:) - S(2,:)
       R(3,:) = dF(3,:) - S(3,:) - (heat - cool)

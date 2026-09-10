@@ -140,6 +140,7 @@ SRC := \
   src/modules/lower_atmosphere/element_inventory.f90 \
   src/modules/lower_atmosphere/diffusive_photochemistry.f90 \
   src/modules/time_step/viscous_conduction.f90 \
+  src/modules/time_step/hydrodynamic_rows.f90 \
   src/modules/time_step/steady_residual.f90 \
   src/modules/time_step/certification.f90 \
   src/modules/time_step/attempted_step.f90 \

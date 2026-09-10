@@ -1344,7 +1344,7 @@ Krylov cycle rather than only that component.
 `Molecular carrier transport: True`, `Solver: Newton`, `Resid tol: 1.0e-8`,
 one thread, the carrier in `ln n`; one binary, `EXHALE_SPECIES_BUDGET_FACE=0` (retired by N4b, 2026-09-09; the measurement arm is now `EXHALE_ELEMENT_CONSTRAINT_ROWS=0`)
 apart. The switched-off arm reproduces the entry text iteration for iteration
-and byte for byte in both output files, so the face is the only behaviour this
+and byte for byte in both output files, so the face is the only behavior this
 item changed on this route.
 
 | `mol_carrier` | budget not a face | **budget a face** |
@@ -1523,11 +1523,25 @@ No solve carrying a species row certifies. The two candidates:
 The obstruction is named and agreed on by three independent items (N21,
 N24, N27): **the linear solve**. It reaches 0.58 to 0.99 of its right-hand
 side where 0.1 was asked, spending all 40 products, and its Arnoldi image is
-15 to 21 percent off the operator. N25 showed the gap is the nonlinearity of
-the finite-difference action rather than a loss of orthogonality. The row
-scaling is fixed by decision 20 a, so the untried freedom is the COLUMN
-preconditioner; the other route is a Newton whose linear tolerance is
-actually reached.
+15 to 21 percent off the operator. N25 read the gap as the nonlinearity
+(curvature) of the finite-difference action; N31 to N34 (2026-09-10)
+corrected that reading. The gap is a ROUNDING FLOOR of the residual, not
+curvature: the residual's second difference along a direction is flat over
+5.4 decades of spacing (N33), the floor is the rounding of the flux
+difference over a base cell amplified by the near-hydrostatic cancellation
+at the face (`epsilon x face state x r^2/dV`, followed over 4.6 decades of
+that bound along the column), it follows no inner tolerance (N32), and a
+quadruple-precision evaluation of the hydrodynamic rows lowers the Arnoldi
+gap by a factor 31 (N34), which settles the attribution. What the same
+experiment also showed is that the Krylov cycle does not converge even with
+a faithful image: the binding rows at the stagnating iterate are element
+and carrier rows that do not pass through the flux assembly, and their
+cycles stand at 0.98 with the floor removed. The untried freedom is
+therefore the CONDITIONING of the preconditioned operator on the species
+rows (what the banded preconditioner misses of their coupling), measured
+by N35; the column preconditioner (N31) and the probe rule are not levers,
+and a well-balanced flux difference in the base layer (decision 23) is the
+right discretization but not by itself the cure.
 
 ### 22.5 Two facts about this solver that change how it is judged
 

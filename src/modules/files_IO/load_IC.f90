@@ -175,12 +175,12 @@
    ! refused by name, and the change that was allowed is written into the
    ! new state's block, so a rung of a ladder states what it was reached
    ! from instead of the change being silent.
-   integer, parameter :: n_opt = 20
+   integer, parameter :: n_opt = 21
    character(len=16), parameter :: opt_name(n_opt) = [ character(len=16) :: &
         'He23S', 'metals', 'eos_metals', 'mol', 'molbase', 'oxychem',       &
         'carrier', 'carrier_newton', 'iontrans', 'he_diff',                 &
         'he_metal_diff', 'sec_ion', 'caloric_mono', 'excH', 'base_ir',      &
-        'mol_ir', 'mol_heat', 'visc', 'cond', 'jlya' ]
+        'mol_ir', 'mol_heat', 'visc', 'cond', 'jlya', 'wellbal' ]
    ! WHICH TOKENS MAY NEVER BE NAMED, and why: these six decide HOW MANY
    ! UNKNOWNS the state has and which rows the state files carry. metals
    ! adds the metal ionization stages, mol the four molecular carriers,
@@ -195,7 +195,7 @@
         .false., .true.,  .false., .true.,  .false., .true.,                &
         .true.,  .true.,  .true.,  .false.,                                 &
         .false., .false., .false., .false., .false.,                        &
-        .false., .false., .false., .false., .false. ]
+        .false., .false., .false., .false., .false., .false. ]
    ! The tokens the input named as allowed to differ, set by input_read
    ! from "Restart option change:" (which is where an unknown token and a
    ! layout token are refused, the input file being what states them).
@@ -1017,6 +1017,7 @@
       case ('visc');           opt_value = tf(visc_on)
       case ('cond');           opt_value = tf(cond_on)
       case ('jlya');           write(opt_value,'(I0)') jlya_mode
+      case ('wellbal');        opt_value = tf(well_balanced)
       case default
          write(*,'(A)') ' (load_IC) ERROR: the option token "'//           &
               trim(name)//'" is named in opt_name and has no value in'//   &

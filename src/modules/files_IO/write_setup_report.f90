@@ -179,7 +179,7 @@
       '- WARNING H2 neutral dissociation NOT resolved (P31c): the'//       &
       ' 33-41 eV photoionization yield is taken to be unity, as before,'
 			write(outfile,*) &
-      '  so up to 7.4 per cent of the absorptions at 37.5 eV are counted'//&
+      '  so up to 7.4 percent of the absorptions at 37.5 eV are counted'//&
       ' as ionizations rather than as two neutral H atoms. This is'
 			write(outfile,*) &
       '  the pre-E1 behavior and is kept only for reproducing an'//        &
@@ -478,6 +478,22 @@
 	endif
 	write(outfile,*) '- Numerical flux: ', flux
 	write(outfile,*) '- Reconstruction method: ', rec_method
+	! The pressure/gravity pair: whether the reconstruction, the Riemann
+	! jumps and the pressure force carry the state or its departure from the
+	! cell's own hydrostatic equilibrium.
+	if (well_balanced) then
+		write(outfile,*) '- Well balanced: on (the reconstruction and the'// &
+			' Riemann jumps carry the departure from the local'
+		write(outfile,*) '    hydrostatic equilibrium of constant density,'//&
+			' and the momentum source is that equilibrium'
+		write(outfile,*) '    face-pressure difference, so a discrete'//     &
+			' equilibrium is preserved to rounding.'
+		if (trim(flux) .eq. 'LLF') write(outfile,*) '    WARNING: the LLF'// &
+			' flux resolves no stationary contact, so the'//                 &
+			' well-balanced property does not hold with it.'
+	else
+		write(outfile,*) '- Well balanced: off (opt-in key "Well balanced")'
+	endif
 	! Artificial dissipation of the 2*dr contact/entropy mode that the
 	! contact-resolving upwind flux stops damping as v -> 0. It enters the
 	! numerical flux, so the marching loop and the steady residual see the
@@ -655,6 +671,7 @@
 	call put_l('use_weno3', use_weno3)
 	call put_l('use_plm', use_plm)
 	call put_l('recon_two_stage', recon_two_stage)
+	call put_l('well_balanced', well_balanced)
 	! Only when the PLM -> WENO3 continuation is actually asked for.
 	! An absent key leaves the shipped one-step hand-off, which has no
 	! continuation settings to resolve, and every parse-corpus case
@@ -832,6 +849,9 @@
 	! above is the reservoir the base is held at, not a column invariant.
 	! The budget check has to know which of the two it is testing.
 	write(u,'(A,L1)')     'he_diffusion              ', he_diffusion
+	! The discretization of the pressure/gravity pair, which decides what a
+	! profile written by this run is a steady state OF.
+	write(u,'(A,L1)')     'well_balanced             ', well_balanced
 	! Which set of atomic H/He rate coefficients the run used: 'K22' = the
 	! four Koskinen et al. (2022) Table 1 entries R1-R4 selected by "Atomic
 	! rate set:", 'default' = EXHALE's own (Badnell/Mao case B, or the

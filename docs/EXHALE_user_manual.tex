@@ -1294,6 +1294,35 @@ defaults restore the standard behavior).}\label{tab:inp-opt}\\
   $\varepsilon_4<1/(16\,\mathrm{CFL})$ (0.10 at the default CFL); the classical
   range $1/64$--$1/32$ works. $\varepsilon_4\le0$ $=$ off, bit-identical. See
   \path{src/modules/flux/low_mach_dissipation.f90}. \\
+\texttt{Well balanced:} & logical (def.\ \texttt{False}) & Carry the
+  \emph{departure} from the cell's own local hydrostatic equilibrium through
+  the reconstruction, the Riemann jumps and the pressure force, instead of the
+  state itself. Inside cell $j$ the equilibrium is the constant-density one
+  through that cell's own density and pressure,
+  $p_{{\rm eq},j}(r)=p_j-\rho_j[\phi(r)-\phi(r_j)]$, so no thermal, entropy or
+  compositional stratification is assumed; the pressure stencil acts on the
+  departure of a neighboring cell's pressure from that equilibrium continued
+  \emph{through} the face between them (this cell's density up to the face,
+  the neighbor's beyond it), which vanishes at a discrete
+  equilibrium, and the momentum row is assembled from the face pressure
+  measured against that equilibrium while the gravitational source term is
+  zero. The equilibrium's flux difference and its source then cancel in the
+  algebra rather than in floating point, and a discrete hydrostatic
+  equilibrium is preserved to rounding (K\"appeli \& Mishra 2016, A\&A 587,
+  A94; the face-pressure-difference form of the source is K\"appeli \& Mishra
+  2014, J.\ Comput.\ Phys.\ 259, 199). Exact preservation also needs a
+  numerical flux that resolves a stationary contact, so it holds with
+  \texttt{Numerical flux: ROE} and \texttt{HLLC} but \emph{not} with
+  \texttt{LLF}, and not at a face the positivity repair has replaced with a
+  first-order flux. It applies to both reconstructions and to the
+  PLM\,$\to$\,WENO3 continuation. Turning it on \emph{moves every result}: the
+  pressure/gravity pair is in every run, and the two discretizations are both
+  second-order consistent with neither a subset of the other. It is stated in
+  \texttt{EXHALE\_setup.out} and \texttt{EXHALE\_resolved.out}, and written
+  as the option token \texttt{wellbal}
+  in a state file's \texttt{\# options} line, where \texttt{Restart option
+  change:} may name it, since it does not decide how many unknowns a state
+  has. See \path{src/modules/states/Reconstruction.f90}. \\
 \texttt{ATES\_photoionization\_rate:} & \texttt{True} & Revert the He\,I
   ($1^1$S) photoionization cross section to the legacy ATES two-term fit
   (default: Verner+1996). Does \emph{not} affect the He\,$2^3$S Penning rate,

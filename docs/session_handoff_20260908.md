@@ -20,9 +20,32 @@
   `transmission_spectrum`, `steady_solver_memo`, `molecular_hydrogen_treatment`,
   `lower_atmosphere_coupling`, `EXHALE_user_manual` (tex and pdf), `README.md`,
   `README_HOWTO.md`, `TO_BE_DONE.md`, `steady_solver_design.md` section 22.
-- Next: N31, the column preconditioner (brief: why the finite-difference
-  Jacobian action is not additive, then a column-scale or central-difference
-  arm, accepted by named outcomes; `<scratchpad>/planrev1_brief_N31.md`).
+- N31 DONE 2026-09-10 (logged): the action's nonadditivity is a
+  non-smoothness floor of the residual, not curvature; neither probe arm
+  adopted; carrier reload pinned as `backup/regression/carrier_elem_newton`.
+  N32 DONE: the floor follows no inner tolerance and is not in the
+  chemistry; it sits in the hydrodynamic rows (mass, energy) of cells 1 to
+  58. N33 DONE: no branch; the floor is the rounding of the flux difference
+  over a base cell, amplified by the near-hydrostatic cancellation at the
+  face (bound `epsilon x face state x r^2/dV`, followed over 4.6 decades).
+  Next: DECISION 23 (`docs/To_be_determined_by_user_20260906.md`):
+  well-balanced flux differencing (recommended), quad accumulation as the
+  control, coarser base cells, or accept the floor. N34 (the control) DONE: the floor is confirmed (the quad arm lands on
+  the double bound of the state handed in) and the Arnoldi gap falls by 31,
+  but the Krylov cycle still stalls at 0.21 (hydrodynamic binding row) and
+  0.98 (element and carrier binding rows): the floor is not what holds the
+  species-row solve. Decision 23 restated ((b) retired, (a) right but not
+  the cure). N35 DONE: the band misses nothing; the preconditioned operator is
+  near-singular on the species rows (Ritz ratio 6.6e5 carrier, 1.1e4
+  atomic; binding row's diagonal 3.3e3 below its hydrodynamic coupling)
+  and a longer Krylov cycle returns a worse step (true residual optimum at
+  60 to 80 products). N36 DONE: both arms fail acceptance, stay off; the linear algebra is
+  exhausted as a lever. Decision 23 DECIDED (a) 2026-09-10; N37 (well-balanced flux
+  difference, default-off option) launched. The remaining question (the discretization of the species rows that bind at the
+  front). Uncommitted: N31 to N36 source (`steady_newton.f90`,
+  `steady_residual.f90`, new `hydrodynamic_rows.f90` + `.inc`,
+  `ionization_equilibrium.f90`, `T_equation.f90`, `caloric_eos.f90`,
+  `Makefile`, `krylov_and_dogleg` tests 174 -> 264 rows) and the documents.
 
 
 Continues `docs/session_handoff_20260907.md` (the PLAN rev2 series gate).

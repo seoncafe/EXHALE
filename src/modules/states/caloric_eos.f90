@@ -118,6 +118,11 @@
       ! u_rv = T^2 d ln Q/dT is asserted against the exact sum.
       public :: h2_rovibrational_sum, h2_partition_function
       public :: caloric_eos_state_line
+      ! The composition ratios and the tabulated H2 ladder, for an evaluation
+      ! of the same maps in another real kind (hydrodynamic_rows_body.inc).
+      ! Read only: they carry no arithmetic of their own.
+      public :: caloric_cell_mixture
+      public :: h2_rovibrational_table_grid, h2_rovibrational_table_node
 
       ! Is any cell of this run molecular?  Set by
       ! caloric_state_from_composition; .false. keeps every map on the
@@ -247,6 +252,64 @@
          line = 'monatomic gamma = 5/3'
       endif
       end function caloric_eos_state_line
+
+      subroutine caloric_cell_mixture(j, nk_per_rho, x2, is_molecular)
+      ! The two composition ratios the caloric maps of cell j are evaluated
+      ! at: (n_tot + n_e)/rho and n(H2)/(n_tot + n_e).  Both are ratios of
+      ! number densities and so are unchanged by a change of density, which
+      ! is why a reconstructed face state may use its owning cell's values.
+      ! is_molecular is .false. wherever the maps take the constant gamma_ad
+      ! branch, and the two ratios are then not defined.
+      integer, intent(in)  :: j
+      real*8,  intent(out) :: nk_per_rho, x2
+      logical, intent(out) :: is_molecular
+
+      nk_per_rho  = 0.0d0
+      x2          = 0.0d0
+      is_molecular = .false.
+      if (.not. caloric_mixture_active) return
+      if (.not. allocated(molecular_cell)) return
+      if (.not. molecular_cell(j)) return
+      nk_per_rho  = nk_per_mass(j)
+      x2          = x_h2(j)
+      is_molecular = .true.
+
+      end subroutine caloric_cell_mixture
+
+      ! ------------------------------------------------------!
+
+      subroutine h2_rovibrational_table_grid(n_nodes, lnT_lo, dlnT,      &
+                                             T_lo, T_hi)
+      ! The logarithmic temperature grid the Hermite table below sits on.
+      ! Builds the table if it is not there yet, so a caller that reaches the
+      ! nodes without going through caloric_state_from_composition still gets
+      ! a table.
+      integer, intent(out) :: n_nodes
+      real*8,  intent(out) :: lnT_lo, dlnT, T_lo, T_hi
+
+      if (.not. utab_built) call build_h2_rovibrational_table()
+      n_nodes = n_utab
+      lnT_lo  = lnT_utab_lo
+      dlnT    = dlnT_utab
+      T_lo    = T_utab_lo
+      T_hi    = T_utab_hi
+
+      end subroutine h2_rovibrational_table_grid
+
+      ! ------------------------------------------------------!
+
+      subroutine h2_rovibrational_table_node(i, u_node, dudlnT_node)
+      ! Node i of the table: u_rv [K] and T c_rv [K] at that temperature.
+      integer, intent(in)  :: i
+      real*8,  intent(out) :: u_node, dudlnT_node
+
+      if (.not. utab_built) call build_h2_rovibrational_table()
+      u_node      = u_utab(i)
+      dudlnT_node = dudlnT_utab(i)
+
+      end subroutine h2_rovibrational_table_node
+
+      ! ------------------------------------------------------!
 
       ! ------------------------------------------------------!
       ! The H2 rovibrational ladder

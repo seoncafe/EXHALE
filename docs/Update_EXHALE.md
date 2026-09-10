@@ -799,7 +799,7 @@ the carrier solver question is settled. `make check` and one
   Load path kept the table rows as bin points with central-difference
   widths, so no threshold was a bin edge there, on the path every planet
   calculation of record uses (decision 16). Now the bins are built from
-  edges (geometric means of neighbouring rows, the table span as the two
+  edges (geometric means of neighboring rows, the table span as the two
   end edges), every active ionization threshold inside the span is inserted
   as an edge with the split bin's two halves carrying the row's flux (exact
   for the integrated flux), `e_v` the geometric center, `de_v` the exact
@@ -936,7 +936,7 @@ specified and recommended; ten open questions).
   Newton-measured. Impact: `mol_carrier` byte-identical (no changed branch
   reachable: all 499 transport steps of the first 500 ended at the floor);
   **`oxygen_chemistry` refuses at step 4**: the CO thermal ceiling, a clamp
-  without a rate, leaves a neighbouring cell's CO row at 1.0e-7 of its terms
+  without a rate, leaves a neighboring cell's CO row at 1.0e-7 of its terms
   (accepted steps before it: 1.1e-9, 4.2e-9), and the code no longer
   certifies it. That is the plan's position (B1 alternative B: a
   ceiling-active atmosphere is outside the validated set); the case can run
@@ -1740,7 +1740,7 @@ specified and recommended; ten open questions).
     only difference is the band. `sigma_pump` at the bottom of the column
     axis is 1.701e-17 (700 K) to 1.887e-17 cm^2, which is DB96's own
     2.557e-17 per 912-1110 A photon restated per 912-1201 A photon
-    (1.676e-17) to 1-13 per cent, the same agreement as before.
+    (1.676e-17) to 1-13 percent, the same agreement as before.
   * **The beam loses what the table rates.** The band share A is no longer
     the DB96 eq. (39) equivalent width; it is the column integral of the
     pump cross section `sigma_diss/p_eff` of the same table, in closed form
@@ -1753,7 +1753,7 @@ specified and recommended; ten open questions).
     section (`lyman_werner_band_absorption_rate_cell_mean`), on the
     quadrature the dissociation rate already used, and not the cell mean of
     `sigma_diss` divided by `p_eff` at one column: on cells spanning 2.5 H2
-    scale heights the second stood 8.0 per cent above the beam loss and the
+    scale heights the second stood 8.0 percent above the beam loss and the
     first closes on it to 1e-6 (`physics_probe/lyman_werner_cell_mean`
     sec. 6). `h2_band_equivalent_width` and eq. (39) are removed; the two
     published self-shielding fits stay, called by nothing, for the
@@ -1773,10 +1773,10 @@ specified and recommended; ten open questions).
     the H2 front (r = 1.075), the base H2 column 3.3875e20 -> 3.4067e20 cm^-2
     and the base `x_H2` 0.96288 -> 0.96365. The optically thin rate at the
     top of the column moves by 480.9/500.6 = 0.9606 exactly: the band's
-    photon content grew 46 per cent and the cross section fell by the same
+    photon content grew 46 percent and the cross section fell by the same
     factor, so what is left is that the real spectrum gives 480.9 over
     912-1201 A where the flat continuation of the 912-1110 A deck would give
-    500.6. Deeper cells move -4.7 to -6.0 per cent, the wider band's extra
+    500.6. Deeper cells move -4.7 to -6.0 percent, the wider band's extra
     lines shielding differently; slightly less destruction leaves slightly
     more H2.
   * **Not repaired here, and it blocks the `fuv_band_ledger` suite.** With
@@ -1983,7 +1983,7 @@ specified and recommended; ten open questions).
 - **B3b-CO landed: the CO row carries two published destruction rates**
   (2026-09-06). `src(ic_CO)` is no longer `0`. It is
   `-(k_D1 n(He+) + k_CO) n_CO` with `k_D1 = 1.60e-9 cm^3 s^-1` (UMIST
-  RATE22 entry 4068, measured, accuracy better than 25 per cent,
+  RATE22 entry 4068, measured, accuracy better than 25 percent,
   temperature independent, READ) and `k_CO` the cell mean of
   `(F_LW/<hv>) sigma_CO Theta(N_CO, N_H2) exp(-tau_cont)` on the
   912-1201 A beam. New: `co_self_shielding_table.f90` (the 12CO block of
@@ -2016,11 +2016,11 @@ specified and recommended; ten open questions).
   only regression case that carries CO** (a control binary of the same tree
   with the CO source and the two deposits reverted): both run 1000 steps,
   exit 0 and give `log10 Mdot = 9.61`; the after binary costs 628 s against
-  11 per cent less for the control at a matched 150 steps. The He+ + CO
-  charge-transfer deposit is **65 per cent of the total heating at
+  11 percent less for the control at a matched 150 steps. The He+ + CO
+  charge-transfer deposit is **65 percent of the total heating at
   r = 1.089**, the helium ionization front where CO still survives, and
-  under 1 per cent outside 1.05-1.17; the layer's temperature moves by up to
-  46 per cent at r = 1.023 and its CO by up to 52 per cent. `mol_carrier` at
+  under 1 percent outside 1.05-1.17; the layer's temperature moves by up to
+  46 percent at r = 1.023 and its CO by up to 52 percent. `mol_carrier` at
   300 steps is byte-identical in every output file, which is the gate that
   the new terms are on the same `thereis_oxychem` as the rest of the oxygen
   path; no other regression case sets `Oxygen chemistry`. The domain record
@@ -2059,13 +2059,13 @@ specified and recommended; ten open questions).
   not implemented** (2026-09-06; `EXHALE_main.f90`, `attempted_step.f90`,
   the `coupled_source_step` and `attempted_step` suites). WHERE THE COST IS,
   MEASURED on `wasp_full` 300 steps, one thread: the run timers give
-  `ioniz_eq` 83.6 per cent and the energy solve 16.3 per cent of the marching
-  wall time, and a gprof build puts **78 per cent of the whole marching time
+  `ioniz_eq` 83.6 percent and the energy solve 16.3 percent of the marching
+  wall time, and a gprof build puts **78 percent of the whole marching time
   inside the MINPACK solve of one cell's chemistry** (one Jacobian and one QR
   per cell per pass; the warm start already reaches each root in one Newton
-  step), against about 13 per cent in the whole-grid rate and field work a
+  step), against about 13 percent in the whole-grid rate and field work a
   pass repeats. So the cost is the number of CELL solves and not the field,
-  and reusing the field between passes is worth at most that 13 per cent.
+  and reusing the field between passes is worth at most that 13 percent.
   THE CONVERGENCE STUDY CONTRADICTS THE EXPECTATION THE ITEM WAS WRITTEN
   FROM: after pass 2, 308 of the 500 cells are still above the tolerances,
   after pass 5 still 130, and the cell that sets the pass count walks inward
@@ -2089,12 +2089,12 @@ specified and recommended; ten open questions).
   `cert_tol_carrier` = `cert_tol_element` = 1e-8 on the composition this step
   returns. Measured 1e-10 to 1e-5 on `wasp_full` 300 and `mol_base_handoff`
   1500, the adopted state moves by about the tolerance and a decade costs 1.3
-  passes and 15 per cent of the wall time, **so the tolerance is not the cost
+  passes and 15 percent of the wall time, **so the tolerance is not the cost
   lever**; the step's own truncation error (step-doubling, `phys`, 5.3e-3
   relative) is five decades above the loosest value and does not bind.
   Newton on T with the composition's response (item 4) stays live, and the
   CHEAP version of it is refuted by measurement: the contraction ratio
-  spreads by 122 per cent globally and by 200 per cent cell by cell over the tail
+  spreads by 122 percent globally and by 200 percent cell by cell over the tail
   of a step, so the sequence is geometric on average over a run and not
   within one step at one cell -- which is why B3c's Aitken failed, and why
   the acceleration has to come from `dc/dT = -(dF/dc)^-1 (dF/dT)` against
@@ -3722,7 +3722,7 @@ specified and recommended; ten open questions).
   pre-existing base artefacts, not COST7's: **`oxygen_chemistry`** (1000-step
   snapshot) reads 42x in n(H II) at cell 22 because the GOLDEN carries an
   odd-even sawtooth there (cells 21, 24, 25, 27 at 7e3-9e3 against 2e5 in
-  their neighbours) and the new run is smooth (1.6e5 to 3.9e5 across cells
+  their neighbors) and the new run is smooth (1.6e5 to 3.9e5 across cells
   18-26; rho, p, T within 1e-6); **`hydrostatic_column`** reads 0.999 in the
   adv file's T at cell 350 because the adv post-process gives T_adv = 0.78 K
   inside 1.40 Rp in this static column (the original T is 1124 K
@@ -3947,7 +3947,7 @@ specified and recommended; ten open questions).
 
 - **B5h** (`ionization_equilibrium.f90` +68/-2 diagnostics,
   `steady_newton.f90` +211/-2 probe only, `steady_selfconsistent_residual`
-  assertion 4; NO behaviour changed, `wasp_full_newton` and the element run
+  assertion 4; NO behavior changed, `wasp_full_newton` and the element run
   byte-identical to a control built from the same source with the additions
   removed): **why one state has two residuals.** MEASURED on
   `mol_diffusion`'s element configuration with a lockstep two-seed trace of
@@ -4768,7 +4768,7 @@ specified and recommended; ten open questions).
   exists in two modules because `element_census_tolerance()` is private.
   Rule breach reported by the worker: one `pkill -f` on its own shell
   pattern (it matched only its own shell; the other workers' runs were
-  verified alive). Advisor: five British `per cent` in the two files fixed;
+  verified alive). Advisor: five British `percent` in the two files fixed;
   the advisor's earlier `pgrep` for the worker's binary name missed its
   renamed scratch copies, a false "finished" the worker corrected.
 - **N7b** (N7 proposals P1 and P2, and the JFNK iteration hook;
@@ -4813,7 +4813,7 @@ specified and recommended; ten open questions).
   measured floor rows and the sound-ratio rows), GREEN 43/0; advisor rebuild
   warning-free, `krylov_and_dogleg` 43/0, binary md5 `6d4bf63e` identical
   to the worker's final. Two dead locals removed (md5 unchanged). Advisor:
-  four British `neighbour` spellings in comments fixed. Advisor decision:
+  four British `neighbor` spellings in comments fixed. Advisor decision:
   P1's measured floor stays (correct in form, one evaluation per iteration).
   **Reported, not fixed**: the ray test runs before the acceptance test, so
   a catastrophic over-prediction (ratio -533, -1493 at iterations 47, 50) is
@@ -4866,8 +4866,8 @@ specified and recommended; ten open questions).
   final; `krylov_and_dogleg` 43/0; `residual_determinism` 5 PASS / 1 FAIL,
   the FAIL being the atomic closure-spread row by design (a first advisor
   run with the wrong variable name `EXHALE_EXE` tested the stale shared
-  `EXHALE.x`, the advisor's mistake); two British `per cent` in
-  `ionization_equilibrium.f90` fixed, the worker fixed five `neighbour`.
+  `EXHALE.x`, the advisor's mistake); two British `percent` in
+  `ionization_equilibrium.f90` fixed, the worker fixed five `neighbor`.
   The worker's session was cut once by the Opus limit (09:50 KST) and
   resumed; nothing was lost. **Reported, not fixed**: a discarded
   evaluation restores `n_eq_sweeps_last`, so a caller reads the previous
@@ -5328,7 +5328,7 @@ specified and recommended; ten open questions).
   that fraction, stated in the header beside `adv_input_certified`), and
   keeps the certification verdict as the separate statement it is; the
   product is then a CONDITIONAL correction with its condition written in
-  every row. Advisor: two `per-field` and two `per cent` (one in a printed
+  every row. Advisor: two `per-field` and two `percent` (one in a printed
   message) fixed. **Reported, not fixed**: `assemble_residual` leaves
   `R(:,1-Ng)` undefined (`RK_rhs` assigns `2-Ng..N+Ng` only; no caller reads
   it today; `RK_rhs.f90`/`steady_residual.f90`); `README.md` 154,
@@ -5365,7 +5365,7 @@ specified and recommended; ten open questions).
   and whether one percent of the mass flux bounds the temperature error of
   such a cell is not measured; a corrected row is not close to the run's own
   row and is not expected to be (the certified state moves T by 6.7e-2 at
-  `m_j` 3e-16). Advisor: one `per cent` in `README.md` fixed;
+  `m_j` 3e-16). Advisor: one `percent` in `README.md` fixed;
   `docs/postprocess_advection_validity.md` marked stale with a pointer.
 - **N10** (decision 15 option a, the restart contract; `input_read.f90`
   +137, `load_IC.f90` +551, `write_output.f90` +13, `EXHALE_main.f90` +166,
@@ -5653,7 +5653,7 @@ specified and recommended; ten open questions).
   absent), GREEN 174/0; `steady_species_rows` 182/0; default path unchanged
   (atomic 109 iteration lines identical to the digit; carrier identical);
   `wasp_full_newton` BITWISE. Advisor: rebuild warning-free, 174/0, 182/0 on
-  `build_lwv`; three British `neighbour` in the element operator's comments
+  `build_lwv`; three British `neighbor` in the element operator's comments
   fixed. Not converged; the ball arm's best iterate is chosen by the judged
   distance while the control is `||R||` (the two rank iterates differently,
   which limits arm comparisons).
@@ -5688,7 +5688,7 @@ specified and recommended; ten open questions).
   ghost and reads 1.19e-2 in both arms); `krylov_and_dogleg` 174/0. Advisor:
   rebuild warning-free, `steady_newton.o` md5 `4bd3138a` and binary
   `e56609ff` identical to the worker's, 174/0 and 189/0 on `build_lwv`; one
-  `neighbours` fixed. **Reported, the next small item (N26b)**: the
+  `neighbors` fixed. **Reported, the next small item (N26b)**: the
   relaxation solvers `solve_trace_element_in_hydrogen` and
   `element_diffusion_step` refill their working arrays' upper ghosts before
   every pass while `element_transport_residual`, documented as the same
@@ -5719,7 +5719,7 @@ specified and recommended; ten open questions).
   relaxation twin, never the residual). Built and measured in an isolated
   source tree with `steady_newton.f90` pinned, because N27 was editing it.
   Advisor: rebuild warning-free, `element_operator` 5/0, `certification`
-  29/0 on `build_lwv`; one `per cent` fixed. Reported: the write-back's ghost
+  29/0 on `build_lwv`; one `percent` fixed. Reported: the write-back's ghost
   is the cell's to round-off, not exactly (any other consumer of those
   ghosts reads a 2e-16 gradient).
 - **N27** (the helium row of cell 246 and the H2 row of cell 205 read side by
@@ -5878,7 +5878,7 @@ specified and recommended; ten open questions).
   1). Tests 42/0 (RED at the build level: the suite does not compile against
   the entry objects); the default certification report byte-identical
   (anchoring under `EXHALE_CERT_ANCHOR=1`). Advisor: rebuild warning-free,
-  `certification` 42/0; one `neighbourhood` and two `per cent` fixed.
+  `certification` 42/0; one `neighborhood` and two `percent` fixed.
 - **N28** (the code items of ISSUES 3.7; `EXHALE_main.f90`, `RK_rhs.f90`,
   `steady_residual.f90`, `element_census.f90`, `element_inventory.f90` and
   `attempted_step.f90` (the duplicate constant), `grid_and_gates` +2 rows and
@@ -5915,7 +5915,7 @@ specified and recommended; ten open questions).
   sweep the checkpoint checksum reads 8.7e244 and the row
   `a_perturbed_state_is_not_the_checkpoint` could never fire (a perturbation
   of 1e2 lost in the round-off of 1e244). Advisor: three forbidden phrases
-  fixed (`per-element` in a printed line, `neighbouring`, `per-region`). One
+  fixed (`per-element` in a printed line, `neighboring`, `per-region`). One
   deviation stated by the worker: an extra private `-fcheck` build (the
   shared `run_fcheck.sh` runs `make distclean`).
 - **N28b** (`bg_cell` allocated and never initialized; `ion_cell_state.f90`
@@ -5999,7 +5999,7 @@ specified and recommended; ten open questions).
   either): one `use element_census, only: element_ratio_gate` line added by
   the advisor; rebuild warning-free (md5 `a9627a14`), `element_operator`
   14/0, `certification` 42/0, `steady_species_rows` 189/0,
-  `krylov_and_dogleg` 174/0; one `per cent` fixed. Reported: the metal arm's
+  `krylov_and_dogleg` 174/0; one `percent` fixed. Reported: the metal arm's
   counter-flux is closed on hydrogen but not on momentum or internal energy
   (a trace approximation, named); `element_census_verify` gates the element
   ratios and only reports the mass closure (the 6.4e-3 state passed every
@@ -6099,7 +6099,7 @@ specified and recommended; ten open questions).
   carries the reason (a wind-certified state keeps its qualification in the
   `_adv` header); superseded notes appended to `a2_certification_contract`,
   `steady_solver_design` and `element_inventory_contexts`; one
-  `neighbourhood` fixed. Reported: whether `steady_gates_met` should read the
+  `neighborhood` fixed. Reported: whether `steady_gates_met` should read the
   anchored tolerance is a separate decision on a shared interface.
 - **DOC1 to DOC3** (the documentation brought to the stage-2 state, 2026-09-10,
   three concurrent documentation workers, no source touched, no binary run):
@@ -6172,3 +6172,787 @@ specified and recommended; ten open questions).
   ISSUES section 5 rewritten to the state after N30; the handoff opens with
   a dated 2026-09-10 state block. The carrier reload is still a scratch
   recipe (`B5k/mkrun.sh carrier`), not a pinned fixture: to pin with N31.
+- **N31** (why the finite-difference Jacobian action is not additive across
+  directions, and two probe arms; `steady_newton.f90` +563/-3, of which the
+  arithmetic is two probe rules and the rest is a default-off hook,
+  `krylov_and_dogleg` 174 -> 190 rows, new fixture
+  `backup/regression/carrier_elem_newton`): **the action is not additive
+  because the residual carries a NON-SMOOTHNESS FLOOR five to nine decades
+  above the double-precision rounding of its own rows, and the difference
+  quotient along the PRECONDITIONED Krylov directions divides that floor by
+  an increment five decades smaller than a generic direction produces.**
+  N25's reading (curvature over the fixed arc) is refuted at the iterates
+  that matter and confirmed at one that does not. MEASURED on the atomic
+  element reload with the new hook `EXHALE_JV_ADDITIVITY=1`
+  (`[diag 13]`, at outer 1, 20 and the last of a capped run, on the first
+  two Arnoldi directions and on two directions off the basis, at a tenth,
+  one and ten times the probe arc): the defect of the Arnoldi pair scales
+  as the arc to the power **-1.026** at outer 1 and **-0.999** at outer 40
+  (rounding), the off-basis pair as **+1.125** and **+2.109** (curvature,
+  and 3.2e-8 and 2.1e-8, negligible), and at outer 20 both are curvature at
+  cells 1 and 2. The second difference of the residual on the
+  defect-holding rows confirms it directly: ratios 0.774 and 1.676 at outer
+  1 where a smooth residual gives 4 and 4, and the floor stands **9.5e5**
+  (outer 1) to **2.0e9** (outer 40) times `epsilon` times the residual on
+  those same rows, so it is not the arithmetic of the assembly. READ, the
+  only tolerance in the atomic path that can set a floor of that size:
+  `ionization_equilibrium.f90` line 969 hands `hybrd1` an xtol of
+  `sqrt(dpmpar(1))` = 1.49e-8 (lines 1432, 2110, 2114), a statement about
+  the step and not the residual, so the composition is a piecewise map of
+  the state; `eval_residual` fixes the number of composition passes but not
+  `hybrd1`'s own iteration count. **A decision of the feasible set is ruled
+  out**: on all six probes of the three iterates, components blocked 0,
+  forward side, and the step taken equal to the nominal step. **The
+  localization gives no unknown class to fix**: at outer 1 the squared
+  defect is 0.31 mass, 0.64 energy, 0.03 momentum, 0.02 helium, under 1e-4
+  in the eight trace elements, and nine tenths of it sits in 35 of the 500
+  cells between 1 and 75. The scale reading is a uniform shortfall: the
+  largest unknown of the state is displaced by 2.2e-8 of itself (about
+  `sqrt(epsilon)`) and almost every other by 1e-10 to 6e-9, one to two
+  decades short, with no unknown near a bound (nearest face 2.9e-5 against
+  a displacement of 4.5e-14). The model that follows, defect ~ floor /
+  (eps `||Jv||`), predicts both pairs at outer 1 within a factor three.
+  **Two arms, both default off.** `EXHALE_JV_COLUMN_SCALE=1`
+  (`probe_step_on_the_column_scales`, `eps0 = sqrt(eps)(1 + ||Dc^-1 Y||) /
+  ||Dc^-1 v||`) is the brief's remedy and it is WORSE, for the reason the
+  diagnosis gives: the Krylov direction's weight sits on unknowns of small
+  column scale, so the rule SHORTENS the arc by 42 and the defect rises
+  8.430e-6 -> 1.466e-4 at exponent -0.965, the 1/arc law reproduced by a
+  change of the arc made for another reason. `EXHALE_JV_PROBE_ARC=<x>`
+  (`jv_probe_arc_scale`, default 1) is the lever the measurement points at,
+  and it wins the linear question and loses the Newton by the same change:
+  at x = 100 the defect of the Arnoldi pair falls 8.430e-6 -> 2.240e-6, the
+  exponent turns +1.139 and the second differences become 4.065 and 4.022,
+  so the rounding regime is gone and the quotient is truncation-limited,
+  while the atomic reload then ABORTS at outer 33 (`info = 2`, `||R||`
+  1.504, flux spread 5.902e-2, 12 steps refused by the model with the
+  actual reduction 26.4 times the predicted, radius 2.028e-7) where the
+  control runs 144 iterations to 3.641e-4 and 5.557e-6 with no model
+  refusal. At x = 20 it aborts at outer 43 at 1.524 with 21 model
+  refusals and a radius of 2.076e-13; the carrier reload runs its 40
+  iterations at both values and hands back 1.006 at x = 100 and 9.076e-1
+  at x = 20, each with 2 model refusals, against the control's 9.572e-2
+  with none. **At x = 5, which
+  does NOT stall**, the binding regime is reached (outer 58, `||R||`
+  3.087e-3, element Fe of cell 146, against the control's 3.386e-3 and
+  element Fe of cell 147 at outer 60) and THERE the Krylov cycle still
+  spends 40 of 40 products at a relative residual of 0.898 to 0.980
+  against the 0.1 asked, indistinguishable from the control's 0.935 to
+  0.959. **The substance of the item**: the additivity of the linear
+  operator wants a LONGER arc (defect ~ floor / arc) and the trust
+  region's model wants a SHORTER one (truncation ~ arc, and the ray test
+  refuses a step whose model and true slope differ in size), the arc
+  already sits at the Newton's balance point, and every direction was
+  measured to lose, so NO probe rule fixes this. What can is lowering the
+  residual's own floor, which is not double precision.
+  Column arm named outcomes at cap 40, arm against control:
+  atomic `||R||` at 40 1.674 against 7.607e-2, handed back 1.633 against
+  5.377e-2, flux spread 4.985e-1 against 3.555e-3, 30/10 against 32/8;
+  carrier `||R||` at 40 1.357e-1 against 1.070e-1, handed back 1.263e-1
+  against 9.572e-2, flux spread 7.718e-2 against 4.635e-2, 31/9 against
+  33/7, SAME binding row (carrier H2 of cell 205), no new
+  `gm_no_direction_sampled` and no refusal of any class in either. The one
+  thing the column arm improves is the count of Krylov cycles reaching the
+  tolerance asked (40 of 40 against 26 of 40), which is the REDUCED
+  problem's residual on an operator that is not the Jacobian and is
+  precisely why that count must not be read as progress. NEITHER ARM IS
+  ADOPTED: both fail the first clause of the acceptance rule outright.
+  **Default path unchanged**: with every hook off the atomic reload's 40
+  iteration lines are identical to the control's to the digit, the carrier
+  reload's binding row and `||R||` at 40 are the control's, and
+  `wasp_full_newton` is BITWISE but for the provenance timestamp; with
+  `EXHALE_JV_ADDITIVITY=1` on, the 40 iteration lines are still identical,
+  so the hook is inert armed as well as disarmed. Tests: `krylov_and_dogleg`
+  RED on the control objects (seven symbols absent), GREEN 190/0;
+  `steady_species_rows` 192/0, `certification` 57/0, `element_operator`
+  14/0, `residual_determinism` 5/1 with the same row failing by design in
+  the control build. **Fixture pinned (deliverable 0)**:
+  `backup/regression/carrier_elem_newton` now holds the carrier reload that
+  existed only as a scratch recipe, with `run.sh`, a README and the control
+  of the unmodified tree at cap 40 (`||R||` 1.969, 1.984, 1.921, 6.800e-1,
+  1.070e-1 at 1, 5, 10, 20, 40; handed back 9.572e-2; flux spread 4.635e-2;
+  `info = 1`; 33 accepted, 7 rejected; 40 of 40 products every cycle;
+  binding row carrier H2 of cell 205; 2754 samples admitted, none refused).
+  A capped run of that fixture never reaches a mass-loss rate. **Defect
+  fixed on the way**: the new probe rule was first written with a local
+  `integer :: n`, which is the grid size `N` of `global_parameters` under
+  Fortran's case-insensitive rules, so its own size guard fell through on
+  every call; the new suite rows caught it at once and the local is now
+  `nunk`. Not claimed: that the floor is `hybrd1`'s xtol -- that is READ
+  from the source and not measured, and the experiment that closes it
+  (tighten that xtol, re-measure the floor) belongs to
+  `ionization_equilibrium.f90`, which this item does not own. The comment
+  of the suite row `the_probe_arc_stands_above_the_residual_noise` was
+  restated: the arc IS nine decades above the residual's reproducibility as
+  a length of the whole vector, but the conclusion drawn from it about the
+  quotient does not follow. Advisor: rebuild on `build_lwv` (one linker warning, pre-existing), `krylov_and_dogleg` 190/0, `steady_species_rows` 194/0, `residual_determinism` one row FAIL by design; atomic reload at cap 40 with every hook off, 8 threads: 1.888, 1.891, 1.819, 1.583, 1.861, 8.964e-1, 7.607e-2 at 1, 5, 10, 15, 20, 30, 40, handed back 5.377e-2, flux spread 3.555e-3, identical to the worker's control; the carrier fixture's README control checked against its own `run.log`; the fixture README is the reference for every later carrier-arm number (the 0.25 quoted after N26 was a scratch-recipe run, not this fixture). Accepted. **Next item N32**: the residual's floor (the inner solves of the composition and of the temperature stop on step or bracket tolerances, `newton_dense`, `hybrd1` xtol `sqrt(eps)`, `brent_root` 1e-10); measure whether the additivity floor follows them.
+- **N32** (which inner tolerance sets the residual's non-smoothness floor;
+  two default-off tolerance hooks and a widened `[diag 13]`,
+  `ionization_equilibrium.f90` +47/-2, `T_equation.f90` +42/-3,
+  `steady_newton.f90` about +130 inside the additivity hook,
+  `krylov_and_dogleg` 190 -> 203 rows): **NEITHER. The floor follows
+  neither the composition solve's stopping tolerance nor the temperature
+  bracket's, and it is not in the chemistry at all: it sits in the
+  HYDRODYNAMIC rows of the residual.** New hooks `EXHALE_IEQ_TOL=<x>`
+  (replaces `tol = sqrt(dpmpar(1))` for the run; new function
+  `composition_solve_tolerance`, cached once by `ioniz_eq`, announced only
+  when armed) and `EXHALE_TEQ_TOL=<x>` (the bracket of `brent_root`, now a
+  module variable at its old 1e-10 through
+  `temperature_bracket_tolerance`). MEASURED on the atomic element reload
+  at outer 1 (cap 40, 8 threads, one entry state for every arm): the
+  additivity defect of the Arnoldi pair is 8.174e-6 at exponent -1.063
+  (default 1.49e-8), 7.452e-6 at -0.995 (1e-10), 9.348e-6 at -1.059
+  (1e-12) and 9.546e-6 at -1.064 (1e-14), and the second difference on the
+  defect rows stays on its floor at 5.6e-12 to 1.6e-11 with no trend in
+  the tolerance: **the law is FLAT**, over six decades. The measurement is
+  exactly reproducible (three control runs, and 1 thread against 8, give
+  8.174e-6 and 1.362e-11 to every printed digit), so the +-17 percent
+  between arms is a real movement of the state and not a fall.
+  `EXHALE_TEQ_TOL=1e-13` is inert to the bit through all 40 iterations,
+  which confirms as MEASURED what was READ, that `brent_root` is reached
+  only from `post_process_adv` and never from `eval_residual`. **Why the
+  composition cannot be the floor**: quadratic convergence pins its root
+  at the SQUARE of the step tolerance. On the reported cell the accepted
+  `x(H+)` is 2.037266074305163e-12 at the default and
+  2.037266074305300e-12 at 1e-14, agreeing to 13 significant digits (7e-14
+  relative), and the pinned fixture's own run.log records an accepted
+  reaction residual of 2.91e-16 at maximum for the steady sweeps; the
+  floor implies a jitter of about 1e-9 relative, five decades above that.
+  The tightest tolerance costs 30 percent more wall time per residual
+  evaluation (0.090 s against 0.066 s at 4 threads, 17 evaluations each)
+  and buys nothing. **Where the floor IS**, from the widened hook: the
+  energy SOURCE, which is where `excited_hydrogen`, `lya_rt`, the cooling
+  table interpolation, the write-back clamps and `comp_T_from_p` all end
+  up, is smooth on the arc and five decades below the floor (second
+  difference of `heat - cool` on the defect cells 3.039e-17, 2.474e-16,
+  1.046e-15 at half the arc, the arc and twice it, ratios 8.1 and 4.2,
+  textbook h squared, against the residual's own 1.362e-11 on the same
+  rows); by row class over the whole column the floor is mass 1.801e-11,
+  energy 3.090e-11, momentum 5.946e-12 against element He 4.269e-12 and
+  every trace element at 1e-16 to 2e-13; nine tenths of it sits in 29 of
+  500 cells between cell 1 and cell 58. The mass row carries no source at
+  all, so no part of the chemistry can be its cause. The competing
+  explanation, that the row is a small difference of large terms and its
+  floor is their rounding, is REFUTED: the largest of heat and cool on
+  those cells is 3.424e-3 against `||F||` 5.507e-3, a ratio of 0.62, and
+  epsilon times it is 7.6e-19. **Deliverable 2 (the stationary-solve-only
+  polish arm) was NOT BUILT**: the brief conditions it on deliverable 1
+  naming a tolerance, and none is named. **A correction to the brief and
+  to N31**: on this fixture `solve_ieq` and `newton_dense` never run.
+  The helium triplet is on (the fixture's `EXHALE_setup.out`) and
+  `metals.inp` is present, so the sweep calls
+  `hybrd1(ion_system_HeH_TR_metals, ...)` directly; MEASURED `nt_calls` 0
+  over the whole hook and no "ioniz-eq solver" line in the fixture's
+  reference run.log. `hybrd1` returns `info = 1` at the default, at 1e-10
+  and at 1e-14 alike, so there is no `info = 2/3` and no fallback to
+  count, and `newton_dense`'s hardcoded step test `1e-11*xscale` is not in
+  this path. **Default path unchanged**: `wasp_full_newton` BITWISE in
+  `Ion_species.txt` and identical but for the provenance timestamp in
+  `Hydro_ioniz.txt`, every `(JFNK)` line identical; the atomic reload's 40
+  iteration lines identical to the control's with every hook off. Tests:
+  `krylov_and_dogleg` RED on the control objects (both new functions
+  absent), GREEN 203/0 with 13 rows added; `steady_species_rows` 194/0,
+  `certification` 57/0, `element_operator` 14/0, `adv_static_limit` 53/0,
+  `coupled_source_step` 30/0, `physics_probe` 1491/0,
+  `residual_determinism` 5/1 with the same row failing by design as in the
+  control. Noticed, not fixed: the fixture README does not say the helium
+  triplet is on, which is what selects the direct `hybrd1` branch and is
+  what sent this item's brief to the wrong routine; and `newton_dense`
+  applies the caller's tolerance to `fnorm` while its step test uses a
+  hardcoded `1e-11*xscale` no caller can set, which would be the real
+  floor on a fixture that does reach it. **Next item**: the floor is in
+  the flux assembly, not in `ionization_equilibrium.f90` -- the candidates
+  left are the reconstruction where the limiter is not the frozen WENO3
+  weight, the Riemann wave-speed estimate, `Apply_BC`, and the transport
+  coefficients of the diffusion operator, which are the one remaining way
+  the composition reaches a hydrodynamic row. Advisor: rebuild on `build_lwv`; `krylov_and_dogleg` 203/0, `steady_species_rows` 194/0, `adv_static_limit` 53/0, `residual_determinism` the same single row FAIL by design; atomic reload at cap 40 with every hook off, 8 threads: the N31 ladder to the digit (1.888, 1.891, 1.819, 1.583, 1.861, 8.964e-1, 7.607e-2; handed back 5.377e-2, spread 3.555e-3), so the worker's 1.112 at iteration 40 is the thread-count sensitivity of N26c, not a change of the path. The atomic fixture README now states the triplet is on and which branch that selects; `newton_dense`'s hardcoded step test recorded in ISSUES 3.7. Accepted; deliverable 2 correctly not built. **Next item N33**: the jump itself, scanned along the Arnoldi direction across four arcs and split by term and operator (base boundary, reconstruction, Riemann flux, caloric inversion, composition read, transport sources).
+- **N33** (where the residual's non-smoothness floor is: the term, the
+  operator and the branch; a default-off multi-scale jump scan
+  `[diag 14]`, `steady_newton.f90` +710, `krylov_and_dogleg` 203 -> 220
+  rows): **THERE IS NO BRANCH. The floor is the ROUNDING OF THE FLUX
+  ASSEMBLY, raised above the last bit of the row by two cancellations
+  that compound.** The Roe flux of a face is built from the JUMPS of the
+  two reconstructed states, and in the nearly hydrostatic base layer
+  those jumps are 3.2e5 to 5.9e6 times smaller than the states
+  themselves, so the interface flux carries the last bit of O(1)
+  quantities and not of its own value; the row is then the flux
+  difference divided by the cell volume, `r^2/dV` = 5.12e3, one over the
+  1.955e-4 width of a base cell. The bound
+  `epsilon x (face state) x r^2/dV` is what a correctly rounded assembly
+  cannot go below, and MEASURED it IS the floor: 1.675e-12 against
+  1.240e-11 at cell 1, 2.520e-13 against 1.644e-12 at cell 84, 4.326e-15
+  against 2.366e-14 at cell 167, 4.241e-17 against 4.409e-16 at cell 251
+  -- the bound falling 4.6 decades with the measured floor following it,
+  ratio 5.5 to 12 throughout, and the ten cells holding the largest
+  second difference are cells 1 to 23, every one a base cell. Beyond
+  cell about 250 the bound falls below the residual's own curvature and
+  stops binding, which is what a floor does. New hook
+  `EXHALE_RESID_JUMP_SCAN=1` samples F at 65 points of `Y + t v` on ten
+  windows, each a quarter of the one before, from two probe arcs down to
+  two arcs over 4^9; one window is not enough, because at the standard
+  arc every interval already holds thousands of steps and none stands
+  above its neighbors. **The measurement**: on the atomic element
+  reload at outer 1 the tracked row is the energy row of cell 1, its
+  median first difference falls by exactly four whenever the spacing
+  does (the smooth part is a straight line), and its second difference
+  does not fall at all -- 1.0e-11 to 1.6e-11 over 5.4 decades of
+  spacing, 1.8e-5 down to 6.9e-11 -- which is a step of F and not a kink
+  or curvature. Isolated steps appear once the smooth increment per
+  interval falls below the floor: 28 of 64 intervals at 3.05e-5 arcs and
+  61 of 64 at 7.63e-6 arcs, at least 4.0e6 stepping intervals per probe
+  arc, the largest moving its row by 2.625e-12, 2.749e-9 of the row.
+  **The term and the operator**, at the largest step (cell 9, mass row):
+  `S` of the mass row is identically zero and the whole step is in `dF`;
+  every quantity upstream of the flux -- the ghosts, `T`, `n_tot + n_e`
+  and the four reconstructed face states -- moves by one to eight units
+  in the last place of an O(1) number with no outlier, in exact
+  multiples of 2.220e-16; the first quantity that steps is the interface
+  flux, by 4.803e-16 where its neighbors move by 3.2e-17, and
+  4.803e-16 x 5116.3 = 2.457e-12 against the row's measured 2.625e-12.
+  **No branch fires anywhere near it**: faces falling back from Roe to
+  HLLE 0 and unchanged, face states the positivity limiter scaled 0 and
+  unchanged, so the base boundary's Newton, `characteristic_branch_weight`,
+  the Mach cap, the ghost quadrature, the stencil selection, the
+  wave-speed branch and `comp_T_from_p` are all continuous here. The
+  off-basis direction carries the SAME floor, 9.1e-12 to 1.4e-11 flat
+  over 5.4 decades, and isolates no step at any window, because its
+  smooth increment never falls below it: the floor is a property of the
+  residual and not of the direction, and what the preconditioned
+  direction does is shrink the numerator of the difference quotient by
+  five decades. The carrier reload reproduces the law (floor 1.532e-11,
+  bound 1.382e-12, ratio 11.09), so it is the discretization at the base
+  and not one fixture. **N31 corrected**: the floor's size stands, but
+  "five to nine decades above the rounding of its own rows" compared it
+  against `epsilon ||F||` on the row, which is the wrong reference for a
+  row built as a flux difference over a cell width; against the right
+  one it is a factor of ten. N32's localization is confirmed and made
+  quantitative. **Deliverable 2 NOT BUILT**: the brief conditions the
+  arm on a branch being named and there is none. The treatment the
+  measurement does name, for the advisor, is a WELL-BALANCED flux
+  difference at the base -- assemble the rows from the departure of the
+  face states from the local hydrostatic isentrope, which
+  `base_boundary.f90` already integrates, so the balance cancels
+  analytically instead of in floating point -- in `Num_Fluxes.f90`,
+  `RK_rhs.f90` and `Source.f90`, none of them this item's files; the
+  cheaper partial lever is the base cell width, on which the floor
+  depends as one over it. **Default path unchanged**: the atomic reload
+  at cap 40 gives all 338 `(JFNK)` lines identical to the control's
+  through `done info=1 ||R||= 1.112E+00`; with the scan armed the
+  outer-1 line is the control's to every digit; `wasp_full_newton`
+  BITWISE in `Ion_species.txt`, `Ion_species_adv.txt` and the three
+  breakdown files, differing only in the provenance timestamp in the two
+  hydro files, `log10 Mdot` 13.30 on both. Tests: `krylov_and_dogleg`
+  RED on the control objects (`resid_jump_scan_on` absent), GREEN 220/0
+  with 17 rows added; `steady_species_rows` 194/0, `element_operator`
+  14/0, `certification` 57/0, `residual_determinism` 5/1 with the same
+  row failing by design and the same measured 3.354e+01 on the control
+  binary. Noticed, not fixed: `global_parameters` declares
+  `integer :: count`, which shadows the intrinsic `COUNT` in every scope
+  that uses the module, so `count(mask)` written anywhere fails to
+  compile -- the same class as the `t0` and `g2s` incidents and worse in
+  that the shadowed name is an intrinsic; renaming a public global was
+  out of scope. Advisor: rebuild on `build_lwv`; `krylov_and_dogleg` 220/0, `steady_species_rows` 194/0; atomic reload at cap 40 with every hook off, 8 threads: the N31 ladder to the digit (7.607e-2 at 40, handed back 5.377e-2, spread 3.555e-3), no `[diag 14]` line; two British spellings in the new comments fixed. Accepted; deliverable 2 correctly not built (there is no branch to smooth). The finding is structural and reaches the marching discretization, so it is put to the user as DECISION 23 (well-balanced flux differencing recommended; quad accumulation of the flux difference as the control experiment; coarser base cells; accept the floor). The `count` global shadowing the intrinsic recorded in ISSUES 3.7 (HYG). **Next item N34** (runs without a decision, changes no default): the control experiment, quad accumulation of the face fluxes and their difference inside the stationary residual only, as a measured arm.
+- **N34** (the control experiment of decision 23: the hydrodynamic rows of
+  the stationary residual in quadruple precision). `EXHALE_RESID_QUAD=1`
+  sends the STATIONARY evaluations of `assemble_residual` -- the tag
+  `ieq_sweep_state_kind` puts on an iterate or a probe; the marching
+  stages reach `RK_rhs` directly and are untouched -- through a
+  quadruple-precision instantiation of the whole flux assembly, from the
+  conserved state through the caloric EOS, the PLM limiter and the WENO3
+  weights, the Roe flux with its entropy fix and HLLE fallback, the
+  geometric and gravitational sources and the division by the cell volume,
+  rounded to double once, at the row. One source text
+  (`hydrodynamic_rows_body.inc`, 1111 lines, kind-generic) instantiated
+  twice by `hydrodynamic_rows.f90`; the composition, the heating and the
+  cooling stay double and enter converted exactly. **The double
+  instantiation is the production operator BIT FOR BIT**, asserted three
+  ways: a suite row on a stated grid (largest difference exactly zero in
+  `dF`, `S` and the four face states, tolerance 0), and two whole
+  40-iteration reloads under `EXHALE_RESID_QUAD=2` -- the atomic (all 355
+  `(JFNK)` lines identical) and the carrier, which is the molecular one
+  and so exercises the generic caloric EOS (all 364 identical). The
+  quadruple instantiation reaches the analytic mass row of a uniform state
+  to 1e-30 before its rounding, where the double one stands at its own.
+  **Verdict: the floor is confirmed and is NOT removed.** On the atomic
+  reload at outer 1 the tracked row's non-smoothness floor falls only
+  1.240e-11 to 5.917e-12, and cell by cell it lands on
+  `epsilon_DOUBLE x face state x r^2/dV` -- ratio 0.93 to 1.4 over the base
+  cells against 5.7 to 8.9 in the control -- and not on the quadruple
+  bound, which is 1.224e-30, 4.8e18 below what is measured. So N33's
+  amplifier (the face cancellation 3.2e5 times the `r^2/dV` 5.1e3) is
+  confirmed a second way and its attribution completed: four fifths of the
+  floor is the arithmetic INSIDE the assembly, the rest is the double
+  representation of what the assembly is handed and hands back -- the
+  ghosts `Apply_BC` writes, the sweep's temperature and particle count,
+  and the double row itself -- which precision inside one operator cannot
+  reach. The detector isolates no step at any of the ten windows (control:
+  28 of 64 and 61 of 64 at the two narrowest), but the second difference is
+  still flat over 5.4 decades and the row still changes sign 39 times in
+  64 intervals: a staircase with a smaller rise. **What the arm does buy
+  is the fidelity of the Krylov model**: the additivity defect falls
+  8.174e-6 to 1.009e-6 with the exponent in the arc still negative
+  (-1.063 to -0.901, so still rounding and not curvature), and at the
+  binding iterate of the atomic reload at cap 40 the relative gap of the
+  Arnoldi image falls 1.188e-1 to 3.813e-3, a factor 31, the returned
+  relative residual then being the true one to four digits (0.2114 against
+  0.2114; the control returned 0.1122 for a true 0.1617). The element rows,
+  which do not pass through the assembly, are unmoved to four digits
+  (C 1.367e-13 to 1.366e-13), which is the control inside the control.
+  **The Newton does not converge and the Krylov cycle still stalls.**
+  Atomic cap 40, arm on: 40 of 40 products at 0.21 against the requested
+  0.10, `||R||` 8.413e-1 handed back against the control's 1.112 with
+  trajectories parting at iteration 9 (the arm is chaotic at the ulp level,
+  so that is not by itself a result). Atomic cap 250: both stop on the
+  stagnation detector, control at iteration 167 at 3.047e-4, arm at 136 at
+  4.096e-4, both with 40 of 40 at 0.983 to 0.989, both binding on the
+  element Fe rows of cells 132 to 137, both NOT CERTIFIED with 11 entries
+  of the inventory refusing. Carrier cap 40: unchanged in every named
+  outcome -- binding row the H2 carrier row of cell 205 throughout, 40 of
+  40 at 0.9886 against 0.9729, `||R||` 9.336e-2 against 9.427e-2 -- as it
+  must be, since that row is assembled by `carrier_steady_residual` and
+  never sees the flux. Cost MEASURED: the flux assembly alone 46x at 8
+  threads and 74x at one (500 cells, 3.628e-5 s to 1.681e-3 s), the whole
+  atomic reload at cap 40 1.11x (271 s to 302 s), because a stationary
+  residual is mostly the ionization sweep. **Nothing adopted, no default
+  changed**: `wasp_full_newton` bitwise but the provenance timestamp,
+  `log10 Mdot` 13.30 on both; the atomic and carrier reloads identical
+  line for line with the arm off. Tests: `krylov_and_dogleg` RED on the
+  control objects, GREEN 232/0 with 12 rows added; `steady_species_rows`
+  194/0, `element_operator` 14/0, `certification` 57/0, `energy_update`
+  53/0, `acceptance_classes` 22/0, `adv_static_limit` 53/0,
+  `species_face_flux` 1/0, `spectrum_type` 154/0, `grid_and_gates` 146/0,
+  `attempted_step` 70/0, `coupled_source_step` 30/0,
+  `residual_determinism` 5/1 with the same row failing by design and the
+  same 3.354e+01 on the control binary. One file outside the brief's list:
+  `caloric_eos.f90` gained three read-only accessors (the mixture ratios
+  and the H2 rovibrational table nodes) with no arithmetic and no behavior
+  change, because the generic pipeline cannot evaluate the molecular
+  caloric EOS without them; the molecular whole-run bitwise comparison is
+  the evidence that they changed nothing. Noticed, not fixed:
+  `backup/regression/atomic_elem_newton/README.md` still names the helium
+  row of cell 246 as the binding row at cap 250 from N26/N27, where the
+  measurement on this tree is the element Fe rows of cells 132 to 137 at
+  iteration 167 and `||R||` 3.047e-4. **For decision 23**: extra precision
+  confirms the diagnosis and does not cure it; the amplifier has to go
+  (well-balanced flux differencing, or a coarser base cell, which buys one
+  factor of the width), and even with the hydrodynamic rows made
+  model-faithful the two rows that actually bind -- the element rows of the
+  atomic reload and the H2 carrier row of the carrier reload -- are not
+  hydrodynamic rows and are untouched by any of it. Advisor: rebuild on `build_lwv` (the new `hydrodynamic_rows.f90` in `SRC`); `krylov_and_dogleg` 232/0, `steady_species_rows` 194/0, `energy_update` 53/0; atomic reload at cap 40 with every hook off, 8 threads: the N31 ladder to the digit (7.607e-2 at 40, handed back 5.377e-2). The `caloric_eos.f90` accessors (read-only, outside the brief's list) accepted on the molecular reload's bitwise evidence. Accepted; nothing adopted. Decision 23 restated with this result: option (b) retired as a remedy, (a) still the right discretization but not by itself the cure of the species-row solve; the atomic fixture README gained a 2026-09-10 state section (binding rows Fe of cells 132 to 137 at cap 250 on this tree). **Next item N35** (runs without a decision): the conditioning of the preconditioned operator on the element and carrier rows at the binding iterate, and what the banded preconditioner misses there.
+- **N35** (what holds the Krylov cycle on the species rows once the
+  rounding floor is removed: the conditioning of the preconditioned
+  operator and what the banded preconditioner misses). Three default-off
+  measurement hooks on the linear system of one outer iteration, adopting
+  nothing: `EXHALE_KRYLOV_SIZE_SCAN=1` (`[diag 16]`) reruns the SAME cycle
+  at 40, 80, 160 and 320 products and the last two again with the basis
+  orthogonalized twice, with `EXHALE_GM_HISTORY=1` printing the reduced
+  residual after every product and the true one every twenty;
+  `EXHALE_PRECOND_SPECTRUM=1` (`[diag 15]`) takes 200 Arnoldi products of
+  `A_z M^-1` from a deterministic start, diagonalizes the Hessenberg
+  (`dgeev`) and reports the Ritz values of the whole operator and of its
+  compressions onto the species and the hydrodynamic rows, with the
+  localization of the three smallest Ritz vectors;
+  `EXHALE_BAND_DIFFERENCE=1` (`[diag 17]`) measures `(A - A_band) v` on
+  those Ritz vectors and on the first two Arnoldi directions, splits the
+  columns they live on into the part inside the band, the band's
+  disagreement there and the part outside, with the radiation live and
+  frozen, and reads the binding row's band row by class as a fraction of its
+  diagonal. **Verdict: the band misses nothing, and the operator itself is
+  near-singular on the species rows.** Its action agrees with the full
+  finite-difference one to 4.0e-5 to 1.5e-3 relative on every direction
+  tested on both fixtures; the columns hold 99.4 to 100.0 percent of their
+  norm inside the band (the largest outside part is 0.6 percent, `element
+  He of cell 308`); and what remains is not on the rows that bind at all,
+  but 0.999 in the momentum row of the LAST cell (carrier) and 0.83 to
+  0.89 momentum plus 0.11 to 0.17 energy in five to seven cells (atomic),
+  the element and carrier rows taking 0.0000 to 0.003 of it. So the two
+  remedies the brief conditioned on -- a rank-few radiation correction by
+  the Woodbury identity, or a wider `kl_jac` -- would each repair something
+  already right, and **nothing was built**. **What IS wrong, MEASURED at
+  the binding iterate of both fixtures.** (1) The preconditioned operator
+  is well conditioned on the hydrodynamic rows and near-singular on the
+  species rows: the Ritz spectrum of the compression onto the hydrodynamic
+  rows has a magnitude ratio 43.4 (carrier, `carrier H2 of cell 205`
+  binding) and 158 (atomic, `energy of cell 52` binding), none and three of
+  200 below 1e-2; onto the species rows, 6.56e5 (carrier, smallest
+  1.493e-6, nineteen below 1e-2, one below 1e-4) and 1.06e4 (atomic,
+  smallest 9.366e-5). The smallest Ritz vector is 0.71 to 0.91 carrier rows
+  on the front cells 199 to 205 and 458 to 466 (carrier) and 0.9955 element
+  rows over 145 cells (atomic), and the carrier fixture's near-zero part is
+  a complex pair, not a real null direction. The attribution is there from
+  outer 1 (2.17e5 against 39.6). And the discretization statement behind
+  it: the band row of `carrier H2 of cell 205` has diagonal 1.2396e-1
+  against off-diagonal magnitudes 4.1026e2, **3.304e3 times the diagonal to
+  the hydrodynamic unknowns of its own stencil and 5.65 times to the
+  neighboring carriers**, so the binding row's own unknown is three
+  decades below its coupling to another class and there is no diagonal for
+  a preconditioner to stand on. (2) **A larger subspace makes the step
+  worse, not better**, which is neither of the brief's two alternatives.
+  The reduced least-squares residual falls monotonically with the size
+  while the TRUE residual of the returned step stops falling at 60 to 80
+  products and rises: atomic with the quad arm on, reduced 2.658e-1,
+  1.781e-1, 1.144e-1, 9.958e-2 at 40, 80, 160 and 182 products against TRUE
+  2.851e-1, 2.575e-1, 3.006e-1, 3.203e-1 -- the cycle announces its
+  tolerance reached at 182 and hands back a step leaving 0.32, three times
+  what was asked; carrier, reduced 9.677e-1, 8.001e-1, 4.639e-1, 1.434e-1
+  against TRUE 9.731e-1, 8.638e-1, 9.668e-1, **1.472e+00**. With the quad
+  arm off the true residuals are a factor 3 to 6 worse at every size
+  (atomic 7.856e-1, 3.905e-1, 7.580e-1, 2.004e+00) and the shape is the
+  same. Reorthogonalizing the basis changes nothing at any size, the
+  measured loss of orthogonality being 0.000e+00, and the
+  Arnoldi image of each column at the same iterates is exact to 3.30e-16 and 3.77e-16: the
+  recursion is not the defect. What fails is additivity -- the action of
+  the sum of the first two directions departs from the sum of their actions
+  by 1.357e-3 (atomic) and 7.601e-5 (carrier), the assembled 40-product
+  step's image by 1.068e-1 and 2.256e-1 -- because the matrix-free action
+  is the secant of a nonlinear residual over a fixed arc and the step it is
+  extrapolated to grows from 0.31 to 11.4 while the arc stays 5.2e-6. Tests:
+  `krylov_and_dogleg` 251/0 with 19 rows added (RED on the control objects,
+  which do not carry the routines), among them the Ritz values of a stated
+  upper triangular 6 by 6 spanning six decades reproduced to 1.171e-12 with
+  the recursion carried to the dimension of the space, the column split
+  summing to the whole difference with an empty band and with an exact one,
+  and the four hooks off by default; `steady_species_rows` 194/0,
+  `element_operator` 14/0 (the three suites whose driver links
+  `steady_newton`). Default path: the atomic reload at cap 40 with every
+  hook off, new binary against my control, all 354 `(JFNK)` lines
+  IDENTICAL through `||R|| 5.377E-02, flux spread 3.555E-03`, the N31
+  ladder to the digit; `wasp_full_newton` bitwise but the provenance
+  timestamp, `log10 Mdot` 13.30 on both. Cost MEASURED: the size ladder is
+  1082 products per diagnostic iteration (the carrier reload at cap 40 from
+  about 3.5 to about 9 minutes at 8 threads), the spectrum 600 and the band
+  difference about 15. Noticed, not fixed: the frozen-radiation column of
+  `element He of cell 410` carries 7.267e-4 of its 2.816e-1 norm outside
+  the band where the WENO3 stencil says it should carry none, 0.26 percent
+  and two decades below anything in this item's conclusions; the likely
+  route is the base boundary state recomputed from the iterate, not
+  confirmed. Also corrected in the reading: the preconditioner is
+  `build_banded_jac_full`, a coloring of the FULL residual, not of the
+  frozen one -- `build_banded_jac` on `frozen_residual` is called only by
+  the standalone check in `EXHALE_main.f90` -- so "inside the band" carries
+  the coloring's contamination by the non-local response, and the frozen
+  column is a separate control rather than the band's own approximation.
+  **For the advisor**: the next question is not the preconditioner. The
+  species rows' row scaling (the binding row's diagonal 3.3e3 below its
+  hydrodynamic coupling is set by the certification row scale of decision
+  20 a divided by the column scale, and using one scale for the merit and
+  another for the model is a decision); the cycle has an optimal length
+  around 60 to 80 products on both fixtures and the step control asks for a
+  tolerance the operator does not honor; and `gm_resid_rel` is verified
+  against the operator only at a breakdown or a rank loss, where the
+  measurement says it needs verifying whenever the cycle ran more than a
+  few tens of products. Advisor: rebuild on `build_lwv`; `krylov_and_dogleg` 251/0, `steady_species_rows` 194/0; atomic reload at cap 40 with every hook off, 8 threads: the N31 ladder to the digit (7.607e-2 at 40, handed back 5.377e-2). Accepted; deliverable 4 correctly not built. The two levers named are the LINEAR model's row scaling (a freedom decision 20 a did not fix: the merit and gate keep the certification scales, the linear inner product may differ) and a Krylov cycle that returns the step its TRUE residual chooses (the optimum lies at 60 to 80 products; the reduced residual lies past it). **Next item N36**: both as measured arms, default off.
+- **N36** (the two levers N35 named: the row scaling of the LINEAR model,
+  separate from the merit's, and a Krylov cycle that returns the step its
+  TRUE residual chooses). Two default-off arms on the linear solve,
+  adopting nothing. `EXHALE_MODEL_ROW_EQUIL=1`
+  (`unit_infinity_norm_row_scaling_of_the_band`) forms the diagonal `E`
+  that brings every row of the banded model to unit infinity norm as a
+  power of two, applies it to the band that is factored and, inside
+  `pgmres`, to the right-hand side and to every action of the operator,
+  and maps the image and the relative residual BACK to the certification
+  scales at every exit, so that the merit, the gate, the trust region's
+  predicted decrease and the certification keep the scales decision 20 a
+  fixed and only the linear model's inner product changes; `ab` itself is
+  untouched, so the merit's gradient is where it was.
+  `EXHALE_GM_TRUE_RESIDUAL=1` makes the cycle measure its candidate step
+  against the operator from 20 products on, every 10 and at every point
+  where it would otherwise end, keep the best, and stop on two consecutive
+  rises or on the tolerance IN THE TRUE NORM; what comes back is that
+  step, its own image from the product that measured it, and the true
+  residual as `gm_resid_rel`, under a new eighth outcome
+  `gm_true_residual_turned`. **Verdict: both arms work as specified, both
+  fail the acceptance, both stay off.** (1) **The row scaling is a real
+  freedom and taking it is worse.** The cycle then minimizes a functional
+  the merit does not read, and the two disagree by a factor 1.2 to 673
+  MEASURED (`[row equil]`, equilibrated against certification: atomic
+  9.956e-2 / 4.111e-1 at outer 2 and 9.937e-2 / 1.218e-1 at outer 40;
+  carrier 2.353e-1 / 5.730e+1 and 1.286e-1 / 8.657e+1), so the cycle
+  announces the 1e-1 it was asked for while handing back a step that
+  leaves 86.6. It cannot touch what binds: the preconditioned operator
+  `A_eq M_eq^-1 = E (A B^-1) E^-1` is SIMILAR to the unequilibrated one,
+  and the measurement at the same iterate agrees (hydrodynamic Ritz ratio
+  39.62 against 39.60 carrier, 57.02 against 56.36 atomic; the count of
+  species-row Ritz values below 1e-2 unchanged at 18 and 2), while the
+  banded factorization is bit for bit the same matrix because
+  `equilibrate_the_preconditioner` already equilibrates both sides; and a
+  row scaling leaves every ratio WITHIN a row where it was, so the binding
+  carrier row's diagonal 1.2396e-1 against 4.1026e2 of coupling, 3.304e3
+  times the diagonal to the hydrodynamic unknowns of its own stencil, is
+  exactly N35's number still. What it costs: the carrier reload at cap 40
+  goes from `||R||` 9.572e-2, info=1, binding `carrier H2 of cell 205` to
+  1.955, **info=2 with four entries of the inventory refusing**, and the
+  true residual of the returned step at 40 products from 0.973 to 1.050e2.
+  (2) **The true-residual cycle is the right instrument and it does not
+  turn the solve.** At the binding iterate it caps the cycle where the
+  step stops improving: on the ladder 40/80/160/320 the control's returned
+  step gets WORSE with size (atomic TRUE 2.851e-1, 2.575e-1, 3.006e-1,
+  3.203e-1; carrier 9.731e-1, 8.638e-1, 9.668e-1, **1.472e+00**) while the
+  arm stops at 80 and at 120 products and returns 2.660e-1 and 8.244e-1,
+  never worse than the control's best at any size and at fewer products.
+  Two cycles of the atomic reload at cap 40 name the new outcome. But the
+  best true residual any subspace reaches is 0.27 and 0.82, the Newton
+  does not descend past its plateau, and `||R||` handed back at cap 40 is
+  1.060 against the control's 5.377e-2 (atomic; the trajectory parts at
+  iteration 15, the first cycle to pass 20 products) and IDENTICAL on the
+  carrier, where a subspace of 40 always makes the last candidate the best
+  and the arm changes only the number reported (true 9.870e-1 against
+  reduced 9.839e-1). **Acceptance, by the named clauses**: the true
+  residual below 0.1 within 80 products on both fixtures fails for both
+  arms (arm 1 atomic 8.79e-2 but carrier 7.51e+1; arm 2 atomic 2.66e-1,
+  carrier 8.64e-1), and the refusal count at cap 40 does not fall by half
+  (atomic 9 to 10 for both arms; carrier 8 to 7 and 8 to 8), with no new
+  refusal class and no new `gm_no_direction_sampled` anywhere. Corrected
+  mid-item and re-measured: the first true-residual arm left the reduced
+  tolerance in place as a stop and so discarded a step it never measured
+  (carrier outer 1, the 80-product cycle ended at product 49 and handed
+  back product 40's step at TRUE 1.259e-1 where product 49 reaches
+  9.724e-2); with the reduced residual no longer ending a cycle, the
+  numbers above are the corrected arm's. Tests: `krylov_and_dogleg` RED on
+  the control objects (nine symbols absent), GREEN 264/0 with 13 rows
+  added, among them the equilibrated solve returning the same step as the
+  unequilibrated one to 9.90e-16 on a stated dense system solved over the
+  whole space, the equilibrated cycle reporting the CERTIFICATION residual
+  of a truncated solve to eight digits, and a stated operator whose action
+  stops being one linear map after 40 products, on which the cycle names
+  `gm_true_residual_turned` and stops before its subspace is spent;
+  `steady_species_rows` 194/0, `element_operator` 14/0,
+  `residual_determinism` 5/1 with the same row failing by design and the
+  same measured 3.354e+01. **Default path**: the atomic reload at cap 40
+  with every hook off, all 354 `(JFNK)` lines IDENTICAL to my control
+  through `||R|| 5.377E-02, flux spread 3.555E-03`; the carrier reload all
+  364 identical; `wasp_full_newton` bitwise but the provenance timestamp,
+  `log10 Mdot` 13.30. With the arms ON `wasp_full_newton` stays CERTIFIED:
+  arm 1 `||R||` 3.043e-9 against 1.667e-9 with a largest relative movement
+  5.2e-10 in the output, arm 2 bitwise in `Ion_species.txt` with 8 extra
+  residual evaluations, its cycles never reaching the 20 products the arm
+  needs. **For the advisor**: what the two arms rule out is the linear
+  algebra. The norm the cycle minimizes is free and wrong to change; the
+  length of the cycle is free and already at its optimum; the operator's
+  species block is near-singular at every scaling and the step it can
+  produce leaves 0.27 to 0.82 of the residual whatever the subspace. The
+  remaining lever is the one N35 named and N34 confirmed the arithmetic
+  cannot reach: the DISCRETIZATION of the rows that bind. Advisor: rebuild on `build_lwv`; `krylov_and_dogleg` 264/0, `steady_species_rows` 194/0; atomic reload at cap 40 with every hook off, 8 threads: the N31 ladder to the digit (7.607e-2 at 40, handed back 5.377e-2). Accepted; both arms stay off. **The linear algebra is exhausted as a lever** (N31 to N36: probe rule, inner tolerances, extended precision, band coverage, row scaling of the linear model, cycle length). STOPPED here for the user: decision 23, and the next question is the discretization of the species rows that bind at the front (the carrier row of cell 205 whose own diagonal is 3.3e3 below its hydrodynamic coupling). `code_status_20260910.md` section 5 task 1, ISSUES 3.1 and 5, the handoff and decision 23 restated accordingly.
+- **N37** (decision 23 (a): a well-balanced flux difference for the
+  near-hydrostatic layer, as the default-off option `Well balanced:`).
+  With the key on the reconstruction, the Riemann jumps and the pressure
+  force carry the DEPARTURE from the cell's own local hydrostatic
+  equilibrium instead of the state: within cell j that equilibrium is the
+  constant-density one through its own (rho_j, p_j),
+  `p_eq,j(r) = p_j - rho_j (phi(r) - phi(r_j))`, which assumes no thermal,
+  entropy or compositional stratification and so preserves ours (Kaeppeli
+  and Mishra 2016, A&A 587, A94, sections 2.1.1 and 2.1.3; the momentum
+  source as the face-pressure difference of the cell's own equilibrium is
+  their 2014 paper, J. Comput. Phys. 259, 199, eq. 2.26). The pressure
+  stencil acts on the neighbor's pressure measured against that
+  equilibrium continued THROUGH the face (this cell's density up to the
+  face, the neighbor's beyond it), which is what vanishes on the discrete
+  equilibrium; the two cell pressures are differenced first, while that is
+  exact, and the hydrostatic terms added to the difference. The momentum
+  row is then assembled from the face pressure measured against the same
+  equilibrium and `source` returns `S(2) = 0`: with
+  `A+ P_up - A- P_dn - (A+ - A-) p_j = -rho_j [A+ (phi_i(j) - phi_c(j)) +
+  A- (phi_c(j) - phi_i(j-1))]` identically, the equilibrium's flux
+  difference and its gravitational source cancel in the ALGEBRA and the
+  cell's own O(1) pressure never enters the row. Mirrored in the
+  kind-generic copy, so `EXHALE_RESID_QUAD=2` is the production operator
+  bit for bit under both key values (suite row, largest difference exactly
+  zero, tolerance 0). **Exact preservation, MEASURED**: on the scheme's own
+  discrete equilibrium (the isothermal solution of the face-matching
+  condition, the spherical form of their eq. 42) the momentum row falls
+  from 7.0e-5 (PLM) and 2.5e-3 (WENO3) of the local weight rho g at
+  N = 250 to 4.1e-14 and 3.9e-14, and stays at 4.5e-14 to 5.5e-14 at
+  N = 500, 1000, 2000 while the base scheme falls at its design order; the
+  mass and energy rows reach 1e-16 against 1e-8. Twelve new assertions in
+  `hydrostatic_residual`, plus eleven rows in `krylov_and_dogleg` (with no
+  gravity the arm is the base scheme to 8e-16 on a uniform state and to
+  1.4e-16 on a Sod tube, for both reconstructions; and the same exactness
+  on a second grid and geometry). **What it does NOT reach, and this was
+  written into the design before the code**: N33's non-smoothness floor
+  does not move (energy row of cell 1, 1.009e-11 with the arm against
+  1.046e-11 without; cells 84, 167, 251 the same to a factor 1.3; six to
+  ten times `epsilon x face state x r^2/dV` either way), because a cell
+  pressure is itself a rounded O(1) double and every jump built from two of
+  them steps by its last bit whatever the grouping. What does move is the
+  additivity defect at ten times the probe arc, 2.410e-7 with the arm
+  against 3.151e-5 without. **The stationary solves are worse with the key
+  on, and the reason is not the arm**: `store_row_terms` scales the
+  momentum row by `max(|dF(2)|, |S(2)|, |Smom|)`, the arm returns
+  `S(2) = 0`, so the row IS its own scale and every normalized momentum
+  residual is exactly 1 (MEASURED on the carrier reload as loaded: k=2 is
+  `1.000000E+00` with the arm against 1.954 without, while the mass row is
+  the same number to seven digits and the energy row to four). The merit
+  then carries no momentum information: `||Fs||2` rises from 16.5 to 28.1
+  at the same state, and 28.1^2 - 16.5^2 = 517 is the 500 momentum rows
+  pinned at unity. The atomic reload at cap 40 reaches 1.415 against the
+  control's 1.112 and the carrier reload 1.732 against 9.34e-2; at cap 250
+  the arm's solve aborts at iteration 61 on "no descent step in 12
+  consecutive iterations" with `||R||` and the worst scaled row both exactly
+  1.000 and that row the MOMENTUM of cell 1, which is what a merit whose
+  momentum rows are all pinned at one looks like from inside the line
+  search. `wasp_full_newton` with the key on says the same from the other
+  side: it is NOT CERTIFIED on exactly one entry, the momentum row at
+  1.000E+00, while its flux spread is 1.539e-15 against the control's
+  6.233e-14, its energy row 9.911e-12 against 1.667e-9, its mass row
+  1.228e-13 against 1.453e-13 and `log10 Mdot` 13.30 either way, the
+  profiles moving by at most 1.2e-4 (velocity). **The
+  mechanical column drains by the same amount with the arm as without**
+  (`hydrostatic_column`, max |v|/c_s 0.796 against 0.792 at 300 steps and
+  2.776 against 2.777 at 3000): that case's state is not the scheme's
+  equilibrium and its drain is set by the outer boundary, as B4 recorded.
+  **Default path**: with the key absent or False every path is bit for bit
+  my control (`wasp_full_newton` reload, the atomic reload's 196 `(JFNK)`
+  lines, `hydrostatic_column` at 300 steps, `mol_carrier` and
+  `mol_diffusion` at their `maxsteps`); the one line that moves in every
+  output file is the `# options` field, which now carries the 21st token
+  `wellbal`, nameable in `Restart option change`. `EXHALE_resolved.out` and
+  the parse dump each carry one new line. Key documented as K46. **For the
+  advisor**: the option is kept in the tree and stays off; before it can
+  ever be default on, the momentum row's reference scale has to become the
+  pressure force the arm cancels analytically,
+  `|rho_j (A+ (phi_i(j) - phi_c(j)) + A- (phi_c(j) - phi_i(j-1)))|/dV`,
+  which is two multiplications from what `RK_rhs` already holds but sits in
+  an acceptance interface this item does not own. Advisor: rebuild on `build_lwv`; `krylov_and_dogleg` 279/0, `grid_and_gates` 162/0 (four rows FAIL when the shell rows are pointed at the stale shared `EXHALE.x`: pass `EXHALE_EXE` with `EXHALE_OBJDIR`), `steady_species_rows` 194/0, `certification` 57/0, `element_operator` 14/0, `residual_determinism` the same single row FAIL by design; atomic reload at cap 40 with every hook off and the key absent, 8 threads: the N31 ladder to the digit (7.607e-2 at 40, handed back 5.377e-2). The regression comparison strips comment lines, so the new `wellbal` token in the `# options` header is invisible to `make check`. Accepted as a default-off option; the momentum-row reference scale in `store_row_terms` (the arm's `S(2) = 0` makes the row its own scale) is recorded in ISSUES 3.7 as the prerequisite of any default-on decision; the publisher PDFs of the two Kappeli and Mishra papers remain wanted (the institutional versions were read in full).
+
+- **N38** (the discretized element and carrier rows at the front: why the row
+  that binds is nearly independent of its own unknown). One default-off
+  measurement hook, adopting nothing. `EXHALE_FRONT_ROW=1` (`[diag 18]`)
+  takes the species row that carries the largest scaled residual and its two
+  neighbors and prints, at the selected outer iteration: every TERM of the
+  row on its certification scale, with the advective term split per FACE by
+  masking the face mass flux (the divergence of a face species flux is
+  exactly zero where the mass flux it multiplies is, so the masked call
+  leaves one face standing alone and the SAME operator is used, never a
+  copy); the reconstructed face fraction read back out of that masked
+  divergence beside the donor cell's own; the chemical source of a carrier
+  from the sweep's own rates; the band's entries for the row, to its own
+  unknown, to the same unknown in the neighbors and to every hydrodynamic
+  unknown of the three cells, each as a number and as a multiple of the
+  diagonal; those same entries SPLIT BY TERM, by one-sided differences of
+  the row's own terms along the same column with the same step
+  `build_banded_jac_full` uses; the cell Peclet number, the logarithmic
+  gradient and the chemical against the advective time scale; and the column
+  scale of every unknown of the binding cell beside the unknown itself.
+  **Verdict: the binding row's diagonal is NOT small -- it is the size of the
+  row -- and the 3.3e3 of N35 is a CHOICE OF COLUMN SCALE that the Krylov
+  cycle cannot see.** (1) **Every hydrodynamic entry of the row is its
+  ADVECTIVE term**, on all three fronts measured: `carrier H2 of cell 205`
+  (carrier reload, outer 40) `momentum of cell 205` -7.40478e+1 of which the
+  diffusive part is 2.0e-5 and the chemical -2.3e-5; `element He of cell 191`
+  (atomic, outer 1) `momentum of cell 190` -1.86758e+4 with a diffusive part
+  1.9e-6; `element Fe of cell 137` (atomic cap 250, outer 140, one of the
+  rows N34 named) `momentum of cell 136` -1.25980e+4 with 2.0e-6. Summed
+  over the reported stencil the hydrodynamic columns carry **3389, 4176 and
+  2424 diagonals** and the neighboring species unknowns 5.855, 1.052 and
+  1.005, which is N35's 3.304e3 and 5.646 reproduced. Each species
+  sub-block is meanwhile a clean diffusive tridiagonal (15.385/-7.772/-7.612
+  helium, 17.432/-8.861/-8.564 iron): N27's reading of an interior element
+  row holds at the front too, and it is the wind columns that bury it. (2)
+  **The size of that coupling is one over the Mach number**, because the
+  momentum column scale is `|rho v| + rho c_s`, the SOUND speed in a deeply
+  subsonic layer: MEASURED `scale over unknown` **3.839e+2** (carrier front,
+  momentum 6.83274e-5 against scale 2.62332e-2), **1.361e+5** (helium front)
+  and **5.149e+4** (iron front), against 1.000 for the mass, the energy and
+  every species unknown. The arithmetic closes to a factor 1.4 to 1.6: one
+  face carries -0.5322 of the carrier row and 383.9 x 0.5322 = 204 against
+  the measured 129; one face carries -0.1969 of the helium row and
+  1.361e5 x 0.1969 = 2.68e4 against the measured 1.87e4. (3) **The three
+  other candidates are measured and are not the cause.** The species column
+  scale's reservoir floor is INACTIVE everywhere it was looked at (the
+  carrier unknown is `ln n` with column scale exactly 1.0, the default; the
+  helium and iron unknowns' scales are their own magnitudes to five digits),
+  so raising or lowering `element_column_scale_floor` by a decade changes the
+  diagonal by nothing. A stiff advective/chemical cancellation in the
+  diagonal is a factor 1.8 and not decades (carrier diagonal 1.19228e-1 =
+  diffusive +2.17367e-1 and advective -9.89614e-2, with the chemical
+  derivative +9.44223e-4, 0.8 percent, although the chemical time scale is
+  220 times the advective one), and there is no cancellation at all in the
+  helium diagonal. The limiter is a live switch (the reconstructed face
+  fractions stand at 0.587 and 0.657 of the donor at the carrier front, and
+  frozen at first order the advective part of the diagonal changes SIGN,
+  -9.89614e-2 to +2.50409e-1) but it moves the ratio by less than 2, because
+  freezing it raises the momentum coupling by the same kind of factor. N5's
+  two-root front was not re-run: cell 205 is not one. (4) **The test that
+  settles it**: the existing default-off column equilibration
+  (`EXHALE_COLUMN_EQUIL=1`) is exactly the remedy branch (i) names, and
+  MEASURED at outer 1, where both arms stand at the same iterate, it brings
+  the binding row's hydrodynamic coupling from 3389 to **0.993** (carrier)
+  and 4176 to **2.926** (atomic) while the Krylov cycle returns the SAME step
+  at the SAME residual to every printed digit (carrier 40 of 40, reduced
+  1.257e-1, TRUE 1.259e-1; atomic 8 of 40, 7.821e-2, TRUE 7.824e-2) and the
+  species-row Ritz count below 1e-2 is unchanged at 18 and 2. It cannot be
+  otherwise: a column scaling `E` is applied to the operator and to the band
+  built FROM it, and `(A E)(band(A) E)^-1 = A band(A)^-1` IDENTICALLY. N36
+  showed a row scaling is a similarity; this shows a column scaling is an
+  identity, so **both sides of the scaling are now exhausted**. What the arm
+  costs, since it also reshapes the trust-region ball and the probe steps:
+  cap 40 ends at `||R||` 1.822 (carrier) and 1.592 (atomic) against 9.572e-2
+  and 5.377e-2. Acceptance by the named clauses: the Ritz ratio below 1e3
+  FAILS (2.07e5, 1.45e3), the cycle reaching 0.1 within 40 products FAILS on
+  the carrier, named outcomes are lost on both; it stays off. **Deliverable 3
+  built nothing**, by the branch N35's deliverable 4 took: the remedy branch
+  (i) names is either already the default (`ln n`) or already measured to be
+  invisible. Tests: `krylov_and_dogleg` RED on the control objects
+  (`attributed_jacobian_entry` absent), GREEN **279/0** with 6 rows added
+  (the hook off by default; a stated term set composing its own row and its
+  two faces composing its advective term through
+  `species_row_from_its_terms`, the expression the measurement itself uses;
+  the attributed entry of a term linear in the unknown equal to its
+  coefficient times the scaling, with a zero probe step and a row with no
+  scale attributing nothing) -- 279 rather than 270 because N37 added nine
+  rows to the same file, a brief overlap reported and not resolved;
+  `steady_species_rows` 194/0, `element_operator` 14/0,
+  `steady_selfconsistent_residual` 3/0 on the `wasp_full_newton` log,
+  `residual_determinism` 5/1 with the same row failing by design and the same
+  3.354e+01. Default path: the atomic reload at cap 40 with every hook off,
+  all 354 `(JFNK)` lines IDENTICAL to my control through `||R|| 5.377E-02,
+  flux spread 3.555E-03`; the carrier reload all 364 identical at 9.572e-2;
+  `wasp_full_newton` `done info=0 ||R|| 1.667E-09` on both binaries with all
+  28 lines the same; and with the hook ON both reloads still end at the
+  control's values, so the measurement is not an operation on the state.
+  Cost MEASURED: one residual evaluation for each of twenty columns at each
+  of three outer iterations, about four minutes on the carrier reload at cap
+  40 and 8 threads. Also corrected in the reading: N35's "there is no
+  diagonal for a preconditioner to stand on" does not follow from the band
+  row -- the diagonal is the size of the row, the disparity beside it is a
+  column scale, and the near-singularity of the species-row compression of
+  `A M^-1` is a separate fact that the band-row ratio is not evidence for. Advisor: verified on the same final build (the suites above); atomic reload identical. Accepted; deliverable 3 correctly not built. N35's sentence "no diagonal for a preconditioner to stand on" is withdrawn: the diagonal is the size of the row, the 3.3e3 is the momentum column scale (the sound speed) against a layer Mach number of 1e-3 to 1e-5, and column scalings are invisible to the cycle, so the near-singularity of the species-row compression is a fact of its own.
+- **Close of the species-row solver program** (2026-09-10 evening, user's
+  instruction: "어떤 것을 해도, 끝이 없어보이니, 엄청난 차이가 나오지 않는 한
+  이번 건만 마무리 하고 끝내기 바래", then "있는 그대로 정리하고, md tex
+  파일들 update 후 commit/push"): N37 and N38 were finished as briefed and
+  no further item is started. State of the tree at the close, verified on
+  the advisor's rebuilt `build_lwv`: `krylov_and_dogleg` 279/0 (174 at the
+  morning commit), `grid_and_gates` 162/0, `steady_species_rows` 194/0,
+  `certification` 57/0, `element_operator` 14/0, `residual_determinism` one
+  row FAIL by design; the atomic reload at cap 40 with every hook off and
+  every new key absent gives the N31 ladder to the digit (1.888, 1.891,
+  1.819, 1.583, 1.861, 8.964e-1, 7.607e-2; handed back 5.377e-2, flux
+  spread 3.555e-3); the `wasp_full_newton` reload ends `info = 0`, `||R||`
+  1.667e-9, the number every worker's paired control gave (its output is
+  not compared with the cold-start golden, which is a different path:
+  `sec_ion_step` 2402 against 0). Everything N31 to N38 added is a
+  default-off hook, arm or key: `EXHALE_JV_ADDITIVITY`,
+  `EXHALE_JV_COLUMN_SCALE`, `EXHALE_JV_PROBE_ARC`, `EXHALE_IEQ_TOL`,
+  `EXHALE_TEQ_TOL`, `EXHALE_RESID_JUMP_SCAN`, `EXHALE_RESID_QUAD`,
+  `EXHALE_KRYLOV_SIZE_SCAN`, `EXHALE_GM_HISTORY`, `EXHALE_PRECOND_SPECTRUM`,
+  `EXHALE_BAND_DIFFERENCE`, `EXHALE_MODEL_ROW_EQUIL`,
+  `EXHALE_GM_TRUE_RESIDUAL`, `EXHALE_FRONT_ROW`, and the input key
+  `Well balanced:` (K46); the marching path and the goldens are untouched
+  (the `# options` header gains the `wellbal` token, which the regression
+  comparison strips with every comment line). New fixture
+  `backup/regression/carrier_elem_newton`. Documents closed to this state:
+  `ISSUES_20260909.md` 3.1, 3.7 and 5; `code_status_20260910.md` 3.3 and
+  task 1; `session_handoff_20260910.md` (new, the handoff of record);
+  `To_be_determined_by_user_20260906.md` decision 23 with its outcome;
+  `steady_solver_design.md` 22.4; `input_schema.md` K46 and the manual's
+  key table (PDF rebuilt, 90 pages); `README.md` (the key). The analysis
+  the user asked for, of why the coupled solve fails and what a different
+  approach would be (a segregated solve, the CETIMB way read from
+  Koskinen et al. 2013 section 2.1.3 and 2022 Appendix B, a different
+  treatment of the layer), is `docs/solver_approach_analysis_20260910.md`.
+  Reported, not fixed (ISSUES 3.7): the `count` global shadowing the
+  intrinsic; `newton_dense`'s hardcoded step test; the dead `dp_bc`/`ntot_bc`
+  refreshes; `store_row_terms`'s momentum scale under the new key;
+  `fortdep.py` blind to `include`; `golden/mol_ir_bands/` without
+  `Cooling_breakdown.txt`; `examples/README.md`; the two `.md` twins.

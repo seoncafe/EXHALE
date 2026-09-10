@@ -80,12 +80,40 @@
                                linear_operator_clear_for_test,            &
                                lin_test_dense,                            &
                                lin_test_dense_preconditioner_fails,       &
+                               lin_test_dense_action_drifts,              &
+                               lin_test_drift_after,                      &
+                               model_row_equilibration_on,                &
+                               model_row_equilibration,                   &
+                               model_rows_equilibrated,                   &
+                               unit_infinity_norm_row_scaling_of_the_band,&
+                               gm_step_by_its_true_residual,              &
+                               gm_true_residual_turned,                   &
+                               gm_true_residual_first,                    &
                                set_transported_species_rows,              &
                                species_unknowns_outside_their_bounds,     &
                                hold_the_step_where_it_leaves_the_species_box, &
                                species_box_set_for_test,                  &
                                species_box_clear_for_test,                &
                                probe_length_of_the_jacobian_action,       &
+                               probe_step_on_the_column_scales,           &
+                               jv_probe_on_the_column_scales,             &
+                               jv_additivity_on, jv_additivity_here,      &
+                               resid_jump_scan_on, resid_jump_scan_here,  &
+                               median_of_the_magnitudes,                  &
+                               steps_in_a_sampled_row,                    &
+                               jv_probe_length_factor,                    &
+                               state_column_scale,                        &
+                               ritz_values_of_a_matrix_free_operator,     &
+                               column_split_against_the_band,             &
+                               unknown_mask_of_the_row_class,             &
+                               row_class_shares_of_a_vector,              &
+                               precond_spectrum_on, krylov_size_scan_on,  &
+                               band_difference_on, front_row_on,          &
+                               species_row_term_set,                      &
+                               species_row_from_its_terms,                &
+                               attributed_jacobian_entry,                 &
+                               gm_residual_history_on,                    &
+                               jacobian_action_of_direction,              &
                                nvar_jac, kl_jac, ku_jac,                  &
                                gm_tolerance_reached,                      &
                                gm_subspace_exhausted,                     &
@@ -142,6 +170,13 @@
                                the_point_where_the_step_leaves_the_ball,  &
                                name_of_unknown
       use certification,   only: certification_row_measure
+      use hydrodynamic_rows, only: generic_precision_rows_arm,            &
+                 ARM_OFF, ARM_QUADRUPLE, ARM_GENERIC_DOUBLE,              &
+                 hydrodynamic_rows_in_double_precision
+      use steady_residual_mod, only: reconstruction_continuation_rhs
+      use hydrodynamic_rows_quadruple, only:                              &
+                 quadruple_rows => hydrodynamic_flux_difference_and_source
+      use BC_Apply, only: base_face_W, base_face_lower_W
       use ieee_arithmetic, only: ieee_is_finite, ieee_value,              &
                                  ieee_quiet_nan
       use iso_c_binding,   only: c_char, c_int, c_null_char
@@ -157,6 +192,14 @@
          character(kind=c_char), dimension(*), intent(in) :: nm, vl
          integer(c_int), value :: overwrite
          end function c_setenv
+      end interface
+      ! ... and its inverse, so a row can state what an ABSENT variable
+      ! means and not only what a value means.
+      interface
+         integer(c_int) function c_unsetenv(nm) bind(C, name='unsetenv')
+         import :: c_char, c_int
+         character(kind=c_char), dimension(*), intent(in) :: nm
+         end function c_unsetenv
       end interface
       ! LAPACK's banded factorization, used by the preconditioner rows to
       ! factor the manufactured band before and after its equilibration.
@@ -517,6 +560,11 @@
       call predicted_decrease_ladder_rows(nfail)
       call step_out_of_the_box_rows(nfail)
       call jacobian_probe_length_rows(nfail)
+      call jacobian_probe_rule_rows(nfail)
+      call inner_solve_tolerance_rows(nfail)
+      call residual_step_detector_rows(nfail)
+      call extended_precision_rows(nfail)
+      call well_balanced_operator_rows(nfail)
 
       ! ---- the restart of the trust-region state (N21) ----
       call restart_trigger_rows(nfail)
@@ -530,6 +578,7 @@
       call reorthogonalization_rows(nfail)
       call krylov_on_the_ball_rows(nfail)
       call row_name_rows(nfail)
+      call spectrum_and_band_split_rows(nfail)
 
       ! ---- the outer iteration cap ----
       kd_env_status = c_setenv('EXHALE_JFNK_MAXIT'//c_null_char,          &
@@ -544,6 +593,30 @@
       call read_species_unknown_space_controls
       call int_row('jfnk_maxit_default_is_the_caller',                    &
                    jfnk_outer_iteration_cap(500), 500, nfail)
+      ! ---- THE THREE MEASUREMENT HOOKS OF ITEM N35 ARE SILENT UNLESS
+      !      THEIR ENVIRONMENT NAMES THEM.  Read after the controls were
+      !      re-read with the environment carrying none of them, so the
+      !      rows state the resolved default and not the declared one.
+      call log_row('precond_spectrum_is_off_by_default',                 &
+                   precond_spectrum_on, .false., nfail)
+      call log_row('krylov_size_scan_is_off_by_default',                 &
+                   krylov_size_scan_on, .false., nfail)
+      call log_row('band_difference_is_off_by_default',                  &
+                   band_difference_on, .false., nfail)
+      call log_row('krylov_residual_history_is_off_by_default',          &
+                   gm_residual_history_on, .false., nfail)
+      ! ---- THE TWO ARMS OF ITEM N36 ARE OFF UNLESS NAMED, read in the
+      !      same resolved state.
+      call log_row('the_model_row_equilibration_is_off_by_default',      &
+                   model_row_equilibration_on, .false., nfail)
+      call log_row('the_true_residual_cycle_is_off_by_default',          &
+                   gm_step_by_its_true_residual, .false., nfail)
+
+      ! ---- the row scaling of the linear model, and the step the true
+      !      residual chooses (N36) ----
+      call model_row_scaling_rows(nfail)
+      call true_residual_cycle_rows(nfail)
+      call front_row_attribution_rows(nfail)
 
       if (nfail .gt. 0) then
          write(*,'(A,I0,A)') 'krylov_and_dogleg: ', nfail,                &
@@ -553,6 +626,169 @@
       write(*,'(A)') 'krylov_and_dogleg: all rows passed'
 
       contains
+
+      ! ------------------------------------------------------!
+
+      subroutine spectrum_and_band_split_rows(nf)
+      ! THE RITZ VALUES OF A STATED OPERATOR, AND THE SPLIT OF A STATED
+      ! COLUMN AGAINST A STATED BAND (item N35, deliverables 2 and 3).
+      !
+      ! WHAT THE RITZ ROW ASSERTS. An Arnoldi recursion carried to the
+      ! dimension of the space is a similarity transformation: the
+      ! Hessenberg is orthogonally similar to the operator and its
+      ! eigenvalues ARE the operator's, not an approximation of them. The
+      ! operator here is upper triangular with distinct diagonal entries
+      ! spanning six decades, so its eigenvalues are its diagonal and the
+      ! reference is arithmetic and not another computation. The
+      ! preconditioner is the identity the test operator installs, the
+      ! column and row scales are one and the pseudo-transient shift is
+      ! zero, so A_z M^-1 is the stated matrix itself.
+      !
+      ! WHAT THE SPLIT ROWS ASSERT. The band holds |row - col| <= kl_jac
+      ! and nothing beyond it, so the difference between a column and the
+      ! band's padded column decomposes exactly into the part inside the
+      ! band, where the two disagree, and the part outside it, which the
+      ! band does not have. The row states a column whose parts are known
+      ! by hand and checks the identity to rounding.
+      integer, intent(inout) :: nf
+      integer, parameter :: nr = 6
+      real*8  :: kr_A(nr,nr), kr_Y(nr), kr_F0(nr), kr_D(nr), kr_Drow(nr)
+      real*8  :: kr_abf(1,nr), kr_V(nr,nr+1), kr_wr(nr), kr_wi(nr)
+      real*8  :: kr_VR(nr,nr), kr_fsp(1-Ng:1+Ng,n_species)
+      real*8  :: kr_eig(nr), kr_got(nr), kr_swap, kr_worst
+      real*8  :: kr_col(nr), kr_ab(4,nr), kr_mask(nr), kr_share(5)
+      real*8  :: kr_in, kr_bandgap, kr_out, kr_whole
+      integer :: kr_ipiv(nr), kr_kdone, kr_info, kr_i, kr_j
+      integer :: kr_cells(10), kr_ncell
+      integer :: kr_nsave, kr_nvarsave, kr_klsave, kr_kusave
+      kr_nsave    = N
+      kr_nvarsave = nvar_jac
+      kr_klsave   = kl_jac
+      kr_kusave   = ku_jac
+      N        = 1
+      nvar_jac = nr
+      kl_jac   = 0
+      ku_jac   = 0
+      ! ---- the Ritz values of a stated operator ----
+      kr_A = 0.0d0
+      kr_eig = (/ 1.0d-3, 2.5d-2, 1.0d0, 4.0d0, 3.7d1, 8.0d2 /)
+      do kr_i = 1, nr
+         kr_A(kr_i,kr_i) = kr_eig(kr_i)
+         do kr_j = kr_i+1, nr
+            kr_A(kr_i,kr_j) = 0.5d0*dble(kr_i) - 0.25d0*dble(kr_j)
+         enddo
+      enddo
+      kr_Y = 0.0d0;  kr_F0 = 0.0d0;  kr_D = 1.0d0;  kr_Drow = 1.0d0
+      kr_abf = 0.0d0;  kr_ipiv = 0;  kr_fsp = 0.0d0;  kr_mask = 1.0d0
+      call linear_operator_set_for_test(kr_A, lin_test_dense)
+      call ritz_values_of_a_matrix_free_operator(kr_Y, kr_F0, kr_fsp,    &
+                kr_D, kr_Drow, kr_abf, kr_ipiv, 0.0d0, kr_mask, nr,      &
+                kr_V, kr_wr, kr_wi, kr_VR, nr, kr_kdone, kr_info)
+      call linear_operator_clear_for_test
+      call int_row('ritz_recursion_spans_the_whole_space', kr_kdone, nr, &
+                   nf)
+      call int_row('ritz_dense_eigensolver_succeeds', kr_info, 0, nf)
+      ! Sorted by magnitude, so that the comparison is of two sets and not
+      ! of two orderings.
+      do kr_i = 1, nr
+         kr_got(kr_i) = hypot(kr_wr(kr_i), kr_wi(kr_i))
+      enddo
+      do kr_i = 1, nr-1
+         do kr_j = kr_i+1, nr
+            if (kr_got(kr_j) .lt. kr_got(kr_i)) then
+               kr_swap = kr_got(kr_i)
+               kr_got(kr_i) = kr_got(kr_j)
+               kr_got(kr_j) = kr_swap
+            endif
+         enddo
+      enddo
+      kr_worst = 0.0d0
+      do kr_i = 1, nr
+         kr_worst = max(kr_worst,                                        &
+                        abs(kr_got(kr_i) - kr_eig(kr_i))/kr_eig(kr_i))
+      enddo
+      call rel_row('ritz_values_are_the_stated_eigenvalues', kr_worst,   &
+                   0.0d0, 1.0d-10, nf)
+      ! ---- the split of a stated column against a stated band ----
+      ! Half-bandwidth one, six unknowns, the column of unknown three: the
+      ! band holds rows 2, 3 and 4 of it and nothing else.
+      kl_jac = 1;  ku_jac = 1
+      kr_ab  = 0.0d0
+      kr_col = (/ 5.0d0, 3.0d0, 4.0d0, 12.0d0, 6.0d0, 8.0d0 /)
+      ! ldab = 2*kl + ku + 1 = 4, and the column of unknown three is
+      ! stored at ab(kl+ku+1 + irow - 3, 3) for irow in 2, 3, 4. Left
+      ! empty first, so that the disagreement inside the band is the
+      ! column itself and the reference is arithmetic.
+      call column_split_against_the_band(kr_col, 3, kr_ab, kr_in,        &
+                                         kr_bandgap, kr_out, kr_whole)
+      ! Inside the band, rows 2, 3, 4: 3^2 + 4^2 + 12^2 = 169. Outside,
+      ! rows 1, 5, 6: 25 + 36 + 64 = 125. The band is empty, so the
+      ! disagreement inside it is the column itself.
+      call rel_row('column_split_inside_the_band', kr_in, 169.0d0,       &
+                   1.0d-14, nf)
+      call rel_row('column_split_outside_the_band', kr_out, 125.0d0,     &
+                   1.0d-14, nf)
+      call rel_row('column_split_sums_to_the_whole_difference',          &
+                   kr_bandgap + kr_out, kr_whole, 1.0d-14, nf)
+      call rel_row('an_empty_band_leaves_the_column_as_the_difference',  &
+                   kr_bandgap, kr_in, 1.0d-14, nf)
+      ! And with the band carrying the column exactly, nothing is left
+      ! inside it and the whole difference is what lies outside.
+      call column_split_with_a_full_band(kr_col, nf)
+      ! ---- the mask and the class shares ----
+      N        = 2
+      nvar_jac = 3
+      kl_jac   = kr_klsave
+      ku_jac   = kr_kusave
+      call unknown_mask_of_the_row_class(2, kr_mask(1:6))
+      call rel_row('the_hydrodynamic_mask_keeps_the_three_rows',         &
+                   sum(kr_mask(1:6)), 6.0d0, 1.0d-14, nf)
+      call unknown_mask_of_the_row_class(1, kr_mask(1:6))
+      call rel_row('the_species_mask_keeps_nothing_without_species_rows',&
+                   sum(kr_mask(1:6)), 0.0d0, 1.0d-14, nf)
+      ! A vector on the energy row of cell 2 alone: one class, one cell.
+      kr_col(1:6) = 0.0d0
+      kr_col(6)   = 2.0d0
+      call row_class_shares_of_a_vector(kr_col(1:6), kr_share, kr_cells, &
+                                        kr_ncell)
+      call rel_row('a_vector_on_one_energy_row_is_all_energy',           &
+                   kr_share(3), 1.0d0, 1.0d-14, nf)
+      call int_row('a_vector_on_one_row_sits_in_one_cell', kr_ncell, 1,  &
+                   nf)
+      call int_row('and_that_cell_is_the_one_it_sits_in', kr_cells(1), 2,&
+                   nf)
+      N        = kr_nsave
+      nvar_jac = kr_nvarsave
+      kl_jac   = kr_klsave
+      ku_jac   = kr_kusave
+      end subroutine spectrum_and_band_split_rows
+
+      ! ------------------------------------------------------!
+
+      subroutine column_split_with_a_full_band(kb_col, nf)
+      ! THE SAME SPLIT WITH THE BAND CARRYING THE COLUMN IT HOLDS. Nothing
+      ! is then left inside the band and the whole difference is exactly
+      ! what lies beyond it, which is the statement the measurement rests
+      ! on: an outside part that is small says the band is the operator.
+      real*8, dimension(6), intent(in)    :: kb_col
+      integer,              intent(inout) :: nf
+      real*8  :: kb_ab(2*1+1+1, 6)
+      real*8  :: kb_in, kb_gap, kb_out, kb_whole
+      integer :: kb_i
+      kb_ab = 0.0d0
+      ! icol = 3, kl = ku = 1: the stored rows are 2, 3 and 4.
+      do kb_i = 2, 4
+         kb_ab(kl_jac+ku_jac+1 + kb_i - 3, 3) = kb_col(kb_i)
+      enddo
+      call column_split_against_the_band(kb_col, 3, kb_ab, kb_in,        &
+                                         kb_gap, kb_out, kb_whole)
+      call rel_row('a_band_that_carries_the_column_leaves_no_gap',       &
+                   kb_gap, 0.0d0, 1.0d-20, nf)
+      call rel_row('and_the_whole_difference_is_then_what_lies_outside', &
+                   kb_whole, kb_out, 1.0d-14, nf)
+      call rel_row('which_is_the_stated_outside_part', kb_out, 125.0d0,  &
+                   1.0d-14, nf)
+      end subroutine column_split_with_a_full_band
 
       ! ------------------------------------------------------!
 
@@ -1430,8 +1666,13 @@
                    sqrt(epsilon(1.0d0))*1.23817d1, 1.0d-12, nf)
       call rel_row('the_probe_arc_at_the_stalling_iterate', kj_arc,       &
                    1.845012d-7, 1.0d-5, nf)
-      ! Nine decades above the reproducibility of the residual, so the
-      ! action is not the rounding of it.
+      ! Nine decades above the reproducibility of the residual AS A
+      ! LENGTH OF THE WHOLE VECTOR. That is not the same statement as
+      ! "the action is not the rounding of it", which item N31 MEASURED
+      ! to be false along the preconditioned Krylov directions: the arc
+      ! is a length of the whole displacement, and the fraction of ITS
+      ! OWN scale by which a single unknown moves is one to two decades
+      ! below sqrt(epsilon) for most of them (jacobian_probe_rule_rows).
       call log_row('the_probe_arc_stands_above_the_residual_noise',       &
                    kj_arc/(1.0d-15*sqrt(sum(kj_Y*kj_Y))) .gt. 1.0d6,     &
                    .true., nf)
@@ -1440,6 +1681,320 @@
       call rel_row('the_stalling_step_is_a_thousandth_of_the_arc',        &
                    kj_step/kj_arc, 2.71d-3, 1.0d-2, nf)
       end subroutine jacobian_probe_length_rows
+
+      ! ------------------------------------------------------!
+
+      subroutine jacobian_probe_rule_rows(nf)
+      ! THE TWO PROBE RULES, AND WHAT THE HOOKS OF ITEM N31 DEFAULT TO.
+      !
+      ! probe_length_of_the_jacobian_action fixes the LENGTH of the
+      ! displacement in the unknowns themselves;
+      ! probe_step_on_the_column_scales fixes it in the column-scaled
+      ! coordinates, so that every unknown is displaced by about
+      ! sqrt(epsilon) of its own magnitude. The two agree, to the ratio
+      ! asserted below, on a direction that runs along the scales, and
+      ! part on one that does not, which is the case the Krylov basis
+      ! produces.
+      integer, intent(inout) :: nf
+      real*8  :: jp_Y(4), jp_v(4), jp_eps_norm, jp_eps_col, jp_ratio
+      integer :: jp_status
+      N        = 4
+      nvar_jac = 1
+      ! Two unknowns of order one and two four decades below them, each
+      ! sitting at its own scale.
+      jp_Y = (/ 1.0d0, 1.0d0, 1.0d-4, 1.0d-4 /)
+      if (allocated(state_column_scale)) deallocate(state_column_scale)
+      ! WITHOUT A COLUMN SCALE the column-scaled rule is the unscaled one.
+      jp_v        = (/ 1.0d0, 1.0d0, 1.0d0, 1.0d0 /)
+      jp_eps_norm = probe_length_of_the_jacobian_action(jp_Y)             &
+                    /sqrt(sum(jp_v*jp_v))
+      jp_eps_col  = probe_step_on_the_column_scales(jp_Y, jp_v)
+      call rel_row('the_column_scaled_probe_is_the_length_rule_'//        &
+                   'without_scales', jp_eps_col, jp_eps_norm, 1.0d-14, nf)
+      ! WITH ONE, a direction along the scales moves every unknown by the
+      ! same fraction of itself under either rule.
+      allocate(state_column_scale(4))
+      state_column_scale = jp_Y
+      jp_v = jp_Y
+      jp_eps_col = probe_step_on_the_column_scales(jp_Y, jp_v)
+      call rel_row('the_column_scaled_probe_moves_every_unknown_by_'//    &
+                   'root_epsilon',                                        &
+                   jp_eps_col, sqrt(epsilon(1.0d0))*3.0d0/2.0d0,          &
+                   1.0d-12, nf)
+      ! The unscaled rule is within an eighth of it on THAT direction:
+      ! the ratio is (1 + ||Dc^-1 Y||) ||v|| / ((1 + ||Y||) ||Dc^-1 v||)
+      ! = (3/2)(1.41421/2.41421), the two rules differing only in which
+      ! norm counts the unknowns that sit far below the largest.
+      jp_eps_norm = probe_length_of_the_jacobian_action(jp_Y)             &
+                    /sqrt(sum(jp_v*jp_v))
+      call rel_row('the_two_probe_rules_agree_along_the_scales',          &
+                   jp_eps_col/jp_eps_norm, 8.7868d-1, 1.0d-4, nf)
+      ! AND THEY PART ON A DIRECTION THAT DOES NOT RUN ALONG THE SCALES:
+      ! all the weight of this one sits on the two large unknowns, so the
+      ! unscaled rule sets the arc from them and the small ones are
+      ! displaced by four decades less of themselves than sqrt(epsilon).
+      jp_v = (/ 1.0d0, 1.0d0, 1.0d-8, 1.0d-8 /)
+      jp_eps_norm = probe_length_of_the_jacobian_action(jp_Y)             &
+                    /sqrt(sum(jp_v*jp_v))
+      call rel_row('the_length_rule_underdisplaces_the_small_unknown',    &
+                   jp_eps_norm*jp_v(3)/state_column_scale(3)              &
+                   /sqrt(epsilon(1.0d0)), 1.7071d-4, 1.0d-3, nf)
+      jp_eps_col = probe_step_on_the_column_scales(jp_Y, jp_v)
+      jp_ratio   = jp_eps_col/jp_eps_norm
+      call rel_row('the_column_scaled_probe_lengthens_that_arc',          &
+                   jp_ratio, 1.2426d0, 1.0d-3, nf)
+      deallocate(state_column_scale)
+      ! THE LENGTH MULTIPLIER OF THE ADDITIVITY SCAN IS EXACTLY ONE
+      ! outside the scan, so the standard arc is the unscaled expression.
+      call rel_row('the_probe_length_multiplier_is_one',                  &
+                   jv_probe_length_factor, 1.0d0, 0.0d0, nf)
+      ! BOTH HOOKS ARE OFF UNLESS THE ENVIRONMENT ARMS THEM.
+      jp_status = c_setenv('EXHALE_JV_ADDITIVITY'//c_null_char,           &
+                           ''//c_null_char, 1)
+      jp_status = c_setenv('EXHALE_JV_COLUMN_SCALE'//c_null_char,         &
+                           ''//c_null_char, 1)
+      call read_species_unknown_space_controls
+      call log_row('the_additivity_hook_is_off_by_default',               &
+                   jv_additivity_on, .false., nf)
+      call log_row('the_additivity_hook_speaks_at_no_iteration_by_'//     &
+                   'default', jv_additivity_here, .false., nf)
+      call log_row('the_column_scaled_probe_is_off_by_default',           &
+                   jv_probe_on_the_column_scales, .false., nf)
+      jp_status = c_setenv('EXHALE_JV_ADDITIVITY'//c_null_char,           &
+                           '1'//c_null_char, 1)
+      jp_status = c_setenv('EXHALE_JV_COLUMN_SCALE'//c_null_char,         &
+                           '1'//c_null_char, 1)
+      call read_species_unknown_space_controls
+      call log_row('the_additivity_hook_arms_from_the_environment',       &
+                   jv_additivity_on, .true., nf)
+      call log_row('the_column_scaled_probe_arms_from_the_environment',   &
+                   jv_probe_on_the_column_scales, .true., nf)
+      ! WITH THE ARM ON, A LINEAR TEST OPERATOR IS STILL RETURNED EXACTLY:
+      ! neither probe rule enters where the action is stated as a matrix,
+      ! so an arm comparison on a linear system measures nothing.
+      call probe_rule_on_a_linear_operator(nf)
+      jp_status = c_setenv('EXHALE_JV_ADDITIVITY'//c_null_char,           &
+                           ''//c_null_char, 1)
+      jp_status = c_setenv('EXHALE_JV_COLUMN_SCALE'//c_null_char,         &
+                           ''//c_null_char, 1)
+      call read_species_unknown_space_controls
+      call log_row('the_hooks_disarm_again',                              &
+                   jv_additivity_on .or. jv_probe_on_the_column_scales,   &
+                   .false., nf)
+      end subroutine jacobian_probe_rule_rows
+
+      ! ------------------------------------------------------!
+
+      subroutine inner_solve_tolerance_rows(nf)
+      ! THE TWO STOPPING TOLERANCES INSIDE A RESIDUAL EVALUATION, and the
+      ! hooks that replace them (item N32). The composition's cell solve
+      ! stops on sqrt(dpmpar(1)) = 1.49e-8 and the post-process
+      ! temperature root on a bracket of 1e-10; each is a size below
+      ! which the map the residual is assembled from is a PIECEWISE
+      ! function of the state, so each has to be movable to be measured.
+      ! The rows assert the default is returned bit for bit when nothing
+      ! is set, that the hook is honored when it names a positive number,
+      ! and that a non-positive or unreadable value leaves the default.
+      use ionization_equilibrium, only: composition_solve_tolerance,      &
+                                        ieq_inner_tol, ieq_inner_tol_read
+      use equation_T,             only: temperature_bracket_tolerance,    &
+                                        teq_bracket_tol
+      integer, intent(inout) :: nf
+      real*8, parameter :: it_minpack = 1.4901161193847656d-8
+      integer :: it_status
+      ! NOTHING IS ARMED UNTIL A SWEEP READS THE HOOK: the cached value of
+      ! the sweep is untouched by anything this driver does.
+      call log_row('the_composition_tolerance_is_unread_in_this_driver',  &
+                   ieq_inner_tol_read, .false., nf)
+      call rel_row('the_composition_tolerance_cache_is_empty',            &
+                   ieq_inner_tol, 0.0d0, 0.0d0, nf)
+      call rel_row('the_temperature_bracket_default_is_1e_10',            &
+                   teq_bracket_tol, 1.0d-10, 0.0d0, nf)
+      ! UNSET: both return the default they are handed, bit for bit.
+      it_status = c_setenv('EXHALE_IEQ_TOL'//c_null_char,                 &
+                           ''//c_null_char, 1)
+      it_status = c_setenv('EXHALE_TEQ_TOL'//c_null_char,                 &
+                           ''//c_null_char, 1)
+      call rel_row('the_composition_tolerance_is_minpacks_when_unset',    &
+                   composition_solve_tolerance(it_minpack), it_minpack,   &
+                   0.0d0, nf)
+      call rel_row('the_temperature_bracket_is_the_default_when_unset',   &
+                   temperature_bracket_tolerance(1.0d-10), 1.0d-10,       &
+                   0.0d0, nf)
+      ! ARMED: the value the environment names, exactly.
+      it_status = c_setenv('EXHALE_IEQ_TOL'//c_null_char,                 &
+                           '1.0e-12'//c_null_char, 1)
+      it_status = c_setenv('EXHALE_TEQ_TOL'//c_null_char,                 &
+                           '1.0e-13'//c_null_char, 1)
+      call rel_row('the_composition_tolerance_follows_the_hook',          &
+                   composition_solve_tolerance(it_minpack), 1.0d-12,      &
+                   1.0d-15, nf)
+      call rel_row('the_temperature_bracket_follows_the_hook',            &
+                   temperature_bracket_tolerance(1.0d-10), 1.0d-13,       &
+                   1.0d-15, nf)
+      ! A NON-POSITIVE VALUE IS NOT A TOLERANCE: the default stands.
+      it_status = c_setenv('EXHALE_IEQ_TOL'//c_null_char,                 &
+                           '-1.0e-12'//c_null_char, 1)
+      it_status = c_setenv('EXHALE_TEQ_TOL'//c_null_char,                 &
+                           '0.0'//c_null_char, 1)
+      call rel_row('a_negative_composition_tolerance_is_refused',         &
+                   composition_solve_tolerance(it_minpack), it_minpack,   &
+                   0.0d0, nf)
+      call rel_row('a_zero_temperature_bracket_is_refused',               &
+                   temperature_bracket_tolerance(1.0d-10), 1.0d-10,       &
+                   0.0d0, nf)
+      ! AN UNREADABLE VALUE LIKEWISE.
+      it_status = c_setenv('EXHALE_IEQ_TOL'//c_null_char,                 &
+                           'tight'//c_null_char, 1)
+      it_status = c_setenv('EXHALE_TEQ_TOL'//c_null_char,                 &
+                           'tight'//c_null_char, 1)
+      call rel_row('an_unreadable_composition_tolerance_is_refused',      &
+                   composition_solve_tolerance(it_minpack), it_minpack,   &
+                   0.0d0, nf)
+      call rel_row('an_unreadable_temperature_bracket_is_refused',        &
+                   temperature_bracket_tolerance(1.0d-10), 1.0d-10,       &
+                   0.0d0, nf)
+      ! AND THEY DISARM AGAIN.
+      it_status = c_setenv('EXHALE_IEQ_TOL'//c_null_char,                 &
+                           ''//c_null_char, 1)
+      it_status = c_setenv('EXHALE_TEQ_TOL'//c_null_char,                 &
+                           ''//c_null_char, 1)
+      call rel_row('the_composition_tolerance_disarms_again',             &
+                   composition_solve_tolerance(it_minpack), it_minpack,   &
+                   0.0d0, nf)
+      call rel_row('the_temperature_bracket_disarms_again',               &
+                   temperature_bracket_tolerance(1.0d-10), 1.0d-10,       &
+                   0.0d0, nf)
+      end subroutine inner_solve_tolerance_rows
+
+      ! ------------------------------------------------------!
+
+      subroutine residual_step_detector_rows(nf)
+      ! WHAT MAKES AN INTERVAL OF A SAMPLED ROW A STEP OF THE MAP (item
+      ! N33). The jump scan reads the residual at equally spaced points
+      ! along one direction and asks which interval holds a discontinuity.
+      ! The test it uses carries no absolute scale: an interval is a step
+      ! when its difference stands a stated factor above the MEDIAN of the
+      ! row's own differences, so a row of any size and any units is read
+      ! by the same rule. These rows state what that means on sequences
+      ! whose answer is known: a straight line and a parabola are
+      ! continuous and hold none, a line with one value displaced holds
+      ! exactly one and at the interval where it was put, a constant row
+      ! has no median to compare against and holds none, and the factor is
+      ! honored rather than assumed.
+      integer, intent(inout) :: nf
+      integer, parameter :: nrs = 65
+      real*8, dimension(nrs)   :: rs_f
+      logical, dimension(nrs-1):: rs_mark
+      real*8  :: rs_med
+      integer :: rs_k, rs_n, rs_status
+      ! THE MEDIAN OF THE MAGNITUDES, even and odd length.
+      call rel_row('the_median_of_four_magnitudes_is_the_middle_pair',    &
+                   median_of_the_magnitudes((/ -3.0d0, 1.0d0, -2.0d0,     &
+                                               4.0d0 /)), 2.5d0,          &
+                   0.0d0, nf)
+      call rel_row('the_median_of_three_magnitudes_is_the_middle',        &
+                   median_of_the_magnitudes((/ 1.0d0, -5.0d0, 2.0d0 /)),  &
+                   2.0d0, 0.0d0, nf)
+      ! A STRAIGHT LINE HOLDS NO STEP: every difference is the median.
+      do rs_k = 1, nrs
+         rs_f(rs_k) = 7.0d0 + 3.0d0*real(rs_k, 8)
+      enddo
+      call steps_in_a_sampled_row(rs_f, 1.0d2, rs_n, rs_mark)
+      call int_row('a_straight_line_holds_no_step', rs_n, 0, nf)
+      ! NOR DOES A PARABOLA: its differences vary by a factor 65 across
+      ! the window, which is far below the factor asked for.
+      do rs_k = 1, nrs
+         rs_f(rs_k) = real(rs_k, 8)**2
+      enddo
+      call steps_in_a_sampled_row(rs_f, 1.0d2, rs_n, rs_mark)
+      call int_row('a_parabola_holds_no_step', rs_n, 0, nf)
+      ! ONE DISPLACED VALUE IS TWO STEPS, one into it and one out of it,
+      ! and they are the intervals it was put between.
+      do rs_k = 1, nrs
+         rs_f(rs_k) = 7.0d0 + 3.0d0*real(rs_k, 8)
+      enddo
+      rs_f(21) = rs_f(21) + 3.0d4
+      call steps_in_a_sampled_row(rs_f, 1.0d2, rs_n, rs_mark)
+      call int_row('one_displaced_value_is_two_steps', rs_n, 2, nf)
+      call log_row('the_step_is_the_interval_into_the_displacement',      &
+                   rs_mark(20), .true., nf)
+      call log_row('and_the_interval_out_of_it', rs_mark(21), .true., nf)
+      call log_row('the_neighboring_interval_is_not_a_step',             &
+                   rs_mark(19), .false., nf)
+      ! A ROW THAT DOES NOT MOVE HAS NO MEDIAN TO STAND ABOVE.
+      rs_f = 4.0d0
+      call steps_in_a_sampled_row(rs_f, 1.0d2, rs_n, rs_mark)
+      call int_row('a_constant_row_holds_no_step', rs_n, 0, nf)
+      rs_med = median_of_the_magnitudes(rs_f(1:nrs-1) - rs_f(2:nrs))
+      call rel_row('and_its_median_difference_is_zero', rs_med, 0.0d0,    &
+                   0.0d0, nf)
+      ! THE FACTOR IS HONORED: a displacement ten times the increment is
+      ! not a step at a hundred and is one at five.
+      do rs_k = 1, nrs
+         rs_f(rs_k) = 7.0d0 + 3.0d0*real(rs_k, 8)
+      enddo
+      rs_f(21) = rs_f(21) + 3.0d1
+      call steps_in_a_sampled_row(rs_f, 1.0d2, rs_n, rs_mark)
+      call int_row('a_tenfold_displacement_is_no_step_at_a_hundred',      &
+                   rs_n, 0, nf)
+      call steps_in_a_sampled_row(rs_f, 5.0d0, rs_n, rs_mark)
+      call int_row('and_is_two_steps_at_five', rs_n, 2, nf)
+      ! THE SCAN IS OFF UNLESS THE ENVIRONMENT ARMS IT, and it speaks at
+      ! no iteration until an outer iteration selects one.
+      rs_status = c_setenv('EXHALE_RESID_JUMP_SCAN'//c_null_char,         &
+                           ''//c_null_char, 1)
+      call read_species_unknown_space_controls
+      call log_row('the_jump_scan_is_off_by_default',                     &
+                   resid_jump_scan_on, .false., nf)
+      call log_row('the_jump_scan_speaks_at_no_iteration_by_default',     &
+                   resid_jump_scan_here, .false., nf)
+      rs_status = c_setenv('EXHALE_RESID_JUMP_SCAN'//c_null_char,         &
+                           '1'//c_null_char, 1)
+      call read_species_unknown_space_controls
+      call log_row('the_jump_scan_arms_from_the_environment',             &
+                   resid_jump_scan_on, .true., nf)
+      call log_row('arming_it_selects_no_iteration_by_itself',            &
+                   resid_jump_scan_here, .false., nf)
+      rs_status = c_setenv('EXHALE_RESID_JUMP_SCAN'//c_null_char,         &
+                           ''//c_null_char, 1)
+      call read_species_unknown_space_controls
+      call log_row('the_jump_scan_disarms_again',                         &
+                   resid_jump_scan_on, .false., nf)
+      end subroutine residual_step_detector_rows
+
+      ! ------------------------------------------------------!
+
+      subroutine probe_rule_on_a_linear_operator(nf)
+      ! THE ACTION OF A STATED MATRIX IS THAT MATRIX, whichever probe rule
+      ! is armed: jacobian_action_of_direction returns matmul(A, v) where
+      ! a test has set the operator, and no finite difference is taken.
+      integer, intent(inout) :: nf
+      real*8  :: pl_A(3,3), pl_Y(3), pl_F0(3), pl_v(3), pl_Jv(3), pl_want(3)
+      real*8  :: pl_fsp(1-Ng:3+Ng,n_species)
+      logical :: pl_ok
+      integer :: pl_i
+      N        = 3
+      nvar_jac = 1
+      pl_A = reshape((/ 2.0d0, 1.0d0, 0.0d0,                              &
+                        1.0d0, 3.0d0, 1.0d0,                              &
+                        0.0d0, 1.0d0, 4.0d0 /), (/ 3, 3 /))
+      call linear_operator_set_for_test(pl_A, lin_test_dense)
+      pl_Y  = (/ 1.0d0, 2.0d0, 3.0d0 /)
+      pl_F0 = 0.0d0
+      pl_v  = (/ 1.0d0, -1.0d0, 0.5d0 /)
+      pl_fsp = 0.0d0
+      call jacobian_action_of_direction(pl_Y, pl_F0, pl_fsp, pl_v,        &
+                                        pl_Jv, pl_ok)
+      pl_want = matmul(pl_A, pl_v)
+      call log_row('the_linear_test_action_is_admissible', pl_ok,         &
+                   .true., nf)
+      do pl_i = 1, 3
+         call rel_row('the_armed_probe_reproduces_the_linear_operator',   &
+                      pl_Jv(pl_i), pl_want(pl_i), 1.0d-14, nf)
+      enddo
+      call linear_operator_clear_for_test
+      end subroutine probe_rule_on_a_linear_operator
 
       ! ------------------------------------------------------!
 
@@ -1842,6 +2397,276 @@
 
       ! ------------------------------------------------------!
 
+      subroutine model_row_scaling_rows(nf)
+      ! THE ROW SCALING OF THE LINEAR MODEL IS A FREEDOM OF THE MODEL AND
+      ! OF NOTHING ELSE (item N36, decision 20 a).
+      !
+      ! Solving (E A) s = E r0 with E diagonal and positive is the same
+      ! linear system: where the cycle spans the whole space, the step it
+      ! returns is the same step. What E changes is the norm a TRUNCATED
+      ! cycle minimizes. These rows state the first half, and that the
+      ! relative residual handed back is the certification one whatever
+      ! rows the cycle worked in.
+      integer, intent(inout) :: nf
+      real*8, allocatable :: mr_A(:,:), mr_b(:), mr_x(:), mr_xe(:)
+      real*8, allocatable :: mr_ab(:,:)
+      integer :: mr_i, mr_j, mr_n, mr_it, mr_out, mr_oute
+      real*8  :: mr_rel, mr_rele, mr_snorm, mr_snorme, mr_rowmax, mr_worst
+      ! --- E on a stated band: unit infinity norm, and a power of two ---
+      ! Five unknowns of one cell, one sub- and one superdiagonal, the
+      ! rows spanning six decades.
+      N        = 1
+      nvar_jac = 5
+      kl_jac   = 1
+      ku_jac   = 1
+      allocate(mr_ab(2*kl_jac+ku_jac+1, 5))
+      mr_ab = 0.0d0
+      do mr_j = 1, 5
+         do mr_i = max(1, mr_j-ku_jac), min(5, mr_j+kl_jac)
+            mr_ab(kl_jac+ku_jac+1 + mr_i - mr_j, mr_j) =                 &
+                 1.0d0*10.0d0**(mr_i - 3)*dble(mr_j)
+         enddo
+      enddo
+      call unit_infinity_norm_row_scaling_of_the_band(mr_ab)
+      mr_worst = 0.0d0
+      do mr_i = 1, 5
+         mr_rowmax = 0.0d0
+         do mr_j = max(1, mr_i-kl_jac), min(5, mr_i+ku_jac)
+            mr_rowmax = max(mr_rowmax, abs(                              &
+                 mr_ab(kl_jac+ku_jac+1 + mr_i - mr_j, mr_j)))
+         enddo
+         mr_worst = max(mr_worst, abs(log(mr_rowmax                      &
+                    *model_row_equilibration(mr_i))/log(2.0d0)))
+      enddo
+      ! Every row within a factor sqrt(2) of one, which is what a power of
+      ! two can reach.
+      call log_row('the_row_scaling_brings_every_row_to_unit_size',      &
+                   mr_worst .le. 0.5d0, .true., nf)
+      mr_worst = 0.0d0
+      do mr_i = 1, 5
+         mr_worst = max(mr_worst, abs(model_row_equilibration(mr_i)      &
+              - 2.0d0**nint(log(model_row_equilibration(mr_i))           &
+                            /log(2.0d0))))
+      enddo
+      call rel_row('the_row_scaling_is_a_power_of_two', mr_worst, 0.0d0,  &
+                   0.0d0, nf)
+      deallocate(mr_ab)
+      model_rows_equilibrated = .false.
+      ! --- the same step, whatever the rows are scaled by ---
+      ! A dense six by six whose rows span six decades, solved over the
+      ! whole space: the equilibrated cycle and the unequilibrated one
+      ! return one step.
+      mr_n = 6
+      allocate(mr_A(mr_n,mr_n), mr_b(mr_n))
+      do mr_i = 1, mr_n
+         do mr_j = 1, mr_n
+            mr_A(mr_i,mr_j) = 10.0d0**(mr_i-3)                           &
+                 *(1.0d0/dble(mr_i+mr_j) + merge(2.0d0, 0.0d0,           &
+                                                 mr_i .eq. mr_j))
+         enddo
+         mr_b(mr_i) = 10.0d0**(mr_i-3)
+      enddo
+      model_row_equilibration_on = .false.
+      model_rows_equilibrated    = .false.
+      call run_krylov(mr_A, mr_b, mr_n, 1.0d-14, lin_test_dense, mr_x,    &
+                      mr_it, mr_out, mr_rel, mr_snorm)
+      ! E of the dense operator, stated here because the band the cycle is
+      ! preconditioned by in these rows is the identity the test installs
+      ! and carries none of the operator.
+      if (allocated(model_row_equilibration))                            &
+         deallocate(model_row_equilibration)
+      allocate(model_row_equilibration(mr_n))
+      do mr_i = 1, mr_n
+         mr_rowmax = maxval(abs(mr_A(mr_i,:)))
+         model_row_equilibration(mr_i) =                                 &
+              2.0d0**(-nint(log(mr_rowmax)/log(2.0d0)))
+      enddo
+      model_row_equilibration_on = .true.
+      model_rows_equilibrated    = .true.
+      call run_krylov(mr_A, mr_b, mr_n, 1.0d-14, lin_test_dense, mr_xe,   &
+                      mr_it, mr_oute, mr_rele, mr_snorme)
+      call rel_row('the_equilibrated_solve_returns_the_same_step',        &
+                   maxval(abs(mr_xe - mr_x))                              &
+                   /max(maxval(abs(mr_x)), 1.0d-300), 0.0d0, 1.0d-12, nf)
+      ! AND THE RESIDUAL IT REPORTS IS THE CERTIFICATION ONE, not the one
+      ! it minimized: read against the operator and the right-hand side as
+      ! the caller states them. Taken on a TRUNCATED cycle, where the two
+      ! norms differ; on the whole space both are the rounding.
+      deallocate(mr_xe)
+      call run_krylov(mr_A, mr_b, 3, 1.0d-14, lin_test_dense, mr_xe,      &
+                      mr_it, mr_oute, mr_rele, mr_snorme)
+      call rel_row('the_equilibrated_cycle_reports_the_certification'//   &
+                   '_residual', mr_rele,                                  &
+                   sqrt(sum((mr_b - matmul(mr_A, mr_xe))**2))             &
+                   /sqrt(sum(mr_b*mr_b)), 1.0d-8, nf)
+      call log_row('the_equilibrated_cycle_minimizes_another_norm',       &
+                   mr_rele .gt. 1.0d-6, .true., nf)
+      model_row_equilibration_on = .false.
+      model_rows_equilibrated    = .false.
+      deallocate(model_row_equilibration)
+      deallocate(mr_A, mr_b, mr_x, mr_xe)
+      N        = 1
+      nvar_jac = 3
+      kl_jac   = 0
+      ku_jac   = 0
+      end subroutine model_row_scaling_rows
+
+      ! ------------------------------------------------------!
+
+      subroutine true_residual_cycle_rows(nf)
+      ! THE CYCLE THAT RETURNS THE STEP ITS TRUE RESIDUAL CHOOSES (N36).
+      !
+      ! On a LINEAR operator the residual of the reduced problem is the
+      ! residual of the step, so the arm may not move anything: the step it
+      ! returns is the step the same subspace gives, and the tolerance it
+      ! announces is announced only where the residual reached it. On an
+      ! operator whose action drifts with the product count -- what the
+      ! matrix-free secant of a nonlinear residual does over a long cycle
+      ! (section N35) -- the two part company, and the cycle has to stop
+      ! where the residual of its step turns upward instead of running to
+      ! the end of its subspace.
+      integer, intent(inout) :: nf
+      real*8, allocatable :: tr_A(:,:), tr_b(:), tr_x20(:), tr_xa(:)
+      real*8, allocatable :: tr_xd(:)
+      integer :: tr_i, tr_j, tr_n, tr_it20, tr_out20, tr_ita, tr_outa
+      integer :: tr_itd, tr_outd
+      real*8  :: tr_rel20, tr_rela, tr_reld, tr_sn20, tr_sna, tr_snd
+      ! A diagonal spanning the size of the system with one superdiagonal,
+      ! so that the Krylov space of a right-hand side of ones is full and
+      ! no breakdown cuts the cycle short of its checks.
+      tr_n = 30
+      allocate(tr_A(tr_n,tr_n), tr_b(tr_n))
+      tr_A = 0.0d0
+      do tr_i = 1, tr_n
+         tr_A(tr_i,tr_i) = dble(tr_i)
+         if (tr_i .lt. tr_n) tr_A(tr_i,tr_i+1) = 0.3d0
+         tr_b(tr_i) = 1.0d0
+      enddo
+      gm_step_by_its_true_residual = .false.
+      call run_krylov(tr_A, tr_b, gm_true_residual_first, 1.0d-14,        &
+                      lin_test_dense, tr_x20, tr_it20, tr_out20,          &
+                      tr_rel20, tr_sn20)
+      ! The arm, asked for a tolerance the cycle reaches exactly at its
+      ! first check: it has to stop there, name the tolerance and hand
+      ! back the step of that subspace.
+      gm_step_by_its_true_residual = .true.
+      call run_krylov(tr_A, tr_b, tr_n - 5, 2.0d0*tr_rel20,               &
+                      lin_test_dense, tr_xa, tr_ita, tr_outa, tr_rela,    &
+                      tr_sna)
+      call int_row('the_true_residual_cycle_names_the_tolerance',         &
+                   tr_outa, gm_tolerance_reached, nf)
+      call rel_row('the_true_residual_cycle_returns_the_same_step',       &
+                   maxval(abs(tr_xa - tr_x20))                            &
+                   /max(maxval(abs(tr_x20)), 1.0d-300), 0.0d0, 1.0d-12,   &
+                   nf)
+      ! On a linear operator the true residual IS the reduced one.
+      call rel_row('the_true_residual_of_a_linear_map_is_the_reduced'//   &
+                   '_one', tr_rela, tr_rel20, 1.0d-10, nf)
+      ! --- an action that stops being one operator ---
+      ! The same cycle on the drifting action: the reduced problem keeps
+      ! falling, the residual of the step against the action does not, and
+      ! the cycle has to say so rather than spend its whole subspace.
+      tr_n = 70
+      deallocate(tr_A, tr_b)
+      allocate(tr_A(tr_n,tr_n), tr_b(tr_n))
+      tr_A = 0.0d0
+      do tr_i = 1, tr_n
+         tr_A(tr_i,tr_i) = dble(tr_i)
+         if (tr_i .lt. tr_n) tr_A(tr_i,tr_i+1) = 0.3d0
+         tr_b(tr_i) = 1.0d0
+      enddo
+      call run_krylov(tr_A, tr_b, tr_n, 1.0d-14,                          &
+                      lin_test_dense_action_drifts, tr_xd, tr_itd,        &
+                      tr_outd, tr_reld, tr_snd)
+      call int_row('a_drifting_action_turns_the_true_residual',           &
+                   tr_outd, gm_true_residual_turned, nf)
+      ! It stopped before the subspace was spent, and after the drift
+      ! began.
+      call log_row('the_cycle_stopped_where_the_residual_turned',         &
+                   tr_itd .gt. lin_test_drift_after .and.                 &
+                   tr_itd .lt. tr_n, .true., nf)
+      call log_row('the_step_returned_is_finite',                         &
+                   maxval(abs(tr_xd)) .lt. huge(1.0d0), .true., nf)
+      gm_step_by_its_true_residual = .false.
+      deallocate(tr_A, tr_b, tr_x20, tr_xa, tr_xd)
+      N        = 1
+      nvar_jac = 3
+      kl_jac   = 0
+      ku_jac   = 0
+      end subroutine true_residual_cycle_rows
+
+      ! ------------------------------------------------------!
+
+      subroutine front_row_attribution_rows(nf)
+      ! THE ROW THAT BINDS, TERM BY TERM (N38).
+      !
+      ! Two statements of the arithmetic the measurement stands on, and one
+      ! of its default.
+      !
+      !   * A term set composes the row it was split from. The split is a
+      !     statement about one equation,
+      !         div(J_diffusive) + div(F_rho Y^face) - S_chemical = row ,
+      !     so a set whose terms do not sum to its row describes no
+      !     equation; species_row_from_its_terms is the one expression of
+      !     that sum and both the measurement and this row read it.
+      !   * The entry a term contributes to the scaled band is the term's
+      !     own difference quotient in the band's two-sided scaling. On a
+      !     term that is LINEAR in the unknown with a stated coefficient,
+      !     the attributed entry has to be that coefficient times the
+      !     scaling and nothing else, and a step of zero has to give zero
+      !     rather than a division by it.
+      !   * The hook is off unless it is asked for.
+      integer, intent(inout) :: nf
+      type(species_row_term_set) :: kd_t
+      real*8  :: kd_c, kd_h, kd_x, kd_tc, kd_dc, kd_dr, kd_a
+
+      call log_row('the_front_row_hook_is_off_by_default',                &
+                   front_row_on, .false., nf)
+
+      ! A stated term set: the three terms and the row they compose.
+      kd_t%diffusive = -3.5d0
+      kd_t%adv_total =  8.25d0
+      kd_t%chemical  =  1.75d0
+      kd_t%row       = kd_t%diffusive + kd_t%adv_total - kd_t%chemical
+      call rel_row('a_term_set_composes_its_own_row',                     &
+                   species_row_from_its_terms(kd_t), kd_t%row,            &
+                   1.0d-15, nf)
+      ! And the two masked faces compose the advective term, which is what
+      ! the masking device gives: the divergence of a face flux vanishes
+      ! wherever the mass flux it multiplies does.
+      kd_t%adv_left  = -1.25d0
+      kd_t%adv_right =  9.5d0
+      call rel_row('the_two_faces_compose_the_advective_term',            &
+                   kd_t%adv_left + kd_t%adv_right, kd_t%adv_total,        &
+                   1.0d-15, nf)
+
+      ! A term linear in the unknown with a stated coefficient.
+      kd_c  = -7.25d0
+      kd_x  =  0.5d0
+      kd_h  =  1.0d-6
+      kd_tc =  3.0d0
+      kd_dc =  2.0d0
+      kd_dr =  8.0d0
+      kd_a  = attributed_jacobian_entry(kd_c*(kd_x + kd_h), kd_c*kd_x,    &
+                                        kd_h, kd_tc, kd_dc, kd_dr)
+      call rel_row('the_attributed_entry_of_a_linear_term_is_its'//       &
+                   '_coefficient', kd_a, kd_c*kd_tc*kd_dc/kd_dr,          &
+                   1.0d-9, nf)
+      ! A step of zero is not a derivative and may not be a division.
+      call rel_row('a_zero_probe_step_attributes_nothing',                &
+                   attributed_jacobian_entry(kd_c*kd_x, kd_c*kd_x,        &
+                            0.0d0, kd_tc, kd_dc, kd_dr), 0.0d0,           &
+                   1.0d-300, nf)
+      ! And a row read on no scale attributes nothing either.
+      call rel_row('a_row_with_no_scale_attributes_nothing',              &
+                   attributed_jacobian_entry(kd_c*(kd_x + kd_h),          &
+                            kd_c*kd_x, kd_h, kd_tc, kd_dc, 0.0d0),        &
+                   0.0d0, 1.0d-300, nf)
+
+      end subroutine front_row_attribution_rows
+
+      ! ------------------------------------------------------!
+
       subroutine text_row(name, got, want, nf)
       ! One row whose measured value is a sentence.
       character(len=*), intent(in)    :: name, got, want
@@ -1915,5 +2740,521 @@
          nf = nf + 1
       endif
       end subroutine rel_row
+
+      ! ------------------------------------------------------!
+
+      subroutine well_balanced_operator_rows(nf)
+      ! THE WELL-BALANCED ARM ("Well balanced:", default off; item N37,
+      ! docs/well_balanced_flux_difference_design_20260910.md).  Four
+      ! statements, on the same twelve-cell stretched grid the extended
+      ! precision rows use:
+      !
+      !   * WITH NO GRAVITY the arm is the base scheme.  The local
+      !     equilibrium is then the constant p_j, the departure data is the
+      !     ordinary pressure stencil and the face pressure measured against
+      !     the equilibrium is the ordinary one, so every row must come back
+      !     the same to rounding.  It is NOT asserted bitwise: the pressure
+      !     jump of the Riemann problem is formed additively under the arm
+      !     (the difference of the two cell pressures plus the departures)
+      !     and as pR - pL without it, and the two roundings differ in the
+      !     last bit of the jump.  Measured on a uniform state and on a Sod
+      !     shock tube, for both reconstructions.
+      !   * WITH GRAVITY, on the discrete equilibrium the arm defines (the
+      !     state whose two neighboring equilibrium extrapolations agree at
+      !     every face), the momentum row falls to the rounding level while
+      !     the base scheme leaves its truncation error.  This is the
+      !     operator identity the arm exists for, asserted here on a second
+      !     grid and a second geometry from the one
+      !     src/tests/grid_and_gates/hydrostatic_residual.f90 uses.
+      !   * The generic double instantiation of the kind-generic operator
+      !     reproduces the production operator bit for bit WITH THE KEY ON
+      !     as well, which is what makes EXHALE_RESID_QUAD=2 the same
+      !     experiment under both key values.
+      integer, intent(inout) :: nf
+      integer, parameter :: xn = 12, xg = 2
+      real*8, dimension(3,1-xg:xn+xg) :: xu, xWLa, xWRa, xdFa, xSa
+      real*8, dimension(3,1-xg:xn+xg) :: xWLb, xWRb, xdFb, xSb
+      real*8, dimension(1-xg:xn+xg)   :: x_rho_eq, x_p_eq
+      real*8  :: x_rho, x_vel, x_pre, x_dev, x_ref, x_b0, x_cs2
+      real*8  :: x_wb, x_off
+      integer :: xj, xk, xs
+      integer :: sv_N, sv_wmode
+      logical :: sv_plm, sv_weno, sv_lam_on, sv_wb
+      character(len=:), allocatable :: sv_rec, sv_flux
+      real*8, dimension(3) :: sv_bfW, sv_bflW
+      real*8, dimension(:), allocatable :: sv_r, sv_redg, sv_dr,          &
+                                           sv_gpi, sv_gpc
+
+      sv_N = N;  sv_wmode = weno_mode;  sv_wb = well_balanced
+      sv_plm = use_plm;  sv_weno = use_weno3;  sv_lam_on = recon_lambda_on
+      sv_rec = rec_method;  sv_flux = flux
+      sv_bfW = base_face_W;  sv_bflW = base_face_lower_W
+      if (allocated(r)) then
+         allocate(sv_r(lbound(r,1):ubound(r,1)));  sv_r = r
+         allocate(sv_redg(lbound(r_edg,1):ubound(r_edg,1)));  sv_redg = r_edg
+         allocate(sv_dr(lbound(dr_j,1):ubound(dr_j,1)));      sv_dr  = dr_j
+         allocate(sv_gpi(lbound(Gphi_i,1):ubound(Gphi_i,1))); sv_gpi = Gphi_i
+         allocate(sv_gpc(lbound(Gphi_c,1):ubound(Gphi_c,1))); sv_gpc = Gphi_c
+         deallocate(r, r_edg, dr_j, Gphi_i, Gphi_c)
+      endif
+
+      N = xn;  weno_mode = 0;  recon_lambda_on = .false.;  flux = 'ROE'
+      allocate(r(1-xg:xn+xg), r_edg(1-xg:xn+xg), dr_j(1-xg:xn+xg))
+      allocate(Gphi_i(1-xg:xn+xg), Gphi_c(1-xg:xn+xg))
+      do xj = 1-xg, xn+xg
+         r_edg(xj) = 1.0d0 + 0.05d0*dble(xj)*(1.0d0 + 0.02d0*dble(xj))
+      enddo
+      do xj = 2-xg, xn+xg
+         r(xj)    = 0.5d0*(r_edg(xj) + r_edg(xj-1))
+         dr_j(xj) = r_edg(xj) - r_edg(xj-1)
+      enddo
+      r(1-xg)    = r_edg(1-xg) - 0.5d0*dr_j(2-xg)
+      dr_j(1-xg) = dr_j(2-xg)
+
+      ! ---- (1) no gravity, a uniform state ----
+      Gphi_i = 0.0d0
+      Gphi_c = 0.0d0
+      x_rho = 1.25d0;  x_vel = 0.5d0;  x_pre = 0.75d0
+      do xj = 1-xg, xn+xg
+         xu(1,xj) = x_rho
+         xu(2,xj) = x_rho*x_vel
+         xu(3,xj) = 0.5d0*x_rho*x_vel*x_vel + x_pre/(gamma_ad - 1.0d0)
+      enddo
+      base_face_W(1) = x_rho
+      base_face_W(2) = x_vel
+      base_face_W(3) = x_pre
+      base_face_lower_W = base_face_W
+      call rel_row('well_balanced_uniform_flow_is_the_base_scheme[PLM]',  &
+                   arm_departure_of_the_rows(xu, xn, xg, .true.),         &
+                   0.0d0, 1.0d-13, nf)
+      call rel_row('well_balanced_uniform_flow_is_the_base_scheme[WENO3]',&
+                   arm_departure_of_the_rows(xu, xn, xg, .false.),        &
+                   0.0d0, 1.0d-13, nf)
+
+      ! ---- (2) no gravity, a Sod shock tube ----
+      ! Sod (1978, J. Comput. Phys. 27, 1): (rho, v, p) = (1, 0, 1) on the
+      ! left and (0.125, 0, 0.1) on the right of the middle of the domain,
+      ! as initial data.  The row is evaluated once on it, so what is
+      ! measured is the operator at a discontinuity and not the evolution.
+      do xj = 1-xg, xn+xg
+         if (xj .le. xn/2) then
+            x_rho = 1.0d0;    x_pre = 1.0d0
+         else
+            x_rho = 0.125d0;  x_pre = 0.1d0
+         endif
+         xu(1,xj) = x_rho
+         xu(2,xj) = 0.0d0
+         xu(3,xj) = x_pre/(gamma_ad - 1.0d0)
+      enddo
+      base_face_W(1) = 1.0d0
+      base_face_W(2) = 0.0d0
+      base_face_W(3) = 1.0d0
+      base_face_lower_W = base_face_W
+      call rel_row('well_balanced_shock_tube_is_the_base_scheme[PLM]',    &
+                   arm_departure_of_the_rows(xu, xn, xg, .true.),         &
+                   0.0d0, 1.0d-13, nf)
+      call rel_row('well_balanced_shock_tube_is_the_base_scheme[WENO3]',  &
+                   arm_departure_of_the_rows(xu, xn, xg, .false.),        &
+                   0.0d0, 1.0d-13, nf)
+
+      ! ---- (3) with gravity, on the arm's own discrete equilibrium ----
+      ! phi = -b0/r, and an isothermal column with p = c^2 rho whose
+      ! densities solve the face-matching condition
+      !   p_j+1 + rho_j+1 (phi_c(j+1) - phi_i(j))
+      !         = p_j - rho_j (phi_i(j) - phi_c(j))
+      ! exactly: rho_j+1 = rho_j (c^2 - a_j)/(c^2 + b_j).
+      x_b0  = 3.0d0
+      x_cs2 = 1.0d0
+      do xj = 1-xg, xn+xg
+         Gphi_i(xj) = -x_b0/r_edg(xj)
+         Gphi_c(xj) = -x_b0/r(xj)
+      enddo
+      x_rho_eq(1) = 1.0d0
+      do xj = 1, xn+xg-1
+         x_rho_eq(xj+1) = x_rho_eq(xj)                                    &
+            *(x_cs2 - (Gphi_i(xj)   - Gphi_c(xj)))                        &
+            /(x_cs2 + (Gphi_c(xj+1) - Gphi_i(xj)))
+      enddo
+      do xj = 1, 2-xg, -1
+         x_rho_eq(xj-1) = x_rho_eq(xj)                                    &
+            *(x_cs2 + (Gphi_c(xj)   - Gphi_i(xj-1)))                      &
+            /(x_cs2 - (Gphi_i(xj-1) - Gphi_c(xj-1)))
+      enddo
+      x_rho_eq(1-xg) = x_rho_eq(2-xg)
+      x_p_eq = x_cs2*x_rho_eq
+      do xj = 1-xg, xn+xg
+         xu(1,xj) = x_rho_eq(xj)
+         xu(2,xj) = 0.0d0
+         xu(3,xj) = x_p_eq(xj)/(gamma_ad - 1.0d0)
+      enddo
+      base_face_W(1) = x_rho_eq(1)
+      base_face_W(2) = 0.0d0
+      base_face_W(3) = x_p_eq(1)
+      base_face_lower_W = base_face_W
+
+      do xs = 1, 2
+         if (xs .eq. 1) then
+            rec_method = 'PLM';   use_plm = .true.;  use_weno3 = .false.
+         else
+            rec_method = 'WENO3'; use_plm = .false.; use_weno3 = .true.
+         endif
+         x_ref = 0.0d0
+         do xj = 3, xn-2
+            x_ref = max(x_ref, x_rho_eq(xj)*x_b0/(r(xj)*r(xj)))
+         enddo
+
+         well_balanced = .true.
+         call reconstruction_continuation_rhs(xu, xWLb, xWRb, xdFb, xSb)
+         x_wb = 0.0d0
+         do xj = 3, xn-2
+            x_wb = max(x_wb, abs(xdFb(2,xj) - xSb(2,xj))/x_ref)
+         enddo
+
+         well_balanced = .false.
+         call reconstruction_continuation_rhs(xu, xWLa, xWRa, xdFa, xSa)
+         x_off = 0.0d0
+         do xj = 3, xn-2
+            x_off = max(x_off, abs(xdFa(2,xj) - xSa(2,xj))/x_ref)
+         enddo
+
+         if (xs .eq. 1) then
+            call rel_row('well_balanced_momentum_row_on_its_own_'//       &
+                 'equilibrium[PLM]', x_wb, 0.0d0, 1.0d-13, nf)
+            call log_row('the_same_column_is_not_balanced_without_the_'// &
+                 'arm[PLM]', x_off .gt. 1.0d-9, .true., nf)
+         else
+            call rel_row('well_balanced_momentum_row_on_its_own_'//       &
+                 'equilibrium[WENO3]', x_wb, 0.0d0, 1.0d-13, nf)
+            call log_row('the_same_column_is_not_balanced_without_the_'// &
+                 'arm[WENO3]', x_off .gt. 1.0d-9, .true., nf)
+         endif
+      enddo
+
+      ! ---- (4) the generic double instantiation, with the key ON ----
+      ! Same state, same gravity, a state with structure in it so that the
+      ! reconstruction limits and every branch of the assembly is reached.
+      rec_method = 'WENO3'; use_plm = .false.; use_weno3 = .true.
+      do xj = 1-xg, xn+xg
+         x_rho = 1.0d0/r(xj)**3
+         x_vel = 0.3d0*r(xj)
+         x_pre = 0.8d0/r(xj)**4
+         xu(1,xj) = x_rho
+         xu(2,xj) = x_rho*x_vel
+         xu(3,xj) = 0.5d0*x_rho*x_vel*x_vel + x_pre/(gamma_ad - 1.0d0)
+      enddo
+      base_face_W(1) = 1.0d0/r(1)**3
+      base_face_W(2) = 0.3d0*r(1)
+      base_face_W(3) = 0.8d0/r(1)**4
+      base_face_lower_W = base_face_W
+
+      well_balanced = .true.
+      call reconstruction_continuation_rhs(xu, xWLa, xWRa, xdFa, xSa)
+      call hydrodynamic_rows_in_double_precision(xu, xWLb, xWRb, xdFb, xSb)
+      x_dev = 0.0d0
+      do xj = 2-xg, xn+xg
+         do xk = 1, 3
+            if (xdFb(xk,xj) .ne. xdFa(xk,xj))                             &
+               x_dev = max(x_dev, abs(xdFb(xk,xj)-xdFa(xk,xj)))
+            if (xSb(xk,xj) .ne. xSa(xk,xj))                               &
+               x_dev = max(x_dev, abs(xSb(xk,xj)-xSa(xk,xj)))
+         enddo
+      enddo
+      call rel_row('generic_double_is_the_operator_bitwise_with_the_arm', &
+                   x_dev, 0.0d0, 0.0d0, nf)
+
+      ! ---- put the globals back ----
+      well_balanced = sv_wb
+      deallocate(r, r_edg, dr_j, Gphi_i, Gphi_c)
+      if (allocated(sv_r)) then
+         allocate(r(lbound(sv_r,1):ubound(sv_r,1)));  r = sv_r
+         allocate(r_edg(lbound(sv_redg,1):ubound(sv_redg,1)))
+         r_edg = sv_redg
+         allocate(dr_j(lbound(sv_dr,1):ubound(sv_dr,1)));  dr_j = sv_dr
+         allocate(Gphi_i(lbound(sv_gpi,1):ubound(sv_gpi,1)))
+         Gphi_i = sv_gpi
+         allocate(Gphi_c(lbound(sv_gpc,1):ubound(sv_gpc,1)))
+         Gphi_c = sv_gpc
+         deallocate(sv_r, sv_redg, sv_dr, sv_gpi, sv_gpc)
+      endif
+      N = sv_N;  weno_mode = sv_wmode
+      use_plm = sv_plm;  use_weno3 = sv_weno;  recon_lambda_on = sv_lam_on
+      rec_method = sv_rec;  flux = sv_flux
+      base_face_W = sv_bfW;  base_face_lower_W = sv_bflW
+
+      end subroutine well_balanced_operator_rows
+
+      ! ------------------------------------------------------!
+
+      real*8 function arm_departure_of_the_rows(xu, xn, xg, plm)        &
+                                                              result(dev)
+      ! The rows R = dF - S of one state evaluated twice, with the
+      ! well-balanced arm off and on, and the largest departure between
+      ! them relative to the largest row of the base scheme, over the
+      ! physical cells.  With no gravity the two are the same operator, so
+      ! this is the number that says so.
+      integer, intent(in) :: xn, xg
+      real*8, dimension(3,1-xg:xn+xg), intent(in) :: xu
+      logical, intent(in) :: plm
+      real*8, dimension(3,1-xg:xn+xg) :: yWL, yWR, ydF, yS
+      real*8, dimension(3,1-xg:xn+xg) :: R_off, R_on
+      integer :: xj, xk
+      real*8  :: sc
+
+      if (plm) then
+         rec_method = 'PLM';   use_plm = .true.;  use_weno3 = .false.
+      else
+         rec_method = 'WENO3'; use_plm = .false.; use_weno3 = .true.
+      endif
+
+      well_balanced = .false.
+      call reconstruction_continuation_rhs(xu, yWL, yWR, ydF, yS)
+      R_off = ydF - yS
+      well_balanced = .true.
+      call reconstruction_continuation_rhs(xu, yWL, yWR, ydF, yS)
+      R_on = ydF - yS
+      well_balanced = .false.
+
+      dev = 0.0d0
+      sc  = 0.0d0
+      do xj = 1, xn
+         do xk = 1, 3
+            sc = max(sc, abs(R_off(xk,xj)))
+         enddo
+      enddo
+      if (sc .le. 0.0d0) return
+      do xj = 1, xn
+         do xk = 1, 3
+            dev = max(dev, abs(R_on(xk,xj) - R_off(xk,xj))/sc)
+         enddo
+      enddo
+
+      end function arm_departure_of_the_rows
+
+
+      ! ------------------------------------------------------!
+
+      subroutine extended_precision_rows(nf)
+      ! THE HYDRODYNAMIC ROWS EVALUATED IN ANOTHER REAL KIND (item N34).
+      ! The stationary residual's non-smoothness floor is the rounding of
+      ! the flux assembly (N33), and the control experiment that separates
+      ! the rounding from every other candidate is the SAME operator in a
+      ! wider mantissa. That is only an experiment about the arithmetic if
+      ! the two instantiations of the generic text are one operator, so
+      ! these rows state:
+      !
+      !   * the arm is off unless the environment names it, and it names
+      !     the quadruple and the generic-double instantiation separately;
+      !   * the DOUBLE instantiation of the generic text reproduces
+      !     Reconstruct + RK_rhs + Num_flux + source BIT FOR BIT on a state
+      !     with structure in it (a bitwise reference, not a tolerance);
+      !   * the QUADRUPLE instantiation gets the analytically known answer
+      !     of a case where one exists. On a state uniform in (rho, v, p)
+      !     with no gravity every interface flux is the physical flux of
+      !     that state (the Roe jumps vanish identically), so the mass row
+      !     is exactly F_rho (r_+^2 - r_-^2)/dV. That reference is formed
+      !     here in quadruple from the same grid, and the row asserts the
+      !     quadruple pipeline reaches it to 1e-30 while the double one
+      !     stands at its own rounding.
+      integer, intent(inout) :: nf
+      integer, parameter :: qp = selected_real_kind(30, 300)
+      integer, parameter :: xn = 12, xg = 2
+      real*8, dimension(3,1-xg:xn+xg) :: xu, xWLa, xWRa, xdFa, xSa
+      real*8, dimension(3,1-xg:xn+xg) :: xWLb, xWRb, xdFb, xSb
+      real*8, dimension(3,1-xg:xn+xg) :: xff
+      real*8, dimension(1-xg:xn+xg)   :: xfpr
+      real(qp) :: q_rp, q_rm, q_dV, q_rho, q_vel, q_ref
+      real(qp), dimension(3,1-xg:xn+xg) :: q_dF
+      real*8  :: x_rho, x_vel, x_pre, x_worst_dF, x_worst_S, x_dev
+      real*8  :: x_dev_q, x_dev_d
+      integer :: xj, xk, x_scaled, x_hlle, x_llf, x_status
+      ! Saved global state; every row here rewrites the grid and the
+      ! scheme selection and puts them back.
+      integer :: sv_N, sv_wmode
+      logical :: sv_plm, sv_weno, sv_lam_on
+      character(len=:), allocatable :: sv_rec, sv_flux
+      real*8, dimension(3) :: sv_bfW, sv_bflW
+      real*8, dimension(:), allocatable :: sv_r, sv_redg, sv_dr,          &
+                                           sv_gpi, sv_gpc
+
+      ! ---- the arm, and only from the environment ----
+      x_status = c_unsetenv('EXHALE_RESID_QUAD'//c_null_char)
+      call int_row('the_extended_precision_rows_arm_is_off_by_default',   &
+                   generic_precision_rows_arm(), ARM_OFF, nf)
+      x_status = c_setenv('EXHALE_RESID_QUAD'//c_null_char,               &
+                          '1'//c_null_char, 1)
+      call int_row('the_arm_names_the_quadruple_instantiation',           &
+                   generic_precision_rows_arm(), ARM_QUADRUPLE, nf)
+      x_status = c_setenv('EXHALE_RESID_QUAD'//c_null_char,               &
+                          '2'//c_null_char, 1)
+      call int_row('the_arm_names_the_generic_double_instantiation',      &
+                   generic_precision_rows_arm(), ARM_GENERIC_DOUBLE, nf)
+      x_status = c_setenv('EXHALE_RESID_QUAD'//c_null_char,               &
+                          'yes'//c_null_char, 1)
+      call int_row('an_unnamed_value_leaves_the_arm_off',                 &
+                   generic_precision_rows_arm(), ARM_OFF, nf)
+      x_status = c_unsetenv('EXHALE_RESID_QUAD'//c_null_char)
+      call int_row('the_arm_disarms_again',                               &
+                   generic_precision_rows_arm(), ARM_OFF, nf)
+
+      ! ---- a grid and a scheme to evaluate the operator on ----
+      sv_N = N;  sv_wmode = weno_mode
+      sv_plm = use_plm;  sv_weno = use_weno3;  sv_lam_on = recon_lambda_on
+      sv_rec = rec_method;  sv_flux = flux
+      sv_bfW = base_face_W;  sv_bflW = base_face_lower_W
+      if (allocated(r)) then
+         allocate(sv_r(lbound(r,1):ubound(r,1)));  sv_r = r
+         allocate(sv_redg(lbound(r_edg,1):ubound(r_edg,1)));  sv_redg = r_edg
+         allocate(sv_dr(lbound(dr_j,1):ubound(dr_j,1)));      sv_dr  = dr_j
+         allocate(sv_gpi(lbound(Gphi_i,1):ubound(Gphi_i,1))); sv_gpi = Gphi_i
+         allocate(sv_gpc(lbound(Gphi_c,1):ubound(Gphi_c,1))); sv_gpc = Gphi_c
+         deallocate(r, r_edg, dr_j, Gphi_i, Gphi_c)
+      endif
+
+      N = xn;  weno_mode = 0
+      use_plm = .false.;  use_weno3 = .true.;  recon_lambda_on = .false.
+      rec_method = 'WENO3';  flux = 'ROE'
+      allocate(r(1-xg:xn+xg), r_edg(1-xg:xn+xg), dr_j(1-xg:xn+xg))
+      allocate(Gphi_i(1-xg:xn+xg), Gphi_c(1-xg:xn+xg))
+      ! A stretched radial grid, as the production grid is; the faces and
+      ! the centres are consistent with each other so the volume weights of
+      ! the reconstruction are those of a real grid.
+      do xj = 1-xg, xn+xg
+         r_edg(xj) = 1.0d0 + 0.05d0*dble(xj)*(1.0d0 + 0.02d0*dble(xj))
+      enddo
+      do xj = 2-xg, xn+xg
+         r(xj)    = 0.5d0*(r_edg(xj) + r_edg(xj-1))
+         dr_j(xj) = r_edg(xj) - r_edg(xj-1)
+      enddo
+      r(1-xg)    = r_edg(1-xg) - 0.5d0*dr_j(2-xg)
+      dr_j(1-xg) = dr_j(2-xg)
+      Gphi_i = 0.0d0
+      Gphi_c = 0.0d0
+
+      ! ---- the double instantiation IS the production operator ----
+      ! A state with structure in it: a density and a pressure that fall
+      ! with radius and a velocity that grows, so the reconstruction
+      ! limits, the Roe jumps are nonzero and every branch of the assembly
+      ! is reached with something to do.
+      do xj = 1-xg, xn+xg
+         x_rho = 1.0d0/r(xj)**3
+         x_vel = 0.3d0*r(xj)
+         x_pre = 0.8d0/r(xj)**4
+         xu(1,xj) = x_rho
+         xu(2,xj) = x_rho*x_vel
+         xu(3,xj) = 0.5d0*x_rho*x_vel*x_vel + x_pre/(gamma_ad - 1.0d0)
+      enddo
+      base_face_W(1) = 1.0d0/r(1)**3
+      base_face_W(2) = 0.3d0*r(1)
+      base_face_W(3) = 0.8d0/r(1)**4
+      base_face_lower_W = base_face_W
+
+      call reconstruction_continuation_rhs(xu, xWLa, xWRa, xdFa, xSa)
+      call hydrodynamic_rows_in_double_precision(xu, xWLb, xWRb, xdFb, xSb)
+
+      ! Bitwise: the reference is zero and the tolerance is zero, so any
+      ! difference at all in any component of any cell fails the row.
+      x_worst_dF = 0.0d0;  x_worst_S = 0.0d0
+      do xj = 2-xg, xn+xg
+         do xk = 1, 3
+            if (xdFb(xk,xj) .ne. xdFa(xk,xj))                             &
+               x_worst_dF = max(x_worst_dF, abs(xdFb(xk,xj)-xdFa(xk,xj)))
+            if (xSb(xk,xj) .ne. xSa(xk,xj))                               &
+               x_worst_S  = max(x_worst_S,  abs(xSb(xk,xj)-xSa(xk,xj)))
+         enddo
+      enddo
+      call rel_row('generic_double_flux_difference_is_the_operator_bitwise',&
+                   x_worst_dF, 0.0d0, 0.0d0, nf)
+      call rel_row('generic_double_source_is_the_operator_bitwise',       &
+                   x_worst_S, 0.0d0, 0.0d0, nf)
+      x_dev = 0.0d0
+      do xj = 1-xg, xn+xg
+         do xk = 1, 3
+            if (xWLb(xk,xj) .ne. xWLa(xk,xj))                             &
+               x_dev = max(x_dev, abs(xWLb(xk,xj)-xWLa(xk,xj)))
+            if (xWRb(xk,xj) .ne. xWRa(xk,xj))                             &
+               x_dev = max(x_dev, abs(xWRb(xk,xj)-xWRa(xk,xj)))
+         enddo
+      enddo
+      call rel_row('generic_double_face_states_are_the_operator_bitwise', &
+                   x_dev, 0.0d0, 0.0d0, nf)
+
+      ! ---- the quadruple instantiation on a case with an exact answer ----
+      ! Uniform (rho, v, p) and no gravity: every reconstructed face state
+      ! is that state, the Roe jumps vanish, and the interface flux is the
+      ! physical flux. The mass row is then exactly F_rho (r_+^2 - r_-^2)/dV,
+      ! with dV = (r_+^3 - r_-^3)/3.
+      ! rho and v are exact binary fractions, so the mass flux
+      ! rho (rho v)/rho of every face is the exact 0.625 in any kind and
+      ! the reference below is the analytic row and not a re-rounding of
+      ! the pipeline's own arithmetic.
+      x_rho = 1.25d0;  x_vel = 0.5d0;  x_pre = 0.75d0
+      do xj = 1-xg, xn+xg
+         xu(1,xj) = x_rho
+         xu(2,xj) = x_rho*x_vel
+         xu(3,xj) = 0.5d0*x_rho*x_vel*x_vel + x_pre/(gamma_ad - 1.0d0)
+      enddo
+      base_face_W(1) = x_rho
+      base_face_W(2) = x_vel
+      base_face_W(3) = x_pre
+      base_face_lower_W = base_face_W
+
+      call quadruple_rows(xu, xWLb, xWRb, xdFb, xSb, xff, xfpr,           &
+                          x_scaled, x_hlle, x_llf, q_dF)
+      call hydrodynamic_rows_in_double_precision(xu, xWLa, xWRa, xdFa, xSa)
+
+      q_rho = real(x_rho, qp)
+      q_vel = real(x_vel, qp)
+      ! Cell 1 is left out: its lower face takes the imposed base state,
+      ! whose pressure is the double round of the same map and not the
+      ! quadruple one, so that one face carries a jump of the size of a
+      ! double ulp by construction. Every other cell of the domain sees
+      ! the uniform state on both sides.
+      x_dev_q = 0.0d0;  x_dev_d = 0.0d0
+      do xj = 2, xn
+         q_rp = real(r_edg(xj),   qp)
+         q_rm = real(r_edg(xj-1), qp)
+         q_dV = (q_rp*q_rp*q_rp - q_rm*q_rm*q_rm)/3.0_qp
+         q_ref = q_rho*q_vel*(q_rp*q_rp - q_rm*q_rm)/q_dV
+         ! The quadruple row BEFORE the rounding to double: the single
+         ! rounding on the way out is what the arm hands the solver, but
+         ! it is also a double ulp, which would hide the arithmetic this
+         ! row is about.
+         x_dev_q = max(x_dev_q,                                           &
+                   real(abs(q_dF(1,xj) - q_ref)/abs(q_ref), 8))
+         x_dev_d = max(x_dev_d,                                           &
+                   real(abs(real(xdFa(1,xj), qp) - q_ref)/abs(q_ref), 8))
+      enddo
+      call rel_row('quadruple_mass_row_of_a_uniform_state_is_exact',      &
+                   x_dev_q, 0.0d0, 1.0d-30, nf)
+      ! And that the reference is a real test of the arithmetic: the same
+      ! row in double stands at its own rounding, far above 1e-30 and far
+      ! below one.
+      call log_row('the_same_row_in_double_stands_at_its_own_rounding',   &
+                   (x_dev_d .gt. 1.0d-30) .and. (x_dev_d .lt. 1.0d-12),   &
+                   .true., nf)
+      call int_row('a_uniform_state_needs_no_hlle_fallback',              &
+                   x_hlle, 0, nf)
+      call int_row('a_uniform_state_needs_no_positivity_scaling',         &
+                   x_scaled, 0, nf)
+
+      ! ---- put the globals back ----
+      deallocate(r, r_edg, dr_j, Gphi_i, Gphi_c)
+      if (allocated(sv_r)) then
+         allocate(r(lbound(sv_r,1):ubound(sv_r,1)));  r = sv_r
+         allocate(r_edg(lbound(sv_redg,1):ubound(sv_redg,1)))
+         r_edg = sv_redg
+         allocate(dr_j(lbound(sv_dr,1):ubound(sv_dr,1)));  dr_j = sv_dr
+         allocate(Gphi_i(lbound(sv_gpi,1):ubound(sv_gpi,1)))
+         Gphi_i = sv_gpi
+         allocate(Gphi_c(lbound(sv_gpc,1):ubound(sv_gpc,1)))
+         Gphi_c = sv_gpc
+         deallocate(sv_r, sv_redg, sv_dr, sv_gpi, sv_gpc)
+      endif
+      N = sv_N;  weno_mode = sv_wmode
+      use_plm = sv_plm;  use_weno3 = sv_weno;  recon_lambda_on = sv_lam_on
+      rec_method = sv_rec;  flux = sv_flux
+      base_face_W = sv_bfW;  base_face_lower_W = sv_bflW
+
+      end subroutine extended_precision_rows
 
       end program krylov_and_dogleg_tests

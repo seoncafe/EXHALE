@@ -21,6 +21,36 @@
       ! would have produced, to the bit.
       integer :: n_faces_positivity_limited = 0
 
+      ! ---- THE WELL-BALANCED ARM ("Well balanced:", default off) ----
+      ! The local hydrostatic equilibrium of cell j is the one of constant
+      ! density through its own (rho_j, p_j),
+      !     p_eq,j(r) = p_j - rho_j (phi(r) - phi(r_j)),
+      ! whose two face values are wb_P_up(j) at r_edg(j) and wb_P_dn(j) at
+      ! r_edg(j-1) (Kaeppeli and Mishra 2016, A&A 587, A94, their eq. 16, with
+      ! the potential taken at the true face radius since ours is analytic).
+      ! What the reconstruction returns is the DEPARTURE from it,
+      !     wb_dev_L(f) = p of the left state of face f  - wb_P_up(f)
+      !     wb_dev_R(f) = p of the right state of face f - wb_P_dn(f+1),
+      ! and wb_dp_eq(f) = wb_P_dn(f+1) - wb_P_up(f) is the mismatch of the two
+      ! neighboring equilibria at the shared face, formed from the difference
+      ! of the two cell pressures and two terms of the size of the hydrostatic
+      ! pressure drop across a cell. It vanishes on the discrete equilibrium
+      ! the scheme preserves. The pressure jump of the Riemann problem is
+      ! wb_dp_eq + wb_dev_R - wb_dev_L, every term of the size of the
+      ! departure and none of the size of the state, which is the whole point:
+      ! the flux then carries the last bit of its own value and not of an O(1)
+      ! pressure. Read by RK_rhs; written here at every evaluation and never
+      ! carried between them.
+      real*8, allocatable :: wb_P_up(:), wb_P_dn(:)
+      real*8, allocatable :: wb_p_cell(:), wb_rho_cell(:)
+      real*8, allocatable :: wb_dev_L(:), wb_dev_R(:), wb_dp_eq(:)
+      ! The face pressures the equilibrium/departure reconstruction assembled,
+      ! kept so that a face state the boundary condition or the positivity
+      ! limiter has rewritten is recognized (its departure is then re-formed
+      ! from the state it now carries, at the cost of the O(1) subtraction the
+      ! rest of the arm avoids).
+      real*8, allocatable :: wb_pL_asm(:), wb_pR_asm(:)
+
       contains
 
       subroutine Reconstruct(u_in,WL_out,WR_out) 
@@ -37,14 +67,24 @@
       real*8, dimension(3) :: tau
       real*8, dimension(3) :: S0,S1
       real*8, dimension(1-Ng:N+Ng) :: C1,C2,D1,D2
-	
+
+      ! Well-balanced arm: the cell's own equilibrium is formed first, the
+      ! reconstruction below then works on the departure from it.
+      real*8, dimension(3) :: Wc
+
+      if (well_balanced) call hydrostatic_equilibrium_of_each_cell(u_in)
+
       select case (rec_method)
       
          !-----------------------------------------------!
          
          case ('PLM')      ! Piecewise linear reconstruction
 
-            call PLM_rec(u_in,WL,WR)
+            if (well_balanced) then
+               call PLM_rec(u_in,WL,WR,wb_P_up,wb_P_dn,wb_dev_L,wb_dev_R)
+            else
+               call PLM_rec(u_in,WL,WR)
+            endif
 
          case ('WENO3')    ! Third-order WENO reconstruction
             !
@@ -162,11 +202,30 @@
             ! the arithmetic of a cell is unchanged and the result is
             ! bitwise identical at any number of threads.
             !$omp parallel do default(shared) schedule(static)          &
-            !$omp   private(j,k,dWp,dWm,b0,b1,tau,S0,S1)
+            !$omp   private(j,k,dWp,dWm,b0,b1,tau,S0,S1,Wc)
             do j = 0,N+1
 
                dWp = dW(:,j)
                dWm = dW(:,j-1)
+               Wc  = W(:,j)
+
+               ! WELL-BALANCED ARM: the pressure component is reconstructed
+               ! in the coordinate of the DEPARTURE from cell j's local
+               ! hydrostatic equilibrium, whose value at the cell centre is
+               ! zero and at a neighboring centre is that cell's pressure
+               ! measured against the equilibrium continued through the face
+               ! between them, with cell j's density up to the face and the
+               ! neighbor's beyond it (Kaeppeli and Mishra 2016, A&A 587,
+               ! A94, their eqs. 18 and 26).  The data then vanishes exactly
+               ! on the discrete equilibrium and the stencil, the smoothness
+               ! indicators and the volume shares act on it unchanged.
+               if (well_balanced) then
+                  dWp(3) = dWp(3) + Wc(1)   *(Gphi_i(j)   - Gphi_c(j))   &
+                                  + W(1,j+1)*(Gphi_c(j+1) - Gphi_i(j))
+                  dWm(3) = dWm(3) + Wc(1)   *(Gphi_c(j)   - Gphi_i(j-1)) &
+                                  + W(1,j-1)*(Gphi_i(j-1) - Gphi_c(j-1))
+                  Wc(3)  = 0.0d0
+               endif
 
                if (weno_mode .eq. 2) then
                   S0 = S0sav(j,:)
@@ -188,24 +247,33 @@
                ! Each candidate is the linear interpolant of two cell
                ! averages in the volume coordinate, evaluated at a face of
                ! cell j, which lies dV(j)/2 from the centre of cell j: the
-               ! jump to the neighbour is weighted by cell j's OWN volume
+               ! jump to the neighbor is weighted by cell j's OWN volume
                ! share, dV(j)/(dV(j) + dV(j+1)) = C2(j) for the jump to j+1
                ! and dV(j)/(dV(j-1) + dV(j)) = C1(j-1) for the jump to j-1,
-               ! at either face. With the neighbour's share in their place
+               ! at either face. With the neighbor's share in their place
                ! the face value carries an O(h) coefficient error times an
                ! O(h) jump and the reconstruction is second order, so these
                ! two shares and not the nonlinear weights are what sets the
                ! order (MEASURED, weno3_reconstruction_order: rate 3.000 on
                ! a grid uniform in r and 2.991 on the production grid with
                ! the shares as written, 1.997 and 1.988 with the two
-               ! neighbour shares in their place).
-               WL(:,j) = W(:,j)	&
+               ! neighbor shares in their place).
+               WL(:,j) = Wc	&
                   + (S0*C2(j)*dWp + D1(j)*S1*C1(j-1)*dWm) &
                   /(S0 + D1(j)*S1)
-               
-               WR(:,j-1) = W(:,j)  &
+
+               WR(:,j-1) = Wc  &
                   - (D2(j)*S0*C2(j)*dWp + S1*C1(j-1)*dWm) &
                   /(D2(j)*S0 + S1)
+
+               ! The departure the stencil returned, kept as its own small
+               ! number, and the face pressure it belongs to.
+               if (well_balanced) then
+                  wb_dev_L(j)   = WL(3,j)
+                  wb_dev_R(j-1) = WR(3,j-1)
+                  WL(3,j)       = wb_P_up(j) + wb_dev_L(j)
+                  WR(3,j-1)     = wb_P_dn(j) + wb_dev_R(j-1)
+               endif
             enddo
             !$omp end parallel do
 
@@ -217,6 +285,21 @@
 
       end select
 
+      ! The face pressures the equilibrium/departure reconstruction
+      ! assembled, rebuilt from their two parts rather than read out of
+      ! WL/WR: it is the same number to the bit where the reconstruction
+      ! wrote one (the same sum of the same two operands), and at the
+      ! outermost faces, which no reconstruction loop writes and which
+      ! Rec_BC states below, the departure is still zero and the value here
+      ! is the equilibrium alone, so those faces are recognized as rewritten
+      ! instead of being compared against an undefined double.
+      if (well_balanced) then
+         do j = 1-Ng,N+Ng
+            wb_pL_asm(j) = wb_P_up(j) + wb_dev_L(j)
+            wb_pR_asm(j) = wb_P_dn(min(j+1,N+Ng)) + wb_dev_R(j)
+         enddo
+      endif
+
       ! Apply BC to reconstructed variables
       call Rec_BC(WL,WR,WL_out,WR_out)
 
@@ -224,8 +307,100 @@
       ! rho > 0 and p > 0 wherever the reconstruction lost them.
       call positivity_limited_faces(u_in,WL_out,WR_out)
 
+      ! Well-balanced arm: the equilibrium mismatch of every face, and the
+      ! departures of the face states the two steps above rewrote.
+      if (well_balanced) call well_balanced_face_departures(WL_out,WR_out)
+
       ! End of subroutine
       end subroutine Reconstruct
+
+      !-----------------------------------------------!
+
+      subroutine hydrostatic_equilibrium_of_each_cell(u_in)
+      ! The two face values of the local hydrostatic equilibrium of every
+      ! cell: constant density rho_j through the cell's own pressure p_j,
+      !     p_eq,j(r) = p_j - rho_j (phi(r) - phi(r_j)),
+      ! evaluated at r_edg(j) and at r_edg(j-1) (Kaeppeli and Mishra 2016,
+      ! A&A 587, A94, eq. 16).  It is the mechanical balance
+      ! dp/dr = -rho dphi/dr to second order in the cell width and states
+      ! nothing about the temperature or the entropy, which is why it
+      ! preserves an arbitrary stratification.
+      !
+      ! The cell averages of the pressure and the density are kept as well:
+      ! the equilibrium mismatch of a face is formed from THEM and not from
+      ! the two assembled face pressures, so that the difference of the two
+      ! cell pressures (exact in binary floating point while neighboring
+      ! cells lie within a factor of two of each other) is not first buried
+      ! in a sum with an O(1) number.
+      real*8, dimension(3,1-Ng:N+Ng), intent(in) :: u_in
+      real*8, dimension(3,1-Ng:N+Ng) :: W
+      integer :: j
+
+      if (.not. allocated(wb_P_up)) then
+         allocate(wb_P_up(1-Ng:N+Ng),   wb_P_dn(1-Ng:N+Ng),             &
+                  wb_p_cell(1-Ng:N+Ng), wb_rho_cell(1-Ng:N+Ng),         &
+                  wb_dev_L(1-Ng:N+Ng),  wb_dev_R(1-Ng:N+Ng),            &
+                  wb_dp_eq(1-Ng:N+Ng),                                  &
+                  wb_pL_asm(1-Ng:N+Ng), wb_pR_asm(1-Ng:N+Ng))
+      endif
+
+      call U_to_W(u_in,W)
+
+      wb_p_cell   = W(3,:)
+      wb_rho_cell = W(1,:)
+
+      do j = 1-Ng,N+Ng
+         wb_P_up(j) = W(3,j) - W(1,j)*(Gphi_i(j) - Gphi_c(j))
+      enddo
+      do j = 2-Ng,N+Ng
+         wb_P_dn(j) = W(3,j) + W(1,j)*(Gphi_c(j) - Gphi_i(j-1))
+      enddo
+      ! The lowest ghost cell has no lower face (RK_rhs forms no row for it),
+      ! and Gphi_i does not reach below r_edg(1-Ng).
+      wb_P_dn(1-Ng) = W(3,1-Ng)
+
+      wb_dev_L  = 0.0d0
+      wb_dev_R  = 0.0d0
+      wb_dp_eq  = 0.0d0
+
+      end subroutine hydrostatic_equilibrium_of_each_cell
+
+      !-----------------------------------------------!
+
+      subroutine well_balanced_face_departures(WL,WR)
+      ! Finish the well-balanced face data: the equilibrium mismatch of every
+      ! face,
+      !   wb_dp_eq(f) = P_dn(f+1) - P_up(f)
+      !               = (p_f+1 - p_f) + rho_f+1 (phi_c(f+1) - phi_i(f))
+      !                               + rho_f   (phi_i(f)   - phi_c(f)),
+      ! formed in that order so that it is a sum of quantities of the size of
+      ! the hydrostatic pressure drop across a cell and vanishes on the
+      ! discrete equilibrium; and the departure of any face state the
+      ! boundary condition or the positivity limiter rewrote, which has to be
+      ! re-formed by subtracting the equilibrium from the O(1) state it now
+      ! carries.  The outermost face has no cell to its right and takes the
+      ! same cell on both sides, as the flux does.
+      real*8, dimension(3,1-Ng:N+Ng), intent(in) :: WL,WR
+      integer :: j,jr
+
+      do j = 1-Ng,N+Ng
+
+         jr = min(j+1,N+Ng)
+
+         if (jr .gt. j) then
+            wb_dp_eq(j) = (wb_p_cell(jr) - wb_p_cell(j))                 &
+                        + wb_rho_cell(jr)*(Gphi_c(jr) - Gphi_i(j))       &
+                        + wb_rho_cell(j) *(Gphi_i(j)  - Gphi_c(j))
+         else
+            wb_dp_eq(j) = wb_P_dn(jr) - wb_P_up(j)
+         endif
+
+         if (WL(3,j) .ne. wb_pL_asm(j)) wb_dev_L(j) = WL(3,j) - wb_P_up(j)
+         if (WR(3,j) .ne. wb_pR_asm(j)) wb_dev_R(j) = WR(3,j) - wb_P_dn(jr)
+
+      enddo
+
+      end subroutine well_balanced_face_departures
 
       !-----------------------------------------------!
 
@@ -416,7 +591,7 @@
       ! the WENO3 left density at the face of cell 273 (r = 1.2324 R_p) sat at
       ! 2.50e-15 against cell averages of 1e-4, eleven orders below and
       ! positive by a hair, so the iterate sat exactly on the switching
-      ! surface. Raising the neighbouring cell's density by one part in 1e9
+      ! surface. Raising the neighboring cell's density by one part in 1e9
       ! tipped it through zero, the face density jumped to 4.17e-6, the mass
       ! residual of cell 273 jumped by a factor 97, and the merit jumped from
       ! 202.5 to 945.1, BY THE SAME FACTOR 4.67 at every step size from 1e-2
@@ -457,14 +632,14 @@
       !
       ! Validity of the reconstruction, and why the limiter is needed. PLM and
       ! WENO3 both extrapolate the PRIMITIVE variables (rho, v, p) to a face
-      ! with slopes taken from the neighbouring cells, which is a valid
+      ! with slopes taken from the neighboring cells, which is a valid
       ! approximation only while the solution varies smoothly across the
       ! stencil. It has no positivity property of its own: a face value can
       ! cross zero while every cell average on the stencil is positive. The
       ! state that does it here is a hypersonic layer, where the pressure the
       ! scheme recovers as p = (gamma-1)(E - rho v^2/2) is the difference of two
       ! nearly equal numbers: at Mach 60 the thermal pressure is 2e-4 of the
-      ! total energy density, so a reconstruction across the neighbouring jump
+      ! total energy density, so a reconstruction across the neighboring jump
       ! tips it negative and the HLLC sound speed sqrt(gamma p/rho) takes the
       ! square root of it (Num_Fluxes.f90; the abort of TO_BE_DONE item (O)).
       !
