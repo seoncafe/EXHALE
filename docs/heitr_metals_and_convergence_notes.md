@@ -2,7 +2,7 @@
 
 *Working notes (2026-06-08). The code-change sections describe what is in the
 tree and verifiable. The convergence sections are **provisional observations and
-hypotheses, not settled conclusions** — several interpretations made during this
+hypotheses, not settled conclusions**: several interpretations made during this
 work were later revised, so the wording below is deliberately tentative.*
 
 ---
@@ -44,7 +44,7 @@ set.)
 
 ### 1.3 Convergence threshold and two-stage reconstruction
 - `parameters.f90`: `du_th` is now a runtime variable (was a compile-time
-  `parameter`) with default `1.0e-3` — the original ATES-Code-main value.
+  `parameter`) with default `1.0e-3`, the original ATES-Code-main value.
   (EXHALE had it at `2.0e-2`; see §2.1.) `dtu_th = 1e-8` unchanged.
 - The single-stage vs. two-stage choice is set by the `Reconstruction scheme:`
   line. `Reconstruction scheme: PLM+WENO3` selects a **two-stage** run: the
@@ -64,11 +64,11 @@ set.)
   linear (C0) interpolation. This was implemented to test the hypothesis that
   interpolation kinks drove non-convergence; that hypothesis was **not**
   supported (§2.3). It is retained as a smoothness improvement; a keep-vs-revert
-  decision is open. [2026-08-15: decided — PCHIP is kept.]
+  decision is open. [2026-08-15: decided, PCHIP is kept.]
 
 ---
 
-## 2. Convergence — provisional observations
+## 2. Convergence: provisional observations
 
 *Everything in this section is tentative. It is recorded as a research log, not
 as established fact.*
@@ -121,7 +121,7 @@ causes were the Newton scaling floor and the watchdog, then the line-search
 merit, which accepted steps measured on a residual with the WENO3 weights
 frozen at the previous iterate. Both are fixed --
 `docs/newton_scaling_and_base_wall.md` sections 1-4 and 10,
-`docs/Update_EXHALE.md` sections 40-41 -- together with the metal-line
+`docs/Update_EXHALE_stage1.md` sections 40-41 -- together with the metal-line
 escape probability and the coronal-fit validity floor at a cold base
 (section 42). Anything read off this subsection should be re-measured
 against those.]
@@ -133,7 +133,7 @@ weakly driven / strongly bound the wind is, rather than the metal content per se
 The HD189733b oscillation *resembles* the known ATES base-breathing behavior,
 and the lower boundary (`Apply_BC.f90`, `BC_component_constrho`) hard-pins the
 ghost density and pressure to cold reservoir values with a one-way velocity
-valve `max(v1,0)` — a configuration that can reflect acoustic waves. This makes
+valve `max(v1,0)`: a configuration that can reflect acoustic waves. This makes
 a reflecting-BC limit cycle a reasonable *hypothesis*. However, the fixes we
 tried did **not** confirm it and did **not** help:
 
@@ -148,19 +148,19 @@ base-breathing reading is *consistent with* the observations but is **not
 demonstrated**, and the simple BC variants we tried are not solutions.
 
 ### 2.6 Open directions (not recommendations to do, just options)
-If this is pursued further, the candidate routes — both substantial and of
-uncertain payoff for a wind this marginal — appear to be:
+If this is pursued further, the candidate routes (both substantial and of
+uncertain payoff for a wind this marginal) appear to be:
 - a carefully constructed characteristic / non-reflecting (NSCBC-style) base BC;
 - a steady-state Newton / BVP solver (which, if a steady solution exists, would
   not orbit a time-marching limit cycle);
-  [2026-08-15: implemented — the JFNK steady solve in
+  [2026-08-15: implemented, the JFNK steady solve in
   `src/modules/time_step/steady_newton.f90`, selected by `Solver: Newton`.]
 - accepting HD189733b as a marginal case and reporting a time-averaged
   quasi-steady state.
 - a cheaper, separate idea worth trying for *speed* (not the oscillation):
   local (cell-by-cell) time-stepping, since the global `dt` is currently set by the
   smallest base cell (`eval_dt.f90`: `dt = CFL·min(dr/(|v|+cs))`).
-  [2026-08-15: implemented — the input key `Time stepping: Local`.]
+  [2026-08-15: implemented, the input key `Time stepping: Local`.]
 
 See `docs/numerical_methods.md` for a fuller discussion of solver options.
 

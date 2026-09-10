@@ -9,12 +9,17 @@
       !
       ! Cross sections are returned in ATES's internal unit of 1e-18 cm^2,
       ! same as cross_sec.f90, so downstream code is unchanged.
-      ! A separate runtime multiplier opacity_pT_factor(p) is applied
-      ! per cell in 'P' mode (see PH_heat_HHe / calc_column_dens).
       !
-      ! Ported from ATES_extended; in ATES-Code-main the cell-by-cell
-      ! pressure factor is actually applied (it was a deferred hook in
-      ! ATES_extended).
+      ! In 'P' mode the cross section of a cell is broadened by the runtime
+      ! multiplier f(p) = opacity_pT_factor(p) evaluated at the pressure of
+      ! that cell (ionization_equilibrium.f90 and post_process_adv.f90 store
+      ! it in opa_pf).  A cross-section multiplier enters the optical depth
+      ! and the local absorption identically, so that the photons a cell
+      ! removes from the beam are the photons it absorbs: the columns
+      ! (calc_column_dens, calc_column_dens_one, calc_column_dens_metals)
+      ! carry f in the optical depth, and PH_heat_H / PH_heat_HHe carry the
+      ! same f in the photoionization, photoheating and absorbed-energy
+      ! integrands of the cell.
 
       use global_parameters
       use Cross_sections
@@ -145,9 +150,11 @@
       character(len=*), intent(in) :: sp
       real*8,           intent(in) :: E
       select case (sp)
-         case ('HI');    analytic_sigma = sigma(E, ih)
+         ! Each hydrogenic call carries the MEASURED ionization potential of
+         ! its ion, the same constant the photon grid uses as a band edge.
+         case ('HI');    analytic_sigma = sigma(E, ih,  e_th_HI)
          case ('HeI');   analytic_sigma = sigma_HeI(E)
-         case ('HeII');  analytic_sigma = sigma(E, ihe)
+         case ('HeII');  analytic_sigma = sigma(E, ihe, e_th_HeII)
          case ('HeITR'); analytic_sigma = sigma_HeI23S(E)
          case default;   analytic_sigma = 0.0d0
       end select
@@ -174,7 +181,10 @@
             return
       end select
 
-      if (E < 0.99999d0*thr) then
+      ! Gated at the threshold itself: below the ionization potential of the
+      ! species there is no bound-free absorption, whichever opacity model is
+      ! in force.
+      if (E < thr) then
          constant_sigma = 0.0d0
       else
          constant_sigma = fac * analytic_sigma(sp, thr*1.00001d0)
@@ -254,6 +264,11 @@
       ! (2012) form:
       !    f(p) = 1 + a * (p / p_pivot)^n
       ! with p in dyne/cm^2; default pivot 1e5 dyne/cm^2 = 0.1 bar.
+      ! It multiplies the cross section itself, so both the optical depth
+      ! of the beam and the absorption in the cell carry it (see the module
+      ! header).  The form is a parameterization: it has no threshold and
+      ! no photon-energy dependence, so it broadens every band of the XUV
+      ! grid by the same factor.
       real*8, intent(in) :: p_dyne
       if (opacity_model == 'P') then
          opacity_pT_factor = 1.0d0                                          &

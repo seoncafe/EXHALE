@@ -239,8 +239,8 @@ Koskinen's hot Uranus:
 > present throughout the outflow. Particularly interesting is the presence of
 > H+3 throughout the outflow, instead of being confined to a narrow region at
 > the base. In agreement with T. T. Koskinen et al. (2022), this is largely due
-> to the lower temperature in the wind. Our temperature range is 1000–3800 K,
-> in comparison to their temperature prediction of 4000–5000 K for the hot
+> to the lower temperature in the wind. Our temperature range is 1000-3800 K,
+> in comparison to their temperature prediction of 4000-5000 K for the hot
 > Uranus, continuing the trend that a planet with lower gravity (and similar
 > stellar and orbital parameters) will host a lower-temperature outflow."
 

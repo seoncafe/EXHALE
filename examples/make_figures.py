@@ -5,7 +5,7 @@ notebook). Loads converged runs with exhale_io and writes PNGs to docs/figures/.
 Run from the examples/ directory:  python3 make_figures.py
 Each figure is wrapped in try/except so a missing run is skipped, not fatal.
 
-STALE (P48; Update_EXHALE section 137): the figures currently in docs/figures/
+STALE (P48; Update_EXHALE_stage1 section 137): the figures currently in docs/figures/
 were made while exhale_io returned the profile files' GHOST rows as solution
 cells. The reader now drops them, so re-running this script moves the transit
 depths by 0.2-3.8 per cent and trims one point from each end of every radial

@@ -1,4 +1,4 @@
-# Huang et al. (2023) Table 4 — Charge Exchange Rates (verified transcription)
+# Huang et al. (2023) Table 4: Charge Exchange Rates (verified transcription)
 
 This is the authoritative, image-verified transcription of Table 4 of Huang,
 Koskinen, Lavvas & Fossati (2023, ApJ 951, 123), "Charge Exchange Rates," used
@@ -43,11 +43,11 @@ where direct data were unavailable).
 | W02 | Watanabe et al. (2002) |
 | Lavvas14 | Lavvas et al. (2014) |
 
-## Group A — charge exchange with H / H+ (the Phase-1d default active set)
+## Group A: charge exchange with H / H+ (the Phase-1d default active set)
 
 These couple the H ionization fraction to each metal's ionization balance and
 are the only reactions enabled by default (`cx_full` off). Note **Ca has no
-direct H charge exchange in Table 4** — it appears only in Group D.
+direct H charge exchange in Table 4**: it appears only in Group D.
 
 > [2026-08-15: "the only reactions enabled by default" is no longer accurate.
 > The He<->H pair of Group B (B1, B2) is also on by default, under its own key
@@ -101,9 +101,9 @@ Notes on Group A:
   caps the evaluated coefficient at a physical maximum to be safe.
 - **K has only the forward `K + H+`** in Table 4; no `K+ + H` reverse is tabulated.
 
-## Group B — charge exchange with He / He+ (only when `cx_full` is on)
+## Group B: charge exchange with He / He+ (only when `cx_full` is on)
 
-> [2026-08-15: the heading is out of date — B1 and B2 are on by default under
+> [2026-08-15: the heading is out of date, B1 and B2 are on by default under
 > `He_H_charge_exchange`, not gated by `cx_full`.]
 
 | # | Reaction | Ref | Rate (cm^3 s^-1) |
@@ -111,7 +111,7 @@ Notes on Group A:
 | B1 | He + H+ | GJ07 | `1.75e-11 * (T/300)^(-0.75) * exp(-12.75/T4)` |
 | B2 | He+ + H | GJ07 | `1.25e-15 * (T/300)^0.25` |
 
-## Group C — metal + He / He+ (only when `cx_full` is on)
+## Group C: metal + He / He+ (only when `cx_full` is on)
 
 Let `f_Si(T) = 3.32e-13*sqrt(T) + 1.2e-16*T + 4.2e-9/sqrt(T) - 7.9e-13`.
 
@@ -124,7 +124,7 @@ Let `f_Si(T) = 3.32e-13*sqrt(T) + 1.2e-16*T + 4.2e-9/sqrt(T) - 7.9e-13`.
 | C5 | O + He+ | Z04 | `4.99e-15 * T4^0.379 + 2.78e-15 * T4^(-0.216) * exp(T4/81.97)` |
 | C6 | O+ + He | Z04 | `3.2 * (5.0e-15*T4^0.38 + 2.78e-15*T4^(-0.22)*exp(T4/81.97)) * T^0.0377 * exp(-12.7/T4)` |
 
-## Group D — metal + metal (only when `cx_full` is on)
+## Group D: metal + metal (only when `cx_full` is on)
 
 Let `D_CSi(T) = 1.87e8 + 5.09e10 * T^(-0.527)`.
 

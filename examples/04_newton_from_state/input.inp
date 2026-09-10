@@ -3,7 +3,7 @@ Log10 lower boundary number density [cm^-3]: 14.00
 Planet radius [R_J]: 1.193
 Planet mass [M_J]: 1.237
 Equilibrium temperature [K]: 1183.0
-Orbital distance [AU]: 0.0330
+Orbital distance [AU]: 0.031
 Escape radius [R_p]: 2.00
 He/H number ratio: 0.083333333
 2D approximate method: Rate/2 + Mdot/2
@@ -21,6 +21,6 @@ Include He23S? False
 Load IC? True
 Do only PP: False
 Force start: False
-# Resid tol renormalized 2026-09-03, Update_EXHALE.md section 133 (was 1.0e-3)
+# Resid tol renormalized 2026-09-03, Update_EXHALE_stage1.md section 133 (was 1.0e-3)
 Resid tol: 1.0e-5
 Stellar radius [R_sun]: 0.765

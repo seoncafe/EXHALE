@@ -4,7 +4,7 @@
 further sections (146-154) were drafted, measured and staged outside it. Every
 Status and Disposition below now says which. The short version:
 
-* **Landed in the tree (`Update_EXHALE.md` section 145):** the flux gate reads
+* **Landed in the tree (`Update_EXHALE_stage1.md` section 145):** the flux gate reads
   the Riemann face mass flux at a re-derived threshold `2.0e-5`; the residual
   norm is the cellwise maximum and `resid_vol` is gone; every marching stop says
   it is a marching stop; the update-map diagnostic exists **and it settles
@@ -246,14 +246,14 @@ relaxed once, `f(H2)` at 1.20 R_p is 212 times its untransported value,
 n(H3+) there goes from 0.16 to 157 cm^-3, and the cold dip at the front is gone
 (T 768 -> 1677 K). A real feedback drives it: where H2 arrives, the
 helium-ionizing continuum is absorbed and n(He II) falls by 50-100 at
-1.15-1.20 R_p (`Update_EXHALE.md` section 128.6, lines 18087-18095).
+1.15-1.20 R_p (`Update_EXHALE_stage1.md` section 128.6, lines 18087-18095).
 
 ### Remedy options
 
 1. **Physics first: make the carrier transport the default and finish it.**
    This is the physically correct closure -- the term is not negligible, it is
    the larger one -- and the operator exists, is second-order accurate
-   (measured orders 1.938 to 1.985 over five grids, `Update_EXHALE.md`
+   (measured orders 1.938 to 1.985 over five grids, `Update_EXHALE_stage1.md`
    section 134, lines 19452-19460) and is grid-converged in the front position
    to 0.2 percent at 150,000 steps. What blocks it is item 2 below: no steady
    state has been produced with it on. Cost: none in code; the whole cost is in
@@ -275,7 +275,7 @@ helium-ionizing continuum is absorbed and n(He II) falls by 50-100 at
 ### Status
 
 Open. The operator is in the tree and is default off for a molecular-only run;
-`Update_EXHALE.md` section 134 lines 19537-19540 states the condition for
+`Update_EXHALE_stage1.md` section 134 lines 19537-19540 states the condition for
 flipping it ("a marching run stopped the front and a steady solve from that
 state returned `info = 0`; the first half is nearly done and the second is
 blocked"). Every molecular-layer number in `docs/supersonic_molecular_base.md`
@@ -309,8 +309,8 @@ either, and moves the H2 front the wrong way.
   `solve_steady_ptc` (line 1135). The carrier unknown is switched in by
   `set_carrier_unknown` (line 240); `nvar_jac` goes 3 -> 4 and the band
   half-width 8 -> 11, with 23 Jacobian colors against 17
-  (`Update_EXHALE.md:20515-20516`).
-* The pseudo-transient term. `Update_EXHALE.md` section 142 identifies it as
+  (`Update_EXHALE_stage1.md:20515-20516`).
+* The pseudo-transient term. `Update_EXHALE_stage1.md` section 142 identifies it as
   what turns the step into an ascent: at `dtau0 = 1` the model's predicted slope
   along the step turns positive at outer iteration 5 and reaches +0.80 by 12,
   while the same Jacobian, preconditioner and frozen model at `dtau0 = 1e6`
@@ -340,7 +340,7 @@ still cuts to `lam = 9.5e-7`.
 
 ### Measured size
 
-Coupled solve, entry from an accepted wind (`Update_EXHALE.md:20602-20610`):
+Coupled solve, entry from an accepted wind (`Update_EXHALE_stage1.md:20602-20610`):
 
 | | entry | exit |
 |---|---|---|
@@ -351,18 +351,18 @@ Coupled solve, entry from an accepted wind (`Update_EXHALE.md:20602-20610`):
 
 Against a gate of 1e-3, the exit is 136 times out on the worst cell. Three
 independent Krylov settings all stop at a carrier row of 1.02e-2 to 1.03e-2
-(`Update_EXHALE.md:21528-21538`). On the 1 microbar gate configuration
+(`Update_EXHALE_stage1.md:21528-21538`). On the 1 microbar gate configuration
 (`mol_carrier`) the solve stagnates at `||R|| = 2.30e-3` with a **flux spread of
-0.244 against a gate of 5e-3** (`Update_EXHALE.md:20694-20703`). The
+0.244 against a gate of 5e-3** (`Update_EXHALE_stage1.md:20694-20703`). The
 alternating route it replaced walks the front outward one cell per pass
 indefinitely (0.082 R_p per pass of 0.1 flow times, about 2050 cm/s against a
 local gas speed of 3000 cm/s) and gets the sign of the front's motion wrong
 relative to the coupled solve, which moves `f(H2)=0.5` inward from 1.1421 to
-1.0618 R_p (`Update_EXHALE.md:20384-20391`, 20631-20636).
+1.0618 R_p (`Update_EXHALE_stage1.md:20384-20391`, 20631-20636).
 
 Cost of the coupled route: 23 Jacobian colors and 778 residual evaluations at
 14.51 s against 17 and 64 at 1.00 s for the three-unknown solve; 11 residual
-evaluations per outer iteration against 39 (`Update_EXHALE.md:20655-20666`).
+evaluations per outer iteration against 39 (`Update_EXHALE_stage1.md:20655-20666`).
 
 ### Remedy options
 
@@ -435,7 +435,7 @@ the same defect is not established; the repair in progress is section 157.
 ### Status
 
 Open. `Molecular carrier transport` and `Coupled carrier solve` are both default
-off and `Update_EXHALE.md:21503-21504` states that nothing measured with them on
+off and `Update_EXHALE_stage1.md:21503-21504` states that nothing measured with them on
 is quoted as a rate. (P51) is closed for the diagnosis; (P51 continuation) is now
 answered -- the trust region exists (`Coupled carrier solve: True trust_region`,
 `carrier_newton_trust_region` defaulting to false, an unrecognized third word
@@ -538,7 +538,7 @@ must be prohibited in steady-root validation.
 
 ### Measured size
 
-`docs/p55_base_mode.md` sections 3-6 and `Update_EXHALE.md` section 144.
+`docs/p55_base_mode.md` sections 3-6 and `Update_EXHALE_stage1.md` section 144.
 
 The departure is a residual being integrated, not a mode growing. The flux at
 `r = 1.03` moves linearly in step number for the first twenty steps at
@@ -585,13 +585,13 @@ equal model time):
 Quartering the time step changes the excursion by 3 percent at equal model time.
 First-order reconstruction at the base leaves WASP-121b unchanged and makes the
 hot Uranus 12 times worse. Freezing the first 20 cells does nothing on
-WASP-121b (`Update_EXHALE.md:22009-22014`).
+WASP-121b (`Update_EXHALE_stage1.md:22009-22014`).
 
 **WASP-121b turned out to be a different problem and is closed.** Its departure
 was the restart running physics its root was not converged under (section 11
 below); with the coupling header the peak-to-peak at `r = 1.03` falls from 4.296
 to 0.0174 and `du` ends at 5.187e-05 against the 5.03e-05 the accepted state
-carries (`Update_EXHALE.md:22062-22072`). The hot Uranus never had that
+carries (`Update_EXHALE_stage1.md:22062-22072`). The hot Uranus never had that
 discontinuity -- its input sets `Secondary_ionization: Immediate` -- and is
 unchanged to five digits.
 
@@ -599,7 +599,7 @@ unchanged to five digits.
 root found with section 143's row scales returns `info = 0`, `||R|| = 9.958e-06`,
 gate flux spread 2.501e-04, and its own flux is still 3.433e-03 out over
 `r >= 1.03`, fourteen times the gate's number. Marched 3000 steps
-(`Update_EXHALE.md:22150-22162`):
+(`Update_EXHALE_stage1.md:22150-22162`):
 
 | root | p2p at 1.005 | 1.03 | 1.10 | 1.20 | du end |
 |---|---|---|---|---|---|
@@ -640,7 +640,7 @@ nor the row measure.
 **Updated 2026-09-03, late: the update-map question is ANSWERED, and it answers
 in favor of the first edition's premise rather than the review's doubt.** The
 tool the review asked for is built and landed -- `EXHALE_UPDATE_MAP=<f1,f2,...>`
-(`Update_EXHALE.md` section 145.6, `docs/p55_update_map.md`), with the marching
+(`Update_EXHALE_stage1.md` section 145.6, `docs/p55_update_map.md`), with the marching
 loop's own body as `Phi_dt` rather than a copy of it. Max over cells of
 `|G_dt + R|`:
 
@@ -1147,7 +1147,7 @@ The cell-center mass flux `rho v r^2` varies by 43 percent over 1.005-1.10 on
 the same state and is constant to 0.2 percent above 1.15, while the solver's own
 residual reads `||R|| = 2.7e-6`.
 
-**The mass-flux half is closed** (`Update_EXHALE.md` section 143). The
+**The mass-flux half is closed** (`Update_EXHALE_stage1.md` section 143). The
 continuity row's old scale made its residual read the fractional flux error
 times the local Mach number -- verified to one percent at ten radii -- so a layer
 at Mach 5e-5 was invisible by a factor 2e4; the momentum and energy rows were
@@ -1178,9 +1178,9 @@ not enter them.
 `docs/p23_thermal_budget.md` section 9.1 labeled that heating diagnostic
 "item P52", but `TO_BE_DONE.md:2385` uses `(P52)` for a different item -- "a run
 could not say why it stopped, and 'accepted' had two definitions", closed under
-`Update_EXHALE.md` section 140 -- so the label pointed a reader at the wrong
+`Update_EXHALE_stage1.md` section 140 -- so the label pointed a reader at the wrong
 entry. The heating diagnostic is now called the **heating-dump fix
-(`Update_EXHALE.md` section 140.5)**, which is the subsection that actually
+(`Update_EXHALE_stage1.md` section 140.5)**, which is the subsection that actually
 records it being carried in ("A second diagnostic-only defect travels with it").
 The scratch file names on disk keep their `p52_` spelling and section 9.1 says
 why. `P52` now means only the `TO_BE_DONE.md` item, here and there.
@@ -1332,7 +1332,7 @@ against this. That rule applies to one kind of quantity; these are three kinds.
 
 ### Measured size
 
-`Update_EXHALE.md` section 143.5 (lines 21902-21946) and
+`Update_EXHALE_stage1.md` section 143.5 (lines 21902-21946) and
 `docs/p55_du_window_census.md`. `wasp_full`, a matrix golden, stops as converged
 on `du = 9.999e-4 < 1e-3` at an `r >= 1.2` spread of **3.13e-2**, six times the
 flux gate's own threshold, and 1.37 at `r >= 1.01`. P51's transport-on hot Uranus
@@ -1395,13 +1395,13 @@ pre-143 mass-flux row scale, not on the measure now in the tree.
 ### Status
 
 Open; the naming and stop-message work is not done. The unification proposal is
-**withdrawn**. `Update_EXHALE.md:21904-21906` records the tree's present
+**withdrawn**. `Update_EXHALE_stage1.md:21904-21906` records the tree's present
 position: "the tree keeps `du` as it is. It is recorded because the census makes
-it unavoidable"; `Update_EXHALE.md:21942-21946` states why the unification was
+it unavoidable"; `Update_EXHALE_stage1.md:21942-21946` states why the unification was
 left to a user decision: "It is a different change with a different blast
 radius: it moves where every marching run stops ... Section 143 changes what a
 converged state must satisfy; this would change where an unconverged run may
-stop." Note that `TO_BE_DONE.md` (P52), closed under `Update_EXHALE.md`
+stop." Note that `TO_BE_DONE.md` (P52), closed under `Update_EXHALE_stage1.md`
 section 140, already did part of Phase F's job -- it made a run say why it
 stopped, after a residual stop had been printing `converged: momentum constant
 (du < du_th)` at `du = 3.156e-3` with `du_th = 1.0e-3`. What section 140 did not
@@ -1540,7 +1540,7 @@ sharper argument for it.
   the single form is `apply145_resid.py` and `apply145_main.py` in the same
   scratch tree, built into `t145/`. In the working tree,
   `parameters.f90:798` still reads `logical :: resid_vol = .true.` and
-  `relnorm_over_cells` still carries both branches; `Update_EXHALE.md` has no
+  `relnorm_over_cells` still carries both branches; `Update_EXHALE_stage1.md` has no
   section 145 yet.
 * **(b) is decided but not in the patch.** `t145/src/modules/time_step/steady_residual.f90`
   lines 518 and 552 still form `f = u(2,j)*r(j)*r(j)`, the cell-centered
@@ -1831,7 +1831,7 @@ single-flight escape probability are assumed; one planet, one rung; and which
 `f_shell` convention EXHALE should adopt is not decided.
 
 Note that `mol_lyman_werner`'s golden is currently **deliberately stale**: the reservoir-weighting correction of
-`Update_EXHALE.md` section 135 moved the H2 front from 1.146163 to 1.144327 R_p
+`Update_EXHALE_stage1.md` section 135 moved the H2 front from 1.146163 to 1.144327 R_p
 and `make check` reports FAIL on that case by design, the refresh being a
 separate decision.
 
@@ -1882,7 +1882,7 @@ step reads.
 
 ### Measured size
 
-Not measured. `Update_EXHALE.md` section 141.6 quotes no residual, iteration or
+Not measured. `Update_EXHALE_stage1.md` section 141.6 quotes no residual, iteration or
 percentage figure for the lag itself, and bounds it only by where it vanishes.
 `n_part_cell1`, which the `base_ghost_T_continuous` branch divides the ghost
 pressure by (`Apply_BC.f90:169`), has had the same lag all along and the code
@@ -1965,7 +1965,7 @@ does.
 ### Status
 
 **Repaired, staged, not applied.** `TO_BE_DONE.md` (AB) is drafted as "CLOSED
-2026-09-03, `Update_EXHALE.md` section 146" but the draft is not applied and the
+2026-09-03, `Update_EXHALE_stage1.md` section 146" but the draft is not applied and the
 tree still carries the pre-146 ordering. Apply order is 146, then 147, then one
 golden refresh. The lag is stated at the head of `caloric_eos.f90`.
 
@@ -2064,7 +2064,7 @@ sweep behind the species columns beside it.
 ### Measured size of what was fixed
 
 (a) 3000 steps from the WASP-121b solution, peak-to-peak of `Delta(F r^2)/F_0`
-(`Update_EXHALE.md:22062-22072`): at `r = 1.03`, 4.2961 before, 4.3197 with the
+(`Update_EXHALE_stage1.md:22062-22072`): at `r = 1.03`, 4.2961 before, 4.3197 with the
 composition equilibration alone, and **0.0174** with the coupling header;
 `du` ends at 5.187e-05 against the 5.03e-05 the accepted state carries.
 
@@ -2092,7 +2092,7 @@ carry no `# coupling:` header and still start staged.** That is deliberate and i
 not a formality: on `jfnk_hd189`, whose IC predates the line, arming it blindly
 makes the composition mismatch worse (4.12e-03 -> 6.26e-03) and produces a
 `du = 1.0e+02` transient by step 5500, so nothing can be inferred about a file
-that does not carry the line. `Update_EXHALE.md` section 144, build `ec1f367c`.
+that does not carry the line. `Update_EXHALE_stage1.md` section 144, build `ec1f367c`.
 Regression: 10/10 data identical (the header is a comment and the harness
 compares with `grep -v '^ *#'`).
 
@@ -2158,7 +2158,7 @@ related reading error that was caught and fixed: Yan, Sadeghpour & Dalgarno
 photoionization cross section", and it is not; building on that sentence
 overstates the channel by 1.26-1.28 above 70 eV, which the code measured as a
 2.1 percent error in `Mdot` and a spurious 0.004 R_p outward shift of the H2
-front before it was corrected (`Update_EXHALE.md` section 130).
+front before it was corrected (`Update_EXHALE_stage1.md` section 130).
 
 ### 12.2 Double photoionization of H2 is inside `f_di` instead of beside it (P31b)
 
@@ -2369,7 +2369,7 @@ configuration (a transported CO collapsing by 2.5 decades) and closes at
 `1.9e-16`. The code paths were followed and none creates a nucleus.
 
 **This is "not reproduced on the equivalent path", not "proved fixed".** The
-likeliest explanation offered is that the carrier rework of `Update_EXHALE.md`
+likeliest explanation offered is that the carrier rework of `Update_EXHALE_stage1.md`
 section 128 (2026-09-02) removed it -- which postdates the item's opening
 (2026-08-31). What could not be done is the decisive run: the original state is a
 converged A2 wind reached from a ~25,000-step march plus a JFNK finish, it does
@@ -2814,7 +2814,7 @@ inconsistency is largest. A repair is in progress as section 157, which does not
 exist yet.
 
 > **SETTLED 2026-09-04, and the paragraph above is wrong in its diagnosis while
-> right in its instinct** (`Update_EXHALE.md` section 158, numbered 158 because
+> right in its instinct** (`Update_EXHALE_stage1.md` section 158, numbered 158 because
 > 157 became the coupled-solve re-test). The two paths do NOT handle the base
 > inflow condition differently -- they run the same assembly sequence in the
 > same order and `carrier_base_state` builds it once for both. Measured in the

@@ -22,7 +22,7 @@ and why base-BC / IC-blend fixes do not help}
 \begin{quote}\small\itshape
 EXHALE relaxes HD209458b-like hot Jupiters to a steady wind, but HD189733b
 does not converge: the time-marching settles into a bounded limit cycle
-(the ``base breathing''), and the steady (Newton/PTC) solvers stall ---
+(the ``base breathing''), and the steady (Newton/PTC) solvers stall,
 even when started from a converged, spectrum-matched Wind-AE warm-start
 initial condition. This memo records a cell-by-cell localization of the steady
 residual, three targeted fixes that all turned out to be null, and the
@@ -38,7 +38,7 @@ reading as an intrinsic Wind-AE/EXHALE discretization mismatch amplified by the
 residual normalization) were measured with a diagonal scaling that floored
 every momentum scale at $10^{-6}$ of the \emph{base} $|\rho v|$, and with a
 watchdog that aborted after 15 outer iterations without a new best
-$\lVert R\rVert$ --- before the opening pseudo-transient has finished raising
+$\lVert R\rVert$, before the opening pseudo-transient has finished raising
 it. Both have since been replaced, and configurations that stalled this way now
 converge; see \code{docs/newton\_scaling\_and\_base\_wall.md}. The
 \emph{marching-time} breathing this memo localizes is a separate observation and
@@ -49,7 +49,7 @@ is not affected. The stall diagnoses have not been re-run under the new solver.
 With a Wind-AE warm-start (\code{IC mode: windae}, \code{Solver: Newton})
 HD189733b shows \emph{no} NaN but never converges. The steady residual
 $\lVert R\rVert$ descends through a violent transient (peaks $\sim$400) to
-$\sim$0.15, then erupts back to $\sim$2.4 and repeats --- a sustained limit
+$\sim$0.15, then erupts back to $\sim$2.4 and repeats: a sustained limit
 cycle that never reaches the Newton-finish threshold ($5\times10^{-2}$), so
 the JFNK/PTC hand-off never fires (or, when forced, stalls). HD209458b and
 other less strongly bound planets converge normally with the identical
@@ -83,7 +83,7 @@ $r\,[\Rp]$ & $R_{\rm mom}$ & in the $[j_{\min}:N]$ metric? \\
 1.0002 & $1.8\times10^{2}$ & no (base, $j<j_{\min}$) \\
 1.0041 & $1.3\times10^{2}$ & no \\
 1.0079 & $9.5\times10^{1}$ & no \\
-\textbf{1.0501} & $\mathbf{8.8\times10^{-2}}$ & \textbf{yes ($\approx j_{\min}$) --- the metric max} \\
+\textbf{1.0501} & $\mathbf{8.8\times10^{-2}}$ & \textbf{yes ($\approx j_{\min}$): the metric max} \\
 1.10   & $8.6\times10^{-3}$ & yes \\
 \bottomrule
 \end{tabular}
@@ -99,7 +99,7 @@ $r\,[\Rp]$ & $R_{\rm mom}$ & in the $[j_{\min}:N]$ metric? \\
         the metric the solver minimizes.}
   \item \textbf{The metric max is the Wind-AE region.} The reported
         $\lVert R_{\rm mom}\rVert=4.63$ comes from $r\approx1.05$, which is
-        \emph{above} the windsoln base $R_{\rm min}\approx1.030$ --- i.e.\ in
+        \emph{above} the windsoln base $R_{\rm min}\approx1.030$: i.e.\ in
         the interpolated Wind-AE solution, not the base blend. There the
         absolute residual is only $\sim$0.088, but the wind momentum
         $\rho v\approx0.019$ is tiny, and the relative norm
@@ -110,7 +110,7 @@ $r\,[\Rp]$ & $R_{\rm mom}$ & in the $[j_{\min}:N]$ metric? \\
 The metric residual is therefore the \emph{interpolated Wind-AE solution
 failing to satisfy EXHALE's own discretized momentum equation} at the wind
 base ($r\sim1.05$, the densest, slowest part of the wind, where the
-normalization is most punishing). The two codes genuinely differ --- mean
+normalization is most punishing). The two codes genuinely differ: mean
 molecular weight / EOS, the gravity discretization, the HLLC flux and
 reconstruction, the 2-D \code{Rate/2 + Mdot/2} averaging. The Wind-AE IC is
 a valid Wind-AE solution but is \emph{not} EXHALE's steady state, and for
@@ -119,7 +119,7 @@ that neither time-marching (limit cycle) nor the implicit solvers can close
 it. It is \emph{not} a property of the base ghost cells nor of the
 sub-$R_{\rm min}$ blend.
 
-\section{Fixes attempted --- all null}
+\section{Fixes attempted: all null}
 Each fix below left the metric byte-identical at $k{=}2=4.630339$, because
 each one acted somewhere other than $r\approx1.05$ (Table~\ref{tab:fix}).
 
@@ -160,7 +160,7 @@ PTC / JFNK from the IC &
 
 \section{What was added (gated, working cases byte-identical)}
 \begin{itemize}\itemsep2pt
-  \item \textbf{Residual dump for each cell} --- the \code{EXHALE\_RESIDUAL=1} path
+  \item \textbf{Residual dump for each cell}: the \code{EXHALE\_RESIDUAL=1} path
         writes \code{output/residual\_profile.txt}. The diagnostic that
         localized everything above; kept.
   \item \textbf{\code{Hydrostatic base:} flag} (\code{hydrostatic\_base},
@@ -183,7 +183,7 @@ PTC / JFNK from the IC &
 of option~1 below have since been carried out and HD~189733\,b converges: the
 JFNK globalization was repaired (cell-local diagonal scaling, a watchdog on
 consecutive failed line searches, and a line search tested against the true
-residual rather than the frozen-weight model ---
+residual rather than the frozen-weight model,
 \code{docs/newton\_scaling\_and\_base\_wall.md} \S\S3, 4, 10), and the residual
 normalization was replaced: the default convergence norm is now the
 volume-weighted one, \code{Resid norm: vol}, which is not inflated by cells

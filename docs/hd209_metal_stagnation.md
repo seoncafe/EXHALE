@@ -7,14 +7,14 @@ with the prescription that works for the metals-off twin
 `info = 2` after twelve consecutive line searches that find no descent step,
 from a cold start and from a warm one alike. Sections 1 and 3 record what was
 measured about why, section 6 where the case stood after the first three
-2026-08-13 changes, section 7 what is left, and section 8 the fourth change —
+2026-08-13 changes, section 7 what is left, and section 8 the fourth change:
 a conservative artificial dissipation of the stagnant layer that the marching
 loop and the steady residual both see, under which the warm restart reaches
 `info = 0` at `Resid tol: 1.0e-5` for the first time. Section 9 (2026-08-15)
 closes three of section 7's items by measurement: the cold path does not
 respond to the damping coefficient and is abandoned, the warm prescription is
 pinned to a seed converged with the current binary, and widening the acceptance
-window to include the layer is rejected — with what the layer's residual
+window to include the layer is rejected, with what the layer's residual
 actually is, now printed by every run, and what its weak determination costs in
 the Balmer lines.
 
@@ -59,8 +59,8 @@ it is off by default.]
 
 ## 2. The solve accepted on one functional and stepped on another
 
-`resid_relnorm` — the quantity `Resid tol` is compared against, and the one
-that decides `info` — is a volume-weighted ratio over `[j_min:N]`, i.e. over
+`resid_relnorm` (the quantity `Resid tol` is compared against, and the one
+that decides `info`) is a volume-weighted ratio over `[j_min:N]`, i.e. over
 `r >= r_esc` only (2.00 R_p here, out of a domain reaching 4.15 R_p). The
 JFNK line search minimized a different functional: the scaled 2-norm
 `\|\|F/D\|\|_2` over the WHOLE domain `1..N`, which in this configuration is
@@ -129,7 +129,7 @@ branch: at step 1, cell `j = 117` (`r = 1.0294`, `T = 1652 K`) the first attempt
 converged (`info = 1`) to a root whose only violations were
 `x(He II) = -3.8e-6` and `x(H2) = -4.5e-4`, and the molecular-basin retry
 returned a strongly molecular root, `x(H2) = 0.998`, violating the simplex by
-`x(He II) = -1.2e-8` — round-off around a fully neutral helium. Both were
+`x(He II) = -1.2e-8`, round-off around a fully neutral helium. Both were
 rejected and the cell kept its previous composition. The failure is a root
 resolved onto a face of the simplex, not an unphysical branch.
 
@@ -153,12 +153,12 @@ the same change for the same reason. The reading given there survives the
 present case: the Newton step is computed from the full residual over ALL rows,
 so a merit that ignores most of those rows rejects the steps that step takes.
 The region mismatch between the merit and the convergence measure is therefore
-kept, and its one real cost — that the iterate with the smallest `||R||` need
-not be the last one — is handled in the bookkeeping instead.
+kept, and its one real cost (that the iterate with the smallest `||R||` need
+not be the last one) is handled in the bookkeeping instead.
 
 ## 5. What was changed (2026-08-13)
 
-Items 1 and 2 are in `docs/Update_EXHALE.md` section 58, item 3 in section 59.
+Items 1 and 2 are in `docs/Update_EXHALE_stage1.md` section 58, item 3 in section 59.
 
 1. **A solve that reached the tolerance is reported as converged.** The solver
    already kept the best-`||R||` iterate, already returned it on failure, and
@@ -170,7 +170,7 @@ Items 1 and 2 are in `docs/Update_EXHALE.md` section 58, item 3 in section 59.
    the binaries before and after hand off at the same marching step, take the
    same 2 outer iterations, print the same iterate lines, and both end
    `info = 0` at `||R|| = 3.958e-5`. It is not what makes section 2's state
-   usable — the top-of-loop test already caught it — and at
+   usable (the top-of-loop test already caught it) and at
    `Resid tol: 1.0e-5` the configuration genuinely does not converge.
 
 2. **`load_IC` no longer accepts a metal column that is present but zero.** It
@@ -180,7 +180,7 @@ Items 1 and 2 are in `docs/Update_EXHALE.md` section 58, item 3 in section 59.
    zero, and a metals-ON restart from such a file ran with **zero metal density
    everywhere** while the base boundary condition counted metals in the mass
    and particle budget. Such a restart reported `||R|| = 9.54e-6` on the
-   `examples/15` solution — it was reproducing the metals-off solution under a
+   `examples/15` solution: it was reproducing the metals-off solution under a
    metals-on label. `load_IC` now also tests that the loaded stages are not
    identically zero, rebuilds such an element from the abundance exactly as a
    cold start does, and warns on stdout and in the setup report.
@@ -237,7 +237,7 @@ Items 1 and 2 are in `docs/Update_EXHALE.md` section 58, item 3 in section 59.
 ## 6. Where `examples/16` now stands
 
 With the item-1 and item-2 changes, warm-started from the converged
-`examples/15` state — the restart the `load_IC` fix repairs — with
+`examples/15` state (the restart the `load_IC` fix repairs) with
 `Resid tol: 5.0e-5`, `Solver: Newton 5.0e-2`, `du_th [PLM,WENO3]: 0.5 1.0e-3`,
 the case converged: hand-off at marching step 50668, `info = 0`,
 `||R|| = 3.337e-5` in 30 outer iterations, `log10 Mdot = 9.65`. That was the
@@ -273,7 +273,7 @@ on.
 
 ## 7. Still open
 
-- **Damping the stagnant layer — addressed, see section 8.** Nothing in the
+- **Damping the stagnant layer: addressed, see section 8.** Nothing in the
   inviscid scheme removes the `2 dr` contact mode once the metal cooling stops
   the flow at `r ~ 1.02`. The Shapiro filter and explicit viscosity were both
   measured against a different symptom (the base momentum row) and refuted
@@ -281,7 +281,7 @@ on.
   the marching loop and the steady residual both see is now available as
   `Low-Mach damping` (default off), and section 8 records what it does to this
   configuration.
-- **`examples/16` itself — the warm path settled, the cold path closed, see
+- **`examples/16` itself: the warm path settled, the cold path closed, see
   sections 9.2 and 9.3.** Section 3's inheritance is gone (section 5 item 3),
   and the case is no better for it. With `Low-Mach damping` at
   `eps4 = 5e-3`-`1e-2` the warm restart now reaches `info = 0` at
@@ -290,26 +290,26 @@ on.
   in `off`-`5e-3`-`1e-2`-`2e-2` rescues the cold path, which is therefore
   closed (section 9.2), and the warm prescription of section 8.2 reproduces
   only from a seed converged with the *current* binary (section 9.3).
-- **Whether the acceptance window should reach below `r_esc` — measured and
+- **Whether the acceptance window should reach below `r_esc`: measured and
   rejected, see section 9.4.** The residual of the layer is now printed by
   every run, and at convergence it is 0.2 to 10 in the relative norm the
   window uses, on cases that converge today including the metals-off
   `examples/15`. Widening the window on this norm would fail them all rather
   than determine the layer.
-- **The layer is only weakly determined, and it reaches the Balmer lines —
+- **The layer is only weakly determined, and it reaches the Balmer lines:
   documented, not fixed, see section 9.5.** Two solves that both return
   `info = 0` at `Resid tol: 1.0e-5` differ inside the layer by tens of percent
   in `rho` and `T`, and that propagates to 4.8% relative in the H-alpha peak
   and 8.4% in H-beta. He I 10830 (0.2%) and the wind are insensitive. Nothing
   measured so far pins the layer down; the honest handling is to quote the pair
   and carry the caveat.
-- **Cells that end below the solver tolerance — still open.** The equilibrium
+- **Cells that end below the solver tolerance, still open.** The equilibrium
   still returns,
   in a few cells per evaluation, a root the solve did not resolve to `xtol`
   (77 cell solves over the 40-step `mm16/cb16` run, down from 224). Those roots
   are computed at the state being evaluated, so they are not the path
   dependence of section 3, but they do depend on which starting point the
-  ladder reached them from. `hybrd1` returns `info = 4` there — no progress —
+  ladder reached them from. `hybrd1` returns `info = 4` there, no progress,
   on unknowns spanning `1e-14` to `1`, with `mode = 2` and `diag = 1`, i.e. no
   variable scaling at all. Scaling the molecular unknowns has not been tried.
 
@@ -317,10 +317,10 @@ on.
 
 `Low-Mach damping: <eps4> [<M_th>]` (default off) adds a gated fourth-difference
 stress to the numerical momentum flux, and its work term to the energy flux,
-inside `RK_rhs` — the one routine `assemble_residual`, and therefore the JFNK
+inside `RK_rhs`, the one routine `assemble_residual`, and therefore the JFNK
 residual, also calls. Statement, derivation and stability bound:
 `src/modules/flux/low_mach_dissipation.f90`; write-up:
-`docs/Update_EXHALE.md` section 60.
+`docs/Update_EXHALE_stage1.md` section 60.
 
 Where the term is applied is the point of it. A Shapiro filter smooths the
 marching state; the Newton residual never sees it, so the mode it suppresses
@@ -340,7 +340,7 @@ digits.
 | `examples/15` (metals off) | 2e-2 | 1.83e-4 | 1.0005 | 1.043 R_p | 1.76 R_p |
 | `examples/16` warm | 1e-2 | 8.36e-5 | 1.0005 | 1.108 R_p | 1.99 R_p |
 | `examples/16` warm | 5e-3 | 3.94e-5 | 1.0005 | 1.105 R_p | 1.99 R_p |
-| hot Uranus (molecular + solar metals) | 2e-2 | 3.70e-5 | 1.0005 | 1.083 R_p | — |
+| hot Uranus (molecular + solar metals) | 2e-2 | 3.70e-5 | 1.0005 | 1.083 R_p | - |
 
 The peak sits at the first interior face, where the base boundary condition
 forces the steepest velocity gradient in the domain, and it is 0.02% or less of
@@ -358,16 +358,16 @@ same restart files.
 
 | `eps4` | hand-off step | `info` | best `\|\|R\|\|` | outer it | `log10 Mdot` | H2 = H I front |
 |---|---|---|---|---|---|---|
-| off | 48060 | 1 | 5.216e-5 | 500 (cap) | — | — |
+| off | 48060 | 1 | 5.216e-5 | 500 (cap) | - | - |
 | 5.0e-3 | 48062 | **0** | **9.934e-6** | 162 | 9.65 | 1.0112 |
 | 1.0e-2 | 48007 | **0** | **9.987e-6** | 202 | 9.67 | 1.0117 |
-| 2.0e-2 | 65836 | 2 | 2.529e-3 | 237 | — | — |
-| 4.0e-2 | 66015 | 2 | 2.870e-3 | 66 | — | — |
+| 2.0e-2 | 65836 | 2 | 2.529e-3 | 237 | - | - |
+| 4.0e-2 | 66015 | 2 | 2.870e-3 | 66 | - | - |
 
 This is the first `info = 0` at `Resid tol: 1.0e-5` this configuration has ever
 produced. The two converged rows stop where they do because the solver tests the
 tolerance at the top of each outer iteration and exits on the first iterate
-below it — 9.93e-6 and 9.99e-6 are "the first crossing", not a knife edge. The
+below it: 9.93e-6 and 9.99e-6 are "the first crossing", not a knife edge. The
 key-off control, with the same restart and the same binary, spent its full
 500-iteration budget and plateaued at 5.2e-5. Nothing diverges in the rows that
 do not converge: each falls back to time-marching, as it does with the key off,
@@ -387,8 +387,8 @@ configuration has to run the pair.**
 **The two converged solutions are not the same solution.** Halving `eps4`
 from 1e-2 to 5e-3 moves `log10 Mdot` by 0.02 (5%) and the H2 = H I front by
 0.0005 R_p, and in the wind (`r > 1.2 R_p`) `rho` by <= 7.4%, `v` by <= 3.7% and
-`T` by <= 0.9%. Inside the stagnant layer they differ a great deal — `rho` by
-137% at `r = 1.013`, `T` by 38% at `r = 1.015` — and they differ in what the
+`T` by <= 0.9%. Inside the stagnant layer they differ a great deal (`rho` by
+137% at `r = 1.013`, `T` by 38% at `r = 1.015`) and they differ in what the
 layer looks like: over `r = 1.015-1.030` the alternating component of `v`
 relative to the mean `|v|` is 0.024 at `eps4 = 1e-2` and 4.29 at 5e-3. Both
 states satisfy `||R|| < 1e-5` on the wind window. The layer itself is therefore
@@ -398,7 +398,7 @@ still weakly determined, and the residual measure does not see it.
 
 The cold `examples/16` start (`Resid tol: 5.0e-5`) improves and still fails:
 `info = 1` at `||R|| = 9.307e-4` with `eps4 = 2e-2` against `info = 1` at
-1.081e-3 with the key off, from the identical hand-off step 112920 — the term is
+1.081e-3 with the key off, from the identical hand-off step 112920, the term is
 inert through the cold relaxation, when the flow is fast enough everywhere to
 close the gate, and only acts at the end.
 
@@ -416,7 +416,7 @@ Both hand off at the same marching step and reach the same `Mdot`. On the hot
 Uranus the whole profile moves by at most 7.3e-4 relative in `rho` and 7.1e-4 in
 `T`. On `examples/15` the wind above `r = 1.2 R_p` moves by at most 1.2% in
 `rho`, 0.5% in `v` and 0.16% in `T`, while the first few cells above the base
-move much more (`rho` by up to 16%, `T` by 6.9% below `r = 1.05`) — those cells
+move much more (`rho` by up to 16%, `T` by 6.9% below `r = 1.05`): those cells
 carry an odd-even velocity oscillation of 86 times the local mean with the key
 off, which the term reduces to 77, so they are the cells the term is for and
 they are not pinned down to begin with.
@@ -446,13 +446,13 @@ three rows (mass, momentum, energy) it is. `write_resid_below_escape` prints
 one line at four points: the start and the end of the PTC solve and the start
 and the end of the JFNK solve. The JFNK end line is emitted *before* the
 best-iterate restore, because that is the last point at which `F` and `u` are a
-consistent pair, so it refers to the last iterate visited — which is also the
+consistent pair, so it refers to the last iterate visited, which is also the
 returned state whenever no restore happens.
 
 The value is printed and never tested; nothing in the solve depends on it. The
 change is +95 lines in that one file and `make check` is **5/5 byte-identical**
 (`wasp_full`, `wasp_he23off`, `mol_base_handoff`, `mol_metals`,
-`mol_lyman_werner`) — the output files are unchanged and only stdout grows.
+`mol_lyman_werner`): the output files are unchanged and only stdout grows.
 
 ### 9.2 The cold path does not respond to the coefficient, and is closed
 
@@ -478,24 +478,24 @@ Section 8.2 says "warm restart from the converged `examples/15` state" without
 saying *which* converged state, and that turns out to matter. Two seeds were
 run A/B, same binary, same everything else:
 
-- **Seed A** — the copy `examples/15_molecular/output` held until 2026-08-15
+- **Seed A**: the copy `examples/15_molecular/output` held until 2026-08-15
   (written 2026-08-13 10:15, i.e. by the binary from *before* the section 5
   item-3 change; H2 = H I front at 1.0089 R_p; now kept as
   `examples/15_molecular/output_pre_item3_20260813/`, the example directory
   itself holding the seed-B state since 2026-08-15).
-- **Seed B** — `examples/15` re-converged with the current binary. That
+- **Seed B**: `examples/15` re-converged with the current binary. That
   re-convergence reproduces the section 8.3 row exactly: hand-off at marching
   step 25839, `info = 0`, `||R|| = 6.105e-6`, `log10 Mdot = 10.24`, front
   (`n_H2 = n_HI` crossing) at 1.0097 R_p.
 
 | seed | `eps4` | hand-off step | `info` | best `\|\|R\|\|` | outer it | `log10 Mdot` |
 |---|---|---|---|---|---|---|
-| A | 5.0e-3 | 50645 | **2** | 1.303e-4 | — | — |
-| A | 1.0e-2 | 50629 | **2** | 5.770e-5 | — | — |
+| A | 5.0e-3 | 50645 | **2** | 1.303e-4 | - | - |
+| A | 1.0e-2 | 50629 | **2** | 5.770e-5 | - | - |
 | A | 5.0e-3 + `Stellar LW flux: 343.0` | 50189 | 0 | 9.799e-6 | 47 | 9.68 |
 | B | 5.0e-3 | 48062 | 0 | 9.934e-6 | 162 | 9.65 |
 | B | 1.0e-2 | 48007 | 0 | 9.987e-6 | 202 | 9.67 |
-| B | 5.0e-3 + `Stellar LW flux: 343.0` | 47965 | 0 | 9.900e-6 | — | 9.68 |
+| B | 5.0e-3 + `Stellar LW flux: 343.0` | 47965 | 0 | 9.900e-6 | - | 9.68 |
 
 The two seed-B rows without Lyman-Werner reproduce the section 8.2 table
 exactly, hand-off step included. The seed-A rows do not: the hand-off comes
@@ -508,14 +508,14 @@ solution by more than this marginal solve tolerates in its starting point, so a
 restart file written by an older binary is no longer the same seed. **The
 prescription is therefore: re-converge `examples/15` with the binary in hand,
 and restart `examples/16` from that**, not from whatever `output/` happens to
-hold. Note also that the Lyman-Werner member converges from *both* seeds — the
+hold. Note also that the Lyman-Werner member converges from *both* seeds: the
 LW coupling appears to widen the basin for this configuration rather than
 narrow it.
 
 ### 9.4 Extending the acceptance window below `r_esc` is rejected by measurement
 
-With the diagnostic of section 9.1 the question of section 2 — should the solve
-be accepted on a window that includes the layer? — becomes a measurement. The
+With the diagnostic of section 9.1 the question of section 2 (should the solve
+be accepted on a window that includes the layer?) becomes a measurement. The
 volume-weighted relative norm over `[1:401]` (`j_min = 402` here):
 
 | state | norm over `[1:j_min-1]` | worst cell |
@@ -529,7 +529,7 @@ volume-weighted relative norm over `[1:401]` (`j_min = 402` here):
 | cold `eps4 = 1e-2`, at failure | 1599 | `j = 112`, `r = 1.0273` |
 
 A converged state carries a relative residual of 0.2 to 10 below the escape
-radius — four to six orders above `Resid tol` — and the metals-off
+radius (four to six orders above `Resid tol`) and the metals-off
 `examples/15` solution, which nobody doubts, carries the largest of them. That
 is not a statement about metals: the layer is near-hydrostatic (`|v| ~ 10`
 cm/s), so the denominator of the momentum row's relative residual, `|rho v|`,
@@ -566,7 +566,7 @@ The transmission spectra, theoretical peak excess absorption:
 | He I 10830 | 40.19% | 40.26% | 0.2% |
 | H-alpha | 2.098% | 2.199% | +4.8% |
 | H-beta | 1.046% | 1.134% | +8.4% |
-| Ly-alpha | saturated (100%) | saturated (100%) | — |
+| Ly-alpha | saturated (100%) | saturated (100%) | - |
 
 He I 10830 forms in the wind and does not care which of the two layers sits
 underneath it. The Balmer lines do: part of the H(n=2) absorption is formed in
@@ -593,7 +593,7 @@ members `info = 0`:
 | H-beta peak | 1.046% | 1.221% |
 | He I 10830 peak | 40.19% | 40.33% |
 
-The self-shielding behaves as section 56 of `docs/Update_EXHALE.md` describes:
+The self-shielding behaves as section 56 of `docs/Update_EXHALE_stage1.md` describes:
 at the base `N(H2) = 2.68e21 cm^-2`, `f_shield = 2.11e-6` and
 `k_LW = 1.27e-10 s^-1`, while above `r = 1.10 R_p` the shielding is gone
 (`f_shield = 1.000`, `k_LW = 6.026e-5 s^-1`).

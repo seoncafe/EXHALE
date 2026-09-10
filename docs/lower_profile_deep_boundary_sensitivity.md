@@ -74,13 +74,13 @@ Three readings have to be fixed before anything can be measured.
   `photochem_to_lower_profile.py --climate` run.
 
 The two builds compared there are both photochem 0.9.0 -- one without and one
-with the `clima` `epsfcn` repair of `docs/Update_EXHALE.md` section 91 -- and
+with the `clima` `epsfcn` repair of `docs/Update_EXHALE_stage1.md` section 91 -- and
 the 2.1e-6 K is what that repair moved a composition that already solved. That
 comparison turns out not to be needed: the whole spread is reproduced inside
 one build, in section 3, on the environment that carries the repair.
 
 The Fortran quoted below is `photochem/src/` in this repository, the tree that
-reproduces the installed library (section 91 of `docs/Update_EXHALE.md`); the
+reproduces the installed library (section 91 of `docs/Update_EXHALE_stage1.md`); the
 Python is the installed copy, not the source tree.
 
 ## 2. Where the deep boundary temperature becomes a pressure
@@ -533,5 +533,5 @@ Photochem: `photochem/src/photochem_eqns.f90` (`vertical_grid`),
 `photochem/photochem/extensions/gasgiants.py` (`robust_step`).
 The observation this answers: `LHS1140b/exhale/crossings_pc090/results.txt`
 section 7. The series it came out of: `docs/deep_level_elemental_check.md`,
-`docs/Update_EXHALE.md` sections 89-91. The handoff design:
+`docs/Update_EXHALE_stage1.md` sections 89-91. The handoff design:
 `docs/phase_e_flux_closure_design.md` sections 2 and 6.

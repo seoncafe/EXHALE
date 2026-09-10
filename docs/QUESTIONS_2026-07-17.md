@@ -4,7 +4,7 @@ Two questions raised after the 2026-07-17 rate update (commit `cb84e6e`), with
 the answers as verified in the code. Item 1 is a candidate physics improvement;
 item 2 is a verified non-issue, recorded here so it need not be re-checked.
 
-## 1. He recombination radiation ionizing H I — NOT considered
+## 1. He recombination radiation ionizing H I, NOT considered
 
 **Question.** Part of the radiation emitted during He II -> He I recombination
 can ionize H I. Is that channel included?
@@ -18,9 +18,9 @@ reabsorbed by the *same* species locally. Consequences:
   standard nebular treatment (Osterbrock & Ferland, ch. 2) a fraction
   `y = n_HI sigma_H / (n_HI sigma_H + n_HeI sigma_He)` (evaluated at ~24.6 eV)
   of those photons ionizes H instead of He.
-- Cascade photons from captures to excited He I levels — the 584 A resonance
+- Cascade photons from captures to excited He I levels (the 584 A resonance
   line (21.2 eV), the 2^3S -> 1^1S line (19.8 eV), and the part of the He I
-  two-photon continuum above 13.6 eV — mostly ionize H in H-dominated gas.
+  two-photon continuum above 13.6 eV) mostly ionize H in H-dominated gas.
   None of this is modeled.
 - The analogous He III -> He II channels (He II Ly-alpha at 40.8 eV, He II
   recombination continua) are likewise neglected; He III is usually a minor
@@ -36,11 +36,11 @@ Both books treat the channel with the same on-the-spot physics (Draine cites
 Osterbrock 1989 for the key numbers), but the formulations differ in a way
 that matters for implementation:
 
-- **Osterbrock & Ferland** (AGN, ch. 2) keep the decay channels explicit —
+- **Osterbrock & Ferland** (AGN, ch. 2) keep the decay channels explicit:
   ground-capture continuum split by the local `n_HI sigma_H : n_HeI sigma_He`
   ratio, the 584 A resonance line, the 2^1S two-photon continuum (56% of
   decays yield an H-ionizing photon), the 2^3S 19.8 eV line, and the
-  density-dependent collisional 2^3S -> singlet transfer — and carry each
+  density-dependent collisional 2^3S -> singlet transfer, and carry each
   through the coupled H/He transfer integrals. There is no single closed-form
   recipe to lift.
 - **Draine** (2011, "Physics of the Interstellar and Intergalactic Medium")
@@ -51,7 +51,7 @@ that matters for implementation:
     `y = n_HI sigma_H / (n_HI sigma_H + n_HeI sigma_He)` at 24.6 eV + kT
     (`sigma_He/sigma_H > 6` there, so `y < 0.5` once `n_HeI > 0.16 n_HI`).
     The effective He recombination becomes
-    `alpha_eff(He) = alpha_B + y alpha_1s2` (Eq. 14.17) — i.e., the (1-y)
+    `alpha_eff(He) = alpha_B + y alpha_1s2` (Eq. 14.17): i.e., the (1-y)
     share of ground captures is returned to He on the spot, and only that
     share may be dropped from the rate; a pure case-B `alpha_B` (what EXHALE
     uses) implicitly assumes y = 0.
@@ -84,27 +84,27 @@ throughout the wind, giving a nearly constant `y ~ 0.65-0.69` (Eq. 14.16 with
 `sigma_He/sigma_H ~ 6`), while `x_HeII` rises from ~0 at the base to ~0.78 at
 2-3 R_p.
 
-- **Triplet (TR) mode — the mode that computes 10830 — is protected by an
+- **Triplet (TR) mode (the mode that computes 10830) is protected by an
   accidental cancellation.** The current network total is
   `alpha_1 (ground, 1.54e-13) + alpha_3 (2.10e-13) = 3.64e-13` at 1e4 K,
   treating every ground-capture photon as lost. The Draine-correct net is
   `alpha_eff = alpha_B + y alpha_1s2 ~ 2.72e-13 + 0.67 x 1.54e-13 =
-  3.75e-13` — only 3-4% away, because the overcounted ground channel
+  3.75e-13`, only 3-4% away, because the overcounted ground channel
   (`+(1-y) x 1.54 = +0.51`) and the missing singlet-excited channel
   (`-0.25 alpha_B = -0.68`) nearly cancel at `y ~ 0.67`. The n_HeII shift is
   `~ (1 - x_HeII) x (3-4%)`, so **n(2^3S) moves by <~ 1-4%** in the
-  10830-forming region — below the stellar-EUV and Penning-rate
+  10830-forming region: below the stellar-EUV and Penning-rate
   uncertainties. Extra 2^3S photoionization by the diffuse 19.8-21.2 eV
   photons is negligible next to the stellar 4.8-13.6 eV flux.
 - **Atomic (case-B) mode is the weaker point.** Pure `alpha_B` corresponds to
   `y = 0`, underestimating the net He recombination by the factor
-  `1 + 0.57 y ~ 1.38` at `y ~ 0.67` (1e4 K) — up to ~40% too little He I,
+  `1 + 0.57 y ~ 1.38` at `y ~ 0.67` (1e4 K), up to ~40% too little He I,
   and 10-30% too much n_HeII in partially ionized layers. This mode does not
   compute 2^3S, so 10830 is unaffected, but the He ionization structure and
   He-related cooling carry the error.
 - The physical key to the cancellation: photons below 24.6 eV (584 A at
   21.2 eV, the >13.6 eV part of the two-photon continuum, the 19.8 eV line)
-  **cannot reionize ground-state He I** — they can only ionize H (or 2^3S /
+  **cannot reionize ground-state He I**, they can only ionize H (or 2^3S /
   metals). Only the >= 24.6 eV ground-capture continuum can return to He,
   which is exactly why `alpha_eff = alpha_B + y alpha_1s2` touches only the
   ground channel.
@@ -133,7 +133,7 @@ channel `0.25 alpha_B` that the current network omitted. The cross-section ratio
 evaluated from the code is `R = sigma_He/sigma_H(24.6 eV) = 6.004`, giving
 `y ~ 0.65-0.69` across the HD 209458 b wind. See update-log section 37 for the
 full write-up. Documented in `docs/input_schema.md` (K14d),
-`docs/Update_EXHALE.{md,tex}`, and `docs/EXHALE_user_manual.tex`.
+`docs/Update_EXHALE_stage1.{md,tex}`, and `docs/EXHALE_user_manual.tex`.
 
 Example results on HD 209458 b (converged profiles loaded as IC, then relaxed
 15000 steps on/off from the same IC; only the on/off difference is meaningful,
@@ -154,15 +154,15 @@ The 10830-forming region is nonetheless unaffected, as anticipated.
 
 ### Update 2026-07-23: default flipped ON
 
-As part of the Falorca & Vidotto (2026) review series (Update_EXHALE §39,
+As part of the Falorca & Vidotto (2026) review series (Update_EXHALE_stage1 §39,
 item 4; `docs/falorca2026_he3d_review.md` §3.4/§7), `He_rec_coupling` is now
 **default ON**. Rationale (physical correctness): the photons are real, and
-with the coupling off the TR-mode singlet recombination used alpha_1 alone —
+with the coupling off the TR-mode singlet recombination used alpha_1 alone,
 neither case A (missing the 0.25 alpha_B singlet-excited channel) nor case B
 (no local recycling of the ground-capture photons). Additional validation on
 the high-gravity wasp_full case: stable (no NaN, convergence count essentially
 unchanged), base n(2^3S) -10%, the 10830-forming region within ~2%, Mdot
-unchanged there — consistent with the HD 209458 b table above, whose +0.04-0.07
+unchanged there, consistent with the HD 209458 b table above, whose +0.04-0.07
 dex Mdot shift is the reason the paper-draft planet runs need re-convergence.
 `He_rec_coupling: False` restores the legacy lost-photon path (byte-identical).
 A finer split of the singlet-excited capture channel (explicit
@@ -172,7 +172,7 @@ erratum's corrected Table 2, instead of the 0.25 alpha_B lump) remains an
 optional refinement; the erratum's ~20% He 10830 EW sensitivity to the
 2^1S handling is the reason it may matter.
 
-## 2. Electron contribution to the mean molecular weight — included
+## 2. Electron contribution to the mean molecular weight: included
 
 **Question.** Does the mean-molecular-weight (particle-count) bookkeeping
 include the electrons?
@@ -191,7 +191,7 @@ include the electrons?
   `opacity_pT_factor` in `src/modules/radiation/opacity_models.f90`).
 
 *[Line numbers re-checked 2026-08-15; all three had drifted (107/172, 653, 186).
-They are exact at that date only — grep the quoted expression rather than trust
+They are exact at that date only: grep the quoted expression rather than trust
 the number.]*
 
 `calc_ne` adds the metal electrons and the molecular-ion electrons under the

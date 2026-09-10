@@ -24,9 +24,9 @@ and the \code{windsoln} (seed) file format}
 \maketitle
 
 \begin{quote}\small\itshape
-EXHALE includes a 1-D, steady-state, transonic Parker-wind solver --- a
+EXHALE includes a 1-D, steady-state, transonic Parker-wind solver: a
 Fortran port of \emph{Wind-AE} (Murray-Clay et al.\ 2009; Broome et al.\
-2025) --- under \code{src/modules/wind\_ae/}. It is used to manufacture a
+2025), under \code{src/modules/wind\_ae/}. It is used to manufacture a
 warm-start initial condition for the time-dependent EXHALE run (the
 \code{IC mode: windae} key, and the standalone \code{wind\_ae\_ic.x}).
 This note documents what the solver computes, how it solves it (a
@@ -54,8 +54,8 @@ XUV-irradiated H/He atmosphere, from a deep base out through the sonic
 point to a few planetary radii. The dependent variables are the velocity
 $v$, density $\rho$, temperature $T$, the neutral fraction $Y_s$ of each
 species ($s=$ H\,I, He\,I), and the photoionization column density
-$N_{\rm col}$ of each species. Unlike EXHALE --- a time-dependent
-finite-volume code relaxed \emph{to} a steady state --- Wind-AE solves
+$N_{\rm col}$ of each species. Unlike EXHALE (a time-dependent
+finite-volume code relaxed \emph{to} a steady state) Wind-AE solves
 the stationary equations \emph{directly} as a two-point boundary-value
 problem (BVP), so there is no time integration and no Courant limit; the
 cost is that it bakes in the transonic topology (it cannot represent a
@@ -203,7 +203,7 @@ D = \sum_s \frac{m_H}{m_s}\,X_s\,(2-Y_s), \qquad \mu_{\rm mol}=2.3\,m_H,
 \]
 where $b$ is the bolometric-transition flag ($1$ on, $0$ off) and $X_s$ the
 mass fraction. This routine is \textbf{bit-identical to the reference} on
-the seed and on HD\,209458b/HD\,189733b --- i.e.\ on both the $b=1$
+the seed and on HD\,209458b/HD\,189733b: i.e.\ on both the $b=1$
 (molecular, $\mu=2.3\,m_H$) and $b=0$ (atomic, $\mu=m_H/D$) branches.
 
 \paragraph{Sonic-point column density (\code{self\_consistent\_Ncol},
@@ -215,7 +215,7 @@ N_{{\rm col},s} = \frac{1}{N_{\rm col,0}}\int_{r_s}^{R_{\max}}
 \]
 then re-relaxing; the set\,$\to$\,solve\,$\to$\,recompute loop iterates
 until the mean relative change is below $8\%$. The ported goal matches the
-reference to $\sim$4\% (within that self-consistency tolerance --- the
+reference to $\sim$4\% (within that self-consistency tolerance: the
 small gap is the outward-integration extent, not a physics error).
 
 \paragraph{Applying and ramping (\code{ramp\_base\_bcs}).} The
@@ -228,22 +228,22 @@ the boundary-value analogue of \code{ramp\_var}).
 the ramp moves to a strongly-bound planet the base sinks \emph{into} the
 wind. The transition finder (a port of the reference \code{erf\_velocity})
 locates the first grid point where photoionization heating exceeds the
-magnitude of PdV (adiabatic-expansion) cooling --- where the wind launches;
+magnitude of PdV (adiabatic-expansion) cooling: where the wind launches;
 $\code{heat}=\sum_s n_{{\rm neut},s}\,h_s$ (the rates for each species from
 \code{wae\_glq\_rates\_eval}) and
 $\code{cool}=(k_B T/\mu_{\rm mol}m_H)\,v\,d\rho/dr$. When that point reaches
 the base (within $\sim$10 cells), \code{turn\_off\_bolo} ramps
 \code{bolo\_heat\_cool}$:1\to0$; because the molecular smoothing erf is
-scaled by that flag, turning it off also drops $\mu$ to its atomic value
---- i.e.\ the $b=1\to b=0$ transition the target planet requires.
+scaled by that flag, turning it off also drops $\mu$ to its atomic value:
+i.e.\ the $b=1\to b=0$ transition the target planet requires.
 
 \paragraph{Orchestration.} With \code{static\_bcs=.false.},
 \code{ramp\_var} runs the \emph{full} base-BC re-convergence
 (\code{ramp\_base\_bcs} $+$ \code{converge\_mol\_atomic} $+$
 \code{converge\_Ncol\_sp})
-\emph{reactively} --- only when a step stalls (five consecutive failures);
+\emph{reactively}: only when a step stalls (five consecutive failures);
 and the cheap molecular/atomic check \code{converge\_mol\_atomic} alone runs
-\emph{proactively} (every ten successful steps --- it does no relaxation
+\emph{proactively} (every ten successful steps: it does no relaxation
 unless it actually turns the bolometric layer off, so a seed-adjacent planet
 pays almost nothing). \code{ramp\_to} does a final full pass at the end.
 This split keeps seed-adjacent planets fast (HD\,209458b ramps in
@@ -253,8 +253,8 @@ expensive success-path re-convergence (\code{converge\_bcs}) likewise
 defaults off.
 
 \paragraph{Status (2026-06-13): the self-consistent-BC ramp converges HD\,189733b.} On
-HD\,189733b --- far from the seed ($F_{\rm XUV}$ rises $\sim$22$\times$, the
-surface gravity roughly doubles) --- the base-BC re-convergence fires as the
+HD\,189733b, far from the seed ($F_{\rm XUV}$ rises $\sim$22$\times$, the
+surface gravity roughly doubles), the base-BC re-convergence fires as the
 ramp proceeds, and on the $M_{\rm pl}$ ramp the transition reaches the base
 so \code{converge\_mol\_atomic} turns the bolometric layer off
 ($\code{bolo\_heat\_cool}:1\to0$, matching HD\,189733b's atomic solution).
@@ -314,8 +314,8 @@ Newton fixed point); the \textbf{full windsoln} (relaxation $+$ outward
 integration) reproduces the C solution to relative
 $\le2\times10^{-11}$ on three planets; and the continuation ramp
 reproduces the Python wrapper's mass-loss rate to five digits. A subtle
-quirk of the reference --- the rate cache keys on column density only and
-ignores $Y_s$ changes --- had to be reproduced exactly for the numerical
+quirk of the reference (the rate cache keys on column density only and
+ignores $Y_s$ changes) had to be reproduced exactly for the numerical
 Jacobian to match.
 
 \paragraph{The bit-exact gates need one line restored (2026-08-19).} Those
@@ -343,7 +343,7 @@ planet, solves the wind, and writes the IC onto the EXHALE grid
 (\code{output/*\_IC.txt}); \code{load\_IC} then ingests it. The whole
 input\,$\to$\,solve\,$\to$\,IC\,$\to$\,run is one \code{EXHALE.x}
 invocation. Because EXHALE re-solves the ionization (and metals) from the
-first step, the Wind-AE IC is only a \emph{warm start} --- finish with
+first step, the Wind-AE IC is only a \emph{warm start}: finish with
 \code{Solver: Newton} for a quantitative \Mdot.
 \paragraph{Standalone: \code{wind\_ae\_ic.x}.} \code{make wind\_ae\_ic}
 builds a separate executable that does the same out of process, reading an
@@ -356,7 +356,7 @@ so it stays self-contained.
 \section{Scope and limitations}\label{sec:limits}
 % ===================================================================== %
 \begin{itemize}\itemsep1pt
-\item \textbf{H/He only.} The port fixes $N_{\rm spec}=2$ (H\,I, He\,I) ---
+\item \textbf{H/He only.} The port fixes $N_{\rm spec}=2$ (H\,I, He\,I):
   one ionization stage per species. It does \emph{not} model the trace
   metals, Fe/Ca cooling, the He triplet, or the transit spectrum; those
   remain EXHALE's job. For an IC this is sufficient: EXHALE adds the
@@ -408,13 +408,13 @@ authoritative field-by-field reference, taken from the Python reader
 \section{File layout}
 A windsoln file has three kinds of lines, in order:
 \begin{enumerate}\itemsep2pt
-  \item \textbf{Header lines} \code{\#key: v1,v2,\dots} --- one per key,
+  \item \textbf{Header lines} \code{\#key: v1,v2,\dots}, one per key,
         carrying scalars, parameters, BCs, flags, and spectrum metadata
         (Table~\ref{tab:hdr}).
-  \item \textbf{Spectrum rows} \code{\#\# e,wPhi,$\sigma_1$,$\sigma_2$}
-        --- \code{npts} of them, holding the stellar spectrum sampled at
+  \item \textbf{Spectrum rows} \code{\#\# e,wPhi,$\sigma_1$,$\sigma_2$}:
+        \code{npts} of them, holding the stellar spectrum sampled at
         the Gauss--Legendre quadrature points (\S\ref{sec:spec}).
-  \item \textbf{Data rows} --- the solution profile, one grid point per
+  \item \textbf{Data rows}: the solution profile, one grid point per
         line, columns named by \hd{vars} and normalized by \hd{scales}
         (\S\ref{sec:grid}).
 \end{enumerate}
@@ -490,7 +490,7 @@ Key & Fields & Meaning (and units) \\
 The stellar XUV spectrum that the solution was computed with is stored in
 the file itself, in two parts:
 \begin{itemize}\itemsep2pt
-  \item \hd{spec\_prms} --- metadata: the number of quadrature points
+  \item \hd{spec\_prms}: metadata: the number of quadrature points
         \code{npts}, the source label (here \code{scaled-solar}, a
         solar-like SED), the spectral kind (\code{full}, i.e.\ resolved
         rather than monochromatic), the integration window in wavelength
@@ -498,7 +498,7 @@ the file itself, in two parts:
         the ionization potentials $\chi_s$ for each species (e.g.\
         $2.18\times10^{-11}\,$erg $=13.6$\,eV for H,
         $3.94\times10^{-11}\,$erg $=24.6$\,eV for He).
-  \item the \code{\#\#} rows --- the spectrum proper, one row per
+  \item the \code{\#\#} rows: the spectrum proper, one row per
         quadrature point: photon energy $hc/\lambda_i$ [erg]; the
         \emph{normalized} weight $w_i\Phi_{\lambda_i}/\Ftot$; and the
         photoionization cross sections $\sigma_{\lambda_i,s}$ [cm$^2$] for
@@ -519,8 +519,8 @@ depends on the SED shape, not only on $\Ftot$. The included data assume a
 power law produces different heating/ionization profiles. A Wind-AE
 warm-start is therefore only self-consistent with an EXHALE run that uses
 the \emph{same} spectrum. Conversely, a power-law EXHALE model failing to
-converge does \emph{not} imply that no steady wind exists for that planet
---- only that that particular spectrum/numerics combination did not settle.
+converge does \emph{not} imply that no steady wind exists for that planet:
+only that that particular spectrum/numerics combination did not settle.
 
 \section{The solution grid}
 \label{sec:grid}

@@ -18,6 +18,7 @@
 	use oxygen_rates, only: co_equilibrium_density,                   &
 	                        oxygen_chemical_equilibrium_fractions
 	use grav_func
+	use grid_construction, only: cell_nearest_radius
 
 	implicit none
 
@@ -112,9 +113,12 @@
 			W(1,:) = (/ (rho_bc*exp(b0_eff*(-Gphi_c(j) + Gphi_c(0))), 	&
 					j = 1-Ng,N+Ng) /)
 
-			! Calculate minimum of density profile
+			! Density at mid-domain, the smallest density of a bound
+			! hydrostatic profile inside the region the IC has to
+			! resolve. cell_nearest_radius turns the position minloc
+			! returns into a subscript of the 1-Ng:N+Ng grid arrays.
 			r_half = 0.5e0*(r_max + 1.0e0)
-			i_rhalf = minloc(abs(r-r_half), dim = 1)
+			i_rhalf = cell_nearest_radius(r_half)
 			minrho = W(1,i_rhalf)
 
 			if (minrho .gt. 1.0e-8) then

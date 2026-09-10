@@ -26,7 +26,7 @@ prerequisites for WP2 below), `base_composition_handoff_plan.md`,
 
 The observation: metastable He 10830 absorption from LHS 1140b (5.60 +/- 0.19
 M_Earth, 1.730 +/- 0.025 R_Earth, P = 24.7 d, Teq = 226 +/- 4 K, inactive
-M dwarf host at 14.96 pc) — detected in 2024, not detected in 2025
+M dwarf host at 14.96 pc), detected in 2024, not detected in 2025
 (detection limit ~0.6%).
 
 **Computed (p-winds, upper atmosphere only).**  A 1-D isothermal Parker wind
@@ -47,9 +47,9 @@ forward model fit by MCMC to the 2024 transmission spectrum:
 
 - Fractionation: crossover mass < 9 amu at any T < 10,000 K
   (Hunten, Pepin & Walker 1987 closed form); minimum escape rate to drag
-  atomic O is ~2 x 10^9 g/s — so O, C, N stay behind and accumulate.
+  atomic O is ~2 x 10^9 g/s, so O, C, N stay behind and accumulate.
 - Cold trap: T_skin = 2^(-1/4) Teq = 194 K, tropopause pressure assumed
-  0.1 bar, giving f_H2O ~ 7 ppm at the tropopause — the water (and hence
+  0.1 bar, giving f_H2O ~ 7 ppm at the tropopause: the water (and hence
   hydrogen) supply to the upper atmosphere.
 - Origin of the He-dominated envelope: cited from a magma-ocean +
   escape-fractionation evolution model (their ref. 39), not computed.
@@ -77,7 +77,7 @@ radiative-convective lower atmosphere (cold trap -> f_H2O)
 The retrieval targets H:He and Mdot become **outputs**; the inputs become the
 stellar SED and the bulk-atmosphere composition.
 
-## 3. Why EXHALE cannot run this today — the three gaps
+## 3. Why EXHALE cannot run this today: the three gaps
 
 ### Gap 1: the He-dominated regime is untested
 
@@ -89,7 +89,7 @@ formally possible but the regime is unexercised:
   needed an explicit stability check there; expect the same here);
 - the cooling budget is H-centric (Ly-alpha is the dominant coolant in every
   validated run).  In an H-poor gas the energy equation must close on He
-  channels — He recombination, free-free, He 2^3S lines.  The HeITR module
+  channels: He recombination, free-free, He 2^3S lines.  The HeITR module
   exists; whether it closes the budget alone has never been checked;
 - the electron budget flips from H-ionization- to He-ionization-dominated;
   `System_HeH_*` must be audited in that limit.
@@ -97,7 +97,7 @@ formally possible but the regime is unexercised:
 ### Gap 2: the diffusion formulation is written the wrong way around
 
 `src/modules/functions/species_diffusion.f90` diffuses He (and trace metals)
-**relative to a hydrogen background** — the kernel, the base normalization
+**relative to a hydrogen background**: the kernel, the base normalization
 `fbase = nX/nH`, and the settling term all reference n_H.  For LHS 1140b the
 roles invert: H is the trace species, He the background.  The binary
 diffusion coefficient (Banks & Kockarts) is symmetric, so the physics
@@ -106,18 +106,18 @@ settling sign for a *lighter*-than-background species: H floats up, not
 settles) must be generalized.
 
 Payoff: crossover mass and O/C/N drag become code results instead of the
-Hunten 1987 closed form — this is the same diffusion generalization already
+Hunten 1987 closed form, this is the same diffusion generalization already
 listed for oxygen in `oxygen_chemistry_new_plan.md` phase P3.
 
 ### Gap 3: the lower boundary assumes a hot H2 atmosphere
 
 Tier 1 (`lower_atmosphere/lower_column.f90`) is the Koskinen et al. (2022)
 analytic column: isothermal at Teq with a chemical-equilibrium H2/H/He
-partition — built for hot Jupiters.  At Teq = 226 K the relevant lower
+partition, built for hot Jupiters.  At Teq = 226 K the relevant lower
 atmosphere physics is different:
 
 - a radiative-convective structure with a cold trap sets f_H2O (~7 ppm),
-  and photolysis of that water is the hydrogen source for the wind — this
+  and photolysis of that water is the hydrogen source for the wind: this
   is the physical input that should reproduce H:He <~ 1e-3;
 - the natural route is the existing Tier-3 handoff: run **Photochem**
   (Wogan et al. 2025, `references/Wogan_2025_Planet._Sci._J._6_256.pdf`;
@@ -133,7 +133,7 @@ atmosphere physics is different:
 
 ## 4. Work packages
 
-### WP0 — He-dominated validity audit (before any new physics)
+### WP0: He-dominated validity audit (before any new physics)
 
 Stress-test the existing code at HeH >> 1: ionization equilibrium, energy
 closure, electron budget, and NaN/overflow behavior of every n_H-normalized
@@ -142,7 +142,7 @@ valid in the trace-H limit and which needed guards.  Acceptance: a converged
 pure-attempt run at HeH ~ 1e3 with a closed energy budget, or a precise list
 of what breaks.
 
-### WP1 — Generalize diffusive separation (H trace in He background)
+### WP1: Generalize diffusive separation (H trace in He background)
 
 Rewrite the element-diffusion kernel in `species_diffusion.f90` so the
 background is the dominant species (or, cleaner, the total gas) rather than
@@ -150,7 +150,7 @@ n_H.  Verify against the analytic diffusive-equilibrium profile in an
 isothermal test column, both orientations (He-in-H and H-in-He).
 This is shared work with oxygen plan P3.
 
-### WP2 — Temperate lower boundary via Photochem handoff
+### WP2: Temperate lower boundary via Photochem handoff
 
 Run Photochem for LHS 1140b (He-dominated bulk, Teq 226 K, cold-trapped
 water); extend the `base.inp` handoff contract to carry what this case
@@ -159,19 +159,19 @@ the radiative-convective solution).  Depends on oxygen plan P1/P2.
 Acceptance: the handoff reproduces f_H2O ~ ppm at the model base and the
 resulting EXHALE wind returns H:He in the retrieved range without tuning.
 
-### WP3 — Stellar inputs
+### WP3: Stellar inputs
 
 Construct the XUV SED as the paper did: scaled GJ 1132 and GJ 699 spectra
 plus the XMM-Newton X-ray constraint (Supplement, "X-ray observations and
 analysis"); feed it through the existing `Spectrum file` / `sed_read` path.
 Note: every current regression case uses a power-law spectrum, so this run
-is the first real exercise of the SED path in production — check the
+is the first real exercise of the SED path in production, check the
 resolved configuration in the setup report.
 
-### WP4 — Validation ladder and science runs
+### WP4: Validation ladder and science runs
 
 1. **p-winds oracle** (clone at `../p-winds/`): reproduce the paper's
-   retrieval point (Mdot 2.03e8 g/s, T 5160 K, H:He 1e-3) locally — same
+   retrieval point (Mdot 2.03e8 g/s, T 5160 K, H:He 1e-3) locally, same
    oracle pattern as Wind-AE.
 2. EXHALE steady-state run with the same inputs; compare density/velocity/
    metastable-He profiles against the p-winds Parker solution.
@@ -191,7 +191,7 @@ WP4 with the computed H:He -> WP4 steps 4-5.
 
 ## 5. Explicitly out of scope (1-D)
 
-- The leading tail (and tentative trailing tail) asymmetry — 3-D geometry.
+- The leading tail (and tentative trailing tail) asymmetry: 3-D geometry.
 - Stellar-wind interaction and true time-dependent response of the outflow.
 - The Gyr-scale fractionation history that produced the He-dominated
   envelope (the paper cites an evolution model for this; we take the
@@ -206,4 +206,4 @@ deliverable.
 This target is a driver, not a competitor, for `oxygen_chemistry_new_plan.md`:
 WP2 *is* phases P1/P2 exercised on a real science case, and WP1 is the P3
 diffusion item.  The genuinely new physics opened here is the He-dominated
-limit (WP0) — everything else reuses planned work.
+limit (WP0): everything else reuses planned work.

@@ -82,7 +82,7 @@ on. Two ways to do it; the first is recommended:
   (~30 x 5 us against 5 ms of work is still acceptable at 16 threads, but
   it does not improve with more threads).
 
-Caveat measured on this code before (`Update_EXHALE.md` section 145 and the
+Caveat measured on this code before (`Update_EXHALE_stage1.md` section 145 and the
 Codex review item 4.1): changing explicit-shape dummies to assumed-shape
 moved the `-O3` arithmetic and broke byte-identity. The kernel must keep
 explicit-shape arrays (pass `j_lo, j_hi` and the full arrays, loop over the
@@ -112,7 +112,7 @@ whole energy phase is 4.8 per cent, the sweep 84.5 per cent, measured
 2026-09-05 at 1 thread).
 
 What the reading exposed instead was a defect, fixed the same day
-(`Update_EXHALE.md` section 170): the heating and cooling `ioniz_eq` returned
+(`Update_EXHALE_stage1.md` section 170): the heating and cooling `ioniz_eq` returned
 were those of the composition BEFORE its sweep. With the assembly moved after
 the sweep, the sweep's returned `cool` IS the cooling of the state the energy
 update starts from, and the energy update's first `eval_cool` was removed on
@@ -153,7 +153,7 @@ matters.
 ## 4. What this does not address
 
 The number of steps. A marched hot-Uranus layer needs 1e6-1e7 s of model
-time to relax thermally at ~2 s per step (`Update_EXHALE.md` section 163.5);
+time to relax thermally at ~2 s per step (`Update_EXHALE_stage1.md` section 163.5);
 a 4-5x faster step turns days into a day, and no per-step speed-up turns it
 into an hour. That needs an implicit treatment of the slow rows or a
 steady solver that reaches the layer, which is a different plan.

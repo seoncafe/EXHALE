@@ -8,10 +8,13 @@ Escape radius [R_p]: 1.50
 He/H number ratio: 0.0851
 2D approximate method: Rate/2 + Mdot/2
 Parent star mass [M_sun]: 1.3521
-Spectrum type: Power-law
-Power-law index: -1.0
+Spectrum type: Load from file..
+Spectrum file: ../../inputdata/sed/wasp121b_composite_huang2023.txt
 Use only EUV? False
 [E_low,E_mid,E_high] = [ 13.60 , 123.98 , 1.24e3 ]
+# The two luminosity lines below are mandatory input, but the loaded SED
+# supersedes their values: read_sed recomputes LX and LEUV by integrating
+# the photon grid it builds from the file (bands split at E_mid).
 Log10 of X-ray luminosity [erg/s]: 29.46
 Log10 of EUV luminosity [erg/s]: 30.42
 Grid type: Mixed

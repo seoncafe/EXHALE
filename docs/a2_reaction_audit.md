@@ -11,13 +11,13 @@ rates here.
 
 What M1 produced:
 
-- `src/modules/lower_atmosphere/oxygen_rates.f90` — the coefficients, the
+- `src/modules/lower_atmosphere/oxygen_rates.f90`: the coefficients, the
   Shomate thermodynamic table, and the detailed-balance routine. It is
   **deliberately absent from `SRC` in the `Makefile`** and no existing module
   was touched; M2 connects it.
 - `src/tests/a2_m1/a2_m1_rate_check.f90` and its saved output
-  `a2_m1_rate_check.out` — the Fortran driver.
-- `src/tests/a2_m1/a2_m1_thermo_xcheck.py` and `a2_m1_thermo_xcheck.out` — the
+  `a2_m1_rate_check.out`: the Fortran driver.
+- `src/tests/a2_m1/a2_m1_thermo_xcheck.py` and `a2_m1_thermo_xcheck.out`: the
   thermodynamic cross-check against a second, independent thermodynamic table.
 
 Neither test is part of any build. To regenerate them, from `src/tests/a2_m1/`:
@@ -39,9 +39,9 @@ memory or from a rate database without saying so.
 
 Eleven reactions were audited (O1-O12 of the design, with O11 and O12 resolved
 as described in section 6). **Seven are in the minimal set the measured budget
-supports — three rates and four photolysis channels; four are excluded, each
+supports: three rates and four photolysis channels; four are excluded, each
 with a measured reason, and O11 turned out not to be a separate reaction at
-all.** The network conserves H, O, C and charge reaction by reaction — the
+all.** The network conserves H, O, C and charge reaction by reaction: the
 driver checks this mechanically and prints `CONSERVATION: PASS`.
 
 Eight source discrepancies were found. Four of them change a rate that this
@@ -60,8 +60,9 @@ option will actually use:
    (1992), Baulch et al. (2005) and Tsang & Hampson (1986) are combustion
    evaluations and **none of them contains any O(1D) chemistry at all**. The
    value adopted here is the IUPAC evaluation, 1.1e-10. VULCAN's 2.87e-10,
-   cited to Tully (1975), is an RRKM extrapolation and disagrees with four
-   independent room-temperature measurements by a factor 2.6.
+   cited to Tully (1975), is the 300 K output of a statistical phase-space
+   model, read in the published paper, and disagrees with four independent
+   room-temperature measurements by a factor 2.6.
 3. **The apparent two-decade disagreement on O9 is a third-body-efficiency
    difference, not a disagreement about the reaction.** VULCAN's value *is*
    Baulch's H2O-collider recommendation; Photochem's is a single shock-tube
@@ -95,14 +96,14 @@ at the HD 189733 b base (section 3).
 | **O1** | `OH + H2 -> H2O + H` | `3.6e-16 T^1.52 exp(-1740/T)` | 250-2500 K | ±0.1 at 250 K rising to ±0.3 at 2500 K | Baulch et al. (2005), JPCRD 34, 757, Table 4.1 and data sheet **p. 1029** | 1 (reference) | **yes** |
 | **O2** | `O + H2 -> OH + H` | `6.34e-12 exp(-4000/T) + 1.46e-9 exp(-9650/T)` | 298-3300 K | ±0.2 over the whole range | Baulch et al. (2005), Table 4.1 and data sheet **p. 804** | 2.6e-2 | **yes** |
 | **O3** | `H2O + hv -> OH + H` | quantum yield 0.89 / 0.78 / 0.89 / 1.00 on bands B1-B4 | see section 7 | see section 7 | Stief, Payne & Klemm (1975) and Slanger & Black (1982), by way of JPL Publication 19-5 entry **B2, pp. 4-37 to 4-42** | dominant H2O sink | **yes** |
-| **O4** | `H2O + hv -> H2 + O(1D)` | 0.11 / 0.10 / 0.11 / 0.00 | as O3 | as O3 | as O3 | — | **yes** |
-| **O5** | `H2O + hv -> O + H + H` | 0.00 / 0.12 / 0.00 / 0.00 | as O3 | as O3 | as O3 | — | **yes** |
+| **O4** | `H2O + hv -> H2 + O(1D)` | 0.11 / 0.10 / 0.11 / 0.00 | as O3 | as O3 | as O3 | - | **yes** |
+| **O5** | `H2O + hv -> O + H + H` | 0.00 / 0.12 / 0.00 / 0.00 | as O3 | as O3 | as O3 | - | **yes** |
 | **O6** | `O(1D) + H2 -> OH + H` | `1.1e-10`, temperature-independent | 200-350 K, used beyond it | ±0.1 at 298 K | Atkinson et al. (2004), Atmos. Chem. Phys. 4, 1461, data sheet **I.A2.18, pp. 1508-1509** | 1.9e-2 | **yes** |
-| **O7** | `OH + hv -> O + H` | single merged channel, yield 1 | 0.06-264.9 nm grid | not evaluated | Leiden default; Heays, Bosman & van Dishoeck (2017), A&A 602, A105, **sec. 3.1 and Table 1** | — | **yes, with a caveat** |
+| **O7** | `OH + hv -> O + H` | single merged channel, yield 1 | 0.06-264.9 nm grid | not evaluated | Leiden default; Heays, Bosman & van Dishoeck (2017), A&A 602, A105, **sec. 3.1 and Table 1** | - | **yes, with a caveat** |
 | **O8** | `O + H + M -> OH + M` | `k0 = 1.3e-29 T^-1` | none stated | uncertainty factor **10** | Tsang & Hampson (1986), JPCRD 15, 1087, entry 5,4, data sheet **p. 1111**, summary **p. 1091** | 7.8e-9 | no |
 | **O9** | `H + OH + M -> H2O + M` | `k0(N2) = 6.1e-26 T^-2.0` (Ar 2.3e-26, H2O 3.9e-25) | 300-3000 K | ±0.5 (N2), ±0.3 (Ar), ±0.5 (H2O) | Baulch et al. (1992) Table 3 **p. 428**, data sheets **pp. 496-498**; unchanged in Baulch et al. (2005) **p. 913** | 9.7e-8 | no |
 | **O10** | `OH + OH -> H2O + O` | `5.56e-20 T^2.42 exp(+970/T)` | 250-2400 K | ±0.15 | Baulch et al. (2005), Table 4.1 and data sheet **p. 1032** | 5.5e-7 | no |
-| **O11** | `O(1D) + M -> O + M` | — | — | — | resolved inside O6's coefficient; see section 6 | ≤5% of O6 | no |
+| **O11** | `O(1D) + M -> O + M` | - | - | - | resolved inside O6's coefficient; see section 6 | ≤5% of O6 | no |
 | **O12** | `O(1D) + H2O -> OH + OH` | `2.2e-10`, temperature-independent | 200-350 K | ±0.1 at 298 K | Atkinson et al. (2004), data sheet **I.A2.19, p. 1510** | 2.8e-5 | no |
 
 **Reverse rates are not transcribed.** O1, O2, O8, O9 and O10 run in near
@@ -174,7 +175,7 @@ Gross forward rates with the adopted coefficients (driver section 5):
 
 O8, O9, O10 and O12 are seven decades or more below O1 and are excluded. They
 are transcribed in the module anyway, so that the record is a value with a
-verdict rather than an omission — the same treatment `mol_rates.f90` gives
+verdict rather than an omission: the same treatment `mol_rates.f90` gives
 R21/R22.
 
 **Both three-body reactions are deeply in the low-pressure limit here.** The
@@ -197,9 +198,9 @@ report of that run. With the coefficients adopted here they move:
 **The design's finding that O(1D) beats ground-state O at this level does not
 survive the change of O6's source.** With VULCAN's Tully value O6 is 5.5% of
 O1 against O2's 5.3%; with the IUPAC value O6 is 1.9% against O2's 2.6%. The
-qualitative point the design draws from it — that O(1D) is not lumpable into
+qualitative point the design draws from it (that O(1D) is not lumpable into
 ground-state O, being three decades less abundant and still comparable in
-effect — stands and is if anything strengthened. The specific claim that it is
+effect) stands and is if anything strengthened. The specific claim that it is
 "twice as effective" is a property of the rate set used, not of the physics.
 Section 8 records the correction made to the design.
 
@@ -217,7 +218,7 @@ Ratios below are from the driver's section 1.
 
 | source | expression | range |
 |---|---|---|
-| **adopted** — Baulch et al. (2005) p. 1029 | `3.6e-16 T^1.52 exp(-1740/T)` | 250-2500 K |
+| **adopted**: Baulch et al. (2005) p. 1029 | `3.6e-16 T^1.52 exp(-1740/T)` | 250-2500 K |
 | Baulch et al. (1992) p. 552 = `zahnle_earth.yaml` (as 1.740708e-16) | `1.7e-16 T^1.6 exp(-1660/T)` | 300-2500 K |
 | VULCAN id 1, Oldenborg & Loge (1992) | `3.57e-16 T^1.52 exp(-1740/T)` | 250-2580 K |
 
@@ -238,15 +239,15 @@ The 1992 data sheet states its provenance: the recommendation is Zellner's
 
 | source | expression | range | Δlog k |
 |---|---|---|---|
-| **adopted** — Baulch et al. (2005) p. 804 | `6.34e-12 exp(-4000/T) + 1.46e-9 exp(-9650/T)` | 298-3300 K | ±0.2 |
+| **adopted**: Baulch et al. (2005) p. 804 | `6.34e-12 exp(-4000/T) + 1.46e-9 exp(-9650/T)` | 298-3300 K | ±0.2 |
 | Baulch et al. (1992) p. 430 | `8.5e-20 T^2.67 exp(-3163/T)` | 300-2500 K | ±0.5 at 300 K falling to ±0.2 above 500 K |
-| both networks | `8.5e-20 T^2.67 exp(-3160/T)` | — | — |
+| both networks | `8.5e-20 T^2.67 exp(-3160/T)` | - | - |
 
 Measured ratios to the adopted value: the 1992 form is 0.897 at 300 K,
 **1.836 at 864 K**, 1.750 at 1000 K, 0.885 at 2500 K.
 
 Two findings. First, **both networks carry `exp(-3160/T)` where the published
-value is `exp(-3163/T)`** — a 3 K slip worth 0.1% at 1000 K, harmless but a
+value is `exp(-3163/T)`**: a 3 K slip worth 0.1% at 1000 K, harmless but a
 transcription error in both. Second, the 2005 re-evaluation changed the
 functional form and the rate at the base temperature by a factor 1.84, which is
 larger than either evaluation's own uncertainty band in the 700-1200 K window.
@@ -254,20 +255,20 @@ This is the largest single change this audit makes to a rate in the minimal
 set.
 
 The two networks agree with each other to 6.6e-4 in `A` and exactly in `b` and
-`Ea`, so the transcription of the 1992 form had an independent check — which is
+`Ea`, so the transcription of the 1992 form had an independent check, which is
 exactly why neither network caught that the recommendation had been superseded.
 
 ### O6 `O(1D) + H2 -> OH + H`
 
 | source | value | range | what it is |
 |---|---|---|---|
-| **adopted** — Atkinson et al. (2004) I.A2.18 | `1.1e-10` | 200-350 K | mean of four independent measurements, IUPAC evaluated |
-| VULCAN id 615, cited to Tully (1975) | `2.87e-10` | 100-2100 K | RRKM extrapolation (NIST record `1975TUL1893:3`) |
+| **adopted**: Atkinson et al. (2004) I.A2.18 | `1.1e-10` | 200-350 K | mean of four independent measurements, IUPAC evaluated |
+| VULCAN id 615, cited to Tully (1975) | `2.87e-10` | 300 K, model computed over 100-2100 K | statistical phase-space model, Table II "Theory (present results)" |
 | `zahnle_earth.yaml`, key `Ba92` | `1.5e-10` | none stated | **source not traceable** |
 
 The IUPAC preferred value and its reliability were read from the data sheet:
 "k = 1.1×10−10 cm3 molecule−1 s−1 , independent of temperature over the range
-200–350 K", Δlog k = ±0.1 at 298 K, and the comment that the recommendation is
+200-350 K", Δlog k = ±0.1 at 298 K, and the comment that the recommendation is
 the mean of Davidson et al. (1976, 1977), Wine and Ravishankara (1981), Force
 and Wiesenfeld (1981) and Talukdar and Ravishankara (1996), "all of which are
 in excellent agreement."
@@ -282,12 +283,33 @@ Three separate problems, all recorded at the code site:
   Tsang & Hampson (1986) were all searched for O(1D) chemistry and contain
   none; they are combustion evaluations. Where Photochem's 1.5e-10 comes from
   could not be established.
-- **Tully's number is a model, not a measurement**, and it contradicts the four
-  measurements the IUPAC evaluation averages by a factor 2.6 at the one
-  temperature where they overlap. Adopting it would mean preferring a 1975
-  statistical extrapolation to the measured room-temperature rate.
+- **Tully's number is a model, not a measurement.** The paper was obtained and
+  read. His abstract describes "A statistical model of chemical reaction ...
+  applied to collisions of O(1D) atoms with the molecules H2, N2, CO, CO2, N2O,
+  O3, and H2O. Rate constants for reaction and deactivation are computed over
+  the temperature range 100-2100 K"; the phase-space form is that of his
+  Refs. 4 (Robinson & Holbrook) and 5 (Pechukas, Light & Rankin). The 2.87 is
+  the "Theory (present results)" column of his Table II, p. 1896, whose caption
+  reads "Rate constants for removal of O(1D) at 300 K", in units of
+  1e-10 cm^3/sec. So the VULCAN transcription of the digits holds, but two
+  things it carries do not. It is a **300 K** value: Tully's Fig. 2 has the H2
+  removal rate rising with temperature, so a flat 2.87e-10 to 2100 K flattens
+  his own temperature dependence as well as leaving his computed range.
+  And the "Experiment" it agrees with, 2.9e-10, is his Ref. 10, the preferred
+  values of Hampson et al. (1973), J. Phys. Chem. Ref. Data 2, 267, drawn from
+  Cvetanovic's compilation of **relative** rate constants: a 1973 evaluation,
+  not one of the four independent determinations of 1976-1996 that the IUPAC
+  evaluation averages. Adopting Tully's value would mean preferring a 1975
+  statistical model, anchored to a 1973 relative-rate evaluation, to four later
+  direct measurements.
+- **What Tully does support is the channel.** For hydrogen his model "predicts
+  that essentially all (> 99.9%) of the O(1D) removal rate is due to reaction
+  producing OH + H. This is in complete agreement with experiment." That is the
+  same conclusion as the IUPAC comment used above, from an independent
+  direction, and it is why the evaluated total is the right number for the
+  reactive channel.
 
-**This is the largest remaining uncertainty in the A2 rate set** — a factor 2.6
+**This is the largest remaining uncertainty in the A2 rate set**: a factor 2.6
 on a channel that is 2-6% of the net H2 loss, i.e. a few percent on the answer
 the option exists to compute. M2 should carry it as an explicit sensitivity.
 
@@ -332,7 +354,7 @@ Photochem's 1.0e-12 is the same placeholder it puts on `H + H (+M)` and
 `O + O (+M)`, so it carries no information. Since `Pr` is 1.2e-8 at the base,
 the choice does not matter there.
 
-### O9 `H + OH + M -> H2O + M` — the two-decade disagreement, resolved
+### O9 `H + OH + M -> H2O + M`: the two-decade disagreement, resolved
 
 Baulch et al. (1992) p. 496-498, carried unchanged into Baulch et al. (2005)
 p. 913, recommends three collider-resolved low-pressure limits over
@@ -365,7 +387,7 @@ with respect to argon. Dividing by `N_A^2 = 3.6266e47` puts the argon value at
 `1.034e-26 T^-2.1 cm^6 molecule^-2 s^-1`; the coefficient Photochem carries is
 1.6% above that, far inside the paper's own ±25%. So the NIST transcription
 (`2003JAV/NAU371-377:10`) is confirmed in coefficient, exponent and the
-2790-3200 K range — and it adds one thing the transcription in this document
+2790-3200 K range, and it adds one thing the transcription in this document
 did not carry: **the collider is argon**, not a generic third body.
 
 That changes the comparison. The two networks are quoting different colliders,
@@ -374,8 +396,8 @@ against Baulch's own argon value, Javoy is 3.9x low at 300 K and 5.0x low at
 3000 K; against the N2 value adopted here it is 10.4x low at 300 K and 13.1x
 low at 3000 K, which is what the earlier "about 10 and 13" said. The 66-81x
 between the two networks over 300-2500 K is therefore **about 17x of collider
-times 3.9-4.9x of source** — Baulch's own H2O/Ar ratio is 17.0 and Javoy's
-assumed efficiency is 18 — and neither network is using a value appropriate to
+times 3.9-4.9x of source** (Baulch's own H2O/Ar ratio is 17.0 and Javoy's
+assumed efficiency is 18) and neither network is using a value appropriate to
 an H2/He bath.
 
 This module adopts Baulch's N2 value, N2 being the diatomic collider of the
@@ -391,7 +413,7 @@ Table I entry (14) `H + OH -> H2O`, which has also now been read. It is one of
 prints no Arrhenius form: it tabulates `k_rec,inf = 2.1e-10` at 300 K and
 `2.6e-10` at 2100 K in `cm^3 molecule^-1 s^-1`, and `2.7e-10 exp(-75/T)` is
 simply the two-point fit through them (2.10e-10 and 2.61e-10). That is where
-the "300-2100 K" of the NIST record (`1985COB/TRO1010-1015:15`) comes from —
+the "300-2100 K" of the NIST record (`1985COB/TRO1010-1015:15`) comes from,
 the two tabulated temperatures, not a stated validity range. Two details the
 transcription loses: the method is the simplified statistical adiabatic channel
 model of the paper's Part I, with the looseness parameter fitted (`alpha = 1.0
@@ -401,7 +423,7 @@ table's footnote 14 is the isotope exchange `OH + D -> OD + H` (Margitan,
 Kaufman & Anderson 1975; Howard & Smith 1982), not a direct measurement of
 `H + OH` association. Baulch recommends no `k_inf` at all.
 
-The reaction stays out of the minimal set — it is 9.7e-8 of O1 — so none of
+The reaction stays out of the minimal set (it is 9.7e-8 of O1), so none of
 this changes a number the option uses. It is recorded because a promotion of
 O9 must not inherit either network's value.
 
@@ -409,7 +431,7 @@ O9 must not inherit either network's value.
 
 | source | expression | range | Δlog k |
 |---|---|---|---|
-| **adopted** — Baulch et al. (2005) p. 1032 | `5.56e-20 T^2.42 exp(+970/T)` | 250-2400 K | ±0.15 |
+| **adopted**: Baulch et al. (2005) p. 1032 | `5.56e-20 T^2.42 exp(+970/T)` | 250-2400 K | ±0.15 |
 | Baulch et al. (1992) p. 555 = `zahnle_earth.yaml` (as 2.549944e-15) | `2.5e-15 T^1.14 exp(-50/T)` | 250-2500 K | ±0.2 |
 
 Measured, the 1992 form is 1.013x the 2005 one at 300 K, **2.41x at 864 K** and
@@ -480,7 +502,7 @@ arithmetic.
 ### The real test: a published reverse rate
 
 Baulch et al. (1992) Table 1 p. 418 recommends the reverse of O1 as a rate in
-its own right — `H + H2O -> OH + H2 = 7.5e-16 T^1.6 exp(-9270/T)`, 300-2500 K,
+its own right: `H + H2O -> OH + H2 = 7.5e-16 T^1.6 exp(-9270/T)`, 300-2500 K,
 Δlog k = ±0.2, data sheet p. 504. Reversing their own forward rate with the
 Shomate table must reproduce it:
 
@@ -500,7 +522,7 @@ instead gives 1.03-1.19, the extra being the change in the forward rate itself.
 The same data sheet prints its own thermodynamic data for the reaction, taken
 there from the Sandia Chemkin compilation (Kee, Rupley & Miller 1987):
 `dH(298) = -62.9 kJ/mol`, `dS(298) = -10.9 J/K/mol`. The Shomate table gives
-**-62.815 kJ/mol** and **-10.837 J/K/mol** — 0.13% and 0.6%. Its
+**-62.815 kJ/mol** and **-10.837 J/K/mol**: 0.13% and 0.6%. Its
 three-constant fit `Kp = 0.113 T^0.0639 exp(7680/T)` is reproduced to
 1.10-1.19 over 300-2500 K, the residual being the fit's own coarseness; the
 1992 evaluation warns in its section 2.6 that a rate obtained by reversal is
@@ -522,7 +544,7 @@ Burcat's NASA-9 polynomials, which VULCAN uses
   0.03 J/mol/K, so it is purely an enthalpy-of-formation difference.
 
 That offset multiplies any reverse rate by `exp(1.709 kJ/mol / RT)` per OH in
-the reaction: 1.99 at 300 K, 1.23 at 1000 K, 1.09 at 2000 K — and the square of
+the reaction: 1.99 at 300 K, 1.23 at 1000 K, 1.09 at 2000 K, and the square of
 that for a reaction with two OH.
 
 **The NIST-JANAF value is kept, and the reason is measured, not assumed.** The
@@ -533,7 +555,7 @@ would introduce an inconsistency that is not in either the rate or the
 thermodynamics separately. A run that needs the modern Active Thermochemical
 Tables value must change the OH `F` coefficient by -1.71 and say so.
 
-For completeness the O10 pair was also tested — reversing `OH + OH -> H2O + O`
+For completeness the O10 pair was also tested: reversing `OH + OH -> H2O + O`
 against VULCAN's separately listed `O + H2O -> OH + OH` (id 5). The 1992
 forward reverses to within 0.82-1.36 of it and the 2005 forward to within
 0.44-1.00. **That test turned out to be weaker than it looks**: the much better
@@ -550,7 +572,7 @@ Section 7 of the design asks M1 for "an explicit verdict on O10/O11/O12", and
 section 2.4 defines only O1-O11. O12 did not exist. The gap is closed as
 follows and the design is corrected (section 8).
 
-**O10 `OH + OH -> H2O + O` — EXCLUDED from the minimal set, transcribed.**
+**O10 `OH + OH -> H2O + O`: EXCLUDED from the minimal set, transcribed.**
 Measured at 5.5e-7 of O1 at the HD 189733 b base, seven decades below the
 dominant channel. It is kept in the module because it is the only reaction
 whose opposite direction appears explicitly in the other network, which made it
@@ -558,7 +580,7 @@ the first candidate for a detailed-balance test; section 5 explains why that
 test proved weak. Its source attribution in `zahnle_earth.yaml` is partly
 wrong and its recommendation was superseded in 2005, both recorded above.
 
-**O11 `O(1D) + M -> O + M` — EXCLUDED, and the reason is now published rather
+**O11 `O(1D) + M -> O + M`: EXCLUDED, and the reason is now published rather
 than assumed.** The design left this as "to be identified at M1". The IUPAC
 data sheet that supplies O6 settles it: the quoted `1.1e-10` is the **total**
 `k1 + k2`, where channel 2 is exactly this quenching, `O(1D) + H2 -> O(3P) +
@@ -572,13 +594,13 @@ which is shorter than every other time scale in the problem by many decades, so
 the local steady state the design proposes for O(1D) is the accurate treatment
 and not a shortcut.
 
-**O12 — the design's M1 row names a reaction its section 2.4 never defined.**
+**O12: the design's M1 row names a reaction its section 2.4 never defined.**
 The audit fills the slot with the reaction that most deserves it,
 `O(1D) + H2O -> OH + OH`: it is the second O(1D) sink after O6, it is carried
 by both reference networks, and it is the one channel that could have upset the
 O(1D) steady state, because H2O is 43-55% of the oxygen and O(1D) is made
 inside the water. **EXCLUDED, measured.** At the HD 189733 b base it is
-2.8e-5 of O1 and it gives O(1D) a lifetime of 1.13 s against 1.6e-3 s from O6 —
+2.8e-5 of O1 and it gives O(1D) a lifetime of 1.13 s against 1.6e-3 s from O6:
 700x slower, so it shortens the O(1D) lifetime by 0.15%. Its adopted value
 is the IUPAC evaluation, as above.
 
@@ -596,13 +618,30 @@ four counts. All four are now written into the module header.
    word "recommend" attaches only to the absorption cross section. The yields
    appear in the "Photolysis Quantum Yield and Product Studies" paragraph as a
    literature summary, and at Ly-alpha the entry sets out two *disagreeing*
-   sets — Slanger & Black's 0.78 / 0.10 / 0.12 and Mordaunt et al.'s
-   0.64 / 0.11 / 0.11 with a fourth channel `OH(A 2Sigma+) + H` at 0.14 —
+   sets: Slanger & Black's 0.78 / 0.10 / 0.12 and Mordaunt et al.'s
+   0.64 / 0.11 / 0.11 with a fourth channel `OH(A 2Sigma+) + H` at 0.14,
    without choosing between them.
-2. **The Ly-alpha 0.78 is `Phi2 + Phi4`**, the sum of the ground-state
-   `OH(X 2Pi) + H` channel and the electronically excited `OH(A 2Sigma+) + H`
-   channel. Writing it as one `OH + H` channel buries the OH(A) production,
-   which Mordaunt et al. split off at 0.14.
+2. **The Ly-alpha 0.78 is `Phi1 + Phi2`** in Slanger & Black's own numbering,
+   read in the published paper: their Eqs. (1)-(4) are `OH(X 2Pi) + H`,
+   `OH(A 2Sigma+) + H`, `O(1D) + H2(X 1Sigma_g+)` and `O(3P) + 2H`, and their
+   p. 2435 reads "We may thus set yields of 78% for processes 1 + 2, 10% for
+   process 3, and 12% for process 4". So the 0.78 is the ground-state channel
+   plus the electronically excited one, and writing it as a single `OH + H`
+   channel buries the OH(A) production. Slanger & Black put the OH(A) fraction
+   inside the 0.78 at 8% ("the known 8% yield for process 2 at 1216 A",
+   p. 2436, from their reference 28); Mordaunt et al. split off 0.14. Their 8%
+   is a v = 0 fraction only, because OH(A 2Sigma+) is predissociated for
+   v >= 1, and they therefore read part of the 12% three-body branch as
+   H + OH(A, v >= 1) that then falls apart: "the yields into processes 2 and 4
+   should perhaps be summed". The final products are `O(3P) + 2H` on either
+   reading, so 0.12 stands as the three-body yield.
+   **The three yields are not independent measurements.** Slanger & Black
+   adopt the O(1D) yield of Stief et al. as the standard the oxygen signal is
+   scaled against ("earlier work had indicated an O(1D) yield of 11% in this
+   wavelength region"), obtain the three-body branch relative to it ("If 10% is
+   taken as the O(1D) quantum yield, then the yield for process 4 is 12%"), and
+   the 78% is what normalization leaves. A revision of the O(1D) yield moves
+   all three.
 3. **The 1.00 / 0.00 of the long-wavelength band is a rounding** of Stief,
    Payne & Klemm's `>= 0.99` and `<= 0.01` for 145-185 nm. Their 105-145 nm
    values, 0.89 / 0.11, are band averages over a lithium-fluoride flash lamp;
@@ -611,7 +650,7 @@ four counts. All four are now written into the module header.
    wavelength**, although its four ratio triplets are the same numbers. Its
    Ly-alpha node sits at 121.0 nm, 0.567 nm short of the line, and VULCAN
    interpolates linearly between nodes, so at the actual line center it uses
-   **0.837 / 0.105 / 0.058** — the three-body branch is 0.058 there, not 0.12.
+   **0.837 / 0.105 / 0.058**: the three-body branch is 0.058 there, not 0.12.
    It also has no flat 1231-1450 A interval, ramping instead from 0.89 to 1.00.
    A third source, the PHIDRATES tables behind Huebner & Mukherjee (2015),
    gives 0.75 / 0.10 / 0.15 flat over 984-1304 A and attributes it to the same
@@ -652,7 +691,7 @@ of order a few kJ/mol out of 428-927, i.e. under 1%. The Shomate fits do not
 reach 0 K, so the approximation is used and stated at the code site. The
 O(1D) excitation energy is the difference of the `F` coefficients that
 `zahnle_earth.yaml` carries for `O1D` and `O`, and that file's own note on the
-entry is "Estimated from thermodynamic data at 298 K and species O" — it is a
+entry is "Estimated from thermodynamic data at 298 K and species O": it is a
 thermal value referred to the statistically averaged 3P term, not a
 spectroscopic `1D2 - 3P2` term difference.
 
@@ -666,9 +705,9 @@ actually say. All were corrected in place.
 | # | where | what the design said | what the sources say |
 |---|---|---|---|
 | 1 | §2.4 O1, O2, O10 source column | Baulch et al. (1992) | superseded for all three by Baulch et al. (2005); adopted, sizes in section 4 |
-| 2 | §2.4 O6 source column | "VULCAN's `615`, cited to Tully (1975)" — with no note that Photochem gives 1.5e-10 | Tully's is an RRKM extrapolation contradicted by four measurements; Photochem's `Ba92` key is untraceable; the IUPAC evaluation is adopted |
+| 2 | §2.4 O6 source column | "VULCAN's `615`, cited to Tully (1975)": with no note that Photochem gives 1.5e-10 | Tully's is an RRKM extrapolation contradicted by four measurements; Photochem's `Ba92` key is untraceable; the IUPAC evaluation is adopted |
 | 3 | §2.4 O8 "why it is in" | "the three-body closure of O2 at the dense base" | O8 is `O + H + M -> OH + M` and has nothing to do with O2; also, Tsang & Hampson give it no temperature range and call it a factor-10 estimate |
-| 4 | §2.4 O9 | "the one place the two networks disagree by two decades in the low-pressure limit" — presented as unresolved | the disagreement is 6.4x of third-body efficiency times ~11x of source; resolved in section 4 |
+| 4 | §2.4 O9 | "the one place the two networks disagree by two decades in the low-pressure limit", presented as unresolved | the disagreement is 6.4x of third-body efficiency times ~11x of source; resolved in section 4 |
 | 5 | §2.4 O10 source | "Baulch et al. (1992) + Lifshitz & Michael (1991)" | Lifshitz & Michael is the reverse direction and is not in the 1992 data sheet; it is a 2005 reference |
 | 6 | §2.4 O3-O5 source, §2.6 | "Branching ratios: JPL Evaluation 19 (Burkholder et al. 2020) with …" | JPL 19-5 does not recommend H2O quantum yields; see section 7 |
 | 7 | §2.6 | "`VULCAN/thermo/photo_cross/H2O/H2O_branch.csv`, whose four rows are the same numbers" | the ratio triplets are the same but the wavelength dependence is not, and the difference is largest at Ly-alpha; see section 7 |
@@ -686,16 +725,19 @@ Two further corrections that are not source discrepancies:
 
 ## 9. What M1 does not settle
 
-- **One publication could not be obtained** and its value enters this audit
-  only through a database transcription, which is said at the place it is
-  used: Tully (1975) for O6's alternative value. It supplies no coefficient
-  that the adopted set uses. Javoy et al. (2003) and Cobos & Troe (1985), for
-  O9's Photochem low- and high-pressure limits, were obtained after the first
-  pass and are now quoted from the published papers in section 3; both NIST
-  transcriptions held, and reading them added the argon collider of the Javoy
-  measurement and the tabulated, rather than fitted, form of the Cobos & Troe
-  value. Slanger & Black (1982) could not be obtained either; its Ly-alpha
-  yields enter through the JPL 19-5 entry that quotes them, which was read.
+- **Every publication this audit rests on has now been read.** Tully (1975),
+  for O6's alternative value, and Slanger & Black (1982), for the Ly-alpha
+  water photolysis yields, were obtained after the first pass and are quoted
+  from the published papers in sections 4 and 7; both database transcriptions
+  of the digits held, and reading them settled what the digits are (Tully: a
+  computed 300 K value with its own temperature dependence, compared against a
+  1973 relative-rate evaluation; Slanger & Black: 0.78 is Phi1 + Phi2 in their
+  numbering, and only one of the three yields is independent of Stief et al.).
+  Javoy et al. (2003) and Cobos & Troe (1985), for O9's Photochem low- and
+  high-pressure limits, were likewise obtained after the first pass and are now
+  quoted from the published papers in section 3; both NIST transcriptions held,
+  and reading them added the argon collider of the Javoy measurement and the
+  tabulated, rather than fitted, form of the Cobos & Troe value.
 - **O6's factor 2.6 is the open physics.** It is 2-6% of the net H2 loss on the
   one planet the option exists for, and it should be an M2 sensitivity rather
   than a fixed number.

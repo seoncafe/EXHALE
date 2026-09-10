@@ -3,7 +3,7 @@
 Written for a fresh session. **Read `docs/code_status_20260905.md` first**: it is the
 physics-by-physics state of the code and the task list; this file keeps the
 last session's runs, paths and pitfalls. Everything below was verified in this session
-unless marked otherwise; the section numbers refer to `docs/Update_EXHALE.md`.
+unless marked otherwise; the section numbers refer to `docs/Update_EXHALE_stage1.md`.
 
 ## 1. State of the tree
 
@@ -178,7 +178,7 @@ onto a new grid; worth moving under `src/utils/`).
   post-process has no molecular state); documented in section 169.5.
 * Snapshots written before section 169.3 carry inconsistent ghost rows;
   they restart, but their ghost rows must not be compared.
-* `docs/Update_EXHALE.tex`/`.pdf` and `docs/EXHALE_user_manual.tex`/`.pdf`
+* `docs/Update_EXHALE_stage1.tex`/`.pdf` and `docs/EXHALE_user_manual.tex`/`.pdf`
   were modified earlier in the series; whether they are current against the
   `.md` changelog was not checked in this session.
 * `interp_ic.py` lives only in the session scratch; move it under `src/utils/`

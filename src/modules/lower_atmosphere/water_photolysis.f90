@@ -28,21 +28,18 @@
       ! named incident flux is the precedent lyman_werner.f90 already sets
       ! for exactly this reason, and this module follows it.
       !
-      ! The five bands are NOT free.  Four edges are fixed by the H2O
+      ! The four bands are NOT free.  Their edges are fixed by the H2O
       ! branching ratios -- the three-body branch H2O + hv -> O + H + H
       ! opens only in the interval that contains Ly-alpha and is 12% there,
       ! so Ly-alpha needs its own band on branching grounds alone, quite
-      ! apart from being a line rather than a continuum -- and the fifth,
-      ! 1110 A, is fixed by the absorber: it is where the H2 Lyman-Werner
-      ! system ends (Draine & Bertoldi 1996, footnote 4).
+      ! apart from being a line rather than a continuum.
       !
-      !   LW   912-1110 A   'Stellar LW flux'      (shared with H2)
-      !   B1  1110-1201 A   'Stellar FUV B1 flux'
+      !   LW   912-1201 A   'Stellar LW flux'      (shared with H2)
       !   B2   Ly-alpha, 1215.67 A, from the existing 'Stellar Lya flux'
       !   B3  1231-1450 A   'Stellar FUV B3 flux'
       !   B4  1451-2304 A   'Stellar FUV B4 flux'
       !
-      ! ONE INTERVAL, ONE FLUX, ONE BEAM.  Over 912-1110 A the same photons
+      ! ONE INTERVAL, ONE FLUX, ONE BEAM.  Over 912-1201 A the same photons
       ! are absorbed by H2 in lines and by H2O and OH in a continuum.  That
       ! is physics; what is not physics is counting their ENERGY twice.  It
       ! would be counted twice in two independent ways, and both are closed
@@ -50,11 +47,16 @@
       !   * on the way IN, if the interval's flux were supplied both as
       !     'Stellar LW flux' and again inside a band reaching across it.
       !     Hence the first band IS the Lyman-Werner interval and carries
-      !     that key's flux, and B1 starts at 1110 A.  (The two keys of the
-      !     earlier four-band form really did overlap: measured on the solar
-      !     spectrum the HD 209458 b example uses, the 912-1201 A integral
-      !     481.0 erg cm^-2 s^-1 is 343.0 + 137.9, and 343.0 was also
-      !     entered as the Lyman-Werner flux.)
+      !     that key's flux alone, and B2 starts where it ends.  The band
+      !     was split at 1110 A between 2026-08 and 2026-09-06, with the
+      !     1110-1201 A half carried by a separate 'Stellar FUV B1 flux'
+      !     key; that key is retired and the parser stops a run that states
+      !     it.  The split put the H2 line absorber astride the edge -- the
+      !     self-shielding table's line list reaches 1201 A -- so the table
+      !     rated 45 per cent more line absorptions than the 912-1110 A
+      !     beam lost.  On the solar spectrum the HD 209458 b example uses,
+      !     the 912-1201 A integral is 481.0 erg cm^-2 s^-1 and its two
+      !     halves were 343.0 and 137.9.
       !   * on the way DOWN, if each absorber attenuated its own private
       !     copy of the beam.  Section 3 below makes the three absorbers
       !     share one beam, so the photons one removes are gone for the
@@ -95,8 +97,8 @@
       ! optically thin column the absorbed photons are drawn with weight
       ! s(l), so their mean is <E>_b; in a saturated column every photon of
       ! the band is absorbed, so their mean is the band's own <hv>_b.
-      ! Measured, <E>_b/<hv>_b is 1.022 / 1.003 / 1.000 / 1.033 / 1.135 for
-      ! H2O on LW..B4 and 0.958 / 1.008 / 1.000 / 1.014 / 1.182 for OH.
+      ! Measured, <E>_b/<hv>_b is 1.027 / 1.000 / 1.033 / 1.135 for
+      ! H2O on LW..B4 and 0.970 / 1.000 / 1.014 / 1.182 for OH.
       !
       ! <hv>_b is adopted, for a reason that is a conservation law rather
       ! than a preference.  This model applies ONE transmission exp(-s_b N)
@@ -108,8 +110,8 @@
       ! whatever the state of the gas; that bound is what gate G4 of the
       ! design asks of the band ledger, and output/FUV_bands.txt measures
       ! it.  The price is in the optically THIN limit, where the heating per
-      ! dissociation is then wrong by the ratios above: low by 0.3% to 13.5%
-      ! for H2O, and low for OH except on LW, where it is 4.4% high.  Both
+      ! dissociation is then wrong by the ratios above: low by 0 to 13.5%
+      ! for H2O, and low for OH except on LW, where it is 3.0% high.  Both
       ! are far inside the band average's own spectral-shape uncertainty
       ! below, and <hv>_b is the accurate end of the two where it matters --
       ! the water layer this option exists for is optically thick in these
@@ -122,27 +124,30 @@
       ! its own band, because these cross sections fall by decades across a
       ! band while the Lyman-Werner lines do not.  Measured on the same
       ! files, replacing the flat F_lambda by a blackbody F_lambda changes
-      ! s_b by
+      ! s_b as follows.  The LW band is given as its two halves,
+      ! 912-1110 A and
+      ! 1110-1201 A, because the two move in opposite directions and a
+      ! merged number would hide that:
       !
-      !                H2O                        OH
-      !          3000K   5000K   9000K      3000K   5000K   9000K
-      !   LW    -60.0%  -43.4%  -22.9%     +89.3%  +70.6%  +41.0%
-      !   B1     +1.0%   -2.1%   -1.9%     -23.4%  -14.4%   -6.8%
-      !   B3    -67.3%  -45.8%  -21.7%     -17.2%  -15.0%   -8.3%
-      !   B4    -98.5%  -85.4%  -42.7%     -99.2%  -90.5%  -52.5%
+      !                    H2O                        OH
+      !              3000K   5000K   9000K      3000K   5000K   9000K
+      !   LW  short -60.0%  -43.4%  -22.9%     +89.3%  +70.6%  +41.0%
+      !   LW  long   +1.0%   -2.1%   -1.9%     -23.4%  -14.4%   -6.8%
+      !   B3        -67.3%  -45.8%  -21.7%     -17.2%  -15.0%   -8.3%
+      !   B4        -98.5%  -85.4%  -42.7%     -99.2%  -90.5%  -52.5%
       !
       ! and, on a REAL stellar spectrum rather than a blackbody -- the
       ! HD 189733 b flux at the planet that the P1 Photochem reference arm
       ! was run with, weighted properly -- s_b/s_b(flat) is
       !
-      !          H2O      OH
-      !   LW    1.028   0.781
-      !   B1    1.033   0.823
-      !   B3    1.349   1.070
-      !   B4    0.219   0.164
+      !                H2O      OH
+      !   LW  short   1.028   0.781
+      !   LW  long    1.033   0.823
+      !   B3          1.349   1.070
+      !   B4          0.219   0.164
       !
-      ! so LW and B1 are good to 3% for H2O and to 18-22% for OH on that
-      ! star, and B3 to about 35%, while
+      ! so both halves of LW are good to 3% for H2O and to 18-22% for OH on
+      ! that star, and B3 to about 35%, while
       ! B4 IS OFF BY A FACTOR 4.6 TO 6.1.  B4's cross section falls three
       ! decades from 1451 A to 2304 A, so almost all of a cool star's B4
       ! energy sits where the molecule barely absorbs, and a single average
@@ -152,18 +157,21 @@
       ! because leaving it out would silently drop photons, not because the
       ! average is good.
       !
-      ! THE 1110 A SPLIT MOVED THE SHAPE SENSITIVITY, IT DID NOT CREATE IT.
-      ! Nearly all of the earlier 912-1201 A band's blackbody sensitivity
-      ! sat in its 912-1110 A half, and splitting shows how large it is
-      ! there: 60% for H2O at 3000 K, and OH moves the OTHER WAY, +89%.  The
-      ! new B1 is by contrast the best-behaved band of the set for H2O
-      ! (<= 2%).  The merged band hid that by averaging two opposite trends,
-      ! so the split is more honest as well as being what the photon budget
-      ! requires.
+      ! WHERE INSIDE THE LW BAND ITS SHAPE SENSITIVITY SITS.  The two LW
+      ! rows above were measured while 1110 A was a band edge, and they are
+      ! kept as halves rather than merged because they say where the
+      ! sensitivity lives: nearly all of it is shortward of 1110 A (60% for
+      ! H2O at 3000 K, and OH moves the OTHER WAY, +89%), while the long
+      ! half is the best-behaved interval of the set for H2O (<= 2%).
+      ! Averaged over the whole band the two trends partly cancel, so the
+      ! single s_b below is less shape-sensitive than the short half and
+      ! more so than the long one; a star strongly tilted across
+      ! 912-1201 A cannot read its own error off one number, and the two
+      ! half-band rows are what it should read instead.
       !
       ! THE FAILURE CASE IS A BAND DOMINATED BY ONE EMISSION LINE, and for
       ! an M dwarf, whose FUV is line-dominated (C II 1335, Si IV 1394/1403,
-      ! C IV 1548/1551 all fall in B3 or B4), B1 and B3 are exactly that
+      ! C IV 1548/1551 all fall in B3 or B4), LW and B3 are exactly that
       ! case: a flat-continuum band average is then wrong by whatever the
       ! ratio of the line-position cross section to the band average happens
       ! to be.  That is the reason decision D1 of the design split the FUV
@@ -202,7 +210,7 @@
       ! rates below are LOWER bounds deep in the water layer.
       !
       ! THE LW BAND HAS A THIRD ABSORBER: H2, AND THE BEAM IS SHARED.
-      ! Over 912-1110 A the H2 Lyman and Werner lines take photons out of
+      ! Over 912-1201 A the H2 Lyman and Werner lines take photons out of
       ! the same beam H2O and OH draw on.  Write the beam's transmission to
       ! the star-ward face of a cell as the product of the two,
       !
@@ -211,15 +219,15 @@
       ! with tau_c the H2O + OH continuum depth and A the fraction of the
       ! band the H2 lines have removed,
       !
-      !     A(r) = int_r^top sigma_pump f_shield_DB96(N_H2) n_H2 dr' ,
+      !     A(N_H2) = int_0^N sigma_pump(N') dN' ,
       !
-      ! built from DB96's own self-shielding function and their dissociation
-      ! probability per pump (h2_band_equivalent_width header).  It stays on
-      ! DB96 even though the H2 dissociation RATE has moved to the Richings,
-      ! Schaye & Oppenheimer (2014) fit, because this integral has a closed
-      ! form only for DB96's function and its normalization against their
-      ! Tables 1-2 is exact; lyman_werner.f90 sec. 2 sets out why the two
-      ! fits coexist and which quantity each owns.  Then across
+      ! the column integral of the pump cross section of the SAME
+      ! level-resolved table the dissociation rate comes from
+      ! (h2_lw_band_photon_fraction_absorbed).  The beam therefore loses
+      ! exactly the photons the rate spends: sigma_pump is sigma_diss/p_eff
+      ! and p_eff is the dissociations per photon removed from the beam, so
+      ! the two sides are one absorption with one normalization.  Then
+      ! across
       ! one cell, with dA and dtau its own increments, the identity
       !
       !   T_out - T_in = e^{-tau_out} [ (1-A_out)(1 - e^{-dtau})
@@ -240,18 +248,28 @@
       ! Both factors are 1 for every band but LW and for every run without
       ! the other absorber, so nothing outside the shared interval changes.
       !
-      ! WHERE THIS STOPS BEING TRUE.  A is an equivalent width implied by a
-      ! fit to a RATE; DB96 never asked it to stay below 1.  Where it
-      ! reaches 1 the model says the lines have eaten the band, which is
-      ! outside the fit's range (1e14 < N_H2 < 3e21 cm^-2).  The
-      ! transmission is floored at zero and the run reports the largest A it
-      ! reached, rather than letting the beam go negative.
+      ! WHERE THIS STOPS BEING TRUE.  A is the fraction of the band photons
+      ! the lines take, so it cannot pass 1, and the table's own column
+      ! integral respects that at the top of its column axis
+      ! (h2_lw_band_photon_fraction_absorbed states the measured value).
+      ! Above that column the table is clamped at its edge cross section,
+      ! which goes on adding to A linearly, so A is capped at 1 there; a
+      ! capped A means the lines have eaten the band and the continuum
+      ! absorbers of the same interval see nothing, which is the physical
+      ! limit rather than a defect.  The run reports the largest A it
+      ! reached.
       !
       ! WHAT ELSE ABSORBS THESE BANDS, AND WHY IT IS NOT CARRIED.
-      !  - Atomic H does not: the bands lie longward of the 912 A Lyman
-      !    edge.  The H Lyman-series lines inside the LW band (Ly-beta
-      !    1025.7, Ly-gamma 972.5, ...) are line absorbers in a continuum
-      !    band and are not treated separately, exactly as
+      !  - Atomic H absorbs in its resonance LINES, never in its
+      !    photoionization continuum: every band lies longward of the 912 A
+      !    Lyman edge.  Band B2 IS one of those lines -- Ly-alpha, 1215.67 A
+      !    -- and its absorber is the strongest in the atmosphere, so the
+      !    transmission of the stellar Ly-alpha line through the atomic
+      !    hydrogen column is applied to it as the tr_lines factor below
+      !    (fuv_lw_photon_field in util_ion_eq.f90, the transmission from
+      !    lya_rt.f90).  The higher Lyman-series lines inside the LW band
+      !    (Ly-beta 1025.7, Ly-gamma 972.5, ...) are line absorbers in a
+      !    continuum band and are not treated separately, exactly as
       !    lyman_werner.f90 leaves them; they can only reduce the rate.
       !  - Neutral low-IP metals photoionize in B3 and B4 (Mg I 1620 A,
       !    Fe I 1570 A, Ca I 2029 A, Na I 2412 A, K I 2857 A).  At solar
@@ -271,9 +289,10 @@
       !
       ! Each dissociation deposits hv - E_threshold as fragment kinetic
       ! energy, the precedent being e_lw_fragment_erg in lyman_werner.f90.
-      ! The threshold energies are the reaction enthalpies at 298.15 K
-      ! computed from the Shomate table of oxygen_rates
-      ! (photolysis_threshold_erg); the O(1D) channel adds the O(1D)
+      ! The threshold energies are the 0 K dissociation energies formed
+      ! from the Shomate table of oxygen_rates (photolysis_threshold_erg:
+      ! the lowest interval's F coefficient is the 0 K enthalpy); the O(1D)
+      ! channel adds the O(1D)
       ! excitation energy above O(3P) on top of the ground-state threshold,
       ! because that energy is carried away as electronic excitation and is
       ! returned to the gas later, through O6, not here.  The bond energy
@@ -284,8 +303,7 @@
       ! form; the cross sections and yields are sourced in
       ! docs/a2_reaction_audit.md sections 4 and 7.
 
-      use oxygen_rates, only: n_fuv_band, fuv_band_lo_A, fuv_band_hi_A,   &
-                              fuv_band_name,                              &
+      use oxygen_rates, only: n_fuv_band, fuv_band_name,                  &
                               qy_H2O_OH_H, qy_H2O_H2_O1D, qy_H2O_O_H_H,   &
                               qy_OH_O_H,                                  &
                               photolysis_threshold_erg, e_excite_O1D_erg, &
@@ -295,63 +313,67 @@
       ! photon energy must be the SAME number lyman_werner.f90 converts its
       ! flux with: one beam cannot have two photon counts.
       use lyman_werner_photodissociation, only: e_lw_photon_erg
+      ! (1 - exp(-d))/d, the fraction of the photons entering a cell that the
+      ! cell absorbs, per unit of its own optical depth.  The XUV beam takes
+      ! the same quantity for its cell means (utilities.f90,
+      ! cell_mean_attenuation), and it is defined there once: one expression,
+      ! one series branch and one switch point for both beams.
+      use utils, only: absorbed_fraction_per_unit_depth
 
       implicit none
       private
 
-      public :: ib_LW, ib_B1, ib_B2, ib_B3, ib_B4, n_fuv_band, fuv_band_name
+      public :: ib_LW, ib_B2, ib_B3, ib_B4, n_fuv_band, fuv_band_name
       public :: sigma_H2O_band, sigma_OH_band
       public :: e_photon_H2O_band, e_photon_OH_band, e_photon_flat_band
       public :: water_photolysis_init
       public :: fuv_band_photon_flux, fuv_band_optical_depth
-      public :: water_photolysis_rate, hydroxyl_photolysis_rate,          &
-                absorbed_fraction_per_dtau
+      public :: water_photolysis_rate, hydroxyl_photolysis_rate
+      ! Re-exported so that a consumer of the band rates has the cell-mean
+      ! factor they are built from without a second use statement, and so
+      ! that there is no second definition of it to drift.
+      public :: absorbed_fraction_per_unit_depth
       public :: heat_per_water_dissociation, heat_per_hydroxyl_dissociation
 
       integer, parameter :: dp = kind(1.0d0)
 
       ! Band identifiers, in the oxygen_rates band order.
-      integer, parameter :: ib_LW = 1, ib_B1 = 2, ib_B2 = 3,              &
-                            ib_B3 = 4, ib_B4 = 5
-
-      ! Ly-alpha line center [A] and its photon energy [erg].
-      real(dp), parameter :: wl_lya_A   = 1215.67d0
-      real(dp), parameter :: e_lya_erg  = 1.63403379d-11
+      integer, parameter :: ib_LW = 1, ib_B2 = 2, ib_B3 = 3, ib_B4 = 4
 
       ! Band-averaged photodissociation cross sections [cm^2] over a flat
       ! F_lambda band, s_b = int s(l) l dl / int l dl, measured from the
       ! Photochem cross-section files named in the header (B2 is the value
       ! AT the Ly-alpha line, not a band average).
       real(dp), parameter :: sigma_H2O_band(n_fuv_band) =                 &
-           (/ 9.48385072d-18, 6.66583215d-18, 1.52782477d-17,             &
+           (/ 8.51336791d-18, 1.52782477d-17,                             &
               4.40440310d-18, 1.24150238d-18 /)
       real(dp), parameter :: sigma_OH_band(n_fuv_band) =                  &
-           (/ 4.43422798d-18, 5.33286725d-18, 4.57724155d-18,             &
+           (/ 4.74370570d-18, 4.57724155d-18,                             &
               1.40980849d-18, 6.99004135d-19 /)
 
       ! Cross-section-weighted mean photon energy of each band [erg],
       ! <E>_b = hc int s dl / int s l dl, i.e. the mean energy of the
       ! photons this species actually absorbs.  In eV:
-      !   H2O  12.5289  10.7624  10.1988   9.5511   7.4949
-      !   OH   11.7422  10.8143  10.1988   9.3766   7.8035
+      !   H2O  12.0526  10.1988   9.5511   7.4949
+      !   OH   11.3829  10.1988   9.3766   7.8035
       real(dp), parameter :: e_photon_H2O_band(n_fuv_band) =              &
-           (/ 2.00735310d-11, 1.72432745d-11, 1.63403379d-11,             &
+           (/ 1.93103584d-11, 1.63403379d-11,                            &
               1.53025281d-11, 1.20081719d-11 /)
       real(dp), parameter :: e_photon_OH_band(n_fuv_band) =               &
-           (/ 1.88130232d-11, 1.73264642d-11, 1.63403379d-11,             &
+           (/ 1.82374916d-11, 1.63403379d-11,                            &
               1.50230218d-11, 1.25025409d-11 /)
 
       ! Mean photon energy of a flat F_lambda band, <hv>_b = 2hc/(l1+l2)
       ! [erg]; this is what converts the band ENERGY flux into a band PHOTON
       ! flux, and it is the same construction lyman_werner.f90 uses for its
-      ! own band.  In eV: 12.2635, 10.7299, 10.1988, 9.2491, 6.6037.
+      ! own band.  In eV: 11.7354, 10.1988, 9.2491, 6.6037.
       ! The LW entry is taken FROM lyman_werner.f90 rather than restated,
       ! because H2 and the two continuum absorbers share that beam and a
       ! shared beam has one photon count; the same integral measured here
-      ! gives 1.96483270d-11, i.e. the two agree to the six digits that
-      ! module carries.
+      ! over 912-1201 A gives 1.88021378d-11, i.e. the two agree to the six
+      ! digits that module carries.
       real(dp), parameter :: e_photon_flat_band(n_fuv_band) =             &
-           (/ e_lw_photon_erg, 1.71912233d-11, 1.63403379d-11,            &
+           (/ e_lw_photon_erg, 1.63403379d-11,                            &
               1.48186935d-11, 1.05802709d-11 /)
 
       ! Yield-weighted threshold energy of the H2O photolysis in each band,
@@ -410,22 +432,6 @@
           + sigma_OH_band(ib) *max(N_OH,  0.0d0)
       end function fuv_band_optical_depth
 
-      ! (1 - exp(-d))/d, the fraction of the photons entering a cell that
-      ! the cell absorbs, per unit of its own optical depth.  Written this
-      ! way because the difference of two exponentials cancels catastrophically
-      ! for a thin cell, where the answer is 1; the series is used below
-      ! d = 1e-8, where its truncation is under 1e-17.
-      double precision function absorbed_fraction_per_dtau(d) result(f)
-      real(dp), intent(in) :: d
-      if (d .le. 0.0d0) then
-        f = 1.0d0
-      else if (d .lt. 1.0d-8) then
-        f = 1.0d0 - 0.5d0*d + d*d/6.0d0
-      else
-        f = (1.0d0 - exp(-d))/d
-      end if
-      end function absorbed_fraction_per_dtau
-
       ! Mean H2O photodissociation rate over ONE CELL in band ib [s^-1].
       ! Multiply by the quantum yields of oxygen_rates to split it into
       ! O3 / O4 / O5.
@@ -439,10 +445,13 @@
       !
       !     j = s N_b tr_lines exp(-tau_out) (1 - exp(-dtau))/dtau .
       !
-      ! tr_lines is the transmission of the H2 Lyman-Werner LINES down to
-      ! the same face, 1 - A (section 3); it is 1 in every band but LW and
-      ! in every run without H2, and it is what keeps the LW band's photons
-      ! from being absorbed twice.
+      ! tr_lines is the transmission of the LINE absorber of the band down
+      ! to the same face.  In the LW band it is the H2 Lyman-Werner lines,
+      ! 1 - A (section 3), which is what keeps that band's photons from
+      ! being absorbed twice; in the Ly-alpha band it is the fraction of the
+      ! stellar line that penetrates the atomic hydrogen column to that
+      ! face.  It is 1 in the three bands with no line absorber and in a run
+      ! that carries neither H2 nor atomic H.
       !
       ! WHY NOT s N_b exp(-tau).  Evaluating the rate at one point of the
       ! cell and multiplying by the cell's absorbers is a rectangle rule in
@@ -467,7 +476,7 @@
       j = sigma_H2O_band(ib)*fuv_band_photon_flux(F_band, ib)             &
           *max(tr_lines, 0.0d0)                                           &
           *exp(-max(tau_out, 0.0d0))                                      &
-          *absorbed_fraction_per_dtau(max(dtau, 0.0d0))
+          *absorbed_fraction_per_unit_depth(max(dtau, 0.0d0))
       end function water_photolysis_rate
 
       ! The same for OH (O7, one merged channel of unit yield; see the
@@ -483,7 +492,7 @@
       j = sigma_OH_band(ib)*fuv_band_photon_flux(F_band, ib)              &
           *max(tr_lines, 0.0d0)                                           &
           *exp(-max(tau_out, 0.0d0))                                      &
-          *absorbed_fraction_per_dtau(max(dtau, 0.0d0))
+          *absorbed_fraction_per_unit_depth(max(dtau, 0.0d0))
       end function hydroxyl_photolysis_rate
 
       ! Kinetic energy given to the fragments by one H2O dissociation in
@@ -496,12 +505,31 @@
       ! has left the range where it represents the band).
       double precision function heat_per_water_dissociation(ib) result(e)
       integer, intent(in) :: ib
+      ! THE THRESHOLD TABLE IS THE GUARD wp_ready NAMES.  Until
+      ! water_photolysis_init has filled it, eth_H2O_band is zero and the
+      ! expression below would return the WHOLE photon energy as fragment
+      ! kinetic energy, i.e. deposit the bond energy a second time on top of
+      ! the photon that already paid for it.  The setup fills the table
+      ! exactly when the oxygen chemistry is on, and without that chemistry
+      ! there is no H2O in the gas to dissociate, so the deposit there is
+      ! zero.
+      if (.not. wp_ready) then
+        e = 0.0d0
+        return
+      end if
       e = max(e_photon_flat_band(ib) - eth_H2O_band(ib), 0.0d0)
       end function heat_per_water_dissociation
 
       ! The same for one OH dissociation in band ib [erg].
       double precision function heat_per_hydroxyl_dissociation(ib) result(e)
       integer, intent(in) :: ib
+      ! Same guard as heat_per_water_dissociation: no threshold table means
+      ! no OH in the gas either, and returning the whole photon energy would
+      ! deposit the bond energy twice.
+      if (.not. wp_ready) then
+        e = 0.0d0
+        return
+      end if
       e = max(e_photon_flat_band(ib) - eth_OH_erg, 0.0d0)
       end function heat_per_hydroxyl_dissociation
 

@@ -24,9 +24,25 @@ Run `python3 roche_recon.py` for the self-test (monotonicity, inversion round
 trip, L1, triaxial-radii relations).
 """
 
+import os
+import sys
+
 import numpy as np
 from scipy.interpolate import interp1d
 from scipy.optimize import brentq
+
+# The Jupiter radius is defined once, in examples/exhale_io.py (RJ_CM), and
+# imported rather than written down again, so that this module's self-test
+# and the run it reconstructs mean one planet by `Planet radius [R_J]`.
+# `__file__` is absent under exec(), hence the guard.
+try:
+    _HERE = os.path.dirname(os.path.realpath(__file__))
+except NameError:
+    _HERE = os.getcwd()
+_EXAMPLES_DIR = os.path.join(_HERE, 'examples')
+if _EXAMPLES_DIR not in sys.path:
+    sys.path.append(_EXAMPLES_DIR)
+from exhale_io import RJ_CM                                # noqa: E402
 
 
 # --------------------------------------------------------------------------- #
@@ -140,7 +156,9 @@ class ReconMap:
 # --------------------------------------------------------------------------- #
 if __name__ == '__main__':
     # WASP-121b Case D-ish geometry (q = M*/M_p, a = orbital distance in R_p)
-    RJ, Rsun, AU, Msun, MJ = 6.9911e7, 6.957e8, 1.495978707e11, 1.989e30, 1.898e27
+    # SI (metres, kilograms); RJ_CM is in cm, hence the factor.
+    RJ = RJ_CM*1.0e-2
+    Rsun, AU, Msun, MJ = 6.957e8, 1.495978707e11, 1.989e30, 1.898e27
     Rp = 2.581*RJ
     q = (1.3521*Msun)/(1.1204*MJ)
     a = (0.02544*AU)/Rp

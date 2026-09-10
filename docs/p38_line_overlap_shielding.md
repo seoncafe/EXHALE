@@ -1,7 +1,7 @@
 # H2 Lyman-Werner self-shielding with overlapping lines
 
 *2026-09-03. `TO_BE_DONE.md` item P38, the open question left by
-`docs/Update_EXHALE.md` section 122 and `docs/h2_self_shielding_cloudy.md`
+`docs/Update_EXHALE_stage1.md` section 122 and `docs/h2_self_shielding_cloudy.md`
 section 11.2.*
 
 
@@ -9,7 +9,7 @@ section 11.2.*
 > table in `src/modules/lower_atmosphere/h2_self_shielding_table.f90` is now
 > built from the overlapping-line calculation of section 4 and is a rate for
 > all H2 rather than for CLOUDY's H2g sub-reservoir;
-> `h2_shielding_overlap_column` is gone. `Update_EXHALE.md` section 135 is the
+> `h2_shielding_overlap_column` is gone. `Update_EXHALE_stage1.md` section 135 is the
 > changelog entry and carries the verification. Sections 1-5 below are the
 > measurement as it was made, and stand; section 6 records what was done with
 > it.
@@ -404,11 +404,21 @@ is smallest and therefore least robust (`f_shield` at
   `4.4e21` the surviving pumping is dominated by that region and the answer
   moves by 3.7x; below `1e21` the shift is under 20 per cent, and the
   unattenuated rate is unaffected to five digits (`6.8045e-5` vs `6.8048e-5`
-  s^-1). **The tables below use `912-1110 A`**, EXHALE's own band, because
-  `sigma_lw` is calibrated to the flux in it; a rate that also counted the
-  1110-1200 A pumping would have to count that flux too. The consequence is
-  that the base-column numbers carry a factor of a few, which is why section 1
-  quotes orders of magnitude and not digits.
+  s^-1). **The tables below use `912-1110 A`**, EXHALE's own band at the time
+  of this memo, because `sigma_lw` was calibrated to the flux in it; a rate
+  that also counted the 1110-1200 A pumping would have to count that flux too.
+  The consequence is that the base-column numbers carry a factor of a few,
+  which is why section 1 quotes orders of magnitude and not digits.
+
+  **Resolved on 2026-09-06 (item LW-NORM-B), in the other direction: the flux
+  is counted too.** EXHALE's Lyman-Werner band is now 912-1201 A, the interval
+  the line list occupies, and the shipped table is normalized per photon of
+  it; the incident-flux key `Stellar LW flux` states the same interval, and
+  the FUV band B1 that used to carry 1110-1201 A separately is merged into it.
+  The measurements of this memo are NOT restated: they are the two variants
+  compared, and the comparison is what chose the wider band. What changes is
+  which column of each table below is the shipped one -- the `1200 A` variant,
+  not the `1110 A` one.
 
 ---
 
@@ -417,7 +427,7 @@ is smallest and therefore least robust (`f_shield` at
 `T = 900, 1300, 1800, 2700 K` at `n_H = 1e13 cm^-3`, `1e18 <= N_H2 <= 5.6e21`
 at 4 points per decade. `n_H` enters the line-by-line calculation only through
 the LTE populations, i.e. not at all; the CLOUDY table's own density axis moves
-`f_shield` by at most 40 per cent (`Update_EXHALE.md` section 122.6), and the
+`f_shield` by at most 40 per cent (`Update_EXHALE_stage1.md` section 122.6), and the
 Meudon runs are all at `1e13`.
 
 ### 5.1 The two overlapping-line calculations against each other
@@ -683,7 +693,7 @@ larger dissociation branching.
 ## 6. What was done
 
 **Both errors were fixed, in that order, and the table was replaced rather
-than patched.** `Update_EXHALE.md` section 135 is the changelog entry; this
+than patched.** `Update_EXHALE_stage1.md` section 135 is the changelog entry; this
 section records only what the decision was and why.
 
 **Stage 1, the H2g weighting.** CLOUDY was patched a second time -- four more
@@ -787,9 +797,13 @@ python3 grid_lbl.py 1300 1110               # ~1 min per (T, band)
 
 The decks (`p38_*.in`), the radiation-field file
 (`data/Astrodata/I_flatFlam.txt`), `lbl.py`, `p38_lib.py`,
-`meudon_extract.py` and the figure script are in the scratch directory. Only
-this note and the PNG under `docs/lower_atmosphere_figs/` are in the
-repository.
+`meudon_extract.py` and the figure script were in the scratch directory when
+this note was written. Since 2026-09-06 the inputs the generator reads (the
+`abs_T####.npz` files, the 27 CLOUDY rate files, the line-by-line scripts and
+the Meudon level and line data) are in `src/utils/h2_shielding_lbl/`; its
+README records what each is and confirms that the shipped module regenerates
+byte for byte from them. The decks and the PDR outputs themselves are not
+kept.
 
 ### The Meudon deck, in full
 

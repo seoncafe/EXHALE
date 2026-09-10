@@ -1,4 +1,4 @@
-# Update_EXHALE_solver — solver / numerics changes vs. the original ATES
+# Update_EXHALE_solver: solver / numerics changes vs. the original ATES
 
 The single, complete record of the **solver / numerics** changes in EXHALE
 relative to the original ATES (`ATES/ATES-Code-main`): time integration of the
@@ -6,7 +6,7 @@ stiff source terms, the convergence algorithm, the radial-grid convergence windo
 the advection post-processor's solve, and the nonlinear solvers (ionization
 equilibrium and the energy equation in each cell). It **excludes** the physics changes
 (metals, cooling, opacity, charge exchange, excited hydrogen, Lyα), which are in
-`Update_EXHALE` and `Update_EXHALE_early_phase`. It absorbs in full the
+`Update_EXHALE_stage1` and `Update_EXHALE_stage0`. It absorbs in full the
 former `energy_semi_implicit_solver.tex` (§2) and the solver portion of
 `convergence_fix_and_validation.tex` (§1); those standalone memos are superseded by
 this file. Companion: `Update_EXHALE_solver.tex`/`.pdf`. Sections are chronological.
@@ -16,9 +16,9 @@ this file. Companion: `Update_EXHALE_solver.tex`/`.pdf`. Sections are chronologi
 ## 1. Convergence-algorithm fix (2026-06-02)
 
 *Absorbed in full from the former `convergence_fix_and_validation.tex` (its Phase
-1/2 **physics** validation — opacity dispatcher, tabulated opacity, trace-metal
-smoke test — is intentionally not reproduced here; see `Update_EXHALE_early_phase` /
-`Update_EXHALE`).*
+1/2 **physics** validation (opacity dispatcher, tabulated opacity, trace-metal
+smoke test) is intentionally not reproduced here; see `Update_EXHALE_stage0` /
+`Update_EXHALE_stage1`).*
 
 **Overview.** Fixed a non-terminating (effectively infinite) time-integration loop,
 found on the first physical test case (HD 209458b; power-law SED, solar He/H,
@@ -38,7 +38,7 @@ default numerics).
 computed but **never used in the loop condition** (only in a commented-out print).
 For this setup `du` floors at ≈0.011 (a transonic-wind numerical limit), ~10× above
 `du_th`, so with `is_zero_dt` disconnected nothing could terminate. Measuring `dtu`
-directly (near-converged IC) gave ≈5.5e-8 — the solution *had* reached steady state
+directly (near-converged IC) gave ≈5.5e-8: the solution *had* reached steady state
 but the strict thresholds were physically unreachable.
 
 **Fix** (in `EXHALE_main.f90` + `parameters.f90`):
@@ -77,12 +77,12 @@ loose threshold on the PLM stage only.*
 
 *Absorbed in full from the former `energy_semi_implicit_solver.tex`.* Replacing the
 explicit forward-Euler energy update with a constant-derivative 2-iteration
-Newton–Raphson scheme resolves the stiffness of radiative heating/cooling:
+Newton-Raphson scheme resolves the stiffness of radiative heating/cooling:
 unconditional stability and ~2× speedup on the hydro loop.
 
 **Introduction / problem.** Radiative `tau_cool = p/((g-1)C)` is far shorter than
 the CFL step `tau_CFL = dr/(|v|+c_s)`. The original ATES integrated the source
-explicitly, `u3^{n+1} = u3^n + dt*(H - C(T^n))`, with `dt` set by the hydro CFL —
+explicitly, `u3^{n+1} = u3^n + dt*(H - C(T^n))`, with `dt` set by the hydro CFL,
 unstable in the stiff regime: high-frequency T/p oscillations, NaN crashes when a
 big step over-cools to `p<0`, and stalled convergence (>2e5 iterations).
 
@@ -92,7 +92,7 @@ adimensional). Backward Euler: `T^{n+1} - T^n = dt*(g-1)/n_all*(H - C(T^{n+1}))`
 
 **Original explicit solver (before).** `u3^{n+1} = u3^n + dt*(H(T^n) - C(T^n))`,
 then `p = (g-1)(u3 - 0.5 rho v^2)`, `T = p/(n_all k_B)`. Stability needs
-`dt <= tau_cool`, but `tau_cool` can be 1e-3–1e-6 × `dt_CFL`, giving the
+`dt <= tau_cool`, but `tau_cool` can be 1e-3-1e-6 × `dt_CFL`, giving the
 oscillations / NaNs / stalls above.
 
 **Numerical algorithm.** Residual `F(T) = T - T^n - dt*(g-1)/n_all*(H - C(T))`,
@@ -121,7 +121,7 @@ state: log10 Ṁ 9.49061 vs 9.49064; T_max 6525.4 vs 6525.6 K; T_min 1009.3 K
 
 ## 3. Escape-radius / empty-window grid guard (Phase 4)
 
-*Context: `Update_EXHALE` Phase 4.* In `src/modules/init/define_grid.f90`, the
+*Context: `Update_EXHALE_stage1` Phase 4.* In `src/modules/init/define_grid.f90`, the
 convergence diagnostics (`du`, `dtu`) are computed over `[j_min:N]`, where `j_min`
 is the first cell with `r >= r_esc` (`Escape radius`). When the escape radius is
 outside the (L1-truncated Roche) domain (`r_esc > r_max`, e.g. WASP-121b Case D:
@@ -138,7 +138,7 @@ recoverable warning.
 
 ## 4. Breathing-base advection guard (post-process, option c)
 
-*Full account and validation: `Update_EXHALE`, "Post-process advection guard at a
+*Full account and validation: `Update_EXHALE_stage1`, "Post-process advection guard at a
 breathing base".* In `src/modules/post_process/post_process_adv.f90`: for strongly
 Roche-filling planets the 1D wind is subsonic at L1 and the dense base recirculates
 (small *negative* inflow velocities, stagnation point v=0 near the wind base). The
@@ -175,7 +175,7 @@ removes the failure mode structurally. The scalar T solve runs only in the singl
 post-process pass, so the scan cost is negligible.
 
 **Solver** (in `T_equation.f90`, module `equation_T`): `Tres(xx, params)` (scalar
-residual wrapper); `solve_T_brent(params, x_guess, x_out, ok)` — log-spaced upward
+residual wrapper); `solve_T_brent(params, x_guess, x_out, ok)`: log-spaced upward
 scan from `max(0.05*x_guess, 1 K)` to `4*x_guess`, take the **first sign change**
 (= lowest = physical root), polish with Brent; `ok=.false.` → caller falls back to
 eq T; `brent_root(...)` (standard Brent).
@@ -211,7 +211,7 @@ in `charge_exchange.f90`), the exact derivative mirror of `cx_add_to_fvec` (each
 rate kc*D*A is bilinear in two reactant densities, both linear in the unknowns).
 Absent elements and the unused upper stage of two-stage elements are pinned to
 identity rows. `System_HeH_TR` (He triplet) stays on `hybrd1` (no Jacobian; at the
-time of this change mutually exclusive with metals and unused here — the merged
+time of this change mutually exclusive with metals and unused here, the merged
 `System_HeH_TR_metals` came later).
 
 **Wiring/build.** `ionization_equilibrium.f90`: the H-only, H/He, and H/He+metals
@@ -219,14 +219,14 @@ time of this change mutually exclusive with metals and unused here — the merge
 `newton_solver.f90` added to Makefile. Builds clean (gfortran).
 
 **Validation.** PP-only sweep over converged Case B (504 cells):
-- **Newton 504/504 solves (100%, zero fallback)** — analytic Jacobian (H/He + 10
+- **Newton 504/504 solves (100%, zero fallback)**: analytic Jacobian (H/He + 10
   metals + charge exchange) converges on every cell.
 - **A/B at identical state** (Newton vs forced-`hybrd1` via `EXHALE_FORCE_HYBRD1=1`,
   so the one-step hydro drift cancels): `Ion_species` agrees to **7.2e-7** over all
   stages, T to 3.5e-4 → Jacobian correct.
 - log10 Ṁ 13.38 unchanged.
-- A naive Newton-vs-baseline `Ion_species` compare showed 63% on trace neutral C I
-  — the 0.26% one-step T drift amplified, not the solver (confirmed by the 7.2e-7
+- A naive Newton-vs-baseline `Ion_species` compare showed 63% on trace neutral C I:
+  the 0.26% one-step T drift amplified, not the solver (confirmed by the 7.2e-7
   A/B agreement).
 
 ---
@@ -262,7 +262,7 @@ The analytic-Jacobian Newton is **~25% faster per step (×1.25)** than legacy
 `hybrd1`; step counts match to 0.2% (fair step-for-step comparison). The `ioniz_eq` cell
 loop is **serial**, so the relative speedup grows with thread count (hydro/radiation
 parallelize, the solve does not).
-*2026-08-15 note: no longer serial — the `ioniz_eq` cell sweep was parallelized in
+*2026-08-15 note: no longer serial, the `ioniz_eq` cell sweep was parallelized in
 2026-06 (`!$omp parallel do` over the cell loop in
 `src/modules/radiation/ionization_equilibrium.f90`; see
 `docs/openmp_parallelization.md`), so the "grows with thread count" argument no
@@ -277,17 +277,17 @@ the semi-implicit energy solver (§2). Raw numbers in
 ## 9. Validation data (persisted) and reproduction
 
 The Task 1/2 comparison data lives in `WASP-121b/solver_validation/` (kept):
-- `comparison.txt` — results table (sections A/B/C).
-- `newton/`, `hybrd1/` — the two PP-only runs (Newton vs the `hybrd1` reference)
+- `comparison.txt`: results table (sections A/B/C).
+- `newton/`, `hybrd1/`: the two PP-only runs (Newton vs the `hybrd1` reference)
   over the converged Case B, each with full `output/` and `run.log`.
-- `baseline/` — a copy of the converged Case B (`WASP-121b/output/`).
-- `run_validation.sh`, `compare.py` — regenerate everything:
+- `baseline/`: a copy of the converged Case B (`WASP-121b/output/`).
+- `run_validation.sh`, `compare.py`, regenerate everything:
   `cd WASP-121b/solver_validation && bash run_validation.sh`.
-- `solver_comparison.ipynb` (built by `build_solver_nb.py`) — plots: (1) T/n/v and
+- `solver_comparison.ipynb` (built by `build_solver_nb.py`), plots: (1) T/n/v and
   key ion densities for baseline/hybrd1/Newton overlaid (coincide); (2) the pure
-  solver difference Newton−hybrd1 vs radius (~1e-6–1e-7 over [1.05,2]Rp); (3) the
+  solver difference Newton−hybrd1 vs radius (~1e-6-1e-7 over [1.05,2]Rp); (3) the
   Brent `_adv` base temperature (smooth; machine-precision match in the wind).
-- `timing.txt` — the §8 speed table.
+- `timing.txt`: the §8 speed table.
 
 Latest `comparison.txt`:
 ```

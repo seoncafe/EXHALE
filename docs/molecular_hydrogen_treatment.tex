@@ -1,6 +1,6 @@
 %% EXHALE: how molecular hydrogen is treated.
 %% H2 is carried as ONE species with no (v,J) resolution, so every place that
-%% needs a level distribution supplies one by assumption -- and the assumptions
+%% needs a level distribution supplies one by assumption, and the assumptions
 %% differ from site to site.  This memo collects them, with the evidence each
 %% rests on and the range over which it holds.
 %% Author: Kwang-Il Seon
@@ -24,12 +24,12 @@ EXHALE carries H$_2$ as a single species. The state vector holds one number
 density for it, the network reacts it as one reagent, and no rovibrational
 level is transported. Every quantity that depends on how the molecules are
 distributed over $(v,J)$ therefore has that distribution supplied by
-assumption --- and the assumption is not the same in every place. The infrared
+assumption, and the assumption is not the same in every place. The infrared
 line cooling is explicitly LTE and says so in its own function name; the
 thermal dissociation and its three-body reverse rest on vibrational
 equilibrium and are now built from one another through the equilibrium
 constant, so that axis is consistent by construction; the Lyman--Werner
-photodissociation rate no longer imports a fit at all --- it reads a table of a
+photodissociation rate no longer imports a fit at all: it reads a table of a
 line-by-line calculation, with the lines absorbing each other's beam, run at
 the temperature and density of this layer, and states where that calculation
 itself stops being a value; and the H$_3^+$
@@ -55,9 +55,9 @@ rovibrational ladder. There is one H$_2$ continuity equation, not one per
 level, and no state-to-state collisional network. Nothing in the code
 transports a vibrational temperature, an ortho/para ratio, or a level
 population of any kind. The rovibrational ladder appears twice as
-\emph{tabulated data} --- the partition function of the equilibrium constant
+\emph{tabulated data}: the partition function of the equilibrium constant
 (\texttt{mol\_rates.f90}) and the line list of the infrared cooling
-(\texttt{molecular\_infrared\_data.f90}) --- but in both places it is
+(\texttt{molecular\_infrared\_data.f90}), but in both places it is
 evaluated at the local kinetic temperature and never solved for.
 
 The consequence is the subject of this memo. A rate coefficient measured on
@@ -146,8 +146,13 @@ File & What it does with H$_2$ \\
   & \texttt{ioniz\_HeI23S\_H2}, the He($2^3S$) $+$ H$_2$ Penning and
     associative ionization rate \\
 \texttt{post\_process\_adv.f90}
-  & Does \emph{not} carry H$_2$: the \texttt{\_adv} reconstruction is
-    molecule-free by construction, and says so in its header \\
+  & Does not advection-correct the four molecular columns, and says so in its
+    header, but its energy residual does read H$_2$: the caloric internal
+    energy of the cell and of its upwind neighbor are formed at
+    \texttt{h2\_particle\_fraction} of each
+    (\texttt{internal\_energy\_of\_mixture}), so an atomic cell below a
+    molecular one no longer loses the incoming rovibrational energy
+    (\S\ref{sec:advcaloric}) \\
 \bottomrule
 \end{tabular}
 \caption{Where H$_2$ appears. Paths are relative to \texttt{src/modules/}.}
@@ -160,8 +165,8 @@ below are read from}
 
 Every claim about whether a fit is used inside or outside its range needs a
 statement of the conditions EXHALE actually reaches. The reference case here
-is \texttt{mol\_lyman\_werner} of the regression matrix --- the hot-Uranus
-molecular base with \texttt{Stellar LW flux [erg/cm2/s]: 343.0} --- because
+is \texttt{mol\_lyman\_werner} of the regression matrix (the hot-Uranus
+molecular base with \texttt{Stellar LW flux [erg/cm2/s]: 343.0}) because
 it is the only default case that carries the Lyman--Werner channel.
 Measured on its \texttt{output/Lyman\_Werner.txt} and
 \texttt{output/Ion\_species.txt}:
@@ -172,43 +177,52 @@ Measured on its \texttt{output/Lyman\_Werner.txt} and
 \toprule
 Layer definition & cells & $r/R_{\rm p}$ & $T$ [K] & $n_{\rm H}$ [cm$^{-3}$] \\
 \midrule
-$x_{\rm H_2} > 0.5$   & 227 & $0.9998$--$1.127$ & $1149$--$1307$ & $1.67\times10^{12}$--$9.27\times10^{13}$ \\
-$x_{\rm H_2} > 0.01$  & 251 & $0.9998$--$1.172$ & $945$--$1307$  & $6.24\times10^{11}$--$9.27\times10^{13}$ \\
-$x_{\rm H_2} > 10^{-6}$ & --- & $0.9998$--$3.853$ & $945$--$2430$ & $1.98\times10^{7}$--$9.27\times10^{13}$ \\
+$x_{\rm H_2} > 0.5$   & 144 & $1.0002$--$1.044$ & $1048$--$1221$ & $2.03\times10^{12}$--$1.07\times10^{13}$ \\
+$x_{\rm H_2} > 0.01$  & 184 & $1.0002$--$1.075$ & $891$--$1221$  & $8.49\times10^{11}$--$1.07\times10^{13}$ \\
+$x_{\rm H_2} > 10^{-6}$ & 476 & $1.0002$--$3.712$ & $874$--$2531$ & $1.69\times10^{7}$--$1.07\times10^{13}$ \\
 \bottomrule
 \end{tabular}
 \end{center}
 
 \noindent
-with $x_{\rm H_2} = 2n_{\rm H_2}/n_{\rm H}$; the H$_2$ density itself peaks at
-$4.63\times10^{13}$~cm$^{-3}$ in the base cell and falls to
-$4.42\times10^{9}$~cm$^{-3}$ at the $1\%$ edge. The three rows matter because they
-give three different answers. The often-quoted range $945$--$2430$~K is the
+with $x_{\rm H_2} = 2n_{\rm H_2}/n_{\rm H}$ and $n_{\rm H}$ the total hydrogen
+nucleus density, over the $500$ physical cells only (the innermost ghost at
+$r = 0.9998$ is excluded); the H$_2$ density itself peaks at
+$5.15\times10^{12}$~cm$^{-3}$ in the first physical cell and falls to
+$4.48\times10^{9}$~cm$^{-3}$ at the $1\%$ edge. The three rows matter because they
+give three different answers. The widest range, $874$--$2531$~K, is the
 extent of gas that carries \emph{any} H$_2$ at all, and its upper half is
 gas where H$_2$ is a $10^{-5}$ trace; the layer where H$_2$ is actually a
-constituent spans $945$--$1307$~K. Statements below use the narrow definition
-unless they say otherwise.
+constituent spans $874$--$1221$~K. Statements below use the narrow definition
+unless they say otherwise. (Every number of the table was re-measured on the case
+output of 2026-09-10, which is the state the goldens now hold; the previous
+edition of the table, taken on an earlier state of the same case, gave a
+layer both thicker and about eight times denser at its base.)
 
 \paragraph{These are relaxation snapshots, not converged solutions.}
-Six of the eight default regression cases --- every molecular one, plus
-\texttt{lower\_profile} --- are pinned at $12{,}000$ steps by a
-\texttt{maxsteps} file and stop there rather than at a convergence criterion.
-\texttt{mol\_lyman\_werner} ends at \texttt{du} $= 2.24$, i.e.\ a $224\%$
-radial spread in the mass flux $\rho v r^2$, three orders of magnitude from
-the $10^{-3}$ threshold a converged run meets; only the two \texttt{wasp}
-cases converge. Every profile number in this memo therefore describes a
-relaxation snapshot. That is adequate for the purpose --- the question is
-which decade of density and temperature a fit is being asked about, not the
-fourth digit --- but it is not adequate for quoting a mass-loss rate, and none
-is quoted here.
+Thirteen of the sixteen default regression cases are pinned by a
+\texttt{maxsteps} file and stop there rather than at a convergence criterion:
+the seven molecular ones and \texttt{lower\_profile} at $12{,}000$ steps,
+\texttt{oxygen\_chemistry} at $1000$, \texttt{hydrostatic\_column} at $300$
+and the three \texttt{hp\_*} seeds at $100$. \texttt{mol\_lyman\_werner} ends
+at \texttt{du} $= 0.785$, i.e.\ a $78.5\%$ radial spread in the mass flux
+$\rho v r^2$, well short of the $10^{-3}$ threshold a converged run meets;
+only the three \texttt{wasp} cases run to a stop of their own, and only
+\texttt{wasp\_full\_newton} certifies. Every profile number in this memo
+therefore describes a relaxation snapshot. That is adequate for the purpose
+(the question is which decade of density and temperature a fit is being asked
+about, not the fourth digit), but it is not adequate for quoting a mass-loss
+rate, and none is quoted here.
 
-\paragraph{And the snapshots do not currently match the goldens.} At the time
-of writing, all eight default cases differ from
-\texttt{backup/regression/golden/} in \texttt{Hydro\_ioniz.txt} and
-\texttt{Ion\_species.txt}. The working tree carries uncommitted source
-changes, including the one described in \S\ref{sec:diss}, and the goldens
-predate them. The numbers above are from the case output directories as they
-stand, not from the goldens.
+\paragraph{The snapshots are the goldens.} The numbers above come from the
+case output directories, and those outputs now agree with
+\texttt{backup/regression/golden/}: \texttt{mol\_lyman\_werner}'s
+\texttt{Hydro\_ioniz.txt} and \texttt{Ion\_species.txt} were compared line for
+line against the snapshot and are identical. This paragraph replaces one
+saying that every default case differed from its golden, which was true while
+the goldens predated a series of uncommitted source changes; the goldens were
+re-snapshotted on 2026-09-10, and \texttt{lower\_profile} again the same day
+after the element-projection mass fix.
 
 \section{The level-distribution assumptions}
 
@@ -244,12 +258,12 @@ $J$-averaged, from Turner, Kirby-Docken \& Dalgarno 1977) and the rate
 coefficients of their eq.~(6.29) it is $2\times10^{6}$--$6\times10^{6}$~cm$^{-3}$
 over $900$--$1350$~K with H$_2$ as the collider and
 $5\times10^{4}$--$8\times10^{4}$~cm$^{-3}$ with atomic H. The measured base
-density of the molecular gate case, $n({\rm H_2}) = 4.63\times10^{13}$~cm$^{-3}$,
-is seven to nine decades above either.
+density of the molecular gate case, $n({\rm H_2}) = 5.15\times10^{12}$~cm$^{-3}$,
+is six to eight decades above either.
 
 Two caveats on that comparison. Neither Hollenbach \& McKee nor Burton,
 Hollenbach \& Tielens (1990) gives a \emph{helium} collision rate for
-H$_2$ $v=1$ --- their colliders are H, H$_2$ and, in the latter, electrons ---
+H$_2$ $v=1$ (their colliders are H, H$_2$ and, in the latter, electrons),
 so a helium-dominated gas is outside both sources; omitting helium from the
 collider sum understates the de-excitation rate and therefore errs against
 claiming LTE, not for it. And the figure quoted here previously,
@@ -289,9 +303,9 @@ the shares by less than $0.1$ percentage point up to $1000$~K.}
 
 The reading is that the LTE assumption is safe at the base, where the density
 supports it, and that where the density no longer supports it the vibrational
-bands --- the levels the density fails to thermalize --- have already stopped
+bands (the levels the density fails to thermalize) have already stopped
 carrying the emission. Below about $500$~K the error LTE can make is bounded
-by a few per cent of the total, because that is all the vibrational levels
+by a few percent of the total, because that is all the vibrational levels
 contribute.
 
 \subsection{Thermal dissociation and three-body recombination: vibrational
@@ -360,10 +374,10 @@ and neither had ever been tested at the temperature of a planetary molecular
 base.
 
 \paragraph{What was done instead.} Both fits were measured against a
-level-resolved \textsc{Cloudy} c25.00 calculation run on our own grid ---
+level-resolved \textsc{Cloudy} c25.00 calculation run on our own grid:
 $T = 700$--$3200$~K at $n_{\rm H} = 10^{12}$--$10^{14}$~cm$^{-3}$, columns to
 $5\times10^{21}$~cm$^{-2}$, pure H/He, no dust, thermal Doppler width, and our
-own band flux --- and neither survived it. Over $10^{18} \le N_{\rm H_2} \le
+own band flux, and neither survived it. Over $10^{18} \le N_{\rm H_2} \le
 5\times10^{20}$~cm$^{-2}$, the columns where our H$_2$ sits, DB96 runs from
 $1.85\times$ high at $900$~K to $2.3\times$ low at $2700$~K, and Richings is
 low by $3.3$--$4.3\times$ at every temperature of the layer. The failure is
@@ -376,9 +390,9 @@ has no freedom to place, so no rescaling of either fit could have worked.
 (2026-09-03).} It carried two errors of opposite sign that crossed near
 $N_{\rm H_2} = 2\times10^{20}$~cm$^{-2}$ and cancelled below it. First, the
 quantity tabulated was \textsc{Cloudy}'s \texttt{Shield(H2)} column, which is
-the dissociation rate of H2g alone --- the sub-reservoir $v = 0$, $J \le 8$
+the dissociation rate of H2g alone (the sub-reservoir $v = 0$, $J \le 8$
 that \textsc{Cloudy} splits off at \texttt{ENERGY\_H2\_STAR} $= 4100$
-cm$^{-1}$ --- divided by the H2g density, while EXHALE carries one H$_2$
+cm$^{-1}$) divided by the H2g density, while EXHALE carries one H$_2$
 species and applied it to all of it. The vibrationally excited part starts
 from levels $10^{2}$ to $10^{3}$ times less populated, saturates far later,
 and keeps dissociating after the H2g lines have gone black; weighting the two
@@ -395,7 +409,7 @@ normally incident beam, flat $F_\lambda$ normalized to
 $F = 343$~erg~cm$^{-2}$~s$^{-1}$ over $912$--$1110$~\AA, and
 $\tau(\nu, N) = N \sum_i x_i \sigma_i(\nu)$ summed over every Lyman and Werner
 transition between $911.75$ and $1200$~\AA\ on a $4\times10^{5}$-point
-frequency grid --- so every line is shielded by every other line. The profiles
+frequency grid, so every line is shielded by every other line. The profiles
 are Voigt with $b = (2kT/m_{\rm H_2})^{1/2}$, the populations LTE at the
 imposed $T$, and the line data are Abgrall, Roueff \& Drira (2000), the same
 measurements \textsc{Cloudy}'s \texttt{dissprob\_*} and \texttt{transprob\_*}
@@ -411,8 +425,8 @@ clamped rather than extrapolated. The generator is
 \textsc{Cloudy} runs, which still supply the fluorescent trapping.
 
 \paragraph{The one piece that is not line-by-line.} The trapping ratio
-$p_{\rm eff}/p_{\rm single}$ --- the suppression of the branching by
-re-absorption of the fluorescent decay photons --- is read node by node from
+$p_{\rm eff}/p_{\rm single}$ (the suppression of the branching by
+re-absorption of the fluorescent decay photons) is read node by node from
 the same $27$ \textsc{Cloudy} runs and multiplied in, rather than
 reimplemented as a second and unvalidated version of the same thing. Its
 geometry is plane-parallel, illuminated on one face and closed on the other.
@@ -442,7 +456,7 @@ does not.
   the trapping ratio came from \textsc{Cloudy}, and through it
   $f_{\rm shield} = \sigma_{\rm diss}(N)/\sigma_{\rm diss}(N_{\min})$ moves by
   at most $2.5\%$ below $N_{\rm H_2} = 10^{19}$~cm$^{-2}$ and by up to $23\%$
-  at $10^{21}$ --- measured on the installed table. The absence of a density
+  at $10^{21}$: measured on the installed table. The absence of a density
   argument in either published fit was never what was wrong with them.
 \item \textbf{Radiation field.} One incident flux only,
   $F = 343$~erg~cm$^{-2}$~s$^{-1}$ over the band. With LTE populations the
@@ -452,7 +466,7 @@ does not.
   $9\%$ anywhere and by under $5\%$ below $N_{\rm H_2} = 10^{20}$. There is no
   radiation-field axis to carry.
 \item \textbf{Doppler parameter.} Thermal only, $b = (2kT/m_{\rm H_2})^{1/2}$,
-  $2.7$--$4.7$~km~s$^{-1}$ over the grid --- the same expression the code's
+  $2.7$--$4.7$~km~s$^{-1}$ over the grid: the same expression the code's
   own \texttt{h2\_doppler\_parameter} evaluates, so the table and the code
   agree on it by construction. The table needs no $b$ argument: $b$ is a
   function of $T$, which is already an axis.
@@ -460,8 +474,8 @@ does not.
 
 \paragraph{Where the table stops being a value, and why that is the honest
 statement.} There is no longer a column above which the tabulated factor is an
-upper bound. Line overlap --- what DB96 \S5.2 say produces ``the rapid falloff
-\ldots\ for $N_2 > 10^{20}$~cm$^{-2}$'' --- is inside the calculation, and at
+upper bound. Line overlap (what DB96 \S5.2 say produces ``the rapid falloff
+\ldots\ for $N_2 > 10^{20}$~cm$^{-2}$'') is inside the calculation, and at
 the columns a planetary molecular base reaches it is not a correction but the
 dominant term. Two calculations differing only in whether the lines absorb
 each other's beam give, at $1300$~K, ratios of $0.62$ at
@@ -485,16 +499,16 @@ inside the axis; only the transient excursion to $5.3\times10^{21}$ crosses
 it.
 
 \paragraph{What the calculation was checked against.} At $100$~K it reproduces
-the DB96 self-shielding function to $2$--$9$ per cent over
+the DB96 self-shielding function to $2$--$9$ percent over
 $10^{16} \le N_{\rm H_2} \le 10^{21}$~cm$^{-2}$. That fit rests on a
 calculation which includes overlap (their \S5.2), and it is the one published
 overlap-including curve there is to check against; the same calculation run
 one line at a time departs from DB96 exactly where DB96 say overlap sets in,
 by $3.3\times$ at $10^{21}$ and $12\times$ at $4.4\times10^{21}$. Against a
-second code that carries overlap --- the Meudon PDR code (Le Petit et al.\
+second code that carries overlap: the Meudon PDR code (Le Petit et al.\
 2006) with its exact UV line transfer, $30$ H$_2$ levels and $20$ global
-iterations on pure H/He at $n_{\rm H} = 10^{13}$~cm$^{-3}$ --- the two agree
-to $5$--$22$ per cent over $10^{19} \le N_{\rm H_2} \le 10^{21}$~cm$^{-2}$ at
+iterations on pure H/He at $n_{\rm H} = 10^{13}$~cm$^{-3}$: the two agree
+to $5$--$22$ percent over $10^{19} \le N_{\rm H_2} \le 10^{21}$~cm$^{-2}$ at
 $900$, $1300$ and $1800$~K. At the illuminated face, the lowest tabulated
 column $N_{\rm H_2} = 10^{12}$~cm$^{-2}$, the absolute quantities are
 $\sigma_{\rm pump} = 2.59\times10^{-17}$ ($700$~K) to
@@ -511,9 +525,9 @@ tabulated is $\sigma_{\rm diss}(N_{\rm H_2}, T, n_{\rm H})$, the dissociation
 cross section per \emph{incident} band photon, with the self-shielding and the
 trapping of the fluorescent decay photons both inside it; $f_{\rm shield}$
 survives as the ratio $\sigma_{\rm diss}(N)/\sigma_{\rm diss}(N_{\min})$, a
-diagnostic. The earlier reading of the same runs --- that $\sigma_{\rm LW}$
-was $23$--$60\%$ low and $\langle p_{\rm diss}\rangle$ $31\%$ high --- was a
-comparison of two different quantities: the line data agree to $0.8$ per cent,
+diagnostic. The earlier reading of the same runs (that $\sigma_{\rm LW}$
+was $23$--$60\%$ low and $\langle p_{\rm diss}\rangle$ $31\%$ high) was a
+comparison of two different quantities: the line data agree to $0.8$ percent,
 and the gap is line trapping. One absorption has \emph{two} branching ratios
 and the code now carries both from the same table: $p_{\rm single}$, the
 untrapped $D/(D+\sum A_{ul})$, which fixes how many fluorescent decays
@@ -526,10 +540,10 @@ of the table these three are read from.
 \paragraph{What DB96 still owns.} The band share $A$ that H$_2$ removes from
 the shared $912$--$1110$~\AA\ beam is DB96 eq.~(39), the closed-form integral
 of their own eq.~(37), and it stays there. Its normalization is the one
-quantity in this module that no line transfer touches --- the \emph{pump}
-cross section --- and there the two sources agree: $2.640\times10^{-17}$
+quantity in this module that no line transfer touches (the \emph{pump}
+cross section), and there the two sources agree: $2.640\times10^{-17}$
 cm$^2$ at $1300$~K at the illuminated face of the line-by-line calculation
-against $2.557\times10^{-17}$ from DB96's own Table~1--2, $3$ per cent.
+against $2.557\times10^{-17}$ from DB96's own Table~1--2, $3$ percent.
 
 \paragraph{The energy the fluorescence leaves behind is computed, not
 adopted.} Burton, Hollenbach \& Tielens (1990) adopt $2.0$~eV per pump in one
@@ -537,7 +551,7 @@ sentence of their Appendix~A, without a derivation. The same quantity follows
 from the Abgrall, Roueff \& Drira (2000) transition probabilities: summing
 every decay of every in-band pump, weighted by the $X(v'',J'')$ energy it
 lands on, gives a mean landing energy of $2.060$~eV at $700$~K rising to
-$2.129$~eV at $3200$~K per \emph{bound} fluorescence --- $3$ to $6$ per cent
+$2.129$~eV at $3200$~K per \emph{bound} fluorescence, $3$ to $6$ percent
 above the adopted value. \texttt{h2\_energy\_per\_bound\_fluorescence\_eV(T)}
 replaces the constant, and the photoelectron channel of
 \texttt{electron\_energy\_degradation.f90} shares it with its own
@@ -572,13 +586,20 @@ is exactly zero at $T = T_{\rm rad}$, $W = 1$.
 
 The factor is doing real work rather than sitting at its LTE value: evaluated
 over the $x_{\rm H_2} > 0.01$ layer of \texttt{mol\_lyman\_werner}, $s$ runs
-from $0.996$ in the base cell ($n_{\rm H_2} = 4.63\times10^{13}$~cm$^{-3}$)
-down to $0.438$ at the top of that layer ($4.42\times10^{9}$~cm$^{-3}$,
-$r = 1.172\,R_{\rm p}$). Assuming LTE there would overstate the H$_3^+$
-cooling by a factor $2.3$.
+from $0.996$ in the base cell down to $0.438$ at the top of that layer.
+Assuming LTE there would overstate the H$_3^+$ cooling by a factor $2.3$.
+\emph{Those two values of $s$ are STALE}: they were taken on an earlier state
+of the case, whose base carried $n_{\rm H_2} = 4.63\times10^{13}$~cm$^{-3}$
+and whose $1\%$ edge sat at $4.42\times10^{9}$~cm$^{-3}$, $r = 1.172\,R_{\rm
+p}$; the state the goldens now hold spans $5.15\times10^{12}$ down to
+$4.48\times10^{9}$~cm$^{-3}$ over $1.0002$--$1.075\,R_{\rm p}$
+(\S\ref{sec:layer}). Re-measuring them means evaluating
+\texttt{h3p\_departure} of \texttt{h3p\_cooling.f90} on the two ends of that
+layer; the density range still sits inside the Miller et al.\ table, so the
+verdict of Table~\ref{tab:validity} does not turn on it.
 
-The table is a vacuum departure factor --- collisions against spontaneous
-decay, no incident field --- so a field strong enough to matter pumps the
+The table is a vacuum departure factor (collisions against spontaneous
+decay, no incident field), so a field strong enough to matter pumps the
 levels back toward LTE and the true departure is smaller than $s$. The
 treatment therefore underestimates the magnitude of the exchange, not its
 sign or its fixed point.
@@ -613,7 +634,7 @@ $\lambda \rightarrow 0$ end of the continuation path in
 The assumption here is not about level populations but about the chemistry:
 this is \emph{thermochemical} equilibrium, and it knows nothing about
 photodissociation. It is therefore not a statement about an irradiated wind,
-and the code says so at its own site --- in chemical equilibrium
+and the code says so at its own site: in chemical equilibrium
 $q_{\rm H_2}(1\,\mu\mathrm{bar})$ stays large up to $T \sim 2000$~K and the
 gas is fully atomic only above $\sim 2400$~K, while photochemistry plus the
 hotter actual base temperature dissociate H$_2$ well below that. Using it as a
@@ -623,7 +644,7 @@ molecular is not. Section 114 of \texttt{docs/Update\_EXHALE.md} records an
 attempt in that direction being withdrawn, together with the repair of an
 asymptotic guard in the same function that had been inverted since
 transcription and handed every cell below about $529$~K a fully atomic state
-labelled ``the dense molecular limit''.
+labeled ``the dense molecular limit''.
 
 \subsection{Three sites that inherit a ground-state assumption silently}
 
@@ -721,7 +742,7 @@ equally efficient third body.
 
 The coefficient this assumes uniform is the M~$=$~H$_2$ one: R15 carries
 Cohen \& Westberg's (1983) recommended $k_1({\rm H_2}) = 2.8\times10^{-31}
-T^{-0.6}$~cm$^6$~s$^{-1}$ over $50$--$5000$~K, labelled M~$=$~H$_2$ on their
+T^{-0.6}$~cm$^6$~s$^{-1}$ over $50$--$5000$~K, labeled M~$=$~H$_2$ on their
 data sheet and separate from their $k_1({\rm H})$.
 
 Breshears \& Bird measured all three of their colliders in one experiment with
@@ -736,7 +757,7 @@ how much the third body matters:
 \end{align}
 %
 Evaluated here, $k_d({\rm H})/k_d({\rm H_2})$ is $8.67$ at $3500$~K, $6.26$ at
-$4000$~K, $3.97$ at $5000$~K and $2.01$ at $8000$~K --- a factor of a few
+$4000$~K, $3.97$ at $5000$~K and $2.01$ at $8000$~K: a factor of a few
 across their measured $3500$--$8000$~K range. Cohen \& Westberg's independent
 \emph{recombination} pair, $k_1({\rm H}) = 8.8\times10^{-33}$ against
 $k_1({\rm H_2}) = 2.8\times10^{-31}T^{-0.6}$, gives $4.21$ and $5.21$ at
@@ -753,7 +774,7 @@ cost of extrapolating an Arrhenius fit rather than as physics.
 \paragraph{Helium is the collider nobody measured.} The equal-efficiency
 assumption is weakest in two places, and only one of them is quantified above.
 Above the H$_2$ front atomic H dominates the collider population, and the
-factor of $2$--$5$ is the size of the error there --- carried, at least, by a
+factor of $2$--$5$ is the size of the error there: carried, at least, by a
 vanishing H$_2$ density. In a helium-rich envelope M is helium, and there is
 no measurement to compare against at all. Breshears \& Bird shocked H$_2$ in
 argon and in xenon ($5.0$, $10.0$, $20.0\%$ H$_2$ in Ar; $5.0$, $10.0$,
@@ -782,7 +803,7 @@ Molecular hydrogen does not. Its rotational constant gives
 $\theta_{\rm rot} = 85.35$~K, so at the 400--1300~K the molecular layer runs
 the rotational ladder is fully excited and an H$_2$ molecule stores about
 $\tfrac{5}{2} k T$; the vibrational ladder adds to that above $\sim 800$~K.
-In a gas that is 80 per cent H$_2$ the specific heat is therefore wrong by a
+In a gas that is 80 percent H$_2$ the specific heat is therefore wrong by a
 factor $1.67$.
 
 \subsection{The mixture}
@@ -816,8 +837,8 @@ temperature, and it is not a free parameter: both quantities in
 \subsection{Where the level data comes from}
 
 $u_{\rm rv}$ and $c_{\rm rv}$ are evaluated from the complete bound
-rovibrational ladder of H$_2$ $X\,^1\Sigma_g^+$ --- 302 levels reaching
-51\,966~K, the 4.478~eV dissociation limit --- which the code already carries
+rovibrational ladder of H$_2$ $X\,^1\Sigma_g^+$ (302 levels reaching
+51\,966~K, the 4.478~eV dissociation limit), which the code already carries
 for its infrared line cooling (Roueff et al.\ 2019). The level term energies and
 the weights $g_I(2J+1)$ come from that same table, so there is no second copy
 of the H$_2$ spectroscopic constants in the code to drift out of step with the
@@ -825,8 +846,8 @@ first.
 
 Using the observed ladder is not a refinement for its own sake. A rigid rotor
 plus a harmonic oscillator, with $\theta_{\rm rot} = 85.35$~K and
-$\theta_{\rm vib} = 5987$~K, gives $c_v({\rm H_2})/k$ smaller by 1.4 per cent
-at 200--900~K, 2.3 per cent at 1300~K and 7.3 per cent at 3000~K.
+$\theta_{\rm vib} = 5987$~K, gives $c_v({\rm H_2})/k$ smaller by 1.4 percent
+at 200--900~K, 2.3 percent at 1300~K and 7.3 percent at 3000~K.
 
 Because the sum runs over a single partition function with the nuclear-spin
 weights inside it, (\ref{eq:caloric_e}) is the ortho/para \emph{equilibrium}
@@ -854,7 +875,7 @@ To keep the cost of that iteration bounded, $u_{\rm rv}$ is tabulated once on a
 4096-point logarithmic grid from 1~K to $5\times10^{4}$~K and interpolated by a
 cubic Hermite in $\ln T$ built on exact nodal values of both $u_{\rm rv}$ and
 ${\rm d}u_{\rm rv}/{\rm d}\ln T$. The interpolant is therefore $C^1$ and its own
-derivative --- the quantity the Newton iteration differentiates --- is exact at
+derivative (the quantity the Newton iteration differentiates) is exact at
 the nodes. Against the direct 302-level sum over 200--5000~K the largest
 relative error is $10^{-12}$ in $u_{\rm rv}$ and $9\times10^{-10}$ in
 $c_{\rm rv}$.
@@ -872,8 +893,8 @@ speeds likewise use each cell's own $\gamma_{\rm eff}$.
 The reconstruction needs no index at all: it works in primitive variables. Each
 face state's energy and sound speed are built with the heat capacity of the cell
 it was reconstructed from, which is well defined because the two stored
-composition quantities are ratios of number densities to $\rho$ --- functions of
-the mass fractions alone --- and so are unchanged by the density difference
+composition quantities are ratios of number densities to $\rho$ (functions of
+the mass fractions alone), and so are unchanged by the density difference
 between a cell average and its face value.
 
 One place still needs a single index for both sides: the Roe average
@@ -896,6 +917,149 @@ off leaves every map on the legacy expression verbatim, and inside a molecular
 run a cell with exactly zero H$_2$ takes the same expression. Every
 non-molecular case of the regression matrix is byte-identical across the
 change.
+\section{The element budget the carriers spend, and what the
+stationary solve does with it}
+\label{sec:budget}
+
+Everything above treats one cell's chemistry. This section is about the
+bookkeeping that holds across cells and across the two solvers, because that
+is where the stage-2 work of 2026-09 landed and because it changes what a
+molecular number in this memo means.
+
+\subsection{One map, three contexts}
+
+Every stoichiometric coefficient H$_2$ carries is now read in exactly one
+place, \texttt{nuclei\_per\_particle} of
+\texttt{src/modules/lower\_atmosphere/element\_inventory.f90}: two hydrogen
+nuclei for H$_2$ and H$_2^+$, three for H$_3^+$, one hydrogen and one helium
+for HeH$^+$. \texttt{element\_inventory\_of\_cell} builds from it the full
+inventory of a cell grouped into what the carriers hold, what is locked, what
+the reservoir specifies and what the closure supplies, together with the
+budget each side spends; \texttt{element\_inventory\_of\_candidate} does the
+same for a trial state of the Newton against frozen element densities;
+\texttt{EXHALE\_INVENTORY\_REPORT=1} prints either at the operator's entry.
+Which species belong to which group in which context is tabulated in
+\texttt{docs/element\_inventory\_contexts\_20260909.md}.
+
+The map exists because the coordinate box the carrier solve used to be
+limited by was the wrong feasible set. Five separate box sides, one per
+carrier, let two carriers of the same element each spend the whole budget: a
+cell sitting at both of its hydrogen-bearing ceilings breached the shared
+hydrogen budget by exactly $1.0$ of the available hydrogen (MEASURED by the
+map on a coupled state). The marching path never showed it, because there
+\texttt{limit\_to\_element\_budget} enforces the shared sums; what had no
+shared statement was the coupled stationary solve, whose residual compared a
+count of cells.
+
+\subsection{The constraint replaces the box}
+
+Since 2026-09-09 the trial step of the stationary solve is limited by the
+shared rows themselves,
+\[
+   2n({\rm H_2}) + n({\rm H^+}) + n({\rm OH}) + 2n({\rm H_2O})
+   \;\le\; n_{\rm H}^{\rm avail},
+\]
+and its oxygen and carbon counterparts, in place of the five corners (each
+corner is implied by the row, so nothing is lost and the direction along the
+constraint surface is gained). A nonlinear feasibility screen runs at every
+candidate, and an infeasible start is repaired by a restoration phase before
+the step is taken (on the coupled element-and-carrier fixture, $52$ trials
+restored over $1165$ cell-steps, worst violation $1.630 \rightarrow
+2\times10^{-16}$; READ from \texttt{Update\_EXHALE.md} section~7, item N4b).
+Two switches expose the change for measurement:
+\texttt{EXHALE\_ELEMENT\_CONSTRAINT\_ROWS=0} restores the five corners and
+\texttt{EXHALE\_ELEMENT\_WRITE\_BACK} governs the element-conserving
+write-back below; no input key, output column or unknown layout changed.
+
+The write-back is the part that mattered numerically. Each Newton iterate
+writes its carrier densities back into the species vector, and the old
+write-back did not return the element totals it had been handed: inside one
+coupled carrier solve the He/H nucleus ratio drifted from
+$1.39\times10^{-11}$ to $2.016\times10^{-1}$ of the value the run was given
+over $79$ iterates, while every carrier box reported a breach of exactly
+zero, so no gate the code had could see it. The element-conserving write-back
+holds the same ratio at $1.39\times10^{-11}$ at all $68$ iterates of the same
+fixture (MEASURED, N4b). This is bookkeeping, not chemistry, but a
+composition whose helium content has moved by $20\%$ is not the composition
+any rate in this memo was evaluated for.
+
+\paragraph{A clamp that creates nuclei, still in the tree.} When the
+proportional share of a hydrogen write-back leaves a cell whose local stages
+hold nothing (\texttt{held} $\le 0$), the remainder is deposited as
+\[
+   f({\rm H\,\textsc{i}}) = \max(\text{rest}, 0)/n_{\rm d},
+\]
+and with $\text{rest} < 0$ the carriers keep what they hold while the closure
+cannot go negative, so the written element total exceeds the handed one by
+$|\text{rest}|$: nuclei are created. The same shape appears in the oxygen and
+carbon deposits of the same routine
+(\texttt{diffusive\_photochemistry.f90}). Only
+\texttt{element\_census\_verify} under \texttt{EXHALE\_ELEMENT\_ASSERT} $=1$
+or $2$ sees it, and that is off by default. The finding is recorded and the
+clamp is unchanged; it is not a defect of a rate but of the reconciliation
+around it.
+
+\subsection{H$_2$ is transported; the molecular ions are eliminated}
+
+The carrier option transports H$_2$ alone and closes H$_2^+$, H$_3^+$ and
+HeH$^+$ locally, and that split is now measured rather than asserted. On the
+resolved gradient length of the hot-Uranus state the product of the advection
+time and the chemical decay rate, $t_{\rm adv}\lambda$, is $3.68$ at the
+base, $4.0\times10^{-3}$ at the front and $0.82$ in the wind for H$_2$, while
+H$_2^+$, H$_3^+$ and HeH$^+$ decay three to twelve decades faster than
+transport everywhere (READ from \texttt{Update\_EXHALE.md} section~7, item
+N5). H$_2$ is therefore the only molecular species whose local balance the
+flow can break on this grid, and none of the three ions is proposed for
+promotion. The parameterization removes the conservation modes by itself: the
+neutral stage closes each element.
+
+\paragraph{The two-root H$_2$ front does not reproduce once H$_2$ is
+transported.} With the eliminated closure, seeding the H$_2$ partition from
+ten different starting points found two distinct roots at the front.
+With H$_2$ among the transported carriers, $x({\rm H_2})$ at the front is
+bitwise identical over the same ten seeds, because the transported value
+replaces the seed in the H$_2$ row. The H\,\textsc{i} partition still shows
+one root on the carrier fixture and two on the element-and-carrier fixture
+($9$ seeds and $1$, $1.05\times10^{-1}$ apart); whether the second is a
+distinct branch or a slow iteration is not settled. Both readings are from the
+branch-discovery arm \texttt{EXHALE\_RESID\_BRANCH\_REPORT=1} of the residual
+contract (N5).
+
+\subsection{The upstream caloric energy in the \texttt{\_adv} residual}
+\label{sec:advcaloric}
+
+The advection-corrected post-process does not carry the molecular columns,
+but its energy equation is no longer molecule-free. The upwind term of the
+\texttt{\_adv} energy residual receives the upstream cell's specific internal
+energy $e_{\rm up} = E(x_{{\rm H_2},{\rm up}}, T_{\rm up})/\mu_{\rm up}$
+formed by the caller, and the caloric branch is taken when \emph{either} side
+of the interface carries H$_2$, so an atomic cell sitting above a molecular
+one no longer loses the incoming rovibrational energy; both sides atomic
+gives the monatomic expression verbatim
+(\texttt{post\_process\_adv.f90}, \texttt{T\_equation.f90},
+\texttt{ion\_cell\_state.f90} fields \texttt{x\_h2\_up} and \texttt{e\_up}).
+A larger defect was fixed in the same path: \texttt{x\_h2\_cell} had been
+assigned only inside the stationarity loop and read by the temperature loop
+for every cell, so the whole molecular layer was solved at the H$_2$ fraction
+of the outermost ghost ($1.5\times10^{-7}$ on \texttt{mol\_base\_handoff},
+$2.3\times10^{-5}$ on \texttt{mol\_carrier}, against $0.84$ at the base).
+
+The energy convention is unchanged and nothing is counted twice: the caloric
+equation of state carries the bound rovibrational ladder only, and the
+$4.478$~eV bond lives in the formation reservoir of
+\texttt{molecular\_reaction\_heat.f90}.
+
+The consequence for anyone reading an \texttt{\_adv} file of a molecular run
+is large. Between the two defects, \texttt{T\_adv} moved in $469$ and $467$ of
+$504$ rows on \texttt{mol\_base\_handoff} and \texttt{mol\_carrier}, by up to
+$94.2\%$ ($218 \rightarrow 424$~K at $r = 1.094$) and $103.2\%$
+($169 \rightarrow 343$~K), in both cases a warming of the molecular layer,
+which is what carrying $\tfrac52 kT$ per H$_2$ instead of $\tfrac32 kT$ does
+(numbers READ from \texttt{Update\_EXHALE.md} section~7, item N12). The
+molecular \texttt{\_adv} goldens were refreshed at the 2026-09-10 gate. The
+product is still not a molecular stationary solution, and the writer says so
+in its own header.
+
 \section{Validity ranges}
 \label{sec:validity}
 
@@ -908,9 +1072,9 @@ local algebraic balance, recomputed from scratch in each cell by
 \texttt{ioniz\_eq}. That is a statement about time scales, not a property of
 the network: it holds where the chemistry is fast against the flow and nowhere
 else. Evaluated on our own converged solution it does not hold across the
-H$_2$ front --- the term the closure drops is two decades larger than the whole
+H$_2$ front: the term the closure drops is two decades larger than the whole
 net chemical rate there (\texttt{docs/supersonic\_molecular\_base.md}
-section~13.6) --- so the front position and the H$_3^+$ extent that follow from
+section~13.6), so the front position and the H$_3^+$ extent that follow from
 it are properties of the closure as much as of the chemistry. The transported
 alternative exists and is described in \texttt{Update\_EXHALE.md}
 sections~128 and~134; it is off by default while the question of whether the
@@ -921,8 +1085,8 @@ numerical rather than chemical.} Its advection was first-order donor-cell until
 2026-09-03, carrying a numerical diffusivity $|v|\Delta r/2$ that on the
 500-cell grid of the hot Uranus is 8 to 22 times the molecular diffusivity of
 H$_2$ over $1.15$--$1.50\,R_p$, so the front it produced was set by the scheme
-as much as by the flow. It is now second order --- van Leer limited slope added
-as a deferred correction --- which on the coarse grid reproduces what doubling
+as much as by the flow. It is now second order (van Leer limited slope added
+as a deferred correction), which on the coarse grid reproduces what doubling
 the grid gave. The residual front motion after that fix is grid-converged, so
 it is the state relaxing and not the discretization; but the state is not
 steady, the steady solver stalls on the energy row inside the front, and no
@@ -935,13 +1099,13 @@ solve at a frozen H$_2$ partition with a carrier relaxation at a frozen wind.
 That alternation does not converge and cannot: its acceptance gate stood below
 the smallest move the transport operator can make, the fixed-wind steady state
 it relaxed to sat on the hydrogen element ceiling over a quarter of the grid,
-and its convergence measure --- the carrier row divided by
-$n_{\rm H}(|v|+c_s)/\Delta r$ --- understated the row's own imbalance by a
+and its convergence measure (the carrier row divided by
+$n_{\rm H}(|v|+c_s)/\Delta r$) understated the row's own imbalance by a
 factor $10^{2.7}$ to $10^{6.4}$, so a state carrying $0.60$ of its own terms at
 the front was reported at $1.6\times10^{-4}$. Worse, the splitting moved the
 H$_2$ front OUTWARD at 83\% of the local gas speed, whereas solving the
-carriers and the wind together moves it INWARD --- from $x_{\rm H_2}=0.5$ at
-$1.142$ to $1.062\,R_p$ --- because H$_2$ costs particles, fewer particles at
+carriers and the wind together moves it INWARD (from $x_{\rm H_2}=0.5$ at
+$1.142$ to $1.062\,R_p$) because H$_2$ costs particles, fewer particles at
 the wind's own pressure means a hotter cell, and a hotter cell destroys H$_2$.
 A fixed wind cannot see that feedback. The carrier row now carries the same
 convergence statement as every other row (its own largest terms), and
@@ -978,26 +1142,26 @@ H$_2$ LTE line emission
     $A_{10}/\gamma_{10}$ of Hollenbach \& McKee (1979) is
     $2$--$6\times10^{6}$~cm$^{-3}$ (H$_2$ collider) or
     $5$--$8\times10^{4}$~cm$^{-3}$ (H collider) at $900$--$1350$~K
-  & $n({\rm H_2}) = 4.4\times10^{9}$--$4.6\times10^{13}$~cm$^{-3}$
-  & Inside everywhere, by three to nine decades. No helium collision rate is
+  & $n({\rm H_2}) = 4.5\times10^{9}$--$5.2\times10^{12}$~cm$^{-3}$
+  & Inside everywhere, by three to eight decades. No helium collision rate is
     published in either source, so a helium-dominated gas is an
-    extrapolation --- one that understates the de-excitation rate \\
+    extrapolation: one that understates the de-excitation rate \\
 \addlinespace
 H$_2$O and CO band cross sections
   & Tabulated $50$--$2000$~K, clamped outside
-  & $945$--$1307$~K in the molecular layer
+  & $874$--$1221$~K in the molecular layer
   & Inside. Both molecules are largely dissociated above $2000$~K in any case
     \\
 \addlinespace
 R15 three-body recombination, $k_1({\rm H_2}) = 2.8\times10^{-31}T^{-0.6}$
   & Cohen \& Westberg (1983), recommended $50$--$5000$~K; $\pm0.2$ in
     $\log k$ at $300$~K rising to $\pm0.4$ at $5000$~K
-  & $945$--$1307$~K
+  & $874$--$1221$~K
   & Inside \\
 \addlinespace
 R12 thermal dissociation, $k_{\rm rec}/K_{\rm eq}$
   & Inherits R15's range; $K_{\rm eq}$ tabulated $100$--$20000$~K and clamped
-  & $945$--$1307$~K
+  & $874$--$1221$~K
   & Inside. Against the Baulch et al.\ (1992) fit the ratio is $0.97$--$1.18$
     over that fit's own $2500$--$8000$~K and departs only below it \\
 \addlinespace
@@ -1025,7 +1189,7 @@ Lyman--Werner $\sigma_{\rm diss}$, Doppler axis
 Lyman--Werner $\sigma_{\rm diss}$, level distribution
   & LTE at the tabulated $T = 700$--$3200$~K; the \textsc{Cloudy} runs on the
     same grid return departure coefficients of $1.000$
-  & $945$--$1307$~K, $n_{\rm H}$ up to $9.3\times10^{13}$~cm$^{-3}$,
+  & $874$--$1221$~K, $n_{\rm H}$ up to $1.1\times10^{13}$~cm$^{-3}$,
     collisional
   & Inside. Turbulent broadening and any non-thermal population are not
     carried \\
@@ -1047,15 +1211,16 @@ Band fraction $A$ from DB96 eq.~(39)
 \addlinespace
 H$_3^+$ emission fit $E(T)$
   & Miller et al.\ (2013) Table 5, piecewise $30$--$5000$~K; frozen above
-  & $945$--$1307$~K
+  & $874$--$1221$~K
   & Inside. The published segments do not join; each is used on its own range
     \\
 \addlinespace
 H$_3^+$ departure factor $s(T, n_{\rm H_2})$
   & Table 6 grid $T = 300$--$5000$~K, $\log_{10} n_{\rm H_2} = 6$--$14$;
     clamped, $s = 1$ above $10^{14}$
-  & $T = 945$--$1307$~K, $n_{\rm H_2} = 4.4\times10^{9}$--$4.6\times10^{13}$
-  & Inside; $s = 0.44$--$0.996$ across the layer \\
+  & $T = 874$--$1221$~K, $n_{\rm H_2} = 4.5\times10^{9}$--$5.2\times10^{12}$
+  & Inside; $s = 0.44$--$0.996$ across the layer, both values stale
+    (\S\ref{sec:h3p}) \\
 \addlinespace
 \texttt{q\_h2\_equilibrium}
   & Koskinen et al.\ (2022) Eq.~(11), validated against NASA CEA at
@@ -1074,7 +1239,7 @@ Photoelectron energy
     $n({\rm He}) = 0.1[n({\rm H}) + 2n({\rm H_2})]$ and no metal at all;
     H$_2$ in its ground vibrational level, so $T \lesssim 2000$~K
   & $x = 10^{-16}$--$5\times10^{-5}$ in the layer and $\to 1$ in the wind
-    above it; $E_0 > 30$~eV (\texttt{E\_sec\_ion}); $945$--$1307$~K
+    above it; $E_0 > 30$~eV (\texttt{E\_sec\_ion}); $874$--$1221$~K
   & Inside on $x$ in the layer, on $E_0$ and on $T$. \textbf{Outside on $x$
     in the ionized wind}, where eq.~(14) is extrapolated above $0.1$ with a
     neutral-fraction closure that forces the $x=1$ endpoint; that
@@ -1098,12 +1263,12 @@ H$_2$ vibrational energy:
     $T \gtrsim 500$~K''; colliders H and H$_2$ only (Burton et al.\ add
     electrons); no helium rate in either source; $E_* = 2.0$~eV is an
     adopted value for \emph{photon} pumping
-  & $T = 945$--$1307$~K; colliders are H$_2$, H and He with
-    $n({\rm H_2}) = 4.4\times10^{9}$--$4.6\times10^{13}$~cm$^{-3}$ against
+  & $T = 874$--$1221$~K; colliders are H$_2$, H and He with
+    $n({\rm H_2}) = 4.5\times10^{9}$--$5.2\times10^{12}$~cm$^{-3}$ against
     $n_{\rm cr}(v{=}1) = 5\times10^{4}$--$1\times10^{6}$~cm$^{-3}$
-  & Inside on $T$ and, by three to nine decades, on density: the quench
+  & Inside on $T$ and, by three to eight decades, on density: the quench
     fraction is $1.0000$ throughout the layer. \textbf{Outside on helium},
-    which is left out of the collider sum for want of a rate --- an omission
+    which is left out of the collider sum for want of a rate: an omission
     that lowers the quench fraction, so it errs against claiming the energy
     as heat. Applying $E_*$ to electron-impact excitation of B and C is an
     assumption: same upper states and cascade, different distribution over
@@ -1155,8 +1320,8 @@ H$_2$ solved as a LOCAL chemical equilibrium (the closure itself)
   equations, the $1833$-line radiative network as a level-coupling matrix
   instead of a summed emissivity, and a state-to-state collisional set that
   the code does not have and that none of its current sources supply. Against
-  that cost, the place it would most obviously buy something --- the
-  self-shielding --- is now supplied from outside by a line-by-line
+  that cost, the place it would most obviously buy something (the
+  self-shielding) is now supplied from outside by a line-by-line
   calculation that carries the ladder for us (\S\ref{sec:lw}), so the
   transported ladder would buy consistency rather than a missing number. The
   trade is recorded here rather than settled.
@@ -1169,9 +1334,9 @@ H$_2$ solved as a LOCAL chemical equilibrium (the closure itself)
   reads the calculation.
 
 \item \textbf{Line overlap: DONE; the geometry of the trapping is what is
-  left.} The successor item --- that above $N_{\rm overlap}(T)$ the tabulated
+  left.} The successor item (that above $N_{\rm overlap}(T)$ the tabulated
   calculation was itself an upper bound, because it shielded one line at a
-  time --- is closed. The table is now built with every Lyman and Werner line
+  time) is closed. The table is now built with every Lyman and Werner line
   absorbing every other line's beam, \texttt{h2\_shielding\_overlap\_column}
   is gone, and the only column boundary left is the top of the grid
   (\S\ref{sec:lw}). What replaces it is narrower: the trapping ratio
@@ -1202,14 +1367,15 @@ H$_2$ solved as a LOCAL chemical equilibrium (the closure itself)
   carriers. Measured on
   \texttt{output/\allowbreak Cooling\_breakdown.txt}, columns 13 and 14 are exactly zero
   in all $504$ rows, while column 12, the H$_2$ line channel, is nonzero
-  everywhere and peaks at $2.934\times10^{-7}$~erg~cm$^{-3}$~s$^{-1}$ at
-  $r = 1.0025\,R_{\rm p}$, $T = 1316$~K. The zeros are structural rather than
+  in all $504$ and peaks at $2.148\times10^{-8}$~erg~cm$^{-3}$~s$^{-1}$ at
+  $r = 1.0059\,R_{\rm p}$, $T = 1248$~K. The zeros are structural rather than
   numerical: with $n({\rm H_2O}) = n({\rm CO}) = 0$ the two net-rate functions
   return $0$ on their own guard. The case gates the H$_2$ line channel and
   nothing else, and a case that exercises the H$_2$O and CO paths would have
   to add \texttt{Oxygen chemistry: True}.
-  \emph{Note also} that the golden directory for this case carries only
-  \texttt{Hydro\_ioniz.txt}, \texttt{Ion\_species.txt} and \texttt{run.log};
+  \emph{Note also} that the golden directory for this case carries
+  \texttt{Hydro\_ioniz.txt}, \texttt{Ion\_species.txt} and their two
+  \texttt{\_adv} twins, plus \texttt{run.log};
   \texttt{Cooling\_breakdown.txt} is not snapshotted, so the infrared columns
   are not under regression control at all.
 

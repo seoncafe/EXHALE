@@ -1,6 +1,6 @@
 # Phase E: the profile handoff and the elemental-flux closure
 
-**Status: implemented, 2026-08-27 — milestones E1 through E5, section 8.
+**Status: implemented, 2026-08-27, milestones E1 through E5, section 8.
 The six decisions of section 9 were confirmed as proposed and are in the code
 as written, except that the helium-flux arm of decision 5 was answered the
 other way: the closure iterates helium as well as hydrogen. Sections 2-6 now
@@ -9,7 +9,7 @@ run. Two of them are answered against their first form and the answer is the
 result, not a defect: T-E5 holds in the steady-flux window and fails in the
 overlap window (section 3.4), and the overlap window itself is measured and
 rejected on physical grounds. The changelog record is
-`docs/Update_EXHALE.md` sections 76-79; the application is
+`docs/Update_EXHALE_stage1.md` sections 76-79; the application is
 `docs/lhs1140b_lower_atmosphere_plan_new.md`, Phase E.**
 
 This document is the implementation design that
@@ -23,11 +23,11 @@ Inputs it is written against, all read for this design:
 
 - `docs/lhs1140b_lower_atmosphere_plan_new.md`, Phase E (the two parts and
   their acceptance criteria) and baseline rows 4, 9;
-- `docs/composition_restart_and_base_handoff.tex`, Part 2 — the decision of
+- `docs/composition_restart_and_base_handoff.tex`, Part 2: the decision of
   2026-08-26 in favor of profiles, the field list, and the reasons;
-- `docs/vulcan_photochem_comparison.md`, section "2026-08-26 - Phase P1" —
+- `docs/vulcan_photochem_comparison.md`, section "2026-08-26 - Phase P1":
   the Photochem environment, the gas-giant workflow, and the traps;
-- `docs/Update_EXHALE.md` section 74 — the five `base.inp` key categories,
+- `docs/Update_EXHALE_stage1.md` section 74: the five `base.inp` key categories,
   the `<El>_H_base` elemental keys, `src/utils/element_budget.py`, and the
   `EXHALE_resolved.out` extension;
 - `docs/oxygen_chemistry_new_plan.md` P1-P4 and section 4.1 (the physics
@@ -87,13 +87,13 @@ an interval), not for its role in the code. Absent key: present behavior,
 unchanged, including the scalar `base.inp` path. Parsed in the
 keyword-extension block beside `Lower atmosphere` (`input_read.f90:442-451`)
 and consumed at the same point as the scalar handoff, i.e. the
-`read_base_inp` call site (`input_read.f90:856`) — after
+`read_base_inp` call site (`input_read.f90:856`), after
 `run_lower_atm_prestep` and before the derived constants, so overrides reach
 everything computed from them. This placement is also what makes the
 elemental reservoirs work: `thereis_metals`, `melem_ab` and
 `thereis_lowIP_metal` are derived after that call
 (`input_read.f90:889-910`), a reordering made in P2 precisely so a handoff
-element could be heard (`docs/Update_EXHALE.md` section 74).
+element could be heard (`docs/Update_EXHALE_stage1.md` section 74).
 
 ### 2.2 Format
 
@@ -134,7 +134,7 @@ Columns:
 | 8 | `q_H` | - | atomic H volume mixing ratio |
 | 9.. | `X_He`, `X_C`, `X_N`, `X_O`, `X_S`, ... | - | elemental El/H **nuclei** ratios, summed over every carrier, one column per element the file carries |
 | .. | `F_He`, `F_C`, ... | g s^-1 | upward elemental fluxes at that level, outward positive |
-| .. | `F_H` | g s^-1 | upward elemental hydrogen flux — the closure variable |
+| .. | `F_H` | g s^-1 | upward elemental hydrogen flux: the closure variable |
 | .. | `q_H2O`, `q_CO`, ... | - | the molecular abundances the EXHALE network carries or that the cold-trap statement needs |
 
 Element columns are summed over all carriers, as `vulcan_to_base.py` already
@@ -213,9 +213,9 @@ has to carry", closing paragraph.
 ### 3.1 Base state
 
 `T0`, `R0`, `p_base_bar`, `q_h2_base`, `HeH` and `X_<El>` are set from the
-profile at the matching level, through the same doors the scalar keys use —
+profile at the matching level, through the same doors the scalar keys use,
 `set_element_abundance` (`input_read.f90:1294-1313`) for the elements, direct
-assignment for the rest — so that `comp_mass_per_H`, `comp_ntot_bc` and
+assignment for the rest, so that `comp_mass_per_H`, `comp_ntot_bc` and
 `comp_rho_bc` (`src/modules/functions/composition.f90:126-173, 239-242`)
 build the base EOS from exactly the values the lower model reported. Nothing
 in those functions changes.
@@ -231,17 +231,17 @@ in those functions changes.
 Today `he_kzz` is one scalar (`parameters.f90:154`) used in three places
 inside the diffusion operator:
 
-- `binary_element_diffusion.f90:660` — the diffusive time scale that sets
+- `binary_element_diffusion.f90:660`, the diffusive time scale that sets
   the relaxation step;
-- `:1357` — `Agrad = rhof*(Df + he_kzz)`, the binary element operator's
+- `:1357`, `Agrad = rhof*(Df + he_kzz)`, the binary element operator's
   gradient-plus-eddy face coefficient;
-- `:1572` — `DK = Df + he_kzz` in the trace-metal kernel.
+- `:1572`, `DK = Df + he_kzz` in the trace-metal kernel.
 
 `LHS1140b/kzz_decision.md` and `docs/eddy_diffusion_kzz.tex` already record
 the judgment that a constant is the wrong shape: the molecular coefficient
 rises by nearly five decades between the base and 1.2 R_p, so no single
 constant can both mix the base and follow the molecular coefficient outward,
-and the homopause — the one consequential thing K_zz does — is where
+and the homopause (the one consequential thing K_zz does) is where
 `K_zz = D`, a property of two profiles. The profile file is what resolves
 this.
 
@@ -285,7 +285,7 @@ r_El = (stated El/H) / (El/H of the loaded state at the base cell),
 which changes the normalization and nothing else: the ionization split and the
 shape of the loaded profile are preserved exactly. An element the handoff does
 not state, and a restart with no handoff at all, are left untouched
-(`docs/Update_EXHALE.md` section 80).
+(`docs/Update_EXHALE_stage1.md` section 80).
 
 ### 3.4 Measuring the elemental flux over the overlap
 
@@ -309,7 +309,7 @@ not do today:
 3. **A single reported number per element**: the flux over the overlap
    window, reported as median and relative spread over the faces between the
    base and `p_top_bar`, so the closure compares one number and can say how
-   well-defined it is. The spread is the honesty term — a mismatch inside
+   well-defined it is. The spread is the honesty term: a mismatch inside
    the spread is not a mismatch.
 
 Note the standing hazard the same module records: below ~1.02 R_p the base
@@ -318,7 +318,7 @@ times its own median (`binary_diffusion_design.md` section 7.3). The
 overlap window must therefore be taken outside the base cells, on the same
 `[j_min:N]` escape window the solver uses to declare the wind steady
 (`EXHALE_main.f90:687-710`), intersected with the profile's coverage. If that
-intersection is empty — the lower model stops below `j_min` — the closure
+intersection is empty (the lower model stops below `j_min`), the closure
 cannot be measured and the run must say so rather than quote a base-cell
 number.
 
@@ -326,8 +326,8 @@ number.
 `j_min` is the first cell with `r >= r_esc` (`define_grid.f90:193-198`), and
 `r_esc` is 2 R_p in every case that carries diffusion. A lower-atmosphere
 profile reaching from the microbar match to 1e-8 bar covers about 0.01 R_p
-above the base — two decades of pressure is a few scale heights, not a
-radius doubling — so `[j_min:N]` and the profile's coverage never intersect,
+above the base (two decades of pressure is a few scale heights, not a
+radius doubling), so `[j_min:N]` and the profile's coverage never intersect,
 and E1 reported `lower_profile_flux_state window_empty` on every
 configuration tried.
 
@@ -354,8 +354,8 @@ i.e. about 0.005 R_p per decade; the wind is still 6x above its far-field
 flux at 1.05 R_p and does not settle to within 10 per cent until ~1.5 R_p.
 Reaching 1.5 R_p on that scale would ask the photochemical column for of
 order 100 further decades of pressure. Mapping `p_top` through EXHALE's own
-`r(p)` instead of the profile's — the two hydrostatic scales differ, the
-wind being hot where the cold column is not — puts the upper edge at
+`r(p)` instead of the profile's (the two hydrostatic scales differ, the
+wind being hot where the cold column is not) puts the upper edge at
 1.0734 R_p rather than 1.0098 and makes the window non-empty, but does not
 rescue it: the flux over `[1.010, 1.073] R_p` has a radial spread of 5.6
 (F_H) to 7.3 (F_He), against a closure tolerance of 0.05. Both mappings say
@@ -368,7 +368,7 @@ there *is* the flux through the matching level; that identity, and not a
 convenience, is what makes this window a legitimate statement about the
 handoff. On the converged LHS 1140 b profile run it holds 191 faces and
 gives `F_H = 1.8143e7 g/s` and `F_He = 1.3204e7 g/s` with radial spreads of
-0.44 and 0.46 per cent — flat to the same tolerance as the mass flux itself
+0.44 and 0.46 per cent: flat to the same tolerance as the mass flux itself
 (0.45 per cent), which is test T-E5.
 
 That last number depends on how far the wind was converged, and the
@@ -427,7 +427,7 @@ iteration.
 
 - `gdat.gas.atoms_names` is ordered differently from run to run (P1.8
   trap 4): map by name, never by position. This applies to the profile's
-  element columns as well — they are named in the schema header and read by
+  element columns as well: they are named in the schema header and read by
   name.
 - An EXHALE run directory must contain `output/` before the run starts
   (P1.8 trap 3), which the closure driver creates.
@@ -438,7 +438,7 @@ iteration.
 
 **Status: implemented and measured on LHS 1140 b, 2026-08-27
 (`src/utils/radiative_convective_column.py`,
-`photochem_to_lower_profile.py --climate`, `docs/Update_EXHALE.md`
+`photochem_to_lower_profile.py --climate`, `docs/Update_EXHALE_stage1.md`
 section 78). Items 1, 2, 4 and 5 below are as proposed; item 3 is corrected
 by what the codes actually do, and the correction is recorded with it.**
 
@@ -575,7 +575,7 @@ until k = k_max
 ```
 
 `omega = 0.5` to start, halved (floor 0.125) on any iteration whose residual
-failed to fall — the same damping rule, and the same reason, as the diffusion
+failed to fall, the same damping rule, and the same reason, as the diffusion
 outer loop (`binary_diffusion_design.md` section 7.3): nothing in a Picard
 iteration of two solves keeps them from chasing each other. As with that
 loop, **the convergence test reads the undamped residual**, so a small
@@ -601,7 +601,7 @@ phi_El [nuclei/cm^2/s] = Phi_El [g/s] / m_El / (4 pi r_top^2)
 
 and imposed on the dominant carrier of each element: helium on `He`, and
 hydrogen on `H2` at `phi_H/2`, two nuclei to the molecule. The dominant-
-carrier step is measured and not assumed — the atomic-H share of the
+carrier step is measured and not assumed: the atomic-H share of the
 hydrogen nuclei at the model top is 1.0e-4 in the converged LHS 1140 b
 solution, and the adapter refuses the solution if that share rises past
 1 per cent, because the flux would then have been put on the wrong carrier.
@@ -609,7 +609,7 @@ The sign convention was read off Photochem's own right-hand side
 (`photochem_evoatmosphere_rhs.f90`, `rhs(k) = ... - var%upper_flux/dz`):
 positive is a loss at the model top, i.e. outward, the same convention this
 document uses. A zero trial flux calls `set_upper_bc` not at all, so the
-one-way profiles of E2 and E3 remain reproducible — verified by reproducing
+one-way profiles of E2 and E3 remain reproducible: verified by reproducing
 `solution_id 51302c76...` bitwise.
 
 That the boundary condition takes is checked every iteration rather than
@@ -622,7 +622,7 @@ The closed-top solution's own numerical floor is 3.0 g/s in hydrogen and
 
 ### 6.2 Tolerance and iteration count
 
-`tol = 0.05` on the elemental H flux — chosen against the measured
+`tol = 0.05` on the elemental H flux, chosen against the measured
 reproducibility floor rather than picked: the same configuration reproduces
 `log10 Mdot` to about 0.025 dex, i.e. ~6%, between JFNK solutions differing
 negligibly in boundary data (P1.6). A flux residual below that floor is not
@@ -659,7 +659,7 @@ run the loop from three starts spanning an order of magnitude, and require
 the converged `HeH` at the match to agree across them to within the same 5%
 and the converged `log10 Mdot` to within 0.025 dex. If the three starts
 converge to different fixed points, the result is that the closure is
-multivalued on this planet — a reportable finding, not a failure to be tuned
+multivalued on this planet: a reportable finding, not a failure to be tuned
 away.
 
 **Run on LHS 1140 b, 2026-08-27**, from `Phi_ref = 1.8e7 g/s` in hydrogen and
@@ -682,7 +682,7 @@ Two things the run says about the loop itself. `omega` stayed at 0.5 in every
 arm: the residual fell on every iteration and the halving rule never fired,
 so the Picard map is a plain contraction here and the damping was not tested
 by this planet. And the iteration count is exactly what a contraction with
-`omega = 0.5` predicts — the residual halves each step, so the arm starting
+`omega = 0.5` predicts: the residual halves each step, so the arm starting
 1.98 away needs seven iterations and the one starting 0.70 away needs six,
 both inside `k_max = 8`, with no margin to spare for the 3x arm. A start
 further than an order of magnitude out would need a larger `k_max` or a
@@ -709,9 +709,9 @@ steady route (the `EXHALE_PTC` path every LHS 1140 b case uses), and
 `load_IC` must keep each cell's element split with `He_diffusion` on, or the
 restart at step 2 destroys the diffused state.
 
-Everything that is a property of the planet rather than of the iteration —
-both command lines' fixed arguments, the binary, the `input.inp` template,
-the thread count — lives in one JSON configuration
+Everything that is a property of the planet rather than of the iteration
+(both command lines' fixed arguments, the binary, the `input.inp` template,
+the thread count) lives in one JSON configuration
 (`--print-config-template` emits one), so the driver carries no planet
 constants. The LHS 1140 b configuration is
 `LHS1140b/exhale/flux_closure/lhs1140b_closure.json`.
@@ -740,7 +740,7 @@ precautionary:
 | T-E5 | overlap flux | `F_H` and `F_He` over the overlap window are flat to the same tolerance as the mass flux (T8 criterion), on a converged LHS 1140 b run with diffusion on -- **measured 2026-08-27, and the answer is that they are not, in the overlap window.** Where that window is non-empty at all it holds 12-18 faces between 1.007 and 1.0098 R_p and the flux there has a radial spread of 13 (F_H) to 35 (F_He), with a median 4.5x the flux the wind actually carries. The criterion is met in the steady-flux window instead, and there it is met exactly as stated: `F_H` 0.44%, `F_He` 0.46%, mass flux 0.45% on the reference arm. Section 3.4 records why the overlap interval cannot do better |
 | T-E6 | closure residual | the loop of section 6.1 reaches `eps_k <= 0.05` within `k_max`, and the residual is above neither the flux spread nor the reproducibility floor -- **passes 2026-08-27** on all three LHS 1140 b arms (`k` = 0, 5, 6 against `k_max` = 8); the converged residuals are 0.015, 0.031 and 0.029 against window spreads of 0.004-0.009 |
 | T-E7 | initial-value insensitivity | section 6.3: three starts, converged `HeH` within 5%, `log10 Mdot` within 0.025 dex -- **passes 2026-08-27**: `He/H` agrees to 5.5e-6 and `log10 Mdot` to better than the printed 0.005 across starts spanning 10x |
-| T-E8 | element budget | `src/utils/element_budget.py <case>` closes for H, He and every element the profile carries, at its default tolerance, against `EXHALE_resolved.out` (the pre-existing He 2^3S double count of `calc_rho`, `docs/Update_EXHALE.md` section 74, is the known exception and is reported, not hidden) -- **closed 2026-08-27** on the LHS 1140 b profile run: C 1.44e-14, N 1.47e-14, O 1.45e-14 against 1e-8. With `He_diffusion` on, He/H is a solved profile and not a column invariant (2.0921 at the base, 0.167 at 30 R_p), so the H and He rows are stated at the base cell, where the reservoir is the boundary condition, and the separation is reported beside them; `EXHALE_resolved.out` now carries `he_diffusion` so the checker knows which of the two it is testing |
+| T-E8 | element budget | `src/utils/element_budget.py <case>` closes for H, He and every element the profile carries, at its default tolerance, against `EXHALE_resolved.out` (the pre-existing He 2^3S double count of `calc_rho`, `docs/Update_EXHALE_stage1.md` section 74, is the known exception and is reported, not hidden) -- **closed 2026-08-27** on the LHS 1140 b profile run: C 1.44e-14, N 1.47e-14, O 1.45e-14 against 1e-8. With `He_diffusion` on, He/H is a solved profile and not a column invariant (2.0921 at the base, 0.167 at 30 R_p), so the H and He rows are stated at the base cell, where the reservoir is the boundary condition, and the separation is reported beside them; `EXHALE_resolved.out` now carries `he_diffusion` so the checker knows which of the two it is testing |
 | T-E9 | cross-code | the VULCAN adapter run at the same match on the same planet gives an `X_He` and an `F_H` whose difference is stated beside the P1 spread (network 3.95, code 1.70 on a 864 K base; 1.02/1.08 on a 2331 K base) |
 | T-E10 | regression case | one new case with the profile route on, snapshotted at the end of the series, so the reader and the K_zz profile path are pinned from then on -- **added 2026-08-27** as `backup/regression/lower_profile`, the seventh case of the default matrix. It is `examples/17_lower_profile` (HD 209458 b, He 2^3S on, `He_diffusion` and `He_metal_diffusion` on, `Solver: Newton`) with a provenance-only `base.inp` beside the profile and a 12000-step cap, the relaxation-snapshot convention `mol_diffusion` uses. One run exercises the reader, the matching-level base state (`T0 = 1450.0 K`, `R0 = 1.401 R_J`, `p_base = 1e-6 bar`, `q_H2 = 0.11961`, `He/H = 0.083333`), the elemental reservoirs the profile carries (`C/H = 2.700e-4`, `O/H = 4.900e-4`, `N/H = 6.800e-5`, so the case is metals-on with no `metals.inp`), `K_zz(p)` interpolated onto the grid (`1.130e9` to `5.623e9 cm^2/s`, not a constant), the accepting branch of the `solution_id` pair enforcement, and both flux windows -- here the overlap window is **not** empty (`r_lo = 1.0032`, `r_hi = 1.0472 R_p`, 135 faces, `lower_profile_flux_state measured`), which on LHS 1140 b it is. `log10 Mdot = 9.58 g/s` at the cap; wall time about 11 minutes single-threaded. Golden snapshotted from that run and the matrix then verified case by case: **7/7 byte-identical**, 14 file comparisons, `wasp_full` re-run from scratch to check the snapshot (`count=14059`, reproduced exactly) |
 
@@ -751,13 +751,13 @@ through T-E7 are the plan's acceptance criteria restated as measurements.
 
 | # | content | gate |
 |---|---|---|
-| **E1** | schema, EXHALE reader, `kzz_cell`, resolved-config provenance, pair enforcement | T-E1, T-E2, T-E3, T-E4 -- **done 2026-08-27** (`docs/Update_EXHALE.md` section 76) |
-| **E2** | Photochem adapter, one-way (profile produced from a prescribed T(p), no climate, no iteration) | a hand-checked LHS 1140 b profile drives a converged EXHALE run; T-E8 -- **adapters written and exercised on HD 209458 b, 2026-08-27** (`docs/Update_EXHALE.md` section 77); **both remaining gates closed with E3** |
-| **E3** | clima step, tropopause and cold-trap water, `Kzz(p)` from the climate solution | cold-trap `f_H2O` documented and compared with the published estimate; the comparison stated either way -- **done 2026-08-27** (`docs/Update_EXHALE.md` section 78): `radiative_convective_column.py` + `--climate`; `f_H2O = 0.13-0.33 ppm` at a 0.5-1.0 bar tropopause against the published `~7 ppm` at 0.1 bar, stated as a departure and not tuned; the LHS 1140 b profile drives a JFNK `info = 0` run and T-E8 closes on C/N/O to 1.5e-14. `Kzz(p)` is NOT from the climate solution -- it provides none -- and the run states the adopted constant, recorded in the header |
-| **E4** | the closure driver and the LHS 1140 b application | T-E5, T-E6, T-E7 -- **done 2026-08-27** (`docs/Update_EXHALE.md` section 79). `src/utils/element_flux_closure.py` + the trial fluxes actually imposed on the chemistry through `set_upper_bc`; the overlap window measured and rejected on physical grounds, the steady-flux window used in its place with the substitution recorded per iteration. T-E6 and T-E7 pass; T-E5 passes in the steady window and fails in the overlap window, which is the result rather than a defect. **The composition is now an output**, and on LHS 1140 b it comes back at `He/H = 2.09235` -- the value eddy mixing holds, not one the escape sets |
-| **E5** | documentation and regression | `docs/input_schema.md` section 2c and `README.md` carry the key and the schema; `docs/Update_EXHALE.md` carries the change; T-E9, T-E10 -- **done 2026-08-27**. T-E9 was measured with E2 (`Update_EXHALE.md` section 77). T-E10 is `backup/regression/lower_profile`, now the seventh default case of `run_check.sh`, with the matrix paragraph of the project `CLAUDE.md` and the table in `README_HOWTO.md` updated beside it. The schema lives in `docs/input_schema.md` section 2d, and the reference manual now carries both the key and the file: `docs/EXHALE_user_manual.tex`, "The lower atmosphere as a profile". `docs/Update_EXHALE.tex` was brought level with the markdown through section 79 |
+| **E1** | schema, EXHALE reader, `kzz_cell`, resolved-config provenance, pair enforcement | T-E1, T-E2, T-E3, T-E4 -- **done 2026-08-27** (`docs/Update_EXHALE_stage1.md` section 76) |
+| **E2** | Photochem adapter, one-way (profile produced from a prescribed T(p), no climate, no iteration) | a hand-checked LHS 1140 b profile drives a converged EXHALE run; T-E8 -- **adapters written and exercised on HD 209458 b, 2026-08-27** (`docs/Update_EXHALE_stage1.md` section 77); **both remaining gates closed with E3** |
+| **E3** | clima step, tropopause and cold-trap water, `Kzz(p)` from the climate solution | cold-trap `f_H2O` documented and compared with the published estimate; the comparison stated either way -- **done 2026-08-27** (`docs/Update_EXHALE_stage1.md` section 78): `radiative_convective_column.py` + `--climate`; `f_H2O = 0.13-0.33 ppm` at a 0.5-1.0 bar tropopause against the published `~7 ppm` at 0.1 bar, stated as a departure and not tuned; the LHS 1140 b profile drives a JFNK `info = 0` run and T-E8 closes on C/N/O to 1.5e-14. `Kzz(p)` is NOT from the climate solution -- it provides none -- and the run states the adopted constant, recorded in the header |
+| **E4** | the closure driver and the LHS 1140 b application | T-E5, T-E6, T-E7 -- **done 2026-08-27** (`docs/Update_EXHALE_stage1.md` section 79). `src/utils/element_flux_closure.py` + the trial fluxes actually imposed on the chemistry through `set_upper_bc`; the overlap window measured and rejected on physical grounds, the steady-flux window used in its place with the substitution recorded per iteration. T-E6 and T-E7 pass; T-E5 passes in the steady window and fails in the overlap window, which is the result rather than a defect. **The composition is now an output**, and on LHS 1140 b it comes back at `He/H = 2.09235` -- the value eddy mixing holds, not one the escape sets |
+| **E5** | documentation and regression | `docs/input_schema.md` section 2c and `README.md` carry the key and the schema; `docs/Update_EXHALE_stage1.md` carries the change; T-E9, T-E10 -- **done 2026-08-27**. T-E9 was measured with E2 (`Update_EXHALE_stage1.md` section 77). T-E10 is `backup/regression/lower_profile`, now the seventh default case of `run_check.sh`, with the matrix paragraph of the project `CLAUDE.md` and the table in `README_HOWTO.md` updated beside it. The schema lives in `docs/input_schema.md` section 2d, and the reference manual now carries both the key and the file: `docs/EXHALE_user_manual.tex`, "The lower atmosphere as a profile". `docs/Update_EXHALE_stage1.tex` was brought level with the markdown through section 79 |
 
-E1 and E2 are independent of Phase D's remaining items; E4 is not — it needs
+E1 and E2 are independent of Phase D's remaining items; E4 is not: it needs
 diffusion on the direct steady route and the restart behavior of
 `binary_diffusion_design.md` sections 7.3-7.4.
 
@@ -817,8 +817,8 @@ or a physical convention:
 
 ## 10. Relation to the continuum IR coupling, item (G)
 
-`docs/oxygen_chemistry_new_plan.md` section 4.1 ranks item (G) — the missing
-continuum IR coupling — **above** the composition work this phase belongs to,
+`docs/oxygen_chemistry_new_plan.md` section 4.1 ranks item (G) (the missing
+continuum IR coupling) **above** the composition work this phase belongs to,
 and for a measured reason: a converged molecular layer radiates itself down
 to 190-400 K against `T_eq ~ 1100-1400 K`, and on the HD 209458 b molecular
 example the collapse reaches the wind at `Mdot -0.34 dex`. Phase E does not
@@ -827,8 +827,8 @@ close it and must not be presented as closing it. What Phase E supplies is
 thermal structure *above* the match, through the molecular layer up to the
 H2 -> H front, is still set by line coolants with no continuum term, so the
 converged temperature there remains a property of the model rather than a
-prediction. The two are the same weakness seen from two sides — (G) is that
-layer's energy not being constrained, (H) its composition — and closing
+prediction. The two are the same weakness seen from two sides: (G) is that
+layer's energy not being constrained, (H) its composition, and closing
 either alone does not make the layer a prediction. On LHS 1140 b the concern
 is not the hot-Jupiter collapse but its cold-planet counterpart, which is
 unmeasured: at `T_eq = 226 K` the layer between the base and the front is

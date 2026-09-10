@@ -837,7 +837,7 @@ here: the metastable is a recombination product, so whatever moves it has to
 move the recombining ions.
 
 Rumenskikh et al. (2022), as reported by Taylor et al., reached the observed
-width in 3-D only by prescribing equatorial jets "of the order of 10–20 km
+width in 3-D only by prescribing equatorial jets "of the order of 10-20 km
 s−1" together with an empirical reduction of H line cooling and He/H = 0.005.
 
 ### 8.5 How LHS 1140 b compares

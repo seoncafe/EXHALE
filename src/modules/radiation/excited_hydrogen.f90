@@ -7,7 +7,9 @@
    ! with the Ly-alpha mean intensity J_lya either (a) estimated as in Huang
    ! et al. (2017, ApJ 851, 150) Eq. (6), J_lya ~ 0.1 F_LyC/Dnu_D, attenuated
    ! by 1/(1+tau_lya) below the Ly-alpha photosphere, or (b) read from an
-   ! external Ly-alpha RT profile (selected by jlya_mode).
+   ! external Ly-alpha RT profile (selected by jlya_mode).  Every stellar
+   ! Ly-alpha field a cell is pumped by is the MEAN of that field over the
+   ! cell's own line-centre optical depth (lya_rt.f90).
    ! The resulting H(n=2) population is then (i) photoionized by the stellar
    ! Balmer continuum (E > 3.4 eV), adding a proton source to the H ionization
    ! balance, and (ii) heated by the photoelectron excess energy (photoelectric
@@ -29,21 +31,37 @@
    use species_table, only: n_mion, mion_fsp
    use utils, only: calc_ne, write_row_layout_header
    use lya_rt, only: jlya_escape_prob, jint_arr, jstar_arr,                  &
-                     lya_line_center_optical_depth
+                     lya_line_center_optical_depth,                         &
+                     lya_photosphere_attenuation_cell_mean
    ! n=2 / Ly-alpha atomic data and collisional rate coefficients
    ! (Christie+2013 Table 2, Draine 2011); one definition, shared with lya_rt.
    use hydrogen_n2_rates
+   ! The stellar field the Balmer continuum is photoionized by, the n = 2
+   ! ionization threshold that heads it, and the frequency of a
+   ! one-electronvolt photon: the single definitions of all three, shared
+   ! with the photon grid (J_inc.f90). stellar_flux_eV is the field of
+   ! the RUN'S spectrum type, so the Balmer band is built from the same
+   ! spectrum as every other band (decision 13), and e_th_HI_n2 is the same
+   ! threshold that floors that grid whenever this coupling is armed
+   ! (sed_read's photon_grid_floor_eV, decision 17).
+   use J_incident, only: stellar_flux_eV, spectrum_covers_eV, eV2Hz,        &
+                         e_th_HI_n2
 
    implicit none
 
    ! ----- Balmer-continuum (n=2 photoionization) data ----- !
-   real*8, parameter :: eV2Hz    = 2.417989242d14      ! Hz per eV
-   real*8, parameter :: E2_thr   = 3.40d0              ! n=2 ionization edge [eV]
-   real*8, parameter :: nu2_thr  = E2_thr*eV2Hz        ! [s^-1]
+   ! sigma_2 at the n = 2 edge; the hydrogenic continuum of Osterbrock &
+   ! Ferland (2006) falls as (e_th_HI_n2/E)^3 above it.
    real*8, parameter :: s2_thr   = 1.4d-17             ! sigma_2 at threshold [cm^2]
 
    ! ----- Ly-alpha pumping (parameterized J_lya) data ----- !
    real*8, parameter :: sigma_LyC = 6.3d-18            ! H photoion. xsec at LyC [cm^2]
+
+   ! Whether excited_H_update has run at least once, so that the level
+   ! populations, the Ly-alpha field and the Balmer-continuum rates the
+   ! level balance is measured against exist. Before that there is no field
+   ! and no population: a residual would be a statement about zeros.
+   logical, save :: excited_H_field_ready = .false.
 
    ! RT-supplied J_lya(r) profile (jlya_mode=1), interpolated onto the grid once.
    logical, save :: jlya_rt_loaded = .false.
@@ -95,6 +113,10 @@
    real*8, dimension(1-Ng:N+Ng) :: nhei, nheii, nheiii, ne
    real*8, dimension(1-Ng:N+Ng,n_mion) :: nm
    real*8, dimension(1-Ng:N+Ng) :: heat_prev
+   ! Cell-by-cell line-centre Ly-alpha depths: taulya_d(j) is cell j's own
+   ! depth and taulya_out(j) the depth at its star-ward face, the pair the
+   ! cell mean of the field is taken over.
+   real*8, dimension(1-Ng:N+Ng) :: taulya_d, taulya_out
    real*8 :: F_LyC, F_inc, xi, abs_frac, N_HI_tot, a_cm
    real*8 :: Dnu_D, n2s, n2p, n2tot, relc
 
@@ -122,15 +144,15 @@
 
    ! ----- Day-night / 2D dilution factor xi ----- !
    ! global_parameters' dayside_dilution(), the single definition the ATES
-   ! "2D approximate method" has; the ground-state EUV grid and the five FUV
+   ! "2D approximate method" has; the ground-state EUV grid and the four FUV
    ! bands read the same one.
    xi = dayside_dilution()
 
-   ! ----- Scalar Balmer-continuum rates (depend only on T_star, R_star/a) ----- !
+   ! ----- Scalar Balmer-continuum rates (depend only on the stellar spectrum) ----- !
    ! Computed once per update; reduced by xi for the dayside hemisphere average,
    ! consistent with the ground-state EUV ionization treatment.
-   gamma2_bal = xi*gamma_n2_balmer(T_star_eff, R_star/max(a_orb,1.0d-30))
-   hpe2_bal   = xi*heat_n2_balmer(T_star_eff,  R_star/max(a_orb,1.0d-30))
+   gamma2_bal = xi*gamma_n2_balmer()
+   hpe2_bal   = xi*heat_n2_balmer()
 
    ! ----- Deposited Ly-continuum flux F_LyC (Huang+2017 Eq. 6 input) ----- !
    ! Single deposited flux from the total neutral-H column, matching
@@ -164,13 +186,22 @@
       call jlya_escape_prob(T_K, nhi, nhii, ne, v_in, Jlya_arr, taulya)
    else
       ! (a) Parameterized J_lya = 0.1 F_LyC/Dnu_D (Huang+2017 Eq. 6), attenuated
-      ! by 1/(1+tau_lya) with tau_lya the top-down line-center Ly-alpha optical
+      ! by 1/(1+tau_lya) with tau_lya the top-down line-centre Ly-alpha optical
       ! depth, so the pumping vanishes below the Ly-alpha photosphere. This is
       ! an approximate staging estimate; the accurate field is jlya_mode=1.
-      call lya_line_center_optical_depth(T_K, nhi, taulya)
+      !
+      ! The pumping rate of a cell is the MEAN of that field over the cell's
+      ! own line-centre depth, not its value at a face: taulya(j) is the depth
+      ! at the cell's INNER face and taulya_out(j) the depth at its star-ward
+      ! face, and lya_photosphere_attenuation_cell_mean holds the closed-form
+      ! mean of 1/(1+tau) between them.
+      call lya_line_center_optical_depth(T_K, nhi, taulya, taulya_d,        &
+                                         taulya_out)
       do j = 1-Ng, N+Ng
          Dnu_D = nu_lya*sqrt(2.0d0*kb_erg*max(T_K(j),1.0d0)/mu)/c_light
-         Jlya_arr(j) = 0.1d0*F_LyC/max(Dnu_D,1.0d-30)/(1.0d0 + taulya(j))
+         Jlya_arr(j) = 0.1d0*F_LyC/max(Dnu_D,1.0d-30)                       &
+                     *lya_photosphere_attenuation_cell_mean(taulya_out(j),  &
+                                                            taulya_d(j))
       enddo
    endif
 
@@ -218,6 +249,8 @@
       endif
    enddo
 
+   excited_H_field_ready = .true.
+
    end subroutine excited_H_update
 
    ! --------------------------------------------------------------- !
@@ -237,9 +270,40 @@
    real*8, intent(in)  :: T, n1s, nHII_l, ne_l, Jlya, gam_ion_2s, gam_ion_2p
    real*8, intent(out) :: n2s, n2p
 
+   real*8 :: L2p, L2s, S2p, S2s, M12, M21, det
+
+   call n2_rate_matrix(T, n1s, nHII_l, ne_l, Jlya, gam_ion_2s,            &
+                       gam_ion_2p, L2p, L2s, S2p, S2s, M12, M21)
+
+   det = L2p*L2s - M12*M21
+   if (abs(det) .le. 0.0d0) det = 1.0d0
+
+   n2p = max((S2p*L2s + M12*S2s)/det, 0.0d0)
+   n2s = max((L2p*S2s + M21*S2p)/det, 0.0d0)
+
+   end subroutine n2_populations
+
+   ! --------------------------------------------------------------- !
+
+   subroutine n2_rate_matrix(T, n1s, nHII_l, ne_l, Jlya, gam_ion_2s,      &
+                             gam_ion_2p, L2p, L2s, S2p, S2s, M12, M21)
+   ! The 2x2 rate matrix and source vector of the 2s/2p statistical
+   ! equilibrium (Christie+2013 Eqs. 12-13), the ONE definition of the
+   ! coefficients: n2_populations solves the system with them and
+   ! excited_hydrogen_level_residual measures the imbalance of a given pair
+   ! of populations against them, so the two cannot drift apart.
+   !
+   !   L2p n2p - M12 n2s = S2p ,   L2s n2s - M21 n2p = S2s
+   !
+   ! L is the total destruction rate of a level [s^-1], M the l-mixing
+   ! transfer from the other one [s^-1] and S its production [cm^-3 s^-1].
+
+   real*8, intent(in)  :: T, n1s, nHII_l, ne_l, Jlya, gam_ion_2s, gam_ion_2p
+   real*8, intent(out) :: L2p, L2s, S2p, S2s, M12, M21
+
    real*8 :: Tl, a2s, a2p
    real*8 :: C1s2s, C1s2p, C2s2p, C2s1s, C2p1s, C2p2s
-   real*8 :: Ppump, Pstim, L2p, L2s, S2p, S2s, M12, M21, det
+   real*8 :: Ppump, Pstim
 
    Tl = max(T, 1.0d0)
 
@@ -271,83 +335,432 @@
    S2s = (C1s2s*ne_l)*n1s + a2s*ne_l*nHII_l
    M12 = C2s2p*ne_l
    M21 = C2p2s*ne_l
-   det = L2p*L2s - M12*M21
-   if (abs(det) .le. 0.0d0) det = 1.0d0
 
-   n2p = max((S2p*L2s + M12*S2s)/det, 0.0d0)
-   n2s = max((L2p*S2s + M21*S2p)/det, 0.0d0)
-
-   end subroutine n2_populations
+   end subroutine n2_rate_matrix
 
    ! --------------------------------------------------------------- !
 
-   real*8 function gamma_n2_balmer(Tstar, R_over_a)
-   ! n=2 photoionization rate [s^-1] from a diluted stellar blackbody Balmer
-   ! continuum (E > 3.4 eV). Hydrogenic sigma_2(nu) = s2_thr*(nu2/nu)^3, flux
-   ! F_nu = pi B_nu(Tstar) (R_star/a)^2. Trapezoid over 3.4-13.6 eV (above
-   ! 13.6 eV the BB flux is negligible and ground-state H absorbs it).
+   subroutine excited_hydrogen_level_residual(T_in, n_in, f_sp_in,        &
+                                              res, scale, ok, why)
+   ! THE H(n=2) LEVEL BALANCE, MEASURED ON A STATE (B1a section 2.5).
+   !
+   ! The n=2 populations are not unknowns of any solve: n2_populations
+   ! closes them one outer pass BEHIND the composition they are a closure
+   ! for, and their products enter the ionization system as a lagged rate
+   ! and a lagged heat. What that lag is worth has never been a number.
+   ! This is the number: production minus destruction of each of the two
+   ! levels, for the populations the module currently holds, at the field
+   ! it currently holds, and at the composition of the state handed in.
+   !
+   !   r2p = L2p n2p - M12 n2s - S2p ,   r2s = L2s n2s - M21 n2p - S2s
+   !
+   ! [cm^-3 s^-1]. NOTHING IS UPDATED: n2s_arr, n2p_arr, Jlya_arr,
+   ! gph_balmer_HI and heat_balmer are read and left as they are.
+   !
+   ! res(j) and scale(j) are the row of the two that is furthest out in
+   ! units of its OWN terms, so that the level whose rates are the smaller
+   ! of the pair is not hidden by the other. The scale is the sum of the
+   ! magnitudes of that row's terms; the floor beneath it, 1e-30 cm^-3
+   ! s^-1, is numerical only -- one n=2 atom in 3e21 s -- and exists so
+   ! that a cell with no hydrogen at all divides by something.
+   !
+   ! THE FIELD IS THE ONE THE STATE CARRIES, in the sense the code makes
+   ! available: Jlya_arr and the Balmer-continuum rates gamma2_bal /
+   ! hpe2_bal were built by the last excited_H_update, which is the update
+   ! this state's own lagged coupling used. Recomputing them here would
+   ! measure a different closure from the one the run solved.
 
-   real*8, intent(in) :: Tstar, R_over_a
-   ! n_nu, not ng: Ng is the global ghost-cell count and would be shadowed.
-   integer, parameter :: n_nu = 400
-   integer :: i
-   real*8 :: Eg, nu, dnu, Bnu, Fnu, sig2, integ, nu_a, nu_b, x
+   real*8, dimension(1-Ng:N+Ng),           intent(in)  :: T_in, n_in
+   real*8, dimension(1-Ng:N+Ng,n_species), intent(in)  :: f_sp_in
+   real*8, dimension(1:N),                 intent(out) :: res, scale
+   logical,                                intent(out) :: ok
+   character(len=*),                       intent(out) :: why
 
-   gamma_n2_balmer = 0.0d0
-   if (Tstar .le. 0.0d0) return
+   integer :: j, im
+   real*8, dimension(1-Ng:N+Ng) :: T_K, n_dim, nhi, nhii
+   real*8, dimension(1-Ng:N+Ng) :: nhei, nheii, nheiii, ne
+   real*8, dimension(1-Ng:N+Ng,n_mion) :: nm
+   real*8 :: L2p, L2s, S2p, S2s, M12, M21
+   real*8 :: r2p, r2s, s2pd, s2sd, q2p, q2s
 
-   nu_a  = E2_thr  *eV2Hz
-   nu_b  = e_th_HI *eV2Hz
-   dnu   = (nu_b - nu_a)/dble(n_nu-1)
-   integ = 0.0d0
-   do i = 1, n_nu
-      nu   = nu_a + dble(i-1)*dnu
-      x    = hp_erg*nu/(kb_erg*Tstar)
-      Bnu  = (2.0d0*hp_erg*nu**3.0/c_light**2.0)/(exp(x) - 1.0d0)
-      Fnu  = pi*Bnu*R_over_a**2.0
-      sig2 = s2_thr*(nu2_thr/nu)**3.0
-      ! Integrand F_nu/(h nu) * sigma_2  ; trapezoid weights (endpoints 1/2).
-      Eg   = Fnu/(hp_erg*nu)*sig2
-      if (i .eq. 1 .or. i .eq. n_nu) Eg = 0.5d0*Eg
-      integ = integ + Eg
+   res = 0.0d0;  scale = 1.0d0;  ok = .false.;  why = ''
+   if (.not. use_excited_H) then
+      why = 'the run does not carry H(n=2)'
+      return
+   endif
+   if (.not. excited_H_field_ready) then
+      why = 'no excited-H update has built the field and the populations'
+      return
+   endif
+
+   ! Densities exactly as excited_H_update dimensionalizes them, so the
+   ! residual is evaluated on the same quantities the closure was.
+   T_K   = T_in*T0
+   n_dim = n_in*n0
+   nhi   = f_sp_in(:,1)*n_dim
+   nhii  = f_sp_in(:,2)*n_dim
+   if (thereis_He) then
+      nhei   = f_sp_in(:,3)*n_dim
+      nheii  = f_sp_in(:,4)*n_dim
+      nheiii = f_sp_in(:,5)*n_dim
+   else
+      nhei = 0.0d0; nheii = 0.0d0; nheiii = 0.0d0
+   endif
+   do im = 1,n_mion
+      nm(:,im) = f_sp_in(:,mion_fsp(im))*n_dim
    enddo
-   gamma_n2_balmer = integ*dnu
+   call calc_ne(nhii, nheii, nheiii, ne, nm)
+
+   do j = 1, N
+      call n2_rate_matrix(T_K(j), max(nhi(j),0.0d0), max(nhii(j),0.0d0),  &
+                          max(ne(j),0.0d0), Jlya_arr(j),                  &
+                          gamma2_bal, gamma2_bal, L2p, L2s, S2p, S2s,     &
+                          M12, M21)
+      r2p  = L2p*n2p_arr(j) - M12*n2s_arr(j) - S2p
+      r2s  = L2s*n2s_arr(j) - M21*n2p_arr(j) - S2s
+      s2pd = abs(L2p*n2p_arr(j)) + abs(M12*n2s_arr(j)) + abs(S2p)
+      s2sd = abs(L2s*n2s_arr(j)) + abs(M21*n2p_arr(j)) + abs(S2s)
+      q2p  = abs(r2p)/max(s2pd, 1.0d-30)
+      q2s  = abs(r2s)/max(s2sd, 1.0d-30)
+      if (q2p .ge. q2s) then
+         res(j) = r2p;  scale(j) = max(s2pd, 1.0d-30)
+      else
+         res(j) = r2s;  scale(j) = max(s2sd, 1.0d-30)
+      endif
+   enddo
+   ok = .true.
+
+   end subroutine excited_hydrogen_level_residual
+
+   ! --------------------------------------------------------------- !
+
+   real*8 function gamma_n2_balmer()
+   ! n=2 photoionization rate [s^-1] in the stellar Balmer continuum, the
+   ! band from the n=2 edge e_th_HI_n2 = 3.400 eV (3647 A) to the H I edge
+   ! 13.6 eV, above which the ground state absorbs the photons.
+   !
+   !   gamma_2 = INT_{e_th_HI_n2}^{13.6 eV} F_E(E)/(h nu) sigma_2(E) dE ,
+   !
+   ! the photon number flux per unit energy times the hydrogenic cross
+   ! section sigma_2(E) = s2_thr*(e_th_HI_n2/E)^3, with the photon energy
+   ! written as h nu = hp_erg (E eV2Hz) [erg] from the two exact CODATA
+   ! constants, and dE in eV.
+   !
+   ! THE FIELD IS THE RUN'S OWN SPECTRUM (development plan rev 3, section
+   ! 10.5 decision 13): stellar_flux_eV is the power law for
+   ! "Spectrum type: Power-law", the photospheric blackbody for "Planck" and
+   ! the loaded table for "Load". No band is built from a type the input did
+   ! not select, so this integral is no longer a blackbody in a power-law
+   ! run.
+   !
+   ! Undiluted: excited_H_update applies dayside_dilution() to the result.
+
+   real*8 :: gam2, hpe2
+
+   call balmer_band_integrals(gam2, hpe2)
+   gamma_n2_balmer = gam2
 
    end function gamma_n2_balmer
 
    ! --------------------------------------------------------------- !
 
-   real*8 function heat_n2_balmer(Tstar, R_over_a)
-   ! Photoelectric heating per H(n=2) atom [erg s^-1]: the rate integrand of
-   ! gamma_n2_balmer weighted by the photoelectron excess energy (h nu - 3.4 eV).
+   real*8 function heat_n2_balmer()
+   ! Photoelectric heating per H(n=2) atom [erg s^-1]: the integrand of
+   ! gamma_n2_balmer weighted by the photoelectron excess energy
+   ! h(nu - nu_2) = (E - e_th_HI_n2), in the same band and from the same
+   ! field, the run's own spectrum type (decision 13),
+   !
+   !   heat_2 = INT F_E(E) sigma_2(E) (1 - e_th_HI_n2/E) dE ,
+   !
+   ! on the same nodes as the rate. Undiluted, as gamma_n2_balmer is.
 
-   real*8, intent(in) :: Tstar, R_over_a
-   ! n_nu, not ng: Ng is the global ghost-cell count and would be shadowed.
-   integer, parameter :: n_nu = 400
-   integer :: i
-   real*8 :: nu, dnu, Bnu, Fnu, sig2, integ, nu_a, nu_b, x, w, term
+   real*8 :: gam2, hpe2
 
-   heat_n2_balmer = 0.0d0
-   if (Tstar .le. 0.0d0) return
-
-   nu_a  = E2_thr  *eV2Hz
-   nu_b  = e_th_HI *eV2Hz
-   dnu   = (nu_b - nu_a)/dble(n_nu-1)
-   integ = 0.0d0
-   do i = 1, n_nu
-      nu   = nu_a + dble(i-1)*dnu
-      x    = hp_erg*nu/(kb_erg*Tstar)
-      Bnu  = (2.0d0*hp_erg*nu**3.0/c_light**2.0)/(exp(x) - 1.0d0)
-      Fnu  = pi*Bnu*R_over_a**2.0
-      sig2 = s2_thr*(nu2_thr/nu)**3.0
-      w    = hp_erg*(nu - nu2_thr)                  ! photoelectron excess [erg]
-      term = Fnu/(hp_erg*nu)*sig2*w
-      if (i .eq. 1 .or. i .eq. n_nu) term = 0.5d0*term
-      integ = integ + term
-   enddo
-   heat_n2_balmer = integ*dnu
+   call balmer_band_integrals(gam2, hpe2)
+   heat_n2_balmer = hpe2
 
    end function heat_n2_balmer
+
+   ! --------------------------------------------------------------- !
+
+   subroutine balmer_band_integrals(gam2, hpe2)
+   ! The two band integrals of the Balmer continuum, over the same nodes:
+   !
+   !   gam2 = Kg INT F_E(E) E^-4 dE               [s^-1]
+   !   hpe2 = Kh INT F_E(E) (E^-3 - E_2 E^-4) dE  [erg s^-1]
+   !
+   ! with E_2 = e_th_HI_n2, Kg = s2_thr E_2^3/(hp_erg eV2Hz) and
+   ! Kh = s2_thr E_2^3, which is the pair above with sigma_2(E) =
+   ! s2_thr (E_2/E)^3 taken out of the integrand.
+   !
+   ! THE QUADRATURE RESOLVES THE FIELD IT INTEGRATES. A rule whose nodes are
+   ! fixed independently of the spectrum cannot: a measured stellar table
+   ! carries emission lines, Ly-alpha among them at 10.20 eV inside this
+   ! band, that are narrower than any fixed step, and refining the table
+   ! narrows the interpolated line further while the step stays put, so the
+   ! error grows instead of falling. The nodes are therefore taken from the
+   ! field:
+   !
+   !   Load        the table's OWN rows inside the band, plus the two band
+   !               edges. Between two rows stellar_flux_eV is log-log, i.e.
+   !               F = F_k (E/E_k)^p exactly, so each integrand above is a
+   !               sum of powers of E and the segment integral is closed
+   !               form (power_law_moment) rather than a rule. Where a row
+   !               is not positive stellar_flux_eV is linear in E instead,
+   !               and that segment is integrated in closed form too. The
+   !               result is the exact integral of the field the code reads,
+   !               to round-off, at any line width.
+   !   Power-law   J_inc is a single power law on each side of e_mid, so the
+   !               band (with e_mid inserted if it falls inside it) is the
+   !               same closed form, again exact.
+   !   Planck      pi B_nu is smooth and has no structure below its peak, so
+   !               a composite 5-point Gauss-Legendre rule on a geometric
+   !               subdivision of the band integrates it to round-off.
+   !
+   ! The band is [e_th_HI_n2, e_th_HI] exactly, including the partial
+   ! intervals at both ends where a table row does not fall on the edge.
+   real*8, intent(out) :: gam2, hpe2
+
+   ! Geometric subdivisions of the band, and the 5-point Gauss-Legendre
+   ! nodes and weights on [-1,1] (Abramowitz & Stegun Table 25.4), for a
+   ! field that is not a power law on any segment.
+   integer, parameter :: n_sub = 64
+   integer, parameter :: n_gl  = 5
+   real*8, parameter :: x_gl(n_gl) = (/ -9.0617984593866400d-1,            &
+                                        -5.3846931010568309d-1,            &
+                                         0.0d0,                            &
+                                         5.3846931010568309d-1,            &
+                                         9.0617984593866400d-1 /)
+   real*8, parameter :: w_gl(n_gl) = (/  2.3692688505618909d-1,            &
+                                         4.7862867049936647d-1,            &
+                                         5.6888888888888889d-1,            &
+                                         4.7862867049936647d-1,            &
+                                         2.3692688505618909d-1 /)
+
+   integer :: k, i, n_node, n_brk
+   real*8  :: Ea, Eb, Kg, Kh, a, b, sg, sh, e1, e2, Em, Fm, brk(3)
+   real*8  :: q_ratio, xm, xh, xx, F_E, sig2
+
+   gam2 = 0.0d0
+   hpe2 = 0.0d0
+   call stop_if_balmer_band_unstated
+
+   Ea = e_th_HI_n2
+   Eb = e_th_HI
+   if (Eb .le. Ea) return
+   Kg = s2_thr*e_th_HI_n2**3.0d0/(hp_erg*eV2Hz)
+   Kh = s2_thr*e_th_HI_n2**3.0d0
+
+   if (do_read_sed .and. allocated(e_sed_node) .and.                       &
+       allocated(F_sed_node)) then
+
+      n_node = size(e_sed_node)
+      if (n_node .lt. 2) return
+      do k = 1, n_node-1
+         e1 = e_sed_node(k)
+         e2 = e_sed_node(k+1)
+         a  = e1
+         ! Below the lowest row stellar_flux_eV continues the first segment,
+         ! over the less than one row between the grid floor and that row;
+         ! the same continuation is integrated here.
+         if (k .eq. 1) a = min(e1, Ea)
+         a = max(a, Ea)
+         b = min(e2, Eb)
+         if (b .le. a) cycle
+         call sed_segment_balmer(a, b, e1, F_sed_node(k), e2,              &
+                                 F_sed_node(k+1), Kg, Kh, sg, sh)
+         gam2 = gam2 + sg
+         hpe2 = hpe2 + sh
+      enddo
+
+   else if (is_PL_sed) then
+
+      n_brk    = 2
+      brk(1)   = Ea
+      brk(2)   = Eb
+      if (e_mid .gt. Ea .and. e_mid .lt. Eb) then
+         brk(2) = e_mid
+         brk(3) = Eb
+         n_brk  = 3
+      endif
+      do i = 1, n_brk-1
+         a  = brk(i)
+         b  = brk(i+1)
+         ! One power law of index PLind on this piece; its normalization is
+         ! read from the field itself at the geometric midpoint, so the
+         ! branch J_inc takes there is the branch integrated.
+         Em = sqrt(a*b)
+         Fm = stellar_flux_eV(Em)
+         sg = power_law_moment(a, b, Em, Fm, PLind, -4.0d0)
+         sh = power_law_moment(a, b, Em, Fm, PLind, -3.0d0)
+         gam2 = gam2 + Kg*sg
+         hpe2 = hpe2 + Kh*(sh - Ea*sg)
+      enddo
+
+   else
+
+      ! Geometric subdivision: the field falls by orders of magnitude across
+      ! the band and the nodes follow it.
+      q_ratio = (Eb/Ea)**(1.0d0/dble(n_sub))
+      a = Ea
+      do i = 1, n_sub
+         b = a*q_ratio
+         if (i .eq. n_sub) b = Eb
+         xm = 0.5d0*(b + a)
+         xh = 0.5d0*(b - a)
+         do k = 1, n_gl
+            xx   = xm + xh*x_gl(k)
+            F_E  = stellar_flux_eV(xx)
+            sig2 = s2_thr*(e_th_HI_n2/xx)**3.0d0
+            sg   = w_gl(k)*xh*F_E*sig2
+            gam2 = gam2 + sg/(hp_erg*xx*eV2Hz)
+            hpe2 = hpe2 + sg*(1.0d0 - e_th_HI_n2/xx)
+         enddo
+         a = b
+      enddo
+
+   endif
+
+   end subroutine balmer_band_integrals
+
+   ! --------------------------------------------------------------- !
+
+   subroutine sed_segment_balmer(a, b, e1, f1, e2, f2, Kg, Kh, sg, sh)
+   ! The two Balmer integrands of a loaded table, integrated in closed form
+   ! over [a,b] inside the table segment [e1,e2], from the SAME
+   ! reconstruction stellar_flux_eV uses there: F = f1 (E/e1)^p with
+   ! p = ln(f2/f1)/ln(e2/e1) where both rows are positive, and F linear in E
+   ! otherwise.
+   real*8, intent(in)  :: a, b, e1, f1, e2, f2, Kg, Kh
+   real*8, intent(out) :: sg, sh
+   real*8 :: p, slope, c0, c1, m4, m3, m2
+
+   sg = 0.0d0
+   sh = 0.0d0
+
+   if (f1 .gt. 0.0d0 .and. f2 .gt. 0.0d0 .and. e2 .gt. e1) then
+
+      p  = log(f2/f1)/log(e2/e1)
+      m4 = power_law_moment(a, b, e1, f1, p, -4.0d0)
+      m3 = power_law_moment(a, b, e1, f1, p, -3.0d0)
+      sg = Kg*m4
+      sh = Kh*(m3 - e_th_HI_n2*m4)
+
+   else if (e2 .gt. e1) then
+
+      ! F = c0 + c1 E, the linear reconstruction of a segment carrying a
+      ! non-positive row.
+      slope = (f2 - f1)/(e2 - e1)
+      c1    = slope
+      c0    = f1 - e1*slope
+      m4    = power_moment(a, b, -4.0d0)
+      m3    = power_moment(a, b, -3.0d0)
+      m2    = power_moment(a, b, -2.0d0)
+      sg    = Kg*(c0*m4 + c1*m3)
+      sh    = Kh*(c0*m3 + c1*m2 - e_th_HI_n2*(c0*m4 + c1*m3))
+
+   else
+
+      ! Two rows at the same energy: stellar_flux_eV returns f1 there.
+      m4 = power_moment(a, b, -4.0d0)
+      m3 = power_moment(a, b, -3.0d0)
+      sg = Kg*f1*m4
+      sh = Kh*f1*(m3 - e_th_HI_n2*m4)
+
+   endif
+
+   end subroutine sed_segment_balmer
+
+   ! --------------------------------------------------------------- !
+
+   real*8 function power_law_moment(a, b, e0, f0, p, q)
+   ! INT_a^b f0 (E/e0)^p E^q dE, the exact integral of a power-law field
+   ! against a power-law cross section.
+   !
+   !   = f0 (a/e0)^p a^(q+1) ln(b/a) [exp(w) - 1]/w ,   w = (p+q+1) ln(b/a),
+   !
+   ! which is the elementary primitive rewritten so that no large power of a
+   ! or of e0 is formed, and so that the near-cancellation of b^(m+1) -
+   ! a^(m+1) over a narrow interval is carried by [exp(w)-1]/w instead. The
+   ! index m = p+q = -1 is the logarithmic case and is the limit w -> 0 of
+   ! the same expression, not a separate branch.
+   real*8, intent(in) :: a, b, e0, f0, p, q
+   real*8 :: u, w, ratio
+
+   power_law_moment = 0.0d0
+   if (a .le. 0.0d0 .or. b .le. a .or. e0 .le. 0.0d0) return
+
+   u = log(b/a)
+   w = (p + q + 1.0d0)*u
+   if (abs(w) .lt. 1.0d-6) then
+      ! [exp(w)-1]/w to double precision without the cancellation.
+      ratio = 1.0d0 + w*(0.5d0 + w*(1.0d0/6.0d0 + w/24.0d0))
+   else
+      ratio = (exp(w) - 1.0d0)/w
+   endif
+
+   power_law_moment = f0*(a/e0)**p*a**(q + 1.0d0)*u*ratio
+
+   end function power_law_moment
+
+   ! --------------------------------------------------------------- !
+
+   real*8 function power_moment(a, b, q)
+   ! INT_a^b E^q dE, the same expression with a unit field.
+   real*8, intent(in) :: a, b, q
+
+   power_moment = power_law_moment(a, b, a, 1.0d0, 0.0d0, q)
+
+   end function power_moment
+
+   ! --------------------------------------------------------------- !
+
+   subroutine stop_if_balmer_band_unstated
+   ! The Balmer continuum can only be integrated over a band the run's
+   ! spectrum states a field on. A monochromatic run states nothing there,
+   ! and filling the band from another type is what decision 13 forbids;
+   ! the run therefore stops, with the message of decision 17 in the same
+   ! form as the SED coverage stop of sed_read.f90.
+   !
+   ! THE LAST LINE OF DEFENCE, not the first. e_th_HI_n2 floors the photon
+   ! grid whenever this coupling is armed (sed_read's photon_grid_floor_eV),
+   ! so a loaded table that stops above 3647 A is refused by read_sed, at
+   ! startup and naming the file, before any of this is reached. What
+   ! survives to here is a spectrum type that states no field at all over
+   ! the band.
+
+   if (spectrum_covers_eV(e_th_HI_n2) .and. spectrum_covers_eV(e_th_HI)) return
+
+   write(*,*) '(excited_hydrogen.f90) ERROR: the spectrum of this run '//  &
+              'states no field over the Balmer continuum that '//         &
+              'photoionizes H(n=2).'
+   if (allocated(sp_type))                                                &
+      write(*,'(A,A)')  '    spectrum type        : ', trim(sp_type)
+   write(*,'(A,ES12.5,A,ES12.5,A)')                                       &
+      '    band needed          : ', e_th_HI_n2, ' to ', e_th_HI, ' eV'
+   write(*,'(A,ES12.5,A,ES12.5,A)')                                       &
+      '                         = ', hp_eV*c_light*1.0d8/e_th_HI,         &
+      ' to ', hp_eV*c_light*1.0d8/e_th_HI_n2, ' A'
+   if (allocated(e_v) .and. Nl .ge. 2)                                    &
+      write(*,'(A,ES12.5,A,ES12.5,A)')                                    &
+         '    band the run has     : ', e_v(1), ' to ', e_v(Nl), ' eV'
+   write(*,*) '   absorber that needs it:'
+   write(*,'(A,ES12.5,A,ES12.5,A)')                                       &
+      '       H(n=2), the Balmer continuum : ', e_th_HI_n2, ' eV = ',         &
+      hp_eV*c_light*1.0d8/e_th_HI_n2, ' A'
+   if (do_read_sed .and. allocated(sed_file))                             &
+      write(*,'(A,A)')  '    SED file             : ', trim(sed_file)
+   write(*,*) '   remedies (there is no key to continue):'
+   write(*,*) '      remove "Stellar Teff [K]:" and "Stellar radius'//    &
+              ' [R_sun]:" from input.inp,'
+   write(*,*) '      which is what arms the excited-hydrogen coupling'//  &
+              ' (input_read.f90 use_excited_H); or'
+   write(*,'(A,ES12.5,A)')                                                &
+      '       supply a spectrum that reaches ',                           &
+      hp_eV*c_light*1.0d8/e_th_HI_n2, ' A'
+   error stop 1
+
+   end subroutine stop_if_balmer_band_unstated
 
    ! --------------------------------------------------------------- !
 

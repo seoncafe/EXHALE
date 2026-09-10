@@ -38,17 +38,29 @@
       ! around a Sun-like star at 0.05 au (T_eq = 1140 K, A_B = 0.3):
       ! r0(1 ubar) = 1.34 R_1bar with q_H2(base) ~ 0.84.
 
+      ! Every physical constant this column uses is the one of
+      ! global_parameters, renamed only where the local name would collide
+      ! with a variable of this module (mu is the mean molecular weight
+      ! here, so the hydrogen atom mass keeps the name mh_g).  In
+      ! particular m_He_over_m_H, the weight the column's mean molecular
+      ! weight gives one helium nucleus, is the ratio of the two measured
+      ! atom masses formed there, so this column and the species table
+      ! cannot weigh a helium atom differently.
+      ! The hydrogen ATOM mass is the right mass here because it multiplies
+      ! a dimensionless mean molecular weight, so it has to be the mass the
+      ! rest of the code normalizes to and not the proton mass, which is
+      ! 5.6e-4 lighter and would shorten the scale height by as much.
+      use global_parameters, only: m_He_over_m_H,                       &
+                                   kbol => kb_erg,                      &
+                                   mh_g => mu,                          &
+                                   Gcgs => Gc
+
       implicit none
       private
       public :: lower_column_solve, q_h2_equilibrium
-
-      real*8, parameter :: kbol   = 1.380649d-16   ! erg/K
-      ! Hydrogen ATOM mass, the same unit as mu in parameters.f90: it multiplies
-      ! a dimensionless mean molecular weight, so it has to be the mass the rest
-      ! of the code normalizes to. Was the proton mass 1.6726d-24 until
-      ! 2026-08-19, which made the scale height below 5.6e-4 too small.
-      real*8, parameter :: mh_g   = 1.67353284d-24 ! H atom mass [g], CODATA 2018
-      real*8, parameter :: Gcgs   = 6.67430d-8     ! CGS gravitational constant (CODATA 2018)
+      ! Exposed so an acceptance test reads the helium weight this column
+      ! uses, and not a second copy of it.
+      public :: m_He_over_m_H
 
       contains
 
@@ -117,10 +129,14 @@
 
       ! ------------------------------------------------------------------ !
 
-      ! Mean molecular weight [amu] of the H2/H/He mixture at (p,T), given the
-      ! ELEMENTAL helium abundance fhe = n_He/n_H(nuclei).  Per unit H nucleus:
+      ! Mean molecular weight of the H2/H/He mixture at (p,T), in units of the
+      ! hydrogen ATOM (mh_g above, the unit it is multiplied by here and the
+      ! one parameters.f90 normalizes to), NOT of the atomic mass unit u,
+      ! given the ELEMENTAL helium abundance fhe = n_He/n_H(nuclei).
+      ! Per unit H nucleus:
       ! H2 binds a fraction x2 of H nuclei into x2/2 molecules, so
-      !   particles = (1 - x2) + x2/2 + fhe,   mass = 1 + 4 fhe   [amu].
+      !   particles = (1 - x2) + x2/2 + fhe,
+      !   mass      = 1 + (m_He/m_H) fhe   [hydrogen atoms].
       double precision function mu_mixture(p_bar, T, fhe) result(mu)
       real*8, intent(in) :: p_bar, T, fhe
       real*8 :: q, x2, npart
@@ -134,7 +150,7 @@
       x2 = 2.0d0*q*(1.0d0 + fhe)/(1.0d0 + q)
       if (x2 .gt. 1.0d0) x2 = 1.0d0
       npart = (1.0d0 - x2) + 0.5d0*x2 + fhe
-      mu = (1.0d0 + 4.0d0*fhe)/npart
+      mu = (1.0d0 + m_He_over_m_H*fhe)/npart
       end function mu_mixture
 
       ! ------------------------------------------------------------------ !
@@ -148,9 +164,10 @@
       !                T [K] (isothermal), fhe (elemental He/H),
       !                p_deep, p_base [bar]
       ! Outputs:       r_base [cm], q_H2/q_H/q_He (volume fractions) and
-      !                mu [amu] at the base.
+      !                mu [hydrogen atoms] at the base.
       ! r_base_atomic brackets the equilibrium answer from the other side:
-      ! the same column integrated with a FULLY ATOMIC mu = (1+4fhe)/(1+fhe)
+      ! the same column integrated with a FULLY ATOMIC
+      ! mu = (1 + (m_He/m_H) fhe)/(1+fhe)
       ! (chemical equilibrium is known to UNDERESTIMATE H dissociation at
       ! Teff ~ 1000-2000 K because photochemistry is ignored; Koskinen 2022).
       subroutine lower_column_solve(Mp, R_deep, T, fhe, p_deep, p_base,   &
@@ -200,7 +217,7 @@
       qh2_b = 0.5d0*x2/ntot_per_H
       qh_b  = (1.0d0 - x2)/ntot_per_H
       qhe_b = fhe/ntot_per_H
-      mu_b  = (1.0d0 + 4.0d0*fhe)/ntot_per_H
+      mu_b  = (1.0d0 + m_He_over_m_H*fhe)/ntot_per_H
 
       contains
 
@@ -216,7 +233,7 @@
          real*8, intent(in) :: rr
          real*8 :: grav_accel, mu_mean
          grav_accel    = Gcgs*Mp/(rr*rr)
-         mu_mean   = (1.0d0 + 4.0d0*fhe)/(1.0d0 + fhe)
+         mu_mean   = (1.0d0 + m_He_over_m_H*fhe)/(1.0d0 + fhe)
          drdx_atomic = -kbol*T/(mu_mean*mh_g*grav_accel)
          end function drdx_atomic
 

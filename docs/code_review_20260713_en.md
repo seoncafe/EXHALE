@@ -239,7 +239,7 @@ Recommended structure:
 - Define named fields in `type(ion_cell_state)` and `type(ion_rates)`.
 - Split species contributions into small pure procedures.
 - Assemble residuals/Jacobians by iterating active species metadata.
-- Migrate incrementally—H/He common code, then metals, then molecules—with golden tests at each step.
+- Migrate incrementally: H/He common code, then metals, then molecules, with golden tests at each step.
 
 The current omission of collisional ionization in the triplet path is documented as intentional in source comments. It should not be labeled a defect without a quantitative study; instead, document the temperature range over which its effect is negligible.
 
@@ -249,7 +249,7 @@ The current omission of collisional ionization in the triplet path is documented
 
 ### 5.4 Simplify the `post_process` output API
 
-Callers alias `dum_v` across unwanted `intent(out)` values only because the APIs always return every component. Provide purpose-specific entry points—heating only, cooling components, diagnostic rates—or optional outputs. This removes the aliasing and makes calls self-documenting.
+Callers alias `dum_v` across unwanted `intent(out)` values only because the APIs always return every component. Provide purpose-specific entry points: heating only, cooling components, diagnostic rates, or optional outputs. This removes the aliasing and makes calls self-documenting.
 
 ### 5.5 Modularize `EXHALE_transit.py`
 

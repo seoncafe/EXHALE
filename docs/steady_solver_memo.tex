@@ -33,16 +33,16 @@
 \title{EXHALE: Convergence Reliability and the\\ Steady-State Newton
 (JFNK) Solver\\ \large(work log, 2026-06-10/11)}
 \author{Kwang-Il Seon}
-\date{Last updated: 2026-06-11}
+\date{Last updated: 2026-09-10}
 \maketitle
 
 \begin{quote}\small\itshape
 This memo is the complete record of two tightly linked developments in
 \code{EXHALE}: (i) the discovery that the historical convergence
 criterion ($du<10^{-3}$ on the mass-flux spread) can stop runs at
-\emph{premature, non-steady} snapshots --- the WASP-121b reference used
+\emph{premature, non-steady} snapshots (the WASP-121b reference used
 throughout earlier work was such a snapshot, low by $\sim$0.08~dex in
-$\dot M$ --- together with the new convergence diagnostics that fix this;
+$\dot M$) together with the new convergence diagnostics that fix this;
 and (ii) the construction, debugging, and first \emph{converged} run of a
 direct steady-state solver (pseudo-transient continuation + Jacobian-free
 Newton--Krylov), which reaches residual levels unattainable by time
@@ -57,7 +57,7 @@ unless explicitly verified.
 as written. Three of the solver constants it records have since been replaced:
 the diagonal scaling, the stagnation watchdog, and the warm-up hand-off
 criterion. Section~\ref{sec:postscript} lists what changed and what it means for
-the stall diagnoses recorded here --- in short, the repeated finding that
+the stall diagnoses recorded here, in short, the repeated finding that
 ``every stall pins to the base cells'' was an artifact of the old scaling and of
 a worst-cell print that normalized momentum by the base cell's own $|\rho v|$.
 \end{quote}
@@ -112,12 +112,12 @@ with $T_{\max}$ falling from 11{,}021\,K to 10{,}767\,K. Three independent
 paths agree on the deeper state (long cold marching $\to$13.707; warm
 restarts $\to$13.716; the naive local-$dt$ experiment $\to$13.716 in 1{,}702
 steps). \textbf{The old golden was a premature $du$-dip snapshot, not the
-steady state} --- approximately $0.08$~dex ($\sim$20\%) low in $\dot M$.
+steady state}: approximately $0.08$~dex ($\sim$20\%) low in $\dot M$.
 
 Two earlier conclusions were corrected as a result. First, naive cell-by-cell
 pseudo-time stepping (``\code{Time stepping: Local}'') had been judged
 ``answer-shifting''; in fact it reaches the \emph{correct deeper} state
-$\sim$20$\times$ faster --- the judgment was an artifact of comparing
+$\sim$20$\times$ faster: the judgment was an artifact of comparing
 against the premature golden. (The LTS state does carry larger
 hydro residuals in each cell, \S\ref{sec:diag}, so it is ``fast but needs polishing.'')
 Second, the apparent ``path-dependent quasi-steady states'' largely
@@ -192,7 +192,7 @@ $(\rho,\rho v,E)$ on the $N$ physical cells. Ghost cells are not unknowns;
 (lower boundary: pinned $\rho_{\rm bc}$, $p=1+dp_{\rm bc}$ and the one-way
 velocity valve; upper: extrapolation). \textbf{Local elimination}: given
 $Y$, the ionization equilibrium is re-solved (\code{ioniz\_eq}) and the
-resulting heating/cooling enter the energy residual --- so $F$ is a
+resulting heating/cooling enter the energy residual, so $F$ is a
 pure-hydro residual of size $3N$ (``method A'' of the SUNDIALS plan), and
 the non-local radiation (column densities) is inside $F$. The residual
 construction is shared with the diagnostics
@@ -244,13 +244,13 @@ corresponding stall.
   component-wise max-relative residual as the merit; it is non-smooth and
   rejected every step ($\lambda\to10^{-6}$). Fix: merit $=\|F\|_2$ (later
   $\|D^{-1}F\|_2$). After the fix the banded-PTC driver descends, but only
-  linearly ($\sim$2\%/iteration) --- and a $\Delta\tau_0=1$ probe showed a
+  linearly ($\sim$2\%/iteration), and a $\Delta\tau_0=1$ probe showed a
   textbook Newton step (residual halved in one step) before stalling,
   proving the approach and isolating the next blocker.
 \item \textbf{Matrix-free $Jv$ (JFNK).} The banded Jacobian omits the
   non-local radiation response; with exact $Jv$ via GMRES the merit fell
-  $4.5\times$ in two steps (vs.\ 2\%/step), $\Delta\tau$ grew. Stall again
-  --- now localized (whole-domain worst-cell diagnostic) to the
+  $4.5\times$ in two steps (vs.\ 2\%/step), $\Delta\tau$ grew. Stall again:
+  now localized (whole-domain worst-cell diagnostic) to the
   \emph{base} cells $j=1$--2 (an earlier ``sonic point at $r_{\rm esc}$''
   reading was an artifact of searching only $[j_{\min},N]$; the sonic
   point is actually at $r=1.61$ and $r_{\rm esc}$ enters no physics).
@@ -266,7 +266,7 @@ corresponding stall.
   replaced 2026-08-10, \S\ref{sec:postscript})}, the scaled system
   $D^{-1}(\tfrac{1}{\Delta\tau}I+J)D$, D-relative FD steps, and merit
   $\|D^{-1}F\|_2$: GMRES needs 2--6 vectors (was 9) and the merit falls
-  $24\times$ before stalling --- at the base again.
+  $24\times$ before stalling, at the base again.
 \item \textbf{Smooth base valve.} The lower BC ghost velocity is
   $\max(v_1,0)$, and the steady state hugs the kink
   ($v_1\simeq+4.5\times10^{-3}c_s$): Newton trial steps crossing $v_1=0$
@@ -275,19 +275,19 @@ corresponding stall.
   $v\ll-\varepsilon_v$, $\to v$ for $v\gg\varepsilon_v$ (an earlier
   variant with a $-\varepsilon_v/2$ shift leaked inflow and was fixed).
   With $\varepsilon_v=10^{-2}$ (too large, it perturbs the state) the
-  solver descends $10\times$ \emph{through} the base --- differentiability
-  is what Newton needed --- but $\varepsilon_v=10^{-4}$ still stalled at
+  solver descends $10\times$ \emph{through} the base (differentiability
+  is what Newton needed), but $\varepsilon_v=10^{-4}$ still stalled at
   the base: the valve was not the only kink.
 \item \textbf{Frozen WENO weights + non-monotone line search.} The ESWENO3
   smoothness factors $S_{0,1}=1+\tau^2/\beta_{0,1}$ are smooth but
   strongly nonlinear; freezing them at the outer iterate
   (\code{weno\_mode}: store on a mode-1 pass, reuse on mode-2 passes for
-  all Jacobian probes, $Jv$ products, and line-search trials --- the
+  all Jacobian probes, $Jv$ products, and line-search trials, the
   standard lagged-weights remedy) removes their response from the inner
   problem. Independently, the monotone Armijo test fails once the required
   decrease $10^{-4}\lambda\,\|F\|$ falls below the iterative-chemistry
   noise floor of the residual; a \emph{non-monotone} (Grippo, memory 5)
-  acceptance --- improve on the worst of the last five accepted merits ---
+  acceptance (improve on the worst of the last five accepted merits)
   is the standard remedy.
 \end{enumerate}
 
@@ -310,10 +310,10 @@ target & iterations & final $\|R\|$ \\
 
 Each outer iteration costs $\sim$25 residual evaluations (17 for the
 banded preconditioner + GMRES + line search), so the $10^{-3}$ solve costs
-the equivalent of $\sim$200 marching steps --- versus $>$35{,}000 marching
+the equivalent of $\sim$200 marching steps, versus $>$35{,}000 marching
 steps that never reached this residual level. Convergence is linear, not
-quadratic (the frozen weights are refreshed per outer iteration --- a
-Picard--Newton hybrid --- and the chemistry noise floor remains); every
+quadratic (the frozen weights are refreshed per outer iteration (a
+Picard--Newton hybrid), and the chemistry noise floor remains); every
 step is a full Newton step.
 
 \textbf{Physical validation} (vs.\ the marching references):
@@ -347,7 +347,7 @@ the harness after every change in this memo).
 \toprule
 input line & default & effect\\
 \midrule
-\code{du\_th [PLM,WENO3]: a b} & --- & convergence thresholds; the
+\code{du\_th [PLM,WENO3]: a b} & - & convergence thresholds; the
  single-stage vs.\ two-stage choice is set by \code{Reconstruction scheme:}
  (\code{PLM}/\code{WENO3} single-stage use only $a$; \code{PLM+WENO3}
  two-stage: PLM until $du<a$ or stall, then WENO3 until $du<b$)\\
@@ -381,6 +381,36 @@ environment hook & effect\\
 \code{EXHALE\_PTC=1} & run the steady solver from the (loaded) IC, write
  output, stop; \code{EXHALE\_PTC\_JFNK=1} selects JFNK (else banded PTC);
  \code{EXHALE\_PTC\_DTAU0}, \code{EXHALE\_PTC\_NFIX} optional\\
+\midrule
+\multicolumn{2}{@{}l}{\emph{added with the species-row route,
+ \S\ref{sec:stage2}}}\\
+\code{EXHALE\_JFNK\_MAXIT=}$n$ & cap the outer iterations of a stationary
+ solve at $n$ in place of the caller's number. It also caps the RUN: under it
+ the run takes its FIRST stationary solve and refuses later entries by name,
+ so one measurement is one solve. Without it the cap is
+ \code{jfnk\_outer\_iterations\_default} $=3000$ at all three call sites\\
+\code{EXHALE\_INVENTORY\_REPORT=1} & print the elemental inventory of every
+ cell at the carrier operator's entry (\S\ref{sec:elemrows})\\
+\code{EXHALE\_ELEMENT\_CONSTRAINT\_ROWS=0} & restore the five coordinate-box
+ corners in place of the shared element rows\\
+\code{EXHALE\_ELEMENT\_WRITE\_BACK} & the element-conserving write-back of
+ each iterate\\
+\code{EXHALE\_COLUMN\_EQUIL=1} & equilibrate the columns of the MODEL as well
+ as of the factored band; measured and not adopted (\S\ref{sec:precond})\\
+\code{EXHALE\_TR\_RESTART\_STALL=}$n$ & restart the trust-region state after
+ $n$ outer iterations without improvement; default disarmed
+ (\S\ref{sec:armsoff})\\
+\code{EXHALE\_KRYLOV\_ON\_THE\_BALL=1} & Steihaug--Toint truncation of the
+ Krylov cycle at the radius; default off (\S\ref{sec:armsoff})\\
+\code{EXHALE\_GM\_REORTHO=1} & reorthogonalize the Arnoldi basis; default off
+ (\S\ref{sec:armsoff})\\
+\code{EXHALE\_CAUCHY\_LEG\_BY\_IMAGE=1} & let the image-share test alone
+ decide the approximate-gradient leg; worse on both fixtures, default off\\
+\code{EXHALE\_CERT\_ANCHOR=1} & run the five tolerance anchors of
+ \S\ref{sec:certtol} and print them; the default certification report is
+ byte-identical without it\\
+\code{EXHALE\_ELEM\_DIAG} & the diagnostic line the species-row step prints
+ at every trial\\
 \bottomrule
 \end{tabular}
 \end{center}
@@ -396,18 +426,18 @@ EXHALE_PTC=1 EXHALE_PTC_JFNK=1 EXHALE_PTC_DTAU0=1.0 ./EXHALE.x
 \section{Hardening results (2026-06-11, after first convergence)}
 \label{sec:hardening}
 
-\paragraph{HD189733b — 33 s vs.\ $>$3 h.} Warm-started from the deepest
+\paragraph{HD189733b: 33 s vs.\ $>$3 h.} Warm-started from the deepest
 marching state available (1.16M steps, $du=6.6\times10^{-3}$; starting
 residual $(2.4,\,5.2,\,2.4)\times10^{-3}$), the JFNK solver converged to
 $\|R\|=9.5\times10^{-4}$ in 129 iterations / \textbf{33 seconds wall time}.
 The converged state has $\log_{10}\dot M_{\rm raw}=10.298$ vs.\ 10.218
-(marching) and 10.223 (pristine \code{ATES-Code-main}) --- both still
-drifting upward --- and is the flattest state produced
+(marching) and 10.223 (pristine \code{ATES-Code-main}) (both still
+drifting upward), and is the flattest state produced
 (spread $7.6\times10^{-3}$ vs.\ $1.25\times10^{-2}$). Tentatively, the true
 HD189733b $\dot M$ is $\sim$20\% above the marching estimates, the same
 premature-snapshot pattern quantified for WASP-121b. Tightening to
 $10^{-4}$ grinds: the frozen-weight refresh jumps are large at the
-breathing base and progress floors at $\|R\|\sim3.4\times10^{-4}$ ---
+breathing base and progress floors at $\|R\|\sim3.4\times10^{-4}$,
 the practical floor for this planet with the current settings.
 
 \paragraph{Valve-$\varepsilon$ insensitivity.} Two full Newton solves of
@@ -418,7 +448,7 @@ the digits quoted: the valve smoothing is a pure numerical regularization.
 \paragraph{\code{Solver: Newton} (production wiring) and the switch
 criterion.} The warm-up$\to$Newton hand-off was wired into the main loop.
 Two failure modes were found and fixed along the way, both reiterating the
-central lesson: (i) a $du$-based switch fails --- at $du<10^{-2}$ during the
+central lesson: (i) a $du$-based switch fails: at $du<10^{-2}$ during the
 early transient the residual is still $\|R\|\approx4.8$, far outside
 Newton's basin; (ii) with the switch fixed, the marching's own $du<10^{-3}$
 stop fired first, returning the premature state. The design adopted at
@@ -430,7 +460,7 @@ isothermal IC} (WASP-121b, single input line \code{Solver: Newton}):
 two-stage warm-up to step 27{,}000 ($\|R\|=4.85\times10^{-2}$) $\to$ JFNK
 16 iterations $\to$ $\|R\|=5.4\times10^{-4}$ $\to$ standard outputs and
 post-processing; final $\log_{10}\dot M_{\rm raw}=13.7111$, spread
-$5.1\times10^{-4}$, $T_{\max}=10{,}748$\,K --- identical to the
+$5.1\times10^{-4}$, $T_{\max}=10{,}748$\,K, identical to the
 warm-started reference. Wall time 16 min (4 threads), dominated by the
 warm-up.
 
@@ -454,11 +484,11 @@ exposed a real failure mode on the spherical, metals-off tutorial planet
 still held the huge \emph{initial} merit ($\|F_s\|_2\simeq10^4$), so a
 blow-up step was ``accepted''; the search then stalled at
 $\lambda\simeq10^{-6}$, accepting zero-length steps against the
-now-flat reference for $\sim$470 iterations, and --- worst of all --- the
+now-flat reference for $\sim$470 iterations, and (worst of all) the
 main loop accepted the final unconverged state ($\|R\|=0.42$) as
 converged and wrote it out. Two fixes (both in the default-off Newton
 path; legacy byte-identity re-verified): (i)~\emph{best-iterate tracking
-and fail-fast} in \code{solve\_steady\_jfnk} --- the best residual state
+and fail-fast} in \code{solve\_steady\_jfnk}: the best residual state
 is stored, and the solve aborts with \code{info=2} after 15 outer
 iterations without a new best, returning the best iterate \emph{(this rule was
 replaced 2026-08-10, \S\ref{sec:postscript})}; (ii)~in
@@ -485,7 +515,7 @@ marching fallback):
 start of JFNK & start $\|R\|$ & JFNK outcome & final answer \\
 \midrule
 cold isothermal IC      & $1.4\times10^{4}$ & 1 iter $\to$ 11, hard stall
-  at the base & --- (abort) \\
+  at the base & - (abort) \\
 step 6{,}500 (\code{R\_switch}=0.5) & 0.43 & $\to$ 0.245, stall &
   fallback $du$-stop, $\dot M$ 13.34 (premature) \\
 step 12{,}500 (\code{R\_switch}=0.1) & 0.091 & first step \emph{worsens}
@@ -496,7 +526,7 @@ step 27{,}000 (default $5\times10^{-2}$) & 0.0485 & 16 iters $\to$
 \end{tabular}
 \end{center}
 The Newton basin boundary on this planet therefore lies between
-$\|R\|\simeq0.09$ and $0.049$ --- the default switch is calibrated
+$\|R\|\simeq0.09$ and $0.049$, the default switch is calibrated
 essentially at the edge, and raising it buys nothing: every stall pins to
 the first base cells ($j=1$--$2$, momentum), where the valve/ionization
 coupling makes the frozen-weight local model invalid far from the fixed
@@ -506,7 +536,7 @@ step, so a cold-start PTC could not beat the marching warm-up
 economically even where it survives. Practical caveat: when a
 \code{Solver: Newton} run prints \code{JFNK failed}, the fallback
 finishes on the $du$ stop, which can be a premature state (13.34/13.38
-vs.\ 13.71 here) --- re-check such runs with \code{EXHALE\_RESIDUAL=1}.
+vs.\ 13.71 here): re-check such runs with \code{EXHALE\_RESIDUAL=1}.
 Probes preserved in \code{backup/regression/\{jfnk\_cold, newton\_rsw05,
 newton\_rsw01\}}.
 
@@ -519,7 +549,7 @@ newton\_rsw01\}}.
   breathing base); an under-relaxed weight refresh between outer
   iterations is the natural next step. \emph{Since addressed from the other
   side: the line search no longer accepts a step on the frozen-weight measure
-  at all --- item~4 of \S\ref{sec:postscript}.}
+  at all, item~4 of \S\ref{sec:postscript}.}
 \item \textbf{Non-monotone reference poisoning.} The tutorial-planet
   failure above was \emph{contained}, not prevented: the 5-entry Grippo
   memory can retain a huge early merit and thereby accept a blow-up step.
@@ -532,9 +562,19 @@ newton\_rsw01\}}.
 \item \textbf{Quasi-steady physics.} The deep states still show slow
   residual decay rather than an exact fixed point (base breathing);
   whether an exact steady state of the discrete scheme exists with the
-  hard valve remains open --- the smooth-valve fixed point found here is
+  hard valve remains open: the smooth-valve fixed point found here is
   the natural regularized answer.
 \end{enumerate}
+
+\noindent These four are the open items of the three-unknown solve, as it
+stood in 2026-06. The species-row route opened its own, and they are stated
+where they arose: the linear model and its Arnoldi gap
+(\S\ref{sec:limit}), the column preconditioner as the untried freedom of the
+same section, the conditional closure convergence left FAIL by design
+(\S\ref{sec:rescontract}), and the layer's element flux conservation, which
+is what keeps the certification from gating below $r = 1.20$
+(\S\ref{sec:certtol}). No species-row configuration converges today, and
+none is certified.
 
 %====================================================================
 \section{File inventory}\label{sec:files}
@@ -609,8 +649,8 @@ Four things recorded above are no longer what the code does.
   side. Numbers: \code{docs/newton\_scaling\_and\_base\_wall.md} \S10.
 \end{enumerate}
 
-The consequence for this memo is that its recurring diagnosis --- that every
-stall lands on the base cells $j=1$--2, momentum --- does not survive
+The consequence for this memo is that its recurring diagnosis (that every
+stall lands on the base cells $j=1$--2, momentum) does not survive
 re-measurement. The base momentum row is satisfiable: its residual is the
 remainder of a four-order cancellation of gravity against the pressure gradient,
 $6.5\times10^{-5}$ of the gravity term, and a 2.9\,ppm change of the ghost
@@ -620,5 +660,391 @@ Configurations that this memo records as stalling now converge with
 \code{info}$=0$. Full account and numbers:
 \code{docs/newton\_scaling\_and\_base\_wall.md}.
 
+%====================================================================
+\section{The stationary solve as it stands (2026-09)}
+\label{sec:stage2}
+%====================================================================
+
+The solver of \S\ref{sec:newton} solved three unknowns per cell. Since
+2026-09 it also solves the SPECIES ROWS: one row per transported element and
+one per molecular carrier, four to eleven unknowns per cell depending on the
+configuration. Everything in this section is that route; the three-unknown
+route is untouched by construction and every configuration that used it,
+\code{wasp\_full\_newton} included, is bitwise across the whole series.
+
+This section replaces the description of the outer loop in
+\S\ref{sec:newtonres}--\S\ref{sec:ingredients} for the species-row route: the
+backtracking line search of the pseudo-transient continuation is no longer
+what decides the step there. It is a trust region.
+
+\subsection{The merit reads every row on the scale it will be judged by}
+\label{sec:meritscale}
+
+There is one denominator for a species row,
+\code{merit\_row\_scale\_from\_certification}, and the acceptance test, the
+merit of the line search and the certification all divide by it. The
+hydrodynamic rows keep \code{residual\_\allowbreak row\_scale(k,j,u)}, the element rows
+take their certification scale, the carrier rows take the term sum the
+certification divides by, and the base cells of element rows keep the
+unknown's own scale, since the base is the Dirichlet reservoir and carries no
+equation. MEASURED on both species-row fixtures: every element row's largest
+scaled merit row now EQUALS its certification measure at the same cell, where
+before the two stood a factor $2.5$ apart at the first iteration and $112$
+apart at the sixtieth.
+
+The measured consequence was not free, and is recorded rather than hidden:
+reconciling the hydrodynamic rows onto the same footing improved the carrier
+fixture by $2.6\times$ and made the atomic element fixture stop solving
+altogether, because the certification row scales span $11.4$ decades against
+$8.3$ before. The cause turned out not to be the spread but one exactly empty
+Jacobian column (\S\ref{sec:precond}).
+
+\subsection{The trust region, and the linear solve under it}
+\label{sec:tr}
+
+The step is a dogleg inside a trust region on the scaled coordinates, and
+every part of it now has a name that is printed.
+
+\paragraph{Named linear outcomes.} \code{pgmres} returns one of seven:
+
+\begin{center}\small
+\code{gm\_tolerance\_reached}, \code{gm\_subspace\_exhausted},
+\code{gm\_no\_direction\_sampled}, \code{gm\_jacobian\_action\_unusable},\\
+\code{gm\_preconditioner\_failed}, \code{gm\_reduced\_system\_singular},
+\code{gm\_nonfinite}.
+\end{center}
+
+\noindent A zero right-hand side returns before any
+factorization; the rotations use \code{hypot}; the rank of the reduced system
+is tested before the triangular division and the leading nonsingular block is
+the one solved; the LAPACK status and finiteness are checked after every
+preconditioner apply; at a breakdown the true scaled residual is verified
+with one extra product and the cycle exits.
+
+\paragraph{The radius is initialized from a direction that exists, and has a
+floor.} \code{initial\_trust\_region\_radius} takes its first radius from a
+finite Krylov direction with the active bounds held, and the floor
+\code{tr\_delta\_min\_dimensionless}\,$\sqrt{n_{\rm eq}}$ $= 10^{-6}\sqrt{n_{\rm eq}}$ in scaled coordinates stops
+a radius of exactly zero from being an absorbing state; the ceiling
+\code{tr\_dmax} follows the radius and cannot pass
+$10^{3}\sqrt{n_{\rm eq}}$. ``No feasible descent'' is \code{info = 3}.
+
+This is the fix of a real failure, and its mechanism is worth recording
+because it looked like a solver defect and was a registration defect: on the
+atomic element reload $1500$ unknowns sat on a bound and the first cycle took
+zero products, the radius became zero and stayed there. The $1500$ were the
+three elements \code{metals.inp} does not carry (Si, K, S over $500$ cells),
+registered with an identity row and sitting exactly at zero, so the
+fraction-to-the-boundary rule annihilated any direction with a component
+there. Absent elements, those with reservoir abundance $\le 0$, are no longer
+registered at all. MEASURED: unknowns on a bound $1500 \rightarrow 0$, first
+radius $0 \rightarrow 1.909\times10^{-2}$, first step accepted at ratio
+$0.995$.
+
+\paragraph{The length along the direction used, and the leg that is dropped.}
+The step length along the approximate-gradient leg is
+$\tau = (r \cdot Ag)/\|Ag\|^{2}$, the interior minimizer along the leg the
+step is actually taken on. That leg is DROPPED from the step and from its
+model image on two tests: by length, when it is shorter than
+\code{cauchy\_leg\_min\_fraction} $= 10^{-3}$ of the radius, and by image
+share, when it supplies more than \code{cauchy\_leg\_image\_share\_max} $=
+0.5$ of the model image while being less than
+\code{cauchy\_leg\_step\_share\_max} $= 0.1$ of the step. It is dropped and
+the dogleg rebuilt at no extra product, not rescaled: rescaling would either
+shorten $A s_U$ without $s_U$, which is not a step of the operator, or move
+the step off the dogleg path. The reason for the second test is that the
+first one is a proxy: a leg that is $0.7\%$ of the step can supply ALL of its
+image. Honest impact: on the fixtures as they now run, the length test
+reaches every image-dominant leg first ($117$ length drops, $0$ image drops),
+so the image rule fires zero times and all three runs are bitwise. The rule
+is the right criterion nonetheless and is kept; it is not claimed to improve
+either fixture.
+
+\paragraph{The ray test has a measured floor and a sound-ratio rule.} The
+decision is \code{ray\_slope\_verdict}: the model slope along the step is
+compared with the slope measured along the ray, and the floor under the
+comparison is
+$\max(\code{eq\_sweep\_reltol}\,|f_2|,\ \code{ray\_floor\_factor}\times
+\text{measured reproducibility})$, the reproducibility measured once per
+outer iteration by two evaluations of the merit at one state (cost: one
+residual evaluation per outer iteration, $+1.5\%$ on the carrier fixture).
+MEASURED, the measurement refutes what the diagnostic before it claimed: the
+reproducibility is $1.8\times10^{-15}$ at a merit of $14.95$ and $0$ to
+$4\times10^{-19}$ at $2.7\times10^{-5}$, four to seven decades below the
+assumed part, which therefore governs everywhere, and the refused trials'
+$|f_{2}^{+} - f_{2}^{-}|$ stood two to three decades above the floor, so they
+were real slope differences and not a probe at its cancellation floor.
+Within \code{ratio\_sound\_band} $= 10^{-2}$ of the acceptance ratio the ray
+verdict is formed and printed but not acted on.
+
+\paragraph{The face-write hold.} A trial whose species unknown would be
+written onto a face of its box is a move of the state that no model of the
+step contains, and those were exactly the trials whose predicted decrease
+stopped scaling with the step below $\|s\| \sim 10^{-7}$ (MEASURED: $11$ of
+$11$ such trials refused at a fixed ascent of $3\times10^{-3}$ over five
+decades of step; $10$ of $10$ others accepted at ratio $1.000$).
+\code{hold\_the\_step\_where\_it\_leaves\_the\_species\_box} zeroes the step
+at such an unknown, so the trial stays where the operator can be sampled.
+\code{probe\_length\_of\_the\_jacobian\_action} is now the one definition of
+the probe arc. Atomic fixture at a cap of $300$, before $\rightarrow$ after:
+$227 \rightarrow 113$ iterations, $170/55 \rightarrow 91/19$
+accepted/refused, negative ratios $49 \rightarrow 14$, best $\|R\|$
+$2.353\times10^{-2} \rightarrow 1.333\times10^{-2}$; the period-two cycle is
+gone. The carrier fixture and \code{wasp\_full\_newton} are bitwise (the
+branch never fires there).
+
+\subsection{The element constraint rows}
+\label{sec:elemrows}
+
+The coordinate box that used to limit the species step had one side per
+carrier, which is the wrong feasible set by stoichiometry: two carriers of
+one element each spend the whole budget, and a cell at both of its
+hydrogen-bearing ceilings breaches the shared hydrogen budget by exactly
+$1.0$ of the available hydrogen. The step is now limited by the shared rows
+themselves,
+$2n({\rm H_2}) + n({\rm H^+}) + n({\rm OH}) + 2n({\rm H_2O}) \le
+n_{\rm H}^{\rm avail}$ and its oxygen and carbon counterparts, each of the
+old corners being implied by the row, with a nonlinear feasibility screen by
+magnitude at every candidate and a restoration phase for an infeasible start.
+The derivatives of the constraint come from the same map that states it
+(\code{element\_constraint\_derivatives} of
+\code{lower\_atmosphere/element\_inventory.f90}).
+
+The write-back of each iterate returns the element totals it was handed. That
+is where the improvement came from, and it is worth separating from the
+constraint itself: on the carrier fixture the He/H nucleus ratio stays at
+$1.39\times10^{-11}$ of its reservoir at every one of $68$ iterates where the
+old text drifted to $2.016\times10^{-1}$ over $79$; best $\|R\|$
+$0.1513 \rightarrow 0.0899$ at $14\%$ fewer residual evaluations.
+\textbf{Stated, not claimed}: on both fixtures the shared hydrogen row is
+never within a probe step of being tight, so the active-set PROJECTION onto
+the constraint hyperplane, the part the route is named for, fired on ZERO
+iterations of either run; its correctness rests on the suite rows, and the
+measured gain comes from the write-back, from the budget leaving the
+coordinate box, and from the shared step limit. Switches:
+\code{EXHALE\_ELEMENT\_CONSTRAINT\_ROWS=0} restores the five corners,
+\code{EXHALE\_ELEMENT\_WRITE\_BACK} the write-back.
+
+\subsection{The column floor and the equilibrated preconditioner}
+\label{sec:precond}
+
+The collapse of \S\ref{sec:meritscale} was one exactly empty Jacobian column.
+At iteration $11$ of the atomic fixture the carbon unknown of cell $500$ had
+been driven to zero, its column scale sat on the absolute floor $10^{-20}$,
+the probe step $\sqrt{\epsilon}\times10^{-20}$ underflowed the residual
+difference, the column was exactly zero and the banded preconditioner
+singular (\code{dgbcon} $3.98\times10^{-27}$). Two repairs, with the model
+left untouched to the last bit ($r_0 = F/D_{\rm row}$ and $A$ unchanged,
+verified by the scaled column norms):
+
+\begin{enumerate}
+\item \code{element\_unknown\_column\_scale}
+  $= \max(|x|,\,10^{-4}|{\rm reservoir}|,\,10^{-20})$, so the column stays
+  resolvable while the probe step stands far above
+  $\epsilon\,X_{\rm reservoir}$;
+\item \code{equilibrate\_the\_preconditioner}, a two-sided equilibration in
+  powers of two of the band that is FACTORIZED only,
+  \code{banded\_preconditioner\_solve} applying $C\,\code{dgbtrs}(Rv)$.
+\end{enumerate}
+
+\noindent Attribution on the first solve (accepted/refused; empty columns at
+iteration 11; \code{dgbcon} there): entry $14/16$, $1$,
+$4\times10^{-27}$; floor alone $69/16$, $0$, $4.9\times10^{-11}$; both
+$114/36$, $0$, $1.1\times10^{-9}$. With a cap of $150$ the atomic fixture goes
+from an abort at $\|R\| = 1.777$ to $3.800\times10^{-2}$ still descending, and
+the carrier fixture from $0.446$ to $0.1513$. The model's OWN column
+equilibration (\code{EXHALE\_COLUMN\_EQUIL=1}) was built, measured and NOT
+adopted: it moves the trust-region coordinates, the radius runs to the cap
+and trials ascend by $4\times10^{4}$ times the predicted decrease.
+
+Two further pieces of the same work: the first-cell rows are declared once
+(\code{species\_row\_base\_equation}: an element row is the Dirichlet
+reservoir, a carrier row the control-volume balance of the operator's own
+$j = 1$ branch), and the tolerance the composition elimination is asked for
+is separated from what the outer residual may keep
+(\code{eq\_sweep\_reltol} = \code{outer\_residual\_closure\_target} divided by
+the measured amplification of the closure map at the base).
+
+\subsection{Three arms that were measured and are OFF}
+\label{sec:armsoff}
+
+Each of these was implemented and measured against both fixtures, and each is
+delivered disarmed because the measurement did not support it.
+
+\begin{center}\small
+\begin{tabular}{@{}lll@{}}
+\toprule
+arm & switch & why it is off \\
+\midrule
+periodic restart of the & \code{EXHALE\_TR\_RESTART\_STALL} &
+  no reset helps: atomic $2.671\times10^{-2}$ \\
+trust-region state & (\code{tr\_restart\_stall\_default} $=0$) &
+  either way, carrier $0.090 \rightarrow 0.115$ \\
+\addlinespace
+Steihaug--Toint truncation & \code{EXHALE\_KRYLOV\_ON\_THE\_BALL} &
+  cheaper (products $33\rightarrow7$, $40\rightarrow1.5$) \\
+on the ball & &
+  but carrier $0.090 \rightarrow 0.486$ \\
+\addlinespace
+reorthogonalization of & \code{EXHALE\_GM\_REORTHO} &
+  orthogonality loss is $10^{-13}$ to $3\times10^{-12}$; \\
+the Arnoldi basis & &
+  worse on both: $1.487$ and $0.43$ \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\noindent The restart measurement also corrected a reading of the run's own
+behavior that had been taken for a solver property: a run whose first
+stationary solve returns \code{info = 1} does not re-enter the solve from the
+handed-back state, it returns to MARCHING for about $2000$ steps and the
+second solve enters from the marched state. The two decades that a
+$150 + 150$ route appeared to gain over a single $300$ are gained by the
+marching in between.
+
+\subsection{What limits the species-row solves today}
+\label{sec:limit}
+
+Not the step control, and this is measured rather than argued. At the
+binding iterate of the atomic fixture: zero unknowns held, zero refused
+samples, zero empty columns, \code{dgbcon} $1.25\times10^{-6}$, step ratio
+$0.9998$, merit reproducibility exactly zero, the trust region inert. What
+fails is the linear model. The cycle spends $40$ of $40$ products on a
+direction whose true relative residual is $0.58$ against the $0.1$ asked
+(and $0.9917$ at the later binding iterate of the same run), with the Arnoldi
+image $21\%$ away from the operator, and $\|s_N\| = 8.6\times10^{2}$ against a
+radius $5.9\times10^{-2}$, so the region uses $7\times10^{-5}$ of an
+inaccurate direction.
+
+That $21\%$ gap is NOT a loss of orthogonality and not a stale cache. Shown
+positively: every one of the $40$ Arnoldi columns matches its own product to
+$1$--$3\times10^{-16}$, two products of one direction agree exactly, the
+basis's orthogonality loss is $4.4\times10^{-13}$, and yet the action of
+$V_1 + V_2$ differs from the sum of the two actions by $1.1\times10^{-4}$. It
+is the NONLINEARITY of the finite-difference action across directions, a
+curvature term over the fixed probe arc $\sqrt{\epsilon}(1 + \|Y\|)$. (One
+later measurement does not fit a gap that is a function of the assembled
+length alone, and re-measuring it at three iterates is an open item.)
+
+Doubling the products halves the linear residual and makes the outer solve
+WORSE on both fixtures, so more of the same direction is not the answer
+either. The untried freedom is the COLUMN preconditioner; the row scaling is
+fixed by \S\ref{sec:meritscale}.
+
+\paragraph{And the arm is chaotic at the level of the last bit.} The atomic
+element fixture is not a reproducible quantity. A control that multiplies
+three ghost quantities by $1 + 2\times10^{-16}$, changing no equation and
+posing no boundary, moves $\|R\|$ at iteration $40$ from
+$3.212\times10^{-2}$ to $1.125$; a physically correct refill of the same
+ghosts moves it to $1.199$; the three arms part at outer $10$--$11$ and from
+each other. The amplifier is the Krylov leg at its one-digit tolerance: the
+relative residual reached differs by $0.3\%$ at outer $10$, the promise by
+$0.4\%$, then $2.7\times$ at outer $11$, and at outer $12$ the three take
+different branches of the acceptance ($0.874$ accepted, $-1.98$ refused,
+$85$ accepted).
+
+The consequence is a rule for anyone measuring this route: ``it reproduces
+the previous arm'' rejects correct changes as readily as wrong ones, and
+$\|R\|$ at iteration $N$ is not what an arm can carry. What it can carry is
+named outcomes: which row binds, the refusal counts by name, the flux spread,
+the mass closure.
+
+\subsection{The residual contract}
+\label{sec:rescontract}
+
+Three statements the residual is now held to, and the state of each.
+
+\begin{enumerate}
+\item \textbf{Determinism.} $F(Y)$ is a function of $Y$, so an evaluation at
+  a point the caller discards (a Jacobian column, a Krylov product, a point
+  on a trust-region ray, a self-test) must put back what it left in the
+  modules it called. The replay registers the species rows and returns
+  $0$ of $1500 / 2000 / 2500 / 5500$ entries differing (3, 4, 5 and 11
+  unknowns per cell) after three trials, a discarded trust-region trial and
+  a \code{jv\_product} probe with the active bounds held. GREEN on four
+  configurations. The one part not reachable from the driver is a rejected
+  macrostep. This closed a hole in the old determinism suite, which replayed
+  the THREE-unknown residual in every configuration and so compared $0$ of
+  $1500$ entries.
+\item \textbf{Conditional closure convergence.} FAILS, by design, and the
+  failure is the standing measurement. The judged row maximum moves, per
+  unit relative change of the eliminated partition's seed, by $4.2\times10^{2}$
+  carrier tolerances on the carrier fixture and $3.1\times10^{1}$ element
+  tolerances on the atomic one; a seed above $2.4\times10^{-3}$ (carrier) or
+  $3.3\times10^{-2}$ (atomic) moves the judged row past its tolerance. Two
+  suite rows are left FAIL rather than given a tolerance that would pass
+  them.
+\item \textbf{Branch discovery.} With H$_2$ transported the two-root H$_2$
+  front does not reproduce; the H\,\textsc{i} partition shows one root on the
+  carrier fixture and two on the element-and-carrier fixture, $9$ seeds and
+  $1$, $1.05\times10^{-1}$ apart, and whether the second is a distinct branch
+  or a slow iteration is open.
+\end{enumerate}
+
+\noindent The rounding floor of the species rows in the judged measure is
+exactly $\epsilon$ ($2.2\times10^{-16}$) against tolerances of $10^{-8}$,
+$7.65$ decades apart, at condition numbers $2$ to $10^{3}$: compensated
+summation is not a lever here.
+
+\subsection{What a certified state is now, and what refuses one}
+\label{sec:certtol}
+
+The stationary certification no longer has one tolerance for the species
+rows. \code{cert\_tol\_element\_wind} $=$ \code{cert\_tol\_carrier\_wind}
+$= 10^{-5}$, GATING for cells at $r \ge$ \code{cert\_regime\_wind\_r}
+$= 1.20$; below that the accessors return
+\code{cert\_tol\_reported\_only} $= \code{huge}$, so the row is measured,
+printed and does not gate. One reduction,
+\code{certification\_species\_row\_gate}, decides a species row over the
+gated cells, and a column with no gated cell is refused, never reported as a
+satisfied row. The report prints \code{gated at r >= 1.2 against 1e-5:
+<measure> at cell <j>}, and a certified state with species rows carries the
+one line saying it is certified IN THE WIND with the rows below it reported;
+the state file says \code{cert\_reason=certified\_in\_wind}. The
+hydrodynamic tolerances ($3\times10^{-12}$, $10^{-8}$, $10^{-6}$) and the
+level and closure tolerances did not move. There is no input key: the two
+radii are properties of the flow and are constants of
+\code{certification.f90}.
+
+The band $1.10 \le r < 1.20$ is reported and does not gate. The decision was
+silent on it, and the band holds the candidates' binding cell at $r = 1.153$,
+where the discretization error of the discrete equation itself is
+$4.6\times10^{-4}$: a $10^{-5}$ gate there would ask the residual to fall
+$1.5$ decades below the error of its own equation, and no anchor for the band
+exists.
+
+\paragraph{What anchors $10^{-5}$, and what refuses $10^{-8}$.} Five
+measurements were taken on the two candidate states. The arithmetic does not
+refuse $10^{-8}$: two evaluations of one state differ by exactly zero, the
+closure-seed floor is $5\times10^{-19}$, five to eleven decades below it.
+What refuses it is the DISCRETIZATION and the ELEMENT FLUX CONSERVATION.
+The derivative of the residual has a clean V at the base ($7.6\times10^{-8}$)
+but a PLATEAU at $6.6\times10^{-5}$ over four decades of probe length at the
+binding cell, so the smallest row a Newton step resolves there is
+$3.9\times10^{-8}$ ($6.5\times10^{-9}$ in the wind). A manufactured relaxed
+column converges at order $1.589$ and extrapolates to $1.52\times10^{-6}$ at
+the production spacing. Grid refinement of the candidate at $r = 1.1515$ takes
+the He/H row from $5.93\times10^{-4}$ ($N = 500$) to $2.47\times10^{-4}$
+($N = 1000$) with a remap control of $1.5\times10^{-5}$: about $78\%$ of the
+row is discretization. And the element flux spread is $9.79$ in the layer
+against $2.7\times10^{-2}$ in the wind. The gate is set a decade above the
+manufactured column's discretization at the production spacing, and the
+layer's rows do not gate until the layer's flux conservation is repaired.
+Full account: \code{docs/certification\_tolerance\_anchoring\_20260910.md}.
+
+\textbf{No candidate is certified.} The atomic reload binds on the He/H row of
+a WIND cell at $2.896\times10^{-4}$ against $10^{-5}$; the carrier reload on
+the H$_2$ row at $7.284\times10^{-2}$. \code{wasp\_full\_newton}, which
+carries no species row, is certified as before.
+
+\subsection{Numbers in this section}
+
+Every number above is either MEASURED in the item that produced it or READ
+from the stage-2 record, \code{docs/Update\_EXHALE.md} section~7, items N0
+through N30, and \code{docs/ISSUES\_20260909.md}. None of them was
+re-measured for this memo; the fixtures are the two reload directories under
+\code{backup/regression/} that those items name, and the arm's own
+irreproducibility (\S\ref{sec:limit}) is the reason a re-measurement would
+not reproduce $\|R\|$ at a fixed iteration anyway.
 
 \end{document}

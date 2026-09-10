@@ -33,8 +33,8 @@ longer current. The coupled molecular network (H$_2$/H$_2^+$/H$_3^+$/HeH$^+$,
 \texttt{Molecular chemistry: True}), H$_3^+$ cooling, Lyman--Werner
 photodissociation, the analytic lower column and the \texttt{base.inp} handoff
 are all implemented in \texttt{src/modules/lower\_atmosphere/}. They default
-off, so an ordinary run is still the atomic base described here; the per-tier
-status table is the authoritative account.]}
+off, so an ordinary run is still the atomic base described here; the status table
+of each tier is the authoritative account.]}
 
 This memo (i) surveys how the literature connects escape models to the lower atmosphere,
 (ii) documents the implementation in \texttt{src/modules/lower\_atmosphere/} and
@@ -49,7 +49,7 @@ the outputs are used and connected to EXHALE runs.
 \toprule
 Approach & Lower atmosphere & Hands to the wind model at $\sim$1\,$\ubar$ & Cost / availability \\
 \midrule
-Salz et al.\ (2016), TPCI & none --- CLOUDY solves the whole column (molecules disabled) &
+Salz et al.\ (2016), TPCI & none: CLOUDY solves the whole column (molecules disabled) &
   n/a (single domain; base at $n=10^{14}$\,cm$^{-3}$, $T_\mathrm{eq}$) &
   $\sim$$3\times10^{5}$ CPU-h for 18 planets; interface not public \\
 Koskinen et al.\ (2022) & \emph{analytic}: isothermal-$T_\mathrm{eq}$ hypsometric column from
@@ -73,12 +73,12 @@ Taylor et al.\ (2025, 2026) & full Lavvas \& Arfaux (2021) model (RC temperature
 \item \textbf{Base insensitivity for strong winds} (Salz et al.\ 2016, \S3.5--3.6):
   $T_\mathrm{base}\pm40\% \Rightarrow \Mdot\pm5$--$10\%$ (linear); base density
   $10^{14}\to10^{12}$\,cm$^{-3}$ $\Rightarrow \Mdot\lesssim40\%$ lower. Their error budget:
-  base density $\pm50\%$, base $T$ $\pm10\%$ --- both dwarfed by the XUV uncertainty
+  base density $\pm50\%$, base $T$ $\pm10\%$, both dwarfed by the XUV uncertainty
   ($\times3$). $\Rightarrow$ \emph{EXHALE's fixed-$T_\mathrm{eq}$ base is already
   defensible for hot Jupiters.}
 \item \textbf{Where the fixed base breaks:} (i) planets near radiative equilibrium
   (stable thermospheres); (ii) cool/sub-Neptune planets where H$_2$ survives into the
-  wind --- Salz's GJ\,1214\,b test: H$_2$ 10--25\% throughout, H$^-$ a significant coolant,
+  wind, Salz's GJ\,1214\,b test: H$_2$ 10--25\% throughout, H$^-$ a significant coolant,
   $\Mdot-15\%$; Taylor et al.\ (2026): adding H$_2$ \emph{halves} the He 10830 signal
   (14\%$\to$7\%); Koskinen et al.\ (2022) hot Uranus: base $\qHH\approx0.84$ and H$_3^+$ IR
   emission is the dominant radiative coolant below $\sim$2.3\,$\Rp$.
@@ -86,7 +86,7 @@ Taylor et al.\ (2025, 2026) & full Lavvas \& Arfaux (2021) model (RC temperature
   Lavvas \& Arfaux 2021): the H$_2\to$H transition can sit exactly at 1\,$\ubar$ and is
   temperature-sensitive there; photochemistry (OH-catalyzed H$_2$ destruction) dissociates
   H$_2$ even at 500--1000\,K; \emph{atomic-metal release profiles} (Na, K, Mg, Ca, Fe, Al,
-  Si return to atomic form below $\sim$$10^{-3}$ bar) --- the physically-motivated base
+  Si return to atomic form below $\sim$$10^{-3}$ bar), the physically-motivated base
   abundances for EXHALE's trace metals; photoionization-dominated electron density
   ($\sim$$10^{8}$\,cm$^{-3}$, 100$\times$ Saha); radical/haze heating of $\pm$100--400\,K
   right at the handoff level. \emph{(2026-08-19: EXHALE carries no O/OH/H$_2$O
@@ -102,11 +102,11 @@ Taylor et al.\ (2025, 2026) & full Lavvas \& Arfaux (2021) model (RC temperature
 
 \section{The three-tier plan}
 
-\textbf{Tier 1} --- analytic lower column (Koskinen-2022 style): derive the 1-$\ubar$ base
-radius and base H$_2$/H/He from a closed-form column. \textbf{Tier 2} --- molecular
+\textbf{Tier 1}: analytic lower column (Koskinen-2022 style), deriving the 1-$\ubar$ base
+radius and base H$_2$/H/He from a closed-form column. \textbf{Tier 2}: molecular
 extension of EXHALE (H$_2$, H$_2^+$, H$_3^+$, HeH$^+$ chemistry $+$ H$_3^+$ IR cooling),
-required only for warm Neptunes / sub-Neptunes; \textbf{Tier 2a} --- an interim EOS-only
-molecular-base correction. \textbf{Tier 3} --- consume a real lower-atmosphere model
+required only for warm Neptunes / sub-Neptunes; \textbf{Tier 2a}: an interim EOS-only
+molecular-base correction. \textbf{Tier 3}: consume a real lower-atmosphere model
 (photochemistry $+$ radiative--convective $T(p)$) through a file interface; the
 open-source \texttt{VULCAN} (Tsai et al.\ 2017, 2021) $+$ \texttt{HELIOS} (Malik et al.\
 2017) stack is the practical replacement for the non-public Lavvas \& Arfaux code, and a
@@ -120,10 +120,10 @@ release abundances); warm Neptunes / sub-Neptunes $\to$ Tier 2 $+$ 1.
 % ===================================================================== %
 
 All Fortran lives in \texttt{src/modules/lower\_atmosphere/}; the Python driver in
-\texttt{src/utils/}. Everything is \textbf{opt-in / default off} --- with no keys and no
+\texttt{src/utils/}. Everything is \textbf{opt-in / default off}: with no keys and no
 \texttt{base.inp}, standard runs are unchanged by the lower-atmosphere code (the
 molecular chemistry off-switch reproduces the atomic systems byte-for-byte; the
-absolute production baseline itself moved with the 2026-07-23 defaults --- staged
+absolute production baseline itself moved with the 2026-07-23 defaults: staged
 secondary ionization, \texttt{He\_rec\_coupling}, He--H charge exchange).
 
 \subsection{Tier 1: \texttt{lower\_column.f90}}\label{sub:t1}
@@ -171,7 +171,7 @@ Eq.~\eqref{eq:visscher} (NaN-safe, clamped to $[0,1]$).
 \paragraph{EXHALE key.} \texttt{Lower column: <R\_1bar in R\_J>} in \texttt{input.inp}
 triggers a startup report: the derived $r_0$(1\,$\ubar$) (equilibrium $+$ atomic bracket),
 the input ``Planet radius'' for comparison, and the base $\qHH/q_\mathrm{H}/q_\mathrm{He}/\mu$,
-plus a warning when the equilibrium base is strongly molecular. \emph{Report only ---
+plus a warning when the equilibrium base is strongly molecular. \emph{Report only:
 nothing is overridden} (overriding is Tier 3's job, \S\ref{sub:t3}).
 
 \paragraph{Validation gate (passed).} Koskinen et al.\ (2022) Model~A (Uranus-mass planet,
@@ -200,12 +200,12 @@ are removed from the base particle budget,
   \mathtt{ntot\_bc} \;\to\; \mathtt{ntot\_bc} - \frac{x_2/2}{1+f_\mathrm{He}},
 \end{equation}
 which lowers the base pressure ($p_\mathrm{base}= \mathtt{ntot\_bc}\,n_0 k_\mathrm{B}T_0$)
-and raises the base mean molecular weight, i.e.\ a heavier, more compact base --- the
+and raises the base mean molecular weight, i.e.\ a heavier, more compact base, the
 leading-order effect of a molecular base on the hydrodynamics. The species arrays remain
 atomic (H$_2$ chemistry is Tier-2 proper), so this is a \emph{crude, clearly-flagged}
 approximation. \emph{[2026-08-15: \texttt{Molecular chemistry: True} turns this
-key on by itself --- an atomic \texttt{ntot\_bc} beneath a molecular base is
-physically inconsistent --- so it need not be set separately for a Tier-2 run.]} Example: HD\,209458\,b, $\qHH(1\,\ubar,1450\,\mathrm{K})=0.831
+key on by itself (an atomic \texttt{ntot\_bc} beneath a molecular base is
+physically inconsistent), so it need not be set separately for a Tier-2 run.]} Example: HD\,209458\,b, $\qHH(1\,\ubar,1450\,\mathrm{K})=0.831
 \Rightarrow \mathtt{ntot\_bc}\,1.0\to0.546$.
 
 \subsection{Tier 2 foundation: \texttt{h3p\_cooling.f90} and \texttt{mol\_rates.f90}}\label{sub:t2}
@@ -265,15 +265,15 @@ enters the \texttt{cool} array. The EOS counts each molecule as one particle, ea
 molecular ion's electron, and the correct masses (\texttt{calc\_ne/ntot/rho},
 \texttt{get\_species\_densities}). \texttt{f\_sp} grows to 37 columns (output schema
 and Load-IC names extended). Key: \texttt{Molecular chemistry: True} (requires He; v1
-excludes trace metals; the molecular base particle count is coupled on automatically ---
+excludes trace metals; the molecular base particle count is coupled on automatically,
 an atomic \texttt{ntot\_bc} under a molecular base is physically inconsistent).
 \textbf{Gates passed} (numbers re-established 2026-07-16 after the deterministic
 chemical-equilibrium seeding of the molecular solve; the exact gate inputs are pinned at
 \texttt{lower\_atmosphere\_figs/data\_g*/input.inp}): (0) molecules-off regression,
 molecular chemistry off reproduces the atomic systems; (1) HD\,209458\,b molecules-on: a
 fully molecular base ($x_{\rm H_2}\simeq0.996$) with a sharp H$_2\to$H front at
-$r=1.020\,\Rp$ and an essentially atomic wind above it --- the hot-Jupiter atomic base
-is now a \emph{result}, not an assumption --- while below the front the molecular base
+$r=1.020\,\Rp$ and an essentially atomic wind above it (the hot-Jupiter atomic base
+is now a \emph{result}, not an assumption), while below the front the molecular base
 suppresses He\,2$^3$S by orders of magnitude (He\,2$^3$S$+$H$_2$ Penning destruction,
 ${\sim}10^4\times$ at the front, rising back to the atomic value above ${\sim}1.3\,\Rp$);
 (2) a hot-Uranus-like case (0.0457\,$M_{\rm J}$, $R_{\rm p}=0.49\,R_{\rm J}$,
@@ -291,7 +291,7 @@ snapshots below the H$_2\to$H front and are given in \S\ref{sec:converged}.
 
 \paragraph{He\,2$^3$S $+$ H$_2$ Penning ionization.} When \texttt{Include
 He23S?} is also on, the metastable couples to H$_2$ through Penning ionization
-He($2^3$S)$+$H$_2\to$He($1^1$S)$+$H$_2^+ + e^-$ --- the dominant He($2^3$S) loss
+He($2^3$S)$+$H$_2\to$He($1^1$S)$+$H$_2^+ + e^-$: the dominant He($2^3$S) loss
 toward an H$_2$-dominated base (Garc\'ia Mu\~noz 2025, A\&A 698, A199, Fig.~4).
 Its rate coefficient \texttt{penning\_HeI23S\_H2} (\texttt{Cool\_coeff.f90}) is
 an analytic fit to Garc\'ia Mu\~noz Table~A.5 (Cohen \& Lane 1977 cross
@@ -311,8 +311,8 @@ molecular densities are never passed in or re-solved, and its
 Consequences for a molecular run: (i) the \texttt{\_adv} $n_{\rm tot}/n_e$ omit
 the neutral-H$_2$ particle count and the molecular-ion electrons; (ii) the
 He($2^3$S)$+$H$_2$ Penning sink cannot act in the \texttt{\_adv} solve (no
-$n_{\rm H_2}$ there), so the \texttt{\_adv} outputs --- and the transit module
-that reads them --- carry the \emph{equilibrium} molecular-base triplet
+$n_{\rm H_2}$ there), so the \texttt{\_adv} outputs, and the transit module
+that reads them, carry the \emph{equilibrium} molecular-base triplet
 suppression ($39\times$ at the HD\,209458\,b base, $430\times$ on the
 hot-Uranus case) without an advection correction. This is acceptable where
 \texttt{\_adv} is physically meaningful (the atomic/ionized escape flow above
@@ -327,7 +327,7 @@ item in the Tier-2 remaining list.
 fraction bound in H$_2$: on HD\,209458\,b the base is fully molecular and a sharp
 H$_2\to$H front sits at $r=1.020\,\Rp$ (dotted); on the cooler, low-gravity hot
 Uranus the front sits at $1.156\,\Rp$. The cell-to-cell flip-flop just above the
-front marks the chemically bistable zone of \emph{equilibrium} H$_2$ chemistry ---
+front marks the chemically bistable zone of \emph{equilibrium} H$_2$ chemistry:
 kinetics$+$advection smooth it (the documented Tier-2 caveat). (b) The molecular run's
 temperature agrees with the atomic run away from the (still-relaxing) front region.
 (c) Molecular species on HD\,209458\,b: H$_3^+$ (green) and the molecular ions are
@@ -362,11 +362,11 @@ key & unit & overrides & used by \\
 \midrule
 \texttt{T\_base}   & K     & $T_0$ (base temperature)          & thermal BC, EOS scales \\
 \texttt{r\_base}   & $\RJ$ & ``Planet radius'' ($=r_0$ of 1\,$\ubar$) & grid, gravity, areas \\
-\texttt{HeH\_base} & --    & He/H number ratio                 & composition, He diffusion \\
+\texttt{HeH\_base} & -     & He/H number ratio                 & composition, He diffusion \\
 \texttt{Kzz\_base} & cm$^2$/s & \texttt{he\_kzz}               & \texttt{He\_diffusion} homopause \\
-\texttt{q\_H2\_base} & --  & \texttt{q\_h2\_base} ($\qHH$ at the base) & \texttt{Molecular base} particle count \\
+\texttt{q\_H2\_base} & -   & \texttt{q\_h2\_base} ($\qHH$ at the base) & \texttt{Molecular base} particle count \\
 \texttt{p\_base}   & bar   & \texttt{p\_base\_bar}             & level of the handoff; the $\qHH$ fit \\
-\texttt{<El>\_H\_base} & -- & \texttt{X\_<El>}, hence \texttt{melem\_ab} & metal system, EOS budget, base BC \\
+\texttt{<El>\_H\_base} & - & \texttt{X\_<El>}, hence \texttt{melem\_ab} & metal system, EOS budget, base BC \\
 \bottomrule
 \end{tabular}
 \end{center}
@@ -379,14 +379,14 @@ metadata in the same file.
 element symbols of \texttt{species\_table} (\texttt{C N O Mg Si Ca Na K S Fe}),
 e.g.\ \texttt{O\_H\_base 4.90e-4}; the value is the El/H \emph{nuclei} ratio at
 the handoff level. It overrides \texttt{metals.inp} for that element and turns
-the metal system on by itself when it is the only nonzero abundance ---
+the metal system on by itself when it is the only nonzero abundance:
 \texttt{thereis\_metals}, \texttt{melem\_ab} and \texttt{thereis\_lowIP\_metal}
 are all derived after the handoff, so a handoff element behaves exactly like a
 \texttt{metals.inp} one. On a restart it also renormalizes that element's whole
 loaded column onto the stated ratio, preserving the ionization split and the
 radial shape (\texttt{load\_IC.f90}). Every key of \texttt{base.inp} now carries
-a \emph{category} --- provenance, EOS boundary, elemental reservoir, initial
-guess, boundary constraint --- which is what states what the value is allowed to
+a \emph{category} (provenance, EOS boundary, elemental reservoir, initial
+guess, boundary constraint), which is what states what the value is allowed to
 do to the wind; the full table is \texttt{docs/input\_schema.md} \S2c and the
 user manual's Tier-3 section. Neither \texttt{run\_lower.py} nor
 \texttt{vulcan\_to\_base.py} writes \texttt{<El>\_H\_base}: VULCAN's networks are
@@ -397,9 +397,10 @@ and the atomic-metal release is outside its scope.
 The scalars above state the lower atmosphere at one level. The key
 \texttt{Lower atmosphere profile: <file>} states it over an \emph{interval} of
 pressure instead: the lower model's own solution, tabulated deep-to-shallow and
-reaching above the matching level, handed over as one table (reader
-\texttt{src/modules/files\_IO/lower\_atmosphere\_profile.f90}, schema module
-\texttt{src/utils/lower\_profile\_schema.py}). Two things ask for the interval.
+reaching above the matching level, handed over as one table. The reader is
+\texttt{src/modules/files\_IO/\allowbreak lower\_atmosphere\_profile.f90} and the
+schema module \texttt{src/utils/\allowbreak lower\_profile\_\allowbreak schema.py}.
+Two things ask for the interval.
 The first is eddy mixing: the homopause is where $K_{zz}$ crosses the molecular
 diffusion coefficient, which a single \texttt{He\_Kzz} cannot locate, so the
 profile supplies $K_{zz}$ as a column interpolated onto the grid. The second is
@@ -414,7 +415,7 @@ carry a \texttt{\# solution\_id} matching the profile's or the run stops. Two
 producers write the format: \texttt{src/utils/photochem\_to\_lower\_profile.py}
 (the production path, with the temperature structure either prescribed or solved
 by its radiative--convective climate model) and
-\texttt{src/utils/vulcan\_to\_lower\_profile.py} (the cross-check arm --- VULCAN
+\texttt{src/utils/vulcan\_to\_lower\_profile.py} (the cross-check arm, VULCAN
 carries no climate model). Column-by-column schema:
 \texttt{docs/input\_schema.md} \S2d; example: \texttt{examples/17\_lower\_profile/}.
 
@@ -433,8 +434,8 @@ global-average profile
 with standard hot-Jupiter defaults ($\kappa_\mathrm{IR}=10^{-2}$\,cm$^2$g$^{-1}$,
 $\gamma=0.4$, $T_\mathrm{int}=100$\,K). The file records the base
 $\qHH/q_\mathrm{H}/q_\mathrm{He}$ as comments and prints a molecular-base warning when
-$\qHH>0.3$. The upgrade path --- running \texttt{VULCAN} for the composition and a real
-RC model for $T(p)$ --- writes the \emph{same} \texttt{base.inp} keys, so nothing on
+$\qHH>0.3$. The upgrade path (running \texttt{VULCAN} for the composition and a real
+RC model for $T(p)$) writes the \emph{same} \texttt{base.inp} keys, so nothing on
 the EXHALE side changes.
 
 \paragraph{VULCAN upgrade implemented and demonstrated (2026-07-03).} The public
@@ -445,20 +446,20 @@ converted with the new \texttt{src/utils/vulcan\_to\_base.py} (.vul $\to$
 \texttt{base.inp}: photochemical $q_{\rm H_2}/q_{\rm H}/q_{\rm He}$ at 1\,$\ubar$,
 hypsometric $r_{\rm base}$ with VULCAN's own $\mu(p)$ and $T(p)$, molecular mixing
 ratios as comments). \textbf{Result:} at 1\,$\ubar$ the photochemical base is
-$q_{\rm H_2}=0.63$, $q_{\rm H}=0.23$ --- \emph{photochemistry dissociates
+$q_{\rm H_2}=0.63$, $q_{\rm H}=0.23$, \emph{photochemistry dissociates
 $\sim$11$\times$ more H than the chemical-equilibrium column} ($q_{\rm H}=0.020$),
 directly quantifying the Tier-1 caveat (Moses 2011; Koskinen 2013a);
 $r_{\rm base}=1.168$ vs the analytic 1.174\,$\RJ$; $T_{\rm base}=863$\,K (the
 Moses11 $T(p)$, cooler than the isothermal $T_{\rm eq}=1183$\,K). The full chain
 VULCAN $\to$ converter $\to$ \texttt{base.inp} $\to$ EXHALE startup override was
-exercised end-to-end. Caveat: VULCAN's networks are H/C/N/O(/S) --- the atomic-metal
+exercised end-to-end. Caveat: VULCAN's networks are H/C/N/O(/S), the atomic-metal
 release (Na/Mg/Ca/Fe) has no public analogue and remains with the Lavvas collaboration
 path; \texttt{metals.inp} stays user-supplied. Figure~\ref{fig:vulcan} shows the
 converged composition against the equilibrium H$_2$ track.
 
 \paragraph{The photochemical $\qHH$ now reaches the solve (2026-08-10).} Until then
 the converter recorded $\qHH$ as a comment while the \texttt{Molecular base}
-correction took its own $\qHH$ from the chemical-equilibrium fit --- the very
+correction took its own $\qHH$ from the chemical-equilibrium fit: the very
 approximation the pre-step exists to replace. \texttt{base.inp} now carries two
 further read keys, \texttt{q\_H2\_base} (the photochemical H$_2$ volume mixing ratio
 at the base) and \texttt{p\_base} (the level it refers to, at which the fit is
@@ -479,7 +480,7 @@ nucleus ($\sim$7\%), which the base density inherits in
 chemical-equilibrium H$_2$ mixing ratio evaluated along the same $T(p)$ (dotted).
 Above $\sim$$10^{-4}$ bar photochemistry dissociates H$_2$ far beyond equilibrium; at
 the 1\,$\ubar$ handoff (horizontal dotted line) $q_{\rm H}=0.23$ versus the
-equilibrium 0.020 --- the $\sim$11$\times$ underestimate quantified.}
+equilibrium 0.020: the $\sim$11$\times$ underestimate quantified.}
 \label{fig:vulcan}
 \end{figure}
 
@@ -528,32 +529,32 @@ transit-radius shortcut puts the base 0.17--0.35\,$\RJ$ too deep.}
 
 \noindent Interpretation (per planet):
 \begin{itemize}
-\item \textbf{HD\,189733\,b --- consistent.} The production base radius (1.193\,$\RJ$)
+\item \textbf{HD\,189733\,b: consistent.} The production base radius (1.193\,$\RJ$)
   falls \emph{inside} the derived bracket [1.174, 1.205]: the adopted setup is validated
   by the column, not merely assumed.
-\item \textbf{HD\,209458\,b --- input $\sim$5\% low.} The production value 1.401\,$\RJ$
+\item \textbf{HD\,209458\,b: input $\sim$5\% low.} The production value 1.401\,$\RJ$
   sits just below the bracket [1.472, 1.582]. Given the isothermal-$T_\mathrm{eq}$
   assumption this is within the method's spread, but it suggests the 1-$\ubar$ level may
   lie slightly higher than assumed; the effect on $\Mdot$ is bounded by the Salz
   base-sensitivity results ($\lesssim10\%$-level).
-\item \textbf{WASP-121\,b --- the atomic base is \emph{verified}.} At
+\item \textbf{WASP-121\,b: the atomic base is \emph{verified}.} At
   $T_\mathrm{eq}=2358$\,K the equilibrium base is already atomic ($\qHH=0.005$,
   $q_\mathrm{H}=0.92$, $\mu=1.24$): for this ultra-hot Jupiter EXHALE's atomic assumption
   holds \emph{even in equilibrium}, with no appeal to photochemistry. The production base
   radius 2.2075\,$\RJ$ (derived earlier from the Huang et al.\ 2023 Table-3 $\log g$
   anchoring) lies $\sim$4--10\% above the isothermal-$T_\mathrm{eq}$ bracket [2.010,
-  2.133] --- consistent with a dayside lower atmosphere hotter than the
+  2.133]: consistent with a dayside lower atmosphere hotter than the
   redistribution-averaged $T_\mathrm{eq}$, which extends the column. Note the deep layers
   are still molecular ($\qHH(1\,\mathrm{bar})\approx0.83$), so $\mu$ varies from 2.25 to
-  1.24 along this column --- the equilibrium track is \emph{shorter} than the atomic
+  1.24 along this column: the equilibrium track is \emph{shorter} than the atomic
   bracket here because of its heavier deep-layer $\mu$.
-\item \textbf{WASP-52\,b --- misplaced base, impact quantified.} The production runs use
-  the transit radius itself (1.27\,$\RJ$) as the 1-$\ubar$ base --- the common shortcut
-  --- but the column places that level at 1.44--1.62\,$\RJ$, i.e.\ the base is
+\item \textbf{WASP-52\,b: misplaced base, impact quantified.} The production runs use
+  the transit radius itself (1.27\,$\RJ$) as the 1-$\ubar$ base, the common shortcut,
+  but the column places that level at 1.44--1.62\,$\RJ$, i.e.\ the base is
   0.17--0.35\,$\RJ$ (13--27\%) too deep. \emph{Recomputation} (the
   \texttt{fxuv1p0\_he98} configuration rerun Newton-converged with the corrected
   equilibrium-column base $r_0=1.437\,\RJ$, all else identical): $\log\Mdot$
-  $11.97\to12.14$ ($\times1.5$), but the He\,10830 observable barely moves ---
+  $11.97\to12.14$ ($\times1.5$), but the He\,10830 observable barely moves,
   line-center absorption $27.11\to27.56\%$ ($\times1.02$) and equivalent width
   $0.713\to0.722$\,\AA\ ($\times1.01$). The line-forming effective radius is set by
   the $\tau{=}1$ surface of the extended wind, which stays nearly fixed in
@@ -565,11 +566,11 @@ transit-radius shortcut puts the base 0.17--0.35\,$\RJ$ too deep.}
   ``He98'' abundance scan), visible in the light $\mu_\mathrm{base}$.
 \item \textbf{Common pattern.} All three $T_\mathrm{eq}\lesssim1500$\,K planets have
   strongly molecular \emph{equilibrium} bases ($\qHH\approx0.83$, the fully-molecular
-  limit of the fit) --- quantifying that their atomic bases rest on \emph{photochemical}
+  limit of the fit): quantifying that their atomic bases rest on \emph{photochemical}
   dissociation (Moses et al.\ 2011; Koskinen et al.\ 2013a) rather than thermal, which is
   precisely what the Tier-3 \texttt{VULCAN} upgrade would supply from first principles.
   The Guillot column is systematically slightly more compact (cooler skin above the
-  photosphere) --- a $\lesssim$0.5\% radius effect at fixed assumptions.
+  photosphere): a $\lesssim$0.5\% radius effect at fixed assumptions.
 \end{itemize}
 
 \begin{figure}[htb]\centering
@@ -578,8 +579,8 @@ transit-radius shortcut puts the base 0.17--0.35\,$\RJ$ too deep.}
 old transit-radius-shortcut base ($R_0=1.270\,\RJ$, dashed) and the corrected Tier-1
 column base ($R_0=1.437\,\RJ$, solid), both Newton-converged with the same binary. The
 line core (27.11 vs.\ 27.55\%) and equivalent width (0.713 vs.\ 0.722\,\AA) are
-essentially unchanged --- the $\tau{=}1$ line-forming surface of the extended wind is
-fixed in physical units --- with only a mild reshaping of the shoulders; the base
+essentially unchanged (the $\tau{=}1$ line-forming surface of the extended wind is
+fixed in physical units) with only a mild reshaping of the shoulders; the base
 misplacement instead biases $\Mdot$ ($\log\Mdot$ 11.97$\to$12.14, $\times$1.5).}
 \label{fig:w52}
 \end{figure}
@@ -594,8 +595,8 @@ misplacement instead biases $\Mdot$ ($\log\Mdot$ 11.97$\to$12.14, $\times$1.5).}
   to \texttt{input.inp} (or run \texttt{run\_lower.py}). Read off: does the current
   ``Planet radius'' fall inside the [chem.eq., atomic] bracket? Is $\qHH$(base) small?
 \item \textbf{Decide the tier.} $\qHH\lesssim0.1$ (e.g.\ WASP-121\,b): the atomic model
-  is verified --- proceed as usual. $\qHH\sim0.8$ with $T_\mathrm{eq}\sim1000$--2000\,K
-  (typical hot Jupiters): the atomic base rests on photochemistry --- proceed, but note
+  is verified, proceed as usual. $\qHH\sim0.8$ with $T_\mathrm{eq}\sim1000$--2000\,K
+  (typical hot Jupiters): the atomic base rests on photochemistry, proceed, but note
   the assumption; a genuinely cool planet (warm Neptune / sub-Neptune) needs Tier-2
   physics before its He\,10830 predictions are trusted.
 \item \textbf{Adopt the geometry.} If the input radius lies outside the bracket
@@ -631,7 +632,7 @@ $\Lambda_{\mathrm{H_3^+}}(T,n_{\mathrm{H_3^+}},n_\mathrm{H_2})$ & \texttt{h3p\_c
 R1--R23 rates & \texttt{mol\_rates} & (Tier 2) source terms of
   \texttt{System\_HeH\_mol}; H$_3^+$/HeH$^+$ densities for the cooling and for
   IR-diagnostic post-processing \\
-metal release $n_X/n_\mathrm{H}$ & (Tier 3, VULCAN) & \texttt{metals.inp} values ---
+metal release $n_X/n_\mathrm{H}$ & (Tier 3, VULCAN) & \texttt{metals.inp} values,
   replaces assumed solar totals for the Mg\,II/Ca\,II/Na\,I transmission lines \\
 \bottomrule
 \end{tabular}
@@ -646,7 +647,7 @@ iteration runs on the elemental fluxes, driven by
 \texttt{src/utils/element\_flux\_closure.py}. The chemistry is told a trial
 elemental flux through its upper boundary
 (\texttt{-{}-trial-flux-H}/\texttt{-{}-trial-flux-He} of
-\texttt{photochem\_to\_lower\_profile.py}, g\,s$^{-1}$ outward positive --- the
+\texttt{photochem\_to\_lower\_profile.py}, g\,s$^{-1}$ outward positive: the
 Lavvas et al.\ 2014 prescription in flux form), the resulting profile becomes the
 wind's base state, and the wind's own elemental flux is measured face by face by
 \texttt{write\_element\_flux\_profile} (\texttt{binary\_element\_diffusion.f90}),
@@ -674,6 +675,101 @@ $\sim$3 iterations sufficient for the analogous Ly$\alpha$ loop; the same is
 expected here since the wind is insensitive to base details at the $\lesssim$10\%
 level (Salz et al.\ 2016).
 
+\subsection{The element operator: what it conserves, and where its
+boundary comes from}
+\label{sub:elemop}
+
+The closure above rests on the same operator that carries the He/H and metal
+separation through the wind, \texttt{binary\_element\_diffusion.f90}. Three
+statements about it were settled on 2026-09-10 and belong beside the flux
+numbers, because two of them change what those numbers mean.
+
+\paragraph{The projection now conserves the mixture mass.} After each
+element update the species vector is projected back onto the new element
+totals by \texttt{project\_elements}. It used to take the mixture mass as
+$m_{\rm sum} = m_1 n_{\rm H} + m_{\rm He} n_{\rm He}$ with $m_1$ the
+\emph{reservoir} mass per hydrogen nucleus, i.e.\ the trace metals at their
+\texttt{metals.inp} abundances, while the cell carries its metals at whatever
+the trace transport left it. The difference was written into hydrogen at
+every call. MEASURED at one cell of the certification column whose metal/H
+was $0.024401$ against the reservoir's $0.028227$, $\sum_i m_i f_i$ went
+$1.0000000 \rightarrow 1.0000636$ in a single step: mass created. A second
+leak of the same kind: the trace-metal arm wrote metal densities with no
+counter-flux in the hydrogen they diffuse through
+($3.0\times10^{-3}$ on the suite column with the metals frozen).
+
+\texttt{mixture\_mass\_split} now reads the mass the cell's species actually
+carry, component~1 is scaled as a whole, and one projection after the metal
+loop puts the metals' mass change back onto hydrogen. Mass closure of the
+certification column after the relaxation went $3.37\times10^{-3} \rightarrow
+2.3\times10^{-15}$, and of the handed-back atomic candidate $6.44\times
+10^{-3} \rightarrow 1.94\times10^{-9}$, the file's own precision. A run with
+metals off is unaffected by construction ($m_1 = m_{\rm H} = 1$ exactly).
+The counter-flux is closed on hydrogen but not on momentum or internal
+energy; that is a trace approximation and is named as one at the routine.
+
+This is not a cosmetic repair for anyone using the coupling: the
+\texttt{lower\_profile} regression case, the one that hands the lower
+atmosphere over as a profile, had a stored reference $3.6\times10^{-4}$ out
+of closure (O/H $4.61\times10^{-4}$ against the reservoir's
+$4.90\times10^{-4}$). A $1500$-step cold start goes $6.77\times10^{-3}
+\rightarrow 3.14\times10^{-9}$ in closure, with $T$ at $1.6\,R_{\rm p}$
+moving $1.3\%$ and H\,\textsc{i} $6.3\%$. Its reference was re-snapshotted at
+the 2026-09-10 gate.
+
+\paragraph{The boundary of the residual is the caller's, deliberately.} The
+two relaxation solvers (\texttt{element\_diffusion\_step},
+\texttt{solve\_trace\_element\_in\_hydrogen}) refill the upper ghosts of
+their own working arrays before every pass, while
+\texttt{element\_transport\_residual}, which measures the same balance on a
+state, reads the ghosts the caller left. Making the residual pose its own
+zero-gradient top was tried and reverted. It is physically the right
+condition and it changes the residual by one element's outermost row in its
+twelfth digit and nothing else (the production callers already hand the
+operator ghosts equal to the cell to one to four units in the last place),
+but the atomic element arm of the stationary solve does not survive a
+last-bit change of those ghosts, whatever makes it: a control that merely
+multiplies the same three ghost quantities by $1 + 2\times10^{-16}$ and poses
+no boundary at all moves the arm just as far. The amplifier is the Krylov leg
+at its one-digit tolerance, which crosses that tolerance on a different
+vector and sends the acceptance test down a different branch a few
+iterations later. The asymmetry therefore stays in the tree, documented at
+the routine and measured by \texttt{src/tests/element\_operator/}, which
+asserts the size of the caller dependence ($1.19\times10^{-2}$ of the row's
+scale on a stale caller) rather than assuming it away.
+
+\paragraph{The open item: the layer does not conserve the element flux.} The
+window reduction of the flux closure above is also the honest statement of
+how well the operator conserves what it transports. MEASURED on the atomic
+candidate state, as the relative radial spread of $F_{\rm El}$ about its
+median:
+
+\begin{center}\small
+\begin{tabular}{@{}lccc@{}}
+\toprule
+window & $F_{\rm He}$ spread & $F_{\rm H}$ spread & face mass-flux spread \\
+\midrule
+layer, $r < 1.10$        & $9.79$               & $9.09$               & $9.25$ \\
+wind, $r \ge 1.20$       & $2.71\times10^{-2}$  & $1.36\times10^{-2}$  & $3.99\times10^{-3}$ \\
+escape, $r \ge 2.0$      & $2.01\times10^{-3}$  & $2.14\times10^{-3}$  & $1.55\times10^{-3}$ \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\noindent The mass-flux spread the same state is usually quoted with,
+$9.8\times10^{-7}$, is a \emph{cell-centered} number and says nothing about
+these: the element fluxes are three to four decades worse in the same state.
+The projection fix buys a factor four in the layer ($39.3 \rightarrow 9.79$
+for helium) and nothing in the wind, which is what a mass-closure repair
+should do, since the leak was largest where the composition changes most. A
+spread of $9.8$ means the layer's element fluxes are not conserved at all,
+and the standing base wave is the suspect. The consequence has been taken:
+the certification gates the element and carrier rows only at $r \ge 1.20$,
+and the layer's rows are reported and do not gate until this number is
+repaired; \texttt{certification.f90} states that reason at the declaration of
+its two regime radii. Numbers here are READ from
+\texttt{docs/certification\_tolerance\_anchoring\_20260910.md} section~5.
+
 \subsection{Consistency cautions}
 \begin{itemize}
 \item Do not double-count composition: if \texttt{base.inp} sets He/H from a lower model,
@@ -686,7 +782,7 @@ level (Salz et al.\ 2016).
   atmospheres extend beyond the $T_\mathrm{eq}$ column (both visible in the WASP-121\,b
   example above).
 \item The \texttt{Molecular base} key changes only the EOS budget; do not combine it with
-  quantitative He\,10830 claims for genuinely cool planets --- that is Tier-2 physics.
+  quantitative He\,10830 claims for genuinely cool planets: that is Tier-2 physics.
 \end{itemize}
 
 % ===================================================================== %
@@ -710,9 +806,9 @@ and the steady residual balance the same cooling function.
 \texttt{Max steps: 150000}
 \end{center}
 \texttt{Solver: Newton 5.0e-2} raises the hand-off threshold, because the $du$
-descent of a molecular run is \emph{not monotonic} --- on the hot-Uranus gate it
+descent of a molecular run is \emph{not monotonic} (on the hot-Uranus gate it
 reaches $8.8\times10^{-2}$ near step 11500 and bounces back to $7\times10^{-1}$
-before resuming --- so a run can spend its whole step budget above the
+before resuming), so a run can spend its whole step budget above the
 $10^{-2}$ default. \texttt{Max steps: 150000} covers the marching warm-up.
 Marching alone can \emph{never} reach the molecular layer: its H$_3^+$ cooling
 time is $1.3\times10^{7}$\,s at $r=1.02$ against a CFL-limited step of 0.30\,s,
@@ -726,7 +822,7 @@ is ${\sim}10^{3}$ times the value anywhere else. Stopping at the default
 $\|R\|<10^{-3}$ therefore leaves the molecular layer still cooling: its
 cell-by-cell energy residual is then 0.7$\times$ the local H$_3^+$ cooling rate,
 with the same sign in 173 of 180 cells. Re-solving the same state with
-\texttt{Resid tol: 1.0e-5} moves the layer again --- by 60--70\% in $T$ --- and
+\texttt{Resid tol: 1.0e-5} moves the layer again (by 60--70\% in $T$), and
 only there does the solution become a fixed point of the procedure: a third solve
 reproduces $T$ to $\le0.14\%$ and the H$_2\to$H front to five digits.
 \textbf{A molecular run needs \texttt{Resid tol: 1.0e-5}.}
@@ -754,7 +850,7 @@ flux varies by a factor $2\times10^{2}$--$4\times10^{3}$ across the wind, so no
 single number represents it.
 
 \paragraph{What the converged solution says physically.} The molecular layer
-collapses to 190--300\,K --- far below $T_\mathrm{eq}=1140$\,K --- and stops there
+collapses to 190--300\,K (far below $T_\mathrm{eq}=1140$\,K), and stops there
 because the coolant switches itself off: the H$_3^+$ cooling time at $r=1.02$
 rises from $1.3\times10^{7}$\,s in the snapshot to $1.3\times10^{10}$\,s in the
 converged state. With metals the collapse is instead accompanied by the saturated
@@ -768,7 +864,7 @@ at these column densities is optically thick in exactly these lines and sits nea
 the radiative--convective profile. The converged Tier-2 thermal structure should
 therefore be read as \textbf{the steady state of the model as written, and as a
 quantitative statement that the model was missing an infrared escape probability
-below the H$_2\to$H front} --- not as a prediction of the temperature of a warm
+below the H$_2\to$H front}, not as a prediction of the temperature of a warm
 Neptune's lower thermosphere. \S\ref{sec:baseir} supplies part of what is missing
 and measures how far it goes. The wind above the front is much less affected:
 $\Mdot$ moves 0.085\,dex (metals off) and 0.043\,dex (metals on) between the
@@ -776,7 +872,7 @@ $10^{-3}$ and $10^{-5}$ solutions, because it is launched above the collapsed
 layer.
 
 \paragraph{HD\,209458\,b: the same recipe on a real planet.} The second
-Newton-grade molecular solution is \texttt{examples/}\allowbreak\texttt{15\_molecular} --- the
+Newton-grade molecular solution is \texttt{examples/}\allowbreak\texttt{15\_molecular}: the
 metals-off HD\,209458\,b configuration of Gate 1, the one that had run 135694
 steps without ever converging. The three keys above are the whole change: no warm
 restart was needed, the run went from the default cold IC to \texttt{info = 0} in
@@ -821,8 +917,8 @@ substitute for the converged one.
 
 \paragraph{With metals the same planet does not converge.}
 \texttt{examples/16\_molecular\_metals} (the identical configuration plus solar
-C/N/O) under the same three keys reaches the hand-off ---
-PLM\,$\to$\,WENO3 at step 15263, secondary ionization at 61158 --- and the JFNK
+C/N/O) under the same three keys reaches the hand-off
+(PLM\,$\to$\,WENO3 at step 15263, secondary ionization at 61158), and the JFNK
 then stalls: $\|R\|$ falls from $2.338\times10^{-2}$ to $3.6\times10^{-4}$ over
 281 iterations and the line search finds no descent step for 12 consecutive
 iterations (\texttt{info = 2}, worst cell $j=93$, $r=1.021$, momentum), after
@@ -882,7 +978,7 @@ line & $\tau$ per scale height at the base & pressure where $\tau=1$ & $\tau$ at
 {}[O\,I] 145\,$\mu$m & 0.32  & 37\,$\ubar$  & $3.6\times10^{4}$ \\
 C\,I 370\,$\mu$m     & 0.092 & 106\,$\ubar$ & $1.0\times10^{4}$ \\
 C\,I 609\,$\mu$m     & 0.046 & 205\,$\ubar$ & $5.1\times10^{3}$ \\
-C\,II 158, N\,II 205/122, [O\,I] 44\,$\mu$m & $\le1.2\times10^{-10}$ & --- & $\le3\times10^{-2}$ \\
+C\,II 158, N\,II 205/122, [O\,I] 44\,$\mu$m & $\le1.2\times10^{-10}$ & - & $\le3\times10^{-2}$ \\
 \bottomrule
 \end{tabular}
 \end{center}
@@ -904,7 +1000,7 @@ say the fine-structure lines are not the cause of the 190--300\,K there.
   because $\rho$ has fallen by a factor $10^{2}$. The layer is an expansion, not a
   radiative collapse.
 \item \textbf{The metals-off solution collapses further with no fine-structure
-  cooling at all} --- 115\,K at $r=1.033$, where its total cooling is
+  cooling at all}: 115\,K at $r=1.033$, where its total cooling is
   $3.8\times10^{-12}$\,erg\,cm$^{-3}$\,s$^{-1}$.
 \end{itemize}
 The energy budget makes the same point directly: the metals-on cooling is 36\% of
@@ -936,8 +1032,8 @@ stops cooling at its own radiative equilibrium temperature, 575.8\,K (C\,I
 609\,$\mu$m) to 641.7\,K ([O\,I] 44\,$\mu$m) for $T_0=1140$\,K and half-sky
 coverage, and heats below it.
 
-For H$_3^+$ there is no line list --- Miller et al.\ (2013) fit the \emph{total}
-emission --- so the absorption is taken from that fit at the radiating
+For H$_3^+$ there is no line list (Miller et al.\ (2013) fit the \emph{total}
+emission), so the absorption is taken from that fit at the radiating
 temperature, which is what Kirchhoff's law makes of an emission integral:
 $\Lambda_\mathrm{net}=n(\mathrm{H_3^+})\,4\pi\,s(T,n_{\mathrm{H_2}})
 \,[E(T)-W\,E(T_0)]$. This is the same net-exchange form the H$_2$, H$_2$O and CO
@@ -996,7 +1092,7 @@ at the 12000-step protocol of the \texttt{mol\_ir\_bands} regression case, is in
 \noindent The metals-off layer stops collapsing and settles \emph{on} the
 H$_3^+$ radiative equilibrium curve: the predicted floor with the local sky
 fraction is 911\,K at $r=1.005$, 886\,K at 1.02 and 874\,K at 1.03, and the
-solution sits at 910, 859 and 840\,K --- just below, by the margin the expansion
+solution sits at 910, 859 and 840\,K, just below, by the margin the expansion
 takes out. Its H$_3^+$ channel becomes a net \emph{heating} term
 ($-1.1\times10^{-7}$\,erg\,cm$^{-3}$\,s$^{-1}$ at $r=1.02$) instead of the
 $-1.6\times10^{-10}$ of cooling it had. The front moves out by 0.053\,$\Rp$ and
@@ -1013,7 +1109,7 @@ below any radiative equilibrium temperature, and this closure cannot reach them:
 it only gives the \emph{existing} infrared coolants their incident field, and
 above the front there are no molecular coolants left. Holding that gas requires a
 continuum infrared coupling to the deep atmosphere (H$_2$ collision-induced
-absorption and the H$_2$O/CH$_4$/CO bands), which the model does not have --- the
+absorption and the H$_2$O/CH$_4$/CO bands), which the model does not have: the
 whole radiative budget between the base and the front is line channels with a
 radiative time of $3\times10^{8}$\,s against a flow time of $5\times10^{6}$\,s.
 Item (G) of \texttt{TO\_BE\_DONE.md} is therefore narrowed, not closed.
@@ -1128,7 +1224,7 @@ corresponding equivalent width. \texttt{lyman\_werner.f90} \S2 sets out why the
 two coexist and which quantity each owns.
 
 $b$ is the H$_2$
-Doppler parameter, taken thermal, $b=(2kT/m_\mathrm{H_2})^{1/2}$ ---
+Doppler parameter, taken thermal, $b=(2kT/m_\mathrm{H_2})^{1/2}$:
 3.07\,km\,s$^{-1}$ at 1140\,K, next to the 3\,km\,s$^{-1}$ of DB96's own figures.
 $N_\mathrm{H_2}$ is the star-ward column, built by the same
 \texttt{calc\_column\_dens\_one} radial integration and \texttt{opa\_pf} weighting
@@ -1189,7 +1285,7 @@ HD\,189733\,b, \texttt{sflux-HD189\_B2020.txt} & $1.29\times10^{5}$ & 0.805\,$R_
 $k_\mathrm{LW,thin}$ are $1.04\times10^{-7}$, $6.03\times10^{-5}$,
 $1.05\times10^{-4}$ and $3.21\times10^{-4}$\,s$^{-1}$.) The
 \texttt{VULCAN\_run\_*/atm/stellar\_flux/} directories of the workspace are empty
---- casualties of the 2026-08-09 loss --- so no HD\,209458 spectrum exists in the
+(casualties of the 2026-08-09 loss), so no HD\,209458 spectrum exists in the
 tree and the solar spectrum stands in for it; HD\,209458 is a G0 star of
 comparable activity, but \textbf{343\,erg\,cm$^{-2}$\,s$^{-1}$ is a proxy, not a
 measurement}. The calibration check on the same file is the solar Ly$\alpha$
@@ -1234,7 +1330,7 @@ gap.} The Route 2 criterion of \texttt{base\_}\allowbreak\texttt{composition\_}%
 \allowbreak\texttt{handoff\_plan.md} \S5 was whether the network's own base composition moves toward the photochemical
 partition once the missing dissociation is supplied, without pinning it.
 \textbf{It does not}, and the measurement says why. The base $\qHH$ moves from
-0.8618 to 0.8612 against a photochemical target of 0.75 --- 0.5\% of a gap of
+0.8618 to 0.8612 against a photochemical target of 0.75: 0.5\% of a gap of
 0.11. Yet Lyman--Werner \emph{is} the largest single H$_2$ loss term at the base
 after the change: $5.90\times10^{-11}$\,s$^{-1}$ against $2.52\times10^{-11}$ for
 H$^+ +$H$_2$ (R10 $+$ R13), $5.56\times10^{-12}$ for He$^+ +$H$_2$ and
@@ -1250,7 +1346,7 @@ and the square root is brutal: the measured $2.3\times$ rise in the destruction
 rate raises the atomic fraction by only $1.5\times$, from $7.9\times10^{-4}$ to
 $1.2\times10^{-3}$. Reaching $\qHH=0.75$ means $x_\mathrm{H_2}=0.925$, i.e.\ an
 atomic fraction $64\times$ larger, i.e.\ a destruction rate \textbf{4100$\times$
-larger} --- about $3.7\times10^{-7}$\,s$^{-1}$. The unshielded band would supply
+larger}: about $3.7\times10^{-7}$\,s$^{-1}$. The unshielded band would supply
 that many times over ($6.0\times10^{-5}$\,s$^{-1}$); it is stopped by the column.
 The base of this planet sits under $N_\mathrm{H_2}=4.3\times10^{21}$\,cm$^{-2}$,
 where $f_\mathrm{shield}=9.8\times10^{-7}$, and $f_\mathrm{shield}$ reaches the
@@ -1277,9 +1373,9 @@ by 0.005\,dex. Small, and in the direction and of the order Koskinen et al.\
 \paragraph{The same A/B on HD\,209458\,b.} The \texttt{examples/15\_molecular}
 configuration (metals off, \texttt{Base IR field: True} added, both runs restarted
 from its converged solution) reproduces the pattern on a real planet. Here the
-JFNK finish would not reach \texttt{Resid tol: 1.0e-5} with the band on --- it
+JFNK finish would not reach \texttt{Resid tol: 1.0e-5} with the band on: it
 stalled three times at $\|R\|=1.5$--$6.8\times10^{-5}$ on the base-adjacent
-momentum row, item (A) of \texttt{TO\_BE\_DONE.md} --- so \emph{both} members of
+momentum row, item (A) of \texttt{TO\_BE\_DONE.md}, so \emph{both} members of
 the pair were run at \texttt{Resid tol: 2.0e-5}, where both return
 \texttt{info = 0} and both mass fluxes are flat to $4.1\times10^{-3}$ over
 $r>1.2$.
@@ -1313,8 +1409,8 @@ as without it.
 \label{sec:molir}
 % ===================================================================== %
 The \texttt{Base IR field} closure of \S\ref{sec:baseir} gave the infrared
-coolants the code already had --- the eight ground-term fine-structure lines and
-the H$_3^+$ bands --- the field they sit in, and stopped there. Its own closing
+coolants the code already had (the eight ground-term fine-structure lines and
+the H$_3^+$ bands) the field they sit in, and stopped there. Its own closing
 paragraph named what was left: past the H$_2\to$H front there are no molecular
 coolants in the model at all, and holding that gas needs the coolants a real
 H$_2$ atmosphere carries. This section supplies three of them. Item~(G) of
@@ -1341,10 +1437,10 @@ a channel, and that is a measurement rather than a scope decision. It scales as
 $n^2$, and on the CIA tables shipped with Photochem its optical depth over a
 pressure scale height at the $1\,\mu$bar base is $8\times10^{-9}$ (hot Uranus) to
 $2\times10^{-9}$ (HD\,189733\,b), with unit optical depth reached only near
-0.2--0.4\,bar --- consistent with Lavvas \& Arfaux (2021), who put CIA's onset at
+0.2--0.4\,bar: consistent with Lavvas \& Arfaux (2021), who put CIA's onset at
 $p>1$\,bar. It is what makes the reservoir \emph{below} the base black in the
-windows between the bands --- the assumption \texttt{Base IR field} already
-encodes --- not a local coolant of the modelled domain.
+windows between the bands (the assumption \texttt{Base IR field} already
+encodes), not a local coolant of the modeled domain.
 
 \paragraph{The closure.}
 For each species the net radiative loss per unit volume is the optically thin,
@@ -1364,7 +1460,7 @@ $\tfrac12[1-\sqrt{1-(\Rp/r)^2}]$, and it is zero when \texttt{Base IR field} is
 off.
 
 Keeping the stimulated-emission term is not decoration: it is what makes the
-bracket vanish identically at $T=T_0$, $W=1$ --- gas buried in a blackbody at its
+bracket vanish identically at $T=T_0$, $W=1$, gas buried in a blackbody at its
 own temperature neither cools nor heats. For the band absorbers that property is
 automatic, because the HITRAN line intensities the cross sections are built from
 already carry the $1-e^{-h\nu/kT}$ factor, so $\sigma_b$ is the coefficient that
@@ -1374,8 +1470,8 @@ because $E_k(\nu_2)/T_0$ is large that cost only 2.2\% of the emission and 5\,K 
 equilibrium temperature there ($936\to941$\,K at $T_0=1140$\,K). On a
 far-infrared band the same omission would be an order-unity error. The
 single-band H$_3^+$ form the 941\,K belongs to was itself replaced the same day
---- a total emission fit cannot be paired with the Boltzmann factor of one
-transition at all temperatures --- and the H$_3^+$ column below is the
+(a total emission fit cannot be paired with the Boltzmann factor of one
+transition at all temperatures), and the H$_3^+$ column below is the
 replacement's (\S112 of \texttt{docs/Update\_EXHALE.pdf}).
 
 Each channel therefore has its own radiative equilibrium temperature, and it is
@@ -1399,10 +1495,10 @@ $T_0$ & H$_2$O & CO & H$_2$ & (H$_3^+$) \\
 \noindent (half-sky coverage, $W=\tfrac12$). How much rests on that assumption
 is measurable: for H$_2$O at $T_0=1183$\,K the equilibrium temperature is
 726.5 / 922.1 / 1065.0 / 1183.0\,K at $W=0.25/0.5/0.75/1$, and CO 784.7 /
-946.5 / 1073.1 / 1183.0\,K --- at $W=1$ both are exactly $T_0$, the closure's
+946.5 / 1073.1 / 1183.0\,K, at $W=1$ both are exactly $T_0$, the closure's
 fixed point recovered numerically. Because $W$ multiplies only the
 absorption, these temperatures are insensitive to first order to any grey escape
-probability applied to both terms --- which is why the optically thin limit is
+probability applied to both terms, which is why the optically thin limit is
 enough to fix the \emph{temperature} even where a band is marginally thick.
 
 \paragraph{Optical depth, and why the thin limit is used.}
@@ -1423,14 +1519,14 @@ incident infrared flux $W\sigma T_0^4$, with a warning if it is exceeded.
 The band-mean cross sections are $\sum_g w_g k_g$ of the correlated-$k$ tables,
 which is exactly the bin-mean cross section. Line strengths do not depend on the
 broadening, only the line shape does, so this mean is pressure independent to
-better than 2\% from $10^{-6}$ to 1\,bar --- measured --- and the whole EXHALE
+better than 2\% from $10^{-6}$ to 1\,bar (measured), and the whole EXHALE
 domain uses the $10^{-6}$\,bar slice, which is also the lowest tabulated
 pressure. The tables run 50--2000\,K and are clamped outside; the H$_2$ line sum
 has no such limit. Three checks, against sources that share none of that line
 processing:
 \begin{itemize}\itemsep2pt
 \item the Planck-mean H$_2$O cross section agrees with the independent table
-  \texttt{aiolos/inputdata/1H2-16O\_T400.aiopa} to within 11\% over
+  \texttt{aiolos/\allowbreak inputdata/\allowbreak 1H2-16O\_\allowbreak T400.aiopa} to within 11\% over
   600--2000\,K (ratio 0.889--1.111 on the 14 shared grid temperatures); below
   600\,K that table is not monotonic in $T$ and the comparison is not
   meaningful, the low-temperature end being covered by the Neufeld \& Kaufman
@@ -1497,8 +1593,8 @@ fitted.
 
 \noindent The H$_2$ channel is \emph{first order and does not repair the
 collapse}, and those are not in tension. In the metals-on solution H$_2$ carries
-56\% of the whole radiative rate at $r=1.002$--$1.005$ --- cooling there, since
-$T=1044$--$1124$\,K is above its radiative equilibrium temperature --- and
+56\% of the whole radiative rate at $r=1.002$--$1.005$ (cooling there, since
+$T=1044$--$1124$\,K is above its radiative equilibrium temperature), and
 essentially all of the net at $r=1.02$--$1.05$, heating. The layer's radiative
 time falls with it: $t_{\rm rad}/t_{\rm flow}$ at $r=1.05$ goes from
 \textbf{8.22 to 0.263}. But the coldest cell sits \emph{at or beyond} the
@@ -1510,7 +1606,7 @@ With the oxygen chemistry on, where H$_2$O and CO exist, the magnitudes differ
 by five orders: on HD\,189733\,b the two bands carry $4.8\times10^{-5}$ and
 $2.7\times10^{-5}$\,erg\,cm$^{-3}$\,s$^{-1}$ at $r=1.005$ against a total of
 $7.5\times10^{-5}$, and a 12000-step A/B moves the base from 760.2 to 829.1\,K
-and $x_{\rm H_2}$ from 0.330 to 0.483 --- both toward the photochemical
+and $x_{\rm H_2}$ from 0.330 to 0.483, both toward the photochemical
 reference (864\,K, 0.910). Neither of those runs is converged;
 \texttt{docs/Update\_EXHALE.md} \S110 carries the full statement and its
 caveats.

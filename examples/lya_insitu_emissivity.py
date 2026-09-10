@@ -56,7 +56,9 @@ if _HERE not in sys.path:
 import exhale_io as aio
 
 # --- physical constants (cgs) ---
-RJ = 6.9911e9              # Jupiter radius [cm]
+# The Jupiter radius is defined once, as RJ_CM of exhale_io, which carries the
+# IAU 2015 nominal equatorial radius the Fortran uses as RJ.
+RJ = aio.RJ_CM             # Jupiter equatorial radius [cm]
 E_LYA_ERG = 1.634e-11      # 10.2 eV in erg
 
 DEFAULT_RUNS = ['hd189', 'hd209', 'wasp121', 'wasp52']

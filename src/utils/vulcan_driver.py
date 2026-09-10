@@ -129,10 +129,12 @@ def main():
     # Anchor each substitution on the KEY (start of line), not on the exact
     # previous value: the in-tree vulcan_cfg.py may have been hand-edited for
     # an earlier planet, and a value-literal anchor then fails spuriously.
-    # Rp uses the SAME R_J as gs above (RJ = 6.9911e9 cm, shared with
-    # run_lower.py / vulcan_to_base.py); VULCAN evaluates g(z) from Rp, so a
-    # different radius constant here would make g(z) inconsistent with gs
-    # (the upstream literal 7.1492E9 is 2.3% larger).
+    # Rp uses the SAME R_J as gs above (RJ, imported through run_lower.py from
+    # the one Python definition in examples/exhale_io.py); VULCAN evaluates
+    # g(z) from Rp, so a different radius constant here would make g(z)
+    # inconsistent with gs.  That value, 7.1492e9 cm, is also the literal
+    # VULCAN's own configuration ships with, so the substitution now writes
+    # back the number it replaces.
     subs = [
         (r"^atm_file\s*=.*$",     "atm_file = '%s'" % atm_rel),
         (r"^sflux_file\s*=.*$",   "sflux_file = '%s'" % sflux_rel),

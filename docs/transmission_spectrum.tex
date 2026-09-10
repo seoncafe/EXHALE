@@ -1,4 +1,6 @@
 %% H-alpha transmission in EXHALE\_transit.py: method and implementation
+%% Updated 2026-09-10: the row-validity reader, the chord census and the
+%% metadata block every saved curve now carries.
 %% Author: Kwang-Il Seon
 \documentclass[english,a4paper]{my_memo}
 \synctex=1
@@ -29,7 +31,7 @@
 H$\alpha$/H$\beta$ from the Non-LTE $n=2$ Population,\\
 and the Metal Resonance Doublets}
 \author{Kwang-Il Seon}
-\date{2026-06-12}
+\date{2026-06-12 (updated 2026-09-10)}
 \maketitle
 
 \tableofcontents
@@ -58,7 +60,7 @@ decay, $\ell$-mixing, and \textbf{Ly$\alpha$ radiative pumping}
 ($1s\leftrightarrow2p$). The Ly$\alpha$ mean intensity $J_{\rm Ly\alpha}(r)$
 is \emph{not} produced by EXHALE; it is either read from an external text
 file or, by default, estimated with the simple prescription of Huang
-et~al.~(2017) --- see \S\ref{sec:jlya}.
+et~al.~(2017), see \S\ref{sec:jlya}.
 
 The H$\alpha$ branch always runs; only the source of $J_{\rm Ly\alpha}$
 depends on whether \texttt{Jlya\_file} is set. The existing He/Ly$\alpha$
@@ -75,7 +77,7 @@ spectrum figures as the H/He lines.
 
 The $2s$ and $2p$ states are treated separately because they have very
 different lifetimes (the $2p\to1s$ Ly$\alpha$ decay is fast,
-$A_{2p\to1s}=6.3\times10^{8}\,$s$^{-1}$, whereas the $2s\to1s$ two-photon
+$A_{2p\to1s}=6.2649\times10^{8}\,$s$^{-1}$, whereas the $2s\to1s$ two-photon
 decay is slow, $A_{2s\to1s}=8.26\,$s$^{-1}$). With $n_{1s}=n_{\rm H\,I}$,
 $n_e$ and $T$ taken from the EXHALE profiles, the rate-equilibrium
 equations are (Christie et~al.\ Eqs.~12--13)
@@ -257,10 +259,10 @@ convolution reuse the existing code paths.
 produces H$\beta$ at $\lambda_{\rm H\beta}=4861.35\,$\AA{} ($f_{24}=0.119$,
 $A_{4\to2}=8.42\times10^{6}\,$s$^{-1}$). It is computed with an identical
 LOS loop and plotted/printed alongside H$\alpha$. Because both lines are
-%% STALE (P48; Update_EXHALE section 137): computed with the profile files' GHOST
-%% rows included -- the two boundary rows at each end of every Hydro_ioniz /
+%% STALE (P48; Update_EXHALE_stage1 section 137): computed with the profile files' GHOST
+%% rows included: the two boundary rows at each end of every Hydro_ioniz /
 %% Ion_species file, which the Python readers now drop. Measured shift on three
-%% states: 0.2--3.8 per cent on the line-center and 4 A band depths. Values left
+%% states: 0.2--3.8 percent on the line-center and 4 A band depths. Values left
 %% exactly as measured; regeneration awaits instruction.
 optically thick (saturated), the H$\alpha$/H$\beta$ depth ratio is much
 smaller than the optical-depth ratio ($\sim7.3$): e.g.\ on the converged
@@ -328,16 +330,16 @@ precedence above.
     \texttt{n\_mion} $=27$ metal-ion stages, i.e.\ \textbf{34} columns, and
     \textbf{38} on a molecular run, which appends \texttt{H2 H2p H3p HeHp}; the
     metal columns are written whether or not metals are on. The
-    \texttt{usecols=range(7)} slice is unaffected --- the first seven columns
-    are still $r$ plus the six H/He species --- and anything past them is found
+    \texttt{usecols=range(7)} slice is unaffected (the first seven columns
+    are still $r$ plus the six H/He species), and anything past them is found
     through the file's own \texttt{\# columns} schema header.
 \end{itemize}
 
 \subsection{Outputs}\label{sec:outputs}
 
-Every line carries one key --- \texttt{He10830}, \texttt{Lya},
+Every line carries one key (\texttt{He10830}, \texttt{Lya},
 \texttt{Halpha}, \texttt{Hbeta}, \texttt{MgII}, \texttt{CaII},
-\texttt{NaI} --- and both products of a line are named from that key and
+\texttt{NaI}), and both products of a line are named from that key and
 land in the run directory:
 
 \begin{center}
@@ -359,16 +361,152 @@ $(1-T_\lambda)\times100$. The set follows the run: a metals-off run
 writes no metal curves. \texttt{EXHALE\_TRANSIT\_SAVE\_PREFIX} decorates
 the curve name exactly as the figure prefix decorates the figure name,
 and both are resolved against the run directory, so an absolute prefix
-writes elsewhere and nothing depends on the working directory.
+writes elsewhere and nothing depends on the working directory. Every curve
+file also opens with a block of \texttt{\#} comment lines stating what the
+spectrum was built on: the input profile and its validity schema, the census
+of the rows the chords sampled, and the overrides in effect
+(\S\ref{sec:metadata}). They are comments, so the four numerical columns
+are what they always were.
+
+%=============================================================================
+\section{What the spectrum is built on: row validity, the census, and the
+         metadata block}
+\label{sec:validity}
+%=============================================================================
+
+The spectra are integrated over the \verb|*_adv.txt| profiles, and those
+profiles do not carry one uniform product: the steady advective correction
+is applied to some rows and refused on others. Since the profiles began
+stating that row by row, the transit tool reads the statement, reports what
+the chords sampled, and writes both into every curve it saves. None of this
+changes a numerical column of a \verb|tpm_*.txt| file.
+
+\subsection{Reading the profile's own statement of validity}
+\label{sec:advvalidity}
+
+\verb|read_adv_validity| (\verb|exhale_transit_lib.py|) decides which of
+three cases a profile is, by its header and by nothing else. Columns are
+located by name on the \verb|# columns| line, so a file that gains or
+reorders columns is still read correctly.
+
+\begin{center}\small
+\begin{tabular}{@{}lll@{}}
+\toprule
+\verb|adv_schema| & What the file carries & Row decision \\
+\midrule
+2 & \verb|adv_T_status|, \verb|adv_comp_status|, \verb|adv_mass_row|
+  & refused when \verb|adv_T_status| $\neq 0$ \\
+1 & one \verb|adv_status| column & refused when it is nonzero \\
+absent & no schema line and no status column & every row UNKNOWN \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+Under schema~2 each status field takes one of five values, 0 corrected,
+1 retained, 2 failed, 3 unsupported, 4 not\_evaluated. The temperature field
+is what the census refuses on; the composition field is reported beside it,
+because a corrected temperature can sit on a retained composition and the
+lower-level density of every line comes from that composition.
+
+A corrected row is a \emph{conditional} correction, not a certified one. The
+profile states the fraction it is accurate to in the mass flux,
+\verb|adv_conditional_tol| (currently $10^{-2}$, the first-order argument at
+its declaration), and the measure each row was decided by,
+\verb|adv_mass_row| $= |R_1|/s_1$, the mass row of the certification's own
+residual scaled by that row's own largest term. The header's
+\verb|adv_input_certified| line is a different statement and is kept
+separate: it is the certification's verdict on the run state, at the much
+tighter \verb|cert_tol_mass|, not a verdict on the post-processed rows. The
+reader returns the tolerance, its header text and the measure column, so the
+spectrum can carry the condition of the rows it stands on.
+
+A legacy profile is read as UNKNOWN and said to be UNKNOWN. It is not read
+as ``corrected'': a writer that did not state its refusals says nothing
+about them, and a census of such a file can only say so. Both the console
+and the saved metadata print that distinction explicitly, because UNKNOWN is
+not zero refused.
+
+\subsection{The census: which rows the chords sample}
+\label{sec:census}
+
+A ray at impact parameter $b$ crosses every shell with $r \ge b$, at
+line-of-sight coordinate $|x| = \sqrt{r^2-b^2}$, and there is \emph{no upper
+radial limit}: a shell at $r = 12$ meets the ray at $b = 2$ whether or not
+the ray grid stops at $b = 10$, so a shell lying outside the stellar disk
+still absorbs on the rays that cross the disk. One function,
+\verb|chord_shell_indices|, now serves the census, \verb|resonance_depth|
+and \verb|resonance_spectrum| alike; two selections would let the diagnostic
+describe a different atmosphere from the one the spectrum was built from.
+The earlier census mask imposed an upper limit at the stellar-disk cap
+$R_{\rm ib}$ and therefore described less material than the spectrum
+contains. That defect is latent whenever $R_{\rm ib}$ is the outermost grid
+radius, which both regression profiles are, and real as soon as the domain
+passes the stellar radius: MEASURED on \verb|wasp_full| read at
+\verb|EXHALE_TRANSIT_RSTAR_RSUN=0.30|, the sampled rows go from 419 to 500,
+81 of them above the cap.
+
+The console reports, and the metadata block records, how many of the sampled
+rows are not the steady advective correction, broken down by reason and with
+the composition field beside it. Then, line by line at eight impact
+parameters and at its maximum, it reports the share of the line-center
+optical depth carried by those rows. The share is exact rather than
+estimated: the optical depth of a ray is the trapezoid sum
+$\tau(b) = \sum_k w_k I_k$ over the rows the chord crosses, which is
+additive, so a subset of the rows carries exactly
+$\sum_{k \in \rm subset} w_k I_k / \tau(b)$
+(\verb|refused_line_center_tau_share|).
+
+\paragraph{It is a CONTRIBUTION, not an uncertainty.} The disk-averaged
+transmission is an average of $\exp(-\tau)$ and is nonlinear in $\tau$, so a
+saturated ray moves very little when its optical depth moves, and a share
+near one does not mean the depth is wrong by a comparable amount. The tool
+labels it as such in the console and in the file, and it should be quoted
+that way. On \verb|wasp_full| the rays near $b = 1$ take 99 percent of their
+Ly$\alpha$ line-center depth from uncorrected rows (MEASURED), which says
+where the material is, not that the depth is unreliable.
+
+\subsection{The metadata block on every saved curve}
+\label{sec:metadata}
+
+\verb|transit_metadata_block| writes a block of \verb|#| comment lines at
+the head of every \verb|tpm_*.txt| product, the two hand-written products
+included. Comments only: \verb|np.loadtxt| and any reader that skips
+comment lines sees exactly the numerical columns it saw before, and the
+numerical columns were verified bitwise across all ten \verb|wasp_full| and
+five \verb|mol_base_handoff| products when the block was introduced. The
+block carries, in order:
+
+\begin{itemize}
+  \item \verb|transit_schema| (currently 1) and a one-line statement that
+    the product is a one-way transmission of the profile named next;
+  \item the input profile's path, its \verb|adv_schema|, its
+    \verb|adv_input_certified| verdict, its stationarity operator, its
+    \verb|adv_conditional_tol| text and the largest \verb|adv_mass_row| over
+    its rows, and its model restrictions, all copied out of the profile's
+    own header, so a reader of the curve alone can tell what it stands on;
+  \item the profile's provenance lines;
+  \item the tool's own identity, by git hash and file modification times;
+  \item the census for this line: sampled rows, refused rows, rows above the
+    disk cap, the refusal reasons, the composition breakdown, the
+    eight-point refused-share ladder and its maximum with the $b$ it occurs
+    at, and the sentence saying the share is a contribution and not an
+    uncertainty;
+  \item every \verb|EXHALE_TRANSIT_*| or \verb|TPM_*| override in effect,
+    or a line saying that none is and every window, resolving power and
+    geometry setting is the built-in default or \verb|input.inp|.
+\end{itemize}
+
+When the input states no row validity the census line says so, in the words
+``the count is UNKNOWN, which is not zero refused''.
 
 %=============================================================================
 \section{Validation}
 %=============================================================================
 
-%% STALE (P48; Update_EXHALE section 137): computed with the profile files' GHOST
-%% rows included -- the two boundary rows at each end of every Hydro_ioniz /
+%% STALE (P48; Update_EXHALE_stage1 section 137): computed with the profile files' GHOST
+%% rows included: the two boundary rows at each end of every Hydro_ioniz /
 %% Ion_species file, which the Python readers now drop. Measured shift on three
-%% states: 0.2--3.8 per cent on the line-center and 4 A band depths. Values left
+%% states: 0.2--3.8 percent on the line-center and 4 A band depths. Values left
 %% exactly as measured; regeneration awaits instruction.
 Run end-to-end on the converged HD\,209458b EXHALE output
 (\texttt{output/*\_adv.txt}), the module is stable and \texttt{NaN}-free
@@ -391,7 +529,7 @@ The metal resonance lines are the key NUV/optical diagnostics of
 metal-enriched escaping atmospheres (Huang et~al.~2023). They absorb out
 of the \emph{ion ground state}, whose excited fine-structure levels are
 Boltzmann-negligible at $\sim10^4$\,K, so the lower-level density is the
-ion density itself ($n_{\rm lower}\simeq n_{\rm ion}$) --- no non-LTE
+ion density itself ($n_{\rm lower}\simeq n_{\rm ion}$): no non-LTE
 population calculation is needed. The ion-density profiles are read from
 the metal block of \texttt{Ion\_species\_adv.txt}; a metals-off run
 (all-zero columns) skips this section automatically.
@@ -454,10 +592,10 @@ rotation) and reports the same depth table.
 
 \subsection{Example spectra}
 
-%% STALE (P48; Update_EXHALE section 137): computed with the profile files' GHOST
-%% rows included -- the two boundary rows at each end of every Hydro_ioniz /
+%% STALE (P48; Update_EXHALE_stage1 section 137): computed with the profile files' GHOST
+%% rows included: the two boundary rows at each end of every Hydro_ioniz /
 %% Ion_species file, which the Python readers now drop. Measured shift on three
-%% states: 0.2--3.8 per cent on the line-center and 4 A band depths. Values left
+%% states: 0.2--3.8 percent on the line-center and 4 A band depths. Values left
 %% exactly as measured; regeneration awaits instruction.
 Figure~\ref{fig:metalspec} shows the three doublet spectra for the
 WASP-121b worked example (\texttt{backup/regression/tpm\_wasp/}, Roche Newton
@@ -504,18 +642,18 @@ transmission, as for the H/He lines.}
 %=============================================================================
 \section*{Reference}
 %=============================================================================
-\noindent Christie, D., Arras, P., \& Li, Z.-Y.\ 2013, ApJ, 772, 144 ---
+\noindent Christie, D., Arras, P., \& Li, Z.-Y.\ 2013, ApJ, 772, 144:
 ``H$\alpha$ Absorption in Transiting Exoplanet Atmospheres''
 (\texttt{references/Christie\_2013ApJ\_772\_144.pdf}).
 
 \medskip
 \noindent Huang, C., Arras, P., Christie, D., \& Li, Z.-Y.\ 2017, ApJ,
-851, 150 --- ``A Model of the H$\alpha$ and Na Transmission Spectrum of
+851, 150: ``A Model of the H$\alpha$ and Na Transmission Spectrum of
 HD\,189733b'' (\texttt{references/Huang\_2017\_ApJ\_851\_150.pdf});
 the $J_{\rm Ly\alpha}$ estimate is their Eq.~(6) and related text.
 
 \medskip
-\noindent Jensen, A.~G., et~al.\ 2012, ApJ, 751, 86 --- transit H$\alpha$
+\noindent Jensen, A.~G., et~al.\ 2012, ApJ, 751, 86: transit H$\alpha$
 spectroscopy of HD\,209458b and HD\,189733b (comparison target for the
 HD\,209458b notebook).
 

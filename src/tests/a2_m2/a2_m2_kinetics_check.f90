@@ -178,13 +178,27 @@
       write(*,'(a,f10.4,a)') 'OH threshold (single merged channel): ',    &
            photolysis_threshold_erg(ich_OH_O_H)/1.602176634d-12, ' eV'
       write(*,'(a)') ''
+      ! THE IDENTITY BELOW HOLDS ONLY FOR A BAND WITH NO LINE ABSORBER,
+      ! i.e. for B3 and B4.  Two of the four bands carry a line
+      ! absorber whose transmission is not exp(-tau) and varies from cell
+      ! to cell, so the column sum does not reduce to N (1 - exp(-tau))
+      ! there: the LW band shares its beam with the H2 Lyman-Werner lines,
+      ! and B2 IS the H I Ly-alpha resonance line.  The band ledger of
+      ! output/FUV_bands.txt states each of those separately -- for the
+      ! two bands without a line absorber it is a closure residual, for
+      ! B2 it is the share H I resonance scattering takes out
+      ! of the beam, and for LW the H2 Lyman and Werner lines.
       write(*,'(a)') 'Beam identity the band ledger of'//                 &
-                     ' output/FUV_bands.txt tests: for j = s N exp(-tau)'
+                     ' output/FUV_bands.txt tests, in the two bands'
+      write(*,'(a)') 'with no line absorber (B3, B4): for'//              &
+                     ' j = s N exp(-tau)'
       write(*,'(a)') 'and dtau/dr = -s n, the photons absorbed over a'//  &
                      ' column are exactly'
       write(*,'(a)') 'N (1 - exp(-tau)), whatever the density profile.'// &
                      ' A run measures the'
       write(*,'(a)') 'discretization of that identity; it is not'//       &
-                     ' reproduced here.'
+                     ' reproduced here. In LW and B2 the beam carries a'
+      write(*,'(a)') 'line factor as well and the identity does not'//    &
+                     ' hold; the ledger says so band by band.'
 
       end program a2_m2_kinetics_check

@@ -28,7 +28,7 @@ ATES model.
   Table 4 omits (on by default; `metals.inp: cx_O2p_H 0` restores the
   Table-4-only reaction set)
 - Metal-line cooling as closed-form analytic fits to CHIANTI v11 (C I/II,
-  N I/II, O I/II, Mg I/II, Ca II, Na I, Fe II; 0.1–3% accuracy), with
+  N I/II, O I/II, Mg I/II, Ca II, Na I, Fe II; 0.1-3% accuracy), with
   the split ground terms of C I, C II, N II and O I solved in exact statistical
   equilibrium at the local `(n_e, n_HI)` instead of the coronal limit, which
   gives the density-dependent saturation of the [C II] 158 um and [O I] 63 um
@@ -44,6 +44,16 @@ ATES model.
   Penning/associative branching)
 - Updated photoionization data: He I ground state from Verner et al. (1996),
   and a He I 2³S cross section extended past 60 eV against TOPbase
+- One stellar spectrum type builds every band of the photon grid, the XUV and
+  the part below 13.6 eV where the He 2³S metastable and the low-IP metals
+  absorb: `Spectrum type: Power-law` is the power law everywhere,
+  `Spectrum type: Planck` is the photospheric blackbody
+  `pi B_nu(T_eff) (R_star/a)^2` built from `Stellar Teff` and `Stellar radius`,
+  and `Spectrum type: Load` is the table everywhere. A loaded table that stops
+  above the lowest threshold of an active absorber (4.80 eV = 2583 Å with
+  `Include He23S? True`, or a neutral metal's threshold) stops the run rather
+  than leaving that absorber without a field; the startup report states the
+  type, the source of the band below 13.6 eV, and the integrated grid flux
 - Secondary ionization by fast photoelectrons (Shull & van Steenberg 1985)
 - Non-LTE H(n=2) populations and Ly-alpha radiative transfer, from either a
   fast Neufeld escape-probability closure or a field imported from the LaRT
@@ -56,15 +66,21 @@ ATES model.
   self-shielding and the trapping of the fluorescent decay photons inside it,
   rather than a published closed-form fit
 - Oxygen chemistry: OH, H2O and CO in the same coupled system, with the FUV
-  photolysis of H2O and OH in five bands, so the base H2/H partition is
+  photolysis of H2O and OH in four bands, so the base H2/H partition is
   computed rather than imported. Rates from Baulch et al. (2005) and the IUPAC
   evaluations, reverse rates by detailed balance against a NIST-JANAF Shomate
-  table, CO carried as an oxygen reservoir. The first band is the 912-1110 A
+  table, CO carried as an oxygen reservoir. The first band is the 912-1201 A
   Lyman-Werner interval, where H2, H2O and OH share one beam: the H2 lines and
   the H2O/OH continuum each attenuate what the other sees, so the interval has
   one incident flux (`Stellar LW flux`). The molecular carriers H2, OH, H2O and
   CO are transported by default (`Molecular carrier transport`), an
-  implicit diffusion-advection solve coupled to their chemistry. The
+  implicit diffusion-advection solve coupled to their chemistry. A stationary
+  solve can take those balances as its own unknowns (`Coupled carrier solve`,
+  default off); on a molecular configuration that needs
+  `Molecular carrier transport: True` and is refused at startup without it,
+  because an eliminated H2 content is one the local equilibrium cannot
+  determine and the stationary residual is then not a function of its
+  unknowns. The
   hydrogen ionization state can ride the same operator (`Ionization
   transport: True`, default off): H+ becomes a fifth carrier and the sweep is
   handed the transported fraction where a parcel leaves its shell faster
@@ -86,7 +102,7 @@ ATES model.
   on; the key exists to turn it off): in a molecular gas the ionization energy
   a photon spends comes back to the GAS through the dissociative recombination
   of H3+ and H2+, not out of it as the Lyman photon of a radiative
-  recombination, and the code now deposits it -- 81 per cent of the total
+  recombination, and the code now deposits it -- 81 percent of the total
   heating rate at the base of a converged hot Uranus
 - Diffusive separation of helium and metals: hydrogen and helium are
   transported as a two-component mixture, with bulk advection, binary
@@ -100,7 +116,19 @@ ATES model.
 - Second-order marching with PLM or WENO3 reconstruction and HLLC fluxes,
   usable as a two-stage PLM -> WENO3 sequence
 - Jacobian-free Newton-Krylov steady-state solver with PTC warm-up, SER ramp,
-  and non-monotone (Grippo) line search
+  a non-monotone (Grippo) line search and a scaled trust region. The
+  stationary system carries a row and an unknown for every transported
+  balance the configuration activates, not only the hydrodynamic triple
+- A steady state is not "converged", it is CERTIFIED: one evaluator states
+  one condition per active balance and the run prints, and the state file
+  records, which conditions were met and which row and cell refused. The
+  tolerances are anchored by measurement, not inherited from the solver's own
+  target: mass 3e-12, momentum 1e-8, energy 1e-6, the closure and the level
+  balances at the tolerance the cell sweep already judges a root by, and the
+  element and carrier rows at 1e-5 for `r >= 1.20 R_p`, the rows below that
+  reported and not gating, because the same balance is a cancellation of
+  advective terms in the wind and of eddy and settling terms in the layer and
+  is not resolvable to one number in both
 - Molecular transport: the Navier-Stokes viscous force, its dissipation, and
   heat conduction, integrated Crank-Nicolson and entering the steady residual
   with the same operator
@@ -115,7 +143,7 @@ ATES model.
   either analytically or from a VULCAN photochemistry run that EXHALE launches
   itself. A handoff that states its own level (`p_base`) fixes the base level
   of the run, `n0 = p_base/(k_B T0 ntot_bc)`, so `Log10 lower boundary number
-  density` is then unnecessary — and a pair that disagrees by more than 1% is
+  density` is then unnecessary, and a pair that disagrees by more than 1% is
   refused at startup rather than one of the two silently winning
 - OpenMP parallelization of the cell ionization sweep, bitwise identical to
   the serial result
@@ -130,10 +158,43 @@ ATES model.
   H-alpha, H-beta, the metal resonance doublets Mg II h&k, Ca II H&K and
   Na I D, and the O I 1302/1304/1306 triplet out of its three resolved
   ground-term fine-structure levels, with impact-parameter Voigt integration,
-  instrument and rotation convolution, and an optional triaxial Roche geometry
+  instrument and rotation convolution, and an optional triaxial Roche geometry.
+  Every `tpm_*.txt` carries a `# transit_schema 1` metadata block above its
+  column line: which `_adv` profile it was built from, that profile's validity
+  schema, certification verdict and provenance, the census of rows the line
+  took its depth from that were refused a correction, and the
+  `EXHALE_TRANSIT_*` overrides in effect, so a curve says what it stands on
 - Python loaders (`examples/exhale_io.py`) driven by the `# columns` schema
-  header every output file carries, and a bitwise regression harness over a
-  seven-case physics matrix
+  header every output file carries; a bitwise regression harness over a
+  sixteen-case physics matrix (`make check`); and 25 assertion suites under
+  `src/tests/` plus three standalone test programs (`make test`), which print
+  one `PASS|FAIL <name> measured= reference= tol=` line per assertion
+- A restart is a contract, not a file copy. Both state files carry a
+  `restart_schema 1` metadata block (reservoir, species columns, grid,
+  constants, twenty option switches, physical time, source), and a load whose
+  grid, reservoir, constants or options disagree with the input is refused by
+  name rather than silently accepted. `Restart intent:` says what the loaded
+  state is (`trajectory`, `relaxation`, or `stationary`, the last entering the
+  steady solver with no time step), and `Restart option change:` names the
+  option tokens a deliberate ladder is allowed to differ in. A file with no
+  block is legacy, loaded as before and marked `provenance unknown`, and that
+  mark is inherited by everything the run writes
+- The advection-corrected `_adv` profiles the analysis and transit tools read
+  say row by row what they are: two validity fields, `adv_T_status` and
+  `adv_comp_status`, for the temperature and the composition separately, and
+  `adv_mass_row`, the measure both were decided by. The post-process solves
+  the steady ionization and energy equations along the recorded flow, and the
+  flow it integrates along changes its face mass flux by a fraction of itself
+  across each cell; the correction is first order in that fraction, so a row
+  at or below the `# adv_conditional_tol` of the file is corrected and is a
+  CONDITIONAL correction accurate to that fraction of itself, while a row
+  above it, or one whose local radiative balance rather than the flow sets
+  its temperature, or one the gas flows into, or one whose ionization is
+  already equilibrated, keeps the run's own state and says so. Whether the
+  whole input state passed the stationary certification is a separate
+  statement in the same header (`# adv_input_certified`), and the product is
+  declared there as a one-way correction on a fixed density and velocity
+  field, so a spectrum built on a breathing base is labeled as such
 
 ---
 
@@ -151,6 +212,8 @@ There is no installation step beyond cloning.
 git clone https://github.com/seoncafe/EXHALE
 cd EXHALE
 make                                    # gfortran; make FC=ifort or FC=ifx
+make check                              # bitwise regression over the case matrix
+make test                               # the assertion suites (physics, grid and gates, ...)
 ```
 The Makefile takes the compiler from `PATH` and, when that compiler's prefix
 carries an OpenBLAS (the conda-forge gfortran 16.2 of this machine does), links
@@ -167,7 +230,7 @@ cd examples/tutorial && ../../EXHALE.x  # reads ./input.inp, writes ./output/
 
 The binary always reads `./input.inp` and writes `./output/` relative to the
 current working directory, so a run is simply a directory. `examples/` holds
-sixteen ready-made configurations, one for each physics or solver option;
+nineteen ready-made configurations, one for each physics or solver option;
 copy one as a starting point. `./run_EXHALE.sh` instead opens a Tk interface
 that fills in the planetary parameters and builds and runs for you.
 
@@ -180,8 +243,15 @@ du_th [PLM,WENO3]:      0.5 1.0e-3
 Solver:                 Newton
 ```
 
-Everything else — compiler variants, all opt-in physics keys, output-file
-schemas, convergence recipes, post-processing — is in
+An atomic run finished this way certifies. A run that carries a species row,
+an element row from `He_diffusion` or a carrier row from the molecular
+carriers, does not: no such configuration has yet reached its certification
+tolerance on any route, and what limits them is measured and recorded in
+[`docs/code_status_20260910.md`](docs/code_status_20260910.md) section 3.3.
+Quote a mass-loss rate from such a run only with that qualification.
+
+Everything else (compiler variants, all opt-in physics keys, output-file
+schemas, convergence recipes, post-processing) is in
 [`README_HOWTO.md`](README_HOWTO.md).
 
 ---
@@ -190,51 +260,67 @@ schemas, convergence recipes, post-processing — is in
 
 **Start here**
 
-- [`README_HOWTO.md`](README_HOWTO.md) — task-oriented recipes: one entry per
+- [`docs/code_status_20260910.md`](docs/code_status_20260910.md): the state of
+  the code physics by physics (implemented / verified / limited / missing),
+  what is certified and what limits the rest, the ordered problems and the
+  task list. Read this one first in a new session
+- [`docs/ISSUES_20260909.md`](docs/ISSUES_20260909.md): every problem the
+  2026-09 work exposed, resolved (a table) and open (with its evidence and
+  its next item)
+- [`README_HOWTO.md`](README_HOWTO.md), task-oriented recipes: one entry per
   task, with the exact input lines, the expected output, and where the full
   documentation lives. All the details this file used to carry are there
-- [`docs/EXHALE_user_manual.pdf`](docs/EXHALE_user_manual.pdf) — the reference
+- [`docs/EXHALE_user_manual.pdf`](docs/EXHALE_user_manual.pdf), the reference
   manual: every input key, every output column, the physics and the solver
-- [`docs/Update_EXHALE.pdf`](docs/Update_EXHALE.pdf) — dated changelog against
+- [`docs/Update_EXHALE.md`](docs/Update_EXHALE.md): the current update log (stage 2, from 2026-09-05); [`docs/Update_EXHALE_stage1.pdf`](docs/Update_EXHALE_stage1.pdf): sections 1-171, the dated changelog against
   the original ATES, with a code-size appendix
-- [`examples/README.md`](examples/README.md) — what each of the sixteen
+- [`examples/README.md`](examples/README.md): what each of the numbered
   example configurations demonstrates, and the exact lines it adds
-- [`README_photochem.md`](README_photochem.md) — the Photochem build the
+- [`README_photochem.md`](README_photochem.md): the Photochem build the
   lower-atmosphere profile handoff runs on: where the source comes from, the
   four corrections applied to it, and how the source and its environment are
   rebuilt. Neither is in this repository
 
 **Physics and numerics notes**
 
-- [`docs/cooling_formulas.pdf`](docs/cooling_formulas.pdf) — the analytic
+- [`docs/cooling_formulas.pdf`](docs/cooling_formulas.pdf): the analytic
   CHIANTI cooling-coefficient fits and their accuracy
 - [`docs/photoion_cross_sections.pdf`](docs/photoion_cross_sections.pdf) and
-  [`docs/recombination_coefficients.pdf`](docs/recombination_coefficients.pdf)
-  — the H/He/He 2³S atomic data and its benchmarks
-- [`docs/lower_atmosphere_coupling.pdf`](docs/lower_atmosphere_coupling.pdf) —
+  [`docs/recombination_coefficients.pdf`](docs/recombination_coefficients.pdf):
+  the H/He/He 2³S atomic data and its benchmarks
+- [`docs/lower_atmosphere_coupling.pdf`](docs/lower_atmosphere_coupling.pdf),
   the lower-atmosphere connection: analytic column, molecular chemistry,
   Lyman-Werner photodissociation, base infrared field, the H2/H2O/CO infrared
   bands, VULCAN handoff
-- [`docs/molecular_hydrogen_treatment.pdf`](docs/molecular_hydrogen_treatment.pdf)
-  — how H2 is treated: it is one species with no (v,J) resolution, so every
+- [`docs/molecular_hydrogen_treatment.pdf`](docs/molecular_hydrogen_treatment.pdf),
+  how H2 is treated: it is one species with no (v,J) resolution, so every
   level distribution is an assumption; the assumptions, their sources and
   their validity ranges collected in one place
 - [`docs/binary_diffusion_design.md`](docs/binary_diffusion_design.md),
   [`docs/design_hehe_diffusion.md`](docs/design_hehe_diffusion.md) and
-  [`docs/version_compare.pdf`](docs/version_compare.pdf) — diffusive
+  [`docs/version_compare.pdf`](docs/version_compare.pdf), diffusive
   separation of He and metals, and its measured effect on He 10830
-- [`docs/transmission_spectrum.pdf`](docs/transmission_spectrum.pdf) — how the
+- [`docs/transmission_spectrum.pdf`](docs/transmission_spectrum.pdf): how the
   transit spectra are computed from the wind profiles
 - [`docs/EXHALE_BC_and_IC.pdf`](docs/EXHALE_BC_and_IC.pdf) and
-  [`docs/steady_solver_memo.pdf`](docs/steady_solver_memo.pdf) — boundary and
+  [`docs/steady_solver_memo.pdf`](docs/steady_solver_memo.pdf): boundary and
   initial conditions, the convergence criteria, and the Newton-Krylov design
-- [`docs/wind_ae_solver.pdf`](docs/wind_ae_solver.pdf) — the included Wind-AE
+- [`docs/wind_ae_solver.pdf`](docs/wind_ae_solver.pdf): the included Wind-AE
   solver behind `IC mode: windae`
-- [`docs/viscosity_conduction.md`](docs/viscosity_conduction.md) — molecular
+- [`docs/viscosity_conduction.md`](docs/viscosity_conduction.md), molecular
   viscosity and heat conduction: derivation and where they matter
 - [`docs/code_comparison.pdf`](docs/code_comparison.pdf) and
-  [`docs/methodology_comparison.pdf`](docs/methodology_comparison.pdf)
-  — comparison with ATES, Salz, Kubyshkina, Murray-Clay, AIOLOS, Taylor, Xing
+  [`docs/methodology_comparison.pdf`](docs/methodology_comparison.pdf):
+  comparison with ATES, Salz, Kubyshkina, Murray-Clay, AIOLOS, Taylor, Xing
+
+- [`docs/PLAN_20260909_rev1.md`](docs/PLAN_20260909_rev1.md) and
+  [`docs/worker_rules.md`](docs/worker_rules.md): the plan the open items
+  belong to, and the rules every worker on this tree follows
+- [`docs/certification_tolerance_anchoring_20260910.md`](docs/certification_tolerance_anchoring_20260910.md):
+  the five measured anchors behind the element and carrier tolerances, and
+  why the wind and the layer cannot share one number
+- [`docs/steady_solver_design.md`](docs/steady_solver_design.md): the
+  stationary solver section by section, ending with what the design became
 
 `docs/` holds roughly forty further memos on individual investigations;
 [`TO_BE_DONE.md`](TO_BE_DONE.md) is the open-items list.
@@ -295,4 +381,4 @@ schemas, convergence recipes, post-processing — is in
 
 Kwang-Il Seon (KASI / UST)
 
-Last updated: 2026-09-05 14:57 KST
+Last updated: 2026-09-10 12:06 KST

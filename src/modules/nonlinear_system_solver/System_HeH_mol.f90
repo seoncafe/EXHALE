@@ -40,7 +40,11 @@
 	! Table-1 R21/R22 are therefore transcribed in mol_rates but unused.
 	!
 	! Where the cell state comes from: ieq_cell (ion_cell_state.f90), one
-	! named field per quantity, P_H2 and P_H2_di among them.  The
+	! named field per quantity, P_H2 and P_H2_di among them.  Every
+	! photoionization rate among them is a CONSTANT of this solve although
+	! the field that sets it is a function of these unknowns; the reason,
+	! and where that dependence is closed instead, are stated once in
+	! System_HeH.  The
 	! params(40) argument ion_system_HeH_mol still carries is the MINPACK
 	! callback signature and nothing else -- no element of it is read here
 	! -- so there is no numbered layout to keep in step.
@@ -87,7 +91,7 @@
 	                        rate_from_detailed_balance,                   &
 	                        ith_H, ith_H2, ith_O, ith_OH, ith_H2O,        &
 	                        n_fuv_band, qy_H2O_OH_H, qy_H2O_H2_O1D,       &
-	                        qy_H2O_O_H_H
+	                        qy_H2O_O_H_H, rk_D1_Hep_CO
 	use ion_residual_core, only: tr_triplet_row
 	use ion_cell_state, only: ieq_cell
 	use charge_exchange, only: he_h_cx_fvec
@@ -250,8 +254,13 @@
 	        + ieq_cell%kcx_He0_Hp + ieq_cell%kcx_Hep_H0)*nHe*nH
 
 	! (2) He+ : the He I and He II photo/collisional/recombination channels
-	!     of the summed helium balance, the molecular sinks R17/R20/R23 and
-	!     the H <-> He charge exchange.
+	!     of the summed helium balance, the molecular sinks R17/R20/R23, the
+	!     He+ + CO channel and the H <-> He charge exchange. The CO term is
+	!     the rate coefficient times the cell's CO reservoir and the whole
+	!     helium element, the same bound the other rows are built on; it is
+	!     the dominant He+ sink of the shielded molecular base, where CO is
+	!     the most abundant heavy species, so leaving it out would scale
+	!     that row far below the reaction it is mostly made of.
 	s(2) = (photo_scale*ieq_cell%P_HeI + photo_scale*ieq_cell%P_HeII      &
 	        + photo_scale*ieq_cell%P_HeITR                                &
 	        + (ieq_cell%a_ion_HeI + ieq_cell%a_ion_HeII                   &
@@ -259,6 +268,8 @@
 	           + ieq_cell%rcheiiiB + ieq_cell%rcheiTR)*ne)*nHe            &
 	     + (mk17 + mk20 + mk23                                            &
 	        + ieq_cell%kcx_He0_Hp + ieq_cell%kcx_Hep_H0)*nHe*nH
+	if (thereis_oxychem)                                                  &
+		s(2) = s(2) + rk_D1_Hep_CO()*ieq_cell%n_co*nHe
 
 	! (3) He++ : He II ionization and He III recombination.
 	s(3) = (photo_scale*ieq_cell%P_HeII + (ieq_cell%a_ion_HeII            &
@@ -609,6 +620,10 @@
 	real*8, intent(in) :: q13,q31a,q31b,Q31,A31
 	real*8  :: k5,k6,k7,k8,k9,k10,k11,k12,k13,k14,k15
 	real*8  :: k16,k17,k18,k19,k20,k23,k_ion_H2
+	! Rate at which one He+ ion is destroyed by the cell's CO, k_D1 n_CO
+	! [s^-1]; see row (2). Zero without the oxygen chemistry, which is the
+	! only option that carries CO.
+	real*8  :: k_co_hep
 
 	! Rate coefficients hoisted once per cell into module state by
 	! set_mol_coeffs (they depend only on T and n_tot); read here.
@@ -631,6 +646,16 @@
 	k23 = mk23
 	! Total (Penning + associative) He(2^3S)+H2 ionization; 0 without triplet.
 	k_ion_H2 = mk_ion_H2
+
+	! He+ + CO -> C+ + O + He, as a rate per He+ ion. The CO density is the
+	! cell's own reservoir ieq_cell%n_co and is a BACKGROUND density for
+	! this system, not one of its unknowns: CO is a transported carrier and
+	! the one-sided model gives it no formation channel, so it has no local
+	! equilibrium and cannot be a row here. It is frozen for the duration of
+	! the solve exactly as the ion stages are frozen for the duration of the
+	! carrier step that transports CO.
+	k_co_hep = 0.0d0
+	if (thereis_oxychem) k_co_hep = rk_D1_Hep_CO()*ieq_cell%n_co
 
 	! (1) H+ balance
 	! g_h2_di*n_h2: the dissociative branch of the H2 photoionization,
@@ -656,12 +681,24 @@
 	! (2) He+ balance (atomic part consistent with System_HeH_TR rows
 	!     2+3 combined; + molecular sinks R17/R20/R23). b_heiTR*n_e*n_heiTR is
 	!     electron-impact ionization of the He 2^3S metastable into He+.
+	! k_co_hep*n_heii: He+ + CO -> C+ + O + He, UMIST RATE22 entry 4068,
+	! measured, temperature independent at the Langevin value 1.6e-9
+	! cm^3 s^-1 (oxygen_rates::rk_D1_Hep_CO). It neutralizes the helium ion,
+	! and the free neutral He that closes the helium budget receives it, so
+	! no other helium row moves. The carbon it ionizes is not a row of this
+	! system: the metal block re-solves C I / C II / C III from its own
+	! balance, so this reaction moves the helium charge here and the carbon
+	! charge is set there. The same rate coefficient and the same two
+	! densities carry the reaction's +2.2117 eV into heating channel 18
+	! (util_ion_eq::heating_of_composition), so the energy released and the
+	! ions consumed are one event counted once.
 	fvec(2) = (g_hei + b_hei*n_e)*n_heiSI + g_heiTR*n_heiTR           &
 	        + b_heiTR*n_e*n_heiTR                                     &
 	        + a_heiii*n_e*n_heiii                                     &
 	        - (a_heii + a_heiTR)*n_e*n_heii                           &
 	        - (g_heii + b_heii*n_e)*n_heii                            &
-	        - (k17 + k20 + k23)*n_heii*n_h2
+	        - (k17 + k20 + k23)*n_heii*n_h2                           &
+	        - k_co_hep*n_heii
 
 	! (3) He++ balance (verbatim atomic form + collisional ionization)
 	fvec(3) = (g_heii + b_heii*n_e)*n_heii - a_heiii*n_e*n_heiii

@@ -1,4 +1,4 @@
-# Stage I Extensibility Refactor — Change Log
+# Stage I Extensibility Refactor: Change Log
 
 Date: 2026-06-10. Companion to `ATES_refactor_plan_from_metal.md` (Path B),
 which lives in the workspace-level `ATES/` directory, not in this repository.
@@ -7,7 +7,7 @@ harness; "PASS" means the gate ran green immediately after the step.
 
 ## Regression harness (`backup/regression/`)
 
-- `run_check.sh {golden|check} [case...]` — rebuilds, re-runs each matrix case
+- `run_check.sh {golden|check} [case...]`: rebuilds, re-runs each matrix case
   single-threaded (`OMP_NUM_THREADS=1`, fully deterministic), and compares
   `Hydro_ioniz.txt` / `Ion_species.txt` byte-wise against the stored golden,
   excluding `#` header lines.
@@ -17,16 +17,16 @@ harness; "PASS" means the gate ran green immediately after the step.
   [2026-08-27: the default matrix has grown to seven cases -- the two above
   plus `mol_base_handoff`, `mol_metals`, `mol_lyman_werner`, `mol_diffusion`
   and `lower_profile` (`DEFAULT_CASES` in `run_check.sh`).]
-- `test_roundtrip.sh` + `check_roundtrip.py` — restart loader test using the
+- `test_roundtrip.sh` + `check_roundtrip.py`: restart loader test using the
   `EXHALE_DUMP_IC=1` hook in `EXHALE_main.f90`, which writes the state exactly as
   loaded and stops. The dump happens *before* the first ionization-equilibrium
   solve: the equilibrium re-solve at each step would otherwise re-derive the metal
   fractions and mask a loader that resets metals to neutral.
 
-## Phase 1 — named species constants + composition module (PASS, bitwise)
+## Phase 1: named species constants + composition module (PASS, bitwise)
 
 - `species_table.f90`: `isp_HI..isp_HeTR` named constants for the fixed
-  `f_sp(:,1:6)` H/He/HeITR layout; literal column indices 1–6 eliminated
+  `f_sp(:,1:6)` H/He/HeITR layout; literal column indices 1-6 eliminated
   across `EXHALE_main`, `energy_semi_implicit`, `set_IC`, `load_IC`.
 - New `src/modules/functions/composition.f90`: `get_species_densities`
   (rho, f_sp → all number densities + ne + n_tot), `comp_T_from_p`,
@@ -37,7 +37,7 @@ harness; "PASS" means the gate ran green immediately after the step.
   `eos_metals` work, and `eos_metals 0` now selects the legacy trace
   approximation).
 
-## Phase 2 — output schema + restart preservation (PASS, data-identical + roundtrip)
+## Phase 2: output schema + restart preservation (PASS, data-identical + roundtrip)
 
 - `write_output.f90`: schema-2 `#` headers on `Hydro_ioniz*.txt` and
   `Ion_species*.txt`; the species-label line is generated from
@@ -45,24 +45,24 @@ harness; "PASS" means the gate ran green immediately after the step.
   (`EXHALE_plots.py`, `EXHALE_transit.py`, `examples/exhale_io.py`) are unaffected
   (`np.loadtxt` skips `#` by default).
 - `load_IC.f90` rewritten: schema-2 files are read by label mapping
-  (order-free), restoring **all** species including the metal ions — metal
+  (order-free), restoring **all** species including the metal ions, metal
   restarts now preserve the ionization state (verified to rtol 1e-12).
   Headerless legacy files keep the historical behavior exactly (H/He read,
   metals to neutral-from-abundance). Rule for each element: an element is restored
   only if all of its ion stages are present in the file.
 
-## Phase 3 — abundance unification (PASS, bitwise)
+## Phase 3: abundance unification (PASS, bitwise)
 
 - The hard-coded metal blocks for each element in `set_IC` (and the fallback in
   `load_IC`) are element loops over `melem_ab(:)` / `melem_i0` / `melem_top` /
   `mion_fsp`. The `X_C..X_Fe` scalars survive only as the input-parsing
   targets that fill `melem_ab`; no downstream physics code reads them.
 
-## Phase 4a — rate dispatch by ion index (PASS, bitwise + roundtrip)
+## Phase 4a: rate dispatch by ion index (PASS, bitwise + roundtrip)
 
 - `species_table.f90`: index constants for each ion `im_CI..im_FeIII` (canonical
   mion order). Note: Fortran identifiers are case-insensitive, so sulfur is
-  `im_S_I`/`im_S_II` — `im_SII` would collide with `im_SiI` (neutral Si).
+  `im_S_I`/`im_S_II`, `im_SII` would collide with `im_SiI` (neutral Si).
 - `Cool_coeff.f90`: `rec_coeff_by_ion`, `ion_coeff_by_ion`,
   `cool_coeff_by_ion`, `cool_coeff_by_ion_scalar` select on the ion index;
   the case lists exist in one place only. The old name-keyed entry points
@@ -72,7 +72,7 @@ harness; "PASS" means the gate ran green immediately after the step.
   metal coolant sum). No `trim(mion_name(i))` string comparisons at each call
   remain on the rate path.
 
-## Phase 5 — ionization-solver context (deferred by design)
+## Phase 5: ionization-solver context (deferred by design)
 
 Step 1 of the v3 plan ("wrap the coefficients for each cell in an explicit
 setter") already exists as `set_metal_coeffs` in `System_HeH_metals.f90`.
@@ -89,26 +89,26 @@ deferred until that parallelization is actually scheduled.
    table) per new ion, plus one `case` line in each `*_by_ion` dispatcher.
 3. An abundance entry (`metals.inp` label; `melem_ab` slot via input_read).
 4. Nothing in `EXHALE_main`, `set_IC`, `load_IC`, `write_output`, or the
-   composition/EOS path — those are all table-driven now.
+   composition/EOS path: those are all table-driven now.
 
-## Appendix — convergence criterion + local-time-stepping study (2026-06-10)
+## Appendix: convergence criterion + local-time-stepping study (2026-06-10)
 
 Two runtime options were added (both opt-in; absent => global-dt path is
 byte-identical, regression-gated):
-- `Time stepping: Local` — cell-by-cell `dt_j = CFL*dr_j/(|v|+cs)`.
-- `Level tol: <val>` — mass-flux LEVEL-stability gate: a converged/stalled
+- `Time stepping: Local`, cell-by-cell `dt_j = CFL*dr_j/(|v|+cs)`.
+- `Level tol: <val>`, mass-flux LEVEL-stability gate: a converged/stalled
   stop additionally requires the mean `|rho v r^2|` over `[j_min:N]` to be
   unchanged (relative `< lev_th`) across the last `N_stall` steps. `du` is the
   spatial SPREAD of the flux and is blind to a uniform level drift. Default
   `lev_th <= 0` (disabled) until a steady-state reference calibrates it.
 
-**Headline (WASP-121b, He 2^3S + metals) — corrects an earlier wrong reading:**
+**Headline (WASP-121b, He 2^3S + metals), corrects an earlier wrong reading:**
 the `du < 1e-3` stop is unreliable here. `du` oscillates 1e-3..1e-2 and dips
 below 1e-3 transiently long before the wind settles, so the original golden
 (stopped at step 7,288, raw `log10 4*pi*rho*v*r^2(r_max) = 13.631`) was a
 **premature-dip snapshot, not the steady state.** Marching the SAME cold start
 much further (to step ~35,085, with the du stop suppressed) the level keeps
-rising monotonically — `lev_rel` falls 0.23 -> 2.7e-3 — toward **raw
+rising monotonically (`lev_rel` falls 0.23 -> 2.7e-3) toward **raw
 log10 ~13.71** (`Mdot 13.707` at 35k, still creeping up), with `T_max` 11021 ->
 10767 K. Independent paths agree on this deeper state: warm-restart from the
 local-dt result settles at 13.716, and naive local-dt itself reaches 13.716 in
@@ -117,7 +117,7 @@ local-dt result settles at 13.716, and naive local-dt itself reaches 13.716 in
 Revised conclusions (superseding the first draft of this appendix):
 - The true WASP-121b converged state appears to be `raw log10 ~13.71`, reached
   by cold global-dt only after >35k steps. **Naive LTS is therefore NOT
-  "answer-shifting"** — it reaches essentially the correct deeper state ~20x
+  "answer-shifting"**: it reaches essentially the correct deeper state ~20x
   faster. The earlier "LTS shifts the answer" claim was an artifact of
   comparing LTS against the premature-dip golden; with no trustworthy
   reference, the comparison was meaningless. (Tentative: LTS's exact agreement
@@ -132,7 +132,7 @@ Revised conclusions (superseding the first draft of this appendix):
   to re-baseline the regression goldens (whose current du<1e-3 snapshots are
   fine as deterministic refactor references but are NOT the converged wind).
 
-## Steady-residual diagnostic (2026-06-10) — criterion-independent convergence
+## Steady-residual diagnostic (2026-06-10): criterion-independent convergence
 
 `EXHALE_RESIDUAL=1` (env hook in EXHALE_main, like EXHALE_DUMP_IC) loads a state,
 evaluates the finite-volume steady residual R = du/dt once (reusing

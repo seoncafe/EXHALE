@@ -1,4 +1,4 @@
-# `windae_grid/` — Wind-AE starting-solution grid
+# `windae_grid/`: Wind-AE starting-solution grid
 
 The directory `inputdata/windae_grid/` holds the **Wind-AE solution grid** from
 Broome et al. (2025a): a database of ~1000 converged Wind-AE wind solutions

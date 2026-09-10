@@ -2,46 +2,110 @@
       ! Optically-thin H3+ infrared cooling (the molecular level of the lower-atmosphere
       ! plan; docs/lower_atmosphere_coupling.*).
       !
-      ! LTE emission per molecule E(H3+,T) from Miller, Stallard, Tennyson &
-      ! Melin (2013), J. Phys. Chem. A 117, 9770 (Table 5, z(T) fits):
+      ! WHAT THE PUBLISHED FIT IS.  Miller, Stallard, Tennyson & Melin
+      ! (2013), J. Phys. Chem. A 117, 9770, Table 5 gives
       !
-      !   log_e E(T) = sum_n C_n T^n     [E in W molecule^-1 sr^-1],
+      !   log_e E(H3+,T) = sum_n C_n T^n     [E in W molecule^-1 sr^-1],
       !
-      ! piecewise over 30-300, 300-800, 800-1800, 1800-5000 K (fit errors
-      ! < 0.1% over 300-5000 K; +-5% below 300 K).  Measured here against
-      ! their Table 4, the 500-5000 K fit reproduces the tabulated
-      ! E(H3+,T) to within 0.45%.  The published segments do NOT join,
-      ! and the mismatch is theirs, not a transcription error: continued
-      ! across 300 K the 300-800 K polynomial stands 15-43% above the
-      ! 30-300 K one over 200-300 K, and the 1800-5000 K polynomial 2.4%
-      ! below the 800-1800 K one at 1800 K, which is the only place where
-      ! E(T) as evaluated here decreases with temperature.  Each segment
-      ! is used on its own published range, which is what the paper
-      ! prescribes.  The optically-thin volumetric cooling rate is
+      ! the emission of ONE H3+ molecule into ONE steradian, computed for an
+      ! LTE internal population at T with the partition function z(T) of
+      ! their Table 1 (the "using z(t)" column of Table 5 is the one used
+      ! here; the alternative zfp(T) column excludes their extrapolated
+      ! levels).  The population convention is therefore LTE at the local
+      ! gas temperature, and the isotropic volumetric rate is
       !
-      !   Lambda_H3+ = n_H3+ * 4 pi * E(T) * s_nonLTE(T, n_H2)   [W cm^-3]
+      !   Lambda_H3+ = n_H3+ * 4 pi * E(T) * s(T, n_H2)   [W cm^-3]
       !   (multiply by 1e7 for erg s^-1 cm^-3),
       !
-      ! where s_nonLTE is the departure factor of Miller et al. (2013)
-      ! Table 6 (their Oka & Epp detailed-balance approach), bilinearly
-      ! interpolated in (T, log10 n_H2); s -> 1 for n_H2 >~ 1e14 cm^-3
-      ! (LTE) and collapses at low density where radiative depopulation
-      ! wins.  Table 6 values are upper limits per the paper's caveat on
-      ! the proton-hopping rate coefficient.
+      ! the 4 pi being the one conversion from the per-steradian fit.
       !
-      ! Above 5000 K the fit is held at E(5000 K): H3+ is thermally
-      ! destroyed well below that temperature, so the frozen tail only
-      ! guards against transients.  Same NaN-safe bracketing style as the
-      ! cooling-table interpolators (code review 2026-07-02).
+      ! THE NON-LTE FACTOR.  s(T, [H2]) is the departure factor of their
+      ! Table 6, defined by their eq. 8 as the ratio of the vibrational-level
+      ! sum with the detailed-balance (Oka & Epp) populations to the same sum
+      ! with the LTE populations.  It is referenced to the SAME LTE emission
+      ! E(T), so it multiplies the fit and is not a separate emission model.
+      ! Its only collider is H2, through the proton-hopping reaction
+      ! H3+(v=m) + H2 -> H2 + H3+(v=n) with the Oka & Epp rate coefficient
+      ! 2e-15 m^3 s^-1; no other collision partner enters, and the density
+      ! it depends on is the H2 number density alone.  The paper states that
+      ! the Table 6 values MAY BE UPPER LIMITS, especially at low densities,
+      ! because that rate coefficient is its largest uncertainty.
       !
-      ! Reference PDF: references/Miller_2013_JPCA_117_9770.pdf (Tables 5, 6).
+      ! COLLIDER DOMAIN AND THE LOW-COLLIDER LIMIT.  Table 6 is tabulated at
+      ! [H2] = 1e12 to 1e20 m^-3, that is 1e6 to 1e14 cm^-3.  Below 1e6 cm^-3
+      ! radiative decay empties the emitting levels faster than collisions
+      ! populate them, so each collisional excitation is followed by a decay
+      ! and the emission per H3+ is set by the collision rate: s is linear in
+      ! n(H2) and vanishes with it.  Decision 8 of
+      ! docs/b1_target_system_20260906.md section 6.1 adopts that limit as
+      ! the evaluation below the table,
+      !
+      !   s(T, n_H2 < 1e6) = s(T, 1e6) * n_H2/1e6,
+      !
+      ! and records the cell as evaluated below the tabulated collider range
+      ! (h3p_n_below_collider below).  The record is informational: the
+      ! coolant stays defined where the model has a known analytic limit.
+      ! Above 1e14 cm^-3 the table edge is held (s = s(T,1e14), which is
+      ! 0.9985 to 1.0000, so the residual departure from LTE at and above the
+      ! last tabulated column is at most 0.15 per cent); no extrapolation is
+      ! made above the table.
+      !
+      ! TEMPERATURE DOMAIN AND THE JOINS.  The four Table 5 segments cover
+      ! 30-300, 300-800, 800-1800 and 1800-5000 K.  Quoted fit errors: up to
+      ! +-5 per cent over 30-300 K, generally < 0.1 per cent over 300-800 K,
+      ! "all but nonexistent" over 800-1800 K, a few tenths of a per cent
+      ! over 1800-5000 K; above 5000 K the paper does not report values.
+      ! Outside 30-5000 K the evaluation is clamped to the end of the fit and
+      ! the cell is recorded (h3p_n_below_fit_T, h3p_n_above_fit_T); H3+ and
+      ! its feedstock H2 are thermally destroyed well below 5000 K, so the
+      ! frozen tail only guards transients.
+      !
+      ! The published segments do NOT join, and the mismatch is theirs, not a
+      ! transcription error.  MEASURED here with the Table 5 coefficients,
+      ! continuing each segment across its upper limit:
+      !
+      !   at  300 K   the 300-800 K polynomial is  +43.05 per cent
+      !   at  800 K   the 800-1800 K polynomial is  -0.113 per cent
+      !   at 1800 K   the 1800-5000 K polynomial is -2.353 per cent
+      !
+      ! relative to the segment below it.  At 300 K the upper segment is the
+      ! one the paper's own tables support: Table 6 gives the LTE emission at
+      ! 300 K as 0.53503e-23 W molecule^-1 sr^-1, which the 300-800 K
+      ! polynomial reproduces to 0.002 per cent while the 30-300 K one stands
+      ! 30.1 per cent below it (MEASURED).
+      !
+      ! JOIN RULE OF THIS CODE.  A cooling function with a 43 per cent step
+      ! in it is not a function of state, so the code interpolates across the
+      ! published gap and says so here rather than hiding it.  Over
+      ! [T_join*(1 - 0.05), T_join) the two published polynomials are blended
+      ! linearly in log_e E, weight rising from the lower segment to the
+      ! upper one; at and above T_join the upper published segment is exact,
+      ! and below the ramp the lower published segment is exact.  The ramp is
+      ! this code's rule, not the paper's.  It leaves every value the paper
+      ! tabulates untouched: the Table 4 entries at 500-5000 K and the
+      ! Table 6 LTE value at 300 K all lie at or outside the ramps, and the
+      ! 500-5000 K fit reproduces Table 4 to within 0.45 per cent (MEASURED,
+      ! worst point 5000 K).
+      !
+      ! Reference PDF: references/Miller_2013_JPCA_117_9770.pdf
+      ! (Tables 4, 5, 6).  NaN-safe bracketing style of the cooling-table
+      ! interpolators (code review 2026-07-02).
 
       implicit none
       private
       public :: h3p_emission_lte, h3p_nonlte_factor, h3p_cooling_rate,   &
-                h3p_net_cooling_rate
+                h3p_net_cooling_rate, h3p_reset_domain_records
+      public :: h3p_n_below_collider, h3p_n_below_fit_T, h3p_n_above_fit_T, &
+                h3p_n_outside_nonlte_T
 
       real*8, parameter :: fourpi = 12.566370614359172d0
+
+      ! Informational domain records: how many evaluations fell outside a
+      ! published range.  Counters only; none of them changes a rate.
+      integer, save :: h3p_n_below_collider   = 0   ! n_H2 < 1e6 cm^-3 (linear limit used)
+      integer, save :: h3p_n_below_fit_T      = 0   ! T < 30 K   (emission clamped)
+      integer, save :: h3p_n_above_fit_T      = 0   ! T > 5000 K (emission clamped)
+      integer, save :: h3p_n_outside_nonlte_T = 0   ! T outside 300-5000 K (Table 6 row clamped)
 
       ! --- Table 5 coefficients: log_e E = sum C_n T^n  [W/molecule/sr] ---
       ! 30-300 K (n = 0..9)
@@ -60,13 +124,20 @@
       real*8, parameter :: cD(0:5) = [ -55.7672d0,      0.0162530d0,     &
            -7.68583d-6,     1.98412d-9,    -2.68044d-13,  1.47026d-17 ]
 
+      ! Segment limits and the width of the join ramp, as a fraction of the
+      ! join temperature (this code's rule; see JOIN RULE above).
+      real*8, parameter :: T_fit_lo = 30.0d0, T_fit_hi = 5000.0d0
+      real*8, parameter :: T_join(3) = [ 300.0d0, 800.0d0, 1800.0d0 ]
+      real*8, parameter :: join_ramp = 0.05d0
+
       ! --- Table 6 non-LTE scaling s(T, n_H2) --------------------------- !
       ! Grid: T rows (K) x log10(n_H2 [cm^-3]) columns 6,8,10,12,14
-      ! ([H2] = 1e12..1e20 m^-3 in the paper).  s -> 1 at high density.
+      ! ([H2] = 1e12..1e20 m^-3 in the paper).
       integer, parameter :: nTs = 11, nNs = 5
       real*8, parameter :: sT(nTs) = [ 300.d0, 600.d0, 1000.d0, 1500.d0, &
            2000.d0, 2500.d0, 3000.d0, 3500.d0, 4000.d0, 4500.d0, 5000.d0 ]
       real*8, parameter :: sLogN(nNs) = [ 6.d0, 8.d0, 10.d0, 12.d0, 14.d0 ]
+      real*8, parameter :: n_tab_lo = 1.0d6   ! lowest tabulated collider density [cm^-3]
       real*8, parameter :: sTab(nTs,nNs) = reshape( [                    &
       ! log n_H2=6      (T = 300..5000)
         0.0067d0, 0.0011d0, 0.0013d0, 0.0013d0, 0.0011d0, 0.0010d0,      &
@@ -89,24 +160,64 @@
 
       ! ------------------------------------------------------------------ !
 
-      ! LTE emission per molecule E(H3+,T) [W molecule^-1 sr^-1].
+      ! Zero the informational domain records.
+      subroutine h3p_reset_domain_records()
+      h3p_n_below_collider   = 0
+      h3p_n_below_fit_T      = 0
+      h3p_n_above_fit_T      = 0
+      h3p_n_outside_nonlte_T = 0
+      end subroutine h3p_reset_domain_records
+
+      ! ------------------------------------------------------------------ !
+
+      ! LTE emission per molecule E(H3+,T) [W molecule^-1 sr^-1], Table 5,
+      ! with the join ramp of the module header.
       double precision function h3p_emission_lte(T) result(E)
       real*8, intent(in) :: T
-      real*8 :: tt, lnE
+      real*8 :: tt, lnE, t_ramp, f
+      integer :: k
       tt = T
-      if (.not. (tt .gt. 30.0d0))  tt = 30.0d0     ! NaN-safe lower clamp
-      if (tt .gt. 5000.0d0)        tt = 5000.0d0   ! frozen high-T tail
-      if (tt .le. 300.0d0) then
-         lnE = poly(cA, 9, tt)
-      else if (tt .le. 800.0d0) then
-         lnE = poly(cB, 6, tt)
-      else if (tt .le. 1800.0d0) then
-         lnE = poly(cC, 6, tt)
-      else
-         lnE = poly(cD, 5, tt)
+      if (.not. (tt .gt. T_fit_lo)) then            ! NaN-safe lower clamp
+         tt = T_fit_lo
+!$omp atomic update
+         h3p_n_below_fit_T = h3p_n_below_fit_T + 1
+      else if (tt .gt. T_fit_hi) then               ! frozen high-T tail
+         tt = T_fit_hi
+!$omp atomic update
+         h3p_n_above_fit_T = h3p_n_above_fit_T + 1
+      endif
+      ! The segment whose published range contains tt; at a join the upper
+      ! segment owns the point (see JOIN RULE).
+      k = 1
+      if (tt .ge. T_join(1)) k = 2
+      if (tt .ge. T_join(2)) k = 3
+      if (tt .ge. T_join(3)) k = 4
+      lnE = ln_emission_segment(k, tt)
+      if (k .le. 3) then
+         t_ramp = T_join(k)*(1.0d0 - join_ramp)
+         if (tt .gt. t_ramp) then
+            f   = (tt - t_ramp)/(T_join(k) - t_ramp)
+            lnE = (1.0d0 - f)*lnE + f*ln_emission_segment(k+1, tt)
+         endif
       endif
       E = exp(lnE)
       end function h3p_emission_lte
+
+      ! log_e E of Table 5 segment k (1: 30-300, 2: 300-800, 3: 800-1800,
+      ! 4: 1800-5000 K), evaluated at T without regard to that range.
+      double precision function ln_emission_segment(k, T) result(lnE)
+      integer, intent(in) :: k
+      real*8, intent(in)  :: T
+      if (k .eq. 1) then
+         lnE = poly(cA, 9, T)
+      else if (k .eq. 2) then
+         lnE = poly(cB, 6, T)
+      else if (k .eq. 3) then
+         lnE = poly(cC, 6, T)
+      else
+         lnE = poly(cD, 5, T)
+      endif
+      end function ln_emission_segment
 
       ! Horner evaluation of sum_{n=0..m} c(n) T^n.
       double precision function poly(c, m, T)
@@ -121,37 +232,54 @@
 
       ! ------------------------------------------------------------------ !
 
-      ! Non-LTE departure factor s(T, n_H2) from Miller+2013 Table 6,
-      ! bilinear in (T, log10 n_H2 [cm^-3]); edges clamped (s=1 at high
-      ! density, table edge at low density / low-high T).
+      ! Non-LTE departure factor s(T, n_H2), Miller+2013 Table 6, bilinear in
+      ! (T, log10 n_H2 [cm^-3]).  Below the lowest tabulated collider density
+      ! the collisional limit of the module header is used, so s and the
+      ! cooling vanish linearly with n_H2; above the highest tabulated one the
+      ! table edge is held; outside 300-5000 K the nearest tabulated row is
+      ! used.  Each of those three is recorded.
       double precision function h3p_nonlte_factor(T, nH2) result(s)
       real*8, intent(in) :: T, nH2
-      real*8 :: tt, ln, ft, fn
-      integer :: it, in
+      real*8 :: tt, nn, ln
       tt = T
-      if (.not. (tt .gt. sT(1))) tt = sT(1)
+      if (.not. (tt .gt. sT(1)) .or. tt .gt. sT(nTs)) then
+!$omp atomic update
+         h3p_n_outside_nonlte_T = h3p_n_outside_nonlte_T + 1
+      endif
+      if (.not. (tt .gt. sT(1))) tt = sT(1)         ! NaN-safe
       if (tt .gt. sT(nTs))       tt = sT(nTs)
-      ln = log10(max(nH2, 1.0d0))
-      if (.not. (ln .gt. sLogN(1))) ln = sLogN(1)
-      if (ln .ge. sLogN(nNs)) then
-         s = 1.0d0                                  ! LTE at high density
+      nn = nH2
+      if (.not. (nn .gt. 0.0d0)) nn = 0.0d0         ! NaN-safe
+      if (nn .lt. n_tab_lo) then
+!$omp atomic update
+         h3p_n_below_collider = h3p_n_below_collider + 1
+         s = s_table(tt, sLogN(1))*(nn/n_tab_lo)    ! collisional limit
          return
       endif
-      ! bracket T (non-uniform rows)
+      ln = log10(nn)
+      if (ln .gt. sLogN(nNs)) ln = sLogN(nNs)       ! table edge held
+      s = s_table(tt, ln)
+      end function h3p_nonlte_factor
+
+      ! Bilinear interpolation of Table 6 on its own grid; both arguments
+      ! must already lie inside it.
+      double precision function s_table(tt, ln) result(s)
+      real*8, intent(in) :: tt, ln
+      real*8 :: ft, fn
+      integer :: it, in
       it = 1
       do while (it .lt. nTs-1 .and. sT(it+1) .lt. tt)
          it = it + 1
       enddo
       ft = (tt - sT(it))/(sT(it+1) - sT(it))
-      ! bracket log n (uniform step 2)
-      in = 1 + int((ln - sLogN(1))/2.0d0)
+      in = 1 + int((ln - sLogN(1))/2.0d0)           ! uniform step 2 in log10
       if (in .gt. nNs-1) in = nNs-1
       fn = (ln - sLogN(in))/2.0d0
       s  = (1.d0-ft)*(1.d0-fn)*sTab(it,  in  )                            &
          +       ft *(1.d0-fn)*sTab(it+1,in  )                            &
          + (1.d0-ft)*      fn *sTab(it,  in+1)                            &
          +       ft *      fn *sTab(it+1,in+1)
-      end function h3p_nonlte_factor
+      end function s_table
 
       ! ------------------------------------------------------------------ !
 
@@ -201,7 +329,7 @@
       !   T = T_rad, W_dil = 1  ->  exactly zero, to machine precision:
       !       gas buried in a blackbody at its own temperature neither cools
       !       nor heats.  This is the fixed point section 110 of
-      !       docs/Update_EXHALE.md relies on for TO_BE_DONE item (G).
+      !       docs/Update_EXHALE_stage1.md relies on for TO_BE_DONE item (G).
       !   T -> 0                ->  emission -> 0, absorption finite: the
       !       band heats at the rate the field supplies, not faster.
       !   W_dil = 0             ->  the emission-only rate, unchanged.

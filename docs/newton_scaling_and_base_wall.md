@@ -16,7 +16,7 @@ target of `1e-3`, aborting with `info = 2`, on the HD 209458 b configuration
 `vulcan_work/hd209_wind_response/photo_deep_secion_cont`. The standing
 explanation, recorded in `TO_BE_DONE.md` item (A) and in
 `docs/base_composition_handoff_plan.md` §11.8-11.9, was that the base cell
-`j = 1` carries a momentum imbalance that no interior state can cancel — the
+`j = 1` carries a momentum imbalance that no interior state can cancel: the
 "base wall".
 
 Direct measurement does not support that explanation. Two things were wrong
@@ -81,7 +81,7 @@ The JFNK line search minimizes `||F/D||_2` over the whole domain, with `D` the
 diagonal scaling. Convergence, on the other hand, is declared on
 `resid_relnorm`: the volume-weighted relative residual, evaluated separately
 over the wind `[j_min:N]` and the layer below the escape radius and combined by
-the larger of the two (§127 of `Update_EXHALE.md`; at the time of this memo it
+the larger of the two (§127 of `Update_EXHALE_stage1.md`; at the time of this memo it
 was the wind window alone, here `r >= 1.992`). The scale each row is divided by
 is `residual_row_scale`, which since §133 is a bound on that row's own largest
 term and since §143 is that term itself, taken from what the row contains. At
@@ -103,8 +103,8 @@ and the twelve largest contributions were all momentum rows at
 `u(2,j)` rises monotonically from `-2.34e-08` to `+1.29e-08`, crossing zero
 between `j = 313` and `j = 314` (`r ~ 1.347`): at the hand-off the whole region
 below `r ~ 1.35` is still infalling, so `|rho v|` passes through zero there.
-The momentum floor `1e-6 * max_j |rho v| = 7.0446e-09` — set by the base cell,
-where `|rho v| = 7.04e-03`, six orders above the wind — is comparable to
+The momentum floor `1e-6 * max_j |rho v| = 7.0446e-09` (set by the base cell,
+where `|rho v| = 7.04e-03`, six orders above the wind) is comparable to
 `|rho v|` itself throughout that band, so those cells were divided by a number
 unrelated to their own state.
 
@@ -133,18 +133,18 @@ a function of the unknowns alone.
 `rho` and `E` are positive definite and are their own scales. The momentum
 density is not: it vanishes wherever the flow reverses, which at the hand-off
 is the entire sub-sonic region. The quantity that does not vanish there is
-`rho` times the fastest characteristic speed of the Euler system, `|v| + c_s`
-— the momentum density the cell carries when moved at its own signal speed.
+`rho` times the fastest characteristic speed of the Euler system, `|v| + c_s`:
+the momentum density the cell carries when moved at its own signal speed.
 That choice is parameter-free (there is no floor fraction to pick) and local
 (no cell can set the scale of another).
 
 **Still current after §143, with one boundary drawn.** These three numbers are
 the scaling of the Newton system and of the line-search merit, and §143 does
 not touch them. What it changes is the CONVERGENCE MEASURE: each residual row
-is now divided by the largest term that row itself contains — the face mass
+is now divided by the largest term that row itself contains, the face mass
 flux for the mass row, `max(|dF_2|,|S_2|)` for the momentum row,
 `max(|dF_3|,|S_3|,heat,cool)` for the energy row (`mass_flux_row_scale`,
-`momentum_row_scale`, `energy_row_scale` in `steady_residual.f90`) — so the
+`momentum_row_scale`, `energy_row_scale` in `steady_residual.f90`), so the
 merit and the acceptance test are no longer one expression apart on any row.
 That separation is deliberate and it was measured: a build that rescaled this
 system by those quantities as well, the mass row's varying by a factor 9 across
@@ -158,7 +158,7 @@ cell 1's momentum row is a four-order cancellation whose remainder is 6.5e-5 of
 the gravity term, and that a 2.9 ppm ghost-pressure change drives it to zero.
 §143's momentum scale measures exactly that remainder against exactly that
 gravity term, and on the molecular hot Uranus cell 1 still reads 0.14 on it
-after a converged solve — so the "one degree of freedom away" reading holds for
+after a converged solve, so the "one degree of freedom away" reading holds for
 HD 209458 b and does not carry to that planet.
 
 The intermediate forms `|rho v| + f rho c_s` with `f < 1` were tried and are
@@ -223,7 +223,7 @@ a failed solve still returns its best state. The convergence test itself
 ### The volume-weighted merit was measured and rejected
 
 Making the line-search merit volume-weighted, to match `resid_relnorm`, was
-tried in two forms — `sqrt(sum_j w_j (F/D)^2 / sum_j w_j)` with `w_j = r_j^2
+tried in two forms: `sqrt(sum_j w_j (F/D)^2 / sum_j w_j)` with `w_j = r_j^2
 dr_j`, over the whole domain and over `[j_min:N]` only. *Measured*, all with
 the abort limit at 100-200:
 
@@ -237,7 +237,7 @@ the abort limit at 100-200:
 Volume weighting also barely changes the alignment it was meant to fix: it
 lifts the share of the merit carried by `[j_min:N]` from 0.001 % to 0.021 %,
 because the near-base cells are small in volume but their residual *rates*
-`F/D` are correspondingly large — the two effects nearly cancel. Both weighted
+`F/D` are correspondingly large, the two effects nearly cancel. Both weighted
 variants stall in long runs of failed line searches. The change was therefore
 not adopted; the merit remains `||F/D||_2` over the whole domain.
 
@@ -263,7 +263,7 @@ fewest iterations. It is what the code now uses, with no key to change it.
 
 The hand-off was suspected of firing while the stagnation point is still
 inside the domain (`r ~ 1.35`). *Measured*: setting `Solver: Newton 1.0e-2` in
-place of `5.0e-2` changes nothing — the log confirms the new threshold is read
+place of `5.0e-2` changes nothing, the log confirms the new threshold is read
 (`JFNK hand-off at du < 1.00E-02`) and the Newton finish still starts at step
 2002, with an identical iteration trace and identical results. The reason is
 in `EXHALE_main.f90`: `du` is already `1.93e-03` at step 2, below both
@@ -276,9 +276,9 @@ configuration, so no code or input change was made for it.
 
 | gate | result |
 |---|---|
-| G1 `make check` (wasp_full, wasp_he23off, mol_base_handoff) | **PASS** — `REGRESSION PASS (all cases byte-identical)`; `wasp_full` 13488 steps, `wasp_he23off` 13482, `mol_base_handoff` 12000, each matching its golden bitwise |
-| G2 target case `photo_deep_secion_cont` | **PASS** — `info = 0`, `\|\|R\|\| = 5.053e-04` (target `1e-3`), 59 iterations, 63 s wall; baseline was `info = 2`, `\|\|R\|\| = 2.802e-03`, no improvement in 14 iterations, 72 s |
-| G3 `wasp_full_newton`, `newton_rsw01` | **PASS, improved** — both now `info = 0` where both previously ended `info = 2` |
+| G1 `make check` (wasp_full, wasp_he23off, mol_base_handoff) | **PASS**: `REGRESSION PASS (all cases byte-identical)`; `wasp_full` 13488 steps, `wasp_he23off` 13482, `mol_base_handoff` 12000, each matching its golden bitwise |
+| G2 target case `photo_deep_secion_cont` | **PASS**: `info = 0`, `\|\|R\|\| = 5.053e-04` (target `1e-3`), 59 iterations, 63 s wall; baseline was `info = 2`, `\|\|R\|\| = 2.802e-03`, no improvement in 14 iterations, 72 s |
+| G3 `wasp_full_newton`, `newton_rsw01` | **PASS, improved**: both now `info = 0` where both previously ended `info = 2` |
 
 G3 in detail, both runs made from the case's `input.inp` in a scratch directory
 (the `backup/regression` copies were not touched), the "before" column produced
@@ -346,7 +346,7 @@ NaN. `run_20260810.log` shows the cause on step 1:
 ```
 
 `du` is the radial spread of `rho v r^2` over `[j_min:N]`. On step 1 it was
-`1.85e-05` — below every threshold in the run — because the transonic IC is an
+`1.85e-05` (below every threshold in the run) because the transonic IC is an
 analytic profile that has not yet been touched by the marching loop. From there
 `du` rose monotonically (`4.01e-04` at step 2, `1.93e-02` at 50, `4.09e-02` at
 100, `0.292` at 500, `1.96` at 1000, `21.5` at 1220) and the run hit
@@ -356,12 +356,12 @@ The interpretation, stated tentatively: a small `du` on an unrelaxed generated
 IC measures the smoothness of the formula that built it, not relaxation of the
 wind, so it is not evidence that the state satisfies anything. Switching the
 secondary-ionization coupling on there is the situation the staged activation of
-§38 of `Update_EXHALE.md` exists to avoid — the coupling was applied to a state
+§38 of `Update_EXHALE_stage1.md` exists to avoid: the coupling was applied to a state
 that had never been relaxed at all, which is a stronger version of the cold-IC
 runaway that motivated the staging.
 
 Cold hydrostatic starts do not have this property. *Measured* `du(1)`:
-`0.37029` for `wasp_full` and `wasp_he23off`, `7.89` for `mol_base_handoff` —
+`0.37029` for `wasp_full` and `wasp_he23off`, `7.89` for `mol_base_handoff`,
 all above every threshold those cases use.
 
 ### The change
@@ -389,7 +389,7 @@ reconstruction switch should also require a descending crossing is left open.
 | gate | result |
 |---|---|
 | `make check` (wasp_full, wasp_he23off, mol_base_handoff) | see below |
-| warm start `photo_deep_secion_cont`, `EXHALE_MAXSTEPS=3000`, 8 threads | **unchanged** — flip at step 2, JFNK at step 2002, `info = 0`, `\|\|R\|\| = 5.053e-04`, identical to §7 |
+| warm start `photo_deep_secion_cont`, `EXHALE_MAXSTEPS=3000`, 8 threads | **unchanged**: flip at step 2, JFNK at step 2002, `info = 0`, `\|\|R\|\| = 5.053e-04`, identical to §7 |
 | WASP-121 b, full run, 16 threads | **no NaN**; `du` stop armed at step 4 (`du = 1.147e-03`), Newton hand-off armed at step 28 (`du = 1.038e-02`), PLM -> WENO3 still on step 1 |
 
 The WASP-121 b run (`WASP-121b/run_20260811.log`) reaches `du = 9.94e-03` at

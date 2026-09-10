@@ -93,7 +93,7 @@ species & H$_2$, H, He, H$_2^+$, H$_3^+$, H$^+$, He$^+$, HeH$^+$ & \textbf{match
 reactions & Table~1: P1--P5, R1--R23 & \textbf{matched}: R5--R23 have always been the Table~1 fits (\texttt{mol\_rates.f90}); R1--R4 (H$^+$, He$^+$ recombination; H, He collisional ionization) by \texttt{Atomic rate set: Koskinen2022} (R3, R4 were already EXHALE's default). Cross sections: Verner et al.\ (1996) here against Hummer (1963), Yan et al.\ (1998). \\
 H$_2$ photodissociation & not included (postponed) & \textbf{matched}: \texttt{Stellar LW flux: 0.0} (a stated zero now wins over the value a loaded spectrum would supply). \\
 H$_2$ photoionization channels & P3--P5 (Yan 1998; Chung 1993) & \textbf{matched}: the same channel set (section 151). \\
-cooling & recombination, H$_3^+$ (optically thin, non-LTE factor of Koskinen et al.\ 2009), H Ly$\alpha$ (Glover \& Jappsen 2007) & \textbf{partly}: recombination and Ly$\alpha$ the same; H$_3^+$ with the Miller et al.\ (2013) Table~6 non-LTE factor -- their Figure~9 implies $\sim$3$\times10^{-13}$~erg~s$^{-1}$ per molecule at 3~$r_{\rm base}$ against our 1.1$\times10^{-12}$. \\
+cooling & recombination, H$_3^+$ (optically thin, non-LTE factor of Koskinen et al.\ 2009), H Ly$\alpha$ (Glover \& Jappsen 2007) & \textbf{partly}: recombination and Ly$\alpha$ the same; H$_3^+$ with the Miller et al.\ (2013) Table~6 non-LTE factor: their Figure~9 implies $\sim$3$\times10^{-13}$~erg~s$^{-1}$ per molecule at 3~$r_{\rm base}$ against our 1.1$\times10^{-12}$. \\
 conduction, viscosity & both in the equations; conduction ``largely negligible'' & \textbf{conduction matched} (\texttt{Conduction: True}, Watson et al.\ 1981); viscosity off here (their coefficient is not stated; negligible in the wind). \\
 diffusion & every species advected and diffused; $K_{zz}$ value not stated & \textbf{cannot be matched exactly}: H$_2$ and H$^+$ are carried by the flow (molecular diffusion of H$_2$, \texttt{Kzz\_base 1e9}); He, He$^+$, H$_2^+$, H$_3^+$, HeH$^+$ are the local equilibrium of each cell. \\
 energy equation & $u = c_v T$, $c_v$ not stated & tested both: the H$_2$ rovibrational ladder (default) and \texttt{Caloric EOS: monatomic}; the outer temperature does not depend on it (section 4). \\
@@ -159,7 +159,7 @@ carry, none of which the paper's text lets us remove:
 \item \textbf{Viscosity} (their coefficient not stated; ours off) and the
   \textbf{numerical method} (operator splitting with a Shapiro filter
   against our Godunov scheme); neither should move a steady state.
-\item \textbf{The heating per ionization} -- the one difference that
+\item \textbf{The heating per ionization}: the one difference that
   decides the outer wind, section~4.
 \end{itemize}
 
@@ -311,7 +311,7 @@ In the order of what it does to the comparison.
   (their Equation~B1 with the diffusion velocities of B9); EXHALE carries
   H$_2$ and H$^+$ and puts He, He$^+$, H$_2^+$, H$_3^+$ and HeH$^+$ at the
   local equilibrium of each cell. For He$^+$ this is what a local root
-  does where $P\,r/|v| < 1$ -- it overstates the ion, here by a factor of
+  does where $P\,r/|v| < 1$: it overstates the ion, here by a factor of
   about three above 1.5~$r_{\rm base}$ (the same 5--10 times excess H$^+$
   had before it was transported, section~168). For H$_3^+$ the local root is
   adequate (its chemistry is fast) but its supply, H$_2^+$ from H$_2$, and

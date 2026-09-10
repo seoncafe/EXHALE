@@ -17,7 +17,7 @@ e1e8725 HEAD@{0}: clone: from https://github.com/Nicholaswogan/photochem
 ```
 
 and every file carries the clone timestamp. The mtime of the parent `RT_Codes/`
-was unchanged, so the directory itself was not recreated — its contents were
+was unchanged, so the directory itself was not recreated: its contents were
 emptied and refilled. Only `VULCAN/` and `VULCAN_run_*/`, written 15 s later,
 survived in place. A regression run in progress died when its working directory
 disappeared.
@@ -50,13 +50,13 @@ and none of the run data or the test references.
 
 Three sources, merged newest-wins.
 
-1. **`git@github.com:seoncafe/EXHALE.git` at `d4bd507`** — all tracked content.
+1. **`git@github.com:seoncafe/EXHALE.git` at `d4bd507`**, all tracked content.
 2. **`EXHALE_bkg/`**, a full tree snapshot from 2026-07-17 restored from the
-   user's own backup — the original `.gitignore`, the whole `backup/` tree
+   user's own backup: the original `.gitignore`, the whole `backup/` tree
    (36 case directories, `run_check.sh`, `run_fcheck.sh`, `test_roundtrip.sh`),
    the benchmark and example outputs, `TO_BE_DONE.md`, `LICENCE.md`.
 3. **Session scratchpads under `/tmp`**, which sit on local disk and so survived
-   an NFS loss — `figs_run/` held the 2026-07-24 converged profiles and
+   an NFS loss: `figs_run/` held the 2026-07-24 converged profiles and
    `input.inp` for the four paper planets, `paper_runs/` and `gate_stage/` the
    staged runs.
 
@@ -94,9 +94,9 @@ entries.
 - **`aiolos_0/`**, the pristine AIOLOS reference, was not recovered and has been
   given up. To recover the upstream version of an AIOLOS file, diff against
   upstream directly.
-- **One day of uncommitted work** — the He I two-photon correction of
-  2026-08-09 — was lost and re-applied from the session transcript. It is
-  recorded in `Update_EXHALE.md` §37 and
+- **One day of uncommitted work** (the He I two-photon correction of
+  2026-08-09) was lost and re-applied from the session transcript. It is
+  recorded in `Update_EXHALE_stage1.md` §37 and
   `atomic_data_EXHALE_vs_MoCHII.md`. The user confirmed there was no other
   EXHALE work between 2026-07-31 12:05 and the loss.
 - **The regression goldens were re-snapshotted** at `d4bd507` before the

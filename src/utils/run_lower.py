@@ -31,7 +31,20 @@ import argparse, math, os, re, sys
 # it multiplies a dimensionless mean molecular weight (it was the proton mass
 # 1.6726e-24 and G was 6.67259e-8 until 2026-08-19).
 KB, MH, G = 1.380649e-16, 1.67353284e-24, 6.67430e-8
-RJ, MJ = 6.9911e9, 1.898e30
+MJ = 1.898e30
+
+# The Jupiter radius is defined once, in examples/exhale_io.py (RJ_CM), and
+# imported here rather than written down again: a length this file computes
+# from `Planet radius [R_J]` has to be the length EXHALE's parameters.f90
+# means by the same key.  The directory is APPENDED to sys.path, never
+# prepended, so that nothing in it can shadow a standard-library module.
+_EXAMPLES_DIR = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
+    'examples')
+if _EXAMPLES_DIR not in sys.path:
+    sys.path.append(_EXAMPLES_DIR)
+from exhale_io import RJ_CM                                # noqa: E402
+RJ = RJ_CM
 
 
 def read_input_inp(run_dir):

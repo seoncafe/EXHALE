@@ -8,7 +8,7 @@ open by design.
 *automatically selecting an initial atmospheric profile for each planet*.
 This is what lets them launch winds robustly across the full escape-
 parameter range, including the boil-off (low-gravity, nearly
-hydrostatic) cases that do **not** launch from a cold static start — the
+hydrostatic) cases that do **not** launch from a cold static start: the
 same regime where EXHALE's breathing base is hardest to converge
 (e.g. HD 189733 b). EXHALE already has the building blocks; this sketch
 automates the *choice* among them. See `code_comparison.tex` for the
@@ -29,7 +29,7 @@ keys (`input_read.f90`):
 
 > [2026-08-15: this section records the state before `IC mode` was added. There
 > are now five choices, `IC mode: cold | transonic | hot_parker | auto |
-> windae` — the three families above, the `auto` selector this memo designs,
+> windae`: the three families above, the `auto` selector this memo designs,
 > and the Wind-AE solution imported by `src/modules/wind_ae/`.]
 
 Two facts make automation cheap:
@@ -52,7 +52,7 @@ Two facts make automation cheap:
    and falls back gracefully when absent.
 
 So the auto-selector is essentially: *run the cheap probes that already
-exist, then set `transonic_ic` / `hot_parker_ic` accordingly* — instead
+exist, then set `transonic_ic` / `hot_parker_ic` accordingly*, instead
 of asking the user to set them by hand.
 
 ## 2. The physical regimes
@@ -62,7 +62,7 @@ c₀² = (ntot_bc + dp_bc)/rho_bc):
 
 | Regime | b0 | Behavior | Right IC |
 |---|---|---|---|
-| **Strongly bound** | large (≳ 15–25) | modest wind, sonic point far out or outside domain; cold static atmosphere evaporates fine | cold hydrostatic (default) |
+| **Strongly bound** | large (≳ 15-25) | modest wind, sonic point far out or outside domain; cold static atmosphere evaporates fine | cold hydrostatic (default) |
 | **Transonic-launch** | intermediate | interior sonic point present (often Roche-driven, near L1); cold static start breathes / won't launch | transonic |
 | **Boil-off** | small (≲ a few) | weak gravity, nearly hydrostatic but rapid escape; cold static density is too extended and drains onto the base | warm seed (hot-Parker), or transonic at a warm sound speed |
 
@@ -111,15 +111,15 @@ Key properties:
   default, so high-`b0` planets (the bulk of validated cases: WASP-121b
   Case A/B, tutorial, HD 209458 b) are unchanged. Auto is **opt-in** via
   `IC mode: auto`; the existing manual keys keep working and override.
-- **Uses only exact probes** (`b0`, `find_sonic`) — no new physics, no
+- **Uses only exact probes** (`b0`, `find_sonic`), no new physics, no
   new tables.
 - **Self-healing.** If `transonic_ic` is chosen but `wind_profile`
   finds no usable root at run time, the existing fallback to hydrostatic
-  still fires — auto never makes things worse than manual.
+  still fires: auto never makes things worse than manual.
 - **Logged.** The chosen branch and `b0` go to stdout (and should go to
   `write_setup_report.f90`) so the choice is auditable in `run.log`.
 
-### 3.1 Refined decision tree (v2 — recommended)
+### 3.1 Refined decision tree (v2: recommended)
 
 Working through the numbers shows the `b0 <= b0_boiloff` branch of §3 is
 **unnecessary**: the cold sonic-point probe alone separates the regimes,
@@ -149,14 +149,14 @@ else                     ->  cold hydrostatic (classic EUV-heated wind;
                               launches fine from a cold start)
 ```
 
-with `b0` **demoted to a logged diagnostic** (still worth printing — it
+with `b0` **demoted to a logged diagnostic** (still worth printing: it
 labels the regime for the user) and the **hot-Parker warm seed removed
 from the auto path**: the IC benchmark showed it gives no speedup when
 the cold start works, and a "warm sonic point exists" criterion would
 fire on essentially every hot Jupiter. The warm seed remains available
 manually, and as the escalation step of the optional retry ladder
 (§Phase C below). Note this also means auto does *not* claim to fix the
-HD 189733 b breathing stall — no IC does (benchmarked); that case needs
+HD 189733 b breathing stall, no IC does (benchmarked); that case needs
 a different mechanism entirely.
 
 ## 4. Implementation steps
@@ -186,7 +186,7 @@ that does not opt into `auto` (or that auto routes to the cold default).
 ## 5. Calibration and validation plan
 
 *(Written for the v1 tree of §3. Under the recommended v2 tree (§3.1)
-there are no thresholds to calibrate — `find_sonic` is exact — and the
+there are no thresholds to calibrate (`find_sonic` is exact) and the
 validation reduces to the regime checks below, restated concretely as
 the phase gates of §6. Kept for the record.)*
 
@@ -204,9 +204,9 @@ The v1 thresholds `b0_boiloff` and `f_boil` would need calibration;
    a sub-Neptune near its host). Confirm auto selects the warm seed,
    that it launches without the breathing-base divergence, and that the
    steady-state `Mdot` is IC-independent (rerun from a different IC and
-   compare — Salz's and Kubyshkina's stated property).
+   compare: Salz's and Kubyshkina's stated property).
 4. **Threshold scan.** Vary `b0_boiloff` around the transition and check
-   that the final steady state (not the path) is insensitive — i.e. the
+   that the final steady state (not the path) is insensitive, i.e. the
    selector affects convergence robustness/speed, not the answer.
 
 ## 6. Phased implementation plan (concrete)
@@ -219,7 +219,7 @@ read later in the main loop -- so a selector inside `set_IC` has the
 grid, the potential, `find_sonic`, and all composition globals
 available, and may still set `force_start`.
 
-### Phase A — plumbing + selector (no behavior change by default)
+### Phase A: plumbing + selector (no behavior change by default)
 
 1. `parameters.f90`: add `integer :: ic_mode = 0`
    (0 = cold, 1 = transonic, 2 = hot_parker, 3 = auto) next to the
@@ -255,7 +255,7 @@ available, and may still set `force_start`.
   (HD 209458 b-like spherical tutorial): selector must route to cold
   hydrostatic and the run must be byte-identical to the no-key run.
 
-### Phase B — behavior validation on the three regimes
+### Phase B: behavior validation on the three regimes
 
 1. **RLOF / transonic**: WASP-121b Case D (`input.inp` in `WASP-121b/`,
    r_esc = 1.20): `IC mode: auto` must select transonic
@@ -279,7 +279,7 @@ available, and may still set `force_start`.
 picks a *different* family than manual best practice must match the
 manual result in `Mdot` to <~1%.
 
-### Phase C (optional, separate decision) — retry ladder
+### Phase C (optional, separate decision): retry ladder
 
 Escalation on failure instead of prediction: if a run NaN-crashes or
 hits the stall detector with no wind launched, restart once with the
@@ -316,12 +316,12 @@ All gates run:
 
 | Gate | Setup | Result |
 |---|---|---|
-| A-1 | no new key, full regression matrix | **PASS** — byte-identical |
-| A-2 | `IC mode: cold` on wasp_full | **PASS** — byte-identical, same step count (7145) |
-| A-3 | `IC mode: auto` on spherical tutorial (HD 209458 b-like) | **PASS** — selector logs b0 = 83.2, no interior cold sonic point, routes to cold hydrostatic; `IC_dump.txt` byte-identical to the no-key run |
-| B-1 | `IC mode: auto` on WASP-121b Case D | **PASS** — interior cold sonic point at r_c = 1.297 Rp (= the L1 crossing), b0 = 35.2 -> transonic, identical to the manual key |
-| B-2 | constructed boil-off planet (0.0189 MJ / 0.446 RJ / 1100 K, spherical 10 Rp) | **routing + launch PASS, speed verdict mixed** — b0 = 8.5, r_c = 5.2 Rp (predicted 8.3 / 5.5) -> transonic; the IC starts at residual ~0.19 vs ~14 from cold (70x closer) and the wind launches (13 km/s, T ~ 5400 K). However the COLD control also launched and converged first (138k steps, level-stable, log Mdot = 11.20), while the auto run relaxed monotonically toward the same flux level from above (5.2 -> 3.2 -> toward 1.5e15) without finishing in the 50-min budget: the cold-c2 isothermal Parker profile *overestimates* the flux of this weakly-heated wind, so the transonic start must shed mass first. Tentative reading: for this mild boil-off case auto is not harmful (same attractor) but not faster either; the launch-failure regime that motivates auto is likely more extreme (lower b0 / Roche-truncated). |
-| B-3 | `IC mode: auto` on wasp_full (Roche) | **PASS at the fixed point** — auto picks transonic (r_c = 1.548 ~ L1, b0 = 49.9) and reaches the du-stop in 5876 steps vs 7145 cold (-18%). The du-stop states differ by +4.8% in flux (both with rho*v*r^2 flat only to 1-2% — the known false-convergence spread), but Newton-finishing BOTH states lands on the SAME fixed point: flux ratio 0.9996 (-0.04%), flatness 0.005% each, median profile difference 0.003%. |
+| A-1 | no new key, full regression matrix | **PASS**, byte-identical |
+| A-2 | `IC mode: cold` on wasp_full | **PASS**, byte-identical, same step count (7145) |
+| A-3 | `IC mode: auto` on spherical tutorial (HD 209458 b-like) | **PASS**, selector logs b0 = 83.2, no interior cold sonic point, routes to cold hydrostatic; `IC_dump.txt` byte-identical to the no-key run |
+| B-1 | `IC mode: auto` on WASP-121b Case D | **PASS**, interior cold sonic point at r_c = 1.297 Rp (= the L1 crossing), b0 = 35.2 -> transonic, identical to the manual key |
+| B-2 | constructed boil-off planet (0.0189 MJ / 0.446 RJ / 1100 K, spherical 10 Rp) | **routing + launch PASS, speed verdict mixed**: b0 = 8.5, r_c = 5.2 Rp (predicted 8.3 / 5.5) -> transonic; the IC starts at residual ~0.19 vs ~14 from cold (70x closer) and the wind launches (13 km/s, T ~ 5400 K). However the COLD control also launched and converged first (138k steps, level-stable, log Mdot = 11.20), while the auto run relaxed monotonically toward the same flux level from above (5.2 -> 3.2 -> toward 1.5e15) without finishing in the 50-min budget: the cold-c2 isothermal Parker profile *overestimates* the flux of this weakly-heated wind, so the transonic start must shed mass first. Tentative reading: for this mild boil-off case auto is not harmful (same attractor) but not faster either; the launch-failure regime that motivates auto is likely more extreme (lower b0 / Roche-truncated). |
+| B-3 | `IC mode: auto` on wasp_full (Roche) | **PASS at the fixed point**, auto picks transonic (r_c = 1.548 ~ L1, b0 = 49.9) and reaches the du-stop in 5876 steps vs 7145 cold (-18%). The du-stop states differ by +4.8% in flux (both with rho*v*r^2 flat only to 1-2%, the known false-convergence spread), but Newton-finishing BOTH states lands on the SAME fixed point: flux ratio 0.9996 (-0.04%), flatness 0.005% each, median profile difference 0.003%. |
 
 Two byproduct findings worth recording:
 
@@ -333,12 +333,12 @@ Two byproduct findings worth recording:
    quantitative Mdot work, finish with `Solver: Newton` (or `Resid
    tol`); do not trust bare du-stops.
 2. **The transonic IC can speed up Roche-mode runs** (-18% steps on
-   wasp_full to the du-stop) — unlike the warm seed on spherical runs
+   wasp_full to the du-stop), unlike the warm seed on spherical runs
    (no speedup, see `initial_condition_benchmark`). Plausibly because
    in Roche mode the transonic IC has the correct outflow topology from
    step 0. The effect does NOT carry over to the spherical boil-off
    test (B-2), where the cold-c2 Parker flux overshoots the true wind
-   and relaxation is slower than from cold — the speedup appears to be
+   and relaxation is slower than from cold: the speedup appears to be
    specific to cases whose steady wind is close to the cold isothermal
    transonic solution (deep-RLOF).
 
@@ -389,7 +389,7 @@ two other reference codes suggest complementary ideas worth recording:
   is the 2026-06 arrangement.* Hands-on
   result on
   HD209458b (H/He, spherical, 10 Rp): the loaded state is flux-flat *by
-  construction*, so plain marching trips the `du` stop **in 3 steps — a
+  construction*, so plain marching trips the `du` stop **in 3 steps, a
   false convergence** (the most extreme instance of the du-stop trap of
   §6.1); with `Solver: Newton` the state instead relaxes smoothly toward
   EXHALE's own attractor (flux 10.78 → 10.68 dex, spread 2.5e-4 →
@@ -399,7 +399,7 @@ two other reference codes suggest complementary ideas worth recording:
   (weakly-driven) cases, but such runs must always be Newton-finished.
   Wind-AE also showed a steady HD189733b solution exists (its BVP
   converges; the EXHALE limit cycle is likely numerics), and its
-  continuation stalls for the WASP-121b near-RLOF corner — it
+  continuation stalls for the WASP-121b near-RLOF corner: it
   complements, not replaces, the Roche-potential handling. Details:
   `code_comparison.tex` §"Wind-AE ... verified in-tree".
 
@@ -416,7 +416,7 @@ two other reference codes suggest complementary ideas worth recording:
   optionally probe `find_sonic` at the warm `c2` (as the hot-Parker IC
   already does) to decide transonic-vs-warm more sharply.
 - **Convergence is momentum-gated.** The IC benchmark showed warm seeds
-  give no step-count speedup for already-launching cases — so the payoff
+  give no step-count speedup for already-launching cases, so the payoff
   of auto is *robustness* (launching the hard cases at all), not speed
   for the easy ones. Set expectations accordingly.
 
@@ -426,7 +426,7 @@ The selector is small and low-risk: it reuses `b0` (= Λ, already
 computed) and `find_sonic` (already called) to set the existing IC flags
 automatically, defaults to the current cold-hydrostatic behavior, is
 opt-in, self-healing, and logged. The main payoff is robust launching in
-the transonic and boil-off regimes — EXHALE's weakest area — closing
+the transonic and boil-off regimes (EXHALE's weakest area), closing
 the one clear capability gap vs. Kubyshkina+2018 identified in
 `code_comparison.tex`. The deeper boil-off fix (molecular/deeper base)
 is noted as a larger, separate follow-up.

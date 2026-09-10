@@ -9,7 +9,33 @@
 
    implicit none
 
+   ! WHETHER THE STATE NOW HELD PASSED THE STATIONARY CERTIFICATION
+   ! (certification.f90). It is a verdict about the state a file carries,
+   ! written into the '# coupling:' header so that a reader of the file --
+   ! and not only a reader of the run log -- can tell a certified stationary
+   ! solution from a state that was merely written. .false. until a
+   ! certification is made, so a run that never reaches a declaration point
+   ! reports what it is: not certified.
+   logical, save :: state_is_certified = .false.
+   ! Why it is .false., where the answer is not "an equation of the inventory
+   ! refused it": a run that ends on a step cap or any other bound makes NO
+   ! stationarity claim at all, and a state written by such a run is a
+   ! relaxation snapshot. The distinction is the run state of
+   ! docs/a0_run_mode_contract_20260906.md section 2, and it is written into
+   ! the header so that a reader of the file can tell the two apart. Empty
+   ! for a certified state and for a refusal on the entries themselves.
+   character(len=32), save :: state_certification_reason = ''
+
 	contains
+
+   subroutine set_state_certified(flag, reason)
+   ! Set by the certification contexts alone (certification.f90); every other
+   ! reader takes it.
+   logical,          intent(in) :: flag
+   character(len=*), intent(in) :: reason
+   state_is_certified         = flag
+   state_certification_reason = reason
+   end subroutine set_state_certified
 
 
    ! ------------------------------------------------------------------ !
@@ -22,7 +48,7 @@
    ! including them in a flux-spread or a residual measure doubles it (the
    ! accepted flux spread of the HD 189733 b solve is 4.64e-3 over the
    ! physical cells and 1.05e-2 with the two upper ghost rows counted,
-   ! section 133.6 of docs/Update_EXHALE.md).  A reader that does not know
+   ! section 133.6 of docs/Update_EXHALE_stage1.md).  A reader that does not know
    ! this silently averages two rows of boundary data into every profile.
    !
    ! It was written by Hydro_ioniz(_adv).txt alone, which made it a property
@@ -178,8 +204,11 @@
    ! It is a '#' comment, so no numeric parse and no golden changes: the
    ! regression compares with grep -v '^ *#'.
       integer, intent(in) :: unit
-      character(len=1) :: s
+      character(len=1) :: s, c
+      character(len=48) :: why
       character(len=16) :: ptr
+      character(len=64) :: mtok
+      character(len=32) :: tbuf
       s = 'F';  if (sec_ion_active) s = 'T'
       ! iontrans: the state in this file was produced with the hydrogen
       ! ionization state CARRIED (Ionization transport), so its H+ column is a
@@ -190,11 +219,36 @@
       ! file a run without it produces is unchanged, byte for byte.
       ptr = ''
       if (ionization_transport) ptr = ' iontrans=T'
-      write(unit,'(A,A1,A,I0,A,A,A)')                                     &
+      ! certified: the stationary certification of A2 was made on this state
+      ! and every active equation it could evaluate was within its tolerance,
+      ! none of them was unavailable, no cell of the state was without a
+      ! chemical root, and no unbudgeted accepted correction stands in its
+      ! history. F is the honest answer for a state no certification was made
+      ! on at all, which is what a run that stops on du reports.
+      c = 'F';  if (state_is_certified) c = 'T'
+      why = ''
+      if (len_trim(state_certification_reason) .gt. 0)                    &
+         why = ' cert_reason='//trim(state_certification_reason)
+      ! mode / t_phys: WHICH OF THE THREE RUN STATES PRODUCED THIS STATE
+      ! (docs/a0_run_mode_contract_20260906.md sections 2 and 5). A state
+      ! written by an initialization or continuation run is a relaxation
+      ! snapshot: it has no elapsed time and none is written for it, so a
+      ! restart cannot invent one. A state written by a physical integration
+      ! carries the time it was reached at, in seconds, as the sum of the
+      ! global dt of the accepted steps behind it -- which is what makes a
+      ! continuation of that trajectory possible at all.
+      if (run_mode .eq. run_mode_phys) then
+         write(tbuf,'(ES23.16)') t_phys
+         mtok = ' mode=phys t_phys='//trim(adjustl(tbuf))
+      else
+         mtok = ' mode=init'
+      endif
+      write(unit,'(A,A1,A,I0,A,A,A,A,A1,A,A)')                            &
            '# coupling: sec_ion=', s,                                     &
            ' sec_ion_step=', sec_ion_armed_step,                          &
            ' recon=', trim(reconstruction_operator_label()),              &
-           trim(ptr)
+           trim(ptr),                                                     &
+           ' certified=', c, trim(why), trim(mtok)
    end subroutine write_coupling_state_header
 	! ------------------------------------------------------!
 
@@ -377,12 +431,12 @@
 	! the old factored 4.0*(nhei+...) form (a golden re-snapshot decision,
 	! section 5.3 Inc 1).  The optional nm adds the metal mass (melem_A per
 	! nucleus, all stages) when the eos_metals policy is on.  (HeH+ carries
-	! 5 m_H: its He nucleus is NOT in the nhei..nheiii free-He arrays.)
+	! 4.9715 m_H: its He nucleus is NOT in the nhei..nheiii free-He arrays.)
 	! The He 2^3S column is NOT an argument: it is an excited level of He I
-	! (bsp_is_excited_level), so its 4 m_H are already the He I atom's mass
+	! (bsp_is_excited_level), so its 3.9715 m_H are already the He I atom's mass
 	! counted through nhei, and adding it put the triplet mass in rho twice.
-	! The optional nox adds the oxygen-chemistry carriers OH (16.999 m_H),
-	! H2O (17.999) and CO (28.010).  Those weights are the H mass plus the
+	! The optional nox adds the oxygen-chemistry carriers OH (16.875 m_H),
+	! H2O (17.875) and CO (27.793).  Those weights are the H mass plus the
 	! metal block's own melem_A, and the oxygen and carbon they carry have
 	! been removed from nm by the ionization solve, so the mass per nucleus
 	! is the same either way and none of it is counted twice.
@@ -413,7 +467,7 @@
 		enddo
 	endif
 
-	! Molecular mass (bsp 7..10): H2/H2+ = 2, H3+ = 3, HeH+ = 5 m_H.
+	! Molecular mass (bsp 7..10): H2/H2+ = 2, H3+ = 3, HeH+ = 4.9715 m_H.
 	if (present(nmol)) then
 		call accum(nmol(:,1), bsp_mass(7))     ! H2   (bsp 7)
 		call accum(nmol(:,2), bsp_mass(8))     ! H2+  (bsp 8)
@@ -536,12 +590,127 @@
 
 	! ------------------------------------------------------!
 
+	! (1 - exp(-d))/d, the fraction of the photons entering a cell that the
+	! cell absorbs, per unit of its own optical depth d.  This is the ONLY
+	! definition of that quantity: the XUV beam takes it through
+	! cell_mean_attenuation below, and the FUV bands take it from here for
+	! the H2O and OH rates (water_photolysis.f90).
+	!
+	! THE SERIES BRANCH AND ITS SWITCH POINT.  The closed form subtracts two
+	! numbers that approach each other as d -> 0, so its relative error is
+	! about eps/d with eps = 2.2e-16 the double-precision round-off: it is
+	! 1e-8 just above the switch point and falls as d grows.  The Taylor
+	! series 1 - d/2 + d^2/6 truncates at d^3/24 in relative terms, i.e.
+	! 4e-25 at d = 1e-8, and is used below that.  The largest relative error
+	! of the pair is therefore about 1e-8, attained on the closed-form side
+	! of the switch, and the value there is 1 to within that; the rates that
+	! consume it are set by cross sections known to a few per cent.
+	! (src/tests/physics_probe/absorbed_fraction_switch.f90 measures the
+	! bound against a quadruple-precision reference.)
+	elemental double precision function absorbed_fraction_per_unit_depth(d) &
+	                                   result(fr)
+	real*8, intent(in) :: d
+	if (d .le. 0.0d0) then
+		fr = 1.0d0
+	else if (d .lt. 1.0d-8) then
+		fr = 1.0d0 - 0.5d0*d + d*d/6.0d0
+	else
+		fr = (1.0d0 - exp(-d))/d
+	endif
+	end function absorbed_fraction_per_unit_depth
+
+	! ------------------------------------------------------!
+
+	! MEAN over one cell of the attenuation of the stellar beam, for a beam
+	! whose optical depth is tau_out at the cell's star-ward face and
+	! tau_out + dtau at its inner face.  This is the field the RATE of the
+	! cell sees.
+	!
+	! WHY A MEAN AND NOT A FACE VALUE.  calc_column_dens* accumulate from the
+	! top down, so N(j) already holds the WHOLE of cell j and the depth built
+	! from it is the depth at that cell's INNER face.  The photoionization and
+	! photoheating rates of the cell are what a particle experiences anywhere
+	! inside it, averaged over it, and the beam falls across the cell by
+	! exactly that cell's own optical depth.  A one-point rule at the inner
+	! face is low by dtau/2 to first order, in one direction at every cell,
+	! and by 42 per cent at dtau = 1, which is what a cell carries at the
+	! ionization front.  The H2O and OH rates (water_photolysis.f90 sec. 3,
+	! where the one-point rule was measured 30 per cent low in the Ly-alpha
+	! band) and the Lyman-Werner rate (lyman_werner.f90) of the FUV beam
+	! already take this mean; this is the same discretization for the XUV
+	! beam and its absorbers.
+	!
+	! THE IDENTITY.  Inside a cell the absorber densities are uniform, which
+	! is the rectangle rule the column integration itself uses, so the depth
+	! runs linearly across the cell, tau(s) = tau_out + s dtau, and for the
+	! pure exponential field
+	!
+	!   <exp(-tau)> = int_0^1 exp(-tau_out - s dtau) ds
+	!               = exp(-tau_out) (1 - exp(-dtau))/dtau ,
+	!
+	! exact for a piecewise-constant absorber density at any grid spacing.
+	! Multiplied by the cell's own dtau and summed over the column it
+	! telescopes to 1 - exp(-tau_total): the photons the cells absorb are the
+	! photons the beam loses, cell by cell and over the whole column.  The
+	! inner-face rule satisfies neither statement.
+	!
+	! THE 2D RATE CORRECTION.  With a_tau > 0 the field carries the further
+	! factor 1/(1 + a_tau tau), the geometry approximation selected by
+	! appx_mth (parameters.f90), which is not exponential in the column, so
+	! the product has no closed form.  The mean is then taken by composite
+	! three-point Gauss-Legendre in the depth across the cell, on segments at
+	! most seg_dtau wide; the rule is exact for polynomials of degree five, and
+	! its error on a segment of width h is h^7 f^(6)/2016000, i.e. a relative
+	! truncation of h^6/2016000, which is 1.2e-10 at seg_dtau = 0.25.
+	! a_tau = 0, the default and the only value for which the field is the
+	! pure exponential, takes the closed form above.
+	elemental double precision function cell_mean_attenuation(tau_out, dtau) &
+	                                   result(f)
+	real*8, intent(in) :: tau_out, dtau
+	! Three-point Gauss-Legendre on [0,1]: nodes (1 -+ sqrt(3/5))/2 and 1/2,
+	! weights 5/18, 8/18, 5/18.
+	integer, parameter :: n_gl = 3
+	real*8, parameter :: gl_s(n_gl) = (/ 0.1127016653792583d0,             &
+	                                     0.5d0,                            &
+	                                     0.8872983346207417d0 /)
+	real*8, parameter :: gl_w(n_gl) = (/ 5.0d0/18.0d0, 8.0d0/18.0d0,       &
+	                                     5.0d0/18.0d0 /)
+	real*8, parameter  :: seg_dtau  = 0.25d0
+	integer, parameter :: nseg_max  = 256
+	real*8  :: tau_face, dt, ds, s_lo, tau_s, acc
+	integer :: nseg, i, g
+
+	tau_face = max(tau_out, 0.0d0)
+	dt       = max(dtau,    0.0d0)
+
+	if (a_tau .le. 0.0d0) then
+		f = exp(-tau_face)*absorbed_fraction_per_unit_depth(dt)
+		return
+	endif
+
+	nseg = min(max(int(dt/seg_dtau) + 1, 1), nseg_max)
+	ds   = 1.0d0/dble(nseg)
+	acc  = 0.0d0
+	do i = 0,nseg-1
+		s_lo = dble(i)*ds
+		do g = 1,n_gl
+			tau_s = tau_face + (s_lo + gl_s(g)*ds)*dt
+			acc   = acc + gl_w(g)*ds*exp(-tau_s)/(1.0d0 + a_tau*tau_s)
+		enddo
+	enddo
+	f = acc
+
+	end function cell_mean_attenuation
+
+	! ------------------------------------------------------!
+
 	subroutine calc_mmw(nh,nhe,ne,mmw,nm)
 	! Calculate the mean molecular weight for a certain ionization profile.
 	! The H/He nucleus masses come from the species_table metadata
-	! (bsp_mass(1) = HI = 1, bsp_mass(3) = HeI = 4 in m_H units — for the
-	! atomic species the bsp position equals the f_sp column), reproducing
-	! the old literals bitwise. The optional nm adds the metal mass and
+	! (bsp_mass(1) = HI = 1, bsp_mass(3) = HeI = 3.9715259 in m_H units; for
+	! the atomic species the bsp position equals the f_sp column), so this
+	! diagnostic weighs a helium atom exactly as calc_rho does.
+	! The optional nm adds the metal mass and
 	! metal nuclei under the same eos_metals policy as calc_rho/calc_ntot,
 	! so the post-process temperature solve uses the same composition as
 	! the main loop (the metal mass raises mmw by ~1%; omitting nm keeps

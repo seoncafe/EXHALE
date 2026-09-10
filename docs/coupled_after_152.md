@@ -324,7 +324,7 @@ unisolated candidate, the **base inflow Dirichlet**. Every coupled hand-off in
 this campaign starts from a marched state, so that mismatch is upstream of the
 solver. **Isolate the base inflow Dirichlet first; re-measure 153 second.**
 
-> **Corrected 2026-09-04, `Update_EXHALE.md` section 158.** The recommendation
+> **Corrected 2026-09-04, `Update_EXHALE_stage1.md` section 158.** The recommendation
 > above was right about the order -- the operator before the step control --
 > and wrong about what the operator defect was. The two paths do **not**
 > construct the base inflow condition differently: they call the same assembly

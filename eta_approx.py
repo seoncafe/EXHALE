@@ -1,6 +1,21 @@
 import numpy as np
 import matplotlib.pyplot as plt
 
+# The Jupiter radius is defined once, in examples/exhale_io.py (RJ_CM), and
+# imported rather than written down again, so that this tool and the run it
+# analyses mean one planet by `Planet radius [R_J]`.  `__file__` is absent
+# under exec(), hence the guard.
+import os
+import sys
+try:
+    _HERE = os.path.dirname(os.path.realpath(__file__))
+except NameError:
+    _HERE = os.getcwd()
+_EXAMPLES_DIR = os.path.join(_HERE, 'examples')
+if _EXAMPLES_DIR not in sys.path:
+    sys.path.append(_EXAMPLES_DIR)
+from exhale_io import RJ_CM                                # noqa: E402
+
 
 #--------------------------------------------------------------
 
@@ -49,7 +64,7 @@ def etaeff(Frho,Kphi):
 # Physical constants
 
 MJ   = 1.898e30           # Jupiter mass (g)
-RJ   = 6.9911e9           # Jupiter radius (cm) 
+RJ   = RJ_CM              # Jupiter radius (cm), see the import above
 AU   = 1.495978707e13     # Astronomical unit (cm)
 Msun = 1.989e33           # Sun mass (g)
 Gc   = 6.67430e-8         # Gravitational constant (CODATA 2018)

@@ -50,7 +50,13 @@
       real*8 :: h2_line_dE(n_h2_line), h2_line_A(n_h2_line)
       real*8 :: h2_line_Tu(n_h2_line), h2_line_gu(n_h2_line)
 
-      integer :: i
+      ! Implied-do index of the data statements below, and nothing else.
+      ! PRIVATE: the module is otherwise public and molecular_infrared_cooling
+      ! uses it without an only: list, so a public "i" would be in scope in
+      ! every routine there -- a shared, saved integer that implicit none
+      ! cannot catch as an undeclared loop index and that the OpenMP cell
+      ! sweep would write from several threads.
+      integer, private :: i
 
       data (mir_T(i), i = 1, 34) /  &
            5.000000000000000d+01,  1.000000000000000d+02,  1.250000000000000d+02,  1.500000000000000d+02,  1.750000000000000d+02,  &

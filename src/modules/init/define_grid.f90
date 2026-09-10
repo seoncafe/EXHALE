@@ -19,7 +19,9 @@
       real*8 :: drc
       real*8 :: x0,x1
       real*8 :: f,df
-      real*8 :: tol = 1.0
+      real*8 :: tol   ! Newton convergence measure of the stretch factor;
+                      ! reset before each search (an initializer here would
+                      ! imply SAVE and skip the loop on every later call)
       real*8 :: q
       real*8 :: dr
 
@@ -96,7 +98,8 @@
          ! Initial guess
          x0 = 1.01
          
-         do while(tol.ge.(1.0e-8))
+         tol = 1.0d0
+         do while(tol.ge.(1.0d-8))
                
             ! Evaluate function and its derivative
             
@@ -148,10 +151,20 @@
       r_edg(N+Ng) = 2.0*r_edg(N+Ng-1) - r_edg(N+Ng-2)
       
       !--- Cell dimensions r_{j+1/2} - r_{j-1/2} --- !
-      ! Cell size (N+2*Ng points) - dr(j) = dimension of cell j
-      dr_j(2-Ng:N+Ng-1) = r_edg(3-Ng:N+Ng) - r_edg(2-Ng:N+Ng-1)
+      ! The width stored for cell j is the distance between the two faces of
+      ! THAT cell,  dr_j(j) = r_edg(j) - r_edg(j-1),  with r_edg(j) = r_{j+1/2}.
+      ! This is an exact identity of the finite-volume discretization, not an
+      ! approximation: it is the same face pair RK_rhs takes for cell j to form
+      ! the volume dV = (r_edg(j)^3 - r_edg(j-1)^3)/3, the same pair Source
+      ! divides (Gphi_i(j) - Gphi_i(j-1)) by to get the gravity of cell j, and
+      ! the same width the column integrals n(j)*dr_j(j) and the cell optical
+      ! depths use with the cell-centred densities. Tested to round-off by
+      ! src/tests/grid_and_gates/grid_width_identity.f90; specification in
+      ! docs/development_plan_20260905_rev3.md section 10.1 item 1.
+      ! r_edg(-Ng) lies outside the array, so the innermost ghost takes the
+      ! width of its neighbour.
+      dr_j(2-Ng:N+Ng) = r_edg(2-Ng:N+Ng) - r_edg(1-Ng:N+Ng-1)
       dr_j(1-Ng) = dr_j(2-Ng)
-      dr_j(N+Ng) = dr_j(N+Ng-1)
       
       
       ! Do a smoothing of the mixed-type grid
@@ -160,6 +173,10 @@
       ! 50 when N_low itself was hardcoded to 50).
       if (grid_type .eq. 'Mixed') then
 
+         ! The pass below smooths the widths and then rebuilds the centres
+         ! from them as r(j) = r(j-1) + (dr_j(j) + dr_j(j-1))/2, i.e. half of
+         ! cell j-1 plus half of cell j: it reads dr_j(j) as the width of
+         ! cell j, which is what the definition above stores.
          do j = N_low,2-Ng,-1
             dr_j(j) = 0.25*(dr_j(j-1) + 2.0*dr_j(j) + dr_j(j+1))
          enddo
@@ -181,10 +198,10 @@
          r_edg(N+Ng) = 2.0*r_edg(N+Ng-1) - r_edg(N+Ng-2)
 		
          !--- Cell dimensions r_{j+1/2} - r_{j-1/2} --- !
-         ! Cell size (N+2*Ng points) - dr(j) = dimension of cell j
-         dr_j(2-Ng:N+Ng-1) = r_edg(3-Ng:N+Ng) - r_edg(2-Ng:N+Ng-1)
+         ! Same identity as above: dr_j(j) = r_edg(j) - r_edg(j-1) is the
+         ! width of cell j itself, the innermost ghost taking its neighbour's.
+         dr_j(2-Ng:N+Ng) = r_edg(2-Ng:N+Ng) - r_edg(1-Ng:N+Ng-1)
          dr_j(1-Ng) = dr_j(2-Ng)
-         dr_j(N+Ng) = dr_j(N+Ng-1)
    
       endif
 
@@ -221,6 +238,12 @@
          write(*,'(A,F6.3,A)') '        ', 1.0d0+0.5d0*(r_max-1.0d0),        &
                     ' R_p). Set a smaller "Escape radius [R_p]:" in input.inp.'
       endif
+      ! The window is a range of PHYSICAL cells, so its first index is cell 1
+      ! even when the escape radius sits at or below the base: the ghosts
+      ! (1-Ng .. 0) carry the boundary closure, not a solution, and a spread
+      ! taken over them is not a property of the wind. Same clamp as j_flux
+      ! below.
+      j_min = max(j_min, 1)
 
 
       ! Inner edge of the FLUX window: first cell with r >= r_flux, over which
@@ -245,6 +268,19 @@
 
       ! End of subroutine
       end subroutine define_grid
+
+      ! ---------------------------------------------------------------- !
+
+      ! Index of the cell whose center lies nearest a given radius [R_p].
+      ! minloc counts positions from 1 whatever the declared lower bound of
+      ! the array is, while the grid arrays are declared 1-Ng:N+Ng, so the
+      ! position it returns becomes a subscript of r only through the lbound
+      ! offset. Written once here so that every caller asking "which cell is
+      ! at radius x" gets the same answer.
+      integer function cell_nearest_radius(r_target) result(j_near)
+      real*8, intent(in) :: r_target
+      j_near = minloc(abs(r - r_target), dim = 1) + lbound(r,1) - 1
+      end function cell_nearest_radius
       
       ! End of module
       end module grid_construction

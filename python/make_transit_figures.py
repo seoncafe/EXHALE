@@ -27,7 +27,7 @@ regenerates them by invoking that post-processor on each run directory, which
 writes the canonical tpm_<line>.txt set there; without --run it loads whatever
 tpm files are already present.
 
-STALE (P48; Update_EXHALE section 137): the tpm_*.txt files sitting in the four
+STALE (P48; Update_EXHALE_stage1 section 137): the tpm_*.txt files sitting in the four
 planet folders, and paper/fig_transit_{He10830,Halpha,Lya}.pdf drawn from them,
 were made while EXHALE_transit.py read the profile files' GHOST rows as
 solution cells.  It no longer does, so --run moves the depths by 0.2-3.8 per

@@ -10,11 +10,22 @@
       implicit none
 
       ! astronomical constants (cgs)
+      ! MJ, RJ and MSUN multiply the same `Planet mass [M_J]`, `Planet
+      ! radius [R_J]` and `Parent star mass [M_sun]` lines that input_read
+      ! multiplies, so one input file must name one planet and one star.
+      ! Their DEFINITION is global_parameters (src/modules/init/parameters.f90),
+      ! the IAU 2015 nominal values; they are repeated here because this
+      ! module is compiled into the standalone wind_ae_ic.x, which carries
+      ! none of the EXHALE globals. Keep the three numbers equal to that
+      ! module's (src/tests/physics_probe/atomic_mass_and_radius_constants.f90
+      ! asserts it).
       real*8, parameter :: MJ   = 1.8982d30
       real*8, parameter :: RJ   = 7.1492d9
       real*8, parameter :: MSUN = 1.98842d33
       real*8, parameter :: RSUN = 6.957d10
-      real*8, parameter :: AU   = 1.49598d13
+      ! Astronomical unit [cm], the IAU 2012 exact definition
+      ! 1 au = 1.495978707e11 m, equal to global_parameters AU.
+      real*8, parameter :: AU   = 1.495978707d13
       real*8, parameter :: SIGSB = 5.6705d-5
       real*8, parameter :: PIc  = 3.141592653589793d0
 
@@ -31,6 +42,7 @@
       character(len=1024) :: line, val
       integer :: u, ios
       real*8  :: MpMJ, RpRJ, MsMsun, aAU
+      real*8  :: mHe_over_mH
       MpMJ=0; RpRJ=0; MsMsun=0; aAU=0
       open(newunit=u, file=fname, status='old', action='read')
       do
@@ -68,13 +80,19 @@
       else
          wae_par%Lstar = 0.0d0   ! bolo terms negligible in the wind
       end if
-      ! composition: He/H number ratio -> H/He mass fractions
-      wae_par%HX(1) = 1.0d0/(1.0d0 + 4.0d0*exh_HeH)
-      wae_par%HX(2) = 4.0d0*exh_HeH/(1.0d0 + 4.0d0*exh_HeH)
-      ! CODATA H-atom and He-atom masses; wind-ae originally passed
+      ! CODATA H-atom and He-atom masses (g); wind-ae originally passed
       ! 1.6733d-24 and 6.6464790722d-24 here.
       wae_par%atomic_mass(1) = 1.67353284d-24
       wae_par%atomic_mass(2) = 6.6464790722d-24
+      ! Composition: He/H NUMBER ratio -> H/He MASS fractions. Wind-AE forms
+      ! every number density as n_j = rho HX(j)/atomic_mass(j) (wae_soe.f90
+      ! 138, 166, 216; wae_glq_rates.f90 67), so the number ratio it solves
+      ! at is (HX(2)/m_He)/(HX(1)/m_H). Converting with the same mass ratio
+      ! the solver is handed just above makes that ratio equal exh_HeH
+      ! exactly, for any He/H.
+      mHe_over_mH   = wae_par%atomic_mass(2)/wae_par%atomic_mass(1)
+      wae_par%HX(1) = 1.0d0/(1.0d0 + mHe_over_mH*exh_HeH)
+      wae_par%HX(2) = mHe_over_mH*exh_HeH/(1.0d0 + mHe_over_mH*exh_HeH)
       wae_par%species(1) = 'HI'
       wae_par%species(2) = 'HeI'
       wae_par%Z(1) = 1; wae_par%Z(2) = 2

@@ -57,7 +57,7 @@ decide first:
 
 ## 2. The six gates: dates, reach, and measured size
 
-Dates are the section headings of `Update_EXHALE.md`. "Reach" is which runs
+Dates are the section headings of `Update_EXHALE_stage1.md`. "Reach" is which runs
 the change can touch at all; a run outside the reach needs no re-solve on
 that account.
 
@@ -475,7 +475,7 @@ recorded so they are not discovered mid-campaign.
 
 ## 9. Addendum 2026-09-03: a seventh reason, and it is not a vintage
 
-**stale: computed with ghost rows included (P48, Update_EXHALE section 137);
+**stale: computed with ghost rows included (P48, Update_EXHALE_stage1 section 137);
 depths move 0.2-3.8%; regeneration awaits instruction.**
 
 The six gates above are physics changes that a re-convergence would answer.

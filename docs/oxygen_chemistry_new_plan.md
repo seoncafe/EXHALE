@@ -16,9 +16,9 @@ in `TO_BE_DONE.md`) remains a user decision deferred until after the paper.
 
 The two problems, unchanged from the options document:
 
-- **Problem A — the neutral base.** The H2-to-H partition near 1 microbar is
+- **Problem A: the neutral base.** The H2-to-H partition near 1 microbar is
   set by catalytic cycles on O, OH and H2O that EXHALE has no species for.
-- **Problem B — atomic oxygen in the ionized wind.** O I/II/III are already
+- **Problem B: atomic oxygen in the ionized wind.** O I/II/III are already
   solved, cooled and charge-exchanged; what is missing is the observable (an
   O I transit line) and a few completeness questions.
 
@@ -54,7 +54,7 @@ machine (checked 2026-08-19 in the previous session).
 section "Phase P1"): the 7.2x is unchanged as a total but splits into
 domain 1.07 / network 3.95 / code 1.70, not 4.0 / 1.8; Photochem *does* import,
 from the dedicated conda environment built for the 2026-08-09
-comparison — the 2026-08-19 check had used the default interpreter. The 7.2x is
+comparison: the 2026-08-19 check had used the default interpreter. The 7.2x is
 also specific to HD 189733 b's 864 K base: on HD 209458 b's 2331 K base the
 same three arms agree to 1.02x (network) and 1.08x (code).
 
@@ -62,9 +62,9 @@ same three arms agree to 1.02x (network) and 1.08x (code).
 
 ## 2. Options, restated with the review's corrections folded in
 
-### Problem A — the base partition
+### Problem A: the base partition
 
-**A0 — external photochemical EOS anchor (the status quo, renamed).**
+**A0: external photochemical EOS anchor (the status quo, renamed).**
 What it actually does: a photochemical H2 mixing ratio sets the base particle
 count and pressure normalization. What it does not do: pin H2 at the boundary,
 transport H2, or seed the H2 profile. Defensible in a paper only if stated in
@@ -73,7 +73,7 @@ overstated it. A small, separable improvement: use `q_H2_base` also as the
 base-cell H2 seed in `set_IC`, documented explicitly as an initial guess, not
 a constraint.
 
-**A1 — widen the handoff, in three layers with separate semantics.**
+**A1: widen the handoff, in three layers with separate semantics.**
 - **A1a, provenance:** record which code, which reaction network (name and
   hash), and which profile produced the `base.inp` values, as machine-readable
   keys echoed by the setup report and the output header. Today this provenance
@@ -92,13 +92,13 @@ a constraint.
 The Tier-3 `base.inp` sketch in `lower_atmosphere_coupling.md` remains the
 ancestor of A1b; A1a is new, prompted by the review.
 
-**A2 — in-code catalytic chemistry, as a single-owner C/H/O element-budget
+**A2: in-code catalytic chemistry, as a single-owner C/H/O element-budget
 extension.** Not "add two species". The review's inventory is adopted as the
 definition of A2's scope:
 
 - one total-oxygen closure `n_O,tot = n(O) + n(O+) + n(O++) + n(OH) + n(H2O)`,
   with the metal block's O I remainder redefined to exclude oxygen bound in
-  molecules — never a second oxygen reservoir;
+  molecules: never a second oxygen reservoir;
 - H nuclei bookkeeping (one per OH, two per H2O) against the H budget;
 - reactions that connect the water family back to atomic O. The conservation
   skeleton to be audited at reaction level before any coding:
@@ -135,14 +135,14 @@ ever combined; the review named `species_diffusion.f90`, which was deleted on
 The existing merged molecular+metal residual is the right starting point; its
 element bookkeeping is generalized, not replaced.
 
-**A3 — reduced C/H/O photochemical network in-code.** Deprioritized, and for a
+**A3: reduced C/H/O photochemical network in-code.** Deprioritized, and for a
 sharper reason than cost: EXHALE's chemistry is a local algebraic steady state,
 while VULCAN/Photochem are kinetics-with-transport models. Growing the residual
 to 15-25 species without transport produces a large local-equilibrium solve,
 not a small VULCAN. Only worth revisiting if removing the external dependency
 becomes a science requirement in itself.
 
-**A4 — two-way offline iteration.** Possible in principle, but the feedback
+**A4: two-way offline iteration.** Possible in principle, but the feedback
 variables do not exist yet: the current handoff is an EOS anchor in one
 direction, with no reverse species-flux schema and no defined overlap region
 in which both models are valid. The interface physics (what EXHALE returns:
@@ -150,16 +150,16 @@ upper-boundary species fluxes, escape flux, attenuated irradiation; what the
 lower model accepts) must be specified before a driver is written. Does not
 close item (H); it makes the imposed number self-consistent, not computed.
 
-### Problem B — oxygen in the wind
+### Problem B: oxygen in the wind
 
-**B1 — the O I 1302/1304/1306 triplet in the transit tool.** Still the item
+**B1: the O I 1302/1304/1306 triplet in the transit tool.** Still the item
 with the highest scientific return (the Vidal-Madjar et al. 2004 detection on
 HD 209458 b, a planet already in the paper set), but it is not a line-list
 change. The three components start from the three fine-structure levels of the
 O I ground term, and the transit tool only has total O I; applying the total
 to all three lines would count the same atoms three times. Required sequence:
 
-1. an O I ground-term level-population helper — preferably exporting the same
+1. an O I ground-term level-population helper: preferably exporting the same
    three-level statistical equilibrium the cooling already solves (as a
    function of T, n_e, n_HI and the trapped radiation field), with a
    documented Boltzmann partition acceptable as a first stage;
@@ -170,7 +170,7 @@ to all three lines would count the same atoms three times. Required sequence:
 4. the Ly-beta pumping question (O I 1025.76 A near H Ly-beta) checked in the
    literature before any agreement is quoted.
 
-**B2 — redefined from an audit to a sensitivity question.** The Table 4 audit
+**B2: redefined from an audit to a sensitivity question.** The Table 4 audit
 the options document proposed is already done: the code carries both directions
 of all three oxygen pairs, Table 4 contains no O2+ reaction, and the removal of
 the Kingdon-Ferland `O2+ + H` term is recorded with its reasoning. The open
@@ -180,13 +180,13 @@ temperatures and ion fractions, and if so, which modern source and which
 detailed-balance policy. A bounding estimate or a rate-injection experiment
 answers it.
 
-**B3 — cooling.** Complete as far as measured (the CNO CHIANTI swap moved Mdot
+**B3: cooling.** Complete as far as measured (the CNO CHIANTI swap moved Mdot
 by 0.004 %). The shared deliverable with B1 is the level-population helper: if
 Ly-beta pumping is ever added, cooling and transit must consume the same
 populations, which is exactly why the helper should be one exported field
 rather than two private calculations.
 
-**B4 — oxygen diffusion.** Runnable today with `He_diffusion` +
+**B4: oxygen diffusion.** Runnable today with `He_diffusion` +
 `He_metal_diffusion` in an atomic run only (the parser forbids the molecular
 combination). One numerical experiment shows whether O separates from H enough
 to matter for B1. After A2, oxygen in OH/H2O would have to join the same
@@ -225,7 +225,7 @@ Left open, for the user (unchanged from the handoff's B list):
 
 ### 4.1 Where this ranks among everything open
 
-Ranked by the project's acceptance criterion — physical correctness — across
+Ranked by the project's acceptance criterion (physical correctness) across
 all items in the 2026-08-19 handoff:
 
 1. **Item (G), the missing continuum IR coupling, ranks first**, above this
@@ -237,11 +237,11 @@ all items in the 2026-08-19 handoff:
    H2 -> H front is a property of the model, not a prediction. The
    `Base IR field` closure fixed only the existing line coolants; past the
    front there are no molecular coolants left to hand a field to.
-2. **Item (H), this plan's subject, ranks second — as an unbounded
+2. **Item (H), this plan's subject, ranks second: as an unbounded
    uncertainty rather than a known error.** No term is wrong; the base
    composition is an assumption, and the assumption's input moves by 7.2x in
    `q_H` with the choice of reaction network, reaching the wind through
-   `ntot_bc`. How much of that reaches Mdot is unmeasured — measuring it is
+   `ntot_bc`. How much of that reaches Mdot is unmeasured: measuring it is
    phase P1.
 3. **The two are one weakness seen from two sides.** Both live in the
    molecular layer between the 1 microbar base and the H2 -> H front: (G) is
@@ -249,11 +249,11 @@ all items in the 2026-08-19 handoff:
    each other (the equilibrium H2 fraction depends on T; the coolant
    inventory depends on composition), so closing either alone does not make
    the layer a prediction. A decision to go past P4 into A2 should be taken
-   knowing that (G) is the other half of the same commitment — while noting
+   knowing that (G) is the other half of the same commitment, while noting
    that A2's radiation work is FUV (photolysis) and (G)'s is thermal IR:
    different spectral regions, different code, one region of the atmosphere.
 
-Caveats: this ranking is by physics, not by paper impact — the current paper's
+Caveats: this ranking is by physics, not by paper impact, the current paper's
 four planets run atomic-base configurations that carry neither the collapsed
 layer nor the imposed partition, which is why both items could be deferred.
 And (G)'s H2 CIA component is already decided out of the paper's scope by the
@@ -266,19 +266,19 @@ passages were read, not the full papers):
 
 | Reference | What it treats |
 |---|---|
-| Koskinen et al. 2013a (Icarus 226, 1678) | **Both problems, on HD 209458 b.** States "the dissociation of H2 is caused by dissociation of H2O" with the H2/H transition near 1 microbar — the Problem-A mechanism of section 2.2, already modeled — and includes H3+, CO, H2O and CH4 as "strong infrared coolants", the (G) physics. The paper-level original of what A2 plus a (G) fix would build; also the ancestor of the Tier design (Koskinen et al. 2022 supplies Tier 1 and the `mol_rates` table). |
-| Lavvas et al. 2014 (ApJ 796, 15) | The catalytic-destruction and atomic-metal-release context cited by `lower_atmosphere_coupling.md` — the physical basis for A1b's metal abundances. Its transit opacities include H2 CIA and H2O. |
-| Lavvas & Arfaux 2021 (MNRAS 502, 5643) | Middle-atmosphere thermal structure with CIA in the radiative transfer; notes CIA becomes significant at p > 1 bar — a literature anchor for keeping CIA out of the >= 1 microbar EXHALE domain. |
-| Wogan et al. 2025 (PSJ 6, 256) | The Photochem code paper ("a general chemical and climate model") — the methods source for phase P1's external arm. |
-| Robeling et al. 2026 (Kompot) | **The code-level analog of the (G) physics**: a 1-D self-consistent thermo-chemical upper-atmosphere model (Jupiter as an exoplanet analogue) carrying H2-H2 and H2-He CIA (Abel et al. 2011) plus H2O/CO/CO2/CH4 opacities in the radiative budget — what EXHALE cannot do below the front. |
-| Johnstone et al. 2018 (A&A 617, A107) | Same code lineage; molecular IR cooling (CO2, NO) controlling thermospheric structure in terrestrial atmospheres — the same physics class as (G). |
-| Miller et al. 2013 | The H3+ cooling function — already in EXHALE (`h3p_cooling.f90`). |
-| Huang et al. 2023 | **Does not carry this physics**: an atomic domain with the 1 microbar base imposed — the shape EXHALE inherited, and the reason item (H) exists. |
+| Koskinen et al. 2013a (Icarus 226, 1678) | **Both problems, on HD 209458 b.** States "the dissociation of H2 is caused by dissociation of H2O" with the H2/H transition near 1 microbar (the Problem-A mechanism of section 2.2, already modeled) and includes H3+, CO, H2O and CH4 as "strong infrared coolants", the (G) physics. The paper-level original of what A2 plus a (G) fix would build; also the ancestor of the Tier design (Koskinen et al. 2022 supplies Tier 1 and the `mol_rates` table). |
+| Lavvas et al. 2014 (ApJ 796, 15) | The catalytic-destruction and atomic-metal-release context cited by `lower_atmosphere_coupling.md`, the physical basis for A1b's metal abundances. Its transit opacities include H2 CIA and H2O. |
+| Lavvas & Arfaux 2021 (MNRAS 502, 5643) | Middle-atmosphere thermal structure with CIA in the radiative transfer; notes CIA becomes significant at p > 1 bar: a literature anchor for keeping CIA out of the >= 1 microbar EXHALE domain. |
+| Wogan et al. 2025 (PSJ 6, 256) | The Photochem code paper ("a general chemical and climate model"): the methods source for phase P1's external arm. |
+| Robeling et al. 2026 (Kompot) | **The code-level analog of the (G) physics**: a 1-D self-consistent thermo-chemical upper-atmosphere model (Jupiter as an exoplanet analogue) carrying H2-H2 and H2-He CIA (Abel et al. 2011) plus H2O/CO/CO2/CH4 opacities in the radiative budget, what EXHALE cannot do below the front. |
+| Johnstone et al. 2018 (A&A 617, A107) | Same code lineage; molecular IR cooling (CO2, NO) controlling thermospheric structure in terrestrial atmospheres, the same physics class as (G). |
+| Miller et al. 2013 | The H3+ cooling function: already in EXHALE (`h3p_cooling.f90`). |
+| Huang et al. 2023 | **Does not carry this physics**: an atomic domain with the 1 microbar base imposed, the shape EXHALE inherited, and the reason item (H) exists. |
 | Salz et al. 2016 (TPCI) | No CIA or H2O/OH passages found by search; not confirmed to treat either problem. |
 
 Implication for the roadmap: the methods for P1 (Wogan 2025), for the A2
 reaction audit (Koskinen 2013a, Lavvas 2014), and for any future (G) work
-(Robeling 2026, Johnstone 2018) are all on the shelf already — start from
+(Robeling 2026, Johnstone 2018) are all on the shelf already, start from
 these before searching further afield.
 
 ---
@@ -289,13 +289,13 @@ The B1-first order of the options document is replaced: the review showed B1
 has a physics prerequisite (level populations) and B2 was already largely
 answered, while the cheapest genuine progress is semantic and external.
 
-**P0 — semantics and provenance (documentation + small code, no chemistry).**
+**P0: semantics and provenance (documentation + small code, no chemistry).**
 Rename A0's description everywhere `q_H2_base` is discussed; add the A1a
 provenance keys and echo them in the setup report; record Photochem's
 gas-giant workflow accurately in `vulcan_photochem_comparison.md`. Gate: a
 legacy six-key `base.inp` reproduces the current goldens byte-for-byte.
 
-**P1 — external photochemistry on equal footing. GATE MET, 2026-08-26; exercised on a real target 2026-08-27.** Reinstall Photochem (it
+**P1: external photochemistry on equal footing. GATE MET, 2026-08-26; exercised on a real target 2026-08-27.** Reinstall Photochem (it
 does not import today) with its data package; rerun the HD 189733 b comparison
 with matched network *and* matched vertical domain, adding Photochem's official
 gas-giant H/He/N/O/C(/S) mechanism as a third arm; export the H2O/OH
@@ -333,14 +333,14 @@ dominates H2 destruction at the handoff level.
   network flexibility, domain limits, q_H agreement, Mdot effect) is in the same
   section. **The decision itself is left to the user, as this plan requires.**
 
-**P2 — the handoff contract (A1b). GATE MET, 2026-08-26; superseded at the profile level 2026-08-27.** Classify every
+**P2: the handoff contract (A1b). GATE MET, 2026-08-26; superseded at the profile level 2026-08-27.** Classify every
 `base.inp` key as provenance / EOS boundary / elemental reservoir / initial
 guess / boundary constraint; implement the elemental keys against `melem_ab`;
 keep species keys diagnostic (A1c). Gate: element budgets (H, He, C, N, O, S)
 close after the handoff; the legacy file still reproduces the goldens; every
 key's category is in the manual.
 
-*Result* (full record: `docs/Update_EXHALE.md` section 74):
+*Result* (full record: `docs/Update_EXHALE_stage1.md` section 74):
 
 - the five categories are stated in `read_base_inp`'s header and in
   `docs/input_schema.md` section 2c; provenance is still comments only (its
@@ -364,7 +364,7 @@ key's category is in the manual.
   2026-08-27: He 2^3S is flagged `bsp_is_excited_level` in
   `src/modules/init/species_table.f90` and every budget sum skips it;
   `calc_rho` and `calc_ntot` no longer take the triplet density as an
-  argument. `Update_EXHALE.md` section 75; the `He23S: True` goldens were
+  argument. `Update_EXHALE_stage1.md` section 75; the `He23S: True` goldens were
   re-snapshotted there.]
 - legacy: `make check` 6/6 byte-identical, goldens untouched.
 - the user manual `.tex` is deliberately untouched; the categories reach it
@@ -377,7 +377,7 @@ key's category is in the manual.
 **P1 and P2 on a real target (2026-08-27).**  Phase E of
 `lhs1140b_lower_atmosphere_plan_new.md` is these two phases driven by a
 science case, and it has now been run end to end on LHS 1140 b
-(`Update_EXHALE.md` sections 76-79; design
+(`Update_EXHALE_stage1.md` sections 76-79; design
 `phase_e_flux_closure_design.md`).  What that changes about the two results
 above:
 
@@ -386,11 +386,11 @@ above:
   (`src/utils/vulcan_to_lower_profile.py`), on the ground P1 itself
   identified: only Photochem carries a climate model, so only it can be the
   route away from a prescribed `T(p)`.  P1's network-vs-code split reappears
-  at the profile level unchanged — network 3.95, code 1.70 on an 864 K base,
+  at the profile level unchanged: network 3.95, code 1.70 on an 864 K base,
   1.02/1.08 on a 2331 K base (test T-E9).
 - **P2's scalar contract is now the special case.**  The five `base.inp`
-  categories still hold and `vulcan_to_base.py` still writes them — four
-  regression cases pin that file — but with a lower-atmosphere *profile* in
+  categories still hold and `vulcan_to_base.py` still writes them (four
+  regression cases pin that file), but with a lower-atmosphere *profile* in
   use every scalar key of the EOS-boundary, elemental-reservoir and
   boundary-constraint categories is **refused**, and the pair must carry one
   matching `solution_id`.  The single-source problem P2 could only check is
@@ -403,7 +403,7 @@ above:
   taking it.  On LHS 1140 b the returned value is the well-mixed one, so the
   answer rests on `K_zz` and not on the escape flux.
 
-**P3 — the atomic-oxygen observable.**
+**P3: the atomic-oxygen observable.**
 1. B2 as the sensitivity test of the omitted O2+ rate.
 2. The O I ground-term level-population helper and output field (shared with
    cooling).
@@ -415,7 +415,7 @@ above:
 Gates: the three lower-level populations sum to total O I; optically thin and
 saturated columns both tested; comparison band-integrated, never line-center.
 
-*Result, 2026-08-30* (full record: `Update_EXHALE.md` sections 101-105; run
+*Result, 2026-08-30* (full record: `Update_EXHALE_stage1.md` sections 101-105; run
 directories `HD209458b/oi1302`, `..._cxO2p_1`, `..._cxO2p_3`,
 `..._diffusion`, all JFNK-converged with the current executable). All four
 sub-items were run; the gates are met; the validation against the published
@@ -438,7 +438,7 @@ line-center depth is printed but never compared.
    Table-4-only answer only past ~3 Rp. Neutral O rises 3% below 1.2 Rp and 52%
    near 2-3 Rp; `log10 Mdot` moves 9.47 -> 9.48. It was a default-off dial when
    this was written; on 2026-08-30 it became the default (scale 1) and the
-   metals-bearing goldens were refreshed (`Update_EXHALE.md` section 107).
+   metals-bearing goldens were refreshed (`Update_EXHALE_stage1.md` section 107).
 2. **The O I ground-term populations are an output field**, from the same
    three-level statistical equilibrium the `[O I]` 63/145/44um cooling is built
    on -- one definition, two consumers, no second calculation.
@@ -471,11 +471,11 @@ line-center depth is printed but never compared.
    with `K_zz`.
 
 `make check` 7/7 byte-identical and `run_fcheck.sh` CLEAN throughout: nothing
-in P3 changes the wind. The `Update_EXHALE` sections also record two false
+in P3 changes the wind. The `Update_EXHALE_stage1` sections also record two false
 labels found and fixed on the way (a run log that claimed the du convergence
 criterion after a JFNK finish, and `adf48` on the dielectronic data class).
 
-**P4 — A2 go/no-go.** Start in-code oxygen chemistry only if all four hold:
+**P4: A2 go/no-go.** Start in-code oxygen chemistry only if all four hold:
 (1) P1's reaction budget shows the H2O/OH cycle dominating H2 destruction near
 1 microbar; (2) `tau_chem << tau_adv` there, from the P1 profiles; (3) a
 science requirement exists that an EOS-plus-elements handoff cannot meet;
@@ -497,7 +497,7 @@ VULCAN arm reconstructed from `VULCAN/output/HD189.vul` and
 table was reproduced; two numbers of `vulcan_photochem_comparison.md` were
 corrected in the process (see that document).
 
-**Condition (1) — does the H2O/OH cycle dominate H2 destruction near 1 microbar?
+**Condition (1): does the H2O/OH cycle dominate H2 destruction near 1 microbar?
 The two planets do not give the same answer.**
 
 | planet, level | O family, gross loss | **O family, net loss** | largest single channel |
@@ -511,12 +511,12 @@ The two planets do not give the same answer.**
 - **HD 209458 b: condition (1) is not met.** The oxygen channels are the fastest
   ones there, but they run in near-exact balance in both directions, and the net
   is carried by thermal dissociation `H2 + M -> H + H + M` (58-96% of the net,
-  the higher figure at the deeper level). **At 1e-4 bar — where the production
-  configuration actually hands off — the oxygen cycle carries 2.6% of the net
+  the higher figure at the deeper level). **At 1e-4 bar (where the production
+  configuration actually hands off), the oxygen cycle carries 2.6% of the net
   (arm C').** That is the sharpest failure of condition (1) anywhere in the
   measurement, and it is at the level the code uses.
 
-**Condition (2) — is `tau_chem << tau_adv` there? Again the two planets differ,
+**Condition (2): is `tau_chem << tau_adv` there? Again the two planets differ,
 and on HD 189733 b the verdict depends on which advection time is meant.**
 
 `tau_chem(H2) = n_H2/(net H2 loss)` from the same solutions;
@@ -546,7 +546,7 @@ HD 209458 b gives `tau_chem/tau_adv = 1.8e-3` at the EXHALE base pressure
   `r/R_p = 1.000` to `1.087`) the pressure-matched ratio stays at or below 0.1,
   mostly 1e-3 to 3e-2; the single exception is one breathing-base inflow cell at
   `r/R_p = 1.0004`. Further out, `tau_adv` falls below the measured `tau_chem`
-  beyond `r/R_p ~ 1.17` (`H/v`) or `~1.65` (`r/v`) — i.e. a local-equilibrium
+  beyond `r/R_p ~ 1.17` (`H/v`) or `~1.65` (`r/v`), i.e. a local-equilibrium
   oxygen chemistry would stop being defensible in the launch region itself, well
   inside the transit-relevant radii.
 - **HD 189733 b: condition (2) is not met on `H/v`** (16.4 pressure-matched, and
@@ -567,7 +567,7 @@ done.
 **What conditions (1) and (2) together say.** The two conditions are met on
 *different planets*: HD 189733 b has the photochemistry (1) but not the
 timescale separation (2); HD 209458 b has the timescale separation (2) but its
-base partition is thermal, not photochemical, so (1) fails — and fails hardest
+base partition is thermal, not photochemical, so (1) fails, and fails hardest
 at the 1e-4 bar level the production configuration hands off at. **No planet
 measured here meets both.** A2 built to fix HD 189733 b's partition would be a
 local-equilibrium solve in a regime where the chemistry is not fast compared to
@@ -584,27 +584,27 @@ the metal block and the molecular block, H-nuclei bookkeeping against the same
 budget, an FUV band treatment with OH/H2O columns and self-shielding (the XUV
 grid starts at 13.6 eV and water photolysis lives below it), photolysis
 energetics in the EOS and the energy equation, and the seven acceptance gates
-listed above — against a measured wind-level payoff on the one converged planet
+listed above, against a measured wind-level payoff on the one converged planet
 of **at most 0.035 dex in Mdot**, itself an upper bound at the level of the
 configuration's own JFNK-to-JFNK reproducibility (P1.6). Item (G), the missing
 molecular IR coupling, sits in the same layer with a *measured* -0.34 dex, and
-section 4.1 ranks it first for that reason. The P1 decision already taken —
-Photochem as the production chemistry, with a climate model — means the
+section 4.1 ranks it first for that reason. The P1 decision already taken:
+Photochem as the production chemistry, with a climate model, means the
 external-dependency argument for A2 is weaker than when this plan was written.
 
 If P4 says no-go, the terminal state is A0/A1 with honest semantics plus the
-P3 observable — which is a publishable position, provided the network
+P3 observable, which is a publishable position, provided the network
 provenance of every handoff is recorded (P0).
 
 *P4 decision, 2026-08-30 (user).* **A2 proceeds as a runtime option, default
-off.** The four conditions resolve as: (1) and (2) measured above — no planet
+off.** The four conditions resolve as: (1) and (2) measured above, no planet
 meets both, and where the chemistry matters (cool bases) `tau_chem > tau_adv`,
 so any in-code network valid there must include vertical transport; (3) is met
 by **self-containedness**: EXHALE able to stand up a molecular base without
 the external Photochem stack, the same code-uniformity motivation as the
 Wind-AE port; (4) accepted with the build. Two conditions attach to the
 decision: (a) the scope is *local kinetics plus vertical diffusive transport*
-from the start — a transport-free network would be wrong exactly where it is
+from the start, a transport-free network would be wrong exactly where it is
 needed; (b) the first gate is an A/B against the Photochem handoff on the
 HD 189733 b base (`q_H2` agreement within a stated tolerance), run as a
 regression so the two owners of the oxygen physics cannot drift apart
@@ -654,7 +654,7 @@ the option removes the [O I] and C I/C II coolants and the code has no H2O or CO
 infrared bands to replace them. Section 4.1 of this plan already ranked item (G)
 above this work; the M3 measurement is the quantitative reason.
 
-Full record: `Update_EXHALE.md` section 109, the M3 result block of
+Full record: `Update_EXHALE_stage1.md` section 109, the M3 result block of
 `docs/a2_oxygen_option_design.md` section 7, and item (H) of `TO_BE_DONE.md`.
 
 ## 7. Document ownership after this plan

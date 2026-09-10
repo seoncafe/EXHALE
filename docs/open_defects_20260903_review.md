@@ -71,7 +71,7 @@ state used there. This diagnostic issue must be removed from the open part of
 item 6. The base energy-closure issue itself remains open.
 
 The catalog also labels this diagnostic as P52, but `TO_BE_DONE.md` and
-`docs/Update_EXHALE.md` use P52 for convergence-stop reporting and the unified
+`docs/Update_EXHALE_stage1.md` use P52 for convergence-stop reporting and the unified
 steady gate. That P52 is closed. A unique defect identifier is needed if the
 heating diagnostic is discussed historically.
 

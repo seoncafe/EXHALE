@@ -14,10 +14,20 @@ two models is the physics, and that is the point:
 
 Run from LHS1140b/ after the exhale/ scan has converged.
 """
-import os, re, glob
+import os, re, glob, sys
 import numpy as np
 
-RJ, RSUN = 6.9911e9, 6.957e10           # EXHALE's own constants [cm]
+# EXHALE's own constants [cm].  The Jupiter radius has one Python definition,
+# RJ_CM of examples/exhale_io.py (the IAU 2015 nominal equatorial radius of
+# parameters.f90); the directory is APPENDED so nothing in it can shadow a
+# standard-library module.
+_EXAMPLES_DIR = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.realpath(__file__))), 'examples')
+if _EXAMPLES_DIR not in sys.path:
+    sys.path.append(_EXAMPLES_DIR)
+from exhale_io import RJ_CM                                 # noqa: E402
+
+RJ, RSUN = RJ_CM, 6.957e10
 CASES = [('solar', 0.0833), ('heh1', 1.0), ('heh10', 10.0),
          ('heh100', 100.0), ('heh1000', 1000.0), ('heh10000', 1e4)]
 OBS_CSV = 'Cherubim_2026/LHS1140b_He10833_Fig3B_spectrum.csv'

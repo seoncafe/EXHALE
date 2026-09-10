@@ -56,6 +56,10 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import exhale_io as aio   # noqa: E402
 
 # ---- constants (SI, matching EXHALE_transit.py) ----
+# The Jupiter radius is defined once, as RJ_CM of exhale_io (the IAU 2015
+# nominal equatorial radius the Fortran uses as RJ); this module works in
+# metres, hence the factor.
+RJ_M = aio.RJ_CM*1.0e-2   # Jupiter equatorial radius [m]
 kb   = 1.380649e-23
 mp   = 1.672623e-27
 me   = 9.109384e-31
@@ -304,7 +308,7 @@ def compute_halpha(run_dir, lart_h5, lam_min=6561.0, lam_max=6564.6, nlam=201, a
     Returns (lam[A], T_lambda, info-dict)."""
     run = aio.load_run(os.path.join(run_dir, 'output'),
                        os.path.join(run_dir, 'input.inp'), adv=adv)
-    Rp_m    = run.inp['Rp_RJ'] * 6.9911e7
+    Rp_m    = run.inp['Rp_RJ'] * RJ_M
     raw     = run.inp.get('raw', {})
     Rstar_m = float(raw.get('Stellar radius [R_sun]', '1').split()[0]) * 6.96e8
     T_star  = float(raw.get('Stellar Teff [K]', '0').split()[0])
@@ -349,7 +353,7 @@ def main():
 
     run = aio.load_run(os.path.join(args.run_dir, 'output'),
                        os.path.join(args.run_dir, 'input.inp'), adv=not args.eq)
-    Rp_m    = run.inp['Rp_RJ'] * 6.9911e7
+    Rp_m    = run.inp['Rp_RJ'] * RJ_M
     a_m     = run.inp['a_AU'] * AU
     raw     = run.inp.get('raw', {})
     Rstar_m = float(raw.get('Stellar radius [R_sun]', '1').split()[0]) * 6.96e8

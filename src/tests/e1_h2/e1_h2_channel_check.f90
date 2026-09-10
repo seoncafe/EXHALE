@@ -22,7 +22,7 @@
       ! The invariants are E3's; they are not redefined here, only applied
       ! to four channels instead of two.  E3's two reported numbers are
       ! reconciled against this construction in section 151.3b of
-      ! docs/Update_EXHALE.md -- note that E3's double-ionization figure is
+      ! docs/Update_EXHALE_stage1.md -- note that E3's double-ionization figure is
       ! PROTON-weighted (0.20 f_di) where test 5 below is event-weighted,
       ! a factor 2 that is the P31b defect itself and not a disagreement.
       !

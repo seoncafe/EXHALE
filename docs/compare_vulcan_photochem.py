@@ -232,7 +232,17 @@ def do_compare(workdir):
 # --------------------------------------------------------------------------
 # base.inp handoff, written the same way for every source
 # --------------------------------------------------------------------------
-KB, MH, MJ, RJ = 1.380649e-16, 1.67353284e-24, 1.898e30, 6.9911e9
+# The Jupiter radius and mass come from the one Python definition
+# (examples/exhale_io.py, the IAU 2015 nominal values of parameters.f90), so
+# the base this writes is the base of the planet EXHALE relaxes.  The
+# directory is APPENDED so nothing in it can shadow a standard-library
+# module.
+_EXAMPLES_DIR = os.path.join(HERE, '..', 'examples')
+if _EXAMPLES_DIR not in sys.path:
+    sys.path.append(_EXAMPLES_DIR)
+from exhale_io import RJ_CM, MJ as MJ_G                     # noqa: E402
+
+KB, MH, MJ, RJ = 1.380649e-16, 1.67353284e-24, MJ_G, RJ_CM
 MASS = {'H2': 2.016, 'H': 1.008, 'He': 4.003, 'H2O': 18.02, 'CH4': 16.04,
         'CO': 28.01, 'CO2': 44.01, 'N2': 28.01, 'NH3': 17.03, 'C2H2': 26.04,
         'HCN': 27.03, 'H2S': 34.08, 'S': 32.06, 'SO2': 64.06}

@@ -9,7 +9,7 @@ EXHALE transit spectra come from `EXHALE_transit.py` as `tpm_*.txt`
 covering He I 10830, Ly-alpha 1215.67, H-alpha 6562.8, H-beta 4861, and the
 metal doublets Mg II h&k, Ca II H&K, Na I D. **Every measured file below uses a
 slightly different y-axis convention (fractional excess absorption, percent, or
-normalized in/out flux) — none is `R_eff/R_star`. Normalize the EXHALE output to
+normalized in/out flux): none is `R_eff/R_star`. Normalize the EXHALE output to
 each file's own convention before overplotting.**
 
 Primary model planets: **HD209458b, HD189733b, WASP-52b, WASP-121b**.
@@ -44,7 +44,7 @@ HD189733b). Provenance is in each file header and `E/observational_data/README.m
 Jensen+2012 traces on the EXHALE model. **Not observations:** the
 `paper_tpm_*.txt` files in `E/benchmarks/*/` and the planet folders are saved
 EXHALE transit model curves (columns `T_theo / T_instr / T_rot+instr`), used as
-regression/reference snapshots — not measured data.
+regression/reference snapshots, not measured data.
 
 ---
 
@@ -63,14 +63,14 @@ Notes:
 - The WASP-52b files carry the full provenance (Yan et al. 2022, ApJ 936, 177,
   shared by Dongdong Yan; original data from Chen+2020 and Kirk+2022). The
   `WASP-52b_YanDongdong/` folder is byte-identical to `WASP-52b/` plus the
-  provenance email — treat as one dataset.
+  provenance email: treat as one dataset.
 - WASP-121b: the same folder is mostly the Czesla et al. 2024 **3D model**
   (Athena++ + Monte Carlo RT) with 84+84 synthetic He 10833 spectra in
   `Spectra_1.0/` and `Spectra_0.5/`; only `Transmission_spec_observation.dat`
   is the measurement. Use the observation for validation, the model spectra as a
   model-to-model cross-check.
 - SPIRou spectra are **reduced normalized-flux** spectra over the He order, not
-  pre-formed excess absorption — build the in/out-of-transit ratio (or read the
+  pre-formed excess absorption: build the in/out-of-transit ratio (or read the
   absorption straight from Masson+2024) before comparing.
 
 ## 2. Secondary / validation observations (He I 10830)
@@ -86,7 +86,7 @@ Notes:
 | GJ436 | `A/CARMENES/GJ436.zip` (raw), `A/SPIRou/sp/Gj436_b.dat` | raw FITS / normalized flux | needs reduction |
 
 Also `A/p-winds_data/jisan/wasp-52b*.txt` hold a separate (earlier/rougher)
-WASP-52b He 10830 reduction (29 and 209 rows) — cross-check only; prefer the
+WASP-52b He 10830 reduction (29 and 209 rows): cross-check only; prefer the
 provenance-clean `A/WASP-52b/` files above.
 
 ## 3. Stellar SED / EUV inputs (model drivers, not comparison data)
@@ -100,20 +100,20 @@ provenance-clean `A/WASP-52b/` files above.
 | WASP-69 / HD97658 | `A/p-winds_data/real_data_wasp-69.txt`, `hd97658_...txt` | X-ray-FUV |
 
 `A/MUSCLES/` (STScI HLSP MUSCLES/Mega-MUSCLES) has **none of the four primary
-hosts** — only low-mass K/M dwarfs plus a few hot-Jupiter hosts (HAT-P-12/26,
+hosts**, only low-mass K/M dwarfs plus a few hot-Jupiter hosts (HAT-P-12/26,
 WASP-17/43/77a/127). HD189733, WASP-52, and WASP-121 SEDs are not on disk here;
 those runs use the literature-pinned inputs already in their planet folders.
 
 ## 4. Rival models for code-to-code cross-checks (not observations)
 
-- `A/WASP-121b/.../Spectra_{0.5,1.0}/` — Czesla et al. 2024 3D He 10833 spectra (WASP-121b).
-- `A/Nail2025/WASP-52b/` — Athena++ + Cloudy RT reproduction package (WASP-52b);
-  `A/Nail2025/HAT-P-67b/` — 3D He 10830 model spectra (HAT-P-67b, off-list).
-- `A/Linssen2025_sunset/` — sunbather Parker-wind transit-spectrum grid (~200
+- `A/WASP-121b/.../Spectra_{0.5,1.0}/`: Czesla et al. 2024 3D He 10833 spectra (WASP-121b).
+- `A/Nail2025/WASP-52b/`: Athena++ + Cloudy RT reproduction package (WASP-52b);
+  `A/Nail2025/HAT-P-67b/`: 3D He 10830 model spectra (HAT-P-67b, off-list).
+- `A/Linssen2025_sunset/`: sunbather Parker-wind transit-spectrum grid (~200
   planets incl. GJ1214b, GJ436b, HAT-P-11b; no primary planet).
-- `A/Linssen2024_sunbath/`, `A/MacLeod2022/`, `A/MacLeod2025/` — escape-code
+- `A/Linssen2024_sunbath/`, `A/MacLeod2022/`, `A/MacLeod2025/`: escape-code
   reproduction packages / 3D wind simulations.
-- `W/p-winds_org/HeI_test/` — LaRT Monte Carlo **synthetic** He 10830 image
+- `W/p-winds_org/HeI_test/`: LaRT Monte Carlo **synthetic** He 10830 image
   cubes for HD209458b (filenames say `_obs` but are LaRT observer-frame output,
   not a measurement). Small `HeI_limb*.fits.gz` hold the ready 1-D emergent
   spectrum (`wavelength`, `Jout`, `Jin`); absorption = 1 - Jout/Jin.

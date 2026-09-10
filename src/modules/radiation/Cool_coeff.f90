@@ -13,7 +13,8 @@
    ! mol_rates and selected here by "Atomic rate set: Koskinen2022".
    use mol_rates,     only: rk_R1_Hp_rec, rk_R2_Hep_rec,               &
         rk_R3_H_cion, rk_R4_He_cion
-   use species_table, only: n_mion, mion_name,                         &
+   use species_table, only: n_mion, mion_name, melem_A_u,              &
+                            iel_C, iel_N, iel_O,                           &
         im_CI, im_CII, im_CIII, im_OI, im_OII, im_OIII,                &
         im_NI, im_NII, im_NIII, im_MgI, im_MgII, im_MgIII,             &
         im_SiI, im_SiII, im_SiIII, im_CaI, im_CaII, im_CaIII,          &
@@ -89,8 +90,11 @@
    ! Same convention: bad_X is the rate for the recombining ion that
    ! produces daughter X (e.g. bad_SiI = Si II + e -> Si I). Na/K/S are
    ! two-stage so only the X+ -> X0 daughter (NaI/KI/SI) is tabulated.
-   ! Ca I (recombining Ca II, K-like) is NOT in Badnell -> handled by a
+   ! Ca I (recombining Ca II, K-like) is NOT in Badnell -> handled by the
    ! Shull & Van Steenberg 1982 power law in alpha_rr_metal (no entry here).
+   ! Nor is iron: the recombining Fe II and Fe III are Mn-like and Cr-like,
+   ! and the tabulation stops at the Ar-like sequence, so Fe I and Fe II take
+   ! the Huang et al. 2023 fits near the end of this module.
 
    ! Si II + e -> Si I (Z=14, N_el=13)
    type(rec_fit), parameter :: bad_SiI = rec_fit(                         &
@@ -517,8 +521,11 @@
    real*8, parameter :: A_OI63   = 8.542d-5, A_OI145  = 1.643d-5
    real*8, parameter :: A_OI44   = 1.380d-10
    ! Atomic weights [m_H] for the Doppler width of these lines
-   real*8, parameter :: amu_C = 12.011d0, amu_N = 14.007d0,            &
-                        amu_O = 15.999d0
+   ! Standard atomic weights in u, read from the species table (one
+   ! definition, species_table.f90 melem_A_u); the fine-structure line
+   ! opacities below use them for the Doppler width.
+   real*8, parameter :: amu_C = melem_A_u(iel_C), amu_N = melem_A_u(iel_N), &
+                        amu_O = melem_A_u(iel_O)
 
    ! Escape-probability slots, one per line with a transition probability.
    ! fine_structure_line_transfer (util_ion_eq.f90) fills them; the cooling
@@ -645,6 +652,14 @@
    voronov_ci = A*(1.0d0+P*sqrt(U))*U**Kexp*exp(-U)/(X+U)
    end function voronov_ci
 
+   ! dE below is Voronov's own Table 1 entry, a COEFFICIENT OF HIS FIT and not
+   ! the measured ionization potential of global_parameters: it enters the
+   ! functional form through U^K, exp(-U) and X + U, and A, X, K, P were
+   ! fitted with it.  It is left as published, as the fit's other parameters
+   ! are; the measured potentials differ from it by 0.01 (H I), 0.05 (He I)
+   ! and 0.03 (He II) per cent, far inside the fit's own accuracy.  The energy
+   ! REMOVED per ionization is a different quantity and is the measured
+   ! potential e_th_*_erg (util_ion_eq, T_equation).
    elemental double precision function ci_HI_new(T)
    real*8, intent(in) :: T
    ci_HI_new = voronov_ci(T, 13.6d0, 0.0d0, 2.91d-8, 0.232d0, 0.39d0)
@@ -761,8 +776,8 @@
    !--------------!
    
    ! Recombination cooling rate for HeII
-   ! (Hui & Gnedin 1997 kT*alpha_B approximation; uses whichever alpha_B(HeII)
-   !  rec_HeII_B returns.)
+   ! (kT per recombination, at the total coefficient the ionization balance
+   !  removes He+ with: alpha_rec_HeII_total.)
    subroutine rec_cool_HeII(T,coeff_rec_cool_HeII)
    real*8, dimension(1-Ng:N+Ng), intent(in) :: T
    real*8, dimension(1-Ng:N+Ng), intent(out) :: coeff_rec_cool_HeII
@@ -940,7 +955,12 @@
    d = -3.880e-4
    ups = a*exp(b*T) + c*exp(d*T)
 
-   ! Value of rate coefficient (from Oklopcic (2018) & Lampon (2020))
+   ! Value of rate coefficient (from Oklopcic (2018) & Lampon (2020)).
+   ! The 13.60 eV in the prefactor is the RYDBERG of the collision-strength
+   ! normalization 2.10e-8 sqrt(Ry/kT) Upsilon/g, a coefficient of that
+   ! published rate form, not the H I ionization threshold e_th_HI that
+   ! gates the photoionization cross section; the exponent carries the
+   ! excitation energy of the transition.
    coeff_coex_HeI_1S_23S = 2.10e-8*sqrt(13.60/(kb_eV*T))		&
                         *exp(-19.81/(kb_eV*T))		&
                         *ups
@@ -969,7 +989,12 @@
    d = -3.558e-4
    ups(j_lo:j_hi) = a*exp(b*T(j_lo:j_hi)) + c*exp(d*T(j_lo:j_hi))
    
-   ! Value of rate coefficient (from Oklopcic (2018) & Lampon (2020))
+   ! Value of rate coefficient (from Oklopcic (2018) & Lampon (2020)).
+   ! The 13.60 eV in the prefactor is the RYDBERG of the collision-strength
+   ! normalization 2.10e-8 sqrt(Ry/kT) Upsilon/g, a coefficient of that
+   ! published rate form, not the H I ionization threshold e_th_HI that
+   ! gates the photoionization cross section; the exponent carries the
+   ! excitation energy of the transition.
    coeff_coex_HeI_23S_21S(j_lo:j_hi) = 2.10e-8*sqrt(13.60/(kb_eV*T(j_lo:j_hi)))	&
                         *exp(-0.80/(kb_eV*T(j_lo:j_hi)))		&
                         *ups(j_lo:j_hi)/3.0
@@ -1000,7 +1025,12 @@
    d = -1.669e-4
    ups(j_lo:j_hi) = a*exp(b*T(j_lo:j_hi)) + c*exp(d*T(j_lo:j_hi))
    
-   ! Value of rate coefficient (from Oklopcic (2018) & Lampon (2020))
+   ! Value of rate coefficient (from Oklopcic (2018) & Lampon (2020)).
+   ! The 13.60 eV in the prefactor is the RYDBERG of the collision-strength
+   ! normalization 2.10e-8 sqrt(Ry/kT) Upsilon/g, a coefficient of that
+   ! published rate form, not the H I ionization threshold e_th_HI that
+   ! gates the photoionization cross section; the exponent carries the
+   ! excitation energy of the transition.
    coeff_coex_HeI_23S_21P(j_lo:j_hi) = 2.10e-8*sqrt(13.60/(kb_eV*T(j_lo:j_hi)))	&
                         *exp(-1.40/(kb_eV*T(j_lo:j_hi)))		&
                         *ups(j_lo:j_hi)/3.0
@@ -1042,7 +1072,7 @@
    real*8, dimension(1-Ng:N+Ng), intent(in) :: T
    real*8, dimension(1-Ng:N+Ng), intent(out) :: coeff_rec_HeII_23S
 
-   coeff_rec_HeII_23S = 2.10e-13*(T/1.0e4)**(-0.778)
+   coeff_rec_HeII_23S = alpha_rec_HeII_23S(T)
 
    end subroutine rec_HeII_23S
 
@@ -1139,11 +1169,14 @@
    ! Electron-impact collisional ionization of the He 2^3S metastable,
    ! He(2^3S) + e^- -> He^+ + 2e^-.  The rate coefficient is the Black (1981)
    ! collisional-ionization cooling coefficient divided by the ionization
-   ! potential of the 2^3S state (4.8 eV), the same form adopted by Allan et
+   ! potential of the 2^3S state, the same form adopted by Allan et
    ! al. (2024) and Falorca & Vidotto (2026), Table A1:
-   !   k(T) = 6.41e-21 sqrt(T) exp(-55338/T) / e_ion_23S_erg   [cm^3 s^-1].
-   ! Threshold 55338 K = 4.8 eV = e_th_HeTR; e_ion_23S_erg = e_th_HeTR/erg2eV
-   ! is that potential in erg (7.69e-12).  T in K.
+   !   k(T) = 6.41e-21 sqrt(T) exp(-55338/T) / e_th_HeTR_erg   [cm^3 s^-1].
+   ! The potential is the global e_th_HeTR = 4.7678 eV (e_th_HeTR_erg =
+   ! 7.6388e-12 erg); the 55338 K of Black's exponent is the same threshold
+   ! written as a temperature (4.7687 eV, against 55328 K for e_th_HeTR)
+   ! and stays as he published it.
+   ! T in K.
    subroutine ci_HeI23S(T,coeff_ci_HeI23S)
    real*8, dimension(1-Ng:N+Ng), intent(in) :: T
    real*8, dimension(1-Ng:N+Ng), intent(out) :: coeff_ci_HeI23S
@@ -1154,10 +1187,8 @@
    integer, intent(in) :: j_lo,j_hi
    real*8, dimension(1-Ng:N+Ng), intent(in) :: T
    real*8, dimension(1-Ng:N+Ng), intent(inout) :: coeff_ci_HeI23S
-   real*8 :: e_ion_23S_erg
 
-   e_ion_23S_erg = e_th_HeTR/erg2eV                 ! 4.8 eV in erg
-   coeff_ci_HeI23S(j_lo:j_hi) = 6.41e-21*sqrt(T(j_lo:j_hi))*exp(-55338.0/T(j_lo:j_hi))/e_ion_23S_erg
+   coeff_ci_HeI23S(j_lo:j_hi) = 6.41e-21*sqrt(T(j_lo:j_hi))*exp(-55338.0/T(j_lo:j_hi))/e_th_HeTR_erg
 
    end subroutine ci_HeI23S_range
 
@@ -1169,8 +1200,8 @@
    real*8, dimension(1-Ng:N+Ng), intent(in) :: T
    real*8, dimension(1-Ng:N+Ng), intent(out) :: coeff_rec_HeII_11S
 
-   coeff_rec_HeII_11S = 1.54e-13*(T/1.0e4)**(-0.486)
-   
+   coeff_rec_HeII_11S = alpha_rec_HeII_11S(T)
+
    end subroutine rec_HeII_11S
 
    !---------------------------------------------------!
@@ -2331,17 +2362,19 @@
    ! base has Cdex >> A_ul, so the ground-term levels are in LTE; in the
    ! thin wind kappa_0 is negligible either way. Ek [K] is the transition
    ! energy in temperature units, which also fixes lambda = hc/(k Ek).
+   ! atomic_weight_u is the emitter's standard atomic weight in u; the
+   ! atomic mass unit itself is the global amu of parameters.f90 (one
+   ! definition), so no local copy of it is kept here.
    elemental double precision function line_center_opacity_lte           &
-                                        (T,n_low,Ek,A_ul,gu_gl,amu)
-   real*8, intent(in) :: T, n_low, Ek, A_ul, gu_gl, amu
+                                        (T,n_low,Ek,A_ul,gu_gl,atomic_weight_u)
+   real*8, intent(in) :: T, n_low, Ek, A_ul, gu_gl, atomic_weight_u
    real*8, parameter :: hc_over_k = 1.43877736d0     ! [cm K]
-   real*8, parameter :: amu_g     = 1.66053907d-24   ! [g]
    real*8 :: lam, vth, Ts
    ! T is floored as in the table interpolators, so a transient non-physical
    ! trial temperature cannot turn the Doppler width into a NaN.
    Ts  = max(T, 1.0d0)
    lam = hc_over_k/Ek
-   vth = sqrt(2.0d0*kb_erg*Ts/(amu*amu_g))
+   vth = sqrt(2.0d0*kb_erg*Ts/(atomic_weight_u*amu))
    line_center_opacity_lte = lam**3/(8.0d0*pi*sqrt(pi))*gu_gl*A_ul     &
                              *n_low*(1.0d0 - exp(-Ek/Ts))/vth
    end function line_center_opacity_lte
@@ -2398,18 +2431,38 @@
    end select
    end function fine_structure_line_opacity
 
-   ! Probability that a photon emitted at line-center optical depth tau from
-   ! ONE face of a plane-parallel slab escapes through that face. Static
-   ! Doppler line; shape from the single-flight result used by Hollenbach &
-   ! McKee (1979) and de Jong, Boland & Dalgarno (1980),
-   !   beta_1 = (1 - e^-a tau)/(2 a tau)          thin side,
-   !   beta_1 = 1/(4 tau sqrt(ln(tau/sqrt(pi))))  thick side (Doppler wings),
-   ! with a = 2.34, so beta_1(0) = 1/2 (half of the photons leave through
-   ! the near face). The two branches meet where 2 sqrt(ln(tau/sqrt(pi)))
-   ! = a, i.e. at tau_c = sqrt(pi) exp(a^2/4) = 6.967, so the switch is
-   ! continuous in value by construction (the residual slope kink there is
-   ! < 1%). The escape probability of a cell is the sum over its two faces,
-   ! beta = beta_1(tau_up) + beta_1(tau_down).
+   ! Probability that a photon emitted in a static, thermally broadened
+   ! plane-parallel layer escapes through the NEARER of its two boundaries.
+   ! This is de Jong, Boland & Dalgarno (1980), A&A 91, 68, eq. (B-7),
+   !   beta = (1 - e^-a tau)/(2 a tau)            tau < 7,
+   !   beta = 1/(4 tau sqrt(ln(tau/sqrt(pi))))    tau >= 7,
+   ! with a = 2.34: the single-flight, complete-redistribution escape chance
+   ! of a Doppler line, "accurate to within 10% for small and intermediate
+   ! tau and exact at very large tau". beta(0) = 1/2, half of the photons
+   ! leaving through the near face, which is why the closure adds the two
+   ! faces, beta = beta_1(tau_up) + beta_1(tau_down). The two branches meet
+   ! where 2 sqrt(ln(tau/sqrt(pi))) = a, i.e. at tau_c = sqrt(pi) exp(a^2/4)
+   ! = 6.9676 (the paper rounds it to 7), so the switch is continuous in
+   ! value to the e^-a tau_c term the thick branch drops, 8e-8 relative.
+   !
+   ! ARGUMENT. (B-7) is derived from beta = (1/2) int dx phi(x) E_2[tau
+   ! phi(x)] with a NORMALIZED profile, int phi dx = 1, so phi(0) =
+   ! 1/sqrt(pi) and its tau is the frequency-integrated depth, sqrt(pi)
+   ! times the LINE-CENTRE depth. Written in one convention it is the same
+   ! function as Hollenbach & McKee (1979), ApJS 41, 555, eq. (5.10), which
+   ! is quoted in line-centre depth: 2 beta(sqrt(pi) tau_0) and their
+   ! eps(tau_0) agree to five digits above tau_0 = 1e3
+   ! (src/tests/physics_probe/fine_structure_escape_probability.f90).
+   !
+   ! fine_structure_line_transfer below therefore multiplies the
+   ! line-centre depth of each cell by sqrt(pi) before any argument is
+   ! formed (since 2026-09-07; until then the LINE-CENTRE column was passed,
+   ! and the beta returned was too large by a factor rising from 1 in the
+   ! thin limit through 2.11 at the branch point to 1.77 asymptotically:
+   ! 1.12 at the largest line-centre depth any shipped case reaches, 0.14
+   ! in [O I] 63um at the base of the hot Uranus gate, below 0.1% of the
+   ! total radiative losses there, a factor of two in any base thick in
+   ! these lines). Measurement: docs/resonance_line_trapping.md section 10.
    elemental double precision function line_escape_probability_one_face  &
                                         (tau)
    real*8, intent(in) :: tau
@@ -2507,11 +2560,12 @@
    integer :: j, k
    real*8  :: dl, col(n_fsline), b_dn
    real*8  :: dtau(1-Ng:N+Ng,n_fsline), tau_dn(1-Ng:N+Ng,n_fsline)
-   ! Line-center depth of each cell. Floored at zero: the ionization solve
-   ! can leave a trace species with a small negative density, and an optical
-   ! depth cannot be negative.
+   ! Frequency-integrated depth of each cell, the argument (B-7) is written
+   ! in: sqrt(pi) times the line-centre depth of a Doppler profile (header).
+   ! Floored at zero: the ionization solve can leave a trace species with a
+   ! small negative density, and an optical depth cannot be negative.
    do j = 1-Ng,N+Ng
-      dl = dr_j(j)*R0
+      dl = dr_j(j)*R0*sqrt(pi)
       do k = 1,n_fsline
          dtau(j,k) = max(fine_structure_line_opacity(k, T(j),           &
                                      nm(j,fsline_ion(k)))*dl, 0.0d0)
@@ -2589,15 +2643,27 @@
    real*8  :: sT0,sT1,b
 
    ! Ca II + e -> Ca I (K-like Ca+) is not in the Badnell tabulation
-   ! (TAMOC computes RR only to the Mg-like sequence). Use the Shull &
+   ! (its most electron-rich recombining ion is Ar-like, eighteen
+   ! electrons; there is no K-like row), so the Shull &
    ! Van Steenberg (1982, ApJS 48, 95) radiative-recombination power law
-   ! (Verner rrfit.f rrec(20,19)); no low-T dielectronic term exists for
-   ! this near-neutral stage, so alpha_dr_metal('CaI') returns 0.
+   ! is taken, in the machine form of Verner's rrfit.f (version 4, 1999),
+   !
+   !     alpha_RR = rrec(1,Z,N) * (T/1e4 K)^(-rrec(2,Z,N)) ,
+   !
+   ! whose second index N is the electron count of the RECOMBINED ion:
+   ! rnew(:,1,1) is the H+ + e -> H I fit and rnew(:,2,2) the He+ + e ->
+   ! He I one.  Ca I has twenty electrons, so the row is rrec(:,20,20) =
+   ! (1.120e-13, 0.9000), not rrec(:,20,19), which forms Ca II.  The
+   ! ordering is monotone in the charge of the recombining ion, as a
+   ! radiative recombination coefficient is: 1.12e-13 forming Ca I,
+   ! 6.78e-13 forming Ca II, 3.96e-12 forming Ca III at 1e4 K.
+   ! No dielectronic fit exists for the K-like sequence in the Badnell
+   ! adf09 set, so alpha_dr_metal('CaI') returns 0.
    if (trim(daughter) == 'CaI') then
       if (T .le. 0.0d0) then
          alpha_rr_metal = 0.0d0
       else
-         alpha_rr_metal = 6.78d-13*(T/1.0d4)**(-0.80d0)
+         alpha_rr_metal = 1.120d-13*(T/1.0d4)**(-0.900d0)
       endif
       return
    endif
@@ -2919,13 +2985,13 @@
    ! Iron recombination (RR+DR total), Huang+2023 (ApJ 951, 123) Eqs (5)-(6).
    ! Form:  alpha(T) = A*T^-1.5*exp(-T0/T)*(1 + B*exp(-T1/T))      [DR]
    !                 + C*(T/1e4)^-eta                              [RR]
-   ! with T in K and alpha in cm^3/s. Coefficients verified against the
-   ! published paper (arXiv:2304.07352). The rest of the metal grid uses
+   ! with T in K and alpha in cm^3/s. Coefficients read from the published
+   ! paper, ApJ 951, 123, Eqs. (5) and (6). The rest of the metal grid uses
    ! Badnell RR+DR (alpha_rec_metal); iron cannot, and this is not a
    ! deferral. Fe I comes from recombining Fe II (Mn-like, 25 electrons) and
-   ! Fe II from Fe III (Cr-like, 24), while the Badnell DR project reaches
-   ! only the phosphorus isoelectronic sequence (15 electrons) as of its
-   ! paper XVI (2022) -- there is no Badnell fit to switch to for either
+   ! Fe II from Fe III (Cr-like, 24), while the most electron-rich
+   ! recombining ion in the Badnell RR and DR tabulations is Ar-like
+   ! (18 electrons) -- there is no Badnell fit to switch to for either
    ! stage. Huang's analytic form is therefore the rate for iron, which is
    ! also what the Huang reproduction plan prescribes for the stages where
    ! Badnell coverage stops (docs/Huang_update_plan.md, Phase 1c).
@@ -3001,8 +3067,13 @@
    real*8, dimension(1-Ng:N+Ng), intent(in)  :: T
    real*8, dimension(1-Ng:N+Ng) :: U
    real*8, dimension(1-Ng:N+Ng), intent(inout) :: a_ion_coeff_CI
-   real*8, parameter :: dE = 11.26, A = 6.85e-8, P = 0.193,        &
-                        X = 0.25,   K = 0.25
+   ! Voronov 1997, ADNDT 65, 1, Table 1, row C 0:
+   ! (dE, P, A, X, K) = (11.3 eV, 0, 6.85e-8, 0.193, 0.25), so neutral
+   ! carbon has no (1 + P sqrt(U)) factor.  dE is the ionization
+   ! potential, written here to four figures as elsewhere in this file.
+   ! Fit range 1e3 - 1e9 K.  Same form in p-winds (p_winds/carbon.py).
+   real*8, parameter :: dE = 11.26, A = 6.85e-8, P = 0.0,          &
+                        X = 0.193,  K = 0.25
    U(j_lo:j_hi) = dE/(kb_eV*T(j_lo:j_hi))
    a_ion_coeff_CI(j_lo:j_hi) = A*(1.0+P*sqrt(U(j_lo:j_hi)))/(X+U(j_lo:j_hi))*U(j_lo:j_hi)**K*exp(-U(j_lo:j_hi))
 
@@ -3386,6 +3457,61 @@
 
    !--------------!
 
+   ! Recombination coefficient of He II into the 1^1S singlet ground term
+   ! [cm^3 s^-1] and into the 2^3S metastable [cm^3 s^-1], the two capture
+   ! channels the network resolves when the triplet is tracked
+   ! (Oklopcic & Hirata 2018, ApJ 855, 11, their alpha_1 and alpha_3; fitted
+   ! over 5e3 - 2e4 K).  Written once here; rec_HeII_11S / rec_HeII_23S are
+   ! the grid forms of these two expressions.
+   elemental double precision function alpha_rec_HeII_11S(T)
+   real*8, intent(in) :: T
+   alpha_rec_HeII_11S = 1.54e-13*(T/1.0e4)**(-0.486)
+   end function alpha_rec_HeII_11S
+
+   elemental double precision function alpha_rec_HeII_23S(T)
+   real*8, intent(in) :: T
+   alpha_rec_HeII_23S = 2.10e-13*(T/1.0e4)**(-0.778)
+   end function alpha_rec_HeII_23S
+
+   !--------------!
+
+   ! Total rate coefficient [cm^3 s^-1] at which the ionization balance
+   ! removes He+ by radiative recombination, and therefore the rate at which
+   ! the electron gas loses kT to it (lambda_rec_HeII below).
+   !
+   ! With the 2^3S metastable tracked the balance resolves the capture into
+   ! two channels and destroys He+ with their SUM -- the singlet ground term
+   ! and the metastable -- in every row it writes
+   ! (ionization_equilibrium.f90: rcheiiB + rcheiTR at the fixed-n_e balance
+   ! and in the He I row of the coupled system).  Without the metastable the
+   ! balance keeps the case-B coefficient that "Atomic rate set:" selects,
+   ! and this is that coefficient unchanged.
+   !
+   ! NOT carried, and why.  With "He_rec_coupling: True" (the default) the
+   ! balance further multiplies the ground-term channel by the fraction of
+   ! its 24.6 eV photons that do not go back into He I, and adds the
+   ! excited-singlet capture 0.25 alpha_B that the two channels above leave
+   ! out.  That weight is a function of the local absorber densities, not of
+   ! T, and eval_cool is evaluated at PERTURBED temperatures by the
+   ! semi-implicit energy update, which forms dC/dT as the difference of two
+   ! eval_cool calls divided by 1e-5 T: a coefficient only one of those two
+   ! callers could supply would enter that derivative multiplied by 1e5.  At
+   ! T = 1e4 K and a wind-typical weight 0.81 the balance removes He+ at
+   ! 4.05e-13 against the 3.64e-13 returned here, 10 per cent of this
+   ! channel (against 31 per cent for the bare case-B coefficient, 2.81e-13).
+   elemental double precision function alpha_rec_HeII_total(T)
+   real*8, intent(in) :: T
+
+   if (thereis_HeITR) then
+      alpha_rec_HeII_total = alpha_rec_HeII_11S(T) + alpha_rec_HeII_23S(T)
+   else
+      alpha_rec_HeII_total = alpha_rec_HeII_B(T)
+   endif
+
+   end function alpha_rec_HeII_total
+
+   !--------------!
+
    ! Recombination cooling rate for HII
    elemental double precision function lambda_rec_HII(T)
    real*8, intent(in) :: T
@@ -3400,17 +3526,19 @@
    !--------------!
    
    ! Recombination cooling rate for HeII.  This is kT times the SAME
-   ! recombination coefficient the ionization balance runs on, i.e. the
-   ! electron thermal energy carried away per recombination, so it follows
-   ! whichever coefficient "Atomic rate set:" selects -- decoupling the two
-   ! would remove electrons at one rate and charge the gas at another.
+   ! recombination coefficient the ionization balance runs on
+   ! (alpha_rec_HeII_total), i.e. the electron thermal energy carried away
+   ! per recombination the solver actually performs -- decoupling the two
+   ! would remove electrons at one rate and charge the gas at another.  It
+   ! therefore follows both the coefficient "Atomic rate set:" selects and
+   ! the channel split the metastable brings with it.
    ! The H II counterpart, lambda_rec_HII above, is an independent fit of
    ! its own (Hui & Gnedin 1997) and is NOT switched by that key.
    elemental double precision function lambda_rec_HeII(T)
    real*8, intent(in) :: T
-         
-   lambda_rec_HeII = kb_erg*T*alpha_rec_HeII_B(T)
-   
+
+   lambda_rec_HeII = kb_erg*T*alpha_rec_HeII_total(T)
+
    end function lambda_rec_HeII
    
    !--------------!

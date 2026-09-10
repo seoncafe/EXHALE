@@ -43,7 +43,7 @@ headline verdicts, stated first, are the following.
 \begin{enumerate}
   \item \textbf{The two codes appear largely complementary rather than competing.} \Kompot\
     targets the thermal and chemical structure of weakly to moderately irradiated thermospheres
-    --- terrestrial secondary atmospheres, and in the 2026 paper a hydrostatic H$_2$ giant ---
+    (terrestrial secondary atmospheres, and in the 2026 paper a hydrostatic H$_2$ giant),
     while \EXHALE\ targets strongly irradiated transonic H/He\,$+$\,metal winds and the
     spectral line diagnostics that trace them. The two overlap only in the transonic corner,
     which is the subject of Johnstone et al.\ (2019) and the core regime of \EXHALE.
@@ -120,7 +120,7 @@ prescribed \\
 \subsection{Johnstone et al.\ (2018): the foundation}
 
 The 2018 paper defines the physics core. It is a one-dimensional, time-dependent model carrying
-three separate temperatures --- neutral, ion, and electron --- coupled by collisional energy
+three separate temperatures (neutral, ion, and electron) coupled by collisional energy
 exchange. The hydrodynamics follow the semi-static reduction of Tian et al.\ (2008): mass and
 momentum are assumed steady, the velocity ordinary differential equation is integrated downward
 from the exobase given an imposed exobase outflow speed taken from the Jeans-consistent
@@ -214,11 +214,11 @@ the text alone.
 
 \section{Physics comparison with \EXHALE}
 
-The verdict first: within \EXHALE's own regime --- strongly irradiated escaping H/He\,$+$\,metal
-atmospheres and the line diagnostics that probe them --- nothing in the four \Kompot\ papers
+The verdict first: within \EXHALE's own regime (strongly irradiated escaping H/He\,$+$\,metal
+atmospheres and the line diagnostics that probe them) nothing in the four \Kompot\ papers
 supersedes what \EXHALE\ already does, and in several places (\Lya\ transfer, excited hydrogen,
 metal line cooling, transit spectra) \EXHALE\ goes considerably further. Conversely, in \Kompot's
-regime --- bound or weakly escaping thermospheres with neutral molecular chemistry --- \EXHALE\
+regime (bound or weakly escaping thermospheres with neutral molecular chemistry) \EXHALE\
 currently cannot operate at all, because it has no bound-atmosphere solution mode, no thermal
 conduction, and no kinetic chemistry. Table~\ref{tab:physics} sets the two side by side. The
 \EXHALE\ entries were checked against the source tree rather than against its documentation.
@@ -446,8 +446,8 @@ The physics is inherited from 2018 and is therefore documented. What the letter 
 of numerics, and that change is underspecified: the Riemann solver is identified only by an
 equation number in Toro (1999); the limiter, the operator-splitting order, the CFL number, the
 sonic-point cutoff used to disable diffusion, the definition used for the mass-loss rate, and the
-convergence criterion are all absent. The 50~km base state --- temperature, density, and all 63
-mixing ratios --- is not tabulated, and it cannot simply be copied from the 2018 paper because
+convergence criterion are all absent. The 50~km base state (temperature, density, and all 63
+mixing ratios) is not tabulated, and it cannot simply be copied from the 2018 paper because
 that Earth model was based at 65~km. None of these gaps involves physics, so all of them can be
 closed by an implementer's own reasonable choices, at the cost of not reproducing the quoted
 numbers exactly.
@@ -470,8 +470,8 @@ preparation. The H$_3^+$ non-LTE scale factor is given neither a value nor a ref
 infrared heating channel appears in the abstract and in a figure legend but is never described.
 Secondary omissions are the epoch of the solar spectrum and the orbital distance, and the internal
 100~TW versus 200~TW inconsistency noted in \S2.4. The conclusion is that an independent
-implementation could only be built ``in the style of'' Robeling et al.\ (2026) --- for instance,
-with a \textsc{Vulcan}-derived network and fits of the implementer's own construction --- and
+implementation could only be built ``in the style of'' Robeling et al.\ (2026) (for instance,
+with a \textsc{Vulcan}-derived network and fits of the implementer's own construction), and
 should not be described as a reproduction.
 
 \section{Implementation paths}
@@ -482,7 +482,7 @@ A reimplementation in the 2018 operating mode appears feasible as a standalone p
 together with its appendices amounts to a near-complete specification, and the missing numerical
 items (grid, convergence criterion, Courant number) are choices any implementer can make without
 guessing at physics. The labor would be dominated not by the equations but by collecting the
-external data --- cross-section and rate archives, collision tables, line lists --- and by
+external data (cross-section and rate archives, collision tables, line lists), and by
 entering the 503-reaction network. Reproducing the published curves qualitatively appears
 realistic on that basis; matching the quoted numbers exactly does not, because the convergence
 criteria are not published. Adding the transonic mode of 2019 requires an independent choice of
@@ -519,7 +519,7 @@ Not an extension. Would effectively be a new code. \\
 Closed specification, but marginal gain in \EXHALE's strongly ionized regime. \\
 (f) & Joule heating in the Robeling form & low &
 Technically easy, but imports an unconstrained free parameter. Sensitivity studies only. \\
-(g) & Robeling-style Jupiter infrared thermosphere & --- &
+(g) & Robeling-style Jupiter infrared thermosphere & - &
 Out of reach as \EXHALE\ stands; needs (d) and (b) plus a hydrostatic mode. \\
 \bottomrule
 \end{tabular}}
@@ -546,8 +546,8 @@ wind does not exist.
 This is the chasm in the comparison. Replacing local ionization equilibrium with a Rosenbrock
 network integration plus advection and diffusion of every species would touch the solver core, the
 Newton--Krylov residual, and the post-processing chain simultaneously. It is better described as
-writing a new code than as extending \EXHALE. If terrestrial-composition escape --- Archean-Earth
-type questions --- ever becomes a research goal here, a fresh implementation guided by the 2018
+writing a new code than as extending \EXHALE. If terrestrial-composition escape (Archean-Earth
+type questions) ever becomes a research goal here, a fresh implementation guided by the 2018
 paper appears more sensible than bending \EXHALE\ to fit.
 
 \paragraph{(f) and (g).}
@@ -556,7 +556,7 @@ total over a Pedersen conductivity shape, but for exoplanets both $B$ and the ef
 field are unknown, so its value appears limited to sensitivity studies. As for a Robeling-style
 Jupiter application, it is out of reach for \EXHALE\ as it stands. It is worth noting, though, that
 \EXHALE\ already has the H$_3^+$ cooling piece, and that it reaches the neutral molecular lower
-atmosphere by a different route --- the offline \textsc{Vulcan} coupling --- rather than by
+atmosphere by a different route (the offline \textsc{Vulcan} coupling) rather than by
 solving that chemistry internally.
 
 \subsection{Recommendation}
@@ -573,8 +573,8 @@ both codes compute heating term by term, neither uses a heating efficiency param
 
 \section{Caveats}
 
-This memo rests on the four papers --- published text for the three Johnstone papers, preprint
-text for Robeling et al.\ (2026) --- together with the \EXHALE\ source tree. The \Kompot\ source
+This memo rests on the four papers (published text for the three Johnstone papers, preprint
+text for Robeling et al.\ (2026)) together with the \EXHALE\ source tree. The \Kompot\ source
 is not public, so every statement here about \Kompot\ is a statement about what its papers say,
 and the code may contain physics or numerics they do not describe. Several numbers above are read
 from published figures rather than tabulated values: some Johnstone et al.\ (2021) thresholds,

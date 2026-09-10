@@ -3,7 +3,7 @@
 convention).  Run from the poster/ directory:  python make_poster_figs.py
 Outputs to poster/figs/*.pdf.
 
-STALE (P48; Update_EXHALE section 137): the PDFs currently in poster/figs/ and
+STALE (P48; Update_EXHALE_stage1 section 137): the PDFs currently in poster/figs/ and
 the tpm_*.txt curves they are drawn from were made while the readers returned
 the profile files' GHOST rows as solution cells.  This script now reads through
 exhale_io.loadtxt_cells, so re-running it will move the depths by 0.2-3.8 per

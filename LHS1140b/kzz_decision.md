@@ -391,7 +391,7 @@ Elemental ratio `(He/H)/HeH` from the `_adv` profiles:
 > and none of it is current.** The whole ladder has been re-solved twice
 > since: on the Garcia Munoz (2025) coefficient
 > (`exhale/ladder_gm25/results.txt`) and then on the composition-renormalized
-> SvS85 split of `docs/Update_EXHALE.md` section 96
+> SvS85 split of `docs/Update_EXHALE_stage1.md` section 96
 > (`exhale/crossings_j96/results.txt`). The current values are
 > He/H = 3.8075 on the `K_zz` <= 1e4 plateau, 1.6108 at the adopted
 > `K_zz` = 1e9, 0.8368 at 1e11, 0.4132 well mixed on the GJ 1132 proxy and
@@ -765,7 +765,7 @@ Damkohler number is wrong wherever the species' relaxation times differ, and
 correcting it means either gating the correction species by species or
 raising the gate to the slowest relaxation time in the system.
 
-**Fixed, `../docs/Update_EXHALE.md` section 72** (2026-08-25): the gate now
+**Fixed, `../docs/Update_EXHALE_stage1.md` section 72** (2026-08-25): the gate now
 uses the slowest relaxation rate of the solved species vector. Re-post-
 processing `heh10_diff_kzz1e8` with the corrected binary leaves 15 of 503
 cells at equilibrium, all at `r <= 1.0034 R_p`, removes the step in the
@@ -796,7 +796,7 @@ on the lower-atmosphere side: **the matching-level composition is now solved
 for, not stated.** The photochemical column is given the elemental escape
 fluxes as an upper boundary condition, the wind is solved on the profile that
 comes back, its own elemental fluxes are measured, and the two are iterated
-to agreement (`../docs/Update_EXHALE.md` section 79;
+to agreement (`../docs/Update_EXHALE_stage1.md` section 79;
 `exhale/flux_closure/`).
 
 The measured answer on this planet, from three starting fluxes spanning a
@@ -1101,7 +1101,7 @@ determinism but says nothing about seed dependence.
 
 **The practical rule.** A ladder scan is climbed one step at a time; a large
 jump in reservoir can leave an outer region the solver will not revisit and
-no convergence test will flag. Record: `../docs/Update_EXHALE.md` section 83.
+no convergence test will flag. Record: `../docs/Update_EXHALE_stage1.md` section 83.
 
 ---
 

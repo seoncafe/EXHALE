@@ -1,0 +1,25 @@
+# Lines that may carry the numeric value of an ionization potential outside
+# src/modules/init/parameters.f90, read by threshold_literal_uniqueness.py.
+#
+# Format:  file basename | substring of the code line | justified|open | reason
+#
+# `justified` -- the number is not a statement of the ionization potential:
+#   it is a coefficient of a published fit, or a row of tabulated data whose
+#   abscissa happens to take that value.  Reading the measured potential
+#   there would change a fit away from the form its coefficients were fitted
+#   to.
+# `open` -- the number IS a second statement of the potential, in a file that
+#   the item which wrote this test did not own.  Printed as a DIAGNOSTIC by
+#   the test.
+
+Cool_coeff.f90 | voronov_ci(T, 13.6d0 | justified | Voronov (1997) Table 1 dE, fitted together with A, X, K and P; it enters the rate through U^K, exp(-U) and X+U
+Cool_coeff.f90 | voronov_ci(T, 24.6d0 | justified | Voronov (1997) Table 1 dE, as above
+Cool_coeff.f90 | voronov_ci(T, 54.4d0 | justified | Voronov (1997) Table 1 dE, as above
+Cool_coeff.f90 | coeff_coex_HeI_1S_23S = 2.10e-8*sqrt(13.60 | justified | the Rydberg of the collision-strength normalization 2.10e-8 sqrt(Ry/kT) Upsilon/g (Oklopcic 2018, Lampon 2020), not the H I photoionization threshold
+Cool_coeff.f90 | coeff_coex_HeI_23S_21S(j_lo:j_hi) = 2.10e-8*sqrt(13.60 | justified | the same Rydberg prefactor
+Cool_coeff.f90 | coeff_coex_HeI_23S_21P(j_lo:j_hi) = 2.10e-8*sqrt(13.60 | justified | the same Rydberg prefactor
+Cool_coeff.f90 | 3.25000d0,     3.30000d0,     3.35000d0,     3.40000d0 | justified | a row of the log10(T) abscissa of the CHIANTI cooling tables
+Cool_coeff.f90 | 4.75000d0,     4.80000d0,     4.85000d0,     4.90000d0 | justified | a row of the log10(T) abscissa of the CHIANTI cooling tables
+mol_rates.f90 | U = 13.6d0/(kb_eV*Te) | justified | Voronov (1997) Table 1 dE of the R3 electron-impact ionization fit
+mol_rates.f90 | U = 24.6d0/(kb_eV*Te) | justified | Voronov (1997) Table 1 dE of the R4 electron-impact ionization fit
+cross_sec.f90 | E_I_yan = 15.4d0 | justified | scaling energy of the Yan, Sadeghpour & Dalgarno (1998) Eq. 19 sum-rule tail, a coefficient of that fit

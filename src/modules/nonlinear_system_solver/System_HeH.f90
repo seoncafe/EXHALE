@@ -1,6 +1,30 @@
 	module System_HeH
 	! Ionization equilibrium system with both H and He
-	
+	!
+	! THE PHOTOIONIZATION RATES ARE CONSTANTS OF THIS SOLVE, AND THE REASON
+	! IS COST.  ieq_cell%P_HI, P_HeI and P_HeII are the attenuated field of
+	! one cell, and that field is a function of the very unknowns solved
+	! here: the cell's own optical depth, dtau = sum_abs sigma_nu n_abs dr,
+	! enters the cell mean of the attenuation the rates are integrated over
+	! (util_ion_eq, photoionization_field_at_cell_HHe).  Carrying that
+	! dependence inside the residual means re-integrating the field over the
+	! photon grid at every residual evaluation, and hybrd1 evaluates the
+	! residual N_eq + 1 times for each finite-difference Jacobian alone.
+	! COST2 MEASURED one field evaluation at 38 per cent of the marching
+	! time against 25 per cent for the whole cell solve, i.e. one field
+	! already costs about one and a half cell solves; inside the residual it
+	! would be paid once per evaluation instead of once per solve.
+	!
+	! The dependence is therefore closed OUTSIDE the solve: the equilibrium
+	! sweep re-forms the cell's field from the composition this solve
+	! returned and solves again (ionization_equilibrium,
+	! xuv_self_field_passes), which reaches the same self-consistent pair
+	! without putting the photon grid inside the Newton loop.  Every
+	! Jacobian in this family is therefore the exact Jacobian of the system
+	! it solves.  The same statement holds for System_HeH_metals,
+	! System_HeH_TR, System_HeH_TR_metals, System_HeH_mol,
+	! System_HeH_mol_metals and System_H.
+
 	use global_parameters
 	use ion_cell_state, only: ieq_cell
 	use ion_residual_core, only: heh_rows, heh_crow, heh_jac_local

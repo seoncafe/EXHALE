@@ -1,0 +1,26 @@
+title H2 self-shielding table, T = 700 K, n_H = 1e12 cm-3
+# --- incident radiation field -------------------------------------
+# flat-F_lambda (f_nu ~ nu^-2) shape: the DB96 eq.(24) calibration that
+# EXHALE's sigma_LW rests on.  Normalized to F = 343 erg cm^-2 s^-1
+# over 912-1110 A = 0.82096-0.99920 Ryd (EXHALE "Stellar LW flux"),
+# i.e. G_0 = 1.25e6 Habing.
+table power law -2.0, 0.009115, 20
+intensity 2.535294, range 0.82096 to 0.99920 Ryd
+# remove every H-ionizing photon
+extinguish 24 0
+# an ionization source is required, else no electrons, no H-, no H2
+cosmic rays background
+# --- gas ------------------------------------------------------------
+hden 12
+abundances "hhe.abn"
+constant temperature 700 K
+database h2
+# --- geometry / stopping ---------------------------------------------
+stop H2 column density 21.7
+stop temperature 0.5
+stop zone 6000
+iterate 1
+# --- output ----------------------------------------------------------
+print line faint 100
+save h2 rates "t0700_n12.rat"
+save overview "t0700_n12.ovr"

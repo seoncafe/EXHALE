@@ -325,6 +325,13 @@ Xing, L., Yan, D., \& Guo, J. 2023, \bibinfo{title}{{The Mass Fractionation of
   Helium in the Escaping Atmosphere of HD 209458b},} ApJ, 953, 166
 
 % type= article
+\bibitem[{N.~K. {Yamaleev} {\&} M.~H. {Carpenter}(2009){Yamaleev} \&
+  {Carpenter}}]{Yamaleev2009}
+{Yamaleev}, N.~K., \& {Carpenter}, M.~H. 2009, \bibinfo{title}{Third-order
+  Energy Stable WENO scheme,} Journal of Computational Physics, 228, 3025,
+  \dodoi{10.1016/j.jcp.2009.01.011}
+
+% type= article
 \bibitem[{D. Yan {et~al.}(2022)Yan, Seon, Guo, Chen, \& Li}]{Yan2022}
 Yan, D., Seon, K.-i., Guo, J., Chen, G., \& Li, L. 2022,
   \bibinfo{title}{{Modeling the H{\alpha} and He 10830 Transmission Spectrum of

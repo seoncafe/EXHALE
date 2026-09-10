@@ -48,7 +48,7 @@ relative shift that is negligible against the fit errors;
 (ii) the transition energies recovered by the fits
 are the CHIANTI \texttt{.scups} \emph{theoretical} energies, which can
 differ from the observed-wavelength energies by a few percent (e.g.\
-Mg\,II $4.277$ vs.\ $4.43$\,eV) --- using the observed value inflates
+Mg\,II $4.277$ vs.\ $4.43$\,eV): using the observed value inflates
 the fit error from ${\sim}1\%$ to ${\sim}5\%$.
 
 Fit scripts (in \texttt{cooling\_data/}):
@@ -94,7 +94,7 @@ channel & $g_l$ & $\Delta E$ [eV] & $a$ & $b$ & $T_0$ [K] & max err \\
 Mg\,I $\lambda$2853 & 1 & 4.3381 & 0.355792 & 15.1223 & 94126.5 & 2.8\% \\
 Mg\,II h\&k         & 2 & 4.2766 & 16.2305  & 20.3448 & 121896  & 1.1\% \\
 Ca\,II H\&K         & 2 & 3.1438 & 14.7415  & 19.4920 & 36218.3 & 1.2\% \\
-Na\,I D             & 2 & 2.1037 & 36.0744  & 0 (const.) & ---  & 0.01\% \\
+Na\,I D             & 2 & 2.1037 & 36.0744  & 0 (const.) & -  & 0.01\% \\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -124,7 +124,7 @@ He\,\textsc{ii}, each within $0.3\%$ of the lowest level of that ion
 These two coolants are represented in \texttt{Cool\_coeff.f90} by expressions
 inherited from the ATES lineage that had never been checked against a line list.
 The fits of this section are the result of that check; unlike every other
-coefficient in this memo they are \emph{not} installed --- \texttt{coex\_rate\_HeI}
+coefficient in this memo they are \emph{not} installed: \texttt{coex\_rate\_HeI}
 and \texttt{coex\_rate\_HeII} still evaluate the old expressions, because
 swapping them changes converged solutions and needs its own golden refresh.
 The check matters only for helium-rich gas: in a hydrogen-rich wind
@@ -134,7 +134,7 @@ helium-dominated wind these are the line cooling
 recording.  The old He\,\textsc{i} expression,
 $1.1\times10^{-19}T^{0.082}e^{-2.3\times10^5/T}$, is a fair
 representation of the full ground-state sum despite carrying the
-threshold of the lowest channel only --- it is low by $5$--$19\%$ over
+threshold of the lowest channel only: it is low by $5$--$19\%$ over
 $5\times10^3$--$5\times10^4$~K, whereas it differs from the $2^3S$
 channel by itself by up to a factor $3.4$.  The old He\,\textsc{ii}
 expression is low by a factor of two and gets worse as the temperature
@@ -146,7 +146,7 @@ rises.
 Eqs.~(\ref{eq:twolevel}--\ref{eq:btups}) fitted to the CHIANTI~v11 sum
 over all transitions out of the ground level.  ``Max err'' is against
 that sum over the fit range; the last column is the error of the
-expression each fit would replace --- the one still in the code --- over the
+expression each fit would replace (the one still in the code) over the
 range where that coolant can matter ($5\times10^3$--$5\times10^4$~K for He\,\textsc{i},
 $2\times10^4$--$10^5$~K for He\,\textsc{ii}).}
 \label{tab:helium}
@@ -208,7 +208,7 @@ exponential cannot represent it.  Four effective two-level groups do:
 \label{eq:multiexp}
 \end{equation}
 The fitted $T_i$ (Table~\ref{tab:feii}) map onto physically meaningful
-transition groups --- infrared fine structure, optical metastable, UV
+transition groups: infrared fine structure, optical metastable, UV
 resonance, and a high-energy tail (Fig.~\ref{fig:feiidecomp}).
 
 \begin{table}[htbp]
@@ -275,8 +275,8 @@ Figure~\ref{fig:cno} compares the three.  The AIOLOS carbon fits track
 CHIANTI remarkably well near $10^4$\,K (C\,I to ${\sim}1\%$), which
 suggests they were calibrated against data of similar provenance; the
 oxygen fits however deviate by 40--70\% across the wind-launch region
-($1$--$3\times10^4$\,K), and nitrogen --- a non-negligible coolant
-around $2\times10^4$\,K --- was absent entirely.  The runtime key
+($1$--$3\times10^4$\,K), and nitrogen (a non-negligible coolant
+around $2\times10^4$\,K) was absent entirely.  The runtime key
 \texttt{cno\_cool} in \texttt{metals.inp} selects the source
 (\texttt{1} = CHIANTI fits, the default; \texttt{0} = AIOLOS).
 
@@ -353,8 +353,8 @@ together with a multi-exponential refit $\Lambda_{\rm rem}(T)$ of the
 CHIANTI curve that keeps \emph{only} the channels leaving the ground
 term.  The assembly uses
 $\Lambda_{\rm eff} = W_{\rm FS}/n_e + \Lambda_{\rm rem}(T)$, so the
-$n_e$ prefactor cancels and the H-collision channel --- which the
-electron-only coronal curves lack entirely --- is recovered exactly.
+$n_e$ prefactor cancels and the H-collision channel (which the
+electron-only coronal curves lack entirely) is recovered exactly.
 The ions treated are the complete set of split ground terms among the
 coolants:
 
@@ -386,8 +386,8 @@ within-term channel to the accuracy of the $\Upsilon$ fits (1.3--4.4\%).
 As either density $\to\infty$ it saturates at the exact multilevel LTE
 emission $\sum_u f_u^{\rm Boltz} A_{ul} h\nu_{ul}$, verified to
 $10^{-14}$ relative.  The earlier two-level treatment of [O\,I]
-63\,$\mu$m and [C\,II] 158\,$\mu$m multiplied a two-level solution ---
-already normalized to the \emph{two-level} partition function --- by the
+63\,$\mu$m and [C\,II] 158\,$\mu$m multiplied a two-level solution
+(already normalized to the \emph{two-level} partition function) by the
 ground-term Boltzmann fraction of its lower level; that double
 normalization left its LTE limit low by a factor
 $1+(g_u/g_l)e^{-E/k_BT}$, i.e.\ $2.7\times$ for [C\,II] 158\,$\mu$m at
@@ -419,7 +419,7 @@ per face,
 with $\tau$ the line-center optical depth from the cell to that face;
 the two branches meet continuously in value at
 $\tau_c=\sqrt{\pi}\,e^{a^2/4}\simeq 6.97$ (the residual slope kink there
-is below 1\%), and $\beta_1(0)=1/2$ --- half of the photons leave through
+is below 1\%), and $\beta_1(0)=1/2$, half of the photons leave through
 the near face.  The escape probability of a cell is the two-face sum,
 $\beta_{ul}=\beta_1(\tau_{\rm up})+\beta_1(\tau_{\rm dn})$
 (\texttt{line\_escape\_probability\_one\_face},

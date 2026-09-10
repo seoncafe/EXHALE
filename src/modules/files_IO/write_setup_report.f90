@@ -6,12 +6,22 @@
 	use base_boundary, only: r_base_level, base_reservoir_p,           &
                             base_reservoir_T, base_face_mach_blend
 	use charge_exchange, only: he_h_charge_exchange, cx_o2p_h_scale
+	! Which spectrum built the grid; the single record of the choice.
+	use J_incident,      only: spectrum_is_planck, loaded_table_floor_eV
+	use sed_reader,      only: photon_grid_floor_eV
 	use caloric_eos,     only: caloric_eos_state_line
 	use species_table,   only: melem_name
 	use IC_load,         only: melem_from_abundance,                    &
-	                     ic_coupling_present, ic_sec_ion_active
-	use Read_input,      only: base_level_from_base_inp
+	                     ic_coupling_present, ic_sec_ion_active,        &
+	                     ic_provenance_unknown,                         &
+	                     ic_restart_schema_present, n_opt, opt_name,    &
+	                     restart_option_change_named,                   &
+	                     restart_option_change_given,                   &
+	                     ic_option_change_applied, ic_option_change_inert
+	use Read_input,      only: base_level_source
 	use composition,     only: h2_mixing_ratio_base, h2_mixing_ratio_ceiling
+	use diffusive_photochemistry, only: carrier_co_domain_record,        &
+	                     carrier_co_domain_f_dom
 	use lower_atmosphere_profile, only: lap_in_use, lap_report_provenance, &
 	                     lap_flux_measured, lap_flux_window_empty,        &
 	                     lap_flux_nface, lap_FH_median, lap_FH_spread,    &
@@ -36,6 +46,12 @@
 	! COUNT cannot be used here -- `count` is the global step counter in
 	! global_parameters, so the name is shadowed module-wide.
 	integer :: imet, n_met_active
+	! The flux the photon grid actually carries, and the nominal
+	! (10^LX + 10^LEUV)/(4 pi a^2) at the same dayside dilution.
+	real*8  :: f_grid, f_nominal, e_floor
+	! The option tokens this run was allowed to change at the restart
+	character(len=250) :: optlist
+	integer :: iopt
 
 	write(*,*) '(write_setup_report.f90) Writing the setup report on EXHALE_setup.out..'
 
@@ -70,6 +86,26 @@
 	write(outfile,*)	
 	write(outfile,*) ' ----- Simulation setup parameters -----'
 	write(outfile,*)
+	! WHAT THIS RUN IS DOING, and whether the input said so or the code took
+	! its default (docs/a0_run_mode_contract_20260906.md section 6). The
+	! default is init in every configuration: the ordinary run of this code
+	! relaxes to a stationary solution, which is initialization / continuation
+	! and claims no elapsed time. A physical integration is asked for, carries
+	! a clock that advances only on an accepted global step, and says so in
+	! the header of the state it writes.
+	if (run_mode .eq. run_mode_phys) then
+		write(outfile,*) '- Run mode: phys (given) -- physical integration:'// &
+		                 ' one global dt per step, a handoff test on the'//    &
+		                 ' initial state, and an elapsed time'
+	else if (run_mode_given) then
+		write(outfile,*) '- Run mode: init (given) -- initialization /'//      &
+		                 ' continuation: no physical elapsed time is claimed'//&
+		                 ' for the state this run writes'
+	else
+		write(outfile,*) '- Run mode: init (default) -- initialization /'//    &
+		                 ' continuation: no physical elapsed time is claimed'//&
+		                 ' for the state this run writes'
+	endif
 	write(outfile,10) &
       ' - Upper boundary of the domain: ', r_max, ' [R_p]'
 	if (spherical_domain) then
@@ -99,7 +135,7 @@
 		if (F_LW_star .gt. 0.0d0) then
 			write(outfile,'(A,ES10.3,A)') &
       ' - H2 Lyman-Werner photodissociation on: band flux ', F_LW_star,   &
-      ' erg cm^-2 s^-1 (912-1110 A, at the planet)'
+      ' erg cm^-2 s^-1 (912-1201 A, at the planet)'
 			if (lw_from_spectrum) write(outfile,*) &
       '  (integrated from the numerical spectrum, not stated by the run)'
 		else if (lw_flux_stated) then
@@ -192,12 +228,12 @@
 	if (thereis_oxychem) then
 		write(outfile,*) &
       '- Including oxygen chemistry (OH, H2O, CO) in the same system'
-		write(outfile,'(A,5ES10.3)') &
+		write(outfile,'(A,4ES10.3)') &
       ' - FUV band fluxes at the planet [erg cm^-2 s^-1]'//               &
-      ' LW/B1/B2(Lya)/B3/B4: ', F_LW_star, F_FUV_B1, F_Lya_star,          &
+      ' LW/B2(Lya)/B3/B4: ', F_LW_star, F_Lya_star,                       &
       F_FUV_B3, F_FUV_B4
 		write(outfile,*) &
-      '- The 912-1110 A band is the Lyman-Werner interval and carries'//  &
+      '- The 912-1201 A band is the Lyman-Werner interval and carries'//  &
       ' "Stellar LW flux": H2, H2O and OH share that beam'
 		write(outfile,*) &
       '- B2 is the INCIDENT stellar Ly-alpha flux: only the H2O/OH'//     &
@@ -254,6 +290,58 @@
          ' the run starts staged, as it did before'
 		endif
 	endif
+	! WHAT IS KNOWN ABOUT THE CONFIGURATION THE LOADED STATE WAS PRODUCED
+	! UNDER, and what this run was allowed to change about it
+	! (docs/restart_contract_design_20260909.md section 3, decision 21).
+	! A state whose configuration cannot be compared with this run's is not
+	! a state this run can be held to, and a state reloaded under changed
+	! physics options is a starting point and not a solution: both are
+	! statements about the run, so both belong in the report of the resolved
+	! configuration and not only in the log.
+	if (do_load_IC) then
+		if (ic_provenance_unknown .and. .not. ic_restart_schema_present) then
+			write(outfile,*) &
+         ' - Restart provenance: UNKNOWN. The state files carry no'// &
+         ' configuration block, so the reservoir, the grid, the'// &
+         ' constants and the physics options they were produced'// &
+         ' under were not compared with this run''s; every file this'// &
+         ' run writes says so'
+		else if (ic_provenance_unknown) then
+			write(outfile,*) &
+         ' - Restart provenance: UNKNOWN by descent. The state files'// &
+         ' state their own configuration and it agrees with this'// &
+         ' run, but the state they carry came from a file that'// &
+         ' carried no configuration block, so what it was reached'// &
+         ' under is not known; the mark stays with every file this'// &
+         ' run writes'
+		else
+			write(outfile,*) &
+         ' - Restart provenance: the state files state the'// &
+         ' configuration they were produced under, and it agrees'// &
+         ' with this run'
+		endif
+		if (restart_option_change_given) then
+			optlist = ' '
+			do iopt = 1, n_opt
+				if (restart_option_change_named(iopt)) &
+					optlist = trim(optlist)//' '//trim(opt_name(iopt))
+			enddo
+			write(outfile,*) &
+         ' - Restart option change: allowed for'//trim(optlist)// &
+         '; every other option difference refuses the load'
+			if (ic_option_change_applied) then
+				write(outfile,*) &
+         '   the load DID change a named option (the lines'// &
+         ' "# option_change" of the output state say which): the'// &
+         ' loaded state is a solution of the former option set'
+			endif
+			if (ic_option_change_inert) then
+				write(outfile,*) &
+         '   at least one named option does not differ between the'// &
+         ' state and this run'
+			endif
+		endif
+	endif
 	! Atomic H/He rate set. Reported only when the published set is in
 	! force: it is the statement that this run is not on EXHALE's own rates.
 	if (photoheat_photon_fraction .gt. 0.0d0) then
@@ -278,16 +366,59 @@
 	if (is_PL_sed) &
       	write(outfile,12)  & 
             ' - Using power-law spectrum ', 'with index ', PLind
-	if (is_monochr) & 
+	if (is_monochr) &
 		write(outfile,13)  &
          ' - Using monochromatic radiation with energy ', e_low
+	! ONE SPECTRUM TYPE BUILDS EVERY BAND (development plan rev 3, section
+	! 10.5 decision 13). Stated for every run: which type filled the photon
+	! grid, what the band BELOW 13.6 eV was built from -- the band where the
+	! He 2^3S metastable (4.80 eV) and the low-IP metals absorb, and the one
+	! band a reader is most likely to assume came from somewhere else -- and
+	! what the grid integrates to against the nominal XUV flux.
+	write(outfile,*) '- Spectrum type: '//trim(sp_type)//                  &
+      ', and it builds every band of the photon grid'
+	! The floor is the lower EDGE of the first bin (e_v(1) is its center):
+	! the lowest active threshold for the analytic types, the table's
+	! lowest read energy for a loaded SED.
+	e_floor = photon_grid_floor_eV()
+	if (do_read_sed) e_floor = loaded_table_floor_eV()
+	if (.not. is_monochr .and. allocated(e_v)) then
+		if (NlTR .le. 0) then
+			write(outfile,'(A,F7.2,A)') '   Below 13.6 eV: no grid'//     &
+            ' point. The grid starts at ', e_floor, ' eV, no absorber'//   &
+            ' below the H I threshold being active.'
+		else if (is_PL_sed) then
+			write(outfile,'(A,F6.2,A)') '   Below 13.6 eV (down to ',     &
+            e_floor, ' eV): the SAME power law, extrapolated below the'
+			write(outfile,*) '     [e_low, e_mid] band it is normalized'//&
+            ' on. A photospheric near-ultraviolet field is a different'
+			write(outfile,*) '     spectrum type ("Planck", or a "Load"'//&
+            'ed SED reaching that wavelength), not a correction to this one.'
+		else if (spectrum_is_planck()) then
+			write(outfile,'(A,F6.2,A)') '   Below 13.6 eV (down to ',     &
+            e_floor, ' eV): the same photospheric blackbody as every'//    &
+            ' other band.'
+		else if (do_read_sed) then
+			write(outfile,'(A,F6.2,A)') '   Below 13.6 eV (down to ',     &
+            e_floor, ' eV): the same SED file as every other band.'
+		endif
+	endif
+	if (allocated(F_XUV) .and. allocated(de_v)) then
+		f_grid    = sum(F_XUV*de_v)
+		f_nominal = dayside_dilution()*J_XUV
+		write(outfile,'(A,ES11.4,A)') '   Integrated grid flux'//         &
+         ' sum(F dE) = ', f_grid, ' erg cm^-2 s^-1 (after the dilution)'
+		write(outfile,'(A,ES11.4,A,ES10.3)') '     against the nominal'//   &
+         ' (10^LX + 10^LEUV)/(4 pi a^2) = ', f_nominal,                   &
+         ' at the same dilution: ratio ', f_grid/max(f_nominal,1.0d-300)
+	endif
 	if (appx_mth.eq.'alpha') then 
 		write(outfile,14) ' - 2D approximation used: alpha =, with alpha = ',a_tau
 	else
 		write(outfile,*) '- 2D approximation used: ', appx_mth
 	endif
 	! The one number that convention turns into, stated once: every stellar
-	! beam of the run -- XUV grid, Ly-alpha, and the five FUV bands -- is
+	! beam of the run -- XUV grid, Ly-alpha, and the four FUV bands -- is
 	! multiplied by it (global_parameters dayside_dilution).
 	write(outfile,'(A,F6.3)') &
       ' - Dayside dilution applied to every stellar beam: ',              &
@@ -316,19 +447,14 @@
 		write(outfile,*) '  WARNING: base scale height spans < 10 cells;'//&
 			' expect a stationary cell-to-cell entropy mode at the base.'
 	! Which input fixed the lower boundary, and where it put it. n0 and the
-	! base pressure are the same statement, so the report names the one the
-	! run was given and the one derived from it.
-	if (base_level_from_base_inp) then
-		write(outfile,71) '- Base level: p = ', p_base_bar,                 &
-			' bar (from base.inp p_base) -> n0 = ', n0, ' cm^-3'
-	else if (base_bc_mode .eq. 1) then
-		write(outfile,71) '- Base level: p = ', base_p_ubar*1.0d-6,         &
-			' bar (from "Base BC: pressure") -> n0 = ', n0, ' cm^-3'
-	else
-		write(outfile,71) '- Base level: n0 = ', n0,                        &
-			' cm^-3 (from the density key) -> p = ',                        &
-			n0*kb_erg*T0*ntot_bc*1.0d-6, ' bar'
-	endif
+	! base pressure are one statement -- p = n0 k T0 ntot_bc at the base
+	! composition -- so the report gives the density the run marches with,
+	! the pressure that density is, and the input those came from, in one
+	! line. The pressure is recomputed from n0 rather than echoed from the
+	! input, so a level stated twice cannot be reported as two levels.
+	write(outfile,71) '- Base level: n0 = ', n0, ' cm^-3 -> p = ',          &
+		n0*kb_erg*T0*ntot_bc*1.0d-6, ' bar (level from '//                  &
+		trim(base_level_source)//')'
 71	format(1X,A,ES11.4,A,ES11.4,A)
 	write(outfile,*) '- Caloric EOS (energy <-> pressure): ',              &
 		trim(caloric_eos_state_line())
@@ -505,6 +631,9 @@
 	   call put_s('PLind', '(unset)')
 	endif
 	call put_l('is_PL_sed', is_PL_sed)
+	! The photospheric-blackbody type has no logical of its own: sp_type,
+	! dumped above, is the record of the choice, and T_star_eff and R_star,
+	! dumped below, are the field it builds.
 	call put_l('is_monochr', is_monochr)
 	call put_r('e_low', e_low)
 	call put_l('thereis_Xray', thereis_Xray)
@@ -571,7 +700,6 @@
 	call put_l('carrier_transport', carrier_transport)
 	call put_l('carrier_in_newton', carrier_in_newton)
 	call put_l('ionization_transport', ionization_transport)
-	call put_r('F_FUV_B1', F_FUV_B1)
 	call put_r('F_FUV_B3', F_FUV_B3)
 	call put_r('F_FUV_B4', F_FUV_B4)
 	call put_l('molecular_base', molecular_base)
@@ -679,6 +807,10 @@
 	! Phase B).  Format: '# ' comments, then one 'key  value' pair per line.
 	integer :: u, ie
 	logical :: base_present
+	! Domain record of the one-sided CO destruction model over the run so
+	! far (zero at the startup call, the whole run at the end-of-run call).
+	integer :: co_dom_out, co_dom_hot, co_dom_hep
+	real*8  :: co_dom_ratio, co_dom_r, co_dom_form
 
 	inquire(file='base.inp', exist=base_present)
 	open(newunit=u, file='EXHALE_resolved.out', status='replace',        &
@@ -719,10 +851,11 @@
 	! O I column means FREE ATOMIC oxygen (it does when this is T) and
 	! whether the OH / H2O / CO columns of Ion_species.txt exist;
 	! oxygen_base_partition is the provenance of the base H2/H partition,
-	! which is the whole point of the option. The five band fluxes are the
+	! which is the whole point of the option. The four band fluxes are the
 	! photon input the oxygen photochemistry actually ran on; the first of
-	! them, fuv_band_LW_flux, is the 912-1110 A interval shared with the H2
-	! Lyman-Werner absorber.
+	! them, fuv_band_LW_flux, is the 912-1201 A interval shared with the H2
+	! Lyman-Werner absorber.  There was a fifth, fuv_band_B1_flux, for the
+	! 1110-1201 A band merged into it on 2026-09-06.
 	write(u,'(A,L1)')     'mol_ir_bands              ', mol_ir_bands
 	write(u,'(A,L1)')     'carrier_transport         ', carrier_transport
 	write(u,'(A,L1)')     'carrier_in_newton         ', carrier_in_newton
@@ -730,7 +863,6 @@
 	write(u,'(A,L1)')     'oxygen_chemistry          ', thereis_oxychem
 	if (thereis_oxychem) then
 		write(u,'(A)')     'oxygen_reaction_set       a2_v1'
-		write(u,'(A,ES23.15E3)') 'fuv_band_B1_flux          ', F_FUV_B1
 		write(u,'(A,ES23.15E3)') 'fuv_band_Lya_flux         ', F_Lya_star
 		write(u,'(A,ES23.15E3)') 'fuv_band_B3_flux          ', F_FUV_B3
 		write(u,'(A,ES23.15E3)') 'fuv_band_B4_flux          ', F_FUV_B4
@@ -840,6 +972,34 @@
 			write(u,'(A,ES23.15E3)')  'steady_Mdot_spread        ',         &
 				lap_steady_Mdot_spread
 		endif
+	endif
+	! THE DOMAIN OF THE ONE-SIDED CO DESTRUCTION MODEL, CUMULATIVE OVER
+	! THE RUN.  The CO row destroys CO and never forms it, which is
+	! legitimate in a cell where tau_dest << tau_res << tau_form.  Both
+	! inequalities are evaluated on the state the accepted carrier steps
+	! hand on, and the counts are cell visits summed over the run's carrier
+	! intervals.  The record is informational: the rates are on everywhere,
+	! and where the ordering fails it is the omitted formation that fails
+	! with it, so the transported value stands.  Written even when nothing
+	! was out of domain, because a zero in a cumulative record IS the
+	! statement that the model stayed inside its domain.
+	if (carrier_transport .and. thereis_oxychem) then
+		call carrier_co_domain_record(co_dom_out, co_dom_hot,           &
+			co_dom_hep, co_dom_ratio, co_dom_r, co_dom_form)
+		write(u,'(A,ES23.15E3)') 'co_domain_f_dom           ',          &
+			carrier_co_domain_f_dom()
+		write(u,'(A,I0)')        'co_domain_cells_out       ',          &
+			co_dom_out
+		write(u,'(A,ES23.15E3)') 'co_domain_worst_ratio     ',          &
+			co_dom_ratio
+		write(u,'(A,ES23.15E3)') 'co_domain_worst_r         ',          &
+			co_dom_r
+		write(u,'(A,ES23.15E3)') 'co_domain_form_ratio      ',          &
+			co_dom_form
+		write(u,'(A,I0)')        'co_domain_cells_hot       ',          &
+			co_dom_hot
+		write(u,'(A,I0)')        'co_domain_cells_HeII      ',          &
+			co_dom_hep
 	endif
 	close(u)
 	end subroutine write_resolved_config

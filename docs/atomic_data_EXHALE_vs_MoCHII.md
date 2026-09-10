@@ -1,6 +1,6 @@
 # Atomic Data in EXHALE versus MoCHII: Comparison and the 2026-07-17 Rate Update
 
-Kwang-Il Seon — 2026-07-17
+Kwang-Il Seon, 2026-07-17
 
 ## Purpose and scope
 
@@ -22,7 +22,7 @@ that MoCHII uses, introduces the `legacy_hhe_rates` switch to reproduce the old
 fits, replaces the free-free Gaunt factor with the van Hoof et al. (2014) thermal
 average, and corrects a physical error in the free-free charge weighting.
 
-## Part 1 — Process-by-process comparison
+## Part 1: Process-by-process comparison
 
 Both codes descend from the same published sources for each overlapping process.
 EXHALE rows marked "[updated]" reflect the 2026-07-17 default (Part 2).
@@ -134,7 +134,7 @@ give rather than to the peaked one the pair actually has. MoCHII found the same
 defect in its own sampler, which drew the in-band photons flat. EXHALE now
 carries the two integrals as `f_2q_HeI` and `Ee_2q_HeI`.
 
-## Part 2 — The 2026-07-17 rate update
+## Part 2: The 2026-07-17 rate update
 
 The changes below are implemented in the radiation modules `Cool_coeff.f90` and
 `util_ion_eq.f90`, in the temperature solver `T_equation.f90`, and in the input

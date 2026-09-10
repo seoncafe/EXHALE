@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Code-size and diff measurement behind the Update_EXHALE.tex appendices
+"""Code-size and diff measurement behind the Update_EXHALE_stage1.tex appendices
 ("Code-size summary" and "Fortran source inherited unchanged from ATES").
 
 Methodology (as stated in the appendix):

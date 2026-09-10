@@ -40,7 +40,12 @@ sys.path.insert(0, HERE)
 import compare_vulcan_photochem as cvp          # noqa: E402  (shared helpers)
 
 ROOT = os.path.abspath(os.path.join(HERE, '..'))
-R_SUN, AU, R_JUP_V, R_JUP_E, GRAV = 6.957e10, 1.495979e13, 7.1492e9, 6.9911e9, 6.67430e-8
+# 7.1492e9 cm is the IAU 2015 nominal EQUATORIAL Jupiter radius (R_JUP_E,
+# the one parameters.f90 and VULCAN's vulcan_cfg use) and 6.9911e9 cm is the
+# VOLUMETRIC mean radius (R_JUP_V, the constant EXHALE carried before it was
+# corrected).  Each planet below keeps the radius its run was made with, so
+# the comparison still describes those runs; only the names are put right.
+R_SUN, AU, R_JUP_E, R_JUP_V, GRAV = 6.957e10, 1.495979e13, 7.1492e9, 6.9911e9, 6.67430e-8
 
 # Planet configurations.  Every entry repeats what the two codes were actually
 # given in the runs being compared; the sources are docs/vulcan_photochem_comparison.md
@@ -51,14 +56,14 @@ PLANETS = {
         vulcan_out=os.path.join(ROOT, 'VULCAN', 'output', 'HD189.vul'),
         atm='atm/atm_HD189_Kzz.txt',
         sflux='atm/stellar_flux/sflux-HD189_Moses11.txt',
-        rp=1.138*R_JUP_V, gs=2140.0, r_star=0.805*R_SUN, a_orb=0.03142*AU,
+        rp=1.138*R_JUP_E, gs=2140.0, r_star=0.805*R_SUN, a_orb=0.03142*AU,
         mp_MJ=1.237, r1bar_RJ=1.138, p_base_bar=1.0e-6),
     'hd209': dict(
         vulcan_dir=os.path.join(ROOT, 'vulcan_work', 'hd209_vulcan'),
         vulcan_out=os.path.join(ROOT, 'vulcan_work', 'hd209_vulcan', 'output', 'HD209.vul'),
         atm='atm/atm_HD209_Kzz.txt',
         sflux='atm/stellar_flux/Gueymard_solar.txt',
-        rp=1.36*R_JUP_E, gs=1008.9, r_star=1.155*R_SUN, a_orb=0.0480*AU,
+        rp=1.36*R_JUP_V, gs=1008.9, r_star=1.155*R_SUN, a_orb=0.0480*AU,
         mp_MJ=0.720, r1bar_RJ=1.36, p_base_bar=1.0e-4),
 }
 

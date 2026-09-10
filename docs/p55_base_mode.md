@@ -468,7 +468,7 @@ point of its own ionization sweep before the first hydro step, holding `rho`,
 
 with the same sweep the loop calls. On by default for a state read from a file;
 `EXHALE_RELOAD_EQ=0` restores the previous behaviour bit for bit. Full account
-in `docs/Update_EXHALE.md` section 144; figure `p55_reload.png`.
+in `docs/Update_EXHALE_stage1.md` section 144; figure `p55_reload.png`.
 
 **Verification (i) -- the projection becomes a rate.** `dE_chem/E` in the first
 step, at four time steps:
@@ -546,7 +546,7 @@ checked by running all ten for 600 steps against the previous binary and
 comparing the way the harness does (`grep -v '^ *#'`): all PASS. The one added
 `#` line is the only change to those files' bytes. Every named Load-IC case
 moves; the census, and the one bounded Load-IC Newton case run to its cap, are
-in `docs/Update_EXHALE.md` section 144.
+in `docs/Update_EXHALE_stage1.md` section 144.
 
 The addendum was measured on a build WITHOUT the G23 row-scale change, which was
 not published when it was made; only the `||R||` comparison reads a row scale and

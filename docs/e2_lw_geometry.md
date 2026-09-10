@@ -1,7 +1,7 @@
 # The Lyman-Werner geometry: a plane-parallel table on a spherical layer
 
 *2026-09-03. `TO_BE_DONE.md` item P47, and item E2 / section 3.4 of
-`docs/open_defects_20260903_review.md`. `Update_EXHALE.md` section 150 is the
+`docs/open_defects_20260903_review.md`. `Update_EXHALE_stage1.md` section 150 is the
 changelog entry.*
 
 

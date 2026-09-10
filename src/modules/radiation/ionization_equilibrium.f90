@@ -19,16 +19,11 @@
 	                       base_h2_composition_imposed
 	use element_census, only: element_census_state, element_census_take,  &
 	                          element_census_verify
-	use lyman_werner_photodissociation, only: e_lw_fragment_erg
-	use molecular_reaction_heat, only: molecular_chemical_heating
 	use h2_vibrational_relaxation, only: h2_vibrational_heat_fraction,     &
-	                                     h2_energy_per_bound_fluorescence_erg,&
 	                                     h2_energy_per_bound_fluorescence_eV
 	! Oxygen chemistry (the A2 option, docs/a2_oxygen_option_design.md):
 	! the FUV photolysis bands and the CO reservoir.
-	use water_photolysis, only: n_fuv_band,                               &
-	                            heat_per_water_dissociation,              &
-	                            heat_per_hydroxyl_dissociation
+	use water_photolysis, only: n_fuv_band
 	use oxygen_rates, only: co_equilibrium_density,                       &
 	                        oxygen_chemical_equilibrium_fractions
    use System_HeH_metals
@@ -46,6 +41,158 @@
    use opacity_models            ! opacity_pT_factor for the 'P' model
 
    implicit none
+
+	! WIDTH, IN CELLS, OF THE BLOCK THE XUV FIELD IS HELD FIXED OVER while
+	! the equilibrium sweep solves it (ioniz_eq, xuv_block_H / xuv_block_HHe).
+	! Zero, the default, means ONE block: the whole grid, i.e. the field of
+	! the composition the sweep was handed. Any positive width makes the
+	! sweep carry the columns of the cells it has already solved from one
+	! block to the next, which is a substitution in the star-ward direction.
+	!
+	! IT CHANGES NO FIXED POINT. At the fixed point a cell's entry and
+	! returned composition are one state, so every width builds the same
+	! columns and the same field. What the width trades is the pass count of
+	! the outer coupled loop against the width of the parallel front: inside
+	! a block the cells do not depend on each other and are solved together,
+	! across blocks they are solved in order.
+	!
+	! MEASURED 2026-09-07, wasp_full at 300 steps, one private binary per
+	! width, wall time at one and at sixteen threads:
+	!
+	!     width        passes    1 thread   16 threads
+	!     whole grid    10.10     136.3 s      17.0 s
+	!        64          9.51     133.4 s      18.6 s
+	!        16          8.05     109.4 s      28.0 s
+	!         8          7.13     103.4 s      42.5 s
+	!         4          7.14      99.0 s      47.9 s
+	!         2          7.19     106.3 s      62.2 s
+	!         1          8.10     112.3 s      99.3 s
+	!
+	! THE SUBSTITUTION DOES NOT PAY, and the reason is in the table rather
+	! than in the physics. It removes the part of the lag that walks the
+	! ionization front inward one cell per pass, and the pass count falls
+	! from 10.10 to 7.13 at its best width; but a pass costs the same field
+	! work either way, and the field of a whole grid is a single loop over
+	! independent cells that a machine solves all at once. A narrow block
+	! gives that width up, and sixteen threads recover more than the pass
+	! count saves. The width that keeps the parallel front (64) has almost
+	! no pass saving left. Hence zero.
+	!
+	! The width is a compile-time constant and NOT a function of the thread
+	! count, deliberately: the run's answer must not depend on how many
+	! threads it was given, and the widths above reach measurably different
+	! states at the 1e-8 fixed-point tolerance while the thread count moves
+	! the present code by 7e-14 (MEASURED on the same case).
+	integer, parameter :: xuv_field_block_cells = 0
+
+	! HOW MANY TIMES A CELL'S OWN ATTENUATION AND ITS OWN COMPOSITION ARE
+	! SOLVED AGAINST EACH OTHER before the sweep leaves the cell.
+	!
+	! A cell's field is exp(-tau_out) times the cell mean of its OWN
+	! attenuation, (1 - exp(-dtau))/dtau, and dtau = sum_abs sigma_nu n_abs
+	! dr is built from the very densities the cell is being solved for
+	! (photoionization_field_at_cell_HHe).  One pass therefore solves the
+	! chemistry in the field of the composition the cell was HANDED, and the
+	! composition it returns implies a slightly different field.  A second
+	! pass re-forms the field from the returned densities and solves again;
+	! COST3 MEASURED that mode contracting by 0.17 a pass on wasp_full, so a
+	! handful of passes exhausts it.
+	!
+	! ONE, the default, is one field build and one solve, which is the
+	! scheme this code has always run.  IT CHANGES NO FIXED POINT: at the
+	! fixed point the composition a cell enters with and the one it returns
+	! are one state, so the field built from either is the same field, and
+	! the outer coupled loop of EXHALE_main converges to the same pair.
+	! What a larger count trades is the pass count of that outer loop
+	! against the field and solve work inside the cell.
+	!
+	! THAT ARGUMENT IS ABOUT A FIXED POINT AND NOT ABOUT THEIR NUMBER, and
+	! the sweep of a shielded molecular column has more than one. MEASURED
+	! on the 1 microbar hot Uranus reloaded (mol_diffusion, He diffusion on):
+	! the sweep repeated at one state from two admissible seeds reaches two
+	! compositions that are each exact roots of every cell's network
+	! (normalized reaction residual 1e-25, acceptance class 1, no amnesty)
+	! and each self-consistent with the field it builds, differing by a
+	! factor 8.9 in x(H2) at the H2 front and 19 percent in x(H I) across
+	! the ionization front. Raising this count to 20 leaves that difference
+	! unchanged to every digit, so it is not the cell's own field lag.
+	! Around ONE such composition the sweep is also marginal in the total
+	! molecular hydrogen content of the shielded layer: the fast chemistry
+	! there cycles H2 -> H2+ -> H3+ and back without changing the H2 nuclei
+	! total, so the local equilibrium fixes only the partition and 0.77 of
+	! any seed perturbation of the total survives every pass (MEASURED
+	! identically at seed perturbations of 1e-6 and 1e-2). The content is
+	! upstream and transport data, which is what `Molecular carrier
+	! transport` makes it: with H2 a Newton unknown the same measurement
+	! falls from 3.2e-03 to 9.7e-10 in the acceptance measure.
+	!
+	! MEASURED 2026-09-07, one private binary per count, wasp_full at 300
+	! steps, wall time at one and at sixteen threads:
+	!
+	!     passes   coupled passes   1 thread   16 threads
+	!        1         10.09          139.3 s     17.7 s
+	!        2         10.01          229.9 s     25.2 s
+	!        8         10.01          259.9 s     26.8 s
+	!
+	! THE SELF-CONSISTENT FIELD DOES NOT PAY, and the reason is that the
+	! outer pass count is not set by this mode.  Closing the cell's own lag
+	! moves that count by 0.8 percent and costs 1.65x; on mol_base_handoff
+	! (1500 steps) it moves it the wrong way, 7.19 -> 7.24, and costs 2.0x
+	! (273.5 s -> 548.6 s).
+	!
+	! AND IT IS NOT THE MODE THE CARRIED-COLUMN SCHEME LEAVES EITHER, which
+	! is what this measurement was expected to show.  COST3 cut the pass
+	! count 10.10 -> 7.13 by carrying the star-ward columns forward
+	! (xuv_field_block_cells = 8) and read what remained as the cell's own
+	! optical depth.  MEASURED with one binary carrying BOTH levers
+	! (block 8, four self-field passes): 7.20 passes, 190.1 s, against
+	! COST3's 7.13 and 103.4 s for the columns alone.  With both of the
+	! stellar field's lags closed, seven passes remain, so what sets them is
+	! not the field: it is the temperature/composition alternation of the
+	! coupled step and the two couplings documented as lagged one sweep --
+	! the H(n=2) Balmer continuum and the locally absorbed He recombination
+	! radiation.  Which of those dominates is not measured here.  Hence one.
+	!
+	! The loop does NOT narrow the parallel front, unlike the other lever:
+	! a cell reads only the star-ward columns of the cells outside it, which
+	! are fixed for the whole block, and its own iterate, so the sweep stays
+	! one parallel region over the grid at any pass count.  MEASURED on
+	! wasp_full 300 at two passes, one thread against sixteen: byte-identical
+	! output, as the default scheme is on the same case.
+	integer, save :: xuv_self_field_passes = 1
+	! One cell's accepted equilibrium state, reported by every sweep that
+	! touches it: the acceptance class, the normalized reaction residual the
+	! state was accepted on, the solver exit code and the hydrogen partition.
+	! A caller asking whether the elimination pins a composition, or only
+	! brackets it within the acceptance tolerance, needs the residual of the
+	! accepted state and not the sweep's maximum. Cell index from
+	! EXHALE_IEQ_REPORT_CELL. The default has to lie outside 1-Ng..N+Ng --
+	! the ghosts carry negative indices and 0 is one of them -- so it is the
+	! most negative integer and no cell can equal it.
+	integer, parameter :: ieq_report_no_cell = -huge(1)
+	integer, save :: ieq_report_cell = ieq_report_no_cell
+	! THE CELLS THE CHEMICAL-DECAY DIAGNOSTIC MEASURES AT, and what it
+	! measured there. The reaction Jacobian of a cell can only be formed
+	! where that cell's own rate coefficients are live, which is inside the
+	! sweep's loop, so the cells are named before the sweep
+	! (set_molecular_decay_cells) and the rates are read after it
+	! (molecular_decay_rate_of_the_cell). Untouched by a run that names
+	! none, which is every run by default.
+	integer, parameter :: ieq_decay_ncell_max = 8
+	! The four molecular rows of the network, in the layout order of
+	! System_HeH_mol: H2, H2+, H3+, HeH+.
+	integer, parameter :: n_mol_decay_row = 4
+	integer, save :: ieq_decay_cells(ieq_decay_ncell_max) = 0
+	integer, save :: ieq_decay_ncell = 0
+	real*8,  save :: ieq_decay_row(ieq_decay_ncell_max,n_mol_decay_row) = 0.0d0
+	real*8,  save :: ieq_decay_slow(ieq_decay_ncell_max) = 0.0d0
+	real*8,  save :: ieq_decay_fast(ieq_decay_ncell_max) = 0.0d0
+	logical, save :: ieq_decay_have(ieq_decay_ncell_max) = .false.
+	! A cell leaves the loop above early once its accepted stage fractions
+	! stop moving by more than this.  A decade tighter than the coupled
+	! loop's own composition tolerance (csm_comp_tol = 1e-8, EXHALE_main),
+	! so the inner loop is never what stops the outer one short.
+	real*8,  parameter :: xuv_self_field_tol    = 1.0d-9
 
 	! molecular species densities (cols 1 H2, 2 H2+, 3 H3+, 4 HeH+;
 	! zero unless thereis_mol).  Module state: written by the equilibrium
@@ -110,6 +257,12 @@
 	real*8, dimension(:,:), allocatable :: nox_eq
 	real*8, dimension(:),   allocatable :: n_o1d_eq
 	real*8, dimension(:),   allocatable :: NH2O_col, NOH_col
+	!   NCO_col             star-ward CO column [cm^-2]
+	!   k_co_diss           CO photodissociation rate, the cell mean [s^-1]
+	!   theta_co_shield     the Visser shielding function of that cell's own
+	!                       two columns; 1 where nothing shields
+	real*8, dimension(:),   allocatable :: NCO_col, k_co_diss
+	real*8, dimension(:),   allocatable :: theta_co_shield
 	real*8, dimension(:,:), allocatable :: j_h2o_fuv, j_oh_fuv, tau_fuv
 	real*8, dimension(:),   allocatable :: heat_fuv
 	!   heat_chem           chemical heat of the collisional molecular
@@ -127,11 +280,68 @@
 	type(ion_rates), dimension(:), allocatable :: bg_cell
 	logical :: bg_ready = .false.
 
+	! THE CELL STATE OF THE SWEEP, KEPT SO THE ELIMINATED-SPECIES CLOSURE
+	! CAN BE MEASURED WITHOUT SOLVING IT AGAIN.
+	!
+	! The closure of B1a section 2.4 -- the neutral stage of every element
+	! and the electron density eliminated by the element totals and by
+	! charge neutrality -- is a residual of the SAME system rows the cell
+	! solve used, and until now it existed only inside the sweep, which also
+	! rewrites f_sp and rho. A certification of a state cannot run that
+	! sweep: it would change the state it is judging.
+	!
+	! What a residual of one cell needs is the cell's rate state and the
+	! electron density the turnover scale is referred to. Both are recorded
+	! here as the sweep passes each cell, so that
+	! ionization_closure_residual_profile can reinstall a cell and call
+	! normalized_reaction_residual on it. Nothing here feeds the solve; the
+	! arrays are written and never read by ioniz_eq itself.
+	!
+	! The composition is NOT recorded with them: the evaluator reads it
+	! from the caller's f_sp, so that a state whose composition has moved
+	! since the sweep is measured as it stands rather than as the sweep
+	! left it. What IS checked is that the element totals of the state are
+	! the ones these rates were built with; a state whose totals have moved
+	! is a different gas and the closure is unavailable for it.
+	type(ion_rates), dimension(:), allocatable :: ieq_rate_cell
+	real*8,  dimension(:),   allocatable :: ieq_ne_cell
+	real*8,  dimension(:),   allocatable :: ieq_TK_cell
+	real*8,  dimension(:),   allocatable :: ieq_ntot_cell
+	! Metal coefficients of each cell, in the order set_metal_coeffs takes
+	! them: ntot, g0, g1, b0, b1, a1, a2.
+	real*8,  dimension(:,:,:), allocatable :: ieq_met_coef
+	integer, parameter :: ieq_n_met_coef = 7
+	logical :: ieq_rates_ready   = .false.
+	integer :: ieq_neq_stored    = 0
+	integer :: ieq_mbase_stored  = 0
+	integer :: ieq_iox_stored    = 0
+
+	! The scratch of one cell that the closure evaluator has to install,
+	! held aside and put back around every measurement (see the
+	! evaluator's header).
+	type :: ieq_closure_scratch
+		type(ion_rates) :: cell
+		integer :: nelem = 0
+		logical :: met_alloc = .false.
+		real*8  :: ntot(n_melem) = 0.0d0
+		real*8  :: g0(n_melem)   = 0.0d0
+		real*8  :: g1(n_melem)   = 0.0d0
+		real*8  :: b0(n_melem)   = 0.0d0
+		real*8  :: b1(n_melem)   = 0.0d0
+		real*8  :: a1(n_melem)   = 0.0d0
+		real*8  :: a2(n_melem)   = 0.0d0
+		integer :: top(n_melem)  = 0
+		! The molecular and oxygen rate coefficients of System_HeH_mol and
+		! the reciprocal row turnover scales, in one packed vector.
+		real*8  :: molc(27) = 0.0d0
+		real*8  :: minv(n_mol_rows_max) = 1.0d0
+	end type ieq_closure_scratch
+
 	! THE FROZEN BACKGROUND OF A STATE THE STEADY SOLVER HOLDS.
 	!
 	! bg_cell is rewritten by EVERY molecular sweep, and the steady solver
 	! sweeps on states it does not keep: Jacobian columns, Krylov products and
-	! line-search trials (docs/Update_EXHALE.md section 121). When the solver
+	! line-search trials (docs/Update_EXHALE_stage1.md section 121). When the solver
 	! returns, the last sweep it ran was in general a trial the line search
 	! REJECTED, and the best-iterate restore can additionally hand back a state
 	! from several outer iterations earlier -- so the background left in
@@ -150,7 +360,7 @@
 	type(ion_rates), dimension(:), allocatable, save :: bg_cell_best
 
 	! WHICH STATE THE SWEEP IS EVALUATING, and the three ledgers that keep
-	! them apart (docs/Update_EXHALE.md section 121).
+	! them apart (docs/Update_EXHALE_stage1.md section 121).
 	!
 	! The marching loop calls ioniz_eq on the state the run holds. The steady
 	! (JFNK / PTC) solver calls it on three different things: the current
@@ -221,8 +431,8 @@
 		integer :: n_noroot      = 0
 		integer :: n_mol_clamped = 0
 		integer :: n_mol_info(0:5) = 0
-		integer :: acc_n(5)      = 0
-		real*8  :: acc_resmax(5) = 0.0d0
+		integer :: acc_n(6)      = 0
+		real*8  :: acc_resmax(6) = 0.0d0
 		integer :: hist_conv(0:15) = 0
 		integer :: hist_uncv(0:15) = 0
 		integer :: n_cce_attempt = 0
@@ -235,13 +445,32 @@
 		integer :: streak_peak   = 0
 	end type ioniz_eq_ledger
 
-	type(ioniz_eq_ledger), save :: ieq_marching_ledger
+	! The marching ledger is kept once per LEDGER FAMILY
+	! (docs/a0_run_mode_contract_20260906.md section 5): index
+	! ledger_family_init holds the sweeps taken while the run was reaching a
+	! state, index ledger_family_phys those taken inside accepted physical
+	! steps. The fields are the same; what differs is what a number in them
+	! means, and summing the two would produce an acceptance census belonging
+	! to no single run state. An initialization run records everything in the
+	! first and leaves the second empty, which is what it was before the
+	! split.
+	type(ioniz_eq_ledger), save :: ieq_marching_ledger(2)
 	type(ioniz_eq_ledger), save :: ieq_steady_iterate_ledger
 	type(ioniz_eq_ledger), save :: ieq_steady_candidate_ledger
 
+	! The acceptance census of the LAST sweep, whatever its tag. The
+	! elimination inside a steady residual evaluation is a Picard iteration
+	! whose fixed point is the composition c*(Y) the residual R(Y) = L(Y) +
+	! S(Y,c*(Y)) is defined at, and a cell accepted under the relaxation
+	! amnesty (class 4) or above its cap (class 6, the entry composition
+	! kept) is a cell that has no root at this state: the elimination then
+	! carries the seed and the residual is not a function of Y. A caller that
+	! has to know that about one sweep reads it here.
+	type(ioniz_eq_ledger), save :: ieq_sweep_ledger_last
+
 	! Acceptance tolerance on the normalized reaction residual of an
 	! equilibrium state (docs/supersonic_molecular_base.md section 11.5-A;
-	! docs/Update_EXHALE.md section 113). A state is accepted as a ROOT of
+	! docs/Update_EXHALE_stage1.md section 113). A state is accepted as a ROOT of
 	! the ionization/chemical network only when it lies inside the element
 	! bounds AND the largest reaction imbalance of any row, in units of the
 	! row's turnover rate (normalized_reaction_residual), is at or below
@@ -282,19 +511,56 @@
 	! reported, never silent -- for at most this many consecutive sweeps
 	! (~19x the largest healthy streak measured); one sweep more and the
 	! run stops with full diagnostics (nonroot_equilibrium_stop).
+	! Persistence is not the only bound. It says nothing about how far ONE
+	! accepted non-root may move the cell in a single sweep, which is what
+	! ieq_nonroot_res_cap below bounds; the streak counts both classes.
 	integer, parameter :: ieq_nonroot_streak_stop = 1000
 	! Consecutive sweeps each cell has spent on a non-root acceptance
 	! (reset to zero by any accepted root), and the run-wide peak.
 	integer, allocatable, save :: ieq_nonroot_streak(:)
 
+	! THE SEVERITY BOUND OF THE AMNESTY. Persistence separates a recovering
+	! transient from a solution resting on a non-root; it does not bound how
+	! far one accepted non-root may move the cell in a single sweep. A
+	! candidate whose normalized reaction residual is of order 1e4 is not a
+	! nearly-solved state, and adopting it is a jump of decades in one sweep:
+	! the measured event is oxygen_chemistry cell 7 at step 12, res 5.2e4
+	! accepted, which took n_e from 1.1e3 to 3.5e10 cm^-3 and n(H+) from 0 to
+	! 2.6e8 in one step and left the carrier system stiff. Above this cap the
+	! candidate is therefore NOT adopted: the cell keeps the composition it
+	! entered the sweep with (acceptance class 6), which is a state the run
+	! already held, and the sweep goes on. It is not a stop, and the streak
+	! that ends a run resting on a non-root counts class 6 exactly as it
+	! counts class 4.
+	! MEASURED on the sixteen default regression cases, 2026-09-06. Fifteen
+	! of them accept NO non-root at all; every amnesty event of the matrix
+	! belongs to the step-0 sweep of oxygen_chemistry, and its 115 events
+	! fall in two populations with nearly four empty decades between them:
+	!   res 1e-6 to 8.9   111 events, cells 1 to 185, the cold-start
+	!                     transient (16 at 1e-6, 38 at 1e-5, 24 at 1e-4,
+	!                     10 at 1e-3, 5 at 1e-2, 14 at 1e-1, 4 in [1,9))
+	!   res 8.6e4 to 1.5e5  4 events, cells 85 to 88 -- and cells 85 to 88
+	!                     are exactly the four the energy update then fails
+	!                     on, asking for a temperature below the floor.
+	! Nothing lies between 8.9 and 8.6e4. The cap is the smallest power of
+	! ten at least 3x above the largest event of the first population
+	! (3 x 8.9 = 27), which also clears the res ~28 amnesty events the
+	! metals-on molecular gates were measured to accept in 2026-08 (those
+	! gates accept no non-root at all today: the constrained continuation
+	! reaches those cells). It sits 11x above the first population and 860x
+	! below the second.
+	real*8, parameter :: ieq_nonroot_res_cap = 1.0d2
+
 	! The acceptance statistics of the He-branch equilibrium solves
-	! (docs/Update_EXHALE.md section 113) live in the ledgers declared above:
+	! (docs/Update_EXHALE_stage1.md section 113) live in the ledgers declared above:
 	! how many cell states were accepted as (1) solver-converged roots,
 	! (2) roots without solver convergence, (3) projected/handback states
 	! whose rechecked residual still marks a root, (4) NON-ROOT states
 	! accepted under the relaxation amnesty, (5) roots of the constrained
 	! element-conserving continuation solve
-	! (constrained_chemical_equilibrium), with the largest normalized
+	! (constrained_chemical_equilibrium), (6) NON-ROOT candidates above the
+	! amnesty cap, for which the cell kept the composition it entered the
+	! sweep with, with the largest normalized
 	! reaction residual each class carried; the residual-decade histograms of
 	! the physical iterates (converged and not), which locate the gap between
 	! roots and non-roots the tolerance sits in; and the cost of the
@@ -317,6 +583,12 @@
 	! the initializers the declarations used to carry.
 
 	allocate(nmol_eq(1-Ng:N+Ng,4))
+	! bg_cell and ieq_rate_cell below come out of allocation as the zero
+	! rate state -- no gas, no rates, no imposed carrier partition -- by the
+	! default initializers of ion_rates: a cell the sweep has not reached
+	! yet carries no rates, and the checkpoint that hashes, saves and
+	! restores these arrays from the first step on therefore hashes a number
+	! of the state and not of whatever block the allocator recycled.
 	allocate(bg_cell(1-Ng:N+Ng))
 	allocate(ieq_nonroot_streak(1-Ng:N+Ng))
 	ieq_nonroot_streak = 0
@@ -324,12 +596,21 @@
 	         k_lw_diss(1-Ng:N+Ng), tr_lines_lw(1-Ng:N+Ng),                &
 	         p_lw_single(1-Ng:N+Ng), p_lw_absorbed(1-Ng:N+Ng),            &
 	         P_H2_eq(1-Ng:N+Ng))
+	! The heating channels of the state each sweep returns; utils_ion_eq
+	! owns the array and the name list, the sweep fills it.
+	allocate(heat_channel_state(1-Ng:N+Ng,n_heat_channel))
+	heat_channel_state = 0.0d0
 	allocate(nox_eq(1-Ng:N+Ng,3), n_o1d_eq(1-Ng:N+Ng),                    &
 	         NH2O_col(1-Ng:N+Ng), NOH_col(1-Ng:N+Ng),                     &
 	         j_h2o_fuv(1-Ng:N+Ng,n_fuv_band),                             &
 	         j_oh_fuv(1-Ng:N+Ng,n_fuv_band),                              &
 	         tau_fuv(1-Ng:N+Ng,n_fuv_band), heat_fuv(1-Ng:N+Ng),           &
 	         heat_chem(1-Ng:N+Ng))
+	allocate(NCO_col(1-Ng:N+Ng), k_co_diss(1-Ng:N+Ng),                    &
+	         theta_co_shield(1-Ng:N+Ng))
+	NCO_col         = 0.0d0
+	k_co_diss       = 0.0d0
+	theta_co_shield = 1.0d0
 
 	nmol_eq     = 0.0d0
 	NH2_col_lw  = 0.0d0
@@ -346,7 +627,22 @@
 	j_h2o_fuv   = 0.0d0
 	j_oh_fuv    = 0.0d0
 	tau_fuv     = 0.0d0
+	! The two heating channels the sweep copies out of heat_channel_state
+	! (photolysis and collisional chemical heat): no gas has been swept
+	! yet, so neither channel is depositing anything.
 	heat_fuv    = 0.0d0
+	heat_chem   = 0.0d0
+
+	! The cell state the closure evaluator reads (see its declarations).
+	! n_x_max of the sweep: the molecular layout (7) plus the triplet plus
+	! the two oxygen carriers plus two unknowns per metal element.
+	allocate(ieq_rate_cell(1-Ng:N+Ng), ieq_ne_cell(1-Ng:N+Ng),            &
+	         ieq_TK_cell(1-Ng:N+Ng), ieq_ntot_cell(1-Ng:N+Ng),            &
+	         ieq_met_coef(n_melem,ieq_n_met_coef,1-Ng:N+Ng))
+	ieq_ne_cell        = 0.0d0
+	ieq_TK_cell        = 0.0d0
+	ieq_ntot_cell      = 0.0d0
+	ieq_met_coef       = 0.0d0
 
 	end subroutine ioniz_eq_allocate_arrays
 
@@ -375,7 +671,7 @@
 	! to 3e-6 (1000 steps) above the interior's, He exact, and zero once the
 	! base had settled -- and a restart of such a file failed the round-trip
 	! identity in exactly those two rows. Every write of a state therefore
-	! calls this first (docs/Update_EXHALE.md section 169).
+	! calls this first (docs/Update_EXHALE_stage1.md section 169).
 	real*8, dimension(1-Ng:N+Ng),           intent(in) :: rho
 	real*8, dimension(1-Ng:N+Ng,n_species), intent(in) :: f_sp
 
@@ -395,23 +691,38 @@
 
 	!----------------------------------!
 
-	subroutine ioniz_eq(T_in,n_io,f_sp_io,heat_out,cool_out,q,sweep_ledger)
+	subroutine ioniz_eq(T_in,n_io,f_sp_io,heat_out,cool_out,q,sweep_ledger,&
+	                    rho_recon)
       	 		  
 	integer :: j,im
 	logical :: usednt                     ! Task 2: Newton-vs-fallback flag
 
 	real*8, dimension(1-Ng:N+Ng),   intent(in) :: T_in
-	! Density and species fractions are read on entry and overwritten with the
+	! CHEMISTRY PRESERVES THE DENSITY IT IS GIVEN
+	! (docs/b1_target_system_20260906.md T2.1, replacing D0 C2).  Chemical
+	! reactions rearrange nucleons and electrons among species and create no
+	! mass, so the mass density is an INPUT of this step and not one of its
+	! results: n_io is intent(in), the species fractions returned are
+	! normalized by it, and the mass sum of the composition is a CHECK
+	! against it (rho_recon below), never a correction applied to it.  The
+	! species fractions are read on entry and overwritten with the
 	! equilibrium result on exit (in place); callers must not alias them.
-	real*8, dimension(1-Ng:N+Ng),   intent(inout) :: n_io
+	real*8, dimension(1-Ng:N+Ng),   intent(in) :: n_io
 	real*8, dimension(1-Ng:N+Ng,n_species), intent(inout) :: f_sp_io
 	! What THIS sweep found, for a caller that needs to know whether the state
 	! it handed in can be described at all: the same fields the run-wide
 	! ledgers accumulate, for this one sweep. The steady solver reads
 	! n_nonfinite and n_offsimplex off it to decide whether a probe or a
-	! line-search trial is usable (docs/Update_EXHALE.md section 121); the
+	! line-search trial is usable (docs/Update_EXHALE_stage1.md section 121); the
 	! marching loop does not ask.
 	type(ioniz_eq_ledger), optional, intent(out) :: sweep_ledger
+	! DIAGNOSTIC ONLY (T2.2, T2.3): the mass density reconstructed from the
+	! species the sweep returns, in the same adimensional units as n_io.  The
+	! declared mass convention is that the electron mass is carried with its
+	! ion (decision 2), so an ionization moves no mass between species and
+	! this sum reproduces n_io whenever the element totals are conserved.
+	! The caller compares the two; nothing here uses the reconstruction.
+	real*8, dimension(1-Ng:N+Ng), optional, intent(out) :: rho_recon
 
 	real*8, dimension(1-Ng:N+Ng) ::  T_K      ! Dimensional temperature
 	! Share of an H2 vibrational excitation collisionally de-excited to heat
@@ -438,8 +749,11 @@
    ! Carbon monoxide density of each cell [cm^-3], from the CO <-> C + O
    ! chemical equilibrium, and the free oxygen family it leaves behind.
    real*8, dimension(1-Ng:N+Ng) ::  nCO_cell
-   ! Row of the first oxygen-carrier unknown, and band loop index.
-   integer :: iox, ib
+   ! Row of the first oxygen-carrier unknown.
+   integer :: iox
+   ! Mass density of the returned composition, reconstructed from the species
+   ! mass table.  A check against n_io, never a replacement for it (T2.2).
+   real*8, dimension(1-Ng:N+Ng) ::  n_rec
 
    ! Metal recombination and collisional ionization rates for each ion from
    ! eval_cool (canonical order); bridged to the named rc*/a_ion_*
@@ -469,10 +783,29 @@
    ! move when the sweep changes the composition.
    real*8, dimension(1-Ng:N+Ng) ::  h1_HI,h1_HeI,h1_HeII,h1_HeTR,h1_H2
    real*8, dimension(1-Ng:N+Ng,n_mion) ::  h1_m
-   ! Photoheating and heating efficiency of the ENTRY composition, as
-   ! PH_heat_* returns them. Only the efficiency is kept (it is the
-   ! diagnostic `q`); the heating is rebuilt after the sweep.
-   real*8, dimension(1-Ng:N+Ng) ::  heat_entry_state
+   ! THE XUV FIELD, SOLVED WITH THE COMPOSITION IN ONE TRAVERSAL.
+   ! N*_col carry the column of each absorber inward as the sweep goes, and
+   ! hold the columns of the composition the sweep HAS ALREADY SOLVED;
+   ! N*_face(j) is the column outside cell j, which is the depth its
+   ! star-ward face sees.  nheiS_face is the He I ground singlet of the
+   ! entry composition, formed once per cell for the column and the cell's
+   ! own optical depth.  See the block loop below for why this is a sweep.
+   real*8 ::  N1_col,N15_col,N2_col,NTR_col,NH2_col_xuv
+   real*8, dimension(n_mphot) ::  Nm_col_xuv
+   real*8, dimension(1-Ng:N+Ng) ::  N1_face,N15_face,N2_face,NTR_face,     &
+                                    NH2col_face, nheiS_face, nh2_entry
+   real*8, dimension(1-Ng:N+Ng,n_mphot) ::  Nm_face
+   real*8 ::  N1_blk,N15_blk,N2_blk,NTR_blk,NH2_blk
+   real*8, dimension(n_mphot) ::  Nm_blk
+   integer :: jb_lo, jb_hi
+   ! What the field routine returns for one cell that is not already a
+   ! whole-grid array here.
+   real*8 ::  Pm_row(n_mion), h1m_row(n_mion), chan_row(6)
+   real*8 ::  heat_row, q_abs_row
+   ! Constants of the molecule and the switches of the photoelectron
+   ! partition, resolved once per call rather than per cell.
+   real*8  ::  D0_H2_xuv, E_ker_H2_dd_xuv
+   logical ::  sec_on_xuv, mol_sec_xuv, has_h2_xuv
    ! Coefficients returned by the post-sweep eval_cool call, which is made
    ! for the cooling SUM alone: the sweep was solved with the pre-sweep
    ! coefficients above, and these are discarded.
@@ -552,9 +885,11 @@
    ! root, 2 = root without solver convergence, 3 = projected/handback
    ! state that rechecks as a root, 4 = non-root under the relaxation
    ! amnesty, 5 = root of the constrained element-conserving continuation
-   ! solve), and the residual-decade histograms of the physical iterates.
-   integer :: n_acc(5), hist_conv(0:15), hist_uncv(0:15)
-   real*8  :: acc_resmax(5)
+   ! solve, 6 = non-root ABOVE the amnesty cap, for which the cell keeps
+   ! the composition it entered the sweep with), and the residual-decade
+   ! histograms of the physical iterates.
+   integer :: n_acc(6), hist_conv(0:15), hist_uncv(0:15)
+   real*8  :: acc_resmax(6)
    integer :: acc_class
    real*8  :: acc_res, res_att
    ! Root selection (section 113): residual of the kept rank-1/2 root, the
@@ -565,6 +900,26 @@
    real*8, dimension(n_x_max) :: x_nonroot
    integer :: info_best, info_nonroot
    logical :: have_nonroot, have_clamp
+   ! The composition the cell ENTERED the sweep with: the previous adopted
+   ! step's, or the initial condition at step 0. It is the state a cell
+   ! keeps when the only candidate the solve produced is a non-root whose
+   ! residual is above ieq_nonroot_res_cap (acceptance class 6), and it is
+   ! also the starting point of the solve for every step after the first,
+   ! so it is built once per cell and used for both.
+   real*8, dimension(n_x_max) :: x_entry
+
+   ! THE CELL'S OWN FIELD, SOLVED WITH THE CELL'S OWN COMPOSITION
+   ! (xuv_self_field_passes).  it_self counts the passes, x_self holds the
+   ! stage fractions the previous one accepted, self_moved is how far the
+   ! accepted state moved between two of them, and last_self marks the pass
+   ! whose acceptance is the cell's, i.e. the one the ledger records.
+   ! nheiS_it and nh2_it are the ground singlet and the molecular hydrogen
+   ! of the iterate, the two absorber densities that are not stored as
+   ! stage densities of their own.
+   integer :: it_self
+   logical :: last_self
+   real*8  :: self_moved, nheiS_it, nh2_it
+   real*8, dimension(n_x_max) :: x_self
 
    ! Promotion of a molecular cell with no root to the constrained
    ! element-conserving continuation solve (section 11.5-B): the candidate
@@ -598,12 +953,13 @@
    ! adimensional: assembled after the cell sweep from the post-sweep
    ! densities and the pre-sweep rates.
    real*8, dimension(1-Ng:N+Ng),intent(out) :: heat_out,cool_out
-   ! Heating efficiency, deposited over absorbed photon energy. This one is
-   ! the ratio of the ENTRY state, as PH_heat_* computes it: both its
-   ! numerator and its denominator are contractions with the entry
-   ! composition, and it is a diagnostic only (nothing in the solve or the
+   ! Heating efficiency, deposited over absorbed photon energy. Both its
+   ! numerator and its denominator are contractions with the composition
+   ! the field of the cell was last built at, which is the entry
+   ! composition at xuv_self_field_passes = 1 and the last self-field
+   ! iterate above it. It is a diagnostic only (nothing in the solve or the
    ! energy update reads it), so it is left at that state rather than
-   ! re-formed. It therefore carries the same one-sweep lag the rates do.
+   ! re-formed from the composition the sweep returns.
    real*8, dimension(1-Ng:N+Ng),intent(out) :: q
 
    !----------------------------------------------------------!      
@@ -614,10 +970,9 @@
 
 	! A1 element-budget assertion around the whole sweep.  The sweep moves
 	! nuclei between stages and carriers and creates none, so every ratio
-	! n_El/n_H is invariant across it.  The ABSOLUTE densities are not: the
-	! sweep rewrites n_io from its own calc_rho, so all of them may move by
-	! one common mass-closure factor -- which is why rho_is_fixed is not
-	! passed here and the mass closure is reported instead.  The label
+	! n_El/n_H is invariant across it.  Since T2.1 the density is an input
+	! the sweep may not write, so the ABSOLUTE nucleus densities are
+	! invariant too and the verify below asserts them (rho_is_fixed).  The label
 	! carries the sweep tag, so a failure names which caller (marching, the
 	! steady iterate, or a steady candidate) broke the budget.
 	! Off unless EXHALE_ELEMENT_ASSERT is set.
@@ -792,11 +1147,13 @@
 	! splits.  The columns use the same radial integration and opa_pf
 	! weighting as every other absorber column, and the incoming (pre-solve)
 	! densities, like the photoionization columns built inside PH_heat_HHe.
-	call fuv_lw_photon_field(nmol_eq(:,1), nox_eq(:,2), nox_eq(:,1), T_K, &
-	                         nh,                                          &
-	                         NH2_col_lw, NH2O_col, NOH_col,               &
+	call fuv_lw_photon_field(nmol_eq(:,1), nox_eq(:,2), nox_eq(:,1),      &
+	                         nox_eq(:,3), nhi,                            &
+	                         T_K, nh,                                     &
+	                         NH2_col_lw, NH2O_col, NOH_col, NCO_col,      &
 	                         f_shield_lw, tr_lines_lw, tau_fuv,           &
 	                         k_lw_diss, p_lw_single, p_lw_absorbed,       &
+	                         k_co_diss, theta_co_shield,                  &
 	                         j_h2o_fuv, j_oh_fuv, a_lines_lw,             &
 	                         lw_col_over_overlap)
 	if (thereis_mol .and. F_LW_star .gt. 0.0d0 .and.                      &
@@ -818,95 +1175,60 @@
 
 	!----------------------------------!
 
-    !---- Photoionization and photoheating ----!
-      
-	if (thereis_He) then
-		if (thereis_mol) then
-			! f_vib_quench: the share of an H2 vibrational excitation that
-			! is collisionally de-excited into heat rather than radiated
-			! away. Needed by the photoelectron partition, which does not
-			! carry the temperature.
-			f_vib_quench = h2_vibrational_heat_fraction(T_K, nhi,        &
-			                                            nmol_eq(:,1))
-			! e_vib_bound: the mean internal energy of the level a B or C
-			! fluorescence lands on, the same function the Lyman-Werner heat
-			! uses. Needed by the photoelectron partition for the same reason
-			! f_vib_quench is -- it does not carry the temperature.
-			e_vib_bound = h2_energy_per_bound_fluorescence_eV(T_K)
-			call PH_heat_HHe(nhi,nhei,nheii,nheiTR, nm, xion,    &
-			         P_HI,P_HeI,P_HeII,P_HeITR, P_m,             &
-			         heat_entry_state,q, nmol_eq(:,1),P_H2,      &
-			         P_H2_di, P_H2_dd, P_H2_nd,                  &
-			         f_vibq = f_vib_quench, e_vibq = e_vib_bound, &
-			         heat_of_one_HI   = h1_HI,                   &
-			         heat_of_one_HeI  = h1_HeI,                  &
-			         heat_of_one_HeII = h1_HeII,                 &
-			         heat_of_one_HeTR = h1_HeTR,                 &
-			         heat_of_one_H2   = h1_H2,                   &
-			         heat_of_one_mion = h1_m)
-		else
-      	call PH_heat_HHe(nhi,nhei,nheii,nheiTR, nm, xion,      &
-      			     P_HI,P_HeI,P_HeII,P_HeITR, P_m,        &
-      			     heat_entry_state,q,                    &
-      			     heat_of_one_HI   = h1_HI,              &
-      			     heat_of_one_HeI  = h1_HeI,             &
-      			     heat_of_one_HeII = h1_HeII,            &
-      			     heat_of_one_HeTR = h1_HeTR,            &
-      			     heat_of_one_H2   = h1_H2,              &
-      			     heat_of_one_mion = h1_m)
-		endif
-	else
-		call PH_heat_H(nhi, xion, P_HI,heat_entry_state,q,          &
-		               heat_of_one_HI = h1_HI)
-		P_m     = 0.0
-		h1_HeI  = 0.0d0
-		h1_HeII = 0.0d0
-		h1_HeTR = 0.0d0
-		h1_H2   = 0.0d0
-		h1_m    = 0.0d0
+    !---- The inputs of the photoelectron partition ----!
+
+	! f_vib_quench is the share of an H2 vibrational excitation that is
+	! collisionally de-excited into heat rather than radiated away, and
+	! e_vib_bound the mean internal energy of the level a B or C
+	! fluorescence lands on. The photoelectron partition needs both and does
+	! not carry the temperature, so they are formed here, from T and the
+	! pre-solve densities, for the whole grid; the field routine reads them
+	! cell by cell. Both are zero in a run without molecular hydrogen, which
+	! is what switches the two vibrational heat channels off.
+	f_vib_quench = 0.0d0
+	e_vib_bound  = 0.0d0
+	if (thereis_He .and. thereis_mol) then
+		f_vib_quench = h2_vibrational_heat_fraction(T_K, nhi, nmol_eq(:,1))
+		e_vib_bound  = h2_energy_per_bound_fluorescence_eV(T_K)
 	endif
 
-	! excited-H H(n=2) feedback (zero unless use_excited_H). The Balmer
-	! photoionization of H(n=2) adds an effective HI photoionization rate
-	! [s^-1] (proton source), and the Balmer photoelectric (+ optional
-	! collisional de-excitation) heating adds to the photoheating rate
-	! [erg cm^-3 s^-1]. Both global arrays are filled from the previous
-	! converged outer pass by excited_hydrogen::excited_H_update, so the
-	! coupling is decoupled from the hydro sub-step. Default-off => no change.
-	if (use_excited_H) then
-		gph_ground_HI = P_HI         ! capture pure ground-state rate (pre-n=2)
-		P_HI = P_HI + gph_balmer_HI
-		! heat_balmer is added to the heating after the sweep, with every
-		! other heating term; it is an array already contracted with the
-		! n=2 population of the previous outer pass, so it is added as it
-		! stands and carries that documented lag.
-	endif
+	! Switches and molecular constants of the field, resolved once.
+	sec_on_xuv      = use_sec_ion .and. sec_ion_active
+	has_h2_xuv      = thereis_He .and. thereis_mol
+	mol_sec_xuv     = sec_on_xuv .and. has_h2_xuv
+	D0_H2_xuv       = h2_dissociation_energy_eV()
+	E_ker_H2_dd_xuv = h2_double_fragment_kinetic_energy()
+
+	nh2_entry = 0.0d0
+	if (has_h2_xuv) nh2_entry = nmol_eq(:,1)
+
+	! The one-particle photoheating rates of the absorbers this run does not
+	! carry stay zero, and so does the metal block until the sweep fills it.
+	P_m     = 0.0d0
+	h1_HeI  = 0.0d0
+	h1_HeII = 0.0d0
+	h1_HeTR = 0.0d0
+	h1_H2   = 0.0d0
+	h1_m    = 0.0d0
 
 
-   !----------------------------------!
-      
-   ! Evaluate cooling rates and recombination/collisional 
-   ! 	ionization rates
-      
-    ! THIS call is made for the RATE COEFFICIENTS the cell sweep below
-    ! solves with -- the recombination and collisional ionization
-    ! coefficients, which depend on T alone. Its `cool` is the cooling of
-    ! the ENTRY composition and is discarded: the cooling this routine
-    ! returns is evaluated again after the sweep, at the composition the
-    ! sweep produced. (A coefficients-only path through eval_cool would
-    ! save the second traversal and is not taken here.)
-    ! nmol_eq gives the cooling the same electron density this routine
-    ! balances the ionization against, and the H3+/H2 densities its infrared
-    ! cooling channel needs (zero for an atomic run). Nothing but that
-    ! second evaluation contributes to the returned `cool`: the marching
-    ! temperature update rebuilds the cooling from eval_cool alone, so any
-    ! term added on top would be a source the marching relaxes without and
-    ! the steady residual demands.
-    call eval_cool(T_K,nhi,nhii,nhei,nheii,nheiii, nm,           &
-			   	   	rchiiB,rcheiiB,rcheiiiB, rec_m,             &
-			    	a_ion_HI,a_ion_HeI,a_ion_HeII, aion_m,         &
-			    	cool, nheiTR=nheiTR, a_ion_HeITR=a_ion_HeITR,  &
-			    	nmol=nmol_eq, nox=nox_eq)
+   ! The recombination and collisional-ionization rate coefficients the
+   ! cell sweep below solves with. They depend on T alone, which is what
+   ! lets them be built before the sweep and used unchanged by it.
+   !
+   ! ONLY the coefficients. The cooling is a contraction of them with the
+   ! COMPOSITION, and the sweep is about to replace the composition, so the
+   ! cooling this routine returns is assembled after the sweep and from the
+   ! state the sweep produced (the eval_cool call below the sweep). The
+   ! cooling of the entry composition is not needed by anything and is not
+   ! formed: nothing but that second evaluation contributes to the returned
+   ! `cool`, because the marching temperature update rebuilds the cooling
+   ! from eval_cool alone, so any term added on top would be a source the
+   ! marching relaxes without and the steady residual demands.
+    call chemical_rate_coefficients(T_K,                                  &
+	                    rchiiB,rcheiiB,rcheiiiB, rec_m,                   &
+	                    a_ion_HI,a_ion_HeI,a_ion_HeII, aion_m,            &
+	                    a_ion_HeITR=a_ion_HeITR)
 
 	! Capture the ground-state H proton-budget coefficients on
 	! every pass (the converged pass is the one read out by write_excited_H).
@@ -934,45 +1256,38 @@
 	! the ratio of the absorption coefficients at the energy of the channel,
 	! so in a molecular layer, where H2 outnumbers H I by three decades and
 	! absorbs 1.2-3.7 times as strongly, essentially all of it goes to H2.
-	! The He II recombination *cooling* (rec_cool_HeII = kT alpha_B) is left
-	! unchanged; the mismatch is <= y alpha_1 kT, negligible.
+	! The He II recombination *cooling* is kT times the coefficient this
+	! balance removes He+ with as far as that coefficient is a function of
+	! temperature alone (Cool_coeff: alpha_rec_HeII_total, the two capture
+	! channels rcheiiB + rcheiTR when the triplet is tracked). What this
+	! coupling adds on top of that -- the weight y_net on the ground-term
+	! channel and the 0.25 alpha_B excited-singlet capture -- is a function
+	! of the absorber densities, and eval_cool is also evaluated at perturbed
+	! temperatures by the semi-implicit energy update, whose dC/dT divides
+	! the difference of two eval_cool calls by 1e-5 T; the reason is at
+	! alpha_rec_HeII_total. At T = 1e4 K and y_net = 0.81 that leaves 10 per
+	! cent of this channel uncharged.
 	if (use_he_rec_coupling .and. thereis_He) then
 		call he_rec_coupling(T_K, nhi, nmol_eq(:,1), nhei, nheii, nheiTR,  &
 		                     ne, nm, A31, q31a, q31b,                      &
 		                     rcheiiB_hrc, dP_HI_hrc, dP_H2_hrc,            &
 		                     dP_m_hrc, dheat_hrc)
-		! Count where the coupling out-ionizes the stellar field by three
-		! decades, before P_HI absorbs it (diagnostic; silent when zero).
-		do j = 1,N
-			if (dP_HI_hrc(j) .gt. he_rec_dominant_ratio*P_HI(j)) then
-				n_cells_he_rec_photoionization_dominant =                 &
-					n_cells_he_rec_photoionization_dominant + 1
-				he_rec_photoionization_ratio_max =                        &
-					max(he_rec_photoionization_ratio_max,                 &
-					    dP_HI_hrc(j)/max(P_HI(j),1.0d-99))
-			endif
-		enddo
 		rcheiiB = rcheiiB_hrc
-		P_HI    = P_HI + dP_HI_hrc
-		! The same photons absorbed by H2: an addition to the H2
-		! photoionization rate, which drives the H2 destruction row and the
-		! H2+ formation row of the molecular system. Zero without molecules.
+		! The photoionization rates this coupling adds -- to H I, to H2 and
+		! to each metal ion -- are added to the stellar ones cell by cell in
+		! the sweep below, where the stellar field of that cell has just been
+		! evaluated.
 		!
-		! NOT SPLIT INTO THE DISSOCIATIVE CHANNEL, deliberately. These
-		! photons sit at 19.8-24.6 eV, where the dissociative branching of
-		! frac_H2_dissociative_ionization is 1.9-2.3%; splitting off that
-		! much of a channel that is itself a correction would be well inside
-		! the +/-4-5% the measured branching carries. The whole of
-		! dP_H2_hrc therefore makes H2+.
-		! The same holds for the two channels added later: these photons are
-		! far below the 51.4 eV double-ionization threshold and outside the
-		! 33-41 eV neutral window, so of the four channels only the H2+ one
-		! can receive them, and P_H2_dd / P_H2_nd stay untouched here.
-		if (thereis_mol) P_H2 = P_H2 + dP_H2_hrc
-		! And the share each metal ion takes of the same photons, which is
-		! an addition to its photoionization rate (item P34). Exactly zero
-		! without metals.
-		if (thereis_metals) P_m = P_m + dP_m_hrc
+		! THE H2 SHARE IS NOT SPLIT INTO THE DISSOCIATIVE CHANNEL,
+		! deliberately. These photons sit at 19.8-24.6 eV, where the
+		! dissociative branching of frac_H2_dissociative_ionization is
+		! 1.9-2.3%; splitting off that much of a channel that is itself a
+		! correction would be well inside the +/-4-5% the measured branching
+		! carries. The whole of dP_H2_hrc therefore makes H2+. The same holds
+		! for the two channels added later: these photons are far below the
+		! 51.4 eV double-ionization threshold and outside the 33-41 eV
+		! neutral window, so of the four channels only the H2+ one can
+		! receive them, and P_H2_dd / P_H2_nd stay untouched.
 	endif
 
 
@@ -980,20 +1295,116 @@
 
    ! Ionization equilibrium system solution
 
+	! THE FIELD AND THE COMPOSITION, IN ONE TRAVERSAL OR IN TWO.
+	!
+	! A cell's photoionization rates are set by the columns of the cells
+	! OUTSIDE it and by its own, and by nothing inside it
+	! (photoionization_field_at_cell_HHe states the dependence). The sweep
+	! runs outside in, so the columns it hands each cell CAN be the columns
+	! of the composition it has already solved, which makes the field a cell
+	! is solved at the field of that composition in one traversal instead of
+	! the field of the composition the previous traversal was handed.
+	!
+	! xuv_field_block_cells says which. Zero, the default, is one block: the
+	! whole grid at the composition the sweep was handed. A positive width
+	! carries the solved columns from block to block; inside a block the
+	! columns still come from the entry composition, so its cells do not
+	! depend on each other and are solved together. The measured cost of
+	! each width, and why zero, are at that constant's declaration.
+	!
+	! THE CELL'S OWN DEPTH IS A SEPARATE LAG, and a separate knob. A cell's
+	! dtau is built from the densities the cell is being solved for, so one
+	! field build and one solve leave the returned composition implying a
+	! slightly different field from the one it was solved in, whatever the
+	! block width is. xuv_self_field_passes says how many times the pair is
+	! solved against each other inside the cell.
+	!
+	! THE FIXED POINT IS THE SAME ONE for every setting of both. At the
+	! fixed point the composition a cell enters with and the one it returns
+	! are the same state, so every width and every pass count builds the
+	! same columns and the same field, and the coupled source step of
+	! EXHALE_main converges to the same pair. What differs is how many of
+	! its passes that takes.
+	N1_col      = 0.0d0
+	N15_col     = 0.0d0
+	N2_col      = 0.0d0
+	NTR_col     = 0.0d0
+	NH2_col_xuv = 0.0d0
+	Nm_col_xuv  = 0.0d0
+	jb_hi       = N+Ng
 	if (.not.thereis_He) then ! If no helium
+
+		xuv_block_H: do while (jb_hi .ge. 1-Ng)
+
+		jb_lo = 1-Ng
+		if (xuv_field_block_cells .gt. 0)                                  &
+			jb_lo = max(1-Ng, jb_hi - xuv_field_block_cells + 1)
+
+		! The column each cell of this block sees above it: the running
+		! column of the composition already solved, carried on across the
+		! block with the entry composition of the cells outside it.
+		N1_blk  = N1_col
+		N15_blk = 0.0d0
+		N2_blk  = 0.0d0
+		NTR_blk = 0.0d0
+		NH2_blk = 0.0d0
+		Nm_blk  = 0.0d0
+		call advance_starward_columns(jb_hi, jb_lo, nhi, nhei, nheii,      &
+		         nheiTR, nh2_entry, nm, .false.,                           &
+		         N1_blk,N15_blk,N2_blk,NTR_blk,NH2_blk,Nm_blk,             &
+		         N1_face=N1_face)
+
+		!$omp parallel do default(shared) schedule(static)                 &
+		!$omp   private(j, heat_row) if(count > 0)
+		do j = jb_hi, jb_lo, -1
+			call photoionization_field_at_cell_H(j, N1_face(j), nhi(j),    &
+			         xion(j), sec_on_xuv, P_HI(j), h1_HI(j), heat_row,     &
+			         q(j))
+		enddo
+		!$omp end parallel do
+
+		! The Balmer continuum of H(n=2) adds an effective H I
+		! photoionization rate [s^-1] (a proton source). gph_balmer_HI is
+		! filled from the previous converged outer pass by
+		! excited_hydrogen::excited_H_update, so the coupling is decoupled
+		! from the hydro sub-step and carries that documented lag; its
+		! heating is added after the sweep with every other heating term.
+		! Default-off => no change.
+		if (use_excited_H) then
+			do j = jb_hi, jb_lo, -1
+				gph_ground_HI(j) = P_HI(j)   ! the pure ground-state rate
+				P_HI(j) = P_HI(j) + gph_balmer_HI(j)
+			enddo
+		endif
 
 		! Ionization solves in each cell are independent (the count>0 warm-start uses
 		! this cell's own previous-step value), so the sweep is OpenMP-parallel
 		! over cells. sys_x/wa/info are threadprivate (global_parameters); only
 		! the subroutine-local scratch is private. count==0 runs serial (the if
-		! clause) because its first-step warm-start reads the neighbour cell.
+		! clause) because its first-step warm-start reads the neighbor cell.
 		!$omp parallel do default(shared) schedule(dynamic,8)                  &
-		!$omp   private(params, usednt) if(count > 0)
-		do j = N+Ng,1-Ng,-1
+		!$omp   private(params, usednt, it_self, last_self, self_moved,        &
+		!$omp           x_self, heat_row) if(count > 0)
+		do j = jb_hi, jb_lo, -1
 
 			! Lazily allocate this thread's threadprivate NL scratch.
 			if (.not. allocated(sys_x)) allocate(sys_x(N_eq))
 			if (.not. allocated(wa))    allocate(wa(lwa))
+
+			self_field_H: do it_self = 1, xuv_self_field_passes
+
+			! The cell's own attenuation at the composition the previous
+			! pass returned (xuv_self_field_passes).  The column outside the
+			! cell is the block's and does not move here.
+			if (it_self .gt. 1) then
+				call photoionization_field_at_cell_H(j, N1_face(j), nhi(j), &
+				         xion(j), sec_on_xuv, P_HI(j), h1_HI(j), heat_row,  &
+				         q(j))
+				if (use_excited_H) then
+					gph_ground_HI(j) = P_HI(j)
+					P_HI(j) = P_HI(j) + gph_balmer_HI(j)
+				endif
+			endif
 
 			! Ionization equilibrium system setup: named-field cell state
 			! (Inc 4). System_H reads these; params is now only the MINPACK
@@ -1009,7 +1420,7 @@
 					sys_x(1) = r(j)-0.5
 				else
 					sys_x(1) = 1.0
-				endif     
+				endif
 			else
 
 				sys_x(1) = nhii(j)/nh(j)
@@ -1020,12 +1431,43 @@
 			call solve_ieq(ion_system_H,jac_system_H,N_eq,sys_x,    &
 				      params,tol,wa,lwa,usednt)
 
+			! Has the cell's own field stopped moving its own composition.
+			self_moved = 1.0d0
+			if (it_self .gt. 1)                                            &
+				self_moved = maxval(abs(sys_x(1:N_eq) - x_self(1:N_eq)))
+			x_self(1:N_eq) = sys_x(1:N_eq)
+			last_self = (it_self .ge. xuv_self_field_passes)                &
+			            .or. (self_moved .le. xuv_self_field_tol)
+
 			! Extract solution profiles
 			nhi(j)    = nh(j)*(1.0 - sys_x(1))
 			nhii(j)   = nh(j)*sys_x(1)
 
+			! The cell state, kept for the closure evaluator (see
+			! ieq_rate_cell). Written here, never read by the sweep.
+			ieq_rate_cell(j)      = ieq_cell
+			ieq_ne_cell(j)        = ne(j)
+			ieq_TK_cell(j)        = T_K(j)
+			ieq_ntot_cell(j)      = 0.0d0
+
+			if (last_self) exit self_field_H
+			enddo self_field_H
+
 		enddo
 		!$omp end parallel do
+
+		! Carry the column past this block with the composition just solved.
+		call advance_starward_columns(jb_hi, jb_lo, nhi, nhei, nheii,      &
+		         nheiTR, nh2_entry, nm, .false.,                           &
+		         N1_col,N15_col,N2_col,NTR_col,NH2_col_xuv,Nm_col_xuv)
+
+		jb_hi = jb_lo - 1
+		enddo xuv_block_H
+
+		ieq_neq_stored   = N_eq
+		ieq_mbase_stored = 0
+		ieq_iox_stored   = 0
+		ieq_rates_ready  = .true.
 
 		nhei   = 0.0
 		nheii  = 0.0
@@ -1052,7 +1494,7 @@
 		! metal coefficients (met_*, System_HeH_metals) and charge-exchange rates
 		! (cx_kc, cx_metal_base) are threadprivate, so each thread keeps its own;
 		! cx_metal_base is broadcast (copyin) and toggled 4<->5 per cell. All the
-		! subroutine-local scratch is private. count==0 stays serial (neighbour
+		! subroutine-local scratch is private. count==0 stays serial (neighbor
 		! warm-start).
 		! Failed-cell counters (combined via the reduction below); reset once
 		! per equilibrium sweep. n_mol_clamped counts molecular cells whose roots
@@ -1074,27 +1516,214 @@
 		cce_seconds   = 0.0d0
 		n_res_nonfinite  = 0
 		viol_sweep_worst = 0.0d0
+
+		xuv_block_HHe: do while (jb_hi .ge. 1-Ng)
+
+		jb_lo = 1-Ng
+		if (xuv_field_block_cells .gt. 0)                                  &
+			jb_lo = max(1-Ng, jb_hi - xuv_field_block_cells + 1)
+
+		! The He I GROUND SINGLET of the entry composition, n(1^1S) =
+		! n(He I) - n(2^3S): what the He I opacity, the He I photoelectric
+		! heating and the He I secondary-ionization target all act on. Formed
+		! here, with the columns, before the cells of the block are solved.
+		do j = jb_hi, jb_lo, -1
+			nheiS_face(j) = nhei(j)
+			if (thereis_HeITR) nheiS_face(j) =                             &
+			         he_ground_singlet_density(nhei(j), nheiTR(j))
+			if (has_h2_xuv) nh2_entry(j) = nmol_eq(j,1)
+		enddo
+
+		! The columns each cell of this block sees above it: the running
+		! columns of the composition already solved, carried on across the
+		! block with the entry composition of the cells outside it.
+		N1_blk  = N1_col
+		N15_blk = N15_col
+		N2_blk  = N2_col
+		NTR_blk = NTR_col
+		NH2_blk = NH2_col_xuv
+		Nm_blk  = Nm_col_xuv
+		call advance_starward_columns(jb_hi, jb_lo, nhi, nheiS_face,       &
+		         nheii, nheiTR, nh2_entry, nm, has_h2_xuv,                 &
+		         N1_blk,N15_blk,N2_blk,NTR_blk,NH2_blk,Nm_blk,             &
+		         N1_face,N15_face,N2_face,NTR_face,NH2col_face,Nm_face)
+
+		!$omp parallel do default(shared) schedule(static)                 &
+		!$omp   private(j, Pm_row, h1m_row, chan_row, heat_row, q_abs_row) &
+		!$omp   if(count > 0)
+		do j = jb_hi, jb_lo, -1
+			call photoionization_field_at_cell_HHe(j,                      &
+			         N1_face(j),N15_face(j),N2_face(j),NTR_face(j),        &
+			         NH2col_face(j),Nm_face(j,:),                              &
+			         nhi(j),nheiS_face(j),nheii(j),nheiTR(j),nh2_entry(j),     &
+			         nm(j,:), xion(j), f_vib_quench(j), e_vib_bound(j),    &
+			         has_h2_xuv, sec_on_xuv, mol_sec_xuv,                  &
+			         D0_H2_xuv, E_ker_H2_dd_xuv,                           &
+			         P_HI(j),P_HeI(j),P_HeII(j),P_HeITR(j), Pm_row,        &
+			         P_H2(j),P_H2_di(j),P_H2_dd(j),P_H2_nd(j),             &
+			         h1_HI(j),h1_HeI(j),h1_HeII(j),h1_HeTR(j),h1_H2(j),    &
+			         h1m_row, heat_row, chan_row, q(j), q_abs_row)
+			P_m(j,:)  = Pm_row
+			h1_m(j,:) = h1m_row
+		enddo
+		!$omp end parallel do
+
+		! The two rates that are added to the stellar field of this cell,
+		! both carrying a lag of one sweep and both formed above for the
+		! whole grid. Serial, because the second keeps a diagnostic count.
+		do j = jb_hi, jb_lo, -1
+
+			! The Balmer continuum of H(n=2): an effective H I
+			! photoionization rate [s^-1], i.e. a proton source.
+			! gph_balmer_HI is filled from the previous converged outer pass
+			! by excited_hydrogen::excited_H_update, so the coupling is
+			! decoupled from the hydro sub-step and carries that documented
+			! lag; its heating is added after the sweep with every other
+			! heating term. Default-off => no change.
+			if (use_excited_H) then
+				gph_ground_HI(j) = P_HI(j)   ! the pure ground-state rate
+				P_HI(j) = P_HI(j) + gph_balmer_HI(j)
+			endif
+
+			! He recombination radiation, absorbed locally.
+			if (use_he_rec_coupling) then
+				! Count where the coupling out-ionizes the stellar field by
+				! three decades, before P_HI absorbs it (diagnostic; silent
+				! when zero).
+				if (j .ge. 1 .and. j .le. N) then
+					if (dP_HI_hrc(j) .gt.                                  &
+					    he_rec_dominant_ratio*P_HI(j)) then
+						n_cells_he_rec_photoionization_dominant =          &
+							n_cells_he_rec_photoionization_dominant + 1
+						he_rec_photoionization_ratio_max =                 &
+							max(he_rec_photoionization_ratio_max,          &
+							    dP_HI_hrc(j)/max(P_HI(j),1.0d-99))
+					endif
+				endif
+				P_HI(j) = P_HI(j) + dP_HI_hrc(j)
+				! The same photons absorbed by H2: an addition to the H2
+				! photoionization rate, which drives the H2 destruction row
+				! and the H2+ formation row of the molecular system.
+				if (thereis_mol) P_H2(j) = P_H2(j) + dP_H2_hrc(j)
+				! And the share each metal ion takes of the same photons,
+				! an addition to its photoionization rate (item P34).
+				if (thereis_metals) P_m(j,:) = P_m(j,:) + dP_m_hrc(j,:)
+			endif
+
+		enddo
+
 		!$omp parallel do default(shared) schedule(dynamic,8) copyin(cx_metal_base) &
 		!$omp   private(params, usednt, i0, top, im, meg_ntot, meg_g0, meg_g1,      &
 		!$omp           meg_b0, meg_b1, meg_a1, meg_a2, meg_top,                     &
 		!$omp           pbar_loc, viol, viol_best,                                  &
 		!$omp           iatt, info_ieq, ok_rank, best_rank, conv_ieq, phys_ieq,      &
-		!$omp           x_root_best, acc_class, acc_res, res_att,                    &
+		!$omp           x_root_best, x_entry, acc_class, acc_res, res_att,          &
 		!$omp           res_best, res_nonroot, x_nonroot, info_best, info_nonroot,   &
 		!$omp           have_nonroot, have_clamp,                                    &
 		!$omp           x_cce, cce_full, cce_root, n_cce_fs, res_cce,                &
-		!$omp           clk_beg, clk_end, clk_rate)                                  &
+		!$omp           clk_beg, clk_end, clk_rate,                                  &
+		!$omp           it_self, last_self, self_moved, x_self,                      &
+		!$omp           nheiS_it, nh2_it,                                            &
+		!$omp           Pm_row, h1m_row, chan_row, heat_row, q_abs_row)              &
 		!$omp   reduction(+:n_mol_clamped,n_mol_info,n_ieq_reseed,n_ieq_retry, &
 		!$omp               n_ieq_unphys,n_ieq_fail,n_acc,hist_conv,hist_uncv, &
 		!$omp               n_cce_attempt,n_cce_root,n_cce_solve,cce_seconds,  &
 		!$omp               n_res_nonfinite)                                   &
 		!$omp   reduction(max:acc_resmax,viol_sweep_worst) if(count > 0)
-		do j = N+Ng,1-Ng,-1
+		do j = jb_hi, jb_lo, -1
 
 			! Lazily allocate this thread's threadprivate NL scratch.
 			if (.not. allocated(sys_x))   allocate(sys_x(N_eq))
 			if (.not. allocated(sys_sol)) allocate(sys_sol(N_eq))
 			if (.not. allocated(wa))      allocate(wa(lwa))
+
+			! THE COMPOSITION THE CELL ENTERS THE SWEEP WITH, in the
+			! fraction layout of the system this run solves: the previous
+			! adopted step's composition, or the initial condition at step
+			! 0. Two things read it. It is the starting point of the solve
+			! for every step after the first, and it is the state a cell
+			! KEEPS when the only candidate the solve produced is a
+			! non-root whose residual is above ieq_nonroot_res_cap
+			! (acceptance class 6). Built here, once, so that the guess and
+			! the kept state are one object -- and OUTSIDE the self-field
+			! loop below, so that the state a cell keeps is the one it
+			! entered the sweep with and not an intermediate iterate.
+			x_entry(1:N_eq) = 0.0d0
+			x_entry(1) = nhii(j)/nh(j)
+			x_entry(2) = nheii(j)/nhe(j)
+			x_entry(3) = nheiii(j)/nhe(j)
+			if (thereis_HeITR) x_entry(4) = nheiTR(j)/nhe(j)
+			if (thereis_mol) then
+				x_entry(4) = 2.0d0*nmol_eq(j,1)/nh(j)
+				x_entry(5) = 2.0d0*nmol_eq(j,2)/nh(j)
+				x_entry(6) = 3.0d0*nmol_eq(j,3)/nh(j)
+				x_entry(7) = nmol_eq(j,4)/nh(j)
+				if (thereis_HeITR) x_entry(8) = nheiTR(j)/nhe(j)
+				if (thereis_oxychem) then
+					x_entry(iox)   = nox_eq(j,1)                          &
+					             /max(nm_tot(j,iel_O),1.0d-30)
+					x_entry(iox+1) = nox_eq(j,2)                          &
+					             /max(nm_tot(j,iel_O),1.0d-30)
+				endif
+			endif
+			if (thereis_metals) then
+				do im = 1,n_melem
+					i0 = melem_i0(im)
+					x_entry(mbase+2*(im-1)) = nm(j,i0+1)                  &
+					                  /max(nm_tot(j,im),1.0d-30)
+					if (melem_top(im) .ge. 2) then
+						x_entry(mbase+1+2*(im-1)) = nm(j,i0+2)            &
+						                  /max(nm_tot(j,im),1.0d-30)
+					else
+						x_entry(mbase+1+2*(im-1)) = 0.0d0
+					endif
+				enddo
+			endif
+
+			self_field_HHe: do it_self = 1, xuv_self_field_passes
+
+			! THE CELL'S OWN ATTENUATION AT THE COMPOSITION IT RETURNED.
+			! The column outside the cell is the block's and does not move
+			! here; what moves is this cell's own dtau, which the field
+			! routine forms from the absorber densities handed to it (see
+			! xuv_self_field_passes).  The two rates the sweep adds on top
+			! of the stellar field -- the Balmer continuum of H(n=2) and the
+			! locally absorbed He recombination radiation -- are whole-grid
+			! quantities of the previous outer pass, so they are re-added in
+			! the same order the first pass added them.  Their diagnostic
+			! counters are taken on the first pass alone, where the serial
+			! loop above took them.
+			if (it_self .gt. 1) then
+				nheiS_it = nhei(j)
+				if (thereis_HeITR) nheiS_it =                                  &
+				         he_ground_singlet_density(nhei(j), nheiTR(j))
+				nh2_it = 0.0d0
+				if (has_h2_xuv) nh2_it = nmol_eq(j,1)
+				call photoionization_field_at_cell_HHe(j,                  &
+				         N1_face(j),N15_face(j),N2_face(j),NTR_face(j),    &
+				         NH2col_face(j),Nm_face(j,:),                      &
+				         nhi(j),nheiS_it,nheii(j),nheiTR(j),nh2_it,        &
+				         nm(j,:), xion(j), f_vib_quench(j),                &
+				         e_vib_bound(j),                                   &
+				         has_h2_xuv, sec_on_xuv, mol_sec_xuv,              &
+				         D0_H2_xuv, E_ker_H2_dd_xuv,                       &
+				         P_HI(j),P_HeI(j),P_HeII(j),P_HeITR(j), Pm_row,    &
+				         P_H2(j),P_H2_di(j),P_H2_dd(j),P_H2_nd(j),         &
+				         h1_HI(j),h1_HeI(j),h1_HeII(j),h1_HeTR(j),         &
+				         h1_H2(j),                                         &
+				         h1m_row, heat_row, chan_row, q(j), q_abs_row)
+				P_m(j,:)  = Pm_row
+				h1_m(j,:) = h1m_row
+				if (use_excited_H) then
+					gph_ground_HI(j) = P_HI(j)
+					P_HI(j) = P_HI(j) + gph_balmer_HI(j)
+				endif
+				if (use_he_rec_coupling) then
+					P_HI(j) = P_HI(j) + dP_HI_hrc(j)
+					if (thereis_mol) P_H2(j) = P_H2(j) + dP_H2_hrc(j)
+					if (thereis_metals) P_m(j,:) = P_m(j,:) + dP_m_hrc(j,:)
+				endif
+			endif
 
 			! System coefficients: named-field cell state (Inc 4). The He
 			! equilibrium systems read these; params is now only the MINPACK
@@ -1227,10 +1856,14 @@
 					! ONLY THE CELLS THE OPERATOR OWNS. The transport
 					! write-back fills 1..N+Ng and leaves the two lower
 					! ghosts alone -- they are the inflow reservoir, and
-					! this operator states no ionization fraction for it
-					! (carrier_base_state). Imposing the transported value
-					! there would pin the ghosts at whatever the last sweep
-					! left and never let them be re-solved again.
+					! the only carrier anything below the base states a
+					! partition for there is H2, through the molecular
+					! handoff (carrier_base_composition_imposed); the
+					! ionized fraction is not one of them, so this operator
+					! states none for the reservoir. Imposing the
+					! transported value there would pin the ghosts at
+					! whatever the last sweep left and never let them be
+					! re-solved again.
 					if (ionization_transport .and. j .ge. 1) then
 						ieq_cell%x_hp_fixed = .true.
 						ieq_cell%x_hp_fix   = nhii(j)/nh(j)
@@ -1308,8 +1941,29 @@
 					call set_mol_metal_turnover_rates(ne(j), 1.0d0)
 			endif
 
-			! Initial guess
-			if (count .eq. 0) then
+			! The cell state this solve is about to run on, kept for the
+			! closure evaluator (see ieq_rate_cell). Written here, never
+			! read by the sweep.
+			ieq_rate_cell(j) = ieq_cell
+			ieq_ne_cell(j)   = ne(j)
+			ieq_TK_cell(j)   = T_K(j)
+			ieq_ntot_cell(j) = n_tot(j)
+			if (thereis_metals) then
+				ieq_met_coef(:,1,j) = meg_ntot
+				ieq_met_coef(:,2,j) = meg_g0
+				ieq_met_coef(:,3,j) = meg_g1
+				ieq_met_coef(:,4,j) = meg_b0
+				ieq_met_coef(:,5,j) = meg_b1
+				ieq_met_coef(:,6,j) = meg_a1
+				ieq_met_coef(:,7,j) = meg_a2
+			endif
+
+			! Initial guess.  The second and later passes of the self-field
+			! loop start from the state the previous one accepted, which is
+			! the composition their field was built from.
+			if (it_self .gt. 1) then
+				sys_x(1:N_eq) = x_self(1:N_eq)
+			else if (count .eq. 0) then
 				if (j .eq. N+Ng) then
 					sys_x(1) = 1.0
 					sys_x(2) = 1.0
@@ -1369,36 +2023,7 @@
 					endif
 				endif
 			else
-				sys_x(1) = nhii(j)/nh(j)
-				sys_x(2) = nheii(j)/nhe(j)
-				sys_x(3) = nheiii(j)/nhe(j)
-				if (thereis_HeITR) sys_x(4) = nheiTR(j)/nhe(j)
-				if (thereis_mol) then
-					sys_x(4) = 2.0d0*nmol_eq(j,1)/nh(j)
-					sys_x(5) = 2.0d0*nmol_eq(j,2)/nh(j)
-					sys_x(6) = 3.0d0*nmol_eq(j,3)/nh(j)
-					sys_x(7) = nmol_eq(j,4)/nh(j)
-					if (thereis_HeITR) sys_x(8) = nheiTR(j)/nhe(j)
-					if (thereis_oxychem) then
-						sys_x(iox)   = nox_eq(j,1)                        &
-						             /max(nm_tot(j,iel_O),1.0d-30)
-						sys_x(iox+1) = nox_eq(j,2)                        &
-						             /max(nm_tot(j,iel_O),1.0d-30)
-					endif
-				endif
-				if (thereis_metals) then
-					do im = 1,n_melem
-						i0 = melem_i0(im)
-						sys_x(mbase+2*(im-1)) = nm(j,i0+1)              &
-						                  /max(nm_tot(j,im),1.0d-30)
-						if (melem_top(im) .ge. 2) then
-							sys_x(mbase+1+2*(im-1)) = nm(j,i0+2)              &
-							                  /max(nm_tot(j,im),1.0d-30)
-						else
-							sys_x(mbase+1+2*(im-1)) = 0.0d0
-						endif
-					enddo
-				endif
+				sys_x(1:N_eq) = x_entry(1:N_eq)
 
 				! The guess just built is this cell's previous state. If that
 				! state is not physical it must not seed the solve again: an
@@ -1433,7 +2058,7 @@
 				! the front cells themselves neither warm start need land in
 				! the right basin. One starting point in each basin is
 				! therefore tried in turn:
-				!   1  the guess built above (previous state / neighbour),
+				!   1  the guess built above (previous state / neighbor),
 				!   2  molecular basin -- the H2 dissociation equilibrium of
 				!      the local (p, T) with every element in its own
 				!      ionization balance at the incoming n_e,
@@ -1618,7 +2243,17 @@
 				! root, 4 = non-root under the relaxation amnesty
 				! (nonroot_streak_update reports it and stops the run if it
 				! persists), 5 = root of the constrained element-conserving
-				! continuation solve just above.
+				! continuation solve just above, 6 = non-root whose residual
+				! is above ieq_nonroot_res_cap, for which the cell keeps the
+				! composition it entered the sweep with.
+				! THE CONTRACT EVERY CONSUMER READS: classes 1, 2, 3 and 5
+				! are ROOTS of the requested equations -- each one passed the
+				! same two tests, a state inside the element simplex and a
+				! normalized reaction residual at or below ieq_res_tol -- and
+				! differ only in how the root was found. Classes 4 and 6 are
+				! the classes that are NOT roots. A consumer counting states
+				! its chemistry does not describe counts 4 and 6 and nothing
+				! else (n_cells_without_chemical_root, steady_residual.f90).
 				if (best_rank .eq. 2) then
 					acc_class = 1
 					acc_res   = res_att   ! sys_x is the attempt just measured
@@ -1671,14 +2306,58 @@
 					acc_class = 4
 					n_res_nonfinite = n_res_nonfinite + 1
 				endif
-				n_acc(acc_class) = n_acc(acc_class) + 1
-				if (finite_real(acc_res))                                  &
-					acc_resmax(acc_class) =                                &
-						max(acc_resmax(acc_class),acc_res)
-				viol_sweep_worst = max(viol_sweep_worst, viol_best)
-				call nonroot_streak_update(acc_class,j,count,r(j),T_K(j),  &
-				                           n_in_dim(j),ne(j),info,         &
-				                           viol_best,acc_res,sys_x,N_eq)
+				! THE SEVERITY BOUND OF THE AMNESTY
+				! (nonroot_acceptance_class). A candidate too far from
+				! solving the network is not adopted: the cell keeps
+				! the composition it entered the sweep with, a state
+				! the run already held, and the heating and cooling
+				! built after the sweep are those of THAT composition
+				! (docs/Update_EXHALE_stage1.md section 170).
+				if (acc_class .eq. 4) then
+					acc_class = nonroot_acceptance_class(acc_res)
+					if (acc_class .eq. 6)                                  &
+						sys_x(1:N_eq) = x_entry(1:N_eq)
+				endif
+				! Has the cell's own field stopped moving its own composition
+				! (xuv_self_field_passes).  The comparison is between two
+				! ACCEPTED states of the same cell, in the stage fractions the
+				! coupled loop of EXHALE_main measures its own convergence in.
+				self_moved = 1.0d0
+				if (it_self .gt. 1)                                        &
+					self_moved = maxval(abs(sys_x(1:N_eq)                  &
+					                        - x_self(1:N_eq)))
+				x_self(1:N_eq) = sys_x(1:N_eq)
+				last_self = (it_self .ge. xuv_self_field_passes)            &
+				            .or. (self_moved .le. xuv_self_field_tol)
+
+				! THE LEDGER RECORDS THE STATE THE CELL ACCEPTED, and not
+				! every iterate on the way to it: the acceptance class, its
+				! largest residual, the element-budget excursion and the
+				! consecutive-sweep non-root streak all describe the
+				! composition this cell leaves the sweep with.  The
+				! counters of each attempt above (retries, exit codes,
+				! residual histograms) count solves, and count every one of
+				! them.
+				if (last_self) then
+					n_acc(acc_class) = n_acc(acc_class) + 1
+					if (finite_real(acc_res))                              &
+						acc_resmax(acc_class) =                            &
+							max(acc_resmax(acc_class),acc_res)
+					viol_sweep_worst = max(viol_sweep_worst, viol_best)
+					call nonroot_streak_update(acc_class,j,count,r(j),      &
+					                           T_K(j),n_in_dim(j),ne(j),    &
+					                           info,viol_best,acc_res,      &
+					                           sys_x,N_eq)
+				endif
+				if (last_self .and. j .eq. ieq_report_cell)                &
+					call report_accepted_cell_state(j, acc_class, acc_res, &
+					                                info, sys_x, N_eq)
+				! The chemical decay rates of the accepted state, for the
+				! cells a diagnostic named: the coefficients of this cell
+				! are live only here.
+				if (last_self .and. ieq_decay_ncell .gt. 0)                 &
+					call measure_molecular_decay_rates(j, sys_x, N_eq,     &
+					                                   mbase, ne(j))
 			else
 				! Atomic H/He (+ He 2^3S) (+ metals). Acceptance as a root
 				! requires the same two conditions as the molecular block:
@@ -1688,7 +2367,7 @@
 				! ieq_res_tol -- a vanishing solver status is neither
 				! sufficient nor necessary. The cell is solved from up to
 				! three starting points and the best root is kept:
-				!   1  the guess built above (previous state / neighbour),
+				!   1  the guess built above (previous state / neighbor),
 				!   2  the uncoupled ionization balance at the incoming n_e,
 				!   3  the optically thick limit, all nuclei neutral.
 				! Attempt 1 is accepted as it stands whenever it converges to
@@ -1821,14 +2500,52 @@
 					acc_class = 4
 					n_res_nonfinite = n_res_nonfinite + 1
 				endif
-				n_acc(acc_class) = n_acc(acc_class) + 1
-				if (finite_real(acc_res))                                  &
-					acc_resmax(acc_class) =                                &
-						max(acc_resmax(acc_class),acc_res)
-				viol_sweep_worst = max(viol_sweep_worst, viol_best)
-				call nonroot_streak_update(acc_class,j,count,r(j),T_K(j),  &
-				                           n_in_dim(j),ne(j),info_ieq,     &
-				                           viol_best,acc_res,sys_x,N_eq)
+				! THE SEVERITY BOUND OF THE AMNESTY
+				! (nonroot_acceptance_class). A candidate too far from
+				! solving the network is not adopted: the cell keeps
+				! the composition it entered the sweep with, a state
+				! the run already held, and the heating and cooling
+				! built after the sweep are those of THAT composition
+				! (docs/Update_EXHALE_stage1.md section 170).
+				if (acc_class .eq. 4) then
+					acc_class = nonroot_acceptance_class(acc_res)
+					if (acc_class .eq. 6)                                  &
+						sys_x(1:N_eq) = x_entry(1:N_eq)
+				endif
+				! Has the cell's own field stopped moving its own composition
+				! (xuv_self_field_passes).  The comparison is between two
+				! ACCEPTED states of the same cell, in the stage fractions the
+				! coupled loop of EXHALE_main measures its own convergence in.
+				self_moved = 1.0d0
+				if (it_self .gt. 1)                                        &
+					self_moved = maxval(abs(sys_x(1:N_eq)                  &
+					                        - x_self(1:N_eq)))
+				x_self(1:N_eq) = sys_x(1:N_eq)
+				last_self = (it_self .ge. xuv_self_field_passes)            &
+				            .or. (self_moved .le. xuv_self_field_tol)
+
+				! THE LEDGER RECORDS THE STATE THE CELL ACCEPTED, and not
+				! every iterate on the way to it: the acceptance class, its
+				! largest residual, the element-budget excursion and the
+				! consecutive-sweep non-root streak all describe the
+				! composition this cell leaves the sweep with.  The
+				! counters of each attempt above (retries, exit codes,
+				! residual histograms) count solves, and count every one of
+				! them.
+				if (last_self) then
+					n_acc(acc_class) = n_acc(acc_class) + 1
+					if (finite_real(acc_res))                              &
+						acc_resmax(acc_class) =                            &
+							max(acc_resmax(acc_class),acc_res)
+					viol_sweep_worst = max(viol_sweep_worst, viol_best)
+					call nonroot_streak_update(acc_class,j,count,r(j),      &
+					                           T_K(j),n_in_dim(j),ne(j),    &
+					                           info_ieq,viol_best,acc_res,  &
+					                           sys_x,N_eq)
+				endif
+				if (last_self .and. j .eq. ieq_report_cell)                &
+					call report_accepted_cell_state(j, acc_class, acc_res, &
+					                                info_ieq, sys_x, N_eq)
 			endif
 
 			! Extract solution profiles
@@ -1888,8 +2605,31 @@
 					        - nox_eq(j,1) - nox_eq(j,2), 0.0d0)
 			endif
 
+			if (last_self) exit self_field_HHe
+			enddo self_field_HHe
+
 		enddo
 		!$omp end parallel do
+
+		! Carry the columns past this block with the composition just
+		! solved: the ground singlet again, and the molecular hydrogen.
+		do j = jb_hi, jb_lo, -1
+			nheiS_face(j) = nhei(j)
+			if (thereis_HeITR) nheiS_face(j) =                             &
+			         he_ground_singlet_density(nhei(j), nheiTR(j))
+			if (has_h2_xuv) nh2_entry(j) = nmol_eq(j,1)
+		enddo
+		call advance_starward_columns(jb_hi, jb_lo, nhi, nheiS_face,       &
+		         nheii, nheiTR, nh2_entry, nm, has_h2_xuv,                 &
+		         N1_col,N15_col,N2_col,NTR_col,NH2_col_xuv,Nm_col_xuv)
+
+		jb_hi = jb_lo - 1
+		enddo xuv_block_HHe
+
+		ieq_neq_stored   = N_eq
+		ieq_mbase_stored = mbase
+		ieq_iox_stored   = iox
+		ieq_rates_ready  = .true.
 
 		! The frozen background is now a complete sweep old at worst, so the
 		! carrier transport operator may run.
@@ -1957,6 +2697,7 @@
 	endif
 
 	if (present(sweep_ledger)) sweep_ledger = ledger_sweep
+	ieq_sweep_ledger_last = ledger_sweep
 
 
 	!----------------------------------!
@@ -1993,127 +2734,26 @@
 		n_tot = 0.0d0
 	endif
 
-	! Photoheating: the heating rate of one particle of each absorber, from
-	! the entry radiation field, times the post-sweep density of that
-	! absorber (utils_ion_eq holds the single definition of the sum).
-	call photoheating_of_composition(h1_HI,h1_HeI,h1_HeII,h1_HeTR,h1_H2,  &
-	                                 h1_m, nhi,nhei,nheii,nheiTR,         &
-	                                 nmol_eq(:,1), nm, heat)
+	! The heating of the post-sweep composition, channel by channel, from
+	! the ONE assembly in utils_ion_eq. The rates it contracts are the
+	! pre-sweep ones described above; the densities are the post-sweep ones
+	! extracted just now. The channel array it fills is heat_channel_state,
+	! which is what output/Heating_breakdown.txt writes, so that file and
+	! the heat column of Hydro_ioniz.txt describe one state.
+	call heating_of_composition(T_K,                                      &
+	         nhi,nhii,nhei,nheii,nheiii,nheiTR, nm, nmol_eq, nox_eq,      &
+	         ne, n_tot,                                                   &
+	         h1_HI,h1_HeI,h1_HeII,h1_HeTR,h1_H2,h1_m,                     &
+	         A31,q31a,q31b,Q31,                                           &
+	         k_lw_diss, p_lw_single, k_co_diss, j_h2o_fuv, j_oh_fuv,      &
+	         thereis_mol, thereis_oxychem, heat, heat_channel_state)
 
-	! H(n=2) Balmer heating: photoelectric heating of the excited level plus
-	! its Lyman-alpha de-excitation. Unlike every other term here it is an
-	! already-contracted volumetric rate, filled by excited_H_update from the
-	! previous converged outer pass, so it carries that documented lag and is
-	! added as it stands. Zero unless use_excited_H.
-	if (use_excited_H) heat = heat + heat_balmer
-
-	! He recombination radiation absorbed by H I, H2 and the metal ions. The
-	! RATE corrections of this coupling were taken before the sweep and are
-	! what the sweep solved with; its photoelectron heating carries the
-	! densities of the absorbers, so it is evaluated again here at the
-	! post-sweep composition and only dheat_hrc is kept. The rate outputs of
-	! this second call are discarded.
-	if (use_he_rec_coupling .and. thereis_He) then
-		call he_rec_coupling(T_K, nhi, nmol_eq(:,1), nhei, nheii, nheiTR,  &
-		                     ne, nm, A31, q31a, q31b,                      &
-		                     rcheiiB_hrc, dP_HI_hrc, dP_H2_hrc,            &
-		                     dP_m_hrc, dheat_hrc)
-		heat = heat + dheat_hrc
-	endif
-
-	! Penning ionization heating: He(2^3S)+H0 -> He(1^1S)+H+ + e- releases the
-	! electron kinetic energy e_th_HeI - e_th_HeTR - e_th_HI (= 6.2 eV) into the
-	! gas. Q31 is the total ionization rate, so only its Penning branch
-	! (f_penning_HeI23S) carries this exothermicity; the associative branch
-	! ends in HeH+ and has a different one. Post-sweep densities, like every
-	! other heating channel here; Q31 is a rate coefficient and stays the
-	! one the sweep was solved with.
-	if (thereis_HeITR) heat = heat                                    &
-	     + f_penning_HeI23S*nheiTR*nhi*Q31                             &
-	       *(e_th_HeI - e_th_HeTR - e_th_HI)/erg2eV
-
-	! Molecular Penning ionization heating: He(2^3S)+H2 -> He(1^1S)+H2+ + e-
-	! releases the electron kinetic energy (e_th_HeI - e_th_HeTR) - e_th_H2
-	! (= 24.6 - 4.80 - 15.4 = 4.4 eV) into the gas. Post-sweep densities;
-	! nmol_eq(:,1) is the neutral-H2 number density. ioniz_HeI23S_H2
-	! (Cool_coeff.f90) is the total, scaled here to the Penning branch. Zero
-	! unless a molecular run also tracks the triplet.
-	if (thereis_mol .and. thereis_HeITR) heat = heat                  &
-	     + f_penning_HeI23S*nheiTR*nmol_eq(:,1)*ioniz_HeI23S_H2(T_K)   &
-	       *((e_th_HeI - e_th_HeTR) - e_th_H2)/erg2eV
-
-	! Lyman-Werner photodissociation heating: H2 + hv -> H + H leaves the
-	! fragment pair with about 0.4 eV of kinetic energy (Black & Dalgarno
-	! 1977, ApJS 34, 405, p. 418). The 4.48 eV bond energy is paid by the
-	! absorbed photon, not by the gas, so it is NOT a thermal sink of this
-	! channel. Post-sweep H2 density; k_lw_diss is a rate and is the lagged
-	! one the sweep used.
-	if (thereis_mol .and. F_LW_star .gt. 0.0d0)                       &
-	     heat = heat + k_lw_diss*nmol_eq(:,1)*e_lw_fragment_erg
-
-	! Lyman-Werner FLUORESCENCE heating, the other and much larger half of
-	! the same absorption. k_lw_diss is a DISSOCIATION rate, and every pump
-	! that does not dissociate fluoresces back into a bound, vibrationally
-	! excited level of the ground state carrying the mean landing-level energy
-	! h2_energy_per_bound_fluorescence_erg(T) -- 2.06 eV at 700 K to 2.13 eV
-	! at 3200 K, computed from the Abgrall, Roueff & Drira (2000) transition
-	! probabilities rather than adopted, and replacing the 2.0 eV Burton,
-	! Hollenbach & Tielens (1990) Appendix A adopt without a derivation
-	! (docs/p39_lw_cross_section_sources.md sec. 5.2). The count of such
-	! decays per dissociation is (1 - p)/p. At the density of a molecular
-	! base that energy is collisionally de-excited and becomes heat; at low
-	! density it is radiated away in the infrared quadrupole lines, and
-	! h2_vibrational_heat_fraction is the ratio between the two.
-	!
-	! p IS THE SINGLE-PUMP BRANCHING, not the effective one. Once the layer
-	! is thick a fluorescent photon can be re-absorbed, but that pair of
-	! events -- one molecule down, another up -- deposits nothing, so the
-	! trapping cancels out of the count and what survives is the branching a
-	! lone pump would have. It is not the constant 0.135 either: shielding
-	! removes the strongest pumping lines first, and the lines that survive
-	! to depth have a different branching, measured as p_lw_single
-	! (docs/p39_lw_cross_section_sources.md).
-	if (thereis_mol .and. F_LW_star .gt. 0.0d0)                       &
-	     heat = heat + k_lw_diss*(1.0d0 - p_lw_single)                &
-	                   /max(p_lw_single, 1.0d-30)                     &
-	                   *nmol_eq(:,1)                                  &
-	                   *h2_energy_per_bound_fluorescence_erg(T_K)     &
-	                   *h2_vibrational_heat_fraction(T_K, nhi, nmol_eq(:,1))
-
-	! Chemical heat of the COLLISIONAL reactions of the H2/He network. The
-	! photon-driven reactions, the radiative recombinations and the
-	! collisional ionizations are excluded there, so nothing above is counted
-	! twice; see molecular_reaction_heat.f90 for the exclusion list and for
-	! why an atomic gas has no such term. Post-sweep densities, ne and n_tot.
-	! Default off.
-	if (thereis_mol .and. mol_reaction_heat) then
-		call molecular_chemical_heating(T_K, nhi, nhii, nheii, nmol_eq,   &
-		                                ne, n_tot, heat_chem)
-		heat = heat + heat_chem
-	endif
-
-	! FUV photolysis heating: each H2O or OH dissociation leaves the
-	! fragments with the excess of the absorbed photon over the bond energy,
-	! the same ledger the Lyman-Werner channel above uses (the bond energy
-	! is paid by the photon, not by the gas, so it is not a thermal sink).
-	! The H2 + O(1D) branch keeps its 1.96 eV of electronic excitation out
-	! of this sum: that energy leaves as O(1D) and is released later, in the
-	! O(1D) + H2 -> OH + H reaction. THAT exothermicity is NOT deposited by
-	! this network -- an omission of the same kind as the missing thermal
-	! dissociation sink of R12/R14, and of the same size (a few percent of
-	! the photolysis heat), recorded here rather than hidden. Post-sweep
-	! carrier densities against the lagged band photolysis rates.
-	heat_fuv = 0.0d0
-	if (thereis_oxychem) then
-		do ib = 1,n_fuv_band
-			heat_fuv = heat_fuv                                          &
-			  + j_h2o_fuv(:,ib)*nox_eq(:,2)                              &
-			    *heat_per_water_dissociation(ib)                         &
-			  + j_oh_fuv(:,ib)*nox_eq(:,1)                               &
-			    *heat_per_hydroxyl_dissociation(ib)
-		enddo
-		heat = heat + heat_fuv
-	endif
+	! Two channels are also carried as module arrays of their own, because
+	! write_output writes the FUV photolysis heating beside the band ledger
+	! and the step controller checkpoints both. The channel array is the
+	! definition; these are copies of it.
+	heat_chem = heat_channel_state(:,15)
+	heat_fuv  = heat_channel_state(:,16)
 
 	! Cooling of the post-sweep composition. eval_cool builds its own
 	! electron density from the densities it is given, so this is the same
@@ -2132,47 +2772,47 @@
 	! eos_metals policy)
    if (thereis_mol) then
       if (thereis_oxychem) then
-         call calc_rho(nhi,nhii,nhei,nheii,nheiii,n_io,nm,nmol_eq,nox_eq)
+         call calc_rho(nhi,nhii,nhei,nheii,nheiii,n_rec,nm,nmol_eq,nox_eq)
       else
-         call calc_rho(nhi,nhii,nhei,nheii,nheiii,n_io,nm,nmol_eq)
+         call calc_rho(nhi,nhii,nhei,nheii,nheiii,n_rec,nm,nmol_eq)
       endif
    else
-      call calc_rho(nhi,nhii,nhei,nheii,nheiii,n_io,nm)
+      call calc_rho(nhi,nhii,nhei,nheii,nheiii,n_rec,nm)
    endif
+   if (present(rho_recon)) rho_recon = n_rec/n0
 
    ! Abundancies profiles
-   f_sp_io(:,1) = nhi/n_io
-   f_sp_io(:,2) = nhii/n_io
-   f_sp_io(:,3) = nhei/n_io
-   f_sp_io(:,4) = nheii/n_io
-   f_sp_io(:,5) = nheiii/n_io
-   f_sp_io(:,6) = nheiTR/n_io
+   ! Normalized by the density the step was GIVEN (T2.1), not by the mass
+   ! sum of the composition: the sum is the check above.
+   f_sp_io(:,1) = nhi/n_in_dim
+   f_sp_io(:,2) = nhii/n_in_dim
+   f_sp_io(:,3) = nhei/n_in_dim
+   f_sp_io(:,4) = nheii/n_in_dim
+   f_sp_io(:,5) = nheiii/n_in_dim
+   f_sp_io(:,6) = nheiTR/n_in_dim
    ! molecular abundances
    if (thereis_mol) then
-      f_sp_io(:,isp_H2)   = nmol_eq(:,1)/n_io
-      f_sp_io(:,isp_H2p)  = nmol_eq(:,2)/n_io
-      f_sp_io(:,isp_H3p)  = nmol_eq(:,3)/n_io
-      f_sp_io(:,isp_HeHp) = nmol_eq(:,4)/n_io
+      f_sp_io(:,isp_H2)   = nmol_eq(:,1)/n_in_dim
+      f_sp_io(:,isp_H2p)  = nmol_eq(:,2)/n_in_dim
+      f_sp_io(:,isp_H3p)  = nmol_eq(:,3)/n_in_dim
+      f_sp_io(:,isp_HeHp) = nmol_eq(:,4)/n_in_dim
    else
       f_sp_io(:,isp_H2:isp_HeHp) = 0.0d0
    endif
 
    ! oxygen-carrier abundances
    if (thereis_oxychem) then
-      f_sp_io(:,isp_OH)  = nox_eq(:,1)/n_io
-      f_sp_io(:,isp_H2O) = nox_eq(:,2)/n_io
-      f_sp_io(:,isp_CO)  = nox_eq(:,3)/n_io
+      f_sp_io(:,isp_OH)  = nox_eq(:,1)/n_in_dim
+      f_sp_io(:,isp_H2O) = nox_eq(:,2)/n_in_dim
+      f_sp_io(:,isp_CO)  = nox_eq(:,3)/n_in_dim
    else
       f_sp_io(:,isp_OH:isp_CO) = 0.0d0
    endif
 
    ! Metal abundances in canonical order (col mion_fsp(im) of f_sp_io).
    do im = 1,n_mion
-      f_sp_io(:,mion_fsp(im)) = nm(:,im)/n_io
+      f_sp_io(:,mion_fsp(im)) = nm(:,im)/n_in_dim
    enddo
-
-   ! Adimensional number density profile
-	n_io = n_io/n0
 
    ! Adimensional heating and cooling rates
    heat_out = heat/q0
@@ -2217,7 +2857,7 @@
    ! taking the count from the atomic species there would silently undo it.
    if (thereis_mol) ntot_bc = n_tot(1-Ng)/n0
 
-	call element_census_verify(cen_ieq, n_io, f_sp_io)
+	call element_census_verify(cen_ieq, n_io, f_sp_io, rho_is_fixed=.true.)
 
 	! End of subroutine
 	end subroutine ioniz_eq
@@ -2482,7 +3122,7 @@
 	!----------------------------------!
 
 	double precision function normalized_reaction_residual(x,n,mbase,       &
-	                                                       n_e_ref) result(res)
+	                                              n_e_ref,row_out) result(res)
 	! Dimensionless reaction imbalance of a candidate equilibrium state: the
 	! residual vector of the SAME system the cell solve used, evaluated at x,
 	! with each balance row measured against its turnover scale -- the rate
@@ -2515,9 +3155,16 @@
 	! Serves the He-branch acceptance only; the H-only system (System_H) has
 	! a single analytic balance with a unique root in [0,1] and no
 	! acceptance ladder.
+	!
+	! row_out (optional) returns the same measure ROW BY ROW,
+	! |fvec(i)|/srow(i), so that a caller can name the balance that is out
+	! rather than only its largest value: the He 2^3S level row of B1a
+	! section 2.5 is one row of this vector, and the certification reports
+	! it beside the closure it belongs to.
 	integer, intent(in) :: n, mbase
 	real*8,  intent(in) :: x(n)
 	real*8,  intent(in) :: n_e_ref
+	real*8,  intent(out), optional :: row_out(n)
 	real*8  :: fv(n), srow(n), cxb(n), par(60), el_tot(12)
 	real*8  :: nH, nHe, ne, cx_heh, s
 	integer :: iflag, i, e, ix
@@ -2533,7 +3180,15 @@
 		el_tot(12) = ieq_cell%nhe     ! cx_He
 	endif
 
-	if (thereis_mol) then
+	if (.not. thereis_He) then
+		! The H-only system: one balance row, and its turnover is the rate
+		! at which the cell can make or unmake a proton -- photoionization
+		! and collisional ionization of H0, radiative recombination.
+		call ion_system_H(n,x,fv,iflag,par)
+		srow(1) = (ieq_cell%P_HI                                          &
+		           + (ieq_cell%a_ion_HI + ieq_cell%rchiiB)*n_e_ref)       &
+		          *ieq_cell%nh
+	else if (thereis_mol) then
 		if (thereis_metals) then
 			cx_metal_base = mbase
 			call ion_system_HeH_mol_metals(n,x,fv,iflag,par)
@@ -2635,6 +3290,7 @@
 		s = srow(i)
 		if (s .le. 0.0d0) s = 1.0d0
 		res = max(res, abs(fv(i))/s)
+		if (present(row_out)) row_out(i) = abs(fv(i))/s
 	enddo
 
 	end function normalized_reaction_residual
@@ -2727,7 +3383,7 @@
 	case (ieq_state_steady_candidate)
 		call accumulate_ioniz_eq_ledger(ieq_steady_candidate_ledger, a)
 	case default
-		call accumulate_ioniz_eq_ledger(ieq_marching_ledger, a)
+		call accumulate_ioniz_eq_ledger(ieq_marching_ledger(ledger_family), a)
 	end select
 	end subroutine add_to_ioniz_eq_ledger
 
@@ -2769,8 +3425,10 @@
 	! residual tens of times per outer iteration on states no one adopted,
 	! and their acceptance classes swamp the run's own (section 121).
 
-	call write_one_ioniz_eq_ledger(ieq_marching_ledger,                   &
+	call write_one_ioniz_eq_ledger(ieq_marching_ledger(ledger_family_init), &
 		'marching states')
+	call write_one_ioniz_eq_ledger(ieq_marching_ledger(ledger_family_phys), &
+		'marching states (accepted physical steps)')
 	call write_one_ioniz_eq_ledger(ieq_steady_iterate_ledger,             &
 		'steady-solver iterates')
 	call write_one_ioniz_eq_ledger(ieq_steady_candidate_ledger,           &
@@ -2825,6 +3483,12 @@
 			' NON-ROOT state(s) accepted under the relaxation amnesty '// &
 			'(max res ', led%acc_resmax(4), ', longest cell streak ',     &
 			led%streak_peak, ' sweep(s))'
+		if (led%acc_n(6) .gt. 0)                                          &
+			write(*,'(A,I0,A,ES9.2,A,ES9.2,A)')                           &
+			'     ioniz-eq acceptance WARNING: ', led%acc_n(6),           &
+			' cell state(s) were NON-ROOTS above the amnesty cap (max'//  &
+			' res ', led%acc_resmax(6), ', cap ', ieq_nonroot_res_cap,    &
+			'); each kept the composition it entered the sweep with'
 		if (led%acc_n(5) .gt. 0)                                          &
 			write(*,'(A,I0,A,ES9.2,A)')                                   &
 			'     ioniz-eq acceptance: ', led%acc_n(5),                   &
@@ -2888,13 +3552,298 @@
 
 	!----------------------------------!
 
+	subroutine report_accepted_cell_state(j, acc_class, acc_res, info_solver,&
+	                                      x, nx)
+	! The accepted equilibrium state of ONE cell, written by every sweep that
+	! solves it. The normalized reaction residual is the quantity the
+	! acceptance is taken on (ieq_res_tol), so it says how wide the band of
+	! compositions this cell would have accepted is; the hydrogen partition
+	! says where in that band this sweep landed.
+	integer, intent(in) :: j, acc_class, info_solver, nx
+	real*8,  intent(in) :: acc_res
+	real*8,  intent(in) :: x(nx)
+	write(*,'(A,I5,A,I2,A,ES11.3,A,I2,A,ES22.15,A,ES22.15)')               &
+	     ' (ieq_cell_report) cell ', j, ' class ', acc_class,              &
+	     ' reaction residual ', acc_res, ' solver info ', info_solver,      &
+	     ' x(H+) ', x(1), ' x(H2 nuclei) ', x(min(4,nx))
+	end subroutine report_accepted_cell_state
+
+	!----------------------------------!
+
+	subroutine set_molecular_decay_cells(cells, ncell)
+	! WHICH CELLS THE CHEMICAL-DECAY DIAGNOSTIC MEASURES AT. It has to be
+	! said before the sweep runs: the reaction Jacobian can only be formed
+	! where the cell's own rate coefficients are live, which is inside the
+	! sweep's own loop, so a caller that wants a cell measured names it
+	! first and reads the result afterwards.
+	integer, intent(in) :: ncell, cells(ncell)
+	integer :: i
+	ieq_decay_cells = 0
+	ieq_decay_ncell = 0
+	ieq_decay_have  = .false.
+	do i = 1, min(ncell, ieq_decay_ncell_max)
+		ieq_decay_cells(i) = cells(i)
+		ieq_decay_ncell    = i
+	enddo
+	end subroutine set_molecular_decay_cells
+
+	!----------------------------------!
+
+	subroutine molecular_decay_rate_of_the_cell(j, k, name, lam_row,       &
+	                                            lam_slow, lam_fast, have)
+	! WHAT THE DIAGNOSTIC MEASURED AT CELL j FOR MOLECULE k (1 H2, 2 H2+,
+	! 3 H3+, 4 HeH+):
+	!   lam_row   the molecule's own decay rate, -dA(k,k) of the local
+	!             reaction system, attributable to that one molecule [s^-1];
+	!   lam_slow  the smallest |Re lambda| of the whole local spectrum, the
+	!             mode that decides whether the closure may eliminate the
+	!             system at all [s^-1];
+	!   lam_fast  the largest, which is the stiffness of the same system.
+	! have is false where the cell was not armed or carries no molecular
+	! network.
+	integer,          intent(in)  :: j, k
+	character(len=*), intent(out) :: name
+	real*8,           intent(out) :: lam_row, lam_slow, lam_fast
+	logical,          intent(out) :: have
+	integer :: i, islot
+	character(len=4), parameter :: mname(n_mol_decay_row) =                &
+	                 (/ 'H2  ', 'H2+ ', 'H3+ ', 'HeH+' /)
+	name    = ' '
+	lam_row = 0.0d0;  lam_slow = 0.0d0;  lam_fast = 0.0d0
+	have    = .false.
+	if (k .lt. 1 .or. k .gt. n_mol_decay_row) return
+	name  = mname(k)
+	islot = 0
+	do i = 1, ieq_decay_ncell
+		if (ieq_decay_cells(i) .eq. j) islot = i
+	enddo
+	if (islot .eq. 0) return
+	if (.not. ieq_decay_have(islot)) return
+	lam_row  = ieq_decay_row (islot,k)
+	lam_slow = ieq_decay_slow(islot)
+	lam_fast = ieq_decay_fast(islot)
+	have     = .true.
+	end subroutine molecular_decay_rate_of_the_cell
+
+	!----------------------------------!
+
+	subroutine measure_molecular_decay_rates(j, x, nx, mbase, n_e_ref)
+	! THE CHEMICAL DECAY RATES OF THE LOCAL REACTION SYSTEM AT ONE CELL,
+	! with the elemental conservation modes removed.
+	!
+	! The local system is dot n = P(n) - L(n) for the species of the cell.
+	! Written that way it has one null eigenvalue per conserved element, and
+	! those modes are not decays: they are the statement that the reactions
+	! move nuclei between species and make none. THE CODE'S OWN
+	! PARAMETERIZATION HAS ALREADY REMOVED THEM. The unknowns are stage
+	! fractions of a fixed nucleus total -- x(1) = n(H+)/n_H, x(4) =
+	! 2 n(H2)/n_H, x(2) = n(He+)/n_He, a metal's x = n(X+)/n_X -- and the
+	! neutral atomic stage of each element is the closure of that element's
+	! budget rather than an unknown (System_HeH_mol: n_HI = (1 - x1 - x4 -
+	! x5 - x6 - x7) n_H). So the Jacobian formed here in x IS the reaction
+	! Jacobian on the subspace transverse to the conservation modes, and no
+	! projection is applied or needed.
+	!
+	! THE MATRIX. The residual routine returns each molecular row divided by
+	! its turnover scale (set_mol_turnover_rates), and that scale is the
+	! row's nucleus total times a rate, s_k = N_k r_k. The rate matrix is
+	!    A(k,l) = (c_k/N_k) (1/miu_k) dfv_k/dx_l         [s^-1]
+	! with miu_k = mol_inv_turnover(k) and c_k the stoichiometric factor of
+	! the fraction the row balances (1 for a stage fraction, 2 for x(H2) and
+	! x(H2+), 3 for x(H3+)), because fv_k = miu_k dn_k/dt and
+	! dot x_k = c_k (dn_k/dt)/N_k. dfv/dx is a central difference of the
+	! production routine the solve itself uses.
+	!
+	! THE IMPOSED ROWS ARE LIFTED FOR THE MEASUREMENT. Where a partition is
+	! transported its balance row is replaced by x - x_fix, an identity with
+	! no chemistry in it; the question this diagnostic asks is what the
+	! chemistry of that partition WOULD do, which is exactly the number that
+	! decides whether it has to be transported. The flags are put back
+	! before the routine returns.
+	!
+	! IDENTITY ROWS OF ABSENT ELEMENTS ARE LEFT OUT of the spectrum: their
+	! row is x itself and its eigenvalue would be a property of the writing
+	! and not of any reaction.
+	!
+	! Called from inside the sweep's parallel loop for the cells named by
+	! set_molecular_decay_cells, under the sweep's report lock.
+	integer, intent(in) :: j, nx, mbase
+	real*8,  intent(in) :: x(nx), n_e_ref
+	real*8  :: xp(nx), fvp(nx), fvm(nx), par(60), h
+	real*8  :: A(nx,nx), wr(nx), wi(nx), vdum(1,1)
+	real*8  :: work(8*nx+64), conv(nx), lam, lo, hi
+	integer :: iflag, i, l, e, ix, islot, info, lwork, nsub, ksub(nx)
+	logical :: keep(nx), h2_fix, hp_fix, ox_fix
+	if (.not. thereis_mol) return
+	! The molecular block is seven rows before any option adds to it and
+	! the rate conversion below names all seven; a shorter system is not
+	! this network.
+	if (nx .lt. 7) return
+	islot = 0
+	do i = 1, ieq_decay_ncell
+		if (ieq_decay_cells(i) .eq. j) islot = i
+	enddo
+	if (islot .eq. 0) return
+
+	! The conversion of each row into a rate: c_k/N_k times the turnover
+	! scale the residual routine already divided the row by.
+	conv = 0.0d0
+	keep = .false.
+	conv(1) = 1.0d0/max(ieq_cell%nh,  1.0d-300)
+	conv(2) = 1.0d0/max(ieq_cell%nhe, 1.0d-300)
+	conv(3) = conv(2)
+	conv(4) = 2.0d0/max(ieq_cell%nh,  1.0d-300)
+	conv(5) = conv(4)
+	conv(6) = 3.0d0/max(ieq_cell%nh,  1.0d-300)
+	conv(7) = 1.0d0/max(ieq_cell%nh,  1.0d-300)
+	keep(1:min(7,nx)) = .true.
+	if (thereis_HeITR .and. nx .ge. 8) then
+		conv(8) = conv(2)
+		keep(8) = .true.
+	endif
+	if (thereis_oxychem) then
+		ix = oxygen_row_base()
+		if (ix+1 .le. nx) then
+			conv(ix)   = 1.0d0/max(ieq_cell%n_ofam, 1.0d-300)
+			conv(ix+1) = conv(ix)
+			keep(ix)   = .true.
+			keep(ix+1) = .true.
+		endif
+	endif
+	if (thereis_metals) then
+		do e = 1, met_nelem
+			ix = mbase + 2*(e-1)
+			if (ix+1 .gt. nx) cycle
+			if (met_ntot(e) .le. 1.0d-30) cycle
+			conv(ix) = 1.0d0/met_ntot(e)
+			keep(ix) = .true.
+			if (met_top(e) .ge. 2) then
+				conv(ix+1) = conv(ix)
+				keep(ix+1) = .true.
+			endif
+		enddo
+	endif
+	do i = 1, nx
+		if (mol_inv_turnover(i) .gt. 0.0d0)                            &
+			conv(i) = conv(i)/mol_inv_turnover(i)
+	enddo
+
+	h2_fix = ieq_cell%x_h2_fixed
+	hp_fix = ieq_cell%x_hp_fixed
+	ox_fix = ieq_cell%x_ox_fixed
+	ieq_cell%x_h2_fixed = .false.
+	ieq_cell%x_hp_fixed = .false.
+	ieq_cell%x_ox_fixed = .false.
+
+	par   = 0.0d0
+	iflag = 1
+	A     = 0.0d0
+	do l = 1, nx
+		! A step of the size of the unknown, with a floor so that a stage
+		! sitting at none is still sampled.
+		h = max(1.0d-7*abs(x(l)), 1.0d-14)
+		xp = x;  xp(l) = x(l) + h
+		call molecular_network_rows(nx, xp, fvp, iflag, par, mbase)
+		xp = x;  xp(l) = x(l) - h
+		call molecular_network_rows(nx, xp, fvm, iflag, par, mbase)
+		do i = 1, nx
+			A(i,l) = conv(i)*(fvp(i) - fvm(i))/(2.0d0*h)
+		enddo
+	enddo
+
+	ieq_cell%x_h2_fixed = h2_fix
+	ieq_cell%x_hp_fixed = hp_fix
+	ieq_cell%x_ox_fixed = ox_fix
+
+	! The molecules' own rates: the diagonal of the rate matrix, which is
+	! the rate at which that molecule's own population relaxes when nothing
+	! else moves.
+	do i = 1, n_mol_decay_row
+		ieq_decay_row(islot,i) = -A(3+i,3+i)
+	enddo
+
+	! The spectrum, over the rows that carry a reaction.
+	nsub = 0
+	do i = 1, nx
+		if (.not. keep(i)) cycle
+		nsub = nsub + 1
+		ksub(nsub) = i
+	enddo
+	if (nsub .le. 0) return
+	do i = 1, nsub
+		do l = 1, nsub
+			A(i,l) = A(ksub(i),ksub(l))
+		enddo
+	enddo
+	lwork = 8*nx + 64
+	call dgeev('N','N', nsub, A(1:nsub,1:nsub), nsub, wr, wi, vdum, 1,     &
+	           vdum, 1, work, lwork, info)
+	if (info .ne. 0) return
+	lo =  huge(1.0d0);  hi = 0.0d0
+	do i = 1, nsub
+		lam = abs(wr(i))
+		if (lam .le. 0.0d0) cycle
+		lo = min(lo, lam);  hi = max(hi, lam)
+	enddo
+	if (hi .le. 0.0d0) return
+	ieq_decay_slow(islot) = lo
+	ieq_decay_fast(islot) = hi
+	ieq_decay_have(islot) = .true.
+	end subroutine measure_molecular_decay_rates
+
+	!----------------------------------!
+
+	subroutine molecular_network_rows(n, x, fv, iflag, par, mbase)
+	! The molecular reaction system of this cell, with or without the metal
+	! block, in ONE call: the same two routines the solve and
+	! normalized_reaction_residual choose between, so a derivative taken
+	! here is a derivative of the system the cell was solved on.
+	integer, intent(in)    :: n, mbase
+	integer, intent(inout) :: iflag
+	real*8,  intent(in)    :: x(n)
+	real*8,  intent(inout) :: par(60)
+	real*8,  intent(out)   :: fv(n)
+	if (thereis_metals) then
+		cx_metal_base = mbase
+		call ion_system_HeH_mol_metals(n, x, fv, iflag, par)
+		cx_metal_base = 4
+	else
+		call ion_system_HeH_mol(n, x, fv, iflag, par)
+	endif
+	end subroutine molecular_network_rows
+
+	! ------------------------------------------------------!
+
+	pure integer function nonroot_acceptance_class(res) result(c)
+	! WHICH OF THE TWO NON-ROOT CLASSES A CANDIDATE FALLS IN, and the single
+	! definition of that rule. Class 4 is the relaxation amnesty: the
+	! candidate is adopted, reported and counted. Class 6 is the amnesty's
+	! severity bound: the candidate is NOT adopted and the cell keeps the
+	! composition it entered the sweep with.
+	! The test is written as .not.(res <= cap) so that a residual which is
+	! not a finite number falls on the class-6 side. A state that has driven
+	! a balance row out of the reals is not one to march on either, and NaN
+	! fails every ordinary comparison, so the ordinary form would have made
+	! it the mildest case instead of the worst.
+	real*8, intent(in) :: res
+	if (.not. (res .le. ieq_nonroot_res_cap)) then
+		c = 6
+	else
+		c = 4
+	endif
+	end function nonroot_acceptance_class
+
+	!----------------------------------!
+
 	subroutine nonroot_streak_update(acc_class,j,step,radius,T,dens,n_e,   &
 	                                 info,viol,res,x,n)
 	! Relaxation amnesty for a NON-ROOT acceptance, and its limit. A cell
 	! whose accepted state is a root (classes 1-3, and class 5, the root of
 	! the constrained element-conserving continuation solve) resets its
-	! streak; a cell
-	! accepting a non-root (class 4) is reported loudly, counted, and
+	! streak; a cell whose state is NOT a root -- class 4, the non-root
+	! adopted under the amnesty, and class 6, the non-root above
+	! ieq_nonroot_res_cap for which the cell kept the composition it
+	! entered the sweep with -- is reported loudly, counted, and
 	! allowed to continue for at most ieq_nonroot_streak_stop consecutive
 	! sweeps -- the measured signature of a cold-start transient that the
 	! next sweeps repair (see ieq_res_tol / ieq_nonroot_streak_stop above).
@@ -2902,7 +3851,9 @@
 	! solution built on a state that does not solve the reaction network:
 	! continuing would produce a physically meaningless wind
 	! (docs/supersonic_molecular_base.md section 11.5-A), so the run stops
-	! here with the full cell diagnostics.
+	! here with the full cell diagnostics. The two classes share the streak
+	! because they are the same statement about the cell -- its chemistry
+	! was not solved -- and differ only in which state was kept.
 	integer, intent(in) :: acc_class, j, step, info, n
 	real*8,  intent(in) :: radius, T, dens, n_e, viol, res
 	real*8,  intent(in) :: x(n)
@@ -2916,16 +3867,23 @@
 	! consecutive sweeps of a state the run HOLDS.
 	if (ieq_sweep_state_kind .eq. ieq_state_steady_candidate) return
 
-	! Class 4 alone is the non-root acceptance; every other class, class 5
+	! Classes 4 and 6 are the non-root outcomes; every other class, class 5
 	! included, is a root and clears the streak.
-	if (acc_class .ne. 4) then
+	if (acc_class .ne. 4 .and. acc_class .ne. 6) then
 		ieq_nonroot_streak(j) = 0
 		return
 	endif
 
 	ieq_nonroot_streak(j) = ieq_nonroot_streak(j) + 1
-	call report_acceptance_event('NON-ROOT accepted (relaxation amnesty)', &
-	                             j,step,radius,T,info,viol,res)
+	if (acc_class .eq. 6) then
+		call report_acceptance_event(                                     &
+			'NON-ROOT above the amnesty cap, entry composition kept',     &
+			j,step,radius,T,info,viol,res)
+	else
+		call report_acceptance_event(                                     &
+			'NON-ROOT accepted (relaxation amnesty)',                     &
+			j,step,radius,T,info,viol,res)
+	endif
 
 	if (ieq_nonroot_streak(j) .ge. ieq_nonroot_streak_stop) then
 		!$omp critical (ieq_acc_report)
@@ -2945,7 +3903,7 @@
 		write(*,'(A)') '   Bounds and element conservation are necessary'//&
 			' conditions, not reaction equilibrium; continuing with a'
 		write(*,'(A)') '   known non-root produces a physically'//        &
-			' meaningless wind. See docs/Update_EXHALE.md section 113.'
+			' meaningless wind. See docs/Update_EXHALE_stage1.md section 113.'
 		flush(6)
 		!$omp end critical (ieq_acc_report)
 		error stop 'ioniz_eq: persistent non-root chemical equilibrium'
@@ -3214,4 +4172,349 @@
 	end subroutine metal_ionization_balance_at_fixed_ne
 
 	! End of module
+
+	!----------------------------------!
+	! THE ELIMINATED-SPECIES CLOSURE, MEASURED ON A STATE
+	!
+	! B1a section 2.4: every run eliminates the neutral stage of each
+	! element and the electron density by a closure, and until now that
+	! closure was evaluated only inside the sweep that also rewrites f_sp
+	! and rho. What follows measures it WITHOUT solving. The rate state of
+	! each cell is the one the sweep built from this state's own radiation
+	! field (ieq_rate_cell); the composition is read from the caller's
+	! f_sp; the number returned is normalized_reaction_residual, the same
+	! measure the sweep judges a root by. A cell the sweep accepted as a
+	! root -- acceptance class 1, 2, 3 or 5 -- therefore reads at or below
+	! ieq_res_tol, and a class-4 cell above it.
+	!
+	! NOTHING IS WRITTEN: not f_sp, not rho, not a ledger, not a streak.
+	! The scratch of one cell that these routines install -- ieq_cell, the
+	! metal coefficients of System_HeH_metals, the molecular and oxygen
+	! coefficients and the row turnover scales of System_HeH_mol -- is held
+	! aside and put back, and the round trip is asserted rather than
+	! assumed (ieq_closure_scratch_matches).
+	!
+	! ONE EXCEPTION, STATED. cx_kc, the charge-exchange rate coefficients of
+	! a cell, is private to charge_exchange, which exports no accessor for
+	! it: it can be re-set from a temperature (cx_set_cell) but not read.
+	! It is scratch that every cell of every sweep overwrites from its own
+	! T before any residual reads it, so its content between
+	! sweeps has no meaning; the loop below leaves it holding the
+	! coefficients of the last cell it measured, exactly as the sweep
+	! leaves it holding those of the last cell one of its threads ran.
+
+	subroutine save_ieq_closure_scratch(ws)
+	type(ieq_closure_scratch), intent(out) :: ws
+	ws%cell = ieq_cell
+	ws%met_alloc = allocated(met_ntot)
+	if (ws%met_alloc) then
+		ws%nelem = met_nelem
+		ws%ntot(1:met_nelem) = met_ntot(1:met_nelem)
+		ws%g0(1:met_nelem)   = met_g0(1:met_nelem)
+		ws%g1(1:met_nelem)   = met_g1(1:met_nelem)
+		ws%b0(1:met_nelem)   = met_b0(1:met_nelem)
+		ws%b1(1:met_nelem)   = met_b1(1:met_nelem)
+		ws%a1(1:met_nelem)   = met_a1(1:met_nelem)
+		ws%a2(1:met_nelem)   = met_a2(1:met_nelem)
+		ws%top(1:met_nelem)  = met_top(1:met_nelem)
+	endif
+	ws%molc = pack_mol_coefficients()
+	ws%minv = mol_inv_turnover
+	end subroutine save_ieq_closure_scratch
+
+	!----------------------------------!
+
+	subroutine restore_ieq_closure_scratch(ws)
+	type(ieq_closure_scratch), intent(in) :: ws
+	ieq_cell = ws%cell
+	if (ws%met_alloc) then
+		met_nelem = ws%nelem
+		met_ntot(1:ws%nelem) = ws%ntot(1:ws%nelem)
+		met_g0(1:ws%nelem)   = ws%g0(1:ws%nelem)
+		met_g1(1:ws%nelem)   = ws%g1(1:ws%nelem)
+		met_b0(1:ws%nelem)   = ws%b0(1:ws%nelem)
+		met_b1(1:ws%nelem)   = ws%b1(1:ws%nelem)
+		met_a1(1:ws%nelem)   = ws%a1(1:ws%nelem)
+		met_a2(1:ws%nelem)   = ws%a2(1:ws%nelem)
+		met_top(1:ws%nelem)  = ws%top(1:ws%nelem)
+	endif
+	call unpack_mol_coefficients(ws%molc)
+	mol_inv_turnover = ws%minv
+	end subroutine restore_ieq_closure_scratch
+
+	!----------------------------------!
+
+	logical function ieq_closure_scratch_matches(ws) result(same)
+	! Bit comparison of the live scratch against the copy taken before a
+	! measurement. A measurement that changed the state it measured would
+	! move the next cell solve by an amount nothing else would explain.
+	type(ieq_closure_scratch), intent(in) :: ws
+	type(ieq_closure_scratch) :: now
+	call save_ieq_closure_scratch(now)
+	same = all(now%molc .eq. ws%molc) .and. all(now%minv .eq. ws%minv)   &
+	       .and. (now%met_alloc .eqv. ws%met_alloc)
+	if (same .and. ws%met_alloc) then
+		same = (now%nelem .eq. ws%nelem)                                  &
+		       .and. all(now%ntot .eq. ws%ntot)                           &
+		       .and. all(now%g0 .eq. ws%g0) .and. all(now%g1 .eq. ws%g1)  &
+		       .and. all(now%b0 .eq. ws%b0) .and. all(now%b1 .eq. ws%b1)  &
+		       .and. all(now%a1 .eq. ws%a1) .and. all(now%a2 .eq. ws%a2)  &
+		       .and. all(now%top .eq. ws%top)
+	endif
+	if (same) same = ion_rates_match(now%cell, ws%cell)
+	end function ieq_closure_scratch_matches
+
+	!----------------------------------!
+
+	logical function ion_rates_match(a, b) result(same)
+	! The cell rate state compared through the quantities the closure
+	! evaluator installs; every one of them is a number the residual rows
+	! read.
+	type(ion_rates), intent(in) :: a, b
+	same = (a%P_HI .eq. b%P_HI) .and. (a%P_HeI .eq. b%P_HeI)             &
+	  .and. (a%P_HeII .eq. b%P_HeII) .and. (a%P_HeITR .eq. b%P_HeITR)    &
+	  .and. (a%rchiiB .eq. b%rchiiB) .and. (a%rcheiiB .eq. b%rcheiiB)    &
+	  .and. (a%rcheiiiB .eq. b%rcheiiiB) .and. (a%rcheiTR .eq. b%rcheiTR)&
+	  .and. (a%nh .eq. b%nh) .and. (a%nhe .eq. b%nhe)                    &
+	  .and. (a%a_ion_HI .eq. b%a_ion_HI)                                 &
+	  .and. (a%a_ion_HeI .eq. b%a_ion_HeI)                               &
+	  .and. (a%a_ion_HeII .eq. b%a_ion_HeII)                             &
+	  .and. (a%a_ion_HeITR .eq. b%a_ion_HeITR)                           &
+	  .and. (a%q13 .eq. b%q13) .and. (a%q31a .eq. b%q31a)                &
+	  .and. (a%q31b .eq. b%q31b) .and. (a%Q31 .eq. b%Q31)                &
+	  .and. (a%A31 .eq. b%A31)                                           &
+	  .and. (a%kcx_He0_Hp .eq. b%kcx_He0_Hp)                             &
+	  .and. (a%kcx_Hep_H0 .eq. b%kcx_Hep_H0)                             &
+	  .and. (a%P_H2 .eq. b%P_H2) .and. (a%k_LW .eq. b%k_LW)              &
+	  .and. (a%T_K .eq. b%T_K) .and. (a%ntot .eq. b%ntot)                &
+	  .and. (a%n_ofam .eq. b%n_ofam) .and. (a%n_co .eq. b%n_co)
+	end function ion_rates_match
+
+	!----------------------------------!
+
+	function pack_mol_coefficients() result(c)
+	! The molecular and oxygen rate coefficients of System_HeH_mol in one
+	! vector, so that they can be held aside and put back by value. The
+	! order is the declaration order of that module.
+	real*8 :: c(27)
+	c = [ mk5, mk6, mk7, mk8, mk9, mk10, mk11, mk12, mk13, mk14, mk15,   &
+	      mk16, mk17, mk18, mk19, mk20, mk23, mk_ion_H2,                 &
+	      ok1, ok1r, ok2, ok2r, ok6, oj3, oj4, oj5, oj7 ]
+	end function pack_mol_coefficients
+
+	!----------------------------------!
+
+	subroutine unpack_mol_coefficients(c)
+	real*8, intent(in) :: c(27)
+	mk5  = c(1);  mk6  = c(2);  mk7  = c(3);  mk8  = c(4)
+	mk9  = c(5);  mk10 = c(6);  mk11 = c(7);  mk12 = c(8)
+	mk13 = c(9);  mk14 = c(10); mk15 = c(11); mk16 = c(12)
+	mk17 = c(13); mk18 = c(14); mk19 = c(15); mk20 = c(16)
+	mk23 = c(17); mk_ion_H2 = c(18)
+	ok1  = c(19); ok1r = c(20); ok2  = c(21); ok2r = c(22)
+	ok6  = c(23); oj3  = c(24); oj4  = c(25); oj5  = c(26)
+	oj7  = c(27)
+	end subroutine unpack_mol_coefficients
+
+	!----------------------------------!
+
+	integer function ieq_triplet_row() result(ir)
+	! Row of the He 2^3S level balance in the system the run solves
+	! (tr_triplet_row of ion_residual_core): x(4) in the atomic layouts,
+	! x(8) in the molecular one. Zero where the level is not carried.
+	ir = 0
+	if (.not. thereis_He) return
+	if (.not. thereis_HeITR) return
+	ir = 4
+	if (thereis_mol) ir = 8
+	end function ieq_triplet_row
+
+	!----------------------------------!
+
+	subroutine ieq_install_cell(j)
+	! Put cell j back into the scratch the residual rows read: the rate
+	! state the sweep built for it, its metal coefficients, and the
+	! molecular, oxygen and turnover coefficients rebuilt from the cell's
+	! own T, particle count and electron density by the SAME routines the
+	! sweep calls, so there is no second copy of any of them.
+	integer, intent(in) :: j
+	ieq_cell = ieq_rate_cell(j)
+	if (thereis_mol) then
+		call set_mol_coeffs(ieq_TK_cell(j), ieq_ntot_cell(j))
+		if (thereis_oxychem)                                              &
+			call set_oxygen_coeffs(ieq_TK_cell(j), j_h2o_fuv(j,:),        &
+			                                       j_oh_fuv(j,:))
+		call set_mol_turnover_rates(ieq_ne_cell(j), 1.0d0)
+		if (thereis_oxychem)                                              &
+			call set_oxygen_turnover_rates(ieq_iox_stored, 1.0d0)
+	endif
+	if (thereis_metals) then
+		call cx_set_cell(ieq_TK_cell(j))
+		call set_metal_coeffs(n_melem, ieq_met_coef(:,1,j),               &
+		                      ieq_met_coef(:,2,j), ieq_met_coef(:,3,j),   &
+		                      ieq_met_coef(:,4,j), ieq_met_coef(:,5,j),   &
+		                      ieq_met_coef(:,6,j), ieq_met_coef(:,7,j),   &
+		                      melem_top)
+		if (thereis_mol)                                                  &
+			call set_mol_metal_turnover_rates(ieq_ne_cell(j), 1.0d0)
+	endif
+	end subroutine ieq_install_cell
+
+	!----------------------------------!
+
+	subroutine ieq_state_vector(j, rho, f_sp, x, nx)
+	! The composition of cell j in the fraction layout of the system the
+	! run solves, built from the caller's state. The denominators are the
+	! ELEMENT TOTALS the cell's rate state carries, which is what the rows
+	! of that system divide by, so the vector and the rates describe one
+	! cell.
+	integer, intent(in) :: j
+	real*8,  intent(in) :: rho(1-Ng:N+Ng)
+	real*8,  intent(in) :: f_sp(1-Ng:N+Ng,n_species)
+	real*8,  intent(out) :: x(:)
+	integer, intent(out) :: nx
+	real*8  :: nd, nHl, nHel, nOf, nXl
+	integer :: im, i0, itr
+	nx = ieq_neq_stored
+	x(1:nx) = 0.0d0
+	nd   = rho(j)*n0
+	nHl  = max(ieq_rate_cell(j)%nh,  1.0d-99)
+	nHel = max(ieq_rate_cell(j)%nhe, 1.0d-99)
+	x(1) = f_sp(j,2)*nd/nHl
+	if (.not. thereis_He) return
+	x(2) = f_sp(j,4)*nd/nHel
+	x(3) = f_sp(j,5)*nd/nHel
+	itr  = ieq_triplet_row()
+	if (thereis_mol) then
+		x(4) = 2.0d0*f_sp(j,isp_H2) *nd/nHl
+		x(5) = 2.0d0*f_sp(j,isp_H2p)*nd/nHl
+		x(6) = 3.0d0*f_sp(j,isp_H3p)*nd/nHl
+		x(7) =       f_sp(j,isp_HeHp)*nd/nHl
+		if (thereis_oxychem) then
+			nOf = max(ieq_rate_cell(j)%n_ofam, 1.0d-99)
+			x(ieq_iox_stored)   = f_sp(j,isp_OH) *nd/nOf
+			x(ieq_iox_stored+1) = f_sp(j,isp_H2O)*nd/nOf
+		endif
+	endif
+	if (itr .gt. 0) x(itr) = f_sp(j,6)*nd/nHel
+	if (thereis_metals) then
+		do im = 1, n_melem
+			i0  = melem_i0(im)
+			nXl = max(ieq_met_coef(im,1,j), 1.0d-99)
+			x(ieq_mbase_stored+2*(im-1)) = f_sp(j,mion_fsp(i0+1))*nd/nXl
+			if (melem_top(im) .ge. 2)                                     &
+				x(ieq_mbase_stored+1+2*(im-1)) =                          &
+					f_sp(j,mion_fsp(i0+2))*nd/nXl
+		enddo
+	endif
+	end subroutine ieq_state_vector
+
+	!----------------------------------!
+
+	subroutine ionization_closure_residual_cell(j, x, nx, res, rowres)
+	! The normalized reaction residual of ONE cell at a GIVEN composition,
+	! with that cell's rate state installed and the scratch put back. It
+	! solves nothing and writes no state.
+	integer, intent(in)  :: j, nx
+	real*8,  intent(in)  :: x(nx)
+	real*8,  intent(out) :: res
+	real*8,  intent(out) :: rowres(nx)
+	type(ieq_closure_scratch) :: ws
+	call save_ieq_closure_scratch(ws)
+	call ieq_install_cell(j)
+	res = normalized_reaction_residual(x, nx, ieq_mbase_stored,          &
+	                                   ieq_ne_cell(j), rowres)
+	call restore_ieq_closure_scratch(ws)
+	if (.not. ieq_closure_scratch_matches(ws))                           &
+		write(*,'(A)') ' (closure residual) WARNING: the cell scratch '// &
+		     'was NOT reinstated after the isolated evaluation'
+	end subroutine ionization_closure_residual_cell
+
+	!----------------------------------!
+
+	subroutine ionization_closure_residual_profile(rho, f_sp, res,       &
+	                                               res_triplet, ok, why)
+	! The closure residual of every physical cell of a state, and the He
+	! 2^3S level row of the same evaluation (B1a section 2.5: the
+	! metastable is an unknown of this system, so its balance is one row of
+	! it). res_triplet is zero where the level is not carried.
+	!
+	! ok is false, with the reason in why, when no sweep has left a cell
+	! state to measure against, or when the ELEMENT TOTALS of the state
+	! handed in are not the ones those rates were built with -- a different
+	! gas, whose closure these rates cannot state.
+	real*8, dimension(1-Ng:N+Ng),           intent(in)  :: rho
+	real*8, dimension(1-Ng:N+Ng,n_species), intent(in)  :: f_sp
+	real*8, dimension(1:N),                 intent(out) :: res, res_triplet
+	logical,                                intent(out) :: ok
+	character(len=*),                       intent(out) :: why
+	type(ieq_closure_scratch) :: ws
+	real*8, dimension(1-Ng:N+Ng) :: nhil, nhiil, nheil, nheiil, nheiiil
+	real*8, dimension(1-Ng:N+Ng) :: nHl, nHel
+	real*8, dimension(1-Ng:N+Ng,4) :: nmoll
+	real*8, dimension(1-Ng:N+Ng,3) :: noxl
+	real*8  :: xv(10+2*n_melem), rv(10+2*n_melem), dnh, dnhe
+	integer :: j, nx, itr
+
+	res = 0.0d0;  res_triplet = 0.0d0;  ok = .false.;  why = ''
+	if (.not. ieq_rates_ready) then
+		why = 'no equilibrium sweep has left a cell state to measure'
+		return
+	endif
+
+	! The element totals of the state handed in, counted the way the sweep
+	! counts them (one definition, utilities).
+	nhil   = f_sp(:,1)*rho*n0
+	nhiil  = f_sp(:,2)*rho*n0
+	nheil  = f_sp(:,3)*rho*n0
+	nheiil = f_sp(:,4)*rho*n0
+	nheiiil= f_sp(:,5)*rho*n0
+	nmoll  = 0.0d0
+	noxl   = 0.0d0
+	if (thereis_mol) then
+		nmoll(:,1) = f_sp(:,isp_H2)  *rho*n0
+		nmoll(:,2) = f_sp(:,isp_H2p) *rho*n0
+		nmoll(:,3) = f_sp(:,isp_H3p) *rho*n0
+		nmoll(:,4) = f_sp(:,isp_HeHp)*rho*n0
+	endif
+	if (thereis_oxychem) then
+		noxl(:,1) = f_sp(:,isp_OH) *rho*n0
+		noxl(:,2) = f_sp(:,isp_H2O)*rho*n0
+		noxl(:,3) = f_sp(:,isp_CO) *rho*n0
+	endif
+	call hydrogen_helium_nuclei_density(nhil,nhiil,nheil,nheiil,nheiiil, &
+	                                    nHl,nHel,nmoll,noxl)
+	dnh  = 0.0d0
+	dnhe = 0.0d0
+	do j = 1, N
+		dnh  = max(dnh,  abs(nHl(j)  - ieq_rate_cell(j)%nh)               &
+		                 /max(ieq_rate_cell(j)%nh, 1.0d-99))
+		if (thereis_He) dnhe = max(dnhe,                                  &
+		                 abs(nHel(j) - ieq_rate_cell(j)%nhe)              &
+		                 /max(ieq_rate_cell(j)%nhe, 1.0d-99))
+	enddo
+	if (max(dnh, dnhe) .gt. 1.0d-8) then
+		why = 'the element totals have moved since the sweep that '//     &
+		      'built these rates'
+		return
+	endif
+
+	itr = ieq_triplet_row()
+	call save_ieq_closure_scratch(ws)
+	do j = 1, N
+		call ieq_state_vector(j, rho, f_sp, xv, nx)
+		call ieq_install_cell(j)
+		res(j) = normalized_reaction_residual(xv(1:nx), nx,               &
+		                    ieq_mbase_stored, ieq_ne_cell(j), rv(1:nx))
+		if (itr .gt. 0 .and. itr .le. nx) res_triplet(j) = rv(itr)
+	enddo
+	call restore_ieq_closure_scratch(ws)
+	if (.not. ieq_closure_scratch_matches(ws))                           &
+		write(*,'(A)') ' (closure residual) WARNING: the cell scratch '// &
+		     'was NOT reinstated after the isolated evaluation'
+	ok = .true.
+	end subroutine ionization_closure_residual_profile
+
+	!----------------------------------!
+
 	end module ionization_equilibrium

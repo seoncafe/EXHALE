@@ -98,12 +98,27 @@ HEAT_CH_LABEL = {
     'heat_Hdx': r'Ly$\alpha$ de-excitation',
     'heat_He_recomb': r'He recomb.\ heating',
     'heat_He23S_Penning': r'He\,$2^{3}\!S$ Penning',
+    'heat_He23S_assoc': r'He\,$2^{3}\!S$ + H assoc.',
+    'heat_He23S_H2_Penning': r'He\,$2^{3}\!S$ + H$_2$ Penning',
+    'heat_H2_LW_dissoc': r'H$_2$ LW dissoc.',
+    'heat_H2_LW_fluor': r'H$_2$ LW fluor.',
+    'heat_mol_chem': r'molecular reaction heat',
+    'heat_FUV_photolysis': r'FUV photolysis',
+    'heat_oxygen_collisional': r'O collisional',
+    'heat_CO_Hep_transfer': r'He$^{+}$ + CO',
+    'heat_CO_photodissoc': r'CO photodissoc.',
 }
 
-# Ordered list of the heating channels drawn in panel (e).
+# Ordered list of the heating channels drawn in panel (e): every deposit
+# channel of heat_channel_name (util_ion_eq.f90).  A channel absent from a
+# run's file (molecules or oxygen off) is skipped by the plotting loop.
 HEAT_CH_ORDER = ['heat_HI', 'heat_HeI', 'heat_HeII', 'heat_He23S',
                  'heat_H2', 'heat_metals', 'heat_Hpe', 'heat_Hdx',
-                 'heat_He_recomb', 'heat_He23S_Penning']
+                 'heat_He_recomb', 'heat_He23S_Penning', 'heat_He23S_assoc',
+                 'heat_He23S_H2_Penning', 'heat_H2_LW_dissoc',
+                 'heat_H2_LW_fluor', 'heat_mol_chem', 'heat_FUV_photolysis',
+                 'heat_oxygen_collisional', 'heat_CO_Hep_transfer',
+                 'heat_CO_photodissoc']
 
 
 def _ion_label(sp):

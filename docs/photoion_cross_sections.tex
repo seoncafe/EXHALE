@@ -32,7 +32,7 @@
 H\,I, He\,I, He\,II, and the He\,I\,$2^3$S Triplet,\\
 with Benchmarks against Verner+1996 and Norcross 1971}
 \author{Kwang-Il Seon}
-\date{2026-06-30 (updated 2026-08-27)}
+\date{2026-06-30 (updated 2026-09-07)}
 \maketitle
 
 \tableofcontents
@@ -51,8 +51,8 @@ Cross\_sections}) and return $\sig$ in units of
 $1\,\Mb \equiv 10^{-18}\,\mathrm{cm}^2$, with photon energy $E$ in eV.
 
 This memo (i) collects the four atomic cross sections relevant to the
-He\,10830 / H$\alpha$ / Ly$\alpha$ diagnostics --- H\,I, He\,I, He\,II, and
-the metastable He\,I\,$2^3$S triplet --- and (ii) benchmarks the two
+He\,10830 / H$\alpha$ / Ly$\alpha$ diagnostics (H\,I, He\,I, He\,II, and
+the metastable He\,I\,$2^3$S triplet), and (ii) benchmarks the two
 \emph{fitted} helium cross sections against independent references:
 
 \begin{itemize}
@@ -98,7 +98,7 @@ $1.575\,\Mb$ for He\,II).
 \subsection{He\,I ground state (1$^1$S)}
 
 By default the He\,I ground state (\texttt{sigma\_HeI}) uses the
-Verner+1996 (VFKY96) single-shell fit --- the form of \S\ref{sec:vfky}
+Verner+1996 (VFKY96) single-shell fit, the form of \S\ref{sec:vfky}
 with the He\,I parameters of Table~\ref{tab:vfky}:
 \begin{equation}
   \sig_{\rm He\,I}(E) = \sig_{\rm VFKY96}\!\big(E;\,
@@ -119,8 +119,8 @@ Eq.~\ref{eq:he23s} below; Eqs.~\ref{eq:heiverner}--\ref{eq:heiates} are the
 
 \subsection{He\,I\,$2^3$S metastable (two VFKY96 forms $+$ bridge)}
 
-The metastable triplet --- the lower level of He\,10830 ---
-(\texttt{sigma\_HeI23S}) is built from \emph{two} Verner+1996 (VFKY96,
+The metastable triplet, the lower level of He\,10830
+(\texttt{sigma\_HeI23S}), is built from \emph{two} Verner+1996 (VFKY96,
 \S\ref{sec:vfky}) single-shell forms joined by a log-linear (power-law)
 bridge, used piecewise. With $\ell\equiv\log_{10}(E/\mathrm{eV})$ and the
 node energies $E_3{=}34.70$, $E_4{=}45.59\,$eV ($x_3{\equiv}\log_{10}E_3$,
@@ -156,7 +156,7 @@ $\sig{=}0$ below $4.78\,$eV.
 \subsection{Verner+1996 single-shell fit (VFKY96)}\label{sec:vfky}
 
 This is the VFKY96 analytic fit, the form EXHALE adopts for metals, for
-He\,II\footnote{via the hydrogenic routine} and --- now by default --- for
+He\,II\footnote{via the hydrogenic routine} and (now by default) for
 the He\,I ground state (\texttt{sigma\_VFKY96}); for $E\ge E_{\rm th}$,
 \begin{align}
   x &= E/E_0 - y_0, \qquad z = \sqrt{x^2 + y_1^2}, \qquad
@@ -185,6 +185,249 @@ He\,II & 54.42 & 1.720  & $1.369\times10^4$ & 32.88 & 2.963 & 0.0   & $(0,0)$\\
 \end{tabular}
 \end{table}
 
+\subsection{The metal fits, and the range each is valid
+in}\label{sec:metal-emax}
+
+The expression of \S\ref{sec:vfky} is an \emph{outer-shell} fit, and
+Verner+1996 Table~1 states the range it holds in: every row carries an
+$E_{\rm max}$ alongside its threshold. Above $E_{\rm max}$ the outermost
+inner shell opens, the outer shell is no longer the shape the Opacity
+Project data were fitted to there, and the author's reference routine
+\texttt{phfit2} leaves the 1996 fit for the Verner \& Yakovlev (1995)
+subshell fit of the \emph{same} outer shell (its variable \texttt{einn},
+which is that inner-shell threshold and equals the $E_{\rm max}$ column row
+for row, checked here for all sixteen metal rows). The 1995 form is the same
+expression with $y_0 = y_1 = 0$, i.e.\ $y = E/E_0$, and with the orbital
+quantum number $\ell$ of the shell kept in $Q = 5.5 + \ell - P/2$
+(\texttt{sigma\_Verner96}, against \texttt{sigma\_VFKY96} for the 1996 form).
+
+This matters because the EXHALE photon grid runs to $1240\,$eV while the
+metal $E_{\rm max}$ are $34$--$558\,$eV (Table~\ref{tab:emax}). Outside its
+range the 1996 fit is not merely inaccurate, and it is not conservative
+either: for Fe\,I, $P = 7.923$ gives $Q = 5.5 - P/2 = 1.5385$, so the fit
+\emph{rises} as $E^{2-Q} = E^{0.46}$ and reaches $24.9\,\Mb$ at $1240\,$eV
+where the true Fe\,I total is $0.51\,\Mb$ (MEASURED against
+\texttt{phfit2}'s shell sum). \texttt{metal\_photoion\_sigma} therefore
+makes \texttt{phfit2}'s handover, and reproduces \texttt{phfit2}'s outer
+shell to better than $10^{-10}$ relative for all seventeen ions at twelve
+photon energies from $20$ to $1240\,$eV (MEASURED). K\,I is the one ion with
+no $E_{\rm max}$: \texttt{phfit2} sets $\texttt{einn} = 0$ for potassium, so
+the 1995 fit holds at every energy, which is also why potassium has no row
+in the 1996 table.
+
+H\,I, He\,I and He\,II are untouched by this. They have fewer than three
+electrons, \texttt{phfit2} sets $\texttt{einn} = 10^{30}\,$eV for them, and
+their $E_{\rm max}$ in Table~1 is $5\times10^{4}\,$eV, far above the grid.
+
+\begin{table}[h]
+\centering
+\caption{Metal $E_{\rm max}$ in eV (Verner+1996 Table~1): the energy at
+which the outer shell is handed from the 1996 fit to the 1995 fit of the
+same shell. K\,I has no 1996 row and takes the 1995 fit everywhere.}
+\label{tab:emax}
+\begin{tabular}{lrlrlr}
+\toprule
+ion & $E_{\rm max}$ & ion & $E_{\rm max}$ & ion & $E_{\rm max}$\\
+\midrule
+C\,I  & 291.0 & N\,II  & 423.6 & Ca\,I  &  34.43\\
+C\,II & 307.6 & Mg\,I  &  54.90 & Ca\,II &  40.90\\
+O\,I  & 538.0 & Mg\,II &  65.69 & Na\,I  &  38.14\\
+O\,II & 558.1 & Si\,I  & 106.0 & K\,I   & none\\
+N\,I  & 404.8 & Si\,II & 118.6 & S\,I   & 170.0\\
+Fe\,I &  66.00 & Fe\,II &  76.17 &        &      \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{The subshells, and what the absorption is charged
+to}\label{sec:metal-subshell}
+
+\texttt{metal\_photoion\_sigma} returns the \emph{total} photoabsorption of
+the ion: the outer shell of \S\ref{sec:metal-emax} plus every subshell that
+is open at that energy, which is what a caller of \texttt{phfit2} obtains by
+summing that routine over its shell index $\texttt{is}=1\ldots7$. Each
+subshell is the Verner \& Yakovlev (1995) five-parameter form of that shell,
+with its own $\ell$ in $Q = 5.5 + \ell - P/2$, and it turns on at
+$\max(E_{\rm th}({\rm shell}), E_{\rm max})$. That one rule is what
+\texttt{phfit2}'s two guards amount to: a true inner shell
+($\texttt{is} \le \texttt{nint}$) opens at its own threshold, while a
+valence subshell between \texttt{nint} and \texttt{nout} is part of what the
+1996 outer-shell fit already represents and is held at zero until
+$E_{\rm max}$. Shells with no electrons in the ground state carry a
+$\sigma_0 = 0$ placeholder row in \texttt{phfit2} and are not installed.
+MEASURED: the production routine reproduces \texttt{phfit2}'s \emph{shell
+sum} to better than $10^{-10}$ relative at all seventeen ions and twelve
+photon energies from $20$ to $1240\,$eV; before the subshells were added,
+$130$ of those $204$ rows disagreed.
+
+\paragraph{The handover is now continuous where it should be.} Taking the
+outer shell alone across $E_{\rm max}$ left a cliff wherever the 1996 fit
+was standing in for a valence complex the 1995 outer-shell row does not
+cover. MEASURED, $\sigma$ just under and just over $E_{\rm max}$
+(Table~\ref{tab:emaxjump}): for Fe\,I the outer shell alone \emph{fell} by a
+factor $84$ at $66\,$eV and for Fe\,II by a factor $152$ at $76\,$eV, since
+the 1996 row there is the whole $3d+4s$ complex and the 1995 row is $4s$
+only. With the $3d$ and $3p$ subshells in the sum those steps become $1.23$
+and $1.13$. Where $E_{\rm max}$ is a genuine K edge the step is a genuine
+edge jump: C\,I rises by $21$ at $291\,$eV, N\,I by $19$ at $404.8\,$eV,
+O\,I by $19$ at $538\,$eV.
+
+\begin{table}[h]
+\centering
+\caption{The step in $\sigma$ across $E_{\rm max}$, $\sigma(E_{\rm
+max}^{+})/\sigma(E_{\rm max}^{-})$, MEASURED $10^{-9}$ relative on either
+side. ``outer only'' is the outer shell taken alone; ``shell sum'' is what
+the code now returns.}
+\label{tab:emaxjump}
+\begin{tabular}{lrrr@{\qquad}lrrr}
+\toprule
+ion & $E_{\rm max}$ & outer only & shell sum &
+ion & $E_{\rm max}$ & outer only & shell sum\\
+\midrule
+C\,I  & 291.0 & 0.118 & 21.1 & Ca\,I  &  34.43 & 0.986 & 37.2\\
+C\,II & 307.6 & 0.074 & 19.2 & Ca\,II &  40.90 & 0.070 &  1.89\\
+O\,I  & 538.0 & 0.245 & 18.9 & Na\,I  &  38.14 & 0.947 & 70.9\\
+O\,II & 558.1 & 0.219 & 16.8 & S\,I   & 170.0 & 0.645 & 14.1\\
+N\,I  & 404.8 & 0.177 & 19.4 & Fe\,I  &  66.00 & 0.0119 &  1.23\\
+N\,II & 423.6 & 0.151 & 17.7 & Fe\,II &  76.17 & 0.0066 &  1.13\\
+Mg\,I &  54.90 & 1.049 & 12.3 & Si\,I  & 106.0 & 0.504 & 15.5\\
+Mg\,II&  65.69 & 1.000 & 70.6 & Si\,II & 118.6 & 0.338 & 25.4\\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\paragraph{What the absorption is charged to, and the under-count.} The
+absorbing ion advances \emph{one} stage and the degradation cascade
+(\texttt{electron\_energy\_degradation}) is handed \emph{one} electron of
+$h\nu - E_{\rm th}({\rm outer})$, whichever shell absorbed. The real event
+is not that: an inner-shell absorption ejects an electron of
+$h\nu - I_{\rm inner}$ and the Auger cascade that fills the hole ejects a
+further electron of $I_{\rm inner} - I_1 - I_2$, leaving the atom two or
+more stages up. The three-stage metal ladder of \texttt{species\_table}
+cannot represent the Auger product, and the published exoplanet
+photochemistry models that carry inner shells make the same approximation:
+Cecchi-Pestellini et al.\ (2009, A\&A 496, 863) sum the heating over all
+ionization channels of the Verner ions and degrade the primary
+photoelectron; Locci et al.\ (2022, PSJ 3, 1) put the photoelectron and the
+Auger electrons into one secondary-electron source over a species set whose
+neutrals have singly charged counterparts only. The model therefore
+under-counts the charge state by at least one stage and over-delivers the
+electron energy by the second ionization potential it never spends, $24$ to
+$35\,$eV out of a $300$--$550\,$eV photon.
+
+MEASURED with the degradation routine itself on an atomic H/He cell: for
+C\,I at $300\,$eV (a $9.0\,$eV photoelectron and a $255.4\,$eV Auger
+electron against the model's single $288.7\,$eV electron), N\,I at
+$530\,$eV ($125.2$ and $360.7$ against $515.5$) and O\,I at $550\,$eV
+($12.0$ and $489.3$ against $536.4$), the one electron delivers $0.95$ to
+$1.09$ times the heat of the two and $1.10$ to $1.37$ times the secondary
+H\,I ionizations, over ionized fractions $0.01$ to $0.49$.
+
+\paragraph{Fluorescence is neglected, and it is below 2.3\% of every event a
+run can make.} A hole can be filled by a photon instead of an Auger
+electron, with probability the fluorescence yield. All yields below are READ
+from Krause (1979, J.\ Phys.\ Chem.\ Ref.\ Data \textbf{8}, 307).
+
+K shell, his Table~3 (p.~315), $\omega_K$: C $2.8\times10^{-3}$, N
+$5.2\times10^{-3}$, O $8.3\times10^{-3}$, Na $0.023$, Mg $0.030$, Si
+$0.050$, S $0.078$, K $0.140$, Ca $0.163$, Fe $0.340$. Which of those a run
+can reach is settled by the K thresholds of Table~\ref{tab:kedge} against
+\texttt{e\_top}: with the default $1240\,$eV only C, N, O and Na\,I ever
+have a K hole, and their $\omega_K$ are $0.28$, $0.52$, $0.83$ and $2.3\%$.
+So the neglected radiative branch is at most $2.3\%$ of the K-hole events of
+a run and under $1\%$ for the three coolants; the large K yields, iron's
+$0.340$ above all, belong to holes this grid cannot open.
+
+L shell, where the heavier ions absorb. For an $L_1$ or $L_2$ vacancy the
+quantity to quote is the \emph{effective} fluorescence yield $\nu_1,\nu_2$
+of his Table~5 (p.~320, from his eqs.~9 and 10), which counts the vacancy
+handed down by a Coster-Kronig transition and then filled radiatively, so it
+is the full probability that an initial $L_1$ or $L_2$ hole ends in an L
+X-ray; for $L_3$, the bottom of the shell, he states (p.~313) that the
+corresponding yield ``$V_3$ for the L3 subshell is identical with $W_3$'',
+the radiative yield of his Table~3. READ, $\nu_1/\nu_2/\omega_3$: Mg
+$1.2$/$1.2$/$1.2\times10^{-3}$, Si $3.9$/$3.7$/$3.8\times10^{-4}$, S
+$3.2$/$2.6$/$2.6\times10^{-4}$, K $4.9$/$2.7$/$2.7\times10^{-4}$, Ca
+$6.1$/$3.3$/$3.3\times10^{-4}$, Fe $6.5$/$6.3$/$6.3\times10^{-3}$. Every
+L-shell event this grid can make is radiationless to better than $0.7\%$.
+
+Uncertainty class, his Table~2 (p.~314): $\omega_K$ is $40$ to $10\%$ for
+$Z = 5$--$10$ (C, N, O), $10$ to $5\%$ for $Z = 10$--$20$ (Na, Mg, Si, S, K)
+and $5$ to $3\%$ for $Z = 20$--$30$ (Ca, Fe); the L yields are $25$ to
+$30\%$ over $Z = 10$--$30$. His footnote~(a) covers exactly these rows:
+``In these regions, yields for molecules and solids may differ from those
+for atoms by more than the values quoted.'' An uncertainty of that size on a
+branch of $2\%$ leaves the neglect where it is.
+
+A fluorescence photon would carry energy out of the cell that this code
+keeps as heat, so the neglect makes the heating an upper bound by the
+fractions above. Raising \texttt{e\_top} past $1.3\,$keV starts making Mg
+and Si K holes ($\omega_K = 0.030$ and $0.050$) and past $4\,$keV Ca and Fe
+ones, and the approximation has to be revisited there.
+
+\begin{table}[h]
+\centering
+\caption{K thresholds of the seventeen metal stages, in eV, from the same
+subshell table (\texttt{phfit2}'s \texttt{PH1}), and the K-shell
+fluorescence yield of the element (Krause 1979, Table~3, p.~315). The rule
+of the second column is \texttt{e\_top}: only the first four rows are
+reachable with the default $1240\,$eV grid top.}
+\label{tab:kedge}
+\begin{tabular}{lrr@{\qquad}lrr}
+\toprule
+ion(s) & K threshold & $\omega_K$ & ion(s) & K threshold & $\omega_K$\\
+\midrule
+C\,I / C\,II & 291.0 / 307.6 & 0.0028 & Si\,I / Si\,II & 1846 / 1848 & 0.050\\
+N\,I / N\,II & 404.8 / 423.6 & 0.0052 & S\,I           & 2477        & 0.078\\
+O\,I / O\,II & 538.0 / 558.1 & 0.0083 & K\,I           & 3614        & 0.140\\
+Na\,I        & 1079          & 0.023  & Ca\,I / Ca\,II & 4043 / 4047 & 0.163\\
+Mg\,I / Mg\,II & 1311 / 1320 & 0.030  & Fe\,I / Fe\,II & 7124 / 7140 & 0.340\\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\paragraph{Every turn-on is a bin edge.} A subshell turn-on is a step of the
+cross section, so \texttt{set\_energy\_vectors} cuts the photon grid there
+exactly as it cuts it at an ionization threshold
+(\texttt{metal\_subshell\_turn\_on} returns the list for an active ion).
+$E_{\rm max}$ is in that list by construction, because it is the threshold
+of the outermost inner shell, so the step the outer shell itself takes there
+is now on an edge as well. MEASURED, the number of thresholds the grid is
+cut at goes from $17$ to $60$ in \texttt{wasp\_full}, $20$ to $63$ in
+\texttt{mol\_metals} and $10$ to $22$ in \texttt{lower\_profile}, while the
+number of BINS is unchanged ($309$, $289$, $289$): each band shares its own
+fixed budget out over the sub-intervals the cuts make, and no band is cut
+into more sub-intervals than its budget.
+
+\paragraph{How much this moves a run.} MEASURED, weighted by the incident
+spectrum with no attenuation. Above $100\,$eV hydrogen and helium still
+carry nearly all of the absorption: at the composition of the
+\texttt{wasp\_full} snapshot the metals go from $2.23\%$ of the
+$100$--$1240\,$eV absorption summed over the column to $3.49\%$ with the
+subshells in ($16.3\%$ at the single radius where they peak), and the whole
+$100$--$1240\,$eV band is $0.378\%$ of the $13.6$--$1240\,$eV absorption.
+This is decision item~7 of
+\texttt{docs/To\_be\_determined\_by\_user\_20260906.md}, decided (b) on
+2026-09-07.
+
+\paragraph{Where the table lives.} The rows are the published tables digit
+for digit, from the author's own distribution
+(\texttt{references/verner\_photo/photo.dat} for 1996, \texttt{table1.dat}
+for the 1995 outer shell, and \texttt{phfit2.f}'s own \texttt{PH1} \texttt{DATA}
+statements for the subshells, whose thresholds that file states were
+``slightly improved'' over the printed 1995 table in a few low-ionized
+species: MEASURED, the two differ in the threshold column of Mg\,II $1s$,
+Si\,II $1s$, Ca\,II $1s$ and $2s$, and Fe\,II $1s$ and $2s$, and nowhere
+else), installed as one parameter block in
+\texttt{cross\_sec.f90} in the column order of
+\texttt{metal\_photoion\_sigma}. \texttt{src/utils/metal\_photoion\_table.py}
+emits that block and, with \texttt{-{}-check}, compares it back against the
+three files field by field;
+\texttt{src/tests/physics\_probe/metal\_photoion\_table\_transcription.py}
+runs that check, and
+\texttt{src/tests/physics\_probe/metal\_photoionization\_fits.f90} asserts
+the two forms and the handover against an independent transcription.
+
 %=============================================================================
 \section{Overview comparison}\label{sec:overview}
 %=============================================================================
@@ -197,7 +440,7 @@ $4.78$, H\,I at $13.6$, He\,I at $24.6$, He\,II at $54.4\,$eV) and the
 peak magnitudes ($\sim$$5$--$8\,\Mb$ near threshold for H\,I, He\,I and
 He\,$2^3$S; $1.6\,\Mb$ for He\,II) are evident. The He\,$2^3$S curve
 displays the characteristic Cooper minimum at $34.7\,$eV, the bridge rising to
-the resonance-averaged bump at $45.6\,$eV, and --- with no cutoff --- the
+the resonance-averaged bump at $45.6\,$eV, and (with no cutoff) the
 $\sim E^{-3}$ tail of wing~B, which carries it below the He\,II curve by
 $\sim$$100\,$eV.
 
@@ -285,8 +528,8 @@ Tables~\ref{tab:he23s}--\ref{tab:resonance} show the \emph{implemented}
 \S\S\ref{sec:topbase} and \ref{sec:tail}--\ref{sec:extend} are the
 \emph{derivation record}: their figures deliberately keep plotting the
 \emph{former} Norcross-1971 five-segment broken power law and the candidate
-extensions weighed against it, none of which was adopted --- the code took the
-two-wing form of \S\ref{sec:he23svfky} instead, and the broken power law
+extensions weighed against it (none of which was adopted; the code took the
+two-wing form of \S\ref{sec:he23svfky} instead), and the broken power law
 survives only as a comment block in \texttt{cross\_sec.f90}. Where those
 subsections say ``broken PL'', they mean that former form, not what the code
 now evaluates.
@@ -336,10 +579,10 @@ $E$ [eV] & EXHALE & p-winds & ratio\\
 55   & 1.650 & 1.515 & 1.089\\
 59   & 1.375 & 1.251 & 1.099\\
 \midrule
-70   & 0.855 & --- & ---\\
-100  & 0.294 & --- & ---\\
-200  & 0.0371& --- & ---\\
-300  & 0.0110& --- & ---\\
+70   & 0.855 & - & -\\
+100  & 0.294 & - & -\\
+200  & 0.0371& - & -\\
+300  & 0.0110& - & -\\
 \midrule
 \multicolumn{4}{l}{ratio over $4.78$--$59\,$eV: min $0.849$, max $1.100$, median $0.999$}\\
 \bottomrule
@@ -387,19 +630,19 @@ structure; panel~(b) zooms into the smooth near-threshold region
 descriptions agree to within $\sim$$10\%$ (Table~\ref{tab:topbase}, which
 lists the \emph{implemented} wing~A): EXHALE/TOPbase has min $0.91$ (at the
 $5\,$eV threshold edge, where the OP threshold offset dominates), max $1.04$,
-median $1.00$ over $5$--$20\,$eV. This confirms that wing~A --- and the
-Norcross data it descends from --- reproduces the OP R-matrix background where
+median $1.00$ over $5$--$20\,$eV. This confirms that wing~A, and the
+Norcross data it descends from, reproduces the OP R-matrix background where
 it matters for the He\,$2^3$S population.
 
 Two caveats applied to the former broken power law: (a) it set
 $\sig_{\rm He\,2^3S}=0$ above $59.2\,$eV, whereas TOPbase shows a smooth
 $\sim$$E^{-3}$ tail continuing to several hundred eV (small in
-magnitude, $\lesssim0.1\,\Mb$) --- wing~B of the implemented form supplies that
+magnitude, $\lesssim0.1\,\Mb$), wing~B of the implemented form supplies that
 tail, and reproduces TOPbase there to a few percent
 ($0.855\,\Mb$ at $70\,$eV against $0.858$, and $0.294\,\Mb$ at $100\,$eV);
 (b) its ``bump'' near
 $45\,$eV is a smooth stand-in for the resonance complex and should not be
-read as a true cross section at any single energy there --- a caveat the
+read as a true cross section at any single energy there, a caveat the
 implemented bridge and wing~B inherit, since they are resonance-averaged in
 the same sense.
 
@@ -524,7 +767,7 @@ law, whose bump peaked at $\sim$$2.4\,\Mb$; the numbers below use the
 implemented form). It is tempting to ask whether the resonances,
 being so tall, substantially raise the He\,$2^3$S photoionization rate.
 
-\textbf{They do not} --- but the analysis requires care, because
+\textbf{They do not}, but the analysis requires care, because
 \emph{the raw TOPbase table must not be integrated directly}. Integrating
 both cross sections on the \emph{same} native TOPbase energy grid (so the
 quadrature is identical) gives the total-rate ratio TOPbase/EXHALE in
@@ -607,12 +850,12 @@ forest (\S\ref{sec:resonance}).
 This is also the number the implemented wing~B reproduces: it returns
 $0.294\,\Mb$ at $100\,$eV, so the boxed normalization is what the code now
 delivers there. Two variants of splicing it onto the former broken power law
-were weighed at the time --- replace the ``zero above $x_5$'' branch with one
+were weighed at the time, replacing the ``zero above $x_5$'' branch with one
 more log-linear segment of slope $-2.99$:
-(i) \emph{data-matched} --- use the boxed normalization, which reproduces
+(i) \emph{data-matched}: use the boxed normalization, which reproduces
 TOPbase to $5\%$ but sits $\sim$$16\%$ above the broken-PL endpoint at the
 $59.2\,$eV junction (a step at $\sig\sim1.4\,\Mb$, irrelevant to the rate);
-(ii) \emph{continuity-matched} --- anchor at the broken-PL value
+(ii) \emph{continuity-matched}: anchor at the broken-PL value
 $\sig(59.2)=1.21\,\Mb$, i.e.\ $\sig=1.21\,(E/59.2)^{-2.99}\,\Mb$, which is
 continuous but runs $\sim$$15\%$ below TOPbase. Either would have been adequate; neither was adopted, because
 \S\ref{sec:he23svfky} replaced the whole construction.
@@ -643,7 +886,7 @@ minimum near $30\,$eV, a resonance-averaged enhancement (the He\,II\,$n=2$
 channel) peaking near $50\,$eV, and an $E^{-3}$ tail, no single compact
 analytic form captures it. Instead we tabulate a short
 $(E,\sig)$ node table and interpolate it \textbf{log--log with a monotone
-cubic (PCHIP)} --- exactly the scheme EXHALE already uses for the metal
+cubic (PCHIP)}: exactly the scheme EXHALE already uses for the metal
 cooling fits, so it is a drop-in. Below $30\,$eV and above $66\,$eV the
 nodes are the clean TOPbase background; in $30$--$66\,$eV they are the
 \emph{resonance-averaged} (spike-capped) values, i.e.\ the sharp
@@ -692,8 +935,8 @@ reflecting its coarse sampling of the resonance region.}
 \end{figure}
 
 \textbf{Not adopted.} This node table was the most faithful of the options
-considered --- smooth everywhere, within $\sim$10\% of the OP R-matrix
-background, $+1.7\%$ in rate --- but it would have introduced an interpolation
+considered (smooth everywhere, within $\sim$10\% of the OP R-matrix
+background, $+1.7\%$ in rate), but it would have introduced an interpolation
 table where every other cross section in \texttt{cross\_sec.f90} is a closed
 form. \S\ref{sec:he23svfky} reaches the same shape analytically and is what the
 code carries; the node table is kept here as the reference the implemented form
@@ -705,7 +948,7 @@ The tidiest upgrade of the broken power law keeps essentially all of it and
 changes only its \emph{last} segment. The procedure is:
 \begin{enumerate}
 \item Keep the broken power law unchanged up to the resonance-averaged
-  bump peak at $x_4$ ($45.6\,$eV; $\sig=2.68\,\Mb$) --- i.e.\ segments
+  bump peak at $x_4$ ($45.6\,$eV; $\sig=2.68\,\Mb$): i.e.\ segments
   $a_1$, $a_2$ and the rising segment are untouched.
 \item Fit the smooth TOPbase background above $E_J=70\,$eV with a power
   law:
@@ -719,15 +962,15 @@ changes only its \emph{last} segment. The procedure is:
   (intercept $c_3=4.838$ in $\log_{10}\sig = a_3'\log_{10}E + c_3$).
   Above $70\,$eV use $\sig_{\rm tail}$; drop the old $59\,$eV cutoff.
 \end{enumerate}
-By construction the result is continuous at \emph{both} joins --- at
+By construction the result is continuous at \emph{both} joins, at
 $45.6\,$eV (with the kept rising segment) and at $70\,$eV (with the
-TOPbase tail) --- so there is no step and no kink beyond the tiny
+TOPbase tail), so there is no step and no kink beyond the tiny
 $0.38$-in-slope change. It reproduces the TOPbase background to
 $\sim$$3\%$ above $70\,$eV and tracks Norcross/p-winds throughout
 (Fig.~\ref{fig:ext}), while changing the He\,$2^3$S photoionization rate
-by only $+0.65\%$ (PLind $=-1.3$) --- the smallest of all the options.
-This was the smallest of the options --- a one-line slope change plus a new
-tail branch --- but it too was superseded: the implemented form of
+by only $+0.65\%$ (PLind $=-1.3$), the smallest of all the options.
+This was the smallest of the options (a one-line slope change plus a new
+tail branch), but it too was superseded: the implemented form of
 \S\ref{sec:he23svfky} lands on the same TOPbase tail
 ($0.855\,\Mb$ at $70\,$eV against the $0.858$ this construction was aimed at)
 while replacing the segmented power law with two Verner forms.
@@ -753,7 +996,7 @@ VFKY96 term to each smooth part of the curve works very well
 (Fig.~\ref{fig:he23svfky}, Table~\ref{tab:he23svfky}): segments 1--2
 (threshold $\to$ Cooper minimum, $4.85$--$34.7\,$eV) and segments 4--5
 (resonance-averaged bump $\to$ tail, $45.7$--$320\,$eV) are \emph{each}
-reproduced to $\sim$$4\%$. This is physically sensible --- the two terms are
+reproduced to $\sim$$4\%$. This is physically sensible: the two terms are
 the $2s$-shell channel and the (resonance-averaged) He\,II\,$n=2$ channel.
 
 The one region the two wings do not cover is the \emph{transition}
@@ -773,7 +1016,7 @@ broken power law is retained, commented out, in the code.
 \S\ref{sec:vfky}; $\sig_0$ in Mb, energies in eV). Each reproduces its
 region to $\sim$4\%. These are the parameters coded in
 \texttt{cross\_sec.f90}; re-running the fit reproduces every one of them to
-better than $0.03\%$, except $y_a$ of wing~A, which is degenerate --- at
+better than $0.03\%$, except $y_a$ of wing~A, which is degenerate: at
 $y_a\sim10^{12}$ the factor $(1+\sqrt{z/y_a})^{-P}$ is unity to $10^{-5}$ over
 the fitted range, so the refit's $9.26\times10^{11}$ and the coded $10^{12}$
 give the same cross section.}
@@ -809,7 +1052,7 @@ a simple sum fails there.}
 \item EXHALE uses three distinct prescriptions: an exact hydrogenic form
   for H\,I and He\,II, Verner+1996 (VFKY96) for the He\,I ground state
   (default; legacy two-term fit behind \texttt{ATES\_photoionization\_rate}),
-  and --- for the He\,I\,$2^3$S triplet --- \textbf{two VFKY96 forms joined
+  and (for the He\,I\,$2^3$S triplet) \textbf{two VFKY96 forms joined
   by a power-law bridge} (\S\ref{sec:he23svfky}; formerly a Norcross-1971
   broken power law, retained commented-out in the code).
 \item The legacy two-term He\,I fit agrees with Verner+1996 to within $14\%$
@@ -818,7 +1061,7 @@ a simple sum fails there.}
 \item The implemented two-wing He\,I\,$2^3$S cross section reproduces the
   Norcross/p-winds table its shape descends from to within $\sim$$10\%$
   ($4.78$--$59\,$eV; median $1.00$), including the Cooper minimum at
-  $34.7\,$eV --- where the one $\sim$$15\%$ deviation sits --- and the bump near
+  $34.7\,$eV (where the one $\sim$$15\%$ deviation sits), and the bump near
   $45\,$eV. It reproduces the former broken power law itself to $\sim$4\%.
 \item An independent check against the \textbf{TOPbase / Opacity Project}
   R-matrix cross section (\S\ref{sec:topbase}) confirms agreement to
@@ -886,8 +1129,8 @@ The script ports \texttt{sigma} and \texttt{sigma\_VFKY96} from
 \texttt{parameters.f90}), hard-codes the Verner+1996 He\,I/H\,I/He\,II
 parameters and the 23-point p-winds/Norcross table, and emits the figures listed
 above. Its \texttt{sigma\_HeI} and \texttt{sigma\_HeI23S} are the \emph{former}
-Fortran routines --- the two-term ATES fit and the five-segment broken power law
---- which is what this memo benchmarks; it has not been re-pointed at the
+Fortran routines (the two-term ATES fit and the five-segment broken power law),
+which is what this memo benchmarks; it has not been re-pointed at the
 current \texttt{cross\_sec.f90}, so re-running it reproduces the tables and
 figures as published rather than the shipped cross sections.
 

@@ -63,7 +63,14 @@ COOL_FIXED = ('r', 'T', 'ne', 'cool_total', 'reco', 'coio',
 HEAT_FIXED = ('r', 'T', 'ne', 'heat_total', 'heat_HI', 'heat_HeI',
               'heat_HeII', 'heat_He23S', 'heat_H2', 'heat_metals',
               'heat_Hpe', 'heat_Hdx', 'heat_He_recomb', 'heat_He23S_Penning',
-              'heat_He23S_H2_Penning', 'heat_H2_LW')
+              'heat_He23S_assoc', 'heat_He23S_H2_Penning',
+              'heat_H2_LW_dissoc', 'heat_H2_LW_fluor', 'heat_mol_chem',
+              'heat_FUV_photolysis', 'heat_oxygen_collisional',
+              'heat_CO_Hep_transfer', 'heat_CO_photodissoc')
+# The 19 deposit channels above are heat_channel_name of util_ion_eq.f90
+# with the descriptive brackets stripped ('heat_Hpe[excitedH]' -> 'heat_Hpe');
+# the header of every Heating_breakdown.txt carries the full names and is
+# what the loader actually reads.
 
 # LaTeX-safe labels for the metal cooling channels most often plotted.
 METAL_LABEL = {
@@ -105,7 +112,7 @@ RUNDIR = {
 # quantitative for Mdot, so these supersede the du-stop values and the earlier
 # converged sets 9.31 / 9.05 / 11.63 / 13.17 (2026-08-11) and
 # 9.46 / 9.14 / 11.70 / 13.20 (2026-08-12/13).  Two re-runs since: 2026-08-16 on
-# the CODATA k_B of Update_EXHALE sec 62.2, which moved only hd209 by one digit
+# the CODATA k_B of Update_EXHALE_stage1 sec 62.2, which moved only hd209 by one digit
 # in the last place and gave the first wasp121 solution to reach info = 0
 # without staging tricks; and 2026-08-19 on the rest of the constants (sec 63.1),
 # which moves no printed digit of Mdot and only the residuals quoted above.

@@ -432,7 +432,7 @@ central/upwind hybrid of P2 (central where `|beta_f| dr <= 2 (A_f + E_f)`,
 donor-cell upwind otherwise).
 
 **The two factors of `X(1-X)` come from opposite sides of the face**
-(2026-08-28; `docs/Update_EXHALE.md` section 86). The settling flux is a
+(2026-08-28; `docs/Update_EXHALE_stage1.md` section 86). The settling flux is a
 counter-flow -- the helium flux is matched by an equal and opposite
 hydrogen flux, since the two components close -- so a donor-cell rule has
 to take each element's mass fraction from the cell *that element* leaves,
@@ -453,7 +453,7 @@ tridiagonal Jacobian carries the two face slopes `dJ_f/dX(j) >= 0` and
 `[0,1]`.
 
 **Bounds `0 <= X <= 1`, from the shutoff of the drift flux at both ends
-of the composition axis** (rewritten 2026-08-28; `docs/Update_EXHALE.md`
+of the composition axis** (rewritten 2026-08-28; `docs/Update_EXHALE_stage1.md`
 section 86 -- the two earlier versions of this paragraph are described at
 the end of it). The continuum drift flux vanishes at `X = 0` and at
 `X = 1`, because a cell with no helium has none to send and a cell with
@@ -541,7 +541,7 @@ which re-solves the partition from the element totals on the next call
 owns, the element totals are what the diffusion step owns.
 
 **The metals are a ratio, not a density** (2026-08-28; the defect this
-states is `docs/Update_EXHALE.md` section 84). The metals are part of
+states is `docs/Update_EXHALE_stage1.md` section 84). The metals are part of
 component 1 at a fixed metal/H, so what the projection has to preserve
 for them is `n_X/n_H`, not `n_X`. Multiplying them by `r_H` does that --
 in a cell that *had* hydrogen. Where the cell had none, `r_H` is `0/0`;
@@ -738,10 +738,10 @@ T7a-T7d pass in the driver, and the `error stop` that refused molecular
 chemistry together with `He_diffusion` is removed from `input_read.f90`. The
 `He_diffusion` regression case of 7.5 is **added and golden-snapshotted** the
 same day (`backup/regression/mol_diffusion`, in the `make check` default set;
-`docs/Update_EXHALE.md` section 73). What follows is the M1-M3 record.*
+`docs/Update_EXHALE_stage1.md` section 73). What follows is the M1-M3 record.*
 
 *Status (2026-08-25): M1, M2 and M3 complete. The three defects of
-7.3-7.4 are fixed (`docs/Update_EXHALE.md` section 67); the atomic binary
+7.3-7.4 are fixed (`docs/Update_EXHALE_stage1.md` section 67); the atomic binary
 operator is `src/modules/functions/binary_element_diffusion.f90`, with T0 and
 T1a-T6, T9, T10 passing in `make diffusion_tests && ./diffusion_tests.x`
 (section 68) and the T2a sequence measured there (3.05e-6 at He/H = 1e-4,
@@ -849,24 +849,34 @@ what those profiles then showed about the `Kzz = 0` case.
 The relative measure `max |dX|/X` it replaces is meaningless in a cell the
 transport has emptied, which is exactly where the old loop's drift lived.
 
-**The relaxation advects with the steady mass flux.** The advective form (5)
-is the conservative equation (1) only where `rho` and `v` satisfy continuity:
-the two differ by `X d(r^2 rho v)/dr / (rho r^2)`. In the converged states
-that is satisfied in the wind and violated outright at the base -- measured
-on HD 209458 b and LHS 1140 b, the spread of `r^2 rho v` below 1.02 R_p is
-10^2 to 10^4 times its own median, because the base carries a standing sound
-wave whose sign alternates from cell to cell. Relaxed to convergence on that
-field, (5) converges to the composition of a flow that neither conserves mass
-nor exists. `relax_element_composition` therefore imposes
+**The relaxation advects on the face mass fluxes of the state (B5c,
+2026-09-07).** The non-conservative form (5) is the conservative equation (1)
+only where `rho` and `v` satisfy continuity: the two differ by
+`X d(r^2 rho v)/dr / (rho r^2)`. In the converged states that is satisfied in
+the wind and violated outright at the base -- measured on HD 209458 b and
+LHS 1140 b, the spread of `r^2 rho v` below 1.02 R_p is 10^2 to 10^4 times its
+own median, because the base carries a standing sound wave whose sign
+alternates from cell to cell. Relaxed to convergence on that field, (5)
+converges to the composition of a flow that neither conserves mass nor exists,
+which is why `relax_element_composition` used to impose a smoothed
+`rho v = mdot_steady/r^2` with `mdot_steady` the median of `r^2 rho v` over
+`[j_min:N]`.
 
-```
-rho v = mdot_steady / r^2,   mdot_steady = median of r^2 rho v over [j_min:N]
-```
-
--- the wind's own mass flux, on the window the solver itself uses to declare
-the wind steady -- and the base then relaxes to the barometric profile.
-The marching path keeps the cell values `rho_j v_j`: there the wind is
-genuinely transient and the cell velocity is the consistent choice.
+That repair belonged to the non-conservative form and went with it. The
+relaxation now advects with the CONSERVATIVE term `div(F_rho X)` on the face
+mass fluxes `F_rho` of the state itself -- the same faces, the same three
+routines (`species_face_fraction`, `species_face_flux`,
+`species_flux_divergence`) and the same expression the Runge-Kutta stages
+integrate and the stationary elemental row of `element_transport_residual`
+balances. `div(F_rho X) = X div(F_rho) + F_rho grad X`: the cell-velocity form
+was the second term alone, so it had the mass row's own error subtracted out
+and a base that does not conserve mass had to be hidden from it; the
+divergence form carries that error, and a cell can lose only the fraction of
+its mass the mass row loses. The fixed point of the relaxation is then the zero
+of the row that judges it, which is what makes a converged elemental Picard
+alternation a state the row reads as stationary. The marching path passes no
+flux at all: there the advection is the same divergence, taken inside the
+stages. `docs/steady_solver_design.md` section 15.
 
 Two defects on that path are fixed in
 this phase because Phase F cannot run without them:
@@ -923,7 +933,7 @@ for the composition-match test omitted `HeTR`; it is now in it.*
   `du` moves only 2.6292 -> 2.6290 and `log10 Mdot` stays 10.58: the case
   pins the operator's arithmetic, not a large physical effect, because on
   this planet the wind sweeps the composition along faster than diffusion
-  separates it (`docs/Update_EXHALE.md` section 73).
+  separates it (`docs/Update_EXHALE_stage1.md` section 73).
 
 ### 7.6 Traps the survey flagged
 
@@ -1057,8 +1067,9 @@ and the cap is the limiter section 1 rejects for helium.
 field with no steady mass flux.** Both are recorded in section 7.3, where the
 coupling to the steady solver is specified: the step size is now a
 composition time scale grown geometrically, the convergence measure is
-absolute, and the advecting flow of the relaxation is the wind's steady mass
-flux. Measured effect of (c) alone on the HD 209458 b `Kzz = 0` wind, solving
+absolute, and the advecting flow of the relaxation is the face mass flux of
+the state (it was the wind's smoothed steady mass flux until item B5c; the
+measurements quoted below were made with that form). Measured effect of (c) alone on the HD 209458 b `Kzz = 0` wind, solving
 the operator's steady state offline on the M3 converged state: with the cell
 velocities the base takes a five-fold cliff at the fourth cell and a plateau
 at 0.10 of the reservoir ratio (where the barometric separation scale is 24

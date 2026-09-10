@@ -400,7 +400,7 @@ docs/p54g23_nonconvergent.md        which row and cell blocks each failure
 Section 10 below is the P54b experiment the change came out of; sections 1-9
 are the diagnosis it rests on.
 
-The change these measurements led to is `Update_EXHALE.md` section 143. The
+The change these measurements led to is `Update_EXHALE_stage1.md` section 143. The
 probe builds, the run directories (`h1/`, `h3long/`, `n1*/`, `w1*/`, `ts*/`,
 `ws*/`, `rr_*/`) and the analysis scripts stay in the campaign scratch
 (`.../scratchpad/p54flux/` and `.../scratchpad/p54g/`); nothing in them is
@@ -412,7 +412,7 @@ The source of the state, read only:
 ## 10. P54b -- scaling the continuity row by the face mass flux
 
 **Read this section with its outcome in hand.** It is the experiment that led to
-`Update_EXHALE.md` section 143, and section 143 went further than section 10.6
+`Update_EXHALE_stage1.md` section 143, and section 143 went further than section 10.6
 recommends: all three conservation rows are now scaled by their own largest
 term, not the continuity row alone. What section 10 settles, and what section
 143 rests on, is *which way* to do it -- the measure and not the solver -- and
@@ -697,7 +697,7 @@ here.
 
 ### 10.6 Recommendation, and what was adopted
 
-**Adopted 2026-09-03 as `Update_EXHALE.md` section 143, and carried further than
+**Adopted 2026-09-03 as `Update_EXHALE_stage1.md` section 143, and carried further than
 this recommendation asks.** The recommendation below is the measure-only form
 for the continuity row; what went in is that form for all three conservation
 rows (`mass_flux_row_scale`, `momentum_row_scale`, `energy_row_scale` in

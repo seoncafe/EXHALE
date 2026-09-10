@@ -1,0 +1,4 @@
+#/* pure H + He, He/H = 0.0793 -- EXHALE hot-Uranus molecular gate */
+HYDROGEN	1.0
+HELIUM		0.0793
+******************************

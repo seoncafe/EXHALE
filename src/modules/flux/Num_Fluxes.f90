@@ -11,7 +11,24 @@
                             adiabatic_index_from_state
   
       implicit none
-      
+
+      ! Faces at which the Roe flux was not used because the estimated star
+      ! state does not exist (two rarefactions separating fast enough leave
+      ! vacuum) or is not admissible; those faces take the HLLE flux, which
+      ! is positively conservative (Einfeldt et al. 1991, J. Comput. Phys.
+      ! 92, 273).  Summed over a whole run and reported in the run summary.
+      ! Only "Numerical flux: ROE" can raise it.
+      integer :: n_faces_roe_hlle = 0
+
+      ! Faces at which the Lax-Friedrichs flux was the flux of the scheme,
+      ! that is the faces evaluated under "Numerical flux: LLF", summed over
+      ! a whole run and reported in the run summary.  The same routine is
+      ! also called by the positivity repair of RK_integration; those faces
+      ! are counted there (n_faces_flux_positivity_limited) and not here, so
+      ! that this counter reports the discretization the run selected and not
+      ! the repairs it needed.
+      integer :: n_faces_llf = 0
+
       contains
       
       ! Subroutine for the numerical flux.
@@ -35,9 +52,9 @@
       ! floating point, so nothing moves off the constant-gamma arithmetic.
       ! The HLLC branch needs no such average: its Davis/Einfeldt speeds
       ! min(v-c) / max(v+c) already take one sound speed per side.
-      subroutine Num_flux(WL,WR,NF,alpha,p_out,jL,jR)
+      subroutine Num_flux(WL,WR,NF,p_out,jL,jR)
       
-      real*8,intent(in) :: WL(3),WR(3),alpha
+      real*8,intent(in) :: WL(3),WR(3)
       integer,intent(in) :: jL,jR
       real*8 :: gam_L,gam_R,gam_face
       real*8 :: uL(3),uR(3)
@@ -50,6 +67,8 @@
       real*8 :: l1,l2,l3
       real*8 :: l1L,l1R,l3L,l3R 
       real*8 :: v_star,aL_star,aR_star
+      type(roe_star_state) :: star
+      integer :: roe_status
       real*8 :: drho,dvel,dp
       real*8 :: a1,a2,a3   
       real*8, dimension(3) :: K1,K2,K3
@@ -80,6 +99,9 @@
       case ('LLF') ! Local Lax Friedrichs
 
          call lax_friedrichs_flux(WL,WR,NF,p_out,jL,jR)
+
+         !$omp atomic
+         n_faces_llf = n_faces_llf + 1
 
       !----------------------------------------------!
       
@@ -164,71 +186,106 @@
       	
       	!---------------------------------!
       
-         ! Entropy correction
-         
-         ! Evaluate the approximate velocities
-         call speed_estimate_ROE(WL,WR,v_star,aL_star,aR_star,gam_face)
+         ! Star state of the face Riemann problem, Toro (2009) chapter 9.
+         ! It supplies the entropy fix below, and it says whether the
+         ! linearized Roe flux is entitled to this face at all.
+         call speed_estimate_ROE(WL,WR,gam_face,star,roe_status)
 
-         ! Intermediate eigenvalues
-         l1L = vL - aL
-         l1R = v_star - aL_star
-         l3L = v_star + aR_star
-         l3R = vR + aR
-         
-         ! Modify the eigenvalues if a rarefaction is present
-         
-         ! Left rarefaction
-         if (l1L.lt.(0.0).and.l1R.gt.(0.0)) then
-               l1 = l1L*(l1R-l1)/(l1R-l1L)
-         endif
-         
-         ! Right rarefaction
-         if (l3L.lt.(0.0).and.l3R.gt.(0.0)) then
-               l3 = l3R*(l3-l3L)/(l3R-l3L)
-         endif
-         
-         !---------------------------------!
-         
-         ! Averaged eigenevectors
-         
-         ! K1
-         K1(1) = 1.0 
-         K1(2) = v_avg - a_avg
-         K1(3) = H_avg - v_avg*a_avg
-         
-         ! K2
-         K2(1) = 1.0 
-         K2(2) = v_avg
-         K2(3) = 0.5*v_avg*v_avg
-         
-         ! K3
-         K3(1) = 1.0 
-         K3(2) = v_avg + a_avg
-         K3(3) = H_avg + v_avg*a_avg
-         
+         if (roe_status .ne. ROE_STAR_OK) then
+
+            ! No admissible star state: the flow separates into vacuum, or
+            ! no branch of the estimate returned a positive star pressure
+            ! and positive star densities.  The Roe flux is a linearization
+            ! about the average state and is not positivity preserving
+            ! there: one conservative update with it leaves a negative
+            ! thermal energy for a vacuum-producing expansion.  The face
+            ! takes the HLLE flux instead, which is positively conservative
+            ! whenever its two speeds bound the physical waves (Einfeldt
+            ! 1988, SIAM J. Numer. Anal. 25, 294; Einfeldt, Munz, Roe &
+            ! Sjogreen 1991, J. Comput. Phys. 92, 273).  Each bound pairs
+            ! one side's own signal speed with the Roe average, so the
+            ! bounds enclose the waves of the linearized problem as well.
+            SL = min(vL - aL, v_avg - a_avg)
+            SR = max(vR + aR, v_avg + a_avg)
+
+            call Phys_flux(WL,FL,jL)
+            call Phys_flux(WR,FR,jR)
+            call hlle_flux(WL,WR,FL,FR,SL,SR,jL,jR,NF)
+
+            !$omp atomic
+            n_faces_roe_hlle = n_faces_roe_hlle + 1
+
+         else
+
+            ! Entropy correction
+
+            ! Approximate velocities of the star state
+            v_star  = star%u_star
+            aL_star = star%c_L_star
+            aR_star = star%c_R_star
+
+            ! Intermediate eigenvalues
+            l1L = vL - aL
+            l1R = v_star - aL_star
+            l3L = v_star + aR_star
+            l3R = vR + aR
+
+            ! Modify the eigenvalues if a rarefaction is present
+
+            ! Left rarefaction
+            if (l1L.lt.(0.0).and.l1R.gt.(0.0)) then
+                  l1 = l1L*(l1R-l1)/(l1R-l1L)
+            endif
+
+            ! Right rarefaction
+            if (l3L.lt.(0.0).and.l3R.gt.(0.0)) then
+                  l3 = l3R*(l3-l3L)/(l3R-l3L)
+            endif
+
             !---------------------------------!
-         
-         ! Evaluate the conserved-variables differences		
-         drho = rhoR - rhoL
-         dvel = vR - vL
-         dp   = pR - PL
-            
-         ! Evaluate the expansion coefficients		
-         a1 = 0.5/a_avg**2.0*(dp - rho_avg*a_avg*dvel)
-         a2 = drho - dp/a_avg**2.0
-         a3 = 0.5/a_avg**2.0*(dp + rho_avg*a_avg*dvel)
-             
-         !---------------------------------!
-      
-      	! Evaluate the left and right fluxes      	
-      	call Phys_flux(WL,FL,jL)
-      	call Phys_flux(WR,FR,jR)
 
-         ! Evaluate the flux at interface ( eq.[11.29] Toro )
-         NF = 0.5*(FR+FL)   &
-            - 0.5*(a1*abs(l1)*K1 + a2*abs(l2)*K2 + a3*abs(l3)*K3)
-	      
-	      ! Output pressure
+            ! Averaged eigenevectors
+
+            ! K1
+            K1(1) = 1.0
+            K1(2) = v_avg - a_avg
+            K1(3) = H_avg - v_avg*a_avg
+
+            ! K2
+            K2(1) = 1.0
+            K2(2) = v_avg
+            K2(3) = 0.5*v_avg*v_avg
+
+            ! K3
+            K3(1) = 1.0
+            K3(2) = v_avg + a_avg
+            K3(3) = H_avg + v_avg*a_avg
+
+            !---------------------------------!
+
+            ! Evaluate the conserved-variables differences
+            drho = rhoR - rhoL
+            dvel = vR - vL
+            dp   = pR - PL
+
+            ! Evaluate the expansion coefficients
+            a1 = 0.5/a_avg**2.0*(dp - rho_avg*a_avg*dvel)
+            a2 = drho - dp/a_avg**2.0
+            a3 = 0.5/a_avg**2.0*(dp + rho_avg*a_avg*dvel)
+
+            !---------------------------------!
+
+            ! Evaluate the left and right fluxes
+            call Phys_flux(WL,FL,jL)
+            call Phys_flux(WR,FR,jR)
+
+            ! Evaluate the flux at interface ( eq.[11.29] Toro )
+            NF = 0.5*(FR+FL)   &
+               - 0.5*(a1*abs(l1)*K1 + a2*abs(l2)*K2 + a3*abs(l3)*K3)
+
+         endif
+
+         ! Output pressure
          p_out = 0.5*(pR + pL)
 		   
       case default
@@ -248,6 +305,18 @@
       ! two physical fluxes plus a jump term carrying the largest signal
       ! speed of the pair.
       !
+      ! The viscosity coefficient is the spectral radius of the flux
+      ! Jacobian on either side.  The eigenvalues of the Euler system are
+      ! v-a, v and v+a, so that radius is |v| + a and the coefficient is
+      !     alpha = max(|v_L| + a_L, |v_R| + a_R)
+      ! (Rusanov 1961, J. Comput. Math. Phys. USSR 1, 267; it is also the
+      ! HLLE flux of the symmetric speed pair -alpha, +alpha).  The
+      ! bound is what makes the flux monotone for the scalar problem and
+      ! what the positivity lemma below is proved under; it is also
+      ! symmetric under (rho,v,p) -> (rho,-v,p) with the sides exchanged,
+      ! which is an exact symmetry of the Euler equations, so the numerical
+      ! flux inherits it.
+      !
       ! It is the numerical flux selected by "Numerical flux: LLF", and it is
       ! also the flux the positivity repair in RK_integration substitutes at a
       ! single interface: with first-order (cell-average) input states the
@@ -255,7 +324,9 @@
       ! energy to positive density and positive internal energy whenever
       ! dt(|v|+c)/dr <= 1 (Perthame & Shu 1996, Numer. Math. 73, 119; the LF
       ! lemma restated in Zhang & Shu 2010, J. Comput. Phys. 229, 3091), a
-      ! bound the CFL number of a run (default 0.6) respects.
+      ! bound the CFL number of a run (default 0.6) respects.  Both proofs
+      ! assume the coefficient above; with it, the lemma applies to this
+      ! flux as written.
       subroutine lax_friedrichs_flux(WL,WR,NF,p_out,jL,jR)
 
       real*8, intent(in) :: WL(3),WR(3)
@@ -283,8 +354,9 @@
       call Phys_flux(WL,FL,jL)
       call Phys_flux(WR,FR,jR)
 
-      ! Maximum eigenvalue between adjacent cells
-      a1 = max(abs(vL+aL),abs(vR+aR))
+      ! Largest signal speed of the pair: the spectral radius |v| + a of the
+      ! flux Jacobian, taken on whichever side is larger (see the header).
+      a1 = max(abs(vL)+aL,abs(vR)+aR)
 
       ! Get vector of conservative variables
       call W_to_U_comp(WL,uL,jL)
@@ -298,6 +370,47 @@
 
       ! End of subroutine
       end subroutine lax_friedrichs_flux
+
+      !-----------------------------------------------------------!
+
+      ! Harten-Lax-van Leer flux with Einfeldt's wave bounds (HLLE): the
+      ! exact flux of the two-wave approximate Riemann problem whose signal
+      ! speeds SL and SR bound the physical waves.  Under that bound the
+      ! intermediate state is an average of admissible states, so the flux
+      ! is positively conservative -- it maps positive density and positive
+      ! internal energy to positive density and positive internal energy
+      ! under the CFL bound (Einfeldt 1988, SIAM J. Numer. Anal. 25, 294;
+      ! Einfeldt, Munz, Roe & Sjogreen 1991, J. Comput. Phys. 92, 273).
+      ! It resolves no contact wave, which is why it is used only at the
+      ! faces where the Roe flux has no admissible star state.
+      subroutine hlle_flux(WL,WR,FL,FR,SL,SR,jL,jR,NF)
+
+      real*8, intent(in) :: WL(3),WR(3),FL(3),FR(3)
+      real*8, intent(in) :: SL,SR
+      integer, intent(in) :: jL,jR
+      real*8 :: uL(3),uR(3)
+      real*8, intent(out) :: NF(3)
+
+      if (SL .ge. 0.0d0) then
+
+         NF = FL
+
+      elseif (SR .le. 0.0d0) then
+
+         NF = FR
+
+      else
+
+         ! Get vector of conservative variables
+         call W_to_U_comp(WL,uL,jL)
+         call W_to_U_comp(WR,uR,jR)
+
+         NF = (SR*FL - SL*FR + SL*SR*(uR-uL))/(SR-SL)
+
+      endif
+
+      ! End of subroutine
+      end subroutine hlle_flux
 
       !-----------------------------------------------------------!
 

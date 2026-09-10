@@ -620,7 +620,7 @@ is exact once the two arguments are passed.
 **Handoff, and how it was resolved.** The repository `src/` was off limits for
 this work, so the change first sat in the campaign scratch as a patch for
 whoever carried it in. **It has since been carried in**, and the record of that
-is `Update_EXHALE.md` section 140.5 ("A second diagnostic-only defect travels
+is `Update_EXHALE_stage1.md` section 140.5 ("A second diagnostic-only defect travels
 with it"), which measures the dump's photoheating total rising by up to a factor
 1.97 at `r = 1.0002 R_p` and by 0.49 per cent volume-integrated on
 `mol_base_handoff`, with `Hydro_ioniz.txt` and `Ion_species.txt` untouched. In
@@ -632,9 +632,9 @@ record of the defect and of the patch, not an open handoff.
 **Identifier.** This item was labeled "P52" while it was open. That label is
 taken: `TO_BE_DONE.md` uses **(P52)** for a different item -- "a run could not
 say why it stopped, and 'accepted' had two definitions", closed under
-`Update_EXHALE.md` section 140 -- so referring to the heating dump by it points
+`Update_EXHALE_stage1.md` section 140 -- so referring to the heating dump by it points
 a reader at the wrong entry. Call it the **heating-dump fix
-(`Update_EXHALE.md` section 140.5)**. The scratch paths below keep the old
+(`Update_EXHALE_stage1.md` section 140.5)**. The scratch paths below keep the old
 `p52_` and `_p52` spellings because those are the file names on disk:
 
 ```
@@ -656,7 +656,7 @@ spread 2.499e-03, `log10 Mdot = 10.30`, the same three numbers the unpatched
 binary gives) while the dumped total now agrees with the solver's `heat` column
 to 1.000 at every radius. So it touches no solver path and no golden should
 move; the byte-identity check on the regression matrix was the confirmation to
-run before carrying it in. **That check was run**: `Update_EXHALE.md` section
+run before carrying it in. **That check was run**: `Update_EXHALE_stage1.md` section
 140.7 reports all ten regression cases byte-identical in `Hydro_ioniz.txt` and
 `Ion_species.txt` against both the control build and `backup/regression/golden/`.
 
@@ -727,7 +727,7 @@ section 9.2 budget failure. See section 10.
 ## 10. After P53: the channel table re-measured
 
 > **RE-MEASURED UNDER BLOCK I; SEE SECTION 13 (marked 2026-09-04).** The state
-> below predates block I (sections 148-155 of `docs/Update_EXHALE.md`). Section
+> below predates block I (sections 148-155 of `docs/Update_EXHALE_stage1.md`). Section
 > 13 re-finishes the same gate rung under the current tree binary and
 > re-measures every table of this section. **Every channel and every ratio
 > below reproduces there**, the largest change being the H2 photoheating at
@@ -740,7 +740,7 @@ section 9.2 budget failure. See section 10.
 
 > **PROVISIONAL, under the current residual norm (marked 2026-09-03).** The
 > state below was accepted by the two gates of section 133 of
-> `docs/Update_EXHALE.md` as that norm stands in the tree at 17:38 KST.
+> `docs/Update_EXHALE_stage1.md` as that norm stands in the tree at 17:38 KST.
 > Whether the norm should be volume weighted is under review; if it changes,
 > this state is re-finished and the table is re-measured. The runs and the
 > scripts are kept for that.
@@ -899,7 +899,7 @@ in both columns, which is the check that the EOS is on in B.
 heat closes the 1.05 `r_base` deficit by 259 K and opens the 1.15, 1.20 and
 1.30 deficits by 401, 385 and 277 K, so on the Koskinen comparison it is a
 redistribution and not a closing -- the same conclusion section 141.4 of
-`docs/Update_EXHALE.md` reached, now measured on states finished under the
+`docs/Update_EXHALE_stage1.md` reached, now measured on states finished under the
 face-flux measure. The caloric EOS alone leaves `log10 Mdot` at the pre-P53
 10.29.
 

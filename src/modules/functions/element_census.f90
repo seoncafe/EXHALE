@@ -84,10 +84,22 @@
          character(len=64)   :: label = ''
       end type element_census_state
 
+      ! THE GATE ON AN ELEMENT RATIO, one definition for the whole code.
+      ! An element ratio n_El/n_H is an exact bookkeeping identity carried
+      ! across every operator of a run, so what separates a conserving state
+      ! from a defect is the accumulated round-off of thousands of
+      ! repartitions: 1e-9 relative, three decades above the round-off
+      ! measured on marching states and a decade below the cell solver's own
+      ! xtol = sqrt(eps). element_census_tolerance is the same number with
+      ! the measurement override applied; the parameter is what the callers
+      ! that need a compile-time constant read (the species floor of the
+      ! temporal error estimate, the element inventory's ratio gate).
+      real*8, parameter, public :: element_ratio_gate = 1.0d-9
+
       public :: element_census_on, element_census_fatal
       public :: element_nuclei_and_charge, element_census_take
       public :: element_census_verify, element_census_reservoir
-      public :: element_name
+      public :: element_name, element_census_tolerance
 
       contains
 
@@ -114,7 +126,7 @@
       character(len=32) :: env
       real*8 :: v
       integer :: ios
-      element_census_tolerance = 1.0d-9
+      element_census_tolerance = element_ratio_gate
       call get_environment_variable('EXHALE_ELEMENT_ASSERT_TOL', env)
       if (len_trim(env) .gt. 0) then
          read(env,*,iostat=ios) v
@@ -321,7 +333,7 @@
       endif
       ! Every element that missed, so a common shift (all of them, equally)
       ! is told apart from a real repartition defect (one or two of them).
-      write(*,'(A)') '   per-element worst departure over the grid:'
+      write(*,'(A)') '   worst departure of each element over the grid:'
       do ie = 1, n_element
          dev_worst = 0.0d0
          jw = 0

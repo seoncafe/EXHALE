@@ -40,6 +40,9 @@
       use composition,   only: mass_per_H_nucleus_without_He
       use lower_atmosphere_profile, only: eddy_diffusion_on_grid
       use binary_element_diffusion, only: element_diffusion_step,         &
+                                          species_advection_begin_step,   &
+                                          species_advection_stage,        &
+                                          species_advection_project,      &
                                           relative_settling_mass,         &
                                           helium_hydrogen_diffusion,      &
                                           he_fraction_over_one,           &
@@ -132,6 +135,12 @@
       he_ambipolar  = .false.
       he_alphaT     = 0.0d0
       he_metal_diffusion = .false.
+      ! The reconstruction the advective half of the element transport uses;
+      ! a production run has it from input.inp, this driver sets it itself.
+      rec_method = 'PLM'
+      use_plm    = .true.
+      use_weno3  = .false.
+      recon_lambda_on = .false.
 
       if (allocated(r))     deallocate(r)
       if (allocated(r_edg)) deallocate(r_edg)
@@ -184,7 +193,7 @@
       m_1 = mass_per_H_nucleus_without_He()
       f_sp = 0.0d0
       do j = 1-Ng, N+Ng
-         mpH = m_1 + 4.0d0*heh_cell(j)
+         mpH = m_1 + m_He_over_m_H*heh_cell(j)
          f_sp(j,isp_HI)  = (1.0d0 - xi_H)/mpH
          f_sp(j,isp_HII) = xi_H/mpH
          if (he_stage .eq. 0) f_sp(j,isp_HeI)   = heh_cell(j)/mpH
@@ -240,7 +249,7 @@
       call nucleus_counts(f_sp, nH_l, nHe_l)
       mtot = 0.0d0
       do j = jlo, N
-         mtot = mtot + rho_a(j)*n0*mu*4.0d0*nHe_l(j)                      &
+         mtot = mtot + rho_a(j)*n0*mu*m_He_over_m_H*nHe_l(j)                &
                       *(r(j)*R0)**2*(r_edg(j)-r_edg(j-1))*R0
       enddo
       end function helium_mass_in_column
@@ -320,8 +329,9 @@
       ! equilibrium and compare with the analytic barometric separation
       !     dx/dr = -x(1-x) (m_He - m_1) g/(kT)
       ! whose isothermal integral with g = b0 v0^2/(R0 r^2), kT = mu v0^2 and
-      ! m_He - m_1 = 3 m_H is
-      !     logit x(r) - logit x(r_ref) = -3 b0 (1/r_ref - 1/r).
+      ! m_He - m_1 = (m_He/m_H - 1) m_H is
+      !     logit x(r) - logit x(r_ref)
+      !         = -(m_He/m_H - 1) b0 (1/r_ref - 1/r).
       integer, intent(in)  :: Ncell, nstep
       real*8,  intent(in)  :: dt_use
       real*8,  intent(out) :: err, dr_h, mass0, mass1
@@ -355,7 +365,7 @@
       err = 0.0d0
       do j = 1, N
          lg_num = log(xnum(j)/(1.0d0-xnum(j))) - lg_ref
-         lg_ana = -3.0d0*b0*(1.0d0/r_ref - 1.0d0/r(j))
+         lg_ana = -(m_He_over_m_H - 1.0d0)*b0*(1.0d0/r_ref - 1.0d0/r(j))
          err = max(err, abs(lg_num - lg_ana))
       enddo
       deallocate(heh_l, xnum)
@@ -439,20 +449,20 @@
 
       call nucleus_counts(f_a, nH_l, nHe_l)
       m_1 = mass_per_H_nucleus_without_He()
-      X_base = 4.0d0*HeH/(m_1 + 4.0d0*HeH)
+      X_base = m_He_over_m_H*HeH/(m_1 + m_He_over_m_H*HeH)
       Xmin = 1.0d300
       Xmax = -1.0d300
       hmax = 0.0d0
       finite_ok = .true.
       do j = 1, N
-         Xtop = 4.0d0*nHe_l(j)/(m_1*nH_l(j) + 4.0d0*nHe_l(j))
+         Xtop = m_He_over_m_H*nHe_l(j)/(m_1*nH_l(j) + m_He_over_m_H*nHe_l(j))
          Xmin = min(Xmin, Xtop)
          Xmax = max(Xmax, Xtop)
          hmax = max(hmax, nHe_l(j)/max(nH_l(j),1.0d-300))
          if (.not. (Xtop .eq. Xtop)) finite_ok = .false.
          if (abs(Xtop) .gt. 1.0d300)  finite_ok = .false.
       enddo
-      Xtop = 4.0d0*nHe_l(N)/(m_1*nH_l(N) + 4.0d0*nHe_l(N))
+      Xtop = m_He_over_m_H*nHe_l(N)/(m_1*nH_l(N) + m_He_over_m_H*nHe_l(N))
       write(*,'(A,ES12.5,A,ES12.5,A,ES12.5)') '       X range [',         &
            Xmin, ',', Xmax, ']   X_base = ', X_base
       write(*,'(A,ES12.5,A,ES12.5)') '       max He/H = ', hmax,          &
@@ -555,14 +565,14 @@
       dt_a = 1.0d3
       m_1  = mass_per_H_nucleus_without_He()
       call nucleus_counts(f_a, nH_l, nHe_l)
-      msum0 = m_1*nH_l + 4.0d0*nHe_l
+      msum0 = m_1*nH_l + m_He_over_m_H*nHe_l
 
       resid = 0.0d0
       do it = 1, 200
          call element_diffusion_step(rho_a, v_a, T_a, f_a, dt_a)
          call nucleus_counts(f_a, nH_l, nHe_l)
          do j = 1, N
-            resid = max(resid, abs(m_1*nH_l(j) + 4.0d0*nHe_l(j)           &
+            resid = max(resid, abs(m_1*nH_l(j) + m_He_over_m_H*nHe_l(j)   &
                                    - msum0(j))/msum0(j))
          enddo
       enddo
@@ -597,14 +607,14 @@
       dt_a = 1.0d2
 
       m_1 = mass_per_H_nucleus_without_He()
-      X_uni = 4.0d0*HeH/(m_1 + 4.0d0*HeH)
+      X_uni = m_He_over_m_H*HeH/(m_1 + m_He_over_m_H*HeH)
       do it = 1, 500
          call element_diffusion_step(rho_a, v_a, T_a, f_a, dt_a)
       enddo
       call nucleus_counts(f_a, nH_l, nHe_l)
       dev = 0.0d0
       do j = 1, N
-         Xj = 4.0d0*nHe_l(j)/(m_1*nH_l(j) + 4.0d0*nHe_l(j))
+         Xj = m_He_over_m_H*nHe_l(j)/(m_1*nH_l(j) + m_He_over_m_H*nHe_l(j))
          dev = max(dev, abs(Xj - X_uni)/X_uni)
       enddo
       call verdict('T6  ', dev .lt. 1.0d-13, dev, 1.0d-13,                &
@@ -620,52 +630,73 @@
       subroutine test_T11()
       ! Regression for the base helium hole (docs/binary_diffusion_design.md
       ! section 9, post-review findings).  A breathing base alternates the sign
-      ! of v from cell to cell, so every face average (v_j + v_{j+1})/2 is
-      ! ~0 while the cell velocities are not.  An advection built from face
-      ! velocities then decouples such a cell from BOTH neighbours and any
-      ! composition it holds is frozen at the molecular diffusion time; built
-      ! from the cell velocity it stays coupled to its donor.  The column below
-      ! is seeded with a 500-fold helium hole in the first free cell -- the
-      ! measured HD 209458 b defect -- and must refill it.
+      ! of the FACE mass flux from face to face, so a cell can be an outflow
+      ! at one face and an inflow at the other with a cell velocity of either
+      ! sign.  The advection is now the divergence of the hydro's own face
+      ! mass fluxes, so the first free cell exchanges with whichever neighbour
+      ! the face flux says it does, and no cell can be left with nothing but
+      ! the molecular diffusion time dr^2/D_12 -- ~10^6 s at the base against
+      ! a ~1 s hydro step -- to refill on.  The column below is seeded with a
+      ! 500-fold helium hole in the first free cell, the measured HD 209458 b
+      ! defect, and must refill it.
+      !
+      ! The face mass flux at the base is positive, which is the inflow the
+      ! base boundary carries, so the donor of the first free cell is the
+      ! Dirichlet reservoir; the fluxes above it alternate in sign.  The
+      ! density is advanced by the same faces, the same areas and the same
+      ! volume as the composition, which is what the operator requires of its
+      ! caller and is how the marching loop supplies it.
       real*8, allocatable :: heh_l(:), nH_l(:), nHe_l(:)
-      real*8  :: m_1, X_base, X2, vamp, dr_phys, dev
+      real*8, allocatable :: Frho(:), rho_new(:)
+      real*8  :: m_1, X_base, X2, famp, dr_phys, dev
+      real*8  :: rp, rm, dAp, dAm, dV
       integer :: it, j
 
-      write(*,'(A)') ' --- T11: cell-to-cell alternating v -- the first free'//&
-                     ' cell refills'
+      write(*,'(A)') ' --- T11: cell-to-cell alternating face mass flux --'//&
+                     ' the first free cell refills'
       ! b0 = 0: no settling, so the steady state of the column is exactly the
       ! reservoir composition and the test measures the transport alone.
       call setup_column(200, 2.0d0, 1.0d3, 1.0d10, 0.0d0, 1.0d10)
       allocate(heh_l(1-Ng:N+Ng), nH_l(1-Ng:N+Ng), nHe_l(1-Ng:N+Ng))
+      allocate(Frho(1-Ng:N+Ng), rho_new(1-Ng:N+Ng))
       HeH   = HeH_default()
       heh_l = HeH
       heh_l(2) = HeH/5.0d2                        ! the measured base hole
       call set_composition(f_a, heh_l, 0.0d0, 0)
       rho_a = 1.0d0
       T_a   = 1.0d0
-      ! v alternating in sign cell by cell: every face average vanishes, the
-      ! cell velocities do not.  v(2) > 0, so the donor of the first free cell
-      ! is the Dirichlet base.
-      vamp = 1.0d-2
+      famp  = 1.0d-2
       do j = 1-Ng, N+Ng
-         v_a(j) = vamp*dble((-1)**j)
+         Frho(j) = famp*dble((-1)**(j+1))
+         v_a(j)  = famp*dble((-1)**j)
       enddo
       dr_phys = (r_edg(2) - r_edg(1))*R0
-      dt_a    = 0.5d0*dr_phys/(vamp*v0)/t_s        ! half an advective crossing
+      dt_a    = 0.5d0*dr_phys/(famp*v0)/t_s        ! half an advective crossing
 
       m_1    = mass_per_H_nucleus_without_He()
-      X_base = 4.0d0*HeH/(m_1 + 4.0d0*HeH)
+      X_base = m_He_over_m_H*HeH/(m_1 + m_He_over_m_H*HeH)
       do it = 1, 200
+         ! The mass row of this stage, on the faces the composition rides on.
+         rho_new = rho_a
+         do j = 2, N
+            rp = r_edg(j);  rm = r_edg(j-1)
+            dAp = rp*rp;    dAm = rm*rm
+            dV  = (dAp*rp - dAm*rm)/3.0
+            rho_new(j) = rho_a(j) - dt_a(j)*(dAp*Frho(j) - dAm*Frho(j-1))/dV
+         enddo
+         call species_advection_begin_step(f_a)
+         call species_advection_stage(1, rho_a, rho_a, rho_new, Frho, dt_a)
+         call species_advection_project(f_a)
          call element_diffusion_step(rho_a, v_a, T_a, f_a, dt_a)
       enddo
       call nucleus_counts(f_a, nH_l, nHe_l)
-      X2  = 4.0d0*nHe_l(2)/(m_1*nH_l(2) + 4.0d0*nHe_l(2))
+      X2  = m_He_over_m_H*nHe_l(2)/(m_1*nH_l(2) + m_He_over_m_H*nHe_l(2))
       dev = abs(X2 - X_base)/X_base
       write(*,'(A,ES12.5,A,ES12.5)') '       X(first free cell) = ', X2,   &
            '   X_base = ', X_base
       call verdict('T11 ', dev .lt. 1.0d-3, dev, 1.0d-3,                   &
                    'relative departure from the reservoir: ')
-      deallocate(heh_l, nH_l, nHe_l)
+      deallocate(heh_l, nH_l, nHe_l, Frho, rho_new)
 
       end subroutine test_T11
 
@@ -678,9 +709,21 @@
 
       write(*,'(A)') ' --- T9: ambipolar limits of the relative settling '//&
                      'mass'
-      call settling_limit(0, 1.0d0,        3.0d0,          dm, 'neutral')
-      call settling_limit(1, 0.5d0,        2.5d0,          dm, 'H+ plasma')
-      call settling_limit(2, 4.0d0/3.0d0,  5.0d0/3.0d0,    dm, 'He++ plasma')
+      ! Each rung passes the ambipolar field it builds the column with,
+      ! eE = mbar m_H g, and the settling mass that field implies,
+      !     dm = (m_He/m_H - 1) - (Zbar_He - Zbar_1) mbar.
+      ! mbar of a hydrostatic plasma of one ion species is its carrier mass
+      ! shared over the ion and its Z electrons, m_i/(1 + Z) in m_H: 1 for the
+      ! neutral H column (no field, the mean particle is one H atom), 1/2 for
+      ! the H+ plasma, m_He/(3 m_H) for the He++ one.  Zbar_He - Zbar_1 is 0
+      ! when both elements are neutral and 2 - 1 = 1 in both ionized columns.
+      call settling_limit(0, 1.0d0, m_He_over_m_H - 1.0d0,                    &
+                          dm, 'neutral')
+      call settling_limit(1, 0.5d0, m_He_over_m_H - 1.5d0,                    &
+                          dm, 'H+ plasma')
+      call settling_limit(2, m_He_over_m_H/3.0d0,                             &
+                          2.0d0*m_He_over_m_H/3.0d0 - 1.0d0,                  &
+                          dm, 'He++ plasma')
       call settling_front()
 
       end subroutine test_T9
@@ -691,7 +734,8 @@
       ! Build a DISCRETELY hydrostatic isothermal column: ln(rho) is chosen so
       ! that the operator's own centred log-derivative of n_e T reproduces
       ! -mbar m_H g/(kT) exactly, i.e. eE = mbar m_H g to round-off.  The
-      ! relative settling mass must then be 3 - (Zbar_He - Zbar_1) mbar.
+      ! relative settling mass must then be
+      ! (m_He/m_H - 1) - (Zbar_He - Zbar_1) mbar.
       ! mode 0 neutral (Zbar = 0 for both), 1 H+ plasma with trace He++,
       ! 2 He++ plasma with trace H+.
       integer,          intent(in)  :: mode
@@ -733,7 +777,19 @@
       dmout = dm_l(N/2)
       write(*,'(A,A,A,F10.7,A,F10.7)') '       ', label,                  &
            ': dm_eff = ', dmout, '   target ', target_dm
-      call verdict('T9  ', err .lt. 1.0d-12, err, 1.0d-12,                &
+      ! ROUND-OFF BOUND, ANCHORED ON MEASUREMENT. The limits are exact
+      ! algebra in the masses, so the deviation is arithmetic: the ambipolar
+      ! term of the plasma limits is built from a centred difference of
+      ! ln rho over dr, and the logarithm is O(b0/r) while the difference is
+      ! O(dr), so each ulp of the logarithm reaches dm_eff amplified by 1/dr.
+      ! MEASURED 2026-09-08 on this column, at -O3 and at -O1 -fcheck: the
+      ! neutral limit is exact (no electron term), the H+ plasma reads
+      ! 8.207E-13 and 7.740E-13, the He++ plasma 7.083E-13 and 1.098E-12.
+      ! The bound is one decade above the largest of those, which is the
+      ! anchoring rule the certification tolerances use. It stays a real
+      ! test: a wrong ambipolar limit misses its target by 0.1 to 1, ten
+      ! decades away, and the neutral limit is still asserted exact.
+      call verdict('T9  ', err .lt. 1.0d-11, err, 1.0d-11,                &
                    'max |dm_eff - target| ('//label//'): ')
       deallocate(heh_l, dm_l)
 
@@ -762,7 +818,7 @@
       f_a = 0.0d0
       do j = 1-Ng, N+Ng
          xi  = 0.5d0*(1.0d0 + tanh((r(j)-1.5d0)/0.3d0))
-         mpH = m_1 + 4.0d0*HeH
+         mpH = m_1 + m_He_over_m_H*HeH
          f_a(j,isp_HI)    = (1.0d0-xi)/mpH
          f_a(j,isp_HII)   = xi/mpH
          f_a(j,isp_HeI)   = HeH*(1.0d0-xi)/mpH
@@ -830,13 +886,13 @@
       e2   = ee*ee
       TK   = T0
       kT   = kb_erg*TK
-      mHHe = 4.0d0/5.0d0*mu                       ! reduced mass of He-H [g]
+      mHHe = m_He_over_m_H/(1.0d0 + m_He_over_m_H)*mu           ! reduced mass of He-H [g]
 
       ! ---------------- (a) all neutral: HI + HeI ---------------------- !
       call set_composition(f_a, heh_c, 0.0d0, 0)
       call helium_hydrogen_diffusion(rho_a, T_a, f_a, Deff, Dneut)
       call column_totals(f_a, ntot, ne_l)
-      Dhs = 1.52d18*sqrt(1.0d0/4.0d0 + 1.0d0/1.0d0)*sqrt(TK)/ntot
+      Dhs = 1.52d18*sqrt(1.0d0/m_He_over_m_H + 1.0d0)*sqrt(TK)/ntot
       err = abs(Deff(N/2) - Dhs)/Dhs
       call verdict('T12a', err .lt. 1.0d-12, err, 1.0d-12,                &
            'all neutral: D_eff vs Banks & Kockarts, rel. err = ')
@@ -859,7 +915,7 @@
       ! ---------------- (c) half ionized: 50/50 in each element -------- !
       f_a = 0.0d0
       do j = 1-Ng, N+Ng
-         mpH = mass_per_H_nucleus_without_He() + 4.0d0*heh_c(j)
+         mpH = mass_per_H_nucleus_without_He() + m_He_over_m_H*heh_c(j)
          f_a(j,isp_HI)    = 0.5d0/mpH
          f_a(j,isp_HII)   = 0.5d0/mpH
          f_a(j,isp_HeI)   = 0.5d0*heh_c(j)/mpH
@@ -869,7 +925,7 @@
       call column_totals(f_a, ntot, ne_l)
       lamD  = sqrt(kT/(4.0d0*pi*ne_l*e2))
       lnL11 = max(log(3.0d0*kT*lamD/e2), 1.0d0)
-      Dhs   = 1.52d18*sqrt(1.0d0/4.0d0 + 1.0d0/1.0d0)*sqrt(TK)/ntot
+      Dhs   = 1.52d18*sqrt(1.0d0/m_He_over_m_H + 1.0d0)*sqrt(TK)/ntot
       Dc11  = 3.0d0*kT**2.5d0                                             &
               /(4.0d0*sqrt(2.0d0*pi*mHHe)*ntot*e2**2*lnL11)
       ! He+ against neutral H: polarization on alpha(H); HeI against H+:
@@ -902,7 +958,7 @@
          if (j .eq. 1) Dlo = 1.0d0                  ! K, polarization limit
          if (j .eq. 2) Dlo = 1.0d9                  ! K, rigid-core limit
          Dpl   = kb_erg*Dlo/(2.21d0*pi*ee*ntot*sqrt(alpha_HI*mHHe))
-         Dhl   = 1.52d18*sqrt(1.25d0)*sqrt(Dlo)/ntot
+         Dhl   = 1.52d18*sqrt(1.0d0/m_He_over_m_H + 1.0d0)*sqrt(Dlo)/ntot
          Dcmb  = 1.0d0/(1.0d0/Dpl + 1.0d0/Dhl)
          if (j .eq. 1) then
             err = abs(Dcmb - Dpl)/Dpl
@@ -917,8 +973,8 @@
          endif
       enddo
       write(*,'(A,F8.1,A)') '       polarization/rigid-core crossover at ',&
-           (2.21d0*pi*ee*sqrt(alpha_HI*mHHe)                              &
-            *1.52d18*sqrt(1.25d0)/kb_erg)**2, ' K'
+           (2.21d0*pi*ee*sqrt(alpha_HI*mHHe)                        &
+            *1.52d18*sqrt(1.0d0/m_He_over_m_H + 1.0d0)/kb_erg)**2, ' K'
 
       deallocate(heh_c, Deff, Dneut)
 
@@ -984,9 +1040,9 @@
       call set_molecular_composition(f_a, HeH, qmol)
       call helium_hydrogen_diffusion(rho_a, T_a, f_a, Deff, Dneut)
       ! carriers = nuclei in the atomic limit
-      mpH  = m_1 + 4.0d0*HeH
+      mpH  = m_1 + m_He_over_m_H*HeH
       ntot = (1.0d0 + HeH)/mpH*rho_a(N/2)*n0
-      Dana = 1.52d18*sqrt(1.0d0/4.0d0 + 1.0d0/1.0d0)*sqrt(TK)/ntot
+      Dana = 1.52d18*sqrt(1.0d0/m_He_over_m_H + 1.0d0)*sqrt(TK)/ntot
       err  = abs(Deff(N/2) - Dana)/Dana
       call verdict('T7a ', err .lt. 1.0d-12, err, 1.0d-12,                 &
            'forced atomic: D_eff vs D(He,H), rel. err = ')
@@ -997,12 +1053,13 @@
       call helium_hydrogen_diffusion(rho_a, T_a, f_a, Deff, Dneut)
       ! one carrier per two H nuclei, so the carrier density is (1/2 + He/H)
       ntot = (0.5d0 + HeH)/mpH*rho_a(N/2)*n0
-      Dana = 1.52d18*sqrt(1.0d0/4.0d0 + 1.0d0/2.0d0)*sqrt(TK)/ntot
+      Dana = 1.52d18*sqrt(1.0d0/m_He_over_m_H + 0.5d0)*sqrt(TK)/ntot
       err  = abs(Deff(N/2) - Dana)/Dana
       call verdict('T7b ', err .lt. 1.0d-12, err, 1.0d-12,                 &
            'forced molecular: D_eff vs D(He,H2), rel. err = ')
       write(*,'(A,ES12.5,A,ES12.5)') '       D(He,H) = ',                  &
-           1.52d18*sqrt(1.25d0)*sqrt(TK)/((1.0d0+HeH)/mpH*rho_a(N/2)*n0),  &
+           1.52d18*sqrt(1.0d0/m_He_over_m_H + 1.0d0)*sqrt(TK)          &
+           /((1.0d0+HeH)/mpH*rho_a(N/2)*n0),                              &
            '   D(He,H2) = ', Dana
       deallocate(qmol, Deff, Dneut)
 
@@ -1145,7 +1202,7 @@
       real*8, dimension(1-Ng:N+Ng),           intent(in)  :: qm
       real*8  :: mpH
       integer :: j
-      mpH = mass_per_H_nucleus_without_He() + 4.0d0*heh
+      mpH = mass_per_H_nucleus_without_He() + m_He_over_m_H*heh
       f_sp = 0.0d0
       do j = 1-Ng, N+Ng
          f_sp(j,isp_HI)  = (1.0d0 - qm(j))/mpH
@@ -1168,7 +1225,7 @@
       ! m_c1 = m_1 mcar is the mean carrier mass and psi = 1/mcar the
       ! collision partners per hydrogen nucleus, mcar = (n_H + 2 n_H2)/
       ! (n_H + n_H2).  With g = b0 v0^2/(R0 r^2) and kT = mu v0^2 the force
-      ! part is (4 - m_c1) b0/(R0 r^2) in cm^-1, and the chemistry part is the
+      ! part is (m_He/m_H - m_c1) b0/(R0 r^2) in cm^-1, and the chemistry part is the
       ! same central difference the operator takes.
       real*8, dimension(1-Ng:N+Ng,n_species), intent(in)  :: f_sp
       real*8, dimension(1-Ng:N+Ng),           intent(out) :: Dt, Gt
@@ -1184,10 +1241,10 @@
          yH2  = nH2/max(nHI + nH2, 1.0d-30)
          mcar(j) = (nHI + 2.0d0*nH2)/max(nHI + nH2, 1.0d-30)
          TKl  = T_a(j)*T0
-         DHeH  = 1.52d18*sqrt(1.0d0/4.0d0 + 1.0d0/1.0d0)*sqrt(TKl)/ncar
-         DHeH2 = 1.52d18*sqrt(1.0d0/4.0d0 + 1.0d0/2.0d0)*sqrt(TKl)/ncar
+         DHeH  = 1.52d18*sqrt(1.0d0/m_He_over_m_H + 1.0d0)*sqrt(TKl)/ncar
+         DHeH2 = 1.52d18*sqrt(1.0d0/m_He_over_m_H + 0.5d0)*sqrt(TKl)/ncar
          Dt(j) = 1.0d0/(yH1/DHeH + yH2/DHeH2)
-         Gt(j) = (4.0d0 - mcar(j)*mass_per_H_nucleus_without_He())         &
+         Gt(j) = (m_He_over_m_H - mcar(j)*mass_per_H_nucleus_without_He()) &
                  *b0/(R0*r(j)*r(j))
       enddo
       do j = 2-Ng, N+Ng-1
@@ -1215,8 +1272,8 @@
       real*8  :: slope, Gf
       integer :: j
       call nucleus_counts(f_sp, nH_l, nHe_l)
-      Xl = 4.0d0*nHe_l/max(mass_per_H_nucleus_without_He()*nH_l            &
-                           + 4.0d0*nHe_l, 1.0d-300)
+      Xl = m_He_over_m_H*nHe_l/max(mass_per_H_nucleus_without_He()*nH_l  &
+                                  + m_He_over_m_H*nHe_l, 1.0d-300)
       Sf = 0.0d0
       do j = 1, N-1
          if (Xl(j) .le. 0.0d0 .or. Xl(j+1) .le. 0.0d0) cycle
@@ -1274,7 +1331,7 @@
       ! replaces, as helium is made trace.  That kernel was removed with
       ! milestone M3, so the comparison can no longer be run and its result
       ! stands as the measurement made while both existed
-      ! (docs/Update_EXHALE.md section 68): the relative difference of the
+      ! (docs/Update_EXHALE_stage1.md section 68): the relative difference of the
       ! one-step increments on the LHS 1140 b wind was
       !
       !     He/H = 8.33e-2 : 2.27625e-03
@@ -1289,7 +1346,7 @@
                      ' -- SKIPPED (comparison kernel removed at M3)'
       write(*,'(A)') '       recorded M2 result: 3.045E-06 at He/H ='//   &
                      ' 1e-4, first order in He/H'
-      write(*,'(A)') '       (docs/Update_EXHALE.md section 68)'
+      write(*,'(A)') '       (docs/Update_EXHALE_stage1.md section 68)'
 
       end subroutine test_T2a
 
@@ -1303,7 +1360,7 @@
       ! lasts.  What is not right is that they stay zero once hydrogen returns:
       ! the projection multiplied them by r_H = n_H^new/n_H^old, and with
       ! n_H^old = 0 that factor carries no information, so the element was
-      ! deleted with no sink and no way back (docs/Update_EXHALE.md section 84).
+      ! deleted with no sink and no way back (docs/Update_EXHALE_stage1.md section 84).
       ! The column below is seeded with a band of pure helium in the middle of a
       ! hydrogen-bearing, metal-bearing column; diffusion refills the band with
       ! hydrogen, and every cell that holds hydrogen must hold the metals at the
@@ -1332,17 +1389,17 @@
       dt_a = 1.0d1
 
       ! the band: pure helium, so n_H = 0 exactly and X = 1 to the last bit.
-      ! 4 f(HeI) = 1 keeps the mass normalization sum_s m_s f_s = 1.
+      ! m_He f(HeI) = 1 keeps the mass normalization sum_s m_s f_s = 1.
       j1 = 90
       j2 = 110
       do j = j1, j2
          f_a(j,:)         = 0.0d0
-         f_a(j,isp_HeI)   = 0.25d0
+         f_a(j,isp_HeI)   = 1.0d0/m_He_over_m_H
       enddo
       call nucleus_counts(f_a, nH_l, nHe_l)
       m_1   = mass_per_H_nucleus_without_He()
-      Xband = 4.0d0*nHe_l(j1+10)                                          &
-              /(m_1*nH_l(j1+10) + 4.0d0*nHe_l(j1+10))
+      Xband = m_He_over_m_H*nHe_l(j1+10)                                 &
+              /(m_1*nH_l(j1+10) + m_He_over_m_H*nHe_l(j1+10))
       write(*,'(A,I0,A,I0,A,ES12.5)') '       band cells ', j1, '-', j2,  &
            ', X in the band = ', Xband
       call verdict('T13 ', Xband .eq. 1.0d0, 1.0d0 - Xband, 0.0d0,        &
@@ -1395,7 +1452,7 @@
       ! so a settling column may fill a cell with pure helium but can never
       ! push it past that; a discretization that lags one of the two factors
       ! loses the shutoff and overfills the cell instead
-      ! (docs/Update_EXHALE.md sections 84 and 85).  The clipped X cannot see
+      ! (docs/Update_EXHALE_stage1.md sections 84 and 85).  The clipped X cannot see
       ! the difference -- an overshoot and an exact 1 both read 1.0 -- so the
       ! test reads he_fraction_over_one / he_fraction_under_zero, which the
       ! operator sets from the solve itself.
@@ -1473,7 +1530,7 @@
       real*8 :: m_1
       call nucleus_counts(f_sp, nH_l, nHe_l)
       m_1 = mass_per_H_nucleus_without_He()
-      Xc  = 4.0d0*nHe_l/max(m_1*nH_l + 4.0d0*nHe_l, 1.0d-300)
+      Xc  = m_He_over_m_H*nHe_l/max(m_1*nH_l + m_He_over_m_H*nHe_l, 1.0d-300)
       end subroutine mass_fraction_He
 
       end program diffusion_tests

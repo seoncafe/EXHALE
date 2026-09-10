@@ -18,21 +18,32 @@ assembly, in the same order and with the same arguments:
 | stage | marching step | steady residual |
 |---|---|---|
 | carrier fractions, background, element headroom | `carrier_state` | `carrier_state` |
-| base face composition | `carrier_base_state` | `carrier_base_state` |
-| grid, gravity, advective coefficient | `carrier_geometry(v, dt_code, ...)` | `carrier_geometry(v, 1, ...)`, then `dt = 1e30` |
+| base face composition | the inner ghosts of `f_sp` | the inner ghosts of `f_sp` |
+| grid and gravity | `carrier_geometry(dt_code, ...)` | `carrier_geometry(1, ...)`, then `dt = 1e30` |
+| the face mass flux and the mixture mass the advective term rides on | not read: the marching rows carry no advective term | `carrier_advective_state` |
 | molecular diffusivities | `carrier_diffusivities` | `carrier_diffusivities` |
 | face gradient / drift / donor switch | `carrier_face_coefficients` | `carrier_face_coefficients` |
 | photolysis and Lyman-Werner columns | `carrier_photolysis` | `carrier_photolysis` |
-| deferred second-order correction | `carrier_advection_correction` | `carrier_advection_correction` |
+| material advection | `species_advective_update` inside the Runge-Kutta stages | `carrier_advective_divergence`, the same face fractions, face fluxes and flux divergence (item B5b) |
 | signal-crossing rate | `carrier_signal_rate` | `carrier_signal_rate` |
 | rows | `solve_carriers` -> `carrier_residual` | `carrier_residual` |
 
-The base inflow condition is built in exactly one place, `carrier_base_state`,
-which both call with the same state: it reads `wind_mass_flux(rho, v)` for the
-direction and the lower ghost `fc(0, ic_H2)` for the value, and both are
-therefore identical between the two paths.  `carrier_residual` then applies it
-at `j = 1` for both.  **The base Dirichlet was not the inconsistency**, and the
-face fluxes were not duplicated.
+The base inflow condition is built in exactly one place: the inner ghosts of
+the species vector, which the ionization sweep pins to the handoff partition
+where a handoff states one.  Both paths reconstruct the face composition from
+those ghosts wherever the face mass flux flows inward, so the base condition
+is identical between them by construction.  **The base Dirichlet was not the
+inconsistency**, and the face fluxes were not duplicated.
+
+Amended twice.  Increment B4-1c moved the marching advection into the
+Runge-Kutta stages as the divergence of the hydrodynamic face mass flux and
+removed the cell-velocity term from the marching rows, which left the
+stationary balance carrying a different discretization of the same term.
+Item B5b removed that difference: the stationary rows and the fixed-wind
+relaxation now form their advective term from the SAME face fractions, face
+fluxes and flux divergence (`species_face_flux.f90`), so the two paths differ
+in no term.  The record below was measured before B5b and describes the
+cell-velocity form.
 
 Three differences exist and only the last of them changes an answer:
 

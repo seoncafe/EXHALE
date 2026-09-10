@@ -86,7 +86,7 @@
       !             held at the endpoint, not extrapolated (see
       !             electron_capture_O2p_from_H).
       !   Default : 1.0 = the published rate, made the default on 2026-08-30
-      !             (docs/Update_EXHALE.md section 107, measurement in section
+      !             (docs/Update_EXHALE_stage1.md section 107, measurement in section
       !             103). Charge transfer beats O III recombination wherever
       !             n(H0)/n_e exceeds a few 1e-3 -- k_CT/alpha_rec is
       !             122/280/617 at 5e3/1e4/2e4 K -- which is the whole launch

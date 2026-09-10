@@ -1,6 +1,6 @@
 # G23: the own-largest-term measure extended to the momentum and energy rows
 
-**DECIDED AND APPLIED 2026-09-03**, as `Update_EXHALE.md` section 143. This is
+**DECIDED AND APPLIED 2026-09-03**, as `Update_EXHALE_stage1.md` section 143. This is
 the measurement the decision rests on. In the code the three scales are
 `mass_flux_row_scale`, `momentum_row_scale` and `energy_row_scale` in
 `steady_residual.f90`, with no other path; "G23" below is that variant and "A"

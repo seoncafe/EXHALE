@@ -147,9 +147,9 @@ effective $K_{zz}$ inferred from a tracer depends on that tracer's chemical
 lifetime, on the strength of the large-scale circulation and on horizontal
 eddy mixing, so that ``different chemical species in a single atmosphere
 should in principle have different eddy diffusion profiles'', and, where the
-transport is not diffusive at all --- a mean overturning circulation, for
+transport is not diffusive at all (a mean overturning circulation, for
 instance, whose upwelling and downwelling branches carry different tracer
-abundances --- the $K_{zz}$ that reproduces the mean profile can be
+abundances), the $K_{zz}$ that reproduces the mean profile can be
 \emph{negative}.
 
 The consequence for us is specific and is not addressed anywhere in the
@@ -171,7 +171,7 @@ Three further ambiguities affect numbers taken from print:
 \begin{itemize}
 \item \emph{Which mixing ratio.} Eq.~(\ref{eq:def}) written for a molar
       mixing ratio and for a mass fraction differ when the mean molecular
-      weight varies with height --- exactly the situation above a homopause.
+      weight varies with height, exactly the situation above a homopause.
       EXHALE's eddy term mixes toward uniform \emph{mass} fraction
       (\texttt{parameters.f90}, the \texttt{he\_kzz} comment).
 \item \emph{Units.} $1$\,m$^{2}$\,s$^{-1} = 10^{4}$\,cm$^{2}$\,s$^{-1}$, and
@@ -231,8 +231,8 @@ coefficient no less than a prescribed minimum value'', which the paper
 attributes to ``residual turbulence'' from ``breaking buoyancy waves'',
 citing Lindzen (1981). (Those numerals and the attribution are read from the
 arXiv version; the sentences quoted are confirmed present in the published
-text, and the two fragments in the last clause are individually confirmed
---- see Sect.~\ref{sec:verif}.)
+text, and the two fragments in the last clause are individually confirmed,
+see Sect.~\ref{sec:verif}.)
 
 \paragraph{It is a deep-atmosphere statement, and the flux in it is the
 internal one.} Convection carries the interior heat flux; the absorbed
@@ -246,7 +246,7 @@ section~4, which compares LHS\,1140\,b and HD\,209458\,b through their
 \emph{insolation} on the convective branch: the insolation ratio bears on
 the wave-driving branch of Sect.~\ref{sec:gw}, through the day/night
 contrast, and not on Eq.~(\ref{eq:gc}). The direction of the conclusion in
-that document is unaffected --- both branches point the same way --- but the
+that document is unaffected (both branches point the same way), but the
 convective comparison should be made through the internal heat flux, which
 is unconstrained for LHS\,1140\,b and presumably small for an old,
 low-mass, temperate planet.
@@ -272,9 +272,9 @@ lapse rate makes the flow unstable and the wave breaks; the turbulence
 produced by breaking is then parameterized as an eddy coefficient of exactly
 the size needed to hold the wave at its saturation amplitude.
 
-Lindzen's abstract states the premise in those terms --- the expectation
+Lindzen's abstract states the premise in those terms: the expectation
 that ``sufficient turbulence would be generated to prevent the growth of
-wave amplitude with height (roughly as (basic pressure)$^{-1/2}$)'' --- and
+wave amplitude with height (roughly as (basic pressure)$^{-1/2}$)'', and
 the paper's stated purpose is to extend that picture to smaller-amplitude
 waves, to the effect of mean winds on the waves, and to the waves' effect
 on the mean momentum budget.
@@ -301,8 +301,8 @@ mesosphere; the abstract quotes $50$\,km in winter mid-latitudes and
 $70$--$80$\,km in summer). Extrapolating a saturated-wave power law upward
 past the level where the wave field is exhausted is therefore not supported
 by the theory that produced the power law. This is the physical content of
-the plateau assumption used by Moses et al.\ (2011) --- constant $K_{zz}$
-above the GCM top --- and of the homopause plateau of Arfaux \& Lavvas
+the plateau assumption used by Moses et al.\ (2011) (constant $K_{zz}$
+above the GCM top), and of the homopause plateau of Arfaux \& Lavvas
 (2023) in Sect.~\ref{sec:homo}, and it is the reason the extrapolation of
 Charnay's $P^{-0.4}$ fit $1.5$ decades above its GCM top
 (\texttt{kzz\_literature.md}, section~3) should be read as an upper bound.
@@ -310,7 +310,7 @@ Charnay's $P^{-0.4}$ fit $1.5$ decades above its GCM top
 \paragraph{And the magnitude is set by the source, not by the slope.}
 Wave breaking fixes how $K_{zz}$ varies with pressure; what fixes its value
 is how much wave flux is launched from below. On tidally locked, strongly
-irradiated planets that source is the day/night thermal contrast --- which
+irradiated planets that source is the day/night thermal contrast, which
 is what Parmentier et al.\ (2013) identify, finding that ``vertical mixing
 results not from small-scale convection but from the large-scale circulation
 driven by the day-night heating contrast''. LHS\,1140\,b's day/night
@@ -345,7 +345,7 @@ Two results of that exercise are more important than the fitted constants.
 First, the effective coefficient is much smaller than the naive estimate.
 Parmentier et al.\ report their GCM-derived $K_{zz}$ to be ``two orders of
 magnitude smaller than what is obtained when multiplying the vertical scale
-height by the root mean square of the vertical velocity'' --- the
+height by the root mean square of the vertical velocity'': the
 $w_{\rm rms}H$ estimate. The reason is that $w_{\rm rms}H$ counts all
 vertical motion as mixing, including the reversible up-and-down of a
 large-scale circulation that returns the tracer to where it came from.
@@ -367,9 +367,9 @@ the survey whose stated validity reaches the pressure of interest.
 
 The construction closest in spirit to what a wind model needs is a
 prediction of the coefficient \emph{at the homopause}, taken constant above
-it. Arfaux \& Lavvas (2023) build a three-branch parameterization --- a deep
+it. Arfaux \& Lavvas (2023) build a three-branch parameterization (a deep
 convective branch, a gravity-wave middle branch, and a constant homopause
-plateau --- and write the plateau value as a scaling from Jupiter:
+plateau), and write the plateau value as a scaling from Jupiter:
 %
 \begin{equation}
   K_{\rm top} \;=\; K_{zz}^{J}\,\frac{v}{v_J}\,\frac{g_J}{g}\,\frac{T}{T_J},
@@ -428,8 +428,8 @@ The method is the cleanest available: no chemical network, no free
 efficiency parameter, and the same physics (a species-mass-dependent scale
 height above a mixing level) that Eq.~(\ref{eq:DplusK}) implements. Its
 limitations are equally clear: it measures $K_{zz}$ at one level, on one
-planet, in one region --- the paper is explicit that the value is for the
-equatorial region --- and it presupposes that a diffusive description is
+planet, in one region (the paper is explicit that the value is for the
+equatorial region), and it presupposes that a diffusive description is
 appropriate, which is the assumption Sect.~\ref{sec:zs} questions.
 
 \medskip
@@ -442,7 +442,7 @@ The exoplanet homopause scaling therefore inherits a factor of several
 before any planet-to-planet extrapolation begins. If the anchor were taken
 at the Festou value instead, Eq.~(\ref{eq:al}) would give
 $4\times10^{6}$--$2\times10^{7}$\,cm$^{2}$\,s$^{-1}$ for LHS\,1140\,b, close
-to the molecular coefficient at the base (Sect.~\ref{sec:base}) --- i.e.\
+to the molecular coefficient at the base (Sect.~\ref{sec:base}), i.e.\
 close to no eddy mixing at all in this problem. This is stated as a
 sensitivity, not as a recommendation: the two Jovian numbers may refer to
 different levels, regions or epochs, and reconciling them is outside this
@@ -475,7 +475,7 @@ profiles for HD\,189733\,b and HD\,209458\,b that Koskinen et al.\ (2013b)
 and much subsequent work quote.
 
 Its two limitations bear directly on the present problem. The quench level
-sits at bars to tens of millibars --- deep --- and the value obtained there
+sits at bars to tens of millibars (deep), and the value obtained there
 has to be extrapolated by many decades to reach $1\,\mu$bar, which is where
 the plateau assumptions of Moses et al.\ and of Sect.~\ref{sec:homo} enter.
 And the tracer has, by construction, a finite chemical lifetime comparable
@@ -527,8 +527,8 @@ $10^{9}$   & $1.0556$ & $7.73$ & $1.289$ & $3.02\times10^{-1}$ \\
 $10^{10}$  & $1.1286$ & $7.84$ & $2.514$ & $6.05\times10^{-1}$ \\
 $10^{11}$  & $1.4354$ & $7.84$ & $2.538$ & $6.18\times10^{-1}$ \\
 \midrule
-diffusion off & --- & $7.76$ & $4.285$ & $1.109$ \\
-measured (C26) & --- & --- & $1.24^{+0.22}_{-0.23}$ & $1.108 \pm 0.030$ \\
+diffusion off & - & $7.76$ & $4.285$ & $1.109$ \\
+measured (C26) & - & - & $1.24^{+0.22}_{-0.23}$ & $1.108 \pm 0.030$ \\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -559,8 +559,8 @@ Read as a measurement of $K_{zz}$, Table~\ref{tab:scan} says four things.
 
 Breaking the degeneracy needs a second observable with a different
 dependence on the two unknowns. The natural candidates are a hydrogen line
-formed in the same region --- the ratio of a He and an H diagnostic depends
-on composition and on separation differently --- or a lower-atmosphere
+formed in the same region (the ratio of a He and an H diagnostic depends
+on composition and on separation differently) or a lower-atmosphere
 composition prior, which is what a Phase-E \texttt{base.inp} handoff would
 supply (Sect.~\ref{sec:next}). Neither exists for this planet at present.
 As things stand the He\,$10830$ line constrains the \emph{product} of
@@ -590,7 +590,7 @@ $D_{\rm eff}$ at the first face agrees, $4.6\times10^{5}$.
 The crucial structure is not that number but its gradient. From
 \texttt{kzz\_decision.md}, section~1, $D_{\rm eff}$ rises from
 $4.6\times10^{5}$ at the base to $2.5\times10^{10}$\,cm$^{2}$\,s$^{-1}$ at
-$1.2\,R_p$ and $1.4\times10^{11}$ at $2\,R_p$ --- nearly five decades over
+$1.2\,R_p$ and $1.4\times10^{11}$ at $2\,R_p$: nearly five decades over
 one fifth of a planetary radius, driven by the falling density (a factor
 $500$ in pressure over that interval) and the rising temperature. Against a
 \emph{constant} $K_{zz}$ this has an immediate consequence:
@@ -645,8 +645,8 @@ Festou et al.\ (1981) & \emph{Jupiter, measured} & $1.4\times10^{6}$ &
 
 The spread is five decades, and it is not random: it sorts by how hot and
 how strongly forced the source atmosphere is. The two entries that are not
-hot-Jupiter extrapolations --- the scaling evaluated for this planet, and
-the one measurement in the table --- are also the two lowest. Cherubim et
+hot-Jupiter extrapolations (the scaling evaluated for this planet, and
+the one measurement in the table) are also the two lowest. Cherubim et
 al.\ (2026), the paper the LHS\,1140\,b measurement comes from, contains no
 eddy term, no molecular diffusion and no homopause anywhere in its text or
 supplement, so it offers no constraint of its own; its H:He is a fitted
@@ -657,8 +657,8 @@ constant of a homogeneous Parker wind.
 
 One result of the scan deserves to be separated from the choice of value,
 because it is a statement about the physics rather than about the number.
-Even at $K_{zz} = 10^{11}$\,cm$^{2}$\,s$^{-1}$ --- above every published
-value in Table~\ref{tab:lit} --- the elemental ratio $({\rm He/H})/{\rm
+Even at $K_{zz} = 10^{11}$\,cm$^{2}$\,s$^{-1}$ (above every published
+value in Table~\ref{tab:lit}) the elemental ratio $({\rm He/H})/{\rm
 HeH}$ freezes at $0.43$ above $5\,R_p$, and at the adopted $10^{9}$ it
 freezes at $0.16$. Since half the $n(2\,^3S)\,r\,dr$ integral lies above
 $4.2\,R_p$, most of the He\,$10830$ line is made in gas that no eddy
@@ -699,8 +699,8 @@ none is an argument from LHS\,1140\,b. Stated plainly:
 \item If its Jovian anchor were taken from the measurement rather than from
       the modelling value, it would be lower again by a factor $\simeq 7$
       (Sect.~\ref{sec:homo-obs}).
-\item All three theoretical branches --- convective, wave-driven and
-      homopause --- predict that a colder, more weakly forced, higher-gravity
+\item All three theoretical branches (convective, wave-driven and
+      homopause) predict that a colder, more weakly forced, higher-gravity
       atmosphere has a smaller $K_{zz}$ (Sect.~\ref{sec:theory}). Nothing in
       the surveyed literature argues the other way.
 \item The observable moves by a factor $\simeq 9$ in equivalent width
@@ -724,7 +724,7 @@ strengths. This costs nothing and removes the main criticism of the present
 choice, which is not that the value is wrong but that its provenance is
 invisible.
 
-\paragraph{2. Give $K_{zz}$ a profile instead of a constant --- done for the
+\paragraph{2. Give $K_{zz}$ a profile instead of a constant: done for the
 handoff, and measured.} The physics of Sect.~\ref{sec:gw} does not produce a
 constant; it produces growth as
 %
@@ -761,10 +761,10 @@ each adapter keeps whatever $K_{zz}(p)$ its own solution carried, and the
 LHS\,1140\,b, at the two reservoirs of the flux-closed ladder that straddle
 the measurement, Eq.~(\ref{eq:kzzpow}) with $\alpha = 1/2$ and
 $K_{\rm ref} = 10^{9}$ anchored at the top of the profile
-($1.1\times10^{-8}$\,bar) --- which leaves the value the wind inherits above
+($1.1\times10^{-8}$\,bar), which leaves the value the wind inherits above
 the file unchanged and gives $1.05\times10^{8}$ at the $1\,\mu$bar match,
 $1.05\times10^{5}$ at $1$\,bar and $2.56\times10^{4}$ at the $16.73$\,bar
-deep boundary --- moves the He\,10830 equivalent width by $+0.28\%$ when only
+deep boundary, moves the He\,10830 equivalent width by $+0.28\%$ when only
 the chemistry sees it and $+0.10\%$ when the wind sees it too
 (He/H\,$=11.11$ arm), and by $+0.61\%$ and $-0.15\%$ on the He/H\,$=2.09$
 arm. The FWHM and $\log_{10}\dot M$ do not move at all. The reason is
@@ -790,7 +790,7 @@ tropopause at $2.636$\,bar; below it the mixing-length form of
 Eq.~(\ref{eq:gc}) applies and $K_{zz}$ should flatten or grow with depth
 rather than collapse. Running the single power law to $16.73$\,bar gives
 $1.05\times10^{5}$\,cm$^2$\,s$^{-1}$ at $1$\,bar, at or below the floor of
-the modelling literature --- one and a half to two and a half decades under
+the modelling literature: one and a half to two and a half decades under
 the $3\times10^{6}$--$3\times10^{7}$ of Charnay et al.\ (2015), $3.7$
 decades under the $5\times10^{8}$ of Parmentier et al.\ (2013), and equal to
 the $10^{5}$ minimum Ackerman \& Marley (2001) impose by hand. What is
@@ -820,15 +820,15 @@ through the same interval), so no pressure form of the eddy coefficient
 reaches the region where most of the line is made. The gain is not a
 stronger line; it is that the base region is described by the physics the
 literature values were derived from. And the measurement above says what the
-gain is worth on the observable, which is very little --- while noting that
+gain is worth on the observable, which is very little, while noting that
 the anchor's own value at the match, $1.05\times10^{8}$, is better founded
 for this planet than the adopted $10^{9}$, since it falls inside the
 $2.8\times10^{7}$--$1.4\times10^{8}$ of Eq.~(\ref{eq:al}).
 
 \paragraph{3. A determination, by GCM or by simultaneous fit.} Either
-measure $K_{zz}$ for this planet the way Sect.~\ref{sec:gcm} describes ---
-a GCM of a temperate, helium-rich, tidally locked super-Earth with passive
-tracers, which does not currently exist --- or fit $K_{zz}$ jointly with the
+measure $K_{zz}$ for this planet the way Sect.~\ref{sec:gcm} describes
+(a GCM of a temperate, helium-rich, tidally locked super-Earth with passive
+tracers, which does not currently exist) or fit $K_{zz}$ jointly with the
 reservoir composition against the measured line, accepting that a single
 observable cannot separate the two (Sect.~\ref{sec:he-constraint}) and that
 the fit would therefore need a second constraint. The Phase-E route is a
@@ -844,7 +844,7 @@ over by scalars alone, and is refused when a profile is in use
 \medskip
 \noindent None of the three makes $K_{zz}$ a derived quantity of EXHALE.
 It stands for turbulence and wave breaking that a one-dimensional wind model
-does not resolve, so it is stated, not computed --- which is why the code's
+does not resolve, so it is stated, not computed, which is why the code's
 default is $0$ rather than an inherited number.
 
 \section{Verification status of the new citations}
@@ -888,10 +888,10 @@ from the unstable breakdown of tides and gravity waves"} and
 \texttt{full:"prevent the growth of wave amplitude with height"} each return
 the paper; so does \texttt{full:"eddy coefficients may peak"}.
 \textbf{Caveat:} the full-text index of this paper appears to be partial or
-OCR-degraded --- \texttt{full:"eddy diffusion"}, \texttt{full:"Richardson
+OCR-degraded, \texttt{full:"eddy diffusion"}, \texttt{full:"Richardson
 number"} and \texttt{full:"vertical wavelength"} all return nothing, while
 \texttt{full:"eddy coefficient"}, \texttt{full:"critical level"} and
-\texttt{full:"momentum deposition"} return the paper --- so absence of a
+\texttt{full:"momentum deposition"} return the paper, so absence of a
 phrase is not evidence here. Lindzen's saturation formula for the eddy
 coefficient is deliberately \emph{not} written out in this memo: it was
 \textbf{not verified against the published text}, and the physical argument
@@ -944,8 +944,8 @@ The body of the paper was not read.
 \texttt{kzz\_literature.md} without independent checking here and are marked
 in the text: the anchor $K_{zz}^{J} = 10^{7}$\,cm$^{2}$\,s$^{-1}$ that
 Arfaux \& Lavvas (2023) attribute to Koskinen et al.\ (2010)
-(Sect.~\ref{sec:homo-obs}) --- the specific Koskinen et al.\ (2010) paper
-was not identified --- and the identification of Eq.~(\ref{eq:gc}) with
+(Sect.~\ref{sec:homo-obs}) (the specific Koskinen et al.\ (2010) paper
+was not identified), and the identification of Eq.~(\ref{eq:gc}) with
 eq.~(16) of Charnay et al.\ (2015).
 
 \section{References}

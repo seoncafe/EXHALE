@@ -1,6 +1,6 @@
 # Stale figures: computed with the profile files' ghost rows included
 
-**stale: computed with ghost rows included (P48, Update_EXHALE section 137);
+**stale: computed with ghost rows included (P48, Update_EXHALE_stage1 section 137);
 depths move 0.2-3.8%; regeneration awaits instruction.**
 
 Until 2026-09-03 every Python reader of an EXHALE profile returned the file's

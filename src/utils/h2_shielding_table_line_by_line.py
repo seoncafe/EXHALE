@@ -20,7 +20,7 @@ a planetary molecular base reaches that is not a correction but the dominant
 term: at T = 1300 K, n_H = 1e13 cm^-3, letting the lines absorb each other's
 beam lowers the surviving pumping by a factor 24 at N_H2 = 1e21 cm^-2 and 630
 at 4.4e21.  docs/p38_line_overlap_shielding.md is the measurement, and
-Update_EXHALE.md section 135 the changelog entry.
+Update_EXHALE_stage1.md section 135 the changelog entry.
 
 WHAT IS COMPUTED HERE AND WHAT IS NOT.  Everything line overlap touches is
 computed here: the pumping rate of every line in the attenuated beam, hence
@@ -84,6 +84,31 @@ def build(abs_dir, run_dir):
     return lsig, lps, lpe
 
 
+def band_absorbed_at_top(lsig, lpe):
+    """min and max over the (T, n_H) grid of A(N_top), the column integral of
+    sigma_pump = sigma_diss/p_eff.  The same closed form the emitted Fortran
+    uses: sigma_pump is a power law between column knots, so each knot
+    interval integrates exactly.  It is the fraction of the band photons the
+    lines can take and it cannot pass 1; the generated header states it."""
+    x = LOGCOL_GRID
+    N = 10.0 ** x
+    vals = []
+    for it in range(lsig.shape[1]):
+        for jn in range(lsig.shape[2]):
+            g = lsig[:, it, jn] - lpe[:, it, jn]
+            A = 10.0 ** g[0] * N[0]          # the clamp below the first knot
+            for k in range(len(x) - 1):
+                b = (g[k + 1] - g[k]) / (x[k + 1] - x[k])
+                s_k = 10.0 ** g[k]
+                if abs(b + 1.0) < 1e-8:
+                    A += s_k * N[k] * np.log(N[k + 1] / N[k])
+                else:
+                    A += s_k * N[k] * ((N[k + 1] / N[k]) ** (b + 1.0) - 1.0) \
+                         / (b + 1.0)
+            vals.append(A)
+    return min(vals), max(vals)
+
+
 def emit(lsig, lps, lpe, out_path):
     L = [HEADER.format(nt=len(T_GRID), nn=len(LOGN_GRID), ncol=NCOL), '']
     L.append('      ! Grid axes, log10 of T [K], n_H [cm^-3] and N_H2 [cm^-2].')
@@ -103,7 +128,8 @@ def emit(lsig, lps, lpe, out_path):
     L.append('      ! log10 p_eff: dissociations per band photon removed from the beam.')
     L.append('      ! The band photon ledger needs this one.')
     L.append(_cl.cube('h2_shield_log_p_eff', lpe))
-    L.append(FOOTER)
+    a_lo, a_hi = band_absorbed_at_top(lsig, lpe)
+    L.append(FOOTER.replace('{A_TOP_RANGE}', '%.4f to %.4f' % (a_lo, a_hi)))
     open(out_path, 'w').write('\n'.join(L))
     print('wrote %s: 3 x %d x %d x %d = %d values'
           % (out_path, NCOL, len(T_GRID), len(LOGN_GRID),
@@ -149,7 +175,11 @@ HEADER = """      module h2_self_shielding_table
       !               the band photon ledger.
       !
       ! sigma_diss = p_eff x sigma_pump, and sigma_pump -- the pump cross
-      ! section -- carries no trapping at all.
+      ! section -- carries no trapping at all.  The BEAM's loss is the
+      ! column integral of sigma_pump, and it is served from this same table
+      ! by h2_lw_band_photon_fraction_absorbed, so the photons the beam
+      ! loses and the dissociations the rate spends are one absorption with
+      ! one normalization.
       !
       ! ---------------------------------------------------------------
       ! WHY A LINE-BY-LINE CALCULATION AND NOT CLOUDY, AND NOT A FIT
@@ -179,15 +209,22 @@ HEADER = """      module h2_self_shielding_table
       !
       ! Plane-parallel slab, normally incident beam, flat F_lambda
       ! (f_nu ~ nu^-2, the Draine & Bertoldi 1996 eq. 24 spectrum that
-      ! sigma_lw is calibrated to) normalized to F = 343 erg cm^-2 s^-1 over
-      ! 912-1110 A, the same band and the same mean band photon energy
-      ! e_lw_photon_erg that lyman_werner.f90 converts F_LW with.
+      ! sigma_lw is calibrated to), normalized per photon of the flat
+      ! 912-1201 A band -- the same band and the same mean band photon
+      ! energy e_lw_photon_erg that lyman_werner.f90 converts F_LW with.
+      ! THE BAND AND THE LINE LIST ARE ONE INTERVAL.  Until 2026-09-06 the
+      ! normalization band stopped at 1110 A, where Draine & Bertoldi end
+      ! the Solomon process for interstellar v = 0 gas, while the line list
+      ! ran on to 1200 A, because at 700-3200 K the vibrationally excited
+      ! levels pump in lines longward of 1110 A.  The table then rated 45
+      ! per cent more absorptions than a 912-1110 A beam could lose.  The
+      ! band is now the interval the lines occupy.
       !
       !   tau(nu, N) = N sum_i x_i sigma_i(nu)
       !   pump_i(N)  = x_i (pi e^2/m c) f_i int phi_i(nu) F_nu e^-tau /(h nu) dnu
       !
       ! summed over every Lyman and Werner transition with 911.75 A <= lambda
-      ! <= 1200 A, on a 4e5-point frequency grid, with a Voigt profile
+      ! <= 1201 A, on a 4e5-point frequency grid, with a Voigt profile
       ! (scipy wofz inside +-300 Doppler widths, the exact Lorentzian outside)
       ! and b = sqrt(2kT/m_H2), the same Doppler parameter as
       ! h2_doppler_parameter.  Level populations are LTE at the imposed T,
@@ -253,15 +290,22 @@ HEADER = """      module h2_self_shielding_table
       !    includes overlap (their sec. 5.2), and it is the one published
       !    overlap-including curve there is to check against.
       !  - sigma_pump at the BOTTOM of the column axis (N_H2 = 1e12 cm^-2,
-      !    the optically thin end) is 2.59e-17 (700 K) to 2.88e-17 cm^2
-      !    (3200 K), against DB96's own 3.4520e-18/0.135 =
-      !    2.557e-17 -- 1 to 13 per cent.
-      !  - p_single at the same place is 0.1425 (700 K) to 0.1592 (3200 K),
+      !    the optically thin end) is 1.701e-17 (700 K) to 1.887e-17 cm^2
+      !    (3200 K).  DB96's own value, 3.4520e-18/0.135 = 2.557e-17 cm^2,
+      !    is per photon of 912-1110 A; a flat F_lambda carries 1.52529
+      !    times as many photons in 912-1201 A as in 912-1110 A, so the same
+      !    pumping per 912-1201 A photon is 1.676e-17 cm^2 and the
+      !    comparison is 1 to 13 per cent, exactly as it was before the band
+      !    was widened.
+      !  - p_single at the same place is 0.1425 (700 K) to 0.1591 (3200 K),
       !    against 0.1465 from the CLOUDY runs at 1300 K, where this
-      !    calculation gives 0.1475: 0.7 per cent.
-      !  - sigma_diss at the same place agrees with the CLOUDY-based table it
-      !    replaces to 1.3-3.6 per cent, which is the statement that the two
-      !    differ in the shielding and not in the normalization.
+      !    calculation gives 0.1475: 0.7 per cent.  It is a branching ratio
+      !    and so does not carry the band normalization at all; the band
+      !    edge moves it only through the extra lines, in the fourth digit.
+      !  - the column integral of sigma_pump reaches at most 1 at the top of
+      !    the column axis, because it is the fraction of the band photons
+      !    the lines can take.  MEASURED, and stated at
+      !    h2_lw_band_photon_fraction_absorbed below.
       !
       ! ---------------------------------------------------------------
       ! VALIDITY, AND WHERE IT STOPS
@@ -296,6 +340,8 @@ HEADER = """      module h2_self_shielding_table
       public :: h2_lw_dissociation_cross_section,                        &
                 h2_lw_dissociation_per_pump,                             &
                 h2_lw_dissociation_per_absorbed_photon,                  &
+                h2_lw_pump_cross_section,                                &
+                h2_lw_band_photon_fraction_absorbed,                     &
                 h2_self_shielding_level_resolved,                        &
                 h2_shield_max_column
 
@@ -363,6 +409,114 @@ FOOTER = """
       p = h2_shield_interp(h2_shield_log_p_eff, N_H2, T, n_H)
       end function h2_lw_dissociation_per_absorbed_photon
 
+      ! Band photons taken OUT OF THE BEAM per unit incident band photon
+      ! fluence [cm^2] behind a star-ward H2 column N_H2 [cm^-2] at gas
+      ! temperature T [K] and hydrogen nucleus density n_H [cm^-3]:
+      ! sigma_pump = sigma_diss/p_eff, since p_eff is the dissociations per
+      ! photon removed from the beam.  Every pump takes a photon whether or
+      ! not it dissociates, so this and not sigma_diss is the beam's
+      ! absorber.  Line self-shielding and line overlap are in it; the
+      ! trapping of the fluorescent photons is not, because a trapped decay
+      ! and its re-absorption take nothing more out of the STELLAR beam.
+      double precision function h2_lw_pump_cross_section(N_H2, T, n_H)     &
+                                result(sigma)
+      real*8, intent(in) :: N_H2, T, n_H
+      sigma = h2_shield_interp(h2_shield_log_sigma_diss, N_H2, T, n_H)     &
+            / h2_shield_interp(h2_shield_log_p_eff, N_H2, T, n_H)
+      end function h2_lw_pump_cross_section
+
+      ! Fraction of the incident band photons that the Lyman and Werner
+      ! lines have taken out of the beam by the time it has crossed a
+      ! star-ward H2 column N_H2 [cm^-2] at gas temperature T [K] and
+      ! hydrogen nucleus density n_H [cm^-3]:
+      !
+      !     A(N) = int_0^N sigma_pump(N') dN' ,
+      !     sigma_pump = sigma_diss/p_eff ,
+      !
+      ! because p_eff is the dissociations per band photon REMOVED FROM THE
+      ! BEAM, so sigma_diss/p_eff is the removals per unit incident band
+      ! photon fluence.  A IS THE BEAM'S OWN LOSS AND THE RATE'S OWN
+      ! NORMALIZATION AT ONCE: the transmission of the beam past the lines
+      ! is 1 - A (they are a set of saturated lines that occupy a share of
+      ! the band, not a continuum optical depth), and the photons that share
+      ! accounts for are exactly the photons the dissociation rate of this
+      ! same table spends.  That is what makes the FUV band ledger of
+      ! write_output.f90 close in the Lyman-Werner band.
+      !
+      ! HOW IT IS INTEGRATED, AND WHY IN CLOSED FORM.  Between two column
+      ! knots the interpolant of this module is linear in
+      ! (log10 N, log10 sigma) at fixed T and n_H, i.e. sigma_pump is a
+      ! power law N^b, so the integral of each knot interval is exact:
+      ! sigma(N_k) N_k [(N/N_k)^(b+1) - 1]/(b+1), and the logarithmic branch
+      ! where b = -1.  Below the bottom knot and above the top one the table
+      ! is clamped at its edge value, so sigma_pump is constant there and
+      ! the integral is linear in N; that is the same clamp the cross
+      ! section itself carries, so A is the exact integral of the function
+      ! this module returns and not of some other one.
+      !
+      ! THE BOUND.  A cannot pass 1: the lines cannot take more photons than
+      ! the band carries.  MEASURED at the top of the column axis
+      ! (N_H2 = 5e21 cm^-2), over the whole temperature and density grid,
+      ! A_max = {A_TOP_RANGE}.  Above that column the clamp keeps adding to A
+      ! linearly, so a caller that goes deeper must cap A at 1; the callers
+      ! do (util_ion_eq.f90).
+      double precision function h2_lw_band_photon_fraction_absorbed(N_H2,  &
+                                T, n_H) result(A)
+      real*8, intent(in) :: N_H2, T, n_H
+      real*8  :: g(n_col_sh)
+      real*8  :: wt, wn, b, s_k, N_k, N_up, N_bot, N_top
+      integer :: it, in, k
+
+      A = 0.0d0
+      if (N_H2 .le. 0.0d0) return
+
+      call h2_shield_locate(h2_shield_log_temp, n_temp_sh,                  &
+                            log10(max(T, 1.0d0)), it, wt)
+      call h2_shield_locate(h2_shield_log_dens, n_dens_sh,                  &
+                            log10(max(n_H, 1.0d-30)), in, wn)
+
+      ! log10 sigma_pump at each column knot, with the SAME bilinear weights
+      ! in (T, n_H) that h2_shield_interp uses, so that this integrand is the
+      ! ratio of the two functions this module returns and not an
+      ! independent interpolation of it.
+      do k = 1,n_col_sh
+         g(k) =                                                             &
+            (1.0d0 - wt)*((1.0d0 - wn)*(h2_shield_log_sigma_diss(k,it,in)   &
+                                      - h2_shield_log_p_eff(k,it,in))       &
+                        +          wn *(h2_shield_log_sigma_diss(k,it,in+1) &
+                                      - h2_shield_log_p_eff(k,it,in+1)))    &
+          +          wt *((1.0d0 - wn)*(h2_shield_log_sigma_diss(k,it+1,in) &
+                                      - h2_shield_log_p_eff(k,it+1,in))     &
+                        +          wn *(h2_shield_log_sigma_diss(k,it+1,in+1)&
+                                      - h2_shield_log_p_eff(k,it+1,in+1)))
+      enddo
+
+      N_bot = 10.0d0**h2_shield_log_col(1)
+      N_top = 10.0d0**h2_shield_log_col(n_col_sh)
+
+      ! Below the bottom knot: clamped, hence constant.
+      A = 10.0d0**g(1)*min(N_H2, N_bot)
+      if (N_H2 .le. N_bot) return
+
+      do k = 1,n_col_sh-1
+         N_k  = 10.0d0**h2_shield_log_col(k)
+         N_up = min(N_H2, 10.0d0**h2_shield_log_col(k+1))
+         if (N_up .le. N_k) exit
+         b   = (g(k+1) - g(k))                                              &
+             / (h2_shield_log_col(k+1) - h2_shield_log_col(k))
+         s_k = 10.0d0**g(k)
+         if (abs(b + 1.0d0) .lt. 1.0d-8) then
+            A = A + s_k*N_k*log(N_up/N_k)
+         else
+            A = A + s_k*N_k*((N_up/N_k)**(b + 1.0d0) - 1.0d0)/(b + 1.0d0)
+         endif
+      enddo
+
+      ! Above the top knot: clamped again, hence constant.
+      if (N_H2 .gt. N_top)                                                  &
+         A = A + 10.0d0**g(n_col_sh)*(N_H2 - N_top)
+      end function h2_lw_band_photon_fraction_absorbed
+
       ! The suppression of the dissociation rate relative to the top of the
       ! same column, sigma_diss(N)/sigma_diss(N_min).  It is a DIAGNOSTIC --
       ! the rate itself now comes from the cross section above -- and it is
@@ -389,34 +543,34 @@ FOOTER = """
       end function h2_shield_max_column
 
 
-      ! Bracket x in the ascending grid g(1:n): returns the lower index i and
-      ! the fractional position w in [0,1] within [g(i), g(i+1)].  Outside the
-      ! grid w is clamped to 0 or 1, so the edge value is returned rather than
-      ! an extrapolation.
-      subroutine h2_shield_locate(g, n, x, i, w)
+      ! Bracket x in the ascending table abscissa axis(1:n): returns the lower
+      ! index i and the fractional position w in [0,1] within
+      ! [axis(i), axis(i+1)].  Outside the table w is clamped to 0 or 1, so the
+      ! edge value is returned rather than an extrapolation.
+      subroutine h2_shield_locate(axis, n, x, i, w)
       integer, intent(in)  :: n
-      real*8,  intent(in)  :: g(n), x
+      real*8,  intent(in)  :: axis(n), x
       integer, intent(out) :: i
       real*8,  intent(out) :: w
       integer :: k
-      if (x .le. g(1)) then
+      if (x .le. axis(1)) then
          i = 1
          w = 0.0d0
          return
       endif
-      if (x .ge. g(n)) then
+      if (x .ge. axis(n)) then
          i = n - 1
          w = 1.0d0
          return
       endif
       i = 1
       do k = 1,n-1
-         if (x .ge. g(k) .and. x .le. g(k+1)) then
+         if (x .ge. axis(k) .and. x .le. axis(k+1)) then
             i = k
             exit
          endif
       enddo
-      w = (x - g(i))/(g(i+1) - g(i))
+      w = (x - axis(i))/(axis(i+1) - axis(i))
       end subroutine h2_shield_locate
 
       ! End of module

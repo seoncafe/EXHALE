@@ -61,6 +61,15 @@
       ! of the H2 spectroscopic constants to drift out of step with the
       ! first.
       !
+      ! ONE POTENTIAL FOR THE ENERGY AND FOR THE CHEMISTRY.  The Boltzmann
+      ! sum over this ladder, h2_partition_function, is also the internal
+      ! partition function the H + H <-> H2 equilibrium constant of mol_rates
+      ! is built from, and its zero, the v = 0, J = 0 level, is the level the
+      ! dissociation energy D0 there is measured from.  u_rv and ln K_eq are
+      ! therefore the first moment and the free energy of the same Q, and are
+      ! thermodynamically consistent by construction: no second level model
+      ! exists to disagree with this one.
+      !
       ! Because the sum runs over the single equilibrium partition function
       ! with the spin weights inside it, this is the ortho/para EQUILIBRIUM
       ! mixture.  A frozen 3:1 mixture gives the same c_rv to four decimals at
@@ -103,6 +112,11 @@
       public :: temperature_of_mixture
       public :: h2_particle_fraction
       public :: h2_rovibrational_energy_and_heat_capacity
+      ! The direct level sum and the partition function it is a moment of.
+      ! Public because the chemistry (mol_rates) builds its equilibrium
+      ! constants from the same Q, and because the thermodynamic identity
+      ! u_rv = T^2 d ln Q/dT is asserted against the exact sum.
+      public :: h2_rovibrational_sum, h2_partition_function
       public :: caloric_eos_state_line
 
       ! Is any cell of this run molecular?  Set by
@@ -110,13 +124,22 @@
       ! constant gamma_ad arithmetic of an atomic gas.
       logical :: caloric_mixture_active = .false.
 
-      ! Per-cell composition the maps need.  Both are RATIOS of number
+      ! The composition of each cell that the maps need.  Both are RATIOS of number
       ! densities, so both are functions of the mass fractions alone and are
       ! unchanged by a change of density: a reconstructed interface state may
       ! use its owning cell's values without any lag in rho.  They change only
       ! when the composition does, which is exactly when
       ! caloric_state_from_composition is called (from get_species_densities,
       ! the single point that turns (rho, f_sp) into number densities).
+      !
+      ! COROLLARY, AND IT BINDS EVERY CALLER: a path that installs a
+      ! different f_sp must refresh these arrays BEFORE it maps an energy
+      ! density to a pressure, or the pressure it gets belongs to the
+      ! previous composition. The energy-to-pressure map is an inverse of
+      ! the caloric equation of state, not an arithmetic identity, so the
+      ! error does not cancel anywhere downstream. This is why
+      ! rebuild_state_from_checkpoint calls get_species_densities before
+      ! U_to_W on a restored state.
       !
       ! ONE-SWEEP LAG AT THE GHOSTS, stated because it is real.  The steady
       ! residual fills the ghosts (Apply_BC) BEFORE its ionization sweep runs,
@@ -158,7 +181,7 @@
       ! ------------------------------------------------------!
 
       subroutine caloric_state_from_composition(rho, f_sp, ne, n_tot)
-      ! Refresh the per-cell composition the caloric maps read.  Called from
+      ! Refresh the composition of each cell that the caloric maps read.  Called from
       ! get_species_densities with the same (rho, f_sp, n_e, n_tot) that set
       ! the thermal EOS, so the two halves of the equation of state can never
       ! describe different gas.
@@ -248,17 +271,32 @@
 
       ! ------------------------------------------------------!
 
-      subroutine h2_rovibrational_sum(TK, u_rv, c_rv)
-      ! Mean rovibrational energy u_rv = <E>/k [K] and heat capacity
-      ! c_rv = du_rv/dT [dimensionless] of one H2 molecule at TK [K], summed
-      ! directly over the bound ladder.  c_rv is the energy variance,
-      ! (<E^2> - <E>^2)/(k T)^2, which is the exact derivative of the mean.
+      subroutine h2_rovibrational_sum(TK, u_rv, c_rv, Q)
+      ! Internal partition function Q, mean rovibrational energy
+      ! u_rv = <E>/k [K] and heat capacity c_rv = du_rv/dT [dimensionless] of
+      ! one H2 molecule at TK [K], summed directly over the bound ladder.
+      ! c_rv is the energy variance, (<E^2> - <E>^2)/(k T)^2, which is the
+      ! exact derivative of the mean.
       !
-      ! The exponentials are taken relative to the ground level (which is the
-      ! zero of h2_lev_T), so nothing overflows; at the cold end every excited
-      ! term underflows to zero and the sum correctly returns u_rv = 0.
+      ! ONE POTENTIAL.  Q, u_rv and c_rv are the zeroth, first and second
+      ! moments of ONE Boltzmann sum over ONE level set, so they satisfy
+      ! u_rv = T^2 d ln Q/dT and c_rv = du_rv/dT identically rather than by
+      ! agreement between two models.  Q is what the H + H <-> H2
+      ! equilibrium constant of mol_rates is built from and u_rv is what the
+      ! energy equation carries, so the chemistry and the equation of state
+      ! hold the same H2 molecule.
+      !
+      ! The zero of the sum is the v = 0, J = 0 level (the zero of
+      ! h2_lev_T), which is also the level the dissociation energy D0 of
+      ! mol_rates is measured from and the level the H2 entry of the
+      ! formation reservoir uses; hence Q -> 1 as T -> 0.
+      !
+      ! The exponentials are taken relative to the ground level, so nothing
+      ! overflows; at the cold end every excited term underflows to zero and
+      ! the sum correctly returns Q = 1, u_rv = 0.
       real*8, intent(in)  :: TK
       real*8, intent(out) :: u_rv, c_rv
+      real*8, intent(out), optional :: Q
       real*8  :: Z, S1, S2, w, E, Tsafe
       integer :: i
 
@@ -273,8 +311,34 @@
       enddo
       u_rv = S1/Z
       c_rv = (S2/Z - u_rv*u_rv)/(Tsafe*Tsafe)
+      if (present(Q)) Q = Z
 
       end subroutine h2_rovibrational_sum
+
+      ! ------------------------------------------------------!
+
+      double precision function h2_partition_function(TK) result(Q)
+      ! Internal (rovibrational) partition function of H2 X^1 Sigma_g^+ at
+      ! TK [K], measured from v = 0, J = 0, over the observed bound ladder of
+      ! Roueff et al. (2019), A&A 630, A58, table 2.
+      !
+      ! THE NUCLEAR SPIN WEIGHTS ARE INSIDE THE SUM.  h2_lev_g is
+      ! g = g_I (2J+1) with g_I = 1 for even J (para) and 3 for odd J
+      ! (ortho), so this is the single equilibrium partition function of the
+      ! ortho/para mixture, not a para-only sum and not a frozen 3:1 mixture.
+      ! Any equilibrium constant built from it must count the nuclear spin of
+      ! the free atoms on the same convention (2 spin states each), which is
+      ! what mol_rates does.
+      !
+      ! This is the ONLY H2 internal partition function in the code: the
+      ! equilibrium constants of mol_rates and the caloric equation of state
+      ! read it, so one potential generates both.
+      real*8, intent(in) :: TK
+      real*8 :: u_rv, c_rv
+
+      call h2_rovibrational_sum(TK, u_rv, c_rv, Q)
+
+      end function h2_partition_function
 
       ! ------------------------------------------------------!
 

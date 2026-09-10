@@ -23,11 +23,10 @@ Do only PP: False
 Force start: False
 Molecular chemistry: True
 Oxygen chemistry: True
-Stellar FUV B1 flux [erg/cm2/s]: 137.9
 Stellar FUV B3 flux [erg/cm2/s]: 694.8
 Stellar FUV B4 flux [erg/cm2/s]: 658782.2
 Stellar Lya flux [erg/cm2/s]: 4809.2
-Stellar LW flux [erg/cm2/s]: 343.0
+Stellar LW flux [erg/cm2/s]: 480.9
 du_th [PLM,WENO3]: 0.5 1.0e-3
 Solver: Newton
 Stellar radius [R_sun]: 1.155

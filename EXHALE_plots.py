@@ -35,7 +35,7 @@ try:
 except NameError:
     _HERE = os.getcwd()
 sys.path.insert(0, os.path.join(_HERE, 'examples'))
-from exhale_io import loadtxt_cells
+from exhale_io import loadtxt_cells, RJ_CM
 
 # ---------------------------------------------------------------- options
 animate = False
@@ -48,7 +48,9 @@ if len(sys.argv) >= 2:
 # ---------------------------------------------------------------- constants
 mu = 1.67353284e-24     # hydrogen atom mass [g]: the density unit, as in parameters.f90
 gam = 5.0/3.0
-RJ = 6.9911e9
+# Jupiter radius [cm]: the one Python definition, examples/exhale_io.py, which
+# carries the same IAU 2015 nominal value as RJ in parameters.f90.
+RJ = RJ_CM
 
 # ---------------------------------------------------------------- loaders
 
@@ -84,6 +86,51 @@ def load_hydro(path):
     r, n, v, p, T = loadtxt_cells(path, comments='#', unpack=True,
                                   usecols=(0, 1, 2, 3, 4))
     return r, n*mu, v, p, T
+
+
+def load_adv_T_status(path):
+    """Validity of the temperature of each row of an advection-corrected
+    profile file: 0 corrected, 1 retained, 2 failed, 3 unsupported,
+    4 not evaluated (write_adv_validity_header in write_output.f90).
+    None for a file that carries no such column, which is a file written
+    before the schema existed: its rows have unknown validity and must not
+    be drawn as corrected."""
+    cols = read_columns_header(path)
+    if cols is None or 'adv_T_status' not in cols:
+        return None
+    st = loadtxt_cells(path, comments='#', unpack=True,
+                       usecols=(cols.index('adv_T_status'),))
+    return np.asarray(st, dtype=int).ravel()
+
+
+def load_adv_mass_row(path):
+    """The measure each row of an advection-corrected profile was decided by:
+    the fractional change of the face mass flux across the cell.  A corrected
+    row is a conditional correction accurate to that fraction of itself, so
+    the measure is what a corrected row is weighed by.  None for a file that
+    carries no such column."""
+    cols = read_columns_header(path)
+    if cols is None or 'adv_mass_row' not in cols:
+        return None
+    m = loadtxt_cells(path, comments='#', unpack=True,
+                      usecols=(cols.index('adv_mass_row'),))
+    return np.asarray(m, dtype=float).ravel()
+
+
+def read_adv_conditional_tol(path):
+    """The fraction a corrected row of that file is accurate to in the mass
+    flux, from its own header; None for a file that does not state one."""
+    with open(path) as fh:
+        for line in fh:
+            if not line.startswith('#'):
+                return None
+            w = line.lstrip('#').split()
+            if w[:1] == ['adv_conditional_tol'] and len(w) > 1:
+                try:
+                    return float(w[1])
+                except ValueError:
+                    return None
+    return None
 
 
 # ---------------------------------------------------------------- input.inp
@@ -202,6 +249,33 @@ if os.path.isfile(adv_hydro) and os.path.isfile(adv_ioniz):
     fa = ion_derived(iona)
     ax[0, 2].semilogy(ra, pa, '--')
     ax[0, 3].plot(ra, Ta, '--')
+    # The rows whose temperature is NOT the steady correction: the run's own
+    # value, a solve that failed, a cell class the post-process does not
+    # model, or a row it never reached.  Shading them keeps the dashed _adv
+    # temperature from being read as a correction where it is the same curve
+    # as the solid one.
+    Tstat = load_adv_T_status(adv_hydro)
+    if Tstat is not None and Tstat.size == ra.size:
+        kept = Tstat != 0
+        if kept.any():
+            ax[0, 3].fill_between(ra, 0.0, 1.0, where=kept, alpha=0.15,
+                                  color='0.4', step='mid',
+                                  transform=ax[0, 3].get_xaxis_transform(),
+                                  label='T not corrected')
+            ax[0, 3].legend(loc='best', fontsize=8)
+        print('adv rows whose temperature is not the steady correction: '
+              '%d of %d' % (int(kept.sum()), kept.size))
+    # What the corrected rows are worth: the fraction they are accurate to in
+    # the mass flux, and the largest measure the profile carries.
+    mrow = load_adv_mass_row(adv_hydro)
+    ctol = read_adv_conditional_tol(adv_hydro)
+    if mrow is not None and mrow.size == ra.size:
+        print('adv mass row (fractional change of the face mass flux across '
+              'the cell): up to %.3e at r = %.4f Rp%s'
+              % (float(np.nanmax(mrow)), float(ra[int(np.nanargmax(mrow))]),
+                 '' if ctol is None
+                 else '; a corrected row is accurate to %.1e of itself'
+                      % ctol))
     cyc = plt.rcParams['axes.prop_cycle'].by_key()['color']
     for k, (nm, lab, c) in enumerate(ION_PANEL):
         if nm in iona:

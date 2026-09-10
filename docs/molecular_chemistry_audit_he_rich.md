@@ -108,7 +108,7 @@ The module header of `System_HeH_mol` previously said the H-He exchange was
 
 ### He(2<sup>3</sup>S) Penning channels
 
-*Superseded 2026-08-28; see section 4.4 and `docs/Update_EXHALE.md` section 86.*
+*Superseded 2026-08-28; see section 4.4 and `docs/Update_EXHALE_stage1.md` section 86.*
 Both rate coefficients now come from Garc&iacute;a Mu&ntilde;oz (2025) and both are
 branched:
 
@@ -499,7 +499,7 @@ mol_lyman_werner mol_diffusion`), and `make check` re-run afterwards.
 ## 7. The two open items, closed (2026-08-29)
 
 Both items section 6 left open were taken up on 2026-08-29 and are recorded in
-full in `docs/Update_EXHALE.md` section 93. In short:
+full in `docs/Update_EXHALE_stage1.md` section 93. In short:
 
 **They are not the same problem.** The row scaling is a solver defect and the
 NaN abort is a hydrodynamic one; the abort happens at the same step and the
@@ -536,7 +536,7 @@ r = 1.1398 R_p, where the right state has p = -3.6e-2 in code units. Below that
 face the run carries a cold hypersonic shell -- 650 K, 1e7 cm/s -- against a
 dense hot wall at r = 1.144.
 
-**Corrected 2026-08-30** (`Update_EXHALE.md` section 95, `TO_BE_DONE.md` items
+**Corrected 2026-08-30** (`Update_EXHALE_stage1.md` section 95, `TO_BE_DONE.md` items
 (O) and (P)): the negative pressure is **not** made by the reconstruction. The
 cell average of cell 233 already carries the identical `-3.64985e-2`, its
 pressure slope limited to zero, so both of its face states are its own average;

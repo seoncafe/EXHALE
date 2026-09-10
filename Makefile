@@ -4,6 +4,9 @@
 #
 #  Quick start:
 #     make              # build ./EXHALE.x with gfortran (default)
+#     make test         # run every test suite; nonzero exit if any failed
+#     make check        # byte-identical regression over the whole matrix
+#     make check CASES='wasp_full mol_base_handoff'   # ... over those cases
 #     make FC=ifort     # Intel classic        (or:  make ifort)
 #     make FC=ifx       # Intel LLVM compiler   (or:  make ifx)
 #     make -j           # parallel build
@@ -132,9 +135,14 @@ SRC := \
   src/modules/lower_atmosphere/lyman_werner.f90 \
   src/modules/lower_atmosphere/oxygen_rates.f90 \
   src/modules/lower_atmosphere/water_photolysis.f90 \
+  src/modules/lower_atmosphere/co_self_shielding_table.f90 \
+  src/modules/lower_atmosphere/co_photodissociation.f90 \
+  src/modules/lower_atmosphere/element_inventory.f90 \
   src/modules/lower_atmosphere/diffusive_photochemistry.f90 \
   src/modules/time_step/viscous_conduction.f90 \
   src/modules/time_step/steady_residual.f90 \
+  src/modules/time_step/certification.f90 \
+  src/modules/time_step/attempted_step.f90 \
   src/modules/time_step/steady_newton.f90 \
   src/modules/nonlinear_system_solver/ion_cell_state.f90 \
   src/modules/nonlinear_system_solver/ion_residual_core.f90 \
@@ -180,6 +188,7 @@ SRC := \
   src/modules/flux/speed_estimate_ROE.f90 \
   src/modules/flux/Num_Fluxes.f90 \
   src/modules/flux/low_mach_dissipation.f90 \
+  src/modules/flux/species_face_flux.f90 \
   src/modules/time_step/RK_rhs.f90 \
   src/modules/time_step/eval_dt.f90 \
   src/modules/time_step/energy_semi_implicit.f90 \
@@ -228,6 +237,12 @@ DIFT_SRC := \
   src/modules/functions/composition.f90 \
   src/modules/functions/grav_field.f90 \
   src/modules/files_IO/lower_atmosphere_profile.f90 \
+  src/modules/functions/UW_conversions.f90 \
+  src/modules/states/base_boundary.f90 \
+  src/modules/states/Apply_BC.f90 \
+  src/modules/states/PLM_rec.f90 \
+  src/modules/states/Reconstruction.f90 \
+  src/modules/flux/species_face_flux.f90 \
   src/modules/functions/binary_element_diffusion.f90 \
   src/tests/diffusion_tests.f90
 DIFT_OBJ := $(addprefix $(OBJDIR)/,$(notdir $(DIFT_SRC:.f90=.o)))
@@ -280,23 +295,83 @@ FLAGHASH   := $(firstword $(shell printf '%s' '$(BUILDFLAGS)' | cksum))
 FLAGSTAMP  := $(OBJDIR)/.buildflags-$(FLAGHASH)
 
 # ---------------------------------------------------------------------
-.PHONY: all clean distclean ifort ifx wind_ae_ic check diffusion_tests cce_probe \
-        residual_determinism element_census_tests
+.PHONY: all clean distclean ifort ifx wind_ae_ic check test diffusion_tests \
+        cce_probe residual_determinism element_census_tests
 all: $(EXE)
 wind_ae_ic: $(WAE_EXE)
 diffusion_tests: $(DIFT_EXE)
 cce_probe: $(CCE_EXE)
 element_census_tests: $(ECT_EXE)
 
-# Byte-identical regression harness: rebuilds and re-runs the wasp_full /
-# wasp_he23off cases single-thread, comparing against refreshed goldens.
+# Byte-identical regression harness: rebuilds and re-runs each case of the
+# matrix single-thread, comparing against the reference snapshots.
 # Non-fatal when the harness is absent (e.g. a checkout without backup/).
+#
+# CASES limits the run to the cases named, e.g.
+#     make check CASES='wasp_full mol_base_handoff'
+# Empty (the default) leaves the case list to the script, which then runs its
+# DEFAULT_CASES. The reference directory and the tolerance are the script's
+# own environment variables (REGRESSION_GOLDEN_DIR, REGRESSION_REL_TOL), so
+#     make check CASES=wasp_full REGRESSION_GOLDEN_DIR=$(PWD)/backup/regression/baseline_post170_20260905
+# compares that one case against the scratch baseline instead of golden/.
+CASES ?=
 check: $(EXE)
 	@if [ -x backup/regression/run_check.sh ]; then \
-	   backup/regression/run_check.sh check ; \
+	   backup/regression/run_check.sh check $(CASES) ; \
 	 else \
 	   echo "regression harness not found (backup/regression/run_check.sh)"; \
 	 fi
+
+# ---- every test suite in one command --------------------------------
+# `make test` runs the whole test set and prints one verdict line per suite.
+#
+# EVERY suite runs even after one has failed, and the target exits nonzero if
+# any of them did. A test set whose job is to say which defects are still open
+# -- which is exactly what it is asked to do in Phase 0 of
+# docs/development_plan_20260905_rev3.md -- is useless if the first red suite
+# hides the state of the rest.
+#
+# The two Fortran suites are built through a recursive $(MAKE) naming the
+# suite as the goal, because their generated module dependency file is
+# included only when the goal names it (the -include block at the end of this
+# file). Their executables are <suite>.x by the naming above.
+#
+# The directory suites are discovered by the shell, in the recipe, not by a
+# $(wildcard) at parse time: any src/tests/<name>/run.sh that is executable is
+# run. A new suite is therefore added by adding its directory, with no edit
+# here. The convention (Phase 0) is that run.sh builds into build/tests/<name>/,
+# prints one `PASS|FAIL <name> measured=... reference=... tol=...` line per
+# assertion, and exits nonzero on any failure.
+test:
+	@rc=0; summary=""; \
+	 for suite in element_census_tests diffusion_tests; do \
+	   echo ""; echo "=== $$suite ==="; \
+	   if $(MAKE) --no-print-directory $$suite && ./$$suite.x; then \
+	     summary="$$summary\n  PASS $$suite"; \
+	   else \
+	     summary="$$summary\n  FAIL $$suite"; rc=1; \
+	   fi; \
+	 done; \
+	 echo ""; echo "=== residual_determinism ==="; \
+	 if $(MAKE) --no-print-directory residual_determinism; then \
+	   summary="$$summary\n  PASS residual_determinism"; \
+	 else \
+	   summary="$$summary\n  FAIL residual_determinism"; rc=1; \
+	 fi; \
+	 for sh in src/tests/*/run.sh; do \
+	   [ -x "$$sh" ] || continue; \
+	   name=`basename \`dirname "$$sh"\``; \
+	   echo ""; echo "=== $$name ==="; \
+	   if "$$sh"; then \
+	     summary="$$summary\n  PASS $$name"; \
+	   else \
+	     summary="$$summary\n  FAIL $$name"; rc=1; \
+	   fi; \
+	 done; \
+	 echo ""; echo "=== make test summary ==="; \
+	 printf '%b\n' "$$summary"; \
+	 if [ $$rc -ne 0 ]; then echo "==> TEST FAIL"; else echo "==> TEST PASS"; fi; \
+	 exit $$rc
 
 # The steady residual is a function of its argument: evaluating F at a state,
 # at two others, then at the first again must return the same bits.  What used

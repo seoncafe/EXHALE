@@ -87,7 +87,7 @@
    !    fraction would be low by a factor of about three at 1 keV.
    !
    ! ---------------------------------------------------------------------
-   !  DISSOCIATIVE IONIZATION OF H2 (see docs/Update_EXHALE.md section 130)
+   !  DISSOCIATIVE IONIZATION OF H2 (see docs/Update_EXHALE_stage1.md section 130)
    ! ---------------------------------------------------------------------
    !  H2 + e -> H + H+ + 2e is carried, through dissoc_ion_per_H2p below:
    !  the secondary electrons make one such proton for every 22 H2+ ions.
@@ -306,7 +306,7 @@
    integer, parameter :: iabs_HeTR = 4
    integer, parameter :: iabs_H2   = 5
    ! The dissociative H2 photoionization channel is its own absorber: its
-   ! photoelectron carries hv - 18.08 eV, not hv - 15.4 eV, so it lands
+   ! photoelectron carries hv - 18.08 eV, not hv - e_th_H2, so it lands
    ! elsewhere in the Dalgarno energy grid and thermalizes a different share.
    integer, parameter :: iabs_H2_di = 6
    integer, parameter :: n_abs_fixed = 6
@@ -474,7 +474,7 @@
    ! -- while below x = 0.1, where our molecular layer lives, eq. (14) stays
    ! inside 1.40 sigma and their fit reaches 2.77 sigma at x = 1e-4 and
    ! collapses to zero below it. The full point-by-point table is in
-   ! docs/Update_EXHALE.md section 118.
+   ! docs/Update_EXHALE_stage1.md section 118.
    pure function dalgarno_heating_efficiency(tab, k, x) result(eta)
       real*8, intent(in)  :: tab(3,n_dal_E)
       integer, intent(in) :: k
@@ -524,7 +524,7 @@
    ! for helium the effect is large: W_He+ rises from 487 eV at 1 keV to
    ! 6740 eV at 30 eV, so a 30 eV photoelectron puts 14 times less of its
    ! energy into He I ionization than the unresolved fit asserts. That is
-   ! physical -- 30 eV is barely above helium's 24.6 eV threshold.
+   ! physical -- 30 eV is barely above helium's 24.59 eV threshold.
    !
    ! Only the DIVISION of that energy among the targets is recomputed, on the
    ! cell's own densities, at each tabulated energy:
@@ -558,7 +558,7 @@
    !
    ! THE H2 IONIZATION CHANNEL, CHECKED AGAINST ITS SOURCE. In a neutral,
    ! fully molecular gas this construction gives a mean energy per H2+ ion of
-   ! e_th_H2/f_HI(0) = 15.4/0.3908 = 39.4 eV, against the 41.9 eV of Dalgarno
+   ! e_th_H2/f_HI(0) = 15.4259/0.3908 = 39.5 eV, against the 41.9 eV of Dalgarno
    ! et al. Table 4 (H2 and He mixture, 1 keV): 6%, the same size as the
    ! disagreement between the two sources' mean energy per H+ (Dalgarno et
    ! al. section 6 quote 37.2 eV for Shull & van Steenberg against their own

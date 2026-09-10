@@ -16,10 +16,10 @@ what it would cost, so the scope can be fixed before code is written.
 "Oxygen chemistry" covers two problems that share an element and almost nothing
 else:
 
-- **Problem A — the neutral base.** The H2-to-H partition at ~1 microbar is set
+- **Problem A: the neutral base.** The H2-to-H partition at ~1 microbar is set
   by catalytic cycles on O, OH and H2O that EXHALE has no species for. This is
   the blocker recorded as item (H) in `TO_BE_DONE.md`.
-- **Problem B — atomic oxygen in the ionized wind.** O I/II/III are already
+- **Problem B: atomic oxygen in the ionized wind.** O I/II/III are already
   solved, cooled and charge-exchanged. What is missing here is observational
   (no O I line in the transit tool) and a few completeness questions.
 
@@ -45,7 +45,7 @@ Verified against the source, not the documents.
 Not present:
 
 - **No O-bearing molecule anywhere.** The molecular network is H2, H2+, H3+ and
-  HeH+ only (`mol_rates.f90`, reactions R1–R23). There is no O, OH, H2O, CO or
+  HeH+ only (`mol_rates.f90`, reactions R1-R23). There is no O, OH, H2O, CO or
   O2 in it.
 - **No oxygen line in the transit tool.** `EXHALE_transit.py` carries He I
   10830, Ly-alpha, H-alpha, H-beta, Mg II h&k, Ca II H&K and Na I D.
@@ -61,7 +61,7 @@ shows up as a hydrogen-like profile rather than an obviously wrong one.
 
 ---
 
-## 2. Problem A — the base partition (item (H))
+## 2. Problem A: the base partition (item (H))
 
 ### 2.1 The gap, restated
 
@@ -109,7 +109,7 @@ something to take from memory.
 
 ### 2.3 The options
 
-**A0 — Status quo: pin `q_H2_base` from the handoff.**
+**A0, Status quo: pin `q_H2_base` from the handoff.**
 Cost: none, it works today. `vulcan_to_base.py` interpolates VULCAN's H2/H/He
 mixing ratios at the base pressure and writes `q_H2_base`; the molecular base
 then uses that instead of the chemical-equilibrium fit.
@@ -118,7 +118,7 @@ rather than computed, and there is no feedback from the wind onto it. This is a
 deliberate modeling choice, not a patch, and it is defensible in a paper as long
 as it is stated.
 
-**A1 — Widen the handoff vector.** *(Already sketched: this is the `base.inp`
+**A1: Widen the handoff vector.** *(Already sketched: this is the `base.inp`
 of the Tier-3 plan in `docs/lower_atmosphere_coupling.md`, whose example file
 carries atomic-metal release fractions below the six keys that were actually
 implemented. A1 is finishing that plan, not a new proposal.)*
@@ -142,7 +142,7 @@ values, not transported quantities. In particular it does not close item (H) --
 Effort: small, mostly Python and input parsing. Default off, so old goldens
 reproduce.
 
-**A2 — A minimal catalytic set inside the coupled molecular system.**
+**A2: A minimal catalytic set inside the coupled molecular system.**
 Add H2O and OH (and neutral O as a *molecular-network* member, see the trap
 below) to `System_HeH_mol`, with the handful of reactions that carry the cycle
 above plus water photolysis with its own shielding.
@@ -162,7 +162,7 @@ probably to let the metal system own all oxygen and have the molecular network
 consume and return it through the shared `n_e`/particle budget, not to duplicate
 it. This has to be decided before the first line is written.
 
-**A3 — A reduced C/H/O photochemical network in-code.**
+**A3: A reduced C/H/O photochemical network in-code.**
 Fifteen to twenty-five species, i.e. a small VULCAN inside EXHALE.
 Buys: full independence, and the ability to say the lower atmosphere and the
 wind are solved with the same code.
@@ -173,7 +173,7 @@ an atmosphere solver.
 Worth it only if a scientific claim depends on the base composition being
 computed, not assumed.
 
-**A4 — Two-way offline iteration, keeping the one-way handoff.**
+**A4: Two-way offline iteration, keeping the one-way handoff.**
 Run VULCAN, hand off, converge the wind, feed the resulting upper boundary back
 to VULCAN, repeat until the base state stops moving.
 Buys: self-consistency between the two codes without new in-code chemistry.
@@ -249,11 +249,11 @@ today that provenance exists only as a comment the reader ignores.
 
 ---
 
-## 3. Problem B — oxygen in the wind
+## 3. Problem B: oxygen in the wind
 
 These are independent of everything above and can be done first.
 
-**B1 — The O I 1302/1304/1306 triplet in the transit tool.**
+**B1: The O I 1302/1304/1306 triplet in the transit tool.**
 Oxygen escaping from HD 209458 b was detected in exactly this multiplet
 (Vidal-Madjar et al. 2004, ApJ 604, L69, "Detection of Oxygen and Carbon in the
 Hydrodynamically Escaping Atmosphere of the Extrasolar Planet HD 209458b"; see
@@ -274,7 +274,7 @@ H Ly-beta, so solar-system aeronomy treats Ly-beta pumping of O I as a real
 source. Whether it matters for the 1302 multiplet in this regime needs a
 literature check before the line is quoted.
 
-**B2 — Charge-exchange completeness for oxygen.**
+**B2: Charge-exchange completeness for oxygen.**
 The code carries `O+ + H`, `O+ + He` and `Fe + O+`. Since O I is locked to H I
 through the first of these, the O ionization balance is only as good as that
 list. An audit against Huang et al. (2023) Table 4 groups B/C/D for any O2+
@@ -284,7 +284,7 @@ find something.
 Note the code already gets one subtlety right, with the reasoning written at the
 site: IP(O I) > IP(H I), so the barrier belongs on `O + H+`, not on `O+ + H`.
 
-**B3 — Cooling: probably complete, one question open.**
+**B3, Cooling: probably complete, one question open.**
 O I and O II have CHIANTI fits, the O I ground term is in statistical
 equilibrium, and the three fine-structure lines are trapped. The measured effect
 of swapping the CNO coefficients to the CHIANTI set was 0.004 % on Mdot and
@@ -292,7 +292,7 @@ of swapping the CNO coefficients to the CHIANTI set was 0.004 % on Mdot and
 is. The open question is the same Ly-beta pumping as in B1: a pumped O I
 population would radiate, and none of the current channels knows about it.
 
-**B4 — Oxygen diffusion.**
+**B4: Oxygen diffusion.**
 `He_metal_diffusion` already lets each metal settle independently, but this has
 never been exercised for oxygen specifically. A single numerical experiment
 would show whether O separates enough from H to matter for B1. Cost: a run, not
@@ -316,14 +316,14 @@ Three questions decide almost everything above.
 
 ## 5. Suggested order, if the answers are "paper first, VULCAN acceptable"
 
-1. **B1** — O I 1302 in the transit tool. Highest return per line of code, uses
+1. **B1**: O I 1302 in the transit tool. Highest return per line of code, uses
    data already on disk, and gives the paper a second element.
-2. **B2** — the charge-exchange audit. Cheap, and it protects B1.
-3. **A1** — widen the handoff. Removes the "one number crosses the boundary"
+2. **B2**: the charge-exchange audit. Cheap, and it protects B1.
+3. **A1**: widen the handoff. Removes the "one number crosses the boundary"
    limitation without new physics in the wind.
-4. **A2** — only if a claim has to rest on a computed base partition. Settle the
+4. **A2**: only if a claim has to rest on a computed base partition. Settle the
    ownership question (Section 2.3) before starting.
-5. **A3 / A4** — not now.
+5. **A3 / A4**, not now.
 
 ## 6. Validation gates, so the scope stays honest
 

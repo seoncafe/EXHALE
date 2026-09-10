@@ -6,13 +6,13 @@ fine-structure lines `[O I] 63um` and `[C II] 158um` and explicitly left the
 thick resonance lines of a metal-rich wind untreated. This memo measures that
 open item and closes it. (Those two lines were the whole trapped set at the
 time; it is now the eight ground-term lines of C I, C II, N II and O I, which
-does not affect the verdict below — that verdict is about permitted resonance
+does not affect the verdict below: that verdict is about permitted resonance
 lines, a different class.)
 
 **Verdict. The correction is a no-op and was not implemented.** The lines are
-genuinely optically thick — Mg II h&k reaches `tau0 ~ 7.6e4` at the WASP-121 b
+genuinely optically thick (Mg II h&k reaches `tau0 ~ 7.6e4` at the WASP-121 b
 base and stays above `1e2` through the region where Mg II carries a third of
-the local cooling — but trapping does not suppress their cooling, because a
+the local cooling), but trapping does not suppress their cooling, because a
 trapped photon in a permitted resonance line still escapes long before a
 collision can destroy the excitation. Applying the correct correction changes
 the total radiative losses of WASP-121 b by **0.02%**, of HD 209458 b by
@@ -65,8 +65,8 @@ where `beta` enters as `A_ul -> beta A_ul` *inside* `lambda_2level` rather than
 multiplying its result. The present memo is that same statement carried to the
 resonance lines; what differs is only the value of `A_ul`.
 
-* forbidden fine structure: `A_ul ~ 1e-5 - 1e-3 s^-1`, `n_crit,eff ~ 1e0 - 1e5 cm^-3`
-  — far below the base density, so `S` is small and `beta` matters;
+* forbidden fine structure: `A_ul ~ 1e-5 - 1e-3 s^-1`, `n_crit,eff ~ 1e0 - 1e5 cm^-3`,
+  far below the base density, so `S` is small and `beta` matters;
 * permitted resonance: `A_ul ~ 1e8 s^-1`, and even `beta ~ 1e-4` leaves
   `beta A_ul ~ 1e4 s^-1`, so `n_crit,eff ~ 1e10 - 1e15 cm^-3`.
 
@@ -82,12 +82,12 @@ for `HD209458b/output/` and `HD189733b/output/`.
 For each line, the line-center opacity uses the same expression as
 `line_center_opacity_lte`, in the equivalent oscillator-strength form
 `kappa_0 = (sqrt(pi) e^2/m_e c) f_lu n_l / Dnu_D` with a Doppler core
-`v_th = sqrt(2kT/m)` and no turbulent broadening — an upper bound on
+`v_th = sqrt(2kT/m)` and no turbulent broadening: an upper bound on
 `kappa_0`, so a *lower* bound on `beta`. Two escape channels are combined
 exactly as `lya_rt.f90` does, `beta = 1 - (1-beta_static)(1-beta_Sobolev)`:
 
 * `beta_static` from the outward line-center column (cell center to the top of
-  the domain), through `line_escape_probability`;
+  the domain), through `line_escape_probability_one_face`;
 * `beta_Sobolev` from the radial velocity gradient,
   `tau_S = (pi e^2/m_e c) f_lu lambda n_l / |dv/dr|`.
 
@@ -127,8 +127,8 @@ and the share each ion holds of the *local* total cooling:
 | 1.300 | 10283 | 0.343 | 0.030 | 1.4e-4 | 0.058 | 3.0e-3 | 0.012 | 0.086 |
 | 1.501 | 11111 | 0.349 | 0.022 | 1.1e-4 | 0.032 | 6.2e-4 | 3.7e-3 | 0.067 |
 
-So the literal form of the test — is the ion a significant coolant where the
-line is thick? — is passed decisively. Over 99% of the integrated Mg II, Ca II,
+So the literal form of the test (is the ion a significant coolant where the
+line is thick?) is passed decisively. Over 99% of the integrated Mg II, Ca II,
 Fe II and Mg I cooling, and 73-81% of the Na I cooling, comes from gas with
 `tau0 > 1`; Mg II peaks at 35% of the local cooling at `tau0 ~ 1e2-1e3`. On
 that criterion alone one would implement the correction.
@@ -140,14 +140,14 @@ that criterion alone one would implement the correction.
 | `r/R_p` | `ne` [cm^-3] | `beta`(Mg II k) | `beta A / ne q_ul` | `S`(Mg II k) | `S`(Ca II K) | `S`(Na I D2) | `S`(Fe II 2383) |
 |---|---|---|---|---|---|---|---|
 | 1.000 | 1.9e9 | 2.0e-6 | 0.87 | 0.462 | 0.852 | 0.698 | 0.534 |
-| 1.020 | 1.3e9 | 8.4e-6 | 4.3 | 0.810 | 0.970 | 0.940 | — |
-| 1.050 | 1.4e9 | 8.2e-5 | 56 | 0.982 | 0.998 | 0.998 | — |
-| 1.100 | 2.0e9 | 4.5e-4 | 2.9e2 | 0.997 | 1.000 | 1.000 | — |
-| 1.200 | 4.3e9 | 5.4e-3 | 1.9e3 | 0.999 | 1.000 | 1.000 | — |
-| 1.300 | 3.0e9 | 6.6e-3 | 3.4e3 | 1.000 | 1.000 | 1.000 | — |
-| 1.501 | 1.5e9 | 2.8e-2 | 2.9e4 | 1.000 | 1.000 | 1.000 | — |
+| 1.020 | 1.3e9 | 8.4e-6 | 4.3 | 0.810 | 0.970 | 0.940 | - |
+| 1.050 | 1.4e9 | 8.2e-5 | 56 | 0.982 | 0.998 | 0.998 | - |
+| 1.100 | 2.0e9 | 4.5e-4 | 2.9e2 | 0.997 | 1.000 | 1.000 | - |
+| 1.200 | 4.3e9 | 5.4e-3 | 1.9e3 | 0.999 | 1.000 | 1.000 | - |
+| 1.300 | 3.0e9 | 6.6e-3 | 3.4e3 | 1.000 | 1.000 | 1.000 | - |
+| 1.501 | 1.5e9 | 2.8e-2 | 2.9e4 | 1.000 | 1.000 | 1.000 | - |
 
-`beta` falls to `2e-6` at the base — the trapping is extreme — and `S` still
+`beta` falls to `2e-6` at the base (the trapping is extreme) and `S` still
 only reaches 0.46 there, because `beta A_ul = 5e2 s^-1` remains comparable to
 `ne q_ul`. Everywhere the lines actually cool, `beta A_ul` exceeds `ne q_ul` by
 two to five decades.
@@ -197,19 +197,22 @@ so this does not survive into the total.
 Three choices in the measurement all push `S` down, i.e. exaggerate the effect
 that was found to be absent:
 
-1. **Doppler-only escape.** `line_escape_probability` is the plane-parallel
-   Doppler form. At `tau0 ~ 1e3` these lines have a Voigt parameter
-   `a = 2e-3 - 7e-3`, and the Voigt wing result `pi^(-1/4) sqrt(a/tau)` gives
-   `beta` 4-10x larger than the Doppler form, hence `S` closer to 1. The
-   Doppler form is the right one for the fine-structure lines it was written
-   for (`a ~ 1e-8`), not for these.
+1. **Doppler-only escape.** `line_escape_probability_one_face` is the
+   plane-parallel Doppler-core form of de Jong, Boland & Dalgarno (1980)
+   eq. (B-7). These resonance lines are in the damping wings at the depths
+   of section 3, where the published static-slab solution is Harrington
+   (1973) eq. (40), `beta = 1/(1 + 0.909 tau0)` (see section 7). That is
+   8x the Doppler form at `tau0 = 1e2`, 10x at `1e3` and 13x at the
+   `7.5e4` of the WASP-121 b base, hence `S` closer to 1. The Doppler form
+   is the right one for the fine-structure lines it was written for
+   (`a ~ 1e-8`), not for these.
 2. **No turbulent or bulk broadening in `kappa_0`**, which maximizes `tau0`.
 3. **Electron collisions only in `q_ul`.** Adding neutral-H de-excitation would
    raise `ne q_ul` at the base. This is the one choice that goes the other way,
    and it is the reason the base cells are quoted as an upper bound rather than
    a measurement: quantum de-excitation rates for Na I D by H (Barklem et al.)
    are of order `1e-10 cm^3 s^-1` at 2000-3000 K, against `n_HI ~ 3e12`, so
-   `n_HI k_ul ~ 3e2 s^-1` — comparable to `beta A_ul` there. It would deepen
+   `n_HI k_ul ~ 3e2 s^-1`, comparable to `beta A_ul` there. It would deepen
    the ~1% first-cell effect and would not touch the wind, where H is ionized.
 4. **The Fe II proxy** puts the whole UV resonance group on a single line,
    over-stating `tau0` per line.
@@ -233,14 +236,34 @@ negligible, but it is an estimate, not a measurement.
   escape probability.
 * **H I Ly-alpha** is not in scope but is the extreme case of the same physics
   and was evaluated for context: `tau0 = 1.3e8` at the WASP-121 b base,
-  `beta ~ 2e-6` on the Neufeld/Harrington wing form, and yet
-  `beta A / ne q_ul = 1.1e2` at the base rising to `1.8e5` in the wind, giving a
-  cooling-weighted `S = 0.9994`. Whatever suppresses Ly-alpha cooling in a
-  planetary wind, it is not two-level trapping; the candidate channels are
-  destruction of the trapped photon (photoionization of `H(n=2)`, collisional
-  `2p -> 2s` transfer to two-photon decay), which is a different calculation
-  and is not made here. `Cool_coeff.f90` continues to treat the Ly-alpha
-  collisional-excitation cooling as thin.
+  `beta ~ 2e-6` on the one-flight wing form `pi^(-1/4) sqrt(a/tau)` that
+  `lya_rt.f90` uses, and yet `beta A / ne q_ul = 1.1e2` at the base rising to
+  `1.8e5` in the wind, giving a cooling-weighted `S = 0.9994`. Whatever
+  suppresses Ly-alpha cooling in a planetary wind, it is not two-level
+  trapping; the candidate channels are destruction of the trapped photon
+  (photoionization of `H(n=2)`, collisional `2p -> 2s` transfer to two-photon
+  decay), which is a different calculation and is not made here.
+  `Cool_coeff.f90` continues to treat the Ly-alpha collisional-excitation
+  cooling as thin.
+
+  Two corrections to that paragraph, from items REF-NEUFELD and LYA-BETA
+  (2026-09-07). The one-flight wing form was **not** the Neufeld (1990) or
+  Harrington (1973) result and was not the escape probability of a Ly-alpha
+  photon; `lya_rt.f90` no longer uses it. The published static-slab,
+  damping-wing solution is Harrington (1973), MNRAS 162, 43, eq. (40),
+  `<N> = (4 sqrt(6)/pi^2) u_2 B = 0.909316 B` scatterings for a mid-plane
+  source in a slab of line-centre optical half-thickness `B`, generalized to a
+  source plane anywhere between the two faces by Neufeld (1990), ApJ 350, 216,
+  eq. (3.27) at zero continuum destruction. `<N>` counts absorptions, so the
+  escape chance per emission is `beta = 1/(1 + <N>)`, which is what the code
+  now carries: proportional to `1/tau` in the wings, independent of the Voigt
+  parameter, and tending to 1 in the thin limit. On the stored `wasp_full`
+  column that is `9.1e-9` at the base against the `2.1e-6` used here, a factor
+  234. With it, `beta A / ne q_ul = 0.50` at the base and `S = 0.33` rather
+  than `~1`, so the base cells **are** trapping-suppressed; the wind is not
+  (`beta A / ne q_ul = 70` at `1.20 R_p`, `4.4e2` at `1.28 R_p`), and the
+  cooling-weighted conclusion of this section, which is set by the wind,
+  stands.
 
 ## 8. What was changed, and what was not
 
@@ -249,7 +272,7 @@ Changed: the `SCOPE` comment of the fine-structure trapping block in
 `ne << beta A_ul / q_ul` and its measured margin, in place of the sentence
 recording the resonance lines as untreated; the corresponding "still not fixed"
 entries in `docs/hd189_base_checkerboard.md` §10.1/§10.7 and
-`docs/Update_EXHALE.md` §42 now point here.
+`docs/Update_EXHALE_stage1.md` §42 now point here.
 
 **No code path was modified and no result changed.** `beta = 1` for the
 resonance lines is kept, now as a justified effective treatment rather than an
@@ -273,3 +296,158 @@ The inputs are `Ion_species.txt` (columns 8-34, canonical metal-ion order),
 offset). Atomic data:
 NIST ASD for `lambda`, `f_lu`, `A_ul`, `g_u` and the Fe II level list; `Ups(T)`
 from the fits in `Cool_coeff.f90` itself.
+
+---
+
+## 10. The escape probability of the fine-structure lines: source and argument
+
+2026-09-07, item LYA-BETA-METALS. Sections 1-9 settle the *resonance* lines
+(`beta = 1`, justified). This section settles the function that carries the
+`beta` of the other class, the eight ground-term fine-structure lines of C I,
+C II, N II and O I, which are the only lines in the code that get one.
+
+### 10.1 Where it is used
+
+`line_escape_probability_one_face` in `Cool_coeff.f90` is called from exactly
+one place, `fine_structure_line_transfer`, which fills `beta_fs` and
+`nbar_fs` for the eight lines `[C I] 609/370um`, `[C II] 158um`,
+`[N II] 205/122um` and `[O I] 63/145/44um`. They enter the cooling as
+`A_ul -> beta A_ul` inside the statistical equilibrium of `cool_CI_ne_func`,
+`cool_CII_ne_func`, `cool_NII_ne_func` and `cool_OI_ne_func` (and the
+two-level legacy branch of `util_ion_eq.f90`). With `Base IR field` on, the
+inward face value also sets the incident field `nbar_fs`.
+
+No metal resonance line uses it: `cool_MgI_func`, `cool_MgII_func`,
+`cool_CaII_func`, `cool_NaI_func`, the Fe I table and the Fe II 2-D
+statistical-equilibrium table are all evaluated at `beta = 1`, for the reason
+of sections 1-5. The transmission post-processor (`EXHALE_transit.py`,
+`exhale_transit_lib.py`) does not use an escape probability at all; it
+integrates Voigt profiles directly.
+
+### 10.2 The published source
+
+The expression **is** published, and the attribution can be given to the
+equation. It is **de Jong, Boland & Dalgarno (1980), A&A 91, 68, appendix B,
+eq. (B-7)**:
+
+```
+beta(tau) = [1 - exp(-2.34 tau)] / (4.68 tau)          for tau < 7
+          = 1 / (4 tau [ln(tau/sqrt(pi))]^(1/2))       for tau >= 7
+```
+
+quoted there as approximating `beta(tau) = (1/2) int dx phi(x) E_2[tau phi(x)]`
+"when photons escape only through the nearest cloud boundary", and "accurate
+to within 10% for small and intermediate `tau` and exact at very large
+`tau`". The code reproduces both branches to round-off, takes `beta(0) = 1/2`
+as (B-7) does, and switches branches at `tau_c = sqrt(pi) exp(2.34^2/4) =
+6.9676`, the point where the two expressions meet (the paper rounds it to 7),
+so the switch loses only the `exp(-2.34 tau_c) = 8e-8` term.
+
+This is a Doppler-core, complete-redistribution, single-flight result, which
+is the right class for these lines: their Voigt parameter is `a ~ 1e-8`, so
+nothing escapes through a damping wing and the Ly-alpha correction of item
+LYA-BETA (Harrington 1973 eq. 40, section 7 above) does not transfer. Nothing
+in these winds comes near `a tau > 1e3` in a fine-structure line.
+
+### 10.3 The defect: the argument is short by `sqrt(pi)`
+
+`phi` in the integral (B-7) approximates is a **normalized** profile,
+`int phi dx = 1`, so `phi(0) = 1/sqrt(pi)` and the argument `tau` of (B-7) is
+the frequency-integrated depth. The line-centre depth is `tau/sqrt(pi)`:
+
+```
+tau_dJ = sqrt(pi) * tau_line-centre
+```
+
+The independent confirmation is **Hollenbach & McKee (1979), ApJS 41, 555,
+eq. (5.10)**, the same physical quantity written in the *line-centre*
+convention (they state it explicitly: "we shall quote our final results in
+terms of the line-center optical depth `tau = tau'/pi^(1/2)`"):
+
+```
+eps(tau) = 1 / (1 + tau [2 pi ln(2.13 + tau^2)]^(1/2))
+```
+
+for both faces of the slab. MEASURED: `2 beta_dJ(sqrt(pi) tau)` and
+`eps_HM(tau)` agree to 3.4% at worst over `tau = 3` to `1e6` and to five
+digits above `tau = 1e3` (`1.07331e-4` against `1.07320e-4` at `tau = 1e3`).
+Two independently published fits collapsing onto one function is what fixes
+the convention.
+
+`fine_structure_line_transfer` integrates `line_center_opacity_lte`, i.e. it
+builds a **line-centre** column and passes it straight in. The `beta` the
+code returns is therefore evaluated at an argument `sqrt(pi)` too small and
+is too large by (MEASURED, on a `tau` grid):
+
+| line-centre `tau0` | `beta` as called | `beta` at the published argument | ratio |
+|---|---|---|---|
+| 0.01 | 9.884e-1 | 9.795e-1 | 1.009 |
+| 0.1  | 8.916e-1 | 8.186e-1 | 1.089 |
+| 1    | 3.862e-1 | 2.373e-1 | 1.627 |
+| 7    | 6.095e-2 | 2.889e-2 | 2.110 |
+| 1e2  | 2.490e-3 | 1.315e-3 | 1.894 |
+| 1e3  | 1.986e-4 | 1.073e-4 | 1.851 |
+| 1e5  | 1.512e-6 | 8.314e-7 | 1.818 |
+| 1e6  | 1.374e-7 | 7.589e-8 | 1.810 |
+
+The ratio rises to 2.11 at the branch point and tends to `sqrt(pi) = 1.772`.
+
+### 10.4 What it costs in the cases that ship
+
+MEASURED from the stored `backup/regression/*/output/` profiles of
+`wasp_full`, `mol_metals`, `mol_ir_bands` and `lower_profile`, with the
+line-centre columns built from `Ion_species.txt` by the same expressions
+`fine_structure_line_opacity` uses. **The eight lines never get thick**:
+
+| case | thickest line | max `tau0` | at `r/R_p` | `beta` ratio |
+|---|---|---|---|---|
+| `wasp_full` | `[O I] 63um` | 0.039 | 1.0002 | 1.035 |
+| `mol_metals` | `[O I] 63um` | 0.140 | 1.0002 | 1.124 |
+| `mol_ir_bands` | `[O I] 63um` | 0.140 | 1.0002 | 1.124 |
+| `lower_profile` | `[O I] 63um` | 0.044 | 1.0002 | 1.040 |
+
+Every other line is thinner: `[C I] 370um` peaks at `1.1e-2`, `[C II] 158um`
+at `6.0e-3`, `[N II] 205/122um` below `1e-5`, `[O I] 44um` below `4e-8`. The
+depths fall by four decades by `r = 1.13 R_p`.
+
+In the two-level form the cooling carries, `Lambda ~ beta A/(beta A + C(1+x))`
+with the H-atom de-excitation rate of the `[O I] 63um` channel, the base cell
+of the hot Uranus gate is fully trapping-saturated, so the local `[O I] 63um`
+rate moves by the full 11%. Integrated over the domain against the `[O I]`
+column of `Cooling_breakdown.txt`, the change in the **total** radiative
+losses from that channel is
+
+| case | `[O I]` share of the losses | change of the total |
+|---|---|---|
+| `wasp_full` | 6.2% | 0.003% |
+| `mol_metals` | 1.9% | 0.096% |
+| `mol_ir_bands` | 1.2% | 0.056% |
+| `lower_profile` | 8.4% | 0.003% |
+
+### 10.5 The fix (applied 2026-09-07)
+
+`fine_structure_line_transfer` now forms each cell's depth as `sqrt(pi)`
+times the line-centre depth, so every argument handed to
+`line_escape_probability_one_face` is the frequency-integrated depth (B-7)
+is written in; the function itself stays the literal (B-7). One factor in
+one routine. Expected movement: below 0.1% of the radiative losses in every
+case that ships, largest in `mol_metals`; the cases are not byte-identical
+and the goldens are refreshed at the series gate.
+
+The reason it was made despite the size is that the error is a factor of two, not 12%,
+the moment a run has a base thick in `[O I] 63um` -- a denser or more
+oxygen-rich lower atmosphere than the gates carry, or the same gate with the
+`Base IR field` on, where the same `beta` also scales the incident field
+`nbar_fs` and so the heating the layer takes from below.
+
+### 10.6 Test
+
+`src/tests/physics_probe/fine_structure_escape_probability.f90` (registered in
+`src/tests/physics_probe/run.sh`) asserts that the production routine is
+(B-7) branch by branch, that `beta(0) = 1/2`, that the branch point is
+continuous, that (B-7) at `sqrt(pi) tau` and Hollenbach & McKee eq. (5.10) at
+`tau` are one function, and -- as a recorded measurement of the open defect --
+that the departure of the line-centre argument is at least 1.75 for
+`tau0 >= 3` and at most 1.13 at the depths the shipped cases reach. The last
+block goes red the day the argument is corrected and has to be rewritten with
+it.

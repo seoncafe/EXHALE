@@ -132,12 +132,62 @@
       !                            override mu = visc_mu0 T^visc_s in CODE
       !                            units (unchanged legacy meaning)
       !   "Conduction: True"    -> cond_on, calibrated kappa(T) of (4)
+      !
+      ! -------------------------------------------------------------------
+      ! 5. What the transport stage returns, and what it refuses to return
+      ! -------------------------------------------------------------------
+      ! The Crank-Nicolson stage returns a state only when every cell of it
+      ! is admissible: the tridiagonal eliminations completed, every solved
+      ! value is finite, and every solved temperature is at or above the
+      ! floor of the range in which the equation of state and the transport
+      ! coefficients are defined (T_floor, the same lower end the implicit
+      ! energy source step brackets its root in, energy_semi_implicit).
+      ! Otherwise the stage FAILS with a named status and reason, the cell,
+      ! the value it solved for, and the energy the floor would have had to
+      ! inject for the floor value to be a solution.
+      !
+      ! THE FLOOR IS NOT A RESERVOIR.  A temperature below T_floor means the
+      ! diffusion operator asks this cell to give up more heat over dt than
+      ! it holds down to the validity limit.  Returning the floor instead
+      ! would add c_v (T_floor - T_solved) per volume to the state with no
+      ! source term behind it, so the returned column would not be a zero of
+      ! the steady residual that viscous_conduction_sources assembles from
+      ! the same triplets, and the state would carry an unbudgeted accepted
+      ! correction (category 4 of docs/b1_target_system_20260906.md section
+      ! 7.4, where this stage is operation 11).
+      !
+      ! INTERIM ACTION ON FAILURE.  This module stops the run (error stop 1)
+      ! after printing the diagnostics.  Step B3a of
+      ! docs/PLAN_20260906_rev2.md replaces that stop by a REJECTION of the
+      ! whole attempted step: the controller restores the checkpoint of
+      ! section 7.2 of the same document and retries with a shorter step,
+      ! and this routine will then only report the status.  Until it exists
+      ! no recovery is claimed here and stopping is the stop-safe action.
+      !
+      ! CONSERVATION.  The two operators are assembled in flux form: the
+      ! coefficient of the face between cells j and j+1 is built from the
+      ! same interpolated coefficient, the same face area and the same
+      ! spacing on both sides, so sum_j dV_j Q_j telescopes to the net flux
+      ! through the two ends of the column.  The outer end carries zero
+      ! diffusive flux by construction, so a column whose base face also
+      ! carries none conserves its thermal energy exactly under the
+      ! conduction operator.  As boundary-conditioned in a RUN the base face
+      ! does not carry none: the ghost is a Dirichlet anchor, and the heat
+      ! that crosses that face is precisely the exchange with the anchored
+      ! lower atmosphere this term exists to represent.  The stage is
+      ! therefore conservative up to that named boundary flux, and closed
+      ! only when the base flux vanishes.  Both statements are asserted in
+      ! src/tests/energy_update (conduction_floor_tests).
 
       use global_parameters
       use Conversion, only: U_to_W
       use caloric_eos, only: caloric_mixture_active,                    &
                              energy_density_from_pressure,              &
                              heat_capacity_per_particle
+      ! The lower end of the range in which the equation of state and the
+      ! rate fits are defined, declared once for the whole code by the
+      ! implicit energy source step and used here as the same floor.
+      use energy_semi_implicit, only: T_eos_floor_K, T_floor_code_min
 
       implicit none
       private
@@ -146,6 +196,94 @@
       public :: viscous_momentum_source, viscous_dissipation
       public :: thermal_conduction_source, viscous_conduction_sources
       public :: viscous_conduction_step
+      public :: n_conduction_floor_hits, n_conduction_floor_cells
+      public :: n_conduction_floor_hits_family
+      public :: conduction_floor_first_step, conduction_floor_last_step
+      ! THE CELL-BY-CELL FLOOR RECORD, readable the way
+      ! energy_semi_implicit's energy_floor_cell_hits is, so that the two
+      ! temperature floors of the marching loop report their attempts in
+      ! the same shape and a reader of one needs no second convention for
+      ! the other.  It is a diagnostic extremum over the run: unallocated
+      ! until the floor is first reached, and one count per activation of
+      ! the cell.
+      public :: conduction_floor_cell_hits
+      public :: CONDUCTION_OK, CONDUCTION_FLOOR, CONDUCTION_NONFINITE
+      public :: CONDUCTION_SOLVE_FAILED
+      public :: CONDUCTION_REASON_NONE, CONDUCTION_REASON_FLOOR_REACHED
+      public :: CONDUCTION_REASON_NONFINITE_INPUT
+      public :: CONDUCTION_REASON_NONFINITE_SOLUTION
+      public :: CONDUCTION_REASON_PIVOT_BREAKDOWN
+      public :: conduction_last_status, conduction_last_reason
+      public :: conduction_last_cell, conduction_last_step
+      public :: conduction_last_T_solution, conduction_last_T_floor
+      public :: conduction_last_energy_deficit, conduction_last_nfail
+      public :: conduction_stop_on_failure
+      public :: conduction_temperature_floor
+
+      ! Status of the Crank-Nicolson transport stage, reported through the
+      ! optional `status` argument of viscous_conduction_step and left in
+      ! conduction_last_status, so the physical-step context of
+      ! docs/a2_certification_contract_20260906.md section 3 and the B3a
+      ! controller read a verdict instead of inferring one from the state.
+      integer, parameter :: CONDUCTION_OK           = 0
+      integer, parameter :: CONDUCTION_FLOOR        = 1
+      integer, parameter :: CONDUCTION_NONFINITE    = 2
+      integer, parameter :: CONDUCTION_SOLVE_FAILED = 3
+
+      ! Reasons, one per way the stage can fail. NONFINITE_SOLUTION and
+      ! PIVOT_BREAKDOWN share the SOLVE_FAILED status and say different
+      ! things about the matrix: a zero or non-finite pivot means the
+      ! elimination broke down, a non-finite solution means it completed on
+      ! a matrix that was not diagonally usable.
+      integer, parameter :: CONDUCTION_REASON_NONE               = 0
+      integer, parameter :: CONDUCTION_REASON_FLOOR_REACHED      = 1
+      integer, parameter :: CONDUCTION_REASON_NONFINITE_INPUT    = 2
+      integer, parameter :: CONDUCTION_REASON_NONFINITE_SOLUTION = 3
+      integer, parameter :: CONDUCTION_REASON_PIVOT_BREAKDOWN    = 4
+
+      ! Set .false. ONLY by the test drivers of src/tests/energy_update,
+      ! which exercise the failure statuses on purpose. Production runs stop.
+      logical, save :: conduction_stop_on_failure = .true.
+
+      ! Verdict of the last call, for a caller that reads it after the fact
+      ! (EXHALE_main does not pass `status` today).
+      !   T_solution        the temperature the operator solved for in the
+      !                     failing cell, code units, unclamped
+      !   T_floor           the floor it fell below, code units
+      !   energy_deficit    c_v (T_floor - T_solution) per volume, erg/cm3:
+      !                     the energy a floor would have injected into that
+      !                     cell with no source term behind it
+      integer, save :: conduction_last_status = CONDUCTION_OK
+      integer, save :: conduction_last_reason = CONDUCTION_REASON_NONE
+      integer, save :: conduction_last_cell   = 0
+      integer, save :: conduction_last_step   = -1
+      integer, save :: conduction_last_nfail  = 0
+      real*8,  save :: conduction_last_T_solution     = 0.0d0
+      real*8,  save :: conduction_last_T_floor        = 0.0d0
+      real*8,  save :: conduction_last_energy_deficit = 0.0d0
+
+      ! ATTEMPTS at the temperature floor of the Crank-Nicolson transport
+      ! stage. A cell whose solved temperature falls below the floor is a
+      ! FAILURE of the stage (see section 5 of the header): no state is
+      ! built from the floor value, so these count attempted steps that were
+      ! refused, never corrections carried by an adopted state. Under
+      ! docs/b1_target_system_20260906.md section 7.2 they are attempt
+      ! statistics and are kept, not restored, on a rejected step. The
+      ! implicit energy source step counts its own floor in the same terms.
+      !   hits        total activations over the run
+      !   first/last  first and last marching step on which the floor was hit
+      !   cell_hits   activations of each cell, so the number of DISTINCT
+      !               cells that ever reached the floor can be reported
+      integer, save :: n_conduction_floor_hits = 0
+      ! The same activations split by ledger family
+      ! (docs/a0_run_mode_contract_20260906.md section 5): index
+      ! ledger_family_init counts the activations taken while the run was
+      ! reaching a state, index ledger_family_phys those taken inside
+      ! accepted physical steps. The total above is their sum.
+      integer, save :: n_conduction_floor_hits_family(2) = 0
+      integer, save :: conduction_floor_first_step = -1
+      integer, save :: conduction_floor_last_step  = -1
+      integer, allocatable, save :: conduction_floor_cell_hits(:)
 
       ! Watson, Donahue & Walker (1981) atomic-hydrogen heat conduction,
       ! kappa = kappa_1000K (T/1000 K)^kappa_expo  [erg cm^-1 s^-1 K^-1].
@@ -155,6 +293,21 @@
       real*8, parameter :: eucken      = 3.75d0        ! = 15/4
 
       contains
+
+      ! ------------------------------------------------------!
+
+      ! Number of DISTINCT cells that have reached the temperature floor of
+      ! the transport stage at least once.
+      integer function n_conduction_floor_cells()
+      integer :: j
+      n_conduction_floor_cells = 0
+      if (.not. allocated(conduction_floor_cell_hits)) return
+      do j = lbound(conduction_floor_cell_hits,1),                       &
+             ubound(conduction_floor_cell_hits,1)
+         if (conduction_floor_cell_hits(j) .gt. 0)                       &
+            n_conduction_floor_cells = n_conduction_floor_cells + 1
+      enddo
+      end function n_conduction_floor_cells
 
       ! ------------------------------------------------------!
 
@@ -397,21 +550,40 @@
 
       ! ------------------------------------------------------!
 
-      subroutine solve_tridiagonal(dlo, ddi, dup, rhs, sol)
+      logical function is_finite(x)
+      ! .true. for a normal or subnormal number: neither a NaN (x /= x) nor
+      ! an infinity.
+      real*8, intent(in) :: x
+      is_finite = (x .eq. x) .and. (abs(x) .le. huge(x))
+      end function is_finite
+
+      ! ------------------------------------------------------!
+
+      subroutine solve_tridiagonal(dlo, ddi, dup, rhs, sol, ok)
       ! Thomas algorithm for the N x N tridiagonal system
       !   dlo(j) x(j-1) + ddi(j) x(j) + dup(j) x(j+1) = rhs(j).
       ! Radial recursion: inherently serial in j, so this must stay OUTSIDE
       ! any cell-parallel region.
+      ! ok is .false. if an elimination pivot is zero or not finite, which
+      ! is the breakdown of the algorithm: the caller must not read sol.
       real*8, dimension(N), intent(in)  :: dlo, ddi, dup, rhs
       real*8, dimension(N), intent(out) :: sol
+      logical,              intent(out) :: ok
       real*8, dimension(N) :: cp, dp
       real*8  :: den
       integer :: j
+      ok = .true.
       den   = ddi(1)
+      if (den .eq. 0.0d0 .or. .not. is_finite(den)) then
+         ok = .false.;  sol = 0.0d0;  return
+      endif
       cp(1) = dup(1)/den
       dp(1) = rhs(1)/den
       do j = 2, N
          den   = ddi(j) - dlo(j)*cp(j-1)
+         if (den .eq. 0.0d0 .or. .not. is_finite(den)) then
+            ok = .false.;  sol = 0.0d0;  return
+         endif
          cp(j) = dup(j)/den
          dp(j) = (rhs(j) - dlo(j)*dp(j-1))/den
       enddo
@@ -423,7 +595,85 @@
 
       ! ------------------------------------------------------!
 
-      subroutine viscous_conduction_step(u, W, Tcell, n_part, dt)
+      real*8 function conduction_temperature_floor()
+      ! Lower end of the range in which the equation of state, the cooling
+      ! and the transport coefficients are defined, in CODE units. The same
+      ! value the implicit energy source step brackets its root in: 0.01 T0,
+      ! raised to the 1 K lower node of the H2 rovibrational table if T0 is
+      ! low enough for 0.01 T0 to fall below it.
+      conduction_temperature_floor = max(T_floor_code_min, T_eos_floor_K/T0)
+      end function conduction_temperature_floor
+
+      ! ------------------------------------------------------!
+
+      subroutine conduction_reason_text(reason_in, text)
+      integer, intent(in) :: reason_in
+      character(len=*), intent(out) :: text
+      select case (reason_in)
+      case (CONDUCTION_REASON_FLOOR_REACHED)
+         text = 'transport step asks for a temperature below the floor'
+      case (CONDUCTION_REASON_NONFINITE_INPUT)
+         text = 'non-finite state, particle count or step on entry'
+      case (CONDUCTION_REASON_NONFINITE_SOLUTION)
+         text = 'non-finite solution of the Crank-Nicolson system'
+      case (CONDUCTION_REASON_PIVOT_BREAKDOWN)
+         text = 'zero or non-finite pivot in the tridiagonal elimination'
+      case default
+         text = 'admissible'
+      end select
+      end subroutine conduction_reason_text
+
+      ! ------------------------------------------------------!
+
+      subroutine conduction_report(stat, reason, j_bad, nfail, step,      &
+                                   T_sol, T_flr, deficit, status)
+      ! Record the verdict of one call, hand it to the caller, and take the
+      ! interim action on a failure (print the diagnostics and stop). B3a
+      ! replaces the stop by a rejection of the whole attempted step.
+      integer, intent(in) :: stat, reason, j_bad, nfail, step
+      real*8,  intent(in) :: T_sol, T_flr, deficit
+      integer, intent(out), optional :: status
+      character(len=72) :: reason_text
+
+      conduction_last_status         = stat
+      conduction_last_reason         = reason
+      conduction_last_cell           = j_bad
+      conduction_last_step           = step
+      conduction_last_nfail          = nfail
+      conduction_last_T_solution     = T_sol
+      conduction_last_T_floor        = T_flr
+      conduction_last_energy_deficit = deficit
+      if (present(status)) status = stat
+      if (stat .eq. CONDUCTION_OK) return
+
+      call conduction_reason_text(reason, reason_text)
+      write(*,*)
+      write(*,'(a)')      ' transport stage FAILURE (viscosity/conduction)'
+      write(*,'(a,i0,a,i0,a)') '   step ', step, ', ', nfail,             &
+                               ' cell(s) unacceptable'
+      write(*,'(a,i0)')   '   first failing cell   j = ', j_bad
+      write(*,'(a,a)')    '   reason               ', trim(reason_text)
+      write(*,'(a,i0)')   '   status               ', stat
+      if (stat .eq. CONDUCTION_FLOOR) then
+         write(*,'(a,es13.6)') '   solved T         [K] ', T_sol*T0
+         write(*,'(a,es13.6)') '   floor            [K] ', T_flr*T0
+         write(*,'(a,es13.6)') '   energy a floor would inject [erg/cm3] ', &
+                               deficit
+         write(*,'(a)') '   That energy has no source term behind it, so'
+         write(*,'(a)') '   the floor value is not returned as a state.'
+      endif
+      write(*,'(a)') '   The transport stage returns no state for this step.'
+      if (conduction_stop_on_failure) then
+         write(*,'(a)') '   Stopping: B3a will reject and retry the step'
+         write(*,'(a)') '   instead (docs/PLAN_20260906_rev2.md).'
+         error stop 1
+      endif
+      end subroutine conduction_report
+
+      ! ------------------------------------------------------!
+
+      subroutine viscous_conduction_step(u, W, Tcell, n_part, dt, step,   &
+                                         status)
       ! Crank-Nicolson update of the two transport operators, applied as an
       ! operator-split stage of the marching loop, as CETIMB integrates the
       ! same terms.  Both are diffusive, so an explicit update would be bound
@@ -446,19 +696,68 @@
       ! The spatial operators are the SAME tridiagonal triplets that
       ! viscous_conduction_sources evaluates for the steady residual, so the
       ! fixed point of this update is exactly the zero of that residual.
+      !
+      ! The state is assembled ONLY when both solves completed and every
+      ! solved temperature is admissible; a cell below the floor is a
+      ! failure, not a clamp (section 5 of the module header).
       real*8, dimension(3,1-Ng:N+Ng), intent(inout) :: u, W
       real*8, dimension(1-Ng:N+Ng),   intent(in)    :: Tcell, n_part, dt
+      ! Marching step index, for the failure report and the floor counters.
+      integer,                        intent(in)    :: step
+      ! Verdict of the stage. Optional, so the call site is unchanged; the
+      ! same value is left in conduction_last_status.
+      integer, intent(out), optional :: status
       real*8, dimension(1-Ng:N+Ng)   :: vnew, Tnew, qv
       real*8, dimension(N) :: alo, adi, aup, dcl, dcd, dcu
       real*8, dimension(N) :: blo, bdi, bup
       real*8, dimension(N) :: dlo, ddi, dup, rhs, sol
-      real*8  :: half, Lold, cap
-      integer :: j
+      real*8  :: half, Lold, cap, T_flr, c_T, deficit
+      integer :: j, stat, reason, j_bad, nfail
+      logical :: ok
 
-      if (.not. transport_active()) return
+      stat    = CONDUCTION_OK
+      reason  = CONDUCTION_REASON_NONE
+      j_bad   = 0
+      nfail   = 0
+      deficit = 0.0d0
+      T_flr   = conduction_temperature_floor()
+      if (.not. transport_active()) then
+         call conduction_report(CONDUCTION_OK, CONDUCTION_REASON_NONE, 0, &
+                                0, step, 0.0d0, T_flr, 0.0d0, status)
+         return
+      endif
       half = 0.5d0
       vnew = W(2,:)
       Tnew = Tcell
+
+      ! ---- entry admissibility ----
+      ! The stencils reach one cell past each end of 1..N; nothing beyond
+      ! that is read, so nothing beyond that is tested.
+      do j = 0, N+1
+         if (is_finite(Tcell(j)) .and. is_finite(W(1,j))                  &
+             .and. is_finite(W(2,j))) cycle
+         nfail = nfail + 1
+         if (j_bad .eq. 0) then
+            j_bad  = j
+            stat   = CONDUCTION_NONFINITE
+            reason = CONDUCTION_REASON_NONFINITE_INPUT
+         endif
+      enddo
+      do j = 1, N
+         if (is_finite(n_part(j)) .and. is_finite(dt(j))                  &
+             .and. dt(j) .gt. 0.0d0) cycle
+         nfail = nfail + 1
+         if (j_bad .eq. 0) then
+            j_bad  = j
+            stat   = CONDUCTION_NONFINITE
+            reason = CONDUCTION_REASON_NONFINITE_INPUT
+         endif
+      enddo
+      if (stat .ne. CONDUCTION_OK) then
+         call conduction_report(stat, reason, j_bad, nfail, step,         &
+                                0.0d0, T_flr, 0.0d0, status)
+         return
+      endif
 
       ! ---- (i) viscous momentum diffusion ----
       if (viscosity_active()) then
@@ -478,24 +777,38 @@
          rhs(1) = rhs(1) - dlo(1)*W(2,0)
          dlo(1) = 0.0d0
          dup(N) = 0.0d0
-         call solve_tridiagonal(dlo, ddi, dup, rhs, sol)
+         call solve_tridiagonal(dlo, ddi, dup, rhs, sol, ok)
+         if (.not. ok) then
+            call conduction_report(CONDUCTION_SOLVE_FAILED,               &
+                                   CONDUCTION_REASON_PIVOT_BREAKDOWN, 1,  &
+                                   1, step, 0.0d0, T_flr, 0.0d0, status)
+            return
+         endif
+         do j = 1, N
+            if (is_finite(sol(j))) cycle
+            nfail = nfail + 1
+            if (j_bad .eq. 0) then
+               j_bad  = j
+               stat   = CONDUCTION_SOLVE_FAILED
+               reason = CONDUCTION_REASON_NONFINITE_SOLUTION
+            endif
+         enddo
+         if (stat .ne. CONDUCTION_OK) then
+            call conduction_report(stat, reason, j_bad, nfail, step,      &
+                                   0.0d0, T_flr, 0.0d0, status)
+            return
+         endif
          do j = 1, N
             vnew(j) = sol(j)
-         enddo
-         ! Rebuild the conserved state at FIXED pressure: the kinetic energy
-         ! change is precisely the viscous work, so no internal energy is
-         ! created or destroyed by the momentum stage.
-         do j = 1, N
-            W(2,j) = vnew(j)
-            u(2,j) = W(1,j)*vnew(j)
-            u(3,j) = 0.5d0*W(1,j)*vnew(j)**2                            &
-                   + energy_density_from_pressure(j, W(1,j), W(3,j))
          enddo
       endif
 
       ! ---- (ii) heat conduction + viscous dissipation ----
       if (conduction_active() .or. viscosity_active()) then
-         call viscous_dissipation(W(2,:), Tcell, qv)
+         ! The dissipation belongs to the UPDATED velocity field, which is
+         ! vnew: it equals the incoming W(2,:) wherever the momentum stage
+         ! did not run, and in the ghosts, which it never touches.
+         call viscous_dissipation(vnew, Tcell, qv)
          if (conduction_active()) then
             call thermal_conduction_coeffs(Tcell, blo, bdi, bup)
          else
@@ -523,14 +836,83 @@
          rhs(1) = rhs(1) - dlo(1)*Tcell(0)
          dlo(1) = 0.0d0
          dup(N) = 0.0d0
-         call solve_tridiagonal(dlo, ddi, dup, rhs, sol)
+         call solve_tridiagonal(dlo, ddi, dup, rhs, sol, ok)
+         if (.not. ok) then
+            call conduction_report(CONDUCTION_SOLVE_FAILED,               &
+                                   CONDUCTION_REASON_PIVOT_BREAKDOWN, 1,  &
+                                   1, step, 0.0d0, T_flr, 0.0d0, status)
+            return
+         endif
+         ! Admissibility of the solved temperatures. A cell at or below the
+         ! floor is refused: the energy that would have to be injected to
+         ! put it there, c_v (T_floor - T_solved) per volume, has no source
+         ! term behind it. The code energy density unit is n0 k_B T0.
          do j = 1, N
-            Tnew(j) = max(sol(j), 1.0d-2)
-            W(3,j)  = n_part(j)*Tnew(j)
-            u(3,j)  = 0.5d0*W(1,j)*W(2,j)**2                            &
-                    + energy_density_from_pressure(j, W(1,j), W(3,j))
+            if (.not. is_finite(sol(j))) then
+               nfail = nfail + 1
+               if (j_bad .eq. 0) then
+                  j_bad  = j
+                  stat   = CONDUCTION_SOLVE_FAILED
+                  reason = CONDUCTION_REASON_NONFINITE_SOLUTION
+               endif
+               cycle
+            endif
+            if (sol(j) .gt. T_flr) cycle
+            nfail = nfail + 1
+            if (.not. allocated(conduction_floor_cell_hits)) then
+               allocate(conduction_floor_cell_hits(1-Ng:N+Ng))
+               conduction_floor_cell_hits = 0
+            endif
+            n_conduction_floor_hits = n_conduction_floor_hits + 1
+            n_conduction_floor_hits_family(ledger_family) =              &
+                 n_conduction_floor_hits_family(ledger_family) + 1
+            conduction_floor_cell_hits(j) =                              &
+                 conduction_floor_cell_hits(j) + 1
+            if (conduction_floor_first_step .lt. 0)                      &
+               conduction_floor_first_step = step
+            conduction_floor_last_step = step
+            if (j_bad .eq. 0 .or. stat .eq. CONDUCTION_OK) then
+               if (caloric_mixture_active) then
+                  c_T = n_part(j)*heat_capacity_per_particle(j, Tcell(j))
+               else
+                  c_T = n_part(j)/(gamma_ad - 1.0d0)
+               endif
+               j_bad   = j
+               stat    = CONDUCTION_FLOOR
+               reason  = CONDUCTION_REASON_FLOOR_REACHED
+               deficit = c_T*(T_flr - sol(j))*n0*kb_erg*T0
+               conduction_last_T_solution = sol(j)
+            endif
+         enddo
+         if (stat .ne. CONDUCTION_OK) then
+            call conduction_report(stat, reason, j_bad, nfail, step,      &
+                                   conduction_last_T_solution, T_flr,     &
+                                   deficit, status)
+            return
+         endif
+         do j = 1, N
+            Tnew(j) = sol(j)
          enddo
       endif
+
+      ! ---- assemble the returned state ----
+      ! Reached only when every cell of both solves is admissible. The
+      ! momentum stage rebuilds the conserved state at FIXED pressure: the
+      ! kinetic energy change is precisely the viscous work, so no internal
+      ! energy is created or destroyed by it, and the pressure row is then
+      ! set by the temperature the second stage solved for.
+      do j = 1, N
+         if (viscosity_active()) then
+            W(2,j) = vnew(j)
+            u(2,j) = W(1,j)*vnew(j)
+         endif
+         W(3,j)  = n_part(j)*Tnew(j)
+         u(3,j)  = 0.5d0*W(1,j)*W(2,j)**2                                &
+                 + energy_density_from_pressure(j, W(1,j), W(3,j))
+      enddo
+
+      call conduction_report(CONDUCTION_OK, CONDUCTION_REASON_NONE, 0, 0, &
+                             step, 0.0d0, T_flr, 0.0d0, status)
 
       end subroutine viscous_conduction_step
 

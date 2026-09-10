@@ -45,7 +45,8 @@
       ! ionized (++); for Na/K/S the top stage is the singly ionized (+),
       ! i.e. only two stages are carried (melem_top = 1).
 
-      use global_parameters, only: e_th_MgI, e_th_MgII
+      use global_parameters, only: e_th_MgI, e_th_MgII,                 &
+                                   m_He_over_m_H, amu_over_m_H
 
       implicit none
 
@@ -76,21 +77,58 @@
       integer, parameter :: isp_H2O   = 39
       integer, parameter :: isp_CO    = 40
 
+      ! ---- element indices ----
+      integer, parameter :: iel_C  = 1
+      integer, parameter :: iel_O  = 2
+      integer, parameter :: iel_N  = 3
+      integer, parameter :: iel_Mg = 4
+      integer, parameter :: iel_Si = 5
+      integer, parameter :: iel_Ca = 6
+      integer, parameter :: iel_Na = 7
+      integer, parameter :: iel_K  = 8
+      integer, parameter :: iel_S  = 9
+      integer, parameter :: iel_Fe = 10
+
+      ! ---- element masses ----
+      ! melem_A_u: the standard atomic weight of each element in the unified
+      ! atomic mass unit u (CIAAW conventional values), which is the unit
+      ! these numbers are tabulated in and the only unit in which they are a
+      ! measured quantity.
+      real*8,  parameter :: melem_A_u(n_melem) = &
+           [ 12.011d0, 15.999d0, 14.007d0, 24.305d0, 28.085d0,        &
+             40.078d0, 22.990d0, 39.098d0, 32.06d0,  55.845d0 ]
+      ! melem_A: the same weights in the code's mass unit, the hydrogen ATOM
+      ! (global_parameters mu), which is the unit calc_rho, calc_mmw,
+      ! comp_mass_per_H, the element census closure and the element
+      ! diffusion all add masses in.  One u is 0.99223573 hydrogen atoms, so
+      ! a weight left in u overstates every metal mass by 0.78 per cent.
+      real*8,  parameter :: melem_A(n_melem) = amu_over_m_H*melem_A_u
+
       ! ---- metadata for each base (H/He/molecular) species ----
       ! Composition metadata for the non-metal species, so the EOS helpers
       ! (calc_rho / calc_ne / calc_ntot in utilities.f90) can eventually be
       ! driven from one table instead of hardcoded branches (§5.3 of
-      ! docs/refactor_plan_system_composition_parser.md). The numeric values
-      ! deliberately MIRROR THE LITERALS THE CODE USES TODAY (He mass 4.0,
-      ! not 4.0026; H2/H2+ = 2, H3+ = 3, HeH+ = 5 m_H), so a future
-      ! metadata-driven rewrite can stay byte-identical. Every species counts
+      ! docs/refactor_plan_system_composition_parser.md). Every species counts
       ! as ONE gas particle in the pressure/EOS particle sum.
-      ! Rows 11-13 (OH, H2O, CO) are the oxygen-chemistry carriers. Their
-      ! masses are the H mass the code uses (1 m_H) plus the ATOMIC WEIGHT
-      ! the metal block already assigns to the element (melem_A: 15.999 for
-      ! O, 12.011 for C), so the same nucleus weighs the same whether it is
-      ! counted through the metal ion columns or through a molecule, and
-      ! calc_rho cannot count it twice. The oxygen and carbon bound in these
+      ! UNIT OF bsp_mass: the hydrogen ATOM, mu = 1.67353284e-24 g
+      ! (parameters.f90), which is the mass unit of the density
+      ! normalization. It is NOT the atomic mass unit u, so a species mass
+      ! here is m_species/m_H and not its atomic weight in u.
+      !   He I, He II, He III and the He 2^3S metastable all weigh
+      !   m_He_over_m_H = 3.9715259, the helium-4 atom over the hydrogen
+      !   atom (global_parameters), an ionization stage changing the mass
+      !   by 1.4e-4, below the precision at which it is used; and
+      !   HeH+ = 1 + m_He_over_m_H.
+      ! Decision 14 of docs/development_plan_20260905_rev3.md section 10.5.
+      ! H2, H2+ and H3+ are NUCLEUS COUNTS in the same unit, 2, 2 and 3 m_H:
+      ! the molecular binding energies are 4.5, 2.7 and 4.4 eV, i.e. a mass
+      ! defect of order 1e-9 of the molecule, which is below every digit
+      ! this table carries and below the precision of the mass unit itself.
+      ! Rows 11-13 (OH, H2O, CO) are the oxygen-chemistry carriers, built
+      ! from the same H mass and the same element weights melem_A the metal
+      ! ion columns use, so one nucleus weighs the same whether it is
+      ! counted through a metal ion or through a molecule and calc_rho
+      ! cannot count it twice. The oxygen and carbon bound in these
       ! molecules is removed from the metal ion totals by the ionization
       ! solve (the O I column means FREE ATOMIC oxygen when the oxygen
       ! chemistry is on), which is where that non-double-counting is made.
@@ -100,11 +138,14 @@
            [ isp_HI, isp_HII, isp_HeI, isp_HeII, isp_HeIII, isp_HeTR,   &
              isp_H2, isp_H2p, isp_H3p, isp_HeHp,                        &
              isp_OH, isp_H2O, isp_CO ]
-      ! mass [m_H units] as used by calc_rho (code values, see note above)
+      ! mass [m_H units] as used by calc_rho (see the unit note above)
       real*8,  parameter :: bsp_mass(n_bsp) = &
-           [ 1.0d0, 1.0d0, 4.0d0, 4.0d0, 4.0d0, 4.0d0,                  &
-             2.0d0, 2.0d0, 3.0d0, 5.0d0,                                &
-             16.999d0, 17.999d0, 28.010d0 ]
+           [ 1.0d0, 1.0d0,                                              &
+             m_He_over_m_H, m_He_over_m_H, m_He_over_m_H,               &
+             m_He_over_m_H,                                             &
+             2.0d0, 2.0d0, 3.0d0, 1.0d0 + m_He_over_m_H,                &
+             1.0d0 + melem_A(iel_O), 2.0d0 + melem_A(iel_O),            &
+             melem_A(iel_C) + melem_A(iel_O) ]
       ! net charge = free electrons contributed (calc_ne: each molecular
       ! ion carries +1; the He 2^3S triplet is neutral; OH, H2O and CO are
       ! neutral)
@@ -166,18 +207,6 @@
       ! so "im_SII" (S+) would collide with "im_SiI" (neutral Si).
       integer, parameter :: im_S_I   = 23, im_S_II  = 24
       integer, parameter :: im_FeI   = 25, im_FeII  = 26, im_FeIII = 27
-
-      ! ---- element indices ----
-      integer, parameter :: iel_C  = 1
-      integer, parameter :: iel_O  = 2
-      integer, parameter :: iel_N  = 3
-      integer, parameter :: iel_Mg = 4
-      integer, parameter :: iel_Si = 5
-      integer, parameter :: iel_Ca = 6
-      integer, parameter :: iel_Na = 7
-      integer, parameter :: iel_K  = 8
-      integer, parameter :: iel_S  = 9
-      integer, parameter :: iel_Fe = 10
 
       ! ---- metadata for each ion (length n_mion) ----
       ! f_sp species column for this ion
@@ -250,11 +279,11 @@
       ! nuclear charge (Z), used for the metal Gaunt factor
       integer, parameter :: melem_Z(n_melem)   = &
            [ 6, 8, 7, 12, 14, 20, 11, 19, 16, 26 ]
-      ! atomic weight [m_H units], used for the metal mass contribution to
-      ! the gas mass density / mean molecular weight (eos_include_metals)
-      real*8,  parameter :: melem_A(n_melem)   = &
-           [ 12.011d0, 15.999d0, 14.007d0, 24.305d0, 28.085d0,        &
-             40.078d0, 22.990d0, 39.098d0, 32.06d0,  55.845d0 ]
+      ! The atomic weights melem_A_u [u] and melem_A [m_H], which give the
+      ! metal mass contribution to the gas mass density and to the mean
+      ! molecular weight (eos_include_metals), are declared with the element
+      ! indices at the top of this module, because the oxygen-chemistry rows
+      ! of bsp_mass are built from them.
       ! index of the neutral ion in the mion list
       integer, parameter :: melem_i0(n_melem)  = &
            [ 1, 4, 7, 10, 13, 16, 19, 21, 23, 25 ]

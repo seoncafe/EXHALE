@@ -19,17 +19,36 @@
       real*8, dimension(:),   allocatable :: face_p
 
       ! Number of interfaces whose flux was dropped to first order to keep an
-      ! RK stage inside rho > 0, rho e > 0, summed over the whole run.
+      ! RK stage inside rho > 0, rho e > 0, summed over the whole run, over
+      ! the calls that succeeded in restoring the set. A call that returns
+      ! repaired = .false. leaves the state to the caller's dt bisection and
+      ! adds nothing here, so this counts repaired interfaces and not
+      ! attempted ones.
       ! Reported at the end of a run; zero means the high-order fluxes were
       ! admissible everywhere and the run is the one an unguarded build gives.
       integer :: n_faces_flux_positivity_limited = 0
 
+      ! Number of calls to positivity_limited_fluxes, that is the number of
+      ! RK stages that left rho > 0, rho e > 0 and were offered the repair,
+      ! whether or not the repair succeeded. It is the counter that says
+      ! whether a run reached the repair path at all: zero means every stage
+      ! stayed inside the admissible set and no first-order flux, and hence
+      ! no Lax-Friedrichs signal speed, entered the trajectory.
+      integer :: n_calls_flux_positivity_repair = 0
+
+      ! Repaired interfaces belonging to steps the marching loop accepted.
+      ! A step retaken at half dt is recomputed from the state at its
+      ! beginning, so the repairs of its discarded attempts are not part of
+      ! the trajectory the run kept; those are in the total above but not
+      ! here. Advanced by the marching loop of EXHALE_main at the point where
+      ! it leaves the retry loop with the step accepted.
+      integer :: n_faces_flux_positivity_limited_accepted = 0
+
       contains
 
-      subroutine RK_rhs(u_in,WL,WR,alpha,dF,S)
+      subroutine RK_rhs(u_in,WL,WR,dF,S)
       real*8, dimension(3,1-Ng:N+Ng), intent(in) :: u_in
       real*8, dimension(3,1-Ng:N+Ng), intent(in) :: WL,WR
-      real*8, intent(in) :: alpha
       integer :: j
       real*8 :: dr
       real*8 :: rp,rm
@@ -53,6 +72,16 @@
          face_flux = 0.0d0
          face_p    = 0.0d0
       endif
+
+      ! THE LOWEST GHOST CELL HAS NO LOWER FACE, so no flux difference and
+      ! no geometric source are defined for it and its residual row is zero:
+      ! the cell loop below starts at 2-Ng, and the column is written here
+      ! so that every element of both outputs is defined.  A caller that
+      ! evaluates dF - S over the whole padded range (the marching stage
+      ! update, whose ghosts Apply_BC then rewrites, and assemble_residual)
+      ! must not read an undefined double.
+      dF(:,1-Ng) = 0.0d0
+      S(:,1-Ng)  = 0.0d0
 
       damp_lowmach = low_mach_damping_active()
       if (damp_lowmach) call contact_mode_dissipation_flux(u_in,Ddis)
@@ -82,7 +111,7 @@
 
       !$omp do schedule(static)
       do j = 1-Ng,N+Ng
-         call Num_flux(WL(:,j),WR(:,j),Fp,alpha,pR,j,min(j+1,N+Ng))
+         call Num_flux(WL(:,j),WR(:,j),Fp,pR,j,min(j+1,N+Ng))
          if (damp_lowmach) Fp = Fp + Ddis(:,j)
          face_flux(:,j) = Fp
          face_p(j)      = pR
@@ -179,6 +208,8 @@
       real*8  :: dr,rp,rm,dAp,dAm,dV,dF3p
       real*8, dimension(3) :: Fp,Fm,dFc
       real*8  :: pL,pR,rho_e
+
+      n_calls_flux_positivity_repair = n_calls_flux_positivity_repair + 1
 
       repaired       = .false.
       is_first_order = .false.
@@ -313,6 +344,21 @@
 
          enddo
 
+      enddo
+
+      ! THE STORED FACE FLUXES FOLLOW THE REPAIR.  The species rows ride on
+      ! face_flux(1,:), so a face whose flux was replaced here has to carry
+      ! the replacement there as well: the mass row of every rebuilt cell is
+      ! the divergence of exactly these fluxes, and a species flux built on
+      ! the discarded high-order flux would not sum to it.  A cell that was
+      ! not rebuilt cannot touch a replaced face, because replacing a face
+      ! marks both of its cells, so writing them back leaves every cell's
+      ! mass update the divergence of the array.
+      do jf = 1-Ng,N+Ng
+         if (is_first_order(jf)) then
+            face_flux(:,jf) = flux_lo(:,jf)
+            face_p(jf)      = p_lo(jf)
+         endif
       enddo
 
       if (repaired)                                                     &

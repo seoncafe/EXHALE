@@ -1,4 +1,4 @@
-# He 2³S default switched on — what needs recomputing
+# He 2³S default switched on: what needs recomputing
 
 **Written 2026-08-22. Nothing in this list has been recomputed; this file is
 the work list, not a record of work done.**
@@ -28,7 +28,7 @@ Penning, recombination and 10830 Å channels) and the observable itself, a
 case that flips from off to on changes physically. Stored results from
 before the flip are stale.
 
-## Deliberately off — do NOT change, do NOT recompute
+## Deliberately off: do NOT change, do NOT recompute
 
 These exist precisely to exercise the triplet-off branch. They set the key
 explicitly, so the default change does not touch them and the goldens stay
@@ -58,7 +58,7 @@ nothing. `06`, `07` and `08` carry the triplet, as they did before. Their
 stored output is consistent with their input, so nothing here is recomputed.
 Outside the ladder the triplet is on.
 
-## Needs recomputing — inputs already flipped today
+## Needs recomputing: inputs already flipped today
 
 Their `input.inp` now says `True` while their stored `output/` predates the
 change (2026-08-09).
@@ -93,7 +93,7 @@ when a molecular run also tracks the triplet. All four now carry `True`
 (`HD209458b/` and `WASP-121b/` were the two changed). None of the four has
 stored output.
 
-## Archive — leave alone unless asked
+## Archive: leave alone unless asked
 
 `backup/example_HD209458b/` is a stored configuration with its own
 `EXHALE_setup.out` from a past run and no output directory; flipping the key

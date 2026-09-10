@@ -425,7 +425,7 @@ to five digits. `p_single` is free of this. **This is item (P47) of
 from the CLOUDY runs, and it is the one carrying a geometry our layer does not
 have. (The sentence that stood here, that everything above
 `h2_shielding_overlap_column` remains an upper bound, is no longer true:
-`Update_EXHALE.md` section 135 rebuilt the table from a calculation in which
+`Update_EXHALE_stage1.md` section 135 rebuilt the table from a calculation in which
 the lines absorb each other's beam and removed that function.)
 
 ---

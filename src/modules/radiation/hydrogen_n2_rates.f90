@@ -23,7 +23,13 @@
    ! ----- Ly-alpha line and n=2 level data ----- !
    real*8, parameter :: lA_lya   = 1215.6701d-8        ! Ly-alpha wavelength [cm]
    real*8, parameter :: nu_lya   = c_light/lA_lya      ! Ly-alpha frequency [s^-1]
-   real*8, parameter :: A_2p1s   = 6.3d8               ! A(2p->1s) [s^-1]
+   ! A(2p->1s) [s^-1].  NIST ASD (Wiese & Fuhr 2009, J. Phys. Chem. Ref.
+   ! Data 38, 565) give 6.2649e8 for Ly-alpha; it is the nonrelativistic
+   ! electric-dipole value (2^8/3^8) alpha^4 c/a_0 = 6.2683e8 carrying the
+   ! reduced-mass factor mu/m_e = 0.9994557, since A goes as omega^3 a_0^2
+   ! and so as mu.  ONE definition: the Voigt parameter of lya_rt.f90 and
+   ! every n = 2 rate below read this one.
+   real*8, parameter :: A_2p1s   = 6.2649d8
    real*8, parameter :: A_2s1s   = 8.26d0              ! A(2s->1s) two-photon [s^-1]
    real*8, parameter :: g1s = 2.0d0, g2s = 2.0d0, g2p = 6.0d0
    real*8, parameter :: E21_erg  = 1.634d-11           ! 1s-2s/2p gap, 10.2 eV [erg]

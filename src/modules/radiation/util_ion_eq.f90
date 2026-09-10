@@ -5,7 +5,8 @@
                             mion_isphot, mion_iphot, mion_ethr,       &
                             mion_z2, mion_elem, mion_iscool,          &
                             mion_stage, mion_name, mion_fsp,          &
-                            melem_Z, melem_top, im_FeII,              &
+                            melem_Z, melem_top, im_FeII, im_OI,       &
+                            isp_HeTR,                                    &
                             isp_H2, isp_H2p, isp_H3p, isp_HeHp,          &
                             isp_OH, isp_H2O, isp_CO
    use utils
@@ -14,7 +15,14 @@
    use h3p_cooling, only: h3p_cooling_rate, h3p_net_cooling_rate
    ! H2 quadrupole/magnetic-dipole lines and the H2O and CO bands, net of the
    ! infrared field of the lower atmosphere (`Molecular IR bands`)
-   use molecular_reaction_heat, only: molecular_chemical_heating
+   use molecular_reaction_heat, only: molecular_chemical_heating,      &
+                            oxygen_chemical_heating,                    &
+                            oxygen_reaction_energy_eV,                  &
+                            species_formation_energy, ir_assoc_HeTR, &
+                            ir_D1
+   ! Quantum yield of the H2O + hv -> H2 + O(1D) branch, band by band: the
+   ! O(1D) production that its local steady state carries into the O6 sink.
+   use oxygen_rates, only: qy_H2O_H2_O1D, rk_D1_Hep_CO
    use molecular_infrared_cooling, only: h2_line_net_cooling_rate,     &
                             h2o_band_net_cooling_rate,                 &
                             co_band_net_cooling_rate,                  &
@@ -28,6 +36,20 @@
    ! (mol_rates.f90); the neutral-dissociation heat below reads it from
    ! there rather than writing 4.478 of its own.
    use mol_rates, only: h2_dissociation_energy_eV
+   ! Where the energy of ONE H2 photoevent goes, channel by channel:
+   ! h2_channel_energy_recipients (h2_photo_channels.f90) is the single
+   ! definition, and the two scalars below are the entries of it that the
+   ! heating integrand needs.  h2_double_fragment_kinetic_energy is the
+   ! kinetic energy release of the two protons of the double channel, fixed
+   ! with no free parameter by the VERTICAL 51.4 eV threshold of Yan,
+   ! Sadeghpour & Dalgarno (1998): at that photon energy the two electrons
+   ! come off at rest and the asymptotic product energy is D0 + 2 I(H) =
+   ! 31.675 eV, so 19.725 eV is on the receding nuclei.  e_rad_H2_neutral is
+   ! the internal excitation of the H(2p) + H(2s) pair the neutral window
+   ! leaves (Chung, Lee, Masuoka & Samson 1993), which departs as prompt
+   ! Ly-alpha and two-photon continuum and is not heat.
+   use h2_photo_channels, only: h2_double_fragment_kinetic_energy,        &
+                                e_rad_H2_neutral
    ! Degradation of a fast photoelectron in a partly ionized H/H2/He gas:
    ! Shull & van Steenberg (1985) for the ionization energy budget, Dalgarno,
    ! Yan & Liu (1999) for everything that depends on molecular hydrogen.
@@ -40,21 +62,37 @@
                             iabs_HI, iabs_HeI, iabs_HeII, iabs_HeTR,     &
                             iabs_H2, iabs_H2_di, dissoc_ion_per_H2p
    ! H2 Lyman-Werner photodissociation, for the heating breakdown diagnostic
-   use water_photolysis, only: n_fuv_band, ib_LW, ib_B1, ib_B2,      &
+   use water_photolysis, only: n_fuv_band, ib_LW, ib_B2,             &
                        ib_B3, ib_B4,                                    &
                        water_photolysis_rate, hydroxyl_photolysis_rate, &
                        fuv_band_optical_depth,                          &
                        heat_per_water_dissociation,                     &
-                       heat_per_hydroxyl_dissociation
+                       heat_per_hydroxyl_dissociation,                  &
+                       sigma_H2O_band, e_photon_flat_band
+   ! H I Ly-alpha: the line-centre optical depth of the atomic hydrogen
+   ! column and the MEAN over one cell of the stellar beam's transmission
+   ! through it.  Band B2 of the FUV photolysis set IS that resonance line,
+   ! so it reads the same two quantities the n = 2 pumping field is built
+   ! from.
+   use lya_rt, only: lya_line_center_optical_depth,                    &
+                     lya_stellar_beam_transmission_cell_mean
    use lyman_werner_photodissociation, only:                          &
-                            lyman_werner_dissociation_rate,             &
-                            e_lw_fragment_erg,                          &
+                            lyman_werner_dissociation_rate_cell_mean,   &
+                            lyman_werner_band_absorption_rate_cell_mean, &
+                            e_lw_fragment_erg, e_lw_photon_erg,          &
                             h2_lw_dissociation_per_pump,                &
                             h2_lw_dissociation_per_absorbed_photon,     &
                             h2_self_shielding_level_resolved,           &
                             h2_shield_max_column,                       &
-                            h2_band_equivalent_width,                   &
-                            h2_doppler_parameter
+                            h2_lw_band_photon_fraction_absorbed
+   ! CO on the same beam: the shielded photodissociation rate and its cell
+   ! mean, the Visser shielding function itself for the reported column, the
+   ! kinetic energy of one dissociation event, and the He+ charge-transfer
+   ! rate coefficient that is the other CO destruction channel.
+   use co_photodissociation, only:                                     &
+                            co_photodissociation_rate_cell_mean,        &
+                            heat_per_co_dissociation, e_co_photon_erg
+   use co_self_shielding_table, only: co_self_shielding
    use omp_lib                   ! OMP libraries
 	
 	! Move here photoionization and photoheating
@@ -96,33 +134,35 @@
 	! ----- Representative photon energies of the He recombination channels -----
 	! Each channel of he_rec_coupling emits at one energy, at which the
 	! absorbers (H I, H2 and, above 24.6 eV, He I) compete for the photon.
-	real*8, parameter :: E_gnd_HeI  = 24.6d0   ! ground-capture continuum edge
+	! The ground-capture continuum starts AT the He I ionization threshold,
+	! so this energy is that threshold and is read from it.
+	real*8, parameter :: E_gnd_HeI  = e_th_HeI ! ground-capture continuum edge
 	real*8, parameter :: E_584_HeI  = 21.2d0   ! 2^1P -> 1^1S resonance line
 	real*8, parameter :: E_19_HeI   = 19.8d0   ! 2^3S -> 1^1S line
 	! Mean energy of the 2^1S two-photon photons that lie above the H I edge:
 	! the continuum is not a line, and this single energy stands for it. The
 	! shape (Drake, Victor & Dalgarno 1969) is not carried in the code, only
 	! the two integrals f_2q_HeI and Ee_2q_HeI over the H I window, so the
-	! energy below is 13.598 + Ee_2q_HeI and cannot be re-integrated over the
+	! energy below is e_th_HI + Ee_2q_HeI and cannot be re-integrated over the
 	! narrower H2 window; see EeH2_2q_HeI.
-	real*8, parameter :: E_2q_HeI   = 13.598d0 + Ee_2q_HeI      ! 16.110 eV
+	real*8, parameter :: E_2q_HeI   = e_th_HI + Ee_2q_HeI       ! 16.110 eV
 	! Cascade-averaged exit energy used by the atomic (case-B) branch, the same
 	! 0.75/0.17/0.08 weighting that defines Ee_casc_HeI.
-	real*8, parameter :: E_casc_HeI = 13.598d0 + Ee_casc_HeI    ! 19.741 eV
-	! The photoelectron each of those photons leaves in H2 (threshold e_th_H2 =
-	! 15.4 eV), the H2 counterparts of 11.0 / 7.6 / 6.2 / Ee_2q_HeI /
+	real*8, parameter :: E_casc_HeI = e_th_HI + Ee_casc_HeI     ! 19.741 eV
+	! The photoelectron each of those photons leaves in H2 (threshold
+	! e_th_H2), the H2 counterparts of 11.0 / 7.6 / 6.2 / Ee_2q_HeI /
 	! Ee_casc_HeI.
-	real*8, parameter :: EeH2_gnd_HeI  = E_gnd_HeI  - e_th_H2   ! 9.200 eV
-	real*8, parameter :: EeH2_584_HeI  = E_584_HeI  - e_th_H2   ! 5.800 eV
-	real*8, parameter :: EeH2_19_HeI   = E_19_HeI   - e_th_H2   ! 4.400 eV
+	real*8, parameter :: EeH2_gnd_HeI  = E_gnd_HeI  - e_th_H2   ! 9.161 eV
+	real*8, parameter :: EeH2_584_HeI  = E_584_HeI  - e_th_H2   ! 5.774 eV
+	real*8, parameter :: EeH2_19_HeI   = E_19_HeI   - e_th_H2   ! 4.374 eV
 	! APPROXIMATE: the H2-ionizing photon COUNT of the two-photon continuum is
-	! the integral of the same shape over 15.4-20.62 eV, which is smaller than
-	! f_2q_HeI (the integral over 13.598-20.62 eV); the shape is not in the
+	! the integral of the same shape over e_th_H2 to 20.62 eV, which is smaller
+	! than f_2q_HeI (the integral over e_th_HI to 20.62 eV); the shape is not in the
 	! code, so f_2q_HeI is used for H2 as well and this sub-channel's H2 share
 	! is overestimated. It is 1/3 of one of five channels, and R2_2q = 1.2 is
 	! the smallest H2/H I cross-section ratio of the set.
-	real*8, parameter :: EeH2_2q_HeI   = E_2q_HeI   - e_th_H2   ! 0.710 eV
-	real*8, parameter :: EeH2_casc_HeI = E_casc_HeI - e_th_H2   ! 4.341 eV
+	real*8, parameter :: EeH2_2q_HeI   = E_2q_HeI   - e_th_H2   ! 0.685 eV
+	real*8, parameter :: EeH2_casc_HeI = E_casc_HeI - e_th_H2   ! 4.315 eV
 
 	! ----- He recombination coupling diagnostic -----
 	! Cells in which the He recombination photons ionize H I faster than the
@@ -137,42 +177,114 @@
 	integer :: n_cells_he_rec_photoionization_dominant = 0
 	real*8  :: he_rec_photoionization_ratio_max = 0.0d0
 
+	! ----- Channels of the volumetric heating rate -----
+	! The heating of a cell is a sum of physically distinct deposits. There
+	! is ONE list of them: heating_of_composition fills every column of
+	! heat_chan, the total it returns is the sum of those columns in this
+	! order, and the header of output/Heating_breakdown.txt is built from the
+	! names below. A deposit therefore cannot exist in the energy equation
+	! and be missing from the breakdown, which is what two hand-maintained
+	! copies of the sum allowed.
+	!
+	!   1-6  photoionization of each absorber (photoheating_of_composition)
+	!   7    photoelectric heating of H(n=2)
+	!   8    collisional de-excitation of H(n=2) by the Lyman-alpha field
+	!   9    photoelectrons of the H I / H2 / metal ionizations driven by He
+	!        recombination radiation
+	!  10    He(2^3S) + H  -> He + H+ + e   (Penning branch)
+	!  11    He(2^3S) + H  -> HeH+ + e      (associative branch)
+	!  12    He(2^3S) + H2 -> He + H2+ + e  (Penning branch)
+	!  13    kinetic energy of the H2 Lyman-Werner dissociation fragments
+	!  14    collisional de-excitation of the H2 Lyman-Werner fluorescence
+	!  15    collisional reactions of the H2/He network
+	!  16    excess energy of the H2O and OH FUV photolysis events
+	!  17    collisional reactions of the oxygen network, O(1D) sink included
+	!  18    He+ + CO -> C+ + O + He, the charge-transfer destruction of CO
+	!  19    kinetic energy of the CO photodissociation fragments
+	integer, parameter :: n_heat_channel = 19
+	! Named index of the one channel a consumer outside this module reads
+	! on its own: output/Lyman_Werner.txt writes the Lyman-Werner fragment
+	! deposit beside the rate it belongs to, and takes it from the array
+	! the sweep filled rather than re-forming it there.
+	integer, parameter :: ih_H2_LW_dissoc = 13
+	character(len=24), parameter ::                                        &
+	   heat_channel_name(n_heat_channel) = (/                              &
+	      'heat_HI                 ', 'heat_HeI                ',          &
+	      'heat_HeII               ', 'heat_He23S              ',          &
+	      'heat_H2                 ', 'heat_metals             ',          &
+	      'heat_Hpe[excitedH]      ', 'heat_Hdx[Lya-deexc]     ',          &
+	      'heat_He_recomb          ', 'heat_He23S_Penning      ',          &
+	      'heat_He23S_assoc        ', 'heat_He23S_H2_Penning   ',          &
+	      'heat_H2_LW_dissoc       ', 'heat_H2_LW_fluor        ',          &
+	      'heat_mol_chem           ', 'heat_FUV_photolysis     ',          &
+	      'heat_oxygen_collisional ', 'heat_CO_Hep_transfer    ',          &
+	      'heat_CO_photodissoc     ' /)
+
+	! The channel array of the state the ionization sweep RETURNED. The
+	! sweep passes this array to heating_of_composition, so it holds the
+	! deposits the heat column of Hydro_ioniz.txt was built from, at the
+	! composition and with the lagged rates of that same sweep.
+	! Heating_breakdown.txt writes this array and recomputes nothing: one
+	! state per output file, so the channel sum and the heat column are the
+	! same number to round-off rather than to the size of one sweep's rate
+	! lag. Allocated with the other grid-sized arrays of the sweep.
+	real*8, allocatable :: heat_channel_state(:,:)
+
+	! Length of the cell blocks the two parallel sweeps of this module
+	! (chemical_rate_coefficients, eval_cool) are cut into. EVEN, and not a
+	! function of the thread count: the vectorized rate loops call libmvec's
+	! two-lane exp/log/pow on cell pairs counted from each block's first
+	! cell, and the pair variant differs from the scalar remainder in the
+	! last bit, so a block start at an odd offset, or one that moved with
+	! the thread count, moved the last bit of the result. 32 keeps 16 blocks
+	! on the 504-cell grids of the regression matrix.
+	integer, parameter :: xuv_rate_block = 32
+
 	contains
 
 	! Incident stellar flux of FUV band ib at the planet [erg cm^-2 s^-1],
-	! in the band order of water_photolysis (LW, B1, B2 = Ly-alpha, B3, B4).
+	! in the band order of water_photolysis (LW, B2 = Ly-alpha, B3, B4).
 	! Single definition, read by the equilibrium solve and by write_output.
 	!
 	! THE FIRST BAND IS THE LYMAN-WERNER INTERVAL and carries the flux of the
-	! existing "Stellar LW flux" key, because 912-1110 A is one interval with
-	! one incident flux whether the absorber is H2 in lines or H2O and OH in
-	! a continuum. Supplying it twice -- once for H2, once inside a band
+	! "Stellar LW flux" key, because 912-1201 A is one interval with one
+	! incident flux whether the absorber is H2 in lines or H2O and OH in a
+	! continuum. Supplying it twice -- once for H2, once inside a band
 	! reaching across it -- would count the energy of the interval twice, and
-	! that is what B1 starting at 1110 A removes.
+	! that is what B2 starting at 1202 A removes.
 	!
-	! B2 IS THE INCIDENT STELLAR LY-ALPHA FLUX, NOT A SOLVED FIELD, and that
-	! is the weakest part of the band treatment. The H2O and OH attenuation
-	! applied to it is their own continuum, as for every other band; what is
-	! NOT applied is the H I resonance scattering that actually decides how
-	! much Ly-alpha reaches a molecular base under an ionized wind. lya_rt.f90
-	! solves that field for the n = 2 pumping, and section 2.6 of
-	! docs/a2_oxygen_option_design.md says the solved J_Lya(r) is the field
-	! B2 should use; wiring it is not done here, because the conversion of a
-	! mean intensity into a photodissociation rate is a different quantity
-	! from the one lya_rt returns and getting it wrong is worse than leaving
-	! it out. So B2's photolysis rate is an UPPER BOUND, and a run that finds
-	! B2 dominating its oxygen chemistry should say so. The band is reported
-	! separately in output/FUV_bands.txt precisely so that it can be read off.
+	! B2 IS THE INCIDENT STELLAR LY-ALPHA FLUX AT THE PLANET'S ORBIT, and
+	! this function returns it undepleted: the attenuation of that beam on
+	! its way down belongs to the field routine, not to the flux. Two
+	! absorbers deplete it there. The H2O and OH continua, as in every band,
+	! and -- because B2 is the H I resonance line itself -- the atomic
+	! hydrogen column, through the fraction of the broad stellar line whose
+	! wings penetrate to a given line-centre depth
+	! (lya_stellar_beam_transmission in lya_rt.f90, the same expression that
+	! module's own stellar term uses for the n = 2 pumping, and averaged
+	! over a cell by the same routine that module averages it with). That
+	! is a transmission of the beam and not the trapped mean intensity, so
+	! the photons the band's ledger removes are still the photons its
+	! absorbers take; the trapping buildup lya_rt applies on top of it
+	! raises the LOCAL mean intensity of the scattered field and would
+	! double-count photons already removed if it were applied here.
+	!
+	! Section 2.6 of docs/a2_oxygen_option_design.md asks instead for the
+	! solved J_Lya(r) of lya_rt as B2's field. That remains the fuller
+	! treatment: it would also carry the internally generated Ly-alpha of
+	! the recombination cascade, which a stellar transmission cannot. The
+	! band is reported separately in output/FUV_bands.txt so that a run
+	! whose oxygen chemistry turns on B2 can be read off.
 	!
 	! Note that setting "Stellar Lya flux" for the n = 2 pumping therefore
 	! also drives B2, and setting "Stellar LW flux" for the H2 network also
 	! drives the oxygen photolysis of the LW band; the setup report states
-	! all five band fluxes at startup so this is visible rather than implicit.
+	! all four band fluxes at startup so this is visible rather than implicit.
 	! The dayside dilution is applied HERE and not at the keys, so that
 	! F_LW_star and the rest keep their stated meaning -- the band flux at
 	! the planet's orbit -- in the setup report and the resolved dump, and
 	! so that a flux integrated from the spectrum file is diluted by the
-	! same convention as a stated one.  Before section 150 these five bands
+	! same convention as a stated one.  Before section 150 these bands
 	! carried no dilution at all while the same run halved its XUV and its
 	! stellar Ly-alpha beam, so the Lyman-Werner rate stood a factor
 	! 1/dayside_dilution() above the run's own convention.
@@ -181,8 +293,6 @@
 	select case (ib)
 	case (ib_LW)
 		F = F_LW_star
-	case (ib_B1)
-		F = F_FUV_B1
 	case (ib_B2)
 		F = F_Lya_star
 	case (ib_B3)
@@ -202,7 +312,7 @@
 	! their continua.  Single definition, called by the equilibrium sweep
 	! and by the heating-breakdown dump, so the two cannot drift apart.
 	!
-	! WHY ONE ROUTINE.  Over 912-1110 A the three absorbers share one beam.
+	! WHY ONE ROUTINE.  Over 912-1201 A the three absorbers share one beam.
 	! An H2O molecule cannot absorb a photon an H2 line has already taken,
 	! and the H2 pumping rate is reduced by whatever continuum sits above
 	! it -- that continuum term is the exp(-tau) of Draine & Bertoldi (1996)
@@ -229,17 +339,34 @@
 	! Every output is zero, or the neutral value 1, for a run that does not
 	! carry the absorber in question, so a molecular run without the oxygen
 	! chemistry gets exactly the rate it got before.
-	subroutine fuv_lw_photon_field(nH2, nH2O, nOH, T_K, nH_nuc,           &
-	                               NH2col, NH2Ocol, NOHcol,               &
+	subroutine fuv_lw_photon_field(nH2, nH2O, nOH, nCO, nHI, T_K, nH_nuc, &
+	                               NH2col, NH2Ocol, NOHcol, NCOcol,       &
 	                               f_shield, tr_lines, tau_b,             &
 	                               k_lw, p_lw_single, p_lw_absorbed,      &
+	                               k_co, theta_co,                        &
 	                               j_h2o, j_oh, a_lines_max,              &
 	                               col_over_overlap)
 	real*8, dimension(1-Ng:N+Ng), intent(in)  :: nH2, nH2O, nOH, T_K
+	! Carbon monoxide [cm^-3].  It is the fourth absorber of this beam: CO
+	! predissociates in 37 lines between 912.7 and 1076.1 A, all inside the
+	! Lyman-Werner interval, and it shields itself in them
+	! (co_photodissociation.f90).  Zero for a run without the oxygen
+	! chemistry.
+	real*8, dimension(1-Ng:N+Ng), intent(in)  :: nCO
+	! Neutral atomic hydrogen [cm^-3].  It is an absorber of this beam and
+	! not a spectator: band B2 is the H I Ly-alpha resonance line, and the
+	! column above a molecular base decides how much of the stellar line
+	! reaches it.
+	real*8, dimension(1-Ng:N+Ng), intent(in)  :: nHI
 	! Total hydrogen NUCLEUS density, the density axis of the self-shielding
 	! table (CLOUDY's hden).  It enters nothing else here.
 	real*8, dimension(1-Ng:N+Ng), intent(in)  :: nH_nuc
 	real*8, dimension(1-Ng:N+Ng), intent(out) :: NH2col, NH2Ocol, NOHcol
+	! Star-ward CO column [cm^-2], on the same radial points and by the same
+	! rectangle rule as the other three, so NCOcol(j) is the column at the
+	! inner face of cell j and NCOcol(j+1) that at its star-ward face.  That
+	! face convention is what the cell mean of the CO rate depends on.
+	real*8, dimension(1-Ng:N+Ng), intent(out) :: NCOcol
 	real*8, dimension(1-Ng:N+Ng), intent(out) :: f_shield, tr_lines, k_lw
 	! The two branching ratios of one Lyman-Werner absorption, both from the
 	! same level-resolved table as k_lw and both varying with depth.
@@ -255,6 +382,11 @@
 	!                  so the photon ledger of the band uses this one.
 	! Both are 0 for a run with no band flux, like k_lw.
 	real*8, dimension(1-Ng:N+Ng), intent(out) :: p_lw_single, p_lw_absorbed
+	! CO photodissociation rate [s^-1], the mean over each cell, and the
+	! Visser shielding function at the cell's own two columns, which is what
+	! the run reports.  Both 0 (rate) and 1 (shielding, the neutral value)
+	! for a run with no CO or no band flux.
+	real*8, dimension(1-Ng:N+Ng), intent(out) :: k_co, theta_co
 	real*8, dimension(1-Ng:N+Ng,n_fuv_band), intent(out) :: tau_b
 	real*8, dimension(1-Ng:N+Ng,n_fuv_band), intent(out) :: j_h2o, j_oh
 	real*8, intent(out) :: a_lines_max
@@ -264,12 +396,29 @@
 	! line-overlap regime the table does not carry.
 	real*8, intent(out) :: col_over_overlap
 	real*8, dimension(1-Ng:N+Ng) :: a_lines
-	real*8  :: tau_out, dtau, tr_out
+	! Line-centre H I Ly-alpha optical depth for band B2: the depth at each
+	! cell's INNER face, the depth at its star-ward face, and the cell's own
+	! depth, so that the beam can be averaged across the cell it crosses.
+	real*8, dimension(1-Ng:N+Ng) :: tau_lya, tau_lya_out, dtau_lya
+	! tr_out2 receives the cell mean of the SQUARE of the beam transmission,
+	! which the same routine returns for the quadratic trapping term of the
+	! n = 2 pumping field.  The band is linear in the beam, so it is not
+	! read here.
+	real*8  :: tau_out, dtau, tr_out, tr_out2
+	! Star-ward face values of the H2 column and of the Lyman-Werner
+	! continuum depth, the outer end of the cell the rate is averaged over.
+	real*8  :: NH2col_out, tau_lw_out
+	! Star-ward face value of the CO column, the outer end of the cell the
+	! CO rate is averaged over.
+	real*8  :: NCOcol_out
 	integer :: j, ib
 
 	NH2col   = 0.0d0
 	NH2Ocol  = 0.0d0
 	NOHcol   = 0.0d0
+	NCOcol   = 0.0d0
+	k_co     = 0.0d0
+	theta_co = 1.0d0
 	f_shield = 0.0d0
 	tr_lines = 1.0d0
 	k_lw     = 0.0d0
@@ -280,38 +429,46 @@
 	j_oh     = 0.0d0
 	a_lines_max = 0.0d0
 	col_over_overlap = 0.0d0
+	tau_lya  = 0.0d0
+	tau_lya_out = 0.0d0
+	dtau_lya = 0.0d0
 
 	! ---- H2 lines: self-shielding and the fraction of the LW band they
-	! take out of the shared beam.  Both are functions of the H2 column
-	! alone, so they exist whether or not the oxygen chemistry is on.
+	! take out of the shared beam.  Both are read from the table at the H2
+	! column above the cell and the cell's own T and n_H (the table is built
+	! for a homogeneous column, so the temperature and density of the gas
+	! above are approximated by the local ones in both), and both exist
+	! whether or not the oxygen chemistry is on.
 	!
-	! A is the summed dimensionless equivalent width of the pumping lines,
-	! int_0^N sigma_pump f_shield dN', which Draine & Bertoldi (1996)
-	! give in closed form as their eq. (39) -- h2_band_equivalent_width.
-	! Taking it from there rather than re-integrating on the radial grid
-	! makes the line transmission independent of the grid and exactly
-	! consistent with the fit whose integral it is.  A is an equivalent
-	! width and not an optical depth, so the transmission of the beam is
-	! 1 - A, not exp(-A).  The clamp is a floor on that transmission:
-	! eq. (39) has an asymptote slightly above 1 (lyman_werner.f90), which
-	! is fit slack, not physics.
+	! A is the fraction of the band photons the pumping lines have taken
+	! out of the beam by that column, int_0^N sigma_pump dN' with
+	! sigma_pump = sigma_diss/p_eff, served in closed form from the same
+	! level-resolved table the dissociation rate comes from
+	! (h2_lw_band_photon_fraction_absorbed).  Taking it from the table
+	! rather than re-integrating on the radial grid makes the line
+	! transmission independent of the grid and makes the photons the beam
+	! loses exactly the photons the rate spends: one absorption, one
+	! normalization.  A is a share of the band and not an optical depth, so
+	! the transmission of the beam is 1 - A, not exp(-A).  The clamp is a
+	! floor on that transmission: the table is clamped at its edge cross
+	! section above the top of its column axis, so A goes on growing
+	! linearly there, and a capped A means the lines have taken the band.
 	!
-	! THE TWO LINES BELOW DELIBERATELY COME FROM DIFFERENT PLACES, and that
-	! is the point of lyman_werner.f90 sec. 2: f_shield is the suppression of
-	! the photodissociation RATE, taken from the level-resolved CLOUDY table
-	! because neither published fit follows that calculation at the
-	! temperature of this layer; A is the SHARE of the band the lines remove,
-	! which exists in closed form only as the integral of DB96's own eq. (37),
-	! and whose normalization the same level-resolved calculation confirms to
-	! 2 per cent.  f_shield is what the run reports in
-	! output/Lyman_Werner.txt, i.e. the factor the rate actually carries.
+	! THE TWO LINES BELOW COME FROM ONE TABLE and are the two faces of one
+	! absorption: f_shield is the suppression of the photodissociation RATE,
+	! which the run reports in output/Lyman_Werner.txt at each cell's own
+	! column, and A is the SHARE of the band the same lines remove.  Until
+	! 2026-09-06 A was the Draine & Bertoldi (1996) eq. (39) equivalent
+	! width of a narrower band, and the two disagreed by 45 per cent
+	! (lyman_werner.f90 sec. 3a).  The rate below is the mean of the same
+	! table over the cell.
 	if (thereis_mol .and. F_LW_star .gt. 0.0d0) then
 		call calc_column_dens_one(nH2, NH2col)
 		do j = 1-Ng,N+Ng
 			f_shield(j) = h2_self_shielding_level_resolved(NH2col(j),     &
 			                            T_K(j), nH_nuc(j))
-			a_lines(j) = min(h2_band_equivalent_width(NH2col(j),          &
-			                 h2_doppler_parameter(T_K(j))), 1.0d0)
+			a_lines(j) = min(h2_lw_band_photon_fraction_absorbed(         &
+			                 NH2col(j), T_K(j), nH_nuc(j)), 1.0d0)
 			tr_lines(j) = 1.0d0 - a_lines(j)
 			col_over_overlap = max(col_over_overlap,                       &
 			                       NH2col(j)/h2_shield_max_column())
@@ -319,10 +476,38 @@
 		a_lines_max = maxval(a_lines)
 	endif
 
+	! ---- H I Ly-alpha, the line that band B2 IS.  The photolysis bands are
+	! all longward of the 912 A Lyman edge, so the H I photoionization
+	! CONTINUUM does not touch them; the resonance LINE at 1215.67 A does,
+	! and it is the strongest absorber in the atmosphere at that wavelength
+	! (a star-ward column of 1e19-1e21 cm^-2 gives a line-centre optical
+	! depth of 1e6-1e8).  The stellar line is scattered rather than
+	! destroyed, so its transmission is not exp(-tau) but the fraction of
+	! the stellar profile whose wings penetrate to that depth --
+	! lya_stellar_beam_transmission, the same expression and the same
+	! line-centre depth that lya_rt.f90 uses for the n = 2 pumping beam, so
+	! the two treatments of the one stellar line agree by construction.
+	!
+	! The depth is the rectangle rule of lya_line_center_optical_depth, the
+	! same rule and the same widths as the continuum columns above, so
+	! tau_lya_out(j) and tau_b(j+1,ib) are the depths at one face and
+	! dtau_lya(j) and tau_b(j,ib) - tau_b(j+1,ib) are two depths of one
+	! cell.
+	if (thereis_oxychem .and. F_Lya_star .gt. 0.0d0)                       &
+		call lya_line_center_optical_depth(T_K, nHI, tau_lya,              &
+		                                   dtau_lya, tau_lya_out)
+
 	! ---- H2O and OH continua, on every band.
 	if (thereis_oxychem) then
 		call calc_column_dens_one(nH2O, NH2Ocol)
 		call calc_column_dens_one(nOH,  NOHcol)
+		! The CO column is built by the same routine on the same points, but
+		! it is NOT added to tau_b: CO is a LINE absorber and its equivalent
+		! width is already inside the Visser shielding function, so a
+		! continuum term for it would shield the H2O and OH continua with
+		! photons the shielding function has already removed.  Its lines
+		! shield CO, and the H2 lines shield CO through N_H2 inside Theta.
+		call calc_column_dens_one(nCO,  NCOcol)
 		do ib = 1,n_fuv_band
 			do j = 1-Ng,N+Ng
 				tau_b(j,ib) = fuv_band_optical_depth(ib, NH2Ocol(j),      &
@@ -334,11 +519,39 @@
 	! ---- H2 photodissociation, with the continuum of the SAME interval
 	! attenuating it: DB96 eq. (40) in structure, the level-resolved
 	! self-shielding table in it.
+	!
+	! The rate is the MEAN over the cell, as the H2O and OH rates of the
+	! same beam are.  NH2col(j) already contains the whole of cell j, so it
+	! is the column at that cell's INNER face and NH2col(j+1) is the column
+	! at its star-ward face (nothing sits above the outermost cell); the
+	! continuum depths tau_b(j,ib_LW) and tau_b(j+1,ib_LW) are the two
+	! faces of the same cell.  The cross section falls by four decades
+	! across the self-shielding transition and fastest at the H2 front,
+	! where one cell spans a large fraction of a decade of column, so the
+	! inner-face value applied to the whole cell is low there, in one
+	! direction, by whatever that fraction is worth
+	! (lyman_werner_dissociation_rate_cell_mean states how the mean is
+	! taken and to what accuracy).
+	!
+	! The two branching ratios stay at the cell's own column: they are
+	! ratios of one absorption's outcomes and not rates, so they enter the
+	! heat return and the band photon ledger as multipliers of a rate that
+	! is now the cell mean, and their variation with column is a factor 12
+	! (p_single) and 25 (p_absorbed) over the WHOLE column axis against the
+	! four decades of the cross section.
 	if (thereis_mol .and. F_LW_star .gt. 0.0d0) then
 		do j = 1-Ng,N+Ng
-			k_lw(j) = lyman_werner_dissociation_rate(                     &
+			if (j .lt. N+Ng) then
+				NH2col_out  = NH2col(j+1)
+				tau_lw_out  = tau_b(j+1,ib_LW)
+			else
+				NH2col_out  = 0.0d0
+				tau_lw_out  = 0.0d0
+			endif
+			k_lw(j) = lyman_werner_dissociation_rate_cell_mean(           &
 			              fuv_band_flux(ib_LW),                           &
-			              NH2col(j), T_K(j), nH_nuc(j), tau_b(j,ib_LW))
+			              NH2col_out, NH2col(j), T_K(j), nH_nuc(j),       &
+			              tau_lw_out, tau_b(j,ib_LW))
 			p_lw_single(j)   = h2_lw_dissociation_per_pump(NH2col(j),     &
 			                       T_K(j), nH_nuc(j))
 			p_lw_absorbed(j) = h2_lw_dissociation_per_absorbed_photon(    &
@@ -346,12 +559,43 @@
 		enddo
 	endif
 
+	! ---- CO photodissociation on the same beam.  Same faces, same
+	! continuum depth and the same reason for a cell mean as the H2 rate
+	! above: the Visser shielding function falls by more than three decades
+	! along the CO column axis and by more than six along the H2 axis, and
+	! one cell at the CO front carries a large fraction of a decade of both.
+	!
+	! Theta is a function of TWO columns, so both are handed over at both
+	! faces.  The reported theta_co is the value at the cell's own inner
+	! face -- the same convention f_shield follows for H2 -- and it is a
+	! diagnostic; the rate carries the mean.
+	if (thereis_oxychem .and. F_LW_star .gt. 0.0d0) then
+		do j = 1-Ng,N+Ng
+			if (j .lt. N+Ng) then
+				NH2col_out  = NH2col(j+1)
+				NCOcol_out  = NCOcol(j+1)
+				tau_lw_out  = tau_b(j+1,ib_LW)
+			else
+				NH2col_out  = 0.0d0
+				NCOcol_out  = 0.0d0
+				tau_lw_out  = 0.0d0
+			endif
+			k_co(j) = co_photodissociation_rate_cell_mean(                &
+			              fuv_band_flux(ib_LW),                           &
+			              NCOcol_out, NCOcol(j), NH2col_out, NH2col(j),   &
+			              tau_lw_out, tau_b(j,ib_LW))
+			theta_co(j) = co_self_shielding(NCOcol(j), NH2col(j))
+		enddo
+	endif
+
 	! ---- H2O and OH photodissociation, band by band.  tau_b(j,ib) is the
 	! depth at the INNER face of cell j (the column at j already contains
 	! cell j), so the star-ward face of cell j carries tau_b(j+1,ib) and the
-	! line transmission tr_lines(j+1).  The rate is the MEAN over the cell,
-	! which makes the photons the model absorbs exactly the photons the beam
-	! loses at any grid spacing (water_photolysis.f90).
+	! H2 line transmission tr_lines(j+1).  The rate is the MEAN over the
+	! cell, which makes the photons the model absorbs exactly the photons
+	! the beam loses at any grid spacing (water_photolysis.f90).  The B2
+	! line factor below is a cell mean as well, so in that band both factors
+	! of the rate are means and neither is a face value.
 	if (thereis_oxychem) then
 		do ib = 1,n_fuv_band
 			do j = 1-Ng,N+Ng
@@ -362,7 +606,53 @@
 					tau_out = 0.0d0   ! nothing above the top cell
 					tr_out  = 1.0d0
 				endif
-				if (ib .ne. ib_LW) tr_out = 1.0d0
+				! Line transmission of the beam, band by band.  tr_lines
+				! carries the H2 Lyman-Werner lines, which exist only in
+				! the LW band; band B2 is the H I Ly-alpha line and carries
+				! the transmission of the stellar line through the atomic
+				! hydrogen column; the remaining three bands have no line
+				! absorber and keep the neutral value 1.
+				!
+				! B2 TAKES THE MEAN OF THAT TRANSMISSION OVER THE CELL, not
+				! its value at the cell's star-ward face, for the reason the
+				! continuum factor is already a cell mean: the rate is what
+				! the cell's molecules undergo averaged over the cell, and
+				! the beam falls across the cell by that cell's own depth.
+				! The stellar Ly-alpha line is resonantly SCATTERED, so its
+				! transmission is erfc(c sqrt(tau)) and the fall across a
+				! cell is set by the change of the erfc ARGUMENT, i.e. by
+				! c[sqrt(tau_in) - sqrt(tau_out)] and not by dtau: it is
+				! negligible for a thin cell high in the column and a factor
+				! at the base of a molecular layer, where one cell holds
+				! most of the atomic hydrogen column
+				! (lya_stellar_beam_transmission_cell_mean states the
+				! quadrature; the driver lya_beam_cell_mean measures both).
+				!
+				! THE PRODUCT OF THE TWO MEANS IS TAKEN, not the mean of the
+				! product: water_photolysis_rate multiplies this factor by
+				! the cell mean of exp(-tau_cont).  Both factors fall
+				! monotonically across the cell, so the product of the means
+				! is a LOWER bound on the mean of the product, short of it
+				! by their covariance, which is at most a quarter of the
+				! product of their two relative variations across the cell
+				! -- dtau_cont for the exponential factor, and
+				! (T_out - T_in)/<T> for this one.  The continuum depth of
+				! ONE cell is a fraction of unity wherever the band still
+				! carries photons, so that bound is small; the driver
+				! lya_band_transmission measures the product of means
+				! against an exact joint integration over the cell.  Taking
+				! the mean of the product would need one joint quadrature of
+				! both absorbers inside water_photolysis_rate.
+				!
+				! Above the top cell there is no column, tau_lya_out is zero
+				! there, and erfc(0) = 1 is the neutral value.
+				if (ib .eq. ib_B2) then
+					call lya_stellar_beam_transmission_cell_mean(        &
+					         T_K(j), tau_lya_out(j), dtau_lya(j),        &
+					         tr_out, tr_out2)
+				else if (ib .ne. ib_LW) then
+					tr_out = 1.0d0
+				endif
 				dtau = max(tau_b(j,ib) - tau_out, 0.0d0)
 				j_h2o(j,ib) = water_photolysis_rate(fuv_band_flux(ib),    &
 				                            ib, tau_out, dtau, tr_out)
@@ -389,6 +679,247 @@
 	endif
 	end function photoelectron_share
 
+	subroutine advance_starward_columns(j_hi, j_lo,                       &
+	              nhi, nheiS, nheii, nheiTR, nh2, nm, has_h2,             &
+	              N1_c, N15_c, N2_c, NTR_c, NH2_c, Nm_c,                  &
+	              N1_face, N15_face, N2_face, NTR_face, NH2_face, Nm_face)
+	! Carries the column of each absorber inward across the cells j_hi down
+	! to j_lo, by the same rectangle rule and the same opa_pf opacity weight
+	! calc_column_dens, calc_column_dens_one and calc_column_dens_metals use,
+	! and in the same order: a column entering at j_hi and leaving at j_lo
+	! reproduces those routines cell for cell, bit for bit.
+	!
+	! N*_c enter as the column of everything OUTSIDE j_hi and leave as the
+	! column of everything outside j_lo, the cells of the range included.
+	! The optional N*_face arrays record, for each cell of the range, the
+	! column outside THAT cell, which is the depth its star-ward face sees
+	! (photoionization_field_at_cell_HHe).
+	!
+	! With the metals off no metal ion is present, so every metal slot of
+	! Nm_c would take a zero increment: the sweep over the 27 slots is
+	! skipped on thereis_metals and the column each caller reads is the
+	! same number it was.
+	!
+	! Why this exists as a sweep rather than a whole-grid integral: it lets
+	! a caller advance the columns with the composition it has already
+	! solved, one block of cells at a time, instead of building them once
+	! from a composition the whole traversal then lags behind.
+
+	integer, intent(in) :: j_hi, j_lo
+	real*8, dimension(1-Ng:N+Ng), intent(in) :: nhi, nheiS, nheii, nheiTR
+	real*8, dimension(1-Ng:N+Ng), intent(in) :: nh2
+	real*8, dimension(1-Ng:N+Ng,n_mion), intent(in) :: nm
+	logical, intent(in) :: has_h2
+	real*8, intent(inout) :: N1_c, N15_c, N2_c, NTR_c, NH2_c
+	real*8, dimension(n_mphot), intent(inout) :: Nm_c
+	real*8, dimension(1-Ng:N+Ng), intent(out), optional ::                &
+	              N1_face, N15_face, N2_face, NTR_face, NH2_face
+	real*8, dimension(1-Ng:N+Ng,n_mphot), intent(out), optional :: Nm_face
+
+	integer :: j, i, k
+	real*8  :: dr
+
+	do j = j_hi, j_lo, -1
+
+		if (present(N1_face))  N1_face(j)  = N1_c
+		if (present(N15_face)) N15_face(j) = N15_c
+		if (present(N2_face))  N2_face(j)  = N2_c
+		if (present(NTR_face)) NTR_face(j) = NTR_c
+		if (present(NH2_face)) NH2_face(j) = NH2_c
+		if (present(Nm_face))  Nm_face(j,:) = Nm_c
+
+		dr = dr_j(j)*R0*opa_pf(j)
+
+		! The outermost cell of the grid is the one calc_column_dens starts
+		! its integral at, and it groups the width and the density the other
+		! way round; the column entering there is zero, so adding its term in
+		! that grouping reproduces that first value exactly.
+		if (j .eq. N+Ng) then
+			N1_c = N1_c + dr_j(j)*R0*nhi(j)*opa_pf(j)
+			if (thereis_He) then
+				N15_c = N15_c + dr_j(j)*R0*nheiS(j)*opa_pf(j)
+				N2_c  = N2_c  + dr_j(j)*R0*nheii(j)*opa_pf(j)
+				if (thereis_HeITR) NTR_c = NTR_c                          &
+				                 + dr_j(j)*R0*nheiTR(j)*opa_pf(j)
+			endif
+			if (has_h2) NH2_c = NH2_c + dr_j(j)*R0*nh2(j)*opa_pf(j)
+			if (thereis_metals) then
+				do i = 1,n_mion
+					if (.not. mion_isphot(i)) cycle
+					k = mion_iphot(i)
+					Nm_c(k) = Nm_c(k) + dr_j(j)*R0*nm(j,i)*opa_pf(j)
+				enddo
+			endif
+		else
+			N1_c = N1_c + nhi(j)*dr
+			if (thereis_He) then
+				N15_c = N15_c + nheiS(j)*dr
+				N2_c  = N2_c  + nheii(j)*dr
+				if (thereis_HeITR) NTR_c = NTR_c + nheiTR(j)*dr
+			endif
+			! calc_column_dens_one multiplies the width in cell by cell
+			! rather than hoisting it; the same grouping is kept here.
+			if (has_h2) NH2_c = NH2_c                                     &
+			                  + nh2(j)*dr_j(j)*R0*opa_pf(j)
+			if (thereis_metals) then
+				do i = 1,n_mion
+					if (.not. mion_isphot(i)) cycle
+					k = mion_iphot(i)
+					Nm_c(k) = Nm_c(k) + nm(j,i)*dr
+				enddo
+			endif
+		endif
+
+	enddo
+
+	end subroutine advance_starward_columns
+
+	! ------------------------------------------------------------- !
+
+	subroutine photoionization_field_at_cell_H(j, N1_out, nhi_j, xion_j,  &
+	                          sec_on, P_HI_j, h1_HI_j, heat_j, q_j)
+	! The attenuated stellar XUV field of ONE cell of a PURE HYDROGEN
+	! atmosphere (thereis_He = .false.), and the rates it drives there.  The
+	! H+He+metals form is photoionization_field_at_cell_HHe; PH_heat_H is
+	! this routine's whole-grid form.
+	!
+	! The field at this cell is set by the H I column OUTSIDE it, which the
+	! caller passes in, and by the cell's own column, formed here from the
+	! density passed in.  Nothing in it depends on any cell inside j, so a
+	! caller sweeping outside in can hand it the column of the composition it
+	! has already solved and get a field self-consistent with that
+	! composition in one traversal; and a caller iterating one cell can hand
+	! it the density of the ITERATE, which makes the cell's own attenuation
+	! the attenuation of the composition it is being solved for
+	! (ionization_equilibrium, xuv_self_field_passes).  The cell mean is
+	! formed ONCE, from the two depths together, so an iterating caller
+	! re-evaluates that one expression and never composes a second
+	! attenuation on top of it.  See photoionization_field_at_cell_HHe for
+	! why the fixed point is the same either way.
+
+	integer, intent(in) :: j
+	! H I column outside the cell [cm^-2], opa_pf-weighted.
+	real*8,  intent(in) :: N1_out
+	real*8,  intent(in) :: nhi_j, xion_j
+	! Is the secondary-ionization coupling enabled AND staged on.
+	logical, intent(in) :: sec_on
+	! Photoionization rate [s^-1], photoheating rate of ONE H I atom
+	! [erg s^-1], the heating of the composition passed in [erg cm^-3 s^-1]
+	! and its heating efficiency.
+	real*8,  intent(out) :: P_HI_j, h1_HI_j, heat_j, q_j
+
+	real*8, dimension(Nl) :: acc_secHI, fhv, fh_v, fiHI
+	real*8, dimension(Nl) :: fiHeI_dum, fiH2_dum
+	type(photoelectron_partition_t) :: pep
+	real*8 :: Psec_HI
+	real*8 :: PIR_1, Hea_1, q_abs
+	real*8, dimension(Nl) :: tauE_out, dtauE
+	real*8 :: dr_cell
+	real*8, dimension(Nl) :: int_f,int_1,int_q,int_H
+
+	!----------------------------------!
+
+		! Initialization of integrands
+		Hea_1  = 0.0
+		PIR_1  = 0.0
+		q_abs  = 0.0
+
+		! The depth at the star-ward face comes from the column of
+		! everything OUTSIDE the cell, which the caller passes in; nothing
+		! sits above the outermost cell, so its caller passes zero and the
+		! depth there is exactly zero.  The cell's own depth is formed from
+		! its own density and width rather than as a difference of two
+		! columns, which is the same number in exact arithmetic and loses
+		! its digits to cancellation for a thin cell.
+		tauE_out = s_hi*N1_out*1.0d-18
+		dr_cell = dr_j(j)*R0*opa_pf(j)
+		dtauE = s_hi*nhi_j*dr_cell*1.0d-18
+
+		! Initial integrands. int_f is the attenuated stellar flux of this
+		! cell weighted by the cell's cross-section factor opa_pf(j) = f(p):
+		! the pressure broadening of opacity model 'P' (opacity_pT_factor;
+		! f = 1 for every other model, so this weight is then exactly 1).
+		! INVARIANT: the photons a cell removes from the beam are the photons
+		! it absorbs. The depths above already carry f (calc_column_dens),
+		! so the beam loses f*sigma*n*dr across the cell, and the local
+		! ionization, heating and absorbed energy must carry the same f, i.e.
+		! the cross section that acts locally is f*sigma as well.  Every
+		! integrand below is linear in exactly one cross section, so folding f
+		! once into the flux weight they share is identical to multiplying each
+		! cross section by it (docs/development_plan_20260905_rev3.md section
+		! 10.2 item 7).
+		!
+		! The attenuation is the MEAN over the cell, exp(-tau_out)
+		! (1 - exp(-dtau))/dtau, not the inner-face value: the rate of the
+		! cell is the rate averaged over the cell, and only the mean makes
+		! the photons the cell absorbs equal the photons the beam loses
+		! across it (utils, cell_mean_attenuation).
+		int_f = F_XUV*cell_mean_attenuation(tauE_out, dtauE)*opa_pf(j)
+		! Secondary-ionization energy partition for this cell. Hydrogen is the
+		! only target on this path, so this is the n_HeI -> 0, n_H2 -> 0 limit
+		! of photoelectron_energy_partition: the whole ionization energy goes to
+		! hydrogen, and fiHI comes back per H I atom [cm^3]. With no molecular
+		! hydrogen the H2 terms are identically absent and the heat fraction is
+		! Dalgarno's H-He heating efficiency, closed at x = 1.
+		if (sec_on) then
+			call photoelectron_energy_partition(xion_j, nhi_j, 0.0d0,     &
+			                                  0.0d0, 0.0d0, 0.0d0, pep)
+			call photoelectron_shares(pep, iabs_HI, fh_v, fiHI,            &
+			                          fiHeI_dum, fiH2_dum)
+		else
+			fh_v = 1.0d0; fiHI = 0.0d0
+		endif
+		! Heating fraction: fh_v above the E_sec_ion photoelectron threshold, 1
+		! (full thermalization) below it. fhv = 1 when the coupling is off, so
+		! the heating integrand is bit-identical to the legacy path.
+		fhv = 1.0d0
+		if (sec_on) fhv = merge(fh_v, 1.0d0, e_v > e_th_HI + E_sec_ion)
+		! The heating integrand carries NO density: Hea_1 is the heating rate
+		! of one H I atom, and the contraction with the composition is done
+		! below. The absorbed-energy integrand keeps its density, because the
+		! heating efficiency is a property of the state passed in.
+		int_H = int_f*photoelectron_share(e_th_HI,e_v)*fhv*s_hi
+		int_1 = int_f*s_hi/e_v
+		int_q = int_f*s_hi*nhi_j
+
+		! Value of integrals
+		Hea_1 = sum(int_H*de_v)
+		PIR_1 = sum(int_1*de_v)
+		q_abs = sum(int_q*de_v)
+
+		! Multiply for the dimensional coefficient
+		h1_HI_j  = Hea_1*1.0d-18
+		heat_j   = h1_HI_j*nhi_j
+		P_HI_j   = PIR_1*1.0d-18*erg2eV
+		! Add the H I secondary-ionization rate from fast photoelectrons.
+		! fiHI is per H I atom, so the integral is already a rate [1/s].
+		if (sec_on) then
+			acc_secHI = int_f*s_hi*nhi_j/e_v * &
+			     merge(fiHI*(e_v-e_th_HI)/e_th_HI, 0.0d0, e_v > e_th_HI + E_sec_ion)
+			Psec_HI = sum(acc_secHI*de_v)*1.0d-18*erg2eV
+			P_HI_j = P_HI_j + Psec_HI
+		endif
+		! q_abs = int F sigma n_HI dE is the energy absorbed per unit volume
+		! and time: it is non-negative for any physical state, and it vanishes
+		! together with Hea_1 in a transparent or unilluminated cell. The
+		! heating efficiency is undefined there and zero is its physical value
+		! (nothing absorbed, nothing deposited). A non-positive q_abs with a
+		! non-zero Hea_1 can only come from a negative neutral density, i.e.
+		! from an unphysical ionization root; the ionization solve rejects
+		! those (ionization_fractions_physical), and the test here keeps the
+		! efficiency finite and signed correctly if one ever survives.
+		if (q_abs .gt. 0.0d0) then
+			q_j  = Hea_1*nhi_j/q_abs
+		else
+			q_j  = 0.0d0
+		endif
+
+
+	end subroutine photoionization_field_at_cell_H
+
+	! ------------------------------------------------------------- !
+
+
 	subroutine PH_heat_H(nhi, xion, P_HI,heat,q, heat_of_one_HI)
 	! Computes photoionization rates and heating rates for a PURE HYDROGEN
 	! atmosphere (thereis_He = .false.); the He/H+metals path is PH_heat_HHe.
@@ -412,14 +943,6 @@
 	! Ionized fraction of the H+He nuclei, for the SvS85 secondary ionization.
 	real*8, dimension(1-Ng:N+Ng),intent(in) :: xion
 
-	! Secondary-ionization scratch (H-only: no He I and no H2 channel).
-	! fiHI is the branching per H I atom [cm^3] and Psec_HI the rate it gives
-	! [1/s]; fh_v is the heat fraction of the photoelectron. Both are resolved
-	! on the spectral grid through the absorber's excess energy e_v - e_th_HI.
-	real*8, dimension(Nl) :: acc_secHI, fhv, fh_v, fiHI
-	real*8, dimension(Nl) :: fiHeI_dum, fiH2_dum
-	type(photoelectron_partition_t) :: pep
-	real*8 :: Psec_HI
 	! SvS85 coupling applied only when enabled AND staged on (see EXHALE_main).
 	logical :: sec_on
 
@@ -428,13 +951,8 @@
 	real*8, dimension(1-Ng:N+Ng) :: nhei, nheii, nheiii, nheiTR
 	real*8, dimension(1-Ng:N+Ng) :: N15, N2, NTR
 
-   real*8 :: PIR_1		            ! Photoionization rates
-   real*8 :: Hea_1 		        ! Heating rates  
-	real*8 :: q_abs           	! Absorbed energy
-	
-	! Integral variables
-	real*8, dimension(Nl) :: tauE			
-	real*8, dimension(Nl) :: int_f,int_1,int_q,int_H
+	! The H I column outside the cell being evaluated.
+	real*8 :: N1o
 
 	! Column densities                                 
    real*8, dimension(1-Ng:N+Ng) ::  N1 
@@ -464,77 +982,14 @@
 	! Evaluate the column density
 	call calc_column_dens(nhi,nhei,nheii,nheiTR,N1,N15,N2,NTR)
 
-   ! Evaluate photoionization rates and photoheating rates
+   ! Evaluate photoionization rates and photoheating rates.  Every column is
+	! already known here, so the cells are independent and the loop is the
+	! lagged form of the sweep described at photoionization_field_at_cell_H.
 	do j = 1-Ng,N+Ng
-
-		! Initialization of integrands
-		Hea_1  = 0.0
-		PIR_1  = 0.0
-		q_abs  = 0.0
-
-		tauE = s_hi*N1(j)*1.0e-18	
-
-		! Initial integrands
-		int_f = F_XUV*exp(-tauE)/(1.0 + a_tau*tauE)
-		! Secondary-ionization energy partition for this cell. Hydrogen is the
-		! only target on this path, so this is the n_HeI -> 0, n_H2 -> 0 limit
-		! of photoelectron_energy_partition: the whole ionization energy goes to
-		! hydrogen, and fiHI comes back per H I atom [cm^3]. With no molecular
-		! hydrogen the H2 terms are identically absent and the heat fraction is
-		! Dalgarno's H-He heating efficiency, closed at x = 1.
-		if (sec_on) then
-			call photoelectron_energy_partition(xion(j), nhi(j), 0.0d0,     &
-			                                  0.0d0, 0.0d0, 0.0d0, pep)
-			call photoelectron_shares(pep, iabs_HI, fh_v, fiHI,            &
-			                          fiHeI_dum, fiH2_dum)
-		else
-			fh_v = 1.0d0; fiHI = 0.0d0
-		endif
-		! Heating fraction: fh_v above the E_sec_ion photoelectron threshold, 1
-		! (full thermalization) below it. fhv = 1 when the coupling is off, so
-		! the heating integrand is bit-identical to the legacy path.
-		fhv = 1.0d0
-		if (sec_on) fhv = merge(fh_v, 1.0d0, e_v > e_th_HI + E_sec_ion)
-		! The heating integrand carries NO density: Hea_1 is the heating rate
-		! of one H I atom, and the contraction with the composition is done
-		! below. The absorbed-energy integrand keeps its density, because the
-		! heating efficiency is a property of the state passed in.
-		int_H = int_f*photoelectron_share(e_th_HI,e_v)*fhv*s_hi
-		int_1 = int_f*s_hi/e_v
-		int_q = int_f*s_hi*nhi(j)
-
-		! Value of integrals
-		Hea_1 = sum(int_H*de_v)
-		PIR_1 = sum(int_1*de_v)
-		q_abs = sum(int_q*de_v)
-
-		! Multiply for the dimensional coefficient
-		h1_HI(j)  = Hea_1*1.0e-18
-		heat(j)   = h1_HI(j)*nhi(j)
-		P_HI(j)   = PIR_1*1.0e-18*erg2eV
-		! Add the H I secondary-ionization rate from fast photoelectrons.
-		! fiHI is per H I atom, so the integral is already a rate [1/s].
-		if (sec_on) then
-			acc_secHI = int_f*s_hi*nhi(j)/e_v * &
-			     merge(fiHI*(e_v-e_th_HI)/e_th_HI, 0.0d0, e_v > e_th_HI + E_sec_ion)
-			Psec_HI = sum(acc_secHI*de_v)*1.0e-18*erg2eV
-			P_HI(j) = P_HI(j) + Psec_HI
-		endif
-		! q_abs = int F sigma n_HI dE is the energy absorbed per unit volume
-		! and time: it is non-negative for any physical state, and it vanishes
-		! together with Hea_1 in a transparent or unilluminated cell. The
-		! heating efficiency is undefined there and zero is its physical value
-		! (nothing absorbed, nothing deposited). A non-positive q_abs with a
-		! non-zero Hea_1 can only come from a negative neutral density, i.e.
-		! from an unphysical ionization root; the ionization solve rejects
-		! those (ionization_fractions_physical), and the test here keeps the
-		! efficiency finite and signed correctly if one ever survives.
-		if (q_abs .gt. 0.0d0) then
-			q(j)  = Hea_1*nhi(j)/q_abs
-		else
-			q(j)  = 0.0d0
-		endif
-
+		N1o = 0.0d0
+		if (j .lt. N+Ng) N1o = N1(j+1)
+		call photoionization_field_at_cell_H(j, N1o, nhi(j), xion(j),     &
+		         sec_on, P_HI(j), h1_HI(j), heat(j), q(j))
 	enddo
 
 	if (present(heat_of_one_HI)) heat_of_one_HI = h1_HI
@@ -543,6 +998,556 @@
 
 	! ------------------------------------------------------------- !
 	
+	subroutine photoionization_field_at_cell_HHe(j,                       &
+	             N1_out,N15_out,N2_out,NTR_out,NH2_out,Nm_out,            &
+	             nhi_j,nheiS_j,nheii_j,nheiTR_j,nh2_j,nm_j,xion_j,        &
+	             fvq_j,evq_j, has_h2, sec_on, mol_sec,                    &
+	             D0_H2_eV, E_ker_H2_dd_eV,                                &
+	             P_HI_j,P_HeI_j,P_HeII_j,P_HeITR_j,Pm_j,                  &
+	             P_H2_j,P_H2_di_j,P_H2_dd_j,P_H2_nd_j,                    &
+	             h1_HI_j,h1_HeI_j,h1_HeII_j,h1_HeTR_j,h1_H2_j,h1m_j,      &
+	             heat_j, chan_j, q_j, q_abs_j)
+	! The attenuated stellar XUV field of ONE cell, and every rate it drives
+	! there: the photoionization rate of each absorber, the photoheating rate
+	! of one particle of each of them, the absorbed energy and the heating
+	! efficiency.  This is the single definition of that field; PH_heat_HHe
+	! is its whole-grid form and the equilibrium sweep calls it cell by cell.
+	!
+	! WHAT THE FIELD DEPENDS ON, AND WHY THAT MAKES IT SEPARABLE.  The
+	! attenuation at this cell is set by the column of each absorber OUTSIDE
+	! it, which the caller passes in (N1_out ... Nm_out, the columns
+	! evaluated at j+1), and by the cell's OWN column, which it forms here
+	! from the densities passed in.  Nothing in it depends on any cell inside
+	! j.  A caller sweeping the grid outside in can therefore hand this
+	! routine the columns of the composition it has ALREADY solved, and the
+	! field each cell is solved at is then self-consistent with that
+	! composition in one traversal; a caller that hands it the columns of one
+	! whole-grid composition gets the lagged (Jacobi) field instead.  Both
+	! have the same fixed point, because at the fixed point the entry and the
+	! returned composition are the same state.
+	!
+	! THE CELL'S OWN DEPTH IS THE SAME STATEMENT ONE CELL DOWN.  dtau is
+	! built here from the densities passed in, so a caller that iterates one
+	! cell -- solve, re-form the field from what it returned, solve again
+	! (ionization_equilibrium, xuv_self_field_passes) -- gets a field whose
+	! own attenuation is that of the composition the cell is being solved
+	! for.  The cell mean over the two depths is formed ONCE, in one
+	! expression, so that iteration re-evaluates that expression and never
+	! stacks a second attenuation on the first.
+	!
+	! Zero columns are what the outermost cell is handed: nothing sits above
+	! it, and its star-ward depth is then exactly zero.
+	!
+	! P_* and h1_* are properties of the FIELD (the density of the absorber
+	! that receives them is divided out of h1_*); heat_j and q_j are their
+	! contraction with the composition passed in, and describe that
+	! composition and no other.
+
+	integer, intent(in) :: j
+	! Columns of each absorber outside the cell [cm^-2], opa_pf-weighted.
+	real*8, intent(in) :: N1_out,N15_out,N2_out,NTR_out,NH2_out
+	real*8, dimension(n_mphot), intent(in) :: Nm_out
+	! This cell's own densities.  nheiS_j is the He I GROUND SINGLET, the
+	! caller having taken the metastable out of the summed neutral helium
+	! (he_ground_singlet_density is the one place that difference is made).
+	real*8, intent(in) :: nhi_j,nheiS_j,nheii_j,nheiTR_j,nh2_j,xion_j
+	real*8, dimension(n_mion), intent(in) :: nm_j
+	! Share of an H2 vibrational excitation collisionally de-excited into
+	! heat, and the mean internal energy [eV] one B or C fluorescence leaves.
+	real*8, intent(in) :: fvq_j,evq_j
+	! Does this run carry molecular hydrogen; is the secondary-ionization
+	! coupling on; does it have a molecular target.  Resolved once by the
+	! caller, not per cell.
+	logical, intent(in) :: has_h2, sec_on, mol_sec
+	! D0(H2) and the kinetic energy release of the double-ionization
+	! fragments [eV], both constants of the molecule the caller hoisted.
+	real*8, intent(in) :: D0_H2_eV, E_ker_H2_dd_eV
+
+	real*8, intent(out) :: P_HI_j,P_HeI_j,P_HeII_j,P_HeITR_j
+	real*8, dimension(n_mion), intent(out) :: Pm_j
+	real*8, intent(out) :: P_H2_j,P_H2_di_j,P_H2_dd_j,P_H2_nd_j
+	real*8, intent(out) :: h1_HI_j,h1_HeI_j,h1_HeII_j,h1_HeTR_j,h1_H2_j
+	real*8, dimension(n_mion), intent(out) :: h1m_j
+	! Photoheating rate [erg cm^-3 s^-1] and heating efficiency of the
+	! composition passed in, and the energy it absorbs [erg cm^-3 s^-1].
+	real*8, intent(out) :: heat_j, q_j, q_abs_j
+	! The same heating split by absorber: 1 H I, 2 He I (ground singlet),
+	! 3 He II, 4 He 2^3S, 5 H2, 6 metals.  The six sum to heat_j exactly,
+	! both coming from the one contraction below.
+	real*8, dimension(6), intent(out) :: chan_j
+
+	integer :: i,k
+	real*8 :: PIR_1,PIR_15,PIR_2,PIR_TR
+	real*8 :: PIR_H2, PIR_H2_di, PIR_H2_dd, PIR_H2_nd
+	real*8, dimension(Nl) :: int_h2, int_h2_di, int_h2_dd, int_h2_nd
+	real*8 :: q_abs
+	real*8 :: Pm_loc(n_mion), h1m_loc(n_mion)
+	real*8, dimension(Nl) :: tauE_out,dtauE,tau_m
+	real*8 :: dr_cell
+	real*8, dimension(Nl) :: int_f,int_1,int_15,int_2,int_TR,int_m
+	real*8, dimension(Nl) :: int_q,acc_q
+	real*8, dimension(Nl) :: acc_secHI,acc_secHeI,acc_secH2,fhv,fh_v
+	real*8, dimension(Nl) :: fiHI,fiHeI,fiH2
+	real*8, dimension(Nl) :: acc_HI,acc_HeI,acc_HeII,acc_HeTR,acc_H2
+	real*8, dimension(Nl) :: acc_mion
+	type(photoelectron_partition_t) :: pep
+	real*8 :: Psec_HI,Psec_HeI,Psec_H2,Psec_H2_di
+
+	!----------------------------------!
+
+	P_H2_j    = 0.0d0
+	P_H2_di_j = 0.0d0
+	P_H2_dd_j = 0.0d0
+	P_H2_nd_j = 0.0d0
+	Pm_j      = 0.0d0
+
+      PIR_1   = 0.0
+      PIR_15  = 0.0
+      PIR_2   = 0.0
+      PIR_TR  = 0.0
+      q_abs   = 0.0
+
+		! The photoheating integrands default to zero so the He 2^3S and H2
+		! rates stay 0 in cells/runs where those absorbers are absent.
+		acc_HeTR = 0.0d0
+		acc_H2   = 0.0d0
+		h1m_loc  = 0.0d0
+
+		! Optical depth at the cell's STAR-WARD face, from the columns of
+		! everything OUTSIDE the cell.  The metal block is accumulated
+		! separately in iphot order before the 1e-18 factor.  Nothing sits
+		! above the outermost cell, so its caller passes zero columns and the
+		! depth is exactly zero there.
+		tauE_out = (s_hi*N1_out + s_hei*N15_out                           &
+		            + s_heii*N2_out)*1.0d-18
+		if (thereis_He .and. thereis_HeITR) tauE_out = tauE_out           &
+		                            + s_heiTR*NTR_out*1.0d-18
+		if (has_h2) tauE_out = tauE_out                                   &
+		                           + s_h2*NH2_out*1.0d-18
+		tau_m = 0.0
+		do i = 1,n_mion
+			if (.not. mion_isphot(i)) cycle
+			k = mion_iphot(i)
+			tau_m = tau_m + sigma_tab(:,k)*Nm_out(k)
+		enddo
+		tauE_out = tauE_out + tau_m*1.0d-18
+
+		! The cell's OWN optical depth, from its own densities and width --
+		! the same absorbers, cross sections and opa_pf weight the columns
+		! sum.  Formed directly rather than as the difference of the two
+		! columns, which is the same number in exact arithmetic and loses
+		! its digits to cancellation for a thin cell.
+		dr_cell = dr_j(j)*R0*opa_pf(j)
+		if (thereis_He) then
+			dtauE = (s_hi*nhi_j + s_hei*nheiS_j                         &
+			         + s_heii*nheii_j)*dr_cell*1.0d-18
+			if (thereis_HeITR) dtauE = dtauE                              &
+			                         + s_heiTR*nheiTR_j*dr_cell*1.0d-18
+		else
+			dtauE = s_hi*nhi_j*dr_cell*1.0d-18
+		endif
+		if (has_h2) dtauE = dtauE + s_h2*nh2_j*dr_cell*1.0d-18
+		tau_m = 0.0
+		do i = 1,n_mion
+			if (.not. mion_isphot(i)) cycle
+			k = mion_iphot(i)
+			tau_m = tau_m + sigma_tab(:,k)*nm_j(i)
+		enddo
+		dtauE = dtauE + tau_m*dr_cell*1.0d-18
+
+		! Calculate photoionization integrals. int_f is the attenuated
+		! stellar flux of this cell weighted by the cell's cross-section
+		! factor opa_pf(j) = f(p), the pressure broadening of opacity model
+		! 'P' (opacity_pT_factor; f = 1 for every other model, so the weight
+		! is then exactly 1).  INVARIANT: the photons a cell removes from the
+		! beam are the photons it absorbs.  The depths above already carry f
+		! through the columns (calc_column_dens, calc_column_dens_one,
+		! calc_column_dens_metals), so the beam loses f*sigma*n*dr across the
+		! cell; the local photoionization rates, the photoheating of one
+		! particle of each absorber, the secondary-ionization rates and the
+		! absorbed energy must carry the same f, i.e. the cross section that
+		! acts locally is f*sigma too.  Every integrand below is linear in
+		! exactly one cross section, so folding f once into the flux weight
+		! they all share is identical to multiplying each cross section by it
+		! (docs/development_plan_20260905_rev3.md section 10.2 item 7).
+		!
+		! The attenuation is the MEAN over the cell, exp(-tau_out)
+		! (1 - exp(-dtau))/dtau, and not the inner-face value: the rate of
+		! the cell is the rate averaged over the cell, and only the mean
+		! makes the photons the cell absorbs equal the photons the beam
+		! loses across it, cell by cell and summed over the column (utils,
+		! cell_mean_attenuation).
+		int_f  = F_XUV*cell_mean_attenuation(tauE_out, dtauE)*opa_pf(j)
+		int_1  = int_f*s_hi/e_v
+		int_15 = int_f*s_hei/e_v
+		int_2  = int_f*s_heii/e_v
+		if (thereis_HeITR) int_TR =  int_f*s_heiTR/e_v
+		if (has_h2) then
+			int_h2    = int_f*s_h2/e_v
+			int_h2_di = int_f*s_h2_di/e_v
+			int_h2_dd = int_f*s_h2_dd/e_v
+			int_h2_nd = int_f*s_h2_nd/e_v
+		endif
+
+		! Secondary-ionization energy partition for this cell. The split of
+		! the ionization energy between the H I, He I and H2 channels is
+		! renormalized onto the cell's own neutral densities -- the fits carry
+		! Shull & van Steenberg's n(He I)/n(H I) = 0.1 and no H2 at all -- and
+		! comes back per target particle, so the absorber loops below build
+		! rates in [1/s] directly and nothing is divided by a vanishing
+		! neutral density. The H2 share uses the collision weight of Dalgarno,
+		! Yan & Liu (1999) eqs. (9) and (10); it and the molecular part of the
+		! heat fraction vanish identically when the run carries no H2.
+		! Derivation, limits and the parts of the partition that are still
+		! composition-blind: electron_energy_degradation.f90.
+		if (sec_on) then
+			if (has_h2) then
+				call photoelectron_energy_partition(xion_j, nhi_j,     &
+				                       nheiS_j, nh2_j, fvq_j, evq_j,  &
+				                       pep)
+			else
+				call photoelectron_energy_partition(xion_j, nhi_j,     &
+				                       nheiS_j, 0.0d0, 0.0d0, 0.0d0, pep)
+			endif
+		else
+			fiHI = 0.0d0; fiHeI = 0.0d0; fiH2 = 0.0d0
+		endif
+		acc_secHI  = 0.0d0
+		acc_secHeI = 0.0d0
+		acc_secH2  = 0.0d0
+
+		! Photoheating integrand of each absorber, WITHOUT that absorber's
+		! density: what is built here is the heating rate of one particle of
+		! it, and the composition enters only in the contraction after the
+		! loop. Where a photoelectron energy E0 = e_v - E_th exceeds
+		! E_sec_ion, only f_heat(x) of its excess is deposited as heat (fhv)
+		! and the balance drives H I / He I secondary ionizations; below the
+		! threshold it thermalizes fully. fhv = 1 when the coupling is off.
+		! He I triplet photoionization (threshold e_th_HeTR = 4.8 eV)
+		! deposits its photoelectron energy here as well, consistently with
+		! its opacity and its P_HeITR rate. The secondary-ionization
+		! integrands below DO carry the absorber densities: they are rates of
+		! the field the entry composition makes, not one-particle quantities.
+		fhv = 1.0d0
+		if (sec_on) then
+			call photoelectron_shares(pep, iabs_HI, fh_v, fiHI, fiHeI, fiH2)
+			fhv = merge(fh_v, 1.0d0, e_v > e_th_HI + E_sec_ion)
+		endif
+		acc_HI = photoelectron_share(e_th_HI,e_v)*fhv*s_hi
+		if (sec_on) then
+			acc_secHI  = acc_secHI  + s_hi*nhi_j/e_v *                       &
+			     merge(fiHI *(e_v-e_th_HI)/e_th_HI , 0.0d0, e_v > e_th_HI + E_sec_ion)
+			acc_secHeI = acc_secHeI + s_hi*nhi_j/e_v *                       &
+			     merge(fiHeI*(e_v-e_th_HI)/e_th_HeI, 0.0d0, e_v > e_th_HI + E_sec_ion)
+		endif
+		if (mol_sec) acc_secH2 = acc_secH2 + s_hi*nhi_j/e_v *                &
+			     merge(fiH2 *(e_v-e_th_HI)/e_th_H2 , 0.0d0, e_v > e_th_HI + E_sec_ion)
+
+		fhv = 1.0d0
+		if (sec_on) then
+			call photoelectron_shares(pep, iabs_HeI, fh_v, fiHI, fiHeI, fiH2)
+			fhv = merge(fh_v, 1.0d0, e_v > e_th_HeI + E_sec_ion)
+		endif
+		acc_HeI = photoelectron_share(e_th_HeI,e_v)*fhv*s_hei
+		if (sec_on) then
+			acc_secHI  = acc_secHI  + s_hei*nheiS_j/e_v *                    &
+			     merge(fiHI *(e_v-e_th_HeI)/e_th_HI , 0.0d0, e_v > e_th_HeI + E_sec_ion)
+			acc_secHeI = acc_secHeI + s_hei*nheiS_j/e_v *                    &
+			     merge(fiHeI*(e_v-e_th_HeI)/e_th_HeI, 0.0d0, e_v > e_th_HeI + E_sec_ion)
+		endif
+		if (mol_sec) acc_secH2 = acc_secH2 + s_hei*nheiS_j/e_v *             &
+			     merge(fiH2 *(e_v-e_th_HeI)/e_th_H2 , 0.0d0, e_v > e_th_HeI + E_sec_ion)
+
+		fhv = 1.0d0
+		if (sec_on) then
+			call photoelectron_shares(pep, iabs_HeII, fh_v, fiHI, fiHeI, fiH2)
+			fhv = merge(fh_v, 1.0d0, e_v > e_th_HeII + E_sec_ion)
+		endif
+		acc_HeII = photoelectron_share(e_th_HeII,e_v)*fhv*s_heii
+		if (sec_on) then
+			acc_secHI  = acc_secHI  + s_heii*nheii_j/e_v *                   &
+			     merge(fiHI *(e_v-e_th_HeII)/e_th_HI , 0.0d0, e_v > e_th_HeII + E_sec_ion)
+			acc_secHeI = acc_secHeI + s_heii*nheii_j/e_v *                   &
+			     merge(fiHeI*(e_v-e_th_HeII)/e_th_HeI, 0.0d0, e_v > e_th_HeII + E_sec_ion)
+		endif
+		if (mol_sec) acc_secH2 = acc_secH2 + s_heii*nheii_j/e_v *            &
+			     merge(fiH2 *(e_v-e_th_HeII)/e_th_H2 , 0.0d0, e_v > e_th_HeII + E_sec_ion)
+
+		! He I 2^3S (triplet): photoelectron energy hv - 4.8 eV, same
+		! secondary partition as the other absorbers.
+		if (thereis_HeITR) then
+			fhv = 1.0d0
+			if (sec_on) then
+				call photoelectron_shares(pep, iabs_HeTR, fh_v, fiHI, fiHeI, fiH2)
+				fhv = merge(fh_v, 1.0d0, e_v > e_th_HeTR + E_sec_ion)
+			endif
+			acc_HeTR = photoelectron_share(e_th_HeTR,e_v)*fhv*s_heiTR
+			if (sec_on) then
+				acc_secHI  = acc_secHI  + s_heiTR*nheiTR_j/e_v *             &
+				     merge(fiHI *(e_v-e_th_HeTR)/e_th_HI , 0.0d0, e_v > e_th_HeTR + E_sec_ion)
+				acc_secHeI = acc_secHeI + s_heiTR*nheiTR_j/e_v *             &
+				     merge(fiHeI*(e_v-e_th_HeTR)/e_th_HeI, 0.0d0, e_v > e_th_HeTR + E_sec_ion)
+			endif
+			if (mol_sec) acc_secH2 = acc_secH2 + s_heiTR*nheiTR_j/e_v *      &
+				     merge(fiH2 *(e_v-e_th_HeTR)/e_th_H2 , 0.0d0, e_v > e_th_HeTR + E_sec_ion)
+		endif
+
+		! The molecular absorber, in its four final-state channels. Each
+		! consumes one H2 and all four are inside the SAME cross section
+		! (s_h2_di, s_h2_dd and s_h2_nd are shares of s_h2, not additions to
+		! it), so the opacity, the absorbed energy and the H2 destruction
+		! rate are what they were; what differs is the threshold each
+		! channel charges -- 15.4 eV to leave H2+, 18.08 eV to leave H + H+,
+		! 51.4 eV to leave two protons, and the bond energy alone where no
+		! ion is made -- and therefore the energy left as heat.
+		! s_h2 - s_h2_di - s_h2_dd - s_h2_nd is the non-dissociative channel
+		! that leaves H2+; the last two vanish identically unless their
+		! options are on, so the arithmetic below is unchanged by default.
+		if (has_h2) then
+			fhv = 1.0d0
+			if (sec_on) then
+				call photoelectron_shares(pep, iabs_H2, fh_v, fiHI, fiHeI, fiH2)
+				fhv = merge(fh_v, 1.0d0, e_v > e_th_H2 + E_sec_ion)
+			endif
+			acc_H2 = photoelectron_share(e_th_H2,e_v)*fhv*(s_h2 - s_h2_di - s_h2_dd - s_h2_nd)
+			if (sec_on) then
+				acc_secHI  = acc_secHI  + (s_h2 - s_h2_di - s_h2_dd - s_h2_nd)*nh2_j/e_v *       &
+				     merge(fiHI *(e_v-e_th_H2)/e_th_HI , 0.0d0, e_v > e_th_H2 + E_sec_ion)
+				acc_secHeI = acc_secHeI + (s_h2 - s_h2_di - s_h2_dd - s_h2_nd)*nh2_j/e_v *       &
+				     merge(fiHeI*(e_v-e_th_H2)/e_th_HeI, 0.0d0, e_v > e_th_H2 + E_sec_ion)
+			endif
+			if (mol_sec) acc_secH2 = acc_secH2 + (s_h2 - s_h2_di - s_h2_dd - s_h2_nd)*nh2_j/e_v *&
+				     merge(fiH2 *(e_v-e_th_H2)/e_th_H2 , 0.0d0, e_v > e_th_H2 + E_sec_ion)
+
+			! Dissociative ionization H2 + hv -> H + H+ + e-. The 2.68 eV
+			! between the two thresholds goes into breaking the bond and is
+			! not available as heat, exactly as every other channel here is
+			! charged its own ionization potential.
+			fhv = 1.0d0
+			if (sec_on) then
+				call photoelectron_shares(pep, iabs_H2_di, fh_v, fiHI, fiHeI, fiH2)
+				fhv = merge(fh_v, 1.0d0, e_v > e_th_H2_di + E_sec_ion)
+			endif
+			acc_H2 = acc_H2 + photoelectron_share(e_th_H2_di,e_v)*fhv*s_h2_di
+			if (sec_on) then
+				acc_secHI  = acc_secHI  + s_h2_di*nh2_j/e_v *                &
+				     merge(fiHI *(e_v-e_th_H2_di)/e_th_HI , 0.0d0, e_v > e_th_H2_di + E_sec_ion)
+				acc_secHeI = acc_secHeI + s_h2_di*nh2_j/e_v *                &
+				     merge(fiHeI*(e_v-e_th_H2_di)/e_th_HeI, 0.0d0, e_v > e_th_H2_di + E_sec_ion)
+			endif
+			if (mol_sec) acc_secH2 = acc_secH2 + s_h2_di*nh2_j/e_v *         &
+				     merge(fiH2 *(e_v-e_th_H2_di)/e_th_H2 , 0.0d0, e_v > e_th_H2_di + E_sec_ion)
+
+			! Double ionization H2 + hv -> H+ + H+ + 2e-, charged its own
+			! 51.4 eV threshold. The excess e_v - 51.4 eV is the TOTAL
+			! kinetic energy of the two photoelectrons, and it is partitioned
+			! between local heat and secondary ionization exactly as the two
+			! channels above partition theirs. It must not be claimed whole
+			! as heat: this channel lives only above 51.4 eV, which is the
+			! band where the secondary-ionization share is largest, so
+			! charging fhv = 1 here would overstate the local heating and
+			! lose the ionizations the fast electrons make.
+			!
+			! APPROXIMATION, with its range. photoelectron_shares is indexed
+			! by absorber and returns the partition of ONE electron carrying
+			! the whole excess; this channel makes TWO electrons that share
+			! it. The shares of the dissociative absorber are used at this
+			! photon energy, which is the closest of the tabulated ones (same
+			! molecular target, adjacent threshold). Because the partition
+			! varies slowly with electron energy above E_sec_ion = 30 eV,
+			! the error is second order in the difference between the mean
+			! electron energy and the full excess; it is NOT zero, and it
+			! biases toward too little heating and too much ionization,
+			! since a slower electron heats more. A partition evaluated at
+			! (e_v - 51.4)/2 would remove it and needs its own absorber row
+			! in electron_energy_degradation.
+			fhv = 1.0d0
+			if (sec_on) then
+				call photoelectron_shares(pep, iabs_H2_di, fh_v, fiHI, fiHeI, fiH2)
+				fhv = merge(fh_v, 1.0d0, e_v > e_th_H2_dd + E_sec_ion)
+			endif
+			! The photon buys three things here: the 31.675 eV of chemical
+			! and ionization energy the products carry (D0 + 2 I(H)), the
+			! kinetic energy of the two electrons, and the kinetic energy
+			! release of the two protons.  The 51.4 eV charged above is the
+			! VERTICAL threshold, which exceeds the asymptotic product
+			! energy by exactly that proton kinetic energy, so the term
+			! E_ker_H2_dd_eV/e_v below is the share of the photon the
+			! nuclei take and it is thermal from the instant it is
+			! released: it carries no fhv, because it never passes through
+			! the photoelectron degradation partition.  Without it the
+			! channel loses 19.725 eV per event to nowhere
+			! (h2_channel_energy_recipients).
+			acc_H2 = acc_H2 + (photoelectron_share(e_th_H2_dd,e_v)*fhv    &
+			                   + E_ker_H2_dd_eV/e_v)*s_h2_dd
+			if (sec_on) then
+				acc_secHI  = acc_secHI  + s_h2_dd*nh2_j/e_v *                &
+				     merge(fiHI *(e_v-e_th_H2_dd)/e_th_HI , 0.0d0, e_v > e_th_H2_dd + E_sec_ion)
+				acc_secHeI = acc_secHeI + s_h2_dd*nh2_j/e_v *                &
+				     merge(fiHeI*(e_v-e_th_H2_dd)/e_th_HeI, 0.0d0, e_v > e_th_H2_dd + E_sec_ion)
+			endif
+			if (mol_sec) acc_secH2 = acc_secH2 + s_h2_dd*nh2_j/e_v *         &
+				     merge(fiH2 *(e_v-e_th_H2_dd)/e_th_H2 , 0.0d0, e_v > e_th_H2_dd + E_sec_ion)
+
+			! Neutral dissociation H2 + hv -> H(2p) + H(2s). NO
+			! photoelectron: the channel is not an ionization, so no fhv
+			! factor and no secondary-ionization terms. The bond energy
+			! D0(H2) is spent breaking the molecule, and the fragments of
+			! this window are BOTH in n = 2 -- the Q2 1Pi_u(1) state whose
+			! fluorescence curve overlaps this cross section -- so a further
+			! 2 E(n=1 to 2) = e_rad_H2_neutral leaves the cell as prompt
+			! Ly-alpha and two-photon continuum. What is left, the remainder
+			! of the photon, is the kinetic energy of the two atoms, i.e.
+			! heat (h2_channel_energy_recipients). The channel is nonzero
+			! only over 33-41 eV, well above D0 + 2 E(n=1 to 2) = 24.876 eV,
+			! so the bracket is positive throughout.
+			acc_H2 = acc_H2                                               &
+			       + (1.0d0-(D0_H2_eV+e_rad_H2_neutral)/e_v)*s_h2_nd
+		endif
+
+		! sigma_tab is the TOTAL photoabsorption of the ion, inner shells
+		! included, and every absorption in it is charged here to one
+		! ionization of stage i and to a photoelectron of e_v - mion_ethr(i).
+		! Above a K or L edge that is the model's approximation of an Auger
+		! event, not the event itself; what it under-counts, and why it is
+		! what the published photochemistry models do, is at the table in
+		! cross_sec.f90.
+		do i = 1,n_mion
+			if (.not. mion_isphot(i)) cycle
+			k = mion_iphot(i)
+			fhv = 1.0d0
+			if (sec_on) then
+				call photoelectron_shares(pep, n_abs_fixed+i, fh_v,       &
+				                          fiHI, fiHeI, fiH2)
+				fhv = merge(fh_v, 1.0d0, e_v > mion_ethr(i) + E_sec_ion)
+			endif
+			acc_mion   = photoelectron_share(mion_ethr(i),e_v)*fhv*sigma_tab(:,k)
+			h1m_loc(i) = sum(int_f*acc_mion*de_v)*1.0d-18
+			if (sec_on) then
+				acc_secHI  = acc_secHI  + sigma_tab(:,k)*nm_j(i)/e_v *        &
+				     merge(fiHI *(e_v-mion_ethr(i))/e_th_HI , 0.0d0, e_v > mion_ethr(i) + E_sec_ion)
+				acc_secHeI = acc_secHeI + sigma_tab(:,k)*nm_j(i)/e_v *        &
+				     merge(fiHeI*(e_v-mion_ethr(i))/e_th_HeI, 0.0d0, e_v > mion_ethr(i) + E_sec_ion)
+			endif
+			if (mol_sec) acc_secH2 = acc_secH2 + sigma_tab(:,k)*nm_j(i)/e_v * &
+				     merge(fiH2 *(e_v-mion_ethr(i))/e_th_H2 , 0.0d0, e_v > mion_ethr(i) + E_sec_ion)
+		enddo
+		! Absorbed energy integral (this one is a property of the entry
+		! composition: it is what the heating efficiency q is measured
+		! against, so it keeps the absorber densities).  The cross sections
+		! here are the unbroadened ones; the model 'P' factor f(p) of this
+		! cell reaches this integral through int_f in int_q below, the same
+		! way it reaches every other absorption integrand, so the energy
+		! taken out of the beam and the energy absorbed here are one number.
+		acc_q = s_hi *nhi_j
+		acc_q = acc_q + s_hei *nheiS_j
+		acc_q = acc_q + s_heii*nheii_j
+		if (thereis_HeITR) acc_q = acc_q + s_heiTR*nheiTR_j
+		if (has_h2) acc_q = acc_q + s_h2*nh2_j
+		do i = 1,n_mion
+			if (.not. mion_isphot(i)) cycle
+			k = mion_iphot(i)
+			acc_q = acc_q + sigma_tab(:,k)*nm_j(i)
+		enddo
+		int_q = int_f*acc_q
+
+		! Midpoint rule for integrals
+		PIR_1   = sum(int_1  *de_v)
+		PIR_15  = sum(int_15 *de_v)
+		PIR_2   = sum(int_2  *de_v)
+		if(thereis_HeITR) PIR_TR = sum(int_TR*de_v)
+		PIR_H2 = 0.0
+		PIR_H2_di = 0.0
+		PIR_H2_dd = 0.0
+		PIR_H2_nd = 0.0
+		if (has_h2) then
+			PIR_H2    = sum(int_h2   *de_v)
+			PIR_H2_di = sum(int_h2_di*de_v)
+			PIR_H2_dd = sum(int_h2_dd*de_v)
+			PIR_H2_nd = sum(int_h2_nd*de_v)
+		endif
+		do i = 1,n_mion
+			if (.not. mion_isphot(i)) then
+				Pm_loc(i) = 0.0
+				cycle
+			endif
+			k = mion_iphot(i)
+			int_m = int_f*sigma_tab(:,k)/e_v
+			Pm_loc(i) = sum(int_m*de_v)*1.0d-18*erg2eV
+		enddo
+		q_abs   = sum(int_q  *de_v)
+
+		! Photoheating rate of one particle of each absorber [erg s^-1] in
+		! this cell's attenuated field (the metal ions were integrated in the
+		! loop above). The contraction with the composition follows the loop.
+		h1_HI_j   = sum(int_f*acc_HI  *de_v)*1.0d-18
+		h1_HeI_j  = sum(int_f*acc_HeI *de_v)*1.0d-18
+		h1_HeII_j = sum(int_f*acc_HeII*de_v)*1.0d-18
+		h1_HeTR_j = sum(int_f*acc_HeTR*de_v)*1.0d-18
+		h1_H2_j   = sum(int_f*acc_H2  *de_v)*1.0d-18
+		h1m_j(:)  = h1m_loc(:)
+		q_abs_j = q_abs*1.0d-18
+
+		! Save into vectors. No synchronization needed: each thread writes
+		! only its own j elements of the shared arrays (the former OMP
+		! CRITICAL serialized the loop for no correctness benefit; removed
+		! per the 2026-07-02 review's performance note -- values unchanged).
+    	P_HI_j    = PIR_1  *1.0d-18*erg2eV
+		if (has_h2) P_H2_j = PIR_H2*1.0d-18*erg2eV
+		if (has_h2) P_H2_di_j = PIR_H2_di*1.0d-18*erg2eV
+		if (has_h2) P_H2_dd_j = PIR_H2_dd*1.0d-18*erg2eV
+		if (has_h2) P_H2_nd_j = PIR_H2_nd*1.0d-18*erg2eV
+    	P_HeI_j   = PIR_15 *1.0d-18*erg2eV
+		! Add the H I / He I / H2 secondary-ionization rates from fast
+		! photoelectrons. fiHI, fiHeI and fiH2 are per target particle, so
+		! the integrals are already rates [1/s]: no division by a neutral
+		! density, and each stays finite as its own target vanishes
+		! (electron_energy_degradation.f90).
+		if (sec_on) then
+			Psec_HI  = sum(int_f*acc_secHI *de_v)*1.0d-18*erg2eV
+			Psec_HeI = sum(int_f*acc_secHeI*de_v)*1.0d-18*erg2eV
+			P_HI_j  = P_HI_j  + Psec_HI
+			P_HeI_j = P_HeI_j + Psec_HeI
+		endif
+		! The molecular target. P_H2 drives BOTH the H2 destruction row and
+		! the H2+ production row of the molecular system, exactly as the
+		! primary photoionization rate it is added to does, so the secondary
+		! ionizations enter the chemistry through the channel that already
+		! exists rather than through a parallel one.
+		if (mol_sec) then
+			Psec_H2 = sum(int_f*acc_secH2*de_v)*1.0d-18*erg2eV
+			! The secondaries dissociatively ionize H2 as well: one proton
+			! (and one H atom) per 22 H2+ ions, Dalgarno, Yan & Liu (1999)
+			! after their eq. (10). It is an ADDITIONAL yield, not a share of
+			! Psec_H2 -- their harmonic-mean statement makes the two H+
+			! sources add -- so the H2 destroyed by secondaries is the sum of
+			! the two and only the second of them makes protons.
+			Psec_H2_di = dissoc_ion_per_H2p*Psec_H2
+			P_H2_j = P_H2_j + Psec_H2 + Psec_H2_di
+			if (has_h2) P_H2_di_j = P_H2_di_j + Psec_H2_di
+		endif
+		P_HeII_j  = PIR_2  *1.0d-18*erg2eV
+		P_HeITR_j = PIR_TR *1.0d-18*erg2eV
+		Pm_j(:)   = Pm_loc(:)
+
+	! The heating of the composition passed in, through the single
+	! definition of that contraction, and the efficiency it gives.
+	! Absorbed energy is non-negative; see PH_heat_H for why a non-positive
+	! q_abs gives a zero heating efficiency.
+	call photoheating_of_cell(h1_HI_j,h1_HeI_j,h1_HeII_j,h1_HeTR_j,       &
+	                          h1_H2_j,h1m_j,                              &
+	                          nhi_j,nheiS_j,nheii_j,nheiTR_j,nh2_j,nm_j,  &
+	                          heat_j, chan_j)
+	if (q_abs_j .gt. 0.0d0) then
+		q_j = heat_j/q_abs_j
+	else
+		q_j = 0.0d0
+	endif
+
+	end subroutine photoionization_field_at_cell_HHe
+
+	! ------------------------------------------------------------- !
+
 	subroutine PH_heat_HHe(nhi,nhei,nheii,nheiTR, nm, xion,       &
 				     P_HI,P_HeI,P_HeII,P_HeITR, P_m,       &
 				     heat,q, nh2,P_H2, P_H2_di, P_H2_dd, P_H2_nd,  &
@@ -567,14 +1572,14 @@
 	! with the density of X divided out, i.e. the photoheating rate
 	! [erg s^-1] of ONE particle of X in this cell's field. `heat` and
 	! `heat_chan` are their contraction with the composition passed in
-	! (photoheating_of_composition, the single definition of that sum), and
+	! (photoheating_of_cell, the single definition of that sum), and
 	! so describe THAT composition and no other. A caller that changes the
 	! composition afterwards -- an equilibrium sweep, an advection
 	! correction -- must re-form the heating from heat_of_one_* and the new
 	! densities rather than keep this `heat`. `q` is the heating efficiency
 	! of the composition passed in.
 
-	integer :: i,j,k
+	integer :: j
 
 	real*8, dimension(1-Ng:N+Ng),intent(in) :: nhi,nhei,nheii
 	real*8, dimension(1-Ng:N+Ng),intent(in) :: nheiTR
@@ -617,31 +1622,16 @@
    real*8, dimension(1-Ng:N+Ng) ::  N1,N15,N2,NTR
    real*8, dimension(1-Ng:N+Ng,n_mphot) :: Nm_col
 
-   real*8 :: PIR_1,PIR_15,PIR_2,PIR_TR     ! Photoionization rates (H/He)
-   real*8 :: PIR_H2                        ! H2 photoionization rate
-   real*8 :: PIR_H2_di                     ! ... its dissociative part
-   real*8 :: PIR_H2_dd                     ! ... its double-ionization part
-   real*8 :: PIR_H2_nd                     ! ... its neutral-dissociation part
    real*8, dimension(1-Ng:N+Ng) :: NH2col  ! H2 column density
-   real*8, dimension(Nl) :: int_h2, int_h2_di, int_h2_dd, int_h2_nd
-   real*8 :: q_abs                         ! Absorbed energy
-   real*8 :: Pm_loc(n_mion)                ! Metal photoion. rates in each cell
 
-	! Integral variables
-	real*8, dimension(Nl) :: tauE,tau_m
-	real*8, dimension(Nl) :: int_f,int_1,int_15,int_2,int_TR
-	real*8, dimension(Nl) :: int_m
-	real*8, dimension(Nl) :: int_q,acc_q
-	! Secondary-ionization scratch. fiHI/fiHeI/fiH2 are the branchings per
-	! target particle [cm^3] (photoelectron_energy_partition) and
-	! Psec_HI/Psec_HeI/Psec_H2 the rates they give [1/s]. fh_v is the heat
-	! fraction of the photoelectron of the absorber currently being summed,
-	! resolved on the spectral grid through that absorber's own excess
-	! energy e_v - e_th; it is recomputed inside each absorber block.
-	real*8, dimension(Nl) :: acc_secHI,acc_secHeI,acc_secH2,fhv,fh_v
-	real*8, dimension(Nl) :: fiHI,fiHeI,fiH2
-	type(photoelectron_partition_t) :: pep
-	real*8 :: Psec_HI,Psec_HeI,Psec_H2,Psec_H2_di
+	! The columns of everything outside the cell being evaluated, and the
+	! cell quantities the field routine returns one at a time.
+	real*8 :: N1o,N15o,N2o,NTRo,NH2o
+	real*8 :: Nmo(n_mphot)
+	real*8 :: nh2_cell
+	real*8 :: Pm_row(n_mion), h1m_row(n_mion)
+	real*8 :: P_H2_c,P_H2_di_c,P_H2_dd_c,P_H2_nd_c
+	real*8 :: chan_c(6)
 	! Secondary-ionization coupling applied only when enabled AND staged on
 	! (see EXHALE_main). mol_sec additionally requires the run to carry H2,
 	! which is what makes the molecular target channel cost nothing, and
@@ -651,7 +1641,7 @@
 	real*8, dimension(1-Ng:N+Ng) :: fvq, evq
 	! D0(H2) in eV, hoisted out of the cell loop: it is a constant of the
 	! molecule, read from the one place this code defines it.
-	real*8 :: D0_H2_eV
+	real*8 :: D0_H2_eV, E_ker_H2_dd_eV
 
    ! Photo ionization rates
 	real*8, dimension(1-Ng:N+Ng), intent(out) ::  P_HI
@@ -681,11 +1671,6 @@
 	real*8, dimension(1-Ng:N+Ng) :: h1_HI,h1_HeI,h1_HeII,h1_HeTR,h1_H2
 	real*8, dimension(1-Ng:N+Ng,n_mion) :: h1_m
 	real*8, dimension(1-Ng:N+Ng) :: q_abs_cell
-	! Zero H2 density for the contraction below when the caller tracks no
-	! molecular hydrogen (h1_H2 is then zero as well).
-	real*8, dimension(1-Ng:N+Ng) :: nh2_loc
-	real*8, dimension(Nl) :: acc_mion
-	real*8 :: h1m_loc(n_mion)
 
 	! Optional photoheating breakdown by absorber (cgs erg cm^-3 s^-1).
 	! Columns: 1 H I, 2 He I (singlet ground), 3 He II, 4 He 2^3S,
@@ -694,9 +1679,6 @@
 	! same contraction of heat_of_one_* with the composition, so the split is
 	! exact rather than a separately accumulated approximation of it.
 	real*8, dimension(1-Ng:N+Ng,6),intent(out),optional :: heat_chan
-	! Frequency integrands of each absorber, with the absorber density
-	! divided out (that density enters only in the contraction below).
-	real*8, dimension(Nl) :: acc_HI,acc_HeI,acc_HeII,acc_HeTR,acc_H2
 
 	!----------------------------------!
 
@@ -710,13 +1692,15 @@
 	call calc_column_dens(nhi,nheiS,nheii,nheiTR,N1,N15,N2,NTR)
 	call calc_column_dens_metals(nm, Nm_col)
 
-	! H2 column (molecular)
+	! H2 column (molecular).  Zero, and read as zero, in a run without it.
+	NH2col = 0.0d0
 	if (present(nh2)) call calc_column_dens_one(nh2, NH2col)
 
 	! Metal-free P_m entries (top-stage ions) stay zero
 	P_m = 0.0
 
 	D0_H2_eV = h2_dissociation_energy_eV()
+	E_ker_H2_dd_eV = h2_double_fragment_kinetic_energy()
 	sec_on  = use_sec_ion .and. sec_ion_active
 	mol_sec = sec_on .and. present(nh2) .and. present(P_H2)
 	fvq     = 0.0d0
@@ -725,392 +1709,62 @@
 	if (present(e_vibq)) evq = e_vibq
 
     !----------------------------------!
+
+	! The field of every cell, from the columns of the ONE composition this
+	! routine was given: the lagged form of the sweep described at
+	! photoionization_field_at_cell_HHe.  Every column is already known here,
+	! so the cells are independent and the loop is parallel.  No
+	! synchronization is needed: each thread writes only its own j elements
+	! of the shared arrays.
 	!$OMP PARALLEL DO &
 	!$OMP SHARED ( P_HI,P_HeI,P_HeII,P_HeITR,P_m, sec_on, mol_sec, fvq, evq, &
-	!$OMP          D0_H2_eV ) &
-	!$OMP PRIVATE ( PIR_1,PIR_15,PIR_2,PIR_TR,PIR_H2,int_h2,                     &
-	!$OMP           PIR_H2_di,int_h2_di,Psec_H2_di,                             &
-	!$OMP           PIR_H2_dd,int_h2_dd,PIR_H2_nd,int_h2_nd,                    &
-	!$OMP           Pm_loc,h1m_loc,acc_mion,                                     &
-	!$OMP           int_1,int_15,int_2,int_TR,int_m,                            &
-	!$OMP           acc_secHI,acc_secHeI,acc_secH2,fhv,fh_v,pep,               &
-	!$OMP           fiHI,fiHeI,fiH2,Psec_HI,Psec_HeI,Psec_H2,                  &
-	!$OMP           acc_HI,acc_HeI,acc_HeII,acc_HeTR,acc_H2,                    &
-	!$OMP           int_f,int_q,acc_q,tauE,tau_m,q_abs,i,k,j)
-
+	!$OMP          D0_H2_eV, E_ker_H2_dd_eV ) &
+	!$OMP PRIVATE ( j, N1o,N15o,N2o,NTRo,NH2o,Nmo, nh2_cell,                 &
+	!$OMP           Pm_row,h1m_row, P_H2_c,P_H2_di_c,P_H2_dd_c,P_H2_nd_c,    &
+	!$OMP           chan_c )
 	do j = 1-Ng,N+Ng
 
-      PIR_1   = 0.0
-      PIR_15  = 0.0
-      PIR_2   = 0.0
-      PIR_TR  = 0.0
-      q_abs   = 0.0
-
-		! The photoheating integrands default to zero so the He 2^3S and H2
-		! rates stay 0 in cells/runs where those absorbers are absent.
-		acc_HeTR = 0.0d0
-		acc_H2   = 0.0d0
-		h1m_loc  = 0.0d0
-
-		! Calculate optical depth. Accumulate the metal block separately
-		! in iphot order before applying the 1e-18 factor, matching the
-		! original (sum)*1e-18 association exactly.
-		tauE = (s_hi*N1(j) + s_hei*N15(j) + s_heii*N2(j))*1.0e-18
-		if (thereis_HeITR) tauE = tauE + s_heiTR*NTR(j)*1.0e-18
-		if (present(nh2)) tauE = tauE + s_h2*NH2col(j)*1.0e-18
-		tau_m = 0.0
-		do i = 1,n_mion
-			if (.not. mion_isphot(i)) cycle
-			k = mion_iphot(i)
-			tau_m = tau_m + sigma_tab(:,k)*Nm_col(j,k)
-		enddo
-		tauE = tauE + tau_m*1.0e-18
-
-		! Calculate photoionization integrals
-		int_f  = F_XUV*exp(-tauE)/(1.0 + a_tau*tauE)
-		int_1  = int_f*s_hi/e_v
-		int_15 = int_f*s_hei/e_v
-		int_2  = int_f*s_heii/e_v
-		if (thereis_HeITR) int_TR =  int_f*s_heiTR/e_v
-		if (present(nh2)) then
-			int_h2    = int_f*s_h2/e_v
-			int_h2_di = int_f*s_h2_di/e_v
-			int_h2_dd = int_f*s_h2_dd/e_v
-			int_h2_nd = int_f*s_h2_nd/e_v
-		endif
-
-		! Secondary-ionization energy partition for this cell. The split of
-		! the ionization energy between the H I, He I and H2 channels is
-		! renormalized onto the cell's own neutral densities -- the fits carry
-		! Shull & van Steenberg's n(He I)/n(H I) = 0.1 and no H2 at all -- and
-		! comes back per target particle, so the absorber loops below build
-		! rates in [1/s] directly and nothing is divided by a vanishing
-		! neutral density. The H2 share uses the collision weight of Dalgarno,
-		! Yan & Liu (1999) eqs. (9) and (10); it and the molecular part of the
-		! heat fraction vanish identically when the run carries no H2.
-		! Derivation, limits and the parts of the partition that are still
-		! composition-blind: electron_energy_degradation.f90.
-		if (sec_on) then
-			if (present(nh2)) then
-				call photoelectron_energy_partition(xion(j), nhi(j),     &
-				                       nheiS(j), nh2(j), fvq(j), evq(j),  &
-				                       pep)
-			else
-				call photoelectron_energy_partition(xion(j), nhi(j),     &
-				                       nheiS(j), 0.0d0, 0.0d0, 0.0d0, pep)
-			endif
+		! The columns of everything outside the cell.  Nothing sits above the
+		! outermost cell, so it is handed zeros.
+		if (j .lt. N+Ng) then
+			N1o  = N1(j+1)
+			N15o = N15(j+1)
+			N2o  = N2(j+1)
+			NTRo = NTR(j+1)
+			NH2o = NH2col(j+1)
+			Nmo  = Nm_col(j+1,:)
 		else
-			fiHI = 0.0d0; fiHeI = 0.0d0; fiH2 = 0.0d0
-		endif
-		acc_secHI  = 0.0d0
-		acc_secHeI = 0.0d0
-		acc_secH2  = 0.0d0
-
-		! Photoheating integrand of each absorber, WITHOUT that absorber's
-		! density: what is built here is the heating rate of one particle of
-		! it, and the composition enters only in the contraction after the
-		! loop. Where a photoelectron energy E0 = e_v - E_th exceeds
-		! E_sec_ion, only f_heat(x) of its excess is deposited as heat (fhv)
-		! and the balance drives H I / He I secondary ionizations; below the
-		! threshold it thermalizes fully. fhv = 1 when the coupling is off.
-		! He I triplet photoionization (threshold e_th_HeTR = 4.8 eV)
-		! deposits its photoelectron energy here as well, consistently with
-		! its opacity and its P_HeITR rate. The secondary-ionization
-		! integrands below DO carry the absorber densities: they are rates of
-		! the field the entry composition makes, not one-particle quantities.
-		fhv = 1.0d0
-		if (sec_on) then
-			call photoelectron_shares(pep, iabs_HI, fh_v, fiHI, fiHeI, fiH2)
-			fhv = merge(fh_v, 1.0d0, e_v > e_th_HI + E_sec_ion)
-		endif
-		acc_HI = photoelectron_share(e_th_HI,e_v)*fhv*s_hi
-		if (sec_on) then
-			acc_secHI  = acc_secHI  + s_hi*nhi(j)/e_v *                       &
-			     merge(fiHI *(e_v-e_th_HI)/e_th_HI , 0.0d0, e_v > e_th_HI + E_sec_ion)
-			acc_secHeI = acc_secHeI + s_hi*nhi(j)/e_v *                       &
-			     merge(fiHeI*(e_v-e_th_HI)/e_th_HeI, 0.0d0, e_v > e_th_HI + E_sec_ion)
-		endif
-		if (mol_sec) acc_secH2 = acc_secH2 + s_hi*nhi(j)/e_v *                &
-			     merge(fiH2 *(e_v-e_th_HI)/e_th_H2 , 0.0d0, e_v > e_th_HI + E_sec_ion)
-
-		fhv = 1.0d0
-		if (sec_on) then
-			call photoelectron_shares(pep, iabs_HeI, fh_v, fiHI, fiHeI, fiH2)
-			fhv = merge(fh_v, 1.0d0, e_v > e_th_HeI + E_sec_ion)
-		endif
-		acc_HeI = photoelectron_share(e_th_HeI,e_v)*fhv*s_hei
-		if (sec_on) then
-			acc_secHI  = acc_secHI  + s_hei*nheiS(j)/e_v *                    &
-			     merge(fiHI *(e_v-e_th_HeI)/e_th_HI , 0.0d0, e_v > e_th_HeI + E_sec_ion)
-			acc_secHeI = acc_secHeI + s_hei*nheiS(j)/e_v *                    &
-			     merge(fiHeI*(e_v-e_th_HeI)/e_th_HeI, 0.0d0, e_v > e_th_HeI + E_sec_ion)
-		endif
-		if (mol_sec) acc_secH2 = acc_secH2 + s_hei*nheiS(j)/e_v *             &
-			     merge(fiH2 *(e_v-e_th_HeI)/e_th_H2 , 0.0d0, e_v > e_th_HeI + E_sec_ion)
-
-		fhv = 1.0d0
-		if (sec_on) then
-			call photoelectron_shares(pep, iabs_HeII, fh_v, fiHI, fiHeI, fiH2)
-			fhv = merge(fh_v, 1.0d0, e_v > e_th_HeII + E_sec_ion)
-		endif
-		acc_HeII = photoelectron_share(e_th_HeII,e_v)*fhv*s_heii
-		if (sec_on) then
-			acc_secHI  = acc_secHI  + s_heii*nheii(j)/e_v *                   &
-			     merge(fiHI *(e_v-e_th_HeII)/e_th_HI , 0.0d0, e_v > e_th_HeII + E_sec_ion)
-			acc_secHeI = acc_secHeI + s_heii*nheii(j)/e_v *                   &
-			     merge(fiHeI*(e_v-e_th_HeII)/e_th_HeI, 0.0d0, e_v > e_th_HeII + E_sec_ion)
-		endif
-		if (mol_sec) acc_secH2 = acc_secH2 + s_heii*nheii(j)/e_v *            &
-			     merge(fiH2 *(e_v-e_th_HeII)/e_th_H2 , 0.0d0, e_v > e_th_HeII + E_sec_ion)
-
-		! He I 2^3S (triplet): photoelectron energy hv - 4.8 eV, same
-		! secondary partition as the other absorbers.
-		if (thereis_HeITR) then
-			fhv = 1.0d0
-			if (sec_on) then
-				call photoelectron_shares(pep, iabs_HeTR, fh_v, fiHI, fiHeI, fiH2)
-				fhv = merge(fh_v, 1.0d0, e_v > e_th_HeTR + E_sec_ion)
-			endif
-			acc_HeTR = photoelectron_share(e_th_HeTR,e_v)*fhv*s_heiTR
-			if (sec_on) then
-				acc_secHI  = acc_secHI  + s_heiTR*nheiTR(j)/e_v *             &
-				     merge(fiHI *(e_v-e_th_HeTR)/e_th_HI , 0.0d0, e_v > e_th_HeTR + E_sec_ion)
-				acc_secHeI = acc_secHeI + s_heiTR*nheiTR(j)/e_v *             &
-				     merge(fiHeI*(e_v-e_th_HeTR)/e_th_HeI, 0.0d0, e_v > e_th_HeTR + E_sec_ion)
-			endif
-			if (mol_sec) acc_secH2 = acc_secH2 + s_heiTR*nheiTR(j)/e_v *      &
-				     merge(fiH2 *(e_v-e_th_HeTR)/e_th_H2 , 0.0d0, e_v > e_th_HeTR + E_sec_ion)
+			N1o  = 0.0d0
+			N15o = 0.0d0
+			N2o  = 0.0d0
+			NTRo = 0.0d0
+			NH2o = 0.0d0
+			Nmo  = 0.0d0
 		endif
 
-		! The molecular absorber, in its four final-state channels. Each
-		! consumes one H2 and all four are inside the SAME cross section
-		! (s_h2_di, s_h2_dd and s_h2_nd are shares of s_h2, not additions to
-		! it), so the opacity, the absorbed energy and the H2 destruction
-		! rate are what they were; what differs is the threshold each
-		! channel charges -- 15.4 eV to leave H2+, 18.08 eV to leave H + H+,
-		! 51.4 eV to leave two protons, and the bond energy alone where no
-		! ion is made -- and therefore the energy left as heat.
-		! s_h2 - s_h2_di - s_h2_dd - s_h2_nd is the non-dissociative channel
-		! that leaves H2+; the last two vanish identically unless their
-		! options are on, so the arithmetic below is unchanged by default.
-		if (present(nh2)) then
-			fhv = 1.0d0
-			if (sec_on) then
-				call photoelectron_shares(pep, iabs_H2, fh_v, fiHI, fiHeI, fiH2)
-				fhv = merge(fh_v, 1.0d0, e_v > e_th_H2 + E_sec_ion)
-			endif
-			acc_H2 = photoelectron_share(e_th_H2,e_v)*fhv*(s_h2 - s_h2_di - s_h2_dd - s_h2_nd)
-			if (sec_on) then
-				acc_secHI  = acc_secHI  + (s_h2 - s_h2_di - s_h2_dd - s_h2_nd)*nh2(j)/e_v *       &
-				     merge(fiHI *(e_v-e_th_H2)/e_th_HI , 0.0d0, e_v > e_th_H2 + E_sec_ion)
-				acc_secHeI = acc_secHeI + (s_h2 - s_h2_di - s_h2_dd - s_h2_nd)*nh2(j)/e_v *       &
-				     merge(fiHeI*(e_v-e_th_H2)/e_th_HeI, 0.0d0, e_v > e_th_H2 + E_sec_ion)
-			endif
-			if (mol_sec) acc_secH2 = acc_secH2 + (s_h2 - s_h2_di - s_h2_dd - s_h2_nd)*nh2(j)/e_v *&
-				     merge(fiH2 *(e_v-e_th_H2)/e_th_H2 , 0.0d0, e_v > e_th_H2 + E_sec_ion)
+		nh2_cell = 0.0d0
+		if (present(nh2)) nh2_cell = nh2(j)
 
-			! Dissociative ionization H2 + hv -> H + H+ + e-. The 2.68 eV
-			! between the two thresholds goes into breaking the bond and is
-			! not available as heat, exactly as every other channel here is
-			! charged its own ionization potential.
-			fhv = 1.0d0
-			if (sec_on) then
-				call photoelectron_shares(pep, iabs_H2_di, fh_v, fiHI, fiHeI, fiH2)
-				fhv = merge(fh_v, 1.0d0, e_v > e_th_H2_di + E_sec_ion)
-			endif
-			acc_H2 = acc_H2 + photoelectron_share(e_th_H2_di,e_v)*fhv*s_h2_di
-			if (sec_on) then
-				acc_secHI  = acc_secHI  + s_h2_di*nh2(j)/e_v *                &
-				     merge(fiHI *(e_v-e_th_H2_di)/e_th_HI , 0.0d0, e_v > e_th_H2_di + E_sec_ion)
-				acc_secHeI = acc_secHeI + s_h2_di*nh2(j)/e_v *                &
-				     merge(fiHeI*(e_v-e_th_H2_di)/e_th_HeI, 0.0d0, e_v > e_th_H2_di + E_sec_ion)
-			endif
-			if (mol_sec) acc_secH2 = acc_secH2 + s_h2_di*nh2(j)/e_v *         &
-				     merge(fiH2 *(e_v-e_th_H2_di)/e_th_H2 , 0.0d0, e_v > e_th_H2_di + E_sec_ion)
+		call photoionization_field_at_cell_HHe(j,                          &
+		         N1o,N15o,N2o,NTRo,NH2o,Nmo,                               &
+		         nhi(j),nheiS(j),nheii(j),nheiTR(j),nh2_cell,nm(j,:),      &
+		         xion(j), fvq(j),evq(j), present(nh2), sec_on, mol_sec,    &
+		         D0_H2_eV, E_ker_H2_dd_eV,                                 &
+		         P_HI(j),P_HeI(j),P_HeII(j),P_HeITR(j),Pm_row,             &
+		         P_H2_c,P_H2_di_c,P_H2_dd_c,P_H2_nd_c,                     &
+		         h1_HI(j),h1_HeI(j),h1_HeII(j),h1_HeTR(j),h1_H2(j),h1m_row,&
+		         heat(j), chan_c, q(j), q_abs_cell(j))
 
-			! Double ionization H2 + hv -> H+ + H+ + 2e-, charged its own
-			! 51.4 eV threshold. The excess e_v - 51.4 eV is the TOTAL
-			! kinetic energy of the two photoelectrons, and it is partitioned
-			! between local heat and secondary ionization exactly as the two
-			! channels above partition theirs. It must not be claimed whole
-			! as heat: this channel lives only above 51.4 eV, which is the
-			! band where the secondary-ionization share is largest, so
-			! charging fhv = 1 here would overstate the local heating and
-			! lose the ionizations the fast electrons make.
-			!
-			! APPROXIMATION, with its range. photoelectron_shares is indexed
-			! by absorber and returns the partition of ONE electron carrying
-			! the whole excess; this channel makes TWO electrons that share
-			! it. The shares of the dissociative absorber are used at this
-			! photon energy, which is the closest of the tabulated ones (same
-			! molecular target, adjacent threshold). Because the partition
-			! varies slowly with electron energy above E_sec_ion = 30 eV,
-			! the error is second order in the difference between the mean
-			! electron energy and the full excess; it is NOT zero, and it
-			! biases toward too little heating and too much ionization,
-			! since a slower electron heats more. A partition evaluated at
-			! (e_v - 51.4)/2 would remove it and needs its own absorber row
-			! in electron_energy_degradation.
-			fhv = 1.0d0
-			if (sec_on) then
-				call photoelectron_shares(pep, iabs_H2_di, fh_v, fiHI, fiHeI, fiH2)
-				fhv = merge(fh_v, 1.0d0, e_v > e_th_H2_dd + E_sec_ion)
-			endif
-			acc_H2 = acc_H2 + photoelectron_share(e_th_H2_dd,e_v)*fhv*s_h2_dd
-			if (sec_on) then
-				acc_secHI  = acc_secHI  + s_h2_dd*nh2(j)/e_v *                &
-				     merge(fiHI *(e_v-e_th_H2_dd)/e_th_HI , 0.0d0, e_v > e_th_H2_dd + E_sec_ion)
-				acc_secHeI = acc_secHeI + s_h2_dd*nh2(j)/e_v *                &
-				     merge(fiHeI*(e_v-e_th_H2_dd)/e_th_HeI, 0.0d0, e_v > e_th_H2_dd + E_sec_ion)
-			endif
-			if (mol_sec) acc_secH2 = acc_secH2 + s_h2_dd*nh2(j)/e_v *         &
-				     merge(fiH2 *(e_v-e_th_H2_dd)/e_th_H2 , 0.0d0, e_v > e_th_H2_dd + E_sec_ion)
-
-			! Neutral dissociation H2 + hv -> H + H. NO photoelectron: the
-			! channel is not an ionization, so no fhv factor and no
-			! secondary-ionization terms. The bond energy D0(H2) is spent
-			! breaking the molecule and the whole remainder of the photon
-			! goes into the kinetic energy of the two H atoms, i.e. into
-			! heat. The channel is nonzero only over 33-41 eV, where
-			! e_v >> D0(H2), so the bracket is positive throughout.
-			acc_H2 = acc_H2 + (1.0-D0_H2_eV/e_v)*s_h2_nd
-		endif
-
-		do i = 1,n_mion
-			if (.not. mion_isphot(i)) cycle
-			k = mion_iphot(i)
-			fhv = 1.0d0
-			if (sec_on) then
-				call photoelectron_shares(pep, n_abs_fixed+i, fh_v,       &
-				                          fiHI, fiHeI, fiH2)
-				fhv = merge(fh_v, 1.0d0, e_v > mion_ethr(i) + E_sec_ion)
-			endif
-			acc_mion   = photoelectron_share(mion_ethr(i),e_v)*fhv*sigma_tab(:,k)
-			h1m_loc(i) = sum(int_f*acc_mion*de_v)*1.0e-18
-			if (sec_on) then
-				acc_secHI  = acc_secHI  + sigma_tab(:,k)*nm(j,i)/e_v *        &
-				     merge(fiHI *(e_v-mion_ethr(i))/e_th_HI , 0.0d0, e_v > mion_ethr(i) + E_sec_ion)
-				acc_secHeI = acc_secHeI + sigma_tab(:,k)*nm(j,i)/e_v *        &
-				     merge(fiHeI*(e_v-mion_ethr(i))/e_th_HeI, 0.0d0, e_v > mion_ethr(i) + E_sec_ion)
-			endif
-			if (mol_sec) acc_secH2 = acc_secH2 + sigma_tab(:,k)*nm(j,i)/e_v * &
-				     merge(fiH2 *(e_v-mion_ethr(i))/e_th_H2 , 0.0d0, e_v > mion_ethr(i) + E_sec_ion)
-		enddo
-		! Absorbed energy integral (this one is a property of the entry
-		! composition: it is what the heating efficiency q is measured
-		! against, so it keeps the absorber densities)
-		acc_q = s_hi *nhi  (j)
-		acc_q = acc_q + s_hei *nheiS(j)
-		acc_q = acc_q + s_heii*nheii(j)
-		if (thereis_HeITR) acc_q = acc_q + s_heiTR*nheiTR(j)
-		if (present(nh2)) acc_q = acc_q + s_h2*nh2(j)
-		do i = 1,n_mion
-			if (.not. mion_isphot(i)) cycle
-			k = mion_iphot(i)
-			acc_q = acc_q + sigma_tab(:,k)*nm(j,i)
-		enddo
-		int_q = int_f*acc_q
-
-		! Midpoint rule for integrals
-		PIR_1   = sum(int_1  *de_v)
-		PIR_15  = sum(int_15 *de_v)
-		PIR_2   = sum(int_2  *de_v)
-		if(thereis_HeITR) PIR_TR = sum(int_TR*de_v)
-		PIR_H2 = 0.0
-		PIR_H2_di = 0.0
-		PIR_H2_dd = 0.0
-		PIR_H2_nd = 0.0
-		if (present(nh2)) then
-			PIR_H2    = sum(int_h2   *de_v)
-			PIR_H2_di = sum(int_h2_di*de_v)
-			PIR_H2_dd = sum(int_h2_dd*de_v)
-			PIR_H2_nd = sum(int_h2_nd*de_v)
-		endif
-		do i = 1,n_mion
-			if (.not. mion_isphot(i)) then
-				Pm_loc(i) = 0.0
-				cycle
-			endif
-			k = mion_iphot(i)
-			int_m = int_f*sigma_tab(:,k)/e_v
-			Pm_loc(i) = sum(int_m*de_v)*1.0e-18*erg2eV
-		enddo
-		q_abs   = sum(int_q  *de_v)
-
-		! Photoheating rate of one particle of each absorber [erg s^-1] in
-		! this cell's attenuated field (the metal ions were integrated in the
-		! loop above). The contraction with the composition follows the loop.
-		h1_HI(j)   = sum(int_f*acc_HI  *de_v)*1.0e-18
-		h1_HeI(j)  = sum(int_f*acc_HeI *de_v)*1.0e-18
-		h1_HeII(j) = sum(int_f*acc_HeII*de_v)*1.0e-18
-		h1_HeTR(j) = sum(int_f*acc_HeTR*de_v)*1.0e-18
-		h1_H2(j)   = sum(int_f*acc_H2  *de_v)*1.0e-18
-		h1_m(j,:)  = h1m_loc(:)
-		q_abs_cell(j) = q_abs*1.0e-18
-
-		! Save into vectors. No synchronization needed: each thread writes
-		! only its own j elements of the shared arrays (the former OMP
-		! CRITICAL serialized the loop for no correctness benefit; removed
-		! per the 2026-07-02 review's performance note -- values unchanged).
-    	P_HI(j)    = PIR_1  *1.0e-18*erg2eV
-		if (present(P_H2)) P_H2(j) = PIR_H2*1.0e-18*erg2eV
-		if (present(P_H2_di)) P_H2_di(j) = PIR_H2_di*1.0e-18*erg2eV
-		if (present(P_H2_dd)) P_H2_dd(j) = PIR_H2_dd*1.0e-18*erg2eV
-		if (present(P_H2_nd)) P_H2_nd(j) = PIR_H2_nd*1.0e-18*erg2eV
-    	P_HeI(j)   = PIR_15 *1.0e-18*erg2eV
-		! Add the H I / He I / H2 secondary-ionization rates from fast
-		! photoelectrons. fiHI, fiHeI and fiH2 are per target particle, so
-		! the integrals are already rates [1/s]: no division by a neutral
-		! density, and each stays finite as its own target vanishes
-		! (electron_energy_degradation.f90).
-		if (sec_on) then
-			Psec_HI  = sum(int_f*acc_secHI *de_v)*1.0e-18*erg2eV
-			Psec_HeI = sum(int_f*acc_secHeI*de_v)*1.0e-18*erg2eV
-			P_HI(j)  = P_HI(j)  + Psec_HI
-			P_HeI(j) = P_HeI(j) + Psec_HeI
-		endif
-		! The molecular target. P_H2 drives BOTH the H2 destruction row and
-		! the H2+ production row of the molecular system, exactly as the
-		! primary photoionization rate it is added to does, so the secondary
-		! ionizations enter the chemistry through the channel that already
-		! exists rather than through a parallel one.
-		if (mol_sec) then
-			Psec_H2 = sum(int_f*acc_secH2*de_v)*1.0e-18*erg2eV
-			! The secondaries dissociatively ionize H2 as well: one proton
-			! (and one H atom) per 22 H2+ ions, Dalgarno, Yan & Liu (1999)
-			! after their eq. (10). It is an ADDITIONAL yield, not a share of
-			! Psec_H2 -- their harmonic-mean statement makes the two H+
-			! sources add -- so the H2 destroyed by secondaries is the sum of
-			! the two and only the second of them makes protons.
-			Psec_H2_di = dissoc_ion_per_H2p*Psec_H2
-			P_H2(j) = P_H2(j) + Psec_H2 + Psec_H2_di
-			if (present(P_H2_di)) P_H2_di(j) = P_H2_di(j) + Psec_H2_di
-		endif
-		P_HeII(j)  = PIR_2  *1.0e-18*erg2eV
-		P_HeITR(j) = PIR_TR *1.0e-18*erg2eV
-		P_m(j,:)   = Pm_loc(:)
+		P_m(j,:)  = Pm_row
+		h1_m(j,:) = h1m_row
+		if (present(P_H2))    P_H2(j)    = P_H2_c
+		if (present(P_H2_di)) P_H2_di(j) = P_H2_di_c
+		if (present(P_H2_dd)) P_H2_dd(j) = P_H2_dd_c
+		if (present(P_H2_nd)) P_H2_nd(j) = P_H2_nd_c
+		if (present(heat_chan)) heat_chan(j,:) = chan_c
 
 	enddo
 	!$OMP END PARALLEL DO
-
-	! Heating of the composition this routine was given: the one-particle
-	! rates above contracted with the densities, through the single
-	! definition of that sum. `heat` and the six-column split are therefore
-	! the same object, and the split is exact.
-	nh2_loc = 0.0d0
-	if (present(nh2)) nh2_loc = nh2
-	call photoheating_of_composition(h1_HI,h1_HeI,h1_HeII,h1_HeTR,h1_H2,  &
-	                                 h1_m, nhi,nhei,nheii,nheiTR,nh2_loc, &
-	                                 nm, heat, heat_chan)
-
-	! Heating efficiency: heat deposited over energy absorbed, both of the
-	! composition passed in. Absorbed energy is non-negative; see PH_heat_H
-	! for why a non-positive q_abs gives a zero heating efficiency.
-	where (q_abs_cell .gt. 0.0d0)
-		q = heat/q_abs_cell
-	elsewhere
-		q = 0.0d0
-	endwhere
 
 	if (present(heat_of_one_HI))   heat_of_one_HI   = h1_HI
 	if (present(heat_of_one_HeI))  heat_of_one_HeI  = h1_HeI
@@ -1156,12 +1810,54 @@
 	! to `heat` exactly.
 	real*8, dimension(1-Ng:N+Ng,6),intent(out),optional :: heat_chan
 
-	real*8, dimension(1-Ng:N+Ng) :: nheiS, h_HI,h_HeI,h_HeII,h_HeTR,     &
-	                                 h_H2,h_mtl
-	integer :: i
+	real*8, dimension(1-Ng:N+Ng) :: nheiS
+	real*8  :: chan_j(6)
+	integer :: j
 
 	nheiS = nhei
 	if (thereis_HeITR) nheiS = he_ground_singlet_density(nhei, nheiTR)
+
+	do j = 1-Ng,N+Ng
+		call photoheating_of_cell(h1_HI(j),h1_HeI(j),h1_HeII(j),          &
+		         h1_HeTR(j),h1_H2(j),h1_m(j,:),                           &
+		         nhi(j),nheiS(j),nheii(j),nheiTR(j),nh2(j),nm(j,:),       &
+		         heat(j), chan_j)
+		if (present(heat_chan)) heat_chan(j,:) = chan_j
+	enddo
+
+	end subroutine photoheating_of_composition
+
+	!----------------------------------!
+
+	pure subroutine photoheating_of_cell(h1_HI,h1_HeI,h1_HeII,h1_HeTR,    &
+	                                     h1_H2, h1_m,                     &
+	                                     nhi,nheiS,nheii,nheiTR,nh2,nm,   &
+	                                     heat, heat_chan)
+	! Photoheating rate of one cell's composition [erg cm^-3 s^-1]: the
+	! heating rate of ONE particle of each absorber (a property of the
+	! radiation field alone) times the density of that absorber.
+	!
+	! THIS IS THE ONE PLACE THE CONTRACTION IS WRITTEN.  The whole-grid form
+	! above and the field routine that reports the efficiency of the state it
+	! was handed both come here, so `heat` and its six-column split are one
+	! object and the split is exact rather than a separate approximation.
+	!
+	! He I absorbs in its GROUND SINGLET: the density asked for here is
+	! n(1^1S), the caller having taken the metastable out of the summed
+	! neutral helium (he_ground_singlet_density is the one place that
+	! difference is made).  The metastable has its own column.
+
+	real*8, intent(in) :: h1_HI,h1_HeI,h1_HeII,h1_HeTR,h1_H2
+	real*8, dimension(n_mion), intent(in) :: h1_m
+	real*8, intent(in) :: nhi,nheiS,nheii,nheiTR,nh2
+	real*8, dimension(n_mion), intent(in) :: nm
+	real*8, intent(out) :: heat
+	! Split by absorber: 1 H I, 2 He I (ground singlet), 3 He II,
+	! 4 He 2^3S, 5 H2, 6 metals (summed over the ions).
+	real*8, dimension(6), intent(out) :: heat_chan
+
+	real*8  :: h_HI,h_HeI,h_HeII,h_HeTR,h_H2,h_mtl
+	integer :: i
 
 	h_HI   = h1_HI  *nhi
 	h_HeI  = h1_HeI *nheiS
@@ -1170,24 +1866,619 @@
 	h_H2   = h1_H2  *nh2
 	h_mtl  = 0.0d0
 	do i = 1,n_mion
-		h_mtl = h_mtl + h1_m(:,i)*nm(:,i)
+		h_mtl = h_mtl + h1_m(i)*nm(i)
 	enddo
 
 	heat = h_HI + h_HeI + h_HeII + h_HeTR + h_H2 + h_mtl
 
-	if (present(heat_chan)) then
-		heat_chan(:,1) = h_HI
-		heat_chan(:,2) = h_HeI
-		heat_chan(:,3) = h_HeII
-		heat_chan(:,4) = h_HeTR
-		heat_chan(:,5) = h_H2
-		heat_chan(:,6) = h_mtl
+	heat_chan(1) = h_HI
+	heat_chan(2) = h_HeI
+	heat_chan(3) = h_HeII
+	heat_chan(4) = h_HeTR
+	heat_chan(5) = h_H2
+	heat_chan(6) = h_mtl
+
+	end subroutine photoheating_of_cell
+
+	!----------------------------------!
+
+	subroutine heating_of_composition(T_K,                                &
+	         nhi,nhii,nhei,nheii,nheiii,nheiTR, nm, nmol, nox, ne, n_tot, &
+	         h1_HI,h1_HeI,h1_HeII,h1_HeTR,h1_H2,h1_m,                     &
+	         A31,q31a,q31b,Q31, k_lw, p_lw, k_co, j_h2o, j_oh,            &
+	         with_molecules, with_oxygen, heat, heat_chan)
+	! Volumetric heating rate of a composition [erg cm^-3 s^-1], channel by
+	! channel, and its total.
+	!
+	! THIS IS THE ONE PLACE THE HEATING IS ASSEMBLED. Every consumer calls
+	! it: the ionization sweep for the heat it returns, the breakdown dump
+	! for what it writes, the advection-corrected post-process for the
+	! heating its energy solve balances. Each channel is formed exactly once
+	! and the total is the running sum of the channels, so a deposit added
+	! to the energy equation appears in the breakdown by construction.
+	!
+	! WHAT IS A RATE AND WHAT IS A DENSITY. The arguments split in two. The
+	! photoheating of ONE particle of each absorber (h1_*), the He(2^3S)
+	! coefficients (A31, q31a, q31b, Q31), the Lyman-Werner dissociation
+	! rate and its single-pump branching (k_lw, p_lw) and the FUV band
+	! photolysis rates (j_h2o, j_oh) are properties of the radiation field
+	! and of T. The densities are whichever composition the caller wants the
+	! heating of. Each channel is a contraction of the two, so the caller
+	! that has just solved a sweep passes its post-sweep densities against
+	! the rates the sweep was solved with, and the lag of one sweep is
+	! documented there and not repeated here.
+	!
+	! The H(n=2) channels are the exception and are read from the module
+	! state: Hpe_arr and Hdx_arr are already-contracted volumetric rates
+	! filled by excited_H_update from the previous converged outer pass, so
+	! there is nothing for a caller to contract.
+	!
+	! WHAT THE COMPOSITION CARRIES. with_molecules and with_oxygen say
+	! whether the densities passed include the molecular carriers (H2, H2+,
+	! H3+, HeH+) and the oxygen carriers (OH, H2O, CO). The deposits of a
+	! network whose carriers are not represented are left at zero rather
+	! than evaluated against zero densities, because two of them do not
+	! vanish there: the three-body H2 formation of the collisional network
+	! runs on n(H I) squared, and the oxygen network's O2 channel on the
+	! free atomic oxygen. The ionization sweep passes the configuration
+	! switches; the advection-corrected post-process reconstructs an
+	! H/He + metals composition only (see its header) and passes .false.,
+	! the same approximation its densities, its n_e and its n_tot carry.
+
+	real*8, dimension(1-Ng:N+Ng),intent(in) :: T_K
+	real*8, dimension(1-Ng:N+Ng),intent(in) :: nhi,nhii,nhei,nheii,       &
+	                                            nheiii,nheiTR, ne, n_tot
+	real*8, dimension(1-Ng:N+Ng,n_mion),intent(in) :: nm
+	! Molecular carriers (H2, H2+, H3+, HeH+) and oxygen carriers (OH, H2O,
+	! CO) [cm^-3]; zero for a run without them.
+	real*8, dimension(1-Ng:N+Ng,4),intent(in) :: nmol
+	real*8, dimension(1-Ng:N+Ng,3),intent(in) :: nox
+	! Photoheating of one particle of each absorber [erg s^-1]
+	real*8, dimension(1-Ng:N+Ng),intent(in) :: h1_HI,h1_HeI,h1_HeII,      &
+	                                            h1_HeTR,h1_H2
+	real*8, dimension(1-Ng:N+Ng,n_mion),intent(in) :: h1_m
+	! He(2^3S) radiative and collisional coefficients (HeITR_coeffs): A31 is
+	! the 2^3S -> 1^1S decay rate, q31a/q31b its collisional de-excitation
+	! and Q31 the TOTAL He(2^3S) + H ionization rate coefficient.
+	real*8, intent(in) :: A31
+	real*8, dimension(1-Ng:N+Ng),intent(in) :: q31a,q31b,Q31
+	! Lyman-Werner dissociation rate [s^-1] and dissociations per pump
+	real*8, dimension(1-Ng:N+Ng),intent(in) :: k_lw, p_lw
+	! CO photodissociation rate [s^-1], the cell mean fuv_lw_photon_field
+	! returns; zero for a composition with no CO or no band flux.
+	real*8, dimension(1-Ng:N+Ng),intent(in) :: k_co
+	! Band-resolved H2O and OH photodissociation rates [s^-1]
+	real*8, dimension(1-Ng:N+Ng,n_fuv_band),intent(in) :: j_h2o, j_oh
+	logical, intent(in) :: with_molecules, with_oxygen
+
+	real*8, dimension(1-Ng:N+Ng),intent(out) :: heat
+	! Deposits in the order of heat_channel_name. Not optional: the total is
+	! their sum, so a caller that wants the total has the columns too.
+	real*8, dimension(1-Ng:N+Ng,n_heat_channel),intent(out) :: heat_chan
+
+	! Scratch of the He recombination coupling: only its heating is kept
+	! here, the rate corrections belong to the sweep that solved with them.
+	real*8, dimension(1-Ng:N+Ng) :: rcheiiB_hrc,dP_HI_hrc,dP_H2_hrc
+	real*8, dimension(1-Ng:N+Ng,n_mion) :: dP_m_hrc
+	! Production of O(1D) [cm^-3 s^-1] through the H2O + hv -> H2 + O(1D)
+	! branch, the flux its local steady state carries into the O6 sink.
+	real*8, dimension(1-Ng:N+Ng) :: flux_o1d
+	integer :: ib
+
+	heat_chan = 0.0d0
+
+	! Photoheating: the heating rate of one particle of each absorber times
+	! the density of that absorber, split by absorber into the first six
+	! channels.
+	call photoheating_of_composition(h1_HI,h1_HeI,h1_HeII,h1_HeTR,h1_H2,  &
+	                                 h1_m, nhi,nhei,nheii,nheiTR,         &
+	                                 nmol(:,1), nm, heat,                 &
+	                                 heat_chan = heat_chan(:,1:6))
+
+	! H(n=2) Balmer heating: photoelectric heating of the excited level plus
+	! its Lyman-alpha de-excitation. Unlike every other term here it is an
+	! already-contracted volumetric rate, filled by excited_H_update from the
+	! previous converged outer pass, so it carries that documented lag and is
+	! added as it stands. Zero unless use_excited_H.
+	if (use_excited_H) then
+		heat_chan(:,7) = Hpe_arr
+		heat_chan(:,8) = Hdx_arr
+		heat = heat + (heat_chan(:,7) + heat_chan(:,8))
 	endif
 
-	end subroutine photoheating_of_composition
+	! He recombination radiation absorbed by H I, H2 and the metal ions. The
+	! RATE corrections of this coupling belong to the state that entered the
+	! sweep and are not rebuilt here; its photoelectron heating carries the
+	! densities of the absorbers, so it is evaluated at the composition this
+	! routine was given and only the heating is kept.
+	if (use_he_rec_coupling .and. thereis_He) then
+		call he_rec_coupling(T_K, nhi, nmol(:,1), nhei, nheii, nheiTR,     &
+		                     ne, nm, A31, q31a, q31b,                      &
+		                     rcheiiB_hrc, dP_HI_hrc, dP_H2_hrc,            &
+		                     dP_m_hrc, heat_chan(:,9))
+		heat = heat + heat_chan(:,9)
+	endif
+
+	! Penning ionization heating: He(2^3S)+H0 -> He(1^1S)+H+ + e- releases the
+	! electron kinetic energy e_th_HeI - e_th_HeTR - e_th_HI (= 6.2 eV) into the
+	! gas. Q31 is the total ionization rate, so only its Penning branch
+	! (f_penning_HeI23S) carries this exothermicity; the associative branch
+	! ends in HeH+ and has a different one.
+	if (thereis_HeITR) then
+		heat_chan(:,10) = f_penning_HeI23S*nheiTR*nhi*Q31                  &
+		                  *(e_th_HeI - e_th_HeTR - e_th_HI)/erg2eV
+		heat = heat + heat_chan(:,10)
+	endif
+
+	! ASSOCIATIVE branch of the same collision, He(2^3S)+H0 -> HeH+ + e-,
+	! the remaining (1 - f_penning_HeI23S) of Q31 (D0 C25, b1 T1.9 item 3).
+	! Its heat is a difference of the ONE species formation-energy table and
+	! is not written down here; what the two branches below choose is which
+	! reaction the configuration actually runs.
+	!
+	!   MOLECULAR run: HeH+ is a species of the network (System_HeH_mol row
+	!   7), so the event that is deposited here is exactly
+	!   He(2^3S) + H -> HeH+ + e, 8.07 eV.  What becomes of that HeH+ is the
+	!   business of R16, R18 and R19, whose heats molecular_chemical_heating
+	!   deposits, so nothing is counted twice.
+	!
+	!   ATOMIC run: this system carries no HeH+, and its own closure
+	!   (ion_residual_core.f90, the Penning comment) is that in an atomic gas
+	!   the HeH+ dissociatively recombines straight back to He + H, faster
+	!   than any competing reaction, so the branch is a metastable sink and
+	!   not a lasting ion source.  The reaction the code solves is therefore
+	!   He(2^3S) + H -> He + H, whose heat is eps(He 2^3S) alone, 19.82 eV.
+	!   Depositing only the 8.07 eV there would strand the 11.75 eV that the
+	!   recombination step returns and that no other term of an atomic run
+	!   carries.
+	!
+	! The branch below is thereis_mol and not with_molecules: what it asks
+	! is whether the SYSTEM carries HeH+ as a species, which is a property
+	! of the network the run solves and not of whether the composition
+	! handed to this routine lists the molecular carriers.
+	if (thereis_HeITR) then
+		if (thereis_mol) then
+			heat_chan(:,11) = (1.0d0 - f_penning_HeI23S)*nheiTR*nhi*Q31    &
+			                  *oxygen_reaction_energy_eV(ir_assoc_HeTR)    &
+			                  /erg2eV
+		else
+			heat_chan(:,11) = (1.0d0 - f_penning_HeI23S)*nheiTR*nhi*Q31    &
+			                  *species_formation_energy(isp_HeTR)/erg2eV
+		endif
+		heat = heat + heat_chan(:,11)
+	endif
+
+	! Molecular Penning ionization heating: He(2^3S)+H2 -> He(1^1S)+H2+ + e-
+	! releases the electron kinetic energy (e_th_HeI - e_th_HeTR) - e_th_H2
+	! (= 24.5874 - 4.7678 - 15.4259 = 4.394 eV) into the gas. nmol(:,1) is the
+	! neutral-H2 number density. ioniz_HeI23S_H2 (Cool_coeff.f90) is the
+	! total, scaled here to the Penning branch. Zero unless a molecular run
+	! also tracks the triplet.
+	if (with_molecules .and. thereis_HeITR) then
+		heat_chan(:,12) = f_penning_HeI23S*nheiTR*nmol(:,1)                &
+		                  *ioniz_HeI23S_H2(T_K)                            &
+		                  *((e_th_HeI - e_th_HeTR) - e_th_H2)/erg2eV
+		heat = heat + heat_chan(:,12)
+	endif
+
+	! Lyman-Werner photodissociation heating: H2 + hv -> H + H leaves the
+	! fragment pair with about 0.4 eV of kinetic energy (Black & Dalgarno
+	! 1977, ApJS 34, 405, p. 418). The 4.48 eV bond energy is paid by the
+	! absorbed photon, not by the gas, so it is NOT a thermal sink of this
+	! channel.
+	if (with_molecules .and. F_LW_star .gt. 0.0d0) then
+		heat_chan(:,13) = k_lw*nmol(:,1)*e_lw_fragment_erg
+		heat = heat + heat_chan(:,13)
+	endif
+
+	! Lyman-Werner FLUORESCENCE heating, the other and much larger half of
+	! the same absorption. k_lw is a DISSOCIATION rate, and every pump
+	! that does not dissociate fluoresces back into a bound, vibrationally
+	! excited level of the ground state carrying the mean landing-level energy
+	! h2_energy_per_bound_fluorescence_erg(T) -- 2.06 eV at 700 K to 2.13 eV
+	! at 3200 K, computed from the Abgrall, Roueff & Drira (2000) transition
+	! probabilities rather than adopted, and replacing the 2.0 eV Burton,
+	! Hollenbach & Tielens (1990) Appendix A adopt without a derivation
+	! (docs/p39_lw_cross_section_sources.md sec. 5.2). The count of such
+	! decays per dissociation is (1 - p)/p. At the density of a molecular
+	! base that energy is collisionally de-excited and becomes heat; at low
+	! density it is radiated away in the infrared quadrupole lines, and
+	! h2_vibrational_heat_fraction is the ratio between the two.
+	!
+	! p IS THE SINGLE-PUMP BRANCHING, not the effective one. Once the layer
+	! is thick a fluorescent photon can be re-absorbed, but that pair of
+	! events -- one molecule down, another up -- deposits nothing, so the
+	! trapping cancels out of the count and what survives is the branching a
+	! lone pump would have. It is not the constant 0.135 either: shielding
+	! removes the strongest pumping lines first, and the lines that survive
+	! to depth have a different branching, measured as p_lw
+	! (docs/p39_lw_cross_section_sources.md).
+	if (with_molecules .and. F_LW_star .gt. 0.0d0) then
+		heat_chan(:,14) = k_lw*(1.0d0 - p_lw)                              &
+		                  /max(p_lw, 1.0d-30)                              &
+		                  *nmol(:,1)                                       &
+		                  *h2_energy_per_bound_fluorescence_erg(T_K)       &
+		                  *h2_vibrational_heat_fraction(T_K, nhi, nmol(:,1))
+		heat = heat + heat_chan(:,14)
+	endif
+
+	! Chemical heat of the COLLISIONAL reactions of the H2/He network. The
+	! photon-driven reactions, the radiative recombinations and the
+	! collisional ionizations are excluded there, so nothing above is counted
+	! twice; see molecular_reaction_heat.f90 for the exclusion list and for
+	! why an atomic gas has no such term. Default off.
+	if (with_molecules .and. mol_reaction_heat) then
+		call molecular_chemical_heating(T_K, nhi, nhii, nheii, nmol,       &
+		                                ne, n_tot, heat_chan(:,15))
+		heat = heat + heat_chan(:,15)
+	endif
+
+	if (with_oxygen) then
+		! FUV photolysis heating: each H2O or OH dissociation leaves the
+		! fragments with the excess of the absorbed photon over the bond
+		! energy, the same ledger the Lyman-Werner channel above uses (the
+		! bond energy is paid by the photon, not by the gas, so it is not a
+		! thermal sink). The H2 + O(1D) branch keeps its 1.96 eV of
+		! electronic excitation out of this sum: that energy leaves as O(1D)
+		! and is released later, in the O(1D) + H2 -> OH + H reaction. THAT
+		! exothermicity is NOT deposited by this network -- an omission of
+		! the same kind as the missing thermal dissociation sink of R12/R14,
+		! and of the same size (a few percent of the photolysis heat),
+		! recorded here rather than hidden.
+		do ib = 1,n_fuv_band
+			heat_chan(:,16) = heat_chan(:,16)                              &
+			  + j_h2o(:,ib)*nox(:,2)                                       &
+			    *heat_per_water_dissociation(ib)                           &
+			  + j_oh(:,ib)*nox(:,1)                                        &
+			    *heat_per_hydroxyl_dissociation(ib)
+		enddo
+		heat = heat + heat_chan(:,16)
+
+		! COLLISIONAL oxygen channels O1, O1r, O2, O2r and the O(1D) sink
+		! O6 (D0 C25, b1 T1.9).  Each is a difference of the one species
+		! formation-energy table, so nothing is transcribed and the forward
+		! and reverse channels are exact negatives.  The photolysis channels
+		! are NOT in this sum: their enthalpy was paid by the absorbed photon
+		! and channel 16 above deposits the excess.
+		!
+		! O(1D) is eliminated by its local steady state (b1 T1.7), and an
+		! elimination transfers the reservoir with the nuclei (T1.9 item 1):
+		! the flux through its single sink O6 equals its production
+		! oj4*n(H2O), and it carries eps(O(1D)) to the products.
+		! System_HeH_mol builds the same oj4 from the same quantum yields for
+		! its rows.
+		!
+		! nm(:,im_OI) is the FREE atomic oxygen, the O I column with the
+		! oxygen bound in OH, H2O and CO already removed, which is the
+		! density the O2 channel runs on in oxygen_carrier_rows.
+		flux_o1d = 0.0d0
+		do ib = 1,n_fuv_band
+			flux_o1d = flux_o1d + qy_H2O_H2_O1D(ib)*j_h2o(:,ib)
+		enddo
+		flux_o1d = flux_o1d*nox(:,2)
+		call oxygen_chemical_heating(T_K, nhi, nmol(:,1),                  &
+		                             nm(:,im_OI), nox, flux_o1d,           &
+		                             heat_chan(:,17))
+		heat = heat + heat_chan(:,17)
+
+		! The two CO destruction channels of the one-sided CO model
+		! (docs/b3b_co_destruction_design_20260906.md).  Both are formed
+		! HERE and nowhere else, and both take their energy from the one
+		! formation-energy table, so they cannot state two different C=O
+		! bond energies.
+		!
+		! 18: He+ + CO -> C+ + O + He, UMIST RATE22 entry 4068.  The heat is
+		! eps(He+) + eps(CO) - eps(C+) - eps(O) - eps(He) = +2.2117 eV, the
+		! difference of the helium and carbon ionization potentials less the
+		! C=O bond energy; the products carry it as kinetic energy.  nox(:,3)
+		! is CO and nheii the He+ of the state.
+		!
+		! THE EVENT RATE IS THE ONE THE BALANCE ROWS USE.  k_D1 n(He+) n(CO)
+		! with the same rk_D1_Hep_CO is the He+ sink of row (2) of
+		! mol_heh_rows and the CO sink of the carrier row
+		! (diffusive_photochemistry::carrier_source), so the number of
+		! events this energy is deposited for is the number of events the
+		! species ledger performs.
+		heat_chan(:,18) = rk_D1_Hep_CO()*nheii*nox(:,3)                    &
+		                  *oxygen_reaction_energy_eV(ir_D1)/erg2eV
+		heat = heat + heat_chan(:,18)
+
+		! 19: CO + hv -> C + O.  The photon pays the 11.1157 eV bond and the
+		! fragments keep the rest, which is the same ledger the
+		! Lyman-Werner and the H2O/OH photolysis channels above use.  The
+		! bond energy is NOT a thermal sink of this channel.
+		heat_chan(:,19) = k_co*nox(:,3)*heat_per_co_dissociation()
+		heat = heat + heat_chan(:,19)
+	endif
+
+	end subroutine heating_of_composition
+
+	!----------------------------------!
+
+	subroutine fuv_band_absorption_ledger(T_K, nhi, nh2, nh2o, nH_nuc,   &
+	         NH2col, NH2Ocol, NOHcol, NCOcol, tau_b, j_h2o, j_oh,        &
+	         k_lw, p_lw_single, k_co,                                    &
+	         absph, absen, heat_col, bond_col, cont_ph, cont_beam,       &
+	         co_ph, co_en, co_heat, e_lw_abs, drift_worst, drift_r)
+	! The COLUMN-INTEGRATED photon and energy ledger of the four FUV bands,
+	! per unit area of the star-ward column: what each band's absorbers take
+	! out of the beam, what that carries, and how much of it reaches the gas.
+	! output/FUV_bands.txt writes what this returns and forms none of it.
+	!
+	! WHY IT LIVES BESIDE THE HEATING ASSEMBLY. The energy of one absorption
+	! event -- the excess of a photolysis photon over the bond, the kinetic
+	! energy of a Lyman-Werner fragment pair, the fluorescence that follows
+	! the pumps that do not dissociate, the CO fragment energy -- is the same
+	! energy the energy equation is charged. Written a second time in the
+	! output module it can drift from the equation exactly as the three
+	! copies of the heating sum did, and that is what happened: until this
+	! routine existed the scanner
+	! src/tests/physics_probe/heating_sum_uniqueness.py had to record
+	! write_output.f90 as an exception. It is one file, one set of imports
+	! and one place those energies are read.
+	!
+	! WHAT IT IS NOT. It is not a second heating assembly. This is a sum over
+	! the GRID at fixed band; heating_of_composition is a sum over the BANDS
+	! at fixed cell. The two answer different questions and neither can be
+	! got from the other: the ledger needs each band's own absorbed photons
+	! to compare with that band's beam loss, and the energy equation needs
+	! each cell's total. What they share, and what this move makes single, is
+	! the energy of one event, which each of them multiplies a rate by.
+	!
+	! THE STATE IS THE CALLER'S. Every density and every column is passed in,
+	! because the ledger describes the state the output file writes and that
+	! is the caller's to choose. drift_worst reports how far the H2O density
+	! written has moved from the one the photon field was built on.
+	real*8, dimension(1-Ng:N+Ng), intent(in) :: T_K, nhi, nh2, nh2o
+	! Total hydrogen NUCLEUS density, the density axis of the H2
+	! self-shielding table the pump cross section is read from.
+	real*8, dimension(1-Ng:N+Ng), intent(in) :: nH_nuc
+	real*8, dimension(1-Ng:N+Ng), intent(in) :: NH2col, NH2Ocol, NOHcol
+	real*8, dimension(1-Ng:N+Ng), intent(in) :: NCOcol
+	real*8, dimension(1-Ng:N+Ng,n_fuv_band), intent(in) :: tau_b
+	real*8, dimension(1-Ng:N+Ng,n_fuv_band), intent(in) :: j_h2o, j_oh
+	real*8, dimension(1-Ng:N+Ng), intent(in) :: k_lw, p_lw_single, k_co
+	real*8, dimension(n_fuv_band), intent(out) :: absph, absen
+	real*8, dimension(n_fuv_band), intent(out) :: heat_col, bond_col
+	real*8, dimension(n_fuv_band), intent(out) :: cont_ph, cont_beam
+	real*8, intent(out) :: co_ph, co_en, co_heat, e_lw_abs
+	real*8, intent(out) :: drift_worst, drift_r
+	real*8  :: dr_cm, a_cell, dtau_col, dn_h2o, dn_oh, dn_h2, dn_co
+	real*8  :: dstate, ph_lw, NH2_out_lw, tau_out_lw
+	integer :: j, ib
+
+      absph    = 0.0d0
+      absen    = 0.0d0
+      heat_col = 0.0d0
+      bond_col = 0.0d0
+      cont_ph   = 0.0d0
+      cont_beam = 0.0d0
+      e_lw_abs = 0.0d0
+      co_ph    = 0.0d0
+      co_en    = 0.0d0
+      co_heat  = 0.0d0
+      drift_worst = 0.0d0
+      drift_r     = 0.0d0
+      do j = 1-Ng,N+Ng
+         dr_cm = dr_j(j)*R0*opa_pf(j)
+         ! THE ABSORBERS OF THE BEAM ARE THE ONES THE COLUMNS RECORD, so a
+         ! cell's absorber count here is its own column increment and not
+         ! its written density times the cell width. The column at cell j
+         ! already contains cell j, so that increment is N(j) - N(j+1), and
+         ! N(N+Ng) is the outermost cell's own content because nothing sits
+         ! above it. The two forms agree wherever the state written is the
+         ! state the photon field was built on; where they do not, the beam
+         ! and its own record are the pair that has to balance, and the
+         ! drift between the two states is reported on its own line below.
+         if (j .lt. N+Ng) then
+            dn_h2o = NH2Ocol(j)   - NH2Ocol(j+1)
+            dn_oh  = NOHcol(j)    - NOHcol(j+1)
+            dn_h2  = NH2col(j) - NH2col(j+1)
+            dn_co  = NCOcol(j)    - NCOcol(j+1)
+         else
+            dn_h2o = NH2Ocol(j)
+            dn_oh  = NOHcol(j)
+            dn_h2  = NH2col(j)
+            dn_co  = NCOcol(j)
+         endif
+         dstate = abs(nh2o(j)*dr_cm - dn_h2o)/max(abs(dn_h2o), 1.0d-99)
+         if (dn_h2o .gt. 0.0d0 .and. dstate .gt. drift_worst) then
+            drift_worst = dstate
+            drift_r     = r(j)
+         endif
+         do ib = 1,n_fuv_band
+            a_cell = j_h2o(j,ib)*dn_h2o + j_oh(j,ib)*dn_oh
+            absph(ib)   = absph(ib)   + a_cell
+            cont_ph(ib) = cont_ph(ib) + a_cell
+            ! The same cell written as the beam's loss between its two
+            ! faces (paragraph (a) above). j_H2O/sigma_H2O is
+            ! N_b tr exp(-tau_out) (1 - exp(-dtau))/dtau with the band's own
+            ! cross section divided out, so multiplying it by the cell's
+            ! continuum depth gives that loss with no reference to a density.
+            if (j .lt. N+Ng) then
+               dtau_col = max(tau_b(j,ib) - tau_b(j+1,ib), 0.0d0)
+            else
+               dtau_col = max(tau_b(j,ib), 0.0d0)
+            endif
+            cont_beam(ib) = cont_beam(ib)                                  &
+                          + j_h2o(j,ib)/sigma_H2O_band(ib)*dtau_col
+            ! Each absorbed photon carries the band's own mean energy
+            ! <hv>_b, so the total can never exceed the incident flux; see
+            ! the conservation argument in water_photolysis.f90 sec. 2.
+            absen(ib) = absen(ib) + a_cell*e_photon_flat_band(ib)
+            heat_col(ib) = heat_col(ib)                                    &
+                      + j_h2o(j,ib)*dn_h2o                             &
+                        *heat_per_water_dissociation(ib)                   &
+                      + j_oh(j,ib)*dn_oh                               &
+                        *heat_per_hydroxyl_dissociation(ib)
+         enddo
+         if (F_LW_star .gt. 0.0d0) then
+            ! The H2 share of the shared LW beam, on the same ledger as the
+            ! continuum absorbers. Two DIFFERENT branchings are needed and
+            ! they are not the same number (lyman_werner.f90, and
+            ! docs/p39_lw_cross_section_sources.md):
+            !   p_lw_single    how many fluorescent decays accompany each
+            !                  dissociation, (1 - p)/p, which is the term the
+            !                  energy equation carries.  Both terms are in
+            !                  the energy equation, so both belong here;
+            !                  before the second was carried, bond_col
+            !                  counted it as energy that never comes back.
+            !   sigma_pump     sigma_diss/p_eff, the photons the lines take
+            !                  out of the beam.  The dissociation rate is NOT
+            !                  divided by p_eff here: a cell of a molecular
+            !                  base spans decades of column over which p_eff
+            !                  varies, so the cell mean of sigma_diss divided
+            !                  by p_eff at one column is not the cell mean of
+            !                  the ratio.
+            !                  The pump rate is taken as its own cell mean,
+            !                  on the same quadrature and the same faces as
+            !                  the dissociation rate
+            !                  (lyman_werner.f90), which is what makes the
+            !                  rated photons telescope to the beam's loss.
+            !                  The column and the depth are re-read from the
+            !                  state this file writes, exactly as the
+            !                  continuum absorbers above are.
+            if (j .lt. N+Ng) then
+               NH2_out_lw = NH2col(j+1)
+               tau_out_lw = tau_b(j+1,ib_LW)
+            else
+               NH2_out_lw = 0.0d0
+               tau_out_lw = 0.0d0
+            endif
+            ph_lw    = lyman_werner_band_absorption_rate_cell_mean(        &
+                          fuv_band_flux(ib_LW), NH2_out_lw, NH2col(j), &
+                          T_K(j), nH_nuc(j),             &
+                          tau_out_lw, tau_b(j,ib_LW))                    &
+                       *dn_h2
+            e_lw_abs = e_lw_abs + ph_lw*e_lw_photon_erg
+            absph(ib_LW)    = absph(ib_LW)    + ph_lw
+            absen(ib_LW)    = absen(ib_LW)    + ph_lw*e_lw_photon_erg
+            heat_col(ib_LW) = heat_col(ib_LW)                              &
+                            + k_lw(j)*dn_h2                           &
+                              *e_lw_fragment_erg                           &
+                            + k_lw(j)*dn_h2                           &
+                              *(1.0d0 - p_lw_single(j))                    &
+                              /max(p_lw_single(j), 1.0d-30)                &
+                              *h2_energy_per_bound_fluorescence_erg(T_K(j))&
+                              *h2_vibrational_heat_fraction(T_K(j),        &
+                                       nhi(j), nh2(j))
+            ! CO IS THE FOURTH ABSORBER OF THIS BEAM AND IT IS RATED,
+            ! but it is accumulated on its OWN row and not into
+            ! rated_ph.  The reason is the beam it would be compared
+            ! against.  beam_loss_ph is N_b (1 - T_line T_cont) with
+            ! T_line the H2 lines and T_cont the H2O and OH continua; CO
+            ! contributes to neither, because its equivalent width is
+            ! inside its own shielding function and it adds no term to
+            ! tau_cont (co_photodissociation.f90, and the design decision
+            ! that put it there).  Counting CO's absorptions against a
+            ! beam loss that carries no CO term would compare two
+            ! different beams, so they are printed separately, together
+            ! with their share of the beam's loss -- which IS the size of
+            ! the approximation that the other three absorbers see a beam
+            ! undepleted by CO.
+            !
+            ! The energy is charged at the CO events' OWN mean photon
+            ! energy and not at the flat-band mean, because CO absorbs at
+            ! the blue end of the beam (37 lines between 912.7 and
+            ! 1076.1 A) and its dissociating photons are 12.87 eV against
+            ! the band's 11.74.  That is what makes absorbed = heat + bond
+            ! exact for this absorber.
+            co_ph   = co_ph   + k_co(j)*dn_co
+            co_en   = co_en   + k_co(j)*dn_co*e_co_photon_erg
+            co_heat = co_heat + k_co(j)*dn_co                         &
+                                *heat_per_co_dissociation()
+         endif
+      enddo
+      bond_col = absen - heat_col
+	end subroutine fuv_band_absorption_ledger
 	
 	!----------------------------------!
 	
+	subroutine chemical_rate_coefficients(T_K,                            &
+	              rchiiB, rcheiiB, rcheiiiB, rec_m,                        &
+	              a_ion_HI, a_ion_HeI, a_ion_HeII, aion_m, a_ion_HeITR)
+	! The recombination and collisional-ionization rate coefficients the
+	! ionization equilibrium is solved with. Every one of them is a function
+	! of the TEMPERATURE ALONE, which is what lets them be formed before the
+	! composition sweep and used unchanged by it.
+	!
+	! They are the same coefficients eval_cool builds on its way to the
+	! cooling, from the same range routines in the same order, so a cell
+	! gets the same number from either; what this routine does not do is
+	! assemble the cooling, which is a contraction with the composition and
+	! therefore belongs to the state the sweep RETURNS, not to the one it
+	! was handed (the second eval_cool call of ionization_equilibrium).
+	!
+	! Blocked over cells in one parallel region, like eval_cool: every
+	! quantity is cell-local, so the thread count changes neither the
+	! arithmetic nor the result.
+
+	real*8, dimension(1-Ng:N+Ng), intent(in)  :: T_K
+	real*8, dimension(1-Ng:N+Ng), intent(out) :: rchiiB, rcheiiB, rcheiiiB
+	real*8, dimension(1-Ng:N+Ng,n_mion), intent(out) :: rec_m, aion_m
+	real*8, dimension(1-Ng:N+Ng), intent(out) :: a_ion_HI, a_ion_HeI,     &
+	                                             a_ion_HeII
+	! The He 2^3S collisional-ionization coefficient, for the callers that
+	! track the metastable.
+	real*8, dimension(1-Ng:N+Ng), intent(out), optional :: a_ion_HeITR
+
+	integer :: ib, nblk, j_lo, j_hi, ncell, i
+	real*8, dimension(1-Ng:N+Ng) :: metal_col, aion_HeITR
+
+	! FIXED BLOCKS, NOT ONE PER THREAD. The rate-coefficient loops below are
+	! vectorized by gfortran -O3 into glibc's libmvec exp/log/pow (two lanes
+	! per call, MEASURED: Cool_coeff.o imports _ZGVbN2v_exp, _ZGVbN2v_log,
+	! _ZGVbN2vv_pow), and the vector and the scalar libm variants agree to
+	! one ulp, not bitwise. Inside a block the cells are taken in lane pairs
+	! from j_lo and any odd remainder by the scalar call, so WHERE a block
+	! starts decides which cell meets which variant. A block count tied to
+	! omp_get_max_threads() therefore made the thread count an input to the
+	! last bit of every rate (6.6e-14 between 1 and 16 threads on wasp_full,
+	! COST3/HYG-MAIN). The blocks are now a fixed, even length, so the lane
+	! pairing is that of the serial whole-array loop whatever the thread
+	! count; the threads only decide who takes which block.
+	ncell = N + 2*Ng
+	nblk  = max(1, (ncell + xuv_rate_block - 1)/xuv_rate_block)
+	!$omp parallel do schedule(dynamic) default(shared)                   &
+	!$omp    private(ib,j_lo,j_hi,i,metal_col,aion_HeITR)
+	do ib = 1,nblk
+	   j_lo = (1-Ng) + (ib-1)*xuv_rate_block
+	   j_hi = min((1-Ng) + ib*xuv_rate_block - 1, N+Ng)
+	   if (j_hi .lt. j_lo) cycle
+
+	   call rec_HII_B_range(T_K,rchiiB,j_lo,j_hi)      ! HII
+	   call rec_HeII_B_range(T_K,rcheiiB,j_lo,j_hi)    ! HeII
+	   call rec_HeIII_B_range(T_K,rcheiiiB,j_lo,j_hi)  ! HeIII
+
+	   call ion_coeff_HI_range(T_K,a_ion_HI,j_lo,j_hi)      ! HI
+	   call ion_coeff_HeI_range(T_K,a_ion_HeI,j_lo,j_hi)    ! HeI
+	   call ion_coeff_HeII_range(T_K,a_ion_HeII,j_lo,j_hi)  ! HeII
+	   ! He 2^3S metastable, 4.8 eV threshold
+	   call ci_HeI23S_range(T_K,aion_HeITR,j_lo,j_hi)
+	   if (present(a_ion_HeITR))                                          &
+	      a_ion_HeITR(j_lo:j_hi) = aion_HeITR(j_lo:j_hi)
+
+	   ! The metal stages. Skipped, and left at zero, for a metals-off run:
+	   ! every rate they carry multiplies a density that is identically
+	   ! zero there, which is the same gate eval_cool applies.
+	   rec_m(j_lo:j_hi,:)  = 0.0d0
+	   aion_m(j_lo:j_hi,:) = 0.0d0
+	   if (thereis_metals) then
+	      do i = 1,n_mion
+	         call rec_coeff_by_ion_range(i,T_K,metal_col,j_lo,j_hi)
+	         rec_m(j_lo:j_hi,i)  = metal_col(j_lo:j_hi)
+	         call ion_coeff_by_ion_range(i,T_K,metal_col,j_lo,j_hi)
+	         aion_m(j_lo:j_hi,i) = metal_col(j_lo:j_hi)
+	      enddo
+	   endif
+
+	enddo
+	!$omp end parallel do
+
+	end subroutine chemical_rate_coefficients
+
+	!---------------------------------------------------!
+
 	subroutine eval_cool(T_K,nhi,nhii,nhei,nheii,nheiii, nm,        &
 				   rchiiB,rcheiiB,rcheiiiB, rec_m,             &
 				   a_ion_HI,a_ion_HeI,a_ion_HeII, aion_m,      &
@@ -1210,7 +2501,7 @@
 
 	! Block decomposition of the cell range and the sub-block timers a block
 	! returns (see ec_t / ec_name).
-	integer :: ib, nblk, j_lo, j_hi, ncell, nthr
+	integer :: ib, nblk, j_lo, j_hi, ncell
 	real*8  :: ect(5)
 
 	real*8, dimension(1-Ng:N+Ng),intent(in)  :: nhi,nhii,           &
@@ -1226,6 +2517,8 @@
    ! photon occupation number of the field incident from the lower atmosphere
    real*8, dimension(1-Ng:N+Ng,n_fsline) :: beta_fs, nbar_fs
 	real*8, dimension(1-Ng:N+Ng) :: ne		  			 ! Electron number density
+	! Neutral helium in its ground singlet, n(1^1S) (see below)
+	real*8, dimension(1-Ng:N+Ng) :: nheiS
 
    ! Recombination rate coefficients
    real*8, dimension(1-Ng:N+Ng),intent(out) :: rchiiB,	 &
@@ -1321,24 +2614,44 @@
 	                                                  beta_fs, nbar_fs)
 	!$ if (ec_prof_on) ec_t(4) = ec_t(4) + (omp_get_wtime() - ec_t0)
 
-	! One parallel region per call, over contiguous blocks of cells. The
+	! Neutral helium in its ground singlet, n(1^1S) = n(He I) - n(2^3S).
+	! The state vector's He I column CONTAINS the metastable
+	! (composition.f90), and the ground-state coefficients of the cooling --
+	! the 24.6 eV collisional ionization and the Cen (1992) collisional
+	! excitation, both of the 1^1S term -- act on the singlet alone: the
+	! metastable sits 19.8 eV up and carries its own 4.8 eV ionization and
+	! its own 10830 A and singlet-conversion channels, which eval_cool_cells
+	! adds from nheiTR. Charging it the ground-state coefficients as well
+	! would count it twice, once in each level's channels. Same subtraction
+	! as PH_heat_HHe and photoheating_of_composition make of the same column.
+	! Formed here, over the whole grid, before the parallel region below.
+	! Without a metastable column there is no metastable inside n(He I) and
+	! the singlet is that column unchanged.
+	if (present(nheiTR)) then
+		nheiS = he_ground_singlet_density(nhei, nheiTR)
+	else
+		nheiS = nhei
+	endif
+
+	! One parallel region per call, over contiguous blocks of cells of the
+	! fixed even length xuv_rate_block (see chemical_rate_coefficients for
+	! why the length is fixed and not one block per thread: the libmvec lane
+	! pairing of the vectorized exp/log/pow inside eval_cool_cells). The
 	! blocks are disjoint and every quantity is cell-local, so the thread
-	! count changes neither the arithmetic nor the result. The sub-block
+	! count decides only which thread takes which block. The sub-block
 	! timers of the blocks are summed, so slots 1-3, 5 and the CNO part of
 	! slot 4 report thread time rather than wall time once threads are on.
 	ncell = N + 2*Ng
-	nthr  = 1
-	!$ nthr = omp_get_max_threads()
-	nblk  = max(1, min(2*nthr, ncell))
+	nblk  = max(1, (ncell + xuv_rate_block - 1)/xuv_rate_block)
 	!$omp parallel do schedule(dynamic) default(shared)                 &
 	!$omp    private(ib,j_lo,j_hi,ect) reduction(+:ec_t)
 	do ib = 1,nblk
-	   j_lo = (1-Ng) + ((ib-1)*ncell)/nblk
-	   j_hi = (1-Ng) + (ib*ncell)/nblk - 1
+	   j_lo = (1-Ng) + (ib-1)*xuv_rate_block
+	   j_hi = min((1-Ng) + ib*xuv_rate_block - 1, N+Ng)
 	   if (j_hi .lt. j_lo) cycle
 	   ect = 0.0d0
 	   call eval_cool_cells(j_lo,j_hi, ect,                             &
-	          T_K,nhi,nhii,nhei,nheii,nheiii, nm, ne, beta_fs, nbar_fs, &
+	          T_K,nhi,nhii,nheiS,nheii,nheiii, nm, ne, beta_fs, nbar_fs,&
 	          rchiiB,rcheiiB,rcheiiiB, rec_m,                           &
 	          a_ion_HI,a_ion_HeI,a_ion_HeII, aion_m,                    &
 	          cool, cool_chan, nheiTR, a_ion_HeITR, nmol, nox)
@@ -1352,7 +2665,7 @@
 	!---------------------------------------------------!
 
 	subroutine eval_cool_cells(j_lo,j_hi, ect,                       &
-	                   T_K,nhi,nhii,nhei,nheii,nheiii, nm, ne,       &
+	                   T_K,nhi,nhii,nheiS,nheii,nheiii, nm, ne,      &
 	                   beta_fs, nbar_fs,                             &
 	                   rchiiB,rcheiiB,rcheiiiB, rec_m,               &
 	                   a_ion_HI,a_ion_HeI,a_ion_HeII, aion_m,        &
@@ -1363,7 +2676,7 @@
 	! cells. Every array keeps the explicit shape 1-Ng:N+Ng of the whole
 	! grid and only the elements j_lo:j_hi are read or written, so the
 	! compiled arithmetic of a cell is what the serial whole-array form
-	! produced (assumed-shape dummies moved it; Update_EXHALE.md 145).
+	! produced (assumed-shape dummies moved it; Update_EXHALE_stage1.md 145).
 	! ne, beta_fs and nbar_fs come in from eval_cool: they are not
 	! cell-local. ect returns this block's sub-block times.
 
@@ -1373,8 +2686,12 @@
 
 	integer :: i,j
 
+	! nheiS is the He I GROUND SINGLET density n(1^1S), formed by eval_cool
+	! from the summed neutral-helium column and the metastable it contains.
+	! The ground-state collisional coefficients below act on it alone; the
+	! metastable's own channels are added from nheiTR.
 	real*8, dimension(1-Ng:N+Ng),intent(in)  :: nhi,nhii,           &
-	                                            nhei,nheii,nheiii
+	                                            nheiS,nheii,nheiii
 	! Metal ion densities (canonical species_table order)
 	real*8, dimension(1-Ng:N+Ng,n_mion),intent(in) :: nm
 
@@ -1503,20 +2820,22 @@
 	call ci_HeI23S_range(T_K,aion_HeITR,j_lo,j_hi)       ! He 2^3S metastable (4.8 eV threshold)
 	if (present(a_ion_HeITR)) a_ion_HeITR(j_lo:j_hi) = aion_HeITR(j_lo:j_hi)
 
-	! Cooling rate. The prefactors are the ionization potentials in erg
-	! (13.6/24.6/54.4 eV for HI/HeI/HeII; e_th_HeTR = 4.8 eV for the 2^3S
-	! metastable, e_th_HeTR/erg2eV = 7.69e-12 erg). He II reads its potential
-	! from the named e_th_HeII_erg, so this assembly and the cell-by-cell
-	! temperature root of the post-process charge the same energy per event;
-	! the H I and He I prefactors are still literals here, and they agree
-	! between the two sites. The 2^3S term (added only
-	! when nheiTR is supplied) reproduces the Black (1981) form
-	! 6.41e-21 sqrt(T) exp(-55338/T) n_e n_23S once multiplied by n_e below.
-	coio(j_lo:j_hi) =  2.179e-11*a_ion_HI(j_lo:j_hi)*nhi(j_lo:j_hi)  	 & ! HI
-		  + 3.940e-11*a_ion_HeI(j_lo:j_hi)*nhei(j_lo:j_hi) 	 & ! HeI
+	! Cooling rate. The prefactor of each term is the ionization potential of
+	! that stage in erg, read from the named global constants e_th_*_erg
+	! (global_parameters), which are the eV thresholds of the photon grid
+	! divided by erg2eV. One definition each: this assembly, the cell-by-cell
+	! temperature root of the advection post-process (T_equation) and the
+	! photoelectron energy h nu - e_th all charge the same energy per event.
+	! e_th_HeI is the potential of the He I GROUND SINGLET and is charged to
+	! nheiS, the metastable removed; the metastable's own e_th_HeTR is the
+	! term below it. The 2^3S term (added only when nheiTR is supplied)
+	! reproduces the Black (1981) form 6.41e-21 sqrt(T) exp(-55338/T)
+	! n_e n_23S once multiplied by n_e below.
+	coio(j_lo:j_hi) =  e_th_HI_erg*a_ion_HI(j_lo:j_hi)*nhi(j_lo:j_hi)  	 & ! HI
+		  + e_th_HeI_erg*a_ion_HeI(j_lo:j_hi)*nheiS(j_lo:j_hi) 	 & ! HeI (1^1S)
 		  + e_th_HeII_erg*a_ion_HeII(j_lo:j_hi)*nheii(j_lo:j_hi)   ! HeII
 	if (present(nheiTR)) coio(j_lo:j_hi) = coio(j_lo:j_hi)                                     &
-		  + (e_th_HeTR/erg2eV)*aion_HeITR(j_lo:j_hi)*nheiTR(j_lo:j_hi)   ! He 2^3S
+		  + e_th_HeTR_erg*aion_HeITR(j_lo:j_hi)*nheiTR(j_lo:j_hi)   ! He 2^3S
 	
 	!-- Bremsstrahlung --!
 
@@ -1566,7 +2885,7 @@
 
 	! Cooling rate
 	coex(j_lo:j_hi) = coeff_coex_rate_HI(j_lo:j_hi)*nhi(j_lo:j_hi)       &    ! HI
-		  + coeff_coex_rate_HeI(j_lo:j_hi)*nhei(j_lo:j_hi)     &    ! HeI
+		  + coeff_coex_rate_HeI(j_lo:j_hi)*nheiS(j_lo:j_hi)    &    ! HeI (1^1S)
 		  + coeff_coex_rate_HeII(j_lo:j_hi)*nheii(j_lo:j_hi)        ! HeII
 
 	! He 2^3S metastable collisional cooling (triplet-tracking callers only).
@@ -1583,7 +2902,8 @@
 	!      thermal). Rate coefficients reused from coex_HeI_23S_21S / _21P.
 	! The ground -> triplet excitation (q13, 19.82 eV) is deliberately EXCLUDED:
 	! that channel is already carried by the Cen-1992 He I coex term above
-	! (coeff_coex_rate_HeI*nhei); adding q13 here would double count it.
+	! (coeff_coex_rate_HeI*nheiS, an excitation OUT of the ground singlet);
+	! adding q13 here would double count it.
 	if (present(nheiTR)) then
 		call coex_rate_HeI23S_10830_range(T_K,coeff_coex_HeI23S_10830,j_lo,j_hi)
 		call coex_HeI_23S_21S_range(T_K,q31a_l,j_lo,j_hi)
@@ -1988,96 +3308,50 @@
 	! ------------------------------------------------------------- !
 
 	subroutine write_heat_breakdown_eq(T_in,n_in,f_sp_in)
-	! Diagnostic. Dump the volumetric heating rate in each channel vs
-	! radius for the converged equilibrium state, recomputing the same
-	! photoheating (PH_heat_HHe) the solver uses plus the excited-H Balmer,
-	! He-recombination, Penning and Lyman-Werner heating terms added in
-	! ionization_equilibrium. All in cgs erg cm^-3 s^-1; the channel sum
-	! reproduces the total heating (heat_total column) and, up to convergence,
-	! the Hydro_ioniz.txt heat column. Photoheating columns: H I, He I,
-	! He II, He 2^3S, H2, metals (sum over photo-ionizable metal ions). Then
-	! the excited-H photoelectric (Hpe) and Lyman-alpha de-excitation (Hdx)
-	! heating, He-recombination-driven H heating, He(2^3S)+H and He(2^3S)+H2
-	! Penning heating, and H2 Lyman-Werner photodissociation heating. The last
-	! three molecular-run channels (H2 photoheating, He(2^3S)+H2 Penning,
-	! Lyman-Werner) are identically zero for an atomic run. The printed max
-	! relative residual is the internal consistency check on the photoheating
-	! split.
+	! Diagnostic. Dump output/Heating_breakdown.txt: the volumetric heating
+	! rate of each channel of heat_channel_name against radius, in cgs
+	! erg cm^-3 s^-1.
+	!
+	! ONE STATE PER OUTPUT FILE. The channel columns are heat_channel_state,
+	! the array the ionization sweep filled through heating_of_composition
+	! for the state it returned. Nothing is recomputed here: no radiation
+	! field, no rate, no contraction. The heat_total column is the sum of
+	! the channels, and it is therefore the heat column of Hydro_ioniz.txt
+	! to round-off, not to the size of one sweep's rate lag. Rebuilding the
+	! rates on the written state instead would describe a different state
+	! from the one whose heating the run integrated: the rates a sweep
+	! contracts are those of the composition that ENTERED it (see the
+	! heating assembly in ionization_equilibrium), so they cannot be
+	! recovered from the state the sweep returned.
+	!
+	! T and n_e are columns of the state this routine is given, so that the
+	! file carries the state its channels belong to. A run that writes this
+	! file before any sweep gets the zeros the array was allocated with.
 
-	integer :: j,im
+	integer :: j,im,ic
 	real*8, dimension(1-Ng:N+Ng), intent(in) :: T_in,n_in
 	real*8, dimension(1-Ng:N+Ng,n_species), intent(in) :: f_sp_in
 
-	real*8, dimension(1-Ng:N+Ng) :: n_dim,T_K,ne
-	real*8, dimension(1-Ng:N+Ng) :: nhi,nhii,nhei,nheii,nheiii,nheiTR
-	real*8, dimension(1-Ng:N+Ng) :: nh,nhe,xion
+	real*8, dimension(1-Ng:N+Ng) :: n_dim,T_K,ne,heat_tot
+	real*8, dimension(1-Ng:N+Ng) :: nhii,nheii,nheiii
 	real*8, dimension(1-Ng:N+Ng,n_mion) :: nm
 	! Molecular densities [cm^-3] (H2, H2+, H3+, HeH+); zero for an atomic run
 	real*8, dimension(1-Ng:N+Ng,4) :: nmol
-	real*8, dimension(1-Ng:N+Ng,6) :: hchan
-	real*8, dimension(1-Ng:N+Ng) :: heat_ph,heat_tot,csum,rel
-	real*8, dimension(1-Ng:N+Ng) :: h_hrc,h_penning,h_penning_h2,h_lw
-	! Chemical heat of the collisional molecular reactions, and the total
-	! gas-particle density (electrons excluded) the three-body rates in it
-	! read as the third body M.
-	real*8, dimension(1-Ng:N+Ng) :: h_chem, ntot_dump
-	! Oxygen-chemistry carriers [cm^-3] (OH, H2O, CO; zero without the
-	! option), their star-ward FUV columns and the photolysis heating.
-	real*8, dimension(1-Ng:N+Ng,3) :: nox
-	real*8, dimension(1-Ng:N+Ng) :: NH2Oc,NOHc,h_fuv
-	! Scratch for the shared-beam field routine: this dump needs only the
-	! two heating terms out of it, but the routine solves the whole field.
-	real*8, dimension(1-Ng:N+Ng) :: fsh_dump, trl_dump
-	real*8, dimension(1-Ng:N+Ng,n_fuv_band) :: tau_dump, jh2o_dump, joh_dump
-	real*8 :: a_dump, ovl_dump
-	integer :: ib
-	! Throwaway PH_heat_HHe rate outputs (not needed for the dump)
-	real*8, dimension(1-Ng:N+Ng) :: P_HI,P_HeI,P_HeII,P_HeITR,q,P_H2
-	real*8, dimension(1-Ng:N+Ng) :: P_H2_di
-	! Collisional quench fraction of an H2 vibrational excitation and the mean
-	! internal energy one B/C fluorescence leaves in X: PH_heat_HHe needs both
-	! from the caller because it does not carry the temperature, and without
-	! them its two H2 vibrational heat channels are silently off.
-	real*8, dimension(1-Ng:N+Ng) :: f_vib_quench,e_vib_bound
-	real*8, dimension(1-Ng:N+Ng,n_mion) :: P_m
-	! Star-ward H2 column [cm^-2] and its Lyman-Werner dissociation rate [s^-1]
-	real*8, dimension(1-Ng:N+Ng) :: NH2col,k_lw,p_lw_s,p_lw_a
-	! He-recombination coupling / triplet scratch
-	real*8, dimension(1-Ng:N+Ng) :: rcheiTR,rcheii,q13,q31a,q31b,Q31
-	real*8, dimension(1-Ng:N+Ng) :: rcheiiB_hrc,dP_HI_hrc,dP_H2_hrc
-	real*8, dimension(1-Ng:N+Ng,n_mion) :: dP_m_hrc
-	real*8 :: A31,maxrel
+	character(len=800) :: head
+	character(len=8)   :: colnum
 
-	! Dimensionalize exactly as ioniz_eq does
 	n_dim = n_in*n0
 	T_K   = T_in*T0
-	nhi   = f_sp_in(:,1)*n_dim
 	nhii  = f_sp_in(:,2)*n_dim
 	if (thereis_He) then
-		nhei   = f_sp_in(:,3)*n_dim
 		nheii  = f_sp_in(:,4)*n_dim
 		nheiii = f_sp_in(:,5)*n_dim
 	else
-		nhei = 0.0d0; nheii = 0.0d0; nheiii = 0.0d0
-	endif
-	if (thereis_HeITR) then
-		nheiTR = f_sp_in(:,6)*n_dim
-	else
-		nheiTR = 0.0d0
+		nheii = 0.0d0; nheiii = 0.0d0
 	endif
 	do im = 1,n_mion
 		nm(:,im) = f_sp_in(:,mion_fsp(im))*n_dim
 	enddo
-	! Oxygen carriers, so the FUV photolysis heating channel is the one
-	! ioniz_eq itself applies (all zero without the oxygen chemistry).
-	nox = 0.0d0
-	if (thereis_oxychem) then
-		nox(:,1) = f_sp_in(:,isp_OH) *n_dim
-		nox(:,2) = f_sp_in(:,isp_H2O)*n_dim
-		nox(:,3) = f_sp_in(:,isp_CO) *n_dim
-	endif
-	! Molecular ions, so the dumped ne and the molecular heating channels are
-	! the ones ioniz_eq itself uses (all zero for an atomic run).
 	nmol = 0.0d0
 	if (thereis_mol) then
 		nmol(:,1) = f_sp_in(:,isp_H2)  *n_dim
@@ -2087,147 +3361,38 @@
 	endif
 	call calc_ne(nhii,nheii,nheiii,ne,nm,nmol)
 
-	! H and He NUCLEI totals and the ionized fraction handed to the
-	! photoelectron partition: the TOTAL free electron density over those
-	! nuclei, the quantity Dalgarno, Yan & Liu (1999) section 7 define.
-	! The one shared definition ionization_equilibrium itself calls, so the
-	! oxygen carriers OH and H2O contribute their H nuclei here too -- both
-	! to xion and to the H nucleus density the FUV/Lyman-Werner beam below
-	! is scaled by.
-	call hydrogen_helium_nuclei_density(nhi,nhii,nhei,nheii,nheiii,       &
-	                                    nh,nhe,nmol,nox)
-	xion = min(max(ne/max(nh + nhe, 1.0d-99), 0.0d0), 1.0d0)
-
-	! Photoheating split (same call the solver makes; H2 adds its opacity and
-	! its photoelectric heating, hchan(:,5), when the run is molecular). The
-	! absorber columns are weighted by the opa_pf the last equilibrium pass
-	! left in place, so they are the solver's own up to convergence.
-	if (thereis_He) then
-		if (thereis_mol) then
-			! Same arguments the solver passes in ionization_equilibrium.
-			! f_vibq/e_vibq are what switch on the two H2 vibrational heat
-			! channels; dropping them made this dump under-report the
-			! molecular photoheating by up to a factor 2 in the H2 layer.
-			f_vib_quench = h2_vibrational_heat_fraction(T_K, nhi,     &
-			                                           nmol(:,1))
-			e_vib_bound  = h2_energy_per_bound_fluorescence_eV(T_K)
-			call PH_heat_HHe(nhi,nhei,nheii,nheiTR, nm, xion,         &
-			         P_HI,P_HeI,P_HeII,P_HeITR, P_m,                  &
-			         heat_ph,q, nmol(:,1),P_H2, P_H2_di,              &
-			         f_vibq = f_vib_quench, e_vibq = e_vib_bound,     &
-			         heat_chan = hchan)
-		else
-			call PH_heat_HHe(nhi,nhei,nheii,nheiTR, nm, xion,         &
-			         P_HI,P_HeI,P_HeII,P_HeITR, P_m,                  &
-			         heat_ph,q, heat_chan = hchan)
-		endif
-	else
-		call PH_heat_H(nhi, xion, P_HI, heat_ph, q)
-		hchan = 0.0d0
-		hchan(:,1) = heat_ph
-	endif
-
-	! He-recombination-driven H heating and He(2^3S)+H Penning heating,
-	! reconstructed exactly as ionization_equilibrium adds them to `heat`.
-	A31 = 0.0d0; q31a = 0.0d0; q31b = 0.0d0; Q31 = 0.0d0
-	if (thereis_HeITR) &
-		call HeITR_coeffs(T_K,rcheiTR,rcheii,A31,q13,q31a,q31b,Q31)
-	h_hrc = 0.0d0
-	if (use_he_rec_coupling .and. thereis_He) then
-		call he_rec_coupling(T_K, nhi, nmol(:,1), nhei, nheii, nheiTR, &
-		                     ne, nm, A31, q31a, q31b,                  &
-		                     rcheiiB_hrc, dP_HI_hrc, dP_H2_hrc,        &
-		                     dP_m_hrc, h_hrc)
-	endif
-	h_penning = 0.0d0
-	if (thereis_HeITR) h_penning =                                    &
-		f_penning_HeI23S*nheiTR*nhi*Q31                                &
-		*(e_th_HeI - e_th_HeTR - e_th_HI)/erg2eV
-
-	! He(2^3S)+H2 -> He(1^1S)+H2+ + e- Penning ionization heating: the electron
-	! carries away (e_th_HeI - e_th_HeTR) - e_th_H2 = 4.4 eV. ioniz_HeI23S_H2
-	! is the total, so the Penning branch alone carries this exothermicity.
-	! Zero unless a molecular run also tracks the triplet.
-	h_penning_h2 = 0.0d0
-	if (thereis_mol .and. thereis_HeITR) h_penning_h2 =               &
-		f_penning_HeI23S*nheiTR*nmol(:,1)*ioniz_HeI23S_H2(T_K)         &
-		*((e_th_HeI - e_th_HeTR) - e_th_H2)/erg2eV
-
-	! Lyman-Werner heating, both halves of it: the 13.5% of pumps that
-	! dissociate leave the fragment pair about 0.4 eV of kinetic energy (the
-	! 4.48 eV bond energy is paid by the photon, not by the gas), and the
-	! other 86.5% fluoresce back into vibrationally excited bound levels
-	! whose energy is collisionally de-excited into heat at these densities.
-	! Same two terms, in the same order, as the energy equation of
-	! ionization_equilibrium. And the FUV photolysis heating of
-	! H2O and OH (the oxygen chemistry), whose ledger is the same: the
-	! excess of the absorbed photon over the bond energy. Both come from the
-	! ONE shared-beam field routine the equilibrium solve uses, rebuilt here
-	! from f_sp_in because this dump must be a function of the state it is
-	! given rather than of the last state solved.
-	h_lw  = 0.0d0
-	h_fuv = 0.0d0
-	if (thereis_mol .or. thereis_oxychem) then
-		call fuv_lw_photon_field(nmol(:,1), nox(:,2), nox(:,1), T_K,   &
-		                         nh,                                   &
-		                         NH2col, NH2Oc, NOHc,                  &
-		                         fsh_dump, trl_dump, tau_dump,         &
-		                         k_lw, p_lw_s, p_lw_a,                 &
-		                         jh2o_dump, joh_dump, a_dump,          &
-		                         ovl_dump)
-		h_lw = k_lw*nmol(:,1)*e_lw_fragment_erg                       &
-		     + k_lw*(1.0d0 - p_lw_s)/max(p_lw_s, 1.0d-30)*nmol(:,1)   &
-		       *h2_energy_per_bound_fluorescence_erg(T_K)             &
-		       *h2_vibrational_heat_fraction(T_K, nhi, nmol(:,1))
-		do ib = 1,n_fuv_band
-			h_fuv = h_fuv                                              &
-			  + jh2o_dump(:,ib)*nox(:,2)                               &
-			    *heat_per_water_dissociation(ib)                       &
-			  + joh_dump(:,ib)*nox(:,1)                                &
-			    *heat_per_hydroxyl_dissociation(ib)
+	heat_tot = 0.0d0
+	if (allocated(heat_channel_state)) then
+		do ic = 1,n_heat_channel
+			heat_tot = heat_tot + heat_channel_state(:,ic)
 		enddo
 	endif
 
-	! Total heating (independent of the channel columns; the residual
-	! below checks the photoheating decomposition against heat_ph).
-	! Chemical heat of the collisional molecular reactions, rebuilt here
-	! from the state this dump was given, exactly as ionization_equilibrium
-	! adds it to `heat`. Zero unless the run switched it on.
-	h_chem = 0.0d0
-	call calc_ntot(nhi,nhii,nhei,nheii,nheiii,ntot_dump,nm,nmol,nox)
-	if (thereis_mol .and. mol_reaction_heat)                           &
-		call molecular_chemical_heating(T_K, nhi, nhii, nheii, nmol,   &
-		                                ne, ntot_dump, h_chem)
-
-	heat_tot = heat_ph + Hpe_arr + Hdx_arr + h_hrc + h_penning        &
-	         + h_penning_h2 + h_lw + h_fuv + h_chem
-
-	! Internal consistency of the photoheating split.
-	csum   = hchan(:,1) + hchan(:,2) + hchan(:,3) + hchan(:,4)        &
-	       + hchan(:,5) + hchan(:,6)
-	rel    = abs(csum - heat_ph)/max(abs(heat_ph),1.0d-99)
-	maxrel = maxval(rel(1:N))
-	write(*,'(a,es9.2)')                                                  &
-		' (write_heat_breakdown_eq) max |sum(photo channels)/heat_photo - 1| = ', maxrel
-
 	open(unit = 72, file = './output/Heating_breakdown.txt')
 	write(72,'(a)') '# Volumetric heating rate in each channel [cgs erg cm^-3 s^-1] vs radius.'
-	write(72,'(a)') '# Channel sum reproduces the heat_total column (and the Hydro_ioniz.txt'  &
-	             // ' heat column up to convergence).'
-	write(72,'(a)') '# col1 r/Rp  col2 T[K]  col3 ne  col4 heat_total  col5 heat_HI'  &
-	             // '  col6 heat_HeI  col7 heat_HeII  col8 heat_He23S  col9 heat_H2'  &
-	             // '  col10 heat_metals  col11 heat_Hpe[excitedH]'                    &
-	             // '  col12 heat_Hdx[Lya-deexc]  col13 heat_He_recomb  col14 heat_He23S_Penning'  &
-	             // '  col15 heat_He23S_H2_Penning  col16 heat_H2_LW'   &
-	             // '  col17 heat_FUV_photolysis  col18 heat_mol_chem'
-	call write_row_layout_header(72)
-	do j = 1-Ng,N+Ng
-		write(72,*) r(j), T_K(j), ne(j), heat_tot(j),                    &
-		            hchan(j,1), hchan(j,2), hchan(j,3), hchan(j,4),       &
-		            hchan(j,5), hchan(j,6),                               &
-		            Hpe_arr(j), Hdx_arr(j), h_hrc(j), h_penning(j),       &
-		            h_penning_h2(j), h_lw(j), h_fuv(j), h_chem(j)
+	write(72,'(a)') '# The channels are those the ionization sweep deposited for the state'  &
+	             // ' written beside it, so their sum is the heat column of Hydro_ioniz.txt.'
+	! Header built from the channel list, so a channel cannot be added to
+	! the heating and be missing from the columns.
+	head = '# col1 r/Rp  col2 T[K]  col3 ne  col4 heat_total'
+	do ic = 1,n_heat_channel
+		write(colnum,'(i0)') ic + 4
+		head = trim(head)//'  col'//trim(colnum)//' '                     &
+		       //trim(heat_channel_name(ic))
 	enddo
+	write(72,'(a)') trim(head)
+	call write_row_layout_header(72)
+	if (allocated(heat_channel_state)) then
+		do j = 1-Ng,N+Ng
+			write(72,*) r(j), T_K(j), ne(j), heat_tot(j),                 &
+			            (heat_channel_state(j,ic), ic = 1,n_heat_channel)
+		enddo
+	else
+		do j = 1-Ng,N+Ng
+			write(72,*) r(j), T_K(j), ne(j), heat_tot(j),                 &
+			            (0.0d0, ic = 1,n_heat_channel)
+		enddo
+	endif
 	close(72)
 
 	end subroutine write_heat_breakdown_eq
@@ -2563,9 +3728,18 @@
 			! fraction above the H2 edge differs slightly (the part of the
 			! two-photon continuum between 13.6 and 15.4 eV cannot ionize H2);
 			! z is used for both, as the two-photon exit is 8% of the cascade.
+			! n_crit itself leaves the double-precision range at low
+			! temperature: 1100 exp(1.2/T4) sqrt(T4) is +Inf below
+			! T = 17.1 K (T4 = 1.71e-3 gives 1.2/T4 + ln(1100 sqrt(T4))
+			! = 705.6, and the exponent range ends at 709.78). There
+			! n_e/n_crit is zero and z is at its low-density limit, so
+			! that limit is the value taken and n_crit is never formed.
 			T4    = T_K(j)/1.0d4
-			ncrit = 1100.0d0*exp(1.2d0/T4)*sqrt(T4)
-			z     = 0.67d0 + 0.29d0/(1.0d0 + ne(j)/ncrit)
+			z     = 0.67d0 + 0.29d0
+			if (T4 .gt. 1.71d-3) then
+				ncrit = 1100.0d0*exp(1.2d0/T4)*sqrt(T4)
+				z     = 0.67d0 + 0.29d0/(1.0d0 + ne(j)/ncrit)
+			endif
 			! He II recombination: alpha_eff = alpha_B + alpha_1
 			! (1 - f_abs w_HeI); a ground-capture photon that leaves the cell
 			! does not re-ionize He, so it is a net recombination too.

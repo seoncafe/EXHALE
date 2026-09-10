@@ -161,7 +161,7 @@ The suspects were followed in code and none of them creates a nucleus:
   the ion stages of the same element.
 
 The likeliest explanation is that the defect was removed by the carrier rework
-of `docs/Update_EXHALE.md` section 128 (2026-09-02), which is *after* item (T)
+of `docs/Update_EXHALE_stage1.md` section 128 (2026-09-02), which is *after* item (T)
 was opened (2026-08-31) and which explicitly split the two disagreeing
 definitions of the hydrogen the carriers may hold
 (`hydrogen_available_to_carriers` versus the element total).  Section 128's own

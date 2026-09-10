@@ -8,7 +8,7 @@
 > the He 2^3S triplet), Badnell RR+DR recombination, and Huang et al. (2023)
 > Table 4 charge exchange in place of Kingdon & Ferland. No `System_HeHCO*.f90`
 > module exists; the names in the plan were never adopted. See
-> `Update_EXHALE_early_phase`, Part II. Kept for historical reference.
+> `Update_EXHALE_stage0`, Part II. Kept for historical reference.
 >
 > [2026-08-27] Which tree each file name below belongs to: every
 > `metals*.f90`, `cross_sec_metals.f90` and `write_metals_output.f90` path,
@@ -104,23 +104,23 @@ initially for a like-for-like comparison).
 ## 4. New / modified files
 
 **New**
-- `nonlinear_system_solver/System_HeHCO_TR.f90` — the combined residual
+- `nonlinear_system_solver/System_HeHCO_TR.f90`: the combined residual
   routine `ion_system_HeHCO_TR(N_eq, x, fvec, iflag, params)`. Generalize
   the sister tree's `System_HeHCO.f90` to (a) read the active metal list
   and coefficients for each ion from `params`, and (b) optionally include the
   HeITR block.
 
 **Modified**
-- `init/parameters.f90` — none required for variables (params array
+- `init/parameters.f90`: none required for variables (params array
   already sized 40 in the metal work; confirm it is large enough for
   HeITR(7) + metals(up to 8 ions × {Gamma0,Gamma1,alpha0,alpha1,n}) and
   enlarge if needed).
-- `files_IO/input_read.f90` — set `N_eq` for the combined case:
+- `files_IO/input_read.f90`, set `N_eq` for the combined case:
   `N_eq = 3 + merge(1,0,thereis_HeITR) + 2*n_elem`, and size the MINPACK
   work arrays accordingly. Requires `n_metals`/`n_elem` to be known
   before this point (move `read_metals_input` ahead of the allocation,
   or recompute `lwa` after it).
-- `radiation/ionization_equilibrium.f90` — replace the metal cooling
+- `radiation/ionization_equilibrium.f90`: replace the metal cooling
   hook (which calls the coronal `solve_metals_post`) with extraction of
   metal densities from the MINPACK solution, and dispatch:
   ```
@@ -135,12 +135,12 @@ initially for a like-for-like comparison).
   Fill `params` with the metal photoionization/recombination
   coefficients per cell; unpack `x` into `f_sp(:,7:)`.
 - `init/set_IC.f90`, `files_IO/load_IC.f90`, `files_IO/write_output.f90`,
-  `EXHALE_main.f90` — widen `f_sp` from 6 to `6 + 3*n_elem` and add the
+  `EXHALE_main.f90`: widen `f_sp` from 6 to `6 + 3*n_elem` and add the
   metal columns to `Ion_species.txt` (mirrors the sister tree's change).
-- `radiation/metals_cool.f90` — unchanged; `eval_metal_cooling` now takes
+- `radiation/metals_cool.f90`: unchanged; `eval_metal_cooling` now takes
   the metal densities from `f_sp`/the MINPACK solution instead of from
   `solve_metals_post`.
-- `metals_drive.f90` — `solve_metals_post` becomes optional (kept for a
+- `metals_drive.f90`: `solve_metals_post` becomes optional (kept for a
   post-processing-only / diagnostic mode, or removed once the MINPACK
   path is validated).
 
@@ -171,7 +171,7 @@ initially for a like-for-like comparison).
   `hybrd1`; good initial guesses (propagate inward, as the current code
   does) and sensible scaling are essential. Watch the partially-ionized
   layer where Jacobians are stiff.
-- **Cost.** `N_eq` grows from 3–4 to up to ~10; each cell solve is more
+- **Cost.** `N_eq` grows from 3-4 to up to ~10; each cell solve is more
   expensive. The time-loop already dominates runtime, so profile before
   optimizing.
 - **Backward compatibility.** Keep `n_metals == 0` reducing exactly to

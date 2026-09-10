@@ -36,7 +36,77 @@
       ! (flux_spread_of_state, steady_residual.f90). Set in define_grid.
       integer :: j_flux
       integer :: count
-      
+
+      ! ----- WHAT A RUN IS DOING, AND THE CLOCK THAT GOES WITH IT -----
+      ! docs/a0_run_mode_contract_20260906.md sections 2, 4 and 5.
+      !
+      ! Three different things share one marching loop: reaching an
+      ! admissible state from a guess, relaxing to a stationary one, and
+      ! advancing a state in time. Only the third has an elapsed time. Local
+      ! pseudo-time (use_local_dt) advances neighbouring cells by different
+      ! intervals, so the material sum across an internal face is not
+      ! conserved and the update is a relaxation iterate rather than one
+      ! physical step; the same holds for the PTC route and for a stationary
+      ! Newton finish, whose trials are numerical iterates. A run therefore
+      ! states which of the two it is, and the state it writes carries that
+      ! statement.
+      !
+      !   run_mode_init  initialization / continuation: no claim about
+      !                  elapsed time; local pseudo-time, PTC and non-root
+      !                  chemistry are all permitted as numerical devices
+      !   run_mode_phys  physical integration: one global dt per step, and
+      !                  the clock below advances only after a complete
+      !                  accepted step
+      integer, parameter :: run_mode_init = 1
+      integer, parameter :: run_mode_phys = 2
+      integer :: run_mode = run_mode_init
+      ! Was the mode stated in input.inp, or derived from the other keys?
+      ! A defaulted mode is a reading of the input and is reported as such.
+      logical :: run_mode_given = .false.
+
+      ! PHYSICAL ELAPSED TIME OF THE STATE THE RUN HOLDS, in SECONDS.
+      ! Advanced by the global dt of a step, and only after that step has
+      ! been accepted in full; a rejected trial advances nothing. Meaningless
+      ! in run_mode_init, where it stays at its initial value and no output
+      ! reports it. The code's time unit is R0/v0, so the increment is
+      ! dt*R0/v0.
+      real*8 :: t_phys = 0.0d0
+
+      ! THE THREE COUNTERS OF CONTRACT SECTION 5, never conflated. `count`
+      ! above is the marching-loop index. These two separate the steps the
+      ! run tried from the steps it kept: a step re-taken at half dt after a
+      ! positivity violation is one more attempt and not one more accepted
+      ! step, and the difference is what tells a plateau of accepted steps
+      ! from a run spending its time in bisections.
+      integer :: n_steps_attempted = 0
+      integer :: n_steps_accepted  = 0
+
+
+      ! WHICH FAMILY OF LEDGERS A DIAGNOSTIC BELONGS TO (contract section 5).
+      ! The same fields are kept twice: once for initialization and
+      ! continuation, where they are diagnostics of a relaxation, and once
+      ! for physical integration, where they are the history of accepted
+      ! steps. A quantity counted while the run was relaxing is not part of
+      ! the history of a trajectory, and adding the two would produce a
+      ! budget belonging to no single run state. Producers index their
+      ! counters by this value; it is set by the marching loop and by the
+      ! entry and exit of the stationary solver, which is continuation
+      ! whatever mode the run is in.
+      ! B6 CATEGORY 4, THE UNBUDGETED ACCEPTED CORRECTIONS THAT ARE STILL
+      ! INSIDE THE ATTEMPTED STEP (b1 section 7.4; advisor decision 8 of
+      ! docs/b3a_attempted_step_controller_design_20260906.md section 9).
+      ! Row 12's Shapiro filter alters the adopted state with no source term
+      ! behind the change. It is carried until B3b reaches it, and is
+      ! counted here so that the certification can refuse a state whose
+      ! history contains one. It lives in this module rather than in
+      ! attempted_step because certification.f90 must read it and
+      ! attempted_step already uses certification.
+      integer :: n_shapiro_applied    = 0
+
+      integer, parameter :: ledger_family_init = 1
+      integer, parameter :: ledger_family_phys = 2
+      integer :: ledger_family = ledger_family_init
+
       character(len = 9), parameter   :: inp_file = 'input.inp'
       character(len = :), allocatable :: p_name
       character(len = :), allocatable :: grid_type
@@ -290,7 +360,7 @@
       ! byte-identical legacy.  docs/lower_atmosphere_coupling.*.
       logical :: thereis_mol = .false.
       ! Band-integrated stellar flux in the H2 Lyman-Werner bands
-      ! (912-1110 A, i.e. 11.2-13.6 eV) AT THE PLANET'S ORBIT
+      ! (912-1201 A, i.e. 10.3-13.6 eV) AT THE PLANET'S ORBIT
       ! [erg cm^-2 s^-1].  Key "Stellar LW flux [erg cm^-2 s^-1]: <F>".
       ! It is a separate input because the code's own energy grid does not
       ! carry this band: for a numerical SED the grid stops at the 13.6 eV
@@ -305,7 +375,7 @@
       ! to it where the beam is used, by dayside_dilution() in fuv_band_flux,
       ! exactly as it is to the XUV grid and to the stellar Ly-alpha beam.
       ! State the band flux at the orbit and let the run dilute it; do not
-      ! pre-divide it here (Update_EXHALE section 150).
+      ! pre-divide it here (Update_EXHALE_stage1 section 150).
       ! See src/modules/lower_atmosphere/lyman_werner.f90.
       real*8  :: F_LW_star = 0.0d0
       ! Whether input.inp STATED "Stellar LW flux" (any value, zero
@@ -385,24 +455,28 @@
       ! Requires "Molecular carrier transport: True": the operator that
       ! carries it is the molecular carrier solve.
       logical :: ionization_transport = .false.
-      ! Band-integrated stellar flux AT THE PLANET'S ORBIT in the three FUV
+      ! Band-integrated stellar flux AT THE PLANET'S ORBIT in the two FUV
       ! continuum bands of the oxygen chemistry [erg cm^-2 s^-1]:
-      !   B1 1110-1201 A   "Stellar FUV B1 flux [erg/cm2/s]: <F>"
       !   B3 1231-1450 A   "Stellar FUV B3 flux [erg/cm2/s]: <F>"
       !   B4 1451-2304 A   "Stellar FUV B4 flux [erg/cm2/s]: <F>"
       ! B2 is the Ly-alpha line, supplied by the existing F_Lya_star, and
-      ! the 912-1110 A band is supplied by F_LW_star, which the H2
+      ! the 912-1201 A band is supplied by F_LW_star, which the H2
       ! Lyman-Werner absorber shares with H2O and OH -- one wavelength
-      ! interval, one incident flux, one beam. Separate keys rather than one
-      ! flux plus an assumed shape: decision D1 of the design, taken because
-      ! the single-key form is weakest exactly on the line-dominated FUV of
-      ! an M dwarf. The band edges are fixed by the H2O branching ratios and
-      ! by where the Lyman-Werner system ends, not chosen; see
+      ! interval, one incident flux, one beam. There was a fourth key,
+      ! "Stellar FUV B1 flux", for a 1110-1201 A band between it and B2; on
+      ! 2026-09-06 that band was merged back into the Lyman-Werner interval,
+      ! because the H2 lines pump across 1110 A at the temperature of a
+      ! planetary base and a band edge there normalized the pumping per
+      ! photon of a band narrower than the one the lines drink from. The key
+      ! is retired and input_read stops a run that states it. Separate keys
+      ! rather than one flux plus an assumed shape: decision D1 of the
+      ! design, taken because the single-key form is weakest exactly on the
+      ! line-dominated FUV of an M dwarf. The band edges are fixed by the H2O
+      ! branching ratios and by the Ly-alpha line, not chosen; see
       ! src/modules/lower_atmosphere/water_photolysis.f90.
       ! 0 (default) = no photolysis in that band.
       ! Like F_LW_star, these are the fluxes AT THE ORBIT; the dayside
       ! convention is applied in fuv_band_flux (section 150).
-      real*8  :: F_FUV_B1 = 0.0d0
       real*8  :: F_FUV_B3 = 0.0d0
       real*8  :: F_FUV_B4 = 0.0d0
       logical :: thereis_metals = .false. ! Include trace-metal species
@@ -669,10 +743,46 @@
       ! re-snapshotted with this value).
       real*8,parameter ::  kb_erg  = 1.380649d-16
       real*8,parameter ::  kb_eV   = 8.617333262d-05  ! Boltzmann constant (eV/K), CODATA exact
+      !
+      ! ----- Particle masses -----
+      !
+      ! ONE DEFINITION EACH, and every mass the code uses is either one of
+      ! these measured quantities or a ratio formed from them below.  The
+      ! MASS UNIT of the code is the hydrogen ATOM mu: the adimensional
+      ! density rho is a number of hydrogen atoms per unit volume times n0,
+      ! so a species mass entering rho is m_species/mu and NOT its atomic
+      ! weight in u.  The two differ by 0.78 per cent (amu_over_m_H), which
+      ! is why the conversion is written here once instead of being carried
+      ! implicitly by whichever unit a table happened to be transcribed in.
+      !
       ! Mass of the hydrogen ATOM (m_p + m_e - 13.6 eV/c^2), CODATA 2018.
       ! This is the mass unit of the density normalization, so it also sets
       ! m_H2 in lyman_werner.f90 -- keep the two in step.
       real*8,parameter ::  mu      = 1.67353284d-24   ! Hydrogen atom mass (g)
+      ! Mass of the helium-4 ATOM: 4.002603254 u (AME2020 atomic mass of
+      ! 4He) times the atomic mass unit below, equivalently the alpha
+      ! particle plus two electrons less the 79 eV electronic binding
+      ! (2.6e-8 of the mass, below the digits kept).  It is the mass the
+      ! species table gives He I, He II, He III and the He 2^3S metastable:
+      ! removing one electron changes the atom's mass by 1.4e-4, below the
+      ! precision at which any helium mass enters this code.
+      real*8,parameter ::  m_He_atom = 6.6464790722d-24 ! Helium-4 atom mass (g)
+      ! Unified atomic mass unit, 1/12 of the mass of a neutral 12C atom,
+      ! CODATA 2018.  Standard atomic weights (species_table melem_A_u) are
+      ! quoted in this unit and must be converted before they are added to a
+      ! mass sum carried in hydrogen atoms.
+      real*8,parameter ::  amu     = 1.66053906660d-24 ! atomic mass unit (g), CODATA 2018
+      real*8,parameter ::  m_e     = 9.1093837015d-28  ! electron mass (g), CODATA 2018
+      real*8,parameter ::  m_p     = 1.67262192369d-24 ! proton mass (g), CODATA 2018
+      ! Derived mass ratios, formed from the constants above so that a mass
+      ! ratio cannot drift from the masses it is a ratio of.
+      !   m_He_over_m_H = 3.9715259 : the weight of one helium nucleus in
+      !     the species table (bsp_mass), in calc_rho, in the mean molecular
+      !     weight, and in the analytic lower column.
+      !   amu_over_m_H  = 0.99223573 : the factor that turns an atomic
+      !     weight in u into the code's mass unit.
+      real*8,parameter ::  m_He_over_m_H = m_He_atom/mu
+      real*8,parameter ::  amu_over_m_H  = amu/mu
       ! Adiabatic index of a monatomic gas, written as the exact rational so
       ! that the value is 5/3 to full double precision rather than to the
       ! digits a literal happens to carry.  This is the reference value: where
@@ -688,9 +798,17 @@
       real*8,parameter ::  c_light = 2.99792458d10    ! Speed of light in cm/s
       real*8,parameter ::  parsec  = 3.08567758147d18 ! 1 pc in cm
       real*8,parameter ::  AU      = 1.495978707d13   ! Astronomical unit
-      real*8,parameter ::  RJ      = 6.9911d9         ! Jupiter radius (cm)
-      real*8,parameter ::  MJ      = 1.898d30         ! Jupiter mass (g)
-      real*8,parameter ::  Msun    = 1.989d33         ! Sun mass (g)
+      ! Jupiter and solar mass/radius: the IAU 2015 nominal values (Prsa et
+      ! al. 2016, AJ 152, 41, Table 1), which are the units transiting-planet
+      ! radii and masses are quoted in. R_J is the nominal EQUATORIAL radius
+      ! R_J^N(eq), the one a transit depth measures; the masses follow from
+      ! the nominal GM with the CODATA G above. These constants scale the
+      ! `Planet radius [R_J]`, `Planet mass [M_J]` and `Parent star mass
+      ! [M_sun]` keys, and are the DEFINITION the Wind-AE front end
+      ! (wae_exhale_input.f90), which cannot use this module, mirrors.
+      real*8,parameter ::  RJ      = 7.1492d9         ! Jupiter equatorial radius (cm), IAU 2015 nominal
+      real*8,parameter ::  MJ      = 1.8982d30        ! Jupiter mass (g), IAU 2015 nominal
+      real*8,parameter ::  Msun    = 1.98842d33       ! Sun mass (g), IAU 2015 nominal
       real*8,parameter ::  Rsun    = 6.957d10         ! Sun radius (cm)
       real*8,parameter ::  R_earth = 6.3725d8         ! Earth radius (cm)
       real*8,parameter ::  M_earth = 5.9726d27        ! Earth mass (g)
@@ -704,9 +822,26 @@
       real*8 ::  e_mid
       real*8 ::  e_low
       
-      ! Threshold energies
-      real*8,parameter ::  e_th_HI   = 13.6d0    ! Threshold for HI ionization
-      real*8, parameter ::  e_th_H2  = 15.4d0  ! H2 photoionization threshold [eV]
+      ! ----- Ionization thresholds -----
+      !
+      ! ONE DEFINITION EACH.  Every consumer of an ionization threshold reads
+      ! the constant below: the photon-grid band edges (set_energy_vectors),
+      ! the photoelectron energy h nu - e_th, the secondary-ionization targets
+      ! (electron_energy_degradation), the collisional-ionization cooling
+      ! (util_ion_eq, T_equation) and the turn-on of the photoionization cross
+      ! sections themselves (cross_sec).  A cross section that turned on at
+      ! its own copy of the threshold left the band between the two copies
+      ! integrated as zero: with e_th_HeI = 24.6 against the He I fit's own
+      ! 24.59, the band [24.59, 24.60] eV, 0.115 per cent of the He I
+      ! photoionization rate of the default power law, was lost.
+      !
+      ! The values are the measured ionization energies, NIST Atomic Spectra
+      ! Database (Kramida, Ralchenko, Reader & NIST ASD Team), levels and
+      ! ionization-energy data, and for H2 the adiabatic ionization energy of
+      ! the NIST Chemistry WebBook (Herzberg & Jungen 1972 series limit).
+      real*8,parameter ::  e_th_HI   = 13.598434599d0  ! H I  1s -> H+ , NIST ASD [eV]
+      ! H2 -> H2+ + e-, adiabatic (v'=0 <- v''=0) ionization energy, NIST.
+      real*8, parameter ::  e_th_H2  = 15.425927d0     ! H2 photoionization threshold [eV]
       ! Threshold of the DISSOCIATIVE H2 photoionization channel,
       ! H2 + hv -> H + H+ + e- (Chung, Lee, Masuoka & Samson 1993,
       ! J. Chem. Phys. 99, 885, Table II, whose first row is the
@@ -720,23 +855,29 @@
       ! Charged against that threshold the same way every other channel
       ! is charged its own ionization potential.
       real*8, parameter ::  e_th_H2_dd = 51.400d0
-      real*8,parameter ::  e_th_HeI  = 24.6d0    ! Threshold for HeI ionization
-      real*8,parameter ::  e_th_HeII = 54.4d0    ! Threshold for HeII ionization
-      real*8,parameter ::  e_th_HeTR = 4.80d0    ! Threshold for HeI triplet ionization
-      ! He II ground-state ionization energy IN ERG -- the energy the electron
-      ! gas loses per He II collisional ionization. ONE definition: the cooling
-      ! assembly (eval_cool) and the cell-by-cell temperature root of the
-      ! advection post-process (T_equation) both use it. Until 2026-09-05 those
-      ! two carried the literal 8.715e-11 and kb_erg*631515 separately, 0.046
-      ! per cent apart for the same quantity. 631515 K is 54.4 eV written as a
-      ! temperature, and it is the same threshold the Hui & Gnedin (1997,
-      ! MNRAS 292, 27) collisional-ionization fit carries as 2*631515/T -- so
-      ! this form ties the energy removed to the threshold of the rate that
-      ! removes it, which the free literal did not. Value 8.719006e-11 erg.
-      ! The measured potential is 54.41776 eV = 8.718686e-11 erg (NIST ASD),
-      ! so this constant sits 0.0037 per cent above it and the retired
-      ! 8.715e-11 sat 0.042 per cent below it.
-      real*8,parameter ::  e_th_HeII_erg = kb_erg*631515.0d0
+      real*8,parameter ::  e_th_HeI  = 24.587389d0    ! He I 1^1S -> He+ , NIST ASD [eV]
+      real*8,parameter ::  e_th_HeII = 54.417765d0    ! He II 1s -> He++ , NIST ASD [eV]
+      ! He 2^3S metastable: the ionization energy of the ground singlet minus
+      ! the excitation energy of the 1s2s 3S1 level, 159855.9743 cm^-1 =
+      ! 19.819614 eV (NIST ASD), i.e. 24.587389 - 19.819614 eV.  This is the
+      ! lowest threshold in the code and it sets the floor of the photon grid
+      ! whenever the metastable is carried.
+      real*8,parameter ::  e_th_HeTR = 4.767775d0     ! He 2^3S -> He+ [eV]
+      ! The same thresholds IN ERG -- the energy the electron gas loses per
+      ! collisional ionization. They are the eV constants above divided by
+      ! erg2eV, so a threshold is written once and the collisional cooling
+      ! assembly (util_ion_eq eval_cool) and the cell-by-cell temperature root
+      ! of the advection post-process (T_equation) charge the same energy per
+      ! event as the photon grid charges per photoionization.
+      ! Values: 2.178709e-11, 3.939334e-11, 8.718687e-11 and 7.638818e-12 erg.
+      ! (The Hui & Gnedin 1997, MNRAS 292, 27 collisional-ionization fit for
+      ! He II carries the same threshold in its exponent as 2*631515/T; that
+      ! fit parameter stays as published in Cool_coeff, and 631515 K is
+      ! 0.0037 per cent above the measured potential.)
+      real*8,parameter ::  e_th_HI_erg   = e_th_HI/erg2eV
+      real*8,parameter ::  e_th_HeI_erg  = e_th_HeI/erg2eV
+      real*8,parameter ::  e_th_HeII_erg = e_th_HeII/erg2eV
+      real*8,parameter ::  e_th_HeTR_erg = e_th_HeTR/erg2eV
       ! Photoelectron energy above which the energy partition of
       ! electron_energy_degradation is applied; below it the photoelectron is
       ! taken to deposit all of its energy as heat.
@@ -798,10 +939,11 @@
       ! Production steady-solver wiring ("Solver: Newton [du_switch]").
       ! When .true., the normal marching loop (including the automatic
       ! two-stage PLM->WENO3) runs as a WARM-UP; the JFNK steady solver then
-      ! finishes the run to ||R|| < resid_th (default 1e-3 if "Resid tol:" was
-      ! not given) and the standard final outputs / post-processing follow.
-      ! Requires a smooth base valve: if "Valve eps:" was not set, 1e-4 is
-      ! adopted.
+      ! finishes the run to ||R|| < resid_th (default 1e-5 if "Resid tol:" was
+      ! not given, EXHALE_main) and the standard final outputs /
+      ! post-processing follow.  The base valve of the early versions is
+      ! retired ("Valve eps:" is refused by input_read); the base boundary is
+      ! the characteristic face state of base_boundary.f90.
       logical :: use_newton_solver = .false.
       ! Hand-off to JFNK is keyed on the FLUX metric du (the radial spread of
       ! rho*v*r^2), consistent with the flux-based convergence decision: once the
@@ -845,8 +987,14 @@
       ! one; the flux gate is unaffected, reading conserved face fluxes that do
       ! not depend on the composition at all.
       logical :: resid_at_own_composition = .true.
-      ! Cap on the fixed-Y sweep iteration. It converges in 3 to 9; the cap is
-      ! a guard against a composition that cycles, not a working limit.
+      ! Cap on the fixed-Y sweep iteration, and A WORKING LIMIT rather than a
+      ! guard. MEASURED by B5a on wasp_full_newton (2026-09-06): the sweep
+      ! takes 13 to 15 passes from the marching hand-off and 14.09 on
+      ! average per residual evaluation over the whole solve, so the margin
+      ! to this cap is under a factor of two, not the factor of three to
+      ! eight an earlier note claimed. An evaluation that reaches the cap is
+      ! reported rather than silently accepted, and the number to watch when
+      ! a solve slows down is this one.
       integer :: n_selfconsistent_max = 25
 
       ! Particle density (n_tot + n_e) of the first interior cell in units of
@@ -934,7 +1082,10 @@
       ! converges when the finite-volume steady residual
       !   R = dF - S        (mass, momentum)
       !   R = dF_E - S_E - (heat - cool)   (energy)
-      ! has max_j |R(j,k)|/max|u(:,k)| over [j_min:N] below resid_th, REPLACING
+      ! has its cellwise maximum over [j_min:N] of each row divided by that
+      ! row's own largest terms (Update log sections 143, 145: mass by
+      ! max(|F| r^2 at the two faces)/dV, momentum by max(|dF_2|,|S_2|), energy
+      ! by max(|dF_3|,|S_3|,heat,cool)) below resid_th, REPLACING
       ! the du<du_th test (du measures only the mass-flux spread and is blind
       ! to an operator-split energy imbalance: at the premature WASP golden,
       ! du/dtu were tiny while the energy residual was ~30). Evaluated every
@@ -970,7 +1121,7 @@
       real*8  ::  Mrapp       ! Ratio M_star/M_p
       real*8  ::  atilde      ! Orbital radius in unit of R0 (a/R0)
       real*8  ::  r_esc       ! Escape radius for constant momentum
-      ! Flux gate (docs/Update_EXHALE.md section 133). The steady solve is
+      ! Flux gate (docs/Update_EXHALE_stage1.md section 133). The steady solve is
       ! accepted only when BOTH the residual ||R|| < resid_tol AND the radial
       ! spread of the Riemann FACE mass flux over r >= r_flux is below
       ! flux_spread_th (section 145). The two
@@ -1038,6 +1189,14 @@
       !------- Global vectors -------!
       
       real*8, dimension(:), allocatable :: e_v, de_v
+      ! The loaded SED as the FILE states it, ascending in photon energy:
+      ! e_sed_node the tabulated energies [eV] and F_sed_node the flux per
+      ! unit photon energy [erg cm^-2 s^-1 eV^-1] at the planet, before the
+      ! dayside dilution. This is the FIELD; e_v/de_v above is the
+      ! quadrature partition the field is integrated on, whose points are
+      ! bin centres and not table rows. Filled by read_sed, unallocated for
+      ! every other spectrum type.
+      real*8, dimension(:), allocatable :: e_sed_node, F_sed_node
       real*8, dimension(:), allocatable :: s_hi,s_hei,s_heii,s_heiTR
       ! H2 photoionization cross section on the energy grid (molecular;
       ! Yan+1998 fit, filled in set_energy_vectors)
@@ -1120,8 +1279,10 @@
       !                    top-down 1/(1+tau_Lya) line-center attenuation;
       !  jlya_mode = 1 -> read a J_Lya(r) profile from jlya_rt_file (an
       !                    external RT result, e.g. a real Monte Carlo) directly;
-      !  jlya_mode = 2 -> in-line escape-probability RT (Neufeld/Harrington wing
-      !                    escape), computed every timestep from the current state
+      !  jlya_mode = 2 -> in-line escape-probability RT (the static
+      !                    plane-parallel damping-wing slab solution of
+      !                    Neufeld 1990 eq. 3.27 / Harrington 1973 eq. 40),
+      !                    computed every timestep from the current state
       !                    in excited_H_update (see lya_rt.f90).
       integer :: jlya_mode  = 0
       character(len=200) :: jlya_rt_file = 'jlya_rt.txt'
@@ -1138,9 +1299,10 @@
       ! line wings. Editable in input.inp ("Lya stellar halfwidth [km/s]:").
       real*8  :: dv_star_lya = 70.0d0
       ! Bounded stellar trapping buildup: the penetrating stellar Ly-alpha photons
-      ! scatter and build the mean intensity above free-streaming by E=min(boost,
-      ! 1/beta) (-> 1 in the thin outer wind, capped at lya_star_boost in the thick
-      ! region; the full 1/beta over-counts). Tuned to Huang+2023 Fig. 11.
+      ! scatter and build the mean intensity above free-streaming by
+      ! E = 1 + (boost - 1)(1 - beta) T_star (-> 1 in the thin outer wind,
+      ! -> lya_star_boost where the beam is fully trapped; lya_rt.f90, the
+      ! stellar-beam block). Tuned to Huang+2023 Fig. 11.
       ! Editable: "Lya stellar boost [-]:".
       real*8  :: lya_star_boost = 5.0d0
       ! Absorbing (pure-sink) lower boundary for the Ly-alpha field. The local
@@ -1150,10 +1312,11 @@
       ! N(H2) ~ 1e14 cm^-2 the accidental resonances between Ly-alpha and the
       ! H2 Lyman/Werner bands give true (non-scattering) absorption, so the
       ! molecular layer under the wind is a photon sink rather than a mirror.
-      ! With this flag the downward wing escape into that sink is added as a
-      ! third loss channel in jlya_escape_prob, which lowers Jbar (and the
-      ! pumped n=2 density) in the few scale heights above the base. OFF by
-      ! default => byte-identical to the reflecting-bottom closure.
+      ! With this flag jlya_escape_prob puts the planet-ward face of the
+      ! trapping slab at the bottom of the domain instead of mirroring the
+      ! star-ward one, which shortens the random walk and lowers Jbar (and
+      ! the pumped n=2 density) in the few scale heights above the base.
+      ! OFF by default => the reflecting-bottom closure.
       ! Editable: "Lya absorbing bottom:".
       logical :: lya_bottom_absorber = .false.
       ! Cell-by-cell feedback arrays injected into ioniz_eq (zero unless enabled):
@@ -1192,14 +1355,14 @@
       !
       ! ONE DEFINITION.  Every band the star supplies is diluted through this
       ! function and nowhere else: the XUV grid (set_energy_vectors), the
-      ! stellar Ly-alpha beam (lya_rt, excited_hydrogen) and the five FUV
+      ! stellar Ly-alpha beam (lya_rt, excited_hydrogen) and the four FUV
       ! bands (fuv_band_flux).  Before section 150 the XUV used an exact
       ! string match while the Ly-alpha beam used a substring test and the
       ! FUV bands used neither, so one run could carry three conventions at
       ! once; the substring form is kept because it is the one that survives
       ! a keyword the input normalization does not rewrite.
       !
-      ! THE STATED FLUXES KEEP THEIR MEANING.  F_LW_star, F_FUV_B1/B3/B4 and
+      ! THE STATED FLUXES KEEP THEIR MEANING.  F_LW_star, F_FUV_B3/B4 and
       ! F_Lya_star are the band flux AT THE PLANET'S ORBIT, whether stated by
       ! a key or integrated from the spectrum file; the dilution is a
       ! run-wide convention applied where the beam is USED, so the setup
@@ -1209,9 +1372,10 @@
       ! absorber.  Where the band is shielded the true shell average is
       ! lower, because the slant columns away from the substellar point are
       ! longer: 0.20-0.33 for the Lyman-Werner band over a hot-Uranus
-      ! molecular layer (docs/e2_lw_geometry.md sec. 5.3).  That refinement
-      ! is the separate, default-off "FUV shell average" key; this function
-      ! is the convention it replaces when asked for.
+      ! molecular layer (docs/e2_lw_geometry.md sec. 5.3).  THAT REFINEMENT
+      ! IS NOT IMPLEMENTED: there is no key that asks for it, and this
+      ! function is the only dilution in the code, so a shielded band is
+      ! diluted by the optically thin factor.
       double precision function dayside_dilution() result(xi)
       if      (index(appx_mth,'Rate/4') .gt. 0) then
          xi = 0.25d0

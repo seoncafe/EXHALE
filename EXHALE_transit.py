@@ -57,6 +57,10 @@ from exhale_transit_lib import (
     orbital_period_days, parameter_with_source,
     _line_halfwidth, _apply_window, _odd,
     resonance_depth, resonance_spectrum, band_integrated_depth, _turb_factor,
+    chord_shell_indices, refused_line_center_tau_share,
+    first_data_row_ncol,
+    read_adv_validity, transit_metadata_block, transit_tool_identity,
+    transit_environment_overrides,
 )
 
 start = time.time()
@@ -286,8 +290,32 @@ number_lambda_Hb = 201
 
 # ------------------------- #
 
-# Load profiles
-r,rho,v,p,T,heat,cool = loadtxt_cells(Hydro_file, unpack = True)
+# Load profiles.  The seven physical columns come first and are named by
+# position; the row-validity columns after them are read by name from the
+# file's own header.
+r,rho,v,p,T,heat,cool = loadtxt_cells(Hydro_file, usecols = range(7),
+                                      unpack = True)
+# The validity of the rows the spectrum is built from.  The advection
+# post-process REFUSES the steady correction where an assumption of the steady
+# equations fails in a cell, and that row then carries the run's own
+# temperature and its equilibrium composition, so a spectrum built from such
+# rows is a spectrum of the uncorrected state there.  read_adv_validity reads
+# the profile's schema: schema 2 states temperature and composition validity
+# separately (a row is refused here when its temperature field is nonzero, and
+# its composition field is reported beside it), schema 1 states one mixed
+# field, and a profile whose header states neither leaves the validity of
+# every row UNKNOWN, which is not the same as no row refused.  A corrected row
+# is a CONDITIONAL correction, accurate to the fraction of itself in the mass
+# flux that the profile's own adv_conditional_tol line states, and the measure
+# of each row is its adv_mass_row column: both travel into the metadata of
+# every saved curve, so the accuracy the spectrum inherits is on the file.  The census of
+# the rows the chords sample, and the share of line-center optical depth those
+# rows carry, is printed once the chord arrays and every line's lower-level
+# density exist (search for CONTRIBUTION diagnostic).
+_adv          = read_adv_validity(Hydro_file)
+_adv_refused  = _adv['refused']
+_adv_T_status = _adv['T_status']
+_adv_comp     = _adv['comp_status']
 # Ion_species.txt: read only the first 7 columns (r + H/He). In EXHALE
 # this file also carries trace-metal columns (C/N/O), so we slice rather
 # than unpack all of them.
@@ -301,13 +329,7 @@ r,nhi,nhii,nhei,nheii,nheiii,nheiTR = \
 # ion's net charge (= electrons released); neutral stages contribute nothing.
 # Metals-off files (only the 7 H/He columns) keep ne_metal = 0, so the legacy
 # H/He-only electron count is reproduced.
-_ncol_ion = 0
-with open(Ioniz_file) as _fh:
-    for _row in _fh:
-        _s = _row.strip()
-        if _s and not _s.startswith('#'):
-            _ncol_ion = len(_s.split())
-            break
+_ncol_ion = first_data_row_ncol(Ioniz_file)
 # Net ionic charge per metal column (C,O,N,Mg,Si,Ca,Fe: 0/1/2; Na,K,S: 0/1).
 _metal_charge = [0, 1, 2,  0, 1, 2,  0, 1, 2,  0, 1, 2,  0, 1, 2,  0, 1, 2,
                  0, 1,     0, 1,     0, 1,     0, 1, 2]
@@ -868,11 +890,9 @@ mMg, mCa, mNa = 24.305*amu, 40.078*amu, 22.990*amu
 mO = 15.999*amu
 
 # Metals-off runs write only the H/He columns (<=16): skip the metal
-# resonance lines automatically (He/Lya/Ha/Hb above are unaffected).
-# Plain np.loadtxt: this reads ONE row for its width, not for its content,
-# so there are no ghost rows to drop (max_rows=1 and a row selection would
-# fight each other).
-_ncol_ion = np.loadtxt(Ioniz_file, max_rows=1).size
+# resonance lines automatically (He/Lya/Ha/Hb above are unaffected).  The
+# width comes from the first data row, so the comment header is not part of
+# the count and no row selection is involved.
 do_metals = (_ncol_ion >= 26)
 if do_metals:
 	nMgII_cm, nCaII_cm, nNaI_cm = loadtxt_cells(Ioniz_file,
@@ -1016,6 +1036,156 @@ METAL_DOUBLETS = [
 	 mO, Instr_res_OI, (1296.0, 1312.0), 801, fig_name_oi),
 ]
 
+
+# --------------------------------------------------------------------- #
+# WHAT THE SPECTRUM IS BUILT FROM: the rows the chords sample, and how much
+# line-center optical depth comes from rows whose advective correction was
+# refused.
+# --------------------------------------------------------------------- #
+# A ray at impact parameter b takes every shell with r >= b
+# (chord_shell_indices, the same selection every optical-depth integral above
+# uses), so the rows the spectrum is built from are the ones the innermost ray
+# reaches.  There is no upper radial limit: a shell above the stellar-disk cap
+# Rib is outside the ray grid as an impact parameter yet still crosses the rays
+# that do fall on the disk, and absorbs there.
+#
+# A row whose steady advective correction was refused carries the run's own
+# temperature and the equilibrium composition at that temperature, so the
+# transmission of the chords crossing it is built on the uncorrected state.
+# How much optical depth those rows carry is a CONTRIBUTION, printed as such:
+# the disk-averaged transmission is an average of exp(-tau), nonlinear in tau,
+# so a large share is not an error bar on the depth.
+#
+# This block sits here because it needs the chord arrays and the lower-level
+# density of every line, metals and O I included.  The same census travels
+# with every saved curve, in the comment metadata block of the file.
+#
+# What the metadata block of every saved curve reports: the census over the
+# sampled rows, and, line by line, the share of the line-center optical depth
+# that comes from refused rows.
+_census_summary = None
+_transit_census = {}
+_b_show = np.unique(np.linspace(0, Grid_Number - 1, 8).astype(int))
+
+_sampled   = chord_shell_indices(r, r_grid[0])
+_n_sampled = int(_sampled.size)
+_n_cap     = int(np.count_nonzero(r[_sampled] > Rib))
+print('')
+if _adv_refused is None:
+	# Legacy profile: it states no row validity, so neither does the census.
+	print('(TPM) row validity: the profile states no row validity (no '
+	      'adv_schema and no status column), so the validity of the %d rows '
+	      'the chords sample is UNKNOWN' % _n_sampled)
+	print('      UNKNOWN is not zero refused: this profile does not say which '
+	      'rows carry the steady advective correction.')
+else:
+	_refused_row = _adv_refused
+	_n_refused   = int(np.count_nonzero(_refused_row[_sampled]))
+	_names       = _adv['status_names']
+	print('(TPM) row validity (adv_schema %d): %d of the %d rows the chords '
+	      'sample are not the steady advective correction'
+	      % (_adv['schema'], _n_refused, _n_sampled))
+	print('      (rays 1 <= b <= %.4f Rp; a row is sampled when r >= b for '
+	      'one of them, with no upper limit, so the %d rows above the cap '
+	      'count too)' % (Rib, _n_cap))
+	_reasons = ', '.join(
+	    '%s: %d rows' % (_names[_k],
+	                     int(np.count_nonzero(_adv_T_status[_sampled] == _k)))
+	    for _k in range(1, len(_names))
+	    if np.any(_adv_T_status[_sampled] == _k))
+	if len(_reasons) > 0:
+		print('      temperature: ' + _reasons)
+	# Schema 2 states the composition validity of a row separately from its
+	# temperature: a corrected temperature can sit on a retained composition,
+	# and the lower-level densities of every line come from that composition.
+	_comp = ''
+	if _adv_comp is not None:
+		_comp = ', '.join(
+		    '%s: %d rows' % (_names[_k],
+		                     int(np.count_nonzero(_adv_comp[_sampled] == _k)))
+		    for _k in range(len(_names))
+		    if np.any(_adv_comp[_sampled] == _k))
+		print('      composition: ' + _comp)
+	# What a corrected row of this profile is worth: the fraction it is
+	# accurate to in the mass flux, and how close to that fraction the rows
+	# the chords sample actually came.  A count of corrected rows without
+	# their measure says nothing about the accuracy of the spectrum.
+	if _adv.get('conditional_tol') is not None:
+		_mrow = _adv.get('mass_row')
+		if _mrow is not None:
+			_mrow = np.asarray(_mrow)
+			print('      a corrected row is accurate to %.1e of itself in '
+			      'the mass flux; the sampled rows measure up to %.3e'
+			      % (_adv['conditional_tol'],
+			         float(np.nanmax(_mrow[_sampled]))))
+		else:
+			print('      a corrected row is accurate to %.1e of itself in '
+			      'the mass flux' % _adv['conditional_tol'])
+	_census_summary = {'sampled':   _n_sampled,
+	                   'refused':   _n_refused,
+	                   'above_cap': _n_cap,
+	                   'reasons':   _reasons,
+	                   'comp':      _comp}
+
+	# Same mirrored (night + day) chord array as every density above.
+	_data_refused = np.concatenate((np.flip(_refused_row), _refused_row))
+	_census_lines = [
+		('He10830', 'He I 10830', l_He3_1*1e10,
+		 [(l_He3_1*1e10, f10830_34, A12_HeTR, mHe, data_nheiTR),
+		  (l_He3_2*1e10, f10830_25, A12_HeTR, mHe, data_nheiTR),
+		  (l_He3_3*1e10, f10829_09, A12_HeTR, mHe, data_nheiTR)]),
+		('Lya', 'Ly-alpha', lA*1e10,
+		 [(lA*1e10, f_la, A12_HI, mp, data_nHI),
+		  (lD*1e10, f_D,  A12_D,  mD, data_nD)]),
+	]
+	if do_Ha:
+		# 2s and 2p absorb with different oscillator strengths out of the same
+		# n = 2, exactly as the Balmer integrals above.
+		_census_lines += [
+			('Halpha', 'H-alpha', l_Ha*1e10,
+			 [(l_Ha*1e10, f_Ha_2s, A12_Ha, mp, data_n2s),
+			  (l_Ha*1e10, f_Ha_2p, A12_Ha, mp, data_n2p)]),
+			('Hbeta', 'H-beta', l_Hb*1e10,
+			 [(l_Hb*1e10, f_Hb_2s, A12_Hb, mp, data_n2s),
+			  (l_Hb*1e10, f_Hb_2p, A12_Hb, mp, data_n2p)]),
+		]
+	_census_lines += [
+		(_kc, _lbl_c, _comps_c[0][0],
+		 [(_co[0], _co[1], _co[2], _m_c, _co[3]) for _co in _comps_c])
+		for _kc, _lbl_c, _comps_c, _m_c, _Rc, _wc, _nc, _fc
+		in METAL_DOUBLETS
+		if max(_co[3].max() for _co in _comps_c) > 0.0
+	]
+	if _n_refused > 0:
+		_census_share = refused_line_center_tau_share(
+			[(_k_s, _lam_s, _comps_s)
+			 for _k_s, _lbl_s, _lam_s, _comps_s in _census_lines],
+			r_grid, Rp, data_r, data_v, data_T, _data_refused)
+	else:
+		# No refused row carries optical depth, so every share is zero and
+		# the quadrature need not be repeated to say so.
+		_census_share = {_k_s: (None, np.zeros(len(r_grid)))
+		                 for _k_s, _l, _la, _c in _census_lines}
+	for _k_s, _lbl_s, _lam_s, _comps_s in _census_lines:
+		_sh_s = _census_share[_k_s][1]
+		_imax = int(np.argmax(_sh_s))
+		_transit_census[_k_s] = ([r_grid[_i] for _i in _b_show],
+		                         [_sh_s[_i] for _i in _b_show],
+		                         float(_sh_s[_imax]), float(r_grid[_imax]))
+	if _n_refused > 0:
+		print('      CONTRIBUTION diagnostic, not an uncertainty on the '
+		      'depth: share of the line-center')
+		print('      optical depth each ray takes from those rows '
+		      '(transmission is nonlinear in tau).')
+		print('        %-17s' % 'ray b [Rp]'
+		      + ' '.join('%6.3f' % r_grid[_i] for _i in _b_show)
+		      + '   maximum')
+		for _k_s, _lbl_s, _lam_s, _comps_s in _census_lines:
+			_b_s, _s_s, _max_s, _bmax_s = _transit_census[_k_s]
+			print('        %-17s' % _lbl_s
+			      + ' '.join('%6.3f' % _v for _v in _s_s)
+			      + '   %.3f at b = %.4f' % (_max_s, _bmax_s))
+print('')
 
 # resonance_spectrum is imported from exhale_transit_lib; the compute-specific
 # grid/area arrays and the rotation disk-average routine are passed to it at
@@ -1284,10 +1454,28 @@ _curves += [(key_m, sp['label'], sp['l_plot'], sp['avg'],
              sp['conv'], sp['conv_rot'])
             for key_m, sp in metal_spec.items()]
 
+# Every saved file carries, as comments, what it was built from and how much
+# of that was the uncorrected state, so a curve and its validity never travel
+# separately.  Comments only: the four numerical columns are unchanged, and the
+# column line stays immediately above the data.
+try:
+	_tool_dir   = os.path.dirname(os.path.realpath(__file__))
+	_tool_paths = [os.path.realpath(__file__),
+	               os.path.join(_tool_dir, 'exhale_transit_lib.py')]
+except NameError:                       # __file__ is absent under exec()
+	_tool_paths = ['EXHALE_transit.py', 'exhale_transit_lib.py']
+_tool_identity = transit_tool_identity(_tool_paths)
+_overrides     = transit_environment_overrides()
+
 for _key, _lbl, _lam, _t0, _t1, _t2 in _curves:
+	_meta = transit_metadata_block(_adv, _tool_identity, _overrides,
+	                               _census_summary,
+	                               _transit_census.get(_key))
 	np.savetxt(_save_prefix + 'tpm_%s.txt' % _key,
 	           np.c_[_lam, _t0, _t1, _t2],
-	           header='lambda[A]  T_theo  T_instr  T_rot+instr  (%s)' % _lbl)
+	           header='\n'.join(
+	               _meta
+	               + ['lambda[A]  T_theo  T_instr  T_rot+instr  (%s)' % _lbl]))
 print('(TPM) saved model curves: %stpm_{%s}.txt'
       % (_save_prefix, ','.join(k for k, _, _, _, _, _ in _curves)))
 
@@ -1296,6 +1484,10 @@ print('(TPM) saved model curves: %stpm_{%s}.txt'
 # it may be compared with the published measurement never travel separately.
 if 'OI' in metal_spec and len(oi_result) > 0:
 	with open(_save_prefix + 'tpm_OI_band_depths.txt', 'w') as _fh:
+		for _ml in transit_metadata_block(_adv, _tool_identity, _overrides,
+		                                  _census_summary,
+		                                  _transit_census.get('OI')):
+			_fh.write('# %s\n' % _ml)
 		_fh.write('# O I 1302.168/1304.858/1306.029 A band-integrated transit '
 		          'depths, HD 209458 b comparison\n')
 		_fh.write('# Lower levels: the 3P2/3P1/3P0 ground-term fine-structure '
@@ -1355,6 +1547,10 @@ try:
 	    / convolved_avg_prob_HeTR.max() * 100.0
 	_hm = _he_fit_metrics(l_plot_HeTR, _he_excess, frame='air')
 	with open(_save_prefix + 'tpm_He10830_metrics.txt', 'w') as _fh:
+		for _ml in transit_metadata_block(_adv, _tool_identity, _overrides,
+		                                  _census_summary,
+		                                  _transit_census.get('He10830')):
+			_fh.write('# %s\n' % _ml)
 		_fh.write('# He 10830 line metrics (three-Gaussian fit, air frame,\n'
 		          '# instrument-convolved curve; he_line_metrics.py)\n')
 		for _k in ('red_depth', 'blue_depth', 'red_blue', 'fwhm_A',

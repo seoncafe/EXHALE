@@ -25,16 +25,27 @@ diffed:
               holds helium at zero)
 """
 import hashlib
+import os
+import sys
+
 import numpy as np
 
 # ---- constants (CODATA / IAU, cgs) ------------------------------------- #
-# The Jupiter radius and mass are EXHALE's own values (parameters.f90), so
-# that a radius written here means the same length the code reads back.
+# The Jupiter radius and mass are EXHALE's own values, imported from the one
+# Python definition (examples/exhale_io.py, which carries the IAU 2015
+# nominal values of parameters.f90), so that a radius written here means the
+# same length the code reads back.  The directory is APPENDED to sys.path so
+# nothing in it can shadow a standard-library module.
+_EXAMPLES_DIR = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
+if _EXAMPLES_DIR not in sys.path:
+    sys.path.append(_EXAMPLES_DIR)
+from exhale_io import RJ_CM, MJ as MJ_G                     # noqa: E402
+
 KB = 1.380649e-16
 MAMU = 1.66053906660e-24
 GNEWT = 6.67430e-8
-RJ = 6.9911e9
-MJ = 1.898e30
+RJ = RJ_CM
+MJ = MJ_G
 
 # ---- the configuration this file is a solution of ---------------------- #
 CFG = dict(

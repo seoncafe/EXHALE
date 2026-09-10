@@ -2,9 +2,9 @@
 
 > **Status (2026-08-15).** Phases 2-5 have since been implemented and
 > validated; the expectations below are the pre-implementation predictions,
-> kept as a record. Read them against what was actually measured — the phase
-> notes in `docs/Update_EXHALE.md`, `docs/coronal_cutoff_width.md`,
-> `docs/lya_destruction_channels.md` and `docs/transmission_spectrum.tex` — and
+> kept as a record. Read them against what was actually measured: the phase
+> notes in `docs/Update_EXHALE_stage1.md`, `docs/coronal_cutoff_width.md`,
+> `docs/lya_destruction_channels.md` and `docs/transmission_spectrum.tex`, and
 > against the status marks in `Huang_update_plan.md`, not as a description of
 > current behavior. Individual sections below are left uncorrected.
 
@@ -87,7 +87,7 @@ boundary-condition update) are implemented in EXHALE.
   mass-loss rate is only **$0.052\,M_p/\mathrm{Gyr}$**
   ($\sim 3.7 \times 10^{12}$ g/s), whereas the final matched model (Case D),
   which includes Roche-lobe overflow (RLOF) and the raised boundary, gives
-  **$1.03\,M_p/\mathrm{Gyr}$** ($\sim 7.3 \times 10^{13}$ g/s) — about a factor
+  **$1.03\,M_p/\mathrm{Gyr}$** ($\sim 7.3 \times 10^{13}$ g/s), about a factor
   of 20 higher.
 
 ---
@@ -98,7 +98,7 @@ The table below compares the spherically symmetric model (Case A) with the
 final Roche-potential-plus-metals model (Case D) for the WASP-121 b simulation
 of Huang et al. (2023). Units: $R_p/R_\star$.
 
-*(Correction, recorded in `Update_EXHALE` §14: these values are the effective
+*(Correction, recorded in `Update_EXHALE_stage1` §14: these values are the effective
 transit radius $R_{\rm eff}/R_\star$, not $R_p/R_\star$ and not an absorption
 percent. The "$\sim 30\%$" wording in the prose below is a loose gloss of
 0.30.)*
@@ -116,7 +116,7 @@ percent. The "$\sim 30\%$" wording in the prose below is a loose gloss of
 * **Metal lines (Mg II, Ca II).** As the atmosphere expands along the Roche
   lobe in the tidal direction and the outflow speeds up, the metal lines are
   strongly Doppler-broadened. The deep, broad NUV/optical lines of the
-  observations — $\sim 28\%$ for Ca II and $\sim 30\%$ for Mg II — are then
+  observations ($\sim 28\%$ for Ca II and $\sim 30\%$ for Mg II) are then
   reproduced satisfactorily.
 * **Hydrogen Balmer lines (H$\alpha$, H$\beta$).** A model without metal
   cooling predicts too high an atmospheric temperature and therefore

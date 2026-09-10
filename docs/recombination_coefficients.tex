@@ -42,10 +42,10 @@ microphysical inputs that set the H/He ionization balance and the
 He\,$2^3$S population.
 
 The two headline conclusions are: (i) EXHALE's H/He \emph{case-B}
-coefficients --- the Badnell (2023) $+$ Mao \& Kaastra (2016) construction
+coefficients, the Badnell (2023) $+$ Mao \& Kaastra (2016) construction
 adopted as the default on 2026-07-17, with the earlier Hui \& Gnedin (1997)
-fits retained under \texttt{Legacy\_HHe\_rates} --- agree with the Draine (2011)
-case-B fits to $\sim$$2\%$ over $5\times10^3$--$2\times10^4\,$K --- they are not
+fits retained under \texttt{Legacy\_HHe\_rates}, agree with the Draine (2011)
+case-B fits to $\sim$$2\%$ over $5\times10^3$--$2\times10^4\,$K: they are not
 outdated; the larger differences seen against some escape codes are the
 \emph{case-A vs.\ case-B} modeling choice, not data vintage. (ii) EXHALE's
 He\,$2^3$S triplet recombination (Benjamin, Skillman \& Smits 1999, as
@@ -67,9 +67,9 @@ Since 2026-07-17 the default H/He case-B coefficients are built as
 \alpha^{B}(T) = \alpha^{A}_{\rm Badnell}(T) - \alpha_{1}^{\rm Mao}(T),
 \end{equation}
 the Badnell radiative total minus the Mao \& Kaastra ground-state ($n=1$)
-coefficient, so that direct recombination to the ground state --- the case-B
+coefficient, so that direct recombination to the ground state (the case-B
 (``on-the-spot'') exclusion, whose re-emitted photon is assumed re-absorbed
-locally --- is removed. The Badnell radiative fit (2023 update of Badnell 2006)
+locally) is removed. The Badnell radiative fit (2023 update of Badnell 2006)
 is
 \begin{equation}
 \alpha^{\rm RR}(T) = \frac{A}{\sqrt{T/T_0}\,
@@ -93,7 +93,7 @@ rescaling the H\,II$\to$H\,I coefficient: \texttt{alphaB\_HeIII\_new} evaluates 
 own Badnell RR parameter set and subtracts its own Mao \& Kaastra $n=1$ term.
 Only the legacy branch below uses the explicit $Z=2$ rescaling. These are the
 same coefficients MoCHII uses (\texttt{src/recomb\_mod.f90} of the separate
-MoCHII code --- not a file of this repository); see \texttt{docs/atomic\_data\_EXHALE\_vs\_MoCHII}.
+MoCHII code, not a file of this repository); see \texttt{docs/atomic\_data\_EXHALE\_vs\_MoCHII}.
 
 \paragraph{Legacy option (Hui \& Gnedin 1997, case B).} Setting the input flag
 \texttt{Legacy\_HHe\_rates: True} reverts the H/He case-B coefficients to the
@@ -213,7 +213,7 @@ is active. Table~\ref{tab:he} lists the values.
 
 Two points are worth noting. (i) The triplet recombination $\alpha_3$
 (the quantity that feeds He\,10830) is \emph{identical} in EXHALE and in
-the latest escape models --- both adopt Benjamin+1999. (ii) The
+the latest escape models: both adopt Benjamin+1999. (ii) The
 Benjamin+1999 effective total $\alpha_1+\alpha_3$ is $\sim$40\% larger
 than the Hui \& Gnedin (1997) total case-B (e.g.\ $3.64$ vs.\
 $2.62\times10^{-13}\acm$ at $10^4\,$K); the two come from different methods
@@ -225,7 +225,7 @@ metastable source term are computed from the same data set.
 \begin{table}[h]
 \centering
 \caption{He recombination coefficients ($10^{-13}\acm$). Left: He$^{++}\to$
-He$^+$. Right: He$^+\to$He --- Hui \& Gnedin total (case B) and the
+He$^+$. Right: He$^+\to$He, Hui \& Gnedin total (case B) and the
 Benjamin+1999 singlet $\alpha_1$, triplet $\alpha_3$, and triplet fraction.
 The ``EXHALE(B)'' and ``HG97 tot'' columns are the legacy
 (\texttt{Legacy\_HHe\_rates}) Hui \& Gnedin fits; the current Badnell$-$Mao
@@ -249,11 +249,11 @@ $T$ [K] & EXHALE(B) & Draine(B) & Tayl25(A) & & HG97 tot & $\alpha_1$ & $\alpha_
 \begin{figure}[h]
 \centering
 \includegraphics[width=0.98\textwidth]{figures/rec_He.pdf}
-\caption{Helium recombination. \textbf{Left:} He$^{++}\to$He$^+$ ---
+\caption{Helium recombination. \textbf{Left:} He$^{++}\to$He$^+$,
 the legacy Hui \& Gnedin case B (red, \texttt{Legacy\_HHe\_rates})
 $\approx$ Draine hydrogenic case B (black); Verner \& Ferland 1996 /
 Taylor+2025 total (case A) is $\sim$45\% higher. The Badnell$-$Mao default
-lies within $\sim$1\% of the red curve here. \textbf{Right:} He$^+\to$He ---
+lies within $\sim$1\% of the red curve here. \textbf{Right:} He$^+\to$He,
 Hui \& Gnedin total case B (dotted; the default is $\sim$7\% higher) and the
 Benjamin+1999 singlet/triplet split ($\alpha_1+\alpha_3$, $\alpha_1$,
 $\alpha_3$) used by EXHALE when the $2^3S$ network is active.}
@@ -274,17 +274,17 @@ The shift is $\sim$1\% for H\,II and He\,III and larger for He\,II, which now
 carries the Badnell dielectronic term explicitly. The only remaining
 meaningful choice is case A vs.\ B (\S\ref{sec:H}).
 
-\paragraph{He\,I total and the $2^3S$ triplet --- no update available.}
-The newer He\,I references often cited here --- \textbf{Porter, Ferland,
+\paragraph{He\,I total and the $2^3S$ triplet: no update available.}
+The newer He\,I references often cited here, \textbf{Porter, Ferland,
 Storey \& Detisch (2012, MNRAS 425, L28; 2013 erratum MNRAS 433, L89)}
-(the Cloudy default) and \textbf{Del Zanna \& Storey (2022)} --- are
+(the Cloudy default) and \textbf{Del Zanna \& Storey (2022)}, are
 \emph{emissivity} papers. They improve the He\,I \emph{line cascade /
 line-ratio} predictions, but they do \emph{not} provide, and do not
 change, the quantity EXHALE needs: the \emph{total} (effective)
 recombination into the triplet ladder, $\alpha_3$, which all funnels to
 the metastable $2^3S$. That total is set by (case-B total recombination)
-$\times$ (triplet spin fraction $3/4$) --- ultimately by the
-photoionization cross sections (Milne) and spin statistics --- and is
+$\times$ (triplet spin fraction $3/4$), ultimately by the
+photoionization cross sections (Milne) and spin statistics, and is
 \emph{robust} across modern treatments:
 \begin{itemize}
 \item EXHALE (Benjamin+1999):
@@ -304,7 +304,7 @@ recombination for each level, and summing all triplet ($S=3$) captures \emph{is}
 effective $\alpha(2^3S)$ in case B, but the file carries no usable
 level$\to(n,\ell,S)$ map for its $1642$ He levels (only $111$ are resolved
 in \texttt{helike\_energies.dat}) and a trial sum overshoots the known
-case-A total by $\sim$2$\times$ --- i.e.\ there is no clean drop-in Cloudy
+case-A total by $\sim$2$\times$, i.e.\ there is no clean drop-in Cloudy
 number either.
 
 \paragraph{Recommendation.} \textbf{Leave the recombination as it is.}

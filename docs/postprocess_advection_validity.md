@@ -1,5 +1,15 @@
 # Where the post-process advection correction is valid
 
+> **STALE since 2026-09-09 (N11, N11b).** This account describes the single
+> `adv_status` column, the enthalpy-ratio refusal and the counts of that
+> time. The current product has two status fields (`adv_T_status`,
+> `adv_comp_status`), the measure column `adv_mass_row`, the row decision
+> by the certification's face-flux mass operator against
+> `adv_conditional_tol = 1e-2`, and the header block `# adv_schema 2`. The
+> current description is in `README.md`, `README_HOWTO.md`, the user manual
+> section 4 and `docs/Update_EXHALE.md` (entries N11, N11b). The measured
+> numbers below are of the old product and are kept for the record.
+
 2026-08-12. Files: `src/modules/post_process/post_process_adv.f90`,
 `src/modules/nonlinear_system_solver/ion_cell_state.f90`,
 `src/modules/nonlinear_system_solver/System_implicit_adv_{H,HeH,HeH_TR}.f90`.
@@ -86,8 +96,8 @@ advection-ionization ODE, integrated upwind across the cell:
 x_j - x_{j-1} = (dr_j / v_{j-1}) * [ source - sink ](x_j)
 ```
 
-Three conditions make that replacement carry no information. Where any of them
-holds, the cell now keeps the converged equilibrium ionization.
+Four conditions make that replacement carry no information. Where any of them
+holds, the cell keeps the converged equilibrium ionization.
 
 **(i) Inflow, `v <= 0` on either face -- physical.** The upwind
 discretization takes the upstream state from the cell below, which is not the
@@ -114,7 +124,7 @@ be pinned to equilibrium only when every population it solves is equilibrated.
 This condition originally read `Da = (dr/v) (P_HI + alpha_HII n_e)`, the
 hydrogen rate alone, which froze the far more slowly relaxing He(2^3S)
 metastable at its equilibrium value in cells where it is advected; the rates
-and the measured effect are in `Update_EXHALE.md` section 72.
+and the measured effect are in `Update_EXHALE_stage1.md` section 72.
 
 **(iii) `x_HII,eq < 1e-6` -- numerical.** The residuals carry the *neutral*
 fraction `x_HI` and the ion density is extracted as `(1 - x_HI) n_h`, so the
@@ -129,7 +139,17 @@ one cell is then carried outward by the upwind cascade, which is how 42
 negative entries appeared across 14 cells of the stored 2026-08-11 HD 209458 b
 output (48 in the re-run of the same configuration).
 
-Conditions (i) and (ii) are statements about the flow and (iii) about the
+**(iv) The mass flux through the cell is not stationary -- physical.** Added
+2026-09-08; stated and measured in "The refusal of a cell whose flow is not
+stationary" below, which is also where the reason it is not covered by (i) or
+(ii) is written out. Every equation this post-process solves is a steady
+equation integrated along the recorded flow, and the steady internal-energy
+equation says when it applies in its own terms: where the enthalpy flux of the
+mass-flux divergence exceeds both terms the balance keeps, the cell has no
+steady solution the gas realizes, and neither the ionization nor the energy
+correction is a correction there.
+
+Conditions (i), (ii) and (iv) are statements about the flow and (iii) about the
 representation of the unknown, so none of them depends on whether metal
 cooling is switched on. The guard is therefore unconditional.
 
@@ -145,15 +165,318 @@ noise instead of removing it, and it breaks the H nucleus budget, since
 `n_HI + n_HII = n_h` is imposed by construction and a clipped `n_HII` no longer
 satisfies it.
 
-### What the guard does *not* cover
+### The energy equation
 
-The temperature loop of `post_process_adv` applies condition (i) only -- with
+**Updated 2026-09-08.** The temperature loop applies condition (i) and, since
+the refusal below, condition (iv); it also has a thermal Damkohler condition of
+its own -- with
 its `pp_metal_on` gate likewise removed, for the same reason. Conditions (ii)
-and (iii) are statements about the ionization balance and its representation;
-the corresponding statement for the energy equation would need a thermal
-Damkohler number, which is not evaluated. Where the ionization is held at
-equilibrium but the flow is an outflow, the energy equation is still solved
-with advection.
+and (iii) are statements about the ionization balance and its representation,
+so they do not carry over; the statement the energy equation needs is a
+*thermal* Damkohler number, and it is now evaluated
+(`thermal_damkohler_number`, `post_process_adv.f90`):
+
+    Da = t_cross * |heating - cooling| / u_th ,     t_cross = dr/v
+
+the number of times over the local net radiative rate could rewrite the gas
+internal energy while the gas crosses the cell. Above one the cell keeps the
+temperature the run's own energy equation converged to, which is the root of
+that same local balance with every channel the run solved; the post-process
+carries fewer channels, so its own root there would be worse. Unity is the
+statement that one term of the equation is larger than the other, not a
+threshold with a value to choose. The pair is formed at the state each pass
+starts from, since the condition has to be decided before the temperature is
+solved for.
+
+The run reports the largest Damkohler number it reached and where, so the
+margin of the condition on a given state is in the log whether or not any cell
+crossed unity. MEASURED 2026-09-08 on the last pass, over the cells the
+condition tests (both faces outflowing), by post-processing the recorded state
+of each case with the enthalpy flux of the mass-flux divergence carried (the
+subsection below):
+
+| case | largest `Da` | where | cells above one |
+|---|---|---|---|
+| `lower_profile` | 1.08 | 2.2217 `R_p` | 1 of 502 |
+| `wasp_full` | 1.07 | 1.0327 `R_p` | 1 of 502 |
+| `mol_base_handoff` | 0.048 | 1.2732 `R_p` | 0 of 502 |
+| `wasp_full_newton` | 0.035 | 1.2629 `R_p` | 0 of 502 |
+| `hydrostatic_column` | 3.4e-8 | 1.2160 `R_p` | 0 of 502 |
+
+So the condition is a guard at the edge of a real wind rather than a switch
+that removes the correction: at the time of that measurement the slowest
+outflowing cell of the `wasp_full` base and one cell of `lower_profile` crossed
+it and everything else was below it, `wasp_full_newton` by a factor of 30 and
+the mechanical column by eight orders of magnitude. The numbers ADV-STATIC
+measured before the enthalpy flux was carried (0.951 for `wasp_full`, 0.534
+for `lower_profile`, 0.055 for `mol_base_handoff`, 3.0e-19 for the column) are
+of the same size on the same cells: `Da` is formed at the temperature each pass
+starts from, so restoring the term moves it through `u_th` and through the
+radiative rates.
+
+**Re-measured 2026-09-08 with the refusal (iv) in place**, which is tested
+before this condition and takes the cells it would have held:
+
+| case | largest `Da` | where | cells above one |
+|---|---|---|---|
+| `lower_profile` | 0.069 | 1.5524 `R_p` | 0 of 502 |
+| `mol_base_handoff` | 0.049 | 1.2732 `R_p` | 0 of 502 |
+| `wasp_full` | 0.039 | 1.2925 `R_p` | 0 of 502 |
+| `wasp_full_newton` | 0.035 | 1.2629 `R_p` | 0 of 502 |
+| `hydrostatic_column` | 4.3e-94 | 1.0004 `R_p` | 0 of 502 |
+
+No case in the matrix now reaches it. The two cells that used to cross it are
+the two whose flow is not stationary, so they are refused by (iv) first and
+the thermal condition never sees them; it remains armed for a cell whose mass
+flux IS stationary and whose radiative rate is nevertheless fast, which is the
+state it was written for.
+
+### The enthalpy flux of the mass-flux divergence
+
+**Restored 2026-09-08.** The equation the temperature loop solves is now the
+full steady internal-energy equation of the supplied profile,
+
+    div(u v) + p div(v)  =  heating - cooling
+      = rho v de/dr - p v dln(rho)/dr + h div(rho v)                     (E)
+
+upwind-differenced, with `h = e + p/rho` the enthalpy per unit mass; the two
+forms are one equation, through
+`div(rho e v) = e div(rho v) + rho v de/dr` and
+`p div(v) = (p/rho) div(rho v) - p v dln(rho)/dr`. Until 2026-09-08 the loop
+solved (E) without its third term, that is with `div(v)` replaced by
+`-v dln(rho)/dr`, which is the same equation only where the mass flux
+`rho v r^2` is stationary. No case in the matrix is stationary by the
+cell-to-cell measure, so the term was not a small correction anywhere.
+
+The third term reaches the residual (`T_equation.f90`) through a named field of
+the cell record, `teq_cell%div_rhov`, as a separate additive term: dividing the
+residual by `mup*mum*dr` puts it in the form above with `e = E(x_H2,T)/mu` and
+`p/rho = T/mu`, so the term to add is
+`mum*dr*(E(x_H2,x) + x)*div_rhov` in the caloric branch and
+`gamma_ad*mum*dr*x*div_rhov` in the monatomic one, which carries the extra
+factor `gamma_ad - 1` of its own scaling. It is proportional to the unknown,
+because `h` is a function of `T`. None of `mum`, `mup`, `coeff` is redefined,
+so each still means what its name says, and a zero field contributes an exact
+zero.
+
+`div(rho v)` is formed with the operator the mass row of the state uses,
+`(A_p F_p - A_m F_m)/dV` with `F = rho v`, `A = r^2` and `dV = d(r^3)/3`
+(`RK_rhs`), over the control volume bounded by the two points the upwind energy
+difference is taken between, `r(j-1)` and `r(j)`. Those are the only two points
+at which the residual evaluates the state, so the term is an exact zero
+wherever the two carry the same `rho v r^2`, and a stationary wind is left
+where it was. The stored face mass flux (`face_mass_flux_of_state`) is not read:
+it belongs to the last state whose mass row was assembled, which in a
+post-process-only run is no state at all, and its faces are not the two points
+of this difference.
+
+The run reports the size of the term against the other two, in the residual's
+own variables, and that ratio is also the refusal criterion of the section
+below. MEASURED 2026-09-08 on the state the post-process is handed, over every
+cell of it:
+
+| case | largest term ratio | where | above one in |
+|---|---|---|---|
+| `hydrostatic_column` | 1.9e3 | 2.0287 `R_p` | 481 of 503 |
+| `lower_profile` | 9.2e2 | 1.9131 `R_p` | 321 of 503 |
+| `wasp_full` | 4.4e2 | 1.0320 `R_p` | 297 of 503 |
+| `mol_base_handoff` | 2.1e2 | 4.7083 `R_p` | 33 of 503 |
+| `wasp_full_newton` | 24 | 1.5705 `R_p` | 2 of 503 |
+
+The reference point matters for comparing these with the numbers ADV-STATIC and
+ADV-ENERGY reported (67 in 161 cells for `wasp_full`, 2.0 in 418 for the
+column): those were formed on the last pass at the corrected iterate and only
+over the cells that reached the measurement, which excludes the inflow cells of
+a breathing base; these are formed once, on the recorded state, over every cell.
+The ordering is the same either way, and `wasp_full_newton` is the smallest in
+both.
+
+**What the restored term moves.** MEASURED 2026-09-08 by post-processing each
+case's recorded golden state with the binary before and after the change ("Do
+only PP", so both post-process the same state). `Hydro_ioniz.txt` and
+`Ion_species.txt` are byte-identical in every case, and so are the `rho` and
+`v` columns of `Hydro_ioniz_adv.txt` and every metal column of
+`Ion_species_adv.txt`; what moves is the corrected temperature, the pressure
+that follows it, and the H/He ionization that the next pass solves at that
+temperature:
+
+| case | largest `T_adv` movement | where | largest H/He column movement |
+|---|---|---|---|
+| `wasp_full_newton` | 1.4 per cent | 1.5744 `R_p` | 1.9 per cent (He 2^3S) |
+| `wasp_full` | 16 per cent | 1.0883 `R_p` | 16 per cent (He 2^3S) |
+| `mol_base_handoff` | 301 per cent | 4.2886 `R_p` | 93 per cent (He 2^3S) |
+| `lower_profile` | 456 per cent | 1.0411 `R_p` | 23800 per cent (He 2^3S) |
+
+Every movement is relative to the value the pre-change binary wrote.
+
+The ordering is the point: `wasp_full_newton` is the only Newton-converged
+state of the four, and it is the one the term barely moves, which is what a
+term proportional to the divergence of the mass flux has to do. `wasp_full`
+stops on the `du` threshold; `mol_base_handoff` and `lower_profile` are
+relaxation snapshots pinned to a step count, and their mass flux is not
+stationary anywhere.
+
+**`hydrostatic_column` shows what the state itself is worth, either way.** It
+is a 300-step mechanical column with the radiation switched off, whose mass
+flux `rho v r^2` runs over seven orders of magnitude across the domain
+(4.3e11 to 9.9e18 in the run's own units, i.e. 58 times the median) and falls
+by about 8 per cent from one cell to the next through the inner half of it.
+Its `Hydro_ioniz.txt` is isothermal at 1084 to 1182 K. Without the third term
+its `Hydro_ioniz_adv.txt` fell to 0.78 K at 1.396 `R_p`, the adiabat `T`
+proportional to `rho^(gamma-1)` of the supplied density. With the third term it
+rises instead, to 1.7e7 K at 1.40 `R_p` and 1.6e9 K at 2.96 `R_p`
+(MEASURED), because the exact equation reads a mass flux falling 8 per cent
+per cell as a compression at that rate and heats the gas accordingly. That is
+the analytic solution of (E) for this profile: with heating and cooling
+negligible (E) integrates to `w` proportional to
+`rho^(gamma-1) F^(-gamma)`, `F = rho v r^2`, and the computed profile follows
+it in trend, departing by 2.3 at the top of the domain over 502 cells of a
+first-order upwind difference whose factor from one cell to the next is 1.08 (MEASURED).
+So the number is the solution of the right equation on a state that does not
+satisfy continuity, and neither 0.78 K nor 1.7e7 K is a temperature the gas
+has. What removes it is refusing the cell, and that is the section below.
+
+ADV-STATIC predicted 569 K at 1.40 `R_p` and 121 K at 2.96 `R_p` for the
+restored equation. **That prediction is corrected here**: it was measured with
+`p div(v)` put back in place of `-p v dln(rho)/dr` and with the other half of
+the term, `e div(rho v)`, still absent, which is neither (E) nor the equation
+that was solved before.
+
+### The refusal of a cell whose flow is not stationary
+
+**Added 2026-09-08** (decision 9 of `docs/To_be_determined_by_user_20260906.md`,
+option (a), which takes decision 14 / T8.1 of
+`docs/b1_target_system_20260906.md` section 8). The exact steady equation is
+correct on a stationary state and unbounded on any other, so the correction is
+now **refused** wherever its own assumption fails, and that cell keeps the run's
+own temperature and the ionization equilibrium at that temperature -- exactly
+what the thermal Damkohler condition already does where radiation rather than
+the flow sets the state. The `_adv` product therefore means: **the exact steady
+advective correction wherever a steady correction exists, and the run's own
+state elsewhere.**
+
+**The criterion is the term ratio of the equation being solved.** With the
+common `1/dr` divided out, the three terms of (E) on one cell are, in the
+variables of the residual,
+
+    q_adv  = |rho v (e_j - e_{j-1})|
+    q_prs  = |w v (rho_j - rho_{j-1})|            w = p/rho
+    q_enth = |h div(rho v) dr|                    h = e + w
+
+and the cell is refused where `q_enth > max(q_adv, q_prs)`
+(`enthalpy_flux_term_ratio`, `post_process_adv.f90`). Unity is not a tunable: it
+is the statement that one term is larger than the other. The inequality is
+STRICT, so a flux that is stationary to round-off is never refused.
+
+**Why this ratio and not `|dln F|` alone.** How far from stationary the mass flux
+is matters only through the size of the term it puts into the equation, and the
+same `|dln F|` is negligible in one cell and dominant in another according to how
+large the two kept terms are there. MEASURED on `wasp_full`: the median
+cell-to-cell `|dln F|` is 5.5e-3 (ADV-STATIC) and the ratio exceeds one in 297 of
+503 cells, reaching 438. `src/tests/adv_static_limit` pins that distinction
+directly: the same divergence that gives a ratio of one gives 1/16 once the
+advected term is sixteen times larger.
+
+**The refusal covers the composition as well as the temperature.** The
+ionization correction of a cell is the same kind of object, the steady
+advection-ionization ODE along the same flow, so a cell whose flow is not
+stationary has no steady advective ionization correction either. Conditions (i)
+and (ii) do not cover these cells: (i) tests the SIGN of `v` and (ii) the ratio
+of the residence time to the ionization relaxation time, and both are satisfied
+by a fast, well-directed outflow whose mass flux is nowhere stationary. MEASURED
+2026-09-08, cells refused by (iv) that (i) to (iii) do not already refuse: 160 of
+297 in `wasp_full`, 308 of 321 in `lower_profile`, 33 of 33 in
+`mol_base_handoff`, 2 of 2 in `wasp_full_newton` and 0 of 481 in
+`hydrostatic_column` (whose every cell is already at `Da_ion > 100`).
+
+**Formed once, on the state handed in.** `rho`, `v` and `r` are the recorded
+profile and the post-process never changes them, so the refusal is a property of
+that state; it is evaluated on the first pass, at the run's own temperature and
+the mean molecular weight of the composition the equilibrium solve returned.
+Recomputing it per pass would let the refused set move with the iterate, and
+every pass feeds its upwind cascade from that set, so the converged `_adv`
+product would depend on the iteration history. This also changes the reference
+point of the reported ratio: ADV-STATIC and ADV-ENERGY measured it on the last
+pass at the iterate and over the cells that reached the measurement (inflow
+cells excluded), which is why `wasp_full` reported 67 in 161 cells there and 438
+in 297 cells here.
+
+**What the refusal refuses, per case.** MEASURED 2026-09-08 by post-processing
+each case's recorded state with the binary before and after the change ("Do only
+PP", so both post-process the same state); `hydrostatic_column` was run in full
+for its recorded 300 steps. `Hydro_ioniz.txt` and `Ion_species.txt` are
+byte-identical in every case, and so are the `rho` and `v` columns of
+`Hydro_ioniz_adv.txt`.
+
+| case | 0 corrected | 1 `Da_th` | 2 not stationary | 3 ionization | 4 solve |
+|---|---|---|---|---|---|
+| `wasp_full_newton` | 501 | 0 | 2 | 1 | 0 |
+| `mol_base_handoff` | 470 | 0 | 33 | 1 | 0 |
+| `wasp_full` | 205 | 0 | 297 | 2 | 0 |
+| `lower_profile` | 182 | 0 | 321 | 1 | 0 |
+| `hydrostatic_column` | 0 | 0 | 481 | 23 | 0 |
+
+(504 rows: the 500 physical cells and four ghost rows.) The ordering is the
+result that matters: **`wasp_full_newton` is the only Newton-converged state of
+the five and it is the one the refusal barely touches**, which is what a
+condition on the divergence of the mass flux has to do. `wasp_full` stops on the
+`du` threshold and its breathing base is refused; `mol_base_handoff` and
+`lower_profile` are relaxation snapshots pinned to a step count; the mechanical
+column is refused throughout.
+
+| case | max &#124;dT_adv&#124;/T vs ADV-ENERGY | median over refused rows | max `T_adv` | max `T_run` | max `T_adv` before |
+|---|---|---|---|---|---|
+| `wasp_full_newton` | 1.9 per cent | 1.9 per cent | 11588 K | 11365 K | 11588 K |
+| `wasp_full` | 10 per cent | 2.2 per cent | 11413 K | 11198 K | 11413 K |
+| `mol_base_handoff` | 88 per cent | 35 per cent | 2955 K | 2615 K | 10652 K |
+| `lower_profile` | 5.1 | 27 per cent | 7000 K | 7027 K | 16928 K |
+| `hydrostatic_column` | 1.0 | 0.98 | 1182.32 K | 1182.32 K | 2.6e10 K |
+
+The last three columns are the point of the change: the corrected temperature of
+a state that does not satisfy continuity was unbounded above and is now bounded
+by the state it was made from. `hydrostatic_column` falls from 2.6e10 K to
+exactly the run's own maximum, with no row above it (435 rows were above it
+before); `lower_profile` from 16928 K to below the run's own maximum, 78 rows
+above it before and none now; `mol_base_handoff` from 10652 K to 2955 K, 84 rows
+above the run's maximum before and 8 now, those 8 being cells whose flow IS
+stationary and whose correction is therefore a correction. The two `wasp_full`
+cases barely move at the top of the column because their non-stationary cells are
+at the base.
+
+Refusal is exact, not approximate: MEASURED, every refused row carries the run's
+own temperature to the BIT (299 of 299 rows in `wasp_full`, 322 of 322 in
+`lower_profile`, 483 of 504 in `hydrostatic_column` -- the 21 exceptions there
+are rows refused by (ii) or (iii) alone, whose temperature is still corrected
+because those conditions are about the ionization balance), and every row refused
+by (iv) carries the equilibrium density of every species exactly. The one
+exception is the He I column of `lower_profile`, which departs by 1.8e-16
+relative: `pin_cell_to_equilibrium` writes the two neutral-helium populations and
+their sum, so the summed column is a floating-point reassociation of the
+equilibrium value rather than the same bits. That is a property of carrying the
+singlet and the metastable separately and predates this change.
+
+**The ionization columns move with the temperature they are solved at.** MEASURED
+against the ADV-ENERGY binary on the same state: the largest movement of any
+species column is 21 per cent (He 2^3S, `wasp_full`, 1.1308 `R_p`), 5.4 per cent
+(He III, `wasp_full_newton`), 886x (He 2^3S, `mol_base_handoff`, 4.2886 `R_p`),
+7.0x (He III, `lower_profile`) and exactly zero for `hydrostatic_column`, whose
+`Ion_species_adv.txt` is byte-identical because its ionization was already pinned
+to equilibrium in every cell.
+
+**What it does to a spectrum.** MEASURED 2026-09-08, `EXHALE_transit.py` on
+`wasp_full` before and after, same recorded state: 295 of the 500 rows inside the
+impact-parameter range `1 <= b <= 1.5666 R_p` are refused, and the transit
+metrics move at the 1e-4 relative level or less -- He 10830 red 4.102 per cent
+both, blue 2.843 -> 2.844 per cent, red/blue 1.44 both, FWHM 0.899 A both. The
+refused rows are in the base, where the disk-integrated depth is dominated by the
+extended wind above. The largest movement of any line in that run is the O I
+1302 triplet with rotation and instrument convolution, 0.5357 -> 0.5386 per cent.
+So the refusal changes what the `_adv` file MEANS considerably and what this
+particular spectrum predicts very little; a case whose refused cells sit in the
+line-forming region would move more, which is why the count is printed.
+
+**Every `_adv` golden of the matrix moves by design.** None was refreshed and
+none was compared; `make check` and `run_check.sh` were not run.
 
 ## Measured effect
 
@@ -293,7 +616,7 @@ above are reproduced by the production runs recorded in this document.
 # Two more, 2026-08-29: a population solved as a difference, and an unread `info`
 
 Same file, same post-process, found the same way (a one-cell step in an `_adv`
-metastable profile). Full write-up, with the numbers: `Update_EXHALE.md`
+metastable profile). Full write-up, with the numbers: `Update_EXHALE_stage1.md`
 section 88.
 
 ## 3. The ground singlet was solved as a difference
@@ -368,10 +691,10 @@ ran with the coupling *off* and the post-process with it *on*, because
 
 Both are fixed (2026-08-30). The branching is now resolved on the cell's own
 neutral He/H ratio and returned per target atom, so nothing divides by a
-vanishing density (`svs85_secondary_branching`; `Update_EXHALE.md` section 96,
+vanishing density (`svs85_secondary_branching`; `Update_EXHALE_stage1.md` section 96,
 `TO_BE_DONE.md` item (J)), and `sec_ion_active` is armed before the loop when
 `do_only_pp` is set, so the one equilibrium solve of a PP-only run uses the same
-physics as the post-process beside it (`Update_EXHALE.md` section 94,
+physics as the post-process beside it (`Update_EXHALE_stage1.md` section 94,
 `TO_BE_DONE.md` item (K)). On the control run the cells above 1.5 R_p with a
 collapsed ground singlet go from 171 of 233 to none.
 

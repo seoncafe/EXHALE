@@ -138,7 +138,7 @@ in `post_process_adv.f90` are not covered by this validation.
 > attempts all leave the simplex has the least-offending root clamped onto the
 > element budget (`viol`/`viol_best`, `n_mol_clamped`) or, failing that, is
 > handed the uncoupled ionization balance and counted in `n_ieq_fail`. The
-> chemical-equilibrium retry is still there — it is now one of the starting
+> chemical-equilibrium retry is still there: it is now one of the starting
 > points, not a separate validation. The H-only system and
 > `post_process_adv.f90` remain outside the scope.]
 

@@ -68,6 +68,10 @@
       ! so the local names of this module are checked against these six and
       ! against the module's own declarations only.
       use global_parameters, only: kb_erg, kb_eV, hp_erg, c_light, mu, pi
+      ! The internal partition function of H2 and the level ladder behind it
+      ! live with the caloric equation of state, which is the other consumer
+      ! of the same Boltzmann sum.  See the H2 THERMOCHEMISTRY block below.
+      use caloric_eos, only: h2_partition_function
 
       implicit none
       private
@@ -81,35 +85,56 @@
                 rk_R22_Hp_He_cx, rk_R23_H2_Hep_cx
       ! H2 thermochemistry: the three-body recombination coefficient that R15
       ! and R12 share, the H + H <-> H2 equilibrium constant that turns one
-      ! into the other, its rovibrational partition function, and the table
-      ! builder.  See the H2 THERMOCHEMISTRY block below.
-      public :: k3b_H_H_to_H2, keq_H_H_to_H2, q_rovib_H2,                 &
+      ! into the other, and the table builder.  The internal partition
+      ! function the equilibrium constant is built from is not owned here:
+      ! it is h2_partition_function of caloric_eos, the one Boltzmann sum
+      ! over the one H2 level ladder.  See the H2 THERMOCHEMISTRY block
+      ! below.
+      public :: k3b_H_H_to_H2, keq_H_H_to_H2,                             &
                 h2_thermochemistry_init, h2_dissociation_energy_eV
 
       ! ------------------------------------------------------------------ !
       ! H2 THERMOCHEMISTRY
       !
-      ! Spectroscopic constants of H2 X^1 Sigma_g^+ (Huber & Herzberg 1979,
-      ! "Constants of Diatomic Molecules"; the standard tabulated set) and
-      ! the dissociation energy from v = 0, J = 0.  All in cm^-1.
+      ! ONE LEVEL SET.  The internal partition function of H2 that the
+      ! equilibrium constant below is built from is h2_partition_function of
+      ! caloric_eos: the Boltzmann sum over the observed bound rovibrational
+      ! ladder of H2 X^1 Sigma_g^+, 302 levels to 36118 cm^-1, of Roueff et
+      ! al. (2019), A&A 630, A58, table 2.  It is the same sum whose first
+      ! moment is the rovibrational internal energy the caloric equation of
+      ! state carries, and its zero is the v = 0, J = 0 level, which is the
+      ! level D0 below is measured from and the level the H2 entry of the
+      ! formation reservoir uses.  One potential therefore generates the
+      ! chemistry and the energy equation, and the reverse rate R12, the
+      ! recombination R15 and the reaction enthalpy cannot disagree about how
+      ! much energy a bound H2 molecule holds.
+      !
+      ! THE NUCLEAR SPIN CONVENTION MATCHES ON BOTH SIDES.  The ladder's
+      ! weights are g_I (2J+1) with g_I = 3 for odd J and 1 for even J, so
+      ! the molecular sum counts nuclear spin; the free H atom is given
+      ! 2 (electronic doublet) x 2 (nuclear spin I = 1/2) = 4 in K_eq below,
+      ! which is the matching count, and the spin factors cancel out of the
+      ! equilibrium.
+      !
+      ! THE DISSOCIATION ENERGY FROM v = 0, J = 0, in cm^-1.  It is the one
+      ! bond energy of this code.
       !
       ! D0 IS CHECKED AGAINST THE THERMOCHEMISTRY OF THE SAME REACTION.
       ! 36118.11 cm^-1 = 432.05 kJ/mol; adding the 298.15 K enthalpy
       ! functions of two H atoms (2 x 5/2 RT) and removing that of H2
       ! (7/2 RT) gives dH(298.15 K) = 435.8 kJ/mol, against the 436 kJ/mol
       ! tabulated on the H2 (+M) <-> H + H (+M) data sheet of Baulch et al.
-      ! (1992) J. Phys. Chem. Ref. Data 21, 411, p. 550.
+      ! (1992) J. Phys. Chem. Ref. Data 21, 411, p. 550.  It also agrees with
+      ! the top of the Roueff ladder, whose highest bound level stands at
+      ! 51965.8 K = 36118.04 cm^-1: the ladder and D0 share their zero AND
+      ! their limit, to 0.07 cm^-1.
       real*8, parameter :: D0_H2_cm    = 36118.11d0   ! D0(v=0,J=0)
-      real*8, parameter :: we_H2       = 4401.213d0   ! omega_e
-      real*8, parameter :: wexe_H2     = 121.336d0    ! omega_e x_e
-      real*8, parameter :: Be_H2       = 60.853d0     ! B_e
-      real*8, parameter :: alpha_e_H2  = 3.062d0      ! vib-rot coupling
 
-      ! Tabulation of ln K_eq on a log-spaced temperature grid.  The
-      ! rovibrational sum of q_rovib_H2 costs some 800 exponentials, far too
-      ! many to evaluate at every cell inside the Newton solve of the molecular
-      ! system (~1e9 over a run), so it is evaluated once here and
-      ! interpolated linearly in (ln T, ln K_eq).
+      ! Tabulation of ln K_eq on a log-spaced temperature grid.  The level
+      ! sum costs 302 exponentials, far too many to evaluate at every cell
+      ! inside the Newton solve of the molecular system (~1e9 over a run), so
+      ! it is evaluated once here and interpolated linearly in
+      ! (ln T, ln K_eq).
       !
       ! GRID.  100-20000 K, 2001 points, i.e. 2.65e-3 in ln T.  ln K_eq is
       ! dominated by D0 hc / kT, whose curvature in ln T is D0 hc / kT and
@@ -117,7 +142,7 @@
       ! bounded by (1/8) (D0 hc/kT) (dlnT)^2 = 4.6e-4 in ln K_eq at 100 K,
       ! i.e. 0.046 % in K_eq, and falls as 1/T from there.  Measured against
       ! the direct sum at the midpoint of every interval, the largest error
-      ! is 4.69e-4 (0.047 %) in the first interval and 1.54e-6 (1.5e-4 %) in
+      ! is 4.55e-4 (0.046 %) in the first interval and 1.42e-6 (1.4e-4 %) in
       ! the last.
       !
       ! ENDS.  T is clamped into [100, 20000] K before the lookup.  Below
@@ -173,7 +198,10 @@
       ! R3: H + e -> H+ + 2e                    (Voronov 1997)
       ! U = 13.6 eV / E_e;  E_e = kB Te in eV.  The eV Boltzmann constant is
       ! the CODATA value owned by global_parameters, not a rounded local
-      ! copy: it is not part of the published fit.
+      ! copy: it is not part of the published fit.  The 13.6 eV IS: it is
+      ! Voronov's Table 1 entry, fitted together with the four coefficients
+      ! below, so it stays as published rather than reading the measured
+      ! threshold e_th_HI.  Same for the 24.6 eV of R4.
       elemental double precision function rk_R3_H_cion(Te) result(k)
       real*8, intent(in) :: Te
       real*8 :: U
@@ -195,13 +223,43 @@
       k = 2.3d-8*(300.0d0/Te)**0.4d0
       end function
 
-      ! R6: H3+ + e -> H2 + H                   (Larsson et al. 2008)
+      ! R6 and R7: the two product channels of H3+ dissociative
+      ! recombination, H3+ + e -> H2 + H and H3+ + e -> H + H + H.
+      !
+      ! HOW THE TWO CONSTANTS ARE BUILT, since neither is printed anywhere
+      ! as it stands here.  Larsson, McCall & Orel (2008), Chem. Phys.
+      ! Lett. 462, 145, give one total and one branching, both on p. 149:
+      ! the thermal rate constant alpha(300 K) = (7.2 +- 1.1)e-8 cm^3 s^-1
+      ! of the Kokoouline and Greene calculation, "in good agreement with
+      ! the new storage ring results", and the three-body branching ratio
+      ! 0.70 +- 0.07, "in very good agreement with the CRYRING storage ring
+      ! results".  The two constants below are that total split by that
+      ! branching: 7.2e-8 * 0.30 = 2.16e-8 into H2 + H, 7.2e-8 * 0.70 =
+      ! 5.04e-8 into three atoms.
+      !
+      ! THE EXPONENT IS NOT LARSSON'S.  0.65 is the temperature index of
+      ! the earlier storage-ring fits of Sundstrom et al. (1994) and Datz
+      ! et al. (1995) as Yelle (2004) Table 1 prints them (his R16a, R16b).
+      ! Larsson quotes a single 300 K number and no fitted temperature
+      ! dependence, so the shape is inherited and only the 300 K value and
+      ! the branching are his.  Above about 1000 K the (300/T)^0.65
+      ! extrapolation is doing the work, and nothing in either source
+      ! measures it there.
+      !
+      ! WHY NOT THE OLDER PAIR.  Yelle's 2.9e-8 and 8.6e-8, total 1.15e-7,
+      ! are 1.60x this total at every temperature, and the excess is
+      ! accounted for in the source: Larsson's p. 149 states that "the
+      ! early results obtained at CRYRING [23,24] and ASTRID [27], which
+      ! gave results just above or at 1e-7 cm^3 s^-1, were slightly too
+      ! high because of rotational excitations", and his Ref. 24 is
+      ! Sundstrom et al.  The rotationally cold storage-ring measurements
+      ! and the calculation that reproduces them supersede that pair, so
+      ! the later value is carried.
       double precision function rk_R6_H3p_dr_H2(Te) result(k)
       real*8, intent(in) :: Te
       k = 2.16d-8*(300.0d0/Te)**0.65d0
       end function
 
-      ! R7: H3+ + e -> H + H + H                (Larsson et al. 2008)
       double precision function rk_R7_H3p_dr_3H(Te) result(k)
       real*8, intent(in) :: Te
       k = 5.04d-8*(300.0d0/Te)**0.65d0
@@ -314,17 +372,17 @@
       !
       ! (3) VERIFICATION.  Measured with this implementation:
       !   k_diss(detailed balance) / k_diss(Baulch 1992 fit) =
-      !     1.05 at 8000 K, 1.18 at 5000 K, 0.97 at 3000 K, 0.82 at 2500 K,
-      !     0.61 at 2000 K, 0.36 at 1500 K, 0.11 at 1000 K.
+      !     0.90 at 8000 K, 1.07 at 5000 K, 0.92 at 3000 K, 0.79 at 2500 K,
+      !     0.59 at 2000 K, 0.35 at 1500 K, 0.11 at 1000 K.
       !   The agreement INSIDE Baulch's stated 2500-8000 K range, and the
       !   departure only below it, is the evidence that the construction is
       !   right: where the fit was measured the two agree, where it is an
       !   extrapolation they part company.  Against the PRIMARY measurement
       !   rather than the evaluation -- Breshears & Bird's own M = H2
       !   coefficient 5.48e-9 exp(-52989/T), their abstract's 3.30e15
-      !   exp(-105300/RT) cc/mole/s converted -- the same ratio is 1.11 at
-      !   3500 K, the bottom of their measured 3500-8000 K range, 0.99 at
-      !   4000 K, 0.82 at 5000 K and 0.51 at 8000 K.  Evaluation and
+      !   exp(-105300/RT) cc/mole/s converted -- the same ratio is 1.04 at
+      !   3500 K, the bottom of their measured 3500-8000 K range, 0.92 at
+      !   4000 K, 0.74 at 5000 K and 0.44 at 8000 K.  Evaluation and
       !   measurement are not the same curve: BB73 divided by Baulch is 0.035
       !   at 1000 K, 0.36 at 2000 K, 0.78 at 3000 K, 1.15-1.45 over
       !   4000-5000 K and 2.05 at 8000 K, matching in the middle and parting
@@ -333,20 +391,29 @@
       !   * the chemical-equilibrium H2 fit this code already carries,
       !     q_h2_equilibrium (lower_column.f90, Koskinen et al. 2022 Eq. 11
       !     quoting Visscher et al. 2006), evaluated in its DILUTE limit
-      !     where n_H2 << n_H and q -> 0.831856 / 10^u: that K_eq divided by
-      !     this one is 0.993 at 2000 K, 1.029 at 2500 K, 1.082 at 3000 K.
+      !     where n_H2 << n_H and q -> 0.831856 / 10^u, with the He/H = 0.0793
+      !     the fit is for turning its mixture mixing ratio into n_H2/n_H^2:
+      !     that K_eq divided by this one is 0.958 at 2000 K, 0.983 at
+      !     2500 K, 1.024 at 3000 K.
       !   * the NIST-JANAF Shomate enthalpies and entropies of H and H2 that
       !     oxygen_rates.f90 already carries: K_eq from dG(T) divided by this
-      !     one is 1.010 at 600 K, 1.018 at 1000 K, 1.037 at 2000 K, 1.056 at
-      !     3000 K, 1.101 at 5000 K.  The slow rise is the truncation of the
-      !     Morse level sum at D0, which drops the quasi-bound levels a real
-      !     H2 molecule still has.
+      !     one is 0.9997 at 600 K, 0.9998 at 1000 K, 1.0000 at 2000 K,
+      !     1.0001 at 3000 K, 1.0008 at 5000 K.  Two independent routes to
+      !     the free energy of H2 -- an observed level ladder summed here, a
+      !     calorimetric evaluation there -- agree to better than 0.1 %
+      !     wherever the Shomate table is valid.  This is the check that
+      !     identified the model ladder retired on 2026-09-06: it deviated
+      !     the same way, 1.010 at 600 K rising to 1.101 at 5000 K, which is
+      !     the ratio of the two partition functions and nothing else.  An
+      !     assertion holds this agreement,
+      !     h2_equilibrium_constant_janaf_at_* of
+      !     src/tests/physics_probe/h2_rovibrational_identity.f90.
       !   * Cohen & Westberg (1983) recommend BOTH directions on the same
       !     data sheet, so their ratio k1(H2)/k-1(H2) is an equilibrium
       !     constant from an evaluation that used none of the above:
       !     1.958e-25 T^0.1 exp(52530/T) cm^3 over 600-5000 K, which divided
-      !     by this K_eq is 1.019 at 600 K, 0.966 at 1000 K, 1.063 at
-      !     2000 K, 1.118 at 3000 K and 1.108 at 5000 K.  (It is also the
+      !     by this K_eq is 1.009 at 600 K, 0.949 at 1000 K, 1.026 at
+      !     2000 K, 1.059 at 3000 K and 1.007 at 5000 K.  (It is also the
       !     reason the k_diss above is not simply k-1(H2): the two agree to
       !     those same 12 %, and taking K_eq from the physics instead of from
       !     a two-parameter fit is what keeps R12 and R15 exactly reversible
@@ -476,65 +543,43 @@
       ! what the equilibrium constant is used for.
       ! ------------------------------------------------------------------ !
 
-      ! Internal (rovibrational) partition function of H2, measured from
-      ! v = 0, J = 0, with the ortho:para nuclear-spin weights 3:1 included:
-      !     G(v)   = we (v+1/2) - wexe (v+1/2)^2
-      !     B_v    = Be - alpha_e (v+1/2)
-      !     E(v,J) = [G(v) - G(0)] + B_v J(J+1)
-      !     q      = sum_v sum_J g_ns(J) (2J+1) exp(-E/kT), g_ns = 3 odd J,
-      !                                                            1 even J
-      ! The sums stop where the level is no longer bound: the J loop at
-      ! E > D0, the v loop at B_v <= 0 or G(v) - G(0) > D0.
+      ! The internal partition function of H2 is NOT defined here.  It is
+      ! h2_partition_function of caloric_eos, the Boltzmann sum over the
+      ! observed Roueff et al. (2019) ladder, and this module reads it: one
+      ! level set generates both the equilibrium constant below and the
+      ! rovibrational internal energy of the equation of state.
       !
-      ! NO CENTRIFUGAL DISTORTION TERM. Subtracting De [J(J+1)]^2 with
-      ! De = 4.71e-2 cm^-1 drives E NEGATIVE at moderate J, so the J loop
-      ! never reaches its D0 stop and the sum runs away: q(2000 K) comes out
-      ! 798, a factor 16 too large. A distortion term would need its own
-      ! bound on J (the top of the rotational barrier), which is not worth
-      ! carrying for a correction below 1 % where the levels are actually
-      ! populated. As truncated here q(2000 K) = 50.22, which the classical
-      ! estimate 4 kT / (2 Be) x q_vib = 48.1 confirms; the agreement of
-      ! K_eq with the three independent routes quoted on R12 is the
-      ! quantitative test.
-      double precision function q_rovib_H2(T) result(q)
-      real*8, intent(in) :: T
-      real*8  :: hc_k, g_v0, g_v, b_v, v_half, e_vj, w_ns
-      integer :: iv, jr
-      hc_k = hp_erg*c_light/kb_erg          ! K per cm^-1
-      g_v0 = 0.5d0*we_H2 - 0.25d0*wexe_H2   ! G(v=0)
-      q    = 0.0d0
-      iv   = 0
-      do
-         v_half = dble(iv) + 0.5d0
-         b_v    = Be_H2 - alpha_e_H2*v_half
-         g_v    = we_H2*v_half - wexe_H2*v_half*v_half - g_v0
-         if (b_v .le. 0.0d0 .or. g_v .gt. D0_H2_cm) exit
-         jr = 0
-         do
-            e_vj = g_v + b_v*dble(jr)*dble(jr+1)
-            if (e_vj .gt. D0_H2_cm) exit
-            if (mod(jr,2) .eq. 1) then
-               w_ns = 3.0d0                 ! ortho (odd J)
-            else
-               w_ns = 1.0d0                 ! para  (even J)
-            endif
-            q  = q + w_ns*dble(2*jr+1)*exp(-e_vj*hc_k/T)
-            jr = jr + 1
-         enddo
-         iv = iv + 1
-      enddo
-      end function q_rovib_H2
-
+      ! WHAT THE LADDER REPLACED, AND BY HOW MUCH.  Until 2026-09-06 this
+      ! module summed its own model ladder from the Huber and Herzberg
+      ! (1979) constants (we = 4401.213, we xe = 121.336, Be = 60.853,
+      ! alpha_e = 3.062 cm^-1), a rigid rotor with a vibration-rotation
+      ! coupling and no centrifugal distortion, truncated where a level
+      ! passed D0.  Against the observed ladder that model places the levels
+      ! too HIGH -- already in v = 0 the J = 1, 2, 3, 5 levels stand +0.21,
+      ! +2.21, +9.11 and +56.8 K above the observed ones, the J^4 signature
+      ! of the missing distortion term -- so it underpopulates the ladder.
+      ! MEASURED, mean internal energy of the model ladder against the
+      ! observed one: 0.63 % low at 300 K, 1.8 % at 1000 K, 3.1 % at 2000 K,
+      ! 5.1 % at 4000 K, 8.3 % at 8000 K; partition function 0.46 % low at
+      ! 300 K, 1.76 % at 1000 K, 3.65 % at 2000 K, 7.7 % at 4000 K.  Of the
+      ! 8000 K gap only 3.1 % comes from the 55 levels the model ladder does
+      ! not reach; the rest is placement.  K_eq rises by the partition
+      ! function ratio, and the dissociation rate R12 falls by it.
+      !
       ! Build the ln K_eq table. Called from EXHALE_main before any parallel
       ! region opens; idempotent, so a second call costs nothing.
       !
       !     K_eq(T) = Lam(2 m_H) q_int(T) exp(D0/kT) / [ Lam(m_H) x 4 ]^2
       !     Lam(m)  = (2 pi m kB T / h^2)^(3/2)                    [cm^-3]
       !
-      ! The 4 on the H atom is 2 (electronic doublet) x 2 (nuclear spin
-      ! I = 1/2); the 3:1 weights inside q_rovib_H2 are the matching
-      ! nuclear-spin counting on the molecule, so both sides of the
-      ! equilibrium are on the same convention and the spin factors cancel.
+      ! q_int is h2_partition_function, measured from v = 0, J = 0, which is
+      ! the level the D0 in the exponent is measured from: the zero of the
+      ! ladder and the zero of the bond energy are the same level, so the
+      ! exponential and the sum do not double count.  The 4 on the H atom is
+      ! 2 (electronic doublet) x 2 (nuclear spin I = 1/2); the g_I weights
+      ! inside the molecular sum are the matching nuclear-spin counting, so
+      ! both sides of the equilibrium are on the same convention and the spin
+      ! factors cancel.
       subroutine h2_thermochemistry_init
       integer :: i
       real*8  :: ln_lo, d_ln, t_k, lam_h, lam_h2, hc_k
@@ -547,7 +592,7 @@
          t_k        = exp(keq_lnT(i))
          lam_h      = (2.0d0*pi*mu*kb_erg*t_k/hp_erg**2)**1.5d0
          lam_h2     = (2.0d0*pi*2.0d0*mu*kb_erg*t_k/hp_erg**2)**1.5d0
-         keq_lnK(i) = log(lam_h2) + log(q_rovib_H2(t_k))                  &
+         keq_lnK(i) = log(lam_h2) + log(h2_partition_function(t_k))       &
                     + D0_H2_cm*hc_k/t_k - 2.0d0*log(4.0d0*lam_h)
       enddo
       keq_table_ready = .true.

@@ -23,7 +23,7 @@ and no longer resolves; the routine and variable names still do.
    `radiation/hydrogen_n2_rates.f90` and the dummy arguments that shadowed the
    statistical weights are gone. The finding is kept in the present tense as
    written, as the record of the defect.] Its dummy arguments `G2s`/`G2p` shadow the module
-   parameters `g2s`/`g2p` — Fortran is case-insensitive — so lines 249-251
+   parameters `g2s`/`g2p` (Fortran is case-insensitive), so lines 249-251
    evaluate the statistical weights as the Balmer photoionization rate
    `gamma2_bal` instead of 2 and 6. All three collisional rate coefficients
    this memo is about are affected: the `2s -> 1s` and `2p -> 1s` de-excitation
@@ -57,8 +57,8 @@ and no longer resolves; the routine and variable names still do.
    `.true.` since 2026-08-12; section 11 reversed it, for the reason this
    paragraph goes on to give]) equal to 1.8-92% of the
    Ly-alpha cooling on three planets and 5x it on HD 209458 b. The comment in
-   `parameters.f90` justifying the default — that it "overlaps the existing HI
-   coex cooling" — appears to be mistaken: the Cen (1992) coefficient in
+   `parameters.f90` justifying the default (that it "overlaps the existing HI
+   coex cooling") appears to be mistaken: the Cen (1992) coefficient in
    `Cool_coeff.f90:843` is a one-way, Boltzmann-suppressed excitation rate with
    no density-dependent de-excitation term in it, i.e. the coronal limit in
    which every excitation escapes. Subtracting a de-excitation term is the
@@ -74,13 +74,13 @@ supported by any of these channels.
 | quantity | code location | status |
 |---|---|---|
 | Ly-alpha cooling `Lambda_coex` | `Cool_coeff.f90:843` `coex_rate_HI`; assembled at `util_ion_eq.f90:640`; dumped as `cool_chan(:,3)` at `:800` | coronal limit; no escape probability, no destruction correction |
-| escape probability `beta` | `lya_rt.f90:103-113` (Neufeld/Harrington wing plus Sobolev, combined as `1-(1-b_st)(1-b_sob)`; 2026-08-15: with `Lya absorbing bottom: True` a third factor `(1-b_bot)` joins the product -- see `lya_rt.f90`) | used *only* to build `J_int`; never multiplies the cooling |
-| `J_lya` closure | `lya_rt.f90:127-128`, `J_int = Jpref (g1s/g2p) P (1-beta)/(A beta n1s)` | implies `n2p = P/(A beta)`; no destruction in the denominator (§5) |
+| escape probability `beta` | `lya_rt.f90:664` `lya_wing_escape_probability(tau_c, tau_dn)`, `beta = 1/(1 + <N>)` with `<N>` the mean number of scatterings of the static plane-parallel damping-wing slab (Neufeld 1990 eq. 3.27 at zero destruction, Harrington 1973 eq. 40 for the mid-plane source), joined to the Sobolev channel as `beta_esc + beta_sob(1 - beta_esc)`. `Lya absorbing bottom: True` moves the planet-ward face of that slab to the bottom of the domain instead of mirroring the star-ward one; it is not a third factor in a product, since the two faces share one escaping population (Neufeld eq. 2.25) | used *only* to build `J_int`; never multiplies the cooling. The one-flight wing form `pi^(-1/4) sqrt(a/tau)` that stood here until 2026-09-07 was neither Neufeld's nor Harrington's and exceeded the published value by 234x at the `wasp_full` base (items REF-NEUFELD, LYA-BETA) |
+| `J_lya` closure | `lya_rt.f90:715-716`, `J_int = Jpref (g1s/g2p) P (1-beta)/((A beta + D_2p) n1s)` | implies `n2p = P/(A beta + D_2p)`; the destruction term §5 asked for is now in the denominator (`n2p_destruction_rate`, `hydrogen_n2_rates.f90`) |
 | (i) `H(n=2)` photoionization | rate `gamma2_bal` at `excited_hydrogen.f90:126`; enters `L2p`/`L2s` at `:258-259`; proton source `:191-195`; heating `:198` | present, and active whenever `use_excited_H` |
 | (ii) `2p -> 2s` then two-photon decay | `C2s2p`/`C2p2s` at `:246,251`; `A_2s1s` in `L2s` at `:259` | present, but `C2p2s` is 3x too large (§2) |
 | (iii) collisional de-excitation `2 -> 1` | populations: `C2s1s`/`C2p1s` at `:249-250`; heating: `Hdx_arr` at `:200-205` | population rates wrong by 1-3 decades (§2); heating term default off |
 
-So all three channels are present in the `n=2` balance — the Phase-3a
+So all three channels are present in the `n=2` balance: the Phase-3a
 photoionization channel in particular is in `L2p`, `L2s`, the proton source and
 the photoelectric heating, and is not double counted. What is missing is not a
 channel but the correct rate coefficients for two of them.
@@ -150,11 +150,11 @@ state each run dumped, volume-integrated over `r >= 1`:
 | WASP-52 b | 0.664 | 1.0000 | 0.778 |
 | WASP-121 b | 0.526 | 1.0000 | 0.727 |
 
-`n(2p)` is insensitive because `L2p` is dominated by `A_2p1s = 6.3e8`, far
+`n(2p)` is insensitive because `L2p` is dominated by `A_2p1s = 6.2649e8`, far
 above any of the corrupted collisional terms. `n(2s)` is not, because `M21`
 sets the `2p -> 2s` feed and l-mixing supplies 94-99% of `L2s`. The clearest
 signature is at the WASP-121 b base, where the current output gives
-`n2s/n2p = 1.007` against `0.363` with the corrected weights — the latter being
+`n2s/n2p = 1.007` against `0.363` with the corrected weights: the latter being
 the statistical ratio `g2s/g2p = 1/3` that strong l-mixing should enforce.
 
 The Python transmission tool carries the same algorithm
@@ -252,8 +252,8 @@ pumped rather than a collision:
 |---|---|---|---|---|
 | pumped fraction of `n(2)` | 0.82 | 0.86 | 0.58 | 0.77 |
 
-So `Hdx` is best read as an independent heating channel — absorbed Ly-alpha
-thermalized by a collision — rather than as a suppression factor on the
+So `Hdx` is best read as an independent heating channel (absorbed Ly-alpha
+thermalized by a collision) rather than as a suppression factor on the
 Ly-alpha cooling.
 
 Two smaller consistency notes on this ledger:
@@ -398,8 +398,8 @@ The wind response is not uniform. WASP-121 b and WASP-52 b are unchanged in
 and HD 209458 b both shift: `Mdot` up by 0.01 and 0.02 dex (2-5%) with local
 temperature changes of 5.5% and 7.3%. A plausible reading is that the two that
 move are the two where the `n=2` heating terms are largest relative to the
-local energy balance — HD 209458 b in particular carries the largest
-`Hpe`/`coex` ratio of the four (§4) — but this memo did not decompose the
+local energy balance (HD 209458 b in particular carries the largest
+`Hpe`/`coex` ratio of the four (§4)), but this memo did not decompose the
 energy balance of the re-converged runs to confirm that, so it is an
 interpretation rather than a measurement.
 

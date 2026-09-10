@@ -53,7 +53,7 @@ free-free Gaunt factor with the van Hoof et al.\ (2014) thermal average,
 and corrects a physical error in the free-free charge weighting.
 
 %=============================================================================
-\section{Part 1 --- Process-by-process comparison}
+\section{Part 1: Process-by-process comparison}
 %=============================================================================
 
 Table~\ref{tab:overlap} summarizes the overlapping processes. The
@@ -233,7 +233,7 @@ One quantity crosses between them. MoCHII transports the He\,I $2^1$S
 two-photon continuum as sampled packets and so needs the full Drake, Victor
 \& Dalgarno (1969) shape; EXHALE never forms a spectrum, but its He\,II
 cascade coupling (\texttt{he\_rec\_coupling}) needs two moments of that same
-shape above the H\,I edge --- how many ionizing photons a $2^1$S decay yields
+shape above the H\,I edge: how many ionizing photons a $2^1$S decay yields
 and how much energy each of them deposits. Both had been round numbers, 0.56
 and 3.0\,eV. Integrating the shape gives 0.5564 and 2.512\,eV: the photon
 count was right, but the deposited energy was 20\% high, being close to the
@@ -243,7 +243,7 @@ which drew the in-band photons flat. EXHALE now carries the two integrals as
 \texttt{f\_2q\_HeI} and \texttt{Ee\_2q\_HeI}.
 
 %=============================================================================
-\section{Part 2 --- The 2026-07-17 rate update}
+\section{Part 2: The 2026-07-17 rate update}
 %=============================================================================
 
 The changes below are implemented in the radiation modules
@@ -296,7 +296,7 @@ the previous fits: Hui \& Gnedin (1997) recombination and the
 Abel et al.\ (1997) / Hui \& Gnedin (1997) collisional ionization. It is
 declared in \code{parameters.f90}, defaulted and parsed in
 \code{input\_read.f90}, and echoed to \code{parse\_dump.txt} by
-\code{write\_setup\_report.f90} --- grep the flag name in each; the line numbers
+\code{write\_setup\_report.f90}: grep the flag name in each; the line numbers
 this paragraph used to quote had gone stale. It
 is registered as row K14b in \code{docs/input\_schema.md}. Setting it to
 \code{True} reverts items~1 and 2 exactly; the free-free changes (items~4
@@ -351,7 +351,7 @@ Coefficient & $T=10^4$\,K & $T=10^5$\,K & $T=10^6$\,K & legacy ($10^4$\,K)\\
 \midrule
 $\alpha_B(\mathrm{H\,II})$  & $2.606\times10^{-13}$ & $3.070\times10^{-14}$ & $2.163\times10^{-15}$ & $2.592\times10^{-13}$ \\
 $\alpha_B(\mathrm{He\,II})$ & $2.807\times10^{-13}$ & $5.006\times10^{-13}$ & $1.015\times10^{-12}$ & $2.616\times10^{-13}$ \\
-$\alpha_B(\mathrm{He\,III})$& $1.536\times10^{-12}$ & $2.370\times10^{-13}$ & $2.244\times10^{-14}$ & --- \\
+$\alpha_B(\mathrm{He\,III})$& $1.536\times10^{-12}$ & $2.370\times10^{-13}$ & $2.244\times10^{-14}$ & - \\
 $ci(\mathrm{H\,I})$         & $7.448\times10^{-16}$ & $3.963\times10^{-9}$  & $3.103\times10^{-8}$  & $7.247\times10^{-16}$ \\
 \bottomrule
 \end{tabular}

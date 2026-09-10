@@ -3,7 +3,7 @@
 
 Run from LHS1140b/. Writes PDF (vector) into ../docs/figures/.
 
-STALE (P48; Update_EXHALE section 137): the lhs1140b_*.pdf figures currently in
+STALE (P48; Update_EXHALE_stage1 section 137): the lhs1140b_*.pdf figures currently in
 ../docs/figures/ were made while this script read the profile files' GHOST rows
 as solution cells. It now reads through exhale_io.loadtxt_cells, so re-running
 it moves the He 10830 depths and equivalent widths (0.2-3.8 per cent on the
@@ -27,7 +27,7 @@ sys.path.insert(0, '..')
 # profiles and output/element_flux_profile.txt (written over the faces
 # j = 1..N-1) have no ghost rows and keep plain np.loadtxt.
 sys.path.insert(0, os.path.join('..', 'examples'))
-from exhale_io import loadtxt_cells
+from exhale_io import loadtxt_cells, RJ_CM
 
 plt.rcParams.update({'text.usetex': True, 'font.family': 'serif',
                      'font.size': 9, 'axes.labelsize': 10})
@@ -187,7 +187,7 @@ SCAN_EARLIER = [(h, _SC % (t, ''), _SC % (t, 'tpm_turb/')) for h, t in (
     (1.00, 'heh1'))]
 
 # the ladder of record, current binary (crossings_j96 lineage W, solved on
-# the composition-renormalized SvS85 split of Update_EXHALE Sect. 96).  The
+# the composition-renormalized SvS85 split of Update_EXHALE_stage1 Sect. 96).  The
 # two arms below 0.40 that directory also carries are left out here: they are
 # below the +1 sigma end and their equivalent width is not monotone.
 LADDER_WM = [('crossings_j96/wm_heh0p40', 0.400),
@@ -622,7 +622,7 @@ print('wrote lhs1140b_pwinds_broadened.pdf')
 # lines nearest the measurement on the data; panel (b) shows how the
 # equivalent-width crossing moves between the two SEDs.
 # Panel (b) reads both crossings from ladders solved on the current binary
-# (Update_EXHALE Sect. 96): the GJ 1132 well-mixed one of Fig. ew
+# (Update_EXHALE_stage1 Sect. 96): the GJ 1132 well-mixed one of Fig. ew
 # (crossings_j96 lineage W) and the GJ 699 one of crossings_j96 Sect. 2
 # (lineage G, of record).  Panel (a) draws the arm of that same ladder
 # nearest the crossing 0.0483, g_heh0p048, and the two solar curves it
@@ -798,7 +798,7 @@ print('wrote lhs1140b_bump.pdf')
 # itself: ../docs/binary_diffusion_design.md.
 # The four arms are exhale/refresh_j96/misc/kzz*, the runs of
 # exhale/heh0p55_diff_* re-solved on the current binary.  The K_zz = 0 arm no
-# longer carries the defect of ../docs/Update_EXHALE.md Sect. 88.4(a): Sect. 96
+# longer carries the defect of ../docs/Update_EXHALE_stage1.md Sect. 88.4(a): Sect. 96
 # removed the divergent division, and its metastable curve is drawn for its
 # value.
 KZZ_RUNS = [('refresh_j96/misc/kzz0',    0.0,   r'$K_{zz} = 0$'),
@@ -959,7 +959,7 @@ print('wrote lhs1140b_kzz_profiles.pdf')
 # figure and the memo's other panels measure the line the same way.
 # Provenance of the runs: exhale/crossings_j96/results.txt section 4, every
 # decade re-bracketed on the current binary (the composition-renormalized
-# SvS85 split of Update_EXHALE Sect. 96); K_zz = 1e9 is section 3 of the
+# SvS85 split of Update_EXHALE_stage1 Sect. 96); K_zz = 1e9 is section 3 of the
 # same file.
 CROSS_SCANS = [
     (0.0, ['crossings_j96/k0_heh3p50', 'crossings_j96/k0_heh3p64',
@@ -1107,7 +1107,7 @@ print('wrote lhs1140b_heh_vs_kzz.pdf')
 # re-solved
 # to their own fixed point on the current Penning coefficient with the
 # photochemical columns held fixed.
-# Record: ../docs/Update_EXHALE.md section 79; exhale/misc_gm25/results.txt.
+# Record: ../docs/Update_EXHALE_stage1.md section 79; exhale/misc_gm25/results.txt.
 CLOSURE_ARMS = [('refresh_j96/closure/rw_ref', '', r'$1.0\times$ start'),
                 ('refresh_j96/closure/rw_lo', '', r'$0.3\times$ start'),
                 ('refresh_j96/closure/rw_hi', '', r'$3.0\times$ start')]
@@ -1210,7 +1210,7 @@ print('wrote lhs1140b_closure.pdf')
 # ====== Figure: the Knudsen number of the solutions, and where it bites =====
 # Collisional validity of a continuum wind solution: ../docs/collisional_
 # validity.md, tool ../src/utils/collisional_validity.py (it reads existing
-# run directories and changes nothing).  Record: ../docs/Update_EXHALE.md
+# run directories and changes nothing).  Record: ../docs/Update_EXHALE_stage1.md
 # section 81.  The three representative LHS 1140 b solutions against the
 # HD 209458 b control, on the advection-corrected profiles.
 sys.path.insert(0, '../src/utils')
@@ -1302,7 +1302,7 @@ print('wrote lhs1140b_knudsen.pdf')
 # (a) The equivalent width of the flux-closed solution against the reservoir
 # He/H it was closed at, and where it crosses the measured line.  Runs
 # exhale/crossings_j96: nineteen reservoirs on the current binary
-# (Update_EXHALE Sect. 96), every one closed in full and then re-solved on
+# (Update_EXHALE_stage1 Sect. 96), every one closed in full and then re-solved on
 # its own output with the profile held fixed, so that arms which stopped at
 # different k are read at their common wind fixed point (the rw_ directories,
 # which is where every number the memo quotes for this ladder is read).  The
@@ -1313,7 +1313,7 @@ print('wrote lhs1140b_knudsen.pdf')
 # reached by a 1.50x jump from the 8.0 arm instead of a 1.08x step,
 # converging to the same base and the same matching-level composition but to
 # a hotter, more extended outer region, and is plotted apart as discarded
-# (docs/Update_EXHALE.md Sect. 83); its line is re-solved on the current
+# (docs/Update_EXHALE_stage1.md Sect. 83); its line is re-solved on the current
 # binary in crossings_j96/L12p0jump.  (b) The
 # red-pair depth against the XUV scaling, from both models that reproduce the
 # 2024 equivalent width: the scalar base at He/H = 2.13 and the flux-closed
@@ -1595,7 +1595,9 @@ print('wrote lhs1140b_thermostat.pdf')
 PC_PROFILE = 'lower_profile/lower_atmosphere_profile.dat'
 PC_TROP_BAR = 1.031          # tropopause, from the header's climate note
 PC_MATCH_BAR = 1.0e-6        # matching level EXHALE reads its base from
-R_JUP_CM = 6.9911e9
+# The Jupiter radius has one Python definition, RJ_CM of examples/exhale_io.py
+# (the IAU 2015 nominal equatorial radius parameters.f90 uses as RJ).
+R_JUP_CM = RJ_CM
 R_EARTH_CM = 6.3725e8
 
 
@@ -1940,7 +1942,7 @@ print('wrote lhs1140b_composition_profiles.pdf')
 # out of equilibrium the imposed Parker flow holds hydrogen.
 M_H = 1.6726219e-24
 H_PLANCK, C_LIGHT, EV_ERG = 6.62607015e-27, 2.99792458e10, 1.602176634e-12
-R_JUP = 6.9911e9
+R_JUP = RJ_CM                # one definition; see R_JUP_CM above
 
 
 def h_photoionization_rate(sed_file):

@@ -46,7 +46,7 @@ equations, and only then evidence about how they are being solved.
 
 What did not change is the acceptance rule. The tolerance was never loosened,
 the class-4 reporting and the persistent-streak stop stayed exactly as
-section 113 of `Update_EXHALE.md` set them, and the cell stayed classified as
+section 113 of `Update_EXHALE_stage1.md` set them, and the cell stayed classified as
 unresolved for as long as it was one. That is what kept the question open
 until the physics answer was found, and it is why an incomplete network was
 caught at all.

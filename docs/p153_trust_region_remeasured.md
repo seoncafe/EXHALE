@@ -109,7 +109,7 @@ trajectory and finishing residual identical), the shift identity
 [TR-trace] ||r0||= 8.684E-01  idtau*||(D/Drow)sN||= 1.101E+00  ||r0+AsN||= 1.100E+00
 ```
 
-and the unshifted-leg fix, is section 159.3 of `docs/Update_EXHALE.md`. In one
+and the unshifted-leg fix, is section 159.3 of `docs/Update_EXHALE_stage1.md`. In one
 paragraph: the leg solved the pseudo-transient-shifted system while the
 predicted reduction was measured in the unshifted model, so for an accurate leg
 the model residual at full length is exactly the shift term -- which sat just

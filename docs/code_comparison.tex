@@ -36,7 +36,7 @@ relevant 1-D atmospheric-escape codes: its own parent code ATES
 al.\ (2016), the grid code of Kubyshkina et al.\ (2018) (numerical
 scheme from Erkaev et al.\ 2016), and the steady-state boundary-value
 archetype of Murray-Clay et al.\ (2009). The aim is to place EXHALE's
-design choices in context --- what it inherited from ATES, what it
+design choices in context: what it inherited from ATES, what it
 added, which choices are field-standard, and which capabilities the
 other codes have that EXHALE lacks. A companion design sketch
 (\texttt{auto\_ic\_design.md}) follows up on the main actionable
@@ -70,12 +70,12 @@ $\sim$7000-model grid.}
 \end{table}
 
 The headline structural fact is that \textbf{EXHALE and Salz are
-numerical near-twins} --- same reconstruction, same Riemann solver, same
-time integrator --- so their differences are in the BC/IC details and in
+numerical near-twins} (same reconstruction, same Riemann solver, same
+time integrator), so their differences are in the BC/IC details and in
 the microphysics, not in the hydrodynamics. Kubyshkina is the outlier:
 a deliberately simpler, faster scheme whose strengths lie in robustness
 across escape regimes and in grid-production throughput. Murray-Clay is
-a different beast entirely --- a steady-state boundary-value solver
+a different beast entirely: a steady-state boundary-value solver
 rather than a time-relaxation code (\S\ref{sec:mc}).
 
 \section{Heritage: what EXHALE inherited from ATES (Caldiroli+2021)}
@@ -93,20 +93,20 @@ inheritance explicit and isolates what is genuinely new in EXHALE.
   ``the velocity in the ghost cells at the lower boundary was obtained
   through a zeroth-order extrapolation from the first computational cell
   in the case of inflow characteristics, while it was set to zero
-  otherwise'' --- i.e.\ EXHALE's $\max(v_1,0)$ valve is the original
+  otherwise'', i.e.\ EXHALE's $\max(v_1,0)$ valve is the original
   ATES valve. Caldiroli even states ``ATES employs the same boundary
   conditions as TPCI at the planet radius,'' so the ATES--Salz BC
   equivalence noted in \S\ref{sec:bc} is asserted in the ATES paper
   itself.
 \item \emph{Upper BC.} Zero-gradient (PLM) / linear extrapolation
-  (ESWENO3) at the Roche-lobe radius --- exactly EXHALE's outer BC.
+  (WENO3) at the Roche-lobe radius: exactly EXHALE's outer BC.
 \item \emph{IC.} ``A fully neutral, isothermal sphere of H and He
-  $\ldots$ with a linear initial velocity profile $v(t{=}0)=(r-1)/2$''
-  --- this \emph{is} EXHALE's cold-hydrostatic default IC.
+  $\ldots$ with a linear initial velocity profile $v(t{=}0)=(r-1)/2$'':
+  this \emph{is} EXHALE's cold-hydrostatic default IC.
 \item \emph{Solver core.} Godunov finite-volume, SSPRK3 time
-  integrator, HLLC default (+Roe, LLF), PLM and ESWENO3 reconstruction,
+  integrator, HLLC default (+Roe, LLF), PLM and WENO3 reconstruction,
   $C_{\rm CFL}=0.6$, 500-cell mixed uniform--stretched grid, and the
-  \emph{two-stage PLM\,$\to$\,ESWENO3 relaxation} with the final
+  \emph{two-stage PLM\,$\to$\,WENO3 relaxation} with the final
   tolerance $\Delta\dot M/\dot M<10^{-3}$. Ionization solved in
   photoionization equilibrium via the MINPACK dogleg method; ion
   advection only as a post-process. All of this is EXHALE's backbone.
@@ -116,7 +116,7 @@ inheritance explicit and isolates what is genuinely new in EXHALE.
 trace-metal network and its self-consistent EOS contribution
 (\texttt{eos\_metals}); He\,2$^3$S, H($n{=}2$) and Ly$\alpha$ RT;
 CHIANTI metal-line cooling; the \emph{JFNK Newton steady-state finish}
-(ATES has \emph{no} implicit steady-state solver --- it is
+(ATES has \emph{no} implicit steady-state solver: it is
 time-relaxation only); the semi-implicit energy + Brent $T$-solve; the
 \emph{smooth valve} (\texttt{Valve eps}) and the \emph{transonic} and
 \emph{hot-Parker} IC families; the dynamic base-pressure correction
@@ -132,14 +132,14 @@ EXHALE-era findings.
 
 \subsection{Lower boundary}
 
-\paragraph{Salz.} Two quantities fixed at the bottom --- \emph{density
-and pressure} --- and \emph{none} at the top, which the paper notes is
+\paragraph{Salz.} Two quantities fixed at the bottom (\emph{density
+and pressure}), and \emph{none} at the top, which the paper notes is
 ``the correct choice for a subsonic inflow and a supersonic outflow.''
 The base is anchored at $n\approx10^{14}\,\mathrm{cm^{-3}}$,
 $p\approx14\,\mu$bar (set from $T_{\rm eq}$). Crucially, \emph{the
 boundary-cell velocity is copied from the first interior cell each step
-but only inflow (wind-feeding) is allowed; otherwise it is set to zero}
---- a choice the paper explicitly introduces ``to dampen oscillations
+but only inflow (wind-feeding) is allowed; otherwise it is set to zero}:
+a choice the paper explicitly introduces ``to dampen oscillations
 that appear with steep density gradients at the lower boundary.''
 
 This is \textbf{exactly EXHALE's one-way velocity valve}
@@ -170,7 +170,7 @@ substantive difference is the \textbf{H$_2$ molecular base}: it places
 the lower boundary deeper, in a near-hydrostatic molecular layer, which
 is what lets Kubyshkina follow boil-off (low-gravity, nearly hydrostatic
 but rapidly escaping) atmospheres smoothly. EXHALE's atomic H/He base
-does not represent that layer and is correspondingly weaker there ---
+does not represent that layer and is correspondingly weaker there:
 the same regime where EXHALE's breathing base is hardest to converge.
 
 \subsection{The base \emph{radius} is the real lever, not the base
@@ -181,7 +181,7 @@ Murray-Clay et al.\ (2009) is the standard reference for \emph{how
 much the lower BC matters}, and their answer is sharp: within physically
 realistic ranges, the mass-loss rate is \textbf{insensitive} to the base
 density, temperature, and ionization fraction (so long as
-$\tau_{\rm base}\gg1$, $T_{\rm base}\ll10^4$\,K, $f_+\ll1$) --- they call
+$\tau_{\rm base}\gg1$, $T_{\rm base}\ll10^4$\,K, $f_+\ll1$), they call
 the solution ``quasi-unique.'' What \Mdot\ \emph{is} strongly sensitive
 to is the base \emph{radius} $r_{\min}$: $\dot M\propto R_{\rm pl}^3$, so
 a 20\% change in $r_{\min}$ moves \Mdot\ by up to a factor of two. Salz
@@ -196,7 +196,7 @@ EOS terms are \emph{not} the lever (consistent with the
 choice of base \emph{radius} $R_0$ is. This echoes EXHALE's own
 WASP-121b experience, where moving the base from the 4-mbar transit
 radius ($R_0=1.766$) to the correct 1-$\mu$bar level ($R_0=2.058$) was
-what brought Case A into agreement with Huang+2023 --- the same
+what brought Case A into agreement with Huang+2023: the same
 ``base-radius is the lever'' effect Murray-Clay quantify. Practical
 takeaway: spend effort getting $R_0$ (and the pressure level it
 corresponds to) right; do not over-tune $\rho_{\rm bc}$ or $T_0$.
@@ -221,7 +221,7 @@ EXHALE documents this explicitly (\texttt{EXHALE\_BC\_and\_IC.tex}\,\S3).
 \midrule
 Method & single fixed IC (tuned to a medium-\Mdot\ atmosphere), same for all planets & \textbf{automatic selection of an initial profile for each planet} & cold hydrostatic (default) / transonic / hot-Parker \\
 Stated property & ``final steady state does not depend on the IC'' & auto-selection accelerates a 7000-model grid & same \Mdot\ regardless; convergence is momentum-($du$)-gated \\
-Transient & two shock waves cross in the first hours, then settle & --- & breathing-base limit cycle \\
+Transient & two shock waves cross in the first hours, then settle & - & breathing-base limit cycle \\
 \bottomrule
 \end{tabular}
 \caption{Initial-condition strategies.}
@@ -234,12 +234,12 @@ the key engineering idea}: choosing an appropriate starting atmosphere
 at each grid point is what makes mass-producing 7000 models tractable
 and what lets the code launch winds across the full escape-parameter
 range, including the boil-off cases that do not launch from a cold
-static start. EXHALE already has the \emph{ingredients} for this --- the
+static start. EXHALE already has the \emph{ingredients} for this: the
 transonic and hot-Parker IC families exist precisely for ``won't launch
 from hydrostatic'' cases. This was written when the choice was still
 \emph{manual} (input keys); it is now automated by \texttt{IC mode: auto}
 (\texttt{select\_IC\_auto} in \texttt{set\_IC.f90}), which probes the cold
-sonic point and picks the family --- the design is in
+sonic point and picks the family: the design is in
 \texttt{auto\_ic\_design.md}.
 
 EXHALE's IC behavior is, however, the best-documented of the three: the
@@ -247,7 +247,7 @@ benchmark
 (\texttt{initial\_\allowbreak condition\_\allowbreak benchmark.pdf})
 quantifies that a
 naive full-Parker density seed diverges (self-amplifying breathing)
-while the warm-seed converges to the same \Mdot\ with no speedup ---
+while the warm-seed converges to the same \Mdot\ with no speedup,
 because convergence is gated by the slow momentum relaxation, not the
 thermal/ionization relaxation a warm seed shortcuts.
 
@@ -277,7 +277,7 @@ steady state.
 \textbf{Salz advantages:}
 \begin{itemize}
 \item \emph{CLOUDY's full non-equilibrium photoionization with
-  self-consistent radiative transfer and molecular/metal cooling} ---
+  self-consistent radiative transfer and molecular/metal cooling}:
   fundamentally more accurate microphysics than EXHALE's ``ionization
   equilibrium + prescribed cooling fits,'' especially in the
   radiative-equilibrium base layers.
@@ -309,7 +309,7 @@ steady state.
 \begin{itemize}
 \item \emph{Robust across the full boil-off / blow-off range.} The
   molecular-H$_2$ base plus automatic IC for each planet let it span escape
-  parameters $\Lambda\sim20$--$80$ and produce 7000 models --- precisely
+  parameters $\Lambda\sim20$--$80$ and produce 7000 models: precisely
   the low-gravity / nearly-hydrostatic regime where EXHALE's breathing
   base is hardest to converge (e.g.\ HD\,189733\,b).
 \item Simple and fast: ideal for the large model grids used in planetary
@@ -323,13 +323,13 @@ written.} EXHALE now selects the IC family automatically
 molecular base (\texttt{Molecular chemistry:}, \texttt{Molecular base:};
 default off, and the molecular base is auto-coupled whenever the chemistry
 is on).  HD~189733\,b itself converges to Newton grade since the JFNK
-line-search fix of 2026-08-11 --- \texttt{docs/newton\_scaling\_and\_base\_wall.md}
+line-search fix of 2026-08-11: \texttt{docs/newton\_scaling\_and\_base\_wall.md}
 \S10 and \texttt{docs/hd189\_base\_checkerboard.md} \S10.  What remains is
 the cost per case, not the convergence.
 
 The underlying scheme (Erkaev+2016) is a two-step MacCormack
 predictor--corrector, \emph{second-order} and explicitly noted as
-``suitable for smooth solutions without sharp discontinuities'' --- i.e.\
+``suitable for smooth solutions without sharp discontinuities'': i.e.\
 it lacks the shock-capturing of EXHALE's HLLC. It reaches steady state by
 time relaxation (no artificial viscosity stated), and the paper validates
 it against the analytic Parker (1958) wind and against Murray-Clay+2009
@@ -360,7 +360,7 @@ Two lessons for EXHALE:
   enforce the critical-point conditions ``found, not surprisingly,
   breezes instead.'' EXHALE's JFNK Newton finish is the time-domain
   analogue of their relaxation, but it does not explicitly impose the
-  sonic-point conditions --- a possible robustness upgrade for the
+  sonic-point conditions: a possible robustness upgrade for the
   hard-to-launch cases, and an alternative to the transonic IC.
 \item \emph{Continuation/homotopy is how they launch hard cases.} They
   build the final solution by ``solving successively more complicated
@@ -393,7 +393,7 @@ under \texttt{wind-ae-main/}. It keeps the MC09 BVP relaxation core
 (Numerical Recipes \texttt{solvde} from the base to the sonic point,
 Bulirsch--Stoer outward) and adds atomic metals, multifrequency XUV with
 X-ray secondary/K-shell ionization, a toggleable tidal $+$ centrifugal
-potential, and --- importantly --- a Python wrapper that implements
+potential, and (importantly) a Python wrapper that implements
 exactly the continuation/homotopy scheme of \S\ref{sec:mc}
 (\texttt{ramp\_to}, \texttt{ramp\_grav}, \texttt{ramp\_Ftot},
 \texttt{polish\_bcs}). Limitations relative to EXHALE: one ionization
@@ -410,7 +410,7 @@ The following was verified hands-on (2026-06-13), ramping from the
 included MC09 fiducial to EXHALE's own \texttt{input.inp} parameters with
 matched integrated XUV flux (caveat: Wind-AE's included multifrequency
 spectrum vs.\ EXHALE's power law; substellar vs.\ \texttt{Rate/2}
-heating geometry — factor-of-a-few agreement is the realistic target):
+heating geometry: factor-of-a-few agreement is the realistic target):
 
 \begin{itemize}
 \item \textbf{HD\,209458b} (EXHALE values $0.720\,M_J$, $1.401\,R_J$,
@@ -418,11 +418,11 @@ heating geometry — factor-of-a-few agreement is the realistic target):
   $T_{\rm max}=8\,640$\,K, substellar $4\pi r^2\rho v = 10^{10.78}$
   g\,s$^{-1}$ at the sonic point ($r_s=3.49\,R_{\rm pl}$). EXHALE's own
   metals-off run gives a flat $4\pi r^2\rho v = 10^{10.84}$ and
-  $T_{\rm max}=8\,300$\,K --- 15\% / 4\% agreement from a completely
+  $T_{\rm max}=8\,300$\,K: 15\% / 4\% agreement from a completely
   independent method.
 \item \textbf{HD\,189733b} (at the time of writing, the planet where
   EXHALE's time marching limit-cycled at $du\sim2$ and never converged; it
-  converges to Newton grade since 2026-08-11 ---
+  converges to Newton grade since 2026-08-11:
   \texttt{docs/newton\_scaling\_and\_base\_wall.md} \S10): the BVP relaxation
   \emph{converges cleanly} ($T_{\rm max}=11\,300$\,K,
   $r_s=3.83\,R_{\rm pl}$, global $\dot M = 10^{10.2}$ with their 0.33
@@ -435,7 +435,7 @@ heating geometry — factor-of-a-few agreement is the realistic target):
 \item \textbf{WASP-121b} (near-RLOF, $F_{\rm XUV}\sim1.6\times10^{6}$):
   the \texttt{ramp\_to} continuation stalls around half the target flux
   (step size driven to $\sim$1\%); the deep-RLOF $+$ extreme-XUV corner
-  appears not (easily) reachable --- consistent with the sonic-anchored
+  appears not (easily) reachable, consistent with the sonic-anchored
   formulation's difficulty when the critical point approaches L1.
   EXHALE's Roche-potential handling (Phase 4) has no replacement here.
 \end{itemize}
@@ -451,7 +451,7 @@ flux-conservingly above its $R_{\rm max}$, and writes EOS-consistent
 pl}$, two-stage PLM$\to$WENO3, $du_{\rm th}=10^{-3}$):
 \begin{itemize}
 \item \emph{Hazard first:} with plain marching the run ``converges''
-  \textbf{in 3 steps} --- a false stop. EXHALE's $du$ criterion measures
+  \textbf{in 3 steps}, a false stop. EXHALE's $du$ criterion measures
   the spatial spread of $\rho v r^2$, which a BVP solution satisfies
   \emph{by construction} ($du=2.5\times10^{-4}$ at load); the state is
   still Wind-AE's solution, not EXHALE's fixed point. Any Wind-AE-seeded
@@ -459,8 +459,8 @@ pl}$, two-stage PLM$\to$WENO3, $du_{\rm th}=10^{-3}$):
   trap as the $\sim$5\% $du$-stop spread documented in
   \texttt{auto\_ic\_design.md} \S6.1, in its most extreme form).
 \item \emph{Genuine value second:} under Newton-mode marching (no $du$
-  stop) the loaded state evolves smoothly toward EXHALE's own attractor
-  --- flux level $10^{10.78}\to10^{10.68}$, spread
+  stop) the loaded state evolves smoothly toward EXHALE's own attractor,
+  flux level $10^{10.78}\to10^{10.68}$, spread
   $2.5\times10^{-4}\to6.6\times10^{-2}$ (peak) $\to2.1\times10^{-2}$ at
   146k steps, monotone, no NaN. The \textbf{cold-start control crashed}
   (NaN at the breathing base, $r\simeq1.18$, step 172\,469, still at
@@ -470,7 +470,7 @@ pl}$, two-stage PLM$\to$WENO3, $du_{\rm th}=10^{-3}$):
 In short: Wind-AE is the working realization of both \S\ref{sec:mc}
 lessons (sonic-point anchoring \emph{and} continuation), usable today as
 an independent $\dot M$ oracle and as a warm-start IC generator for
-EXHALE's hardest convergence regime --- with the explicit caveat that
+EXHALE's hardest convergence regime, with the explicit caveat that
 its solution must never be accepted through the bare $du$ stop.
 
 \section{What EXHALE should take away}
@@ -481,27 +481,27 @@ its solution must never be accepted through the bare $du$ stop.
   same anti-oscillation reason; EXHALE's $\delta p_{\rm bc}$, smooth
   valve, and metal EOS sit on top of it. The lower BC is not a weak
   point.
-\item \textbf{The Newton finish is a genuine, unique strength} --- only
+\item \textbf{The Newton finish is a genuine, unique strength}: only
   EXHALE converges to the fixed point rather than time-averaging. The
   remaining difficulty is the marching-time breathing base in
   low-\Mdot\ / low-gravity cases. \emph{(This item originally read ``the
   real limitation is not the solver but the breathing base''. On the cases
   measured it was the solver: the JFNK residual floor came from its diagonal
-  scaling and stagnation watchdog, both replaced 2026-08-10 ---
+  scaling and stagnation watchdog, both replaced 2026-08-10,
   \texttt{docs/newton\_scaling\_and\_base\_wall.md}.)}
 \item \textbf{The most worthwhile idea to adopt is Kubyshkina's
   automatic IC selection} (and, relatedly, a deeper / molecular base for
   boil-off). EXHALE already has the transonic and hot-Parker IC families
   and computes the escape parameter $b_0\equiv\Lambda = GM_{\rm pl}\,
-  m_{\rm H}/(k_BT_0R_{\rm pl})$. The automatic rule this item asked for ---
-  pick the IC family from a cold sonic-point probe --- was implemented as
+  m_{\rm H}/(k_BT_0R_{\rm pl})$. The automatic rule this item asked for
+  (pick the IC family from a cold sonic-point probe) was implemented as
   \texttt{IC mode: auto}; see \texttt{auto\_ic\_design.md}. A deeper /
   molecular base for boil-off is separate, and is the lower-atmosphere work.
 \item \textbf{The microphysics ceiling is Salz/CLOUDY.} The known
   limitations of EXHALE's equilibrium + fitted cooling (the
   \texttt{use\_2lev\_cool} branch, fine-structure floors, etc.\ in
   \texttt{TO\_BE\_DONE.md}) are exactly what a non-equilibrium RT
-  treatment like TPCI would resolve --- a long-term direction, not a
+  treatment like TPCI would resolve: a long-term direction, not a
   near-term change.
 \item \textbf{Tune the base \emph{radius}, not the base values}
   (Murray-Clay+2009; \S\ref{sec:rmin}). \Mdot\ is quasi-insensitive to
@@ -522,7 +522,7 @@ its solution must never be accepted through the bare $du$ stop.
   steady HD\,189733b solution exists (the limit cycle is numerics, not
   physics), cross-checks $\dot M$ at the 15\% level on HD\,209458b, and
   its solutions work as warm-start ICs that survive where the cold start
-  NaN-crashes --- provided the run is finished with
+  NaN-crashes, provided the run is finished with
   \texttt{Solver: Newton}, never the bare $du$ stop.
 \end{enumerate}
 

@@ -22,7 +22,7 @@ Two things must be read with that conclusion:
 - The corrected clima refuses two compositions the old build solved,
   He/H = 9.4 and 9.5. That is **not a regression of this change**: the same
   solver defect is in 0.8.4, which refuses two others on the same grid.
-  Diagnosed. Section 4.4, and `Update_EXHALE.md` section 91.
+  Diagnosed. Section 4.4, and `Update_EXHALE_stage1.md` section 91.
 
 ## 1. What was built
 
@@ -233,7 +233,7 @@ isolated failure of the bracketing scan of section 2.3, cause not diagnosed --
 and counted a net of three failures removed and one introduced. **The
 measurement contradicts both.** It is recorded in
 `LHS1140b/exhale/clima_bracket_diagnosis/` and written up as section 91 of
-`docs/Update_EXHALE.md`; the three points that matter here are:
+`docs/Update_EXHALE_stage1.md`; the three points that matter here are:
 
 - **The bracketing scan is not the cause.** The root is inside the interval it
   scans and the residual crosses zero once, monotonically, in the last scan

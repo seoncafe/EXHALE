@@ -8,12 +8,12 @@
       !   R(:,3) = dF_E - S_E - (heat-cool)
       !                       - (w F_mu + q_mu + conduction)   (energy)
       !
-      ! dF, S come from the existing Reconstruct + RK_rhs (HLLC; alpha is
-      ! unused by the HLLC flux so 0 is passed). heat/cool are supplied by
-      ! the caller, which decides how they were obtained: the in-loop
-      ! monitor reuses the current step's values; the diagnostic and the
-      ! Newton residual first call ioniz_eq (local ionization-equilibrium
-      ! elimination) to get heat/cool consistent with u.
+      ! dF, S come from the existing Reconstruct + RK_rhs. heat/cool are
+      ! supplied by the caller, which decides how they were obtained: the
+      ! in-loop monitor reuses the current step's values; the diagnostic
+      ! and the Newton residual first call ioniz_eq (local
+      ! ionization-equilibrium elimination) to get heat/cool consistent
+      ! with u.
       !
       ! The molecular-transport terms are the operator-split stage that
       ! viscous_conduction_step relaxes in the marching loop, evaluated by
@@ -45,7 +45,10 @@
                 residual_row_scale, carrier_row_scale,               &
                 relnorm_over_cells, state_scales_of_cell,            &
                 flux_spread_of_state, steady_gates_met,              &
-                flux_spread_above_radius
+                flux_spread_above_radius,                            &
+                n_cells_without_chemical_root,                       &
+                row_terms_describe_state,                            &
+                face_mass_flux_of_state
 
       ! THE TERMS EACH CONSERVATION ROW IS BUILT FROM, as assemble_residual
       ! last produced them, together with the state they belong to. The three
@@ -64,6 +67,12 @@
       ! different one is answered from ITS terms (refresh_row_terms) rather
       ! than from whatever the caller last evaluated.
       real*8, dimension(:),   allocatable :: face_mass_flux_r2
+      ! The same face mass flux without the area factor, F_rho(j) at
+      ! r_edg(j).  It is what every species row rides on: a transported
+      ! species crosses a face carrying F_rho times its face mass fraction
+      ! (species_face_flux.f90), so a stationary species row has to read the
+      ! mass flux of the very state whose mass row was assembled.
+      real*8, dimension(:),   allocatable :: face_mass_flux
       real*8, dimension(:),   allocatable :: momentum_largest_term
       real*8, dimension(:),   allocatable :: energy_largest_term
       real*8, dimension(:,:), allocatable :: state_of_row_terms
@@ -72,7 +81,7 @@
 
       ! ------------------------------------------------------!
 
-      subroutine reconstruction_continuation_rhs(u_in, alpha, WL, WR, dF, S)
+      subroutine reconstruction_continuation_rhs(u_in, WL, WR, dF, S)
       ! Right-hand side of the homotopy between the two discretizations,
       !
       !     R_lambda(u) = (1 - lambda) R_PLM(u) + lambda R_WENO3(u),
@@ -97,7 +106,6 @@
       ! single-scheme stages are: the continuation cannot manufacture a
       ! positivity failure that neither scheme has.
       real*8, dimension(3,1-Ng:N+Ng), intent(in)  :: u_in
-      real*8,                         intent(in)  :: alpha
       real*8, dimension(3,1-Ng:N+Ng), intent(out) :: WL, WR, dF, S
       real*8, dimension(3,1-Ng:N+Ng) :: WLw, WRw, dFw, Sw, ff_plm
       real*8, dimension(1-Ng:N+Ng)   :: fp_plm
@@ -107,7 +115,7 @@
 
       if (.not. recon_lambda_on) then
          call Reconstruct(u_in, WL, WR)
-         call RK_rhs(u_in, WL, WR, alpha, dF, S)
+         call RK_rhs(u_in, WL, WR, dF, S)
          return
       endif
 
@@ -120,21 +128,21 @@
       if (lam .le. 0.0d0) then
          rec_method = 'PLM';    use_plm = .true.;  use_weno3 = .false.
          call Reconstruct(u_in, WL, WR)
-         call RK_rhs(u_in, WL, WR, alpha, dF, S)
+         call RK_rhs(u_in, WL, WR, dF, S)
       else if (lam .ge. 1.0d0) then
          rec_method = 'WENO3';  use_plm = .false.; use_weno3 = .true.
          call Reconstruct(u_in, WL, WR)
-         call RK_rhs(u_in, WL, WR, alpha, dF, S)
+         call RK_rhs(u_in, WL, WR, dF, S)
       else
          rec_method = 'PLM';    use_plm = .true.;  use_weno3 = .false.
          call Reconstruct(u_in, WL, WR)
-         call RK_rhs(u_in, WL, WR, alpha, dF, S)
+         call RK_rhs(u_in, WL, WR, dF, S)
          ff_plm = face_flux
          fp_plm = face_p
 
          rec_method = 'WENO3';  use_plm = .false.; use_weno3 = .true.
          call Reconstruct(u_in, WLw, WRw)
-         call RK_rhs(u_in, WLw, WRw, alpha, dFw, Sw)
+         call RK_rhs(u_in, WLw, WRw, dFw, Sw)
 
          dF = om*dF + lam*dFw
          S  = om*S  + lam*Sw
@@ -165,7 +173,7 @@
       real*8, dimension(3,1-Ng:N+Ng) :: WL, WR, dF, S, W
       real*8, dimension(1-Ng:N+Ng)   :: Tc, Smom, Sene
 
-      call reconstruction_continuation_rhs(u, 0.0d0, WL, WR, dF, S)
+      call reconstruction_continuation_rhs(u, WL, WR, dF, S)
       R(1,:) = dF(1,:) - S(1,:)
       R(2,:) = dF(2,:) - S(2,:)
       R(3,:) = dF(3,:) - S(3,:) - (heat - cool)
@@ -178,6 +186,12 @@
          R(2,:) = R(2,:) - Smom
          R(3,:) = R(3,:) - Sene
       endif
+      ! THE LOWEST GHOST CELL CARRIES NO EQUATION: it has no lower face, so
+      ! there is no balance to state there and its row is zero (RK_rhs
+      ! defines the same column of dF and S as zero for the same reason).
+      ! Written explicitly so that no reader of R can find a heating rate
+      ! standing alone in a row that has no fluxes.
+      R(:,1-Ng) = 0.0d0
       call store_row_terms(u, dF, S, heat, cool, Smom, Sene)
 
       end subroutine assemble_residual
@@ -244,10 +258,12 @@
       integer :: j
       if (.not. allocated(face_mass_flux_r2))                            &
          allocate(face_mass_flux_r2(1-Ng:N+Ng),                          &
+                  face_mass_flux(1-Ng:N+Ng),                             &
                   momentum_largest_term(1-Ng:N+Ng),                      &
                   energy_largest_term(1-Ng:N+Ng),                        &
                   state_of_row_terms(3,1-Ng:N+Ng))
       do j = 1-Ng, N+Ng
+         face_mass_flux(j)        = face_flux(1,j)
          face_mass_flux_r2(j)     = face_flux(1,j)*r_edg(j)*r_edg(j)
          momentum_largest_term(j) = max(abs(dF(2,j)), abs(S(2,j)),       &
                                         abs(Smom(j)))
@@ -274,7 +290,7 @@
       ! FINITE-DIFFERENCE PROBES -- measured: 15 of order 1e5 scale requests on
       ! the molecular hot Uranus and 45 on WASP-121b, none of them a state the
       ! run adopts -- so the energy row of a probe can be scaled by a
-      ! neighbouring state's radiative terms. That is acceptable for a
+      ! neighboring state's radiative terms. That is acceptable for a
       ! rejected probe and would not be for an accepted state, which never
       ! takes this path because the solve evaluates its residual first.
       real*8, dimension(3,1-Ng:N+Ng), intent(in) :: u
@@ -287,7 +303,7 @@
       ! measurement of a state, not a step of the run, and the count the run
       ! reports must stay the count of its own updates.
       n_limited_before = n_faces_positivity_limited
-      call reconstruction_continuation_rhs(u, 0.0d0, WL, WR, dF, S)
+      call reconstruction_continuation_rhs(u, WL, WR, dF, S)
       n_faces_positivity_limited = n_limited_before
       if (.not. allocated(face_mass_flux_r2)) then
          ! No sweep has run yet, so there are no radiative terms to keep.
@@ -296,6 +312,7 @@
          return
       endif
       do j = 1-Ng, N+Ng
+         face_mass_flux(j)        = face_flux(1,j)
          face_mass_flux_r2(j)     = face_flux(1,j)*r_edg(j)*r_edg(j)
          momentum_largest_term(j) = max(abs(dF(2,j)), abs(S(2,j)))
          energy_largest_term(j)   = max(abs(dF(3,j)), abs(S(3,j)),       &
@@ -303,6 +320,50 @@
       enddo
       state_of_row_terms = u
       end subroutine refresh_row_terms
+
+      ! ------------------------------------------------------!
+
+      subroutine face_mass_flux_of_state(rho_state, Frho)
+      ! THE FACE MASS FLUX EVERY SPECIES ROW RIDES ON.  A transported species
+      ! crosses a face carrying F_rho times its face mass fraction
+      ! (species_face_flux.f90), so a stationary species balance and the
+      ! marching stages are the same operator only if they read the same
+      ! F_rho: the one the Riemann solve of THIS state returned and the mass
+      ! row of this state differences.
+      !
+      ! IT IS THE STORED ONE, AND THE STATE IS CHECKED.  The caller supplies
+      ! the density of the state it is measuring; the row terms carry the
+      ! state they were built from, so a caller that has not assembled the
+      ! mass row of this state is refused here rather than silently given the
+      ! flux of another one.  Every path that measures a species balance --
+      ! the stationary residual, the certification of a returned state, the
+      ! marching stop report -- assembles that residual first.
+      real*8, dimension(1-Ng:N+Ng), intent(in)  :: rho_state
+      real*8, dimension(1-Ng:N+Ng), intent(out) :: Frho
+      integer :: j
+
+      if (.not. allocated(face_mass_flux)) then
+         write(*,'(A)') ' ERROR: a species transport balance was asked'// &
+              ' for before any mass row was assembled; the face mass'//   &
+              ' flux it rides on does not exist yet'
+         error stop 1
+      endif
+      ! THE PHYSICAL CELLS IDENTIFY THE STATE.  The ghosts are derived from
+      ! them by the boundary condition and a caller may hold a copy of the
+      ! density written before the last ghost fill, which is a copy of the
+      ! same state; the fluxes stored here were built from the ghosts that
+      ! fill left, which is the state the mass row differences.
+      do j = 1, N
+         if (state_of_row_terms(1,j) .ne. rho_state(j)) then
+            write(*,'(A,I0)') ' ERROR: the stored face mass flux belongs'//&
+                 ' to another state than the one whose species balance'//  &
+                 ' was asked for; first differing cell ', j
+            error stop 1
+         endif
+      enddo
+      Frho = face_mass_flux
+
+      end subroutine face_mass_flux_of_state
 
       ! ------------------------------------------------------!
 
@@ -555,7 +616,7 @@
       ! is steady -- no region can be averaged away by another. With the
       ! cell-wise maximum inside relnorm_over_cells the split is no longer
       ! what protects the layer, but it still keeps the two regions' numbers
-      ! reportable separately, which is what the JFNK's per-region line uses.
+      ! reportable separately, which is what the JFNK's region line uses.
       real*8, dimension(3,1-Ng:N+Ng), intent(in)  :: R
       real*8, dimension(3,1-Ng:N+Ng), intent(in)  :: u
       real*8, dimension(3),           intent(out) :: rc
@@ -644,7 +705,7 @@
       if (cmax(3) .gt. cmax(k)) k = 3
       j = cj(k)
       n_lim = n_faces_positivity_limited
-      call reconstruction_continuation_rhs(u, 0.0d0, WL, WR, dF, S)
+      call reconstruction_continuation_rhs(u, WL, WR, dF, S)
       n_faces_positivity_limited = n_lim
       write(*,'(A,A,A,I0,A,F9.5,A)') '   worst cell: row ', rname(k),        &
            ' cell ', j, ' at r =', r(j), ' -- signed terms [code units]:'
@@ -743,9 +804,69 @@
 
       ! ------------------------------------------------------!
 
+      logical function row_terms_describe_state(u) result(ok)
+      ! WHETHER THE STORED ROW TERMS BELONG TO THE STATE u.
+      !
+      ! residual_row_scale divides by terms that store_row_terms left behind,
+      ! so a caller that has not assembled the residual of THIS state would
+      ! be scaling its rows by another state's physics -- and before any
+      ! assembly at all the arrays do not exist. store_row_terms keeps the
+      ! state the terms came from beside them precisely so that the question
+      ! can be asked; a certification that cannot answer it reports the
+      ! hydrodynamic rows as unavailable rather than as a number.
+      real*8, dimension(3,1-Ng:N+Ng), intent(in) :: u
+      ok = allocated(face_mass_flux_r2) .and. allocated(state_of_row_terms)
+      if (.not. ok) return
+      ok = all(state_of_row_terms .eq. u)
+      end function row_terms_describe_state
+
+      ! ------------------------------------------------------!
+
+      pure integer function n_cells_without_chemical_root(acc_n)        &
+                                                            result(n_no)
+      ! THE CELLS OF ONE EQUILIBRIUM SWEEP WHOSE ACCEPTED COMPOSITION IS NOT
+      ! A ROOT OF THE CHEMICAL NETWORK, and the single reading of the
+      ! acceptance classes every consumer of them uses.
+      !
+      ! The classes are defined where they are produced (ionization_equilib-
+      ! rium.f90, the acceptance block of each branch). Four of the six are
+      ! ROOTS of the requested equations: the state is inside the element
+      ! simplex and the largest normalized reaction residual of any row is at
+      ! or below ieq_res_tol.
+      !
+      !   1  root, and the cell solver also reported convergence
+      !   2  root without a converging solver status (MINPACK info is an
+      !      xtol statement about the step, so it is neither sufficient nor
+      !      necessary; the residual decides)
+      !   3  a state projected onto the element budget -- the molecular
+      !      clamp, or the uncoupled ionization balance handed back -- whose
+      !      residual, RECHECKED after the projection, still marks a root
+      !   5  root of the constrained element-conserving continuation solve,
+      !      certified by the same residual test as class 1
+      !
+      !   4  NOT a root: the largest reaction residual is above ieq_res_tol,
+      !      or it is not a finite number. Such a state is kept only by the
+      !      relaxation amnesty, so that a cold start may pass through it,
+      !      and the chemistry does not describe it.
+      !   6  NOT a root either, and the candidate was so far from one
+      !      (residual above ieq_nonroot_res_cap) that it was not adopted at
+      !      all: the cell kept the composition it entered the sweep with.
+      !      That composition solved an EARLIER cell state, not this one, so
+      !      the chemistry does not describe this state.
+      !
+      ! A class-5 root therefore has the validity of a class-1 root: the
+      ! continuation is how the root was FOUND, not a weaker certificate.
+      ! Classes 4 and 6 are the two that count here.
+      integer, intent(in) :: acc_n(6)
+      n_no = acc_n(4) + acc_n(6)
+      end function n_cells_without_chemical_root
+
+      ! ------------------------------------------------------!
+
       logical function steady_gates_met(rnorm, u, resid_tol, fspread,   &
                                         carrier_is_unknown,             &
-                                        carrier_relnorm) result(ok)
+                                        carrier_relnorm,                &
+                                        n_no_chem_root) result(ok)
       ! THE ACCEPTANCE TEST of a steady state, and the ONLY one: every
       ! route that may stop a run on "the equations are satisfied" -- the
       ! JFNK and PTC solves, and the marching loop under "Resid tol:" --
@@ -766,6 +887,21 @@
       !                   the two states of section 126.6 differ by a factor
       !                   25 in the spread and by only 1.9 to 5.7 in every
       !                   residual norm that was tried (section 133).
+      !   chemistry gate  no cell of the state carries a composition that is
+      !                   not a root of the chemical network (acceptance
+      !                   class 4, n_cells_without_chemical_root). Heat and
+      !                   cool in the energy row are evaluated on the
+      !                   accepted composition, so on such a cell the row is
+      !                   a number computed on a state the chemistry does not
+      !                   describe and it says nothing about how far the
+      !                   hydrodynamics is from steady. The count is passed in
+      !                   because it belongs to the equilibrium sweep of the
+      !                   state being judged, not to the residual.
+      !                   A CALLER THAT OMITS IT MAKES NO STATEMENT ABOUT THE
+      !                   CHEMISTRY of the state, and the gate then rests on
+      !                   the other three; the marching stop is such a caller
+      !                   today, because the marching loop does not ask
+      !                   ioniz_eq for the ledger of its sweep.
       !   carrier gate    the carrier row balances to carrier_resid_th of its
       !                   own largest terms (section 139). Applied only where
       !                   n(H2) is among the unknowns, which the caller states
@@ -787,6 +923,7 @@
       real*8,                         intent(out) :: fspread
       logical,                        intent(in)  :: carrier_is_unknown
       real*8,                         intent(in)  :: carrier_relnorm
+      integer, optional,              intent(in)  :: n_no_chem_root
       real*8 :: fmean
       call flux_spread_of_state(u, fspread, fmean)
       ok = (rnorm .lt. resid_tol)
@@ -794,6 +931,7 @@
                                           (fspread .lt. flux_spread_th)
       if (carrier_is_unknown) ok = ok .and.                               &
                                    (carrier_relnorm .lt. carrier_resid_th)
+      if (present(n_no_chem_root)) ok = ok .and. (n_no_chem_root .eq. 0)
       end function steady_gates_met
 
       ! End of module

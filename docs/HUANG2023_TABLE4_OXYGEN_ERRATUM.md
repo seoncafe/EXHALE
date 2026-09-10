@@ -61,7 +61,7 @@ He+ + H : 1.25e-15 (T/300)^0.25        [no exponential]
 ```
 
 `IP(He I) - IP(H I) = 24.5874 - 13.5984 = 10.989 eV`, i.e. **12.752** in units
-of `1e4 K` — against the printed 12.75. Exact, and on the `He + H+` row, which
+of `1e4 K`: against the printed 12.75. Exact, and on the `He + H+` row, which
 is the endothermic reactant pair. Carbon is the opposite case,
 `IP(C) = 11.26 < IP(H)`, and its exponential sits on `C+ + H`, again the
 endothermic side.
@@ -93,10 +93,10 @@ ionizing direction the **smaller** of the two, as an endothermic channel must be
 **MOCASSIN 3.x** (the external photoionization code, not a file of this
 repository), `source/update_mod.f90:1671`, stores
 `chex(8,1) = (1.04, 3.15e-2, -0.61, -9.73)` with **no Boltzmann factor**, and
-its `chex` comments label the product ion, so that entry is `O+ + H0 -> O0 + H+`
-— the exothermic direction, correctly barrierless. Its rate magnitude is a
+its `chex` comments label the product ion, so that entry is `O+ + H0 -> O0 + H+`,
+the exothermic direction, correctly barrierless. Its rate magnitude is a
 Kingdon & Ferland (1996) fit, 0.54x Huang's value at 8000 K, so MOCASSIN
-confirms only the assignment — which direction is barrierless — and not the
+confirms only the assignment (which direction is barrierless) and not the
 rate.
 
 ## The decisive numerical check
@@ -118,7 +118,7 @@ rows carry footnote `g`, which is Stancil et al. (1999, A&AS 140, 225), and
 Cloudy c25.00's two oxygen fits are TableCurve fits of that same Stancil
 calculation (stated in the comments of `source/atmdat_char_tran.cpp`). So
 Huang's two expressions and Cloudy's two fits descend from one calculation, and
-the ratios above show that the two sources attach the labels the opposite way —
+the ratios above show that the two sources attach the labels the opposite way,
 which is an independent confirmation of the exchange, not an independent
 measurement of the rate.
 
@@ -136,7 +136,7 @@ direction.
 
 Using the rows as printed makes `O0 + H+` too fast by about 27% and
 `O+ + H0` too slow by about the same, so it **overestimates the ionized fraction
-of oxygen** wherever charge exchange controls it — which, because the reaction
+of oxygen** wherever charge exchange controls it, which, because the reaction
 is near-resonant, is wherever hydrogen is partially neutral. Oxygen's ionization
 is locked to hydrogen's through this pair, so the error propagates into any
 quantity that depends on `x(O+)/x(O0)`.
@@ -149,7 +149,7 @@ and **deriving** the other from detailed balance. MOCASSIN does exactly that
 is easy to overstate: derivation does not make a code more or less error-prone.
 It changes **which** errors are possible, and **whether** they can be found.
 
-Derivation needs an energy defect, so a wrong one is possible — and since the
+Derivation needs an energy defect, so a wrong one is possible, and since the
 pair is then self-consistent by construction, no detailed-balance test can
 reveal it. Independent fitting uses no energy defect, so that error cannot
 occur; a wrong pair of rates can, and that is precisely what such a test finds.
@@ -164,12 +164,12 @@ Neither method prevented an error; one made it findable.
 
 The 2205 has no obvious provenance. The true 227.7 K coincides with the O I
 `3P2-3P1` fine-structure interval at 227.4 K, but none of the natural oxygen
-energies — `1D-3P` at 22826 K, O II `2D-4S` at 38573 K, the O/He defect at
-127294 K — is 2205.
+energies (`1D-3P` at 22826 K, O II `2D-4S` at 38573 K, the O/He defect at
+127294 K) is 2205.
 
 Two further limits on derivation. The Boltzmann factor carries only the
 asymptotic energy difference, while real charge transfer can have a
-curve-crossing barrier — Huang's own carbon row is 170000 K against an
+curve-crossing barrier: Huang's own carbon row is 170000 K against an
 ionization-potential difference of 27132 K, and deriving carbon's reverse from
 its forward rate would have erased that. And ground-term statistical weights are
 an approximation, since charge transfer often proceeds through particular

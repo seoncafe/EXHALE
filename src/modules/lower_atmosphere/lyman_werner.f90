@@ -17,11 +17,23 @@
       ! ---------------------------------------------------------------
       ! 1. Band and unattenuated rate
       !
-      ! Draine & Bertoldi (1996), ApJ 468, 269 (hereafter DB96) work with
-      ! the 912-1110 A interval: 912 A is the H Lyman edge (shortward of it
-      ! atomic H absorbs everything), and essentially all H2 pumping out of
-      ! v = 0 happens longward of 1110 A only through very weak lines
-      ! (their footnote 4).  We use the same interval.
+      ! THE BAND IS 912-1201 A.  912 A is the H Lyman edge, shortward of
+      ! which atomic H absorbs everything; 1201 A is where band B2 of the
+      ! FUV band list begins (oxygen_rates.f90), and it is also the red end
+      ! of the Lyman and Werner line list the self-shielding table is built
+      ! from.
+      !
+      ! WHY NOT DRAINE & BERTOLDI'S 912-1110 A.  Their footnote 4 says that
+      ! essentially all H2 pumping out of v = 0 happens longward of 1110 A
+      ! only through very weak lines, and in interstellar gas v = 0 is the
+      ! only level populated.  A planetary molecular base runs at
+      ! 700-3200 K, where the vibrationally excited levels are populated and
+      ! pump in lines that lie longward of 1110 A; at saturation those lines
+      ! carry about a third of the dissociations the table rates
+      ! (docs/p38_line_overlap_shielding.md sec. 4.4).  The band ran to
+      ! 1110 A until 2026-09-06 while the table's line list ran past it, and
+      ! the table then rated 45 per cent more line absorptions than the beam
+      ! lost (sec. 3a).  One band, one line list, one normalization.
       !
       ! DB96 characterize a radiation field by the photon flux in that band
       ! (their eq. [21], F = c n_phot for a beam) and tabulate F and the
@@ -42,11 +54,18 @@
       ! so the dissociation rate per band photon is an effective cross
       ! section
       !
-      !     sigma_LW = 4.17e-11 / 1.208e7 = 3.452e-18 cm^2 .
+      !     sigma_LW = 4.17e-11 / 1.208e7 = 3.452e-18 cm^2
+      !
+      ! per photon of THEIR band.  Their numbers are not the rate: the rate
+      ! is the level-resolved table of sec. 2, normalized per photon of
+      ! 912-1201 A.  A flat F_lambda carries 1.52529 times as many photons
+      ! in 912-1201 A as in 912-1110 A (the ratio of the two int lambda
+      ! dlambda), so DB96's cross section restated per 912-1201 A photon is
+      ! 2.263e-18 cm^2, which is what it has to be compared against.
       !
       ! The code takes the band-integrated ENERGY flux at the planet,
       ! F_LW_star [erg cm^-2 s^-1], and converts with the mean photon energy
-      ! of a flat F_lam band, <hv> = 2hc/(912 A + 1110 A) = 12.2635 eV, so
+      ! of a flat F_lam band, <hv> = 2hc/(912 A + 1201 A) = 11.7354 eV, so
       !
       !     k_LW,thin = sigma_LW * F_LW_star / <hv> .
       !
@@ -85,7 +104,7 @@
       ! carries.  Replacing one fit by the other would swap one wrong curve
       ! for another, so the calculation itself is tabulated instead.
       !
-      ! THIS REVERSES A DECISION.  Update_EXHALE sec. 116 moved the rate from
+      ! THIS REVERSES A DECISION.  Update_EXHALE_stage1 sec. 116 moved the rate from
       ! DB96 to R14 on the strength of R14's own finding that DB96
       ! overestimates the shielding factor by about 3 at T = 100 K.  That
       ! finding is not in doubt -- it is reproduced from our own CLOUDY deck,
@@ -101,11 +120,11 @@
       ! live for a different quantity (sec. 3).  NEITHER IS CALLED BY THE
       ! DISSOCIATION RATE.
       !
-      ! 2b. DOPPLER PARAMETER: THERMAL ONLY, and now only for the band share.
-      ! h2_doppler_parameter returns b = (2kT/m_H2)^(1/2) with no turbulent
-      ! term.  The table needs no b argument -- b is thermal, hence a
-      ! function of T, which is already one of its axes -- so b is read only
-      ! by h2_band_equivalent_width and by the two retained fits.  CLOUDY's
+      ! 2b. DOPPLER PARAMETER: THERMAL ONLY, and now only for the two
+      ! retained fits.  h2_doppler_parameter returns b = (2kT/m_H2)^(1/2)
+      ! with no turbulent term.  The table needs no b argument -- b is
+      ! thermal, hence a function of T, which is already one of its axes --
+      ! so b is read only by the two retained fits.  CLOUDY's
       ! own Doppler width is sqrt(2kT/m + v_turb^2) with v_turb = 0 for the
       ! decks the table was built from, i.e. the same definition, so the
       ! table and this function are consistent.
@@ -150,21 +169,85 @@
       ! rate returned here is the SUBSTELLAR rate.  The run-wide dayside
       ! convention that turns it into a shell average is applied to F_LW by
       ! the caller, through fuv_band_flux and global_parameters
-      ! dayside_dilution (Update_EXHALE section 150).  The shell average of a
+      ! dayside_dilution (Update_EXHALE_stage1 section 150).  The shell average of a
       ! SHIELDED band is not 1/2 but 0.20-0.33 over a hot-Uranus molecular
       ! layer, because the slant columns away from the substellar point are
-      ! longer; that refinement is the separate, default-off shell-average
-      ! key.
+      ! longer; that refinement is NOT IMPLEMENTED, and no key asks for it,
+      ! so the dilution applied here is the optically thin one.
       !
       ! ---------------------------------------------------------------
-      ! 3. The DB96 fit, which still owns the band share
+      ! 2g. THE BEAM LOSES WHAT THE TABLE RATES, AND IT IS ONE NUMBER
       !
-      ! DB96 eq. (40) is zeta_diss = f_shield * exp(-tau_dust) *
-      ! zeta_diss(0), and their eq. (39) is the closed form of the integral
-      ! of eq. (37) -- the summed equivalent width of the pumping lines,
-      ! which is what h2_band_equivalent_width returns and what the FUV
-      ! band ledger of water_photolysis.f90 needs.  Its derivation
-      ! conditions are therefore still live, for that quantity:
+      ! The photons a beam loses to the lines over a star-ward column N are
+      ! N_b A(N) with
+      !
+      !     A(N) = int_0^N sigma_pump dN' ,   sigma_pump = sigma_diss/p_eff ,
+      !
+      ! because p_eff is the dissociations per photon REMOVED FROM THE BEAM.
+      ! The transmission of the beam past the lines is 1 - A and not
+      ! exp(-A): the lines occupy a SHARE of the band, they do not attenuate
+      ! it uniformly.  A is served from the same table as the rate,
+      ! h2_lw_band_photon_fraction_absorbed, as the exact column integral of
+      ! that table's own interpolant, so the share the continuum absorbers
+      ! of the same interval are denied is exactly the share the
+      ! dissociation rate spends.  The FUV band ledger of write_output.f90
+      ! closes in this band for that reason and not by a tolerance.
+      !
+      ! A CANNOT PASS 1, and the table respects it: MEASURED over the whole
+      ! (T, n_H) grid, A at the top of the column axis (5e21 cm^-2) is
+      ! 0.6903 to 0.9974 (h2_self_shielding_table).  Deeper than that axis
+      ! the table is clamped at its edge cross section and A goes on growing
+      ! linearly, so the caller caps it at 1 (util_ion_eq.f90); a capped A
+      ! means the lines have taken the band.
+      !
+      ! 3. THE TWO PUBLISHED FITS, WHICH OWN NOTHING ANY MORE
+      !
+      ! h2_self_shielding_richings and h2_self_shielding_draine_bertoldi are
+      ! retained so that the comparison of docs/h2_self_shielding_cloudy.md
+      ! can be reproduced from this tree.  NEITHER IS CALLED.  DB96's own
+      ! closed-form integral of their eq. (37), their eq. (39), used to
+      ! supply the band share A until 2026-09-06; it is gone, because it is
+      ! an equivalent width of 912-1110 A carrying interstellar level
+      ! populations, and the share it returned disagreed with the table's
+      ! own column integral by a factor 1.4 at N_H2 = 1e21 cm^-2 and 1300 K
+      ! and 6.6 at 1e18 cm^-2 and 2700 K, with a sign change between them.
+      !
+      ! 3a. WHAT WAS MEASURED, AND HOW IT WAS CLOSED.  The 45 per cent
+      ! excess of the FUV band ledger was two WAVELENGTH BANDS, not two
+      ! fits.  MEASURED (src/tests/physics_probe/lyman_werner_cell_mean.f90
+      ! sec. 6, 2026-09-06 with the table then shipped): the column integral
+      ! of sigma_diss/p_eff reached 1.5154 at the top of the column axis,
+      ! where a share of the band cannot pass 1, and 1.5154 is the photon
+      ! content of 912-1200 A over that of 912-1110 A for the flat-F_lambda
+      ! spectrum the table is built on, 1.5193.  The table sampled
+      ! 911.75-1200 A while being normalized per photon of 912-1110 A, and
+      ! the beam lost the DB96 eq. (39) equivalent width of 912-1110 A
+      ! alone.  On the oxygen_chemistry state the ledger rated 1.4544 line
+      ! photons for every one the beam lost, and 249.4 erg cm^-2 s^-1 of
+      ! band energy against an incident 171.5.
+      !
+      ! Both halves were repaired at once and in one direction, which is the
+      ! direction that keeps every absorber the line list has: the band is
+      ! now 912-1201 A everywhere (the FUV band list, the incident flux key,
+      ! the table's normalization and its line list), and the beam's loss is
+      ! the table's own pump absorption instead of eq. (39).
+      ! docs/p38_line_overlap_shielding.md sec. 4.4 states what the wider
+      ! band is worth to the RATE: f_shield at 1300 K is 1.03x larger at
+      ! N_H2 = 1e19 cm^-2 and 3.7x larger at 4.4e21 than on 912-1110 A.
+      !
+      ! 3b. WHAT THE DB96 NORMALIZATION IS STILL GOOD FOR.  DB96 built their
+      ! Tables 1 and 2 at the flat-F_lam spectrum of their eq. (24), chi = 1
+      ! and the T_r = 100 K row: band photon flux F = 1.208e7 cm^-2 s^-1,
+      ! pump rate zeta_pump = 3.09e-10 s^-1 and <p_diss> = 0.135, so their
+      ! PUMP cross section is 3.452e-18/0.135 = 2.557e-17 cm^2 per
+      ! 912-1110 A photon, i.e. 1.676e-17 cm^2 per 912-1201 A photon.  The
+      ! level-resolved table gives 1.7325e-17 cm^2 at 1300 K at the bottom
+      ! of its column axis, 3 per cent away.  THAT IS AN AGREEMENT OF THE
+      ! THIN LIMIT ONLY, i.e. of the SLOPE of A at zero column, and it is
+      ! the only place the two normalizations were ever comparable.
+      !
+      ! 3c. WHERE THE DB96 FIT WAS DERIVED, KEPT FOR THE RETAINED FUNCTION
+      ! AND FOR THE RECORD OF WHAT IT COULD AND COULD NOT CARRY.
       !
       ! DB96 STATE NO UPPER BOUND ON EQ. (37).  Their sec. 5.2 says only that
       ! it "does an excellent job in reproducing the initial rapid decline in
@@ -234,7 +317,7 @@
       !    exp(-tau_d) factor -- so a dust-free use of the fit is the use it
       !    was written for.
       !  - H2O and OH, when the oxygen chemistry carries them: they absorb
-      !    912-1110 A as a CONTINUUM, which is exactly the absorber
+      !    912-1201 A as a CONTINUUM, which is exactly the absorber
       !    exp(-tau) of DB96 eq. (40) stands for.  That term is therefore
       !    not zero with the option on, and it is passed in as tau_cont
       !    below.  It is zero for every run without the oxygen chemistry,
@@ -242,7 +325,7 @@
       !    existed.  The photons the H2 lines take out of the band are
       !    removed from what H2O and OH see by the same token; the other
       !    half of that bookkeeping is water_photolysis.f90 sec. 3, and
-      !    h2_band_equivalent_width below is what it needs from here.
+      !    h2_lw_band_photon_fraction_absorbed is what it needs.
       !  - Trace-metal continuum: the neutral low-IP metals (Mg I, Fe I,
       !    Si I, Ca I, Na I, K I) do photoionize inside the band, but at
       !    solar abundance and sigma ~ 1e-18 cm^2 their optical depth is
@@ -282,10 +365,13 @@
       ! caption); Wolcott-Green, Haiman & Bryan (2011) MNRAS 418, 838, as
       ! quoted by R14; Black & Dalgarno (1977) ApJS 34, 405, p. 418.
 
+      use global_parameters, only: kb_erg, mu
       use h2_self_shielding_table, only:                                 &
                 h2_lw_dissociation_cross_section,                        &
                 h2_lw_dissociation_per_pump,                             &
                 h2_lw_dissociation_per_absorbed_photon,                  &
+                h2_lw_pump_cross_section,                                &
+                h2_lw_band_photon_fraction_absorbed,                     &
                 h2_self_shielding_level_resolved,                        &
                 h2_shield_max_column
 
@@ -294,32 +380,48 @@
       ! Re-exported from h2_self_shielding_table so that a caller of the
       ! Lyman-Werner rate needs one use statement, not two.
       public :: h2_self_shielding_level_resolved,                        &
-                h2_shield_max_column
+                h2_shield_max_column,                                    &
+                h2_lw_pump_cross_section,                                &
+                h2_lw_band_photon_fraction_absorbed
       public :: h2_doppler_parameter,                                    &
                 h2_self_shielding_richings,                              &
                 h2_self_shielding_draine_bertoldi,                       &
-                h2_band_equivalent_width,                                &
-                lyman_werner_dissociation_rate, e_lw_fragment_erg,       &
+                lyman_werner_dissociation_rate,                          &
+                lyman_werner_dissociation_rate_cell_mean,                &
+                lyman_werner_band_absorption_rate_cell_mean,             &
+                e_lw_fragment_erg,                                       &
                 e_lw_photon_erg,                                         &
                 h2_lw_dissociation_cross_section,                        &
                 h2_lw_dissociation_per_pump,                             &
                 h2_lw_dissociation_per_absorbed_photon
 
-      ! Mean photon energy of a flat-F_lam 912-1110 A band [erg]:
-      ! 2hc/(912+1110 A) = 12.2635 eV.
-      real*8, parameter :: e_lw_photon_erg = 1.96483d-11
+      ! Mean photon energy of a flat-F_lam 912-1201 A band [erg]:
+      ! 2hc/(912+1201 A) = 11.7354 eV.  It is the exact photon content of
+      ! the band for a flat F_lambda, so F_LW/e_lw_photon_erg is the band
+      ! photon flux; the self-shielding table is normalized per photon of
+      ! the same band with the same number (src/utils/h2_shielding_lbl).
+      real*8, parameter :: e_lw_photon_erg = 1.88021d-11
 
       ! Kinetic energy released to the H + H pair, 0.4 eV in erg
       ! (Black & Dalgarno 1977, p. 418).
       real*8, parameter :: e_lw_fragment_erg = 6.40871d-13
 
-      ! Boltzmann constant and the H2 mass, in the same cgs values the rest
-      ! of the code uses (global_parameters kb_erg, mu); repeated here so
-      ! the module has no dependency on the parameter block. Any change to
-      ! kb_erg or mu there must be mirrored here (kb_erg -> CODATA
-      ! 1.380649e-16 on 2026-08-15, synced below).
-      real*8, parameter :: kb_lw = 1.380649d-16
-      real*8, parameter :: m_h2  = 2.0d0*1.67353284d-24
+      ! Boltzmann constant and the H2 mass: the global definitions of
+      ! parameters.f90 (one constant, one definition); H2 is two hydrogen
+      ! atoms (the binding-energy mass defect is 5e-9 of the mass).
+      real*8, parameter :: kb_lw = kb_erg
+      real*8, parameter :: m_h2  = 2.0d0*mu
+
+      ! The shape of every cross section h2_self_shielding_table serves:
+      ! a function of the star-ward H2 column, the gas temperature and the
+      ! hydrogen nucleus density.  The band rate and its cell mean are
+      ! written once against this shape and are then given sigma_diss or
+      ! sigma_pump by their callers.
+      abstract interface
+         double precision function h2_cross_section_of_state(N_H2, T, n_H)
+         real*8, intent(in) :: N_H2, T, n_H
+         end function h2_cross_section_of_state
+      end interface
 
       contains
 
@@ -423,16 +525,18 @@
       ! N_H2^-3/4 in the saturated regime, steeper than N_H2^-1/2 because of
       ! line overlap.
       !
-      ! THIS IS NOT THE RATE'S SHIELDING FUNCTION.  It is retained because
-      ! h2_band_equivalent_width below is the closed-form integral of THIS
-      ! expression and of no other, and because that integral's
-      ! normalization is exact against DB96's own tables -- and is confirmed
-      ! independently by the same level-resolved calculation the rate now
-      ! uses: sigma_pump measured off it at 1300 K is 2.610e-17 cm^2 against
-      ! the 2.557e-17 that DB96's own tables give (the normalization is set
-      ! out in the h2_band_equivalent_width header below), a 2 per cent
-      ! agreement.  The rate is on h2_lw_dissociation_cross_section
-      ! (header sec. 2).
+      ! THIS IS NOT THE RATE'S SHIELDING FUNCTION AND IT IS NOT CALLED.  It
+      ! is retained so that the comparison of
+      ! docs/h2_self_shielding_cloudy.md can be reproduced from this tree.
+      ! Its normalization does agree with the level-resolved calculation IN
+      ! THE OPTICALLY THIN LIMIT: sigma_pump measured off that table at the
+      ! bottom of its column axis at 1300 K is 1.7325e-17 cm^2 per
+      ! 912-1201 A photon against the 1.676e-17 that DB96's own tables give
+      ! restated on the same band (header sec. 3b), a 3 per cent agreement.
+      ! The COLUMN INTEGRALS of the two do not agree at all, which is a
+      ! statement about the band and not about this fit; the band share is
+      ! now h2_lw_band_photon_fraction_absorbed and the rate is
+      ! h2_lw_dissociation_cross_section (header secs. 2 and 2g).
       double precision function h2_self_shielding_draine_bertoldi(N_H2, b)&
                                 result(f_shield)
       real*8, intent(in) :: N_H2, b
@@ -444,81 +548,13 @@
                + 0.035d0/s*exp(-8.5d-4*s)
       end function h2_self_shielding_draine_bertoldi
 
-      ! Fraction of the 912-1110 A band that the H2 Lyman and Werner lines
-      ! have taken out of the beam by the time it has crossed a star-ward H2
-      ! column N_H2 [cm^-2] at Doppler parameter b [cm s^-1].
-      !
-      ! DB96 integrate their own f_shield analytically.  Their eq. (38)
-      ! defines the total dimensionless equivalent width of the pumping
-      ! lines, W(N2) = Dln_nu (zeta_pump(0)/F) int_0^N2 f_shield dN2', and
-      ! their eq. (39) is the closed form
-      !
-      !   W(N2) = Dln_nu 1.05 [ 1 + 0.0117 x/(1 + x/b5)
-      !                         - exp( -8.5e-4 ((1+x)^0.5 - 1) ) ] ,
-      !   x = N2/5e14 cm^-2 ,   b5 = b/1e5 cm s^-1        (their eq. 37) .
-      !
-      ! Dln_nu = ln(1110/912) = 0.1964753 is the logarithmic width of the
-      ! band, so W is a width in ln(nu) and W/Dln_nu -- what this function
-      ! returns -- is the fraction of the band the lines occupy.
-      !
-      ! WHAT THE FIT IS NORMALIZED TO.  DB96 built eq. (39) on their own
-      ! Table 1 and Table 2 at the flat-F_lam spectrum of their eq. (24),
-      ! chi = 1, and the T_r = 100 K row: band photon flux
-      ! F = 1.208e7 cm^-2 s^-1, pump rate zeta_pump = 3.09e-10 s^-1, and
-      ! <p_diss> = 0.135, so that the dissociation cross section is
-      ! 3.452e-18 cm^2 and the PUMP cross section -- the one this equivalent
-      ! width is a statement about, since every pump removes a photon
-      ! whether or not it dissociates -- is
-      !
-      !     sigma_pump = 3.452e-18/0.135 = 2.557e-17 cm^2 .
-      !
-      ! THESE NUMBERS ARE NOT COMPUTED WITH ANYWHERE.  They are the source
-      ! of the fit evaluated below and the check on it: the level-resolved
-      ! CLOUDY calculation gives 2.610e-17 cm^2 for the same quantity at
-      ! 1300 K, 2 per cent away, and reproduces the 3.452e-18 to 0.5 per
-      ! cent in its untrapped limit (docs/p39_lw_cross_section_sources.md).
-      ! The photodissociation RATE and both branching ratios come from
-      ! h2_self_shielding_table, not from here.  Because it
-      ! is a summed equivalent width and not an optical depth, the beam's
-      ! line transmission is 1 - A -- exactly, for non-overlapping lines
-      ! across a flat band; exp(-A) would be wrong.
-      !
-      ! LINE OVERLAP IS ALREADY INSIDE IT.  f_shield was constructed on the
-      ! overlap-corrected pumping rates of DB96 eq. (30), i.e. their eq. (29)
-      ! with W_max = ln(1110/912) ~ 0.2.  Applying a further overlap factor
-      ! to A would count the same suppression twice.
-      !
-      ! LIMITS.  The bracket vanishes exactly at x = 0, so A = 0 where there
-      ! is no H2, and tends to 1 + 0.0117 b5 as x -> infinity, i.e.
-      ! A -> 1.05(1 + 0.0117 b5) = 1.084 (b = 2.79 km s^-1) to 1.105
-      ! (4.48 km s^-1) over the Doppler parameters of our layer.  An
-      ! asymptote above 1 is slack in the authors' own fit, not a defect
-      ! here: DB96 cap the overlap-corrected equivalent width at
-      ! W_max = ln(1110/912) (their eq. 29 and sec. 4.3), i.e. at A = 1, and
-      ! remark below their eq. (39) only that it "corresponds to an
-      ! equivalent width W ~ Dln_nu ~ 0.2 in the limit N2 -> infinity".  So
-      ! the deep layer, where A is within a few per cent of its asymptote,
-      ! carries an 8-11 per cent overshoot of DB96's own ceiling.  That is a
-      ! property of the fit and is therefore the same whether A comes from
-      ! eq. (39) or from integrating f_shield on the grid.  The caller clamps
-      ! A at 1 so the transmission it hands the continuum absorbers of the
-      ! same interval cannot go negative.
-      double precision function h2_band_equivalent_width(N_H2, b)         &
-                                result(A)
-      real*8, intent(in) :: N_H2, b
-      real*8 :: x, b5, s
-      x  = max(N_H2, 0.0d0)/5.0d14
-      b5 = max(b, 1.0d0)/1.0d5
-      s  = sqrt(1.0d0 + x)
-      A  = 1.05d0*(1.0d0 + 0.0117d0*x/(1.0d0 + x/b5)                     &
-                 - exp(-8.5d-4*(s - 1.0d0)))
-      end function h2_band_equivalent_width
-
-      ! Photodissociation rate of H2 [s^-1] for a band-integrated stellar
-      ! energy flux F_LW [erg cm^-2 s^-1] at the planet, a star-ward H2
-      ! column N_H2 [cm^-2], a gas temperature T [K], a total hydrogen
-      ! nucleus density n_H [cm^-3] and the star-ward CONTINUUM optical depth
-      ! tau_cont of the same 912-1110 A interval.
+      ! LOCAL photodissociation rate of H2 [s^-1] at ONE POINT of the
+      ! column: a band-integrated stellar energy flux F_LW
+      ! [erg cm^-2 s^-1] at the planet, a star-ward H2 column N_H2 [cm^-2],
+      ! a gas temperature T [K], a total hydrogen nucleus density n_H
+      ! [cm^-3] and the star-ward CONTINUUM optical depth tau_cont of the
+      ! same 912-1201 A interval, all at that point.  What a grid cell needs
+      ! is the mean of this over the cell, which is the function below.
       !
       ! This is DB96 eq. (40) in structure -- a line self-shielding factor,
       ! exp(-tau) for the continuum, no dust term -- with the level-resolved
@@ -533,17 +569,208 @@
       double precision function lyman_werner_dissociation_rate(F_LW,     &
                                 N_H2, T, n_H, tau_cont) result(k)
       real*8, intent(in) :: F_LW, N_H2, T, n_H, tau_cont
+      k = band_rate_from_cross_section(h2_lw_dissociation_cross_section, &
+                                       F_LW, N_H2, T, n_H, tau_cont)
+      end function lyman_werner_dissociation_rate
+
+      ! The same contraction for any of the table's cross sections of
+      ! (N_H2, T, n_H): the incident band photon fluence F_LW/<hv> times the
+      ! cross section, attenuated by the continuum of the same interval.
+      ! sigma_diss gives the dissociation rate, sigma_pump the rate at which
+      ! the lines take photons out of the beam.  One expression, so the two
+      ! cannot drift apart.
+      double precision function band_rate_from_cross_section(sigma_at,   &
+                                F_LW, N_H2, T, n_H, tau_cont) result(k)
+      procedure(h2_cross_section_of_state) :: sigma_at
+      real*8, intent(in) :: F_LW, N_H2, T, n_H, tau_cont
       if (F_LW .le. 0.0d0) then
          k = 0.0d0
          return
       endif
       ! The cross section is per INCIDENT band photon and already carries the
-      ! self-shielding of the lines and the trapping of the fluorescent decay
-      ! photons; the continuum of the same interval is the caller's tau_cont.
-      k = F_LW/e_lw_photon_erg                                           &
-        * h2_lw_dissociation_cross_section(N_H2, T, n_H)
+      ! self-shielding of the lines; the continuum of the same interval is
+      ! the caller's tau_cont.
+      k = F_LW/e_lw_photon_erg*sigma_at(N_H2, T, n_H)
       if (tau_cont .gt. 0.0d0) k = k*exp(-tau_cont)
-      end function lyman_werner_dissociation_rate
+      end function band_rate_from_cross_section
+
+      ! MEAN of that rate over one grid cell [s^-1], for the star-ward face
+      ! values (N_H2_out, tau_out) and the inner face values (N_H2_in,
+      ! tau_in) of the H2 column and of the 912-1201 A continuum depth.
+      !
+      ! WHY THE MEAN AND NOT A FACE VALUE.  The dissociation cross section
+      ! falls by four decades across the self-shielding transition, and it
+      ! falls fastest at the H2 front, exactly where one cell can carry a
+      ! large fraction of a decade of H2 column.  A rate taken at one face
+      ! and applied to the whole cell is then wrong in one direction
+      ! everywhere in that cell.  The H2O and OH continua of the SAME beam
+      ! already take the exact cell mean (water_photolysis.f90 sec. 3,
+      ! where the one-point rule was measured 30 per cent low in the
+      ! Ly-alpha band), so this is what makes the two absorbers of one beam
+      ! discretized alike.
+      !
+      ! WHAT IS AVERAGED.  Within a cell the H2 density and the continuum
+      ! absorber densities are uniform: that is the rectangle rule the
+      ! column integration itself uses (calc_column_dens_one).  Both the H2
+      ! column N and the continuum depth tau therefore run LINEARLY across
+      ! the cell from their star-ward face values to their inner face
+      ! values, and the mean of the rate over the cell's radial extent is
+      !
+      !   <k> = int_0^1 k(N(s), tau(s)) ds ,
+      !   N(s) = N_out + s dN ,   tau(s) = tau_out + s dtau .
+      !
+      ! HOW IT IS INTEGRATED, AND WHY NOT IN CLOSED FORM.  The continuum
+      ! factor on its own would give the (1 - e^-dtau)/dtau of the water
+      ! bands, because it IS exponential in the column.  The line term is
+      ! not: sigma_diss comes from the level-resolved table, which is
+      ! linear in (log N, log sigma) between its column knots, i.e. a
+      ! piecewise power law of a slope that reaches 3.3 and steps by up to
+      ! 0.8 from one knot interval to the next.  The product has no closed
+      ! form, so the mean is taken by composite three-point
+      ! Gauss-Legendre on segments cut GEOMETRICALLY in the column, at most
+      ! seg_dex decades of column and seg_dtau of continuum depth wide.
+      ! Geometric segments are what a power law needs: the rule is then
+      ! integrating a nearly constant number of decades per segment
+      ! wherever the cell sits on the transition, and the slope steps at
+      ! the table's knots are resolved by several segments each.
+      !
+      ! MEASURED ACCURACY (2026-09-05, 1500 random cells covering the whole
+      ! table, T = 700-3200 K, n_H = 3e11-3e14 cm^-3, column spans 0.01-10
+      ! decades including cells whose star-ward column is zero, continuum
+      ! depths to 3): the largest relative departure from a 4000-segment
+      ! reference of the same integrand is 2.5e-4 at seg_dex = 0.05, and
+      ! 9e-5 at 0.02.
+      !
+      ! The head segment.  A cell whose star-ward column is zero (the
+      ! outermost cell, and any cell at the top of the H2 distribution) has
+      ! no geometric starting point, so the segments start at
+      ! col_head_ratio of the inner face column and the remainder below
+      ! that is one further segment.  The table returns its edge value
+      ! below N_H2 = 1e12 cm^-2, so with col_head_ratio = 1e-10 and any
+      ! column the table carries, sigma_diss is constant over that head and
+      ! the single segment integrates it exactly.
+      double precision function column_cell_mean_of_a_cross_section(     &
+                                sigma_at, F_LW, N_H2_out, N_H2_in, T,     &
+                                n_H, tau_out, tau_in) result(k)
+      procedure(h2_cross_section_of_state) :: sigma_at
+      real*8, intent(in) :: F_LW, N_H2_out, N_H2_in, T, n_H
+      real*8, intent(in) :: tau_out, tau_in
+      ! Three-point Gauss-Legendre on [0,1]: nodes (1 -+ sqrt(3/5))/2 and
+      ! 1/2, weights 5/18, 8/18, 5/18.  Exact for polynomials of degree 5.
+      integer, parameter :: n_gl = 3
+      real*8, parameter :: gl_s(n_gl) = (/ 0.1127016653792583d0,         &
+                                           0.5d0,                        &
+                                           0.8872983346207417d0 /)
+      real*8, parameter :: gl_w(n_gl) = (/ 5.0d0/18.0d0, 8.0d0/18.0d0,   &
+                                           5.0d0/18.0d0 /)
+      real*8, parameter  :: seg_dex   = 0.05d0
+      real*8, parameter  :: seg_dtau  = 0.5d0
+      real*8, parameter  :: col_head_ratio = 1.0d-10
+      integer, parameter :: nseg_max  = 256
+      real*8  :: se(0:nseg_max+1)
+      real*8  :: Nlo, Nhi, dN, dtau, tau_lo, Nstart, ratio, Nx
+      real*8  :: s0, s1, ds, ss, acc
+      integer :: nseg, nedge, i, g
+
+      if (F_LW .le. 0.0d0) then
+         k = 0.0d0
+         return
+      endif
+
+      Nlo    = max(N_H2_out, 0.0d0)
+      Nhi    = max(N_H2_in, Nlo)
+      dN     = Nhi - Nlo
+      tau_lo = max(tau_out, 0.0d0)
+      dtau   = max(tau_in - tau_lo, 0.0d0)
+
+      ! Segment count: one criterion per varying factor, and the finer wins.
+      nseg   = 1
+      Nstart = Nhi
+      if (dN .gt. 0.0d0) then
+         Nstart = max(Nlo, Nhi*col_head_ratio)
+         nseg   = max(nseg, int(log10(Nhi/Nstart)/seg_dex) + 1)
+      endif
+      nseg = max(nseg, int(dtau/seg_dtau) + 1)
+      nseg = min(nseg, nseg_max)
+
+      ! Segment edges, as positions s across the cell.
+      se(0) = 0.0d0
+      nedge = 0
+      if (dN .gt. 0.0d0) then
+         if (Nstart .gt. Nlo) then
+            nedge = 1
+            se(1) = (Nstart - Nlo)/dN
+         endif
+         ratio = (Nhi/Nstart)**(1.0d0/dble(nseg))
+         Nx    = Nstart
+         do i = 1,nseg-1
+            Nx = Nx*ratio
+            se(nedge+i) = (Nx - Nlo)/dN
+         enddo
+         nedge = nedge + nseg
+      else
+         do i = 1,nseg-1
+            se(i) = dble(i)/dble(nseg)
+         enddo
+         nedge = nseg
+      endif
+      se(nedge) = 1.0d0
+
+      acc = 0.0d0
+      do i = 1,nedge
+         s0 = se(i-1)
+         s1 = se(i)
+         ds = s1 - s0
+         if (ds .le. 0.0d0) cycle
+         do g = 1,n_gl
+            ss  = s0 + ds*gl_s(g)
+            acc = acc + ds*gl_w(g)                                       &
+                * band_rate_from_cross_section(sigma_at, F_LW,           &
+                                          Nlo + ss*dN, T, n_H,           &
+                                          tau_lo + ss*dtau)
+         enddo
+      enddo
+      k = acc
+      end function column_cell_mean_of_a_cross_section
+
+      ! MEAN over one grid cell of the H2 photodissociation rate [s^-1].
+      ! The cross section is the dissociations per incident band photon;
+      ! this is the rate the H2 network destroys H2 at and the rate the
+      ! 0.4 eV fragment heating is charged on.
+      double precision function lyman_werner_dissociation_rate_cell_mean( &
+                                F_LW, N_H2_out, N_H2_in, T, n_H,          &
+                                tau_out, tau_in) result(k)
+      real*8, intent(in) :: F_LW, N_H2_out, N_H2_in, T, n_H
+      real*8, intent(in) :: tau_out, tau_in
+      k = column_cell_mean_of_a_cross_section(                            &
+              h2_lw_dissociation_cross_section, F_LW, N_H2_out, N_H2_in,  &
+              T, n_H, tau_out, tau_in)
+      end function lyman_werner_dissociation_rate_cell_mean
+
+      ! MEAN over one grid cell of the rate at which the Lyman and Werner
+      ! lines REMOVE BAND PHOTONS from the beam, per H2 molecule [s^-1].
+      ! Same quadrature, same cell, sigma_pump in place of sigma_diss.
+      !
+      ! WHY IT IS NOT THE DISSOCIATION RATE DIVIDED BY p_eff.  p_eff varies
+      ! with column, and a cell of a molecular base can span decades of it,
+      ! so dividing the cell MEAN of sigma_diss by p_eff at one column is
+      ! not the cell mean of sigma_diss/p_eff.  The photon ledger needs the
+      ! second, because it is what telescopes to the column integral of
+      ! sigma_pump, i.e. to the beam's own loss
+      ! (h2_lw_band_photon_fraction_absorbed).  MEASURED
+      ! (src/tests/physics_probe/lyman_werner_cell_mean.f90 sec. 6): on
+      ! cells spanning 2.5 H2 scale heights the one-column division stands
+      ! 8 per cent above the beam loss and this form closes on it.
+      double precision function                                           &
+                lyman_werner_band_absorption_rate_cell_mean(              &
+                                F_LW, N_H2_out, N_H2_in, T, n_H,          &
+                                tau_out, tau_in) result(k)
+      real*8, intent(in) :: F_LW, N_H2_out, N_H2_in, T, n_H
+      real*8, intent(in) :: tau_out, tau_in
+      k = column_cell_mean_of_a_cross_section(                            &
+              h2_lw_pump_cross_section, F_LW, N_H2_out, N_H2_in,          &
+              T, n_H, tau_out, tau_in)
+      end function lyman_werner_band_absorption_rate_cell_mean
 
       ! End of module
       end module lyman_werner_photodissociation

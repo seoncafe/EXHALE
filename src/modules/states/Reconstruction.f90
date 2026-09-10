@@ -8,7 +8,7 @@
 
       implicit none
 
-      ! Stored ESWENO3 smoothness factors for the frozen-weights mode
+      ! Stored WENO3 smoothness factors for the frozen-weights mode
       ! (weno_mode in global_parameters; 0 = off/default, byte-identical).
       real*8, allocatable :: S0sav(:,:), S1sav(:,:)
 
@@ -30,14 +30,13 @@
       real*8, dimension(3,1-Ng:N+Ng) :: WL,WR
       real*8, dimension(3,1-Ng:N+Ng), intent(out) :: WL_out, WR_out
 
-      ! ESWENO3 variables
+      ! WENO3 variables
       real*8, dimension(3,1-Ng:N+Ng) :: W,dW
       real*8, dimension(3) :: dWp,dWm
       real*8, dimension(3) :: b0,b1
       real*8, dimension(3) :: tau
       real*8, dimension(3) :: S0,S1
-      real*8 :: rm,rp
-      real*8, dimension(1-Ng:N+Ng) :: dV,C1,C2,D1,D2
+      real*8, dimension(1-Ng:N+Ng) :: C1,C2,D1,D2
 	
       select case (rec_method)
       
@@ -47,7 +46,98 @@
 
             call PLM_rec(u_in,WL,WR)
 
-         case ('WENO3')    ! ESWENO3 Reconstruction
+         case ('WENO3')    ! Third-order WENO reconstruction
+            !
+            ! THE NONLINEAR WEIGHTS.  The smoothness factors S0, S1 below
+            ! are the weight functions of Yamaleev and Carpenter (2009,
+            ! J. Comput. Phys. 228, 3025; cited in full at the end of this
+            ! block), their Eqs. (18), (21) and (22): the weights are
+            ! w_r = alpha_r / sum_l alpha_l  with
+            ! alpha_r = d_r (1 + tau/(eps + beta_r)), where their tau is
+            ! ALREADY a square, tau = (u_{j+1} - 2 u_j + u_{j-1})^2 (their
+            ! Eq. 22), and beta_0 = (u_{j+1} - u_j)^2,
+            ! beta_1 = (u_j - u_{j-1})^2 (their Eq. 20).  S0 and S1 are
+            ! that 1 + tau/(eps + beta_r) with the square written out and
+            ! eps folded into b0, b1.  Their ideal weights d_0 = 2/3,
+            ! d_1 = 1/3 (Eq. 20) enter only through the ratio
+            ! d_1/d_0 = 1/2, which is what D1 and D2 carry: exactly 1/2 on
+            ! a grid uniform in the volume coordinate, 1/2 + O(h) on a
+            ! stretched one.  The property that makes the reconstruction
+            ! third order is their Eq. (24), w_r = d_r + O(Dx^2) on smooth
+            ! data, so in a smooth region the scheme is its linear
+            ! third-order limit and the stencil coefficients below are what
+            ! set the order.
+            !
+            ! THE FLOOR eps.  Their prescription is eps = O(Dxi^2) (Eq. 62,
+            ! made scale invariant as Eq. 64 with Dxi = 1/J the
+            ! computational spacing), with the coefficient carrying the
+            ! SOLUTION scale,
+            !     eps = max(||u_0^2||, ||(u_0)_xi^2||) Dxi^2      (Eq. 65)
+            ! so that eps and beta_r are the same kind of quantity.  Their
+            ! Eq. (51) requires eps >= O(Dx^2) to hold the design order at
+            ! a smooth extremum, where eps = 0 gives tau/beta_r = O(1) and
+            ! the scheme drops to second order (Eq. 57); their Eq. (61)
+            ! requires eps <= O(Dx^2) so that the stencil astride a
+            ! discontinuity is still nullified.  Eq. (62) is the two
+            ! together.
+            !
+            ! The floor used here, eps = dr_j^2, has that h^2 scaling and
+            ! reads "O(Dx^2)" as the LOCAL cell width, which is the reading
+            ! a grid whose spacing varies by a factor of 20 across the
+            ! domain admits and which the published uniform-grid analysis
+            ! does not distinguish.  What it drops is the solution scale of
+            ! Eq. (65).  It is not dimensionally inconsistent (r is in R0
+            ! and rho, v, p in n0, v0, p0, so both sides are
+            ! dimensionless), but it is not invariant under a rescaling of
+            ! the solution, which Eq. (65) is written to secure.  Two
+            ! measurements bound what that costs.  In a smooth region it
+            ! costs nothing: with eps = (kappa dr_j)^2 the face error and
+            ! the convergence rate on the production grid are flat for
+            ! kappa from 1e-1 to 1e3 (L_inf 2.99e-8 at N = 800, rate 2.991)
+            ! and deteriorate only below kappa near 1e-2
+            ! (weno3_reconstruction_order, MEASURED).  Where the choice
+            ! bites is the ENO stencil biasing: on the WASP-121b reference
+            ! output the density ratio beta_r/eps runs from 8.4e3 at the
+            ! base to 2.2e-6 at the top of the domain, and a third of the
+            ! cells sit below 1e-2, where S0 and S1 are within a percent of
+            ! 1 and no biasing is left.  Eq. (65) with the base density as
+            ! the scale would put a single eps = 4e-6 on the whole grid.
+            !
+            ! WHAT THIS IS NOT.  The ESWENO scheme of that paper is its
+            ! Eq. (9) with P, Q and S of Eqs. (31) and (35) to (37)
+            ! TOGETHER with these weights; the energy stability comes from
+            ! the extra dissipation flux of Eq. (48), built from mu_j of
+            ! Eq. (37) and a second parameter d, and that term is not
+            ! computed here.  The paper separates the two itself: "Note
+            ! that these weights can also be used with the conventional
+            ! third-order WENO scheme" (Section 3.1).  So what runs here is
+            ! a third-order WENO reconstruction with their weights, and it
+            ! inherits their accuracy result (Eq. 24) and not the energy
+            ! estimate of their Section 4.1.  Two further reasons that
+            ! estimate does not carry over: their operator is a
+            ! finite-difference reconstruction of the FLUX on a uniform
+            ! grid (their Section 3.1; neither paper treats a non-uniform
+            ! grid), while this is a finite-volume reconstruction of the
+            ! primitive STATE handed to a Riemann solver on a stretched
+            ! radial grid, so the volume-coordinate coefficients below are
+            ! this code's own; and for a system their estimate holds for
+            ! the characteristic form, "while it is not clear how to obtain
+            ! a similar energy estimate when the system of equations is
+            ! discretized in the component-wise fashion" (their Section 5),
+            ! which is what the loop below does, on primitive variables at
+            ! that.
+            !
+            !   N. K. Yamaleev and M. H. Carpenter, "Third-order Energy
+            !   Stable WENO scheme", J. Comput. Phys. 228, 3025 (2009),
+            !   doi:10.1016/j.jcp.2009.01.011.  Every equation number
+            !   above is from that paper, read in the published version.
+            !   Its companion, "A systematic methodology for constructing
+            !   high-order energy stable WENO schemes", J. Comput. Phys.
+            !   228, 4248 (2009), doi:10.1016/j.jcp.2009.03.002, carries
+            !   the same weight form as its Eq. (58) and the same
+            !   solution-scaled floor as its Eq. (79), for design orders
+            !   four and above; the third-order scheme used here is the
+            !   3025 paper's.
 			
             ! Convert to primitive variables
             call U_to_W(u_in,W)
@@ -56,26 +146,8 @@
             dW(:,1-Ng:N+Ng-1) = W(:,2-Ng:N+Ng) - W(:,1-Ng:N+Ng-1)
             dW(:,N+Ng) = 0.0
             
-            ! Calculate cell volumes
-            do j = 0, N+1			
-               rp = r_edg(j)
-               rm = r_edg(j-1)
-               dV(j) = (rp*rp*rp - rm*rm*rm)
-            enddo
-            dV(1-Ng) = dV(2-Ng)
-            dV(N+Ng) = dV(N+Ng-1)
-            
-            
             ! Evaluate reconstruction geometry-dependent coefficients
-            do j = 1-Ng,N+Ng-1
-               C1(j) = dV(j+1)/(dV(j) + dV(j+1))
-               C2(j) = 1.0 - C1(j)
-            enddo
-            
-            do j = 2-Ng,N+Ng-1  	
-               D1(j) = dV(j+1)/(dV(j) + dV(j-1))
-               D2(j) = dV(j-1)/(dV(j) + dV(j+1))
-            enddo
+            call weno3_geometry_coefficients(C1,C2,D1,D2)
             
             ! Construct smoothness indicators and reconstructed values.
             ! weno_mode: 0 = fresh (default), 1 = fresh + store, 2 = reuse
@@ -113,12 +185,26 @@
                   endif
                endif
 
+               ! Each candidate is the linear interpolant of two cell
+               ! averages in the volume coordinate, evaluated at a face of
+               ! cell j, which lies dV(j)/2 from the centre of cell j: the
+               ! jump to the neighbour is weighted by cell j's OWN volume
+               ! share, dV(j)/(dV(j) + dV(j+1)) = C2(j) for the jump to j+1
+               ! and dV(j)/(dV(j-1) + dV(j)) = C1(j-1) for the jump to j-1,
+               ! at either face. With the neighbour's share in their place
+               ! the face value carries an O(h) coefficient error times an
+               ! O(h) jump and the reconstruction is second order, so these
+               ! two shares and not the nonlinear weights are what sets the
+               ! order (MEASURED, weno3_reconstruction_order: rate 3.000 on
+               ! a grid uniform in r and 2.991 on the production grid with
+               ! the shares as written, 1.997 and 1.988 with the two
+               ! neighbour shares in their place).
                WL(:,j) = W(:,j)	&
-                  + (S0*C1(j)*dWp + D1(j)*S1*C1(j-1)*dWm) &
+                  + (S0*C2(j)*dWp + D1(j)*S1*C1(j-1)*dWm) &
                   /(S0 + D1(j)*S1)
                
                WR(:,j-1) = W(:,j)  &
-                  - (D2(j)*S0*C2(j)*dWp + S1*C2(j-1)*dWm) &
+                  - (D2(j)*S0*C2(j)*dWp + S1*C1(j-1)*dWm) &
                   /(D2(j)*S0 + S1)
             enddo
             !$omp end parallel do
@@ -143,6 +229,122 @@
 
       !-----------------------------------------------!
 
+      subroutine weno3_geometry_coefficients(C1,C2,D1,D2)
+      ! Grid-dependent coefficients of the WENO3 reconstruction: the two
+      ! volume-weighted interpolation weights C1, C2 of each face and the two
+      ! stencil weights D1, D2 of each cell.  They depend on the grid alone,
+      ! so the scalar reconstruction of a mass fraction and the
+      ! reconstruction of the primitive vector take them from here and cannot
+      ! disagree about the grid.
+      real*8, dimension(1-Ng:N+Ng), intent(out) :: C1,C2,D1,D2
+      real*8, dimension(1-Ng:N+Ng) :: dV
+      real*8  :: rm,rp
+      integer :: j
+
+      ! Calculate cell volumes
+      do j = 0, N+1			
+         rp = r_edg(j)
+         rm = r_edg(j-1)
+         dV(j) = (rp*rp*rp - rm*rm*rm)
+      enddo
+      dV(1-Ng) = dV(2-Ng)
+      dV(N+Ng) = dV(N+Ng-1)
+
+      do j = 1-Ng,N+Ng-1
+         C1(j) = dV(j+1)/(dV(j) + dV(j+1))
+         C2(j) = 1.0 - C1(j)
+      enddo
+
+      do j = 2-Ng,N+Ng-1  	
+         D1(j) = dV(j+1)/(dV(j) + dV(j-1))
+         D2(j) = dV(j-1)/(dV(j) + dV(j+1))
+      enddo
+
+      ! End of subroutine
+      end subroutine weno3_geometry_coefficients
+
+      !-----------------------------------------------!
+
+      subroutine Reconstruct_scalar(q,qL,qR)
+      ! Reconstruct ONE cell-centered scalar to the two sides of every face
+      ! with the reconstruction the run uses for the primitive variables, so
+      ! that a species mass fraction and the density whose face flux carries
+      ! it are extrapolated to a face by the same scheme.
+      !
+      ! qL(j) is the state on the left of face r_edg(j) and qR(j) the state
+      ! on its right, the pairing WL/WR use.
+      !
+      ! No boundary reconstruction of its own: the ghost values the caller
+      ! supplies are what the outermost faces extrapolate from, which for a
+      ! mass fraction is the imposed base composition inside and the
+      ! zero-gradient copy outside.  A face state is left unbounded here and
+      ! is limited by the caller against the composition simplex, because
+      ! [0,1] is a property of a mass fraction and not of a reconstruction.
+      real*8, dimension(1-Ng:N+Ng), intent(in)  :: q
+      real*8, dimension(1-Ng:N+Ng), intent(out) :: qL,qR
+
+      real*8, dimension(1-Ng:N+Ng) :: dq,C1,C2,D1,D2
+      real*8  :: dqp,dqm,b0,b1,tau,S0,S1
+      integer :: j
+
+      select case (rec_method)
+
+         case ('PLM')
+
+            call PLM_rec_scalar(q,qL,qR)
+
+         case ('WENO3')
+
+            ! Same WENO3 weights and same face formula as the primitive
+            ! reconstruction in Reconstruct above, on one component; keep
+            ! the two in step.  The frozen-weight mode of the steady solver
+            ! is not read here: the stored factors belong to the primitive
+            ! variables, and a mass fraction has smoothness indicators of
+            ! its own.
+            dq(1-Ng:N+Ng-1) = q(2-Ng:N+Ng) - q(1-Ng:N+Ng-1)
+            dq(N+Ng) = 0.0
+
+            call weno3_geometry_coefficients(C1,C2,D1,D2)
+
+            do j = 1-Ng,N+Ng
+               qL(j) = q(j)
+               qR(j) = q(min(j+1,N+Ng))
+            enddo
+
+            do j = 0,N+1
+
+               dqp = dq(j)
+               dqm = dq(j-1)
+
+               b0  = dqp*dqp + dr_j(j)*dr_j(j)
+               b1  = dqm*dqm + dr_j(j)*dr_j(j)
+               tau = dqp - dqm
+               S0  = 1.0 + tau*tau/b0
+               S1  = 1.0 + tau*tau/b1
+
+               ! Cell j's own volume share on each jump (see Reconstruct).
+               qL(j) = q(j)                                              &
+                  + (S0*C2(j)*dqp + D1(j)*S1*C1(j-1)*dqm)                &
+                  /(S0 + D1(j)*S1)
+
+               qR(j-1) = q(j)                                            &
+                  - (D2(j)*S0*C2(j)*dqp + S1*C1(j-1)*dqm)                &
+                  /(D2(j)*S0 + S1)
+            enddo
+
+         case default
+
+            write(*,*) 'ERROR: unknown reconstruction scheme: ',          &
+                       trim(rec_method)
+            error stop 1
+
+      end select
+
+      ! End of subroutine
+      end subroutine Reconstruct_scalar
+
+      !-----------------------------------------------!
+
       subroutine positivity_limited_faces(u_in,WL,WR)
 
       ! Scale each face state CONTINUOUSLY toward its own cell average, by the
@@ -151,25 +353,73 @@
       !     W_face  <-  W_avg + theta ( W_rec - W_avg ),   theta in [0,1]
       !     theta   =   min over rho and p of  (q_avg - eps)/(q_avg - q_rec)
       !
-      ! This is the positivity-preserving limiter of Zhang & Shu (2010,
-      ! J. Comput. Phys., 229, 8918; doi:10.1016/j.jcp.2010.08.016), in the
-      ! form that scales the reconstruction increment of one cell toward that
-      ! cell's admissible mean. The publisher PDF is not in references/, so
-      ! only the bibliography is given here.
+      ! ATTRIBUTION, and where this departs from what it cites. The idea is
+      ! the linear scaling limiter of Zhang and Shu (2010, J. Comput. Phys.,
+      ! 229, 8918; doi:10.1016/j.jcp.2010.08.016; the publisher PDF is
+      ! references/Zhang_2010JCP_229_8918.pdf), their Section 2.2. This is
+      ! NOT their limiter, and the differences matter:
       !
-      ! WHY IT IS CONTINUOUS AND WHY THAT IS THE POINT (docs/Update_EXHALE.md
+      !   * They scale the CONSERVED vector w = (rho, m, E), in two steps:
+      !     density first about the cell average, their Eqs. (2.4) and (2.5)
+      !     with theta_1 = min{(rho_avg - eps)/(rho_avg - rho_min), 1}, then
+      !     the whole vector, their Eqs. (2.10) and (2.11), with theta_2 the
+      !     root t_eps of the QUADRATIC in their Eq. (2.12),
+      !     p[(1 - t) w_avg + t w_rec] = eps. This routine scales the
+      !     PRIMITIVE vector (rho, v, p) in one step, so its theta is the
+      !     root of a linear equation in p and not of their quadratic.
+      !     The two are not the same number. Along their path rho, m and E
+      !     are linear in t and p(t) = (gamma-1)(E - m^2/(2 rho)) is CONCAVE
+      !     in t, so p(t) is never below the straight line between p_avg and
+      !     p_rec that this routine interpolates: at equal eps this theta is
+      !     the smaller of the two, that is the more restrictive one, never
+      !     the less safe one. Measured at a Mach 60 state with eps = 1e-3
+      !     p_avg: theta = 0.85629 here against t_eps = 0.94910 from their
+      !     Eq. (2.12) (src/tests/physics_probe/positivity_limiter_scaling.f90).
+      !
+      !   * Their theta is one number per CELL, the minimum over that cell's
+      !     quadrature points, which is what leaves the cell average of the
+      !     limited polynomial equal to w_avg (the conservativity property of
+      !     their Section 2.2). Here theta is one number per FACE STATE, so a
+      !     cell whose two ends are scaled by different factors no longer
+      !     reconstructs to its own average. Measured departure on a cell
+      !     with both ends limited: 8.3e-2 of the cell average, against
+      !     round-off if the cell's minimum theta is used for both ends.
+      !
+      !   * Their floor is absolute, eps = 10^-13 in their computations and
+      !     eps = min_j {10^-13, rho_avg, p(w_avg)} in their implementation
+      !     flowchart. Here it is relative, one unit in the last place of the
+      !     cell average.
+      !
+      ! What carries over is their Lemma 2.5: the limited value is a convex
+      ! combination of an admissible cell average with the reconstruction, so
+      ! it stays admissible, and no quadrature enters that argument. Their
+      ! Theorem 2.1 does NOT carry over. It concludes that the next CELL
+      ! AVERAGE is admissible, and its hypotheses are the N-point Legendre
+      ! Gauss-Lobatto set of their Eq. (1.7) with 2N - 3 >= k (a
+      ! finite-volume reconstruction to two face values supplies only N = 2,
+      ! which covers the k = 1 of PLM and not the k = 2 of WENO3; their
+      ! Remark 2.6 names finite-volume WENO as the open case) and the CFL
+      ! condition of their Eq. (2.1), which nothing here imposes.
+      !
+      ! Pressure positivity of the SCALED state is not at issue in this form:
+      ! p is itself one of the scaled variables, so the limited face carries
+      ! the pressure the scaling put there and its internal energy
+      ! p/(gamma-1) has the same sign. The nonlinear map that forces their
+      ! quadratic has no counterpart here.
+      !
+      ! WHY IT IS CONTINUOUS AND WHY THAT IS THE POINT (docs/Update_EXHALE_stage1.md
       ! section 138; the measurement is P49). This routine used to be a hard
       ! switch: as soon as a reconstructed rho or p crossed zero, the WHOLE
       ! face pair was replaced by the two cell averages. That is a STEP
       ! DISCONTINUITY of the residual F(Y), and it is what stopped the
       ! molecular arm's steady solve. Measured on the hot Uranus hand-off:
       ! the WENO3 left density at the face of cell 273 (r = 1.2324 R_p) sat at
-      ! 2.50e-15 against cell averages of 1e-4 -- eleven orders below and
-      ! positive by a hair -- so the iterate sat exactly on the switching
+      ! 2.50e-15 against cell averages of 1e-4, eleven orders below and
+      ! positive by a hair, so the iterate sat exactly on the switching
       ! surface. Raising the neighbouring cell's density by one part in 1e9
       ! tipped it through zero, the face density jumped to 4.17e-6, the mass
       ! residual of cell 273 jumped by a factor 97, and the merit jumped from
-      ! 202.5 to 945.1 -- BY THE SAME FACTOR 4.67 at every step size from 1e-2
+      ! 202.5 to 945.1, BY THE SAME FACTOR 4.67 at every step size from 1e-2
       ! to 1e-9, which is a jump and not a slope. Every direction the solver
       ! could build put its largest scaled component at that face, so all of
       ! them ascended: the Newton/PTC step at every damping over six decades
@@ -183,8 +433,21 @@
       ! smallest one that is not a chosen number: one unit in the last place of
       ! the cell average, eps = epsilon(1.0d0)*q_avg. It introduces no
       ! dimensional constant and no tuning, and the residual jump that survives
-      ! at the crossing is 2.2e-16 of the cell average -- round-off, against
+      ! at the crossing is 2.2e-16 of the cell average, round-off, against
       ! the factor 1.7e9 the hard switch made.
+      !
+      ! THE FLOOR IS DELIVERED BY A CLAMP AFTER THE UPDATE. eps is one unit
+      ! in the last place of q_avg, and q_avg + theta (q_rec - q_avg) is then
+      ! a cancellation whose result is decided by the rounding of the product
+      ! rather than by theta: MEASURED over 200000 reconstructed values that
+      ! cross zero, the bare update is EXACTLY ZERO for 1013 of them and never
+      ! negative (src/tests/physics_probe/positivity_limiter_scaling.f90).
+      ! Zero is the value this floor exists to avoid: a zero face density
+      ! divides in v = m/rho and in the sound speed of Num_Fluxes.f90. The
+      ! scaled density and pressure are therefore clamped to eps after the
+      ! update, q <- max(q_avg + theta (q_rec - q_avg), eps), the same number
+      ! in exact arithmetic (2026-09-07; moves only runs in which the limiter
+      ! fired, and those by one ulp except where the zero would have divided).
       !
       ! BYTE-IDENTITY. A face whose reconstruction is admissible has theta = 1
       ! and is NOT rewritten (W_avg + 1*(W - W_avg) is not bitwise W), so every
@@ -193,15 +456,15 @@
       ! replaced both states of a face and this scales only the offending one.
       !
       ! Validity of the reconstruction, and why the limiter is needed. PLM and
-      ! ESWENO3 both extrapolate the PRIMITIVE variables (rho, v, p) to a face
+      ! WENO3 both extrapolate the PRIMITIVE variables (rho, v, p) to a face
       ! with slopes taken from the neighbouring cells, which is a valid
       ! approximation only while the solution varies smoothly across the
       ! stencil. It has no positivity property of its own: a face value can
       ! cross zero while every cell average on the stencil is positive. The
       ! state that does it here is a hypersonic layer, where the pressure the
       ! scheme recovers as p = (gamma-1)(E - rho v^2/2) is the difference of two
-      ! nearly equal numbers -- at Mach 60 the thermal pressure is 2e-4 of the
-      ! total energy density -- so a reconstruction across the neighbouring jump
+      ! nearly equal numbers: at Mach 60 the thermal pressure is 2e-4 of the
+      ! total energy density, so a reconstruction across the neighbouring jump
       ! tips it negative and the HLLC sound speed sqrt(gamma p/rho) takes the
       ! square root of it (Num_Fluxes.f90; the abort of TO_BE_DONE item (O)).
       !
@@ -213,7 +476,7 @@
       !
       ! Face j takes its left state from cell j and its right state from cell
       ! j+1, which is the pairing the two loops below use. The outermost face
-      ! has no cell j+1, so it falls back on the last cell average -- the
+      ! has no cell j+1, so it falls back on the last cell average, the
       ! zero-gradient state the outer BC reconstructs to in any case.
       !
       ! If a CELL AVERAGE is itself non-positive the state is unphysical before
@@ -232,7 +495,7 @@
       ! run is never. A face value inside (0, eps] would be missed by this
       ! test, and is left alone deliberately: its theta would be 1 - 2.2e-16.
       ! The tests are written as the NEGATION of "strictly positive" so that a
-      ! NaN face state -- which compares false against everything -- is caught
+      ! NaN face state, which compares false against everything, is caught
       ! too; it can only come from the reconstruction arithmetic when the cell
       ! averages below are finite, and the same repair applies.
       any_bad = .false.
@@ -252,11 +515,20 @@
          th = positivity_scaling(WL(1,j), WL(3,j), W_avg(1,j), W_avg(3,j))
          if (th .lt. 1.0d0) then
             WL(:,j) = W_avg(:,j) + th*(WL(:,j) - W_avg(:,j))
+            ! The update is a cancellation of the size of the floor itself
+            ! (theta puts the variable ON the floor, eps = one ulp of the
+            ! average), so its rounding can land on zero; the clamp delivers
+            ! the floor the scaling was solved for. Same number in exact
+            ! arithmetic.
+            WL(1,j) = max(WL(1,j), epsilon(1.0d0)*W_avg(1,j))
+            WL(3,j) = max(WL(3,j), epsilon(1.0d0)*W_avg(3,j))
             n_faces_positivity_limited = n_faces_positivity_limited + 1
          endif
          th = positivity_scaling(WR(1,j), WR(3,j), W_avg(1,jr), W_avg(3,jr))
          if (th .lt. 1.0d0) then
             WR(:,j) = W_avg(:,jr) + th*(WR(:,j) - W_avg(:,jr))
+            WR(1,j) = max(WR(1,j), epsilon(1.0d0)*W_avg(1,jr))
+            WR(3,j) = max(WR(3,j), epsilon(1.0d0)*W_avg(3,jr))
             n_faces_positivity_limited = n_faces_positivity_limited + 1
          endif
       enddo
@@ -270,7 +542,8 @@
       double precision function positivity_scaling(rho_f, p_f, rho_a, p_a)  &
                                                                  result(th)
       ! The largest theta in [0,1] for which rho and p of
-      ! W_avg + theta (W_face - W_avg) both stay at or above their floors.
+      ! W_avg + theta (W_face - W_avg) both stay at or above their floors in
+      ! exact arithmetic; see the header for what round-off then delivers.
       ! theta = 1 whenever the face state is already admissible, so the caller
       ! can leave such a face untouched and keep it bitwise unchanged.
       real*8, intent(in) :: rho_f, p_f, rho_a, p_a
@@ -286,9 +559,11 @@
 
       double precision function positive_variable_scaling(q_f, q_a) result(th)
       ! One variable's share of the scaling: the theta that puts
-      ! q_a + theta (q_f - q_a) exactly on the floor eps = epsilon*q_a when the
-      ! reconstruction went below it, and 1 when it did not. q_a > 0 is the
-      ! caller's precondition.
+      ! q_a + theta (q_f - q_a) on the floor eps = epsilon*q_a when the
+      ! reconstruction went below it, and 1 when it did not. Exactly on it in
+      ! exact arithmetic only: eps is one ulp of q_a, so the caller's update
+      ! is a cancellation of the size of the floor itself (header). q_a > 0 is
+      ! the caller's precondition.
       real*8, intent(in) :: q_f, q_a
       real*8 :: qeps
       th = 1.0d0

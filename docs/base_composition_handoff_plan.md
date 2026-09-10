@@ -10,12 +10,12 @@
   should take.
 - Motivation: `docs/vulcan_photochem_comparison.md`
 - What comes after this plan: `docs/oxygen_chemistry_new_plan.md` (the plan of
-  record, superseding the ordering in `docs/oxygen_chemistry_options.md`) —
+  record, superseding the ordering in `docs/oxygen_chemistry_options.md`),
   widening the handoff beyond `q_H2_base`, computing the partition instead of
   importing it, and the choice of photochemistry code now that `q_H2_base`
   reaches the wind. Note its verified finding on semantics: `q_H2_base` is a
   base EOS anchor (particle count and pressure normalization), not an H2
-  composition pin — `set_IC` seeds H2 from the equilibrium fit independently.
+  composition pin, `set_IC` seeds H2 from the equilibrium fit independently.
 - Touches: `input_read.f90`, `composition.f90`, `parameters.f90`,
   `vulcan_to_base.py`, `docs/input_schema.md`
 
@@ -29,15 +29,15 @@ puts `q_H = 0.23` at 1 ubar for HD 189733 b where chemical equilibrium gives
 exists.
 
 That number does not reach the code. `read_base_inp`
-(`input_read.f90:942-981`) accepts four keys —
+(`input_read.f90:942-981`) accepts four keys,
 
 ```
 T_base -> T0     r_base -> R0     HeH_base -> HeH     Kzz_base -> he_kzz
 ```
 
-— and `src/utils/vulcan_to_base.py` writes `q_H2` and `q_H` as comments.
+and `src/utils/vulcan_to_base.py` writes `q_H2` and `q_H` as comments.
 
-> [2026-08-15: superseded by §10. `read_base_inp` now accepts six keys — the
+> [2026-08-15: superseded by §10. `read_base_inp` now accepts six keys, the
 > four above plus `q_H2_base` (the photochemical H2 volume mixing ratio, the
 > number this memo says does not reach the code) and `p_base` (the pressure
 > level the handoff describes). The `molecular_base` correction quoted just
@@ -48,7 +48,7 @@ T_base -> T0     r_base -> R0     HeH_base -> HeH     Kzz_base -> he_kzz
 >
 > [2026-08-27: `read_base_inp` also accepts the elemental reservoir keys
 > `<El>_H_base` (ten elements), which override `metals.inp` and reach
-> `melem_ab` (`docs/Update_EXHALE.md` section 74). Beside that, the scalar
+> `melem_ab` (`docs/Update_EXHALE_stage1.md` section 74). Beside that, the scalar
 > file is no longer the only handoff: a `Lower atmosphere profile:` file
 > (`src/modules/files_IO/lower_atmosphere_profile.f90`) carries the matching
 > level, `T`, densities, `K_zz(p)` and the elemental reservoirs as columns,
@@ -68,7 +68,7 @@ endif
 ```
 
 `q_h2_equilibrium` (`lower_column.f90:57-71`) is the Visscher/Koskinen
-**chemical-equilibrium** fit — precisely the approximation the Tier-3 pre-step
+**chemical-equilibrium** fit, precisely the approximation the Tier-3 pre-step
 was built to replace. So the code asks the right question at the right place and
 answers it from the wrong source, while the right answer sits in a comment two
 files away.
@@ -97,10 +97,10 @@ handoff carries today agree between codes to 0.02%; this is ~350x larger.
 
 `ntot_bc` propagates to:
 
-- `Apply_BC.f90:65` — the ghost-cell pressure, `W_in(3,index) = ntot_bc + dp_bc`
-- `set_IC.f90:66,78,141,152,242` — base sound speed and the hydrostatic /
+- `Apply_BC.f90:65`, the ghost-cell pressure, `W_in(3,index) = ntot_bc + dp_bc`
+- `set_IC.f90:66,78,141,152,242`, base sound speed and the hydrostatic /
   transonic initial condition
-- `input_read.f90:796` — in `Base BC: pressure` mode, `n0 = base_p_ubar/(kb*T0*ntot_bc)`,
+- `input_read.f90:796`, in `Base BC: pressure` mode, `n0 = base_p_ubar/(kb*T0*ntot_bc)`,
   so the base **density** moves by the same ~7%
 
 One caution against expecting a large wind response: Photochem's own network
@@ -135,7 +135,7 @@ with no reordering.
 ### 4.2 Where the policy should live
 
 `composition.f90:100-112` declares itself the **single source of the base
-composition policy** — `mass_per_H`, `ntot_bc`, `rho_bc` all flow from
+composition policy**: `mass_per_H`, `ntot_bc`, `rho_bc` all flow from
 `comp_mass_per_H` / `comp_ntot_bc` / `comp_rho_bc`, "so the policy cannot
 disagree between code paths (the §3.4 root cause)".
 
@@ -169,7 +169,7 @@ end function
 
 `q/(1+q)` is the existing expression simplified: `0.5*x2mb/(1+HeH)` with
 `x2mb = 2q(1+HeH)/(1+q)` reduces to it exactly. Keep the algebra in whichever
-form reproduces the current arithmetic bitwise for the equilibrium branch —
+form reproduces the current arithmetic bitwise for the equilibrium branch,
 verify with a metals-off, `Molecular base: True` run before and after.
 
 ### 4.3 New key
@@ -232,8 +232,8 @@ the authority or is EXHALE's own network?** Arguments both ways:
   field and the temperature the wind solve produces, and pinning it at the base
   can fight the flow.
 
-A middle option was proposed here — use `q_H2` from the handoff only to build
-the initial condition and let the network relax it — and it **does not survive
+A middle option was proposed here (use `q_H2` from the handoff only to build
+the initial condition and let the network relax it) and it **does not survive
 contact with the code** (checked 2026-08-10). The molecular network is not
 integrated in time: `ionization_equilibrium.f90:544-571` root-finds the local
 equilibrium of all 7-8 species in every cell at every step, and the previous
@@ -246,7 +246,7 @@ in between.
 
 The direction Route 2 should take instead: the reason EXHALE's network wants a
 more molecular base than the photochemistry gives is that the network is
-missing the physics that dissociates H2 — Lyman-Werner photodissociation was
+missing the physics that dissociates H2, Lyman-Werner photodissociation was
 then on the Tier-2 open list. Adding that is a fix to the network; pinning
 `q_H2` at the base is a patch over its absence. Prefer the fix. (It was added
 on 2026-08-13, and the next subsection records what it did.)
@@ -257,7 +257,7 @@ the shortcut used for the six atomic species does **not** extend to `isp_H2`.
 
 ### Route 2 executed, 2026-08-13: the missing term is now in, and it is not the answer
 
-Lyman-Werner photodissociation was implemented in the coupled network — new key
+Lyman-Werner photodissociation was implemented in the coupled network, new key
 `Stellar LW flux [erg/cm2/s]:` (default 0), module
 `src/modules/lower_atmosphere/lyman_werner.f90`, Draine & Bertoldi (1996)
 calibration and eq. (37) self-shielding of the star-ward H2 column, 0.4 eV of
@@ -268,7 +268,7 @@ the Lyman-Werner bands".
 Result on the hot-Uranus gate (metals off, both A and B Newton-converged,
 `info = 0`, band flux 343 erg cm^-2 s^-1 for the HD 209458 orbit): **the base
 composition does not move.** q_H2 at the base goes from 0.8618 to 0.8612 against
-the 0.75 the case's `base.inp` carries — 0.5% of the gap. Lyman-Werner does
+the 0.75 the case's `base.inp` carries, 0.5% of the gap. Lyman-Werner does
 become the largest single H2 loss at the base (5.9e-11 s^-1 against 2.5e-11 for
 H+ + H2), but the base partition is a formation-destruction balance in which
 n_H/n_H2 scales as the square root of the destruction rate, so reaching
@@ -276,8 +276,8 @@ q_H2 = 0.75 would need a destruction rate 4100x larger. The unshielded band
 supplies 6.0e-5 s^-1, more than enough; the base column N_H2 = 4.3e21 cm^-2
 suppresses it by 1e6. The band physically cannot reach 1 microbar.
 
-The conclusion recorded above — that the network is missing the physics that
-dissociates H2 — was right in kind and wrong in identity. The photochemical
+The conclusion recorded above (that the network is missing the physics that
+dissociates H2) was right in kind and wrong in identity. The photochemical
 codes' extra atomic H at 1 microbar comes from catalytic cycles on O, OH and
 H2O (`lower_atmosphere_coupling.md` section 1), and EXHALE's H2/H2+/H3+/HeH+
 network has nowhere to put those species. **Route 1 therefore stays the only way
@@ -296,7 +296,7 @@ so a VULCAN molecule has nowhere to land. (The parser also refused
 `Molecular chemistry` together with trace metals when this was written; since
 2026-08-13 the two are solved in one system, but that changes nothing here.)
 Neither VULCAN nor Photochem releases atomic metals
-at all, so `metals.inp` stays user-supplied regardless — that part of the
+at all, so `metals.inp` stays user-supplied regardless: that part of the
 Lavvas model has no public analogue. Leave these as comments.
 
 ## 7. Validation
@@ -307,7 +307,7 @@ Default-off falls out of the design rather than needing a switch: with no
 `q_H2_base` key the equilibrium branch runs, so **every existing run is
 byte-identical**. Confirm rather than assume:
 
-- `backup/regression/run_check.sh check` — the two WASP-121 b cases, which have
+- `backup/regression/run_check.sh check`: the two WASP-121 b cases, which have
   `Molecular base` off, must stay byte-identical;
 - a `Molecular base: True` run without `q_H2_base` must be byte-identical, which
   is what tests the §4.2 refactor (moving the correction into `composition.f90`).
@@ -320,20 +320,20 @@ With `q_H2_base` present, on HD 189733 b:
 
 - `ntot_bc` from 0.5440 to 0.6180 for a metals-free base (where it is 1 before
   the correction, which is the Tier-2 case since `Molecular chemistry` and trace
-  metals cannot be combined) — +13.6% on the value, the subtraction itself
+  metals cannot be combined), +13.6% on the value, the subtraction itself
   changing by 0.074 per nucleus. With metals in the EOS budget the starting
   value is `(1+HeH+sum melem_ab)/(1+HeH)` instead and the shift is the same
   0.074 in absolute terms.
 - in `Base BC: pressure` mode, `n0` down by the same factor
-- the wind response is the open number — it is what the change is for
+- the wind response is the open number: it is what the change is for
 
 Report it the way the comparison memo does: mass flux over the code's own `du`
 window, not an outer-half average.
 
 ### 7.3 Planet choice
 
-**Do not validate on HD 189733 b.** It does not converge — `du` wandered between
-0.77 and 1.86 over 87000 steps, the base-breathing item in `TO_BE_DONE.md` (A) —
+**Do not validate on HD 189733 b.** It does not converge: `du` wandered between
+0.77 and 1.86 over 87000 steps, the base-breathing item in `TO_BE_DONE.md` (A),
 so a 7% base-density change cannot be separated from the oscillation.
 [2026-08-15: no longer a restriction. HD 189733 b reaches a Newton-grade steady
 state (`info=0`) after the JFNK line-search fix and the beta(tau)/CHIANTI-guarded
@@ -356,8 +356,8 @@ T(p), Kzz and stellar spectrum, and the traps in
    Photochem's default set lands within 1% of the equilibrium fit. A run that
    adopts photochemistry and sees no change has not necessarily done anything
    wrong.
-4. `q_H2_base` and `HeH_base` are not independent — both come from the same
-   solution — but only one of them is currently checked for consistency with the
+4. `q_H2_base` and `HeH_base` are not independent (both come from the same
+   solution), but only one of them is currently checked for consistency with the
    elemental abundance. Worth a validation print at read time.
 
 ## 9. Suggested order
@@ -365,7 +365,7 @@ T(p), Kzz and stellar spectrum, and the traps in
 1. Add `q_H2_base` to `read_base_inp` + `parameters.f90`; leave the
    `molecular_base` block where it is. Verify byte-identity with no key present.
 2. Move the correction into `composition.f90` (§4.2). Verify byte-identity again
-   on the Tier-2 gates — this step should change nothing at all.
+   on the Tier-2 gates: this step should change nothing at all.
 3. Update `vulcan_to_base.py` and `compare_vulcan_photochem.py` to emit the key;
    update `docs/input_schema.md` (a new row in the `base.inp` section) and
    `docs/lower_atmosphere_coupling.md` (Tier-3 row: the partition is now
@@ -385,15 +385,15 @@ Steps 1-4 were carried out on 2026-08-10 (§10). Step 5 was carried out on
 |---|---|
 | `src/modules/init/parameters.f90:142-155` | `q_h2_base = -1.0d0` (negative = no photochemical value supplied) and `p_base_bar = 1.0d-6` (handoff level [bar]) |
 | `src/modules/files_IO/input_read.f90:982-987` | `read_base_inp` branches for `q_H2_base` and `p_base`, echoed like the four existing keys |
-| `src/modules/files_IO/input_read.f90:992-1009` | validation echo after the read loop (§8-4): the photochemical `q_H2` is printed next to the `HeH` in effect, and a `p_base` away from 1 microbar is flagged. Print only — an inconsistent handoff is never a reason to refuse to run |
+| `src/modules/files_IO/input_read.f90:992-1009` | validation echo after the read loop (§8-4): the photochemical `q_H2` is printed next to the `HeH` in effect, and a `p_base` away from 1 microbar is flagged. Print only, an inconsistent handoff is never a reason to refuse to run |
 | `src/modules/functions/composition.f90:149-178` | `h2_mixing_ratio_base()` (photochemical value if supplied, chemical-equilibrium fit at `(p_base_bar, T0)` otherwise) and `h2_bound_fraction()` (the particles the H2 binding removes, per (H+He) nucleus) |
-| `src/modules/functions/composition.f90:144` | `comp_ntot_bc` subtracts `h2_bound_fraction()` after the metal term — the §4.2 move |
+| `src/modules/functions/composition.f90:144` | `comp_ntot_bc` subtracts `h2_bound_fraction()` after the metal term, the §4.2 move |
 | `src/modules/files_IO/input_read.f90:776-788` | the inline `molecular_base` block is gone; `input_read` only echoes which H2 source was used |
 | `src/modules/files_IO/write_setup_report.f90:215-216` | both new variables in `parse_dump.txt` |
 | `src/utils/vulcan_to_base.py:134-135`, `docs/compare_vulcan_photochem.py:287-288` | both converters write `q_H2_base` and `p_base` as read keys; the comment lines are unchanged |
 
-`h2_bound_fraction` keeps the original arithmetic verbatim —
-`x2 = 2q(1+HeH)/(1+q)`, capped at 1, then `0.5*x2/(1+HeH)` — rather than the
+`h2_bound_fraction` keeps the original arithmetic verbatim:
+`x2 = 2q(1+HeH)/(1+q)`, capped at 1, then `0.5*x2/(1+HeH)`, rather than the
 `q/(1+q)` simplification sketched in §4.2. The two agree only while the cap is
 inactive, and reproducing the equilibrium branch bitwise was the gate.
 
@@ -403,7 +403,7 @@ literal exactly.
 
 Deliberately **not** changed: `set_IC.f90:176` and
 `ionization_equilibrium.f90:556` also call `q_h2_equilibrium`, but at each
-cell's *local* pressure, not at the base — they build an H2 profile and a
+cell's *local* pressure, not at the base, they build an H2 profile and a
 solver seed, not a base particle count, so the base value does not belong
 there.
 
@@ -445,8 +445,8 @@ measured.
 
 ### Route 2
 
-Settled separately and recorded in §5: the "middle option" there — seed the
-initial condition from the handoff and let the network relax it — does not
+Settled separately and recorded in §5: the "middle option" there (seed the
+initial condition from the handoff and let the network relax it) does not
 survive EXHALE's chemistry architecture. The molecular network is solved as a
 local equilibrium in every cell at every step, so a seeded composition is
 erased immediately; the seed only selects the Newton branch in bistable cells.
@@ -489,7 +489,7 @@ planet-specific lines:
 
 Everything else is held at the values that produced the converged HD 189733 b
 run: `network = thermo/NCHO_photo_network.txt` with `atom_list = ['H','O','C','N']`
-(the §"Traps" trap 1 — the atom list matches the network's atoms),
+(the §"Traps" trap 1, the atom list matches the network's atoms),
 `sl_angle = 48 deg`, `nz = 150`, `P_b = 1e9`, `P_t = 1e-2` dyn/cm^2,
 `ode_solver = 'Ros2'`, `use_photo = True`, `use_ion = False`, `diff_esc = []`.
 
@@ -510,8 +510,8 @@ C/H = 2.776e-4, He/H = 9.6917e-2, N/H = 8.185e-5, O/H = 6.062e-4.
   solar spectrum. This is a substitution, not a measurement of this star.
 - *Gravity and radius.* R(1 bar) = 1.36 R_J (the value
   `examples/13_lower_atmosphere/README.md` uses for this planet) and
-  M_p = 0.720 M_J (from `HD209458b/input.inp`), with R_J = 6.9911e9 cm — the
-  constant `parameters.f90` and `vulcan_to_base.py` both use — give
+  M_p = 0.720 M_J (from `HD209458b/input.inp`), with R_J = 6.9911e9 cm (the
+  constant `parameters.f90` and `vulcan_to_base.py` both use) give
   g_s = 1008.9 cm/s^2. VULCAN's `Rp` was set to the same 9.508e9 cm so that
   VULCAN's g(z) and the converter's hypsometric integration use one gravity.
   Upstream's `cfg_HD209.txt` instead has Rp = 1.38 x 7.1492e9 cm and
@@ -520,7 +520,7 @@ C/H = 2.776e-4, He/H = 9.6917e-2, N/H = 8.185e-5, O/H = 6.062e-4.
 
 **Run health.** `MPLBACKEND=Agg OMP_NUM_THREADS=1 python3 -u vulcan.py`
 reached steady state in **1206 steps** with a **simulated elapsed time of
-1.40e8 s** and 418 s of CPU time — the simulated time is the health indicator
+1.40e8 s** and 418 s of CPU time: the simulated time is the health indicator
 that trap 1 is about, and it advanced normally. The log contains **no**
 "Element conservation is violated" line; the reported total atom loss is
 H 2.04e-4, O 4.52e-4, C 2.08e-4, N 2.39e-4, and the negative-solution counter
@@ -595,9 +595,9 @@ ghost-cell pressure at fixed `rho_bc`, not through `n0`.
 
 ### 11.4 What the runs did
 
-Both runs spent their first ~90000 steps in a damped base oscillation — `du`
+Both runs spent their first ~90000 steps in a damped base oscillation (`du`
 fell from ~1e4 to ~0.5 by step 45000-55000, rose again to a few tens near
-step 65000, and then settled — before switching PLM -> WENO3 (at step 47792
+step 65000, and then settled) before switching PLM -> WENO3 (at step 47792
 for eqfit, 53399 for photo) and entering a monotone decay. The two traces have
 the same shape, so the oscillation is a property of this hot base and not of
 the H2 partition.
@@ -768,7 +768,7 @@ here until 2026-08-13: the parser rejected `Molecular chemistry` together with
 a `metals.inp`, and the A/B carries metals. That restriction is gone --- the
 metal stages are now solved in the same system as the molecular network
 (`System_HeH_mol_metals`) --- so the deep handoff can be run in the consistent
-configuration; see the smoke test recorded in `Update_EXHALE.md`.
+configuration; see the smoke test recorded in `Update_EXHALE_stage1.md`.
 
 **The pair therefore runs at p_base = 1e-4 bar**, the deepest level that
 integrates with the shallow pair's numerics unchanged (cold isothermal IC, same
@@ -1081,14 +1081,14 @@ the end of §11.8 therefore still stands for every quantitative number in §11;
 lifting it waits on item (A), for which the recorded direction is the explicit
 base viscosity work.
 
-> [2026-08-15: the last clause is superseded by §11.10 below — the floor was the
+> [2026-08-15: the last clause is superseded by §11.10 below, the floor was the
 > JFNK scaling and watchdog, not a missing base viscosity.]
 
 ### 11.10 The §11.9 residual floor was the solver, not the base (2026-08-10)
 
-The reading at the end of §11.9 — that `photo_deep_secion_cont` has no steady
+The reading at the end of §11.9 (that `photo_deep_secion_cont` has no steady
 state reachable by marching or JFNK, and that the `2.80e-3` floor is the
-`TO_BE_DONE` item (A) base-momentum problem — is **withdrawn**. It was traced
+`TO_BE_DONE` item (A) base-momentum problem) is **withdrawn**. It was traced
 instead to the JFNK diagonal scaling and to the stagnation watchdog; full
 account and numbers in `docs/newton_scaling_and_base_wall.md`.
 
@@ -1107,4 +1107,4 @@ failed line searches, the same configuration converges: `info = 0`,
 values quoted in §11.8-11.9 came from marching stopped on `du` after the JFNK
 failure; `9.47` is the first Newton-converged number for this configuration and
 is the one to carry forward. The secondary-ionization-OFF caveat on §11's other
-numbers is unaffected — those runs never fired the staged trigger.
+numbers is unaffected: those runs never fired the staged trigger.

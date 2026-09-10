@@ -4,11 +4,11 @@ Two independent attempts at adding AIOLOS-style metal cooling to ATES coexist
 in this workspace. They differ in design philosophy, coupling strength,
 data sources, and footprint. This document compares them side by side.
 
-* `ATES/ATES_extended/` — earlier work (last edit 2026-04-29), accompanied
+* `ATES/ATES_extended/`: earlier work (last edit 2026-04-29), accompanied
   by `docs/aiolos_port_memo.pdf` describing Phase 1 (opacity dispatcher)
   and Phase 2 (trace metals).
-* `EXHALE_v1.00/` — recent work (this session, 2026-05-28),
-  documented in `docs/Update_EXHALE_early_phase` (Part II).
+* `EXHALE_v1.00/`: recent work (this session, 2026-05-28),
+  documented in `docs/Update_EXHALE_stage0` (Part II).
 
 ---
 
@@ -17,7 +17,7 @@ data sources, and footprint. This document compares them side by side.
 | Aspect | ATES_extended | EXHALE |
 |---|---|---|
 | Call site | Inside `post_process_adv` only (`solve_metals_post`) | Inside `ionization_equilibrium` every step (`ion_system_HeHCO`) |
-| Equilibrium method | **Coronal equilibrium** — each metal solved independently as `Gamma * n_X = alpha * n_e * n_(X+1)` via `coronal_ratio()` | **Full coupled 9-equation MINPACK system** — HII, HeII, HeIII, CII, CIII, OII, OIII, **NII, NIII** solved simultaneously |
+| Equilibrium method | **Coronal equilibrium**: each metal solved independently as `Gamma * n_X = alpha * n_e * n_(X+1)` via `coronal_ratio()` | **Full coupled 9-equation MINPACK system**, HII, HeII, HeIII, CII, CIII, OII, OIII, **NII, NIII** solved simultaneously |
 | Metal feedback on electron density | None (n_e from H/He only; metals assumed trace) | Included: `n_e = n_HII + n_HeII + 2*n_HeIII + n_CII + 2*n_CIII + n_OII + 2*n_OIII` |
 | `f_sp` array dimension | Unchanged (metals carried as separate state) | Extended 6 → 15 (H/He 1-6, C 7-9, O 10-12, **N 13-15**) |
 
@@ -35,7 +35,7 @@ data sources, and footprint. This document compares them side by side.
 | Ionization stages | CI/CII/CIII, NI/NII/NIII, OI/OII/OIII (coronal) | CI/CII/CIII, **NI/NII/NIII**, OI/OII/OIII (MINPACK 9-eq) |
 
 > [2026-08-15: two rows of this table are out of date. (i) The C/N/O cooling
-> default is no longer the Black/AIOLOS fit — it is the closed-form CHIANTI
+> default is no longer the Black/AIOLOS fit: it is the closed-form CHIANTI
 > fit set; `cno_cool 0` in `metals.inp` selects the legacy AIOLOS fits (which
 > carry no nitrogen cooling). (ii) `beta_esc = 1` is gone: the escape
 > probability of each of the eight ground-term fine-structure lines of C I,
@@ -58,8 +58,8 @@ data sources, and footprint. This document compares them side by side.
 
 | Aspect | ATES_extended | EXHALE |
 |---|---|---|
-| Opacity model dispatcher (Phase 1) | **Yes** — A/C/P/T models in `opacity_models.f90`, `.opa` table format, pressure-broadening **hook (deferred)** | **Yes** — same dispatcher ported; pressure broadening **applied in each cell** (completed) |
-| Charge transfer with H (Kingdon & Ferland 1996) | No | **Yes** — O/N/C ↔ H in `System_HeHCO.f90`, couples metal & H ionization |
+| Opacity model dispatcher (Phase 1) | **Yes**: A/C/P/T models in `opacity_models.f90`, `.opa` table format, pressure-broadening **hook (deferred)** | **Yes**, same dispatcher ported; pressure broadening **applied in each cell** (completed) |
+| Charge transfer with H (Kingdon & Ferland 1996) | No | **Yes**: O/N/C ↔ H in `System_HeHCO.f90`, couples metal & H ionization |
 | Module organization | Highly modular (8 new files plus 5 modifications) | Less modular (1 new file plus 14 modifications) |
 | Regression test specification | Documented in memo: with no `metals.inp` present, results must be bit-identical to upstream | Only a smoke test (executable initializes correctly) |
 
@@ -76,7 +76,7 @@ data sources, and footprint. This document compares them side by side.
 > [2026-08-15: the file name `System_HeHCO.f90` used in this table and in §1
 > and §4, and the routine name `ion_system_HeHCO` in §1, no longer exist. The
 > coupled ionization system is the `System_HeH_*` family in
-> `src/modules/nonlinear_system_solver/` — `System_HeH_metals.f90`,
+> `src/modules/nonlinear_system_solver/`: `System_HeH_metals.f90`,
 > `System_HeH_TR_metals.f90`, `System_HeH_mol_metals.f90` and their He-only
 > counterparts. Every `src/...` path in the ATES_extended column of these
 > tables is relative to `ATES/ATES_extended/`; every one in the EXHALE column
@@ -94,7 +94,7 @@ data sources, and footprint. This document compares them side by side.
 
 **ATES_extended** (conservative, modular):
 
-* + Leaves the existing ATES core (H/He solver, `f_sp` array) untouched —
+* + Leaves the existing ATES core (H/He solver, `f_sp` array) untouched:
   low regression risk.
 * + The opacity dispatcher (Phase 1) is independently useful even without
   the metals work.
@@ -106,16 +106,16 @@ data sources, and footprint. This document compares them side by side.
 **EXHALE** (aggressive, fully coupled):
 
 * + Metals contribute self-consistently to equilibrium, energy balance,
-  and opacity — faithfully reproduces AIOLOS behavior.
+  and opacity: faithfully reproduces AIOLOS behavior.
 * + The beta escape probability formula for line trapping is available
   in-source (currently overridden by `beta_esc = 1`, the 100%-escape /
   optically-thin assumption; AIOLOS's `1e8` boost is commented out).
 * - Extending `f_sp` from 6 to 15 columns touches many files; higher
   regression risk.
 * - AIOLOS analytic cooling fits have unclear provenance (see
-  `EXHALE_v1.00/docs/Update_EXHALE_early_phase`, Part II).
+  `EXHALE_v1.00/docs/Update_EXHALE_stage0`, Part II).
 
-> [2026-08-15: the bullet above is superseded — the escape probability is now
+> [2026-08-15: the bullet above is superseded, the escape probability is now
 > computed from the line optical depth for eight ground-term fine-structure
 > lines rather than overridden to 1.]
 
@@ -128,27 +128,27 @@ data sources, and footprint. This document compares them side by side.
 Code work still pending in ATES_extended (testing and validation items
 omitted):
 
-1. **Time-loop integration** — currently the metals solver runs only in
+1. **Time-loop integration**: currently the metals solver runs only in
    `post_process_adv.f90`; should be called from
    `ionization_equilibrium.f90` every step. (Most impactful unfinished item.)
-2. **CIII / NIII / OIII** — extend the Verner table; generalize
+2. **CIII / NIII / OIII**: extend the Verner table; generalize
    `coronal_ratio` to a three-element system.
-3. **Recombination upgrade** — replace A&P 1973 RR parameter blocks with
+3. **Recombination upgrade**: replace A&P 1973 RR parameter blocks with
    Verner & Ferland 1996 4-parameter values (~5x improvement for CI, OI);
    replace SVS 1982 DR with the Badnell 2003+ DR series. Local edits to
    parameter blocks; all callers remain unchanged.
-4. **Cooling fidelity** — add the n_HI collider channel and the
+4. **Cooling fidelity**: add the n_HI collider channel and the
    critical-density saturation factor to `lambda_X`; add NI/NII fits.
-5. **Phase 1d** — pressure-broadening multiplier per cell. The current
+5. **Phase 1d**: pressure-broadening multiplier per cell. The current
    Phase-1 implementation only replaces the prebaked global vector;
    applying it in each cell is an explicit deferred item.
-6. **Python plot helper** — extend `EXHALE_plots.py` to overlay
+6. **Python plot helper**: extend `EXHALE_plots.py` to overlay
    `Metals_ioniz_adv.txt` on the same coordinates as
    `Hydro_ioniz_adv.txt`.
 
 ### From EXHALE:
 
-See `EXHALE_v1.00/docs/Update_EXHALE_early_phase`, Part II
+See `EXHALE_v1.00/docs/Update_EXHALE_stage0`, Part II
 ("Caveats and Verification Items") for the corresponding list. The most
 important verification items are:
 
@@ -158,7 +158,7 @@ important verification items are:
    Voronov 1997.
 3. AIOLOS cooling fit provenance (likely SB23 paper or Schulik 2022
    thesis).
-4. `post_process_adv.f90` currently passes zero metal density vectors —
+4. `post_process_adv.f90` currently passes zero metal density vectors:
    self-consistent post-processing with metals is deferred.
 5. HeITR and metals are presently mutually exclusive in the dispatch
    logic.

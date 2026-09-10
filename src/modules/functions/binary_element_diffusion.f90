@@ -6,18 +6,22 @@
       !
       ! COMPONENTS.  The gas is treated as two components moving through each
       ! other with a single mass-averaged velocity v (the hydro's velocity):
-      !   component 1 : hydrogen carriers together with the trace metals
-      !                 slaved to them at fixed metal/H.  Mass per H nucleus
-      !                 m_1 = mass_per_H_nucleus_without_He() [m_H units];
+      !   component 1 : hydrogen carriers together with the trace metals and
+      !                 the heavy nuclei bound in the molecular carriers.
+      !                 Its mass rho_1 is read from the cell's own species
+      !                 (mixture_mass_split), and its mass per hydrogen
+      !                 nucleus is rho_1/n_H, which equals the reservoir
+      !                 m_1 = mass_per_H_nucleus_without_He() only while the
+      !                 cell sits at the reservoir metal/H;
       !   component He: helium, all stages.
       ! With that split rho_1 + rho_He = rho exactly (the metal mass is in rho
-      ! under the same eos_metals policy that puts it into m_1), so the two
+      ! under the same eos_metals policy that puts it into rho_1), so the two
       ! diffusive mass fluxes close, J_1 = -J_He, and the composition update
       ! creates or destroys no mass.
       !
       ! STATE.  The transported variable is the helium MASS FRACTION
       !
-      !    X = rho_He/rho = m_He n_He / (m_1 n_H + m_He n_He),   0 <= X <= 1
+      !    X = rho_He/rho = m_He n_He / (rho_1 + m_He n_He),   0 <= X <= 1
       !
       ! with n_H, n_He the ELEMENT (nucleus) densities counted over every
       ! species through the bsp_nH / bsp_nHe weights of species_table, so the
@@ -30,35 +34,44 @@
       !
       !    d(rho X)/dt + (1/r^2) d/dr [ r^2 ( rho X v + J ) ] = 0
       !
-      ! solved here in the ADVECTIVE form (memo eq. 5)
+      ! SPLIT IN TWO, AND WHERE EACH HALF LIVES.  The advection of the element
+      ! mass fraction is a divergence of the SAME face mass flux the density
+      ! rides on, so it is carried inside the Runge-Kutta stages by
+      ! species_advection_stage below, on the hydro's own faces, volumes and
+      ! time step.  Each element's nucleus total over the domain then changes
+      ! only by its boundary fluxes, to round-off, and not to the order of the
+      ! hydro's truncation.  What is left for the implicit step here is the
+      ! diffusive half,
       !
-      !    dX/dt + v dX/dr = -(1/(rho r^2)) d/dr [ r^2 J ]
+      !    rho (X^new - X^adv)/dt = -(1/r^2) d/dr [ r^2 J ] ,
       !
-      ! because this routine receives only the new rho, v, T and dt -- not the
-      ! hydro's Runge-Kutta face mass fluxes -- so an independent conservative
-      ! advection of rho X could not keep a uniform X uniform in a compressing
-      ! or expanding flow.  In the advective form a uniform X is preserved
-      ! exactly whatever the hydro does (test T6), the composition and the
-      ! conservative form agree exactly at a steady state (where rho v r^2 is
-      ! constant), and in a transient the helium mass is conserved only to the
-      ! order of the hydro's own truncation.  The advective term is a ONE-SIDED
-      ! UPWIND difference taken with the CELL velocity v_j,
+      ! taken at the composition the stages advected.  The operator therefore
+      ! advects only when it is GIVEN the face mass flux (Frho_in), which is
+      ! the fixed-wind relaxation of relax_element_composition, a steady solve
+      ! that has no Runge-Kutta stages to ride on; the marching path omits it,
+      ! and the stages carry the advection instead.  When it does advect it
+      ! forms the term from that face mass flux through the same three
+      ! routines the stages use (species_face_fraction, species_face_flux,
+      ! species_flux_divergence), so the relaxation's fixed point is the zero
+      ! of the stationary elemental row and not of a second discretization.
       !
-      !    rho_j v_j (X_j - X_{j-1})/(r_j - r_{j-1})    for v_j >= 0
-      !    rho_j v_j (X_{j+1} - X_j)/(r_{j+1} - r_j)    for v_j <  0
+      ! THIS MODULE KNOWS NOTHING OF THE STEADY RESIDUAL: IT IS GIVEN THE
+      ! FLUX.  F_rho is a required argument of the fixed-wind relaxation and
+      ! of the stationary elemental row, and every caller fetches it from the
+      ! mass row of the state it is measuring (face_mass_flux_of_state,
+      ! steady_residual.f90) at the call site.  Element transport is a
+      ! closure of the mixture and stands below the hydrodynamic solver in
+      ! the module order; reaching up to that solver from here inverted the
+      ! layering and dragged the whole hydrodynamic tree, LAPACK included,
+      ! into every program that links this module, so the standalone
+      ! acceptance binary (diffusion_tests.x) could not be linked at all.
       !
-      ! so a uniform X is exact, the row sum of the advective part is zero and
-      ! the donor neighbour is the only off-diagonal it creates.  It is NOT
-      ! built from face-averaged velocities: with v_f = (v_j + v_{j+1})/2 the
-      ! upwind selection can pick the OUTWARD neighbour at both faces of a cell
-      ! whose two face velocities straddle zero (v_f(j-1) < 0 < v_f(j)), and the
-      ! advective term of that cell then vanishes identically even though its
-      ! own v_j is large.  The cell is left with nothing but the molecular
-      ! diffusion time dr^2/D_12 -- ~10^6 s at the base against a ~1 s hydro
-      ! step -- so whatever composition it holds is frozen there.  That is what
-      ! produced the isolated helium hole in the first free cell above the base
-      ! of the breathing HD 209458 b wind, where the base sound wave alternates
-      ! the sign of v from cell to cell.
+      ! The face-flux form removes two failures the earlier cell-velocity
+      ! upwind difference had to work around one at a time, because a cell can
+      ! now only lose what the mass row says it loses: a cell whose two face
+      ! velocities straddle zero keeps an advective term of its own, and a
+      ! cell that is outflowing at both faces cannot be evacuated of an
+      ! element by a divergence the hydro's own density does not have.
       !
       ! DIFFUSIVE MASS FLUX (memo eqs. 2-4, 6).  For a binary mixture only one
       ! diffusive flux is independent; the helium one is
@@ -242,7 +255,7 @@
       ! comparison principle for the linear system.  (The lagged linearization
       ! this replaced entered the drift as [rho D G (1-X_lag)] X, whose flux
       ! does not vanish at X = 1 unless the lag is already there; measured, it
-      ! let X reach 1.52.  Sections 84 and 86 of docs/Update_EXHALE.md.)
+      ! let X reach 1.52.  Sections 84 and 86 of docs/Update_EXHALE_stage1.md.)
       !
       ! M-MATRIX CONDITION.  The Newton Jacobian has
       !   off-diagonals   aa = -K r^2 dJ/dX(j-1) <= 0,  cc = K r^2 dJ/dX(j+1) <= 0
@@ -253,7 +266,7 @@
       ! on the right in the two upwind branches, and never exceed A/dr in the
       ! central one (that is exactly the Peclet switch), and (iii) the upwind
       ! advection contributes +rho|v|/dr to the diagonal and the same amount,
-      ! negated, to the donor neighbour and to nothing else.
+      ! negated, to the donor neighbor and to nothing else.
       !
       ! What is measured, before the clip: the excursion outside [0,1] is
       ! NEGATIVE in every case tested -- the solve stays strictly inside the
@@ -270,14 +283,19 @@
       use global_parameters
       use grav_func,     only: Dphi
       use species_table, only: n_bsp, bsp_fsp, bsp_nH, bsp_nHe,           &
-                               bsp_is_excited_level,                      &
+                               bsp_is_excited_level, bsp_mass,            &
                                bsp_charge, isp_HI, isp_HeI,               &
                                isp_HII, isp_HeII, isp_HeIII, isp_HeTR,    &
                                isp_H2, isp_H2p, isp_H3p,                  &
-                               n_mion, mion_fsp, mion_stage,              &
+                               bsp_nO, bsp_nC,                            &
+                               n_mion, mion_fsp, mion_stage, mion_elem,   &
                                n_melem, melem_i0, melem_top, melem_A,      &
-                               melem_name
+                               melem_name, iel_C, iel_O
       use composition,   only: mass_per_H_nucleus_without_He
+      use species_advective_transport, only: species_advective_update,   &
+                                    species_face_fraction,              &
+                                    species_face_flux,                  &
+                                    species_flux_divergence
       use lower_atmosphere_profile, only: lap_in_use, lap_r_top_RJ,       &
                           lap_flux_measured, lap_flux_window_empty,       &
                           lap_flux_nface, lap_FH_median, lap_FH_spread,   &
@@ -293,6 +311,37 @@
       implicit none
       private
       public :: element_diffusion_step, relax_element_composition
+      ! The advective half of the transport of every species row carried on
+      ! the hydro's own face mass fluxes inside the Runge-Kutta stages: the
+      ! element mass fractions and the declared molecular and proton
+      ! carriers alike.
+      public :: species_advection_active, species_advection_begin_step
+      public :: species_advection_stage, species_advection_project
+      ! The molecular and proton carriers of the photochemical transport
+      ! operator ride on the same face mass fluxes as the elements.  That
+      ! operator declares them here once the input keys are parsed, and reads
+      ! their advected fractions back as the state one transport step starts
+      ! from.
+      public :: advected_carrier_reset, advected_carrier_register
+      public :: advected_carrier_count
+      public :: advected_carrier_fractions, advected_carrier_state_ready
+      public :: advected_carrier_state_consumed
+      ! The mass fractions the faces carry, and the mixture mass they are
+      ! fractions of.  A stationary species balance forms its advective term
+      ! from the SAME face quantities the Runge-Kutta stages do, so it reads
+      ! them here instead of building a second copy of the conversion.
+      public :: carrier_mass_fractions, element_mass_fractions
+      public :: project_element_mass_fractions
+      public :: mixture_mass_sum
+      public :: element_transport_residual
+      ! THE TERMS OF ONE TRACE-ELEMENT ROW AT THE OUTERMOST CELLS, printed
+      ! and nothing else: a row that stands away from zero is read by the
+      ! sizes of the two fluxes it balances, and those sizes exist only
+      ! inside the residual that forms them.  Off unless a caller asks, and
+      ! the caller states the first cell it wants (PLAN_20260909_rev1 item
+      ! N25, the sodium row of the outermost cell).  The arithmetic of the
+      ! row is untouched by it.
+      public :: trace_row_terms_diag, trace_row_terms_from
       public :: relative_settling_mass
       ! Exposed so the acceptance tests read the same coefficients the
       ! operator uses -- there is no second copy of the friction anywhere.
@@ -301,6 +350,9 @@
       public :: ion_neutral_pair_diffusion
       public :: coulomb_pair_diffusion, coulomb_logarithm
       public :: alpha_HI, alpha_HeI
+      ! Exposed so an acceptance test reads the masses this operator closes
+      ! its mixture with, and not a second copy of them.
+      public :: m_He_amu, m_H_amu
       ! How far the last solve left [0,1] BEFORE the range clip, signed so
       ! that a negative value means it stayed inside.  Exposed because the
       ! clipped X cannot tell an overshoot from an exact 1 (both read 1.0), so
@@ -320,12 +372,63 @@
       real*8, protected :: trace_ratio_under_zero = -1.0d0
       public :: trace_ratio_under_zero
 
-      ! Species masses in the m_H units the code counts f_sp in (species_table
-      ! bsp_mass literals), and the mass of that H = 1 unit in grams (the
-      ! hydrogen ATOM as in parameters.f90 -- not the atomic mass unit u).
-      real*8, parameter :: m_He_amu = 4.0d0
-      real*8, parameter :: m_H_amu  = 1.0d0
-      real*8, parameter :: m_amu_g  = 1.67353284d-24
+      ! THE ADVECTED ELEMENT MASS FRACTIONS, between the beginning of a
+      ! marching step and the projection that ends it.  Column 1 is helium,
+      ! the member of the normalized set; columns 1+im are the trace metals,
+      ! which ride on the same faces without entering the normalization
+      ! because their mass is already inside m_1 at the fixed reservoir
+      ! abundance the trace closure assumes (the same closure that lets a
+      ! metal element be solved against a frozen hydrogen background).
+      ! Yetr_n is the composition the step began with, which the second and
+      ! third Runge-Kutta stages combine with.
+      real*8, allocatable :: Yetr(:,:), Yetr_n(:,:)
+      integer :: n_etr = 0
+
+      ! WHETHER THE TERMS OF A TRACE-ELEMENT ROW ARE PRINTED, and the first
+      ! cell they are printed from (trace_composition_residual).  Read only
+      ! by a print; the row and its boundary are the same either way.
+      logical :: trace_row_terms_diag = .false.
+      integer :: trace_row_terms_from = 0
+
+      ! THE ADVECTED CARRIER MASS FRACTIONS.  A carrier is one species of an
+      ! element, so it rides on the same faces WITHOUT entering the
+      ! normalized set: the element it belongs to is already carried by the
+      ! closing member, and normalizing the carrier beside it would count
+      ! that mass twice.  What the face identity states for a carrier is
+      ! therefore a statement about its element, and it is the element
+      ! totals, not the carriers, that the closing member closes.
+      !
+      ! THE INNER GHOSTS ARE THE INFLOW COMPOSITION.  Where a lower-
+      ! atmosphere handoff states a carrier's base partition the ghost holds
+      ! that value, pinned by the ionization sweep, and the base face carries
+      ! it in; where nothing states it the ghost takes the base cell's own
+      ! partition, which is the zero-gradient condition written on the face
+      ! the gas actually crosses.  Which of the two a carrier gets is
+      ! declared with it.
+      integer, parameter :: n_car_max = 8
+      integer :: car_isp(n_car_max)  = 0
+      real*8  :: car_mass(n_car_max) = 0.0d0
+      logical :: car_base_imposed(n_car_max) = .false.
+      integer :: n_car = 0
+      real*8, allocatable :: Ycar(:,:), Ycar_n(:,:)
+      ! Whether Ycar holds a composition this attempt advected.  False from
+      ! the top of every attempt until the projection, so an attempt that is
+      ! discarded before the projection leaves no advected state behind.
+      logical :: car_ready = .false.
+
+      ! Species masses in the m_H units the code counts f_sp in, READ FROM
+      ! THE SPECIES TABLE rather than restated, because the two-component
+      ! closure below (msum = rho_1 + m_He_amu*nucHe = rho/(n0 mu)) is exact
+      ! only while this helium mass is the one calc_rho weighs helium with.
+      ! Indexing note: bsp_mass is indexed by bsp POSITION and bsp_fsp(1:6)
+      ! = 1..6, so isp_HI/isp_HeI are also the positions of the two atomic
+      ! rows; the shortcut does NOT extend to the molecular species
+      ! (isp_H2 = 34 but bsp position 7).  The gram value of the H = 1 unit
+      ! is the hydrogen ATOM as in parameters.f90, not the atomic mass unit u.
+      real*8, parameter :: m_He_amu = bsp_mass(isp_HeI)
+      real*8, parameter :: m_H_amu  = bsp_mass(isp_HI)
+      ! The mass unit of the density normalization is the hydrogen ATOM mass mu
+      ! of parameters.f90 (one definition); this module reads it and keeps no copy.
       ! Elementary charge in electrostatic units, from the CODATA 2018 exact
       ! coulomb value: e = 1.602176634e-19 C / (10/c) = 4.803204713e-10 esu.
       real*8, parameter :: e_esu    = 4.803204713d-10
@@ -378,8 +481,11 @@
            [ isp_HeI, isp_HeII, isp_HeIII ]
       real*8,  parameter :: hecar_Z(n_hecar) =                              &
            [ 0.0d0, 1.0d0, 2.0d0 ]
+      ! One helium nucleus with its electrons weighs the same in every
+      ! ionization stage to the digits the mass table keeps, so the three
+      ! rows are the single table mass and not three literals.
       real*8,  parameter :: hecar_m(n_hecar) =                              &
-           [ 4.0d0, 4.0d0, 4.0d0 ]
+           [ m_He_amu, m_He_amu, m_He_amu ]
       real*8,  parameter :: hecar_alpha(n_hecar) =                          &
            [ alpha_HeI, 0.0d0, 0.0d0 ]
       character(len=5), parameter :: hecar_name(n_hecar) =                  &
@@ -397,7 +503,7 @@
       ! ------------------------------------------------------------------ !
 
       subroutine element_diffusion_step(rho, v, Tcode, f_sp, dt_code,     &
-                                        closed_base, Jface_out, rhov_in)
+                                        closed_base, Jface_out, Frho_in)
       ! Advance the helium mass fraction X one relaxation step and project the
       ! new element totals back into f_sp.  rho, v, Tcode are the current
       ! adimensional primitives, dt_code the adimensional relaxation timestep;
@@ -410,40 +516,42 @@
       ! [g cm^-2 s^-1] at the faces r_edg(0:N) evaluated with the coefficients
       ! the step actually used and the NEW X, so that a discrete elemental
       ! budget closes exactly against it (test T1b).
-      ! rhov_in (optional) is the advecting momentum density rho v
-      ! [g cm^-2 s^-1] the composition is carried by.  Absent, it is the
-      ! cell's own rho_j v_j, which is what the marching path wants; the
-      ! relaxation at a fixed wind supplies the STEADY mass flux mdot/(4 pi
-      ! r^2) instead -- see relax_element_composition for why.
+      ! Frho_in (optional) is the FACE MASS FLUX F_rho(j) at r_edg(j) in code
+      ! units, the one the Riemann solve of this state returned and the mass
+      ! row of this state differences, and its presence is what turns the
+      ! advective term on.  The marching path omits it: there the advection is
+      ! the divergence of those same face fluxes taken inside the Runge-Kutta
+      ! stages (species_advection_stage), so repeating it here would advect
+      ! the elements twice.  The relaxation at a fixed wind has no stages to
+      ! ride on and supplies the flux itself.
 
       real*8, dimension(1-Ng:N+Ng),           intent(in)    :: rho, v, Tcode
       real*8, dimension(1-Ng:N+Ng,n_species), intent(inout) :: f_sp
       real*8, dimension(1-Ng:N+Ng),           intent(in)    :: dt_code
       logical, optional,                      intent(in)    :: closed_base
       real*8, dimension(0:N), optional,       intent(out)   :: Jface_out
-      real*8, dimension(1-Ng:N+Ng), optional, intent(in)    :: rhov_in
+      real*8, dimension(1-Ng:N+Ng), optional, intent(in)    :: Frho_in
 
-      real*8, dimension(1-Ng:N+Ng) :: nucH, nucHe, msum, Xhe, Xold
+      real*8, dimension(1-Ng:N+Ng) :: nucH, nucHe, msum, mass1, Xhe, Xold
+      real*8, dimension(1-Ng:N+Ng) :: msum_out
       real*8, dimension(1-Ng:N+Ng) :: carH, carHe, mcarH, dlnpsi
       real*8, dimension(1-Ng:N+Ng) :: rho_phys, TK, Dco, Gco, dt_phys
       real*8, dimension(1-Ng:N+Ng) :: rp, rep, nH_phys, ntot_phys, dmeff
-      real*8, dimension(1-Ng:N+Ng) :: nX, nXold, DcoX, GcoX, zbX, zb1, rhov
+      real*8, dimension(1-Ng:N+Ng) :: nX, nXold, DcoX, GcoX, zb1, Frho
+      real*8, dimension(1-Ng:N+Ng) :: cadvf, wYtr, cadvX
       real*8, dimension(1-Ng:N+Ng) :: Dneut, eEf, ne_phys, zbHe, ne_rel
       real*8, dimension(1-Ng:N+Ng,n_hcar)    :: yH
-      real*8, dimension(1-Ng:N+Ng,n_mstage)  :: yX
-      real*8, dimension(n_mstage)  :: ZXs, mXs, alXs
       integer, dimension(1-Ng:N+Ng):: idom
-      integer, dimension(n_mstage) :: ispX
       real*8, dimension(0:N)       :: Agrd, Bdrf, Jf
       integer, dimension(0:N)      :: updrf
       ! NB: local scalars are checked against global_parameters case-
       ! insensitively.  In particular the time scale is tscale, NOT t0 (a local
       ! t0 would alias the global temperature normalization T0), and nothing
       ! here is named N, Ng, r, g, mu, info, count or du.
-      real*8 :: tscale, X_base, m_1, mX, fXbase, rXsc, Xover, Xunder, qdep
+      real*8 :: tscale, X_base, m_1, fXbase, rXsc, Xover, Xunder, qdep
       real*8 :: dJl, dJr
       integer :: j, jlo, im, i0m, top, k, n_vanished
-      logical :: shut_base
+      logical :: shut_base, advect
 
       if (.not. he_diffusion) return
       if (.not. thereis_He)   return
@@ -456,9 +564,7 @@
       m_1 = mass_per_H_nucleus_without_He()
 
       ! --- element nucleus counts per unit mass, and the helium mass fraction
-      call element_nucleus_counts(f_sp, nucH, nucHe)
-      msum = m_1*nucH + m_He_amu*nucHe        ! = 1 to round-off (see header)
-      where (msum .lt. 1.0d-30) msum = 1.0d-30
+      call mixture_mass_split(f_sp, nucH, nucHe, mass1, msum)
       Xhe  = m_He_amu*nucHe/msum
       Xold = Xhe
 
@@ -467,7 +573,7 @@
       where (TK .lt. 1.0d0) TK = 1.0d0
       rp       = r*R0
       rep      = r_edg*R0
-      rho_phys = rho*n0*m_amu_g*msum                       ! [g/cm^3]
+      rho_phys = rho*n0*mu*msum                       ! [g/cm^3]
       ! Carrier (collision-partner) density, which is what the Chapman-Enskog
       ! coefficients divide by.  Equal to the nucleus density in the atomic
       ! region; smaller where the hydrogen is bound into molecules.
@@ -480,12 +586,19 @@
       dt_phys = dt_code*tscale
       where (dt_phys .lt. 1.0d-30) dt_phys = 1.0d-30
 
-      ! --- advecting momentum density rho v [g cm^-2 s^-1]
-      if (present(rhov_in)) then
-         rhov = rhov_in
+      ! --- face mass flux, and with it the advective term.  Absent, the
+      !     Runge-Kutta stages already carried it.  cadvf converts the code
+      !     divergence of the helium mass flux into the [g cm^-3 s^-1] the
+      !     row is written in: a code density times a code velocity over a
+      !     code length is a rate in units of v0/R0, and n0 mu msum is the
+      !     mass one unit of the code density carries.
+      advect = present(Frho_in)
+      if (advect) then
+         Frho = Frho_in
       else
-         rhov = rho_phys*v*v0
+         Frho = 0.0d0
       endif
+      cadvf = n0*mu*msum*v0/R0
 
       ! --- settling coefficient G [1/cm] (gravity + ambipolar field + thermal)
       call settling_coefficient(rho, Tcode, f_sp, Gco, dmeff, zb1, eEf,   &
@@ -500,8 +613,9 @@
       ! one Newton solve of the nonlinear step is the whole update.
       call drift_and_gradient_face_coefficients(rho_phys, Dco, Gco, rp,   &
                                                 Agrd, Bdrf, updrf)
-      call solve_mass_fraction(Xold, Xhe, rho_phys, dt_phys, rp, rep, rhov,&
-                               Agrd, Bdrf, updrf, X_base, jlo, shut_base)
+      call solve_mass_fraction(Xold, Xhe, rho_phys, dt_phys, rp, rep, Frho,&
+                               cadvf, Agrd, Bdrf, updrf, X_base, jlo,      &
+                               advect)
 
       ! Range clip.  Both lines are assertions: the drift flux vanishes at
       ! both ends of the composition axis in the discrete operator as in the
@@ -539,7 +653,7 @@
       endif
 
       ! --- project the new element totals back into the species vector
-      call project_elements(f_sp, Xhe, msum, nucH, nucHe, m_1)
+      call project_elements(f_sp, Xhe, msum, .true.)
 
       ! --- trace metals: each element diffuses against the (post-projection)
       ! hydrogen background with its own mass and mean charge.  Carried over
@@ -561,69 +675,20 @@
          do im = 1, n_melem
             i0m = melem_i0(im)
             top = melem_top(im)
-            mX  = melem_A(im)
-            nX  = 0.0d0
-            zbX = 0.0d0
-            do k = 0, top
-               nX  = nX  + f_sp(:,mion_fsp(i0m+k))*rho*n0
-               zbX = zbX + dble(k)*f_sp(:,mion_fsp(i0m+k))*rho*n0
-            enddo
-            where (nX .gt. 1.0d-30)
-               zbX = zbX/nX
-            elsewhere
-               zbX = 0.0d0
-            end where
-            nXold = nX
-            ! Stage-resolved friction against the hydrogen carriers, exactly
-            ! as for helium: a metal ion in the ionized wind is held to the
-            ! protons by the Coulomb coefficient, which is what keeps it from
-            ! settling out (Koskinen et al. 2013, section 3.2.2).  Stages
-            ! beyond this element's top are given zero weight.
-            ispX = mion_fsp(i0m)
-            ZXs  = 0.0d0
-            mXs  = mX
-            alXs = 0.0d0
-            alXs(1) = alpha_melem(im)
-            do k = 0, top
-               ispX(k+1) = mion_fsp(i0m+k)
-               ZXs(k+1)  = dble(k)
-            enddo
-            call carrier_fractions(f_sp, top+1, ispX(1:top+1),             &
-                                   yX(:,1:top+1))
-            if (top+1 .lt. n_mstage) yX(:,top+2:n_mstage) = 0.0d0
-            call stage_mixture_diffusion(TK, ntot_phys, ne_phys,           &
-                                         top+1, yX(:,1:top+1),             &
-                                         ZXs(1:top+1), mXs(1:top+1),       &
-                                         alXs(1:top+1),                    &
-                                         n_hcar, yH, hcar_Z, hcar_m,       &
-                                         hcar_alpha, DcoX)
-            ! Same ambipolar field as helium, computed from the electron
-            ! pressure gradient (memo 3a) -- NOT the hydrogen-plasma constant
-            ! eE = m_H g/2 this loop used to assume, which is wrong wherever
-            ! helium or the metals carry a significant share of the electrons.
-            ! The partner mass is the mean HYDROGEN mass per carrier: a metal
-            ! atom settles against the particles it collides with, which are H
-            ! atoms and ions above the molecular front and H2/H3+ below it.
-            ! mcarH is 1 in the atomic region, so nothing changes there.
-            ! -dln(psi)/dr enters here for the same reason it enters the
-            ! helium equation: the driver is the metal's MOLE fraction among
-            ! the hydrogen carriers, n_X/n_1c, while the transported variable
-            ! is the mixing ratio n_X/n_H (module header).
-            do j = 1-Ng, N+Ng
-               GcoX(j) = ((mX - mcarH(j))*m_amu_g*(Dphi(r(j))*v0*v0/R0)   &
-                          - (zbX(j) - zb1(j))*eEf(j))/(kb_erg*TK(j))      &
-                         - dlnpsi(j)
-            enddo
-            if (he_alphaT .ne. 0.0d0) then
-               do j = 2-Ng, N+Ng-1
-                  GcoX(j) = GcoX(j) + he_alphaT*(log(TK(j+1))-log(TK(j-1)))&
-                            / max((r(j+1)-r(j-1))*R0, 1.0d0)
-               enddo
-            endif
+            call trace_element_transport_coefficients(im, f_sp, rho, TK,   &
+                     ntot_phys, ne_phys, yH, mcarH, zb1, eEf, dlnpsi,      &
+                     nX, nXold, DcoX, GcoX)
             fXbase = nXold(1)/nH_phys(1)                  ! reservoir metal/H
+            ! The element's MASS fraction per unit of the mixing ratio the
+            ! row is written in, Y_X = A_X n_X/(n0 rho msum) = wYtr fX, and
+            ! the factor that returns the code divergence of that mass flux
+            ! to a mixing ratio per second: n0 msum v0/R0 makes it a mass
+            ! rate, 1/A_X counts nuclei and 1/n_H takes the ratio.
+            wYtr  = melem_A(im)*nucH/msum
+            cadvX = n0*msum*v0/R0/melem_A(im)/max(nH_phys, 1.0d-30)
             call solve_trace_element_in_hydrogen(nX, nH_phys, DcoX, GcoX,  &
                                                  fXbase, dt_phys, rp, rep,  &
-                                                 rhov/rho_phys)
+                                                 Frho, wYtr, cadvX, advect)
             do j = 1-Ng, N+Ng
                ! Target density from the solved mixing ratio.  There is no
                ! cap at the reservoir ratio: settling piles an element up as
@@ -645,6 +710,18 @@
                endif
             enddo
          enddo
+         ! THE HYDROGEN BACKGROUND RECOILS AGAINST THE METAL FLUXES.  In a
+         ! single-fluid mixture the diffusive mass fluxes sum to zero: the
+         ! helium flux is balanced by component 1 in the binary solve above,
+         ! and a trace element that settles relative to the hydrogen it
+         ! diffuses through has to be balanced by that same hydrogen.  The
+         ! metal loop wrote densities and no counter-flux, so the mixture
+         ! ended carrying a mass its own rho does not have (3.0e-3 of it on
+         ! the relaxed synthetic column, MEASURED).  Closing it here puts the
+         ! metals' change of mass back on the hydrogen group, at the helium
+         ! mass fraction the solve returned, and leaves the metal densities
+         ! exactly where their own transport put them.
+         call project_elements(f_sp, Xhe, msum, .false.)
       endif
 
       ! --- elemental census of the metals.  These equations have no sink for a
@@ -658,10 +735,10 @@
       call metal_hydrogen_ratio_departure(f_sp, qdep, n_vanished)
 
       if (diffusion_check_on()) then
-         call element_nucleus_counts(f_sp, nucH, nucHe)
+         call mixture_mass_split(f_sp, nucH, nucHe, mass1, msum_out)
          call report_step(Xhe, rho_phys, rp, rep,                          &
-              maxval(abs(m_1*nucH(1:N) + m_He_amu*nucHe(1:N) - msum(1:N)) &
-                     /msum(1:N)), Xover, Xunder, qdep, n_vanished)
+              maxval(abs(msum_out(1:N) - msum(1:N))/msum(1:N)),           &
+              Xover, Xunder, qdep, n_vanished)
       endif
 
       end subroutine element_diffusion_step
@@ -735,8 +812,8 @@
 
       ! ------------------------------------------------------------------ !
 
-      subroutine relax_element_composition(rho, v, Tcode, f_sp, omega,     &
-                                           drift, nstep)
+      subroutine relax_element_composition(rho, v, Tcode, f_sp, Frho,      &
+                                           omega, drift, nstep)
       ! Relax the element composition to its steady state in a FIXED wind.
       !
       ! The step size is the COMPOSITION time scale, not the hydro CFL step.
@@ -755,30 +832,48 @@
       ! scales and is grown geometrically, so the late steps are direct steady
       ! solves and the coefficients are Picard-updated along the way.
       !
-      ! The advecting flow is the STEADY mass flux, rho v = mdot/(4 pi r^2)
-      ! with mdot the wind's own mass-loss rate (the median of 4 pi r^2 rho v
-      ! over the escape window [j_min:N], which is the region the solver
-      ! declares steady), NOT the cell's rho_j v_j.  The composition equation
+      ! THE ADVECTING FLOW IS THE FACE MASS FLUX OF THIS STATE, GIVEN BY THE
+      ! CALLER (Frho), and the advective term is the divergence of the face
+      ! element mass fluxes it carries -- the same object, through the same
+      ! three routines, that the Runge-Kutta stages advect the elements with
+      ! and that the stationary elemental row of element_transport_residual
+      ! balances.  The relaxation's fixed point is then the zero of that row:
+      ! the elemental Picard alternation and the row are one operator, which
+      ! is what makes a converged alternation a state the row reads as
+      ! stationary.  The caller reads the flux out of the mass row of the
+      ! state it hands over (face_mass_flux_of_state), which refuses a state
+      ! whose mass row was never assembled.
       !
-      !    rho (dX/dt + v dX/dr) = -(1/r^2) d(r^2 J)/dr
+      ! It is NOT the non-conservative form rho v dX/dr on a smoothed steady
+      ! mass flux mdot/(4 pi r^2).  That form is the conservative equation
+      ! only where rho and v satisfy continuity, and the smoothing existed to
+      ! hide the non-stationarity of a marching mass flux: below ~1.02 R_p the
+      ! spread of r^2 rho v is 10^2-10^4 times its own median (measured on
+      ! HD 209458 b and LHS 1140 b), because the base carries a standing sound
+      ! wave whose sign alternates from cell to cell, and the cell-velocity
+      ! form relaxed on that field converged to the composition of a flow that
+      ! neither conserves mass nor exists.  The conservative form needs no
+      ! such repair: div(F_rho X) = X div(F_rho) + F_rho grad X, so an element
+      ! inherits the mass row's own imbalance instead of having it subtracted
+      ! out, and a cell can only lose the fraction of its mass the mass row
+      ! loses.  The marching path carries the same divergence inside the
+      ! stages and passes no flux here.
       !
-      ! is the conservative equation only where rho and v satisfy continuity.
-      ! Below ~1.02 R_p the converged states do not: measured on HD 209458 b
-      ! and LHS 1140 b, the spread of r^2 rho v there is 10^2-10^4 times its
-      ! own median, because the base carries a standing sound wave whose sign
-      ! alternates from cell to cell.  Relaxed on that field, the advective
-      ! form converges to the composition of a flow that neither conserves
-      ! mass nor exists: on the HD 209458 b Kzz = 0 wind it put a 5-fold cliff
-      ! at the fourth cell and a plateau at 0.10 of the reservoir ratio, where
-      ! the barometric He-H separation scale is 24 cells.  With the steady
-      ! flux the same wind relaxes to a base flat to 1% and a profile that
-      ! leaves it on the barometric scale (0.97 at 1.05 R_p, 0.85 at 1.2 R_p).
-      ! The marching path keeps rho_j v_j: there the wind is genuinely
-      ! transient and the cell velocity is the consistent choice.
+      ! THE STOPPING MEASURE RUNS OVER EVERY ELEMENT THE PASS RELAXED, not
+      ! over helium alone: the largest change of an element's mass fraction
+      ! over a step, divided by that element's own reservoir value, maximized
+      ! over the elements.  Helium and the trace metals settle against
+      ! different masses, charges and diffusion coefficients, so a column
+      ! whose metals move on a longer time scale than its helium would be
+      ! declared converged while they were still travelling, and the outer
+      ! Picard loop would damp and test a distance that is not the distance
+      ! to the fixed point.  Each element is measured in its own reservoir
+      ! value because the mass fractions differ by four orders of magnitude;
+      ! an element the run holds none of at the base carries no equation and
+      ! is left out of the maximum.
       !
-      ! The stopping measure is ABSOLUTE: the largest change of the helium mass
-      ! fraction over a step, divided by the reservoir value X_base.  The
-      ! relative measure it replaces, max|dX|/X, is meaningless in a cell the
+      ! The measure is ABSOLUTE in that reservoir value.  The relative
+      ! measure it replaces, max|dX|/X, is meaningless in a cell the
       ! transport has emptied.
       !
       ! UNDER-RELAXATION.  omega damps the composition update handed back to
@@ -796,17 +891,28 @@
       ! convergence by making the applied step small.
       real*8, dimension(1-Ng:N+Ng),           intent(in)    :: rho, v, Tcode
       real*8, dimension(1-Ng:N+Ng,n_species), intent(inout) :: f_sp
+      ! The face mass flux F_rho(j) at r_edg(j) in code units, the one the
+      ! Riemann solve of this state returned and the mass row of this state
+      ! differences.  Fixed for the whole relaxation, exactly as the wind it
+      ! belongs to is.
+      real*8, dimension(1-Ng:N+Ng),           intent(in)    :: Frho
       real*8,                                 intent(in)    :: omega
       real*8,                                 intent(out)   :: drift
       integer,                                intent(out)   :: nstep
 
-      real*8, dimension(1-Ng:N+Ng) :: dt_code, nucH, nucHe, Xnow, Xpass
-      real*8, dimension(1-Ng:N+Ng) :: msum, Xmix
-      real*8, dimension(1-Ng:N+Ng) :: Xprev, TK, Dcl, Gcl, dmcl, zbcl
-      real*8, dimension(1-Ng:N+Ng) :: rho_phys, rhov, mflx
+      real*8, dimension(1-Ng:N+Ng) :: dt_code, nucH, nucHe, Xmix
+      real*8, dimension(1-Ng:N+Ng) :: msum, mass1
+      real*8, dimension(1-Ng:N+Ng) :: TK, Dcl, Gcl, dmcl, zbcl
+      real*8, dimension(1-Ng:N+Ng) :: rho_phys, mflx, vadv
+      ! The mass fractions of every element this relaxation moves -- helium
+      ! in column 1, each trace metal in column 1+im -- at the start of the
+      ! pass, at the previous step and now, and the reservoir value each is
+      ! measured in.
+      real*8, dimension(1-Ng:N+Ng,1+n_melem) :: Ynow, Yprev, Ypass
+      real*8, dimension(1+n_melem) :: Yres
       real*8 :: m_1, X_base, tscale, drj, tdiff, tadv, wset, grow, dt_ref
-      real*8 :: mflx_steady
-      integer :: j, k
+      real*8 :: mflx_median
+      integer :: im, j, k
 
       drift = 0.0d0
       nstep = 0
@@ -819,72 +925,124 @@
 
       TK = Tcode*T0
       where (TK .lt. 1.0d0) TK = 1.0d0
-      call element_nucleus_counts(f_sp, nucH, nucHe)
       ! Only the composition TIME SCALES below are built from this; the
       ! operator recomputes its own D_12 each step from the current state.
       call helium_hydrogen_diffusion(rho, Tcode, f_sp, Dcl)
       call settling_coefficient(rho, Tcode, f_sp, Gcl, dmcl, zbcl)
 
-      ! Steady mass flux r^2 rho v [g cm^-1 s^-1], taken as the median over
-      ! the escape window and imposed on the whole column as mflx_steady/r^2.
-      rho_phys = rho*n0*m_amu_g*(m_1*nucH + m_He_amu*nucHe)
-      mflx     = (r*R0)**2*rho_phys*v*v0
-      mflx_steady = median_of(mflx(j_min:N))
-      do j = 1-Ng, N+Ng
-         rhov(j) = mflx_steady/((r(j)*R0)**2)
+      call mixture_mass_split(f_sp, nucH, nucHe, mass1, msum)
+      rho_phys = rho*n0*mu*msum
+
+      ! The material speed the faces of a cell carry, for the advective time
+      ! scale below.  It is read from the same flux the operator advects on
+      ! and not from the cell velocity, so the step is measured against the
+      ! transport that is actually applied.
+      do j = 1, N
+         vadv(j) = 0.5d0*(abs(Frho(j)) + abs(Frho(j-1)))                   &
+                   *n0*mu*msum(j)*v0/max(rho_phys(j), 1.0d-30)
       enddo
 
       do j = 1, N
          drj   = max((r_edg(j) - r_edg(j-1))*R0, 1.0d0)
          tdiff = drj*drj/max(Dcl(j) + kzz_cell(j), 1.0d-30)
          wset  = Dcl(j)*abs(Gcl(j))
-         tadv  = drj/max(abs(rhov(j))/max(rho_phys(j), 1.0d-30),           &
-                         wset, 1.0d-30)
+         tadv  = drj/max(vadv(j), wset, 1.0d-30)
          dt_code(j) = min(tdiff, tadv)/tscale
       enddo
       dt_code(1-Ng:0)   = dt_code(1)
       dt_code(N+1:N+Ng) = dt_code(N)
       dt_ref = minval(dt_code(1:N))
 
-      call helium_mass_fraction(f_sp, m_1, Xpass)
-      Xprev = Xpass
+      call element_mass_fractions(f_sp, Ypass)
+      ! The reservoir each element is measured in.  Helium's is the input
+      ! He/H, which is what the operator pins its base to; a trace element's
+      ! is its own base cell, the Dirichlet reservoir the trace solve imposes
+      ! and the one cell the relaxation never moves.  A zero there is an
+      ! element the run holds none of: no equation, and no term in the
+      ! maximum.
+      Yres    = 0.0d0
+      Yres(1) = X_base
+      if (he_metal_diffusion .and. thereis_metals) then
+         do im = 1, n_melem
+            Yres(1+im) = Ypass(1,1+im)
+         enddo
+      endif
+      Yprev = Ypass
       grow  = 1.0d0
       do k = 1, he_relax_maxstep
          call element_diffusion_step(rho, v, Tcode, f_sp, dt_code*grow,    &
-                                     rhov_in = rhov)
-         call helium_mass_fraction(f_sp, m_1, Xnow)
+                                     Frho_in = Frho)
+         call element_mass_fractions(f_sp, Ynow)
          nstep = k
-         if (maxval(abs(Xnow(1:N) - Xprev(1:N)))/X_base                   &
+         if (element_composition_distance(Ynow, Yprev, Yres)              &
              .lt. he_relax_tol) exit
-         Xprev = Xnow
+         Yprev = Ynow
          if (grow .lt. 1.0d12) grow = grow*1.5d0
       enddo
-      drift = maxval(abs(Xnow(1:N) - Xpass(1:N)))/X_base
+      drift = element_composition_distance(Ynow, Ypass, Yres)
 
       ! Damped update: blend the relaxed composition with the one this pass
       ! started from and project the blend back into the species vector.  The
       ! projection is the same one element_diffusion_step ends on, applied to
       ! the CURRENT f_sp (which carries X_relaxed), so both element totals are
       ! met exactly and no species can go negative.
+      !
+      ! ONLY HELIUM IS DAMPED.  X is the member of the normalized pair, and
+      ! the projection below is the map from it back into the species vector;
+      ! a trace element is slaved to the hydrogen background and carries no
+      ! such projection, so the trace arm keeps the composition the
+      ! relaxation left.  The drift reported to the outer loop covers every
+      ! element either way, because it measures the distance to the fixed
+      ! point and not the step applied.
       if (omega .lt. 1.0d0) then
-         Xmix = Xpass + omega*(Xnow - Xpass)
+         Xmix = Ypass(:,1) + omega*(Ynow(:,1) - Ypass(:,1))
          where (Xmix .lt. 0.0d0) Xmix = 0.0d0
          where (Xmix .gt. 1.0d0) Xmix = 1.0d0
-         call element_nucleus_counts(f_sp, nucH, nucHe)
-         msum = m_1*nucH + m_He_amu*nucHe
-         where (msum .lt. 1.0d-30) msum = 1.0d-30
-         call project_elements(f_sp, Xmix, msum, nucH, nucHe, m_1)
+         call mixture_mass_split(f_sp, nucH, nucHe, mass1, msum)
+         call project_elements(f_sp, Xmix, msum, .true.)
       endif
 
       ! dt_ref is the shortest composition time scale of the grid; report it
-      ! so the log shows what the relaxation was measured against.
-      if (diffusion_check_on())                                           &
+      ! so the log shows what the relaxation was measured against, together
+      ! with the mass flux it advected on -- the median of 4 pi r^2 F_rho
+      ! over the escape window, which is the wind's own mass-loss rate as the
+      ! faces of the solver carry it.
+      if (diffusion_check_on()) then
+         do j = 1-Ng, N+Ng
+            mflx(j) = 4.0d0*pi*(r_edg(j)*R0)**2*Frho(j)*n0*mu*msum(j)*v0
+         enddo
+         mflx_median = median_of(mflx(j_min:N))
          write(0,'(A,ES10.3,A,ES12.5,A,I0)')                              &
               ' (diffusion) relaxation dt_0 = ', dt_ref*tscale,           &
-              ' s, steady 4pi r^2 rho v = ', 4.0d0*pi*mflx_steady,        &
+              ' s, wind 4pi r^2 F_rho = ', mflx_median,                   &
               ' g/s, steps = ', nstep
+      endif
 
       end subroutine relax_element_composition
+
+      ! ------------------------------------------------------------------ !
+
+      real*8 function element_composition_distance(Ya, Yb, Yres)          &
+             result(d)
+      ! How far apart two element compositions are: the largest change of an
+      ! element's mass fraction over the physical cells, in that element's
+      ! own reservoir value, maximized over the elements the state carries.
+      !
+      ! Each element is divided by its OWN reservoir because the transported
+      ! mass fractions span four orders of magnitude between helium and a
+      ! trace metal, so an absolute maximum over the columns would read the
+      ! helium column alone and the metals would never reach the measure.  An
+      ! element whose reservoir is zero is one the run holds none of: it has
+      ! no equation and is left out.
+      real*8, dimension(1-Ng:N+Ng,1+n_melem), intent(in) :: Ya, Yb
+      real*8, dimension(1+n_melem),           intent(in) :: Yres
+      integer :: ie
+      d = 0.0d0
+      do ie = 1, 1 + n_melem
+         if (Yres(ie) .le. 0.0d0) cycle
+         d = max(d, maxval(abs(Ya(1:N,ie) - Yb(1:N,ie)))/Yres(ie))
+      enddo
+      end function element_composition_distance
 
       ! ------------------------------------------------------------------ !
 
@@ -913,23 +1071,6 @@
          median_of = b((m+1)/2)
       endif
       end function median_of
-
-      ! ------------------------------------------------------------------ !
-
-      subroutine helium_mass_fraction(f_sp, m_1, Xhe)
-      ! Helium mass fraction X = m_He n_He/(m_1 n_H + m_He n_He) of the species
-      ! vector -- the same definition element_diffusion_step transports.
-      real*8, dimension(1-Ng:N+Ng,n_species), intent(in)  :: f_sp
-      real*8,                                 intent(in)  :: m_1
-      real*8, dimension(1-Ng:N+Ng),           intent(out) :: Xhe
-      real*8, dimension(1-Ng:N+Ng) :: nucH, nucHe, msum
-
-      call element_nucleus_counts(f_sp, nucH, nucHe)
-      msum = m_1*nucH + m_He_amu*nucHe
-      where (msum .lt. 1.0d-30) msum = 1.0d-30
-      Xhe = m_He_amu*nucHe/msum
-
-      end subroutine helium_mass_fraction
 
       ! ------------------------------------------------------------------ !
 
@@ -1172,7 +1313,7 @@
       real*8, intent(in) :: TK, ntot, ne, Z_s, m_s, al_s, Z_t, m_t, al_t
       real*8 :: mu_g
 
-      mu_g = m_s*m_t/(m_s + m_t)*m_amu_g
+      mu_g = m_s*m_t/(m_s + m_t)*mu
       if (Z_s .eq. 0.0d0 .and. Z_t .eq. 0.0d0) then
          stage_pair_diffusion = hard_sphere_pair_diffusion(TK, ntot,       &
                                                            m_s, m_t)
@@ -1403,8 +1544,9 @@
       !
       ! with eE = -k T dln(n_e T)/dr (central difference, one-sided at the
       ! ends).  dmeff is returned so the ambipolar limits can be tested
-      ! against 3 (neutral), 2.5 (H+ plasma) and 5/3 (He++ plasma) without a
-      ! second definition of the field anywhere.  Where the local gravity
+      ! against (m_He/m_H - 1) neutral, (m_He/m_H - 3/2) in an H+ plasma and
+      ! (2 m_He/3 m_H - 1) in a He++ plasma (2.9715, 2.4715, 1.6477 with
+      ! m_He/m_H = 3.9715) without a second definition of the field anywhere.  Where the local gravity
       ! vanishes dmeff is reported as zero (it is a ratio to g); G itself is
       ! always built from the forces, never from dmeff.  dmeff is the FORCE
       ! ratio only: the chemistry term -dln(psi)/dr that G also carries in the
@@ -1424,12 +1566,25 @@
       real*8, dimension(1-Ng:N+Ng) :: carH, carHe, mcarH, zbHe, ne_rel
       real*8, dimension(1-Ng:N+Ng) :: ne_phys, mc1, lnmcar, dlnpsi
       real*8, dimension(1-Ng:N+Ng) :: TK, gphys, eEf, lnpe
+      real*8, dimension(1-Ng:N+Ng) :: nucH, nucHe, mass1, msum
       real*8 :: m_1, dr2
       integer :: j
 
       m_1 = mass_per_H_nucleus_without_He()
       call carrier_counts(f_sp, carH, carHe, mcarH)
-      mc1 = m_1*mcarH
+      ! Mass of component 1 per hydrogen nucleus, from the cell's own species
+      ! (mixture_mass_split) and not from the reservoir metal/H, so that the
+      ! settling force and the mass the projection conserves are one number.
+      ! Where a cell holds no hydrogen there is no component-1 carrier to put
+      ! a force on and the reservoir value stands in.
+      call mixture_mass_split(f_sp, nucH, nucHe, mass1, msum)
+      do j = 1-Ng, N+Ng
+         if (nucH(j) .gt. 1.0d-30) then
+            mc1(j) = (mass1(j)/nucH(j))*mcarH(j)
+         else
+            mc1(j) = m_1*mcarH(j)
+         endif
+      enddo
       call mean_charges_and_electrons(f_sp, zb1, zbHe, ne_rel)
 
       TK = Tcode*T0
@@ -1465,12 +1620,12 @@
       dlnpsi(N+Ng) = dlnpsi(N+Ng-1)
 
       do j = 1-Ng, N+Ng
-         Gco(j) = ((m_He_amu - mc1(j))*m_amu_g*gphys(j)                   &
+         Gco(j) = ((m_He_amu - mc1(j))*mu*gphys(j)                   &
                    - (zbHe(j) - zb1(j))*eEf(j))/(kb_erg*TK(j))            &
                   - dlnpsi(j)
          if (abs(gphys(j)) .gt. 0.0d0) then
             dmeff(j) = (m_He_amu - mc1(j))                                &
-                       - (zbHe(j) - zb1(j))*eEf(j)/(m_amu_g*gphys(j))
+                       - (zbHe(j) - zb1(j))*eEf(j)/(mu*gphys(j))
          else
             dmeff(j) = 0.0d0
          endif
@@ -1496,9 +1651,10 @@
 
       function relative_settling_mass(rho, Tcode, f_sp) result(dmeff)
       ! Diagnostic: the gravity-normalized relative settling mass of helium
-      ! against component 1, in m_H units (3 neutral, 2.5 in an H+ plasma,
-      ! 5/3 in a fully ionized He++ plasma).  Same definition the operator
-      ! uses -- there is no second copy of the ambipolar field.
+      ! against component 1, in m_H units: m_He/m_H - 1 neutral,
+      ! m_He/m_H - 3/2 in an H+ plasma, 2 m_He/(3 m_H) - 1 in a fully ionized
+      ! He++ plasma (2.9715, 2.4715, 1.6477).  Same definition the operator
+      ! uses, there is no second copy of the ambipolar field.
       real*8, dimension(1-Ng:N+Ng),           intent(in) :: rho, Tcode
       real*8, dimension(1-Ng:N+Ng,n_species), intent(in) :: f_sp
       real*8, dimension(1-Ng:N+Ng) :: dmeff
@@ -1532,11 +1688,11 @@
       !   +1  Bdrf <  0: helium drifts outward, the roles exchanged.
       !
       ! Faces 0 and N are the two boundaries and carry zero diffusive flux.
-      ! The advection is not a face quantity here -- it is the cell-velocity
-      ! upwind difference assembled in solve_mass_fraction (see the header) --
-      ! and the outer ghost carries the top cell's own composition, so an
-      ! inflowing top boundary brings in gas of the same composition instead of
-      ! a silent zero flux.
+      ! These are the DIFFUSIVE face coefficients only; the advection is the
+      ! divergence of the hydro's face mass fluxes and is carried in the
+      ! Runge-Kutta stages (see the header).  The outer ghost carries the top
+      ! cell's own composition, so an inflowing top boundary brings in gas of
+      ! the same composition instead of a silent zero flux.
       real*8, dimension(1-Ng:N+Ng), intent(in)  :: rho_phys, Dco, Gco
       real*8, dimension(1-Ng:N+Ng), intent(in)  :: rp
       real*8, dimension(0:N),       intent(out) :: Agrd, Bdrf
@@ -1609,20 +1765,97 @@
 
       ! ------------------------------------------------------------------ !
 
+      subroutine element_advective_divergence(Y, Frho, dvF, dvM)
+      ! THE MATERIAL ADVECTION OF ONE ELEMENT, as the divergence of the face
+      ! species fluxes the hydrodynamic stages carry:
+      !
+      !     F_Y(j) = F_rho(j) Y^face(j),
+      !     dvF(j) = ( A_+ F_Y(j) - A_- F_Y(j-1) ) / dV_j ,
+      !
+      ! with F_rho the face mass flux of the mass row of this state, Y^face
+      ! the reconstructed and upwinded face mass fraction of
+      ! species_face_fraction, and the divergence that of
+      ! species_flux_divergence: the same three routines, on the same faces,
+      ! areas and volumes, that species_advective_update calls inside a
+      ! Runge-Kutta stage.  dvM is the same expression with both fluxes in
+      ! magnitude, for a row scale.  Both are in code units; the caller
+      ! multiplies by the factor that returns them to the units of its own
+      ! row.
+      !
+      ! THERE IS ONE OF THESE IN THE ELEMENT ARM, and the backward-Euler
+      ! step, the fixed-wind relaxation and the stationary elemental row all
+      ! read it here.  Two spellings of one term have two fixed points, so an
+      ! alternation of a relaxation with one and a row with the other cannot
+      ! converge to a state the row reads as stationary.
+      real*8, dimension(1-Ng:N+Ng), intent(in)  :: Y, Frho
+      real*8, dimension(1-Ng:N+Ng), intent(out) :: dvF, dvM
+
+      real*8, dimension(1-Ng:N+Ng) :: Yf, Fs
+
+      call species_face_fraction(Y, Frho, Yf)
+      call species_face_flux(Frho, Yf, Fs)
+      call species_flux_divergence(Fs, dvF, dvM)
+
+      end subroutine element_advective_divergence
+
+      ! ------------------------------------------------------------------ !
+
+      subroutine element_advective_face_coefficients(Frho, advj, advm)
+      ! The two face coefficients of that divergence, in code units per unit
+      ! of the face MASS fraction:
+      !
+      !     advj(j) =  A_+ F_rho(j)  /dV_j ,
+      !     advm(j) = -A_- F_rho(j-1)/dV_j ,
+      !
+      ! the same A_+, A_- and dV_j species_flux_divergence uses.  They are
+      ! what the tridiagonal Newton of the implicit step differentiates the
+      ! term with, taking the face composition at its donor cell's own value:
+      ! the limiter and the second-order part of the reconstruction are left
+      ! out of the Jacobian, because they are the strongly nonlinear part of
+      ! the operator and reach beyond the tridiagonal band.  The residual is
+      ! the full operator either way, so this changes what the Newton
+      ! converges AT, not what it converges TO.
+      !
+      ! The sign pattern is the M-matrix one the diffusive half already has:
+      ! an outflowing face puts a nonnegative entry on the diagonal and a
+      ! nonpositive one on its donor neighbor, an inflowing face the other
+      ! way round, so no off-diagonal entry is positive.
+      real*8, dimension(1-Ng:N+Ng), intent(in)  :: Frho
+      real*8, dimension(1:N),       intent(out) :: advj, advm
+      real*8  :: rpf, rmf, dAp, dAm, dV
+      integer :: j
+      do j = 1, N
+         rpf = r_edg(j)
+         rmf = r_edg(j-1)
+         dAp = rpf*rpf
+         dAm = rmf*rmf
+         dV  = (dAp*rpf - dAm*rmf)/3.0
+         advj(j) =  dAp*Frho(j)  /dV
+         advm(j) = -dAm*Frho(j-1)/dV
+      enddo
+      end subroutine element_advective_face_coefficients
+
+      ! ------------------------------------------------------------------ !
+
       subroutine solve_mass_fraction(Xold, Xhe, rho_phys, dt_phys, rp, rep, &
-                                     rhov, Agrd, Bdrf, updrf, X_base, jlo,  &
-                                     shut_base)
+                                     Frho, cadvf, Agrd, Bdrf, updrf,        &
+                                     X_base, jlo, advect)
       ! One implicit (backward-Euler) step of
-      !   rho (X^new - X^old)/dt + div(r^2 J)/r^2 + rho v dX/dr = 0
-      ! for rows jlo..N, the advective term entering as the cell-velocity
-      ! upwind difference of the header.  The step is NONLINEAR in X^new,
+      !   rho (X^new - X^old)/dt + div(r^2 J)/r^2 + advect div(F_rho X) = 0
+      ! for rows jlo..N.  With advect false the row is the diffusive half
+      ! alone, the advection having been carried on the hydro's face mass
+      ! fluxes inside the Runge-Kutta stages; with it true the advective term
+      ! is the divergence of those same face fluxes, formed here by
+      ! element_advective_divergence, for the fixed-wind relaxation, which
+      ! has no stages to ride on.  cadvf returns that code divergence to the
+      ! [g cm^-3 s^-1] of the row.  The step is NONLINEAR in X^new,
       ! because the drift flux carries the product X(1-X) at the new level,
       ! and it is solved by Newton: each iteration assembles the residual and
       ! its tridiagonal Jacobian and solves for the correction.
       !
       ! Newton, not a Picard sweep on a lagged (1-X): the lag is exactly what
       ! removes the shutoff of the drift at the ends of the composition axis,
-      ! and with it the bounds on X (header, and docs/Update_EXHALE.md
+      ! and with it the bounds on X (header, and docs/Update_EXHALE_stage1.md
       ! section 86).  The Jacobian is an M-matrix for any iterate in [0,1],
       ! and the nonlinearity is quadratic, so the iteration converges in a
       ! few passes; a step that does not reduce the residual is halved.
@@ -1630,16 +1863,17 @@
       ! Xold is the state at the start of the step and Xhe carries the initial
       ! iterate in and the solution out.
       real*8, dimension(1-Ng:N+Ng), intent(in)    :: Xold, rho_phys, dt_phys
-      real*8, dimension(1-Ng:N+Ng), intent(in)    :: rp, rep, rhov
+      real*8, dimension(1-Ng:N+Ng), intent(in)    :: rp, rep, Frho, cadvf
       real*8, dimension(1-Ng:N+Ng), intent(inout) :: Xhe
       real*8, dimension(0:N),       intent(in)    :: Agrd, Bdrf
       integer, dimension(0:N),      intent(in)    :: updrf
       real*8,                       intent(in)    :: X_base
       integer,                      intent(in)    :: jlo
-      logical,                      intent(in)    :: shut_base
+      logical,                      intent(in)    :: advect
 
       real*8, dimension(1-Ng:N+Ng) :: aa, bb, cc, dd, cpv, dpv, dX, Xtry
       real*8, dimension(0:N)       :: Jf, dJl, dJr
+      real*8, dimension(1:N)       :: advj, advm
       real*8  :: Kj, mden, sL, sR, cadv, rnorm, rprev, rtry, damp, rstart
       integer :: j, it, ihalf, nit
       logical, save :: warned_newton = .false.
@@ -1678,9 +1912,13 @@
       if (jlo .eq. 2) Xhe(1-Ng:1) = X_base
       Xhe(N+1:N+Ng) = Xhe(N)
 
+      advj = 0.0d0
+      advm = 0.0d0
+      if (advect) call element_advective_face_coefficients(Frho, advj, advm)
+
       call composition_residual(Xold, Xhe, rho_phys, dt_phys, rp, rep,    &
-                                rhov, Agrd, Bdrf, updrf, jlo, shut_base,  &
-                                dd, Jf, dJl, dJr, rnorm)
+                                Frho, cadvf, Agrd, Bdrf, updrf, jlo,      &
+                                advect, dd, Jf, dJl, dJr, rnorm)
 
       rstart = rnorm
       nit    = 0
@@ -1695,23 +1933,39 @@
             bb(j) =  rho_phys(j)/dt_phys(j)                               &
                    + Kj*(sR*dJl(j) - sL*dJr(j-1))
             cc(j) =  Kj*sR*dJr(j)
-            ! Advective term rho v dX/dr, one-sided upwind on the CELL
-            ! velocity: +cadv on the diagonal and -cadv on the donor
-            ! neighbour, so the advective coefficients of the row sum to zero
-            ! (uniform X exact) and the only off-diagonal it creates is <= 0.
-            if (rhov(j) .ge. 0.0d0) then
-               ! Dropped at a closed inner boundary, which is zero-gradient.
-               if (j .gt. jlo .or. .not. shut_base) then
-                  cadv  = rhov(j)/max(rp(j) - rp(j-1), 1.0d0)
+            ! DONOR-CELL LINEARIZATION OF THE FACE-FLUX DIVERGENCE.  The term
+            ! of cell j is
+            !
+            !   adv(j) = [ A_+ F_rho(j) X(don(j))
+            !              - A_- F_rho(j-1) X(don(j-1)) ] / dV_j x cadvf(j),
+            !
+            ! with don(f) = f where F_rho(f) >= 0 and f+1 where it is
+            ! negative, so each face contributes one entry, on the diagonal
+            ! or on the neighbor the face draws from.  The coefficients do
+            ! NOT sum to zero: their sum is div(F_rho) cadvf(j), which is the
+            ! mass row's own imbalance, and an element inherits it.
+            if (advect) then
+               cadv = advj(j)*cadvf(j)
+               if (Frho(j) .ge. 0.0d0) then
                   bb(j) = bb(j) + cadv
-                  aa(j) = aa(j) - cadv
-               endif
-            else
-               ! Dropped at the top, whose zero-gradient ghost makes it vanish.
-               if (j .lt. N) then
-                  cadv  = rhov(j)/max(rp(j+1) - rp(j), 1.0d0)
-                  bb(j) = bb(j) - cadv
+               else if (j .lt. N) then
                   cc(j) = cc(j) + cadv
+               else
+                  ! The outer ghost is zero-gradient, X(N+1) = X(N), so the
+                  ! entry of an inflowing top face belongs on the diagonal.
+                  bb(j) = bb(j) + cadv
+               endif
+               cadv = advm(j)*cadvf(j)
+               if (j .eq. jlo) then
+                  ! Cell jlo-1 is data and not an unknown: the Dirichlet
+                  ! reservoir, or the ghost of a closed base.  Only an
+                  ! inflowing inner face, whose donor is cell j itself,
+                  ! leaves an entry.
+                  if (Frho(j-1) .lt. 0.0d0) bb(j) = bb(j) + cadv
+               else if (Frho(j-1) .ge. 0.0d0) then
+                  aa(j) = aa(j) + cadv
+               else
+                  bb(j) = bb(j) + cadv
                endif
             endif
          enddo
@@ -1740,8 +1994,9 @@
             if (jlo .eq. 2) Xtry(1-Ng:1) = X_base
             Xtry(N+1:N+Ng) = Xtry(N)
             call composition_residual(Xold, Xtry, rho_phys, dt_phys, rp,  &
-                                      rep, rhov, Agrd, Bdrf, updrf, jlo,  &
-                                      shut_base, dd, Jf, dJl, dJr, rtry)
+                                      rep, Frho, cadvf, Agrd, Bdrf,       &
+                                      updrf, jlo, advect, dd,             &
+                                      Jf, dJl, dJr, rtry)
             if (rtry .lt. rnorm .or. ihalf .eq. newton_halves) exit
             damp = 0.5d0*damp
          enddo
@@ -1776,8 +2031,10 @@
       ! ------------------------------------------------------------------ !
 
       subroutine composition_residual(Xold, Xhe, rho_phys, dt_phys, rp,   &
-                                      rep, rhov, Agrd, Bdrf, updrf, jlo,  &
-                                      shut_base, mres, Jf, dJl, dJr, rnorm)
+                                      rep, Frho, cadvf, Agrd, Bdrf,       &
+                                      updrf, jlo, advect,                 &
+                                      mres, Jf, dJl, dJr, rnorm,          &
+                                      res_out, dsc_out)
       ! Residual of the implicit composition step, returned NEGATED (mres is
       ! the right-hand side of the Newton system), together with the face
       ! fluxes, their slopes, and the residual measured RELATIVE to the size
@@ -1786,16 +2043,30 @@
       ! cell diffusion time, so an absolute residual is a measure of their
       ! round-off and not of convergence.
       real*8, dimension(1-Ng:N+Ng), intent(in)  :: Xold, Xhe, rho_phys
-      real*8, dimension(1-Ng:N+Ng), intent(in)  :: dt_phys, rp, rep, rhov
+      real*8, dimension(1-Ng:N+Ng), intent(in)  :: dt_phys, rp, rep
+      ! The face mass flux the element rides on, and the factor that returns
+      ! the code divergence of its face element flux to the [g cm^-3 s^-1]
+      ! this row is written in.
+      real*8, dimension(1-Ng:N+Ng), intent(in)  :: Frho, cadvf
       real*8, dimension(0:N),       intent(in)  :: Agrd, Bdrf
       integer, dimension(0:N),      intent(in)  :: updrf
       integer,                      intent(in)  :: jlo
-      logical,                      intent(in)  :: shut_base
+      ! Include the material advection div(F_rho X).  False for the marching
+      ! operator, whose advection is that same divergence taken inside the
+      ! Runge-Kutta stages; true for the stationary balance and the
+      ! fixed-wind relaxation, which have no stages to ride on.
+      logical,                      intent(in)  :: advect
+      ! res_out and dsc_out (optional) return the SAME residual and the SAME
+      ! scale cell by cell, unsigned and unnegated, for a caller that has to
+      ! name the cell a balance is out at rather than only the largest value
+      ! of the column.
       real*8, dimension(1-Ng:N+Ng), intent(out) :: mres
       real*8, dimension(0:N),       intent(out) :: Jf, dJl, dJr
       real*8,                       intent(out) :: rnorm
+      real*8, dimension(1-Ng:N+Ng), intent(out), optional :: res_out, dsc_out
 
-      real*8  :: Kj, sL, sR, cadv, res, dsc
+      real*8, dimension(1-Ng:N+Ng) :: dvF, dvM
+      real*8  :: Kj, sL, sR, res, dsc
       integer :: j
 
       do j = 0, N
@@ -1803,8 +2074,14 @@
                                 updrf(j), Jf(j), dJl(j), dJr(j))
       enddo
 
+      dvF = 0.0d0
+      dvM = 0.0d0
+      if (advect) call element_advective_divergence(Xhe, Frho, dvF, dvM)
+
       mres  = 0.0d0
       rnorm = 0.0d0
+      if (present(res_out)) res_out = 0.0d0
+      if (present(dsc_out)) dsc_out = 0.0d0
       do j = jlo, N
          Kj  = 1.0d0/(rp(j)**2*max(rep(j)-rep(j-1), 1.0d0))
          sL  = rep(j-1)**2
@@ -1813,20 +2090,13 @@
              + Kj*(sR*Jf(j) - sL*Jf(j-1))
          dsc = rho_phys(j)*max(abs(Xhe(j)), abs(Xold(j)))/dt_phys(j)      &
              + Kj*(sR*abs(Jf(j)) + sL*abs(Jf(j-1)))
-         if (rhov(j) .ge. 0.0d0) then
-            if (j .gt. jlo .or. .not. shut_base) then
-               cadv = rhov(j)/max(rp(j) - rp(j-1), 1.0d0)
-               res  = res + cadv*(Xhe(j) - Xhe(j-1))
-               dsc  = dsc + abs(cadv)*max(abs(Xhe(j)), abs(Xhe(j-1)))
-            endif
-         else
-            if (j .lt. N) then
-               cadv = rhov(j)/max(rp(j+1) - rp(j), 1.0d0)
-               res  = res + cadv*(Xhe(j+1) - Xhe(j))
-               dsc  = dsc + abs(cadv)*max(abs(Xhe(j)), abs(Xhe(j+1)))
-            endif
+         if (advect) then
+            res = res + dvF(j)*cadvf(j)
+            dsc = dsc + dvM(j)*cadvf(j)
          endif
          mres(j) = -res
+         if (present(res_out)) res_out(j) = res
+         if (present(dsc_out)) dsc_out(j) = dsc
          rnorm   = max(rnorm, abs(res)/max(dsc, 1.0d-300))
       enddo
 
@@ -1834,22 +2104,46 @@
 
       ! ------------------------------------------------------------------ !
 
-      subroutine project_elements(f_sp, Xhe, msum, nucH_old, nucHe_old, m_1)
+      subroutine project_elements(f_sp, Xhe, msum, scale_metals)
       ! Nonnegative projection of the species vector onto the new element
-      ! totals (memo section 3).  Helium-only species are scaled by
-      ! r_He = n_He^new/n_He^old, hydrogen-only species (H2, H2+, H3+ included)
-      ! and the slaved metals by r_H, and a species carrying both elements
-      ! (HeH+) by min(r_H, r_He); the nuclei this under-counts for the element
-      ! with the larger factor are deposited into that element's neutral
-      ! ground species.  Every operation is a multiplication by a nonnegative
-      ! factor or an addition, so no negative intermediate can arise, and both
-      ! element totals are met exactly.  The result is the initial guess for
-      ! ioniz_eq, which owns the split WITHIN an element; this step owns the
-      ! element totals.
+      ! totals (memo section 3).  Helium-bearing species are scaled by
+      ! r_He = n_He^new/n_He^old, every component-1 species by r_1, and a
+      ! species carrying a nucleus of each (HeH+) by min(r_1, r_He); the
+      ! nuclei this under-counts for the element with the larger factor are
+      ! deposited into that element's neutral ground species.  Every
+      ! operation is a multiplication by a nonnegative factor or an addition,
+      ! so no negative intermediate can arise, and both element totals are
+      ! met exactly.  The result is the initial guess for ioniz_eq, which
+      ! owns the split WITHIN an element; this step owns the element totals.
       !
-      ! THE METALS ARE A RATIO, NOT A DENSITY.  Component 1 carries the trace
-      ! metals slaved to hydrogen at a fixed metal/H, so what this projection
-      ! has to preserve for them is n_X/n_H and not n_X.  Multiplying by r_H
+      ! THE INVARIANT: THE SPECIES HANDED BACK CARRY THE MASS msum THE
+      ! SPECIES HANDED IN CARRIED, to round-off.  The two components are
+      ! given mass1 = (1 - X) msum and m_He n_He = X msum, and component 1
+      ! is scaled AS A WHOLE, so its mass ends at (1 - X) msum whatever it is
+      ! made of: r_1 is the ratio of the two component-1 MASSES and not
+      ! n_H^new/n_H^old computed from a reservoir mass per hydrogen nucleus.
+      ! Writing it the second way is what let the projection lose mass -- the
+      ! reservoir m_1 = mass_per_H_nucleus_without_He() carries the metals at
+      ! melem_ab, the cell carries them at whatever the trace transport and
+      ! the advection of the element rows left, and the difference between
+      ! the two was written into hydrogen at every call (6.7e-3 of the
+      ! density at the top of an atomic wind, MEASURED).  The mass a cell's
+      ! species carry is read from the cell (mixture_mass_split).
+      !
+      ! scale_metals says whether the metal ions belong to the scaled group.
+      ! They do on the path that transports helium alone and carries the
+      ! metals with hydrogen (element_diffusion_step, relax_element_
+      ! composition).  They do not where each metal element has its own
+      ! advected mass fraction and has already been written at it
+      ! (project_element_mass_fractions): there the metals are part of the
+      ! mass already spoken for, and what closes the mixture is the hydrogen
+      ! group alone.
+      !
+      ! THE METALS ARE A RATIO, NOT A DENSITY, on the path that scales them.
+      ! There component 1 carries the trace metals at the metal/H the cell
+      ! holds, so what this projection has to preserve for them is n_X/n_H
+      ! and not n_X (r_1 is the component-1 mass ratio, and it is also
+      ! n_H^new/n_H^old, so one factor does both).  Multiplying by r_H
       ! does exactly that -- in a cell that HAD hydrogen.  Where the cell had
       ! none the ratio it carries is 0/0, and multiplying by r_H = 0 destroys
       ! it: hydrogen comes back through the shortfall deposit below and the
@@ -1858,29 +2152,53 @@
       ! two cells at the reservoir C/H is not a state of the atmosphere -- these
       ! equations have no sink for elemental carbon -- and it removes the C I
       ! cooling that sets the temperature there.  The metals therefore return
-      ! WITH the hydrogen, at melem_ab: that is the metal/H this operator's own
-      ! mass budget assumes (it is inside m_1 = mass_per_H_nucleus_without_He),
-      ! and the same reservoir ratio set_IC and load_IC build an absent element
-      ! from.  All of it goes into the neutral ground stage, as those two do and
+      ! WITH the hydrogen, at melem_ab, which is the reservoir metal/H that
+      ! m_1 = mass_per_H_nucleus_without_He() is built from and that the
+      ! hydrogen count of the same cell was taken against just above; it is
+      ! also the ratio set_IC and load_IC build an absent element from.  All of it goes into the neutral ground stage, as those two do and
       ! as the trace-metal re-seed of element_diffusion_step does, because a
       ! cell that held no hydrogen held no ionization split either and ioniz_eq
       ! re-solves the split from the element total on the next call.
-      ! Section 84 of docs/Update_EXHALE.md.
+      ! Section 84 of docs/Update_EXHALE_stage1.md.
       real*8, dimension(1-Ng:N+Ng,n_species), intent(inout) :: f_sp
       real*8, dimension(1-Ng:N+Ng),           intent(in)    :: Xhe, msum
-      real*8, dimension(1-Ng:N+Ng),           intent(in)    :: nucH_old
-      real*8, dimension(1-Ng:N+Ng),           intent(in)    :: nucHe_old
-      real*8,                                 intent(in)    :: m_1
+      logical,                                intent(in)    :: scale_metals
 
+      real*8, dimension(1-Ng:N+Ng) :: nucH_old, nucHe_old, mass1, mnow
+      real*8, dimension(1-Ng:N+Ng) :: mmetal
       real*8  :: nucH_new, nucHe_new, rH, rHe, rBoth, gotH, gotHe
+      real*8  :: grp_old, grp_new, m1c, m_1
       integer :: j, ib, im, ie, i0e, k
 
+      m_1 = mass_per_H_nucleus_without_He()
+      call mixture_mass_split(f_sp, nucH_old, nucHe_old, mass1, mnow,     &
+                              mmetal)
+
       do j = 1-Ng, N+Ng
+         ! The mass each component is to end with, and the mass the group
+         ! that is about to be scaled starts with.
          nucHe_new = Xhe(j)*msum(j)/m_He_amu
-         nucH_new  = (1.0d0 - Xhe(j))*msum(j)/m_1
-         if (nucH_old(j) .gt. 1.0d-30) then
-            rH = nucH_new/nucH_old(j)
+         grp_new   = (1.0d0 - Xhe(j))*msum(j)
+         grp_old   = mass1(j)
+         if (.not. scale_metals) then
+            grp_new = grp_new - mmetal(j)
+            grp_old = grp_old - mmetal(j)
+         endif
+         if (grp_new .lt. 0.0d0) grp_new = 0.0d0
+         if (nucH_old(j) .gt. 1.0d-30 .and. grp_old .gt. 1.0d-30) then
+            ! The cell's own mass per hydrogen nucleus of the scaled group.
+            m1c      = grp_old/nucH_old(j)
+            nucH_new = grp_new/m1c
+            rH       = nucH_new/nucH_old(j)
          else
+            ! No hydrogen to scale: the group comes back at the reservoir
+            ! composition, which is the metal/H the re-seed below writes
+            ! (and the bare proton mass where the metals are not scaled).
+            if (scale_metals) then
+               nucH_new = grp_new/m_1
+            else
+               nucH_new = grp_new/m_H_amu
+            endif
             rH = 0.0d0
          endif
          if (nucHe_old(j) .gt. 1.0d-30) then
@@ -1893,31 +2211,40 @@
          rBoth = min(rH, rHe)
 
          do ib = 1, n_bsp
-            if (bsp_nH(ib) .gt. 0 .and. bsp_nHe(ib) .gt. 0) then
-               f_sp(j,bsp_fsp(ib)) = f_sp(j,bsp_fsp(ib))*rBoth
-            else if (bsp_nH(ib) .gt. 0) then
+            if (bsp_nHe(ib) .gt. 0) then
+               if (bsp_nH(ib) .gt. 0) then
+                  f_sp(j,bsp_fsp(ib)) = f_sp(j,bsp_fsp(ib))*rBoth
+               else
+                  f_sp(j,bsp_fsp(ib)) = f_sp(j,bsp_fsp(ib))*rHe
+               endif
+            else
+               ! Every species of component 1, the oxygen carriers included:
+               ! CO carries no hydrogen nucleus, but its mass is component
+               ! 1's and it is diluted with the rest of it.
                f_sp(j,bsp_fsp(ib)) = f_sp(j,bsp_fsp(ib))*rH
-            else if (bsp_nHe(ib) .gt. 0) then
-               f_sp(j,bsp_fsp(ib)) = f_sp(j,bsp_fsp(ib))*rHe
             endif
          enddo
-         ! metals slaved to hydrogen at fixed metal/H (see the header)
-         if (nucH_old(j) .gt. 1.0d-30) then
-            do im = 1, n_mion
-               f_sp(j,mion_fsp(im)) = f_sp(j,mion_fsp(im))*rH
-            enddo
-         else if (thereis_metals) then
-            ! The cell carries no metal/H of its own, so the metals are set
-            ! from the reservoir abundance and the NEW hydrogen count: they
-            ! come back when hydrogen does and stay at zero while it has not.
-            ! (With the metals off every column here is zero on both branches.)
-            do ie = 1, n_melem
-               i0e = melem_i0(ie)
-               f_sp(j,mion_fsp(i0e)) = melem_ab(ie)*nucH_new
-               do k = 1, melem_top(ie)
-                  f_sp(j,mion_fsp(i0e+k)) = 0.0d0
+         ! metals carried with hydrogen at the cell's own metal/H, except
+         ! where they have already been written at their own mass fraction
+         if (scale_metals) then
+            if (nucH_old(j) .gt. 1.0d-30) then
+               do im = 1, n_mion
+                  f_sp(j,mion_fsp(im)) = f_sp(j,mion_fsp(im))*rH
                enddo
-            enddo
+            else if (thereis_metals) then
+               ! The cell carries no metal/H of its own, so the metals are
+               ! set from the reservoir abundance and the NEW hydrogen count:
+               ! they come back when hydrogen does and stay at zero while it
+               ! has not.  (With the metals off every column here is zero on
+               ! both branches.)
+               do ie = 1, n_melem
+                  i0e = melem_i0(ie)
+                  f_sp(j,mion_fsp(i0e)) = melem_ab(ie)*nucH_new
+                  do k = 1, melem_top(ie)
+                     f_sp(j,mion_fsp(i0e+k)) = 0.0d0
+                  enddo
+               enddo
+            endif
          endif
 
          ! deposit the shortfall of each element into its neutral ground stage
@@ -1940,48 +2267,364 @@
 
       ! ------------------------------------------------------------------ !
 
-      subroutine solve_trace_element_in_hydrogen(nX, nHl, Dco, Gco, fbase,  &
-                                                 dt_phys, rp, rep, vadv)
-      ! One backward-Euler tridiagonal solve for a TRACE element diffusing
-      ! relative to a hydrogen background nHl, with element diffusion
-      ! coefficient Dco, settling coefficient Gco and fixed reservoir base
-      ! ratio fbase = nX/nHl, advected by vadv [cm/s] (the same flow as the
-      ! helium equation, divided by rho).  Valid only for an element whose own
-      ! mass does
-      ! not shape the background it moves through (metal/H ~ 1e-4); helium is
-      ! NOT solved this way -- that is what the binary operator above exists
-      ! for.
+      subroutine element_transport_residual(rho, Tcode, f_sp, Frho,       &
+                                 res_he, sc_he, ok_he,                    &
+                                 res_tr, sc_tr, ok_tr, tr_carried)
+      ! THE ELEMENTAL TRANSPORT BALANCES, MEASURED ON A STATE (B1a section
+      ! 2.3), stationary and side-effect free.
       !
-      ! The transported variable is the MIXING RATIO fX = nX/n_H, in the same
-      ! advective form as the helium equation,
+      ! What the operator solves is a backward-Euler step of
+      !   rho (X^new - X^old)/dt + div(r^2 J)/r^2 + div(F_rho X) = 0
+      ! and what a converged wind has to satisfy is the same balance with
+      ! the time term gone,
+      !   div(r^2 J)/r^2 + div(F_rho X) = 0 ,
+      ! transport against transport: helium has no source and no sink, so
+      ! there is no reaction term on the right.  It is obtained here the way
+      ! the carrier balance obtains its stationary form, by evaluating the
+      ! step's own residual at a step long enough that the time term is
+      ! numerically absent (dt_stationary below), on the composition the
+      ! state carries.  Nothing is re-solved and nothing is projected.
       !
-      !    dfX/dt + v dfX/dr = (1/(n_H r^2)) d/dr [ r^2 n_H
-      !                        ( (D_1X + K_zz) dfX/dr + D_1X G fX ) ]
+      ! res is [g cm^-3 s^-1] for helium (a mass fraction per unit time
+      ! times a density) and [s^-1] for a trace element (a mixing ratio per
+      ! unit time).  The scale of a row is the sum of the magnitudes of its
+      ! own terms, and the floor under it is a rate 1e-20 of the base
+      ! composition carried across the domain in one flow time R0/v0 -- far
+      ! below any balance either equation can resolve, and in the row's own
+      ! units, so a cell where every term vanishes reads zero rather than
+      ! dividing by zero.
       !
-      ! and the advection is the cell-velocity upwind difference of the header.
-      ! Solving the DENSITY conservatively with face-averaged velocities, which
-      ! is what this routine did before, evacuates any cell whose two face
-      ! velocities point outward: such a cell has an outflow term at both faces
-      ! and no inflow term at either, and the drain has no counterpart in the
-      ! hydro's own rho, whose face fluxes come from the Riemann solver and
-      ! carry no such divergence.  At the breathing base of HD 209458 b that
-      ! emptied the first free cell of every metal by ~10^3 (measured
-      ! 2026-08-25) and with it the metal-line cooling of that cell.  In the
-      ! mixing-ratio advective form a uniform fX is preserved for any velocity
-      ! field, so no spurious divergence can create or destroy the element.
-      ! nX is intent(inout): supply the current density, receive the solved one.
-      real*8, dimension(1-Ng:N+Ng), intent(inout) :: nX
-      real*8, dimension(1-Ng:N+Ng), intent(in)    :: nHl, Dco, Gco, dt_phys
-      real*8, dimension(1-Ng:N+Ng), intent(in)    :: rp, rep, vadv
-      real*8,                       intent(in)    :: fbase
+      ! Cell 1 carries no equation in either arm: it is the Dirichlet
+      ! reservoir the operator states, so its residual is reported as zero
+      ! against the floor.
+      !
+      ! THE BOUNDARIES ARE THE CALLER'S, at the top as at the base.  This
+      ! routine writes no ghost: the transported quantities below are formed
+      ! over 1-Ng:N+Ng from the composition the state carries, and the two
+      ! outermost rows are closed with whatever stands in the upper ghosts
+      ! of f_sp, the WENO3 face of cell N-1 reaching the first of them.  The
+      ! boundary the balance is measured under is therefore the caller's
+      ! statement and not this operator's.
+      !
+      ! The condition at the top that the ELEMENT balance is posed under is
+      ! zero gradient -- the diffusive face flux vanishes at face N by the
+      ! face coefficients (drift_and_gradient_face_coefficients and
+      ! trace_face_coefficients run j = 1, N-1), and with the composition of
+      ! the upper ghosts equal to the outermost cell's the advective
+      ! reconstruction sees no compositional step across the top, so gas
+      ! crossing it carries the column's own composition and no element is
+      ! created or destroyed there.  Both production callers write that
+      ! condition before they call: the fixed-wind relaxation on its own
+      ! working arrays (Xhe in element_diffusion_step, fX in
+      ! solve_trace_element_in_hydrogen) and the stationary system on the
+      ! composition it assembles (write_species_rows_into_composition of
+      ! steady_newton.f90, through project_element_mass_fractions).  A
+      ! caller that writes neither is measured under a different boundary,
+      ! and the acceptance suite src/tests/element_operator states the size
+      ! of that difference rather than assuming it away.
+      !
+      ! The lower ghosts are the Dirichlet reservoir the state carries: cell
+      ! 1 and below are incoming data and carry no equation here.
+      !
+      ! NO PERSISTENT MUTATION.  The routines called here compute
+      ! coefficients and do not write module state; the five diagnostics of
+      ! the last solve that the operator does write are held aside and put
+      ! back, and the round trip is asserted rather than assumed.
+      !
+      ! No cell velocity is taken: the material transport of this balance is
+      ! the divergence of the FACE mass fluxes of the state, Frho below.
 
-      real*8, dimension(0:N)       :: PL, PR
-      real*8, dimension(1-Ng:N+Ng) :: aa, bb, cc, dd, cpv, dpv, fX
-      real*8 :: dr_f, nHf, Df, Gf, DK, Kj, mden, sL, sR, cadv
+      real*8, dimension(1-Ng:N+Ng),           intent(in)  :: rho, Tcode
+      real*8, dimension(1-Ng:N+Ng,n_species), intent(in)  :: f_sp
+      ! The face mass flux this balance rides on, given by the caller: the
+      ! one the mass row of the very state being measured returned.  Every
+      ! production caller reads it with face_mass_flux_of_state
+      ! (steady_residual.f90) immediately before this call, which refuses a
+      ! caller that has not assembled that row rather than measuring the
+      ! state against another wind.
+      real*8, dimension(1-Ng:N+Ng),           intent(in)  :: Frho
+      real*8, dimension(1:N),                 intent(out) :: res_he, sc_he
+      ! ONE ROW PER TRACE ELEMENT, not the worst element at each cell.  A
+      ! stationary system that carries an element's balance as a ROW needs
+      ! that element's own residual; a reduction over elements is a
+      ! diagnostic and cannot be a row, and it hid an element whose rates
+      ! are small beside another's behind the larger one.  A caller that
+      ! wants the worst element still takes it, over the second index.
+      real*8, dimension(1:N,n_melem),         intent(out) :: res_tr, sc_tr
+      logical,                                intent(out) :: ok_he, ok_tr
+      ! Which trace elements the state carries a balance FOR: an element the
+      ! run holds none of at the base has no equation, and reporting its
+      ! empty row as a satisfied one would say the opposite.
+      logical, dimension(n_melem), optional,  intent(out) :: tr_carried
+
+      real*8, dimension(1-Ng:N+Ng) :: nucH, nucHe, msum, mass1, Xhe
+      real*8, dimension(1-Ng:N+Ng) :: carH, carHe, mcarH, dlnpsi
+      real*8, dimension(1-Ng:N+Ng) :: rho_phys, TK, Dco, Gco, dt_stat
+      real*8, dimension(1-Ng:N+Ng) :: rp, rep, nH_phys, ntot_phys, dmeff
+      real*8, dimension(1-Ng:N+Ng) :: nX, nXold, DcoX, GcoX, zb1
+      real*8, dimension(1-Ng:N+Ng) :: Dneut, eEf, ne_phys, zbHe, ne_rel
+      real*8, dimension(1-Ng:N+Ng) :: mres, resc, dscc, fX, fXold
+      ! The two factors that put the divergence of a face element mass flux
+      ! into the units of each row.
+      real*8, dimension(1-Ng:N+Ng) :: cadvf, wYtr, cadvX
+      real*8, dimension(1-Ng:N+Ng,n_hcar) :: yH
+      integer, dimension(1-Ng:N+Ng) :: idom
+      real*8, dimension(0:N) :: Agrd, Bdrf, Jf, dJl, dJr, PL, PR
+      integer, dimension(0:N) :: updrf
+      ! The five diagnostics of the last solve, held aside (see the header).
+      real*8  :: sv_over, sv_under, sv_resid, sv_trace
+      integer :: sv_steps
+      real*8  :: tscale, X_base, m_1, fXbase, rnorm
+      real*8  :: floor_he, floor_tr
+      integer :: j, im
+
+      res_he = 0.0d0;  sc_he = 1.0d0;  ok_he = .false.
+      res_tr = 0.0d0;  sc_tr = 1.0d0;  ok_tr = .false.
+      if (present(tr_carried)) tr_carried = .false.
+      if (.not. he_diffusion) return
+      if (.not. thereis_He)   return
+
+      sv_over  = he_fraction_over_one
+      sv_under = he_fraction_under_zero
+      sv_steps = he_fraction_newton_steps
+      sv_resid = he_fraction_newton_resid
+      sv_trace = trace_ratio_under_zero
+
+      m_1 = mass_per_H_nucleus_without_He()
+      call mixture_mass_split(f_sp, nucH, nucHe, mass1, msum)
+      Xhe  = m_He_amu*nucHe/msum
+
+      TK       = Tcode*T0
+      where (TK .lt. 1.0d0) TK = 1.0d0
+      rp       = r*R0
+      rep      = r_edg*R0
+      rho_phys = rho*n0*mu*msum
+      call carrier_counts(f_sp, carH, carHe, mcarH)
+      ntot_phys = (carH + carHe)*rho*n0
+      where (ntot_phys .lt. 1.0d0) ntot_phys = 1.0d0
+      call helium_hydrogen_diffusion(rho, Tcode, f_sp, Dco, Dneut, idom)
+      tscale  = R0/v0
+      ! The stationary limit: a step long against every transport time of
+      ! the column, so rho (X - X)/dt is zero and the scale of the row is
+      ! the transport terms alone.  Same device as the carrier balance.
+      dt_stat = 1.0d30
+      call settling_coefficient(rho, Tcode, f_sp, Gco, dmeff, zb1, eEf,   &
+                                dlnpsi)
+      X_base = m_He_amu*HeH/(m_1 + m_He_amu*HeH)
+      call drift_and_gradient_face_coefficients(rho_phys, Dco, Gco, rp,   &
+                                                Agrd, Bdrf, updrf)
+      ! THE ROW IS THE OPERATOR'S OWN STEP AT AN INFINITE STEP LENGTH.  Both
+      ! halves come from composition_residual: the diffusive divergence, and
+      ! the material advection as the divergence of F_rho X^face on the same
+      ! faces, areas and volume the mass row of this cell uses.  The
+      ! fixed-wind relaxation solves that same expression to zero, so the
+      ! relaxation's fixed point IS this row's zero and the elemental Picard
+      ! alternation is one operator and not two.
+      ! Code density times code velocity over code length is a rate in units
+      ! of v0/R0, and n0 mu msum is the mass one unit of the code density
+      ! carries, so the two factors put the divergence in the row's own
+      ! [g cm^-3 s^-1].
+      cadvf = n0*mu*msum*v0/R0
+      call composition_residual(Xhe, Xhe, rho_phys, dt_stat, rp, rep,     &
+                                Frho, cadvf, Agrd, Bdrf, updrf, 2,        &
+                                .true., mres, Jf, dJl, dJr, rnorm, resc,  &
+                                dscc)
+      do j = 2, N
+         floor_he  = 1.0d-20*rho_phys(j)*X_base/tscale
+         res_he(j) = resc(j)
+         sc_he(j)  = max(dscc(j), floor_he)
+      enddo
+      sc_he(1) = max(1.0d-20*rho_phys(1)*X_base/tscale, 1.0d-300)
+      ok_he    = .true.
+
+      ! --- the trace elements, each against the hydrogen background ---
+      if (.not. (he_metal_diffusion .and. thereis_metals)) then
+         call reinstate_diffusion_diagnostics(sv_over, sv_under,          &
+                                     sv_steps, sv_resid, sv_trace)
+         return
+      endif
+      call element_nucleus_counts(f_sp, nucH, nucHe)
+      nH_phys = nucH*rho*n0
+      where (nH_phys .lt. 1.0d-30) nH_phys = 1.0d-30
+      call carrier_counts(f_sp, carH, carHe, mcarH)
+      ntot_phys = (carH + carHe)*rho*n0
+      where (ntot_phys .lt. 1.0d0) ntot_phys = 1.0d0
+      call mean_charges_and_electrons(f_sp, zb1, zbHe, ne_rel)
+      ne_phys = max(ne_rel*rho*n0, 1.0d0)
+      call carrier_fractions(f_sp, n_hcar, hcar_isp, yH)
+      sc_tr = 1.0d-300
+      do im = 1, n_melem
+         call trace_element_transport_coefficients(im, f_sp, rho, TK,     &
+                  ntot_phys, ne_phys, yH, mcarH, zb1, eEf, dlnpsi,        &
+                  nX, nXold, DcoX, GcoX)
+         fX     = nX/max(nH_phys, 1.0d-30)
+         fXbase = nXold(1)/nH_phys(1)
+         if (fXbase .le. 0.0d0) cycle
+         if (present(tr_carried)) tr_carried(im) = .true.
+         floor_tr = 1.0d-20*fXbase/tscale
+         ! The element's MASS fraction per unit of the mixing ratio, and the
+         ! factor that returns the code divergence of that mass flux to the
+         ! mixing ratio per second the row is written in: n0 msum v0/R0 makes
+         ! it a mass rate, 1/A_X counts nuclei, 1/n_H takes the ratio.
+         wYtr  = melem_A(im)*nucH/msum
+         cadvX = n0*msum*v0/R0/melem_A(im)/max(nH_phys, 1.0d-30)
+         call trace_face_coefficients(nH_phys, DcoX, GcoX, rp, PL, PR)
+         ! The same step at an infinite step length, so the time term is
+         ! absent and the row is the transport terms alone -- and it is the
+         ! same expression the fixed-wind relaxation of this element solves
+         ! to zero.
+         fXold = fX
+         if (trace_row_terms_diag)                                        &
+            write(*,'(A,A)') ' (element row terms) element ',             &
+                 trim(melem_name(im))
+         call trace_composition_residual(fXold, fX, nH_phys, dt_stat, rp,  &
+                                         rep, PL, PR, Frho, wYtr, cadvX,   &
+                                         .true., mres, rnorm, resc, dscc)
+         do j = 2, N
+            res_tr(j,im) = resc(j)
+            sc_tr(j,im)  = max(dscc(j), floor_tr)
+         enddo
+      enddo
+      ok_tr = .true.
+
+      call reinstate_diffusion_diagnostics(sv_over, sv_under, sv_steps,   &
+                                           sv_resid, sv_trace)
+
+      end subroutine element_transport_residual
+
+      ! ------------------------------------------------------------------ !
+
+      subroutine reinstate_diffusion_diagnostics(over, under, steps,      &
+                                                 resid, trace)
+      ! Put the five diagnostics of the last solve back as they were, and
+      ! assert it: a measurement that changed what the next report reads
+      ! would be a measurement with a history.
+      real*8,  intent(in) :: over, under, resid, trace
+      integer, intent(in) :: steps
+      he_fraction_over_one     = over
+      he_fraction_under_zero   = under
+      he_fraction_newton_steps = steps
+      he_fraction_newton_resid = resid
+      trace_ratio_under_zero   = trace
+      if (he_fraction_over_one .ne. over .or.                             &
+          he_fraction_under_zero .ne. under .or.                          &
+          he_fraction_newton_steps .ne. steps .or.                        &
+          he_fraction_newton_resid .ne. resid .or.                        &
+          trace_ratio_under_zero .ne. trace)                              &
+         write(*,'(A)') ' (element transport residual) WARNING: the '//   &
+              'module diagnostics were NOT reinstated'
+      end subroutine reinstate_diffusion_diagnostics
+
+      ! ------------------------------------------------------------------ !
+
+      subroutine trace_element_transport_coefficients(im, f_sp, rho, TK,   &
+                     ntot_phys, ne_phys, yH, mcarH, zb1, eEf, dlnpsi,       &
+                     nX, nXold, DcoX, GcoX)
+      ! The transport coefficients of ONE trace element against the hydrogen
+      ! background: its density and mean charge from the species vector, the
+      ! stage-resolved binary diffusion coefficient against the hydrogen
+      ! carriers, and the settling coefficient G [1/cm] of the mixing ratio.
+      ! The one definition of them: the diffusion step solves the element
+      ! with these and element_transport_residual measures the same element's
+      ! stationary balance with them.
+      integer,                                intent(in)  :: im
+      real*8, dimension(1-Ng:N+Ng,n_species), intent(in)  :: f_sp
+      real*8, dimension(1-Ng:N+Ng),           intent(in)  :: rho, TK
+      real*8, dimension(1-Ng:N+Ng),           intent(in)  :: ntot_phys
+      real*8, dimension(1-Ng:N+Ng),           intent(in)  :: ne_phys
+      real*8, dimension(1-Ng:N+Ng,n_hcar),    intent(in)  :: yH
+      real*8, dimension(1-Ng:N+Ng),           intent(in)  :: mcarH, zb1
+      real*8, dimension(1-Ng:N+Ng),           intent(in)  :: eEf, dlnpsi
+      real*8, dimension(1-Ng:N+Ng),           intent(out) :: nX, nXold
+      real*8, dimension(1-Ng:N+Ng),           intent(out) :: DcoX, GcoX
+
+      real*8, dimension(1-Ng:N+Ng) :: zbX
+      real*8, dimension(1-Ng:N+Ng,n_mstage) :: yX
+      real*8, dimension(n_mstage)  :: ZXs, mXs, alXs
+      integer, dimension(n_mstage) :: ispX
+      real*8  :: mX
+      integer :: i0m, top, j, k
+
+      i0m = melem_i0(im)
+      top = melem_top(im)
+            mX  = melem_A(im)
+            nX  = 0.0d0
+            zbX = 0.0d0
+            do k = 0, top
+               nX  = nX  + f_sp(:,mion_fsp(i0m+k))*rho*n0
+               zbX = zbX + dble(k)*f_sp(:,mion_fsp(i0m+k))*rho*n0
+            enddo
+            where (nX .gt. 1.0d-30)
+               zbX = zbX/nX
+            elsewhere
+               zbX = 0.0d0
+            end where
+            nXold = nX
+            ! Stage-resolved friction against the hydrogen carriers, exactly
+            ! as for helium: a metal ion in the ionized wind is held to the
+            ! protons by the Coulomb coefficient, which is what keeps it from
+            ! settling out (Koskinen et al. 2013, section 3.2.2).  Stages
+            ! beyond this element's top are given zero weight.
+            ispX = mion_fsp(i0m)
+            ZXs  = 0.0d0
+            mXs  = mX
+            alXs = 0.0d0
+            alXs(1) = alpha_melem(im)
+            do k = 0, top
+               ispX(k+1) = mion_fsp(i0m+k)
+               ZXs(k+1)  = dble(k)
+            enddo
+            call carrier_fractions(f_sp, top+1, ispX(1:top+1),             &
+                                   yX(:,1:top+1))
+            if (top+1 .lt. n_mstage) yX(:,top+2:n_mstage) = 0.0d0
+            call stage_mixture_diffusion(TK, ntot_phys, ne_phys,           &
+                                         top+1, yX(:,1:top+1),             &
+                                         ZXs(1:top+1), mXs(1:top+1),       &
+                                         alXs(1:top+1),                    &
+                                         n_hcar, yH, hcar_Z, hcar_m,       &
+                                         hcar_alpha, DcoX)
+            ! Same ambipolar field as helium, computed from the electron
+            ! pressure gradient (memo 3a) -- NOT the hydrogen-plasma constant
+            ! eE = m_H g/2 this loop used to assume, which is wrong wherever
+            ! helium or the metals carry a significant share of the electrons.
+            ! The partner mass is the mean HYDROGEN mass per carrier: a metal
+            ! atom settles against the particles it collides with, which are H
+            ! atoms and ions above the molecular front and H2/H3+ below it.
+            ! mcarH is 1 in the atomic region, so nothing changes there.
+            ! -dln(psi)/dr enters here for the same reason it enters the
+            ! helium equation: the driver is the metal's MOLE fraction among
+            ! the hydrogen carriers, n_X/n_1c, while the transported variable
+            ! is the mixing ratio n_X/n_H (module header).
+            do j = 1-Ng, N+Ng
+               GcoX(j) = ((mX - mcarH(j))*mu*(Dphi(r(j))*v0*v0/R0)   &
+                          - (zbX(j) - zb1(j))*eEf(j))/(kb_erg*TK(j))      &
+                         - dlnpsi(j)
+            enddo
+            if (he_alphaT .ne. 0.0d0) then
+               do j = 2-Ng, N+Ng-1
+                  GcoX(j) = GcoX(j) + he_alphaT*(log(TK(j+1))-log(TK(j-1)))&
+                            / max((r(j+1)-r(j-1))*R0, 1.0d0)
+               enddo
+            endif
+
+      end subroutine trace_element_transport_coefficients
+
+      ! ------------------------------------------------------------------ !
+
+      subroutine trace_face_coefficients(nHl, Dco, Gco, rp, PL, PR)
+      ! Face coefficients of the trace-element flux in the mixing ratio,
+      !   F(face) = PL fX(j) + PR fX(j+1) ,
+      ! with the Peclet hybrid of the helium operator: central where the
+      ! settling drift is resolved over a cell, upwind toward the settling
+      ! direction otherwise.  The outermost and innermost faces carry no
+      ! diffusive flux (PL = PR = 0 there), which is the zero-gradient top
+      ! and the Dirichlet reservoir at the base.
+      ! The one definition of them: the backward-Euler solve and the
+      ! stationary residual of the same element both use these.
+      real*8, dimension(1-Ng:N+Ng), intent(in)  :: nHl, Dco, Gco, rp
+      real*8, dimension(0:N),       intent(out) :: PL, PR
+      real*8  :: dr_f, nHf, Df, Gf, DK
       integer :: j
-
-      fX = nX/max(nHl, 1.0d-30)
-
       PL = 0.0d0
       PR = 0.0d0
       do j = 1, N-1
@@ -1990,8 +2633,6 @@
          Df   = 0.5d0*(Dco(j)+Dco(j+1))
          Gf   = 0.5d0*(Gco(j)+Gco(j+1))
          DK   = Df + 0.5d0*(kzz_cell(j)+kzz_cell(j+1))
-         ! Peclet hybrid, as in face_coefficients: central where the settling
-         ! drift is resolved, upwind toward the settling direction otherwise.
          if (abs(Df*Gf)*dr_f .lt. 2.0d0*DK) then
             PL(j) =  nHf*(DK/dr_f - 0.5d0*Df*Gf)
             PR(j) = -nHf*(DK/dr_f + 0.5d0*Df*Gf)
@@ -2003,44 +2644,252 @@
             PR(j) = -nHf*(DK/dr_f)
          endif
       enddo
+      end subroutine trace_face_coefficients
 
+      ! ------------------------------------------------------------------ !
+
+      subroutine trace_composition_residual(fXold, fX, nHl, dt_phys, rp, &
+                                            rep, PL, PR, Frho, wY, cadvX, &
+                                            advect, mres, rnorm,          &
+                                            res_out, dsc_out)
+      ! Residual of the implicit trace-element step in the MIXING RATIO
+      ! fX = n_X/n_H, returned NEGATED (mres is the right-hand side of the
+      ! Newton system):
+      !
+      !   res(j) = (fX(j) - fXold(j))/dt
+      !          + [ r_+^2 F(j) - r_-^2 F(j-1) ] / (n_H r^2 dr)
+      !          + advect  div(F_rho Y_X)(j) cadvX(j) ,   Y_X = wY fX .
+      !
+      ! The diffusive face flux is the two-point form of
+      ! trace_face_coefficients; the advective term is the divergence of the
+      ! face element mass fluxes (element_advective_divergence), the same
+      ! object the helium row balances and the Runge-Kutta stages integrate,
+      ! with wY the element mass fraction per unit of the mixing ratio and
+      ! cadvX the factor that returns the code divergence to the mixing
+      ! ratio per second the row is written in.
+      !
+      ! rnorm is the residual measured RELATIVE to the size of the terms of
+      ! its own row (dsc), for the reason composition_residual states: at a
+      ! step long against the cell transport time the terms cancel to many
+      ! digits and an absolute residual measures their round-off.
+      !
+      ! There is no equation at cell 1: it is the Dirichlet reservoir.
+      real*8, dimension(1-Ng:N+Ng), intent(in)  :: fXold, fX, nHl, dt_phys
+      real*8, dimension(1-Ng:N+Ng), intent(in)  :: rp, rep, Frho, wY, cadvX
+      real*8, dimension(0:N),       intent(in)  :: PL, PR
+      logical,                      intent(in)  :: advect
+      real*8, dimension(1-Ng:N+Ng), intent(out) :: mres
+      real*8,                       intent(out) :: rnorm
+      real*8, dimension(1-Ng:N+Ng), intent(out), optional :: res_out, dsc_out
+
+      real*8, dimension(1-Ng:N+Ng) :: Y, dvF, dvM
+      real*8  :: Kj, sL, sR, Fl, Fr, res, dsc
+      integer :: j
+
+      dvF = 0.0d0
+      dvM = 0.0d0
+      if (advect) then
+         Y = wY*fX
+         call element_advective_divergence(Y, Frho, dvF, dvM)
+      endif
+
+      mres  = 0.0d0
+      rnorm = 0.0d0
+      if (present(res_out)) res_out = 0.0d0
+      if (present(dsc_out)) dsc_out = 0.0d0
       do j = 2, N
-         Kj    = 1.0d0/(max(nHl(j), 1.0d-30)*rp(j)**2                      &
-                        *max(rep(j)-rep(j-1), 1.0d0))
-         sL    = rep(j-1)**2
-         sR    = rep(j)**2
-         aa(j) = -Kj*sL*PL(j-1)
-         bb(j) =  1.0d0/dt_phys(j) + Kj*(sR*PL(j) - sL*PR(j-1))
-         cc(j) =  Kj*sR*PR(j)
-         dd(j) =  fX(j)/dt_phys(j)
-         if (vadv(j) .ge. 0.0d0) then
-            cadv  = vadv(j)/max(rp(j) - rp(j-1), 1.0d0)
-            bb(j) = bb(j) + cadv
-            aa(j) = aa(j) - cadv
-         else if (j .lt. N) then
-            cadv  = vadv(j)/max(rp(j+1) - rp(j), 1.0d0)
-            bb(j) = bb(j) - cadv
-            cc(j) = cc(j) + cadv
+         Kj  = 1.0d0/(max(nHl(j), 1.0d-30)*rp(j)**2                       &
+                      *max(rep(j)-rep(j-1), 1.0d0))
+         sL  = rep(j-1)**2
+         sR  = rep(j)**2
+         Fr  = PL(j)*fX(j)     + PR(j)*fX(j+1)
+         Fl  = PL(j-1)*fX(j-1) + PR(j-1)*fX(j)
+         res = (fX(j) - fXold(j))/dt_phys(j) + Kj*(sR*Fr - sL*Fl)
+         dsc = max(abs(fX(j)), abs(fXold(j)))/dt_phys(j)                  &
+             + Kj*(sR*abs(Fr) + sL*abs(Fl))
+         if (advect) then
+            res = res + dvF(j)*cadvX(j)
+            dsc = dsc + dvM(j)*cadvX(j)
          endif
+         mres(j) = -res
+         if (present(res_out)) res_out(j) = res
+         if (present(dsc_out)) dsc_out(j) = dsc
+         rnorm = max(rnorm, abs(res)/max(dsc, 1.0d-300))
+         ! WHAT THIS ROW BALANCES, term by term, where a caller asked for it
+         ! (trace_row_terms_diag).  The two fluxes, the divergence each of
+         ! them gives, the mixing ratio on both sides of the cell and the
+         ! row's own scale: a row far from zero is read from the sizes of
+         ! the terms that make it, and at the outermost cell the outer face
+         ! carries no diffusive flux (trace_face_coefficients), so Fr is
+         ! zero there and the balance is the inward diffusive flux against
+         ! the advective divergence.  A print and nothing else.
+         if (trace_row_terms_diag .and. j .ge. trace_row_terms_from)       &
+            write(*,'(A,I4,A,ES12.5,A,ES12.5,A,ES12.5,A,ES12.5,A,ES12.5,' &
+                    //'A,ES12.5,A,ES12.5,A,ES12.5)')                      &
+                 ' (element row terms) cell ', j,                         &
+                 ': fX(j-1) ', fX(j-1), ', fX(j) ', fX(j),                &
+                 ', fX(j+1) ', fX(j+1), ', F_diff(out) ', Fr,             &
+                 ', F_diff(in) ', Fl, ', diffusive divergence ',          &
+                 Kj*(sR*Fr - sL*Fl), ', advective divergence ',           &
+                 dvF(j)*cadvX(j), ', row scale ', dsc
       enddo
-      cc(N) = 0.0d0
 
-      dd(2) = dd(2) - aa(2)*fbase                         ! base Dirichlet
-      aa(2) = 0.0d0
+      end subroutine trace_composition_residual
 
-      cpv(2) = cc(2)/bb(2)
-      dpv(2) = dd(2)/bb(2)
-      do j = 3, N
-         mden   = bb(j) - aa(j)*cpv(j-1)
-         cpv(j) = cc(j)/mden
-         dpv(j) = (dd(j) - aa(j)*dpv(j-1))/mden
-      enddo
-      fX(N) = dpv(N)
-      do j = N-1, 2, -1
-         fX(j) = dpv(j) - cpv(j)*fX(j+1)
-      enddo
-      fX(1-Ng:1) = fbase
+      ! ------------------------------------------------------------------ !
+
+      subroutine solve_trace_element_in_hydrogen(nX, nHl, Dco, Gco, fbase,  &
+                                                 dt_phys, rp, rep, Frho,   &
+                                                 wY, cadvX, advect)
+      ! One backward-Euler step for a TRACE element diffusing relative to a
+      ! hydrogen background nHl, with element diffusion coefficient Dco,
+      ! settling coefficient Gco and fixed reservoir base ratio
+      ! fbase = nX/nHl.  Valid only for an element whose own mass does not
+      ! shape the background it moves through (metal/H ~ 1e-4); helium is
+      ! NOT solved this way -- that is what the binary operator above exists
+      ! for.
+      !
+      ! The transported variable is the MIXING RATIO fX = nX/n_H,
+      !
+      !    dfX/dt + advect div(F_rho Y_X)/(n_H A_X/(n0 msum))
+      !           = (1/(n_H r^2)) d/dr [ r^2 n_H
+      !                        ( (D_1X + K_zz) dfX/dr + D_1X G fX ) ]
+      !
+      ! With advect false the row is the diffusive half alone: the element's
+      ! own mass fraction is advected on the hydro's face mass fluxes inside
+      ! the Runge-Kutta stages, where a cell that is outflowing at both faces
+      ! loses exactly the fraction of its mass the mass row loses and cannot
+      ! be evacuated of the element.  With advect true the fixed-wind
+      ! relaxation carries that same divergence here, formed from the same
+      ! face mass flux by element_advective_divergence.
+      !
+      ! DEFERRED CORRECTION, AND WHY THE LOOP.  The diffusive half is linear
+      ! in fX and the matrix below carries it exactly, together with the
+      ! DONOR-CELL part of the advective term.  What the reconstruction and
+      ! the bounding of species_face_fraction add on top of the donor cell is
+      ! carried on the right-hand side at the current iterate, so the fixed
+      ! point of the iteration solves the FULL operator -- the same one the
+      ! stationary elemental row measures -- and not the first-order one.
+      ! With advect false there is nothing deferred, the system is linear,
+      ! and the loop takes a single pass which is the direct solve.
+      !
+      ! nX is intent(inout): supply the current density, receive the solved one.
+      real*8, dimension(1-Ng:N+Ng), intent(inout) :: nX
+      real*8, dimension(1-Ng:N+Ng), intent(in)    :: nHl, Dco, Gco, dt_phys
+      real*8, dimension(1-Ng:N+Ng), intent(in)    :: rp, rep
+      real*8, dimension(1-Ng:N+Ng), intent(in)    :: Frho, wY, cadvX
+      real*8,                       intent(in)    :: fbase
+      logical,                      intent(in)    :: advect
+
+      real*8, dimension(0:N)       :: PL, PR
+      real*8, dimension(1:N)       :: advj, advm
+      real*8, dimension(1-Ng:N+Ng) :: aa, bb, cc, dd, cpv, dpv, fX, fXold
+      real*8, dimension(1-Ng:N+Ng) :: mres, dvD, dvFull, Y, dvFa, dvMa
+      real*8 :: Kj, mden, sL, sR, cadv, rnorm, rprev
+      integer :: j, jd, it
+      ! The deferred part is a bounded second-order correction to a term the
+      ! matrix already carries, so the iteration contracts quickly; the cap
+      ! and the stops mirror solve_mass_fraction.
+      integer, parameter :: trace_maxit = 20
+      real*8,  parameter :: trace_tol   = 1.0d-12
+
+      fXold = nX/max(nHl, 1.0d-30)
+      fX    = fXold
+      fX(1-Ng:1)   = fbase
       fX(N+1:N+Ng) = fX(N)
+
+      call trace_face_coefficients(nHl, Dco, Gco, rp, PL, PR)
+      advj = 0.0d0
+      advm = 0.0d0
+      if (advect) call element_advective_face_coefficients(Frho, advj, advm)
+
+      rprev = huge(1.0d0)
+      do it = 1, trace_maxit
+
+         ! The advective term at the current iterate, in full and in the
+         ! donor-cell part the matrix below carries.  Their difference is
+         ! what the right-hand side defers.
+         dvD    = 0.0d0
+         dvFull = 0.0d0
+         if (advect) then
+            Y = wY*fX
+            call element_advective_divergence(Y, Frho, dvFa, dvMa)
+            do j = 2, N
+               dvFull(j) = dvFa(j)*cadvX(j)
+               jd = j
+               if (Frho(j) .lt. 0.0d0) jd = j + 1
+               dvD(j) = advj(j)*wY(jd)*fX(min(jd,N))
+               jd = j - 1
+               if (Frho(j-1) .lt. 0.0d0) jd = j
+               dvD(j) = dvD(j) + advm(j)*wY(jd)*fX(jd)
+               dvD(j) = dvD(j)*cadvX(j)
+            enddo
+         endif
+
+         call trace_composition_residual(fXold, fX, nHl, dt_phys, rp, rep, &
+                                         PL, PR, Frho, wY, cadvX, advect,  &
+                                         mres, rnorm)
+
+         do j = 2, N
+            Kj    = 1.0d0/(max(nHl(j), 1.0d-30)*rp(j)**2                   &
+                           *max(rep(j)-rep(j-1), 1.0d0))
+            sL    = rep(j-1)**2
+            sR    = rep(j)**2
+            aa(j) = -Kj*sL*PL(j-1)
+            bb(j) =  1.0d0/dt_phys(j) + Kj*(sR*PL(j) - sL*PR(j-1))
+            cc(j) =  Kj*sR*PR(j)
+            dd(j) =  fXold(j)/dt_phys(j)
+            if (advect) then
+               ! The deferred correction: the full divergence minus the part
+               ! the matrix carries, both at the current iterate.
+               dd(j) = dd(j) - (dvFull(j) - dvD(j))
+               ! donor-cell entries of the two faces
+               cadv = advj(j)*cadvX(j)
+               jd   = j
+               if (Frho(j) .lt. 0.0d0) jd = j + 1
+               if (jd .le. j) then
+                  bb(j) = bb(j) + cadv*wY(jd)
+               else if (j .lt. N) then
+                  cc(j) = cc(j) + cadv*wY(jd)
+               else
+                  ! zero-gradient outer ghost: fX(N+1) = fX(N)
+                  bb(j) = bb(j) + cadv*wY(jd)
+               endif
+               cadv = advm(j)*cadvX(j)
+               jd   = j - 1
+               if (Frho(j-1) .lt. 0.0d0) jd = j
+               if (jd .lt. j) then
+                  aa(j) = aa(j) + cadv*wY(jd)
+               else
+                  bb(j) = bb(j) + cadv*wY(jd)
+               endif
+            endif
+         enddo
+         cc(N) = 0.0d0
+
+         dd(2) = dd(2) - aa(2)*fbase                      ! base Dirichlet
+         aa(2) = 0.0d0
+
+         cpv(2) = cc(2)/bb(2)
+         dpv(2) = dd(2)/bb(2)
+         do j = 3, N
+            mden   = bb(j) - aa(j)*cpv(j-1)
+            cpv(j) = cc(j)/mden
+            dpv(j) = (dd(j) - aa(j)*dpv(j-1))/mden
+         enddo
+         fX(N) = dpv(N)
+         do j = N-1, 2, -1
+            fX(j) = dpv(j) - cpv(j)*fX(j+1)
+         enddo
+         fX(1-Ng:1)   = fbase
+         fX(N+1:N+Ng) = fX(N)
+
+         if (.not. advect) exit             ! linear: one pass is the solve
+         if (rnorm .le. trace_tol) exit
+         if (it .ge. 3 .and. rnorm .gt. 0.5d0*rprev) exit
+         rprev = rnorm
+      enddo
+
       ! Clip at zero.  Unlike the helium equation this one is linear in fX --
       ! the trace limit drops the (1 - fX) factor -- and the matrix has the
       ! M-matrix sign pattern with a nonnegative right-hand side, which is the
@@ -2053,6 +2902,444 @@
       nX = fX*nHl
 
       end subroutine solve_trace_element_in_hydrogen
+
+      ! ------------------------------------------------------------------ !
+
+      logical function species_advection_active()
+      ! Whether any species mass fraction is transported on the face mass
+      ! fluxes in this configuration.  With it false the transported set is
+      ! empty, the Runge-Kutta stages carry no species row, and the run is the
+      ! one a build without this operator gives.
+      species_advection_active = element_rows_advected() .or.             &
+                                 carrier_rows_advected()
+      end function species_advection_active
+
+      ! ------------------------------------------------------------------ !
+
+      logical function element_rows_advected()
+      ! The element mass fractions are transported exactly where the element
+      ! diffusion operator transports them.
+      element_rows_advected = he_diffusion .and. thereis_He
+      end function element_rows_advected
+
+      ! ------------------------------------------------------------------ !
+
+      logical function carrier_rows_advected()
+      ! The carriers are transported exactly where the photochemical
+      ! transport operator declared them.
+      carrier_rows_advected = (n_car .gt. 0)
+      end function carrier_rows_advected
+
+      ! ------------------------------------------------------------------ !
+
+      subroutine advected_carrier_reset()
+      ! Empty the declared set.  The declaration is made once per run, after
+      ! the input keys are parsed, so emptying first makes a second
+      ! declaration of the same run's set the same set and not twice it.
+      n_car     = 0
+      car_ready = .false.
+      end subroutine advected_carrier_reset
+
+      ! ------------------------------------------------------------------ !
+
+      subroutine advected_carrier_register(isp, base_imposed)
+      ! Declare one carrier species of the transported set.  isp is its
+      ! column in f_sp; base_imposed says that a lower-atmosphere handoff
+      ! states its composition at the base, so the inflowing face carries the
+      ! ghost value rather than the base cell's own.  The mass is read from
+      ! the species table, so a carrier weighs here exactly what the equation
+      ! of state weighs it.
+      integer, intent(in) :: isp
+      logical, intent(in) :: base_imposed
+      integer :: ib, ipos
+
+      ipos = 0
+      do ib = 1, n_bsp
+         if (bsp_fsp(ib) .eq. isp) ipos = ib
+      enddo
+      if (ipos .eq. 0) then
+         write(*,*) 'ERROR: advected_carrier_register: species ', isp,    &
+                    ' is not in the base species table'
+         error stop 1
+      endif
+      if (n_car .ge. n_car_max) then
+         write(*,*) 'ERROR: advected_carrier_register: more than ',       &
+                    n_car_max, ' carriers'
+         error stop 1
+      endif
+      n_car = n_car + 1
+      car_isp(n_car)          = isp
+      car_mass(n_car)         = bsp_mass(ipos)
+      car_base_imposed(n_car) = base_imposed
+
+      end subroutine advected_carrier_register
+
+      ! ------------------------------------------------------------------ !
+
+      integer function advected_carrier_count()
+      advected_carrier_count = n_car
+      end function advected_carrier_count
+
+      ! ------------------------------------------------------------------ !
+
+      logical function advected_carrier_state_ready()
+      ! Whether the carriers of the step just taken were advected and are
+      ! waiting to be read.  False through an attempt that never reached its
+      ! projection, so a reader falls back on the species vector.
+      advected_carrier_state_ready = car_ready
+      end function advected_carrier_state_ready
+
+      ! ------------------------------------------------------------------ !
+
+      subroutine advected_carrier_fractions(f_sp, fc)
+      ! The advected carriers, in the units f_sp counts them in: a number
+      ! per unit mass, n_c/(rho n0).  The mass fraction the faces carried is
+      ! divided by the mixture mass of the state it is being written onto, so
+      ! that a carrier means the same amount of gas before and after any
+      ! operator that has moved the mixture in between.
+      real*8, dimension(1-Ng:N+Ng,n_species), intent(in)  :: f_sp
+      real*8, dimension(1-Ng:N+Ng,n_car),     intent(out) :: fc
+
+      real*8, dimension(1-Ng:N+Ng) :: msum
+      integer :: k
+
+      fc = 0.0d0
+      if (.not. car_ready) return
+      call mixture_mass_sum(f_sp, msum)
+      do k = 1, n_car
+         fc(:,k) = Ycar(:,k)*msum/car_mass(k)
+      enddo
+
+      end subroutine advected_carrier_fractions
+
+      ! ------------------------------------------------------------------ !
+
+      subroutine advected_carrier_state_consumed()
+      ! The advected composition has been taken up by the operator that
+      ! transports the carriers.  It is a state of ONE step, so it is marked
+      ! spent here rather than left to be read a second time by a path that
+      ! runs between two steps.
+      car_ready = .false.
+      end subroutine advected_carrier_state_consumed
+
+      ! ------------------------------------------------------------------ !
+
+      subroutine mixture_mass_sum(f_sp, msum)
+      ! Mass of the mixture per unit of f_sp, = rho/(n0 mu).  It is the
+      ! denominator every mass fraction in this module is taken against.
+      real*8, dimension(1-Ng:N+Ng,n_species), intent(in)  :: f_sp
+      real*8, dimension(1-Ng:N+Ng),           intent(out) :: msum
+
+      real*8, dimension(1-Ng:N+Ng) :: nucH, nucHe, mass1
+
+      call mixture_mass_split(f_sp, nucH, nucHe, mass1, msum)
+
+      end subroutine mixture_mass_sum
+
+      ! ------------------------------------------------------------------ !
+
+      subroutine mixture_mass_split(f_sp, nucH, nucHe, mass1, msum, mmet)
+      ! THE MASS A CELL'S SPECIES ACTUALLY CARRY, split into the two
+      ! components of the module header:
+      !
+      !   mass1 = m_H n_H + sum_X A_X n_X + A_O n_O(mol) + A_C n_C(mol)
+      !   msum  = mass1 + m_He n_He  = rho/(n0 mu)
+      !
+      ! component 1 being the hydrogen carriers together with the trace
+      ! metals and the heavy nuclei bound in the molecular carriers, and
+      ! component He the helium of every stage (the helium nucleus of HeH+
+      ! included, its proton being component 1's).
+      !
+      ! IT IS THE STATE'S OWN MASS AND NOT THE MASS A RESERVOIR COMPOSITION
+      ! WOULD CARRY.  The metals enter at the abundance the cell holds, not
+      ! at melem_ab: the trace transport moves them against hydrogen on
+      ! purpose, the element rows advect each of them on its own face flux,
+      ! and a restart may carry a settled column, so m_1 n_H + m_He n_He
+      ! with the reservoir m_1 is not this cell's mass.  Every mass fraction
+      ! of this module is taken against msum and project_elements inverts
+      ! THIS split, which is what makes the species handed back carry the
+      ! density calc_rho reads out of them.
+      !
+      ! No species weight is restated here: a base species mass is
+      ! n_H m_H + n_He m_He + n_O A_O + n_C A_C exactly by the construction
+      ! of bsp_mass (species_table), so the split is that table's own.  The
+      ! metal-ion mass follows the eos_metals policy calc_rho follows.  With
+      ! the metals off and no oxygen chemistry mass1 is n_H exactly (m_H is
+      ! the mass unit), so the atomic and molecular hydrogen columns are
+      ! untouched by the split.
+      real*8, dimension(1-Ng:N+Ng,n_species), intent(in)  :: f_sp
+      real*8, dimension(1-Ng:N+Ng),           intent(out) :: nucH, nucHe
+      real*8, dimension(1-Ng:N+Ng),           intent(out) :: mass1, msum
+      real*8, dimension(1-Ng:N+Ng), optional, intent(out) :: mmet
+
+      real*8, dimension(1-Ng:N+Ng) :: mmetal, nucOm, nucCm
+      integer :: ib, im
+
+      call element_nucleus_counts(f_sp, nucH, nucHe)
+
+      mmetal = 0.0d0
+      if (eos_include_metals .and. thereis_metals) then
+         do im = 1, n_mion
+            mmetal = mmetal + melem_A(mion_elem(im))*f_sp(:,mion_fsp(im))
+         enddo
+      endif
+      if (present(mmet)) mmet = mmetal
+
+      ! The oxygen and carbon bound in OH, H2O and CO: the ionization solve
+      ! removes them from the metal-ion totals, so they are counted here and
+      ! nowhere else (the same non-double-counting calc_rho makes).
+      nucOm = 0.0d0
+      nucCm = 0.0d0
+      do ib = 1, n_bsp
+         if (bsp_is_excited_level(ib)) cycle
+         if (bsp_nO(ib) .gt. 0)                                           &
+            nucOm = nucOm + dble(bsp_nO(ib))*f_sp(:,bsp_fsp(ib))
+         if (bsp_nC(ib) .gt. 0)                                           &
+            nucCm = nucCm + dble(bsp_nC(ib))*f_sp(:,bsp_fsp(ib))
+      enddo
+
+      mass1 = m_H_amu*nucH + mmetal                                       &
+              + melem_A(iel_O)*nucOm + melem_A(iel_C)*nucCm
+      msum  = mass1 + m_He_amu*nucHe
+      where (msum .lt. 1.0d-30) msum = 1.0d-30
+
+      end subroutine mixture_mass_split
+
+      ! ------------------------------------------------------------------ !
+
+      subroutine element_mass_fractions(f_sp, Y)
+      ! The transported element mass fractions of a species vector: helium in
+      ! column 1, each trace metal in column 1+im when the metal arm is on.
+      ! The mass sum is the cell's own (mixture_mass_split), the two-component
+      ! closure of the module header, so column 1 is exactly the X the
+      ! diffusive half solves and the columns are true mass fractions of it.
+      real*8, dimension(1-Ng:N+Ng,n_species), intent(in)  :: f_sp
+      real*8, dimension(1-Ng:N+Ng,1+n_melem), intent(out) :: Y
+
+      real*8, dimension(1-Ng:N+Ng) :: nucH, nucHe, msum, mass1, nucX
+      integer :: j, im, i0m, k
+
+      Y   = 0.0d0
+      call mixture_mass_split(f_sp, nucH, nucHe, mass1, msum)
+      Y(:,1) = m_He_amu*nucHe/msum
+
+      if (.not. (he_metal_diffusion .and. thereis_metals)) return
+      do im = 1, n_melem
+         i0m  = melem_i0(im)
+         nucX = 0.0d0
+         do k = 0, melem_top(im)
+            do j = 1-Ng, N+Ng
+               nucX(j) = nucX(j) + f_sp(j,mion_fsp(i0m+k))
+            enddo
+         enddo
+         Y(:,1+im) = melem_A(im)*nucX/msum
+      enddo
+
+      end subroutine element_mass_fractions
+
+      ! ------------------------------------------------------------------ !
+
+      subroutine species_advection_begin_step(f_sp)
+      ! Read the composition the step begins with out of the species vector,
+      ! for every transported row: the element mass fractions and the
+      ! declared carriers.  Called once per attempt, before the first
+      ! Runge-Kutta stage, so that a retaken attempt starts from the
+      ! composition the checkpoint restored and not from the one a discarded
+      ! attempt advected.
+      real*8, dimension(1-Ng:N+Ng,n_species), intent(in) :: f_sp
+
+      car_ready = .false.
+
+      if (element_rows_advected()) then
+         n_etr = 1
+         if (he_metal_diffusion .and. thereis_metals) n_etr = 1 + n_melem
+         if (.not. allocated(Yetr))                                       &
+            allocate(Yetr(1-Ng:N+Ng,1+n_melem), Yetr_n(1-Ng:N+Ng,1+n_melem))
+         call element_mass_fractions(f_sp, Yetr)
+         Yetr_n = Yetr
+      endif
+
+      if (carrier_rows_advected()) then
+         if (.not. allocated(Ycar))                                       &
+            allocate(Ycar(1-Ng:N+Ng,n_car), Ycar_n(1-Ng:N+Ng,n_car))
+         call carrier_mass_fractions(f_sp, Ycar)
+         Ycar_n = Ycar
+      endif
+
+      end subroutine species_advection_begin_step
+
+      ! ------------------------------------------------------------------ !
+
+      subroutine carrier_mass_fractions(f_sp, Y)
+      ! The declared carriers as mass fractions of the mixture, with the
+      ! inflow composition of the inner ghosts: the handoff value where one
+      ! is stated, the base cell's own partition where none is.
+      real*8, dimension(1-Ng:N+Ng,n_species), intent(in)  :: f_sp
+      real*8, dimension(1-Ng:N+Ng,n_car),     intent(out) :: Y
+
+      real*8, dimension(1-Ng:N+Ng) :: msum
+      integer :: k, j
+
+      call mixture_mass_sum(f_sp, msum)
+      do k = 1, n_car
+         Y(:,k) = car_mass(k)*f_sp(:,car_isp(k))/msum
+         if (.not. car_base_imposed(k)) then
+            do j = 1-Ng, 0
+               Y(j,k) = Y(1,k)
+            enddo
+         endif
+      enddo
+      where (Y .lt. 0.0d0) Y = 0.0d0
+
+      end subroutine carrier_mass_fractions
+
+      ! ------------------------------------------------------------------ !
+
+      subroutine species_advection_stage(stage, rho_n, rho_in, rho_new,   &
+                                         Frho, dt_loc)
+      ! One Runge-Kutta stage of the transported species rows, on the face
+      ! mass fluxes, the volumes and the time step of the mass row of the
+      ! same stage.
+      !
+      ! Element rows 1-Ng .. 1 are not advanced: cell 1 is the Dirichlet
+      ! reservoir of the element operator, and the inner ghosts carry the same
+      ! composition, so the inflowing face at the base of cell 2 reconstructs
+      ! the reservoir composition and the base inflow is imposed on the face
+      ! flux itself.  The outer ghosts take the zero-gradient copy the outer
+      ! boundary uses for every other quantity.
+      integer, intent(in) :: stage
+      real*8, dimension(1-Ng:N+Ng), intent(in) :: rho_n, rho_in, rho_new
+      real*8, dimension(1-Ng:N+Ng), intent(in) :: Frho, dt_loc
+
+      real*8, dimension(1-Ng:N+Ng,1+n_melem) :: Ynew
+      real*8, dimension(1-Ng:N+Ng,max(n_car,1)) :: Ycnew
+      integer :: q
+
+      if (element_rows_advected()) then
+         call species_advective_update(stage, n_etr, 1,                   &
+                                    Yetr_n(:,1:n_etr), Yetr(:,1:n_etr),   &
+                                    Frho, rho_n, rho_in, rho_new, dt_loc, &
+                                    2, Ynew(:,1:n_etr))
+         Yetr(:,1:n_etr) = Ynew(:,1:n_etr)
+         do q = 1, n_etr
+            Yetr(N+1:N+Ng,q) = Yetr(N,q)
+         enddo
+      endif
+
+      ! THE CARRIERS ARE ADVANCED FROM CELL 1, and the elements are not.
+      ! Cell 1 is the Dirichlet reservoir of the element operator, so its
+      ! element composition is boundary data; the partition of an element
+      ! among its carriers there is not data but a state the base face
+      ! carries into, so cell 1 has an advective term like every other cell
+      ! and the inner ghosts supply the composition that flows in.
+      if (carrier_rows_advected()) then
+         call species_advective_update(stage, n_car, 0,                   &
+                                    Ycar_n, Ycar,                         &
+                                    Frho, rho_n, rho_in, rho_new, dt_loc, &
+                                    1, Ycnew(:,1:n_car))
+         Ycar = Ycnew(:,1:n_car)
+         do q = 1, n_car
+            Ycar(N+1:N+Ng,q) = Ycar(N,q)
+         enddo
+      endif
+
+      end subroutine species_advection_stage
+
+      ! ------------------------------------------------------------------ !
+
+      subroutine species_advection_project(f_sp)
+      ! Write the advected element composition into the species vector: the
+      ! element totals are set here, the split within an element is left to
+      ! the ionization solve, which is the same division of labour
+      ! project_elements states.
+      !
+      ! THE CARRIERS ARE NOT WRITTEN HERE.  A carrier is one species inside
+      ! an element, and moving it in the species vector without moving the
+      ! stages it competes with would leave the element total wrong for as
+      ! long as the two are apart.  Its advected fraction is therefore handed
+      ! to the photochemical transport operator as the state that operator's
+      ! step starts from, and that operator's write-back restores the element
+      ! totals cell by cell, which is where the two are put back together.
+      !
+      ! Each metal element is put on the amount its own advected mass fraction
+      ! asks for, and the hydrogen group closes the mixture around it.
+      real*8, dimension(1-Ng:N+Ng,n_species), intent(inout) :: f_sp
+
+      if (carrier_rows_advected()) car_ready = .true.
+      if (.not. element_rows_advected()) return
+      call project_element_mass_fractions(f_sp, Yetr)
+
+      end subroutine species_advection_project
+
+      ! ------------------------------------------------------------------ !
+
+      subroutine project_element_mass_fractions(f_sp, Y)
+      ! Write the element TOTALS of a species vector from the element mass
+      ! fractions Y: helium in column 1, each trace metal in column 1+im.
+      ! It is the inverse of element_mass_fractions, and it is the one map
+      ! from an element mass fraction to a species vector -- the advective
+      ! stages and any stationary system that carries an element as an
+      ! unknown both go through here, so the two cannot disagree about what
+      ! an element fraction means.
+      !
+      ! The split WITHIN an element is left to the ionization solve, which is
+      ! the division of labour project_elements states.  With the metal arm
+      ! on, each metal element is put on the amount its own advected mass
+      ! fraction asks for and the hydrogen group takes the mass that is left,
+      ! so the mixture's mass is unchanged by the write-back.
+      real*8, dimension(1-Ng:N+Ng,n_species), intent(inout) :: f_sp
+      real*8, dimension(1-Ng:N+Ng,1+n_melem), intent(in)    :: Y
+
+      real*8, dimension(1-Ng:N+Ng) :: nucH, nucHe, msum, mass1, nucX
+      real*8  :: nXnew, rXsc
+      integer :: j, im, i0m, k, top
+
+      call mixture_mass_split(f_sp, nucH, nucHe, mass1, msum)
+
+      if (.not. (he_metal_diffusion .and. thereis_metals)) then
+         call project_elements(f_sp, Y(:,1), msum, .true.)
+         return
+      endif
+
+      ! THE METALS ARE WRITTEN FIRST AND THE HYDROGEN GROUP CLOSES THE
+      ! MIXTURE.  Each metal element carries its own advected mass fraction
+      ! here, so it is not a ratio to hydrogen and does not follow hydrogen's
+      ! factor; putting it on its target first and letting project_elements
+      ! give the hydrogen group the mass that is left is what keeps
+      ! sum_i m_i n_i at msum.  Writing hydrogen first and the metals after
+      ! it added the metals' change of mass to the mixture.
+      do im = 1, n_melem
+         i0m  = melem_i0(im)
+         top  = melem_top(im)
+         nucX = 0.0d0
+         do k = 0, top
+            do j = 1-Ng, N+Ng
+               nucX(j) = nucX(j) + f_sp(j,mion_fsp(i0m+k))
+            enddo
+         enddo
+         do j = 1-Ng, N+Ng
+            nXnew = max(Y(j,1+im), 0.0d0)*msum(j)/melem_A(im)
+            if (nucX(j) .gt. 1.0d-25*max(nucH(j), 1.0d-30)) then
+               rXsc = nXnew/nucX(j)
+               do k = 0, top
+                  f_sp(j,mion_fsp(i0m+k)) = f_sp(j,mion_fsp(i0m+k))*rXsc
+               enddo
+            else if (nXnew .gt. 1.0d-25*max(nucH(j), 1.0d-30)) then
+               ! The element returned to a cell it had been emptied of: it
+               ! comes back in the neutral ground stage, as every other
+               ! re-seed in this module does, and the ionization solve
+               ! re-splits it on the next call.
+               f_sp(j,mion_fsp(i0m)) = nXnew
+               do k = 1, top
+                  f_sp(j,mion_fsp(i0m+k)) = 0.0d0
+               enddo
+            endif
+         enddo
+      enddo
+
+      call project_elements(f_sp, Y(:,1), msum, .false.)
+
+      end subroutine project_element_mass_fractions
 
       ! ------------------------------------------------------------------ !
 
@@ -2097,7 +3384,7 @@
       ! (a) The OVERLAP window, the interval both models describe.  Its upper
       !     edge is the radius the profile reaches, r(p_top).  Its lower edge
       !     is MEASURED rather than assumed: the first face at which the
-      !     5-face moving spread of r^2 rho v falls below 10 per cent, which
+      !     5-face moving spread of r^2 rho v falls below 10 percent, which
       !     is where the standing base sound wave stops dominating
       !     (docs/binary_diffusion_design.md section 7.3, where that spread is
       !     10^2-10^4 times its own median).  When no face qualifies the edge
@@ -2288,9 +3575,10 @@
       subroutine report_step(Xhe, rho_phys, rp, rep, mass_resid,           &
                              Xover, Xunder, qdep, n_vanished)
       ! Diagnostic written each step (EXHALE_DIFFUSION_CHECK=1): the range of X, the
-      ! largest |J_He + J_1| over the faces, the largest relative error of the
-      ! two-component mass closure m_1 n_H + m_He n_He = rho after the
-      ! write-back, the total helium mass in the domain, how far the solve left
+      ! largest |J_He + J_1| over the faces, the largest relative change of the
+      ! mixture's own mass sum across the step (mixture_mass_split, the mass
+      ! the operator is not allowed to move), the total helium mass in the
+      ! domain, how far the solve left
       ! [0,1] before the clamp, and the metal census.
       !
       ! X over / under are the excursions the clamp removed, signed so that a

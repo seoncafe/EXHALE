@@ -14,10 +14,17 @@
 	! The metal data for each element (total density + photoionization,
 	! collisional-ionization and recombination coefficients) is supplied
 	! per cell through the module-level arrays below, set by the driver via
-	! set_metal_coeffs before each hybrd1 call. This is safe because the
-	! ionization-equilibrium cell loop in ioniz_eq is serial (no OpenMP),
-	! and lets the system grow with the number of metals without changing
-	! the argument list.
+	! set_metal_coeffs before each hybrd1 call. Those arrays are OpenMP
+	! THREADPRIVATE (see the directive at their declaration), so each thread
+	! of the parallel cell loop in ioniz_eq carries the coefficients of the
+	! cell it is solving; the arrangement lets the system grow with the
+	! number of metals without changing the argument list.
+	!
+	! Every photoionization rate this system reads -- ieq_cell%P_HI, P_HeI,
+	! P_HeII and the met_g0/met_g1 of each element -- is a CONSTANT of the
+	! solve although the field that sets it is a function of these unknowns.
+	! The reason, and where that dependence is closed instead, are stated
+	! once in System_HeH.
 	!
 	! Charge exchange with H/He (and, in full mode, metal-metal) is added
 	! generically by cx_add_to_fvec from the charge_exchange module after

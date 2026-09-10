@@ -1,6 +1,6 @@
 # Library of callback and other functions for the EXHALE interface
 import numpy as np
-import glob
+import EXHALE_interface_state as gui
 import os
 from shutil import copyfile
 
@@ -21,11 +21,11 @@ def allocate_tkvars():
 	# Create checkbuttons variables.  The helium metastable triplet is on by
 	# default, as it is in parameters.f90; switching it off is a deliberate
 	# comparison case.
-	glob.onlyEUV_var = tk.IntVar()
-	glob.LoadIC_var  = tk.IntVar()
-	glob.He23S_var   = tk.IntVar(value = 1)
-	glob.onlyPP_var  = tk.IntVar()
-	glob.force_var   = tk.IntVar()
+	gui.onlyEUV_var = tk.IntVar()
+	gui.LoadIC_var  = tk.IntVar()
+	gui.He23S_var   = tk.IntVar(value = 1)
+	gui.onlyPP_var  = tk.IntVar()
+	gui.force_var   = tk.IntVar()
 	
 #-------------------------------------------
 
@@ -74,11 +74,11 @@ def get_word(string_in,word_number):
 def upd_labels(*args):
 	
 	# Read physical parameters
-	Rp_r = glob.widgets['Rp'].get()
-	Mp_r = glob.widgets['Mp'].get()
-	T0_r = glob.widgets['T0'].get()
-	Ms_r = glob.widgets['Ms'].get()
-	a_r  = glob.widgets['a'].get()
+	Rp_r = gui.widgets['Rp'].get()
+	Mp_r = gui.widgets['Mp'].get()
+	T0_r = gui.widgets['T0'].get()
+	Ms_r = gui.widgets['Ms'].get()
+	a_r  = gui.widgets['a'].get()
 
 	# Trim input strings
 	Rp_r .strip()
@@ -91,55 +91,55 @@ def upd_labels(*args):
 	if Rp_r != '' and Mp_r != '':
 
 		# Get floats
-		Rp = float(Rp_r)*glob.RJ
-		Mp = float(Mp_r)*glob.MJ
+		Rp = float(Rp_r)*gui.RJ
+		Mp = float(Mp_r)*gui.MJ
 		
 		if Rp != 0.0 or Mp_r != 0.0:
 			rho     = Mp/(4.0/3.0*np.pi*Rp**3.0)
-			rho_str = glob.empty_lbl['rho'] + '{:5.2f}'.format(rho) + u' g cm\u207B\u00B3'
-			glob.widgets['rho'].configure(text = rho_str)
+			rho_str = gui.empty_lbl['rho'] + '{:5.2f}'.format(rho) + u' g cm\u207B\u00B3'
+			gui.widgets['rho'].configure(text = rho_str)
 
 
 	# Update beta0 string
 	if Rp_r != '' and Mp_r != '' and T0_r != '':
 
 		# Get floats
-		Rp = float(Rp_r)*glob.RJ
-		Mp = float(Mp_r)*glob.MJ
+		Rp = float(Rp_r)*gui.RJ
+		Mp = float(Mp_r)*gui.MJ
 		T0 = float(T0_r)
 		
 		if Rp != 0.0 and Mp_r != 0.0 and T0_r != 0.0:
-			beta0     = glob.Gc*Mp*glob.mu/(Rp*glob.kb*T0)
-			beta0_str = glob.empty_lbl['b0'] + '{:7.2f}'.format(beta0)
-			glob.widgets['b0'].configure(text = beta0_str)
+			beta0     = gui.Gc*Mp*gui.mu/(Rp*gui.kb*T0)
+			beta0_str = gui.empty_lbl['b0'] + '{:7.2f}'.format(beta0)
+			gui.widgets['b0'].configure(text = beta0_str)
 
 
 	# Update logphi string
 	if Rp_r != '' and Mp_r != '':
 		
 		# Get floats
-		Rp = float(Rp_r)*glob.RJ
-		Mp = float(Mp_r)*glob.MJ
+		Rp = float(Rp_r)*gui.RJ
+		Mp = float(Mp_r)*gui.MJ
 		
 		if Rp != 0.0 and Mp_r != 0.0:
-			phi     = np.log10(glob.Gc*Mp/Rp)
-			phi_str = glob.empty_lbl['phi'] + '{:5.2f}'.format(phi) + u' erg g\u207B\u00B9'
-			glob.widgets['phi'].configure(text = phi_str)
+			phi     = np.log10(gui.Gc*Mp/Rp)
+			phi_str = gui.empty_lbl['phi'] + '{:5.2f}'.format(phi) + u' erg g\u207B\u00B9'
+			gui.widgets['phi'].configure(text = phi_str)
 
 
 	# Update Roche lobe string
 	if Rp_r != '' and Mp_r != '' and Ms_r != '' and a_r != '':
 
 		# Get floats
-		Rp = float(Rp_r)*glob.RJ
-		Mp = float(Mp_r)*glob.MJ
-		Ms = float(Ms_r)*glob.Msun
-		a  = float(a_r)*glob.AU
+		Rp = float(Rp_r)*gui.RJ
+		Mp = float(Mp_r)*gui.MJ
+		Ms = float(Ms_r)*gui.Msun
+		a  = float(a_r)*gui.AU
 		
 		if Rp != 0.0 and Mp != 0.0 and Ms != 0.0 and a != 0.0:
 			r_RL = (3.0*Ms/Mp)**(-1.0/3.0)*(a/Rp)
-			RL_str = glob.empty_lbl['rochel'] + '{:5.2f}'.format(r_RL) + u' R\u209A'
-			glob.widgets['resc_l'].configure(text = RL_str)
+			RL_str = gui.empty_lbl['rochel'] + '{:5.2f}'.format(r_RL) + u' R\u209A'
+			gui.widgets['resc_l'].configure(text = RL_str)
 
 #-------------------------------------------
 
@@ -147,10 +147,10 @@ def upd_labels(*args):
 def upd_flux(*args):
 	
 	# Integrate if numerical spectrum in active
-	if glob.widgets['spectrum'].get() == glob.sp_type[0]:
+	if gui.widgets['spectrum'].get() == gui.sp_type[0]:
 		
 		# Get file name
-		sp_file = glob.widgets['spec_prop'].get()
+		sp_file = gui.widgets['spec_prop'].get()
 
 		# Return if sp_file is not specified
 		if sp_file == '': return
@@ -160,18 +160,18 @@ def upd_flux(*args):
 		if isthere_sp_file: integrate_spectrum(sp_file)
 	
 	# Get the current status of the LX entry box
-	LX_status = glob.widgets['LX'].cget('state')
+	LX_status = gui.widgets['LX'].cget('state')
 
 	# Get values of LEUV and a
-	LEUV_r = glob.widgets['LEUV'].get()
-	a_r    = glob.widgets['a'].get()
+	LEUV_r = gui.widgets['LEUV'].get()
+	a_r    = gui.widgets['a'].get()
 	
 	# Return if there is any empty input
 	if LEUV_r == '' or a_r == '': return
 
 	# Convert to float
 	LEUV = 10.0**float(LEUV_r)
-	a    = float(a_r)*glob.AU
+	a    = float(a_r)*gui.AU
 		
 	# Return if there is any empty input
 	if a == 0.0: return
@@ -180,7 +180,7 @@ def upd_flux(*args):
 	if LX_status == 'disabled':
 		LX = 0.0
 	else: 
-		LX_r = glob.widgets['LX'].get()
+		LX_r = gui.widgets['LX'].get()
 		if LX_r == '': return
 		LX   = 10.0**float(LX_r)
 	
@@ -191,10 +191,10 @@ def upd_flux(*args):
 	FXUV_str = '{:10.3f}'.format(FXUV)
 	
 	# Clear flux entry
-	glob.widgets['flux'].delete(0,'end')
+	gui.widgets['flux'].delete(0,'end')
 	
 	# Insert flux value into the entry
-	glob.widgets['flux'].insert(0,FXUV_str.strip())
+	gui.widgets['flux'].insert(0,FXUV_str.strip())
 	
 	# Update also labels
 	upd_labels()
@@ -205,10 +205,10 @@ def upd_flux(*args):
 def reset_func(*args):
 	
 	# Clear old inputs and reset checkboxes
-	for field in glob.widgets:
+	for field in gui.widgets:
 		
 		# Current element of dictionary
-		c_elem = glob.widgets[field]
+		c_elem = gui.widgets[field]
       
 		if type(c_elem) is tk.Entry:		# Clear entries
 			c_elem.delete(0,'end')
@@ -219,22 +219,22 @@ def reset_func(*args):
 		
 		
 	# The triplet is on by default, so restore it after the blanket deselect
-	glob.He23S_var.set(1)
+	gui.He23S_var.set(1)
 
 	# Reset default labels manually
-	glob.widgets['planets'].set('Choose a planet..')
-	glob.widgets['n0'].insert(0,'14.00')
-	glob.widgets['resc'].insert(0,'2.00')
-	glob.widgets['heh'].insert(0,'0.083333333') 
-	glob.widgets['appxmth'].set('Rate/2 + Mdot/2') 
-	glob.widgets['spectrum'].set('Choose..')
-	glob.widgets['spec_prop'].insert(0,'-1.0')
-	glob.widgets['grid'].set('Mixed')
-	glob.widgets['numflux'].set('HLLC')
-	glob.widgets['reconst'].set('PLM')
-	glob.widgets['rho'].config(text = 'Planet density:')
-	glob.widgets['b0'].config(text = 'beta_0:')
-	glob.widgets['phi'].config(text = 'log(phi_P):')
+	gui.widgets['planets'].set('Choose a planet..')
+	gui.widgets['n0'].insert(0,'14.00')
+	gui.widgets['resc'].insert(0,'2.00')
+	gui.widgets['heh'].insert(0,'0.083333333') 
+	gui.widgets['appxmth'].set('Rate/2 + Mdot/2') 
+	gui.widgets['spectrum'].set('Choose..')
+	gui.widgets['spec_prop'].insert(0,'-1.0')
+	gui.widgets['grid'].set('Mixed')
+	gui.widgets['numflux'].set('HLLC')
+	gui.widgets['reconst'].set('PLM')
+	gui.widgets['rho'].config(text = 'Planet density:')
+	gui.widgets['b0'].config(text = 'beta_0:')
+	gui.widgets['phi'].config(text = 'log(phi_P):')
 	
 #-------------------------------------------   
 
@@ -314,7 +314,7 @@ def load_input(*args):
 	
 	if sp_type == 'Monochromatic':	# Monochromatic
 		line = f.readline()
-		glob.ephot = get_word(line,4)
+		gui.ephot = get_word(line,4)
 	
 	
 	# Only EUV status
@@ -327,17 +327,17 @@ def load_input(*args):
 	
 		if onlyEUV == 'True':
 			line = f.readline()
-			glob.elow = get_word(line,4)
-			glob.emid = get_word(line,6)
+			gui.elow = get_word(line,4)
+			gui.emid = get_word(line,6)
 			
 			# Set others to default
-			glob.ehigh = '1.24e3'
+			gui.ehigh = '1.24e3'
 			
 		if onlyEUV == 'False':
 			line  = f.readline()
-			glob.elow  = get_word(line,4)
-			glob.emid  = get_word(line,6)
-			glob.ehigh = get_word(line,8)
+			gui.elow  = get_word(line,4)
+			gui.emid  = get_word(line,6)
+			gui.ehigh = get_word(line,8)
 
 			# Read X-ray luminosity if included
 			line = f.readline()
@@ -385,10 +385,10 @@ def load_input(*args):
 	f.close()
 	
 	# Clean pre-existing values and reset
-	for field in glob.widgets:
+	for field in gui.widgets:
 		
 		# Current element of dictionary
-		c_elem = glob.widgets[field]
+		c_elem = gui.widgets[field]
       
 		if type(c_elem) is tk.Entry:		# Clear entries
 			c_elem.delete(0,'end')
@@ -398,69 +398,69 @@ def load_input(*args):
 			c_elem.deselect()
 	
 	# Fill with parameters that have been read
-	glob.widgets['planets'].set(pname)
-	glob.widgets['n0'].insert(0,n0)
-	glob.widgets['Rp'].insert(0,Rp) 
-	glob.widgets['Mp'].insert(0,Mp)
-	glob.widgets['T0'].insert(0,T0)
-	glob.widgets['a'].insert(0,a)
-	glob.widgets['resc'].insert(0,resc)
-	glob.widgets['heh'].insert(0,heh)
-	glob.widgets['Ms'].insert(0,Ms)
-	glob.widgets['LX'].insert(0,LX)
-	glob.widgets['LEUV'].insert(0,LEUV)
-	glob.widgets['grid'].set(grid) 
-	glob.widgets['numflux'].set(numflux) 
-	glob.widgets['reconst'].set(reconst) 
+	gui.widgets['planets'].set(pname)
+	gui.widgets['n0'].insert(0,n0)
+	gui.widgets['Rp'].insert(0,Rp) 
+	gui.widgets['Mp'].insert(0,Mp)
+	gui.widgets['T0'].insert(0,T0)
+	gui.widgets['a'].insert(0,a)
+	gui.widgets['resc'].insert(0,resc)
+	gui.widgets['heh'].insert(0,heh)
+	gui.widgets['Ms'].insert(0,Ms)
+	gui.widgets['LX'].insert(0,LX)
+	gui.widgets['LEUV'].insert(0,LEUV)
+	gui.widgets['grid'].set(grid) 
+	gui.widgets['numflux'].set(numflux) 
+	gui.widgets['reconst'].set(reconst) 
 	
 	# Take care of alpha box
 	if appxmth == 'Mdot/4':
-		glob.widgets['appxmth'].insert(0,glob.appx_meth[0])
+		gui.widgets['appxmth'].insert(0,gui.appx_meth[0])
 	if appxmth == 'Rate/2':
-		glob.widgets['appxmth'].insert(0,glob.appx_meth[1])
+		gui.widgets['appxmth'].insert(0,gui.appx_meth[1])
 	if appxmth == 'Rate/4':
-		glob.widgets['appxmth'].insert(0,glob.appx_meth[2])
+		gui.widgets['appxmth'].insert(0,gui.appx_meth[2])
 	if appxmth == 'alpha':
-		alpha_str = glob.appx_meth[3] + alpha
-		glob.widgets['appxmth']. insert(0,alpha_str)
+		alpha_str = gui.appx_meth[3] + alpha
+		gui.widgets['appxmth']. insert(0,alpha_str)
 	
 	# Spectrum specifications
-	glob.widgets['spectrum'].set(sp_type)
-	glob.current_spec = sp_type
+	gui.widgets['spectrum'].set(sp_type)
+	gui.current_spec = sp_type
 	
 	# Next set the properties of spectrum
 	if sp_type == 'Load':			# Load from file
-		glob.widgets['spectrum'].delete(0,'end')
-		glob.widgets['spectrum'].insert(0,glob.sp_type[0])
+		gui.widgets['spectrum'].delete(0,'end')
+		gui.widgets['spectrum'].insert(0,gui.sp_type[0])
 		# Change state of spectrum property entry
-		glob.widgets['spec_prop'].insert(0,sp_file)
+		gui.widgets['spec_prop'].insert(0,sp_file)
 	
 	if sp_type == 'Power-law':		# Power law
 	
-		glob.widgets['spec_prop'].delete(0,'end')
+		gui.widgets['spec_prop'].delete(0,'end')
 		# Change state of spectrum property entry
-		glob.widgets['spec_prop'].insert(0,PLind)
+		gui.widgets['spec_prop'].insert(0,PLind)
 		
-	if sp_type == glob.sp_type[2]:	# Monochromatic
+	if sp_type == gui.sp_type[2]:	# Monochromatic
 	
-		glob.widgets['spec_prop'].insert(0,glob.ephot)
+		gui.widgets['spec_prop'].insert(0,gui.ephot)
 	
 	if onlyEUV == 'True':
-		glob.onlyEUV_var.set(1)
+		gui.onlyEUV_var.set(1)
 
 	if IncludeHe23S in ('False','false'):
-		glob.He23S_var.set(0)
+		gui.He23S_var.set(0)
 	else:
-		glob.He23S_var.set(1)
+		gui.He23S_var.set(1)
 
 	if LoadIC == 'True': 
-		glob.LoadIC_var.set(1)
+		gui.LoadIC_var.set(1)
 
 	if do_only_pp == 'True':
-		glob.onlyPP_var.set(1)
+		gui.onlyPP_var.set(1)
 	
 	if force_start == 'True':
-		glob.force_var.set(1)
+		gui.force_var.set(1)
 
 	# Update spectrum properties
 	spectrum_func() # Include flux update and labels update
@@ -479,19 +479,19 @@ def init_func(*args):
 	if os.path.isfile("input.inp") or os.path.isfile("input_temp.inp"):	
 		
 		# Change state of spectrum property entry
-		glob.widgets['spec_prop'].configure(state = tk.NORMAL)
+		gui.widgets['spec_prop'].configure(state = tk.NORMAL)
 		
 		load_input()
 		
 	else:	# Use reset function to default entries
 		
 		# Define default energy bands
-		glob.elow  = '13.60' 
-		glob.emid  = '123.98'
-		glob.ehigh = '1.24e3'
+		gui.elow  = '13.60' 
+		gui.emid  = '123.98'
+		gui.ehigh = '1.24e3'
 
 		# Disable PLindex and spectrum file entries
-		glob.widgets['spec_prop'].config(state = tk.DISABLED)
+		gui.widgets['spec_prop'].config(state = tk.DISABLED)
 		
 		reset_func()
 
@@ -501,20 +501,20 @@ def init_func(*args):
 def Plist_func(*args):
 	
 	# Clean entries to be changed
-	for c_ent in glob.pl_params_list:
+	for c_ent in gui.pl_params_list:
 		if type(c_ent) is ttk.Combobox:	# Clear Comboboxes
 			continue
-		glob.widgets[c_ent].delete(0,'end')
+		gui.widgets[c_ent].delete(0,'end')
 	
 	# ---
 	
 	# Get current planet name
-	planet_id = glob.widgets['planets'].current()
+	planet_id = gui.widgets['planets'].current()
 	
 	# Fill with planetary parameters
-	for c_ent in glob.pl_params_list:
-		c_value = glob.pl_params[c_ent][planet_id]
-		glob.widgets[c_ent].insert(0,c_value)
+	for c_ent in gui.pl_params_list:
+		c_value = gui.pl_params[c_ent][planet_id]
+		gui.widgets[c_ent].insert(0,c_value)
 	
 	# ---
 
@@ -530,60 +530,60 @@ def Plist_func(*args):
 def spectrum_func(*args):
 
 	# Activate spectrum properties field
-	glob.widgets['spec_prop'].configure(state = tk.NORMAL)
+	gui.widgets['spec_prop'].configure(state = tk.NORMAL)
 
 	# Get selected spectrum type
-	spec_type = glob.widgets['spectrum'].get()
+	spec_type = gui.widgets['spectrum'].get()
 
-	if get_word(spec_type,1) != glob.current_spec:
-		glob.widgets['spec_prop'].delete(0,'end')
+	if get_word(spec_type,1) != gui.current_spec:
+		gui.widgets['spec_prop'].delete(0,'end')
 	
 	# Enable onlyEUV button
-	glob.widgets['EUVonly'].configure(state = tk.NORMAL)
+	gui.widgets['EUVonly'].configure(state = tk.NORMAL)
 	
 	# Redefine energy bands if not monochromatic
-	if spec_type != glob.sp_type[2]:
-		glob.elow  = '13.60' 
-		glob.emid  = '123.98'
-		glob.ehigh = '1.24e3'
+	if spec_type != gui.sp_type[2]:
+		gui.elow  = '13.60' 
+		gui.emid  = '123.98'
+		gui.ehigh = '1.24e3'
 
 	# Deselect onlyEUV button if selected
-	if glob.onlyEUV_var.get() == 1:
-		glob.onlyEUV_var.set(0)
+	if gui.onlyEUV_var.get() == 1:
+		gui.onlyEUV_var.set(0)
 		onlyEUV_func()
 	
 	# Activate/deactivate fields according to spectrum type
-	if spec_type == glob.sp_type[0]:	# Load from file
+	if spec_type == gui.sp_type[0]:	# Load from file
 	
 		# Change label
-		glob.widgets['lbl_spec'].config(text = "Spectrum file:")
+		gui.widgets['lbl_spec'].config(text = "Spectrum file:")
 		
 		# Clear flux, LEUV and LX entries
-		glob.widgets['LX'].delete(0,'end')
-		glob.widgets['LEUV'].delete(0,'end')
-		glob.widgets['flux'].delete(0,'end')
+		gui.widgets['LX'].delete(0,'end')
+		gui.widgets['LEUV'].delete(0,'end')
+		gui.widgets['flux'].delete(0,'end')
 		
 		# Select and deselect appropriatte entries
-		glob.widgets['browse'].config(state = tk.NORMAL)
+		gui.widgets['browse'].config(state = tk.NORMAL)
 
-	if spec_type == glob.sp_type[1]:	# Power-law
+	if spec_type == gui.sp_type[1]:	# Power-law
 		
 		# Change label
-		glob.widgets['lbl_spec'].config(text = "Power-law index:")
+		gui.widgets['lbl_spec'].config(text = "Power-law index:")
 	
-		glob.widgets['browse'].config(state = tk.DISABLED)
+		gui.widgets['browse'].config(state = tk.DISABLED)
 		
-	if spec_type == glob.sp_type[2]:	# Monochromatic
+	if spec_type == gui.sp_type[2]:	# Monochromatic
 			
 		# Change label
-		glob.widgets['lbl_spec'].config(text = "Radiation energy [eV]")
+		gui.widgets['lbl_spec'].config(text = "Radiation energy [eV]")
 		
 		# Disable PLindex and spectrum file entries
-		glob.widgets['browse'].config(state = tk.DISABLED)
+		gui.widgets['browse'].config(state = tk.DISABLED)
 		
 		# Check and disable onlyEUV button, run its callback
-		glob.onlyEUV_var.set(1)
-		glob.widgets['EUVonly'].configure(state = tk.DISABLED)
+		gui.onlyEUV_var.set(1)
+		gui.widgets['EUVonly'].configure(state = tk.DISABLED)
 		onlyEUV_func()
 	
 	# Update flux
@@ -595,16 +595,16 @@ def spectrum_func(*args):
 def onlyPP_func(*args):
 	
 	# Get current status of the button
-	onlyPP_state = glob.onlyPP_var.get()
+	onlyPP_state = gui.onlyPP_var.get()
 
 	# Disable force start if onlyPP is selected 
 	if onlyPP_state == 1: # If selected 
 		# Disable force
-		glob.widgets['force'].config(state = tk.DISABLED)
-		glob.force_var.set(0)
+		gui.widgets['force'].config(state = tk.DISABLED)
+		gui.force_var.set(0)
 	else: 
 		# Enable force
-		glob.widgets['force'].config(state = tk.NORMAL)
+		gui.widgets['force'].config(state = tk.NORMAL)
 	return
 
 #-------------------------------------------
@@ -613,16 +613,16 @@ def onlyPP_func(*args):
 def force_func(*args):
 	
 	# Get current status of the button
-	force_state = glob.force_var.get()
+	force_state = gui.force_var.get()
 	
 	# Disable force start if onlyPP is selected 
 	if force_state == 1: # If selected 
 		# Disable onlyPP
-		glob.widgets['onlyPP'].config(state = tk.DISABLED)
-		glob.onlyPP_var.set(0)
+		gui.widgets['onlyPP'].config(state = tk.DISABLED)
+		gui.onlyPP_var.set(0)
 	else:
 		# Enable onlyPP
-		glob.widgets['onlyPP'].config(state = tk.NORMAL)
+		gui.widgets['onlyPP'].config(state = tk.NORMAL)
 	return
 
 #-------------------------------------------
@@ -631,15 +631,15 @@ def force_func(*args):
 def onlyEUV_func(*args):
 	
 	# Get current status of button
-	EUV_state = glob.onlyEUV_var.get()
+	EUV_state = gui.onlyEUV_var.get()
 	
 	# Disable LX entry if chbutton in on
 	if EUV_state == 1:	# If selected
 		# Disable LX
-		glob.widgets['LX'].config(state = tk.DISABLED)
+		gui.widgets['LX'].config(state = tk.DISABLED)
 	else: # If deselected
 		# Enable LX
-		glob.widgets['LX'].config(state = tk.NORMAL)
+		gui.widgets['LX'].config(state = tk.NORMAL)
 	# Update flux
 	upd_flux()
 			
@@ -667,12 +667,12 @@ def integrate_spectrum(sp_file):
 		return LEUV,LX
 	
 	# Convert to floats
-	e_low  = float(glob.elow)
-	e_mid  = float(glob.emid)
-	e_high = float(glob.ehigh)
+	e_low  = float(gui.elow)
+	e_mid  = float(gui.emid)
+	e_high = float(gui.ehigh)
 	
 	# Get onlyEUV variable
-	onlyEUV_status = glob.onlyEUV_var.get()
+	onlyEUV_status = gui.onlyEUV_var.get()
 	
 	# Do not proceed if energies are not ordered
 	if e_low > e_mid : return
@@ -682,10 +682,10 @@ def integrate_spectrum(sp_file):
 	
 
 	# Convert wavelengths to energies
-	A[:,0] = glob.c_light/(A[:,0]*1e-8)*glob.hp_eV
+	A[:,0] = gui.c_light/(A[:,0]*1e-8)*gui.hp_eV
 	
 	# Convert fluxes in erg/(..*eV)
-	A[:,1] = A[:,1]*glob.c_light*1e8/A[:,0]**2.0*glob.hp_eV
+	A[:,1] = A[:,1]*gui.c_light*1e8/A[:,0]**2.0*gui.hp_eV
 	
 	# --- Cut out the energy and flux vectors in the two bands
 	
@@ -743,8 +743,8 @@ def integrate_spectrum(sp_file):
 	NE_EUV = len(E_EUV)
 	
 	# Get orbital distance value
-	a_r  = glob.widgets['a'].get()
-	a    = float(a_r)*glob.AU
+	a_r  = gui.widgets['a'].get()
+	a    = float(a_r)*gui.AU
 	
 	# If a = 0, abort
 	if a_r == '': return
@@ -786,12 +786,12 @@ def integrate_spectrum(sp_file):
 	LEUV = np.log10(LEUV)
 	
 	# Clean LEUV and LX fields
-	glob.widgets['LX'].delete(0,'end')
-	glob.widgets['LEUV'].delete(0,'end')
+	gui.widgets['LX'].delete(0,'end')
+	gui.widgets['LEUV'].delete(0,'end')
 	
 	# Insert into the specific fields
-	glob.widgets['LX'].insert(0,'{:5.2f}'.format(LX))
-	glob.widgets['LEUV'].insert(0,'{:5.2f}'.format(LEUV))
+	gui.widgets['LX'].insert(0,'{:5.2f}'.format(LX))
+	gui.widgets['LEUV'].insert(0,'{:5.2f}'.format(LEUV))
 
 #-------------------------------------------
 
@@ -805,10 +805,10 @@ def browse_func(*args):
 	if sp_file == None : return
 	
 	# Clean the Spectrum File entry
-	glob.widgets['spec_prop'].delete(0,'end')
+	gui.widgets['spec_prop'].delete(0,'end')
 	
 	# Fill the Spectrum File entry with the selected file 
-	glob.widgets['spec_prop'].insert(0,sp_file.name)
+	gui.widgets['spec_prop'].insert(0,sp_file.name)
 	
 	# Update flux by integration 
 	integrate_spectrum(sp_file)
@@ -822,23 +822,23 @@ def browse_func(*args):
 def flux_func(*args):
 	
 	# Get state of onlyEUV button 
-	onlyEUV_state = glob.onlyEUV_var.get()
+	onlyEUV_state = gui.onlyEUV_var.get()
 	
 	# Quit if both bands are selected
 	if onlyEUV_state == 0:	return
 	
 	# Quit if numerical spectrum is selected
-	if glob.widgets['spectrum'].get() == glob.sp_type[0]: return
+	if gui.widgets['spectrum'].get() == gui.sp_type[0]: return
 	
 	# Get data
-	a_r    = glob.widgets['a'].get()
-	FXUV_r = glob.widgets['flux'].get()
+	a_r    = gui.widgets['a'].get()
+	FXUV_r = gui.widgets['flux'].get()
 
 	# Quit if entries are empty
 	if a_r == '' or FXUV_r == '': return
 	
 	# Convert to floats
-	a    = float(a_r)*glob.AU
+	a    = float(a_r)*gui.AU
 	FXUV = float(FXUV_r)
 
 	# Calculate new EUV luminosity
@@ -848,10 +848,10 @@ def flux_func(*args):
 	lgLEUV = np.log10(LEUV)
 	
 	# Clean LEUV entry
-	glob.widgets['LEUV'].delete(0,'end')
+	gui.widgets['LEUV'].delete(0,'end')
 	
 	# Inser new value
-	glob.widgets['LEUV'].insert(0,'{:5.2f}'.format(lgLEUV))
+	gui.widgets['LEUV'].insert(0,'{:5.2f}'.format(lgLEUV))
 
 #-------------------------------------------
 
@@ -859,14 +859,14 @@ def flux_func(*args):
 def add_func(*args):
 
 	# Retrieve data for table
-	pl_name = glob.widgets['planets'].get()
-	Rp_r    = glob.widgets['Rp'].get()
-	Mp_r    = glob.widgets['Mp'].get()
-	T0_r    = glob.widgets['T0'].get()
-	a_r     = glob.widgets['a'].get()
-	Ms_r    = glob.widgets['Ms'].get()
-	LX_r    = glob.widgets['LX'].get()
-	LEUV_r  = glob.widgets['LEUV'].get()
+	pl_name = gui.widgets['planets'].get()
+	Rp_r    = gui.widgets['Rp'].get()
+	Mp_r    = gui.widgets['Mp'].get()
+	T0_r    = gui.widgets['T0'].get()
+	a_r     = gui.widgets['a'].get()
+	Ms_r    = gui.widgets['Ms'].get()
+	LX_r    = gui.widgets['LX'].get()
+	LEUV_r  = gui.widgets['LEUV'].get()
 
 	# Write warning message if not all fields are full
 	if pl_name == '' or \
@@ -881,7 +881,7 @@ def add_func(*args):
 		return
 
 	# Get onlyEUV variable
-	onlyEUV_status = glob.onlyEUV_var.get()
+	onlyEUV_status = gui.onlyEUV_var.get()
 
 	# Set X luminosity to zero if only EUV is checked
 	if onlyEUV_status == 1: LX = 0.0
@@ -898,7 +898,7 @@ def add_func(*args):
 	
 	
 	# Append data to table
-	with open(glob.f_table, 'a') as f:
+	with open(gui.f_table, 'a') as f:
 		f.write(("%s\t%5.3f\t%6.3f\t%6.1f\t%6.4f\t%5.3f\t%6.3f\t%6.3f\n")
 			%(pl_name,Rp,Mp,T0,a,Ms,LX,LEUV))
       
@@ -912,7 +912,7 @@ def add_func(*args):
 def close_func():
 	
 	# Destroy window
-	glob.widgets['window'].destroy()
+	gui.widgets['window'].destroy()
 
 #-------------------------------------------
 
@@ -928,60 +928,60 @@ def start_func(*args):
 		# --- Write data to file 
 		
 		# Planet name
-		p_name = glob.widgets['planets'].get()
+		p_name = gui.widgets['planets'].get()
 		f.write('%s' %('Planet name: ' + p_name.strip()))
 		
 		# Log10 of n0
-		n0 = glob.widgets['n0'].get()
+		n0 = gui.widgets['n0'].get()
 		f.write('%s' %('\nLog10 lower boundary number density [cm^-3]: ' + n0.strip()))
 
 		# Planet radius
-		Rp = glob.widgets['Rp'].get()
+		Rp = gui.widgets['Rp'].get()
 		f.write('%s' %('\nPlanet radius [R_J]: ' + Rp.strip()))
 
 		# Planet mass
-		Mp = glob.widgets['Mp'].get()
+		Mp = gui.widgets['Mp'].get()
 		f.write('%s' %('\nPlanet mass [M_J]: ' + Mp.strip()))
 
 		# Equilibrium temperature
-		T0 = glob.widgets['T0'].get()
+		T0 = gui.widgets['T0'].get()
 		f.write('%s' %('\nEquilibrium temperature [K]: ' + T0.strip()))
 
 		# Orbital distance
-		a = glob.widgets['a'].get()
+		a = gui.widgets['a'].get()
 		f.write('%s' %('\nOrbital distance [AU]: ' + a.strip()))
 
 		# Escape radius
-		resc = glob.widgets['resc'].get()
+		resc = gui.widgets['resc'].get()
 		f.write('%s' %('\nEscape radius [R_p]: ' + resc.strip()))
 		
 		# He/H number ratio
-		heh = glob.widgets['heh'].get()
+		heh = gui.widgets['heh'].get()
 		f.write('%s' %('\nHe/H number ratio: ' + heh.strip()))
 		
 		# 2D approximate method
-		appxmth = glob.widgets['appxmth'].get()
+		appxmth = gui.widgets['appxmth'].get()
 		f.write('%s' %('\n2D approximate method: ' + appxmth.strip()))
 		
 		# Parent star mass
-		Ms = glob.widgets['Ms'].get()
+		Ms = gui.widgets['Ms'].get()
 		f.write('%s' %('\nParent star mass [M_sun]: ' + Ms.strip()))
 		
 		# Spectrum type 
-		sp_type = glob.widgets['spectrum'].get()
+		sp_type = gui.widgets['spectrum'].get()
 		f.write('%s' %('\nSpectrum type: ' + sp_type.strip()))
 		
 		# Next print properties of spectrum
-		if sp_type == glob.sp_type[0]:	# Load from file
-			sp_file = glob.widgets['spec_prop'].get()
+		if sp_type == gui.sp_type[0]:	# Load from file
+			sp_file = gui.widgets['spec_prop'].get()
 			f.write('%s' %('\nSpectrum file: ' + sp_file.strip()))	
 		
-		elif sp_type == glob.sp_type[1]:	# Power law
-			PLind = glob.widgets['spec_prop'].get()
+		elif sp_type == gui.sp_type[1]:	# Power law
+			PLind = gui.widgets['spec_prop'].get()
 			f.write('%s' %('\nPower-law index: ' + PLind.strip()))	
 		
-		elif sp_type == glob.sp_type[2]:	# Monochromatic
-			elow = glob.widgets['spec_prop'].get()
+		elif sp_type == gui.sp_type[2]:	# Monochromatic
+			elow = gui.widgets['spec_prop'].get()
 			f.write('%s' %('\nPhoton energy [eV]: ' + elow.strip()))
 		else: # No valid spectrum file selected
 			print('ERROR: Please select a valid spectrum type')
@@ -993,7 +993,7 @@ def start_func(*args):
 
 
 		# Only EUV status
-		OnlyEUV = glob.onlyEUV_var.get()
+		OnlyEUV = gui.onlyEUV_var.get()
 		if OnlyEUV == 0:
 			f.write('%s' %('\nUse only EUV? ' + 'False'))
 		if OnlyEUV == 1:
@@ -1001,11 +1001,11 @@ def start_func(*args):
 		
 		
 		# If not monochromatic, print energy bands
-		if sp_type != glob.sp_type[2]:
+		if sp_type != gui.sp_type[2]:
 			# Get energies
-			e_low  = glob.elow
-			e_mid  = glob.emid
-			e_high = glob.ehigh
+			e_low  = gui.elow
+			e_mid  = gui.emid
+			e_high = gui.ehigh
 		
 			# Do not print e_high if onlyEUV is selected
 			if OnlyEUV == 1:
@@ -1022,33 +1022,33 @@ def start_func(*args):
 		
 		# Print X-ray luminosity if included
 		if OnlyEUV == 0:
-			LX = glob.widgets['LX'].get()
+			LX = gui.widgets['LX'].get()
 			f.write('%s' %('\nLog10 of X-ray luminosity [erg/s]: ' + LX.strip()))
 		
 		# LEUV luminosity
-		LEUV = glob.widgets['LEUV'].get()
+		LEUV = gui.widgets['LEUV'].get()
 		f.write('%s' %('\nLog10 of EUV luminosity [erg/s]: ' + LEUV.strip()))
 		
 		# Grid type 
-		grid = glob.widgets['grid'].get()
+		grid = gui.widgets['grid'].get()
 		f.write('%s' %('\nGrid type: ' + grid.strip()))
 		
 		# Numerical flux
-		numflux = glob.widgets['numflux'].get()
+		numflux = gui.widgets['numflux'].get()
 		f.write('%s' %('\nNumerical flux: ' + numflux.strip()))
 		
 		# Reconstruction scheme
-		reconst = glob.widgets['reconst'].get()
+		reconst = gui.widgets['reconst'].get()
 		f.write('%s' %('\nReconstruction scheme: ' + reconst.strip()))
 
-		include_He23S = glob.He23S_var.get()
+		include_He23S = gui.He23S_var.get()
 		if include_He23S == 0:
 			f.write('%s' %('\nInclude He23S? ' + 'False'))
 		if include_He23S == 1:
 			f.write('%s' %('\nInclude He23S? ' + 'True'))
 		
 		# Load IC status
-		LoadIC = glob.LoadIC_var.get()
+		LoadIC = gui.LoadIC_var.get()
 		if LoadIC == 0:
 			f.write('%s' %('\nLoad IC? ' + 'False'))
 		if LoadIC == 1:
@@ -1064,13 +1064,13 @@ def start_func(*args):
 			copyfile(old_hydro, new_hydro)
 			copyfile(old_ioniz, new_ioniz)
 
-		do_only_PP = glob.onlyPP_var.get()
+		do_only_PP = gui.onlyPP_var.get()
 		if do_only_PP == 0:
 			f.write('%s' %('\nDo only PP: ' + 'False'))
 		if do_only_PP == 1:
 			f.write('%s' %('\nDo only PP: ' + 'True'))
 
-		force_start = glob.force_var.get()
+		force_start = gui.force_var.get()
 		if force_start == 0:
 			f.write('%s' %('\nForce start: ' + 'False'))
 		if force_start == 1:

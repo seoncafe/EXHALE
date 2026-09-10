@@ -2,11 +2,15 @@
       ! Rate coefficients and thermodynamic data for the oxygen-hydrogen
       ! chemistry of the A2 option (docs/a2_oxygen_option_design.md).
       !
-      ! THIS MODULE IS NOT WIRED INTO THE CODE.  It is the milestone-M1
-      ! deliverable: coefficients, their sources and their validity ranges,
-      ! plus the thermodynamic data that generates the reverse rates.  It is
-      ! deliberately absent from SRC in the Makefile; M2 connects it.  The
-      ! standalone driver that checks it is src/tests/a2_m1/.
+      ! THIS MODULE IS IN THE BUILD (SRC in the Makefile).  It carries the
+      ! coefficients, their sources and their validity ranges, plus the
+      ! thermodynamic data that generates the reverse rates; the oxygen
+      ! carrier rows of System_HeH_mol, the transport of
+      ! diffusive_photochemistry and the FUV bands of water_photolysis read
+      ! them.  They act only where the oxygen chemistry is switched on
+      ! (thereis_oxychem), so a run without it never evaluates one.  The
+      ! standalone driver that checks the coefficients alone is
+      ! src/tests/a2_m1/.
       !
       ! The audit that fixed every number below, with the two-network
       ! comparison table and the measured share each reaction carries at the
@@ -73,6 +77,37 @@
       ! H = dfH(298.15 K), so dropping it makes the Shomate enthalpy the
       ! absolute enthalpy including the enthalpy of formation, which is what
       ! a reaction dG needs.
+      !
+      ! THE ZERO OF THIS TABLE, AND WHY IT NEVER LEAKS OUT.  With the eighth
+      ! coefficient dropped the zero is the NIST convention: each element in
+      ! its standard reference state at 298.15 K.  That is NOT the reference
+      ! of the formation-energy reservoir eps_s of the energy ledger
+      ! (docs/b1_target_system_20260906.md T1.2), which is every element as a
+      ! neutral, ground-state, free atom at rest.  The two zeros never have
+      ! to be reconciled, because every use this module makes of the table is
+      ! a DIFFERENCE over a balanced reaction -- the reaction dG of
+      ! equilibrium_constant_conc and everything built on it, and the channel
+      ! energies of oxygen_formation_energy_eV and photolysis_threshold_erg
+      ! -- and a balanced reaction has the same elements on both sides, so
+      ! any reference offset cancels identically.
+      !
+      ! THE 0 K ABSOLUTE ENTHALPY IS THE F COEFFICIENT OF THE LOWEST
+      ! INTERVAL.  In the Shomate form H(T) = A t + B t^2/2 + C t^3/3
+      ! + D t^4/4 - E/t + F with t = T/1000, every term but F vanishes as
+      ! t -> 0 (the E of each lowest interval is 1e-5 or smaller, so E/t is
+      ! below 1e-7 eV anywhere near the origin), hence H(0 K) = F of the
+      ! lowest interval.  That is the temperature at which a formation
+      ! energy is defined: it carries no thermal content, so it cannot
+      ! double count with the heat capacity the equation of state owns
+      ! (T1.3).  CHECKED against the one bond energy this code defines
+      ! independently: 2 F(H) - F(H2) = 2 x 211.8 + 8.613061 = 432.213
+      ! kJ/mol = 4.47957 eV, against D0(H2) = 36118.11 cm^-1 = 4.47807 eV
+      ! from mol_rates (Huber & Herzberg 1979), a 1.5 meV or 0.033 per cent
+      ! agreement.  The other bond energies the table implies are
+      ! D0(OH) = 4.39888 eV, D0(H2O -> OH + H) = 5.11734 eV and
+      ! D0(CO) = 11.11569 eV; they carry the accuracy of the JANAF enthalpies
+      ! of formation they are built from, and for OH that is the 1.71 kJ/mol
+      ! (18 meV) offset the caveat below states.
       !
       ! CAVEAT -- THE OH ENTHALPY OF FORMATION.  The NIST-JANAF value carried
       ! here is dfH(OH, 298.15 K) = 38.99 kJ/mol.  Burcat's NASA-9 set, which
@@ -153,6 +188,12 @@
       ! three-body reactions, neither of which holds for molecules, and the
       ! measured oxygen at these levels is 100% neutral.
 
+      use global_parameters, only: kb_erg
+      ! D0(H2) from v = 0, J = 0: the code's single definition of the
+      ! hydrogen bond energy, so that the formation energy of H2 in the
+      ! reservoir below is the same number the caloric equation of state and
+      ! the H2 equilibrium constant of mol_rates are built on.
+      use mol_rates, only: h2_dissociation_energy_eV
       implicit none
       private
 
@@ -168,8 +209,11 @@
                 n_ox_sp, ox_species_name
       public :: n_fuv_band, fuv_band_lo_A, fuv_band_hi_A, fuv_band_name,  &
                 qy_H2O_OH_H, qy_H2O_H2_O1D, qy_H2O_O_H_H, qy_OH_O_H
+      public :: ich_CO_C_O
+      public :: rk_D1_Hep_CO, rk_CO_radiative_association
       public :: photolysis_threshold_erg, e_excite_O1D_erg,               &
                 ich_H2O_OH_H, ich_H2O_H2_O, ich_H2O_O_H_H, ich_OH_O_H
+      public :: oxygen_formation_energy_eV
 
       integer, parameter :: dp = kind(1.0d0)
 
@@ -177,7 +221,7 @@
       ! R = N_A k_B with N_A = 6.02214076e23 and k_B = 1.380649e-23 J/K.
       real(dp), parameter :: R_gas_J = 8.31446261815324d0
       ! Boltzmann constant [erg K^-1], CODATA 2018 exact
-      real(dp), parameter :: kb_erg  = 1.380649d-16
+      ! kb_erg is the global Boltzmann constant of parameters.f90 (one definition).
       ! Standard-state pressure, 1 bar [dyn cm^-2]
       real(dp), parameter :: p_std_cgs = 1.0d6
 
@@ -195,6 +239,12 @@
       integer, parameter :: n_ox_sp = 7
       character(len=3), parameter :: ox_species_name(n_ox_sp) =           &
            (/ 'H  ', 'H2 ', 'O  ', 'OH ', 'H2O', 'CO ', 'C  ' /)
+      ! Nuclei of each species of the table, so that a formation energy from
+      ! free atoms is built by the module that owns the thermodynamic data
+      ! rather than by each consumer.
+      integer, parameter :: ith_nH(n_ox_sp) = (/ 1, 2, 0, 1, 2, 0, 0 /)
+      integer, parameter :: ith_nO(n_ox_sp) = (/ 0, 0, 1, 1, 1, 1, 0 /)
+      integer, parameter :: ith_nC(n_ox_sp) = (/ 0, 0, 0, 0, 0, 1, 1 /)
 
       ! Shomate temperature-range boundaries.  Each species has at most
       ! n_shom_max intervals; n_shom(i) gives how many it has, and
@@ -295,18 +345,35 @@
       ! the long-wavelength end of the H2O photodissociation cross section
       ! (230.413 nm, set by the measurement of Ranjan et al. 2020).
       !
-      ! 1110 A IS A BAND EDGE BECAUSE THE H2 LYMAN-WERNER SYSTEM ENDS THERE.
-      ! Draine & Bertoldi (1996) take 912-1110 A for the Solomon process
-      ! (their footnote 4: essentially all H2 pumping out of v = 0 happens
-      ! shortward of 1110 A), and lyman_werner.f90 uses that interval.  Over
-      ! it the SAME photons are absorbed by H2 in lines and by H2O and OH in
-      ! a continuum, so 912-1110 A must be ONE band with ONE incident flux
-      ! and one beam that the three absorbers share; otherwise the energy of
-      ! the interval is counted twice, once in "Stellar LW flux" and once
-      ! inside a band that reaches across it.  The first band below is
-      ! therefore the Lyman-Werner interval itself, carrying the flux of the
-      ! existing "Stellar LW flux" key, and B1 begins where it ends.  The
-      ! shared beam is built in water_photolysis.f90 section 3.
+      ! 1110 A IS NOT A BAND EDGE: THE H2 LYMAN-WERNER SYSTEM DOES NOT END
+      ! THERE.  Draine & Bertoldi (1996) take 912-1110 A for the Solomon
+      ! process, their footnote 4 reading that essentially all H2 pumping
+      ! out of v = 0 happens shortward of 1110 A.  That is a statement about
+      ! v = 0, and it is a statement about interstellar gas, where v = 0 is
+      ! the only level populated.  A planetary molecular base runs at
+      ! 700-3200 K, where the vibrationally excited levels ARE populated and
+      ! pump in lines that lie longward of 1110 A: the level-resolved line
+      ! list of h2_self_shielding_table reaches 1201 A, and at saturation
+      ! those lines carry about a third of the dissociations it rates
+      ! (docs/p38_line_overlap_shielding.md sec. 4.4).  So 912-1201 A is one
+      ! interval with one line absorber, and splitting it at 1110 A would
+      ! normalize the H2 pumping per photon of a band narrower than the band
+      ! the lines drink from.  That is what the 1110 A edge did until
+      ! 2026-09-06, and it made the table rate 45 per cent more absorptions
+      ! than the beam lost.
+      !
+      ! Over 912-1201 A the SAME photons are absorbed by H2 in lines and by
+      ! H2O and OH in a continuum, so the interval must be ONE band with ONE
+      ! incident flux and one beam that the three absorbers share; otherwise
+      ! the energy of the interval is counted twice, once in "Stellar LW
+      ! flux" and once inside a band that reaches across it.  The first band
+      ! below is therefore the Lyman-Werner interval itself, carrying the
+      ! flux of the "Stellar LW flux" key, and B2 begins where it ends.  The
+      ! shared beam is built in water_photolysis.f90 section 3.  The yield
+      ! table of H2O.h5 is flat below its 120.1 nm node, so the merge of the
+      ! two halves changes no quantum yield; the band-averaged cross
+      ! sections of water_photolysis.f90 are re-formed over the whole
+      ! interval.
       !
       ! PROVENANCE OF THE QUANTUM YIELDS.  The table below is the reading of
       ! the photodissociation-qy dataset of photochem/data/xsections/H2O.h5,
@@ -319,8 +386,19 @@
       !     0.89 / 0.11 over 105-145 nm and >= 0.99 / <= 0.01 over
       !     145-185 nm, band-averaged over a lithium-fluoride flash lamp;
       !     they give no single-wavelength Ly-alpha value.
-      !   * Slanger & Black (1982), J. Chem. Phys. 77, 2432, give
-      !     0.78 / 0.10 / 0.12 at 121.567 nm.
+      !   * Slanger & Black (1982), J. Chem. Phys. 77, 2432, measured at
+      !     1216 A, give 0.78 / 0.10 / 0.12.  Their p. 2435 states them as
+      !     "yields of 78% for processes 1 + 2, 10% for process 3, and 12%
+      !     for process 4", the processes being their Eqs. (1)-(4):
+      !     OH(X 2Pi) + H, OH(A 2Sigma+) + H, O(1D) + H2(X 1Sigma_g+) and
+      !     O(3P) + 2H.  Only one of the three numbers stands on this
+      !     experiment alone.  They adopt the O(1D) yield of Stief et al.
+      !     as the standard against which the oxygen signal is scaled
+      !     ("earlier work had indicated an O(1D) yield of 11% in this
+      !     wavelength region"), obtain the three-body branch relative to
+      !     it ("If 10% is taken as the O(1D) quantum yield, then the yield
+      !     for process 4 is 12%"), and the 0.78 is what normalization
+      !     leaves.  A revision of the O(1D) yield moves all three.
       !
       ! FOUR CAVEATS, EVERY ONE OF THEM PHYSICS AND NOT BOOKKEEPING.
       !
@@ -331,12 +409,20 @@
       !    (1994) -- 0.64 / 0.11 / 0.11 with a fourth channel
       !    OH(A 2Sigma+) + H at 0.14 -- without choosing between them.
       !
-      ! 2. The 0.78 at Ly-alpha is Phi2 + Phi4, the sum of the ground-state
-      !    OH(X 2Pi) + H channel and the electronically excited
-      !    OH(A 2Sigma+) + H channel.  Writing it as one OH + H channel
-      !    buries the OH(A) production, which Mordaunt et al. split off at
+      ! 2. The 0.78 at Ly-alpha is Phi1 + Phi2 in the numbering of Slanger
+      !    & Black's own Eqs. (1) and (2): the ground-state OH(X 2Pi) + H
+      !    channel plus the electronically excited OH(A 2Sigma+) + H
+      !    channel.  Writing it as one OH + H channel buries the OH(A)
+      !    production.  Slanger & Black put the OH(A) fraction inside the
+      !    0.78 at 8% ("the known 8% yield for process 2 at 1216 A", their
+      !    p. 2436, from their reference 28); Mordaunt et al. split off
       !    0.14.  A network that wants the OH(A) emission separately cannot
-      !    take this table as it stands.
+      !    take this table as it stands.  Their 8% is the v = 0 fraction
+      !    only: OH(A 2Sigma+) is predissociated for v >= 1, so they read
+      !    part of the 12% three-body branch as H + OH(A, v >= 1) that then
+      !    falls apart, "the yields into processes 2 and 4 should perhaps
+      !    be summed".  The final products are O(3P) + 2H on either
+      !    reading, so 0.12 remains the O + H + H yield.
       !
       ! 3. The 1.00 / 0.00 of band B4 is a rounding of Stief's >= 0.99 and
       !    <= 0.01.
@@ -378,35 +464,40 @@
       ! 6.3 nm, Heays et al. (2017) to 192.056 nm (their own Table 7 runs to
       ! 193.9 nm), Ranjan et al. (2020) from there to 230.413 nm, the last
       ! being a direct 292 K measurement over 186-230 nm.
-      integer, parameter :: n_fuv_band = 5
+      integer, parameter :: n_fuv_band = 4
       real(dp), parameter :: fuv_band_lo_A(n_fuv_band) =                  &
-           (/  912.0d0, 1110.0d0, 1202.0d0, 1231.0d0, 1451.0d0 /)
+           (/  912.0d0, 1202.0d0, 1231.0d0, 1451.0d0 /)
       real(dp), parameter :: fuv_band_hi_A(n_fuv_band) =                  &
-           (/ 1110.0d0, 1201.0d0, 1230.0d0, 1450.0d0, 2304.0d0 /)
+           (/ 1201.0d0, 1230.0d0, 1450.0d0, 2304.0d0 /)
       character(len=2), parameter :: fuv_band_name(n_fuv_band) =          &
-           (/ 'LW', 'B1', 'B2', 'B3', 'B4' /)
+           (/ 'LW', 'B2', 'B3', 'B4' /)
 
       ! H2O photodissociation quantum yields on those bands.  The yield
-      ! table of H2O.h5 is flat below its 120.1 nm node, so the LW band and
-      ! B1 -- the two halves of what was one 912-1201 A interval -- carry
-      ! the same triplet.  B2 contains Ly-alpha (1215.67 A) and is the only
-      ! band where the three-body branch is open.
+      ! table of H2O.h5 is flat below its 120.1 nm node, so the whole of the
+      ! 912-1201 A Lyman-Werner interval carries one triplet.  B2 contains
+      ! Ly-alpha (1215.67 A) and is the only band where the three-body
+      ! branch is open.
       real(dp), parameter :: qy_H2O_OH_H(n_fuv_band)   =                  &
-           (/ 0.89d0, 0.89d0, 0.78d0, 0.89d0, 1.00d0 /)
+           (/ 0.89d0, 0.78d0, 0.89d0, 1.00d0 /)
       real(dp), parameter :: qy_H2O_H2_O1D(n_fuv_band) =                  &
-           (/ 0.11d0, 0.11d0, 0.10d0, 0.11d0, 0.00d0 /)
+           (/ 0.11d0, 0.10d0, 0.11d0, 0.00d0 /)
       real(dp), parameter :: qy_H2O_O_H_H(n_fuv_band)  =                  &
-           (/ 0.00d0, 0.00d0, 0.12d0, 0.00d0, 0.00d0 /)
+           (/ 0.00d0, 0.12d0, 0.00d0, 0.00d0 /)
       ! OH: one merged dissociation channel, unit yield.  See the caveat
       ! above -- this is a Leiden default, not an evaluated branching.
       real(dp), parameter :: qy_OH_O_H(n_fuv_band) =                      &
-           (/ 1.00d0, 1.00d0, 1.00d0, 1.00d0, 1.00d0 /)
+           (/ 1.00d0, 1.00d0, 1.00d0, 1.00d0 /)
 
       ! Photolysis channel identifiers, for photolysis_threshold_erg.
       integer, parameter :: ich_H2O_OH_H  = 1, ich_H2O_H2_O = 2,          &
-                            ich_H2O_O_H_H = 3, ich_OH_O_H   = 4
+                            ich_H2O_O_H_H = 3, ich_OH_O_H   = 4,          &
+                            ich_CO_C_O    = 5
       ! Avogadro constant [mol^-1], CODATA 2018 exact
       real(dp), parameter :: N_avog = 6.02214076d23
+      ! Electronvolt [erg], CODATA 2018 exact
+      real(dp), parameter :: eV_to_erg = 1.602176634d-12
+      ! One kJ per mole as an energy per particle [eV].
+      real(dp), parameter :: kJmol_to_eV = 1.0d10/N_avog/eV_to_erg
 
       ! Excitation energy of O(1D) above the ground O(3P) term [erg].
       ! Taken as the difference of the F Shomate coefficients that
@@ -497,10 +588,28 @@
       !     that is an extrapolation and it is stated as one.
       !   * Competing values.  VULCAN's id 615 gives 2.87e-10 over
       !     100-2100 K, cited to Tully (1975), J. Chem. Phys. 62, 1893 --
-      !     2.6x larger, and the NIST Chemical Kinetics Database record for
-      !     that paper labels it an RRK(M) extrapolation, not a measurement,
-      !     so it disagrees with the four independent room-temperature
-      !     measurements the IUPAC evaluation averages.  Photochem's
+      !     2.6x larger.  Read in the published paper, the 2.87e-10 is the
+      !     "Theory (present results)" entry of his Table II, p. 1896,
+      !     "Rate constants for removal of O(1D) at 300 K" in units of
+      !     1e-10 cm^3/sec, so the transcription of the number holds but
+      !     what it is has to be said three ways.  It is a computed value:
+      !     Tully's abstract calls the method "A statistical model of
+      !     chemical reaction ... computed over the temperature range
+      !     100-2100 K", the phase-space form of his Refs. 4 and 5, not a
+      !     measurement.  It is a value AT 300 K: his Fig. 2 gives the H2
+      !     removal rate rising with temperature, so carrying 2.87e-10 flat
+      !     to 2100 K flattens Tully's own temperature dependence as well
+      !     as extrapolating.  And the "Experiment" column it agrees with,
+      !     2.9e-10, is his Ref. 10, the preferred values of Hampson et al.
+      !     (1973) J. Phys. Chem. Ref. Data 2, 267 taken from Cvetanovic's
+      !     compilation of RELATIVE rate constants -- a 1973 evaluation of
+      !     relative measurements, not one of the four independent
+      !     determinations (1976-1996) the IUPAC evaluation averages, all
+      !     of which are later.  The one point Tully's model supports
+      !     rather than contests is the channel: he finds "essentially all
+      !     (> 99.9%) of the O(1D) removal rate is due to reaction
+      !     producing OH + H", which is why the total is the right number
+      !     for the reactive channel here.  Photochem's
       !     zahnle_earth.yaml gives 1.5e-10, 36% above the IUPAC value,
       !     with the key Ba92; that attribution does not hold, because
       !     Baulch et al. (1992), Baulch et al. (2005) and Tsang & Hampson
@@ -791,44 +900,141 @@
       Kc    = exp(-dG/(R_gas_J*Teq))*n_std**dn
       end function
 
-      ! Threshold energy of a photolysis channel [erg per event], as the
-      ! reaction enthalpy at 298.15 K taken from the Shomate table above.
-      ! A photon of energy hv deposits hv - threshold as fragment kinetic
-      ! energy, the way e_lw_fragment_erg does in lyman_werner.f90.
+      ! Formation energy eps_s [eV] of one particle of the thermodynamic
+      ! table, measured from the reference state of the energy ledger
+      ! (docs/b1_target_system_20260906.md T1.2): every element a neutral,
+      ! ground-state, free atom at rest.  So eps(H) = eps(O) = eps(C) = 0 by
+      ! the reference, and a molecule carries minus its dissociation energy
+      ! into those atoms.
       !
-      ! APPROXIMATION.  The exact threshold is the 0 K dissociation energy
-      ! D0, and dH(298.15) exceeds it by the 0-298 K enthalpy content of the
-      ! fragments minus that of the parent -- of order a few kJ/mol against
-      ! reaction enthalpies of 428-927 kJ/mol, i.e. under 1%.  The Shomate
-      ! fits do not reach 0 K, so dH(298.15) is used and the approximation is
-      ! stated here rather than hidden.  Channel ich_H2O_H2_O returns the
-      ! ground-state O(3P) threshold; the O(1D) channel O4 of the design adds
-      ! e_excite_O1D_erg to it.
+      ! It is evaluated at 0 K, where the Shomate absolute enthalpy is the F
+      ! coefficient of the lowest interval (header).  A formation energy has
+      ! to be free of thermal content: the heat capacity of the gas belongs
+      ! to the equation of state, and an eps_s carrying a 298 K enthalpy
+      ! content would be counted a second time there (T1.3).
+      !
+      ! H2 is the one entry NOT taken from the Shomate fit.  It has a
+      ! spectroscopic dissociation energy in this code -- D0(v=0,J=0) =
+      ! 36118.11 cm^-1, mol_rates -- which the caloric equation of state and
+      ! the H2 equilibrium constant already share, and one energy has one
+      ! definition.  The Shomate fit reproduces it to 1.5 meV (header), so
+      ! this is a choice of the more accurate of two agreeing numbers, not a
+      ! correction.
+      double precision function oxygen_formation_energy_eV(isp) result(eps)
+      integer, intent(in) :: isp
+      real(dp) :: h0
+      if (isp .eq. ith_H2) then
+        eps = -h2_dissociation_energy_eV()
+        return
+      end if
+      ! H(0 K) of the species minus that of the free atoms it is built from.
+      h0 = c_shom(6, 1, isp)                                              &
+         - dble(ith_nH(isp))*c_shom(6, 1, ith_H)                          &
+         - dble(ith_nO(isp))*c_shom(6, 1, ith_O)                          &
+         - dble(ith_nC(isp))*c_shom(6, 1, ith_C)
+      eps = h0*kJmol_to_eV
+      end function
+
+      ! Threshold energy of a photolysis channel [erg per event]: the energy
+      ! the photon pays to take the molecule apart, as the difference of the
+      ! formation energies above.  A photon of energy hv deposits
+      ! hv - threshold as fragment kinetic energy, the way e_lw_fragment_erg
+      ! does in lyman_werner.f90.
+      !
+      ! The threshold is the 0 K dissociation energy, which is what a
+      ! photodissociation from the ground rovibrational level costs; the
+      ! internal energy a thermally excited parent brings to the event is
+      ! heat capacity and is the equation of state's, not the threshold's.
+      ! Channel ich_H2O_H2_O returns the ground-state O(3P) threshold; the
+      ! O(1D) channel O4 of the design adds e_excite_O1D_erg to it.
       double precision function photolysis_threshold_erg(ichan) result(e)
       integer, intent(in) :: ichan
-      real(dp), parameter :: T_ref = 298.15d0
-      real(dp) :: dH_kJmol
+      real(dp) :: de_eV
       select case (ichan)
       case (ich_H2O_OH_H)     ! H2O + hv -> OH + H
-        dH_kJmol = enthalpy_shomate(ith_OH, T_ref)                        &
-                 + enthalpy_shomate(ith_H,  T_ref)                        &
-                 - enthalpy_shomate(ith_H2O, T_ref)
+        de_eV = oxygen_formation_energy_eV(ith_OH)                        &
+              + oxygen_formation_energy_eV(ith_H)                         &
+              - oxygen_formation_energy_eV(ith_H2O)
       case (ich_H2O_H2_O)     ! H2O + hv -> H2 + O(3P)
-        dH_kJmol = enthalpy_shomate(ith_H2, T_ref)                        &
-                 + enthalpy_shomate(ith_O,  T_ref)                        &
-                 - enthalpy_shomate(ith_H2O, T_ref)
+        de_eV = oxygen_formation_energy_eV(ith_H2)                        &
+              + oxygen_formation_energy_eV(ith_O)                         &
+              - oxygen_formation_energy_eV(ith_H2O)
       case (ich_H2O_O_H_H)    ! H2O + hv -> O + H + H
-        dH_kJmol = enthalpy_shomate(ith_O, T_ref)                         &
-                 + 2.0d0*enthalpy_shomate(ith_H, T_ref)                   &
-                 - enthalpy_shomate(ith_H2O, T_ref)
+        de_eV = oxygen_formation_energy_eV(ith_O)                         &
+              + 2.0d0*oxygen_formation_energy_eV(ith_H)                   &
+              - oxygen_formation_energy_eV(ith_H2O)
       case (ich_OH_O_H)       ! OH + hv -> O + H
-        dH_kJmol = enthalpy_shomate(ith_O, T_ref)                         &
-                 + enthalpy_shomate(ith_H, T_ref)                         &
-                 - enthalpy_shomate(ith_OH, T_ref)
+        de_eV = oxygen_formation_energy_eV(ith_O)                         &
+              + oxygen_formation_energy_eV(ith_H)                         &
+              - oxygen_formation_energy_eV(ith_OH)
+      case (ich_CO_C_O)       ! CO + hv -> C + O
+        ! D0(CO) = 11.1157 eV, the strongest bond the network carries.  It
+        ! is the same difference the He+ charge-transfer channel of CO is
+        ! charged with (molecular_reaction_heat, channel D1), so the two
+        ! destruction channels of one molecule cannot state two bond
+        ! energies.
+        de_eV = oxygen_formation_energy_eV(ith_C)                         &
+              + oxygen_formation_energy_eV(ith_O)                         &
+              - oxygen_formation_energy_eV(ith_CO)
       case default
-        dH_kJmol = 0.0d0
+        de_eV = 0.0d0
       end select
-      e = dH_kJmol*1.0d3/N_avog*1.0d7      ! kJ/mol -> erg per event
+      e = de_eV*eV_to_erg
+      end function
+
+      ! Rate coefficient of the CO destruction channel D1 [cm^3 s^-1],
+      !
+      !     He+ + CO  ->  C+ + O + He .
+      !
+      ! UMIST RATE22 entry 4068 of rate22_final.rates (Millar, Walsh, Van de
+      ! Sande & Markwick 2024, A&A 682, A109): alpha = 1.60e-9, beta = 0,
+      ! gamma = 0, method M (measured), accuracy A (better than 25 per cent),
+      ! stated range 10-41000 K.  In the RATE22 form
+      ! k = alpha (T/300)^beta exp(-gamma/T) the two zero exponents make it
+      ! temperature independent, which is why this function takes no
+      ! temperature: a T argument would invite a fit that the entry does not
+      ! have.
+      !
+      ! THE STATED UPPER BOUND IS A FILE DEFAULT, NOT A VALIDATED CEILING.
+      ! 41000 K appears on 6562 of the file's 8767 entries and nowhere in
+      ! the paper, so it means "no upper limit was determined".  Using this
+      ! entry above it is defensible for THIS entry alone, and the reason is
+      ! the one KIDA states for exactly this case (Wakelam et al. 2012,
+      ! ApJS 199, 21, their sec. 3): "Extrapolations outside this range of
+      ! temperature are not recommended unless the rate coefficient is
+      ! predicted to be totally independent of temperature, as occurs for
+      ! the Langevin model of exothermic ion-non-polar-neutral reactions."
+      ! 1.6e-9 cm^3 s^-1 is the Langevin value of an exothermic
+      ! ion-neutral reaction, which is that case.
+      !
+      ! WHY THIS CHANNEL AND NOT A NEUTRAL ONE.  Every neutral CO
+      ! destruction channel RATE22 carries is either far too slow at the
+      ! temperatures of the molecular layer (H + CO -> OH + C has
+      ! gamma = 77700 K and a stated lower bound of 2590 K) or produces
+      ! species this code does not carry.  Above the helium ionization
+      ! front this entry is the fastest channel by one to four decades
+      ! (docs/co_destruction_rates_literature_20260906.md sec. 12.5).
+      double precision function rk_D1_Hep_CO() result(k)
+      k = 1.60d-9
+      end function
+
+      ! Rate coefficient of the radiative association C + O -> CO + photon
+      ! [cm^3 s^-1].  UMIST RATE22 entry 8597: alpha = 4.69e-19,
+      ! beta = 1.52, gamma = -50.5, T = 10-14700 K, calculated, accuracy B.
+      !
+      ! THIS IS A DIAGNOSTIC AND ENTERS NO BALANCE ROW.  The CO model of
+      ! this code is one-sided: it destroys CO and never forms it, and the
+      ! statement that makes that legitimate is the ordering
+      ! tau_dest << tau_res << tau_form of the domain record.  This function
+      ! exists so that the third of those times is measured from published
+      ! data rather than asserted, and it is called only by the record.
+      ! Adding it to the CO row would be a different model and would need
+      ! the rest of the formation network with it.
+      double precision function rk_CO_radiative_association(T) result(k)
+      real(dp), intent(in) :: T
+      real(dp) :: Tk
+      Tk = min(max(T, 10.0d0), 14700.0d0)
+      k  = 4.69d-19*(Tk/300.0d0)**1.52d0*exp(50.5d0/Tk)
       end function
 
       ! Carbon monoxide density [cm^-3] of a gas holding n_C_tot carbon and

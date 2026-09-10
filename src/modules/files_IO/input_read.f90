@@ -23,18 +23,63 @@
    use sed_reader, only: lyman_werner_band_flux_from_sed
    use diffusive_photochemistry, only: carrier_set_init
    use base_boundary, only: set_base_reservoir
+   ! The vocabulary of the restart metadata block's 'options' field, defined
+   ! once where that field is written, so a token this file accepts on a
+   ! "Restart option change:" line is a token the comparison knows.
+   use IC_load, only: n_opt, opt_name, opt_changes_layout,               &
+                      restart_option_change_named,                      &
+                      restart_option_change_given
 
    implicit none
 
    ! ---- who fixes the base level ------------------------------------- !
    ! The lower boundary is one level, so exactly one input states it. A
-   ! base.inp that carries "p_base" is a lower-atmosphere handoff written AT
-   ! that pressure, so when it is present that pressure IS the base level and
-   ! n0 follows from it; otherwise the legacy density key states it. These
-   ! two record which of them spoke, so the pair can be checked against each
+   ! lower-atmosphere handoff -- a base.inp carrying "p_base", or a
+   ! lower-atmosphere profile, whose matching pressure p_match is the level
+   ! its T, r, q_H2 and elemental ratios are read at -- is written AT that
+   ! pressure, so when one is present that pressure IS the base level and n0
+   ! follows from it; otherwise the legacy density key states it. These two
+   ! record which of them spoke, so the pair can be checked against each
    ! other instead of one silently winning.
-   logical, save, public :: base_level_from_base_inp = .false.
+   logical, save, public :: base_level_from_handoff  = .false.
    logical, save, public :: base_density_key_given   = .false.
+   ! Which input stated the level, named once here so the setup report and
+   ! the refusal messages below cannot disagree about it.
+   character(len=64), save, public :: base_level_source = 'the density key'
+
+   ! ---- what a restart continues ------------------------------------- !
+   ! WHAT A RESTART IS FOR, stated once and checked against the other keys
+   ! (docs/restart_contract_design_20260909.md section 2). A loaded state can
+   ! be continued in three different senses, and they are not variants of one
+   ! path: a physical trajectory carries the clock the file records and every
+   ! step obeys the physical-mode contract; a relaxation carries no clock and
+   ! marches toward stationarity; a stationary evaluation takes no step at all
+   ! and measures the state as it stands. One selector says which, because a
+   ! run that does not state its purpose cannot be checked against it.
+   integer, parameter, public :: restart_intent_relaxation = 0
+   integer, parameter, public :: restart_intent_trajectory = 1
+   integer, parameter, public :: restart_intent_stationary = 2
+   integer, save, public :: restart_intent = restart_intent_relaxation
+   logical, save, public :: restart_intent_given = .false.
+   ! The second word of a stationary intent. "evaluate" returns the state
+   ! unchanged with its certification and takes no solver step; "equilibrate"
+   ! asks for the loaded composition to be put on its own fixed point BEFORE
+   ! the evaluation, which is a change of the state and is reported when it
+   ! is taken. Neither is the default: the default stationary intent measures
+   ! the state as loaded and then enters the stationary solve.
+   logical, save, public :: stationary_evaluate_only      = .false.
+   logical, save, public :: stationary_equilibrate_loaded = .false.
+   ! ---- what a restart is allowed to change -------------------------- !
+   ! WHICH PHYSICS OPTIONS A RESTART MAY CHANGE (decision 21 of
+   ! docs/To_be_determined_by_user_20260906.md, option a). A state is a
+   ! solution of an equation set, so the restart contract refuses a state
+   ! whose option set is not the run's; the way this project reaches its
+   ! solutions is to converge without an option and restart with it on, so
+   ! "Restart option change: <token>[, <token> ...]" names the tokens that
+   ! are allowed to differ. Everything else still refuses by name, and the
+   ! change is written into the state the run produces. The tokens are the
+   ! ones of the '# options' line of a state file (IC_load); the flags they
+   ! set live there too, because that is where the comparison is made.
 
    contains
       
@@ -55,13 +100,23 @@
       real*8                          :: p_base_cgs, n0_from_p_base
       real*8                          :: p_from_density_key
       integer                         :: iw
+      ! The token list of "Restart option change" and its two counters
+      character(len = 250)            :: optline
+      integer                         :: iopt, ktok
 
    ! Every label input_read recognizes: the core block followed by the
-   ! keyword-extension block, in the same order as the reads below. Used only
-   ! by the trailing unknown-line scan to WARN (never stop) on a non-blank,
-   ! non-'#' line that matches no key -- e.g. a "Newton Solver:" (capital S)
-   ! typo that anchored matching would otherwise silently ignore. The energy-
-   ! band line ("[E_low...") is a bracket prefix, checked separately there.
+   ! keyword-extension block, in the same order as the reads below. It has two
+   ! readers, and one of them stops the run:
+   !   - refuse_duplicate_keys, called on the loaded file before anything is
+   !     consumed, which REFUSES a file stating any of these keys twice. A key
+   !     absent from this list is therefore outside that refusal as well as
+   !     outside the warning below, so a key parsed by the keyword loop and
+   !     missing here would silently accept two answers to one question.
+   !   - the trailing unknown-line scan, which WARNS (never stops) on a
+   !     non-blank, non-'#' line matching no key -- e.g. a "Newton Solver:"
+   !     (capital S) typo that anchored matching would otherwise ignore.
+   ! The energy-band line ("[E_low...") is a bracket prefix, checked
+   ! separately there. base.inp has its own list, built in read_base_inp.
    character(len=32), parameter :: known_keys(*) = [ character(len=32) ::    &
       'Planet name', 'Log10 lower boundary', 'Planet radius', 'Planet mass', &
       'Equilibrium temperature', 'Orbital distance', 'Escape radius',        &
@@ -99,7 +154,8 @@
       'Conduction', 'Resid tol',                                             &
       'Resid norm', 'Flux spread tol', 'CFL', 'Transonic IC',            &
       'Hot Parker IC', 'IC mode',                                            &
-      'Newton solver', 'Brent solver' ]
+      'Newton solver', 'Brent solver', 'Run mode', 'Restart intent',       &
+      'Restart option change' ]
 
    ! ----- Read planetary parameters from input file ----- !
 
@@ -222,6 +278,16 @@
          read(str,*) PLind
          is_PL_sed = .true.
 
+      case ('Planck')
+         ! The whole photon grid is the photospheric blackbody
+         ! pi B_nu(T_eff) (R_star/a)^2, built from "Stellar Teff [K]:" and
+         ! "Stellar radius [R_sun]:" (development plan rev 3, section 10.5
+         ! decision 13: one spectrum type builds every band). Those two
+         ! lines belong to the optional keyword block below, which has not
+         ! been scanned yet; that they are present is checked once it has
+         ! been ("Spectrum type: Planck needs both stellar quantities").
+         ! No property line of its own, so nothing is consumed here.
+
       case ('Monochromatic')
          is_monochr = .true.
          ! Read photon energy
@@ -243,7 +309,8 @@
       case default
          write(*,*) '(input_read) ERROR: unknown spectrum type "'//&
             trim(sp_type)//'".'
-         write(*,*) '   Allowed values: Load, Power-law, Monochromatic.'
+         write(*,*) '   Allowed values: Load, Power-law, Planck,'//&
+            ' Monochromatic.'
          error stop 1
 
    end select
@@ -567,11 +634,16 @@
 				! "Molecular carrier transport: True|False" -- vertical
 				! transport of the molecular carriers, solved implicitly
 				! with their chemistry (diffusive_photochemistry). The set
-				! is H2 alone, or H2 with OH, H2O and CO when the oxygen
-				! cycle is on. False restores the local-kinetics limit of
-				! milestone M2, which isolates the chemistry for testing and
-				! is not a model of a base. Left unstated, the default is
-				! resolved below from the chemistry the run carries.
+				! is fixed by carrier_set_init: H2 alone, H2 with OH, H2O
+				! and CO when the oxygen cycle is on, and H+ as well under
+				! "Ionization transport: True". False restores the
+				! local-kinetics limit of milestone M2, which isolates the
+				! chemistry for testing and is not a model of a base. Left
+				! unstated, the default is resolved below from the chemistry
+				! the run carries. Every consumer of carrier_transport is
+				! guarded by thereis_mol, so with the molecular network off
+				! there is nothing to transport; that is reported below, not
+				! refused.
 				str = get_word(line, 4)
 				carrier_transport_stated = .true.
 				carrier_transport = (str .eq. 'True' .or. str .eq. 'true')
@@ -593,8 +665,11 @@
 				! count, which sets the temperature, so a splitting that
 				! evaluates each at the other's old state is outside the
 				! radius where that is reasonable, and it gets the SIGN of
-				! the front's motion wrong (section 139). Requires
-				! "Molecular carrier transport: True"; checked below.
+				! the front's motion wrong (section 139). On a molecular
+				! configuration it requires "Molecular carrier transport:
+				! True", because H2 must be an unknown and not an
+				! eliminated variable; checked below, after every key is
+				! parsed.
 				str = get_word(line, 4)
 				carrier_in_newton = (str .eq. 'True' .or. str .eq. 'true')
 			else if (lbl_match(line, 'Oxygen transport')) then
@@ -612,15 +687,28 @@
 				write(*,*) '  Replace the line in input.inp. Aborting.'
 				error stop 1
 			else if (lbl_match(line, 'Stellar FUV B1 flux')) then
-				! "Stellar FUV B1 flux [erg/cm2/s]: <F>" -- band-integrated
-				! stellar flux over 1110-1201 A at the planet's orbit. The
-				! band starts at 1110 A because 912-1110 A is the H2
-				! Lyman-Werner interval, which is a band of its own carrying
-				! the "Stellar LW flux" below: one wavelength interval, one
-				! incident flux, one beam for all of its absorbers
-				! (water_photolysis.f90).
-				str = get_word(line, 6)
-				read(str,*) F_FUV_B1
+				! RETIRED 2026-09-06. Band B1 was 1110-1201 A, between the
+				! Lyman-Werner interval and Ly-alpha. The H2 Lyman and
+				! Werner lines pump on both sides of 1110 A at the
+				! temperature of a planetary base, so an edge there
+				! normalized the H2 pumping per photon of a band narrower
+				! than the one the lines absorb from, and the self-shielding
+				! table rated 45 percent more absorptions than the beam
+				! lost. B1 is now part of the Lyman-Werner band, 912-1201 A.
+				! Refused rather than aliased: the two numbers have to be
+				! added, which the code cannot do for a file that states
+				! only one of them.
+				write(*,*) '(input_read) ERROR: "Stellar FUV B1 flux" is'
+				write(*,*) '  no longer a key. On 2026-09-06 band B1'
+				write(*,*) '  (1110-1201 A) was merged into the'
+				write(*,*) '  Lyman-Werner band, which is now 912-1201 A,'
+				write(*,*) '  because the H2 pumping lines cross 1110 A at'
+				write(*,*) '  the temperature of a planetary base.'
+				write(*,*) '  To restate: delete this line and set'
+				write(*,*) '  "Stellar LW flux" to the sum of the two, i.e.'
+				write(*,*) '  the stellar flux at the planet integrated'
+				write(*,*) '  over 912-1201 A. Aborting.'
+				error stop 1
 			else if (lbl_match(line, 'Stellar FUV B3 flux')) then
 				! "Stellar FUV B3 flux [erg/cm2/s]: <F>" -- 1231-1450 A.
 				str = get_word(line, 6)
@@ -628,15 +716,14 @@
 			else if (lbl_match(line, 'Stellar FUV B4 flux')) then
 				! "Stellar FUV B4 flux [erg/cm2/s]: <F>" -- 1451-2304 A.
 				! B2 is the Ly-alpha line and is supplied by "Stellar Lya
-				! flux"; the 912-1110 A band is supplied by "Stellar LW
+				! flux"; the 912-1201 A band is supplied by "Stellar LW
 				! flux". The edges are fixed by the H2O branching ratios and
-				! by where the H2 Lyman-Werner system ends
-				! (water_photolysis.f90), not chosen.
+				! by the Ly-alpha line (water_photolysis.f90), not chosen.
 				str = get_word(line, 6)
 				read(str,*) F_FUV_B4
 			else if (lbl_match(line, 'Stellar LW flux')) then
 				! "Stellar LW flux [erg/cm2/s]: <F>" -- band-integrated
-				! stellar flux over 912-1110 A at the planet's orbit. Drives
+				! stellar flux over 912-1201 A at the planet's orbit. Drives
 				! H2 photodissociation in the molecular network
 				! (lyman_werner.f90) AND, with the oxygen chemistry on, the
 				! H2O and OH photolysis of the same interval: the three
@@ -670,8 +757,10 @@
 				! analytic lower column: "Lower column: <R_1bar in R_J>"
 				str = get_word(line, 3);  read(str,*) lower_col_r1bar
 			else if (lbl_match(line, 'He_Kzz')) then
-				! Eddy diffusion coefficient [cm^2/s] for He/H separation.
-				! "He_Kzz: 1.0e9"
+				! Eddy diffusion coefficient [cm^2/s]. It fills every entry of
+				! kzz_cell, which the element transport (He_diffusion) and the
+				! molecular carrier transport both read, so it is inert only
+				! when neither of those runs. "He_Kzz: 1.0e9"
 				str = get_word(line, 2);  read(str,*) he_kzz
 			else if (lbl_match(line, 'He_alphaT')) then
 				! Thermal-diffusion factor alpha_T for He (P2c). "He_alphaT: 0.0"
@@ -704,6 +793,100 @@
 					use_semi_implicit_energy = .false.
 					write(*,*) '(input_read) Energy solver: explicit forward Euler'
 				endif
+			else if (lbl_match(line, 'Run mode')) then
+				! WHAT THIS RUN IS DOING, stated rather than inferred
+				! (docs/a0_run_mode_contract_20260906.md section 6).
+				! "Run mode: init" = initialization / continuation, no claim
+				! about elapsed time; "Run mode: phys" = physical
+				! integration, one global dt per step and a clock that
+				! advances only on an accepted step. init is the default in
+				! every configuration; phys is asked for. The refusal rule
+				! that goes with it is applied after every key is read.
+				str = get_word(line, 3)
+				if (str .eq. 'init' .or. str .eq. 'Init') then
+					run_mode = run_mode_init;  run_mode_given = .true.
+				else if (str .eq. 'phys' .or. str .eq. 'Phys') then
+					run_mode = run_mode_phys;  run_mode_given = .true.
+				else
+					write(*,*) '(input_read) ERROR: "Run mode" takes '//   &
+					           'init or phys, not "'//trim(str)//'"'
+					error stop 1
+				endif
+			else if (lbl_match(line, 'Restart intent')) then
+				! "Restart intent: trajectory | relaxation | stationary
+				!  [evaluate|equilibrate]"
+				! (docs/restart_contract_design_20260909.md section 2). Only
+				! meaningful for a run that loads a state; the consistency
+				! block below refuses it otherwise, and refuses the two
+				! combinations that contradict themselves.
+				str = get_word(line, 3)
+				if (str .eq. 'trajectory') then
+					restart_intent = restart_intent_trajectory
+				else if (str .eq. 'relaxation') then
+					restart_intent = restart_intent_relaxation
+				else if (str .eq. 'stationary') then
+					restart_intent = restart_intent_stationary
+				else
+					write(*,*) '(input_read) ERROR: "Restart intent" takes'
+					write(*,*) '  trajectory, relaxation or stationary, not'
+					write(*,*) '  "'//trim(str)//'". Aborting.'
+					error stop 1
+				endif
+				restart_intent_given = .true.
+				str = get_word(line, 4)
+				if (len_trim(str) .gt. 0) then
+					if (restart_intent .ne. restart_intent_stationary) then
+						write(*,*) '(input_read) ERROR: "Restart intent"'
+						write(*,*) '  takes a second word only with'
+						write(*,*) '  stationary; "'//trim(str)//'" stands'
+						write(*,*) '  beside another intent. Aborting.'
+						error stop 1
+					endif
+					if (str .eq. 'evaluate') then
+						stationary_evaluate_only = .true.
+					else if (str .eq. 'equilibrate') then
+						stationary_equilibrate_loaded = .true.
+					else
+						write(*,*) '(input_read) ERROR: the second word of'
+						write(*,*) '  "Restart intent: stationary" is'
+						write(*,*) '  evaluate or equilibrate, not "'//     &
+						           trim(str)//'". Aborting.'
+						error stop 1
+					endif
+				endif
+			else if (lbl_match(line, 'Restart option change')) then
+				! "Restart option change: <token>[, <token> ...]"
+				! (decision 21). The tokens are separated by commas, blanks
+				! or tabs; each one is checked against the vocabulary of
+				! the state file's '# options' line, and a token that
+				! decides how many unknowns the state has is refused there
+				! and not here, because naming it cannot make the file's
+				! rows this run's rows.
+				optline = adjustl(line)
+				optline = optline(len('Restart option change')+1:)
+				if (len_trim(optline) .gt. 0) then
+					if (is_sep(optline(1:1))) optline(1:1) = ' '
+				endif
+				do iopt = 1, len_trim(optline)
+					if (optline(iopt:iopt) .eq. ','  .or.                  &
+					    optline(iopt:iopt) .eq. char(9))                   &
+						optline(iopt:iopt) = ' '
+				enddo
+				if (len_trim(optline) .eq. 0) then
+					write(*,*) '(input_read) ERROR: "Restart option'
+					write(*,*) '  change" names no token. Name the'
+					write(*,*) '  option tokens that are allowed to'
+					write(*,*) '  differ between the state file and this'
+					write(*,*) '  run, or remove the line. Aborting.'
+					error stop 1
+				endif
+				ktok = 1
+				do
+					str = get_word(optline, ktok)
+					if (len_trim(str) .eq. 0) exit
+					call name_restart_option_change_token(trim(str))
+					ktok = ktok + 1
+				enddo
 			else if (lbl_match(line, 'Time stepping')) then
 				! "Time stepping: Local" = cell-by-cell pseudo-time steps
 				! (steady-state convergence acceleration; not time-accurate).
@@ -780,8 +963,13 @@
 			else if (lbl_match(line, 'Coronal cutoff width')) then
 				! "Coronal cutoff width: <w>" sets the roll-off width of the
 				! coronal-excitation guard below the 1e3 K CHIANTI fit floor
-				! (Cool_coeff.f90). Default 0.1; justified window 0.08-0.13
-				! (docs/coronal_cutoff_width.md).
+				! (Cool_coeff.f90). Default 0.1. The earlier 0.08-0.13 window
+				! is superseded: with the C/N/O ground-term fine-structure
+				! floors solved in statistical equilibrium no coronal cooling
+				! survives below the fit floor for the guard to remove, and the
+				! base-cell balance temperature of all four paper planets is
+				! identical over w = 0.02-1.2
+				! (docs/coronal_cutoff_width.md section 7.2).
 				str = get_word(line, 4);  read(str,*) coronal_cutoff_width
 				write(*,'(A,F6.3)') ' (input_read) Coronal excitation cutoff'// &
 				   ' width w =', coronal_cutoff_width
@@ -821,7 +1009,10 @@
 				! chemical cycle releases exactly zero. The photon-driven
 				! reactions, the radiative recombinations and the collisional
 				! ionizations are excluded: their energy is already in the
-				! ledger. Needs `Molecular chemistry: True`. DEFAULT True --
+				! ledger. The term lives inside the molecular network
+				! (`with_molecules` in util_ion_eq): an atomic gas has no
+				! collisional molecular reactions, so there the key is
+				! inert rather than refused. DEFAULT True --
 				! the reason is at the declaration in parameters.f90 -- so
 				! this key exists to turn the term OFF, for A/B work against
 				! the state the code had before it.
@@ -901,8 +1092,11 @@
 				! means dividing dr_base and multiplying N_low_cells by the same
 				! factor: "Base grid [dr,cells]: 5.0e-5 200" is the 4x refinement.
 				! Requirement: dr_base must resolve the base scale height
-				! H = kT/(mu g); see docs/hd189_base_checkerboard.md. Ignored by
-				! the Uniform and Stretched grid types.
+				! H = kT/(mu g). It is checked at startup by
+				! write_setup_report, which prints H(T_eq)/dr in cells and
+				! warns below 10; the undamped stationary 2 dr entropy mode
+				! sets in near 5 (docs/hd189_base_checkerboard.md). Ignored
+				! by the Uniform and Stretched grid types.
 				str = get_word(line, 4);  read(str,*) dr_base
 				str = get_word(line, 5)
 				if (len_trim(str) .gt. 0) read(str,*) N_low_cells
@@ -1001,7 +1195,7 @@
 				   ' retired and ignored -- the residual norm is the'//      &
 				   ' maximum over cells of a'
 				write(*,'(A)') '     cell''s own scaled residual, and there'//&
-				   ' is no other form (Update_EXHALE.md section 145).'
+				   ' is no other form (Update_EXHALE_stage1.md section 145).'
 			else if (lbl_match(line, 'Flux spread tol')) then
 				! "Flux spread tol: <tol> [<r_flux [R_p]>]" -- the FLUX gate
 				! (section 133). The steady solve is accepted only when the
@@ -1138,6 +1332,21 @@
 		R_star        = R_star*Rsun
 		use_excited_H = (T_star_eff .gt. 0.0d0) .and. (R_star .gt. 0.0d0)
 
+		! "Spectrum type: Planck" builds the flux on EVERY point of the
+		! photon grid out of pi B_nu(T_eff) (R_star/a)^2, so without both
+		! stellar quantities there is no spectrum at all -- not a default
+		! one. Refused rather than run on a zero field.
+		if (sp_type .eq. 'Planck' .and. .not. use_excited_H) then
+			write(*,*) '(input_read.f90) ERROR: "Spectrum type: Planck"'
+			write(*,*) '  needs "Stellar Teff [K]:" > 0 and'
+			write(*,*) '  "Stellar radius [R_sun]:" > 0. They are the only'
+			write(*,*) '  source of the field pi B_nu(T_eff) (R_star/a)^2'
+			write(*,*) '  that this type puts on the whole photon grid.'
+			write(*,*) '  State both lines, or select another spectrum'
+			write(*,*) '  type. Aborting.'
+			error stop 1
+		endif
+
 		! Guard: the in-line Ly-alpha escape-probability RT ("Jlya escape-prob:
 		! True", jlya_mode = 2) builds J_lya = J_int + J_star, where the stellar
 		! beam J_star is proportional to F_Lya_star (set by "Stellar Lya flux
@@ -1165,7 +1374,6 @@
 			write(*,*) '  0 (parameterized) and 1 (imported J_Lya profile).'
 		endif
 
-   close(unit = 1)
 	write(*,*) '(input_read.f90) Done'
 
    !------ Definition of physical parameters ------!
@@ -1241,9 +1449,13 @@
    melem_ab(iel_Fe) = X_Fe
 
    ! An active metal whose neutral ionization threshold lies below the
-   ! 13.6 eV HI edge (e.g. Mg I at 7.646 eV) needs the below-threshold
-   ! sub-grid extension in set_energy_vectors (mutually exclusive with
-   ! the HeI triplet). Triggered by any such active element.
+   ! 13.6 eV HI edge (e.g. Mg I at 7.646 eV) needs the photon grid carried
+   ! below that edge. The floor is the LOWEST threshold over every active
+   ! sub-Lyman absorber -- the He 2^3S metastable at 4.768 eV, a low-IP
+   ! metal, and H(n=2) at 3.400 eV when the excited-hydrogen coupling is
+   ! armed -- so the three are carried together and none of them excludes
+   ! another (photon_grid_floor_eV in sed_read.f90; the band layout in
+   ! set_energy_vectors.f90). Triggered by any such active element.
    do im = 1, n_melem
       if (melem_ab(im) .gt. 0.0d0 .and.                       &
           mion_ethr(melem_i0(im)) .lt. e_th_HI)               &
@@ -1291,6 +1503,25 @@
    ! validated by test T7 of docs/binary_diffusion_design.md section 6.
    if (thereis_mol .and. .not. thereis_He) then
       write(*,*) '(input_read) ERROR: Molecular chemistry needs He/H>0.'
+      error stop 1
+   endif
+
+   ! The Roe flux is derived for ONE ideal gas with a constant adiabatic
+   ! index: its average state (a_avg from the averaged enthalpy) and the
+   ! star-state estimates of speed_estimate_ROE both assume it, and a
+   ! two-index Roe average needs the Vinokur-Montagne/Glaister extension the
+   ! code does not carry. With molecular chemistry and the ladder caloric
+   ! EOS the index varies across the H2 front, so that derivation does not
+   ! hold there. See docs/a2_roe_interface.md section 3.
+   if (flux .eq. 'ROE' .and. thereis_mol .and.                            &
+       .not. caloric_eos_monatomic) then
+      write(*,*) '(input_read) ERROR: "Numerical flux: ROE" conflicts'//  &
+                 ' with "Molecular chemistry: True" while "Caloric EOS"'
+      write(*,*) '  is not "monatomic": the Roe average and the star-state'
+      write(*,*) '  estimate are derived for one constant adiabatic index,'
+      write(*,*) '  which the molecular ladder EOS does not provide.'
+      write(*,*) '  Use "Numerical flux: HLLC" or "LLF", or set'
+      write(*,*) '  "Caloric EOS: monatomic". See docs/a2_roe_interface.md.'
       error stop 1
    endif
 
@@ -1386,10 +1617,10 @@
       ! Its solution_id pairing is checked as usual, elsewhere.
       write(*,'(A)') ' (input_read) Oxygen chemistry on: OH, H2O and CO'// &
          ' solved with the molecular network.'
-      write(*,'(A,5ES10.3)') '   FUV band fluxes at the planet'//          &
-         ' [erg cm^-2 s^-1] LW/B1/B2(Lya)/B3/B4: ',                       &
-         F_LW_star, F_FUV_B1, F_Lya_star, F_FUV_B3, F_FUV_B4
-      if (F_LW_star + F_FUV_B1 + F_Lya_star + F_FUV_B3 + F_FUV_B4         &
+      write(*,'(A,4ES10.3)') '   FUV band fluxes at the planet'//          &
+         ' [erg cm^-2 s^-1] LW/B2(Lya)/B3/B4: ',                          &
+         F_LW_star, F_Lya_star, F_FUV_B3, F_FUV_B4
+      if (F_LW_star + F_Lya_star + F_FUV_B3 + F_FUV_B4                    &
           .le. 0.0d0) then
          write(*,'(A)') ' (input_read) WARNING: the oxygen chemistry is'// &
             ' on but every FUV band flux is zero, so there is no'
@@ -1398,25 +1629,25 @@
          write(*,'(A)') '   returns is the chemical equilibrium of the'//  &
             ' O/OH/H2O family, not a photochemical one.'
          write(*,'(A)') '   Set "Stellar LW flux", "Stellar FUV'//         &
-            ' B1/B3/B4 flux" and "Stellar Lya flux" for the'//             &
+            ' B3/B4 flux" and "Stellar Lya flux" for the'//                &
             ' photochemical result.'
-      else if (F_LW_star .le. 0.0d0 .and. F_FUV_B1 .le. 0.0d0 .and.       &
+      else if (F_LW_star .le. 0.0d0 .and.                                 &
                F_FUV_B3 .le. 0.0d0 .and. F_FUV_B4 .le. 0.0d0) then
          write(*,'(A)') ' (input_read) WARNING: no FUV continuum band'//   &
             ' flux is set (only Ly-alpha), so the run gets no oxygen'
          write(*,'(A)') '   photolysis outside the Ly-alpha line -- and'// &
             ' the continuum bands carry most of the'
          write(*,'(A)') '   H2O loss. Set "Stellar LW flux" and'//         &
-            ' "Stellar FUV B1 flux" at least.'
+            ' "Stellar FUV B3 flux" at least.'
       else if (F_LW_star .le. 0.0d0) then
          write(*,'(A)') ' (input_read) WARNING: "Stellar LW flux" is'//    &
             ' zero, so the run gets no H2O or OH photolysis over'
-         write(*,'(A)') '   912-1110 A, where their cross sections'//      &
+         write(*,'(A)') '   912-1201 A, where their cross sections'//      &
             ' peak. That band is entered through the'
          write(*,'(A)') '   Lyman-Werner key because H2 shares it.'
       endif
    else
-      if (F_FUV_B1 + F_FUV_B3 + F_FUV_B4 .gt. 0.0d0)                      &
+      if (F_FUV_B3 + F_FUV_B4 .gt. 0.0d0)                                &
          write(*,'(A)') ' (input_read) WARNING: a "Stellar FUV B*'//       &
             ' flux" is set but "Oxygen chemistry" is off; there is'//      &
             ' no H2O or OH to photolyse, so the key has no effect.'
@@ -1453,7 +1684,7 @@
    if (F_LW_star .gt. 0.0d0) then
       if (thereis_mol) then
          write(*,'(A,ES10.3,A)') ' (input_read) Lyman-Werner band flux at'//&
-            ' the planet (912-1110 A; also the first oxygen photolysis'//   &
+            ' the planet (912-1201 A; also the first oxygen photolysis'//   &
             ' band): ', F_LW_star, ' erg cm^-2 s^-1'
       else
          write(*,'(A)') ' (input_read) WARNING: "Stellar LW flux" is set'// &
@@ -1506,13 +1737,14 @@
    ! its H/He-nuclei meaning, so n_H = n0/(1+HeH) is unchanged). With
    ! eos_metals 1 (default) the trace metals contribute their mass and
    ! their nuclei; with eos_metals 0 (or no metals) both reduce to the
-   ! legacy H/He-only values (mass_per_H = 1+4*HeH, ntot_bc = 1).  With
+   ! H/He-only values (mass_per_H = 1 + (m_He/m_H)*HeH with m_He/m_H =
+   ! bsp_mass(He I) of species_table.f90, ntot_bc = 1).  With
    ! "Molecular base: True" comp_ntot_bc also removes the H nuclei bound
    ! into H2 at the base (passive molecular base, EOS-only: the species
    ! arrays stay atomic; docs/lower_atmosphere_coupling.*).
    ! Routed through the composition module (single source of the base
-   ! composition policy). comp_* reproduce the legacy expressions bitwise;
-   ! eos_metals / metals-present / molecular_base branching lives inside.
+   ! composition policy); the eos_metals, metals-present and molecular_base
+   ! branching lives inside it.
    ! ---- the base H2 fraction must be attainable at this He/H ---------- !
    ! q_H2 = n_H2/(n_H2+n_H+n_He) cannot exceed 0.5/(0.5+He/H), the value
    ! reached when every H nucleus is bound into H2. A larger number does not
@@ -1631,9 +1863,9 @@
    endif
 
    ! ---- the base level has one source -------------------------------- !
-   ! A base.inp carrying "p_base" is a lower-atmosphere handoff written AT
-   ! that pressure: its composition, its q_H2 and its temperature all refer
-   ! to that level, so the level is the handoff's to state and n0 follows,
+   ! A lower-atmosphere handoff is written AT one pressure: its composition,
+   ! its q_H2 and its temperature all refer to that level, so the level is
+   ! the handoff's to state and n0 follows,
    !
    !     n0 = p_base/(k_B T0 ntot_bc),
    !
@@ -1647,23 +1879,26 @@
    ! nobody chose.  1% is the tolerance; a handoff and a density key that
    ! describe one level agree far better than that.
    !
-   ! A lower-atmosphere PROFILE owns the level itself (it sets p_base_bar
-   ! from its own matching pressure), so a profile run is outside this rule.
-   if (base_level_from_base_inp .and. .not. lap_in_use) then
+   ! Both handoff forms are one rule: a base.inp carrying "p_base", and a
+   ! lower-atmosphere PROFILE, whose matching pressure p_match is the level
+   ! apply_lower_atmosphere_profile read T0, R0, q_H2 and every elemental
+   ! ratio at (rev 3 section 10.2 item 4). A base placed anywhere else is a
+   ! base whose state was taken from a different level.
+   if (base_level_from_handoff) then
       p_base_cgs     = p_base_bar*1.0d6
       n0_from_p_base = p_base_cgs/(kb_erg*T0*ntot_bc)
       if (base_bc_mode .eq. 1) then
          if (abs(base_p_ubar/(p_base_bar*1.0d6) - 1.0d0) .gt. 1.0d-6) then
             write(*,*) '(input_read) ERROR: two different base levels were'//&
                        ' given.'
-            write(*,'(A,ES12.4,A)') '   base.inp p_base       = ',          &
-               p_base_bar, ' bar'
+            write(*,'(A,A,A,ES12.4,A)') '   ', trim(base_level_source),    &
+               '  = ', p_base_bar, ' bar'
             write(*,'(A,ES12.4,A)') '   "Base BC: pressure"   = ',          &
                base_p_ubar*1.0d-6, ' bar'
             write(*,*) '  The lower boundary is one level, so one input'//  &
                        ' states it. Fix by deleting'
             write(*,*) '  the "Base BC: pressure" line from '//             &
-               trim(inp_file)//' (base.inp already'
+               trim(inp_file)//' (the handoff already'
             write(*,*) '  fixes the level), or by making the two numbers'// &
                        ' the same.'
             error stop 1
@@ -1672,19 +1907,19 @@
       if (base_density_key_given) then
          p_from_density_key = n0*kb_erg*T0*ntot_bc
          if (abs(p_from_density_key/p_base_cgs - 1.0d0) .gt. 1.0d-2) then
-            write(*,*) '(input_read) ERROR: the base level stated by'//     &
-                       ' base.inp and the one implied'
-            write(*,*) '  by "Log10 lower boundary number density"'//       &
-                       ' disagree by more than 1%.'
-            write(*,'(A,ES12.4,A)') '   base.inp p_base                = ', &
-               p_base_bar, ' bar'
+            write(*,*) '(input_read) ERROR: the base level stated by the'// &
+                       ' lower-atmosphere handoff and'
+            write(*,*) '  the one implied by "Log10 lower boundary number'//&
+                       ' density" disagree by more than 1%.'
+            write(*,'(A,A,A,ES12.4,A)') '   level from ',                   &
+               trim(base_level_source), ' = ', p_base_bar, ' bar'
             write(*,'(A,ES12.4,A)') '   density key implies p          = ', &
                p_from_density_key*1.0d-6, ' bar'
-            write(*,'(A,F10.4)')    '   ratio (density key / p_base)   = ', &
+            write(*,'(A,F10.4)')    '   ratio (density key / handoff)  = ', &
                p_from_density_key/p_base_cgs
             write(*,'(A,ES12.4,A)') '   n0 given                       = ', &
                n0, ' cm^-3'
-            write(*,'(A,ES12.4,A)') '   n0 implied by p_base           = ', &
+            write(*,'(A,ES12.4,A)') '   n0 implied by the handoff      = ', &
                n0_from_p_base, ' cm^-3'
             write(*,'(A,F10.6)')    '   base particle count ntot_bc    = ', &
                ntot_bc
@@ -1693,19 +1928,22 @@
             write(*,*) '  Fix by deleting ONE of them:'
             write(*,*) '   - delete "Log10 lower boundary number'//         &
                        ' density" from '//trim(inp_file)//','
-            write(*,*) '     and the handoff level p_base fixes the'//      &
-                       ' base (the usual choice: the'
-            write(*,*) '     handoff composition refers to that level);'
-            write(*,*) '   - or delete "p_base" from base.inp, and the'//   &
-                       ' density key fixes it, with'
-            write(*,*) '     the handoff composition then referring to'//   &
-                       ' whatever level that is.'
+            write(*,*) '     and the handoff level fixes the base (the'//   &
+                       ' usual choice: the handoff'
+            write(*,*) '     composition refers to that level);'
+            write(*,*) '   - or detach the handoff ("p_base" in base.inp,'//&
+                       ' or the "Lower atmosphere'
+            write(*,*) '     profile:" key in '//trim(inp_file)//'), and'// &
+                       ' the density key fixes the level,'
+            write(*,*) '     with the handoff composition then referring'//&
+                       ' to whatever level that is.'
             error stop 1
          endif
       endif
       n0 = n0_from_p_base
-      write(*,'(A,ES12.4,A,ES12.4,A)') ' (input_read) base level from'//    &
-         ' base.inp p_base =', p_base_bar, ' bar -> n0 =', n0, ' cm^-3'
+      write(*,'(A,A,A,ES12.4,A,ES12.4,A)') ' (input_read) base level from ',&
+         trim(base_level_source), ' =', p_base_bar, ' bar -> n0 =', n0,     &
+         ' cm^-3'
    endif
 
    ! Pressure-anchored base (Base BC: pressure): override n0 so that the base
@@ -1715,6 +1953,8 @@
    ! lower boundary: a much less dense base, hence a weaker rho*g source.
    if (base_bc_mode .eq. 1) then
       n0 = base_p_ubar/(kb_erg*T0*ntot_bc)
+      if (.not. base_level_from_handoff)                                  &
+         base_level_source = '"Base BC: pressure"'
       write(*,'(A,ES12.4,A)') ' (input_read) Base BC pressure mode: '//   &
          'derived n0 =', n0, ' cm^-3'
    endif
@@ -1823,7 +2063,7 @@
    ! H2 photodissociation is not an option of the physics: the band exists
    ! whenever the star does. What was optional was our knowing the number,
    ! and a run with a spectrum file knows it -- so it is computed by the
-   ! documented prescription (912-1110 A of the SED, at the planet) instead
+   ! documented prescription (912-1201 A of the SED, at the planet) instead
    ! of being left at zero and silently switching the channel off. A stated
    ! "Stellar LW flux" always wins: it is the more specific statement, and a
    ! band-integrated measurement can be better than our trapezoid over
@@ -1834,7 +2074,7 @@
       F_LW_star = lyman_werner_band_flux_from_sed()
       if (F_LW_star .gt. 0.0d0) then
          write(*,'(A,ES10.3,A)') ' (input_read) Stellar LW flux from the'// &
-              ' spectrum file: ', F_LW_star, ' erg cm^-2 s^-1 (912-1110 A)'
+              ' spectrum file: ', F_LW_star, ' erg cm^-2 s^-1 (912-1201 A)'
          lw_from_spectrum = .true.
       endif
    endif
@@ -1858,24 +2098,223 @@
          write(*,*) '  or neither. Aborting.'
          error stop 1
       endif
-      if (carrier_in_newton) then
-         write(*,*) '(input_read) ERROR: "Ionization transport: True" and'
-         write(*,*) '  "Coupled carrier solve: True" cannot both be set.'
-         write(*,*) '  The coupled route solves ONE carrier as a Newton'
-         write(*,*) '  unknown per cell; it has no proton row, so it would'
-         write(*,*) '  solve a system that is not the one asked for.'
-         write(*,*) '  Aborting.'
+      ! THE STATIONARY SOLVE AND THE TRANSPORTED PROTON.
+      !
+      ! Whether the two can be asked for together is decided by ONE thing:
+      ! whether H+ is an unknown of the stationary system. The proton is a
+      ! transported carrier (carrier_set_init), and the stationary system
+      ! carries a row and an unknown for every transported balance the
+      ! configuration activates, so with "Coupled carrier solve" the sweep
+      ! is HANDED the proton fraction (x_hp_fixed, imposed from the Newton
+      ! unknown) and solves the other stages against it, while the proton's
+      ! own equation is the stationary balance the Newton drives to zero.
+      ! Nothing is undone and the combination is supported.
+      !
+      ! Without that key the proton is outside the unknown space: the sweep
+      ! re-solves it on its own local root, which is exactly the departure
+      ! from local equilibrium this option exists to compute. That is
+      ! refused, and marching is the path for it.
+      if (use_newton_solver .and. .not. carrier_in_newton) then
+         write(*,*) '(input_read) ERROR: "Ionization transport: True" with'
+         write(*,*) '  "Solver: Newton" needs "Coupled carrier solve:'
+         write(*,*) '  True". Without it the proton is not an unknown of'
+         write(*,*) '  the stationary system, so the last equilibrium'
+         write(*,*) '  sweep would put back the local ionization state'
+         write(*,*) '  this option exists to leave. Set the third key, or'
+         write(*,*) '  march. Aborting.'
          error stop 1
       endif
-      if (use_newton_solver) then
-         write(*,*) '(input_read) ERROR: "Ionization transport: True" and'
-         write(*,*) '  "Solver: Newton" cannot both be set. The steady'
-         write(*,*) '  JFNK solve holds the composition at its own local'
-         write(*,*) '  root, so it would undo on the last iteration exactly'
-         write(*,*) '  the departure from local equilibrium this option'
-         write(*,*) '  exists to compute. Marching is the path for it.'
-         write(*,*) '  Aborting.'
-         error stop 1
+   endif
+
+   ! A COUPLED STEADY SOLVE MAY NOT ELIMINATE H2.
+   !
+   ! With the carriers eliminated, n(H2) is not an unknown of the stationary
+   ! system: it is whatever the local-equilibrium sweep returns for the
+   ! composition it was seeded with. In the shielded layer the sweep cannot
+   ! return a content at all. The fast chemistry there cycles
+   ! H2 -> H2+ -> H3+ -> H2 without changing the total number of H2 nuclei,
+   ! so the local balance rows fix only the PARTITION among the molecular
+   ! species and leave their sum where the seed put it; the content is set by
+   ! the slow formation and dissociation and by transport, neither of which a
+   ! local equilibrium sees. MEASURED on the hot Uranus element state
+   ! (docs/steady_solver_design.md, item B5h): 0.77 of any seed perturbation
+   ! of the layer's H2 content survives every pass of the sweep, the same 0.77
+   ! at perturbations of 1e-6 and of 1e-2, and the base cell's energy row,
+   ! being a near-cancellation of the fluxes its continuous-temperature ghost
+   ! produces, amplifies that by ~4e3. Two evaluations of ONE state then
+   ! differ by 3.2e5 times "Resid tol" per unit relative seed change. A
+   ! residual that is not a function of its unknowns has no root, and a state
+   ! accepted at "Resid tol" on it is accepting its seed.
+   !
+   ! With "Molecular carrier transport: True" the H2 row of the network
+   ! becomes x - x_fix with x_fix a Newton unknown, so the content is solved
+   ! from its transport balance instead of eliminated, and the same
+   ! measurement reads 9.7e-10, below "Resid tol" = 1e-8. That is the
+   ! configuration this refusal names. The marching path is not affected:
+   ! it never eliminates a quantity it also has to determine.
+   if (carrier_in_newton .and. thereis_mol .and. .not. carrier_transport)  &
+      then
+      write(*,*) '(input_read) ERROR: "Coupled carrier solve: True" on a'
+      write(*,*) '  molecular configuration ("Molecular chemistry: True")'
+      write(*,*) '  needs the molecular carriers transported. With them'
+      write(*,*) '  eliminated, n(H2) is not an unknown of the stationary'
+      write(*,*) '  system, and the local-equilibrium elimination does not'
+      write(*,*) '  determine the molecular hydrogen content of the'
+      write(*,*) '  shielded layer: the fast chemistry conserves H2 nuclei'
+      write(*,*) '  there, so the sweep returns the content it was seeded'
+      write(*,*) '  with. The stationary residual is then not a function of'
+      write(*,*) '  its unknowns -- MEASURED, its seed dependence is 3.2e5'
+      write(*,*) '  times "Resid tol" per unit relative seed change -- and'
+      write(*,*) '  there is no root for the Newton to converge to.'
+      write(*,*) '  Set "Molecular carrier transport: True", which makes'
+      write(*,*) '  n(H2) a Newton unknown solved from its own transport'
+      write(*,*) '  balance, or drop "Coupled carrier solve" and march.'
+      write(*,*) '  See docs/steady_solver_design.md. Aborting.'
+      error stop 1
+   endif
+
+   ! A CARRIER TRANSPORT WITH NOTHING TO TRANSPORT.
+   !
+   ! The transported carriers are species of the molecular network, and
+   ! every consumer of carrier_transport is guarded by thereis_mol, so with
+   ! the network off the key changes nothing: the run is the atomic one it
+   ! would have been without the line. That is why this is reported and not
+   ! refused -- what is wrong is the input file, not the state it produces.
+   ! Said rather than left silent, because a key that is present and inert
+   ! is the kind of thing a reader of the input file has no way to notice
+   ! (the same reason "Molecular IR bands" and "Stellar LW flux" say it).
+   !
+   ! Only an explicit "Molecular carrier transport: True" reaches here with
+   ! the network off: the unstated default is the oxygen chemistry, and that
+   ! is refused above without the network.
+   if (carrier_transport .and. .not. thereis_mol) then
+      write(*,'(A)') ' (input_read) WARNING: "Molecular carrier'//        &
+         ' transport: True" is set but "Molecular chemistry" is off;'
+      write(*,'(A)') '   the transported carriers are species of the'//   &
+         ' molecular network, so the run carries none of them and'
+      write(*,'(A)') '   the key has no effect. Set "Molecular'//         &
+         ' chemistry: True" to transport H2, or remove the line.'
+   endif
+
+   ! THE RUN MODE, AND WHY ITS DEFAULT IS init
+   ! (docs/a0_run_mode_contract_20260906.md sections 4 and 6).
+   !
+   ! The ordinary use of this code is a stationary solution: march until the
+   ! flux functional is flat, finish with a stationary solve, certify the
+   ! state. Every step of that is a relaxation iterate and none of it is a
+   ! trajectory, so in the contract's own terms the ordinary run is
+   ! initialization / continuation. A physical time integration is the
+   ! exception and is asked for; nothing is inferred, and a run that says
+   ! nothing claims no elapsed time.
+   !
+   ! A physical integration additionally needs one global dt per step,
+   ! because cells advanced by different intervals do not form one
+   ! trajectory: in a closed two-cell system with one internal flux, unequal
+   ! steps leave the material sum changed, so a local-dt update is a
+   ! relaxation iterate however long it is run. That is refused rather than
+   ! reinterpreted.
+   if (run_mode .eq. run_mode_phys .and. use_local_dt) then
+      write(*,*) '(input_read) ERROR: "Run mode: phys" and'
+      write(*,*) '  "Time stepping: Local" cannot both be set. Local'
+      write(*,*) '  pseudo-time advances each cell by its own interval, so'
+      write(*,*) '  the material sum across an internal face is not'
+      write(*,*) '  conserved and the update is a relaxation iterate rather'
+      write(*,*) '  than one physical step; there is no elapsed time to'
+      write(*,*) '  report for it. Use "Run mode: init" with local time'
+      write(*,*) '  stepping, or a global dt with "Run mode: phys".'
+      write(*,*) '  Aborting.'
+      error stop 1
+   endif
+
+   ! WHAT THIS RESTART CONTINUES, AND THE THREE STATEMENTS THAT CONTRADICT
+   ! THEMSELVES (docs/restart_contract_design_20260909.md section 2).
+   !
+   ! The intent is a statement about a state read from a file, so a run that
+   ! reads none has nothing to state; a trajectory is a physical integration,
+   ! so it cannot be continued by a run that claims no elapsed time; and a
+   ! stationary intent enters the stationary solve, so it needs one to enter.
+   ! Each is refused rather than reinterpreted: a key that is silently
+   ! ignored is a run doing something other than what its input file says.
+   if (restart_intent_given .and. .not. do_load_IC) then
+      write(*,*) '(input_read) ERROR: "Restart intent" is set but'
+      write(*,*) '  "Load IC?" is False, so there is no loaded state for'
+      write(*,*) '  the intent to be about. Set "Load IC? True", or'
+      write(*,*) '  remove the line. Aborting.'
+      error stop 1
+   endif
+   ! The same statement about the same absent state: naming the options a
+   ! restart may change says nothing when there is no state being restarted.
+   if (restart_option_change_given .and. .not. do_load_IC) then
+      write(*,*) '(input_read) ERROR: "Restart option change" is set but'
+      write(*,*) '  "Load IC?" is False, so no state is being restarted'
+      write(*,*) '  and there is no option set to compare with. Set'
+      write(*,*) '  "Load IC? True", or remove the line. Aborting.'
+      error stop 1
+   endif
+   if (restart_intent_given .and.                                          &
+       restart_intent .eq. restart_intent_trajectory .and.                 &
+       run_mode .ne. run_mode_phys) then
+      write(*,*) '(input_read) ERROR: "Restart intent: trajectory" with'
+      write(*,*) '  "Run mode: init". A trajectory is a physical'
+      write(*,*) '  integration: its clock, its accepted-step budgets and'
+      write(*,*) '  its histories exist only in physical mode, and an'
+      write(*,*) '  initialization run claims no elapsed time at all.'
+      write(*,*) '  Set "Run mode: phys" to continue the trajectory, or'
+      write(*,*) '  "Restart intent: relaxation". Aborting.'
+      error stop 1
+   endif
+   if (restart_intent .eq. restart_intent_stationary .and.                 &
+       .not. use_newton_solver) then
+      write(*,*) '(input_read) ERROR: "Restart intent: stationary" needs'
+      write(*,*) '  "Solver: Newton". The intent evaluates the stationary'
+      write(*,*) '  residual of the loaded state and then enters the'
+      write(*,*) '  stationary solve; with no stationary solver selected'
+      write(*,*) '  there is nothing to enter. Set "Solver: Newton", or'
+      write(*,*) '  "Restart intent: relaxation" to march. Aborting.'
+      error stop 1
+   endif
+   ! THE DEFAULT IS THE RUN MODE'S OWN MEANING. A physical run continues the
+   ! trajectory the file records; an initialization or continuation run
+   ! continues relaxing, which is what every restart did before this key
+   ! existed. No configuration changes behavior by the key being absent.
+   if (.not. restart_intent_given) then
+      if (run_mode .eq. run_mode_phys) then
+         restart_intent = restart_intent_trajectory
+      else
+         restart_intent = restart_intent_relaxation
+      endif
+   endif
+   if (do_load_IC) then
+      select case (restart_intent)
+      case (restart_intent_trajectory)
+         write(*,'(A)') ' (input_read) Restart intent: trajectory'//       &
+              ' (the clock continues from the state file)'
+      case (restart_intent_stationary)
+         if (stationary_evaluate_only) then
+            write(*,'(A)') ' (input_read) Restart intent: stationary'//    &
+                 ' evaluate (measure the state as loaded, take no step)'
+         else if (stationary_equilibrate_loaded) then
+            write(*,'(A)') ' (input_read) Restart intent: stationary'//    &
+                 ' equilibrate (put the loaded composition on its own'//   &
+                 ' fixed point first)'
+         else
+            write(*,'(A)') ' (input_read) Restart intent: stationary'//    &
+                 ' (measure the state as loaded, then solve; no CFL step)'
+         endif
+      case default
+         write(*,'(A)') ' (input_read) Restart intent: relaxation'//       &
+              ' (march toward stationarity, then the solver hand-off)'
+      end select
+      if (restart_option_change_given) then
+         optline = ' '
+         do iopt = 1, n_opt
+            if (restart_option_change_named(iopt))                         &
+               optline = trim(optline)//' '//trim(opt_name(iopt))
+         enddo
+         write(*,'(A)') ' (input_read) Restart option change:'//           &
+              trim(optline)//' (these options may differ between the'//    &
+              ' state and this run; every other'
+         write(*,'(A)') '              difference still refuses the load)'
       endif
    endif
 
@@ -1958,6 +2397,75 @@
    ! share a whitespace-separated prefix), is resolved by testing the longer
    ! key first in the keyword loop above (longest / most-specific first).
    ! --------------------------------------------------------------------- !
+
+   subroutine name_restart_option_change_token(tok)
+   ! ONE TOKEN OF "Restart option change" (decision 21 of
+   ! docs/To_be_determined_by_user_20260906.md, option a).
+   !
+   ! A token is either one of the physics switches the state file's
+   ! '# options' line carries, in which case naming it allows that switch
+   ! to differ between the file and this run; or one of the switches that
+   ! decide HOW MANY UNKNOWNS the state has, in which case naming it
+   ! cannot make the file's rows this run's rows and the run stops; or a
+   ! field of the state's configuration that is not an option at all (the
+   ! grid, the reservoir, the constants), which no restart carries across;
+   ! or a word this code has no meaning for, which stops the run rather
+   ! than being ignored.
+   character(len=*), intent(in) :: tok
+   ! The words that name a part of the configuration OTHER than the
+   ! options field: naming them would ask for a state built on another
+   ! discretization, another composition or another constant set to be
+   ! continued, which needs a conservative remap and not a key.
+   character(len=16), parameter :: not_an_option(11) = [ character(len=16)::&
+        'N', 'grid', 'R0', 'r_min', 'r_max', 'mode', 'reservoir',           &
+        'constants', 'species_columns', 't_phys', 'source' ]
+   integer :: i
+   do i = 1, n_opt
+      if (trim(tok) .ne. trim(opt_name(i))) cycle
+      if (opt_changes_layout(i)) then
+         write(*,*) '(input_read) ERROR: "Restart option change" names'
+         write(*,*) '  "'//trim(tok)//'", which decides how many unknowns'
+         write(*,*) '  the state has. The rows of the state file are then'
+         write(*,*) '  not the rows of this run, so this is not a restart'
+         write(*,*) '  of that state whatever is named: start this'
+         write(*,*) '  configuration cold. The tokens that may not be'
+         write(*,*) '  named are:'
+         call write_option_tokens(.true.)
+         error stop 1
+      endif
+      restart_option_change_named(i) = .true.
+      restart_option_change_given    = .true.
+      return
+   enddo
+   do i = 1, size(not_an_option)
+      if (trim(tok) .ne. trim(not_an_option(i))) cycle
+      write(*,*) '(input_read) ERROR: "Restart option change" names'
+      write(*,*) '  "'//trim(tok)//'", which is not a physics option but'
+      write(*,*) '  part of the discretization, the composition or the'
+      write(*,*) '  constant set the state was built on. A state is not'
+      write(*,*) '  carried across such a change by naming it; that'
+      write(*,*) '  needs a conservative remap or a cold start.'
+      error stop 1
+   enddo
+   write(*,*) '(input_read) ERROR: "Restart option change" names the'
+   write(*,*) '  unknown token "'//trim(tok)//'". The tokens are the'
+   write(*,*) '  ones of the "# options" line of a state file:'
+   call write_option_tokens(.false.)
+   error stop 1
+   end subroutine name_restart_option_change_token
+
+   subroutine write_option_tokens(layout_only)
+   ! The vocabulary, so that a refusal states what could have been said.
+   logical, intent(in) :: layout_only
+   character(len=250) :: s
+   integer :: i
+   s = ' '
+   do i = 1, n_opt
+      if (layout_only .and. .not. opt_changes_layout(i)) cycle
+      s = trim(s)//' '//trim(opt_name(i))
+   enddo
+   write(*,*) '  '//trim(s)
+   end subroutine write_option_tokens
 
    logical function lbl_match(line, key)
    ! .true. iff adjustl(line) begins with `key` followed by a value separator.
@@ -2094,7 +2602,7 @@
    !                                       coming from that same species
    !                                       state, so the equation of state and
    !                                       the chemistry describe one gas
-   !                                       (section 117 of Update_EXHALE).
+   !                                       (section 117 of Update_EXHALE_stage1).
    !                                       Refused above 0.5/(0.5+He/H).
    !  elemental          the reservoirs the wind transports and redistributes:
    !   reservoir         HeH_base       -> HeH (He/H nuclei)
@@ -2107,8 +2615,10 @@
    !  initial guess      none today. A key in this category would seed a
    !                     profile the solver is free to move away from.
    !  boundary           Kzz_base [cm2/s] -> he_kzz, the eddy diffusion
-   !   constraint        coefficient the element-diffusion operator imposes
-   !                     at the base (inert with He_diffusion off).
+   !   constraint        coefficient at the base. It fills kzz_cell, which
+   !                     the element transport and the molecular carrier
+   !                     transport both read, so it is inert only when
+   !                     neither of those runs.
    !
    ! Species mixing ratios other than q_H2_base (q_H2O, q_CO, ...) stay
    ! comments: no part of the code consumes them, so they are diagnostic
@@ -2203,7 +2713,8 @@
       else if (lbl_match(line,'p_base')) then
          call refuse_scalar_key('p_base', 'EOS boundary')
          str = get_word(line,2);  read(str,*) p_base_bar
-         base_level_from_base_inp = .true.
+         base_level_from_handoff = .true.
+         base_level_source       = 'base.inp p_base'
          write(*,'(A,ES9.2,A)') '   base.inp: p_base -> ', p_base_bar, ' bar'
       else
          ! Elemental reservoirs "<El>_H_base": El/H nuclei ratio at the
@@ -2323,7 +2834,13 @@
       R0 = val
       write(*,'(A,F8.4,A)') '   profile: R0 -> ', R0, ' R_J'
    endif
-   p_base_bar = lap_p_match_bar
+   ! The matching level is the base level: T, r, q_H2 and every elemental
+   ! ratio above were read AT p_match, so the wind starts there and n0
+   ! follows from it in the base-level block of input_read, exactly as it
+   ! follows from base.inp's p_base (rev 3 section 10.2 item 4).
+   p_base_bar              = lap_p_match_bar
+   base_level_from_handoff = .true.
+   base_level_source       = 'the profile matching level p_match'
    write(*,'(A,ES9.2,A)') '   profile: p_base -> ', p_base_bar, ' bar'
    call lap_value_at_match('q_H2', val, got)
    if (got) then
@@ -2463,7 +2980,11 @@
 	
 	character(len = :), allocatable :: get_word
 	
-	! Initialize counters and strings
+	! Initialize counters and strings. The result is allocated here, so a
+	! string that holds fewer than n_word words returns the EMPTY string
+	! rather than an unallocated deferred-length result, which the standard
+	! leaves undefined; the callers test the result with len_trim.
+	get_word       = ''
 	counter        = 1
 	c_word_counter = 0
 	string   = trim(string_in)

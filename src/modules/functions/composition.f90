@@ -113,12 +113,12 @@
             call calc_ntot(nhi, nhii, nhei, nheii, nheiii, n_tot,       &
                            nm, nmol_l, nox_l)
          else
-         call calc_ntot(nhi, nhii, nhei, nheii, nheiii, n_tot,          &
-                        nm, nmol_l)
+            call calc_ntot(nhi, nhii, nhei, nheii, nheiii, n_tot,       &
+                           nm, nmol_l)
          endif
       else
-      call calc_ne(nhii, nheii, nheiii, ne, nm)
-      call calc_ntot(nhi, nhii, nhei, nheii, nheiii, n_tot, nm)
+         call calc_ne(nhii, nheii, nheiii, ne, nm)
+         call calc_ntot(nhi, nhii, nhei, nheii, nheiii, n_tot, nm)
       endif
 
       ! Particle count of the first interior cell, kept where n_tot and n_e are
@@ -160,14 +160,17 @@
       ! run's NaN detector reports it, rather than be silently turned into a
       ! zero singlet.
       !
-      ! The counter is a plain increment. Every call site forms the whole
-      ! column outside the OpenMP region that consumes it (PH_heat_HHe) or
-      ! runs on the serial post-process, so no two threads reach it at once.
+      ! The counter is incremented atomically, so the function may be called
+      ! from inside a parallel region (the self-consistent field loop of
+      ! ionization_equilibrium does) as well as from the serial column
+      ! formations, and the run-wide total stays exact without a lock around
+      ! the call.
       real*8, intent(in) :: nhei, nheiTR
 
       he_ground_singlet_density_cell = nhei - nheiTR
       if (he_ground_singlet_density_cell .lt. 0.0d0) then
          he_ground_singlet_density_cell = 0.0d0
+         !$omp atomic update
          n_cells_he_singlet_clamped = n_cells_he_singlet_clamped + 1
       endif
 
@@ -216,11 +219,12 @@
       ! base belongs here for the same reason: it is part of the base
       ! particle count, not a separate correction applied afterwards.
       !
-      ! Byte-identity: bsp_mass(isp_HI) is exactly 1.0d0 and
-      ! bsp_mass(isp_HeI) exactly 4.0d0, and 1.0 / 4.0 are exact in double,
-      ! so bsp_mass(isp_HI) + bsp_mass(isp_HeI)*HeH reproduces the legacy
-      ! literal "1.0 + 4.0*HeH" bitwise. The metal terms and the division
-      ! order match the original expressions exactly.
+      ! The H and He masses are the species table's and nothing else:
+      ! bsp_mass(isp_HI) = 1 and bsp_mass(isp_HeI) = 3.9715259, the
+      ! helium-4 atom in units of the hydrogen atom, so this base
+      ! composition and the rho that calc_rho forms from the same table
+      ! cannot disagree.  The metal weights melem_A the sum below adds are
+      ! in the same unit, the hydrogen atom, not in u.
       ! ------------------------------------------------------!
 
       real*8 function comp_mass_per_H()

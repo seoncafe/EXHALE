@@ -2,7 +2,7 @@
 
 Written to restart from in a fresh session. Read this first; then
 `docs/session_handoff_20260905.md` (the last session's runs and scratch
-paths), `docs/Update_EXHALE.md` sections 159-171 (the dated record), and
+paths), `docs/Update_EXHALE_stage1.md` sections 159-171 (the dated record), and
 `docs/koskinen2022_model_a_comparison.tex` (the current validation target).
 Every statement below was verified in the sessions of 2026-09-02 to 09-06
 unless marked "per the earlier record" (memory notes of earlier sessions).
@@ -46,10 +46,10 @@ problems begin exactly there (section 4).
   cases> && ./run_check.sh check`. The agent's attempt was refused by the
   auto-mode classifier; the user runs it. Everything after 170 (section 171)
   left the default path bitwise identical (verified in scratch copies).
-* Documentation: `docs/Update_EXHALE.md` (26,000 lines, sections 1-171),
+* Documentation: `docs/Update_EXHALE_stage1.md` (26,000 lines, sections 1-171),
   104 memos in `docs/`, `docs/input_schema.md` (every input key),
   `README.md`, `README_HOWTO.md`, `docs/EXHALE_user_manual.tex`. Whether the
-  manual and `Update_EXHALE.tex/.pdf` are current against the `.md`
+  manual and `Update_EXHALE_stage1.tex/.pdf` are current against the `.md`
   changelog was not checked this session.
 
 ## 2. Physics inventory
@@ -69,7 +69,7 @@ row; **X** not implemented.
 | outer boundary: outflow | I | -- |
 | viscosity, conduction (Watson et al. 1981 kappa) | I | keys `Viscosity`, `Conduction`; conduction negligible on Model A, as they state |
 | caloric EOS: H2 rovibrational ladder, atoms/ions/electrons 3/2 k; `Caloric EOS: monatomic` (comparison option) | I | P53; the Koskinen gate's outer temperature is insensitive to it (20 K) |
-| convergence: two-stage `du` (flux spread) hand-off, JFNK Newton finish with the scaled trust region (sections 153/159), PTC | L | atomic winds: Newton info = 0 on four planets (per the earlier record); `wasp_full_newton` stops at `||R||` ~5e-4 against a 1e-5 target (base energy row). A `du` stop alone leaves Mdot path-dependent at the per-cent level: **always Newton-finish an atomic run before quoting Mdot.** Molecular winds with transported H+ cannot be Newton-finished (2.4) |
+| convergence: two-stage `du` (flux spread) hand-off, JFNK Newton finish with the scaled trust region (sections 153/159), PTC | L | atomic winds: Newton info = 0 on four planets (per the earlier record); `wasp_full_newton` stops at `||R||` ~5e-4 against a 1e-5 target (base energy row). A `du` stop alone leaves Mdot path-dependent at the percent level: **always Newton-finish an atomic run before quoting Mdot.** Molecular winds with transported H+ cannot be Newton-finished (2.4) |
 | restart: write -> read -> write is the identity (`roundtrip` case); restart onto another grid by `interp_ic.py` (session scratch) | I | section 169.3 fixed the ghost-row inconsistency of the writer; files written before it carry it in their two lower ghost rows |
 | OpenMP over cells (ionization sweep, cooling, hydro stages, carrier Jacobian) | V | 16 threads: 4x a 2026-09-04 step; serial-vs-parallel bitwise for the atomic cases |
 
@@ -79,7 +79,8 @@ row; **X** not implemented.
 |---|---|---|
 | spectrum: power law, monochromatic, or a loaded SED (`Spectrum type: Load` + file: two columns, A and erg cm^-2 s^-1 A^-1 at the planet, no header) | V | the mean-solar file of the Koskinen comparison; a molecular run with a loaded SED crashed at startup until 171.2 (an unallocated H2 channel vector) |
 | dayside average `2D approximate method: Rate/4 + Mdot` (rates and heating / 4, full-sphere Mdot) | V | the same as Model A's "flux divided by 4" (section 168) |
-| photoionization H, He, He+, He 2^3S, metals (Verner et al. 1996; opacity tables optional) | V | ATES/AIOLOS heritage; Huang 2023 |
+| photoionization H, He, He+, He 2^3S, metals (Verner et al. 1996 and Verner & Yakovlev 1995; opacity tables optional) | V | ATES/AIOLOS heritage; Huang 2023. The seventeen metal stages take each fit only where it is valid and carry the SHELL SUM, outer plus subshells, reproducing Verner's own `phfit2` to 1e-10 at 17 ions x 12 energies (MEASURED). Huang et al. 2023 (ApJ 951, 123, section 2.4.1) also combine outer- and inner-shell cross sections, which supports checking a shell-complete opacity and does not by itself validate the effective charge-stage and heating approximation of the next row, which keeps its applicability statement and its own charge/energy audit (PLAN_20260909_review, section 10) |
+| metal inner-shell absorption: the ion advances one stage, one electron of h nu - E_th(outer) to the cascade | L | the true Auger event leaves the atom two or more stages up, which the three-stage metal ladder cannot hold; the one electron delivers 0.95-1.09x the heat and 1.10-1.37x the secondary H I ionizations of the two the real event has (MEASURED, C I 300 eV, N I 530 eV, O I 550 eV). Fluorescence neglected, and quantified: with e_top = 1240 eV only C, N, O and Na I can have a K hole and their omega_K are 0.28, 0.52, 0.83 and 2.3 per cent, while every reachable L-shell event is radiationless to better than 0.7 per cent (READ, Krause 1979 Tables 3 and 5). What the published photochemistry models do (Cecchi-Pestellini et al. 2009; Locci et al. 2022); decision item 7, decided (b) 2026-09-07 |
 | H2 photoabsorption: four channels (H2+; H+ + H; 2H+; neutral dissociation window) sharing one cross section (section 151) | I | moved molecular snapshots 2-24 per cent (151.11); no external check |
 | photoelectron energy: h nu - I heats (default); secondary ionization (Shull & van Steenberg, staged after first convergence, or `Immediate`, or off) | V/L | standard for the atomic line; the Koskinen comparison shows Model A deposits 2.5-3x h nu - I at the same ionization rate -- a property of their code. `Photoelectron heating: full` or `<fraction>` are comparison-only options (171.5) |
 | He recombination photons ionizing H (`He_rec_coupling`, default on) | I | off for the Model A runs (they lose I to recombination) |
@@ -94,8 +95,9 @@ row; **X** not implemented.
 | rates: Badnell case B recombination, Voronov collisional ionization; `Atomic rate set: Koskinen2022` (their Table 1 R1-R4) | V | the switch moved the Koskinen gate by < 5 per cent |
 | metals C, N, O, Mg, Si, Ca, Na, K, S, Fe; closed-form CHIANTI cooling; `eos_metals` in the mass/electron/particle budget | V | Huang 2023 WASP-121b Fe II / Mg II cooling and Mg II, Na I, Ca II transit depths (per the earlier record) |
 | He 2^3S: Penning ionization (Taylor 2025 fit), triplet cooling in the energy solver, charge exchange, He 10830 transit | V | Falorca 2026 review items closed (per the earlier record) |
-| molecular network H2, H2+, H3+, HeH+ (Koskinen 2022 Table 1 R1-R23); collisional reaction heat (P53, default on); H2 caloric EOS | I | the Koskinen gate; per-molecule H2 loss at 1.5 r_base agrees with Model A (1.0e-5 vs 1.2e-5 s^-1) |
-| oxygen cycle OH, H2O, CO, five FUV photolysis bands, CO reservoir, `Oxygen_chemistry.txt` | I | no external check |
+| molecular network H2, H2+, H3+, HeH+ (Koskinen 2022 Table 1 R1-R23); collisional reaction heat (P53, default on); H2 caloric EOS | I | the Koskinen gate; the H2 loss rate of one molecule at 1.5 r_base agrees with Model A (1.0e-5 vs 1.2e-5 s^-1) |
+| oxygen cycle OH, H2O, CO, four FUV photolysis bands, CO reservoir, `Oxygen_chemistry.txt` | I | no external check |
+| CO destruction: `He+ + CO` (UMIST RATE22 4068, with its He+ sink in the molecular systems' He+ row since B3b-CO2) and shielded photodissociation on the Lyman-Werner beam (Visser et al. 2009 Table 6), with a domain record evaluated in each cell (2026-09-06, B3b-CO) | I | the shielding table's own spread between its 5 K and 50 K excitation temperatures is a factor 22 at the worst grid point, and the layer runs at 800-3000 K. The thermodynamic CO ceiling that stood above the layer was deleted on 2026-09-06 (item CEILING-DEL); MEASURED at the deletion, it never fired in the current tree, so every output column was byte-identical across it |
 | cooling: recombination, collisional excitation (Ly-alpha and He), bremsstrahlung, H3+ (Miller 2013 LTE x Table 6 non-LTE), H2/H2O/CO infrared bands, the infrared field of the atmosphere below | I/L | H3+ per molecule is ~3x what Model A's Figure 9 implies at 3 r_base (their Koskinen 2009 detailed-balance table is not reproduced here) |
 | the sweep returns the heating and cooling OF THE COMPOSITION IT RETURNS (section 170) | V | fixed 2026-09-05; before, both belonged to the pre-sweep composition |
 
@@ -137,7 +139,7 @@ HD 189733b, WASP-52b, WASP-121b. The two physical fixes of this session
 1. **Convergence depth.** `wasp_full_newton` reaches `||R||` ~5e-4, not the
    1e-5 target (base energy row). Answers are stable; they are not
    "precisely converged". A `du`-only stop is path-dependent at the
-   per-cent level in Mdot.
+   percent level in Mdot.
 2. **Advected ionization is post-processed, not in the hydro**, for the
    atomic line (ATES method). Where P r/v >> 1 in the wind -- the hot
    Jupiters validated -- local equilibrium is right; at low flux or large
@@ -210,7 +212,7 @@ ten differences with sizes.
    and the heating deposited per ionization, or Figure 9 in numbers.
 5. **H3+ non-LTE factor**: the Koskinen et al. (2009) Table 2 ratios as an
    alternative table (a key selects); measure the outer temperature
-   response. Acceptance: per-molecule cooling at 3 r_base within 1.5x of
+   response. Acceptance: cooling of each molecule at 3 r_base within 1.5x of
    what their Figures 8 and 9 imply.
 6. **Base limit cycle**: local time-step control in the base cells (CFL
    below 0.15-0.3 there) or the characteristic face condition revisited.
@@ -221,7 +223,7 @@ ten differences with sizes.
    on the four planets; Mdot movement reported.
 8. **Housekeeping**: `interp_ic.py` under `src/utils/`; the `Cool_coeff`
    wrappers and `_func` names; the literal constants; regenerate
-   `Update_EXHALE.tex/.pdf` and the manual from the `.md`; a spectrum file
+   `Update_EXHALE_stage1.tex/.pdf` and the manual from the `.md`; a spectrum file
    with the 1-5 A part.
 9. **Instruction-gated (never autonomous)**: paper/poster re-convergence
    with the current defaults, the LHS 1140 b write-up, the GitHub public

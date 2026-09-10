@@ -17,7 +17,7 @@ reported throughout Sec. 5 and Sec. 8 was traced to the JFNK diagonal scaling
 and the stagnation watchdog, and the same cases now converge with `info = 0`;
 see `docs/newton_scaling_and_base_wall.md`. The derivation, the discretization,
 the verification of Sec. 7 and the physical A/B numbers of Sec. 8 are
-unaffected — only the diagnosis they were measured against is. All `info = 2`
+unaffected, only the diagnosis they were measured against is. All `info = 2`
 outcomes and every "worst residual cell `j = 1`" entry below were produced with
 the old scaling and the old worst-cell print, both of which normalized momentum
 by the base cell's `|rho v|`.
@@ -102,7 +102,7 @@ source of the dissipation functional, not as a viscosity parameterization. So
 there is no coefficient in those papers to reproduce, and we take the standard
 atmospheric-escape choice instead.
 
-**Heat conduction** — atomic hydrogen, Watson, Donahue & Walker (1981, Icarus
+**Heat conduction**: atomic hydrogen, Watson, Donahue & Walker (1981, Icarus
 48, 150); quoted in this closed form as Eq. (A6) of Erkaev et al. (2016, MNRAS
 460, 1300):
 
@@ -110,7 +110,7 @@ atmospheric-escape choice instead.
 kappa(T) = 4.45e4 (T/1000 K)^0.7      erg cm^-1 s^-1 K^-1                      (4)
 ```
 
-**Viscosity** — tied to (4) by the Chapman-Enskog/Eucken relation for a
+**Viscosity**: tied to (4) by the Chapman-Enskog/Eucken relation for a
 monatomic gas, `kappa = (15/4)(k_B/m) mu` (Prandtl number 2/3):
 
 ```
@@ -129,7 +129,7 @@ included for the dense, largely neutral base (`r <~ 1.1 R_p`), which is where
 the momentum imbalance they are meant to damp lives. Koskinen et al. (2013a)
 state (their footnote 4) that conduction and viscosity are not important in the
 thermosphere of HD 209458 b, so the omission is expected to be numerically
-small there — but it is an omission, and it is recorded here rather than hidden.
+small there, but it is an omission, and it is recorded here rather than hidden.
 
 ### Code units
 
@@ -164,7 +164,7 @@ the outermost cell.
 Both operators are assembled **once** as tridiagonal coefficient triplets
 (`viscous_momentum_coeffs`, `thermal_conduction_coeffs`) and those same
 triplets are used for the residual source *and* as the matrix of the implicit
-update — see Sec. 5.
+update: see Sec. 5.
 
 ### Boundary conditions
 
@@ -197,8 +197,8 @@ tridiagonal system entirely.
 ## 4. Time integration
 
 Viscosity and conduction are diffusive: an explicit update is limited by
-`dt < rho dr^2/mu` (and `dt < C dr^2/kappa`), which in the finely gridded base —
-exactly where the terms matter — is far below the advective CFL step. They are
+`dt < rho dr^2/mu` (and `dt < C dr^2/kappa`), which in the finely gridded base,
+exactly where the terms matter, is far below the advective CFL step. They are
 therefore integrated **semi-implicitly (Crank-Nicolson)** as an operator-split
 stage of the marching loop, as CETIMB does:
 
@@ -232,8 +232,8 @@ JFNK must solve *exactly* the system the marching relaxes: a term present in one
 and absent from the other makes the two paths converge to different states.
 (This section originally cited the `info=2` stagnation of
 `docs/base_composition_handoff_plan.md` Sec. 11.8-11.9 as evidence for that
-requirement. That attribution is withdrawn — the stagnation was the solver's
-scaling and watchdog, Sec. 11.10 there — but the consistency requirement itself
+requirement. That attribution is withdrawn: the stagnation was the solver's
+scaling and watchdog, Sec. 11.10 there, but the consistency requirement itself
 stands on its own and is what the three properties below enforce.)
 
 1. **One definition of the source.** `viscous_conduction_sources` returns the
@@ -247,14 +247,14 @@ stands on its own and is what the three properties below enforce.)
    state changes by `-dt(dF - S)` (RK), `+dt(heat - cool)` (energy stage) and
    `+dt(F_mu, w F_mu + q_mu + Q)` (transport stage). A fixed point of the
    composite requires the sum to vanish, i.e.
-   `dF - S - F_mu = 0` and `dF_E - S_E - (heat-cool) - (w F_mu + q_mu + Q) = 0`
-   — which is the residual `assemble_residual` returns.
+   `dF - S - F_mu = 0` and `dF_E - S_E - (heat-cool) - (w F_mu + q_mu + Q) = 0`,
+   which is the residual `assemble_residual` returns.
 
 One consequence for the interface: `assemble_residual` now takes
 `n_part = n_tot + n_e` instead of nothing, and forms `T = p/n_part` internally.
 Passing the *particle count* rather than `T` keeps `T` a function of the Newton
 unknowns, so the temperature dependence of the conduction operator is captured
-by the residual's linearization — including in the frozen-radiation residual
+by the residual's linearization, including in the frozen-radiation residual
 that builds the banded preconditioner.
 
 ---
@@ -305,31 +305,31 @@ machine precision. That exercises the face interpolation, the geometric
 
 ## 8. Gate results (2026-08-10)
 
-**G1 — default-off byte identity.** `backup/regression/run_check.sh check` over
+**G1: default-off byte identity.** `backup/regression/run_check.sh check` over
 `wasp_full`, `wasp_he23off`, `mol_base_handoff`. All three carry no
 `Viscosity`/`Conduction` key, all three reproduce their goldens bitwise.
 
-**G2 — acceptance run** (`wasp_full` + `Solver: Newton`, `Viscosity: True`,
+**G2, acceptance run** (`wasp_full` + `Solver: Newton`, `Viscosity: True`,
 `Conduction: True`, no Shapiro filter, secondary ionization at its default
 staging), against a control that is the identical binary and configuration
 *without* the two keys:
 
 | | transport ON | control (OFF) | flux-converged golden |
 |---|---|---|---|
-| JFNK | `info=2`, best `||R|| = 1.195` | `info=2`, best `||R|| = 1.201` | — |
-| worst residual cell | `j=1, r=1.000, k=2` | `j=1, r=1.000, k=2` | — |
+| JFNK | `info=2`, best `||R|| = 1.195` | `info=2`, best `||R|| = 1.201` | - |
+| worst residual cell | `j=1, r=1.000, k=2` | `j=1, r=1.000, k=2` | - |
 | `log10 Mdot` | 13.20 | 13.20 | 13.22 |
 | negative densities | 20 entries / 5 cells, r = 1.0145-1.0154 | 20 / 5, same cells | 68 / 17, r = 1.0106-1.0140 |
-| converged `T`, `rho` | — | — | on-vs-off differ by < 0.05% |
+| converged `T`, `rho` | - | - | on-vs-off differ by < 0.05% |
 
 So: **the `||R|| < 1e-3` target is not met, and the terms change nothing.**
 Mdot is 4.5% below the golden, inside the quoted 2-5% band, and identical to
-the control — the shift is the known path dependence of the `du` stop, not the
+the control: the shift is the known path dependence of the `du` stop, not the
 new physics. The negative densities are the same cells, count and magnitude as
 the control (the most negative entry differs in the 4th digit), so they are
 untouched by molecular transport.
 
-### Why viscosity cannot meet the target — the measurement
+### Why viscosity cannot meet the target: the measurement
 
 Evaluated on the flux-converged golden WASP-121 b state (`EXHALE_RESIDUAL=1`
 with and without the keys, so the difference *is* the new source):
@@ -346,7 +346,7 @@ with and without the keys, so the difference *is* the new source):
 
 A direct test with `Viscosity: 4.2e-5 0.7` (that 5.7e3 factor, i.e.
 `mu ~ 0.8 g cm^-1 s^-1`) drives the `j=1` momentum residual from 1.16 to
-4.1e-3 — and moves the imbalance to `j=2` (0.77), with the volume-weighted
+4.1e-3, and moves the imbalance to `j=2` (0.77), with the volume-weighted
 norm rising from 0.107 to 3.68. So even an unphysically large viscosity does
 not remove the base imbalance; it relocates it.
 
@@ -359,8 +359,8 @@ Reynolds number at the base is ~1e8.
 *Interpretation.* The numbers above establish only that the viscous force is
 too small by ~4 orders to cancel the base-cell momentum residual, and that
 raising `mu` enough to cancel it at `j = 1` relocates the imbalance to `j = 2`.
-The further reading recorded here originally — that the residual is therefore a
-property of the lower boundary condition — was **withdrawn on 2026-08-10**:
+The further reading recorded here originally (that the residual is therefore a
+property of the lower boundary condition) was **withdrawn on 2026-08-10**:
 the base momentum row was subsequently measured to be satisfiable (a 2.9 ppm
 ghost-pressure change nulls it), and the `j = 1` "worst cell" was an artifact of
 a diagnostic that normalized momentum by the base cell's own `|rho v|`. See
@@ -375,7 +375,7 @@ a diagnostic that normalized momentum by the base cell's own `|rho v|`. See
 > base; see `INVALID_BASE_TEMPERATURE.md` in each run directory and item
 > P35 of `TO_BE_DONE.md`.
 
-**G3 — the full-physics continuation**
+**G3: the full-physics continuation**
 (`vulcan_work/hd209_wind_response/photo_deep_secion_cont/`, HD 209458 b with a
 `base.inp` handoff and a molecular base), re-run in a scratch copy with both
 keys added:
@@ -393,8 +393,8 @@ with the terms on, and the reason appears to be the hand-off timing: the JFNK
 fires 2000 steps after the continuation starts, while the conduction operator's
 relaxation time at the base is `C dr^2/kappa ~ 2 t_s`, i.e. ~2e4 base steps.
 Unlike WASP-121 b, HD 209458 b's cold molecular base *is* sensitive to
-conduction — base `T` moves by up to 4% below r = 1.02 and `rho` by up to 13%
-near r = 1.07 — so the hand-off state is still adjusting. (Tentative; not
+conduction (base `T` moves by up to 4% below r = 1.02 and `rho` by up to 13%
+near r = 1.07), so the hand-off state is still adjusting. (Tentative; not
 demonstrated by re-running with a later hand-off.)
 
 **Marching/residual consistency, measured.** On that same transport-relaxed G3
@@ -403,7 +403,7 @@ included and 5.06e-2 with them excluded**. The state the marching produced is a
 better steady state of the system *with* the terms than of the inviscid system,
 which is the observable signature that the two paths solve the same equations.
 
-**G4 — comparison with Koskinen et al. (2013a)** HD 209458 b. Only qualitative:
+**G4: comparison with Koskinen et al. (2013a)** HD 209458 b. Only qualitative:
 their C2 model uses a 1 microbar lower boundary at `T0 = 1300 K`, the average
 solar spectrum (0.45 W m^-2 shortward of 912 A after the global-average
 division by 4), and multi-species diffusive separation, none of which the

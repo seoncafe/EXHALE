@@ -7,7 +7,7 @@ source. The corrections M1 forced have been folded into sections 2.2, 2.4, 2.5,
 2.6 and 7 below and are listed in section 8 of the audit. The decision that
 authorizes it is the P4 block of `docs/oxygen_chemistry_new_plan.md`, dated
 2026-08-30: *A2 proceeds as a runtime option, default off*, with two conditions
-attached — (a) the scope is local kinetics **plus vertical diffusive transport**
+attached, (a) the scope is local kinetics **plus vertical diffusive transport**
 from the start, and (b) the first gate is an A/B against the Photochem handoff
 on the HD 189733 b base, run as a regression. This document is the design that
 decision asked for, and it is to be reviewed before any code is written.
@@ -15,17 +15,17 @@ decision asked for, and it is to be reviewed before any code is written.
 
 Inputs read for this design, all of them read rather than recalled:
 
-- `docs/oxygen_chemistry_new_plan.md` — the plan of record: the A2 scope
+- `docs/oxygen_chemistry_new_plan.md`, the plan of record: the A2 scope
   inventory (section 2, "Problem A"), the physics ranking (section 4.1), the
   P1/P3/P4 result blocks and the seven acceptance gates of P4;
-- `docs/vulcan_photochem_comparison.md` sections P1.4, P1.5 — the measured
+- `docs/vulcan_photochem_comparison.md` sections P1.4, P1.5: the measured
   reaction budget and the network / code / domain decomposition;
 - the P1 budget files themselves,
   `vulcan_work/pc_compare_p1/{hd189_toa1e-2,hd209_toa1e-2,hd189_toa6e-3}/pc_*_budget.pkl`
   and the matching `pc_*_solution.pkl`, re-measured for this design (section 2.2);
-- `docs/binary_diffusion_design.md` sections 2, 3, 4, 7 — the transport
+- `docs/binary_diffusion_design.md` sections 2, 3, 4, 7: the transport
   formulation this design reuses;
-- `docs/phase_e_flux_closure_design.md` sections 2.4, 3.2, 3.3 — the profile
+- `docs/phase_e_flux_closure_design.md` sections 2.4, 3.2, 3.3: the profile
   handoff, the single-source rule and its refusals, and the eddy coefficient;
 - the source, read for this design: `src/modules/lower_atmosphere/mol_rates.f90`,
   `lyman_werner.f90`, `lower_column.f90`;
@@ -59,7 +59,7 @@ existing result is reproduced bit for bit.
 
 ### 1.2 The three choices that shape the rest
 
-**C1 — species-resolved kinetics with vertical transport, not an extension of
+**C1: species-resolved kinetics with vertical transport, not an extension of
 the local equilibrium solve.** This is P4 condition (a), and the measurement
 behind it is unambiguous: at the HD 189733 b base, `tau_chem(H2)/tau_adv` is
 **0.20 to 1.67** on `H/v` and **16.4** when compared at the same pressure
@@ -69,7 +69,7 @@ the partition. An A2 built as more rows of `System_HeH_mol` would inherit the
 defect it exists to remove. Section 3 is therefore not an appendix to section 2;
 it is half the design.
 
-**C2 — one oxygen, one hydrogen, one owner each.** The metal block already owns
+**C2: one oxygen, one hydrogen, one owner each.** The metal block already owns
 oxygen as O I / O II / O III (`species_table.f90:128`, `iel_O = 2`), and the
 molecular block already owns hydrogen nuclei through `bsp_nH`
 (`species_table.f90:103`). A2 adds carriers to both elements. The design
@@ -84,7 +84,7 @@ with the metal block's O I redefined to mean *free atomic neutral oxygen*, never
 a second oxygen reservoir. Section 4 states where every one of those terms is
 read and written.
 
-**C3 — the FUV arrives as bands with named fluxes, not as an extension of the
+**C3: the FUV arrives as bands with named fluxes, not as an extension of the
 XUV energy grid.** The photon energy grid is built from the ionization
 thresholds of the species the run carries: it starts at `e_th_HI = 13.6 eV` and
 is lowered only to the He 2^3S edge (4.8 eV) or to the lowest active low-IP
@@ -147,7 +147,7 @@ The document's own P1.4/P1.5 tables were reproduced to the quoted digits; the
 reaction-by-reaction rankings below are new and are cited to the pickles, not to the
 document.
 
-**HD 189733 b, 1 microbar, 864 K, arm C' — net H2 loss 8.617e6 cm^-3 s^-1**
+**HD 189733 b, 1 microbar, 864 K, arm C': net H2 loss 8.617e6 cm^-3 s^-1**
 
 | share of net | channel |
 |---|---|
@@ -163,7 +163,7 @@ and the cycle that returns the water to OH: H2O loss is 54.5% `H2O + hv -> H + O
 `H2O + hv -> H + H + O`; H2O production is 100.0% `OH + H2 -> H2O + H`. OH loss
 is 97.6% `OH + H2`, 2.4% `OH + H -> O + H2`, and 0.02% `OH + CO -> H + CO2`.
 
-**HD 209458 b, 1 microbar, 2331 K, arm C' — net H2 loss 6.089e6 cm^-3 s^-1**
+**HD 209458 b, 1 microbar, 2331 K, arm C': net H2 loss 6.089e6 cm^-3 s^-1**
 
 | share of net | channel |
 |---|---|
@@ -173,7 +173,7 @@ is 97.6% `OH + H2`, 2.4% `OH + H -> O + H2`, and 0.02% `OH + CO -> H + CO2`.
 | 1.7% | `O(1D) + H2 -> OH + H` |
 | 0.02% | `CO + H2 -> HCO + H` |
 
-**HD 209458 b, 1e-4 bar, 1830 K, arm C' — net 1.306e8 cm^-3 s^-1**: `H2 + M`
+**HD 209458 b, 1e-4 bar, 1830 K, arm C', net 1.306e8 cm^-3 s^-1**: `H2 + M`
 97.2%, `OH + H2` 1.5%, `O + H2` 1.2%, `CO + H2 -> HCO + H` 0.13%.
 
 Four things follow, and they are the whole justification for the species list:
@@ -184,7 +184,7 @@ Four things follow, and they are the whole justification for the species list:
    of the HD 209458 b net. Nothing else reaches 2%.
 2. **O(1D) cannot be lumped into ground-state O.** It is 7.8% of the net H2 loss
    on HD 189733 b against 3.7% for ground O, while its mixing ratio there is
-   5.35e-11 against 9.59e-8 for O — three decades less abundant and twice as
+   5.35e-11 against 9.59e-8 for O: three decades less abundant and twice as
    effective. Lumping them would multiply the O + H2 channel by ~1800. It is
    carried, but it does not need transport (section 2.3).
    *M1 note:* those two shares are a correct report of a run made with the
@@ -231,9 +231,9 @@ Four things follow, and they are the whole justification for the species list:
 
 **O(1D) is closed by a local steady state, not transported.** Its measured
 mixing ratio is 5.35e-11 (HD 189733 b, 1 microbar) against 9.59e-8 for ground O.
-It has exactly one source in this set — the `H2 + O(1D)` branch of H2O
+It has exactly one source in this set (the `H2 + O(1D)` branch of H2O
 photolysis, which carries a quantum yield of 0.11 below 1201 A, 0.10 in the
-Ly-alpha window and 0.00 above 1451 A (section 2.6) — and its dominant sink in
+Ly-alpha window and 0.00 above 1451 A (section 2.6)) and its dominant sink in
 an H2-rich gas is the same reaction that makes it useful, `O(1D) + H2 -> OH + H`.
 Its chemical lifetime is shorter than every other time scale in the problem by
 many decades, so the steady-state approximation is the *accurate* treatment, not
@@ -265,7 +265,7 @@ its `ref:` keys, resolved through `photochem/data/bib.bib`). VULCAN's is
 `VULCAN/thermo/NCHO_photo_network.txt` (`k = A T^B exp(-C/T)`, odd ids forward,
 even ids the thermodynamic reverse). Having both means every transcription can
 be checked against two independent ports of the same literature before it enters
-EXHALE — which is the discipline the R16-R20 discrepancy notes in
+EXHALE, which is the discipline the R16-R20 discrepancy notes in
 `mol_rates.f90` were written after the fact.
 
 Proposed set, ordered by its share of the measured budget. **The source column
@@ -276,21 +276,21 @@ is measured in `docs/a2_reaction_audit.md` section 4.
 | id | reaction | why it is in | source |
 |---|---|---|---|
 | O1 | `OH + H2 <-> H2O + H` | 95.3% of the HD 189733 b net; 20.6% of HD 209458 b. Its reverse is 38.1% of H2O loss | **Baulch et al. (2005), JPCRD 34, 757, p. 1029**, `3.6e-16 T^1.52 exp(-1740/T)`, 250-2500 K. This supersedes the Baulch et al. (1992) recommendation that `zahnle_earth.yaml` carries under the key `Ba92`, and it is the value VULCAN already has from Oldenborg & Loge (1992), to 0.8%. The two reference networks are the two successive evaluations of one reaction, not two readings of one evaluation |
-| O2 | `O + H2 <-> OH + H` | 3.7% (HD 189733 b) / 7.8% (HD 209458 b) of the net; its reverse is 2.4% of OH loss | **Baulch et al. (2005), p. 804**, `6.34e-12 exp(-4000/T) + 1.46e-9 exp(-9650/T)`, 298-3300 K. Both networks carry the superseded 1992 form and both carry it with `exp(-3160/T)` where the published value is `exp(-3163/T)`. The 2005 form is 1.84x smaller at the HD 189733 b base temperature — the largest single rate change M1 makes |
-| O3 | `H2O + hv -> OH + H` | **54.5% of H2O loss** — the branch that makes the cycle catalytic rather than a one-way sink | cross section: the concatenation `photochem/data/xsections/H2O.h5` makes from Huebner & Mukherjee (2015) below 6.3 nm, Heays et al. (2017) (Leiden) to 192.056 nm and Ranjan et al. (2020) to 230.413 nm — those cut points are Photochem's, not any paper's. Branching ratios: Stief, Payne & Klemm (1975) and Slanger & Black (1982), **as summarized in** JPL Publication 19-5 entry B2 (Burkholder et al. 2020), which does **not** itself recommend H2O quantum yields and leaves the Ly-alpha branching unsettled between two disagreeing sets (`docs/a2_reaction_audit.md` section 7) |
+| O2 | `O + H2 <-> OH + H` | 3.7% (HD 189733 b) / 7.8% (HD 209458 b) of the net; its reverse is 2.4% of OH loss | **Baulch et al. (2005), p. 804**, `6.34e-12 exp(-4000/T) + 1.46e-9 exp(-9650/T)`, 298-3300 K. Both networks carry the superseded 1992 form and both carry it with `exp(-3160/T)` where the published value is `exp(-3163/T)`. The 2005 form is 1.84x smaller at the HD 189733 b base temperature: the largest single rate change M1 makes |
+| O3 | `H2O + hv -> OH + H` | **54.5% of H2O loss**: the branch that makes the cycle catalytic rather than a one-way sink | cross section: the concatenation `photochem/data/xsections/H2O.h5` makes from Huebner & Mukherjee (2015) below 6.3 nm, Heays et al. (2017) (Leiden) to 192.056 nm and Ranjan et al. (2020) to 230.413 nm, those cut points are Photochem's, not any paper's. Branching ratios: Stief, Payne & Klemm (1975) and Slanger & Black (1982), **as summarized in** JPL Publication 19-5 entry B2 (Burkholder et al. 2020), which does **not** itself recommend H2O quantum yields and leaves the Ly-alpha branching unsettled between two disagreeing sets (`docs/a2_reaction_audit.md` section 7) |
 | O4 | `H2O + hv -> H2 + O(1D)` | 5.1% of H2O loss and the second-largest net H2 *source* (-7.8%) | same |
 | O5 | `H2O + hv -> O + H + H` | 2.4% of H2O loss | same |
 | O6 | `O(1D) + H2 -> OH + H` | the reason O(1D) is carried at all; 1.9% of the gross O1 rate with the adopted coefficient | **Atkinson et al. (2004), Atmos. Chem. Phys. 4, 1461, data sheet I.A2.18**, `1.1e-10`, temperature-independent 200-350 K. VULCAN's `615` gives 2.87e-10 cited to Tully (1975), which is an RRKM extrapolation contradicted by the four measurements the IUPAC evaluation averages; `zahnle_earth.yaml` gives 1.5e-10 under the key `Ba92`, an attribution that does not hold because no Baulch evaluation contains O(1D) chemistry. **The factor 2.6 between these is the largest open uncertainty in the set** |
 | O7 | `OH + hv -> O + H` | 0.01% of OH loss at the measured levels, but the only OH photolysis channel there is, and it is not small in the optically thin part of the column | Huebner & Mukherjee (2015) below 82.8 nm, Heays et al. (2017) to 264.9 nm; single branch, quantum yield 1 at every wavelength |
-| O8 | `O + H + M <-> OH + M` | the three-body association of atomic O with H at the dense base; the oxygen analogue of R15. **Excluded** by M1: 7.8e-9 of O1 | Tsang & Hampson (1986), JPCRD 15, 1087, p. 1111, `k0 = 1.3e-29 T^-1` — an estimate with an uncertainty factor of 10 and **no stated temperature range**, the source saying there are no definitive measurements. Falloff, so the same third-body caveat `mol_rates.f90` states for R12/R13/R15 applies; the base is at `Pr ~ 1e-8`, so the high-pressure limit is irrelevant there and neither network's `k_inf` comes from the source anyway |
+| O8 | `O + H + M <-> OH + M` | the three-body association of atomic O with H at the dense base; the oxygen analogue of R15. **Excluded** by M1: 7.8e-9 of O1 | Tsang & Hampson (1986), JPCRD 15, 1087, p. 1111, `k0 = 1.3e-29 T^-1`, an estimate with an uncertainty factor of 10 and **no stated temperature range**, the source saying there are no definitive measurements. Falloff, so the same third-body caveat `mol_rates.f90` states for R12/R13/R15 applies; the base is at `Pr ~ 1e-8`, so the high-pressure limit is irrelevant there and neither network's `k_inf` comes from the source anyway |
 | O9 | `H + OH + M <-> H2O + M` | the three-body route to water that does not go through O1. **Excluded** by M1: 9.7e-8 of O1 | **Baulch et al. (1992) pp. 496-498, unchanged in Baulch et al. (2005) p. 913**, collider-resolved: `k0(N2) = 6.1e-26 T^-2.0`, `k0(Ar) = 2.3e-26`, `k0(H2O) = 3.9e-25`, all 300-3000 K. This resolves the apparent two-decade disagreement between the networks: VULCAN's `659` **is** Baulch's H2O-collider value, and Photochem's Javoy et al. (2003) number has a published validity range of 2790-3200 K. Neither is right for an H2/He bath |
 | O10 | `OH + OH <-> H2O + O` | not in the measured top channels. **Excluded** by M1: 5.5e-7 of O1 | **Baulch et al. (2005), p. 1032**, `5.56e-20 T^2.42 exp(+970/T)`, 250-2400 K. `zahnle_earth.yaml` carries the superseded 1992 form and labels it `Ba92, Li91`; Lifshitz & Michael (1991) is a study of the **reverse** direction and is not in the 1992 data sheet's reference list at all. VULCAN carries the reverse direction explicitly (`O + H2O -> OH + OH`), but with no reference, and M1 found evidence that it was itself obtained by reversal |
 | O11 | `O(1D) + M -> O + M` (quenching) | closes the O(1D) steady state where H2 is depleted. **Excluded** by M1, with a published reason | the IUPAC value adopted for O6 is the **total** of the reactive and the quenching channel, and the same data sheet states that the reactive channel is above 95% of it. Quenching by H2 is therefore inside O6's coefficient, under 5% of it, and has no separately evaluated rate to transcribe |
-| O12 | `O(1D) + H2O -> OH + OH` | added by M1 to fill the slot section 7 names: the second O(1D) sink, and the one channel that could have upset the O(1D) steady state because H2O holds 43-55% of the oxygen. **Excluded**: 2.8e-5 of O1, and it shortens the O(1D) lifetime by 0.15% | **Atkinson et al. (2004), data sheet I.A2.19**, `2.2e-10`, 200-350 K — which is the value `zahnle_earth.yaml` carries. VULCAN's `619` is 21% below it |
+| O12 | `O(1D) + H2O -> OH + OH` | added by M1 to fill the slot section 7 names: the second O(1D) sink, and the one channel that could have upset the O(1D) steady state because H2O holds 43-55% of the oxygen. **Excluded**: 2.8e-5 of O1, and it shortens the O(1D) lifetime by 0.15% | **Atkinson et al. (2004), data sheet I.A2.19**, `2.2e-10`, 200-350 K, which is the value `zahnle_earth.yaml` carries. VULCAN's `619` is 21% below it |
 
 O1-O7 are the closed set the measurement supports, and M1 confirmed it.
 O8-O12 are the ones the plan's "conservation skeleton to be audited at reaction
-level before any coding" names. **M1 excluded all five** — four of them on
+level before any coding" names. **M1 excluded all five**: four of them on
 measurement, at 7.8e-9 to 2.8e-5 of the dominant channel, and O11 because the
 rate it would need is already inside O6's coefficient. Each is transcribed in
 `oxygen_rates.f90` anyway so that the record is a value with a verdict rather
@@ -320,13 +320,13 @@ Two policies are available and they are not equivalent:
   defect is visible in the code already: the module header records that the
   R21/R22 pair does not satisfy detailed balance against itself, by about two
   decades at 1e4 K. For a pair like O1 that runs in near-exact cancellation on a
-  hot base — the HD 209458 b gross rates are three decades above the net — an
+  hot base (the HD 209458 b gross rates are three decades above the net), an
   inconsistent pair does not produce a small error in the net, it produces an
   arbitrary one.
 - **Thermodynamic reversal**: one direction transcribed, the other computed from
   the equilibrium constant built from tabulated enthalpies and entropies. Exact
   detailed balance by construction, and it makes the hot limit reduce to
-  chemical equilibrium — the limit `q_h2_equilibrium` already encodes and the
+  chemical equilibrium: the limit `q_h2_equilibrium` already encodes and the
   one the HD 209458 b budget says is the correct physics there.
 
 **The design proposes thermodynamic reversal for O1, O2, O8, O9 and O10.** The
@@ -340,8 +340,8 @@ VULCAN computes the same quantity from **NASA-9** polynomials in
 written out in `VULCAN/thermo/gibbs_text.txt`.
 
 Cost, measured rather than estimated: five species (H, H2, O, OH, H2O) at seven
-Shomate coefficients over one to four temperature ranges each — 91 numbers, or
-112 with CO — plus one `gibbs_energy_shomate` function. The NASA-9 route from VULCAN
+Shomate coefficients over one to four temperature ranges each (91 numbers, or
+112 with CO) plus one `gibbs_energy_shomate` function. The NASA-9 route from VULCAN
 is the same size and is directly portable. Either is small; the choice between
 them is D2, and it fixes which reference file the coefficients are copied from.
 
@@ -364,7 +364,7 @@ JPL Publication 19-5 entry B2
 the same numbers but the two files are not the same function of wavelength**:
 VULCAN's Ly-alpha node sits at 121.0 nm, 0.567 nm short of the line, and VULCAN
 interpolates linearly between nodes, so at the line center it uses
-0.837 / 0.105 / 0.058 — the three-body branch is 0.058 there, not 0.12 — and it
+0.837 / 0.105 / 0.058 (the three-body branch is 0.058 there, not 0.12) and it
 has no flat 1231-1450 A interval at all. The table below is the reading of
 `H2O.h5`, whose yields are constantly extrapolated between nodes. Reading them
 onto intervals:
@@ -379,9 +379,9 @@ onto intervals:
 The Ly-alpha interval is the only one where the three-body branch
 `H2O + hv -> O + H + H` opens at all, and it is 12% there. **That is an
 independent, data-driven reason to give Ly-alpha its own band** rather than
-folding it into a wider FUV average — quite apart from its being a line rather
+folding it into a wider FUV average: quite apart from its being a line rather
 than a continuum. OH photolysis is carried as a single branch with quantum yield 1 at every
-wavelength (`OH.h5`; `OH_branch.csv`), so it needs no such split — but **that
+wavelength (`OH.h5`; `OH_branch.csv`), so it needs no such split, but **that
 unit yield is a merge, not a measurement**: Heays et al. (2017) section 3.1
 state that they do not divide the photoabsorption cross section into decay
 channels except for H2O and NH3, and VULCAN's `OH_branch.csv` says in its own
@@ -399,7 +399,7 @@ Proposed channels:
 | channel | interval | flux source | attenuation |
 |---|---|---|---|
 | B1 | 912-1201 A | the FUV band flux (section 5.1), with `Stellar LW flux` continuing to drive H2 over its own 912-1110 A interval | H2O and OH **continuum** `exp(-tau)` on their own columns; the H2 branch keeps the Draine & Bertoldi (1996) line self-shielding it has today |
-| B2 | Ly-alpha, 1215.67 A | the existing key `Stellar Lya flux [erg/cm2/s]` (`F_Lya_star`); when `Jlya escape-prob` or an imported field is active, the solved `J_Lya(r)` of `lya_rt.f90` is the better field and should be used instead | H I line transfer is what `lya_rt.f90` already solves; H2O and OH absorb it as continua |
+| B2 | Ly-alpha, 1215.67 A | the existing key `Stellar Lya flux [erg/cm2/s]` (`F_Lya_star`) | **Landed 2026-09-05 (batch 2a):** the band now carries the transmission of the stellar Ly-alpha line through the star-ward H I column, `lya_stellar_beam_transmission(T, tau_lya)` = `erfc(x1/(sqrt(2) X_s))` (`util_ion_eq.f90` 414-420), the same expression and the same line-centre depth `lya_rt.f90` uses for the n = 2 pumping beam, so the two treatments of the one stellar line agree by construction. Before that the band was unattenuated by hydrogen. The solved `J_Lya(r)` of `lya_rt.f90`, which adds the in-situ emission and the diffusion in frequency, remains the richer field and is still the future treatment when `Jlya escape-prob` or an imported field is active. H2O and OH absorb the band as continua. |
 | B3 | 1231-1450 A | the FUV band flux | continuum on H2O, OH |
 | B4 | 1451-2304 A | the FUV band flux | continuum on H2O (OH's cross section runs to 2649 A and is included over the same interval) |
 
@@ -412,7 +412,7 @@ Three constraints, each imposed by the code or the data rather than chosen:
   uses (`ionization_equilibrium.f90:296`).
 - **Band-averaged cross sections carry a spectral-shape sensitivity that must be
   written at the code site**, in the terms `lyman_werner.f90` uses for
-  `sigma_LW` — it quotes +-25% between two bracketing color temperatures and
+  `sigma_LW`: it quotes +-25% between two bracketing color temperatures and
   states when the approximation fails (a band dominated by one emission line).
   For an M dwarf, whose FUV *is* dominated by lines, B1 and B3 are exactly that
   failure case, and the header must say so. B2 has no averaging question.
@@ -426,7 +426,7 @@ Three constraints, each imposed by the code or the data rather than chosen:
   quietly over-heat.
 
 **A run with `Stellar LW flux` set and no FUV band flux gets no oxygen
-photolysis longward of 1110 A** — i.e. it loses the branch that carries 54.5% of
+photolysis longward of 1110 A**, i.e. it loses the branch that carries 54.5% of
 H2O loss. That is a warning at startup, not a silent zero.
 
 **Photolysis energetics.** Each dissociation deposits the excess above the bond
@@ -450,7 +450,7 @@ deposited heat balance.
 | water-family ions | the measured oxygen at these levels is neutral | see section 2.4 |
 
 **Validity range to be written into the module header.** A2 is valid where the
-base is cool enough for the partition to be kinetic and oxygen-carried — the
+base is cool enough for the partition to be kinetic and oxygen-carried: the
 regime P4 measured on HD 189733 b (864 K, oxygen family 96-99.6% of the net
 H2 destruction). Where the base is hot enough that `H2 + M -> H + H + M` runs
 the net (HD 209458 b, 2331 K, 70-97%), A2 adds a few percent and the existing
@@ -527,7 +527,7 @@ the rest of the code uses:
 with `v` the hydro's mass-averaged velocity, `P_i`, `L_i` the chemical
 production and loss of section 2, and the vertical flux in the standard
 aeronomy form (Banks & Kockarts 1973), written on the mixing ratio
-`f_i = n_i / n_tot` so that the eddy term has no preferred species — the same
+`f_i = n_i / n_tot` so that the eddy term has no preferred species: the same
 argument `binary_diffusion_design.md` section 2.3 makes for `K_zz` acting on
 `dX/dr` alone:
 
@@ -548,7 +548,7 @@ relative to hydrogen") is the one every discrete form must reproduce.
 
 **Conservation.** Summing (1) over the carriers of an element, weighted by the
 nuclei each carries, must give the element equation the existing operator
-solves. That is not automatic — it is a constraint on the discretization
+solves. That is not automatic: it is a constraint on the discretization
 (section 3.6) and it is gate G5.
 
 ### 3.4 What is reused, and what is new
@@ -556,7 +556,7 @@ solves. That is not automatic — it is a constraint on the discretization
 | piece | status |
 |---|---|
 | `D_i` for a neutral in an H2/H/He mixture | **reuse the existing coefficient family**: `hard_sphere_pair_diffusion`, `polarization_pair_diffusion`, `ion_neutral_pair_diffusion`, `coulomb_pair_diffusion`, combined by the Blanc rule in `stage_mixture_diffusion`. All are `public` in `binary_element_diffusion`. New entries are needed in the carrier tables for the polarizabilities of OH, H2O and CO; `alpha_melem` already carries atomic O (5.3 a0^3, line 350) |
-| ambipolar field `eE` | reuse `settling_coefficient`'s computation; every A2 species is neutral, so the term is zero for them, but it must not be *dropped* — the molecular ions H2+/H3+/HeH+ do carry charge, and they are in the transported set |
+| ambipolar field `eE` | reuse `settling_coefficient`'s computation; every A2 species is neutral, so the term is zero for them, but it must not be *dropped*: the molecular ions H2+/H3+/HeH+ do carry charge, and they are in the transported set |
 | `K_zz` | reuse `kzz_cell` unchanged; section 3.5 |
 | Peclet-hybrid face coefficients, donor-cell switch | reuse the pattern of `drift_and_gradient_face_coefficients` (lines 1552-1567): central where `|B| dr <= 2(A+E)`, donor-cell otherwise |
 | backward-Euler nonlinear step with a tridiagonal Newton | reuse the pattern of `solve_mass_fraction` (lines 1612-1774), generalized from one scalar to a block-tridiagonal system in `n_A2` species |
@@ -595,7 +595,7 @@ two-owner problem section 4 exists to prevent.
 One consequence must be stated rather than discovered: with A2 on and
 `He_diffusion` off, `kzz_cell` is still filled (it is `he_kzz`, default 0), so
 an A2 run with no `He_Kzz` and no profile has **pure molecular diffusion**. On a
-lower atmosphere that is the wrong limit — eddy mixing is what holds the
+lower atmosphere that is the wrong limit: eddy mixing is what holds the
 composition well mixed below the homopause. A2 must therefore either require a
 positive `K_zz` or state loudly in the setup report that it is running without
 one. Proposed: a warning, not a refusal, so that the `K_zz = 0` limit stays
@@ -610,10 +610,17 @@ available as a test.
   body `M` the existing R12/R13/R15 use (`ionization_equilibrium.f90:267-278`).
 - **Grid.** Cell-centered `f_i`, face-centered fluxes on `r_edg(0:N)`, exactly
   as the element operator does. Faces 0 and N carry zero diffusive flux.
-- **Advection.** The one-sided upwind difference on the *cell* velocity
-  `rho_j v_j` that the element operator uses, and for the reason recorded in its
-  header (lines 44-64): the face-averaged form froze an isolated helium hole at
-  the breathing base. A2 inherits that lesson rather than rediscovering it.
+- **Advection.** The divergence of the hydrodynamic face mass flux,
+  `F_rho(j) Y_c(j)/m_c`, taken with the mass row itself inside the Runge-Kutta
+  stages on the same faces, areas, volumes and time step (increment B4-1c,
+  `src/modules/flux/species_face_flux.f90`). A carrier cell then loses exactly
+  what the mass row says it loses, whatever the velocity field does, so
+  neither of the two failures a cell-centered form has to work around arises:
+  a cell whose two face velocities straddle zero has an advective term, and a
+  cell outflowing at both faces cannot be evacuated of a trace species. The
+  rows this operator solves carry the diffusive and drift face fluxes and the
+  chemistry; the advective term appears in `carrier_steady_residual` alone,
+  because the balance a stationary state satisfies is the whole equation.
 - **Chemistry coupling.** The chemical source `P_i - L_i` is stiff. Two options,
   and this is a decision (section 8, D5):
   - **(a) Fully coupled implicit step.** One backward-Euler step of the whole
@@ -624,13 +631,13 @@ available as a test.
   - **(b) Operator split**: an implicit local chemistry substep followed by an
     implicit transport substep, iterated. Cheaper per step and closer to the
     existing code's shape, but the splitting error is largest exactly where the
-    gross rates exceed the net by three decades — which the HD 209458 b budget
+    gross rates exceed the net by three decades, which the HD 209458 b budget
     says is the normal case.
   The design proposes **(a)**, on the ground the budget supplies: a scheme whose
   error scales with the gross rates cannot be used on a system whose answer is
   the difference of two numbers three decades larger than itself.
 - **Positivity and the element simplex.** The existing local solve already has a
-  full apparatus for this — physicality tests, three seeding attempts, and
+  full apparatus for this: physicality tests, three seeding attempts, and
   `clamp_fractions_to_element_budget` for a root that lands outside
   (`ionization_equilibrium.f90:738-812`). The transported system needs the same
   discipline stated up front: `f_i >= 0` enforced by the discretization where
@@ -644,13 +651,13 @@ available as a test.
 (`X_base` from `HeH`, lines 485-495). The values come from whichever handoff the
 run is using:
 
-- with a lower-atmosphere **profile**, from the profile at the matching level —
+- with a lower-atmosphere **profile**, from the profile at the matching level:
   it already carries the elemental reservoirs and would carry the molecular
   mixing ratios (which are today "diagnostic metadata only", A1c);
 - with the scalar `base.inp`, from `q_H2_base` and `<El>_H_base`;
 - with neither, from the chemical-equilibrium fit `q_h2_equilibrium` for
   hydrogen and from `melem_ab` for oxygen and carbon, with the partition among
-  H2O/CO/OH/O taken at chemical equilibrium — which is a statement of what the
+  H2O/CO/OH/O taken at chemical equilibrium, which is a statement of what the
   base is *assumed* to be and must be printed as such.
 
 **A Dirichlet base is a choice, not the only one.** The alternative is a
@@ -675,7 +682,7 @@ diagnostic must say so.
 
 **Marching loop.** The A2 transport-chemistry step replaces the molecular part
 of `ioniz_eq` for the species it owns, and sits in the same slot the element
-diffusion occupies — after the hydro update, before the atomic/metal ionization
+diffusion occupies, after the hydro update, before the atomic/metal ionization
 solve (`EXHALE_main.f90:696-705`). The atomic and metal ionization solve keeps
 its local-equilibrium form: nothing in the measurement questions local
 equilibrium for the ionization stages in the wind, and gate G2 requires that
@@ -686,14 +693,14 @@ steady solve with a composition relaxation under damped Picard
 (`omega = 0.5`, halved on failure to descend, floor 0.125, at most 20 outer
 passes, drift tolerance 1e-3). A2's relaxation joins that loop as a second
 composition solve, with the same damping and the same drift measure. The header
-of that routine states the reason the damping exists — "nothing in a Picard
+of that routine states the reason the damping exists: "nothing in a Picard
 iteration of two solves ... keeps the two from chasing each other, and on the
-HD 209458 b `Kzz = 0` wind they do" — and A2 adds a third participant to the
+HD 209458 b `Kzz = 0` wind they do", and A2 adds a third participant to the
 same iteration, so the risk is larger, not smaller. Milestone M2's gate is that
 the loop converges on a case where it converges today.
 
 **The steady residual does not contain the chemistry.** The existing steady
-residual (`steady_newton.f90`) contains no diffusion either — that is why the
+residual (`steady_newton.f90`) contains no diffusion either: that is why the
 Picard loop exists. A2 keeps that structure. What must be checked, and is gate
 G8, is that the fixed point of the marching loop and the zero of the steady
 residual are still the same state.
@@ -735,7 +742,7 @@ design rather than discovered later:
 - **Cooling.** `Cool_coeff.f90` builds the [O I] 63/145/44 um fine-structure
   cooling and `cool_OI_ne_func` from the O I density. Free atomic O is the
   correct reactant, so the redefinition makes the existing cooling *more*
-  correct, not less — but it changes its value wherever oxygen is molecular, and
+  correct, not less, but it changes its value wherever oxygen is molecular, and
   that is a physics change to report, not a refactor.
 - **Charge exchange.** The oxygen pairs are cases 13/14, 30/31, 48/49 of
   `charge_exchange.f90`. They react with atomic O. Same verdict.
@@ -751,29 +758,34 @@ design rather than discovered later:
 nuclei a species carries; `element_nucleus_counts` and `element_ratio_HeH` both
 read it, and `binary_element_diffusion` counts nuclei through it. A2 adds rows:
 OH carries 1 H, H2O carries 2, CO carries 0. Adding a species without adding its
-`bsp_nH` row is the failure mode this table exists to prevent, and it is silent —
+`bsp_nH` row is the failure mode this table exists to prevent, and it is silent,
 which is why gate G5 measures the H budget as well as the O budget.
 
 ### 4.4 Mass, particles, electrons
 
 `bsp_mass` is documented as mirroring the literals the code uses today
-(`H2 = 2.0`, `H3+ = 3.0`, `HeH+ = 5.0`), so that a future metadata-driven
-rewrite stays byte-identical. The new rows must be consistent with **where the
-oxygen mass is counted**, and the code counts a metal element's mass as
-`melem_A` = 15.999 for oxygen (`species_table.f90:225`). So:
+(`H2 = 2.0`, `H3+ = 3.0`, `HeH+ = 1 + m_He/m_H`), so that a future
+metadata-driven rewrite stays byte-identical. The new rows must be consistent
+with **where the oxygen mass is counted**: `bsp_mass` is in units of the
+hydrogen atom mass `mu`, and a metal element's mass is `melem_A =
+melem_A_u * amu/mu` (`species_table.f90`; `melem_A_u(iel_O) = 15.999`,
+`amu/mu = 0.99224`, so `melem_A(iel_O) = 15.875`). So:
 
 ```
-bsp_mass(OH)  = 1.0 + melem_A(iel_O)      = 16.999
-bsp_mass(H2O) = 2.0 + melem_A(iel_O)      = 17.999
-bsp_mass(CO)  = melem_A(iel_C) + melem_A(iel_O) = 28.010
+bsp_mass(OH)  = 1.0 + melem_A(iel_O)      = 16.875
+bsp_mass(H2O) = 2.0 + melem_A(iel_O)      = 17.875
+bsp_mass(CO)  = melem_A(iel_C) + melem_A(iel_O) = 27.793
 ```
+
+(Numbers as of batch 2c of `Update_EXHALE.md`; before it the metal masses were
+taken in atomic mass units as if they were m_H units, 0.78% high.)
 
 and, critically, **the oxygen bound into OH, H2O and CO must be removed from the
 metal mass sum**, or `calc_rho` counts it twice. That sum is
 `comp_mass_per_H()`/`mass_per_H_nucleus_without_He()`, which today is
-`sum(melem_ab*melem_A)` under `eos_include_metals` — a *fixed* metal/H
+`sum(melem_ab*melem_A)` under `eos_include_metals`: a *fixed* metal/H
 assumption. This is the same class of defect as the He 2^3S double count that
-P2 found and section 75 of `Update_EXHALE.md` fixed with the
+P2 found and section 75 of `Update_EXHALE_stage1.md` fixed with the
 `bsp_is_excited_level` flag; the lesson from that incident is that the fix
 belongs in the table, not in each summing site.
 
@@ -793,10 +805,10 @@ one.
 | quantity | handoff route owns | A2 route owns | with both on |
 |---|---|---|---|
 | base `T`, `r`, `p` | `base.inp` `T_base`/`r_base`/`p_base`, or the profile | nothing | unchanged; A2 has no opinion |
-| elemental reservoirs H, He, O, C | `HeH_base`, `<El>_H_base`, `metals.inp`, or the profile | nothing — A2 *consumes* `melem_ab` | unchanged |
+| elemental reservoirs H, He, O, C | `HeH_base`, `<El>_H_base`, `metals.inp`, or the profile | nothing: A2 *consumes* `melem_ab` | unchanged |
 | the H2/H partition at the base (`q_H2_base`) | `base.inp` `q_H2_base`, or the profile | **A2 computes it** | **conflict** |
 | the O partition among O/OH/H2O/CO at the base | nothing today (A1c species keys are metadata) | **A2 computes it** | no conflict |
-| `K_zz` | `Kzz_base` / `He_Kzz` / the profile's `Kzz` column | nothing — A2 reads `kzz_cell` | unchanged |
+| `K_zz` | `Kzz_base` / `He_Kzz` / the profile's `Kzz` column | nothing: A2 reads `kzz_cell` | unchanged |
 
 There is exactly **one** genuine conflict, and it is `q_H2_base`. The plan's own
 verdict is that `q_H2_base` is an *EOS anchor*: it enters
@@ -809,7 +821,7 @@ different H2 fractions.
 
 ### 4.6 Refusals
 
-Following the `refuse_scalar_key` convention exactly — name the key, name its
+Following the `refuse_scalar_key` convention exactly: name the key, name its
 category, name the other owner, name the fix, `error stop 1`:
 
 1. **A2 on and `q_H2_base` present**: refuse, unless the run is deliberately
@@ -817,7 +829,7 @@ category, name the other owner, name the fix, `error stop 1`:
    computes the base partition, and offers the two resolutions: delete the key,
    or turn A2 off.
 2. **A2 on and a lower-atmosphere profile in use**: *accept*, and take the
-   profile's molecular mixing ratios as the base element reservoirs — the
+   profile's molecular mixing ratios as the base element reservoirs, the
    profile owns the region below the match and A2 owns the region above it, so
    they are not two owners of one quantity. But refuse if the profile's
    `solution_id` pairing fails, exactly as today.
@@ -860,7 +872,7 @@ states why the overlap between the first of those and B1 is not double counting
 of photons, and gate G4 is what keeps it from becoming double counting of energy.
 
 Whether one key with an assumed shape is enough, or the three intervals want
-three keys, or the whole thing wants an FUV SED file, is decision D1 — it fixes
+three keys, or the whole thing wants an FUV SED file, is decision D1: it fixes
 a user-visible key and, once regression cases carry it, is expensive to rename.
 
 **Not proposed: a file-presence switch.** `metals.inp`, `opacity.inp` and
@@ -873,13 +885,13 @@ the reaction set later becomes user-selectable, that is when a file appears.
 | file | content | when |
 |---|---|---|
 | `output/Ion_species.txt` (`_adv`) | two new schema-2 columns, `OH H2O CO`, appended after `H2 H2p H3p HeHp` | A2 on. The header is generated from the species table (`write_output.f90:82-90`), so the columns are self-describing and `examples/exhale_io.py` picks them up without a change |
-| `output/Oxygen_chemistry.txt` | `r[Rp] T[K] n_O n_OH n_H2O n_CO n_O1D x_H2 tau_chem[s] tau_adv[s] Da` per cell, plus the photolysis rates of each band | A2 on, equilibrium state only. The `tau_chem/tau_adv` profile is a **required** output, not a diagnostic: the plan makes the timescale gate part of A2's definition, and a run outside the validity range must say so in its own output |
-| `output/FUV_bands.txt` | `r[Rp] N_H2O N_OH N_CO tau_B1 tau_B2 tau_B3 j_H2O j_OH heat_FUV` | A2 on with a positive band flux. Modeled on `output/Lyman_Werner.txt` (`write_output.f90:112-138`), which is the record of how deep a band penetrates |
+| `output/Oxygen_chemistry.txt` | per cell, as `write_oxygen_chemistry` writes it (READ from the `# columns` header, 2026-09-06): `r[Rp] T[K] n_O n_OII n_OIII n_OH n_H2O n_CO n_O1D x_H2[2nH2/nH] tau_chem[s] tau_adv[s] Da j_H2O[1/s] j_OH[1/s] D_H2[cm2/s] Kzz[cm2/s] tau_diff[s]`; `n_O` is the free neutral atom and the element total is `n_O + n_OII + n_OIII + n_OH + n_H2O + n_CO` | A2 on, equilibrium state only. The `tau_chem/tau_adv` profile is a **required** output, not a diagnostic: the plan makes the timescale gate part of A2's definition, and a run outside the validity range must say so in its own output |
+| `output/FUV_bands.txt` | per cell, `r[Rp] N_H2O[cm^-2] N_OH[cm^-2] N_CO[cm^-2]`, then one optical depth per band (`tau_LW tau_B2 tau_B3 tau_B4`; there was a `tau_B1` until the 2026-09-06 merge of band B1 into the Lyman-Werner interval), then the H2O photolysis rate of each band (`j_H2O_LW` ... `j_H2O_B4`), then the OH rate of each band (`j_OH_LW` ... `j_OH_B4`), then the CO photodissociation rate and its shielding function (`k_CO[1/s] Theta_CO`; CO absorbs only in the LW band, so it carries no per-band columns), then `heat_FUV[erg/cm3/s]`. The header is built from the band table, so it always names as many bands as the loop writes. A commented trailer follows, carrying the gate-G4 band ledger in three labeled statements -- (a) the H2O and OH rates applied to the absorbers the columns record against the beam's loss between the same two faces, whose `rel_diff` is round-off; (b) the beam budget, `beam_loss_ph` against the absorptions the rates account for, whose `unrated_frac` is a closure residual for the two bands with no line absorber, the share H I resonance scattering takes in B2, and, since the band merge, a closure residual in LW as well; (b2) CO on the same beam, printed on its own row because `beam_loss_ph` carries no CO term, with `co_frac` the share of the beam's own loss that CO takes a second time; (c) the absorbed energy and its split into deposited heat and bond energy -- plus `state_drift`, the shared-beam split of the 912-1201 A band, and, with `Molecular IR bands` on, the column-integrated infrared exchange | A2 on. Modeled on `output/Lyman_Werner.txt`, which is the record of how deep a band penetrates |
 | `output/Heating_breakdown` | one row for each photolysis channel | as `h_lw` is carried today (`util_ion_eq.f90:1168`) |
 
 The `_adv` files are the known gap: `post_process_adv.f90` is molecule-free by
-construction. Section 6, gate G7, takes the plan's wording literally — the
-limitation is either lifted or **made loud** — and proposes making it loud: the
+construction. Section 6, gate G7, takes the plan's wording literally (the
+limitation is either lifted or **made loud**) and proposes making it loud: the
 `_adv` writer prints a header line stating that the molecular species are not
 advection-corrected, and the transit tool refuses to use `_adv` columns inside
 the molecular layer. Lifting it is a separate piece of work and belongs in its
@@ -910,7 +922,7 @@ possible sources actually set the base partition of this run.
 `Ion_species_IC.txt` is read by label under schema 2
 (`load_IC.f90:131`), so new columns are additive: an old restart file simply
 lacks them and the loader's `col_present` logic handles it. What the design must
-state is what happens then — proposed: an A2 run restarted from a pre-A2 file
+state is what happens then, proposed: an A2 run restarted from a pre-A2 file
 seeds OH/H2O/CO from the chemical-equilibrium partition of the loaded `(p, T)`
 and the loaded oxygen total, prints that it did so, and does not silently start
 from zero. Zero is a valid root of the water cycle and hybrd1 is already known
@@ -955,7 +967,7 @@ two owners of the oxygen physics cannot drift apart silently.
 of HD 189733 b, against the Photochem arm C' solution already stored in
 `vulcan_work/pc_compare_p1/hd189_toa1e-2/pc_ncho_solution.pkl`.
 
-**On which quantity — and this matters.** `q_H2` as EXHALE defines it is a
+**On which quantity, and this matters.** `q_H2` as EXHALE defines it is a
 *volume mixing ratio of the total gas*, `n_H2/(n_H2 + n_H + n_He)`
 (`composition.f90:249-262`), so it depends on He/H. Two facts make that a trap
 for this gate:
@@ -963,7 +975,7 @@ for this gate:
 - the HD 189733 b input file uses `He/H number ratio: 0.083333333`, for which a
   fully molecular gas gives `q_H2 = 0.5/(0.5 + 0.08333) = 0.857`;
 - the Photochem C' solution at 1 microbar has `H2 = 0.7081`, `H = 0.1401`,
-  `He = 0.1509` by volume, i.e. `He/H = 0.0970` — a *different* He/H, whose
+  `He = 0.1509` by volume, i.e. `He/H = 0.0970`: a *different* He/H, whose
   fully molecular limit is 0.838.
 
 The two numbers item (H) quotes side by side (EXHALE 0.861 against a
@@ -1008,7 +1020,7 @@ same profile. So:
   EXHALE run's He/H if they differ, rather than comparing across it.
 
 **Why this is not circular.** It is only a test if A2 is allowed to get the
-answer wrong — which is why section 3.7 proposes a zero-flux boundary condition
+answer wrong, which is why section 3.7 proposes a zero-flux boundary condition
 on the *partition* while the element reservoirs stay Dirichlet. If the base H2
 fraction were imposed from the same handoff the gate compares against, the gate
 would measure nothing.
@@ -1033,12 +1045,12 @@ compiles".
 
 | # | content | gate |
 |---|---|---|
-| **M1** | **DONE — `docs/a2_reaction_audit.md`.** Every reaction of section 2.4 traced to a published source, its validity range recorded, the conservation skeleton checked at reaction level (elements and charge balance in each reaction), and an explicit verdict on O8-O12. The thermodynamic data for section 2.5, if D2 says so. No code beyond a new `mol_rates`-style module of coefficients | the audit table exists, every row cites a publication read (not a database entry recalled), and the network conserves H, O and C reaction by reaction. A standalone driver reproduces one published rate curve per reaction against its source figure or table |
-| **M2** | **DONE — local kinetics only.** The A2 species solved as a local steady state, with the FUV bands, inside the existing cell-by-cell solve. No transport. This is deliberately the state P4 says is *wrong* — it is built because it isolates the chemistry from the transport for debugging | G1, G2, G3, G4 pass. The HD 189733 b base partition is measured and reported, and it is expected to *miss* the A/B target — that miss is the measurement that motivates M3 |
+| **M1** | **DONE: `docs/a2_reaction_audit.md`.** Every reaction of section 2.4 traced to a published source, its validity range recorded, the conservation skeleton checked at reaction level (elements and charge balance in each reaction), and an explicit verdict on O8-O12. The thermodynamic data for section 2.5, if D2 says so. No code beyond a new `mol_rates`-style module of coefficients | the audit table exists, every row cites a publication read (not a database entry recalled), and the network conserves H, O and C reaction by reaction. A standalone driver reproduces one published rate curve per reaction against its source figure or table |
+| **M2** | **DONE: local kinetics only.** The A2 species solved as a local steady state, with the FUV bands, inside the existing cell-by-cell solve. No transport. This is deliberately the state P4 says is *wrong*, it is built because it isolates the chemistry from the transport for debugging | G1, G2, G3, G4 pass. The HD 189733 b base partition is measured and reported, and it is expected to *miss* the A/B target, that miss is the measurement that motivates M3 |
 | **M3** | **DONE -- vertical transport.** The species transport-chemistry solve of section 3, the Dirichlet/zero-flux boundary of 3.7, the write-back and the element bookkeeping of section 4 | G5, G10 pass; the marching loop and the steady Picard loop both converge on a case that converges today; `tau_chem/tau_adv` is an output |
 | **M4** | **The A/B gate.** HD 189733 b run against the stored Photochem C' arm, He/H pinned, on `x_H2` | section 6.2's pass band. This is the milestone that decides whether A2 ships |
 | **M5** | **Integration and regression.** `_adv` made loud, transit-tool guard, `EXHALE_resolved.out` provenance, IC round trip, the new regression case | G6, G7, G8, G9 pass; `make check` byte-identical with the key absent; goldens refreshed only at the end of the series and the refresh reported |
-| **M6** | **Documentation.** `docs/input_schema.md` sections 2b and 4, `README.md`, `README_HOWTO.md`, the user manual's lower-atmosphere section, `docs/Update_EXHALE.md`, and the validity-range statement of section 2.7 written into the module header | the manual states what A2 computes, what it assumes, and where it is not valid, in the same terms as section 2.7 |
+| **M6** | **Documentation.** `docs/input_schema.md` sections 2b and 4, `README.md`, `README_HOWTO.md`, the user manual's lower-atmosphere section, `docs/Update_EXHALE_stage1.md`, and the validity-range statement of section 2.7 written into the module header | the manual states what A2 computes, what it assumes, and where it is not valid, in the same terms as section 2.7 |
 
 ### M2 result, 2026-08-30
 
@@ -1084,6 +1096,11 @@ spectrum, the Lyman-Werner and B1 treatments -- independent beams over
 out of 1248.5 on HD 189733 b. The energy of the overlap is over-counted by up to
 60% of the band. The run says so; making one absorber compete with the other
 there is not in M2.
+
+*(Superseded. The band layout this paragraph describes was replaced in
+2026-08 by five bands with 1110 A as an edge, and on 2026-09-06 by four bands
+with the Lyman-Werner interval running 912-1201 A and band B1 merged into it;
+`water_photolysis.f90` section 3 is the current statement.)*
 
 **The measurement that motivates M3.** `x_H2 = 0.773` at the HD 189733 b base
 against 0.910 for the stored photochemical arm and a pass band of 0.847-0.947.
@@ -1134,7 +1151,7 @@ diffusion-advection step solved together with the chemistry, block-tridiagonal
 in space with 4x4 blocks (D5), zero diffusive flux and no imposed partition at
 the base (D6), `kzz_cell` read and no eddy coefficient of its own (section 3.5).
 The key is `Molecular carrier transport` (renamed from `Oxygen transport` on
-2026-09-02, `Update_EXHALE.md` section 128), default True whenever the option
+2026-09-02, `Update_EXHALE_stage1.md` section 128), default True whenever the option
 is on; `False`
 restores M2's local steady state. `P_i - L_i` comes from calling `mol_heh_rows`
 row 4 and `oxygen_carrier_rows` at the trial densities rather than from
@@ -1143,7 +1160,7 @@ Jacobian is a forward difference of the same calls. The local solve is then
 handed the transported partition: rows 4, `iox` and `iox+1` become the value
 instead of a balance, and the remaining rows are solved against it. Section 2.6's
 FUV bands were also rebuilt so that the 912-1110 A interval has one incident
-flux and one beam for its three absorbers; that is `Update_EXHALE.md` section
+flux and one beam for its three absorbers; that is `Update_EXHALE_stage1.md` section
 109 and it is what makes the G4 ledger close.
 
 **H2+, H3+ and HeH+ are not transported**, and the criterion is section 2.3's
@@ -1179,6 +1196,29 @@ measurement.**
   turnover, and an over-suppression of quenched CO in the narrow interval around
   3000-4000 K. The audited set has no CO rate to do better with, and the code
   says so at the site.
+
+  **Superseded in the layer, 2026-09-06 (item B3b-CO).** The CO row is no
+  longer chemically frozen. It carries the two published destruction
+  channels the CO literature review found: `He+ + CO -> C+ + O + He` at the
+  UMIST RATE22 rate `1.6e-9 cm^3 s^-1`, and CO photodissociation on the
+  912-1201 A Lyman-Werner beam with the Visser, van Dishoeck and Black
+  (2009) Table 6 shielding function of the star-ward CO and H2 columns.
+  Both take their reaction energy from the one formation-energy table and
+  deposit through named channels of the heating assembly, and both are
+  reported with a domain record (`tau_dest <= 0.1 tau_res`) in the
+  `output/Oxygen_chemistry.txt` header.
+
+  **The thermal ceiling is deleted, 2026-09-06 (item CEILING-DEL).** With
+  rates in the row there is nothing left for a thermodynamic bound to say:
+  it fired only where destruction is fast anyway, and where it fired it
+  removed carbon and oxygen with no rate behind it. Gone with it are its
+  four cumulative counters and their three accessors, the
+  `co_ceiling_cells` line of the `output/Oxygen_chemistry.txt` header, the
+  three `co_ceiling_*` keys of `EXHALE_resolved.out`, and the end-of-run
+  "CO ceiling active" line. The domain record replaces them everywhere,
+  and the certification's validity state 4.1, active unvalidated physics,
+  is left with no producer at all and reports "not produced": the CO items
+  are now counted under 4.2, out-of-domain closure, beside the H3+ records.
 
 - **The finite-difference step of the chemistry Jacobian needs a floor tied to
   the element.** Perturbing a carrier that sits at 1e-30 of its element by 1e-6
@@ -1271,7 +1311,7 @@ same `omega`) but could not be exercised end to end: it runs only after
 the tree converges that far. M5's regression case, `_adv` guard and transit
 guard are not added.
 
-**M4 status update (2026-08-31, `docs/Update_EXHALE.md` section 111).** The
+**M4 status update (2026-08-31, `docs/Update_EXHALE_stage1.md` section 111).** The
 first converged A2 wind now exists: the du descent of the marching run turned
 out to be monotonic (the "stall" of the earlier attempts was the
 12000-14000-step stretch of a ~24000-step approach), and a JFNK launched from
@@ -1292,7 +1332,7 @@ carrier double-count that breaks the converged state's C and O budgets by
 ### (G) unblocked for M4, 2026-08-31
 
 M3's closing sentence -- **M4's A/B gate is blocked on item (G), not on M3** --
-is answered on the coolant side. `Molecular IR bands` (Update_EXHALE.md section
+is answered on the coolant side. `Molecular IR bands` (Update_EXHALE_stage1.md section
 110, `src/modules/lower_atmosphere/molecular_infrared_cooling.f90`) replaces the
 [O I] and C I/C II line cooling the option switches off with the coolants that
 actually carry that layer in a real H2 atmosphere: the H2O and CO
@@ -1303,7 +1343,8 @@ closure supplies. Default off, and used together with `Base IR field`.
 
 Measured on an HD 189733 b configuration rebuilt from the keys section 109
 records -- two 12000-step relaxations from cold, the carrier transport on,
-`K_zz = 1e9`, the same five band fluxes, differing only in the new key:
+`K_zz = 1e9`, the same band fluxes (five of them then; four since the
+2026-09-06 merge of B1 into LW), differing only in the new key:
 
 | | bands off | **bands on** |
 |---|---|---|
@@ -1368,7 +1409,9 @@ regression case, `_adv` guard and transit guard are untouched.
 
 **All ten decided 2026-08-30 (user).** D1 departs from the proposal: **three
 separate FUV keys, one per band interval** (`Stellar FUV B1/B3/B4` naming per
-the table below; `Stellar Lya flux` supplies B2 as proposed) -- the
+the table below; `Stellar Lya flux` supplies B2 as proposed; `Stellar FUV B1
+flux` was retired on 2026-09-06 when its band was merged into the
+Lyman-Werner interval, leaving two continuum keys) -- the
 single-key flat-shape form is weakest exactly on the M dwarfs this code now
 runs, so the split is adopted from the start. D2-D10 are adopted **as
 proposed**: thermodynamic reversal with the NIST-Shomate data of
@@ -1385,15 +1428,15 @@ physical convention, or what the first gate measures.
 | # | decision | proposed | alternative, and what reversing costs |
 |---|---|---|---|
 | **D1** | **Key names and the FUV band split.** `Oxygen chemistry: True`; one new `Stellar FUV flux [erg/cm2/s]` covering 912-2304 A, split among B1/B3/B4 by a flat `F_lambda` shape, with `Stellar Lya flux` supplying B2 | as stated | three separate keys, one per interval, or a full FUV SED file. Renaming later breaks every stored input file and the regression case. The M-dwarf case (a line-dominated FUV) is where the single-key form is weakest |
-| **D2** | **Reverse rates, and which thermodynamic table.** | thermodynamic reversal for O1, O2, O8, O9, O10 (section 2.5) — both reference codes do this and neither carries an explicit reverse | explicit reverse rates, as `mol_rates.f90` does today. Within the proposed route the sub-choice is **Shomate from `zahnle_earth.yaml`'s NIST-sourced `species:` block** against **NASA-9 from `VULCAN/thermo/NASA9/`** (Burcat). Both are about 30 numbers for the five species; the decision fixes which reference file the transcription is checked against |
+| **D2** | **Reverse rates, and which thermodynamic table.** | thermodynamic reversal for O1, O2, O8, O9, O10 (section 2.5): both reference codes do this and neither carries an explicit reverse | explicit reverse rates, as `mol_rates.f90` does today. Within the proposed route the sub-choice is **Shomate from `zahnle_earth.yaml`'s NIST-sourced `species:` block** against **NASA-9 from `VULCAN/thermo/NASA9/`** (Burcat). Both are about 30 numbers for the five species; the decision fixes which reference file the transcription is checked against |
 | **D3** | **New transport module, or generalize `binary_element_diffusion`.** | a new module for the species system; the element operator untouched | one operator for both. Reversing is a rewrite of whichever was built, and the element operator's two-component closure is not obviously extensible |
 | **D4** | **Carbon: CO as an inert reservoir, and where its abundance comes from.** | carry CO, frozen chemically, its abundance from the handoff or from a chemical-equilibrium C/O partition at the base; CO2 dropped | carry CO reacting (`CO + OH -> CO2 + H`), or drop CO and rescale the oxygen reservoir. The measurement says CO holds 45% of the oxygen, so dropping it is not free |
 | **D5** | **Chemistry-transport coupling: fully coupled implicit, or operator split.** | fully coupled implicit (section 3.6) | operator split. This decides the size and shape of the solve and is expensive to swap after M3 |
 | **D6** | **The base boundary condition on the partition.** | Dirichlet on the element reservoirs, **zero-flux on the partition among each element's carriers** | Dirichlet on the partition too, taken from `q_H2_base`. This decides whether the A/B gate of 6.2 measures anything |
-| **D7** | **`q_H2_base` when A2 is on.** | refuse the key (section 4.6) | accept it as the EOS anchor only, with A2's computed partition used for the chemistry and the handoff value used for `comp_ntot_bc` — defensible, since they are different quantities, but it is two numbers for one gas and the plan's single-source rule argues against it |
+| **D7** | **`q_H2_base` when A2 is on.** | refuse the key (section 4.6) | accept it as the EOS anchor only, with A2's computed partition used for the chemistry and the handoff value used for `comp_ntot_bc`: defensible, since they are different quantities, but it is two numbers for one gas and the plan's single-source rule argues against it |
 | **D8** | **Sulfur.** | out of the minimal set | in. P1.5 measured sulfur moving `q_H2` by 17% at 1e-6 bar on HD 209458 b, which is larger than several terms that are in. It is excluded on the HD 189733 b budget (0.36% of the net), and the two planets disagree |
-| **D9** | **Whether the default stays off after the gate passes.** | yes, off, indefinitely — every new default stays off until a golden refresh is deliberate | on by default once M4 passes. Turning it on moves every molecular golden and changes the base of every molecular run |
-| **D10** | **Module and routine names.** proposed: `oxygen_hydrogen_rates.f90` (coefficients, mirroring `mol_rates.f90`), `water_photolysis.f90` (the FUV bands, mirroring `lyman_werner.f90`), and for the transport solve a name for the physics it computes — `diffusive_photochemistry.f90` | as stated | the naming rule forbids role names, and `species_diffusion.f90` is taken by history (it was deleted on 2026-08-25 and replaced by `binary_element_diffusion.f90`), so reusing it would be actively confusing |
+| **D9** | **Whether the default stays off after the gate passes.** | yes, off, indefinitely: every new default stays off until a golden refresh is deliberate | on by default once M4 passes. Turning it on moves every molecular golden and changes the base of every molecular run |
+| **D10** | **Module and routine names.** proposed: `oxygen_hydrogen_rates.f90` (coefficients, mirroring `mol_rates.f90`), `water_photolysis.f90` (the FUV bands, mirroring `lyman_werner.f90`), and for the transport solve a name for the physics it computes, `diffusive_photochemistry.f90` | as stated | the naming rule forbids role names, and `species_diffusion.f90` is taken by history (it was deleted on 2026-08-25 and replaced by `binary_element_diffusion.f90`), so reusing it would be actively confusing |
 
 ---
 
@@ -1404,8 +1447,8 @@ of the plan of record ranks it above this work, on a measured effect: a
 converged molecular layer radiates itself down to 190-400 K against
 `T_eq ~ 1100-1400 K`, and on the HD 209458 b molecular example the collapse
 reaches the wind at `Mdot -0.34 dex`. A2 is the composition of that layer; (G)
-is its energy. They feed on each other — the equilibrium H2 fraction depends on
-`T`, and the coolant inventory depends on composition — so **A2 alone does not
+is its energy. They feed on each other (the equilibrium H2 fraction depends on
+`T`, and the coolant inventory depends on composition), so **A2 alone does not
 make the molecular layer a prediction**, and the design must not be presented as
 if it does. A2's radiation work is FUV photolysis; (G)'s is thermal IR. Different
 spectral regions, different code, one region of the atmosphere.
@@ -1413,7 +1456,7 @@ spectral regions, different code, one region of the atmosphere.
 **The measured payoff on the wind is small and is an upper bound.** P1.6
 measured, on the one converged planet, at most **0.035 dex in `Mdot`** across
 four chemistry arms, and the same measurement at a level where the arms differ
-by 0.1% still spreads by 0.025 dex — so 0.035 dex is at the level of the
+by 0.1% still spreads by 0.025 dex, so 0.035 dex is at the level of the
 configuration's own JFNK-to-JFNK reproducibility. A2 is justified by
 self-containedness and by turning an unbounded uncertainty into a modeling
 result, which is what the P4 decision says; it is **not** justified by a wind
@@ -1431,4 +1474,4 @@ O I 1302 depth is not reproduced (model 0.359% against 10.8 +/- 4.5%); it is
 recorded on `TO_BE_DONE.md` item (H) and is not A2's subject. The second item
 that stood here, whether `O2+ + H0 -> O+ + H+` should be on by default, was
 closed on 2026-08-30: it is on by default now
-(`Update_EXHALE.md` section 107).
+(`Update_EXHALE_stage1.md` section 107).

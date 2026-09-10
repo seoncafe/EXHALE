@@ -27,9 +27,23 @@ import warnings
 import numpy as np
 
 # --- physical constants (cgs) ---
-RJ = 6.9911e9          # Jupiter radius [cm]
-MJ = 1.898e30          # Jupiter mass  [g]
-Msun = 1.989e33        # Solar mass    [g]
+# RJ_CM IS THE ONE PYTHON DEFINITION of the Jupiter radius: every tool in this
+# repository that turns a `Planet radius [R_J]` into a length imports it from
+# here instead of writing the number down again, so a run and the analysis of
+# that run cannot be about two different planets.  Its value is the IAU 2015
+# nominal EQUATORIAL radius R_J^N(eq) = 7.1492e9 cm (Prsa et al. 2016, AJ 152,
+# 41, Table 1), the unit transiting-planet radii are quoted in, and it is the
+# same number the Fortran defines as RJ in src/modules/init/parameters.f90.
+# Keep the two in step.
+RJ_CM = 7.1492e9       # Jupiter equatorial radius [cm], IAU 2015 nominal
+RJ = RJ_CM             # the name the readers below and the notebooks use
+# The IAU 2015 nominal masses (Prsa et al. 2016, AJ 152, 41, Table 1), the
+# units `Planet mass [M_J]` and `Parent star mass [M_sun]` are quoted in, and
+# the same numbers parameters.f90 defines as MJ and Msun.  Keep in step: a
+# tool that scaled a planet mass by 1.898e30 g while the run used 1.8982e30 g
+# reported a planet 1.1e-4 lighter than the one EXHALE relaxed.
+MJ = 1.8982e30         # Jupiter mass  [g], IAU 2015 nominal
+Msun = 1.98842e33      # Solar mass    [g], IAU 2015 nominal
 AU = 1.495978707e13    # Astronomical unit [cm]
 mu = 1.67353284e-24    # hydrogen ATOM mass m_H [g] (NOT a mean molecular
                        # weight; converts the m_H-density column n to g/cm^3).
@@ -72,7 +86,7 @@ COOL_GAS_CHANNELS = ['rec', 'coll_ion', 'coex_HI', 'coex_HeI', 'coex_HeII',
 # r >= 1.2 R_p of one converged HD 189733 b state is 1.05e-2 with the ghost
 # rows and 4.65e-3 without, a factor 2.3, and the factor is state-dependent
 # (1.25 on WASP-121b, 1.00 on a hot Uranus), so a consumer cannot assume it
-# is small.  Section 133.6 / 137 of docs/Update_EXHALE.md.
+# is small.  Section 133.6 / 137 of docs/Update_EXHALE_stage1.md.
 NGHOST = 2
 
 _ROWS_HEADER = re.compile(r'physical cells are rows\s+(\d+)\s+to\s+(\d+)')
@@ -152,6 +166,23 @@ class Run:
         self.T = None          # temperature [K]
         self.heat = None       # heating rate [erg/cm^3/s]
         self.cool = None       # cooling rate [erg/cm^3/s]
+        # _adv runs only: the validity of each row's temperature and of its
+        # composition, in the five values of the two-field schema (0
+        # corrected, 1 retained, 2 failed, 3 unsupported, 4 not evaluated),
+        # and ADV_UNKNOWN where the file predates the schema.  See
+        # load_hydro, load_adv_header and the file's own header block.
+        self.adv_T_status = None
+        self.adv_comp_status = None
+        self.adv_schema = None        # 1 for a legacy single-field file
+        self.adv_input_certified = None   # True / False / None (no line)
+        self.adv_certification_reason = ''
+        self.adv_status = None        # the single field of a legacy file
+        # The measure both fields were decided by, row by row, and the
+        # fraction a corrected row is accurate to in it: a corrected row is
+        # a conditional correction to that fraction of itself, so the two
+        # together are what a caller weighs the row by.
+        self.adv_mass_row = None
+        self.adv_conditional_tol = None
         self.ion = {}          # ion name -> number density [cm^-3]
         self.inp = {}          # parsed input.inp (see read_input)
 
@@ -208,13 +239,172 @@ class Run:
         return {s: self.ion[s] / tot for s in element_stages}
 
 
+# Fixed part of the Hydro_ioniz(_adv).txt layout, in file order.  The file
+# carries a '# columns' header and may carry more columns than these (the
+# _adv file appends the two status fields), so the header is what is parsed
+# and this list is only the fallback for a file written before the header
+# existed.
+HYDRO_COLS = ['r', 'n', 'v', 'p', 'T', 'heat', 'cool']
+
+# The two validity fields of the advection-corrected files, and the value
+# that stands for "this file does not say".  ADV_UNKNOWN is NOT one of the
+# five schema values: a file written before the schema existed carries a
+# single field that named only the first refusal of a row, which cannot be
+# translated into a verdict of each field, so its rows are unknown and must not
+# be read as corrected.
+ADV_STATUS_COLS = ['adv_T_status', 'adv_comp_status']
+# The measure both fields were decided by, one value per row: the fractional
+# change of the face mass flux across the cell.  A corrected row is a
+# CONDITIONAL correction accurate to 'adv_conditional_tol' of itself in the
+# mass flux (the file's own header states the fraction), so this column is
+# what a caller weighs a corrected row by.
+ADV_MASS_ROW_COL = 'adv_mass_row'
+ADV_UNKNOWN = -1
+ADV_CORRECTED = 0
+ADV_RETAINED = 1
+ADV_FAILED = 2
+ADV_UNSUPPORTED = 3
+ADV_NOT_EVALUATED = 4
+ADV_STATUS_NAME = {ADV_UNKNOWN: 'unknown', ADV_CORRECTED: 'corrected',
+                   ADV_RETAINED: 'retained', ADV_FAILED: 'failed',
+                   ADV_UNSUPPORTED: 'unsupported',
+                   ADV_NOT_EVALUATED: 'not_evaluated'}
+
+
+def load_adv_header(path):
+    """Read the validity block of an advection-corrected profile file
+    (write_adv_validity_header of src/modules/files_IO/write_output.f90) ->
+    dict with
+
+      schema              2 for the two-field schema, 1 for a file that
+                          carries no '# adv_schema' line (legacy);
+      counts              {'T': [5 ints], 'comp': [5 ints]} or {};
+      input_certified     True / False / None if the file does not say;
+      certification_reason  the text after the T/F, '' when certified;
+      stationarity_operator  the operator the input's stationarity was
+                          judged by, '' for a legacy file;
+      model_restrictions  the closure's own restrictions, one string;
+      product             what the file is (a one-way correction);
+      conditional_tol     the fraction a corrected row is accurate to in the
+                          mass flux, as a float, or None if the file does not
+                          say;
+      conditional_tol_text  the whole statement of that line.
+
+    A legacy file gives schema 1 and empty text fields: it states none of
+    this, and the caller must not fill it in."""
+    out = dict(schema=1, counts={}, input_certified=None,
+               certification_reason='', stationarity_operator='',
+               model_restrictions='', product='', conditional_tol=None,
+               conditional_tol_text='')
+    key = None
+    with open(path) as f:
+        for line in f:
+            if not line.startswith('#'):
+                break
+            w = line[1:].split()
+            if not w:
+                continue
+            if w[0] == 'adv_schema':
+                out['schema'] = int(w[1])
+                key = None
+            elif w[0] == 'adv_status_counts':
+                # '# adv_status_counts T n n n n n comp n n n n n'
+                try:
+                    it = w.index('T')
+                    ic = w.index('comp')
+                    out['counts'] = {'T': [int(x) for x in w[it + 1:ic]],
+                                     'comp': [int(x) for x in w[ic + 1:]]}
+                except (ValueError, IndexError):
+                    pass
+                key = None
+            elif w[0] == 'adv_input_certified':
+                out['input_certified'] = (w[1] == 'T')
+                out['certification_reason'] = ' '.join(w[2:])
+                key = None
+            elif w[0] == 'adv_conditional_tol':
+                # '# adv_conditional_tol 1.0E-02 <what it means>'
+                key = 'conditional_tol_text'
+                out[key] = ' '.join(w[1:])
+                try:
+                    out['conditional_tol'] = float(w[1])
+                except (ValueError, IndexError):
+                    out['conditional_tol'] = None
+            elif w[0] == 'adv_stationarity_operator':
+                key = 'stationarity_operator'
+                out[key] = ' '.join(w[1:])
+            elif w[0] == 'adv_model_restrictions':
+                key = 'model_restrictions'
+                out[key] = ' '.join(w[1:])
+            elif w[0] == 'adv_product':
+                key = 'product'
+                out[key] = ' '.join(w[1:])
+            elif w[0].startswith('adv_'):
+                key = None
+            elif key is not None:
+                # Continuation line of the multi-line text fields.
+                out[key] = out[key] + ' ' + ' '.join(w)
+    return out
+
+
 def load_hydro(path, ghost=False):
     """Read Hydro_ioniz.txt or Hydro_ioniz_adv.txt -> dict of physical arrays.
     Columns: r[R_p], n[m_H/cm^3] (mass density = rho/m_H, metals included),
     v[cm/s], p[erg/cm^3], T[K], heat, cool.
+
+    `Hydro_ioniz_adv.txt` carries three further columns: `adv_T_status` and
+    `adv_comp_status`, the validity of the row's temperature and of its
+    composition in the five values of the schema (0 corrected, 1 retained,
+    2 failed, 3 unsupported, 4 not evaluated), and `adv_mass_row`, the
+    measure both were decided by.  A corrected row is a conditional
+    correction accurate to `adv_conditional_tol` of itself in the mass flux,
+    so the measure is the CONDITION of the row and comes back as a float
+    array beside the two verdicts.  Column names come from the '# columns'
+    header, so a file with further columns is read as written.
+
+    A file that carries no '# adv_schema' line is LEGACY: its rows have
+    unknown validity, and both fields come back filled with ADV_UNKNOWN
+    rather than translated from its single `adv_status` column, which named
+    only the first refusal of the row.  That column is still returned under
+    its own name.  The header's own statements come back as well:
+    'adv_schema', 'adv_input_certified', 'adv_certification_reason',
+    'adv_stationarity_operator', 'adv_conditional_tol',
+    'adv_conditional_tol_text', 'adv_model_restrictions', 'adv_product' and
+    'adv_status_counts' (see load_adv_header).
+
     Physical cells only unless ghost=True."""
-    r, n, v, p, T, heat, cool = loadtxt_cells(path, ghost, unpack=True)
-    return dict(r=r, n=n, v=v, p=p, T=T, heat=heat, cool=cool)
+    names = None
+    with open(path) as f:
+        for line in f:
+            if not line.startswith('#'):
+                break
+            if line.startswith('# columns'):
+                # Header names carry their unit, 'r[Rp]', 'heat[erg/cm3/s]'.
+                names = [nm.split('[')[0] for nm in line.split()[2:]]
+    # The first seven columns keep the keys this loader has always used
+    # ('n' for the mass-density column, whose header name is 'rho'); any
+    # further column is keyed by its header name.
+    keys = HYDRO_COLS + (names[len(HYDRO_COLS):] if names else [])
+    d = loadtxt_cells(path, ghost, unpack=True)
+    out = {nm: d[i] for i, nm in enumerate(keys) if i < d.shape[0]}
+    for nm in ADV_STATUS_COLS + ['adv_status']:
+        if nm in out:
+            out[nm] = out[nm].astype(int)
+    hdr = load_adv_header(path)
+    is_adv = 'adv_status' in out or ADV_STATUS_COLS[0] in out
+    if is_adv:
+        out['adv_schema'] = hdr['schema']
+        out['adv_input_certified'] = hdr['input_certified']
+        out['adv_certification_reason'] = hdr['certification_reason']
+        out['adv_stationarity_operator'] = hdr['stationarity_operator']
+        out['adv_conditional_tol'] = hdr['conditional_tol']
+        out['adv_conditional_tol_text'] = hdr['conditional_tol_text']
+        out['adv_model_restrictions'] = hdr['model_restrictions']
+        out['adv_product'] = hdr['product']
+        out['adv_status_counts'] = hdr['counts']
+        for nm in ADV_STATUS_COLS:
+            if nm not in out:
+                out[nm] = np.full(out['r'].size, ADV_UNKNOWN, dtype=int)
+    return out
 
 
 def load_ions(path, ghost=False):
@@ -236,7 +426,43 @@ def load_ions(path, ghost=False):
     d = loadtxt_cells(path, ghost, unpack=True)
     r = d[0]
     ion = {name: d[i + 1] for i, name in enumerate(names) if i + 1 < d.shape[0]}
+    # The advection-corrected file carries the two validity fields next to
+    # the species columns.  They are not species: drop them here so that a
+    # caller summing this dict cannot add a status integer to a density.
+    # Read them with load_hydro or load_adv_status.
+    for nm in ADV_STATUS_COLS:
+        ion.pop(nm, None)
     return r, ion
+
+
+def load_adv_status(path, ghost=False):
+    """Read the two validity fields of an advection-corrected profile file
+    (either Hydro_ioniz_adv.txt or Ion_species_adv.txt) -> (T_status,
+    comp_status) as integer arrays, together with the header block.
+
+    Returns (T_status, comp_status, header).  For a legacy file, which
+    carries no '# adv_schema' line, both arrays are ADV_UNKNOWN throughout:
+    unknown validity, never corrected validity.  Physical cells only unless
+    ghost=True."""
+    names = None
+    with open(path) as f:
+        for line in f:
+            if not line.startswith('#'):
+                break
+            if line.startswith('# columns'):
+                # Every column in file order, units stripped, so the two
+                # fields are found by name whatever precedes them.
+                names = [nm.split('[')[0] for nm in line.split()[2:]]
+    hdr = load_adv_header(path)
+    d = loadtxt_cells(path, ghost, unpack=True)
+    n = d[0].size
+    out = []
+    for nm in ADV_STATUS_COLS:
+        if names is not None and nm in names:
+            out.append(d[names.index(nm)].astype(int))
+        else:
+            out.append(np.full(n, ADV_UNKNOWN, dtype=int))
+    return out[0], out[1], hdr
 
 
 def load_cooling(path, ghost=False):
@@ -390,6 +616,17 @@ def load_run(outdir, inputfile, adv=True, ghost=False):
     h = load_hydro(os.path.join(outdir, 'Hydro_ioniz%s.txt' % suf), ghost)
     run.r, run.n, run.v = h['r'], h['n'], h['v']
     run.p, run.T, run.heat, run.cool = h['p'], h['T'], h['heat'], h['cool']
+    # Present in the _adv file only (see load_hydro); None for the eq file,
+    # whose rows are the run's own solution by construction.  A legacy _adv
+    # file gives schema 1 and ADV_UNKNOWN in both fields.
+    run.adv_T_status = h.get('adv_T_status')
+    run.adv_comp_status = h.get('adv_comp_status')
+    run.adv_schema = h.get('adv_schema')
+    run.adv_input_certified = h.get('adv_input_certified')
+    run.adv_certification_reason = h.get('adv_certification_reason', '')
+    run.adv_status = h.get('adv_status')
+    run.adv_mass_row = h.get('adv_mass_row')
+    run.adv_conditional_tol = h.get('adv_conditional_tol')
     _, run.ion = load_ions(os.path.join(outdir, 'Ion_species%s.txt' % suf),
                            ghost)
     if inputfile:

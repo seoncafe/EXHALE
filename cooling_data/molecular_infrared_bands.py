@@ -382,7 +382,13 @@ HEADER = '''\
       real*8 :: h2_line_dE(n_h2_line), h2_line_A(n_h2_line)
       real*8 :: h2_line_Tu(n_h2_line), h2_line_gu(n_h2_line)
 
-      integer :: i
+      ! Implied-do index of the data statements below, and nothing else.
+      ! PRIVATE: the module is otherwise public and molecular_infrared_cooling
+      ! uses it without an only: list, so a public "i" would be in scope in
+      ! every routine there -- a shared, saved integer that implicit none
+      ! cannot catch as an undeclared loop index and that the OpenMP cell
+      ! sweep would write from several threads.
+      integer, private :: i
 
 '''
 

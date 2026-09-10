@@ -31,9 +31,21 @@
 	use utils_ion_eq
 	use composition, only: he_ground_singlet_density
 	use output_write
-	use caloric_eos, only: h2_particle_fraction
+	use caloric_eos, only: h2_particle_fraction, internal_energy_of_mixture
 	use equation_T
 	use opacity_models           ! opacity_pT_factor for the 'P' model
+	! The mass row of the state and the scale that makes it dimensionless:
+	! the SAME operator the stationary certification measures that row by,
+	! called here on the state the post-process is handed rather than
+	! re-derived from it.
+	use Conversion,          only: W_to_U
+	use Reconstruction_step, only: n_faces_positivity_limited
+	use steady_residual_mod, only: assemble_residual, residual_row_scale,  &
+	                               row_terms_describe_state
+	use certification,       only: cert_scale_floor
+	! The species the reconstruction below omits, for the cell class it does
+	! not model (see adv_unsupported).
+	use ionization_equilibrium, only: nmol_eq, nox_eq
 
 	implicit none
 
@@ -53,6 +65,28 @@
 	! below this cannot be represented to better than ~1% by a solver whose
 	! absolute resolution on x_HI is sqrt(eps) = 1.5e-8.
 	real*8, parameter :: xHII_adv_min = 1.0d-6
+	! THE MEASURE AND THE FRACTION A CORRECTED ROW IS ACCURATE TO. The
+	! measure is the mass row of the state the post-process is handed,
+	! divided by the largest term the row itself contains, |R_1(j)|/s_1(j),
+	! which is the fractional change of the FACE mass flux across cell j
+	! (steady_residual.f90, mass_flux_row_scale) and the same operator the
+	! stationary certification measures that row by. The fraction it is
+	! compared with is adv_conditional_tol (output_write), which is where
+	! the first-order argument is written out: a row at or below it is a
+	! conditional correction accurate to that fraction of itself, a row
+	! above it keeps the run's own value. The certification's own verdict
+	! on the WHOLE state, made with cert_tol_mass, is a separate statement
+	! and travels in the file header beside this one.
+	! Where the enthalpy flux of the mass-flux divergence is reported as
+	! larger than both terms the steady balance keeps. It is a SENSITIVITY
+	! statement about the answer and no longer a refusal (the block in
+	! post_process_adv says why): unity is the point at which the term the
+	! non-stationarity of the recorded flow puts into the energy equation
+	! exceeds the terms the equation keeps, so above it the temperature the
+	! equation returns is set by that term. It is not a stationarity
+	! certificate: a ratio below one is reached with a mass divergence of
+	! any size whenever the kept terms are large.
+	real*8, parameter :: enthalpy_ratio_report_level = 1.0d0
 
 	! Advection-corrected H/He ionized fractions for the current cell, pinned
 	! while the metal re-solve (pp_metals=2) adjusts only the metal stages.
@@ -62,7 +96,96 @@
 	real*8, save :: pp_xHeIII_fix = 0.0d0
 
 	contains
-	
+
+	! Thermal Damkohler number of a cell: how many times over the local net
+	! radiative rate could rewrite the internal energy of the gas while the
+	! gas crosses the cell.
+	!   t_cross  residence time of the gas in the cell [s]
+	!   q_rad    magnitude of the local net radiative rate,
+	!            |heating - cooling| [erg cm^-3 s^-1]
+	!   u_th     internal energy density of the cell [erg cm^-3]
+	!
+	! Da >> 1: the gas reaches the local radiative balance while it is in the
+	! cell, so the temperature there is set by heating = cooling and what the
+	! gas carried in has been forgotten; the advected energy balance can only
+	! add integration error, and the temperature to keep is the one the run's
+	! own energy equation converged to, which carries every channel the run
+	! solved (the post-process carries fewer; see the heating block below).
+	! Da << 1: the temperature is carried by the flow and the advected balance
+	! is what sets it.
+	!
+	! This is the energy counterpart of the Damkohler condition (ii) of the
+	! ionization validity block below, and it is what makes the v -> 0 limit
+	! of the temperature correction a statement about the flow rather than
+	! about the sign of v: t_cross = dr/v grows without bound as v -> 0, so at
+	! any nonzero radiative rate the correction switches ITSELF off before the
+	! upwind difference it is built on loses its meaning. Unity is not a
+	! tunable threshold: it is the statement that one of the two terms of the
+	! equation is larger than the other.
+	pure real*8 function thermal_damkohler_number(t_cross, q_rad, u_th)
+	real*8, intent(in) :: t_cross, q_rad, u_th
+
+	! No internal energy to rewrite is the Da -> infinity end of the same
+	! statement, and it is not a temperature the correction can start from.
+	if (.not. (u_th > 0.0d0)) then
+		thermal_damkohler_number = huge(1.0d0)
+	else
+		thermal_damkohler_number = t_cross*q_rad/u_th
+	endif
+
+	end function thermal_damkohler_number
+
+	! Size of the enthalpy flux of the mass-flux divergence against the two
+	! terms the steady internal-energy balance keeps, on one cell. Written
+	! out, the equation is
+	!
+	!     rho v de/dr  -  p v dln(rho)/dr  +  h div(rho v)  =  heat - cool
+	!
+	! upwind-differenced, and with the common 1/dr divided out its three terms
+	! are, in the variables of the residual,
+	!
+	!     q_adv  = |rho v (e_j - e_{j-1})|
+	!     q_prs  = |w v (rho_j - rho_{j-1})|          w = p/rho
+	!     q_enth = |h div(rho v) dr|                  h = e + w
+	!
+	! The third vanishes for a stationary mass flux rho v r^2 and for nothing
+	! else, so this ratio is how much of the equation the non-stationarity of
+	! the recorded flow carries, and above one the temperature the equation
+	! returns is set by that term rather than by the balance.
+	!
+	! IT IS A SENSITIVITY DIAGNOSTIC AND NOT A STATIONARITY CERTIFICATE.
+	! The ratio is the size of one term against two others, so it falls below
+	! one at any size of the mass divergence once the kept terms are large
+	! enough: a cell can carry a large continuity residual and a small ratio
+	! at the same time. Stationarity of the cell is decided in
+	! post_process_adv by the mass row of the state itself, the operator the
+	! stationary certification uses; this ratio is reported next to it, with
+	! enthalpy_ratio_report_level as the level at which the term dominates.
+	!
+	! The arguments are the cell (subscript up) and its upwind neighbor
+	! (subscript lo): the two points at which the residual evaluates the
+	! state.
+	pure real*8 function enthalpy_flux_term_ratio(h_up, div_rhov, dr,      &
+	                     rho_up, v_up, e_up, e_lo, w_up, rho_lo)
+	real*8, intent(in) :: h_up      ! enthalpy per unit mass of the cell
+	real*8, intent(in) :: div_rhov  ! divergence of the mass flux [1/length]
+	real*8, intent(in) :: dr        ! width of the cell
+	real*8, intent(in) :: rho_up    ! density of the cell
+	real*8, intent(in) :: v_up      ! velocity of the cell
+	real*8, intent(in) :: e_up,e_lo ! internal energy per unit mass, two points
+	real*8, intent(in) :: w_up      ! p/rho of the cell
+	real*8, intent(in) :: rho_lo    ! density of the upwind point
+	real*8 :: q_enth,q_adv,q_prs
+
+	q_adv  = abs(rho_up*v_up*(e_up - e_lo))
+	q_prs  = abs(w_up*v_up*(rho_up - rho_lo))
+	q_enth = abs(h_up*div_rhov*dr)
+	! A cell in which all three terms vanish carries no equation at all, and
+	! the floor makes that ratio zero rather than 0/0: nothing to refuse.
+	enthalpy_flux_term_ratio = q_enth/max(q_adv, q_prs, 1.0d-99)
+
+	end function enthalpy_flux_term_ratio
+
 	subroutine post_process_adv(rho,v,p,T_in,heat,cool,eta,   &
                                   nhi_in,nhii_in,		    &
                                   nhei_in,nheii_in,nheiii_in,   &
@@ -153,6 +276,31 @@
       
    ! Heating, cooling
    real*8, dimension(1-Ng:N+Ng) ::  theat,tcool
+   ! Cooling of the composition each pass STARTS from, at that pass's
+   ! temperature [erg cm^-3 s^-1], from the first eval_cool of the pass. It is
+   ! the radiative side of the thermal Damkohler number of the energy solve
+   ! (see the loop), which has to be formed before the temperature is solved
+   ! for and therefore cannot use tcool.
+   real*8, dimension(1-Ng:N+Ng) ::  tcool_in
+   ! Photoheating of ONE particle of each absorber [erg s^-1] from the
+   ! attenuated field, the rate side of the heating assembly.
+   real*8, dimension(1-Ng:N+Ng) ::  h1_HI_pp,h1_HeI_pp,h1_HeII_pp,       &
+                                    h1_HeTR_pp,h1_H2_pp
+   real*8, dimension(1-Ng:N+Ng,n_mion) ::  h1_m_pp
+   ! Molecular and oxygen carrier densities of the _adv composition, and the
+   ! Lyman-Werner and FUV band rates: all identically zero or, for the
+   ! dissociations per pump, unity, because the reconstruction carries no
+   ! molecules (module header). The two .false. flags of the heating call
+   ! are what actually keeps those channels out; these arrays exist because
+   ! the assembly takes the composition as arguments.
+   real*8, dimension(1-Ng:N+Ng,4) ::  nmol_pp
+   real*8, dimension(1-Ng:N+Ng,3) ::  nox_pp
+   real*8, dimension(1-Ng:N+Ng) ::  k_lw_pp, p_lw_pp, k_co_pp
+   real*8, dimension(1-Ng:N+Ng,n_fuv_band) ::  j_fuv_pp
+   ! The heating deposits of the _adv composition, channel by channel. The
+   ! _adv files carry the total; the columns are kept because the assembly
+   ! forms the total as their sum.
+   real*8, dimension(1-Ng:N+Ng,n_heat_channel) ::  heat_chan_pp
       
  	! Updated species densities
    real*8, dimension(1-Ng:N+Ng) :: nhi,nhii
@@ -198,6 +346,72 @@
 	real*8  :: xHII_eq        ! equilibrium H ionized fraction of the cell
 	integer :: n_adv_eq       ! cells left at the equilibrium ionization
 
+	! Validity of the energy correction, cell by cell (see the energy loop,
+	! where both quantities are stated and formed).
+	real*8  :: t_cross_E      ! residence time of the gas in the cell [s]
+	real*8  :: q_rad          ! |heating - cooling| [erg cm^-3 s^-1]
+	real*8  :: u_th           ! internal energy density [erg cm^-3]
+	real*8  :: Da_thermal     ! thermal Damkohler number of the cell
+	real*8  :: Da_thermal_max ! largest of those over the tested cells
+	real*8  :: r_Da_thermal_max    ! radius at which it is largest
+	integer :: n_T_local      ! cells left at the run's own temperature
+	! The enthalpy flux of the mass-flux divergence, the third term of the
+	! energy equation (see the statement in the energy loop): its coefficient
+	! div(rho v), and its size against the other two terms.
+	real*8  :: x_h2_cell      ! H2 share of the particle count of the cell
+	real*8  :: x_h2_upwind    ! ... of the upwind cell the energy comes from
+	! e_up and e_lo are the two ENDS OF THE INTERFACE, the cell at r(j) and
+	! the cell at r(j-1), for the term sizes of the sensitivity diagnostic;
+	! e_upwind is the same specific energy of the upwind cell handed to the
+	! residual, which names it for the direction the flow comes from.
+	real*8  :: e_up,e_lo      ! internal energy per unit mass at the two ends
+	real*8  :: e_upwind       ! that of the upwind cell, for the residual
+	real*8  :: w_up,h_up      ! p/rho and the enthalpy per unit mass, this cell
+	real*8  :: Fmass_up,Fmass_lo   ! mass flux rho v r^2 at the two points
+	real*8  :: dV_cv          ! volume between the two points, d(r^3)/3
+	real*8  :: div_rhov       ! divergence of the mass flux of the cell
+	real*8  :: enthalpy_flux_ratio, enthalpy_flux_ratio_max
+	real*8  :: r_enthalpy_flux_max ! radius at which that ratio is largest
+	integer :: n_enthalpy_term_dominant ! cells whose ratio is above the level
+
+	! Whether the mass row of the cell is within the fraction a corrected
+	! row is accurate to: .false. where it stands above
+	! adv_conditional_tol, so the terms the steady equations drop are
+	! larger than that fraction of the ones they keep (see the block before
+	! the ionization validity conditions). Formed once, on the state the
+	! post-process was handed, and read by every pass.
+	logical, dimension(1-Ng:N+Ng) :: mass_row_within_tol
+	! The measure itself, row by row, written as a column of
+	! Hydro_ioniz_adv.txt: the CONDITION of each row travels with its
+	! verdict. Zero in a row the loop below does not reach.
+	real*8, dimension(1-Ng:N+Ng)   :: adv_mass_row
+	! The state itself in conservative variables, its assembled residual, and
+	! the particle count the residual is given: the three arguments of the
+	! production mass operator.
+	real*8, dimension(3,1-Ng:N+Ng) :: W_state, u_state, R_state
+	real*8, dimension(1-Ng:N+Ng)   :: n_part_state
+	real*8  :: mass_row          ! |R_1(j)|/s_1(j) of one cell
+	real*8  :: mass_row_max      ! largest of those over the tested cells
+	real*8  :: r_mass_row_max    ! radius at which it is largest
+	integer :: n_limited_before  ! face-limiter ledger of the RUN, restored
+	logical :: terms_are_run_state ! the stored row terms are this state's
+	! Mean molecular weight of that same state, for the term sizes above.
+	real*8, dimension(1-Ng:N+Ng) :: mmw_in
+	integer :: n_not_stationary ! cells the stationarity condition refuses
+	integer :: n_stationarity_only ! ... that the ionization conditions do not
+
+	! Particle count of the species the reconstruction omits, and of those it
+	! carries, for the cell class it does not model (adv_unsupported).
+	real*8  :: n_omitted, n_carried
+	logical, dimension(1-Ng:N+Ng) :: cell_class_modelled
+
+	! Validity of the temperature and of the composition of each row, in the
+	! five values of the two-field schema (output_write); written as the last
+	! two columns of Hydro_ioniz_adv.txt and Ion_species_adv.txt. The values
+	! are assigned where each decision is taken, so no reader of this routine
+	! has to reconstruct which condition a row carries.
+	integer, dimension(1-Ng:N+Ng) :: adv_T_status, adv_comp_status
+
 
    ! 60 entries to match the ion_system_HeH_metals / ion_system_metals_pp
    ! dummy length used by the pp_metals=2 re-solve (only 1-11 are consumed;
@@ -209,6 +423,10 @@
 	real*8 :: sys_sol_T(1), sys_x_T(1)
    real*8 :: wa_T(8)
    logical :: brent_ok                       ! Task 1: Brent T-solve status
+   ! The cell energy solve kept the run's own temperature: it did not
+   ! converge, or its root was outside the band a temperature of this gas
+   ! can occupy.
+   logical :: T_solve_fell_back
       
       
    !----------------------------------------------------------!      
@@ -392,7 +610,7 @@
 	call eval_cool(T_K,nhi,nhii,nhei,nheii,nheiii, nm_w,            &
 	  			   rchiiB,rcheiiB,rcheiiiB, rec_m_pp,             &
 				   a_ion_HI,a_ion_HeI,a_ion_HeII, aion_m_pp,          &
-				   dum_v1, a_ion_HeITR=a_ion_HeITR)
+				   tcool_in, a_ion_HeITR=a_ion_HeITR)
 
  	
  	if (thereis_HeITR) then
@@ -416,6 +634,205 @@
 		! The metal share of the same photons feeds the metal re-solve
 		! (pp_metals=2) exactly as it feeds the equilibrium solve.
 		if (thereis_metals) P_m = P_m + dP_m_hrc
+	endif
+
+   !----------------------------------!
+
+	!---- How far from stationary is the flow of this cell? ----!
+	!
+	! Every equation this post-process solves is a STEADY equation integrated
+	! along the recorded flow, and the flow it integrates along carries a
+	! fractional change of the face mass flux across the cell. Without a mass
+	! source a physically stationary atmosphere satisfies div(rho v) = 0, so
+	! that change measures how far the state departs from the one the steady
+	! equations describe, and the terms those equations drop are the ones the
+	! mass divergence puts into them: each is the measure times a term they
+	! keep. THE CORRECTION IS THEREFORE FIRST ORDER IN THE MEASURE, and a
+	! cell is corrected exactly where the measure is small enough for that
+	! error to be the stated one (adv_conditional_tol, output_write: one
+	! percent of the correction itself). Where it is not, the equation
+	! returns a temperature the gas does not have and the cell is REFUSED
+	! (MEASURED on backup/regression/hydrostatic_column, whose mass flux
+	! falls about 8 percent from one cell to the next: the exact equation
+	! reads that as a compression at the same rate and reaches 1.7e7 K in a
+	! 1124 K column, while the same equation with the enthalpy flux term
+	! dropped gives the adiabat of the supplied density, 0.78 K). A refused
+	! cell keeps the run's own temperature and the equilibrium composition at
+	! that temperature, exactly as the thermal Damkohler condition below
+	! keeps them where the local radiative balance rather than the flow sets
+	! the state.
+	!
+	! THE OPERATOR IS THE PRODUCTION MASS ROW, AND ITS VALUE TRAVELS WITH
+	! EVERY ROW. The mass balance of the run is a finite-volume one:
+	! the numerical FACE fluxes of the Riemann solve, differenced over the
+	! cell's own control volume. A center-to-center difference of rho v r^2 is
+	! the same quantity in the continuum and a different discrete test, and a
+	! finite-volume steady state can carry a small mass row while the
+	! center-sampled rho v r^2 is not constant. So the state is handed to
+	! assemble_residual and its mass row read back through
+	! residual_row_scale, the two routines the stationary certification calls
+	! (certification.f90, hydro_row_entry); the ratio |R_1|/s_1 is the
+	! fractional change of the face mass flux across the cell. Nothing of
+	! that arithmetic is restated here, and the ratio of every row is written
+	! out as the adv_mass_row column, so a reader has the condition of each
+	! row and not only its verdict. The certification's own verdict on the
+	! whole state, taken with cert_tol_mass, is a different statement and is
+	! reported beside this one in the file header.
+	!
+	! THE REFUSAL COVERS THE COMPOSITION TOO. The ionization correction of a
+	! cell is the same kind of object: the steady advection-ionization ODE
+	! along the same flow. A cell whose mass row is above the fraction has no
+	! accurate advective ionization correction either, so the refusal is applied to the
+	! ionization validity below as well and the cell keeps the equilibrium
+	! composition at the run's temperature. Its own conditions (i) and (ii) do
+	! not cover these cells: (i) tests the SIGN of v and (ii) the ratio of the
+	! residence time to the ionization relaxation time, and both are satisfied
+	! by a fast, well-directed outflow whose mass flux changes by a large
+	! fraction of itself across every cell.
+	!
+	! CONTINUITY IS NECESSARY AND NOT SUFFICIENT. A stationary mass row says
+	! nothing about the momentum and energy rows of the same state, and the
+	! certification of the input state, reported in the header of the files
+	! written at the end, is what carries those; a row of this file is a
+	! conditional correction on the recorded wind either way, never a
+	! self-consistent solution (write_adv_validity_header).
+	!
+	! FORMED ONCE, ON THE STATE HANDED IN. rho, v and r are the recorded
+	! profile and the post-process never changes them, so the refusal is a
+	! property of that state; it is evaluated on the first pass, at the run's
+	! own temperature and the mean molecular weight of the composition the
+	! equilibrium solve returned. Recomputing it per pass would let the
+	! refused set move with the iterate, and every pass feeds its upwind
+	! cascade from that set, so the converged _adv product would depend on the
+	! iteration history.
+	if (k == 1) then
+		call calc_mmw(nh,nhe,ne,mmw_in,nm_w)
+
+		! The state in conservative variables. Whether it is the very state
+		! whose row terms the run last stored is asked BEFORE assembling, so
+		! the answer is about the run and not about this call, and it is
+		! reported: the primitive-to-conservative round trip through the
+		! caloric EOS is not the identity to the last bit.
+		W_state(1,:) = rho
+		W_state(2,:) = v
+		W_state(3,:) = p
+		call W_to_U(W_state, u_state)
+		terms_are_run_state = row_terms_describe_state(u_state)
+
+		! The particle count the residual is given. Only the MASS row is read
+		! below, and that row is the flux difference of rho v alone: it does
+		! not contain the particle count, the heating or the cooling, which
+		! enter the momentum and energy rows and the operator-split transport
+		! sources. The count handed over is the one of the reconstruction this
+		! post-process solves with, so nothing here reads a composition the
+		! rest of the routine does not.
+		call calc_ntot(nhi,nhii,nhei,nheii,nheiii,n_part_state,nm_w)
+		n_part_state = n_part_state + ne
+
+		! The face-limiter ledger counts the UPDATES OF THE RUN, and the run
+		! reports it after this routine returns; assembling a residual is a
+		! measurement of a state and not a step, so the count is put back.
+		n_limited_before = n_faces_positivity_limited
+		call assemble_residual(u_state, n_part_state, heat, cool, R_state)
+		n_faces_positivity_limited = n_limited_before
+
+		mass_row_within_tol = .true.
+		adv_mass_row        = 0.0d0
+		n_not_stationary    = 0
+		mass_row_max        = 0.0d0
+		r_mass_row_max      = 0.0d0
+		do j = 2-Ng,N+Ng
+			! The cell's own mass row over the largest term that row holds.
+			! R_state(1,1-Ng) is not read: the right-hand side is formed over
+			! 2-Ng..N+Ng, which is also the range of every loop below, and
+			! adv_mass_row stays zero in that row, which the status fields
+			! report as not_evaluated.
+			mass_row = abs(R_state(1,j))                                    &
+			           /max(residual_row_scale(1,j,u_state), cert_scale_floor)
+			adv_mass_row(j) = mass_row
+			if (mass_row > mass_row_max) then
+				mass_row_max   = mass_row
+				r_mass_row_max = r(j)
+			endif
+			! Written so that a row that is not a number is refused rather
+			! than accepted by a comparison that is false either way.
+			if (.not. (mass_row <= adv_conditional_tol)) then
+				mass_row_within_tol(j) = .false.
+				n_not_stationary        = n_not_stationary + 1
+			endif
+		enddo
+
+		! THE SENSITIVITY OF THE ANSWER, next to the decision above. How much
+		! of the energy equation the non-stationarity of the recorded flow
+		! carries is the size of its enthalpy flux term against the two terms
+		! the balance keeps (enthalpy_flux_term_ratio, this module), formed on
+		! the two points the upwind difference is taken between. It is
+		! reported and refuses nothing: the same ratio is reached with a mass
+		! divergence of any size once the kept terms are large.
+		enthalpy_flux_ratio_max  = 0.0d0
+		r_enthalpy_flux_max      = 0.0d0
+		n_enthalpy_term_dominant = 0
+		do j = 2-Ng,N+Ng
+			! The divergence of the mass flux over the control volume whose
+			! two bounding points are the two the upwind difference is taken
+			! between: (A_p F_p - A_m F_m)/dV with F = rho v, A = r^2,
+			! dV = d(r^3)/3, an exact zero wherever the two points carry the
+			! same rho v r^2. This is the coefficient the energy residual is
+			! given, so the diagnostic and the equation see one number.
+			Fmass_up = rho(j)  *v(j)  *r(j)**2
+			Fmass_lo = rho(j-1)*v(j-1)*r(j-1)**2
+			dV_cv    = (r(j)**3 - r(j-1)**3)/3.0d0
+			div_rhov = (Fmass_up - Fmass_lo)/dV_cv
+			! The three terms, with the common 1/dr divided out, in the
+			! variables of the residual: e = E(x_H2,T)/mu with E the energy
+			! per particle of the caloric EOS, p/rho = T/mu, h = e + p/rho.
+			! Each end of the upwind energy difference is evaluated at the
+			! composition of ITS OWN cell, as the residual does: the
+			! rovibrational energy of H2 travels with the gas that holds the
+			! molecules, so across a dissociation front the two ends store
+			! different energy at the same temperature.
+			dr        = r(j) - r(j-1)
+			x_h2_cell   = h2_particle_fraction(j)
+			x_h2_upwind = h2_particle_fraction(j-1)
+			e_up = internal_energy_of_mixture(x_h2_cell,   T_in(j))         &
+			       /mmw_in(j)
+			e_lo = internal_energy_of_mixture(x_h2_upwind, T_in(j-1))       &
+			       /mmw_in(j-1)
+			w_up = T_in(j)/mmw_in(j)
+			h_up = e_up + w_up
+			enthalpy_flux_ratio = enthalpy_flux_term_ratio(h_up,        &
+			     div_rhov, dr, rho(j), v(j), e_up, e_lo, w_up, rho(j-1))
+			if (enthalpy_flux_ratio > enthalpy_flux_ratio_max) then
+				enthalpy_flux_ratio_max = enthalpy_flux_ratio
+				r_enthalpy_flux_max     = r(j)
+			endif
+			if (enthalpy_flux_ratio > enthalpy_ratio_report_level)          &
+				n_enthalpy_term_dominant = n_enthalpy_term_dominant + 1
+		enddo
+
+		! THE CELL CLASS THE RECONSTRUCTION MODELS. This post-process solves
+		! an H/He + trace-metal gas: calc_ne and calc_ntot are called without
+		! the molecular and oxygen carriers, so in a cell where those omitted
+		! species carry more of the particle count than the ones it does
+		! carry, the counts every equation here is solved with are not the
+		! counts of that gas, and neither the temperature nor the composition
+		! of the row is a statement about it. The comparison is between two
+		! counts of the same cell and carries no threshold; a run with no
+		! molecules and no oxygen chemistry has n_omitted = 0 in every cell.
+		cell_class_modelled = .true.
+		if (thereis_mol .or. thereis_oxychem) then
+			do j = 1-Ng,N+Ng
+				n_omitted = 0.0d0
+				if (thereis_mol)                                             &
+					n_omitted = n_omitted + nmol_eq(j,1) + nmol_eq(j,2)       &
+					          + nmol_eq(j,3) + nmol_eq(j,4)
+				if (thereis_oxychem)                                         &
+					n_omitted = n_omitted + nox_eq(j,1) + nox_eq(j,2)         &
+					          + nox_eq(j,3)
+				n_carried = n_part_state(j)
+				cell_class_modelled(j) = (n_omitted <= n_carried)
+			enddo
+		endif
 	endif
 
    !----------------------------------!
@@ -478,9 +895,28 @@
 	! representation of the unknown, so none of them depends on whether metal
 	! cooling is switched on.
 
+	! (iv) The mass row of the cell stands above adv_conditional_tol, so the
+	!      terms the steady equations drop are larger than that fraction of
+	!      the ones they keep and neither the ionization nor the energy
+	!      correction is accurate to the stated fraction there -- PHYSICAL,
+	!      stated and measured in the block above, which also records why it
+	!      is not covered by (i) or (ii).
+	!
+	! The two status fields are built here and in the energy loop, each where
+	! its own decision is taken. The composition field is complete when the
+	! ionization loop below has run; the temperature field is completed in
+	! the energy loop, which has conditions of its own. Both start at
+	! not_evaluated, so a row no loop reaches says that rather than claiming
+	! a correction: the ionization loop runs from 2-Ng and the energy loop
+	! from 3-Ng, and the rows below those are ghosts with no upstream state
+	! for the upwind difference to read.
+
 	adv_correction_valid = .true.
 	adv_correction_valid(1-Ng) = .false.   ! inner boundary: never corrected
+	adv_T_status    = adv_not_evaluated
+	adv_comp_status = adv_not_evaluated
 	n_adv_eq = 0
+	n_stationarity_only = 0
 	do j = 2-Ng,N+Ng
 		if (v(j) <= 0.0d0 .or. v(j-1) <= 0.0d0) then
 			adv_correction_valid(j) = .false.
@@ -508,7 +944,25 @@
 			    xHII_eq < xHII_adv_min)                                    &
 				adv_correction_valid(j) = .false.
 		endif
+		! Condition (iv) last, so that the count says how many cells it adds
+		! beyond (i) to (iii) rather than how many it holds on.
+		if (.not. mass_row_within_tol(j)) then
+			if (adv_correction_valid(j)) n_stationarity_only = n_stationarity_only + 1
+			adv_correction_valid(j) = .false.
+		endif
 		if (.not. adv_correction_valid(j)) n_adv_eq = n_adv_eq + 1
+		! The composition of a cell any of the four conditions refuses is the
+		! equilibrium one the run converged to: the run's own value, kept.
+		! A cell that is corrected here can still fail its own solve, which
+		! the loop below records. The temperature field gets what conditions
+		! (i) and (iv) say about it -- the upwind energy difference has no
+		! upstream state under inflow either, and a non-stationary cell has
+		! no steady energy equation -- and the energy loop adds the rest.
+		if (adv_correction_valid(j)) then
+			adv_comp_status(j) = adv_corrected
+		else
+			adv_comp_status(j) = adv_retained
+		endif
 	enddo
 
    !----------------------------------!
@@ -567,6 +1021,7 @@
 				nhi(j)  = nhi_in(j)*n0
 				nhii(j) = nhii_in(j)*n0
 				n_adv_noconv = n_adv_noconv + 1
+				adv_comp_status(j) = adv_failed
 				cycle
 			endif
 
@@ -674,6 +1129,7 @@
 			if (info /= 1) then
 				call pin_cell_to_equilibrium(j)
 				n_adv_noconv = n_adv_noconv + 1
+				adv_comp_status(j) = adv_failed
 				cycle
 			endif
 
@@ -794,6 +1250,10 @@
 			if (info /= 1) then
 				nm_w(j,:)      = nm_in(j,:)*n0
 				n_metal_noconv = n_metal_noconv + 1
+				! The metal stages of this row are the equilibrium split
+				! while its H/He is corrected; the row's composition solve
+				! did not converge and the field says so.
+				adv_comp_status(j) = adv_failed
 				cycle
 			endif
 
@@ -814,38 +1274,56 @@
 
 	!----------------------------------!
 
-	!---- Update photoheating rate ----!
-	
+	!---- Heating of the advection-corrected composition ----!
+
+	! The photoheating of ONE particle of each absorber, from the same
+	! attenuated field the equilibrium pass used, and then the ONE heating
+	! assembly (utils_ion_eq) contracted with the advection-corrected
+	! densities. This is the same routine the ionization sweep and the
+	! heating breakdown call, so the _adv energy solve balances the heating
+	! the run's own energy equation deposits and cannot drift from it.
+	!
+	! The composition reconstructed here carries no molecular and no oxygen
+	! carriers (see the header of this module), which is what the two
+	! composition flags below say; the molecular and oxygen deposits are
+	! therefore absent from the _adv heating, as are the molecular carriers
+	! from its n_e and its n_tot.
 	if (thereis_He) then
 		call PH_heat_HHe(nhi,nhei,nheii,nheiTR, nm_w, xion,     &
 		                 dum_v1,dum_v2,dum_v3,dum_v4, P_m,          &
-		                 theat,dum_v5)
+		                 dum_v6,dum_v5,                             &
+		                 heat_of_one_HI   = h1_HI_pp,               &
+		                 heat_of_one_HeI  = h1_HeI_pp,              &
+		                 heat_of_one_HeII = h1_HeII_pp,             &
+		                 heat_of_one_HeTR = h1_HeTR_pp,             &
+		                 heat_of_one_H2   = h1_H2_pp,               &
+		                 heat_of_one_mion = h1_m_pp)
   	else
-	  	call PH_heat_H(nhi, xion, dum_v1,theat,dum_v2)
+	  	call PH_heat_H(nhi, xion, dum_v1,dum_v6,dum_v2,             &
+	  	               heat_of_one_HI = h1_HI_pp)
+		h1_HeI_pp  = 0.0d0
+		h1_HeII_pp = 0.0d0
+		h1_HeTR_pp = 0.0d0
+		h1_H2_pp   = 0.0d0
+		h1_m_pp    = 0.0d0
   	endif
 
-	! He recombination radiation ionizing H I (Draine 2011; default off):
-	! photoelectron heating from the coupled H ionizations, evaluated at the
-	! advection-corrected densities (the rate/coefficient corrections were
-	! applied to P_HI/rcheiiB before the advection solve above).
-	if (use_he_rec_coupling .and. thereis_He) then
-		nh2_pp = 0.0d0
-		call he_rec_coupling(T_K, nhi, nh2_pp, nhei, nheii, nheiTR,       &
-		                     ne, nm_w, A31, q31a, q31b,                    &
-		                     rcheiiB_hrc, dP_HI_hrc, dP_H2_hrc,            &
-		                     dP_m_hrc, dheat_hrc)
-		theat = theat + dheat_hrc
-	endif
-
-	! Penning ionization heating (mirrors ionization_equilibrium): He(2^3S)+H0
-	! -> He(1^1S)+H+ + e- releases e_th_HeI - e_th_HeTR - e_th_HI (= 6.2 eV).
-	! Q31 is the total ionization rate, so only its Penning branch carries
-	! this exothermicity. theat here is the freshly recomputed photoheating
-	! (+ he_rec_coupling), so this term is added once and is not
-	! double-counted. Advection-corrected densities.
-	if (thereis_HeITR) theat = theat                                 &
-	     + f_penning_HeI23S*nheiTR*nhi*Q31                            &
-	       *(e_th_HeI - e_th_HeTR - e_th_HI)/erg2eV
+	nmol_pp = 0.0d0
+	nox_pp  = 0.0d0
+	k_lw_pp = 0.0d0
+	! No CO in the reconstructed composition, so no CO photodissociation
+	! rate: the two CO channels of the assembly are gated on with_oxygen,
+	! which is .false. here, and this array is what they would contract.
+	k_co_pp = 0.0d0
+	p_lw_pp = 1.0d0
+	j_fuv_pp = 0.0d0
+	call heating_of_composition(T_K,                                      &
+	         nhi,nhii,nhei,nheii,nheiii,nheiTR, nm_w, nmol_pp, nox_pp,    &
+	         ne, n_tot,                                                   &
+	         h1_HI_pp,h1_HeI_pp,h1_HeII_pp,h1_HeTR_pp,h1_H2_pp,h1_m_pp,   &
+	         A31,q31a,q31b,Q31,                                           &
+	         k_lw_pp, p_lw_pp, k_co_pp, j_fuv_pp, j_fuv_pp,               &
+	         .false., .false., theat, heat_chan_pp)
 
 	! Adimensionalize
 	theat = theat/q0
@@ -872,29 +1350,158 @@
 
 	! Count cell-by-cell temperature solves rejected as non-physical (metal modes).
 	n_pp_reject = 0
+	n_T_local   = 0
+	Da_thermal_max   = 0.0d0
+	r_Da_thermal_max = 0.0d0
+
+	!---- What the energy correction solves ----!
+	!
+	! The equation solved cell by cell below (T_equation) is the steady
+	! internal-energy equation of the supplied profile,
+	!
+	!     div(u v) + p div(v)  =  heating - cooling
+	!   = rho v de/dr  -  p v dln(rho)/dr  +  h div(rho v)             (E)
+	!
+	! upwind-differenced, with u the internal energy density, e the internal
+	! energy per unit mass and h = e + p/rho the enthalpy per unit mass. The
+	! two forms are one equation: div(rho e v) = e div(rho v) + rho v de/dr,
+	! and p div(v) = (p/rho) div(rho v) - p v dln(rho)/dr.
+	!
+	! The third term is the enthalpy flux carried by the divergence of the
+	! mass flux, h div(rho v) = h (1/r^2) d(rho v r^2)/dr. It vanishes for a
+	! stationary mass flux rho v r^2 = const and for nothing else, so a
+	! correction built without it describes a converged wind and no other
+	! state. It is handed to the residual through teq_cell%div_rhov, whose
+	! two branches T_equation states the algebra of.
+	!
+	! WHICH DIVERGENCE, AND WHY. div(rho v) is formed with the operator the
+	! mass row of the state uses, (A_p F_p - A_m F_m)/dV with F = rho v,
+	! A = r^2 and dV = d(r^3)/3 (RK_rhs), over the control volume whose two
+	! bounding points are the two points the upwind energy difference is taken
+	! between, r(j-1) and r(j). Those are the only two points at which this
+	! residual evaluates the state, so the mass flux entering the term is the
+	! state's own at the same two points, and the term is an exact zero
+	! wherever the two carry the same rho v r^2. A centered difference of the
+	! neighboring cells would not have that property and would measure a
+	! divergence at a point the energy difference never visits. The FACE mass
+	! flux of the state is a different object and is not read here: its faces
+	! are not the two points of this difference. It is what decides WHETHER
+	! this cell has a steady equation at all -- the mass row of the state,
+	! measured in the stationarity block above by the operator the stationary
+	! certification uses -- and the two answer two questions: that block
+	! how far the state departs from stationary in this cell, this term what
+	! the equation carries at that departure.
+	!
+	! WHAT THE TERM IS WORTH. MEASURED 2026-09-08 on
+	! backup/regression/hydrostatic_column, a 300-step mechanical column whose
+	! mass flux rho v r^2 runs over seven orders of magnitude across the
+	! domain: without the third term the temperature is the upwind recursion
+	! of the first two, whose continuum form is the adiabat T proportional to
+	! rho^(gamma-1), and it falls from 1138 K at the base to 0.78 K at
+	! 1.396 R_p while the run's own stays between 1084 and 1182 K. With the
+	! third term the same column rises instead, to 1.7e7 K at 1.40 R_p and
+	! 1.6e9 K at 2.96 R_p, because its mass flux falls by about 8 percent
+	! from one cell to the next and (E) reads that as a compression at the
+	! same rate. Both numbers are solutions of an equation on a state that
+	! does not satisfy continuity, and neither is a temperature the gas has.
+	! The term is therefore not a correction to that state, it is the state.
+	! Such a cell is refused by condition (iv) of the validity block above,
+	! which asks the mass row of the state itself; the size of this term
+	! against the other two is reported next to that verdict as the
+	! sensitivity of the answer, and the cells the condition refuses keep the
+	! run's own temperature below.
+	!
+	! The check on the restored term is the case with a solution in closed
+	! form: with heating and cooling negligible (E) integrates to
+	! w = p/rho proportional to rho^(gamma-1) F^(-gamma), F = rho v r^2, and
+	! src/tests/adv_static_limit marches a column of constant density and
+	! F = r against that solution (first order in the cell width, MEASURED).
 
 	do j = 3-Ng,N+Ng ! Start from first computational cell
-		
+
 		! Substitutions
 		rhop = rho(j)
 		rhom = rho(j-1)
-		vm = v(j-1) 
+		vm = v(j-1)
 		vp = v(j)
-		! Inflow (condition (i) of the validity block above): the cell keeps the
-		! converged eq temperature. The advection-corrected energy solve is
-		! upwind-differenced just like the ionization solve, so it is invalid
-		! wherever the gas moves inward, and it would otherwise land on the
-		! spurious hot root that then cascades up. This is a property of the
-		! discretization, so it does not depend on the metal switch. Conditions
-		! (ii) and (iii) are statements about the ionization balance and its
-		! representation and are deliberately NOT applied here.
+		! The mass row is above the fraction a corrected row is accurate to
+		! (condition (iv) of the validity block above): the steady equation
+		! solved here would drop terms larger than that fraction of the ones
+		! it keeps, so the cell keeps the run's own temperature. Tested
+		! before the inflow sign, matching the order the status is built in:
+		! it refuses more of the row than the conditions that follow.
+		if (.not. mass_row_within_tol(j)) then
+			T_out(j)        = T_in(j)
+			adv_T_status(j) = adv_retained
+			cycle
+		endif
+		! Inflow (condition (i) of the ionization validity block above): the
+		! cell keeps the converged eq temperature. The advection-corrected
+		! energy solve is upwind-differenced just like the ionization solve, so
+		! it is invalid wherever the gas moves inward, and it would otherwise
+		! land on the spurious hot root that then cascades up. This is a
+		! property of the discretization, so it does not depend on the metal
+		! switch. Conditions (ii) and (iii) of that block are statements about
+		! the ionization balance and its representation and are deliberately
+		! NOT applied here; the energy solve has the Damkohler condition of its
+		! own that follows, formed from the terms of ITS equation.
 		if (vp <= 0.0d0 .or. vm <= 0.0d0) then
-			T_out(j) = T_in(j)
+			T_out(j)        = T_in(j)
+			adv_T_status(j) = adv_retained
 			cycle
 		endif
 		dr = r(j) - r(j-1)
 		mum = mmw(j-1)
 		mup = mmw(j)
+
+		! Local radiative balance (thermal_damkohler_number, this module): the
+		! gas that spends longer in the cell than the local net radiative rate
+		! needs to rewrite its internal energy has forgotten what it carried
+		! in, so its temperature there is the root of heating = cooling and
+		! not of the advected balance. The temperature to keep is then the
+		! run's own, which is the root of that same local balance with every
+		! channel the run solved. The pair is formed at the state the pass
+		! starts from, since the correction has to be decided before the
+		! temperature is solved for.
+		t_cross_E = dr*R0/(vp*v0)
+		q_rad     = abs(theat(j)*q0 - tcool_in(j))
+		u_th      = (n_tot(j) + ne(j))*kb_erg*T0                          &
+		            *internal_energy_of_mixture(h2_particle_fraction(j),  &
+		                                        T_out(j))
+		Da_thermal = thermal_damkohler_number(t_cross_E, q_rad, u_th)
+		if (Da_thermal > Da_thermal_max) then
+			Da_thermal_max   = Da_thermal
+			r_Da_thermal_max = r(j)
+		endif
+		if (Da_thermal > 1.0d0) then
+			T_out(j)        = T_in(j)
+			n_T_local       = n_T_local + 1
+			adv_T_status(j) = adv_retained
+			cycle
+		endif
+
+		! The divergence of the mass flux of this cell, on the two points the
+		! upwind energy difference is taken between (see the statement above):
+		! the mass row's flux-difference operator over the control volume
+		! bounded by r(j-1) and r(j). The same operator, on the state handed
+		! in, forms the stationarity condition (iv) of the validity block.
+		Fmass_up = rho(j)  *vp*r(j)**2
+		Fmass_lo = rho(j-1)*vm*r(j-1)**2
+		dV_cv    = (r(j)**3 - r(j-1)**3)/3.0d0
+		div_rhov = (Fmass_up - Fmass_lo)/dV_cv
+
+		! The caloric state of the two cells the upwind energy difference is
+		! taken between. e_upwind is the SPECIFIC internal energy of the
+		! upwind cell, E(x_H2,up, T_up)/mu_up, which is the quantity the flow
+		! carries into this cell: it is evaluated at the upwind composition
+		! and the upwind temperature, so a cell with no H2 below a molecular
+		! neighbor still receives the rovibrational energy of that gas. The
+		! upwind temperature is the one the cell below was left with by this
+		! same loop, T_out(j-1), the value the residual differences against.
+		x_h2_cell   = h2_particle_fraction(j)
+		x_h2_upwind = h2_particle_fraction(j-1)
+		e_upwind    = internal_energy_of_mixture(x_h2_upwind, T_out(j-1))   &
+		              /mum
 
 	 	!--- Solve equation for temperature implicitly ---!
 		
@@ -911,9 +1518,17 @@
 	 	teq_cell%dr = dr
 	 	teq_cell%Told = T_out(j-1)
 	 	teq_cell%heaold = theat(j)
-	 	! Composition entry of the caloric EOS: the H2 share of this cell's
-	 	! particle-plus-electron count, as the equilibrium solve left it.
-	 	teq_cell%x_h2 = h2_particle_fraction(j)
+	 	! Composition entries of the caloric EOS: the H2 share of the
+	 	! particle-plus-electron count of this cell and of the upwind one, as
+	 	! the equilibrium solve left them, and the specific internal energy
+	 	! the flow carries in with it.
+	 	teq_cell%x_h2    = x_h2_cell
+	 	teq_cell%x_h2_up = x_h2_upwind
+	 	teq_cell%e_up    = e_upwind
+	 	! Coefficient of the enthalpy flux term of (E), formed above from the
+	 	! state this pass was handed. It does not change while the root finder
+	 	! varies the temperature.
+	 	teq_cell%div_rhov = div_rhov
 	 	! Metal densities for this cell [cgs] go through the equation_T module
 	 	! array (the 27-ion vector does not fit params). pp_metal_on gates
 	 	! whether T_equation adds the metal cooling/brem/n_e terms.
@@ -933,11 +1548,13 @@
 	 	! = .false.) the legacy MINPACK solve + 2x-band reject is used instead.
 	 	! Metals-off always keeps the original MINPACK solve (monotone residual,
 	 	! byte-identical).
+	 	T_solve_fell_back = .false.
 	 	if (pp_metal_on .and. use_brent_tsolve) then
 	 		call solve_T_brent(paramsT, T_in(j), sys_x_T(1), brent_ok)
 	 		if (.not. brent_ok) then
 	 			sys_x_T(1)  = T_in(j)
 	 			n_pp_reject = n_pp_reject + 1
+	 			T_solve_fell_back = .true.
 	 		endif
 	 	else
 	 		! Legacy MINPACK solve.
@@ -949,6 +1566,7 @@
 	 		if (info /= 1) then
 	 			sys_x_T(1) = T_in(j)
 	 			n_T_noconv = n_T_noconv + 1
+	 			T_solve_fell_back = .true.
 	 		endif
 	 		! A non-positive root is not a temperature, whatever else is in the
 	 		! gas, so this test is not conditional on the metals. It matters
@@ -963,6 +1581,7 @@
 	 		if (.not. (sys_x_T(1) > 0.0d0)) then
 	 			sys_x_T(1)  = T_in(j)
 	 			n_pp_reject = n_pp_reject + 1
+	 			T_solve_fell_back = .true.
 	 		endif
 	 		! With metal cooling, additionally reject an out-of-band root: the
 	 		! metal-cooled residual is non-monotone and carries a second,
@@ -972,9 +1591,18 @@
 	 			    sys_x_T(1) < 0.5d0*T_in(j)) then
 	 				sys_x_T(1)  = T_in(j)
 	 				n_pp_reject = n_pp_reject + 1
+	 				T_solve_fell_back = .true.
 	 			endif
 	 		endif
 	 	endif
+
+		! The cell solve did not converge, or its root was not a temperature
+		! of this gas, so the row carries the run's own temperature.
+		if (T_solve_fell_back) then
+			adv_T_status(j) = adv_failed
+		else
+			adv_T_status(j) = adv_corrected
+		endif
 
 		! Extract solution profiles
 		T_out(j) = sys_x_T(1)
@@ -987,14 +1615,83 @@
       
 	enddo ! End loop on post processing
 
+	! THE CELL CLASS THE CLOSURE DOES NOT COVER, over both fields. Formed on
+	! the state handed in (the block before the validity conditions) and
+	! applied last, because it is a statement about what this post-process
+	! models and stands above the conditions that name the flow and the
+	! solve: in such a cell the particle and electron counts every equation
+	! here was solved with are not the counts of that gas, so neither the
+	! temperature nor the composition of the row describes it.
+	do j = 1-Ng,N+Ng
+		if (.not. cell_class_modelled(j)) then
+			adv_T_status(j)    = adv_unsupported
+			adv_comp_status(j) = adv_unsupported
+		endif
+	enddo
+
 	! Report how many cells the advection correction was not applied to
-	! (inflow, local ionization equilibrium, or an unrepresentable ion
-	! fraction; see the validity block above). Counted on the last pass.
+	! (inflow, local ionization equilibrium, an unrepresentable ion fraction,
+	! or a mass row above the fraction a corrected row is accurate to; see
+	! the validity block above).
+	! Counted on the last pass.
 	if (n_adv_eq > 0) then
 		write(*,'(a,i0,a,i0,a)') ' (post_process_adv) advection correction: ', &
 		   n_adv_eq, ' of ', N+2*Ng-1,                                          &
 		   ' cells kept at the equilibrium ionization.'
 	endif
+
+	! Report how many cells kept the run's own temperature because the local
+	! radiative balance, not the flow, sets the temperature there, and how
+	! close to that condition the rest of the column came. The largest
+	! Damkohler number is reported whether or not any cell crossed unity: it
+	! is the margin of the condition on this state, and a column that stays
+	! three orders of magnitude below it and one that sits at 0.95 are
+	! different statements about the same verdict.
+	write(*,'(a,i0,a,i0,a,es9.2,a,f7.4,a)')                                  &
+	   ' (post_process_adv) energy correction: ', n_T_local, ' of ',          &
+	   N+2*Ng-2, ' cells kept the run temperature (thermal Damkohler > 1);'   &
+	   //' largest Damkohler ', Da_thermal_max, ' at r = ',                   &
+	   r_Da_thermal_max, ' Rp.'
+
+	! Report how far from stationary the state handed in is, on the mass row
+	! the stationary certification measures, together with the fraction a
+	! corrected row is accurate to and the count of cells above it. The
+	! largest measure is reported whether or not any cell crossed the
+	! fraction, so the margin of the condition on this state is in the log,
+	! and the second count says how many cells the condition adds beyond the
+	! ionization conditions (i) to (iii), which is what it is worth as a
+	! condition of its own. Every row's own measure is in the adv_mass_row
+	! column of the file, so a reader is not left with the maximum alone.
+	write(*,'(a,es9.2,a,f7.4,a,es9.2,a,i0,a,i0,a,i0,a)')                     &
+	   ' (post_process_adv) conditional correction: mass row |R_1|/s_1 of'    &
+	   //' the input state up to ', mass_row_max, ' at r = ',                 &
+	   r_mass_row_max, ' Rp; above ', adv_conditional_tol,                    &
+	   ', the fraction a corrected row is accurate to, in ',                  &
+	   n_not_stationary, ' of ', N+2*Ng-1, ' cells, of which ',               &
+	   n_stationarity_only, ' the ionization conditions do not already refuse.'
+	! Whether that row was measured on the very state the run last assembled
+	! one for: the primitive-to-conservative round trip through the caloric
+	! EOS is not the identity to the last bit, and a reader of the log should
+	! not have to assume it is.
+	if (.not. terms_are_run_state)                                           &
+		write(*,'(a)') ' (post_process_adv) stationarity: the mass row was'   &
+		   //' assembled from the primitive state handed in, which is the'    &
+		   //' run''s state re-formed and not its conserved variables.'
+
+	! Report the SENSITIVITY of the energy correction to the same
+	! non-stationarity: the size of the enthalpy flux of the mass-flux
+	! divergence against the two terms the steady balance keeps. It refuses
+	! nothing (enthalpy_flux_term_ratio says why); the count is of cells in
+	! which that term is the largest in the equation, so the temperature
+	! returned there is set by it.
+	write(*,'(a,es9.2,a,f7.4,a,i0,a,i0,a,es9.2,a)')                          &
+	   ' (post_process_adv) energy correction: enthalpy flux of the'          &
+	   //' mass-flux divergence / other terms up to ',                        &
+	   enthalpy_flux_ratio_max,                                              &
+	   ' at r = ', r_enthalpy_flux_max, ' Rp; dominant in ',                  &
+	   n_enthalpy_term_dominant, ' of ', N+2*Ng-1,                            &
+	   ' cells (reported, not a refusal; level ',                             &
+	   enthalpy_ratio_report_level, ').'
 
 	! Report how many cells fell back to the eq temperature: a non-positive
 	! root (any run) or, with metals on, one outside the 0.5-2x band.
@@ -1050,9 +1747,14 @@
    ! in dimensionless (n0) units, matching the other species; zero in the
    ! metal-free mode, frozen/re-solved eq densities otherwise.
    nm_out = nm_w/n0
+   ! The two status fields say, row by row, whether the temperature and the
+   ! composition of that row are the steady correction or the run's own
+   ! state, so a reader of the file (and of a spectrum built from it) can
+   ! tell which rows carry which.
    call write_output(rho,v,p_out,T_out,theat,tcool,eta,                &
                      nhi_w,nhii_w,nhei_w,nheii_w,nheiii_w,              &
-                     nheiTR_w,nm_out,'ad')
+                     nheiTR_w,nm_out,'ad', adv_T_status, adv_comp_status,  &
+                     adv_mass_row)
 
 	contains
 

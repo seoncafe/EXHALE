@@ -36,7 +36,7 @@ decay whose Lyman-alpha photon escapes and removes the energy. The de-excitation
 heating is the optically thick correction to that picture: where Lyman-alpha is
 trapped, a fraction of the excited atoms are collisionally de-excited instead of
 radiating, so their energy stays in the gas. The two act on the same `n = 2`
-atoms in opposite directions — pure cooling in the thin limit, reduced net
+atoms in opposite directions: pure cooling in the thin limit, reduced net
 cooling (or net heating) once trapping is included.
 
 ## Formula as coded
@@ -59,7 +59,7 @@ The rate coefficients are the Christie et al. (2013) Table 2 forward
 excitation rates (originally from Janev et al. 2003) put in detailed-balance
 de-excitation form; the statistical weights `g` supply the reverse-rate ratio.
 The heating expression itself is the standard collisional-thermalization
-assembly of these rates and the transition energy — it is constructed in the
+assembly of these rates and the transition energy: it is constructed in the
 code rather than transcribed from a single numbered equation in any one paper.
 
 ## Implementation
@@ -77,7 +77,7 @@ code rather than transcribed from a single numbered equation in any one paper.
   so lowers this heating term there.]
 - Runtime toggle: `incl_deexc_heat`, declared in `parameters.f90` and read from
   the `Deexc heat` key in `input_read.f90`. **On by default since 2026-08-12**
-  (`docs/Update_EXHALE.md` section 50): the argument that had justified the old
+  (`docs/Update_EXHALE_stage1.md` section 50): the argument that had justified the old
   default -- that the term overlaps the H I collisional-excitation cooling --
   does not hold, because that cooling is the one-way Cen (1992) coronal rate
   with no de-excitation term in it. `Deexc heat: False` restores the one-way
@@ -88,21 +88,21 @@ code rather than transcribed from a single numbered equation in any one paper.
 
 ## Source references
 
-- **Christie, Arras & Li (2013), ApJ 772, 144** (`2013ApJ...772..144C`) — the
+- **Christie, Arras & Li (2013), ApJ 772, 144** (`2013ApJ...772..144C`): the
   `n = 2` (2s/2p) population model and the collisional de-excitation rate
   coefficients used here (Table 2, detailed-balance form; forward rates from
   Janev et al. 2003). Cited in the module header of `excited_hydrogen.f90`.
-- **Huang, Arras, Christie & Li (2017), ApJ 851, 150** (`2017ApJ...851..150H`)
-  — the Lyman-alpha mean intensity `J_Lya` that sets the `n = 2` population.
+- **Huang, Arras, Christie & Li (2017), ApJ 851, 150** (`2017ApJ...851..150H`):
+  the Lyman-alpha mean intensity `J_Lya` that sets the `n = 2` population.
 - **Huang, Koskinen, Lavvas & Fossati (2023), ApJ 951, 123**
-  (`2023ApJ...951..123H`) — the framing that this collisional de-excitation
+  (`2023ApJ...951..123H`): the framing that this collisional de-excitation
   channel realizes the re-thermalization of trapped Lyman-alpha, rather than
   applying an escape-probability factor to Lyman-alpha cooling.
 
 The atomic data (rates and the 10.2 eV gap) are attributed explicitly in code
 comments to Christie et al. (2013); the physical justification for treating the
 channel as local heating follows Huang et al. (2023). Further documentation:
-`docs/Update_EXHALE.tex` (physics/atomic-data section and the Huang 2023
+`docs/Update_EXHALE_stage1.tex` (physics/atomic-data section and the Huang 2023
 trapping rationale) and `docs/transmission_spectrum.tex` (the n=2 hydrogen
 population section and reference list).
 
@@ -110,20 +110,20 @@ population section and reference list).
 
 The term is physically appropriate where Lyman-alpha pumping populates `n = 2`
 and the electron density is high enough for collisional de-excitation to compete
-with radiative decay — i.e. the denser, partially ionized layers of a strongly
+with radiative decay, i.e. the denser, partially ionized layers of a strongly
 irradiated escaping atmosphere.
 
 **Numerical caveat (HD 209458 b), historical.** With `Deexc heat: True`,
 HD 209458 b (the lowest-irradiation case of the paper set, `log L_X = 27.2`,
 `log L_EUV = 27.9`) used to develop a base instability: the run reached NaN at
 the innermost cell (`r ~ 1.0002 R_p`) after a few thousand steps. Isolation runs
-showed it was specific to this heating term — with the in-situ Lyman-alpha field
+showed it was specific to this heating term, with the in-situ Lyman-alpha field
 on but `Deexc heat` off the same setup was stable, and the more strongly
 irradiated planets tolerated the term. That is why the key was kept off for the
 low-irradiation cases.
 
 **Retested 2026-08-12, and it no longer reproduces.** The `n = 2` corrections of
-`docs/Update_EXHALE.md` section 50 cut the population that drives this term:
+`docs/Update_EXHALE_stage1.md` section 50 cut the population that drives this term:
 `n(2s)` roughly halves and the volume-integrated `Hdx` of the `wasp_full`
 configuration falls to 0.56 of its former value. With those in place and
 `Deexc heat` on by default, HD 209458 b re-converges from its stored initial
@@ -132,5 +132,5 @@ condition in about 2000 steps with no NaN (`log10 Mdot` 9.454 with the term off,
 (that run stops at the cap rather than converging, so its `Mdot` is not
 comparable). The base cell is still where the term shows most: turning it on
 moves the innermost cell by 17% in temperature and the domain outside
-`r = 1.01` by up to 9%. The instability should be treated as fixed but watched —
+`r = 1.01` by up to 9%. The instability should be treated as fixed but watched,
 if it returns on a colder base, `Deexc heat: False` is the isolation switch.

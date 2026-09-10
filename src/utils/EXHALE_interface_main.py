@@ -1,4 +1,4 @@
-import glob
+import EXHALE_interface_state as gui
 import numpy as np
 import EXHALE_interface_functions as AIF
 import os
@@ -14,18 +14,18 @@ except ImportError:		# python 2
 # ----- Setting of global variables ----- #
 
 # Load global variables
-glob.init()
+gui.init()
 
 # Load lists of pre-tabulated planetary parameters
 cwd = os.getcwd()
-glob.f_table = cwd + '/src/utils/params_table.txt'
-glob.pl_names,glob.pl_params['Rp'],\
-              glob.pl_params['Mp'],\
-              glob.pl_params['T0'],\
-              glob.pl_params['a'], \
-              glob.pl_params['Ms'],\
-              glob.pl_params['LX'],\
-              glob.pl_params['LEUV'] = np.loadtxt(glob.f_table,\
+gui.f_table = cwd + '/src/utils/params_table.txt'
+gui.pl_names,gui.pl_params['Rp'],\
+              gui.pl_params['Mp'],\
+              gui.pl_params['T0'],\
+              gui.pl_params['a'], \
+              gui.pl_params['Ms'],\
+              gui.pl_params['LX'],\
+              gui.pl_params['LEUV'] = np.loadtxt(gui.f_table,\
               dtype = 'U9,f,f,f,f,f,f,f', unpack = True)
               
 # --- Various dimensions
@@ -90,12 +90,12 @@ stellar_labelframe.place(x = xcol3 - 20, y = 10, width = lblframe_w + 120, heigh
 
 # ----- Fill Planet frame ----- #
 
-if "Planet_params" in glob.frame_list:
+if "Planet_params" in gui.frame_list:
 
 	# List of planets choice
 	lbl = tk.Label(window, text = "Planet name: ", **def_lbl)
 	lbl.place(x = xcol1, y = ys, width = 0.8*lbl_w, height = lbl_h)
-	Plist = ttk.Combobox(window, values = glob.pl_names.tolist())
+	Plist = ttk.Combobox(window, values = gui.pl_names.tolist())
 	Plist.place(x = xcol2, y = ys ,width = ent_w, height = ent_h)
 	ys += lbl_h + yspace
 	
@@ -177,13 +177,13 @@ if "Planet_params" in glob.frame_list:
 	y2D = ys	# Save for later use
 	lbl = tk.Label(window, text = "2D approx. method", **def_lbl)
 	lbl.place(x = xcol1, y = ys, width = 0.8*lbl_w, height = lbl_h)
-	appxmth = ttk.Combobox(window, values = glob.appx_meth)
+	appxmth = ttk.Combobox(window, values = gui.appx_meth)
 	appxmth.place(x = xcol2, y = ys ,width = ent_w, height = ent_h)
 	ys += lbl_h + yspace
 
 # ----- Fill Stellar frame ----- #
 
-if "Stellar_params" in glob.frame_list:
+if "Stellar_params" in gui.frame_list:
 
 	# Reset y position
 	ys = top_b
@@ -202,7 +202,7 @@ if "Stellar_params" in glob.frame_list:
 	# Spectrum type
 	lbl = tk.Label(window, text = "Spectrum type:", **def_lbl)
 	lbl.place(x = xcol3, y = ys, width = lbl_w, height = lbl_h)
-	spectrum = ttk.Combobox(window, values = glob.sp_type)
+	spectrum = ttk.Combobox(window, values = gui.sp_type)
 	spectrum.place(x = xcol4, y = ys, width = ent_w, height = ent_h)
 	
 	# Only EUV checkbox
@@ -259,7 +259,7 @@ if "Stellar_params" in glob.frame_list:
 
 # ----- Fill Numerical parameters frame ----- #
 
-if "Numerical_params" in glob.frame_list:
+if "Numerical_params" in gui.frame_list:
 
 	# Derived paramters labelframe 
 	numparams_labelframe = ttk.LabelFrame(window,text = "Numerical parameters")
@@ -272,7 +272,7 @@ if "Numerical_params" in glob.frame_list:
 	# Spatial grid
 	lbl = tk.Label(window, text = "Grid type", **def_lbl)
 	lbl.place(x = xcol3 , y = ys, width = lbl_w*0.55, height = lbl_h)
-	grid = ttk.Combobox(window, values = glob.grid_type)
+	grid = ttk.Combobox(window, values = gui.grid_type)
 	grid.place(x = xcol3 + lbl_w*0.6, y = ys, width = 0.75*ent_w, height = ent_h)
 	ys += lbl_h + yspace
 
@@ -281,7 +281,7 @@ if "Numerical_params" in glob.frame_list:
 	# Numerical flux
 	lbl = tk.Label(window, text = "Numerical flux", **def_lbl)
 	lbl.place(x = xcol3 , y = ys, width = lbl_w*0.55, height = lbl_h)
-	numflux = ttk.Combobox(window, values = glob.num_flux)
+	numflux = ttk.Combobox(window, values = gui.num_flux)
 	numflux.place(x = xcol3 + lbl_w*0.6, y = ys, width = 0.75*ent_w, height = ent_h)
 	ys += lbl_h + yspace
 
@@ -290,13 +290,13 @@ if "Numerical_params" in glob.frame_list:
 	# Reconstruction method
 	lbl = tk.Label(window, text = "Reconstruction", **def_lbl)
 	lbl.place(x = xcol3  , y = ys, width = lbl_w*0.55, height = lbl_h)
-	reconst = ttk.Combobox(window, values = glob.rec_meth)
+	reconst = ttk.Combobox(window, values = gui.rec_meth)
 	reconst.place(x = xcol3 + lbl_w*0.6, y = ys, width = 0.75*ent_w, height = ent_h)
 	ys += lbl_h + yspace
 
 # ----- Fill Tick options frame ----- #
 
-if "Tick_options" in glob.frame_list:
+if "Tick_options" in gui.frame_list:
 
 	# Derived paramters labelframe 
 	Tickopt_labelframe = ttk.LabelFrame(window,text = "Model options")
@@ -327,7 +327,7 @@ if "Tick_options" in glob.frame_list:
 
 # ----- Fill derived parameters frame ----- #
 
-if "Derived_parameters" in glob.frame_list:
+if "Derived_parameters" in gui.frame_list:
 
 	# Align with energy box
 	ys = top_b
@@ -341,34 +341,34 @@ if "Derived_parameters" in glob.frame_list:
 	# ---
 		
 	# Planet density
-	lbl_rho = tk.Label(window, text = glob.empty_lbl['rho'], **def_lbl_w) 
+	lbl_rho = tk.Label(window, text = gui.empty_lbl['rho'], **def_lbl_w) 
 	lbl_rho.place(x = xcol6, y = ys, width = 0.8*lbl_w, height = lbl_h)
 	ys += lbl_h
 	
 	# ---
 		
 	# Jeans escape parameter
-	lbl_b0 = tk.Label(window, text = glob.empty_lbl['b0'], **def_lbl_w) 
+	lbl_b0 = tk.Label(window, text = gui.empty_lbl['b0'], **def_lbl_w) 
 	lbl_b0.place(x = xcol6, y = ys, width = 0.8*lbl_w, height = lbl_h)
 	ys += lbl_h
 		
 	# ---
 			
 	# log gravitational potential at surface
-	lbl_phi = tk.Label(window, text = glob.empty_lbl['phi'], **def_lbl_w) 
+	lbl_phi = tk.Label(window, text = gui.empty_lbl['phi'], **def_lbl_w) 
 	lbl_phi.place(x = xcol6, y = ys, width = 0.8*lbl_w, height = lbl_h)
 	ys += lbl_h
 
 	# ---
 			
 	# Roche Lobe distance
-	lbl_resc = tk.Label(window, text = glob.empty_lbl['rochel'], **def_lbl_w) 
+	lbl_resc = tk.Label(window, text = gui.empty_lbl['rochel'], **def_lbl_w) 
 	lbl_resc.place(x = xcol6, y = ys, width = 0.8*lbl_w, height = lbl_h)
 	ys += lbl_h + yspace
 	
 # ----- Info about energy bands ----- #
 
-if "Bands_info" in glob.frame_list:
+if "Bands_info" in gui.frame_list:
 
 	# Go a little below
 	ys += 5
@@ -381,18 +381,18 @@ if "Bands_info" in glob.frame_list:
 	# ---
 
 	# EUV band info
-	lbl_euv = tk.Label(window, text = glob.EUV_band_lbl, **def_lbl_we) 
+	lbl_euv = tk.Label(window, text = gui.EUV_band_lbl, **def_lbl_we) 
 	lbl_euv.place(x = xcol6 - 15, y = ys, width = 0.9*lbl_w, height = 1.5*lbl_h)
 	ys += 1.5*lbl_h
 
 	# Xray band info
-	lbl_xray = tk.Label(window, text = glob.Xray_band_lbl, **def_lbl_we) 
+	lbl_xray = tk.Label(window, text = gui.Xray_band_lbl, **def_lbl_we) 
 	lbl_xray.place(x = xcol6 - 15, y = ys, width = 0.9*lbl_w, height = 1.5*lbl_h)
 	ys += lbl_h
 
 # ----- Fill buttons frame ----- #
 
-if "Buttons" in glob.frame_list:
+if "Buttons" in gui.frame_list:
 
 	# Align with LX entry
 	ys = yother + 10
@@ -424,42 +424,42 @@ if "Buttons" in glob.frame_list:
 
 # ----- Create dictionary of entries, comboboxes, checkbuttons and labels
 
-glob.widgets['window']    = window
-glob.widgets['planets']   = Plist 
-glob.widgets['n0'] 	  	  = ent_n0 
-glob.widgets['Rp'] 	  	  = ent_Rp 
-glob.widgets['Mp'] 	  	  = ent_Mp 
-glob.widgets['T0'] 	  	  = ent_T0 
-glob.widgets['a'] 	  	  = ent_a 
-glob.widgets['resc']      = ent_resc 
-glob.widgets['heh']       = ent_heh 
-glob.widgets['appxmth']   = appxmth 
-glob.widgets['ICload']    = check_loadIC 
-glob.widgets['He23S']	  =	check_He23S
-glob.widgets['onlyPP']	  = check_onlyPP
-glob.widgets['force']	  =	check_force
-glob.widgets['Ms'] 	  	  = ent_Ms 
-glob.widgets['spectrum']  = spectrum 	
-glob.widgets['EUVonly']   = check_EUV  
-glob.widgets['spec_prop'] = ent_spec_prop
-glob.widgets['lbl_spec']  = lbl_spectrum
-glob.widgets['browse']    = browse_but 
-glob.widgets['LX'] 	  	  = ent_LX 
-glob.widgets['LEUV']      = ent_LEUV 
-glob.widgets['flux']      = ent_flux
-glob.widgets['grid']      = grid 
-glob.widgets['numflux']   = numflux 
-glob.widgets['reconst']   = reconst 
-glob.widgets['onlyPP']    = check_onlyPP
-glob.widgets['force']     = check_force
-glob.widgets['rho'] 	  = lbl_rho 
-glob.widgets['b0']        = lbl_b0 
-glob.widgets['phi']       = lbl_phi 
-glob.widgets['resc_l']    = lbl_resc
-glob.widgets['add_but']   = add_but 
-glob.widgets['close_but'] = close_but  
-glob.widgets['reset_but'] = reset_but 
-glob.widgets['start_but'] = start_but 
+gui.widgets['window']    = window
+gui.widgets['planets']   = Plist 
+gui.widgets['n0'] 	  	  = ent_n0 
+gui.widgets['Rp'] 	  	  = ent_Rp 
+gui.widgets['Mp'] 	  	  = ent_Mp 
+gui.widgets['T0'] 	  	  = ent_T0 
+gui.widgets['a'] 	  	  = ent_a 
+gui.widgets['resc']      = ent_resc 
+gui.widgets['heh']       = ent_heh 
+gui.widgets['appxmth']   = appxmth 
+gui.widgets['ICload']    = check_loadIC 
+gui.widgets['He23S']	  =	check_He23S
+gui.widgets['onlyPP']	  = check_onlyPP
+gui.widgets['force']	  =	check_force
+gui.widgets['Ms'] 	  	  = ent_Ms 
+gui.widgets['spectrum']  = spectrum 	
+gui.widgets['EUVonly']   = check_EUV  
+gui.widgets['spec_prop'] = ent_spec_prop
+gui.widgets['lbl_spec']  = lbl_spectrum
+gui.widgets['browse']    = browse_but 
+gui.widgets['LX'] 	  	  = ent_LX 
+gui.widgets['LEUV']      = ent_LEUV 
+gui.widgets['flux']      = ent_flux
+gui.widgets['grid']      = grid 
+gui.widgets['numflux']   = numflux 
+gui.widgets['reconst']   = reconst 
+gui.widgets['onlyPP']    = check_onlyPP
+gui.widgets['force']     = check_force
+gui.widgets['rho'] 	  = lbl_rho 
+gui.widgets['b0']        = lbl_b0 
+gui.widgets['phi']       = lbl_phi 
+gui.widgets['resc_l']    = lbl_resc
+gui.widgets['add_but']   = add_but 
+gui.widgets['close_but'] = close_but  
+gui.widgets['reset_but'] = reset_but 
+gui.widgets['start_but'] = start_but 
 
 # -------------------------------------------------------- #
 
@@ -467,26 +467,26 @@ glob.widgets['start_but'] = start_but
 AIF.init_func()
 
 # --- Assign callbacks functions
-glob.widgets['planets'].bind("<<ComboboxSelected>>", AIF.Plist_func)
-glob.widgets['Rp'].bind("<Any-KeyRelease>", AIF.upd_labels)
-glob.widgets['Mp'].bind("<Any-KeyRelease>", AIF.upd_labels)
-glob.widgets['T0'].bind("<Any-KeyRelease>", AIF.upd_labels)
-glob.widgets['a'].bind( "<Any-KeyRelease>", AIF.upd_flux)
-glob.widgets['ICload'].configure(var = glob.LoadIC_var)
-glob.widgets['He23S'].configure(var = glob.He23S_var)
-glob.widgets['onlyPP'].configure(var = glob.onlyPP_var, command = AIF.onlyPP_func)
-glob.widgets['force'].configure(var = glob.force_var, command = AIF.force_func)
-glob.widgets['Ms'].bind("<Any-KeyRelease>", AIF.upd_labels)
-glob.widgets['spectrum'].bind("<<ComboboxSelected>>", AIF.spectrum_func)
-glob.widgets['EUVonly'].configure(var = glob.onlyEUV_var, command = AIF.onlyEUV_func)
-glob.widgets['browse'].configure(command = AIF.browse_func)
-glob.widgets['LEUV'].bind("<Any-KeyRelease>", AIF.upd_flux)
-glob.widgets['LX'].bind("<Any-KeyRelease>", AIF.upd_flux)
-glob.widgets['flux'].bind("<Any-KeyRelease>", AIF.flux_func) 
-glob.widgets['add_but'].configure(command = AIF.add_func)
-glob.widgets['reset_but'].configure(command = AIF.reset_func)
-glob.widgets['close_but'].configure(command = AIF.close_func)
-glob.widgets['start_but'].configure(command = AIF.start_func)
+gui.widgets['planets'].bind("<<ComboboxSelected>>", AIF.Plist_func)
+gui.widgets['Rp'].bind("<Any-KeyRelease>", AIF.upd_labels)
+gui.widgets['Mp'].bind("<Any-KeyRelease>", AIF.upd_labels)
+gui.widgets['T0'].bind("<Any-KeyRelease>", AIF.upd_labels)
+gui.widgets['a'].bind( "<Any-KeyRelease>", AIF.upd_flux)
+gui.widgets['ICload'].configure(var = gui.LoadIC_var)
+gui.widgets['He23S'].configure(var = gui.He23S_var)
+gui.widgets['onlyPP'].configure(var = gui.onlyPP_var, command = AIF.onlyPP_func)
+gui.widgets['force'].configure(var = gui.force_var, command = AIF.force_func)
+gui.widgets['Ms'].bind("<Any-KeyRelease>", AIF.upd_labels)
+gui.widgets['spectrum'].bind("<<ComboboxSelected>>", AIF.spectrum_func)
+gui.widgets['EUVonly'].configure(var = gui.onlyEUV_var, command = AIF.onlyEUV_func)
+gui.widgets['browse'].configure(command = AIF.browse_func)
+gui.widgets['LEUV'].bind("<Any-KeyRelease>", AIF.upd_flux)
+gui.widgets['LX'].bind("<Any-KeyRelease>", AIF.upd_flux)
+gui.widgets['flux'].bind("<Any-KeyRelease>", AIF.flux_func) 
+gui.widgets['add_but'].configure(command = AIF.add_func)
+gui.widgets['reset_but'].configure(command = AIF.reset_func)
+gui.widgets['close_but'].configure(command = AIF.close_func)
+gui.widgets['start_but'].configure(command = AIF.start_func)
 
 # End of window code
 window.mainloop()

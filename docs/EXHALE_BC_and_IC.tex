@@ -1,16 +1,20 @@
 %% EXHALE (EXHALE): boundary and initial conditions.
 %% Complete description of the hydrodynamic boundary conditions
-%% (Apply_BC.f90), the "breathing base" phenomenology, the boundary
+%% (Apply_BC.f90, base_boundary.f90), the "breathing base" phenomenology, the boundary
 %% treatment of the ionization/temperature/metal fields, the
 %% boundary-adjacent settings (radiative-transfer integration, escape
 %% radius, domain truncation, Newton-solver interaction), and the
 %% three initial-condition families (set_IC.f90: cold hydrostatic,
 %% transonic isothermal wind, hot-Parker warm seed).
-%% Updated 2026-08-15: runtime "Grid cells:", the base grid resolution
-%% key, the ghost-pressure closures (Hydrostatic base / Base ghost
-%% temperature), Low-Mach contact-mode damping, the composition module as
-%% the single source of rho_bc / ntot_bc, the residual diagnostic below
-%% the escape radius, the restart guards, and the du-trigger arming.
+%% Updated 2026-09-10 for the stage-2 state of the code: the lower boundary
+%% is the characteristic (p, s) face condition of base_boundary.f90 and the
+%% four component-wise ghost keys (Valve eps, Hydrostatic base, Base ghost
+%% temperature, Base velocity) are refused; the outer ghost is the isothermal
+%% hydrostatic continuation of free_outflow_ghost; Apply_BC writes the ghosts
+%% and nothing else; the restart contract moved to
+%% composition_restart_and_base_handoff.tex and the checkpoint rebuild order
+%% is recorded here. The empirical matrix at the end is a record of the
+%% retired ghost closure and is labeled as such.
 %% Author: Kwang-Il Seon
 \documentclass[english,a4paper]{my_memo}
 \synctex=1
@@ -37,7 +41,7 @@
 \newcommand{\rp}{$R_p$}
 \title{Boundary and initial conditions in EXHALE (EXHALE)}
 \author{Kwang-Il Seon}
-\date{2026-06-12 (updated 2026-08-19)}
+\date{2026-06-12 (updated 2026-09-10)}
 
 \begin{document}
 \maketitle
@@ -100,20 +104,28 @@ All BC logic lives in one module,
 \texttt{src/modules/states/Apply\_BC.f90}:
 
 \begin{itemize}
-\item \texttt{Apply\_BC(u,u)} --- conservative-variable wrapper:
-  converts $U \to W$ (primitive), calls \texttt{Apply\_BC\_W}, converts
-  back. Called after every Runge--Kutta stage in the main loop
-  (\texttt{EXHALE\_main.f90}), before every residual evaluation, and
-  by the steady-state Newton solver each time it unpacks a trial state.
-\item \texttt{Apply\_BC\_W(W,W)} --- the actual assignment of the four
-  ghost states: lower ghosts via \texttt{BC\_component\_constrho}
-  (\S\ref{sec:lower}), upper ghosts via extrapolation
-  (\S\ref{sec:upper}).
-\item \texttt{Rec\_BC(WL,WR,...)} --- the same conditions applied to the
+\item \texttt{Apply\_BC(u)}: conservative-variable wrapper. It converts the
+  \emph{interior} cells $U \to W$, calls \texttt{Apply\_BC\_W}, and
+  converts the four ghost cells back. Called after every Runge--Kutta stage
+  in the main loop (\texttt{EXHALE\_main.f90}), before every residual
+  evaluation, and by the steady-state Newton solver each time it unpacks a
+  trial state. It \emph{writes the ghosts and nothing else}: the interior it
+  is handed comes back bit for bit. The earlier version round-tripped the
+  interior as well, and that round trip is not the identity in floating
+  point (it recomputes the kinetic energy as $\tfrac12\rho v^2$ where the
+  input held $\tfrac12 (\rho v)^2/\rho$), so \texttt{Apply\_BC} was not
+  idempotent and a second call moved every interior cell at the last bit.
+\item \texttt{Apply\_BC\_W(W)}: the assignment of the four ghost states.
+  The lower pair comes from \texttt{base\_boundary\_states}
+  (\S\ref{sec:lower}), which also stores the base face state and the state
+  at the next face down for \texttt{Rec\_BC}; the upper pair comes from
+  \texttt{free\_outflow\_ghost} (\S\ref{sec:upper}).
+\item \texttt{Rec\_BC(WL,WR,...)}: the boundary states of the
   \emph{reconstructed} left/right interface states after PLM or WENO3
-  reconstruction (\texttt{Reconstruction.f90}), so that the boundary
-  stencils of the higher-order scheme see BC-consistent data rather
-  than raw extrapolated slopes.
+  reconstruction (\texttt{Reconstruction.f90}). At the base it does not
+  re-derive anything: it reads the face state \texttt{Apply\_BC\_W} stored,
+  so the ghost path and the face path are one answer from one function. At
+  the top it extrapolates as the scheme requires.
 \end{itemize}
 
 In the Newton steady-state solver the ghost cells are deliberately
@@ -155,47 +167,327 @@ T = \frac{p}{n_{\rm tot} + n_e},
 \end{equation}
 with $n_{\rm tot}$ the total \emph{atomic} (nuclei) number density and
 $n_e$ from \texttt{calc\_ne}. Under the default \texttt{eos\_metals 1}
-policy (2026-06-13) both include the trace metals --- their nuclei in
-$n_{\rm tot}$ and their electrons in $n_e$ --- consistently with the
+policy (2026-06-13) both include the trace metals (their nuclei in
+$n_{\rm tot}$ and their electrons in $n_e$) consistently with the
 charge balance inside the ionization solver; \texttt{eos\_metals 0} in
 \texttt{metals.inp} restores the legacy H/He-only budget
 (\S\ref{sec:metals-bc}).
 
-\section{Lower boundary: fixed reservoir with a one-way valve}
+\section{Lower boundary: a characteristic condition at the base face}
 \label{sec:lower}
 
-The two lower ghost cells are set by
-\texttt{BC\_component\_constrho} (\texttt{Apply\_BC.f90}, lines
-31--80). In the cell-index-first notation of this memo
-(\texttt{W(cell,component)}; the code stores the transpose):
-\begin{lstlisting}[style=code]
-W(ghost,1) = rho_bc                      ! density: Dirichlet
-if (base_v_massflux .and. base_flux_const > 0) then    ! mass-flux base
-   W(ghost,2) = base_flux_const/(rho_bc*r(ghost)**2)
-else if (valve_eps > 0) then                           ! smooth valve
-   W(ghost,2) = 0.5*( W(1,2) + sqrt(W(1,2)**2 + valve_eps**2) )
-else                                                   ! legacy hard valve
-   W(ghost,2) = max( W(1,2), 0.0 )
-endif
-if (hydrostatic_base) then                             ! dp/dr continuous
-   W(ghost,3) = W(1,3) + (W(2,3) - W(1,3))/(r(2) - r(1))*(r(ghost) - r(1))
-else if (base_ghost_T_continuous) then                 ! dT/dr = 0
-   W(ghost,3) = (ntot_bc + dp_bc)*W(1,3)/n_part_cell1
-else                                                   ! T = T0 (default)
-   W(ghost,3) = ntot_bc + dp_bc
-endif
-\end{lstlisting}
-The default closures (legacy valve, isothermal ghost pressure) give both
-ghost cells the \emph{same} state, so there is no gradient across them;
-the mass-flux velocity and the hydrostatic ghost pressure are evaluated at
-$r(\mathrm{ghost})$ and therefore do differ between $j=0$ and $j=-1$. The
-three components implement three distinct ideas, discussed in turn; the
-opt-in velocity and pressure branches are collected in
-\S\ref{sec:stabilizers}.
+The lower boundary is imposed \emph{at the face} $r_{\rm edg}(0)$, and the
+number of conditions it states is decided by the sign and the magnitude of
+the Mach number there. One module carries all of it,
+\texttt{src/modules/states/base\_boundary.f90}, and one entry point,
+\texttt{base\_boundary\_states}, returns the face state, the two ghost cell
+averages and the point state at the next face down from the first interior
+\emph{cell average}, so the ghost path of \texttt{Apply\_BC\_W} and the face
+path of \texttt{Rec\_BC} are two readers of one answer and cannot drift
+apart.
 
-\subsection{Density: a fixed-composition reservoir}
+This replaces a component-wise ghost-cell closure, in which a Dirichlet
+density, a one-way velocity valve and an isothermal ghost pressure were
+written into a ghost \emph{cell} and then reused by \texttt{Rec\_BC} as the
+state \emph{at the face}; the two locations differ by half a cell of
+hydrostatic stratification, $\Delta r/(2H)$, and dividing that difference by
+$\Delta r$ to make a momentum flux left an imbalance that was a fixed
+fraction of the local weight $\rho g$ at every resolution. READ from the
+module header, which records the measurement: $0.2514$, $0.2507$, $0.2503$
+and $0.2502$ of $\rho g$ at cell~1 over an eightfold refinement of the
+hot-Uranus base grid, against an interior truncation error of
+$4.9\times10^{-6}$, driving a first-order velocity artifact of $-247.1$,
+$-123.2$, $-61.3$ and $-30.5$\,cm\,s$^{-1}$ over the same ladder. The design
+note and every measurement behind the present condition are in
+\texttt{docs/phaseC\_characteristic\_base\_bc.md}.
 
-The dimensionless ghost density is the constant
+\subsection{How many conditions, and which}
+\label{sec:charbranches}
+
+At $r_{\rm edg}(0)$ the eigenvalues of the Euler system are $v-c$, $v$ and
+$v+c$, and a wave enters the domain when its eigenvalue is positive: the
+radial coordinate increases outward, so gas entering at the base moves
+outward and inflow is $v>0$. The count follows:
+
+\begin{center}\small
+\begin{tabular}{@{}lll@{}}
+\toprule
+Face state & Branch & Conditions \\
+\midrule
+$0 < v < c$   & subsonic inflow      & 2 reservoir, 1 interior \\
+$-c < v < 0$  & flow reversal        & 1 reservoir, 2 interior \\
+$v > c$       & supersonic inflow    & 3 reservoir, 0 interior \\
+$v < -c$      & supersonic outflow   & 0 reservoir, 3 interior \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+The interior relation is the linearized $v-c$ compatibility condition in its
+LODI form (Thompson 1987; Poinsot \& Lele 1992; as stated in Carlson 2011,
+NASA/TM-2011-217181, \S2),
+\begin{equation}
+p_b - \rho_i c_i\, v_b \;=\; p_i - \rho_i c_i\, v_i ,
+\label{eq:cminus}
+\end{equation}
+with the subscript $i$ denoting the first interior state continued to the
+face. The closed-form invariant $v - 2c/(\gamma-1)$ is deliberately
+\emph{not} used: it assumes one constant $\gamma$, while the caloric EOS
+gives every cell its own $\gamma_{\rm eff}(x_{\rm H_2},T)$, so the invariant
+is wrong wherever the H$_2$ fraction or the temperature varies across the
+boundary stencil, which is the whole molecular base. $c_i$ is the
+\emph{interior} sound speed at the interior $\gamma_{\rm eff}$, because the
+outgoing wave is an interior wave.
+
+\subsection{The reservoir is $(p,s)$, stated at the base level}
+\label{sec:reservoir}
+
+The two reservoir conditions are the pressure and the specific entropy of
+the lower atmosphere at the base level, not the pressure and the density.
+The difference matters when the base \emph{composition} changes: with
+$(p,s)$ the temperature follows the composition, with $(p,T)$ the entropy
+does. The entropy is not stored as a number; it is carried as the isentrope
+through $(p_{\rm base}, T_{\rm base})$ at the base composition, which is
+what \texttt{base.inp} and the \texttt{Lower atmosphere profile:} reader
+state.
+
+\texttt{input\_read} calls \texttt{set\_base\_reservoir} once, with
+\begin{equation}
+p_{\rm res} = n_{\rm tot,bc} + \delta p_{\rm bc}, \qquad
+T_{\rm res} = 1 \;(=T_0), \qquad
+\hat n = \frac{n_{\rm tot,bc}+\delta p_{\rm bc}}{\rho_{\rm bc}}, \qquad
+r_{\rm base\ level} = 1 ,
+\end{equation}
+where $\hat n$ is the particle count per unit mass at the base and
+$\delta p_{\rm bc}$ is the placeholder $10^{-10}$ in force at that point of
+the startup. The level is $r = 1$, the planet radius the handoff quotes
+(1\,$\mu$bar in Koskinen et al.\ 2022, \S3.1), \emph{not} the first face:
+\texttt{base\_boundary} carries the reservoir state from the level to
+$r_{\rm edg}(0)$ along its own hydrostatic isentrope, so the level a user
+states does not move when the grid changes and the half-cell error the
+module exists to remove is not reintroduced at the level itself.
+
+\paragraph{The isentropic continuation.}
+\texttt{continue\_hydrostatic\_isentrope} carries a state from $r_a$ to
+$r_b$ at rest and at constant entropy, where the Bernoulli function is
+uniform:
+\begin{equation}
+u(T_b) + T_b \;=\; u(T_a) + T_a - \frac{\phi(r_b) - \phi(r_a)}{\hat n} ,
+\qquad
+\rho_b = \rho_a \left(\frac{T_b}{T_a}\right)^{c_v(T_{\rm mid})} ,
+\end{equation}
+with $u$ the internal energy per particle of the caloric EOS. The
+temperature is found by Newton with $\mathrm{d}h/\mathrm{d}T = c_v + 1$,
+exact for the mixture; a potential drop deep enough to extrapolate through
+zero temperature falls back on the isothermal continuation, the
+$c_v \to \infty$ limit of the same relation. VALIDITY, stated at the
+routine: the midpoint $c_v$ makes the density exact to third order in
+$\ln(T_b/T_a)$, and the routine is used only over half a cell and over the
+two ghost cells, where $|\ln(T_b/T_a)|$ is $6\times10^{-3}$ on the
+hot-Uranus base grid and below $0.1$ on any grid this code runs, so the
+density error is below $10^{-7}$ relative. It is not a general isentrope
+integrator over a scale height.
+
+\subsection{The face state}
+\label{sec:facestate}
+
+\texttt{characteristic\_base\_face\_state} builds the interior state at the
+face from cell~1 alone, along cell~1's own hydrostatic isentrope, and
+\emph{not} from the reconstruction stencil: the stencil reaches into the
+ghost, and a boundary condition that reads its own output is the circular
+dependency the module exists to break. Continuing along the hydrostatic
+isentrope rather than extrapolating linearly is what makes the condition
+\emph{well balanced}: in a hydrostatic atmosphere at rest the interior face
+pressure equals the reservoir's and (\ref{eq:cminus}) returns $v_b = 0$
+exactly, at any resolution. The velocity is continued along the steady
+mass flux,
+\begin{equation}
+v_i = \frac{\rho_1 v_1 r_1^2}{\rho_i\, r_{\rm edg}(0)^2} ,
+\qquad
+c_i = \sqrt{\gamma_{\rm eff}(T_i)\, p_i/\rho_i}, \qquad M_i = v_i/c_i .
+\end{equation}
+
+The pressure is a reservoir condition in every subsonic branch,
+\begin{equation}
+p_b = p_{\rm res} ,
+\end{equation}
+and the velocity then follows from (\ref{eq:cminus}),
+$v_b = v_i + (p_b - p_i)/(\rho_i c_i)$. The entropy is a reservoir
+condition only while gas enters: on reversal the entropy at the face is the
+interior's, advected out, and the reservoir has nothing to say about it.
+The handover is a $C^1$ cubic smoothstep in the face Mach number,
+\texttt{characteristic\_branch\_weight}, of width
+\texttt{base\_face\_mach\_blend} $=10^{-6}$:
+\begin{equation}
+\rho_b = (1 - w_{\rm rev})\,\rho_{\rm res}
+       + w_{\rm rev}\,\rho\big(s_i, p_b\big),
+\qquad
+w_{\rm rev} = W\!\left(\frac{M_i}{10^{-6}}\right) .
+\end{equation}
+The branch is a genuine change in the number of conditions, hence a kink in
+the residual, and the steady Newton solver needs a differentiable one. The
+width is far below the physical operating point: on the hot-Uranus gate the
+base carries the wind's own mass flux, $\rho_b v_b r^2 = F_{\rm wind}$,
+which at the base density is $v_b \approx 1.6$\,cm\,s$^{-1}$ against
+$c \approx 2.6\times10^{5}$\,cm\,s$^{-1}$, a face Mach number of
+$6\times10^{-6}$ (READ, module header); a hot Jupiter's is larger. So every
+intended operating point lies entirely inside the inflow branch, and the
+residual jump the blend smooths is the difference between two isentropes
+that coincide at a converged state.
+
+\paragraph{Why the reservoir holds the static pressure.}
+The module carries a second admissible pair, in which the reservoir states
+its incoming acoustic invariant at rest, $p_b + \rho c v_b = p_{\rm res}$,
+behind the constant \texttt{base\_incoming\_invariant\_weight}. Its value is
+$0$ and the alternative is recorded because it was measured and rejected,
+not because it is a tuning knob. Both forms are exactly well balanced at
+rest, where $v_i = 0$ makes them identical; they differ on a moving
+solution, and the difference is not small (READ, module header):
+
+\begin{center}\small
+\begin{tabular}{@{}lll@{}}
+\toprule
+ & weight 0 & weight 1 \\
+\midrule
+$|R|$, acoustic reflection      & 0.956    & 0.0024 \\
+$R_{\rm mom}(1)/\rho g$, at rest        & 3.53e-4  & 1.75e-4 \\
+$R_{\rm mom}(1)/\rho g$, steady wind    & 1.97e-4  & 1.32e-1 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+The last row decides it. Driving an exact steady isentropic inflow through
+the boundary (the manufactured solution of the design note's test~C, base
+Mach $10^{-3}$), weight~0 leaves cell~1 at $0.68$ of the interior truncation
+error, so the boundary is as accurate as the scheme it bounds, while
+weight~1 leaves it 460 times above it: $p_b + \rho c v_b = p_{\rm res}$
+makes the static pressure at the face fall below the reservoir's by a
+fraction $M$ of the pressure where a real reservoir's Bernoulli drop is a
+fraction $M^2$, so it over-states the drop by $1/M$ and turns the wind's own
+mass flux into a base pressure error, which the momentum residual multiplies
+by $H/\Delta r$.
+
+The reflection that weight~0 leaves standing is not a defect of the pair: it
+is what any reservoir holding a \emph{static} quantity does to sound (a
+density reservoir gives the same $|R|$), and the ghost closure this replaced
+measured $0.953$. Making the boundary transparent to sound without
+corrupting the steady state needs a \emph{relaxation} form, in which the
+incoming amplitude is driven toward the reservoir at a finite rate; that
+form is not a function of the instantaneous state, so it has no fixed point
+the steady residual can express. It is an open item, not a setting.
+
+\paragraph{The supersonic branches, and the two guards.}
+Supersonic \emph{outflow} takes every characteristic out of the domain, so
+nothing may be prescribed and the whole face state is handed over to the
+interior's by the same smoothstep, evaluated at $(M_i+1)/10^{-6}$.
+Supersonic \emph{inflow} would take all three characteristics inward and
+oblige the reservoir to state three conditions; a $(p,s)$ reservoir states
+two, and this model has no lower-atmosphere velocity to state a third, so no
+velocity is invented here. Instead
+\texttt{check\_base\_inflow\_is\_subsonic} (\texttt{Apply\_BC.f90}) measures
+$|v|/c$ on ghost~0 with the code's own adiabatic sound speed, the same one
+\texttt{eval\_dt} uses for the CFL condition, and warns at the first step at
+which the boundary admits supersonic inflow, saying that the interior is
+then not a solution of the stated problem. It is reported and not enforced:
+the crossing is evidence about the configuration, not a numerical fault to
+repair in place.
+
+A compatibility relation is a linear relation and, far from a solution, can
+ask for any velocity at all, so the face velocity is capped at
+\texttt{base\_face\_mach\_max} $=5$ and the events counted. Four counters are
+kept and reported at the end of a run: evaluations at which the first
+interior cell was not an admissible gas state and the reservoir alone was
+the whole boundary (\texttt{n\_base\_interior\_inadmissible}), Mach-capped
+face states, reversal evaluations, and supersonic-outflow evaluations. An
+inadmissible cell~1 cannot state an outgoing characteristic and dividing by
+it would make the boundary itself the source of a \texttt{NaN}, so
+\texttt{reservoir\_face\_state} (the reservoir carried to the face, at rest)
+is then the whole boundary and the run's own positivity detector reports the
+cell.
+
+\subsection{The ghost cell averages}
+\label{sec:baseghost}
+
+The ghost is not a copy of the face. \texttt{base\_ghost\_averages} returns
+the volume average of the hydrostatic isentrope through the face state,
+continued \emph{below} it, with the velocity carrying a constant
+$\rho v r^2$ so the reconstruction sees no spurious velocity gradient at the
+boundary:
+\begin{equation}
+\rho_j = \frac{\int_{r_{j-1/2}}^{r_{j+1/2}} \rho(r)\, r^2\,\mathrm{d}r}
+              {\int_{r_{j-1/2}}^{r_{j+1/2}} r^2\,\mathrm{d}r},
+\qquad
+v_j = \frac{\rho_b v_b\, r_{\rm edg}(0)^2}{\rho_j\, r_j^2},
+\qquad j = 1-N_g,\dots,0 ,
+\end{equation}
+and the same for the pressure. Writing the face value into a cell average
+instead is the half-cell error above: the two differ by $\Delta r/(2H)$,
+which is first order in $\Delta r$ in the state and \emph{zeroth} order in
+the momentum residual it produces. The quadrature is eight-point
+Gauss--Legendre, volume weighted, far beyond the reconstruction's order and
+costing two cells per boundary call. The routine also returns the point
+state at $r_{\rm edg}(1-N_g)$, the face below the ghost, which
+\texttt{Rec\_BC} puts on \emph{both} sides of that face so it is jump free;
+its flux lies outside the cells the update writes.
+
+\texttt{Rec\_BC} puts \texttt{base\_face\_W} straight into the left slot of
+the base face and leaves the right slot, the interior's reconstruction of
+cell~1 down to the face, alone: the Riemann solver is what mediates the two.
+The stored face and ghost states are a function of the interior state alone,
+so whoever replaces the interior owes the next \texttt{Reconstruct} an
+\texttt{Apply\_BC}; the one path that replaces the interior without a flux
+update of its own is the restore of the attempted-step checkpoint, and
+\texttt{rebuild\_state\_from\_checkpoint} calls \texttt{Apply\_BC} for
+exactly this reason (\S\ref{sec:loadic}).
+
+\subsection{What fixes the reservoir pressure}
+\label{sec:dpbc}
+
+The reservoir pressure is $n_{\rm tot,bc} + \delta p_{\rm bc}$, with
+$n_{\rm tot,bc} = (1 + Y + \sum_X a_X)/(1+Y)$ the total nuclei density at
+the base in units of $n_0$ ($=1$ for H/He only, reduced by the H$_2$-bound
+share under a molecular base) and $\delta p_{\rm bc}$ the base electron
+density in units of $n_0$,
+\begin{equation}
+\delta p_{\rm bc}
+   = \frac{n_{\rm HII} + n_{\rm HeII} + 2\,n_{\rm HeIII}
+           + \sum_i q_i\, n_i^{\rm met}}{n_0}
+     \bigg|_{j\,=\,1-N_g}
+   = \frac{n_e(\mbox{base})}{n_0},
+\end{equation}
+recomputed after every ionization-equilibrium solve
+(\texttt{ionization\_equilibrium.f90}), with the metal charges $q_i$
+included under \texttt{eos\_metals 1}. Through the EOS closure
+(\ref{eq:eos}) the pair (nuclei density $n_{\rm tot,bc}$, pressure
+$n_{\rm tot,bc}+\delta p_{\rm bc}$) is the statement $T = T_0$: as
+photoionization develops at the base and free electrons add partial
+pressure, the pressure is raised by exactly the electron share so the base
+is not artificially cooled. For a near-neutral base, which is the usual
+situation since the base optical depth is huge, $\delta p_{\rm bc}$ is tiny.
+
+\paragraph{The reservoir is resolved once, at startup.}
+\texttt{set\_base\_reservoir} is called from \texttt{input\_read} and from
+nowhere else in the production path, so the reservoir the boundary states is
+the startup pair, with $\delta p_{\rm bc} = 10^{-10}$ and the
+$n_{\rm tot,bc}$ in force at that moment. The later refresh of
+$\delta p_{\rm bc}$ by the ionization sweep, and the molecular refresh
+$n_{\rm tot,bc} = n_{\rm tot}(1-N_g)/n_0$ that the sweep applies when the
+molecular chemistry is on, therefore reach $n_{\rm tot,bc}$ and
+$\delta p_{\rm bc}$ themselves but not the reservoir built from them. For a
+near-neutral base the two agree to $\delta p_{\rm bc}$; the discrepancy is
+the molecular case, and it is recorded here as read from the source rather
+than measured.
+
+\subsection{Composition at the base: one source}
+\label{sec:basecomp}
+
+$\rho_{\rm bc}$, $m_{\rm gas}/{\rm H}$ (\texttt{mass\_per\_H}) and
+$n_{\rm tot,bc}$ are produced by the three functions
+\texttt{comp\_rho\_bc}, \texttt{comp\_mass\_per\_H} and
+\texttt{comp\_ntot\_bc} of
+\texttt{src/modules/functions/composition.f90}, which \texttt{input\_read}
+calls once; that module is the single place where the base composition
+policy lives, so no code path can disagree with another about what the base
+is made of. The dimensionless base density is
 \begin{equation}
 \rho_{\rm bc} = \frac{m_{\rm gas}/{\rm H}}{1 + Y},
 \qquad
@@ -203,61 +495,41 @@ m_{\rm gas}/{\rm H} = 1 + 4Y + \sum_X a_X A_X,
 \qquad a_X \equiv \frac{n_X}{n_{\rm H}},
 \label{eq:rhobc}
 \end{equation}
-the mean gas mass per H/He nucleus in units of $m_{\rm H}$
-(\texttt{comp\_rho\_bc()} $=$ \texttt{comp\_mass\_per\_H()}$/(1{+}Y)$ in
-the code). Because mass densities
-are normalized by $n_0 m_{\rm H}$, this pins the ghost cells to
-``H/He nuclei density $= n_0$ with the prescribed composition'': the
-hydrogen nuclei density at the base is $n_{\rm H} = n_0/(1+Y)$, the
-helium density $Y$ times that, and each metal $a_X n_{\rm H}$. The
-base therefore behaves as an \emph{infinite isochoric reservoir}:
-however much mass the wind removes, the boundary cell always refills
-to the same density.
-
-The metal mass term $\sum_X a_X A_X \approx 0.016$ at solar abundances
-(a ${\sim}1.2\%$ effect) is included by the default
-\texttt{eos\_metals 1} policy, which also adds the metal mass to
-\texttt{calc\_rho}; \texttt{eos\_metals 0} restores the legacy
-H/He-only trace approximation, $\rho_{\rm bc} = (1+4Y)/(1+Y)$. That
-legacy expression is therefore \emph{only} the value of a metals-off
-atomic base; it is not the general form.
-
-\paragraph{One source for the base composition.}
-$\rho_{\rm bc}$, $m_{\rm gas}/{\rm H}$ (\texttt{mass\_per\_H}) and
-$n_{\rm tot,bc}$ (\texttt{ntot\_bc}) are all produced by the three
-functions \texttt{comp\_rho\_bc}, \texttt{comp\_mass\_per\_H} and
-\texttt{comp\_ntot\_bc} of
-\texttt{src/modules/functions/composition.f90}, which
-\texttt{input\_read} calls once; that module is the single place where
-the base composition policy lives, so no code path can disagree with
-another about what the base is made of. Three switches move the numbers
-inside it:
+the mean gas mass per H/He nucleus in units of $m_{\rm H}$. Because mass
+densities are normalized by $n_0 m_{\rm H}$, this states ``H/He nuclei
+density $=n_0$ with the prescribed composition'': the hydrogen nuclei
+density at the base is $n_{\rm H} = n_0/(1+Y)$, the helium density $Y$ times
+that, and each metal $a_X n_{\rm H}$. The metal mass term
+$\sum_X a_X A_X \approx 0.016$ at solar abundances (a ${\sim}1.2\%$ effect)
+is included by the default \texttt{eos\_metals 1} policy;
+\texttt{eos\_metals 0} restores the legacy H/He-only trace approximation,
+$\rho_{\rm bc} = (1+4Y)/(1+Y)$, which is therefore the value of a metals-off
+atomic base and not the general form. Four switches move the numbers inside
+the module:
 \begin{itemize}
 \item \texttt{eos\_metals} (\texttt{metals.inp}; default 1 since
   2026-06-13) puts the trace-metal mass into $m_{\rm gas}/{\rm H}$ and
-  the trace-metal nuclei into $n_{\rm tot,bc} = (1 + Y + \sum_X
-  a_X)/(1+Y)$. With \texttt{eos\_metals 0}, or with no metals, both
-  collapse to the H/He values $1+4Y$ and $1$.
+  the trace-metal nuclei into $n_{\rm tot,bc}$. With
+  \texttt{eos\_metals 0}, or with no metals, both collapse to the H/He
+  values $1+4Y$ and $1$.
 \item \texttt{Molecular base: True} (Tier-2a; auto-enabled whenever the
   molecular chemistry is on) subtracts from $n_{\rm tot,bc}$ the
   particles lost to the H nuclei bound into H$_2$ at the base: two H
   nuclei make one molecule, so a bound H fraction $x_2$ costs $x_2/2$
   particles (\texttt{h2\_bound\_fraction}). This changes the particle
-  count only --- $\rho_{\rm bc}$, hence the mass reservoir, is untouched,
+  count only: $\rho_{\rm bc}$, hence the mass reservoir, is untouched,
   and the species arrays stay atomic.
 \item A \texttt{base.inp} handoff supplies $q_{\rm H_2}$ at the base
   (\texttt{q\_H2\_base}) and then takes precedence over the
   chemical-equilibrium fit that \texttt{h2\_mixing\_ratio\_base}
   otherwise evaluates at $(p_{\rm base}, T_0)$; \texttt{input\_read}
-  echoes which of the two set $n_{\rm tot,bc}$. Rationale:
-  \texttt{docs/base\_composition\_handoff\_plan.md}.
-\item The same handoff can move the \emph{reservoirs} these formulas are
-  built from, not only the particle count: \texttt{HeH\_base} sets $Y$,
-  and one \texttt{<El>\_H\_base} key per element (any of the ten symbols
-  of \texttt{species\_table}, e.g.\ \texttt{O\_H\_base}) sets the
-  corresponding $a_X$, overriding \texttt{metals.inp} for that element
-  and turning the metal system on by itself when it is the only nonzero
-  abundance. \texttt{thereis\_metals}, \texttt{melem\_ab} and
+  echoes which of the two set $n_{\rm tot,bc}$. The same handoff can move
+  the \emph{reservoirs} these formulas are built from, not only the
+  particle count: \texttt{HeH\_base} sets $Y$, and one
+  \texttt{<El>\_H\_base} key per element sets the corresponding $a_X$,
+  overriding \texttt{metals.inp} for that element and turning the metal
+  system on by itself when it is the only nonzero abundance.
+  \texttt{thereis\_metals}, \texttt{melem\_ab} and
   \texttt{thereis\_lowIP\_metal} are all derived \emph{after} the handoff,
   so a handoff element enters $\rho_{\rm bc}$, $m_{\rm gas}/{\rm H}$ and
   $n_{\rm tot,bc}$ exactly as a \texttt{metals.inp} element does.
@@ -276,125 +548,55 @@ inside it:
   \texttt{docs/input\_schema.md} \S2d.
 \end{itemize}
 
-\subsection{Pressure: dynamically updated to pin the base temperature}
-\label{sec:dpbc}
+\subsection{The keys that no longer exist}
+\label{sec:retiredkeys}
 
-The ghost pressure is $p_{\rm gh} = n_{\rm tot,bc} + \delta p_{\rm bc}$,
-where $n_{\rm tot,bc} = (1 + Y + \sum_X a_X)/(1+Y)$ is the (constant)
-total nuclei density at the base in units of $n_0$
-(\texttt{ntot\_bc}; $=1$ for H/He only, and reduced by the H$_2$-bound
-share under a molecular base) and $\delta p_{\rm bc}$ starts
-at the placeholder $10^{-10}$ and is recomputed after every
-ionization-equilibrium solve as the base electron density
-(\texttt{ionization\_equilibrium.f90}):
-\begin{equation}
-\delta p_{\rm bc}
-   = \frac{n_{\rm HII} + n_{\rm HeII} + 2\,n_{\rm HeIII}
-           + \sum_i q_i\, n_i^{\rm met}}{n_0}
-     \bigg|_{j\,=\,1-N_g}
-   = \frac{n_e(\mbox{base})}{n_0},
-\end{equation}
-with $q_i$ the metal ion charges (included under
-\texttt{eos\_metals 1}, dropped under \texttt{eos\_metals 0}).
-The point of this correction is visible through the EOS closure
-(\ref{eq:eos}): at the ghost cells $n_{\rm tot} = n_{\rm tot,bc}$ (by
-the density BC) and $n_e = \delta p_{\rm bc}$, so
-\begin{equation}
-T_{\rm gh} \;=\; \frac{n_{\rm tot,bc} + \delta p_{\rm bc}}
-                      {n_{\rm tot,bc} + \delta p_{\rm bc}}
-          \;=\; 1
-  \qquad\Longleftrightarrow\qquad T = T_0 .
-\end{equation}
-In other words, the pair (fixed $\rho$, dynamically corrected $p$)
-is really the pair \emph{(fixed nuclei density $n_0$, fixed
-temperature $T_0$)}: as photoionization develops at the base and free
-electrons add partial pressure, the ghost pressure is raised by
-exactly the electron share so that the base stays isothermal at
-$T_0$ instead of being artificially cooled. For a near-neutral base
-(the usual situation, since the base optical depth is huge)
-$\delta p_{\rm bc}$ is tiny and the BC reduces to $p = p_0$.
+Four input keys named components of the ghost-cell closure the
+characteristic condition replaced, and each is now an \emph{error} rather
+than a warning (\texttt{retired\_base\_key}, \texttt{input\_read.f90}): a
+ghost velocity copied from the interior and smoothed
+(\texttt{Valve eps}), a ghost pressure extrapolated from the interior
+gradient (\texttt{Hydrostatic base}), a ghost temperature copied from cell~1
+(\texttt{Base ghost temperature: continuous}) and a ghost velocity taken
+from the wind's flux constant (\texttt{Base velocity: massflux}). None has a
+meaning in a boundary condition that states a reservoir at the face and
+takes one relation from the interior, and a run that silently ignored one
+would answer a question the input did not ask, so it stops. The base
+\emph{level} is unaffected: \texttt{Base BC: density|pressure} still states
+where the boundary is, and it is the key that carries over.
 
-The metal-electron share of $\delta p_{\rm bc}$ is small (even with
-all low-ionization-potential metals singly ionized at the base it is
-${\lesssim}4\times10^{-4}$), but it is carried anyway under
-\texttt{eos\_metals 1} for consistency with \texttt{calc\_ne}.
-
-\subsection{Velocity: the one-way valve}
-\label{sec:valve}
-
-The ghost velocity copies the first interior cell when the gas moves
-outward and is clamped at zero when it moves inward:
-\begin{equation}
-v_{\rm gh} = \max(v_1,\, 0).
-\end{equation}
-Neither a wall ($v_{\rm gh}=0$) nor a free condition
-($v_{\rm gh}=v_1$) would be physical here:
-\begin{itemize}
-\item a \emph{wall} would starve the wind --- the escaping flow is
-  launched by photoionization heating \emph{above} the base, and the
-  mass it carries must be resupplied through the lower boundary;
-\item a \emph{free} condition combined with the fixed-density ghosts
-  would let the reservoir act as an unphysical mass sink whenever the
-  interior gas sags downward, swallowing arbitrary amounts of gas at
-  fixed $\rho_{\rm bc}$.
-\end{itemize}
-The valve resolves the asymmetry: \emph{outflow is allowed (the
-reservoir feeds the wind), sustained inflow is refused (the reservoir
-does not absorb a backflow)}. Physically the boundary models the top
-of an essentially infinite, hydrostatic lower atmosphere held at
-$(n_0, T_0)$.
-
-\paragraph{Smooth valve (EXHALE extension).}
-The hard $\max$ has a kink at $v_1 = 0$ --- and, as discussed in
-\S\ref{sec:breathing}, $v_1 = 0$ is precisely where the base
-dynamics lives. The kink is invisible to the explicit time-marching
-scheme but fatal to the steady-state Newton solver, whose line search
-cannot cross a non-differentiable point of the residual. The input
-key \texttt{Valve eps:} therefore enables the smooth approximation
-\begin{equation}
-v_{\rm gh} = \tfrac12\!\left( v_1 + \sqrt{v_1^2 + \varepsilon^2} \right),
-\end{equation}
-which is $C^\infty$, tends to $v_1$ for $v_1 \gg \varepsilon$, tends
-to $0$ for $v_1 \ll -\varepsilon$, and biases the valve by at most
-$+\varepsilon/2$ near $v_1 \sim 0$. With
-$\varepsilon = 0$ (default) the legacy hard valve is used.
+For the same reason the state files no longer report \texttt{valve} and
+\texttt{fluxconst} in their coupling header, and the \texttt{base\_bc} field
+of the provenance line names the boundary (\texttt{characteristic}) rather
+than selecting among options; the field is kept in its position so that a
+reader of an older profile can still tell which boundary produced it
+(\texttt{utilities.f90}, \texttt{write\_provenance\_header}).
 
 \subsection{The ``breathing base''}
 \label{sec:breathing}
 
-Because the base velocity is a free variable governed by an
-\emph{asymmetric} boundary (an open pipe outward, a wall inward), the
-near-base flow does not settle onto the exact $v = 0$ fixed point but
-onto a small limit cycle around it. One cycle proceeds as follows:
+The base cells of a marching run do not settle onto an exact $v=0$ fixed
+point but onto a small limit cycle around it: the wind draws mass up, the
+column over-supplied against what the heating profile above can carry sinks
+back under gravity, the returning gas raises $\rho$ and $p$ in the first few
+interior cells, and the accumulated pressure pushes it out again. This is
+the \emph{breathing base}. It was present in the original ATES and under the
+retired valve closure, where the asymmetry of the boundary (an open pipe
+outward, a wall inward) drove it; the characteristic condition has no valve,
+and what remains is the O($\Delta t$) kick of a marching start together with
+a limit cycle that switches off below a CFL of about $0.15$--$0.3$, with the
+steady state at its root (\texttt{docs/Update\_EXHALE\_stage1.md} \S161; READ, not
+re-measured here).
 
-\begin{enumerate}
-\item \textbf{Exhale} ($v_1 > 0$): the wind draws mass up; the
-  Riemann problem against the fixed-$\rho_{\rm bc}$ ghosts supplies
-  gas at base density --- the boundary acts as a mass source.
-\item \textbf{Overshoot}: if momentarily more mass is lifted than the
-  heating profile above can carry, the over-supplied column begins to
-  sink back under gravity; $v_1$ turns negative.
-\item \textbf{Inhale} ($v_1 < 0$): the valve closes
-  ($v_{\rm gh} = 0$). The descending gas piles up on the closed
-  boundary, raising $\rho$ and $p$ in the first few interior cells ---
-  a transient wall reflection.
-\item \textbf{Rebound}: the accumulated pressure pushes the column
-  back out; $v_1$ turns positive and the cycle repeats.
-\end{enumerate}
-
-This inhale/exhale oscillation is the \emph{breathing base}. It is an
-intrinsic consequence of the valve-type BC --- present in the original
-ATES as well --- and not a numerical defect. Two regimes should be
-distinguished (see \texttt{docs/initial\_condition\_benchmark.pdf},
-\S7):
+Two regimes are still worth distinguishing (see
+\texttt{docs/initial\_condition\_benchmark.pdf}, \S7):
 
 \begin{description}
-\item[Self-limiting (normal).] In the time-marching hydrodynamics the
-  pressure built up during the inhale phase immediately produces the
-  restoring force of step 4, so the amplitude saturates. The
-  oscillation stays confined to the first few cells
-  ($r \lesssim 1.1\,R_p$) and has no measurable effect on the wind
-  region or on $\dot M$.
+\item[Self-limiting (normal).] The pressure built up during the inward
+  phase immediately produces the restoring force, so the amplitude
+  saturates. The oscillation stays confined to the first few cells
+  ($r \lesssim 1.1\,R_p$) and has no measurable effect on the wind region
+  or on $\dot M$.
 \item[Self-amplifying (pathological).] If the \emph{global} initial
   condition is inconsistent (the canonical example: a naive full-Parker
   density profile, whose hot column drains onto the base), each cycle
@@ -405,41 +607,38 @@ distinguished (see \texttt{docs/initial\_condition\_benchmark.pdf},
 \end{description}
 
 \paragraph{Numerical consequences.}
-Harmless as it is physically, the breathing base interacts with three
-parts of the code, each of which carries a dedicated counter-measure:
+The oscillation interacts with three parts of the code:
 \begin{itemize}
 \item \emph{Convergence monitoring.} The breathing cells never stop
   oscillating, so a convergence criterion of the form
   $\max_j|\Delta u|$ over the whole grid can stall at the
-  $10^{-2}$--$10^{-1}$ level indefinitely. ATES therefore evaluates
-  its momentum-flatness and $du$/$dtu$ diagnostics only over the wind
+  $10^{-2}$--$10^{-1}$ level indefinitely. The momentum-flatness and
+  $du$/$dtu$ diagnostics are therefore evaluated only over the wind
   region $[\,j_{\min} : N\,]$, where $j_{\min}$ is the first cell with
   $r \ge r_{\rm esc}$ (the \texttt{Escape radius} input;
-  \S\ref{sec:resc}). Cases with unusually violent breathing
-  (HD~189733~b is the standing example) can still fail the strict
-  $du$ threshold; reducing CFL, modifying the valve, or replacing the
-  boundary Riemann solver did \emph{not} remove the oscillation in our
-  experiments --- it is robustly attached to the BC type. A periodic
-  Shapiro (1970) low-pass filter, the stabilizer the reference code
-  CETIMB (Koskinen et al.\ 2013a) applies to exactly this
-  gravity-unbalanced sound-wave instability, \emph{does} damp the
+  \S\ref{sec:resc}); the layer below that window is measured and printed
+  separately rather than accepted silently. A periodic Shapiro (1970)
+  low-pass filter, the stabilizer CETIMB (Koskinen et al.\ 2013a) applies
+  to exactly this gravity-unbalanced sound-wave instability, damps the
   oscillatory component (\S\ref{sec:stabilizers}), but it biases the
-  momentum and pushes the clean cold-IC cases off the wind branch into
+  momentum and pushes clean cold-IC cases off the wind branch into
   infall, so it is kept opt-in rather than a default.
-\item \emph{Newton solver.} The $v_1 = 0$ kink of the hard valve sits
-  exactly on the breathing orbit; the smooth valve of
-  \S\ref{sec:valve} exists for this reason.
+\item \emph{Newton solver.} The kink the smooth valve once existed to
+  remove is gone with the valve. What remains as a designed-in
+  differentiability concern is the reversal branch of
+  \S\ref{sec:facestate}, which is why the branch handover is a $C^1$
+  smoothstep of width $10^{-6}$ in the face Mach number rather than an
+  \texttt{if}.
 \item \emph{Advection post-processing.} The \texttt{\_adv} correction
-  integrates ionization states along streamlines; during the inhale
-  phase ($v \le 0$) the streamline of a base cell exits the domain
-  through the lower boundary and the correction is ill-defined (this
-  produced the historical temperature spike/sawtooth at
-  $r \approx 1.1$). The post-processor therefore keeps the
-  equilibrium solution and skips the advection correction wherever
-  $v \le 0$ at the base.
+  integrates ionization states along streamlines; where $v \le 0$ at the
+  base the streamline of a base cell exits the domain through the lower
+  boundary and the correction is ill-defined (this produced the
+  historical temperature spike and sawtooth at $r \approx 1.1$). The
+  post-processor keeps the equilibrium solution and skips the advection
+  correction wherever $v \le 0$ at the base.
 \end{itemize}
 
-\subsection{Base grid resolution (2026-08-11)}
+\subsection{Base grid resolution}
 \label{sec:basegrid}
 
 Not every alternating pattern at the base is the breathing limit cycle.
@@ -448,7 +647,7 @@ of width $\Delta r_{\rm base}$ stacked on $r=1$, and the physical
 requirement on that width is that it resolve the base density scale
 height $H = kT/(\mu g)$. Where $H/\Delta r_{\rm base}$ is of order a few
 cells, the discretization supports a \emph{stationary} $2\Delta r$
-entropy (contact) mode that nothing in the scheme damps --- HLLC resolves
+entropy (contact) mode that nothing in the scheme damps: HLLC resolves
 a contact of zero speed exactly, the gravity source is cell-local, and
 the WENO3 pressure gradient sees only interface pressures. The measured
 dependence is an alternating amplitude in $\ln\rho$ of ${\sim}10^{-2}$
@@ -462,8 +661,8 @@ The resolution is therefore an input key,
 \texttt{Base grid [dr,cells]: <dr\_base> [<N\_low\_cells>]}
 (\texttt{input\_read.f90}; defaults \texttt{2.0e-4 50}, ignored by the
 \texttt{Uniform} and \texttt{Stretched} grid types). The two numbers are
-not independent --- their product is the radial extent of the uniform
-region, $0.01\,R_p$ with the defaults --- so refining the base at fixed
+not independent (their product is the radial extent of the uniform
+region, $0.01\,R_p$ with the defaults), so refining the base at fixed
 extent means dividing $\Delta r_{\rm base}$ and multiplying $N_{\rm low}$
 by the same factor. Because those extra base cells are taken out of the
 same total $N$, the runtime \texttt{Grid cells:} key of
@@ -486,148 +685,75 @@ Note that spelling the default out explicitly
 run made without the key: the compiled-in default is a default-real
 literal, $2.5\times10^{-8}$ relative below the exact double the
 list-directed read produces, which moves every base cell by that amount.
-The full measurement --- what sets the mode, which remedies were tried,
-and what each grid step bought --- is
+The full measurement (what sets the mode, which remedies were tried,
+and what each grid step bought) is
 \texttt{docs/hd189\_base\_checkerboard.md}.
 
-\subsection{Optional stabilizers and the selectable base mode (EXHALE)}
+\subsection{The three remaining opt-in controls}
 \label{sec:stabilizers}
 
-EXHALE adds six opt-in controls of the base behavior. The first three were
-ported while studying the breathing/infall behavior against CETIMB (Koskinen
-et al.\ 2013a); the Shapiro
-filter in particular was adopted after Huang et al.\ (2023) --- whose escape
-model is built on CETIMB --- pointed to CETIMB's use of exactly this low-pass to
-damp the gravity-unbalanced base sound waves; that reference is what suggested
-trying it here. The last three (2026-08) came out of the HD\,189733\,b base
-checkerboard and the HD\,209458\,b stagnant-layer investigations. All six
-\emph{default to the legacy behavior} --- the numeric ones are off at
-$\varepsilon \le 0$, the ones selected by name default to \texttt{valve},
-\texttt{density} and \texttt{isothermal} --- so a run that does not ask for
-them is unchanged. The measured effects of the first three are
-tabulated in \S\ref{sec:bc-matrix}.
-
-Two of them --- \texttt{Hydrostatic base} and \texttt{Base ghost
-temperature: continuous} --- set the \emph{same} quantity, the ghost
-pressure, and are therefore mutually exclusive: \texttt{Hydrostatic base}
-is tested first in \texttt{BC\_component\_constrho} and
-\texttt{input\_read} warns when both are given.
+Three keys still act on the base region, and all three default to off or to
+the legacy setting, so a run that does not ask for them is unchanged. The
+measured effects of the base anchor and of the Shapiro filter, taken under
+the retired ghost closure, are tabulated in \S\ref{sec:bc-matrix}.
 
 \begin{description}
+\item[Base anchor (\texttt{Base BC: density | pressure [<p\_ubar>]}).] Which
+  quantity states the base level. \texttt{density} (default, legacy) fixes
+  the base number density at $n_0 = 10^{\texttt{Log10 lower boundary number
+  density}}$, and the reservoir of \S\ref{sec:reservoir} is the isentrope
+  through $(p = n_{\rm tot,bc}+\delta p_{\rm bc},\, T = T_0)$ at that
+  density. \texttt{pressure} (CETIMB-style) derives $n_0$ instead, so that
+  the base pressure $n_0 k_B T_0 n_{\rm tot,bc}$ equals \texttt{p\_ubar}
+  microbar (default $1\,\mu$bar, the CETIMB lower boundary); the reservoir
+  pressure is then that value and its temperature $T_0$, both stated at the
+  base \emph{level} $r=1$ and carried to the first face by the isentrope, so
+  the level does not move with the grid. The physical effect is a much less
+  dense base ($1\,\mu$bar is about $20\times$ below $n_0 = 10^{14}$), which
+  shrinks the dense-base gravity source $\rho g$.
 \item[Shapiro filter (\texttt{Shapiro filter: <eps> [<every>]}).] Every
-  \texttt{every} steps a weak two-step Shapiro (1970) 1--2--1 low-pass filter
-  $u_j \mathrel{+}= \tfrac{\varepsilon}{4}(u_{j-1} - 2u_j + u_{j+1})$ is applied
-  to the conservative variables. This is CETIMB's cure for the
-  gravity-unbalanced sound waves and it does smooth the breathing transient.
-  \emph{However}, on the otherwise-clean cold-IC cases it injects a systematic
-  momentum bias that drives the solution off the transonic-wind saddle into the
-  infall branch ($v<0$ almost everywhere; see the \texttt{\_Shap} rows of
-  Table~\ref{tab:bc-dens}). It is therefore opt-in --- useful only for cases
-  that genuinely breathe, not as a global default.
-\item[Mass-flux base velocity (\texttt{Base velocity: massflux}).] Instead of
-  the one-way valve (\S\ref{sec:valve}), the base velocity is set from the
-  steady mass-flux continuity $v_0 = F_c/(\rho_0 r_0^2)$ with $F_c$ a slow
-  exponential moving average of $\rho v r^2$ over the wind region. It is
-  physically benign --- it never causes infall on its own and gives the cleanest
-  base (it suppresses the $\pm$m\,s$^{-1}$ valve oscillation) --- but it slows
-  convergence ($\sim$5$\times$ more steps), so the fast valve stays the default.
-\item[Pressure-anchored base (\texttt{Base BC: pressure [<p\_ubar>]}).] Instead
-  of fixing the base \emph{number density} at $n_0$ (\S\ref{sec:lower}), this
-  fixes the base \emph{pressure} at \texttt{p\_ubar} microbar (default $1\,\mu$bar,
-  the CETIMB lower boundary) and derives $n_0$ from $p = n_0 k_B T_0\,
-  n_{\rm tot,bc}$. Because the isothermal base is over-determined (it already
-  pins $T = T_0$), this is a re-parameterization of the same ghost; its physical
-  effect is simply a much less dense base ($1\,\mu$bar $\Rightarrow
-  n_0 \approx 5\times10^{12}$, $\sim$20$\times$ below $10^{14}$), which shrinks
-  the dense-base gravity source $\rho g$ that feeds the breathing. Empirically a
-  density-anchored run at the same low $n_0$ ($\log n_0 = 12.5$) gives an almost
-  identical converged wind, confirming that the lever is the base \emph{density},
-  not the anchoring variable (Tables~\ref{tab:bc-pres} and~\ref{tab:bc-dens}).
-\item[Base ghost temperature (\texttt{Base ghost temperature:
-  isothermal|continuous}, 2026-08-11).] Selects the temperature closure of
-  the lower ghost cells; the density anchor $\rho_{\rm bc}$ is untouched
-  either way. \texttt{isothermal} (default, legacy) is the pin of
-  \S\ref{sec:dpbc}: the ghost pressure is held at
-  $n_{\rm tot,bc} + \delta p_{\rm bc}$, i.e.\ $T_{\rm gh} = T_0$.
-  \texttt{continuous} imposes $\mathrm{d}T/\mathrm{d}r = 0$ at the base
-  face instead --- the ghost keeps the base composition (the same
-  $n_{\rm tot,bc} + \delta p_{\rm bc}$ particles at $\rho_{\rm bc}$) but
-  carries the temperature of the first interior cell,
-  \begin{equation}
-  p_{\rm gh} = (n_{\rm tot,bc} + \delta p_{\rm bc})\,T_1 ,
-  \qquad
-  T_1 = \frac{p_1}{(n_{\rm tot} + n_e)_1},
-  \end{equation}
-  with $(n_{\rm tot}+n_e)_1$ (\texttt{n\_part\_cell1}) refreshed by the
-  composition solve, so the ghost pressure stays a differentiable function
-  of the interior pressure --- what the JFNK line search needs --- while
-  the ionization state it divides by is lagged like every other
-  composition quantity in a hydro step
-  (\texttt{Apply\_BC.f90}, lines 55--77; \texttt{input\_read.f90}, lines
-  588--602). The motivation is that the $T_0$ pin has no physical backing
-  --- the radiative equilibrium of the lower atmosphere is outside the
-  model --- and becomes a contact discontinuity sitting on the boundary
-  when the first cell cools well below $T_0$. Measured on the production
-  HD\,189733\,b configuration
-  (\texttt{docs/hd189\_base\_checkerboard.md}, \S13): $T_{\rm gh}$ goes
-  from $1183$~K to $540$~K against $T_1 \approx 494 \to 540$~K,
-  $\rho_1/\rho_{\rm gh}$ from 2.33 to 0.95, and the alternating $\ln\rho$
-  amplitude over cells 1--12 from $2.6\times10^{-2}$ to
-  $9.2\times10^{-3}$, at an unchanged $\log_{10}\dot M$ (9.04 vs.\ 9.05).
-  Note that with \texttt{Base BC: pressure} the microbar target is imposed
-  at $T_0$ when $n_0$ is derived, so under a continuous-$T$ ghost only the
-  base \emph{density} remains anchored; \texttt{input\_read} says so.
-\item[Hydrostatic base (\texttt{Hydrostatic base: True}).] The legacy ghost
-  pressure is a constant across the two ghost cells, so
-  $\mathrm{d}p/\mathrm{d}r$ is flattened to ${\approx}0$ at the base ---
-  while steady momentum balance there needs
-  $\mathrm{d}p/\mathrm{d}r = -\rho g$. This flag replaces the ghost pressure
-  by the linear extrapolation of the \emph{interior} pressure gradient
-  (cells 1 and 2),
-  \begin{equation}
-  p_{\rm gh}(r) = p_1 + \frac{p_2 - p_1}{r_2 - r_1}\,(r - r_1),
-  \end{equation}
-  so that $\mathrm{d}p/\mathrm{d}r$ is continuous through the base face and
-  can balance gravity there --- the base-face momentum residual being the
-  source of the breathing (\S\ref{sec:breathing}), which for strongly bound
-  planets (large $b_0$, e.g.\ HD\,189733\,b) is $O(10$--$100)$. The density
-  stays anchored at $\rho_{\rm bc}$; the base temperature then floats
-  slightly off $T_0$, since neither $T$ nor $p$ is fixed any more
-  (\texttt{Apply\_BC.f90}, lines 55--72).
+  \texttt{every} steps a weak 1--2--1 low-pass filter
+  $u_j \mathrel{+}= \tfrac{\varepsilon}{4}(u_{j-1} - 2u_j + u_{j+1})$ is
+  applied to the conservative variables (\texttt{shapiro\_filter},
+  \texttt{Apply\_BC.f90}; a no-op at $\varepsilon \le 0$, the default). This
+  is CETIMB's cure for the gravity-unbalanced sound waves and it does
+  smooth the transient. On otherwise-clean cold-IC cases it injects a
+  systematic momentum bias that drives the solution off the transonic-wind
+  saddle into the infall branch ($v<0$ almost everywhere; the
+  \texttt{\_Shap} rows of Table~\ref{tab:bc-dens}), so it is useful only for
+  cases that genuinely breathe. It touches the marching state alone, which
+  leaves the Newton solver solving a system whose mode the filter had been
+  hiding.
 \item[Low-Mach contact-mode damping (\texttt{Low-Mach damping: <eps4>
-  [<M\_th>]}, 2026-08-13).] Not a boundary condition, but aimed at the same
-  near-base region. The HLLC flux carries the contact/entropy wave at
-  $S_* \sim v$, so the dissipation it applies to that family vanishes as
-  the flow stagnates and a $2\Delta r$ mode in $v$ and $T$ becomes
-  marginally damped --- which is what a shell where metal cooling has
-  stopped the flow looks like. The key adds a gated fourth-difference
-  (Jameson--Schmidt--Turkel) stress to the numerical \emph{momentum} flux,
-  together with its work term $v\,D_p$ in the energy flux so the pair
-  conserves total energy; the mass flux is untouched. The gate closes the
-  term identically above $M > M_{\rm th}$ (default $10^{-3}$). It lives in
-  \texttt{src/modules/flux/low\_mach\_dissipation.f90} and is applied
-  inside \texttt{RK\_rhs}, the one routine the steady residual assembly
-  also calls, so the marching loop and the Newton residual see the
-  \emph{same} equation --- unlike the Shapiro filter, which touches only
-  the marching state, leaving Newton to solve a system whose mode the
-  filter had been hiding. Off by default ($\varepsilon_4 \le 0$ skips the
-  code path entirely). \emph{Caveats, both measured}
-  (\texttt{docs/hd209\_metal\_stagnation.md}, \S\S8--9): the coefficient
-  has an operating window --- \texttt{input\_read} warns above the explicit
-  stability bound $\varepsilon_4 < 1/(16\,\mathrm{CFL})$, and on the
-  \texttt{examples/16} warm restart only $5\times10^{-3}$ and $10^{-2}$
-  gave a clean Newton finish --- and on the \emph{cold} start of that same
-  configuration no coefficient helped at all: off, $5\times10^{-3}$,
-  $10^{-2}$ and $2\times10^{-2}$ all bottom out at the same
-  ${\sim}10^{-3}$ residual floor, so the cold hand-off state appears to lie
-  outside the Newton basin and the damping is not the lever there.
+  [<M\_th>]}).] Not a boundary condition, but aimed at the same near-base
+  region. The HLLC flux carries the contact/entropy wave at $S_* \sim v$, so
+  the dissipation it applies to that family vanishes as the flow stagnates
+  and a $2\Delta r$ mode in $v$ and $T$ becomes marginally damped, which is
+  what a shell where metal cooling has stopped the flow looks like. The key
+  adds a gated fourth-difference (Jameson--Schmidt--Turkel) stress to the
+  numerical \emph{momentum} flux, together with its work term $v\,D_p$ in
+  the energy flux so the pair conserves total energy; the mass flux is
+  untouched, and the gate closes the term identically above
+  $M > M_{\rm th}$ (default $10^{-3}$). It lives in
+  \texttt{src/modules/flux/low\_mach\_dissipation.f90} and is applied inside
+  \texttt{RK\_rhs}, the one routine the steady residual assembly also calls,
+  so the marching loop and the Newton residual see the \emph{same} equation.
+  Off by default ($\varepsilon_4 \le 0$ skips the code path entirely).
+  \emph{Caveats, both measured}
+  (\texttt{docs/hd209\_metal\_stagnation.md}, \S\S8--9): the coefficient has
+  an operating window, \texttt{input\_read} warns above the explicit
+  stability bound $\varepsilon_4 < 1/(16\,\mathrm{CFL})$, on the
+  \texttt{examples/16} warm restart only $5\times10^{-3}$ and $10^{-2}$ gave
+  a clean Newton finish, and on the \emph{cold} start of that same
+  configuration no coefficient helped at all.
 \end{description}
 
 \paragraph{Implementation note.}
-The cell-by-cell ionization-equilibrium sweep is now OpenMP-parallel over cells
-(the metal and charge-exchange coefficients in each cell are kept thread-private);
-the parallel result is bit-identical to the serial one, so none of the BC/IC
-behavior below is affected. See \texttt{docs/openmp\_parallelization.md}.
+The cell-by-cell ionization-equilibrium sweep is OpenMP-parallel over cells
+(the metal and charge-exchange coefficients in each cell are kept
+thread-private); the parallel result is bit-identical to the serial one, so
+none of the BC/IC behavior below is affected. See
+\texttt{docs/openmp\_parallelization.md}.
 
 \subsection{Temperature, ionization, and metals at the lower boundary}
 \label{sec:metals-bc}
@@ -638,55 +764,227 @@ the ionization-equilibrium sweep
 (\texttt{ionization\_equilibrium.f90} loops over
 $j = N{+}N_g,\dots,1{-}N_g$), so their $T$, H/He stages, He~$2^3$S,
 and all metal stages come out of the same coupled MINPACK solve as the
-interior, evaluated at the ghost state $(\rho_{\rm bc},\,
-n_{\rm tot,bc}{+}\delta p_{\rm bc})$. Combined with \S\ref{sec:dpbc} this makes the
-effective thermodynamic boundary condition ``$n = n_0$, $T = T_0$,
-ionization in local equilibrium''. Metal abundances enter only through
+interior, evaluated at the ghost state the characteristic condition wrote
+(\S\ref{sec:baseghost}). Combined with \S\ref{sec:dpbc} this makes the
+effective thermodynamic boundary condition ``the reservoir isentrope through
+$(n_0, T_0)$, ionization in local equilibrium''. Metal abundances enter only through
 the runtime \texttt{metals.inp} fractions; the boundary needs no
-special metal treatment: their abundances ride on the (fixed-composition)
-density BC, and under the default \texttt{eos\_metals 1} policy their
+special metal treatment: their abundances ride on the reservoir
+composition, and under the default \texttt{eos\_metals 1} policy their
 mass, electrons, and nuclei are carried consistently through
 \texttt{calc\_rho}/\texttt{calc\_ne}/\texttt{calc\_ntot}
 (\texttt{eos\_metals 0} restores the legacy trace approximation in
 which they never appear in the mass or momentum budget).
 
-\section{Upper boundary: supersonic free outflow}
+\subsection{Boundaries of the transported composition columns}
+\label{sec:transported-bc}
+
+The hydrodynamic ghosts above are not the only boundary the code states. When
+an element mass fraction or a molecular carrier is \emph{transported}, its
+column carries its own boundary, and in the stationary solve those ghosts
+must belong to the iterate being evaluated rather than to whatever the last
+sweep left behind.
+
+\paragraph{At the top: the iterate's own zero gradient.}
+The element and carrier operators pose a zero-gradient outflow condition at
+the top of the column: nothing enters the domain from outside through an
+element, the diffusive face coefficients stop at face $N-1$ so the diffusive
+flux vanishes at face $N$, and with the ghost carrying the outermost cell's
+composition the advective reconstruction sees no compositional step across
+the top. \texttt{write\_species\_rows\_into\_composition}
+(\texttt{steady\_newton.f90}), the one place a trial composition is
+assembled for the residual, therefore writes the upper ghosts of the
+transported element and carrier columns from the outermost cell of
+\emph{that trial}, by the same rule the marching path uses
+($Y(N{+}1{:}N{+}N_g) = Y(N)$ in the advective stage of
+\texttt{binary\_element\_diffusion.f90}, $f_c(N{+}1{:}N{+}N_g) = f_c(N)$ in
+the carrier operator). With a zero-gradient element mass fraction the
+element mixing ratio is zero-gradient too, since
+$m_{\rm sum}/n_{\rm H} = m_1 + m_{\rm He}\,(n_{\rm He}/n_{\rm H})$ is fixed
+by the helium mass fraction: MEASURED at $1.4\times10^{-16}$. Before that
+write the outermost element row of the atomic arm read
+$1.19\times10^{-2}$ of its own scale against an interior level of
+$1.3\times10^{-13}$, and the sodium row of the outermost cell bound the
+solve on 51 of 109 iterations; with it, on 0 of 252.
+
+\paragraph{The operator itself takes the caller's ghosts.}
+\texttt{element\_transport\_residual} writes no ghost of its own: it is
+measured under the boundary its caller states, while its relaxation twins
+(\texttt{element\_diffusion\_step},
+\texttt{solve\_trace\_element\_in\_hydrogen}) refill their own working
+arrays before every pass. That asymmetry is deliberate and it is
+documented at the routine. A refill was implemented in the residual and
+then reverted: it changes the residual by one element's outermost row in
+its twelfth digit and nothing else, yet the atomic element arm does not
+survive a last-bit change of the upper ghosts, whatever makes it. MEASURED:
+a control that merely multiplies the same three ghost quantities by
+$1 + 2\times10^{-16}$, posing no boundary at all, moves $\|R\|$ at iteration
+40 from $3.212\times10^{-2}$ (the caller's ghosts) to $1.125$, against
+$1.199$ for the refill. The reading that matters beyond this item is that
+$\|R\|$ at a fixed iteration count is not a reproducible quantity for that
+arm; the suite \texttt{src/tests/element\_operator} therefore asserts the
+size of the caller dependence ($1.19\times10^{-2}$ on a stale caller)
+rather than assuming it away.
+
+\paragraph{At the base: two different equations.}
+The lower ghosts of the transported columns are never rewritten by the
+iterate: they are the Dirichlet reservoir the handoff states. The equation
+the \emph{first physical cell} carries differs by row class, and
+\texttt{species\_row\_base\_equation} is its single definition, read by both
+\texttt{eval\_residual} (which assembles the equation) and
+\texttt{cell\_row\_scales} (which nondimensionalizes it), so the two cannot
+drift apart:
+\begin{itemize}
+\item an \textbf{element row} is a Dirichlet reservoir condition,
+  $X(1) = X_{\rm reservoir}$. The element operator poses no transport
+  balance in cell~1; that cell \emph{is} the reservoir the column is
+  anchored to, and the scale that makes the equation dimensionless is the
+  unknown's own.
+\item a \textbf{carrier row} is a control-volume balance, as in every other
+  cell. The inner ghost is data and not an unknown: it carries the
+  composition of the handoff, and where the base face flows inward the
+  advective term it contributes is a constant of the row. The cell balances
+  transport against chemistry, so the scale is the row's own terms.
+\end{itemize}
+
+\paragraph{The projection back onto species conserves mass.}
+Writing element mass fractions back into a species vector goes through
+\texttt{project\_elements}, and what it must preserve is the mass the
+species handed in carried. The mass is read from the cell itself
+(\texttt{mixture\_mass\_split}: the trace metals at the abundance the cell
+holds, not at the reservoir's) and component~1, the hydrogen carriers
+together with the trace metals and the heavy nuclei bound in the molecular
+carriers, is scaled as a whole. Taking the mixture mass with the reservoir
+mass per hydrogen nucleus instead wrote the difference into hydrogen at
+every call: MEASURED at one cell of the certification column, with metal/H
+$0.024401$ against the reservoir's $0.028227$, $\sum_i m_i f_i$ went
+$1.0000000 \to 1.0000636$ after one step, helium's gain exceeding the
+hydrogen and metal loss, which is mass created. After the fix the closure
+of the certification column stands at $2.3\times10^{-15}$ after the
+relaxation (from $3.37\times10^{-3}$) and the handed-back atomic candidate
+at $1.94\times10^{-9}$, the file's own precision. This is also what makes
+the writer-to-loader round trip return the state (\S\ref{sec:loadic}).
+
+\section{Upper boundary: free outflow}
 \label{sec:upper}
 
-The upper ghost cells are filled by extrapolation
-(\texttt{Apply\_BC\_W}, lines 95--99):
-\begin{lstlisting}[style=code]
-do k = 1, Ng
-   W(N+k,:) = W(N,:)                              ! PLM / first order
-   if (use_weno3) W(N+k,:) = 2*W(N+k-1,:) - W(N+k-2,:)  ! WENO3
-enddo
-\end{lstlisting}
-i.e.\ zeroth-order (copy) extrapolation of all primitive variables for
-the PLM scheme, upgraded to linear extrapolation when WENO3
-reconstruction is active (the wider stencil of WENO3 is sensitive to
-the artificial flattening a plain copy would imply). \texttt{Rec\_BC}
-applies the same rule to the reconstructed interface states.
+No characteristic enters the domain at an outflowing outer face, so the
+boundary imposes no condition and the ghost is a continuation of the
+interior. The rule is stated once, in \texttt{free\_outflow\_ghost}
+(\texttt{Apply\_BC.f90}), for every reconstruction: which characteristics
+cross a face is a property of the flow, not of the scheme that reads the
+ghost. The continuation is the isothermal hydrostatic one,
+\begin{equation}
+\rho_g = \rho_N \exp\!\left[-\frac{\phi_g - \phi_N}{p_N/\rho_N}\right],
+\qquad
+p_g = p_N \exp\!\left[-\frac{\phi_g - \phi_N}{p_N/\rho_N}\right],
+\qquad
+v_g = v_N ,
+\end{equation}
+the state of rest the last physical cell carries outward under the code's
+own potential, with $p/\rho$, the isothermal sound speed squared of the
+mixture, held at cell~$N$'s value. Since $\rho$ and $p$ are scaled by the
+same factor, $p_g/\rho_g = p_N/\rho_N$: the ghost is at the \emph{same
+temperature} as cell~$N$ and differs from it only in density, so everything
+downstream that reads a ghost (the ionization sweep, the column integral of
+\texttt{calc\_column\_dens}, the sound speed of \texttt{eval\_dt}) sees the
+temperature it saw before, at the density the stratification gives.
 
-The justification is characteristic-based: by the time the flow
-reaches $r_{\max}$ the wind is expected to be supersonic, so all three
-characteristics leave the domain and no physical information may be
-prescribed from outside; extrapolation is then the consistent
-``transparent'' closure. Two caveats follow directly:
+\paragraph{Why a gradient and not a copy.}
+A zero-gradient ghost asserts $\mathrm{d}p/\mathrm{d}r = 0$ at the outer
+face, which is a hydrostatic imbalance of the order of the local weight
+$\rho g$ that no resolution removes. Under PLM it is worse: the forward
+difference entering the MC limiter is then exactly zero, so the limited
+slope of cell~$N$ is exactly zero and that cell carries no pressure gradient
+at all. MEASURED on the analytic hydrostatic column by
+\texttt{src/tests/grid\_and\_gates/hydrostatic\_residual}, the momentum
+residual of cell~$N$ in units of its own weight at
+\texttt{Grid cells} $=250/500/1000/2000$ and its order in $1/N$ (READ from
+the routine's recorded measurement):
+\begin{center}\small
+\begin{tabular}{@{}lllll@{}}
+\toprule
+Outer ghost rule & 250 & 500 & 1000 & 2000 \quad order \\
+\midrule
+zero-gradient copy (PLM)   & 0.759  & 0.753  & 0.751   & 0.750 \quad 0.006 \\
+linear extrapolation       & 0.059  & 0.021  & 0.008   & 0.0030 \quad 1.42 \\
+the continuation above     & 0.0044 & 0.0011 & 0.00032 & 0.00010 \quad 1.80 \\
+\bottomrule
+\end{tabular}
+\end{center}
+With the continuation the largest residual of the domain is no longer at the
+boundary but at the base/stretched grid junction, where the interior
+truncation error is.
+
+\paragraph{The velocity stays a copy.}
+The outgoing characteristics carry the velocity out of the domain and the
+boundary has nothing of its own to say about it; a copy states the least and
+can neither reverse the flow, which would make the boundary an inflow
+carrying characteristics inward that only a reservoir may state, nor
+manufacture a speed. Two gradient-carrying rules were measured and both
+rejected on \texttt{wasp\_full}, whose outer edge is subsonic at Mach 0.96 so
+that the ghost reaches the interior: a linear extrapolation in $r$ carries
+about 1 percent less mass flux than cell~$N$ and the run then sits in the
+base-breathing limit cycle with \texttt{du} between $4\times10^{-3}$ and
+$1.6\times10^{-2}$, never reaching the $10^{-3}$ marching stop within 43000
+steps where the copy stops at 17135; and $v_g = v_N (\rho_N/\rho_g)
+(r_N/r_g)^2$, the steady continuity equation, stops the same case sooner
+(14442 steps) but divides by a ghost density the stratification can make
+arbitrarily small, so where the ghost cell is thicker than a scale height it
+manufactures an arbitrarily large speed at the boundary.
+
+\paragraph{Positivity.}
+The exponential of a finite argument with $p_N/\rho_N > 0$ is positive, so
+an admissible cell~$N$ gives an admissible ghost. A cell~$N$ that is not
+itself an admissible gas state, or a potential difference large enough to
+overflow the exponential, leaves the ghost with the zero-gradient copy of
+cell~$N$ and is counted in
+\texttt{n\_ghost\_cells\_positivity\_limited}, reported at the end of the
+run. The tests are written as the negation of ``admissible'', so a
+\texttt{NaN}, which compares false against everything, is caught too. A
+nonzero count is a statement about the interior, not about the boundary.
+
+\paragraph{Where it matters, and where it does not.}
+A supersonic outflow carries no information inward \emph{through the Riemann
+solution}: with every wave speed of the face positive, HLLC returns the
+physical flux of the left state and never forms an expression in the right
+state. It does still reach cell~$N$ through that cell's own reconstruction
+stencil, which is a property of the stencil and not of the characteristics,
+so a supersonic run moves under a change of this rule by the size of
+cell~$N$'s limited slope and no further: MEASURED on
+\texttt{mol\_base\_handoff} at 12000 steps, whose outer edge sits at Mach
+1.92, the outermost cell moves by $3.8\times10^{-4}$ in $\rho$ and is the
+only cell of 500 that moves by more than $10^{-4}$, the mass flux above
+$r_{\rm flux}$ is unchanged to $1.9\times10^{-8}$ and \texttt{du} to five
+digits. The continuation therefore matters where the outer edge is
+\emph{subsonic}, and that is the state it is built for: there gravity is the
+leading term of $\mathrm{d}p/\mathrm{d}r$, the ram contribution
+$\rho v\,\mathrm{d}v/\mathrm{d}r$ being smaller than $\rho\,
+\mathrm{d}\phi/\mathrm{d}r$ by the square of the Mach number.
+
+Two caveats about the model rather than the closure:
 \begin{itemize}
 \item If the flow is \emph{not} supersonic at $r_{\max}$ (observed for
   deep Roche-lobe-overflow geometries, e.g.\ WASP-121b Case~D, which
   is subsonic at L1), one in-going characteristic formally remains and
-  the extrapolation BC is no longer strictly well-posed; in practice
-  the scheme remains stable but the outer solution should be treated
-  with caution (geometry-limited regime).
+  no reservoir states it; in practice the scheme remains stable but the
+  outer solution should be treated with caution (geometry-limited
+  regime).
 \item The BC carries no information about the medium beyond $r_{\max}$
   (stellar wind, confinement pressure); EXHALE models the planetary
   outflow only.
 \end{itemize}
 
+For the reconstructed interface states \texttt{Rec\_BC} copies the right
+state outward under PLM and extrapolates it linearly under WENO3, whose
+wider stencil is sensitive to the artificial flattening a plain copy would
+imply; these are face states and are left unguarded, because
+\texttt{positivity\_limited\_faces} already drops any face that leaves
+$\rho > 0$, $p > 0$ back to the cell averages.
+
 No ionization or temperature condition is applied at the top either;
 the ghost cells participate in the equilibrium sweep like all others,
-with their extrapolated $(\rho, p)$.
+with the $(\rho, p)$ of the continuation.
 
 \section{Boundary-adjacent settings}
 \label{sec:adjacent}
@@ -707,15 +1005,15 @@ the base. This is the radiative-transfer analogue of a boundary
 condition: the unattenuated stellar spectrum is imposed at $r_{\max}$,
 and the base receives whatever survives the overlying column. Because
 the base column is huge, the lower boundary is effectively in
-radiative shadow --- consistent with holding it at $(n_0, T_0)$.
+radiative shadow: consistent with holding it at $(n_0, T_0)$.
 
 \subsection{Escape radius and the convergence window}
 \label{sec:resc}
 
 The \texttt{Escape radius [R\_p]:} input ($r_{\rm esc}$, default 1.5)
 defines $j_{\min}$, the first cell with $r \ge r_{\rm esc}$
-(\texttt{define\_grid.f90}). All steady-state diagnostics ---
-momentum-flux flatness $\rho v r^2 = \mathrm{const}$, $du$, $dtu$ ---
+(\texttt{define\_grid.f90}). All steady-state diagnostics
+(momentum-flux flatness $\rho v r^2 = \mathrm{const}$, $du$, $dtu$)
 are evaluated over $[\,j_{\min} : N\,]$ only, deliberately excluding
 the breathing base (\S\ref{sec:breathing}). A guard added for deep-RLOF
 geometries (EXHALE): if $r_{\rm esc} \ge r_{\max}$ the window would be
@@ -734,7 +1032,7 @@ volume-weighted relative norm to that layer and locates the cell carrying
 the largest cell-wise residual in it;
 \texttt{write\_resid\_below\_escape} prints one line at the start and end
 of the PTC solve and at the start and end of the JFNK solve. The value is
-printed and never tested --- nothing in the solve depends on it.
+printed and never tested: nothing in the solve depends on it.
 
 The momentum row of that diagnostic is \emph{not} scaled by
 $|u_2| = |\rho v|$. The layer is quasi-hydrostatic ($|v|\sim10$\,cm\,s$^{-1}$),
@@ -751,8 +1049,8 @@ s_{\rm grav}(j) = |\rho_j|\,
 the same discrete potential difference the momentum source term uses
 (\texttt{Source.f90}); the printed number is then the fractional violation
 of hydrostatic balance in the layer. On that scale the converged
-HD\,209458\,b solutions --- including the metals-off one that read 9.99
-before --- all hold the layer at $10^{-5}$ to $1.4\times10^{-4}$ of
+HD\,209458\,b solutions (including the metals-off one that read 9.99
+before) all hold the layer at $10^{-5}$ to $1.4\times10^{-4}$ of
 $\rho g$, comparable to the wind-region \texttt{Resid tol}. The mass and
 energy rows keep the $|u|$ scale and print separately.
 
@@ -788,13 +1086,13 @@ the run starts \emph{inside} the wind basin or has to be pushed there.
   transonic wind.
 \item[\textbf{Warm IC} (warm seed / warm start).] An initial state that already
   carries a \emph{heated, ionized, flowing} profile, overlaid on the hydrostatic
-  density --- the transonic isothermal-wind and hot-Parker families. A plausible
+  density: the transonic isothermal-wind and hot-Parker families. A plausible
   wind therefore exists from step~0, which is needed where a cold start cannot
   launch (deep-RLOF or low-gravity boil-off). It is still EXHALE's own base with
   a thermodynamic overlay, so it stays consistent with the lower boundary; it
   only auto-enables \texttt{force\_start} so the heating can settle.
 \item[\textbf{Starter} (starter solution / seed).] A \emph{complete, externally
-  pre-converged} steady wind solution read in wholesale as the IC --- the
+  pre-converged} steady wind solution read in wholesale as the IC: the
   Wind-AE warm start (\texttt{IC mode: windae}), which ramps a Wind-AE
   \texttt{windsoln} (or a grid/database seed) to this planet. Unlike a warm
   seed, a starter \emph{replaces the entire state} with another code's solution,
@@ -828,7 +1126,7 @@ Wind-AE warm start & \texttt{IC mode: windae} & off \\
 \end{tabular}
 \end{center}
 
-The transonic and hot-Parker families --- and only those two --- force the
+The transonic and hot-Parker families, and only those two, force the
 first $1000$ iterations (\texttt{force\_start}) so that the heating structure
 can develop before the convergence test is allowed to fire. Whatever the family,
 the full dimensional IC is dumped to \texttt{output/IC\_dump.txt} for
@@ -836,7 +1134,7 @@ inspection before the first step.
 
 \paragraph{Automatic selection (\texttt{IC mode: auto}).}
 \texttt{select\_IC\_auto} (\texttt{set\_IC.f90}) picks the family from a
-single exact probe --- \texttt{find\_sonic} at the \emph{cold} base
+single exact probe: \texttt{find\_sonic} at the \emph{cold} base
 sound speed in the actual potential. An interior sonic point selects
 the transonic IC; this catches both deep-RLOF bases (the Roche
 $\phi'\to0$ topology toward L1 always crosses the critical condition;
@@ -903,7 +1201,7 @@ the domain; the loop artificially \emph{steepens} the initial
 atmosphere so that the outer half of the grid starts effectively
 empty. The profile is then floored at $\rho = 10^{-8}$ (line 112).
 Equation~(\ref{eq:ic-hydro}) with $b_{0,\rm eff} > 1$ is therefore
-\emph{not} an equilibrium --- it is a concentrated cold reservoir that
+\emph{not} an equilibrium: it is a concentrated cold reservoir that
 the subsequent heating will evaporate.
 
 \paragraph{Velocity.}
@@ -931,14 +1229,14 @@ The physical picture: \emph{a cold, neutral, hydrostatically stratified
 atmosphere is exposed to the stellar EUV flux at $t=0$ and left to
 evaporate}. The first ionization-equilibrium sweep deposits the
 heating, the upper layers warm and expand, and the wind launches
-self-consistently --- typically within the forced-start phase.
+self-consistently: typically within the forced-start phase.
 
 \subsection{Transonic isothermal-wind IC (EXHALE)}
 \label{sec:ic-transonic}
 
 Motivation: deep Roche-lobe-overflow geometries (the canonical case is
 WASP-121b Case~D, whose sonic point sits essentially at L1) launch
-\emph{no} wind from the hydrostatic IC --- the run stalls in a bound,
+\emph{no} wind from the hydrostatic IC: the run stalls in a bound,
 breathing state. For these cases the run must start from a flowing
 solution. With \texttt{Transonic IC: True}, \texttt{wind\_profile}
 (\texttt{set\_IC.f90}, lines 177--233) solves the steady isothermal
@@ -977,7 +1275,7 @@ is already super-critical, the flow is taken supersonic from the base.
 This family is the product of the initial-condition benchmark
 (\texttt{docs/initial\_condition\_benchmark.pdf}, \S7), whose central
 negative result deserves restating: \textbf{seeding the full
-isothermal Parker wind --- its density \emph{and} velocity --- makes
+isothermal Parker wind (its density \emph{and} velocity) makes
 the run diverge.} The hot, low-density Parker column is globally
 inconsistent with the non-isothermal ATES equilibrium; it drains onto
 the base and drives the self-\emph{amplifying} breathing mode of
@@ -989,7 +1287,7 @@ The robust compromise, enabled by
 \texttt{Hot Parker IC: $T_{\rm wind}$} (default
 $T_{\rm wind} = 10^4$~K), is a \emph{warm seed}: keep the stable cold
 hydrostatic \emph{density} of \S\ref{sec:ic-hydrostatic} and overlay
-only the fields whose relaxation is slow and stiff --- temperature,
+only the fields whose relaxation is slow and stiff: temperature,
 ionization, and a velocity head-start. The overlay is anchored to the
 cold base by a spatial smoothstep window (lines 114--133),
 \begin{equation}
@@ -1025,7 +1323,7 @@ profile has no interior sonic point, the head-start quietly degrades
 to the small linear seed.
 
 At the base $\xi = 0$ gives $T = T_0$, $p = n_{\rm tot,bc} + \delta p_{\rm bc}$,
-$v = 0$ --- the lower BC of \S\ref{sec:lower} exactly, with no
+$v = 0$: the lower BC of \S\ref{sec:lower} exactly, with no
 inverted gradients for the first step to undo.
 
 \paragraph{Benchmark verdict.}
@@ -1057,18 +1355,47 @@ first step.
 When \texttt{Load IC} is enabled, \texttt{set\_IC} is bypassed and the
 previous run's profiles (including ghost cells) are read back from the
 \texttt{*\_IC.txt} copies (\texttt{load\_IC.f90}). This only sets the
-initial state; \texttt{Apply\_BC} overwrites the ghost cells from the
+initial state; \texttt{Apply\_BC} rewrites the ghost cells from the
 restored interior at the first step, so a restart cannot smuggle in a
 different boundary condition. (Operationally: the \texttt{output/}
 $\to$ \texttt{*\_IC.txt} copy is performed by the GUI, not by the
-Fortran code --- for scripted runs the \texttt{*\_IC.txt} files must
+Fortran code: for scripted runs the \texttt{*\_IC.txt} files must
 be seeded by hand, or the code stops on the empty files it creates.)
+
+The restart \emph{contract} that surrounds this read, the key
+\texttt{Restart intent:}, the eight-line metadata block both state files
+carry, its refusals, \texttt{Restart option change:} and the grid guard, is
+documented in \texttt{docs/composition\_restart\_and\_base\_handoff.pdf}, Part~1,
+which is where a reader after that behavior should go. Two of its parts
+belong here because they are boundary statements. First, the base state a
+restart lands on is the reservoir this run resolved and not the one the file
+was written under: the \texttt{reservoir} field of the metadata block is
+compared (He/H and every trace element the run carries a reservoir for) and
+a disagreement outside \texttt{heh\_dev\_tol} refuses the load naming the
+element. Second, the grid belongs to the run and not to the state file:
+\texttt{verify\_restart\_radii} compares the cell centers of the physical
+cells $1..N$ to $10^{-10}$ relative and refuses a file written on any other
+grid, because \texttt{define\_grid} builds the faces, the widths and the
+window indices $j_{\min}$, $j_{\rm flux}$ that the file does not carry, and
+a state cannot be marched on one grid's centers with another grid's faces.
+There is no interpolation onto a new grid.
+
+A checkpoint restore inside a step is the one path that replaces the
+interior state without a flux update of its own, so
+\texttt{rebuild\_state\_from\_checkpoint} rebuilds what is derived from
+the conserved state in one fixed order, composition first (because the
+pressure map and the boundary read it), then \texttt{Apply\_BC} (so the
+stored base face state is the restored state's), then the primitive state
+and the temperature. Before that order was fixed, the stale base face state
+carried an O($H$) error into one face of one Runge--Kutta stage, and the
+local error of the conservative rows now falls as $H^4$, the order of the
+three-stage scheme, instead of being dominated by that leak.
 
 \paragraph{2026-08-13: a restart never carries zero metals into a
 metals-on base.} The schema-2 writer emits the metal columns
 unconditionally, so testing only for the \emph{presence} of a column
 accepted a file written by a metals-off run and let the restart proceed
-with zero metal density everywhere --- while the lower boundary still
+with zero metal density everywhere, while the lower boundary still
 counts the metals in the mass and particle budget under
 \texttt{eos\_metals}, leaving an $O(1)$ residual in the first cells.
 \texttt{load\_IC} now treats an element as absent in either case: no
@@ -1084,8 +1411,8 @@ recorded in \texttt{melem\_from\_abundance} and echoed by the setup report.
 Since the cell count is a runtime key (\S\ref{sec:overview}), an IC file
 written at a different $N$ would previously have died in the middle of the
 read with a bare end-of-file error. \texttt{load\_IC} now counts the data
-records of \texttt{output/Hydro\_ioniz\_IC.txt} first --- the files carry
-one record per cell, $N + 2N_g$ rows --- and stops with an explicit message
+records of \texttt{output/Hydro\_ioniz\_IC.txt} first (the files carry
+one record per cell, $N + 2N_g$ rows), and stops with an explicit message
 naming both counts when they disagree, so a mismatched
 \texttt{Grid cells:} and a truncated file are reported rather than
 guessed at. There is no interpolation onto a new grid: a restart requires
@@ -1093,8 +1420,8 @@ an IC written at the same $N$.
 
 \paragraph{2026-08-27: a restart lands on the reservoir the handoff states.}
 A restart file carries the metal densities of the state it was written from.
-When the reservoir itself has moved since --- which is what a flux-closure
-iteration does to the elemental ratios of the lower atmosphere --- the base
+When the reservoir itself has moved since (which is what a flux-closure
+iteration does to the elemental ratios of the lower atmosphere), the base
 boundary condition would use the new El/H while the loaded column above it
 still held the old one, and the elemental budget
 $n_{\rm El}/n_{\rm H} = ({\rm El/H})_{\rm resolved}$ could not close above the
@@ -1109,64 +1436,61 @@ the radial shape survive and only the normalization changes; the factor and
 both ratios are printed. ``States'' means the one door
 \texttt{set\_element\_abundance} guards, which the \texttt{<El>\_H\_base} keys
 of \texttt{base.inp} and the elemental ratios of a lower-atmosphere profile
-both go through, so an abundance that came from \texttt{metals.inp} alone --- and
-every restart with no handoff at all --- leaves the loop doing nothing and is
+both go through, so an abundance that came from \texttt{metals.inp} alone, and
+every restart with no handoff at all, leaves the loop doing nothing and is
 bit-for-bit the restart the earlier code produced. El/H at the base cell is
 counted in nuclei, the element summed over its stages against the hydrogen
 nuclei (free plus the H bound in H$_2$, H$_2^+$, H$_3^+$ and HeH$^+$). Helium
-keeps its own convention --- the base cells are set to the input He/H while the
-column above may carry a diffused split --- and is not rescaled here.
+keeps its own convention (the base cells are set to the input He/H while the
+column above may carry a diffused split), and is not rescaled here.
 
 \section{Summary}
 
 \begin{table}[h]
 \centering
 \small
-\begin{tabular}{@{}llll@{}}
+\begin{tabular}{@{}lll@{}}
 \toprule
-Quantity & Lower boundary (base, $r=1$) & Upper boundary ($r=r_{\max}$) \\
+Quantity & Lower boundary (base face $r_{\rm edg}(0)$) & Upper boundary ($r=r_{\max}$) \\
 \midrule
-Density $\rho$       & Dirichlet: $\rho_{\rm bc} = (m_{\rm gas}/{\rm H})/(1+Y)$ (nuclei $=n_0$) & copy / linear extrapolation \\
-Velocity $v$         & one-way valve $\max(v_1,0)$ (smooth / mass-flux opt.) & copy / linear extrapolation \\
-Pressure $p$         & $n_{\rm tot,bc}+\delta p_{\rm bc}$, $\delta p_{\rm bc} = n_e(\mbox{base})/n_0$ & copy / linear extrapolation \\
-Temperature $T$      & implied: $T = T_0$ exactly (\S\ref{sec:dpbc}) & implied by extrapolated $(\rho,p)$ \\
-Ionization, metals   & equilibrium solve in ghosts (no BC) & equilibrium solve in ghosts (no BC) \\
-Radiation            & in radiative shadow (large column) & unattenuated stellar spectrum \\
-Type                 & isothermal--isochoric reservoir + valve & supersonic free outflow \\
-Code                 & \texttt{Apply\_BC.f90:31--80} & \texttt{Apply\_BC.f90:95--99} \\
+Where it acts & at the face; ghosts are averages of it & ghost cells \\
+Pressure $p$  & reservoir: $p_{\rm res}$ carried to the face & isothermal hydrostatic continuation \\
+Entropy       & reservoir isentrope through $(p_{\rm base},T_{\rm base})$ & same $T$ as cell $N$ (implied) \\
+Velocity $v$  & from (C$-$): $v_b = v_i + (p_b-p_i)/(\rho_i c_i)$ & zero-gradient copy $v_g = v_N$ \\
+Density $\rho$ & reservoir, handed to the interior isentrope on reversal & continuation, same factor as $p$ \\
+Ionization, metals & equilibrium solve in ghosts (no BC) & equilibrium solve in ghosts (no BC) \\
+Radiation     & in radiative shadow (large column) & unattenuated stellar spectrum \\
+Type          & characteristic $(p,s)$ reservoir & free outflow \\
+Code          & \texttt{base\_boundary.f90} & \texttt{Apply\_BC.f90}, \texttt{free\_outflow\_ghost} \\
 \bottomrule
 \end{tabular}
 \caption{Boundary conditions at a glance, with every option off (the
-defaults). Ghost cells: $N_g = 2$ per
-side; BCs act on ghosts only and reach the interior through the HLLC
-fluxes. $m_{\rm gas}/{\rm H} = 1 + 4Y + \sum_X a_X A_X$ is the gas mass
-per H nucleus from \texttt{composition.f90}, Eq.~(\ref{eq:rhobc}); it
-reduces to the legacy $1+4Y$ for a metals-off atomic base. The velocity
-and pressure rows have the opt-in alternatives of
-\S\ref{sec:stabilizers}: mass-flux base velocity, and a ghost pressure
-set by $\mathrm{d}p/\mathrm{d}r$ continuity (\texttt{Hydrostatic base})
-or by $\mathrm{d}T/\mathrm{d}r = 0$ (\texttt{Base ghost temperature:
-continuous}), the latter two replacing the implied $T = T_0$.}
+defaults). Ghost cells: $N_g = 2$ per side; the base condition is imposed at
+the face and the ghost cell averages are the volume averages of the
+hydrostatic isentrope through it, so the base reaches the interior both
+through the HLLC flux at $r_{\rm edg}(0)$ and through the reconstruction
+stencil that reads the ghosts. The number of reservoir conditions is set by
+the face Mach number (\S\ref{sec:charbranches}); the table's rows are the
+subsonic-inflow branch, which is where every intended operating point lies.}
 \label{tab:summary}
 \end{table}
 
-The lower boundary is best read as a single physical statement ---
-\emph{the wind is rooted in an infinite isothermal reservoir at
-$(n_0, T_0)$ that supplies but never absorbs mass} --- implemented as
-fixed $\rho$, electron-corrected fixed $p$, and a one-way velocity
-valve. Its characteristic dynamical signature is the self-limiting
-breathing oscillation of \S\ref{sec:breathing}, which is excluded
-from convergence diagnostics via $r_{\rm esc}$, smoothed for the
-Newton solver via \texttt{Valve eps}, and guarded against in the
-advection post-processor. The upper boundary is a plain supersonic
-free-outflow extrapolation whose validity rests on the wind crossing
-the sonic point inside the domain.
+The lower boundary is best read as a single physical statement: \emph{the
+wind is rooted in a lower atmosphere whose pressure and entropy at the base
+level are known, and everything else at the boundary is what the interior
+sends down there}. Its dynamical signature in a marching run is the
+breathing oscillation of \S\ref{sec:breathing}, which is excluded from the
+convergence diagnostics through $r_{\rm esc}$ (and measured separately below
+that radius), differentiable for the Newton solver through the $C^1$ branch
+handover, and guarded against in the advection post-processor. The upper
+boundary is a free-outflow continuation whose accuracy matters most where
+the outer edge is subsonic.
 
-The initial conditions are built to respect the same reservoir: all
-three families (\S\ref{sec:ic}) match the base state
-$(\rho_{\rm bc},\, n_{\rm tot,bc}{+}\delta p_{\rm bc},\, v{=}0)$ exactly, and the
-benchmark experience condenses into one rule --- \emph{the density
-column must be one the base can support}. The cold hydrostatic
+The initial conditions are built to respect the same base state: all
+three families (\S\ref{sec:ic}) match
+$(\rho_{\rm bc},\, n_{\rm tot,bc}{+}\delta p_{\rm bc},\, v{=}0)$ at the base
+exactly, and the benchmark experience condenses into one rule: \emph{the
+density column must be one the base can support}. The cold hydrostatic
 atmosphere (default) satisfies this trivially and evaporates into the
 wind on its own; the transonic IC replaces it with a flowing solution
 where the hydrostatic start cannot launch (deep-RLOF, sonic point at
@@ -1175,8 +1499,23 @@ velocity on the cold density, but seeding the Parker \emph{density}
 itself tips the breathing base from self-limiting to self-amplifying
 and crashes the run.
 
-\section{Empirical base-BC test matrix (HD209458b)}
+
+\section{Empirical test matrix of the retired ghost closure (HD209458b)}
 \label{sec:bc-matrix}
+
+\paragraph{What this section is, and what it is not.} The matrix below was
+run in 2026-08, before the characteristic face condition of
+\S\ref{sec:lower} replaced the component-wise ghost closure. Its rows
+exercise the base velocity and ghost-pressure options that no longer exist
+(\S\ref{sec:retiredkeys}), so it is a record of how that closure behaved
+and \emph{not} a description of the present boundary: none of its
+$\dot M$ values or convergence verdicts can be reproduced by today's binary,
+which refuses those keys outright. It is kept because two of its conclusions
+outlived the closure and are still the operating rules of this code, the
+flux-based convergence criterion of \S\ref{sec:conv-criterion} and the
+assessment of the Wind-AE starter in \S\ref{sec:windae-assess}, and
+because the base-anchor and Shapiro rows are the only measurements of those
+two surviving keys on this configuration.
 
 \subsection{Convergence criterion: history and the flux-based decision}
 \label{sec:conv-criterion}
@@ -1185,7 +1524,7 @@ The convergence test used here changed over the course of this work, and it is
 worth stating plainly where it landed and why.
 
 \begin{itemize}
-\item \textbf{Before the Newton finish --- flux criterion.} The original
+\item \textbf{Before the Newton finish: flux criterion.} The original
   time-marching run (PLM, then two-stage PLM$\to$WENO3) was stopped on the
   \emph{flux} criterion: the fractional variation of the mass flux,
   $\Delta\dot M/\dot M < 10^{-3}$, where $\dot M \propto \rho v r^2$ (the code's
@@ -1193,7 +1532,7 @@ worth stating plainly where it landed and why.
   ATES criterion of Caldiroli et al.\ (2021) and is equivalent to the CETIMB
   requirement (Koskinen et al.\ 2013a) that the flux constant $F_c = \rho v r^2$
   be constant with altitude.
-\item \textbf{With the Newton finish --- a stronger residual criterion.} When the
+\item \textbf{With the Newton finish: a stronger residual criterion.} When the
   JFNK steady solver was added, it was driven to a much stricter target: the
   steady residual $\lVert R\rVert = \lVert\mathrm{d}u/\mathrm{d}t\rVert < 10^{-3}$
   on \emph{every} conserved equation (mass, momentum, energy). This residual norm
@@ -1203,7 +1542,7 @@ worth stating plainly where it landed and why.
   \emph{(2026-08-10: the ``JFNK fail'' outcomes recorded in this section were
   produced with a diagonal scaling whose momentum floor was set by the base cell,
   and with a watchdog that aborted after 15 iterations without a new best
-  $\lVert R\rVert$ --- before the opening pseudo-transient has finished raising
+  $\lVert R\rVert$, before the opening pseudo-transient has finished raising
   it. Both have since been replaced and the same configurations converge; see
   \texttt{docs/newton\_scaling\_and\_base\_wall.md}. The residual-vs-flux
   \emph{decision} below is unaffected, but the ``held up by the near-base
@@ -1218,22 +1557,22 @@ worth stating plainly where it landed and why.
   is computed and reported \emph{for reference only} and gates the stop solely
   when the user explicitly requests it (\texttt{Resid tol:}). In the code the
   default monitor is flux-based ($du < du_{\rm th}$ plus mass-flux level
-  stability) and the residual --- volume-weighted by default
+  stability) and the residual, volume-weighted by default
   (\texttt{resid\_vol} in \texttt{parameters.f90}), since the L-$\infty$ max is
-  inflated by the small near-base cells --- is printed each \texttt{N\_resid}
+  inflated by the small near-base cells, is printed each \texttt{N\_resid}
   steps as a diagnostic. The \texttt{verdict} column of the table below
   therefore reads \texttt{flux-conv}, not ``JFNK fail'', for runs that are
   flux-converged but whose residual finish did not reach the target.
 \item \textbf{2026-08-11: the $du$ triggers are armed on an ascending crossing.}
   $du$ is the radial spread of $\rho v r^2$, so a \emph{small} $du$ is evidence
   of relaxation only for a state the marching loop has actually relaxed. A
-  freshly generated IC --- cold hydrostatic, transonic, Wind-AE, hot Parker ---
+  freshly generated IC (cold hydrostatic, transonic, Wind-AE, hot Parker)
   is an analytic profile whose $du$ measures the smoothness of the formula
   rather than the flatness of a wind: the WASP-121\,b transonic IC measured
   $du(1) = 1.85\times10^{-5}$, which tripped both the Newton hand-off and the
   secondary-ionization flip on step~1 and ran away to NaN. Each $du$-keyed
-  trigger --- the $du < du_{\rm th}$ stop, and the JFNK hand-off that the
-  secondary-ionization flip shares --- is therefore \emph{armed} only once $du$
+  trigger (the $du < du_{\rm th}$ stop, and the JFNK hand-off that the
+  secondary-ionization flip shares) is therefore \emph{armed} only once $du$
   has been seen at or above its own threshold, and fires only on the way back
   down (\texttt{du\_stop\_armed}, \texttt{du\_newton\_armed} in
   \texttt{EXHALE\_main.f90}). A state read back with \texttt{Load IC? True} was
@@ -1260,11 +1599,11 @@ worth stating plainly where it landed and why.
 cooling as they stood when the matrix was run.} Two changes since then move the
 numbers in the two tables below, and neither has been re-measured on this matrix.
 (i) The JFNK line search now accepts, stores, and judges convergence on the true
-residual --- with the WENO smoothness weights recomputed at each trial state
-rather than frozen at the previous iterate --- so runs that were recorded here as
+residual (with the WENO smoothness weights recomputed at each trial state
+rather than frozen at the previous iterate), so runs that were recorded here as
 failing their residual finish are not evidence about the current solver. (ii) The
-two ground-term fine-structure coolants of the time --- the set has since grown to
-the eight C\,\textsc{i}/C\,\textsc{ii}/N\,\textsc{ii}/O\,\textsc{i} lines --- are
+two ground-term fine-structure coolants of the time (the set has since grown to
+the eight C\,\textsc{i}/C\,\textsc{ii}/N\,\textsc{ii}/O\,\textsc{i} lines) are
 allowed to be optically thick, and
 the CHIANTI coronal fits are switched off smoothly below their $10^3$\,K validity
 floor; on a planet whose base falls out of the coronal regime this changes the base
@@ -1288,7 +1627,8 @@ encodes the model as \texttt{<base>\_<solver>\_He\{0,1\}\_met\{0,CNO,FULL\}[\_fl
 \texttt{PLM} (single-stage, stopped at a $du$ plateau), \texttt{PWN}
 (two-stage PLM$\to$WENO3 then a Newton/JFNK finish), or \texttt{PLMN}
 (single-stage PLM then JFNK, skipping WENO3); \textbf{S}/\textbf{V} are
-the Shapiro filter / mass-flux base velocity of \S\ref{sec:stabilizers};
+the Shapiro filter (\S\ref{sec:stabilizers}) and the retired mass-flux base
+velocity (\S\ref{sec:retiredkeys});
 \textbf{He}/\textbf{met} are He~$2^3$S and the trace metals (C,N,O or the full
 C,N,O,Mg,Ca,Na,Fe set); \textbf{IC} is the cold hydrostatic or the Wind-AE warm
 start (\S\ref{sec:ic}). The results are split into a pressure-anchored-base
@@ -1296,13 +1636,13 @@ table (Table~\ref{tab:bc-pres}) and a density-anchored-base table
 (Table~\ref{tab:bc-dens}).
 
 In both tables: $\dot M$ is in g\,s$^{-1}$, $v_{\rm out}$ in km\,s$^{-1}$, and
-neg.\% is the \emph{radius-weighted} infall fraction --- the fraction of the
+neg.\% is the \emph{radius-weighted} infall fraction, the fraction of the
 linear radius range $[r_1, r_N]$ over which $v<0$ (each cell weighted by its
 width $\Delta r$). This is used in place of the raw cell-count fraction, which
 the non-uniform grid (cells packed near the base) inflates: the dense near-base
 sliver of sub-$10\,\mathrm{m\,s^{-1}}$ noise would otherwise read as tens of
 percent. The radius-weighted measure cleanly separates that base noise
-($\lesssim 4\%$) from genuine infall (tens of percent). ``---'' marks a run on
+($\lesssim 4\%$) from genuine infall (tens of percent). ``-'' marks a run on
 an infall
 branch (wind $\dot M$ undefined).
 
@@ -1311,19 +1651,19 @@ $\Delta\dot M$\% column), \emph{not} by the residual: \texttt{Newton} $=$ a
 genuine Newton-converged steady state (solver \texttt{info}$=$0,
 $\lVert R\rVert<10^{-3}$); \texttt{flux-conv} $=$ flux-converged
 ($\Delta\dot M$\%$\,<1$) but the JFNK residual finish did not reach
-$\lVert R\rVert<10^{-3}$ --- by the ATES/CETIMB standard these \emph{are} converged
+$\lVert R\rVert<10^{-3}$: by the ATES/CETIMB standard these \emph{are} converged
 winds, not failures; \texttt{marginal} $=$ $\Delta\dot M$\%$\,\sim$1--5\% (a wind,
 not tightly flat; carries the $\sim$2--5\% path-dependent $\dot M$ spread of the
 PLM-stall runs); \texttt{not conv} $=$ $\Delta\dot M$\%$\,>5\%$ (an unconverged /
 breathing wind); \texttt{infall} $=$ relaxed to an accretion branch.
 
 $\Delta\dot M$\% is the radial spread of the mass flux $\rho v r^2$ over the wind
-region ($r \ge r_{\rm esc}$), $(\max-\min)/\mathrm{mean}$ --- this is the actual
+region ($r \ge r_{\rm esc}$), $(\max-\min)/\mathrm{mean}$. This is the actual
 \textbf{convergence criterion of the reference codes}: ATES (Caldiroli 2021)
 stops at $\Delta\dot M/\dot M < 10^{-3}$, and CETIMB (Koskinen 2013a) requires
 $\rho v r^2 = F_c$ to be constant with altitude. We mark $\lesssim1\%$ as
 \emph{flux-converged} (a genuine steady wind \emph{by the reference standard},
-independent of the $\lVert R\rVert$/Newton outcome); ``---'' = infall (not a
+independent of the $\lVert R\rVert$/Newton outcome); ``-'' = infall (not a
 wind). Note that all \texttt{PWN} rows are flux-converged ($\le 0.9\%$) even
 where the stricter $\lVert R\rVert$ test labels them ``JFNK fail''. The
 ``JFNK fail'' labels date from the pre-2026-08-10 solver; the flux verdicts do
@@ -1359,16 +1699,16 @@ run without Shapiro), so the filter both prevents convergence and deepens the
 infall; the quoted $\dot M$ is the outer-region value, not a steady state.
 $^\S$\texttt{PLMN} $=$ single-stage PLM $\to$ JFNK (the WENO3 stage skipped). It
 reaches an \emph{essentially identical final state} to the \texttt{PWN}
-(PLM$\to$WENO3$\to$JFNK) row above --- $\log\dot M = 9.40$ vs.\ $9.37$,
-$v_{\rm out} = +6.10$ vs.\ $+6.29$, overlapping $T/v/n/p$ profiles --- in about
+(PLM$\to$WENO3$\to$JFNK) row above ($\log\dot M = 9.40$ vs.\ $9.37$,
+$v_{\rm out} = +6.10$ vs.\ $+6.29$, overlapping $T/v/n/p$ profiles) in about
 \emph{half} the steps ($9.4\times10^4$ vs.\ $1.7\times10^5$); both still fail
 JFNK and stall, so the WENO3 stage is not the JFNK bottleneck.
 $^{(d)}$The \texttt{\_duJFNK} row is the same full-metal case but with the
 \emph{flux}-keyed JFNK hand-off (\texttt{Solver: Newton}, JFNK fired once the
 wind reached $du<10^{-2}$ rather than $\lVert R\rVert<0.05$). With this hand-off
 \emph{plus} the volume-weighted residual norm the JFNK drove $\lVert R\rVert$ down
-to $2.3\times10^{-3}$ --- a $\sim$100$\times$ improvement over the $0.17$ it
-reached with the $\lVert R\rVert$-keyed hand-off --- but it stalled there
+to $2.3\times10^{-3}$ (a $\sim$100$\times$ improvement over the $0.17$ it
+reached with the $\lVert R\rVert$-keyed hand-off), but it stalled there
 ($\lVert R\rVert$ would not drop below $\approx2\times10^{-3}$ for 15 iterations,
 the holdout being the base cell $j{=}1$ momentum), so it still falls back and the
 \emph{final wind is identical} to the \texttt{metFULL} PWN row above ($\dot M$,
@@ -1396,10 +1736,10 @@ folder & BC & solver & S & V & He & met & IC & $\log\dot M$ & $v_{\rm out}$ & ne
 \texttt{dens\_PWN\_He0\_met0\_windae\_spherical} & dens & PWN & \N & \N & \N & \N & windae & 10.37 & $+5.77$ & 1.4 & 55 & not conv$^\ddagger$ \\
 \texttt{dens\_PLM\_He0\_metCNO\_cold}         & dens & PLM & \N & \N & \N & CNO & cold & 9.72 & $+6.77$ & 3.9 & 4.2 & marginal \\
 \texttt{dens\_PLM\_He0\_met0\_cold\_Vflux}    & dens & PLM & \N & \Y & \N & \N & cold & 10.50 & $+8.58$ & 0.0 & 3.5 & marginal \\
-\texttt{dens\_PLM\_He0\_met0\_cold\_Shap}     & dens & PLM & \Y & \N & \N & \N & cold & --- & $-13.34$ & 100 & --- & infall \\
-\texttt{dens\_PLM\_He0\_met0\_cold\_Shap\_Vflux} & dens & PLM & \Y & \Y & \N & \N & cold & --- & $-13.32$ & 100 & --- & infall \\
+\texttt{dens\_PLM\_He0\_met0\_cold\_Shap}     & dens & PLM & \Y & \N & \N & \N & cold & - & $-13.34$ & 100 & - & infall \\
+\texttt{dens\_PLM\_He0\_met0\_cold\_Shap\_Vflux} & dens & PLM & \Y & \Y & \N & \N & cold & - & $-13.32$ & 100 & - & infall \\
 \texttt{dens\_PLM\_He0\_met0\_windae\_spherical} & dens & PLM & \N & \N & \N & \N & windae & 10.08 & $+3.68$ & 0.6 & 5.1 & not conv \\
-\texttt{dens\_PLM\_He0\_met0\_windae\_spherical\_Shap\_Vflux\_Force} & dens & PLM & \Y & \Y & \N & \N & windae$+$F & --- & $-20.03$ & 95 & --- & infall \\
+\texttt{dens\_PLM\_He0\_met0\_windae\_spherical\_Shap\_Vflux\_Force} & dens & PLM & \Y & \Y & \N & \N & windae$+$F & - & $-20.03$ & 95 & - & infall \\
 \bottomrule
 \end{tabular}%
 }
@@ -1408,7 +1748,7 @@ folder & BC & solver & S & V & He & met & IC & $\log\dot M$ & $v_{\rm out}$ & ne
 in the text.
 $^\ddagger$Wind-AE warm start: JFNK never triggered ($\lVert R\rVert$ stayed
 above the switch); the Wind-AE IC marched under WENO3 drifts to an unconverged
-breathing state ($du\!\sim\!0.7$), mostly outflow --- it does \emph{not} give a
+breathing state ($du\!\sim\!0.7$), mostly outflow: it does \emph{not} give a
 clean Newton solution.}
 \label{tab:bc-dens}
 \end{table}
@@ -1419,18 +1759,19 @@ clean Newton solution.}
 \item \textbf{The Shapiro filter drives infall.} On the cold-IC density runs,
   every S-on case relaxes to a global infall ($v<0$ over $\approx100\%$ of the
   radius) while
-  the matched S-off case is a clean outflow, independent of the velocity BC ---
+  the matched S-off case is a clean outflow, independent of the velocity BC:
   the headline reason the filter is opt-in (\S\ref{sec:stabilizers}). On the
   pressure $+$ full-physics case the filter instead prevents convergence
   altogether (row $\dagger$).
-\item \textbf{The base BC barely changes the converged wind --- the lever is the
+\item \textbf{The base BC barely changes the converged wind: the lever is the
   base \emph{density}.} With a Newton finish, density ($n_0=10^{14}$) and
   pressure ($1\,\mu$bar) bases give nearly the same $\dot M$ (10.50 vs.\ 10.39).
   A \emph{density}-anchored run at the same low density (\texttt{dens12p5},
   $\log n_0 = 12.5$) reproduces the pressure result almost exactly (10.38 vs.\
   10.39; $+8.58$ vs.\ $+8.59$), confirming that pressure-anchoring acts only
   through the lower base density, not through the anchoring variable itself.
-  The mass-flux velocity (V) is benign (it reproduces the valve result).
+  The mass-flux velocity (V) was benign under that closure (it reproduced
+  the valve result); both are retired keys today (\S\ref{sec:retiredkeys}).
 \item \textbf{Physics lowers $\dot M$.} He~$2^3$S $+$ C/N/O cooling drops
   $\log\dot M$ from $\sim$10.4 to $\sim$9.5--9.6; the full metal set
   (adding Mg/Ca/Na/Fe line cooling) lowers it further to $9.37$. With full
@@ -1438,8 +1779,8 @@ clean Newton solution.}
 \item \textbf{Skipping WENO3 before the Newton finish (\texttt{PLMN}) changes
   nothing but the cost.} On the full-metal case, \texttt{PLMN} (PLM$\to$JFNK)
   reaches an essentially identical final state to \texttt{PWN}
-  (PLM$\to$WENO3$\to$JFNK) --- $\log\dot M = 9.40$ vs.\ $9.37$, overlapping
-  profiles --- in about half the steps, and both still fail JFNK and stall. So
+  (PLM$\to$WENO3$\to$JFNK) ($\log\dot M = 9.40$ vs.\ $9.37$, overlapping
+  profiles) in about half the steps, and both still fail JFNK and stall. So
   the reconstruction path is not the JFNK bottleneck; the stiff coupled
   (He~$2^3$S $+$ 7-metal) residual is. A genuine Newton finish for full physics
   would need a smoother residual (tighter chemistry tolerance) or a relaxed
@@ -1453,7 +1794,7 @@ clean Newton solution.}
 \subsection{Assessment: does the Wind-AE starter help?}
 \label{sec:windae-assess}
 
-\paragraph{So far, for HD209458b, the Wind-AE starter does not help --- the cold
+\paragraph{So far, for HD209458b, the Wind-AE starter does not help: the cold
 IC is better.} Across every Wind-AE-seeded run in Table~\ref{tab:bc-dens} the
 outcome is one of: a $du$-stop at step~2 that simply returns the seed (no real
 relaxation), an unconverged breathing state when a Newton finish is requested
@@ -1467,25 +1808,25 @@ outflow, whereas the cold IC with a \texttt{PWN} finish does (solver
 own base}, with another code's solution (\S\ref{sec:ic}). That imported base is
 generally inconsistent with EXHALE's fixed lower boundary ($\rho_{\rm bc}$,
 $T_0$); the mismatch perturbs the near-base flow off the transonic-wind saddle,
-and since that saddle is unstable, the run is pulled to the nearby attractors ---
+and since that saddle is unstable, the run is pulled to the nearby attractors:
 infall, or the breathing limit cycle. This is the same dense-base/lower-BC
 tension that drives the breathing (\S\ref{sec:breathing}), now triggered by the
 seed rather than by a bad global IC.
 
 \paragraph{In fairness.} This does \emph{not} make Wind-AE useless. It was
 brought in for the \emph{hard} cases where a cold start fundamentally cannot
-launch a wind --- deep Roche-lobe-overflow geometries (e.g.\ WASP-121b Case~D,
-with the sonic point essentially at L1) and low-gravity boil-off planets ---
+launch a wind: deep Roche-lobe-overflow geometries (e.g.\ WASP-121b Case~D,
+with the sonic point essentially at L1) and low-gravity boil-off planets,
 where it is, at present, the only way to obtain a transonic seed. HD209458b is
 an easy case for which the cold IC already works, so there the starter is both
 unnecessary \emph{and} mildly harmful through the base mismatch. The honest
 statement is therefore: \emph{the starter is unnecessary for easy cases and,
 for its intended hard cases, has not yet delivered a clean solution because the
-base-BC reconciliation is unsolved} --- not that the approach is without value.
+base-BC reconciliation is unsolved}, not that the approach is without value.
 
 \paragraph{What would make it useful.} The base mismatch must be removed. Two
 plausible routes (untested): (i)~have the Wind-AE bridge hand off only a
-\emph{warm overlay} --- temperature, ionization, and velocity --- on top of
+\emph{warm overlay} (temperature, ionization, and velocity) on top of
 EXHALE's own hydrostatic density and base, i.e.\ demote the ``starter'' to a
 ``warm seed'' (\S\ref{sec:ic}) that stays consistent with the lower boundary;
 or (ii)~ramp the imported base onto EXHALE's $(\rho_{\rm bc}, T_0)$ boundary

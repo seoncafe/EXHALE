@@ -1,5 +1,4 @@
 Planet name: LHS1140b_fc_heh9p048
-Log10 lower boundary number density [cm^-3]: 13.506
 Planet radius [R_J]: 0.157692
 Planet mass [M_J]: 0.0176220
 Equilibrium temperature [K]: 226.0
@@ -26,6 +25,6 @@ Domain mode: Spherical
 Outer radius [R_p]: 30.0
 Stellar radius [R_sun]: 0.2159
 Base BC: pressure 1.0
-# Resid tol renormalized 2026-09-03, Update_EXHALE.md section 133 (was 4.0e-4)
+# Resid tol renormalized 2026-09-03, Update_EXHALE_stage1.md section 133 (was 4.0e-4)
 Resid tol: 4.0e-6
 Lower atmosphere profile: lower_atmosphere_profile.dat

@@ -9,8 +9,8 @@
 
 ## Summary
 
-Photochem and VULCAN disagree about the base composition by a large factor —
-the neutral-hydrogen fraction at 1 ubar differs by 7.2x — and most of that
+Photochem and VULCAN disagree about the base composition by a large factor:
+the neutral-hydrogen fraction at 1 ubar differs by 7.2x, and most of that
 disagreement is the reaction network rather than the code. But **none of it
 reaches EXHALE**: the `base.inp` interface carries four numbers, and the
 hydrogen dissociation state is not one of them. Written from either code, the
@@ -34,7 +34,7 @@ Everything that can be held fixed between the two codes was:
 
 | held identical | value / source |
 |---|---|
-| T(p), Kzz | `VULCAN/atm/atm_HD189_Kzz.txt` — the same file |
+| T(p), Kzz | `VULCAN/atm/atm_HD189_Kzz.txt`: the same file |
 | stellar spectrum | `VULCAN/atm/stellar_flux/sflux-HD189_Moses11.txt` |
 | gravity | R_p = 1.138 R_J, g_s = 2140 cm/s^2 (M_p back-solved so g matches) |
 | elemental abundances | Lodders, from `fastchem_vulcan/input/solar_element_abundances.dat` |
@@ -55,7 +55,7 @@ C exists so that A vs C isolates the code and B vs C isolates the network.
 
 Run A reproduces the earlier VULCAN result recorded in
 `lower_atmosphere_coupling.md` (q_H2 = 0.63, q_H = 0.23, T_base = 863 K, r_base
-1.168 R_J) to about 2%, although that run used the SNCHO network — a check that
+1.168 R_J) to about 2%, although that run used the SNCHO network: a check that
 this configuration is the same one.
 
 ## Composition at 1 ubar
@@ -81,7 +81,7 @@ audit.
 
 Deeper down the codes agree well. At 1000 ubar all three give H2O and CO to
 within 10% and H2/He to within 2%. The disagreement is confined to the H2
-dissociation region above about 10 ubar — which is exactly where EXHALE takes
+dissociation region above about 10 ubar, which is exactly where EXHALE takes
 its base.
 
 ## Runtime
@@ -108,14 +108,14 @@ T_base -> T0        r_base -> R0        HeH_base -> HeH        Kzz_base -> he_kz
 `q_H2` and `q_H` are written by `src/utils/vulcan_to_base.py` as **comments**.
 They do not reach the code.
 
-*[2026-08-15: `read_base_inp` now reads six keys — the four above plus
+*[2026-08-15: `read_base_inp` now reads six keys, the four above plus
 `q_H2_base` (the photochemical H2 volume mixing ratio at the base, which drives
 the molecular-base particle count) and `p_base` (the pressure level the handoff
 describes, default 1 ubar). So `q_H2` does reach the code now, under the name
 `q_H2_base`; the "the interface discards it" conclusion below was true when
-this memo was written and no longer is. The rest of the comparison — that
+this memo was written and no longer is. The rest of the comparison (that
 T_base, r_base and HeH_base agree to 0.02% across the three photochemistry
-solutions because they are set by inputs rather than results — is unaffected.]* Running the same hypsometric integration on all
+solutions because they are set by inputs rather than results) is unaffected.]* Running the same hypsometric integration on all
 three solutions:
 
 | handoff | T_base [K] | r_base [R_J] | HeH_base | (q_H, dropped) |
@@ -130,9 +130,9 @@ T(p), HeH_base by the elemental abundance, r_base by an integration over mu(p)
 that the H2/H split barely moves (mu changes by 10% while q_H changes by 7.2x,
 because dissociating H2 into 2 H conserves mass).
 
-The one quantity the photochemistry actually determines — and the one the
+The one quantity the photochemistry actually determines (and the one the
 Tier-1 caveat was about, that a hot Jupiter's atomic base is made by
-photochemistry rather than by temperature — is the one the interface discards.
+photochemistry rather than by temperature) is the one the interface discards.
 
 ## Running EXHALE from each handoff
 
@@ -142,10 +142,10 @@ in `base.inp`.
 
 This did not resolve anything, for a reason worth recording. HD 189733 b does
 not reach a steady state: over 87000 steps `du` wandered between 0.77 and 1.86
-and never approached 1e-3 — the marching-time base breathing that HD 189733 b
+and never approached 1e-3, the marching-time base breathing that HD 189733 b
 has shown since ATES. (This originally cited `TO_BE_DONE.md` item (A); note
 that item is now closed, and its diagnosis of the *JFNK* residual floor as a
-base-momentum wall was refuted — `docs/newton_scaling_and_base_wall.md`. The
+base-momentum wall was refuted: `docs/newton_scaling_and_base_wall.md`. The
 marching oscillation described here is a separate observation and stands.)
 Cutting both runs at a fixed 20000 steps
 (`EXHALE_MAXSTEPS`) and comparing on common physical radii gives median
@@ -172,13 +172,13 @@ Each of these cost a run, and none of them announces itself.
    reported worst cell `nz = 0` and species `OH`, and the log filling with
    "Element conservation is violated too large". The corrected run finished in
    1370 s with zero conservation warnings. **The step counter is not the health
-   indicator — the simulated elapsed time is.**
+   indicator: the simulated elapsed time is.**
 
 2. **`use_solar = True` makes VULCAN ignore the `O_H`/`C_H`/`N_H`/`He_H` lines
    of `vulcan_cfg.py`** and read `fastchem_vulcan/input/solar_element_abundances.dat`
    instead. Taking the config values as the abundances put He/H at 0.0838
    against VULCAN's actual 0.0969, and that mismatch alone moved `HeH_base` by
-   16% — larger than any real difference between the codes, and in the one
+   16%: larger than any real difference between the codes, and in the one
    quantity the handoff is sensitive to. Read the table, not the config.
 
 3. **`vulcan2yaml` emits a degenerate `He <=> He` reaction** (A = 0) because
@@ -221,7 +221,7 @@ and to whatever consumes the base composition, and it has not been scoped here.
 Neither code provides atomic-metal release (Na/Mg/Ca/Fe), which EXHALE needs
 for the metal lines; that part of the base stays user-supplied.
 
-**2026-08-10 — the interface change described above is implemented.**
+**2026-08-10: the interface change described above is implemented.**
 `read_base_inp` now reads `q_H2_base` (the photochemical H2 volume mixing ratio
 at the base) and `p_base` (the level it refers to), and both converters write
 them. With `Molecular base: True` the photochemical value replaces the
@@ -229,10 +229,10 @@ chemical-equilibrium fit in the base particle count, so the difference between
 networks now reaches the wind solve; `base.inp` files without the key behave
 exactly as before. Design, size of the effect and the validation gates:
 `docs/base_composition_handoff_plan.md`. `q_H` and the molecular mixing ratios
-stay comments — `q_H` is implied by `q_H2_base` and `HeH_base`, and the
+stay comments: `q_H` is implied by `q_H2_base` and `HeH_base`, and the
 molecules have nothing to act on in EXHALE's atomic metal set.
 
-**2026-08-19 — where the code choice is decided.** Because `q_H2_base` is now
+**2026-08-19: where the code choice is decided.** Because `q_H2_base` is now
 read, the 7.2x spread measured here propagates into the wind solve, so choosing
 between the two codes is no longer neutral. The decision, together with the
 reasons to prefer Photochem that have nothing to do with chemistry (speed, the
@@ -244,7 +244,7 @@ network-plus-domain rerun (its phase P1), is `docs/oxygen_chemistry_new_plan.md`
 
 ---
 
-# 2026-08-26 — Phase P1: matched network, matched domain, and the H2 budget
+# 2026-08-26, Phase P1: matched network, matched domain, and the H2 budget
 
 This section is the record of phase **P1** of `docs/oxygen_chemistry_new_plan.md`
 (reinstall Photochem, rerun the comparison with matched network *and* matched
@@ -365,7 +365,7 @@ The two VULCAN rows are fresh runs of the same configuration with `P_t` changed
 to the top the 2026-08-09 Photochem runs actually had.
 
 Facts: for the *same* truncation (top at 1.61e-1 dyn/cm^2) the two codes respond
-by 1.12 and 1.07, in opposite directions — VULCAN gives more atomic H when
+by 1.12 and 1.07, in opposite directions: VULCAN gives more atomic H when
 truncated, Photochem slightly less. Pushing VULCAN's top down further, to
 5.0e-1, raises q_H by 1.70. Interpretation, not demonstrated here: truncation
 removes the shielding column above the comparison level, which raises the local
@@ -410,7 +410,7 @@ the gross loss but is almost exactly balanced by its reverse
 net.
 
 **Gate answer for HD 189733 b: yes.** The H2O/OH cycle dominates H2 destruction
-at the handoff level — 99% of the net in all three arms, independent of which
+at the handoff level: 99% of the net in all three arms, independent of which
 network is used.
 
 The same budget on **HD 209458 b** reads differently, and the difference
@@ -438,7 +438,7 @@ Chemical timescales at the handoff, `n_H2 / (net H2 loss)`:
 
 Against EXHALE's own advection time at its base cell in the converged
 HD 209458 b run below, `tau_chem/tau_adv ~ 1e-3`. That is the P4 gate's second
-condition, and it is met at the handoff level — it says nothing about the cells
+condition, and it is met at the handoff level: it says nothing about the cells
 further out.
 
 > **STALE (P35, 2026-09-02).** The `vulcan_work` EXHALE run directories
@@ -477,7 +477,7 @@ The network factor that reaches 4.0 on HD 189733 b is **1.02** here
 fits both planets, and that the budget of P1.4 supports: where the base is cool
 enough for the partition to be kinetic (864 K), the reaction network decides it;
 where the base is hot enough for collisional dissociation to run the net budget
-(2331 K), all networks converge on the same answer. Sulfur is the exception —
+(2331 K), all networks converge on the same answer. Sulfur is the exception:
 it moves q_H2 by 17% at 1e-6 bar and 3% at 1e-4 bar, in the direction of *less*
 H2.
 
@@ -500,18 +500,18 @@ arm's own values as well (they agree to 0.06%, as in 2026-08-09).
 
 | arm | q_H2_base | ntot_bc | JFNK | ghost T [K] | log10 Mdot [g/s] | vs VULCAN |
 |---|---|---|---|---|---|---|
-| VULCAN / NCHO | 0.4237 | 0.703 | info=0, \|\|R\|\| 9.7e-4 | 1638.7 | **9.8853** | — |
+| VULCAN / NCHO | 0.4237 | 0.703 | info=0, \|\|R\|\| 9.7e-4 | 1638.7 | **9.8853** | - |
 | Photochem / NCHO | 0.4536 | 0.689 | info=0, \|\|R\|\| 3.6e-4 | 1605.0 | **9.8788** | -1.5% |
 | Photochem / Zahnle | 0.4626 | 0.684 | info=0, \|\|R\|\| 1.4e-4 | 1595.2 | **9.8792** | -1.4% |
 | Photochem / Zahnle+S | 0.3765 | 0.727 | info=0, \|\|R\|\| 8.2e-4 | 1694.9 | **9.9130** | +6.6% |
-| chem.-eq. fit (no `q_H2_base`) | 0.0063 | 0.994 | info=2 (failed) | — | not converged | — |
+| chem.-eq. fit (no `q_H2_base`) | 0.0063 | 0.994 | info=2 (failed) | - | not converged | - |
 
 log10 Mdot is `exhale_io.mdot_log10` on the `_adv` profiles; the code's own
 printed values are 9.94 / 9.93 / 9.93 / 9.97 and give the same differences.
 
 **Measured: the choice of photochemistry code and network moves HD 209458 b's
 mass-loss rate by at most 0.035 dex (8.3%) across the four arms, and by 1.5%
-between the two codes on the same network** — all four JFNK-converged. The
+between the two codes on the same network**, all four JFNK-converged. The
 deeper-handoff set below shows that this configuration's own JFNK-to-JFNK
 spread is about 0.025 dex, so 0.035 dex is an upper bound on the effect rather
 than a resolved signal. The ordering follows `ntot_bc` exactly, as §11.5 above
@@ -535,7 +535,7 @@ All five runs reached `JFNK info=0`.
 
 | arm | q_H2_base | ntot_bc | log10 Mdot | vs VULCAN |
 |---|---|---|---|---|
-| VULCAN / NCHO | 0.8020 | 0.556 | 9.7517 | — |
+| VULCAN / NCHO | 0.8020 | 0.556 | 9.7517 | - |
 | Photochem / NCHO | 0.8027 | 0.555 | 9.7764 | +5.9% |
 | Photochem / Zahnle | 0.8028 | 0.555 | 9.7764 | +5.9% |
 | Photochem / Zahnle+S | 0.7757 | 0.564 | 9.7778 | +6.2% |
@@ -549,7 +549,7 @@ conclusion for §P1.6 is therefore: the arm-to-arm effect at the 1 microbar
 handoff (0.035 dex spread, ordered by `ntot_bc`) is only marginally above that
 floor, and the safe statement is **"the choice of photochemistry code or network
 moves HD 209458 b's mass loss by at most a few percent, comparable to the
-spread between JFNK solutions of the same configuration"** — not a clean
+spread between JFNK solutions of the same configuration"**, not a clean
 signal of 8.3%.
 
 Two further sets were launched from the cold isothermal IC (`p1e-6/`, `p1e-4/`)
@@ -560,7 +560,7 @@ equilibrium-fit reference) at 71500 steps, and 0.33 (all five) at 71000 steps at
 was also stopped: after its JFNK failure it sat between `du` = 0.076 and 0.096
 for 70000 further steps, i.e. it neither converged nor diverged.
 
-## P1.7 Evidence for the code choice — no decision taken
+## P1.7 Evidence for the code choice, no decision taken
 
 The plan leaves the VULCAN-or-Photochem decision to the user. What P1 measured:
 
@@ -568,7 +568,7 @@ The plan leaves the VULCAN-or-Photochem decision to the user. What P1 measured:
 > (`src/utils/photochem_to_lower_profile.py`) and VULCAN the cross-check arm
 > (`src/utils/vulcan_to_lower_profile.py`), on the last row of the table
 > below: only Photochem carries a climate model, so only it can be the route
-> away from a prescribed T(p). Record: `docs/Update_EXHALE.md` sections 77-78,
+> away from a prescribed T(p). Record: `docs/Update_EXHALE_stage1.md` sections 77-78,
 > `docs/oxygen_chemistry_new_plan.md` ("P1 and P2 on a real target").
 > The evidence table is left as measured.
 
@@ -595,6 +595,6 @@ The plan leaves the VULCAN-or-Photochem decision to the user. What P1 measured:
 3. **An EXHALE run directory must contain `output/` before the run starts.**
    Without it `set_IC.f90` dies at line 201 with
    `Cannot open file 'output/IC_dump.txt'`, after the setup report has already
-   been written — which makes it look like a physics failure.
+   been written, which makes it look like a physics failure.
 4. `EvoAtmosphereGasGiant` orders `gdat.gas.atoms_names` differently from run to
    run; the elemental abundances must be mapped by name, never by position.

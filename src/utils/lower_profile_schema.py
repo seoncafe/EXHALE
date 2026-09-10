@@ -31,17 +31,31 @@ sums IS the cold trap, which section 5 of the design reports separately.
 import hashlib
 import os
 import re
+import sys
 
 import numpy as np
 
 # ---- constants ------------------------------------------------------- #
-# The Jupiter radius and mass are EXHALE's own values (parameters.f90), so a
-# radius written here means the same length the code reads back.
+# The Jupiter mass is EXHALE's own value (parameters.f90), so a mass written
+# here means the same mass the code reads back; the radius comes from the one
+# Python definition of it, imported below.
 KB = 1.380649e-16
 MAMU = 1.66053906660e-24
 GNEWT = 6.67430e-8
-RJ = 6.9911e9
 MJ = 1.898e30
+
+# The Jupiter radius is defined once, in examples/exhale_io.py (RJ_CM), and
+# imported here rather than written down again: a length this file computes
+# from `Planet radius [R_J]` has to be the length EXHALE's parameters.f90
+# means by the same key.  The directory is APPENDED to sys.path, never
+# prepended, so that nothing in it can shadow a standard-library module.
+_EXAMPLES_DIR = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
+    'examples')
+if _EXAMPLES_DIR not in sys.path:
+    sys.path.append(_EXAMPLES_DIR)
+from exhale_io import RJ_CM                                # noqa: E402
+RJ = RJ_CM
 RSUN = 6.957e10
 AU = 1.495979e13
 BAR = 1.0e6                      # dyn/cm^2

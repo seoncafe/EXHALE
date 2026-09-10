@@ -16,19 +16,19 @@ See also `ATES_versions_diff.md` for the full side-by-side comparison.
 
 ---
 
-## 1. Opacity model dispatcher (entire Phase 1 — no equivalent at all)
+## 1. Opacity model dispatcher (entire Phase 1, no equivalent at all)
 
 > **Update (2026):** No longer extended-only. The dispatcher
 > (`opacity_models.f90`, A/C/P/T, `.opa` tables, `opacity.inp`) has
 > been ported to EXHALE, and the Robinson & Catling
-> pressure-broadening — a dormant hook in ATES_extended — is now
+> pressure-broadening (a dormant hook in ATES_extended) is now
 > **actually applied in each cell** (weights the opacity column density). See
-> `Update_EXHALE_early_phase`, Part II. The description below is the original
+> `Update_EXHALE_stage0`, Part II. The description below is the original
 > ATES_extended implementation.
 
 ATES_extended adds a complete pluggable opacity layer:
 
-* **`src/modules/radiation/opacity_models.f90`** (~232 LOC) — dispatcher
+* **`src/modules/radiation/opacity_models.f90`** (~232 LOC): dispatcher
   `photoion_sigma` selecting among four models:
   * `'A'` analytic (current ATES default)
   * `'C'` constant (threshold cross section x user factor)
@@ -37,9 +37,9 @@ ATES_extended adds a complete pluggable opacity layer:
   Returns in ATES's internal `1e-18 cm^2` unit so downstream code is
   unchanged. Includes the `opacity_pT_factor(p)` multiplier in each cell and
   `opa_table` derived type with `load_opacity_tables` / `free_opacity_tables`.
-* **`src/modules/files_IO/opacity_input_read.f90`** (~116 LOC) — parser
+* **`src/modules/files_IO/opacity_input_read.f90`** (~116 LOC): parser
   for the new `opacity.inp` key=value file.
-* **`.opa` table format** — two-column (E[eV], sigma[1e-18 cm^2])
+* **`.opa` table format**: two-column (E[eV], sigma[1e-18 cm^2])
   tabulated cross-section file per species, with analytic fallback when a
   path is empty.
 
@@ -49,7 +49,7 @@ ATES_extended adds a complete pluggable opacity layer:
 > carries nitrogen (NI/NII/NIII) inside its MINPACK 9-equation system,
 > with Verner+1996 cross sections, Badnell RR+DR recombination, and
 > Voronov collisional ionization; like ATES_extended, N contributes no
-> line cooling. See `Update_EXHALE_early_phase`, Part II. The description below is
+> line cooling. See `Update_EXHALE_stage0`, Part II. The description below is
 > the original ATES_extended implementation.
 
 ATES_extended carries:
@@ -68,7 +68,7 @@ ATES_extended carries:
 > **Update (2026):** No longer extended-only. EXHALE now uses the
 > **Badnell 2006 RR + adf48 DR** total-recombination fits for all metal
 > stages (the same `rec_fit` table, ported from ATES_extended), replacing
-> the Aldrovandi & Pequignot 1973 power-law. See `Update_EXHALE_early_phase`,
+> the Aldrovandi & Pequignot 1973 power-law. See `Update_EXHALE_stage0`,
 > Part II. The description below is the original ATES_extended implementation.
 
 ATES_extended adds a second recombination channel beyond radiative RR:
@@ -84,7 +84,7 @@ ATES_extended adds a second recombination channel beyond radiative RR:
 > **Update (2026):** No longer extended-only. EXHALE now also
 > reads a runtime **`metals.inp`** (`metals_input_read.f90`): `CI/NI/OI`
 > lines set `X_C/X_N/X_O` with no recompile; absent file leaves metals
-> off. See `Update_EXHALE_early_phase`, Part II.
+> off. See `Update_EXHALE_stage0`, Part II.
 
 * ATES_extended reads abundances at runtime from an optional
   **`metals.inp`** file (`<ION> <abundance>` per line), parsed by
@@ -103,14 +103,14 @@ folded metals into the existing MINPACK system (`System_HeHCO.f90`):
 > `System_HeH_mol_metals.f90`), and the default solver is the analytic-Jacobian
 > Newton with MINPACK `hybrd1` as the second attempt.]
 
-* **`src/modules/radiation/metals.f90`** (~162 LOC) — abundance registry,
+* **`src/modules/radiation/metals.f90`** (~162 LOC): abundance registry,
   cross-section grids for each ion on `e_v(Nl)`, `photoion_rate_metal`.
-* **`src/modules/radiation/metals_solve.f90`** (~209 LOC) — `coronal_ratio`
+* **`src/modules/radiation/metals_solve.f90`** (~209 LOC): `coronal_ratio`
   helper solving `n_X^(k+1)/n_X^k = Gamma_k / (alpha_rec * n_e)` per ion
   pair independently, plus the RR/DR coefficient functions.
-* **`src/modules/radiation/metals_drive.f90`** (~92 LOC) — cell-by-cell driver
+* **`src/modules/radiation/metals_drive.f90`** (~92 LOC): cell-by-cell driver
   `solve_metals_post` invoked from post-processing.
-* **`src/modules/radiation/metals_cool.f90`** (~102 LOC) — `lambda_X`
+* **`src/modules/radiation/metals_cool.f90`** (~102 LOC): `lambda_X`
   cooling fits and `eval_metal_cooling`; couples to `T_equation` via the
   `paramsT(13)` channel.
 
@@ -125,19 +125,19 @@ folded metals into the existing MINPACK system (`System_HeHCO.f90`):
 
 In `ATES/ATES_extended/inputdata/`, none of which exist in EXHALE:
 
-* `metals.inp.example` — annotated abundance template.
-* `opacity.inp.example` — annotated opacity-model key documentation.
-* `HI_sample.opa` — 13-row sample tabulated cross-section table.
-* `README.opacity` — `.opa` / opacity format documentation.
+* `metals.inp.example`: annotated abundance template.
+* `opacity.inp.example`: annotated opacity-model key documentation.
+* `HI_sample.opa`: 13-row sample tabulated cross-section table.
+* `README.opacity`: `.opa` / opacity format documentation.
 
 > [2026-08-15: all four now exist in `EXHALE_v1.00/inputdata/` as well, so this
 > section no longer describes a difference between the two trees.]
 
 ## 8. Companion design memo
 
-* **`ATES/ATES_extended/docs/aiolos_port_memo.pdf`** (and `.tex`) — Phase 1/2/3
+* **`ATES/ATES_extended/docs/aiolos_port_memo.pdf`** (and `.tex`): Phase 1/2/3
   design and status document. EXHALE's analog is
-  `EXHALE_v1.00/docs/Update_EXHALE_early_phase` (Part II), but the two cover
+  `EXHALE_v1.00/docs/Update_EXHALE_stage0` (Part II), but the two cover
   different designs; the ATES_extended memo additionally discusses the
   opacity dispatcher and the explicit Phase 3 (multi-fluid) justification,
   neither of which appears in the EXHALE work.
@@ -150,7 +150,7 @@ In `ATES/ATES_extended/inputdata/`, none of which exist in EXHALE:
 |---|---|---|
 | Opacity model dispatcher (A/C/P/T) | Yes | **Yes** (ported) |
 | `.opa` tabulated cross sections | Yes | **Yes** |
-| Pressure-broadening (Robinson & Catling) | Yes (Phase 1; cell-by-cell application **deferred**) | **Yes — applied in each cell** (completed) |
+| Pressure-broadening (Robinson & Catling) | Yes (Phase 1; cell-by-cell application **deferred**) | **Yes: applied in each cell** (completed) |
 | Nitrogen (NI/NII/NIII) ionization + opacity | Yes | **Yes** (in the MINPACK 9-eq system) |
 | Dielectronic recombination | Yes (Badnell, despite stale SVS-1982 docstring) | **Yes** (Badnell 2006 RR + adf48 DR) |
 | Runtime abundance file (`metals.inp`) | Yes | **Yes** (CI/NI/OI → X_C/X_N/X_O) |
@@ -160,13 +160,13 @@ In `ATES/ATES_extended/inputdata/`, none of which exist in EXHALE:
 | **Charge transfer with H** (Kingdon & Ferland 1996) | **No** | **Yes** (couples metal & H ionization) |
 | **H-alpha transmission** (`EXHALE_transit.py`, Christie+2013 Lyα pumping) | **No** (TPM has He 10830 + Lyα only) | **Yes** (n=2 population + J_lya input; see `transmission_spectrum.{tex,md}`) |
 
-## Caveat — these are *additive* features, not strict supersets
+## Caveat: these are *additive* features, not strict supersets
 
 ATES_extended is NOT a superset of EXHALE. The fully-coupled
 physics in EXHALE (metals feeding back on electron density,
-a beta line-escape probability formula carried in-source — though
+a beta line-escape probability formula carried in-source, though
 currently overridden by `beta_esc = 1`, i.e. the same 100%-escape
-assumption ATES_extended uses — CIII/OIII third stages, metals active
+assumption ATES_extended uses: CIII/OIII third stages, metals active
 during time evolution rather than only post-processing) is absent from
 ATES_extended. The two trees are complementary; see
 `ATES_versions_diff.md` Section 8.

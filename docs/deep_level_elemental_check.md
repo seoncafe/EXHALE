@@ -217,7 +217,7 @@ recorded anywhere in this tree.
 
 The two HD 209458 b departures that fixed the original 1e-4 default --
 **1.6e-7** with the Zahnle H/He/N/O/C set and **2.7e-5** through the VULCAN
-NCHO network (`docs/Update_EXHALE.md` section 77) -- were a fortunate sample,
+NCHO network (`docs/Update_EXHALE_stage1.md` section 77) -- were a fortunate sample,
 not a floor.
 
 ---
@@ -374,7 +374,7 @@ This section first read that as an isolated failure of the new bracketing scan,
 with a net of three failures removed and one introduced. **The measurement
 refutes both statements.** It is recorded in
 `LHS1140b/exhale/clima_bracket_diagnosis/` and written up in
-`docs/Update_EXHALE.md` section 91, which is the single place the diagnosis
+`docs/Update_EXHALE_stage1.md` section 91, which is the single place the diagnosis
 lives. In short: the bracketing scan is not the cause -- the root is inside the
 interval it scans and the residual crosses zero once, monotonically, in the
 last scan step -- and the failure comes from the outer solve's
@@ -426,14 +426,14 @@ The corrected build adds `scan_pc090/` beside `scan/` in the same record: the
 same reservoir scan re-run on photochem 0.9.0, three points wider (9.45, 9.55,
 9.6), from which the recovery of section 10 is read. The climate solve's own
 diagnosis is a separate record, `LHS1140b/exhale/clima_bracket_diagnosis/`,
-written up as `docs/Update_EXHALE.md` section 91.
+written up as `docs/Update_EXHALE_stage1.md` section 91.
 
 Code: `src/utils/lower_profile_schema.py` (the check, the default, the two
 explanatory texts). Ladder and its crossings:
 `LHS1140b/exhale/crossings_gm25/results.txt` (photochem 0.8.4) and
 `LHS1140b/exhale/crossings_pc090/results.txt` (the corrected build). Earlier
 instances of the same refusal: `LHS1140b/exhale/kzz_profile_scan/`. The origin
-of the 1e-4 default: `docs/Update_EXHALE.md` section 77. The correction itself:
+of the 1e-4 default: `docs/Update_EXHALE_stage1.md` section 77. The correction itself:
 `docs/photochem_solver_modification_investigation.md` (diagnosis) and
 `docs/photochem_solver_modification_implementation.md` (what was built and
 measured). The check's place in the handoff design:

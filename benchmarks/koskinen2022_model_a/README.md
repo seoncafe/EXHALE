@@ -7,7 +7,7 @@ chemistry with H2 and H+ carried by the flow, no Lyman-Werner band, H/He only.
 * `input.inp`, `base.inp` -- the run configuration
 * `output/` -- the final state after 2e5 marching steps (16 threads) continued
   from `output/*_IC.txt`, which is the 1e5-step transported state of
-  `Update_EXHALE.md` section 169.1 (itself continued from the 1e6-step
+  `Update_EXHALE_stage1.md` section 169.1 (itself continued from the 1e6-step
   `Rate/4` state of section 168); `run.log`, `EXHALE_resolved.out`
 * `before_section170/` -- that 1e5-step state, written before the
   heating/cooling assembly fix of section 170 (its ghost rows carry the

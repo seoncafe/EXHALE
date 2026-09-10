@@ -7,6 +7,38 @@ scratch build; the design in sections 4 and 5 is a proposal, and section 6
 lists the decisions that have to be taken before any of it is written, because
 they change the mathematical boundary-value problem the code solves.
 
+> **Sources checked against the published originals, 2026-09-07.** The three
+> papers this note rests on were read in their journal versions
+> (Thompson 1987, *J. Comput. Phys.* **68**, 1; Thompson 1990, *J. Comput.
+> Phys.* **89**, 439; Poinsot and Lele 1992, *J. Comput. Phys.* **101**, 104),
+> and section 4.1 now carries their equation numbers instead of the secondary
+> sources it used to quote. Three outcomes, in the order that matters for the
+> decisions of section 6:
+>
+> 1. **The characteristic count of section 4.3 is confirmed unchanged**, branch
+>    by branch, against Thompson (1990) sections 3.2.4 to 3.2.7 and Poinsot and
+>    Lele (1992) Tables III and IV. So is the relation `(C-)`, and so is the
+>    two-condition inflow closure of section 4.2. No constant was found wrong.
+> 2. **The claim that pair (D) is singular at `v_b -> 0` is withdrawn.** The
+>    published constant mass flux condition, Thompson (1990) Eqs. (69) and
+>    (70), is regular at `u_1 = 0` at a lower boundary. The singularity belongs
+>    to the particular closure this note wrote for it, not to the condition.
+>    Section 4.2 carries the correction, and it reopens (D) as a candidate for
+>    decision D1.
+> 3. **The impossibility argument in D6 is too strong.** Two published forms
+>    are transparent to sound and are algebraic functions of the instantaneous
+>    face state, so a steady residual can express both: Thompson (1990)
+>    Eq. (64), the nonreflecting condition in a gravitational field, and
+>    Poinsot and Lele (1992) Eq. (40), the partially reflecting relaxation.
+>    Neither changes the number of conditions. Section 6 D6 carries the
+>    correction; the measurement that a pinned static quantity reflects
+>    (section 7.3) is untouched by it.
+>
+> A fourth outcome is not a correction but a gap this note never stated: the
+> source terms. Section 4.1 now says where gravity and the spherical divergence
+> enter the characteristic relations, and why they are absent from `(C-)` as it
+> is written.
+
 ## 1. Scope, build, and what is measured
 
 The task is item 4 of `docs/open_defects_20260903.md` and Phase C of
@@ -124,7 +156,7 @@ thermodynamic quantities where only one is admissible.
 
 ### 2.3 The `massflux` branch
 
-`Base velocity: massflux` writes `rho`, `v` and `p` — all three. For subsonic
+`Base velocity: massflux` writes `rho`, `v` and `p`, all three. For subsonic
 inflow that is one condition too many by the table above, and it is the
 combination the standard reference calls out as inadmissible: Carlson (2011,
 NASA/TM-2011-217181, Table 1 footnote) allows `rho` and `T`, `rho` and `p`, or
@@ -151,8 +183,8 @@ constant divided by `rho_bc r^2`.
 `Rec_BC` writes the face state with expressions evaluated at ghost-cell
 quantities:
 
-* the `massflux` branch divides by `r(index)**2` — `r(0)`, the ghost **centre**
-  — while the state is consumed at `r_edg(0)`;
+* the `massflux` branch divides by `r(index)**2`: `r(0)`, the ghost **centre**,
+  while the state is consumed at `r_edg(0)`;
 * the `hydrostatic_base` branch extrapolates to `r(index)` using `r(1)`, `r(2)`
   as the abscissae of `W_in(3,1)`, `W_in(3,2)`, which in `Rec_BC` are the face
   pressures at `r_edg(1)` and `r_edg(2)`;
@@ -167,7 +199,7 @@ rho(r_edg(0))/rho(r(0)) - 1 = -3.815e-3
 ```
 
 i.e. the face state is 0.38 percent too heavy and too high in pressure. That
-ratio is `dr/(2H)`, so it is **first order in `dr`** — but the momentum
+ratio is `dr/(2H)`, so it is **first order in `dr`**, but the momentum
 residual it produces is that error divided by `dr`, so the residual itself is
 **zeroth order**: refining the grid does not remove it. Section 3.1 measures
 exactly that.
@@ -176,7 +208,7 @@ exactly that.
 
 The valve reads `W_in(2,1)`. In `Apply_BC_W` that is the cell-1 **average**
 velocity. In `Rec_BC` it is `WL_out(2,1)`, the velocity reconstructed at
-`r_edg(1)` — the *top* face of cell 1, a full cell above the boundary. The
+`r_edg(1)`: the *top* face of cell 1, a full cell above the boundary. The
 `hydrostatic_base` and `base_ghost_T_continuous` branches read `W_in(3,1)` and
 `W_in(3,2)` with the same ambiguity, and `base_ghost_T_continuous` divides a
 face pressure by `n_part_cell1`, a cell-averaged particle count.
@@ -201,8 +233,8 @@ the local weight `rho g`, so 1 means the boundary leaves the whole weight of
 the cell unbalanced.
 
 Five closures are compared. Four are the code's own. The fifth,
-`reference`, is not implementable — it hands the boundary the exact analytic
-solution, both as ghost **cell averages** and as the **face** state — and is
+`reference`, is not implementable (it hands the boundary the exact analytic
+solution, both as ghost **cell averages** and as the **face** state) and is
 included as an upper bound on what any face-consistent construction can buy.
 `pinnedvalues` is the legacy pair `(rho_bc, p_bc)` held at the face *and* the
 ghost with a **fixed zero velocity**, i.e. the legacy boundary with the
@@ -254,12 +286,12 @@ divided by `dr` is a fixed fraction of `rho g`, at any resolution.
 
 **(ii) The velocity artifact is first order in `dr`, and it is the production
 one.** `v(1)` reads `-1.2137e-3, -6.0516e-4, -3.0106e-4, -1.4999e-4` over a
-`8x` refinement — ratios 2.006, 2.010, 2.007 — which in physical units is
+`8x` refinement (ratios 2.006, 2.010, 2.007), which in physical units is
 `-247.1, -123.2, -61.3, -30.5 cm/s`. `docs/p44_base_sawtooth.md` section 7
 measures `-248.3, -122.2, -60.0 cm/s` on the full production code at
 `dr = 1.93e-4, 9.60e-5, 4.78e-5 R_p`. **The probe reproduces the converged
 hot-Uranus base sawtooth to within 1-2 percent with no chemistry, no radiation, no
-molecules and no wind** — an isothermal monatomic atmosphere at rest, the same
+molecules and no wind**: an isothermal monatomic atmosphere at rest, the same
 grid, the same boundary. Whatever else is true of that artifact, it is a
 property of the Euler + gravity + boundary discretization alone.
 
@@ -407,21 +439,111 @@ condition,
     p_b - rho_ref c_ref v_b  =  p_i - rho_ref c_ref v_i .          (C-)
 ```
 
-This is the LODI form (Thompson 1987, JCoPh 68, 1; Poinsot & Lele 1992, JCoPh
-101, 104; in the notation of Lodato, Ham & Pitsch 2010, CTR Annual Research
-Briefs, eqs. 2.15-2.17). It is preferred over the closed-form invariant
+This is the wave amplitude of the `u - c` characteristic, and it is verified
+against the published originals as follows.
+
+**The wave amplitudes and their normalization.** Poinsot and Lele (1992)
+Eqs. (15) to (17) give the characteristic velocities of the `x_1` direction,
+`lambda_1 = u_1 - c`, `lambda_2 = lambda_3 = lambda_4 = u_1`,
+`lambda_5 = u_1 + c`, with `c^2 = gamma p / rho` (their Eq. (18)), and their
+Eqs. (19) to (23) give the amplitude variations, of which the two acoustic ones
+are
+
+```
+    L_1 = lambda_1 ( dp/dx_1 - rho c du_1/dx_1 )                    P&L (19)
+    L_5 = lambda_5 ( dp/dx_1 + rho c du_1/dx_1 )                    P&L (23)
+```
+
+**The normalization includes the eigenvalue factor `lambda_i`**, and this is
+the same in both originals: Thompson (1990) Eqs. (44) to (47) are identical
+expressions in the same primitive ordering `U = (rho, p, u_1, u_2, u_3)` with
+left eigenvectors `l_1 = (0, 1, -rho c, 0, 0)` and `l_5 = (0, 1, rho c, 0, 0)`
+(his Eq. (46)), and Thompson (1987) Eq. (19) defines `L_i = lambda_i l_i dU/dx`
+for outgoing waves. There is no factor of two, no `1/2` and no `1/(rho c)`
+inside the `L_i` themselves; those appear only when the `L_i` are assembled
+into the primitive equations.
+
+**The relation `(C-)` is the linearized amplitude of that wave.** Poinsot and
+Lele (1992), page 109, in the paragraph following their Eq. (23): for the
+upstream-propagating wave associated to `lambda_1 = u_1 - c`, with `p'` and
+`u'` the pressure and velocity perturbations, "the wave amplitude
+`A_1 = p' - rho c u'` is conserved along the characteristic line
+`x + lambda_1 t = const`". Written between two states at the same radius, one
+of them the interior extrapolation and one the boundary state, that
+conservation is exactly `(C-)`.
+
+**The LODI relations.** Poinsot and Lele (1992) section 2.3 derives them from
+their Eqs. (9) to (13) and "neglecting transverse and viscous terms". In
+primitive variables the system is their Eqs. (24) to (28); the three that a
+one-dimensional problem keeps are
+
+```
+    d(rho)/dt + (1/c^2) [ L_2 + (1/2)(L_5 + L_1) ] = 0               P&L (24)
+    d(p)/dt   + (1/2)(L_5 + L_1)                   = 0               P&L (25)
+    d(u_1)/dt + (1/(2 rho c)) (L_5 - L_1)          = 0               P&L (26)
+```
+
+and their Eqs. (29) to (32) recast the same system in `T`, `m_1 = rho u_1`,
+`s` and `h`. Their Eqs. (33) to (36) invert it for the normal gradients; the
+first three of those are Thompson (1990) Eq. (48), term for term.
+
+**The source terms, which the LODI form drops and this problem does not have
+the right to drop.** Thompson writes the conservation law with an
+inhomogeneous vector from the start: Thompson (1987) Eqs. (1) and (2) carry a
+term "which often arises from divergence terms in nonrectangular geometries",
+and Thompson (1990) Eq. (1) carries the same vector `D`, whose footnote 1 on
+page 441 names both contents that this code has,
+
+```
+    (1/r^2) d(r^2 rho u_r)/dr  ->  d(rho u_r)/dr + (2/r) rho u_r
+```
+
+for the spherical divergence, and "source terms, such as heating, cooling, or
+gravitational forces". The projection of that vector onto the left eigenvector
+stays inside the characteristic equation: Thompson (1987) Eq. (13) is
+`l_i dU/dt + lambda_i l_i dU/dx + l_i C = 0`, his nonreflecting condition
+Eq. (17) is `(l_i dU/dt + l_i C) = 0` and not `l_i dU/dt = 0`, and Thompson
+(1990) Eqs. (50) to (54) carry the gravitational acceleration explicitly, the
+`u_1` row being
+
+```
+    d(u_1)/dt + (1/(2 rho c)) (L_5 - L_1) + (transverse) - g_1 = 0   T90 (52)
+```
+
+against Poinsot and Lele's (26), which has no `g_1` because their derivation is
+Cartesian with no body force. **In spherical one-dimensional flow there are no
+transverse terms at all, so "drop transverse and viscous" removes nothing, and
+the source projection is the entire difference between the two papers' momentum
+relation.** The gravitational part of it is of the same order as the quantity
+`(C-)` constrains: over a half cell the neglected `rho c g_r dr` is the
+hydrostatic pressure change `dp` itself.
+
+`(C-)` escapes this only because **both of its states are evaluated at the same
+radius** `r_edg(0)`, so the source projection is common to the two sides and
+cancels. The hydrostatic and geometric terms are carried instead by the
+continuation that produces `W_i` from the cell 1 average (section 4.4, and the
+implemented `continue_hydrostatic_isentrope` of section 7.1). Any future form
+of this boundary that relates the cell 1 CENTRE to the face, or that time
+advances the face state in the Thompson manner, must put `l_1 C` back in
+explicitly; the steady form of Thompson (1990) Eq. (63) is
+`L_1 = -rho c g_1` in a gravitational field, not `L_1 = 0`.
+
+`(C-)` is also preferred over the closed-form invariant
 `J^- = v - 2c/(gamma-1)` because the latter assumes a constant `gamma`, which
 this code does not have (section 4.5).
 
-> The publisher PDFs of Thompson (1987, 1990) and Poinsot & Lele (1992) could
-> not be obtained (Elsevier paywall). The formulation above is quoted from the
-> open NASA/TM-2011-217181 (Carlson 2011) and the open CTR brief; **the
-> normalization constants and equation numbers of Poinsot & Lele have not been
-> checked against the published original.** If those equation numbers are to
-> appear in a manual or a paper, the three PDFs are needed.
-
 For **subsonic inflow** `0 < v_b < c_b`, (C-) plus two reservoir conditions
-closes the face state. Sections 4.2-4.4 are the three choices that remain.
+closes the face state. That count is the published one: Poinsot and Lele
+(1992), section 3.1, "For a subsonic three-dimensional flow, four
+characteristic waves are entering the domain (Fig. 1), `L_2`, `L_3`, `L_4`, and
+`L_5`, while one of them (`L_1`) is leaving the domain at the speed
+`lambda_1 = u_1 - c`. Therefore, the density `rho` (or the pressure `p`) has to
+be determined by the flow itself." Removing the two transverse waves leaves two
+entering and one leaving, which is two conditions and one interior relation.
+Thompson (1990) Eq. (68), left column, is the same statement as a recipe for
+the lower boundary `x_1 = a_1` with `0 < u_1 < c`: `L_1` computed from its
+definition, `L_2` and `L_5` specified. Sections 4.2-4.4 are the three choices
+that remain.
 
 ### 4.2 Reservoir pairs
 
@@ -429,12 +551,24 @@ Admissibility is Carlson (2011) Table 1 and its footnote: for a subsonic inflow
 face one may specify `(p_t, T_t, flow direction)`, or `rho` and `U`, or `rho`
 and `p`, "but not `U` and `p`".
 
+The primaries were checked for this list on 2026-09-07 and do not contain it:
+what Poinsot and Lele (1992) Table III gives are four inflow sets they used,
+SI 1 `(u_1, u_2, u_3, T)`, SI 2 `(u_1, u_2, u_3, rho)`, SI 3
+`(u_1 - 2c/(gamma-1), u_2, u_3, s)` and SI 4 the non-reflecting
+`L_2 = L_3 = L_4 = L_5 = 0`, with the well-posedness column pointing at
+Strikwerda and at Oliger and Sundstrom rather than proving it there. The
+exclusion of `(U, p)` is therefore still on Carlson's authority and not on the
+originals'. Two things the originals do say and this table did not: velocity is
+an admissible member of an inflow pair (SI 1 and SI 2 both use it), and in one
+dimension SI 3 and SI 4 coincide, since "they both express the conservation of
+entropy and the non-reflection of acoustic waves at the inlet section".
+
 | pair | what it means physically | solve | notes |
 |---|---|---|---|
 | **(A) `(p, T)`** | the handoff level states both, as a lower/middle-atmosphere model does. Koskinen et al. (2013a) sec. 2.1.1: "We specified `T0` and `p0` at the lower boundary, and used them to calculate `rho0` from the ideal gas law"; Koskinen et al. (2022) app. B: "The lower boundary conditions are the temperature, pressure (`p1 = 1 μbar`), and species mixing ratios that are based on our lower atmosphere models." | `p_b = p_res`; `rho_b` from `(p_b, T_res)` and the base composition; `v_b` from (C-) | the closest to what EXHALE already has (`base.inp`'s `T_base`/`p_base`, the `Lower atmosphere profile:` reader). Admissible: `(p, T)` is `(p, rho)`. **The measured objection stands**: on the gate the interior accepts `p` to 0.1 percent and rejects `T_0` by 5-14 percent (`docs/p44_base_sawtooth.md` sec. 8.3, item (W)). This pair does not fix that; it makes it explicit, and moves the question to where `T_res` comes from. |
 | **(B) `(p, s)`** | pressure plus specific entropy. Identical to (A) for a fixed composition and caloric EOS, but stated so the boundary is closed by a quantity the caloric EOS defines rather than by a temperature the composition has to convert | `p_b = p_res`; `rho_b` from `(p_b, s_res)`; `v_b` from (C-) | better behaved than (A) when the base composition changes (`x_H2` handoff), because `s` carries the rovibrational heat capacity with it instead of leaving the conversion to `n_part_cell1`. Costs an `s(p, rho, x_H2)` inversion; the caloric module already has every piece. |
 | **(C) `(T, rho)`** | the legacy pair in another parameterization | `rho_b = rho_res`; `p_b` from `(rho_b, T_res)`; `v_b` from (C-) | admissible, and it is what the code effectively does now except that `v` is copied rather than solved. It keeps item (W)'s over-statement intact. Listed for completeness. |
-| **(D) `(p, rho v)`** | pressure plus the mass flux, i.e. CETIMB's velocity condition rewritten as a reservoir datum | `p_b = p_res`; `v_b` from (C-); `rho_b = F_c/(r_b^2 v_b)` | solvable and not the forbidden `(U, p)` combination, since `F_c` constrains `rho v` and not `v`. **But** it is singular at `v_b -> 0`, which is exactly the state the hot-Uranus base sits in, and it leaves the base entropy as an output rather than a datum. Its well-posedness near stagnation has not been checked and would have to be before it could be a default. |
+| **(D) `(p, rho v)`** | pressure plus the mass flux, i.e. CETIMB's velocity condition rewritten as a reservoir datum | `p_b = p_res`; `v_b` from (C-); `rho_b = F_c/(r_b^2 v_b)` | solvable and not the forbidden `(U, p)` combination, since `F_c` constrains `rho v` and not `v`. ~~It is singular at `v_b -> 0`, which is exactly the state the hot-Uranus base sits in.~~ **Corrected 2026-09-07 against the original.** The singularity is in the closure written in the solve column above, not in the condition. Thompson (1990) section 3.2.7.2 imposes a mass flux at a subsonic inflow face by requiring `d(rho u_1)/dt = 0`, which with his Eqs. (50) and (52) and no transverse terms gives `2 u_1 L_2 + (u_1 - c) L_1 + (u_1 + c) L_5 = 2 rho c^2 g_1` (his Eq. (69)), and at a LOWER boundary `x_1 = a_1` with `0 < u_1 < c` this is solved for the entering acoustic amplitude as `L_5 = [ 2 rho c^2 g_1 - 2 u_1 L_2 - (u_1 - c) L_1 ] / (u_1 + c)` (his Eq. (70), left column). The denominator is `u_1 + c`, so the prescription is regular through `u_1 = 0` and through sign changes of `u_1`; it is his Eq. (71), which solves the same relation for the entropy amplitude `L_2` instead and carries `1/(2 u_1)`, that is singular at stagnation. Note also that the published form carries `rho c^2 g_1`: the mass flux condition in a gravitational field is not the zero-gravity one. What remains true is the second half of the original objection, that (D) leaves the base entropy as an output rather than a datum. |
 
 **Recommendation, for decision.** (B), falling back to (A) where no entropy is
 available. It is the pair the lower-atmosphere handoff can actually state
@@ -446,7 +580,7 @@ This is a decision for the user, not a conclusion: see section 6.
 ### 4.3 Flow reversal and the supersonic branches
 
 The rule has to be explicit, evaluated on the **face** state, and it changes
-the number of conditions — not the value of one of them.
+the number of conditions, not the value of one of them.
 
 ```
 M_b = v_b / c_b  evaluated at the face
@@ -458,6 +592,25 @@ M_b = v_b / c_b  evaluated at the face
 | `0 < M_b < 1` (subsonic inflow) | two, per section 4.2 | (C-) |
 | `-1 < M_b <= 0` (reversal) | **one**: `p_b = p_res` | (C-) **and** the entropy relation `s_b = s_i` |
 | `M_b <= -1` (supersonic outflow) | none | all three: extrapolate `W_b = W_i` |
+
+**The four rows are the published count**, checked branch by branch on
+2026-09-07. Thompson (1990) section 3.2.4 (supersonic inflow): "so that all
+`lambda_i < 0`. Consequently we must specify all values of `L_i` from boundary
+conditions", the row above with three conditions. Section 3.2.5 (supersonic
+outflow): "we can specify no boundary conditions at all, and the evolution of
+the flow at the boundary is determined completely by interior data", the
+extrapolation row. Section 3.2.6 (subsonic outflow, his `0 < u_1 < c` at the
+upper face, which is the reversal branch at ours): one amplitude specified,
+the rest computed, i.e. one condition and two interior relations. Section
+3.2.7 with his Eq. (68): at a lower face with `0 < u_1 < c`, `L_1` computed
+from its definition and `L_2` and `L_5` specified, i.e. two conditions and one
+interior relation. Poinsot and Lele (1992) Tables III and IV give the same
+counts for the subsonic rows, four Euler conditions at a three-dimensional
+subsonic inflow (two once the transverse velocities are removed) and one at a
+subsonic outflow. That the count itself changes along a boundary is stated in
+Thompson (1990) section 3.2.3: "The number and type of boundary conditions
+required may vary from time to time or place to place along the boundaries,
+even for one particular problem."
 
 The reversal row is the one the code does not have. Physically it is gas
 falling back into the lower atmosphere: the reservoir can still state the
@@ -479,7 +632,7 @@ velocity reads on the converged hot Uranus (item (V)), so any blending
 parameter has to be reported in the setup report and read in diagnostics.
 
 Since the count depends on `M_b` and `M_b` depends on the solved state, the
-branch must be selected on a **predictor** — the interior state `W_i` — and the
+branch must be selected on a **predictor** (the interior state `W_i`) and the
 selection frozen for the solve, then checked. `check_base_inflow_is_subsonic`
 already measures the Mach number and reports crossings; it should become the
 selector rather than a warning.
@@ -561,9 +714,15 @@ boundary condition uses.
 **(iii) `gamma_eff` is not constant, so no closed-form invariant exists.** With
 `e = p/(gamma_eff - 1)` and `gamma_eff = gamma_eff(x_H2, T)`, the Riemann
 invariant `v - 2c/(gamma-1)` is not integrable in closed form and is wrong
-wherever the H2 fraction or the temperature varies across the stencil — which
+wherever the H2 fraction or the temperature varies across the stencil, which
 is the whole molecular base. This is the decisive reason to use the
-differential relation (C-) instead. Where `caloric_mixture_active` is false the
+differential relation (C-) instead. The general statement is Thompson (1987)
+Eqs. (14) and (15): a wave amplitude `V_i` with `dV_i = l_i dU + l_i C dt`
+exists only if the coefficients satisfy Pfaff's condition for the integrability
+of differential forms, "a condition not met for the fluid equations", while
+"the characteristic form of (13) holds true independent of (14)". A constant
+`gamma` and no source term is one of the special cases in which the integration
+does succeed, and it is the case this code is not in. Where `caloric_mixture_active` is false the
 two coincide to the order of the linearization, so an atomic run is unaffected
 by the choice.
 
@@ -615,13 +774,20 @@ and it will move every converged state. The following are the user's, not the
 implementer's.
 
 **D1. The reservoir pair. ANSWERED: (B) `(p, s)`.** (A) `(p, T)`,
-(B) `(p, s)`, (C) `(T, rho)`, or (D) `(p, rho v)` — section 4.2. The
+(B) `(p, s)`, (C) `(T, rho)`, or (D) `(p, rho v)`, section 4.2. The answer was
+given when (D) was believed singular at stagnation; section 4.2 now records
+that it is not, so if the answer rested on that, it is worth revisiting.
+Note also that in the characteristic reading (B) is Thompson (1990)'s
+`L_2 = 0` (constant inflow entropy, his Eq. (68)) together with his constant
+pressure condition `L_5 = -L_1` (his Eq. (67)), which is the fully reflecting
+choice among the three he lists; that is the same fact as section 7.3's
+measurement. The
 recommendation was (B) with (A) as the fallback, and (B) is what section 7
 implements. The consequence of any of them is that `T_0` stops being an
 independent boundary datum in the sense it is now: with the pair fixed, the
 face temperature is whatever the pair and the composition give, and cell 1 will
 no longer sit against a pinned `T_0` contact. Item (W)'s "a ghost that pins `p`
-and lets `rho` and `T` float together" is *not* one of these — that is one
+and lets `rho` and `T` float together" is *not* one of these: that is one
 condition, not two, and it is admissible only in the reversal branch.
 
 **D2. The reversal rule, and its smoothing. ANSWERED: explicit branches on the
@@ -681,19 +847,61 @@ makes `max(v_1, 0)` unnecessary and what a breathing base needs.
 **D6. The acoustic reflection (raised by the implementation, section 7.3).**
 The characteristic condition reflects sound as completely as the closure it
 replaces, and section 7.3 shows this follows from stating two static reservoir
-quantities and cannot be cured by choosing a different pair. The only form that
-is transparent to sound without corrupting the steady state is a relaxation
-condition, which is not a function of the instantaneous state and so has no
-fixed point the steady residual can express. Three ways forward, none taken
+quantities and cannot be cured by choosing a different pair. That measurement
+stands.
+
+> **Corrected 2026-09-07 against the originals.** The sentence that used to
+> follow, "the only form that is transparent to sound without corrupting the
+> steady state is a relaxation condition, which is not a function of the
+> instantaneous state and so has no fixed point the steady residual can
+> express", is wrong on its second half. Two published forms are transparent
+> and are algebraic in the instantaneous face state, so a steady residual can
+> carry either as one more algebraic row:
+>
+> * **Thompson (1990) Eq. (64), the nonreflecting condition in a gravitational
+>   field.** His Eq. (63), the characteristic equation with the transverse
+>   terms dropped, is
+>   `(dp/dt - rho c du_1/dt) + L_1 + rho c g_1 = 0`, so the amplitude of the
+>   wave stays constant not when the entering amplitude vanishes but when it
+>   equals the source projection: `L_5 = rho c g_1` at a lower boundary
+>   `x_1 = a_1`, `L_1 = -rho c g_1` at an upper one. Every symbol on the right
+>   is a face quantity. Thompson's own caveat is the one this note reached by
+>   measurement from the other side: for a problem in pressure equilibrium
+>   "the nonreflecting boundary conditions destroy the pressure balance"
+>   (his section 3.2.6.2), which is why he offers the force-free condition
+>   (his Eq. (65)) and the constant pressure condition (his Eq. (67),
+>   `L_5 = -L_1`) beside it. The constant pressure condition is the fully
+>   reflecting one, and it is what pair (B) amounts to.
+> * **Poinsot and Lele (1992) Eq. (40), the partially reflecting relaxation.**
+>   `L_1 = K (p - p_inf)` with `K = sigma (1 - M^2) c / L`, where `M` is the
+>   maximum Mach number in the flow, `L` a characteristic size of the domain
+>   and `sigma` a constant; "when `sigma = 0`, Eq. (40) sets the amplitude of
+>   reflected waves to 0". This is a function of the instantaneous face
+>   pressure alone, so it has a fixed point, and it exists precisely to stop
+>   the mean drift that a purely nonreflecting condition leaves: their section
+>   2.1 warns that conditions which "impose only values for derivatives and no
+>   constraint for the mean values" "may lead to a drift of the mean
+>   quantities", and Eq. (40) is their answer to it. `sigma` interpolates
+>   between transparent and pinned, which is the dial this note assumed did
+>   not exist.
+>
+> Neither form changes the number of conditions: each replaces one of the two
+> admissible conditions of section 4.2, not adds to them. What is NOT settled
+> by the literature is whether either keeps the base level this code needs,
+> since `p_base` is a physics datum here and not a far-field constant; that is
+> what the decision below is now about.
+
+Three ways forward, none taken
 here: leave it (the steady state is what this code computes, and a converged
-state carries no wave); add the relaxation to the MARCHING map only and forbid
-it during a steady solve, as the Shapiro filter is forbidden; or reformulate
-the steady residual to carry a boundary state of its own. This decides whether
-item (AA)'s base-layer ringing is in scope at all.
+state carries no wave); replace one of the two static conditions with
+Poinsot and Lele's Eq. (40) at a `sigma` that has to be measured, which keeps
+the count and gives up an exact `p_base`; or reformulate the steady residual to
+carry a boundary state of its own. This decides whether item (AA)'s base-layer
+ringing is in scope at all.
 
 ## 7. Implementation and measurements
 
-Section 152 of `docs/Update_EXHALE.md`. The patch is
+Section 152 of `docs/Update_EXHALE_stage1.md`. The patch is
 `docs/phaseC_base_bc.diff` (8 files, 28 hunks: one new module, plus the
 retirements); the probe is `docs/phaseC_probe.diff`, test code only. Nothing
 is applied to the tree.
@@ -857,7 +1065,7 @@ All runs are the Phase C build against the (AB) build of
 `.../scratchpad/p_ab`, same cases, same inputs.
 
 **The hot-Uranus gate rung, reloaded** (`Load IC? True`, `Solver: Newton
-100.0`, `Secondary_ionization: Immediate`) — the case (AB) measured, so it is
+100.0`, `Secondary_ionization: Immediate`), the case (AB) measured, so it is
 the one comparison with a baseline:
 
 | | (AB) | Phase C |
@@ -872,7 +1080,7 @@ the one comparison with a baseline:
 | **`v(cell 1)`** | **-251.88 cm/s** | **+14.40 cm/s** |
 | `T(cell 1)` | 1116.68 K | 1116.72 K |
 | H2 front (`2 n_H2 = n_H`) | 1.0449 `R_p` | 1.0449 `R_p` |
-| base Mach, max | — | 3.364e-03, subsonic |
+| base Mach, max | - | 3.364e-03, subsonic |
 
 **The base sawtooth is gone in the production code**, which is what the probe
 predicted: `v(1)` stops being a `-250 cm/s` artifact and becomes `+14.4 cm/s`,
@@ -896,7 +1104,7 @@ base grid. Two independent paths to the root now agree to five figures.
 
 The cold start is not cheap: 820 JFNK iterations across three attempts
 (`info = 1`, then `info = 2`, then `info = 0`) against the reload's 14. Whether
-that is harder than the same cold start under (AB) is **not established** —
+that is harder than the same cold start under (AB) is **not established**:
 (AB) did not run one, so there is no baseline.
 
 **WASP-121b, `wasp_full_newton`** (atomic, He 2^3S + metals, Newton):
@@ -910,12 +1118,12 @@ that is harder than the same cold start under (AB) is **not established** —
 | `r >= 1.03` | 6.751e-05 | 6.733e-05 |
 | `log10 Mdot` | 13.21 | 13.21 |
 | `v(cell 1)` | 1372.5 cm/s | 1705.9 cm/s |
-| max rel. state change | — | `rho` 5.9e-3, `p` 8.8e-3, `T` 3.2e-3 |
-| base Mach, max | — | 0.331, subsonic |
+| max rel. state change | - | `rho` 5.9e-3, `p` 8.8e-3, `T` 3.2e-3 |
+| base Mach, max | - | 0.331, subsonic |
 
 A strongly irradiated atomic hot Jupiter converges to the same gates and the
 same mass-loss rate, with the state moving by well under a percent and the
-base velocity moving by 24 percent — the boundary doing its job on the one cell
+base velocity moving by 24 percent: the boundary doing its job on the one cell
 that is its own.
 
 **The reload-and-march departure** (root reloaded, `Solver:` removed,
@@ -932,7 +1140,7 @@ The control reproduces `p_ab_ghost_order.md` section 5 exactly (0.4443, 0.2517,
 
 **This is a negative result and it is the honest headline of the production
 set: Phase C does not repair the marching departure of item (AD), and it makes
-it worse — 2.09x at `r = 1.005` and 1.22x at 1.03.** It is consistent with
+it worse, 2.09x at `r = 1.005` and 1.22x at 1.03.** It is consistent with
 section 7.3: the boundary still reflects `|R| = 0.956` of what the base layer
 launches at it, so the layer still rings, and the steady residual and the
 production update still do not share a fixed point. One plausible mechanism for
@@ -1023,13 +1231,20 @@ like:
   energy budget of item (AA). The production measurements of section 7.4 are
   where that is decided, and test (e) after them.
 * **The grid-convergence test (e).** Not run.
-* **Whether pair (D) is well posed near stagnation.** Section 4.2 shows it is
-  solvable and singular at `v_b = 0`; how it behaves in a neighbourhood of that
-  point has not been analyzed.
-* **The Poinsot & Lele normalization.** Section 4.1: the published originals
-  of Thompson (1987, 1990) and Poinsot & Lele (1992) could not be obtained, so
-  the LODI relation is quoted from open secondary sources and its equation
-  numbers in the original are unverified.
+* **Whether pair (D) is well posed near stagnation.** Section 4.2, corrected:
+  the published constant mass flux prescription is regular through `u_1 = 0`,
+  so the question is no longer the singularity but whether a base whose entropy
+  is an output rather than a datum behaves on the hot Uranus. Not measured.
+* ~~The Poinsot & Lele normalization.~~ **Settled, section 4.1** (2026-09-07).
+  The three journal versions were read. The amplitudes carry the eigenvalue
+  factor `lambda_i` in both papers, `(C-)` is their `u - c` amplitude, the
+  branch counts of section 4.3 are theirs, and no constant was found wrong.
+  Two statements of this note were corrected instead: pair (D)'s singularity
+  (section 4.2) and D6's impossibility argument (section 6). What section 4.1
+  now records as open is not the citation but the physics: the source
+  projection `l_1 C`, which the spherical geometry and the gravitational field
+  both feed, cancels out of `(C-)` only because both of its states sit at the
+  same radius, and any reformulation that moves off that has to carry it.
 * **Whether CETIMB's three boundary data over-specify its scheme.** Section
   2.3: their papers state what is prescribed but not the discrete location of
   the boundary (grid level, not ghost cell) nor the flux stencil that consumes
@@ -1040,6 +1255,23 @@ like:
   against that document's measurements, not a rerun of them.
 
 ## 9. Files
+
+Published sources, read in the journal versions in `../references/`:
+
+```
+Thompson_1987JCP_68_1.pdf          K. W. Thompson, J. Comput. Phys. 68, 1 (1987)
+                                   "Time Dependent Boundary Conditions for
+                                   Hyperbolic Systems". Eqs. (13), (17)-(19).
+Thompson_1990JCP_89_439.pdf        K. W. Thompson, J. Comput. Phys. 89, 439 (1990)
+                                   "Time-Dependent Boundary Conditions for
+                                   Hyperbolic Systems, II". Eqs. (44)-(52),
+                                   (62)-(71), footnote 1 p. 441.
+Poinsot_1992JCP_101_104.pdf        T. J. Poinsot and S. K. Lele, J. Comput.
+                                   Phys. 101, 104 (1992) "Boundary Conditions
+                                   for Direct Simulations of Compressible
+                                   Viscous Flows". Eqs. (15)-(40),
+                                   Tables II-IV.
+```
 
 ```
 docs/phaseC_characteristic_base_bc.md   this note

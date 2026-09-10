@@ -10,7 +10,7 @@
 ! 190-400 K against an equilibrium temperature of 1100-1400 K, because the only
 ! infrared coolants the code carried below the H2 -> H front were H3+ and the
 ! ground-term fine-structure lines, treated as pure emitters into vacuum.  The
-! `Base IR field` closure (Update_EXHALE.md section 55) gave those two families
+! `Base IR field` closure (Update_EXHALE_stage1.md section 55) gave those two families
 ! their incident field; it could not reach the rest of the layer, where the
 ! coolants that matter in a real H2 atmosphere -- water, carbon monoxide and
 ! molecular hydrogen itself -- were simply absent.  This module supplies them.
@@ -32,9 +32,14 @@
 !     E_H2^abs    = Sum_l f_u(T) A_l dE_l nbar_l [exp(dE_l/T) - 1]         (5)
 !     nbar_l      = 1 / [exp(dE_l/T_rad) - 1]                              (6)
 !
-! where f_u(T) = g_u exp(-T_u/T) / Z(T) is the LTE population of the upper
+! where f_u(T) = g_u exp(-T_u/T) / Q(T) is the LTE population of the upper
 ! level and W is the dilution of the incident field (the sky fraction the
 ! lower atmosphere subtends, times the screening of the intervening column).
+! Q is the internal partition function of H2 of caloric_eos, the one
+! Boltzmann sum the code forms over the rovibrational ladder, so the
+! populations that radiate here are the populations whose energy the equation
+! of state carries and whose free energy sets the H + H <-> H2 equilibrium of
+! mol_rates.
 !
 ! Equation (5) is the absorption MINUS the stimulated emission: the full net
 ! factor of a line is [1 + nbar - nbar exp(dE/T)].  Keeping the stimulated term
@@ -89,8 +94,9 @@
 !    are clamped outside it.  Both molecules are largely dissociated above
 !    2000 K, and the oxygen option caps its transported CO at the chemical
 !    equilibrium of the local (n,T), so the clamped region carries little
-!    density.  The H2 line sum has no such limit; it is evaluated directly from
-!    the level ladder.
+!    density.  The H2 line sum has no such limit in the ladder; it is
+!    tabulated on the 30 K to about 30100 K grid below (t_tab_hi) and the
+!    edge value is returned above that, where no H2 survives.
 !  * The lower atmosphere is taken to be black at these wavelengths and to
 !    radiate B_nu(T_rad).  H2-H2 and H2-He collision-induced absorption is what
 !    makes it black in the windows between the bands, and it is deliberately
@@ -107,9 +113,13 @@
 ! distributed with Photochem (Wogan et al. 2025, PSJ 6, 256), computed with
 ! HELIOS-K (Grimm & Heng 2015, ApJ 808, 182) from HITEMP 2010 (H2O; Rothman et
 ! al. 2010, JQSRT 111, 2139) and HITEMP 2019 (CO; Li et al. 2015, ApJS 216, 15).
-! H2 line list: Roueff et al. (2019), A&A 630, A58, table 2.  The tables
-! themselves are in molecular_infrared_data.f90; their provenance, validity
-! ranges and cross-checks are in cooling_data/molecular_infrared_bands.py.
+! H2 line list: Roueff et al. (2019), A&A 630, A58, table 2 -- the transition
+! wavenumbers and the quadrupole plus magnetic dipole Einstein A coefficients
+! of that table, over the level energies of the same table's ladder, so the
+! lines and the partition function that normalizes them are one level set.
+! The tables themselves are in molecular_infrared_data.f90; their provenance,
+! validity ranges and cross-checks are in
+! cooling_data/molecular_infrared_bands.py.
 !==============================================================================
       module molecular_infrared_cooling
 
@@ -117,6 +127,11 @@
       ! The physical constants have exactly one owner, global_parameters; do
       ! not restate them here.
       use global_parameters, only: kb_erg, hp_erg, c_light
+      ! The code forms one Boltzmann sum over the H2 rovibrational ladder,
+      ! in caloric_eos; the ladder itself lives in molecular_infrared_data,
+      ! which this module already reads for the line list built on the same
+      ! levels.
+      use caloric_eos, only: h2_partition_function
 
       implicit none
       private
@@ -132,10 +147,19 @@
 
       ! Evaluation grid of the derived emission / absorption functions.  It is
       ! log-spaced and wider than the cross-section tables so that the H2 line
-      ! sum, which has no upper temperature limit, keeps its own range.
-      integer, parameter :: n_tab  = 401
-      real*8,  parameter :: t_tab_lo = 3.0d1
-      real*8,  parameter :: t_tab_hi = 8.0d3
+      ! sum, which has no upper temperature limit, keeps its own range.  The
+      ! spacing is that of 401 nodes over 30-8000 K (one node per 1.40
+      ! percent in T); the grid continues at that spacing to t_tab_hi, above
+      ! every temperature a layer that still holds H2 reaches, so that the
+      ! clamp of tab_value (edge value outside the grid) never binds on the H2
+      ! line sum.  MEASURED before the extension: the clamp at 8000 K gave
+      ! 1.181e-18 against the direct sum's 1.579e-18 erg s^-1 at 10000 K.
+      integer, parameter :: n_tab_ref = 401
+      real*8,  parameter :: t_tab_lo  = 3.0d1
+      real*8,  parameter :: t_tab_ref = 8.0d3
+      integer, parameter :: n_tab     = n_tab_ref + 95
+      real*8,  parameter :: t_tab_hi  = t_tab_lo*(t_tab_ref/t_tab_lo)    &
+                                        **(dble(n_tab - 1)/dble(n_tab_ref - 1))
 
       ! Simpson nodes per band for the Planck integrals (must be odd).
       integer, parameter :: n_quad = 25
@@ -172,8 +196,8 @@
       if (tab_built .and. tr .eq. t_rad_built) return
 
       do k = 1, n_tab
-         t_tab(k) = t_tab_lo*(t_tab_hi/t_tab_lo)                          &
-                             **(dble(k - 1)/dble(n_tab - 1))
+         t_tab(k) = t_tab_lo*(t_tab_ref/t_tab_lo)                         &
+                             **(dble(k - 1)/dble(n_tab_ref - 1))
       enddo
 
       ! Incident field, one value per band: it does not depend on the gas
@@ -209,10 +233,13 @@
          sigp_co(k) = dot_product(sg_co, bg_co)/max(bsum, 1.0d-300)
 
          ! --- H2 lines ----------------------------------------------------
-         z = 0.0d0
-         do l = 1, n_h2_lev
-            z = z + h2_lev_g(l)*exp(-min(h2_lev_T(l)/tg, 7.0d2))
-         enddo
+         ! The normalization of the line populations is the internal
+         ! partition function of H2 held by caloric_eos: the levels these
+         ! lines connect are the levels whose energy the equation of state
+         ! carries and whose free energy the H + H <-> H2 equilibrium of
+         ! mol_rates is built from, so f_u below is a population of the
+         ! EOS ladder and not of a second one.
+         z = h2_partition_function(tg)
          emis_h2(k) = 0.0d0
          absr_h2(k) = 0.0d0
          do l = 1, n_h2_line

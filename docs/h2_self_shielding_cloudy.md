@@ -1,13 +1,13 @@
 # H2 self-shielding measured against a level-resolved CLOUDY calculation
 
-*2026-09-02. Follow-up to `TO_BE_DONE.md` item P24 and `Update_EXHALE.md`
+*2026-09-02. Follow-up to `TO_BE_DONE.md` item P24 and `Update_EXHALE_stage1.md`
 section 116.*
 
 *__Outcome__: option 2 of section 1 was chosen. The grid was extended to
 9 temperatures x 3 densities x 39 columns and tabulated in
 `src/modules/lower_atmosphere/h2_self_shielding_table.f90`; the
 photodissociation rate reads it and neither closed-form fit sets it any more.
-Section 11 below records the extended grid. `Update_EXHALE.md` section 122 is
+Section 11 below records the extended grid. `Update_EXHALE_stage1.md` section 122 is
 the changelog entry.*
 
 > **SUPERSEDED 2026-09-03 as a statement about the code. The measurements
@@ -34,7 +34,7 @@ the changelog entry.*
 >
 > **The two have opposite signs, they cross near `N_H2 = 2e20`, and below that
 > they very nearly cancel** -- which is why neither was visible when this note
-> was written, nor when `Update_EXHALE.md` section 132 turned the table into
+> was written, nor when `Update_EXHALE_stage1.md` section 132 turned the table into
 > an absolute cross section.
 >
 > **Current state.** The table in
@@ -46,7 +46,7 @@ the changelog entry.*
 > the top of the tabulated column axis, `5.0e21 cm^-2` -- replaces it. Only
 > the fluorescent trapping `p_eff/p_single` still comes from the CLOUDY runs
 > of this note, and the geometry it carries is item (P47) of `TO_BE_DONE.md`.
-> See `docs/p38_line_overlap_shielding.md` and `Update_EXHALE.md` section 135;
+> See `docs/p38_line_overlap_shielding.md` and `Update_EXHALE_stage1.md` section 135;
 > item P38 of `TO_BE_DONE.md` is closed there.
 >
 > Sections 1-11 are left as measured. The **STALE** notes inside them mark the
@@ -65,7 +65,7 @@ the changelog entry.*
 > section 11: no two-term algebraic form puts the trough and the shoulder in
 > the right places, which is why the calculation was tabulated instead of a
 > fit being chosen. The tabulated values themselves have since been replaced
-> (`Update_EXHALE.md` section 135).
+> (`Update_EXHALE_stage1.md` section 135).
 
 **In the column range where our H2 actually lives and where the CLOUDY
 calculation is still internally consistent, `1e18 <= N(H2) <= 5e20 cm^-2`,
@@ -570,7 +570,7 @@ the direction of the verdict -- only its size, and only above 1e21.
 ## 8. Two constants of the module, measured in passing
 
 > **Corrected and superseded by `docs/p39_lw_cross_section_sources.md` and
-> `Update_EXHALE` section 132 (2026-09-02).** Two statements below are wrong.
+> `Update_EXHALE_stage1` section 132 (2026-09-02).** Two statements below are wrong.
 > (i) The 0.177 is the EFFECTIVE branching, which carries the trapping of the
 > fluorescent decay photons; the single-pump branching the module's 0.135 has
 > to be compared against is **0.1466**, measured, and the two data sets agree
@@ -614,7 +614,7 @@ acted on. Note that it does not enter the comparison of sections 3-5 at all,
 which is a ratio taken inside each run.
 
 **Both constants of this section were item P39 of `TO_BE_DONE.md`, now
-closed** (`docs/p39_lw_cross_section_sources.md`, `Update_EXHALE` section 132).
+closed** (`docs/p39_lw_cross_section_sources.md`, `Update_EXHALE_stage1` section 132).
 Both sources were read. The two line data sets are the same measurements for
 this band average -- the CLOUDY files reproduce DB96's Table 1-2 to under
 1 per cent -- and the gap recorded above is line trapping, which the converged
@@ -795,7 +795,7 @@ table now carries line overlap -- see the note at the head of section 11.2.)*
 ### 11.3 Verification of the table itself
 
 *This verifies the table as section 122 installed it, i.e. the superseded one.
-The table now in the tree was verified again in `Update_EXHALE.md` section
+The table now in the tree was verified again in `Update_EXHALE_stage1.md` section
 135.*
 
 * A probe program linked against `h2_self_shielding_table.o` reproduces the
@@ -813,4 +813,4 @@ The table now in the tree was verified again in `Update_EXHALE.md` section
   byte-identical with the table and with the fit it replaced. The change to
   `mol_lyman_werner` is in the direction the measurement predicts: less
   shielding over the layer's columns, so a higher rate and a front pushed
-  inward. `Update_EXHALE.md` section 122 carries the numbers.
+  inward. `Update_EXHALE_stage1.md` section 122 carries the numbers.

@@ -338,11 +338,55 @@ OWN cell average by the largest factor that keeps rho and p above their floor,
     W_face  <-  W_avg + theta ( W_rec - W_avg )
     theta    =  min over rho and p of  (q_avg - eps)/(q_avg - q_rec)
 
-the limiter of Zhang & Shu (2010, J. Comput. Phys., 229, 8918;
-doi:10.1016/j.jcp.2010.08.016). The publisher PDF is not in `references/`, so
-only the bibliography is recorded. Two new functions carry the arithmetic,
-`positivity_scaling` (the two variables' minimum) and
+after the linear scaling limiter of Zhang and Shu (2010, J. Comput. Phys.,
+229, 8918; doi:10.1016/j.jcp.2010.08.016; the publisher PDF is
+`references/Zhang_2010JCP_229_8918.pdf`), their Section 2.2. Two new functions
+carry the arithmetic, `positivity_scaling` (the two variables' minimum) and
 `positive_variable_scaling` (one variable's share).
+
+**It is not their limiter, and the differences are recorded here** rather than
+left to the citation. Checked against the published version and measured in
+`src/tests/physics_probe/positivity_limiter_scaling.f90`:
+
+* They scale the **conserved** vector `w = (rho, m, E)` in two steps: density
+  about the cell average, their Eqs. (2.4) and (2.5) with
+  `theta_1 = min{(rho_avg - eps)/(rho_avg - rho_min), 1}`, then the whole
+  vector, their Eqs. (2.10) and (2.11), with `theta_2` the root `t_eps` of the
+  **quadratic** of their Eq. (2.12), `p[(1-t) w_avg + t w_rec] = eps`. This
+  code scales the **primitive** vector `(rho, v, p)` in one step, so its
+  `theta` is the root of a linear equation in `p`. The two numbers differ.
+  Along their path `rho`, `m` and `E` are linear in `t`, so
+  `p(t) = (gamma-1)(E - m^2/(2 rho))` is concave in `t` and never falls below
+  the straight line between `p_avg` and `p_rec` that this code interpolates:
+  at equal `eps` this `theta` is the smaller, that is the more restrictive,
+  never the less safe. MEASURED at a Mach 60 state with `eps = 1e-3 p_avg`:
+  `theta = 0.85629` here against `t_eps = 0.94910` from their Eq. (2.12).
+* Their `theta_2` is one number per **cell**, the minimum over that cell's
+  quadrature points, which is what keeps the cell average of the limited
+  polynomial equal to `w_avg` (the conservativity property their Section 2.2
+  requires). Here `theta` is one number per **face state**, so a cell whose two
+  ends are scaled by different factors no longer reconstructs to its own
+  average. MEASURED departure on a cell with both ends limited: `8.3e-2` of the
+  cell average, against round-off when the cell's minimum `theta` is used for
+  both ends.
+* Their floor is absolute, `eps = 1e-13` in their computations and
+  `eps = min_j {1e-13, rho_avg, p(w_avg)}` in their implementation flowchart.
+  Here it is relative, one unit in the last place of the cell average.
+
+What carries over is their Lemma 2.5: the limited value is a convex combination
+of an admissible cell average with the reconstruction, so it stays admissible,
+and no quadrature enters that argument. Their **Theorem 2.1 does not** carry
+over. It concludes that the next *cell average* is admissible, and its
+hypotheses are the `N`-point Legendre Gauss-Lobatto set of their Eq. (1.7) with
+`2N - 3 >= k` (a finite-volume reconstruction to two face values supplies only
+`N = 2`, which covers the `k = 1` of PLM and not the `k = 2` of WENO3; their
+Remark 2.6 names finite-volume WENO as the open implementation case) and the
+CFL condition of their Eq. (2.1), which nothing here imposes.
+
+Pressure positivity of the scaled state is not at issue in this form: `p` is
+itself one of the scaled variables, so the limited face carries the pressure
+the scaling put there and its internal energy `p/(gamma-1)` has the same sign.
+The nonlinear map that forces their quadratic has no counterpart here.
 
 **The floor.** The switch this replaces tested `q > 0`, so its floor was zero,
 and the instruction was to keep it. **Zero is not usable and the code does not
@@ -354,6 +398,27 @@ enter. The residual jump that survives at the crossing is `2.2e-16` of the
 cell average against the factor `1.7e9` the hard switch made, so the
 discontinuity is reduced to the level of the round-off the `theta = 1` branch
 already carries.
+
+**The floor is not delivered, and that is an open defect.** `eps` is one unit
+in the last place of `q_avg`, so `q_avg + theta (q_rec - q_avg)` is a
+cancellation of the same size as the floor and the result is decided by the
+rounding of the product rather than by `theta`. MEASURED over 200000
+reconstructed values that cross zero, using the production
+`positive_variable_scaling` and the production update: the delivered value is
+**exactly zero for 1013 of them** and never negative. Zero is the value this
+floor exists to avoid, since a zero face density divides in `v = m/rho` and in
+the sound speed of `Num_Fluxes.f90`. The same fact seen from the paper's side:
+at Mach 60 a floor of one ulp of `p` is nineteen decades below `E`, so the
+admissible set of their Eq. (2.6), which is stated on the conserved vector,
+cannot be tested at that floor at all. Mapping the limited face to `(rho, m, E)`
+and back returns `p = 0` where the limited pressure was `1.16e-10`.
+
+The repair is to clamp the scaled variable to the floor it was solved for,
+`q <- max(q_avg + theta (q_rec - q_avg), eps)`, which is the same number in
+exact arithmetic and delivers `eps` in all 200000 of the sweep. It is not
+applied here: it changes the bits of every run in which the limiter fires, so
+it is a proposed change waiting on a golden refresh. Runs in which
+`n_faces_positivity_limited` ends at zero are unaffected either way.
 
 **Byte-identity.** A face with `theta = 1` is left untouched rather than
 rewritten as `W_avg + 1*(W - W_avg)`, which is not bitwise `W`. A run in which
@@ -508,7 +573,7 @@ two cells away. Not implemented.
 
 ## 7. Reproduction
 
-* **Both changes are now in the tree** (`docs/Update_EXHALE.md` section 138),
+* **Both changes are now in the tree** (`docs/Update_EXHALE_stage1.md` section 138),
   where they were re-measured against the tree's own section 133 two gates and
   the refreshed block-F goldens. The numbers in sections 6.3 and 6.5 below were
   taken on the P43 working copy, which is where the blocked state exists; the

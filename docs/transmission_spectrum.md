@@ -13,9 +13,9 @@ LOS Voigt integration + disk average + instrument/rotation convolution)
 for **He I 10830 Å** and **Ly-alpha 1215.67 Å**. The new branch adds
 **H-alpha**, which absorbs out of the `n=2` hydrogen level. The `n=2`
 population is computed from the non-LTE balance of
-**Christie, Arras & Li (2013, ApJ 772, 144)** — collisions,
+**Christie, Arras & Li (2013, ApJ 772, 144)**: collisions,
 recombination cascade, two-photon decay, 2s↔2p ℓ-mixing, and
-**Ly-alpha radiative pumping** (1s↔2p) — solved as a 2×2 system for the
+**Ly-alpha radiative pumping** (1s↔2p), solved as a 2×2 system for the
 2s and 2p densities per radial cell.
 
 ## How to use
@@ -25,14 +25,14 @@ intensity `J_lya(r)` depends on whether you supply a file:
 
 *[2026-08-15 correction: EXHALE does produce `J_lya(r)` itself. Every run with
 the excited-hydrogen module writes `output/Excited_H.txt`, whose `col1` is
-`r/Rp` and `col5` is `Jlya` — under whichever of the three modes the run used
+`r/Rp` and `col5` is `Jlya`, under whichever of the three modes the run used
 (0 = parameterized, 1 = an imported LaRT RT profile, 2 = the in-line
 escape-probability RT of `lya_rt.f90`; the mode is recorded in the file
 header). It is not a drop-in for `Jlya_file`, though: the reader is
 `np.loadtxt(Jlya_file, usecols=(0,1))`, so `Excited_H.txt` has to be cut down
 to its columns 1 and 5 first.]*
 
-**Option 1 — supply `J_lya(r)` as a file.** Set `Jlya_file` in `EXHALE_transit.py`:
+**Option 1: supply `J_lya(r)` as a file.** Set `Jlya_file` in `EXHALE_transit.py`:
 
 ```python
 Jlya_file = path + '/Jlya.txt'
@@ -46,7 +46,7 @@ with a two-column text file:
 
 Template: `inputdata/Jlya.txt.example`.
 
-**Option 2 — default simple estimate (no file).** With `Jlya_file = ''`
+**Option 2: default simple estimate (no file).** With `Jlya_file = ''`
 (the default), `J_lya` is estimated following **Huang et al. (2017,
 ApJ 851, 150), Eq.(6) and related text**:
 
@@ -75,7 +75,7 @@ xi=0.5 -> ~5.2e2 erg cm^-2 s^-1 for the HD209458b input; Huang+2017 found
 2.6e4 absorbed for HD189733b). Force values with `F_LyC_override > 0`
 and/or `xi_override > 0`.
 
-This is a uniform-illumination approximation — it omits the decline of
+This is a uniform-illumination approximation: it omits the decline of
 `J_lya` deep in the atmosphere (Huang+2017 Eq.7) and the direct stellar
 Ly-alpha component; for a self-consistent profile, use Option 1.
 
@@ -151,7 +151,7 @@ center in cgs. A different convention requires rescaling the constant.
 ## Caveats
 
 - **n=2 photoionization** `Gamma_2s/Gamma_2p` is now estimated from a
-  single diluted stellar blackbody (Balmer continuum) via `T_star` — an
+  single diluted stellar blackbody (Balmer continuum) via `T_star`: an
   approximation to the true stellar near-UV spectrum. `T_star <= 0`
   reverts to the manual constants (default 0).
 - `n_e = n_HII + n_HeII + 2 n_HeIII` (plus metal electrons) from EXHALE, while
@@ -172,21 +172,21 @@ center in cgs. A different convention requires rescaling the constant.
   writes `r` plus the six H/He species (`HI HII HeI HeII HeIII HeITR`) plus all
   `n_mion = 27` metal ion stages = **34 columns**, and **38** for a molecular
   run, which appends `H2 H2p H3p HeHp`. The metal columns are written whether
-  or not metals are on. The `usecols=range(7)` sentence above is unaffected —
+  or not metals are on. The `usecols=range(7)` sentence above is unaffected:
   the first seven columns are still `r` + the six H/He species, and the schema
   header (`# columns ...`) is the thing to read for anything past them.]*
 
 ## References
 
-- Christie, D., Arras, P., & Li, Z.-Y. 2013, ApJ, 772, 144 —
+- Christie, D., Arras, P., & Li, Z.-Y. 2013, ApJ, 772, 144:
   *Hα Absorption in Transiting Exoplanet Atmospheres*
   (`references/Christie_2013ApJ_772_144.pdf`). The n=2 level-population
   method.
-- Huang, C., Arras, P., Christie, D., & Li, Z.-Y. 2017, ApJ, 851, 150 —
+- Huang, C., Arras, P., Christie, D., & Li, Z.-Y. 2017, ApJ, 851, 150:
   *A Model of the Hα and Na Transmission Spectrum of HD 189733b*
   (`references/Huang_2017_ApJ_851_150.pdf`). The default `J_lya`
   estimate (Eq. 6 and related text) and the F_LyC / Gamma_2 prescriptions.
-- Jensen, A. G., et al. 2012, ApJ, 751, 86 — transit Hα spectroscopy of
+- Jensen, A. G., et al. 2012, ApJ, 751, 86: transit Hα spectroscopy of
   HD 209458b / HD 189733b (comparison target; see
   `HD209458b/Halpha_compare_HD209458b.ipynb`).
 

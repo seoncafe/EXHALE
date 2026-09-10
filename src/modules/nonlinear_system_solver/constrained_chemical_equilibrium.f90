@@ -153,7 +153,8 @@
 	                             cx_metal_base, cx_add_to_turnover,        &
 	                             cx_set_cell
 	use lower_column,      only: q_h2_equilibrium
-	use oxygen_rates,      only: oxygen_chemical_equilibrium_fractions
+	use oxygen_rates,      only: oxygen_chemical_equilibrium_fractions, &
+	                             rk_D1_Hep_CO
 
 	implicit none
 	private
@@ -162,6 +163,11 @@
 	! cce_probe_from_dump is the entry the standalone driver calls; it is not
 	! reached by any production path.
 	public :: cce_probe_from_dump
+	! The layout of the cell's network, and the species slots and array
+	! length that index it. Read by the structural assertions of
+	! src/tests/constrained_network_layout/; no production path calls them.
+	public :: constrained_network_layout_of_cell
+	public :: is_HII, is_H2, n_species_max
 
 	! ---------------------------------------------------------------
 	! Species slots. Every species the network can carry has a fixed slot in
@@ -295,7 +301,7 @@
 	! dimensionless) of the vector hybrd1 returns. The MINPACK exit code
 	! takes no part -- info = 1 is an xtol statement about the step and
 	! info = 4 routinely returns finished roots it cannot certify
-	! (docs/Update_EXHALE.md section 113). This is the tolerance of an
+	! (docs/Update_EXHALE_stage1.md section 113). This is the tolerance of an
 	! INTERMEDIATE rung; the final candidate is judged by the caller.
 	real*8,  parameter :: rung_res_tol = 1.0d-6
 
@@ -403,7 +409,7 @@
 	integer, save :: n_conservation_row     ! H, He and each element carried
 	integer, save :: metal_base, oxygen_base
 	real*8,  save :: field_scale            ! lambda of the rung being solved
-	logical, save :: h2_is_fixed, oxygen_carriers_are_fixed
+	logical, save :: h2_is_fixed, oxygen_carriers_are_fixed, hp_is_fixed
 	real*8,  save :: nuclei_H, nuclei_He, nuclei_O
 	logical, save :: element_carried(n_melem)
 	! Does the cell carry this species at all (an absent element, the pinned
@@ -458,6 +464,7 @@
 	!$omp               n_conservation_row,                                &
 	!$omp               metal_base, oxygen_base, field_scale,              &
 	!$omp               h2_is_fixed, oxygen_carriers_are_fixed,            &
+	!$omp               hp_is_fixed,                                       &
 	!$omp               nuclei_H, nuclei_He, nuclei_O,                     &
 	!$omp               species_exists, species_fixed, row_of_species,     &
 	!$omp               species_held,                                      &
@@ -542,7 +549,7 @@
 	! it is, it must not still describe the previous cell this thread
 	! solved: a cell's equilibrium is a function of that cell's state, not
 	! of the order the sweep handed cells to threads
-	! (docs/Update_EXHALE.md section 121).
+	! (docs/Update_EXHALE_stage1.md section 121).
 	species_held(:)             = .false.
 	n_unknown                   = 0
 	n_reaction_row              = 0
@@ -799,10 +806,11 @@
 	! the answer. Such a species still appears in every reaction row and
 	! every conservation row it belongs to, but it is never an unknown and
 	! its own balance row is never a row -- one fewer unknown and one fewer
-	! row, so the system stays square. H2 and the oxygen carriers are marked
-	! independently, because H2 can be imposed on its own (the lower-boundary
-	! reservoir composition) while the oxygen carriers are imposed only by
-	! carrier transport.
+	! row, so the system stays square. H2, H+ and the oxygen carriers are
+	! marked independently, because H2 can be imposed on its own (the
+	! lower-boundary reservoir composition) while H+ is imposed by the
+	! transported ionization state ("Ionization transport") and the oxygen
+	! carriers only by carrier transport.
 
 	integer, intent(in) :: nx, mbase, iox
 	integer :: e, i
@@ -813,6 +821,7 @@
 
 	h2_is_fixed               = ieq_cell%x_h2_fixed
 	oxygen_carriers_are_fixed = ieq_cell%x_ox_fixed
+	hp_is_fixed               = ieq_cell%x_hp_fixed
 	nuclei_H  = ieq_cell%nh
 	nuclei_He = ieq_cell%nhe
 	nuclei_O  = ieq_cell%n_ofam
@@ -857,6 +866,13 @@
 		row_of_species(is_H2O) = oxygen_base + 1
 	endif
 	if (h2_is_fixed) species_fixed(is_H2) = .true.
+	! The transported ionization state owns the H+ partition of the cell:
+	! the fraction system this continuation is judged against replaces the
+	! H+ balance row by the constraint x(1) = x_hp_fix
+	! (System_HeH_mol_metals.f90 282-290), so solving that row here as a
+	! reaction row would return the LOCAL photoionization/recombination root
+	! and be measured against a row it was never asked to satisfy.
+	if (hp_is_fixed) species_fixed(is_HII) = .true.
 	if (oxygen_carriers_are_fixed .and. thereis_oxychem) then
 		species_fixed(is_OH)  = .true.
 		species_fixed(is_H2O) = .true.
@@ -955,6 +971,44 @@
 	endif
 
 	end subroutine set_rung_partition
+
+	!----------------------------------!
+
+	subroutine constrained_network_layout_of_cell(nx, mbase, iox, sden,    &
+	                              n_unknown_out, n_reaction_row_out,       &
+	                              n_conservation_row_out, is_unknown)
+	! The layout the continuation would give the cell now standing in
+	! ieq_cell, at the composition sden: how many unknowns it has, how many
+	! reaction and conservation rows, and which species slots are unknowns.
+	!
+	! It exists so that the two structural statements of the layout can be
+	! asserted without relaxing a wind: that reaction rows plus conservation
+	! rows equal unknowns (squareness), and that a species whose partition
+	! is imposed from outside the cell -- H2 by the lower-boundary reservoir,
+	! H+ by the transported ionization state, OH and H2O by carrier
+	! transport -- is not among the unknowns. It writes only the module state
+	! that set_molecular_network_layout and set_rung_partition write, which
+	! every solve rebuilds for its own cell before using.
+
+	integer, intent(in)  :: nx, mbase, iox
+	real*8,  intent(in)  :: sden(n_species_max)
+	integer, intent(out) :: n_unknown_out, n_reaction_row_out
+	integer, intent(out) :: n_conservation_row_out
+	logical, intent(out) :: is_unknown(n_species_max)
+	integer :: i
+
+	call set_molecular_network_layout(nx, mbase, iox)
+	call set_rung_partition(sden)
+
+	n_unknown_out          = n_unknown
+	n_reaction_row_out     = n_reaction_row
+	n_conservation_row_out = n_conservation_row
+	is_unknown(:) = .false.
+	do i = 1,n_unknown
+		is_unknown(species_of_unknown(i)) = .true.
+	enddo
+
+	end subroutine constrained_network_layout_of_cell
 
 	!----------------------------------!
 
@@ -1408,7 +1462,7 @@
 	! which species are floored, and, through the return below, whether the
 	! continuation is seeded at all -- a function of the order the cells
 	! happened to be handed to threads, and with it the accepted state of
-	! every class-5 cell (docs/Update_EXHALE.md section 121).
+	! every class-5 cell (docs/Update_EXHALE_stage1.md section 121).
 	do isp = 1,n_species_max
 		if (.not. seed_species_of_cell(isp)) cycle
 		sden_floor = seed_floor_fraction*element_nuclei_of_species(isp)
@@ -1461,7 +1515,7 @@
 	! electron density belonging to a different ionization state. Both are
 	! avoided by seeding at the transported fraction; the H2 partition above
 	! is handled the same way for the same reason.
-	if (ieq_cell%x_hp_fixed) then
+	if (hp_is_fixed) then
 		f1 = min(max(ieq_cell%x_hp_fix, 0.0d0), x_atomic)
 		sden(is_HII) = f1*nuclei_H
 		sden(is_HI)  = max(x_atomic*nuclei_H - sden(is_HII), 0.0d0)
@@ -1804,6 +1858,11 @@
 			-ieq_cell%a_ion_HeII*n_e*sden(is_HeII))
 		call add_term(lbl, val, nt, 'R17+R20+R23 He+ + H2',            &
 			-(mk17 + mk20 + mk23)*sden(is_HeII)*sden(is_H2))
+		! D1 He+ + CO -> C+ + O + He (RATE22 4068), the He+ loss the row
+		! of mol_heh_rows carries since B3b-CO2; n_co is the cell's CO
+		! background density (zero unless the oxygen chemistry is on).
+		call add_term(lbl, val, nt, 'D1  He+ + CO',                     &
+			-rk_D1_Hep_CO()*ieq_cell%n_co*sden(is_HeII))
 		call add_term(lbl, val, nt, 'CX gross R1 (He0 +H+)', r1)
 		call add_term(lbl, val, nt, 'CX gross R2 (He+ +H0)', -r2)
 	endif

@@ -1322,22 +1322,33 @@ level nobody chose is not a model of anything:
 * If no source states the level at all, startup stops and lists the three keys
   that can.
 
-A lower-atmosphere **profile** owns the level itself -- it sets `p_base_bar`
-from its own matching pressure -- so a profile run is outside the rule, and
-`lower_profile` is unaffected (verified: it stays byte-identical).
+A lower-atmosphere **profile** is inside the same rule. It states the level
+itself: `p_base_bar` is the profile's matching pressure `p_match_bar`, the level
+`apply_lower_atmosphere_profile` read `T0`, `R0`, `q_H2` and every elemental
+ratio at, and `n0` follows from it by the same relation. A density key given
+beside a profile therefore has to agree with it to 1% or startup stops, exactly
+as beside `p_base` (`input_read.f90`, `base_level_from_handoff`). The
+`lower_profile` case had a density key that disagreed; the key was removed from
+`examples/17_lower_profile/input.inp` and from the case, so the run now starts
+at the profile's own level and its solution changed (base density 1.0e14 ->
+5.0e12 cm^-3, printed log10 Mdot 8.44 -> 7.92 for that change alone; measured
+in `docs/Update_EXHALE.md` section 6, item 2c-BASE, not re-measured here).
 
-`write_setup_report.f90` gained one line naming the source and both numbers:
+`write_setup_report.f90` carries one line naming both numbers and the source,
+which is `base.inp p_base`, `the profile matching level p_match`,
+`"Base BC: pressure"` or `the density key`:
 
 ```
- - Base level: p =  1.0000E-06 bar (from base.inp p_base) -> n0 =  1.1690E+13 cm^-3
- - Base level: n0 =  3.0903E+12 cm^-3 (from the density key) -> p =  1.0069E-06 bar
+ - Base level: n0 =  1.1690E+13 cm^-3 -> p =  1.0000E-06 bar (level from base.inp p_base)
 ```
 
 ### 10.2 Every `p_base` in the repository disagreed with its density key
 
 The consistency check was run over all 649 `base.inp` files in the tree. 597
-carry no `p_base` (the LHS 1140 b profile runs, the benchmarks, `lower_profile`)
-and are outside the rule. **Of the 52 that do, all 52 disagreed** -- the key had
+carry no `p_base`; those of them that hand a **profile** over (the LHS 1140 b
+examples, `lower_profile`) state the level through the profile's `p_match_bar`
+and are inside the same rule, and the rest state it through the density key.
+**Of the 52 that do carry `p_base`, all 52 disagreed** -- the key had
 never actually located the base level anywhere:
 
 | group | files | `p_base` | `p` from the density key | ratio |

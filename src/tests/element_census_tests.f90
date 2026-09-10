@@ -210,6 +210,10 @@
       !        released nuclei and no more.
       real*8, allocatable :: rho(:), Tc(:), f_sp(:,:)
       real*8, allocatable :: fc(:,:), ntot(:), TK(:), mbar(:)
+      ! nrho = rho*n0, the density the carrier fraction is a fraction of, and
+      ! wfac its conversion factor: the two carrier_state outputs the write-back
+      ! and the source rows read (diffusive_photochemistry.f90, section 158).
+      real*8, allocatable :: nrho(:), wfac(:)
       real*8, allocatable :: nH_free(:), nO_free(:), nC_free(:)
       real*8, allocatable :: n0_nuc(:,:), n1_nuc(:,:), q0(:), q1(:)
       real*8 :: dev, worst
@@ -217,6 +221,7 @@
 
       allocate(rho(1-Ng:N+Ng), Tc(1-Ng:N+Ng), f_sp(1-Ng:N+Ng,n_species))
       allocate(fc(1-Ng:N+Ng,n_carrier_max), ntot(1-Ng:N+Ng))
+      allocate(nrho(1-Ng:N+Ng), wfac(1-Ng:N+Ng))
       allocate(TK(1-Ng:N+Ng), mbar(1-Ng:N+Ng))
       allocate(nH_free(1-Ng:N+Ng), nO_free(1-Ng:N+Ng), nC_free(1-Ng:N+Ng))
       allocate(n0_nuc(1-Ng:N+Ng,n_element), n1_nuc(1-Ng:N+Ng,n_element))
@@ -229,14 +234,14 @@
       enddo
 
       call element_nuclei_and_charge(rho, f_sp, n0_nuc, q0)
-      call carrier_state(rho, Tc, f_sp, fc, ntot, TK, mbar,               &
+      call carrier_state(rho, f_sp, fc, ntot, nrho, wfac, TK, mbar,       &
                          nH_free, nO_free, nC_free)
       ! E2a: a generic perturbation of the transported partition.
       fc(:,ic_H2)  = fc(:,ic_H2) *0.80d0
       fc(:,ic_OH)  = fc(:,ic_OH) *1.30d0
       fc(:,ic_H2O) = fc(:,ic_H2O)*0.60d0
       fc(:,ic_CO)  = fc(:,ic_CO) *0.90d0
-      call carrier_write_back(rho, f_sp, fc, ntot, nH_free, nO_free,      &
+      call carrier_write_back(rho, f_sp, fc, nrho, nH_free, nO_free,      &
                               nC_free)
       call element_nuclei_and_charge(rho, f_sp, n1_nuc, q1)
       call worst_departure(n0_nuc, n1_nuc, worst, jw, iew)
@@ -253,10 +258,10 @@
          bg_cell(j)%ntot = 0.5d0*rho(j)*n0
       enddo
       call element_nuclei_and_charge(rho, f_sp, n0_nuc, q0)
-      call carrier_state(rho, Tc, f_sp, fc, ntot, TK, mbar,               &
+      call carrier_state(rho, f_sp, fc, ntot, nrho, wfac, TK, mbar,       &
                          nH_free, nO_free, nC_free)
       fc(:,ic_CO) = fc(:,ic_CO)*3.8d-3      ! 2.34e9 -> 9.0e6 of section 111
-      call carrier_write_back(rho, f_sp, fc, ntot, nH_free, nO_free,      &
+      call carrier_write_back(rho, f_sp, fc, nrho, nH_free, nO_free,      &
                               nC_free)
       call element_nuclei_and_charge(rho, f_sp, n1_nuc, q1)
       call worst_departure(n0_nuc, n1_nuc, worst, jw, iew)
@@ -275,7 +280,7 @@
          enddo
       endif
 
-      deallocate(rho, Tc, f_sp, fc, ntot, TK, mbar)
+      deallocate(rho, Tc, f_sp, fc, ntot, TK, mbar, nrho, wfac)
       deallocate(nH_free, nO_free, nC_free, n0_nuc, n1_nuc, q0, q1)
       end subroutine test_E2
 

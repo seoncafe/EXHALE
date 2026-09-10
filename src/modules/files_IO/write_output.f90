@@ -4,37 +4,54 @@
       use global_parameters
       use utils, only: write_row_layout_header,                        &
                        write_coupling_state_header,                      &
-                       write_provenance_header
+                       write_provenance_header,                          &
+                       state_is_certified, state_certification_reason
+      ! THE CONFIGURATION THE STATE IN THIS FILE IS A STATE OF
+      ! (docs/restart_contract_design_20260909.md section 3). The block is
+      ! built and parsed in one place, the module that reads a restart file,
+      ! so the writer and the loader cannot disagree about its fields.
+      use IC_load, only: write_restart_metadata_header
       use species_table, only: n_mion, mion_name, im_OI, melem_i0,       &
                                iel_O, iel_C
       use ionization_equilibrium, only: nmol_eq,   &  ! molecular columns
                                        NH2_col_lw, f_shield_lw, k_lw_diss, &
-                                       p_lw_single, p_lw_absorbed,         &
+                                       p_lw_single,                        &
                                        tr_lines_lw, a_lines_lw, P_H2_eq,   &
                                        NH2_db96_max, lw_col_over_overlap,  &
                                        nox_eq, n_o1d_eq,                   &
                                        NH2O_col, NOH_col,                  &
+                                       NCO_col, k_co_diss,                 &
+                                       theta_co_shield,                    &
                                        j_h2o_fuv, j_oh_fuv, tau_fuv,       &
                                        heat_fuv
-      use utils_ion_eq, only: fuv_band_flux
+      use utils_ion_eq, only: fuv_band_flux,                             &
+                              fuv_band_absorption_ledger,                 &
+                              heat_channel_state, ih_H2_LW_dissoc
+      ! The CO share of the Lyman-Werner beam's ledger: the mean photon
+      ! energy of a CO dissociation event and the fragment kinetic energy
+      ! it leaves.  Both are the assembly's own constants, read here for a
+      ! COLUMN-INTEGRATED aggregate of one band; the deposit of one cell is
+      ! formed only in heating_of_composition
+      ! (src/tests/physics_probe/heating_sum_uniqueness.py records this
+      ! file as the one exception and why).
       use Cooling_Coefficients, only: base_sky_fraction
       use molecular_infrared_cooling, only: h2_line_emission_lte,          &
                             h2o_band_emission_lte, co_band_emission_lte,   &
                             h2_line_net_cooling_rate,                     &
                             h2o_band_net_cooling_rate,                    &
                             co_band_net_cooling_rate
-      use h2_vibrational_relaxation, only: h2_vibrational_heat_fraction,   &
-                                          h2_energy_per_bound_fluorescence_erg
-      use lyman_werner_photodissociation, only: e_lw_fragment_erg,         &
-                                       e_lw_photon_erg
       use water_photolysis, only: n_fuv_band, fuv_band_name,               &
                                        sigma_H2O_band, sigma_OH_band,      &
                                        e_photon_H2O_band, e_photon_OH_band,&
                                        e_photon_flat_band,                 &
                                        fuv_band_photon_flux,               &
-                                       heat_per_water_dissociation,        &
-                                       heat_per_hydroxyl_dissociation,     &
-                                       ib_LW
+                                       ib_LW, ib_B2
+      ! Band B2 is the H I Ly-alpha line, so the transmission of its beam is
+      ! the fraction of the stellar line that penetrates the atomic hydrogen
+      ! column and not exp(-tau).  ONE definition of it, the one the band
+      ! rate is built from (util_ion_eq.f90).
+      use lya_rt, only: lya_line_center_optical_depth,                     &
+                        lya_stellar_beam_transmission
       use oxygen_rates, only: rk_O1_OH_H2_water, rk_O2_O_H2_hydroxyl,     &
                               rate_from_detailed_balance,                 &
                               ith_H, ith_H2, ith_O, ith_OH, ith_H2O
@@ -47,7 +64,9 @@
       use Cooling_Coefficients, only: ioniz_HeI23S_H2
       use diffusive_photochemistry, only: carrier_diffusion_coefficient,   &
                                           carrier_transport_diagnostics,   &
-                                          carrier_co_ceiling_cells, ic_H2
+                                          ic_H2,                           &
+                                          carrier_co_domain_record,        &
+                                          carrier_co_domain_f_dom, ic_CO
       use utils, only: calc_ne, calc_ntot
       ! O I ground-term statistical equilibrium: the same solution the
       ! [O I] fine-structure cooling is built on (Cool_coeff.f90).
@@ -55,11 +74,76 @@
                                       fine_structure_line_transfer,    &
                                       oxygen_ground_term_levels
 
+      ! THE VALIDITY OF EACH ROW OF THE ADVECTION-CORRECTED FILES, in two
+      ! fields: adv_T_status for the temperature of the row and
+      ! adv_comp_status for its composition.  The advection post-process
+      ! (post_process_adv) solves the STEADY energy and ionization equations
+      ! along the recorded flow, and those are two separate statements about
+      ! a cell: a row whose temperature was corrected can carry the run's own
+      ! composition and the reverse, so one integer naming the first refusal
+      ! cannot describe the row.
+      !
+      ! ONE definition, used by the module that assigns the values and by the
+      ! writer that labels the columns.  The schema is VERSIONED: a file with
+      ! no '# adv_schema' line carries the single field of an earlier writer,
+      ! and the validity of its rows is UNKNOWN, not corrected.
+      integer, parameter :: adv_schema_version = 2
+      ! The steady correction was solved and adopted for this row.  It is
+      ! a CONDITIONAL correction: accurate to adv_conditional_tol of itself
+      ! in the mass flux, the fraction the row's own measure was compared
+      ! with (adv_mass_row, below).
+      integer, parameter :: adv_corrected = 0
+      ! The run's own value was kept.  Three conditions do that, and all
+      ! three are statements about the flow rather than about the solve: the
+      ! mass row of the cell, measured by the same face-flux operator the
+      ! stationary certification uses, stands above adv_conditional_tol (so
+      ! the steady equations of the correction drop terms as large as that
+      ! fraction of the ones they keep), the local radiative balance rather
+      ! than the flow sets the temperature (thermal Damkohler number above
+      ! one), or the gas enters the cell and the upwind difference has no
+      ! upstream state.
+      integer, parameter :: adv_retained = 1
+      ! The correction was attempted and its solve did not converge, or its
+      ! root left the range a state of this gas can occupy.
+      integer, parameter :: adv_failed = 2
+      ! The closure does not cover this row.  The post-process reconstructs
+      ! an H/He + trace-metal gas and omits the molecular (H2 H2+ H3+ HeH+)
+      ! and oxygen (OH H2O CO) carriers from its particle and electron
+      ! counts, so a cell in which those omitted species carry more of the
+      ! particle count than the species it does carry is a cell class it does
+      ! not model.
+      integer, parameter :: adv_unsupported = 3
+      ! The post-process did not reach this row: a ghost row below the first
+      ! cell at which the upwind difference of its equations can be taken.
+      integer, parameter :: adv_not_evaluated = 4
+
+      ! THE CONDITION UNDER WHICH A ROW IS A CORRECTION, and the accuracy
+      ! that condition buys.  The advective correction of a cell is a steady
+      ! integral along the recorded flow, and the flow it integrates along
+      ! carries a fractional change of the face mass flux across the cell,
+      ! m_j = |R_1(j)|/s_1(j) (the adv_mass_row column, and the mass row of
+      ! the stationary certification).  The correction is first order in
+      ! m_j: the terms it drops are the ones the mass divergence puts into
+      ! the steady equations, each of them m_j times a term the equations
+      ! keep.  So a row whose m_j is at or below this fraction is a
+      ! CONDITIONAL correction accurate to that fraction of itself, and a
+      ! row above it is not corrected at all and keeps the run's own value.
+      !
+      ! 1e-2 is the fraction, so a corrected row is accurate to about one
+      ! percent of itself in the mass flux.  It is not the tolerance of a
+      ! certified stationary state: that is cert_tol_mass, the number the
+      ! stationary certification judges the whole state by, reported
+      ! separately in the '# adv_input_certified' line.  The two are
+      ! different statements about the same measure and the file carries
+      ! both.
+      real*8, parameter :: adv_conditional_tol = 1.0d-2
+
       contains
 
       subroutine write_output(rho,v,p,T,heat,cool,eta,                &
                               nhi,nhii,nhei,nheii,nheiii,nheiTR,      &
-                              nm,flag)
+                              nm,flag,adv_T_status,adv_comp_status,        &
+                              adv_mass_row)
       ! Metal ion densities are passed as the 2D array nm(:, 1:n_mion),
       ! one column per metal ion stage in the canonical species_table
       ! order (CI, CII, CIII, OI, ..., MgIII). This keeps the argument
@@ -82,10 +166,29 @@
       real*8, dimension(1-Ng:N+Ng), intent(in) :: nhei,nheii,nheiii
       real*8, dimension(1-Ng:N+Ng), intent(in) :: nheiTR
       real*8, dimension(1-Ng:N+Ng,n_mion), intent(in) :: nm
+      ! Present only for the advection-corrected write, where the pair
+      ! carries the validity of each row's temperature and of its
+      ! composition (the parameters above). Absent for the equilibrium
+      ! write, whose rows are the run's own solution by construction, and
+      ! then no such column is written.
+      integer, dimension(1-Ng:N+Ng), intent(in), optional :: adv_T_status
+      integer, dimension(1-Ng:N+Ng), intent(in), optional :: adv_comp_status
+      ! The measure the two fields were decided by, row by row: the
+      ! fractional change of the face mass flux across the cell, so that a
+      ! reader has the CONDITION of every row and not only its verdict.
+      ! One group with the two fields above: the advection-corrected write
+      ! passes all three.
+      real*8, dimension(1-Ng:N+Ng), intent(in), optional :: adv_mass_row
+      ! That measure as written, zero where the post-process did not form
+      ! it (a row it never reached).
+      real*8, dimension(1-Ng:N+Ng) :: mrow
 
-      
-      !---- Write thermodynamic profiles ----! 
-          
+
+      mrow = 0.0d0
+      if (present(adv_mass_row)) mrow = adv_mass_row
+
+      !---- Write thermodynamic profiles ----!
+
       if (flag.eq.'eq') then
       	open(unit = 2, file = './output/Hydro_ioniz.txt')
 	   else	! Change output file after postprocessing
@@ -98,8 +201,14 @@
       ! included under the eos_metals policy), not a number density. Multiply by
       ! m_H to get g/cm^3.
       write(2,'(A)') '# EXHALE schema 2'
-      write(2,'(A)') '# columns r[Rp] rho[mH/cm3] v[cm/s] p[cgs] T[K] '//   &
-                     'heat[erg/cm3/s] cool[erg/cm3/s]'
+      if (present(adv_T_status)) then
+         write(2,'(A)') '# columns r[Rp] rho[mH/cm3] v[cm/s] p[cgs] '//     &
+                        'T[K] heat[erg/cm3/s] cool[erg/cm3/s] '//           &
+                        'adv_T_status adv_comp_status adv_mass_row'
+      else
+         write(2,'(A)') '# columns r[Rp] rho[mH/cm3] v[cm/s] p[cgs] '//     &
+                        'T[K] heat[erg/cm3/s] cool[erg/cm3/s]'
+      endif
       ! Which rows are physical. The loop below writes 1-Ng..N+Ng, so the
       ! first Ng and the last Ng rows are GHOST cells, filled by Apply_BC
       ! from the interior (lower: fixed base state; upper: zero-gradient /
@@ -116,14 +225,36 @@
          ! this is the file the line has to travel in.
          call write_coupling_state_header(2)
          call write_provenance_header(2)
+         ! The reservoir, species schema, physical grid, constants, options
+         ! and clock the state was produced under: what a restart of this
+         ! file is compared against (see the routine).
+         call write_restart_metadata_header(2)
+         ! What the two status columns mean, what the stationarity of the
+         ! input was judged by, what the product is, and how many rows carry
+         ! each value (see the routine).
+         if (present(adv_T_status))                                         &
+            call write_adv_validity_header(2, adv_T_status, adv_comp_status)
          do j = 1-Ng,N+Ng
-            write(2,*) r(j),        &     ! Rad. dist.
-                     rho(j)*n0,     &     ! Density
-                     v(j)*v0,       &     ! Velocity
-                     p(j)*p0,       &     ! Pressure
-                     T(j)*T0,       &     ! Temperature
-                     heat(j)*q0,    &     ! Rad. heat.
-                     cool(j)*q0           ! Rad. cool.
+            if (present(adv_T_status)) then
+               write(2,*) r(j),        &     ! Rad. dist.
+                        rho(j)*n0,     &     ! Density
+                        v(j)*v0,       &     ! Velocity
+                        p(j)*p0,       &     ! Pressure
+                        T(j)*T0,       &     ! Temperature
+                        heat(j)*q0,    &     ! Rad. heat.
+                        cool(j)*q0,    &     ! Rad. cool.
+                        adv_T_status(j),  &  ! Validity of its temperature
+                        adv_comp_status(j),& ! Validity of its composition
+                        mrow(j)              ! The measure both were decided by
+            else
+               write(2,*) r(j),        &     ! Rad. dist.
+                        rho(j)*n0,     &     ! Density
+                        v(j)*v0,       &     ! Velocity
+                        p(j)*p0,       &     ! Pressure
+                        T(j)*T0,       &     ! Temperature
+                        heat(j)*q0,    &     ! Rad. heat.
+                        cool(j)*q0           ! Rad. cool.
+            endif
          enddo
       close(2)
       
@@ -162,12 +293,46 @@
       if (thereis_mol) write(3,'(A)', advance='no') ' H2 H2p H3p HeHp'
       ! oxygen-carrier columns (present only when thereis_oxychem)
       if (thereis_oxychem) write(3,'(A)', advance='no') ' OH H2O CO'
+      ! The validity of each row travels with the species columns as well,
+      ! so a reader of this file alone can tell a corrected composition from
+      ! the run's own (see write_adv_validity_header).
+      if (present(adv_T_status)) write(3,'(A)', advance='no')            &
+                                   ' adv_T_status adv_comp_status'
       write(3,'(A)') ''
 
       call write_row_layout_header(3)
+      ! Both state files carry the block: they are two halves of one state,
+      ! and a restart reads both, so a pair whose halves state different
+      ! configurations is refused rather than half-loaded.
+      call write_restart_metadata_header(3)
+      if (present(adv_T_status))                                         &
+         call write_adv_validity_header(3, adv_T_status, adv_comp_status)
       do j = 1-Ng,N+Ng
 
-         if (thereis_oxychem) then
+         if (present(adv_T_status)) then
+            ! The advection-corrected write. Its own statements, kept apart
+            ! from the equilibrium ones below so that the equilibrium file
+            ! is written by the statements it always was.
+            if (thereis_oxychem) then
+               write(3,*) r(j), nhi(j)*n0, nhii(j)*n0, nhei(j)*n0,       &
+                        nheii(j)*n0, nheiii(j)*n0, nheiTR(j)*n0,         &
+                        (nm(j,i)*n0, i = 1,n_mion),                      &
+                        (nmol_eq(j,i), i = 1,4),                         &
+                        (nox_eq(j,i), i = 1,3),                          &
+                        adv_T_status(j), adv_comp_status(j)
+            else if (thereis_mol) then
+               write(3,*) r(j), nhi(j)*n0, nhii(j)*n0, nhei(j)*n0,       &
+                        nheii(j)*n0, nheiii(j)*n0, nheiTR(j)*n0,         &
+                        (nm(j,i)*n0, i = 1,n_mion),                      &
+                        (nmol_eq(j,i), i = 1,4),                         &
+                        adv_T_status(j), adv_comp_status(j)
+            else
+               write(3,*) r(j), nhi(j)*n0, nhii(j)*n0, nhei(j)*n0,       &
+                        nheii(j)*n0, nheiii(j)*n0, nheiTR(j)*n0,         &
+                        (nm(j,i)*n0, i = 1,n_mion),                      &
+                        adv_T_status(j), adv_comp_status(j)
+            endif
+         else if (thereis_oxychem) then
             write(3,*) r(j), nhi(j)*n0, nhii(j)*n0, nhei(j)*n0,        &
                      nheii(j)*n0, nheiii(j)*n0, nheiTR(j)*n0,          &
                      (nm(j,i)*n0, i = 1,n_mion),                       &
@@ -197,25 +362,35 @@
       ! post-process is atomic and does not re-solve the molecules).
       ! It is the record of how deep the band penetrates: f_shield -> 1 in
       ! the thin wind above the H2 -> H front and collapses in the
-      ! self-shielded molecular base.  The f_shield column is the factor
-      ! the RATE carries, i.e. the level-resolved overlapping-line table of
-      ! h2_self_shielding_table -- NEITHER published fit is called by the
-      ! rate any more (lyman_werner.f90 sec. 2); the band share the H2 lines take from
-      ! the shared FUV beam is a separate quantity on a separate fit
-      ! (lyman_werner.f90 sec. 2); it matters only when the oxygen
-      ! chemistry shares the band, and is reported in output/FUV_bands.txt
-      ! when it does.
+      ! self-shielded molecular base.  The f_shield column is a DIAGNOSTIC:
+      ! h2_self_shielding_level_resolved, the ratio
+      ! sigma_diss(N)/sigma_diss(N_bottom) of the level-resolved
+      ! overlapping-line table of h2_self_shielding_table at the cell's own
+      ! star-ward H2 column (lyman_werner.f90 sec. 2).  The k_LW column next
+      ! to it is not this factor times anything: it is the incident band
+      ! photon fluence contracted with the same tabulated sigma_diss and the
+      ! 912-1201 A continuum, averaged over the cell between its two faces
+      ! (lyman_werner_dissociation_rate_cell_mean).  The SHARE of the band
+      ! the H2 lines take out of the shared FUV beam is the column integral
+      ! of the pump cross section of the SAME table
+      ! (h2_lw_band_photon_fraction_absorbed, lyman_werner.f90 sec. 2g); it
+      ! matters only when the oxygen chemistry shares the band, and is
+      ! reported in output/FUV_bands.txt when it does.
       if (thereis_mol .and. F_LW_star .gt. 0.0d0 .and. flag .eq. 'eq') then
          open(unit = 4, file = './output/Lyman_Werner.txt')
          write(4,'(A)') '# EXHALE schema 2'
          write(4,'(A,ES12.5,A)') '# Lyman-Werner band flux at the planet: ', &
-                        F_LW_star, ' erg cm^-2 s^-1 (912-1110 A)'
+                        F_LW_star, ' erg cm^-2 s^-1 (912-1201 A)'
          write(4,'(A,F6.3,A,ES12.5)') '# dayside dilution applied: ',      &
                         dayside_dilution(), '  -> beam driving k_LW: ',    &
                         fuv_band_flux(ib_LW)
          write(4,'(A)') '# columns r[Rp] T[K] x_H2[2nH2/nH] nH2[cm^-3] '//  &
                         'NH2_star[cm^-2] f_shield k_LW[1/s] '//             &
                         'heat_LW[erg/cm3/s]'
+         write(4,'(A)') '# heat_LW is the Lyman-Werner fragment channel'//  &
+                        ' of the heating assembly as the sweep deposited'
+         write(4,'(A)') '# it, not a second evaluation of it: one energy,'//&
+                        ' one place it is formed.'
          call write_row_layout_header(4)
          do j = 1-Ng,N+Ng
             nh_lw = (nhi(j) + nhii(j))*n0                                  &
@@ -225,7 +400,7 @@
                        2.0d0*nmol_eq(j,1)/max(nh_lw,1.0d-99),              &
                        nmol_eq(j,1), NH2_col_lw(j), f_shield_lw(j),        &
                        k_lw_diss(j),                                       &
-                       k_lw_diss(j)*nmol_eq(j,1)*e_lw_fragment_erg
+                       heat_channel_state(j,ih_H2_LW_dissoc)
          enddo
          close(4)
       endif
@@ -307,6 +482,137 @@
       ! End of subroutine
       end subroutine write_output
 
+      ! ------------------------------------------------------------------ !
+
+      subroutine write_adv_validity_header(unit, T_status, comp_status)
+      ! WHAT THE ADVECTION-CORRECTED FILES ARE, AND WHICH ROWS OF THEM CAN
+      ! BE READ AS A STEADY SOLUTION.  One author for the block, so that
+      ! Hydro_ioniz_adv.txt and Ion_species_adv.txt cannot disagree about
+      ! the validity of the same row.
+      !
+      ! The block carries six things a reader of the file alone cannot
+      ! otherwise know:
+      !
+      !   the schema version, so that a file written before the two fields
+      !   existed is read as UNKNOWN validity and not as a corrected one;
+      !   the meaning of every value of both fields;
+      !   the counts, taken from the columns written next to them, so the
+      !   header and the columns cannot drift apart;
+      !   the operator each row was judged by, whose value for every row is
+      !   a column of the file, and the fraction a corrected row is
+      !   accurate to (adv_conditional_tol);
+      !   whether the INPUT state passed the stationary certification,
+      !   which is a statement about the whole state and not about a row;
+      !   what the product is, and the closure's own restrictions.
+      integer, intent(in) :: unit
+      integer, dimension(1-Ng:N+Ng), intent(in) :: T_status, comp_status
+      integer, dimension(0:4) :: nT, nc
+      integer :: j, ist
+
+      nT = 0;  nc = 0
+      do j = 1-Ng,N+Ng
+         ist = T_status(j)
+         if (ist .ge. 0 .and. ist .le. 4) nT(ist) = nT(ist) + 1
+         ist = comp_status(j)
+         if (ist .ge. 0 .and. ist .le. 4) nc(ist) = nc(ist) + 1
+      enddo
+
+      write(unit,'(A,I0)') '# adv_schema ', adv_schema_version
+      write(unit,'(A)') '# adv_T_status validity of the temperature of'//  &
+                     ' the row: 0 corrected (the steady energy'
+      write(unit,'(A)') '#   equation was solved and adopted), 1'//        &
+                     ' retained (the run''s own T kept: the mass'
+      write(unit,'(A)') '#   row of the cell is above the fraction'//      &
+                     ' below, or the local radiative balance rather'
+      write(unit,'(A)') '#   than the flow sets it, or the gas enters'//   &
+                     ' the cell), 2 failed (the cell solve did not'
+      write(unit,'(A)') '#   converge or returned an out-of-band'//        &
+                     ' root), 3 unsupported (the closure does not'
+      write(unit,'(A)') '#   cover this cell class), 4 not_evaluated'//    &
+                     ' (the post-process did not reach this row).'
+      write(unit,'(A)') '# adv_comp_status the same five values for the'// &
+                     ' COMPOSITION of the row: 0 the steady'
+      write(unit,'(A)') '#   advection-ionization solution, 1 the'//       &
+                     ' equilibrium composition of the run, 2 a cell'
+      write(unit,'(A)') '#   solve that did not converge, 3 a cell'//      &
+                     ' class the reconstruction does not model, 4 not'
+      write(unit,'(A)') '#   reached. 3 and 4 are structural and stand'//  &
+                     ' above 0, 1 and 2, which name the flow and the'
+      write(unit,'(A)') '#   solve; the two fields are independent, so'//  &
+                     ' a corrected T can carry a retained'
+      write(unit,'(A)') '#   composition and the reverse.'
+      write(unit,'(A,5(1x,i0),A,5(1x,i0))') '# adv_status_counts T',       &
+                     (nT(ist), ist = 0,4), ' comp', (nc(ist), ist = 0,4)
+      write(unit,'(A)') '# adv_mass_row the measure both fields were'//    &
+                     ' decided by, for every row of'
+      write(unit,'(A)') '#   Hydro_ioniz_adv.txt: the operator below,'//   &
+                     ' against the fraction below it. It is the'
+      write(unit,'(A)') '#   CONDITION of the row, so a reader can'//      &
+                     ' weigh a corrected row rather than only count it.'
+      if (state_is_certified) then
+         ! The reason survives a certified state too: 'certified_in_wind'
+         ! says the species rows below the wind radius were reported and
+         ! did not gate (decision 22).
+         write(unit,'(A)') '# adv_input_certified T the input state'//      &
+                     ' passed the stationary certification '//             &
+                     trim(state_certification_reason)
+      else if (len_trim(state_certification_reason) .gt. 0) then
+         write(unit,'(A)') '# adv_input_certified F '//                     &
+                     trim(state_certification_reason)//                     &
+                     ' (see the certification report of the run)'
+      else
+         write(unit,'(A)') '# adv_input_certified F no certification was'// &
+                     ' made on the input state'
+      endif
+      write(unit,'(A)') '# adv_stationarity_operator face_flux_mass the'// &
+                     ' mass row of the state, |R_1|/s_1 with s_1 the'
+      write(unit,'(A)') '#   row''s own largest term, which is the'//      &
+                     ' fractional change of the FACE mass flux across'
+      write(unit,'(A)') '#   the cell; the same operator the stationary'// &
+                     ' certification measures that row by, and its'
+      write(unit,'(A)') '#   value for every row is the adv_mass_row'//    &
+                     ' column of Hydro_ioniz_adv.txt.'
+      write(unit,'(A,ES8.1,A)') '# adv_conditional_tol ',                  &
+                     adv_conditional_tol, ' the correction of a'//          &
+                     ' corrected row is accurate to this'
+      write(unit,'(A)') '#   fraction of itself in the mass flux: the'//   &
+                     ' terms the correction drops are the ones the'
+      write(unit,'(A)') '#   mass divergence puts into the steady'//       &
+                     ' equations, each of them adv_mass_row times a'
+      write(unit,'(A)') '#   term they keep, so the product is FIRST'//    &
+                     ' ORDER in that measure. A row at or below this'
+      write(unit,'(A)') '#   fraction is corrected and is a'//             &
+                     ' CONDITIONAL correction to it; a row above it is'
+      write(unit,'(A)') '#   retained. This is not the tolerance of a'//   &
+                     ' certified stationary state, which is a'
+      write(unit,'(A)') '#   statement about the WHOLE state and is'//     &
+                     ' reported in the adv_input_certified line.'
+      write(unit,'(A)') '# adv_product a ONE-WAY correction on the'//      &
+                     ' density and velocity field of the input state:'
+      write(unit,'(A)') '#   rho and v are written back unchanged and'//   &
+                     ' nothing solved here feeds back into them. A'
+      write(unit,'(A)') '#   converged scalar temperature solve'//         &
+                     ' therefore does NOT make the row a'
+      write(unit,'(A)') '#   self-consistent solution: the momentum and'// &
+                     ' mass balances of the corrected pressure were'
+      write(unit,'(A)') '#   not re-solved, and a profile assembled'//     &
+                     ' from corrected and retained cells need not'
+      write(unit,'(A)') '#   satisfy any interface balance.'
+      write(unit,'(A)') '# adv_model_restrictions the post-process'//      &
+                     ' reconstructs an H/He + trace-metal gas: the'
+      write(unit,'(A)') '#   molecular (H2 H2p H3p HeHp) and oxygen'//     &
+                     ' (OH H2O CO) columns are NOT advection'
+      write(unit,'(A)') '#   corrected and are the equilibrium'//          &
+                     ' solution, those species are absent from the'
+      write(unit,'(A)') '#   particle and electron counts every'//         &
+                     ' equation here is solved with, and the H3+'
+      write(unit,'(A)') '#   infrared cooling is absent from its'//        &
+                     ' energy balance, so the metal and H/He columns'
+      write(unit,'(A)') '#   inside a molecular layer inherit that'//      &
+                     ' approximation.'
+
+      end subroutine write_adv_validity_header
+
       !-------------------------------------------------------------!
 
       subroutine write_oxygen_chemistry(v, T, nhi, nhii, nhei, nheii,     &
@@ -372,7 +678,25 @@
            'mol-ion return R6R9R11' /)
       real*8 :: dr_cm, absph(n_fuv_band), absen(n_fuv_band)
       real*8 :: heat_col(n_fuv_band), bond_col(n_fuv_band)
-      real*8 :: nph_b, expected, relerr, worst, e_lw_abs, e_lw_in, ph_lw
+      real*8 :: nph_b, relerr, worst, e_lw_abs, e_lw_in, ph_lw
+      real*8 :: NH2_out_lw, tau_out_lw
+      ! The G4 ledger.  cont_ph and cont_beam carry the H2O and OH continuum
+      ! alone -- the part of a band that must close cell by cell -- while
+      ! absph and absen carry every rated absorber, so in the shared
+      ! Lyman-Werner band they also hold the H2 pumps.  beam_loss is what the
+      ! beam itself loses over the column, and tr_line_in the transmission of
+      ! the band's LINE absorber at the innermost face.
+      real*8 :: cont_ph(n_fuv_band), cont_beam(n_fuv_band)
+      real*8 :: beam_loss(n_fuv_band), tr_line_in(n_fuv_band)
+      real*8 :: unrated(n_fuv_band), unrated_f(n_fuv_band)
+      real*8 :: a_cell, dtau_col, dn_h2o, dn_oh, dn_h2, dn_co
+      ! How far the H2O density written here has moved from the one the
+      ! photon field was built on, as a fraction of the cell's own column
+      ! increment, and where the worst cell of the column is.
+      real*8 :: drift_worst, drift_r, dstate
+      ! Line-centre H I Ly-alpha depth of the state this file writes, for the
+      ! B2 beam transmission.
+      real*8, dimension(1-Ng:N+Ng) :: tau_lya_col
       ! How much of the oxygen and the carbon the option has moved out of
       ! the atomic coolants, and where.
       ! Column-integrated infrared exchange of the molecular bands, per unit
@@ -380,6 +704,13 @@
       ! their difference. Index 1 H2, 2 H2O, 3 CO.
       real*8 :: ir_emit(3), ir_abs(3), ir_e, ir_n, w_ir, ir_bound
       real*8 :: nO_el, nC_el, fO_mol, fC_mol, fO_worst, fC_worst
+      ! The domain record of the one-sided CO destruction model.
+      integer :: dom_out, dom_hot, dom_hep
+      real*8  :: dom_ratio, dom_r, dom_form
+      ! The CO row of the Lyman-Werner ledger: photons removed, the energy
+      ! they carry and the share of it that reaches the gas, all per unit
+      ! area of the star-ward column.
+      real*8  :: co_ph, co_en, co_heat, co_share
       real*8 :: rO_worst, rC_worst, TO_worst, TC_worst
 
       open(unit = 74, file = './output/Oxygen_chemistry.txt')
@@ -458,20 +789,72 @@
          write(74,'(A,I0)')     '# limited_cells  ', ct_nlim
          write(74,'(A,ES12.4)') '# worst_overshoot', ct_worst
          write(74,'(A)') '#'
-         write(74,'(A)') '# co_ceiling_cells: cells in which the'//       &
-                     ' transported CO was cut back to the CO <-> C + O'
-         write(74,'(A)') '# chemical equilibrium of their own (n, T).'//  &
-                     ' Decision D4 makes CO chemically inert, and'
-         write(74,'(A)') '# transported that would mean'//                &
-                     ' INDESTRUCTIBLE: the wind would carry it to'
-         write(74,'(A)') '# 2e4 K and hold the whole oxygen and carbon'//&
-                     ' inventory there. Where the equilibrium'
-         write(74,'(A)') '# forbids CO it is removed; where the'//        &
-                     ' equilibrium allows it the transported value'
-         write(74,'(A)') '# stands, so this is a one-sided constraint'// &
-                     ' and not a return to equilibrium.'
-         write(74,'(A,I0)') '# co_ceiling_cells ',                       &
-                     carrier_co_ceiling_cells()
+         write(74,'(A)') '# THE DOMAIN OF THE ONE-SIDED CO'//            &
+                     ' DESTRUCTION MODEL. The CO row destroys CO --'
+         write(74,'(A)') '# He+ + CO -> C+ + O + He (UMIST RATE22'//     &
+                     ' 4068) and CO + hv -> C + O on the 912-1201 A'
+         write(74,'(A)') '# beam with the Visser et al. (2009)'//        &
+                     ' shielding function -- and never forms it. What'
+         write(74,'(A)') '# makes that legitimate in a cell is'//        &
+                     ' tau_dest << tau_res << tau_form, with'
+         write(74,'(A)') '# tau_res = min(r/|v|, dr^2/(D_CO + K_zz)).'//&
+                     ' The record is INFORMATIONAL: the rates are on'
+         write(74,'(A)') '# everywhere, and where the ordering fails'// &
+                     ' it is the omitted FORMATION that fails with'
+         write(74,'(A)') '# it, so the transported value stands, which'//&
+                     ' is what a transport operator should do in a'
+         write(74,'(A)') '# quenched layer.'
+         write(74,'(A)') '#   The three counts are CELL VISITS'//     &
+                     ' summed over every carrier interval of the run,'
+         write(74,'(A)') '#   not distinct cells: what they say is'//    &
+                     ' whether the model was ever out of domain and'
+         write(74,'(A)') '#   how much of the integration was, and'//    &
+                     ' they are not rolled back by a refused step,'
+         write(74,'(A)') '#   because whether a state was in domain'//   &
+                     ' has an answer whether or not the step that'
+         write(74,'(A)') '#   read it was accepted.'
+         write(74,'(A)') '#   dom_cells_out   cell visits with'//        &
+                     ' tau_dest > f_dom tau_res'
+         write(74,'(A)') '#   dom_worst_ratio the largest'//             &
+                     ' tau_dest/tau_res reached, and where'
+         write(74,'(A)') '#   dom_form_ratio  the largest'//             &
+                     ' tau_res/tau_form reached (RATE22 8597,'
+         write(74,'(A)') '#                   C + O -> CO + photon);'//  &
+                     ' the second inequality asks it to be small'
+         write(74,'(A)') '#   dom_cells_hot   cell visits above the'// &
+                     ' 512 K excitation-temperature limit of the'
+         write(74,'(A)') '#                   shielding table, where'// &
+                     ' Visser et al. state a factor of two'
+         write(74,'(A)') '#   dom_cells_HeP   cell visits in which'//  &
+                     ' the He+ channel removes He+ faster than'
+         write(74,'(A)') '#                   recombination does, so'//  &
+                     ' this reaction is the leading He+ loss of'
+         write(74,'(A)') '#                   the cell; the sweep'//     &
+                     ' He+ row carries it, and the count measures'
+         write(74,'(A)') '#                   the lag of the operator'// &
+                     ' split between the two'
+         call carrier_co_domain_record(dom_out, dom_hot, dom_hep,        &
+                                       dom_ratio, dom_r, dom_form)
+         write(74,'(A,ES12.4)') '# dom_f_dom       ',                    &
+                     carrier_co_domain_f_dom()
+         write(74,'(A,I0)')     '# dom_cells_out   ', dom_out
+         write(74,'(A,ES12.4)') '# dom_worst_ratio ', dom_ratio
+         write(74,'(A,ES12.4)') '# dom_worst_r     ', dom_r
+         write(74,'(A,ES12.4)') '# dom_form_ratio  ', dom_form
+         write(74,'(A,I0)')     '# dom_cells_hot   ', dom_hot
+         write(74,'(A,I0)')     '# dom_cells_HeP   ', dom_hep
+      else
+         write(74,'(A)') '#'
+         write(74,'(A)') '# CO IS AN EQUILIBRIUM CLOSURE IN THIS RUN.'// &
+                     ' Without the carrier transport there is no CO'
+         write(74,'(A)') '# balance row to carry the two destruction'// &
+                     ' rates, so CO is the CO <-> C + O chemical'
+         write(74,'(A)') '# equilibrium of each cell''s own (n, T).'//   &
+                     ' That is a closure with its own domain and not'
+         write(74,'(A)') '# a kinetic result: it cannot quench, and'//  &
+                     ' it re-forms CO in a cool outer wind that a'
+         write(74,'(A)') '# transported CO would have been carried'//   &
+                     ' out of the molecular layer into.'
       endif
 
       ! ---- what actually runs the H2 partition at the base ----
@@ -626,90 +1009,128 @@
             ' layer they are in is warmer than the same composition'//     &
             ' would really be (TO_BE_DONE.md item (G)).'
 
-      ! ---- FUV band penetration and the G4 energy ledger ----
-      ! For a beam attenuated as exp(-tau) the photons absorbed per unit area
-      ! over the whole column are exactly N_b (1 - exp(-tau_b(r_min))),
-      ! whatever the density profile. The ledger below measures that identity
-      ! on the discrete grid: the sum of the absorbed rate over the cells,
-      ! with the same opa_pf weighting the columns were built with, against
-      ! the closed form. Because each cell's rate is the MEAN over the cell
-      ! rather than its face value (water_photolysis_rate), the two agree to
-      ! round-off at any grid spacing; a residual here means the rates and
-      ! the columns have come apart, not that the grid is coarse.
+      ! ---- FUV band penetration and the G4 band ledger ----
+      ! THE QUANTITY THAT IS CLOSED. For every band, the photons the beam
+      ! loses between the two ends of the column equal the absorptions the
+      ! model accounts for -- but only when every absorber of the band has a
+      ! rate. Two of the four bands have an absorber that takes photons out
+      ! of the beam without one, so the ledger below is written as three
+      ! separate statements rather than as one residual that would read as a
+      ! defect wherever the physics says otherwise.
       !
-      ! The energy ledger is then exact by construction: every absorbed
-      ! photon carries <E>_b, of which the threshold goes into the bond and
-      ! the rest into the gas, so absorbed = heat + bond cell by cell. It is
-      ! computed anyway, because a mismatch would mean the heating and the
-      ! rates had drifted apart.
+      ! (a) CLOSURE OF THE CONTINUUM ABSORBERS, band by band. In cell j the
+      !     H2O and OH rates are
+      !         j_s = sigma_s N_b tr exp(-tau_out) (1 - exp(-dtau))/dtau
+      !     (water_photolysis_rate), with tr the band's line transmission and
+      !     tau_out, dtau the CONTINUUM depth at the cell's star-ward face
+      !     and across the cell. Applied to the absorbers the columns record
+      !     for that cell, dN_H2O and dN_OH, the two rates take
+      !         j_H2O dN_H2O + j_OH dN_OH
+      !     photons out of the band there, while the beam's own loss between
+      !     the cell's two faces is
+      !         N_b tr exp(-tau_out) (1 - exp(-dtau))
+      !               = (j_H2O/sigma_H2O) dtau .
+      !     The two are the same number as long as the band's optical depth
+      !     is exactly sigma_H2O dN_H2O + sigma_OH dN_OH, which is how
+      !     fuv_band_optical_depth builds it apart from a clamp at negative
+      !     column. rel_diff is therefore round-off, and a residual says
+      !     either that a column has gone negative or that the depths and
+      !     the columns on this file are not one state. It holds whatever
+      !     the rate form is -- the two rates differ only by their cross
+      !     sections -- so it is NOT the test of the cell mean; (b) is.
       !
-      ! THE FIRST BAND HAS THREE ABSORBERS AND ONE BEAM. Over 912-1110 A
-      ! the same photons are taken by H2 in the Lyman-Werner lines and by
-      ! H2O and OH in a continuum. They share the beam rather than each
-      ! attenuating a private copy of it (water_photolysis.f90 sec. 3), so
-      ! the closed form the sum is checked against is
-      ! N_b (1 - (1 - A) exp(-tau)) with A the line-removed fraction, and
-      ! the H2 share belongs INSIDE that sum. The H2 photon count is the
-      ! DISSOCIATION rate divided by the DB96 dissociation probability per
-      ! pump, because the other 86.5% of the pumps also take a photon out of
-      ! the band; of the energy they carry, only the fragment kinetic energy
-      ! of the dissociating fraction reaches the gas, so for this band the
-      ! 'returned' column is the fluorescence as well as the bond energy.
-      absph    = 0.0d0
-      absen    = 0.0d0
-      heat_col = 0.0d0
-      bond_col = 0.0d0
-      e_lw_abs = 0.0d0
-      do j = 1-Ng,N+Ng
-         dr_cm = dr_j(j)*R0*opa_pf(j)
-         do ib = 1,n_fuv_band
-            absph(ib) = absph(ib)                                          &
-                      + (j_h2o_fuv(j,ib)*nox_eq(j,2)                       &
-                       + j_oh_fuv(j,ib) *nox_eq(j,1))*dr_cm
-            ! Each absorbed photon carries the band's own mean energy
-            ! <hv>_b, so the total can never exceed the incident flux; see
-            ! the conservation argument in water_photolysis.f90 sec. 2.
-            absen(ib) = absen(ib)                                          &
-                      + (j_h2o_fuv(j,ib)*nox_eq(j,2)                       &
-                       + j_oh_fuv(j,ib)*nox_eq(j,1))                       &
-                        *e_photon_flat_band(ib)*dr_cm
-            heat_col(ib) = heat_col(ib)                                    &
-                      + (j_h2o_fuv(j,ib)*nox_eq(j,2)                       &
-                         *heat_per_water_dissociation(ib)                  &
-                       + j_oh_fuv(j,ib)*nox_eq(j,1)                        &
-                         *heat_per_hydroxyl_dissociation(ib))*dr_cm
-         enddo
-         if (F_LW_star .gt. 0.0d0) then
-            ! The H2 share of the shared LW beam, on the same ledger as the
-            ! continuum absorbers. Two DIFFERENT branchings are needed and
-            ! they are not the same number (lyman_werner.f90, and
-            ! docs/p39_lw_cross_section_sources.md):
-            !   p_lw_absorbed  how many dissociations the beam buys per
-            !                  photon it loses, so the photon count of the
-            !                  band divides by it;
-            !   p_lw_single    how many fluorescent decays accompany each
-            !                  dissociation, (1 - p)/p, which is the term the
-            !                  energy equation carries.
-            ! Both terms are in the energy equation, so both belong here;
-            ! before the second was carried, bond_col counted it as energy
-            ! that never comes back.
-            ph_lw    = k_lw_diss(j)/max(p_lw_absorbed(j), 1.0d-30)         &
-                       *nmol_eq(j,1)*dr_cm
-            e_lw_abs = e_lw_abs + ph_lw*e_lw_photon_erg
-            absph(ib_LW)    = absph(ib_LW)    + ph_lw
-            absen(ib_LW)    = absen(ib_LW)    + ph_lw*e_lw_photon_erg
-            heat_col(ib_LW) = heat_col(ib_LW)                              &
-                            + k_lw_diss(j)*nmol_eq(j,1)*dr_cm              &
-                              *e_lw_fragment_erg                           &
-                            + k_lw_diss(j)*nmol_eq(j,1)*dr_cm              &
-                              *(1.0d0 - p_lw_single(j))                    &
-                              /max(p_lw_single(j), 1.0d-30)                &
-                              *h2_energy_per_bound_fluorescence_erg(T(j)*T0)&
-                              *h2_vibrational_heat_fraction(T(j)*T0,        &
-                                       nhi(j)*n0, nmol_eq(j,1))
-         endif
+      ! (b) THE BEAM BUDGET. beam_loss = N_b (1 - T_line T_cont) at the
+      !     innermost face is what the beam loses over the whole column;
+      !     rated_ph is every absorption the model's rates account for. Their
+      !     difference is the beam that leaves without a rate. Band by band:
+      !       B1, B3, B4  no line absorber (T_line = 1) and both continuum
+      !                   absorbers rated, so the difference is a closure
+      !                   residual -- and it is the test of the cell-mean
+      !                   rate form, because
+      !                   sum_j N_b exp(-tau_out) (1 - exp(-dtau))
+      !                   telescopes to N_b (1 - exp(-tau)) exactly, at any
+      !                   grid spacing, only when the rate is the mean over
+      !                   the cell. A rate read at one point of the cell
+      !                   breaks it one-signed, by 30 percent in the
+      !                   Ly-alpha band of an HD 189733 b run
+      !                   (water_photolysis.f90).
+      !       B2          the band IS the 1215.67 A H I resonance line. The
+      !                   H I that scatters the stellar line out of the beam
+      !                   dissociates nothing and therefore carries no rate,
+      !                   so the difference is the share H I takes; near 1 it
+      !                   says the line is thick, which is not a defect.
+      !                   T_line is the erfc penetration of the stellar line
+      !                   (lya_rt.f90), rebuilt here from the T and n_HI on
+      !                   this file, through the same line-centre depth the
+      !                   band rate is built from.
+      !       LW          over 912-1201 A the same photons are taken by H2 in
+      !                   the Lyman-Werner lines and by H2O and OH in a
+      !                   continuum, out of ONE beam (water_photolysis.f90
+      !                   sec. 3). The H2 share IS rated and is counted in
+      !                   rated_ph -- its photon count is the cell mean of
+      !                   the PUMP cross section sigma_diss/p_eff, because
+      !                   the pumps that do not dissociate also take a photon
+      !                   out of the band -- and since 2026-09-06 T_line
+      !                   carries the column integral of that same cross
+      !                   section, so both sides are one normalization of one
+      !                   absorption and this is a CLOSURE residual, as it is
+      !                   for B3 and B4. Two things are left in it. The
+      !                   discretization: the rate is the cell mean of
+      !                   sigma_pump exp(-tau_cont) while the beam identity
+      !                   puts the line loss of a cell behind that cell's own
+      !                   continuum depth. And, where the star-ward column
+      !                   passes the top of the table's column axis, the
+      !                   clamped edge cross section drives the line-removed
+      !                   fraction past 1, where the beam is capped and the
+      !                   rate is not; the run warns about that column
+      !                   separately.
+      !
+      ! (c) THE ENERGY, which is exact by construction: every absorbed photon
+      !     carries <hv>_b, of which the threshold goes into the bond and the
+      !     rest into the gas, so absorbed = heat + bond cell by cell. It is
+      !     computed anyway, because a mismatch would mean the heating and
+      !     the rates had drifted apart. In the LW band only the fragment
+      !     kinetic energy of the dissociating fraction reaches the gas, so
+      !     there the 'bond' column is the fluorescence as well as the bond.
+      ! The band ledger is formed in ONE place, beside the heating assembly
+      ! (utils_ion_eq::fuv_band_absorption_ledger), because the energy of one
+      ! absorption event is the same energy the energy equation is charged.
+      ! This file writes what that routine returns and forms none of it.
+      call fuv_band_absorption_ledger(T*T0, nhi*n0, nmol_eq(:,1),          &
+               nox_eq(:,2),                                               &
+               (nhi + nhii)*n0 + 2.0d0*(nmol_eq(:,1) + nmol_eq(:,2))      &
+                               + 3.0d0*nmol_eq(:,3) + nmol_eq(:,4),       &
+               NH2_col_lw, NH2O_col, NOH_col, NCO_col, tau_fuv,           &
+               j_h2o_fuv, j_oh_fuv, k_lw_diss, p_lw_single, k_co_diss,    &
+               absph, absen, heat_col, bond_col, cont_ph, cont_beam,      &
+               co_ph, co_en, co_heat, e_lw_abs, drift_worst, drift_r)
+
+      ! ---- What the beam itself loses over the column, band by band ----
+      ! N_b (1 - T_line T_cont) at the innermost face, with T_cont the
+      ! continuum transmission exp(-tau) of the band and T_line that of its
+      ! LINE absorber: the H2 Lyman-Werner lines in the shared band (1 - A,
+      ! the equivalent width of Draine & Bertoldi 1996), the stellar H I
+      ! Ly-alpha line in B2, and 1 in the three bands that have no line
+      ! absorber. The B2 factor is the transmission of the state on this
+      ! file: the same line-centre depth rule and the same erfc penetration
+      ! the band rate is built from (lya_rt.f90), evaluated on the T and
+      ! n_HI written here.
+      tr_line_in = 1.0d0
+      tr_line_in(ib_LW) = max(tr_lines_lw(1-Ng), 0.0d0)
+      if (F_Lya_star .gt. 0.0d0) then
+         call lya_line_center_optical_depth(T*T0, nhi*n0, tau_lya_col)
+         tr_line_in(ib_B2) =                                               &
+            lya_stellar_beam_transmission(T(1-Ng)*T0, tau_lya_col(1-Ng))
+      endif
+      do ib = 1,n_fuv_band
+         nph_b = fuv_band_photon_flux(fuv_band_flux(ib), ib)
+         beam_loss(ib) = nph_b*(1.0d0 - tr_line_in(ib)                     &
+                              *exp(-max(tau_fuv(1-Ng,ib), 0.0d0)))
+         unrated(ib)   = beam_loss(ib) - absph(ib)
+         unrated_f(ib) = 0.0d0
+         if (beam_loss(ib) .gt. 0.0d0)                                     &
+            unrated_f(ib) = unrated(ib)/beam_loss(ib)
       enddo
-      bond_col = absen - heat_col
 
       ! ---- Infrared side of the ledger: the molecular bands ----
       ! The FUV rows above are the photon INPUT. The three molecular bands are
@@ -765,7 +1186,7 @@
       ! out, so a change to n_fuv_band cannot leave the header naming a
       ! different number of bands from the one the loop below writes -- as
       ! it did when the bands went from four to five.
-      colhdr = '# columns r[Rp] N_H2O[cm^-2] N_OH[cm^-2]'
+      colhdr = '# columns r[Rp] N_H2O[cm^-2] N_OH[cm^-2] N_CO[cm^-2]'
       do ib = 1,n_fuv_band
          colhdr = trim(colhdr)//' tau_'//trim(fuv_band_name(ib))
       enddo
@@ -775,51 +1196,170 @@
       do ib = 1,n_fuv_band
          colhdr = trim(colhdr)//' j_OH_'//trim(fuv_band_name(ib))
       enddo
+      ! CO belongs to the Lyman-Werner band alone: its 37 predissociating
+      ! lines lie between 912.7 and 1076.1 A, and it takes photons out of
+      ! that beam only through its own shielding function, which is why
+      ! there is no tau_CO column beside tau_LW (co_photodissociation.f90).
+      colhdr = trim(colhdr)//' k_CO[1/s] Theta_CO'
       colhdr = trim(colhdr)//' heat_FUV[erg/cm3/s]'
       write(75,'(A)') trim(colhdr)
       call write_row_layout_header(75)
       do j = 1-Ng,N+Ng
-         write(75,*) r(j), NH2O_col(j), NOH_col(j),                        &
+         write(75,*) r(j), NH2O_col(j), NOH_col(j), NCO_col(j),            &
                     (tau_fuv(j,ib), ib = 1,n_fuv_band),                    &
                     (j_h2o_fuv(j,ib), ib = 1,n_fuv_band),                  &
                     (j_oh_fuv(j,ib), ib = 1,n_fuv_band),                   &
+                    k_co_diss(j), theta_co_shield(j),                      &
                     heat_fuv(j)
       enddo
       write(75,'(A)') '#'
-      write(75,'(A)') '# Band energy ledger (gate G4). Per unit area of'// &
-                     ' the column:'
-      write(75,'(A)') '#   absorbed_ph   photons absorbed, summed over'//  &
-                     ' the grid [cm^-2 s^-1]'
-      write(75,'(A)') '#   closed_form   N_band (1 - exp(-tau at the'//    &
-                     ' innermost cell)), the exact beam result'
-      write(75,'(A)') '#   rel_diff      their relative difference'//     &
-                     ' (round-off: the cell rate is the cell MEAN)'
-      write(75,'(A)') '#   absorbed_en   absorbed photon energy'//         &
-                     ' [erg cm^-2 s^-1], and its split into deposited'
-      write(75,'(A)') '#                 heat and bond energy; the two'//  &
-                     ' must add back to it exactly'
-      write(75,'(A)') '#   incident_en   the band flux itself. absorbed'// &
-                     '_en must not exceed it.'
-      write(75,'(A)') '# band absorbed_ph closed_form rel_diff'//          &
-                     ' absorbed_en heat_en bond_en incident_en'
+      write(75,'(A)') '# Band ledger (gate G4). Every quantity is per'//   &
+                     ' unit area of the star-ward column.'
+      write(75,'(A)') '#'
+      write(75,'(A)') '# (a) CLOSURE OF THE CONTINUUM ABSORBERS. In cell'//&
+                     ' j the H2O and OH rates take'
+      write(75,'(A)') '#     N_b tr exp(-tau_out) (1 - exp(-dtau))'//      &
+                     ' photons out of the band, with tr the'
+      write(75,'(A)') '#     line transmission of the band and tau_out,'// &
+                     ' dtau the CONTINUUM depth at the'
+      write(75,'(A)') '#     cell''s star-ward face and across the cell.'
+      write(75,'(A)') '#       cont_absorbed_ph  sum over cells of'//      &
+                     ' (j_H2O dN_H2O + j_OH dN_OH), the two rates'
+      write(75,'(A)') '#                         applied to the'//         &
+                     ' absorbers the columns record [cm^-2 s^-1]'
+      write(75,'(A)') '#       cont_beam_loss    the same cells as the'//  &
+                     ' beam''s loss between their two faces,'
+      write(75,'(A)') '#                         (j_H2O/sigma_H2O) dtau,'//&
+                     ' which names no density at all'
+      write(75,'(A)') '#       rel_diff          |cont_absorbed_ph/'//     &
+                     'cont_beam_loss - 1|'
+      write(75,'(A)') '#     The two are the same number as long as'//    &
+                     ' dtau is exactly sigma_H2O dN_H2O + sigma_OH dN_OH,'
+      write(75,'(A)') '#     so rel_diff is round-off: a residual says a'//&
+                     ' column has gone negative, or that the'
+      write(75,'(A)') '#     depths and the columns on this file are'//    &
+                     ' not one state. It holds whatever the rate'
+      write(75,'(A)') '#     form is, so it is NOT the test of the cell'// &
+                     ' mean; the B1/B3/B4 rows of (b) are.'
+      write(75,'(A)') '# band cont_absorbed_ph cont_beam_loss rel_diff'
       worst = 0.0d0
       do ib = 1,n_fuv_band
-         nph_b    = fuv_band_photon_flux(fuv_band_flux(ib), ib)
-         ! Beam transmission to the innermost cell: the continuum for every
-         ! band, times the H2 line transmission for the shared LW band.
-         expected = nph_b*(1.0d0 - tr_lines_lw(1-Ng)                       &
-                                   *exp(-tau_fuv(1-Ng,ib)))
-         if (ib .ne. ib_LW)                                                &
-            expected = nph_b*(1.0d0 - exp(-tau_fuv(1-Ng,ib)))
-         relerr   = abs(absph(ib) - expected)/max(expected, 1.0d-99)
-         if (expected .gt. 0.0d0) worst = max(worst, relerr)
-         write(75,'(A,A,7ES14.6)') '# ', fuv_band_name(ib), absph(ib),     &
-                    expected, relerr, absen(ib), heat_col(ib),             &
-                    bond_col(ib), fuv_band_flux(ib)
+         relerr = 0.0d0
+         if (cont_beam(ib) .gt. 0.0d0)                                     &
+            relerr = abs(cont_ph(ib) - cont_beam(ib))/cont_beam(ib)
+         worst = max(worst, relerr)
+         write(75,'(A,A,3ES14.6)') '# ', fuv_band_name(ib), cont_ph(ib),   &
+                    cont_beam(ib), relerr
       enddo
+      write(75,'(A)') '#'
+      write(75,'(A)') '# (b) BEAM BUDGET.'
+      write(75,'(A)') '#       beam_loss_ph  photons the beam loses'//     &
+                     ' between the two ends of the column,'
+      write(75,'(A)') '#                     N_b (1 - T_line T_cont) at'// &
+                     ' the innermost face [cm^-2 s^-1]'
+      write(75,'(A)') '#       rated_ph      every absorption the'//       &
+                     ' model''s RATES account for over that column'
+      write(75,'(A)') '#                     (the H2O and OH continua,'//  &
+                     ' and in the LW band the H2 pumps)'
+      write(75,'(A)') '#       unrated_ph    their difference, and'//      &
+                     ' unrated_frac its share of beam_loss_ph'
+      write(75,'(A)') '#     WHAT unrated_frac MEANS, BAND BY BAND:'
+      write(75,'(A)') '#       B1 B3 B4  no line absorber (T_line = 1)'//  &
+                     ' and every absorber rated, so this is a'
+      write(75,'(A)') '#                 CLOSURE residual and is'//        &
+                     ' round-off. It is the test of the cell-mean rate'
+      write(75,'(A)') '#                 form: the cell sums telescope'// &
+                     ' to N_b (1 - exp(-tau)) exactly, at any grid'
+      write(75,'(A)') '#                 spacing, only because the rate'//&
+                     ' is the mean over the cell.'
+      write(75,'(A)') '#       B2        the band IS the 1215.67 A H I'//  &
+                     ' resonance line. The H I that scatters'
+      write(75,'(A)') '#                 the stellar line out of the'//    &
+                     ' beam dissociates nothing and carries no'
+      write(75,'(A)') '#                 rate, so this is the SHARE H I'// &
+                     ' takes. A value near 1 says the line is'
+      write(75,'(A)') '#                 thick; it is not a defect.'//     &
+                     ' T_line is the erfc penetration of the'
+      write(75,'(A)') '#                 stellar line, on the T and'//     &
+                     ' n_HI this file writes.'
+      write(75,'(A)') '#       LW        the H2 Lyman-Werner lines ARE'//  &
+                     ' rated and are counted in rated_ph, and'
+      write(75,'(A)') '#                 T_line is 1 - A with A the'//     &
+                     ' column integral of the pump cross section'
+      write(75,'(A)') '#                 of the same level-resolved'//     &
+                     ' table the rate comes from, so this is a'
+      write(75,'(A)') '#                 CLOSURE residual like B3 and'//   &
+                     ' B4: one normalization of one absorption.'
+      write(75,'(A)') '#                 What is left in it is the'//      &
+                     ' discretization of the shared beam inside'
+      write(75,'(A)') '#                 a cell, and it vanishes with'//   &
+                     ' the cell continuum depth.'
+      write(75,'(A)') '# band rated_ph beam_loss_ph unrated_ph'//          &
+                     ' unrated_frac T_line'
+      do ib = 1,n_fuv_band
+         write(75,'(A,A,5ES14.6)') '# ', fuv_band_name(ib), absph(ib),     &
+                    beam_loss(ib), unrated(ib), unrated_f(ib),             &
+                    tr_line_in(ib)
+      enddo
+      write(75,'(A)') '#'
+      write(75,'(A)') '# (b2) CO ON THE SAME BEAM. CO predissociates in'//&
+                     ' 37 lines between 912.7 and 1076.1 A, all inside'
+      write(75,'(A)') '#      the LW interval, and it shields itself in'//&
+                     ' them (Visser, van Dishoeck & Black 2009).'
+      write(75,'(A)') '#      Its absorptions are RATED -- k_CO is a'//   &
+                     ' column of this file -- but they are printed'
+      write(75,'(A)') '#      here and not in rated_ph above, because'//  &
+                     ' beam_loss_ph carries no CO term: CO adds'
+      write(75,'(A)') '#      nothing to tau_cont and its equivalent'//   &
+                     ' width lives inside its own shielding'
+      write(75,'(A)') '#      function, so the other three absorbers'//   &
+                     ' see a beam undepleted by CO. Counting CO'
+      write(75,'(A)') '#      against that beam would compare two'//      &
+                     ' different beams. co_frac IS the size of that'
+      write(75,'(A)') '#      approximation: the share of the LW beam''s'//&
+                     ' own loss that CO takes a second time.'
+      write(75,'(A)') '#      co_absorbed_en is charged at the CO'//      &
+                     ' events'' own mean photon energy, 12.87 eV,'
+      write(75,'(A)') '#      not the band mean 11.74 eV, because CO'//   &
+                     ' absorbs at the blue end of the beam.'
+      write(75,'(A)') '#      Only the dissociating share is counted;'//  &
+                     ' the oscillator-strength weighted'
+      write(75,'(A)') '#      dissociation efficiency of Visser Table 1'//&
+                     ' is 0.96, so about 4 percent of the CO'
+      write(75,'(A)') '#      absorptions are not here either.'
+      co_share = 0.0d0
+      if (beam_loss(ib_LW) .gt. 0.0d0)                                     &
+         co_share = co_ph/beam_loss(ib_LW)
+      write(75,'(A,4ES14.6)') '# co_absorbed_ph co_frac co_absorbed_en'// &
+                     ' co_heat_en ', co_ph, co_share, co_en, co_heat
+      write(75,'(A)') '#'
+      write(75,'(A)') '# (c) ENERGY. Every absorbed photon carries'//      &
+                     ' <hv>_b, of which the threshold goes into the'
+      write(75,'(A)') '#     bond and the rest into the gas, so'//         &
+                     ' absorbed_en = heat_en + bond_en exactly.'
+      write(75,'(A)') '#     incident_en is the band flux;'//              &
+                     ' absorbed_en must not exceed it. [erg cm^-2 s^-1]'
+      write(75,'(A)') '# band absorbed_en heat_en bond_en incident_en'
+      do ib = 1,n_fuv_band
+         write(75,'(A,A,4ES14.6)') '# ', fuv_band_name(ib), absen(ib),     &
+                    heat_col(ib), bond_col(ib), fuv_band_flux(ib)
+      enddo
+      write(75,'(A)') '#'
+      write(75,'(A)') '# (d) THE STATE. The ledger above sums the'//       &
+                     ' absorbers the optical-depth columns record,'
+      write(75,'(A)') '#     which is the state the photon field was'//    &
+                     ' built on. The H2O density written in'
+      write(75,'(A)') '#     Oxygen_chemistry.txt is the state at the'//   &
+                     ' end of the sweep, and the two need not be'
+      write(75,'(A)') '#     the same cell by cell. state_drift is the'//  &
+                     ' largest |n_H2O dr / dN_H2O - 1| over the'
+      write(75,'(A)') '#     column and the radius at which it stands;'//  &
+                     ' it goes to zero as the sweep converges.'
+      write(75,'(A,ES14.6,A,F10.6)') '# state_drift ', drift_worst,        &
+                     '   at r[Rp] ', drift_r
       e_lw_in = fuv_band_flux(ib_LW)
       write(75,'(A)') '#'
-      write(75,'(A)') '# The 912-1110 A band is shared: H2 absorbs it in'//&
+      write(75,'(A)') '# The 912-1201 A band is shared: H2 absorbs it in'//&
                      ' the Lyman-Werner lines while H2O and OH'
       write(75,'(A)') '# absorb it as a continuum, out of ONE beam. The'// &
                      ' split of the LW row above is therefore:'
@@ -849,11 +1389,24 @@
       write(75,'(A,ES14.6)') '# IR_incident_bound     ', ir_bound
       close(75)
 
+      ! The closure of paragraph (a): the continuum rates against the same
+      ! cells re-formed from the optical-depth columns. This is the number
+      ! that must be round-off. The beam budget of paragraph (b) is a
+      ! physical statement about each band and not a residual, so the two
+      ! bands that carry an absorber without a rate are reported separately.
       write(*,'(a,es9.2)') ' (write_output/eq) FUV band ledger: max'//     &
-           ' |absorbed/closed-form - 1| = ', worst
+           ' |continuum rate sum/beam loss - 1| = ', worst
+      if (F_Lya_star .gt. 0.0d0)                                           &
+         write(*,'(a,f7.4,a)') ' (write_output/eq) band B2: the H I'//     &
+           ' Ly-alpha line scatters ', unrated_f(ib_B2), ' of that'//      &
+           ' band out of the beam, which no photolysis rate carries'
+      if (beam_loss(ib_LW) .gt. 0.0d0)                                     &
+         write(*,'(a,es10.3,a)') ' (write_output/eq) band LW: the H2'//    &
+           ' rates and the beam loss of the same lines close to ',         &
+           unrated_f(ib_LW), ' of the beam loss'
       if (e_lw_in .gt. 0.0d0 .and. absen(ib_LW) .gt. e_lw_in*(1.0d0+1.0d-6))&
          write(*,'(a)') ' (write_output/eq) WARNING: the absorbers of'//   &
-           ' the shared 912-1110 A band take more energy out of it'//      &
+           ' the shared 912-1201 A band take more energy out of it'//      &
            ' than the band carries -- the shared-beam closure has'//       &
            ' broken (see output/FUV_bands.txt).'
       if (mol_ir_bands) then

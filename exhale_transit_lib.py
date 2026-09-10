@@ -2,17 +2,34 @@
 
 This module holds the pure pieces of ``EXHALE_transit.py``: physical
 constants, the line rest-wavelength / oscillator-strength / Einstein-A
-metadata, and the self-contained physics/utility functions.  It references
-only its own constants plus numpy/scipy, so it imports cleanly on its own
-and can be unit-tested without a simulation.  The main script imports these
-names and keeps the top-down orchestration (file reading, density prep,
-per-line loops, convolution, plotting, saving).
+metadata, the self-contained physics/utility functions, the chord geometry
+those functions and any census of them share, and the reader that decides
+what an ``_adv`` profile says about the validity of its own rows.  Apart
+from numpy/scipy and the profile readers of ``examples/exhale_io.py`` it
+references only its own constants, so it imports cleanly on its own and can
+be unit-tested without a simulation.  The main script imports these names
+and keeps the top-down orchestration (loading a run, density prep, the
+loops over the lines, convolution, plotting, saving).
 """
 
 import os
 import numpy as np
 from scipy.special import wofz
 from astropy.convolution import convolve
+
+# The Jupiter radius is defined once, in examples/exhale_io.py (RJ_CM), and
+# imported rather than written down again, so that this tool and the run it
+# analyses mean one planet by `Planet radius [R_J]`.  `__file__` is absent
+# under exec(), hence the guard.
+import sys
+try:
+    _HERE = os.path.dirname(os.path.realpath(__file__))
+except NameError:
+    _HERE = os.getcwd()
+_EXAMPLES_DIR = os.path.join(_HERE, 'examples')
+if _EXAMPLES_DIR not in sys.path:
+    sys.path.append(_EXAMPLES_DIR)
+from exhale_io import RJ_CM, loadtxt_cells               # noqa: E402
 
 
 # ----- ENVIRONMENT OVERRIDES ----- #
@@ -44,7 +61,9 @@ h   = 6.626070e-34		# Planck constant [J*sec]
 ht  = 1.054572e-34		# Reduced Planck constant (h slash) [J*sec]
 e   = -1.602176e-19		# Electron charge [C]
 mHe = 6.64648157e-27		# Helium mass [Kg]
-RJ  = 6.9911e7				# Jupiter radius
+RJ  = RJ_CM*1.0e-2			# Jupiter radius [m], from the one Python
+					# definition in examples/exhale_io.py, which
+					# is in cm; this module works in SI
 MJ  = 1.898e27				# Jupiter mass
 R_sun = 6.96000000e8 	                # Sun radius [m]
 M_sun = 1.989e30			# Sun mass [kg]
@@ -117,7 +136,7 @@ g1s, g2s, g2p = 2.0, 2.0, 6.0
 
 # Ly-alpha (1s<->2p) atomic data for the radiative pumping
 nu_Lya  = c_light/lA            # lA = 1215.67 A (vacuum), defined above
-A_2p1s  = 6.3e8                 # A(2p->1s) [s^-1]   (Table 2, R11)
+A_2p1s  = 6.2649e8              # A(2p->1s) [s^-1], NIST ASD (Wiese and Fuhr 2009); one value with hydrogen_n2_rates.f90
 A_2s1s  = 8.26                  # A(2s->1s) two-photon [s^-1] (Table 2, R10)
 
 # Einstein-B coefficients in the mean-intensity (J_nu) convention, in cgs
@@ -447,6 +466,418 @@ def _turb_factor():
 		return 1.0
 	return (11.0/6.0)**0.5
 
+# ----- CHORD GEOMETRY: THE ONE SHELL SELECTION ----- #
+# The selection below is shared by every line-of-sight integral in this module
+# and by the census of the material those integrals sample, in
+# EXHALE_transit.py.  Two selections would let the diagnostic describe a
+# different atmosphere from the one the spectrum was built from.
+def chord_shell_indices(shell_r, b):
+	"""Rows of a radial profile that the chord at impact parameter b crosses.
+
+	The chord meets every shell of radius r >= b, at line-of-sight coordinate
+	|x| = sqrt(r^2 - b^2); there is no upper radial limit.  A shell at r = 12
+	crosses the ray at b = 2 at |x| = sqrt(140) whether or not the ray grid
+	stops at b = 10, so a shell lying outside the stellar disk still absorbs on
+	the rays that cross the disk.  Any radial census that imposes an upper limit
+	therefore describes less material than the spectrum contains.
+
+	shell_r  row radii.  The signed, mirrored (night + day) chord array of the
+	         integrals is accepted unchanged: only |r| enters.
+	b        impact parameter, in the unit of shell_r.
+	"""
+	return np.where(np.abs(shell_r) >= b)[0]
+
+
+def refused_line_center_tau_share(lines, r_grid, Rp, data_r, data_v, data_T,
+                                  data_refused):
+	"""Share of each ray's line-center optical depth carried by flagged rows.
+
+	The spectra integrate the Voigt absorption coefficient along the chord with
+	the trapezoid rule, so at one wavelength the optical depth of the ray at
+	impact parameter b is exactly tau(b) = sum_k w_k I_k, with I_k the integrand
+	of row k and w_k that row's trapezoid weight.  The sum is additive over
+	rows, so a subset of the rows carries the exact share
+	sum_{k in subset} w_k I_k / tau(b).  Here the subset is the rows whose
+	steady advective correction was refused (`adv_T_status != 0`), which carry
+	the run's own temperature and its equilibrium composition instead.
+
+	The result is a CONTRIBUTION, not an uncertainty on transit depth: the
+	disk-averaged transmission is an average of exp(-tau) and is nonlinear in
+	tau, so a saturated ray moves little when its optical depth changes, and a
+	share near one does not mean the depth is wrong by a comparable amount.
+
+	lines         [(label, lam_eval_A, components), ...] with
+	              components = [(lam0_A, f_osc, A21, mass, n_lower), ...],
+	              n_lower in m^-3 on the mirrored chord array, exactly as
+	              resonance_spectrum receives it.  The optical depth is
+	              evaluated at lam_eval_A with every component of the line
+	              contributing there, since components of one multiplet overlap.
+	data_refused  boolean array on the mirrored chord array, True where the row
+	              is not the steady advective correction.
+	returns       {label: (tau, share)}, both arrays over the ray grid r_grid.
+	              share is zero where the ray carries no optical depth.
+	"""
+	out = {}
+	for (label, lam_eval_A, components) in lines:
+		nu_eval = c_light/(lam_eval_A*1e-10)
+		tau     = np.zeros(len(r_grid))
+		tau_ref = np.zeros(len(r_grid))
+		for p in range(len(r_grid)):
+			b     = r_grid[p]*Rp
+			arg   = chord_shell_indices(data_r, b)
+			if arg.size < 2:
+				continue
+			r_LOS = data_r[arg]
+			x_LOS = np.sqrt(r_LOS**2.0 - b**2.0)*np.sign(r_LOS)
+			dx    = np.abs(x_LOS[1:] - x_LOS[:-1])
+			v_x   = x_LOS*data_v[arg]/r_LOS
+			I     = np.zeros(arg.size)
+			for (lam0_A, f_osc, A21, mass, n_lower) in components:
+				nu0  = c_light/(lam0_A*1e-10)
+				v_th = np.sqrt(2.0*kb*data_T[arg]/mass)*_turb_factor()
+				Dnu  = nu0*v_th/c_light
+				a_v  = A21/(4.0*np.pi*Dnu)
+				X    = (nu_eval - nu0)/Dnu
+				I   += n_lower[arg]*f_osc*Fadd_const/Dnu \
+				       * wofz(X - v_x/v_th + 1j*a_v).real
+			# The trapezoid weight of each row, so that the quadrature the
+			# spectrum uses can be split over a subset of the rows:
+			# sum_k w_k I_k == sum_k dx_k (I_k + I_{k+1})/2.
+			w = np.zeros(arg.size)
+			w[:-1] += dx/2.0
+			w[1:]  += dx/2.0
+			sel = np.asarray(data_refused, dtype=bool)[arg]
+			tau[p]     = np.sum(w*I)
+			tau_ref[p] = np.sum(w[sel]*I[sel])
+		share = np.divide(tau_ref, tau, out=np.zeros_like(tau),
+		                  where=(tau > 0.0))
+		out[label] = (tau, share)
+	return out
+
+
+# ----- THE VALIDITY THE SPECTRUM INHERITS ----- #
+# A transit spectrum is an integral over the rows of an `_adv` profile, so it
+# is worth exactly what those rows are worth.  The `_adv` writer states, row by
+# row, whether the steady advective correction was adopted, and the schema of
+# that statement is versioned in the file's own header.  The reader below is
+# the only place this tool decides what a profile says about itself, and the
+# metadata writer below it is the only place that statement is passed on to a
+# saved spectrum.
+
+TRANSIT_SCHEMA = 1                # version of the comment block that
+                                  # transit_metadata_block writes into every
+                                  # saved tpm_ file
+
+# Row validity, schema 2: two fields, one for temperature and one for
+# composition, so a row may carry a corrected temperature on a retained
+# composition.
+ADV_STATUS_NAMES_2 = ('corrected', 'retained', 'failed', 'unsupported',
+                      'not_evaluated')
+# Row validity, schema 1: one field, whose values mix the two.  The physics of
+# each value is the writer's own legend.
+ADV_STATUS_NAMES_1 = ('corrected',
+                      'T kept: local radiative balance sets it',
+                      'T and composition kept: the mass flux is not stationary',
+                      'composition kept: an ionization validity condition',
+                      'T kept: the cell solve did not converge')
+
+
+def header_comment_statements(path):
+	"""Comment lines at the head of a profile file as (continuation, text).
+
+	The writer states one thing per '# <key> ...' line and wraps the rest of
+	that statement over further lines it indents by more than one space
+	('#   ...'), which carry no key of their own.  A reader that takes each
+	line separately gets a sentence cut in half, so the indentation is what
+	says which lines belong to the line above.
+	"""
+	out = []
+	with open(path) as fh:
+		for row in fh:
+			s = row.strip()
+			if not s:
+				continue
+			if not s.startswith('#'):
+				break
+			body = s[1:]
+			out.append((body.startswith('  '), body.strip()))
+	return out
+
+
+def first_data_row_ncol(path):
+	"""Fields in the first data row of a profile file (0 if there is none)."""
+	with open(path) as fh:
+		for row in fh:
+			s = row.strip()
+			if s and not s.startswith('#'):
+				return len(s.split())
+	return 0
+
+
+def read_adv_validity(path):
+	"""What an `_adv` profile says about the validity of its own rows.
+
+	Three cases, decided by the file's header and by nothing else:
+
+	schema 2  the two integer columns `adv_T_status` and `adv_comp_status`,
+	          each 0 corrected, 1 retained, 2 failed, 3 unsupported,
+	          4 not_evaluated, and the `adv_mass_row` column, the measure both
+	          were decided by.  A row is refused for the census when its
+	          temperature field is not zero; its composition field is reported
+	          beside it.  A corrected row is a CONDITIONAL correction accurate
+	          to `adv_conditional_tol` of itself in the mass flux, and both the
+	          fraction and the row's own measure come back so that the spectrum
+	          carries the condition of the rows it stands on.
+	schema 1  the single `adv_status` column, one field mixing temperature and
+	          composition; a row is refused when it is not zero.
+	schema 0  neither an `adv_schema` line nor a status column: the validity of
+	          every row is UNKNOWN.  It is not 'corrected'.  A profile written
+	          by a writer that did not state its refusals says nothing about
+	          them, and a census of it can only say so.
+
+	Columns are located by the `# columns` header line, so a file that gains or
+	reorders columns is read by name.
+
+	returns a dict; `refused` is None exactly when `schema` is 0.
+	"""
+	head         = header_comment_statements(path)
+	cols         = []
+	schema       = None
+	certified    = None
+	cond_tol     = None
+	provenance   = []
+	coupling     = None
+	counts       = None
+	legend_seen  = False
+	# The writer wraps a statement of the block over several comment lines,
+	# the continuations carrying no key of their own, so a statement read one
+	# line at a time is a sentence cut in half.  `text` names the field the
+	# continuations belong to.
+	text = {'adv_stationarity_operator': None, 'adv_conditional_tol': None,
+	        'adv_model_restrictions': None}
+	key = None
+	for cont, line in head:
+		w = line.split()
+		if not w:
+			continue
+		if cont:
+			if key is not None:
+				text[key] = text[key] + ' ' + line
+			continue
+		if w[0] == 'columns':
+			cols = w[1:]
+			key = None
+		elif w[0] == 'adv_schema' and len(w) > 1:
+			key = None
+			try:
+				schema = int(w[1])
+			except ValueError:
+				schema = None
+		elif w[0] == 'adv_input_certified':
+			certified = ' '.join(w[1:])
+			key = None
+		elif w[0] in text:
+			key = w[0]
+			text[key] = ' '.join(w[1:])
+			if key == 'adv_conditional_tol':
+				try:
+					cond_tol = float(w[1])
+				except (ValueError, IndexError):
+					cond_tol = None
+		elif w[0] == 'adv_status_counts':
+			counts = ' '.join(w[1:])
+			key = None
+		elif w[0] in ('adv_status', 'adv_T_status', 'adv_comp_status',
+		              'adv_mass_row', 'adv_product'):
+			legend_seen = True
+			key = None
+		elif w[0].rstrip(':') == 'provenance':
+			provenance.append(line)
+			key = None
+		elif w[0].rstrip(':') == 'coupling':
+			coupling = line
+			key = None
+		else:
+			key = None
+
+	operator     = text['adv_stationarity_operator']
+	cond_text    = text['adv_conditional_tol']
+	restrictions = text['adv_model_restrictions']
+
+	if schema is None:
+		schema = 1 if ('adv_status' in cols or legend_seen) else 0
+
+	T_status    = None
+	comp_status = None
+	mass_row    = None
+	if schema >= 2:
+		if 'adv_T_status' in cols:
+			T_status = loadtxt_cells(path,
+			                         usecols=(cols.index('adv_T_status'),))
+		if 'adv_comp_status' in cols:
+			comp_status = loadtxt_cells(path,
+			                            usecols=(cols.index('adv_comp_status'),))
+		if 'adv_mass_row' in cols:
+			mass_row = loadtxt_cells(path,
+			                         usecols=(cols.index('adv_mass_row'),))
+	elif schema == 1:
+		icol = cols.index('adv_status') if 'adv_status' in cols else -1
+		if icol < 0 and first_data_row_ncol(path) >= 8:
+			# The position the writer uses when the header does not name it:
+			# the seven physical columns, then the status.
+			icol = 7
+		if icol >= 0:
+			T_status = loadtxt_cells(path, usecols=(icol,))
+
+	if T_status is None:
+		# Nothing to read: the file's row validity is UNKNOWN whatever its
+		# header claimed.
+		schema = 0
+
+	if certified is None:
+		certified = 'unknown'
+		if coupling is not None and 'certified=' in coupling:
+			certified = ('unknown; the input carries no adv_input_certified '
+			             'line, and its own "%s" is a certification of the run '
+			             'state, not of the post-processed rows' % coupling)
+
+	return {'path':                   path,
+	        'schema':                 schema,
+	        'columns':                cols,
+	        'T_status':               T_status,
+	        'comp_status':            comp_status,
+	        'refused':                None if T_status is None
+	                                  else (np.asarray(T_status) != 0),
+	        'status_names':           ADV_STATUS_NAMES_2 if schema >= 2
+	                                  else ADV_STATUS_NAMES_1,
+	        'input_certified':        certified,
+	        'stationarity_operator':  operator,
+	        'mass_row':               mass_row,
+	        'conditional_tol':        cond_tol,
+	        'conditional_tol_text':   cond_text,
+	        'model_restrictions':     restrictions,
+	        'status_counts':          counts,
+	        'provenance':             provenance}
+
+
+def transit_tool_identity(paths):
+	"""Identity of the code that produced a spectrum.
+
+	The repository HEAD names the committed text; the modification time of each
+	file names the text actually executed, which is not the same thing when the
+	working tree carries changes.  Both are reported.
+	"""
+	import subprocess
+	import time as _time
+	out = []
+	head = ''
+	try:
+		here = os.path.dirname(os.path.realpath(paths[0]))
+		head = subprocess.run(['git', '--no-optional-locks', '-C', here,
+		                       'rev-parse', '--short=12', 'HEAD'],
+		                      capture_output=True, text=True,
+		                      timeout=20).stdout.strip()
+	except Exception:                                       # noqa: BLE001
+		head = ''
+	out.append('git=%s' % (head if head else 'unavailable'))
+	for p in paths:
+		try:
+			out.append('%s mtime=%s'
+			           % (os.path.basename(p),
+			              _time.strftime('%Y-%m-%dT%H:%M:%S',
+			                             _time.localtime(os.path.getmtime(p)))))
+		except OSError:
+			out.append('%s mtime=unavailable' % os.path.basename(p))
+	return ' '.join(out)
+
+
+def transit_environment_overrides():
+	"""The EXHALE_TRANSIT_ / TPM_ overrides in effect, name and value."""
+	return sorted((k, v) for k, v in os.environ.items()
+	              if k.startswith('EXHALE_TRANSIT_') or k.startswith('TPM_'))
+
+
+def transit_metadata_block(adv, tool_identity, overrides, census,
+                           line_census=None):
+	"""Comment lines that travel with a saved transit curve.
+
+	Comments only: every line returned here is written behind a '#', so
+	`np.loadtxt` and any reader that skips comment lines sees exactly the
+	numerical columns it saw before.
+
+	adv           the record of read_adv_validity for the profile the spectrum
+	              was built from, or None if none was read.
+	census        {'sampled', 'refused', 'above_cap', 'reasons', 'comp'} over
+	              the rows the chords sample, or None when the input states no
+	              row validity.
+	line_census   (b [Rp], share, max share, b of the maximum) for THIS line:
+	              the share of the line-center optical depth each ray takes
+	              from refused rows.  None when there is nothing to report.
+	"""
+	L = ['transit_schema %d' % TRANSIT_SCHEMA,
+	     'transit_product: a one-way transmission of the profile named below; '
+	     'this block adds comments only, and the columns are the spectrum']
+	if adv is None:
+		L.append('adv_input: none read; row validity UNKNOWN')
+	else:
+		L.append('adv_input %s' % adv['path'])
+		L.append('adv_schema %s'
+		         % (adv['schema'] if adv['schema'] > 0 else
+		            'absent (legacy file); row validity UNKNOWN'))
+		L.append('adv_input_certified %s' % adv['input_certified'])
+		if adv['stationarity_operator']:
+			L.append('adv_stationarity_operator %s'
+			         % adv['stationarity_operator'])
+		# The fraction a corrected row of the input is accurate to, copied
+		# out of the profile's own header: a spectrum built on corrected
+		# rows is accurate to no better than that fraction of the mass flux
+		# of those rows, and a reader of the curve alone cannot know it
+		# otherwise.  The largest measure over the rows the chords sample
+		# says how close to the fraction this profile came.
+		if adv.get('conditional_tol_text'):
+			L.append('adv_conditional_tol %s' % adv['conditional_tol_text'])
+		if adv.get('mass_row') is not None:
+			_m = np.asarray(adv['mass_row'])
+			if _m.size:
+				L.append('adv_mass_row max %.3e over the %d rows of the '
+				         'profile; the measure of every row is the '
+				         'adv_mass_row column of that file'
+				         % (float(np.nanmax(_m)), _m.size))
+		if adv['model_restrictions']:
+			L.append('adv_model_restrictions %s' % adv['model_restrictions'])
+		for p in adv['provenance']:
+			L.append('input_%s' % p)
+	L.append('transit_tool %s' % tool_identity)
+	if census is None:
+		L.append('census: the input states no row validity, so the rows the '
+		         'chords sample are neither corrected nor refused here; the '
+		         'count is UNKNOWN, which is not zero refused')
+	else:
+		L.append('census sampled_rows %d refused_rows %d above_disk_cap %d'
+		         % (census['sampled'], census['refused'], census['above_cap']))
+		if census.get('reasons'):
+			L.append('census_refusal_reasons %s' % census['reasons'])
+		if census.get('comp'):
+			L.append('census_composition %s' % census['comp'])
+	if line_census is not None:
+		b, share, share_max, b_max = line_census
+		L.append('census_share_b[Rp] ' + ' '.join('%.4f' % x for x in b))
+		L.append('census_share       ' + ' '.join('%.4f' % x for x in share))
+		L.append('census_share_max %.4f at b = %.4f Rp' % (share_max, b_max))
+	L.append('census_note a share of line-center optical depth carried by '
+	         'refused rows is a CONTRIBUTION diagnostic and not an '
+	         'uncertainty on the transit depth: the disk-averaged '
+	         'transmission averages exp(-tau) and is nonlinear in tau, so a '
+	         'saturated ray moves little when its optical depth moves')
+	if overrides:
+		for k, v in overrides:
+			L.append('override %s=%s' % (k, v))
+	else:
+		L.append('override none in effect: every window, resolving power and '
+		         'geometry setting is the built-in default or input.inp')
+	return L
+
+
 def resonance_depth(lam0_A, f_osc, A21, mass, n_lower, instr_res,
                     Grid_Number, r_grid, Rp, data_r, data_v, data_T,
                     A_star, A_atm, A_planet,
@@ -467,7 +898,7 @@ def resonance_depth(lam0_A, f_osc, A21, mass, n_lower, instr_res,
 	exp_tau = np.zeros((Grid_Number, nlam))
 	for p in range(Grid_Number):
 		r_temp = r_grid[p]*Rp
-		arg    = np.where(np.abs(data_r) >= r_temp)[0]
+		arg    = chord_shell_indices(data_r, r_temp)
 		r_LOS  = data_r[arg]
 		x_LOS  = np.sqrt(r_LOS**2.0 - r_temp**2.0)*np.sign(r_LOS)
 		dx     = np.abs(x_LOS[1:] - x_LOS[:-1])
@@ -546,7 +977,7 @@ def resonance_spectrum(components, mass, instr_res, window_A, nlam,
 	exp_tau = np.zeros((Grid_Number, nlam))
 	for p in range(Grid_Number):
 		r_temp = r_grid[p]*Rp
-		arg    = np.where(np.abs(data_r) >= r_temp)[0]
+		arg    = chord_shell_indices(data_r, r_temp)
 		r_LOS  = data_r[arg]
 		x_LOS  = np.sqrt(r_LOS**2.0 - r_temp**2.0)*np.sign(r_LOS)
 		dx     = np.abs(x_LOS[1:] - x_LOS[:-1])

@@ -7,9 +7,19 @@
       ! EXHALE base anchor; above Rmax: flux-conserving extrapolation.
       implicit none
       ! H atom mass, the density unit the IC is written in (matches mu in
-      ! parameters.f90 and wae_MH; was the proton mass 1.6726d-24 until
-      ! 2026-08-19).
+      ! parameters.f90 and wae_MH).
       real*8, parameter :: ICW_mH = 1.67353284d-24
+      ! Helium atom mass [g] and the helium/hydrogen mass ratio the density
+      ! conversions below weigh helium with.  These are the SAME two masses
+      ! wae_exhale_input.f90 hands the Wind-AE solver as atomic_mass(1) and
+      ! atomic_mass(2), so the windsoln that comes back and the IC written
+      ! from it count the same gas; the Wind-AE tree is compiled into the
+      ! standalone wind_ae_ic.x and therefore cannot use global_parameters or
+      ! species_table, where the same ratio is the definition
+      ! (bsp_mass(He I), which global_parameters forms from the same two
+      ! atom masses, so the two ratios are the same number, 3.9715259).
+      real*8, parameter :: ICW_mHe = 6.6464790722d-24
+      real*8, parameter :: ICW_mHe_over_mH = ICW_mHe/ICW_mH
       real*8, parameter :: ICW_kB = 1.380649d-16
       contains
 
@@ -73,7 +83,8 @@
       r = rgrid
       do i = 1, nw
          rwR(i) = rw(i)/Rp
-         nnuc_w(i) = (rhow(i)/(ICW_mH*(1.0d0+4.0d0*HeH)))*(1.0d0+HeH)
+         nnuc_w(i) = (rhow(i)/(ICW_mH*(1.0d0+ICW_mHe_over_mH*HeH)))     &
+                     *(1.0d0+HeH)
          lognnuc_w(i) = log10(nnuc_w(i))
          fHIw(i)  = min(max(YsHIw(i),  0.0d0), 1.0d0)
          fHeIw(i) = min(max(YsHeIw(i), 0.0d0), 1.0d0)
@@ -148,7 +159,7 @@
            ne = nHII + nHeII
            ntot = nH + nHe
            p = (ntot + ne)*ICW_kB*T(jj)
-           nmass = nHI + nHII + 4.0d0*(nHeI + nHeII)
+           nmass = nHI + nHII + ICW_mHe_over_mH*(nHeI + nHeII)
            write(u,'(1X,7(ES17.10,1X))') r(jj), nmass, v(jj), p, T(jj), 0.0d0, 0.0d0
         end do
       end block

@@ -566,7 +566,7 @@ so nothing here should be read as a statement about the JFNK line search.
 Both physical-correctness problems of §3.2 were repaired the same day, in
 `src/modules/radiation/Cool_coeff.f90` and `src/modules/radiation/util_ion_eq.f90`
 (with the matching post-process paths in `T_equation.f90` and
-`post_process_adv.f90`). The changelog entry is `docs/Update_EXHALE.md` §42.
+`post_process_adv.f90`). The changelog entry is `docs/Update_EXHALE_stage1.md` §42.
 The checkerboard itself (§4-§6) is NOT addressed here; only the cooling is.
 
 ### 10.1 What was changed
@@ -625,7 +625,7 @@ the cell center and the top of the domain:
   `docs/resonance_line_trapping.md`.
 
 **(b) Coronal-fit validity floor.** `coronal_excitation_cutoff(T)` multiplies
-every CHIANTI-derived coefficient — the analytic C/N/O and Mg/Ca/Na/Fe fits,
+every CHIANTI-derived coefficient: the analytic C/N/O and Mg/Ca/Na/Fe fits,
 the 1-D and 2-D tables (whose `log10 T` axis starts exactly at 3.0 and which
 otherwise hold their edge value indefinitely below it), and the coronal
 remainder of `cool_OI_ne_func` / `cool_CII_ne_func`, but not their two-level
@@ -673,8 +673,8 @@ HD 189733 b cell 1, `output/Cooling_breakdown.txt` + `Heating_breakdown.txt`:
 
 All rates in erg cm^-3 s^-1. **The sign flips**: the base changes from cooling
 at 4.6x the heating to heating with the cooling 260x below it. The reduction is
-carried almost entirely by (b) — the coronal remainder was 99.74% of the `[O I]`
-rate (§3.2) — while (a) alone is a factor ~5 on the two-level term.
+carried almost entirely by (b) (the coronal remainder was 99.74% of the `[O I]`
+rate (§3.2)), while (a) alone is a factor ~5 on the two-level term.
 
 ### 10.4 Where the base now balances (measured with the code's own cooling)
 
@@ -742,12 +742,12 @@ marched side by side:
 5000 short of its true totals.) The chains were stopped at 100000 steps.
 
 **This test does not resolve the radiative difference.** The control, which
-still cools the base 1000x harder, warms just as fast — faster over steps
-25000-75000 — and by 100000 steps the two runs agree to 4 K in `T1` and to 3%
+still cools the base 1000x harder, warms just as fast (faster over steps
+25000-75000) and by 100000 steps the two runs agree to 4 K in `T1` and to 3%
 in the alternating amplitude. The reference state was produced with a Newton
 finish and is not a fixed point of pure marching, so both runs are riding a
 base transient (`v` at cell 1 is an inflow of -2.6e3 cm/s) whose adiabatic
-heating dominates the radiative term on this timescale — as §3.4 predicted it
+heating dominates the radiative term on this timescale, as §3.4 predicted it
 would, for 1e5 steps against a radiative time of order 1e6. Nothing about the
 sign or size of the cooling change should be read off these columns; §10.4 is
 the measurement that speaks to it. Both runs do leave the worst of the
@@ -780,7 +780,7 @@ step 11000 and never reached the 1e-2 hand-off, identically for both binaries.
   species densities in both the golden and the new output** (H I, O I, O II,
   S II; 17 such cells in the `wasp_full` golden, 3 in the `wasp_he23off`
   golden). Those cells are excluded from the numbers above. The negative
-  densities are PRE-EXISTING — they are in the goldens — and are unrelated to
+  densities are PRE-EXISTING (they are in the goldens) and are unrelated to
   this change, but they are a physical-correctness defect in their own right
   and are recorded here. **Goldens were not re-snapshotted.**
   [2026-08-15: they have been since, most recently on 2026-08-15. Every golden

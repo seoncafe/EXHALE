@@ -55,7 +55,7 @@ Runs/figures/script: \texttt{docs/version\_compare/}.
 
 \begin{table}[h]
 \centering
-{\bfseries HD\,209458b (hot Jupiter, $\log_{10}\Mdot\approx9.3$ --- gentler escape)}\par
+{\bfseries HD\,209458b (hot Jupiter, $\log_{10}\Mdot\approx9.3$: gentler escape)}\par
 \vspace{3pt}
 \begin{tabular}{lccc}
 \toprule
@@ -69,7 +69,7 @@ $\log_{10}\Mdot$ [g\,s$^{-1}$] & 9.31 & 9.04 & $-0.27$ dex \\
 \end{tabular}
 
 \vspace{10pt}
-{\bfseries WASP-121b (ultra-hot Jupiter, $\log_{10}\Mdot\approx13.3$ --- furious escape)}\par
+{\bfseries WASP-121b (ultra-hot Jupiter, $\log_{10}\Mdot\approx13.3$: furious escape)}\par
 \vspace{3pt}
 \begin{tabular}{lccc}
 \toprule
@@ -87,16 +87,16 @@ $\log_{10}\Mdot$ [g\,s$^{-1}$] & 13.34 & 13.32 & unchanged \\
 \textbf{Two regimes.} On the gentler HD\,209458b the escape is slow enough that \emph{helium
 itself} diffusively separates, cutting the He\,I 10830 line by $\sim$2.6$\times$, and the
 heavier C/N/O deplete more than He aloft (He $>$ C $>$ N $>$ O at 3\,$\Rp$). On the furious
-WASP-121b ($\sim$4 dex stronger wind) advection dominates settling for \emph{every} species
---- helium \emph{and} the metals are dragged out essentially unfractionated (10830 unchanged;
+WASP-121b ($\sim$4 dex stronger wind) advection dominates settling for \emph{every} species:
+helium \emph{and} the metals are dragged out essentially unfractionated (10830 unchanged;
 metal/H tracks He/H). This is the (settling speed)/(wind speed) scaling of Koskinen et al.\
 (2013) / Xing et al.\ (2023): separation is suppressed by fast escape and, where it operates
 at all, is stronger for heavier species.
 
 \emph{Correction note: an earlier version showed WASP-121b metals collapsing to zero by
 $\sim$1.25\,$\Rp$ (a ``metal homopause''). That was an artifact of two bugs in the metal
-rescale --- an $r_X\le1$ clamp that made depletion a one-way ratchet, and a skip of exhausted
-cells that made holes permanent --- which locked in transient early-relaxation settling
+rescale (an $r_X\le1$ clamp that made depletion a one-way ratchet, and a skip of exhausted
+cells that made holes permanent), which locked in transient early-relaxation settling
 before the wind developed. With the fix, metals recover with the wind and track He, and the
 v1-vs-v2 temperature structures agree; the earlier ``$\sim$2500\,K hotter'' claim is also
 retracted.}
@@ -126,8 +126,8 @@ narrows the profile.}
 \includegraphics[width=\textwidth]{version_compare/fig_wasp_profiles.pdf}
 \caption{WASP-121b (compact domain, escape radius 1.5\,$\Rp$). He/H separates only modestly
 ($\sim$0.6--0.75$\times$, returning to $\sim$1 above 1.4\,$\Rp$) because the
-$\sim$4-dex-stronger wind drags helium out. The metals (O, Mg, Fe) overlap He almost exactly
---- even Fe (mass 56) is advection-dominated here, so no additional fractionation develops.
+$\sim$4-dex-stronger wind drags helium out. The metals (O, Mg, Fe) overlap He almost exactly:
+even Fe (mass 56) is advection-dominated here, so no additional fractionation develops.
 The v1/v2 temperature and velocity structures are nearly identical.}
 \end{figure}
 
@@ -146,7 +146,7 @@ is not strongly separated in the line-forming region.}
   \item \textbf{He/H.} On HD\,209458b settling competes with the slow wind, so He/H declines
     with altitude and 10830 weakens; on WASP-121b the wind is $\sim$4 dex stronger, so helium
     is dragged out nearly unfractionated.
-  \item \textbf{He\,2$^3$S / 10830.} The metastable tracks He abundance --- weakened where He
+  \item \textbf{He\,2$^3$S / 10830.} The metastable tracks He abundance: weakened where He
     is depleted (HD\,209458b), preserved where He stays mixed (WASP-121b).
   \item \textbf{Metals.} Each trace metal diffuses independently with its own mass, binary
     $D$, and ambipolar-corrected settling. Where diffusion competes with the wind
