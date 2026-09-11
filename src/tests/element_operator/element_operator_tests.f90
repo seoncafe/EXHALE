@@ -65,6 +65,14 @@
       !     back into the species vector, on a state whose helium and metals
       !     have both been moved.
       !
+      ! THE THIRD IS THE FAILURE CONTRACT.  The operator solves a discrete
+      ! transport equation at a fixed density, and neither an unsolved
+      ! nonlinear iteration nor a composition that has stopped carrying that
+      ! density is visible in a finite, nonnegative species vector.  What it
+      ! hands back is therefore either a solution of its own step or the
+      ! composition it was given, and the rows of
+      ! an_inadmissible_composition_is_not_handed_back say which by name.
+      !
       ! Gravity is off, the ambipolar field is off and the hydrogen is
       ! atomic, so the settling coefficient G vanishes identically and the
       ! cell coefficients of the two outermost rows carry no ghost of their
@@ -83,9 +91,17 @@
       use lower_atmosphere_profile, only: eddy_diffusion_on_grid
       use binary_element_diffusion, only: element_transport_residual,     &
                                           relax_element_composition,      &
+                                          element_diffusion_step,         &
                                           element_mass_fractions,         &
-                                          project_element_mass_fractions
-      use utils, only: calc_rho
+                                          project_element_mass_fractions, &
+                                          element_step_accepted,          &
+                                          element_step_solve_failed,      &
+                                          element_step_mass_closure_failed,&
+                                          element_relaxation_converged,   &
+                                          element_mass_closure_departure
+      use test_columns, only: column_carrying_its_own_density,            &
+                              column_mass_closure
+      use, intrinsic :: ieee_arithmetic, only: ieee_value, ieee_quiet_nan
       implicit none
       integer :: nf
       nf = 0
@@ -93,6 +109,7 @@
       call the_relaxation_fixed_point_under_a_callers_ghost(nf)
       call the_element_transport_returns_the_mass_it_was_given(nf)
       call the_advective_write_back_returns_the_mass_it_was_given(nf)
+      call an_inadmissible_composition_is_not_handed_back(nf)
       write(*,'(A)') ''
       if (nf .gt. 0) then
          write(*,'(A,I0,A)') 'element_operator: ', nf, ' row(s) failed'
@@ -136,6 +153,23 @@
          nf = nf + 1
       endif
       end subroutine exceeds_row
+
+      ! ================================================================= !
+
+      subroutine outcome_row(name, measured, expected, nf)
+      ! One row: a named outcome against the one the contract requires.
+      character(len=*), intent(in)    :: name
+      integer,          intent(in)    :: measured, expected
+      integer,          intent(inout) :: nf
+      if (measured .eq. expected) then
+         write(*,'(A,A,A,I0,A,I0,A)') 'PASS ', name, ' measured=',        &
+              measured, ' reference=', expected, ' tol=0'
+      else
+         write(*,'(A,A,A,I0,A,I0,A)') 'FAIL ', name, ' measured=',        &
+              measured, ' reference=', expected, ' tol=0'
+         nf = nf + 1
+      endif
+      end subroutine outcome_row
 
       ! ================================================================= !
 
@@ -355,10 +389,10 @@
       real*8, dimension(:,:), allocatable :: f_c, Y0, Y1
       real*8, dimension(:),   allocatable :: res_he_a, sc_he_a
       real*8, dimension(:,:), allocatable :: res_tr, sc_tr
-      real*8  :: m_1, mpH, famp, drift, moved, bump
+      real*8  :: m_1, mpH, famp, drift, moved
       real*8  :: row_top, row_interior
       logical :: ok_he, ok_tr
-      integer :: j, ie, im, nstep
+      integer :: j, im, nstep
 
       call synthetic_element_column(nc)
       allocate(rho_c(1-Ng:N+Ng), v_c(1-Ng:N+Ng), T_c(1-Ng:N+Ng),          &
@@ -370,22 +404,22 @@
       famp = 1.0d-4
       m_1  = mass_per_H_nucleus_without_He()
       mpH  = m_1 + m_He_over_m_H*HeH
-      f_c  = 0.0d0
       do j = 1-Ng, N+Ng
-         ! An interior gradient in both transported elements: helium and
-         ! the metals are depleted toward the top, by a factor that is 1 at
-         ! the base and 1/2 at the outermost cell.
-         bump = 1.0d0/(1.0d0 + (r(j) - 1.0d0)/max(r(N) - 1.0d0, 1.0d-30))
-         f_c(j,isp_HI)  = 1.0d0/mpH
-         f_c(j,isp_HeI) = bump*HeH/mpH
-         do ie = 1, n_melem
-            f_c(j,mion_fsp(melem_i0(ie))) = bump*melem_ab(ie)/mpH
-         enddo
          rho_c(j) = exp(-3.0d0*(r(j) - 1.0d0))
          v_c(j)   = 0.0d0
          T_c(j)   = 1.0d0
          Frho(j)  = famp/(r_edg(j)*r_edg(j))
       enddo
+      ! An interior gradient in the transported elements, in a column whose
+      ! species carry its own density: helium falls by a factor two from the
+      ! base to the outermost cell, so the operator has work to do, and the
+      ! composition it is handed is one the transport is allowed to advance
+      ! (a column that already misses rho is refused before the boundary
+      ! this row is about can be reached: the mass fractions this row was
+      ! first written with miss it by 1.321e-1 at the outermost cell,
+      ! MEASURED, because they carry helium and the metals at a radial
+      ! factor the hydrogen they are taken against does not).
+      call column_carrying_its_own_density(f_c, 0.0d0, .true., 0.0d0)
 
       call element_mass_fractions(f_c, Y0)
       call relax_element_composition(rho_c, v_c, T_c, f_c, Frho, 1.0d0,   &
@@ -438,72 +472,6 @@
 
       ! ================================================================= !
 
-      function column_mass_closure(rho_c, f_c) result(closure)
-      ! |sum_i m_i n_i - rho|/rho over the physical cells, with the code's
-      ! own mass policy (calc_rho): whether a state's species still carry
-      ! the density the hydrodynamics evolves.
-      real*8, dimension(1-Ng:N+Ng),           intent(in) :: rho_c
-      real*8, dimension(1-Ng:N+Ng,n_species), intent(in) :: f_c
-      real*8  :: closure
-      real*8, dimension(1-Ng:N+Ng)        :: mrho
-      real*8, dimension(1-Ng:N+Ng,n_mion) :: nm_c
-      real*8, dimension(1-Ng:N+Ng,4)      :: nmol_c
-      integer :: j, k
-      do k = 1, n_mion
-         nm_c(:,k) = f_c(:,mion_fsp(k))*rho_c*n0
-      enddo
-      nmol_c(:,1) = f_c(:,isp_H2) *rho_c*n0
-      nmol_c(:,2) = f_c(:,isp_H2p)*rho_c*n0
-      nmol_c(:,3) = f_c(:,isp_H3p)*rho_c*n0
-      nmol_c(:,4) = f_c(:,isp_HeHp)*rho_c*n0
-      call calc_rho(f_c(:,isp_HI)*rho_c*n0, f_c(:,isp_HII)*rho_c*n0,      &
-                    f_c(:,isp_HeI)*rho_c*n0, f_c(:,isp_HeII)*rho_c*n0,    &
-                    f_c(:,isp_HeIII)*rho_c*n0, mrho, nm = nm_c,           &
-                    nmol = nmol_c)
-      closure = 0.0d0
-      do j = 1, N
-         closure = max(closure, abs(mrho(j) - rho_c(j)*n0)                &
-                                /max(rho_c(j)*n0, 1.0d-300))
-      enddo
-      end function column_mass_closure
-
-      ! ================================================================= !
-
-      subroutine mass_closed_column(f_c, q_h2)
-      ! A column whose species carry its own density EXACTLY, written as
-      ! mass fractions that sum to one: helium carries X_He, each trace
-      ! element its own Z_e, hydrogen the remainder, and the species vector
-      ! holds a mass fraction divided by the species mass.  The helium mass
-      ! fraction falls by a factor two from the base to the outermost cell,
-      ! so the operator has a gradient to work on.  q_h2 is the fraction of
-      ! the hydrogen NUCLEI bound into H2; at zero the column is atomic.
-      real*8, dimension(1-Ng:N+Ng,n_species), intent(out) :: f_c
-      real*8,                                 intent(in)  :: q_h2
-      real*8  :: mpH, xhe0, xhe, zsum, ze(n_melem), fH
-      integer :: j, ie
-      mpH  = mass_per_H_nucleus_without_He() + m_He_over_m_H*HeH
-      xhe0 = m_He_over_m_H*HeH/mpH
-      zsum = 0.0d0
-      do ie = 1, n_melem
-         ze(ie) = melem_A(ie)*melem_ab(ie)/mpH
-         zsum   = zsum + ze(ie)
-      enddo
-      f_c = 0.0d0
-      do j = 1-Ng, N+Ng
-         xhe = xhe0/(1.0d0 + (r(j) - 1.0d0)/max(r(N) - 1.0d0, 1.0d-30))
-         ! hydrogen NUCLEI per unit mass, then split between H I and H2
-         fH = (1.0d0 - xhe - zsum)/bsp_mass(isp_HI)
-         f_c(j,isp_HI)  = (1.0d0 - q_h2)*fH
-         f_c(j,isp_H2)  = 0.5d0*q_h2*fH
-         f_c(j,isp_HeI) = xhe/m_He_over_m_H
-         do ie = 1, n_melem
-            f_c(j,mion_fsp(melem_i0(ie))) = ze(ie)/melem_A(ie)
-         enddo
-      enddo
-      end subroutine mass_closed_column
-
-      ! ================================================================= !
-
       subroutine the_element_transport_returns_the_mass_it_was_given(nf)
       ! WHAT THE OPERATOR HANDS BACK WEIGHS WHAT IT WAS HANDED.  The
       ! composition it returns is its own, the density is the
@@ -539,9 +507,10 @@
             Frho(j)  = famp/(r_edg(j)*r_edg(j))
          enddo
          if (ic .eq. 3) then
-            call mass_closed_column(f_c, 8.0d-1)
+            call column_carrying_its_own_density(f_c, 8.0d-1,             &
+                                                .true., 0.0d0)
          else
-            call mass_closed_column(f_c, 0.0d0)
+            call column_carrying_its_own_density(f_c, 0.0d0, .true., 0.0d0)
          endif
 
          cl0 = column_mass_closure(rho_c, f_c)
@@ -604,7 +573,7 @@
       do j = 1-Ng, N+Ng
          rho_c(j) = exp(-3.0d0*(r(j) - 1.0d0))
       enddo
-      call mass_closed_column(f_c, 0.0d0)
+      call column_carrying_its_own_density(f_c, 0.0d0, .true., 0.0d0)
       cl0 = column_mass_closure(rho_c, f_c)
 
       call element_mass_fractions(f_c, Y)
@@ -626,5 +595,149 @@
 
       deallocate(rho_c, f_c, Y)
       end subroutine the_advective_write_back_returns_the_mass_it_was_given
+
+      ! ================================================================= !
+
+      subroutine an_inadmissible_composition_is_not_handed_back(nf)
+      ! WHAT THE TRANSPORT HANDS BACK IS EITHER A SOLUTION OF ITS OWN STEP OR
+      ! THE COMPOSITION IT WAS GIVEN.
+      !
+      ! The step solves a discrete transport equation at a FIXED density.
+      ! Two things can be wrong with what it produces and neither is visible
+      ! in a finite, nonnegative species vector: the nonlinear iteration may
+      ! not have solved the row, and the species may no longer weigh the
+      ! density that was held fixed.  A composition that fails either is not
+      ! a state of this atmosphere, and the chemistry that reads it next has
+      ! no way to tell.
+      !
+      ! ROWS.
+      !   * a_solved_step_is_accepted / _moves_the_composition /
+      !     _carries_the_density_it_was_given: the ordinary step, so that the
+      !     refusals below are refusals and not a routine that never
+      !     advances anything.
+      !   * an_unsolved_step_is_refused / _leaves_the_entry_composition: a
+      !     step whose residual is not a number at any iterate.  The line
+      !     search cannot descend, so no trial along the direction is an
+      !     iterate of the equation; the outcome says so and the species
+      !     vector is the entry one to the last bit.
+      !   * a_step_on_a_column_that_misses_rho_is_still_solved /
+      !     a_step_returns_the_mass_it_was_handed: the departure from rho is
+      !     an invariant of the step, so a column whose species weigh 1.2 rho
+      !     is transported (the helium fraction is a ratio and does not see
+      !     the scaling) and comes back weighing 1.2 rho.  Establishing the
+      !     closure belongs to whoever builds the composition and preserving
+      !     it to the transport; it is the increase that is refused, and the
+      !     reproduced failure of D1 (0.177 of rho from an entry state closed
+      !     to 1.0e-15, docs/solver_partition_experiment_20260911.md section
+      !     5.3) is an increase of the whole of it.
+      !   * the_relaxation_reports_the_fixed_point_it_reached /
+      !     _carries_the_density_it_was_given: a relaxation that meets its
+      !     movement measure reports the fixed point of the operator, which
+      !     is a different outcome from running out of steps, and its
+      !     returned composition closes against rho.
+      integer, intent(inout) :: nf
+      integer, parameter :: nc = 40
+      real*8, dimension(:),   allocatable :: rho_c, v_c, T_c, T_nan, Frho
+      real*8, dimension(:),   allocatable :: dt_c
+      real*8, dimension(:,:), allocatable :: f_c, f_keep, Y0, Y1
+      real*8  :: famp, cl0, cl1, moved, dfmax, drift
+      integer :: j, st, nstep
+      ! One diffusion time of the synthetic column: dr^2/K_zz = 6.6e5 s
+      ! against the code time R0/v0 = 3.5e4 s (MEASURED from the column's
+      ! own numbers), so a step of this length moves the composition by a
+      ! finite fraction of its gradient.
+      real*8, parameter :: dt_diffusive = 2.0d1
+
+      call synthetic_element_column(nc)
+      allocate(rho_c(1-Ng:N+Ng), v_c(1-Ng:N+Ng), T_c(1-Ng:N+Ng),          &
+               T_nan(1-Ng:N+Ng), Frho(1-Ng:N+Ng), dt_c(1-Ng:N+Ng))
+      allocate(f_c(1-Ng:N+Ng,n_species), f_keep(1-Ng:N+Ng,n_species))
+      allocate(Y0(1-Ng:N+Ng,1+n_melem), Y1(1-Ng:N+Ng,1+n_melem))
+
+      famp = 1.0d-4
+      do j = 1-Ng, N+Ng
+         rho_c(j) = exp(-3.0d0*(r(j) - 1.0d0))
+         v_c(j)   = 0.0d0
+         T_c(j)   = 1.0d0
+         Frho(j)  = famp/(r_edg(j)*r_edg(j))
+         dt_c(j)  = dt_diffusive
+      enddo
+      call column_carrying_its_own_density(f_c, 0.0d0, .true., 0.0d0)
+      f_keep = f_c
+      cl0    = column_mass_closure(rho_c, f_c)
+
+      ! --- the ordinary step
+      call element_mass_fractions(f_c, Y0)
+      call element_diffusion_step(rho_c, v_c, T_c, f_c, dt_c,             &
+                                  Frho_in = Frho, status = st)
+      call element_mass_fractions(f_c, Y1)
+      cl1   = column_mass_closure(rho_c, f_c)
+      moved = 0.0d0
+      do j = 2, N
+         moved = max(moved, abs(Y1(j,1) - Y0(j,1))/max(Y0(1,1), 1.0d-300))
+      enddo
+      call outcome_row('a_solved_step_is_accepted', st,                   &
+                       element_step_accepted, nf)
+      call exceeds_row('a_solved_step_moves_the_composition', moved,      &
+                       1.0d-6, nf)
+      call bound_row('a_solved_step_carries_the_density_it_was_given',    &
+                     cl1, 1.0d-14, nf)
+      write(*,'(A,ES12.5,A,ES12.5)')                                      &
+           '  DIAGNOSTIC entry closure = ', cl0,                          &
+           ', closure the step reported = ',                              &
+           element_mass_closure_departure
+
+      ! --- a step whose residual is not a number at any iterate
+      f_c   = f_keep
+      T_nan = T_c
+      T_nan(N/2) = ieee_value(1.0d0, ieee_quiet_nan)
+      call element_diffusion_step(rho_c, v_c, T_nan, f_c, dt_c,           &
+                                  Frho_in = Frho, status = st)
+      dfmax = maxval(abs(f_c - f_keep))
+      call outcome_row('an_unsolved_step_is_refused', st,                 &
+                       element_step_solve_failed, nf)
+      call bound_row('an_unsolved_step_leaves_the_entry_composition',     &
+                     dfmax, 0.0d0, nf)
+
+      ! --- the mass the species carry is the step's invariant, measured on a
+      ! column that does not carry rho at all: the departure comes back the
+      ! size it went in, which is what the closure refusal is measured
+      ! against and what the reproduced failure of D1 broke.
+      f_c    = 1.2d0*f_keep
+      f_keep = f_c
+      cl0    = column_mass_closure(rho_c, f_c)
+      call element_diffusion_step(rho_c, v_c, T_c, f_c, dt_c,             &
+                                  Frho_in = Frho, status = st)
+      cl1 = column_mass_closure(rho_c, f_c)
+      call outcome_row('a_step_on_a_column_that_misses_rho_is_still'//    &
+                       '_solved', st, element_step_accepted, nf)
+      call bound_row('a_step_returns_the_mass_it_was_handed',             &
+                     abs(cl1 - cl0), 1.0d-14, nf)
+      write(*,'(A,ES12.5,A,ES12.5)') '  DIAGNOSTIC departure in = ',      &
+           cl0, ', out = ', cl1
+
+      ! --- the relaxation to the fixed point
+      call column_carrying_its_own_density(f_c, 0.0d0, .true., 0.0d0)
+      call element_mass_fractions(f_c, Y0)
+      call relax_element_composition(rho_c, v_c, T_c, f_c, Frho, 1.0d0,   &
+                                     drift, nstep, status = st)
+      call element_mass_fractions(f_c, Y1)
+      cl1   = column_mass_closure(rho_c, f_c)
+      moved = 0.0d0
+      do j = 2, N
+         moved = max(moved, abs(Y1(j,1) - Y0(j,1))/max(Y0(1,1), 1.0d-300))
+      enddo
+      write(*,'(A,I0,A,ES12.5,A,ES12.5)')                                 &
+           '  DIAGNOSTIC relaxation steps = ', nstep, ', drift = ',       &
+           drift, ', helium moved by ', moved
+      call outcome_row('the_relaxation_reports_the_fixed_point_it'//      &
+                       '_reached', st, element_relaxation_converged, nf)
+      call exceeds_row('the_relaxation_of_this_column_moved_it', moved,   &
+                       1.0d-3, nf)
+      call bound_row('the_relaxation_carries_the_density_it_was_given',   &
+                     cl1, 1.0d-14, nf)
+
+      deallocate(rho_c, v_c, T_c, T_nan, Frho, dt_c, f_c, f_keep, Y0, Y1)
+      end subroutine an_inadmissible_composition_is_not_handed_back
 
       end program element_operator_tests

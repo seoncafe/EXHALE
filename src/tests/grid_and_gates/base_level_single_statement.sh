@@ -30,7 +30,7 @@ set -u
 HERE="$(cd "$(dirname "$0")" && pwd)"
 ROOT="$(cd "$HERE/../../.." && pwd)"
 EXE="${EXHALE_EXE:-$ROOT/EXHALE.x}"
-WORK="$ROOT/build/tests/grid_and_gates/lp"
+WORK="${EXHALE_TEST_OUT:-$ROOT/build/tests/grid_and_gates}/lp"
 CASE="$ROOT/backup/regression/lower_profile"
 
 if [ ! -x "$EXE" ]; then

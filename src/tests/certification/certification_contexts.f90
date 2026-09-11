@@ -29,6 +29,13 @@
       !       that rejects a trial, and both refuse a non-finite row.
       !   (g) the isolated-workspace round trip reinstates the carrier module
       !       state exactly.
+      !   (h) the continuity row's tolerance is its own cell's rounding floor
+      !       times the measured margin wherever that stands above the fixed
+      !       3e-12, and the fixed value wherever it does not, so a base-layer
+      !       row carrying no signal below the rounding of its own flux
+      !       difference is admitted and a row above that floor is not. The
+      !       superseded rule -- one number for every cell -- is transcribed
+      !       and run on the same pairs.
       !
       ! Each assertion prints
       !     PASS|FAIL <name> measured=<v> reference=<r> tol=<t>
@@ -76,6 +83,7 @@
       call the_regime_windows_select_their_own_cells()
       call a_species_row_is_gated_in_the_wind_and_reported_below_it()
       call the_five_anchoring_numbers_of_a_synthetic_column()
+      call the_mass_row_tolerance_is_anchored_on_its_rounding_floor()
 
       if (n_fail .gt. 0) then
          write(*,'(A,I0,A)') 'certification_contexts: ', n_fail,          &
@@ -971,6 +979,78 @@
 
       ! ------------------------------------------------------!
 
+      subroutine the_mass_row_tolerance_is_anchored_on_its_rounding_floor()
+      ! THE CONTINUITY ROW'S TOLERANCE AGAINST THE ROUNDING FLOOR OF THE
+      ! CELL IT IS APPLIED AT (item P16, user decision 2026-09-11).
+      !
+      ! The rule under test is mass_row_cell_verdict, the one expression
+      ! the certification takes this verdict by:
+      !
+      !   tol(j) = max( cert_tol_mass, min(ceiling, c_round*floor(j)) )
+      !
+      ! The floors below are the values MEASURED at the base of the two
+      ! reload fixtures (EXHALE_MASS_FLOOR_SCAN, P16): 3.0E-11 on the
+      ! HD 209458 b element reload and 9.3E-13 on the hot-Uranus carrier
+      ! reload, with 5.7E-14 on `wasp_full_newton`. The floor ESTIMATE
+      ! itself is a statement about a state and is measured on states, not
+      ! asserted here; what is asserted is the rule that reads it.
+      real*8  :: tol, dist, fl, q
+      logical :: within, anchored
+      ! (1) A floor a decade below the fixed value leaves the fixed value.
+      ! 5.7E-14 is `wasp_full_newton`'s base, where c_round times the floor
+      ! is 5.7E-13 and the row is still held to 3E-12.
+      fl = 5.7d-14
+      call mass_row_cell_verdict(0.0d0, fl, tol, dist, within, anchored)
+      call check_rel('mass_tolerance_is_the_fixed_value_below_the_floor',  &
+                     tol, cert_tol_mass, 0.0d0)
+      call check_log('the_fixed_value_is_not_the_anchor_there',           &
+                     anchored, .false.)
+      call check_str('the_report_names_the_fixed_gate',                   &
+                     trim(cert_mass_gate_name(anchored)),                 &
+                     'the fixed tolerance')
+      ! (2) A floor above it: the tolerance is c_round times that floor.
+      fl = 3.0d-11
+      call mass_row_cell_verdict(0.0d0, fl, tol, dist, within, anchored)
+      call check_rel('mass_tolerance_is_the_rounding_anchor_above_it',    &
+                     tol, cert_mass_round_margin*fl, 0.0d0)
+      call check_log('the_anchor_is_named_as_the_gate_there',             &
+                     anchored, .true.)
+      call check_str('the_report_names_the_rounding_anchor',              &
+                     trim(cert_mass_gate_name(anchored)),                 &
+                     'the rounding anchor of that cell')
+      ! (3) A row at half the anchor is WITHIN, where the superseded rule
+      ! -- the fixed value at every cell, transcribed here -- refuses it.
+      q = 0.5d0*cert_mass_round_margin*fl
+      call mass_row_cell_verdict(q, fl, tol, dist, within, anchored)
+      call check_log('a_row_at_half_the_anchor_is_within',                &
+                     within, .true.)
+      call check_log('the_superseded_fixed_rule_refuses_the_same_row',    &
+                     q .lt. cert_tol_mass, .false.)
+      call check_rel('its_distance_from_its_own_tolerance_is_a_half',     &
+                     dist, 0.5d0, 1.0d-14)
+      ! (4) A row above the anchor still refuses, so the anchor raises the
+      ! tolerance and does not remove the gate.
+      q = 1.5d0*cert_mass_round_margin*fl
+      call mass_row_cell_verdict(q, fl, tol, dist, within, anchored)
+      call check_log('a_row_above_the_anchor_still_refuses',              &
+                     within, .false.)
+      ! (5) The ceiling. |R_1|/s_1 at 1 is a mass flux changing by the
+      ! whole of itself across the cell, which no estimated floor admits.
+      call mass_row_cell_verdict(2.0d0, 1.0d3, tol, dist, within,         &
+                                 anchored)
+      call check_rel('the_anchored_tolerance_stops_at_its_ceiling',       &
+                     tol, cert_tol_mass_ceiling, 0.0d0)
+      call check_log('a_row_above_the_ceiling_refuses',                   &
+                     within, .false.)
+      ! (6) The margin itself is the number the measurement anchored, and
+      ! it stands above the largest ratio of step to estimate measured on
+      ! the three fixtures (1.59, 1.89, 2.68).
+      call check_log('the_margin_stands_above_every_measured_ratio',      &
+                     cert_mass_round_margin .gt. 2.68d0, .true.)
+      end subroutine the_mass_row_tolerance_is_anchored_on_its_rounding_floor
+
+      ! ------------------------------------------------------!
+
       function f_sp_none() result(fs)
       ! A composition array of the right shape. The cases above never reach
       ! the carrier evaluation, which is the only consumer of it.
@@ -995,6 +1075,31 @@
       character(len=*),  intent(in) :: name
       st = rep%e(entry_index(rep, name))%status
       end function entry_status
+
+      subroutine check_rel(name, measured, reference, tol)
+      ! Equality of two numbers, exact when tol is zero.
+      character(*), intent(in) :: name
+      real*8,       intent(in) :: measured, reference, tol
+      real*8  :: rel
+      logical :: ok
+      rel = abs(measured - reference)/max(abs(reference), 1.0d-300)
+      ok  = (rel .le. tol)
+      if (tol .eq. 0.0d0) ok = (measured .eq. reference)
+      write(*,'(A,A,A,ES23.16,A,ES23.16,A,ES9.2)')                        &
+           merge('PASS ', 'FAIL ', ok), name, ' measured=', measured,     &
+           ' reference=', reference, ' tol=', tol
+      if (.not. ok) n_fail = n_fail + 1
+      end subroutine check_rel
+
+      subroutine check_str(name, measured, reference)
+      character(*), intent(in) :: name, measured, reference
+      logical :: ok
+      ok = (trim(measured) .eq. trim(reference))
+      write(*,'(A,A,A,A,A,A,A)') merge('PASS ', 'FAIL ', ok), name,       &
+           ' measured=', trim(measured), ' reference=', trim(reference),  &
+           ' tol=0'
+      if (.not. ok) n_fail = n_fail + 1
+      end subroutine check_str
 
       subroutine check_int(name, measured, reference)
       character(*), intent(in) :: name

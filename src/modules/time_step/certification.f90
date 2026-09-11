@@ -78,6 +78,7 @@
       use steady_residual_mod,      only: residual_row_scale,             &
                                           n_cells_without_chemical_root,  &
                                           face_mass_flux_of_state,        &
+                                          mass_row_rounding_floor,        &
                                           row_terms_describe_state
       use diffusive_photochemistry, only: carrier_steady_residual,        &
                                           n_carrier, n_carrier_max,       &
@@ -185,6 +186,47 @@
       real*8, parameter, public :: cert_tol_mass     = 3.0d-12
       real*8, parameter, public :: cert_tol_momentum = 1.0d-8
       real*8, parameter, public :: cert_tol_energy   = 1.0d-6
+      ! THE MASS ROW'S TOLERANCE IS A FUNCTION OF THE CELL, cert_tol_mass_at
+      ! below, and every reader of it goes through that accessor. The
+      ! constant above is the FLOOR of that function: where the arithmetic
+      ! permits it, the row is held to 3e-12 and to nothing looser.
+      !
+      ! WHY A FIXED NUMBER ALONE REFUSES STATES THAT CARRY NO SIGNAL. The
+      ! mass row is a difference of two face fluxes over a cell volume, and
+      ! in a nearly hydrostatic base layer that difference is formed
+      ! between quantities the Riemann solve builds from the cell's whole
+      ! momentum at its own signal speed, so its rounding is about eps/Mach
+      ! of the flux and not eps of it (mass_row_rounding_floor,
+      ! steady_residual.f90, states the derivation; N33 measured the
+      ! phenomenon). MEASURED at the base of the three fixtures of item
+      ! P16: the estimated floor is 5.7E-14 on `wasp_full_newton` (Mach
+      ! 3.9e-3), 9.3E-13 on the hot-Uranus carrier reload (Mach 2.4e-4) and
+      ! 3.2E-11 on the HD 209458 b element reload (Mach 5.1e-6), four
+      ! decades across three states of one code. A single 3e-12 therefore
+      ! holds one of them to eight ulps of its own base layer and another
+      ! to a tenth of one ulp.
+      !
+      ! c_round, THE ONE NUMBER ANCHORED, and how it was measured. One ulp
+      ! is added to the density of every cell and the whole flux assembly is
+      ! run again; the STEP the row takes is the non-smoothness the assembly
+      ! carries, and the ratio of that step to the estimate above is what
+      ! the margin has to cover. MEASURED (P16, EXHALE_MASS_FLOOR_SCAN, the
+      ! largest ratio over all 500 cells of each state as loaded):
+      ! `wasp_full_newton` 1.59, HD 209458 b 1.89, hot-Uranus 2.68. The
+      ! value below stands 3.7 times above the largest of them, and N33's
+      ! independent reading of the same floor against its own bound was 5.5
+      ! to 12, so a decade is the margin the two measurements together
+      ! support; nothing larger is measured and nothing larger is taken.
+      real*8, parameter, public :: cert_mass_round_margin = 1.0d1
+      ! THE CEILING OF THE ANCHORED TOLERANCE. |R_1|/s_1 is the fractional
+      ! change of the mass flux across the cell, so a row at 1 says the
+      ! flux changes by the whole of itself there. No arithmetic argument
+      ! admits that, whatever the estimated floor says, and a state whose
+      ! estimated floor reaches this value is one whose mass row cannot be
+      ! judged at all rather than one that passes. It is not an operative
+      ! branch on any state measured: it would need a base Mach number
+      ! below 1e-15.
+      real*8, parameter, public :: cert_tol_mass_ceiling = 1.0d0
       ! THE TWO SPECIES-ROW TOLERANCES ARE VALUES OF A FUNCTION OF THE
       ! RADIUS, cert_tol_carrier_at and cert_tol_element_at below, and every
       ! reader of them goes through those two accessors. The constants here
@@ -369,6 +411,23 @@
          ! that binds the element row of a real state (r = 1.15).
          real*8            :: row_max_reported = 0.0d0
          integer           :: jworst_reported  = 0
+         ! WHERE A TOLERANCE THAT IS A FUNCTION OF THE CELL BINDS. The
+         ! continuity row's tolerance is one (cert_tol_mass_at), so the
+         ! cell whose measure stands furthest outside ITS OWN tolerance is
+         ! not in general the cell of the largest measure, and the verdict
+         ! is taken cell by cell. jbind = 0 says the row's tolerance is one
+         ! number for the whole column and jworst carries the verdict.
+         integer           :: jbind        = 0
+         real*8            :: row_at_bind  = 0.0d0
+         real*8            :: dist_bind    = 0.0d0
+         ! The tolerance that applied at the cell of the LARGEST measure,
+         ! which is the other cell a reader looks for when the two differ:
+         ! it says why a row_max above the fixed value was admitted.
+         real*8            :: tol_at_jworst = 0.0d0
+         ! Whether the tolerance at that cell came from the rounding anchor
+         ! or from the fixed floor, so a reader can tell which gate
+         ! refused or admitted the state.
+         logical           :: tol_anchored = .false.
       end type cert_entry
 
       type, public :: cert_report
@@ -505,6 +564,8 @@
       public :: certification_row_measure
       public :: certification_row_measure_over
       public :: cert_tol_element_at, cert_tol_carrier_at
+      public :: cert_tol_mass_at, mass_row_cell_verdict
+      public :: cert_mass_gate_name
       public :: certification_species_row_gate
       public :: certification_entry_index
       public :: certification_last_report, certification_stop_uncertified
@@ -692,6 +753,80 @@
          endif
       endif
       end subroutine certification_row_measure
+
+      ! ------------------------------------------------------!
+
+      double precision function cert_tol_mass_at(j, u) result(tol)
+      ! THE CONTINUITY ROW'S TOLERANCE AT ONE CELL, and the only reader of
+      ! cert_tol_mass: the fixed value where the cell's arithmetic permits
+      ! it, and the cell's own rounding floor times the measured margin
+      ! where it does not.
+      !
+      !   tol(j) = max( cert_tol_mass,
+      !                 min( ceiling, c_round * floor(j) ) )
+      !
+      ! A state is therefore never asked to resolve its mass row below the
+      ! rounding of its own base layer, and never allowed to do worse than
+      ! 3e-12 where the rounding is below it. The declarations of
+      ! cert_mass_round_margin and of mass_row_rounding_floor
+      ! (steady_residual.f90) carry the derivation and the measurements.
+      !
+      ! WHAT IS GIVEN UP, stated because it is the cost of the anchor. Where
+      ! the floor binds, the mass row of that cell is judged at eps/Mach of
+      ! its own flux instead of at 3e-12: on the HD 209458 b base layer that
+      ! is about 3e-10 rather than 3e-12. What the row is FOR is undamaged --
+      ! the flux errors it was given this scale to catch are fractions of a
+      ! percent to tens of percent of the flux (the 30 percent at 1.03 R_p
+      ! of docs/p54_base_layer_mass_flux.md), seven decades above any floor
+      ! measured -- and the mass-flux spread gate reads the same quantity
+      ! independently.
+      integer,                        intent(in) :: j
+      real*8, dimension(3,1-Ng:N+Ng), intent(in) :: u
+      real*8  :: dist
+      logical :: within, anchored
+      call mass_row_cell_verdict(0.0d0, mass_row_rounding_floor(j, u),    &
+                                 tol, dist, within, anchored)
+      end function cert_tol_mass_at
+
+      ! ------------------------------------------------------!
+
+      pure subroutine mass_row_cell_verdict(q, floor_q, tol, dist,        &
+                                            within, anchored)
+      ! THE VERDICT ON ONE CELL OF THE CONTINUITY ROW, and the single
+      ! expression of it: the tolerance that applies there, the distance
+      ! from it, and which of the two gates set it.
+      !
+      !   tol = max( cert_tol_mass, min( ceiling, c_round * floor ) )
+      !
+      ! q is the cell's row measure |R_1|/s_1 and floor_q the rounding
+      ! floor OF THAT SAME MEASURE (mass_row_rounding_floor). The rule is
+      ! separated from the column it is applied over so that it can be
+      ! stated on one (q, floor) pair and nothing re-derives it.
+      real*8,  intent(in)  :: q, floor_q
+      real*8,  intent(out) :: tol, dist
+      logical, intent(out) :: within, anchored
+      tol      = max(cert_tol_mass,                                       &
+                     min(cert_tol_mass_ceiling,                           &
+                         cert_mass_round_margin*floor_q))
+      anchored = (tol .gt. cert_tol_mass)
+      dist     = q/tol
+      within   = (dist .lt. 1.0d0)
+      end subroutine mass_row_cell_verdict
+
+      ! ------------------------------------------------------!
+
+      pure function cert_mass_gate_name(anchored) result(nm)
+      ! WHICH OF THE TWO GATES SET THE CONTINUITY ROW'S TOLERANCE AT A
+      ! CELL, in the words the report prints, so that the report and a
+      ! reader of the verdict take the name from one place.
+      logical, intent(in) :: anchored
+      character(len=32)   :: nm
+      if (anchored) then
+         nm = 'the rounding anchor of that cell'
+      else
+         nm = 'the fixed tolerance'
+      endif
+      end function cert_mass_gate_name
 
       ! ------------------------------------------------------!
 
@@ -1205,9 +1340,53 @@
                                      rep%e(idx)%finite,                   &
                                      wvol = ww, rvol = rep%e(idx)%row_vol)
       call fill_regime_measures(rep%e(idx), rr, ss)
-      rep%e(idx)%within_tol = rep%e(idx)%finite .and.                      &
-                              (rep%e(idx)%row_max .lt. rep%e(idx)%tol)
+      if (k .eq. 1) then
+         call mass_row_verdict(rep%e(idx), rr, ss, u)
+      else
+         rep%e(idx)%within_tol = rep%e(idx)%finite .and.                   &
+                                 (rep%e(idx)%row_max .lt. rep%e(idx)%tol)
+      endif
       end subroutine hydro_row_entry
+
+      ! ------------------------------------------------------!
+
+      subroutine mass_row_verdict(ent, rr, ss, u)
+      ! THE CONTINUITY ROW'S VERDICT, TAKEN CELL BY CELL, because its
+      ! tolerance is a function of the cell (cert_tol_mass_at). The cell
+      ! that binds is the one whose measure stands furthest outside its own
+      ! tolerance, which is not in general the cell of the largest measure:
+      ! a wind cell at 1e-11 against 3e-12 refuses while a base cell at
+      ! 1e-9 against its own rounding floor does not.
+      !
+      ! row_max and jworst are left as they are. They are the measure of
+      ! the row over the column and the cell that carries it, one
+      ! expression for every row of the report, and the acceptance gate is
+      ! asserted against them (gate_equals_certification, steady_newton.f90).
+      ! What this routine decides is the verdict and which number took it.
+      type(cert_entry), intent(inout) :: ent
+      real*8, dimension(1:N),                 intent(in) :: rr, ss
+      real*8, dimension(3,1-Ng:N+Ng),         intent(in) :: u
+      real*8  :: q, tt, dd
+      logical :: wi, an, wi_bind
+      integer :: j
+      ent%jbind = 0;  ent%dist_bind = 0.0d0;  ent%row_at_bind = 0.0d0
+      wi_bind = .true.
+      do j = 1, N
+         q = abs(rr(j))/max(ss(j), cert_scale_floor)
+         call mass_row_cell_verdict(q, mass_row_rounding_floor(j, u),     &
+                                    tt, dd, wi, an)
+         if (ent%jbind .eq. 0 .or. dd .gt. ent%dist_bind) then
+            ent%jbind        = j
+            ent%dist_bind    = dd
+            ent%row_at_bind  = q
+            ent%tol          = tt
+            ent%tol_anchored = an
+            wi_bind          = wi
+         endif
+         if (j .eq. ent%jworst) ent%tol_at_jworst = tt
+      enddo
+      ent%within_tol = ent%finite .and. wi_bind
+      end subroutine mass_row_verdict
 
       ! ------------------------------------------------------!
 
@@ -1518,6 +1697,12 @@
            '     hydrodynamic mass ', cert_tol_mass,                       &
            ', momentum ', cert_tol_momentum,                               &
            ', energy ', cert_tol_energy
+      write(*,'(A,F5.1,A)') '     the mass value is a FLOOR: where the'// &
+           ' cell''s own rounding of the flux difference stands above'//   &
+           ' it,',                                                        &
+           cert_mass_round_margin, ' times that floor is the tolerance'
+      write(*,'(A)') '     of that cell (cert_tol_mass_at), and the'//    &
+           ' verdict on the mass row is taken cell by cell'
       write(*,'(A,ES9.2,A,ES9.2,A,ES9.2,A,ES9.2)')                         &
            '     closure ', cert_tol_closure,                              &
            ', level ', cert_tol_level,                                     &
@@ -1564,6 +1749,22 @@
                     rep%e(i)%row_max_gate, ' at cell ',                    &
                     rep%e(i)%jworst_gate,                                  &
                     '; the cells below that radius are reported only'
+            ! WHICH CELL AND WHICH TOLERANCE TOOK THE VERDICT on a row
+            ! whose tolerance is a function of the cell, so that a reader
+            ! can tell the fixed gate from the rounding anchor.
+            if (rep%e(i)%jbind .gt. 0)                                     &
+               write(*,'(A,I0,A,ES12.5,A,ES10.3,A,ES8.1,A,ES10.3,A,A)')    &
+                    '        verdict at cell ', rep%e(i)%jbind,            &
+                    ' (r=', r(rep%e(i)%jbind), '): ',                      &
+                    rep%e(i)%row_at_bind, ' against ', rep%e(i)%tol,       &
+                    ', distance ', rep%e(i)%dist_bind, ' -- ',             &
+                    trim(cert_mass_gate_name(rep%e(i)%tol_anchored))
+            if (rep%e(i)%jbind .gt. 0 .and.                                &
+                rep%e(i)%jbind .ne. rep%e(i)%jworst)                       &
+               write(*,'(A,I0,A,ES8.1,A)')                                 &
+                    '        the largest measure sits at cell ',           &
+                    rep%e(i)%jworst, ', whose own tolerance is ',          &
+                    rep%e(i)%tol_at_jworst, ' there'
             if (rep%e(i)%n_roundoff_limited .gt. 0)                        &
                write(*,'(A,I0,A)') '        round-off limited rows over'// &
                     ' the run: ', rep%e(i)%n_roundoff_limited,             &
@@ -1701,6 +1902,15 @@
                        rep%e(i)%row_max_gate, ' above ', rep%e(i)%tol,     &
                        ' at cell ', rep%e(i)%jworst_gate,                  &
                        ' (a wind cell)'
+               else if (rep%e(i)%jbind .gt. 0) then
+                  ! A row whose tolerance is a function of the cell names
+                  ! the cell that REFUSED it, not the cell of its largest
+                  ! measure: on this row the two differ, and the largest
+                  ! measure may stand inside its own tolerance.
+                  write(*,'(A,A,A,ES10.3,A,ES8.1,A,I0)') '     ',          &
+                       trim(rep%e(i)%name), ': row measure ',              &
+                       rep%e(i)%row_at_bind, ' above ', rep%e(i)%tol,      &
+                       ' at cell ', rep%e(i)%jbind
                else
                   write(*,'(A,A,A,ES10.3,A,ES8.1,A,I0)') '     ',          &
                        trim(rep%e(i)%name), ': row measure ',              &

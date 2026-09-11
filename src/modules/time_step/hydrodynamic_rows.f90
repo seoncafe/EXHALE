@@ -112,12 +112,22 @@
       !
       ! Restrictions of the arm, each of which stops the run rather than
       ! silently evaluating something else: the low-Mach contact-mode
-      ! dissipation flux is not part of the generic text, and the
+      ! dissipation flux is not part of the generic text, the
       ! reconstruction flags must be the consistent pair the schemes are
-      ! selected by.
+      ! selected by, and a reconstruction continuation strictly between the
+      ! two schemes is refused because the momentum row's terms are read
+      ! off by a single-scheme rule (the_generic_text_is_usable).
+      !
+      ! WHAT THE ARM HANDS BACK BESIDE THE ROWS.  The face flux, the face
+      ! pressure and, under the well-balanced key, the face departures the
+      ! momentum row was assembled from, all in the module arrays of
+      ! RK_integration that every later reader of them uses
+      ! (store_the_interface_fluxes).  That is what lets the momentum row's
+      ! terms and its reference scale describe the state the arm just
+      ! assembled and not the last state RK_rhs saw.
 
       use global_parameters
-      use RK_integration, only: face_flux, face_p
+      use RK_integration, only: face_flux, face_p, face_q_up, face_q_dn
       use Reconstruction_step, only: n_faces_positivity_limited
       use Numerical_Fluxes, only: n_faces_roe_hlle, n_faces_llf
       use low_mach_dissipation, only: low_mach_damping_active
@@ -185,10 +195,13 @@
       real*8, dimension(3,1-Ng:N+Ng), intent(out) :: WL,WR,dF,S
       real*8, dimension(3,1-Ng:N+Ng) :: ff
       real*8, dimension(1-Ng:N+Ng)   :: fp
+      real*8, dimension(1-Ng:N+Ng)   :: fqu, fqd
       integer :: n_scaled, n_hlle, n_llf
       call the_generic_text_is_usable()
-      call rows_in_double(u,WL,WR,dF,S,ff,fp,n_scaled,n_hlle,n_llf)
-      call store_the_interface_fluxes(ff,fp,n_scaled,n_hlle,n_llf)
+      call rows_in_double(u,WL,WR,dF,S,ff,fp,n_scaled,n_hlle,n_llf,     &
+                          fq_up8=fqu, fq_dn8=fqd)
+      call store_the_interface_fluxes(ff,fp,fqu,fqd,                     &
+                                      n_scaled,n_hlle,n_llf)
       end subroutine hydrodynamic_rows_in_double_precision
 
       ! ------------------------------------------------------!
@@ -198,32 +211,60 @@
       real*8, dimension(3,1-Ng:N+Ng), intent(out) :: WL,WR,dF,S
       real*8, dimension(3,1-Ng:N+Ng) :: ff
       real*8, dimension(1-Ng:N+Ng)   :: fp
+      real*8, dimension(1-Ng:N+Ng)   :: fqu, fqd
       integer :: n_scaled, n_hlle, n_llf
       real*8  :: t_a, t_b
       call the_generic_text_is_usable()
       call cpu_seconds(t_a)
-      call rows_in_quad(u,WL,WR,dF,S,ff,fp,n_scaled,n_hlle,n_llf)
+      call rows_in_quad(u,WL,WR,dF,S,ff,fp,n_scaled,n_hlle,n_llf,       &
+                        fq_up8=fqu, fq_dn8=fqd)
       call cpu_seconds(t_b)
       quad_rows_calls   = quad_rows_calls + 1
       quad_rows_seconds = quad_rows_seconds + (t_b - t_a)
-      call store_the_interface_fluxes(ff,fp,n_scaled,n_hlle,n_llf)
+      call store_the_interface_fluxes(ff,fp,fqu,fqd,                     &
+                                      n_scaled,n_hlle,n_llf)
       end subroutine hydrodynamic_rows_in_quadruple_precision
 
       ! ------------------------------------------------------!
 
-      subroutine store_the_interface_fluxes(ff,fp,n_scaled,n_hlle,n_llf)
-      ! The interface flux and face pressure the rows were differenced from,
-      ! in the arrays every later reader of them uses (the species face
-      ! flux, the flux gate, the jump scan), and the three counters of the
-      ! run summary.
+      subroutine store_the_interface_fluxes(ff,fp,fqu,fqd,               &
+                                            n_scaled,n_hlle,n_llf)
+      ! The face data the rows were differenced from, in the arrays every
+      ! later reader of them uses (the species face flux, the flux gate,
+      ! the jump scan, the momentum row's terms), and the three counters of
+      ! the run summary.
+      !
+      ! THE FACE DEPARTURES BELONG TO THE STATE THAT WAS JUST ASSEMBLED.
+      ! Under the well-balanced arm the momentum row's pressure-gradient
+      ! term is the gradient of the departure, (A+ q_up - A- q_dn)/dV under
+      ! PLM and (q_up - q_dn)/dr under WENO3
+      ! (momentum_row_terms_of_cell, RK_rhs.f90), so a reader handed the
+      ! row without them would form that term from whatever face data was
+      ! last left in the module: the previous evaluation's, or the zeros of
+      ! the first allocation.  With the key off the row carries the cell's
+      ! own pressure instead, nothing reads these two arrays, and they are
+      ! left as they stand.
+      !
+      ! There is one pair of departures to store because the arm evaluates
+      ! ONE reconstruction: the_generic_text_is_usable refuses a
+      ! reconstruction continuation with 0 < lambda < 1, where the blended
+      ! row is not the row of any single pair.
       real*8, dimension(3,1-Ng:N+Ng), intent(in) :: ff
       real*8, dimension(1-Ng:N+Ng),   intent(in) :: fp
+      real*8, dimension(1-Ng:N+Ng),   intent(in) :: fqu, fqd
       integer, intent(in) :: n_scaled, n_hlle, n_llf
       if (.not. allocated(face_flux)) then
          allocate(face_flux(3,1-Ng:N+Ng), face_p(1-Ng:N+Ng))
       endif
       face_flux = ff
       face_p    = fp
+      if (well_balanced) then
+         if (.not. allocated(face_q_up)) then
+            allocate(face_q_up(1-Ng:N+Ng), face_q_dn(1-Ng:N+Ng))
+         endif
+         face_q_up = fqu
+         face_q_dn = fqd
+      endif
       n_faces_positivity_limited = n_faces_positivity_limited + n_scaled
       n_faces_roe_hlle           = n_faces_roe_hlle + n_hlle
       n_faces_llf                = n_faces_llf + n_llf
@@ -232,9 +273,28 @@
       ! ------------------------------------------------------!
 
       subroutine the_generic_text_is_usable()
-      ! The two configurations the generic text does not carry.  Both stop
-      ! the run: an arm that quietly evaluated a different operator would
-      ! answer a question nobody asked.
+      ! The three configurations the generic text does not carry.  All of
+      ! them stop the run: an arm that quietly evaluated a different
+      ! operator would answer a question nobody asked.
+      !
+      ! A RECONSTRUCTION CONTINUATION STRICTLY INSIDE (0,1) IS ONE OF THEM.
+      ! The generic text does blend the two schemes' rows there, as
+      ! reconstruction_continuation_rhs does, but the momentum row's terms
+      ! are then not recoverable: the face-pressure difference carries
+      ! weight one under WENO3 and zero under PLM and
+      ! momentum_row_terms_of_state reads that weight off the scheme flags,
+      ! a single-scheme rule, while the two schemes give each interface
+      ! different well-balanced departures so that no one pair satisfies
+      ! the blended row's identity.  The endpoints lambda <= 0 and
+      ! lambda >= 1 are a single scheme and are carried.
+      if (recon_lambda_on) then
+         if (recon_lambda .gt. 0.0d0 .and. recon_lambda .lt. 1.0d0) then
+            write(*,*) 'ERROR: EXHALE_RESID_QUAD does not carry the',    &
+                       ' PLM/WENO3 reconstruction continuation;',        &
+                       ' recon_lambda = ', recon_lambda
+            error stop 1
+         endif
+      endif
       if (low_mach_damping_active()) then
          write(*,*) 'ERROR: EXHALE_RESID_QUAD does not carry the',       &
                     ' low-Mach contact-mode dissipation flux.'

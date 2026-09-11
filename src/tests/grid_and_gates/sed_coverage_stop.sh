@@ -74,7 +74,7 @@ set -u
 HERE="$(cd "$(dirname "$0")" && pwd)"
 ROOT="$(cd "$HERE/../../.." && pwd)"
 EXE="${EXHALE_EXE:-$ROOT/EXHALE.x}"
-WORK="$ROOT/build/tests/grid_and_gates"
+WORK="${EXHALE_TEST_OUT:-$ROOT/build/tests/grid_and_gates}"
 CASE="$ROOT/benchmarks/wasp52"
 SED_FILE="$ROOT/inputdata/scaled_solar_hd189.sed"
 EPS_FILE="$ROOT/WASP-52b/eps_eri_sed_fxuv1p0.txt"

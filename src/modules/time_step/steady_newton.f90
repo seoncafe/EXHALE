@@ -57,6 +57,7 @@
                                         reconstruction_continuation_rhs, &
                                         face_mass_flux_of_state,       &
                                         residual_row_scale,            &
+                                        mass_row_rounding_floor,       &
                                         state_scales_of_cell,          &
                                         flux_spread_of_state,          &
                                         flux_spread_above_radius,      &
@@ -115,6 +116,9 @@
                                         cert_scale_floor,                &
                                         cert_tol_element_at,             &
                                         cert_tol_carrier_at,             &
+                                        mass_row_cell_verdict,           &
+                                        cert_tol_momentum,               &
+                                        cert_tol_energy,                 &
                                         cert_regime_wind_r,              &
                                         certification_species_row_gate
 
@@ -133,6 +137,7 @@
                 carrier_unknown_on, n_species_rows,                    &
                 species_row_carrier_index,                             &
                 distance_from_certification, resid_tol_of_solve,        &
+                hydrodynamic_distance_from_certification_by_cell,        &
                 increment_of_what_the_residual_reads,                   &
                 eq_channel_particle_count, eq_channel_h2_caloric,       &
                 eq_channel_radiative,                                   &
@@ -173,6 +178,7 @@
                 tr_ray_slopes_disagree_size,                              &
                 tr_ray_below_the_noise_floor,                             &
                 jfnk_outer_iteration_cap,                                 &
+                stationary_rows_of_the_returned_state,                    &
                 row_maxima_of_the_certification, replay_distance,          &
                 certification_row_class_name,                             &
                 front_of_the_steepest_fraction,                           &
@@ -1797,11 +1803,14 @@
       ! reference is the budget itself, not the face of the box.
       real*8  :: carrier_over_its_budget_max = 0.0d0
       integer :: n_carrier_above_its_budget = 0
-      ! The residual tolerance of the solve now running, kept so that
-      ! distance_from_certification can put the hydrodynamic rows on the same
-      ! footing as the species rows: each row divided by the tolerance it is
-      ! judged against. Set at the top of a solve; negative means no solve is
-      ! running and the distance is not defined.
+      ! The residual tolerance of the solve now running, which is the number
+      ! the ACCEPTANCE GATE reads |R| against (steady_gates_met). It is the
+      ! reference of the plain row measure that rmax(1) of
+      ! row_maxima_of_the_certification reports, and of nothing else: the
+      ! judged distance divides each hydrodynamic row by the tolerance that
+      ! row carries at the cell instead
+      ! (hydrodynamic_distance_from_certification_by_cell). Set at the top of a
+      ! solve; negative means no solve is running.
       real*8  :: resid_tol_of_solve = -1.0d0
 
       ! Explicit interfaces for the external LAPACK banded-LU routines used by
@@ -3004,7 +3013,8 @@
 
       subroutine eval_residual(Y, f_sp_seed, f_sp, Fvec, heat, cool, n_part, &
                                admissible, may_be_adopted, n_eq_sweeps_fixed,&
-                               rows_judged, state_is_discarded,             &
+                               rows_judged, resid_relnorm_judged,           &
+                               state_is_discarded,                          &
                                rowmax_judged, cells_judged, which_judged)
       ! Full steady residual F(Y) with local ionization-equilibrium
       ! elimination, AND the heat/cool it used (so the caller can FREEZE the
@@ -3081,6 +3091,13 @@
       ! merit. Formed here because this is where the state's own u, with the
       ! ghosts and the row terms of this evaluation, exists.
       real*8, dimension(3), optional,          intent(out)   :: rows_judged
+      ! |R| of the same evaluation: the plain maximum over the three
+      ! hydrodynamic rows, which is what the acceptance gate reads. The
+      ! judged hydrodynamic slot above divides each of the three rows by its
+      ! OWN certification tolerance first and takes the maximum of those, so
+      ! the two are different numbers and need not be held by the same row;
+      ! a caller that reports both asks for both.
+      real*8, optional,                        intent(out)   :: resid_relnorm_judged
       ! WHETHER THE CALLER KEEPS THE STATE IT IS ASKING ABOUT. A Jacobian
       ! column, a Krylov product, a point on a trust-region ray and a
       ! self-test all read the residual at a point and then throw the point
@@ -3632,7 +3649,7 @@
       endif
 
       if (present(rows_judged)) call certified_row_measures(Fvec, u,     &
-                                                            rows_judged)
+                                        rows_judged, resid_relnorm_judged)
       if (present(rowmax_judged) .or. present(cells_judged) .or.         &
           present(which_judged)) then
          call row_maxima_of_the_certification(Fvec, u, rmx_j, jcl_j, iwh_j)
@@ -4840,15 +4857,26 @@
 
       ! ------------------------------------------------------!
 
-      subroutine certified_row_measures(Fvec, u, rows)
+      subroutine certified_row_measures(Fvec, u, rows, rnorm)
       ! THE MEASURES THE RETURNED STATE IS JUDGED BY, formed on one state
       ! (Fvec, u) exactly as the certification forms them:
       !
-      !   rows(1)  the three hydrodynamic rows on residual_row_scale, the
-      !            larger of the layer's and the wind's maximum -- which is
-      !            resid_relnorm, and is asserted equal to the maximum of the
-      !            certification's hydrodynamic entries
-      !            (gate_equals_certification);
+      !   rows(1)  the three hydrodynamic rows on residual_row_scale,
+      !            CELL BY CELL over the whole physical column, each cell's
+      !            measure over the tolerance that row carries AT THAT CELL
+      !            and the largest of them taken
+      !            (hydrodynamic_distance_from_certification_by_cell):
+      !            momentum over 1e-8 and energy over 1e-6, one number each
+      !            for the column, and the continuity row over the tolerance
+      !            of its own cell, 3e-12 where the cell's arithmetic
+      !            resolves it and ten times the cell's own rounding floor
+      !            where it does not (cert_tol_mass_at, certification.f90).
+      !            Those are the numbers hydro_row_entry gates with, taken
+      !            the way mass_row_verdict takes them.
+      !            It is already a distance, and is the slot that says
+      !            WHICH hydrodynamic row refuses; the plain maximum of the
+      !            same measures, which is |R| and the number the
+      !            acceptance gate reads, is returned in rnorm beside it;
       !   rows(2)  the largest elemental transport row the registry carries,
       !            on the operator's own scale, which is the number
       !            transport_row_entry gates with cert_tol_element_at;
@@ -4873,10 +4901,40 @@
       real*8, dimension(nvar_jac*N),  intent(in)  :: Fvec
       real*8, dimension(3,1-Ng:N+Ng), intent(in)  :: u
       real*8, dimension(3),           intent(out) :: rows
-      real*8  :: rc(3), q, dg
-      integer :: i, jw, ic
+      ! |R| itself, the plain maximum over the three hydrodynamic rows and
+      ! the two windows. The gate reads this number and the ledger reads
+      ! rows(1), and the two are different functionals, so a caller that
+      ! prints both asks for both here rather than re-deriving either.
+      real*8, optional,               intent(out) :: rnorm
+      real*8  :: rc(3), q, dg, rn
+      ! The three hydrodynamic rows of EVERY cell, and the continuity row's
+      ! rounding floor at each of them: the tolerance of that row is a
+      ! function of the cell, so the distance is not a functional of the
+      ! three row maxima and the cells are kept.
+      real*8  :: qhyd(3,N), floor_mass(N)
+      integer :: i, j, k, jw, ic
       rows = 0.0d0
-      call resid_relnorm(Fvec, u, rc, rows(1))
+      ! |R_kj|/residual_row_scale(k,j), the measure the certification takes
+      ! of a cell (the expression mass_row_verdict takes cell by cell), over
+      ! the whole physical column [1:N]: that is the union of the wind and
+      ! the layer resid_relnorm norms separately, and a maximum over a union
+      ! is the larger of the two window maxima.
+      do j = 1, N
+         do k = 1, 3
+            qhyd(k,j) = abs(Fvec(nvar_jac*(j-1)+k))                      &
+                        /max(residual_row_scale(k, j, u), cert_scale_floor)
+         enddo
+         floor_mass(j) = mass_row_rounding_floor(j, u)
+      enddo
+      rows(1) = hydrodynamic_distance_from_certification_by_cell(N,       &
+                                                     qhyd, floor_mass)
+      ! |R| of the same evaluation, when it is asked for: the plain maximum
+      ! of the same measures with no tolerance in it, of which resid_relnorm
+      ! stays the definition.
+      if (present(rnorm)) then
+         call resid_relnorm(Fvec, u, rc, rn)
+         rnorm = rn
+      endif
       if (nspec_row .le. 0) return
       do i = 1, nspec_row
          select case (srow_kind(i))
@@ -4904,21 +4962,94 @@
 
       ! ------------------------------------------------------!
 
+      pure real*8 function                                               &
+             hydrodynamic_distance_from_certification_by_cell            &
+                      (nc, q, floor_mass) result(d)
+      ! HOW FAR THE THREE HYDRODYNAMIC ROWS OF A COLUMN ARE FROM BEING
+      ! CERTIFIED, and the ONE expression of that distance: the largest,
+      ! over cells AND over the three rows, of a cell's row measure over the
+      ! tolerance that row carries at that cell.
+      !
+      !    d = max_j max_k  q(k,j) / tol_k(j)
+      !
+      ! q(k,j) = |R_kj|/residual_row_scale(k,j) is the measure the
+      ! certification takes of a cell. tol_2 and tol_3 are one number each
+      ! for the column (cert_tol_momentum 1e-8, cert_tol_energy 1e-6);
+      ! tol_1(j) is the continuity row's tolerance AT CELL j, 3e-12 where
+      ! the cell's arithmetic resolves it and ten times the cell's own
+      ! rounding floor where it does not, and it is read from
+      ! mass_row_cell_verdict, which is the one statement of that rule and
+      ! returns the distance itself rather than a tolerance to divide by.
+      !
+      ! ONE TOLERANCE PER ROW, NOT ONE FOR THE THREE. The three tolerances
+      ! are anchored one by one on a converged state, where the rows
+      ! themselves stand decades apart on residual_row_scale
+      ! (certification.f90: mass 3.0e-12, momentum 1.0e-8, energy 1.0e-6),
+      ! and hydro_row_entry gates each row with its own. The plain maximum
+      ! of the three measures, |R|, what the acceptance gate reads against
+      ! one number, therefore says nothing about which row refuses: MEASURED
+      ! on the HD 209458 b element reload, every solve of the partitioned
+      ! route ends with |R| at 1e-8 held by the energy row while the mass row
+      ! stands at 1e-9 against 3.0e-12, so |R|/tol is about 1 for every
+      ! iterate and the mass row, hundreds of times outside the fixed
+      ! tolerance, is invisible in it.
+      !
+      ! WHY THE ROWS CANNOT BE MAXIMIZED OVER CELLS FIRST. The maximum of a
+      ! ratio is not the ratio of the maxima once the divisor moves with the
+      ! cell: a base cell whose mass row is 1e-9 against its own rounding
+      ! floor stands well inside its tolerance while a wind cell at 1e-11
+      ! against 3e-12 refuses, and the row maximum is the base cell's. A
+      ! triple of row maxima divided by cert_tol_mass, which is the FLOOR of
+      ! the continuity tolerance and the tolerance of no particular cell,
+      ! reports 333 where the condition the acceptance applies is 3.3; it
+      ! stands at or above this distance, by the ratio of the cell's floor to
+      ! 3e-12, MEASURED at up to 3.2e+03 on the HD 209458 b base layer
+      ! (docs/certification_tolerance_anchoring_20260910.md, anchor 6).
+      !
+      ! THE TOLERANCE IS A FUNCTION OF THE STATE, through the floor, so two
+      ! iterates are each ranked against the arithmetic of their own base
+      ! layer. That is the same rule the acceptance applies to the state it
+      ! is handed (mass_row_verdict), which is what makes d < 1 exactly the
+      ! hydrodynamic part of stationary_rows_of_the_returned_state.
+      integer,                 intent(in) :: nc
+      real*8, dimension(3,nc), intent(in) :: q
+      real*8, dimension(nc),   intent(in) :: floor_mass
+      real*8  :: tol, dist
+      logical :: within, anchored
+      integer :: j
+      d = 0.0d0
+      do j = 1, nc
+         call mass_row_cell_verdict(q(1,j), floor_mass(j), tol, dist,    &
+                                    within, anchored)
+         d = max(d, dist)
+         d = max(d, q(2,j)/cert_tol_momentum)
+         d = max(d, q(3,j)/cert_tol_energy)
+      enddo
+      end function hydrodynamic_distance_from_certification_by_cell
+
+      ! ------------------------------------------------------!
+
       real*8 function distance_from_certification(rows) result(d)
       ! HOW FAR A STATE IS FROM BEING CERTIFIED, in one number: each judged
       ! row divided by the tolerance that row is judged against, and the
       ! largest of those. d < 1 is exactly the condition
       ! stationary_rows_of_the_returned_state states on the rows the
-      ! registry carries, with the residual gate in the hydrodynamic slot.
+      ! registry carries.
       !
-      ! The division by the tolerances is what makes the three commensurate:
-      ! ||R|| is calibrated against a row scale that bounds each
-      ! hydrodynamic row's largest term and a converged state sits at 1e-6
-      ! on it, while a carrier row measured against its own terms sits near
+      ! The division by the tolerances is what makes the slots commensurate:
+      ! a hydrodynamic row is measured against a scale that bounds its own
+      ! largest term and a converged state sits at 1e-6 to 1e-13 on it row
+      ! by row, while a carrier row measured against its own terms sits near
       ! 1e-3 (resid_relnorm says why they may not simply be maximized
       ! together). Divided by their own tolerances they are one quantity.
+      !
+      ! THE HYDRODYNAMIC SLOT ARRIVES ALREADY DIVIDED, cell by cell and by
+      ! the tolerance each of its three rows carries at that cell rather
+      ! than by one number
+      ! (hydrodynamic_distance_from_certification_by_cell, which says why
+      ! one number cannot do it), so it is taken as it stands.
       real*8, dimension(3), intent(in) :: rows
-      d = rows(1)/max(resid_tol_of_solve, 1.0d-300)
+      d = rows(1)
       d = max(d, rows(2)/cert_tol_element_at(cert_regime_wind_r))
       d = max(d, rows(3)/cert_tol_carrier_at(cert_regime_wind_r))
       end function distance_from_certification
@@ -5544,13 +5675,16 @@
       ! ------------------------------------------------------!
 
       subroutine stationary_rows_of_the_returned_state(rep, ok, iworst,   &
-                                                       none_measured)
+                                                       none_measured,     &
+                                                       n_rows_read)
       ! THE EQUATIONS THIS SOLVER DRIVES TO ZERO, read off the certification
-      ! report of the state that is about to be handed back -- the same
-      ! record the certification block printed beside it, not a second
-      ! evaluation and not a second formula. `ok` is true when every row of
+      ! report of the state it is asked about -- the same record the
+      ! certification block printed beside it, not a second evaluation and
+      ! not a second formula. `ok` is true when every row of
       ! THE SYSTEM THIS SOLVE CARRIED was evaluated on that state, is finite
-      ! and is within its own tolerance.
+      ! and is within its own tolerance. `n_rows_read`, when asked for, is
+      ! how many rows that was: a caller reporting that the rows are met
+      ! says over how many equations it is speaking.
       ! `iworst` points at the refusing row with the largest measure;
       ! `none_measured` says a row could not be measured on this state at
       ! all, which refuses on its own and carries no number.
@@ -5575,10 +5709,12 @@
       logical,           intent(out) :: ok
       integer,           intent(out) :: iworst
       logical,           intent(out) :: none_measured
-      integer :: i, isr
+      integer, optional, intent(out) :: n_rows_read
+      integer :: i, isr, n_read
       real*8  :: worst
       logical :: is_row
       ok = .true.;  iworst = 0;  none_measured = .false.;  worst = -1.0d0
+      n_read = 0
       do i = 1, rep%n
          is_row = (index(rep%e(i)%name, 'hydrodynamic') .eq. 1)
          do isr = 1, nspec_row
@@ -5598,6 +5734,7 @@
             end select
          enddo
          if (.not. is_row) cycle
+         n_read = n_read + 1
          if (rep%e(i)%status .eq. cert_unavailable) then
             ok = .false.;  none_measured = .true.
          else if (rep%e(i)%status .eq. cert_evaluated) then
@@ -5609,7 +5746,103 @@
             endif
          endif
       enddo
+      if (present(n_rows_read)) n_rows_read = n_read
       end subroutine stationary_rows_of_the_returned_state
+
+      ! ------------------------------------------------------!
+
+      subroutine certified_rows_of_the_state(F, u, f_sp, resid_tol,       &
+                                             n_no_chem_root, ok, iworst,  &
+                                             rep, n_rows_read)
+      ! THE ROWS AN ACCEPTED STATE MUST SATISFY, MEASURED ON THE STATE
+      ! GIVEN AND NOT REPORTED.
+      !
+      ! The stationary certification is the whole statement of what makes a
+      ! state a solution of the equations the run carries, and each of its
+      ! rows is judged against its own tolerance (mass 3e-12, momentum
+      ! 1e-8, energy 1e-6, a transported species row 1e-5 in the wind),
+      ! while the acceptance gate reads one number against the run's
+      ! "Resid tol". A STOPPING TEST BUILT ON THE GATE ALONE THEREFORE
+      ! STOPS FOR SUCCESS AT STATES THE ACCEPTANCE REFUSES: MEASURED on the
+      ! molecular partitioned run, three hydrodynamic solves stopped at
+      ! ||R|| below 1e-8 and were refused at return with mass rows
+      ! 5.95e-12, 8.00e-12 and 4.99e-12 against 3e-12
+      ! (docs/solver_partition_experiment_20260911.md section 7.3).
+      !
+      ! So this is the same evaluation and the same formula the acceptance
+      ! at return makes: certification_evaluate builds the report of the
+      ! state, and stationary_rows_of_the_returned_state reads out of it
+      ! the rows of the system this solve carries. Nothing is written here;
+      ! the caller states in one line which row refuses.
+      real*8, dimension(:),                   intent(in) :: F
+      real*8, dimension(3,1-Ng:N+Ng),         intent(in) :: u
+      real*8, dimension(1-Ng:N+Ng,n_species), intent(in) :: f_sp
+      real*8,  intent(in)  :: resid_tol
+      integer, intent(in)  :: n_no_chem_root
+      logical, intent(out) :: ok
+      integer, intent(out) :: iworst
+      type(cert_report),  intent(out) :: rep
+      integer,  optional, intent(out) :: n_rows_read
+      real*8, dimension(3,1-Ng:N+Ng) :: Rrows
+      logical :: none_measured
+      integer :: jj, kk, n_read
+      Rrows = 0.0d0
+      do jj = 1, N
+         do kk = 1, 3
+            Rrows(kk,jj) = F(nvar_jac*(jj-1)+kk)
+         enddo
+      enddo
+      call certification_evaluate(cert_context_stationary, u, Rrows,      &
+                                  f_sp, resid_tol, n_no_chem_root,        &
+                                  .true., rep)
+      call stationary_rows_of_the_returned_state(rep, ok, iworst,         &
+                                                 none_measured, n_read)
+      if (present(n_rows_read)) n_rows_read = n_read
+      end subroutine certified_rows_of_the_state
+
+      ! ------------------------------------------------------!
+
+      subroutine write_gate_met_while_a_row_refuses(tag, rep, iworst,     &
+                                                    iter)
+      ! WHY AN ITERATION THAT MEETS THE ACCEPTANCE GATE GOES ON. The gate
+      ! is met and a row the acceptance of this state rests on is not, so
+      ! the state is not a solution of the equations the solve was given
+      ! and the remaining budget is spent on it.
+      character(len=*),  intent(in) :: tag
+      type(cert_report), intent(in) :: rep
+      integer,           intent(in) :: iworst, iter
+      ! THE CELL THAT REFUSED, WITH ITS OWN MEASURE AND ITS OWN TOLERANCE.
+      ! Where a row's tolerance is a function of the cell, its verdict is
+      ! taken at the cell standing furthest outside its own tolerance and
+      ! that need not be the cell of the largest measure (mass_row_verdict,
+      ! certification.f90, which records the binding cell as jbind); a pair
+      ! made of the largest measure and the binding cell's tolerance would
+      ! be a ratio of two different cells. jbind is zero on a row held to
+      ! one number for the whole column, and there the largest measure is
+      ! the one that refuses.
+      real*8  :: row_refusing
+      integer :: cell_refusing
+      if (iworst .gt. 0) then
+         if (rep%e(iworst)%jbind .gt. 0) then
+            row_refusing  = rep%e(iworst)%row_at_bind
+            cell_refusing = rep%e(iworst)%jbind
+         else
+            row_refusing  = rep%e(iworst)%row_max
+            cell_refusing = rep%e(iworst)%jworst
+         endif
+         write(*,'(A,A,I0,A,A,A,ES10.3,A,ES8.1,A,I0,A)') tag,             &
+              ' it ', iter, ': the acceptance gate is met and the'//      &
+              ' certified ', trim(rep%e(iworst)%name), ' is ',            &
+              row_refusing, ', above its own ',                           &
+              rep%e(iworst)%tol, ' at cell ', cell_refusing,              &
+              '; the iteration goes on within the remaining budget'
+      else
+         write(*,'(A,A,I0,A)') tag, ' it ', iter, ': the acceptance gate'//&
+              ' is met and a row the acceptance rests on could not be'//  &
+              ' measured on this iterate; the iteration goes on within'// &
+              ' the remaining budget'
+      endif
+      end subroutine write_gate_met_while_a_row_refuses
 
       ! ------------------------------------------------------!
 
@@ -6915,8 +7148,11 @@
       ! THE THREE ROW CLASSES OF THE STATIONARY SYSTEM, each as the largest
       ! value the certification measures over the column, AND THE CELL that
       ! carries it:
-      !   1  hydrodynamic, |R_kj|/residual_row_scale, against
-      !      resid_tol_of_solve;
+      !   1  hydrodynamic, |R_kj|/residual_row_scale, the PLAIN measure
+      !      that the acceptance gate reads against resid_tol_of_solve --
+      !      not the judged distance, which divides each of the three rows
+      !      by the tolerance it carries at each cell
+      !      (hydrodynamic_distance_from_certification_by_cell);
       !   2  elemental transport, on the operator's own scale, against
       !      cert_tol_element_at;
       !   3  carrier, on the row's own terms, against cert_tol_carrier_at.
@@ -7168,6 +7404,17 @@
       if (trim(env) .ne. '1') return
 
       allocate(comp(1-Ng:N+Ng,n_species,nseed))
+      ! THE REFERENCE OF EACH ROW CLASS. The hydrodynamic entry of
+      ! row_maxima_of_the_certification is the PLAIN row measure, the
+      ! largest of the three rows with no tolerance in it, which is the
+      ! number the acceptance gate reads; so its reference here is the
+      ! gate's own target and not one of the three certification tolerances
+      ! (which row of the three carries the maximum is printed beside it as
+      ! iwhich, and dividing a mixed-row maximum by one row's tolerance
+      ! would be a ratio of two different rows). The judged distance, each
+      ! row over the tolerance it carries at each cell, is
+      ! hydrodynamic_distance_from_certification_by_cell and is what the
+      ! ledger ranks on.
       tol(1) = max(resid_tol_of_solve, 1.0d-300)
       tol(2) = cert_tol_element_at(cert_regime_wind_r)
       tol(3) = cert_tol_carrier_at(cert_regime_wind_r)
@@ -8925,21 +9172,24 @@
 
       subroutine write_flag_is_about_the_returned_state(tag, rep, iworst, &
                                                         none_measured)
-      ! Why a solve that met the gate at the loop top does not end info = 0.
-      ! The loop-top gate reads the residual of the ITERATE, whose carrier
-      ! and species composition is the one the previous accepted trial was
-      ! evaluated with; the state handed back carries the composition its
-      ! own equilibrium sweep left, and its residual there is the one below.
+      ! Why a solve whose stop test was met at the loop top does not end
+      ! info = 0. The stop test reads the acceptance gate AND the certified
+      ! rows of the ITERATE, whose composition is the one the previous
+      ! accepted trial was evaluated with; the state handed back carries the
+      ! composition its own equilibrium sweep left, and its rows there are
+      ! the ones below. That change of composition is the only difference
+      ! between the two measurements, and it is what this flag reports.
       character(len=*),  intent(in) :: tag
       type(cert_report), intent(in) :: rep
       integer,           intent(in) :: iworst
       logical,           intent(in) :: none_measured
-      write(*,'(A,A)') tag, ' info=2: the acceptance gate was met at the'//&
-           ' loop top, at the residual of the iterate under the'
-      write(*,'(A,A)') tag, '         composition of the previous'//      &
-           ' evaluation; the state handed back, measured at its own'
-      write(*,'(A,A)') tag, '         composition, does not meet it.'//   &
-           ' The state is handed back and is NOT certified.'
+      write(*,'(A,A)') tag, ' info=2: the stop test -- the acceptance'//  &
+           ' gate and every certified row -- was met at the'
+      write(*,'(A,A)') tag, '         loop top, on the iterate under the'//&
+           ' composition of the previous evaluation; the state'
+      write(*,'(A,A)') tag, '         handed back, measured at its own'// &
+           ' composition, does not meet it. The state is handed'
+      write(*,'(A,A)') tag, '         back and is NOT certified.'
       if (iworst .gt. 0)                                                  &
          write(*,'(A,A,A,A,ES10.3,A,ES8.1,A,I0)') tag, '         refusing'//&
               ' row: ', trim(rep%e(iworst)%name), ' measure ',            &
@@ -8990,6 +9240,10 @@
       type(cert_report) :: cert_out
       logical :: rows_ok, rows_unmeasured, gate_is_cert
       integer :: i_row
+      ! How many rows of the certification the stop test read at the iterate
+      ! it stopped on, and the outer iterations that met the acceptance gate
+      ! while one of those rows refused.
+      integer :: n_rows_at_stop, n_gate_met_row_refused, i_row_refused_last
 
       if (nspec_row .gt. 0) then
          write(*,'(A)') ' (PTC) the carrier unknown is a JFNK-only'//&
@@ -9002,6 +9256,8 @@
       allocate(ab(ldab,neq), abf(ldab,neq), ipiv(neq))
       dtau = dtau0
       info = 1
+      n_rows_at_stop = 0;  n_gate_met_row_refused = 0
+      i_row_refused_last = -1
       call reset_no_chem_root_trial_count
       call read_composition_elimination_controls
       call read_species_unknown_space_controls
@@ -9026,18 +9282,43 @@
       call write_resid_below_escape(' (PTC)', F, u)
 
       do iter = 1, maxit
-         ! CERTIFICATION of the state this solve holds, chemistry included:
-         ! n_no_chem_root_state belongs to the iterate's own sweep, so a
-         ! state resting on a cell without a chemical root cannot be
-         ! declared solved here.
+         ! THE STOP TEST OF THE ITERATION, WHICH IS THE ACCEPTANCE TEST OF
+         ! THE STATE: the acceptance gate -- residual, flux spread and the
+         ! chemistry, n_no_chem_root_state belonging to the iterate's own
+         ! sweep, so a state resting on a cell without a chemical root
+         ! cannot be declared solved here -- AND every row the
+         ! certification judges this system by, each against its own
+         ! tolerance. The gate alone is not the acceptance (D3,
+         ! docs/solver_partition_experiment_20260911.md section 7.3): it
+         ! reads one number against the run's "Resid tol" while the mass
+         ! row is certified against 3e-12. When the gate is met and a
+         ! certified row is not, the state is not a solution of the
+         ! equations this solve was given and the iteration goes on.
          if (steady_gates_met(rnorm, u, resid_tol, fspread,        &
                           nspec_row .gt. 0, carrier_relnorm_last,   &
                           n_no_chem_root_state)) then
-            info = 0
-            call certify_returned_state(F, u, f_sp, resid_tol,           &
-                 n_no_chem_root_state,                                   &
-                 '(PTC) state declared solved and handed back')
-            exit
+            call certified_rows_of_the_state(F, u, f_sp, resid_tol,      &
+                     n_no_chem_root_state, rows_ok, i_row, cert_out,     &
+                     n_rows_at_stop)
+            if (rows_ok) then
+               info = 0
+               ! The report of the state declared solved, which is the
+               ! record the acceptance below reads: this route hands back
+               ! the iterate it stopped on, so the two are one state.
+               call certification_report_write(cert_out,                 &
+                    '(PTC) state declared solved and handed back')
+               write(*,'(A,I0,A)') ' (PTC) loop-top stop: the'//         &
+                    ' acceptance gate is met and every one of the ',     &
+                    n_rows_at_stop, ' certified row(s) of the system'//  &
+                    ' this solve carries is within its own tolerance'
+               exit
+            endif
+            n_gate_met_row_refused = n_gate_met_row_refused + 1
+            if (i_row .ne. i_row_refused_last) then
+               call write_gate_met_while_a_row_refuses(' (PTC)',         &
+                        cert_out, i_row, iter)
+               i_row_refused_last = i_row
+            endif
          endif
 
          ! Full-residual banded Jacobian (includes the local source
@@ -9135,6 +9416,13 @@
          endif
       endif
       write(*,'(A,I0,A,ES11.3)') ' (PTC) done info=',info,' ||R||=',rnorm
+      ! Iterates at which the acceptance gate was met while a row of the
+      ! certification refused: the iterations this solve spent on a row the
+      ! gate does not see.
+      if (n_gate_met_row_refused .gt. 0)                                  &
+         write(*,'(A,I0)') ' (PTC) outer iterations that met the'//       &
+              ' acceptance gate while a certified row refused: ',         &
+              n_gate_met_row_refused
       if (n_no_chem_root_state .gt. 0)                                    &
          write(*,'(A,I0,A)') ' (PTC) gate NOT met: ',                     &
               n_no_chem_root_state, ' cell(s) of the state handed back'// &
@@ -14732,11 +15020,17 @@
       ! So the judgement enters at the LEDGER that chooses the state to hand
       ! back, which is the place the solve makes its claim: the best iterate
       ! is ranked on distance_from_certification, the same rows the
-      ! certification reads, instead of on ||R||, which covers three of them.
-      ! jhist and jref are kept for the count below, which measures how far
-      ! apart the two functionals ran.
+      ! certification reads and each against its own tolerance, instead of
+      ! on ||R||, which is the largest of the three hydrodynamic row
+      ! measures with no tolerance in it. jhist and jref are kept for the
+      ! count below, which measures how far apart the two functionals ran.
       real*8  :: jhist(5), jref, dj, dj_try, dj_best
       real*8  :: rows_j(3), rows_try(3)
+      ! |R| of the iterate's own evaluation, beside the judged rows of the
+      ! same evaluation: the gate reads this and the ledger reads the
+      ! distance, and the iteration line prints both so that a reader can
+      ! tell which of the two a solve was held by.
+      real*8  :: rnorm_j
       logical :: keep_this_iterate
       integer :: n_judged_excursions
       logical :: ok, try_ok, carrier_ok
@@ -14816,6 +15110,11 @@
       type(cert_report) :: cert_out
       logical :: rows_ok, rows_unmeasured, gate_is_cert
       integer :: i_row
+      ! How many rows of the certification the stop test read at the iterate
+      ! it stopped on, and the outer iterations that met the acceptance gate
+      ! while one of those rows refused: the iterations the solve spends on a
+      ! row the gate does not see.
+      integer :: n_rows_at_stop, n_gate_met_row_refused, i_row_refused_last
       ! ||R|| of the accepted iterate, kept so that the state handed back can
       ! be compared with the number that iterate carried.
       real*8  :: rnorm_handback_prev
@@ -14851,6 +15150,8 @@
       tr_gm_resid = 0.0d0
 
       n_jac_unresolved_tot = 0;  n_gm_outcome = 0
+      n_rows_at_stop = 0;  n_gate_met_row_refused = 0
+      i_row_refused_last = -1
       gm_outcome = gm_tolerance_reached;  gm_snorm_last = 0.0d0
       use_tr = (nspec_row .gt. 0)
       call get_environment_variable('EXHALE_TRUST_REGION', tr_env)
@@ -14911,7 +15212,7 @@
       ! array, then ADOPT it. The copy is an adoption and not a seeding
       ! convention: the seed is named in the call.
       call eval_residual(Y, f_sp, f_sp_j, F, heat0, cool0, n_part=npart0,  &
-                         rows_judged=rows_j)
+                         rows_judged=rows_j, resid_relnorm_judged=rnorm_j)
       f_sp = f_sp_j
       ! THE CARRIER UNKNOWNS BECOME LOGARITHMS HERE. The evaluation above is
       ! what makes the carrier operator freeze the element budget the floor
@@ -15035,12 +15336,44 @@
       call jacobian_column_reach_beyond_the_band(Y, f_sp)
 
       do iter = 1, maxit_used
-         ! CERTIFICATION of the state this solve holds, chemistry included
-         ! (the same statement the PTC route makes at its loop top).
+         ! THE STOP TEST OF THE ITERATION, WHICH IS THE ACCEPTANCE TEST OF
+         ! THE STATE (the same statement the PTC route makes at its loop
+         ! top): the acceptance gate -- residual, flux spread, chemistry
+         ! and the carrier norm -- AND every row the certification judges
+         ! the system this solve carries by, each against its own
+         ! tolerance. The gate alone is not the acceptance: it reads one
+         ! number against the run's "Resid tol" while the certification
+         ! reads the mass row against 3e-12, so a solve stopping on the
+         ! gate stops at states the return then refuses (D3,
+         ! docs/solver_partition_experiment_20260911.md section 7.3). When
+         ! the gate is met and a certified row is not, the state is not a
+         ! solution and the iteration goes on.
+         !
+         ! THE ROWS ARE MEASURED ONLY WHERE THEY CAN DECIDE, i.e. behind
+         ! the gate: the certification evaluates the transported species
+         ! balances as well, and an evaluation of it at every iteration
+         ! would be paid for at every iteration for a test that can only
+         ! change the outcome once the gate is already met.
          if (steady_gates_met(rnorm, u, resid_tol, fspread,        &
                           nspec_row .gt. 0, carrier_relnorm_state,  &
                           n_no_chem_root_state)) then
-            info = 0;  exit
+            call certified_rows_of_the_state(F, u, f_sp, resid_tol,       &
+                     n_no_chem_root_state, rows_ok, i_row, cert_out,      &
+                     n_rows_at_stop)
+            if (rows_ok) then
+               info = 0
+               write(*,'(A,I0,A)') ' (JFNK) loop-top stop: the'//         &
+                    ' acceptance gate is met and every one of the ',      &
+                    n_rows_at_stop, ' certified row(s) of the system'//   &
+                    ' this solve carries is within its own tolerance'
+               exit
+            endif
+            n_gate_met_row_refused = n_gate_met_row_refused + 1
+            if (i_row .ne. i_row_refused_last) then
+               call write_gate_met_while_a_row_refuses(' (JFNK)',         &
+                        cert_out, i_row, iter)
+               i_row_refused_last = i_row
+            endif
          endif
          ! Where the root of a carrier row sits relative to the bound of its
          ! own unknown, at THIS iterate, when that is asked for.
@@ -15083,7 +15416,8 @@
          weno_mode = 1
          call set_ioniz_eq_sweep_state_kind(ieq_state_steady_iterate)
          call eval_residual(Y, f_sp, f_sp_j, F, heat0, cool0,             &
-                            rows_judged=rows_j)
+                            rows_judged=rows_j,                          &
+                            resid_relnorm_judged=rnorm_j)
          dj = distance_from_certification(rows_j)
          ! The reference the trial admissibility test compares against: how
          ! many cells THIS iterate's own chemistry left without a root.
@@ -15186,9 +15520,11 @@
          ! the two numbers on one line are the bound and the outcome, and
          ! `distance <= window` from the second outer iteration on is the
          ! invariant the acceptance installs.
-         write(*,'(A,ES11.3,A,ES11.3,A,ES10.3,A,ES10.3,A,ES10.3)')        &
+         write(*,'(A,ES11.3,A,ES11.3,A,ES10.3,A,ES10.3,A,ES10.3,'//       &
+                 'A,ES10.3)')                                             &
               ' (JFNK) judged rows: distance', dj, '  window',            &
-              maxval(jhist), '   ||R||', rows_j(1), '  element',          &
+              maxval(jhist), '   ||R||', rnorm_j, '  hydrodynamic',       &
+              rows_j(1), '  element',                                     &
               rows_j(2), '  carrier', rows_j(3)
          f2hist = (/ f2hist(2:5), f2 /)
          ! And the same window on the quantity the state is judged by.
@@ -15696,33 +16032,28 @@
          ! the flux gate over one that passes it.
          !
          ! THE RANKING IS THE MEASURE THE RETURNED STATE IS JUDGED BY, which
-         ! is not ||R||. ||R|| covers the three hydrodynamic rows; the state
-         ! handed back is judged by those AND by every species row the
-         ! registry carried (stationary_rows_of_the_returned_state), so a
-         ! ledger ranking on ||R|| alone can keep an iterate whose element or
-         ! carrier balance is the worse of two and hand it back to be refused
-         ! on exactly that row. distance_from_certification is the same rows
-         ! the certification reads, each over the tolerance it is judged
-         ! against; on a solve with no species row it IS ||R||/resid_tol and
-         ! the ranking is unchanged.
+         ! is not ||R||, AND THAT IS TRUE OF THE THREE HYDRODYNAMIC ROWS ON
+         ! THEIR OWN. ||R|| is the largest of the three row measures; the
+         ! state handed back is judged row by row, each against its own
+         ! tolerance (mass 3e-12, momentum 1e-8, energy 1e-6) and, where the
+         ! registry carries them, by every species row as well
+         ! (stationary_rows_of_the_returned_state). So a ledger ranking on
+         ! ||R|| can keep either an iterate whose element or carrier balance
+         ! is the worse of two, or -- with no species row at all -- an
+         ! iterate whose mass row is the worse of two while the energy row
+         ! that holds ||R|| is the better, and hand it back to be refused on
+         ! exactly that row. distance_from_certification is the same rows the
+         ! certification reads, each over the tolerance it is judged against,
+         ! and it is the ranking on every route.
          !
          ! THIS IS WHERE THE JUDGED MEASURE BELONGS AND THE STEP CONTROL IS
          ! NOT. Bounding the STEP by this quantity was implemented and
          ! measured to stall the element solve (report B5e section 3.3): the
          ! merit is a smooth 2-norm and can be globalized, the judged measure
          ! is a maximum over cells and over rows and is a stopping test.
-         !
-         ! The three-unknown route keeps the original comparison character
-         ! for character: there the two rankings are the same ordering, but
-         ! dividing both sides by resid_tol can round two distinct values
-         ! onto one, and no atomic solve may move.
          gates_now = steady_gates_met(rnorm, u, resid_tol, fspread,        &
                           nspec_row .gt. 0, carrier_relnorm_state)
-         if (nspec_row .gt. 0) then
-            keep_this_iterate = (dj .lt. dj_best)
-         else
-            keep_this_iterate = (rnorm .lt. rnorm_best)
-         endif
+         keep_this_iterate = (dj .lt. dj_best)
          if ((gates_now .and. .not. gates_best) .or.                      &
              ((gates_now .eqv. gates_best) .and. keep_this_iterate)) then
             dj_best = dj
@@ -15954,12 +16285,9 @@
       gates_now = steady_gates_met(rnorm, u, resid_tol, fspread,        &
                           nspec_row .gt. 0, carrier_relnorm_state)
       ! On the same measure the ledger ranked with, and for the same reason:
-      ! the state handed back is judged on the species rows too.
-      if (nspec_row .gt. 0) then
-         keep_this_iterate = (dj_best .lt. dj)
-      else
-         keep_this_iterate = (rnorm_best .lt. rnorm)
-      endif
+      ! the state handed back is judged row by row against each row's own
+      ! tolerance, and on the species rows too.
+      keep_this_iterate = (dj_best .lt. dj)
       if ((gates_best .and. .not. gates_now) .or.                         &
           ((gates_best .eqv. gates_now) .and. keep_this_iterate)) then
          Y = Ybest;  f_sp = f_sp_best;  rnorm = rnorm_best
@@ -16071,6 +16399,15 @@
       write(*,'(A,I0,A,ES11.3,A,ES10.3,A,I0)') ' (JFNK) done info=',info, &
            ' ||R||=',rnorm,'  flux spread=',fspread,                      &
            '  non-monotone accepts=', n_nonmonotone_accepts
+      ! HOW MANY ITERATIONS WERE SPENT ON A ROW THE GATE DOES NOT SEE:
+      ! iterates at which the acceptance gate was met while a row of the
+      ! certification refused. A solve that ends without a certified state
+      ! and reports none of these was held by the gate itself; one that
+      ! reports many was held by a single row below the gate's resolution.
+      if (n_gate_met_row_refused .gt. 0)                                  &
+         write(*,'(A,I0)') ' (JFNK) outer iterations that met the'//      &
+              ' acceptance gate while a certified row refused: ',         &
+              n_gate_met_row_refused
       ! HOW OFTEN THE TWO FUNCTIONALS DISAGREED: steps the merit accepted
       ! that left the judged rows above the worst of the last five iterates.
       ! Reported and not acted on -- the ledger that chooses the returned
@@ -16081,7 +16418,8 @@
       ! certification any iterate of this solve reached, which is the
       ! iterate the restore above hands back. It is the minimum of every
       ! iteration's `judged rows` line by construction, and it would not be
-      ! if the ledger ranked on ||R|| while a species row was the binding one.
+      ! if the ledger ranked on ||R|| while the binding row was a species
+      ! row, or a hydrodynamic row other than the one holding ||R||.
       write(*,'(A,ES11.3)') ' (JFNK) best judged iterate: distance',      &
            dj_best
       ! Both norms on the state handed back, with the window contributions

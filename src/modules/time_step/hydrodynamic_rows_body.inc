@@ -1274,7 +1274,8 @@
       ! ------------------------------------------------------!
 
       subroutine flux_difference_and_source_of_scheme_fv(plm,u_in,WL,WR, &
-                       dF,S,ff,fpr,n_scaled,n_hlle,n_llf)
+                       dF,S,ff,fpr,face_q_up,face_q_dn,                  &
+                       n_scaled,n_hlle,n_llf)
       ! One scheme's flux difference and source over the padded range: the
       ! face loop assembles every interface flux, the cell loop differences
       ! the two faces of each cell over its volume and adds the source.  The
@@ -1284,22 +1285,28 @@
       real(fv), dimension(3,1-Ng:N+Ng), intent(in)  :: u_in
       real(fv), dimension(3,1-Ng:N+Ng), intent(out) :: WL,WR,dF,S,ff
       real(fv), dimension(1-Ng:N+Ng),   intent(out) :: fpr
-      integer, intent(out) :: n_scaled
-      integer, intent(inout) :: n_hlle, n_llf
-      integer  :: j, nh_j, nl_j
-      real(fv) :: dr, rp, rm, dAp, dAm, dV, dF3p, pL, pR
-      real(fv), dimension(3) :: Fp, Fm
-      ! WELL-BALANCED ARM.  The departures and the equilibrium mismatch the
-      ! reconstruction returned, and the face pressure of every interface
-      ! measured from the hydrostatic equilibrium of the cell on each side,
+      ! WELL-BALANCED ARM.  The face pressure of every interface measured
+      ! from the hydrostatic equilibrium of the cell on each side,
       !   face_q_up(f) = face_p(f) - P_up(f),
       !   face_q_dn(f) = face_p(f) - P_dn(f+1),
       ! both of the size of the departure from equilibrium.  They are what
       ! the momentum row is assembled from when the arm is on: the O(1)
       ! pressure of the cell and the gravitational source cancel in the
-      ! ALGEBRA instead of in floating point.
+      ! ALGEBRA instead of in floating point.  They are HANDED BACK because
+      ! the momentum row's pressure-gradient term is (A+ q_up - A- q_dn)/dV
+      ! under the arm: a reader that is given the row but not the
+      ! departures it was built from cannot form that term for this state.
+      ! Zero unless well_balanced is set, which is what the row assembly
+      ! and every reader of them read as "no departure to carry".
+      real(fv), dimension(1-Ng:N+Ng),   intent(out) :: face_q_up,face_q_dn
+      integer, intent(out) :: n_scaled
+      integer, intent(inout) :: n_hlle, n_llf
+      integer  :: j, nh_j, nl_j
+      real(fv) :: dr, rp, rm, dAp, dAm, dV, dF3p, pL, pR
+      real(fv), dimension(3) :: Fp, Fm
+      ! The departures and the equilibrium mismatch the reconstruction
+      ! returned, from which the face pressures above are measured.
       real(fv), dimension(1-Ng:N+Ng) :: wb_dev_L, wb_dev_R, wb_dp_eq
-      real(fv), dimension(1-Ng:N+Ng) :: face_q_up, face_q_dn
       real(fv) :: qp, qm
 
       call reconstructed_faces_fv(plm, u_in, WL, WR, n_scaled,           &
@@ -1401,7 +1408,7 @@
 
       subroutine hydrodynamic_flux_difference_and_source(u8,WL8,WR8,dF8, &
                        S8,ff8,fp8,n_scaled,n_hlle,n_llf,               &
-                       dF_at_working_kind)
+                       dF_at_working_kind,fq_up8,fq_dn8)
       ! THE ENTRY POINT.  Takes the conserved state in double, converts it
       ! exactly to fv, evaluates the reconstruction, the interface flux, the
       ! sources and the flux difference of the scheme (or of the PLM/WENO3
@@ -1416,9 +1423,23 @@
       ! double.  Nothing on a run's path asks for them.
       real(fv), dimension(3,1-Ng:N+Ng), intent(out), optional ::         &
                                                     dF_at_working_kind
+      ! THE FACE DEPARTURES THE MOMENTUM ROW WAS BUILT FROM, under the
+      ! well-balanced arm, rounded to double with the rest.  A caller that
+      ! reads back the terms of the momentum row asks for them; the row
+      ! identity they satisfy is, with A+ = r_+^2, A- = r_-^2,
+      !   PLM     dF(2,j) = [A+ (F_up(j)   + q_up(j))
+      !                    - A- (F_dn(j-1) + q_dn(j-1))]/dV
+      !   WENO3   dF(2,j) = [A+ F_up(j) - A- F_dn(j-1)]/dV
+      !                    + [q_up(j) - q_dn(j-1)]/dr
+      ! so the pressure gradient of the departure is recoverable from them
+      ! alone.  Zero with the arm off, where the row carries the cell's own
+      ! pressure instead.
+      real*8, dimension(1-Ng:N+Ng), intent(out), optional ::             &
+                                                    fq_up8, fq_dn8
       real(fv), dimension(3,1-Ng:N+Ng) :: u,WL,WR,dF,S,ff
       real(fv), dimension(3,1-Ng:N+Ng) :: WLw,WRw,dFw,Sw,ffw
       real(fv), dimension(1-Ng:N+Ng)   :: fpr,fprw
+      real(fv), dimension(1-Ng:N+Ng)   :: fqu,fqd,fquw,fqdw
       real(fv) :: lam, om
       integer  :: ns_w
 
@@ -1427,21 +1448,21 @@
 
       if (.not. recon_lambda_on) then
          call flux_difference_and_source_of_scheme_fv(use_plm,u,WL,WR,   &
-                 dF,S,ff,fpr,n_scaled,n_hlle,n_llf)
+                 dF,S,ff,fpr,fqu,fqd,n_scaled,n_hlle,n_llf)
       else
          lam = real(recon_lambda, fv)
          om  = 1.0_fv - lam
          if (lam .le. 0.0_fv) then
             call flux_difference_and_source_of_scheme_fv(.true.,u,WL,WR, &
-                    dF,S,ff,fpr,n_scaled,n_hlle,n_llf)
+                    dF,S,ff,fpr,fqu,fqd,n_scaled,n_hlle,n_llf)
          else if (lam .ge. 1.0_fv) then
             call flux_difference_and_source_of_scheme_fv(.false.,u,WL,WR,&
-                    dF,S,ff,fpr,n_scaled,n_hlle,n_llf)
+                    dF,S,ff,fpr,fqu,fqd,n_scaled,n_hlle,n_llf)
          else
             call flux_difference_and_source_of_scheme_fv(.true.,u,WL,WR, &
-                    dF,S,ff,fpr,n_scaled,n_hlle,n_llf)
+                    dF,S,ff,fpr,fqu,fqd,n_scaled,n_hlle,n_llf)
             call flux_difference_and_source_of_scheme_fv(.false.,u,WLw,  &
-                    WRw,dFw,Sw,ffw,fprw,ns_w,n_hlle,n_llf)
+                    WRw,dFw,Sw,ffw,fprw,fquw,fqdw,ns_w,n_hlle,n_llf)
             n_scaled = n_scaled + ns_w
             dF = om*dF + lam*dFw
             S  = om*S  + lam*Sw
@@ -1449,6 +1470,17 @@
             WR = om*WR + lam*WRw
             ff = om*ff + lam*ffw
             fpr = om*fpr + lam*fprw
+            ! THE BLENDED DEPARTURES DO NOT RECONSTRUCT THE BLENDED ROW.
+            ! The two schemes give the interface different departures and
+            ! weight the face-pressure difference differently (one under
+            ! WENO3, zero under PLM), so no single pair satisfies the
+            ! identity above for om*dF_PLM + lam*dF_WENO3.  The arm refuses
+            ! 0 < lambda < 1 for that reason (the_generic_text_is_usable,
+            ! hydrodynamic_rows.f90); the combination below is the same one
+            ! the face flux and the face pressure carry, and it is what a
+            ! caller reaching this branch directly is handed.
+            fqu = om*fqu + lam*fquw
+            fqd = om*fqd + lam*fqdw
          endif
       endif
 
@@ -1460,5 +1492,7 @@
       S8  = real(S,  kind(1.0d0))
       ff8 = real(ff, kind(1.0d0))
       fp8 = real(fpr, kind(1.0d0))
+      if (present(fq_up8)) fq_up8 = real(fqu, kind(1.0d0))
+      if (present(fq_dn8)) fq_dn8 = real(fqd, kind(1.0d0))
 
       end subroutine hydrodynamic_flux_difference_and_source

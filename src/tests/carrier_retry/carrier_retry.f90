@@ -69,7 +69,16 @@
            carrier_transport_stop_on_failure,                             &
            carrier_transport_stops_suppressed,                            &
            carrier_step_verdict, carrier_last_verdict_of_run,             &
-           carrier_no_interval
+           carrier_no_interval,                                           &
+           relax_photochemical_composition,                               &
+           carrier_relax_movement_bound, carrier_relax_fixed_point,       &
+           carrier_relax_step_budget, carrier_relax_interval_refused,     &
+           carrier_relax_nothing_to_advance, carrier_relax_outcome_text
+      use element_census, only: element_nuclei_and_charge, n_element
+      use gravity_grid_construction, only: set_gravity_grid
+      use base_boundary,             only: set_base_reservoir
+      use BC_Apply,                  only: Apply_BC
+      use steady_residual_mod,       only: assemble_residual
       use assertion_report
       implicit none
 
@@ -135,6 +144,15 @@
       ! the operator wrote and not what this program left there.
       integer :: st_nothing, reason_before
       type(carrier_verdict) :: vd_step, vd_run
+      ! (10) the movement bound of a relaxation pass: the drift each pass
+      ! reports, what ended it, and the elemental content of the state it
+      ! returns.
+      real*8  :: dr_wide, dr_tight, dr_none, dr_zero, dr_ref
+      integer :: ns_wide, ns_tight, ns_none, ns_zero, ns_ref
+      integer :: oc_wide, oc_tight, oc_none, oc_zero, oc_ref
+      real*8, allocatable :: nnuc0(:,:), nnuc1(:,:)
+      real*8, allocatable :: nchg0(:), nchg1(:), rcomp0(:), rcomp1(:)
+      real*8, allocatable :: v_relax(:), v_fast(:)
 
       call setup_globals()
       call build_molecular_hydrogen_column()
@@ -805,6 +823,180 @@
       call check_absolute('the_domain_record_is_not_a_checkpointed'//     &
            '_quantity', dble(dout_f1), dble(dout_tot), 0.0d0)
 
+
+      ! ---- (10) the movement bound of a relaxation pass -------------- !
+      !
+      ! A RELAXATION PASS ADVERTISES A BOUND ON THE STATE IT HANDS BACK:
+      ! the largest change of any solved carrier column anywhere on the
+      ! grid, divided by the largest H2 mixing ratio of the entry state, is
+      ! at most `trust`.  A displacement tested only after the step has
+      ! been applied bounds nothing, which is what was MEASURED in
+      ! docs/solver_partition_experiment_20260911.md sec. 7.2 (trust 0.01
+      ! returning 0.0281).  The rows below are that statement on this
+      ! column, on the same measure the routine enforces and reports.
+      !
+      ! THE WIND OF THIS SECTION IS ITS OWN.  The pass builds its step from
+      ! the cell crossing time of the wind it is handed, and it rides the
+      ! face mass flux of the mass row of that state, so the column is
+      ! given an outflow whose crossing time is the interval the earlier
+      ! sections measured this operator on, and its mass row is assembled
+      ! before any pass runs.
+      allocate(nnuc0(1-Ng:N+Ng,n_element), nnuc1(1-Ng:N+Ng,n_element))
+      allocate(nchg0(1-Ng:N+Ng), nchg1(1-Ng:N+Ng))
+      allocate(rcomp0(1-Ng:N+Ng), rcomp1(1-Ng:N+Ng))
+      allocate(v_relax(1-Ng:N+Ng))
+      v_relax = 20.0d0*r
+      run_mode = run_mode_phys
+      carrier_transport_stop_on_failure = .false.
+      call element_nuclei_and_charge(rho, f_sp0, nnuc0, nchg0, rcomp0)
+      call seed_mass_row_of_the_column(v_relax)
+
+      ! THE LADDER, MEASURED ON THIS COLUMN.  A trial at the full cell
+      ! crossing time moves the composition by 0.441 of the largest entry
+      ! H2 mixing ratio, and halving the trial halves the movement: 0.252,
+      ! 0.144, 0.0779, 0.0404, 0.0205, 0.0103, 5.16e-3, 2.58e-3, 1.29e-3
+      ! and 6.46e-4 at the tenth halving, which is relax_grow_min (all
+      ! MEASURED).  So a bound anywhere in that range is met by a shortened
+      ! trial, and the rows below read the pass at three of them.
+      !
+      ! A BOUND BELOW WHAT A FULL TRIAL WOULD MOVE IS STILL A BOUND ON THE
+      ! RETURNED STATE, and it is the bound that ends the pass.
+      f_sp = f_sp0
+      call carrier_checkpoint_restore(chk0)
+      call relax_photochemical_composition(rho, v_relax, f_sp, 1.0d-2,   &
+                                           dr_wide, ns_wide, oc_wide)
+      write(*,'(a,es10.2,a,es12.4,a,i0,a,a)') ' (carrier_retry) trust ',  &
+           1.0d-2, ': drift ', dr_wide, ' in ', ns_wide, ' kept steps,'// &
+           ' ending on '//trim(carrier_relax_outcome_text(oc_wide))
+      call check_absolute('a_pass_returns_a_state_inside_its_bound',      &
+           logical_as_double(dr_wide .le. 1.0d-2*(1.0d0 + 1.0d-12)),      &
+           1.0d0, 0.0d0)
+      call check_positive('and_a_shortened_trial_advanced_the_carriers',  &
+           dr_wide)
+      call check_absolute('and_the_bound_is_what_ended_it',               &
+           dble(oc_wide), dble(carrier_relax_movement_bound), 0.0d0)
+      call check_absolute('the_bounded_state_is_finite_and_nonnegative',  &
+           logical_as_double(all(f_sp(1:N,:) .ge. 0.0d0) .and.            &
+                             .not. any(f_sp(1:N,:) .ne. f_sp(1:N,:))),    &
+           1.0d0, 0.0d0)
+      ! The write-back of every covered step restores the entry element
+      ! totals cell by cell, so a shortened trial cannot move a nucleus
+      ! count either.
+      call element_nuclei_and_charge(rho, f_sp, nnuc1, nchg1, rcomp1)
+      call check_absolute('the_bounded_pass_conserves_every_element',     &
+           element_deviation(nnuc0, nnuc1), 0.0d0, 1.0d-12)
+
+      ! THE BOUND SCALES.  A tenfold tighter setting holds too, and holds
+      ! at a smaller displacement, which is what an outer controller needs
+      ! of it: reducing the setting reduces the update rather than leaving
+      ! it where it was.
+      f_sp = f_sp0
+      call carrier_checkpoint_restore(chk0)
+      call relax_photochemical_composition(rho, v_relax, f_sp, 1.0d-3,   &
+                                           dr_tight, ns_tight, oc_tight)
+      write(*,'(a,es10.2,a,es12.4,a,i0,a,a)') ' (carrier_retry) trust ',  &
+           1.0d-3, ': drift ', dr_tight, ' in ', ns_tight,               &
+           ' kept steps, ending on '//                                    &
+           trim(carrier_relax_outcome_text(oc_tight))
+      call check_absolute('a_tenfold_tighter_bound_also_holds',           &
+           logical_as_double(dr_tight .le. 1.0d-3*(1.0d0 + 1.0d-12)),      &
+           1.0d0, 0.0d0)
+      call check_positive('and_it_too_advanced_the_carriers', dr_tight)
+      call check_absolute('and_the_returned_movement_falls_with_the'//    &
+           '_bound', logical_as_double(dr_tight .lt. dr_wide), 1.0d0,     &
+           0.0d0)
+      call element_nuclei_and_charge(rho, f_sp, nnuc1, nchg1, rcomp1)
+      call check_absolute('the_tightly_bounded_pass_conserves_every'//    &
+           '_element', element_deviation(nnuc0, nnuc1), 0.0d0, 1.0d-12)
+
+      ! A BOUND BELOW WHAT THE SHORTEST ADMISSIBLE TRIAL MOVES IS STILL
+      ! HONORED, by handing back the state that is inside it: the entry
+      ! state.  On this column the shortest trial moves 6.46e-4, so at
+      ! 1e-4 no trial fits and nothing is kept.  That is the bound doing
+      ! its job and not a failure of the pass; what it costs is the
+      ! advance, which the ending and the zero drift both say.
+      f_sp = f_sp0
+      call carrier_checkpoint_restore(chk0)
+      call relax_photochemical_composition(rho, v_relax, f_sp, 1.0d-4,   &
+                                           dr_none, ns_none, oc_none)
+      call check_absolute('a_bound_no_trial_can_meet_keeps_no_step',      &
+           dble(ns_none), 0.0d0, 0.0d0)
+      call check_absolute('and_hands_back_the_entry_composition',         &
+           maxval(abs(f_sp - f_sp0)), 0.0d0, 0.0d0)
+      call check_absolute('and_reports_the_bound_as_what_ended_it',       &
+           dble(oc_none), dble(carrier_relax_movement_bound), 0.0d0)
+
+      ! A FIRST-STEP OVERSHOOT IS CAUGHT AND NOT KEPT.  At a bound of zero
+      ! every step of this operator leaves it, the shortest admissible
+      ! trial included, so nothing is kept: the entry composition comes
+      ! back bit for bit and the ending names the bound.  This is the row
+      ! the defect fails: the first step of the operator moves the
+      ! composition, and a test taken after that step is applied cannot
+      ! take it back.
+      f_sp = f_sp0
+      call carrier_checkpoint_restore(chk0)
+      call relax_photochemical_composition(rho, v_relax, f_sp, 0.0d0,    &
+                                           dr_zero, ns_zero, oc_zero)
+      call check_absolute('a_pass_that_may_not_move_keeps_no_step',       &
+           dble(ns_zero), 0.0d0, 0.0d0)
+      call check_absolute('and_returns_the_entry_composition_bit_for'//   &
+           '_bit', maxval(abs(f_sp - f_sp0)), 0.0d0, 0.0d0)
+      call check_absolute('and_reports_no_drift', dr_zero, 0.0d0, 0.0d0)
+      call check_absolute('and_names_the_bound_as_what_ended_it',         &
+           dble(oc_zero), dble(carrier_relax_movement_bound), 0.0d0)
+
+      ! A TRANSPORT INTERVAL THAT CANNOT BE COVERED AT ANY ADMISSIBLE
+      ! LENGTH IS ITS OWN ENDING, and it leaves the entry state.  The
+      ! refusal is injected through the test hook, and the run mode is the
+      ! one that does not stop inside the operator so that the pass can be
+      ! read here.
+      allocate(v_fast(1-Ng:N+Ng))
+      v_fast = 2000.0d0*r
+      call seed_mass_row_of_the_column(v_fast)
+      f_sp = f_sp0
+      call carrier_checkpoint_restore(chk0)
+      run_mode = run_mode_init
+      carrier_reject_leading_attempts_for_test = 1000000
+      call relax_photochemical_composition(rho, v_fast, f_sp, 1.0d0,     &
+                                           dr_ref, ns_ref, oc_ref)
+      carrier_reject_leading_attempts_for_test = 0
+      run_mode = run_mode_phys
+      write(*,'(a,i0,a,a)') ' (carrier_retry) a pass whose every'//       &
+           ' interval is refused keeps ', ns_ref, ' steps, ending on '//  &
+           trim(carrier_relax_outcome_text(oc_ref))
+      call check_absolute('a_refusal_at_every_length_ends_the_pass_by'//  &
+           '_name', dble(oc_ref), dble(carrier_relax_interval_refused),   &
+           0.0d0)
+      call check_absolute('a_refused_pass_keeps_no_step', dble(ns_ref),   &
+           0.0d0, 0.0d0)
+      call check_absolute('a_refused_pass_returns_the_entry'//            &
+           '_composition', maxval(abs(f_sp - f_sp0)), 0.0d0, 0.0d0)
+      call check_absolute('a_refused_pass_reports_no_drift', dr_ref,      &
+           0.0d0, 0.0d0)
+
+      ! THE FIXED-POINT ENDING IS NOT REACHABLE ON THIS COLUMN, and the
+      ! ladder above says why: the movement of a trial is proportional to
+      ! its length, and the shortest admissible trial still moves 6.46e-4
+      ! of the largest entry H2 mixing ratio, which is six decades above
+      ! relax_tol = 1e-10.  No trial of this operator on this column leaves
+      ! the state where it found it, so no pass of it can report a fixed
+      ! point.  That is the propagating H2 front the routine's own header
+      ! records, not a defect of the ending; the rows above pin every
+      ! ending this fixture can reach.
+
+      ! A CONFIGURATION THAT TRANSPORTS NO CARRIER HAS NOTHING TO ADVANCE,
+      ! and that is its own ending and neither a bound nor a fixed point.
+      carrier_transport = .false.
+      f_sp = f_sp0
+      call relax_photochemical_composition(rho, v_relax, f_sp, 1.0d0,    &
+                                           dr_zero, ns_zero, oc_zero)
+      carrier_transport = .true.
+      carrier_transport_stop_on_failure = .true.
+      call check_absolute('a_pass_with_no_transported_carrier_says_so',   &
+           dble(oc_zero), dble(carrier_relax_nothing_to_advance), 0.0d0)
+      call check_absolute('and_moves_nothing', maxval(abs(f_sp - f_sp0)), &
+           0.0d0, 0.0d0)
+
       if (assertion_failures .gt. 0) then
          write(*,'(a)') 'carrier_retry: FAILED'
          stop 1
@@ -842,6 +1034,24 @@
          d = max(d, maxval(abs(a(1:N,isp(k)) - b(1:N,isp(k))))/sc)
       enddo
       end function carrier_row_difference
+
+      !--------------!
+
+      double precision function element_deviation(a, b) result(d)
+      ! The largest relative difference between two elemental nucleus
+      ! censuses over the physical cells.  Repartitioning the carriers at a
+      ! fixed density moves no nucleus, so this is zero to round-off for
+      ! every state a relaxation pass may hand back.
+      real*8, intent(in) :: a(1-Ng:,:), b(1-Ng:,:)
+      integer :: j, ie
+      d = 0.0d0
+      do ie = 1, n_element
+         do j = 1, N
+            if (a(j,ie) .le. 0.0d0) cycle
+            d = max(d, abs(b(j,ie) - a(j,ie))/a(j,ie))
+         enddo
+      enddo
+      end function element_deviation
 
       !--------------!
 
@@ -887,6 +1097,22 @@
       enddo
       allocate(kzz_cell(1-Ng:N+Ng))
       kzz_cell = 0.0d0
+      allocate(Gphi_c(1-Ng:N+Ng), Gphi_i(1-Ng:N+Ng))
+      call set_gravity_grid
+      ! The hydrodynamic keys the mass row of this column is assembled with
+      ! (seed_mass_row_of_the_column): one reconstruction, one Riemann
+      ! solve, and the domain the ghost fill closes on.
+      grid_type  = 'Uniform'
+      rec_method = 'WENO3'
+      use_plm    = .false.
+      use_weno3  = .true.
+      flux       = 'ROE'
+      CFL        = 0.6d0
+      r_max      = r_edg(N)
+      r_esc      = r(N)
+      r_flux     = r(1)
+      Mp         = 1.0d30
+      q0         = 1.0d0
       allocate(melem_ab(n_melem))
       melem_ab = 0.0d0
       call carrier_set_init()
@@ -925,6 +1151,40 @@
       enddo
       f_sp0 = f_sp
       end subroutine build_molecular_hydrogen_column
+
+      !--------------!
+
+      subroutine seed_mass_row_of_the_column(v_wind)
+      ! THE FACE MASS FLUX THE CARRIER ROWS RIDE ON.  A relaxation pass at a
+      ! fixed wind carries the advective term in its rows, and that term is
+      ! built from the face mass flux of the MASS ROW of the state it was
+      ! handed (steady_residual_mod, face_mass_flux_of_state).  So the
+      ! column needs its mass row assembled before any pass can run on it,
+      ! and the state assembled here is the column's own density and
+      ! velocity with an ideal pressure at its frozen temperature.
+      real*8, intent(in)  :: v_wind(1-Ng:N+Ng)
+      real*8, allocatable :: u(:,:), Res(:,:)
+      real*8, allocatable :: n_part(:), heat(:), cool(:), p_s(:), T_s(:)
+      integer :: j
+      allocate(u(3,1-Ng:N+Ng), Res(3,1-Ng:N+Ng))
+      allocate(n_part(1-Ng:N+Ng), heat(1-Ng:N+Ng), cool(1-Ng:N+Ng))
+      allocate(p_s(1-Ng:N+Ng), T_s(1-Ng:N+Ng))
+      heat = 0.0d0
+      cool = 0.0d0
+      do j = 1-Ng, N+Ng
+         T_s(j)    = bg_cell(j)%T_K/T0
+         n_part(j) = rho(j)
+         p_s(j)    = n_part(j)*T_s(j)
+         u(1,j)    = rho(j)
+         u(2,j)    = rho(j)*v_wind(j)
+         u(3,j)    = 0.5d0*rho(j)*v_wind(j)**2                            &
+                     + p_s(j)/(gamma_ad - 1.0d0)
+      enddo
+      n_part_cell1 = n_part(1)
+      call set_base_reservoir(p_s(1), T_s(1), 1.0d0, 1.0d0)
+      call Apply_BC(u)
+      call assemble_residual(u, n_part, heat, cool, Res)
+      end subroutine seed_mass_row_of_the_column
 
       !--------------!
 

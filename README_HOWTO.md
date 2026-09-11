@@ -1443,7 +1443,7 @@ while keeping `EXHALE.x`. The planet directories `HD209458b/`, `HD189733b/`,
 ## Where results and documents live
 
 - `docs/EXHALE_user_manual.pdf`: full reference (inputs, outputs, physics)
-- `docs/Update_EXHALE.md`: current update log (stage 2, from 2026-09-05); `docs/Update_EXHALE_stage1.pdf`: sections 1-171, dated changelog + code-size appendix vs ATES
+- `docs/Update_EXHALE.md`: current update log (stage 2, from 2026-09-05); its PDF carries the code-size appendix vs ATES (`docs/Update_EXHALE_appendix.tex`); `docs/Update_EXHALE_stage1.pdf`: sections 1-171, dated changelog
 - `docs/cooling_formulas.pdf`: the analytic CHIANTI cooling fits
 - `docs/photoion_cross_sections.pdf`, `docs/recombination_coefficients.pdf`:
   atomic data and its benchmarks

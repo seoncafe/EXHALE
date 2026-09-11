@@ -657,19 +657,23 @@
 				str = get_word(line, 3)
 				ionization_transport = (str .eq. 'True' .or. str .eq. 'true')
 			else if (lbl_match(line, 'Coupled carrier solve')) then
-				! "Coupled carrier solve: True|False" -- solve n(H2) as a
-				! fourth Newton unknown per cell instead of alternating a
-				! wind solve with a fixed-wind carrier relaxation. The
-				! alternation was measured not to converge and not to be
-				! able to: the two halves are coupled through the particle
-				! count, which sets the temperature, so a splitting that
-				! evaluates each at the other's old state is outside the
-				! radius where that is reasonable, and it gets the SIGN of
-				! the front's motion wrong (section 139). On a molecular
-				! configuration it requires "Molecular carrier transport:
-				! True", because H2 must be an unknown and not an
-				! eliminated variable; checked below, after every key is
-				! parsed.
+				! "Coupled carrier solve: True|False", DEFAULT False -- solve
+				! n(H2) (and the diffused element fractions) as Newton
+				! unknowns beside the three hydrodynamic ones, instead of
+				! the default alternation of a hydrodynamic solve with the
+				! fixed-wind transport relaxations, judged jointly by the
+				! certification of the refreshed state
+				! (steady_wind_with_element_diffusion). MEASURED on the two
+				! reloads of backup/regression (Update_EXHALE.md section 8,
+				! 2026-09-11): the alternation brings every elemental wind
+				! row of the HD 209458 b reload inside 1e-5 in 12 passes
+				! and the hot-Uranus H2 wind row from 7.4e-2 to 2.2e-2 in
+				! 40 passes, while the coupled solve certifies neither
+				! (stage 2, items N0 to N38). True keeps the coupled solve
+				! as a measurement arm. On a molecular configuration it
+				! requires "Molecular carrier transport: True", because H2
+				! must be an unknown and not an eliminated variable;
+				! checked below, after every key is parsed.
 				str = get_word(line, 4)
 				carrier_in_newton = (str .eq. 'True' .or. str .eq. 'true')
 			else if (lbl_match(line, 'Oxygen transport')) then

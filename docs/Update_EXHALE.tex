@@ -12,6 +12,7 @@
 \usepackage{calc}
 \usepackage{url}
 \urlstyle{tt}
+\usepackage{soul}
 \usepackage{babel}
 \providecommand{\tightlist}{\setlength{\itemsep}{0pt}\setlength{\parskip}{0pt}}
 \providecommand{\pandocbounded}[1]{#1}
@@ -2223,7 +2224,7 @@ specified and recommended; ten open questions).
   assembly\textquotesingle s own channel (\texttt{heat\_channel\_state(:,ih\_H2\_LW\_dissoc)}) instead
   of a second evaluation of \texttt{k\_LW\ n\_H2\ e\_lw\_fragment\_erg}. The
   \texttt{heating\_sum\_uniqueness} scanner\textquotesingle s exception list is EMPTY: every
-  per-event energy is named only in the module that defines it and in the
+  deposited energy is named only in the module that defines it and in the
   one assembly. RED before (the pre-move import line, two deposits reported
   outside the assembly), GREEN after. \texttt{FUV\_bands.txt} is byte-identical
   across the move (MEASURED, \texttt{oxygen\_chemistry} at 5 steps); the \texttt{heat\_LW}
@@ -2307,7 +2308,7 @@ specified and recommended; ten open questions).
   composition): a decade costs 1.3 passes and 15 percent, not the lever.
   Aitken and any acceleration built from the iterates fail because the
   contraction ratio spreads 200 percent cell by cell within a step. \textbf{The
-  lever is a per-cell Newton on (T, composition) with \texttt{dc/dT\ =\ -(dF/dc)\^{}-1\ dF/dT} from the factorization \texttt{hybrd} already forms, inside the sweep
+  lever is a Newton on (T, composition) taken cell by cell with \texttt{dc/dT\ =\ -(dF/dc)\^{}-1\ dF/dT} from the factorization \texttt{hybrd} already forms, inside the sweep
   (\texttt{ionization\_equilibrium.f90}), plus the two-pass rest mask with an
   acceptance class inherited by masked cells}: assigned as COST2, after
   B3b-CO releases that file. Also fixed: the cost line divided passes over
@@ -2897,8 +2898,9 @@ specified and recommended; ten open questions).
   Lemma 2.5 (convex combination with an admissible anchor); what does not:
   Theorem 2.1 (the next cell average admissible under their Gauss-Lobatto
   set and CFL, N = 2 covers k = 1 only; Remark 2.6 names finite-volume WENO
-  as open) and conservativity of the reconstruction (per-face theta moves
-  the cell\textquotesingle s end-point mean by 8.3e-2 where a per-cell theta gives 0). Along
+  as open) and conservativity of the reconstruction (a theta taken
+  face by face moves the cell\textquotesingle s end-point mean by 8.3e-2 where a theta taken
+  cell by cell gives 0). Along
   their conserved path p(t) is concave, so the code\textquotesingle s theta is never larger
   than their t\_eps (MEASURED 0.856 against 0.949 at Mach 60): the anticipated
   negative-internal-energy failure cannot occur. \textbf{Defect found and fixed
@@ -2912,7 +2914,7 @@ specified and recommended; ten open questions).
   which the limiter fired, by one ulp except where the zero would have
   divided; goldens at the gate. Probe: \texttt{bare\_update\_reaches\_zero} (the
   reason), \texttt{production\_limiter\_never\_delivers\_zero} (the production routine
-  over 4000 grids of zero-crossing face states) GREEN. A per-cell theta
+  over 4000 grids of zero-crossing face states) GREEN. A theta taken cell by cell
   (Eq. 2.11), which would restore the reconstruction average, is recorded as
   a change of scheme, not applied.
 \item
@@ -3188,7 +3190,7 @@ specified and recommended; ten open questions).
   (\texttt{EXHALE\_STEADY\_RUNLOGS}); the 16 default cases run against that binary
   (the harness holds a single-instance lock, so \texttt{wasp\_full} ran through
   \texttt{run\_check.sh\ check} and the other fifteen through a runner replicating
-  its per-case steps, all \texttt{OMP\_NUM\_THREADS=1}); every case moves against
+  its steps for each case, all \texttt{OMP\_NUM\_THREADS=1}); every case moves against
   the previous goldens, as every item of the series said it would.
   Movement of the physical columns over the cells where the golden value
   is at least 1e-3 of the column maximum (max relative; T median; the
@@ -3768,7 +3770,7 @@ specified and recommended; ten open questions).
   one Rayleigh-quotient ratio per block over all cells and species, the
   projection onto the dominant mode COST5 measured stable, and one damped
   ray, so no cell can move in a direction the global mode lacks. That is how
-  it differs from COST2\textquotesingle s per-cell Aitken (12.00 against 11.05 passes): a
+  it differs from COST2\textquotesingle s Aitken taken cell by cell (12.00 against 11.05 passes): a
   ratio taken cell by cell spreads 200 percent across the grid and cannot be
   tested for validity; the global one is tested (\texttt{\textbar{}\textbar{}d\_k\ -\ theta\ d\_\{k-1\}\textbar{}\textbar{}\ \textless{}=\ 0.5\ \textbar{}\textbar{}d\_k\textbar{}\textbar{}}) before use. Admissibility is by construction (fractions in
   {[}0,1{]}, He 2\^{}3S inside its He I column, T inside the energy solve\textquotesingle s own
@@ -4265,7 +4267,7 @@ specified and recommended; ten open questions).
   the manual did not (\texttt{Reconstruction\ continuation}, \texttt{Atomic\ rate\ set},
   \texttt{Caloric\ EOS}, \texttt{Photoelectron\ heating}); MEASURED afterwards, all 97
   schema keys have a manual entry. Three stale manual entries corrected
-  (\texttt{Resid\ norm} is retired; \texttt{Resid\ tol}\textquotesingle s norm is the per-row scaling of
+  (\texttt{Resid\ norm} is retired; \texttt{Resid\ tol}\textquotesingle s norm is the row scaling of
   sections 143/145, not \texttt{\textbar{}R\textbar{}/max\textbar{}u\textbar{}}; \texttt{Flux\ spread\ tol} default 2e-5, not
   5e-3); the validity paragraph\textquotesingle s "one of three" made four. The \texttt{\_adv}
   validity conditions live in ONE place (manual section 4,
@@ -5049,7 +5051,7 @@ specified and recommended; ten open questions).
   row residual) and the estimate carries the interval \texttt{e\_lower\ ..\ e\_upper}
   the three inner errors leave it in: reject when above one at the bottom,
   accept when below one at the top, UNRESOLVED in between (named outcome,
-  counted in the end-of-run block); the brief\textquotesingle s per-class fraction rule
+  counted in the end-of-run block); the brief\textquotesingle s fraction rule for each class
   (1/10) is kept as the report, not as the verdict, because applied
   literally it called EVERY estimate of a healthy run unresolved (species
   difference 6e-17 five decades below the pair\textquotesingle s own error) and would have
@@ -5563,7 +5565,7 @@ specified and recommended; ten open questions).
   2.7e-3 of the probe arc). \textbf{The fix}: \texttt{hold\_the\_step\_where\_it\_leaves\_the\_\ species\_box} zeroes the step at an unknown it would carry out of its box
   (the iterate is feasible, so the trial is, and the step is one the
   operator can be sampled along); \texttt{probe\_length\_of\_the\_jacobian\_action} is
-  the one definition of the probe arc; a per-trial diagnostic line under
+  the one definition of the probe arc; a diagnostic line for each trial under
   \texttt{EXHALE\_ELEM\_DIAG}. \textbf{Atomic reload, cap 300, before -\textgreater{} after}: 227 -\textgreater{}
   113 iterations (both stagnation), accepted/refused 170/55 -\textgreater{} 91/19,
   negative ratios 49 -\textgreater{} 14, best \texttt{\textbar{}\textbar{}R\textbar{}\textbar{}} 2.353e-2 -\textgreater{} \textbf{1.333e-2}, handed
@@ -7082,4 +7084,1446 @@ specified and recommended; ten open questions).
   \texttt{Cooling\_breakdown.txt}; \texttt{examples/README.md}; the two \texttt{.md} twins.
 \end{itemize}
 
+\begin{center}\rule{0.5\linewidth}{0.5pt}\end{center}
+
+\subsection{8. PLAN\_20260911: the partitioned stationary route (2026-09-11)}\label{8-plan_20260911-the-partitioned-stationary-route-2026-09-11}
+
+Plan of record: \texttt{docs/PLAN\_20260911\_partitioned\_solver.md}. User instruction
+of 2026-09-11: read \texttt{docs/solver\_approach\_analysis\_20260910.md}, its review
+\texttt{docs/solver\_approach\_analysis\_20260910\_review.md} and
+\texttt{docs/solver\_partition\_experiment\_20260911.md}, correct the errors they
+establish, run the solver experiments, and adopt the partitioned route in the
+production solver if it measures better than the coupled species-row solve.
+This reopens the stage-2 solver program that the 2026-09-10 instruction had
+closed after N37 and N38. Items P1 to P9, then P10 to P12 on the same day\textquotesingle s
+further instruction to fix the open items the plan had left to the user, then
+P14 and P15 on the two findings of that afternoon\textquotesingle s Codex adversarial review
+and P16 to P18 on the user\textquotesingle s two decisions of the same afternoon (P13 and P19
+are the record itself); the rules every worker on this tree follows are
+\texttt{docs/worker\_rules.md}.
+
+\subsubsection{The items}\label{the-items}
+
+\begin{itemize}
+\tightlist
+\item
+  \textbf{P1 (defect D1): a failed element composition solve is no longer handed
+  back as an update} (\texttt{binary\_element\_diffusion.f90} +311/-23,
+  \texttt{src/tests/element\_operator/element\_operator\_tests.f90} +190/-13; every line
+  count of this section is MEASURED from \texttt{git\ diff\ -\/-numstat} on the tree at
+  the close).
+  \texttt{solve\_mass\_fraction} returns an explicit success result and no longer
+  accepts the last halved trial of a line search that never descended;
+  \texttt{element\_diffusion\_step} takes an optional status and, when asked,
+  restores the composition it was handed unless the candidate is finite,
+  inside \texttt{{[}0,1{]}} to \texttt{1e-12} before the range clip, and no farther from the
+  density the step held fixed than the entry composition was, to \texttt{1e-10};
+  \texttt{relax\_element\_composition} steps on a copy, discards a refused step,
+  retries at half the length within a bounded budget and reports three
+  outcomes by name. MEASURED (P1) on the archived D1 reproduction
+  (\texttt{atomic\_elem\_newton}, species mode, omega 1): a returned composition
+  missing rho by \texttt{1.768571764708571E-01}, a nonfinite chemical refresh and
+  exit status 1 become the entry composition restored at
+  \texttt{1.046888214610824E-15}, an admissible refresh at \texttt{1.10297235E-15} and
+  exit status 0. The first inadmissible operation of that failure, which the
+  experiment report left unlocated, is now named: the composition solve
+  drives \texttt{X} out of \texttt{{[}0,1{]}} and the range clip used to absorb it
+  (\texttt{element\_step\_out\_of\_bounds}), and the mass discrepancy is downstream of
+  the clip. Tests: \texttt{element\_operator} 14/0 at entry, \textbf{24/0} after, \textbf{22/2}
+  on a RED build with the four acceptance actions disabled
+  (\texttt{an\_unsolved\_step\_is\_refused}, \texttt{an\_unsolved\_step\_leaves\_the\_entry\_composition}
+  measured \texttt{1.31725E-02}); \texttt{diffusion\_tests} 35/0, \texttt{steady\_species\_rows}
+  194/0, \texttt{certification} 57/0 unchanged. Impact (MEASURED, P1, control built
+  from the entry text of the one file): \texttt{mol\_diffusion} and \texttt{lower\_profile},
+  300 steps, one thread, \texttt{Ion\_species.txt} byte-identical and
+  \texttt{Hydro\_ioniz.txt} identical but the provenance \texttt{run=} timestamp, on both
+  cases; the marching caller passes no status, so none of the new tests
+  runs there. One fixture of the same suite was corrected while there
+  (\texttt{the\_relaxation\_fixed\_point\_under\_a\_callers\_ghost} built a column whose
+  species missed rho by \texttt{1.321E-01}): on the suite\textquotesingle s own mass-closed column
+  the worst interior element row of the relaxation fixed point moves from
+  \texttt{1.62384E-02} to \texttt{1.35062E-13}, so the fixed point on a mass-closed column
+  really is a zero of the stationary element row.
+\item
+  \textbf{P2 (defect D2): the carrier movement bound now constrains the returned
+  state} (\texttt{diffusive\_photochemistry.f90} +225/-81,
+  \texttt{src/tests/carrier\_retry/carrier\_retry.f90} +261/-1). The displacement is defined once (the largest change of any solved
+  carrier column over the physical cells, divided by the largest H2 mixing
+  ratio of the outer entry state, a quantity that cannot move while the pass
+  runs), it is enforced before acceptance on every trial, a refused trial is
+  undone and halved down to \texttt{2**(-10)} of the cell transport time, and the
+  pass ends on one of five named outcomes. MEASURED (P2) on
+  \texttt{carrier\_elem\_newton} through the archived driver: the entry text returns
+  \texttt{drift\ =\ 2.8126757844770485e-02} at \texttt{trust\ =\ 0.01}, reproducing the
+  0.02812676 of \texttt{docs/solver\_partition\_experiment\_20260911.md} section 7.2
+  exactly; the repaired routine returns \texttt{9.9956436739254070e-03} at the same
+  setting and \texttt{2.9845242387380568e-03} at \texttt{trust\ =\ 0.003}, so the bound holds
+  and it scales (a factor 3.33 smaller setting gives a factor 3.35 smaller
+  movement). The halving ladder was measured on an instrumented copy: 0.4412
+  at the full cell crossing time, then 0.2523, 0.1445, 0.0779, 0.0404,
+  0.0205, 0.0103, 5.155e-3, 2.581e-3, 1.291e-3 and 6.458e-4 at the tenth
+  halving, so the movement is proportional to the trial length and a bound of
+  1e-4 keeps nothing on this column. Tests: \texttt{carrier\_retry} \textbf{111 PASS / 10
+  FAIL} on a RED control carrying the entry logic behind the new interface,
+  \textbf{122/0} after; \texttt{carrier\_returned\_state\_acceptance} 36/0, \texttt{attempted\_step}
+  70/0, \texttt{carrier\_constraint\_attribution} 10/0, \texttt{carrier\_reference\_scales}
+  14/0, \texttt{species\_masses} 9/0, \texttt{certification} 57/0, \texttt{adv\_static\_limit} 53/0.
+  Impact: \texttt{mol\_carrier}, 300 steps, one thread, \texttt{Ion\_species.txt}
+  byte-identical and \texttt{Hydro\_ioniz.txt} identical but the provenance
+  timestamp, which is the expected result because the marching loop calls
+  \texttt{photochemical\_transport\_step} directly and never this routine. The cost is
+  stated: a bounded pass advances less, so the frozen H2 residual after the
+  composition update is larger (4.4708e-01 at trust 0.01 against the entry
+  text\textquotesingle s 3.1897e-01, from 4.9275e-01 before), and the state handed on is
+  correspondingly closer to the entry state.
+\item
+  \textbf{P3 (defect D3): the stop test of the stationary solve is now the
+  acceptance test of the state} (\texttt{steady\_newton.f90} +203/-29,
+  \texttt{src/tests/steady\_completion\_flag/run.sh} +61/-15,
+  \texttt{src/tests/krylov\_and\_dogleg/krylov\_and\_dogleg\_tests.f90} +127/-1). The loop
+  top of \texttt{solve\_steady\_jfnk} and of \texttt{solve\_steady\_ptc} no longer stops for
+  success on \texttt{steady\_gates\_met} alone: it stops only when the gate AND every
+  row the certification judges the carried system by are within their own
+  tolerances, measured on the iterate by the same evaluation and the same
+  formula the acceptance at return uses. A gate met while a certified row
+  refuses prints one line naming the row, its measure, its own tolerance and
+  its cell, and the iteration continues within its budget. MEASURED (P3) on
+  the D3 reproduction (\texttt{carrier\_elem\_newton}, first hydrodynamic solve): the
+  entry text stopped at the loop top of iteration 14 with \texttt{info\ =\ 0} and was
+  refused at return on a mass row of 5.954e-12 against 3e-12; after the
+  repair the same solve continues, 27 of its 40 iterations meet the gate with
+  a row refusing, and it ends \texttt{info\ =\ 1} on its pass budget with mass
+  5.945e-12, momentum 5.991e-13, energy 2.481e-09. So the second of the two
+  admitted outcomes: the mass row of this arm does not come below 3e-12 in 27
+  further iterations (it stands at 5.9e-12 to 7.9e-12 throughout, consistent
+  with the N33 rounding floor), and the flag is now honest about it. Cost of
+  the added test, MEASURED with a temporary clock pair in a private build: 27
+  calls, mean 3.19 ms against a mean outer iteration of 0.73 s, 0.44 percent
+  of one outer iteration, and only behind the gate, so an iteration below the
+  gate pays nothing. Tests: \texttt{krylov\_and\_dogleg} 279/0 on the control objects
+  and \textbf{290/0} after (11 new rows asserting the predicate the stop test
+  reads); \texttt{steady\_completion\_flag} RED on both real logs at entry (an
+  \texttt{info\ =\ 0} log with no statement that the stop test read the certified rows;
+  a refusal at return with no stop statement) and GREEN after;
+  \texttt{certification} 57/0, \texttt{carrier\_returned\_state\_acceptance} 37/0,
+  \texttt{attempted\_step} 71/0 unchanged. Impact: the \texttt{wasp\_full\_newton} reload ends
+  \texttt{info\ =\ 0}, \texttt{\textbar{}\textbar{}R\textbar{}\textbar{}} 1.667e-09, flux spread 6.233e-14, 8 outer iterations,
+  \texttt{log10\ Mdot} 13.30 on both binaries, the certification block line for line
+  identical, every output byte-identical but the provenance line of the two
+  \texttt{Hydro\_ioniz*} files and one extra \texttt{loop-top\ stop:} line in the log; the
+  \texttt{carrier\_elem\_newton} reload at cap 40 gives every \texttt{(JFNK)} line identical
+  because the gate is never met on that arm. No golden can move: READ from
+  the ten \texttt{DEFAULT\_CASES}, none of their golden logs carries a \texttt{(JFNK)\ start}
+  or \texttt{(PTC)\ start} line at all.
+\item
+  \textbf{P4: the momentum row\textquotesingle s reference scale under \texttt{Well\ balanced:\ True}}
+  (\texttt{RK\_rhs.f90} +90/-2, \texttt{steady\_residual.f90} +59/-2,
+  \texttt{src/tests/grid\_and\_gates/hydrostatic\_residual.f90} +318/-11, that suite\textquotesingle s
+  \texttt{README.md} +44/-1). Under the arm \texttt{store\_row\_terms} scaled the momentum row by
+  \texttt{max(\textbar{}dF(2)\textbar{},\ \textbar{}S(2)\textbar{},\ \textbar{}Smom\textbar{})} with \texttt{S(2)\ =\ 0} by construction, so every
+  scaled momentum residual was exactly 1 (N37, ISSUES 3.7). The reference is
+  now \texttt{max(\textbar{}dF\_2\textbar{},\ \textbar{}S\_2\textbar{},\ \textbar{}S\_visc\textbar{},\ equilibrium\_pressure\_force(j))}, the last
+  term the magnitude of the pressure force of the cell\textquotesingle s own hydrostatic
+  equilibrium, which is the right-hand side of whichever cancellation
+  identity the assembled row belongs to (PLM
+  \texttt{\textbar{}rho\_j\ {[}A+\ (phi\_i(j)\ -\ phi\_c(j))\ +\ A-\ (phi\_c(j)\ -\ phi\_i(j-1)){]}\textbar{}/dV}, WENO3
+  \texttt{\textbar{}rho\_j\ (phi\_i(j)\ -\ phi\_i(j-1))\textbar{}/dr}; Kaeppeli and Mishra 2016, A\&A 587,
+  A94, eq. 16 in spherical geometry). It has one definition,
+  \texttt{equilibrium\_pressure\_force\_of\_state}, called by \texttt{RK\_rhs}, by
+  \texttt{positivity\_limited\_fluxes} and by \texttt{assemble\_residual} (the last so that
+  the kind-generic \texttt{EXHALE\_RESID\_QUAD} arm, which returns the well-balanced
+  row but not the term it is read against, does not scale the row by a stale
+  weight). The numerator is untouched; with no gravity the term is zero and
+  the scale is the row\textquotesingle s own terms exactly (MEASURED 0 for all four
+  scheme/solver pairs). MEASURED (P4): \texttt{wasp\_full\_newton} reloaded with the
+  key ON is \textbf{NOT CERTIFIED} on the entry text on exactly one entry, the
+  momentum row at \textbf{1.000E+00} at cell 1 (which reproduces the N37 record to
+  the digit, spread 1.539E-15, energy 9.911E-12, mass 1.228E-13, Mdot 13.30),
+  and \textbf{CERTIFIED} after, \texttt{info\ =\ 0}, \texttt{\textbar{}\textbar{}R\textbar{}\textbar{}} 9.719E-10, momentum row
+  9.719E-10 against 1.0E-08 at cell 500, \texttt{log10\ Mdot} 13.30. Tests:
+  \texttt{grid\_and\_gates} \texttt{hydrostatic\_residual} \textbf{28 PASS / 12 FAIL} on the
+  entry-text objects (the twelve failures at exactly 1.000 for all four
+  pairs) and \textbf{40/0} after, of which 16 are new rows measuring the row
+  divided by \texttt{residual\_row\_scale(2,...)}, the one expression the
+  certification reads; the whole suite 162/0 at entry (READ, N37) and \textbf{178
+  PASS / 0 FAIL} after; \texttt{krylov\_and\_dogleg} 279/0 and \texttt{certification} 57/0
+  unchanged. Default path (key absent): \texttt{wasp\_full\_newton} reload and
+  \texttt{mol\_carrier} at 300 steps byte-identical on both binaries apart from the
+  provenance line, every \texttt{(JFNK)} line identical, key-off \texttt{info\ =\ 0}, \texttt{\textbar{}\textbar{}R\textbar{}\textbar{}}
+  1.667E-09, Mdot 13.30. The arm\textquotesingle s effect on the two solver fixtures is large
+  and in one case negative, and both are recorded: the carrier reload\textquotesingle s
+  handed-back \texttt{\textbar{}\textbar{}R\textbar{}\textbar{}} falls from 1.721 to \textbf{1.026E-01}, the key-off level
+  (READ: N37 9.34E-02), with a measured momentum row of 1.404E-02 at cell 499
+  instead of a pinned 1; the atomic reload stops earlier (\texttt{info\ =\ 2} at
+  iteration 24) and hands back 1.702 against the control\textquotesingle s 1.415 at cap 40,
+  because the merit no longer carries 500 momentum rows pinned at one
+  (\texttt{\textbar{}\textbar{}Fs\textbar{}\textbar{}2} 17.1 against 28.2). A defect found while there and fixed: the
+  allocation guard in \texttt{RK\_rhs} tested \texttt{face\_flux} for the well-balanced
+  arrays \texttt{face\_q\_up}/\texttt{face\_q\_dn} as well, and \texttt{face\_flux}/\texttt{face\_p} are also
+  allocated by \texttt{store\_the\_interface\_fluxes}, so a stationary evaluation
+  reached before any marching stage could write an unallocated array; the
+  guards are now separate and each tests its own array, with no arithmetic on
+  any path.
+\item
+  \textbf{P5: the analysis document corrected} (\texttt{docs/solver\_approach\_analysis\_20260910.md},
+  +463/-115, 114 to 592 lines). All nine corrections the review established
+  are in place, each with an inline \texttt{{[}corrected\ 2026-09-11:\ ...{]}} mark citing
+  the review section or the experiment measurement behind it: the spatial
+  truncation error is not a lower bound on the algebraic residual (the
+  frozen-background H2 wind row measures 2.449021e-13 on the same 500-cell
+  grid where the withdrawn argument put a 5e-4 floor); Ritz-magnitude ratios
+  of a masked compression are neither condition numbers nor the species Schur
+  complement; partitioning moves the coupled iteration outside the Krylov
+  solve with outer matrix \texttt{(1\ -\ omega)\ I\ +\ omega\ D\^{}-1\ C\ A\^{}-1\ B} and the outer
+  loop is not new code (\texttt{steady\_wind\_with\_element\_diffusion}); the CETIMB
+  route is renamed as informed by CETIMB and gains the two conditions the
+  review adds; the well-balanced arm removes the equilibrium\textquotesingle s algebraic
+  cancellation and not the floor; Koskinen et al. 2013 lower boundary is
+  section 2.1.1; the three-unknown path uses its existing globalization and
+  not the trust region (\texttt{use\_tr\ =\ (nspec\_row\ .gt.\ 0)}); section 7 recast with
+  the 2026-09-11 numbers; a new section 9 indexing the twelve changes and a
+  new section 5.5 on partitioned components inside a coupled method (Knoll
+  and Keyes 2004, J. Comput. Phys. 193, 357). Three numbers of the original
+  disagreed with their sources and are corrected, one of them wrong: the N4b
+  row read "carrier arm 1.4 -\textgreater{} 0.09" where the measurement is 0.151 -\textgreater{}
+  0.090. Citations were verified independently in the published text
+  (Koskinen 2013 section headers by \texttt{pdftotext\ -layout}; the Knoll and Keyes
+  bibcode by the ADS API).
+\item
+  \textbf{P6: the outer iteration as a stated contract} (\texttt{src/EXHALE\_main.f90},
+  +448/-131). \texttt{steady\_wind\_with\_element\_diffusion} now says in its own header
+  which equations are alternated with the wind and why (a species the run
+  moves by an operator-split transport step, the diffusing elements always
+  and the molecular carriers where \texttt{Coupled\ carrier\ solve} is off, has a
+  stationary balance that no hydrodynamic solve touches), and it accepts a
+  state only by the certification of the FULL set of active equations
+  evaluated on the refreshed state it would hand back. A hydrodynamic
+  \texttt{info\ =\ 0} while an alternated species row refuses is not an accepted
+  state, and a nonzero hydrodynamic flag no longer ends the loop by itself,
+  because both \texttt{info\ =\ 1} and \texttt{info\ =\ 2} hand back a state the composition
+  update still makes progress from. The endings are named
+  (\texttt{outer\_certified}, \texttt{outer\_state\_not\_finite},
+  \texttt{outer\_element\_update\_refused}, \texttt{outer\_no\_progress}, \texttt{outer\_pass\_budget}),
+  the P1 status is consumed, and the quantity the passes are controlled by is
+  the worst gated species row of the certification: where it fails to fall
+  over a pass both updates are shortened (the element under-relaxation omega
+  halved, floor 0.125; the carrier movement bound halved, floor
+  \texttt{carrier\_trust\_floor\ =\ 1.0d-3}) and \texttt{outer\_no\_fall\_max\ =\ 3} consecutive
+  passes without a fall end the loop. The last pass takes no composition
+  update, because an update exists to be consumed by the next hydrodynamic
+  solve and taking it would replace a stationary wind by a state the update
+  itself spoiled. The composition drift and the volume-weighted carrier
+  residual are reported and are not tests. With no alternated species the
+  body is one steady solve and the state refresh, and the flag is the solve\textquotesingle s
+  own, which is what an atomic run and a coupled carrier solve both do.
+  Default path MEASURED on the P6 run pair (\texttt{wasp\_full\_newton.ctrl} against
+  \texttt{.new}): \texttt{info\ =\ 0}, \texttt{\textbar{}\textbar{}R\textbar{}\textbar{}} 1.667E-09, flux spread 6.233E-14, CERTIFIED,
+  \texttt{log10\ Mdot} 13.30, and \texttt{output/Ion\_species.txt} and
+  \texttt{output/Hydro\_ioniz.txt} byte-identical between the two.
+\item
+  \textbf{P7: the measurement.} Below.
+\item
+  \textbf{P8: the corrections propagated to the documents and tests that carried
+  them} (\texttt{docs/code\_status\_20260910.md}, \texttt{docs/ISSUES\_20260909.md},
+  \texttt{docs/certification\_tolerance\_anchoring\_20260910.md},
+  \texttt{src/tests/steady\_selfconsistent\_residual/run.sh},
+  \texttt{src/tests/steady\_species\_rows/steady\_species\_rows\_tests.f90}). The
+  withdrawn inference (a spatial truncation error of 5e-4 at N = 500 floors
+  the algebraic residual, so 1e-5 cannot certify) is corrected in place in
+  the three documents that still carried it, marked with the review section
+  and the measured 2.449021e-13 beside it, and decision 22 (a) is kept as the
+  standing decision in every one of them with only its justification changed;
+  the grid-refinement anchor and its remap control are relabelled as
+  consistency diagnostics; "permanently uncertified until the operator\textquotesingle s
+  order or the grid changes" is withdrawn and quoted where it stood; ISSUES
+  3.7\textquotesingle s \texttt{store\_row\_terms} item is struck through and marked RESOLVED by P4,
+  and the resolved table gains D1, D2 and D3 with their measured before and
+  after. Two test contract errors, both RED before and GREEN after:
+  \texttt{steady\_selfconsistent\_residual} assertion 2 read "a hydrodynamic row above
+  its tolerance implies \texttt{info\ =\ 2}", which conflates not certified with one
+  flag and already failed on the entry text for any budget-limited log
+  (\texttt{FAIL\ flag\_of\_carrier\_elem\_newton\ measured=info=1\ reference=info=2} -\textgreater{}
+  PASS, with \texttt{wasp\_full\_newton} still PASS and a synthetic \texttt{info\ =\ 0} copy
+  still FAILing); and \texttt{relaxation\_drift\_covers\_every\_element} built its
+  column by swinging each metal mixing ratio about the reservoir on a fixed
+  hydrogen fraction, so its species missed the density the column hands the
+  operator by \textbf{1.66042E-02}, which is now \textbf{6.58484E-16} on a column of
+  mass fractions that sum to one, the suite going 194/0 to \textbf{195/0} with a
+  new row measuring the closure by the code\textquotesingle s own mass policy.
+\item
+  \textbf{P9: this section}, \texttt{docs/session\_handoff\_20260911.md}, the status section
+  of the plan, the dated sections of the two fixture READMEs, the reopening
+  paragraphs of \texttt{docs/code\_status\_20260910.md} section 3 and
+  \texttt{docs/ISSUES\_20260909.md} section 5, and the new entries of
+  \texttt{TO\_BE\_DONE.md}.
+\item
+  \textbf{P10: the best-iterate ledger reads the hydrodynamic rows against their own
+  certification tolerances} (\texttt{steady\_newton.f90} +131/-55,
+  \texttt{src/tests/krylov\_and\_dogleg/krylov\_and\_dogleg\_tests.f90} +135/-1, READ from
+  the P10 report; the whole uncommitted diff of the two files now stands at
+  +335/-84 and +268/-1, MEASURED by \texttt{git\ diff\ -\/-numstat}, P3\textquotesingle s share
+  included). Items P10, P11 and P12 were added after the plan had run, on the
+  user\textquotesingle s instruction of 2026-09-11 to fix the open items the session had left
+  to the user ("fix all of them", and "the pressure term too"); P10 is the
+  third entry of the plan\textquotesingle s "what remains".
+  \texttt{distance\_from\_certification} divided the hydrodynamic slot by the run\textquotesingle s
+  \texttt{Resid\ tol}, so the ledger that chooses the state handed back could not see
+  a mass row above 3e-12 while \texttt{\textbar{}\textbar{}R\textbar{}\textbar{}} was below 1e-8. The slot now arrives as
+  a distance formed by ONE new public routine,
+  \texttt{hydrodynamic\_distance\_from\_certification}, \texttt{max(mass/3e-12,\ momentum/1e-8,\ energy/1e-6)} on the windows \texttt{resid\_relnorm} uses, so \texttt{d\ \textless{}\ 1} is exactly the
+  row condition the loop-top stop of P3 and the acceptance at return impose,
+  and \texttt{keep\_this\_iterate} ranks on that distance on every route including the
+  three-unknown one (the \texttt{nspec\_row\ \textless{}=\ 0} branch that ranked on \texttt{\textbar{}\textbar{}R\textbar{}\textbar{}} is
+  gone). \texttt{certified\_row\_measures} hands the plain \texttt{\textbar{}\textbar{}R\textbar{}\textbar{}} of the same
+  evaluation back through a new optional argument rather than leaving a caller
+  to re-derive it, and the iteration line prints the two side by side.
+  \texttt{resid\_tol\_of\_solve} is KEPT, with one reader, the
+  \texttt{EXHALE\_RESID\_BRANCH\_REPORT} block, where \texttt{rmax(1)} is deliberately the
+  plain mixed-row measure and dividing it by one row\textquotesingle s tolerance would be a
+  ratio of two different rows. Tests: \texttt{krylov\_and\_dogleg} 290/0 at entry,
+  \textbf{300 PASS / 9 FAIL} on a RED build in which both distances read
+  \texttt{maxval(rc)/1.0d-8} (the superseded reading, at the \texttt{Resid\ tol} of these
+  fixtures), \textbf{309/0} after, the 19 new rows being the block
+  \texttt{judged\_distance\_reads\_each\_row\_against\_its\_own\_tolerance}; \texttt{certification}
+  57/0, \texttt{steady\_completion\_flag} 3/0, \texttt{steady\_selfconsistent\_residual} 3/0
+  unchanged. Impact MEASURED (P10) against a private build of the entry text
+  of the one file: \texttt{wasp\_full\_newton} reloaded ends \texttt{info\ =\ 0}, \texttt{\textbar{}\textbar{}R\textbar{}\textbar{}}
+  1.667E-09, \texttt{log10\ Mdot} 13.30 with \textbf{all eleven output files
+  byte-identical}, the ledger handing back the same iterate and the only
+  number that moves being the reported best-iterate distance, 1.749E-01
+  (which is \texttt{\textbar{}\textbar{}R\textbar{}\textbar{}\_best/1e-8}) to 8.469E-02 (the same iterate\textquotesingle s worst row over
+  its own tolerance, so 8.5 percent of it). The carrier reload shows the
+  re-ranking doing what it is for: pass 2 hands back a mass row of \textbf{4.85E-12
+  at \texttt{\textbar{}\textbar{}R\textbar{}\textbar{}} 2.459E-09} where the control took 6.98E-12 at 1.593E-09, and
+  pass 3 \textbf{4.96E-12 at 2.005E-09} against 8.17E-12 at 1.723E-09, with the H2
+  carrier row and the worst gated species row identical pass by pass because
+  the carrier relaxation sits outside the hydrodynamic solve. The HD 209458 b
+  element reload runs its twelve passes in 1064 s against the control\textquotesingle s 1043 s
+  (2 percent on a shared machine, not a claim) with every one of the twelve
+  worst gated species rows and its cell identical to the control, and ends on
+  the same single refusing entry, the hydrodynamic mass row at \textbf{8.893E-10 at
+  cell 3} against the control\textquotesingle s 1.054E-09 at cell 16; the solves reporting a
+  stalled best iterate fall 5 to 3 and those ending on "no descent direction
+  exists" 11 to 10. What stays open, and what this measurement settles: the
+  mass row does NOT reach 3e-12 and that state still does not certify, because
+  at 1e-9 to 1e-12 the row IS the N33 rounding of the base-layer flux
+  difference. MEASURED (P10, finding 3): at pass 1 the ledger\textquotesingle s best distance
+  is 4.407E+02, a mass row of 1.32E-09, while the same state re-evaluated at
+  its own composition after the best-iterate restore carries \textbf{4.11E-09}, so
+  ranking iterates by that row is ranking by the luckiest rounding of a
+  quantity that moves when the state is evaluated again, which is why the
+  pass-by-pass mass rows scatter rather than descend in the control and in the
+  new run alike. The entry is an acceptance question, not a solver item, and
+  no further solver item follows from it.
+\item
+  \textbf{P11: the momentum row\textquotesingle s reference scale is the largest PHYSICAL term of
+  the momentum equation} (\texttt{RK\_rhs.f90}, \texttt{steady\_residual.f90},
+  \texttt{src/tests/grid\_and\_gates/hydrostatic\_residual.f90} and that suite\textquotesingle s
+  \texttt{README.md}; the whole uncommitted diff of the four files stands at +285/-2,
+  +151/-33, +736/-12 and +94/-1, MEASURED by \texttt{git\ diff\ -\/-numstat}, with P4\textquotesingle s
+  +90/-2, +59/-2, +318/-11 and +44/-1 inside it). The fourth entry of the
+  plan\textquotesingle s "what remains", and the "pressure term" of the user\textquotesingle s instruction.
+  The scale was built from the pieces of the discretization,
+  \texttt{max(\textbar{}dF(2)\textbar{},\ \textbar{}S(2)\textbar{},\ \textbar{}Smom\textbar{})} plus P4\textquotesingle s equilibrium pressure force under
+  the well-balanced key; it is now built from the three left-hand terms of
+  \texttt{d(rho\ v)/dt\ +\ div(rho\ v\ v)\ +\ dp/dr\ +\ rho\ dphi/dr\ =\ S\_visc}, kept beside
+  \texttt{face\_flux}/\texttt{face\_p} as module arrays of \texttt{RK\_integration}, filled on both
+  reconstructions, under both key values and on the positivity-repair path,
+  and gathered by one routine, \texttt{momentum\_row\_terms\_of\_cell}, with
+  \texttt{momentum\_row\_terms\_of\_state} filling a whole state and
+  \texttt{reconstruction\_continuation\_rhs} blending the three terms with the same
+  \texttt{lambda} as \texttt{dF} and \texttt{S}. The residual \texttt{R(2)\ =\ dF(2)\ -\ S(2)\ -\ S\_visc} is
+  untouched on every path, and the split is a rearrangement of the assembled
+  row and not a model of it: \texttt{F(2)\ -\ p\_out} is the momentum flux without the
+  pressure exactly for every flux function, and the geometric term is
+  recovered from the source as \texttt{p\_geom\ =\ S(2)\ +\ weight} so that no second
+  definition of the cell pressure exists. MEASURED (P11), on a state with
+  structure in density, pressure and velocity,
+  \texttt{max\_j\ \textbar{}ram\ +\ dp/dr\ +\ rho\ g\ -\ (dF\_2\ -\ S\_2)\textbar{}} over the scale is \textbf{0 under
+  WENO3 and 1.7e-16 (default) / 5.3e-15 (key on) under PLM}, for both Riemann
+  solvers, so the three terms add up to the row they scale. The defect is
+  closed on the states where the terms are known in closed form: with no
+  gravity and a uniform pressure at rest, where every term of the equation
+  vanishes, the PLM scale read \textbf{1.000 of the geometric pressure term
+  \texttt{(A+\ -\ A-)\ p\_j/dV}}, that is 2 p/r, with both Riemann solvers at every N,
+  and now reads the \texttt{tiny} floor 2.22507E-308; on supersonic uniform flow at
+  M = 3, where the ram divergence is the only term, it stood \textbf{6.66667E-02 =
+  1/(gamma M M) above it} and now agrees with it to 1.9e-14 (PLM) and
+  4.2e-13 (WENO3); on the discrete hydrostatic equilibrium the PLM scale was
+  \textbf{2.79144E-01, 28 percent BELOW the weight it balances}, because \texttt{S(2)} is
+  the weight minus the geometric term and no term of the max was the weight
+  itself, and the departure \texttt{(w\ -\ s)/w} is now 0. P4\textquotesingle s own zero-gravity
+  diagnostic closes with it: the departure of the well-balanced scale from the
+  base scheme\textquotesingle s on the same state falls from \textbf{9.43654E-01 to 3.74E-13} under
+  PLM with ROE (2.76E-13 with HLLC), the two having agreed under WENO3 all
+  along (1.7e-13 to 2.7e-13). Tests: \texttt{hydrostatic\_residual} \textbf{50 PASS / 10
+  FAIL} on the entry-text objects and \textbf{60/0} after, the ten being the four
+  scheme/solver pairs of P4\textquotesingle s corrected
+  \texttt{zero\_gravity\_momentum\_scale\_is\_the\_rows\_own\_terms} (which had compared the
+  arm\textquotesingle s scale with \texttt{max(\textbar{}dF\_2\textbar{},\ \textbar{}S\_2\textbar{})}, the SUM of the two terms the row
+  holds, 7.50E-01 FAIL to 0) and the PLM pairs of the three new identity
+  statements; the whole \texttt{grid\_and\_gates} suite \textbf{188/10 to 198/0} (198 =
+  P4\textquotesingle s 178 + 20 new rows); \texttt{krylov\_and\_dogleg} 290/0, \texttt{certification} 57/0 and
+  \texttt{adv\_static\_limit} 53/0 before and after. Two quantities are REPORTED and
+  not asserted, with the reason: the two-sided departure of the scale from the
+  weight on the arm\textquotesingle s own equilibrium is not round-off for the base scheme
+  (MEASURED 8.5e-4 at N = 250 falling to 2.3e-6 at N = 2000, PLM with ROE),
+  because that state is the discrete equilibrium of the ARM\textquotesingle s reconstruction
+  and HLLC\textquotesingle s face pressure carries a dissipative part of size dr/H times the
+  weight; and the halving statement subtracts the unperturbed row of the same
+  cell, since the undifferenced ratio is not 2 (MEASURED 1.0012 at N = 250,
+  1.586 at N = 2000) while the imbalance the perturbation ADDS halves to
+  2.000000 within 5e-6. Impact: nothing that was certified stops being
+  certified. \texttt{wasp\_full\_newton} reloaded with the key OFF is \textbf{CERTIFIED} on
+  both binaries, \texttt{info\ =\ 0}, \texttt{log10\ Mdot} 13.30, with the momentum row moving
+  \textbf{8.469E-10 to 1.165E-09} of its 1.0E-08 tolerance, the mass row 1.453E-13
+  to 2.017E-12 of its 3.0E-12 (so this reload now certifies with less margin
+  on the mass row) and \texttt{\textbar{}\textbar{}R\textbar{}\textbar{}} 1.667E-09 to 1.495E-09; the outputs are not
+  byte-identical, because the merit and the loop-top gate both divide by the
+  momentum scale and the two solves accept different iterates, and the states
+  differ by at most \textbf{2.6E-09 relative} over every column (9.3e-10 in
+  \texttt{Hydro\_ioniz.txt}, 2.6e-09 in \texttt{Ion\_species.txt}). With \texttt{Well\ balanced:\ True} the same reload is \textbf{CERTIFIED} on both, the momentum row moving
+  \textbf{9.719E-10 to 9.621E-11} with all eleven output files byte-identical and
+  the \texttt{\textbar{}\textbar{}Fs\textbar{}\textbar{}2} ladder identical iteration by iteration: at cell 500,
+  r = 4.62, the ram divergence exceeds the cell\textquotesingle s weight by about a factor
+  ten, which is why the measure of the certified state falls by that factor on
+  a supersonic outer cell. The marching path of \texttt{mol\_carrier} at 300 steps and
+  one thread is \textbf{byte-identical in all seven output files}, \texttt{log10\ Mdot}
+  7.95, the \texttt{run.log} differing in exactly eight lines, every one of them a
+  report of the momentum measure (the worst-row entry 1.8164E+00 at cell 438
+  to 1.9788E+00 at cell 449) and none of them a state. On the carrier reload
+  every pass line is identical but the momentum entry, which falls \textbf{1.32E-12
+  to 3.22E-13} after pass 1 (4.47E-13 and 3.54E-13 at passes 2 and 3), the
+  state as loaded reading 3.622E-01 to \textbf{3.311E-01} in its scaled momentum
+  row, and all four output files byte-identical. What stays open: the
+  kind-generic \texttt{EXHALE\_RESID\_QUAD} arm still hands back neither the momentum
+  terms nor the face departures, so on that arm (default off, a rounding
+  control experiment nothing is adopted from) both are read from the last
+  \texttt{RK\_rhs} evaluation rather than from the state just assembled; the fix
+  belongs in \texttt{hydrodynamic\_rows.f90}, which this item does not own.
+\item
+  \textbf{P12 (with P12b): two test-hygiene defects, and the same shape in the
+  sibling scripts} (\texttt{src/tests/test\_columns.f90} new, 125 lines;
+  \texttt{attempted\_step/run.sh} +18/-5, \texttt{carrier\_returned\_state\_acceptance/run.sh}
+  +18/-5, \texttt{carrier\_retry/run.sh} +18/-5, \texttt{carrier\_reference\_scales/run.sh}
+  +22/-6, \texttt{carrier\_constraint\_attribution/run.sh} +22/-6,
+  \texttt{constrained\_network\_layout/run.sh} +22/-6, \texttt{species\_masses/run.sh} +22/-8,
+  \texttt{element\_operator/run.sh} +5/-0, \texttt{steady\_species\_rows/run.sh} +5/-0, and the
+  two drivers, MEASURED by \texttt{git\ diff\ -\/-numstat}; of the drivers\textquotesingle{} totals the
+  item\textquotesingle s own share is READ from the P12 report, the \texttt{use} line, the renamed
+  calls and 66 lines out of \texttt{element\_operator\_tests.f90} and 43 out of
+  \texttt{steady\_species\_rows\_tests.f90}). The fifth entry of the plan\textquotesingle s "what
+  remains", both halves of it. The \textbf{\texttt{build\_stamp} fallback}: the trigger is
+  narrower than "a tree that has never been built", it needs such a tree AND a
+  work directory outside \texttt{\$root/build}, which is the concurrency-safe usage
+  the worker rules mandate, because \texttt{source\_closure.py} walks \texttt{\$root/build}
+  recursively and a default work directory inside it swept the fallback into
+  the closure by accident. Seven \texttt{run.sh} now select
+  \texttt{\$\{EXHALE\_OBJDIR:-\$root/build\}/build\_stamp.f90}, write the fallback into
+  their own work directory only when that is absent, and compile whichever of
+  the two is in force as the FIRST file of the closure with the closure
+  filtered of any second copy, which is the shape
+  \texttt{src/tests/physics\_probe/run.sh} already had;
+  \texttt{grep\ -ln\ \textquotesingle{}if\ {[}\ !\ -f\ "\$root/build/build\_stamp.f90"\ {]}\textquotesingle{}\ src/tests/*/run.sh}
+  now returns nothing. Four of them gained a private object directory,
+  \texttt{EXHALE\_TEST\_OBJDIR}, without which the no-build verification cannot be run
+  on them at all (\texttt{species\_masses}, which had no override of any kind,
+  \texttt{carrier\_reference\_scales}, \texttt{carrier\_constraint\_attribution},
+  \texttt{constrained\_network\_layout}). RED and GREEN, MEASURED in four arms: at HEAD
+  with an external work directory the compile dies on \texttt{Cannot\ open\ module\ file\ \textquotesingle{}build\_stamp.mod\textquotesingle{}} and each script prints its one failure line, \textbf{0 PASS / 1
+  FAIL, exit 1}, in \texttt{attempted\_step}, \texttt{carrier\_returned\_state\_acceptance},
+  \texttt{carrier\_reference\_scales}, \texttt{carrier\_constraint\_attribution},
+  \texttt{carrier\_retry} and \texttt{species\_masses}; after the fix every suite gives the
+  count it gives at HEAD with a default work directory, \textbf{70/0}
+  (\texttt{attempted\_step}), \textbf{36/0} (\texttt{carrier\_returned\_state\_acceptance}),
+  \textbf{14/0}, \textbf{10/0}, \textbf{122/0}, \textbf{9/0} and \textbf{8/0}
+  (\texttt{constrained\_network\_layout}, which has no \texttt{utilities.f90} in its closure,
+  so it has no RED to show and its change is the shape alone), in a tree with
+  no \texttt{build/} and in the repository against a private build, and the \texttt{diff} of
+  the PASS/FAIL lines before and after is empty for all of them. Which stamp
+  each arm used is MEASURED too: in the no-build arm every work directory
+  holds a \texttt{build\_stamp.o} compiled from the fallback, and in the arm with a
+  build tree no fallback file was written at all, so the generated stamp was
+  taken, which the superseded scripts could not do because they looked only in
+  \texttt{\$root/build}. The \textbf{column written twice}: the new module \texttt{test\_columns}
+  holds \texttt{column\_carrying\_its\_own\_density(f\_c,\ q\_h2,\ he\_taper,\ metal\_swing)},
+  named for what it builds, with its header stating the invariant
+  \texttt{sum\_i\ m\_i\ n\_i\ =\ rho} and the round-off it holds to, and
+  \texttt{column\_mass\_closure(rho\_c,\ f\_c)}, the measurement moved out of
+  \texttt{element\_operator\_tests.f90} unchanged; the two drivers call them at 15 and 2
+  sites and \texttt{use\ utils,\ only:\ calc\_rho} is gone from both, it having been there
+  only for the moved code. The shared construction reduces to each former copy
+  exactly and not approximately (\texttt{metal\_swing\ =\ 0} gives \texttt{swing\ =\ 1.0d0},
+  \texttt{q\_h2\ =\ 0} leaves \texttt{isp\_H2} at zero, \texttt{he\_taper\ =\ .false.} selects the
+  constant the steady driver used, and \texttt{zsum} accumulates in the same element
+  order), and the statement is the measurement: \texttt{element\_operator} \textbf{24/0}
+  and \texttt{steady\_species\_rows} \textbf{195/0} before and after, with the \texttt{diff} of the
+  two full logs, diagnostic lines included, empty in both, so every printed
+  digit is unchanged (\texttt{the\_column\_is\_mass\_closed\_as\_built} 4.10591E-16,
+  \texttt{drift\_column\_carries\_its\_own\_density} 6.58484E-16, the relaxation\textquotesingle s 27
+  steps and returned drift 1.7790E+00 among them). The file is in no source
+  list of the Makefile (\texttt{grep\ -c\ test\_columns\ Makefile} = 0) and no dependency
+  generator sees it; the two \texttt{run.sh} that need it compile it immediately
+  before their driver. Nothing stays open from this item: its own report
+  found nothing further, and the four sibling scripts and the hardcoded work
+  directory it reported are what P12b then closed.
+\end{itemize}
+
+Two changes outside the item list, made by the advisor while reading these
+three:
+
+\begin{itemize}
+\tightlist
+\item
+  \texttt{src/tests/steady\_species\_rows/steady\_species\_rows\_tests.f90}, the two rows
+  P10 reported as stating the superseded semantics. In
+  \texttt{judged\_distance\_is\_the\_worst\_row\_over\_its\_tolerance} the hydrodynamic slot
+  now arrives as a distance (\texttt{rows(1)} 2.0d0, 0.5d0 in place of 2.0d-8,
+  5.0d-9), with a comment saying so, and
+  \texttt{judged\_distance\_follows\_the\_residual\_target}, which asserted the property
+  the item removes, is replaced by
+  \texttt{hydrodynamic\_distance\_reads\_each\_row\_against\_its\_own\_tolerance}: a mass row
+  of 1e-9 beside a momentum row of 1e-13 and an energy row of 1e-8 gives
+  \texttt{1e-9/3e-12}, the mass row being what the distance reports. The two
+  \texttt{resid\_tol\_of\_solve} assignments and that import are gone.
+\item
+  the \texttt{Coupled\ carrier\ solve} key comment in
+  \texttt{src/modules/files\_IO/input\_read.f90} (+17/-13, MEASURED). It stated that
+  the alternation "was measured not to converge and not to be able to"
+  (section 139), which is narrower than it reads after P7. It now names the
+  default (False), says what the alternation is judged by (the certification
+  of the refreshed state in \texttt{steady\_wind\_with\_element\_diffusion}), cites the
+  two reloads of this section for what it reaches, and keeps True as the
+  coupled measurement arm.
+\end{itemize}
+
+Four more items ran in the afternoon of the same day: \textbf{P14} and \textbf{P15}, the
+two findings of the Codex adversarial review of the working tree (the review
+and the verification of each finding are the subsection below), and \textbf{P16} and
+\textbf{P17}, the user\textquotesingle s first decision of the afternoon (the mass tolerance
+re-anchored on the fixture\textquotesingle s measured rounding floor) and its consequence for
+the best-iterate ledger. \textbf{P18} followed and closed the same day.
+
+\begin{itemize}
+\item
+  \textbf{P14: every ending of the stationary outer iteration hands back one
+  consistent state} (\texttt{src/EXHALE\_main.f90}, \texttt{steady\_wind\_with\_element\_diffusion}
+  only, +84/-40 against the entry text;
+  \texttt{src/tests/grid\_and\_gates/output\_state\_consistency.sh} +181/-4; MEASURED by
+  P14 with \texttt{diff\ -u} and \texttt{git\ diff\ -\/-numstat}). Codex finding 1, and it is
+  real. On a stagnation ending the composition had been updated while the
+  particle densities and the temperature written beside it had not, so the
+  state the run wrote was one composition update ahead of its own particle
+  count and temperature. MEASURED (P14) on the forced stagnation of the
+  hot-Uranus carrier reload: re-evaluating the written state moves its
+  temperature by \textbf{1.317089E-08} relative at cell 295, where the same fixture
+  ending on its pass budget, which takes no update, moves by \textbf{5.921E-16}; the
+  written temperature of the worst cell is 1.768302856793E+03 where the same
+  conserved state and composition give 1.768302833502E+03, and the worst
+  species column is 2.543E-03 (He 2\^{}3S, the stage answering to the temperature
+  with the steepest exponential). Four changes. The progress control (the
+  \texttt{sp\_worst} test, \texttt{n\_no\_fall}, the omega and trust halving, the setting of the
+  stagnation ending) now stands between the certification of the pass and the
+  update the next solve would consume, guarded so that a certified or
+  non-finite pass reaches neither, and the update\textquotesingle s own gate therefore excludes
+  the stagnation ending by itself: the pass that ends the iteration takes no
+  update. The ending is announced with the other endings, below the summary
+  line and the diagnostics, so the pass that ends on it prints its summary, its
+  carrier diagnostics and its H2 front like every other pass. A pass that takes
+  no update says which of the two reasons it was. And the element path\textquotesingle s update
+  now refreshes the particle densities and the temperature between
+  \texttt{relax\_element\_composition} and the equilibrium sweep
+  (\texttt{get\_species\_densities}, \texttt{comp\_T\_from\_p}), which is the shape the carrier
+  path already had; before it, the sweep equilibrated the new composition at
+  the old temperature. The header states the invariant. One behaviour change to
+  record because it is not a reordering: the shortened step of a pass whose
+  measure did not fall is now consumed by THAT pass\textquotesingle s update, where before it
+  reached the next pass\textquotesingle s. RED and GREEN on the new second arm of
+  \texttt{output\_state\_consistency.sh}, which runs the stagnation
+  (\texttt{EXHALE\_CARRIER\_TRUST=1e-4\ EXHALE\_OUTER\_PASSES=8\ EXHALE\_JFNK\_MAXIT=5}, the
+  setting that stagnates; the brief\textquotesingle s cap of 40 does not, the worst gated H2
+  row falling through the hydrodynamic solve alone), asserts by name that the
+  ending reached is the stagnation one, and then measures the \texttt{Restart\ intent:\ stationary\ evaluate} round trip over the 500 physical cells against \textbf{1e-12}:
+  \texttt{measured=1.317089e-08} FAIL on the entry text, \texttt{measured=6.499247e-14} PASS
+  after. The tolerance is justified by measurement and not by a snapshot: the
+  states handed back by an ending that takes no update measure 6.5E-14 and
+  5.9E-16, and the defect measures 1.3E-08, four decades above the allowance.
+  The suite goes \textbf{199 PASS / 1 FAIL} on the entry text to \textbf{200 / 0}.
+  Impact: \texttt{wasp\_full\_newton} reloaded is unmoved (\texttt{info\ =\ 0}, CERTIFIED, \texttt{\textbar{}\textbar{}R\textbar{}\textbar{}}
+  1.495E-09, flux spread 1.9113E-12, \texttt{log10\ Mdot} 13.30 on both binaries, all
+  eleven outputs identical apart from the provenance \texttt{run=} timestamp); the
+  carrier reload at three passes is identical pass line by pass line to the
+  control and to the P7 record; the element reload\textquotesingle s pass 1 is identical in
+  every digit and the ladder parts from pass 2, because the sweep of pass 1\textquotesingle s
+  update now runs at the relaxed composition\textquotesingle s own temperature (momentum
+  1.60E-12 against 4.24E-14 at pass 2), both arms ending on the pass budget
+  with the same 9 refusing equations and the same base-layer mass row as the
+  worst refusing entry.
+\item
+  \textbf{P15: the kind-generic rows hand back the face departures their momentum row
+  was built from} (\texttt{src/modules/time\_step/hydrodynamic\_rows.f90} +75/-15,
+  \texttt{src/modules/time\_step/hydrodynamic\_rows\_body.inc} +51/-17,
+  \texttt{src/tests/krylov\_and\_dogleg/krylov\_and\_dogleg\_tests.f90} +255/-1 measured
+  against the file as it stood when the item started; MEASURED by P15). Codex
+  finding 2, and the third entry of the plan\textquotesingle s "what remains". Under
+  \texttt{Well\ balanced:\ True} the momentum row\textquotesingle s pressure-gradient term, the momentum
+  row scale and every measure read against that scale are formed from the
+  module arrays \texttt{face\_q\_up}/\texttt{face\_q\_dn} of \texttt{RK\_integration}, which only
+  \texttt{RK\_rhs} and the positivity repair ever filled; the kind-generic rows kept
+  their own departures as locals and \texttt{store\_the\_interface\_fluxes} wrote back
+  \texttt{face\_flux} and \texttt{face\_p} alone, so on the arm those three quantities belonged
+  to the last \texttt{RK\_rhs} evaluation or to the zeros of the first allocation.
+  The departures now leave the kind-generic text as two OPTIONAL \texttt{intent(out)}
+  arguments of \texttt{hydrodynamic\_flux\_difference\_and\_source}, converted to double
+  at the one rounding on the way out exactly as the flux and the face pressure
+  are, both public wrappers ask for them, and \texttt{store\_the\_interface\_fluxes}
+  stores them under the key. The reconstruction continuation CAN reach the
+  generic arm (\texttt{assemble\_residual} chooses the arm from
+  \texttt{generic\_precision\_rows\_arm()} alone and the generic text carries its own
+  blending branch), and on it the terms would be wrong for two reasons rather
+  than one, the single-scheme weight \texttt{w\_face\_p} and the fact that the two
+  schemes reconstruct different faces so no single pair of departures satisfies
+  the blended row identity; \texttt{the\_generic\_text\_is\_usable} therefore now refuses
+  \texttt{recon\_lambda\_on\ .and.\ 0\ \textless{}\ recon\_lambda\ \textless{}\ 1}, ahead of every arm evaluation.
+  That branch ends in \texttt{error\ stop} and has no executed row, which is stated
+  rather than worked around. Twelve new rows, each on a state the arm assembles
+  AFTER a residual was assembled on a different state, both reconstructions and
+  both arm values: MEASURED RED \textbf{2.098877E+01} (PLM) and \textbf{2.032204E+01}
+  (WENO3) on the pressure gradient against the production term,
+  \textbf{3.262392E+00} and \textbf{3.428893E+00} on the row scale, \textbf{1.190363E+01} and
+  \textbf{1.181676E+01} on the row rebuilt from the stored face data, and GREEN at
+  \textbf{0 bitwise} for the generic-double instantiation, which IS the production
+  operator bit for bit, and 2.6E-16 to 2.7E-15 for the quadruple one at its
+  1e-13 bound. \texttt{krylov\_and\_dogleg} \textbf{309/0 to 321/0}; \texttt{certification} 57/0 and
+  \texttt{steady\_species\_rows} 195/0 unchanged. Impact: \texttt{wasp\_full\_newton} reloaded is
+  unmoved with the key off, and with \texttt{Well\ balanced:\ True} and
+  \texttt{EXHALE\_RESID\_QUAD=2} it stays CERTIFIED at the certified momentum row
+  \textbf{9.621E-11}, P11\textquotesingle s key-on production value, on both binaries, because the
+  JFNK and PTC loops reset the sweep kind to marching before the certification
+  of the handed-back state and the arm is consulted only for a non-marching
+  sweep kind (READ, \texttt{steady\_newton.f90}); the brief\textquotesingle s expectation that the
+  control\textquotesingle s certification reads another state\textquotesingle s departures is corrected by that
+  measurement. What the defect did move is the measure INSIDE the loop, where
+  the arm is armed: the convergence measure of iteration 1 is \textbf{1.756E-03} on
+  the control against \textbf{1.753E-03} after, the momentum row divided by the
+  pressure-gradient term of another state and overstated by 0.17 percent, and
+  that measure is what the loop-top stop of P3 and the ledger of P10 read on
+  every iterate. \texttt{\textbar{}\textbar{}Fs\textbar{}\textbar{}2} is identical iteration by iteration, iterations 2 to
+  7 are identical line for line, the accepted state is the same state, and
+  \texttt{mol\_carrier} marching is byte-identical.
+\item
+  \textbf{P16: the hydrodynamic mass-row tolerance is anchored on the row\textquotesingle s measured
+  rounding floor} (\texttt{src/modules/time\_step/certification.f90} +212/-2,
+  \texttt{src/modules/time\_step/steady\_residual.f90} +177/-1,
+  \texttt{src/tests/certification/certification\_contexts.f90} +105/-0,
+  \texttt{docs/certification\_tolerance\_anchoring\_20260910.md} +302/-0 appended;
+  MEASURED by P16 with \texttt{git\ diff\ -\/-numstat}, the share of the other uncommitted
+  item in \texttt{steady\_residual.f90} separated by attributing each hunk). The user\textquotesingle s
+  first decision of the afternoon, and it CLOSES the first entry of the plan\textquotesingle s
+  "what remains": the tolerance is now
+  \texttt{max(cert\_tol\_mass,\ min(cert\_tol\_mass\_ceiling,\ cert\_mass\_round\_margin\ *\ floor(j)))}
+  with \texttt{cert\_mass\_round\_margin\ =\ 10}, the ceiling 1 (a row at 1 is a mass flux
+  changing by the whole of itself across the cell, not an operative branch on
+  any state measured), \texttt{cert\_tol\_mass\ =\ 3e-12} unchanged and now the FLOOR of
+  the tolerance, and the verdict on that row taken cell by cell through the
+  pure \texttt{mass\_row\_cell\_verdict}. \textbf{The floor expression the item\textquotesingle s brief
+  specified could not serve, and the report of that is part of the result}:
+  \texttt{eps\ (\textbar{}A+\ F\_up\textbar{}\ +\ \textbar{}A-\ F\_dn\textbar{})/dV\ /\ residual\_row\_scale(1,j)} is algebraically
+  between one and two ulps at every cell, because the row\textquotesingle s scale IS the larger
+  of the two addends and the \texttt{dV} cancels, and MEASURED it is \textbf{4.4409E-16 on
+  all 500 cells of all four states} looked at, so ten times it never rises
+  above 3e-12 and the item as written would have been inert. The cause is the
+  one N33 established: the interface flux carries the last bit not of its own
+  value \texttt{rho\ v} but of the O(rho c\_s) quantities the Riemann solve differences,
+  so the floor is about \texttt{eps/Mach} and not \texttt{eps}. The estimate adopted is
+  \texttt{eps\ rho(\textbar{}v\textbar{}\ +\ c\_s)\ A\ /\ dV} over the row\textquotesingle s own scale, and it bounds the row\textquotesingle s
+  measured non-smoothness within a factor \textbf{1.5931} (\texttt{wasp\_full\_newton} as
+  loaded, base Mach 3.937E-03), \textbf{1.8857} (\texttt{atomic\_elem\_newton} as loaded,
+  5.062E-06), \textbf{2.6806} (\texttt{carrier\_elem\_newton} as loaded, 2.400E-04) and
+  \textbf{1.7733} (the HD 209458 b state this item certifies, 2.767E-06), where the
+  specified expression is short by two to six decades. The margin is measured,
+  not chosen: \texttt{c\_round\ =\ 10} is a round number 3.7 times above the largest of
+  those four ratios and inside N33\textquotesingle s independent reading of the same floor
+  against its own bound, 5.5 to 12 (READ). The measurement itself is in the
+  code: \texttt{EXHALE\_MASS\_FLOOR\_SCAN=1} (new, default off) adds one ulp to the
+  density of every physical cell, runs the whole flux assembly again and
+  reports the STEP each mass row takes beside both estimates, and the state
+  given is then assembled once more and reproduces its own mass rows to
+  0.00E+00 on every fixture. Tests: \texttt{certification} \textbf{57/0} on the entry
+  driver against the entry objects, \textbf{0 PASS / 1 FAIL} with exit 1 on the new
+  driver against the entry objects (the compile naming the three new symbols),
+  \textbf{70/0} after, the eleven new rows asserting that a floor below the fixed
+  value leaves exactly 3e-12 and names the fixed tolerance, that a floor above
+  it gives exactly \texttt{c\_round\ *\ floor} and names the rounding anchor of that
+  cell, that a row at half the anchor is WITHIN where the superseded rule
+  transcribed inside the test refuses it, that a row above the anchor still
+  refuses, that the ceiling binds, and that the margin stands above every ratio
+  measured. Seven further suites are identical row for row in both arms, and a
+  \texttt{-fcheck=bounds,do,mem} build runs both reloads with no runtime trap (the
+  floor estimate reads the ghost cell at \texttt{j\ =\ 1}, which is why it was checked).
+  \textbf{Impact.} \texttt{wasp\_full\_newton} reloaded is unmoved: CERTIFIED in both arms,
+  mass row 1.212E-12 at cell 500 with the verdict taken there against the FIXED
+  3.0E-12 at distance 0.404, \texttt{log10\ Mdot} 13.30, outputs byte-identical apart
+  from the provenance timestamp; its floor is below 3E-13 at every cell, so the
+  anchor cannot reach that case, and the cold-start \texttt{wasp\_full\_newton} of
+  \texttt{make\ check} cannot be affected either, its stop having no row binding (READ
+  from \texttt{backup/regression/wasp\_full\_newton/run.log}) and a tolerance that only
+  ever rises cannot move it. \textbf{The HD 209458 b element reload CERTIFIES, at
+  pass 12}, \texttt{outer\ pass\ 12:\ ACCEPTED\ -\/-\ every\ active\ equation\ of\ this\ state\ is\ within\ its\ own\ tolerance}, where the control (a build of the entry text of
+  the two files in the same tree) ends the same twelve passes NOT CERTIFIED on
+  the one entry it had before, the hydrodynamic mass row at 7.159E-10 against
+  3.0E-12 at cell 13. On the certified state the largest mass row is 7.703E-10
+  at cell 2 and the verdict is taken at cell 34 (r = 1.00665), 6.542E-10
+  against \textbf{4.6E-09, the rounding anchor of that cell}, distance 0.141; the
+  eight elemental wind rows and the worst gated species row of all twelve
+  passes are identical to the control to three digits, cell included, and the
+  two arms part at pass 6, the first pass whose hydrodynamic solve stops on the
+  loop-top test because its mass row is inside its own tolerance (\texttt{info\ =\ 0}
+  where the control\textquotesingle s is \texttt{info\ =\ 2}). The anchored tolerance still refuses
+  states: the mass row is admitted at 11 of the 12 passes and refused at pass 3
+  at distance 69.9. On the hot-Uranus carrier reload the base cells are
+  admitted by their own anchor at every pass and the refusal moves OUT to cell
+  180 (r = 1.0707), where the estimated floor is below 3e-12 and the row
+  carries signal, refusing 5.067E-12 to 9.549E-12 against the fixed 3.0E-12: the
+  refusal has moved from rounding to signal. The H2 carrier row is unchanged
+  pass by pass in both arms (7.38E-02 at cell 290, 7.22E-02 at 289, 7.06E-02 at
+  288), and the three passes cost 15.47 s against the control\textquotesingle s 69.39 s. The
+  derivation, both candidate estimates, the measured ratios and all three
+  impact measurements are the appended section \textbf{"Anchor (6), 2026-09-11: the
+  mass row\textquotesingle s rounding floor"} of
+  \texttt{docs/certification\_tolerance\_anchoring\_20260910.md}; its nine earlier
+  sections are byte-identical.
+\item
+  \textbf{P17: the best-iterate ledger reads the mass row against the cell\textquotesingle s own
+  tolerance} (\texttt{src/modules/time\_step/steady\_newton.f90} +146/-32,
+  \texttt{src/tests/krylov\_and\_dogleg/krylov\_and\_dogleg\_tests.f90} +98/-0; MEASURED by
+  P17). P16\textquotesingle s own outside-scope finding, and the consequence of the anchor for
+  the ledger: the hydrodynamic slot was formed as \texttt{rc(1)/cert\_tol\_mass} from a
+  triple of row maxima, so the ledger ranked the mass row against 3e-12 while
+  the stop test and the acceptance read the cell\textquotesingle s own tolerance. The slot is
+  now \texttt{max\ over\ cells\ j\ and\ rows\ k\ of\ \textbar{}R\_kj\textbar{}\ /\ residual\_row\_scale(k,j)\ /\ tol\_k(j)} over the whole physical column, with \texttt{tol\_1(j)} taken from the
+  certification\textquotesingle s own rule at that cell through P16\textquotesingle s public
+  \texttt{mass\_row\_cell\_verdict} (so the anchor formula is not restated in the solver
+  module) and the fixed momentum and energy tolerances on the other two rows;
+  that is the same functional the acceptance applies cell by cell, so \texttt{d\ \textless{}\ 1}
+  in the ledger is now exactly the hydrodynamic part of the verdict. \texttt{rnorm} is
+  unchanged and is now formed only when the caller asks for it, which the two
+  loop-top calls do and the three trial calls do not. The superseded
+  \texttt{hydrodynamic\_distance\_from\_certification} keeps its name, signature and body
+  and is documented as what it is, a BOUND from above on the distance
+  (\texttt{tol\_mass\_at(j)\ \textgreater{}=\ cert\_tol\_mass} at every cell), because its removal would
+  break the compile of a test file P17 does not own; P18 removes it. MEASURED
+  RED twice: the new driver does not build against the entry-text objects
+  (exit 1, \texttt{Symbol\ \textquotesingle{}hydrodynamic\_distance\_from\_certification\_by\_cell\textquotesingle{}\ ...\ not\ found\ in\ module\ \textquotesingle{}steady\_newton\textquotesingle{}}), and a private build in which the new
+  function\textquotesingle s body is replaced by the superseded reading and nothing else is
+  altered gives \textbf{327 PASS / 7 FAIL} with the seven rows naming the column
+  (\texttt{the\_wind\_cell\_holds\_the\_mass\_rows\_distance} 3.333333E+02 against
+  3.333333E+00, \texttt{the\_base\_cell\_is\_a\_decade\_inside\_its\_own\_tolerance}
+  3.333333E+02 against 1.000000E-01, \texttt{is\_a\_certified\_hydrodynamic\_state} F
+  against T among them). GREEN \texttt{krylov\_and\_dogleg} \textbf{321/0 to 334/0}, and
+  seven further suites identical in both arms. \textbf{Impact.} The single number
+  that says the item worked, on the HD 209458 b element reload: the ledger\textquotesingle s
+  \texttt{best\ judged\ iterate:\ distance} over the twelve passes runs \textbf{2.2E+02 to
+  6.3E+05 in the control and 1.321E-01 to 1.868E-01 after}, while the
+  acceptance CERTIFIES the pass-12 state in both arms at a mass-row distance of
+  0.141 (control) and 0.132 (new, verdict at cell 50, r = 1.00977, 4.245E-10
+  against the 3.2E-09 anchor). The control\textquotesingle s ledger therefore ranked every
+  iterate of every solve as hundreds to hundreds of thousands of times outside
+  certification, on a row its own acceptance admitted; the ledger and the
+  acceptance now speak about one quantity. The trajectories part at pass 2 and
+  the elemental relaxation is not damaged (the worst gated species row descends
+  2.61E-03 to 7.73E-06 against the control\textquotesingle s 2.61E-03 to 6.84E-06, both inside
+  1e-5 at pass 12, and the certified state\textquotesingle s elemental rows are SMALLER in the
+  new arm on every element, Fe 5.086E-05 against 8.966E-05, C 3.70E-06 against
+  1.00E-05, O 3.34E-06 against 1.24E-05). The cost is not measurable: 909 outer
+  iterations at 1.206 s against 861 at 1.216 s, so the 500 rounding-floor
+  evaluations added per judged residual cost nothing this measurement can
+  separate from noise. More restarts and fewer stagnations, which is the
+  reading of a ledger that now stops improving where \texttt{\textbar{}\textbar{}R\textbar{}\textbar{}/3e-12} used to keep
+  moving on rounding noise: "best iterate has not improved" fires in 7 solves
+  against 4, "no descent direction exists" ends 11 against 8, and the control\textquotesingle s
+  one STAGNATED solve is gone, while no solve fails and every pass still
+  returns a state. On the hot-Uranus carrier reload the consequence is a
+  verdict: the hydrodynamic solve returns \textbf{\texttt{info\ =\ 0} at all three passes}
+  against the control\textquotesingle s 0, 2, 2; the mass row\textquotesingle s verdict is WITHIN at passes 2
+  and 3 (cell 1, 1.826E-11 against the 2.5E-11 anchor, and cell 2, 6.437E-12
+  against the same) where the control refuses at cell 180; the state of the
+  last pass has \textbf{1 refusing entry, the H2 carrier row alone}, against the
+  control\textquotesingle s 2; and the best judged distance runs 0.5282, 0.8819, 0.2578 against
+  1.630, 3.501, 1.840. The H2 carrier row is identical pass by pass in both
+  arms and in the P7 record (7.38E-02, 7.22E-02, 7.06E-02 at cells 290, 289,
+  288), which is what must hold with the carrier relaxation outside the
+  hydrodynamic solve. \texttt{wasp\_full\_newton} reloaded is unmoved, and for a stated
+  reason: its estimated floor is below 3e-13 at every cell, so the cell\textquotesingle s
+  tolerance IS the fixed value everywhere and the maximum of the ratios is the
+  ratio of the maxima; the two run logs are identical line for line except the
+  \texttt{Execution\ Time}, every written file is byte-identical except the provenance
+  timestamp, and the best judged distance is 6.722E-01 in both arms. A separate
+  fix in the same file, reported on its own:
+  \texttt{write\_gate\_met\_while\_a\_row\_refuses} printed the largest measure of a row and
+  its cell beside the tolerance of the BINDING cell, a pair of numbers
+  belonging to two different cells, and now names the binding cell throughout
+  where the row records one, which is what the certification\textquotesingle s own refusing
+  entry list already did; no suite parses that line and the carrier rerun on
+  the final binary reproduces every reported digit.
+\item
+  \textbf{P18: one entry point for the hydrodynamic distance} (\texttt{steady\_newton.f90}
+  +23/-50, \texttt{krylov\_and\_dogleg\_tests.f90} +49/-25,
+  \texttt{steady\_species\_rows\_tests.f90} +22/-16; P17\textquotesingle s own outside-scope finding).
+  With the ledger reading the mass row cell by cell (P17), the fixed-tolerance
+  form \texttt{hydrodynamic\_distance\_from\_certification(rc)} had no production reader
+  left and survived only through test rows. It is DELETED, with its \texttt{public}
+  export and the then-unused \texttt{cert\_tol\_mass} import of the module; every test
+  row that read it restates its fact through
+  \texttt{hydrodynamic\_distance\_from\_certification\_by\_cell} on a one-cell column
+  whose rounding floor (1e-30) puts it under the fixed tolerance, so the
+  restatement is the same double division and every literal reference is
+  unchanged. MEASURED (P18): \texttt{grep\ -rn\ hydrodynamic\_distance\_from\_certification\ src/\ \textbar{}\ grep\ -v\ \_by\_cell} returns nothing; \texttt{krylov\_and\_dogleg} 334/0 before
+  and after with no row lost (two renamed:
+  \texttt{the\_fixed\_tolerance\_alone\_reports\_the\_base\_cell},
+  \texttt{and\_the\_fixed\_reading\_is\_never\_below\_the\_distance}), \texttt{steady\_species\_rows}
+  195/0, \texttt{certification} 70/0, \texttt{steady\_completion\_flag} 3/0; a compile RED
+  (the entry-text drivers against the delivered objects fail on the missing
+  symbol), a semantic RED of the cell-by-cell fact (327/7, P17\textquotesingle s seven rows)
+  and a semantic RED of the restatement itself (329/5, the fixture\textquotesingle s floor
+  raised into the anchored regime) all discriminate. Impact: the
+  \texttt{wasp\_full\_newton} reload gives \texttt{info\ =\ 0}, CERTIFIED, \texttt{\textbar{}\textbar{}R\textbar{}\textbar{}} 1.495e-9,
+  \texttt{log10\ Mdot} 13.30 in both arms, all eleven output files byte-identical, the
+  two run logs differing in the execution-time line alone. Documents that
+  named the deleted function as current fact
+  (\texttt{certification\_tolerance\_anchoring\_20260910.md},
+  \texttt{session\_handoff\_20260911.md}) were corrected by the advisor.
+\item
+  \textbf{P20: the code-size appendices moved to this log and were re-measured}
+  (\texttt{docs/Update\_EXHALE\_appendix.tex} new, \texttt{docs/Update\_EXHALE\_stage1.tex}
+  appendix removed and its \texttt{\textbackslash{}date} fixed at 2026-09-04,
+  \texttt{src/utils/update\_log\_to\_tex.py} postamble, pointer lines in \texttt{README.md} and
+  \texttt{README\_HOWTO.md}). The two appendices, the code-size summary against the
+  original ATES and the list of source inherited unchanged from it, were
+  stranded in the stage-1 log and stale at 2026-08-30. They are now a
+  hand-maintained fragment the generator \texttt{\textbackslash{}input}s after the converted body,
+  so appending to this log keeps them. Re-measured 2026-09-11 with
+  \texttt{python3\ src/utils/codesize.py} (MEASURED, all of it): the Fortran tree is
+  \textbf{205 files / 76,259 SLOC}, 21.7x the original ATES (47 files / 3,514
+  SLOC), against 111 files / 21,018 SLOC and 6.0x at the 2026-08-30 edition;
+  the core excluding the Wind-AE port is 169 files / 71,503 SLOC, of which the
+  production build is 95 files / 50,762 SLOC (14.4x) and the \texttt{src/tests/}
+  drivers are 74 files / 20,741 SLOC, the rule the script applies being every
+  \texttt{.f90} under \texttt{src/} outside \texttt{src/modules/wind\_ae/}. 123 new core modules
+  (49 production, 74 test drivers), 38 of the 47 original files modified, and
+  the files \textbf{byte-identical with upstream are down from 13 to 8}: \texttt{hybrd},
+  \texttt{hybrd1} and \texttt{fdjac1} took the \texttt{unit\_step\_floor} difference-step argument,
+  \texttt{Source.f90} the well-balanced arm (N37), \texttt{J\_inc.f90} the
+  single-spectrum-type decision, and \texttt{speed\_estimate\_HLLC.f90} was deleted as
+  dead code, so one upstream file is now removed rather than none.
+  \texttt{Update\_EXHALE\_stage1.pdf} 464 -\textgreater{} 460 pages, \texttt{Update\_EXHALE.pdf} 139 -\textgreater{} 158
+  pages (MEASURED, \texttt{pdfinfo}).
+\item
+  \textbf{The measurement of record after P14 to P17} (advisor, private snapshot
+  build of the tree with P14 to P17, 8 threads, MEASURED): the HD 209458 b
+  element reload, partitioned, 12 passes, \texttt{ACCEPTED\ -\/-\ every\ active\ equation\ of\ this\ state\ is\ within\ its\ own\ tolerance} at pass 12 (worst gated species
+  row 7.73e-6, He/H partition at cell 289; mass 9.26e-10, momentum 2.44e-14,
+  energy 2.17e-8); the hot-Uranus carrier reload, 3 passes, hydro \texttt{info\ =\ 0}
+  at every pass (mass 7.33e-12 / 1.29e-11 / 6.44e-12 admitted by the cell\textquotesingle s
+  anchor), the one refusing entry the H2 carrier row (7.06e-2 at cell 288).
+\end{itemize}
+
+Three changes outside the item list, made by the advisor while reading P14 to
+P17:
+
+\begin{itemize}
+\tightlist
+\item
+  \texttt{assert\_written\_state\_is\_the\_accepted\_one} (\texttt{src/EXHALE\_main.f90}) carries an
+  ABSOLUTE floor of 1e-12 beside its 1e-10 relative test. P14 reported the
+  false alarm: the spread is a difference of O(1) numbers over their mean, so
+  two evaluations of one state agree only to the rounding of that difference,
+  and on the partitioned carrier reload a state flat to fourteen digits read
+  \textbf{3.0982E-14 as written against 2.7487E-14 accepted} while the relative test
+  alone called that a change of \texttt{u}. 1e-12 stands a decade above that rounding
+  and four decades below the smallest spread a gate has ever accepted (READ,
+  the comment at the test).
+\item
+  the three rows of the \texttt{grid\_and\_gates} suite that wrote to a fixed directory
+  under \texttt{\$ROOT/build/tests/grid\_and\_gates} and ignored \texttt{EXHALE\_TEST\_OUT} now
+  honor it (\texttt{momentum\_row\_from\_fluxes\_only.sh},
+  \texttt{base\_level\_single\_statement.sh}, \texttt{sed\_coverage\_stop.sh}; READ, each now
+  takes \texttt{\$\{EXHALE\_TEST\_OUT:-\$ROOT/build/tests/grid\_and\_gates\}}). Two concurrent
+  runs of the suite, which is what a before-and-after measurement is, collided
+  there. P14 fixed \texttt{output\_state\_consistency.sh}, the fourth, because its item
+  owned it.
+\item
+  the paragraph at \texttt{assemble\_residual} (\texttt{src/modules/time\_step/steady\_residual.f90})
+  that stated what the arm does not hand back is rewritten to what P15 made
+  true: the kind-generic rows return the momentum row and store the interface
+  fluxes, the face pressures and, under the well-balanced arm, the face
+  departures they were built from, but neither the three terms of the momentum
+  equation nor the equilibrium pressure force the row is read against, so the
+  one expression of each is evaluated there for the state just assembled; and a
+  reconstruction continuation never reaches the arm, the generic text refusing
+  it.
+\end{itemize}
+
+\subsubsection{The pseudo-time start of the stationary restart route}\label{the-pseudo-time-start-of-the-stationary-restart-route}
+
+Found while running P6 and settled by the advisor. \texttt{Restart\ intent:\ stationary} entered the stationary solve at the CFL interval of the reloaded
+state. A state written by a run is already relaxed, and a continuation
+started at the CFL step from it does not reach the root: MEASURED, 8 threads,
+the hot-Uranus carrier reload\textquotesingle s hydrodynamic solve is handed back at \texttt{\textbar{}\textbar{}R\textbar{}\textbar{}}
+2.685E-01 after 40 iterations and the next four passes enter at 1.133, 1.018,
+1.026 and 1.025 and hand back 2.976E-01 to 3.579E-01
+(\texttt{\textless{}scratchpad\textgreater{}/P6/runs/carrier\_p6/run.log}), while the HD 209458 b element
+reload stops on its stagnation detector at \texttt{\textbar{}\textbar{}R\textbar{}\textbar{}} 1.490 and the pass is then
+refused because the element relaxation finds no admissible advance
+(\texttt{\textless{}scratchpad\textgreater{}/P6/runs/atomic\_partition.new/run.log}). With the start at 1.0,
+the value the marching hand-off uses, the same two solves reach \texttt{\textbar{}\textbar{}R\textbar{}\textbar{}}
+2.507E-09 at iteration 13 and hand back \textbf{1.498E-09} (carrier) and hand back
+\textbf{1.167E-08} (atomic). The advisor therefore made 1.0 the default of the
+\texttt{Restart\ intent:\ stationary} route (\texttt{src/EXHALE\_main.f90} line 5234), with
+\texttt{EXHALE\_PTC\_DTAU0} as the override for measurement; the direct steady route
+keeps its CFL start, which is the pseudo-transient continuation it was
+designed as. Verified with no environment variable set: the run prints
+\texttt{stationary\ restart:\ dtau0\ =\ 1.00E+00} and reproduces the first pass to every
+printed digit (\texttt{\textless{}scratchpad\textgreater{}/P7/carrier\_default\_dtau0/run.log}). No
+regression case sets \texttt{Restart\ intent:} at all (MEASURED: the grep over
+\texttt{backup/regression/*/input.inp} returns nothing), so this default moves no
+golden; it moves any user run that sets the key.
+
+\subsubsection{P7: the measurement of record}\label{p7-the-measurement-of-record}
+
+One binary (\texttt{EXHALE\_P6.x}, built from the merged tree), both fixtures,
+\texttt{Restart\ intent:\ stationary}, \texttt{EXHALE\_PTC\_DTAU0=1.0}, \texttt{OMP\_NUM\_THREADS=8},
+500 cells. The partitioned arm is \texttt{Coupled\ carrier\ solve:\ False} with
+\texttt{EXHALE\_OUTER\_PASSES} setting the pass budget and \texttt{EXHALE\_JFNK\_MAXIT} the
+hydrodynamic cap; the coupled arm is the same fixture with \texttt{Coupled\ carrier\ solve:\ True}. Wall times of the partitioned runs are the sum of the seconds
+the \texttt{outer\ pass} lines report, which agrees with the run directory\textquotesingle s file
+timestamps to under a second; the coupled carrier control prints no total, so
+its time is the timestamp span of its run directory. Every number MEASURED
+from the log named.
+
+{\def\LTcaptype{none} % do not increment counter
+{\small
+\begin{longtable}[]{@{}>{\raggedright\arraybackslash}p{\dimexpr(\linewidth-14\tabcolsep)/7\relax}>{\raggedright\arraybackslash}p{\dimexpr(\linewidth-14\tabcolsep)/7\relax}>{\raggedright\arraybackslash}p{\dimexpr(\linewidth-14\tabcolsep)/7\relax}>{\raggedright\arraybackslash}p{\dimexpr(\linewidth-14\tabcolsep)/7\relax}>{\raggedright\arraybackslash}p{\dimexpr(\linewidth-14\tabcolsep)/7\relax}>{\raggedright\arraybackslash}p{\dimexpr(\linewidth-14\tabcolsep)/7\relax}>{\raggedright\arraybackslash}p{\dimexpr(\linewidth-14\tabcolsep)/7\relax}@{}}
+\toprule\noalign{}
+route & fixture & passes (hydro cap) & wall time & hydro mass / momentum / energy & worst gated species row & certified? \\
+\midrule\noalign{}
+\endhead
+\bottomrule\noalign{}
+\endlastfoot
+state as loaded & carrier, hot Uranus & -\/- & -\/- & 2.284e-1 / 1.954 / 1.871 & H2 1.166e-1 at cell 492 & no, 4 entries \\
+partitioned & carrier & 8 (40) & 173 s & 8.75e-12 / 1.66e-12 / 2.41e-9 & H2 6.217e-2 at cell 282 & no, 2 entries \\
+partitioned & carrier & 40 (40) & 831 s & 8.121e-12 / 3.377e-12 / 2.730e-9 & H2 2.234e-2 at cell 443 & no, 2 entries \\
+coupled & carrier & one solve (250), stopped by the stagnation detector at iteration 105 & 321 s & 1.231e-2 / 1.009e-1 / 5.801e-2 & H2 7.815e-2 at cell 283 & no, 4 entries \\
+state as loaded & atomic, HD 209458 b & -\/- & -\/- & 1.509 / 3.348e-1 / 1.892 & He/H 5.840e-1 at cell 291 & no, 11 entries \\
+partitioned & atomic & 5 (80) & 528 s & 1.05e-9 / 4.40e-13 / 1.13e-8 & O 4.64e-4 at cell 268 & no, 9 entries \\
+partitioned & atomic & 12 (80) & 1043 s & 1.054e-9 / 1.665e-13 / 1.501e-8 & He/H 5.468e-6 at cell 288 & \textbf{no, 1 entry} \\
+coupled & atomic & 3 (250), ended in the fourth & 2392 s & 1.16e-6 / 2.89e-6 / 2.83e-6 & He/H 8.29e-5 at cell 295 & no, run not completed \\
+\end{longtable}
+}
+}
+
+Sources: \texttt{\textless{}scratchpad\textgreater{}/P7/carrier\_elem\_newton\_part1/run.log},
+\texttt{carrier\_part40/run.log}, \texttt{carrier\_coupled250/run.log},
+\texttt{atomic\_elem\_newton\_part1/run.log}, \texttt{atomic\_part12/run.log},
+\texttt{atomic\_coupled250/run.log}. The atomic coupled control alternates the
+element relaxation too, because \texttt{He\_diffusion} is on, and its three completed
+passes cost 1380.59 s, 482.04 s and 528.98 s; it was ended in the fourth. The
+\texttt{(EXHALE\_main)\ outer\ pass\ N:} line of every pass carries the hydrodynamic
+flag, the worst gated species wind row with its cell, the three row maxima,
+omega, the carrier trust and the seconds, and the closing \texttt{(certification)}
+block names what refuses. Those \texttt{\textless{}scratchpad\textgreater{}/} paths are the session scratch
+root and are TEMPORARY: they will be gone, and everything quoted from them is
+recorded here, in the two fixture READMEs and in
+\texttt{docs/session\_handoff\_20260911.md}. The runs reproduce from the pinned
+fixtures by the recipes in those READMEs.
+
+What the ladders show. On the atomic fixture the worst gated species row
+falls 2.61e-3, 3.81e-3, 1.77e-3, 9.45e-4, 4.64e-4, 2.36e-4, 1.20e-4,
+5.97e-5, 3.07e-5, 1.50e-5, 7.94e-6, 5.47e-6 over the twelve passes (the one
+rise, pass 1 to pass 2, is the alternation\textquotesingle s own feedback across a
+hydrodynamic solve and is why a single rise does not end the loop), the
+refusing entries fall 9 to 1, and in the last pass every elemental wind row
+is within 1e-5: He/H 5.468e-6 at cell 288, and the metals 1.582e-6 (Mg) to
+3.720e-6 (O). On the carrier fixture the H2 wind row falls 7.38e-2 to
+2.23e-2 over the 40 passes with the binding cell moving 290 to 443, which is
+the H2 front advancing about one cell in a pass and not a residual settling.
+
+\textbf{The decision.} The plan\textquotesingle s adoption rule is that the route is adopted only
+if it certifies where the coupled solve does not, or reaches a strictly lower
+joint residual in no more wall time. Neither fixture certifies, so the first
+branch is not met on either. The second branch is met on both: on the atomic
+fixture the partitioned route stands strictly below the coupled control on
+every judged row (mass 1.054e-9 against 1.16e-6, momentum 1.665e-13 against
+2.89e-6, energy 1.501e-8 against 2.83e-6, worst gated species row 5.468e-6
+against 8.29e-5) in 1043 s against 2392 s for three passes; on the carrier
+fixture the partitioned route at 8 passes stands strictly below the coupled
+control on every judged row (8.75e-12 against 1.231e-2, 1.66e-12 against
+1.009e-1, 2.41e-9 against 5.801e-2, H2 6.217e-2 against 7.815e-2) in 173 s
+against 321 s, and the 40-pass continuation goes on to 2.23e-2 for 831 s.
+The partitioned route is therefore what the production outer loop runs.
+\texttt{Coupled\ carrier\ solve} already defaults to False
+(\texttt{carrier\_in\_newton\ =\ .false.}, \texttt{src/modules/init/parameters.f90} line 419),
+so no default changes; \texttt{True} remains the coupled measurement arm, and what
+this session added on the partitioned side is the joint acceptance contract
+of P6 and the three defect repairs P1 to P3 that made a pass mean something.
+
+\textbf{What did not certify, and why.} Entry 1 was CLOSED the same afternoon by
+the user\textquotesingle s first decision (P16, anchor (6)); entries 2 and 3 are stated as
+they stand:
+
+\begin{enumerate}
+\def\labelenumi{\arabic{enumi}.}
+\tightlist
+\item
+  \textbf{CLOSED 2026-09-11 by P16.} The atomic element reload refused on the
+  hydrodynamic mass row alone,
+  1.054E-09 against 3.0E-12 at cell 16 (r = 1.0031), on the three-unknown
+  solve of this fixture. Every one of its twelve hydrodynamic solves ends
+  with \texttt{\textbar{}\textbar{}R\textbar{}\textbar{}} between 8.980E-09 and 1.501E-08 against the run\textquotesingle s \texttt{Resid\ tol}
+  of 1e-8, and the last one ends on \texttt{no\ descent\ direction\ exists\ for\ the\ banded\ model\ at\ this\ state} at \texttt{\textbar{}\textbar{}R\textbar{}\textbar{}} 1.501E-08. So the alternation has
+  done its work (the element rows are inside their tolerance) and what is
+  left is the base-layer mass row of the hydrodynamic solve, which is the
+  N33 rounding floor territory and not a species-coupling question.
+  \textbf{P10 settled which of the two it is.} With the best-iterate ledger
+  reading that row against its own 3e-12 (P10), the same twelve passes end at
+  8.893E-10 at cell 3, the same order, and the row is MEASURED to carry no
+  signal at that level: the ledger\textquotesingle s best distance of pass 1 is 4.407E+02, a
+  mass row of 1.32E-09, while the same state re-evaluated at its own
+  composition after the best-iterate restore carries 4.11E-09. At 1e-9 to
+  1e-12 the row is the rounding of the base-layer flux difference, so ranking
+  iterates by it is ranking by rounding noise and no ledger can bring it
+  down. The entry was therefore an ACCEPTANCE question, the 3e-12 tolerance
+  against the base-layer rounding floor of this fixture, and not a solver
+  item; the user decided it the same afternoon, and with the mass row judged
+  at \texttt{max(3e-12,\ 10\ *\ floor(j))} the same twelve-pass recipe \textbf{CERTIFIES at
+  pass 12} (MEASURED by P16 and again by P17, which certifies at pass 12 in
+  both of its arms). The verdict is taken at a wind cell, not at the base:
+  cell 34, r = 1.00665, 6.542E-10 against the 4.6E-09 anchor of that cell,
+  distance 0.141 (P16), and cell 50, r = 1.00977, 4.245E-10 against 3.2E-09,
+  distance 0.132 (P17). The base-layer floor of this fixture is what the
+  anchor is measured on: see the decisions subsection below and
+  \texttt{docs/certification\_tolerance\_anchoring\_20260910.md}, "Anchor (6)".
+\item
+  The carrier reload refuses on the H2 wind row, and the user\textquotesingle s second
+  decision of the afternoon ran the continuation that says what that row IS.
+  MEASURED over 110 passes (the table and the recipe are in the decisions
+  subsection below): the H2 front does NOT stop, \texttt{x2\ =\ 0.5} moving 1.0726 to
+  1.1230 R\_p over 108 passes at about 5E-04 R\_p in a pass with no sign of
+  slowing, so the continuation is unfinished after 110 passes and 0.05 R\_p.
+  And the worst gated row stops being the front after pass 40: it stands at
+  \textbf{2.2E-02, nearly uniform in r}, and its cell walks outward through the
+  wind, 443 to 500, reaching the outer boundary at pass 108 while the value
+  does not fall. That floor is a property of the operator and not of the
+  front: the bounded carrier pass (trust 1e-2 on the H2 mixing-ratio maximum,
+  met by one transport step) advances the front but leaves the wind cells,
+  whose H2 mixing ratio is orders of magnitude below the maximum, at one
+  implicit step in a pass, so their own H2 balance never relaxes, and the
+  drift measure, absolute in the grid maximum, does not see them. The
+  consequence for the method, recorded and not adopted: a bounded front
+  advance and a relaxation of the wind cells\textquotesingle{} H2 balance are two different
+  operations, and the second needs its own step (a cell-relative measure, or
+  a wind-window relaxation after the bounded pass) before the H2 wind row can
+  be judged at 1e-5. Whether the front stops at all inside 2 R\_p is a
+  physical question and stays open (the P23 comparison against Koskinen et
+  al. 2022 Model A).
+\item
+  The hot-Uranus mass row sits on the same floor throughout the carrier
+  run, 4.48E-12 to 1.57E-11 against 3.0E-12 over the 40 passes, with the
+  momentum row at 4.14E-13 to 5.13E-12 and the energy row at 1.75E-09 to
+  4.56E-09. The mass row of that fixture is the rounding of the base-layer
+  flux difference recorded in N33, which is the reading P16 then made
+  operative: under anchor (6) the base cells of this fixture are ADMITTED by
+  their own anchor at every pass and the refusal moves out to cell 180
+  (r = 1.0707), where the floor is below 3e-12 and the row carries signal.
+\end{enumerate}
+
+\subsubsection{The Codex adversarial review (2026-09-11)}\label{the-codex-adversarial-review-2026-09-11}
+
+Run on the working tree after P1 to P13, that is on the merged text of the
+morning\textquotesingle s items and not on the committed tree. Two findings, both verified in
+the source by the advisor before any item was written, and both closed the
+same afternoon. The findings are quoted as they were written.
+
+\begin{enumerate}
+\def\labelenumi{\arabic{enumi}.}
+\tightlist
+\item
+  \textbf{{[}high{]}} "정체 종료 시 조성과 출력용 상태가 서로 달라집니다
+  (src/EXHALE\_main.f90:6503-6514)": on a stagnation exit the composition had
+  been updated while the particle densities and the temperature were not
+  refreshed on the element path, so the certified state and the written state
+  differed; the recommendation was to move the progress control before the
+  composition update. Verified in the source, reproduced as a measured
+  inconsistency of 1.317089E-08 in the temperature of the written state, and
+  \textbf{closed by P14} with exactly that ordering: the progress control now
+  stands between the certification of the pass and the update, so a pass that
+  ends the iteration takes no update, and the element path\textquotesingle s update refreshes
+  the particle densities and the temperature before its equilibrium sweep.
+\item
+  \textbf{{[}medium{]}} "고정밀 경로가 다른 상태의 압력 정보를 인증에 사용합니다
+  (src/modules/time\_step/steady\_residual.f90:256-258)": with
+  \texttt{EXHALE\_RESID\_QUAD} the generic rows stored only \texttt{face\_flux} and \texttt{face\_p},
+  so \texttt{momentum\_row\_terms\_of\_state} read the previous \texttt{RK\_rhs} call\textquotesingle s
+  \texttt{face\_q\_up}/\texttt{face\_q\_dn} (zeros on the first call); the recommendation was to
+  return the terms from the generic computation and to refuse the continuation
+  combination. Verified in the source, and \textbf{closed by P15}, both halves: the
+  arm now hands its own face departures back along the route the fluxes take,
+  and the continuation combination is refused, because the generic arm CAN be
+  reached on a continuation (\texttt{assemble\_residual} chooses the arm from
+  \texttt{generic\_precision\_rows\_arm()} alone and the generic text carries its own
+  blending branch) and no single pair of departures satisfies the blended row
+  identity.
+\end{enumerate}
+
+Neither finding moves a certified state of the default path: P14\textquotesingle s
+\texttt{wasp\_full\_newton} reload and P15\textquotesingle s, with the key off and with
+\texttt{Well\ balanced:\ True} and \texttt{EXHALE\_RESID\_QUAD=2}, are CERTIFIED with every
+output byte-identical apart from the provenance timestamp. What each moves is
+stated in its own bullet above.
+
+\subsubsection{User decisions of 2026-09-11 (afternoon)}\label{user-decisions-of-2026-09-11-afternoon}
+
+Two decisions were taken after the open items of the plan were put to the
+user.
+
+\textbf{Decision 1: the mass tolerance is re-anchored above the fixture\textquotesingle s measured
+rounding floor} (item P16, and the ledger consequence P17). The tolerance of
+the continuity row is now
+
+\begin{verbatim}
+tol(j) = max( cert_tol_mass, min( cert_tol_mass_ceiling, c_round * floor(j) ) )
+\end{verbatim}
+
+with \texttt{cert\_tol\_mass\ =\ 3e-12} unchanged as the FLOOR, the ceiling 1, and
+\texttt{c\_round\ =\ cert\_mass\_round\_margin\ =\ 10}. The floor estimate is
+\texttt{eps\ rho(\textbar{}v\textbar{}\ +\ c\_s)\ A\ /\ dV} over the row\textquotesingle s own scale, which is one ulp in the
+wind and about \texttt{eps/Mach} in a layer whose flux is a tiny residue of the
+momentum the cell carries at its own fastest signal speed.
+
+The brief\textquotesingle s first expression for the floor,
+\texttt{eps\ (\textbar{}A+\ F\_up\textbar{}\ +\ \textbar{}A-\ F\_dn\textbar{})/dV\ /\ residual\_row\_scale(1,j)}, is inert, and that
+is a measured result and not a judgement: the row\textquotesingle s scale IS the larger of the
+two addends and the \texttt{dV} cancels, so the expression is algebraically between
+one and two ulps at every cell, MEASURED at \textbf{4.4409E-16 on all 500 cells of
+all four states} examined, and ten times it never rises above 3e-12. The
+adopted estimate bounds the step each mass row actually takes when one ulp is
+added to the density of every physical cell (\texttt{EXHALE\_MASS\_FLOOR\_SCAN=1}, new
+and default off) within a factor
+
+{\def\LTcaptype{none} % do not increment counter
+{\small
+\begin{longtable}[]{@{}>{\raggedright\arraybackslash}p{\dimexpr(\linewidth-8\tabcolsep)/4\relax}>{\raggedright\arraybackslash}p{\dimexpr(\linewidth-8\tabcolsep)/4\relax}>{\raggedright\arraybackslash}p{\dimexpr(\linewidth-8\tabcolsep)/4\relax}>{\raggedright\arraybackslash}p{\dimexpr(\linewidth-8\tabcolsep)/4\relax}@{}}
+\toprule\noalign{}
+state & base Mach & step over the adopted estimate & step over the brief\textquotesingle s expression \\
+\midrule\noalign{}
+\endhead
+\bottomrule\noalign{}
+\endlastfoot
+\texttt{wasp\_full\_newton} as loaded & 3.937E-03 & \textbf{1.5931} & 1.109E+02 \\
+\texttt{atomic\_elem\_newton} as loaded & 5.062E-06 & \textbf{1.8857} & 2.4365E+05 \\
+\texttt{carrier\_elem\_newton} as loaded & 2.400E-04 & \textbf{2.6806} & 5.0915E+03 \\
+the HD 209458 b state P16 certifies & 2.767E-06 & \textbf{1.7733} & 1.4201E+06 \\
+\end{longtable}
+}
+}
+
+All MEASURED by P16, largest ratio over the 500 cells of each state. \texttt{c\_round\ =\ 10} is a round number 3.7 times above the largest of those ratios and inside
+N33\textquotesingle s independent reading of the same floor against its own bound, 5.5 to 12
+(READ). The outcome: the \textbf{HD 209458 b element reload CERTIFIED at pass 12},
+where the control built from the entry text of the two files ends the same
+twelve passes NOT CERTIFIED on the hydrodynamic mass row (7.159E-10 against
+3.0E-12 at cell 13), and \textbf{\texttt{wasp\_full\_newton} unmoved} in both arms
+(CERTIFIED, mass row 1.212E-12 at cell 500 judged against the FIXED 3.0E-12 at
+distance 0.404, \texttt{log10\ Mdot} 13.30, outputs byte-identical apart from the
+provenance timestamp), its floor being below 3E-13 at every cell. The anchor
+still refuses states: the HD 209458 b mass row is refused at pass 3 at distance
+69.9, and on the hot-Uranus carrier reload the refusal moves from the base
+cells, admitted by their own anchor, out to cell 180 where the row carries
+signal. The derivation and all three impact measurements are the appended
+section "Anchor (6), 2026-09-11: the mass row\textquotesingle s rounding floor" of
+\texttt{docs/certification\_tolerance\_anchoring\_20260910.md}.
+
+\textbf{Decision 2: the long continuation of the hot-Uranus carrier reload.} The
+pass budget was set to 400 and the run went to pass \textbf{110}, where the progress
+control ended it ("the worst gated species row has not fallen in 3 consecutive
+passes"), the carrier trust having been halved 1.0E-02 to 5.0E-03 to 2.5E-03 at
+passes 109 and 110. Recipe: \texttt{backup/regression/carrier\_elem\_newton},
+\texttt{Load\ IC?\ True}, \texttt{Coupled\ carrier\ solve:\ False}, \texttt{Restart\ intent:\ stationary},
+\texttt{EXHALE\_OUTER\_PASSES=400\ EXHALE\_JFNK\_MAXIT=40\ OMP\_NUM\_THREADS=8}. Binary: the
+advisor\textquotesingle s snapshot build of the merged tree after P1 to P12 and BEFORE P14 to
+P17, so every hydrodynamic solve of this run returns \texttt{info\ =\ 1} on the
+base-layer mass row (5E-12 to 1E-11 against 3E-12) and the run predates
+anchor (6). All numbers MEASURED from its \texttt{run.log}.
+
+{\def\LTcaptype{none} % do not increment counter
+{\small
+\begin{longtable}[]{@{}>{\raggedright\arraybackslash}p{\dimexpr(\linewidth-10\tabcolsep)/5\relax}>{\raggedright\arraybackslash}p{\dimexpr(\linewidth-10\tabcolsep)/5\relax}>{\raggedright\arraybackslash}p{\dimexpr(\linewidth-10\tabcolsep)/5\relax}>{\raggedright\arraybackslash}p{\dimexpr(\linewidth-10\tabcolsep)/5\relax}>{\raggedright\arraybackslash}p{\dimexpr(\linewidth-10\tabcolsep)/5\relax}@{}}
+\toprule\noalign{}
+pass & worst gated H2 row & cell & H2 front \texttt{x2\ =\ 0.5} {[}R\_p{]} & \texttt{x2\ =\ 1e-2} {[}R\_p{]} \\
+\midrule\noalign{}
+\endhead
+\bottomrule\noalign{}
+\endlastfoot
+1 & 7.38E-02 & 290 & 1.0726 & 1.0966 \\
+10 & 5.86E-02 & 281 & 1.0755 & 1.1017 \\
+20 & 4.07E-02 & 274 & 1.0796 & 1.1070 \\
+30 & 2.62E-02 & 267 & 1.0827 & 1.1140 \\
+40 & 2.23E-02 & 443 & 1.0871 & 1.1199 \\
+50 & 2.20E-02 & 473 & 1.0917 & 1.1262 \\
+70 & 2.19E-02 & 482 & 1.1017 & 1.1413 \\
+90 & 2.18E-02 & 490 & 1.1126 & 1.1563 \\
+100 & 2.17E-02 & 494 & 1.1184 & 1.1643 \\
+108 & 2.17E-02 & 500 & 1.1230 & 1.1727 \\
+110 & 2.17E-02 & 500 & 1.1230 & 1.1727 \\
+\end{longtable}
+}
+}
+
+\textbf{Two regimes.} Passes 1 to 30: the worst gated row is at the front\textquotesingle s outer
+edge, its cell moving 290 to 267 (r about 1.28 to 1.25), and it falls 7.4E-02
+to 2.6E-02 as the front relaxes. From pass 40 the worst row is no longer at the
+front: it sits at 2.2E-02 and its cell walks outward through the wind, 443 to
+500, reaching the outer boundary at pass 108 while the value does not fall. The
+front itself keeps moving outward at about 5E-04 R\_p in a pass, \texttt{x2\ =\ 0.5} from
+1.0726 to 1.1230 over 108 passes, with no sign of stopping.
+
+So three statements, the first two measured and the third a reading of them.
+(a) The front has NOT reached a stationary position in 110 passes: 0.05 R\_p
+travelled and the continuation unfinished. (b) The remaining wind residual of
+2.2E-02 is nearly uniform in r and is NOT the front. (c) The reading: the
+bounded carrier pass, trust 1E-02 on the H2 mixing-ratio maximum and met by one
+transport step, advances the front but leaves the wind cells, whose H2 mixing
+ratio is orders of magnitude below the maximum, at one implicit step in a pass,
+so their own H2 balance never relaxes, and the drift measure, absolute in the
+grid maximum, does not see them. The progress control ended the run because
+after pass 40 the worst gated row measures that wind floor and not the front.
+
+Consequence for the method, recorded and NOT adopted: a bounded front advance
+and a relaxation of the wind cells\textquotesingle{} H2 balance are two different operations,
+and the second needs its own step, a cell-relative measure or a wind-window
+relaxation after the bounded pass, before the H2 wind row can be judged at
+1e-5. The physical question whether the front stops at all inside 2 R\_p is
+separate and stays open (the P23 comparison against Koskinen et al. 2022
+Model A).
+
+\subsubsection{Gates}\label{gates}
+
+Advisor verification of the merged tree (READ from the closing brief):
+snapshot build with the default toolchain; \texttt{element\_operator} 24/0,
+\texttt{carrier\_retry} 122/0, \texttt{krylov\_and\_dogleg} 290/0, \texttt{certification} 57/0,
+\texttt{steady\_species\_rows} 194/0 and 195/0 after P8; \texttt{grid\_and\_gates} 158 PASS
+with 3 FAIL, all three missing files of the snapshot copy (\texttt{inputdata},
+\texttt{examples}) rather than assertions (P4 measured the same suite 178/0 in the
+live tree); the \texttt{wasp\_full\_newton} reload \texttt{info\ =\ 0}, \texttt{\textbar{}\textbar{}R\textbar{}\textbar{}} 1.667e-9,
+CERTIFIED, \texttt{log10\ Mdot} 13.30, unchanged. \texttt{make\ check} (advisor, 2026-09-11 09:40 KST, the shared build rebuilt from this tree): REGRESSION PASS, every DEFAULT\_CASES output and \texttt{wasp\_full\_newton} byte-identical to the goldens; no golden moved, because no default case enters the stationary solve or the fixed-wind relaxations.
+
+After P10 to P12 (advisor, merged tree, private snapshot build, 8 threads,
+MEASURED 2026-09-11): the thirteen suites that link the changed modules all
+PASS (\texttt{krylov\_and\_dogleg} 309/0, \texttt{grid\_and\_gates} 187/1 with the one FAIL a
+WASP-52b SED file absent from the snapshot copy, \texttt{steady\_species\_rows} 195/0,
+\texttt{element\_operator} 24/0, \texttt{carrier\_retry} 122/0, \texttt{certification} 57/0,
+\texttt{attempted\_step} 70/0, \texttt{carrier\_returned\_state\_acceptance} 36/0,
+\texttt{species\_masses} 9/0, \texttt{carrier\_reference\_scales} 14/0,
+\texttt{carrier\_constraint\_attribution} 10/0, \texttt{constrained\_network\_layout} 8/0,
+\texttt{steady\_completion\_flag} 3/0). The two fixtures re-run on that binary
+reproduce P10\textquotesingle s and P11\textquotesingle s records: the HD 209458 b element reload, 12 passes,
+worst gated species row 2.61e-3 -\textgreater{} 5.47e-6 with only the hydrodynamic mass
+row refusing (8.893e-10 against 3e-12 at cell 3, r = 1.0006); the carrier
+reload, 3 passes, H2 7.38e-2 -\textgreater{} 7.06e-2 at cells 290 -\textgreater{} 288, mass 8.12e-12 /
+4.85e-12 / 4.96e-12, momentum 3.22e-13 / 4.47e-13 / 3.54e-13.
+
+Second \texttt{make\ check} after P10 to P12 (advisor, 2026-09-11 15:15 KST, the shared build rebuilt from the merged tree): REGRESSION PASS, every DEFAULT\_CASES output and the cold-start \texttt{wasp\_full\_newton} byte-identical to the goldens; no golden moved.
+
+After P14 to P17, each count MEASURED by the item that owns the file and READ
+from its report: \texttt{grid\_and\_gates} \textbf{200/0} (P14, the second arm of
+\texttt{output\_state\_consistency.sh}; 199/1 on the entry text),
+\texttt{krylov\_and\_dogleg} \textbf{321/0} after P15 and \textbf{334/0} after P17,
+\texttt{certification} \textbf{70/0} after P16 (57/0 on the entry driver), with
+\texttt{steady\_species\_rows} 195/0, \texttt{adv\_static\_limit} 53/0 and the other suites each
+item ran unchanged in both of its arms. The two rows that FAIL by design or by
+fixture are unchanged: \texttt{residual\_determinism}\textquotesingle s
+\texttt{closure\_spread\_within\_the\_row\_tolerance\_atomic\_elem\_newton} at 3.354E+01 (N33,
+by design) and \texttt{steady\_selfconsistent\_residual}\textquotesingle s
+\texttt{handback\_matches\_the\_accepted\_iterate} on a reload log that prints no iterate
+norm.
+
+Third \texttt{make\ check} after P14 to P18 (advisor, 2026-09-11 21:10 KST, the shared build rebuilt from the final tree): REGRESSION PASS, every DEFAULT\_CASES output and the cold-start \texttt{wasp\_full\_newton} byte-identical to the goldens; no golden moved.
+
+\subsubsection{Reported by the workers and not fixed}\label{reported-by-the-workers-and-not-fixed}
+
+\begin{itemize}
+\tightlist
+\item
+  P1: \texttt{relaxation\_drift\_covers\_every\_element} in \texttt{steady\_species\_rows}
+  builds a column whose species miss its own density by 1.660E-02 (closed
+  the same day by P8); \texttt{relax\_element\_composition} damps helium alone, which
+  belongs to the outer composition control; \texttt{element\_diffusion\_step}\textquotesingle s
+  trace-metal arm re-seeds an exhausted cell and \texttt{project\_elements} clamps
+  \texttt{grp\_new} at zero, the only place in the step that can create or destroy
+  mixture mass, now covered by the closure test and not investigated
+  further.
+\item
+  P2: the carrier relaxation reaches into the steady residual for its
+  advecting flux (\texttt{carrier\_rows\_advect\ =\ .true.}) while the element operator
+  is given its flux by the caller, so the routine cannot be called at all
+  unless someone else assembled a mass row; \texttt{residual\_row\_scale} in
+  \texttt{steady\_residual.f90} carries a comment block that is the history of a
+  change and not the physics; the fixed-point exit of the carrier relaxation
+  is unreachable in production while the H2 front propagates, and loosening
+  \texttt{relax\_tol} to make it reachable is not a fix.
+\item
+  P3: \st{\mbox{\texttt{distance\_from\_certification}} divides the hydrodynamic slot by the
+  run\textquotesingle s \mbox{\texttt{Resid\ tol}} and not by each row\textquotesingle s own certification tolerance, so
+  the best-iterate ledger cannot see a mass row above 3e-12 while \mbox{\texttt{\textbar{}\textbar{}R\textbar{}\textbar{}}} is
+  below 1e-8, which is exactly the state D3 is about (it did no harm on the
+  D3 run, where the returned iterate\textquotesingle s mass row is 5.945e-12 against the
+  last iterate\textquotesingle s 7.914e-12, but the ranking does not guarantee it)}
+  (\textbf{fixed 2026-09-11, P10});
+  \texttt{steady\_selfconsistent\_residual} assertion 2 (closed the same day by P8);
+  \st{\mbox{\texttt{attempted\_step/run.sh}} and \mbox{\texttt{carrier\_returned\_state\_acceptance/run.sh}}
+  write a fallback \mbox{\texttt{build\_stamp.f90}} into their own work directory, where
+  the compile cannot find it, so a tree that has never been built fails with
+  \mbox{\texttt{Cannot\ open\ module\ file\ \textquotesingle{}build\_stamp.mod\textquotesingle{}}}} (\textbf{fixed 2026-09-11, P12},
+  in those two and in five sibling scripts).
+\item
+  P4: the kind-generic rows do not form the equilibrium pressure term
+  themselves (closed from \texttt{assemble\_residual}, but the two places must stay
+  one expression if the arm is ever made to write its own face data back);
+  \st{the default path\textquotesingle s PLM momentum scale carries a coordinate artifact, the
+  geometric pressure term \mbox{\texttt{(A+\ -\ A-)\ p\_j/dV}} entering the max separately
+  although it is one physical term with the flux divergence, so at zero
+  gravity with a uniform pressure the scale is \mbox{\texttt{2\ p/r}} where the physical
+  force is zero (MEASURED: the arm\textquotesingle s scale, which is the row\textquotesingle s true content,
+  sits 0.944 below the base scheme\textquotesingle s for both Riemann solvers at every N;
+  under WENO3 the two agree to 2E-13). Fixing it moves the default momentum
+  measure at every cell and therefore the acceptance of every recorded
+  state, so it is a user decision.} (\textbf{fixed 2026-09-11, P11}, on the
+  user\textquotesingle s instruction: the scale is now the largest of the three physical
+  terms, the zero-gravity artifact reads 2.22507E-308 in place of 1.000, and
+  the acceptance movement is measured, \texttt{wasp\_full\_newton} still CERTIFIED.)
+\item
+  P5: the same truncation-as-floor reasoning stood in three other documents
+  (closed the same day by P8); the analysis document\textquotesingle s own title is still
+  stronger than its corrected conclusion; \texttt{docs/session\_handoff\_20260910.md}
+  and \texttt{docs/steady\_solver\_design.md} carry statements of the same family,
+  not read line by line; the experiment\textquotesingle s private build is retained at
+  \texttt{/tmp/exhale\_partition\_20260911.ZxXJEB} per its own section 9.
+\item
+  P8: \texttt{docs/certification\_tolerance\_anchoring\_20260910.md} still opens with
+  \texttt{cert\_tol\_element} and \texttt{cert\_tol\_carrier} at 1e-8, which decision 22 (a)
+  superseded, and whether that memo is a dated record or a live reference is
+  a decision; \texttt{docs/code\_status\_20260910.md} section 3 described the
+  stage-2 solver program as closed (this session\textquotesingle s item P9 marks it
+  superseded); \st{\mbox{\texttt{mass\_closed\_column}} exists only in
+  \mbox{\texttt{src/tests/element\_operator/element\_operator\_tests.f90}} and two suites now
+  build the same column by hand, so the recipe belongs in one place a test
+  can call} (\textbf{fixed 2026-09-11, P12}: \texttt{src/tests/test\_columns.f90}).
+\item
+  P9: \st{the \mbox{\texttt{Coupled\ carrier\ solve}} key comment in
+  \mbox{\texttt{src/modules/files\_IO/input\_read.f90}} states that the alternation "was
+  measured not to converge and not to be able to" (section 139). The first
+  half is what P7 measured against: the alternation with the joint
+  acceptance contract of P6 brings every elemental wind row of the atomic
+  fixture inside 1e-5 and moves the carrier front monotonically, so the
+  comment\textquotesingle s reading is at least narrower than it states. Not my file this
+  increment; it needs the sentence rewritten to what section 139 actually
+  measured (the old alternation, without the acceptance contract, and its
+  sign error on the front\textquotesingle s motion).} (\textbf{fixed 2026-09-11, advisor}.)
+\item
+  P10: \st{two rows of
+  \mbox{\texttt{src/tests/steady\_species\_rows/steady\_species\_rows\_tests.f90}} state the
+  superseded semantics, feeding a raw \mbox{\texttt{\textbar{}\textbar{}R\textbar{}\textbar{}}} into the slot that now takes a
+  distance and asserting that the hydrodynamic slot follows the run\textquotesingle s
+  \mbox{\texttt{Resid\ tol}} (MEASURED 193 PASS / 2 FAIL on the new objects)} (\textbf{fixed
+  2026-09-11, advisor}); \texttt{dj} that the ledger ranks with is the accepted
+  trial\textquotesingle s own rows while the \texttt{judged\ rows} line prints the loop-top
+  evaluation, so the reported best distance can sit below the minimum of the
+  printed lines (\texttt{wasp\_full\_newton}: 8.469E-02 against a printed minimum of
+  1.178E+00), which is entry-text behavior and not a defect; in the
+  \texttt{EXHALE\_RESID\_BRANCH\_REPORT} block one divisor for the whole class stays,
+  because the block aggregates spreads across seeds whose maximum can sit in
+  different rows.
+\item
+  P11: \st{the kind-generic rows still hand back neither the momentum terms nor
+  the face departures (\mbox{\texttt{hydrodynamic\_rows.f90}}\textquotesingle s
+  \mbox{\texttt{store\_the\_interface\_fluxes}} writes \mbox{\texttt{face\_flux}}/\mbox{\texttt{face\_p}} and nothing
+  else), so on the \mbox{\texttt{EXHALE\_RESID\_QUAD}} arm the well-balanced face departure
+  and, on a reconstruction continuation with \mbox{\texttt{0\ \textless{}\ lambda\ \textless{}\ 1}}, which of the
+  two pressure conventions the blended flux carries are read from the last
+  \mbox{\texttt{RK\_rhs}} evaluation instead of from the state just assembled; the shape of
+  the fix is two weights in place of the \mbox{\texttt{use\_plm}} branch, and the arm is
+  default off and a rounding control experiment nothing is adopted from.}
+  (\textbf{fixed 2026-09-11, P15}, which was also the Codex review\textquotesingle s second
+  finding: the arm stores its own face departures, and the continuation
+  combination is refused rather than weighted, because the two schemes
+  reconstruct different faces and no single pair of departures satisfies the
+  blended row identity. The momentum terms are still not handed back by the
+  arm, and they are not read from a previous evaluation either: the one
+  expression of each is evaluated at the call site for the state just
+  assembled, which is the P4 entry above.) The
+  marching stop of \texttt{mol\_carrier} reports a momentum measure of 1.979E+00
+  against a scale that is now the largest physical term in the layer, which
+  is commensurable with the mass and energy entries in a way it was not;
+  whether the marching stop should quote it at all is an acceptance
+  question.
+\item
+  P12: nothing further. The four sibling scripts carrying the same dead
+  fallback and the work directories hardcoded with no override, which the
+  P12 report listed as outside its own two files, are what P12b closed the
+  same day.
+\item
+  P14: \st{\mbox{\texttt{assert\_written\_state\_is\_the\_accepted\_one}} raises a false alarm
+  whenever the flux spread reaches the rounding level (MEASURED on the
+  partitioned carrier reload, 3.0982E-14 as written against 2.7487E-14
+  accepted on a state whose mass flux is flat to fourteen digits, while the
+  same run at a spread of 1.7736E-03 passes the test); it needs an absolute
+  floor beside the relative one, or the warning will keep accusing the best
+  states the solver produces} and \st{three rows of the \mbox{\texttt{grid\_and\_gates}} suite
+  write to a fixed directory under \mbox{\texttt{\$ROOT/build/tests/grid\_and\_gates}} and
+  ignore \mbox{\texttt{EXHALE\_TEST\_OUT}}, so two concurrent runs of the suite collide
+  there} (\textbf{both fixed 2026-09-11, advisor}, the floor at 1e-12 and the
+  three rows named in the paragraph above). What is left is one line of
+  documentation: \texttt{src/tests/grid\_and\_gates/README.md} gives one line for each
+  test name, and the \texttt{output\_state} row now asserts two things where the
+  README says one.
+\item
+  P15: \texttt{quad\_rows\_calls} and \texttt{quad\_rows\_seconds} are incremented in
+  \texttt{hydrodynamic\_rows\_in\_quadruple\_precision} and public, and no file reads
+  them (\texttt{grep} over \texttt{src/}), so the arm\textquotesingle s measured cost, which the module
+  header calls a measured number and not an estimate, reaches no run summary;
+  relatedly, nothing in \texttt{run.log} says whether \texttt{EXHALE\_RESID\_QUAD} took
+  effect, so P15 had to establish that its arm run was an arm run indirectly,
+  from the iteration-1 measure moving between the two binaries and from the
+  sweep-kind reset READ in \texttt{steady\_newton.f90}. A line in the setup report, or
+  those two counters reaching it, would make an arm run self-documenting. And
+  the continuation refusal the item added has no executed row: it ends in
+  \texttt{error\ stop}, which cannot be asserted from inside the driver process, and
+  no production path reaches it, the key being default off and the
+  continuation controller disarming before the JFNK finish (READ).
+\item
+  P16: the control arm of the HD 209458 b reload ends with a state its own
+  certification refuses and \textbf{exits 0}, because the outer loop\textquotesingle s ending is
+  the pass budget and no stationary claim is made. That is the run-mode
+  contract working as written, but a reader of the shell status cannot tell
+  that case from a certified one.
+\item
+  P17: \st{\mbox{\texttt{hydrodynamic\_distance\_from\_certification}} has no production reader
+  left and cannot be deleted without breaking the compile of a test file the
+  item does not own} (\textbf{item P18}, above). Two fixture observations, no
+  action taken: running \texttt{grid\_and\_gates} twice at once with distinct
+  \texttt{EXHALE\_TEST\_OUT} makes the \texttt{flux\_spread} sub-test report
+  \texttt{mass\_flux\_spread\_recomputed\_from\_output\ measured=no\_dump\_line}, so the two
+  invocations share something outside \texttt{EXHALE\_TEST\_OUT} (each arm on its own
+  gives 200/0), which is worth a line in that suite\textquotesingle s README for whoever next
+  runs two builds side by side; and the log-driven block of
+  \texttt{steady\_species\_rows} requires a \texttt{(species\_jac\_test)} line in the log, so
+  the \texttt{best\ judged\ iterate\ \textless{}=\ min\ judged\ rows\ seen} invariant it states is
+  checked only on logs made with the species Jacobian probe armed, and P17 had
+  to apply that comparison by hand (0 of the 12 solves of its new arm report a
+  best above their own printed minimum, against 1 of 12 in the control). A
+  fixture log carrying that probe would be worth pinning.
+\end{itemize}
+
+\appendix
+\input{Update_EXHALE_appendix}
 \end{document}

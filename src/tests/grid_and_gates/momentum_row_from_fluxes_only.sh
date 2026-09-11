@@ -49,7 +49,7 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 ROOT="$(cd "$HERE/../../.." && pwd)"
 EXE="${EXHALE_EXE:-$ROOT/EXHALE.x}"
 SRC="$ROOT/src/EXHALE_main.f90"
-WORK="$ROOT/build/tests/grid_and_gates/momentum_row"
+WORK="${EXHALE_TEST_OUT:-$ROOT/build/tests/grid_and_gates}/momentum_row"
 CASE="$ROOT/backup/regression/mol_base_handoff"
 n_fail=0
 

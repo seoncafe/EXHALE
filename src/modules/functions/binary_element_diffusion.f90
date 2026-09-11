@@ -372,6 +372,68 @@
       real*8, protected :: trace_ratio_under_zero = -1.0d0
       public :: trace_ratio_under_zero
 
+      ! WHETHER THE COMPOSITION ONE TRANSPORT STEP HANDS BACK IS ADMISSIBLE.
+      ! The step solves a discrete transport equation at a FIXED density, so
+      ! the composition it returns is admissible only if it still carries
+      ! that density as well as the one it was handed did: sum_i m_i n_i =
+      ! rho, the closure calc_rho reads out of the species vector.  Finite
+      ! and nonnegative populations are necessary and not sufficient, and a
+      ! helium fraction clipped into [0,1] says nothing about the row it was
+      ! meant to zero.  The named outcomes below are what a caller reads
+      ! instead of the diagnostics above, which measure and do not judge.
+      integer, parameter :: element_step_accepted            = 0
+      integer, parameter :: element_step_solve_failed        = 1
+      integer, parameter :: element_step_nonfinite           = 2
+      integer, parameter :: element_step_out_of_bounds       = 3
+      integer, parameter :: element_step_mass_closure_failed = 4
+      public :: element_step_accepted, element_step_solve_failed
+      public :: element_step_nonfinite, element_step_out_of_bounds
+      public :: element_step_mass_closure_failed
+      ! THE OUTCOME OF A RELAXATION, which is not the outcome of one step.
+      ! A relaxation whose composition stopped moving has reached the fixed
+      ! point of the transport operator; one that ran out of steps has not,
+      ! and its returned state is a partial advance whatever its movement
+      ! over the last step was.  A relaxation that could take no admissible
+      ! step at all returns the composition it was given.
+      integer, parameter :: element_relaxation_converged   = 0
+      integer, parameter :: element_relaxation_step_budget = 1
+      integer, parameter :: element_relaxation_failed      = 2
+      public :: element_relaxation_converged
+      public :: element_relaxation_step_budget
+      public :: element_relaxation_failed
+      ! max_j |sum_i m_i n_i - rho|/rho over the physical cells, in the mass
+      ! policy of mixture_mass_split (which is calc_rho's own, term for
+      ! term).  It is the departure of the composition the last judged step
+      ! or relaxation PRODUCED: on a refusal that is the candidate that was
+      ! refused and not the state handed back, which is what says why the
+      ! refusal happened.  Negative where no candidate was produced (a step
+      ! whose nonlinear solve failed) and until the first judged call.
+      real*8, protected :: element_mass_closure_departure = -1.0d0
+      public :: element_mass_closure_departure
+      ! HOW MUCH FARTHER FROM THE DENSITY THE SPECIES MAY END THAN THEY
+      ! BEGAN.  The transport moves element amounts and the projection meets
+      ! both element totals exactly while closing the mixture around the mass
+      ! the entry species carried, so the departure from rho is an invariant
+      ! of the step and what is left in it is the round-off of that
+      ! inversion: 1.0e-15 at the entry of the atomic element fixture and
+      ! 1.0e-14 after a relaxation of the synthetic columns of
+      ! src/tests/element_operator (both MEASURED).  Over the he_relax_maxstep
+      ! steps of a relaxation those accumulate at worst to ~4e-13, so this
+      ! bound stands two and a half decades above the arithmetic and ten
+      ! decades below a mass error with any physical meaning.  It is stated
+      ! as an increase and not as an absolute departure because establishing
+      ! the closure belongs to whoever builds the composition (the ionization
+      ! solve normalizes it: 1.0e-15 MEASURED on the atomic fixture) and
+      ! preserving it belongs to the transport; on an admissible entry state
+      ! the two readings are the same number.
+      real*8, parameter :: element_mass_closure_tol = 1.0d-10
+      ! The drift flux vanishes at both ends of the composition axis in the
+      ! discrete operator as in the continuum (module header), so a converged
+      ! step leaves X inside [0,1] up to the round-off of the tridiagonal
+      ! solve; this is the same bound the T14 rows of src/tests/
+      ! diffusion_tests.f90 hold the measured excursions to.
+      real*8, parameter :: element_fraction_bound_tol = 1.0d-12
+
       ! THE ADVECTED ELEMENT MASS FRACTIONS, between the beginning of a
       ! marching step and the projection that ends it.  Column 1 is helium,
       ! the member of the normalized set; columns 1+im are the trace metals,
@@ -497,13 +559,22 @@
       ! step budget, and the absolute convergence measure max|dX|/X_base.
       integer, parameter :: he_relax_maxstep = 400
       real*8,  parameter :: he_relax_tol     = 1.0d-12
+      ! A step the operator refuses is discarded and retried at half its
+      ! length.  The retry is bounded twice: by the number of discarded steps
+      ! and by the step length itself, which at 1e-6 of the shortest
+      ! composition time scale of the grid moves the composition by less than
+      ! the movement measure he_relax_tol can see, so a shorter one carries
+      ! no advance whether it solves or not.
+      integer, parameter :: he_relax_retry_max  = 20
+      real*8,  parameter :: he_relax_grow_floor = 1.0d-6
 
       contains
 
       ! ------------------------------------------------------------------ !
 
       subroutine element_diffusion_step(rho, v, Tcode, f_sp, dt_code,     &
-                                        closed_base, Jface_out, Frho_in)
+                                        closed_base, Jface_out, Frho_in,  &
+                                        status)
       ! Advance the helium mass fraction X one relaxation step and project the
       ! new element totals back into f_sp.  rho, v, Tcode are the current
       ! adimensional primitives, dt_code the adimensional relaxation timestep;
@@ -524,6 +595,20 @@
       ! stages (species_advection_stage), so repeating it here would advect
       ! the elements twice.  The relaxation at a fixed wind has no stages to
       ! ride on and supplies the flux itself.
+      !
+      ! status (optional) IS WHAT MAKES THE UPDATE CONDITIONAL.  Asked for,
+      ! the step keeps the composition it was handed, and hands back a new
+      ! one only if the nonlinear solve reported the step solved and the
+      ! result is admissible: finite everywhere, X inside [0,1] to
+      ! element_fraction_bound_tol before the range clip, and standing no
+      ! farther from the density the step held fixed, by more than
+      ! element_mass_closure_tol, than the composition it was handed did.
+      ! Otherwise the entry composition is restored and the named outcome
+      ! says which test refused it.  Not asked for, the step is
+      ! unconditional, which is
+      ! the marching path: there the composition is one operator-split half
+      ! of a time step whose acceptance is decided afterwards, on the state
+      ! the whole step produced, by the attempted-step contract.
 
       real*8, dimension(1-Ng:N+Ng),           intent(in)    :: rho, v, Tcode
       real*8, dimension(1-Ng:N+Ng,n_species), intent(inout) :: f_sp
@@ -531,6 +616,7 @@
       logical, optional,                      intent(in)    :: closed_base
       real*8, dimension(0:N), optional,       intent(out)   :: Jface_out
       real*8, dimension(1-Ng:N+Ng), optional, intent(in)    :: Frho_in
+      integer, optional,                      intent(out)   :: status
 
       real*8, dimension(1-Ng:N+Ng) :: nucH, nucHe, msum, mass1, Xhe, Xold
       real*8, dimension(1-Ng:N+Ng) :: msum_out
@@ -548,13 +634,24 @@
       ! insensitively.  In particular the time scale is tscale, NOT t0 (a local
       ! t0 would alias the global temperature normalization T0), and nothing
       ! here is named N, Ng, r, g, mu, info, count or du.
+      real*8, dimension(:,:), allocatable :: f_entry
       real*8 :: tscale, X_base, m_1, fXbase, rXsc, Xover, Xunder, qdep
-      real*8 :: dJl, dJr
-      integer :: j, jlo, im, i0m, top, k, n_vanished
-      logical :: shut_base, advect
+      real*8 :: dJl, dJr, closure
+      integer :: j, jlo, im, i0m, top, k, n_vanished, outcome
+      logical :: shut_base, advect, judged, solved
 
+      if (present(status)) status = element_step_accepted
       if (.not. he_diffusion) return
       if (.not. thereis_He)   return
+
+      ! The composition the step is to keep if the update turns out to be
+      ! inadmissible.  Held only where a caller asks to be told, so the
+      ! marching path carries neither the copy nor the tests.
+      judged = present(status)
+      if (judged) then
+         allocate(f_entry(1-Ng:N+Ng,n_species))
+         f_entry = f_sp
+      endif
 
       shut_base = .false.
       if (present(closed_base)) shut_base = closed_base
@@ -615,7 +712,7 @@
                                                 Agrd, Bdrf, updrf)
       call solve_mass_fraction(Xold, Xhe, rho_phys, dt_phys, rp, rep, Frho,&
                                cadvf, Agrd, Bdrf, updrf, X_base, jlo,      &
-                               advect)
+                               advect, solved)
 
       ! Range clip.  Both lines are assertions: the drift flux vanishes at
       ! both ends of the composition axis in the discrete operator as in the
@@ -630,6 +727,19 @@
       Xunder = -minval(Xhe(1:N))
       he_fraction_over_one   = Xover
       he_fraction_under_zero = Xunder
+
+      ! An unsolved step has no composition to project: the row it was meant
+      ! to zero is not zeroed and the bounds on X are the converged step's.
+      ! The entry composition stands, and the trace metals are not advanced
+      ! against a hydrogen background that was never moved.
+      if (judged .and. .not. solved) then
+         f_sp   = f_entry
+         status = element_step_solve_failed
+         element_mass_closure_departure = -1.0d0     ! no candidate to weigh
+         deallocate(f_entry)
+         return
+      endif
+
       where (Xhe .lt. 0.0d0) Xhe = 0.0d0
       where (Xhe .gt. 1.0d0) Xhe = 1.0d0
       if (.not. shut_base) Xhe(1-Ng:1) = X_base    ! base + inner ghosts
@@ -734,6 +844,32 @@
       ! that need not contain the cells concerned (section 84).
       call metal_hydrogen_ratio_departure(f_sp, qdep, n_vanished)
 
+      ! --- IS WHAT THE STEP PRODUCED AN ADMISSIBLE COMPOSITION?  The density
+      ! is the hydrodynamics' and the step held it fixed, so the species it
+      ! hands back have to weigh it: sum_i m_i n_i = rho, which in the mass
+      ! fractions of this module reads msum = 1 (mixture_mass_split carries
+      ! the mass policy of calc_rho term for term).  Measured on the state
+      ! that would be handed back, together with the two tests that finite
+      ! and bounded populations make, and the update stands or the entry
+      ! composition does.
+      if (judged) then
+         call mixture_mass_split(f_sp, nucH, nucHe, mass1, msum_out)
+         closure = maxval(abs(msum_out(1:N) - 1.0d0))
+         element_mass_closure_departure = closure
+         outcome = element_step_accepted
+         if (.not. every_species_is_finite(f_sp)) then
+            outcome = element_step_nonfinite
+         else if (max(Xover, Xunder) .gt. element_fraction_bound_tol) then
+            outcome = element_step_out_of_bounds
+         else if (closure - maxval(abs(msum(1:N) - 1.0d0))                &
+                  .gt. element_mass_closure_tol) then
+            outcome = element_step_mass_closure_failed
+         endif
+         if (outcome .ne. element_step_accepted) f_sp = f_entry
+         status = outcome
+         deallocate(f_entry)
+      endif
+
       if (diffusion_check_on()) then
          call mixture_mass_split(f_sp, nucH, nucHe, mass1, msum_out)
          call report_step(Xhe, rho_phys, rp, rep,                          &
@@ -742,6 +878,20 @@
       endif
 
       end subroutine element_diffusion_step
+
+      ! ------------------------------------------------------------------ !
+
+      logical function every_species_is_finite(f_sp) result(ok)
+      ! Whether a species vector is a vector of ordinary reals: no NaN and no
+      ! infinity anywhere in it.  NaN fails every comparison including with
+      ! itself and an infinity exceeds the largest representable finite
+      ! value, so the two tests together cover both; written out rather than
+      ! taken from ieee_arithmetic so that the generated module dependency
+      ! graph stays over the source tree, as finite_real
+      ! (ionization_equilibrium.f90) is.
+      real*8, dimension(1-Ng:N+Ng,n_species), intent(in) :: f_sp
+      ok = all(f_sp .eq. f_sp) .and. all(abs(f_sp) .le. huge(1.0d0))
+      end function every_species_is_finite
 
       ! ------------------------------------------------------------------ !
 
@@ -813,7 +963,7 @@
       ! ------------------------------------------------------------------ !
 
       subroutine relax_element_composition(rho, v, Tcode, f_sp, Frho,      &
-                                           omega, drift, nstep)
+                                           omega, drift, nstep, status)
       ! Relax the element composition to its steady state in a FIXED wind.
       !
       ! The step size is the COMPOSITION time scale, not the hydro CFL step.
@@ -889,6 +1039,21 @@
       ! max|X_relaxed - X_old|/X_base, not the damped step actually applied:
       ! it is the distance to the fixed point, so omega cannot buy a false
       ! convergence by making the applied step small.
+      !
+      ! ONLY ADMISSIBLE STEPS ARE KEPT, AND A SMALL MOVEMENT IS NOT A
+      ! CONVERGENCE PROOF.  Each transport step is taken on a copy and asked
+      ! for its own outcome (element_diffusion_step): a step that did not
+      ! solve its row, or whose composition no longer carries the density the
+      ! step held fixed, is discarded, the step length is halved and the step
+      ! is retried, within the two budgets he_relax_retry_max and
+      ! he_relax_grow_floor.  With neither budget left the composition this
+      ! pass was given is restored.  The three outcomes the caller is told
+      ! apart are the fixed point of the operator
+      ! (element_relaxation_converged, the movement measure met), a partial
+      ! advance that ran out of steps (element_relaxation_step_budget), and
+      ! no admissible advance at all (element_relaxation_failed).  A caller
+      ! that asks for none of them still gets the restored composition, and
+      ! the refusal is announced once.
       real*8, dimension(1-Ng:N+Ng),           intent(in)    :: rho, v, Tcode
       real*8, dimension(1-Ng:N+Ng,n_species), intent(inout) :: f_sp
       ! The face mass flux F_rho(j) at r_edg(j) in code units, the one the
@@ -899,9 +1064,11 @@
       real*8,                                 intent(in)    :: omega
       real*8,                                 intent(out)   :: drift
       integer,                                intent(out)   :: nstep
+      integer, optional,                      intent(out)   :: status
 
+      real*8, dimension(:,:), allocatable :: f_pass, f_try
       real*8, dimension(1-Ng:N+Ng) :: dt_code, nucH, nucHe, Xmix
-      real*8, dimension(1-Ng:N+Ng) :: msum, mass1
+      real*8, dimension(1-Ng:N+Ng) :: msum, mass1, msum_ret
       real*8, dimension(1-Ng:N+Ng) :: TK, Dcl, Gcl, dmcl, zbcl
       real*8, dimension(1-Ng:N+Ng) :: rho_phys, mflx, vadv
       ! The mass fractions of every element this relaxation moves -- helium
@@ -912,10 +1079,12 @@
       real*8, dimension(1+n_melem) :: Yres
       real*8 :: m_1, X_base, tscale, drj, tdiff, tadv, wset, grow, dt_ref
       real*8 :: mflx_median
-      integer :: im, j, k
+      integer :: im, j, k, st, outcome, nreject, nkept
+      logical, save :: warned_refusal = .false.
 
       drift = 0.0d0
       nstep = 0
+      if (present(status)) status = element_relaxation_converged
       if (.not. he_diffusion) return
       if (.not. thereis_He)   return
 
@@ -967,18 +1136,72 @@
             Yres(1+im) = Ypass(1,1+im)
          enddo
       endif
-      Yprev = Ypass
-      grow  = 1.0d0
-      do k = 1, he_relax_maxstep
-         call element_diffusion_step(rho, v, Tcode, f_sp, dt_code*grow,    &
-                                     Frho_in = Frho)
-         call element_mass_fractions(f_sp, Ynow)
+      Yprev   = Ypass
+      Ynow    = Ypass
+      grow    = 1.0d0
+      nreject = 0
+      ! A budget exit is the outcome until a step meets the movement measure:
+      ! the loop below can only leave by that measure, by a refusal, or by
+      ! running out of steps.
+      outcome = element_relaxation_step_budget
+      allocate(f_pass(1-Ng:N+Ng,n_species), f_try(1-Ng:N+Ng,n_species))
+      f_pass = f_sp
+      k      = 0
+      do while (k .lt. he_relax_maxstep)
+         f_try = f_sp
+         call element_diffusion_step(rho, v, Tcode, f_try, dt_code*grow,   &
+                                     Frho_in = Frho, status = st)
+         if (st .ne. element_step_accepted) then
+            ! The operator could not advance the composition over this step.
+            ! A shorter step is a better-conditioned one: the time term grows
+            ! against the flux divergence it cancels, which is what sets the
+            ! conditioning of the tridiagonal solve (solve_mass_fraction).
+            if (nreject .ge. he_relax_retry_max .or.                      &
+                grow .le. he_relax_grow_floor) then
+               outcome = element_relaxation_failed
+               exit
+            endif
+            nreject = nreject + 1
+            grow    = 0.5d0*grow
+            cycle
+         endif
+         f_sp  = f_try
+         k     = k + 1
          nstep = k
+         call element_mass_fractions(f_sp, Ynow)
          if (element_composition_distance(Ynow, Yprev, Yres)              &
-             .lt. he_relax_tol) exit
+             .lt. he_relax_tol) then
+            outcome = element_relaxation_converged
+            exit
+         endif
          Yprev = Ynow
          if (grow .lt. 1.0d12) grow = grow*1.5d0
       enddo
+      if (outcome .eq. element_relaxation_failed) then
+         ! Nothing this pass did is part of the state handed back, so no step
+         ! is reported as taken and the distance to the fixed point is not
+         ! measured from a state the caller never receives.
+         f_sp  = f_pass
+         drift = 0.0d0
+         nkept = nstep
+         nstep = 0
+         deallocate(f_pass, f_try)
+         if (present(status)) status = outcome
+         if (.not. warned_refusal) then
+            warned_refusal = .true.
+            write(*,'(A,I0,A,I0,A,ES10.3,A,ES10.3,A)')                    &
+                 ' (element diffusion) WARNING: the composition'//        &
+                 ' relaxation took ', nkept, ' step(s) and then found'//  &
+                 ' no admissible one (outcome ', st,                      &
+                 ' at a step length ', grow,                              &
+                 ' of the composition time scale, mass-closure'//         &
+                 ' departure ', element_mass_closure_departure,           &
+                 '); the composition this pass was given is what is'//    &
+                 ' handed back.'
+         endif
+         return
+      endif
+      deallocate(f_try)
       drift = element_composition_distance(Ynow, Ypass, Yres)
 
       ! Damped update: blend the relaxed composition with the one this pass
@@ -1001,6 +1224,34 @@
          call mixture_mass_split(f_sp, nucH, nucHe, mass1, msum)
          call project_elements(f_sp, Xmix, msum, .true.)
       endif
+
+      ! The state that leaves this routine stands no farther from the density
+      ! it was given than the composition this pass began with, the damped
+      ! blend included: the projection above is the inverse of the split it
+      ! reads its mass from, so the departure is an invariant of the pass and
+      ! the measure is that inversion's round-off.
+      call mixture_mass_sum(f_sp, msum_ret)
+      element_mass_closure_departure = maxval(abs(msum_ret(1:N) - 1.0d0))
+      call mixture_mass_sum(f_pass, msum_ret)
+      if (element_mass_closure_departure - maxval(abs(msum_ret(1:N)        &
+          - 1.0d0)) .gt. element_mass_closure_tol                          &
+          .or. .not. every_species_is_finite(f_sp)) then
+         f_sp    = f_pass
+         outcome = element_relaxation_failed
+         drift   = 0.0d0
+         nstep   = 0
+         if (.not. warned_refusal) then
+            warned_refusal = .true.
+            write(*,'(A,ES10.3,A)') ' (element diffusion) WARNING: the'//  &
+                 ' composition the relaxation assembled does not carry'// &
+                 ' the density it was given (departure ',                 &
+                 element_mass_closure_departure,                          &
+                 '); the composition this pass was given is what is'//    &
+                 ' handed back.'
+         endif
+      endif
+      deallocate(f_pass)
+      if (present(status)) status = outcome
 
       ! dt_ref is the shortest composition time scale of the grid; report it
       ! so the log shows what the relaxation was measured against, together
@@ -1839,7 +2090,7 @@
 
       subroutine solve_mass_fraction(Xold, Xhe, rho_phys, dt_phys, rp, rep, &
                                      Frho, cadvf, Agrd, Bdrf, updrf,        &
-                                     X_base, jlo, advect)
+                                     X_base, jlo, advect, solved)
       ! One implicit (backward-Euler) step of
       !   rho (X^new - X^old)/dt + div(r^2 J)/r^2 + advect div(F_rho X) = 0
       ! for rows jlo..N.  With advect false the row is the diffusive half
@@ -1862,6 +2113,15 @@
       !
       ! Xold is the state at the start of the step and Xhe carries the initial
       ! iterate in and the solution out.
+      !
+      ! WHAT COMES BACK IN Xhe IS THE LAST ITERATE THE ACCEPTANCE RULE BELOW
+      ! ACCEPTED, and solved says whether that iterate solves the step.  A
+      ! trial the line search could not make better than the iterate it
+      ! started from is not a Newton step of this equation: it is a direction
+      ! the residual does not decrease along, so adopting it moves the
+      ! composition without reference to the row.  It is discarded, the entry
+      ! iterate stands, and solved is false.  A NaN or an infinity anywhere in
+      ! a trial fails the same comparison and is discarded by the same rule.
       real*8, dimension(1-Ng:N+Ng), intent(in)    :: Xold, rho_phys, dt_phys
       real*8, dimension(1-Ng:N+Ng), intent(in)    :: rp, rep, Frho, cadvf
       real*8, dimension(1-Ng:N+Ng), intent(inout) :: Xhe
@@ -1870,12 +2130,14 @@
       real*8,                       intent(in)    :: X_base
       integer,                      intent(in)    :: jlo
       logical,                      intent(in)    :: advect
+      logical,                      intent(out)   :: solved
 
       real*8, dimension(1-Ng:N+Ng) :: aa, bb, cc, dd, cpv, dpv, dX, Xtry
       real*8, dimension(0:N)       :: Jf, dJl, dJr
       real*8, dimension(1:N)       :: advj, advm
       real*8  :: Kj, mden, sL, sR, cadv, rnorm, rprev, rtry, damp, rstart
       integer :: j, it, ihalf, nit
+      logical :: descended
       logical, save :: warned_newton = .false.
       ! Convergence.  The residual is measured RELATIVE to the size of the
       ! terms that make it up, because those terms cancel: at the base the
@@ -1920,10 +2182,14 @@
                                 Frho, cadvf, Agrd, Bdrf, updrf, jlo,      &
                                 advect, dd, Jf, dJl, dJr, rnorm)
 
-      rstart = rnorm
-      nit    = 0
+      rstart   = rnorm
+      nit      = 0
+      solved   = .false.
       do it = 1, newton_maxit
-         if (rnorm .le. newton_tol) exit
+         if (rnorm .le. newton_tol) then
+            solved = .true.               ! converged on its own tolerance
+            exit
+         endif
          ! --- Jacobian of the residual, tridiagonal by construction
          do j = jlo, N
             Kj    = 1.0d0/(rp(j)**2*max(rep(j)-rep(j-1), 1.0d0))
@@ -1986,8 +2252,11 @@
          enddo
 
          ! --- accept the step, halving it while it does not reduce the
-         ! residual (the nonlinearity is quadratic, so this is rarely used)
-         damp = 1.0d0
+         ! residual (the nonlinearity is quadratic, so this is rarely used).
+         ! The acceptance rule is descent and nothing else: the shortest
+         ! trial is not accepted for being the shortest.
+         damp      = 1.0d0
+         descended = .false.
          do ihalf = 0, newton_halves
             Xtry = Xhe
             Xtry(jlo:N) = Xhe(jlo:N) + damp*dX(jlo:N)
@@ -1997,17 +2266,36 @@
                                       rep, Frho, cadvf, Agrd, Bdrf,       &
                                       updrf, jlo, advect, dd,             &
                                       Jf, dJl, dJr, rtry)
-            if (rtry .lt. rnorm .or. ihalf .eq. newton_halves) exit
+            if (rtry .lt. rnorm) then
+               descended = .true.
+               exit
+            endif
+            if (ihalf .eq. newton_halves) exit
             damp = 0.5d0*damp
          enddo
+         ! Every halving spent without descent.  The direction is not one the
+         ! residual of this step decreases along, so no trial along it is an
+         ! iterate of this equation: the trial is discarded and Xhe is left
+         ! where the last accepted one put it.
+         if (.not. descended) exit
          Xhe   = Xtry
          rprev = rnorm
          rnorm = rtry
          nit   = it
          if (it .ge. 3 .and. rnorm .gt. 0.5d0*rprev .and.                 &
              (rnorm .le. newton_floor .or.                                &
-              rnorm .le. newton_drop*rstart)) exit
+              rnorm .le. newton_drop*rstart)) then
+            solved = .true.        ! the arithmetic floor of the header
+            exit
+         endif
       enddo
+
+      ! Neither converged nor stalled at the floor: the iteration used up
+      ! every pass.  Such a step carries the equation only in so far as its
+      ! residual is a conditioning floor rather than an unsolved row, which
+      ! is the separation newton_unsolved makes.
+      if (.not. solved .and. nit .ge. newton_maxit)                       &
+         solved = (rnorm .le. newton_unsolved)
 
       he_fraction_newton_steps = nit
       he_fraction_newton_resid = rnorm

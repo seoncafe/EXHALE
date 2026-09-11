@@ -137,9 +137,11 @@ conduction are available (`time_step/viscous_conduction.f90`), and the base can 
 over from a photochemical lower atmosphere as scalars or as a full profile. Diagnostics are
 a non-LTE He(2³S) network, a non-LTE H(n=2) population (Christie et al. 2013), Lyα transfer
 through a Neufeld escape-probability closure or an imported field, and the transmission
-post-processor `EXHALE_transit.py`. Core size: 75 source files, 16,568 SLOC excluding blank
-and comment lines (`src/utils/codesize.py`, measured 2026-08-30), of which 6,404 are in
-modules that do not exist in upstream ATES.
+post-processor `EXHALE_transit.py`. Size of the production build: 95 Fortran source
+files, 50,762 SLOC excluding blank and comment lines (`src/utils/codesize.py`, measured
+2026-09-11; the 74 test drivers under `src/tests/` add 20,741), of which 30,003 are in
+modules that do not exist in upstream ATES; the appendix of `docs/Update_EXHALE.pdf`
+carries the full table.
 
 ## 4. Side-by-side methodology table
 

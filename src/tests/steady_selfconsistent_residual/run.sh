@@ -16,9 +16,15 @@
 #      equality at 1e-12 internally and refuses the solve if it fails; this
 #      reads the two printed numbers, so that the assertion cannot be
 #      satisfied by the assertion.)
-#   2. THE FLAG FOLLOWS THAT MEASUREMENT: info = 0 only when every
-#      hydrodynamic row of that certification is within its tolerance, and
-#      info = 2 with the refusing row and its number otherwise.
+#   2. THE FLAG FOLLOWS THAT MEASUREMENT: a hydrodynamic row above its own
+#      tolerance, or one the certification could not measure, forbids
+#      info = 0, so info = 0 states that every certified hydrodynamic row of
+#      the state handed back is within its tolerance. The converse is not
+#      asserted, and must not be: a solve whose hydrodynamic rows are all
+#      within tolerance can still hand back a nonzero flag, info = 1 when it
+#      ends on its pass budget with the joint gates unmet and info = 2 when
+#      the chemistry at return refuses the state, so a nonzero flag is not by
+#      itself a statement about these rows.
 #   3. THE HAND-BACK MEASUREMENT AGREES WITH THE ACCEPTED ITERATE'S OWN
 #      NUMBER, both read from the log. With the elimination inside the
 #      residual evaluation the iterate and the state it becomes are one
@@ -80,23 +86,32 @@ for L in ${_logs[@]+"${_logs[@]}"}; do
       n_fail=$((n_fail+1))
    fi
 
-   # 2. the flag follows that certification.
+   # 2. the flag follows that certification: a row above its tolerance
+   #    forbids info = 0. Which nonzero flag it is depends on where the
+   #    solve stopped (the pass budget, or the chemistry at return) and is
+   #    not this assertion's business.
    rows=$(echo "$blk" | grep 'hydrodynamic .* row ')
    nabove=$(echo "$rows" | grep -c 'ABOVE')
    nunavail=$(echo "$rows" | grep -c 'UNAVAILABLE')
-   if [ "$nabove" -eq 0 ] && [ "$nunavail" -eq 0 ]; then want=0; else want=2; fi
-   if [ "$info" = "$want" ]; then
-      if [ "$want" = "0" ]; then
-         echo "PASS flag_of_$nm measured=info=0 reference=every_row_within tol=0"
-      else
-         wrow=$(echo "$rows" | grep 'ABOVE' | head -n 1 \
-                | sed -n 's/.*\(hydrodynamic [a-z]* row\).*max=\( *[^ ]*\).*/\1 \2/p' | tr -s ' ')
-         echo "PASS flag_of_$nm measured=info=2 reference=a_row_above tol=0 (${wrow:-unavailable})"
+   if [ -z "$info" ]; then
+      echo "FAIL flag_of_$nm measured=no_flag reference=a_completion_flag tol=0"
+      n_fail=$((n_fail+1))
+   elif [ "$nabove" -eq 0 ] && [ "$nunavail" -eq 0 ]; then
+      echo "PASS flag_of_$nm measured=info=$info reference=no_hydrodynamic_row_above tol=0"
+      if [ "$info" != "0" ]; then
+         echo "     every certified hydrodynamic row is within its tolerance;"
+         echo "     this flag was not set by one of them"
       fi
    else
-      echo "FAIL flag_of_$nm measured=info=$info reference=info=$want tol=0"
-      echo "     rows above tolerance: $nabove, unavailable: $nunavail"
-      n_fail=$((n_fail+1))
+      wrow=$(echo "$rows" | grep 'ABOVE' | head -n 1 \
+             | sed -n 's/.*\(hydrodynamic [a-z]* row\).*max=\( *[^ ]*\).*/\1 \2/p' | tr -s ' ')
+      if [ "$info" != "0" ]; then
+         echo "PASS flag_of_$nm measured=info=$info reference=info/=0 tol=0 (${wrow:-unavailable})"
+      else
+         echo "FAIL flag_of_$nm measured=info=0 reference=info/=0 tol=0"
+         echo "     rows above tolerance: $nabove, unavailable: $nunavail (${wrow:-unavailable})"
+         n_fail=$((n_fail+1))
+      fi
    fi
 
    # 3. the accepted iterate's number and the state it became.

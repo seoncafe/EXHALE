@@ -168,8 +168,17 @@
                                gm_orthogonality_loss_cycle,               &
                                gm_reorthogonalization_loss_level,         &
                                the_point_where_the_step_leaves_the_ball,  &
+                               stationary_rows_of_the_returned_state,     &
+                               hydrodynamic_distance_from_certification_by_cell, &
+                               distance_from_certification,               &
                                name_of_unknown
-      use certification,   only: certification_row_measure
+      use certification,   only: certification_row_measure,               &
+                                 cert_report, cert_evaluated,             &
+                                 cert_unavailable, cert_not_applicable,   &
+                                 cert_tol_mass, cert_tol_momentum,        &
+                                 cert_tol_energy,                         &
+                                 cert_tol_element_at, cert_tol_carrier_at,&
+                                 cert_regime_wind_r
       use hydrodynamic_rows, only: generic_precision_rows_arm,            &
                  ARM_OFF, ARM_QUADRUPLE, ARM_GENERIC_DOUBLE,              &
                  hydrodynamic_rows_in_double_precision
@@ -565,6 +574,7 @@
       call residual_step_detector_rows(nfail)
       call extended_precision_rows(nfail)
       call well_balanced_operator_rows(nfail)
+      call generic_arm_face_departure_rows(nfail)
 
       ! ---- the restart of the trust-region state (N21) ----
       call restart_trigger_rows(nfail)
@@ -618,6 +628,13 @@
       call true_residual_cycle_rows(nfail)
       call front_row_attribution_rows(nfail)
 
+      ! ---- the test the iteration stops on (P3, D3) ----
+      call stop_test_of_the_iteration_rows(nfail)
+
+      ! ---- the distance the best-iterate ledger ranks on (P10) ----
+      call judged_distance_reads_each_row_against_its_own_tolerance(nfail)
+      call judged_distance_reads_the_mass_row_at_the_cells_tolerance(nfail)
+
       if (nfail .gt. 0) then
          write(*,'(A,I0,A)') 'krylov_and_dogleg: ', nfail,                &
               ' row(s) failed'
@@ -626,6 +643,387 @@
       write(*,'(A)') 'krylov_and_dogleg: all rows passed'
 
       contains
+
+      ! ------------------------------------------------------!
+
+      subroutine stop_test_of_the_iteration_rows(nf)
+      ! WHAT THE ITERATION MAY STOP FOR SUCCESS ON.
+      !
+      ! The stop test of the stationary solve is the acceptance test of the
+      ! state it would hand back: the acceptance gate AND every row the
+      ! certification judges the system the solve carries by, each against
+      ! its own tolerance. stationary_rows_of_the_returned_state is the
+      ! second half of that test and the only reading of those rows the
+      ! solver makes; the rows below state it on reports written here, so
+      ! that the decision is asserted and not the report that produced it.
+      !
+      ! WHY IT DECIDES A STOP AT ALL. The gate is one number against the
+      ! run's "Resid tol", 1e-8 on these fixtures, while the mass row is
+      ! certified against 3e-12: a state can meet the gate with a mass row
+      ! two orders above its own tolerance, which is what the molecular
+      ! partitioned run MEASURED (mass 5.954e-12, gate met, refused at
+      ! return; docs/solver_partition_experiment_20260911.md section 7.3).
+      !
+      ! No species row is registered here (set_transported_species_rows
+      ! (.false.) at the top of this program), so the rows the test reads
+      ! are the three hydrodynamic ones and a species balance of the
+      ! inventory is an equation the solve was never given.
+      integer, intent(inout) :: nf
+      type(cert_report) :: kr_rep
+      logical :: kr_ok, kr_none
+      integer :: kr_worst, kr_read
+
+      ! Three hydrodynamic rows, each within its own tolerance: the state
+      ! is stationary in every equation this solve carries.
+      call three_hydrodynamic_rows(kr_rep, 2.6d-13, 1.5d-9, 4.2d-9)
+      call stationary_rows_of_the_returned_state(kr_rep, kr_ok, kr_worst, &
+                                                 kr_none, kr_read)
+      call log_row('rows_within_their_tolerances_stop_the_iteration',     &
+                   kr_ok, .true., nf)
+      call int_row('the_stop_test_reads_the_three_hydrodynamic_rows',     &
+                   kr_read, 3, nf)
+      call log_row('a_stopping_state_names_no_refusing_row',              &
+                   kr_worst .eq. 0, .true., nf)
+
+      ! The same state with the mass row at the measure the partitioned
+      ! run returned: 5.954e-12 is below the 1e-8 the acceptance gate
+      ! reads and above the 3e-12 the mass row is certified against, so
+      ! the iteration may not stop here.
+      call three_hydrodynamic_rows(kr_rep, 5.954d-12, 1.019d-9, 2.541d-9)
+      call stationary_rows_of_the_returned_state(kr_rep, kr_ok, kr_worst, &
+                                                 kr_none, kr_read)
+      call log_row('a_mass_row_above_its_own_tolerance_does_not_stop',    &
+                   kr_ok, .false., nf)
+      call int_row('the_refusing_row_named_is_the_mass_row',              &
+                   kr_worst, 1, nf)
+      call log_row('a_refused_row_is_not_an_unmeasured_one',              &
+                   kr_none, .false., nf)
+
+      ! A row that could not be measured on the state refuses on its own
+      ! and carries no number: an equation the run solves and cannot read
+      ! is never a satisfied one.
+      call three_hydrodynamic_rows(kr_rep, 2.6d-13, 1.5d-9, 4.2d-9)
+      kr_rep%e(3)%status = cert_unavailable
+      call stationary_rows_of_the_returned_state(kr_rep, kr_ok, kr_worst, &
+                                                 kr_none, kr_read)
+      call log_row('an_unmeasured_row_does_not_stop_the_iteration',       &
+                   kr_ok, .false., nf)
+      call log_row('an_unmeasured_row_is_reported_as_unmeasured',         &
+                   kr_none, .true., nf)
+
+      ! A non-finite row refuses whatever its number says.
+      call three_hydrodynamic_rows(kr_rep, 2.6d-13, 1.5d-9, 4.2d-9)
+      kr_rep%e(2)%finite = .false.
+      call stationary_rows_of_the_returned_state(kr_rep, kr_ok, kr_worst, &
+                                                 kr_none, kr_read)
+      call log_row('a_nonfinite_row_does_not_stop_the_iteration',         &
+                   kr_ok, .false., nf)
+
+      ! AND WHAT THE TEST DOES NOT READ: a balance the registry does not
+      ! carry is an equation this solve was never given, so the
+      ! certification measures and reports it and it decides no stop.
+      call three_hydrodynamic_rows(kr_rep, 2.6d-13, 1.5d-9, 4.2d-9)
+      kr_rep%n                  = 4
+      kr_rep%e(4)%name          = 'carrier balance H2'
+      kr_rep%e(4)%status        = cert_evaluated
+      kr_rep%e(4)%row_max       = 7.0d-2
+      kr_rep%e(4)%tol           = 1.0d-5
+      kr_rep%e(4)%finite        = .true.
+      kr_rep%e(4)%within_tol    = .false.
+      kr_rep%e(4)%jworst        = 292
+      call stationary_rows_of_the_returned_state(kr_rep, kr_ok, kr_worst, &
+                                                 kr_none, kr_read)
+      call log_row('a_balance_the_solve_does_not_carry_does_not_refuse',  &
+                   kr_ok, .true., nf)
+      call int_row('and_it_is_not_one_of_the_rows_the_test_reads',        &
+                   kr_read, 3, nf)
+      end subroutine stop_test_of_the_iteration_rows
+
+      ! ------------------------------------------------------!
+
+      subroutine judged_distance_reads_each_row_against_its_own_tolerance(nf)
+      ! THE LEDGER READS THE HYDRODYNAMIC ROWS AGAINST THEIR OWN
+      ! CERTIFICATION TOLERANCES (item P10).
+      !
+      ! The best iterate of a stationary solve is the one closest to being
+      ! certified, and a state is certified row by row: the mass row against
+      ! 3e-12, the momentum row against 1e-8, the energy row against 1e-6
+      ! (certification.f90), and every species row the registry carries
+      ! against 1e-5 in the wind. distance_from_certification is what makes
+      ! those one comparable quantity, and d < 1 is exactly the condition
+      ! stationary_rows_of_the_returned_state states.
+      !
+      ! WHAT A SINGLE TOLERANCE IN THE HYDRODYNAMIC SLOT LOSES. |R| is the
+      ! LARGEST of the three row measures with no tolerance in it, so
+      ! dividing it by the run's "Resid tol" ranks iterates by whichever row
+      ! is largest on residual_row_scale and not by the row that refuses.
+      ! MEASURED on the HD 209458 b element reload of the partitioned route:
+      ! every hydrodynamic solve ends with |R| at 1e-8, held by the energy
+      ! row, while the mass row stands at about 1e-9 against its own 3e-12,
+      ! so |R|/tol was about 1 for every iterate the ledger compared and the
+      ! mass row, 350 times outside its tolerance, ranked nothing
+      ! (docs/PLAN_20260911_partitioned_solver.md, what remains, item 3).
+      !
+      ! EVERY COLUMN BELOW IS ONE CELL carrying the three row measures rc of
+      ! that cell, read by the one entry point the ledger and the acceptance
+      ! both read, with a rounding floor below 3e-13 so that the continuity
+      ! tolerance there is the fixed 3e-12
+      ! (distance_of_one_cell_under_the_fixed_tolerance). Which cell's
+      ! tolerance binds when the floors of a column differ is the subject of
+      ! judged_distance_reads_the_mass_row_at_the_cells_tolerance. The
+      ! ratios are exact arithmetic and the references are written
+      ! independently of the expression under test, so the tolerances here
+      ! are at the rounding of one division.
+      integer, intent(inout) :: nf
+      real*8 :: rc(3), rows(3), tel, tca, d_lo, d_hi
+      tel = cert_tol_element_at(cert_regime_wind_r)
+      tca = cert_tol_carrier_at(cert_regime_wind_r)
+      ! The three tolerances this reads, stated so that a row below can be
+      ! read without opening another file.
+      call rel_row('the_mass_tolerance_the_distance_divides_by',          &
+                   cert_tol_mass, 3.0d-12, 0.0d0, nf)
+      call rel_row('the_momentum_tolerance_the_distance_divides_by',      &
+                   cert_tol_momentum, 1.0d-8, 0.0d0, nf)
+      call rel_row('the_energy_tolerance_the_distance_divides_by',        &
+                   cert_tol_energy, 1.0d-6, 0.0d0, nf)
+
+      ! ---- THE MEASURED STATE OF THE ELEMENT RELOAD ----
+      ! mass 1e-9 against 3e-12, momentum 1e-13 against 1e-8, energy 1e-8
+      ! against 1e-6: the mass row is 333 times outside its tolerance, the
+      ! other two are far inside theirs, and |R| is 1e-8.
+      rc = (/ 1.0d-9, 1.0d-13, 1.0d-8 /)
+      call rel_row('the_mass_row_holds_the_hydrodynamic_distance',        &
+                   distance_of_one_cell_under_the_fixed_tolerance(rc),    &
+                   3.333333333333333d+02, 1.0d-14, nf)
+      ! And it is NOT |R| over the run's residual target, which is where
+      ! the ledger used to read this slot: |R| is the largest of the three
+      ! measures, 1e-8, and on these fixtures "Resid tol" is 1e-8 too, so
+      ! that reading returns 1 and calls the state as good as certified.
+      call rel_row('the_superseded_reading_was_one',                      &
+                   maxval(rc)/1.0d-8, 1.0d0, 0.0d0, nf)
+      call log_row('and_the_state_is_not_within_a_factor_two_of_'//       &
+                   'certification',                                       &
+                   distance_of_one_cell_under_the_fixed_tolerance(rc)     &
+                   .gt. 3.0d2, .true., nf)
+
+      ! ---- d < 1 IS THE CERTIFICATION CONDITION ITSELF ----
+      ! Every row inside its own tolerance.
+      rc = (/ 1.0d-12, 1.0d-9, 1.0d-7 /)
+      call log_row('every_hydrodynamic_row_inside_its_tolerance_is_'//    &
+                   'below_one',                                           &
+                   distance_of_one_cell_under_the_fixed_tolerance(rc)     &
+                   .lt. 1.0d0, .true., nf)
+      ! One row outside its own tolerance, the other two inside, and the
+      ! plain maximum of the three unchanged: the mass row alone refuses.
+      rc = (/ 1.0d-11, 1.0d-9, 1.0d-7 /)
+      call log_row('one_row_outside_its_tolerance_is_above_one',          &
+                   distance_of_one_cell_under_the_fixed_tolerance(rc)     &
+                   .lt. 1.0d0, .false., nf)
+      call rel_row('and_that_row_is_the_one_the_distance_reports',        &
+                   distance_of_one_cell_under_the_fixed_tolerance(rc),    &
+                   3.333333333333333d+00, 1.0d-14, nf)
+
+      ! ---- WHICH OF TWO ITERATES OF EQUAL |R| THE LEDGER PREFERS ----
+      !
+      ! The ledger of solve_steady_jfnk keeps the iterate of smaller
+      ! distance (keep_this_iterate) and hands that one back; the choice
+      ! itself needs a whole solve and is not stated here, so what is
+      ! asserted is the ORDERING the ledger reads. Two states with the same
+      ! energy row, hence the same |R|, whose mass rows differ by a decade:
+      ! a ranking on |R| cannot separate them at all, and the distance
+      ! prefers the smaller mass row by the same decade.
+      rc   = (/ 1.0d-9,  1.0d-13, 1.0d-8 /)
+      d_hi = distance_of_one_cell_under_the_fixed_tolerance(rc)
+      rc   = (/ 1.0d-10, 1.0d-13, 1.0d-8 /)
+      d_lo = distance_of_one_cell_under_the_fixed_tolerance(rc)
+      call rel_row('two_iterates_of_equal_plain_residual',                &
+                   maxval((/ 1.0d-9, 1.0d-13, 1.0d-8 /))                  &
+                   - maxval((/ 1.0d-10, 1.0d-13, 1.0d-8 /)),              &
+                   0.0d0, 0.0d0, nf)
+      call log_row('the_smaller_mass_row_is_the_smaller_distance',        &
+                   d_lo .lt. d_hi, .true., nf)
+      call rel_row('and_by_the_decade_that_separates_the_two_mass_rows',  &
+                   d_hi/d_lo, 1.0d1, 1.0d-14, nf)
+
+      ! ---- THE SPECIES SLOTS ARE UNCHANGED, AND THE HYDRODYNAMIC ONE
+      !      ARRIVES ALREADY DIVIDED ----
+      call rel_row('the_element_tolerance_the_distance_divides_by',       &
+                   tel, 1.0d-5, 0.0d0, nf)
+      call rel_row('the_carrier_tolerance_the_distance_divides_by',       &
+                   tca, 1.0d-5, 0.0d0, nf)
+      rows = (/ 0.0d0, 4.0d0*tel, 0.0d0 /)
+      call rel_row('judged_distance_reads_the_element_row',               &
+                   distance_from_certification(rows), 4.0d0, 0.0d0, nf)
+      rows = (/ 0.0d0, 0.0d0, 8.0d0*tca /)
+      call rel_row('judged_distance_reads_the_carrier_row',               &
+                   distance_from_certification(rows), 8.0d0, 0.0d0, nf)
+      ! The hydrodynamic slot is the distance formed above and is taken as
+      ! it stands, with no second division.
+      rc   = (/ 1.0d-9, 1.0d-13, 1.0d-8 /)
+      rows = (/ distance_of_one_cell_under_the_fixed_tolerance(rc),       &
+                0.0d0, 0.0d0 /)
+      call rel_row('judged_distance_takes_the_hydrodynamic_slot_as_'//    &
+                   'a_distance',                                          &
+                   distance_from_certification(rows),                     &
+                   3.333333333333333d+02, 1.0d-14, nf)
+      ! And together it is the WORST of the three, not a sum and not an
+      ! average: a state is certified when every row is within its own
+      ! tolerance.
+      rows = (/ 1.0d0/3.0d0, 4.0d0*tel, 2.0d0*tca /)
+      call rel_row('judged_distance_is_the_worst_row',                    &
+                   distance_from_certification(rows), 4.0d0, 0.0d0, nf)
+      rows = (/ 1.0d0/3.0d0, 0.5d0*tel, 0.5d0*tca /)
+      call log_row('judged_distance_below_one_is_certified',              &
+                   distance_from_certification(rows) .lt. 1.0d0,          &
+                   .true., nf)
+      end subroutine judged_distance_reads_each_row_against_its_own_tolerance
+
+      ! ------------------------------------------------------!
+
+      real*8 function distance_of_one_cell_under_the_fixed_tolerance(rc)  &
+                      result(d)
+      ! THE HYDRODYNAMIC DISTANCE OF A ONE-CELL COLUMN whose continuity
+      ! tolerance is the fixed cert_tol_mass: the three row measures rc of
+      ! one cell, handed to the one entry point the ledger and the
+      ! acceptance read, with a rounding floor of 1e-30. Ten times that
+      ! floor is far below 3e-12, so the cell's tolerance is the fixed value
+      ! (mass_row_cell_verdict) and the reading is
+      ! max(rc(1)/3e-12, rc(2)/1e-8, rc(3)/1e-6).
+      real*8, dimension(3), intent(in) :: rc
+      real*8 :: q(3,1), fl(1)
+      q(1:3,1) = rc
+      fl(1)    = 1.0d-30
+      d = hydrodynamic_distance_from_certification_by_cell(1, q, fl)
+      end function distance_of_one_cell_under_the_fixed_tolerance
+
+      ! ------------------------------------------------------!
+
+      subroutine judged_distance_reads_the_mass_row_at_the_cells_tolerance(nf)
+      ! THE LEDGER READS THE CONTINUITY ROW AGAINST THE TOLERANCE OF THE
+      ! CELL THAT ROW SITS IN (item P17).
+      !
+      ! That tolerance is a function of the cell: 3e-12 where the cell's
+      ! arithmetic resolves the row, and ten times the cell's own rounding
+      ! floor where it does not, the rounding of a flux difference in a
+      ! quasi-hydrostatic layer being about eps/Mach of the flux and not eps
+      ! of it (mass_row_cell_verdict and cert_mass_round_margin,
+      ! certification.f90; the floors are MEASURED in
+      ! docs/certification_tolerance_anchoring_20260910.md, anchor 6). The
+      ! verdict is therefore taken CELL BY CELL, and the cell that binds is
+      ! not in general the cell of the largest measure.
+      !
+      ! THE COLUMN BELOW IS THE ONE THE HD 209458 b ELEMENT RELOAD PRESENTS.
+      ! A BASE cell carrying a mass row of 1e-9 with a rounding floor of
+      ! 1e-9, hence a tolerance of 1e-8 which it stands a decade inside; and
+      ! a WIND cell carrying 1e-11 with a floor decades below 3e-13, hence
+      ! the fixed tolerance, which it stands 3.33 times outside. The
+      ! distance the acceptance applies is the wind cell's 3.33. A maximum
+      ! taken over cells FIRST and divided afterwards reports the base
+      ! cell's 333, which ranks iterates by a row the acceptance admits:
+      ! the maximum of a ratio is not the ratio of the maxima once the
+      ! divisor moves with the cell.
+      integer, intent(inout) :: nf
+      integer, parameter :: nc = 3
+      real*8 :: q(3,nc), fl(nc), flfix(nc), d, dfixed
+
+      ! ---- THE TWO CELLS, AND WHICH OF THEM THE DISTANCE REPORTS ----
+      q = 0.0d0;  fl = 1.0d-30
+      q(1,1) = 1.0d-9;   fl(1) = 1.0d-9     ! base: tolerance 1e-8
+      q(1,2) = 1.0d-11;  fl(2) = 1.0d-14    ! wind: tolerance 3e-12
+      d = hydrodynamic_distance_from_certification_by_cell(nc, q, fl)
+      call rel_row('the_wind_cell_holds_the_mass_rows_distance',          &
+                   d, 3.333333333333333d+00, 1.0d-14, nf)
+      call log_row('and_the_hydrodynamic_rows_are_not_certified',         &
+                   d .lt. 1.0d0, .false., nf)
+      ! THE SAME COLUMN WITH THE CELLS' FLOORS DISCARDED, so that every
+      ! cell is read against cert_tol_mass, the FLOOR of the continuity
+      ! tolerance and the tolerance of no particular cell: the base cell's
+      ! measure over 3e-12, a hundred times the condition the acceptance
+      ! applies here. Read that way a column stands at or above its
+      ! distance, because a cell's tolerance is never below cert_tol_mass.
+      flfix  = 1.0d-30
+      dfixed = hydrodynamic_distance_from_certification_by_cell           &
+                  (nc, q, flfix)
+      call rel_row('the_fixed_tolerance_alone_reports_the_base_cell',     &
+                   dfixed, 3.333333333333333d+02, 1.0d-14, nf)
+      call rel_row('a_hundredfold_above_the_distance_of_that_column',     &
+                   dfixed/d, 1.0d2, 1.0d-13, nf)
+      call log_row('and_the_fixed_reading_is_never_below_the_distance',   &
+                   dfixed .ge. d, .true., nf)
+
+      ! ---- THE BASE CELL ON ITS OWN ----
+      q = 0.0d0;  fl = 1.0d-30
+      q(1,1) = 1.0d-9;  fl(1) = 1.0d-9
+      call rel_row('the_base_cell_is_a_decade_inside_its_own_tolerance',  &
+                   hydrodynamic_distance_from_certification_by_cell       &
+                      (nc, q, fl), 1.0d-1, 1.0d-14, nf)
+      ! And the anchor is ten times the floor and no more: a row at exactly
+      ! that value stands AT its tolerance and is refused.
+      q(1,1) = 1.0d-8
+      d = hydrodynamic_distance_from_certification_by_cell(nc, q, fl)
+      call rel_row('a_row_at_ten_times_the_floor_stands_at_its_tolerance',&
+                   d, 1.0d0, 1.0d-14, nf)
+      call log_row('and_a_row_at_its_tolerance_is_refused',               &
+                   d .lt. 1.0d0, .false., nf)
+
+      ! ---- EVERY ROW INSIDE ITS OWN TOLERANCE IS BELOW ONE ----
+      ! The base mass row at a tenth of its anchored tolerance, a wind mass
+      ! row at a third of the fixed one, the momentum row at a tenth of
+      ! 1e-8 and the energy row at a tenth of 1e-6.
+      q = 0.0d0;  fl = 1.0d-30
+      q(1,1) = 1.0d-9;   fl(1) = 1.0d-9
+      q(1,2) = 1.0d-12
+      q(2,3) = 1.0d-9
+      q(3,3) = 1.0d-7
+      d = hydrodynamic_distance_from_certification_by_cell(nc, q, fl)
+      call rel_row('every_row_inside_its_own_tolerance',                  &
+                   d, 3.333333333333333d-01, 1.0d-14, nf)
+      call log_row('is_a_certified_hydrodynamic_state',                   &
+                   d .lt. 1.0d0, .true., nf)
+
+      ! ---- THE MOMENTUM AND ENERGY SLOTS ARE UNCHANGED ----
+      ! One tolerance each for the whole column, and the distance is the
+      ! worst of the three rows over any cell.
+      q = 0.0d0;  fl = 1.0d-30
+      q(2,2) = 4.0d-8
+      call rel_row('the_momentum_row_over_its_own_tolerance',             &
+                   hydrodynamic_distance_from_certification_by_cell       &
+                      (nc, q, fl), 4.0d0, 0.0d0, nf)
+      q = 0.0d0
+      q(3,2) = 8.0d-6
+      call rel_row('the_energy_row_over_its_own_tolerance',               &
+                   hydrodynamic_distance_from_certification_by_cell       &
+                      (nc, q, fl), 8.0d0, 0.0d0, nf)
+      q(1,1) = 1.0d-9;  fl(1) = 1.0d-9
+      q(1,2) = 1.0d-11; fl(2) = 1.0d-14
+      q(2,2) = 4.0d-8
+      call rel_row('and_the_distance_is_the_worst_of_the_three_rows',     &
+                   hydrodynamic_distance_from_certification_by_cell       &
+                      (nc, q, fl), 8.0d0, 0.0d0, nf)
+      end subroutine judged_distance_reads_the_mass_row_at_the_cells_tolerance
+
+      ! ------------------------------------------------------!
+
+      subroutine three_hydrodynamic_rows(rep, mass, mom, ener)
+      ! A certification report of the three hydrodynamic rows alone, with
+      ! the measures given and the tolerances the certification module
+      ! defines for them. Every row is evaluated and finite; within_tol is
+      ! the measure against that row's own tolerance, which is the verdict
+      ! the evaluator itself takes.
+      type(cert_report), intent(out) :: rep
+      real*8,            intent(in)  :: mass, mom, ener
+      rep%n = 3
+      rep%e(1)%name = 'hydrodynamic mass row'
+      rep%e(2)%name = 'hydrodynamic momentum row'
+      rep%e(3)%name = 'hydrodynamic energy row'
+      rep%e(1)%row_max = mass;  rep%e(1)%tol = cert_tol_mass
+      rep%e(2)%row_max = mom;   rep%e(2)%tol = cert_tol_momentum
+      rep%e(3)%row_max = ener;  rep%e(3)%tol = cert_tol_energy
+      rep%e(1)%jworst = 14;  rep%e(2)%jworst = 500;  rep%e(3)%jworst = 16
+      rep%e(1:3)%status     = cert_evaluated
+      rep%e(1:3)%finite     = .true.
+      rep%e(1:3)%within_tol = (rep%e(1:3)%row_max .lt. rep%e(1:3)%tol)
+      end subroutine three_hydrodynamic_rows
 
       ! ------------------------------------------------------!
 
@@ -3030,6 +3428,259 @@
 
       end function arm_departure_of_the_rows
 
+
+      ! ------------------------------------------------------!
+
+      subroutine generic_arm_face_departure_rows(nf)
+      ! WHAT THE KIND-GENERIC ROWS HAND BACK BESIDE THE ROW (item P15).
+      !
+      ! Under the well-balanced key the momentum row's pressure-gradient
+      ! term is the gradient of the FACE DEPARTURE q, (A+ q_up - A- q_dn)/dV
+      ! under PLM and (q_up - q_dn)/dr under WENO3
+      ! (momentum_row_terms_of_cell, RK_rhs.f90), and the departures are
+      ! read from the module arrays face_q_up / face_q_dn of
+      ! RK_integration.  The kind-generic arm assembles the row itself, so
+      ! unless it stores its own departures in those arrays the term, the
+      ! momentum row's reference scale built on it and the certification
+      ! measure read against that scale describe the last state RK_rhs was
+      ! evaluated on, or the zeros of the first allocation, and not the
+      ! state the arm was called on.
+      !
+      ! Both groups below are evaluated on a state the arm assembles AFTER
+      ! a right-hand side was evaluated on a DIFFERENT state, which is the
+      ! configuration in which the two can be told apart:
+      !
+      !   * momentum_pressure_gradient and residual_row_scale(2, j, u) of
+      !     the arm are those the production routines give for the SAME
+      !     state.  Bitwise for the generic-double instantiation, which is
+      !     the production operator bit for bit (tolerance 0, as in N37's
+      !     generic_double_is_the_operator_bitwise_with_the_arm), and to
+      !     1e-13 for the quadruple one, which rounds to double once on the
+      !     way out (the tolerance of N37's
+      !     well_balanced_uniform_flow_is_the_base_scheme rows).
+      !   * the stored departures are the ARM'S OWN.  A first evaluation
+      !     with no prior right-hand side, where the arrays hold zeros,
+      !     cannot be arranged inside one driver process, so what is
+      !     asserted instead is the identity that implies it: the momentum
+      !     row the arm returned is rebuilt here from the stored face flux
+      !     and the stored departures alone, and must be that row.  With
+      !     departures belonging to another state the rebuild misses it.
+      use RK_integration,      only: momentum_pressure_gradient,         &
+                                     face_flux, face_q_up, face_q_dn
+      use steady_residual_mod, only: assemble_residual,                  &
+                                     residual_row_scale
+      use ionization_equilibrium, only:                                  &
+                                  set_ioniz_eq_sweep_state_kind,         &
+                                  ieq_state_marching,                    &
+                                  ieq_state_steady_iterate
+      integer, intent(inout) :: nf
+      integer, parameter :: xn = 12, xg = 2
+      real*8, dimension(3,1-xg:xn+xg) :: uA, uB, Rp, Rq
+      real*8, dimension(1-xg:xn+xg)   :: np1, zz
+      real*8, dimension(1-xg:xn+xg)   :: pg_ref, sc_ref
+      real*8  :: x_rho, x_vel, x_pre, x_b0
+      real*8  :: d_pg, d_sc, d_row, ref_pg, ref_sc, ref_row, row_q
+      real*8  :: x_dr, x_rp, x_rm, x_dAp, x_dAm, x_dV
+      integer :: xj, xs, xa, x_status
+      character(len=8)  :: sch
+      character(len=10) :: arm_name
+      integer :: sv_N, sv_wmode
+      logical :: sv_plm, sv_weno, sv_lam_on, sv_wb, sv_visc, sv_cond
+      real*8  :: sv_mu0
+      character(len=:), allocatable :: sv_rec, sv_flux
+      real*8, dimension(3) :: sv_bfW, sv_bflW
+      real*8, dimension(:), allocatable :: sv_r, sv_redg, sv_dr,          &
+                                           sv_gpi, sv_gpc
+
+      sv_N = N;  sv_wmode = weno_mode;  sv_wb = well_balanced
+      sv_plm = use_plm;  sv_weno = use_weno3;  sv_lam_on = recon_lambda_on
+      sv_rec = rec_method;  sv_flux = flux
+      sv_bfW = base_face_W;  sv_bflW = base_face_lower_W
+      sv_visc = visc_on;  sv_cond = cond_on;  sv_mu0 = visc_mu0
+      if (allocated(r)) then
+         allocate(sv_r(lbound(r,1):ubound(r,1)));  sv_r = r
+         allocate(sv_redg(lbound(r_edg,1):ubound(r_edg,1)));  sv_redg = r_edg
+         allocate(sv_dr(lbound(dr_j,1):ubound(dr_j,1)));      sv_dr  = dr_j
+         allocate(sv_gpi(lbound(Gphi_i,1):ubound(Gphi_i,1))); sv_gpi = Gphi_i
+         allocate(sv_gpc(lbound(Gphi_c,1):ubound(Gphi_c,1))); sv_gpc = Gphi_c
+         deallocate(r, r_edg, dr_j, Gphi_i, Gphi_c)
+      endif
+
+      ! The momentum row has to be the flux difference alone, so that the
+      ! rebuild below states the row and not the row plus a split source:
+      ! no operator-split viscosity, no conduction.
+      visc_on = .false.;  cond_on = .false.;  visc_mu0 = 0.0d0
+      N = xn;  weno_mode = 0;  recon_lambda_on = .false.;  flux = 'ROE'
+      well_balanced = .true.
+      allocate(r(1-xg:xn+xg), r_edg(1-xg:xn+xg), dr_j(1-xg:xn+xg))
+      allocate(Gphi_i(1-xg:xn+xg), Gphi_c(1-xg:xn+xg))
+      do xj = 1-xg, xn+xg
+         r_edg(xj) = 1.0d0 + 0.05d0*dble(xj)*(1.0d0 + 0.02d0*dble(xj))
+      enddo
+      do xj = 2-xg, xn+xg
+         r(xj)    = 0.5d0*(r_edg(xj) + r_edg(xj-1))
+         dr_j(xj) = r_edg(xj) - r_edg(xj-1)
+      enddo
+      r(1-xg)    = r_edg(1-xg) - 0.5d0*dr_j(2-xg)
+      dr_j(1-xg) = dr_j(2-xg)
+
+      ! A gravitating column, so the departures are not all zero and the
+      ! well-balanced substitution has something to cancel.
+      x_b0 = 3.0d0
+      do xj = 1-xg, xn+xg
+         Gphi_i(xj) = -x_b0/r_edg(xj)
+         Gphi_c(xj) = -x_b0/r(xj)
+      enddo
+
+      ! TWO STATES THAT SHARE NOTHING BUT THE GRID.  uB is the state the
+      ! arm is asked about; uA, with a different density slope, the
+      ! opposite sign of velocity and a different pressure slope, is the
+      ! state the previous right-hand side was evaluated on, so that its
+      ! face departures are nowhere near uB's.
+      do xj = 1-xg, xn+xg
+         x_rho = 1.0d0/r(xj)**3
+         x_vel = 0.3d0*r(xj)
+         x_pre = 0.8d0/r(xj)**4
+         uB(1,xj) = x_rho
+         uB(2,xj) = x_rho*x_vel
+         uB(3,xj) = 0.5d0*x_rho*x_vel*x_vel + x_pre/(gamma_ad - 1.0d0)
+         x_rho = 2.5d0/r(xj)**2
+         x_vel = -0.4d0/r(xj)
+         x_pre = 1.7d0/r(xj)**3
+         uA(1,xj) = x_rho
+         uA(2,xj) = x_rho*x_vel
+         uA(3,xj) = 0.5d0*x_rho*x_vel*x_vel + x_pre/(gamma_ad - 1.0d0)
+      enddo
+      np1 = 1.0d0
+      zz  = 0.0d0
+
+      do xs = 1, 2
+         if (xs .eq. 1) then
+            rec_method = 'PLM';   use_plm = .true.;  use_weno3 = .false.
+            sch = '[PLM]'
+         else
+            rec_method = 'WENO3'; use_plm = .false.; use_weno3 = .true.
+            sch = '[WENO3]'
+         endif
+         base_face_W(1) = uB(1,1)
+         base_face_W(2) = uB(2,1)/uB(1,1)
+         base_face_W(3) = (gamma_ad - 1.0d0)                              &
+                          *(uB(3,1) - 0.5d0*uB(2,1)**2/uB(1,1))
+         base_face_lower_W = base_face_W
+
+         ! ---- the production routines on uB: the reference ----
+         x_status = c_unsetenv('EXHALE_RESID_QUAD'//c_null_char)
+         call set_ioniz_eq_sweep_state_kind(ieq_state_marching)
+         call assemble_residual(uB, np1, zz, zz, Rp)
+         ref_pg = 0.0d0;  ref_sc = 0.0d0
+         do xj = 1, xn
+            pg_ref(xj) = momentum_pressure_gradient(xj)
+            sc_ref(xj) = residual_row_scale(2, xj, uB)
+            ref_pg = max(ref_pg, abs(pg_ref(xj)))
+            ref_sc = max(ref_sc, abs(sc_ref(xj)))
+         enddo
+
+         do xa = 1, 2
+            ! ---- a right-hand side on the OTHER state ----
+            x_status = c_unsetenv('EXHALE_RESID_QUAD'//c_null_char)
+            call set_ioniz_eq_sweep_state_kind(ieq_state_marching)
+            call assemble_residual(uA, np1, zz, zz, Rp)
+
+            ! ---- the arm on uB ----
+            if (xa .eq. 1) then
+               x_status = c_setenv('EXHALE_RESID_QUAD'//c_null_char,      &
+                                   '1'//c_null_char, 1)
+               arm_name = '[quad]'
+            else
+               x_status = c_setenv('EXHALE_RESID_QUAD'//c_null_char,      &
+                                   '2'//c_null_char, 1)
+               arm_name = '[double]'
+            endif
+            call set_ioniz_eq_sweep_state_kind(ieq_state_steady_iterate)
+            call assemble_residual(uB, np1, zz, zz, Rq)
+            x_status = c_unsetenv('EXHALE_RESID_QUAD'//c_null_char)
+            call set_ioniz_eq_sweep_state_kind(ieq_state_marching)
+
+            d_pg = 0.0d0;  d_sc = 0.0d0
+            do xj = 1, xn
+               d_pg = max(d_pg,                                          &
+                          abs(momentum_pressure_gradient(xj) - pg_ref(xj)))
+               d_sc = max(d_sc,                                          &
+                          abs(residual_row_scale(2, xj, uB) - sc_ref(xj)))
+            enddo
+            if (ref_pg .gt. 0.0d0) d_pg = d_pg/ref_pg
+            if (ref_sc .gt. 0.0d0) d_sc = d_sc/ref_sc
+
+            ! ---- the row rebuilt from the stored face data ----
+            ! Under the key the source is zero and no transport is active,
+            ! so the row Rq(2,j) IS the flux difference dF(2,j), which the
+            ! assembly builds from the face flux and the departures alone.
+            d_row = 0.0d0;  ref_row = 0.0d0
+            do xj = 1, xn
+               x_dr  = dr_j(xj)
+               x_rp  = r_edg(xj)
+               x_rm  = r_edg(xj-1)
+               x_dAp = x_rp*x_rp
+               x_dAm = x_rm*x_rm
+               x_dV  = (x_dAp*x_rp - x_dAm*x_rm)/3.0d0
+               if (use_plm) then
+                  row_q = (x_dAp*(face_flux(2,xj)   + face_q_up(xj))      &
+                         - x_dAm*(face_flux(2,xj-1)                       &
+                                + face_q_dn(xj-1)))/x_dV
+               else
+                  row_q = (x_dAp*face_flux(2,xj)                          &
+                         - x_dAm*face_flux(2,xj-1))/x_dV                  &
+                        + (face_q_up(xj) - face_q_dn(xj-1))/x_dr
+               endif
+               d_row   = max(d_row, abs(row_q - Rq(2,xj)))
+               ref_row = max(ref_row, abs(Rq(2,xj)))
+            enddo
+            if (ref_row .gt. 0.0d0) d_row = d_row/ref_row
+
+            if (xa .eq. 1) then
+               call rel_row('arm_momentum_pressure_gradient_is_the_'//    &
+                    'production_term'//trim(arm_name)//trim(sch),         &
+                    d_pg, 0.0d0, 1.0d-13, nf)
+               call rel_row('arm_momentum_row_scale_is_the_production_'// &
+                    'scale'//trim(arm_name)//trim(sch),                   &
+                    d_sc, 0.0d0, 1.0d-13, nf)
+            else
+               call rel_row('arm_momentum_pressure_gradient_is_the_'//    &
+                    'production_term'//trim(arm_name)//trim(sch),         &
+                    d_pg, 0.0d0, 0.0d0, nf)
+               call rel_row('arm_momentum_row_scale_is_the_production_'// &
+                    'scale'//trim(arm_name)//trim(sch),                   &
+                    d_sc, 0.0d0, 0.0d0, nf)
+            endif
+            call rel_row('arm_stored_departures_rebuild_its_momentum_'//  &
+                 'row'//trim(arm_name)//trim(sch),                        &
+                 d_row, 0.0d0, 1.0d-13, nf)
+         enddo
+      enddo
+
+      ! ---- put the globals back ----
+      x_status = c_unsetenv('EXHALE_RESID_QUAD'//c_null_char)
+      call set_ioniz_eq_sweep_state_kind(ieq_state_marching)
+      well_balanced = sv_wb
+      visc_on = sv_visc;  cond_on = sv_cond;  visc_mu0 = sv_mu0
+      deallocate(r, r_edg, dr_j, Gphi_i, Gphi_c)
+      if (allocated(sv_r)) then
+         allocate(r(lbound(sv_r,1):ubound(sv_r,1)));  r = sv_r
+         allocate(r_edg(lbound(sv_redg,1):ubound(sv_redg,1)))
+         r_edg = sv_redg
+         allocate(dr_j(lbound(sv_dr,1):ubound(sv_dr,1)));  dr_j = sv_dr
+         allocate(Gphi_i(lbound(sv_gpi,1):ubound(sv_gpi,1)))
+         Gphi_i = sv_gpi
+         allocate(Gphi_c(lbound(sv_gpc,1):ubound(sv_gpc,1)))
+         Gphi_c = sv_gpc
+         deallocate(sv_r, sv_redg, sv_dr, sv_gpi, sv_gpc)
+      endif
+      N = sv_N;  weno_mode = sv_wmode
+      use_plm = sv_plm;  use_weno3 = sv_weno;  recon_lambda_on = sv_lam_on
+      rec_method = sv_rec;  flux = sv_flux
+      base_face_W = sv_bfW;  base_face_lower_W = sv_bflW
+
+      end subroutine generic_arm_face_departure_rows
 
       ! ------------------------------------------------------!
 

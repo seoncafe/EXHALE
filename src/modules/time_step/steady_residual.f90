@@ -54,7 +54,8 @@
                 flux_spread_above_radius,                            &
                 n_cells_without_chemical_root,                       &
                 row_terms_describe_state,                            &
-                face_mass_flux_of_state
+                face_mass_flux_of_state,                             &
+                mass_row_rounding_floor
 
       ! THE TERMS EACH CONSERVATION ROW IS BUILT FROM, as assemble_residual
       ! last produced them, together with the state they belong to. The three
@@ -65,11 +66,28 @@
       !                            that reverses inside the window is a huge
       !                            spread and not a small one; the row scale
       !                            takes the magnitude where it needs one)
-      !   momentum_largest_term(j) max(|dF_2|, |S_2|)        (momentum)
+      !   momentum_largest_term(j) max(|ram|, |dp/dr|, |rho dphi/dr|)
+      !                            (momentum)
       !   energy_largest_term(j)   max(|dF_3|, |S_3|, heat, cool)  (energy)
       !
       ! plus the operator-split viscous/conduction sources where those are
-      ! active. The state is kept so that a caller asking for the scale of a
+      ! active.
+      !
+      ! THE MOMENTUM ROW'S THREE TERMS ARE THE TERMS OF THE EQUATION, and
+      ! they are not dF_2 and S_2. Under PLM the pressure sits partly in
+      ! the momentum flux and partly in the geometric source, each of them
+      ! carrying an O(2 p/r) part that cancels against the other, so
+      ! max(|dF_2|, |S_2|) reads 2 p/r where the physical force is zero;
+      ! under the well-balanced arm the whole equilibrium pressure force
+      ! and the weight cancel in the algebra and S_2 is zero, so a row
+      ! scaled by its remaining terms alone would be its own scale and read
+      ! one however small the imbalance became. RK_rhs gathers the pieces
+      ! back into the ram divergence, the spherical pressure gradient and
+      ! the weight (momentum_ram_divergence, momentum_pressure_gradient,
+      ! momentum_gravity), and the weight under the arm is the equilibrium
+      ! pressure force, which therefore enters the max once.
+      !
+      ! The state is kept so that a caller asking for the scale of a
       ! different one is answered from ITS terms (refresh_row_terms) rather
       ! than from whatever the caller last evaluated.
       real*8, dimension(:),   allocatable :: face_mass_flux_r2
@@ -82,6 +100,13 @@
       real*8, dimension(:),   allocatable :: momentum_largest_term
       real*8, dimension(:),   allocatable :: energy_largest_term
       real*8, dimension(:,:), allocatable :: state_of_row_terms
+
+      ! Whether the continuity row's rounding-floor measurement is inside
+      ! its own perturbed assembly, so the hook does not re-enter, and
+      ! whether it has already reported: it is a property of a state and
+      ! one state says it.
+      logical, save :: mass_floor_scan_running = .false.
+      logical, save :: mass_floor_scan_reported = .false.
 
       contains
 
@@ -114,7 +139,8 @@
       real*8, dimension(3,1-Ng:N+Ng), intent(in)  :: u_in
       real*8, dimension(3,1-Ng:N+Ng), intent(out) :: WL, WR, dF, S
       real*8, dimension(3,1-Ng:N+Ng) :: WLw, WRw, dFw, Sw, ff_plm
-      real*8, dimension(1-Ng:N+Ng)   :: fp_plm
+      real*8, dimension(1-Ng:N+Ng)   :: fp_plm, epf_plm
+      real*8, dimension(1-Ng:N+Ng)   :: ram_plm, pgr_plm, grv_plm
       logical :: sav_plm, sav_weno
       character(len=:), allocatable :: sav_method
       real*8  :: lam, om
@@ -143,8 +169,12 @@
          rec_method = 'PLM';    use_plm = .true.;  use_weno3 = .false.
          call Reconstruct(u_in, WL, WR)
          call RK_rhs(u_in, WL, WR, dF, S)
-         ff_plm = face_flux
-         fp_plm = face_p
+         ff_plm  = face_flux
+         fp_plm  = face_p
+         ram_plm = momentum_ram_divergence
+         pgr_plm = momentum_pressure_gradient
+         grv_plm = momentum_gravity
+         if (well_balanced) epf_plm = equilibrium_pressure_force
 
          rec_method = 'WENO3';  use_plm = .false.; use_weno3 = .true.
          call Reconstruct(u_in, WLw, WRw)
@@ -158,6 +188,19 @@
          ! correction rebuilds a cell from; keep them on the same homotopy.
          face_flux = om*ff_plm + lam*face_flux
          face_p    = om*fp_plm + lam*face_p
+         ! The momentum row on the homotopy is the same combination of the
+         ! two schemes' rows, so each term of the equation it holds, and
+         ! the equilibrium pressure force it is read against under the arm,
+         ! is the same combination of the two forms.
+         momentum_ram_divergence    = om*ram_plm                         &
+                                    + lam*momentum_ram_divergence
+         momentum_pressure_gradient = om*pgr_plm                         &
+                                    + lam*momentum_pressure_gradient
+         momentum_gravity           = om*grv_plm                         &
+                                    + lam*momentum_gravity
+         if (well_balanced)                                              &
+            equilibrium_pressure_force = om*epf_plm                      &
+                                       + lam*equilibrium_pressure_force
       endif
 
       rec_method = sav_method
@@ -201,6 +244,24 @@
       else
          call reconstruction_continuation_rhs(u, WL, WR, dF, S)
       endif
+      ! The kind-generic rows return the momentum row and store the
+      ! interface fluxes, the face pressures and, under the well-balanced
+      ! arm, the face departures they were built from
+      ! (store_the_interface_fluxes), but neither the three terms of the
+      ! momentum equation nor the equilibrium pressure force the row is
+      ! read against.  Both are functions of the state, the potential, the
+      ! reconstruction and those stored face quantities, so the one
+      ! expression of each is evaluated here for the state just assembled
+      ! rather than left at whatever the last call to RK_rhs produced.  A
+      ! reconstruction continuation (0 < recon_lambda < 1) never reaches
+      ! this arm: the generic text refuses it, because a blended flux
+      ! carries neither scheme's pressure convention alone.  The arm is
+      ! the rounding control experiment of module hydrodynamic_rows and is
+      ! default off.
+      if (arm .ne. 0) then
+         if (well_balanced) call equilibrium_pressure_force_of_state(u)
+         call momentum_row_terms_of_state(WL, WR, S)
+      endif
       R(1,:) = dF(1,:) - S(1,:)
       R(2,:) = dF(2,:) - S(2,:)
       R(3,:) = dF(3,:) - S(3,:) - (heat - cool)
@@ -220,6 +281,18 @@
       ! standing alone in a row that has no fluxes.
       R(:,1-Ng) = 0.0d0
       call store_row_terms(u, dF, S, heat, cool, Smom, Sene)
+
+      ! The rounding floor of the continuity row, measured on the first
+      ! state a run assembles a stationary residual for when
+      ! EXHALE_MASS_FLOOR_SCAN arms it. It restores the terms stored above
+      ! and decides nothing.
+      if (.not. mass_floor_scan_running .and.                          &
+          .not. mass_floor_scan_reported) then
+         if (mass_floor_scan_armed()) then
+            mass_floor_scan_reported = .true.
+            call mass_row_rounding_floor_scan(u, n_part, heat, cool, R)
+         endif
+      endif
 
       end subroutine assemble_residual
 
@@ -292,8 +365,18 @@
       do j = 1-Ng, N+Ng
          face_mass_flux(j)        = face_flux(1,j)
          face_mass_flux_r2(j)     = face_flux(1,j)*r_edg(j)*r_edg(j)
-         momentum_largest_term(j) = max(abs(dF(2,j)), abs(S(2,j)),       &
-                                        abs(Smom(j)))
+         ! THE LARGEST TERM OF THE MOMENTUM EQUATION, not of its
+         ! discretization: RK_rhs gathers the ram divergence, the whole
+         ! spherical pressure gradient and the weight out of dF(2) and
+         ! S(2), which split the pressure between them under PLM and
+         ! cancel it against the weight under the well-balanced arm.  The
+         ! weight is momentum_gravity on either arm, so the equilibrium
+         ! pressure force enters once and not twice.
+         momentum_largest_term(j) =                                      &
+            max(abs(momentum_ram_divergence(j)),                         &
+                abs(momentum_pressure_gradient(j)),                      &
+                abs(momentum_gravity(j)),                                &
+                abs(Smom(j)))
          energy_largest_term(j)   = max(abs(dF(3,j)), abs(S(3,j)),       &
                                         abs(heat(j)), abs(cool(j)),      &
                                         abs(Sene(j)))
@@ -341,7 +424,10 @@
       do j = 1-Ng, N+Ng
          face_mass_flux(j)        = face_flux(1,j)
          face_mass_flux_r2(j)     = face_flux(1,j)*r_edg(j)*r_edg(j)
-         momentum_largest_term(j) = max(abs(dF(2,j)), abs(S(2,j)))
+         momentum_largest_term(j) =                                      &
+            max(abs(momentum_ram_divergence(j)),                         &
+                abs(momentum_pressure_gradient(j)),                      &
+                abs(momentum_gravity(j)))
          energy_largest_term(j)   = max(abs(dF(3,j)), abs(S(3,j)),       &
                                         energy_largest_term(j))
       enddo
@@ -431,27 +517,230 @@
 
       ! ------------------------------------------------------!
 
+      double precision function mass_row_rounding_floor(j, u) result(f)
+      ! THE ROUNDING FLOOR OF THE CONTINUITY ROW OF CELL j, in the units the
+      ! row is judged in: |R_1|/s_1, the fractional change of the mass flux
+      ! across the cell.
+      !
+      ! The row is a difference of two face fluxes over the cell volume,
+      !
+      !     R_1(j) = ( A_+ F_+  -  A_- F_- ) / dV_j ,
+      !
+      ! and each interface flux is assembled from the two reconstructed
+      ! states and from their JUMPS. Where the column is nearly hydrostatic
+      ! the jumps stand many decades below the states themselves, so a
+      ! correctly rounded interface flux carries the last bit of the
+      ! O(rho c_s) quantities the Riemann solve is built from and not the
+      ! last bit of its own value rho v (MEASURED, N33: the first quantity
+      ! of the assembly that steps is the interface flux, by 4.8e-16 of an
+      ! O(1) state, where its own value is smaller by 3.2e5 to 5.9e6). The
+      ! smallest flux difference the arithmetic can resolve at that face is
+      ! therefore
+      !
+      !     eps * rho ( |v| + c_s ) * A / dV_j ,
+      !
+      ! the momentum the cell would carry at its own fastest signal speed,
+      ! and dividing by the row's own scale s_1 = max_faces|A F| / dV_j
+      ! leaves
+      !
+      !     f(j) = eps * max_faces[ rho (|v| + c_s) A ] / max_faces| A F | ,
+      !
+      ! which is one ulp in the wind, where the flux IS the momentum of the
+      ! cell, and about eps/Mach in a layer whose flux is a tiny residue of
+      ! it. Nothing in the continuity row moves at c_s -- that is why the
+      ! row's SCALE is the flux and not this quantity (mass_flux_row_scale)
+      ! -- but the rounding of the row does, because the cancellation that
+      ! forms the flux happens between quantities of that size.
+      !
+      ! rho(|v| + c_s) is the momentum unknown's own state scale
+      ! (state_scales_of_cell), taken at the two cells the faces separate.
+      integer,                        intent(in) :: j
+      real*8, dimension(3,1-Ng:N+Ng), intent(in) :: u
+      real*8 :: d1, d3, vv, cs, dm, dp, ap, am, sc
+      call state_scales_of_cell(j-1, u(1,j-1), u(2,j-1), u(3,j-1),        &
+                                d1, dm, d3, vv, cs)
+      call state_scales_of_cell(j,   u(1,j),   u(2,j),   u(3,j),          &
+                                d1, dp, d3, vv, cs)
+      ap = r_edg(j)*r_edg(j);  am = r_edg(j-1)*r_edg(j-1)
+      sc = mass_flux_row_scale(j, u)
+      f  = epsilon(1.0d0)*max(dm*am, dp*ap)                              &
+           /((r_edg(j)**3 - r_edg(j-1)**3)/3.0d0)/max(sc, tiny(1.0d0))
+      end function mass_row_rounding_floor
+
+      ! ------------------------------------------------------!
+
+      logical function mass_floor_scan_armed() result(on)
+      ! EXHALE_MASS_FLOOR_SCAN=1 arms the measurement of the continuity
+      ! row's rounding floor. Default off, and it changes nothing a run
+      ! decides: it prints one block and restores the terms it found.
+      character(len=32) :: env
+      call get_environment_variable('EXHALE_MASS_FLOOR_SCAN', env)
+      on = (trim(env) .eq. '1')
+      end function mass_floor_scan_armed
+
+      ! ------------------------------------------------------!
+
+      subroutine mass_row_rounding_floor_scan(u, n_part, heat, cool, Rgiven)
+      ! WHAT THE CONTINUITY ROW OF THIS STATE CANNOT GO BELOW, MEASURED.
+      !
+      ! One ulp is added to the density of every physical cell and the whole
+      ! flux assembly is run again. A smooth response to that perturbation
+      ! is one ulp of the row's own scale, because the mass flux is linear
+      ! in rho; what is measured instead is the STEP the assembly takes,
+      ! which is the rounding of the interface fluxes amplified by the
+      ! near-hydrostatic cancellation (N33). The step is reported against
+      ! two estimates of it:
+      !
+      !   signal  mass_row_rounding_floor above, eps rho(|v|+c_s) A / dV
+      !           over the row's scale;
+      !   flux    the textbook rounding of a difference of two correctly
+      !           rounded addends, eps (|A_+ F_+| + |A_- F_-|) / dV over the
+      !           same scale, which is between one and two ulps everywhere
+      !           because the scale is the larger addend. It is reported so
+      !           that the amplification is a measured ratio and not an
+      !           assumption.
+      !
+      ! The state is put back: the perturbed assembly leaves the module's
+      ! row terms describing the perturbed state, so the state given is
+      ! assembled once more at the end and its rows are asserted to
+      ! reproduce bitwise.
+      real*8, dimension(3,1-Ng:N+Ng), intent(in) :: u, Rgiven
+      real*8, dimension(1-Ng:N+Ng),   intent(in) :: n_part, heat, cool
+      real*8, dimension(3,1-Ng:N+Ng) :: up, Rp, Rb
+      real*8, dimension(1:N) :: sc, fsg, ffl, jmp
+      real*8 :: dV, mach, d1, d2, d3, vv, cs, worst_sg, worst_fl, back
+      integer :: j, jw_sg, jw_fl, nshow
+      ! The scales and both estimates, on the state as given: the stored
+      ! terms describe it here and will not after the perturbed assembly.
+      do j = 1, N
+         sc(j)  = mass_flux_row_scale(j, u)
+         fsg(j) = mass_row_rounding_floor(j, u)
+         dV     = (r_edg(j)**3 - r_edg(j-1)**3)/3.0d0
+         ffl(j) = epsilon(1.0d0)                                          &
+                  *(abs(face_mass_flux_r2(j)) + abs(face_mass_flux_r2(j-1)))&
+                  /dV/max(sc(j), tiny(1.0d0))
+      enddo
+      up = u
+      do j = 1, N
+         up(1,j) = nearest(u(1,j), 1.0d0)
+      enddo
+      mass_floor_scan_running = .true.
+      call assemble_residual(up, n_part, heat, cool, Rp)
+      call assemble_residual(u,  n_part, heat, cool, Rb)
+      mass_floor_scan_running = .false.
+      back = 0.0d0
+      do j = 1, N
+         back   = max(back, abs(Rb(1,j) - Rgiven(1,j)))
+         jmp(j) = abs(Rp(1,j) - Rgiven(1,j))/max(sc(j), tiny(1.0d0))
+      enddo
+      worst_sg = 0.0d0;  worst_fl = 0.0d0;  jw_sg = 0;  jw_fl = 0
+      do j = 1, N
+         if (jmp(j)/max(fsg(j), tiny(1.0d0)) .gt. worst_sg) then
+            worst_sg = jmp(j)/max(fsg(j), tiny(1.0d0));  jw_sg = j
+         endif
+         if (jmp(j)/max(ffl(j), tiny(1.0d0)) .gt. worst_fl) then
+            worst_fl = jmp(j)/max(ffl(j), tiny(1.0d0));  jw_fl = j
+         endif
+      enddo
+      write(*,'(A)') ' '
+      write(*,'(A)') ' [mass floor scan] the continuity row under one ulp'&
+           //' of every cell density'
+      write(*,'(A,ES9.2)') '   the given state reproduces its own mass'// &
+           ' rows to ', back
+      write(*,'(A)') '   cell      r        |R_1|/s_1      step/s_1'//    &
+           '     floor signal   floor flux   step/signal  step/flux'//    &
+           '   Mach'
+      nshow = min(N, 30)
+      do j = 1, nshow
+         call state_scales_of_cell(j, u(1,j), u(2,j), u(3,j),             &
+                                   d1, d2, d3, vv, cs)
+         mach = abs(vv)/max(cs, tiny(1.0d0))
+         write(*,'(A,I5,F10.5,6ES14.4,ES11.3)') '   ', j, r(j),           &
+              abs(Rgiven(1,j))/max(sc(j), tiny(1.0d0)), jmp(j), fsg(j),        &
+              ffl(j), jmp(j)/max(fsg(j), tiny(1.0d0)),                    &
+              jmp(j)/max(ffl(j), tiny(1.0d0)), mach
+      enddo
+      write(*,'(A,ES11.4,A,I0,A,ES11.4,A,ES11.4,A)')                      &
+           '   largest step over the signal estimate ', worst_sg,         &
+           ' at cell ', jw_sg, ' (step ', jmp(max(jw_sg,1)),              &
+           ', estimate ', fsg(max(jw_sg,1)), ')'
+      write(*,'(A,ES11.4,A,I0,A,ES11.4,A,ES11.4,A)')                      &
+           '   largest step over the flux estimate   ', worst_fl,         &
+           ' at cell ', jw_fl, ' (step ', jmp(max(jw_fl,1)),              &
+           ', estimate ', ffl(max(jw_fl,1)), ')'
+      flush(6)
+      end subroutine mass_row_rounding_floor_scan
+
+      ! ------------------------------------------------------!
+
       double precision function momentum_row_scale(j, u) result(s)
-      ! THE MOMENTUM ROW'S OWN LARGEST TERM:
+      ! THE LARGEST PHYSICAL TERM OF THE MOMENTUM EQUATION IN THIS CELL:
       !
-      !   s_2(j) = max( |dF_2(j)| , |S_2(j)| )
+      !   s_2(j) = max( |ram| , |dp/dr| , |rho dphi/dr| , |S_visc| )
       !
-      ! the momentum flux divergence the row differences and the source it is
-      ! balanced against -- gravity, plus the geometric pressure term under
-      ! PLM, exactly as Source.f90 discretizes them, plus the operator-split
-      ! viscous source where viscosity is on.
+      ! the three left-hand terms of
       !
-      ! This REPLACES the section 62.3 gravitational bound and the
-      ! signal-speed bound both: the source term IS the gravitational bound,
-      ! taken from the same expression the residual subtracts rather than
-      ! rebuilt from a potential difference, so there is nothing left for the
-      ! max over the two to protect against. In a quasi-hydrostatic layer the
-      ! two terms nearly cancel and are enormous beside the wind's mass flux
-      ! -- measured, max(|dF_2|,|S_2|)/F_0 is 4.4e5 at 1.005 R_p and 1.9e2 at
-      ! 1.2 on the molecular hot Uranus -- so a row that reads 1e-8 against
+      !   d(rho v)/dt + div(rho v v) + dp/dr + rho dphi/dr = S_visc ,
+      !
+      ! each as the evaluation that produced the row assembled it
+      ! (momentum_ram_divergence, momentum_pressure_gradient,
+      ! momentum_gravity in RK_rhs), plus the operator-split viscous source
+      ! where viscosity is on.
+      !
+      ! WHY NOT max(|dF_2|, |S_2|), WHICH IS WHAT THIS WAS.  Those are the
+      ! pieces the discretization splits the equation into, and the split
+      ! does not follow the terms:
+      !
+      !   PLM    Phys_flux gives the momentum flux the pressure, so dF_2 is
+      !          the ram divergence plus (A+ p_up - A- p_dn)/dV, and S_2 is
+      !          the weight MINUS the geometric term (A+ - A-) p_c/dV.  The
+      !          two pressure pieces are one term, the spherical pressure
+      !          gradient, and each holds an O(2 p/r) part that cancels
+      !          against the other.  MEASURED (grid_and_gates
+      !          hydrostatic_residual, zero-gravity uniform-pressure state,
+      !          where the physical force is zero): the old scale read
+      !          2 p/r, r s_2/p = 2.000 for both Riemann solvers at every N,
+      !          and stood 0.944 above what the row carries; the WENO3 scale
+      !          of the same state agreed with the row to 2e-13.
+      !   WENO3  dF_2 is the ram divergence plus (p_R - p_L)/dr in ONE
+      !          number, so a near-hydrostatic cell reads |dF_2| ~ |dp/dr|
+      !          ~ |rho g| and the old scale was right by the accident of
+      !          that balance; where ram and pressure gradient cancel each
+      !          other, as they do at a sonic point, it is smaller than
+      !          either term.
+      !   arm    Under "Well balanced:" the equilibrium pressure force and
+      !          the weight cancel in the algebra before the row is formed,
+      !          so S_2 is zero and dF_2 holds the DEPARTURE alone: the
+      !          remaining terms ARE the numerator and a row divided by them
+      !          reads one whatever the imbalance is.  MEASURED before the
+      !          weight was put back: every normalized momentum residual of
+      !          the carrier reload was exactly 1.000000E+00, against 1.954
+      !          for the same state without the arm (Update_EXHALE N37).
+      !
+      ! Under the arm the weight is the pressure force of the cell's own
+      ! hydrostatic equilibrium,
+      !
+      !   |rho_j [A+ (phi_i(j) - phi_c(j))
+      !         + A- (phi_c(j) - phi_i(j-1))]|/dV       (PLM form)
+      !   |rho_j (phi_i(j) - phi_i(j-1))|/dr            (WENO3 form)
+      !
+      ! which is the same physics in the arm's own discretization and is
+      ! what momentum_gravity carries there; the pressure gradient is then
+      ! the departure the row holds.  The numerator is untouched on every
+      ! arm and is never re-formed from a cancelled term.
+      !
+      ! WHY A TERM OF THE EQUATION AND NOT A SIGNAL-SPEED BOUND.  In a
+      ! quasi-hydrostatic layer the pressure gradient and the weight nearly
+      ! cancel and are enormous beside the wind's mass flux -- measured,
+      ! the scale over F_0 is 4.4e5 at 1.005 R_p and 1.9e2 at 1.2 on the
+      ! molecular hot Uranus -- so a row that reads 1e-8 against
       ! rho(|v|+c_s)/dr can still be displacing the mass flux, and it was:
-      ! docs/p55_base_mode.md section 4 predicts the marching departure rate of
-      ! an accepted state from this ratio to 9 percent.
+      ! docs/p55_base_mode.md section 4 predicts the marching departure rate
+      ! of an accepted state from this ratio to 9 percent.  With no gravity
+      ! the weight is zero and the max falls back on the dynamic terms; on a
+      ! state at rest with a uniform pressure all three terms vanish and the
+      ! scale is the tiny floor below, which is the only place a fully zero
+      ! row is divided by anything but a term of its own.
       integer,                        intent(in) :: j
       real*8, dimension(3,1-Ng:N+Ng), intent(in) :: u
       call refresh_row_terms(u)
@@ -511,9 +800,10 @@
       !              cell TIMES the local Mach number (verified to one percent
       !              at ten radii), so at Mach 5e-5 the gate was blind by 2e4
       !              and passed a mass flux 30 percent out at 1.03 R_p;
-      !   momentum   max(|dF_2|,|S_2|)/F_0 reaches 4.4e5 in the layer, so a row
-      !              reading 1e-8 on the old scale still displaced the wind's
-      !              mass flux measurably per crossing time;
+      !   momentum   the largest term of the equation over F_0 reaches 4.4e5
+      !              in the layer, so a row reading 1e-8 on the old scale
+      !              still displaced the wind's mass flux measurably in a
+      !              crossing time;
       !   energy     the layer's row was out by 1.7e-3 to 4.7e-3 of its own
       !              terms, and cell 1 by 99 percent, while reading 1e-8 to
       !              1e-4 on the old scale.
@@ -522,9 +812,10 @@
       ! docs/p55_base_mode.md section 4, docs/p54g23_row_scale_scan.md.
       !
       ! THE MOMENTUM ROW'S GRAVITATIONAL BOUND IS NOT A SEPARATE CASE ANY
-      ! MORE. Section 62.3 added max(..., rho |dPhi/dr|) because the old scale
-      ! could not see gravity; s_2 now takes gravity from S_2, the same
-      ! expression the residual subtracts, so the two are one term and not two.
+      ! MORE. Section 62.3 added max(..., rho |dPhi/dr|) because the old
+      ! scale could not see gravity; the weight is now one of the three
+      ! terms s_2 is the max over, taken from the discretization the row was
+      ! assembled by, so the two are one term and not two.
       !
       ! THIS SCALES THE MEASURE, NOT THE SOLVER. cell_state_scales
       ! (steady_newton.f90) keeps the state scales D_k for the Newton system

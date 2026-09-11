@@ -4,8 +4,13 @@
 The Markdown log is the file the entries are appended to; the TeX file is
 its typeset twin in the memo class the earlier stage logs use
 (docs/my_memo.cls). Pandoc converts the body; this script supplies the
-preamble and the macros Pandoc's LaTeX writer expects. Regenerate after
-appending to the log:
+preamble and the macros Pandoc's LaTeX writer expects.
+
+The appendices are not in the Markdown log. They live in
+docs/Update_EXHALE_appendix.tex, which is written by hand, and the postamble
+below emits \\appendix and \\input{Update_EXHALE_appendix} after the converted
+body; the path is relative to docs/, where latexmk runs. Regenerate after
+appending to the log or editing the appendix:
 
     python3 src/utils/update_log_to_tex.py
     cd docs && latexmk -pdf Update_EXHALE.tex
@@ -30,6 +35,7 @@ PREAMBLE = r"""%% EXHALE: running update log, stage 2 (from 2026-09-05).
 \usepackage{calc}
 \usepackage{url}
 \urlstyle{tt}
+\usepackage{soul}
 \usepackage{babel}
 \providecommand{\tightlist}{\setlength{\itemsep}{0pt}\setlength{\parskip}{0pt}}
 \providecommand{\pandocbounded}[1]{#1}
@@ -49,7 +55,10 @@ PREAMBLE = r"""%% EXHALE: running update log, stage 2 (from 2026-09-05).
 \bigskip
 
 """
-POSTAMBLE = "\n\\end{document}\n"
+# \appendix then the hand-maintained appendix fragment, then the end of
+# the document. The \input path is relative to docs/, the directory
+# latexmk runs in.
+POSTAMBLE = "\n\\appendix\n\\input{Update_EXHALE_appendix}\n\\end{document}\n"
 
 def main():
     md = open(MD).read()

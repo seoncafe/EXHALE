@@ -1,6 +1,6 @@
 # Grid and gate tests
 
-Eighteen tests of the discretization and of the run's own record of itself. Six
+Nineteen tests of the discretization and of the run's own record of itself. Six
 were built for Phase 0 of `docs/development_plan_20260905_rev3.md` (section
 10.4, "Phase 0 gains tests"); `grid_window` and `sed_coverage` came with
 Phase 1 batch 2a, items 2a-GUARDS and 2a-SED; `momentum_row`,
@@ -144,6 +144,13 @@ cells 392..500 (`r` = 2.003 to 4.725, no sign change), summary 2.826589937536,
 recomputed 2.826589937536.
 
 ### 4. `output_state_consistency.sh` -> `output_state`
+
+Two arms since 2026-09-11 (item P14): the heat-column consistency below, and
+`outer_iteration_ending_hands_back_one_state`, which forces the stationary
+outer iteration's stagnation ending on the hot-Uranus carrier reload
+(`EXHALE_CARRIER_TRUST=1e-4`, `EXHALE_JFNK_MAXIT=5`) and asserts that the
+written state re-evaluates to itself (relative temperature movement below
+1e-12; MEASURED 6.5e-14 after P14 against 1.3e-8 before).
 
 | | |
 |---|---|
@@ -295,6 +302,87 @@ After: 0.999996, 0.999994, 1.000024, 0.997527, 1.000506, 0.997368, 0.997523,
 | Tolerance | 1e-14 relative on assertion 1 (round-off of that pair); 0 on assertions 2 and 3, which are inequalities |
 | Configurations | `Grid cells:` 250, 500, 1000, 2000, each with PLM and ESWENO3 and with the ROE and HLLC fluxes: 12 assertions over 16 measurements |
 | Expected at HEAD | **GREEN**, all three. Assertion 3 was RED under the zero-gradient outflow ghost item B4-4a replaced (order 0.006 in `1/N` under PLM, both Riemann solvers) and is green with the hydrostatic continuation (1.80 under PLM, 1.59 under ESWENO3) |
+
+The driver carries three further groups of assertions on the momentum row's
+reference scale, on the same ladder and the same four scheme/solver pairs, so
+the whole program is 60 assertions.
+
+**The arm on its own discrete equilibrium (12, item N37).** The state whose
+two neighboring equilibrium extrapolations agree at every shared face,
+integrated outward from the analytic density of cell 1, is built beside the
+analytic column; with the arm on, the momentum, mass and energy rows of the
+interior cells 3..N-2 must fall to the rounding level there (bound 1e-13 of
+the size of the terms each row is built from, the arithmetic bound
+`epsilon p r^2/dV` being 1e-12 of the momentum weight at the base of this
+grid). MEASURED: the momentum row falls from 7.0e-5 (PLM) and 2.5e-3 (WENO3)
+of the local weight without the arm to 4.1e-14 and 3.9e-14 with it at
+N = 250, and stays at 4.5e-14 to 5.5e-14 at N = 500, 1000, 2000, while the
+base scheme falls at its design order. The analytic column is measured too
+and reported: on it both arms carry the truncation error of the
+discretization of gravity, which is what separates that error from the
+floating-point assembly.
+
+**The arm's momentum row scale (16, item P4 of
+`docs/PLAN_20260911_partitioned_solver.md`).** The quantity is the row
+DIVIDED BY ITS OWN REFERENCE SCALE, `residual_row_scale(2,...)`, the one
+expression the stationary solver's acceptance test reads. With the arm on the
+equilibrium pressure force and the gravitational source cancel in the algebra
+before the row is formed, so a scale built from the row's remaining terms
+alone is the row itself and reads one however small the imbalance becomes.
+The four statements: on the discrete equilibrium the scaled row is at the
+rounding level (bound 1e-10, twelve decades below what a degenerate scale
+returns; MEASURED 4.5e-14 to 7.1e-14); on the same column with the pressure
+multiplied by `1 + eps sin(...)` it is below one (MEASURED 5.3e-6 at
+eps = 1e-6) and halves with the perturbation (MEASURED ratio 2.0000 to 1e-8,
+the departure being homogeneous of degree one in eps); and with `b0 = 0` the
+equilibrium pressure force is zero and the scale is the row's own terms
+`max(|ram|, |dp/dr|)` exactly, each formed in the driver from the face data
+the evaluation stored (MEASURED 0). The departure of the arm's scale from the
+BASE SCHEME's at zero gravity is reported and not asserted: the two are the
+same expression up to the rounding of the two flux assemblies (MEASURED 1.7e-13
+to 3.7e-13 over the four pairs). Expected on the entry text of P4: the first
+three groups RED at exactly 1.000 (the degenerate scale), the zero-gravity
+limit GREEN. Its fourth statement was RED on the entry text of P11 as well
+(MEASURED 0.750 for all four pairs), because it read the scale against
+`max(|dF_2|, |S_2|)`, which under the arm is the SUM of the two terms and is
+smaller than either wherever they cancel; 0.944 of what that statement
+reported at zero gravity was the PLM geometric pressure term, which item P11
+removed from the scale.
+
+**The scale against the terms of the momentum equation (20, item P11 of
+`docs/PLAN_20260911_partitioned_solver.md`).** The scale is the largest
+PHYSICAL term of
+`d(rho v)/dt + div(rho v v) + dp/dr + rho dphi/dr = S_visc`, and the
+discretization's pieces `dF_2` and `S_2` are not those terms: under PLM the
+pressure sits partly in the momentum flux (`Phys_flux` adds `p`) and partly in
+the geometric source `(A+ - A-) p_c/dV`, each carrying an O(2 p/r) part that
+cancels against the other. Four states whose terms are known in closed form,
+the base scheme and the arm, interior cells 3..N-2:
+
+| statement | bound | entry text | after |
+|---|---|---|---|
+| `zero_gravity_uniform_state_momentum_scale_vanishes` (no gravity, uniform `p`, at rest; the scale over `(A+ - A-) p_j/dV`) | 1e-8 | **1.00000E+00 FAIL** under PLM, 3.3e-308 PASS under WENO3 | 3.3e-308 (the `tiny` floor of `momentum_row_scale`, which is where a fully zero row is divided) |
+| `momentum_scale_is_not_below_the_weight_on_the_discrete_equilibrium` (`(w - s)/w`, with `w` the weight `source` forms from the two face densities) | 1e-12 | **2.79E-01 FAIL** under PLM, 0 PASS under WENO3 | 0, the weight being one of the terms the max runs over |
+| `well_balanced_momentum_scale_is_the_equilibrium_pressure_force` (the same state under the arm, `(|s - epf|- |R|)/epf`) | 1e-12 | 0 PASS | 0 |
+| `momentum_scaled_row_tracks_the_imbalance` (the pressure perturbed by `eps` and `eps/2`, the ratio of the scaled imbalance the perturbation ADDS) | \|ratio - 2\| < 0.1 | 2.0000 PASS | 2.0000 |
+| `supersonic_uniform_flow_momentum_scale_is_the_ram_divergence` (no gravity, uniform `p`, `v = 3 c_s`; against `(A+ - A-) rho v v/dV`) | 1e-8 | **6.66667E-02 FAIL** under PLM, which is `1/(gamma M M)`, the pressure the momentum flux still carries; 4.2e-13 PASS under WENO3 | 1.9e-14 (PLM), 4.2e-13 (WENO3) |
+
+Ten of the sixty assertions were RED on the entry text of P11 and all sixty
+are GREEN after. Two quantities are reported and not asserted, because on the
+base scheme they are neither round-off nor a term of the equation: the
+departure `|s - w|/w` on the discrete equilibrium (MEASURED 8.5e-4 at N = 250
+falling to 2.3e-6 at N = 2000 under PLM with ROE, 2.2e-3 to 4.5e-5 under
+WENO3 with HLLC), which carries the base scheme's own truncation error on a
+state that is the equilibrium of the ARM's reconstruction and, with HLLC, the
+dissipative part of a momentum flux whose face pressure is one side's own
+value rather than an average; and the zero-gravity scale itself.
+
+The undifferenced form of the halving statement is why the perturbation
+statement subtracts the unperturbed row: the base scheme's row on the arm's
+discrete equilibrium is its own truncation error, which is larger than a
+1e-6 perturbation's imbalance and does not halve with it (MEASURED on the
+entry text: the undifferenced ratio is 1.0012 at N = 250 and 1.586 at
+N = 2000, the truncation falling with the grid).
 
 One grid per process: `define_grid`'s Newton convergence flag is
 `real*8 :: tol = 1.0`, which is SAVEd, so a second grid built in the same
@@ -495,6 +583,18 @@ was the one whose enforcement was missing and whose stated form (a
 requirement) did not match what the code does or should do (a report, the
 atomic run being correct). Its four assertions are green with the report and
 the first two are red without it.
+
+**P11 (2026-09-11).** `hydrostatic_residual` gained twenty assertions on the
+momentum row's reference scale against the TERMS OF THE MOMENTUM EQUATION,
+after the scale stopped being `max(|dF_2|, |S_2|)`: on a state with no force
+at all, on the discrete hydrostatic equilibrium under both arms, on a
+perturbation of it, and on supersonic uniform flow. Ten of the sixty
+assertions of the program were RED on the entry text, all PLM (the geometric
+pressure term `(A+ - A-) p_c/dV` entering the max separately from the flux
+pressure it cancels against) and the four zero-gravity rows of item P4's
+group (which read the scale against `|dF_2|`, the SUM of the two terms the
+row holds), and all sixty are GREEN after. MEASURED with the whole suite:
+188 PASS / 10 FAIL on the entry text, 198 PASS / 0 FAIL after.
 
 **B5i (2026-09-08).** `coupled_carrier_h2` was added with the startup refusal
 it states: a coupled steady solve on a molecular configuration may not

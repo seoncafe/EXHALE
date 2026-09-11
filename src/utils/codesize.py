@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
-"""Code-size and diff measurement behind the Update_EXHALE_stage1.tex appendices
-("Code-size summary" and "Fortran source inherited unchanged from ATES").
+"""Code-size and diff measurement behind the appendices of the EXHALE update
+log, docs/Update_EXHALE_appendix.tex ("Code-size summary" and "Fortran source
+inherited unchanged from ATES"). They lived in docs/Update_EXHALE_stage1.tex
+until 2026-09-11.
 
 Methodology (as stated in the appendix):
 - SLOC excludes blank lines and comments; the comment stripper is

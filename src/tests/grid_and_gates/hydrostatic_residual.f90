@@ -91,6 +91,31 @@
       !   The base cell is reported and not asserted: which closure it carries
       !   is the characteristic condition of base_boundary, a different object
       !   from the interior pair and from the outer condition.
+      !
+      ! THE MOMENTUM ROW'S REFERENCE SCALE UNDER THE WELL-BALANCED ARM
+      !   The three assertions of measure_momentum_row_scale below are of the
+      !   NORMALIZED row, R_2/s_2 with s_2 = residual_row_scale(2,...), the
+      !   one expression the stationary solver's acceptance test reads: on
+      !   the scheme's own discrete equilibrium it must be at the rounding
+      !   level and not at one; on a perturbed state it must be below one and
+      !   proportional to the perturbation; and with no gravity it must be
+      !   the scale the base scheme uses.  The arm cancels the equilibrium
+      !   pressure force and the gravitational source against each other
+      !   before the row is formed, so a scale built from the row's remaining
+      !   terms alone is the row itself and reads one however small the
+      !   imbalance is (Update_EXHALE N37).
+      !
+      ! THE MOMENTUM ROW'S REFERENCE SCALE AGAINST THE TERMS OF THE EQUATION
+      !   The five assertions of measure_momentum_physical_terms below ask
+      !   what the scale is on four states whose momentum terms are known in
+      !   closed form: no term at all (no gravity, uniform pressure, at
+      !   rest), the weight alone (the scheme's own discrete hydrostatic
+      !   equilibrium, under both arms), an imbalance proportional to a
+      !   perturbation, and a pure ram divergence (supersonic uniform flow).
+      !   A scale made of the discretization's pieces, max(|dF_2|, |S_2|),
+      !   fails the first and the last under PLM, where the pressure is
+      !   split between the momentum flux and the geometric source and the
+      !   two O(2 p/r) halves cancel between them.
 
       use global_parameters
       use grid_construction,          only: define_grid
@@ -99,7 +124,9 @@
       use base_boundary,              only: set_base_reservoir
       use BC_Apply,                   only: Apply_BC
       use Reconstruction_step,        only: Reconstruct
-      use RK_integration,             only: RK_rhs
+      use RK_integration,             only: RK_rhs, face_flux,            &
+                                            face_q_up, face_q_dn
+      use steady_residual_mod,        only: residual_row_scale
       use eval_time_step,             only: eval_dt
       use Conversion,                 only: U_to_W
 
@@ -120,6 +147,8 @@
       character(len=12), dimension(n_scheme) :: scheme_name
       character(len=*), parameter :: ladder_file = 'hydrostatic_ladder.dat'
       character(len=*), parameter :: wb_file = 'hydrostatic_wellbalanced.dat'
+      character(len=*), parameter :: sc_file = 'hydrostatic_momentum_scale.dat'
+      character(len=*), parameter :: pt_file = 'hydrostatic_momentum_terms.dat'
 
       ! Particles per unit mass of the neutral atomic He/H mixture, in units
       ! of one particle per hydrogen atom mass: (1 + He/H)/(1 + m_He He/H).
@@ -440,6 +469,9 @@
 
       ! ---- the well-balanced arm, on the same grid ----
       call measure_well_balanced(u, WL, WR, dF, S, rho_a, p_a, Rn, b0_case)
+      call measure_momentum_row_scale(u, WL, WR, dF, S, rho_a, b0_case)
+      call measure_momentum_physical_terms(u, WL, WR, dF, S, rho_a,       &
+                                           b0_case)
 
       deallocate(u, W, WL, WR, dF, S, dt_loc, rho_a, p_a, Rn)
 
@@ -515,17 +547,7 @@
       ! Integrating the PRESSURE instead with the analytic densities is not
       ! the same state and leaves the outer cells at negative pressure: that
       ! density profile has no positive discrete equilibrium on this grid.
-      rho_d(1) = rho_a(1)
-      do j = 1,N+Ng-1
-         rho_d(j+1) = rho_d(j)                                           &
-            *(nhat - (Gphi_i(j)   - Gphi_c(j)))                          &
-            /(nhat + (Gphi_c(j+1) - Gphi_i(j)))
-      enddo
-      do j = 1,2-Ng,-1
-         rho_d(j-1) = rho_d(j)                                           &
-            *(nhat + (Gphi_c(j)   - Gphi_i(j-1)))                        &
-            /(nhat - (Gphi_i(j-1) - Gphi_c(j-1)))
-      enddo
+      call discrete_equilibrium_density(rho_a(1), rho_d)
       p_d = nhat*rho_d
 
       open(newunit=iu2, file=wb_file, position='append', status='unknown')
@@ -584,6 +606,706 @@
       well_balanced = sav_wb
 
       end subroutine measure_well_balanced
+
+      ! ------------------------------------------------------------------ !
+
+      subroutine discrete_equilibrium_density(rho_base, rho_d)
+      ! THE DISCRETE EQUILIBRIUM OF THE SCHEME at the column's own
+      ! temperature T = 1.  With p = nhat rho T the face-matching condition
+      !   p_j+1 + rho_j+1 (phi_c(j+1) - phi_i(j))
+      !         = p_j - rho_j (phi_i(j) - phi_c(j))
+      ! is a two-term recursion for the density,
+      !   rho_j+1 = rho_j (nhat - a_j)/(nhat + b_j),
+      ! with a_j and b_j the two half-cell potential differences.  It is
+      ! solved outward and inward from the density of cell 1, which is the
+      ! isothermal case of the Newton solve Kaeppeli and Mishra use to
+      ! initialize their exactness test (2016, A&A 587, A94, their eq. 42).
+      ! Integrating the PRESSURE instead with the analytic densities is not
+      ! the same state and leaves the outer cells at negative pressure:
+      ! that density profile has no positive discrete equilibrium on this
+      ! grid.
+      real*8, intent(in)  :: rho_base
+      real*8, dimension(1-Ng:N+Ng), intent(out) :: rho_d
+      integer :: j
+      rho_d(1) = rho_base
+      do j = 1,N+Ng-1
+         rho_d(j+1) = rho_d(j)                                           &
+            *(nhat - (Gphi_i(j)   - Gphi_c(j)))                          &
+            /(nhat + (Gphi_c(j+1) - Gphi_i(j)))
+      enddo
+      do j = 1,2-Ng,-1
+         rho_d(j-1) = rho_d(j)                                           &
+            *(nhat + (Gphi_c(j)   - Gphi_i(j-1)))                        &
+            /(nhat - (Gphi_i(j-1) - Gphi_c(j-1)))
+      enddo
+      end subroutine discrete_equilibrium_density
+
+      ! ------------------------------------------------------------------ !
+
+      subroutine measure_momentum_row_scale(u, WL, WR, dF, S, rho_a,     &
+                                            b0_case)
+      ! WHAT IS MEASURED: the momentum row DIVIDED BY ITS OWN REFERENCE
+      ! SCALE, R_2(j)/residual_row_scale(2,j,u), the quantity the stationary
+      ! solver's certification compares against its tolerance.  Three states
+      ! and the largest value over the interior cells 3..N-2 on each:
+      !
+      !   equilibrium  the discrete equilibrium of the scheme, on which the
+      !                arm's row is at the rounding level.  The scaled row
+      !                must be there too; a scale built from the row's
+      !                remaining terms alone returns the row itself and
+      !                reads exactly one.
+      !   perturbed    the same column with the pressure multiplied by
+      !                1 + eps sin(...), at eps and eps/2.  The density and
+      !                the potential are untouched, so the reference scale
+      !                is the same number on both, and the scaled row must
+      !                stay below one and halve with the perturbation: the
+      !                equilibrium departure and every face quantity built
+      !                from it are homogeneous of degree one in eps (the
+      !                limited slope is positively homogeneous and the WENO3
+      !                weights are scale free), so the ratio is 2 to the
+      !                accuracy of the O(eps^2) terms.
+      !   no gravity   b0 = 0 on a state with structure in it, where the
+      !                equilibrium pressure force is zero and the arm's
+      !                scale must therefore be the two terms the row still
+      !                holds, max(|ram|, |dp/dr|), exactly.  The departure
+      !                of the arm's scale from the BASE SCHEME's on the same
+      !                state is reported and not asserted: with no gravity
+      !                each side's own hydrostatic equilibrium is its own
+      !                cell pressure, so the arm's pressure gradient is the
+      !                base scheme's, term for term, and the two scales are
+      !                the same number up to the rounding of the two flux
+      !                assemblies (MEASURED below).
+      !
+      ! The scale is a function of the state, so the SAME state is never
+      ! asked for it under two different arms without a state in between:
+      ! refresh_row_terms answers a repeated request for one state from what
+      ! it already holds.
+      real*8, dimension(3,1-Ng:N+Ng), intent(inout) :: u, WL, WR, dF, S
+      real*8, dimension(1-Ng:N+Ng),   intent(inout) :: rho_a
+      real*8, intent(in) :: b0_case
+
+      real*8, parameter :: eps_p = 1.0d-6
+      real*8, dimension(1-Ng:N+Ng) :: rho_d, p_d, s_on, s_off, s_row
+      real*8  :: s_eq, s_p1, s_p2, s_zero, s_own, shape_p, twopi, span
+      real*8  :: x_on, s_break
+      real*8  :: dAp, dAm, dV, ram, pgr
+      integer :: j, iu3, ip
+      logical :: sav_wb
+
+      sav_wb = well_balanced
+      twopi  = 8.0d0*atan(1.0d0)
+
+      b0 = b0_case
+      call set_gravity_grid
+      do j = 2-Ng,N+Ng
+         rho_a(j) = cell_average(rho_column, j)
+      enddo
+      rho_a(1-Ng) = rho_a(2-Ng)
+      call discrete_equilibrium_density(rho_a(1), rho_d)
+      p_d  = nhat*rho_d
+      span = r(N) - r(1)
+
+      open(newunit=iu3, file=sc_file, position='append',                 &
+           status='unknown')
+
+      do is = 1,n_scheme
+
+         call set_scheme(is)
+         well_balanced = .true.
+
+         ! ---- the discrete equilibrium, and the two perturbations of it ----
+         s_eq = 0.0d0
+         s_p1 = 0.0d0
+         s_p2 = 0.0d0
+         do ip = 0,2
+
+            do j = 1-Ng,N+Ng
+               shape_p = 1.0d0
+               if (ip .gt. 0) shape_p = 1.0d0                            &
+                  + eps_p/dble(2**(ip-1))                                &
+                    *sin(4.0d0*twopi*(r(j) - r(1))/span)
+               u(1,j) = rho_d(j)
+               u(2,j) = 0.0d0
+               u(3,j) = shape_p*p_d(j)/(gamma_ad - 1.0d0)
+            enddo
+
+            call set_base_reservoir(p_column(1.0d0), 1.0d0, nhat, 1.0d0)
+            n_part_cell1 = nhat*rho_d(1)
+
+            call Apply_BC(u)
+            call Reconstruct(u, WL, WR)
+            call RK_rhs(u, WL, WR, dF, S)
+
+            ! The row terms are cached against the state they belong to,
+            ! and this state repeats across the schemes; asking for
+            ! another state's scale first is what makes the request below
+            ! form the terms of THIS scheme.
+            s_break = residual_row_scale(2, 3, 1.5d0*u)
+
+            x_on = 0.0d0
+            do j = 3,N-2
+               x_on = max(x_on, abs(dF(2,j) - S(2,j))                    &
+                                /residual_row_scale(2, j, u))
+            enddo
+            if (ip .eq. 0) s_eq = x_on
+            if (ip .eq. 1) s_p1 = x_on
+            if (ip .eq. 2) s_p2 = x_on
+
+         enddo
+
+         ! ---- no gravity: the arm's scale is the base scheme's ----
+         b0 = 0.0d0
+         call set_gravity_grid
+         do j = 1-Ng,N+Ng
+            u(1,j) = 1.0d0/r(j)**3
+            u(2,j) = u(1,j)*0.3d0*r(j)
+            u(3,j) = 0.5d0*u(2,j)*u(2,j)/u(1,j)                          &
+                   + (0.8d0/r(j)**4)/(gamma_ad - 1.0d0)
+         enddo
+         call set_base_reservoir(0.8d0, 1.0d0, nhat, 1.0d0)
+         n_part_cell1 = nhat*u(1,1)
+         call Apply_BC(u)
+
+         well_balanced = .true.
+         call Reconstruct(u, WL, WR)
+         call RK_rhs(u, WL, WR, dF, S)
+         ! THE ROW'S OWN TERMS ARE THE TERMS OF THE MOMENTUM EQUATION, the
+         ! ram divergence and the pressure gradient, each formed here from
+         ! the face data this evaluation stored: |dF_2| is their SUM and is
+         ! smaller than either wherever they cancel, which is what the scale
+         ! must not be.  The arm's pressure gradient is the face pressure
+         ! measured from each side's own equilibrium, and with no gravity
+         ! that equilibrium is the cell pressure itself, so these are also
+         ! the base scheme's two terms.
+         do j = 3,N-2
+            dAp = r_edg(j)*r_edg(j)
+            dAm = r_edg(j-1)*r_edg(j-1)
+            dV  = (dAp*r_edg(j) - dAm*r_edg(j-1))/3.0d0
+            ram = (dAp*face_flux(2,j) - dAm*face_flux(2,j-1))/dV
+            if (use_plm) then
+               pgr = (dAp*face_q_up(j) - dAm*face_q_dn(j-1))/dV
+            else
+               pgr = (face_q_up(j) - face_q_dn(j-1))/dr_j(j)
+            endif
+            s_row(j) = max(abs(ram), abs(pgr))
+         enddo
+         s_break = residual_row_scale(2, 3, 1.5d0*u)
+         do j = 3,N-2
+            s_on(j) = residual_row_scale(2, j, u)
+         enddo
+         ! Another state in between, so that the scale of u is formed
+         ! again under the other arm and not answered from what this one
+         ! left.
+         well_balanced = .false.
+         s_break = residual_row_scale(2, 3, 1.5d0*u)
+         do j = 3,N-2
+            s_off(j) = residual_row_scale(2, j, u)
+         enddo
+
+         s_zero = 0.0d0
+         s_own  = 0.0d0
+         do j = 3,N-2
+            if (s_off(j) .gt. 0.0d0)                                     &
+               s_zero = max(s_zero, abs(s_on(j) - s_off(j))/s_off(j))
+            if (s_row(j) .gt. 0.0d0)                                     &
+               s_own = max(s_own, abs(s_on(j) - s_row(j))/s_row(j))
+         enddo
+
+         well_balanced = .true.
+         b0 = b0_case
+         call set_gravity_grid
+
+         write(iu3,'(I8,I3,5ES24.16)') N, is, s_eq, s_p1, s_p2, s_zero,  &
+            s_own
+
+      enddo
+
+      close(iu3)
+      well_balanced = sav_wb
+
+      end subroutine measure_momentum_row_scale
+
+      ! ------------------------------------------------------------------ !
+
+      subroutine measure_momentum_physical_terms(u, WL, WR, dF, S,       &
+                                                 rho_a, b0_case)
+      ! WHAT IS MEASURED: the momentum row's REFERENCE SCALE,
+      ! residual_row_scale(2,j,u), against the terms of the momentum
+      ! equation
+      !
+      !   d(rho v)/dt + div(rho v v) + dp/dr + rho dphi/dr = S_visc ,
+      !
+      ! on four states whose terms are known in closed form.  The scale is
+      ! what the stationary solver's certification divides the row by, so
+      ! what it measures decides which states are accepted; a scale built
+      ! from the DISCRETIZATION's pieces, max(|dF_2|, |S_2|), is not those
+      ! terms, because under PLM the pressure sits partly in the momentum
+      ! flux (Phys_flux adds p) and partly in the source (the geometric term
+      ! (A+ - A-) p_c/dV) with the two O(2 p/r) parts cancelling between
+      ! them.
+      !
+      !   zero gravity, uniform pressure, at rest.  Every term of the
+      !        equation is zero, so the scale must be zero to the rounding
+      !        of its own assembly.  It is reported as a FRACTION OF THE
+      !        GEOMETRIC PRESSURE TERM (A+ - A-) p_j/dV, which is what a
+      !        scale made of the discretization's pieces returns here and
+      !        is 2 p/r as dr goes to zero.  A fully zero row is divided by
+      !        the tiny floor of momentum_row_scale, the only place the
+      !        denominator is not a term of the row; the two schemes reach
+      !        that state at the rounding of two different assemblies, eps p
+      !        over dr under WENO3 against eps p over r under PLM, so the
+      !        statement is made against the physical term and not between
+      !        the two schemes, whose measured values are reported.
+      !   the discrete hydrostatic equilibrium of the scheme, at rest.  The
+      !        pressure gradient and the weight are equal and opposite and
+      !        are the only terms, so the scale is the weight, and the
+      !        weight of the arm the row was assembled by: the half-sum of
+      !        the two face densities times the interface potential
+      !        difference for the base scheme, as Source.f90 forms it, and
+      !        the pressure force of the cell's own equilibrium under
+      !        "Well balanced:", where that cancellation is algebraic.  The
+      !        two differ by the O(dr/r) of their geometric weighting and
+      !        are not interchangeable references.  Under the arm that
+      !        weight is the scale exactly; for the base scheme what is
+      !        asserted is that the scale is not below it.
+      !   the same equilibrium with the pressure perturbed by eps and
+      !        eps/2.  The scale is the same number on both (the density and
+      !        the potential are untouched) and the imbalance is
+      !        homogeneous of degree one in eps, so the scaled row halves.
+      !   supersonic uniform flow, no gravity, uniform pressure, v = 3 c_s.
+      !        The ram divergence is the only term: (A+ - A-) rho v v/dV
+      !        exactly, the faces of a uniform state being the cell values.
+      !        A scale that keeps the pressure inside the momentum flux
+      !        reads (A+ - A-)(rho v v + p)/dV instead, high by 1/(gamma M M).
+      real*8, dimension(3,1-Ng:N+Ng), intent(inout) :: u, WL, WR, dF, S
+      real*8, dimension(1-Ng:N+Ng),   intent(inout) :: rho_a
+      real*8, intent(in) :: b0_case
+
+      real*8, parameter :: eps_p = 1.0d-6
+      real*8, parameter :: mach  = 3.0d0
+      real*8, dimension(1-Ng:N+Ng) :: rho_d, p_d, R0
+      real*8  :: z_frac, z_scale, e_base, b_base, e_arm, p_rat, u_ram
+      real*8  :: x1, x2, sc, wgt, epf, ramr, cs_u, v_u
+      real*8  :: shape_p, twopi, span, geo, dAp, dAm, dV
+      real*8  :: s_break
+      integer :: j, iu4, ip
+      logical :: sav_wb
+
+      sav_wb = well_balanced
+      twopi  = 8.0d0*atan(1.0d0)
+
+      b0 = b0_case
+      call set_gravity_grid
+      do j = 2-Ng,N+Ng
+         rho_a(j) = cell_average(rho_column, j)
+      enddo
+      rho_a(1-Ng) = rho_a(2-Ng)
+      call discrete_equilibrium_density(rho_a(1), rho_d)
+      p_d  = nhat*rho_d
+      span = r(N) - r(1)
+
+      open(newunit=iu4, file=pt_file, position='append',                 &
+           status='unknown')
+
+      do is = 1,n_scheme
+
+         call set_scheme(is)
+         well_balanced = .false.
+
+         ! ---- zero gravity, uniform pressure, at rest ----
+         b0 = 0.0d0
+         call set_gravity_grid
+         do j = 1-Ng,N+Ng
+            u(1,j) = 1.0d0
+            u(2,j) = 0.0d0
+            u(3,j) = 1.0d0/(gamma_ad - 1.0d0)
+         enddo
+         n_part_cell1 = 1.0d0
+         call set_base_reservoir(1.0d0, 1.0d0, 1.0d0, 1.0d0)
+         call Apply_BC(u)
+         s_break = residual_row_scale(2, 3, 1.5d0*u)
+         z_frac  = 0.0d0
+         z_scale = 0.0d0
+         do j = 3,N-2
+            dAp = r_edg(j)*r_edg(j)
+            dAm = r_edg(j-1)*r_edg(j-1)
+            dV  = (dAp*r_edg(j) - dAm*r_edg(j-1))/3.0d0
+            geo = (dAp - dAm)*1.0d0/dV
+            sc  = residual_row_scale(2, j, u)
+            z_frac  = max(z_frac,  sc/geo)
+            z_scale = max(z_scale, sc)
+         enddo
+
+         ! ---- the discrete equilibrium: the scale is the weight ----
+         b0 = b0_case
+         call set_gravity_grid
+         do j = 1-Ng,N+Ng
+            u(1,j) = rho_d(j)
+            u(2,j) = 0.0d0
+            u(3,j) = p_d(j)/(gamma_ad - 1.0d0)
+         enddo
+         call set_base_reservoir(p_column(1.0d0), 1.0d0, nhat, 1.0d0)
+         n_part_cell1 = nhat*rho_d(1)
+         call Apply_BC(u)
+         call Reconstruct(u, WL, WR)
+         call RK_rhs(u, WL, WR, dF, S)
+
+         ! The weight of the base scheme, as `source` forms it from the two
+         ! reconstructed face densities of this cell.
+         !
+         ! WHAT IS ASSERTED IS ONE SIDED: the scale must not fall BELOW the
+         ! weight, (w - s)/w <= 0, which says that the weight is one of the
+         ! terms the max runs over.  A scale made of the discretization's
+         ! pieces has no such term under PLM, where S_2 is the weight minus
+         ! the geometric pressure term, and it comes out 28 percent below
+         ! the weight on this state (MEASURED on the entry text).  The
+         ! departure |s - w|/w is REPORTED and not asserted, because it is
+         ! not round-off on this state for the base scheme: the state is the
+         ! equilibrium of the ARM's reconstruction, on which the base
+         ! scheme's own row is its truncation error, and the HLLC face
+         ! pressure is one side's own value rather than an average, so the
+         ! momentum flux carries a dissipative part of the size dr/H times
+         ! the weight at rest.  Both fall with the grid; a bound on that
+         ! quantity would be a tolerance chosen for them.
+         s_break = residual_row_scale(2, 3, 1.5d0*u)
+         e_base  = 0.0d0
+         b_base  = -1.0d0
+         do j = 3,N-2
+            wgt = abs(0.5d0*(WR(1,j-1) + WL(1,j))                        &
+                      *(Gphi_i(j) - Gphi_i(j-1))/dr_j(j))
+            sc  = residual_row_scale(2, j, u)
+            if (wgt .gt. 0.0d0) then
+               e_base = max(e_base, abs(sc - wgt)/wgt)
+               b_base = max(b_base, (wgt - sc)/wgt)
+            endif
+         enddo
+
+         ! The same state under the arm, whose weight is the pressure force
+         ! of the cell's own equilibrium (the right-hand side of the
+         ! cancellation identity, in the form the assembled row belongs to).
+         well_balanced = .true.
+         call Reconstruct(u, WL, WR)
+         call RK_rhs(u, WL, WR, dF, S)
+         s_break = residual_row_scale(2, 3, 1.5d0*u)
+         e_arm   = 0.0d0
+         do j = 3,N-2
+            dAp = r_edg(j)*r_edg(j)
+            dAm = r_edg(j-1)*r_edg(j-1)
+            dV  = (dAp*r_edg(j) - dAm*r_edg(j-1))/3.0d0
+            if (use_plm) then
+               epf = abs(u(1,j)*(dAp*(Gphi_i(j)   - Gphi_c(j))           &
+                               + dAm*(Gphi_c(j)   - Gphi_i(j-1))))/dV
+            else
+               epf = abs(u(1,j)*(Gphi_i(j) - Gphi_i(j-1)))/dr_j(j)
+            endif
+            sc = residual_row_scale(2, j, u)
+            if (epf .gt. 0.0d0) e_arm = max(e_arm,                       &
+               (abs(sc - epf) - abs(dF(2,j) - S(2,j)))/epf)
+         enddo
+         well_balanced = .false.
+
+         ! ---- the perturbed equilibrium, base scheme: the scaled
+         !      imbalance the perturbation adds halves with it ----
+         ! WHAT IS DIFFERENCED, AND WHY.  The base scheme's row on the
+         ! arm's discrete equilibrium is not zero: that state is the
+         ! equilibrium of the arm's reconstruction, and the base scheme's
+         ! own truncation error on it is eps-independent and larger than the
+         ! perturbation's imbalance here (MEASURED on the entry text: the
+         ! undifferenced ratio is 1.0012 at N = 250 and 1.586 at N = 2000,
+         ! the truncation falling with the grid).  The perturbation's own
+         ! contribution to each cell's row is what has to halve, so the
+         ! unperturbed row of the same cell is subtracted; it and every face
+         ! quantity built from it are homogeneous of degree one in the
+         ! perturbation, so the ratio is 2 up to O(eps).  A scale that is
+         ! the row itself, which is what the well-balanced arm had before
+         ! the weight was put back, returns 1 here and not 2.
+         do j = 1-Ng,N+Ng
+            u(1,j) = rho_d(j)
+            u(2,j) = 0.0d0
+            u(3,j) = p_d(j)/(gamma_ad - 1.0d0)
+         enddo
+         call set_base_reservoir(p_column(1.0d0), 1.0d0, nhat, 1.0d0)
+         n_part_cell1 = nhat*rho_d(1)
+         call Apply_BC(u)
+         call Reconstruct(u, WL, WR)
+         call RK_rhs(u, WL, WR, dF, S)
+         do j = 1-Ng,N+Ng
+            R0(j) = dF(2,j) - S(2,j)
+         enddo
+
+         x1 = 0.0d0
+         x2 = 0.0d0
+         do ip = 1,2
+            do j = 1-Ng,N+Ng
+               shape_p = 1.0d0 + eps_p/dble(2**(ip-1))                   &
+                         *sin(4.0d0*twopi*(r(j) - r(1))/span)
+               u(1,j) = rho_d(j)
+               u(2,j) = 0.0d0
+               u(3,j) = shape_p*p_d(j)/(gamma_ad - 1.0d0)
+            enddo
+            call set_base_reservoir(p_column(1.0d0), 1.0d0, nhat, 1.0d0)
+            n_part_cell1 = nhat*rho_d(1)
+            call Apply_BC(u)
+            call Reconstruct(u, WL, WR)
+            call RK_rhs(u, WL, WR, dF, S)
+            s_break = residual_row_scale(2, 3, 1.5d0*u)
+            sc = 0.0d0
+            do j = 3,N-2
+               sc = max(sc, abs(dF(2,j) - S(2,j) - R0(j))                &
+                            /residual_row_scale(2, j, u))
+            enddo
+            if (ip .eq. 1) x1 = sc
+            if (ip .eq. 2) x2 = sc
+         enddo
+         p_rat = 0.0d0
+         if (x2 .gt. 0.0d0) p_rat = x1/x2
+
+         ! ---- supersonic uniform flow, no gravity, uniform pressure ----
+         b0 = 0.0d0
+         call set_gravity_grid
+         cs_u = sqrt(gamma_ad*1.0d0/1.0d0)
+         v_u  = mach*cs_u
+         do j = 1-Ng,N+Ng
+            u(1,j) = 1.0d0
+            u(2,j) = v_u
+            u(3,j) = 0.5d0*v_u*v_u + 1.0d0/(gamma_ad - 1.0d0)
+         enddo
+         n_part_cell1 = 1.0d0
+         call set_base_reservoir(1.0d0, 1.0d0, 1.0d0, 1.0d0)
+         call Apply_BC(u)
+         s_break = residual_row_scale(2, 3, 1.5d0*u)
+         u_ram = 0.0d0
+         do j = 3,N-2
+            dAp  = r_edg(j)*r_edg(j)
+            dAm  = r_edg(j-1)*r_edg(j-1)
+            dV   = (dAp*r_edg(j) - dAm*r_edg(j-1))/3.0d0
+            ramr = (dAp - dAm)*v_u*v_u/dV
+            sc   = residual_row_scale(2, j, u)
+            u_ram = max(u_ram, abs(sc - ramr)/ramr)
+         enddo
+
+         b0 = b0_case
+         call set_gravity_grid
+
+         write(iu4,'(I8,I3,7ES24.16)') N, is, z_frac, z_scale, e_base,   &
+            b_base, e_arm, p_rat, u_ram
+
+      enddo
+
+      close(iu4)
+      well_balanced = sav_wb
+
+      end subroutine measure_momentum_physical_terms
+
+      ! ------------------------------------------------------------------ !
+
+      subroutine report_momentum_physical_terms(nfail)
+      ! The momentum row's reference scale against the terms of the momentum
+      ! equation, on the four states measure_momentum_physical_terms builds.
+      integer, intent(inout) :: nfail
+
+      integer, parameter :: mxs = 256
+      integer :: Nv(mxs), sv(mxs)
+      real*8  :: zf(mxs), zs(mxs), eb(mxs), bb(mxs), ea(mxs), pr(mxs)
+      real*8  :: ur(mxs)
+      integer :: nrec, iu, ios, i, is
+      real*8  :: wzf, wzs, web, wbb, wea, wpr, wur
+
+      nrec = 0
+      open(newunit=iu, file=pt_file, status='old', iostat=ios)
+      if (ios .ne. 0) then
+         write(*,'(A)') 'FAIL hydrostatic_momentum_terms_file '//        &
+              'measured=missing reference='//pt_file//' tol=0'
+         nfail = nfail + 1
+         return
+      endif
+      do
+         if (nrec .ge. mxs) exit
+         read(iu,*,iostat=ios) Nv(nrec+1), sv(nrec+1), zf(nrec+1),       &
+              zs(nrec+1), eb(nrec+1), bb(nrec+1), ea(nrec+1), pr(nrec+1), &
+              ur(nrec+1)
+         if (ios .ne. 0) exit
+         nrec = nrec + 1
+      enddo
+      close(iu)
+
+      write(*,'(A)') ''
+      write(*,'(A)') '  DIAGNOSTIC momentum row scale against the terms'//&
+           ' of the momentum equation, interior cells 3..N-2'
+      write(*,'(A)') '        N  scheme      zero-g/(2p/r)'//            &
+           '     zero-g scale   base |s-w|/w'//                          &
+           '    base (w-s)/w     arm |s-w|/w'//                          &
+           '   halving ratio     supersonic ram'
+      do i = 1,nrec
+         write(*,'(A,I8,2X,A10,2X,5ES16.5,F15.6,ES17.5)')                &
+            '     ', Nv(i), trim(scheme_name(sv(i))), zf(i), zs(i),      &
+            eb(i), bb(i), ea(i), pr(i), ur(i)
+      enddo
+
+      ! THE BOUNDS.  The two identity statements -- no force at all, and a
+      ! pure ram divergence -- are asserted at 1e-8.  That is eight decades
+      ! below what a scale built from the discretization's pieces returns on
+      ! those states (1.000 of the geometric pressure term, and 1/(gamma M M)
+      ! = 6.7e-2 above the ram term at M = 3), and above the rounding the
+      ! scale's own assembly leaves: under WENO3 the reconstruction of a
+      ! uniform pressure is exact and the scale is the tiny floor itself
+      ! (MEASURED 2.22507E-308, which is tiny(1.0d0)), while under PLM the
+      ! geometric term and the flux pressure cancel to the rounding of the
+      ! cell pressure.  On the discrete equilibrium the base scheme's
+      ! statement is one sided, (w - s)/w <= 0, which says the weight is one
+      ! of the terms the max runs over and is an inequality of the assembly
+      ! and not a tolerance; the arm's is two sided and exact, the scale
+      ! being the equilibrium pressure force itself (MEASURED 0.00000E+00
+      ! at every N and every pair).  The departure |s - w|/w of the base
+      ! scheme is reported, not asserted: on this state, which is the
+      ! equilibrium of the arm's reconstruction, it carries the base
+      ! scheme's truncation error and, with HLLC, the dissipative part of a
+      ! momentum flux whose face pressure is one side's own value.  The halving
+      ! ratio is asserted against two to a tenth, which is an algebraic
+      ! property and not a tolerance: the imbalance the perturbation adds
+      ! and every face quantity built from it are homogeneous of degree one
+      ! in it (the limited slope is positively homogeneous, the WENO3
+      ! weights are scale free), so the ratio is 2 up to O(eps).
+      do is = 1,n_scheme
+         wzf = 0.0d0
+         wzs = 0.0d0
+         web = 0.0d0
+         wbb = -1.0d0
+         wea = 0.0d0
+         wur = 0.0d0
+         wpr = 0.0d0
+         do i = 1,nrec
+            if (sv(i) .ne. is) cycle
+            wzf = max(wzf, zf(i))
+            wzs = max(wzs, zs(i))
+            web = max(web, eb(i))
+            wbb = max(wbb, bb(i))
+            wea = max(wea, ea(i))
+            wur = max(wur, ur(i))
+            wpr = max(wpr, abs(pr(i) - 2.0d0))
+         enddo
+         call verdict_below('zero_gravity_uniform_state_momentum_'//     &
+                            'scale_vanishes['//                          &
+                            trim(scheme_name(is))//']', wzf, 1.0d-8,     &
+                            nfail)
+         call verdict_below('momentum_scale_is_not_below_the_weight_'// &
+                            'on_the_discrete_equilibrium['//             &
+                            trim(scheme_name(is))//']', wbb, 1.0d-12,    &
+                            nfail)
+         call verdict_below('well_balanced_momentum_scale_is_the_'//     &
+                            'equilibrium_pressure_force['//              &
+                            trim(scheme_name(is))//']', wea, 1.0d-12,    &
+                            nfail)
+         call verdict_below('momentum_scaled_row_tracks_the_'//          &
+                            'imbalance['//                              &
+                            trim(scheme_name(is))//']', wpr, 1.0d-1,     &
+                            nfail)
+         call verdict_below('supersonic_uniform_flow_momentum_scale_'//  &
+                            'is_the_ram_divergence['//                   &
+                            trim(scheme_name(is))//']', wur, 1.0d-8,     &
+                            nfail)
+         write(*,'(A,A,A,ES12.5,A,ES12.5)') '  DIAGNOSTIC zero_gravity'//&
+              '_scale[', trim(scheme_name(is)), '] = ', wzs,             &
+              '   equilibrium |s-w|/w = ', web
+      enddo
+
+      end subroutine report_momentum_physical_terms
+
+      ! ------------------------------------------------------------------ !
+
+      subroutine report_momentum_row_scale(nfail)
+      ! The normalized momentum row of the well-balanced arm, on the three
+      ! states measure_momentum_row_scale builds.
+      integer, intent(inout) :: nfail
+
+      integer, parameter :: mxs = 256
+      integer :: Nv(mxs), sv(mxs)
+      real*8  :: seq(mxs), sp1(mxs), sp2(mxs), szr(mxs), sow(mxs)
+      integer :: nrec, iu, ios, i, is
+      real*8  :: weq, wp, wzr, wown, wrat, rat
+
+      nrec = 0
+      open(newunit=iu, file=sc_file, status='old', iostat=ios)
+      if (ios .ne. 0) then
+         write(*,'(A)') 'FAIL hydrostatic_momentum_scale_file '//        &
+              'measured=missing reference='//sc_file//' tol=0'
+         nfail = nfail + 1
+         return
+      endif
+      do
+         if (nrec .ge. mxs) exit
+         read(iu,*,iostat=ios) Nv(nrec+1), sv(nrec+1), seq(nrec+1),      &
+              sp1(nrec+1), sp2(nrec+1), szr(nrec+1), sow(nrec+1)
+         if (ios .ne. 0) exit
+         nrec = nrec + 1
+      enddo
+      close(iu)
+
+      write(*,'(A)') ''
+      write(*,'(A)') '  DIAGNOSTIC momentum row over its own reference'// &
+           ' scale, well-balanced arm ON, interior cells 3..N-2'
+      write(*,'(A)') '        N  scheme        equilibrium'//            &
+           '    perturbed(eps)  perturbed(eps/2)   ratio'//              &
+           '   zero-g vs base  zero-g vs own terms'
+      do i = 1,nrec
+         rat = 0.0d0
+         if (sp2(i) .gt. 0.0d0) rat = sp1(i)/sp2(i)
+         write(*,'(A,I8,2X,A10,2X,3ES17.5,F10.4,2ES17.5)')               &
+            '     ', Nv(i), trim(scheme_name(sv(i))), seq(i), sp1(i),    &
+            sp2(i), rat, szr(i), sow(i)
+      enddo
+
+      ! THE BOUNDS.  On the discrete equilibrium the arm's momentum row is
+      ! at the rounding level of a row assembled from cell pressures,
+      ! epsilon x p x r^2/dV, which is 1e-12 of the cell's own weight at the
+      ! base of this grid and far below it above; 1e-10 is above that bound
+      ! and twelve decades below the one a degenerate scale returns.  The
+      ! perturbed state is asserted against one, which is what a row that is
+      ! its own scale reads, and its two perturbations against the factor
+      ! two between them, to a tenth: the departure is homogeneous of degree
+      ! one in the perturbation, so the ratio is 2 up to O(eps).  The
+      ! zero-gravity statement is an identity and not a bound: with no
+      ! gravity the equilibrium pressure force is zero, so the scale is the
+      ! max of the same two numbers the row's own terms give and the
+      ! departure is exactly zero.
+      do is = 1,n_scheme
+         weq  = 0.0d0
+         wp   = 0.0d0
+         wzr  = 0.0d0
+         wown = 0.0d0
+         wrat = 0.0d0
+         do i = 1,nrec
+            if (sv(i) .ne. is) cycle
+            weq = max(weq, seq(i))
+            wp  = max(wp,  max(sp1(i), sp2(i)))
+            wzr = max(wzr, szr(i))
+            wown = max(wown, sow(i))
+            rat = 0.0d0
+            if (sp2(i) .gt. 0.0d0) rat = sp1(i)/sp2(i)
+            wrat = max(wrat, abs(rat - 2.0d0))
+         enddo
+         call verdict_below('well_balanced_scaled_momentum_row_on_its'// &
+                            '_own_equilibrium['//                        &
+                            trim(scheme_name(is))//']', weq, 1.0d-10,    &
+                            nfail)
+         call verdict_below('well_balanced_scaled_momentum_row_below'//  &
+                            '_one_when_perturbed['//                     &
+                            trim(scheme_name(is))//']', wp, 1.0d0,       &
+                            nfail)
+         call verdict_below('well_balanced_scaled_momentum_row_tracks'// &
+                            '_the_imbalance['//                          &
+                            trim(scheme_name(is))//']', wrat, 1.0d-1,    &
+                            nfail)
+         call verdict_below('zero_gravity_momentum_scale_is_the_rows'//  &
+                            '_own_terms['//                              &
+                            trim(scheme_name(is))//']', wown, 1.0d-15,   &
+                            nfail)
+         write(*,'(A,A,A,ES12.5)') '  DIAGNOSTIC zero_gravity_scale_'//  &
+              'against_the_base_scheme[', trim(scheme_name(is)),         &
+              '] = ', wzr
+      enddo
+
+      end subroutine report_momentum_row_scale
 
       ! ------------------------------------------------------------------ !
 
@@ -704,6 +1426,8 @@
       enddo
 
       call report_well_balanced(nfail)
+      call report_momentum_row_scale(nfail)
+      call report_momentum_physical_terms(nfail)
 
       end subroutine report_ladder
 

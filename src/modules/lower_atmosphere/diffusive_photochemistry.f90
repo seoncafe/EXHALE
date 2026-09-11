@@ -323,6 +323,13 @@
 
       public :: photochemical_transport_step
       public :: relax_photochemical_composition
+      ! WHAT ENDED A CARRIER RELAXATION PASS, in words.  The pass advances
+      ! the carriers at a fixed wind under a bound on how far the
+      ! composition may move, and its five endings are physically different
+      ! states of affairs and not degrees of one, so the caller reads which
+      ! one instead of reading success into a stop.  The named values are
+      ! the carrier_relax_* parameters below.
+      public :: carrier_relax_outcome_text
       public :: carrier_transport_diagnostics
       public :: carrier_diffusion_coefficient
       public :: carrier_set_init
@@ -661,6 +668,31 @@
       ! Relaxation controls, mirroring relax_element_composition.
       integer,  parameter :: relax_maxstep = 400
       real(dp), parameter :: relax_tol     = 1.0d-10
+      ! THE SHORTEST TRIAL STEP A RELAXATION PASS WILL TAKE, as a fraction
+      ! of the cell's own transport time.  A trial that leaves the movement
+      ! bound is halved and retried, and at this length it can add at most
+      ! about 1e-3 of the bound: the first step at the full cell crossing
+      ! time moves the largest mixing ratio by 1.1e-2 on the hot Uranus
+      ! column, and the movement of a step falls with its length.  That is
+      ! below the tolerance the bound is stated to, so a trial that still
+      ! leaves the bound here says the bound is reached and not that the
+      ! step is too long.
+      real(dp), parameter :: relax_grow_min = 2.0d0**(-10)
+      ! THE ENDINGS OF A RELAXATION PASS.  MOVEMENT_BOUND: the returned
+      ! state lies inside the bound and the shortest admissible trial would
+      ! leave it.  FIXED_POINT: a full-length step no longer moves the
+      ! state.  STEP_BUDGET: relax_maxstep trials were taken without
+      ! either.  INTERVAL_REFUSED: the shortest admissible trial still could
+      ! not be covered by the transport step, so the state inside the bound
+      ! is what stands.  NO_CARRIERS: the
+      ! configuration transports no carrier, or no frozen background has
+      ! been formed yet, so there is nothing to advance and the unmoved
+      ! state is inside every bound.
+      integer, parameter, public :: carrier_relax_movement_bound   = 0
+      integer, parameter, public :: carrier_relax_fixed_point      = 1
+      integer, parameter, public :: carrier_relax_step_budget      = 2
+      integer, parameter, public :: carrier_relax_interval_refused = 3
+      integer, parameter, public :: carrier_relax_nothing_to_advance = 4
 
       ! The background this step holds frozen: the ion stages, the molecular
       ! ions and the free electrons (sec. 4).  Filled once per step by
@@ -4709,67 +4741,148 @@
 
       ! ------------------------------------------------------------- !
 
-      ! Relax the carriers to their steady state at a fixed wind, for the
-      ! Picard loop of the steady solver.  Same shape as
+      ! The largest change of a solved carrier column between two carrier
+      ! states, over the physical cells.  ONE number for the whole grid, so
+      ! that a bound written on it is a statement about the state and not
+      ! about the cell that happens to hold the least of the gas.
+      real(dp) function carrier_composition_displacement(fa, fb)
+      real(dp), dimension(1-Ng:N+Ng,n_carrier_max), intent(in) :: fa, fb
+      real(dp) :: d
+      integer  :: j, ic
+      d = 0.0d0
+      do ic = 1, n_carrier
+         if (.not. carrier_solved(ic)) cycle
+         do j = 1, N
+            d = max(d, abs(fa(j,ic) - fb(j,ic)))
+         enddo
+      enddo
+      carrier_composition_displacement = d
+      end function carrier_composition_displacement
+
+      ! ------------------------------------------------------------- !
+
+      ! What ended a relaxation pass, in words, for the caller's log.
+      function carrier_relax_outcome_text(outcome) result(txt)
+      integer, intent(in) :: outcome
+      character(len=64) :: txt
+      select case (outcome)
+      case (carrier_relax_movement_bound)
+         txt = 'the movement bound, with the last step inside it'
+      case (carrier_relax_fixed_point)
+         txt = 'the carriers stopped moving at the fixed wind'
+      case (carrier_relax_step_budget)
+         txt = 'the step budget, with neither reached'
+      case (carrier_relax_interval_refused)
+         txt = 'the shortest admissible trial was not covered'
+      case (carrier_relax_nothing_to_advance)
+         txt = 'nothing to advance: no carrier, or no frozen background'
+      case default
+         txt = 'undefined'
+      end select
+      end function carrier_relax_outcome_text
+
+      ! ------------------------------------------------------------- !
+
+      ! Relax the carriers towards their steady state at a fixed wind, for
+      ! the Picard loop of the steady solver.  Same shape as
       ! relax_element_composition: a time scale for each cell, grown
-      ! geometrically until the state stops moving, with the steady mass
-      ! flux in place of the instantaneous velocity so that a breathing base
-      ! does not drive the relaxation.
+      ! geometrically while the state keeps moving, with the steady mass
+      ! flux in place of the instantaneous velocity so that a breathing
+      ! base does not drive the relaxation.
       subroutine relax_photochemical_composition(rho, v, f_sp,           &
-                                                 trust, drift, nstep)
-      ! Advance the carriers at the fixed wind by AT MOST `trust` of the
-      ! largest H2 mixing ratio on the grid, and hand that state over whole.
+                                                 trust, drift, nstep,   &
+                                                 outcome)
+      ! THE STATE HANDED BACK LIES WITHIN `trust` OF THE STATE HANDED IN.
+      ! The displacement is the largest change of any solved carrier column
+      ! anywhere on the grid, divided by the largest H2 mixing ratio of the
+      ! ENTRY state.  That single measure is what the bound is enforced on
+      ! and what `drift` reports; its normalization is a property of the
+      ! entry state, so the bound cannot move while the pass runs and the
+      ! number enforced is the number reported.
       !
-      ! WHAT THIS REPLACES, AND WHY (docs/p50_carrier_wind_alternation.md).
-      ! It used to relax all the way to the fixed-wind steady state and then
-      ! blend the result into the entry state at an under-relaxation factor.
-      ! Both halves of that were measured on the He/H = 0.0793 hot Uranus,
-      ! from a wind the steady solver had just accepted at info = 0:
+      ! THE BOUND IS ENFORCED BEFORE ACCEPTANCE.  Each transport step is
+      ! taken with the entry composition of that step held aside: a step
+      ! whose state lies outside the bound is discarded, the composition is
+      ! put back, and the step is halved and tried again, down to
+      ! relax_grow_min of the cell's own transport time; a step that lies
+      ! inside is kept.  A step the operator itself refuses takes the same
+      ! ladder, for the same reason: the trial length is this relaxation's
+      ! own choice and a shorter interval moves the state less.  A
+      ! displacement tested only after an applied step bounds nothing,
+      ! which is MEASURED in
+      ! docs/solver_partition_experiment_20260911.md sec. 7.2: at
+      ! trust = 0.01 a single step of this operator moved the composition
+      ! by 0.02812676, 0.02780587 and 0.02748751 in three successive
+      ! passes of a molecular case.
       !
-      !  * The fixed-wind steady state is not near the entry state and is not
-      !    a solution of anything. It drives x2 = 2n(H2)/n_H to the hydrogen
-      !    ELEMENT CEILING, exactly 1.0, in 123 of 500 cells between 1.047
-      !    and 1.227 R_p -- a state pinned by limit_to_element_budget over a
-      !    quarter of the grid. Handing it over threw ||R|| from 1.5e-4 to
-      !    1.9e-2 and the next solve aborted.
-      !  * The blend is worse than either state it interpolates. Carrier
-      !    steady residual: entry 1.6e-4, relaxed exit 2.2e-3, the omega=0.5
+      ! THE BOUND IS ON THE COMPOSITION, NOT ON THE TIME, and the
+      ! difference is what makes it a bound at all.  A cap on how many flow
+      ! times one pass may advance controls nothing: at one tenth of a
+      ! cell's flow time the pass still crosses about sixty cells at the H2
+      ! front and the move is of order unity either way (READ from
+      ! docs/Update_EXHALE_stage1.md sec. 128: drifts 0.536 and 0.533 at
+      ! caps of 1.0 and 0.1).  The front is advected, and advection is not
+      ! slow on any time scale such a bound can be written in.  It IS slow
+      ! on a composition scale: the first step, at the cell's own crossing
+      ! time, moves the largest mixing ratio by 1.1e-2, so a bound of 1e-2
+      ! is met at the first step and a bound of 0.4 is not met until the
+      ! pass is most of the way to the clamped ceiling state.
+      !
+      ! WHY A BOUNDED ADVANCE AND NEITHER THE FIXED-WIND STEADY STATE NOR A
+      ! BLEND OF IT WITH THE ENTRY STATE.  All three were measured on the
+      ! He/H = 0.0793 hot Uranus, from a wind the steady solver had just
+      ! accepted at info = 0 (READ from
+      ! docs/p50_carrier_wind_alternation.md):
+      !
+      !  * The fixed-wind steady state is not near the entry state and is
+      !    not a solution of anything.  It drives x2 = 2n(H2)/n_H to the
+      !    hydrogen ELEMENT CEILING, exactly 1.0, in 123 of 500 cells
+      !    between 1.047 and 1.227 R_p, a state pinned by
+      !    limit_to_element_budget over a quarter of the grid.  Handing it
+      !    over threw ||R|| from 1.5e-4 to 1.9e-2 and the next solve
+      !    aborted.
+      !  * A blend of two states solves neither equation.  Carrier steady
+      !    residual: entry 1.6e-4, relaxed exit 2.2e-3, the omega = 0.5
       !    blend 8.6e-3, and it threw ||R|| to 6.7e-2 rather than 1.9e-2.
-      !    A blend of two states solves neither equation. Reducing omega did
-      !    not help and is measured to hurt (omega = 1.8e-3 gave 2.0e-1).
+      !    Reducing omega is measured to hurt (omega = 1.8e-3 gave 2.0e-1).
       !  * A bounded advance, handed over whole, does work: at 1e-2 the
       !    steady solve returned info = 0 on 20 consecutive passes with
       !    ||R|| between 2.4e-4 and 3.1e-4, where the blend aborted on the
-      !    first. The bound is where the margin is: the solve still accepts
-      !    at 0.2 and stops accepting at 0.4, so 1e-2 stands a factor 20
-      !    inside the boundary, and it is met by the FIRST step of the
-      !    operator (one cell crossing time moves the composition by 1.1e-2).
+      !    first.  The bound is where the margin is: the solve still
+      !    accepts at 0.2 and stops accepting at 0.4, so 1e-2 stands a
+      !    factor 20 inside the boundary.
       !
       ! What a bounded pass does NOT do is reach a fixed point, and nothing
-      ! here claims it: the H2 front advances about one cell in each pass, at
-      ! 83 percent of the local gas speed. That is the front of sections
-      ! 128.6 and 134.4 still propagating, and it is why the carrier
-      ! transport stays default off.
+      ! here claims it: the H2 front advances about one cell in each pass,
+      ! at 83 percent of the local gas speed.  That front is why the
+      ! carrier transport stays default off, and it is why `outcome` names
+      ! what ended the pass rather than leaving a caller to read success
+      ! into a stop.
       real(dp), dimension(1-Ng:N+Ng),           intent(in)    :: rho, v
       real(dp), dimension(1-Ng:N+Ng,n_species), intent(inout) :: f_sp
       real(dp),                                 intent(in)    :: trust
       real(dp),                                 intent(out)   :: drift
       integer,                                  intent(out)   :: nstep
+      integer, intent(out), optional :: outcome
 
       real(dp), dimension(1-Ng:N+Ng) :: dt_code
       real(dp), dimension(1-Ng:N+Ng,n_carrier_max) :: fprev, fnow, fentry
       real(dp), dimension(1-Ng:N+Ng,n_carrier_max) :: Dco
+      real(dp), dimension(1-Ng:N+Ng,n_species) :: f_held
       real(dp), dimension(1-Ng:N+Ng) :: ntot, TK, mbar, nrho, wfac
       real(dp), dimension(1-Ng:N+Ng) :: nH_free, nO_free, nC_free
       real(dp) :: drj, tdiff, tadv, grow, tscale, dmax, x_ref
-      integer  :: j, k, ic
+      integer  :: j, k, ic, ending, step_status
+      logical  :: too_long
       type(element_census_state) :: cen_relax
 
-      drift = 0.0d0
-      nstep = 0
-      if (.not. thereis_mol)      return
-      if (.not. carrier_transport) return
-      if (.not. bg_ready)         return
+      drift  = 0.0d0
+      nstep  = 0
+      if (.not. thereis_mol .or. .not. carrier_transport .or.             &
+          .not. bg_ready) then
+         if (present(outcome)) outcome = carrier_relax_nothing_to_advance
+         return
+      endif
 
       call element_census_take('relax_photochemical_composition',         &
                                rho, f_sp, cen_relax)
@@ -4788,19 +4901,14 @@
       dt_code(1-Ng:0)   = dt_code(1)
       dt_code(N+1:N+Ng) = dt_code(N)
 
-      ! THE BOUND IS ON THE COMPOSITION, NOT ON THE TIME, and the difference
-      ! is what makes it a bound at all.  Section 128 tried the time form --
-      ! cap how many flow times one pass may advance -- and measured that it
-      ! controls nothing: at one tenth of a cell's flow time the pass still
-      ! crosses about sixty cells at the H2 front and the move is of order
-      ! unity either way (drifts 0.536 and 0.533 at caps of 1.0 and 0.1).
-      ! The front is advected, and advection is not slow on any time scale
-      ! such a bound can be written in.  It IS slow on a composition scale:
-      ! the first step, at the cell's own crossing time, moves the largest
-      ! mixing ratio by 1.1e-2, so a bound of 1e-2 is met immediately and a
-      ! bound of 0.4 is not met until the pass is most of the way to the
-      ! clamped ceiling state.
-      grow  = 1.0d0
+      ! THE NORMALIZATION OF THE BOUND IS THE ENTRY STATE'S, one number for
+      ! the whole grid: a cell holding 1e-5 of the gas cannot report a large
+      ! change by being small, and the denominator does not move as the
+      ! pass advances.
+      x_ref  = max(maxval(fentry(1:N,ic_H2)), 1.0d-30)
+      grow   = 1.0d0
+      ending = carrier_relax_step_budget
+      fnow   = fentry
       ! THE ROWS OF THIS PASS CARRY THE ADVECTIVE TERM.  This is the
       ! fixed-wind relaxation: it takes many transport steps with no
       ! hydrodynamic stage between them, so the advection the marching loop
@@ -4809,39 +4917,68 @@
       ! equation balances at a wind that does not move.
       carrier_rows_advect = .true.
       do k = 1, relax_maxstep
-         call photochemical_transport_step(rho, v, f_sp, dt_code*grow)
-         call carrier_state(rho, f_sp, fnow, ntot, nrho, wfac,           &
-                            TK, mbar, nH_free, nO_free, nC_free)
-         nstep = k
-         dmax  = 0.0d0
-         do ic = 1, n_carrier
-            if (.not. carrier_solved(ic)) cycle
-            do j = 1, N
-               dmax = max(dmax, abs(fnow(j,ic) - fprev(j,ic)))
-            enddo
-         enddo
-         x_ref = max(maxval(fnow(1:N,ic_H2)), 1.0d-30)
-         drift = 0.0d0
-         do ic = 1, n_carrier
-            if (.not. carrier_solved(ic)) cycle
-            do j = 1, N
-               drift = max(drift, abs(fnow(j,ic) - fentry(j,ic)))
-            enddo
-         enddo
-         if (drift/x_ref .gt. trust) exit
-         if (dmax/x_ref .lt. relax_tol) exit
+         ! The composition this trial starts from, so that a trial this pass
+         ! will not keep can be undone.  The operator rebuilds its own
+         ! assembly arrays and its frozen background from the composition at
+         ! every call, so putting the composition back is what the next
+         ! trial reads; the attempt ledgers and step diagnostics of a
+         ! discarded trial are the record of an attempt that happened and
+         ! are not rolled back with it.
+         f_held = f_sp
+         call photochemical_transport_step(rho, v, f_sp, dt_code*grow,    &
+                                           step_status)
+         ! TWO WAYS FOR A TRIAL TO BE TOO LONG, and one ladder for both.
+         ! The operator refuses a returned state whose rows are out of
+         ! balance and writes no composition; the pass refuses a state
+         ! outside its movement bound.  Neither says the pass is finished:
+         ! the trial length is this relaxation's own choice, not a physical
+         ! time it owes anybody, and over a shorter interval the state
+         ! moves less and its rows balance more easily.  So a refused trial
+         ! is undone and halved, down to relax_grow_min, and the ending
+         ! names which refusal stood at that floor.
+         too_long = (step_status .ne. carrier_interval_covered)
+         if (.not. too_long) then
+            call carrier_state(rho, f_sp, fnow, ntot, nrho, wfac,        &
+                               TK, mbar, nH_free, nO_free, nC_free)
+            too_long = (carrier_composition_displacement(fnow, fentry)    &
+                        /x_ref .gt. trust)
+         endif
+         if (too_long) then
+            f_sp = f_held
+            fnow = fprev
+            if (grow .le. relax_grow_min) then
+               if (step_status .ne. carrier_interval_covered) then
+                  ending = carrier_relax_interval_refused
+               else
+                  ending = carrier_relax_movement_bound
+               endif
+               exit
+            endif
+            grow = max(0.5d0*grow, relax_grow_min)
+            cycle
+         endif
+         nstep = nstep + 1
+         dmax  = carrier_composition_displacement(fnow, fprev)
+         ! A FIXED POINT IS A STATE A FULL-LENGTH STEP NO LONGER MOVES.
+         ! A shortened trial moves the state proportionally less, so its
+         ! small movement is a statement about the step and not about the
+         ! state, and it cannot end the pass here.
+         if (dmax/x_ref .lt. relax_tol .and. grow .ge. 1.0d0) then
+            ending = carrier_relax_fixed_point
+            exit
+         endif
          fprev = fnow
          if (grow .lt. 1.0d12) grow = grow*1.5d0
       enddo
       carrier_rows_advect = .false.
 
-      ! How far the pass moved, on the same measure the element relaxation
-      ! reports (its own drift is max|X_relaxed - X_old|/X_base).  The
-      ! normalization is the largest H2 mixing ratio anywhere on the grid,
-      ! one number and not the cell's own value, so this is an ABSOLUTE
-      ! measure: a cell holding 1e-5 of the gas cannot report a large change
-      ! by being small.  It is reported, and it is not a convergence gate --
-      ! see the caller.
+      ! HOW FAR THE STATE HANDED BACK STANDS FROM THE STATE HANDED IN, on
+      ! the same measure the bound was enforced on and read off the
+      ! returned composition itself, so that the two can never be two
+      ! numbers.  It is reported, and it is not a convergence gate -- see
+      ! the caller.
+      call carrier_state(rho, f_sp, fnow, ntot, nrho, wfac, TK,          &
+                         mbar, nH_free, nO_free, nC_free)
       drift = 0.0d0
       pct_drift_j  = 0
       pct_drift_ic = 1
@@ -4855,10 +4992,17 @@
             endif
          enddo
       enddo
-      drift = drift/max(maxval(fentry(1:N,ic_H2)),                       &
-                        maxval(fnow(1:N,ic_H2)), 1.0d-30)
+      drift = drift/x_ref
 
+      ! Every step this pass kept is a covered transport interval, whose
+      ! write-back restores the entry element totals cell by cell, and a
+      ! discarded trial leaves the composition it started from.  The
+      ! elemental content of the returned state is therefore the entry
+      ! content at the fixed rho of this pass, whatever the trial lengths
+      ! were.
       call element_census_verify(cen_relax, rho, f_sp, rho_is_fixed=.true.)
+
+      if (present(outcome)) outcome = ending
 
       end subroutine relax_photochemical_composition
 

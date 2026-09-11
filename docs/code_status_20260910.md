@@ -164,7 +164,7 @@ row; **X** not implemented.
 | piece | status |
 |---|---|
 | transit spectra (He 10830, Ly-alpha, H-alpha/beta, Mg II, Ca II, Na I, O I 1302/1304/1306), Roche geometry, LaRT coupling (`EXHALE_transit.py`) | V for the atomic line (Huang 2023 phase 5, per the earlier record). Every `tpm_*.txt` now carries a `transit_schema 1` metadata block: the input profile and its `_adv` schema, the certification and provenance lines copied from it, the tool's own identity, the refused-row census of that line with its eight-point ladder, and the `EXHALE_TRANSIT_*` overrides in effect (N13, N13b, decision 17 a). Still line center only, and the refused share is taken over the temperature field alone |
-| `_adv` profiles | L | a CONDITIONAL correction with its condition written in every row: the stationarity of the input is judged by the certification's own mass operator, the measure `adv_mass_row` is a column, the decision is taken against `adv_conditional_tol` = 1e-2, and `adv_T_status` / `adv_comp_status` say per row whether the temperature and the composition were corrected (0), retained (1), failed (2), unsupported (3) or not evaluated (4). `# adv_input_certified` is the separate certification verdict, and the product is declared a ONE-WAY correction on a fixed density and velocity field. Molecular and oxygen columns are the equilibrium sweep's values |
+| `_adv` profiles | L, a CONDITIONAL correction with its condition written in every row: the stationarity of the input is judged by the certification's own mass operator, the measure `adv_mass_row` is a column, the decision is taken against `adv_conditional_tol` = 1e-2, and `adv_T_status` / `adv_comp_status` say per row whether the temperature and the composition were corrected (0), retained (1), failed (2), unsupported (3) or not evaluated (4). `# adv_input_certified` is the separate certification verdict, and the product is declared a ONE-WAY correction on a fixed density and velocity field. Molecular and oxygen columns are the equilibrium sweep's values |
 
 ## 3. Validation and certification status
 
@@ -229,9 +229,27 @@ reads 2 to 11 times smaller in the wind than in the layer (MEASURED, memo
 section 1). Two reporting radii bound the windows, `cert_regime_layer_r` =
 1.10 and `cert_regime_wind_r` = 1.20; the band 1.10 to 1.20 is reported and
 does not gate, because it holds the candidates' binding cell at r = 1.153
-where the operator's own discretization error is 4.6e-4 and a 1e-5 gate would
-ask the residual to fall 1.5 decades below the error of its own discrete
-equation.
+where the operator's own discretization error is 4.6e-4 and no state of this
+implementation has come near 1e-5 there.
+
+[corrected 2026-09-11: the reason given here read "and a 1e-5 gate would ask
+the residual to fall 1.5 decades below the error of its own discrete
+equation". That inference is withdrawn. The algebraic residual of the
+discrete equations and the truncation error of those equations against the
+continuum are different quantities, and the first is not bounded below by the
+second (review section 3.1 of `docs/solver_approach_analysis_20260910_review.md`);
+an algebraic error well below the discretization error is what makes a
+grid-convergence study readable in the first place. MEASURED, 2026-09-11: on
+this same 500-cell grid the existing H2 transport routine took the wind H2
+row from 7.380744e-2 to **2.449021e-13** on a held background
+(`docs/solver_partition_experiment_20260911.md` section 4), nine decades
+below the 4.6e-4 the withdrawn sentence treated as a floor on a species row
+of this grid. Decision 22 (a) stands unchanged
+(1e-5 gating for r >= 1.20, the layer and the 1.10 to 1.20 band reported and
+not gating); only its justification changes, from "the discretization forbids
+it" to "no state this implementation produces reaches it there, and the rows
+below 1.20 are a cancellation of terms whose conservation is itself measured
+at 2e-3 in the wind and 9.8 in the layer".]
 
 **What certifies today:**
 
@@ -276,8 +294,59 @@ fail acceptance (N36). N37 put the well-balanced flux difference in as the defau
 `Well balanced:` (exact on the discrete equilibrium; the rounding floor does
 not move; a prerequisite in `store_row_terms` before any default-on), and
 N38 showed the binding row's small diagonal is a column-scale reading, not
-physics. The program is CLOSED (2026-09-10 evening, user); the analysis of
-a different approach is `docs/solver_approach_analysis_20260910.md`.
+physics. ~~The program is CLOSED (2026-09-10 evening, user)~~ **SUPERSEDED
+2026-09-11** (see the dated paragraph after the bracket below); the analysis
+of a different approach is `docs/solver_approach_analysis_20260910.md`.
+
+[bounded 2026-09-11, review sections 3.4 and 4.1 to 4.3: both statements of
+this paragraph are measurements of the present implementation and neither is
+a property of the equations. The rounding floor is the floor of THIS flux
+assembly in double precision, and N34 measured it moving (down by 2.1, the
+Arnoldi gap by 31, from 1.19e-1 to 3.81e-3) under a quadruple evaluation of
+the same rows, so it bounds no other formulation of the same physics. "Near
+singular on the species rows" is a Ritz-magnitude ratio of the masked,
+right-preconditioned action over 200 products, not a measured condition
+number of the coupled system; what it establishes is that the directions
+associated with the transported species are where the present preconditioned
+Krylov solve makes no progress. Neither number says that a discrete stationary root does not
+exist or that no method can certify these rows.]
+
+**[reopened 2026-09-11]** The stage-2 solver program was reopened the next
+day by the user's instruction, as the PARTITIONED route rather than the
+coupled species-row solve, and it delivered: the plan is
+`docs/PLAN_20260911_partitioned_solver.md` and the dated record with every
+number is `docs/Update_EXHALE.md` **section 8**. Three defects of the
+partitioned route were found and repaired (a failed element composition
+solve handed back as an update; a carrier movement bound tested after the
+step was applied; a stop test weaker than the acceptance test at return),
+the outer iteration became a stated contract accepting a state only by the
+certification of the FULL set of active equations on the refreshed state,
+the momentum reference scale under `Well balanced: True` was corrected (with
+the key on `wasp_full_newton` now CERTIFIES, `info = 0`, `||R||` 9.719e-10,
+where its momentum row stood at exactly 1.000), and the pseudo-time start of
+`Restart intent: stationary` was set to 1.0 instead of the CFL interval.
+MEASURED outcome on the two fixtures, 8 threads, 500 cells: the partitioned
+route reaches a strictly lower joint residual than the coupled solve in no
+more wall time on both, which is the plan's adoption rule, and it is what
+the production outer loop runs (`Coupled carrier solve` already defaults to
+False). Neither fixture certifies. The HD 209458 b element reload refuses on
+the hydrodynamic mass row ALONE, 1.054e-9 against 3.0e-12 at cell 16, with
+every elemental wind row inside 1e-5 after twelve passes; the hot-Uranus
+carrier reload refuses on an H2 wind row still moving, 2.234e-2 against
+1e-5, its binding cell walking 290 to 443 over 40 passes as the front
+advances about one cell in a pass. So what this paragraph's "no
+configuration with a species row converges" reports is now bounded further:
+the alternated species rows of the atomic configuration DO come inside
+their tolerances, and what refuses that state is the base-layer mass row of
+the three-unknown hydrodynamic solve, the N33 rounding floor. **Closed the
+same afternoon (user decision, item P16, `certification_tolerance_anchoring_20260910.md`
+anchor (6)):** the mass row's tolerance is now the larger of 3e-12 and ten
+times the cell's own estimated rounding floor, and the HD 209458 b element
+reload CERTIFIES at pass 12 (MEASURED, P16 and P17). The hot-Uranus carrier
+reload remains uncertified on its H2 wind row: a 110-pass continuation
+(decision 2) shows the front still moving (x2 = 0.5 from 1.0726 to
+1.1230 R_p) and a uniform wind floor of 2.2e-2 that the bounded carrier
+pass does not relax (Update_EXHALE.md section 8, "User decisions").
 
 ## 4. Where the problems begin (ordered by size and depth)
 
@@ -361,17 +430,30 @@ The full account of each, with its evidence and its next item, is
    equations at the front, their Peclet number and what makes the row
    nearly independent of its own unknown. DONE by N38 (the term is the
    advective coupling to the momentum column, scaled by the sound speed);
-   the program is CLOSED by the user. If reopened: the one discriminating
-   measurement of `docs/solver_approach_analysis_20260910.md` section 7.
+   ~~the program is CLOSED by the user~~ **SUPERSEDED 2026-09-11**: it was
+   reopened as the partitioned route and the discriminating measurement was
+   made (`docs/PLAN_20260911_partitioned_solver.md`,
+   `docs/Update_EXHALE.md` section 8). The corrected form of that section 7
+   is in the document itself; the analysis document's own errors were
+   corrected the same day.
 2. **The layer's element flux conservation** (memo section 9.8): conserved to
    2.6e-2 in the wind and not at all in the layer (39). Acceptance: a stated
    conservation measure of the element operator in the layer, and, if it does
    not improve, a written statement of what the layer's tolerance can be.
 3. **The element operator's discretization** (order 1.59 on a manufactured
-   column; about 5e-4 at the binding radius at N = 500, 78 percent of what
-   the atomic candidate stands at). Acceptance: the measured order at N = 500
-   and N = 1000, and a statement of whether the gate at 1.20 is above the
-   discretization there.
+   column; about 5e-4 at the binding radius at N = 500, and a remapping
+   estimate that puts about 78 percent of what the atomic candidate stands at
+   in that direction). Acceptance: the measured order at N = 500 and
+   N = 1000, on independently relaxed grids or against a manufactured
+   solution with known forcing, and a statement of the ACCURACY that order
+   buys at the gate radius. [corrected 2026-09-11, review sections 3.1 and
+   3.2: this is an accuracy question, not a bound on the algebraic residual
+   the solve can reach, and the 78 percent is a Richardson-style estimate on
+   a remapped, unconverged candidate, so it is a consistency diagnostic and
+   not a split of the residual into an unavoidable and an avoidable part.
+   The acceptance no longer asks "is the gate above the discretization"; a
+   frozen-background H2 wind row of 2.449021e-13 was MEASURED on the same
+   500-cell grid, `docs/solver_partition_experiment_20260911.md` section 4.]
 4. **Transport He+ (then H2+, H3+, HeH+) as carriers**; `ic_Hp` is the
    template. Acceptance: He+ on the Koskinen gate within the plotted points;
    element census closed to 1e-10; key-off bitwise.

@@ -20,6 +20,9 @@
                              n_cells_he_singlet_clamped
       use binary_element_diffusion, only: element_diffusion_step,          &
                                           relax_element_composition,      &
+                                          element_relaxation_converged,   &
+                                          element_relaxation_step_budget, &
+                                          element_relaxation_failed,      &
                                           species_advection_active,       &
                                           species_advection_begin_step,   &
                                           species_advection_stage,        &
@@ -33,6 +36,7 @@
                                           carrier_transport_stop_on_failure,&
                                           carrier_roundoff_limited_record,&
                                           relax_photochemical_composition,&
+                                          carrier_relax_outcome_text,    &
                                           carrier_transport_diagnostics, &
                                           carrier_steady_residual,      &
                                           carrier_name,                 &
@@ -100,8 +104,10 @@
                                attempted_step_note_inner_error,          &
                                n_error_estimates_unresolved
       use certification, only: cert_report, cert_context_stationary,     &
+                               cert_evaluated, cert_unavailable,         &
                                certification_evaluate,                   &
                                certification_report_write,               &
+                               certification_entry_index,                &
                                certification_note_stationarity_claim,    &
                                certification_stop_uncertified
       use viscous_conduction, only: transport_active, viscous_conduction_step,&
@@ -373,10 +379,11 @@
       ! Decoupled outer iteration over the excited-H (H n=2) feedback
       real*8  :: exc_rel
 
-      ! Newton-diffusion co-convergence (Solver: Newton + He_diffusion):
-      ! outer iteration alternating the JFNK steady solve with diffusion
-      ! relaxation of the He/H field at the converged wind.
-      real*8  :: comp_drift, comp_drift_prev, comp_omega, elem_drift
+      ! The damped Picard alternation of the stationary route
+      ! (steady_wind_with_element_diffusion): the composition movement of
+      ! one pass, reported and never an acceptance, and the under-relaxation
+      ! factor of the element update.
+      real*8  :: comp_drift, comp_omega, elem_drift
       ! The wind the element composition relaxes in: the face mass flux of
       ! the accepted state, read from the mass row that state assembled and
       ! handed to the element operator, which has no way of its own to reach
@@ -386,19 +393,20 @@
       ! participant of the same damped Picard iteration.
       real*8  :: carrier_drift
       real*8  :: crc_max, crc_vol, crc_leg
-      ! How far one fixed-wind carrier pass may move the composition, as a
-      ! fraction of the largest H2 mixing ratio on the grid. Measured
-      ! boundary of the steady solve's tolerance on the hot Uranus hand-off:
-      ! it still returns info = 0 at 0.2 and stops at 0.4, so this stands a
-      ! factor 20 inside it (docs/p50_carrier_wind_alternation.md).
-      ! The bound on one carrier pass, as a fraction of the largest H2 mixing
-      ! ratio on the grid (relax_photochemical_composition).  1e-2 is the
-      ! measured safe value (docs/p50_carrier_wind_alternation.md: the wind
-      ! solve still accepts the handed-over state at 0.2 and stops accepting
-      ! at 0.4).  EXHALE_CARRIER_TRUST overrides it and EXHALE_OUTER_PASSES
-      ! the pass cap, so the alternation can be run as a CONTINUATION that
-      ! walks the H2 front to where the carrier equation puts it (section
-      ! 163); both are diagnostics and neither is an input key.
+      ! HOW FAR ONE FIXED-WIND CARRIER PASS MAY MOVE THE COMPOSITION, as a
+      ! fraction of the largest H2 mixing ratio of the entry state, enforced
+      ! on the accepted step by relax_photochemical_composition. 1e-2 is the
+      ! measured boundary of the steady solve's tolerance on the hot Uranus
+      ! hand-off: the wind solve still accepts the handed-over state at 0.2
+      ! and stops accepting at 0.4, so this stands a factor 20 inside it
+      ! (docs/p50_carrier_wind_alternation.md). The outer iteration shortens
+      ! it on a pass that failed to move the joint measure, and leaves this
+      ! value where a later entry reads the run's own setting.
+      !
+      ! EXHALE_CARRIER_TRUST overrides it and EXHALE_OUTER_PASSES the pass
+      ! cap, so the alternation can be run as a CONTINUATION that walks the
+      ! H2 front to where the carrier equation puts it (section 163); both
+      ! are diagnostics and neither is an input key.
       real*8  :: carrier_trust = 1.0d-2
       integer :: outer_pass_cap = 20
 
@@ -5211,6 +5219,22 @@
       ! (the direct steady route uses the same number for the same purpose).
       ! No hydro stage is taken with it.
       call eval_dt(W, dt, dt_loc)
+      ! THE CONTINUATION OF A RELOADED STATE STARTS WHERE THE MARCHING
+      ! HAND-OFF STARTS IT, at a pseudo-time of 1.0, not at the CFL interval:
+      ! a state written by a run is already relaxed, and a continuation
+      ! started at the CFL dt from it does not reach the root.  MEASURED
+      ! (2026-09-11, docs/Update_EXHALE.md section 8, 8 threads): the
+      ! hydrodynamic solve of the hot-Uranus carrier reload stands at
+      ! ||R|| 1.13 after 40 iterations from the CFL start and at 1.5e-9 in
+      ! 12 iterations from 1.0; the HD 209458 b element reload stagnates at
+      ! 1.49 from the CFL start and reaches 1.2e-8 from 1.0.  The direct
+      ! steady route keeps the CFL start, which is the pseudo-transient
+      ! continuation it was designed as.  EXHALE_PTC_DTAU0=<val> replaces
+      ! the start for measurement.
+      dt = 1.0d0
+      call get_environment_variable('EXHALE_PTC_DTAU0', diag_env)
+      if (len_trim(diag_env) .gt. 0) read(diag_env,*) dt
+      write(*,'(A,ES10.2)') ' (EXHALE_main) stationary restart: dtau0 = ', dt
       call steady_wind_with_element_diffusion(                            &
               jfnk_outer_iterations_default, dt, .true., info_jfnk)
       call write_run_counter_report
@@ -5977,8 +6001,19 @@
       write(*,'(A,ES11.4,A,ES11.4,A)') ' (EXHALE_main) flux spread by '//  &
            'window: r>=1.03', fspread_103, '   r>=1.10', fspread_110,      &
            '  (reporting only; the gate is the r>=r_flux window above)'
+      ! The comparison carries an ABSOLUTE floor beside the relative one:
+      ! the spread is a difference of O(1) numbers (rho v r^2 over the
+      ! window) divided by their mean, so two evaluations of one state
+      ! agree only to the rounding of that difference, of order N epsilon
+      ! ~ 1e-13. MEASURED (2026-09-11, the partitioned hot-Uranus carrier
+      ! reload): a state flat to fourteen digits reads 3.0982e-14 as written
+      ! against 2.7487e-14 accepted, and a relative test alone called that
+      ! a change of u. 1e-12 stands a decade above that rounding and four
+      ! decades below the smallest spread a gate has ever accepted (1.5e-15
+      ! is the well-balanced wasp_full_newton's, and that state is flat to
+      ! the last bit); a real change of u moves the spread by far more.
       if (abs(fspread_now - gate_fspread_accepted) .gt.                   &
-          1.0d-10*max(abs(gate_fspread_accepted), 1.0d-30))               &
+          max(1.0d-10*abs(gate_fspread_accepted), 1.0d-12))               &
          write(*,'(A)') ' (EXHALE_main) WARNING: the written state is '// &
               'NOT the state the gates accepted -- something between the'//&
               ' steady solve and write_output changed u.'
@@ -5988,34 +6023,102 @@
 
       subroutine steady_wind_with_element_diffusion(maxit, dtau0,       &
                                                    use_jfnk, jfnk_info)
-      ! Steady wind that is self-consistent with the diffused element
-      ! composition it carries.
+      ! THE STATIONARY STATE OF THE WIND AND OF EVERY SPECIES IT CARRIES,
+      ! ACCEPTED BY ONE JOINT TEST.
       !
-      ! The steady residual (steady_newton.f90) contains no diffusion: the
-      ! composition is moved by the operator-split element_diffusion_step,
-      ! so a single steady solve would freeze it at whatever state
-      ! it was handed.  The two are therefore co-converged: solve the wind,
-      ! relax the element composition to ITS steady state at that wind
-      ! (relax_element_composition, which steps on the composition time scale
-      ! and not on the hydro CFL step), repeat until the composition stops
-      ! moving between passes.  The measure is absolute -- the largest change
-      ! of the helium mass fraction over the pass divided by the base value --
-      ! because the relative measure it replaces is meaningless in a cell the
-      ! transport has emptied.  At most 20 outer passes.
+      ! WHICH EQUATIONS ARE ALTERNATED WITH THE WIND. The steady residual
+      ! (steady_residual.f90) carries the three hydrodynamic rows and, where
+      ! the run registers them, the transported species rows. A species the
+      ! run moves by an operator-split transport step instead -- the
+      ! diffusing elements always, the molecular carriers where
+      ! "Coupled carrier solve" is off -- has a stationary balance that no
+      ! hydrodynamic solve touches, so a single steady solve would freeze it
+      ! at whatever state it was handed. Those balances are alternated with
+      ! the wind: solve the wind at fixed composition, relax the composition
+      ! to ITS steady state in that wind, solve again.
       !
-      ! The loop is damped.  Nothing in a Picard iteration of two solves --
-      ! wind at fixed composition, composition at fixed wind -- keeps the two
-      ! from chasing each other, and on the HD 209458 b Kzz = 0 wind they do:
-      ! the drift settles into a limit cycle instead of falling.  The
-      ! composition update is therefore under-relaxed,
-      ! X <- X_old + omega (X_relaxed - X_old), starting at omega = 0.5 and
-      ! halved (floor 0.125) on any pass whose drift failed to fall.  The
-      ! drift tested here is the UNDAMPED distance to the fixed point, so a
-      ! small omega cannot buy a false convergence.
+      ! WHAT IS ACCEPTED, AND BY WHICH EVALUATION. Only a state on which the
+      ! certification of the FULL set of active equations passes: the three
+      ! hydrodynamic rows, the transported carrier balances, the elemental
+      ! transport balances, the level populations, the eliminated-species
+      ! closure and the conservation records, each against its own tolerance
+      ! (certification.f90). It is evaluated on the REFRESHED state, the one
+      ! this routine would hand back, from a residual assembled here. A
+      ! hydrodynamic solve returning info = 0 while an alternated species row
+      ! refuses is NOT an accepted state: that flag is a statement about the
+      ! rows in the Newton registry, and the alternated rows stand outside it
+      ! by construction.
       !
-      ! With He_diffusion off the composition never moves and the body is
-      ! one steady solve followed by the state refresh, which is what both
-      ! call sites did before.
+      ! WHAT ENDS THE LOOP, and what jfnk_info then means:
+      !   the joint certification passes             -> 0, the state accepted
+      !   a row of the state is not finite           -> 1, named
+      !   the element composition update is refused  -> 1, named
+      !   the joint measure stops falling            -> 1, named
+      !   the pass budget ends uncertified           -> 1, named
+      ! No caller separates 1 from 2, and every ending but the first is a
+      ! refusal, so one nonzero flag carries them and the line printed beside
+      ! it says which. The state handed back on a refusal is the refreshed
+      ! state of the last hydrodynamic solve: a stationary wind at a
+      ! composition whose own balance still refuses.
+      !
+      ! A NONZERO HYDRODYNAMIC FLAG DOES NOT END THE LOOP BY ITSELF. info = 1
+      ! is the iteration budget, info = 2 a returned state a row refuses, and
+      ! both hand back a valid state on which the composition update still
+      ! makes progress: MEASURED on the atomic reload, the worst elemental
+      ! wind row stood at 2.61e-3 after the first budget-ended solve and at
+      ! 2.78e-4 after the update that followed it
+      ! (docs/solver_partition_experiment_20260911.md sec. 5.1). Ending the
+      ! alternation on that flag discards what the pass achieved. The flag is
+      ! printed every pass.
+      !
+      ! WHAT CONTROLS THE PASSES. The quantity the joint acceptance waits on
+      ! is the worst gated species row of the certification: the elemental
+      ! and carrier balances are judged in the wind, r >= cert_regime_wind_r,
+      ! and driving that measure down is the whole purpose of the
+      ! alternation. Where it fails to fall over a pass both updates are
+      ! shortened -- the element relaxation's under-relaxation omega is
+      ! halved (floor 0.125) and the carrier movement bound is halved (floor
+      ! carrier_trust_floor) -- and outer_no_fall_max consecutive passes
+      ! without a fall end the loop rather than spend the budget on a fixed
+      ! point the alternation is not approaching.
+      !
+      ! THE COMPOSITION DRIFT AND THE VOLUME-WEIGHTED CARRIER RESIDUAL ARE
+      ! REPORTED AND ARE NOT TESTS. The transport operator's smallest step,
+      ! one cell crossing time, already moves the composition by 1.1e-2 on
+      ! the He/H = 0.0793 hot Uranus (READ from
+      ! docs/p50_carrier_wind_alternation.md), so a drift gate below that
+      ! stands under anything a pass can produce; and an average over a
+      ! column says nothing about the cell in which the equation is worst
+      ! satisfied, which is what every row of the certification is measured
+      ! by. Neither can be an acceptance.
+      !
+      ! EVERY ENDING OF THIS ROUTINE HANDS BACK A STATE WHOSE COMPOSITION,
+      ! PARTICLE DENSITIES, TEMPERATURE AND RESIDUAL BELONG TOGETHER; A PASS
+      ! THAT ENDS THE ITERATION TAKES NO COMPOSITION UPDATE. The caller
+      ! certifies and writes the arrays this routine leaves behind
+      ! (stationary_state_of_the_loaded_restart reads f_sp for the
+      ! certification and n_HI ... n_m and T for the output files), so a
+      ! composition that had moved past the particle densities, the
+      ! temperature and the residual beside it would be certified as one
+      ! state and written as another. This is why the progress control
+      ! stands AHEAD of the composition update: the pass it ends takes no
+      ! update, and what is handed back is the very state the certification
+      ! of that pass was evaluated on. The other endings hold the same way:
+      ! a certified or non-finite pass reaches no update, the refused
+      ! element update is the entry composition restored, and the pass
+      ! budget's last pass takes none for the reason below.
+      !
+      ! THE LAST PASS TAKES NO COMPOSITION UPDATE. An update exists to be
+      ! consumed by the next hydrodynamic solve; with no pass left there is
+      ! none, and taking it would replace a stationary wind by a state whose
+      ! hydrodynamic rows the update itself spoiled (MEASURED on the
+      ! molecular reload: mass row 4.99e-12 after a hydrodynamic solve,
+      ! 1.54e-1 after the update that followed it, same document sec. 3).
+      !
+      ! WITH NO ALTERNATED SPECIES the body is one steady solve followed by
+      ! the state refresh and the flag is the solve's own; no joint
+      ! evaluation is made and none of the lines below is printed. That is
+      ! what an atomic run and a coupled carrier solve both do.
       !
       ! maxit / dtau0 / use_jfnk select the steady solver and its budget:
       ! every route passes jfnk_outer_iterations_default, the marching
@@ -6026,6 +6129,38 @@
       real*8,  intent(in)  :: dtau0
       logical, intent(in)  :: use_jfnk
       integer, intent(out) :: jfnk_info
+
+      ! The named endings of the outer iteration.
+      integer, parameter :: outer_running                = 0
+      integer, parameter :: outer_certified              = 1
+      integer, parameter :: outer_state_not_finite       = 2
+      integer, parameter :: outer_element_update_refused = 3
+      integer, parameter :: outer_no_progress            = 4
+      integer, parameter :: outer_pass_budget            = 5
+      ! How many consecutive passes may leave the joint measure not falling
+      ! before the loop ends. A single rise is the alternation's own
+      ! feedback and not stagnation: MEASURED on the atomic reload the worst
+      ! elemental wind row went 2.78e-4 -> 3.81e-3 across a hydrodynamic
+      ! solve and 3.81e-3 -> 7.57e-5 across the update that followed it.
+      integer, parameter :: outer_no_fall_max = 3
+      ! The floor of the carrier movement bound. The bound is enforced on
+      ! the accepted step (diffusive_photochemistry.f90) and a shorter step
+      ! is always admissible, so halving it cannot make a pass refuse; below
+      ! this floor a pass would move the composition by less than a tenth of
+      ! what the front covers in one cell crossing time.
+      real*8, parameter  :: carrier_trust_floor = 1.0d-3
+
+      integer :: hydro_info, elem_status, carrier_outcome, outer_ending
+      integer :: n_no_fall, icert, sp_cell, ref_cell, cell_here, pass_cap
+      integer :: n_unjudged
+      real*8  :: sp_worst, sp_worst_prev, sp_meas, sp_tol, trust_pass
+      real*8  :: row_mass, row_mom, row_ene, t_pass0
+      real*8  :: ref_worst, ref_meas, ref_tol, row_here
+      logical :: species_alternated, pass_certified, rows_finite
+      logical :: update_taken
+      character(len=52) :: sp_name, ref_name, unjudged_name
+      character(len=76) :: unjudged_why
+      character(len=64) :: elem_text
 
       ! THE CAP NAMED FOR A MEASUREMENT IS THE RUN'S, NOT EACH SOLVE'S (see
       ! jfnk_run_cap_named at the declarations). Read once, at the first
@@ -6054,14 +6189,41 @@
       if (len_trim(diag_env) .gt. 0) read(diag_env,*) comp_omega
       comp_drift      = 0.0d0
       elem_drift      = 0.0d0
-      comp_drift_prev = huge(1.0d0)
 
       call get_environment_variable('EXHALE_CARRIER_TRUST', diag_env)
       if (len_trim(diag_env) .gt. 0) read(diag_env,*) carrier_trust
       call get_environment_variable('EXHALE_OUTER_PASSES', diag_env)
       if (len_trim(diag_env) .gt. 0) read(diag_env,*) outer_pass_cap
-      do it_diff = 1, merge(outer_pass_cap, 1, he_diffusion .or.         &
-                                  (thereis_mol .and. carrier_transport))
+      ! The bound one pass may move the carriers by is shortened by the
+      ! progress control below; the run's own setting is left where a later
+      ! entry can read it.
+      trust_pass = carrier_trust
+
+      species_alternated = he_diffusion .or. (thereis_mol .and.           &
+                           carrier_transport .and. .not. carrier_in_newton)
+      pass_cap      = merge(outer_pass_cap, 1, species_alternated)
+      outer_ending  = outer_running
+      hydro_info    = 0
+      n_no_fall     = 0
+      sp_worst      = -1.0d0
+      sp_worst_prev = huge(1.0d0)
+      sp_meas       = 0.0d0
+      sp_tol        = 0.0d0
+      sp_cell       = 0
+      sp_name       = 'no gated species row in this configuration'
+      ref_cell      = 0
+      ref_name      = 'none'
+      ref_meas      = 0.0d0
+      ref_tol       = 0.0d0
+      n_unjudged    = 0
+      unjudged_name = 'none'
+      unjudged_why  = ''
+      row_mass      = 0.0d0
+      row_mom       = 0.0d0
+      row_ene       = 0.0d0
+
+      do it_diff = 1, pass_cap
+         t_pass0 = omp_get_wtime()
          if (use_jfnk) then
             ! THE COUPLED ROUTE (section 139). With the carrier row among
             ! the unknowns the outer loop is not an alternation at all: one
@@ -6075,10 +6237,10 @@
             ! choice for all of them.
             call set_transported_species_rows(carrier_in_newton)
             call solve_steady_jfnk(u, f_sp, resid_max, maxit, dtau0,    &
-                                   40, jfnk_info)
+                                   40, hydro_info)
          else
             call solve_steady_ptc(u, f_sp, resid_max, maxit, dtau0,     &
-                                  jfnk_info)
+                                  hydro_info)
          endif
          call set_transported_species_rows(.false.)
          call U_to_W(u,W)
@@ -6103,59 +6265,237 @@
          ! reservoirs the run resolved.
          call element_census_reservoir('steady outer pass (accepted '//   &
               'state)', rho, f_sp)
-         if (jfnk_info .ne. 0) exit             ! steady solve failed
-         if (.not. he_diffusion .and. .not. (thereis_mol .and.            &
-             carrier_transport)) exit
-         ! The coupled solve has already made the carriers part of the
-         ! answer, so there is no carrier pass to take and no alternation to
-         ! iterate. A run that also diffuses helium still needs its own
-         ! relaxation, and falls through to it.
-         if (thereis_mol .and. carrier_transport .and. carrier_in_newton  &
-             .and. .not. he_diffusion) exit
-         comp_drift = 0.0d0
-         kd = 0
-         ! Element composition relaxed to its steady state at the fixed wind.
-         ! The wind is the face mass flux of THIS state, read here from the
-         ! mass row this state assembled and handed to the operator: the
-         ! element module is given its advecting flux and does not reach into
-         ! the steady residual for one. A run with no helium relaxes nothing,
-         ! and no flux is fetched for it.
-         if (he_diffusion) then
-            Frho_elem = 0.0d0
-            if (thereis_He) call face_mass_flux_of_state(rho, Frho_elem)
-            call relax_element_composition(rho,v,T,f_sp,Frho_elem,        &
-                                           comp_omega,elem_drift,kd)
-            comp_drift = elem_drift
-            call ioniz_eq(T,rho,f_sp,heat,cool,eta,last_sweep)
+         ! WITH NOTHING ALTERNATED there is one solve and the flag is its
+         ! own: the transported balances, where the run has any, were rows
+         ! of that solve.
+         if (.not. species_alternated) then
+            jfnk_info = hydro_info
+            return
          endif
-         ! The molecular carriers are a THIRD participant in the same Picard
-         ! iteration, relaxed to their own steady state at the same fixed
-         ! wind and under the same damping. The header of this routine
-         ! records why the damping exists -- nothing in a Picard iteration
-         ! of two solves keeps them from chasing each other -- and a third
-         ! makes that risk larger, not smaller, which is why the drift
-         ! reported below is the worst of the two composition drifts.
-         if (thereis_mol .and. carrier_transport .and.                    &
-             .not. carrier_in_newton) then
-            call relax_photochemical_composition(rho,v,f_sp,           &
-                                                 carrier_trust,          &
-                                                 carrier_drift,kc)
-            call get_species_densities(rho,f_sp,nhi,nhii,nhei,nheii,     &
-                                       nheiii,nheiTR,nm,ne,n_tot)
-            call comp_T_from_p(p,n_tot,ne,T)
-            call ioniz_eq(T,rho,f_sp,heat,cool,eta,last_sweep)
-            comp_drift = max(comp_drift, carrier_drift)
-            kd = max(kd, kc)
+
+         ! ---- THE JOINT TEST, ON THE STATE THIS PASS WOULD HAND BACK ----
+         ! The residual is assembled here, so that every row measured below
+         ! -- and the face mass flux the elemental and carrier balances ride
+         ! on, which store_row_terms leaves behind for them -- belongs to
+         ! the refreshed state and not to the last state the solver happened
+         ! to evaluate inside its iteration.
+         call assemble_residual(u, n_tot + ne, heat, cool, Rres)
+         call certification_evaluate(cert_context_stationary, u, Rres,     &
+                  f_sp, resid_th,                                         &
+                  n_cells_without_chemical_root(last_sweep%acc_n),        &
+                  .true., cert_now)
+         pass_certified = cert_now%certified
+         ! The worst GATED species row of this state is the measure the
+         ! joint acceptance waits on, ranked by distance from its own
+         ! tolerance because the elemental and the carrier rows carry
+         ! tolerances of their own. The worst REFUSING entry of the whole
+         ! inventory is read in the same pass over it, so that a refusal
+         ! names an equation and a cell and not a count.
+         rows_finite = .true.
+         sp_worst = -1.0d0;  sp_meas = 0.0d0;  sp_tol = 0.0d0
+         sp_cell  = 0
+         sp_name  = 'no gated species row in this configuration'
+         ref_worst = -1.0d0;  ref_meas = 0.0d0;  ref_tol = 0.0d0
+         ref_cell  = 0
+         ref_name  = 'none'
+         n_unjudged = 0
+         unjudged_name = 'none';  unjudged_why = ''
+         do icert = 1, cert_now%n
+            if (cert_now%e(icert)%status .eq. cert_unavailable) then
+               n_unjudged = n_unjudged + 1
+               if (n_unjudged .eq. 1) then
+                  unjudged_name = cert_now%e(icert)%name
+                  unjudged_why  = cert_now%e(icert)%reason
+               endif
+               cycle
+            endif
+            if (cert_now%e(icert)%status .ne. cert_evaluated) cycle
+            if (.not. cert_now%e(icert)%finite) rows_finite = .false.
+            if (cert_now%e(icert)%regime_gated) then
+               row_here  = cert_now%e(icert)%row_max_gate
+               cell_here = cert_now%e(icert)%jworst_gate
+            else
+               row_here  = cert_now%e(icert)%row_max
+               cell_here = cert_now%e(icert)%jworst
+            endif
+            if (cert_now%e(icert)%tol .le. 0.0d0) cycle
+            if (cert_now%e(icert)%regime_gated .and.                      &
+                row_here/cert_now%e(icert)%tol .gt. sp_worst) then
+               sp_worst = row_here/cert_now%e(icert)%tol
+               sp_meas  = row_here
+               sp_tol   = cert_now%e(icert)%tol
+               sp_cell  = cell_here
+               sp_name  = cert_now%e(icert)%name
+            endif
+            if (.not. cert_now%e(icert)%within_tol .and.                  &
+                row_here/cert_now%e(icert)%tol .gt. ref_worst) then
+               ref_worst = row_here/cert_now%e(icert)%tol
+               ref_meas  = row_here
+               ref_tol   = cert_now%e(icert)%tol
+               ref_cell  = cell_here
+               ref_name  = cert_now%e(icert)%name
+            endif
+         enddo
+         icert = certification_entry_index(cert_now,                      &
+                                           'hydrodynamic mass row')
+         if (icert .gt. 0) row_mass = cert_now%e(icert)%row_max
+         icert = certification_entry_index(cert_now,                      &
+                                           'hydrodynamic momentum row')
+         if (icert .gt. 0) row_mom = cert_now%e(icert)%row_max
+         icert = certification_entry_index(cert_now,                      &
+                                           'hydrodynamic energy row')
+         if (icert .gt. 0) row_ene = cert_now%e(icert)%row_max
+         if (pass_certified) then
+            outer_ending = outer_certified
+         else if (.not. rows_finite) then
+            outer_ending = outer_state_not_finite
          endif
-         write(*,'(A,I0,A,I0,A,F6.3,A,ES10.2)') ' (EXHALE_main) '//      &
-              'steady-wind diffusion outer pass ', it_diff, ': ', kd,   &
-              ' relaxation steps, omega =', comp_omega,                 &
-              ', composition drift =', comp_drift
+
+         ! ---- THE PROGRESS CONTROL, AHEAD OF ANY UPDATE OF THIS PASS ----
+         ! The joint measure is what the passes are spent on, so it is what
+         ! the step lengths are chosen by. omega damps the element
+         ! relaxation and trust_pass bounds the carrier pass; both are
+         ! shortened together, because which of the two failed to move the
+         ! measure is not a question this loop can answer. It is decided
+         ! here, before the update, so that the pass which ends the
+         ! iteration takes no update and hands back the state its own
+         ! certification above was evaluated on (the invariant in the
+         ! header); the ending itself is announced with the others, below
+         ! the summary line of the pass.
+         if (outer_ending .eq. outer_running) then
+            if (sp_cell .gt. 0 .and. sp_worst .ge. sp_worst_prev) then
+               n_no_fall = n_no_fall + 1
+               if (he_diffusion .and. comp_omega .gt. 0.125d0) then
+                  comp_omega = max(0.5d0*comp_omega, 0.125d0)
+                  write(*,'(A,F6.3)') '    -> the worst gated species'//  &
+                       ' row did not fall; under-relaxation omega =',     &
+                       comp_omega
+               endif
+               if (thereis_mol .and. carrier_transport .and.              &
+                   .not. carrier_in_newton .and.                          &
+                   trust_pass .gt. carrier_trust_floor) then
+                  trust_pass = max(0.5d0*trust_pass, carrier_trust_floor)
+                  write(*,'(A,ES9.2)') '    -> the worst gated species'//  &
+                       ' row did not fall; carrier movement bound =',     &
+                       trust_pass
+               endif
+               if (n_no_fall .ge. outer_no_fall_max)                      &
+                  outer_ending = outer_no_progress
+            else if (sp_cell .gt. 0) then
+               n_no_fall = 0
+            endif
+            sp_worst_prev = sp_worst
+         endif
+
+         ! ---- THE COMPOSITION UPDATE THE NEXT SOLVE WILL CONSUME ----
+         update_taken = .false.
+         comp_drift   = 0.0d0
+         kd           = 0
+         if (outer_ending .eq. outer_running .and. it_diff .lt. pass_cap) &
+             then
+            update_taken = .true.
+            ! Element composition relaxed to its steady state at the fixed
+            ! wind. The wind is the face mass flux of THIS state, read from
+            ! the mass row this state assembled and handed to the operator:
+            ! the element module is given its advecting flux and does not
+            ! reach into the steady residual for one. A run with no helium
+            ! relaxes nothing, and no flux is fetched for it.
+            if (he_diffusion) then
+               Frho_elem = 0.0d0
+               if (thereis_He) call face_mass_flux_of_state(rho, Frho_elem)
+               call relax_element_composition(rho,v,T,f_sp,Frho_elem,     &
+                                              comp_omega,elem_drift,kd,   &
+                                              status=elem_status)
+               select case (elem_status)
+               case (element_relaxation_converged)
+                  elem_text = 'the fixed point of the element operator'
+               case (element_relaxation_step_budget)
+                  elem_text = 'the step budget, the fixed point not'//    &
+                              ' reached'
+               case default
+                  elem_text = 'NO ADMISSIBLE ADVANCE: the entry'//        &
+                              ' composition was restored'
+               end select
+               if (elem_status .eq. element_relaxation_failed) then
+                  ! The composition this routine holds is the one the
+                  ! relaxation was entered with, restored by the operator,
+                  ! so the state handed back is the hydrodynamic solve's
+                  ! own and no chemical refresh is due on a composition
+                  ! that was never adopted.
+                  outer_ending = outer_element_update_refused
+               else
+                  comp_drift = elem_drift
+                  ! THE SWEEP IS ENTERED AT THE RELAXED COMPOSITION'S OWN
+                  ! PARTICLE COUNT AND TEMPERATURE. The relaxation moved
+                  ! f_sp, so n_tot, n_e and T = p/(n_tot + n_e) still
+                  ! belong to the composition it was entered with, and a
+                  ! sweep taken at that T equilibrates the new composition
+                  ! at another state's temperature. p is the conserved
+                  ! state's own pressure and is not touched. The carrier
+                  ! update below has the same shape for the same reason.
+                  call get_species_densities(rho,f_sp,nhi,nhii,nhei,      &
+                                       nheii,nheiii,nheiTR,nm,ne,n_tot)
+                  call comp_T_from_p(p,n_tot,ne,T)
+                  call ioniz_eq(T,rho,f_sp,heat,cool,eta,last_sweep)
+               endif
+            endif
+            ! The molecular carriers are a THIRD participant in the same
+            ! Picard iteration, relaxed to their own steady state at the
+            ! same fixed wind, bounded by trust_pass rather than damped.
+            ! The header records why the damping exists at all -- nothing
+            ! in a Picard iteration of two solves keeps them from chasing
+            ! each other -- and a third participant makes that risk larger.
+            if (outer_ending .eq. outer_running .and. thereis_mol .and.   &
+                carrier_transport .and. .not. carrier_in_newton) then
+               call relax_photochemical_composition(rho,v,f_sp,           &
+                                              trust_pass, carrier_drift,  &
+                                              kc, outcome=carrier_outcome)
+               call get_species_densities(rho,f_sp,nhi,nhii,nhei,nheii,   &
+                                          nheiii,nheiTR,nm,ne,n_tot)
+               call comp_T_from_p(p,n_tot,ne,T)
+               call ioniz_eq(T,rho,f_sp,heat,cool,eta,last_sweep)
+               comp_drift = max(comp_drift, carrier_drift)
+               kd = max(kd, kc)
+            endif
+         endif
+
+         ! ---- ONE LINE PER PASS ----
+         write(*,'(A,I0,A,I0,A,ES9.2,A,ES8.1,A,I0,A,A,A,ES9.2,A,ES9.2,A,ES9.2,A,F6.3,A,ES8.1,A,F8.2,A)') &
+              ' (EXHALE_main) outer pass ', it_diff, ': hydro info=',     &
+              hydro_info, ', worst gated species row ', sp_meas, ' of ',  &
+              sp_tol, ' at cell ', sp_cell, ' (', trim(sp_name),          &
+              '), mass ', row_mass, ', momentum ', row_mom, ', energy ',  &
+              row_ene, ', omega', comp_omega, ', trust', trust_pass,      &
+              ',', omp_get_wtime() - t_pass0, ' s'
+         if (update_taken .and. he_diffusion)                             &
+            write(*,'(A,A,A,ES10.2,A,I0,A)') '    element relaxation'//   &
+                 ' ended on ', trim(elem_text), '; drift', elem_drift,    &
+                 ' in ', kd, ' steps'
+         if (update_taken .and. outer_ending .ne.                         &
+             outer_element_update_refused .and. thereis_mol .and.         &
+             carrier_transport .and. .not. carrier_in_newton)             &
+            write(*,'(A,A,A,ES10.2,A,I0,A)') '    carrier relaxation'//   &
+                 ' ended on ', trim(carrier_relax_outcome_text(           &
+                 carrier_outcome)), '; drift', carrier_drift, ' in ', kc, &
+                 ' transport steps'
+         if (.not. update_taken) then
+            if (outer_ending .eq. outer_running) then
+               write(*,'(A)') '    no composition update was taken:'//    &
+                    ' this is the last pass and no solve is left to'//    &
+                    ' consume one'
+            else
+               write(*,'(A)') '    no composition update was taken:'//    &
+                    ' this pass ends the iteration, so the state handed'//&
+                    ' back is the state certified above'
+            endif
+         endif
+
+         ! ---- THE DIAGNOSTICS OF THE PASS ----
          ! Is the state a steady state of the CARRIER equation, and where is
-         ! it least so? ||R|| measures only the hydrodynamic half of this
-         ! Picard fixed point; this is the other half, on the row scale that
-         ! lives beside every other row scale (steady_residual.f90).
-         if (thereis_mol .and. carrier_transport) then
+         ! it least so? The gated carrier row of the certification is the
+         ! acceptance; these numbers say how the refusal is distributed over
+         ! the column and where the front now stands.
+         if (thereis_mol .and. carrier_transport .and. rows_finite) then
             call carrier_steady_residual(rho, v, f_sp, crc_max,       &
                                          crc_j, crc_ic, rvol=crc_vol,    &
                                          rlegacy=crc_leg)
@@ -6182,10 +6522,10 @@
                  if (j50 .eq. 0 .and. x2 .lt. 0.5d0)  j50 = jf
                  if (j01 .eq. 0 .and. x2 .lt. 1.0d-2) j01 = jf
               enddo
-              write(*,'(A,F8.4,A,F8.4,A,I0,A,ES9.2)')                    &
+              write(*,'(A,F8.4,A,F8.4,A,I0,A,ES9.2,A)')                  &
                    '    H2 front: x2=0.5 at r=', r(max(j50,1)),          &
                    '  x2=1e-2 at r=', r(max(j01,1)), '  (pass ', it_diff, &
-                   ', trust', carrier_trust, ')'
+                   ', trust', trust_pass, ')'
             end block
             call carrier_drift_location(cdl_j, cdl_ic)
             if (cdl_j .gt. 0)                                            &
@@ -6196,41 +6536,73 @@
          call get_environment_variable('EXHALE_DIFFUSION_CHECK', diag_env)
          if (trim(diag_env) .eq. '1')                                    &
             call write_diffusion_pass_profile(it_diff)
-         ! WHAT ENDS THE LOOP.  The composition drift is reported and is
-         ! NOT the test, because it cannot be one: the transport operator's
-         ! smallest step -- one cell crossing time -- already moves the
-         ! composition by 1.1e-2 on the He/H = 0.0793 hot Uranus, so a 1e-3
-         ! drift gate stands below anything the pass can produce and can
-         ! only fire once the front has stopped moving. A gate that cannot
-         ! fire reads as a control to the next person.
-         !
-         ! The test is the same one the wind is held to: is each row of the
-         ! state steady on the scale of its own largest terms. For the
-         ! carriers that is the volume-weighted carrier residual above. The
-         ! helium element relaxation keeps its own drift test, which is a
-         ! different measure of a different operator.
-         if (he_diffusion .and. .not. (thereis_mol .and.                 &
-             carrier_transport)) then
-            if (comp_drift .lt. 1.0d-3) exit
-         else if (thereis_mol .and. carrier_transport) then
-            if (crc_vol .lt. carrier_resid_th .and.                     &
-                (.not. he_diffusion .or. comp_drift .lt. 1.0d-3)) exit
+
+         ! ---- THE ENDING OF THIS PASS, NAMED ----
+         if (outer_ending .eq. outer_certified) then
+            jfnk_info = 0
+            write(*,'(A,I0,A)') ' (EXHALE_main) outer pass ', it_diff,   &
+                 ': ACCEPTED -- every active equation of this state is'// &
+                 ' within its own tolerance.'
+            call certification_report_write(cert_now,                     &
+                 'accepted state of the stationary outer iteration')
+            return
+         else if (outer_ending .eq. outer_state_not_finite) then
+            jfnk_info = 1
+            write(*,'(A,I0,A)') ' (EXHALE_main) outer pass ', it_diff,   &
+                 ': REFUSED -- a row of this state is not finite, so it'// &
+                 ' is not an iterate the alternation can continue from.'
+            return
+         else if (outer_ending .eq. outer_element_update_refused) then
+            jfnk_info = 1
+            write(*,'(A,I0,A)') ' (EXHALE_main) outer pass ', it_diff,   &
+                 ': REFUSED -- the element composition relaxation found'// &
+                 ' no admissible advance and its entry composition was'//  &
+                 ' restored, so no further pass could differ from this'//  &
+                 ' one.'
+            return
+         else if (outer_ending .eq. outer_no_progress) then
+            jfnk_info = 1
+            write(*,'(A,I0,A,I0,A)') ' (EXHALE_main) outer pass ',        &
+                 it_diff, ': REFUSED -- the worst gated species row'//     &
+                 ' has not fallen in ', n_no_fall, ' consecutive'//        &
+                 ' passes; the alternation is not approaching a joint'//   &
+                 ' fixed point at these step lengths.'
+            write(*,'(A,ES10.3,A,ES10.3,A,A,A,I0)') '    it stands'//     &
+                 ' at ', sp_meas, ' against ', sp_tol, ' (',              &
+                 trim(sp_name), ') at cell ', sp_cell
+            return
          endif
-         ! Damp harder whenever the ELEMENT drift failed to fall over the
-         ! pass.  omega damps the element relaxation alone (the carrier pass
-         ! is bounded by carrier_trust, not damped), so the test that halves
-         ! it reads the element relaxation's own drift and not the worst of
-         ! the two drifts that the exit test above reads: a carrier drift
-         ! that fails to fall says nothing about the element alternation and
-         ! must not slow it.
-         if (he_diffusion .and. elem_drift .ge. comp_drift_prev .and.    &
-             comp_omega .gt. 0.125d0) then
-            comp_omega = max(0.5d0*comp_omega, 0.125d0)
-            write(*,'(A,F6.3)') '    -> element composition drift did '// &
-                 'not fall; under-relaxation omega =', comp_omega
-         endif
-         comp_drift_prev = elem_drift
       enddo
+
+      ! ---- THE PASS BUDGET ENDED WITHOUT AN ACCEPTED STATE ----
+      ! The state handed back is the refreshed state of the last
+      ! hydrodynamic solve. It is not accepted, and the entry that refuses
+      ! it is named, so that the next budget, omega or movement bound is
+      ! chosen against an equation and a cell.
+      outer_ending = outer_pass_budget
+      jfnk_info    = 1
+      write(*,'(A,I0,A,I0,A)') ' (EXHALE_main) the stationary outer'//    &
+           ' iteration spent its budget of ', pass_cap, ' passes'//       &
+           ' without an accepted state: ', cert_now%n_failing,            &
+           ' active equations refuse it.'
+      if (ref_cell .gt. 0) then
+         write(*,'(A,A,A,ES10.3,A,ES10.3,A,I0,A,F8.4)') '    worst'//     &
+              ' refusing entry: ', trim(ref_name), ', measure ',          &
+              ref_meas, ' against ', ref_tol, ' at cell ', ref_cell,      &
+              ', r =', r(ref_cell)
+      else
+         write(*,'(A)') '    no measured row carries the refusal.'
+      endif
+      if (n_unjudged .gt. 0)                                              &
+         write(*,'(A,I0,A,A,A,A)') '    and ', n_unjudged, ' active'//    &
+              ' equations could not be judged on this state, the first'// &
+              ' of them ', trim(unjudged_name), ': ', trim(unjudged_why)
+      if (cert_now%n_no_chem_root .ne. 0)                                 &
+         write(*,'(A,I0,A)') '    and ', cert_now%n_no_chem_root,         &
+              ' cells hold a composition that is not a root of the'//     &
+              ' chemical network.'
+      call certification_report_write(cert_now,                           &
+           'state of the last outer pass, NOT accepted')
 
       end subroutine steady_wind_with_element_diffusion
 

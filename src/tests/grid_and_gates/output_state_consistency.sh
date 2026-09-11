@@ -1,8 +1,14 @@
 #!/bin/bash
-# One state per output file: the '# coupling:' header of Hydro_ioniz.txt
-# against the heat column the same run wrote.
+# ONE STATE PER OUTPUT FILE.  Two statements, each with its own run:
+#   1. the heat column of Hydro_ioniz.txt is the heat the channel breakdown
+#      of the same run adds up to (the '# coupling:' header names the physics
+#      that produced it);
+#   2. the state an ENDING of the stationary outer iteration hands back is one
+#      state: the composition of the file, the particle densities and the
+#      temperature beside it belong together, so re-evaluating the state as
+#      written reproduces it to round-off.
 #
-# QUANTITY UNDER TEST
+# QUANTITY UNDER TEST 1
 #   Hydro_ioniz.txt column 6, `heat` [erg cm^-3 s^-1], against
 #   Heating_breakdown.txt column 4, `heat_total`, cell by cell.  The
 #   breakdown file's own header states the relation: "Channel sum reproduces
@@ -58,8 +64,11 @@ set -u
 HERE="$(cd "$(dirname "$0")" && pwd)"
 ROOT="$(cd "$HERE/../../.." && pwd)"
 EXE="${EXHALE_EXE:-$ROOT/EXHALE.x}"
-WORK="$ROOT/build/tests/grid_and_gates/mbh"
+OUT="${EXHALE_TEST_OUT:-$ROOT/build/tests/grid_and_gates}"
+WORK="$OUT/mbh"
 CASE="$ROOT/backup/regression/mol_base_handoff"
+STAG="$OUT/outer_iteration_ending"
+CASE2="$ROOT/backup/regression/carrier_elem_newton"
 
 if [ ! -x "$EXE" ]; then
    echo "FAIL output_state_consistency measured=no_binary reference=$EXE tol=0"
@@ -143,4 +152,172 @@ print("%s heat_column_matches_breakdown_total measured=%.6e reference=%.6e "
       "tol=%.2e" % ("PASS" if ok else "FAIL", worst, 0.0, tol))
 sys.exit(0 if ok else 1)
 PY
+rc1=$?
+
+# ---------------------------------------------------------------------------
+# QUANTITY UNDER TEST 2
+#   The temperature column of the state the stationary outer iteration hands
+#   back, against the temperature the same conserved state and the same
+#   composition give when they are read back and evaluated, over the physical
+#   cells.  T is p/(n_tot + n_e) of the composition beside it, so the two
+#   agree on ONE state and part wherever the file's composition has moved past
+#   the particle count and the temperature written with it.
+#
+#   Every ending of steady_wind_with_element_diffusion (src/EXHALE_main.f90)
+#   has to hand back one state, because the caller certifies f_sp and writes
+#   n_HI ... n_m and T: a composition updated after the certification would be
+#   certified as one state and written as another.  The ending under test is
+#   the stagnation ending, the one whose composition update stood between the
+#   certification and the return.
+#
+# WHAT IS RUN (two short runs; nothing in backup/regression is written to)
+#   S  a copy of backup/regression/carrier_elem_newton, the hot-Uranus carrier
+#      reload, partitioned (`Coupled carrier solve: False`) with
+#      `Restart intent: stationary`, forced to stagnate: at
+#      EXHALE_JFNK_MAXIT=5 each hydrodynamic solve is far from its root and
+#      the worst gated species row rises at the third pass and stands, so
+#      outer_no_fall_max = 3 passes without a fall end the iteration at pass
+#      5 (MEASURED 2026-09-11, identical pass lines at 1 and at 8 threads).
+#      EXHALE_CARRIER_TRUST=1e-4 keeps the carrier movement small enough that
+#      the run reaches the ending in five passes.
+#   R  the state S wrote, handed back as the _IC pair with
+#      `Restart intent: stationary evaluate`, the route that measures a loaded
+#      state and writes it back unchanged.  No step and no solve are taken, so
+#      what separates R's columns from S's is what S's own state carries.
+#
+#   If a future change makes this configuration converge or run out its
+#   budget instead, the first assertion says so by name: pick a setting that
+#   reaches the ending again rather than loosening the second assertion.
+#
+# REFERENCE AND TOLERANCE
+#   reference = 0: the largest relative difference of the T column over the
+#   physical cells must be at most 1e-12.  MEASURED on states handed back by
+#   an ending that takes no composition update: 6.5e-14 on this run and
+#   5.9e-16 on the same fixture ending on its pass budget at
+#   EXHALE_JFNK_MAXIT=40, the decimal round trip of the file's own digits.
+#   MEASURED where the ending stood after the update instead: 1.3e-8, four
+#   decades above the allowance.
+if [ ! -f "$CASE2/input.inp" ]; then
+   echo "FAIL outer_iteration_ending_case measured=no_case reference=$CASE2 tol=0"
+   exit 1
+fi
+rm -rf "$STAG"
+mkdir -p "$STAG/solve/output" "$STAG/reeval/output"
+cp "$CASE2/base.inp" "$STAG/solve/"
+sed 's/^Coupled carrier solve:.*/Coupled carrier solve: False/' \
+    "$CASE2/input.inp" > "$STAG/solve/input.inp"
+printf 'Restart intent: stationary\n' >> "$STAG/solve/input.inp"
+cp "$CASE2"/IC/*.txt "$STAG/solve/output/"
+( cd "$STAG/solve" && env OMP_NUM_THREADS=1 EXHALE_CARRIER_TRUST=1e-4 \
+  EXHALE_OUTER_PASSES=8 EXHALE_JFNK_MAXIT=5 "$EXE" > run.log 2>&1 )
+rc=$?
+if [ $rc -ne 0 ] && [ $rc -ne 2 ]; then
+   echo "FAIL outer_iteration_ending_run measured=exit_$rc reference=exit_0 tol=0"
+   echo "     see $STAG/solve/run.log"
+   exit 1
+fi
+
+# The ending this row is about, read from the line the routine prints for it.
+if grep -q 'has not fallen in 3 consecutive passes' "$STAG/solve/run.log"; then
+   ending=no_progress
+elif grep -q 'spent its budget of' "$STAG/solve/run.log"; then
+   ending=pass_budget
+elif grep -q 'ACCEPTED -- every active equation' "$STAG/solve/run.log"; then
+   ending=certified
+else
+   ending=unrecognized
+fi
+if [ "$ending" = no_progress ]; then
+   echo "PASS outer_iteration_ending_is_the_stagnation_one measured=$ending"\
+        "reference=no_progress tol=0"
+else
+   echo "FAIL outer_iteration_ending_is_the_stagnation_one measured=$ending"\
+        "reference=no_progress tol=0"
+   echo "     this configuration no longer reaches the ending under test;"
+   echo "     see $STAG/solve/run.log"
+   exit 1
+fi
+
+cp "$CASE2/base.inp" "$STAG/reeval/"
+sed 's/^Restart intent:.*/Restart intent: stationary evaluate/' \
+    "$STAG/solve/input.inp" > "$STAG/reeval/input.inp"
+cp "$STAG/solve/output/Hydro_ioniz.txt" "$STAG/reeval/output/Hydro_ioniz_IC.txt"
+cp "$STAG/solve/output/Ion_species.txt" "$STAG/reeval/output/Ion_species_IC.txt"
+( cd "$STAG/reeval" && env OMP_NUM_THREADS=1 "$EXE" > run.log 2>&1 )
+rc=$?
+if [ $rc -ne 0 ] && [ $rc -ne 2 ]; then
+   echo "FAIL outer_iteration_ending_reeval measured=exit_$rc reference=exit_0 tol=0"
+   echo "     see $STAG/reeval/run.log"
+   exit 1
+fi
+grep 'the loaded composition against' "$STAG/reeval/run.log" | sed 's/^ */  /'
+
+python3 - "$STAG" <<'PY'
+import re, sys
+import numpy as np
+
+stag = sys.argv[1]
+
+
+def read(path):
+    labels, n_cells, n_ghost = None, None, None
+    with open(path) as fh:
+        for line in fh:
+            if not line.startswith("#"):
+                break
+            if line.lstrip("#").split()[:1] == ["columns"]:
+                labels = [c.split("[")[0]
+                          for c in line.replace("#", "", 1).split()[1:]]
+            m = re.search(r"rows\s+\d+:\s+(\d+)\s+ghost cells", line)
+            if m:
+                n_ghost = int(m.group(1))
+            m = re.search(r"\bN=(\d+)", line)
+            if m:
+                n_cells = int(m.group(1))
+    return labels, np.loadtxt(path, comments="#"), n_ghost, n_cells
+
+
+la, A, ng, nc = read(stag + "/solve/output/Hydro_ioniz.txt")
+lb, B, ngb, ncb = read(stag + "/reeval/output/Hydro_ioniz.txt")
+if A.shape != B.shape or ng != ngb or nc != ncb:
+    print("FAIL outer_iteration_ending_rows measured=%s reference=%s tol=0"
+          % (str(A.shape), str(B.shape)))
+    sys.exit(1)
+lo, hi = ng, ng + nc                      # physical cells only
+iT = la.index("T")
+a, b = A[lo:hi, iT], B[lo:hi, iT]
+rel = np.abs(a - b) / np.maximum(np.abs(a), 1.0e-99)
+worst = float(np.max(rel))
+jw = int(np.argmax(rel))
+print("  worst T cell %d: written %.12e  re-evaluated %.12e" % (jw + 1, a[jw],
+                                                                b[jw]))
+
+# Context, not a verdict: the species columns of the same two files.  A trace
+# stage answers to the temperature with a steep exponential, so its column is
+# a sensitive indicator and not a reference of its own.
+ls, SA, _, _ = read(stag + "/solve/output/Ion_species.txt")
+_, SB, _, _ = read(stag + "/reeval/output/Ion_species.txt")
+wsp, wname = 0.0, "none"
+for k, nm in enumerate(ls):
+    if nm == "r":
+        continue
+    x, y = SA[lo:hi, k], SB[lo:hi, k]
+    sc = np.maximum(np.abs(x), np.abs(y))
+    g = sc > 0.0
+    if not g.any():
+        continue
+    d = float(np.max(np.abs(x[g] - y[g]) / sc[g]))
+    if d > wsp:
+        wsp, wname = d, nm
+print("  worst species column over the same cells: %.3e (%s)" % (wsp, wname))
+
+tol = 1.0e-12
+ok = worst <= tol
+print("%s outer_iteration_ending_hands_back_one_state measured=%.6e "
+      "reference=%.6e tol=%.2e" % ("PASS" if ok else "FAIL", worst, 0.0, tol))
+sys.exit(0 if ok else 1)
+PY
+rc2=$?
+
+[ $rc1 -eq 0 ] && [ $rc2 -eq 0 ]
 exit $?

@@ -34,6 +34,56 @@
       ! point.  Filled only when well_balanced is set.
       real*8, dimension(:),   allocatable :: face_q_up, face_q_dn
 
+      ! WELL-BALANCED ARM.  The magnitude of the pressure force of each
+      ! cell's own hydrostatic equilibrium, which is the gravitational
+      ! weight the cell carries and is the term the momentum row's residual
+      ! is read against under the arm, since the row itself no longer holds
+      ! either of them.  Written out at
+      ! equilibrium_pressure_force_of_state, which is the only place it is
+      ! formed.  Filled only when well_balanced is set.
+      real*8, dimension(:),   allocatable :: equilibrium_pressure_force
+
+      ! THE THREE PHYSICAL TERMS OF EVERY CELL'S MOMENTUM ROW, as the
+      ! evaluation that produced dF and S assembled them.  The equation is
+      !
+      !   d(rho v)/dt + div(rho v v) + dp/dr + rho dphi/dr = S_visc
+      !                  ^ram          ^pressure ^gravity
+      !
+      ! and these are its three left-hand terms, gathered out of the pieces
+      ! the discretization splits them into:
+      !
+      !   momentum_ram_divergence(j)     the momentum flux divergence
+      !                                  WITHOUT the pressure
+      !   momentum_pressure_gradient(j)  the whole spherical pressure
+      !                                  gradient the row carries
+      !   momentum_gravity(j)            rho dphi/dr as `source` forms it,
+      !                                  and the equilibrium pressure force
+      !                                  under the well-balanced arm, where
+      !                                  the row itself carries neither
+      !
+      ! The three add up to the assembled row dF(2,j) - S(2,j) exactly.
+      !
+      ! WHAT READS THEM, AND WHY THE DISCRETIZATION'S PIECES ARE NOT THESE
+      ! TERMS.  The momentum row's reference scale is the largest PHYSICAL
+      ! term of the equation (momentum_row_scale, steady_residual), and
+      ! dF(2) and S(2) are not those terms: under PLM the pressure sits
+      ! partly in the momentum flux, which Phys_flux gives p, and partly in
+      ! the source, which carries the geometric term (A+ - A-) p_c/dV with
+      ! the opposite sign, so each of the two holds an O(2 p/r) part that
+      ! cancels against the other.  A scale built from them therefore reads
+      ! 2 p/r on a uniform pressure at rest, where the physical force is
+      ! zero, and under WENO3, where the whole gradient is one number
+      ! (p_R - p_L)/dr, it reads |dp/dr| ~ |rho g| in a near-hydrostatic
+      ! cell only because the two balance there.  Gathering the pieces back
+      ! into the terms of the equation is what these arrays are for.
+      ! Nothing here changes dF or S.
+      !
+      ! THE LOWEST GHOST CELL HAS NO LOWER FACE and carries no equation, so
+      ! its entry is zero, as its rows are.
+      real*8, dimension(:),   allocatable :: momentum_ram_divergence
+      real*8, dimension(:),   allocatable :: momentum_pressure_gradient
+      real*8, dimension(:),   allocatable :: momentum_gravity
+
       ! Number of interfaces whose flux was dropped to first order to keep an
       ! RK stage inside rho > 0, rho e > 0, summed over the whole run, over
       ! the calls that succeeded in restoring the set. A call that returns
@@ -85,10 +135,17 @@
       real*8, dimension(3,1-Ng:N+Ng), intent(out) :: S
 
       if (.not. allocated(face_flux)) then
-         allocate(face_flux(3,1-Ng:N+Ng), face_p(1-Ng:N+Ng),            &
-                  face_q_up(1-Ng:N+Ng),   face_q_dn(1-Ng:N+Ng))
+         allocate(face_flux(3,1-Ng:N+Ng), face_p(1-Ng:N+Ng))
          face_flux = 0.0d0
          face_p    = 0.0d0
+      endif
+      ! The face departures are tested on their own: face_flux and face_p
+      ! are also allocated by the kind-generic rows (hydrodynamic_rows),
+      ! which do not carry these, and a run that reaches a stationary
+      ! evaluation before any marching stage would otherwise find
+      ! face_flux allocated and write these unallocated.
+      if (.not. allocated(face_q_up)) then
+         allocate(face_q_up(1-Ng:N+Ng), face_q_dn(1-Ng:N+Ng))
          face_q_up = 0.0d0
          face_q_dn = 0.0d0
       endif
@@ -102,6 +159,8 @@
       ! must not read an undefined double.
       dF(:,1-Ng) = 0.0d0
       S(:,1-Ng)  = 0.0d0
+
+      if (well_balanced) call equilibrium_pressure_force_of_state(u_in)
 
       damp_lowmach = low_mach_damping_active()
       if (damp_lowmach) call contact_mode_dissipation_flux(u_in,Ddis)
@@ -195,6 +254,11 @@
          ! side is evaluated, and what is left is the departure alone.  This
          ! is the momentum source of Kaeppeli and Mishra (2014, J. Comput.
          ! Phys. 259, 199, their eq. 2.26) in spherical geometry.
+         !
+         ! What cancels here is still the physics the row balances, and its
+         ! magnitude is the row's reference scale: it is formed, from the
+         ! right-hand side of whichever identity the assembled row belongs
+         ! to, by equilibrium_pressure_force_of_state below.
          if (well_balanced) then
             if (use_plm) then
                dF(2,j) = (dAp*(Fp(2) + face_q_up(j))                    &
@@ -214,8 +278,201 @@
 
       !$omp end parallel
 
+      ! The terms of the equation the momentum row of every cell holds, out
+      ! of the pieces the loop above assembled it from (the module header
+      ! says why the pieces are not the terms).  It reads the stored face
+      ! data and S, and writes nothing the rows are built from.
+      call momentum_row_terms_of_state(WL,WR,S)
+
       ! End of subroutine
       end subroutine RK_rhs
+
+      !-----------------------------------------------------------!
+
+      subroutine equilibrium_pressure_force_of_state(u_in)
+      ! THE MAGNITUDE OF THE PRESSURE FORCE OF EACH CELL'S OWN HYDROSTATIC
+      ! EQUILIBRIUM, and the single definition of it.  With P_up and P_dn
+      ! the face values of the constant-density equilibrium through the
+      ! cell's own (rho_j, p_j) (Kaeppeli and Mishra 2016, A&A 587, A94,
+      ! their eq. 16, in spherical geometry), the identities the momentum
+      ! row of the well-balanced arm rests on are
+      !
+      !   A+ P_up - A- P_dn - (A+ - A-) p_j
+      !        = -rho_j [ A+ (phi_i(j) - phi_c(j))
+      !                 + A- (phi_c(j) - phi_i(j-1)) ]        (PLM form)
+      !   P_up - P_dn = -rho_j (phi_i(j) - phi_i(j-1))        (WENO3 form)
+      !
+      ! and this is the right-hand side of whichever one the assembled row
+      ! belongs to, divided by dV or by dr as that row is, and taken as a
+      ! magnitude.  It is at once the gravitational weight the cell carries
+      ! and the equilibrium part of the pressure terms, which is why the
+      ! two cancel in the row and neither appears in it; the physics the
+      ! row balances is this size all the same, so it is the term the row's
+      ! residual is read against (steady_residual's momentum row scale).
+      ! With no gravity it is zero and that scale falls back on the row's
+      ! own dynamic terms.
+      !
+      ! It is a function of the cell's density, of the potential and of the
+      ! reconstruction in use, and of nothing the flux assembly does, so it
+      ! is the same number whatever arithmetic assembled the rows.
+      !
+      ! THE LOWEST GHOST CELL HAS NO LOWER FACE and carries no equation, so
+      ! its entry is zero, as its rows are.
+      real*8, dimension(3,1-Ng:N+Ng), intent(in) :: u_in
+      integer :: j
+      real*8  :: rp, rm
+
+      if (.not. allocated(equilibrium_pressure_force))                   &
+         allocate(equilibrium_pressure_force(1-Ng:N+Ng))
+
+      equilibrium_pressure_force(1-Ng) = 0.0d0
+      if (use_plm) then
+         do j = 2-Ng,N+Ng
+            rp = r_edg(j)
+            rm = r_edg(j-1)
+            equilibrium_pressure_force(j) =                              &
+               abs(u_in(1,j)*(rp*rp*(Gphi_i(j)   - Gphi_c(j))            &
+                            + rm*rm*(Gphi_c(j)   - Gphi_i(j-1))))        &
+               /((rp*rp*rp - rm*rm*rm)/3.0)
+         enddo
+      else
+         do j = 2-Ng,N+Ng
+            equilibrium_pressure_force(j) =                              &
+               abs(u_in(1,j)*(Gphi_i(j) - Gphi_i(j-1)))/dr_j(j)
+         enddo
+      endif
+
+      ! End of subroutine
+      end subroutine equilibrium_pressure_force_of_state
+
+      !-----------------------------------------------------------!
+
+      subroutine momentum_row_terms_of_cell(dr,dAp,dAm,dV,              &
+                                            Fp2,Fm2,pR,pL,qp,qm,        &
+                                            S2,weight,w_face_p,         &
+                                            ram,pgrad,grav)
+      ! ONE CELL'S MOMENTUM ROW SPLIT INTO THE TERMS OF THE PHYSICAL
+      ! EQUATION, and the single definition of that split.  The three
+      ! outputs add up to the assembled row dF(2) - S(2) exactly, whichever
+      ! reconstruction and whichever arm produced it:
+      !
+      !   PLM    Phys_flux gives the momentum flux the pressure, so the
+      !          face value is rho v v + p and the flux difference holds
+      !          (A+ p_up - A- p_dn)/dV, while `source` holds the geometric
+      !          part (A+ - A-) p_c/dV with the opposite sign.  Both belong
+      !          to dp/dr: the pressure piece comes out of the flux
+      !          difference and joins the geometric term.
+      !   WENO3  Phys_flux leaves the pressure out and RK_rhs adds the face
+      !          difference (p_R - p_L)/dr, which is the whole gradient the
+      !          row carries; `source` has no geometric term.
+      !   arm    Phys_flux leaves the pressure out on either reconstruction
+      !          and the row carries the face pressure measured from each
+      !          side's own hydrostatic equilibrium, which is the pressure
+      !          gradient OF THE DEPARTURE.  The equilibrium part of the
+      !          pressure terms and the gravitational source cancel there
+      !          analytically, and their common magnitude is the weight the
+      !          caller passes (equilibrium_pressure_force).
+      !
+      ! w_face_p is the weight the caller's assembly gave the face-pressure
+      ! difference: one under WENO3, zero under PLM, and recon_lambda where
+      ! the positivity repair rebuilds a cell on the PLM to WENO3 homotopy.
+      !
+      ! S2 AND weight ARE READ ONLY TO RECOVER THE GEOMETRIC TERM, as
+      ! p_geom = S2 + weight, which is `source`'s own (A+ - A-) p_c/dV with
+      ! the p_c it itself used, and not a second call to the caloric EOS
+      ! that would be a second definition of the cell pressure.
+      real*8, intent(in)  :: dr,dAp,dAm,dV
+      real*8, intent(in)  :: Fp2,Fm2,pR,pL,qp,qm
+      real*8, intent(in)  :: S2,weight,w_face_p
+      real*8, intent(out) :: ram,pgrad,grav
+      real*8 :: p_flux
+
+      grav = weight
+      ram  = (dAp*Fp2 - dAm*Fm2)/dV
+
+      if (well_balanced) then
+         if (use_plm) then
+            pgrad = (dAp*qp - dAm*qm)/dV
+         else
+            pgrad = (qp - qm)/dr
+         endif
+         return
+      endif
+
+      pgrad = w_face_p*(pR - pL)/dr
+
+      if (use_plm) then
+         p_flux = (dAp*pR - dAm*pL)/dV
+         ram    = ram   - p_flux
+         pgrad  = pgrad + p_flux - (S2 + weight)
+      endif
+
+      ! End of subroutine
+      end subroutine momentum_row_terms_of_cell
+
+      !-----------------------------------------------------------!
+
+      subroutine momentum_row_terms_of_state(WL,WR,S)
+      ! The three terms of every cell's momentum row, from the face data the
+      ! flux assembly stored (face_flux, face_p and, under the well-balanced
+      ! arm, face_q_up / face_q_dn) and the source that assembly returned.
+      !
+      ! THE GRAVITATIONAL TERM IS THE ONE `source` FORMS, the half-sum of
+      ! the two reconstructed face densities times the interface potential
+      ! difference over dr (Source.f90); the two must stay in step.  Under
+      ! the arm `source` returns zero and the weight is the equilibrium
+      ! pressure force, which is the same physics in the arm's own
+      ! discretization (equilibrium_pressure_force_of_state).
+      real*8, dimension(3,1-Ng:N+Ng), intent(in) :: WL,WR,S
+      integer :: j
+      real*8  :: dr,rp,rm,dAp,dAm,dV,wgt,w_face_p
+
+      if (.not. allocated(momentum_ram_divergence))                      &
+         allocate(momentum_ram_divergence(1-Ng:N+Ng),                    &
+                  momentum_pressure_gradient(1-Ng:N+Ng),                 &
+                  momentum_gravity(1-Ng:N+Ng))
+      ! The face departures are passed below whether the arm is on or not,
+      ! and the kind-generic rows allocate face_flux / face_p without them,
+      ! so a stationary evaluation on that arm reached before any marching
+      ! stage would otherwise pass an unallocated array element.
+      if (.not. allocated(face_q_up)) then
+         allocate(face_q_up(1-Ng:N+Ng), face_q_dn(1-Ng:N+Ng))
+         face_q_up = 0.0d0
+         face_q_dn = 0.0d0
+      endif
+
+      momentum_ram_divergence(1-Ng)    = 0.0d0
+      momentum_pressure_gradient(1-Ng) = 0.0d0
+      momentum_gravity(1-Ng)           = 0.0d0
+
+      w_face_p = 0.0d0
+      if (use_weno3) w_face_p = 1.0d0
+
+      do j = 2-Ng,N+Ng
+         dr  = dr_j(j)
+         rp  = r_edg(j)
+         rm  = r_edg(j-1)
+         dAp = rp*rp
+         dAm = rm*rm
+         dV  = (dAp*rp - dAm*rm)/3.0
+         if (well_balanced) then
+            wgt = equilibrium_pressure_force(j)
+         else
+            wgt = 0.5d0*(WR(1,j-1) + WL(1,j))                           &
+                  *(Gphi_i(j) - Gphi_i(j-1))/dr
+         endif
+         call momentum_row_terms_of_cell(dr,dAp,dAm,dV,                 &
+                 face_flux(2,j), face_flux(2,j-1),                      &
+                 face_p(j), face_p(j-1),                                &
+                 face_q_up(j), face_q_dn(j-1),                          &
+                 S(2,j), wgt, w_face_p,                                 &
+                 momentum_ram_divergence(j),                            &
+                 momentum_pressure_gradient(j),                         &
+                 momentum_gravity(j))
+      enddo
+
+      ! End of subroutine
+      end subroutine momentum_row_terms_of_state
 
       !-----------------------------------------------------------!
 
@@ -268,8 +525,16 @@
       real*8, dimension(3) :: Fp,Fm,dFc
       real*8  :: pL,pR,rho_e
       real*8  :: qp,qm
+      real*8  :: wgt,w_face_p
 
       n_calls_flux_positivity_repair = n_calls_flux_positivity_repair + 1
+
+      ! The momentum row of a rebuilt cell is assembled below, so the term
+      ! it is read against belongs here as well.  A replaced face does not
+      ! move it: the equilibrium pressure force is a property of the cell's
+      ! own density and of the potential, and this stage's state is the one
+      ! whose fluxes are being repaired.
+      if (well_balanced) call equilibrium_pressure_force_of_state(u_stage)
 
       repaired       = .false.
       is_first_order = .false.
@@ -420,6 +685,24 @@
                   dFc(2) = (dAp*Fp(2) - dAm*Fm(2))/dV + (qp - qm)/dr
                endif
             endif
+
+            ! THE TERMS OF THE MOMENTUM EQUATION THIS ROW HOLDS FOLLOW
+            ! THE REBUILD, from the same mixture of fluxes.  The weight is
+            ! a property of the cell's own density and of the potential and
+            ! no replaced face can move it, so it is the one this stage's
+            ! own right-hand side left.
+            w_face_p = 0.0d0
+            if (recon_lambda_on) then
+               w_face_p = recon_lambda
+            else if (use_weno3) then
+               w_face_p = 1.0d0
+            endif
+            wgt = momentum_gravity(j)
+            call momentum_row_terms_of_cell(dr,dAp,dAm,dV,              &
+                    Fp(2),Fm(2),pR,pL,qp,qm,S(2,j),wgt,w_face_p,        &
+                    momentum_ram_divergence(j),                         &
+                    momentum_pressure_gradient(j),                      &
+                    momentum_gravity(j))
 
             dF3p  = dAp*Fp(1)*(Gphi_i(j) - Gphi_c(j))         &
                   - dAm*Fm(1)*(Gphi_i(j-1) - Gphi_c(j))

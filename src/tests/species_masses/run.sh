@@ -13,8 +13,11 @@
 # why this suite exists beside src/tests/physics_probe rather than inside it:
 # the physics_probe drivers link no library.
 #
-# Objects and module files go to build/tests/species_masses/, which this script
-# creates.  One line per assertion:
+# Objects and module files go to build/tests/species_masses/, which this
+# script creates, or to the directory EXHALE_TEST_OBJDIR names, so that two
+# builds of this suite can run side by side.  EXHALE_OBJDIR names the build
+# tree the generated build_stamp.f90 is taken from; without one the script
+# writes its own.  One line per assertion:
 #     PASS|FAIL <name> measured= reference= tol=
 # Exit status is nonzero if any assertion failed or any build failed.
 set -uo pipefail
@@ -22,7 +25,7 @@ set -uo pipefail
 here=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 root=$(cd -- "$here/../../.." && pwd)
 probe="$root/src/tests/physics_probe"
-work="$root/build/tests/species_masses"
+work="${EXHALE_TEST_OBJDIR:-$root/build/tests/species_masses}"
 mkdir -p "$work"
 
 FC=${FC:-gfortran}
@@ -42,11 +45,17 @@ drivers=(
   carrier_background_masses.f90
 )
 
-# utilities.f90 reads the revision strings of build/build_stamp.f90, which the
-# Makefile generates.  Without a build tree of its own to read, write a stamp
-# that says so; nothing tested here depends on its contents.
-if [ ! -f "$root/build/build_stamp.f90" ]; then
-  cat > "$work/build_stamp.f90" <<'STAMP'
+# utilities.f90 reads the revision strings of the build_stamp.f90 the
+# Makefile generates in the object directory.  Without a build tree to read
+# one from, write a stamp that says so; nothing tested here depends on its
+# contents.  Whichever of the two it is, it is compiled below as the first
+# file of the closure, so that build_stamp.mod stands in the module
+# directory before utilities.f90 asks for it.
+objdir="${EXHALE_OBJDIR:-$root/build}"
+stamp="$objdir/build_stamp.f90"
+if [ ! -f "$stamp" ]; then
+  stamp="$work/build_stamp.f90"
+  cat > "$stamp" <<'STAMP'
       module build_stamp
       ! Written by src/tests/species_masses/run.sh when the Makefile has not
       ! generated one. The tests do not read these strings.
@@ -71,6 +80,11 @@ for d in "${drivers[@]}"; do driver_paths+=("$here/$d"); done
 
 order=$(python3 "$probe/source_closure.py" "$root" "${driver_paths[@]}") \
   || { echo "FAIL source_closure"; exit 1; }
+# source_closure.py looks for the stamp in build/; compile the one selected
+# above instead, first, since it uses no other module.
+order=$(printf '%s\n' "$order" | grep -v '/build_stamp\.f90$')
+order="$stamp
+$order"
 
 # The bare (non-module) subprograms of the MINPACK solver directory.  A file
 # that is a PROGRAM of its own is skipped: that directory also holds the

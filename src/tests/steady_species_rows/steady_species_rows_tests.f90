@@ -45,6 +45,8 @@
                                           carrier_mass_amu, n_carrier_max
       use species_advective_transport, only: species_advective_update
       use composition, only: mass_per_H_nucleus_without_He
+      use test_columns, only: column_carrying_its_own_density,            &
+                              column_mass_closure
       use lower_atmosphere_profile, only: eddy_diffusion_on_grid
       use binary_element_diffusion, only: element_diffusion_step,         &
                                           element_transport_residual,     &
@@ -60,7 +62,7 @@
                                n_species_rows, species_row_carrier_index,&
                                carrier_unknown_on, cell_row_scales,      &
                                distance_from_certification,              &
-                               resid_tol_of_solve,                       &
+                               hydrodynamic_distance_from_certification_by_cell, &
                                increment_of_what_the_residual_reads,     &
                                species_unknowns_outside_their_bounds,    &
                                freeze_species_unknown_box,               &
@@ -403,11 +405,19 @@
       ! tolerance is a statement (decision 22 (a)): the rows passed here
       ! are the gated part of their column and the divisor is the value
       ! the accessor takes there, 1e-5, so the ratios below are that
-      ! tolerance times a power of two and not the 1e-8 the hydrodynamic
-      ! target keeps.
+      ! tolerance times a power of two.
+      !
+      ! THE HYDRODYNAMIC SLOT ARRIVES AS A DISTANCE: each row of each cell
+      ! over the certification tolerance that row carries there (momentum
+      ! 1e-8 and energy 1e-6 for the column, the continuity row 3e-12 or
+      ! ten times the cell's own rounding floor), the largest taken
+      ! (hydrodynamic_distance_from_certification_by_cell), so that the
+      ! ledger ranks iterates by the row that the acceptance refuses and
+      ! not by the run's "Resid tol", which is the solver's target and not
+      ! a certification tolerance.
       integer, intent(inout) :: nf
       real*8 :: rows(3), tel, tca
-      resid_tol_of_solve = 1.0d-8
+      real*8 :: q(3,1), fl(1)
       tel = cert_tol_element_at(cert_regime_wind_r)
       tca = cert_tol_carrier_at(cert_regime_wind_r)
       call real_row('the_element_tolerance_the_distance_divides_by',      &
@@ -420,7 +430,7 @@
                    (cert_tol_carrier_at(cert_regime_layer_r) .ge.         &
                     cert_tol_reported_only), .true., nf)
       ! Each row alone, in the units of its own tolerance.
-      rows = (/ 2.0d-8, 0.0d0, 0.0d0 /)
+      rows = (/ 2.0d0, 0.0d0, 0.0d0 /)
       call real_row('judged_distance_reads_the_hydrodynamic_rows',        &
                     distance_from_certification(rows), 2.0d0, nf)
       rows = (/ 0.0d0, 4.0d0*tel, 0.0d0 /)
@@ -431,15 +441,15 @@
                     distance_from_certification(rows), 8.0d0, nf)
       ! And together it is the WORST of them, not a sum and not an average:
       ! a state is certified when every row is within its own tolerance.
-      rows = (/ 5.0d-9, 4.0d0*tel, 2.0d0*tca /)
+      rows = (/ 0.5d0, 4.0d0*tel, 2.0d0*tca /)
       call real_row('judged_distance_is_the_worst_row',                   &
                     distance_from_certification(rows), 4.0d0, nf)
       ! d < 1 is the certification condition itself.
-      rows = (/ 5.0d-9, 0.5d0*tel, 0.5d0*tca /)
+      rows = (/ 0.5d0, 0.5d0*tel, 0.5d0*tca /)
       call log_row('judged_distance_below_one_is_certified',              &
                    distance_from_certification(rows) .lt. 1.0d0,          &
                    .true., nf)
-      rows = (/ 5.0d-9, 2.0d0*tel, 0.5d0*tca /)
+      rows = (/ 0.5d0, 2.0d0*tel, 0.5d0*tca /)
       call log_row('judged_distance_above_one_is_not_certified',          &
                    distance_from_certification(rows) .lt. 1.0d0,          &
                    .false., nf)
@@ -454,13 +464,22 @@
       call log_row('and_the_anchored_one_does_not',                       &
                    distance_from_certification(rows) .lt. 1.0d0,          &
                    .true., nf)
-      ! A tighter target on the hydrodynamic rows moves the distance with it,
-      ! so the bound the acceptance holds a step to follows the solve's own
-      ! target and is not a second, independent number.
-      resid_tol_of_solve = 1.0d-9
-      rows = (/ 2.0d-8, 0.0d0, 0.0d0 /)
-      call real_row('judged_distance_follows_the_residual_target',        &
-                    distance_from_certification(rows), 2.0d1, nf)
+      ! The hydrodynamic distance reads each row against ITS OWN
+      ! certification tolerance: one cell whose mass row is 1e-9 beside a
+      ! momentum row of 1e-13 and an energy row of 1e-8 is 1e-9/3e-12 of
+      ! the way, not 1e-8/1e-8 (the "Resid tol" reading this replaces,
+      ! under which the HD 209458 b element reload's mass row at 1e-9 read
+      ! as certified by the ledger while the acceptance refused it,
+      ! Update_EXHALE.md section 8, P10). The cell's rounding floor is
+      ! 1e-30, ten times which is far below 3e-12, so the tolerance that
+      ! applies to its continuity row is the fixed one.
+      q(1,1) = 1.0d-9;  q(2,1) = 1.0d-13;  q(3,1) = 1.0d-8
+      fl(1)  = 1.0d-30
+      call real_row('hydrodynamic_distance_reads_each_row_against_its_'// &
+                    'own_tolerance',                                      &
+                    hydrodynamic_distance_from_certification_by_cell(     &
+                       1, q, fl),                                         &
+                    1.0d-9/3.0d-12, nf)
       end subroutine judged_distance_is_the_worst_row_over_its_tolerance
 
       ! ================================================================= !
@@ -866,6 +885,13 @@
       ! element measured in its own reservoir value; the helium-only number
       ! is printed beside it, and it is the one that does not.
       !
+      ! The swing is taken OUT OF THE HYDROGEN it is measured against, so
+      ! the column's species reconstruct the density it is handed (asserted
+      ! before the relaxation, `drift_column_carries_its_own_density`).
+      ! Added on top of a fixed hydrogen fraction it left the species short
+      ! of that density by 1.7e-2, and a drift measured on ratios that do
+      ! not describe the transported mass is a drift of no state.
+      !
       ! omega = 1 so that the state handed back IS the relaxed one and the
       ! drift is exactly the distance between the two compositions the test
       ! measures.
@@ -874,8 +900,8 @@
       real*8, dimension(:),   allocatable :: rho_c, v_c, T_c, Frho
       real*8, dimension(:,:), allocatable :: f_c, Ybef, Yaft
       real*8, dimension(:),   allocatable :: Yres, dchange
-      real*8  :: dr_u, m_1, mpH, X_base, famp, drift, worst, drift_he
-      real*8  :: worst_trace
+      real*8  :: dr_u, m_1, X_base, famp, drift, worst, drift_he
+      real*8  :: worst_trace, closure
       integer :: j, ie, nrel, iworst
 
       N  = nc
@@ -927,25 +953,16 @@
 
       m_1  = mass_per_H_nucleus_without_He()
       famp = 1.0d-4
-      f_c  = 0.0d0
+      ! The species as mass fractions that sum to one, so the column
+      ! carries its own density exactly: helium at the reservoir value
+      ! everywhere, where the base pins it and it has almost no distance to
+      ! travel, and every metal swinging +/-80% about its own reservoir
+      ! mixing ratio in its neutral stage, the swing taken off the hydrogen
+      ! each element's mixing ratio is measured against. Cell 1 is the
+      ! Dirichlet reservoir and stays at the reservoir value, which is what
+      ! the relaxation measures each element against.
+      call column_carrying_its_own_density(f_c, 0.0d0, .false., 0.8d0)
       do j = 1-Ng, N+Ng
-         ! Helium at the reservoir value everywhere: it starts where the
-         ! base pins it and has almost no distance to travel.
-         mpH = m_1 + m_He_over_m_H*HeH
-         f_c(j,isp_HI)  = 1.0d0/mpH
-         f_c(j,isp_HeI) = HeH/mpH
-         ! Every metal swings +/-80% about its own reservoir mixing ratio,
-         ! in its neutral stage. Cell 1 is the Dirichlet reservoir and is
-         ! left at the reservoir value, which is what the relaxation
-         ! measures each element against.
-         do ie = 1, n_melem
-            if (j .eq. 1) then
-               f_c(j,mion_fsp(melem_i0(ie))) = melem_ab(ie)*f_c(j,isp_HI)
-            else
-               f_c(j,mion_fsp(melem_i0(ie))) = melem_ab(ie)*f_c(j,isp_HI) &
-                    *(1.0d0 + 0.8d0*sin(6.0d0*(r(j) - 1.0d0)))
-            endif
-         enddo
          rho_c(j) = exp(-3.0d0*(r(j) - 1.0d0))
          v_c(j)   = 0.0d0
          T_c(j)   = 1.0d0
@@ -954,6 +971,17 @@
          ! conservative balance has no bounded steady composition at all.
          Frho(j)  = famp/(r_edg(j)*r_edg(j))
       enddo
+
+      ! WHAT THE COLUMN WEIGHS AGAINST THE DENSITY IT IS HANDED, by the
+      ! code's own mass policy (calc_rho, metals in the budget). The metal
+      ! swing above is taken out of the hydrogen it is measured against, so
+      ! the species reconstruct rho to round-off; a swing added on top of a
+      ! fixed hydrogen fraction would make the element ratios the
+      ! relaxation reads and the density it transports two different
+      ! atmospheres, and the drift it returns a drift of neither.
+      closure = column_mass_closure(rho_c, f_c)
+      call bound_row('drift_column_carries_its_own_density', closure,     &
+                     1.0d-14, nf)
 
       X_base = reservoir_helium_mass_fraction(m_1)
       call element_mass_fractions(f_c, Ybef)

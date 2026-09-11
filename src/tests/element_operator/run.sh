@@ -55,9 +55,14 @@ if [ -z "${EXHALE_OBJDIR:-}" ]; then
 fi
 PROD_OBJ="$(ls "$OBJDIR"/*.o | grep -vE '(EXHALE_main|_tests|_probe)\.o$' | tr '\n' ' ')"
 
+# src/tests/test_columns.f90 builds the synthetic column whose species
+# carry their own density, shared with the other driver that measures an
+# operator against the mass it was handed; it is compiled here because it
+# belongs to no production object.
 rm -f "$OUT/element_operator_tests.x"
 $FC $FFLAGS_TEST -J"$OUT" -I"$OBJDIR" \
     -o "$OUT/element_operator_tests.x" \
+    "$ROOT/src/tests/test_columns.f90" \
     "$HERE/element_operator_tests.f90" \
     $PROD_OBJ $LAPACK || {
    echo "FAIL element_operator_build measured=compile_error reference=ok tol=0"

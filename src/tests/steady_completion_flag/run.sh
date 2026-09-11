@@ -1,19 +1,30 @@
 #!/bin/bash
 # The completion flag of a steady solve is a statement about the state it
-# hands back.
+# hands back, and the test the iteration stops on is the test that state is
+# accepted by.
 #
 # What is asserted, on the log of a real run (the logs are given in
 # EXHALE_STEADY_RUNLOGS, colon separated; each must contain one steady
 # solve):
 #
-#   1. info = 0 only when every hydrodynamic row of the certification of
-#      the state handed back is `within` its tolerance, and info = 2 when
-#      one of them is `ABOVE` it. The loop-top gate reads the residual of
-#      the iterate under the composition of the previous evaluation, so
-#      the two can disagree; the flag must follow the state, not the gate.
+#   1. info = 0 exactly when every hydrodynamic row of the certification of
+#      the state handed back is `within` its tolerance; a row `ABOVE` it or
+#      `UNAVAILABLE` on it makes the flag nonzero. Which nonzero flag it is
+#      says how the solve ended: 1 on the iteration budget, 2 on a state
+#      the return refused or on an abort.
 #   2. The row the solver names when it refuses carries the SAME number
 #      and the SAME cell as that row in the certification block: one
 #      record, read twice, never two evaluations.
+#   3. THE ITERATION DOES NOT STOP FOR SUCCESS WHILE A CERTIFIED ROW
+#      REFUSES. The stop test of the iteration is the acceptance test of
+#      the state: the acceptance gate AND every row the certification
+#      judges the carried system by, each against its own tolerance (mass
+#      3e-12, momentum 1e-8, energy 1e-6). The gate alone is one number
+#      against the run's `Resid tol`, so a solve stopping on it stops at
+#      states the return then refuses. A solve that ends info = 0 must
+#      therefore say that its stop test read those rows, and a refusal at
+#      return -- which the composition the final evaluation adopts can
+#      still cause -- must stand beside that same statement.
 #
 # Every assertion prints one
 #     PASS|FAIL <name> measured=<v> reference=<r> tol=<t>
@@ -57,17 +68,27 @@ for L in "${_logs[@]}"; do
    else
       echo "PASS hydro_rows_of_$nm measured=3 reference=3 tol=0"
    fi
-   if [ "$nabove" -eq 0 ] && [ "$nunavail" -eq 0 ]; then want=0; else want=2; fi
-   if [ "$info" = "$want" ]; then
-      echo "PASS flag_follows_the_returned_state_of_$nm measured=$info reference=$want tol=0"
+   # 1. the flag follows the rows of the state handed back.
+   if [ "$nabove" -eq 0 ] && [ "$nunavail" -eq 0 ]; then
+      if [ "$info" = "0" ]; then
+         echo "PASS flag_follows_the_returned_state_of_$nm measured=$info reference=0 tol=0"
+      else
+         echo "FAIL flag_follows_the_returned_state_of_$nm measured=$info reference=0 tol=0"
+         echo "     every hydrodynamic row of the state handed back is within its tolerance"
+         n_fail=$((n_fail+1))
+      fi
    else
-      echo "FAIL flag_follows_the_returned_state_of_$nm measured=$info reference=$want tol=0"
-      echo "     rows above tolerance: $nabove, unavailable: $nunavail"
-      n_fail=$((n_fail+1))
+      if [ "$info" != "0" ]; then
+         echo "PASS flag_follows_the_returned_state_of_$nm measured=$info reference=nonzero tol=0"
+      else
+         echo "FAIL flag_follows_the_returned_state_of_$nm measured=$info reference=nonzero tol=0"
+         echo "     rows above tolerance: $nabove, unavailable: $nunavail"
+         n_fail=$((n_fail+1))
+      fi
    fi
    # 2. The refusal the solver prints and the row of the certification.
    ref=$(grep -E 'refusing row: hydrodynamic' "$L" | tail -n 1)
-   if [ "$want" = "2" ] && [ -n "$ref" ]; then
+   if [ -n "$ref" ]; then
       rname=$(echo "$ref" | sed -n 's/.*refusing row: \(hydrodynamic [a-z]* row\).*/\1/p')
       rval=$(echo "$ref" | sed -n 's/.* measure *\([^ ]*\) above.*/\1/p')
       rcell=$(echo "$ref" | sed -n 's/.*at cell \([0-9]*\).*/\1/p')
@@ -80,13 +101,38 @@ for L in "${_logs[@]}"; do
          echo "FAIL refusal_is_the_certification_row_of_$nm measured=$rval@$rcell reference=$cval@$ccell tol=0"
          n_fail=$((n_fail+1))
       fi
-   elif [ "$want" = "2" ]; then
+   elif [ "$info" = "2" ]; then
       # info = 2 with no refusing row named: allowed only when the solve
-      # never claimed the gate at the loop top (it aborted instead).
+      # never claimed its stop test (it aborted instead).
       if grep -qE '\((JFNK|PTC)\) (STAGNATED|no descent|line search found no descent)' "$L"; then
          echo "PASS refusal_is_the_certification_row_of_$nm measured=aborted reference=aborted tol=0"
       else
          echo "FAIL refusal_is_the_certification_row_of_$nm measured=no_row_named reference=a_named_row tol=0"
+         n_fail=$((n_fail+1))
+      fi
+   fi
+   # 3. the stop test of the iteration read the certified rows.
+   nstop=$(grep -cE '^ \((JFNK|PTC)\) loop-top stop: the acceptance gate is met and every one of the' "$L")
+   nread=$(grep -E '^ \((JFNK|PTC)\) loop-top stop: ' "$L" | tail -n 1 \
+           | sed -n 's/.*every one of the \([0-9]*\) certified row.*/\1/p')
+   if [ "$info" = "0" ]; then
+      if [ "$nstop" -ge 1 ] && [ -n "$nread" ] && [ "$nread" -ge 3 ]; then
+         echo "PASS stop_test_reads_the_certified_rows_of_$nm measured=${nread}_rows reference=at_least_3 tol=0"
+      else
+         echo "FAIL stop_test_reads_the_certified_rows_of_$nm measured=${nread:-no_statement} reference=at_least_3 tol=0"
+         echo "     an info=0 solve must state that its stop test read the"
+         echo "     certified rows of the iterate it stopped on, over at least"
+         echo "     the three hydrodynamic rows"
+         n_fail=$((n_fail+1))
+      fi
+   elif [ -n "$ref" ]; then
+      if [ "$nstop" -ge 1 ]; then
+         echo "PASS stop_test_reads_the_certified_rows_of_$nm measured=refusal_after_a_stop_statement reference=a_stop_statement tol=0"
+      else
+         echo "FAIL stop_test_reads_the_certified_rows_of_$nm measured=refusal_with_no_stop_statement reference=a_stop_statement tol=0"
+         echo "     the state handed back refuses a hydrodynamic row and the"
+         echo "     solve made no statement that its stop test read that row:"
+         echo "     the iteration stopped for success on the gate alone"
          n_fail=$((n_fail+1))
       fi
    fi

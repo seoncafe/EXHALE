@@ -184,6 +184,24 @@ production number is section (4).
 
 ### (4) Grid refinement of the candidate itself
 
+**[corrected 2026-09-11]** This anchor and the remapping control below are
+CONSISTENCY DIAGNOSTICS of one candidate on two grids, not a measurement of
+a floor. Two reasons, both from review section 3.2 of
+`docs/solver_approach_analysis_20260910_review.md`. First, the state
+evaluated on the N = 1000 grid is a remap of an unconverged N = 500
+candidate, not a solution of the N = 1000 discrete equations, so the
+Richardson-style split below ("about 78 percent is discretization") is an
+estimate of how the evaluated row responds to refinement and not a division
+of the residual into an unavoidable and an avoidable part. A nearly exact
+round trip through the interpolant bounds the round trip, not the derivative
+error on the intermediate grid. Second, and whatever the split: a truncation
+error of this size does not bound the algebraic residual of the discrete
+equations from below (review section 3.1), and MEASURED on this same
+500-cell grid the existing H2 transport routine took the wind H2 row from
+7.380744e-2 to **2.449021e-13** on a held background
+(`docs/solver_partition_experiment_20260911.md` section 4). The numbers
+below stand as measured; what is withdrawn is reading them as a floor.
+
 The atomic candidate mapped onto the N = 1000 grid of the same configuration
 and evaluated with no step (`Restart intent: stationary evaluate`), at one
 fixed physical radius r = 1.1515:
@@ -193,14 +211,21 @@ fixed physical radius r = 1.1515:
 | N = 500 (the state's own) | 1.84e-3 | **5.9678e-4** | **5.9273e-4** |
 | N = 1000 | 9.2e-4 | **2.4801e-4** | **2.4677e-4** |
 
-ratio 2.41 (2.402 after N29). The remap control (N = 500 -> 1000 -> 500 with
+ratio 2.41 (2.402 after N29), i.e. the row of THIS state reads about 2.4
+times smaller on the finer grid. The remap control (N = 500 -> 1000 -> 500 with
 the same interpolant) returns 5.96770e-4 against the original 5.96779e-4, a
 relative difference of 1.6e-5 (5.92725e-4 against 5.92734e-4, 1.5e-5, after
 N29), so **at that radius the remap contributes at most 0.02 percent and the
 factor 2.4 is a grid effect**. Richardson at order 2 puts the h -> 0 limit at
-1.32e-4 (1.31e-4 after N29): **about 78 percent of the 5.9e-4 the state is
-refused for is discretization on its own grid**, and about 1.3e-4 is a
-genuine imbalance. Both readings agree to two figures.
+1.32e-4 (1.31e-4 after N29): the estimate puts **about 78 percent of the
+5.9e-4 the state is refused for in the direction of the discretization on
+its own grid**, and about 1.3e-4 in the h -> 0 limit of the same estimate.
+Both readings agree to two figures. [corrected 2026-09-11: read as a
+diagnostic, per the note opening this anchor. The wording was "is
+discretization ... and about 1.3e-4 is a genuine imbalance", which claims a
+split this experiment does not establish: the fine-grid evaluation is a
+remap of an unconverged candidate and the assumed order is imported from a
+smooth manufactured column, review section 3.2.]
 
 Two limits of this test, stated rather than smoothed over:
 
@@ -299,11 +324,25 @@ Read down each column: the arithmetic floors are five to eleven decades below
 1e-8 and forbid nothing; the derivative sits ON 1e-8 to within a factor 4;
 the discretization and the flux conservation are four to six decades ABOVE
 it. **`cert_tol_element = 1e-8` is not refused by any floor of the arithmetic
-or of the closure. What refuses it is that the discrete equation itself only
-describes the continuum equation to about 5e-4 on this grid at this radius,
-and that the state's element fluxes are only conserved to 2e-3.** A state
-certified at 1e-8 on this grid would be a state whose residual is four
-decades below the error of the discretization it is a residual of. **N29
+or of the closure.** [corrected 2026-09-11] The two sentences that followed
+read "What refuses it is that the discrete equation itself only describes the
+continuum equation to about 5e-4 on this grid at this radius, and that the
+state's element fluxes are only conserved to 2e-3. A state certified at 1e-8
+on this grid would be a state whose residual is four decades below the error
+of the discretization it is a residual of." The first half of that is
+withdrawn: the residual of the discrete equations and the accuracy of those
+equations against the continuum are different quantities, and an algebraic
+error decades below the discretization error is the normal and desirable
+situation, not a contradiction (review section 3.1; MEASURED, the
+frozen-background H2 wind row of 2.449021e-13 on the 500-cell grid,
+`docs/solver_partition_experiment_20260911.md` section 4). What the table
+does establish about 1e-8 is what the last two rows say: the derivative the
+solve is steered by resolves only 3.8e-8 at the binding cell, and the states
+this implementation produces stand at 3.0e-4 to 4.8e-1, four to eight
+decades away. The flux-conservation row remains a statement about the
+STATE handed back (its element fluxes are conserved to 2e-3 in the wind and
+not at all in the layer), which is a property of that state and of the
+layer's standing base wave, not of the tolerance. **N29
 moves no column of this table by as much as a decade except the closure seed
 (four decades down, and it was already the least binding of the floors) and
 the layer flux conservation (a factor 4 down, and still nine decades above
@@ -404,12 +443,32 @@ because this item does not own that file. Nothing below is implemented.
 > removed, because their element flux conservation is 9.8 after N29 (39
 > before it) and no tolerance is meaningful against that. Cost: a state can be certified in the wind while
 > its layer is not certified, and the report has to say so in one line.
+> [corrected 2026-09-11: the clause "a decade above the discretization error
+> a smooth manufactured column shows at the production spacing" is a choice
+> of where to put a gate given the ACCURACY the operator has at that
+> spacing, and it is kept as that. It is not an argument that a smaller
+> residual is unattainable there, which review section 3.1 refutes and the
+> MEASURED 2.449021e-13 of
+> `docs/solver_partition_experiment_20260911.md` section 4 contradicts
+> directly. Decision 22 (a) was taken on this option and stands.]
 > **(b) Keep 1e-8 and state that the fixtures cannot certify.** The value
-> stays where it is, the report says that no state of this discretization can
-> reach it at the radii that bind, and the species-row arms are documented as
-> permanently uncertified until the operator's order or the grid changes.
+> stays where it is, the report says that no state this implementation has
+> produced reaches it at the radii that bind, and the species-row arms are
+> documented as uncertified by every method measured so far.
 > This is honest and it makes the certification a measurement rather than a
 > gate for these rows.
+> [corrected 2026-09-11: option (b) read "no state of this discretization can
+> reach it at the radii that bind, and the species-row arms are documented as
+> permanently uncertified until the operator's order or the grid changes".
+> That inference is WITHDRAWN. Spatial truncation error is not a lower bound
+> on the algebraic residual of the discrete equations (review section 3.1),
+> so neither the operator's order nor the grid has to change for these rows
+> to fall further, and MEASURED on the same 500-cell grid the existing H2
+> transport routine took the wind H2 row from 7.380744e-2 to 2.449021e-13 on
+> a held background (`docs/solver_partition_experiment_20260911.md` section
+> 4). What is measured is that no state produced by the methods tried so far
+> reaches 1e-8, or 1e-5, at those radii. The choice between (a) and (b) is
+> unaffected: decision 22 (a) was taken and stands.]
 > **(c) A two-regime tolerance, both values gating.** 1e-5 in the wind and a
 > separate, larger number in the layer measured after the base wave is fixed.
 > This is (a) with the layer promoted from reported to gating, and it cannot
@@ -519,6 +578,317 @@ Unchanged. The arithmetic floors are now five to fifteen decades below 1e-8
 instead of five to eleven, so they forbid even less; the derivative still
 sits on 1e-8 within a factor 4; the discretization at the binding radius is
 still ~4.6e-4 and the element fluxes are still conserved only to 2e-3 in the
-wind and to 10 in the layer. `cert_tol_element = 1e-8` is still refused by
-the discretization and the flux conservation and by nothing else, and option
-(a) of section 7 still admits neither candidate.
+wind and to 10 in the layer. Neither 1e-8 nor 1e-5 is reached by either
+candidate, and option (a) of section 7 still admits neither.
+[corrected 2026-09-11: the last sentence read "`cert_tol_element = 1e-8` is
+still refused by the discretization and the flux conservation and by nothing
+else". The discretization does not refuse a tolerance on the algebraic
+residual (review section 3.1; MEASURED, 2.449021e-13 for the
+frozen-background H2 wind row on this grid,
+`docs/solver_partition_experiment_20260911.md` section 4). What refuses
+these two candidates is the states themselves: they stand at 3.0e-4 and
+4.8e-1, and the derivative the solve is steered by resolves 3.8e-8 at the
+binding cell.]
+
+## Anchor (6), 2026-09-11: the mass row's rounding floor
+
+`PLAN_20260911_partitioned_solver.md` item P16, on the user's decision of
+2026-09-11: re-anchor the hydrodynamic mass tolerance ABOVE the measured
+rounding floor of the state, not by a new hand constant. What P7 and P10
+left open was the last refusing entry of the HD 209458 b element reload,
+the mass row at 8.893E-10 against a fixed `cert_tol_mass = 3e-12`, where
+N33 had already measured that a base-layer mass row carries no signal at
+that level.
+
+Every number below is MEASURED by this item unless it says READ.
+
+### What the row's rounding floor is
+
+The continuity row of cell `j` is a difference of two face fluxes over the
+cell volume,
+
+```
+R_1(j) = ( A_+ F_+  -  A_- F_- ) / dV_j ,     s_1(j) = max|A F| / dV_j ,
+```
+
+and the certification judges `|R_1|/s_1`, the fractional change of the mass
+flux across the cell. Two candidate estimates of the smallest such fraction
+the arithmetic can resolve were measured against the row's actual
+non-smoothness.
+
+- **the flux-difference estimate**, the textbook rounding of a difference of
+  two correctly rounded addends, `eps (|A_+ F_+| + |A_- F_-|) / dV_j` over
+  `s_1`. Because `s_1` IS the larger addend, this is algebraically between
+  one and two ulps at every cell of every state, and MEASURED it is
+  4.4409E-16 to within a part in a thousand throughout all three fixtures.
+  It is the expression the item was briefed with, and it cannot serve: it is
+  a constant, so `c_round` times it never rises above 3e-12 for any margin
+  the measurement supports, and the step the assembly actually takes stands
+  up to 2.4E+05 times above it.
+- **the signal estimate**, `eps rho(|v| + c_s) A / dV_j` over `s_1`, which
+  is `eps` times `max_faces[rho(|v|+c_s) A] / max_faces|A F|` and so about
+  `eps/Mach` where the flux is a small residue of the momentum the cell
+  carries at its own signal speed. This is the one adopted
+  (`mass_row_rounding_floor`, `steady_residual.f90`). Its justification is
+  N33's measurement: the interface flux is assembled from the JUMPS of the
+  two reconstructed states, those jumps stand 3.2e5 to 5.9e6 below the
+  states in the base layer (READ, N33), and the first quantity of the
+  assembly that steps under a one-ulp perturbation is the interface flux, by
+  4.803E-16 of an O(1) state where its own value is smaller by that factor
+  (READ, N33). So the flux carries the last bit of `rho c_s` and not of
+  `rho v`.
+
+### The measurement of `c_round`
+
+`EXHALE_MASS_FLOOR_SCAN=1` (default off, `steady_residual.f90`) adds one ulp
+to the density of every physical cell, runs the whole flux assembly again,
+and reports the STEP each mass row takes against both estimates. The state
+as given is assembled once more afterwards and reproduces its own mass rows
+to 0.00E+00 on all three fixtures, so the step is the perturbation's and not
+the measurement's.
+
+Each fixture is entered with `Restart intent: stationary evaluate`, which
+measures the state as loaded and takes no step.
+
+| fixture | base Mach | signal estimate at cell 1 | flux estimate | largest step / signal estimate | largest step / flux estimate |
+| --- | --- | --- | --- | --- | --- |
+| `wasp_full_newton` | 3.937E-03 | 5.7049E-14 | 4.4409E-16 | **1.5931** (cell 207) | 1.109E+02 (cell 52) |
+| `atomic_elem_newton` (HD 209458 b) | 5.062E-06 | 3.2031E-11 | 4.3701E-16 | **1.8857** (cell 82) | 2.4365E+05 (cell 152) |
+| `carrier_elem_newton` (hot Uranus) | 2.400E-04 | 9.3076E-13 | 4.4275E-16 | **2.6806** (cell 17) | 5.0915E+03 (cell 17) |
+| the HD 209458 b state this item certifies (below) | 2.767E-06 | 1.0041E-09 | 4.4409E-16 | **1.7733** (cell 212) | 1.4201E+06 (cell 28) |
+
+The signal estimate tracks the measured step within a factor 1.6 to 2.7 on
+states whose base Mach numbers span three decades and whose floors span five
+(5.7E-14 to 1.0E-09); the flux estimate is a constant and is short by two to
+six decades.
+
+`c_round = 10` (`cert_mass_round_margin`, `certification.f90`): a round
+number 3.7 times above the largest ratio measured here, and inside N33's
+independent reading of the same floor against its own bound, which was 5.5
+to 12 (READ). Nothing above that is measured and nothing above that is
+taken.
+
+### The tolerance
+
+```
+tol_mass(j) = max( 3e-12, min( 1.0, c_round * floor(j) ) )
+```
+
+`cert_tol_mass = 3e-12` stays, as the FLOOR of the tolerance: where the
+cell's arithmetic permits 3e-12 the row is held to it. The ceiling of 1.0 is
+the row measure at which the mass flux changes by the whole of itself across
+the cell, which no arithmetic argument admits; it is not an operative branch
+on any state measured (it needs a base Mach below 1e-15). The verdict on the
+mass row is taken CELL BY CELL, because the cell whose measure stands
+furthest outside its own tolerance is not in general the cell of the largest
+measure; `row_max` and its cell are untouched, and the report states which
+cell took the verdict, against which number, and whether that number was the
+fixed value or the rounding anchor.
+
+What is given up where the anchor binds: the mass row of that cell is judged
+at `eps/Mach` of its own flux instead of at 3e-12, which on the HD 209458 b
+base layer is about 3e-10. What the row's scale was introduced for is
+undamaged, the flux errors it was given to catch being fractions of a
+percent to tens of percent (the 30 percent at 1.03 R_p of
+`docs/p54_base_layer_mass_flux.md`), seven decades above any floor measured
+here, and the mass-flux spread gate reads the same quantity independently.
+
+### Impact, MEASURED against a private build of the entry text of the two files
+
+Three runs, 8 threads, 500 cells, reloaded from each fixture's `IC/`, with
+`Restart intent: stationary`. The control is a build of the entry text of
+`certification.f90` and `steady_residual.f90` in the same tree; the machine
+was shared, so wall times are reported and are not a claim.
+
+**1. `wasp_full_newton` reloaded.** Unmoved. `info = 0`, CERTIFIED, mass row
+1.212E-12 at cell 500 with the verdict taken there against the FIXED 3.0E-12
+at distance 0.404, momentum 7.055E-10, energy 1.920E-09 identical to the
+control's digit for digit, and every written output byte-identical apart from
+the provenance timestamp of `Hydro_ioniz.txt` (one second apart).
+`log10 Mdot` 13.30 on both, from the written profile under the run's
+`Rate/2 + Mdot/2` convention. The anchor cannot reach this case: its mass
+row binds in the WIND, where the estimated floor is below 3e-13, and
+`cert_tol_mass` is the floor of the tolerance.
+
+The cold-start `wasp_full_newton` of `make check` is unaffected for the same
+reason and for one more: READ from `backup/regression/wasp_full_newton/run.log`,
+that run ends `-> converged: JFNK steady solution (||R|| < 1.000E-08 AND flux
+spread < 2.000E-05)` with a final mass row of 2.624E-13 at cell 500 against
+3.0E-12, every hydrodynamic row within its tolerance and the state CERTIFIED,
+and the log carries no `the acceptance gate is met and the certified ... is
+above its own ...` line at any iteration. So the mass row never bound that
+stop; a tolerance that only ever RISES cannot move a stop the mass row did
+not hold.
+
+**2. The HD 209458 b element reload, partitioned** (`Load IC? True`,
+`Coupled carrier solve: False`, `Restart intent: stationary`, `metals.inp`,
+`EXHALE_OUTER_PASSES=12 EXHALE_JFNK_MAXIT=80 EXHALE_DIFF_OMEGA=0.5`).
+**The state CERTIFIES, at pass 12**, which is the entry the plan's "what
+remains" list had open:
+
+```
+(EXHALE_main) outer pass 12: ACCEPTED -- every active equation of this
+                             state is within its own tolerance.
+```
+
+The certification of that state: mass row 7.703E-10, largest at cell 2, the
+verdict taken at cell 34 (r = 1.00665) where 6.542E-10 stands against
+**4.6E-09, the rounding anchor of that cell**, at distance 0.141; momentum
+1.562E-14 against 1E-08; energy 9.981E-09 against 1E-06; every elemental
+wind row within 1E-05, so the state is certified IN THE WIND with the layer
+rows reported (worst 8.966E-05, Fe at cell 145, r = 1.043). Twelve passes,
+1047 s as the sum of the pass timings, on a machine also running a test
+suite.
+
+The mass row of each pass, and which gate took its verdict (MEASURED, the
+`verdict at cell` line of each pass's certification):
+
+| pass | mass row (cell) | verdict cell, r | measure there | tolerance | gate | verdict |
+| --- | --- | --- | --- | --- | --- | --- |
+| as loaded | 1.509E+00 (191) | 285, 1.2477 | 1.936E-01 | 3.1E-12 | anchor | ABOVE |
+| 1 | 4.106E-09 (1) | 117, 1.0294 | 1.904E-10 | 8.1E-10 | anchor | within |
+| 2 | 1.322E-09 (39) | 117, 1.0294 | 1.904E-10 | 8.1E-10 | anchor | within |
+| 3 | 5.484E-09 (12) | 160, 1.0530 | 2.270E-09 | 3.2E-11 | anchor | ABOVE |
+| 4 | 8.407E-10 (34) | 221, 1.1145 | 4.764E-13 | 3.0E-12 | fixed | within |
+| 5 | 7.019E-10 (20) | 97, 1.0219 | 1.847E-10 | 7.8E-10 | anchor | within |
+| 6 | 6.734E-10 (19) | 66, 1.0132 | 3.049E-10 | 2.3E-09 | anchor | within |
+| 7 | 9.305E-10 (35) | 128, 1.0344 | 6.888E-11 | 2.4E-10 | anchor | within |
+| 8 | 9.241E-10 (5) | 79, 1.0165 | 3.692E-10 | 1.5E-09 | anchor | within |
+| 9 | 7.807E-10 (3) | 92, 1.0203 | 1.625E-10 | 1.0E-09 | anchor | within |
+| 10 | 7.050E-10 (1) | 97, 1.0219 | 1.497E-10 | 8.6E-10 | anchor | within |
+| 11 | 8.147E-10 (15) | 97, 1.0219 | 1.655E-10 | 8.5E-10 | anchor | within |
+| 12 | 7.703E-10 (2) | 34, 1.0067 | 6.542E-10 | 4.6E-09 | anchor | within |
+
+Three things this says. The row's largest measure sits in the base layer at
+1e-9 to 5e-9 throughout and is admitted there, because the base cells' own
+tolerances are larger still; the VERDICT then moves out to r = 1.006 to
+1.115, where the anchor is 3e-12 to 5e-9 depending on the cell, so the gate
+has not been removed, only moved to where the arithmetic still resolves the
+row; and the row is refused at one of the twelve passes (pass 3, distance
+69.9 at cell 160), so the anchored tolerance still refuses states.
+
+**Does 8.893E-10 at cell 3 fall inside the tolerance there?** Yes, by a
+factor of 10.9. The certified state was re-entered with `Restart intent:
+stationary evaluate` and the scan armed: at cell 3 its estimated floor is
+9.6526E-10, so `tol_mass(3)` is 9.65E-09, and the row that state itself
+carries at cell 3 is 8.9806E-10, which is the same quantity P10 reported at
+8.893E-10. The reloaded certified state certifies again, with its mass row
+largest at cell 1 (1.650E-09) whose own tolerance is 1.0E-08 and the verdict
+taken at cell 18 (1.143E-09 against 6.7E-09, distance 0.170).
+
+The tolerance MOVES with the state, which is the point of anchoring it
+there: the base Mach number of a converged column is not the base Mach
+number of the reloaded one. At cell 3 it is 7.867E-06 on the state as loaded
+and 1.190E-06 on the certified one, and the floor there accordingly rises
+from 3.0E-11 to 9.7E-10 (MEASURED).
+
+The control, a build of the entry text of the same two files run on the same
+recipe, 12 passes and 1040.83 s: **NOT CERTIFIED, one entry refusing, the
+hydrodynamic mass row at 7.159E-10 against 3.0E-12 at cell 13**. Everything
+else about the two runs agrees: the worst gated species row of every one of
+the twelve passes is identical to three digits and so is its cell, and the
+eight elemental rows of the last pass agree to every digit printed (He/H
+2.793E-05 at cell 238, C 1.000E-05, O 1.238E-05, N 1.496E-05, Mg 4.377E-05,
+Ca 1.942E-05, Na 1.941E-05, Fe 8.966E-05). Passes 1 to 5 are identical in
+every reported number in the two runs; they part at pass 6, the first pass
+whose hydrodynamic solve stops on the loop-top test because the mass row is
+inside its own tolerance (`info = 0` where the control's is `info = 2`).
+
+The wall times of the two arms (1047 s against 1041 s) are not a comparison:
+the P16 arm shared the machine with a test suite and the control did not.
+The two other passes that end `info = 0` in the new run are 6 and 12.
+
+Note that this control is the CURRENT tree's entry text and not P10's binary,
+so its ladder is not P10's ladder number for number (P10 read a mass row of
+8.893E-10 at cell 3 after twelve passes; this control reads 7.159E-10 at cell
+13). Items P11 and P12 and two advisor changes landed in between. What the
+two controls agree on is the finding: after twelve passes the ONE entry
+refusing the state is the hydrodynamic mass row of a base-layer cell.
+
+**3. The hot-Uranus carrier reload, partitioned**, `EXHALE_OUTER_PASSES=3
+EXHALE_JFNK_MAXIT=40`. The mass row's verdict per pass, and what it costs:
+
+| pass | hydro info | mass row (cell) | verdict cell, r | tolerance, gate | verdict | seconds |
+| --- | --- | --- | --- | --- | --- | --- |
+| control 1 | 1 | 3.375E-12 (80) | one number for the column | ABOVE 3.0E-12 | ABOVE | 28.42 |
+| P16 1 | **0** | 6.944E-12 (1) | 500, 4.6215 | 3.0E-12, fixed | **within** | **8.75** |
+| control 2 | 1 | 1.370E-11 (1) | one number for the column | ABOVE 3.0E-12 | ABOVE | 20.50 |
+| P16 2 | 2 | 1.256E-11 (1) | 180, 1.0707 | 3.0E-12, fixed | ABOVE | 3.13 |
+| control 3 | 1 | 3.645E-12 (72) | one number for the column | ABOVE 3.0E-12 | ABOVE | 20.47 |
+| P16 3 | 2 | 5.519E-12 (19) | 180, 1.0707 | 3.0E-12, fixed | ABOVE | 3.59 |
+
+The base cells of this fixture are admitted by their own anchor at every
+pass (cell 1 at 6.944E-12 and 1.256E-11 against a floor of 9.3E-13 times
+ten), which is what N33's reading of this row predicted, and the verdict
+moves out to **cell 180, r = 1.0707**, where the estimated floor is below
+3e-12 and the row stands at 5.1E-12 to 9.5E-12 against the FIXED tolerance.
+So the mass row still refuses this fixture and now refuses it at a cell
+where the arithmetic resolves the row: the refusal has moved from rounding
+to signal.
+
+The H2 carrier row is unchanged pass by pass, as it must be, the carrier
+relaxation sitting outside the hydrodynamic solve: 7.38E-02 at cell 290,
+7.22E-02 at 289, 7.06E-02 at 288 in both arms. It still refuses the state
+(2 entries refuse the last pass in both arms). The three passes cost 15.47 s
+against the control's 69.39 s, because each hydrodynamic solve now stops when
+its rows are within their tolerances instead of spending its budget on a
+mass row below the rounding of the base layer.
+
+### What the code carries now
+
+- `steady_residual.f90`: `mass_row_rounding_floor(j, u)`, the estimate, public
+  and the only expression of it; `mass_row_rounding_floor_scan`, the
+  measurement, armed by `EXHALE_MASS_FLOOR_SCAN` and off by default.
+- `certification.f90`: `cert_mass_round_margin = 10` and
+  `cert_tol_mass_ceiling = 1`; `cert_tol_mass_at(j, u)` and the pure
+  `mass_row_cell_verdict(q, floor, tol, dist, within, anchored)`, which is
+  the rule and the one thing the tests drive; `mass_row_verdict`, the loop
+  over the column that takes the verdict and records where it bound;
+  `cert_mass_gate_name`, the two words the report prints, read by the report
+  and by the test from one place. `cert_tol_mass` keeps its value and is now
+  read only through the accessor.
+- The report gains, under the mass row: the cell that took the verdict with
+  its radius, the measure there, the tolerance there, the distance, and which
+  of the two gates applied; and, when the largest measure sits elsewhere, the
+  tolerance that applied at that cell. The refusing-entry list names the cell
+  that refused rather than the cell of the largest measure, which on this row
+  may be inside its own tolerance.
+- Tests, `src/tests/certification/`: the block
+  `the_mass_row_tolerance_is_anchored_on_its_rounding_floor`, 11 rows on the
+  floors MEASURED here (5.7E-14, 9.3E-13, 3.0E-11), which assert that a floor
+  below the fixed value leaves the fixed value, that a floor above it gives
+  `c_round` times the floor, that a row at half the anchor is within where
+  the superseded fixed rule (transcribed in the test) refuses it, that a row
+  above the anchor still refuses, that the ceiling binds, that the report
+  names which gate applied, and that the margin stands above every ratio
+  measured. 57/0 at entry, **70/0** after, and 0 PASS / 1 FAIL on the control
+  objects, where the compile names `cert_mass_round_margin`,
+  `cert_tol_mass_ceiling` and `cert_mass_gate_name` as absent.
+
+Reported by this item and CLOSED the same day by items P17 and P18 (READ,
+`docs/Update_EXHALE.md` section 8): at the time of writing the best-iterate
+ledger still formed its hydrodynamic distance from the three row maxima over
+the fixed tolerances (`rc(1)/cert_tol_mass`), so it ranked the mass row
+against 3e-12 while the stop test and the acceptance read the cell's own
+tolerance. P17 made the ledger read
+`hydrodynamic_distance_from_certification_by_cell`, the maximum over cells
+and rows of `|R_kj|/scale_kj/tol_k(j)` with `tol_1(j)` this anchor, and P18
+removed the fixed-tolerance form, so one expression of the distance exists.
+
+### How to repeat any of it
+
+- the rounding floor of the mass row on any state, with both estimates and
+  the measured step beside them: `EXHALE_MASS_FLOOR_SCAN=1`, which fires
+  once, on the first state a run assembles a stationary residual for. Off by
+  default; it restores the row terms it found and decides nothing.
+- the floor of a state already written: re-enter its directory with
+  `Restart intent: stationary evaluate`, which measures the state as loaded
+  and takes no step, with the scan armed.
+- the tolerance rule itself, with no planet run:
+  `src/tests/certification/run.sh`, the rows of
+  `the_mass_row_tolerance_is_anchored_on_its_rounding_floor`.
+- the three impact runs: the recipes in the dated sections of
+  `backup/regression/atomic_elem_newton/README.md` and
+  `backup/regression/carrier_elem_newton/README.md`, and
+  `wasp_full_newton` with `Load IC? True` and `Restart intent: stationary`
+  added.
